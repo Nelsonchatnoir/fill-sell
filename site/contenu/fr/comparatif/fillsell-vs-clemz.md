@@ -12,7 +12,7 @@ points_cles:
   - "Au 9 octobre 2026, Clemz travaille sur Vinted seulement ; avec FillSell, tu publies, synchronises et retires tes annonces sur {{plateformes}}."
   - "FillSell a une app sur l'App Store et sur Google Play ; Clemz est une extension de navigateur, utilisable sur Android dans le navigateur Quetta."
   - "Avec FillSell, une photo suffit : Lens reconnaît l'objet, propose un prix tiré d'annonces comparables et rédige l'annonce ; chez Clemz, la « Photo IA » est annoncée « Bientôt »."
-  - "Clemz republie tes annonces Vinted quand tu lances « Go Clemz ! » ; avec FillSell, elles remontent toutes seules sur {{republication}}, aux jours et au créneau que tu choisis."
+  - "Clemz republie tes annonces Vinted quand tu lances « Go Clemz ! » ; avec FillSell, selon ta formule, elles remontent toutes seules sur {{republication}}, aux jours et au créneau que tu choisis."
   - "Clemz démarre plus bas (un mois d'essai, puis 8,99 € par mois) ; FillSell a un palier Gratuit permanent, sans carte bancaire, puis 12,99 € par mois, sans supplément par plateforme."
 hero_media: "captures/publication-choix-plateformes.png"
 hero_alt: "Étape 1 sur 3 de la publication dans FillSell, « Où publier ? » : la fiche du t-shirt Picture gris (Très bon état, 14 €) et cinq plateformes cochées — Vinted, Leboncoin, Beebs et Depop « Connectée », eBay « Part de nos serveurs, sans l'extension » (compte relié par l'API) — puis le choix des photos et le bouton « Continuer · 5 plateformes ». Mention : « Rien ne part encore. Tu vérifies à l'écran suivant. »"
@@ -22,7 +22,7 @@ concurrent: clemz
 choisir_fillsell:
   - "Tu veux vendre au-delà de Vinted, sur {{plateformes}}, avec un seul stock pour tout suivre."
   - "Tu crées tes annonces sur ton téléphone : une photo, Lens écrit l'annonce et propose un prix."
-  - "Tu veux que tes annonces remontent toutes seules, aux jours et au créneau que tu choisis, sans relancer chaque série toi-même."
+  - "Tu veux que tes annonces remontent toutes seules, aux jours et au créneau que tu choisis, sans relancer chaque série toi-même (selon ta formule)."
   - "Tu veux qu'une vente fasse retirer les autres annonces de l'article, avec la question « Déjà vendu ? » au moindre doute."
   - "Tu veux connaître ta marge article par article, prix d'achat compris, et démarrer sur un palier Gratuit permanent."
 choisir_concurrent:
@@ -97,13 +97,13 @@ Avec FillSell, la photo suffit. Lens reconnaît l'objet, lit la marque quand ell
 
 *Compte de démonstration, chiffres fictifs.*
 
-### Tes annonces remontent toutes seules
+### Remonter tes annonces : au bouton ou au créneau
 
 Sur la republication, les deux outils font le même geste. Clemz le décrit ainsi : « créer une nouvelle annonce en copiant exactement les informations d'une vieille annonce (mêmes photos, titre, description, etc.) puis supprimer l'ancienne annonce » ([documentation Clemz](https://www.clemz.app/documentation/republier-des-articles)). FillSell aussi retire l'annonce puis la remet en ligne : elle repart comme neuve, mais ses vues et ses favoris repartent de zéro. Vinted cite d'ailleurs « la date de mise en ligne de l'article » parmi les critères de son classement ([page « Notre plateforme »](https://www.vinted.fr/our-platform)).
 
 La différence, c'est qui appuie sur le bouton. Chez Clemz, tu remplis une liste « à traiter » depuis ton dressing, puis tu cliques sur « Go Clemz ! ». Sa documentation conseille de le faire aux heures de pointe (« 6h-8h, 12h-13h, 19h-21h et les week-ends ») et ne décrit pas de republication programmée à des jours et des heures fixes (relevé du 9 octobre 2026).
 
-Chez FillSell, ces heures, tu les fixes une fois. Avec [la republication automatique](page:fonctions/republication), tes annonces remontent toutes seules sur {{republication}} : tu choisis les jours, le créneau (matin, midi, soir ou le tien) et l'ancienneté à partir de laquelle une annonce repart. FillSell espace les republications à un rythme humain pour protéger ton compte, et tu coupes tout d'un geste. Ordinateur allumé, Chrome ouvert : l'extension republie pendant que tu chines. Besoin d'en remonter une tout de suite ? Un appui suffit.
+Chez FillSell, selon ta formule, ces heures, tu les fixes une fois. Avec [la republication automatique](page:fonctions/republication), tes annonces remontent toutes seules sur {{republication}} : tu choisis les jours, le créneau (matin, midi, soir ou le tien) et l'ancienneté à partir de laquelle une annonce repart. FillSell espace les republications à un rythme humain pour protéger ton compte, et tu coupes tout d'un geste. Ordinateur allumé, Chrome ouvert : l'extension republie pendant que tu chines. Besoin d'en remonter une tout de suite ? Un appui suffit.
 
 ![Réglage de la republication automatique dans FillSell : le créneau (Matin 8h–10h, Midi 12h–14h, Soir 19h–22h sélectionné, ou Personnalisé), « Heure locale · Chrome ouvert », la note « Les republications se répartissent sur le créneau, au rythme réel de ton compte. Jamais en rafale. », et les jours actifs (tous les jours, du lundi au dimanche).](media:captures/republication-creneaux.png)
 

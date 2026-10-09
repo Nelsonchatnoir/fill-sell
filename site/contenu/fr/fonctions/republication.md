@@ -5,12 +5,12 @@ lang: fr
 nom: Republication
 surtitre: "Republier · remonter tes annonces"
 title: "Remonter une annonce Vinted : republication automatique | FillSell"
-description: "Remonte une annonce d'un appui, ou laisse tes annonces remonter toutes seules sur {{republication}}, au créneau que tu choisis. Jamais en rafale."
+description: "Remonte une annonce d'un appui ou, selon ta formule, laisse tes annonces remonter toutes seules sur {{republication}}, au créneau que tu choisis."
 h1: "Republier et remonter tes annonces sur {{republication}}"
-chapo: "Republier une annonce, c'est la retirer puis la remettre en ligne : elle repart comme une annonce neuve, mais ses vues et ses favoris repartent de zéro. Avec FillSell, tu remontes une annonce d'un appui depuis ton téléphone, ou tes annonces remontent toutes seules sur {{republication}}, aux jours et au créneau choisis. L'extension Chrome fait le travail sur ton ordinateur, une annonce après l'autre."
+chapo: "Republier une annonce, c'est la retirer puis la remettre en ligne : elle repart comme une annonce neuve, mais ses vues et ses favoris repartent de zéro. Avec FillSell, tu remontes une annonce d'un appui depuis ton téléphone ; selon ta formule, tes annonces remontent aussi toutes seules sur {{republication}}, au créneau choisi. L'extension Chrome fait le travail sur ton ordinateur, une à une."
 points_cles:
   - "Republier une annonce, c'est la retirer puis la remettre en ligne : la nouvelle annonce repart avec une date de mise en ligne neuve, mais ses vues, ses favoris et son ancienneté ne la suivent pas."
-  - "La republication automatique remonte tes annonces sur {{republication}} : tu choisis les jours, le créneau (matin, midi, soir ou sur mesure) et l'ancienneté minimale, jamais moins d'une semaine."
+  - "Selon ta formule, tes annonces remontent toutes seules sur {{republication}} : tu choisis les jours, le créneau (matin, midi, soir ou sur mesure) et l'ancienneté minimale, jamais moins d'une semaine."
   - "Une annonce à relancer tout de suite ? Tu la remontes d'un appui depuis ton téléphone ; l'extension Chrome la republie sur ton ordinateur, dans ta session, sans jamais ton mot de passe."
   - "Avant de retirer une annonce, l'extension en garde une copie complète et vérifie qu'elle saura la remettre en ligne ; sinon, elle n'y touche pas. Une même annonce n'est jamais republiée deux fois en 24 heures."
   - "Les republications s'étalent sur ton créneau, une à une, jamais en rafale, ordinateur allumé et Chrome ouvert. Un geste met tout en pause, et tes réglages restent en mémoire."
@@ -21,7 +21,7 @@ etapes:
   - titre: "Installe l'extension et connecte-toi à tes plateformes"
     texte: "L'extension Chrome FillSell s'installe une fois sur ton ordinateur. Tu te connectes à tes plateformes dans Chrome, comme d'habitude : elle travaille dans ces sessions, sans jamais ton mot de passe."
   - titre: "Choisis ton créneau et tes jours"
-    texte: "Pour chaque plateforme parmi {{republication}} : matin, midi, soir ou un créneau sur mesure, à ton heure locale, et les jours où tes annonces remontent."
+    texte: "Selon ta formule, tu règles pour chaque plateforme parmi {{republication}} : matin, midi, soir ou un créneau sur mesure, à ton heure locale, et les jours où tes annonces remontent."
   - titre: "Fixe l'ancienneté et l'ordre de passage"
     texte: "Une annonce ne remonte qu'après le nombre de jours en ligne que tu fixes, jamais moins d'une semaine. Puis qui passe en premier : les plus anciennes, les plus chères ou, sur Vinted, les moins vues."
   - titre: "Laisse ton ordinateur faire, garde la main"
@@ -50,7 +50,7 @@ La parade des vendeurs a un nom : la **republication**. On dit aussi « remonter
 
 Pour la plateforme, c'est une annonce neuve : nouvelle date de mise en ligne, nouvel identifiant, nouvelle adresse. Elle repart comme au premier jour.
 
-À la main, c'est une corvée : supprimer, retrouver ses photos, tout retaper, republier, et recommencer pour la suivante. Avec FillSell, c'est un appui pour une annonce, et un créneau pour toutes les autres.
+À la main, c'est une corvée : supprimer, retrouver ses photos, tout retaper, republier, et recommencer pour la suivante. Avec FillSell, c'est un appui pour une annonce et, selon ta formule, un créneau pour toutes les autres.
 
 Le revers existe, et on préfère te le dire avant :
 
@@ -86,7 +86,7 @@ Une republication ne fait pas le même effet partout. Voici ce que chaque platef
 | Beebs | ses règles interdisent de « référencer les mêmes articles plus d'une fois » ([règles du catalogue](https://sos.beebs.app/hc/fr/articles/5843157506706-Les-r%C3%A8gles-du-catalogue-Beebs-by-Kiabi)) | Boost | l'ancienne annonce part avant que la nouvelle arrive ; la nouvelle repasse par la vérification de Beebs |
 | Depop | « Newer items get a slight edge » : un léger avantage, qui compte bien moins que la pertinence de l'annonce ([aide Depop](https://depophelp.zendesk.com/hc/en-gb/articles/9422984899985-How-Depop-ranks-search-results-and-recommends-listings)) | Boosted Listings | republier donne un coup de neuf ; une description précise pèse davantage |
 
-Sur chacune, FillSell republie ton annonce d'un appui. Et la republication automatique s'occupe de {{republication}}.
+Sur chacune, FillSell republie ton annonce d'un appui. Et, selon ta formule, la republication automatique s'occupe de {{republication}}.
 
 ## Deux façons de remonter tes annonces
 
@@ -98,7 +98,7 @@ Plusieurs d'un coup ? Dans ton stock, la tuile « Republier » te dit combien d'
 
 ### Toutes seules, au créneau que tu choisis
 
-Tu règles une fois. Ensuite, tes annonces remontent toutes seules sur {{republication}}, semaine après semaine, pendant que tu fais autre chose. Chaque plateforme a ses propres réglages :
+Selon ta formule, tu règles une fois. Ensuite, tes annonces remontent toutes seules sur {{republication}}, semaine après semaine, pendant que tu fais autre chose. Chaque plateforme a ses propres réglages :
 
 - **le créneau** : matin (8 h à 10 h), midi (12 h à 14 h), soir (19 h à 22 h) ou sur mesure, à ton heure locale ;
 - **les jours actifs** : tous les jours, ou seulement ceux que tu coches ;
@@ -146,15 +146,15 @@ Dans FillSell, la republication n'est pas un outil posé à côté : elle vit da
 - **Plusieurs exemplaires ?** Tu vends le même article en plusieurs exemplaires : après une vente, FillSell le remet en ligne sur la plateforme où il s'est vendu (pour une annonce déposée par FillSell).
 - **Tout ton stock d'un coup d'œil.** Tes annonces déjà en ligne arrivent dans ton stock en un appui sur « Synchroniser » ([la synchronisation](page:fonctions/synchronisation)), et [Lens](page:fonctions/lens) écrit les nouvelles à partir d'une photo.
 
-Une photo, une fiche, toutes tes plateformes, et des annonces qui remontent au créneau que tu as choisi : c'est ça, le [crosslisting](page:crosslisting) version FillSell.
+Une photo, une fiche, toutes tes plateformes, et des annonces qui remontent d'un appui ou, selon ta formule, au créneau que tu as choisi : c'est ça, le [crosslisting](page:crosslisting) version FillSell.
 
-Prêt ? [Crée ton compte FillSell](/login?mode=signup), installe l'extension, règle ton premier créneau. Tes annonces ne dormiront plus.
+Prêt ? [Crée ton compte FillSell](/login?mode=signup), installe l'extension, remonte ta première annonce. Tes annonces ne dormiront plus.
 
 ## Questions fréquentes
 
 ### Qu'est-ce que republier une annonce sur Vinted ?
 
-Republier une annonce Vinted, c'est la supprimer puis la remettre en ligne à l'identique : elle repart comme une annonce neuve, avec une nouvelle date de mise en ligne, mais ses vues et ses favoris repartent de zéro. Vinted n'a pas de bouton pour ça : son bouton « Republier l'article » n'apparaît qu'après une commande annulée avant l'envoi. Avec FillSell, l'extension Chrome le fait d'un appui, ou au créneau que tu choisis.
+Republier une annonce Vinted, c'est la supprimer puis la remettre en ligne à l'identique : elle repart comme une annonce neuve, avec une nouvelle date de mise en ligne, mais ses vues et ses favoris repartent de zéro. Vinted n'a pas de bouton pour ça : son bouton « Republier l'article » n'apparaît qu'après une commande annulée avant l'envoi. Avec FillSell, l'extension Chrome le fait d'un appui ou, selon ta formule, au créneau que tu choisis.
 
 ### Quelle différence entre republier et booster une annonce ?
 
@@ -174,7 +174,7 @@ En la republiant. Leboncoin vend « Remonter en tête de liste » ; FillSell, lu
 
 ### Peut-on republier ses annonces Beebs et Depop ?
 
-Oui. D'un appui, FillSell retire ton annonce et la remet en ligne, et elle reste sur la même fiche de ton stock. Sur Beebs, l'ancienne part avant que la nouvelle arrive, comme l'exigent ses règles contre les doublons. Sur Depop, la nouveauté donne un léger avantage, bien moins important que la pertinence, selon Depop elle-même ; tu y autorises l'accès d'un clic dans l'extension. La republication automatique, elle, couvre {{republication}}.
+Oui. D'un appui, FillSell retire ton annonce et la remet en ligne, et elle reste sur la même fiche de ton stock. Sur Beebs, l'ancienne part avant que la nouvelle arrive, comme l'exigent ses règles contre les doublons. Sur Depop, la nouveauté donne un léger avantage, bien moins important que la pertinence, selon Depop elle-même ; tu y autorises l'accès d'un clic dans l'extension. Selon ta formule, la republication automatique prend aussi le relais sur {{republication}}.
 
 ### Mon ordinateur doit-il rester allumé pendant la republication ?
 

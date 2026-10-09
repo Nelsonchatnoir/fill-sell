@@ -137,13 +137,13 @@ It's exactly what both marketplaces ask of you. Beebs's terms (version of 29 Jan
 
 ![The "Déjà vendu ?" (already sold?) question in FillSell, over the Stock: the grey Red Bull Racing hoodie sold on Vinted — is your eBay listing with the same name the same item? The sold item card (photo, €38, created in the app, "sold"), the line "if you answer yes, this listing will be removed: eBay", and two buttons: "yes, remove it" and "no, it’s another copy".](media:captures/vente-deja-vendu-question.png)
 
-Proofs, removals and questions in detail: [sales and delisting of copies (in French)](page:fr:fonctions/ventes-et-retraits). And to dig deeper: [selling the same item on several marketplaces without selling it twice](page:blog/sell-same-item-vinted-leboncoin-ebay-beebs).
+Proofs, removals and questions in detail: [sales and delisting of copies (in French)](page:fr:fonctions/ventes-et-retraits). And to dig deeper: [selling the same item on several marketplaces without selling it twice (in French)](page:fr:blog/vendre-meme-article-vinted-leboncoin-ebay-beebs).
 
 ## Keep your Vinted and Beebs listings near the top, without the late nights
 
 An ageing listing slides down the results. Reposting means taking it down and putting it back up: it climbs back to the top, but its views and favourites start from zero. FillSell removes the old listing first, then posts the new one — and on Beebs, whose rules forbid offering the same item twice, that order matters.
 
-Bump a listing back up with one tap. Or switch on automatic reposting, and your listings bump themselves back up on {{republication}}, on the days and in the time slot you choose, while you get on with your evening — computer on. FillSell spaces your reposts out at a human pace to protect your account, never in bursts, and you can switch everything off in one tap, whenever you like.
+Bump a listing back up with one tap. Or, depending on your subscription, switch on automatic reposting, and your listings bump themselves back up on {{republication}}, on the days and in the time slot you choose, while you get on with your evening — computer on. FillSell spaces your reposts out at a human pace to protect your account, never in bursts, and you can switch everything off in one tap, whenever you like.
 
 ![Automatic reposting settings in FillSell: the time slot (morning 8–10, noon 12–14, evening 19–22 selected, or custom), "local time · Chrome open", the note that reposts are spread over the slot at the account's real pace, never in bursts, and the active days (every day, Monday to Sunday).](media:captures/republication-creneaux.png)
 

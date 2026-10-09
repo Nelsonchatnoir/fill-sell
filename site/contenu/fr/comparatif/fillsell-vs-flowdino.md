@@ -126,11 +126,11 @@ Chez FillSell, le retrait suit toute copie rattachée à l'article par une preuv
 
 Le retrait des copies est compris dans tous les forfaits FillSell, Gratuit compris. Chez FlowDino, le palier qui ouvre les automatisations n'est pas écrit sur ses pages. Le détail : [ventes et retrait des copies](page:fonctions/ventes-et-retraits).
 
-## Tes annonces remontent toutes seules
+## Remonter tes annonces : tâche planifiée ou créneau
 
 FlowDino republie par une tâche planifiée, « Renouveler » : un intervalle de 5 à 360 minutes ou des heures fixes, une ancienneté minimale, un nombre d'annonces par passage ([automatisations de FlowDino](https://www.flowdino.com/docs/automation)).
 
-FillSell fait remonter tes annonces toutes seules sur {{republication}}. Tu choisis tes jours et ton créneau — matin, midi, soir, ou sur mesure — et ton ordinateur allumé republie pendant que tu fais autre chose. Les republications sont espacées à un rythme humain pour protéger ton compte, et tu coupes tout d'un geste. Une annonce à relancer tout de suite ? Un appui.
+Selon ta formule, FillSell fait remonter tes annonces toutes seules sur {{republication}}. Tu choisis tes jours et ton créneau — matin, midi, soir, ou sur mesure — et ton ordinateur allumé republie pendant que tu fais autre chose. Les republications sont espacées à un rythme humain pour protéger ton compte, et tu coupes tout d'un geste. Une annonce à relancer tout de suite ? Un appui.
 
 Republier, c'est retirer l'annonce puis la remettre en ligne : elle repart en haut des résultats, et ses vues comme ses favoris repartent de zéro. Le mode d'emploi : [remonter tes annonces](page:fonctions/republication).
 

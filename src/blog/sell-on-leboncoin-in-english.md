@@ -178,7 +178,7 @@ When an item sells on Leboncoin, FillSell asks you to confirm the sale with one 
 
 On Leboncoin, climbing back to the top of the results is a paid option (“Remonter en tête de liste”). FillSell does something else: it reposts. The listing is removed and put back online, so it goes back to the top of the results — its views and favourites start from zero. FillSell never buys the paid option.
 
-Your listings bump themselves back up on Vinted, Leboncoin, Beebs, and Depop, on the days and in the time slot you choose, with your computer on. FillSell spaces out your reposts at a human pace to protect your account, and you switch it all off in one tap. More on [automatic reposting (in French)](page:fr:fonctions/republication).
+Depending on your subscription, your listings bump themselves back up on Vinted, Leboncoin, Beebs, and Depop, on the days and in the time slot you choose, with your computer on; otherwise, you repost a listing with one tap. FillSell spaces out your reposts at a human pace to protect your account, and you switch it all off in one tap. More on [automatic reposting (in French)](page:fr:fonctions/republication).
 
 ### One honest note
 
@@ -192,7 +192,7 @@ The extension's small panel, and its Chrome Web Store page, are in French for no
 | Post on Leboncoin | Leboncoin's form, in French | Tick Leboncoin in the app; the extension fills in the form |
 | Put the same item on other marketplaces | Write and post each listing again | One listing, five marketplaces: Vinted, Leboncoin, eBay, Beebs, and Depop |
 | An item sells | Find and delete the other listings yourself | Confirm with one tap; proven copies come down, “Already sold?” when in doubt |
-| Stay visible | Pay for a bump, or delete and repost by hand | Automatic reposting on Vinted, Leboncoin, Beebs, and Depop, on your schedule |
+| Stay visible | Pay for a bump, or delete and repost by hand | One-tap reposting, or automatic reposting on your schedule depending on your subscription (Vinted, Leboncoin, Beebs, and Depop) |
 | Know what you earn | A spreadsheet | Stock, sales and margin calculated for you |
 
 ## Beyond Leboncoin: the same item on five marketplaces
@@ -204,7 +204,7 @@ Leboncoin is one door. FillSell works today with Vinted, Leboncoin, eBay, Beebs,
 - **Beebs** for everything kids and family.
 - **Depop** for fashion, vintage and streetwear. Its help centre is in English, and you allow FillSell's access to Depop with one click in the extension.
 
-Want the full method for selling one item on several sites without selling it twice? Read [selling the same item on several marketplaces without selling it twice](page:blog/sell-same-item-vinted-leboncoin-ebay-beebs), our guide to [Vinted and Leboncoin at the same time](page:crosslisting/vinted-leboncoin) and [the complete crosslisting guide (in French)](page:fr:crosslisting). Everything FillSell does on Leboncoin, on one page: [FillSell for Leboncoin (in French)](page:fr:plateformes/leboncoin).
+Want the full method for selling one item on several sites without selling it twice? Read [selling the same item on several marketplaces without selling it twice (in French)](page:fr:blog/vendre-meme-article-vinted-leboncoin-ebay-beebs), our guide to [Vinted and Leboncoin at the same time](page:crosslisting/vinted-leboncoin) and [the complete crosslisting guide (in French)](page:fr:crosslisting). Everything FillSell does on Leboncoin, on one page: [FillSell for Leboncoin (in French)](page:fr:plateformes/leboncoin).
 
 Before you start, read [how FillSell keeps your accounts safe (in French)](page:fr:securite-des-comptes). FillSell is not affiliated with Leboncoin or with any other marketplace, and you remain responsible for your account.
 

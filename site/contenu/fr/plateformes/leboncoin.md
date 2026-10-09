@@ -51,7 +51,7 @@ Le partage des rôles est net : **ton téléphone pilote, ton ordinateur exécut
 | Écrire l'annonce | Titre, description, catégorie, état : tout retaper pour Leboncoin, puis pour chaque autre site | Une photo : Lens rédige ta version Leboncoin, prix conseillé compris. Tu relis. |
 | La déposer | Le formulaire de Leboncoin sur l'ordinateur, puis celui de chaque autre plateforme | Tu coches Leboncoin et les autres depuis ton téléphone ; l'extension remplit chaque formulaire, une annonce après l'autre |
 | Reprendre tes annonces déjà en ligne | Les recopier une à une dans un tableur | Un appui sur « Synchroniser » : elles entrent dans ton stock, une fiche par article |
-| Remonter une annonce | Acheter « Remonter en tête de liste », ou la supprimer et la redéposer toi-même | Un appui pour la republier, ou la republication automatique sur {{republication}}, aux jours et au créneau que tu choisis |
+| Remonter une annonce | Acheter « Remonter en tête de liste », ou la supprimer et la redéposer toi-même | Un appui pour la republier ou, selon ta formule, la republication automatique sur {{republication}}, aux jours et au créneau que tu choisis |
 | Gérer une vente | Supprimer l'annonce sur chaque site, en espérant ne rien oublier | Un appui pour confirmer la vente Leboncoin ; les autres annonces de l'article sont retirées, et le moindre doute devient une question |
 
 Une annonce, {{nb_plateformes}} plateformes, un seul stock. Et tes soirées rendues à autre chose qu'aux formulaires.
@@ -91,7 +91,7 @@ Leboncoin vend la visibilité. L'option « Remonter en tête de liste » existe 
 FillSell joue une autre carte : **la republication. Republier, c'est retirer l'annonce, puis la redéposer.** Elle revient comme une annonce neuve, en haut des résultats. Le revers est clair et on te le dit : ses vues et ses favoris repartent de zéro, et ce retrait ne se rattrape pas. L'ancienne annonce part avant que la nouvelle arrive : pas deux annonces identiques en ligne en même temps, ce que les règles de Leboncoin interdisent.
 
 - **En un appui.** Une annonce s'essouffle ? Tu la remontes depuis ton téléphone, ton ordinateur fait le reste.
-- **Toutes seules.** La republication automatique remonte tes annonces sur {{republication}}, les jours et au créneau que tu choisis (matin, midi, soir ou sur mesure), pendant que tu fais autre chose, ordinateur allumé. FillSell les espace à un rythme humain pour protéger ton compte, et tu coupes tout d'un geste, quand tu veux.
+- **Toutes seules, selon ta formule.** La republication automatique remonte tes annonces sur {{republication}}, les jours et au créneau que tu choisis (matin, midi, soir ou sur mesure), pendant que tu fais autre chose, ordinateur allumé. FillSell les espace à un rythme humain pour protéger ton compte, et tu coupes tout d'un geste, quand tu veux.
 
 Comment ça marche dans le détail, plateforme par plateforme : [la republication de tes annonces](page:fonctions/republication).
 
@@ -171,7 +171,7 @@ Non. Tu restes connecté(e) à Leboncoin dans Chrome, comme d'habitude, et l'ext
 
 ### Comment remonter une annonce Leboncoin sans acheter d'option ?
 
-En la republiant : FillSell retire l'annonce puis la redépose, et elle revient en haut des résultats comme une annonce neuve ; ses vues et ses favoris repartent de zéro. Tu le fais en un appui, ou tu laisses la republication automatique s'en charger sur {{republication}}, aux jours et au créneau que tu choisis, ordinateur allumé. Côté Leboncoin, le dépôt n'est payant pour un particulier que dans certaines sous-catégories Véhicules et Immobilier.
+En la republiant : FillSell retire l'annonce puis la redépose, et elle revient en haut des résultats comme une annonce neuve ; ses vues et ses favoris repartent de zéro. Tu le fais en un appui ou, selon ta formule, tu laisses la republication automatique s'en charger sur {{republication}}, aux jours et au créneau que tu choisis, ordinateur allumé. Côté Leboncoin, le dépôt n'est payant pour un particulier que dans certaines sous-catégories Véhicules et Immobilier.
 
 ### Que se passe-t-il quand mon article se vend sur Leboncoin ?
 

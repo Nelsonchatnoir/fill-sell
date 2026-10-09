@@ -13,7 +13,7 @@ points_cles:
   - "Le téléphone pilote, l'ordinateur exécute : l'extension Chrome dépose tes annonces une à une, dans ta propre session, sans jamais te demander tes mots de passe."
   - "Un appui sur « Synchroniser » et tes annonces déjà en ligne arrivent dans ton stock : un article, une fiche, même s'il est en vente sur plusieurs plateformes."
   - "Vendu ici, retiré là-bas : une fois la vente enregistrée, FillSell retire les autres annonces de l'article ; au moindre doute, il te demande « Déjà vendu ? »."
-  - "Tes annonces remontent toutes seules sur {{republication}}, les jours et au créneau que tu choisis, ordinateur allumé."
+  - "Selon ta formule, tes annonces remontent toutes seules sur {{republication}}, les jours et au créneau que tu choisis, ordinateur allumé ; sinon, tu les remontes d'un appui."
 hero_media: "captures/stock-cartes-multi-plateformes.png"
 hero_alt: "Les cartes du stock FillSell, deux par ligne, avec la photo de chaque article, son prix, son ancienneté en ligne et les icônes des plateformes où il est en ligne : le t-shirt Picture gris « Pas en ligne », le sweat Öhlins sur Vinted seulement, le t-shirt Patagonia en ligne sur cinq plateformes (Depop, Beebs, eBay et deux autres) et le short Polo Ralph Lauren sur trois (Depop, Leboncoin, Vinted)."
 cta: inscription
@@ -38,8 +38,8 @@ etapes:
     texte: "Déjà des annonces en ligne ? Un appui sur « Synchroniser » les range dans ton stock FillSell. Un article en vente sur plusieurs plateformes devient une seule fiche ; au moindre doute, l'app te pose la question."
     media: "captures/synchronisation-en-cours.png"
     alt: "Synchronisation en cours dans le Stock de FillSell : « 3 plateformes sur 5 », l'icône de chaque plateforme autour de FillSell, la barre d'avancement « Synchronisation de Depop en cours — environ 1 min — Ton ordinateur travaille pendant ce temps », puis la liste : Vinted 41 annonces, Leboncoin 24 annonces, eBay 5 annonces (faites), Depop 9 sur 10 (en cours), Beebs en attente, Rapprochement en attente."
-  - titre: "Tes annonces remontent toutes seules"
-    texte: "Tu choisis tes jours et ton créneau ; tes annonces sont republiées sur {{republication}}, une à une, pendant que tu fais autre chose, ordinateur allumé. Tu coupes tout d'un geste, quand tu veux."
+  - titre: "Fais remonter tes annonces"
+    texte: "D'un appui, ou toutes seules selon ta formule : tu choisis tes jours et ton créneau, et tes annonces sont republiées sur {{republication}}, une à une, pendant que tu fais autre chose, ordinateur allumé. Tu coupes tout d'un geste, quand tu veux."
     media: "captures/republication-creneaux.png"
     alt: "Réglage de la republication automatique dans FillSell : le créneau (Matin 8h–10h, Midi 12h–14h, Soir 19h–22h sélectionné, ou Personnalisé), « Heure locale · Chrome ouvert », la note « Les republications se répartissent sur le créneau, au rythme réel de ton compte. Jamais en rafale. », et les jours actifs (tous les jours, du lundi au dimanche)."
   - titre: "Vendu ici, retiré là-bas"
@@ -76,7 +76,7 @@ FillSell prend ce parcours en entier, de la photo jusqu'au retrait des annonces 
 | Catégorie, taille, état | les menus de chaque site, un par un | adaptés à chaque plateforme ; s'il manque une info, l'app te la demande |
 | Dépôt | ouvrir chaque formulaire et le remplir | l'extension remplit chaque formulaire, une annonce après l'autre |
 | Annonces déjà en ligne | les recenser dans un tableur | un appui sur « Synchroniser » |
-| Faire remonter une annonce | la supprimer puis la recréer à la main | republication automatique sur {{republication}}, au créneau choisi |
+| Faire remonter une annonce | la supprimer puis la recréer à la main | d'un appui, ou automatique selon ta formule sur {{republication}}, au créneau choisi |
 | Après la vente | penser à supprimer chaque autre annonce | retirées une fois la vente enregistrée ; « Déjà vendu ? » au moindre doute |
 | Marge | un tableur à tenir à jour | calculée toute seule, vente par vente |
 
@@ -138,9 +138,9 @@ Le plus fort, c'est le rangement. Un même article en vente sur plusieurs platef
 
 Une exception utile : si la synchronisation découvre qu'un article est déjà vendu sur Vinted, la vente est enregistrée et les autres annonces reliées à cet article sont retirées. Tout le détail : [la synchronisation du stock](page:fonctions/synchronisation).
 
-## Étape 6 : tes annonces remontent toutes seules
+## Étape 6 : fais remonter tes annonces
 
-Une annonce qui vieillit descend dans les résultats. La parade des vendeurs, c'est de la republier : la retirer puis la remettre en ligne. Elle repart alors comme une annonce neuve, avec une nouvelle date de mise en ligne, mais ses vues et ses favoris repartent de zéro. Fait à la main, c'est une corvée ; avec FillSell, tes annonces remontent toutes seules sur {{republication}}.
+Une annonce qui vieillit descend dans les résultats. La parade des vendeurs, c'est de la republier : la retirer puis la remettre en ligne. Elle repart alors comme une annonce neuve, avec une nouvelle date de mise en ligne, mais ses vues et ses favoris repartent de zéro. Fait à la main, c'est une corvée ; avec FillSell, c'est un appui et, selon ta formule, tes annonces remontent toutes seules sur {{republication}}.
 
 Tu règles une fois les jours actifs et ton créneau : matin, midi, soir ou sur mesure. Pendant ce créneau, l'extension republie tes annonces une à une, au rythme réel de ton compte, jamais en rafale, pendant que tu fais autre chose. Il faut l'ordinateur allumé avec Chrome ouvert. Un geste suffit pour tout couper, quand tu veux. Et une annonce précise à faire remonter tout de suite ? Tu la remontes d'un appui.
 

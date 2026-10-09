@@ -12,7 +12,7 @@ points_cles:
   - "Klork part de ton dressing Vinted et n'annonce pas de publication vers Vinted ; avec FillSell, Vinted est une destination comme les autres (pages de Klork lues le 9 octobre 2026)."
   - "FillSell a une app gratuite sur l'App Store et Google Play ; au 9 octobre 2026, Klork n'en a aucune et son aide résume : « tu publies depuis ton ordinateur, tu suis tout depuis ton téléphone »."
   - "Le retrait des autres annonces d'un article vendu est inclus dans chaque forfait FillSell, Gratuit compris ; chez Klork, le retrait automatique demande le plan Business, à 35 € par mois."
-  - "Avec FillSell, tes annonces remontent toutes seules sur {{republication}} ; chez Klork, la republication automatique est annoncée « Bientôt », dans la formule Entreprise à 69 € par mois."
+  - "Avec FillSell, selon ta formule, tes annonces remontent toutes seules sur {{republication}} ; chez Klork, la republication automatique est annoncée « Bientôt », dans la formule Entreprise à 69 € par mois."
   - "Klork couvre davantage la mode pointue : Vestiaire Collective documenté, Whatnot et Grailed annoncés, et des prix à l'année ; FillSell n'y publie pas et n'a que des prix mensuels."
 hero_media: "captures/publication-choix-plateformes.png"
 hero_alt: "Étape 1 sur 3 de la publication dans FillSell, « Où publier ? » : la fiche du t-shirt Picture gris (Très bon état, 14 €) et cinq plateformes cochées — Vinted, Leboncoin, Beebs et Depop « Connectée », eBay « Part de nos serveurs, sans l'extension » (compte relié par l'API) — puis le choix des photos et le bouton « Continuer · 5 plateformes ». Mention : « Rien ne part encore. Tu vérifies à l'écran suivant. »"
@@ -23,7 +23,7 @@ choisir_fillsell:
   - "Tu pars d'un article posé sur la table : une photo, et Lens écrit l'annonce et propose un prix tiré d'annonces comparables."
   - "Tu veux publier SUR Vinted, pas seulement à partir de Vinted : un lot Leboncoin ou ta boutique Depop peut y partir aussi."
   - "Tu veux que la vente d'un article retire ses autres annonces sans prendre un forfait haut de gamme pour ça."
-  - "Tu veux que tes annonces remontent toutes seules sur {{republication}}, les jours et au créneau que tu choisis."
+  - "Tu veux que tes annonces remontent toutes seules sur {{republication}}, les jours et au créneau que tu choisis (selon ta formule)."
 choisir_concurrent:
   - "Tu vends aussi sur Vestiaire Collective, Whatnot ou Grailed : Klork documente Vestiaire et annonce les deux autres."
   - "Tu tiens plusieurs comptes Vinted et tu veux les gérer chacun avec son journal, dès la formule gratuite."
@@ -106,13 +106,13 @@ Les deux outils partagent ici une règle saine : quand il y a un doute, c'est to
 
 ![La question « Déjà vendu ? » dans FillSell, sur le Stock : « « Sweat à capuche Red Bull Racing gris, taille M » s'est vendu sur Vinted. Ton annonce eBay du même nom, c'est le même article ? », la carte de l'article vendu (photo, 38 €, « Créée dans l'app », « Vendu »), la phrase « Si tu réponds oui, cette annonce sera retirée : eBay », et deux boutons : « Oui, la retirer » et « Non, c'est un autre exemplaire ».](media:captures/vente-deja-vendu-question.png)
 
-## Des annonces qui remontent toutes seules, aujourd'hui
+## La republication automatique, aujourd'hui
 
 Republier, c'est retirer une annonce puis la remettre en ligne : elle repart en tête des résultats, au prix de ses vues et de ses favoris, qui repartent de zéro.
 
 À la main, les deux savent faire. Chez Klork, « Relister » supprime l'ancienne annonce et la republie à l'identique ([guide « Relister »](https://klork.app/guides/relister)). Selon la formule, c'est plateforme par plateforme (Pro) ou sur toutes d'un coup (Business). Vinted, sa source, n'est pas concerné : Klork précise ne pas faire de « republication en masse dans Vinted » ([santé du compte](https://klork.app/guides/sante-du-compte)). Chez FillSell, une annonce remonte d'un appui.
 
-L'automatique, en revanche, ne se joue pas au même calendrier. Chez Klork, il fait partie d'un « Autopilote » marqué « Bientôt », dans un plan Entreprise à 69 € par mois, avec liste d'attente ([tarifs de Klork](https://klork.app/pricing)). Chez FillSell, il tourne déjà : tes annonces remontent toutes seules sur {{republication}}. Tu choisis les jours, le créneau (matin, midi, soir ou le tien) et l'ancienneté à partir de laquelle une annonce repart. FillSell espace les republications à un rythme humain pour protéger ton compte, et un geste coupe tout. Ordinateur allumé, Chrome ouvert : c'est lui qui republie pendant que tu vis ta vie. Réglages et bonnes pratiques : [la republication](page:fonctions/republication), et ce qu'il faut savoir pour [protéger tes comptes](page:securite-des-comptes).
+L'automatique, en revanche, ne se joue pas au même calendrier. Chez Klork, il fait partie d'un « Autopilote » marqué « Bientôt », dans un plan Entreprise à 69 € par mois, avec liste d'attente ([tarifs de Klork](https://klork.app/pricing)). Chez FillSell, il tourne déjà : selon ta formule, tes annonces remontent toutes seules sur {{republication}}. Tu choisis les jours, le créneau (matin, midi, soir ou le tien) et l'ancienneté à partir de laquelle une annonce repart. FillSell espace les republications à un rythme humain pour protéger ton compte, et un geste coupe tout. Ordinateur allumé, Chrome ouvert : c'est lui qui republie pendant que tu vis ta vie. Réglages et bonnes pratiques : [la republication](page:fonctions/republication), et ce qu'il faut savoir pour [protéger tes comptes](page:securite-des-comptes).
 
 ![Réglage de la republication automatique dans FillSell : le créneau (Matin 8h–10h, Midi 12h–14h, Soir 19h–22h sélectionné, ou Personnalisé), « Heure locale · Chrome ouvert », la note « Les republications se répartissent sur le créneau, au rythme réel de ton compte. Jamais en rafale. », et les jours actifs (tous les jours, du lundi au dimanche).](media:captures/republication-creneaux.png)
 
@@ -147,7 +147,7 @@ Même logique de décompte des deux côtés : chez FillSell, ton forfait compte 
 | Publier sur Vinted | oui, Vinted France | non annoncé : Vinted est la source |
 | Publier sur eBay France | API officielle d'eBay (compte relié) ou extension | extension, formulaire ebay.fr |
 | Retrait automatique des autres annonces après une vente | compris dans chaque forfait | plan Business, 35 € par mois |
-| Republication automatique | oui, sur {{republication}} | « Bientôt », formule Entreprise à 69 € par mois |
+| Republication automatique | oui, selon ta formule, sur {{republication}} | « Bientôt », formule Entreprise à 69 € par mois |
 | Prix à l'année | non | oui, « 2 mois offerts » |
 | Vestiaire Collective, Whatnot, Grailed | non | Vestiaire documenté ; Whatnot et Grailed annoncés |
 
@@ -169,7 +169,7 @@ Côté FillSell, à la même date : 5,0 sur 5 sur le Chrome Web Store (1 avis) e
 
 ## Notre verdict
 
-Klork est taillé pour le vendeur qui vit sur Vinted, pilote depuis son ordinateur et veut pousser son dressing jusqu'à Vestiaire Collective. FillSell est taillé pour le revendeur qui veut aller vite sur {{plateformes}} : une photo et l'annonce est écrite, l'app dans la poche, Vinted en destination, eBay par l'API officielle, les copies retirées après la vente sans abonnement haut de gamme, et des annonces qui remontent toutes seules. Une photo, {{nb_plateformes}} plateformes, zéro ressaisie.
+Klork est taillé pour le vendeur qui vit sur Vinted, pilote depuis son ordinateur et veut pousser son dressing jusqu'à Vestiaire Collective. FillSell est taillé pour le revendeur qui veut aller vite sur {{plateformes}} : une photo et l'annonce est écrite, l'app dans la poche, Vinted en destination, eBay par l'API officielle, les copies retirées après la vente sans abonnement haut de gamme, et des annonces qui remontent d'un appui ou, selon ta formule, toutes seules. Une photo, {{nb_plateformes}} plateformes, zéro ressaisie.
 
 Tu hésites encore ? Compare tous les outils, critères et pondérations publiés, dans [notre classement des applications de crosslisting](page:comparatif/meilleures-applications-crosslisting).
 

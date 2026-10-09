@@ -127,7 +127,7 @@ FillSell, si. Tu notes ton prix d'achat, et à chaque vente ta marge et ton bén
 
 La republication est le cœur de Redrip : en lot sur Vinted et Leboncoin, et un « mode auto 24/7 » qui republie tes annonces Vinted « toutes les X minutes », onglet fermé, d'après sa fiche Chrome Web Store.
 
-FillSell republie sur {{republication}}. Tu remontes une annonce en un appui, ou tu laisses [la republication automatique](page:fonctions/republication) s'en charger : tu choisis les jours, le créneau (matin, midi, soir ou sur mesure) et l'ancienneté à partir de laquelle une annonce remonte. FillSell espace tes republications à un rythme humain pour protéger ton compte, et tu coupes tout d'un geste, quand tu veux. Ordinateur allumé, Chrome ouvert : il travaille pendant que tu fais autre chose.
+FillSell republie sur {{republication}}. Tu remontes une annonce en un appui ou, selon ta formule, tu laisses [la republication automatique](page:fonctions/republication) s'en charger : tu choisis les jours, le créneau (matin, midi, soir ou sur mesure) et l'ancienneté à partir de laquelle une annonce remonte. FillSell espace tes republications à un rythme humain pour protéger ton compte, et tu coupes tout d'un geste, quand tu veux. Ordinateur allumé, Chrome ouvert : il travaille pendant que tu fais autre chose.
 
 Bon à savoir : republier, c'est retirer l'annonce puis la remettre en ligne. Elle repart en haut des résultats, mais ses vues et ses favoris repartent de zéro. C'est pour ça que FillSell te laisse régler l'ancienneté minimale.
 

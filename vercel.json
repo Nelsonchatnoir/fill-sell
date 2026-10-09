@@ -106,6 +106,8 @@
     { "source": "/terms", "destination": "/legal", "permanent": true },
     { "source": "/privacy", "destination": "/legal", "permanent": true },
     { "source": "/blog/publier-annonce-plusieurs-plateformes", "destination": "/crosslisting", "permanent": true },
+    { "source": "/blog/sell-same-item-vinted-leboncoin-ebay-beebs", "destination": "/blog/vendre-meme-article-vinted-leboncoin-ebay-beebs", "permanent": true },
+    { "source": "/blog/how-to-calculate-reselling-profits", "destination": "/blog/comment-calculer-profits-vinted", "permanent": true },
     { "source": "/signup", "destination": "/login?mode=signup", "permanent": true },
     { "source": "/inscription", "destination": "/login?mode=signup", "permanent": true },
     { "source": "/register", "destination": "/login?mode=signup", "permanent": true }

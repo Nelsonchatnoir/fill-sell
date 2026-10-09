@@ -8,7 +8,7 @@ surtitre: "FillSell pour Beebs"
 title: "Vendre sur Beebs : l'outil pour publier et republier — FillSell"
 description: "Vends sur Beebs sans rien ressaisir : une annonce remplie une fois, déposée par l'extension FillSell dans ta session, republiée, retirée à la vente."
 h1: "FillSell pour Beebs : l'outil pour vendre sur Beebs sans rien ressaisir"
-chapo: "FillSell est une app de crosslisting qui ajoute Beebs à tes plateformes sans ressaisie : tu remplis l'annonce une fois sur ton téléphone, l'extension Chrome la dépose sur Beebs depuis ton ordinateur, dans ta session. Ton stock Beebs s'importe en un appui ; tes annonces remontent toutes seules sur {{republication}}. Vendu ailleurs ? Dès la vente enregistrée, sa copie Beebs prouvée est retirée."
+chapo: "FillSell est une app de crosslisting qui ajoute Beebs à tes plateformes sans ressaisie : tu remplis l'annonce une fois sur ton téléphone, l'extension Chrome la dépose sur Beebs depuis ton ordinateur, dans ta session. Ton stock Beebs s'importe en un appui ; selon ta formule, tes annonces Beebs remontent toutes seules. Vendu ailleurs ? Dès la vente enregistrée, sa copie Beebs prouvée est retirée."
 points_cles:
   - "Sur Beebs, l'extension Chrome FillSell dépose tes annonces dans ta propre session : jamais ton mot de passe Beebs, une annonce après l'autre, à un rythme humain."
   - "Une fiche remplie une fois donne une version par plateforme : sur Beebs, le rayon, la taille, la couleur et le colis suivent ses rubriques. S'il manque une info, l'app te la demande."
@@ -70,7 +70,7 @@ Un autre public, aucune commission vendeur : un article qui dort sur Vinted ou s
 
 **Des lots entiers.** Choisis tes articles dans le stock, coche Beebs : FillSell prépare chaque annonce, tu vérifies, c'est parti.
 
-**Des annonces qui remontent.** Une annonce Beebs qui s'essouffle se republie d'un appui. Et la republication automatique s'occupe de {{republication}} : les jours et au créneau que tu choisis, pendant que tu fais autre chose.
+**Des annonces qui remontent.** Une annonce Beebs qui s'essouffle se republie d'un appui. Et, selon ta formule, la republication automatique s'occupe de {{republication}} : les jours et au créneau que tu choisis, pendant que tu fais autre chose.
 
 **Vendu ici, retiré là-bas.** Le jour où l'article part, ses copies prouvées sont retirées de tes autres plateformes — on y revient plus bas.
 
@@ -112,7 +112,7 @@ Sur Beebs, ce retrait n'est pas un détail : ses conditions d'utilisation (versi
 Republier, c'est retirer l'annonce puis la remettre en ligne : elle repart comme une annonce neuve, mais ses vues et ses favoris repartent de zéro. Sur Beebs, l'ordre compte, car ses règles interdisent de référencer le même article plus d'une fois. FillSell retire d'abord, redépose ensuite.
 
 - **D'un appui** : une annonce Beebs perd en visibilité ? Tu la remontes depuis ton téléphone, l'ordinateur s'occupe du reste.
-- **Toute seule** : tes annonces remontent sur {{republication}}, les jours et au créneau que tu choisis, pendant que tu fais autre chose — ordinateur allumé.
+- **Toute seule**, selon ta formule : tes annonces remontent sur {{republication}}, les jours et au créneau que tu choisis, pendant que tu fais autre chose — ordinateur allumé.
 - **À ton rythme, pas en rafale** : FillSell espace tes republications à un rythme humain pour protéger ton compte. Tu coupes tout d'un geste, quand tu veux.
 
 Comme tout nouveau dépôt, une annonce republiée repasse par la vérification de Beebs : elle peut mettre un moment à réapparaître. Pour tout comprendre des créneaux et des réglages : [la republication automatique et à la demande](page:fonctions/republication).
@@ -163,7 +163,7 @@ Non, jamais. Tu te connectes toi-même à Beebs dans Chrome, comme d'habitude, e
 
 ### Peut-on republier ses annonces Beebs automatiquement ?
 
-Oui. La republication automatique de FillSell couvre {{republication}} : tu choisis les jours et le créneau, et tes annonces remontent toutes seules, une à une, à un rythme humain, tant que ton ordinateur est allumé avec Chrome ouvert. Tu peux aussi remonter une annonce d'un appui, et tout couper d'un geste.
+Oui, selon ta formule. La republication automatique de FillSell couvre {{republication}} : tu choisis les jours et le créneau, et tes annonces remontent toutes seules, une à une, à un rythme humain, tant que ton ordinateur est allumé avec Chrome ouvert. Sinon, tu remontes une annonce d'un appui. Dans tous les cas, tu coupes tout d'un geste.
 
 ### FillSell enregistre-t-il tout seul une vente faite sur Beebs ?
 

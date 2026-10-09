@@ -23,7 +23,7 @@ choisir_fillsell:
   - "Tu vends depuis la France sur {{plateformes}} et tu veux un seul stock pour tout, en français et en euros."
   - "Tu veux tout mener depuis ton téléphone, avec une vraie app iPhone ou Android, pendant que ton ordinateur dépose tes annonces."
   - "Tu veux que tes autres annonces soient retirées après une vente sans prendre une formule haut de gamme, y compris quand l'article part sur Vinted."
-  - "Tu veux que tes annonces remontent toutes seules sur {{republication}}, les jours et au créneau que tu choisis."
+  - "Tu veux que tes annonces remontent toutes seules sur {{republication}}, les jours et au créneau que tu choisis (selon ta formule)."
   - "Tu veux démarrer à 0 €, sans carte bancaire et sans compte à rebours, avec ta marge calculée dès le premier article."
 choisir_concurrent:
   - "Tu vends aux États-Unis, en dollars, sur Poshmark, Mercari, Etsy, Grailed, Whatnot ou Reverb : List Perfectly les annonce, FillSell ne les gère pas."
@@ -153,11 +153,11 @@ FillSell pousse la même idée un cran plus loin. Un appui sur « Synchroniser �
 
 Le résultat compte pour tout le reste : une fiche juste, c'est un retrait juste après la vente, et une marge juste dans tes chiffres. Ton stock n'a pas de limite d'articles, même en Gratuit, et il s'exporte en Excel quand tu veux.
 
-## Tes annonces remontent toutes seules
+## Remonter tes annonces, à la main ou au créneau
 
 Chez List Perfectly, tu retires puis remets en ligne tes annonces d'un clic. La formule Pro Plus t'alerte quand une annonce vieillit (« Stale Listings »). Tu peux alors la mettre à jour, la republier ou la retirer. Ses pages ne décrivent pas de republication automatique ([tarifs](https://listperfectly.com/pricing)). Ses automatismes vont vers Poshmark : partage des annonces, offres aux personnes qui ont aimé un article.
 
-Chez FillSell, **tes annonces remontent toutes seules** : tu choisis tes jours et ton créneau, et FillSell les republie sur {{republication}} pendant que tu vis ta vie, ordinateur allumé. Les republications sont espacées, à un rythme humain, pour ménager ton compte ; un geste suffit pour tout couper. Et pour remonter une annonce précise, maintenant, un seul appui.
+Chez FillSell, selon ta formule, **tes annonces remontent toutes seules** : tu choisis tes jours et ton créneau, et FillSell les republie sur {{republication}} pendant que tu vis ta vie, ordinateur allumé. Les republications sont espacées, à un rythme humain, pour ménager ton compte ; un geste suffit pour tout couper. Et pour remonter une annonce précise, maintenant, un seul appui.
 
 Un mot d'honnêteté : republier, c'est retirer l'annonce puis la remettre en ligne. Elle repart en haut des résultats, mais ses vues et ses favoris repartent de zéro. Les réglages, créneau par créneau : [la republication automatique de FillSell](page:fonctions/republication).
 

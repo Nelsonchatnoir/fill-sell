@@ -24,7 +24,7 @@ choisir_fillsell:
   - "Tu veux commencer sans payer : le forfait Gratuit, sans carte bancaire, comprend Lens, la publication sur toutes tes plateformes, la synchronisation et le retrait des copies après une vente."
   - "Tu vends sur Depop depuis la France, avec un compte en euros, et tu veux le gérer avec le reste de ton stock."
   - "Tu as déjà des annonces un peu partout et tu veux qu'un même article devienne une seule fiche, avec une question au moindre doute."
-  - "Tu veux que tes annonces remontent toutes seules sur {{republication}}, les jours et au créneau que tu choisis."
+  - "Tu veux que tes annonces remontent toutes seules sur {{republication}}, les jours et au créneau que tu choisis (selon ta formule)."
 choisir_concurrent:
   - "Tu résides aux États-Unis, au Royaume-Uni, au Canada ou en Australie : ce sont les quatre pays que Crosslist sert."
   - "Tu vends sur Poshmark, Mercari, Grailed, Whatnot, Etsy, Facebook Marketplace, Shopify ou WooCommerce : Crosslist les propose, FillSell ne les couvre pas aujourd'hui."
@@ -126,13 +126,13 @@ Résultat : un article n'entre dans ton stock qu'une fois rapproché de tout ce 
 
 *Compte de démonstration, chiffres fictifs.*
 
-## Republication : FillSell automatise, Crosslist republie à la demande
+## Republication : FillSell automatise selon ta formule, Crosslist republie à la demande
 
 Une annonce qui vieillit glisse dans les résultats. Pour la relancer, on la retire puis on la remet en ligne : elle repart en tête, et ses vues et ses favoris repartent de zéro.
 
 Crosslist republie à la demande, à l'unité ou en lot, en retirant d'abord l'ancienne annonce pour éviter les doublons ([republication chez Crosslist](https://docs.crosslist.com/knowledge-base/listing-management/relist-delist)). La programmation des republications figure sur sa feuille de route publique, au statut « Under consideration » ([feuille de route de Crosslist](https://feedback.crosslist.com/en/roadmap), relevée le 9 octobre 2026).
 
-Avec FillSell, tes annonces remontent toutes seules sur {{republication}}. Tu choisis les jours et le créneau, matin, midi, soir ou sur mesure, et FillSell les republie pendant que tu chines, ordinateur allumé. Il espace les republications à un rythme humain pour protéger ton compte, et tu coupes tout d'un geste, quand tu veux. Réglages et bonnes pratiques : [remonter tes annonces](page:fonctions/republication).
+Avec FillSell, selon ta formule, tes annonces remontent toutes seules sur {{republication}}. Tu choisis les jours et le créneau, matin, midi, soir ou sur mesure, et FillSell les republie pendant que tu chines, ordinateur allumé. Il espace les republications à un rythme humain pour protéger ton compte, et tu coupes tout d'un geste, quand tu veux. Réglages et bonnes pratiques : [remonter tes annonces](page:fonctions/republication).
 
 ![L'écran « Remonter mes annonces » de FillSell : « 23 annonces perdent en visibilité », toutes cochées, avec la photo, les icônes des plateformes (dont Depop) et l'ancienneté de chacune (en ligne depuis 35, 31, 27, 22 jours…), la ligne « Republication automatique — Active sur Vinted, Leboncoin et Beebs », interrupteur allumé, et le bouton « Remonter 23 annonces » : « Ton ordinateur les republie une à une ».](media:captures/republication-remonter.png)
 

@@ -6,14 +6,14 @@ plateforme: vinted
 nom: Vinted
 surtitre: "Vinted France · app + Chrome extension"
 title: "Vinted France crosslisting app and relisting extension — FillSell"
-description: "Import your Vinted France wardrobe in one tap, crosslist it, relist in the time slot you pick, delist copies when it sells. From your phone, never your password."
+description: "Import your Vinted France wardrobe in one tap, crosslist it, relist it, delist copies when it sells. From your phone, never your password."
 h1: "FillSell for Vinted France: crosslist, relist and delist from your phone"
-chapo: "FillSell is a crosslisting app (iPhone, Android, web) paired with a Chrome extension that works on Vinted France in your own session: it posts your listings, imports your wardrobe in one tap and bumps your listings back up in the time slot you pick. When Vinted marks an item sold, FillSell records the sale on its own and takes its proven copies down elsewhere. Your Vinted password? Never."
+chapo: "FillSell is a crosslisting app (iPhone, Android, web) paired with a Chrome extension that works on Vinted France in your session: it posts your listings, imports your wardrobe in one tap and bumps them back up with one tap or, depending on your subscription, in your time slot. When Vinted marks an item sold, FillSell records the sale on its own and takes its proven copies down elsewhere. Your Vinted password? Never."
 points_cles:
   - "On Vinted France (vinted.fr), the FillSell Chrome extension posts, reads, reposts and removes your listings in your own session, one at a time, at a human pace."
   - "One tap on Sync brings the Vinted listings you already have live into your FillSell stock, free and with no limit, without publishing or editing anything."
   - "When Vinted marks an item sold, FillSell records the sale on its own; proven copies come down from your other marketplaces, and any doubt becomes the question “Already sold?”."
-  - "Automatic reposting bumps your listings back up on {{republication}}, on the days and in the time slot you choose, with your computer on."
+  - "Depending on your subscription, automatic reposting bumps your listings back up on {{republication}}, on the days and in the time slot you choose, with your computer on."
   - "FillSell never asks for your Vinted password: you sign in to Vinted in Chrome as usual, and the extension works inside that session."
 hero_media: "captures/publication-verification-annonces.png"
 hero_alt: "Step 2 of 3 of publishing, \"Ce qui va partir\" (what will go out): one card per marketplace, each with its category, condition, €14 price and a \"Prêt\" (ready) label — Vinted (Men › … › T-shirts), Leboncoin (Fashion › Clothing), Beebs (Fashion › … › T-shirts), eBay (Clothing, accessories › … › T-shirts) and Depop (Men › … › T-shirts, no title: on Depop the description is the listing)."
@@ -38,7 +38,7 @@ liens:
   - crosslisting/vinted-beebs
   - plateformes/ebay
   - plateformes/beebs
-  - blog/how-to-calculate-reselling-profits
+  - blog/sell-on-leboncoin-in-english
   - tarifs
 ---
 
@@ -52,7 +52,7 @@ The split of roles is what makes it work:
 - **Your computer does the work.** The FillSell Chrome extension works on Vinted in your session: it fills in Vinted's forms, one listing after another.
 - **You stay in charge.** Any doubt, FillSell asks you instead of guessing.
 
-One listing, {{nb_plateformes}} marketplaces. Nothing to retype from what you already have on Vinted. And listings that climb back up in the time slot you chose.
+One listing, {{nb_plateformes}} marketplaces. Nothing to retype from what you already have on Vinted. And listings that climb back up, with one tap or, depending on your subscription, in the time slot you chose.
 
 ## Vinted in 2026: what to know before you sell
 
@@ -93,7 +93,7 @@ Already selling on Vinted? Don't retype a thing. Tap Sync: the extension reads t
 
 An item live on Vinted and somewhere else becomes a single card. FillSell compares the photos AND the title, never one without the other. Whenever it's unsure, the question “Is it the same item?” waits for you in a separate list of listings to check, outside your stock. And two Vinted listings are two units: FillSell never merges one into the other.
 
-## Repost: your Vinted listings bump themselves back up
+## Repost: bump your Vinted listings back up
 
 Why repost (or relist, as many sellers say)? Because on Vinted, a listing's age counts. How long ago an item was uploaded is one of the ranking factors Vinted publishes, and Vinted says it promotes new listings ([recommended content](https://www.vinted.ie/help/409)). A listing that gets older slides down. Reposting sends it back to the top.
 
@@ -101,8 +101,8 @@ Reposting means taking the listing down and putting it back online. Let's be str
 
 Two ways to do it:
 
-- **With one tap.** Pick your listings, tap, and your computer reposts them one by one.
-- **Automatically.** Your listings bump themselves back up on {{republication}}. You choose the days, the time slot (morning, noon, evening or custom) and the age from which a listing goes back up, never less than a week. Computer on, Chrome open, and you get on with something else.
+- **With one tap.** Pick a listing, tap, and your computer reposts it; several at once depending on your subscription, reposted one by one.
+- **Automatically, depending on your subscription.** Your listings bump themselves back up on {{republication}}. You choose the days, the time slot (morning, noon, evening or custom) and the age from which a listing goes back up, never less than a week. Computer on, Chrome open, and you get on with something else.
 
 ![Automatic reposting settings in FillSell: the time slot (morning 8–10, noon 12–14, evening 19–22 selected, or custom), "local time · Chrome open", the note that reposts are spread over the slot at the account's real pace, never in bursts, and the active days (every day, Monday to Sunday).](media:captures/republication-creneaux.png)
 
@@ -124,7 +124,7 @@ The other way round, your Vinted listing comes down too. Sold on eBay? The sale 
 
 *Demo account, illustrative figures.*
 
-And after that? The sale lands in your Sales tab, margin worked out for you; an item whose purchase price you don't know is left out of the maths rather than counted as free. When FillSell records a sale on Vinted, you get an email. To spot your Vinted sales and remove your listings, your computer needs to be on with Chrome open. The whole picture, marketplace by marketplace: [selling the same item on several marketplaces without selling it twice](page:blog/sell-same-item-vinted-leboncoin-ebay-beebs).
+And after that? The sale lands in your Sales tab, margin worked out for you; an item whose purchase price you don't know is left out of the maths rather than counted as free. When FillSell records a sale on Vinted, you get an email. To spot your Vinted sales and remove your listings, your computer needs to be on with Chrome open. The whole picture, marketplace by marketplace: [selling the same item on several marketplaces without selling it twice (in French)](page:fr:blog/vendre-meme-article-vinted-leboncoin-ebay-beebs).
 
 ## Your Vinted session, never your password
 
@@ -161,7 +161,7 @@ For Vinted, yes: posting, reposting, removing a listing and spotting a sale all 
 
 ### How do I bump a Vinted listing with FillSell?
 
-By reposting it: the extension takes it down and puts it back online, and it starts again from the top of the results, with views and favourites reset to zero. Do it with one tap, or let automatic reposting take care of it on {{republication}}, on the days and in the time slot you choose. It isn't a Bump: it's a new listing.
+By reposting it: the extension takes it down and puts it back online, and it starts again from the top of the results, with views and favourites reset to zero. Do it with one tap or, depending on your subscription, let automatic reposting take care of it on {{republication}}, on the days and in the time slot you choose. It isn't a Bump: it's a new listing.
 
 ### What happens when my item sells on Vinted?
 

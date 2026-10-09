@@ -103,7 +103,7 @@ Sur Leboncoin, la visibilité se vend : l'option « Remonter en tête de liste �
 
 **Reposter en a fait son cœur de métier, sur Leboncoin.** Ses « tâches » programment publications et republications : lots espacés, relance après un nombre de jours choisi, publication dans plusieurs villes, à un crédit par ville ([guide « Tâches »](https://docs.reposter.io/guide/taches.md)). Il peut faire tourner la photo de couverture et incruster une vignette (prix, badge, texte) sur la première photo. Pour Vinted, la republication programmée est annoncée dans ses guides ; sa documentation ne la détaille pas.
 
-**FillSell remonte tes annonces sur {{republication}}.** En un appui, quand une annonce s'essouffle. Ou toutes seules : la republication automatique les remonte les jours et au créneau que tu choisis (matin, midi, soir ou sur mesure), pendant que tu fais autre chose, ordinateur allumé. FillSell espace tes republications à un rythme humain pour protéger ton compte, et tu coupes tout d'un geste, quand tu veux. Une seule chose à savoir, et on préfère te la dire : une annonce republiée repart à zéro vue et zéro favori.
+**FillSell remonte tes annonces sur {{republication}}.** En un appui, quand une annonce s'essouffle. Ou toutes seules, selon ta formule : la republication automatique les remonte les jours et au créneau que tu choisis (matin, midi, soir ou sur mesure), pendant que tu fais autre chose, ordinateur allumé. FillSell espace tes republications à un rythme humain pour protéger ton compte, et tu coupes tout d'un geste, quand tu veux. Une seule chose à savoir, et on préfère te la dire : une annonce republiée repart à zéro vue et zéro favori.
 
 ![Réglage de la republication automatique dans FillSell : le créneau (Matin 8h–10h, Midi 12h–14h, Soir 19h–22h sélectionné, ou Personnalisé), « Heure locale · Chrome ouvert », la note « Les republications se répartissent sur le créneau, au rythme réel de ton compte. Jamais en rafale. », et les jours actifs (tous les jours, du lundi au dimanche).](media:captures/republication-creneaux.png)
 
@@ -195,7 +195,7 @@ Tu vends sur Vinted et Leboncoin et tu veux la méthode complète, outil ou pas 
 
 Reposter est un outil de spécialiste. Si Leboncoin fait l'essentiel de ton chiffre et que tu veux le couvrir ville par ville, ordinateur éteint, il est construit pour toi.
 
-Dès que tu vends ailleurs, FillSell prend la main. Une photo, une fiche, {{nb_plateformes}} vitrines. Ton téléphone pour tout piloter, ton ordinateur pour tout exécuter, dans ta session. Des annonces qui remontent toutes seules sur {{republication}}. Une vente qui fait retirer les copies, et une question au moindre doute. Et jamais un mot de passe à confier.
+Dès que tu vends ailleurs, FillSell prend la main. Une photo, une fiche, {{nb_plateformes}} vitrines. Ton téléphone pour tout piloter, ton ordinateur pour tout exécuter, dans ta session. Des annonces qui remontent d'un appui ou, selon ta formule, toutes seules sur {{republication}}. Une vente qui fait retirer les copies, et une question au moindre doute. Et jamais un mot de passe à confier.
 
 Aujourd'hui, FillSell fonctionne avec {{plateformes}}. [Crée ton compte gratuit](/login?mode=signup), sans carte bancaire, et branche ton stock ce soir.
 

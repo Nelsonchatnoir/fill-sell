@@ -13,7 +13,7 @@ points_cles:
   - "Une annonce Depop n'a pas de titre : FillSell tire ta version Depop de ta version Vinted, avec 1 000 caractères et cinq hashtags au plus, la taille dans la grille EU de Depop."
   - "Vendu sur Vinted : la vente s'enregistre toute seule et l'extension retire l'annonce Depop du même article, puis vérifie chez Depop qu'elle n'est plus en ligne."
   - "En France, Depop prélève 10 % du prix et du port, plus les frais PayPal ; Vinted ne prend aucun frais de vente au vendeur particulier (pages officielles lues le 9 octobre 2026)."
-  - "Tes annonces remontent toutes seules sur {{republication}}, les jours et au créneau que tu choisis, ordinateur allumé."
+  - "Selon ta formule, tes annonces remontent toutes seules sur {{republication}}, les jours et au créneau que tu choisis, ordinateur allumé."
 hero_media: "captures/lens-analyse-photo.png"
 hero_alt: "Résultat d'un scan Lens dans l'app FillSell : l'article reconnu (« T-shirt Picture gris imprimé ours « Climate Change » », marque Picture), la description rédigée, ce qui a été lu sur l'objet (motif, coupe, taille S sur l'étiquette du col, composition, saison), puis le prix de vente conseillé de 14 €, une marge jugée excellente (+10 €) et la base du prix : 5 annonces comparables, de 12 € à 16 €."
 cta: inscription
@@ -125,7 +125,7 @@ Une annonce qui vieillit perd des regards. Republier, c'est la retirer puis la r
 
 Envie de remonter une pièce précise tout de suite ? Sur Vinted comme sur Depop, un appui suffit : l'extension retire l'annonce, la recrée, et la nouvelle annonce reste rattachée à la même fiche.
 
-Mieux encore : tes annonces remontent toutes seules sur {{republication}}, les jours et au créneau que tu choisis, pendant que tu fais autre chose, ordinateur allumé. FillSell espace les republications à un rythme humain, et tu coupes tout d'un geste. Réglages, rythme et bonnes pratiques : [la republication](page:fonctions/republication).
+Mieux encore, selon ta formule : tes annonces remontent toutes seules sur {{republication}}, les jours et au créneau que tu choisis, pendant que tu fais autre chose, ordinateur allumé. FillSell espace les republications à un rythme humain, et tu coupes tout d'un geste. Réglages, rythme et bonnes pratiques : [la republication](page:fonctions/republication).
 
 ## Ton téléphone pilote, ton ordinateur exécute
 

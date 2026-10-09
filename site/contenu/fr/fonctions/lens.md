@@ -107,7 +107,7 @@ L'honnêteté, ici, c'est de la vente. L'aide de Vinted range parmi les motifs d
 
 Puis tu envoies. L'extension Chrome FillSell dépose tes annonces depuis ton ordinateur, dans ta propre session, une à une, à un rythme humain, sans jamais te demander tes mots de passe. Ton téléphone pilote, ton ordinateur exécute. Ton compte eBay est relié ? L'annonce eBay part par l'API officielle d'eBay, même ordinateur éteint ([FillSell pour eBay](page:plateformes/ebay)).
 
-Et l'article ne disparaît pas dans la nature : il entre dans ton stock. Il se vend sur une plateforme ? Une fois la vente enregistrée, ses autres annonces sont retirées, et au moindre doute FillSell te demande « Déjà vendu ? » ([ventes et retraits des copies](page:fonctions/ventes-et-retraits)). Ta marge se calcule toute seule. Une annonce vieillit ? Elle remonte toute seule sur {{republication}}, aux jours et au créneau que tu choisis, ordinateur allumé ([la republication automatique](page:fonctions/republication)).
+Et l'article ne disparaît pas dans la nature : il entre dans ton stock. Il se vend sur une plateforme ? Une fois la vente enregistrée, ses autres annonces sont retirées, et au moindre doute FillSell te demande « Déjà vendu ? » ([ventes et retraits des copies](page:fonctions/ventes-et-retraits)). Ta marge se calcule toute seule. Une annonce vieillit ? Elle remonte d'un appui ou, selon ta formule, toute seule sur {{republication}}, aux jours et au créneau que tu choisis, ordinateur allumé ([la republication automatique](page:fonctions/republication)).
 
 Tes articles sont déjà en ligne sur tes plateformes ? Pas besoin de les repasser dans Lens : un appui sur « Synchroniser » les range dans ton stock ([la synchronisation](page:fonctions/synchronisation)).
 

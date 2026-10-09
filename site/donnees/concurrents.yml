@@ -62,10 +62,10 @@ outils:
           date: 2026-10-09
           niveau: fiche_de_verite
         depop:
-          valeur: 'oui, ouverte à tous le 10/10/2026 — publication, synchronisation (import des annonces Depop sur « Synchroniser »), retrait des copies à la vente, republication (manuelle, et automatique avec la bascule du 10/10) ; compte Depop en France, en euros ; exécutée par l''extension, ordinateur allumé'
+          valeur: 'oui, ouverte à tous le 10/10/2026 — publication, synchronisation (import des annonces Depop sur « Synchroniser »), retrait des copies à la vente, republication (manuelle, et automatique selon ta formule depuis la bascule du 10/10) ; compte Depop en France, en euros ; exécutée par l''extension, ordinateur allumé'
           traductions:
             valeur:
-              en: 'yes, open to all on 10 October 2026 — publishing, sync (import of Depop listings on “Sync”), removal of copies on a sale, reposting (manual, and automatic with the 10 October switchover); Depop account in France, in euros; carried out by the extension, computer on'
+              en: 'yes, open to all on 10 October 2026 — publishing, sync (import of Depop listings on “Sync”), removal of copies on a sale, reposting (manual, and automatic depending on your subscription since the 10 October switchover); Depop account in France, in euros; carried out by the extension, computer on'
           verdict: oui
           sources: []
           date: 2026-10-09
@@ -143,10 +143,10 @@ outils:
         date: 2026-10-09
         niveau: fiche_de_verite
       republication:
-        valeur: 'manuelle et automatique ; automatique par créneaux (jours, créneau, ancienneté minimale, ordre ; FillSell espace les republications et s''arrête chaque jour pour protéger le compte ; coupure à tout moment) ; ordinateur allumé'
+        valeur: 'd''un appui ou automatique selon ta formule ; d''un appui quelle que soit la formule, automatique par créneaux sur Vinted, Leboncoin, Beebs et Depop (jours, créneau, ancienneté minimale, ordre ; FillSell espace les republications et s''arrête chaque jour pour protéger le compte ; coupure à tout moment) ; ordinateur allumé'
         traductions:
           valeur:
-            en: 'manual and automatic; automatic in time slots (days, time slot, minimum age, order; FillSell spaces out reposts and stops each day to protect the account; can be switched off at any time); computer on'
+            en: 'with one tap or automatic depending on your subscription; one tap whatever the subscription, automatic in time slots on Vinted, Leboncoin, Beebs and Depop (days, time slot, minimum age, order; FillSell spaces out reposts and stops each day to protect the account; can be switched off at any time); computer on'
         verdict: null
         sources: []
         date: 2026-10-09
@@ -387,7 +387,7 @@ outils:
       - 'eBay inclus dès le palier Gratuit (StoFlow : à partir de Starter, 14,99 €).'
       - 'Stock sans limite d''articles sur tous les paliers (StoFlow : 100 / 500 / 2 000 produits publiés).'
       - 'Rapprochement automatique d''un même article entre plateformes (photos et titre, doute = question) ; chez StoFlow, la liaison se fait à la main.'
-      - 'Republication automatique sur Vinted, Leboncoin, Beebs et Depop, sans palier requis (StoFlow : à partir de Pro, 29,99 €, Vinted et Leboncoin seulement).'
+      - 'Republication automatique selon la formule, sur Beebs et Depop en plus de Vinted et Leboncoin (StoFlow : Vinted et Leboncoin seulement).'
       - 'App en français et en anglais (StoFlow : français seulement).'
     lui_fait_pas_fillsell:
       - 'Vestiaire Collective, Etsy, eBay hors de France (9 pays).'
@@ -979,7 +979,7 @@ outils:
       - 'Publication sur Vinted (Klork : Vinted est la source).'
       - eBay par l'API officielle (publication et retrait).
       - 'Retrait automatique des copies dans tous les forfaits (Klork : Business, 35 €).'
-      - 'Republication automatique par créneaux, Depop compris (Klork : « Bientôt », plan Entreprise à 69 €).'
+      - 'Republication automatique par créneaux selon la formule, Depop compris (Klork : « Bientôt », plan Entreprise à 69 €).'
     lui_fait_pas_fillsell:
       - 'Vestiaire Collective (et Whatnot, Grailed annoncés) ; Depop des deux côtés.'
       - Plusieurs comptes Vinted dès le gratuit ; offres automatiques aux intéressés ; messagerie centralisée.
@@ -1161,7 +1161,7 @@ outils:
       - Marges et bénéfices (prix d'achat).
     lui_fait_pas_fillsell:
       - 'Vinted dans plus de 20 pays (FillSell : Vinted France aujourd''hui).'
-      - 'Prix d''entrée 5,99 € (4,99 € à l''année) ; republication automatique dans son gratuit — égalité seulement si la republication automatique de FillSell est bien ouverte à tous les paliers à la mise en ligne (sinon, avantage Redrip).'
+      - 'Prix d''entrée 5,99 € (4,99 € à l''année) ; republication automatique dès son offre gratuite, sur Vinted et Leboncoin (avantage Redrip : chez FillSell, l''automatique dépend de la formule).'
       - 'Offres et messages aux favoris, négociation, réponses IA, échange de vues, étiquettes en lot, multi-comptes Vinted dès le gratuit.'
       - Site en 8 langues.
   - slug: fluf-connect
@@ -1354,7 +1354,7 @@ outils:
     fillsell_fait_pas_lui:
       - Beebs.
       - 'Leboncoin complet : import, retrait des copies, republication (FLUF : crosslisting seul, le reste contradictoire ou absent).'
-      - 'Republication automatique sur Leboncoin et Beebs, en plus de Vinted et Depop, sans palier requis (FLUF : à partir de Pro, 29 £, et jamais sur Leboncoin).'
+      - 'Republication automatique selon la formule, sur Leboncoin et Beebs en plus de Vinted et Depop (FLUF : jamais sur Leboncoin, et pas de Beebs).'
       - 'Palier gratuit permanent (FLUF : essai de 7 jours pour 1 £).'
       - 'Prix affichés en euros sur le site (FLUF : livres sterling, y compris en /fr/).'
       - 'App et site en français de bout en bout (FLUF : fiche App Store en anglais, IA qui écrit en anglais par défaut, pages /fr/ en partie en anglais).'
@@ -1575,7 +1575,7 @@ outils:
       - Servir un revendeur qui réside en France (Crosslist refuse les résidents de l'UE).
       - 'Vinted France, Leboncoin, Beebs, eBay.fr, et Depop depuis la France.'
       - Palier gratuit ; prix en euros ; app et site en français ; app publiée sur l'App Store français.
-      - 'Republication automatique par créneaux (Crosslist : à l''étude).'
+      - 'Republication automatique par créneaux, selon la formule (Crosslist : à l''étude).'
     lui_fait_pas_fillsell:
       - 'Places de marché nord-américaines et britanniques (Poshmark, Mercari, Grailed, Whatnot, Etsy, Shopify…).'
       - Création en lot par l'IA depuis la pellicule ; détourage illimité.
@@ -1752,7 +1752,7 @@ outils:
       - Apps iOS et Android.
       - Création d'annonce depuis une photo avec prix proposé.
       - Palier gratuit permanent ; marges par article (prix d'achat).
-      - 'Republication automatique par créneaux (Clemz : déclenchée à la main).'
+      - 'Republication automatique par créneaux, selon la formule (Clemz : déclenchée à la main).'
     lui_fait_pas_fillsell:
       - 'Automatisation Vinted poussée : offres et contre-offres, messages aux favoris, échange de vues et de favoris, évaluation automatique.'
       - 'Factures PRO, CRM acheteurs, comptabilité avec TVA par pays.'
@@ -2533,7 +2533,7 @@ outils:
       - 'Vinted, Leboncoin, Beebs, eBay.fr ; Depop depuis la France, en euros.'
       - App iOS publiée sur l'App Store français ; app et site en français ; prix en euros ; palier gratuit.
       - Création d'annonce depuis une photo avec prix proposé.
-      - Republication automatique par créneaux.
+      - 'Republication automatique par créneaux, selon la formule.'
     lui_fait_pas_fillsell:
       - 'Places de marché américaines (Poshmark, Mercari, Grailed, Whatnot, Etsy, Shopify).'
       - 'Republication en lot jusqu''à 240 annonces, multi-quantité et variantes, vidéos d''annonce.'
@@ -2712,7 +2712,8 @@ outils:
       - 'Servir la France : Vinted France, Leboncoin, Beebs, eBay.fr, Depop depuis la France (List Perfectly : « Depop UK and other regional versions are not supported »).'
       - Apps iOS et Android.
       - 'Retrait automatique des copies dans tous les forfaits, déclenché aussi par une vente Vinted.'
-      - 'Publication par l''extension sans clic sur chaque site ; republication automatique ; palier gratuit ; euros, français.'
+      - 'Publication par l''extension sans clic sur chaque site ; palier gratuit ; euros, français.'
+      - 'Republication automatique par créneaux, selon la formule.'
     lui_fait_pas_fillsell:
       - 'Places de marché américaines (Poshmark, Mercari, Reverb, Whatnot…).'
       - 'Code-barres, SKU, étiquettes QR, sous-comptes d''équipe.'
@@ -2944,17 +2945,20 @@ classement:
       C2: 18
       C3: 10
       C4: 10
-      C5: 10
+      C5: 9
       C6a: 5
       C6b: 1
       C7: 8
       C8: 4
-      total: 89
+      total: 88
       avant_0910_soir:
         C1: 21
         C5: 9
         total: 86
-      conditions: 'C1 23 si Depop est ouverte à tous à la mise en ligne (sinon 21) ; C5 10 si la republication automatique est ouverte à tous les paliers (sinon 9) ; aucune des deux : 86'
+      avant_0910_nuit:
+        C5: 10
+        total: 89
+      conditions: 'C1 23 si Depop est ouverte à tous à la mise en ligne (sinon 21, total 86) ; C5 9 tranché le 09/10 nuit : la republication automatique dépend de la formule'
     - slug: fluf-connect
       C1: 22
       C2: 16
@@ -3035,25 +3039,25 @@ classement:
   variantes:
     - nom: Base (pondération ci-dessus)
       poids: 'C1 25, C2 20, C3 10, C4 10, C5 10, C6a 5, C6b 5, C7 10, C8 5'
-      ordre: FillSell 89 · FLUF 83 · StoFlow 79 · FlowDino 66 · Relistly 63 · Redrip 60 · Klork 54 · Reposter 45
+      ordre: FillSell 88 · FLUF 83 · StoFlow 79 · FlowDino 66 · Relistly 63 · Redrip 60 · Klork 54 · Reposter 45
     - nom: Ordinateur éteint prioritaire
       poids: 'C1 22, C2 18, C3 8, C4 8, C5 8, C6a 5, C6b 20, C7 8, C8 3'
-      ordre: 'StoFlow 79,0 · FillSell 78,2 · FLUF 76,2 · Relistly 56,0 · FlowDino 55,2 · Reposter 53,6 · Redrip 50,1 · Klork 45,4'
+      ordre: 'StoFlow 79,0 · FillSell 77,4 · FLUF 76,2 · Relistly 56,0 · FlowDino 55,2 · Reposter 53,6 · Redrip 50,1 · Klork 45,4'
     - nom: Petit budget
       poids: 'C1 20, C2 15, C3 7,5, C4 7,5, C5 10, C6a 3,75, C6b 3,75, C7 27,5, C8 5'
-      ordre: 'FillSell 87,4 · StoFlow 83,0 · FLUF 80,3 · FlowDino 67,9 · Redrip 67,2 · Relistly 66,4 · Klork 57,5 · Reposter 46,8'
+      ordre: 'FillSell 86,4 · StoFlow 83,0 · FLUF 80,3 · FlowDino 67,9 · Redrip 67,2 · Relistly 66,4 · Klork 57,5 · Reposter 46,8'
     - nom: Plus de plateformes européennes
       poids: 'base × 0,85 + E 15'
-      ordre: 'FLUF 85,5 · FillSell 78,6 · StoFlow 76,1 · Relistly 65,5 · FlowDino 65,1 · Klork 54,9 · Redrip 54,0 · Reposter 38,3'
+      ordre: 'FLUF 85,5 · FillSell 77,8 · StoFlow 76,1 · Relistly 65,5 · FlowDino 65,1 · Klork 54,9 · Redrip 54,0 · Reposter 38,3'
     - nom: 'Vendeur sans Beebs (Beebs retiré de C1, C1 ramené sur 22 puis pondéré 25)'
       poids: base
-      ordre: 'FillSell 88,7 · FLUF 86,0 · StoFlow 81,7 · FlowDino 65,7 · Relistly 64,8 · Redrip 61,9 · Klork 55,6 · Reposter 46,5'
+      ordre: 'FillSell 87,7 · FLUF 86,0 · StoFlow 81,7 · FlowDino 65,7 · Relistly 64,8 · Redrip 61,9 · Klork 55,6 · Reposter 46,5'
     - nom: Vendeur sans Beebs ni Depop (les deux retirés de C1)
       poids: base
-      ordre: 'FillSell 86,5 · FLUF 86,0 · StoFlow 81,7 · FlowDino 65,7 · Relistly 64,8 · Redrip 61,9 · Klork 55,6 · Reposter 46,5'
+      ordre: 'FLUF 86,0 · FillSell 85,5 · StoFlow 81,7 · FlowDino 65,7 · Relistly 64,8 · Redrip 61,9 · Klork 55,6 · Reposter 46,5'
     - nom: 'Vendeur Depop (nouvelle, 09/10 soir)'
       poids: 'base × 0,85 + D 15'
-      ordre: 'FillSell 90,6 · FLUF 85,5 · StoFlow 67,1 · Relistly 67,0 · Klork 60,9 · FlowDino 56,1 · Redrip 51,0 · Reposter 38,3'
+      ordre: 'FillSell 89,8 · FLUF 85,5 · StoFlow 67,1 · Relistly 67,0 · Klork 60,9 · FlowDino 56,1 · Redrip 51,0 · Reposter 38,3'
   hors_classement:
     - slug: flypr
       raison: 'activité non démontrée (rien depuis le 18/04/2026, API en 404, extension hors du Chrome Web Store)'

@@ -132,7 +132,7 @@ Sur Depop, la nouveauté compte un peu : « Newer items get a slight edge », é
 
 Avec FillSell, tu republies une annonce Depop d'un appui : l'extension la retire, la recrée et la garde sur la même fiche. Rien n'est retiré tant que la nouvelle copie n'est pas complète.
 
-Et sur {{republication}}, la republication automatique prend le relais : tu choisis les jours et le créneau, FillSell espace les republications à un rythme humain, ordinateur allumé, et tu coupes tout d'un geste. Tout est expliqué sur la page [republication](page:fonctions/republication).
+Et sur {{republication}}, selon ta formule, la republication automatique prend le relais : tu choisis les jours et le créneau, FillSell espace les republications à un rythme humain, ordinateur allumé, et tu coupes tout d'un geste. Tout est expliqué sur la page [republication](page:fonctions/republication).
 
 ## Les règles du duo Depop–eBay, avant de te lancer
 

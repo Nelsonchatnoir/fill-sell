@@ -123,9 +123,9 @@ Relistly ne décrit pas, sur son site, comment il rapproche un même article pr�
 
 *Compte de démonstration, chiffres fictifs.*
 
-## Tes annonces remontent toutes seules
+## Remonter tes annonces quand elles vieillissent
 
-Une annonce qui vieillit descend dans les résultats. FillSell la fait remonter : tes annonces sont republiées toutes seules sur {{republication}}, les jours et au créneau que tu choisis, pendant que tu fais autre chose, ordinateur allumé. FillSell espace les republications à un rythme humain, et tu coupes tout d'un geste quand tu veux. Une annonce précise à remonter maintenant ? Un appui suffit.
+Une annonce qui vieillit descend dans les résultats. FillSell la fait remonter : selon ta formule, tes annonces sont republiées toutes seules sur {{republication}}, les jours et au créneau que tu choisis, pendant que tu fais autre chose, ordinateur allumé. FillSell espace les republications à un rythme humain, et tu coupes tout d'un geste quand tu veux. Une annonce précise à remonter maintenant ? Un appui suffit.
 
 Relistly annonce un « auto-relist » sur sa page des tarifs, sans préciser sur quelles places de marché il s'applique (relevé du 9 octobre 2026). Une chose est sûre : sans Leboncoin ni Beebs, il ne peut pas y remonter tes annonces.
 

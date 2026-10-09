@@ -63,7 +63,7 @@ Tu passes tes soirées à recopier la même annonce d'un site à l'autre, puis �
 | Publier sur plusieurs plateformes | oui, depuis la même fiche : {{plateformes}} | non, « ne publie pas » |
 | Reprendre tes annonces déjà en ligne | « Synchroniser », une fiche par article | non : import des ventes Vinted par fichier CSV |
 | Retirer les autres annonces après une vente | oui, ou « Déjà vendu ? » au moindre doute | à la main : « délistez manuellement » |
-| Remonter tes annonces | sur {{republication}}, d'un appui ou toutes seules, aux jours et au créneau que tu choisis | non |
+| Remonter tes annonces | sur {{republication}}, d'un appui ou toutes seules selon ta formule, aux jours et au créneau que tu choisis | non |
 | Suivre marge et bénéfice | oui : prix d'achat, frais, marge, bénéfice net | oui, c'est le cœur du produit |
 | Estimations fiscales et factures | non | oui : micro-BIC, ACRE, DAC7, franchise de TVA, factures |
 | App iPhone et Android | oui, sur l'App Store et Google Play | non : application web à installer depuis le navigateur |
@@ -139,7 +139,7 @@ Une annonce qui vieillit descend dans les résultats. Republier, c'est la retire
 
 Margeo ne republie pas, et déconseille la republication automatique en citant un risque de suspension du compte (comparatif de Margeo). Le sujet mérite mieux qu'un slogan, dans un sens comme dans l'autre : les conditions de Vinted encadrent la suppression et la remise en ligne répétées d'articles, et nous les citons mot pour mot sur notre page [sécurité des comptes](page:securite-des-comptes).
 
-Avec FillSell, c'est toi qui décides. Tes annonces peuvent remonter toutes seules sur {{republication}}, les jours et au créneau que tu choisis, pendant que tu fais autre chose, ordinateur allumé. FillSell espace tes republications à un rythme humain pour protéger ton compte, et tu coupes tout d'un geste, quand tu veux. Tu préfères choisir annonce par annonce ? Une annonce remonte aussi d'un appui. Réglages et bonnes pratiques : [remonter tes annonces](page:fonctions/republication).
+Avec FillSell, c'est toi qui décides. Selon ta formule, tes annonces peuvent remonter toutes seules sur {{republication}}, les jours et au créneau que tu choisis, pendant que tu fais autre chose, ordinateur allumé. FillSell espace tes republications à un rythme humain pour protéger ton compte, et tu coupes tout d'un geste, quand tu veux. Tu préfères choisir annonce par annonce ? Une annonce remonte aussi d'un appui. Réglages et bonnes pratiques : [remonter tes annonces](page:fonctions/republication).
 
 ## Téléphone, ordinateur, hors ligne : où travaille chaque outil ?
 

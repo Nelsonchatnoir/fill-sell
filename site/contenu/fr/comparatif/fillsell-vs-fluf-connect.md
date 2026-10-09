@@ -11,7 +11,7 @@ chapo: "FillSell et FLUF Connect reposent sur le même modèle : une app sur ton
 points_cles:
   - "Avec FillSell, une même fiche part sur {{plateformes}} ; au 9 octobre 2026, Beebs n'apparaît ni dans le tableau des capacités ni dans le centre d'aide de FLUF Connect."
   - "Sur Leboncoin, FillSell gère tout le cycle : publication, synchronisation, retrait quand l'article se vend ailleurs, republication ; le tableau des capacités de FLUF Connect ne coche pour Leboncoin que la publication."
-  - "Chez FillSell, tes annonces remontent toutes seules sur {{republication}} ; chez FLUF Connect, la republication automatique couvre treize plateformes, dont Vinted et Subito, mais ni Leboncoin ni Beebs."
+  - "Chez FillSell, selon ta formule, tes annonces remontent toutes seules sur {{republication}} ; chez FLUF Connect, l'automatique couvre treize plateformes, dont Vinted et Subito, mais ni Leboncoin ni Beebs."
   - "FillSell a un forfait Gratuit permanent, sans carte bancaire ; FLUF Connect n'a pas de palier gratuit, mais un essai de 7 jours à 1 £, puis des plans dès 9 £ par mois, affichés en livres sur son site."
   - "FLUF Connect va plus loin en largeur et sans ordinateur : Vinted sur 19 domaines, eBay sur plus de 17 sites, des dizaines de places de marché, et Depop, eBay, Etsy ou Shopify connectés depuis le téléphone."
 hero_media: "captures/stock-vue-ensemble.png"
@@ -24,7 +24,7 @@ choisir_fillsell:
   - "Tu vends sur Beebs, mode enfant, puériculture ou jouets, en plus de Vinted, Leboncoin, eBay et Depop, et tu veux un seul stock pour tout."
   - "Tu veux commencer sans payer : le forfait Gratuit s'ouvre sans carte bancaire et n'a pas de date de fin."
   - "Tu veux des prix en euros, une app en français et des annonces rédigées en français dès la photo."
-  - "Tu veux que tes annonces remontent toutes seules sur {{republication}}, aux jours et au créneau que tu choisis."
+  - "Tu veux que tes annonces remontent toutes seules sur {{republication}}, aux jours et au créneau que tu choisis (selon ta formule)."
 choisir_concurrent:
   - "Tu vends dans plusieurs pays : FLUF Connect couvre Vinted sur 19 domaines, eBay sur plus de 17 sites et des places de marché comme Wallapop, Subito ou Kleinanzeigen."
   - "Tu veux qu'une partie du travail tourne sans ordinateur : chez FLUF, Depop, eBay, Etsy et Shopify se connectent depuis le téléphone, sans ordinateur."
@@ -51,7 +51,7 @@ Tout ce qui est dit ici de FLUF Connect vient de ses pages officielles (site, ce
 
 FLUF Connect est l'outil le plus proche de FillSell que nous ayons passé en revue. Même idée : l'app s'ouvre sur ton téléphone, une extension Chrome travaille sur ton ordinateur, et une annonce part sur plusieurs plateformes. Les deux ne visent pas le même terrain.
 
-- **FillSell creuse tes plateformes, jusqu'au bout.** Une fiche, et elle part sur {{plateformes}}, avec la synchronisation de ton stock et le retrait des copies après une vente. Tes annonces remontent toutes seules sur {{republication}}. Leboncoin et Beebs compris, de la première photo à la dernière vente.
+- **FillSell creuse tes plateformes, jusqu'au bout.** Une fiche, et elle part sur {{plateformes}}, avec la synchronisation de ton stock et le retrait des copies après une vente. Selon ta formule, tes annonces remontent toutes seules sur {{republication}}. Leboncoin et Beebs compris, de la première photo à la dernière vente.
 - **FLUF Connect s'étend en largeur.** « 60+ » places de marché annoncées sur son accueil, Vinted sur 19 domaines, eBay sur plus de 17 sites. Mais Beebs n'y figure pas, et sur Leboncoin son tableau des capacités ne coche que la publication.
 
 Tu cherches une alternative à FLUF Connect parce que tu vends sur Leboncoin ou sur Beebs ? C'est exactement là que FillSell fait la différence. Tu vends dans cinq pays, sur quinze plateformes ? Regarde FLUF.
@@ -76,7 +76,7 @@ C'est sur Leboncoin que les deux outils se séparent le plus nettement. Avec Fil
 | Faire entrer tes annonces déjà en ligne dans ton stock | Oui, d'un appui sur « Synchroniser », gratuit et sans limite | « — » dans son tableau des capacités ; « Oui » sur sa page française |
 | Retirer l'annonce Leboncoin quand l'article se vend ailleurs | Oui, dès la vente enregistrée, si l'annonce est liée à l'article par une preuve ; sinon la question « Déjà vendu ? » | Son guide Leboncoin : « end the Leboncoin ad yourself » ; sa page du trajet Vinted vers Leboncoin annonce une suppression « within minutes » |
 | Repérer une vente faite sur Leboncoin | Oui : FillSell la repère et te demande de la confirmer d'un appui, puis retire tes autres annonces de l'article | Son guide : « mark it sold in FLUF » ; sa page du trajet : « Limited (integrated-shipping only) » |
-| Republier (remonter l'annonce) | Oui, d'un appui, ou toute seule, aux jours et au créneau que tu choisis | « Republication automatique : Non » (sa page française) |
+| Republier (remonter l'annonce) | Oui, d'un appui, ou toute seule selon ta formule, aux jours et au créneau que tu choisis | « Republication automatique : Non » (sa page française) |
 
 Sources FLUF : [tableau des capacités](https://fluf.io/integrations/), [guide Leboncoin](https://fluf.io/channels/sell-on-leboncoin/), [page française Leboncoin](https://fluf.io/fr/vendre-sur-leboncoin/), [trajet Vinted vers Leboncoin](https://fluf.io/crosslisting/vinted-to-leboncoin/), lus le 9 octobre 2026.
 
@@ -96,7 +96,7 @@ Ci-dessous, un sweat vendu sur Vinted : sa copie Leboncoin est déjà en train d
 
 Beebs by Kiabi, c'est l'app de seconde main de toute la famille : mode enfant et adulte, puériculture, jouets, livres, maison. Paiement et envoi y sont intégrés en France métropolitaine, en Corse et en Belgique. Ton stock d'affaires d'enfant y trouve des acheteurs qui viennent le chercher.
 
-Avec FillSell, Beebs est une case à cocher comme les autres, et elle entre dans tout le reste : ta fiche y part adaptée à ses rubriques, « Synchroniser » rapatrie tes annonces Beebs, la copie Beebs d'un article vendu ailleurs est retirée, une vente sur Beebs se confirme d'un appui, et tes annonces Beebs remontent toutes seules. Bon à savoir : Beebs vérifie les nouvelles annonces, qui peuvent mettre un moment à apparaître. Le détail : [vendre sur Beebs avec FillSell](page:plateformes/beebs).
+Avec FillSell, Beebs est une case à cocher comme les autres, et elle entre dans tout le reste : ta fiche y part adaptée à ses rubriques, « Synchroniser » rapatrie tes annonces Beebs, la copie Beebs d'un article vendu ailleurs est retirée, une vente sur Beebs se confirme d'un appui, et tes annonces Beebs remontent d'un appui ou, selon ta formule, toutes seules. Bon à savoir : Beebs vérifie les nouvelles annonces, qui peuvent mettre un moment à apparaître. Le détail : [vendre sur Beebs avec FillSell](page:plateformes/beebs).
 
 Chez FLUF Connect, au 9 octobre 2026, Beebs n'apparaît nulle part : ni dans son [tableau des capacités](https://fluf.io/integrations/), ni dans son centre d'aide complet, ni dans ses plans de site.
 
@@ -104,7 +104,7 @@ Chez FLUF Connect, au 9 octobre 2026, Beebs n'apparaît nulle part : ni dans son
 
 Une annonce qui vieillit descend dans les résultats. Republier, c'est la retirer puis la remettre en ligne : elle repart en haut, avec ses vues et ses favoris remis à zéro.
 
-Chez FillSell, tes annonces remontent toutes seules sur {{republication}}. Tu choisis les jours et le créneau, matin, midi, soir ou sur mesure ; FillSell republie pendant que tu fais autre chose, ordinateur allumé, et espace les republications à un rythme humain pour protéger ton compte. Tu coupes tout d'un geste. Et à la main, une annonce remonte en un appui, sur Depop aussi. Réglages et bonnes pratiques : [la republication automatique](page:fonctions/republication).
+Chez FillSell, selon ta formule, tes annonces remontent toutes seules sur {{republication}}. Tu choisis les jours et le créneau, matin, midi, soir ou sur mesure ; FillSell republie pendant que tu fais autre chose, ordinateur allumé, et espace les republications à un rythme humain pour protéger ton compte. Tu coupes tout d'un geste. Et à la main, une annonce remonte en un appui, sur Depop aussi. Réglages et bonnes pratiques : [la republication automatique](page:fonctions/republication).
 
 ![L'écran « Remonter mes annonces » de FillSell : « 23 annonces perdent en visibilité », toutes cochées, avec la photo, les icônes des plateformes (dont Depop) et l'ancienneté de chacune (en ligne depuis 35, 31, 27, 22 jours…), la ligne « Republication automatique — Active sur Vinted, Leboncoin et Beebs », interrupteur allumé, et le bouton « Remonter 23 annonces » : « Ton ordinateur les republie une à une ».](media:captures/republication-remonter.png)
 
@@ -112,7 +112,7 @@ Chez FillSell, tes annonces remontent toutes seules sur {{republication}}. Tu ch
 
 Chez FLUF Connect, la republication automatique existe sur treize plateformes, dont Vinted, Vestiaire Collective, Subito et Kleinanzeigen. Leboncoin n'est pas dans la liste ([tableau des capacités de FLUF](https://fluf.io/integrations/), lu le 9 octobre 2026), et Beebs non plus, puisque FLUF ne le couvre pas. Ses réglages sont fins, reconnaissons-le : stratégie par ancienneté, par prix ou par catégorie, limite quotidienne, délai de 5 minutes à 1 heure entre deux republications Vinted ([aide de FLUF sur la republication](https://fluf.io/support/relisting/)).
 
-Sur Leboncoin et sur Beebs, l'annonce qui remonte toute seule, c'est avec FillSell.
+Sur Leboncoin et sur Beebs, l'annonce qui remonte toute seule, c'est avec FillSell, selon ta formule.
 
 ## Depop : les deux y sont, FLUF va plus loin
 
@@ -228,7 +228,7 @@ Oui pour la publication : FLUF Connect publie sur Leboncoin par son extension Ch
 
 ### FLUF Connect publie-t-il sur Beebs ?
 
-Non, au 9 octobre 2026 : Beebs n'apparaît ni dans le tableau des capacités de FLUF Connect, ni dans son centre d'aide, ni dans ses plans de site. Avec FillSell, ta fiche part sur Beebs, tes annonces Beebs entrent dans ton stock, la copie Beebs d'un article vendu ailleurs est retirée et tes annonces Beebs remontent toutes seules.
+Non, au 9 octobre 2026 : Beebs n'apparaît ni dans le tableau des capacités de FLUF Connect, ni dans son centre d'aide, ni dans ses plans de site. Avec FillSell, ta fiche part sur Beebs, tes annonces Beebs entrent dans ton stock, la copie Beebs d'un article vendu ailleurs est retirée et tes annonces Beebs remontent d'un appui ou, selon ta formule, toutes seules.
 
 ### FLUF Connect est-il gratuit ?
 

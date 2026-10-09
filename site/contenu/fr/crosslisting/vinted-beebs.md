@@ -141,7 +141,7 @@ Le détail des preuves, des retraits et des questions : [ventes et retraits des 
 
 Une annonce qui vieillit descend dans les résultats. Republier, c'est la retirer puis la remettre en ligne : elle repart en haut, mais ses vues et ses favoris repartent de zéro. FillSell retire d'abord l'ancienne annonce, puis dépose la nouvelle : sur Beebs, dont les règles interdisent de proposer le même article deux fois, l'ordre compte.
 
-Tu remontes une annonce en un appui. Et avec la republication automatique, tes annonces remontent toutes seules sur {{republication}}, les jours et au créneau que tu choisis, pendant que tu fais autre chose — ordinateur allumé. FillSell espace tes republications à un rythme humain pour protéger ton compte, ne republie jamais deux fois la même annonce en 24 h, et tu coupes tout d'un geste, quand tu veux.
+Tu remontes une annonce en un appui. Et avec la republication automatique, selon ta formule, tes annonces remontent toutes seules sur {{republication}}, les jours et au créneau que tu choisis, pendant que tu fais autre chose — ordinateur allumé. FillSell espace tes republications à un rythme humain pour protéger ton compte, ne republie jamais deux fois la même annonce en 24 h, et tu coupes tout d'un geste, quand tu veux.
 
 ![Réglage de la republication automatique dans FillSell : le créneau (Matin 8h–10h, Midi 12h–14h, Soir 19h–22h sélectionné, ou Personnalisé), « Heure locale · Chrome ouvert », la note « Les republications se répartissent sur le créneau, au rythme réel de ton compte. Jamais en rafale. », et les jours actifs (tous les jours, du lundi au dimanche).](media:captures/republication-creneaux.png)
 

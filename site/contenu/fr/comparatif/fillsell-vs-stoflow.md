@@ -24,7 +24,7 @@ choisir_fillsell:
   - "Tu vends sur Beebs ou sur Depop, en plus de Vinted, Leboncoin et eBay, et tu veux un seul stock pour tout."
   - "Tu veux eBay France sans payer : il est inclus dans le forfait Gratuit, et un compte relié publie par l'API officielle d'eBay."
   - "Tu as déjà des annonces en ligne un peu partout et tu veux une fiche par article, sans relier chaque annonce à la main."
-  - "Tu veux que tes annonces remontent toutes seules sur {{republication}}, aux jours et au créneau que tu choisis."
+  - "Tu veux que tes annonces remontent toutes seules sur {{republication}}, aux jours et au créneau que tu choisis (selon ta formule)."
 choisir_concurrent:
   - "Tu veux que Vinted et Leboncoin tournent ordinateur éteint : StoFlow fait tourner tes comptes sur ses serveurs à partir de son plan Pro."
   - "Tu vends aussi sur Vestiaire Collective, Etsy ou eBay hors de France : StoFlow les ouvre sur ses plans Pro et Business."
@@ -115,11 +115,11 @@ FillSell ne promet pas de délai non plus. Sa règle : jamais une annonce retir�
 
 Une annonce qui vieillit descend dans les résultats. La parade, c'est de la republier : la retirer puis la remettre en ligne, pour qu'elle reparte comme neuve. Ses vues et ses favoris repartent de zéro, c'est le principe.
 
-Avec FillSell, tes annonces remontent toutes seules sur {{republication}} : tu choisis les jours et le créneau, FillSell les republie pendant que tu fais autre chose, ordinateur allumé. Il espace les republications à un rythme humain pour protéger ton compte, et tu coupes tout d'un geste, quand tu veux. À la main, une annonce remonte en un appui, sur Depop aussi. Réglages et bonnes pratiques : [remonter tes annonces](page:fonctions/republication).
+Avec FillSell, selon ta formule, tes annonces remontent toutes seules sur {{republication}} : tu choisis les jours et le créneau, FillSell les republie pendant que tu fais autre chose, ordinateur allumé. Il espace les republications à un rythme humain pour protéger ton compte, et tu coupes tout d'un geste, quand tu veux. À la main, une annonce remonte en un appui, sur Depop aussi. Réglages et bonnes pratiques : [remonter tes annonces](page:fonctions/republication).
 
 ![Réglage de la republication automatique dans FillSell : le créneau (Matin 8h–10h, Midi 12h–14h, Soir 19h–22h sélectionné, ou Personnalisé), « Heure locale · Chrome ouvert », la note « Les republications se répartissent sur le créneau, au rythme réel de ton compte. Jamais en rafale. », et les jours actifs (tous les jours, du lundi au dimanche).](media:captures/republication-creneaux.png)
 
-Chez StoFlow, la republication automatique couvre Vinted et Leboncoin, et ses automatisations « ne tournent que de 8h à 22h, heure de Paris » ([accueil de StoFlow](https://stoflow.com/)) ; la republication manuelle en lot se lance depuis son tableau de bord. Chez FillSell, l'automatique couvre {{republication}}.
+Chez StoFlow, la republication automatique couvre Vinted et Leboncoin, et ses automatisations « ne tournent que de 8h à 22h, heure de Paris » ([accueil de StoFlow](https://stoflow.com/)) ; la republication manuelle en lot se lance depuis son tableau de bord. Chez FillSell, l'automatique couvre {{republication}}, selon ta formule.
 
 ## L'IA : de la photo à l'annonce
 

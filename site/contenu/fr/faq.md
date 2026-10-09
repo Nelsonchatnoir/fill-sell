@@ -116,7 +116,7 @@ Dès qu'une vente est enregistrée, FillSell retire les autres annonces de l'art
 
 ### FillSell peut-il remonter mes annonces tout seul ?
 
-Oui : sur {{republication}}, tes annonces remontent toutes seules, les jours et au créneau que tu choisis, ordinateur allumé et Chrome ouvert. Republier, c'est retirer l'annonce puis la remettre en ligne : elle repart comme une annonce neuve, mais ses vues et ses favoris repartent de zéro. Tu fixes l'ancienneté minimale, jamais moins d'une semaine ; l'extension republie une annonce après l'autre, jamais en rafale, et un geste coupe tout. Une annonce à relancer tout de suite ? Tu la remontes d'un appui depuis ton téléphone. Le mode d'emploi : [remonter tes annonces](page:fonctions/republication).
+Oui, selon ta formule : sur {{republication}}, tes annonces remontent toutes seules, les jours et au créneau que tu choisis, ordinateur allumé et Chrome ouvert. Sinon, tu remontes une annonce d'un appui depuis ton téléphone. Republier, c'est retirer l'annonce puis la remettre en ligne : elle repart comme une annonce neuve, mais ses vues et ses favoris repartent de zéro. En automatique, tu fixes l'ancienneté minimale, jamais moins d'une semaine ; l'extension republie une annonce après l'autre, jamais en rafale, et un geste coupe tout. Le mode d'emploi : [remonter tes annonces](page:fonctions/republication).
 
 ## Comptes, sécurité et données
 

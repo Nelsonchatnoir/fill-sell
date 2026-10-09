@@ -22,7 +22,7 @@ concurrent: dresskare
 choisir_fillsell:
   - "Tu veux vendre sur {{plateformes}} depuis une seule fiche et un seul stock, pas sur Vinted seul."
   - "Tu travailles depuis ton téléphone : une photo, l'annonce s'écrit, et tu lances la publication depuis l'app iPhone ou Android."
-  - "Tu veux que tes annonces remontent toutes seules sur {{republication}}, aux jours et au créneau que tu choisis."
+  - "Tu veux que tes annonces remontent toutes seules sur {{republication}}, aux jours et au créneau que tu choisis (selon ta formule)."
   - "Tu veux qu'une vente retire les autres annonces de l'article, d'une place de marché à l'autre, et qu'au moindre doute l'app te pose la question."
   - "Tu veux démarrer sans payer : forfait Gratuit permanent, sans carte bancaire, avec l'IA Lens et un stock sans limite d'articles."
 choisir_concurrent:
@@ -119,7 +119,7 @@ FillSell ne promet aucun délai : les retraits sur Vinted, Leboncoin, Beebs et D
 
 **DressKare** automatise la republication Vinted dès son offre Éco, à 9,90 € : « Republication auto tous les X jours (par défaut 7), à l'heure que tu choisis » ([accueil de DressKare](https://dresskare.com/)). Son aide détaille la cadence : « au maximum 20 articles par heure, avec au moins 3 minutes entre deux articles », et une pause de 24 heures des automatisations si le compte est restreint ([republications Vinted par jour, aide DressKare](https://dresskare.com/centre-aide/combien-republications-vinted-par-jour)). Dès l'offre Actif, sa remise en vente automatique remet en ligne une pièce dont il reste d'autres exemplaires.
 
-**FillSell** fait remonter tes annonces toutes seules sur {{republication}}. Tu choisis les jours et le créneau ; FillSell les republie pendant que tu fais autre chose, ordinateur allumé, et espace les republications à un rythme humain pour protéger ton compte. Tu coupes tout d'un geste, quand tu veux. Une annonce à remonter tout de suite ? Un appui suffit. Et si tu vends un article en plusieurs exemplaires, FillSell le remet en ligne après une vente, sur la plateforme où il est parti, pour les annonces qu'il a déposées. Réglages et conseils : [remonter tes annonces](page:fonctions/republication).
+**FillSell**, selon ta formule, fait remonter tes annonces toutes seules sur {{republication}}. Tu choisis les jours et le créneau ; FillSell les republie pendant que tu fais autre chose, ordinateur allumé, et espace les republications à un rythme humain pour protéger ton compte. Tu coupes tout d'un geste, quand tu veux. Une annonce à remonter tout de suite ? Un appui suffit. Et si tu vends un article en plusieurs exemplaires, FillSell le remet en ligne après une vente, sur la plateforme où il est parti, pour les annonces qu'il a déposées. Réglages et conseils : [remonter tes annonces](page:fonctions/republication).
 
 ![Réglage de la republication automatique dans FillSell : le créneau (Matin 8h–10h, Midi 12h–14h, Soir 19h–22h sélectionné, ou Personnalisé), « Heure locale · Chrome ouvert », la note « Les republications se répartissent sur le créneau, au rythme réel de ton compte. Jamais en rafale. », et les jours actifs (tous les jours, du lundi au dimanche).](media:captures/republication-creneaux.png)
 

@@ -128,7 +128,7 @@ And the other way round? If the item sells on Vinted first, that sale is recorde
 
 *Demo account, illustrative figures.*
 
-Every rule behind this is on the [sales and removals page (in French)](page:fr:fonctions/ventes-et-retraits). And to see what you really keep after each marketplace's fees, eBay included, read our guide to [calculating your reselling profit](page:blog/how-to-calculate-reselling-profits).
+Every rule behind this is on the [sales and removals page (in French)](page:fr:fonctions/ventes-et-retraits). And to see what you really keep after each marketplace's fees, eBay included, read our guide to [calculating your reselling profit (in French)](page:fr:blog/comment-calculer-profits-vinted).
 
 ## Choosing an eBay crosslisting tool from Europe: four questions
 

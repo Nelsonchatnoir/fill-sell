@@ -7,7 +7,7 @@ title: "Application de crosslisting : une photo, {{nb_plateformes}} plateformes 
 description: "L'app de crosslisting pilotée du téléphone : Lens rédige, tes annonces partent sur {{plateformes}}. Gratuit pour commencer."
 surtitre: "Crosslisting piloté depuis ton téléphone"
 h1: "L'app de crosslisting : une photo, {{nb_plateformes}} plateformes. Vendu ici, retiré là-bas."
-chapo: "FillSell est une application de crosslisting pilotée du téléphone. Une photo, Lens rédige l'annonce, et elle part sur {{plateformes}} : l'extension Chrome la dépose depuis ton ordinateur, dans ta session. Ton stock se synchronise en un appui, tes annonces remontent toutes seules sur {{republication}}, et une vente enregistrée fait retirer les autres annonces de l'article."
+chapo: "FillSell est une application de crosslisting pilotée du téléphone. Une photo, Lens rédige l'annonce, et l'extension Chrome la dépose sur {{plateformes}} depuis ton ordinateur, dans ta session. Ton stock se synchronise en un appui, tes annonces remontent toutes seules sur {{republication}} selon ta formule, et une vente enregistrée fait retirer les autres annonces de l'article."
 publie: "2026-10-09"
 faq: true
 cta: inscription
@@ -17,7 +17,7 @@ points_cles:
   - "Une photo suffit : Lens reconnaît l'article, lit la marque, propose un état et un prix appuyé sur des annonces comparables, puis rédige le titre et la description."
   - "Tu remplis une fois, tu coches où publier parmi {{plateformes}} : chaque site reçoit une annonce adaptée à ses rubriques (catégorie, taille, couleur, colis)."
   - "Un appui sur « Synchroniser » importe tes annonces en ligne sur {{plateformes}} : un même article vu à plusieurs endroits devient une seule fiche ; au moindre doute, l'app te pose la question."
-  - "Tes annonces remontent toutes seules sur {{republication}}, les jours et au créneau que tu choisis, ordinateur allumé."
+  - "Une annonce qui vieillit remonte d'un appui. Selon ta formule, tes annonces remontent aussi toutes seules sur {{republication}}, les jours et au créneau que tu choisis, ordinateur allumé."
   - "Vendu ici, retiré là-bas : dès qu'une vente est enregistrée — toute seule sur Vinted et eBay, d'un appui ailleurs —, les autres annonces de l'article sont retirées. Au moindre doute : « Déjà vendu ? »"
 etapes:
   - titre: "Prends l'article en photo"
@@ -37,7 +37,7 @@ etapes:
     media: "captures/synchronisation-en-cours.png"
     alt: "Synchronisation en cours dans le Stock de FillSell : « 3 plateformes sur 5 », l'icône de chaque plateforme autour de FillSell, la barre d'avancement « Synchronisation de Depop en cours — environ 1 min — Ton ordinateur travaille pendant ce temps », puis la liste : Vinted 41 annonces, Leboncoin 24 annonces, eBay 5 annonces (faites), Depop 9 sur 10 (en cours), Beebs en attente, Rapprochement en attente."
   - titre: "Laisse remonter tes annonces"
-    texte: "Une annonce qui vieillit descend dans les résultats. La republication automatique la remonte sur {{republication}}, aux jours et au créneau que tu choisis, à un rythme humain, ordinateur allumé. Tu coupes tout d'un geste."
+    texte: "Une annonce qui vieillit descend dans les résultats. Tu la remontes d'un appui. Selon ta formule, la republication automatique la remonte aussi sur {{republication}}, aux jours et au créneau que tu choisis, à un rythme humain, ordinateur allumé. Tu coupes tout d'un geste."
     media: "captures/republication-creneaux.png"
     alt: "Réglage de la republication automatique dans FillSell : le créneau (Matin 8h–10h, Midi 12h–14h, Soir 19h–22h sélectionné, ou Personnalisé), « Heure locale · Chrome ouvert », la note « Les republications se répartissent sur le créneau, au rythme réel de ton compte. Jamais en rafale. », et les jours actifs (tous les jours, du lundi au dimanche)."
   - titre: "Vendu ici, retiré là-bas"
@@ -56,8 +56,8 @@ fonctions:
   - titre: "Tout ton stock, synchronisé en un appui"
     texte: "Tes annonces déjà en ligne arrivent dans ton stock, rangées, gratuitement et sans limite. Un même article vu sur plusieurs plateformes devient une seule fiche."
     page: fonctions/synchronisation
-  - titre: "Des annonces qui remontent toutes seules"
-    texte: "La republication automatique tourne sur {{republication}}, aux jours et au créneau que tu choisis. Rythme humain, coupure d'un geste."
+  - titre: "Des annonces qui remontent"
+    texte: "D'un appui, ou toutes seules selon ta formule : la republication automatique tourne sur {{republication}}, aux jours et au créneau que tu choisis. Rythme humain, coupure d'un geste."
     page: fonctions/republication
   - titre: "Vendu ici, retiré là-bas"
     texte: "Une vente enregistrée fait retirer les autres annonces de l'article. Au moindre doute, FillSell te demande « Déjà vendu ? » avant de toucher à quoi que ce soit."
@@ -113,7 +113,7 @@ Elle agit dans ta propre session, celle où tu es déjà connecté(e). FillSell 
 | [Beebs](page:plateformes/beebs) | publier, synchroniser, republier, retirer les copies | l'extension, dans ta session | allumé, Chrome ouvert |
 | [Depop](page:plateformes/depop) | publier, synchroniser, republier, retirer les copies | l'extension, après un clic « Autoriser Depop » | allumé, Chrome ouvert |
 
-La republication automatique tourne sur {{republication}}. Quand Vinted ou eBay marque ton article vendu, FillSell enregistre la vente tout seul. Sur Leboncoin et Beebs, il te demande de la confirmer d'un appui. Aujourd'hui, FillSell travaille avec des comptes ouverts en France.
+Selon ta formule, la republication automatique tourne sur {{republication}}. Quand Vinted ou eBay marque ton article vendu, FillSell enregistre la vente tout seul. Sur Leboncoin et Beebs, il te demande de la confirmer d'un appui. Aujourd'hui, FillSell travaille avec des comptes ouverts en France.
 
 ## Pourquoi choisir FillSell pour ton crosslisting ?
 
@@ -123,7 +123,7 @@ Parce qu'il fait tout le parcours, de la photo à la vente, et pas seulement la 
 - **Lens écrit tes annonces** : objet, marque lue sur l'étiquette, état, prix appuyé sur des annonces comparables, titre et description.
 - **Une seule fiche pour {{plateformes}}**, chaque annonce adaptée aux rubriques de son site.
 - **Ton stock déjà en ligne importé en un appui**, gratuit et sans limite, un article par fiche.
-- **Tes annonces remontent toutes seules** sur {{republication}}, au créneau que tu choisis.
+- **Tes annonces remontent** d'un appui ou, selon ta formule, toutes seules sur {{republication}}, au créneau que tu choisis.
 - **Vendu ici, retiré là-bas**, et au moindre doute une question plutôt qu'une erreur.
 
 Le comparatif de cette page met FillSell face à trois outils de crosslisting, critère par critère, avec les sources relevées le 9 octobre 2026. Le tableau complet, outil par outil : [notre classement des applications de crosslisting](page:comparatif/meilleures-applications-crosslisting).
@@ -162,7 +162,7 @@ Quand Vinted ou eBay marque ton article vendu, FillSell enregistre la vente tout
 
 ### Mes annonces peuvent-elles remonter toutes seules ?
 
-Oui : la republication automatique remonte tes annonces sur {{republication}}, les jours et au créneau que tu choisis, ordinateur allumé. Republier, c'est retirer l'annonce puis la remettre en ligne : elle repart en haut des résultats, mais ses vues et ses favoris repartent de zéro. FillSell espace tes republications à un rythme humain pour protéger ton compte, et tu coupes tout d'un geste.
+Oui, selon ta formule : la republication automatique remonte tes annonces sur {{republication}}, les jours et au créneau que tu choisis, ordinateur allumé. Sinon, tu remontes une annonce d'un appui. Republier, c'est retirer l'annonce puis la remettre en ligne : elle repart en haut des résultats, mais ses vues et ses favoris repartent de zéro. FillSell espace tes republications à un rythme humain pour protéger ton compte, et tu coupes tout d'un geste.
 
 ### Combien coûte FillSell ?
 

@@ -136,7 +136,7 @@ Republier, c'est retirer l'annonce puis la recréer. Sur Depop, ça donne une an
 
 Avec FillSell, un appui suffit. L'extension retire ton annonce Depop, la recrée, et la nouvelle reste rattachée à la même fiche : ton stock ne voit qu'un seul article. Rien n'est supprimé tant que FillSell n'a pas de quoi recréer l'annonce en entier. La même annonce n'est jamais republiée deux fois en 24 heures, les republications sont espacées à un rythme humain, et tu coupes tout d'un geste.
 
-Côté automatique, FillSell remonte tes annonces sur {{republication}}, les jours et au créneau que tu choisis, pendant que tu fais autre chose, ordinateur allumé. Réglages et bonnes pratiques : [la republication, à la demande et automatique](page:fonctions/republication).
+Côté automatique, selon ta formule, FillSell remonte tes annonces sur {{republication}}, les jours et au créneau que tu choisis, pendant que tu fais autre chose, ordinateur allumé. Réglages et bonnes pratiques : [la republication, à la demande et automatique](page:fonctions/republication).
 
 ## Les règles de Depop à garder en tête
 
@@ -197,7 +197,7 @@ Elles permettent de proposer ses articles sur d'autres plateformes via un outil 
 
 ### Peut-on republier une annonce Depop avec FillSell ?
 
-Oui, d'un appui : l'extension retire l'annonce, la recrée et la garde sur la même fiche. L'annonce repart neuve, mais ses vues et ses likes repartent de zéro. La republication automatique de FillSell, elle, couvre {{republication}}, les jours et au créneau que tu choisis, ordinateur allumé.
+Oui, d'un appui : l'extension retire l'annonce, la recrée et la garde sur la même fiche. L'annonce repart neuve, mais ses vues et ses likes repartent de zéro. Selon ta formule, la republication automatique de FillSell prend aussi le relais sur {{republication}}, les jours et au créneau que tu choisis, ordinateur allumé.
 
 ### Que fait FillSell quand je vends sur Depop ?
 

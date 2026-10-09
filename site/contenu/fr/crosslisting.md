@@ -12,7 +12,7 @@ points_cles:
   - "Un article, plusieurs plateformes, une seule annonce sur chacune, et les autres retirées dès la vente : c'est tout le crosslisting, aussi appelé cross-listing, crossposting ou multi-publication."
   - "Avec FillSell, Lens rédige l'annonce depuis une photo, puis elle part où tu veux parmi {{plateformes}}, dans tes sessions ou par l'API officielle d'eBay, sans te demander tes mots de passe."
   - "Vinted ou eBay marque l'article vendu ? FillSell enregistre la vente tout seul. Sur Leboncoin et Beebs, tu confirmes d'un appui. Puis les autres annonces partent ; au moindre doute : « Déjà vendu ? »."
-  - "Tes annonces remontent toutes seules sur {{republication}} : tu choisis les jours et le créneau, ton ordinateur allumé fait le reste."
+  - "Selon ta formule, tes annonces remontent toutes seules sur {{republication}} : tu choisis les jours et le créneau, ton ordinateur allumé fait le reste."
   - "Les conditions de Depop acceptent le crosslisting par un outil tiers si l'annonce Depop est retirée vite quand l'article se vend ailleurs ; Vinted et eBay encadrent les outils automatisés."
 cta: inscription
 plateformes_citees: [vinted, leboncoin, ebay, beebs, depop]
@@ -138,7 +138,7 @@ Le crosslisting n'est pas le problème : Vinted et Beebs prévoient le cas d'un 
 
 - **Dans ta session, jamais avec ton mot de passe.** Tu te connectes toi-même à tes plateformes dans Chrome, et l'extension travaille dans ces sessions. Pour eBay, tu relies ton compte sur la page officielle d'eBay ; pour Depop, tu autorises l'accès d'un clic dans l'extension.
 - **Une annonce après l'autre, à un rythme humain**, dans une fenêtre réduite, sans prendre la main sur ce que tu fais.
-- **Rien sans ton choix** : tu coches les plateformes, tu vérifies ce qui part, tu règles les jours et le créneau des republications.
+- **Rien sans ton choix** : tu coches les plateformes, tu vérifies ce qui part et, selon ta formule, tu règles les jours et le créneau des republications.
 - **Jamais d'option payante** souscrite à ta place.
 
 Aucun outil ne peut te garantir qu'une plateforme ne restreindra jamais ton compte, et FillSell ne te le promet pas. Il n'est affilié à aucune de ces plateformes, ni approuvé par elles. Ce qu'il fait : travailler comme toi, sans les oublis. Le détail : [protéger ton compte quand tu fais du crosslisting](page:securite-des-comptes).
@@ -187,7 +187,7 @@ Le crosslisting se vit en duos. Nos guides, trajet par trajet, dans les deux sen
 | Reprendre l'existant | un tableur | « Synchroniser » : ton stock en ligne arrive en un appui |
 | Repérer une vente | surveiller chaque appli | ventes repérées ; celles de Vinted et d'eBay s'enregistrent toutes seules |
 | Retirer les copies | à la main, sans en oublier | copies prouvées retirées, sinon « Déjà vendu ? » |
-| Remonter tes annonces | supprimer et recréer | republication automatique sur {{republication}} |
+| Remonter tes annonces | supprimer et recréer | d'un appui, ou automatique selon ta formule sur {{republication}} |
 | Compter | une calculette | marge et bénéfice calculés |
 
 ### Ton téléphone pilote, ton ordinateur exécute
@@ -202,7 +202,7 @@ Tu sources en vide-grenier ou en friperie ? Photo, annonce, choix des plateforme
 2. **Synchronise** : un appui, et tes annonces déjà en ligne entrent dans ton stock, une fiche par article. [La synchronisation](page:fonctions/synchronisation).
 3. **Ajoute tes nouveaux articles avec Lens** : une photo, et l'annonce est écrite, prix compris. Tu relis. [Lens](page:fonctions/lens).
 4. **Coche tes plateformes et envoie** : chaque plateforme reçoit sa version, à l'unité ou pour tout un lot.
-5. **Vends, FillSell range** : la vente enregistrée (d'un appui sur Leboncoin et Beebs), les copies retirées, la marge calculée. [Ventes et retraits](page:fonctions/ventes-et-retraits). Et pendant ce temps, tes annonces remontent toutes seules sur {{republication}}.
+5. **Vends, FillSell range** : la vente enregistrée (d'un appui sur Leboncoin et Beebs), les copies retirées, la marge calculée. [Ventes et retraits](page:fonctions/ventes-et-retraits). Et pendant ce temps, selon ta formule, tes annonces remontent toutes seules sur {{republication}}.
 
 Le parcours écran par écran : [comment marche le crosslisting avec FillSell](page:comment-ca-marche). Prêt ? [Crée ton compte gratuitement](/login?mode=signup), sans carte bancaire.
 
@@ -216,7 +216,7 @@ Un outil de crosslisting se juge le jour où tu vends, pas seulement le jour où
 | Retrait après la vente | c'est lui qui empêche la double vente | dans tous les forfaits ; « Déjà vendu ? » au moindre doute |
 | Reprise du stock | personne ne repart de zéro | « Synchroniser », gratuit et sans limite |
 | Annonce depuis une photo | c'est là que file ton temps | Lens, prix compris |
-| Republication | une annonce qui vieillit s'enfonce | d'un appui, ou automatique sur {{republication}} |
+| Republication | une annonce qui vieillit s'enfonce | d'un appui, ou automatique selon ta formule sur {{republication}} |
 | Téléphone | tu sources dehors | apps iPhone et Android, et le web |
 | Ordinateur éteint | certains outils travaillent depuis leurs serveurs | eBay relié seulement |
 | Prix | ce que tu paies chaque mois | Gratuit (0 €) sans carte bancaire ; Premium 12,99 €, Pro 29,99 €, Business 59,99 € par mois, sans engagement |
@@ -255,7 +255,7 @@ Retire les autres annonces dès qu'une vente tombe, et garde un seul stock qui f
 
 ### Quelle différence entre crosslisting et republication ?
 
-Le crosslisting met le même article sur plusieurs plateformes. La republication retire une annonce puis la remet en ligne sur la même plateforme, pour qu'elle reparte comme neuve ; ses vues et ses favoris repartent alors de zéro. Les deux se complètent. Avec FillSell, tes annonces remontent toutes seules sur {{republication}}, aux jours et au créneau que tu choisis.
+Le crosslisting met le même article sur plusieurs plateformes. La republication retire une annonce puis la remet en ligne sur la même plateforme, pour qu'elle reparte comme neuve ; ses vues et ses favoris repartent alors de zéro. Les deux se complètent. Avec FillSell, tu remontes une annonce d'un appui ; selon ta formule, tes annonces remontent aussi toutes seules sur {{republication}}, aux jours et au créneau que tu choisis.
 
 ### Faut-il laisser son ordinateur allumé ?
 

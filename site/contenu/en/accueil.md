@@ -7,7 +7,7 @@ title: "Crosslisting app: Vinted France, Leboncoin, eBay and more — FillSell"
 description: "The crosslisting app you run from your phone: one photo, Lens writes the listing, and it goes out to {{plateformes}}. Free to start."
 surtitre: "Crosslisting, run from your phone"
 h1: "The crosslisting app: one photo, {{nb_plateformes}} marketplaces. Sold here, removed there."
-chapo: "FillSell is a crosslisting app you run from your phone. One photo, Lens writes the listing, and it goes out to {{plateformes}}: the Chrome extension posts it from your computer, in your own session. Your stock syncs in one tap, your listings bump themselves back up on {{republication}}, and once a sale is recorded, the item's other listings come down."
+chapo: "FillSell is a crosslisting app you run from your phone. One photo, Lens writes the listing, and the Chrome extension posts it to {{plateformes}} from your computer, in your own session. Your stock syncs in one tap, your listings bump themselves back up on {{republication}} depending on your subscription, and once a sale is recorded, the item's other listings come down."
 publie: "2026-10-09"
 faq: true
 cta: inscription
@@ -17,7 +17,7 @@ points_cles:
   - "One photo is enough: Lens recognises the item, reads the brand, suggests a condition and a price based on comparable listings, then writes the title and description."
   - "Fill it in once, tick where it goes among {{plateformes}}: each site gets a listing shaped to its own fields (category, size, colour, parcel)."
   - "Today FillSell works with accounts based in France, including Vinted France (vinted.fr) and eBay France (ebay.fr). The app itself is in English and French."
-  - "Your listings bump themselves back up on {{republication}}, on the days and in the time slot you choose, with your computer on."
+  - "Bump a listing back up with one tap. Depending on your subscription, your listings also bump themselves back up on {{republication}}, on the days and in the time slot you choose, with your computer on."
   - "Sold here, removed there: once a sale is recorded — on its own on Vinted and eBay, with one tap from you elsewhere — the item's other listings are removed. When in doubt, it asks you “Already sold?” first."
 etapes:
   - titre: "Snap the item"
@@ -37,7 +37,7 @@ etapes:
     media: "captures/synchronisation-en-cours.png"
     alt: "Sync in progress in the FillSell Stock: \"3 of 5 marketplaces\", each marketplace icon around FillSell, the progress bar \"syncing Depop — about 1 min — your computer is working meanwhile\", then the list: Vinted 41 listings, Leboncoin 24 listings, eBay 5 listings (done), Depop 9 of 10 (running), Beebs waiting, matching waiting."
   - titre: "Let your listings bump back up"
-    texte: "An ageing listing slides down the results. Automatic reposting brings it back up on {{republication}}, on the days and in the time slot you choose, at a human pace, with your computer on. Switch it all off in one tap."
+    texte: "An ageing listing slides down the results. You bump it back up with one tap. Depending on your subscription, automatic reposting also brings it back up on {{republication}}, on the days and in the time slot you choose, at a human pace, with your computer on. Switch it all off in one tap."
     media: "captures/republication-creneaux.png"
     alt: "Automatic reposting settings in FillSell: the time slot (morning 8–10, noon 12–14, evening 19–22 selected, or custom), \"local time · Chrome open\", the note that reposts are spread over the slot at the account's real pace, never in bursts, and the active days (every day, Monday to Sunday)."
   - titre: "Sold here, removed there"
@@ -56,12 +56,12 @@ fonctions:
   - titre: "Your whole stock, synced in one tap"
     texte: "The listings you already have live land in your stock, neatly filed, free and with no limit. The same item on several marketplaces becomes a single card."
     page: fr:fonctions/synchronisation
-  - titre: "Listings that bump themselves back up"
-    texte: "Automatic reposting runs on {{republication}}, on the days and in the time slot you choose. Human pace, off in one tap."
+  - titre: "Listings that bump back up"
+    texte: "With one tap, or on their own depending on your subscription: automatic reposting runs on {{republication}}, on the days and in the time slot you choose. Human pace, off in one tap."
     page: fr:fonctions/republication
   - titre: "Sold here, removed there"
     texte: "A recorded sale takes the item's other listings down. When in doubt, FillSell asks you “Already sold?” before touching anything."
-    page: blog/sell-same-item-vinted-leboncoin-ebay-beebs
+    page: fr:fonctions/ventes-et-retraits
   - titre: "eBay through its official API"
     texte: "Link your eBay France account and your eBay listings go out through eBay's official API, even with your computer off. An eBay sale is recorded on its own."
     page: plateformes/ebay
@@ -70,7 +70,7 @@ fonctions:
     page: plateformes/beebs
   - titre: "Your margin works itself out"
     texte: "Sales, fees, margin and monthly profit, no spreadsheet. An unknown purchase price is left out of the maths, never counted as zero: your numbers stay honest."
-    page: blog/how-to-calculate-reselling-profits
+    page: fr:blog/comment-calculer-profits-vinted
 comparaison:
   concurrents: [vendoo, crosslist, relistly]
   criteres: [app_mobile, plateformes, ia_photo, import_synchro, retrait_auto_copies, republication]
@@ -94,7 +94,7 @@ With FillSell you write it once — and Lens does the writing. Each marketplace 
 
 Create the listing once, tick Vinted and Leboncoin (plus any of your other marketplaces), and the Chrome extension posts each version from your computer, one listing after another, at a human pace. The item is then live on both sites, each with a listing in its own format — in French, as the French sites expect.
 
-The day it sells on Vinted, FillSell records the sale on its own and removes the Leboncoin listing. If it sells on Leboncoin, you confirm the sale with one tap, and the Vinted listing comes down in turn. If there's any doubt, the “Already sold?” question comes first. Step by step: [crosslisting Vinted and Leboncoin in English](page:crosslisting/vinted-leboncoin), [selling the same item on several marketplaces without double-selling](page:blog/sell-same-item-vinted-leboncoin-ebay-beebs), and if Leboncoin is new to you, [how to sell on Leboncoin in English](page:blog/sell-on-leboncoin-in-english).
+The day it sells on Vinted, FillSell records the sale on its own and removes the Leboncoin listing. If it sells on Leboncoin, you confirm the sale with one tap, and the Vinted listing comes down in turn. If there's any doubt, the “Already sold?” question comes first. Step by step: [crosslisting Vinted and Leboncoin in English](page:crosslisting/vinted-leboncoin), [selling the same item on several marketplaces without double-selling (in French)](page:fr:blog/vendre-meme-article-vinted-leboncoin-ebay-beebs), and if Leboncoin is new to you, [how to sell on Leboncoin in English](page:blog/sell-on-leboncoin-in-english).
 
 ## Your phone runs the show, your computer does the work
 
@@ -112,7 +112,7 @@ It works in your own session, the one you're already signed in to. FillSell neve
 | [Beebs](page:plateformes/beebs) | publish, sync, repost, remove copies | the extension, in your session | on, Chrome open |
 | Depop | publish, sync, repost, remove copies | the extension, after one click on “Autoriser Depop” (allow Depop) | on, Chrome open |
 
-Automatic reposting runs on {{republication}}. When Vinted or eBay marks your item as sold, FillSell records the sale on its own. On Leboncoin and Beebs, it asks you to confirm with one tap.
+Depending on your subscription, automatic reposting runs on {{republication}}. When Vinted or eBay marks your item as sold, FillSell records the sale on its own. On Leboncoin and Beebs, it asks you to confirm with one tap.
 
 Where it works today: {{plateformes}}, with accounts based in France — that means Vinted France (vinted.fr), eBay France (ebay.fr) and a French Depop account, in euros. Vinted UK, eBay.co.uk and eBay.com aren't covered today.
 
@@ -124,14 +124,14 @@ Because it runs the whole journey, from the photo to the sale, not just the post
 - **Lens writes your listings**: item, brand read on the label, condition, a price based on comparable listings, title and description.
 - **One card for {{plateformes}}**, each listing adapted to its site's fields.
 - **Your live stock imported in one tap**, free and with no limit, one card per item.
-- **Your listings bump themselves back up** on {{republication}}, in the time slot you choose.
+- **Your listings bump back up** with one tap or, depending on your subscription, on their own on {{republication}}, in the time slot you choose.
 - **Sold here, removed there**, and any doubt becomes a question, not a mistake.
 
 The comparison on this page puts FillSell side by side with three crosslisting tools, criterion by criterion, with sources checked on 9 October 2026. The full table, tool by tool: [our ranking of crosslisting apps (in French)](page:fr:comparatif/meilleures-applications-crosslisting).
 
 ## Your margin, worked out for you
 
-Every sale lands in your numbers: purchase price, sale price, fees, margin, monthly profit and sales by marketplace. An item whose purchase price you don't know is left out of the calculation rather than counted as free: your margin stays real. Your stock has no item limit, even on the free plan, and exports to Excel whenever you like. More on the maths: [how to calculate your reselling profits](page:blog/how-to-calculate-reselling-profits).
+Every sale lands in your numbers: purchase price, sale price, fees, margin, monthly profit and sales by marketplace. An item whose purchase price you don't know is left out of the calculation rather than counted as free: your margin stays real. Your stock has no item limit, even on the free plan, and exports to Excel whenever you like. More on the maths: [how to calculate your reselling profits (in French)](page:fr:blog/comment-calculer-profits-vinted).
 
 ![The FillSell Sales tab: at the top, this month's profit (+€1,268), number of sales (62) and average margin (66.7%); below, the latest sales, each with title, brand, sale price, the icon of the marketplace where it sold (Depop, Beebs, Leboncoin, Vinted…), date and margin — e.g. an Adidas tracksuit sold for €45 on Depop, +€33.](media:captures/ventes-et-marges.png)
 

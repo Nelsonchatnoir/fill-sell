@@ -132,7 +132,7 @@ Une tâche à la fois, le reste attend son tour : c'est ce que montre le panneau
 
 Republier, c'est supprimer une annonce puis la remettre en ligne. C'est justement le geste que vise la clause de Vinted quand il est répété sur un même article ou fait en gros. Voilà pourquoi la republication demande de la mesure, avec ou sans outil. Et elle a un prix, même bien faite : l'annonce repart avec une nouvelle date, mais ses vues et ses favoris repartent de zéro.
 
-Avec FillSell, tes annonces remontent toutes seules sur {{republication}}, les jours et au créneau que tu choisis, ordinateur allumé avec Chrome ouvert. Les garde-fous sont posés d'office :
+Avec FillSell, selon ta formule, tes annonces remontent toutes seules sur {{republication}}, les jours et au créneau que tu choisis, ordinateur allumé avec Chrome ouvert. Les garde-fous sont posés d'office :
 
 - **Jamais deux fois en 24 heures** la même annonce, que la republication soit automatique ou d'un appui.
 - **Une ancienneté minimale** que tu fixes, une semaine au moins : la republication automatique ne touche jamais une annonce toute neuve.

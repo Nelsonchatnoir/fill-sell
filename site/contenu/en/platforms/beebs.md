@@ -8,7 +8,7 @@ surtitre: "FillSell for Beebs (France)"
 title: "How to sell on Beebs without retyping: crosslisting — FillSell"
 description: "Sell on Beebs, France's family second-hand app, without retyping: fill in the listing once, the FillSell extension posts it in your session, reposts it, delists it."
 h1: "FillSell for Beebs: sell on Beebs without retyping a single listing"
-chapo: "FillSell is a crosslisting app that adds Beebs to your marketplaces with zero retyping: you fill in the listing once on your phone, and the Chrome extension posts it on Beebs from your computer, in your own session. Your Beebs stock imports in one tap; your listings bump themselves back up on {{republication}}. Sold somewhere else? Once the sale is recorded, its proven Beebs copy comes down."
+chapo: "FillSell is a crosslisting app that adds Beebs to your marketplaces with zero retyping: you fill in the listing once on your phone, and the Chrome extension posts it on Beebs from your computer, in your own session. Your Beebs stock imports in one tap; depending on your subscription, your Beebs listings bump themselves back up. Sold somewhere else? Once the sale is recorded, its proven Beebs copy comes down."
 points_cles:
   - "On Beebs, the FillSell Chrome extension posts your listings in your own session: never your Beebs password, one listing after another, at a human pace."
   - "A card filled in once gives one version per marketplace: on Beebs, the category, size, colour and parcel follow Beebs's own fields. If a detail is missing, the app asks you."
@@ -33,7 +33,7 @@ liens:
   - crosslisting/vinted-beebs
   - plateformes/vinted
   - plateformes/ebay
-  - blog/how-to-calculate-reselling-profits
+  - crosslisting/vinted-leboncoin
   - tarifs
 ---
 
@@ -71,7 +71,7 @@ A different crowd, no seller commission: an item sitting still on Vinted or Lebo
 
 **Whole batches.** Pick your items in your stock, tick Beebs: FillSell prepares each listing, you check, off it goes.
 
-**Listings that climb back up.** A Beebs listing running out of steam gets reposted with one tap. And automatic reposting takes care of {{republication}}: on the days and in the time slot you choose, while you do something else.
+**Listings that climb back up.** A Beebs listing running out of steam gets reposted with one tap. And, depending on your subscription, automatic reposting takes care of {{republication}}: on the days and in the time slot you choose, while you do something else.
 
 **Sold here, removed there.** The day the item sells, its proven copies come down from your other marketplaces — more on that below.
 
@@ -104,7 +104,7 @@ On Beebs, a listing never reads “sold”: FillSell only sees that it's no long
 
 A **proven** copy is a listing tied to the item by a proof: posted by FillSell, linked by its identifier, imported, linked by you, or carrying the same photo. A similar title is never enough.
 
-On Beebs, that removal is no detail: its terms of use (version of 29 January 2025) ask sellers to remove an item from the catalogue when it sells “through another channel” (our translation). For every proven copy, FillSell sends that removal as soon as the sale is recorded, without you having to think about it. The sale then joins your numbers: profit, margin, sales by marketplace. An item whose purchase price you don't know is left out of the maths rather than counted as free; the method is in [how to calculate your reselling profits](page:blog/how-to-calculate-reselling-profits). And for the full story: [selling the same item on several marketplaces without selling it twice](page:blog/sell-same-item-vinted-leboncoin-ebay-beebs).
+On Beebs, that removal is no detail: its terms of use (version of 29 January 2025) ask sellers to remove an item from the catalogue when it sells “through another channel” (our translation). For every proven copy, FillSell sends that removal as soon as the sale is recorded, without you having to think about it. The sale then joins your numbers: profit, margin, sales by marketplace. An item whose purchase price you don't know is left out of the maths rather than counted as free; the method is in [how to calculate your reselling profits (in French)](page:fr:blog/comment-calculer-profits-vinted). And for the full story: [selling the same item on several marketplaces without selling it twice (in French)](page:fr:blog/vendre-meme-article-vinted-leboncoin-ebay-beebs).
 
 ![The computer's queue in FillSell right after a sale on Vinted: in progress, removing the Depop listing of the sold Red Bull Racing hoodie (€38), with its progress bar; next, removing its Leboncoin copy, then publishing the Öhlins hoodie on Depop and Leboncoin, each waiting its turn.](media:captures/vente-retrait-copies.png)
 
@@ -115,7 +115,7 @@ On Beebs, that removal is no detail: its terms of use (version of 29 January 202
 Reposting means taking the listing down and putting it back online: it comes back as a brand-new listing, but its views and favourites start from zero. On Beebs, the order matters, because its rules forbid listing the same item more than once. FillSell removes first, posts again second.
 
 - **With one tap**: a Beebs listing losing visibility? Bump it from your phone, and the computer handles the rest.
-- **On its own**: your listings bump themselves back up on {{republication}}, on the days and in the time slot you choose, while you get on with your day — computer on.
+- **On its own**, depending on your subscription: your listings bump themselves back up on {{republication}}, on the days and in the time slot you choose, while you get on with your day — computer on.
 - **At your pace, never in bursts**: FillSell spaces out your reposts at a human pace to protect your account. Switch it all off in one tap, whenever you like.
 
 Like any new listing, a reposted one goes back through Beebs's review: it can take a while to reappear. Time slots and settings explained: [automatic and one-tap reposting (in French)](page:fr:fonctions/republication).
@@ -176,7 +176,7 @@ Beebs is a French app: its help centre is in French, and it handles payment and 
 
 ### Can I repost my Beebs listings automatically?
 
-Yes. FillSell's automatic reposting covers {{republication}}: you choose the days and the time slot, and your listings bump themselves back up, one by one, at a human pace, as long as your computer is on with Chrome open. You can also bump a listing with one tap, and switch everything off in one go.
+Yes, depending on your subscription. FillSell's automatic reposting covers {{republication}}: you choose the days and the time slot, and your listings bump themselves back up, one by one, at a human pace, as long as your computer is on with Chrome open. Otherwise, you bump a listing with one tap. Either way, you switch everything off in one go.
 
 ### Does FillSell record a Beebs sale on its own?
 

@@ -19,7 +19,7 @@ points_cles:
   - "One tap on Sync brings your live Vinted and Leboncoin listings into one stock: the same item on both sites becomes one card when its photos and title agree."
   - "Sold on Vinted: FillSell records the sale itself and removes the proven Leboncoin copy. Sold on Leboncoin: you confirm with one tap first. Any doubt, it asks “Already sold?”."
   - "The extension works in your own Chrome sessions, one listing at a time, with your computer on. FillSell never asks for your Vinted or Leboncoin passwords."
-  - "Automatic reposting runs on {{republication}}, on the days and in the time slot you choose, with your computer on."
+  - "Depending on your subscription, automatic reposting runs on {{republication}}, on the days and in the time slot you choose, with your computer on."
 hero_media: "captures/vente-retrait-copies.png"
 hero_alt: "The computer's queue in FillSell right after a sale on Vinted: in progress, removing the Depop listing of the sold Red Bull Racing hoodie (€38), with its progress bar; next, removing its Leboncoin copy, then publishing the Öhlins hoodie on Depop and Leboncoin, each waiting its turn."
 etapes:
@@ -124,7 +124,7 @@ From then on, each card knows where its item is live — which is what lets a sa
 Vinted sells Boost; Leboncoin sells a bump to the top of the list. FillSell does something different: it reposts. The listing is removed and put back online, so it goes back to the top of the results — but its views and favourites start from zero. And the extension never buys a paid option on your behalf.
 
 - **One tap** reposts a listing that's losing steam.
-- **Automatic reposting** runs on {{republication}}: your listings bump themselves back up on the days and in the time slot you choose, while you get on with something else — with your computer on.
+- **Automatic reposting**, depending on your subscription, runs on {{republication}}: your listings bump themselves back up on the days and in the time slot you choose, while you get on with something else — with your computer on.
 - **A human pace.** Reposts are spaced out to protect your account, and you switch everything off in one tap.
 
 The details, and how reposting differs from a Boost, are on the [reposting page (in French)](page:fr:fonctions/republication).
@@ -174,7 +174,7 @@ Yes, for Vinted and Leboncoin: posting, removing and spotting sales go through t
 
 ### Is FillSell's reposting the same as a Vinted Boost or a Leboncoin bump?
 
-No. Boost and the Leboncoin bump are paid options that keep your listing. FillSell reposts: it removes the listing and puts it back online, so it returns to the top of the results while its views and favourites start from zero. You can repost with one tap, or let automatic reposting run on {{republication}} in the time slot you choose. FillSell never buys a paid option for you.
+No. Boost and the Leboncoin bump are paid options that keep your listing. FillSell reposts: it removes the listing and puts it back online, so it returns to the top of the results while its views and favourites start from zero. You can repost with one tap or, depending on your subscription, let automatic reposting run on {{republication}} in the time slot you choose. FillSell never buys a paid option for you.
 
 ### Do I need a pro account to resell on Vinted and Leboncoin?
 

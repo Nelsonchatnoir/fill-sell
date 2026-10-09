@@ -22,7 +22,7 @@ liens:
   - plateformes/ebay
   - plateformes/beebs
   - crosslisting/vinted-leboncoin
-  - blog/how-to-calculate-reselling-profits
+  - crosslisting/vinted-beebs
 ---
 
 No credit card to get started. No contract to keep going. No surcharge per marketplace. You start at €0, step up when your sales call for it, and stop whenever you want.
@@ -60,7 +60,7 @@ One tap on Sync and the listings you already have live land in your stock, neatl
 
 ### Sold here, removed there
 
-When Vinted or eBay marks your item sold, FillSell records the sale on its own. On Leboncoin and Beebs, it asks you to confirm with one tap. As soon as the sale is recorded, FillSell removes the item's other listings; if one of them looks uncertain, it asks you "Already sold?" before touching it. All of that on the Free plan: no top-tier plan needed to [avoid selling the same item twice](page:blog/sell-same-item-vinted-leboncoin-ebay-beebs).
+When Vinted or eBay marks your item sold, FillSell records the sale on its own. On Leboncoin and Beebs, it asks you to confirm with one tap. As soon as the sale is recorded, FillSell removes the item's other listings; if one of them looks uncertain, it asks you "Already sold?" before touching it. All of that on the Free plan: no top-tier plan needed to [avoid selling the same item twice (in French)](page:fr:blog/vendre-meme-article-vinted-leboncoin-ebay-beebs).
 
 ![The computer's queue in FillSell right after a sale on Vinted: in progress, removing the Depop listing of the sold Red Bull Racing hoodie (€38), with its progress bar; next, removing its Leboncoin copy, then publishing the Öhlins hoodie on Depop and Leboncoin, each waiting its turn.](media:captures/vente-retrait-copies.png)
 
@@ -68,7 +68,7 @@ When Vinted or eBay marks your item sold, FillSell records the sale on its own. 
 
 ### Your stock, your sales, your margin
 
-Your stock has no item limit, even on the free plan. Sales, fees, margin and profit work themselves out; an item whose purchase price you don't know is left out of the maths rather than counted as free, so your margin stays real. Export your stock and sales to Excel, or import your own Excel or CSV file. The method, step by step: [how to calculate your reselling profits](page:blog/how-to-calculate-reselling-profits).
+Your stock has no item limit, even on the free plan. Sales, fees, margin and profit work themselves out; an item whose purchase price you don't know is left out of the maths rather than counted as free, so your margin stays real. Export your stock and sales to Excel, or import your own Excel or CSV file. The method, step by step: [how to calculate your reselling profits (in French)](page:fr:blog/comment-calculer-profits-vinted).
 
 ![The FillSell Sales tab: at the top, this month's profit (+€1,268), number of sales (62) and average margin (66.7%); below, the latest sales, each with title, brand, sale price, the icon of the marketplace where it sold (Depop, Beebs, Leboncoin, Vinted…), date and margin — e.g. an Adidas tracksuit sold for €45 on Depop, +€33.](media:captures/ventes-et-marges.png)
 

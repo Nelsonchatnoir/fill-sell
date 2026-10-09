@@ -13,7 +13,7 @@ points_cles:
   - "Leboncoin revendique 30 millions de visiteurs par mois (mars 2026) et propose la remise en main propre par défaut ; Beebs, dans le groupe Kiabi depuis mai 2024, a un catalogue pensé pour l'enfant de 0 à 16 ans."
   - "Avec FillSell, une seule fiche donne une annonce adaptée à Leboncoin et une à Beebs, déposées par l'extension Chrome depuis ton ordinateur, dans tes sessions, sans jamais te demander tes mots de passe."
   - "Sur Leboncoin comme sur Beebs, une vente se confirme d'un appui dans l'app ; FillSell retire alors l'annonce de l'autre site, et demande « Déjà vendu ? » au moindre doute."
-  - "Tes annonces remontent toutes seules sur {{republication}}, les jours et au créneau que tu choisis, ordinateur allumé."
+  - "Selon ta formule, tes annonces remontent toutes seules sur {{republication}}, les jours et au créneau que tu choisis, ordinateur allumé."
 hero_media: "captures/publication-verification-annonces.png"
 hero_alt: "Étape 2 sur 3 de la publication, « Ce qui va partir » : une carte par plateforme, chacune avec son rayon, son état, son prix de 14 € et la mention « Prêt » — Vinted (Hommes › … › T-shirts), Leboncoin (Mode › Vêtements), Beebs (Mode › … › T-shirts), eBay (Vêtements, accessoires › … › T-shirts) et Depop (Homme › … › T-shirts, sans titre : chez Depop, la description fait l'annonce)."
 cta: inscription
@@ -119,7 +119,7 @@ Vendu en main propre, payé en espèces ? Tu marques l'article vendu dans l'app 
 
 Republier, c'est retirer l'annonce puis la remettre en ligne : elle repart en haut des résultats, mais ses vues et ses favoris repartent de zéro. Sur Leboncoin comme sur Beebs, tu remontes une annonce en un appui.
 
-Et tu peux ne plus y penser : tes annonces remontent toutes seules. FillSell les republie sur {{republication}}, les jours et au créneau que tu choisis, pendant que tu fais autre chose, ordinateur allumé. Il espace les republications à un rythme humain pour protéger ton compte, ne republie jamais la même annonce deux fois en 24 h, et tu coupes tout d'un geste quand tu veux ([la republication en détail](page:fonctions/republication)).
+Et, selon ta formule, tu peux ne plus y penser : tes annonces remontent toutes seules. FillSell les republie sur {{republication}}, les jours et au créneau que tu choisis, pendant que tu fais autre chose, ordinateur allumé. Il espace les republications à un rythme humain pour protéger ton compte, ne republie jamais la même annonce deux fois en 24 h, et tu coupes tout d'un geste quand tu veux ([la republication en détail](page:fonctions/republication)).
 
 Ce n'est ni l'option payante « Remonter en tête de liste » de Leboncoin, ni un Boost Beebs : la republication retire ton annonce et la redépose. FillSell ne souscrit jamais d'option payante à ta place.
 

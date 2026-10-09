@@ -170,7 +170,7 @@ La republication automatique remonte tes annonces sans que tu y touches, aux jou
 
 Exemple : chaque soir entre 19 h et 22 h, tes annonces en ligne depuis plus de quinze jours remontent une à une, pendant que tu dînes.
 
-Avec FillSell, elle fonctionne sur {{republication}}. Tu règles chaque plateforme une fois : créneau du matin, du midi, du soir ou sur mesure, jours actifs, ancienneté minimale (jamais moins d'une semaine), ordre de passage. Ton ordinateur allumé, Chrome ouvert, fait le reste, à un rythme humain, jamais en rafale. Un geste met tout en pause, et tes réglages t'attendent.
+Avec FillSell, selon ta formule, elle fonctionne sur {{republication}}. Tu règles chaque plateforme une fois : créneau du matin, du midi, du soir ou sur mesure, jours actifs, ancienneté minimale (jamais moins d'une semaine), ordre de passage. Ton ordinateur allumé, Chrome ouvert, fait le reste, à un rythme humain, jamais en rafale. Un geste met tout en pause, et tes réglages t'attendent.
 
 ### Boost
 

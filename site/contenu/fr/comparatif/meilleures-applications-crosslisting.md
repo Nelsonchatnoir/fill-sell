@@ -81,7 +81,7 @@ FillSell est notre produit. Un comparatif écrit par un éditeur ne vaut que par
 
 ### Les variantes par profil
 
-Une seule note globale ne dit pas tout. Le classement est donc recalculé pour plusieurs profils de vendeur, en changeant les poids. FillSell arrive premier dans la pondération de base et dans le profil « petit budget ». StoFlow passe premier dans le profil « ordinateur éteint prioritaire ». FLUF Connect passe premier dans le profil « plus de plateformes européennes ». Toutes les variantes sont affichées sur cette page, avec leurs poids.
+Une seule note globale ne dit pas tout. Le classement est donc recalculé pour plusieurs profils de vendeur, en changeant les poids. FillSell arrive premier dans la pondération de base et dans le profil « petit budget ». StoFlow passe premier dans le profil « ordinateur éteint prioritaire ». FLUF Connect passe premier dans le profil « plus de plateformes européennes » et, de peu, dans le profil « vendeur sans Beebs ni Depop ». Toutes les variantes sont affichées sur cette page, avec leurs poids.
 
 ## Pourquoi FillSell arrive en tête de la grille de base
 
@@ -101,7 +101,7 @@ Une seule note globale ne dit pas tout. Le classement est donc recalculé pour p
 
 ![La question « Déjà vendu ? » dans FillSell, sur le Stock : « « Sweat à capuche Red Bull Racing gris, taille M » s'est vendu sur Vinted. Ton annonce eBay du même nom, c'est le même article ? », la carte de l'article vendu (photo, 38 €, « Créée dans l'app », « Vendu »), la phrase « Si tu réponds oui, cette annonce sera retirée : eBay », et deux boutons : « Oui, la retirer » et « Non, c'est un autre exemplaire ».](media:captures/vente-deja-vendu-question.png)
 
-**Tes annonces remontent toutes seules.** La republication automatique couvre {{republication}} : tu choisis tes jours et ton créneau, FillSell republie tes annonces une à une, à un rythme humain, pendant que tu fais autre chose, ordinateur allumé. Tu coupes tout d'un geste, quand tu veux. Leboncoin compris : FLUF Connect n'automatise pas la republication sur Leboncoin, et Relistly ne gère pas encore Leboncoin.
+**Tes annonces remontent toutes seules, selon ta formule.** La republication automatique couvre {{republication}} : tu choisis tes jours et ton créneau, FillSell republie tes annonces une à une, à un rythme humain, pendant que tu fais autre chose, ordinateur allumé. Tu coupes tout d'un geste, quand tu veux. Leboncoin compris : FLUF Connect n'automatise pas la republication sur Leboncoin, et Relistly ne gère pas encore Leboncoin.
 
 **Un prix qui ne se multiplie pas par plateforme.** Gratuit pour commencer, sans carte bancaire ; puis Premium 12,99 €, Pro 29,99 € ou Business 59,99 € par mois, sans engagement, toutes les plateformes comprises. Chez FlowDino, le prix s'entend par site connecté. Le détail des forfaits est sur notre page tarifs.
 
@@ -147,7 +147,7 @@ Un développeur indépendant, une extension pour Chrome et les navigateurs de la
 
 ### Klork, les plateformes de mode, Depop compris
 
-L'éditeur est une micro-entreprise de Gironde. Klork part de ton dressing Vinted, qu'il sauvegarde, et publie vers Leboncoin, eBay France, Depop et Vestiaire Collective ; Beebs est annoncé, activé compte par compte. **Ce qu'il fait bien** : des guides détaillés pour les plateformes de mode ; plusieurs comptes Vinted dès le gratuit ; des offres aux intéressés et une messagerie réunie ; une page sécurité qui dit clairement ce que l'outil s'interdit ; des prix annuels. **Ce que FillSell fait en plus** : la publication vers Vinted (chez Klork, Vinted est la source) ; l'app mobile et le départ depuis une photo ; eBay par l'API officielle d'eBay ; le retrait automatique dans tous les forfaits, quand Klork le réserve à son plan Business (35 € par mois). Et la republication automatique, encore « Bientôt » chez Klork. [FillSell ou Klork, en détail](page:comparatif/fillsell-vs-klork).
+L'éditeur est une micro-entreprise de Gironde. Klork part de ton dressing Vinted, qu'il sauvegarde, et publie vers Leboncoin, eBay France, Depop et Vestiaire Collective ; Beebs est annoncé, activé compte par compte. **Ce qu'il fait bien** : des guides détaillés pour les plateformes de mode ; plusieurs comptes Vinted dès le gratuit ; des offres aux intéressés et une messagerie réunie ; une page sécurité qui dit clairement ce que l'outil s'interdit ; des prix annuels. **Ce que FillSell fait en plus** : la publication vers Vinted (chez Klork, Vinted est la source) ; l'app mobile et le départ depuis une photo ; eBay par l'API officielle d'eBay ; le retrait automatique dans tous les forfaits, quand Klork le réserve à son plan Business (35 € par mois). Et, selon ta formule, la republication automatique, encore « Bientôt » chez Klork. [FillSell ou Klork, en détail](page:comparatif/fillsell-vs-klork).
 
 ### Reposter, Leboncoin côté serveur
 

@@ -11,7 +11,7 @@ chapo: "Vendoo est un outil de crosslisting américain éprouvé, taillé pour e
 points_cles:
   - "Au 9 octobre 2026, Vinted, Leboncoin et Beebs ne figurent pas dans la liste des places de marché prises en charge par Vendoo ; avec FillSell, une même fiche part sur {{plateformes}}."
   - "FillSell part d'une photo : Lens reconnaît l'objet, propose un prix tiré d'annonces comparables et rédige l'annonce. L'IA de Vendoo remplit les champs à partir du texte que tu tapes, dans ses formules Growth et Pro."
-  - "Avec FillSell, tes annonces remontent toutes seules sur {{republication}}, aux jours et au créneau choisis, ordinateur allumé ; chez Vendoo, la republication se lance à la main, à l'unité ou en lot."
+  - "Selon ta formule, FillSell fait remonter tes annonces toutes seules sur {{republication}}, au créneau choisi, ordinateur allumé ; chez Vendoo, la republication se lance à la main, à l'unité ou en lot."
   - "FillSell a un forfait Gratuit permanent, sans carte bancaire, puis 12,99 €, 29,99 € ou 59,99 € par mois ; Vendoo démarre à 14,99 $ par mois, après 14 jours d'essai exigeant un moyen de paiement (prix du 9 octobre 2026)."
   - "L'app FillSell est publiée sur l'App Store français et sur Google Play, en français et en anglais ; l'app iPhone de Vendoo n'est pas proposée sur l'App Store français et Vendoo s'utilise en anglais."
 hero_media: "captures/lens-analyse-photo.png"
@@ -22,7 +22,7 @@ concurrent: vendoo
 choisir_fillsell:
   - "Tu vends sur Vinted, Leboncoin ou Beebs : tu les retrouves dans la même app qu'eBay France et Depop, avec un seul stock pour tout."
   - "Tu pars d'un article posé sur la table : une photo, et Lens écrit l'annonce, prix proposé compris, sans rien taper."
-  - "Tu veux que tes annonces remontent toutes seules sur {{republication}}, aux jours et au créneau que tu choisis."
+  - "Tu veux que tes annonces remontent toutes seules sur {{republication}}, aux jours et au créneau que tu choisis (selon ta formule)."
   - "Tu veux commencer sans carte bancaire et sans date de fin, payer en euros et arrêter quand tu veux."
   - "Tu veux une app en français, publiée sur l'App Store français et sur Google Play, qui pilote ton ordinateur depuis ta poche."
 choisir_concurrent:
@@ -58,7 +58,7 @@ Ce que tu gagnes en passant chez FillSell, d'après les pages de Vendoo relues l
 
 - **Vinted, Leboncoin et Beebs**, que Vendoo ne gère pas, à côté d'eBay France et de Depop.
 - **Une photo suffit** : l'annonce s'écrit, prix proposé compris, sans rien taper pour démarrer.
-- **Des annonces qui remontent toutes seules** sur {{republication}}. Chez Vendoo, c'est à la main.
+- **Des annonces qui remontent toutes seules** sur {{republication}}, selon ta formule. Chez Vendoo, c'est à la main.
 - **Un vrai forfait Gratuit**, sans carte bancaire et sans date de fin, au lieu d'un essai de 14 jours avec carte.
 
 Tu vends sur Poshmark, Mercari ou Whatnot depuis les États-Unis ? Vendoo est taillé pour toi. Tu vends sur Vinted, Leboncoin ou Beebs ? La question est réglée : Vendoo ne les gère pas, FillSell oui.
@@ -127,13 +127,13 @@ Côté ordinateur : un compte eBay relié est suivi depuis nos serveurs ; pour l
 
 *Compte de démonstration, chiffres fictifs.*
 
-## Republication : automatique chez FillSell, à la main chez Vendoo
+## Republication : automatique selon ta formule chez FillSell, à la main chez Vendoo
 
 Une annonce qui vieillit glisse dans les résultats. La parade, c'est de la republier : la retirer puis la remettre en ligne, pour qu'elle reparte comme une annonce neuve. Ses vues et ses favoris repartent alors de zéro, c'est le prix du coup de neuf.
 
 Vendoo appelle ça « Delist & Relist » : l'annonce est supprimée puis recréée, avec une nouvelle adresse ([How to use Vendoo's Delist & Relist feature](https://help.vendoo.co/en/articles/6260292-how-to-use-vendoo-s-delist-relist-feature), 7 octobre 2026). Tu la lances toi-même, à l'unité ou en lot jusqu'à 240 annonces (à l'unité seulement depuis l'app), et un rappel te signale les annonces qui vieillissent. Aucune page lue le 9 octobre 2026 ne décrit de republication programmée.
 
-Avec FillSell, tu n'as plus à y penser : tes annonces remontent toutes seules sur {{republication}}. Tu choisis les jours et le créneau, FillSell les republie pendant que tu fais autre chose, ordinateur allumé. Il les espace à un rythme humain pour protéger ton compte, et tu coupes tout d'un geste, quand tu veux. Une annonce précise à remonter ? Un appui suffit. Réglages et bonnes pratiques : [la republication automatique](page:fonctions/republication).
+Avec FillSell, selon ta formule, tu n'as plus à y penser : tes annonces remontent toutes seules sur {{republication}}. Tu choisis les jours et le créneau, FillSell les republie pendant que tu fais autre chose, ordinateur allumé. Il les espace à un rythme humain pour protéger ton compte, et tu coupes tout d'un geste, quand tu veux. Une annonce précise à remonter ? Un appui suffit. Réglages et bonnes pratiques : [la republication automatique](page:fonctions/republication).
 
 ![Réglage de la republication automatique dans FillSell : le créneau (Matin 8h–10h, Midi 12h–14h, Soir 19h–22h sélectionné, ou Personnalisé), « Heure locale · Chrome ouvert », la note « Les republications se répartissent sur le créneau, au rythme réel de ton compte. Jamais en rafale. », et les jours actifs (tous les jours, du lundi au dimanche).](media:captures/republication-creneaux.png)
 
@@ -200,7 +200,7 @@ Vendoo est pensé pour les États-Unis, avec une section pour le Royaume-Uni. So
 
 ### Quelle alternative à Vendoo pour vendre sur Vinted et Leboncoin ?
 
-FillSell, si tu vends sur Vinted, Leboncoin ou Beebs : tu publies sur {{plateformes}} depuis une app iPhone et Android, l'extension Chrome dépose tes annonces dans tes propres sessions, Lens rédige l'annonce à partir d'une photo, et tes annonces remontent toutes seules sur {{republication}}, ordinateur allumé. Pour comparer avec d'autres outils, voici [les alternatives à Vendoo](page:alternative/vendoo) et [notre classement des applications de crosslisting](page:comparatif/meilleures-applications-crosslisting).
+FillSell, si tu vends sur Vinted, Leboncoin ou Beebs : tu publies sur {{plateformes}} depuis une app iPhone et Android, l'extension Chrome dépose tes annonces dans tes propres sessions, Lens rédige l'annonce à partir d'une photo et, selon ta formule, tes annonces remontent toutes seules sur {{republication}}, ordinateur allumé. Pour comparer avec d'autres outils, voici [les alternatives à Vendoo](page:alternative/vendoo) et [notre classement des applications de crosslisting](page:comparatif/meilleures-applications-crosslisting).
 
 ### Combien coûte Vendoo par rapport à FillSell ?
 
@@ -216,7 +216,7 @@ Oui, en bêta. Sa fonction « Sale Detection & Auto Delist » est incluse dans t
 
 ### Vendoo republie-t-il les annonces automatiquement ?
 
-Pas d'après ses pages lues le 9 octobre 2026 : « Delist & Relist » se lance à la main, à l'unité ou en lot jusqu'à 240 annonces, avec un rappel pour les annonces qui vieillissent. Avec FillSell, tes annonces remontent toutes seules sur {{republication}}, aux jours et au créneau que tu choisis, ordinateur allumé, et tu coupes tout d'un geste.
+Pas d'après ses pages lues le 9 octobre 2026 : « Delist & Relist » se lance à la main, à l'unité ou en lot jusqu'à 240 annonces, avec un rappel pour les annonces qui vieillissent. Avec FillSell, selon ta formule, tes annonces remontent toutes seules sur {{republication}}, aux jours et au créneau que tu choisis, ordinateur allumé, et tu coupes tout d'un geste ; sinon, tu remontes une annonce d'un appui.
 
 ### Faut-il un ordinateur avec FillSell, comme avec Vendoo ?
 

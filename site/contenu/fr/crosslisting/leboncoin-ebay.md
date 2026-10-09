@@ -127,11 +127,11 @@ Sur ce trajet, eBay a un avantage net : une fois ton compte relié, il se passe 
 
 Jamais ton mot de passe. Sur Leboncoin, tu restes connecté(e) dans ton navigateur, comme d'habitude, et l'extension travaille dans cette session. Sur eBay, tu relies ton compte sur la page officielle d'eBay : FillSell reçoit une autorisation, jamais ton mot de passe. Pour eBay, c'est aussi la voie la plus sûre, puisque FillSell passe alors par l'interface officielle d'eBay. Tout est expliqué dans [comment fonctionne FillSell](page:comment-ca-marche) et [la sécurité de tes comptes](page:securite-des-comptes).
 
-## Sur Leboncoin, tes annonces remontent toutes seules
+## Sur Leboncoin, remonter une annonce sans option payante
 
 Leboncoin vend une option « Remonter en tête de liste », en une fois ou sur 7, 30 ou 60 jours. FillSell ne l'achète jamais à ta place. Il republie : il retire l'annonce puis la remet en ligne, et elle repart en haut des résultats. Ses vues et ses favoris repartent de zéro : à toi de choisir lesquelles remonter.
 
-Encore mieux, tes annonces remontent toutes seules : FillSell les republie sur {{republication}}, les jours et au créneau que tu choisis, pendant que tu fais autre chose, ordinateur allumé. Les republications sont espacées à un rythme humain pour protéger ton compte, et tu coupes tout d'un geste, quand tu veux. Le détail : [la republication de tes annonces](page:fonctions/republication).
+Encore mieux, selon ta formule, tes annonces remontent toutes seules : FillSell les republie sur {{republication}}, les jours et au créneau que tu choisis, pendant que tu fais autre chose, ordinateur allumé. Les republications sont espacées à un rythme humain pour protéger ton compte, et tu coupes tout d'un geste, quand tu veux. Le détail : [la republication de tes annonces](page:fonctions/republication).
 
 ## Et le reste de ton stock ?
 

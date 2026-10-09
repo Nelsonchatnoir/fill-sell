@@ -6,14 +6,14 @@ plateforme: vinted
 nom: Vinted
 surtitre: "Vinted France · app + extension Chrome"
 title: "FillSell pour Vinted : extension, republication et crosslisting"
-description: "Importe ton dressing Vinted en un appui, publie-le sur tes autres plateformes, republie au créneau choisi et retire les copies à la vente. Jamais ton mot de passe."
+description: "Importe ton dressing Vinted en un appui, publie-le sur tes autres plateformes, republie tes annonces et retire les copies à la vente. Jamais ton mot de passe."
 h1: "FillSell pour Vinted : l'outil pour vendre sur Vinted et bien au-delà"
-chapo: "FillSell est une app de crosslisting (iPhone, Android, web) doublée d'une extension Chrome qui travaille sur Vinted France dans ta propre session : elle publie tes annonces, importe ton dressing en un appui et remonte tes annonces au créneau que tu choisis. Quand Vinted marque un article vendu, FillSell enregistre la vente tout seul et retire ses copies prouvées ailleurs. Ton mot de passe Vinted ? Jamais."
+chapo: "FillSell est une app de crosslisting (iPhone, Android, web) doublée d'une extension Chrome qui travaille sur Vinted France dans ta session : elle publie tes annonces, importe ton dressing en un appui et les remonte d'un appui ou, selon ta formule, au créneau choisi. Quand Vinted marque un article vendu, FillSell enregistre la vente tout seul et retire ses copies prouvées ailleurs. Ton mot de passe Vinted ? Jamais."
 points_cles:
   - "Sur Vinted France (vinted.fr), l'extension Chrome FillSell publie, relit, republie et retire tes annonces dans ta session, une à une, à un rythme humain."
   - "Un appui sur « Synchroniser » importe tes annonces Vinted déjà en ligne dans ton stock FillSell, gratuitement et sans limite, sans rien publier ni modifier."
   - "Quand Vinted marque un article vendu, FillSell enregistre la vente tout seul ; les copies prouvées sont retirées de tes autres plateformes et, au moindre doute, l'app demande « Déjà vendu ? »."
-  - "La republication automatique remonte tes annonces sur {{republication}}, aux jours et au créneau que tu choisis, ordinateur allumé."
+  - "Selon ta formule, la republication automatique remonte tes annonces sur {{republication}}, aux jours et au créneau que tu choisis, ordinateur allumé."
   - "FillSell ne demande jamais ton mot de passe Vinted : tu te connectes à Vinted dans Chrome comme d'habitude, l'extension travaille dans cette session."
 hero_media: "captures/publication-verification-annonces.png"
 hero_alt: "Étape 2 sur 3 de la publication, « Ce qui va partir » : une carte par plateforme, chacune avec son rayon, son état, son prix de 14 € et la mention « Prêt » — Vinted (Hommes › … › T-shirts), Leboncoin (Mode › Vêtements), Beebs (Mode › … › T-shirts), eBay (Vêtements, accessoires › … › T-shirts) et Depop (Homme › … › T-shirts, sans titre : chez Depop, la description fait l'annonce)."
@@ -51,7 +51,7 @@ Le partage des rôles fait toute la différence :
 - **Ton ordinateur exécute.** L'extension Chrome FillSell travaille sur Vinted dans ta session : elle remplit les formulaires de Vinted, une annonce après l'autre.
 - **Tu gardes la main.** Au moindre doute, FillSell te pose la question au lieu de deviner.
 
-Une annonce, {{nb_plateformes}} plateformes. Rien à ressaisir de ce que tu as déjà sur Vinted. Et des annonces qui remontent au créneau que tu as choisi.
+Une annonce, {{nb_plateformes}} plateformes. Rien à ressaisir de ce que tu as déjà sur Vinted. Et des annonces qui remontent d'un appui ou, selon ta formule, au créneau que tu as choisi.
 
 ## Vinted en 2026 : ce qu'il faut savoir avant de vendre
 
@@ -88,7 +88,7 @@ Tu vends déjà sur Vinted ? Ne ressaisis rien. Appuie sur « Synchroniser » : 
 
 Un article en ligne sur Vinted et ailleurs devient une seule fiche. FillSell compare les photos ET le titre, jamais l'un sans l'autre. Au moindre doute, la question « Est-ce le même article ? » t'attend dans « Annonces à vérifier », hors de ton stock. Et deux annonces Vinted, ce sont deux exemplaires : FillSell ne les fond jamais l'une dans l'autre. Tout le fonctionnement : [la synchronisation de ton stock](page:fonctions/synchronisation).
 
-## Republier : tes annonces Vinted remontent toutes seules
+## Republier : remonter tes annonces Vinted
 
 Pourquoi republier ? Parce que sur Vinted, l'âge d'une annonce pèse. La date de mise en ligne fait partie des critères de classement publiés par Vinted, et la plateforme met en avant les nouvelles annonces ([aide Vinted sur les recommandations](https://www.vinted.fr/help/409)). Une annonce qui vieillit descend. Republier la fait repartir d'en haut.
 
@@ -96,8 +96,8 @@ Republier, c'est retirer l'annonce puis la remettre en ligne. Soyons clairs : ce
 
 Deux façons de faire :
 
-- **D'un appui.** Tu choisis tes annonces, tu appuies, ton ordinateur les republie une à une.
-- **En automatique.** Tes annonces remontent toutes seules sur {{republication}}. Tu choisis les jours, le créneau (matin, midi, soir ou sur mesure) et l'âge à partir duquel une annonce remonte, jamais moins d'une semaine. Ordinateur allumé, Chrome ouvert, et toi, tu fais autre chose.
+- **D'un appui.** Tu choisis une annonce, tu appuies, ton ordinateur la republie ; plusieurs d'un coup selon ta formule, et il les republie une à une.
+- **En automatique, selon ta formule.** Tes annonces remontent toutes seules sur {{republication}}. Tu choisis les jours, le créneau (matin, midi, soir ou sur mesure) et l'âge à partir duquel une annonce remonte, jamais moins d'une semaine. Ordinateur allumé, Chrome ouvert, et toi, tu fais autre chose.
 
 ![Réglage de la republication automatique dans FillSell : le créneau (Matin 8h–10h, Midi 12h–14h, Soir 19h–22h sélectionné, ou Personnalisé), « Heure locale · Chrome ouvert », la note « Les republications se répartissent sur le créneau, au rythme réel de ton compte. Jamais en rafale. », et les jours actifs (tous les jours, du lundi au dimanche).](media:captures/republication-creneaux.png)
 
@@ -152,7 +152,7 @@ Pour Vinted, oui : publier, republier, retirer une annonce et repérer une vente
 
 ### Comment remonter une annonce Vinted avec FillSell ?
 
-En la republiant : l'extension la retire puis la remet en ligne, et elle repart en haut des résultats, avec des vues et des favoris remis à zéro. Tu le fais d'un appui, ou tu laisses la republication automatique s'en charger sur {{republication}}, aux jours et au créneau que tu choisis. Ce n'est pas un Boost : c'est une nouvelle annonce.
+En la republiant : l'extension la retire puis la remet en ligne, et elle repart en haut des résultats, avec des vues et des favoris remis à zéro. Tu le fais d'un appui ou, selon ta formule, tu laisses la republication automatique s'en charger sur {{republication}}, aux jours et au créneau que tu choisis. Ce n'est pas un Boost : c'est une nouvelle annonce.
 
 ### Que se passe-t-il quand mon article se vend sur Vinted ?
 
