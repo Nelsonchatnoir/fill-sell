@@ -155,6 +155,7 @@
     "selftest:remise-en-ligne-vinted": "node scripts/remise-en-ligne-vinted-selftest.mjs",
     "selftest:ventes-prouvees": "node scripts/ventes-prouvees-selftest.mjs",
     "selftest:mail-apres-vente": "node scripts/mail-apres-vente-selftest.mjs",
+    "selftest:ventes-relevees-identifiant-seul": "node scripts/ventes-relevees-identifiant-seul-selftest.mjs",
     "banc:ventes-prouvees": "node scripts/cloud/pg-jetable.mjs scripts/ventes-prouvees-banc.mjs",
     "selftest:beebs-preuve-relue": "node scripts/beebs-preuve-relue-selftest.mjs",
     "selftest:onglet-muet-partout": "node scripts/onglet-muet-partout-selftest.mjs",

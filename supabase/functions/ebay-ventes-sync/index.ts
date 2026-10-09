@@ -64,6 +64,15 @@ const FENETRE_MAX_J = 720;
 const RECOUVREMENT_J = 30;
 const PAGE = 200;          // maximum accepté par getOrders (doc : Maximum 200)
 const PAGES_MAX = 25;      // 5 000 commandes par compte et par passage — borne dure
+// (09/10, Jocabroc) UN APPEL D'ÉCRITURE TIENT EN 8 s, OU IL N'ÉCRIT RIEN. PostgREST
+// passe par `authenticator` (statement_timeout = 8s) : le 09/10, toutes les
+// commandes d'un compte partaient en UN appel ; au-delà de 8 s la base l'annulait
+// en entier (« canceling statement due to statement timeout », 04:40 et 06:00
+// UTC) et le passage suivant recommençait — 174 commandes chez eBay, 0 en base,
+// depuis la liaison du compte. Les lignes partent donc par lots bornés, de la
+// plus ANCIENNE à la plus récente : un lot refusé n'avance jamais le curseur
+// (ci-dessous) au-delà de ce qui est écrit, il sera relu au passage suivant.
+const LOT_RPC = 40;
 
 interface LigneVente {
   ref: string; titre: string | null; prix: number | null; devise: string | null;
@@ -180,6 +189,32 @@ Deno.serve(async (req) => {
     return json({ ok: true, chemin: CHEMIN, comptes: comptes?.length ?? 0, comptes_avec_ventes: nComptesAvecVentes, commandes: nCommandes, vocabulaire: mode === "enums" ? vus : undefined, ...(squel as object ?? {}), trace: mode === "enums" ? undefined : trace });
   }
 
+  // ══ MODE LIGNES (09/10) — LECTURE SEULE ════════════════════════════════
+  // Les lignes EXACTES que le mode sync enverrait à la base pour UN compte
+  // (identifiant de commande et d'annonce, titre de l'annonce, prix, date,
+  // statut), sur toute la fenêtre de 720 jours — rien n'est écrit. Sert à
+  // mesurer (quelles ventes eBay manquent, quelles fiches, quelles copies) et à
+  // éprouver l'écriture dans une transaction annulée. Toujours sans donnée
+  // d'acheteur (lignesDeLaCommande n'en lit aucune).
+  if (mode === "lignes") {
+    if (!seul) return json({ error: "mode lignes : user_id obligatoire" }, 400);
+    const jeton = await obtenirAccessToken(admin, seul);
+    if (!jeton.ok) return json({ ok: false, jeton: jeton.motif });
+    const lignes: LigneVente[] = [];
+    let offset = 0, pages = 0, stop = false, http = 0;
+    while (pages < PAGES_MAX && !stop) {
+      const r = await appelEbay(env, jeton.token, `${CHEMIN}?limit=${PAGE}&offset=${offset}&filter=${filtreDepuis(bornePlancher)}`);
+      http = r.http; pages++;
+      if (r.http !== 200) return json({ ok: false, http: r.http, detail: r.texte.slice(0, 160), lues: lignes.length });
+      const j = r.json as Record<string, any> | null;
+      const orders: Record<string, any>[] = Array.isArray(j?.orders) ? j!.orders : [];
+      for (const o of orders) lignes.push(...lignesDeLaCommande(o));
+      offset += PAGE;
+      stop = orders.length < PAGE || offset >= Number(j?.total ?? 0);
+    }
+    return json({ ok: true, http, pages, lignes });
+  }
+
   // ══ MODE SYNC ═══════════════════════════════════════════════════════════
   if (mode !== "sync") return json({ error: `mode inconnu: ${mode}` }, 400);
 
@@ -193,12 +228,19 @@ Deno.serve(async (req) => {
     // Curseur : la vente eBay la plus récente déjà connue, moins le
     // recouvrement. Aucune table de curseur à maintenir — `ventes` EST le
     // curseur, et une interruption ne perd donc rien.
+    // (09/10) Seules les ventes ÉCRITES PAR CE RELEVÉ (une commande) comptent :
+    // une vente eBay déclarée à la main porte aussi plateforme_code « ebay » et
+    // une date du jour — elle faisait sauter tout l'historique jamais relevé.
     const { data: derniere } = await admin
       .from("ventes").select("vendu_le")
       .eq("user_id", c.user_id).eq("plateforme_code", "ebay")
+      .not("commande_ref", "is", null)
       .not("vendu_le", "is", null).order("vendu_le", { ascending: false }).limit(1);
     const repere = derniere?.[0]?.vendu_le ? new Date(Date.parse(derniere[0].vendu_le) - RECOUVREMENT_J * 86400_000) : bornePlancher;
-    const depuis = repere < bornePlancher ? bornePlancher : repere;
+    // (09/10) `fenetre: "complete"` relit les 720 jours : rattrapage d'un trou
+    // laissé par l'ancien curseur (tho-975214 : une commande de 2024 jamais
+    // relevée, le curseur partant d'une vente déclarée). Jamais au cron.
+    const depuis = corps?.fenetre === "complete" || repere < bornePlancher ? bornePlancher : repere;
 
     const lignes: LigneVente[] = [];
     let offset = 0, pages = 0, httpDernier = 0, stop = false;
@@ -218,14 +260,26 @@ Deno.serve(async (req) => {
     if (!lignes.length) { bilan.push({ http: httpDernier, lignes: 0, pages }); continue; }
     totalLignes += lignes.length;
 
-    // UNE seule porte d'écriture, la même que les trois autres plateformes.
-    const { data: res, error } = await admin.rpc("enregistrer_ventes_relevees", {
-      p_platform: "ebay", p_rows: lignes, p_user: c.user_id,
-    });
-    if (error) { bilan.push({ rpc: error.message, lignes: lignes.length }); continue; }
-    totalCreees += Number(res?.creees ?? 0);
-    totalAdoptees += Number(res?.adoptees ?? 0);
-    bilan.push({ pages, lignes: lignes.length, ...(res as object) });
+    // UNE seule porte d'écriture, la même que les trois autres plateformes —
+    // par lots bornés (LOT_RPC), de la plus ancienne à la plus récente. Au
+    // premier lot refusé on s'arrête : les plus récentes seront relues au
+    // passage suivant (le curseur n'a pas dépassé ce qui est écrit).
+    lignes.sort((a, b) => (Date.parse(a.vendu_le ?? "") || 0) - (Date.parse(b.vendu_le ?? "") || 0) || a.ref.localeCompare(b.ref));
+    const cumul: Record<string, number> = {};
+    let appels = 0, refus: string | null = null;
+    for (let i = 0; i < lignes.length; i += LOT_RPC) {
+      const { data: res, error } = await admin.rpc("enregistrer_ventes_relevees", {
+        p_platform: "ebay", p_rows: lignes.slice(i, i + LOT_RPC), p_user: c.user_id,
+      });
+      if (error) { refus = error.message; break; }
+      appels++;
+      for (const [k, v] of Object.entries((res ?? {}) as Record<string, unknown>)) {
+        if (typeof v === "number") cumul[k] = (cumul[k] ?? 0) + v;
+      }
+    }
+    totalCreees += cumul.creees ?? 0;
+    totalAdoptees += cumul.adoptees ?? 0;
+    bilan.push({ pages, lignes: lignes.length, appels, ...cumul, ...(refus ? { rpc: refus, appel_refuse: appels + 1 } : {}) });
   }
 
   return json({
