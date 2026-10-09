@@ -1,0 +1,112 @@
+--- a/src/ui.tsx	2026-10-09 19:07:37.125418800 +0200
++++ b/src/ui.tsx	2026-10-09 19:07:37.156466000 +0200
+@@ -50,22 +50,52 @@
+ // Plateformes : les VRAIS logos que l'app affiche (PlatformLogo.jsx) —
+ // Vinted et eBay : glyphe de marque sur socle blanc arrondi (chrome-extension/assets/*.svg) ;
+ // Beebs et Leboncoin : icône d'app officielle (src/components/platform-logos/source/*.png).
+-// Couleurs : ListingPreviewScreen.jsx:173 / StatsTab.jsx:186.
++// Couleurs : ListingPreviewScreen.jsx:173-174 / StatsTab.jsx:186.
++// VARIANTE SITE (09/10, décision 4 de Nico) : dans la vidéo, les logos TELS QUE L'APP LES DESSINE
++// (LOGOS_TIERS = true) — cinq plateformes, Depop comprise (DepopIcon.jsx, dessinée en ligne
++// ci-dessous à l'identique). Opla n'existe nulle part. LOGOS_TIERS = false rend une initiale neutre.
++export const LOGOS_TIERS = true;
+ export const PLAT = [
+   {k: 'vinted', n: 'Vinted', c: '#09B584', logo: 'logos/vinted.svg'},
+   {k: 'leboncoin', n: 'Leboncoin', c: '#EA5B0C', logo: 'logos/leboncoin.png'},
+   {k: 'ebay', n: 'eBay', c: '#0064D2', logo: 'logos/ebay.svg'},
+   {k: 'beebs', n: 'Beebs', c: '#FF6B35', logo: 'logos/beebs.png'},
++  {k: 'depop', n: 'Depop', c: '#FF2300', logo: ''},
+ ] as const;
+ export const platOf = (k: string) => PLAT.find((p) => p.k === k)!;
++const INITIALE: Record<string, string> = {vinted: 'V', leboncoin: 'L', ebay: 'E', beebs: 'B', depop: 'D'};
++
++// Depop : copie conforme de src/components/platform-logos/DepopIcon.jsx (09/10) — le mot-symbole
++// « depop » en blanc sur le rouge #FF2300, tuile carrée pleine, même viewBox, même texte.
++const DepopTuile: React.FC<{size: number; style?: React.CSSProperties}> = ({size, style}) => {
++  const r = Math.round(size * 0.28);
++  return (
++    <svg width={size} height={size} viewBox="0 0 64 64" style={{display: 'block', borderRadius: r, flexShrink: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.25)', ...style}}>
++      <rect width="64" height="64" rx={Math.round((r / size) * 64)} fill="#FF2300" />
++      <text x="32" y="39" textAnchor="middle" fontFamily="Arial, Helvetica, sans-serif" fontSize="17" fontWeight="700" fill="#FFFFFF" letterSpacing="-0.5">
++        depop
++      </text>
++    </svg>
++  );
++};
+ 
+ // Logo de plateforme au gabarit de l'app (arrondi = 28 % de la taille).
+-export const PlatLogo: React.FC<{k: string; size?: number; style?: React.CSSProperties}> = ({k, size = 32, style}) => (
+-  <Img
+-    src={staticFile(platOf(k).logo)}
+-    style={{width: size, height: size, borderRadius: Math.round(size * 0.28), display: 'block', flexShrink: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.25)', ...style}}
+-  />
+-);
++export const PlatLogo: React.FC<{k: string; size?: number; style?: React.CSSProperties}> = ({k, size = 32, style}) => {
++  if (!LOGOS_TIERS) {
++    return (
++      <div style={{width: size, height: size, borderRadius: Math.round(size * 0.28), display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: '#F6F5F1', boxShadow: '0 2px 8px rgba(0,0,0,0.25)', ...style}}>
++        <span style={{fontFamily: FONT, fontWeight: 700, fontSize: Math.round(size * 0.58), lineHeight: 1, color: '#10302B'}}>{INITIALE[k] ?? '?'}</span>
++      </div>
++    );
++  }
++  if (k === 'depop') return <DepopTuile size={size} style={style} />;
++  return (
++    <Img
++      src={staticFile(platOf(k).logo)}
++      style={{width: size, height: size, borderRadius: Math.round(size * 0.28), display: 'block', flexShrink: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.25)', ...style}}
++    />
++  );
++};
+ 
+ export const ease = Easing.bezier(0.16, 1, 0.3, 1);
+ 
+@@ -108,10 +138,15 @@
+ };
+ 
+ // ---------- Enveloppe de scène (entrée / sortie) ----------
+-export const Scene: React.FC<{dur: number; children: React.ReactNode}> = ({dur, children}) => {
+-  const f = useCurrentFrame();
+-  const o = interpolate(f, [0, 8, dur - 8, dur], [0, 1, 1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
+-  const s = interpolate(f, [0, 12], [0.97, 1], {extrapolateRight: 'clamp', easing: ease});
++// VARIANTE SITE : `entree={false}` pour la toute première scène (l'accroche est lisible dès
++// l'image 0, pas de fondu depuis le noir), `sortie={false}` pour la dernière (l'image finale,
++// celle qui reste à l'arrêt, garde l'appel à l'action) ; fondus raccourcis à 6 images (rythme).
++export const Scene: React.FC<{dur: number; children: React.ReactNode; entree?: boolean; sortie?: boolean}> = ({dur, children, entree = true, sortie = true}) => {
++  const f = useCurrentFrame();
++  const oIn = entree ? interpolate(f, [0, 6], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'}) : 1;
++  const oOut = sortie ? interpolate(f, [dur - 6, dur], [1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'}) : 1;
++  const o = Math.min(oIn, oOut);
++  const s = entree ? interpolate(f, [0, 12], [0.97, 1], {extrapolateRight: 'clamp', easing: ease}) : 1;
+   return <AbsoluteFill style={{opacity: o, transform: `scale(${s})`}}>{children}</AbsoluteFill>;
+ };
+ 
+@@ -208,7 +243,7 @@
+   t.split('*').map((s, i) => (i % 2 ? <span key={i} style={{color: C.aqua}}>{s}</span> : <React.Fragment key={i}>{s}</React.Fragment>));
+ 
+ // Légende qui change dans le temps (une à la fois)
+-export const Captions: React.FC<{items: {from: number; to: number; text: string; sub?: string}[]; y?: number}> = ({items, y = 1330}) => {
++export const Captions: React.FC<{items: {from: number; to: number; text: string; sub?: string}[]; y?: number; size?: number}> = ({items, y = 1330, size = 64}) => {
+   const f = useCurrentFrame();
+   return (
+     <>
+@@ -232,8 +267,8 @@
+               textAlign: 'center',
+             }}
+           >
+-            <div style={{fontFamily: FONT, fontWeight: 700, fontSize: 64, lineHeight: 1.1, color: C.text, letterSpacing: -1.5, whiteSpace: 'pre-line'}}>{surligner(it.text)}</div>
+-            {it.sub ? <div style={{fontFamily: FONT, fontWeight: 500, fontSize: 40, color: C.mute, marginTop: 18}}>{it.sub}</div> : null}
++            <div style={{fontFamily: FONT, fontWeight: 700, fontSize: size, lineHeight: 1.1, color: C.text, letterSpacing: -1.5, whiteSpace: 'pre-line'}}>{surligner(it.text)}</div>
++            {it.sub ? <div style={{fontFamily: FONT, fontWeight: 500, fontSize: 40, lineHeight: 1.3, color: C.mute, marginTop: 18, whiteSpace: 'pre-line'}}>{surligner(it.sub)}</div> : null}
+           </div>
+         );
+       })}
+@@ -242,7 +277,8 @@
+ };
+ 
+ // ---------- Barre d'étapes (haut) ----------
+-const STEPS = ['Importer', 'Photographier', 'Publier', 'Republier', 'Retirer', 'Suivre'];
++// VARIANTE SITE (09/10) : le parcours de Camille en cinq temps.
++const STEPS = ['Photo', 'Publier', 'Remonter', 'Vendre', 'Suivre'];
+ export const StepBar: React.FC<{active: number}> = ({active}) => {
+   const f = useCurrentFrame();
+   const p = prog(f, 0, 16);

@@ -1,0 +1,78 @@
+{
+  "mesure": "home-desktop-1",
+  "methode": "Lighthouse 13.5.0 local (npx), desktop, throttling simulate",
+  "url": "https://fillsell.app/",
+  "date_utc": "2026-10-09T12:52:45.037Z",
+  "agent_emule": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+  "chrome_hote": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+  "benchmark_index": 2264.5,
+  "scores": {
+    "performance": 88,
+    "accessibility": 90,
+    "best-practices": 96,
+    "seo": 100
+  },
+  "metriques": {
+    "first-contentful-paint": {
+      "valeur": 815.745,
+      "affiche": "0.8 s"
+    },
+    "largest-contentful-paint": {
+      "valeur": 2110.7851,
+      "affiche": "2.1 s"
+    },
+    "total-blocking-time": {
+      "valeur": 105.70299999999997,
+      "affiche": "110 ms"
+    },
+    "cumulative-layout-shift": {
+      "valeur": 0.002426699808660165,
+      "affiche": "0.002"
+    },
+    "speed-index": {
+      "valeur": 919.6676038264978,
+      "affiche": "0.9 s"
+    },
+    "interactive": {
+      "valeur": 2117.5573000000004,
+      "affiche": "2.1 s"
+    },
+    "max-potential-fid": {
+      "valeur": 136,
+      "affiche": "140 ms"
+    },
+    "server-response-time": {
+      "valeur": 31,
+      "affiche": "Root document took 30 ms"
+    }
+  },
+  "element_lcp": {
+    "selecteur": "section#top > div > div > h1",
+    "texte": "Tes annonces, publiées partout : Vinted, Leboncoin, eBay et Beebs."
+  },
+  "requetes": 36,
+  "poids_transfere_kio": 1296,
+  "audits_sous_90": {
+    "performance": [
+      "largest-contentful-paint (2.1 s)",
+      "cache-insight (Est savings of 1 KiB)",
+      "image-delivery-insight (Est savings of 140 KiB)",
+      "network-dependency-tree-insight",
+      "render-blocking-insight (Est savings of 120 ms)",
+      "max-potential-fid (140 ms)",
+      "unused-javascript (Est savings of 373 KiB)",
+      "unsized-images"
+    ],
+    "accessibility": [
+      "color-contrast",
+      "meta-viewport"
+    ],
+    "best-practices": [
+      "errors-in-console",
+      "valid-source-maps"
+    ],
+    "seo": []
+  },
+  "erreurs_execution": null,
+  "avertissements": []
+}

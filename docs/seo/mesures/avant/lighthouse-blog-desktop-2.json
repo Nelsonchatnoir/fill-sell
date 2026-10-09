@@ -1,0 +1,75 @@
+{
+  "mesure": "blog-desktop-2",
+  "methode": "Lighthouse 13.5.0 local (npx), desktop, throttling simulate",
+  "url": "https://fillsell.app/blog",
+  "date_utc": "2026-10-09T12:54:43.479Z",
+  "agent_emule": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+  "chrome_hote": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+  "benchmark_index": 2921.5,
+  "scores": {
+    "performance": 93,
+    "accessibility": 90,
+    "best-practices": 96,
+    "seo": 100
+  },
+  "metriques": {
+    "first-contentful-paint": {
+      "valeur": 743.153,
+      "affiche": "0.7 s"
+    },
+    "largest-contentful-paint": {
+      "valeur": 1719.8259999999998,
+      "affiche": "1.7 s"
+    },
+    "total-blocking-time": {
+      "valeur": 0,
+      "affiche": "0 ms"
+    },
+    "cumulative-layout-shift": {
+      "valeur": 0.0001948093809346015,
+      "affiche": "0"
+    },
+    "speed-index": {
+      "valeur": 743.153,
+      "affiche": "0.7 s"
+    },
+    "interactive": {
+      "valeur": 1719.8259999999998,
+      "affiche": "1.7 s"
+    },
+    "max-potential-fid": {
+      "valeur": 48,
+      "affiche": "50 ms"
+    },
+    "server-response-time": {
+      "valeur": 30,
+      "affiche": "Root document took 30 ms"
+    }
+  },
+  "element_lcp": {
+    "selecteur": "div#root > div.blog-list > a.blog-card > p",
+    "texte": "Publier le même article sur Vinted, Leboncoin, eBay et Beebs sans double vente …"
+  },
+  "requetes": 23,
+  "poids_transfere_kio": 930,
+  "audits_sous_90": {
+    "performance": [
+      "largest-contentful-paint (1.7 s)",
+      "image-delivery-insight (Est savings of 24 KiB)",
+      "network-dependency-tree-insight",
+      "render-blocking-insight (Est savings of 280 ms)",
+      "unused-javascript (Est savings of 311 KiB)"
+    ],
+    "accessibility": [
+      "color-contrast",
+      "meta-viewport"
+    ],
+    "best-practices": [
+      "errors-in-console",
+      "valid-source-maps"
+    ],
+    "seo": []
+  },
+  "erreurs_execution": null,
+  "avertissements": []
+}

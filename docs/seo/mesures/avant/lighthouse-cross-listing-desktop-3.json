@@ -1,0 +1,77 @@
+{
+  "mesure": "cross-listing-desktop-3",
+  "methode": "Lighthouse 13.5.0 local (npx), desktop, throttling simulate",
+  "url": "https://fillsell.app/blog/cross-listing-vinted-leboncoin",
+  "date_utc": "2026-10-09T12:56:26.895Z",
+  "agent_emule": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+  "chrome_hote": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+  "benchmark_index": 2946.5,
+  "scores": {
+    "performance": 93,
+    "accessibility": 91,
+    "best-practices": 96,
+    "seo": 100
+  },
+  "metriques": {
+    "first-contentful-paint": {
+      "valeur": 895.48,
+      "affiche": "0.9 s"
+    },
+    "largest-contentful-paint": {
+      "valeur": 1595.1419999999998,
+      "affiche": "1.6 s"
+    },
+    "total-blocking-time": {
+      "valeur": 3,
+      "affiche": "0 ms"
+    },
+    "cumulative-layout-shift": {
+      "valeur": 0.0003033922753144751,
+      "affiche": "0"
+    },
+    "speed-index": {
+      "valeur": 895.48,
+      "affiche": "0.9 s"
+    },
+    "interactive": {
+      "valeur": 1692.8638,
+      "affiche": "1.7 s"
+    },
+    "max-potential-fid": {
+      "valeur": 56,
+      "affiche": "60 ms"
+    },
+    "server-response-time": {
+      "valeur": 38,
+      "affiche": "Root document took 40 ms"
+    }
+  },
+  "element_lcp": {
+    "selecteur": "article.blog-post-wrap > div.blog-content > p > img",
+    "texte": "Un même article proposé sur plusieurs plateformes de seconde main à la fois"
+  },
+  "requetes": 24,
+  "poids_transfere_kio": 1218,
+  "audits_sous_90": {
+    "performance": [
+      "largest-contentful-paint (1.6 s)",
+      "image-delivery-insight (Est savings of 223 KiB)",
+      "lcp-discovery-insight",
+      "network-dependency-tree-insight",
+      "render-blocking-insight (Est savings of 160 ms)",
+      "unused-javascript (Est savings of 337 KiB)",
+      "unsized-images"
+    ],
+    "accessibility": [
+      "color-contrast",
+      "meta-viewport"
+    ],
+    "best-practices": [
+      "errors-in-console",
+      "valid-source-maps"
+    ],
+    "seo": []
+  },
+  "erreurs_execution": null,
+  "avertissements": []
+}

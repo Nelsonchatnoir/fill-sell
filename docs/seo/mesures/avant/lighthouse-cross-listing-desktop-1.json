@@ -1,0 +1,77 @@
+{
+  "mesure": "cross-listing-desktop-1",
+  "methode": "Lighthouse 13.5.0 local (npx), desktop, throttling simulate",
+  "url": "https://fillsell.app/blog/cross-listing-vinted-leboncoin",
+  "date_utc": "2026-10-09T12:55:57.095Z",
+  "agent_emule": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+  "chrome_hote": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+  "benchmark_index": 2633.5,
+  "scores": {
+    "performance": 89,
+    "accessibility": 91,
+    "best-practices": 96,
+    "seo": 100
+  },
+  "metriques": {
+    "first-contentful-paint": {
+      "valeur": 899.8800000000001,
+      "affiche": "0.9 s"
+    },
+    "largest-contentful-paint": {
+      "valeur": 2046.3745,
+      "affiche": "2.0 s"
+    },
+    "total-blocking-time": {
+      "valeur": 0,
+      "affiche": "0 ms"
+    },
+    "cumulative-layout-shift": {
+      "valeur": 0.0001948093809346015,
+      "affiche": "0"
+    },
+    "speed-index": {
+      "valeur": 899.8800000000001,
+      "affiche": "0.9 s"
+    },
+    "interactive": {
+      "valeur": 2046.3745,
+      "affiche": "2.0 s"
+    },
+    "max-potential-fid": {
+      "valeur": 45,
+      "affiche": "50 ms"
+    },
+    "server-response-time": {
+      "valeur": 32,
+      "affiche": "Root document took 30 ms"
+    }
+  },
+  "element_lcp": {
+    "selecteur": "article.blog-post-wrap > div.blog-content > p > img",
+    "texte": "Un même article proposé sur plusieurs plateformes de seconde main à la fois"
+  },
+  "requetes": 25,
+  "poids_transfere_kio": 1370,
+  "audits_sous_90": {
+    "performance": [
+      "largest-contentful-paint (2.0 s)",
+      "image-delivery-insight (Est savings of 223 KiB)",
+      "lcp-discovery-insight",
+      "network-dependency-tree-insight",
+      "render-blocking-insight (Est savings of 190 ms)",
+      "unused-javascript (Est savings of 448 KiB)",
+      "unsized-images"
+    ],
+    "accessibility": [
+      "color-contrast",
+      "meta-viewport"
+    ],
+    "best-practices": [
+      "errors-in-console",
+      "valid-source-maps"
+    ],
+    "seo": []
+  },
+  "erreurs_execution": null,
+  "avertissements": []
+}

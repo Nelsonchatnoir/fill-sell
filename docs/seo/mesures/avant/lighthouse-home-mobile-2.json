@@ -1,0 +1,84 @@
+{
+  "mesure": "home-mobile-2",
+  "methode": "Lighthouse 13.5.0 local (npx), mobile, throttling simulate",
+  "url": "https://fillsell.app/",
+  "date_utc": "2026-10-09T12:52:05.544Z",
+  "agent_emule": "Mozilla/5.0 (Linux; Android 11; moto g power (2022)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Mobile Safari/537.36",
+  "chrome_hote": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+  "benchmark_index": 2193.5,
+  "scores": {
+    "performance": 43,
+    "accessibility": 90,
+    "best-practices": 92,
+    "seo": 100
+  },
+  "metriques": {
+    "first-contentful-paint": {
+      "valeur": 3320.28475,
+      "affiche": "3.3 s"
+    },
+    "largest-contentful-paint": {
+      "valeur": 10132.683399999998,
+      "affiche": "10.1 s"
+    },
+    "total-blocking-time": {
+      "valeur": 1339.7520999999988,
+      "affiche": "1,340 ms"
+    },
+    "cumulative-layout-shift": {
+      "valeur": 0.008129179609722582,
+      "affiche": "0.008"
+    },
+    "speed-index": {
+      "valeur": 3320.28475,
+      "affiche": "3.3 s"
+    },
+    "interactive": {
+      "valeur": 10193.670639999998,
+      "affiche": "10.2 s"
+    },
+    "max-potential-fid": {
+      "valeur": 675,
+      "affiche": "680 ms"
+    },
+    "server-response-time": {
+      "valeur": 34,
+      "affiche": "Root document took 30 ms"
+    }
+  },
+  "element_lcp": {
+    "selecteur": "section#top > div > div > h1",
+    "texte": "Tes annonces, publiées partout : Vinted, Leboncoin, eBay et Beebs."
+  },
+  "requetes": 36,
+  "poids_transfere_kio": 1296,
+  "audits_sous_90": {
+    "performance": [
+      "first-contentful-paint (3.3 s)",
+      "largest-contentful-paint (10.1 s)",
+      "total-blocking-time (1,340 ms)",
+      "cache-insight (Est savings of 1 KiB)",
+      "image-delivery-insight (Est savings of 137 KiB)",
+      "network-dependency-tree-insight",
+      "render-blocking-insight (Est savings of 660 ms)",
+      "interactive (10.2 s)",
+      "max-potential-fid (680 ms)",
+      "unused-javascript (Est savings of 377 KiB)",
+      "bootup-time (2.3 s)",
+      "mainthread-work-breakdown (7.4 s)",
+      "unsized-images"
+    ],
+    "accessibility": [
+      "color-contrast",
+      "meta-viewport"
+    ],
+    "best-practices": [
+      "image-size-responsive",
+      "errors-in-console",
+      "valid-source-maps"
+    ],
+    "seo": []
+  },
+  "erreurs_execution": null,
+  "avertissements": []
+}

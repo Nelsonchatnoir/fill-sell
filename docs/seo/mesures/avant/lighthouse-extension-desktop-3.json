@@ -1,0 +1,75 @@
+{
+  "mesure": "extension-desktop-3",
+  "methode": "Lighthouse 13.5.0 local (npx), desktop, throttling simulate",
+  "url": "https://fillsell.app/extension",
+  "date_utc": "2026-10-09T12:57:52.749Z",
+  "agent_emule": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+  "chrome_hote": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+  "benchmark_index": 2972,
+  "scores": {
+    "performance": 92,
+    "accessibility": 90,
+    "best-practices": 96,
+    "seo": 100
+  },
+  "metriques": {
+    "first-contentful-paint": {
+      "valeur": 851.4805,
+      "affiche": "0.9 s"
+    },
+    "largest-contentful-paint": {
+      "valeur": 1720.9640000000004,
+      "affiche": "1.7 s"
+    },
+    "total-blocking-time": {
+      "valeur": 0,
+      "affiche": "0 ms"
+    },
+    "cumulative-layout-shift": {
+      "valeur": 0.004413795151470654,
+      "affiche": "0.004"
+    },
+    "speed-index": {
+      "valeur": 851.4805,
+      "affiche": "0.9 s"
+    },
+    "interactive": {
+      "valeur": 1720.9640000000004,
+      "affiche": "1.7 s"
+    },
+    "max-potential-fid": {
+      "valeur": 46,
+      "affiche": "50 ms"
+    },
+    "server-response-time": {
+      "valeur": 46,
+      "affiche": "Root document took 50 ms"
+    }
+  },
+  "element_lcp": {
+    "selecteur": "div > div > div > div",
+    "texte": "Clique sur l'icône FillSell → « Se connecter » → connecte-toi sur fillsell.app.…"
+  },
+  "requetes": 23,
+  "poids_transfere_kio": 890,
+  "audits_sous_90": {
+    "performance": [
+      "largest-contentful-paint (1.7 s)",
+      "network-dependency-tree-insight",
+      "render-blocking-insight (Est savings of 160 ms)",
+      "unused-javascript (Est savings of 306 KiB)",
+      "unsized-images"
+    ],
+    "accessibility": [
+      "color-contrast",
+      "meta-viewport"
+    ],
+    "best-practices": [
+      "errors-in-console",
+      "valid-source-maps"
+    ],
+    "seo": []
+  },
+  "erreurs_execution": null,
+  "avertissements": []
+}

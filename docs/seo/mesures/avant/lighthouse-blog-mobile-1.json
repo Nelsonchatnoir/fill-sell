@@ -1,0 +1,80 @@
+{
+  "mesure": "blog-mobile-1",
+  "methode": "Lighthouse 13.5.0 local (npx), mobile, throttling simulate",
+  "url": "https://fillsell.app/blog",
+  "date_utc": "2026-10-09T12:53:44.628Z",
+  "agent_emule": "Mozilla/5.0 (Linux; Android 11; moto g power (2022)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Mobile Safari/537.36",
+  "chrome_hote": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+  "benchmark_index": 2641.5,
+  "scores": {
+    "performance": 61,
+    "accessibility": 90,
+    "best-practices": 96,
+    "seo": 100
+  },
+  "metriques": {
+    "first-contentful-paint": {
+      "valeur": 3635.8269999999998,
+      "affiche": "3.6 s"
+    },
+    "largest-contentful-paint": {
+      "valeur": 9146.030999999999,
+      "affiche": "9.1 s"
+    },
+    "total-blocking-time": {
+      "valeur": 277,
+      "affiche": "280 ms"
+    },
+    "cumulative-layout-shift": {
+      "valeur": 0,
+      "affiche": "0"
+    },
+    "speed-index": {
+      "valeur": 3635.8269999999998,
+      "affiche": "3.6 s"
+    },
+    "interactive": {
+      "valeur": 9146.030999999999,
+      "affiche": "9.1 s"
+    },
+    "max-potential-fid": {
+      "valeur": 187,
+      "affiche": "190 ms"
+    },
+    "server-response-time": {
+      "valeur": 33,
+      "affiche": "Root document took 30 ms"
+    }
+  },
+  "element_lcp": {
+    "selecteur": "div#root > div.blog-list > a.blog-card > p",
+    "texte": "One source sheet, four listings, one register: a method for listing an item on …"
+  },
+  "requetes": 24,
+  "poids_transfere_kio": 1082,
+  "audits_sous_90": {
+    "performance": [
+      "first-contentful-paint (3.6 s)",
+      "largest-contentful-paint (9.1 s)",
+      "total-blocking-time (280 ms)",
+      "speed-index (3.6 s)",
+      "image-delivery-insight (Est savings of 24 KiB)",
+      "network-dependency-tree-insight",
+      "render-blocking-insight (Est savings of 800 ms)",
+      "interactive (9.1 s)",
+      "max-potential-fid (190 ms)",
+      "unused-javascript (Est savings of 429 KiB)"
+    ],
+    "accessibility": [
+      "color-contrast",
+      "meta-viewport"
+    ],
+    "best-practices": [
+      "errors-in-console",
+      "valid-source-maps"
+    ],
+    "seo": []
+  },
+  "erreurs_execution": null,
+  "avertissements": []
+}

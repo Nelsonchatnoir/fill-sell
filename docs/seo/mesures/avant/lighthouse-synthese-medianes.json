@@ -1,0 +1,375 @@
+{
+  "date": "2026-10-09",
+  "methode": "Lighthouse 13.5.0 local (npx), throttling simulate",
+  "note": "médiane de 3 passages par page et par appareil ; unités : ms sauf CLS",
+  "mesures": {
+    "blog-desktop": {
+      "url": "https://fillsell.app/blog",
+      "passages": 3,
+      "scores_medians": {
+        "performance": 91,
+        "accessibility": 90,
+        "best-practices": 96,
+        "seo": 100
+      },
+      "scores_par_passage": [
+        {
+          "performance": 91,
+          "accessibility": 90,
+          "best-practices": 96,
+          "seo": 100
+        },
+        {
+          "performance": 93,
+          "accessibility": 90,
+          "best-practices": 96,
+          "seo": 100
+        },
+        {
+          "performance": 90,
+          "accessibility": 90,
+          "best-practices": 96,
+          "seo": 100
+        }
+      ],
+      "metriques_medianes": {
+        "first-contentful-paint": 889.345,
+        "largest-contentful-paint": 1817.437,
+        "total-blocking-time": 0,
+        "cumulative-layout-shift": 0,
+        "speed-index": 889.345,
+        "interactive": 1817.437,
+        "max-potential-fid": 48,
+        "server-response-time": 30
+      },
+      "element_lcp": {
+        "selecteur": "div#root > div.blog-list > a.blog-card > p",
+        "texte": "Publier le même article sur Vinted, Leboncoin, eBay et Beebs sans double vente …"
+      },
+      "poids_transfere_kio": 932,
+      "requetes": 23
+    },
+    "blog-mobile": {
+      "url": "https://fillsell.app/blog",
+      "passages": 3,
+      "scores_medians": {
+        "performance": 59,
+        "accessibility": 90,
+        "best-practices": 96,
+        "seo": 100
+      },
+      "scores_par_passage": [
+        {
+          "performance": 61,
+          "accessibility": 90,
+          "best-practices": 96,
+          "seo": 100
+        },
+        {
+          "performance": 59,
+          "accessibility": 90,
+          "best-practices": 96,
+          "seo": 100
+        },
+        {
+          "performance": 51,
+          "accessibility": 90,
+          "best-practices": 96,
+          "seo": 100
+        }
+      ],
+      "metriques_medianes": {
+        "first-contentful-paint": 3635.827,
+        "largest-contentful-paint": 9146.031,
+        "total-blocking-time": 340,
+        "cumulative-layout-shift": 0,
+        "speed-index": 3635.827,
+        "interactive": 9146.031,
+        "max-potential-fid": 211,
+        "server-response-time": 33
+      },
+      "element_lcp": {
+        "selecteur": "div#root > div.blog-list > a.blog-card > p",
+        "texte": "One source sheet, four listings, one register: a method for listing an item on …"
+      },
+      "poids_transfere_kio": 1084,
+      "requetes": 24
+    },
+    "cross-listing-desktop": {
+      "url": "https://fillsell.app/blog/cross-listing-vinted-leboncoin",
+      "passages": 3,
+      "scores_medians": {
+        "performance": 90,
+        "accessibility": 91,
+        "best-practices": 96,
+        "seo": 100
+      },
+      "scores_par_passage": [
+        {
+          "performance": 89,
+          "accessibility": 91,
+          "best-practices": 96,
+          "seo": 100
+        },
+        {
+          "performance": 90,
+          "accessibility": 91,
+          "best-practices": 96,
+          "seo": 100
+        },
+        {
+          "performance": 93,
+          "accessibility": 91,
+          "best-practices": 96,
+          "seo": 100
+        }
+      ],
+      "metriques_medianes": {
+        "first-contentful-paint": 899.88,
+        "largest-contentful-paint": 1919.816,
+        "total-blocking-time": 0,
+        "cumulative-layout-shift": 0,
+        "speed-index": 899.88,
+        "interactive": 1926.911,
+        "max-potential-fid": 49,
+        "server-response-time": 37
+      },
+      "element_lcp": {
+        "selecteur": "article.blog-post-wrap > div.blog-content > p > img",
+        "texte": "Un même article proposé sur plusieurs plateformes de seconde main à la fois"
+      },
+      "poids_transfere_kio": 1370,
+      "requetes": 25
+    },
+    "cross-listing-mobile": {
+      "url": "https://fillsell.app/blog/cross-listing-vinted-leboncoin",
+      "passages": 3,
+      "scores_medians": {
+        "performance": 61,
+        "accessibility": 91,
+        "best-practices": 96,
+        "seo": 100
+      },
+      "scores_par_passage": [
+        {
+          "performance": 59,
+          "accessibility": 91,
+          "best-practices": 96,
+          "seo": 100
+        },
+        {
+          "performance": 61,
+          "accessibility": 91,
+          "best-practices": 96,
+          "seo": 100
+        },
+        {
+          "performance": 63,
+          "accessibility": 91,
+          "best-practices": 96,
+          "seo": 100
+        }
+      ],
+      "metriques_medianes": {
+        "first-contentful-paint": 3690.211,
+        "largest-contentful-paint": 9990.826,
+        "total-blocking-time": 299.5,
+        "cumulative-layout-shift": 0,
+        "speed-index": 3690.211,
+        "interactive": 10044.895,
+        "max-potential-fid": 188,
+        "server-response-time": 40
+      },
+      "element_lcp": {
+        "selecteur": "div#root > article.blog-post-wrap > div.blog-content > p",
+        "texte": "« Cross-listing », « cross-posting », « multiposting » : trois mots pour la mêm…"
+      },
+      "poids_transfere_kio": 1370,
+      "requetes": 25
+    },
+    "extension-desktop": {
+      "url": "https://fillsell.app/extension",
+      "passages": 3,
+      "scores_medians": {
+        "performance": 92,
+        "accessibility": 90,
+        "best-practices": 96,
+        "seo": 100
+      },
+      "scores_par_passage": [
+        {
+          "performance": 92,
+          "accessibility": 90,
+          "best-practices": 96,
+          "seo": 100
+        },
+        {
+          "performance": 92,
+          "accessibility": 90,
+          "best-practices": 96,
+          "seo": 100
+        },
+        {
+          "performance": 92,
+          "accessibility": 90,
+          "best-practices": 96,
+          "seo": 100
+        }
+      ],
+      "metriques_medianes": {
+        "first-contentful-paint": 851.481,
+        "largest-contentful-paint": 1720.964,
+        "total-blocking-time": 3,
+        "cumulative-layout-shift": 0.004,
+        "speed-index": 851.481,
+        "interactive": 1720.964,
+        "max-potential-fid": 53,
+        "server-response-time": 46
+      },
+      "element_lcp": {
+        "selecteur": "div > div > div > div",
+        "texte": "Clique sur l'icône FillSell → « Se connecter » → connecte-toi sur fillsell.app.…"
+      },
+      "poids_transfere_kio": 890,
+      "requetes": 23
+    },
+    "extension-mobile": {
+      "url": "https://fillsell.app/extension",
+      "passages": 3,
+      "scores_medians": {
+        "performance": 64,
+        "accessibility": 90,
+        "best-practices": 96,
+        "seo": 100
+      },
+      "scores_par_passage": [
+        {
+          "performance": 64,
+          "accessibility": 90,
+          "best-practices": 96,
+          "seo": 100
+        },
+        {
+          "performance": 63,
+          "accessibility": 90,
+          "best-practices": 96,
+          "seo": 100
+        },
+        {
+          "performance": 64,
+          "accessibility": 90,
+          "best-practices": 96,
+          "seo": 100
+        }
+      ],
+      "metriques_medianes": {
+        "first-contentful-paint": 3431.024,
+        "largest-contentful-paint": 8616.456,
+        "total-blocking-time": 233,
+        "cumulative-layout-shift": 0,
+        "speed-index": 3431.024,
+        "interactive": 8616.456,
+        "max-potential-fid": 182,
+        "server-response-time": 32
+      },
+      "element_lcp": {
+        "selecteur": "div#root > div > div > div",
+        "texte": "📱 Tu es sur ton téléphone\nL'extension s'installe sur un ordinateur, dans Chrome…"
+      },
+      "poids_transfere_kio": 1042,
+      "requetes": 24
+    },
+    "home-desktop": {
+      "url": "https://fillsell.app/",
+      "passages": 3,
+      "scores_medians": {
+        "performance": 89,
+        "accessibility": 90,
+        "best-practices": 96,
+        "seo": 100
+      },
+      "scores_par_passage": [
+        {
+          "performance": 88,
+          "accessibility": 90,
+          "best-practices": 96,
+          "seo": 100
+        },
+        {
+          "performance": 89,
+          "accessibility": 90,
+          "best-practices": 96,
+          "seo": 100
+        },
+        {
+          "performance": 90,
+          "accessibility": 90,
+          "best-practices": 96,
+          "seo": 100
+        }
+      ],
+      "metriques_medianes": {
+        "first-contentful-paint": 815.745,
+        "largest-contentful-paint": 2061.857,
+        "total-blocking-time": 60.089,
+        "cumulative-layout-shift": 0.002,
+        "speed-index": 919.668,
+        "interactive": 2068.614,
+        "max-potential-fid": 127,
+        "server-response-time": 33
+      },
+      "element_lcp": {
+        "selecteur": "section#top > div > div > h1",
+        "texte": "Tes annonces, publiées partout : Vinted, Leboncoin, eBay et Beebs."
+      },
+      "poids_transfere_kio": 1296,
+      "requetes": 36
+    },
+    "home-mobile": {
+      "url": "https://fillsell.app/",
+      "passages": 3,
+      "scores_medians": {
+        "performance": 53,
+        "accessibility": 90,
+        "best-practices": 92,
+        "seo": 100
+      },
+      "scores_par_passage": [
+        {
+          "performance": 58,
+          "accessibility": 90,
+          "best-practices": 92,
+          "seo": 100
+        },
+        {
+          "performance": 43,
+          "accessibility": 90,
+          "best-practices": 92,
+          "seo": 100
+        },
+        {
+          "performance": 53,
+          "accessibility": 90,
+          "best-practices": 92,
+          "seo": 100
+        }
+      ],
+      "metriques_medianes": {
+        "first-contentful-paint": 3320.285,
+        "largest-contentful-paint": 9804.708,
+        "total-blocking-time": 611,
+        "cumulative-layout-shift": 0.008,
+        "speed-index": 3320.285,
+        "interactive": 9865.834,
+        "max-potential-fid": 347,
+        "server-response-time": 34
+      },
+      "element_lcp": {
+        "selecteur": "section#top > div > div > h1",
+        "texte": "Tes annonces, publiées partout : Vinted, Leboncoin, eBay et Beebs."
+      },
+      "poids_transfere_kio": 1296,
+      "requetes": 36
+    }
+  }
+}

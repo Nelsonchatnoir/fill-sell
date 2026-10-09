@@ -1,0 +1,81 @@
+{
+  "mesure": "cross-listing-mobile-1",
+  "methode": "Lighthouse 13.5.0 local (npx), mobile, throttling simulate",
+  "url": "https://fillsell.app/blog/cross-listing-vinted-leboncoin",
+  "date_utc": "2026-10-09T12:55:12.921Z",
+  "agent_emule": "Mozilla/5.0 (Linux; Android 11; moto g power (2022)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Mobile Safari/537.36",
+  "chrome_hote": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+  "benchmark_index": 2404,
+  "scores": {
+    "performance": 59,
+    "accessibility": 91,
+    "best-practices": 96,
+    "seo": 100
+  },
+  "metriques": {
+    "first-contentful-paint": {
+      "valeur": 3690.211,
+      "affiche": "3.7 s"
+    },
+    "largest-contentful-paint": {
+      "valeur": 10095.846,
+      "affiche": "10.1 s"
+    },
+    "total-blocking-time": {
+      "valeur": 344.5,
+      "affiche": "340 ms"
+    },
+    "cumulative-layout-shift": {
+      "valeur": 0,
+      "affiche": "0"
+    },
+    "speed-index": {
+      "valeur": 3690.211,
+      "affiche": "3.7 s"
+    },
+    "interactive": {
+      "valeur": 10173.0385,
+      "affiche": "10.2 s"
+    },
+    "max-potential-fid": {
+      "valeur": 239,
+      "affiche": "240 ms"
+    },
+    "server-response-time": {
+      "valeur": 45,
+      "affiche": "Root document took 50 ms"
+    }
+  },
+  "element_lcp": {
+    "selecteur": "div#root > article.blog-post-wrap > div.blog-content > p",
+    "texte": "« Cross-listing », « cross-posting », « multiposting » : trois mots pour la mêm…"
+  },
+  "requetes": 25,
+  "poids_transfere_kio": 1368,
+  "audits_sous_90": {
+    "performance": [
+      "first-contentful-paint (3.7 s)",
+      "largest-contentful-paint (10.1 s)",
+      "total-blocking-time (340 ms)",
+      "speed-index (3.7 s)",
+      "image-delivery-insight (Est savings of 224 KiB)",
+      "network-dependency-tree-insight",
+      "render-blocking-insight (Est savings of 980 ms)",
+      "interactive (10.2 s)",
+      "max-potential-fid (240 ms)",
+      "unused-javascript (Est savings of 453 KiB)",
+      "unsized-images"
+    ],
+    "accessibility": [
+      "color-contrast",
+      "meta-viewport"
+    ],
+    "best-practices": [
+      "errors-in-console",
+      "valid-source-maps"
+    ],
+    "seo": []
+  },
+  "erreurs_execution": null,
+  "avertissements": []
+}

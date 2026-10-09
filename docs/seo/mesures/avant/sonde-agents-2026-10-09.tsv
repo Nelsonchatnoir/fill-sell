@@ -1,0 +1,48 @@
+agent	/	/robots.txt	/sitemap.xml	corps_403
+GPTBot/1.3	403	200	403	Your request was blocked.
+OAI-SearchBot/1.3	200	200	200	
+ChatGPT-User/1.0	200	200	200	
+ChatGPT-User/2.0	200	200	200	
+ClaudeBot/1.0	403	200	403	Your request was blocked.
+Claude-SearchBot/1.0	200	200	200	
+Claude-User/1.0	200	200	200	
+anthropic-ai	403	200	403	Your request was blocked.
+Claude-Web/1.0	403	200	403	Your request was blocked.
+PerplexityBot/1.0	200	200	200	
+Perplexity-User/1.0	200	200	200	
+CCBot/2.0	403	200	403	Your request was blocked.
+Bytespider	403	200	403	Your request was blocked.
+Amazonbot/0.1	403	200	403	Your request was blocked.
+meta-externalagent/1.1	200	200	200	
+Meta-ExternalFetcher/1.1	200	200	200	
+FacebookBot	200	200	200	
+facebookexternalhit/1.1	200	200	200	
+Google-Extended	200	200	200	
+GoogleOther	200	200	200	
+Google-CloudVertexBot	200	200	200	
+cohere-ai	403	200	403	Your request was blocked.
+Diffbot/0.1	403	200	403	Your request was blocked.
+MistralAI-User/1.0	200	200	200	
+DuckAssistBot/1.2	200	200	200	
+YouBot	200	200	200	
+PetalBot	200	200	200	
+Applebot/0.1	200	200	200	
+Applebot-Extended/0.1	200	200	200	
+Timpibot	200	200	200	
+ImagesiftBot	200	200	200	
+omgili	200	200	200	
+AI2Bot	200	200	200	
+Twitterbot/1.0	200	200	200	
+LinkedInBot/1.0	200	200	200	
+Slackbot-LinkExpanding 1.0	200	200	200	
+Discordbot/2.0	200	200	200	
+WhatsApp/2.23	200	200	200	
+TelegramBot	200	200	200	
+Googlebot/2.1	200	200	200	
+bingbot/2.0	200	200	200	
+DuckDuckBot/1.1	200	200	200	
+YandexBot/3.0	200	200	200	
+Qwantbot	200	200	200	
+SemrushBot	200	200	200	
+AhrefsBot	200	200	200	
+Chrome-Lighthouse	200	200	200	
