@@ -3021,6 +3021,14 @@ Deno.serve(async (req) => {
   if (body.action === "mots_sans_mot_objet") return json(await motsSansMotObjet(admin, body));
   if (body.action === "backtest_categorie") return json(await backtestCategorie(admin, env, body));
   if (body.action === "mesure_annonces") return json(await mesurerAnnonces(env, body as { ids?: string[] }));
+  // (09/10) Le site d'inscription d'un compte relié (GetUser, lecture seule chez
+  // eBay), noté dans ebay_accounts.ebay_site — appel manuel (x-cron-secret).
+  if (body.action === "site_compte") {
+    const u = String((body as { user_id?: string }).user_id ?? "");
+    if (!/^[0-9a-f-]{36}$/i.test(u)) return json({ error: "user_id" }, 400);
+    const s = await siteDuCompteEbay(admin, env, u);
+    return json({ user_id: u, site: s.site, etranger: !!s.site && siteEbayEtranger(s.site) });
+  }
   if (body.action === "reviser_quantite_annonce") return json(await reviserQuantiteAnnonce(admin, env, body as Record<string, unknown>));
   if (body.action === "reviser_annonce") return json(await reviserAnnonce(admin, env, body as Record<string, unknown>));
   if (body.action === "rejeu_rayon_refuse") return json(await rejeuRayonRefuse(admin, env, body as { ids?: string[] }));
