@@ -26,6 +26,7 @@ import { NOM } from "./texte";
 import { verdictConfirmation, puceVerrouillee } from "./plateformes";
 import BlocQuestions from "./BlocQuestions";
 import CarteRayon from "../components/CarteRayon";
+import { CartePortDepop } from "../components/PortDepop";
 
 const LIBELLE_MOTIF = {
   fr: { sans_adresse: "adresse de remise manquante", interdite: "produit refusé par la plateforme", sans_annonce: "aucune annonce rédigée", champ_manquant: "attend une réponse" },
@@ -112,6 +113,11 @@ export default function EcranConfirmer({ m }) {
       )}
 
       <BlocQuestions m={m} />
+
+      {/* ── LES FRAIS DE PORT DEPOP (09/10 soir) : visibles ici, sans ouvrir
+          la carte Depop — pré-remplis avec le prix par défaut, modifiables
+          pour cet article ; sans prix, Depop attend cette réponse. ── */}
+      <CartePortDepop m={m} />
 
       {/* ── LE RAYON À CHOISIR (25/09) ─────────────────────────────────────
           Le rayon envisagé a été refusé par la vérification, et aucun rayon

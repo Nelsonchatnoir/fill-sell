@@ -35,6 +35,7 @@ import "./lot.css";
 import ListingPreviewScreen from "../../components/ListingPreviewScreen";
 import BlocQuestions from "../BlocQuestions";
 import CarteRayon from "../../components/CarteRayon";
+import { CartePortDepop } from "../../components/PortDepop";
 import BoutonMeConnecter from "../../components/BoutonMeConnecter";
 import BarreProgression from "../../components/BarreProgression";
 import { Carte, Puce, Logo, Bouton } from "../composants";
@@ -1115,7 +1116,7 @@ export function EcranAvant({
         <LivraisonDuLot en={en} ids={lot.ids.filter((id) => !["retire", "envoye"].includes(etats[id]?.phase))} parId={parId} moteurs={moteurs}
           poidsDe={poidsDe} poserPoids={poserPoids} poserPoidsDuLot={poserPoidsDuLot}
           livraison={livraison} poserTransporteurs={poserTransporteurs} poserFormat={poserFormat}
-          colisVinted={colisVinted} choisirColisVinted={choisirColisVinted} />
+          colisVinted={colisVinted} choisirColisVinted={choisirColisVinted} userId={userId} />
       )}
 
       {/* Une réponse pour plusieurs articles : même champ, même liste. */}
@@ -1266,6 +1267,10 @@ export function ArticleAQuestions({ id, en, item, m, st, decision, decider, tran
 
       {/* Les questions du moteur : le MÊME bloc que le stepper. */}
       <BlocQuestions m={m} />
+
+      {/* (09/10 soir) Les frais de port Depop de CET article, quand ni le
+          prix par défaut ni celui du lot ne l'ont rempli. */}
+      {m.portDepop?.manquant && <CartePortDepop m={m} id={`port-depop-${id}`} />}
 
       {motifs.some((x) => x.cle === "cta") && (m.motifsCtaGris ?? []).length > 0 && (
         <div className="fsn-q fsn-q--bloque">

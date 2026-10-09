@@ -25,20 +25,50 @@ import { useState } from "react";
 import { Carte } from "../composants";
 import { LBC_TRANSPORTEURS, LBC_FORMATS, transporteursPourPoids } from "../../utils/leboncoinColis";
 import { plateformesAuPoids, lirePoidsSaisi } from "./regles";
+import { ChampPortDepop } from "../../components/PortDepop";
+import { usePortDepopParDefaut, lirePortSaisi, formaterPort } from "../../utils/fraisPortDepop";
 
 const titreDe = (item) => String(item?.titre ?? item?.title ?? "").trim();
 
 export default function LivraisonDuLot({
   en, ids, parId, moteurs, poidsDe, poserPoids, poserPoidsDuLot, livraison, poserTransporteurs, poserFormat,
-  colisVinted = [], choisirColisVinted = () => {},
+  colisVinted = [], choisirColisVinted = () => {}, userId = null,
 }) {
   const [poidsLot, setPoidsLot] = useState("");
+  // (09/10 soir) DEPOP : les frais de port, dits UNE fois pour le lot. Le prix
+  // par défaut des Réglages pré-remplit chaque article (moteur) ; sans lui, la
+  // réponse donnée ici remplit tous les articles Depop du lot (ceux qui n'ont
+  // rien, ou qui ont encore la réponse précédente du lot) ; chacun reste
+  // modifiable dessous.
+  const portDefaut = usePortDepopParDefaut(userId);
+  const [portLot, setPortLot] = useState(null); // null = pas encore touché
+  const [portLotPose, setPortLotPose] = useState(null);
+  const [gardeDefaut, setGardeDefaut] = useState(null);
   const plateformesDe = (id) => [...(moteurs.get(id)?.plateformesPubliables ?? [])];
   const auPoids = ids.filter((id) => plateformesAuPoids(plateformesDe(id)).length);
   const avecLbc = ids.filter((id) => plateformesDe(id).includes("leboncoin"));
   const avecVinted = ids.some((id) => plateformesDe(id).includes("vinted"));
   const avecEbay = ids.some((id) => plateformesDe(id).includes("ebay"));
-  if (!auPoids.length && !avecVinted && !avecEbay) return null;
+  const avecDepop = ids.filter((id) => plateformesDe(id).includes("depop"));
+  if (!auPoids.length && !avecVinted && !avecEbay && !avecDepop.length) return null;
+  const portDe = (id) => String(moteurs.get(id)?.portDepop?.saisie ?? "");
+  const portLotAffiche = portLot ?? (portDefaut.valeur != null ? formaterPort(portDefaut.valeur, en ? "en" : "fr") : "");
+  const portLotLu = lirePortSaisi(portLotAffiche).valeur;
+  const sansPortDepop = avecDepop.filter((id) => lirePortSaisi(portDe(id)).valeur == null);
+  const appliquerPortLot = (n) => {
+    if (n == null) return;
+    const s = formaterPort(n, en ? "en" : "fr");
+    for (const id of avecDepop) {
+      const actuel = lirePortSaisi(portDe(id)).valeur;
+      if (actuel == null || (portLotPose != null && Math.abs(actuel - portLotPose) < 0.005)) moteurs.get(id)?.portDepop?.poser?.(s);
+    }
+    setPortLotPose(n);
+  };
+  const garderPortParDefaut = async () => {
+    setGardeDefaut("en_cours");
+    const r = await portDefaut.enregistrer(portLotLu);
+    setGardeDefaut(r.ok ? "ok" : "rate");
+  };
   const sansPoids = auPoids.filter((id) => poidsDe(id) == null);
   const gLot = lirePoidsSaisi(poidsLot);
   const choisis = livraison.transporteurs; // null = ceux que Leboncoin propose
@@ -174,6 +204,43 @@ export default function LivraisonDuLot({
                   ? `${r.parFiche} item${r.parFiche > 1 ? "s keep" : " keeps"} the size chosen on ${r.parFiche > 1 ? "their" : "its"} card — tap a size to apply it to all.`
                   : `${r.parFiche > 1 ? `${r.parFiche} articles gardent` : "1 article garde"} le format choisi sur sa fiche — touche un format pour l'appliquer à tous.`}</small>
               )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {avecDepop.length > 0 && (
+        <div className={sansPortDepop.length ? "fsn-q fsn-q--bloque" : "fsn-q"}>
+          <ChampPortDepop id="port-depop-lot" lang={en ? "en" : "fr"} valeur={portLotAffiche} montrerVide={sansPortDepop.length > 0}
+            aide={sansPortDepop.length
+              ? (en
+                ? `Paid by the buyer, tracked parcel in France. One price for the batch: it fills the ${sansPortDepop.length} Depop item${sansPortDepop.length > 1 ? "s" : ""} without one.`
+                : `Payés par l'acheteur, envoi suivi en France. Un prix pour le lot : il remplit ${sansPortDepop.length > 1 ? `les ${sansPortDepop.length} articles Depop` : "l'article Depop"} sans prix.`)
+              : (en
+                ? "Paid by the buyer, tracked parcel in France. Changing it applies to the whole batch; each item stays editable below."
+                : "Payés par l'acheteur, envoi suivi en France. Le changer l'applique à tout le lot ; chaque article reste modifiable dessous.")}
+            note={portDefaut.valeur != null && portLot == null ? (en ? "Your default price (Settings)." : "Ton prix par défaut (Réglages).") : null}
+            onChange={(v) => setPortLot(v)} onValide={appliquerPortLot} />
+          {portDefaut.valeur == null && userId && portLotLu != null && gardeDefaut !== "ok" && (
+            <button type="button" className="fpd fpd-lien" style={{ padding: 0 }} disabled={gardeDefaut === "en_cours"} onClick={garderPortParDefaut}>
+              {gardeDefaut === "rate"
+                ? (en ? "Not saved — try again" : "Pas enregistré — réessaie")
+                : (en ? `Keep ${formaterPort(portLotLu, "en")} € for my next Depop listings` : `Garder ${formaterPort(portLotLu)} € pour mes prochaines annonces Depop`)}
+            </button>
+          )}
+          {gardeDefaut === "ok" && (
+            <small style={{ display: "block" }}>{en ? "Saved as your default price (Settings › Shipping)." : "Gardé comme prix par défaut (Réglages › Expédition)."}</small>
+          )}
+          {avecDepop.length > 1 && avecDepop.map((id) => (
+            <div key={`depop:${id}`} style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6 }}>
+              <span className="fsn-grow" style={{ fontSize: 13, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {titreDe(parId.get(id)?.item) || (en ? "Untitled item" : "Article sans titre")}
+              </span>
+              <input key={`${id}:${portDe(id)}`} className="fsn-input" style={{ maxWidth: 96 }} type="text" inputMode="decimal"
+                defaultValue={portDe(id)} placeholder={en ? "price" : "prix"} aria-label={en ? "Depop shipping in €" : "Port Depop en €"}
+                onBlur={(ev) => { const n = lirePortSaisi(ev.target.value).valeur; if (n != null) moteurs.get(id)?.portDepop?.poser?.(formaterPort(n, en ? "en" : "fr")); }}
+                onKeyDown={(ev) => { if (ev.key === "Enter") ev.currentTarget.blur(); }} />
+              <small style={{ width: 16 }}>€</small>
             </div>
           ))}
         </div>
