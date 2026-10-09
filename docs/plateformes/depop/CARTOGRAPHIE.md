@@ -194,8 +194,10 @@ content-scripts/depop.js` (connecteur), contrats détaillés en tête du fichier
 - **Échecs passagers mesurés (09/10)** : avec un jeton VALABLE, `users/me` échoue vite
   (« Failed to fetch » en 20–40 ms) 3 fois sur 19 à 1,5 s d'intervalle, `sellerStatus` de même
   par moments ; la lecture publique (sans Authorization, donc sans pré-requête CORS) 0 fois sur
-  19. D'où (0.6.105, `02f9f67`) : une lecture GET « réseau » est relancée deux fois (1 s, 2,5 s),
-  jamais une écriture. Durée de vie du jeton : **à vérifier** (aucune expiration constatée).
+  19. Trois gestes réels du 09/10 en ont pâti (publication 09:11, recréation 10:27, relevé 10:37).
+  D'où `02f9f67` (dans main, PAS dans le zip 0.6.105) : une lecture GET « réseau » est relancée
+  deux fois (1 s, 2,5 s), jamais une écriture — prouvé en page réelle : 15 lectures, 18 appels,
+  3 échecs absorbés, 0 échec final. Durée de vie du jeton : **à vérifier** (aucune expiration constatée).
 - Vente réelle : **non prouvée de bout en bout** (on ne vend pas) ; la structure d'une
   annonce vendue (STATUS_PURCHASED, `variants_all[].status`) est lue sur une annonce
   publique vendue (936331996).

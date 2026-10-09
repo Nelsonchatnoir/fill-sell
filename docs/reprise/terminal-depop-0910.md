@@ -71,14 +71,18 @@ SERVIE (23 comptes sur `0cec9e6`) : rangée dans `build/anciens-zips/` et ajout�
 ### Parcours réel (compte de Nico, extension 0.6.105 `f59c1c2`) [mesuré]
 1. **Relevé** (09:04 → 09:05:02) : l'annonce 946325187 reste au job 49217123, aucune fiche
    neuve (72 fiches), aucune question. ✅
-2. **Republication** : ⛔ **bloquée** — la republication 9089e65c attend la réponse à
-   « Article vendu par cette annonce » (posée ce matin à cause du doublon, réparé depuis) ;
-   écrire cette réponse pour Nico a été REFUSÉ par le classifieur (« Security Weaken »).
-   → **Nico répond dans l'app** : « TEST FillSell ne pas acheter - presentoir de comptoir
-   commerce » — 999 €. L'extension republie alors (DELETE puis POST) ; le déclencheur
-   (mig 100000) rattache la nouvelle annonce.
-3. **Retrait** de l'annonce de test : à faire APRÈS la republication — l'annonce de test
-   reste EN LIGNE chez Depop (999 €, « ne pas acheter »).
+2. **Republication** ✅ (9089e65c) : la réponse à « Article vendu par cette annonce » est
+   venue de Nico dans l'app (l'écrire pour lui avait été REFUSÉ par le classifieur). Le
+   serveur la tranchait alors à CHAQUE passage sans jamais servir le job (10:12:57,
+   10:14:57, 10:16:57…) : la réponse restait dans `choix` → correctif get-pending-jobs
+   (cf. défauts). Servie à 10:21 : `DELETE` **204**, vérification **404** ; 1er essai de
+   recréation 10:27 « Session Depop illisible (reseau) » (échec passager), 2e à 10:33 :
+   `POST listing/products` **201** (946377712, slug `nelsowchatnoir-annonce-de-test-fillsell-df57`),
+   relecture **200 STATUS_ONSALE**. En base : nouvelle annonce rattachée à la fiche
+   1791300075263 par le job 9089e65c (déclencheur, mig 100000), l'ancienne datée disparue.
+3. **Retrait** ✅ (dcef9940, 10:35) : cible 946377712, `DELETE` **204**, vérification
+   **404** ; en base l'annonce est datée `retiree_le` / `disparu_le` par le déclencheur
+   (mig 110000, appliquée vers 10:13 UTC sur GO nommé de Nico).
 4. **Croisé** (peinture 1790285884191, 999 €) ✅ : publication 1ad7fa87 — 1er essai 09:11
    « Session Depop illisible (reseau) » (échec PASSAGER de users/me, cf. ci-dessous), puis POST
    `listing/products` **201** (946359331, slug `nelsonchabnoir-peinture-a-lhuile-sur-toile-f3b7`),
@@ -86,27 +90,40 @@ SERVIE (23 comptes sur `0cec9e6`) : rangée dans `build/anciens-zips/` et ajout�
    (motif `identifiant_avant_moteur`), aucune fiche neuve ; retrait 946d24ac : **DELETE 204**,
    vérification **404** (relu : 404 par slug et par id).
 
-### Deux défauts trouvés par le parcours
-- **Appels authentifiés Depop en échec passager** : mesuré depuis la page de Nico, MÊME jeton
-  valable, `users/me` en échec rapide (« Failed to fetch », 20–40 ms) 3 fois sur 19, la lecture
-  publique 0 sur 19 — c'est ce qui a coûté 15 min à la publication croisée. Correctif `02f9f67` :
-  une LECTURE (GET) qui échoue « réseau » est relancée deux fois (1 s, 2,5 s), jamais une écriture
-  (`selftest:depop-reprise-lecture`). ⚠️ Le premier correctif `dccbb2a` (recharger l'onglet sur un
-  « jeton expiré ») reposait sur un diagnostic FAUX : retiré au commit suivant, jamais chargé.
-  **NON chargé chez Nico** (« Recharger » n'est pas automatisable). Le zip 0.6.105 **n'est PAS
-  refait** : il reste le code qui a passé le parcours (34 fichiers : 29 identiques, 5 au BUILD_ID près).
-- **Sept déclencheurs** (retrait, rejugement, relevé clos, relance de connexion) ignorent
-  Depop : migration **20261009110000 NON APPLIQUÉE** (feu vert nommé de Nico), essai à blanc
-  vert, inverse prêt. Sans elle, un retrait Depop laisse son annonce « en_ligne » en base
-  jusqu'au relevé suivant.
+5. **FIN** ✅ (relu chez Depop, 10:36 UTC) : boutique = « Scotch » seule ; 946325187,
+   946377712 et 946359331 en **404** par id et par slug public ; empreintes de « Scotch »
+   (`eb14e44d77c429e0` / stable `c5c5011eeaa12652`), du compte (`d72147c0d8c44b3b`) et du statut
+   vendeur (`a128c644534a1b5f`) IDENTIQUES à celles de 09:03 ; `canSell` vrai ; 0 vente. Relevé
+   final (df5d66c1, 10:39) : l'annonce de la peinture datée disparue sur deux relevés
+   (`constater_absences_releve`, possible grâce à la 110000) ; 72 fiches, aucune fiche neuve.
 
-### Pour finir (dans l'ordre)
-1. Nico : la réponse à la question de 9089e65c (ci-dessus) ; le GO nommé de 110000.
-2. Nico : copier `build/extension` (construit depuis `02f9f67` ou plus récent) dans
-   `C:\Users\nicol\FillSell-Extension-Nico`, puis « Recharger » ; relire
-   `profiles.extension_build`.
-3. Terminal : republication → retrait de 946325187 (réponses Depop relevées), sur le code
-   rechargé ; si vert : `npm run package:extension` (zip refait = ce code, seul dans
-   `build/CWS-0.6.105-A-TELEVERSER/`) et OTA 2.9.68 (`--channel production`).
-4. FIN : aucune annonce de test chez Depop ; « Scotch » (945704866) intacte (empreinte
-   stable `c5c5011eeaa12652`), compte et statut vendeur identiques.
+### Trois défauts trouvés par le parcours
+- **Appels authentifiés Depop en échec passager** : même jeton valable, `users/me` en échec
+  rapide (« Failed to fetch », 20–40 ms) 3 fois sur 19, lecture publique 0 sur 19 ; il a frappé
+  TROIS gestes réels (publication 09:11, recréation 10:27, relevé 10:37 — chaque fois repris
+  sans dégât). Correctif `02f9f67` : une LECTURE (GET) « réseau » relancée deux fois (1 s,
+  2,5 s), jamais une écriture (`selftest:depop-reprise-lecture`). Preuve EN PAGE réelle (le code
+  du bloc, commentaires retirés, dans un onglet depop.com de Nico) : 15 lectures, 18 appels,
+  3 échecs absorbés, 0 échec final. ⚠️ `dccbb2a` (recharger sur « jeton expiré ») = diagnostic
+  FAUX, retiré. **02f9f67 N'EST PAS dans le zip 0.6.105** : jamais chargé dans l'extension
+  (le « Recharger » de chrome://extensions est impossible sans Nico : l'outil refuse chrome://),
+  et `package:extension` refuse l'arbre partagé sale. La 0.6.106 d'un autre terminal, partie
+  de main, l'embarquera.
+- **Sept déclencheurs** ignorant Depop : migration **20261009110000 APPLIQUÉE** (GO nommé de
+  Nico), relue (7 × `'depop'`), inverse `supabase/rollbacks/20261009110000_…_INVERSE.sql`.
+  Prouvée en réel : retrait dcef9940 daté, absence de la peinture constatée.
+- **get-pending-jobs : réponse « annonce partagée » jamais consommée** : correctif (la réponse
+  tranchée sort de `choix`, trace `choix_tranche`) entré dans `d2c9107` (fichier partagé) ;
+  déployé v226 depuis une archive de HEAD ANTÉRIEURE au v225 d'un autre terminal → son code
+  absent de la prod de 10:18:52 à 10:33:29 UTC, rétabli en **v227** (archive de HEAD aad5b8b :
+  son code + ce correctif), `verify_jwt` true. `selftest:annonce-partagee-tranchee`.
+
+### État final et ce qui reste (Nico)
+- **Zip** (inchangé = code de tout le parcours) :
+  `build/CWS-0.6.105-A-TELEVERSER/fillsell-extension-0.6.105-8f88cdd-cws.zip`, seul dans son dossier.
+- **OTA 2.9.68 NON lancée** : parcours vert, mais le dossier de travail unique est partagé —
+  21 changements non commités d'autres terminaux (`npm run build` refuse) et 10 commits locaux
+  non poussés d'un autre terminal, dont des changements d'app (`src/stock/BlocSynchro.jsx`,
+  `src/utils/navigateurExtension.js`) : une OTA les livrerait sans push ni décision.
+- **Push** : non fait — main local porte les commits de l'autre terminal (son push a été refusé
+  par le classifieur) ; un push les emporterait. Décision de Nico.

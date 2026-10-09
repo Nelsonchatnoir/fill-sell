@@ -22,10 +22,12 @@ contraire. Il se périme : `functions list`, `cron.job` et
   **09/10 fin de matinée** : `rapprochement` **v17** — l'identifiant d'un dépôt FillSell est
   rattaché AVANT le moteur v3 (prouvé en réel, motif `identifiant_avant_moteur`) ; mig
   **20261009100000 APPLIQUÉE** ; fiche en double 1791529881380 RÉPARÉE (inverse complet) ;
-  mig **20261009110000 NON APPLIQUÉE** (sept déclencheurs retrait/relevé : Depop ; feu vert) ;
-  extension `02f9f67` (lecture Depop « réseau » reprise, jamais une écriture) NON chargée, zip 0.6.105 INCHANGÉ
-  (= code du parcours) ; republication 9089e65c = réponse de Nico dans l'app ; annonce
-  de test 946325187 EN LIGNE (999 €) jusqu'à son retrait ; **OTA 2.9.68 NON lancée**.
+  mig **20261009110000 APPLIQUÉE** (GO nommé : sept déclencheurs retrait/relevé ouverts à
+  Depop) ; get-pending-jobs **v227** (réponse « annonce partagée » tranchée = sortie de `choix`) ;
+  **parcours réel VERT** (relevé, republication, retrait, croisé ; FIN relue : plus aucune
+  annonce de test chez Depop, « Scotch » intacte) ; extension `02f9f67` (lecture Depop « réseau »
+  reprise) prouvée en page, JAMAIS chargée, HORS du zip 0.6.105 (inchangé) ; **OTA 2.9.68 NON
+  lancée** (dossier partagé sale + commits non poussés d'un autre terminal) ; push : Nico.
 - **⛔ VENTES PROUVÉES : AUTOMATIQUES DEPUIS LE 08/10 23:40 (GO de Nico)** : la
   vente sur preuve « sold » (GO du 28/09) n'avait tourné que de 16:42 à 16:46 le
   28/09 (appel retiré de get-pending-jobs par précaution ; cause mesurée de la
@@ -125,7 +127,7 @@ contraire. Il se périme : `functions list`, `cron.job` et
   **0.6.103 JAMAIS téléversée** ; jamais
   d'EXTENSION_MIN_BUILD sans décision de Nico ; **minimum serveur 0.6.81** (inchangé : forcer la MAJ = décision de
   Nico) ; web **2.9.67** (poussé le 08/10), OTA **2.9.67 servie** (08/10
-  10:50, build 9d203ac) ; `get-pending-jobs` v224, `photo-empreinte` v3,
+  10:50, build 9d203ac) ; `get-pending-jobs` v227, `photo-empreinte` v3,
   `generate-listing` v113, `lens-analysis` v107, `avis-demande` v4,
   `deal-analysis` v42, `voice-transcribe` v46,
   `ebay-account` v16, `send-extension-link` v13 (`true`) ;

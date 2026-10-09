@@ -5,7 +5,7 @@ fin) et `docs/agents/consignes-2026-09-28.md` (règles) remplacent tout historiq
 contraire. `functions list`, `cron.job` et `profiles.extension_build` font foi.
 
 - **Servi** : ext. **0.6.104** ; 0.6.105 zip prêt ; min **0.6.81** ; OTA 2.9.67 ; `docs/reprise/terminal-depop-0910.md`.
-- **⛔ DEPOP (09/10)** : Nico seul (drapeau 0) ; rayon par id ; dépôt rattaché par identifiant AVANT le moteur ; mig 110000 NON appliquée.
+- **⛔ DEPOP (09/10)** : Nico seul (drapeau 0) ; rayon par id ; dépôt rattaché par identifiant AVANT le moteur ; parcours vert.
 - **⛔ MULTI-SYNCHRO (08/10)** : un appui = toutes les plateformes, stock DÉJÀ fusionné ; moteur v3,
   `rapprochement` v17 ; empreintes par la base ; fiche `releve_*` = `rapprocher_importer` seul ; fiches Vinted
   nouvelles jugées (mig 130000) ; fiche main ↔ Vinted : mig 150000 ; remise en ligne Vinted (mêmes photos + titre, jamais
