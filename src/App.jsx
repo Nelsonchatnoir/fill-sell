@@ -167,6 +167,7 @@ import { initialiserPush, oublierAvantDeconnexion, oublierLocalement, surOuvertu
 import PropositionNotifications from './notifications/PropositionNotifications';
 import { usePropositionPush } from './notifications/usePropositionPush';
 import { useSortieOpla } from './hooks/useSortieOpla';
+import { etatBascule } from './utils/basculeOplaDepop.js';
 import { useDemandeAvis } from './hooks/useDemandeAvis';
 import { palierDuProfil, droitsDuPalier, palierLePlusHaut } from './utils/palier';
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler);
@@ -2617,6 +2618,22 @@ export default function App({ loginOnly = false }){
   // ventes vues sur Opla, retraits des copies.
   const sortieOpla=useSortieOpla(user?.id);
   const oplaFermee=sortieOpla.active;
+  // ── BASCULE OPLA → DEPOP (09/10 soir, Nico) ───────────────────────────────
+  // Une seule règle (utils/basculeOplaDepop.js), à la même horloge que la
+  // sortie d'Opla : avant la bascule, Depop pour la seule bêta du compte
+  // (depop_autorise) ; à la bascule, pour tous (la base l'ouvre au même
+  // instant, migration 20261009230000). Dans les deux cas, SEULEMENT si
+  // l'extension de la personne sait faire Depop (≥ 0.6.106) — sinon rien ne
+  // s'affiche à la place, ni Opla ni message.
+  const depopVisible=useMemo(
+    ()=>etatBascule({
+      maintenant:sortieOpla.maintenant,
+      interrupteur:sortieOpla.interrupteur,
+      depopAutoriseServeur:depopOuverte,
+      versionsExtension:[extensionVersion,extVersionEnDirect],
+    }).depopVisible,
+    [sortieOpla.maintenant,sortieOpla.interrupteur,depopOuverte,extensionVersion,extVersionEnDirect],
+  );
   const plateformesVisiblesEffectives=useMemo(
     ()=>{
       const base=oplaFermee
@@ -2625,13 +2642,13 @@ export default function App({ loginOnly = false }){
       // Depop (09/10) : visible SEULEMENT là où elle est ouverte — jamais par
       // plateformes_visibles seul (la base refuserait ses jobs).
       const sansDepop=base.filter(p=>p!=='depop');
-      return depopOuverte?[...sansDepop,'depop']:sansDepop;
+      return depopVisible?[...sansDepop,'depop']:sansDepop;
     },
-    [plateformesVisibles,oplaFermee,depopOuverte],
+    [plateformesVisibles,oplaFermee,depopVisible],
   );
   const plateformesOuvertes=useMemo(
-    ()=>[...(oplaFermee?[]:['opla']),...(depopOuverte?['depop']:[])],
-    [oplaFermee,depopOuverte],
+    ()=>[...(oplaFermee?[]:['opla']),...(depopVisible?['depop']:[])],
+    [oplaFermee,depopVisible],
   );
   // ── DEMANDE D'AVIS (02/10, lot B) ──────────────────────────────────────────
   // Le serveur décide (avis-demande) ; on ne lui pose la question que sur le
@@ -8854,6 +8871,7 @@ export default function App({ loginOnly = false }){
             handleIAPPurchase={handleIAPPurchase} handleIAPRestore={handleIAPRestore}
             extensionAbsente={extensionNeverSeen===true}
             onExtensionInfo={()=>setShowExtensionInfo(true)}
+            oplaFermee={oplaFermee}
             delSale={delSale} setTab={setTab} setEditItem={setEditItem}
             PremiumBanner={BoundPremiumBanner} IAPUpgradeBlock={IAPUpgradeBlock}
             openUpgradeModal={openUpgradeModal}
@@ -9336,7 +9354,7 @@ export default function App({ loginOnly = false }){
                 onPlateforme={code=>setSellModal(p=>({...p,plateforme:code}))}
                 quantiteVendue={sellModal.sellQty||1} lang={lang}
                 oplaVisible={!oplaFermee||sortieOpla.relie===true}
-                depopVisible={depopOuverte}
+                depopVisible={depopVisible}
                 couleurs={{teal:C.teal,text:C.text,sub:C.sub,red:C.red}}/>
               <Field label={`${lang==='fr'?'Frais de vente':'Selling fees'} (${lang==='fr'?'optionnel':'optional'})`} value={sellModal.sellingFees} set={v=>setSellModal(p=>({...p,sellingFees:v}))} placeholder={lang==='fr'?"Commission Vinted, livraison client...":"Vinted fee, shipping to buyer..."} type="number" icon="📬" suffix={CURRENCY_SYMBOLS[currency]||'€'}/>
               <label style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",userSelect:"none"}}>

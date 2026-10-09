@@ -18,6 +18,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { OPLA_SORTIE, oplaRelie, sortieOplaActive } from '../../supabase/functions/_shared/opla-sortie.js';
+import { etatBascule } from '../utils/basculeOplaDepop.js';
 
 export function useSortieOpla(userId) {
   const [relie, setRelie] = useState(null);
@@ -79,9 +80,10 @@ export function useSortieOpla(userId) {
 
   // La bascule (désactivée par l'interrupteur à 0) : avant, et sans
   // interrupteur désactivé, le bandeau ANNONCE ; une fois Opla rouverte (0),
-  // il n'a plus rien à annoncer.
+  // il n'a plus rien à annoncer. (09/10 soir, Nico) À la bascule il disparaît
+  // aussi : Opla n'existe plus nulle part, le bandeau de prévention compris
+  // (règle unique : utils/basculeOplaDepop.js).
   const active = sortieOplaActive(maintenant, valeurInterrupteur);
-  const desactivee = valeurInterrupteur === 0;
-  const bandeau = !desactivee && (relie === true || relie === false) && bandeauVu === false;
-  return { active, relie, bandeau, variante: relie === true ? 'relie' : 'general', compris };
+  const bandeau = etatBascule({ maintenant, interrupteur: valeurInterrupteur, oplaRelie: relie, bandeauVu }).bandeauOpla;
+  return { active, relie, bandeau, variante: relie === true ? 'relie' : 'general', compris, maintenant, interrupteur: valeurInterrupteur };
 }

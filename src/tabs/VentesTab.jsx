@@ -158,7 +158,7 @@ const PARCOURS_VENTE = [
 
 // fmt retiré de la signature le 2026-08-09 : son seul lecteur était le
 // carrousel de ventes fictives, qui formatait des montants inventés.
-function SalesTicker({ lang, setTab, extensionAbsente = false, onExtensionInfo = null }) {
+function SalesTicker({ lang, setTab, extensionAbsente = false, onExtensionInfo = null, oplaFermee = false }) {
   // (État et boucle d'animation du carrousel retirés le 2026-08-09 avec lui :
   //  idx / visible / progress + une requestAnimationFrame qui tournait en
   //  permanence sur un écran vide, pour faire défiler cinq ventes inventées.)
@@ -183,8 +183,10 @@ function SalesTicker({ lang, setTab, extensionAbsente = false, onExtensionInfo =
         </div>
         <div style={{fontSize:13.5,fontWeight:500,lineHeight:1.5,color:UI.mute,maxWidth:290,margin:'8px auto 0'}}>
           {fr
-            ?"Dès qu'un article part sur Vinted, Leboncoin, eBay, Beebs ou Opla, il apparaît ici avec ta marge — et FillSell te proposera de retirer les autres annonces. Tes ventes Vinted récentes remontent aussi quand tu relèves tes annonces Vinted."
-            :'As soon as an item sells on Vinted, Leboncoin, eBay, Beebs or Opla, it shows up here with your margin — and FillSell will offer to remove the other listings. Your recent Vinted sales also come across when you scan your Vinted listings.'}
+            // (09/10 soir) Bascule Opla → Depop : à la sortie d'Opla, Opla n'est
+            // plus nommée (Depop ne l'est qu'où l'extension sait la faire).
+            ?`Dès qu'un article part sur ${oplaFermee?'Vinted, Leboncoin, eBay ou Beebs':'Vinted, Leboncoin, eBay, Beebs ou Opla'}, il apparaît ici avec ta marge — et FillSell te proposera de retirer les autres annonces. Tes ventes Vinted récentes remontent aussi quand tu relèves tes annonces Vinted.`
+            :`As soon as an item sells on ${oplaFermee?'Vinted, Leboncoin, eBay or Beebs':'Vinted, Leboncoin, eBay, Beebs or Opla'}, it shows up here with your margin — and FillSell will offer to remove the other listings. Your recent Vinted sales also come across when you scan your Vinted listings.`}
         </div>
       </div>
 
@@ -284,6 +286,8 @@ const VentesTab = memo(function VentesTab({
   iapLoading, handleIAPPurchase, handleIAPRestore,
   // Lot 2 : ligne discrète « extension pas encore installée » de l'état vide.
   extensionAbsente = false, onExtensionInfo = null,
+  // (09/10 soir) Sortie d'Opla active (App.jsx, useSortieOpla) : Opla n'est plus nommée.
+  oplaFermee = false,
   delSale, setTab, setEditItem,
   PremiumBanner, IAPUpgradeBlock,
   openUpgradeModal,
@@ -1350,7 +1354,7 @@ const VentesTab = memo(function VentesTab({
         // flottant (56 px + marge) : sans lui, le CTA « stats avancées » et la
         // grille de mini-stats finissaient sous le bouton en fin de scroll.
         <div style={{display:'flex',flexDirection:'column',gap:16,paddingBottom:'var(--nav-content-clearance)'}}>
-          <SalesTicker lang={lang} setTab={setTab} extensionAbsente={extensionAbsente} onExtensionInfo={onExtensionInfo}/>
+          <SalesTicker lang={lang} setTab={setTab} extensionAbsente={extensionAbsente} onExtensionInfo={onExtensionInfo} oplaFermee={oplaFermee}/>
           {!isPremium&&!isNative&&(<PremiumBanner userEmail={user?.email} origine="banniere_ventes"/>)}
           {isNative&&!isPremium&&(<IAPUpgradeBlock lang={lang} iapLoading={iapLoading} onPurchase={()=>openUpgradeModal(null,'banniere_ventes')} onRestore={handleIAPRestore}/>)}
         </div>

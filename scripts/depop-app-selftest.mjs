@@ -96,10 +96,14 @@ console.log("\nC. COMPTE NON AUTORISÉ (depop_autorise = false) : RIEN NE CHANGE
   dit("App.jsx : Depop fermée par défaut", /const \[depopOuverte,setDepopOuverte\]=useState\(false\);/.test(app));
   dit("App.jsx : ouverte SEULEMENT sur rpc depop_autorise === true (erreur → fermée)",
     app.includes(`supabase.rpc('depop_autorise',{p_user:uid})`) && app.includes(`setDepopOuverte(!error&&data===true)`) && app.includes(`()=>setDepopOuverte(false)`));
-  dit("App.jsx : visible et ouverte seulement si depopOuverte",
-    app.includes(`return depopOuverte?[...sansDepop,'depop']:sansDepop;`) && app.includes(`...(depopOuverte?['depop']:[])`));
+  // (09/10 soir) Bascule Opla → Depop : la visibilité passe par la règle unique
+  // utils/basculeOplaDepop.js (bêta OU bascule, ET extension ≥ 0.6.106).
+  dit("App.jsx : depopVisible = etatBascule(depop_autorise, horloge de la sortie d'Opla, versions de l'extension)",
+    app.includes(`depopAutoriseServeur:depopOuverte,`) && app.includes(`versionsExtension:[extensionVersion,extVersionEnDirect],`) && app.includes(`}).depopVisible,`));
+  dit("App.jsx : visible et ouverte seulement si depopVisible",
+    app.includes(`return depopVisible?[...sansDepop,'depop']:sansDepop;`) && app.includes(`...(depopVisible?['depop']:[])`));
   dit("App.jsx : plateformes_visibles seul n'ouvre jamais Depop", app.includes(`const sansDepop=base.filter(p=>p!=='depop');`));
-  dit("App.jsx : la vente ne propose Depop qu'avec depopOuverte", app.includes(`depopVisible={depopOuverte}`));
+  dit("App.jsx : la vente ne propose Depop qu'avec depopVisible", app.includes(`depopVisible={depopVisible}`));
   const reglages = lire("src/reglages/ReglagesPage.jsx");
   dit("Réglages : les plateformes viennent de plateformesDeReleve(plateformesOuvertes) (aucune liste recopiée)", reglages.includes("plateformesDeReleve(plateformesOuvertes, oplaRelie)"));
 }
