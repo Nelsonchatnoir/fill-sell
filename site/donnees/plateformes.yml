@@ -1,0 +1,100 @@
+# PLATEFORMES que le site vitrine peut nommer — des DONNÉES, pas de la prose
+# (09/10/2026, architecture § 2.7 : « langue ≠ marché » ; décisions de Nico
+# du 09/10, docs/seo/etat-des-lieux/03c-decisions-nico-0910.md).
+#
+# Ouvrir une plateforme ou un pays = changer une ligne ici ET la date, jamais
+# le texte des pages : le périmètre affiché au pied de chaque page, les
+# jetons {{plateformes}}, {{republication}} et {{nb_plateformes}}, la grille
+# des capacités des pages « plateforme » et les puces des trajets en sont
+# tirés au build. Le périmètre est toujours DATÉ, jamais une identité.
+#
+# ⛔ Le GESTE UNIQUE (décision 2 de Nico) : si la republication automatique
+# Depop n'est pas active au GO, `republication_auto: false` sur Depop la
+# retire de TOUTES les pages (jeton {{republication}}, grille, tarifs). Même
+# principe pour `ouverte` (D1 : Depop ouverte à tous au moment de la mise en ligne).
+# eBay : `republication_auto: false` et le site n'en parle JAMAIS (aucune
+# ligne « republication » n'est affichée pour eBay).
+#
+# Champs :
+#   id, nom                    identifiant (minuscules) et nom tel qu'écrit dans les pages
+#   ouverte                    ouverte à tous les comptes (sinon : raison obligatoire, et
+#                              aucune page publique ne la présente)
+#   mode                       extension : l'extension Chrome agit dans la session de la
+#                              personne (ordinateur allumé, Chrome ouvert) ;
+#                              api : l'API officielle de la plateforme si le compte est relié,
+#                              l'extension sinon (eBay)
+#   republication_auto         republication automatique par créneaux (jamais de palier à côté)
+#   vente_enregistree_seule    true : la vente s'enregistre seule sur preuve ; false : la
+#                              personne la confirme d'un geste (« Vendue sur X ? »)
+#   autorisation               facultatif : l'accès se donne d'un clic dans l'extension
+#   pays                       code ISO, domaine, ouvert (le site ne nomme que les pays ouverts)
+
+date: "2026-10-09"
+
+plateformes:
+  - id: vinted
+    nom: Vinted
+    ouverte: true
+    mode: extension
+    republication_auto: true
+    vente_enregistree_seule: true
+    pays:
+      - { code: FR, domaine: www.vinted.fr, ouvert: true }
+      # Vinted hors de France : extension 0.6.106 (permission optionnelle
+      # « Autoriser vinted.<pays> »), zip prêt, pas servie au 09/10.
+      - { code: BE, domaine: www.vinted.be, ouvert: false }
+      - { code: LU, domaine: www.vinted.lu, ouvert: false }
+      - { code: NL, domaine: www.vinted.nl, ouvert: false }
+      - { code: DE, domaine: www.vinted.de, ouvert: false }
+      - { code: AT, domaine: www.vinted.at, ouvert: false }
+      - { code: IT, domaine: www.vinted.it, ouvert: false }
+      - { code: ES, domaine: www.vinted.es, ouvert: false }
+      - { code: PT, domaine: www.vinted.pt, ouvert: false }
+      - { code: IE, domaine: www.vinted.ie, ouvert: false }
+      - { code: FI, domaine: www.vinted.fi, ouvert: false }
+      - { code: EE, domaine: www.vinted.ee, ouvert: false }
+      - { code: LV, domaine: www.vinted.lv, ouvert: false }
+      - { code: LT, domaine: www.vinted.lt, ouvert: false }
+      - { code: SK, domaine: www.vinted.sk, ouvert: false }
+      - { code: SI, domaine: www.vinted.si, ouvert: false }
+      - { code: HR, domaine: www.vinted.hr, ouvert: false }
+      - { code: GR, domaine: www.vinted.gr, ouvert: false }
+  - id: leboncoin
+    nom: Leboncoin
+    ouverte: true
+    mode: extension
+    republication_auto: true
+    vente_enregistree_seule: false
+    pays:
+      - { code: FR, domaine: www.leboncoin.fr, ouvert: true }
+  - id: ebay
+    nom: eBay
+    ouverte: true
+    mode: api
+    republication_auto: false
+    vente_enregistree_seule: true
+    pays:
+      # eBay France seulement : un compte eBay inscrit dans un autre pays n'est
+      # pas publié (migration 20261009150000).
+      - { code: FR, domaine: www.ebay.fr, ouvert: true }
+  - id: beebs
+    nom: Beebs
+    ouverte: true
+    mode: extension
+    republication_auto: true
+    vente_enregistree_seule: false
+    pays:
+      - { code: FR, domaine: www.beebs.app, ouvert: true }
+  - id: depop
+    nom: Depop
+    # Décision de Nico (09/10) : ouverte à tous le 10/10 (D1 : drapeau
+    # depop_ouvert, extension avec Depop servie, OTA ≥ 2.9.68 — à constater au GO).
+    ouverte: true
+    mode: extension
+    republication_auto: true
+    vente_enregistree_seule: false
+    autorisation: true
+    # republication_auto : activée côté serveur par la migration 20261009230000
+    # (main), comme Vinted, Leboncoin et Beebs.
+    pays:
+      - { code: FR, domaine: www.depop.com, ouvert: true }

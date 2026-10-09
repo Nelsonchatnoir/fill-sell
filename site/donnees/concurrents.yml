@@ -1,0 +1,3071 @@
+# FAITS CONCURRENTS du site vitrine — FICHIER GÉNÉRÉ, ne pas modifier à la main.
+# Source : docs/seo/briefs/concurrents.yml (observé le 2026-10-09).
+# Régénérer : npm run site:concurrents (valide sources, dates et niveaux ; retire l'interne).
+meta:
+  observe_le: 2026-10-09
+  niveaux:
+    verifie: 'lu sur une page officielle de l''éditeur ou sur sa fiche officielle de store (Chrome Web Store, App Store, Google Play), le 2026-10-09'
+    deduit: 'déduit (manifeste d''extension, code servi publiquement, calcul, recoupement) : ce n''est pas une promesse de l''éditeur'
+    non_verifiable: 'non vérifiable sans compte, ou pages officielles contradictoires (voir le champ contradictoire)'
+    fiche_de_verite: 'FillSell : code et état de production lus le 2026-10-09 (03-fiche-de-verite.md), références F-xx'
+    decision_nico: 'FillSell : décision de Nico du 2026-10-09, qui prime sur la fiche de vérité ; à constater en production le jour de la mise en ligne (voir outils[fillsell].a_verifier_a_la_mise_en_ligne)'
+  avertissements:
+    - 'Les chiffres publiés par les éditeurs (utilisateurs, annonces, délais, précision) sont leurs propres affirmations.'
+    - 'Les seuls chiffres tiers sont ceux des stores (Chrome Web Store, App Store, Google Play) et de Trustpilot.'
+    - 'Les notes et avis ne vont JAMAIS dans le JSON-LD du site (ARCHITECTURE.md § 5) ; dans le texte, toujours avec le nombre d''avis et la date.'
+    - 'Asymétrie de méthode : FillSell est décrit depuis son code (limites comprises), les concurrents depuis leurs pages publiques (déclarations).'
+    - 'Personnes physiques : aucun nom d''éditeur individuel n''est repris ici (entrepreneurs individuels désignés par leur statut et leur département).'
+outils:
+  - slug: fillsell
+    nom: FillSell
+    url: 'https://fillsell.app'
+    pays: France
+    categorie: 'crosslisting piloté depuis le téléphone : apps iOS/Android + application web + extension Chrome qui exécute sur l''ordinateur'
+    notre_produit: true
+    classement: classe
+    criteres:
+      plateformes:
+        vinted:
+          valeur: oui — Vinted France (vinted.fr) dans l'extension servie 0.6.104 ; les autres pays Vinted sont prêts (0.6.106) mais non publiés
+          traductions:
+            valeur:
+              en: yes — Vinted France (vinted.fr) in the live extension 0.6.104; the other Vinted countries are ready (0.6.106) but not released
+          verdict: oui
+          sources: []
+          date: 2026-10-09
+          niveau: fiche_de_verite
+        leboncoin:
+          valeur: 'oui — publication, import, détection de vente, retrait, republication'
+          traductions:
+            valeur:
+              en: 'yes — publishing, import, sale detection, removal, reposting'
+          verdict: oui
+          sources: []
+          date: 2026-10-09
+          niveau: fiche_de_verite
+        ebay:
+          valeur: 'oui — eBay.fr seulement ; par l''API officielle d''eBay si le compte est relié (OAuth), sinon par l''extension'
+          traductions:
+            valeur:
+              en: 'yes — eBay.fr only; through eBay''s official API if the account is linked (OAuth), otherwise through the extension'
+          verdict: oui
+          sources: []
+          date: 2026-10-09
+          niveau: fiche_de_verite
+        beebs:
+          valeur: 'oui — publication, import, retrait, republication'
+          traductions:
+            valeur:
+              en: 'yes — publishing, import, removal, reposting'
+          verdict: oui
+          sources: []
+          date: 2026-10-09
+          niveau: fiche_de_verite
+        depop:
+          valeur: 'oui, ouverte à tous le 10/10/2026 — publication, synchronisation (import des annonces Depop sur « Synchroniser »), retrait des copies à la vente, republication (manuelle, et automatique avec la bascule du 10/10) ; compte Depop en France, en euros ; exécutée par l''extension, ordinateur allumé'
+          traductions:
+            valeur:
+              en: 'yes, open to all on 10 October 2026 — publishing, sync (import of Depop listings on “Sync”), removal of copies on a sale, reposting (manual, and automatic with the 10 October switchover); Depop account in France, in euros; carried out by the extension, computer on'
+          verdict: oui
+          sources: []
+          date: 2026-10-09
+          niveau: decision_nico
+        autres:
+          valeur: 'aucune autre plateforme ouverte (5 au total : Vinted, Leboncoin, eBay, Beebs, Depop)'
+          traductions:
+            valeur:
+              en: 'no other marketplace open (5 in total: Vinted, Leboncoin, eBay, Beebs, Depop)'
+          verdict: null
+          sources: []
+          date: 2026-10-09
+          niveau: decision_nico
+      app_mobile:
+        valeur: 'oui — iOS (App Store, iOS 15+, version 2.8 du 24/09/2026) et Android (Google Play, Android 7+, 500+ téléchargements) ; contenu de l''app mis à jour par OTA'
+        traductions:
+          valeur:
+            en: 'yes — iOS (App Store, iOS 15+, version 2.8 of 24 September 2026) and Android (Google Play, Android 7+, 500+ downloads); app content updated over the air (OTA)'
+        verdict: oui
+        sources:
+          - 'https://apps.apple.com/fr/app/fillsell/id6762152785'
+          - 'https://play.google.com/store/apps/details?id=app.fillsell.app'
+        date: 2026-10-09
+        niveau: fiche_de_verite
+      extension:
+        valeur: 'oui — Chrome Web Store, gratuite, « FillSell — Cross-post » ; Chrome ; Firefox et Safari : non'
+        verdict: oui
+        sources:
+          - 'https://chromewebstore.google.com/detail/ooeagobimgoabciggfamljdfpkginhnm'
+        date: 2026-10-09
+        niveau: fiche_de_verite
+      depart:
+        valeur: 'le téléphone (app) ou le web pilotent ; l''extension exécute sur l''ordinateur, dans la session de la personne'
+        verdict: null
+        sources: []
+        date: 2026-10-09
+        niveau: fiche_de_verite
+      ordinateur_eteint:
+        valeur: 'Vinted, Leboncoin, Beebs, Depop : non, les actions attendent en file et partent à la réouverture de Chrome ; eBay relié : publication par l''API même ordinateur éteint'
+        verdict: null
+        sources: []
+        date: 2026-10-09
+        niveau: fiche_de_verite
+      ia_photo:
+        valeur: 'oui — Lens : objet, marque lue, état proposé, prix proposé à partir d''annonces comparables en ligne, titre, description ; tu relis avant de publier ; retouche photo IA en Premium, Pro et Business seulement'
+        traductions:
+          valeur:
+            en: 'yes — Lens: item, brand read, suggested condition, suggested price based on comparable listings online, title, description; you review before publishing; AI photo touch-up on Premium, Pro and Business only'
+        verdict: oui
+        sources: []
+        date: 2026-10-09
+        niveau: fiche_de_verite
+      import_synchro:
+        valeur: 'oui — sur appui de « Synchroniser » : annonces déjà en ligne sur Vinted, Leboncoin, eBay, Beebs et Depop ; tous paliers ; lit sans publier (une vente révélée enregistrée fait retirer les copies)'
+        traductions:
+          valeur:
+            en: 'yes — when you tap “Sync”: listings already live on Vinted, Leboncoin, eBay, Beebs and Depop; all plans; reads without publishing (a sale it reveals, once recorded, has the copies removed)'
+        verdict: oui
+        sources: []
+        date: 2026-10-09
+        niveau: fiche_de_verite
+      regroupement_multi_plateformes:
+        valeur: 'oui — rapprochement côté serveur : mêmes photos ET accord du titre, sans conflit ni concurrent (ou identifiant d''un dépôt FillSell) ; jamais la photo seule ni le titre seul ; doute = question « Est-ce le même article ? », hors du stock'
+        verdict: oui
+        sources: []
+        date: 2026-10-09
+        niveau: fiche_de_verite
+      retrait_auto_copies:
+        valeur: 'oui, dans tous les forfaits, une fois la vente enregistrée : seule sur Vinted, eBay et Depop (preuve « vendu »), après ta confirmation d''un appui sur Leboncoin et Beebs ; copies liées par une preuve retirées, sinon question « Déjà vendu ? » ; Vinted, Leboncoin, Beebs, Depop : ordinateur allumé'
+        traductions:
+          valeur:
+            en: 'yes, on every plan, once the sale is recorded: on its own on Vinted, eBay and Depop (“sold” proof), after your one-tap confirmation on Leboncoin and Beebs; copies linked by a proof are removed, otherwise the question “Already sold?”; Vinted, Leboncoin, Beebs, Depop: computer on'
+        verdict: oui
+        sources: []
+        date: 2026-10-09
+        niveau: fiche_de_verite
+      republication:
+        valeur: 'manuelle et automatique ; automatique par créneaux (jours, créneau, ancienneté minimale, ordre ; FillSell espace les republications et s''arrête chaque jour pour protéger le compte ; coupure à tout moment) ; ordinateur allumé'
+        traductions:
+          valeur:
+            en: 'manual and automatic; automatic in time slots (days, time slot, minimum age, order; FillSell spaces out reposts and stops each day to protect the account; can be switched off at any time); computer on'
+        verdict: null
+        sources: []
+        date: 2026-10-09
+        niveau: decision_nico
+      stock_ventes_marges:
+        valeur: 'stock sans limite d''articles (tous paliers) ; ventes, marge et bénéfice (un prix d''achat inconnu est exclu du calcul) ; export Excel, import Excel/CSV ; pas de module fiscal (DAC7, URSSAF)'
+        verdict: null
+        sources: []
+        date: 2026-10-09
+        niveau: fiche_de_verite
+      prix:
+        valeur: 'Gratuit 0 €, Premium 12,99 €, Pro 29,99 €, Business 59,99 € par mois, sans engagement ; aucun prix annuel ; le forfait compte les annonces rédigées par l''IA, pas les publications (aucun chiffre de quota publié : décision de Nico)'
+        verdict: null
+        sources:
+          - 'https://fillsell.app/'
+        date: 2026-10-09
+        niveau: fiche_de_verite
+        devise: EUR
+        paliers:
+          - nom: Gratuit
+            prix_mensuel: 0
+          - nom: Premium
+            prix_mensuel: 12.99
+          - nom: Pro
+            prix_mensuel: 29.99
+          - nom: Business
+            prix_mensuel: 59.99
+      essai:
+        valeur: 'aucun essai des paliers payants ; palier Gratuit permanent, inscription sans carte bancaire'
+        verdict: null
+        sources:
+          - 'https://fillsell.app/'
+        date: 2026-10-09
+        niveau: fiche_de_verite
+      pays_langues:
+        valeur: 'app en français et en anglais ; périmètre : Vinted France, Leboncoin, eBay.fr, Beebs, Depop (compte en France, euros) ; fiche Chrome Web Store en français'
+        verdict: null
+        sources: []
+        date: 2026-10-09
+        niveau: fiche_de_verite
+      notes_publiques:
+        valeur: 'Chrome Web Store 5,0 (1 avis), 360 utilisateurs ; App Store FR 5,0 (3 notes) ; Google Play 500+ téléchargements (note non relevée) ; Trustpilot non relevé'
+        verdict: null
+        sources:
+          - 'https://chromewebstore.google.com/detail/ooeagobimgoabciggfamljdfpkginhnm'
+          - 'https://apps.apple.com/fr/app/fillsell/id6762152785'
+        date: 2026-10-09
+        niveau: verifie
+    fait_bien: []
+    fillsell_fait_pas_lui: []
+    lui_fait_pas_fillsell: []
+  - slug: stoflow
+    nom: StoFlow
+    url: 'https://stoflow.com'
+    pays: France
+    categorie: 'crosslisting français : tableau de bord web + extension (Chrome, Brave, Edge, Firefox) + un mode qui tourne sur ses serveurs (Pro)'
+    classement: classe
+    criteres:
+      plateformes:
+        vinted:
+          valeur: 'oui, dès le plan Free ; aucun pays nommé (manifeste : vinted.fr et vinted.com seulement, d''où France déduite)'
+          verdict: oui
+          sources:
+            - 'https://stoflow.com/pour/vinted'
+            - 'https://stoflow.com/pricing'
+          date: 2026-10-09
+          niveau: verifie
+        leboncoin:
+          valeur: 'oui, dès le plan Free'
+          verdict: oui
+          sources:
+            - 'https://stoflow.com/pricing'
+            - 'https://stoflow.com/pour/leboncoin'
+          date: 2026-10-09
+          niveau: verifie
+        ebay:
+          valeur: 'oui — eBay France à partir du plan Starter (14,99 €), connexion OAuth officielle ; 9 marchés eBay européens en Business seulement'
+          verdict: oui
+          sources:
+            - 'https://stoflow.com/pour/ebay'
+            - 'https://stoflow.com/docs/aide/faq'
+          date: 2026-10-09
+          niveau: verifie
+        beebs:
+          valeur: non — 0 occurrence sur les pages lues
+          verdict: non
+          sources:
+            - 'https://stoflow.com/pricing'
+            - 'https://stoflow.com/docs/aide/faq'
+          date: 2026-10-09
+          niveau: verifie
+        depop:
+          valeur: 'non annoncé — 0 occurrence sur l''accueil, /pricing, la FAQ et le plan du site (les pages /pour/ couvrent ebay, etsy, leboncoin, vestiaire, vinted) ; /pour/depop répond 404 « Page introuvable »'
+          verdict: non
+          sources:
+            - 'https://stoflow.com/'
+            - 'https://stoflow.com/pricing'
+            - 'https://stoflow.com/docs/aide/faq'
+            - 'https://stoflow.com/sitemap.xml'
+            - 'https://stoflow.com/pour/depop'
+            - 'https://chromewebstore.google.com/detail/stoflow-vendez-sur-vinted/mbckhfhfapmdgfidjjpkpnaafnckeipg'
+          date: 2026-10-09
+          niveau: verifie
+        autres:
+          valeur: 'Vestiaire Collective (Pro), Etsy (Business), AbeBooks « Bêta » (Business) ; le manifeste déclare aussi Depop, Whatnot, Cardmarket, non annoncés'
+          verdict: null
+          sources:
+            - 'https://stoflow.com/pricing'
+          date: 2026-10-09
+          niveau: verifie
+      app_mobile:
+        valeur: 'non — « Une application StoFlow pour iPhone et Android est en cours de construction ; elle n''est publiée ni sur l''App Store ni sur le Play Store, sans date annoncée »'
+        verdict: non
+        sources:
+          - 'https://stoflow.com/docs/aide/faq'
+          - 'https://itunes.apple.com/search?term=stoflow&country=fr&entity=software'
+        date: 2026-10-09
+        niveau: verifie
+      extension:
+        valeur: 'oui — Chrome, Brave, Edge (Chrome Web Store, v1.54.0) et Firefox (AMO, v1.54.0) ; ordinateur seulement'
+        verdict: oui
+        sources:
+          - 'https://chromewebstore.google.com/detail/stoflow-vendez-sur-vinted/mbckhfhfapmdgfidjjpkpnaafnckeipg'
+          - 'https://addons.mozilla.org/fr/firefox/addon/stoflow-marketplace-manager/'
+        date: 2026-10-09
+        niveau: verifie
+      depart:
+        valeur: 'tableau de bord web, sur ordinateur ou dans le navigateur du téléphone ; en Free et Starter, connecter Vinted ou Leboncoin demande l''ordinateur (extension) ; en Pro et Business, compte hébergé sur ses serveurs, pilotable depuis le téléphone'
+        verdict: null
+        sources:
+          - 'https://stoflow.com/docs/aide/faq'
+        date: 2026-10-09
+        niveau: verifie
+      ordinateur_eteint:
+        valeur: 'oui en Pro et Business (« vos comptes tournent sur nos serveurs en France, ordinateur éteint » : Vinted, Leboncoin, Vestiaire) ; eBay par l''API ; Free et Starter : navigateur ouvert requis'
+        verdict: oui
+        sources:
+          - 'https://stoflow.com/'
+        date: 2026-10-09
+        niveau: verifie
+      ia_photo:
+        valeur: 'oui — détourage, reconnaissance du produit (16 familles), titre, description, prix en 3 niveaux, ISBN / code-barres pour les livres ; « Rédaction par IA » affichée sur les seules cartes Pro et Business (inclusion en Free/Starter non vérifiable)'
+        verdict: oui
+        sources:
+          - 'https://stoflow.com/'
+          - 'https://stoflow.com/pricing'
+        date: 2026-10-09
+        niveau: verifie
+        contradictoire: true
+      import_synchro:
+        valeur: 'oui — import de Vinted, Leboncoin, eBay et Etsy (bouton « Synchroniser ») ; synchronisation continue plusieurs fois par jour en Pro et Business'
+        verdict: oui
+        sources:
+          - 'https://stoflow.com/docs/aide/faq'
+          - 'https://stoflow.com/'
+        date: 2026-10-09
+        niveau: verifie
+      regroupement_multi_plateformes:
+        valeur: à la main — les annonces importées apparaissent « non liées » et la personne les lie à son inventaire ; aucun rapprochement automatique décrit
+        verdict: partiel
+        sources:
+          - 'https://stoflow.com/docs/aide/faq'
+        date: 2026-10-09
+        niveau: verifie
+      retrait_auto_copies:
+        valeur: 'oui, dès le plan Free — « automatiquement ou après votre feu vert » ; détection annoncée à « 4 synchronisations par jour, temps réel sur eBay » ; aucun délai promis ; navigateur ouvert en Free et Starter'
+        verdict: oui
+        sources:
+          - 'https://stoflow.com/'
+          - 'https://stoflow.com/blog/synchroniser-son-stock-eviter-double-vente'
+        date: 2026-10-09
+        niveau: verifie
+      republication:
+        valeur: 'automatique à partir de Pro, Vinted et Leboncoin, jusqu''à 200 par jour, de 8 h à 22 h ; manuelle en lot (100 produits par demande) depuis le tableau de bord ; pas sur eBay ni Vestiaire'
+        verdict: null
+        sources:
+          - 'https://stoflow.com/'
+          - 'https://stoflow.com/blog/extension-vinted-risque-blocage-compte'
+        date: 2026-10-09
+        niveau: verifie
+      stock_ventes_marges:
+        valeur: 'produits publiés plafonnés : 100 (Free), 500 (Starter), 2 000 (Pro), illimité (Business) ; commandes unifiées, bordereaux ; comptabilité et export Excel/FEC (bêta) en Pro et Business ; ROI par produit en Business'
+        verdict: null
+        sources:
+          - 'https://stoflow.com/docs/aide/faq'
+          - 'https://stoflow.com/'
+        date: 2026-10-09
+        niveau: verifie
+      prix:
+        valeur: 'Free 0 €, Starter 14,99 €, Pro 29,99 €, Business 79,99 € par mois TTC ; en annuel 12,5 €, 25 €, 66,67 € par mois (« 2 mois offerts »)'
+        verdict: null
+        sources:
+          - 'https://stoflow.com/pricing'
+        date: 2026-10-09
+        niveau: verifie
+        devise: EUR
+        paliers:
+          - nom: Free
+            prix_mensuel: 0
+          - nom: Starter
+            prix_mensuel: 14.99
+            prix_mensuel_annuel: 12.5
+          - nom: Pro
+            prix_mensuel: 29.99
+            prix_mensuel_annuel: 25
+          - nom: Business
+            prix_mensuel: 79.99
+            prix_mensuel_annuel: 66.67
+      essai:
+        valeur: 'pas d''essai sur les plans payants ; Free « gratuit pour toujours, sans carte bancaire » ; satisfait ou remboursé 14 jours (particuliers)'
+        verdict: null
+        sources:
+          - 'https://stoflow.com/docs/aide/faq'
+          - 'https://stoflow.com/pricing'
+        date: 2026-10-09
+        niveau: verifie
+      pays_langues:
+        valeur: France ; site et extension en français seulement ; descriptions d'annonces « traduites en 5 langues »
+        verdict: null
+        sources:
+          - 'https://stoflow.com/'
+        date: 2026-10-09
+        niveau: verifie
+      notes_publiques:
+        valeur: 'Chrome Web Store 3,2 (6 avis), 175 utilisateurs ; Firefox 5/5 (1 avis), 13 utilisateurs quotidiens ; pas de page Trustpilot ; pas d''app'
+        verdict: null
+        sources:
+          - 'https://chromewebstore.google.com/detail/stoflow-vendez-sur-vinted/mbckhfhfapmdgfidjjpkpnaafnckeipg'
+        date: 2026-10-09
+        niveau: verifie
+    fait_bien:
+      - 'Sept marketplaces avec une grille claire de ce que chaque plan ouvre, dont Vestiaire Collective, Etsy et eBay dans 9 pays européens.'
+      - 'Fonctionnement sur ses serveurs livré dès le plan Pro : Vinted, Leboncoin et Vestiaire tournent ordinateur éteint, pilotables depuis un téléphone.'
+      - 'Plan Free utile et sans carte : Vinted et Leboncoin, 100 produits, retrait après vente inclus ; prix annuels et 14 jours remboursés.'
+    fillsell_fait_pas_lui:
+      - 'Apps iOS et Android publiées (StoFlow : « en cours de construction »).'
+      - 'Beebs et Depop (StoFlow : aucun des deux annoncé).'
+      - 'eBay inclus dès le palier Gratuit (StoFlow : à partir de Starter, 14,99 €).'
+      - 'Stock sans limite d''articles sur tous les paliers (StoFlow : 100 / 500 / 2 000 produits publiés).'
+      - 'Rapprochement automatique d''un même article entre plateformes (photos et titre, doute = question) ; chez StoFlow, la liaison se fait à la main.'
+      - 'Republication automatique sur Vinted, Leboncoin, Beebs et Depop, sans palier requis (StoFlow : à partir de Pro, 29,99 €, Vinted et Leboncoin seulement).'
+      - 'App en français et en anglais (StoFlow : français seulement).'
+    lui_fait_pas_fillsell:
+      - 'Vestiaire Collective, Etsy, eBay hors de France (9 pays).'
+      - 'Fonctionnement ordinateur éteint pour Vinted et Leboncoin (sur ses serveurs, plan Pro) ; FillSell : seulement eBay relié.'
+      - 'Extension Firefox (et Brave, Edge annoncés).'
+      - Prix annuels (-20 %) et remboursement sous 14 jours.
+      - Palier gratuit plus large en volume de publication (100 produits) — mais limité à Vinted et Leboncoin.
+      - 'Messagerie unifiée avec réponses IA, négociation, relance des favoris, export comptable FEC (bêta), plusieurs comptes par marketplace.'
+  - slug: flowdino
+    nom: FlowDino
+    url: 'https://www.flowdino.com'
+    pays: France
+    categorie: 'crosslisting français : application web + extension Chrome ; modules Shopify, WooCommerce, PrestaShop'
+    classement: classe
+    criteres:
+      plateformes:
+        vinted:
+          valeur: 'oui ; aucun pays nommé sur le site ; le manifeste déclare 23 domaines Vinted ; llms.txt : « France, Belgique, Suisse francophone »'
+          verdict: oui
+          sources:
+            - 'https://www.flowdino.com/faq'
+            - 'https://www.flowdino.com/llms.txt'
+          date: 2026-10-09
+          niveau: verifie
+        leboncoin:
+          valeur: 'oui (publication multi-catégories, renouvellement)'
+          verdict: oui
+          sources:
+            - 'https://www.flowdino.com/'
+          date: 2026-10-09
+          niveau: verifie
+        ebay:
+          valeur: 'oui — « Connecter Ebay » par une fenêtre eBay ; manifeste : ebay.fr et ebay.com ; autres sites eBay non documentés'
+          verdict: oui
+          sources:
+            - 'https://www.flowdino.com/docs/sales-config'
+          date: 2026-10-09
+          niveau: verifie
+        beebs:
+          valeur: 'oui — nommé dans toutes les listes ; bandeau « Beebs est maintenant stable, il sera facturé à partir du 1/10 » ; aucune page de documentation Beebs (import et retrait Beebs non documentés)'
+          verdict: oui
+          sources:
+            - 'https://www.flowdino.com/'
+            - 'https://www.flowdino.com/pricing'
+          date: 2026-10-09
+          niveau: verifie
+        depop:
+          valeur: 'non — 0 occurrence sur l''accueil, /faq, /pricing et llms.txt ; son propre comparatif renvoie les vendeurs Depop ailleurs : « si vous vendez principalement sur Poshmark, Mercari ou Depop, les solutions américaines couvrent mieux ces plateformes »'
+          verdict: non
+          sources:
+            - 'https://www.flowdino.com/'
+            - 'https://www.flowdino.com/faq'
+            - 'https://www.flowdino.com/pricing'
+            - 'https://www.flowdino.com/llms.txt'
+            - 'https://www.flowdino.com/blog/meilleur-logiciel-crosslisting-2026'
+          date: 2026-10-09
+          niveau: verifie
+        autres:
+          valeur: 'Etsy, Vestiaire Collective ; boutiques Shopify, WooCommerce, PrestaShop comme source du catalogue'
+          verdict: null
+          sources:
+            - 'https://www.flowdino.com/faq'
+            - 'https://www.flowdino.com/'
+          date: 2026-10-09
+          niveau: verifie
+      app_mobile:
+        valeur: 'non — « App mobile native » dans la feuille de route ; sur Android, la doc propose le navigateur Yandex'
+        verdict: non
+        sources:
+          - 'https://www.flowdino.com/llms.txt'
+          - 'https://www.flowdino.com/docs/chrome-installation'
+          - 'https://itunes.apple.com/search?term=flowdino&country=fr&entity=software'
+        date: 2026-10-09
+        niveau: verifie
+      extension:
+        valeur: 'oui — Chrome (Chrome Web Store, v1.4.13, 17 langues) ; Firefox annoncé dans la doc mais absent d''AMO'
+        verdict: oui
+        sources:
+          - 'https://chromewebstore.google.com/detail/flowdino-gestion-multi-pl/iealfioknccembacfpjgodhoehdmggak'
+        date: 2026-10-09
+        niveau: verifie
+        contradictoire: true
+      depart:
+        valeur: 'l''ordinateur : application web + extension, navigateur ouvert sur le site concerné'
+        verdict: null
+        sources:
+          - 'https://www.flowdino.com/faq'
+          - 'https://www.flowdino.com/documentation'
+        date: 2026-10-09
+        niveau: verifie
+      ordinateur_eteint:
+        valeur: 'non — « Si votre ordinateur reste éteint tout le week-end, les retraits se feront au prochain lancement » ; aucun fonctionnement sur serveur annoncé'
+        verdict: non
+        sources:
+          - 'https://www.flowdino.com/blog/eviter-double-vente-multi-plateformes'
+        date: 2026-10-09
+        niveau: verifie
+      ia_photo:
+        valeur: 'titre et description depuis une photo (prompt personnalisable), mannequin virtuel, changement de fond, 13 tags Etsy ; pas de prix proposé (« pricing dynamique » en feuille de route) ; quotas IA par plan'
+        verdict: null
+        sources:
+          - 'https://www.flowdino.com/docs/features/ai-assistant'
+          - 'https://www.flowdino.com/pricing'
+        date: 2026-10-09
+        niveau: verifie
+      import_synchro:
+        valeur: 'oui — Vinted, Leboncoin, eBay, Etsy par l''extension, borné par le nombre d''articles du plan ; import CSV ; synchronisation des boutiques ; Beebs et Vestiaire non cités'
+        verdict: oui
+        sources:
+          - 'https://www.flowdino.com/faq'
+          - 'https://www.flowdino.com/docs/chrome-catalogue'
+        date: 2026-10-09
+        niveau: verifie
+      regroupement_multi_plateformes:
+        valeur: 'non décrit (seule règle d''unicité écrite : partenariat Reusses)'
+        verdict: non
+        sources:
+          - 'https://www.flowdino.com/docs/partnership-reusses'
+        date: 2026-10-09
+        niveau: non_verifiable
+      retrait_auto_copies:
+        valeur: 'oui, par l''extension, navigateur ouvert ; la tâche « Suppression » vise les annonces « publiées au préalable avec FlowDino » ; la doc de l''onglet ne cite que Vinted et Leboncoin ; plan requis non écrit'
+        verdict: oui
+        sources:
+          - 'https://www.flowdino.com/faq'
+          - 'https://www.flowdino.com/docs/automation'
+          - 'https://www.flowdino.com/docs/chrome-suppression'
+        date: 2026-10-09
+        niveau: verifie
+      republication:
+        valeur: 'oui — tâche planifiée « Renouveler » (intervalle de 5 à 360 min ou heures fixes, ancienneté 1 à 365 jours, 1 à 50 annonces par exécution) ; photos modifiées « pour que l''algorithme ne détecte pas » ; plan requis non écrit'
+        verdict: oui
+        sources:
+          - 'https://www.flowdino.com/docs/automation'
+          - 'https://www.flowdino.com/docs/features/publish-listings'
+        date: 2026-10-09
+        niveau: verifie
+      stock_ventes_marges:
+        valeur: 'tableau des ventes (frais, bénéfice net), bordereaux A4 ou thermiques ; articles plafonnés 50 / 200 / 1 000 / 5 000 / 15 000 ; prix d''achat par article non documenté'
+        verdict: null
+        sources:
+          - 'https://www.flowdino.com/docs/features/sales-dashboard'
+          - 'https://www.flowdino.com/pricing'
+        date: 2026-10-09
+        niveau: verifie
+      prix:
+        valeur: 'par site connecté : Gratuit (14 jours d''essai), Starter 7,99 €, Pro 14,99 €, Business 29,99 €, Platinum 44,99 € par mois et par site ; annuel « jusqu''à -20 % » ; la FAQ de l''accueil et le JSON-LD disent « Premium 19,99 € / Pro 49,99 € »'
+        verdict: null
+        sources:
+          - 'https://www.flowdino.com/pricing'
+          - 'https://www.flowdino.com/'
+        date: 2026-10-09
+        niveau: verifie
+        contradictoire: true
+        devise: EUR
+        par_site: true
+        paliers:
+          - nom: Gratuit
+            prix_mensuel: 0
+          - nom: Starter
+            prix_mensuel: 7.99
+          - nom: Pro
+            prix_mensuel: 14.99
+          - nom: Business
+            prix_mensuel: 29.99
+          - nom: Platinum
+            prix_mensuel: 44.99
+      essai:
+        valeur: 14 jours sans carte bancaire ; la durée du « plan gratuit » au-delà de 14 jours n'est pas claire
+        verdict: null
+        sources:
+          - 'https://www.flowdino.com/pricing'
+        date: 2026-10-09
+        niveau: verifie
+        contradictoire: true
+      pays_langues:
+        valeur: 'site FR et EN ; extension en 17 langues ; marché « France, Belgique, Suisse francophone »'
+        verdict: null
+        sources:
+          - 'https://www.flowdino.com/'
+          - 'https://www.flowdino.com/llms.txt'
+        date: 2026-10-09
+        niveau: verifie
+      notes_publiques:
+        valeur: 'Chrome Web Store 5,0 (6 avis), 326 utilisateurs ; Shopify 5,0 (1 avis) ; pas de page Trustpilot ; le JSON-LD du site déclare 4,8 / 150 notes sans source publique'
+        verdict: null
+        sources:
+          - 'https://chromewebstore.google.com/detail/flowdino-gestion-multi-pl/iealfioknccembacfpjgodhoehdmggak'
+          - 'https://apps.shopify.com/flowdino-gestion-multiplatef'
+        date: 2026-10-09
+        niveau: verifie
+    fait_bien:
+      - 'La couverture la plus large vue en France, Beebs compris (seul autre outil qui l''annonce), plus Etsy et Vestiaire Collective.'
+      - 'Passerelle e-commerce : modules Shopify, WooCommerce et PrestaShop publiés, import CSV avec correspondance des colonnes.'
+      - 'IA visuelle dès le gratuit (mannequin virtuel, changement de fond) et automatisations planifiées documentées en détail ; essai de 14 jours sans carte.'
+    fillsell_fait_pas_lui:
+      - 'Apps iOS et Android (FlowDino : feuille de route, Yandex sur Android).'
+      - 'Depop : publication, synchronisation, retrait, republication (FlowDino : non, et son comparatif envoie les vendeurs Depop vers les outils américains).'
+      - 'Prix proposé par l''IA à partir d''annonces comparables (FlowDino : prix saisi, IA de prix en feuille de route).'
+      - 'eBay par l''API officielle, publication même ordinateur éteint (FlowDino : par l''extension, navigateur ouvert).'
+      - 'Import gratuit et sans limite, Beebs compris (FlowDino : borné par le plan, Beebs non cité).'
+      - Rapprochement d'un même article entre plateformes (non décrit chez FlowDino).
+      - 'Retrait des copies prouvées, y compris d''annonces importées (FlowDino : annonces publiées avec FlowDino).'
+      - 'Un forfait pour toutes les plateformes et un stock sans limite d''articles (FlowDino : prix par site, 50 à 15 000 articles).'
+    lui_fait_pas_fillsell:
+      - Etsy et Vestiaire Collective
+      - 'Vinted hors de France d''après le manifeste (23 domaines) — déduit, non promis.'
+      - 'Modules de boutique (Shopify, WooCommerce, PrestaShop).'
+      - 'Mannequin virtuel et changement de fond dès le plan gratuit (FillSell : retouche à partir de Premium).'
+      - 'Échange de vues et de favoris, réponses automatiques aux favoris, bordereaux.'
+      - 'Essai de 14 jours, prix annuels, prix d''entrée de 7,99 € pour un seul site.'
+  - slug: flypr
+    nom: Flypr
+    url: 'https://flypr.app'
+    pays: France
+    categorie: 'crosslisting français : application web (PWA) + extension Chrome distribuée en.zip'
+    classement: hors_classement
+    criteres:
+      plateformes:
+        vinted:
+          valeur: 'oui (remplissage assisté du formulaire) ; manifeste : 6 domaines Vinted ; la republication vise vinted.fr seulement d''après le code'
+          verdict: oui
+          sources:
+            - 'https://flypr.app/faq'
+            - 'https://flypr.app/flypr-extension.zip'
+          date: 2026-10-09
+          niveau: verifie
+        leboncoin:
+          valeur: oui (remplissage assisté)
+          verdict: oui
+          sources:
+            - 'https://flypr.app/faq'
+          date: 2026-10-09
+          niveau: verifie
+        ebay:
+          valeur: oui — ebay.fr et ebay.com ; certains champs à confirmer à la main
+          verdict: oui
+          sources:
+            - 'https://flypr.app/faq'
+          date: 2026-10-09
+          niveau: verifie
+        beebs:
+          valeur: non
+          verdict: non
+          sources:
+            - 'https://flypr.app/faq'
+          date: 2026-10-09
+          niveau: verifie
+        depop:
+          valeur: 'non — « Six plateformes : Vinted, Leboncoin, eBay, Grailed, Selency et Vestiaire Collective » ; 0 occurrence de Depop sur /faq, /pricing et dans le plan du site (Depop n''apparaît que dans un article de blog, d''après la fiche)'
+          verdict: non
+          sources:
+            - 'https://flypr.app/faq'
+            - 'https://flypr.app/pricing'
+            - 'https://flypr.app/sitemap.xml'
+            - 'https://flypr.app/flypr-extension.zip'
+          date: 2026-10-09
+          niveau: verifie
+        autres:
+          valeur: 'Grailed, Selency, Vestiaire Collective (Pro)'
+          verdict: null
+          sources:
+            - 'https://flypr.app/faq'
+          date: 2026-10-09
+          niveau: verifie
+      app_mobile:
+        valeur: non — « Une app mobile native est sur la roadmap » ; PWA
+        verdict: non
+        sources:
+          - 'https://flypr.app/faq'
+          - 'https://itunes.apple.com/search?term=flypr&country=fr&entity=software'
+        date: 2026-10-09
+        niveau: verifie
+      extension:
+        valeur: 'Chrome, par un.zip en mode développeur (v1.4.1, fichiers du 18/04/2026) ; absente du Chrome Web Store'
+        verdict: null
+        sources:
+          - 'https://flypr.app/flypr-extension.zip'
+          - 'https://flypr.app/blog/extension-chrome-vinted'
+        date: 2026-10-09
+        niveau: verifie
+      depart:
+        valeur: 'article créé dans l''application web (ordinateur ou téléphone) ; publication depuis l''ordinateur, sur le formulaire ouvert par la personne'
+        verdict: null
+        sources:
+          - 'https://flypr.app/'
+          - 'https://flypr.app/faq'
+        date: 2026-10-09
+        niveau: verifie
+      ordinateur_eteint:
+        valeur: non pour la publication ; un agent IA de messagerie « tourne 24/7 » (annoncé)
+        verdict: non
+        sources:
+          - 'https://flypr.app/faq'
+        date: 2026-10-09
+        niveau: non_verifiable
+      ia_photo:
+        valeur: 'annoncée : description, catégorie et prix suggéré depuis une photo ; « Scan photo », « Prix marché » et détourage réservés au Business, mais encore « En cours » sur la feuille de route'
+        verdict: null
+        sources:
+          - 'https://flypr.app/'
+          - 'https://flypr.app/pricing'
+          - 'https://flypr.app/roadmap'
+        date: 2026-10-09
+        niveau: verifie
+        contradictoire: true
+      import_synchro:
+        valeur: import CSV / Excel ; ventes Vinted lues quand la personne ouvre sa page ; reprise des annonces déjà en ligne non annoncée
+        verdict: null
+        sources:
+          - 'https://flypr.app/features'
+        date: 2026-10-09
+        niveau: verifie
+      regroupement_multi_plateformes:
+        valeur: non décrit
+        verdict: non
+        sources:
+          - 'https://flypr.app/features'
+        date: 2026-10-09
+        niveau: non_verifiable
+      retrait_auto_copies:
+        valeur: non annoncé ; aucun module de suppression dans l'extension 1.4.1
+        verdict: non
+        sources:
+          - 'https://flypr.app/flypr-extension.zip'
+        date: 2026-10-09
+        niveau: deduit
+      republication:
+        valeur: 'Vinted seulement, dès Starter, par modification de l''annonce (pas suppression puis recréation) d''après le code'
+        verdict: null
+        sources:
+          - 'https://flypr.app/faq'
+          - 'https://flypr.app/pricing'
+        date: 2026-10-09
+        niveau: verifie
+      stock_ventes_marges:
+        valeur: 'oui — tableau de bord CA, profit net, ROI, marges ; étiquettes ; fiscalité française (livre des recettes URSSAF, Factur-X en Business)'
+        verdict: oui
+        sources:
+          - 'https://flypr.app/'
+          - 'https://flypr.app/features'
+        date: 2026-10-09
+        niveau: verifie
+      prix:
+        valeur: 'Gratuit 0 € (4 produits, 2 plateformes), Starter 6,90 €, Pro 12,90 €, Business 29,90 € par mois ; annuel -20 %'
+        verdict: null
+        sources:
+          - 'https://flypr.app/pricing'
+        date: 2026-10-09
+        niveau: verifie
+        devise: EUR
+        paliers:
+          - nom: Gratuit
+            prix_mensuel: 0
+          - nom: Starter
+            prix_mensuel: 6.9
+            prix_mensuel_annuel: 5.52
+          - nom: Pro
+            prix_mensuel: 12.9
+            prix_mensuel_annuel: 10.32
+          - nom: Business
+            prix_mensuel: 29.9
+            prix_mensuel_annuel: 23.92
+      essai:
+        valeur: 'Gratuit « à vie, sans carte bancaire » ; 1 mois offert sur les plans payants ; remboursé 14 jours'
+        verdict: null
+        sources:
+          - 'https://flypr.app/pricing'
+        date: 2026-10-09
+        niveau: verifie
+      pays_langues:
+        valeur: français seulement ; « marketplaces européennes uniquement »
+        verdict: null
+        sources:
+          - 'https://flypr.app/faq'
+        date: 2026-10-09
+        niveau: verifie
+      notes_publiques:
+        valeur: 'aucune : pas de fiche Chrome Web Store, pas d''app, Trustpilot 404'
+        verdict: null
+        sources:
+          - 'https://fr.trustpilot.com/review/flypr.app'
+        date: 2026-10-09
+        niveau: verifie
+      activite:
+        valeur: 'plan du site : 131 URL, toutes datées du 2026-04-18 ; l''adresse d''API inscrite dans le code répond 404 « Application not found »'
+        verdict: null
+        sources:
+          - 'https://flypr.app/sitemap.xml'
+        date: 2026-10-09
+        niveau: verifie
+    fait_bien:
+      - 'Contenu en français très fourni (plus de 72 articles, fiscalité, URSSAF, DAC7) et trois calculateurs gratuits.'
+      - 'Niches au-delà des généralistes : Grailed, Selency, Vestiaire Collective.'
+      - 'Tarifs publics bas et clairs (gratuit à vie, dès 6,90 €), angle fiscalité française.'
+    fillsell_fait_pas_lui:
+      - Apps iOS et Android ; extension publiée sur le Chrome Web Store.
+      - Beebs et Depop.
+      - Retrait des copies après une vente (non annoncé chez Flypr).
+      - Reprise des annonces déjà en ligne et rapprochement entre plateformes.
+      - 'Republication sur Leboncoin, Beebs et Depop (Flypr : Vinted seulement).'
+      - 'Activité démontrée : extension mise à jour le 08/10/2026.'
+    lui_fait_pas_fillsell:
+      - 'Grailed, Selency, Vestiaire Collective.'
+      - 'Fiscalité française intégrée (livre des recettes, Factur-X).'
+      - Agent IA de messagerie et de négociation (annoncé).
+      - 'Prix d''entrée plus bas (6,90 €), annuel -20 %, mois offert.'
+  - slug: klork
+    nom: Klork
+    url: 'https://klork.app'
+    pays: France
+    categorie: 'crosslisting français à partir du dressing Vinted : extension Chrome + tableau de bord web (PWA)'
+    classement: classe
+    criteres:
+      plateformes:
+        vinted:
+          valeur: 'source (sauvegarde du dressing, détection des ventes) ; publication VERS Vinted non annoncée (interrupteur par compte dans le code servi) ; les pages parlent de vinted.fr, le manifeste injecte 21 domaines Vinted'
+          verdict: null
+          sources:
+            - 'https://klork.app/guides/outils-us-vendeur-francais'
+            - 'https://klork.app/guides/sauvegarder-dressing'
+          date: 2026-10-09
+          niveau: verifie
+        leboncoin:
+          valeur: oui (publication ; formulaire rempli de bout en bout)
+          verdict: oui
+          sources:
+            - 'https://klork.app/guides/publier-leboncoin'
+          date: 2026-10-09
+          niveau: verifie
+        ebay:
+          valeur: 'oui — ebay.fr seulement, formulaire rempli par l''extension'
+          verdict: oui
+          sources:
+            - 'https://klork.app/guides/publier-ebay'
+          date: 2026-10-09
+          niveau: verifie
+        beebs:
+          valeur: 'annoncé dans les « 8 plateformes » (accueil, tarifs) ; activé compte par compte dans le code servi ; aucun guide Beebs'
+          verdict: null
+          sources:
+            - 'https://klork.app/pricing'
+            - 'https://klork.app/'
+          date: 2026-10-09
+          niveau: verifie
+        depop:
+          valeur: 'oui — publication (guide « Publier sur Depop » : « catégorie, marque, état, taille, prix, pays et livraison sont remplis automatiquement, puis l''annonce est postée » ; SKU natif ; boost « Promote » optionnel) ; sauvegarde (import) depuis Depop annoncée ; ventes Depop détectées (« Klork scanne les pages Vendues de Depop, eBay, Leboncoin et Vestiaire […] tu confirmes toujours avant ») puis « Depop → suppression » ; « Relister » manuel sur Depop ; republication automatique « Bientôt »'
+          verdict: oui
+          sources:
+            - 'https://klork.app/guides/publier-depop'
+            - 'https://klork.app/guides/vendu-et-maintenant'
+            - 'https://klork.app/guides/relister'
+            - 'https://klork.app/'
+            - 'https://klork.app/assets/GuidesPage-D1dY1zKN.js'
+            - 'https://klork.app/assets/LandingPage-w6A9IekR.js'
+          date: 2026-10-09
+          niveau: verifie
+        autres:
+          valeur: 'Depop et Vestiaire Collective (guides) ; Whatnot, Grailed, activés par compte'
+          verdict: null
+          sources:
+            - 'https://klork.app/guides/publier-depop'
+            - 'https://klork.app/guides/publier-vestiaire'
+            - 'https://klork.app/pricing'
+          date: 2026-10-09
+          niveau: verifie
+      app_mobile:
+        valeur: 'non — tableau de bord web installable ; « tu publies depuis ton ordinateur, tu suis tout depuis ton téléphone »'
+        verdict: non
+        sources:
+          - 'https://klork.app/help'
+          - 'https://itunes.apple.com/search?term=klork&country=fr&entity=software'
+        date: 2026-10-09
+        niveau: verifie
+      extension:
+        valeur: 'oui — Chrome Web Store (v2.3.531) ; « Chrome, Brave, Edge, Opera »'
+        verdict: oui
+        sources:
+          - 'https://chromewebstore.google.com/detail/gcjfkpapmjmflgnadggedomnocfheagf'
+          - 'https://klork.app/guides/connecter-extension'
+        date: 2026-10-09
+        niveau: verifie
+      depart:
+        valeur: 'l''ordinateur, depuis le dressing Vinted ouvert ; le téléphone sert au suivi'
+        verdict: null
+        sources:
+          - 'https://klork.app/guides/premiers-pas'
+        date: 2026-10-09
+        niveau: verifie
+      ordinateur_eteint:
+        valeur: 'non aujourd''hui ; un fonctionnement sur ses serveurs inclus dans le plan Entreprise, marqué « Bientôt »'
+        verdict: non
+        sources:
+          - 'https://klork.app/pricing'
+        date: 2026-10-09
+        niveau: verifie
+      ia_photo:
+        valeur: 'pas d''identification par photo ouverte au public ; « Description au choix (IA ou la tienne) » en Pro ; un « Studio » photo → annonce existe dans le code, « pas encore ouvert au public »'
+        verdict: null
+        sources:
+          - 'https://klork.app/pricing'
+        date: 2026-10-09
+        niveau: verifie
+      import_synchro:
+        valeur: 'sauvegarde du dressing Vinted (bouton ou automatique à l''ouverture de Vinted) ; sauvegarde depuis 6 autres plateformes annoncée sur l''accueil, contredite par un guide d''août (« L''import depuis Leboncoin est à l''étude »)'
+        verdict: null
+        sources:
+          - 'https://klork.app/'
+          - 'https://klork.app/guides/republier-vinted-leboncoin-comparatif'
+        date: 2026-10-09
+        niveau: verifie
+        contradictoire: true
+      regroupement_multi_plateformes:
+        valeur: chaque annonce Vinted reconnue par son identifiant ; un écran « même référence et même titre » existe dans le code servi (non vérifié en usage)
+        verdict: null
+        sources:
+          - 'https://klork.app/guides/sauvegarder-dressing'
+        date: 2026-10-09
+        niveau: deduit
+      retrait_auto_copies:
+        valeur: 'automatique en Business (35 €) seulement ; Gratuit : détection + retrait manuel ; « Vinted n''est jamais touché : c''est ta source » (contredit par une option du centre d''aide)'
+        verdict: null
+        sources:
+          - 'https://klork.app/'
+          - 'https://klork.app/guides/vendu-et-maintenant'
+        date: 2026-10-09
+        niveau: verifie
+        contradictoire: true
+      republication:
+        valeur: 'manuelle (« Relister » = suppression puis republication) : par plateforme en Pro, partout en Business ; automatique « Bientôt » (Entreprise) ; aucune republication dans Vinted'
+        verdict: null
+        sources:
+          - 'https://klork.app/guides/relister'
+          - 'https://klork.app/pricing'
+        date: 2026-10-09
+        niveau: verifie
+      stock_ventes_marges:
+        valeur: 'dressing sauvegardé, valeur du stock, ventes, CA par plateforme, marge réelle avec prix d''achat, marges par plateforme'
+        verdict: null
+        sources:
+          - 'https://chromewebstore.google.com/detail/gcjfkpapmjmflgnadggedomnocfheagf'
+          - 'https://klork.app/guides/reglages-marges'
+        date: 2026-10-09
+        niveau: verifie
+      prix:
+        valeur: 'Gratuit 0 € (10 annonces publiées par mois, 150 sauvegardées), Pro 15 €, Business 35 €, Entreprise 69 € (« Bientôt ») par mois ; annuel 150 / 350 / 690 € (« 2 mois offerts ») ; prix de lancement 12 € / 29 € terminé le 01/10/2026 (gardé à vie par les comptes bêta)'
+        verdict: null
+        sources:
+          - 'https://klork.app/pricing'
+        date: 2026-10-09
+        niveau: verifie
+        devise: EUR
+        paliers:
+          - nom: Gratuit
+            prix_mensuel: 0
+          - nom: Pro
+            prix_mensuel: 15
+          - nom: Business
+            prix_mensuel: 35
+          - nom: Entreprise
+            prix_mensuel: 69
+      essai:
+        valeur: 'aucun essai des paliers payants ; Gratuit permanent, sans carte'
+        verdict: null
+        sources:
+          - 'https://klork.app/'
+        date: 2026-10-09
+        niveau: verifie
+      pays_langues:
+        valeur: France ; site FR / EN ; fiche Chrome Web Store en français
+        verdict: null
+        sources:
+          - 'https://klork.app/guides/outils-us-vendeur-francais'
+        date: 2026-10-09
+        niveau: verifie
+      notes_publiques:
+        valeur: 'Chrome Web Store 5,0 (3 avis), 585 utilisateurs ; pas de Trustpilot ; pas d''app ; Discord ≈ 319 membres'
+        verdict: null
+        sources:
+          - 'https://chromewebstore.google.com/detail/gcjfkpapmjmflgnadggedomnocfheagf'
+        date: 2026-10-09
+        niveau: verifie
+    fait_bien:
+      - 'Couverture des plateformes de mode : Depop et Vestiaire Collective documentés, Whatnot et Grailed annoncés.'
+      - 'Unité de compte lisible (1 article = 1 crédit, quel que soit le nombre de plateformes) et gratuit permanent utile.'
+      - 'Page de sécurité qui dit ce que l''outil refuse (pas de contournement de CAPTCHA, pas de rotation d''IP), mode test et bouton d''arrêt.'
+    fillsell_fait_pas_lui:
+      - Apps iOS et Android ; on part d'une photo (Lens) et pas seulement d'une annonce Vinted déjà rédigée.
+      - 'Publication sur Vinted (Klork : Vinted est la source).'
+      - eBay par l'API officielle (publication et retrait).
+      - 'Retrait automatique des copies dans tous les forfaits (Klork : Business, 35 €).'
+      - 'Republication automatique par créneaux, Depop compris (Klork : « Bientôt », plan Entreprise à 69 €).'
+    lui_fait_pas_fillsell:
+      - 'Vestiaire Collective (et Whatnot, Grailed annoncés) ; Depop des deux côtés.'
+      - Plusieurs comptes Vinted dès le gratuit ; offres automatiques aux intéressés ; messagerie centralisée.
+      - Prix annuels ; connecteur MCP pour assistants IA ; mode test (« dry-run »).
+  - slug: redrip
+    nom: Redrip
+    url: 'https://www.redrip.app'
+    pays: France
+    categorie: 'automatisation Vinted + transfert Vinted ↔ Leboncoin : extension Chrome'
+    classement: classe
+    criteres:
+      plateformes:
+        vinted:
+          valeur: 'oui ; 25 pays annoncés sur la fiche CWS ; manifeste : 26 domaines Vinted'
+          verdict: oui
+          sources:
+            - 'https://chromewebstore.google.com/detail/redrip/ljefajifldflgjhipnfabbhjbbhnhoho'
+          date: 2026-10-09
+          niveau: verifie
+        leboncoin:
+          valeur: 'oui, France ; transfert dans les deux sens, en lot'
+          verdict: oui
+          sources:
+            - 'https://www.redrip.app/blog/publier-vinted-sur-leboncoin/'
+          date: 2026-10-09
+          niveau: verifie
+        ebay:
+          valeur: 'non — « Redrip couvre Vinted et Leboncoin, dans les deux sens, mais pas eBay ni Depop »'
+          verdict: non
+          sources:
+            - 'https://www.redrip.app/blog/vinted-bot-meilleurs-outils-2026/'
+          date: 2026-10-09
+          niveau: verifie
+        beebs:
+          valeur: non
+          verdict: non
+          sources:
+            - 'https://www.redrip.app/'
+          date: 2026-10-09
+          niveau: verifie
+        depop:
+          valeur: 'non — « Redrip couvre Vinted et Leboncoin, dans les deux sens, mais pas eBay ni Depop » ; 0 occurrence sur l''accueil ; le même comparatif renvoie le crosspost « Vinted + eBay + Depop » vers Crosslist (qui ne sert pas les résidents de l''UE)'
+          verdict: non
+          sources:
+            - 'https://www.redrip.app/blog/vinted-bot-meilleurs-outils-2026/'
+            - 'https://www.redrip.app/'
+          date: 2026-10-09
+          niveau: verifie
+        autres:
+          valeur: aucune
+          verdict: null
+          sources:
+            - 'https://www.redrip.app/'
+          date: 2026-10-09
+          niveau: verifie
+      app_mobile:
+        valeur: 'non — l''extension tourne sur téléphone par des navigateurs tiers (Orion sur iPhone, Yandex sur Android)'
+        verdict: non
+        sources:
+          - 'https://www.redrip.app/install-mobile.html'
+        date: 2026-10-09
+        niveau: verifie
+      extension:
+        valeur: 'oui — Chrome et navigateurs Chromium (Brave, Edge, Arc) ; « Firefox arrive »'
+        verdict: oui
+        sources:
+          - 'https://www.redrip.app/'
+        date: 2026-10-09
+        niveau: verifie
+      depart:
+        valeur: 'l''ordinateur, depuis une annonce déjà en ligne (dressing Vinted ou « Mes annonces » Leboncoin)'
+        verdict: null
+        sources:
+          - 'https://www.redrip.app/blog/publier-vinted-sur-leboncoin/'
+        date: 2026-10-09
+        niveau: verifie
+      ordinateur_eteint:
+        valeur: 'non — « mode auto 24/7 » onglet fermé, mais dans le navigateur où l''extension tourne'
+        verdict: non
+        sources:
+          - 'https://chromewebstore.google.com/detail/redrip/ljefajifldflgjhipnfabbhjbbhnhoho'
+        date: 2026-10-09
+        niveau: deduit
+      ia_photo:
+        valeur: 'pas d''identification par photo propre (les attributs viennent de la détection de Vinted) ; IA de texte : descriptions, réponses en 9 langues, republication IA ; pas d''IA de prix'
+        verdict: null
+        sources:
+          - 'https://www.redrip.app/'
+        date: 2026-10-09
+        niveau: verifie
+      import_synchro:
+        valeur: 'lecture du dressing Vinted et des annonces Leboncoin, stockée dans le navigateur (chrome.storage.local) ; pas de stock serveur'
+        verdict: null
+        sources:
+          - 'https://www.redrip.app/privacy.html'
+        date: 2026-10-09
+        niveau: verifie
+      regroupement_multi_plateformes:
+        valeur: lien créé au moment du transfert et marqueur « déjà sur Leboncoin » ; rien pour une annonce publiée hors de Redrip
+        verdict: null
+        sources:
+          - 'https://www.redrip.app/blog/eviter-double-vente-vinted-leboncoin/'
+        date: 2026-10-09
+        niveau: verifie
+      retrait_auto_copies:
+        valeur: 'oui, Vinted ↔ Leboncoin, sans confirmation : vente Vinted = annonce Leboncoin supprimée ; vente Leboncoin = article Vinted masqué (réversible) ; au plus tard au prochain passage sur Leboncoin ou à une vérification périodique'
+        verdict: oui
+        sources:
+          - 'https://chromewebstore.google.com/detail/redrip/ljefajifldflgjhipnfabbhjbbhnhoho'
+          - 'https://www.redrip.app/blog/eviter-double-vente-vinted-leboncoin/'
+        date: 2026-10-09
+        niveau: verifie
+      republication:
+        valeur: 'oui, cœur du produit : en lot et « mode auto 24/7 » toutes les X minutes, Vinted et Leboncoin ; 50 (Gratuit), 1 000, 3 000, illimité'
+        verdict: oui
+        sources:
+          - 'https://www.redrip.app/'
+        date: 2026-10-09
+        niveau: verifie
+      stock_ventes_marges:
+        valeur: 'tableau de bord Vinted (articles, ventes, étiquettes, statistiques) ; aucune marge ni prix d''achat'
+        verdict: null
+        sources:
+          - 'https://www.redrip.app/'
+        date: 2026-10-09
+        niveau: verifie
+      prix:
+        valeur: 'Gratuit 0 € « pour toujours » (50 republications, 10 publications Leboncoin par mois), Starter 5,99 €, Advanced 11,99 €, Professional 19,99 € par mois ; annuel 4,99 / 9,99 / 16,66 € par mois ; d''autres pages disent « 100 % gratuit »'
+        verdict: null
+        sources:
+          - 'https://www.redrip.app/'
+        date: 2026-10-09
+        niveau: verifie
+        contradictoire: true
+        devise: EUR
+        paliers:
+          - nom: Gratuit
+            prix_mensuel: 0
+          - nom: Starter
+            prix_mensuel: 5.99
+            prix_mensuel_annuel: 4.99
+          - nom: Advanced
+            prix_mensuel: 11.99
+            prix_mensuel_annuel: 9.99
+          - nom: Professional
+            prix_mensuel: 19.99
+            prix_mensuel_annuel: 16.66
+      essai:
+        valeur: le plan gratuit permanent sert d'essai ; aucun essai d'un palier payant
+        verdict: null
+        sources:
+          - 'https://www.redrip.app/'
+        date: 2026-10-09
+        niveau: verifie
+      pays_langues:
+        valeur: site en 8 langues ; Vinted multi-pays ; Leboncoin France
+        verdict: null
+        sources:
+          - 'https://www.redrip.app/sitemap.xml'
+        date: 2026-10-09
+        niveau: verifie
+      notes_publiques:
+        valeur: 'Chrome Web Store 4,4 (26 avis), 1 000 utilisateurs ; Trustpilot 0 avis'
+        verdict: null
+        sources:
+          - 'https://chromewebstore.google.com/detail/redrip/ljefajifldflgjhipnfabbhjbbhnhoho'
+          - 'https://fr.trustpilot.com/review/redrip.app'
+        date: 2026-10-09
+        niveau: verifie
+    fait_bien:
+      - 'Prix d''entrée le plus bas : gratuit sans limite de durée, puis 5,99 € (4,99 € à l''année).'
+      - 'Transfert Vinted ↔ Leboncoin dans les deux sens, en lot, avec retrait automatique entre les deux (masquage réversible côté Vinted).'
+      - 'Automatisation Vinted très complète (republication auto, offres aux favoris, réponses IA en 9 langues, étiquettes en un PDF).'
+    fillsell_fait_pas_lui:
+      - 'eBay, Beebs et Depop.'
+      - Apps iOS et Android ; création d'annonce depuis une photo avec prix proposé.
+      - 'Stock hébergé (Redrip : données dans le navigateur, perdues à la désinstallation).'
+      - Rapprochement d'annonces publiées sans l'outil.
+      - Marges et bénéfices (prix d'achat).
+    lui_fait_pas_fillsell:
+      - 'Vinted dans plus de 20 pays (FillSell : Vinted France aujourd''hui).'
+      - 'Prix d''entrée 5,99 € (4,99 € à l''année) ; republication automatique dans son gratuit — égalité seulement si la republication automatique de FillSell est bien ouverte à tous les paliers à la mise en ligne (sinon, avantage Redrip).'
+      - 'Offres et messages aux favoris, négociation, réponses IA, échange de vues, étiquettes en lot, multi-comptes Vinted dès le gratuit.'
+      - Site en 8 langues.
+  - slug: fluf-connect
+    nom: FLUF Connect
+    url: 'https://fluf.io'
+    pays: Royaume-Uni
+    categorie: 'crosslisting international : apps iOS/Android + application web + extension Chrome + API'
+    classement: classe
+    criteres:
+      plateformes:
+        vinted:
+          valeur: 'oui, 19 domaines dont vinted.fr ; connexion par l''extension ; synchro, republication, offres'
+          verdict: oui
+          sources:
+            - 'https://fluf.io/support/connect-vinted/'
+            - 'https://fluf.io/integrations/'
+          date: 2026-10-09
+          niveau: verifie
+        leboncoin:
+          valeur: 'crosslisting oui ; synchro du stock, retrait, republication, offres, commandes : « — » dans le tableau des capacités ; le guide anglais dit « end the Leboncoin ad yourself » ; la page française dit « Synchronisation de l''inventaire : Oui »'
+          verdict: null
+          sources:
+            - 'https://fluf.io/integrations/'
+            - 'https://fluf.io/channels/sell-on-leboncoin/'
+            - 'https://fluf.io/fr/vendre-sur-leboncoin/'
+          date: 2026-10-09
+          niveau: verifie
+          contradictoire: true
+        ebay:
+          valeur: 'oui, « 17+ eBay regional markets » dont la France ; OAuth'
+          verdict: oui
+          sources:
+            - 'https://fluf.io/channels/sell-on-ebay/'
+          date: 2026-10-09
+          niveau: verifie
+        beebs:
+          valeur: 'non — 0 occurrence (llms.txt, centre d''aide, tableau, plans du site)'
+          verdict: non
+          sources:
+            - 'https://fluf.io/integrations/'
+            - 'https://fluf.io/llms.txt'
+          date: 2026-10-09
+          niveau: verifie
+        depop:
+          valeur: 'oui, complet — tableau des capacités : Crosslisting, Inventory Sync, Auto-Relisting, Offer Management, Order Sync = « Yes » ; connexion par l''extension, un lien magique ou un e-mail transféré, y compris depuis le téléphone ; « You do not need to keep a browser open after connecting » ; plusieurs boutiques Depop par compte'
+          verdict: oui
+          sources:
+            - 'https://fluf.io/integrations/'
+            - 'https://fluf.io/support/connect-depop/'
+            - 'https://fluf.io/support/browser-extension-help/'
+            - 'https://fluf.io/channels/sell-on-depop/'
+            - 'https://fluf.io/pricing/'
+          date: 2026-10-09
+          niveau: verifie
+        autres:
+          valeur: '« 60+ » annoncées (131 lignes dans le tableau des capacités) : Depop, Etsy, Vestiaire, Grailed, Poshmark, Mercari, Whatnot, Facebook Marketplace, Wallapop, Subito, Kleinanzeigen, Marktplaats…'
+          verdict: null
+          sources:
+            - 'https://fluf.io/integrations/'
+          date: 2026-10-09
+          niveau: verifie
+      app_mobile:
+        valeur: 'oui — « FLUF Connect » iOS (v2.9 du 05/10/2026 ; présente sur l''App Store FR, fiche en anglais, aucune note en France) et Android (1 k+ téléchargements)'
+        verdict: oui
+        sources:
+          - 'https://apps.apple.com/fr/app/fluf-connect/id6751919515'
+          - 'https://play.google.com/store/apps/details?id=com.fluf.connect.mobile'
+        date: 2026-10-09
+        niveau: verifie
+      extension:
+        valeur: oui — Chrome sur ordinateur (« FLUF Utility ») ; Chrome Web Store v2.356
+        verdict: oui
+        sources:
+          - 'https://chromewebstore.google.com/detail/eoagkkaoehjaeplamhpmgfpeidnejdjh'
+        date: 2026-10-09
+        niveau: verifie
+      depart:
+        valeur: 'les deux : le téléphone photographie et publie ; Chrome sur ordinateur est requis pour connecter Vinted et Leboncoin ; leurs tâches attendent Chrome (ou l''app ouverte pour certaines tâches Vinted)'
+        verdict: null
+        sources:
+          - 'https://fluf.io/support/browser-extension-help/'
+          - 'https://fluf.io/support/how-sync-works/'
+        date: 2026-10-09
+        niveau: verifie
+      ordinateur_eteint:
+        valeur: 'partiel — Depop, eBay, Etsy, Shopify sans ordinateur ; republication Vinted depuis l''app (changelog du 07/09/2026) ; Vinted et Leboncoin sinon par Chrome'
+        verdict: partiel
+        sources:
+          - 'https://fluf.io/support/browser-extension-help/'
+          - 'https://fluf.io/changelog/'
+        date: 2026-10-09
+        niveau: verifie
+      ia_photo:
+        valeur: 'oui — marque, catégorie, état, titre, description et fourchette de prix depuis une photo (~7 s) ; 50 créations par mois (Starter), 250 (Pro) ; l''IA écrit en anglais par défaut'
+        verdict: oui
+        sources:
+          - 'https://fluf.io/support/ai-listing-creation/'
+          - 'https://fluf.io/support/plans-and-billing/'
+        date: 2026-10-09
+        niveau: verifie
+        contradictoire: true
+      import_synchro:
+        valeur: 'oui — import automatique des canaux connectés, CSV, Excel, Google Sheets, ZIP de photos'
+        verdict: oui
+        sources:
+          - 'https://fluf.io/integrations/'
+          - 'https://fluf.io/support/bulk-import-listings/'
+        date: 2026-10-09
+        niveau: verifie
+      regroupement_multi_plateformes:
+        valeur: 'oui — « link them automatically when possible » puis « Combine listings » par photos, avec confirmation (« Combine » / « Not the same »), décision retenue'
+        verdict: oui
+        sources:
+          - 'https://fluf.io/support/how-sync-works/'
+          - 'https://fluf.io/support/combine-duplicate-listings/'
+        date: 2026-10-09
+        niveau: verifie
+      retrait_auto_copies:
+        valeur: oui — ventes vérifiées toutes les 90 min (Starter) ou 60 min (Pro) ; e-mails de vente Vinted transférés = retrait « within seconds » ; Leboncoin contradictoire
+        verdict: oui
+        sources:
+          - 'https://fluf.io/pricing/'
+          - 'https://fluf.io/support/synchronise-vinted-with-email-forwarding/'
+        date: 2026-10-09
+        niveau: verifie
+        contradictoire: true
+      republication:
+        valeur: 'à partir de Pro (29 £), 13 canaux dont Vinted, eBay, Depop, Vestiaire ; pas Leboncoin'
+        verdict: null
+        sources:
+          - 'https://fluf.io/integrations/'
+          - 'https://fluf.io/support/plans-and-billing/'
+        date: 2026-10-09
+        niveau: verifie
+        contradictoire: true
+      stock_ventes_marges:
+        valeur: 'revenu, frais, coût d''achat et profit ; historique 3 mois (Starter) ou complet (Pro) ; Xero / QuickBooks dès Pro ; commandes centralisées, messagerie unifiée'
+        verdict: null
+        sources:
+          - 'https://fluf.io/support/dashboard-overview/'
+          - 'https://fluf.io/support/cost-management/'
+        date: 2026-10-09
+        niveau: verifie
+      prix:
+        valeur: 'Starter 9 £/mois (59 £/an), Pro 29 £/mois (199 £/an), Super Seller « Custom » ; site en livres sterling, y compris les pages /fr/ ; App Store FR en euros : 9 €, 29 €, Super Seller 349 € ; anciennes grilles (Growth 19 £, Seller 99 £…) encore sur au moins 5 pages'
+        verdict: null
+        sources:
+          - 'https://fluf.io/pricing/'
+          - 'https://apps.apple.com/fr/app/fluf-connect/id6751919515'
+        date: 2026-10-09
+        niveau: verifie
+        contradictoire: true
+        devise: GBP
+        paliers:
+          - nom: Starter
+            prix_mensuel: 9
+          - nom: Pro
+            prix_mensuel: 29
+          - nom: Super Seller
+            prix_mensuel: null
+      essai:
+        valeur: '7 jours pour 1 £, limité à 100 produits actifs ; pas de palier gratuit'
+        verdict: null
+        sources:
+          - 'https://fluf.io/pricing/'
+          - 'https://fluf.io/fr/features/'
+        date: 2026-10-09
+        niveau: verifie
+      pays_langues:
+        valeur: 'éditeur britannique ; app en 30 langues (annoncé), annonces traduites en 35 ; site en anglais avec 22 adresses /fr/ partiellement traduites ; pages « trajet » en anglais seulement'
+        verdict: null
+        sources:
+          - 'https://fluf.io/'
+          - 'https://fluf.io/sitemap-localized.xml'
+        date: 2026-10-09
+        niveau: verifie
+      notes_publiques:
+        valeur: 'Trustpilot 4,6 (33 avis) ; App Store GB 5,0 (10 notes), FR aucune note ; Google Play 5,0 (10 avis), 1 k+ ; Chrome Web Store 4,5 (10 avis), 1 000 utilisateurs'
+        verdict: null
+        sources:
+          - 'https://uk.trustpilot.com/review/fluf.io'
+          - 'https://apps.apple.com/gb/app/fluf-connect/id6751919515'
+          - 'https://chromewebstore.google.com/detail/eoagkkaoehjaeplamhpmgfpeidnejdjh'
+        date: 2026-10-09
+        niveau: verifie
+    fait_bien:
+      - 'Le modèle le plus proche de FillSell : app iOS/Android qui s''ouvre sur l''appareil photo et extension qui exécute sur l''ordinateur ; analyse IA en ~7 s.'
+      - 'Couverture très large et datée (Vinted dans 19 pays, eBay sur 17+ sites, nombreuses places de marché européennes) avec un tableau de capacités canal par canal.'
+      - 'Doublons d''avant l''inscription regroupés par photos avec confirmation ; plusieurs voies de détection des ventes Vinted ; notes publiques solides (Trustpilot 4,6 sur 33 avis).'
+    fillsell_fait_pas_lui:
+      - Beebs.
+      - 'Leboncoin complet : import, retrait des copies, republication (FLUF : crosslisting seul, le reste contradictoire ou absent).'
+      - 'Republication automatique sur Leboncoin et Beebs, en plus de Vinted et Depop, sans palier requis (FLUF : à partir de Pro, 29 £, et jamais sur Leboncoin).'
+      - 'Palier gratuit permanent (FLUF : essai de 7 jours pour 1 £).'
+      - 'Prix affichés en euros sur le site (FLUF : livres sterling, y compris en /fr/).'
+      - 'App et site en français de bout en bout (FLUF : fiche App Store en anglais, IA qui écrit en anglais par défaut, pages /fr/ en partie en anglais).'
+    lui_fait_pas_fillsell:
+      - 'Des dizaines de plateformes (Etsy, Vestiaire, Wallapop, Subito, Kleinanzeigen…), Vinted dans 19 pays, eBay sur 17+ sites.'
+      - 'Une partie du travail sans ordinateur (Depop, eBay, Etsy, Shopify ; republication Vinted depuis l''app) ; FillSell : Depop par l''extension, ordinateur allumé.'
+      - 'Gestion des offres, envoi d''offres aux personnes qui aiment l''article, Xero / QuickBooks, API, MCP, Zapier.'
+      - Prix d'entrée plus bas (9 £ / 9 € par mois) et prix annuels.
+      - 'Preuve publique plus fournie (Trustpilot 33 avis, stores).'
+  - slug: crosslist
+    nom: Crosslist
+    url: 'https://crosslist.com'
+    pays: Belgique
+    categorie: 'crosslisting international (États-Unis, Royaume-Uni, Canada, Australie) : web + apps iOS/Android + extension Chrome'
+    classement: hors_classement
+    criteres:
+      plateformes:
+        vinted:
+          valeur: 'fermé aux nouveaux comptes (« Vinted is no longer available for new customers », billet du 02/10/2026 « Why We''re Discontinuing Vinted for New Users (Existing Users Stay) ») ; avant : vinted.com,.co.uk,.com.au seulement, jamais un Vinted de l''UE'
+          traductions:
+            valeur:
+              en: 'closed to new accounts (“Vinted is no longer available for new customers”, blog post of 2 October 2026 “Why We''re Discontinuing Vinted for New Users (Existing Users Stay)”); before: vinted.com,.co.uk,.com.au only, never an EU Vinted'
+          verdict: null
+          sources:
+            - 'https://crosslist.com/ai-info'
+            - 'https://crosslist.com/blog/vinted-cross-listing'
+            - 'https://docs.crosslist.com/knowledge-base/settings-and-preferences/uk-canada-australia'
+          date: 2026-10-09
+          niveau: verifie
+        leboncoin:
+          valeur: non
+          traductions:
+            valeur:
+              en: 'no'
+          verdict: non
+          sources:
+            - 'https://crosslist.com/marketplaces'
+          date: 2026-10-09
+          niveau: verifie
+        ebay:
+          valeur: 'eBay.com,.co.uk,.ca,.com.au ; pas ebay.fr'
+          traductions:
+            valeur:
+              en: 'eBay.com,.co.uk,.ca,.com.au; not ebay.fr'
+          verdict: null
+          sources:
+            - 'https://docs.crosslist.com/knowledge-base/settings-and-preferences/uk-canada-australia'
+          date: 2026-10-09
+          niveau: verifie
+        beebs:
+          valeur: non
+          traductions:
+            valeur:
+              en: 'no'
+          verdict: non
+          sources:
+            - 'https://crosslist.com/marketplaces'
+          date: 2026-10-09
+          niveau: verifie
+        depop:
+          valeur: 'oui, hors UE — publication, import, rapprochement, retrait détecté sur ses serveurs (Gold et Diamond, 39,99 $ et plus) ; Depop.com aux États-Unis, au Royaume-Uni, au Canada et en Australie ; mais « At this time, we do not support users residing in the European Union » : un revendeur qui réside en France n''y a pas accès'
+          traductions:
+            valeur:
+              en: 'yes, outside the EU — publishing, import, matching, removal detected on its servers (Gold and Diamond, $39.99 and up); Depop.com in the United States, the United Kingdom, Canada and Australia; but “At this time, we do not support users residing in the European Union”: a reseller who lives in France has no access'
+          verdict: oui
+          sources:
+            - 'https://crosslist.com/marketplaces/depop'
+            - 'https://crosslist.com/ai-info'
+            - 'https://crosslist.com/pricing'
+            - 'https://docs.crosslist.com/knowledge-base/sales/autodelist'
+            - 'https://docs.crosslist.com/knowledge-base/settings-and-preferences/uk-canada-australia'
+          date: 2026-10-09
+          niveau: verifie
+        autres:
+          valeur: 'eBay, Poshmark, Mercari, Depop, Grailed, Etsy, Facebook Marketplace, Shopify, Whatnot, WooCommerce ; TikTok Shop contradictoire'
+          traductions:
+            valeur:
+              en: 'eBay, Poshmark, Mercari, Depop, Grailed, Etsy, Facebook Marketplace, Shopify, Whatnot, WooCommerce; TikTok Shop contradictory'
+          verdict: null
+          sources:
+            - 'https://crosslist.com/ai-info'
+            - 'https://crosslist.com/marketplaces'
+          date: 2026-10-09
+          niveau: verifie
+          contradictoire: true
+      app_mobile:
+        valeur: oui — iOS et Android natives depuis le 19/05/2026 ; absente de l'App Store France
+        traductions:
+          valeur:
+            en: yes — native iOS and Android apps since 19 May 2026; not on the French App Store
+        verdict: oui
+        sources:
+          - 'https://apps.apple.com/us/app/crosslist/id6756124351'
+          - 'https://play.google.com/store/apps/details?id=com.crosslist.app'
+        date: 2026-10-09
+        niveau: verifie
+      extension:
+        valeur: oui — Chrome (Chrome Web Store v3.11.51)
+        verdict: oui
+        sources:
+          - 'https://chromewebstore.google.com/detail/crosslist/knfhdmkccnbhbgpahakkcmoddgikegjl'
+        date: 2026-10-09
+        niveau: verifie
+      depart:
+        valeur: 'téléphone ou ordinateur ; pour les places de marché « extension » (dont Vinted), l''ordinateur reste allumé'
+        verdict: null
+        sources:
+          - 'https://docs.crosslist.com/knowledge-base/sales/autodelist'
+        date: 2026-10-09
+        niveau: verifie
+      ordinateur_eteint:
+        valeur: 'partiel — API ou serveurs de Crosslist pour eBay, Etsy, Shopify, WooCommerce, Depop ; extension et ordinateur allumé pour le reste'
+        verdict: partiel
+        sources:
+          - 'https://docs.crosslist.com/knowledge-base/sales/autodelist'
+        date: 2026-10-09
+        niveau: verifie
+      ia_photo:
+        valeur: 'oui, option à 4,99 $/mois : titre, description, catégorie, attributs, prix suggéré ; création en lot depuis la pellicule'
+        traductions:
+          valeur:
+            en: 'yes, $4.99/month add-on: title, description, category, attributes, suggested price; bulk creation from the camera roll'
+        verdict: oui
+        sources:
+          - 'https://crosslist.com/features/create-listings-with-ai'
+          - 'https://crosslist.com/pricing'
+        date: 2026-10-09
+        niveau: verifie
+      import_synchro:
+        valeur: oui — import par lots de 100 ou en une fois ; pas de synchronisation automatique des modifications
+        traductions:
+          valeur:
+            en: yes — import in batches of 100 or all at once; no automatic sync of changes
+        verdict: oui
+        sources:
+          - 'https://docs.crosslist.com/getting-started/cross-listing-existing-inventory'
+        date: 2026-10-09
+        niveau: verifie
+      regroupement_multi_plateformes:
+        valeur: 'oui — rattachement à l''import sur le titre et l''image, proposé par défaut, décochable'
+        verdict: oui
+        sources:
+          - 'https://docs.crosslist.com/knowledge-base/listing-management/linking-listings'
+        date: 2026-10-09
+        niveau: verifie
+      retrait_auto_copies:
+        valeur: 'oui depuis le 06/07/2026, en Gold et Diamond seulement (39,99 $ et plus), désactivé par défaut ; ~15 min, 30 min pour Vinted'
+        traductions:
+          valeur:
+            en: 'yes since 6 July 2026, on Gold and Diamond only ($39.99 and up), off by default; ~15 min, 30 min for Vinted'
+        verdict: oui
+        sources:
+          - 'https://docs.crosslist.com/knowledge-base/sales/autodelist'
+        date: 2026-10-09
+        niveau: verifie
+      republication:
+        valeur: manuelle (unité ou lot) ; programmation « Under consideration »
+        traductions:
+          valeur:
+            en: manual (single or bulk); scheduling “Under consideration”
+        verdict: null
+        sources:
+          - 'https://docs.crosslist.com/knowledge-base/listing-management/relist-delist'
+          - 'https://feedback.crosslist.com/en/roadmap'
+        date: 2026-10-09
+        niveau: verifie
+      stock_ventes_marges:
+        valeur: 'tableau de bord ; statistiques et compte de résultat (coût d''achat, marge) en Gold et Diamond'
+        verdict: null
+        sources:
+          - 'https://docs.crosslist.com/knowledge-base/sales/sales-analytics'
+        date: 2026-10-09
+        niveau: verifie
+      prix:
+        valeur: 'Bronze 29,99 $, Silver 34,99 $, Gold 39,99 $, Diamond 44,99 $ par mois ; option IA +4,99 $/mois ; dollars US seulement ; -10 % au trimestre, 2 mois offerts à l''année'
+        verdict: null
+        sources:
+          - 'https://crosslist.com/pricing'
+        date: 2026-10-09
+        niveau: verifie
+        devise: USD
+        paliers:
+          - nom: Bronze
+            prix_mensuel: 29.99
+          - nom: Silver
+            prix_mensuel: 34.99
+          - nom: Gold
+            prix_mensuel: 39.99
+          - nom: Diamond
+            prix_mensuel: 44.99
+      essai:
+        valeur: pas de formule gratuite ; « get 20 free listings with our 3-day money-back guarantee »
+        verdict: null
+        sources:
+          - 'https://crosslist.com/pricing'
+        date: 2026-10-09
+        niveau: verifie
+      pays_langues:
+        valeur: 'États-Unis, Royaume-Uni, Canada, Australie ; « we do not support users residing in the European Union » ; anglais seulement'
+        verdict: null
+        sources:
+          - 'https://crosslist.com/pricing'
+        date: 2026-10-09
+        niveau: verifie
+      notes_publiques:
+        valeur: 'Trustpilot 4,5 (1 114 avis) ; App Store US 4,7 (382 notes) ; Google Play 4,2 (114 avis), 5K+ ; Chrome Web Store 4,0 (30 avis), 20 000 utilisateurs'
+        verdict: null
+        sources:
+          - 'https://www.trustpilot.com/review/crosslist.com'
+          - 'https://chromewebstore.google.com/detail/crosslist/knfhdmkccnbhbgpahakkcmoddgikegjl'
+        date: 2026-10-09
+        niveau: verifie
+    fait_bien:
+      - 'Documentation publique précise et franche (délais de détection, ce qui passe par ses serveurs ou l''extension, limites).'
+      - 'Architecture mixte API/serveurs quand la plateforme le permet, extension sinon ; apps mobiles natives complètes.'
+      - 'Forte preuve sociale (Trustpilot 4,5 sur 1 114 avis, App Store US 4,7 sur 382 notes) et communication transparente sur les suspensions Vinted.'
+    fillsell_fait_pas_lui:
+      - Servir un revendeur qui réside en France (Crosslist refuse les résidents de l'UE).
+      - 'Vinted France, Leboncoin, Beebs, eBay.fr, et Depop depuis la France.'
+      - Palier gratuit ; prix en euros ; app et site en français ; app publiée sur l'App Store français.
+      - 'Republication automatique par créneaux (Crosslist : à l''étude).'
+    lui_fait_pas_fillsell:
+      - 'Places de marché nord-américaines et britanniques (Poshmark, Mercari, Grailed, Whatnot, Etsy, Shopify…).'
+      - Création en lot par l'IA depuis la pellicule ; détourage illimité.
+      - 'Retrait et détection sur ses serveurs pour eBay, Etsy, Shopify, WooCommerce, Depop (hors UE).'
+      - Forte preuve sociale.
+  - slug: clemz
+    nom: Clemz
+    url: 'https://www.clemz.app'
+    pays: France
+    categorie: 'automatisation d''un dressing Vinted (une seule plateforme) : extension'
+    classement: hors_classement
+    criteres:
+      plateformes:
+        vinted:
+          valeur: 'oui ; manifeste : 26 domaines Vinted ; le site ne liste aucun pays'
+          verdict: oui
+          sources:
+            - 'https://www.clemz.app/documentation/faq'
+            - 'https://chromewebstore.google.com/detail/clemz-automate-your-close/kjpggncklgopkhbfpohiaomjpljkbifg'
+          date: 2026-10-09
+          niveau: verifie
+        leboncoin:
+          valeur: non
+          verdict: non
+          sources:
+            - 'https://www.clemz.app/documentation/faq'
+          date: 2026-10-09
+          niveau: verifie
+        ebay:
+          valeur: non
+          verdict: non
+          sources:
+            - 'https://www.clemz.app/documentation/faq'
+          date: 2026-10-09
+          niveau: verifie
+        beebs:
+          valeur: non
+          verdict: non
+          sources:
+            - 'https://www.clemz.app/documentation/faq'
+          date: 2026-10-09
+          niveau: verifie
+        depop:
+          valeur: non — Vinted seulement ; 0 occurrence sur la FAQ et l'accueil
+          verdict: non
+          sources:
+            - 'https://www.clemz.app/documentation/faq'
+            - 'https://www.clemz.app/fr'
+          date: 2026-10-09
+          niveau: verifie
+        autres:
+          valeur: 'aucune ; « Nous allons travailler à la publication simultanée, c''est certain » (réponse du développeur à un avis, 16/09/2026)'
+          verdict: null
+          sources:
+            - 'https://chromewebstore.google.com/detail/clemz-automate-your-close/kjpggncklgopkhbfpohiaomjpljkbifg/reviews'
+          date: 2026-10-09
+          niveau: verifie
+      app_mobile:
+        valeur: 'non — navigateur Quetta sur Android ; iPhone contradictoire (Orion selon la FAQ, « pas disponible » selon le démarrage rapide)'
+        verdict: non
+        sources:
+          - 'https://www.clemz.app/documentation/faq'
+          - 'https://www.clemz.app/documentation/demarrage-rapide'
+        date: 2026-10-09
+        niveau: verifie
+        contradictoire: true
+      extension:
+        valeur: oui — Chrome (et Edge selon les CGU) ; Chrome Web Store v1.32.1
+        verdict: oui
+        sources:
+          - 'https://chromewebstore.google.com/detail/clemz-automate-your-close/kjpggncklgopkhbfpohiaomjpljkbifg'
+        date: 2026-10-09
+        niveau: verifie
+      depart:
+        valeur: 'ordinateur (Chrome) ou téléphone Android (Quetta), toujours sur le site Vinted'
+        verdict: null
+        sources:
+          - 'https://www.clemz.app/documentation/demarrage-rapide'
+        date: 2026-10-09
+        niveau: verifie
+      ordinateur_eteint:
+        valeur: 'non — appareil actif, navigateur à ne pas toucher pendant le travail'
+        verdict: non
+        sources:
+          - 'https://www.clemz.app/documentation/resoudre-un-bug'
+        date: 2026-10-09
+        niveau: verifie
+      ia_photo:
+        valeur: non aujourd'hui — « Photo IA — Bientôt » ; « Crédits IA » prévus par les CGU
+        verdict: non
+        sources:
+          - 'https://www.clemz.app/fr'
+        date: 2026-10-09
+        niveau: verifie
+      import_synchro:
+        valeur: dressing Vinted lu sur place et sauvegardé sur clemz.app ; ventes Vinted synchronisées jusqu'à 3 ans
+        verdict: null
+        sources:
+          - 'https://www.clemz.app/documentation/sauver-mes-annonces'
+          - 'https://www.clemz.app/documentation/synchroniser-ses-ventes'
+        date: 2026-10-09
+        niveau: verifie
+      regroupement_multi_plateformes:
+        valeur: sans objet (une seule plateforme)
+        verdict: sans_objet
+        sources: []
+        date: 2026-10-09
+        niveau: verifie
+      retrait_auto_copies:
+        valeur: sans objet (aucune copie ailleurs)
+        verdict: sans_objet
+        sources: []
+        date: 2026-10-09
+        niveau: verifie
+      republication:
+        valeur: 'oui, fonction phare : liste « à traiter » puis « Go Clemz ! », trois modes de prudence ; aucune planification décrite ; 250 à 6 500 par mois selon la formule'
+        verdict: oui
+        sources:
+          - 'https://www.clemz.app/documentation/republier-des-articles'
+          - 'https://www.clemz.app/fr/pricing'
+        date: 2026-10-09
+        niveau: verifie
+      stock_ventes_marges:
+        valeur: 'ventes, analyse (CA, panier moyen), comptabilité avec TVA par pays, factures PRO, CRM, bordereaux ; pas de prix d''achat ni de marge par article'
+        verdict: null
+        sources:
+          - 'https://www.clemz.app/documentation/synchroniser-ses-ventes'
+        date: 2026-10-09
+        niveau: verifie
+      prix:
+        valeur: 'Tiroir 8,99 €, Placard 14,99 €, Dressing 24,99 €, Entrepôt 34,99 € (49,99 € barré) par mois ; annuel ≈ 7,49 / 12,49 / 20,82 / 29,15 € par mois (-16 %)'
+        verdict: null
+        sources:
+          - 'https://www.clemz.app/fr/pricing'
+        date: 2026-10-09
+        niveau: verifie
+        devise: EUR
+        paliers:
+          - nom: Tiroir
+            prix_mensuel: 8.99
+          - nom: Placard
+            prix_mensuel: 14.99
+          - nom: Dressing
+            prix_mensuel: 24.99
+          - nom: Entrepôt
+            prix_mensuel: 34.99
+      essai:
+        valeur: essai gratuit d'un mois ; pas de formule gratuite permanente
+        verdict: null
+        sources:
+          - 'https://www.clemz.app/fr/pricing'
+        date: 2026-10-09
+        niveau: verifie
+      pays_langues:
+        valeur: 'site et extension en 5 langues (FR, EN, ES, IT, PL)'
+        verdict: null
+        sources:
+          - 'https://www.clemz.app/fr'
+        date: 2026-10-09
+        niveau: verifie
+      notes_publiques:
+        valeur: 'Chrome Web Store 4,8 (147 avis), 10 000 utilisateurs ; pas de Trustpilot ; pas d''app'
+        verdict: null
+        sources:
+          - 'https://chromewebstore.google.com/detail/clemz-automate-your-close/kjpggncklgopkhbfpohiaomjpljkbifg'
+        date: 2026-10-09
+        niveau: verifie
+    fait_bien:
+      - 'Profondeur rare sur Vinted : republication avec trois niveaux de prudence, sauvegarde des photos, réimport, bordereaux, comptabilité avec TVA par pays.'
+      - 'La plus grosse base installée de la niche (10 000 utilisateurs) et une note solide (4,8 sur 147 avis).'
+      - 'Livraisons fréquentes et documentées (1.32.1 du 08/10/2026), documentation en 5 langues.'
+    fillsell_fait_pas_lui:
+      - 'Crosslisting : Leboncoin, eBay, Beebs et Depop en plus de Vinted, avec retrait des copies après une vente.'
+      - Apps iOS et Android.
+      - Création d'annonce depuis une photo avec prix proposé.
+      - Palier gratuit permanent ; marges par article (prix d'achat).
+      - 'Republication automatique par créneaux (Clemz : déclenchée à la main).'
+    lui_fait_pas_fillsell:
+      - 'Automatisation Vinted poussée : offres et contre-offres, messages aux favoris, échange de vues et de favoris, évaluation automatique.'
+      - 'Factures PRO, CRM acheteurs, comptabilité avec TVA par pays.'
+      - Plusieurs dressings Vinted (1 à 10) ; fonctionnement sur Android sans ordinateur (Quetta).
+      - Interface en 5 langues ; Vinted dans de nombreux pays d'après le manifeste.
+  - slug: reposter
+    nom: Reposter
+    url: 'https://reposter.io'
+    pays: non vérifiable
+    categorie: service web côté serveur centré sur Leboncoin (Vinted en option)
+    classement: classe
+    criteres:
+      plateformes:
+        vinted:
+          valeur: 'option « multi-plateforme » à activer, prix non public ; conversion Leboncoin → Vinted documentée ; sens inverse annoncé dans les guides seulement ; pays non précisé'
+          verdict: null
+          sources:
+            - 'https://docs.reposter.io/guide/vinted.md'
+            - 'https://reposter.io/'
+          date: 2026-10-09
+          niveau: verifie
+        leboncoin:
+          valeur: 'oui, cœur du produit (publication, remontée, multi-villes, messagerie)'
+          verdict: oui
+          sources:
+            - 'https://reposter.io/'
+          date: 2026-10-09
+          niveau: verifie
+        ebay:
+          valeur: non
+          verdict: non
+          sources:
+            - 'https://reposter.io/'
+          date: 2026-10-09
+          niveau: verifie
+        beebs:
+          valeur: non
+          verdict: non
+          sources:
+            - 'https://reposter.io/'
+          date: 2026-10-09
+          niveau: verifie
+        depop:
+          valeur: non — 0 occurrence sur l'accueil ; service sans extension
+          verdict: non
+          sources:
+            - 'https://reposter.io/'
+          date: 2026-10-09
+          niveau: verifie
+        autres:
+          valeur: '« En cours », aucune nommée'
+          verdict: null
+          sources:
+            - 'https://reposter.io/'
+          date: 2026-10-09
+          niveau: verifie
+      app_mobile:
+        valeur: non (PWA déclarée)
+        verdict: non
+        sources:
+          - 'https://app.reposter.io/manifest.json'
+        date: 2026-10-09
+        niveau: verifie
+      extension:
+        valeur: non — choix revendiqué (« alternative sans extension »)
+        verdict: non
+        sources:
+          - 'https://reposter.io/extension-leboncoin'
+        date: 2026-10-09
+        niveau: verifie
+      depart:
+        valeur: 'le navigateur (ordinateur ou téléphone) ; exécution sur leurs serveurs avec les identifiants confiés (e-mail, mot de passe, téléphone, code SMS)'
+        verdict: null
+        sources:
+          - 'https://docs.reposter.io/guide/comptes.md'
+        date: 2026-10-09
+        niveau: verifie
+      ordinateur_eteint:
+        valeur: oui — tâches côté serveur
+        verdict: oui
+        sources:
+          - 'https://reposter.io/relister-vinted-sans-extension'
+        date: 2026-10-09
+        niveau: verifie
+      ia_photo:
+        valeur: non — annonce créée au formulaire ou importée ; IA pour la conversion LBC → Vinted et la messagerie
+        verdict: non
+        sources:
+          - 'https://docs.reposter.io/guide/demarrage.md'
+        date: 2026-10-09
+        niveau: verifie
+      import_synchro:
+        valeur: 'oui — import des annonces d''un compte Leboncoin ; import Vinted annoncé dans les guides, non documenté ; modifications non répercutées automatiquement'
+        verdict: oui
+        sources:
+          - 'https://docs.reposter.io/guide/annonces.md'
+        date: 2026-10-09
+        niveau: verifie
+      regroupement_multi_plateformes:
+        valeur: les annonces Vinted générées depuis Leboncoin sont « liées » par un identifiant de groupe
+        verdict: null
+        sources:
+          - 'https://docs.reposter.io/guide/vinted.md'
+        date: 2026-10-09
+        niveau: verifie
+      retrait_auto_copies:
+        valeur: 'annoncé de façon variable (« peut être fermée », « en un clic »), non documenté ; un guide conseille un contrôle manuel chaque soir'
+        verdict: null
+        sources:
+          - 'https://reposter.io/transferer-annonces-leboncoin-vinted'
+          - 'https://reposter.io/multiposting-leboncoin-vinted'
+        date: 2026-10-09
+        niveau: non_verifiable
+        contradictoire: true
+      republication:
+        valeur: 'oui — Leboncoin : tâches programmées, récurrence, multi-villes (1 crédit par ville) ; Vinted annoncé dans les guides, non documenté'
+        verdict: oui
+        sources:
+          - 'https://docs.reposter.io/guide/taches.md'
+        date: 2026-10-09
+        niveau: verifie
+      stock_ventes_marges:
+        valeur: 'statistiques d''audience (vues, messages, favoris) ; aucun suivi des ventes ni des marges documenté'
+        verdict: null
+        sources:
+          - 'https://docs.reposter.io/guide/statistiques.md'
+        date: 2026-10-09
+        niveau: verifie
+      prix:
+        valeur: 'au crédit : 10 crédits 10 €, 50 crédits 20 €, 100 crédits 30 €, 500 crédits 50 € par mois ; 1 crédit = 1 publication (ou 1 ville) ; options Vinted et messagerie à prix non public ; crédits non reportés'
+        verdict: null
+        sources:
+          - 'https://reposter.io/'
+        date: 2026-10-09
+        niveau: verifie
+        contradictoire: true
+        devise: EUR
+        paliers:
+          - nom: 10 crédits
+            prix_mensuel: 10
+          - nom: 50 crédits
+            prix_mensuel: 20
+          - nom: 100 crédits
+            prix_mensuel: 30
+          - nom: 500 crédits
+            prix_mensuel: 50
+      essai:
+        valeur: '10 publications offertes à l''inscription, sans carte bancaire'
+        verdict: null
+        sources:
+          - 'https://reposter.io/'
+        date: 2026-10-09
+        niveau: verifie
+      pays_langues:
+        valeur: France ; français seulement
+        verdict: null
+        sources:
+          - 'https://reposter.io/cgu'
+        date: 2026-10-09
+        niveau: verifie
+      notes_publiques:
+        valeur: 'pas de page Trustpilot trouvée ; pas d''app ni d''extension ; ScamDoc (agrégateur non modéré) 2,6/5 sur 5 avis'
+        verdict: null
+        sources:
+          - 'https://fr.scamdoc.com/view/1449347'
+        date: 2026-10-09
+        niveau: verifie
+    fait_bien:
+      - 'Exécution côté serveur : les tâches tournent ordinateur éteint, sans onglet ouvert.'
+      - 'Profondeur sur Leboncoin : multi-villes, segmentation, récurrence, statistiques cumulées malgré les republications.'
+      - Assistant de messagerie (modèles ou IA) et conversion Leboncoin → Vinted qui vérifie les champs obligatoires.
+    fillsell_fait_pas_lui:
+      - 'eBay, Beebs et Depop ; Vinted inclus sans option.'
+      - 'Aucun mot de passe de plateforme confié (FillSell travaille dans la session de la personne ; Reposter demande e-mail, mot de passe et téléphone).'
+      - Apps iOS et Android ; création d'annonce depuis une photo.
+      - 'Retrait des copies documenté ; stock, ventes et marges.'
+    lui_fait_pas_fillsell:
+      - 'Fonctionnement ordinateur éteint, Leboncoin compris.'
+      - 'Publication dans plusieurs villes, vignettes sur la photo, indicateurs Leboncoin Pro.'
+      - Assistant de réponse aux acheteurs.
+  - slug: relistly
+    nom: Relistly
+    url: 'https://relistly.io'
+    pays: Pays-Bas
+    categorie: 'crosslisting international « Europe-first » : application web + extension Chromium'
+    classement: classe
+    criteres:
+      plateformes:
+        vinted:
+          valeur: 'oui, « session-based » ; zone euro, UE hors euro et Royaume-Uni (annoncé)'
+          traductions:
+            valeur:
+              en: 'yes, “session-based”; euro area, non-euro EU and United Kingdom (announced)'
+          verdict: oui
+          sources:
+            - 'https://relistly.io/integrations/vinted'
+            - 'https://relistly.io/coverage'
+          date: 2026-10-09
+          niveau: verifie
+        leboncoin:
+          valeur: 'non — « coming soon », sans date'
+          traductions:
+            valeur:
+              en: 'no — “coming soon”, no date'
+          verdict: non
+          sources:
+            - 'https://relistly.io/integrations/leboncoin'
+          date: 2026-10-09
+          niveau: verifie
+        ebay:
+          valeur: 'oui par l''API officielle, côté serveur ; eBay.fr non nommé'
+          traductions:
+            valeur:
+              en: 'yes through the official API, server-side; eBay.fr not named'
+          verdict: oui
+          sources:
+            - 'https://relistly.io/integrations/ebay'
+          date: 2026-10-09
+          niveau: verifie
+        beebs:
+          valeur: non — 0 occurrence (llms.txt relu)
+          traductions:
+            valeur:
+              en: no — 0 mentions (llms.txt read)
+          verdict: non
+          sources:
+            - 'https://relistly.io/llms.txt'
+          date: 2026-10-09
+          niveau: verifie
+        depop:
+          valeur: 'oui — « Relistly connects Depop for sellers in 24 European countries, imports your existing Depop listings into one inventory, and crosslists them […] with auto-delisting when an item sells » ; retrait « roughly every 15 minutes », des seules annonces publiées par Relistly ; connexion « session-based » (reprend quand le navigateur est ouvert) ; republication automatique annoncée en Growth (29 €) sans liste de plateformes'
+          traductions:
+            valeur:
+              en: 'yes — “Relistly connects Depop for sellers in 24 European countries, imports your existing Depop listings into one inventory, and crosslists them […] with auto-delisting when an item sells”; removal “roughly every 15 minutes”, of listings posted by Relistly only; “session-based” connection (resumes when the browser is open); automatic reposting announced on Growth (€29) with no list of marketplaces'
+          verdict: oui
+          sources:
+            - 'https://relistly.io/integrations/depop'
+            - 'https://relistly.io/pricing'
+            - 'https://relistly.io/llms.txt'
+          date: 2026-10-09
+          niveau: verifie
+        autres:
+          valeur: 'Vestiaire, Depop, Grailed, Etsy, Shopify, Poshmark, Whatnot, Mercari, Facebook, StockX, Cardmarket, Marktplaats, 2dehands ; Vendora partiel ; Kleinanzeigen « coming soon »'
+          traductions:
+            valeur:
+              en: 'Vestiaire, Depop, Grailed, Etsy, Shopify, Poshmark, Whatnot, Mercari, Facebook, StockX, Cardmarket, Marktplaats, 2dehands; Vendora partial; Kleinanzeigen “coming soon”'
+          verdict: null
+          sources:
+            - 'https://relistly.io/pricing'
+          date: 2026-10-09
+          niveau: verifie
+      app_mobile:
+        valeur: non (PWA déclarée)
+        traductions:
+          valeur:
+            en: no (declared as a PWA)
+        verdict: non
+        sources:
+          - 'https://app.relistly.io/manifest.webmanifest'
+        date: 2026-10-09
+        niveau: verifie
+      extension:
+        valeur: '« Relistly Bridge » :.zip en mode développeur (v1.8.51) ; fiche Chrome Web Store v1.3.14 du 12/08/2026'
+        verdict: null
+        sources:
+          - 'https://relistly.io/download'
+          - 'https://chromewebstore.google.com/detail/relistly-bridge/hgijoffcaeecdgpnmngccgknonenabnd'
+        date: 2026-10-09
+        niveau: verifie
+        contradictoire: true
+      depart:
+        valeur: l'ordinateur (application web + extension Chromium)
+        verdict: null
+        sources:
+          - 'https://chromewebstore.google.com/detail/relistly-bridge/hgijoffcaeecdgpnmngccgknonenabnd'
+        date: 2026-10-09
+        niveau: deduit
+      ordinateur_eteint:
+        valeur: eBay oui (API) ; le reste non ; un pilotage automatique sur serveur (Business) « coming soon »
+        verdict: null
+        sources:
+          - 'https://relistly.io/integrations/ebay'
+          - 'https://relistly.io/pricing'
+        date: 2026-10-09
+        niveau: verifie
+      ia_photo:
+        valeur: 'annoncé : titres, descriptions et suggestions de prix depuis les photos ; 30 / 150 / illimité crédits IA ; reconnaissance d''objet non décrite'
+        traductions:
+          valeur:
+            en: 'announced: titles, descriptions and price suggestions from photos; 30 / 150 / unlimited AI credits; item recognition not described'
+        verdict: null
+        sources:
+          - 'https://relistly.io/'
+          - 'https://relistly.io/pricing'
+        date: 2026-10-09
+        niveau: verifie
+      import_synchro:
+        valeur: oui — import par place de marché ou par CSV
+        traductions:
+          valeur:
+            en: yes — import by marketplace or by CSV
+        verdict: oui
+        sources:
+          - 'https://relistly.io/integrations/vinted'
+        date: 2026-10-09
+        niveau: verifie
+      regroupement_multi_plateformes:
+        valeur: non décrit
+        verdict: non
+        sources:
+          - 'https://relistly.io/'
+        date: 2026-10-09
+        niveau: non_verifiable
+      retrait_auto_copies:
+        valeur: 'oui, tous paliers, « about every 15 minutes » ; « Only touches listings Relistly posted »'
+        traductions:
+          valeur:
+            en: 'yes, all plans, “about every 15 minutes”; “Only touches listings Relistly posted”'
+        verdict: oui
+        sources:
+          - 'https://relistly.io/'
+          - 'https://relistly.io/integrations/vinted'
+        date: 2026-10-09
+        niveau: verifie
+        contradictoire: true
+      republication:
+        valeur: '« auto-relist, scheduled posts & send-offers » à partir de Growth (29 €)'
+        traductions:
+          valeur:
+            en: '“auto-relist, scheduled posts & send-offers” from Growth (€29)'
+        verdict: null
+        sources:
+          - 'https://relistly.io/pricing'
+        date: 2026-10-09
+        niveau: verifie
+      stock_ventes_marges:
+        valeur: 'profit après frais ; coût d''achat, marge, taux d''écoulement en Growth ; export CSV / PDF'
+        verdict: null
+        sources:
+          - 'https://relistly.io/pricing'
+        date: 2026-10-09
+        niveau: verifie
+      prix:
+        valeur: 'Starter 14 €, Growth 29 €, Pro 49 € par mois ; Business 89 € « coming soon » ; annuel 11 / 24 / 41 € par mois ; EUR (£ au Royaume-Uni), TVA en sus ; annonces illimitées'
+        verdict: null
+        sources:
+          - 'https://relistly.io/pricing'
+        date: 2026-10-09
+        niveau: verifie
+        devise: EUR
+        paliers:
+          - nom: Starter
+            prix_mensuel: 14
+            prix_mensuel_annuel: 11
+          - nom: Growth
+            prix_mensuel: 29
+            prix_mensuel_annuel: 24
+          - nom: Pro
+            prix_mensuel: 49
+            prix_mensuel_annuel: 41
+          - nom: Business
+            prix_mensuel: 89
+      essai:
+        valeur: 14 jours sans carte ; aucun palier gratuit
+        verdict: null
+        sources:
+          - 'https://relistly.io/pricing'
+        date: 2026-10-09
+        niveau: verifie
+      pays_langues:
+        valeur: '24 pays européens ; site en anglais, quelques pages en français et en allemand'
+        verdict: null
+        sources:
+          - 'https://relistly.io/coverage'
+        date: 2026-10-09
+        niveau: verifie
+      notes_publiques:
+        valeur: 'Trustpilot 2 avis (TrustScore 3,8) ; Chrome Web Store aucune note, 39 utilisateurs ; témoignages du site marqués « placeholders »'
+        verdict: null
+        sources:
+          - 'https://www.trustpilot.com/review/relistly.io'
+          - 'https://chromewebstore.google.com/detail/relistly-bridge/hgijoffcaeecdgpnmngccgknonenabnd'
+        date: 2026-10-09
+        niveau: verifie
+    fait_bien:
+      - 'Couverture européenne large (13 places de marché en service, dont Vestiaire, StockX, Cardmarket, Marktplaats, 2dehands).'
+      - 'Transparence sur ce qui n''est pas prêt (Leboncoin « Not yet », sans date) ; eBay par l''API officielle côté serveur.'
+      - 'Offre simple : annonces illimitées, retrait automatique inclus partout, essai de 14 jours sans carte, prix d''entrée 14 € (11 € à l''année).'
+    fillsell_fait_pas_lui:
+      - 'Leboncoin (Relistly : « coming soon »).'
+      - Beebs.
+      - Apps iOS et Android ; on pilote depuis le téléphone.
+      - 'Retrait des copies prouvées, y compris d''annonces importées (Relistly : « Only touches listings Relistly posted »).'
+      - Rapprochement d'un même article entre plateformes (non décrit chez Relistly) ; palier gratuit permanent.
+    lui_fait_pas_fillsell:
+      - '13 places de marché européennes en service, Vinted dans de nombreux pays.'
+      - Annonces illimitées à chaque palier ; prix annuels ; essai de 14 jours.
+      - Envoi d'offres programmé ; 12 outils gratuits (calculateurs).
+  - slug: dresskare
+    nom: DressKare
+    url: 'https://dresskare.com'
+    pays: France
+    categorie: 'logiciel Vinted + dépôt-vente + boutique Shopify : PWA + extension Chrome'
+    classement: hors_classement
+    criteres:
+      plateformes:
+        vinted:
+          valeur: 'oui (cœur) ; manifeste : 12 domaines Vinted ; aucun pays annoncé'
+          verdict: oui
+          sources:
+            - 'https://dresskare.com/'
+          date: 2026-10-09
+          niveau: verifie
+        leboncoin:
+          valeur: 'non — seul un article de blog (20/07, modifié le 18/08/2026) l''annonce ; la grille dit « Multiplateformes : Bientôt »'
+          verdict: non
+          sources:
+            - 'https://dresskare.com/prix'
+            - 'https://dresskare.com/blog-pages/blog-vendeur-pro-seconde-main/multiposter-vinted-vestiaire-leboncoin'
+          date: 2026-10-09
+          niveau: verifie
+          contradictoire: true
+        ebay:
+          valeur: non
+          verdict: non
+          sources:
+            - 'https://dresskare.com/prix'
+          date: 2026-10-09
+          niveau: verifie
+        beebs:
+          valeur: 'non (un article de 2024 présente Beebs, sans prise en charge)'
+          verdict: non
+          sources:
+            - 'https://dresskare.com/prix'
+          date: 2026-10-09
+          niveau: verifie
+        depop:
+          valeur: 'non — 0 occurrence sur /prix et l''accueil ; « Multiplateformes : Bientôt »'
+          verdict: non
+          sources:
+            - 'https://dresskare.com/prix'
+            - 'https://dresskare.com/'
+          date: 2026-10-09
+          niveau: verifie
+        autres:
+          valeur: 'boutique Shopify (offre Pro), pas une place de marché'
+          verdict: null
+          sources:
+            - 'https://apps.shopify.com/dresskare-connect'
+          date: 2026-10-09
+          niveau: verifie
+      app_mobile:
+        valeur: non — PWA (« Pas besoin de passer par l'App Store ou le Google Play Store »)
+        verdict: non
+        sources:
+          - 'https://dresskare.com/centre-aide/installer-application-mobile'
+        date: 2026-10-09
+        niveau: verifie
+      extension:
+        valeur: oui — Chrome sur ordinateur seulement (Chrome Web Store v0.1.325)
+        verdict: oui
+        sources:
+          - 'https://dresskare.com/extension-dresskare'
+        date: 2026-10-09
+        niveau: verifie
+      depart:
+        valeur: 'les deux, rôles séparés : téléphone (PWA) pour les photos et le suivi ; ordinateur pour publier et republier'
+        verdict: null
+        sources:
+          - 'https://dresskare.com/centre-aide/pourquoi-extension-chrome-securite'
+        date: 2026-10-09
+        niveau: verifie
+      ordinateur_eteint:
+        valeur: non — « L'ordinateur doit rester allumé avec un onglet Vinted ouvert sur Chrome »
+        verdict: non
+        sources:
+          - 'https://dresskare.com/extension-dresskare'
+        date: 2026-10-09
+        niveau: verifie
+      ia_photo:
+        valeur: 'oui dès Actif (19 €) : détourage, marque, catégorie, taille, état, titre, description, prix fondé sur les ventes de la communauté ; mannequins IA'
+        verdict: oui
+        sources:
+          - 'https://dresskare.com/intelligence-artificielle'
+        date: 2026-10-09
+        niveau: verifie
+      import_synchro:
+        valeur: 'oui — dressing Vinted, fichier Excel, Shopify'
+        verdict: oui
+        sources:
+          - 'https://dresskare.com/ajouter-ses-articles-vinted'
+        date: 2026-10-09
+        niveau: verifie
+      regroupement_multi_plateformes:
+        valeur: sans objet entre places de marché ; doublons évités à l'import Vinted
+        verdict: sans_objet
+        sources:
+          - 'https://dresskare.com/centre-aide/importer-dressing-vinted'
+        date: 2026-10-09
+        niveau: verifie
+      retrait_auto_copies:
+        valeur: seulement entre Shopify et Vinted
+        verdict: partiel
+        sources:
+          - 'https://apps.shopify.com/dresskare-connect'
+        date: 2026-10-09
+        niveau: verifie
+      republication:
+        valeur: 'oui dès Éco : automatique tous les X jours (7 par défaut), 20 articles par heure au plus'
+        verdict: oui
+        sources:
+          - 'https://dresskare.com/centre-aide/combien-republications-vinted-par-jour'
+        date: 2026-10-09
+        niveau: verifie
+      stock_ventes_marges:
+        valeur: 'oui — CA, marge, stock ; module Compta (URSSAF, TVA) en Essentiel ; facturation ; stock 0 / 100 / 249 / illimité selon l''offre'
+        verdict: oui
+        sources:
+          - 'https://dresskare.com/prix'
+        date: 2026-10-09
+        niveau: verifie
+      prix:
+        valeur: 'Éco 9,90 €, Actif 19 €, Essentiel 39 €, Pro 69 € TTC par mois ; formation DressKool 79 € une fois'
+        verdict: null
+        sources:
+          - 'https://dresskare.com/prix'
+        date: 2026-10-09
+        niveau: verifie
+        devise: EUR
+        paliers:
+          - nom: Éco
+            prix_mensuel: 9.9
+          - nom: Actif
+            prix_mensuel: 19
+          - nom: Essentiel
+            prix_mensuel: 39
+          - nom: Pro
+            prix_mensuel: 69
+      essai:
+        valeur: 7 jours sans carte bancaire ; pas de plan gratuit
+        verdict: null
+        sources:
+          - 'https://dresskare.com/prix'
+        date: 2026-10-09
+        niveau: verifie
+      pays_langues:
+        valeur: France ; français seulement
+        verdict: null
+        sources:
+          - 'https://dresskare.com/'
+        date: 2026-10-09
+        niveau: verifie
+      notes_publiques:
+        valeur: 'Chrome Web Store 4,6 (11 avis), 971 utilisateurs ; Shopify 5,0 (5 avis) ; Trustpilot 0 avis'
+        verdict: null
+        sources:
+          - 'https://chromewebstore.google.com/detail/dresskare/mofkohgamkldigbgolmbgmipaofobcfb'
+        date: 2026-10-09
+        niveau: verifie
+    fait_bien:
+      - 'Dépôt-vente de bout en bout (déposants, commissions, reversements, facturation, comptabilité URSSAF et TVA).'
+      - 'Centre d''aide honnête sur les limites (ordinateur allumé, 20 republications par heure, repère de 50 actions par jour).'
+      - Connecteur Shopify publié (retrait de l'annonce Vinted après une vente en boutique).
+    fillsell_fait_pas_lui:
+      - 'Crosslisting entre places de marché : Leboncoin, eBay, Beebs et Depop en plus de Vinted, avec retrait des copies.'
+      - Apps iOS et Android.
+      - Palier gratuit ; IA dès le palier d'entrée.
+    lui_fait_pas_fillsell:
+      - 'Dépôt-vente (déposants, commissions, reversements) ; marketplace de sourcing ; formation.'
+      - Connecteur Shopify ; comptabilité URSSAF / TVA ; facturation ; CRM.
+      - 'Messages aux favoris, offres automatiques ; mannequins IA ; plusieurs comptes Vinted.'
+  - slug: vendoo
+    nom: Vendoo
+    url: 'https://www.vendoo.co'
+    pays: États-Unis
+    categorie: 'crosslisting américain : web + apps iOS/Android + extension Chrome'
+    classement: hors_classement
+    criteres:
+      plateformes:
+        vinted:
+          valeur: non — absent de l'article d'aide « Which marketplaces does Vendoo support? » ; une tuile Vinted existe dans le HTML mais est masquée par CSS
+          traductions:
+            valeur:
+              en: no — missing from the help article “Which marketplaces does Vendoo support?”; a Vinted tile exists in the HTML but is hidden by CSS
+          verdict: non
+          sources:
+            - 'https://help.vendoo.co/en/articles/6260300-which-marketplaces-does-vendoo-support'
+            - 'https://www.vendoo.co/marketplaces'
+          date: 2026-10-09
+          niveau: verifie
+        leboncoin:
+          valeur: non
+          traductions:
+            valeur:
+              en: 'no'
+          verdict: non
+          sources:
+            - 'https://help.vendoo.co/en/articles/6260300-which-marketplaces-does-vendoo-support'
+          date: 2026-10-09
+          niveau: verifie
+        ebay:
+          valeur: eBay (ebay.com dans l'aide) ; eBay France non documenté
+          traductions:
+            valeur:
+              en: eBay (ebay.com in the help centre); eBay France not documented
+          verdict: null
+          sources:
+            - 'https://help.vendoo.co/en/articles/6260300-which-marketplaces-does-vendoo-support'
+          date: 2026-10-09
+          niveau: verifie
+        beebs:
+          valeur: non
+          traductions:
+            valeur:
+              en: 'no'
+          verdict: non
+          sources:
+            - 'https://help.vendoo.co/en/articles/6260300-which-marketplaces-does-vendoo-support'
+          date: 2026-10-09
+          niveau: verifie
+        depop:
+          valeur: 'oui, États-Unis — Depop parmi les places de marché intégrées (aide du 09/07/2026) ; « Sale Detection and Auto Delisting for Poshmark, eBay, Mercari, Depop, Whatnot, and Etsy » (BETA, onglet Vendoo ouvert dans le navigateur) ; « Marketplace Sharing: Poshmark, Depop & Grailed » en Pro (59,99 $) ; republication manuelle'
+          traductions:
+            valeur:
+              en: 'yes, United States — Depop among the integrated marketplaces (help article of 9 July 2026); “Sale Detection and Auto Delisting for Poshmark, eBay, Mercari, Depop, Whatnot, and Etsy” (BETA, Vendoo tab open in the browser); “Marketplace Sharing: Poshmark, Depop & Grailed” on Pro ($59.99); manual reposting'
+          verdict: oui
+          sources:
+            - 'https://help.vendoo.co/en/articles/6260300-which-marketplaces-does-vendoo-support'
+            - 'https://help.vendoo.co/en/articles/8047348-sale-detection-auto-delist'
+            - 'https://www.vendoo.co/pricing'
+            - 'https://www.vendoo.co/uk/faqs'
+          date: 2026-10-09
+          niveau: verifie
+        autres:
+          valeur: 'eBay, Etsy, Poshmark, Mercari, Depop, Grailed, Facebook Marketplace, Shopify, Vestiaire Collective, Whatnot (BETA)'
+          traductions:
+            valeur:
+              en: 'eBay, Etsy, Poshmark, Mercari, Depop, Grailed, Facebook Marketplace, Shopify, Vestiaire Collective, Whatnot (BETA)'
+          verdict: null
+          sources:
+            - 'https://help.vendoo.co/en/articles/6260300-which-marketplaces-does-vendoo-support'
+          date: 2026-10-09
+          niveau: verifie
+      app_mobile:
+        valeur: oui iOS et Android ; app iOS absente de l'App Store France et Allemagne
+        traductions:
+          valeur:
+            en: 'yes, iOS and Android; iOS app not on the French or German App Store'
+        verdict: oui
+        sources:
+          - 'https://apps.apple.com/us/app/vendoo-a-sellers-best-friend/id1612168777'
+        date: 2026-10-09
+        niveau: verifie
+      extension:
+        valeur: 'oui — Chrome (« Vendoo Crosslist Extension v3 », v3.1.10 du 26/09/2025)'
+        verdict: oui
+        sources:
+          - 'https://chromewebstore.google.com/detail/mnampbajndaipakjhcbbaihllmghlcdf'
+        date: 2026-10-09
+        niveau: verifie
+      depart:
+        valeur: l'ordinateur pour démarrer (« you cannot import from the mobile app »)
+        verdict: null
+        sources:
+          - 'https://help.vendoo.co/en/articles/9299090-can-i-use-vendoo-from-my-phone-or-tablet'
+        date: 2026-10-09
+        niveau: verifie
+      ordinateur_eteint:
+        valeur: 'eBay et Etsy par leur API ; détection des ventes : ordinateur allumé, onglet Vendoo ouvert'
+        verdict: null
+        sources:
+          - 'https://help.vendoo.co/en/articles/8047348-sale-detection-auto-delist'
+        date: 2026-10-09
+        niveau: verifie
+      ia_photo:
+        valeur: description et champs à partir d'un texte saisi (Growth et Pro) ; pas d'identification par photo ; pas de prix IA (Price Checker retiré en 2024)
+        traductions:
+          valeur:
+            en: description and fields from typed text (Growth and Pro); no identification from a photo; no AI pricing (Price Checker removed in 2024)
+        verdict: null
+        sources:
+          - 'https://help.vendoo.co/en/articles/12578441-ai-listing-enhancement'
+        date: 2026-10-09
+        niveau: verifie
+      import_synchro:
+        valeur: 'oui, annonces actives ; « Import & Merge » en BETA ; doublons connus à l''import eBay'
+        traductions:
+          valeur:
+            en: 'yes, active listings; “Import & Merge” in BETA; known duplicates when importing from eBay'
+        verdict: oui
+        sources:
+          - 'https://help.vendoo.co/en/articles/6260276-how-to-import-your-items-in-vendoo'
+        date: 2026-10-09
+        niveau: verifie
+      regroupement_multi_plateformes:
+        valeur: « Import & Merge » en BETA ; sinon lien par URL à la main
+        verdict: null
+        sources:
+          - 'https://help.vendoo.co/en/articles/6746641-i-already-have-items-listed-on-multiple-marketplaces-do-i-import-twice'
+        date: 2026-10-09
+        niveau: verifie
+      retrait_auto_copies:
+        valeur: 'oui, BETA, toutes formules, 5 ou 6 plateformes américaines, balayage toutes les 10 min, ordinateur allumé'
+        traductions:
+          valeur:
+            en: 'yes, BETA, all plans, 5 or 6 US marketplaces, sweep every 10 min, computer on'
+        verdict: oui
+        sources:
+          - 'https://help.vendoo.co/en/articles/8047348-sale-detection-auto-delist'
+        date: 2026-10-09
+        niveau: verifie
+        contradictoire: true
+      republication:
+        valeur: manuelle (unité ou lot de 240) + rappel d'annonces anciennes ; aucune republication programmée décrite
+        traductions:
+          valeur:
+            en: manual (single or batch of 240) + reminder for old listings; no scheduled reposting described
+        verdict: null
+        sources:
+          - 'https://help.vendoo.co/en/articles/6260292-how-to-use-vendoo-s-delist-relist-feature'
+        date: 2026-10-09
+        niveau: verifie
+      stock_ventes_marges:
+        valeur: 'analytique revenu, profit, volume ; export CSV ; multi-quantité'
+        verdict: null
+        sources:
+          - 'https://help.vendoo.co/en/articles/6260264-vendoo-business-analytics'
+        date: 2026-10-09
+        niveau: verifie
+      prix:
+        valeur: 'Starter 14,99 $, Growth 29,99 $, Pro 59,99 $ par mois ; annuel 12,49 / 24,99 / 49,99 $ par mois ; Enterprise sur devis ; Shopify +9,99 $ par mois'
+        verdict: null
+        sources:
+          - 'https://www.vendoo.co/pricing'
+        date: 2026-10-09
+        niveau: verifie
+        devise: USD
+        paliers:
+          - nom: Starter
+            prix_mensuel: 14.99
+            prix_mensuel_annuel: 12.49
+          - nom: Growth
+            prix_mensuel: 29.99
+            prix_mensuel_annuel: 24.99
+          - nom: Pro
+            prix_mensuel: 59.99
+            prix_mensuel_annuel: 49.99
+          - nom: Enterprise
+            prix_mensuel: null
+      essai:
+        valeur: '14 jours, carte bancaire exigée'
+        verdict: null
+        sources:
+          - 'https://www.vendoo.co/pricing'
+        date: 2026-10-09
+        niveau: verifie
+      pays_langues:
+        valeur: États-Unis (+ section Royaume-Uni) ; anglais seulement
+        verdict: null
+        sources:
+          - 'https://www.vendoo.co/faqs'
+        date: 2026-10-09
+        niveau: verifie
+      notes_publiques:
+        valeur: 'App Store US 4,5 (2 830 notes) ; Google Play 4,2 (749 avis) ; Chrome Web Store 3,5 (70 avis), 70 000 utilisateurs ; Trustpilot 4,2 (242 avis, 22 % à une étoile)'
+        verdict: null
+        sources:
+          - 'https://itunes.apple.com/lookup?id=1612168777&country=us'
+          - 'https://chromewebstore.google.com/detail/mnampbajndaipakjhcbbaihllmghlcdf'
+          - 'https://www.trustpilot.com/review/vendoo.co'
+        date: 2026-10-09
+        niveau: verifie
+    fait_bien:
+      - 'Acteur mûr (depuis 2017), application mobile bien notée aux États-Unis (4,5 sur 2 830 notes).'
+      - 'Articles illimités dès 14,99 $, retrait automatique inclus dans la formule d''entrée (en BETA).'
+      - 'Aide très fournie et franche sur ses limites (BETA, ordinateur allumé, doublons à l''import eBay).'
+    fillsell_fait_pas_lui:
+      - 'Vinted, Leboncoin, Beebs, eBay.fr ; Depop depuis la France, en euros.'
+      - App iOS publiée sur l'App Store français ; app et site en français ; prix en euros ; palier gratuit.
+      - Création d'annonce depuis une photo avec prix proposé.
+      - Republication automatique par créneaux.
+    lui_fait_pas_fillsell:
+      - 'Places de marché américaines (Poshmark, Mercari, Grailed, Whatnot, Etsy, Shopify).'
+      - 'Republication en lot jusqu''à 240 annonces, multi-quantité et variantes, vidéos d''annonce.'
+      - Forte preuve sociale (milliers de notes).
+  - slug: list-perfectly
+    nom: List Perfectly
+    url: 'https://listperfectly.com'
+    pays: États-Unis
+    categorie: 'crosslisting américain : web + extension Chrome/Edge'
+    classement: hors_classement
+    criteres:
+      plateformes:
+        vinted:
+          valeur: 'vinted.com seulement (manifeste), statut « Lite » : publication et retrait, pas de détection des ventes ; vinted.fr absent'
+          verdict: null
+          sources:
+            - 'https://listperfectly.com/pricing'
+            - 'https://listperfectly.com/selling/vinted-marketplace-supported-in-list-perfectly/'
+          date: 2026-10-09
+          niveau: verifie
+        leboncoin:
+          valeur: non
+          verdict: non
+          sources:
+            - 'https://listperfectly.com/platforms/'
+          date: 2026-10-09
+          niveau: verifie
+        ebay:
+          valeur: eBay U.S. (« eBay Italy is not supported ») ; ebay.fr absent
+          verdict: null
+          sources:
+            - 'https://listperfectly.com/faq/'
+          date: 2026-10-09
+          niveau: verifie
+        beebs:
+          valeur: non
+          verdict: non
+          sources:
+            - 'https://listperfectly.com/platforms/'
+          date: 2026-10-09
+          niveau: verifie
+        depop:
+          valeur: 'Depop US seulement — « Depop U.S. is supported » / « Depop UK and other regional versions are not supported » ; publication et import (« All Marketplace Access ») ; Auto Delist par l''extension, appareil allumé, en Pro Plus (99 $ et plus) ; republication manuelle'
+          verdict: null
+          sources:
+            - 'https://listperfectly.com/faq/'
+            - 'https://listperfectly.com/pricing'
+          date: 2026-10-09
+          niveau: verifie
+        autres:
+          valeur: '14 places de marché américaines : eBay, Poshmark, Mercari, Depop, Grailed, Vestiaire, Etsy, Facebook, Instagram, Shopify, Whatnot, Reverb, Listing Party, Vinted (.com)'
+          verdict: null
+          sources:
+            - 'https://listperfectly.com/platforms/'
+          date: 2026-10-09
+          niveau: verifie
+          contradictoire: true
+      app_mobile:
+        valeur: 'non — navigateur mobile pour les brouillons, les images et les prix'
+        verdict: non
+        sources:
+          - 'https://listperfectly.com/faq/'
+        date: 2026-10-09
+        niveau: verifie
+      extension:
+        valeur: oui — Chrome et Edge (stable v1.0.188.2 et bêta v2.0.189.7)
+        verdict: oui
+        sources:
+          - 'https://app.listperfectly.com/version/'
+        date: 2026-10-09
+        niveau: verifie
+      depart:
+        valeur: l'ordinateur (extension obligatoire pour crosslister) ; la personne clique elle-même « publier »
+        verdict: null
+        sources:
+          - 'https://listperfectly.com/faq/'
+        date: 2026-10-09
+        niveau: verifie
+      ordinateur_eteint:
+        valeur: non pour crosslister et retirer ; Smart Import tourne côté serveur
+        verdict: non
+        sources:
+          - 'https://help.listperfectly.com/en/articles/11465703-list-perfectly-onboarding-guide'
+        date: 2026-10-09
+        niveau: verifie
+      ia_photo:
+        valeur: 'oui — Listing Assistant depuis 1 à 6 photos : titres, descriptions, caractéristiques ; code-barres ; pas de prix proposé (outils de recherche Google Lens et eBay)'
+        verdict: oui
+        sources:
+          - 'https://listperfectly.com/pricing'
+        date: 2026-10-09
+        niveau: verifie
+      import_synchro:
+        valeur: 'import en un clic (eBay, Mercari, Poshmark) à partir de Business ; Smart Import (bêta)'
+        verdict: null
+        sources:
+          - 'https://listperfectly.com/pricing'
+        date: 2026-10-09
+        niveau: verifie
+        contradictoire: true
+      regroupement_multi_plateformes:
+        valeur: 'oui — Smart Import (bêta) compare titres, prix, photos et détails, revue humaine de chaque correspondance'
+        verdict: oui
+        sources:
+          - 'https://help.listperfectly.com/en/articles/11465703-list-perfectly-onboarding-guide'
+        date: 2026-10-09
+        niveau: verifie
+      retrait_auto_copies:
+        valeur: 'Pro Plus seulement (99 $ et plus), appareil allumé, quantité 1 ; jamais déclenché par une vente Vinted'
+        verdict: null
+        sources:
+          - 'https://listperfectly.com/faq/'
+        date: 2026-10-09
+        niveau: verifie
+        contradictoire: true
+      republication:
+        valeur: manuelle (Business et plus) ; alertes d'annonces anciennes (Pro Plus) ; aucune republication automatique
+        verdict: null
+        sources:
+          - 'https://listperfectly.com/pricing'
+        date: 2026-10-09
+        niveau: verifie
+      stock_ventes_marges:
+        valeur: 'catalogue, SKU, étiquettes QR ; ventes et analytique à partir de Business ; export CSV'
+        verdict: null
+        sources:
+          - 'https://listperfectly.com/pricing'
+        date: 2026-10-09
+        niveau: verifie
+      prix:
+        valeur: 'Simple 29 $, Business 49 $, Pro 69 $, Pro Plus 99 / 149 / 249 $ par mois ; dollars US ; aucun tarif annuel'
+        verdict: null
+        sources:
+          - 'https://listperfectly.com/pricing'
+          - 'https://listperfectly.com/pro-plus-plan/features-and-tiers/'
+        date: 2026-10-09
+        niveau: verifie
+        devise: USD
+        paliers:
+          - nom: Simple
+            prix_mensuel: 29
+          - nom: Business
+            prix_mensuel: 49
+          - nom: Pro
+            prix_mensuel: 69
+          - nom: Pro Plus
+            prix_mensuel: 99
+      essai:
+        valeur: 'contradictoire sur la même FAQ : « 100 free listings plus a 5-day money-back guarantee » et « Do you offer a free trial? No. We require a credit card »'
+        verdict: null
+        sources:
+          - 'https://listperfectly.com/faq/'
+        date: 2026-10-09
+        niveau: verifie
+        contradictoire: true
+      pays_langues:
+        valeur: États-Unis seulement (« supports U.S. marketplaces only ») ; anglais
+        verdict: null
+        sources:
+          - 'https://listperfectly.com/faq/'
+        date: 2026-10-09
+        niveau: verifie
+      notes_publiques:
+        valeur: 'Chrome Web Store stable 4,1 (22 avis), 9 000 utilisateurs ; bêta 4,4 (29 avis), 4 000 ; aucune app ; Trustpilot non vérifiable'
+        verdict: null
+        sources:
+          - 'https://chromewebstore.google.com/detail/list-perfectly-multi-chan/flpmljgbaphneikdjhmekdpiamkejfon'
+          - 'https://chromewebstore.google.com/detail/list-perfectly-multi-chan/cfglgfaclpncclmjbbdhkhpnfbapoahp'
+        date: 2026-10-09
+        niveau: verifie
+    fait_bien:
+      - 'Ancienneté et largeur du catalogue américain (14 places de marché, Reverb ajouté cette semaine).'
+      - 'Smart Import : rapprochement entre plateformes avec revue humaine, exécuté côté serveur.'
+      - 'Annonces et crosslisting illimités dans toutes les formules ; posture claire (la personne publie elle-même, jamais de mot de passe).'
+    fillsell_fait_pas_lui:
+      - 'Servir la France : Vinted France, Leboncoin, Beebs, eBay.fr, Depop depuis la France (List Perfectly : « Depop UK and other regional versions are not supported »).'
+      - Apps iOS et Android.
+      - 'Retrait automatique des copies dans tous les forfaits, déclenché aussi par une vente Vinted.'
+      - 'Publication par l''extension sans clic sur chaque site ; republication automatique ; palier gratuit ; euros, français.'
+    lui_fait_pas_fillsell:
+      - 'Places de marché américaines (Poshmark, Mercari, Reverb, Whatnot…).'
+      - 'Code-barres, SKU, étiquettes QR, sous-comptes d''équipe.'
+      - 'Support humain tous les jours, séances d''accueil en direct.'
+  - slug: margeo
+    nom: Margeo
+    url: 'https://margeoapp.com'
+    pays: France
+    categorie: 'gestion d''achat-revente (stock, marges, fiscalité) — ne publie pas : PWA'
+    classement: hors_classement
+    criteres:
+      plateformes:
+        vinted:
+          valeur: étiquette de vente + import CSV des ventes Vinted ; aucune publication
+          verdict: null
+          sources:
+            - 'https://margeoapp.com/llms.txt'
+            - 'https://margeoapp.com/fonctionnalites/gestion-ventes-vinted-leboncoin'
+          date: 2026-10-09
+          niveau: verifie
+        leboncoin:
+          valeur: étiquette de vente + barème de frais ; aucune publication
+          verdict: null
+          sources:
+            - 'https://margeoapp.com/'
+          date: 2026-10-09
+          niveau: verifie
+        ebay:
+          valeur: étiquette de vente + barème « eBay France » ; aucune publication
+          verdict: null
+          sources:
+            - 'https://margeoapp.com/'
+          date: 2026-10-09
+          niveau: verifie
+        beebs:
+          valeur: non intégré (plateforme personnalisée possible)
+          verdict: non
+          sources:
+            - 'https://margeoapp.com/app/assets/js/platforms.js'
+          date: 2026-10-09
+          niveau: verifie
+        depop:
+          valeur: 'ne publie pas — Depop cité comme public visé (« pour les vendeurs Vinted, eBay, Leboncoin, Rakuten, Vestiaire Collective, Depop et autres marketplaces ») et sujet d''articles (frais Depop) ; aucune fonction Depop'
+          verdict: null
+          sources:
+            - 'https://margeoapp.com/pricing.md'
+            - 'https://margeoapp.com/llms.txt'
+          date: 2026-10-09
+          niveau: verifie
+        autres:
+          valeur: 'Facebook Marketplace, main propre (étiquettes) ; barèmes Rakuten, Vestiaire, Etsy'
+          verdict: null
+          sources:
+            - 'https://margeoapp.com/'
+          date: 2026-10-09
+          niveau: verifie
+      app_mobile:
+        valeur: non — PWA ; un paquet Android est préparé (assetlinks.json) mais non publié
+        verdict: non
+        sources:
+          - 'https://margeoapp.com/fonctionnalites/application-hors-ligne-brocante'
+          - 'https://play.google.com/store/apps/details?id=com.margeo.app'
+        date: 2026-10-09
+        niveau: verifie
+      extension:
+        valeur: non
+        verdict: non
+        sources:
+          - 'https://chromewebstore.google.com/search/margeo'
+        date: 2026-10-09
+        niveau: verifie
+      depart:
+        valeur: 'les deux (même PWA, mode hors ligne)'
+        verdict: null
+        sources:
+          - 'https://margeoapp.com/fonctionnalites/gestion-stock-revendeur'
+        date: 2026-10-09
+        niveau: verifie
+      ordinateur_eteint:
+        valeur: sans objet (ne publie pas)
+        verdict: sans_objet
+        sources: []
+        date: 2026-10-09
+        niveau: verifie
+      ia_photo:
+        valeur: 'non — IA textuelle (prix conseillé, description à partir de champs saisis)'
+        verdict: non
+        sources:
+          - 'https://margeoapp.com/app/assets/js/pwa-ai.js'
+        date: 2026-10-09
+        niveau: deduit
+      import_synchro:
+        valeur: ventes Vinted par CSV seulement ; aucun import de stock ni synchronisation
+        verdict: null
+        sources:
+          - 'https://margeoapp.com/pricing.md'
+        date: 2026-10-09
+        niveau: verifie
+      regroupement_multi_plateformes:
+        valeur: sans objet
+        verdict: sans_objet
+        sources: []
+        date: 2026-10-09
+        niveau: verifie
+      retrait_auto_copies:
+        valeur: non — recommande de « délister manuellement »
+        verdict: non
+        sources:
+          - 'https://margeoapp.com/blog/comparatif-applications-crosslisting-france-2026'
+        date: 2026-10-09
+        niveau: verifie
+      republication:
+        valeur: non — la présente comme un risque
+        verdict: non
+        sources:
+          - 'https://margeoapp.com/blog/comparatif-applications-crosslisting-france-2026'
+        date: 2026-10-09
+        niveau: verifie
+      stock_ventes_marges:
+        valeur: 'oui, cœur du produit : lots, stock, marge nette, simulateur avant achat, fiscalité (micro-BIC, ACRE, DAC7, TVA), factures, hors ligne'
+        verdict: oui
+        sources:
+          - 'https://margeoapp.com/'
+        date: 2026-10-09
+        niveau: verifie
+      prix:
+        valeur: 'Starter 0 € (10 articles en stock), Pro 7,99 €/mois ou 69 €/an, Business 19,99 €/mois ; TTC, TVA non applicable'
+        verdict: null
+        sources:
+          - 'https://margeoapp.com/tarifs/'
+        date: 2026-10-09
+        niveau: verifie
+        devise: EUR
+        paliers:
+          - nom: Starter
+            prix_mensuel: 0
+          - nom: Pro
+            prix_mensuel: 7.99
+          - nom: Business
+            prix_mensuel: 19.99
+      essai:
+        valeur: '15 jours sur Pro mensuel, carte requise ; remboursé 30 jours ; Starter gratuit à vie'
+        verdict: null
+        sources:
+          - 'https://margeoapp.com/tarifs/'
+        date: 2026-10-09
+        niveau: verifie
+      pays_langues:
+        valeur: français et anglais ; France d'abord
+        verdict: null
+        sources:
+          - 'https://margeoapp.com/llms-full.txt'
+        date: 2026-10-09
+        niveau: verifie
+      notes_publiques:
+        valeur: 'aucune : Trustpilot 0 avis, Product Hunt 0, pas d''app ni d''extension'
+        verdict: null
+        sources:
+          - 'https://fr.trustpilot.com/review/margeoapp.com'
+        date: 2026-10-09
+        niveau: verifie
+    fait_bien:
+      - 'Profondeur métier sur l''argent : lots découpés en articles, simulateur avant achat sans compte, fiscalité française sourcée.'
+      - 'Honnêteté sur ses limites (« il ne publie pas vos annonces »), refus d''afficher des notes non vérifiées.'
+      - 'Mode hors ligne pour la brocante ; dispositif SEO/GEO très travaillé (566 URL, llms.txt).'
+    fillsell_fait_pas_lui:
+      - 'Publier, republier, retirer : Vinted, Leboncoin, eBay, Beebs, Depop.'
+      - Reprendre les annonces déjà en ligne ; création d'annonce depuis une photo.
+      - Apps iOS et Android publiées.
+    lui_fait_pas_fillsell:
+      - 'Fiscalité française (micro-BIC, ACRE, DAC7, franchise de TVA), factures, simulateur de marge avant achat.'
+      - Mode hors ligne ; gestion par lots d'achat ; connecteur MCP pour Claude.
+      - 'Prix bas (Pro 7,99 €), annuel à 69 €, remboursement 30 jours.'
+classement:
+  titre: Meilleures applications de crosslisting en France (2026)
+  avertissement: 'FillSell est notre produit. Grille écrite AVANT de noter ; FillSell noté avec ses limites (fiche de vérité) et les décisions de Nico du 09/10 (à constater en production le jour de la mise en ligne), les concurrents sur leurs pages publiques (déclarations). Publier la grille, les sous-notes et les variantes de pondération, jamais un seul chiffre.'
+  eliminatoire:
+    - 'Sert, de façon documentée, un revendeur qui réside en France (exclut Crosslist : UE non servie ; List Perfectly : États-Unis seulement ; Vendoo : places de marché américaines, « You might not be able to actually list to the U.S. marketplaces depending upon your location », app absente de l''App Store FR).'
+    - 'Publie sur au moins deux places de marché (exclut Clemz : Vinted seul ; DressKare : Vinted + boutique Shopify ; Margeo : ne publie pas).'
+    - 'Activité démontrée au 09/10/2026 : produit mis à jour depuis moins de 90 jours ET service qui répond (exclut Flypr : rien depuis le 18/04/2026, API en 404).'
+  criteres:
+    - id: C1
+      nom: Plateformes utiles en France
+      poids: 25
+      grille: 'Vinted France publié 7 (source seulement, ou option à prix non public : 4) ; Leboncoin 7 (« bientôt » : 0) ; eBay.fr 4 (site France non nommé 2) ; Beebs 3 (annoncé mais activé compte par compte 1) ; autres places de marché ouvertes (hors bêta) : 1-2 = 2, 3 et plus = 4'
+    - id: C2
+      nom: Éviter la double vente
+      poids: 20
+      grille: '20 si retrait automatique sur toutes les plateformes couvertes, dès le palier d''entrée, annonces importées comprises ; -4 palier ≥ 30 € requis ; -4 seulement les annonces publiées ou liées par l''outil ; -4 plateformes couvertes partielles ou non documentées ; -2 confirmation requise sur une partie des plateformes ; non documenté = 5'
+    - id: C3
+      nom: Reprendre son stock existant
+      poids: 10
+      grille: 'import des annonces en ligne : complet 5, partiel 3, local au navigateur 2 ; regroupement d''un même article entre plateformes : automatique avec question en cas de doute 5, à la main 2, lien au transfert ou non vérifié 1, absent 0'
+    - id: C4
+      nom: Créer l'annonce depuis une photo
+      poids: 10
+      grille: 'photo → objet, titre, description, prix, inclus au palier d''entrée 10 ; même chose mais palier élevé, option payante ou reconnaissance non décrite 8 ; photo → titre et description sans prix 6 ; IA de texte seulement 3 ; +1 si retouche ou mise en scène photo dès l''entrée ; -1 si l''IA écrit en anglais par défaut ; plafond 10'
+    - id: C5
+      nom: Republication
+      poids: 10
+      grille: 'manuelle (4 sur tous les paliers ; 3 si palier payant, en lot seulement ou plan non écrit) + automatique (4 dès l''entrée ; 3 au palier ≥ 29 € ou plan non écrit ; 0 si « bientôt » ou absente) + plateformes FR couvertes (2 si Vinted et Leboncoin, 1 sinon)'
+    - id: C6a
+      nom: App mobile native
+      poids: 5
+      grille: app iOS et Android publiée en France 5 ; PWA ou web mobile 2 ; navigateur tiers 1 ; rien 0
+    - id: C6b
+      nom: Ordinateur éteint
+      poids: 5
+      grille: toutes les plateformes 5 ; Vinted et Leboncoin sur un palier payant 4 ; quelques plateformes (API) 1-2 ; aucune 0
+    - id: C7
+      nom: Prix et accès
+      poids: 10
+      grille: 'palier gratuit permanent 3 (essai seulement 1) ; prix mensuel du premier palier qui publie sur les plateformes que l''outil couvre parmi Vinted, Leboncoin, eBay (FlowDino : 3 sites) : ≤ 15 € 4, ≤ 30 € 3, ≤ 60 € 2, au-delà 1, inconnu 2 ; prix affichés en euros 1 + prix annuel 1 + essai ou remboursement 1'
+    - id: C8
+      nom: Confiance et preuve publique
+      poids: 5
+      grille: 'aucun mot de passe de plateforme confié ET éditeur identifié 2 (un seul des deux 1) ; preuve tierce (≥ 1 000 utilisateurs ou ≥ 20 avis 2, 300 à 999 utilisateurs 1, moins 0) ; activité récente 1'
+    - id: E
+      nom: Largeur hors France (variante seulement)
+      poids: 0
+      grille: '0 à 5 : FLUF 5, Relistly 4, StoFlow 3, FlowDino 3, Klork 3, Redrip 1 (Vinted multi-pays), FillSell 1 (Depop, place de marché internationale, depuis la France seulement ; 0 au 09/10 à 15:40), Reposter 0'
+    - id: D
+      nom: Depop pour un revendeur en France (variante seulement)
+      poids: 0
+      grille: '0 à 5 : publication 2 + import des annonces Depop 1 + retrait des copies après une vente 1 + republication sur Depop 1 (0,5 si annoncée au palier sans nommer Depop) ; 0 en tout si l''outil ne sert pas un résident de France sur Depop (Crosslist : UE refusée ; List Perfectly : Depop US seulement ; Vendoo : États-Unis) ou n''annonce pas Depop'
+  notes:
+    - slug: fillsell
+      C1: 23
+      C2: 18
+      C3: 10
+      C4: 10
+      C5: 10
+      C6a: 5
+      C6b: 1
+      C7: 8
+      C8: 4
+      total: 89
+      avant_0910_soir:
+        C1: 21
+        C5: 9
+        total: 86
+      conditions: 'C1 23 si Depop est ouverte à tous à la mise en ligne (sinon 21) ; C5 10 si la republication automatique est ouverte à tous les paliers (sinon 9) ; aucune des deux : 86'
+    - slug: fluf-connect
+      C1: 22
+      C2: 16
+      C3: 10
+      C4: 9
+      C5: 7
+      C6a: 5
+      C6b: 2
+      C7: 7
+      C8: 5
+      total: 83
+    - slug: stoflow
+      C1: 20
+      C2: 16
+      C3: 7
+      C4: 9
+      C5: 8
+      C6a: 2
+      C6b: 4
+      C7: 10
+      C8: 3
+      total: 79
+    - slug: flowdino
+      C1: 23
+      C2: 12
+      C3: 3
+      C4: 7
+      C5: 9
+      C6a: 1
+      C6b: 0
+      C7: 7
+      C8: 4
+      total: 66
+    - slug: relistly
+      C1: 13
+      C2: 16
+      C3: 5
+      C4: 8
+      C5: 7
+      C6a: 2
+      C6b: 1
+      C7: 8
+      C8: 3
+      total: 63
+    - slug: redrip
+      C1: 14
+      C2: 16
+      C3: 3
+      C4: 3
+      C5: 10
+      C6a: 1
+      C6b: 0
+      C7: 9
+      C8: 4
+      total: 60
+    - slug: klork
+      C1: 20
+      C2: 10
+      C3: 4
+      C4: 3
+      C5: 4
+      C6a: 2
+      C6b: 0
+      C7: 7
+      C8: 4
+      total: 54
+    - slug: reposter
+      C1: 11
+      C2: 5
+      C3: 4
+      C4: 3
+      C5: 9
+      C6a: 2
+      C6b: 5
+      C7: 5
+      C8: 1
+      total: 45
+  variantes:
+    - nom: Base (pondération ci-dessus)
+      poids: 'C1 25, C2 20, C3 10, C4 10, C5 10, C6a 5, C6b 5, C7 10, C8 5'
+      ordre: FillSell 89 · FLUF 83 · StoFlow 79 · FlowDino 66 · Relistly 63 · Redrip 60 · Klork 54 · Reposter 45
+    - nom: Ordinateur éteint prioritaire
+      poids: 'C1 22, C2 18, C3 8, C4 8, C5 8, C6a 5, C6b 20, C7 8, C8 3'
+      ordre: 'StoFlow 79,0 · FillSell 78,2 · FLUF 76,2 · Relistly 56,0 · FlowDino 55,2 · Reposter 53,6 · Redrip 50,1 · Klork 45,4'
+    - nom: Petit budget
+      poids: 'C1 20, C2 15, C3 7,5, C4 7,5, C5 10, C6a 3,75, C6b 3,75, C7 27,5, C8 5'
+      ordre: 'FillSell 87,4 · StoFlow 83,0 · FLUF 80,3 · FlowDino 67,9 · Redrip 67,2 · Relistly 66,4 · Klork 57,5 · Reposter 46,8'
+    - nom: Plus de plateformes européennes
+      poids: 'base × 0,85 + E 15'
+      ordre: 'FLUF 85,5 · FillSell 78,6 · StoFlow 76,1 · Relistly 65,5 · FlowDino 65,1 · Klork 54,9 · Redrip 54,0 · Reposter 38,3'
+    - nom: 'Vendeur sans Beebs (Beebs retiré de C1, C1 ramené sur 22 puis pondéré 25)'
+      poids: base
+      ordre: 'FillSell 88,7 · FLUF 86,0 · StoFlow 81,7 · FlowDino 65,7 · Relistly 64,8 · Redrip 61,9 · Klork 55,6 · Reposter 46,5'
+    - nom: Vendeur sans Beebs ni Depop (les deux retirés de C1)
+      poids: base
+      ordre: 'FillSell 86,5 · FLUF 86,0 · StoFlow 81,7 · FlowDino 65,7 · Relistly 64,8 · Redrip 61,9 · Klork 55,6 · Reposter 46,5'
+    - nom: 'Vendeur Depop (nouvelle, 09/10 soir)'
+      poids: 'base × 0,85 + D 15'
+      ordre: 'FillSell 90,6 · FLUF 85,5 · StoFlow 67,1 · Relistly 67,0 · Klork 60,9 · FlowDino 56,1 · Redrip 51,0 · Reposter 38,3'
+  hors_classement:
+    - slug: flypr
+      raison: 'activité non démontrée (rien depuis le 18/04/2026, API en 404, extension hors du Chrome Web Store)'
+    - slug: crosslist
+      raison: n'accepte pas les résidents de l'UE ; Vinted fermé aux nouveaux comptes (02/10/2026) ; Depop.com hors UE seulement
+    - slug: list-perfectly
+      raison: États-Unis seulement ; vinted.com « Lite » ; « Depop U.S. is supported / Depop UK and other regional versions are not supported »
+    - slug: vendoo
+      raison: 'places de marché américaines, revendeur en France non servi de façon documentée ; ni Vinted, ni Leboncoin, ni Beebs ; Depop côté États-Unis ; app iOS absente en France'
+    - slug: clemz
+      raison: Vinted seulement (pas de crosslisting)
+    - slug: dresskare
+      raison: Vinted + boutique Shopify (pas de crosslisting entre places de marché)
+    - slug: margeo
+      raison: ne publie pas

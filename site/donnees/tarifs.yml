@@ -1,0 +1,104 @@
+# TARIFS affichés par le site vitrine — des DONNÉES (09/10/2026).
+#
+# Source : fiche de vérité § 10 et F58 (docs/seo/etat-des-lieux/03-fiche-de-verite.md),
+# décisions de Nico du 09/10 (03c-decisions-nico-0910.md, décision 3) :
+#   · prix mensuels, EUR, sans engagement, aucun prix annuel, aucun essai ;
+#   · ⛔ AUCUN chiffre de quota ni de plafond, nulle part : le build REFUSE un
+#     chiffre dans `pour`, `inclus` et `communs` (les volumes restent dans l'app,
+#     feuille des offres, et dans les CGV) ;
+#   · ⛔ la republication automatique n'est écrite à côté d'AUCUN palier (ni ici,
+#     ni « dans tous les forfaits » tant que P1 n'est pas tranché) : elle se dit
+#     ailleurs, sans palier ;
+#   · jetons permis : {{plateformes}}, {{republication}}, {{nb_plateformes}}.
+#
+# Utilisé par : les cartes des pages `tarifs` et de l'accueil (`tarifs: true`),
+# le JSON-LD SoftwareApplication (offres) de l'accueil et des pages `tarifs`.
+# Changer un prix = changer `prix` ici (et la date) : toutes les pages suivent.
+
+date: "2026-10-09"
+devise: EUR
+inscription: /login?mode=signup
+
+paliers:
+  - id: gratuit
+    prix: 0
+    nom: { fr: Gratuit, en: Free }
+    pour: { fr: "Pour te lancer", en: "To get started" }
+    cta: { fr: "Commencer gratuitement", en: "Start for free" }
+    inclus:
+      fr:
+        - "Lens : une photo, une annonce rédigée"
+        - "Un volume d'annonces chaque mois pour démarrer"
+        - "Une annonce qui remonte en un appui"
+        - "Marges et bénéfices calculés pour toi"
+      en:
+        - "Lens: one photo, one written listing"
+        - "A monthly batch of listings to get going"
+        - "Bump a listing with one tap"
+        - "Margins and profit worked out for you"
+  - id: premium
+    prix: 12.99
+    nom: { fr: Premium, en: Premium }
+    pour: { fr: "Pour vendre chaque semaine", en: "To sell every week" }
+    cta: { fr: "Passer Premium", en: "Go Premium" }
+    inclus:
+      fr:
+        - "Bien plus d'annonces rédigées chaque mois"
+        - "Retouche photo par l'IA : lumière et fond"
+        - "Republier en lot, d'un geste"
+        - "Support par e-mail"
+      en:
+        - "Far more written listings every month"
+        - "AI photo touch-up: lighting and background"
+        - "Repost in bulk, in one go"
+        - "Email support"
+  - id: pro
+    prix: 29.99
+    mis_en_avant: true
+    nom: { fr: Pro, en: Pro }
+    pour: { fr: "Pour les gros volumes", en: "For high volumes" }
+    cta: { fr: "Passer Pro", en: "Go Pro" }
+    inclus:
+      fr:
+        - "Un gros volume d'annonces chaque mois"
+        - "Plus de photos retouchées par l'IA"
+        - "Republier en lot, sans y penser"
+        - "Support prioritaire"
+      en:
+        - "A big monthly volume of listings"
+        - "More AI-touched photos"
+        - "Bulk reposting, without a second thought"
+        - "Priority support"
+  - id: business
+    prix: 59.99
+    nom: { fr: Business, en: Business }
+    pour: { fr: "Pour en faire ton métier", en: "To make it your business" }
+    cta: { fr: "Passer Business", en: "Go Business" }
+    inclus:
+      fr:
+        - "Le plus haut volume, sur tout"
+        - "Retouche photo IA au plus haut volume"
+        - "Republication en lot au plus haut volume"
+        - "Support prioritaire"
+      en:
+        - "The highest volume, on everything"
+        - "AI photo touch-up at the highest volume"
+        - "Bulk reposting at the highest volume"
+        - "Priority support"
+
+# Dans TOUS les forfaits (fiche de vérité F24, F33, F44, F48, F49, F50).
+communs:
+  fr:
+    - "Publication sur {{plateformes}}"
+    - "Synchronisation de tes annonces, gratuite et sans limite"
+    - "Vendu ici, retiré ailleurs : les autres annonces de l'article partent"
+    - "Stock sans limite d'articles, export et import Excel"
+  en:
+    - "Publishing on {{plateformes}}"
+    - "Syncing of your listings, free and unlimited"
+    - "Sold here, removed there: the item's other listings come down"
+    - "Unlimited stock items, Excel export and import"
+
+mentions:
+  fr: "Prix par mois, sans engagement. Inscription gratuite, sans carte bancaire. Les volumes de chaque forfait sont détaillés dans l'app avant tout achat."
+  en: "Monthly prices, no commitment. Free sign-up, no credit card. Each plan's volumes are shown in the app before you buy."
