@@ -325,8 +325,8 @@ qui survit à ça, c'est du code.
   trois fois le même livre) : ne jamais les fusionner d'office. Le doute
   devient une question « Est-ce le même article ? » posée dans l'app.
 - Une annonce n'est **jamais portée par deux articles**.
-- Ne **jamais publier** là où une fiche jumelle a déjà une annonce vivante
-  (`spend_coins_and_publish` refuse : motif `jumeau_en_ligne`).
+- ⛔ L'annonce d'une AUTRE fiche n'est **jamais un « déjà en ligne »** (09/10) :
+  garde `jumeau_en_ligne` retirée (mig 20261009233000).
 
 ### 4.2 Retraits, ventes, disparitions
 

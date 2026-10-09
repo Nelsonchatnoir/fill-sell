@@ -216,6 +216,7 @@ complète : `pg_trigger`) :
 - Garde des relevés : `garde_cadence_sync_runs`,
   `garde_pause_antirobot_sync_runs`, `garde_releve_vide_sync_runs`,
   `releve_hors_liste_ecarte`.
-- RPC : `spend_coins_and_publish` refuse `jumeau_en_ligne` et ne réécrit plus
+- RPC : `spend_coins_and_publish` (plus de refus `jumeau_en_ligne` depuis le
+  09/10, mig 20261009233000) ne réécrit plus
   les photos de la fiche ; `spend_coins_and_republish` refuse
   `pause_antirobot` pour l'automatique Vinted.

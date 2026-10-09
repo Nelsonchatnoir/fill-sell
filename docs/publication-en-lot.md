@@ -12,14 +12,14 @@
 | Écrans du stepper (U1 → U4) branchés sur `moteur` | `publication/StepperNouveau.jsx`, `Ecran*.jsx`, `BlocQuestions.jsx` | servis à tous (`coin_config.nouveau_stepper_ouvert = 1`) |
 | Bloc général Titre / Description / État / Prix + exceptions par carte | `components/BlocValeursGenerales.jsx`, `utils/valeursGenerales.js` | complet |
 | Questions regroupées pour UN article (taille posée une fois, propagation) | `BlocQuestions.jsx`, `moteur/regles.js` (`questionsAPoser`, `propagerReponseTaille`) | complet |
-| Création des jobs | RPC `spend_coins_and_publish(p_photo_option, p_jobs)` : 1 à 5 jobs, tout-ou-rien, refus `already_published` / `jumeau_en_ligne` / `platform_paused`, aucune lecture de quota, ne rend pas les identifiants | prod (`20260927100000`) |
+| Création des jobs | RPC `spend_coins_and_publish(p_photo_option, p_jobs)` : 1 à 5 jobs, tout-ou-rien, refus `already_published` / `platform_paused` (`jumeau_en_ligne` retiré le 09/10, `20261009233000`), aucune lecture de quota, ne rend pas les identifiants | prod (`20260927100000`) |
 | Seul « lot » du produit | « Republier en lot » (Stock) : cases, barre collante, une RPC par paire, `bulk_batch_id` posé APRÈS coup par UPDATE | prod, payants seulement |
 | Filtres du Stock | « Pas encore sur X », « Nulle part », catégorie, marque, boutique, tri | prod (`utils/stockFiltres.js`) |
 | Quotas | `quotas_etat()` ; annonces = générations (`usage_logs 'generate_listing'`, régénération du même article sous 24 h gratuite) : 5 / 40 / 120 / 300 ; refus `quota_annonces_atteint` (402) par `generate-listing` AVANT l'IA ; la publication ne compte nulle part | prod |
 | Plafonds de publication | aucun (ni serveur ni extension) ; seul Leboncoin est sérialisé (un job à la fois par compte) ; l'extension traite un job à la fois, 8 à 20 s entre deux | prod |
 | Progression | `BarreProgression`, `BarreJobCarte`, `FileDesJobs`, bandeau « En cours » du Stock (agrège déjà publish + republish) | prod (01/10) |
 | Annulation | seulement « arrêter les republications en attente » et « abandonner une plateforme » (needs_user/failed) ; rien pour un dépôt en file | prod |
-| « Un article qui ressemble est déjà en ligne » | `utils/jumeauxEnLigne.js`, carte ambre de « Confirmer » (n'arrête rien) ; refus serveur `jumeau_en_ligne` si une paire « Est-ce le même article ? » est ouverte | prod |
+| « Un article qui ressemble est déjà en ligne » | `utils/jumeauxEnLigne.js`, carte ambre de « Confirmer » (n'arrête rien) ; depuis le 09/10 : annonces rattachées à AUCUNE fiche seulement, jamais de blocage en lot pour une fiche à plusieurs exemplaires ; plus de refus serveur | prod |
 | Sessions des plateformes | `plateformes_verite()` (serveur tranche) ; session fermée = la plateforme reste cochable, l'annonce attend | prod |
 | Multi-boutiques Vinted | un DÉPÔT part toujours sur la boutique connectée dans Chrome ; la garde de boutique ne vise que retraits et republications | prod |
 | Leboncoin pro | porte côté serveur (extension trop ancienne → retenu) ; l'extension ne clique jamais « Valider et payer » | prod |

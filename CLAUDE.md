@@ -353,6 +353,11 @@ mais tout correctif appliqué en direct depuis recrée l'écart.
   relevé incomplet est repris seul.
 - **Un champ manquant se demande** (choix fermés en français), il ne se
   relance jamais en boucle.
+- ⛔ **L'annonce d'une AUTRE fiche n'est jamais un « déjà en ligne »** (09/10
+  soir, Louis) : ni à la publication, ni à la remise en vente ; la ressemblance
+  ne retient jamais une fiche à plusieurs exemplaires ; aucun refus ne renvoie
+  à une question introuvable (garde `jumeau_en_ligne` retirée, mig
+  20261009233000, `selftest:annonce-autre-fiche-jamais-jumeau`).
 - **Un rayon introuvable se DEMANDE, il ne grise jamais une plateforme**
   (03/10, Nico, cas Louis « adaptateurs Seb » grisé sur Beebs) : seul un
   interdit écrit de la plateforme (`prohibited`) grise la case, avec sa
