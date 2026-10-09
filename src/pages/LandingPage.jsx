@@ -4,6 +4,7 @@ import { Capacitor } from '@capacitor/core';
 import { track } from '../analytics/analytics';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import { businessOfferVisible } from '../config/businessOffer';
+import { avecDepop, useSiteBascule } from '../utils/siteAvecDepop';
 import './landing.css';
 
 /* ───────────────────────────────────────────────────────────────────────────
@@ -344,6 +345,12 @@ export default function LandingPage() {
   const [lang, setLang] = useState(getInitialLang);
   const [menuOpen, setMenuOpen] = useState(false);
   const [grants, setGrants] = useState(GRANTS_FALLBACK);
+  /* (09/10 soir, Nico) Bascule Opla → Depop : à la sortie d'Opla (coin_config
+     opla_sortie_le, lu avec les quotas ; non lu = le 10/10 00:00 Paris), Depop
+     entre dans chaque liste de plateformes du site — textes et logos — toute
+     seule (utils/siteAvecDepop.js). */
+  const [interrupteurOpla, setInterrupteurOpla] = useState(null);
+  const depop = useSiteBascule(interrupteurOpla);
 
   const isNative = Capacitor.isNativePlatform();
   /* Même drapeau que l'app : refermer l'offre Business dans businessOffer.js
@@ -353,8 +360,11 @@ export default function LandingPage() {
   /* Traduit PUIS remplit les jetons de volume — dans cet ordre, sinon les
      jetons de la version anglaise resteraient nus à l'écran. */
   const t = useCallback(
-    (fr) => fillGrants(lang === 'en' && EN[fr] ? EN[fr] : fr, grants, lang),
-    [lang, grants],
+    (fr) => {
+      const texte = fillGrants(lang === 'en' && EN[fr] ? EN[fr] : fr, grants, lang);
+      return depop ? avecDepop(texte) : texte;
+    },
+    [lang, grants, depop],
   );
 
   /* Quotas lus dans coin_config, comme le reste de l'app. Import dynamique du
@@ -375,9 +385,11 @@ export default function LandingPage() {
           .in('key', ['quota_annonces_free', 'quota_annonces_premium', 'quota_annonces_pro',
                       'quota_annonces_business',
                       'quota_republication_free', 'quota_republication_premium', 'quota_republication_pro',
-                      'quota_retouche_premium', 'quota_retouche_pro', 'quota_retouche_business']);
+                      'quota_retouche_premium', 'quota_retouche_pro', 'quota_retouche_business',
+                      'opla_sortie_le']);
         if (error || !data?.length || !vivant) return;
         const parKey = Object.fromEntries(data.map((r) => [r.key, r.value]));
+        if (parKey.opla_sortie_le != null) setInterrupteurOpla(parKey.opla_sortie_le);
         setGrants({
           ADS_FREE:          parKey.quota_annonces_free         ?? GRANTS_FALLBACK.ADS_FREE,
           ADS_PREMIUM:       parKey.quota_annonces_premium      ?? GRANTS_FALLBACK.ADS_PREMIUM,
@@ -659,6 +671,7 @@ export default function LandingPage() {
                                 <PlatformLogo platform="leboncoin" size={9} />
                                 <PlatformLogo platform="ebay" size={9} />
                                 <PlatformLogo platform="beebs" size={9} />
+                                {depop && <PlatformLogo platform="depop" size={9} />}
                               </span>
                             </span>
                             <span style={{ display: "block", textAlign: "center", background: "linear-gradient(135deg,#2F9E90,#1B6E62)", color: "#fff", borderRadius: "5px", padding: "2.5px 0", fontWeight: "700", fontSize: "6px" }}>{t("Publier")}</span>
@@ -718,7 +731,7 @@ export default function LandingPage() {
                   <div style={{ minWidth: "0", flex: "1" }}>
                     <div style={{ fontWeight: "700", fontSize: "13.5px", letterSpacing: "-.01em", color: "#4ECDC4" }}>{t("↻ Republication auto")}</div>
                     <div style={{ fontWeight: "500", fontSize: "12px", lineHeight: "1.35", color: "rgba(246,245,241,.78)", marginTop: "3px" }}>{t("Elle remonte en tête des résultats toutes les 24 h.")}</div>
-                    <span style={{ display: "flex", gap: "4px", marginTop: "5px" }}><PlatformLogo platform="vinted" size={12} /><PlatformLogo platform="leboncoin" size={12} /><PlatformLogo platform="beebs" size={12} /></span>
+                    <span style={{ display: "flex", gap: "4px", marginTop: "5px" }}><PlatformLogo platform="vinted" size={12} /><PlatformLogo platform="leboncoin" size={12} /><PlatformLogo platform="beebs" size={12} />{depop && <PlatformLogo platform="depop" size={12} />}</span>
                   </div>
                   <span style={{ position: "relative", display: "inline-block", width: "30px", height: "22px", flexShrink: "0" }}>
                     <span style={{ position: "absolute", inset: "0", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "999px", background: "#4ECDC4", color: "#10302B", fontWeight: "700", fontSize: "12px", animation: "fsCnt1 8.4s ease infinite" }}>{t("×1")}</span>
@@ -747,6 +760,7 @@ export default function LandingPage() {
                 <PlatformLogo platform="leboncoin" size={22} />
                 <PlatformLogo platform="ebay" size={22} />
                 <PlatformLogo platform="beebs" size={22} />
+                {depop && <PlatformLogo platform="depop" size={22} />}
               </div>
               <span style={{ fontWeight: "600", fontSize: "13.5px", color: "#5C6560", whiteSpace: "nowrap" }}>{t("Toutes tes plateformes, tes comptes")}</span>
             </div>
@@ -773,7 +787,7 @@ export default function LandingPage() {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: "18px" }}>
               <div data-r="1" style={{ background: "rgba(246,245,241,.05)", border: "1px solid rgba(78,205,196,.22)", borderRadius: "22px", padding: "28px" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "18px" }}>
-                  <span style={{ display: "flex", gap: "5px" }}><PlatformLogo platform="vinted" size={28} /><PlatformLogo platform="leboncoin" size={28} /><PlatformLogo platform="ebay" size={28} /><PlatformLogo platform="beebs" size={28} /></span>
+                  <span style={{ display: "flex", gap: "5px" }}><PlatformLogo platform="vinted" size={28} /><PlatformLogo platform="leboncoin" size={28} /><PlatformLogo platform="ebay" size={28} /><PlatformLogo platform="beebs" size={28} />{depop && <PlatformLogo platform="depop" size={28} />}</span>
                   <div style={{ fontWeight: "700", fontSize: "32px", letterSpacing: "-.04em", color: "#4ECDC4", lineHeight: "1" }}>{t("1")}</div>
                 </div>
                 <div style={{ fontWeight: "700", fontSize: "20px", letterSpacing: "-.02em", color: "#F6F5F1", marginBottom: "8px" }}>{t("Tes annonces entrent en un clic, depuis tous tes comptes")}</div>
@@ -787,6 +801,7 @@ export default function LandingPage() {
                     <PlatformLogo platform="leboncoin" size={30} />
                     <PlatformLogo platform="ebay" size={30} />
                     <PlatformLogo platform="beebs" size={30} />
+                    {depop && <PlatformLogo platform="depop" size={30} />}
                   </div>
                   <div style={{ fontWeight: "700", fontSize: "32px", letterSpacing: "-.04em", color: "#4ECDC4", lineHeight: "1" }}>{t("2")}</div>
                 </div>
@@ -814,6 +829,7 @@ export default function LandingPage() {
                   <PlatformLogo platform="vinted" size={22} />
                   <PlatformLogo platform="leboncoin" size={22} />
                   <PlatformLogo platform="beebs" size={22} />
+                  {depop && <PlatformLogo platform="depop" size={22} />}
                 </div>
               </div>
             </div>
@@ -878,6 +894,7 @@ export default function LandingPage() {
                           <PlatformLogo platform="leboncoin" size={12} />
                           <PlatformLogo platform="ebay" size={12} />
                           <PlatformLogo platform="beebs" size={12} />
+                          {depop && <PlatformLogo platform="depop" size={12} />}
                           <span style={{ marginLeft: "auto", fontWeight: "700", fontSize: "7px", letterSpacing: ".06em", color: "#2F9E90" }}>{t("EXTENSION")}</span>
                         </div>
                         <div style={{ height: "4px", borderRadius: "99px", background: "#D8D3C6" }} />
@@ -921,7 +938,7 @@ export default function LandingPage() {
             <div data-r="1" style={{ flex: "1 1 340px", minWidth: "290px", display: "flex", justifyContent: "center" }}>
               <div style={{ width: "340px", background: "rgba(246,245,241,.05)", border: "1px solid rgba(78,205,196,.22)", borderRadius: "24px", padding: "22px" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "16px" }}>
-                  <span style={{ display: "flex", gap: "4px" }}><PlatformLogo platform="vinted" size={24} /><PlatformLogo platform="leboncoin" size={24} /><PlatformLogo platform="ebay" size={24} /><PlatformLogo platform="beebs" size={24} /></span>
+                  <span style={{ display: "flex", gap: "4px" }}><PlatformLogo platform="vinted" size={24} /><PlatformLogo platform="leboncoin" size={24} /><PlatformLogo platform="ebay" size={24} /><PlatformLogo platform="beebs" size={24} />{depop && <PlatformLogo platform="depop" size={24} />}</span>
                   <span style={{ marginLeft: "auto", fontWeight: "700", fontSize: "11.5px", letterSpacing: ".04em", color: "#4ECDC4", background: "rgba(78,205,196,.12)", border: "1px solid rgba(78,205,196,.3)", borderRadius: "999px", padding: "4px 10px", whiteSpace: "nowrap" }}>{t("Lecture seule")}</span>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: "9px" }}>
@@ -1043,6 +1060,19 @@ export default function LandingPage() {
                       </svg>
                     </span>
                   </div>
+                  {depop && (
+                  <div style={{ position: "relative", overflow: "hidden", display: "flex", alignItems: "center", gap: "9px", background: "#EDEAE0", border: "1px solid #E7E3D8", borderRadius: "13px", padding: "12px 15px" }}>
+                    <PlatformLogo platform="depop" size={30} />
+                    <span style={{ fontWeight: "700", fontSize: "13px", minWidth: "0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Depop</span>
+                    <span style={{ flex: "1" }} />
+                    <span style={{ flexShrink: "0", animation: "fsTickD 5.2s ease infinite", display: "flex" }}>
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="#2F9E90">
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="M20 6 9 17l-5-5" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" transform="scale(0.72) translate(4.6,4.6)" />
+                      </svg>
+                    </span>
+                  </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1105,7 +1135,7 @@ export default function LandingPage() {
                       </span>
                     </div>
                     <div style={{ fontWeight: "500", fontSize: "13px", lineHeight: "1.35", color: "rgba(246,245,241,.75)", marginTop: "5px" }}>{t("Elle remonte en tête des résultats toutes les 24 h.")}</div>
-                    <span style={{ display: "flex", gap: "4px", marginTop: "5px" }}><PlatformLogo platform="vinted" size={12} /><PlatformLogo platform="leboncoin" size={12} /><PlatformLogo platform="beebs" size={12} /></span>
+                    <span style={{ display: "flex", gap: "4px", marginTop: "5px" }}><PlatformLogo platform="vinted" size={12} /><PlatformLogo platform="leboncoin" size={12} /><PlatformLogo platform="beebs" size={12} />{depop && <PlatformLogo platform="depop" size={12} />}</span>
                   </div>
                 </div>
                 <div style={{ fontWeight: "700", fontSize: "10px", textTransform: "uppercase", letterSpacing: ".1em", color: "rgba(246,245,241,.5)", marginBottom: "10px" }}>{t("Résultats")}</div>
@@ -1177,6 +1207,15 @@ export default function LandingPage() {
                   <span style={{ fontWeight: "600", fontSize: "12px", color: "#8A8578" }}>{t("Annonce retirée")}</span>
                   <span style={{ position: "absolute", left: "13px", right: "13px", top: "50%", height: "1.5px", background: "rgba(176,57,47,.65)", transformOrigin: "left", animation: "fsStrike 4.4s ease infinite .36s" }} />
                 </div>
+                {depop && (
+                <div style={{ position: "relative", display: "flex", alignItems: "center", gap: "10px", padding: "10px 13px", borderRadius: "12px", background: "#F6F5F1", border: "1px solid #E7E3D8", animation: "fsFade 4.4s ease infinite .54s" }}>
+                  <PlatformLogo platform="depop" size={26} />
+                  <span style={{ fontWeight: "700", fontSize: "13px", minWidth: "0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Depop</span>
+                  <span style={{ flex: "1" }} />
+                  <span style={{ fontWeight: "600", fontSize: "12px", color: "#8A8578" }}>{t("Annonce retirée")}</span>
+                  <span style={{ position: "absolute", left: "13px", right: "13px", top: "50%", height: "1.5px", background: "rgba(176,57,47,.65)", transformOrigin: "left", animation: "fsStrike 4.4s ease infinite .54s" }} />
+                </div>
+                )}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "9px", marginTop: "18px", paddingTop: "16px", borderTop: "1px solid #D8D3C6" }}>
                 <span style={{ fontSize: "15px" }}>{t("👆")}</span>

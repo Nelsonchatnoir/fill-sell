@@ -5,6 +5,11 @@ import useSeo from "../lib/seo";
 // 2e voie « Pas d'ordinateur ? » (Cloud, conception du 04/10) — sur téléphone,
 // derrière son drapeau (config/cloudOffer.js) : baissé, rien.
 import VoieSansOrdinateur from "../cloud/VoieSansOrdinateur";
+// (09/10 soir, Nico) Bascule Opla → Depop : Depop entre dans les listes de
+// plateformes de la page à la sortie d'Opla, toute seule (utils/siteAvecDepop.js ;
+// la page ne lit rien en base : la date par défaut de l'interrupteur, le 10/10
+// 00:00 Paris).
+import { avecDepop, useSiteBascule } from "../utils/siteAvecDepop";
 
 // Page d'accès à l'extension Chrome de cross-post. Depuis le 2026-07-25,
 // l'extension est PUBLIÉE sur le Chrome Web Store (« FillSell — Cross-post »,
@@ -55,10 +60,12 @@ export default function ExtensionPage() {
   // FillSell n'existe généralement pas — la garde d'auth y perdait ces
   // visiteurs. La page ne lit AUCUNE donnée de session/profil : toute future
   // section personnalisée devra être conditionnelle à une session présente.
+  const depop = useSiteBascule(null);
+  const d = (texte) => (depop ? avecDepop(texte) : texte);
   useSeo({
     path: "/extension",
-    title: "Extension Chrome FillSell — publier sur Vinted, Leboncoin, eBay, Beebs",
-    description: "Installez l'extension Chrome FillSell : une annonce publiée en une fois sur Vinted, Leboncoin, eBay et Beebs, et retirée des autres plateformes en un tap après la vente.",
+    title: d("Extension Chrome FillSell — publier sur Vinted, Leboncoin, eBay, Beebs"),
+    description: d("Installez l'extension Chrome FillSell : une annonce publiée en une fois sur Vinted, Leboncoin, eBay et Beebs, et retirée des autres plateformes en un tap après la vente."),
     ogTitle: "Extension Chrome FillSell — une annonce, toutes tes plateformes",
     ogType: "website",
   });
@@ -110,8 +117,8 @@ export default function ExtensionPage() {
         </div>
         <p style={{ margin: "0 0 20px", fontSize: 14, lineHeight: 1.5, color: UI.mute2 }}>
           {en
-            ? "The FillSell extension auto-fills your generated listings on Vinted, Leboncoin, Beebs and eBay, straight from your browser."
-            : "L'extension FillSell publie automatiquement tes annonces générées sur Vinted, Leboncoin, Beebs et eBay, directement depuis ton navigateur."}
+            ? d("The FillSell extension auto-fills your generated listings on Vinted, Leboncoin, Beebs and eBay, straight from your browser.")
+            : d("L'extension FillSell publie automatiquement tes annonces générées sur Vinted, Leboncoin, Beebs et eBay, directement depuis ton navigateur.")}
         </p>
 
         {mobile ? (
@@ -169,12 +176,12 @@ export default function ExtensionPage() {
             {(en
               ? [
                   ["🧥", "Your Vinted listings sync into the app on their own — titles, prices, photos, within seconds."],
-                  ["🚀", "Your listings go out to Vinted, Leboncoin, eBay and Beebs without retyping anything."],
+                  ["🚀", d("Your listings go out to Vinted, Leboncoin, eBay and Beebs without retyping anything.")],
                   ["🔒", "We read your listings: titles, prices, photos. Nothing is published, edited or deleted."],
                 ]
               : [
                   ["🧥", "Tes annonces Vinted remontent toutes seules dans l'app — titres, prix, photos, en quelques secondes."],
-                  ["🚀", "Tes annonces partent sur Vinted, Leboncoin, eBay et Beebs sans rien ressaisir."],
+                  ["🚀", d("Tes annonces partent sur Vinted, Leboncoin, eBay et Beebs sans rien ressaisir.")],
                   ["🔒", "On lit tes annonces : titres, prix, photos. Rien n'est publié, modifié ni supprimé."],
                 ]
             ).map(([emo, txt], i) => (
