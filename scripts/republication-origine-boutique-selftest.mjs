@@ -68,12 +68,18 @@ function chargerBackground() {
 
 const sourceVinted = fs.readFileSync(path.join(DOSSIER, "content-scripts/vinted.js"), "utf8");
 const arbre = parse(sourceVinted, { ecmaVersion: "latest", range: true });
-const porte = arbre.body.filter((n) => n.type === "FunctionDeclaration" && n.id.name === "deleteVintedItemViaApi")
+// (0.6.106) Les textes nomment le domaine de la page et le navigateur : leurs
+// déclarations de premier niveau voyagent avec la fonction extraite.
+const AIDES = ["VINTED_ORIGINE_PAGE", "VINTED_DOMAINE_PAGE", "navigateurCourtPage"];
+const estAide = (n) => (n.type === "FunctionDeclaration" && AIDES.includes(n.id.name))
+  || (n.type === "VariableDeclaration" && n.declarations.some((d) => AIDES.includes(d.id?.name)));
+const porte = arbre.body.filter((n) => estAide(n) || (n.type === "FunctionDeclaration" && n.id.name === "deleteVintedItemViaApi"))
   .map((n) => sourceVinted.slice(...n.range)).join("\n");
 async function supprimer(itemId, attendue, session) {
   const posts = [];
   const ctx = vm.createContext({
-    location: { pathname: "/items/new", href: "https://www.vinted.fr/items/new" }, console: { log() {} },
+    location: { pathname: "/items/new", href: "https://www.vinted.fr/items/new", protocol: "https:", hostname: "www.vinted.fr", origin: "https://www.vinted.fr" },
+    navigator: { userAgentData: { brands: [{ brand: "Google Chrome" }] } }, console: { log() {} },
     proprietaireAnnonceVinted: async () => null,
     extractVintedCsrfToken: async () => "jeton", getVintedCookie: () => "anon",
     fetchBorne: async (url, opts = {}) => {

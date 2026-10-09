@@ -57,11 +57,20 @@ console.log("\nB. LE MANIFESTE N'AJOUTE QU'UN HÔTE OPTIONNEL (référence : 0.6
 {
   const man = JSON.parse(lire("chrome-extension/manifest.json"));
   const ref = JSON.parse(execFileSync("git", ["-C", RACINE, "show", "0cec9e6:chrome-extension/manifest.json"]).toString());
-  const sans = (o) => { const c = { ...o }; delete c.version; delete c.version_name; delete c.optional_host_permissions; return JSON.stringify(c); };
+  // (0.6.106) Les domaines Vinted étrangers (optionnels + web_accessible_resources,
+  // qui n'est pas une permission) sont prouvés par selftest:vinted-origine : ils
+  // sont mis de côté ici, où la garantie reste celle de Depop — un seul hôte
+  // Depop, optionnel, et rien d'obligatoire en plus.
+  const VINTED_ETRANGER = /^https:\/\/www\.vinted\.(be|lu|nl|de|at|it|es|pt|ie|fi|ee|lv|lt|sk|si|hr|gr)\/\*$/;
+  const sansVintedEtranger = (o) => ({
+    ...o,
+    web_accessible_resources: (o.web_accessible_resources ?? []).map((w) => ({ ...w, matches: (w.matches ?? []).filter((m) => !VINTED_ETRANGER.test(m)) })),
+  });
+  const sans = (o) => { const c = { ...sansVintedEtranger(o) }; delete c.version; delete c.version_name; delete c.optional_host_permissions; return JSON.stringify(c); };
   dit("tout le reste est identique (permissions, hôtes obligatoires, content_scripts, ressources…)", sans(man) === sans(ref));
   dit("permissions inchangées", JSON.stringify(man.permissions) === JSON.stringify(ref.permissions));
   dit("hôtes obligatoires inchangés", JSON.stringify(man.host_permissions) === JSON.stringify(ref.host_permissions));
-  const ajout = (man.optional_host_permissions ?? []).filter((h) => !(ref.optional_host_permissions ?? []).includes(h));
+  const ajout = (man.optional_host_permissions ?? []).filter((h) => !(ref.optional_host_permissions ?? []).includes(h) && !VINTED_ETRANGER.test(h));
   const retrait = (ref.optional_host_permissions ?? []).filter((h) => !(man.optional_host_permissions ?? []).includes(h));
   dit("un seul ajout, optionnel : https://www.depop.com/*", JSON.stringify(ajout) === JSON.stringify(["https://www.depop.com/*"]), JSON.stringify(ajout));
   dit("aucun hôte optionnel retiré", retrait.length === 0, JSON.stringify(retrait));

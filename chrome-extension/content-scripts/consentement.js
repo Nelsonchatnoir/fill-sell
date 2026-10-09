@@ -407,9 +407,29 @@ async function fsConsentRefuser({ attenteMs = 8000, apparitionMs = 0, sortieSiNo
  *  confusion qui a coûté six publications à samira.460 le 08/09 et deux à
  *  djibril.ziate06 le 14/09, en les envoyant supprimer un brouillon
  *  inexistant. */
+// (0.6.106) « Chrome » chez Google Chrome (texte inchangé), « Edge » chez Microsoft Edge…
+function fsNavigateurCourt() {
+  try {
+    const nav = globalThis.navigator ?? {};
+    const marques = Array.isArray(nav.userAgentData?.brands) ? nav.userAgentData.brands.map((b) => String(b?.brand ?? "")) : [];
+    if (marques.length) {
+      if (marques.some((b) => /Microsoft Edge/i.test(b))) return "Edge";
+      if (marques.some((b) => /\bOpera\b/i.test(b))) return "Opera";
+      if (marques.some((b) => /\bBrave\b/i.test(b))) return "Brave";
+      if (marques.some((b) => /Google Chrome/i.test(b))) return "Chrome";
+      return "ton navigateur";
+    }
+    const ua = String(nav.userAgent ?? "");
+    if (/\bEdg\//.test(ua)) return "Edge";
+    if (/\bOPR\//.test(ua)) return "Opera";
+    if (/\bChrome\//.test(ua)) return "Chrome";
+  } catch { /* navigateur illisible */ }
+  return "ton navigateur";
+}
+
 function fsConsentMessage(plateforme, domaine) {
   return `${plateforme} affiche sa fenêtre « cookies » par-dessus la page de dépôt et FillSell n'a pas réussi ` +
     `à la fermer : rien n'a été publié, et il n'y a aucun brouillon à supprimer. ` +
-    `Ouvre ${domaine} dans Chrome, réponds à cette fenêtre (« Continuer sans accepter » suffit), ` +
+    `Ouvre ${domaine} dans ${fsNavigateurCourt()}, réponds à cette fenêtre (« Continuer sans accepter » suffit), ` +
     `puis relance la publication depuis la fiche de l'article. C'est à faire une seule fois.`;
 }

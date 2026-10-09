@@ -60,6 +60,28 @@ export const HOTES_OPTIONNELS_CWS = [
   // que personne n'a cliqué « Autoriser Depop ». Aucun avertissement à la mise à
   // jour, aucune désactivation du parc (un hôte optionnel n'est pas comparé).
   'https://www.depop.com/*',
+  // Vinted hors de France (0.6.106, 09/10 — Marta, vendeuse italienne) : les
+  // domaines Vinted de la zone euro, même voie qu'Opla et Depop. Demandés par
+  // « Autoriser vinted.<pays> », montré aux SEULS vendeurs étrangers ; un
+  // vendeur français n'en voit jamais la demande. Aucun avertissement à la mise
+  // à jour, aucune désactivation du parc.
+  'https://www.vinted.be/*',
+  'https://www.vinted.lu/*',
+  'https://www.vinted.nl/*',
+  'https://www.vinted.de/*',
+  'https://www.vinted.at/*',
+  'https://www.vinted.it/*',
+  'https://www.vinted.es/*',
+  'https://www.vinted.pt/*',
+  'https://www.vinted.ie/*',
+  'https://www.vinted.fi/*',
+  'https://www.vinted.ee/*',
+  'https://www.vinted.lv/*',
+  'https://www.vinted.lt/*',
+  'https://www.vinted.sk/*',
+  'https://www.vinted.si/*',
+  'https://www.vinted.hr/*',
+  'https://www.vinted.gr/*',
 ];
 
 export function estHoteLivrable(motif) {

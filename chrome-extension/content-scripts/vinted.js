@@ -10,7 +10,7 @@
 // début pour couvrir même une exécution qui échouerait en cours de route.
 globalThis.__fillsellVintedCharge = true;
 
-const VINTED_BUILD = "2026-10-08-onglet-muet-relance (0.6.103 : FILLSELL_PING accepté ; un onglet chargé mais muet est rechargé puis remplacé par le background avant tout envoi, jamais constaté) · 2026-10-05-colis-choix-cadenceur (0.6.97 : format de colis = le choix de la personne, relu après le clic et juste avant le dépôt, sinon le pré-coché de Vinted, sinon une question — plus jamais « Petit » d'office ; absence de marque selon la liste fermée du serveur et suggestions triées comme l'app ; pauses humaines à échéances qui rattrapent le retard des réveils sur Mac, attentes et battement sur le Worker, remplissage_mesures dans le résultat) · 2026-10-02-colis-demande (0.6.85 : format de colis inconnu ou non offert → demandé avant tout retrait, jamais choisi à la place de la personne) · 2026-10-02-colis-feu-vert-vendeur (0.6.84 : format de colis posé dans l'envoi quand le formulaire l'oublie, retrait refusé tant qu'il n'est pas en main ; feu vert de l'arrière-plan avant tout retrait une-passe ; vendeur lu en écartant le compte connecté ; compte bloqué nommé) · 2026-09-29-preuve-boutique-delete (0.6.80 : vendeur de la page exacte et session relus avant chaque DELETE ; inconnue et boutique différente restent deux verdicts distincts ; boutique du dépôt estampillée après succès) · 2026-09-28-rayon-deplace-page-annonce (0.6.79 : un rayon du formulaire d édition absent de l arbre du compte — Vinted remanie ses catégories compte par compte, Casio 5570 — est relu sur la page de l annonce, vérifié feuille de l arbre et fil d Ariane ; sinon capture incomplète comme avant) · 2026-09-25-zone-euro (0.6.69 : sur une page Vinted NON française — compte italien, espagnol… servi sur vinted.fr dans sa langue — catégorie, état et couleurs posés par IDENTIFIANT Vinted, jamais par libellé ; page française inchangée) · 2026-09-24-rayon-neuf-seulement (0.6.66 : un rayon Vinted qui n accepte que du neuf face a un article porte demande le RAYON, jamais clos ni ecarte ; releve d options sans avertissement) · 2026-09-17-taille-candidats-onglets (0.6.42 : « W32 L34 » → W32, toutes les formes dans TOUS les onglets, diagnostic dans last_diagnostic) · 2026-09-14-ping-et-ecouteur-unique (0.6.34 : VINTED_PING répond « je suis là » — c'est le seul verdict fiable de « l'onglet est prêt », l'événement de chargement se manque ; drapeau __fillsellVintedCharge posé en première instruction et écouteur enregistré UNE SEULE FOIS, pour qu'une réinjection ne double jamais les handlers ni ne redéclare les const) — précédent : 2026-09-09-envoi-journalise-et-taille-lettree (l'ENVOI de la création est journalisé avant la réponse ; 42 → XL sur une grille purement lettrée)";
+const VINTED_BUILD = "2026-10-09-vinted-etranger (0.6.106 : la page nomme SON domaine — vinted.fr inchangé, vinted.it… chez un vendeur étranger qui l'a autorisé — et le navigateur réel ; référentiel colis du domaine de la page) · 2026-10-08-onglet-muet-relance (0.6.103 : FILLSELL_PING accepté ; un onglet chargé mais muet est rechargé puis remplacé par le background avant tout envoi, jamais constaté) · 2026-10-05-colis-choix-cadenceur (0.6.97 : format de colis = le choix de la personne, relu après le clic et juste avant le dépôt, sinon le pré-coché de Vinted, sinon une question — plus jamais « Petit » d'office ; absence de marque selon la liste fermée du serveur et suggestions triées comme l'app ; pauses humaines à échéances qui rattrapent le retard des réveils sur Mac, attentes et battement sur le Worker, remplissage_mesures dans le résultat) · 2026-10-02-colis-demande (0.6.85 : format de colis inconnu ou non offert → demandé avant tout retrait, jamais choisi à la place de la personne) · 2026-10-02-colis-feu-vert-vendeur (0.6.84 : format de colis posé dans l'envoi quand le formulaire l'oublie, retrait refusé tant qu'il n'est pas en main ; feu vert de l'arrière-plan avant tout retrait une-passe ; vendeur lu en écartant le compte connecté ; compte bloqué nommé) · 2026-09-29-preuve-boutique-delete (0.6.80 : vendeur de la page exacte et session relus avant chaque DELETE ; inconnue et boutique différente restent deux verdicts distincts ; boutique du dépôt estampillée après succès) · 2026-09-28-rayon-deplace-page-annonce (0.6.79 : un rayon du formulaire d édition absent de l arbre du compte — Vinted remanie ses catégories compte par compte, Casio 5570 — est relu sur la page de l annonce, vérifié feuille de l arbre et fil d Ariane ; sinon capture incomplète comme avant) · 2026-09-25-zone-euro (0.6.69 : sur une page Vinted NON française — compte italien, espagnol… servi sur vinted.fr dans sa langue — catégorie, état et couleurs posés par IDENTIFIANT Vinted, jamais par libellé ; page française inchangée) · 2026-09-24-rayon-neuf-seulement (0.6.66 : un rayon Vinted qui n accepte que du neuf face a un article porte demande le RAYON, jamais clos ni ecarte ; releve d options sans avertissement) · 2026-09-17-taille-candidats-onglets (0.6.42 : « W32 L34 » → W32, toutes les formes dans TOUS les onglets, diagnostic dans last_diagnostic) · 2026-09-14-ping-et-ecouteur-unique (0.6.34 : VINTED_PING répond « je suis là » — c'est le seul verdict fiable de « l'onglet est prêt », l'événement de chargement se manque ; drapeau __fillsellVintedCharge posé en première instruction et écouteur enregistré UNE SEULE FOIS, pour qu'une réinjection ne double jamais les handlers ni ne redéclare les const) — précédent : 2026-09-09-envoi-journalise-et-taille-lettree (l'ENVOI de la création est journalisé avant la réponse ; 42 → XL sur une grille purement lettrée)";
 console.log(`[vinted.js] build ${VINTED_BUILD}`);
 
 // Content script Vinted — remplit le formulaire de dépôt d'annonce.
@@ -21,6 +21,37 @@ console.log(`[vinted.js] build ${VINTED_BUILD}`);
 // platform_fields.live_run. En dry-run, le formulaire était rempli mais le
 // bouton publier n'était JAMAIS cliqué — le résultat était loggé en console.
 const DRY_RUN = false;
+
+// ── LE DOMAINE ET LE NAVIGATEUR DE CETTE PAGE (0.6.106, 09/10 — Marta) ──────
+// Ce script tourne sur vinted.fr (manifest) ET, pour un vendeur étranger qui a
+// autorisé son domaine, sur vinted.it, .es… (enregistré à l'octroi par le
+// background). Les appels d'API sont relatifs ; les liens et les textes
+// nomment le domaine de la PAGE — vinted.fr chez un vendeur français, texte et
+// adresses inchangés à l'octet — et le navigateur réel (« Chrome » chez Google
+// Chrome, « Edge » chez Microsoft Edge…).
+const VINTED_ORIGINE_PAGE =
+  typeof location !== "undefined" && /^https:$/.test(location.protocol) && /(^|\.)vinted\.(fr|be|lu|nl|de|at|it|es|pt|ie|fi|ee|lv|lt|sk|si|hr|gr)$/i.test(location.hostname)
+    ? location.origin
+    : "https://www.vinted.fr";
+const VINTED_DOMAINE_PAGE = VINTED_ORIGINE_PAGE.replace(/^https:\/\/(www\.)?/, "");
+function navigateurCourtPage() {
+  try {
+    const nav = globalThis.navigator ?? {};
+    const marques = Array.isArray(nav.userAgentData?.brands) ? nav.userAgentData.brands.map((b) => String(b?.brand ?? "")) : [];
+    if (marques.length) {
+      if (marques.some((b) => /Microsoft Edge/i.test(b))) return "Edge";
+      if (marques.some((b) => /\bOpera\b/i.test(b))) return "Opera";
+      if (marques.some((b) => /\bBrave\b/i.test(b))) return "Brave";
+      if (marques.some((b) => /Google Chrome/i.test(b))) return "Chrome";
+      return "ton navigateur";
+    }
+    const ua = String(nav.userAgent ?? "");
+    if (/\bEdg\//.test(ua)) return "Edge";
+    if (/\bOPR\//.test(ua)) return "Opera";
+    if (/\bChrome\//.test(ua)) return "Chrome";
+  } catch { /* navigateur illisible */ }
+  return "ton navigateur";
+}
 
 // ── Requis par catégorie (chantier champs obligatoires, 2026-07-16) ──────────
 // Source de vérité n°1 : la réponse POST /api/v2/item_upload/attributes que
@@ -721,7 +752,8 @@ function idColisConnu(packageSizeId, libelle) {
 //     JAMAIS le formulaire (le format reste celui du choix ou de l'annonce
 //     d'origine, posé sur la grille affichée) ; elle sert au verdict et au
 //     diagnostic (colis_bilan.referentiel).
-const REFERENTIEL_COLIS_VINTED = "https://api.vinted.fr/shipping-estimation/external/catalogs/";
+// (0.6.106) Le référentiel du domaine de la page (api.vinted.fr chez un vendeur français).
+const REFERENTIEL_COLIS_VINTED = `https://api.${VINTED_DOMAINE_PAGE}/shipping-estimation/external/catalogs/`;
 // Pur : la réponse du référentiel → [{ id, libelle }] (libellé = `title`,
 // celui que la grille du formulaire affiche : « Petit », « Moyen »…).
 function grilleDuReferentielColis(corps) {
@@ -1098,7 +1130,7 @@ async function lirePageDressing(page, userId) {
     return {
       vinted_item_id: String(it.id),
       titre: it.title ?? null,
-      url: it.url ?? (it.path ? `https://www.vinted.fr${it.path}` : null),
+      url: it.url ?? (it.path ? `${VINTED_ORIGINE_PAGE}${it.path}` : null),
       // price.amount est une STRING ("48.0") — parsing explicite, jamais de
       // Number() implicite sur l'objet.
       prix: it.price?.amount != null ? parseFloat(String(it.price.amount)) : null,
@@ -2377,8 +2409,8 @@ async function deleteVintedItemViaApi(itemId, t, trace, opts = {}) {
         login_session: proprio.login_session ?? null,
         contradictoire: Boolean(attendue && vendeur !== attendue),
       },
-      error: "Le retrait n'a pas été lancé : cette annonce est sur une autre de tes boutiques Vinted que celle ouverte dans Chrome. " +
-        "Connecte Chrome à la boutique qui porte cette annonce, sur vinted.fr : le retrait repartira tout seul. Rien n'a été touché.",
+      error: "Le retrait n'a pas été lancé : cette annonce est sur une autre de tes boutiques Vinted que celle ouverte dans " + navigateurCourtPage() + ". " +
+        "Connecte " + navigateurCourtPage() + " à la boutique qui porte cette annonce, sur " + VINTED_DOMAINE_PAGE + " : le retrait repartira tout seul. Rien n'a été touché.",
       trace,
       verdict,
     };
@@ -2535,7 +2567,7 @@ async function deleteVintedItemViaApi(itemId, t, trace, opts = {}) {
             boutiqueEtrangere: { article: proprio.vendeur, session: proprio.session, login_session: proprio.login_session },
             error:
               "Le retrait de cette annonce n'a pas été lancé : elle appartient à un autre compte Vinted que celui " +
-              "ouvert dans Chrome sur ton ordinateur. Rien n'a été touché sur Vinted. " +
+              "ouvert dans " + navigateurCourtPage() + " sur ton ordinateur. Rien n'a été touché sur Vinted. " +
               "Connecte-toi au bon compte Vinted, puis relance.",
             trace,
             verdict,
@@ -2954,7 +2986,7 @@ async function remplirFormulaireVinted(job) {
       needsUser: true,
       error:
         "CHALLENGE DATADOME : Vinted affiche une vérification anti-robot à la place du " +
-        "formulaire de dépôt. Ouvrir vinted.fr dans Chrome et résoudre la vérification " +
+        "formulaire de dépôt. Ouvrir " + VINTED_DOMAINE_PAGE + " dans " + navigateurCourtPage() + " et résoudre la vérification " +
         "(l'onglet de travail est resté ouvert), le job repartira au prochain passage.",
     };
   }
@@ -3090,7 +3122,7 @@ async function remplirFormulaireVinted(job) {
       needsUser: true,
       diagnostic,
       error:
-        "Connexion Vinted requise : se connecter sur vinted.fr dans Chrome " +
+        "Connexion Vinted requise : se connecter sur " + VINTED_DOMAINE_PAGE + " dans " + navigateurCourtPage() + " " +
         "(l'onglet de travail est resté ouvert), le job repartira au prochain passage.",
     };
   }
@@ -7691,7 +7723,7 @@ async function selectCategory(path, fields = {}, titreArticle = "") {
               message:
                 "Ton Vinted est réglé dans une autre langue que le français " +
                 `(rayons affichés : ${options.slice(0, 3).join(", ")}…). FillSell choisit les catégories en français : ` +
-                "ouvre vinted.fr, passe la langue en Français (Paramètres), puis relance la publication.",
+                "ouvre " + VINTED_DOMAINE_PAGE + ", passe la langue en Français (Paramètres), puis relance la publication.",
             }
           );
         }

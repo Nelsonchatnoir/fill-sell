@@ -22,7 +22,9 @@ const APP_URL = "https://fillsell.app/app";
 // Plateformes affichées, de haut en bas. `supported:false` => "Bientôt"
 // (ligne atténuée). Beebs passé à true le 2026-07-11.
 const PLATFORMS = [
-  { key: "vinted",    name: "Vinted",    supported: true, loginUrl: "https://www.vinted.fr/" },
+  // (0.6.106) L'adresse suit l'origine Vinted : www.vinted.fr sauf vendeur
+  // étranger qui a autorisé son domaine (cf. vinted-origine.js).
+  { key: "vinted",    name: "Vinted",    supported: true, get loginUrl() { return `${FILLSELL_VINTED.origineVinted()}/`; } },
   { key: "leboncoin", name: "Leboncoin", supported: true, loginUrl: "https://www.leboncoin.fr/" },
   { key: "ebay",      name: "eBay",      supported: true, loginUrl: "https://www.ebay.fr/" },
   { key: "beebs",     name: "Beebs",     supported: true, loginUrl: "https://www.beebs.app/" },
@@ -124,6 +126,11 @@ const state = {
   depopAcces: null,
   depopEnAttente: [],
   depopOuverte: false,
+  // Vinted hors de France (0.6.106) : domaine désigné par le serveur
+  // (contexte.vinted_etranger — jamais pour un compte français) et accès
+  // accordé dans CE navigateur.
+  vintedEtranger: null,
+  vintedEtrangerAcces: null,
   // ── DEMANDE D'AVIS (02/10/2026) ──────────────────────────────────────────
   // { url } quand le SERVEUR a ouvert la demande (avis-demande) ; null sinon.
   avis: null,
@@ -251,6 +258,7 @@ async function fetchPendingJobs(accessToken) {
   state.oplaSortieActive = data?.contexte?.opla?.sortie_active === true;
   state.depopEnAttente = jobs.filter((j) => j.platform === "depop");
   state.depopOuverte = data?.contexte?.depop?.ouverte === true;
+  state.vintedEtranger = FILLSELL_VINTED.domaineEtrangerDuServeur(data?.contexte?.vinted_etranger);
   return jobs.filter((j) => j.action !== "delete");
 }
 
@@ -288,10 +296,17 @@ async function load() {
   catch { state.oplaAcces = null; }
   try { state.depopAcces = await chrome.permissions.contains({ origins: [DEPOP_ORIGINE] }); }
   catch { state.depopAcces = null; }
+  // (0.6.106) L'origine Vinted mémorisée par le background (vinted.fr par défaut).
+  try { await FILLSELL_VINTED.chargerOrigineVinted(); } catch { /* vinted.fr */ }
 
   if (state.session) {
     try {
       const tous = await fetchPendingJobs(state.session.access_token);
+      // (0.6.106) Domaine Vinted étranger désigné par le serveur : est-il déjà accordé dans CE navigateur ?
+      if (state.vintedEtranger) {
+        try { state.vintedEtrangerAcces = await chrome.permissions.contains({ origins: [state.vintedEtranger.motif] }); }
+        catch { state.vintedEtrangerAcces = null; }
+      } else state.vintedEtrangerAcces = null;
       // Les jobs 'needs_user' sortent AVANT tout le reste : ils attendent une
       // décision humaine, ils ne sont pas « à publier ».
       state.besoinGeste = tous.filter((j) => j.status === "needs_user");
@@ -721,7 +736,7 @@ function etatPlateforme(p, sondeFraiche) {
   if (sondeDitQuelqueChose) {
     if (v === true) {
       const ident = p.key === "vinted" ? state.sessions?.vinted_identite : null;
-      return { etat: "ok", sous: ident?.login ? `Chrome connecté à @${ident.login}` : null, vuLe: sondeVu };
+      return { etat: "ok", sous: ident?.login ? `${FILLSELL_VINTED.navigateurCourt()} connecté à @${ident.login}` : null, vuLe: sondeVu };
     }
     // ⛔ `false` UNIQUEMENT. Jamais un 401 (token Vinted à rafraîchir), jamais
     //    un 403 (challenge DataDome), jamais un null : la décision du 08/09 ne
@@ -820,7 +835,7 @@ function renderBars() {
   if (state.session && state.majRequise) {
     els.barAlerte.innerHTML =
       `<span class="bdot"></span>` +
-      `<span>Mets FillSell à jour : ferme Chrome complètement puis rouvre-le — ta file reprendra toute seule.</span>`;
+      `<span>Mets FillSell à jour : ferme ${FILLSELL_VINTED.navigateurCourt()} complètement puis rouvre-le — ta file reprendra toute seule.</span>`;
     els.barAlerte.classList.remove("hidden");
   } else if (state.session && ko.length) {
     const n = ko.length;
@@ -919,6 +934,24 @@ function renderPlateformes() {
     // Accès accordé : ligne ordinaire, mêmes états et même « Vérifier ».
     // (02/10, sortie d'Opla) Pas de dressing Opla synchronisé : pas de ligne.
     if (p.optionnel && state.oplaRelie === false) continue;
+    // ── VINTED HORS DE FRANCE (0.6.106) : « Autoriser vinted.<pays> » ───────
+    // Montré SEULEMENT quand le serveur désigne un domaine étranger
+    // (contexte.vinted_etranger) et que ce navigateur ne l'a pas encore
+    // accordé. Un vendeur français ne le voit jamais : sa ligne Vinted est
+    // celle d'avant, à l'identique.
+    if (p.key === "vinted" && state.vintedEtranger && state.vintedEtrangerAcces === false) {
+      const dom = state.vintedEtranger.domaine;
+      // Le pays lu sur le compte Vinted est un fait ; celui de la connexion, une déduction : on ne l'affirme pas.
+      const sous = state.vintedEtranger.source === "compte_vinted"
+        ? `Ton compte Vinted est sur ${dom}. Appuie sur « Autoriser ${dom} » pour que FillSell y travaille (synchronisation, publication, retraits) : c'est une seule fois.`
+        : `Si ton compte Vinted est sur ${dom}, appuie sur « Autoriser ${dom} » pour que FillSell y travaille (synchronisation, publication, retraits) : c'est une seule fois. Sinon, rien à faire.`;
+      lignes.push(
+        `<div class="plat">${logoHtml(p.key)}<div class="plat-txt"><div class="plat-nom">${escapeHtml(p.name)}</div>` +
+        `<div class="plat-sous">${escapeHtml(sous)}</div></div>` +
+        `<button class="btn-outline" data-autoriser-vinted-etranger type="button">Autoriser ${escapeHtml(dom)}</button></div>`,
+      );
+      continue;
+    }
     // ── DEPOP (09/10) : le bouton « Autoriser Depop » tant que l'accès manque ─
     if (p.depop && !depopVisible()) continue;
     if (p.depop && state.depopAcces !== true) {
@@ -1300,8 +1333,8 @@ function renderPourquoi() {
     cartes.push(
       `<div class="card peach why"><i class="dot peach pulse"></i><div class="why-body">` +
       `<div class="why-t">${nb} ${pl(nb, "republication", "republications")} sur le dressing <span class="qui">${escapeHtml(quelDressing)}</span></div>` +
-      `<div class="why-s">Chrome est connecté à <b>${escapeHtml(connectee)}</b>. Change de compte sur vinted.fr, elles repartiront seules.</div>` +
-      `<button class="lien" data-connect="vinted" type="button">Ouvrir vinted.fr <span aria-hidden="true">→</span></button>` +
+      `<div class="why-s">${FILLSELL_VINTED.navigateurCourt()} est connecté à <b>${escapeHtml(connectee)}</b>. Change de compte sur ${FILLSELL_VINTED.domaineVintedAffiche()}, elles repartiront seules.</div>` +
+      `<button class="lien" data-connect="vinted" type="button">Ouvrir ${FILLSELL_VINTED.domaineVintedAffiche()} <span aria-hidden="true">→</span></button>` +
       `</div></div>`,
     );
   }
@@ -1591,6 +1624,24 @@ document.body.addEventListener("click", (e) => {
   // affiche sa propre demande ; accordé → le background enregistre les
   // scripts, relance les jobs en attente et sonde la session (OPLA_ACCES_
   // ACCORDE). Refusé → le bouton revient, rien n'est écrit nulle part.
+  // ── « AUTORISER VINTED.<PAYS> » (0.6.106) : le même geste, pour le domaine
+  //    Vinted du vendeur étranger désigné par le serveur ───────────────────
+  const autoriserVinted = e.target.closest("[data-autoriser-vinted-etranger]");
+  if (autoriserVinted) {
+    if (autoriserVinted.disabled || !state.vintedEtranger) return;
+    const libelle = autoriserVinted.textContent;
+    autoriserVinted.disabled = true;
+    autoriserVinted.textContent = "…";
+    chrome.permissions.request({ origins: [state.vintedEtranger.motif] })
+      .then(async (accorde) => {
+        if (!accorde) { autoriserVinted.disabled = false; autoriserVinted.textContent = libelle; return; }
+        try { await chrome.runtime.sendMessage({ type: "VINTED_ETRANGER_ACCES_ACCORDE" }); }
+        catch { /* le background relit la permission à son prochain passage */ }
+        load();
+      })
+      .catch(() => { autoriserVinted.disabled = false; autoriserVinted.textContent = "Réessayer"; });
+    return;
+  }
   // ── « AUTORISER DEPOP » (09/10) : le même geste, pour www.depop.com ────────
   const autoriserDepop = e.target.closest("[data-autoriser-depop]");
   if (autoriserDepop) {

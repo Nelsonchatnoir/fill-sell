@@ -4,6 +4,11 @@
 // plateforme, puis remonte le résultat via update-job-status.
 
 importScripts("config.js");
+// (0.6.106) L'origine Vinted (vinted.fr par défaut, le domaine étranger accordé
+// sinon) et le nom du navigateur : cf. vinted-origine.js.
+importScripts("vinted-origine.js");
+const VO = FILLSELL_VINTED;
+VO.chargerOrigineVinted().catch(() => {});
 
 // Marqueur de version du service worker. Motif (2026-07-09) : un second
 // worktree (fill-and-sell-chrome-extension, branche feat/chrome-extension) a
@@ -334,7 +339,7 @@ const REPRISE_ESPACEE_DELAIS_MIN = [5, 15, 30, 60];
 const CAUSES_HUMAINES_CONNUES = {
   prevol_stepup_vente:
     "REAUTH VENTE eBay : eBay exige une reconnexion de sécurité pour vendre. " +
-    "Ouvre ebay.fr dans Chrome, clique « Vendre » et reconnecte-toi",
+    "Ouvre ebay.fr dans " + VO.navigateurCourt() + ", clique « Vendre » et reconnecte-toi",
   // 2026-09-05 (santanalily010, bilelbourouis45) : nom/prénom de la Transaction
   // sécurisée absents du compte vendeur — escrow_* vides sur l'aperçu Leboncoin.
   lbc_escrow_identite:
@@ -403,7 +408,7 @@ const PLATFORM_HANDLERS = {
   },
   vinted: {
     implemented: true,
-    newListingUrl: "https://www.vinted.fr/items/new",
+    newListingUrl: () => `${VO.origineVinted()}/items/new`,
   },
   leboncoin: {
     implemented: true,
@@ -564,7 +569,7 @@ function precheckJob(job) {
   if (aChoisir && typeof aChoisir === "object" && aChoisir.objet) {
     const ecarte = Array.isArray(aChoisir.chemin_ecarte) ? aChoisir.chemin_ecarte.join(" > ") : "";
     const label = { vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs" }[job.platform] ?? job.platform;
-    const site = { vinted: "vinted.fr", leboncoin: "leboncoin.fr", ebay: "ebay.fr", beebs: "beebs.app" }[job.platform] ?? job.platform;
+    const site = { vinted: VO.domaineVintedAffiche(), leboncoin: "leboncoin.fr", ebay: "ebay.fr", beebs: "beebs.app" }[job.platform] ?? job.platform;
     return (
       `${label} n'a pas de rayon reconnu pour « ${aChoisir.objet} »` +
       (ecarte ? ` (le rayon « ${ecarte} » a été écarté après vérification : il ne correspond pas à l'objet)` : "") +
@@ -1367,6 +1372,16 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     })();
     return true;
   }
+  // ── VINTED HORS DE FRANCE (0.6.106) : suite de l'octroi depuis le popup ──
+  if (msg?.type === "VINTED_ETRANGER_ACCES_ACCORDE") {
+    (async () => {
+      const accordes = await VO.domainesEtrangersAccordes();
+      if (!accordes.length) return sendResponse({ ok: false, motif: "acces_non_accorde" });
+      await suiteAccesVintedEtranger("accès Vinted étranger accordé");
+      sendResponse({ ok: true, origine: VO.origineVinted() });
+    })();
+    return true;
+  }
   if (msg?.type === "SONDER_SESSION") {
     (async () => {
       const pf = String(msg.platform ?? "");
@@ -1551,12 +1566,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 async function chercherMarquesVinted(q) {
   const terme = String(q ?? "").trim().slice(0, 60);
   if (terme.length < 2) return { success: true, marques: [] };
-  const ouverts = await chrome.tabs.query({ url: ["https://www.vinted.fr/*"] }).catch(() => []);
+  const ouverts = await chrome.tabs.query({ url: [`${VO.origineVinted()}/*`] }).catch(() => []);
   let tabId = (ouverts.find((t) => t.status === "complete") ?? null)?.id ?? null;
   let cree = false;
   try {
     if (tabId == null) {
-      const t = await chrome.tabs.create({ url: "https://www.vinted.fr/", active: false });
+      const t = await chrome.tabs.create({ url: `${VO.origineVinted()}/`, active: false });
       tabId = t.id; cree = true;
       await waitForTabComplete(tabId, null, 20_000);
     }
@@ -2749,12 +2764,12 @@ async function vintedUploadSucceededForTitle(tabId, title) {
     // d'un « includes » sur un extrait de 250 caractères où le titre pouvait
     // ne pas tenir. Cf. vintedUploadSucceeded pour le pourquoi.
     if (c?.succesVinted?.id && norm(c.succesVinted.titre) === wanted) {
-      return `https://www.vinted.fr/items/${c.succesVinted.id}`;
+      return `${VO.origineVinted()}/items/${c.succesVinted.id}`;
     }
     const body = String(c?.reponse ?? "");
     const id = body.match(/"item"\s*:\s*\{\s*"id"\s*:\s*(\d+)/);
     if (id && /"code"\s*:\s*0\b/.test(body) && norm(body).includes(wanted)) {
-      return `https://www.vinted.fr/items/${id[1]}`;
+      return `${VO.origineVinted()}/items/${id[1]}`;
     }
   }
   return null;
@@ -3282,11 +3297,11 @@ const CANAL_COUPE_RE =
 // preuve juste avant de la lire.
 const MSG_CHALLENGE_CAPTCHA_EBAY =
   "CHALLENGE CAPTCHA : eBay affiche une vérification anti-robot (page captcha) à la " +
-  "place du formulaire de mise en vente. Ouvrir ebay.fr dans Chrome et résoudre la " +
+  "place du formulaire de mise en vente. Ouvrir ebay.fr dans " + VO.navigateurCourt() + " et résoudre la " +
   "vérification (l'onglet de travail est resté ouvert), le job repartira au prochain passage.";
 const MSG_FPA_EBAY =
   "eBay exige une mise à niveau ou une vérification de ton compte vendeur avant d'autoriser " +
-  "la mise en vente. Connecte-toi sur ebay.fr dans Chrome, clique « Vendre » et suis les étapes " +
+  "la mise en vente. Connecte-toi sur ebay.fr dans " + VO.navigateurCourt() + ", clique « Vendre » et suis les étapes " +
   "demandées par eBay sur ton compte, puis relance la publication depuis la fiche de l'article. " +
   "Rien n'a été publié.";
 
@@ -3376,6 +3391,9 @@ async function ebayIssueApresCanalCoupe(accessToken, job, tabId, { hubAutorise }
 
 async function processJob(rawJob, accessToken) {
   const job = sanitizeJob(rawJob);
+  // (0.6.106) Un job Vinted travaille sur le domaine où la personne est
+  // connectée (vinted.fr sauf vendeur étranger qui a autorisé le sien).
+  if (job.platform === "vinted") await VO.rafraichirOrigineVinted().catch(() => {});
   const handler = PLATFORM_HANDLERS[job.platform];
   if (!handler) {
     console.warn(`[background] Plateforme inconnue "${job.platform}", job ${job.id} laissé en pending`);
@@ -3577,7 +3595,7 @@ async function processJob(rawJob, accessToken) {
       if (stepUp === "step_up") {
         const msg =
           "REAUTH VENTE eBay : eBay demande une reconnexion de sécurité pour vendre, alors que ta " +
-          "session de navigation reste active. Ouvre ebay.fr dans Chrome, clique « Vendre », " +
+          "session de navigation reste active. Ouvre ebay.fr dans " + VO.navigateurCourt() + ", clique « Vendre », " +
           "reconnecte-toi, puis relance la publication depuis la fiche de l'article.";
         job.platform_fields = {
           ...(job.platform_fields ?? {}),
@@ -3601,7 +3619,7 @@ async function processJob(rawJob, accessToken) {
         // est nommé (needs_user_source), le chemin reste dans le diagnostic.
         const msg =
           "eBay demande une mise à niveau de ton compte vendeur avant de pouvoir déposer une annonce. " +
-          "Ouvre ebay.fr dans Chrome, suis les étapes de mise à niveau qu'eBay affiche, puis relance la publication depuis la fiche de l'article.";
+          "Ouvre ebay.fr dans " + VO.navigateurCourt() + ", suis les étapes de mise à niveau qu'eBay affiche, puis relance la publication depuis la fiche de l'article.";
         job.platform_fields = {
           ...(job.platform_fields ?? {}),
           needs_user_source: "ebay_compte_vendeur_inactif",
@@ -4043,7 +4061,7 @@ async function processJob(rawJob, accessToken) {
             error:
               "Vinted te demande de terminer une étape sur ton compte avant de pouvoir déposer une annonce" +
               (titre ? ` (page « ${titre.slice(0, 80)} »)` : " (choix du type de compte)") +
-              ". Ta connexion n'est pas en cause : ouvre vinted.fr sur ton ordinateur, termine cette étape, " +
+              ". Ta connexion n'est pas en cause : ouvre " + VO.domaineVintedAffiche() + " sur ton ordinateur, termine cette étape, " +
               "puis relance la publication.",
           });
           return { status: "needsUser", error: result.error };
@@ -5068,9 +5086,9 @@ async function marquerAttenteSession(accessToken, job, errorMsg) {
   // (05/10) Un retrait qui attend = un article vendu encore en ligne : on le dit.
   await updateJobStatus(accessToken, job.id, "pending", {
     error: job.action === "delete"
-      ? `En attente de ta connexion à ${label} dans Chrome : ton article est vendu mais son annonce est encore ` +
+      ? `En attente de ta connexion à ${label} dans ${VO.navigateurCourt()} : ton article est vendu mais son annonce est encore ` +
         `en ligne sur ${label} (risque de double vente). Le retrait repartira tout seul dès que tu seras reconnecté(e).`
-      : `En attente de ta connexion à ${label} dans Chrome : ${quoi} repartira toute seule ` +
+      : `En attente de ta connexion à ${label} dans ${VO.navigateurCourt()} : ${quoi} repartira toute seule ` +
         `dès que tu seras reconnecté(e). Aucune tentative consommée.`,
     platform_fields: pf,
   });
@@ -6596,7 +6614,7 @@ async function getOrCreateWorkTabBrut(platform, url) {
 // page d'erreur chrome-error:// après un échec réseau) — les deux produisent le
 // MÊME message générique Chrome (« must request permission »).
 const MANIFEST_HOSTS_RE =
-  /^https:\/\/([a-z0-9-]+\.)*(vinted\.(fr|com)|leboncoin\.fr|ebay\.(fr|com)|beebs\.app|fillsell\.app|tojihnuawsoohlolangc\.supabase\.co)(\/|$)/i;
+  /^https:\/\/([a-z0-9-]+\.)*(vinted\.(fr|com|be|lu|nl|de|at|it|es|pt|ie|fi|ee|lv|lt|sk|si|hr|gr)|leboncoin\.fr|ebay\.(fr|com)|beebs\.app|fillsell\.app|tojihnuawsoohlolangc\.supabase\.co)(\/|$)/i;
 
 // Neutralise tout handler beforeunload de la page AVANT une navigation ou une
 // fermeture PROGRAMMATIQUE de l'onglet de travail (les 4 plateformes passent par
@@ -7037,7 +7055,7 @@ function waitForTabComplete(tabId, expectUrl = null, timeoutMs = 30_000, { diffe
 // clic, donc jamais une annonce créée par erreur.
 const REAUTH_HOSTS = {
   ebay: /(^|\.)signin\.ebay\.(fr|com)$/i,
-  vinted: /(^|\.)vinted\.(fr|com)$/i, // sous-chemin /auth uniquement, cf. ci-dessous
+  vinted: /(^|\.)vinted\.(fr|com|be|lu|nl|de|at|it|es|pt|ie|fi|ee|lv|lt|sk|si|hr|gr)$/i, // sous-chemin /auth uniquement, cf. ci-dessous ; (0.6.106) domaines de la zone euro
   leboncoin: /(^|\.)auth\.leboncoin\.fr$/i,
   beebs: /(^|\.)beebs\.app$/i,        // sous-chemins d'auth uniquement, cf. REAUTH_PATHS
 };
@@ -7151,7 +7169,7 @@ async function detectReauth(tabId, platform, timeoutMs = 6000) {
         return (
           `Reconnexion ${label} requise : la plateforme a demandé une ré-authentification ` +
           `(${host}${path}) au moment de la publication — l'annonce n'a PAS été créée. ` +
-          `Se reconnecter sur ${label} dans Chrome (l'onglet de travail est resté ouvert) ; ` +
+          `Se reconnecter sur ${label} dans ${VO.navigateurCourt()} (l'onglet de travail est resté ouvert) ; ` +
           "le job repartira automatiquement au prochain passage."
         );
       }
@@ -9184,10 +9202,10 @@ async function vintedUploadSucceeded(tabId) {
     const c = captures[i];
     if (Number(c?.status) !== 200) continue;
     if (!/item_upload\/items/i.test(String(c?.url ?? ""))) continue;
-    if (c?.succesVinted?.id) return `https://www.vinted.fr/items/${c.succesVinted.id}`;
+    if (c?.succesVinted?.id) return `${VO.origineVinted()}/items/${c.succesVinted.id}`;
     const body = String(c?.reponse ?? "");
     const id = body.match(/"item"\s*:\s*\{\s*"id"\s*:\s*(\d+)/);
-    if (id && /"code"\s*:\s*0\b/.test(body)) return `https://www.vinted.fr/items/${id[1]}`;
+    if (id && /"code"\s*:\s*0\b/.test(body)) return `${VO.origineVinted()}/items/${id[1]}`;
   }
   return null;
 }
@@ -9357,7 +9375,7 @@ async function readVisibleEbayErrors(tabId) {
 //   ebay      → non observé : le clic a déclenché une ré-authentification
 //               passkey (cf. detectReauth), l'annonce n'a jamais été créée.
 const LISTING_URL_PATTERNS = {
-  vinted: /https:\/\/www\.vinted\.(?:fr|com)\/items\/\d+[^#\s"']*/i,
+  vinted: /https:\/\/www\.vinted\.(?:fr|com|be|lu|nl|de|at|it|es|pt|ie|fi|ee|lv|lt|sk|si|hr|gr)\/items\/\d+[^#\s"']*/i, // (0.6.106) zone euro
   leboncoin: /https:\/\/www\.leboncoin\.fr\/ad\/[^#\s"']+\/\d+[^#\s"']*/i,
   ebay: /https:\/\/www\.ebay\.(?:fr|com)\/itm\/[^#\s"']*\d{9,}[^#\s"']*/i,
   beebs: /https:\/\/www\.beebs\.app\/[^#\s"']*(?:produit|product|annonce|item|p\/)[^#\s"']+/i,
@@ -10209,7 +10227,8 @@ async function workTabForFetch(platform) {
 
 const PLATFORM_HOSTS = {
   leboncoin: "leboncoin.fr",
-  vinted: "vinted.fr",
+  // (0.6.106) Le domaine Vinted actif — « vinted.fr » sauf vendeur étranger.
+  get vinted() { return VO.domaineVintedAffiche(); },
   ebay: "ebay.fr",
   beebs: "beebs.app",
   // ── opla : CÂBLAGE, PAS UN LEVIER D'ACTIVATION (lot B, 2026-09-16) ────────
@@ -11198,7 +11217,7 @@ async function lireEtatDepop(url) {
 //    (c'est écrit depuis le 16/09 dans popup.js). On ouvre donc le popup, où
 //    le bouton « Autoriser Opla » existe déjà et fait le vrai geste.
 const ADRESSES_CONNEXION = {
-  vinted: "https://www.vinted.fr/",
+  get vinted() { return `${VO.origineVinted()}/`; },
   leboncoin: "https://www.leboncoin.fr/",
   beebs: "https://www.beebs.app/",
   ebay: "https://www.ebay.fr/",
@@ -11366,6 +11385,79 @@ if (chrome.permissions?.onRemoved) {
   });
 }
 
+// ── VINTED HORS DE FRANCE (0.6.106, 09/10 — Marta) ─────────────────────────
+// Les domaines Vinted de la zone euro sont en optional_host_permissions : rien
+// n'est accordé à l'installation ni à la mise à jour (aucun avertissement,
+// aucune désactivation du parc). Le bouton « Autoriser vinted.<pays> » du popup
+// n'est montré qu'aux vendeurs étrangers (contexte.vinted_etranger, serveur).
+// À l'octroi : consentement.js + vinted.js enregistrés sur les domaines
+// accordés, l'origine relue (vinted-origine.js), la sonde Vinted forcée.
+// Un Français (aucun domaine étranger accordé) ne passe jamais ici.
+const VINTED_ETRANGER_SCRIPTS_ID = "fillsell-vinted-etranger";
+const VINTED_ETRANGER_SCRIPTS = ["content-scripts/consentement.js", "content-scripts/vinted.js"];
+const estOrigineVintedEtrangere = (o) => VO.MOTIFS_PERMISSION_ETRANGERS.includes(o);
+
+async function assurerScriptsVintedEtranger() {
+  try {
+    const accordes = await VO.domainesEtrangersAccordes();
+    const deja = await chrome.scripting.getRegisteredContentScripts({ ids: [VINTED_ETRANGER_SCRIPTS_ID] }).catch(() => []);
+    if (!accordes.length) {
+      if (deja?.length) await chrome.scripting.unregisterContentScripts({ ids: [VINTED_ETRANGER_SCRIPTS_ID] });
+      return false;
+    }
+    const matches = accordes.map(VO.motifPermission);
+    if (deja?.length) {
+      const avant = [...(deja[0].matches ?? [])].sort().join(",");
+      if (avant === [...matches].sort().join(",")) return true;
+      await chrome.scripting.updateContentScripts([{ id: VINTED_ETRANGER_SCRIPTS_ID, matches }]);
+    } else {
+      await chrome.scripting.registerContentScripts([{
+        id: VINTED_ETRANGER_SCRIPTS_ID, matches, js: VINTED_ETRANGER_SCRIPTS, runAt: "document_idle", persistAcrossSessions: true,
+      }]);
+    }
+    console.log(`[background] vinted étranger : content scripts sur ${accordes.join(", ")}`);
+    return true;
+  } catch (e) {
+    console.warn("[background] vinted étranger : enregistrement des content scripts impossible —", String(e?.message ?? e));
+    return false;
+  }
+}
+
+async function suiteAccesVintedEtranger(motif) {
+  await assurerScriptsVintedEtranger();
+  await VO.rafraichirOrigineVinted().catch(() => {});
+  try {
+    const s = await getValidSession();
+    if (s?.access_token) await reportPlatformSessions(s.access_token, { plateformes: ["vinted"], motif, forcer: true });
+  } catch (e) { console.warn("[background] vinted étranger : sonde après octroi —", String(e?.message ?? e)); }
+}
+
+VO.domainesEtrangersAccordes().then(async (accordes) => {
+  if (!accordes.length) return;
+  await assurerScriptsVintedEtranger();
+  await VO.rafraichirOrigineVinted().catch(() => {});
+}).catch(() => {});
+chrome.runtime.onInstalled.addListener((details) => {
+  if (details?.reason !== "update" && details?.reason !== "install") return;
+  VO.domainesEtrangersAccordes().then(async (accordes) => {
+    if (!accordes.length) return;
+    try { await chrome.scripting.unregisterContentScripts({ ids: [VINTED_ETRANGER_SCRIPTS_ID] }); } catch { /* jamais enregistrés */ }
+    await assurerScriptsVintedEtranger();
+  }).catch(() => {});
+});
+if (chrome.permissions?.onAdded) {
+  chrome.permissions.onAdded.addListener((p) => {
+    if (!(p?.origins ?? []).some(estOrigineVintedEtrangere)) return;
+    suiteAccesVintedEtranger("accès Vinted étranger accordé (onAdded)").catch(() => {});
+  });
+}
+if (chrome.permissions?.onRemoved) {
+  chrome.permissions.onRemoved.addListener((p) => {
+    if (!(p?.origins ?? []).some(estOrigineVintedEtrangere)) return;
+    assurerScriptsVintedEtranger().then(() => VO.rafraichirOrigineVinted()).catch(() => {});
+  });
+}
+
 const SESSION_PROBE_INTERVALS_MS = {
   vinted: 10 * 60 * 1000,
   leboncoin: 60 * 60 * 1000,
@@ -11504,7 +11596,7 @@ function classerMurHubEbay(hub, session) {
 // Le SEUL endroit où ce libellé s'écrit — c'est lui que teste le déclencheur de
 // noterSessionDeconnectee, il ne doit jamais partir sans arbitrage.
 const MSG_CONNEXION_EBAY =
-  "Connexion eBay requise : se connecter sur ebay.fr dans Chrome " +
+  "Connexion eBay requise : se connecter sur ebay.fr dans " + VO.navigateurCourt() + " " +
   "(l'onglet de travail est resté ouvert), le job repartira au prochain passage.";
 
 // ── Arbitrage de la garde de session eBay (2026-08-11) ──────────────────────
@@ -11565,7 +11657,7 @@ async function arbitrerSessionEbay(result) {
         ...result, sessionConfirmee: false, diagnostic,
         error:
           "REAUTH VENTE eBay : eBay demande une reconnexion de sécurité pour vendre, alors que ta " +
-          "session de navigation reste active. Ouvre ebay.fr dans Chrome, clique « Vendre », " +
+          "session de navigation reste active. Ouvre ebay.fr dans " + VO.navigateurCourt() + ", clique « Vendre », " +
           "reconnecte-toi, puis relance la publication depuis la fiche de l'article.",
       };
     }
@@ -11580,7 +11672,7 @@ async function arbitrerSessionEbay(result) {
       error:
         `eBay a servi une page inattendue (${chemin}) à la place du formulaire de mise en vente — ` +
         "rien n'a été publié. La sonde de session répondait normalement au même moment, mais cela " +
-        "ne garantit pas le dépôt : ouvre ebay.fr dans Chrome et vérifie que tout va bien, puis " +
+        "ne garantit pas le dépôt : ouvre ebay.fr dans " + VO.navigateurCourt() + " et vérifie que tout va bien, puis " +
         "relance la publication depuis la fiche de l'article si le job s'est arrêté.",
     };
   }
@@ -11651,7 +11743,11 @@ async function probePlatformSessions(plateformes = ["vinted", "leboncoin", "ebay
   const sonde = (pf, fn) => (plateformes.includes(pf) ? probe(fn) : Promise.resolve({ etat: null, http: null }));
   const [vinted, leboncoin, ebay, ebayHub, beebs, opla, depop] = await Promise.all([
     sonde("vinted", async () => {
-      const r = await fetch("https://www.vinted.fr/api/v2/users/current", {
+      // (0.6.106) Où la personne est-elle connectée ? vinted.fr tant qu'aucun
+      // domaine étranger n'est accordé (aucune lecture de plus) ; sinon le
+      // domaine accordé qui porte la session (cf. vinted-origine.js).
+      await VO.rafraichirOrigineVinted().catch(() => {});
+      const r = await fetch(`${VO.origineVinted()}/api/v2/users/current`, {
         headers: { Accept: "application/json" }, credentials: "include",
       });
       // ⚠️ 401 ≠ déconnecté (faux « non connecté » du 30/07 21:13, prouvé en
@@ -11682,6 +11778,8 @@ async function probePlatformSessions(plateformes = ["vinted", "leboncoin", "ebay
             const langue = String(j.user.locale ?? "").trim().toLowerCase();
             if (/^[A-Z]{2}$/.test(pays)) identite.pays = pays;
             if (/^[a-z]{2}(?:[-_][a-z0-9]{2,})?$/.test(langue)) identite.langue = langue;
+            // (0.6.106) Le DOMAINE de la session, dit seulement quand il n'est pas vinted.fr.
+            if (VO.estOrigineEtrangere()) identite.domaine = VO.hoteVinted();
           }
         } catch { /* corps illisible : identité inconnue */ }
       }
@@ -11697,7 +11795,7 @@ async function probePlatformSessions(plateformes = ["vinted", "leboncoin", "ebay
       // soit enregistré, et un renouvellement perdu pourrait fermer la
       // session. Le renouvellement vit dans l'onglet (content-scripts/vinted.js).
       if (r.status === 401) {
-        const marque = await chrome.cookies.get({ url: "https://www.vinted.fr/", name: VINTED_LOGIN_COOKIE }).catch(() => null);
+        const marque = await chrome.cookies.get({ url: `${VO.origineVinted()}/`, name: VINTED_LOGIN_COOKIE }).catch(() => null);
         if (String(marque?.value ?? "").trim()) {
           return { etat: true, http: "jeton_expire_session_ouverte", identite: null };
         }
@@ -12007,7 +12105,8 @@ async function identiteVintedDuCycle({ forcer = false } = {}) {
   if (!forcer && Date.now() - identiteVintedCache.at < 90_000) return identiteVintedCache.val;
   let val = null;
   try {
-    const r = await fetch("https://www.vinted.fr/api/v2/users/current", {
+    await VO.chargerOrigineVinted().catch(() => {});
+    const r = await fetch(`${VO.origineVinted()}/api/v2/users/current`, {
       headers: { Accept: "application/json" }, credentials: "include",
     });
     if (r.ok) {
@@ -12466,7 +12565,7 @@ function marqueurRetry403(tentative, prochaineA) {
 const VINTED_LOGIN_COOKIE = "v_uid";
 async function classifierCause403() {
   try {
-    const cookies = await chrome.cookies.getAll({ domain: "vinted.fr" });
+    const cookies = await chrome.cookies.getAll({ domain: VO.domaineVintedAffiche() });
     if (!Array.isArray(cookies) || !cookies.length) return "indetermine";
     return cookies.some((c) => c?.name === VINTED_LOGIN_COOKIE && String(c?.value ?? "").trim())
       ? "session_presente"
@@ -13285,7 +13384,7 @@ async function retrouverOngletTravailVinted() {
     if (Number.isInteger(memo) && (await chrome.tabs.get(memo).catch(() => null))) return memo;
   } catch { /* storage muet : on tente la seconde piste */ }
   try {
-    const candidats = await chrome.tabs.query({ url: "*://*.vinted.fr/*" });
+    const candidats = await chrome.tabs.query({ url: VO.motifOngletsVinted() });
     const marque = (candidats ?? []).find((t) => (t.url || "").includes(WORK_TAB_FRAGMENT));
     return Number.isInteger(marque?.id) ? marque.id : null;
   } catch {
@@ -13300,7 +13399,7 @@ async function ouvrirOngletVintedPret() {
   let tabId = null;
   let erreurOuverture = null;
   try {
-    tabId = await getOrCreateWorkTab("vinted", "https://www.vinted.fr/");
+    tabId = await getOrCreateWorkTab("vinted", `${VO.origineVinted()}/`);
   } catch (e) {
     erreurOuverture = String(e?.message ?? e);
     tabId = await retrouverOngletTravailVinted();
@@ -13335,7 +13434,7 @@ async function ouvrirOngletVintedPret() {
   // (relancerOngletMuet : rechargement, puis onglet neuf — deux essais,
   // pauses humaines), et c'est la réponse du content script qui tranche.
   // ⛔ LECTURE PURE : rien n'a été envoyé à la page avant ce point.
-  const relance = await relancerOngletMuet("vinted", tabId, "https://www.vinted.fr/", contentScriptVintedRepond);
+  const relance = await relancerOngletMuet("vinted", tabId, `${VO.origineVinted()}/`, contentScriptVintedRepond);
   if (relance.ok) {
     console.log(`[sync-dressing] content script Vinted joignable après ${relance.geste} (onglet ${relance.tabId}) — on continue`);
     return relance.tabId;
@@ -13591,7 +13690,7 @@ function pageDressingMock(mock, page) {
     return {
       vinted_item_id: id,
       titre: `Article harnais ${num}`,
-      url: `https://www.vinted.fr/items/${id}`,
+      url: `${VO.origineVinted()}/items/${id}`,
       prix: Number((5 + (num % 40) + 0.5).toFixed(2)),
       devise: "EUR",
       marque: null,
@@ -13635,7 +13734,7 @@ async function fetchVintedItemDetail(vintedItemId) {
       // La page exacte porte le vendeur de CETTE annonce. La capture réseau
       // seule sait lire les champs, mais elle ne prouve pas la boutique ; la
       // republication a besoin des deux avant d'autoriser le retrait.
-      tabId = await getOrCreateWorkTab("vinted", `https://www.vinted.fr/items/${encodeURIComponent(id)}`);
+      tabId = await getOrCreateWorkTab("vinted", `${VO.origineVinted()}/items/${encodeURIComponent(id)}`);
     } catch (e) {
       return { success: false, error: `onglet de travail Vinted : ${String(e?.message ?? e)}` };
     }
@@ -13680,8 +13779,11 @@ function urlAnnonceVintedValide(brut) {
   try { u = new URL(String(brut ?? "")); } catch { return null; }
   if (u.protocol !== "https:") return null;
   const host = u.hostname.toLowerCase();
-  if (host !== "vinted.fr" && host !== "www.vinted.fr") return null;
+  if (host !== "vinted.fr" && host !== "www.vinted.fr" && !VO.estHoteVintedDeTravail(host)) return null;
   if (!/^\/items\/\d+(?:-[^/]*)?\/?$/.test(u.pathname)) return null;
+  // (0.6.106) Vendeur étranger : l'annonce se lit sur SON domaine (un lien
+  // vinted.fr venu du serveur y est ramené) ; vinted.fr : inchangé.
+  if (VO.estOrigineEtrangere()) return `${VO.origineVinted()}${u.pathname}`;
   return `${u.origin}${u.pathname}`; // query et fragment jetés
 }
 
@@ -13748,7 +13850,7 @@ async function captureVintedItemUnlocked(vintedItemId) {
       // se lit que sur /items/<id> : ouverte sur l'accueil, la capture sortait
       // sans preuve (471 captures en 30 h, 0 preuve), la republication
       // repartait en « a_capturer » toutes les 2 min et ne finissait jamais.
-      tabId = await getOrCreateWorkTab("vinted", `https://www.vinted.fr/items/${encodeURIComponent(id)}`);
+      tabId = await getOrCreateWorkTab("vinted", `${VO.origineVinted()}/items/${encodeURIComponent(id)}`);
     } catch (e) {
       return { success: false, error: `onglet de travail Vinted : ${String(e?.message ?? e)}` };
     }
@@ -17179,12 +17281,14 @@ async function boutiqueEncoreAConfirmer(userId, token) {
   if (!ident?.user_id) return null;
   if (String(ident.user_id) !== String(dernier.vinted_user_id)) return null;
   return {
-    motif: `le dressing ouvert dans Chrome est toujours @${ident.login ?? ident.user_id}, refusé au relevé ${dernier.id} — décision attendue dans l'app (« c'est ma boutique » ou changer de compte Vinted)`,
+    motif: `le dressing ouvert dans ${VO.navigateurCourt()} est toujours @${ident.login ?? ident.user_id}, refusé au relevé ${dernier.id} — décision attendue dans l'app (« c'est ma boutique » ou changer de compte Vinted)`,
     login: ident.login ?? null, user_id: ident.user_id,
   };
 }
 
 async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repriseAuto = false, repriseVeille = false, commandeId = null) {
+  // (0.6.106) Le relevé lit le dressing sur le domaine où la personne est connectée.
+  await VO.rafraichirOrigineVinted().catch(() => {});
   const session = await getValidSession();
   if (!session?.access_token) {
     console.log("[sync-dressing] pas de session FillSell — abandon silencieux");
@@ -17617,7 +17721,7 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
       try {
         const charge = waitForTabComplete(tabId);
         await neutralizeBeforeUnload(tabId);
-        await chrome.tabs.update(tabId, { url: `https://www.vinted.fr/${WORK_TAB_FRAGMENT}` });
+        await chrome.tabs.update(tabId, { url: `${VO.origineVinted()}/${WORK_TAB_FRAGMENT}` });
         await charge;
       } catch (e) {
         console.warn("[sync-dressing] rechargement Vinted impossible avant re-sonde :", e?.message ?? e);
@@ -17665,8 +17769,11 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
       if (cause403 === "session_absente") {
         await annulerRetry403(userId, "403 sans session Vinted — rien à retenter avant connexion");
         return await echec(
-          "[pas_connecte] [cause403] session_absente — aucune session Vinted dans ce navigateur (HTTP 403 sur la sonde) : " +
-          "connecte-toi sur vinted.fr dans ce navigateur, puis relance la synchronisation.",
+          // (0.6.106) Le navigateur et le domaine NOMMÉS (Marta : extension dans
+          // Edge, session Vinted ailleurs). Les marqueurs restent en tête.
+          "[pas_connecte] [cause403] session_absente — aucune session Vinted dans " + VO.navigateurLong() +
+          " (le navigateur où est installée l'extension FillSell ; HTTP 403 sur la sonde) : " +
+          "connecte-toi sur " + VO.hoteVinted() + " dans " + VO.navigateurLong() + ", puis relance la synchronisation.",
         );
       }
       const etat = await lireEtatRetry403(userId);
@@ -17843,7 +17950,7 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
         return await echec(
           `[boutique_a_confirmer] Ce navigateur est connecté au dressing @${ident.login ?? idActuel}` +
           (connues ? ` — ce compte FillSell suit ${connues}.` : " — aucune boutique n'est encore confirmée sur ce compte FillSell.") +
-          " Rien n'a été importé. Confirme la boutique dans l'app (carte « Actualiser mon dressing ») ou change de compte Vinted dans Chrome, puis relance.",
+          " Rien n'a été importé. Confirme la boutique dans l'app (carte « Actualiser mon dressing ») ou change de compte Vinted dans " + VO.navigateurCourt() + ", puis relance.",
         );
       }
     }
@@ -19409,6 +19516,7 @@ async function envoyerMesuresVeille(etat, token, userId) {
  * par plateforme). Ne lève jamais.
  */
 async function veillerCommandes(session) {
+  await VO.rafraichirOrigineVinted().catch(() => {});
   const token = session?.access_token;
   const userId = token ? decodeJwtSub(token) : null;
   if (!userId) return;
@@ -21689,10 +21797,10 @@ async function conclureRecreationApresSoumission(accessToken, job, pf, jobRecrea
     if (idNum && idNum !== String(pf.vinted_item_id ?? "") && idNum !== String(pf.old_vinted_item_id ?? "")) {
       console.log(`[republish] job ${job.id} : onglet redirigé vers /items/${idNum} — recréation prouvée par son numéro`);
       await cloreRepublishSurAnnonceExistante(
-        accessToken, job, pf, idNum, `https://www.vinted.fr/items/${idNum}`,
+        accessToken, job, pf, idNum, `${VO.origineVinted()}/items/${idNum}`,
         "recréation prouvée par son numéro (onglet redirigé par Vinted vers la nouvelle annonce)",
       );
-      return { status: "published", listingUrl: `https://www.vinted.fr/items/${idNum}` };
+      return { status: "published", listingUrl: `${VO.origineVinted()}/items/${idNum}` };
     }
     const urlSonde = await vintedUploadSucceededForTitle(tabId, jobRecreation.title).catch(() => null);
     if (urlSonde) {
@@ -21732,7 +21840,7 @@ async function conclureRecreationApresSoumission(accessToken, job, pf, jobRecrea
           if (trouve) {
             await cloreRepublishSurAnnonceExistante(
               accessToken, job, pf, trouve.vinted_item_id,
-              trouve.url ?? `https://www.vinted.fr/items/${trouve.vinted_item_id}`,
+              trouve.url ?? `${VO.origineVinted()}/items/${trouve.vinted_item_id}`,
               "recréation confirmée dans le dressing après coupure du canal",
             );
             return { status: "published", listingUrl: trouve.url ?? null };
@@ -21879,10 +21987,10 @@ async function traiterIntrouvable404Republication({ accessToken, job, pf, userId
     }
     pf.needs_user_source = "introuvable_indetermine";
     const msg = verdict === "identite_inconnue"
-      ? "Republication en pause AVANT toute suppression : Vinted répond « annonce introuvable » et FillSell n'a pas pu lire quelle boutique est connectée dans Chrome. " +
-        "Ton annonce est intacte si elle existe encore. Connecte-toi sur vinted.fr à la boutique qui porte cette annonce, puis relance la republication."
+      ? "Republication en pause AVANT toute suppression : Vinted répond « annonce introuvable » et FillSell n'a pas pu lire quelle boutique est connectée dans " + VO.navigateurCourt() + ". " +
+        "Ton annonce est intacte si elle existe encore. Connecte-toi sur " + VO.domaineVintedAffiche() + " à la boutique qui porte cette annonce, puis relance la republication."
       : "Republication en pause AVANT toute suppression : Vinted répond « annonce introuvable » et cet article n'a pas de boutique d'origine connue alors que ton compte en a plusieurs. " +
-        "Ton annonce est intacte si elle existe encore. Connecte-toi sur vinted.fr à la boutique qui porte cette annonce, synchronise ton dressing, puis relance la republication.";
+        "Ton annonce est intacte si elle existe encore. Connecte-toi sur " + VO.domaineVintedAffiche() + " à la boutique qui porte cette annonce, synchronise ton dressing, puis relance la republication.";
     await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
     return { status: "needsUser", error: `404 de capture, ${verdict} — 4 essais sans pouvoir trancher` };
   }
@@ -22850,7 +22958,7 @@ async function processRepublishJobPlateforme(job, accessToken) {
         return { status: "skipped", error: `état de l'annonce ${label} illisible (${n}/${REPUBLISH_PF_ETAT_ESSAIS_MAX})` };
       }
       const msg = `Republication en pause AVANT tout retrait : l'état de ton annonce ${label} n'a pas pu être vérifié (${causeLectureImpossible(raison)}). ` +
-        "Ton annonce est intacte. Relance la republication depuis la fiche de l'article, Chrome ouvert.";
+        "Ton annonce est intacte. Relance la republication depuis la fiche de l'article, " + VO.navigateurCourt() + " ouvert.";
       await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
       return { status: "needsUser", error: msg };
     }
@@ -23034,7 +23142,7 @@ async function processRepublishJobPlateforme(job, accessToken) {
         // levée dès que la session revient (compte vu sur une page leboncoin.fr,
         // sonde, relevé réussi : relancer_jobs_connexion).
         delete pf.pause_page_depot;
-        const errMur = "Connexion Leboncoin requise : se connecter sur leboncoin.fr dans Chrome. "
+        const errMur = "Connexion Leboncoin requise : se connecter sur leboncoin.fr dans " + VO.navigateurCourt() + ". "
           + "La republication repartira toute seule, ton annonce n'a pas été touchée.";
         await traiterMurDeConnexion(accessToken, { ...job, platform_fields: pf }, {
           error: errMur,
@@ -23589,7 +23697,7 @@ async function processRepublishJob(job, accessToken) {
         pf.needs_user_source = "session_vinted";
         const msg =
           "Ta republication attend que Vinted soit rouvert — ton annonce est intacte, rien n'a été touché. " +
-          "Connecte-toi sur vinted.fr dans Chrome (ou ouvre simplement un onglet Vinted) : " +
+          "Connecte-toi sur " + VO.domaineVintedAffiche() + " dans " + VO.navigateurCourt() + " (ou ouvre simplement un onglet Vinted) : " +
           "la republication repartira toute seule dans les minutes qui suivent.";
         await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
         return { status: "needsUser", error: `capture reportée : ${cap.error}` };
@@ -23804,7 +23912,7 @@ async function processRepublishJob(job, accessToken) {
         };
         await updateJobStatus(accessToken, job.id, "needs_user", {
           platform_fields: pf,
-          error: "Cette annonce appartient à une autre boutique Vinted que celle ouverte dans Chrome. Rien n'a été retiré.",
+          error: "Cette annonce appartient à une autre boutique Vinted que celle ouverte dans " + VO.navigateurCourt() + ". Rien n'a été retiré.",
         });
         return { status: "needsUser", error: "boutique Vinted réellement différente" };
       }
@@ -23892,8 +24000,8 @@ async function processRepublishJob(job, accessToken) {
         if (dejaRafraichie && peremptions > 2) {
           await updateJobStatus(accessToken, job.id, "needs_user", {
             platform_fields: pf,
-            error: "Deux captures refaites automatiquement ont encore expiré : ton Chrome s'ouvre trop longtemps après. " +
-              "Republie cet article quand tu es DEVANT ton ordinateur — le clic, puis Chrome ouvert une dizaine de minutes, et c'est réglé. " +
+            error: "Deux captures refaites automatiquement ont encore expiré : " + VO.navigateurPossessif() + " s'ouvre trop longtemps après. " +
+              "Republie cet article quand tu es DEVANT ton ordinateur — le clic, puis " + VO.navigateurCourt() + " ouvert une dizaine de minutes, et c'est réglé. " +
               "Rien n'a été touché, ton annonce est intacte.",
           });
           return { status: "needsUser", error: `capture périmée (>24 h) — plafond de recaptures atteint (occurrence ${peremptions})` };
@@ -23923,7 +24031,7 @@ async function processRepublishJob(job, accessToken) {
           }
           const msg =
             `Republication en pause AVANT toute suppression : ta capture datait de plus de 24 h et la nouvelle capture a échoué : ${motifLisible(recap.error, 160)}. ` +
-            "Rien n'a été touché, ton annonce est intacte. Relance la republication depuis l'app, Chrome ouvert.";
+            "Rien n'a été touché, ton annonce est intacte. Relance la republication depuis l'app, " + VO.navigateurCourt() + " ouvert.";
           await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
           return { status: "needsUser", error: `recapture en échec : ${recap.error}` };
         }
@@ -24161,13 +24269,13 @@ async function processRepublishJob(job, accessToken) {
           // suppression refusée… Relance depuis l'app ».
           const verdictPreuve = pf.suppression_verdict ?? {};
           const murBoutique = verdictPreuve.conclusion === "boutique_etrangere"
-            ? "Cette annonce est sur une autre de tes boutiques Vinted que celle ouverte dans Chrome. Ouvre cette boutique sur vinted.fr dans Chrome, puis relance la republication."
+            ? "Cette annonce est sur une autre de tes boutiques Vinted que celle ouverte dans " + VO.navigateurCourt() + ". Ouvre cette boutique sur " + VO.domaineVintedAffiche() + " dans " + VO.navigateurCourt() + ", puis relance la republication."
             : verdictPreuve.conclusion === "origine_contradictoire"
-            ? "Cette annonce n'est pas sur la boutique Vinted où FillSell l'avait vue, et rien n'est retiré tant que ce n'est pas clair. Ouvre Vinted dans Chrome sur la boutique qui la porte, puis « Actualiser mon dressing » dans l'app avant de relancer."
+            ? "Cette annonce n'est pas sur la boutique Vinted où FillSell l'avait vue, et rien n'est retiré tant que ce n'est pas clair. Ouvre Vinted dans " + VO.navigateurCourt() + " sur la boutique qui la porte, puis « Actualiser mon dressing » dans l'app avant de relancer."
             : verdictPreuve.conclusion !== "identite_non_prouvee" ? null
             : verdictPreuve.preuve_manquante === "session"
-            ? "Vinted n'a pas laissé FillSell lire la boutique ouverte dans Chrome, et rien n'est retiré sans cette vérification. Vérifie que ta session Vinted est ouverte dans Chrome, puis relance : la boutique sera vérifiée de nouveau avant tout geste."
-            : "FillSell ne sait pas de quelle boutique Vinted vient cette annonce, et ne retire jamais une annonce sans cette preuve. Ouvre Vinted dans Chrome sur la boutique qui la porte, puis « Actualiser mon dressing » dans l'app : une fois l'annonce reconnue, relance la republication.";
+            ? "Vinted n'a pas laissé FillSell lire la boutique ouverte dans " + VO.navigateurCourt() + ", et rien n'est retiré sans cette vérification. Vérifie que ta session Vinted est ouverte dans " + VO.navigateurCourt() + ", puis relance : la boutique sera vérifiée de nouveau avant tout geste."
+            : "FillSell ne sait pas de quelle boutique Vinted vient cette annonce, et ne retire jamais une annonce sans cette preuve. Ouvre Vinted dans " + VO.navigateurCourt() + " sur la boutique qui la porte, puis « Actualiser mon dressing » dans l'app : une fois l'annonce reconnue, relance la republication.";
           // ── L'AUTRE BOUTIQUE PROUVÉE : UNE ATTENTE, PAS UNE ALARME (03/10, H) ──
           // Chaussons d'Ornella (ef38f079) : la boutique de l'annonce est
           // prouvée (lue sur sa page exacte avant le pré-vol) et ce n'est pas
@@ -24184,7 +24292,7 @@ async function processRepublishJob(job, accessToken) {
               session: sessionVue != null ? String(sessionVue) : null,
               le: new Date().toISOString(), pose_par: "extension (propriétaire lu sur la page exacte)",
             };
-            const msgAttente = "En attente de ton autre boutique Vinted : ouvre-la sur vinted.fr dans Chrome, la republication repartira toute seule. "
+            const msgAttente = "En attente de ton autre boutique Vinted : ouvre-la sur " + VO.domaineVintedAffiche() + " dans " + VO.navigateurCourt() + ", la republication repartira toute seule. "
               + "Ton annonce est toujours en ligne, rien n'a été retiré.";
             await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msgAttente });
             return { status: "needsUser", error: msgAttente };
@@ -24482,7 +24590,7 @@ async function processRepublishJob(job, accessToken) {
       let tabVerif = await findExistingWorkTabId("vinted");
       if (tabVerif == null && dejaTentee) {
         // Obligatoire : on s'offre l'onglet que le chemin best-effort refusait.
-        tabVerif = await getOrCreateWorkTab("vinted", "https://www.vinted.fr/").catch(() => null);
+        tabVerif = await getOrCreateWorkTab("vinted", `${VO.origineVinted()}/`).catch(() => null);
         if (tabVerif != null) console.log(`[republish] job ${job.id} : recréation déjà tentée — onglet ouvert exprès pour vérifier le dressing`);
       }
       if (tabVerif != null) {
@@ -24546,7 +24654,7 @@ async function processRepublishJob(job, accessToken) {
             if (item) {
               await cloreRepublishSurAnnonceExistante(
                 accessToken, job, pf, item.vinted_item_id,
-                item.url ?? `https://www.vinted.fr/items/${item.vinted_item_id}`,
+                item.url ?? `${VO.origineVinted()}/items/${item.vinted_item_id}`,
                 "annonce retrouvée dans le dressing avant recréation",
               );
               return { status: "published", listingUrl: item.url ?? null };
@@ -24565,7 +24673,7 @@ async function processRepublishJob(job, accessToken) {
               pf.recreation_doublon = {
                 at: new Date().toISOString(), raison: String(raison),
                 liens: (Array.isArray(candidats) ? candidats : []).slice(0, 5)
-                  .map((a) => String(a?.url ?? `https://www.vinted.fr/items/${a?.vinted_item_id ?? ""}`)),
+                  .map((a) => String(a?.url ?? `${VO.origineVinted()}/items/${a?.vinted_item_id ?? ""}`)),
               };
               await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
               console.warn(`[republish] job ${job.id} : recréation REFUSÉE — ${raison}`);

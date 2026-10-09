@@ -39,8 +39,17 @@ const bg = lire("chrome-extension/background.js");
 ok(/if \(rep\.extension_update_required\) \{\s+chrome\.storage\.local\.set\(\{ fillsell_maj_requise:/.test(bg) && /verifierMiseAJourSiDue\(\{ urgent: true \}\)/.test(bg),
   "extension 0.6.90 : retient l'exigence et demande la mise à jour à Chrome sans attendre 2 h");
 const popup = lire("chrome-extension/popup.js");
-ok(/if \(state\.session && state\.majRequise\) \{/.test(popup) && /Mets FillSell à jour : ferme Chrome complètement puis rouvre-le/.test(popup),
-  "le popup le dit en tête, avec le geste");
+// (0.6.106) Le popup nomme le navigateur RÉEL (vinted-origine.js) : « Chrome »
+// sous Google Chrome — le texte d'avant, à l'octet —, « Edge » sous Microsoft Edge.
+const nomNavigateur = (brands) => {
+  const g = { navigator: { userAgentData: { brands: brands.map((brand) => ({ brand })) } } };
+  new Function("globalThis", "self", lire("chrome-extension/vinted-origine.js"))(g, g);
+  return g.FILLSELL_VINTED.navigateurCourt();
+};
+const gesteMaj = /Mets FillSell à jour : ferme (?:Chrome|\$\{FILLSELL_VINTED\.navigateurCourt\(\)\}) complètement puis rouvre-le/.test(popup);
+ok(/if \(state\.session && state\.majRequise\) \{/.test(popup) && gesteMaj
+  && nomNavigateur(["Google Chrome", "Chromium"]) === "Chrome" && nomNavigateur(["Microsoft Edge", "Chromium"]) === "Edge",
+  "le popup le dit en tête, avec le geste (« ferme Chrome » sous Google Chrome, « ferme Edge » sous Edge)");
 
 if (ko) { console.error(`\n✗ ${ko} échec(s)`); process.exit(1); }
 console.log("\n✓ pause anti-robot : à la personne après 6 h, toutes versions ; mise à jour : le geste le plus simple");

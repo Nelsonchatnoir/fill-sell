@@ -84,16 +84,34 @@ function mondesDuManifest() {
       extras: {},
     });
   }
+  // (0.6.106) Les scripts CLASSIQUES partagés posent un objet global par
+  // affectation (globalThis.X = …, dans une IIFE) : ESLint ne le voit pas comme
+  // une déclaration. Ce qu'ils apportent est écrit ici, et ils ne comptent que
+  // dans les mondes qui les chargent VRAIMENT (importScripts du service worker,
+  // <script src> de popup.html) — un monde qui ne les charge pas reste en faute.
+  const GLOBAUX_POSES = { 'vinted-origine.js': ['FILLSELL_VINTED'] };
+  const apportsDe = (fichiers) => Object.fromEntries(fichiers.flatMap((f) => (GLOBAUX_POSES[f] ?? []).map((g) => [g, 'readonly'])));
   const sw = manifest.background?.service_worker;
   if (sw) {
+    const swSrc = fs.readFileSync(path.join(EXT, sw), 'utf8');
+    const importes = [...swSrc.matchAll(/^importScripts\("([^"]+)"\);/gm)].map((m) => m[1]);
     mondes.push({
       nom: 'background.service_worker',
       fichiers: [path.join(EXT, sw)],
-      extras: { importScripts: 'readonly', FILLSELL_CONFIG: 'readonly', ...globals.serviceworker },
+      extras: { importScripts: 'readonly', FILLSELL_CONFIG: 'readonly', ...apportsDe(importes), ...globals.serviceworker },
     });
+    for (const f of importes.filter((x) => GLOBAUX_POSES[x])) {
+      mondes.push({ nom: `${f} (importScripts du service worker)`, fichiers: [path.join(EXT, f)], extras: { ...globals.serviceworker } });
+    }
   }
   if (fs.existsSync(path.join(EXT, 'popup.js'))) {
-    mondes.push({ nom: 'popup.html', fichiers: [path.join(EXT, 'config.js'), path.join(EXT, 'popup.js')], extras: {} });
+    const html = fs.existsSync(path.join(EXT, 'popup.html')) ? fs.readFileSync(path.join(EXT, 'popup.html'), 'utf8') : '';
+    const charges = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map((m) => m[1]);
+    mondes.push({
+      nom: 'popup.html',
+      fichiers: [path.join(EXT, 'config.js'), path.join(EXT, 'popup.js')],
+      extras: apportsDe(charges.filter((f) => f !== 'popup.js' && f !== 'config.js')),
+    });
   }
   // ── Les mondes ENREGISTRÉS À LA DEMANDE (09/10) ──────────────────────────
   // Opla et Depop ne sont pas dans `content_scripts` (hôte optionnel) : leurs
@@ -101,7 +119,7 @@ function mondesDuManifest() {
   // dans un MÊME monde isolé. Lus ici dans background.js, pour que leurs
   // collisions et leurs identifiants absents soient contrôlés comme les autres.
   const bg = fs.readFileSync(path.join(EXT, manifest.background?.service_worker ?? 'background.js'), 'utf8');
-  for (const nom of ['OPLA_SCRIPTS', 'DEPOP_SCRIPTS']) {
+  for (const nom of ['OPLA_SCRIPTS', 'DEPOP_SCRIPTS', 'VINTED_ETRANGER_SCRIPTS']) {
     const m = bg.match(new RegExp(`const ${nom} = \\[([^\\]]*)\\]`));
     if (!m) continue;
     const fichiers = [...m[1].matchAll(/"([^"]+)"/g)].map((x) => path.join(EXT, x[1]));

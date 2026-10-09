@@ -7,10 +7,14 @@ assert.match(source, /if \(p\?\.vendeur && p\?\.session\) \{[\s\S]{0,400}?concor
   "la capture conserve aussi la preuve d'une boutique réellement différente");
 const arbre=parse(source,{ecmaVersion:'latest',range:true});
 const fonctions=['deleteListing','deleteVintedItemViaApi'];
-const extrait=arbre.body.filter(n=>n.type==='FunctionDeclaration'&&fonctions.includes(n.id.name)).map(n=>source.slice(...n.range)).join('\n');
+// (0.6.106) Les textes nomment le domaine de la page et le navigateur : leurs
+// déclarations de premier niveau voyagent avec les fonctions extraites.
+const AIDES=['VINTED_ORIGINE_PAGE','VINTED_DOMAINE_PAGE','navigateurCourtPage'];
+const estAide=(n)=>(n.type==='FunctionDeclaration'&&AIDES.includes(n.id.name))||(n.type==='VariableDeclaration'&&n.declarations.some((d)=>AIDES.includes(d.id?.name)));
+const extrait=arbre.body.filter(n=>estAide(n)||(n.type==='FunctionDeclaration'&&fonctions.includes(n.id.name))).map(n=>source.slice(...n.range)).join('\n');
 async function scenario({page='/items/123456',proprietaire=null,attendue,session='albert',job=null}) {
   const appels=[];
-  const contexte=vm.createContext({location:{pathname:page,href:'https://www.vinted.fr'+page},console:{log(){}},DELETE_DRY_RUN:false,
+  const contexte=vm.createContext({location:{pathname:page,href:'https://www.vinted.fr'+page,protocol:'https:',hostname:'www.vinted.fr',origin:'https://www.vinted.fr'},navigator:{userAgentData:{brands:[{brand:'Google Chrome'}]}},console:{log(){}},DELETE_DRY_RUN:false,
     proprietaireAnnonceVinted:async()=>proprietaire,
     extractVintedCsrfToken:async()=>'test',getVintedCookie:()=>null,
     fetchBorne:async(url,opts)=>{appels.push({url,method:opts.method??'GET'});return {ok:true,status:200,headers:{get:()=>null},json:async()=>({user:{id:session}}),text:async()=>'{}'};}

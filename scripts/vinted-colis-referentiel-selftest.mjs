@@ -64,7 +64,24 @@ const r = pures.resumeReferentielColis({ http: 200, grille: g, jeton_renouvele: 
 ok(r.http === 200 && r.catalogue === 1810 && r.grille.join(",") === "1|Petit,2|Moyen,3|Grand,8|Volumineux et lourd" && r.jeton_renouvele === true, "résumé pour colis_bilan.referentiel");
 
 console.log("\n2. LE CONTENT SCRIPT");
-ok(/REFERENTIEL_COLIS_VINTED = "https:\/\/api\.vinted\.fr\/shipping-estimation\/external\/catalogs\/"/.test(vt), "l'appel même du formulaire (api.vinted.fr/shipping-estimation)");
+// (0.6.106) L'adresse suit le domaine de la PAGE (vinted.it chez un vendeur
+// étranger) : les trois constantes sont rejouées telles qu'écrites, sur une
+// page vinted.fr — l'adresse doit rester EXACTEMENT celle du formulaire.
+{
+  const bloc = ["VINTED_ORIGINE_PAGE", "VINTED_DOMAINE_PAGE", "REFERENTIEL_COLIS_VINTED"].map((n) => {
+    const d = vt.indexOf(`const ${n} =`);
+    if (d < 0) return "";
+    return vt.slice(d, vt.indexOf(";\n", d) + 1);
+  }).join("\n");
+  const rejoue = (origine) => {
+    const u = new URL(origine);
+    return new Function("location", `${bloc}\nreturn REFERENTIEL_COLIS_VINTED;`)({ protocol: u.protocol, hostname: u.hostname, origin: u.origin });
+  };
+  let fr = null, it = null;
+  try { fr = rejoue("https://www.vinted.fr"); it = rejoue("https://www.vinted.it"); } catch (e) { fr = String(e?.message ?? e); }
+  ok(fr === "https://api.vinted.fr/shipping-estimation/external/catalogs/", "l'appel même du formulaire (api.vinted.fr/shipping-estimation) sur une page vinted.fr", String(fr));
+  ok(it === "https://api.vinted.it/shipping-estimation/external/catalogs/", "le domaine de la page sur vinted.it (vendeur étranger)", String(it));
+}
 const lect = fonction("lireReferentielColisVinted");
 ok(/r\.status === 401 && \(await renouvelerJetonVinted\(\)\)/.test(lect) && (lect.match(/await lire\(\)/g) ?? []).length === 2, "401 → jeton renouvelé comme la page, rejoué UNE fois");
 ok(/catch \(e\)/.test(lect) && /return \{ http: null/.test(lect), "ne jette jamais");

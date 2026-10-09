@@ -470,14 +470,30 @@ const manifest = JSON.parse(fs.readFileSync(path.join(OUT_DIR, 'manifest.json'),
 // le même hôte en host_permissions ou en `matches` redeviendrait un hôte
 // obligatoire, donc un privilège accru (extension désactivée chez tout le parc
 // jusqu'au clic « Réactiver »). C'est exactement ce que cette garde interdit.
+// ── WEB_ACCESSIBLE_RESOURCES (0.6.106, 09/10) : ni obligatoire, ni permission ─
+// Vérifié dans le code de Chromium le 09/10 : le privilège accru se calcule sur
+// effective_hosts() (chrome_permission_message_provider.cc, IsHostPrivilegeIncrease),
+// = explicit_hosts ∪ scriptable_hosts (permission_set.cc, InitEffectiveHosts) ;
+// le gestionnaire de web_accessible_resources (web_accessible_resources_info.cc)
+// ne touche pas au PermissionSet — il dit seulement quelles pages peuvent CHARGER
+// une ressource. Un hôte OPTIONNEL y est donc accepté : c'est ce qui permet au
+// script Vinted enregistré à l'octroi (vinted.it…) d'importer selectors/*.js.
+// Un hôte de chantier y reste refusé (garde ci-dessous), comme partout.
+const motifsWar = (manifest.web_accessible_resources ?? []).flatMap((w, i) =>
+  (w.matches ?? []).map(m => ({ m, ou: `web_accessible_resources[${i}].matches` })));
 const motifsObligatoires = [
   ...(manifest.host_permissions ?? []).map(m => ({ m, ou: 'host_permissions' })),
   ...(manifest.content_scripts ?? []).flatMap((cs, i) =>
     (cs.matches ?? []).map(m => ({ m, ou: `content_scripts[${i}].matches` }))),
-  ...(manifest.web_accessible_resources ?? []).flatMap((w, i) =>
-    (w.matches ?? []).map(m => ({ m, ou: `web_accessible_resources[${i}].matches` }))),
 ];
 const motifsOptionnels = (manifest.optional_host_permissions ?? []).map(m => ({ m, ou: 'optional_host_permissions' }));
+// Un hôte optionnel servi en WAR doit AUSSI être demandable (optional_host_permissions).
+const warOptionnelSansDemande = motifsWar.filter(({ m }) => estHoteOptionnel(m) && !motifsOptionnels.some((o) => o.m === m));
+if (warOptionnelSansDemande.length) {
+  die(`HÔTE OPTIONNEL en web_accessible_resources SANS optional_host_permissions — empaquetage REFUSÉ.
+
+${warOptionnelSansDemande.map(({ m, ou }) => `    ${m}\n      (${ou})`).join('\n')}`);
+}
 
 const optionnelDeclareObligatoire = motifsObligatoires.filter(({ m }) => estHoteOptionnel(m));
 if (optionnelDeclareObligatoire.length) {
@@ -493,7 +509,7 @@ ${optionnelDeclareObligatoire.map(({ m, ou }) => `    ${m}\n      (${ou})`).join
   (chrome.scripting.registerContentScripts, cf. background.js), jamais dans
   le manifest.`);
 }
-const horsPerimetre = motifsObligatoires.filter(({ m }) => estHoteDeChantier(m));
+const horsPerimetre = [...motifsObligatoires, ...motifsWar].filter(({ m }) => estHoteDeChantier(m));
 if (horsPerimetre.length) {
   die(`HÔTE HORS PÉRIMÈTRE dans le manifest du paquet — empaquetage REFUSÉ.
 

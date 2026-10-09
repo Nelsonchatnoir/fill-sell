@@ -28,11 +28,18 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import vm from 'node:vm';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const FICHIER = (process.argv[2] ? String(process.argv[2]).replace(/\\/g, '/') : 'chrome-extension/background.js');
 console.log(`fichier exécuté : ${FICHIER}\n`);
 const SRC = fs.readFileSync(path.join(ROOT, FICHIER), 'utf8');
+// (0.6.106) Les textes nomment le navigateur par vinted-origine.js (chargé par
+// importScripts à côté du fichier exécuté) : le bloc tourne ici « sous Google
+// Chrome », comme les postes où le message a été mesuré — même texte qu'avant.
+const ctxVO = vm.createContext({ navigator: { userAgentData: { brands: [{ brand: 'Google Chrome' }] } } });
+vm.runInContext(fs.readFileSync(path.join(ROOT, path.dirname(FICHIER), 'vinted-origine.js'), 'utf8'), ctxVO);
+const VO = ctxVO.FILLSELL_VINTED;
 
 /**
  * Le bloc « capture périmée », extrait d'une source LISIBLE OU MINIFIÉE.
@@ -115,6 +122,7 @@ async function jouer({ ageHeures, pf, recapture }) {
     capturerEtPersisterDepuisExtension: async () => recapture,
     traiterIntrouvable404Republication: async () => { etat.route404 = true; return { status: 'needsUser', error: '404 routé' }; },
     motifLisible: (e, n) => String(e ?? '').slice(0, n),
+    VO,
     console: { log: () => {}, warn: () => {}, error: () => {} },
   };
   const noms = Object.keys(sandbox);
