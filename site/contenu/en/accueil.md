@@ -71,9 +71,6 @@ fonctions:
   - titre: "Your margin works itself out"
     texte: "Sales, fees, margin and monthly profit, no spreadsheet. An unknown purchase price is left out of the maths, never counted as zero: your numbers stay honest."
     page: fr:blog/comment-calculer-profits-vinted
-comparaison:
-  concurrents: [vendoo, crosslist, relistly]
-  criteres: [app_mobile, plateformes, ia_photo, import_synchro, retrait_auto_copies, republication]
 video: true
 tarifs: true
 liens:
@@ -126,8 +123,6 @@ Because it runs the whole journey, from the photo to the sale, not just the post
 - **Your live stock imported in one tap**, free and with no limit, one card per item.
 - **Your listings bump back up** with one tap or, depending on your subscription, on their own on {{republication}}, in the time slot you choose.
 - **Sold here, removed there**, and any doubt becomes a question, not a mistake.
-
-The comparison on this page puts FillSell side by side with three crosslisting tools, criterion by criterion, with sources checked on 9 October 2026. The full table, tool by tool: [our ranking of crosslisting apps (in French)](page:fr:comparatif/meilleures-applications-crosslisting).
 
 ## Your margin, worked out for you
 

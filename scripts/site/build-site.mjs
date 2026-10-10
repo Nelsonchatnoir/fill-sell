@@ -384,7 +384,10 @@ export async function genererSite({ dossier, racine = process.cwd(), mode = 'bui
     pied(page) {
       const t = TEXTES[page.lang];
       return PIED.map((col) => {
-        const ids = [...(col.ids ?? []), ...(col.types ?? []).flatMap((ty) => (ty === 'plateforme' ? idsDuType(ty).sort((a, b) => ordrePlateforme(a) - ordrePlateforme(b)) : idsDuType(ty)))];
+        // Sur l'accueil, aucun outil concurrent nommé (10/10, Nico) : la colonne
+        // « Comparer » n'y garde que le comparatif, qui mène à tous les autres.
+        const types = page.type === 'accueil' && col.cle === 'comparer' ? ['classement'] : (col.types ?? []);
+        const ids = [...(col.ids ?? []), ...types.flatMap((ty) => (ty === 'plateforme' ? idsDuType(ty).sort((a, b) => ordrePlateforme(a) - ordrePlateforme(b)) : idsDuType(ty)))];
         const vus = new Set();
         const liens = [];
         for (const id of ids) {

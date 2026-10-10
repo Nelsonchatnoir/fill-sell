@@ -71,9 +71,6 @@ fonctions:
   - titre: "Ta marge se calcule toute seule"
     texte: "Ventes, frais, marge et bénéfice du mois, sans tableur. Un prix d'achat inconnu est écarté du calcul, jamais compté comme zéro : tes chiffres restent vrais."
     page: blog/comment-calculer-profits-vinted
-comparaison:
-  concurrents: [stoflow, flowdino, fluf-connect]
-  criteres: [app_mobile, plateformes, ia_photo, import_synchro, retrait_auto_copies, republication]
 video: true
 tarifs: true
 liens:
@@ -125,8 +122,6 @@ Parce qu'il fait tout le parcours, de la photo à la vente, et pas seulement la 
 - **Ton stock déjà en ligne importé en un appui**, gratuit et sans limite, un article par fiche.
 - **Tes annonces remontent** d'un appui ou, selon ta formule, toutes seules sur {{republication}}, au créneau que tu choisis.
 - **Vendu ici, retiré là-bas**, et au moindre doute une question plutôt qu'une erreur.
-
-Le comparatif de cette page met FillSell face à trois outils de crosslisting, critère par critère, avec les sources relevées le 9 octobre 2026. Le tableau complet, outil par outil : [notre classement des applications de crosslisting](page:comparatif/meilleures-applications-crosslisting).
 
 ## Ta marge, calculée toute seule
 
