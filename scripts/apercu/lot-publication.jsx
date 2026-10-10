@@ -15,7 +15,7 @@ import { createRoot } from 'react-dom/client';
 import '../../src/base.css';
 import '../../src/App.css';
 import '../../src/App.redesign.css';
-import { CoqueLot, EcranPlateformes, EcranAvant, EcranFin } from '../../src/publication/lot/LotPublication.jsx';
+import LotPublication, { CoqueLot, EcranPlateformes, EcranAvant, EcranFin } from '../../src/publication/lot/LotPublication.jsx';
 import SuiviLot from '../../src/publication/lot/SuiviLot.jsx';
 import { LignePublierPlusieurs, AppelFiltrePublier, EnteteModeLot, BarreSelectionLot, LigneLotEnCours } from '../../src/publication/lot/EntreesStock.jsx';
 import { LigneATraiter } from '../../src/components/FiltresStock.jsx';
@@ -75,6 +75,17 @@ function Avant({ etape }) {
     else etats[id] = { phase: i === 0 || i === 2 ? 'questions' : 'pret' };
     moteurs.set(id, moteurFactice(t, tpl, { plateformes: pfs(id) }));
   });
+  if (etape === 'casse') {
+    // (10/10) Un article dont la carte lève à l'affichage (103, à compléter)
+    // et un dont la LIGNE lève (104, prêt) : chacun est mis de côté, le bloc
+    // Livraison (qui lit aussi 104) est remplacé par une phrase, les autres
+    // articles restent — jamais une page blanche.
+    const casse = (base) => Object.defineProperty({ ...base }, 'plateformesPubliables', { get() { throw new Error('moteur cassé (aperçu)'); } });
+    etats['103'] = { phase: 'questions', motifs: [{ cle: 'questions', libelle: '1 réponse' }] };
+    moteurs.set('103', casse(moteurFactice(t, tpl, { plateformes: ['leboncoin'] })));
+    etats['104'] = { phase: 'pret' };
+    moteurs.set('104', casse(moteurFactice(t, tpl, { plateformes: ['leboncoin'] })));
+  }
   if (etape === 'questions') {
     // Robe du dressing : description restée sur Vinted, texte proposé à relire ;
     // et une robe qui ressemble, déjà en ligne sur Leboncoin.
@@ -96,7 +107,7 @@ function Avant({ etape }) {
   const prets = lot.ids.filter((id) => etats[id]?.phase === 'pret');
   const aCompleter = lot.ids.filter((id) => etats[id]?.phase === 'questions');
   const prepares = lot.ids.filter((id) => !['attente', 'lecture', 'montage', 'redaction', 'verification'].includes(etats[id]?.phase)).length;
-  const annoncesPretes = prets.reduce((n, id) => n + pfs(id).length, 0);
+  const annoncesPretes = prets.reduce((n, id) => n + (etape === 'casse' && id === '104' ? 0 : pfs(id).length), 0);
   const communes = etape === 'questions' ? [{
     signature: 'poids', gp: 'leboncoin', key: 'estimated_parcel_weight', label: 'Poids du colis', allowedValues: POIDS, ids: ['103', '106'], entrees: [],
   }] : [];
@@ -235,6 +246,16 @@ function Suivi({ arret }) {
   );
 }
 
+// (10/10) L'écran du lot ENTIER, dont un effet lève (client Supabase absent) :
+// le dernier recours s'affiche — une phrase et « Revenir au stock ».
+function EcranCasse() {
+  return (
+    <LotPublication articles={A.slice(0, 3)} jobsByInventaire={{}} prixVinted={null}
+      ctx={{ userId: 'x', supabase: null, lang: 'fr', plateformesCompte: ['vinted', 'leboncoin'] }}
+      onJobsQueued={noop} onFermer={noop} onEnvoye={noop} onOuvrirArticle={noop} />
+  );
+}
+
 const SCENES = {
   'stock-porte': () => <Stock variante="porte" />,
   'stock-filtre': () => <Stock variante="filtre" />,
@@ -249,6 +270,8 @@ const SCENES = {
   questions: () => <Avant etape="questions" />,
   pret: () => <Avant etape="pret" />,
   envoi: () => <Avant etape="envoi" />,
+  casse: () => <Avant etape="casse" />,
+  'ecran-casse': () => <EcranCasse />,
   fin: () => <Fin />,
   'fin-erreur': () => <Fin variante="erreur" />,
   suivi: () => <Suivi />,

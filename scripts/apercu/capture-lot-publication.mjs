@@ -48,6 +48,13 @@ const ECRANS = [
   ['09-questions-a-completer', 'questions', /Relis le texte qui part/, 844],
   ['09b-questions-a-completer-long', 'questions', /Poids du colis/, 1700],
   ['10-tout-est-pret', 'pret', /Envoyer \d+ annonces/, 844],
+  // (10/10) Le bloc Livraison s'affiche à la fin de la préparation (page
+  // blanche du 09/10 22:13 au 10/10) ; le poids y est FACULTATIF, comme à
+  // l'unité : aucun article « à compléter » pour un poids.
+  ['10b-pret-poids-facultatif', 'pret', /Poids du colis \(facultatif\)[\s\S]*Comme pour un article publié seul/, 1700],
+  // (10/10) Un article qui casse est mis de côté, les autres restent.
+  ['10c-article-casse-mis-de-cote', 'casse', /Cette partie n'a pas pu s'afficher[\s\S]*Robe midi Marc Cain[\s\S]*Cluedo édition 2019[\s\S]*Mis de côté : cet article n'a pas pu être préparé ici[\s\S]*Puzzle 1000 pièces Ravensburger Venise[\s\S]*Mis de côté[\s\S]*Peluche loup et renard Jellycat/, 1700],
+  ['10d-ecran-casse-dernier-recours', 'ecran-casse', /Le lot s'est arrêté sur un problème d'affichage[\s\S]*Revenir au stock/, 844],
   ['11-envoi-en-cours', 'envoi', /Mise en file/, 844],
   // (03/10) Jamais « tu peux fermer l'app » : le suivi vit dans l'app.
   ['12-c-est-parti', 'fin', /annonces en file[\s\S]*tu suis chaque annonce ici, dans FillSell/, 844],
@@ -63,8 +70,14 @@ try {
   for (const [fichier, scene, attendu, hauteur] of ECRANS) {
     const page = await navigateur.newPage({ viewport: { width: 390, height: hauteur }, deviceScaleFactor: 2 });
     const erreurs = [];
+    const attrapees = []; // (10/10) erreurs ARRÊTÉES par une barrière : attendues dans les scènes « casse »
+    const casse = /casse/.test(scene);
     page.on('pageerror', (x) => erreurs.push(String(x)));
-    page.on('console', (m) => { if (m.type() === 'error') erreurs.push(m.text()); });
+    page.on('console', (m) => {
+      if (m.type() !== 'error') return;
+      if (casse && /\[barrière|moteur cassé \(aperçu\)|reading 'rpc'|above error occurred|error boundary/i.test(m.text())) attrapees.push(m.text());
+      else erreurs.push(m.text());
+    });
     await page.goto(`${BASE}#scene=${scene}`, { waitUntil: 'load', timeout: 120000 });
     await page.waitForFunction(() => document.getElementById('apercu')?.childElementCount > 0 || document.querySelector('.fsn'), null, { timeout: 120000 });
     await page.waitForTimeout(900);
@@ -76,6 +89,8 @@ try {
       .filter((e) => parseFloat(getComputedStyle(e).fontSize) < 16).length);
     console.log(`\n${fichier} (${scene})`);
     verifier(filtre(erreurs).length === 0, 'aucune erreur de page', filtre(erreurs).join(' | ').slice(0, 300));
+    if (casse) verifier(attrapees.some((x) => /\[barrière/.test(x)), 'l’erreur a été arrêtée par une barrière (jamais une page blanche)');
+    verifier(texte.trim().length > 40, 'l’écran n’est pas blanc');
     verifier(attendu.test(texte), `texte attendu : ${attendu}`);
     // (03/10, Nico) L'app n'est jamais présentée comme accessoire, et ce
     // n'est jamais « on publie pour toi » : l'extension dépose.

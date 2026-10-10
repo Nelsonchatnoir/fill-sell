@@ -19,7 +19,12 @@ export default function natifSansGoogle() {
     transformIndexHtml: {
       order: 'post',
       handler(html) {
-        const sortie = sansBalisesGoogle(html);
+        // (10/10 après-midi) Seule la coquille de l'app porte les blocs
+        // marqués : les pages d'aperçu (scripts/apercu/*.html, serveur de
+        // dev) n'en ont pas, et le serveur levait sur chacune — tous les
+        // aperçus étaient morts. Sans bloc, rien à retirer ; le refus d'un
+        // traceur resté vaut toujours, pour toute page.
+        const sortie = /<!-- site:balises:/.test(html) ? sansBalisesGoogle(html) : html;
         const restes = traceursHorsConsentement(sortie);
         if (restes.length) {
           throw new Error(`[natif] traceur tiers resté dans la coquille de l'app native (aucun bandeau) : ${restes.join(', ')}`);
