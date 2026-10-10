@@ -56,9 +56,10 @@ import {
   plateformesLibres, resumeParPlateforme, choixInitial, ficheCouvre, partagerQuota,
   dureeEstimeeMin, libelleDuree, bilanArticle, jumeauxQuiRetiennent, marqueLot, groupesReponseCommune,
   palierCourant, palierSuivant, canalAppareil, canalAbonnement, monteePossibleIci, CLE_REPRISE_LOT,
-  poidsConnu, lirePoidsSaisi,
+  poidsConnu,
 } from "./regles";
 import LivraisonDuLot from "./LivraisonDuLot";
+import BarriereErreur from "../../components/BarriereErreur";
 import { transporteursPourPoids } from "../../utils/leboncoinColis";
 import { fusionnerReglages } from "../../utils/reglagesPlateformes";
 import {
@@ -101,6 +102,41 @@ const TEXTE_LECTURE = {
   en: { vinted: "Reading your description on Vinted, at your posting pace…", ebay: "Reading your description on eBay…", null: "Looking for your description where the item is online…" },
 };
 const TON_PHASE = { pret: "ok", envoye: "ok", questions: "geste", quota: "geste", rien: "mute", erreur: "refus", refuse: "refus", retire: "mute" };
+
+// ── UN ARTICLE QUI CASSE N'EMPORTE JAMAIS LE LOT (10/10/2026) ──────────────
+// Du 09/10 22:13 (2.9.70) au 10/10, tout lot finissait en PAGE BLANCHE à la
+// fin de la préparation, au bloc Livraison (« userId is not defined », puis
+// « exclusDepop » : deux variables de l'écran parent lues dans EcranAvant,
+// qui ne les recevait pas). Une exception de rendu sans barrière démonte
+// TOUT : écran blanc, puis retour au Stock au rechargement. Désormais :
+//   · chaque MOTEUR d'article, chaque article à compléter et chaque ligne a
+//     sa barrière : l'article qui casse est MIS DE CÔTÉ (phase « erreur »,
+//     la phrase ci-dessous), les autres continuent et partent ;
+//   · chaque bloc commun (Livraison, exclus Depop, réponses communes) a la
+//     sienne : il est remplacé par une phrase, le reste du lot continue ;
+//   · les gestes du pilote sur un moteur sont protégés article par article ;
+//   · en dernier recours, l'écran entier : une phrase et « Revenir au
+//     stock », jamais une page blanche.
+// Chaque cas laisse une ligne usage_logs (`lot_article_mis_de_cote`,
+// `lot_bloc_en_erreur`, `lot_ecran_en_erreur`) : le message, jamais à l'écran.
+// Le contrôle qui empêche la cause de revenir : `selftest:variables-definies`
+// (aucune variable non définie dans src/, joué par chaque build).
+const RAISON_MIS_DE_COTE = {
+  fr: "Mis de côté : cet article n'a pas pu être préparé ici. Rien n'est parti pour lui — publie-le seul depuis ton Stock.",
+  en: "Set aside: this item couldn't be prepared here. Nothing was sent for it — publish it on its own from your Stock.",
+};
+const RAISON_MIS_DE_COTE_ENVOI = {
+  fr: "Un problème d'affichage pendant son envoi : regarde cet article dans ton Stock avant de le republier.",
+  en: "A display problem while it was being sent: check this item in your Stock before publishing it again.",
+};
+const messageErreur = (e) => String(e?.message ?? e ?? "").slice(0, 300);
+function journaliserErreurLot(supabase, userId, feature, metadata) {
+  if (!supabase || !userId) return;
+  try {
+    supabase.from("usage_logs").insert({ user_id: userId, feature, metadata })
+      .then(({ error }) => { if (error) console.warn(`[lot] ${feature} non journalisé :`, error.message); }, () => {});
+  } catch { /* journal best-effort */ }
+}
 
 const titreDe = (item) => String(item?.title ?? item?.titre ?? "").trim();
 const dateCourte = (iso, en) => {
@@ -166,7 +202,31 @@ const HoteMoteur = memo(function HoteMoteur({
  * @param onOuvrirArticle (item) => void — le stepper à l'unité, pour un article laissé de côté
  * @param extensionVinted l'extension de CET appareil sait lire le détail d'un article Vinted
  */
-export default function LotPublication({
+export default function LotPublication(props) {
+  // Le dernier recours : l'écran du lot entier. Jamais une page blanche — une
+  // phrase, et le retour au Stock ; ce qui est déjà en file continue.
+  const { ctx, onFermer } = props;
+  const en = ctx?.lang === "en";
+  return (
+    <BarriereErreur nom="lot"
+      onErreur={(e) => journaliserErreurLot(ctx?.supabase, ctx?.userId, "lot_ecran_en_erreur", { message: messageErreur(e) })}
+      secours={(
+        <CoqueLot en={en} ecran="lot-erreur" titre={en ? "Publish several items" : "Publier plusieurs articles"} numeroEcran={2}
+          retour={null} quitter={null} cta={en ? "Back to stock" : "Revenir au stock"} onCta={() => onFermer?.()}
+          sous={[en ? "Nothing else goes out from this screen." : "Rien d'autre ne part depuis cet écran."]}>
+          <Carte gravite="refus" titre={en ? "The batch stopped on a display problem" : "Le lot s'est arrêté sur un problème d'affichage"}>
+            <div className="fsn-card-p">{en
+              ? "Listings already queued keep going: you follow them at the top of your Stock. The others weren't sent — you can start the batch again."
+              : "Les annonces déjà mises en file continuent : tu les suis en haut de ton Stock. Les autres ne sont pas parties — tu peux relancer le lot."}</div>
+          </Carte>
+        </CoqueLot>
+      )}>
+      <EcranDuLot {...props} />
+    </BarriereErreur>
+  );
+}
+
+function EcranDuLot({
   articles, jobsByInventaire, prixVinted, ctx, onJobsQueued, onFermer, onEnvoye, onMonterDePalier = null, onOuvrirArticle, choixPrefere = null, boutiqueVinted = null,
   extensionVinted = false,
 }) {
@@ -346,6 +406,26 @@ export default function LotPublication({
     window.__lot = { moteurs: moteursRef.current, etats, decisions, lot };
   });
   const majEtat = (id, patch) => setEtats((prev) => ({ ...prev, [id]: { ...(prev[id] ?? {}), ...patch } }));
+  // Un article qui casse (moteur, carte, geste du pilote) : MIS DE CÔTÉ, les
+  // autres continuent. Déjà en file : il le reste, rien n'est réécrit.
+  const lotRef = useRef(lot); lotRef.current = lot;
+  const misDeCoteRef = useRef(new Set());
+  const mettreDeCote = useCallback((id, erreur, ou) => {
+    const k = String(id);
+    moteursRef.current.delete(k);
+    setEtats((prev) => {
+      const ph = prev[k]?.phase;
+      if (ph === "envoye" || ph === "erreur") return prev;
+      const raison = (ph === "envoi" ? RAISON_MIS_DE_COTE_ENVOI : RAISON_MIS_DE_COTE)[en ? "en" : "fr"];
+      return { ...prev, [k]: { ...(prev[k] ?? {}), phase: "erreur", raison } };
+    });
+    if (misDeCoteRef.current.has(k)) return;
+    misDeCoteRef.current.add(k);
+    journaliserErreurLot(supabase, userId, "lot_article_mis_de_cote", { ou, inventaire_id: k, lot: lotRef.current?.id ?? null, message: messageErreur(erreur) });
+  }, [en, supabase, userId]);
+  const signalerErreurBloc = useCallback((bloc, erreur) => {
+    journaliserErreurLot(supabase, userId, "lot_bloc_en_erreur", { bloc, lot: lotRef.current?.id ?? null, message: messageErreur(erreur) });
+  }, [supabase, userId]);
 
   function preparer() {
     const ids = partage.maintenant.map((d) => d.id);
@@ -458,60 +538,64 @@ export default function LotPublication({
     if (!lot) return;
     const maintenant = Date.now();
     const patchs = {};
+    const casses = []; // un geste du pilote qui lève : cet article seul est mis de côté
     for (const id of lot.ids) {
-      const st = etats[id];
-      if (!st || !actifs.has(id)) continue;
-      const m = moteursRef.current.get(id);
-      if (!m) continue;
-      const pil = pilotage.current[id] ?? (pilotage.current[id] = {});
-      const phase = st.phase;
-      if (phase === "montage") {
-        if (m.initializing || !m.publishedStateLoaded) continue;
-        if (m.step >= 2) { patchs[id] = { phase: "redaction" }; continue; }
-        const bilan = bilanPlateformes(m);
-        const cible = lot.plateformes.filter((p) => bilan.cochables.includes(p));
-        if (!cible.length) { patchs[id] = { phase: "rien", raison: raisonRien(bilan, lot.plateformes) }; continue; }
-        const memeSelection = m.selected.size === cible.length && cible.every((p) => m.selected.has(p));
-        if (!memeSelection) {
-          if (!pil.selection || maintenant - pil.selection > 3000) { pil.selection = maintenant; m.setSelected(new Set(cible)); if (m.photoOption !== "original") m.setPhotoOption("original"); }
+      try {
+        const st = etats[id];
+        if (!st || !actifs.has(id)) continue;
+        const m = moteursRef.current.get(id);
+        if (!m) continue;
+        const pil = pilotage.current[id] ?? (pilotage.current[id] = {});
+        const phase = st.phase;
+        if (phase === "montage") {
+          if (m.initializing || !m.publishedStateLoaded) continue;
+          if (m.step >= 2) { patchs[id] = { phase: "redaction" }; continue; }
+          const bilan = bilanPlateformes(m);
+          const cible = lot.plateformes.filter((p) => bilan.cochables.includes(p));
+          if (!cible.length) { patchs[id] = { phase: "rien", raison: raisonRien(bilan, lot.plateformes) }; continue; }
+          const memeSelection = m.selected.size === cible.length && cible.every((p) => m.selected.has(p));
+          if (!memeSelection) {
+            if (!pil.selection || maintenant - pil.selection > 3000) { pil.selection = maintenant; m.setSelected(new Set(cible)); if (m.photoOption !== "original") m.setPhotoOption("original"); }
+            continue;
+          }
+          if (!pil.suivant2 || maintenant - pil.suivant2 > 4000) { pil.suivant2 = maintenant; m.suivant(); }
           continue;
         }
-        if (!pil.suivant2 || maintenant - pil.suivant2 > 4000) { pil.suivant2 = maintenant; m.suivant(); }
-        continue;
-      }
-      if (phase === "redaction") {
-        if (m.step === 3) { patchs[id] = { phase: "verification", depuis: maintenant }; pil.entreeVerif = maintenant; continue; }
-        if (m.step <= 1) { patchs[id] = { phase: "montage" }; continue; } // le moteur a renvoyé à « Où publier ? »
-        if (m.generatingPlatforms) continue;
-        if (!m.platformListings && m.platformError) {
-          patchs[id] = m.platformErrorCode === "quota_annonces"
-            ? { phase: "quota", raison: m.platformError }
-            : { phase: "erreur", raison: m.platformError };
+        if (phase === "redaction") {
+          if (m.step === 3) { patchs[id] = { phase: "verification", depuis: maintenant }; pil.entreeVerif = maintenant; continue; }
+          if (m.step <= 1) { patchs[id] = { phase: "montage" }; continue; } // le moteur a renvoyé à « Où publier ? »
+          if (m.generatingPlatforms) continue;
+          if (!m.platformListings && m.platformError) {
+            patchs[id] = m.platformErrorCode === "quota_annonces"
+              ? { phase: "quota", raison: m.platformError }
+              : { phase: "erreur", raison: m.platformError };
+            continue;
+          }
+          if (m.platformListings && (!pil.suivant3 || maintenant - pil.suivant3 > 4000)) { pil.suivant3 = maintenant; m.suivant(); }
           continue;
         }
-        if (m.platformListings && (!pil.suivant3 || maintenant - pil.suivant3 > 4000)) { pil.suivant3 = maintenant; m.suivant(); }
-        continue;
-      }
-      if (phase === "verification" || phase === "pret" || phase === "questions") {
-        if (m.step !== 3) { if (m.step === 2) patchs[id] = { phase: "redaction" }; continue; }
-        // Au repos depuis assez longtemps — ou, filet, 45 s après l'arrivée :
-        // un marqueur qui ne viendrait jamais ne bloque pas le lot (le clic
-        // Publier du moteur garde ses propres gardes, qui excluent et disent).
-        if (m.preparationAuRepos) pil.reposDepuis = pil.reposDepuis ?? maintenant;
-        else pil.reposDepuis = null;
-        const assezRepose = pil.reposDepuis != null && maintenant - pil.reposDepuis >= REPOS_AVANT_LECTURE_MS;
-        const filet = pil.entreeVerif != null && maintenant - pil.entreeVerif > 45_000;
-        if (!assezRepose && !filet) {
-          if (pil.reposDepuis != null) planifierTick(REPOS_AVANT_LECTURE_MS);
-          else if (phase !== "verification") patchs[id] = { phase: "verification" };
-          else planifierTick(1500);
-          continue;
+        if (phase === "verification" || phase === "pret" || phase === "questions") {
+          if (m.step !== 3) { if (m.step === 2) patchs[id] = { phase: "redaction" }; continue; }
+          // Au repos depuis assez longtemps — ou, filet, 45 s après l'arrivée :
+          // un marqueur qui ne viendrait jamais ne bloque pas le lot (le clic
+          // Publier du moteur garde ses propres gardes, qui excluent et disent).
+          if (m.preparationAuRepos) pil.reposDepuis = pil.reposDepuis ?? maintenant;
+          else pil.reposDepuis = null;
+          const assezRepose = pil.reposDepuis != null && maintenant - pil.reposDepuis >= REPOS_AVANT_LECTURE_MS;
+          const filet = pil.entreeVerif != null && maintenant - pil.entreeVerif > 45_000;
+          if (!assezRepose && !filet) {
+            if (pil.reposDepuis != null) planifierTick(REPOS_AVANT_LECTURE_MS);
+            else if (phase !== "verification") patchs[id] = { phase: "verification" };
+            else planifierTick(1500);
+            continue;
+          }
+          const b = bilanArticle({ ...m, preparationAuRepos: true, quantiteFiche: quantiteDe(id) }, decisions[id], lang);
+          const nouvelle = b.pret ? "pret" : "questions";
+          if (nouvelle !== phase || JSON.stringify(st.motifs ?? []) !== JSON.stringify(b.motifs)) patchs[id] = { phase: nouvelle, motifs: b.motifs };
         }
-        const b = bilanArticle({ ...m, preparationAuRepos: true, quantiteFiche: quantiteDe(id) }, decisions[id], lang);
-        const nouvelle = b.pret ? "pret" : "questions";
-        if (nouvelle !== phase || JSON.stringify(st.motifs ?? []) !== JSON.stringify(b.motifs)) patchs[id] = { phase: nouvelle, motifs: b.motifs };
-      }
+      } catch (e) { casses.push([id, e]); delete patchs[id]; }
     }
+    for (const [id, e] of casses) mettreDeCote(id, e, "pilote");
     if (Object.keys(patchs).length) setEtats((prev) => {
       const n = { ...prev };
       for (const [id, p] of Object.entries(patchs)) n[id] = { ...n[id], ...p };
@@ -607,13 +691,20 @@ export default function LotPublication({
     setEnvoi({ fait: 0, total: ids.length });
     let parti = 0;
     for (const id of ids) {
+      // Mis de côté entre-temps (moteur cassé) : rien ne part pour lui.
+      if (etatsRef.current[id]?.phase === "erreur") { setEnvoi((e) => ({ ...e, fait: e.fait + 1 })); continue; }
       const m = moteursRef.current.get(id);
-      const b = m ? bilanArticle({ ...m, preparationAuRepos: true, quantiteFiche: quantiteDe(id) }, decisionsRef.current[id], lang) : null;
+      let b = null;
+      try { b = m ? bilanArticle({ ...m, preparationAuRepos: true, quantiteFiche: quantiteDe(id) }, decisionsRef.current[id], lang) : null; }
+      catch (e) { mettreDeCote(id, e, "envoi_bilan"); setEnvoi((x) => ({ ...x, fait: x.fait + 1 })); continue; }
       if (!m || !b?.pret) { majEtat(id, { phase: "questions", motifs: b?.motifs ?? [] }); setEnvoi((e) => ({ ...e, fait: e.fait + 1 })); continue; }
       majEtat(id, { phase: "envoi" });
       try { await m.publier(); } catch { /* le moteur pose publishError */ }
-      await attendre(() => { const mm = moteursRef.current.get(id); return Boolean(mm && (mm.done || (!mm.publishing && mm.publishError))); }, 10_000);
+      await attendre(() => { const mm = moteursRef.current.get(id); return etatsRef.current[id]?.phase === "erreur" || Boolean(mm && (mm.done || (!mm.publishing && mm.publishError))); }, 10_000);
       const mm = moteursRef.current.get(id);
+      // Son moteur a cassé pendant l'envoi : la phrase de mise de côté reste
+      // (« regarde-le dans ton Stock »), jamais un « rien n'a été créé » non prouvé.
+      if (!mm && etatsRef.current[id]?.phase === "erreur") { setEnvoi((e) => ({ ...e, fait: e.fait + 1 })); continue; }
       if (mm?.done) {
         parti++;
         majEtat(id, {
@@ -658,7 +749,9 @@ export default function LotPublication({
   // finie (transporteurs retenus compris), puis à chaque changement.
   useEffect(() => {
     if (!lot || !preparationFinie || envoi) return;
-    for (const id of lot.ids) appliquerLivraison(id);
+    for (const id of lot.ids) {
+      try { appliquerLivraison(id); } catch (e) { mettreDeCote(id, e, "livraison"); }
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lot, preparationFinie, livraison, (transporteursRetenus ?? []).join("|")]);
 
@@ -713,15 +806,17 @@ export default function LotPublication({
   useEffect(() => {
     if (!lot || !preparationFinie || envoi) return;
     for (const id of lot.ids) {
-      const m = moteursRef.current.get(id);
-      if (!m?.poserColisVinted || !m.edited?.vinted) continue;
-      const cle = cleColisRetenu(cheminVintedDe(m));
-      const voulu = cle && colisLot[cle] !== undefined ? colisLot[cle] : undefined;
-      if (voulu === colisPosesRef.current.get(id)) continue;
-      m.poserColisVinted(voulu === undefined ? null : voulu);
-      if (voulu === undefined) colisPosesRef.current.delete(id); else colisPosesRef.current.set(id, voulu);
+      try {
+        const m = moteursRef.current.get(id);
+        if (!m?.poserColisVinted || !m.edited?.vinted) continue;
+        const cle = cleColisRetenu(cheminVintedDe(m));
+        const voulu = cle && colisLot[cle] !== undefined ? colisLot[cle] : undefined;
+        if (voulu === colisPosesRef.current.get(id)) continue;
+        m.poserColisVinted(voulu === undefined ? null : voulu);
+        if (voulu === undefined) colisPosesRef.current.delete(id); else colisPosesRef.current.set(id, voulu);
+      } catch (e) { mettreDeCote(id, e, "colis_vinted"); }
     }
-  }, [lot, preparationFinie, colisLot, sigRayonsVinted, envoi]);
+  }, [lot, preparationFinie, colisLot, sigRayonsVinted, envoi, mettreDeCote]);
   const choisirColisVinted = (cle, chemin, id) => {
     setColisLot((prev) => ({ ...prev, [cle]: id }));
     const ecriture = retenirColisVinted({ userId, chemin, id, fusionner: fusionnerReglages });
@@ -842,9 +937,10 @@ export default function LotPublication({
           {lot && [...actifs].map((id) => {
             const d = parId.get(id);
             if (!d) return null;
+            // Un moteur qui casse ne casse que SON article (mis de côté).
             return (
+              <BarriereErreur key={id} nom={`moteur ${id}`} onErreur={(e) => mettreDeCote(id, e, "moteur")}>
               <HoteMoteur
-                key={id}
                 item={complets[id] ?? d.item}
                 jobs={d.jobs}
                 prixVinted={prixVinted ? prixVinted(d.item) : null}
@@ -857,6 +953,7 @@ export default function LotPublication({
                 isPremium={ctx.isPremium} isPro={ctx.isPro} isBusiness={ctx.isBusiness}
                 extensionNeverSeen={ctx.extensionNeverSeen} extensionLastSeenAt={ctx.extensionLastSeenAt}
               />
+              </BarriereErreur>
             );
           })}
         </div>
@@ -885,6 +982,7 @@ export default function LotPublication({
               livraison={{ transporteurs: transporteursDuLot, format: livraison.format }} poidsDe={poidsDe} poserPoids={poserPoids}
               poserPoidsDuLot={poserPoidsDuLot} poserTransporteurs={poserTransporteurs} poserFormat={poserFormat}
               colisVinted={colisVinted} choisirColisVinted={choisirColisVinted}
+              userId={userId} exclusDepop={exclusDepop} mettreDeCote={mettreDeCote} signalerErreurBloc={signalerErreurBloc}
             />
           )}
           {etape === "fin" && lot && (
@@ -1084,8 +1182,24 @@ export function EcranAvant({
   livraison = { transporteurs: null, format: "" }, poidsDe = () => null, poserPoids = () => {}, poserPoidsDuLot = () => {},
   poserTransporteurs = () => {}, poserFormat = () => {},
   colisVinted = [], choisirColisVinted = () => {},
+  // (10/10) Ce que l'écran parent sait et que ce composant lisait SANS le
+  // recevoir (page blanche du 09/10 22:13 au 10/10) : passé, jamais supposé.
+  userId = null, exclusDepop = [], mettreDeCote = () => {}, signalerErreurBloc = () => {},
 }) {
   const total = lot.ids.length;
+  // Un bloc commun qui casse est remplacé par une phrase ; le lot continue.
+  const blocProtege = (nom, enfant) => (
+    <BarriereErreur nom={`lot ${nom}`} onErreur={(e) => signalerErreurBloc(nom, e)}
+      secours={(
+        <Carte gravite="info">
+          <div className="fsn-card-p">{en
+            ? "This part couldn't be shown. The rest of the batch carries on: each item keeps its own answers below."
+            : "Cette partie n'a pas pu s'afficher. Le reste du lot continue : chaque article garde ses réponses ci-dessous."}</div>
+        </Carte>
+      )}>
+      {enfant}
+    </BarriereErreur>
+  );
   const enCours = lot.ids.find((id) => PHASES_EN_PREPARATION.has(etats[id]?.phase));
   const itemEnCours = enCours ? parId.get(enCours)?.item : null;
   const autres = lignes.filter((id) => !lot.ids.includes(id));
@@ -1120,18 +1234,18 @@ export function EcranAvant({
       )}
 
       {/* (04/10) Poids, transporteurs et format : AVANT l'envoi, pour le lot. */}
-      {preparationFinie && !envoi && (
-        <LivraisonDuLot en={en} ids={lot.ids.filter((id) => !["retire", "envoye"].includes(etats[id]?.phase))} parId={parId} moteurs={moteurs}
+      {preparationFinie && !envoi && blocProtege("livraison", (
+        <LivraisonDuLot en={en} ids={lot.ids.filter((id) => !["retire", "envoye", "erreur"].includes(etats[id]?.phase))} parId={parId} moteurs={moteurs}
           poidsDe={poidsDe} poserPoids={poserPoids} poserPoidsDuLot={poserPoidsDuLot}
           livraison={livraison} poserTransporteurs={poserTransporteurs} poserFormat={poserFormat}
           colisVinted={colisVinted} choisirColisVinted={choisirColisVinted} userId={userId} />
-      )}
+      ))}
 
       {/* (09/10 soir) Ce que Depop refuse : combien d'articles, et pourquoi. */}
-      {preparationFinie && !envoi && <ExclusDepop en={en} exclus={exclusDepop} />}
+      {preparationFinie && !envoi && blocProtege("exclus_depop", <ExclusDepop en={en} exclus={exclusDepop} />)}
 
       {/* Une réponse pour plusieurs articles : même champ, même liste. */}
-      {communes.map((g) => (
+      {communes.length > 0 && blocProtege("reponses_communes", communes.map((g) => (
         <Carte key={g.signature} gravite="geste" titre={`${g.label} · ${NOM(g.gp)}`}>
           <div className="fsn-card-p">{en
             ? `Asked for ${g.ids.length} items: one answer fills them all (you can still change one below).`
@@ -1142,52 +1256,81 @@ export function EcranAvant({
             ))}
           </div>
         </Carte>
-      ))}
+      )))}
 
-      {/* Les articles qui attendent une réponse, puis les autres. */}
+      {/* Les articles qui attendent une réponse, puis les autres. Chacun a sa
+          barrière : celui qui casse est mis de côté, les autres continuent. */}
       {aCompleter.map((id) => (
-        <ArticleAQuestions key={id} id={id} en={en} L={L} item={parId.get(id)?.item} m={moteurs.get(id)} st={etats[id]}
-          decision={decisions[id] ?? {}} decider={decider} trancherJumeau={trancherJumeau} sansPlateforme={sansPlateforme} retirerDuLot={retirerDuLot}
-          lecture={lectures[id] ?? null} poserPoids={poserPoids} />
+        <BarriereErreur key={id} nom={`article ${id}`} onErreur={(e) => mettreDeCote(id, e, "questions")}
+          secours={<ArticleMisDeCote en={en} item={parId.get(id)?.item} />}>
+          <ArticleAQuestions id={id} en={en} L={L} item={parId.get(id)?.item} m={moteurs.get(id)} st={etats[id]}
+            decision={decisions[id] ?? {}} decider={decider} trancherJumeau={trancherJumeau} sansPlateforme={sansPlateforme} retirerDuLot={retirerDuLot}
+            lecture={lectures[id] ?? null} />
+        </BarriereErreur>
       ))}
 
       <div className="fsn-card" style={{ gap: 0 }}>
-        {lot.ids.filter((id) => !aCompleter.includes(id)).concat(autres).map((id) => {
-          const d = parId.get(id);
-          const st = etats[id] ?? { phase: "attente" };
-          const m = moteurs.get(id);
-          const pfs = st.envoyees ?? (m ? [...(m.plateformesPubliables ?? [])] : []);
-          return (
-            <div key={id} className="fsl-art">
-              <Vignette item={d?.item} />
-              <div className="fsl-art-t">
-                <b>{titreDe(d?.item) || (en ? "Untitled item" : "Article sans titre")}</b>
-                <small>
-                  {st.raison ? st.raison
-                    : st.phase === "lecture" ? TEXTE_LECTURE[en ? "en" : "fr"][st.lecture ?? "null"]
-                    : pfs.length && ["pret", "envoi", "envoye"].includes(st.phase) ? pfs.map(NOM).join(" · ")
-                    : null}
-                </small>
-              </div>
-              {PHASES_EN_PREPARATION.has(st.phase) ? <span className="fsn-spin" aria-hidden="true" /> : null}
-              <Puce ton={TON_PHASE[st.phase] ?? "mute"}>{L[st.phase] ?? st.phase}</Puce>
-              {st.phase === "pret" && !envoi && (
-                <button type="button" className="fsl-retirer" onClick={() => retirerDuLot(id)} aria-label={en ? "Remove from batch" : "Retirer du lot"}>✕</button>
-              )}
-            </div>
-          );
-        })}
+        {lot.ids.filter((id) => !aCompleter.includes(id)).concat(autres).map((id) => (
+          <BarriereErreur key={id} nom={`ligne ${id}`} onErreur={(e) => mettreDeCote(id, e, "ligne")}
+            secours={<ArticleMisDeCote en={en} item={parId.get(id)?.item} ligne />}>
+            <LigneArticle id={id} en={en} L={L} item={parId.get(id)?.item} st={etats[id] ?? { phase: "attente" }} m={moteurs.get(id)}
+              envoi={envoi} retirerDuLot={retirerDuLot} />
+          </BarriereErreur>
+        ))}
       </div>
     </>
   );
 }
 
+// Un article mis de côté parce que sa carte n'a pas pu s'afficher : son
+// titre, et la phrase — jamais le message technique.
+function ArticleMisDeCote({ en, item, ligne = false }) {
+  const titre = (() => { try { return titreDe(item); } catch { return ""; } })();
+  const phrase = RAISON_MIS_DE_COTE[en ? "en" : "fr"];
+  if (ligne) {
+    return (
+      <div className="fsl-art">
+        <div className="fsl-art-t"><b>{titre || (en ? "Untitled item" : "Article sans titre")}</b><small>{phrase}</small></div>
+        <Puce ton="refus">{en ? "Set aside" : "Mis de côté"}</Puce>
+      </div>
+    );
+  }
+  return (
+    <Carte gravite="info" titre={titre || (en ? "Untitled item" : "Article sans titre")}>
+      <div className="fsn-card-p">{phrase}</div>
+    </Carte>
+  );
+}
+
+// Une ligne d'article (préparé, en file, laissé de côté…).
+function LigneArticle({ id, en, L, item, st, m, envoi, retirerDuLot }) {
+  const pfs = st.envoyees ?? (m ? [...(m.plateformesPubliables ?? [])] : []);
+  return (
+    <div className="fsl-art">
+      <Vignette item={item} />
+      <div className="fsl-art-t">
+        <b>{titreDe(item) || (en ? "Untitled item" : "Article sans titre")}</b>
+        <small>
+          {st.raison ? st.raison
+            : st.phase === "lecture" ? TEXTE_LECTURE[en ? "en" : "fr"][st.lecture ?? "null"]
+            : pfs.length && ["pret", "envoi", "envoye"].includes(st.phase) ? pfs.map(NOM).join(" · ")
+            : null}
+        </small>
+      </div>
+      {PHASES_EN_PREPARATION.has(st.phase) ? <span className="fsn-spin" aria-hidden="true" /> : null}
+      <Puce ton={TON_PHASE[st.phase] ?? "mute"}>{L[st.phase] ?? st.phase}</Puce>
+      {st.phase === "pret" && !envoi && (
+        <button type="button" className="fsl-retirer" onClick={() => retirerDuLot(id)} aria-label={en ? "Remove from batch" : "Retirer du lot"}>✕</button>
+      )}
+    </div>
+  );
+}
+
 // Un article qui attend une réponse : SES questions, posées par le même bloc
 // que le stepper, plus ce que le lot ajoute (texte à relire, prix, jumeau).
-export function ArticleAQuestions({ id, en, item, m, st, decision, decider, trancherJumeau, sansPlateforme, retirerDuLot, lecture = null, poserPoids = null }) {
+export function ArticleAQuestions({ id, en, item, m, st, decision, decider, trancherJumeau, sansPlateforme, retirerDuLot, lecture = null }) {
   if (!m) return null;
   const motifs = st?.motifs ?? [];
-  const aPoids = motifs.some((x) => x.cle === "poids");
   const aTexte = motifs.some((x) => x.cle === "texte");
   const aPrix = motifs.some((x) => x.cle === "prix");
   const plateformes = [...(m.plateformesPubliables ?? [])];
@@ -1216,18 +1359,6 @@ export function ArticleAQuestions({ id, en, item, m, st, decision, decider, tran
           <input className="fsn-input" type="number" inputMode="decimal" min="1" step="0.5" defaultValue={m.price ?? ""}
             onBlur={(ev) => m.poserPrixGeneral?.(ev.target.value)} onKeyDown={(ev) => { if (ev.key === "Enter") ev.currentTarget.blur(); }}
             placeholder={en ? "Price in €" : "Prix en €"} />
-        </div>
-      )}
-
-      {aPoids && poserPoids && (
-        <div className="fsn-q fsn-q--bloque">
-          <div className="fsn-q-t">{en ? "Weight" : "Poids"}</div>
-          <div className="fsn-q-why">{en
-            ? "Leboncoin and Beebs price the parcel by weight — nothing is guessed. Saved on the item."
-            : "Leboncoin et Beebs calculent l'envoi au poids — rien n'est deviné. Gardé sur la fiche."}</div>
-          <input className="fsn-input" type="text" inputMode="decimal" placeholder={en ? "e.g. 650 g or 1.2 kg" : "ex. 650 g ou 1,2 kg"}
-            onBlur={(ev) => { const g = lirePoidsSaisi(ev.target.value); if (g) poserPoids(id, g); }}
-            onKeyDown={(ev) => { if (ev.key === "Enter") ev.currentTarget.blur(); }} />
         </div>
       )}
 

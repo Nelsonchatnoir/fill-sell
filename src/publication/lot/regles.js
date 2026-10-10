@@ -208,13 +208,16 @@ export function bilanArticle(m, decisions = {}, lang = "fr") {
   if (jumeauxOuverts.length) {
     motifs.push({ cle: "jumeau", libelle: en ? "Same item?" : "Même article ?" });
   }
-  // (04/10, Louis) LE POIDS : Leboncoin (palier de poids) et Beebs (« Format
-  // du colis » = palier de poids) le demandent. Sans lui, la rédaction
-  // devinait un format, différent d'un article identique à l'autre. Plus
-  // jamais : sans poids, l'article est À COMPLÉTER, jamais « Prêt ».
-  if (plateformesAuPoids(plateformes).length && poidsConnu(m, decisions) == null) {
-    motifs.push({ cle: "poids", libelle: en ? "Weight" : "Poids" });
-  }
+  // LE POIDS n'est JAMAIS une question du lot (10/10, Nico : « le lot doit se
+  // comporter exactement comme l'unité »). À l'unité, sans poids, Leboncoin
+  // garde l'estimation qu'il pré-coche d'après le rayon (format et palier) et
+  // Beebs son pré-remplissage, ou le palier du rayon (extension) — rien n'est
+  // demandé. Le lot faisait de l'absence de poids un « À compléter » (04/10) :
+  // c'était le seul écart. Le poids connu (lot, copie Leboncoin, fiche) part
+  // et choisit le palier exact ; le format deviné par la rédaction reste
+  // écarté au service du job (_shared/livraison-poids.js). Un champ « Poids
+  // du colis » qu'une plateforme EXIGE (compte pro Leboncoin) reste une
+  // question du moteur, comptée ci-dessus, comme au stepper.
   // (09/10 soir) DEPOP : les frais de port que paie l'acheteur — le prix par
   // défaut des Réglages, ou celui dit UNE fois pour le lot (LivraisonDuLot).
   // Sans eux, l'article est À COMPLÉTER, jamais une question après l'envoi.
@@ -237,8 +240,10 @@ export function bilanArticle(m, decisions = {}, lang = "fr") {
 // ── LE POIDS ET LE COLIS, PAR PLATEFORME (04/10, relevé live) ─────────────
 // Ce que chaque plateforme demande VRAIMENT, et ce que le lot en fait :
 //   · Leboncoin : un format (une TAILLE : Petit / Moyen / Volumineux) et un
-//     palier de POIDS → poids exigé ; format seulement s'il est choisi ;
-//   · Beebs : « Format du colis » = un palier de POIDS → poids exigé ;
+//     palier de POIDS → le poids connu choisit le palier, sinon l'estimation
+//     de Leboncoin reste (10/10, comme à l'unité) ; format s'il est choisi ;
+//   · Beebs : « Format du colis » = un palier de POIDS → le poids connu, sinon
+//     le pré-remplissage de Beebs ou le palier du rayon (extension) ;
 //   · Vinted : une TAILLE de colis, jamais un poids → pas de poids exigé ;
 //     (05/10) la taille choisie (carte du stepper, bloc Livraison du lot)
 //     part, sinon celle de la fiche, sinon celle retenue pour le rayon,

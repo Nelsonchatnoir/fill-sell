@@ -4,10 +4,13 @@
 // Louis : 13 « Rangement » identiques partis sur Leboncoin, 7 en « Petit »,
 // 6 en « Moyen », sans poids ni transporteurs — le format était DEVINÉ par la
 // rédaction, article par article. Règle de Nico : aucun format deviné en
-// silence ; sans poids, l'article est « à compléter » (regles.js, motif
-// « poids ») ; le lot reçoit, AVANT l'envoi :
-//   · un POIDS : une valeur pour le lot, modifiable article par article,
-//     écrite sur la fiche (inventaire.poids_g, le seul champ Poids) ;
+// silence (écarté au service du job, _shared/livraison-poids.js) ; le lot
+// reçoit, AVANT l'envoi :
+//   · un POIDS FACULTATIF (10/10, Nico : « le lot se comporte exactement
+//     comme l'unité ») : sans lui, Leboncoin et Beebs gardent leur estimation
+//     d'après le rayon, comme pour un article publié seul — jamais une
+//     question. Une valeur pour le lot, réglable article par article (détail
+//     replié), écrite sur la fiche (inventaire.poids_g, le seul champ Poids) ;
 //   · les TRANSPORTEURS Leboncoin, ceux que la page propose vraiment
 //     (relevé du 04/10, utils/leboncoinColis.js), retenus pour la suite ;
 //   · le FORMAT Leboncoin : estimé par Leboncoin (par défaut, le même pour
@@ -35,6 +38,7 @@ export default function LivraisonDuLot({
   colisVinted = [], choisirColisVinted = () => {}, userId = null,
 }) {
   const [poidsLot, setPoidsLot] = useState("");
+  const [poidsParArticle, setPoidsParArticle] = useState(false); // le détail, replié
   // (09/10 soir) DEPOP : les frais de port, dits UNE fois pour le lot. Le prix
   // par défaut des Réglages pré-remplit chaque article (moteur) ; sans lui, la
   // réponse donnée ici remplit tous les articles Depop du lot (ceux qui n'ont
@@ -82,11 +86,11 @@ export default function LivraisonDuLot({
   return (
     <Carte titre={en ? "Shipping" : "Livraison"}>
       {auPoids.length > 0 && (
-        <div className="fsn-q fsn-q--bloque">
-          <div className="fsn-q-t">{en ? "Weight of each item" : "Poids de chaque article"}</div>
+        <div className="fsn-q">
+          <div className="fsn-q-t">{en ? "Parcel weight (optional)" : "Poids du colis (facultatif)"}</div>
           <div className="fsn-q-why">{en
-            ? "Leboncoin and Beebs price the parcel by weight. Without it, nothing is guessed: the item waits here. The weight is saved on the item."
-            : "Leboncoin et Beebs calculent l'envoi au poids. Sans lui, rien n'est deviné : l'article attend ici. Le poids est gardé sur la fiche."}</div>
+            ? "As for an item published on its own: without a weight, Leboncoin and Beebs estimate the parcel from the category. A weight given here picks the exact band and is saved on the item."
+            : "Comme pour un article publié seul : sans poids, Leboncoin et Beebs estiment le colis d'après le rayon. Un poids donné ici choisit le palier exact et reste sur la fiche."}</div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <input className="fsn-input" style={{ maxWidth: 170 }} type="text" inputMode="decimal" value={poidsLot}
               onChange={(ev) => setPoidsLot(ev.target.value)} placeholder={en ? "e.g. 650 g or 1.2 kg" : "ex. 650 g ou 1,2 kg"}
@@ -94,11 +98,17 @@ export default function LivraisonDuLot({
             <button type="button" className="fsn-btn fsn-btn--secondary fsn-btn--sm" disabled={!gLot || !sansPoids.length}
               onClick={() => { if (gLot) poserPoidsDuLot(sansPoids, gLot); }}>
               {sansPoids.length
-                ? (en ? `Apply to the ${sansPoids.length} without weight` : `Appliquer aux ${sansPoids.length} sans poids`)
+                ? (en ? `Apply to the ${sansPoids.length} without weight` : `Appliquer ${sansPoids.length > 1 ? `aux ${sansPoids.length} sans poids` : "à l'article sans poids"}`)
                 : (en ? "All have a weight" : "Tous ont un poids")}
             </button>
           </div>
-          {auPoids.map((id) => {
+          <button type="button" className="fpd fpd-lien" style={{ padding: 0, marginTop: 6 }} aria-expanded={poidsParArticle}
+            onClick={() => setPoidsParArticle((v) => !v)}>
+            {poidsParArticle
+              ? (en ? "Hide the item-by-item weights" : "Masquer le poids article par article")
+              : (en ? "Set the weight item by item" : "Régler le poids article par article")}
+          </button>
+          {poidsParArticle && auPoids.map((id) => {
             const g = poidsDe(id);
             return (
               <div key={`${id}:${g ?? ""}`} style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6 }}>
@@ -106,7 +116,7 @@ export default function LivraisonDuLot({
                   {titreDe(parId.get(id)?.item) || (en ? "Untitled item" : "Article sans titre")}
                 </span>
                 <input className="fsn-input" style={{ maxWidth: 110 }} type="text" inputMode="decimal"
-                  defaultValue={g != null ? String(g) : ""} placeholder={en ? "weight" : "poids"}
+                  defaultValue={g != null ? String(g) : ""} placeholder={en ? "estimated" : "estimé"}
                   aria-label={en ? "Weight in grams" : "Poids en grammes"}
                   onBlur={(ev) => { const v = lirePoidsSaisi(ev.target.value); if (v && v !== g) poserPoids(id, v); }}
                   onKeyDown={(ev) => { if (ev.key === "Enter") ev.currentTarget.blur(); }} />

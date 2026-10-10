@@ -7,8 +7,10 @@
 //   1. l'app : seul un format CHOISI compte ; les transporteurs suivent le
 //      poids (relevé live du 04/10 : Courrier suivi ≤ 2 kg, Shop2Shop ≤ 20 kg,
 //      Mondial Relay et Colissimo ≤ 30 kg ; Volumineux = aucun partenaire) ;
-//   2. le lot : sans poids, un article visé sur Leboncoin ou Beebs est « à
-//      compléter », jamais « Prêt » ; Vinted et eBay n'exigent pas de poids ;
+//   2. le lot (10/10, Nico : « exactement comme l'unité ») : sans poids, un
+//      article visé sur Leboncoin ou Beebs est PRÊT — la plateforme garde son
+//      estimation d'après le rayon, comme pour un article publié seul ; le
+//      poids connu (lot, copie, fiche) part et choisit le palier ;
 //   3. le serveur : format deviné écarté, poids de la fiche, transporteurs
 //      retenus bornés au poids, rien d'inventé ;
 //   4. le câblage : prompt sans format, gpj, carte, moteur, lot.
@@ -41,15 +43,16 @@ ok(Array.isArray(C.transporteursPlausibles("Volumineux", 300)) && C.transporteur
 ok(C.transporteursPlausibles("Moyen", 250).includes("courrier_suivi"), "Moyen 250 g : Courrier suivi reste proposé (relevé live)");
 ok(C.LBC_PALIERS_G.length === 11 && C.LBC_PALIERS_G[0] === 100 && C.LBC_PALIERS_G[10] === 70000, "les onze paliers relevés (100 g … plus de 40 kg)");
 
-console.log("2. le lot : sans poids, à compléter");
+console.log("2. le lot : sans poids, prêt — comme à l'unité (10/10)");
 const moteur = (plateformes, extra = {}) => ({
   plateformesPubliables: plateformes, price: 12, nbQuestions: 0, ctaDisabled: false, preparationAuRepos: true,
   texteVendeur: { titre: "Rangement noir", description: "Rangement noir pour 12 pots" }, jumeaux: [],
   edited: { leboncoin: { platform_fields: {} } }, initialListing: {}, ...extra,
 });
 const b1 = R.bilanArticle(moteur(["leboncoin", "vinted"]), {}, "fr");
-ok(!b1.pret && b1.motifs.some((x) => x.cle === "poids"), "Leboncoin sans poids : « à compléter » (motif Poids), jamais « Prêt »");
-ok(R.bilanArticle(moteur(["beebs"]), {}, "fr").motifs.some((x) => x.cle === "poids"), "Beebs sans poids : à compléter aussi");
+ok(b1.pret && !b1.motifs.some((x) => x.cle === "poids"), "Leboncoin sans poids : Prêt, aucune question (Leboncoin garde son estimation, comme à l'unité)");
+ok(R.bilanArticle(moteur(["beebs"]), {}, "fr").pret, "Beebs sans poids : Prêt aussi (pré-remplissage de Beebs ou palier du rayon)");
+ok(!R.bilanArticle(moteur(["leboncoin"], { nbQuestions: 1 }), {}, "fr").pret, "un « Poids du colis » EXIGÉ par la plateforme (question du moteur) reste une question, comme au stepper");
 ok(R.bilanArticle(moteur(["vinted", "ebay"]), {}, "fr").pret, "Vinted + eBay : pas de poids exigé (Vinted demande une taille, eBay rien)");
 ok(R.bilanArticle(moteur(["leboncoin"]), { poids: 650 }, "fr").pret, "poids réglé dans le lot : Prêt");
 ok(R.bilanArticle(moteur(["leboncoin"], { initialListing: { poids_g: 300 } }), {}, "fr").pret, "poids déjà sur la fiche : Prêt");

@@ -108,11 +108,10 @@ const job = (o) => ({ action: 'publish', status: 'published', created_at: '2026-
     preparationAuRepos: true, nbQuestions: 0, price: 12, ctaDisabled: false,
     texteVendeur: { titre: 'Robe midi Marc Cain', description: 'Portée deux fois, très bon état' },
     plateformesPubliables: new Set(['vinted', 'leboncoin']), jumeaux: [],
-    // (04/10) Leboncoin exige un poids : l'article du test en a un sur sa fiche.
     initialListing: { poids_g: 450 },
   };
-  verifier(bilanArticle({ ...base, initialListing: {} }).motifs.some((x) => x.cle === 'poids') && !bilanArticle({ ...base, initialListing: {} }).pret,
-    '(04/10) Leboncoin sans poids : « Poids » à compléter, jamais prêt (aucun format deviné)');
+  verifier(bilanArticle({ ...base, initialListing: {} }).pret && !bilanArticle({ ...base, initialListing: {} }).motifs.some((x) => x.cle === 'poids'),
+    '(10/10) Leboncoin sans poids : prêt, comme à l’unité (Leboncoin garde son estimation)');
   verifier(bilanArticle(base).pret, 'au repos, rien à demander, texte du vendeur : prêt');
   verifier(!bilanArticle({ ...base, preparationAuRepos: false }).pret, 'moteur pas au repos : jamais prêt');
   verifier(bilanArticle({ ...base, nbQuestions: 2 }).motifs[0].libelle === '2 réponses', 'les questions du moteur sont comptées');
