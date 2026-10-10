@@ -126,4 +126,18 @@ Depop, arrêté à « Avant l'envoi » (rien d'envoyé) :
 - **serveur v114, app d'avant** (18:17) : **aucune question eBay** ; posé : veste polaire
   `Type` Veste (titre) + `Style` « Veste polaire » ; pull polaire `Type` « Pull polaire » +
   `Style` « 1/4 zip » ; polaire `Type` Gilet (liste) + `Style` « Polaire 1/4 zip » ;
-- après la mise en ligne de l'app : cf. compte rendu de la session.
+- **app 2.9.77 + v114** (21:25) : le pull polaire garde `Style` (Type et Style demandés dans
+  le même appel de seconde passe : Type seul revenait) → `generate-listing` **v115** : un appel
+  par aspect ;
+- **app 2.9.77 + v115** (21:43, lot) : **0 question** sur les 4 articles —
+  veste polaire `Type` Veste + `Style` « Polaire Full zip » ; pull polaire `Type` « Pull polaire
+  1/4 zip » + `Style` « Polaire 1/4 zip » ; polaire `Type` Gilet + `Style` « 1/4 zip » ; gilet en
+  63866 « Pulls, cardigans » `Type` Pull + `Style` Gilet (liste) ; `Département` Femme partout ;
+- **à l'unité** (21:46, stepper, pull polaire) : 0 question, `Type` « Pull polaire », `Style`
+  « Polaire 1/4 zip », écran « Confirme la publication », eBay « prête » ; rien publié.
+- Fiches de test et leurs brouillons supprimés ensuite ; 0 job créé.
+
+Dans le parc, depuis la mise en ligne (18:17 → 21:50) : 0 job en échec ni en attente de
+réponse (même fenêtre la veille : 8 en attente de réponse) ; restent demandées, à raison, une
+`Couleur` et une `Longueur de la robe` (63861) que le titre ne disait pas — les photos ne sont pas
+lues par cette extraction (piste suivante : une passe sur les photos, valeurs de la liste seules).
