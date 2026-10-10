@@ -19,7 +19,8 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const RACINE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const lire = (p) => fs.readFileSync(path.join(RACINE, p), "utf8");
+// Fins de ligne normalisées : une extraction Windows (core.autocrlf) rend du CRLF.
+const lire = (p) => fs.readFileSync(path.join(RACINE, p), "utf8").replace(/\r\n/g, "\n");
 const charger = (p) => import(pathToFileURL(path.join(RACINE, p)).href);
 let ok = 0, ko = 0;
 const dit = (nom, c, detail = "") => { if (c) ok++; else { ko++; console.log(`  ✗ ${nom}${detail ? `   ← ${detail}` : ""}`); } };
