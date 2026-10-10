@@ -30,7 +30,7 @@ import {
 } from '../components/RepublicationPlanifiee';
 import { useRepublicationPlanifiee, republicationPlanifieeExposee, PLATEFORMES_PLANIFIEES, plateformesPlanifieesVisibles, droitRepublication } from '../hooks/useRepublicationPlanifiee';
 import { palierDesDrapeaux, aAuMoins, nomDuPalier } from '../utils/palier';
-import { plateformesDeReleve } from '../utils/stockFiltres';
+import { plateformesDeReleve, plateformesDuCompte } from '../utils/stockFiltres';
 import { txt } from './textes';
 import { GROUPES, entreesVisibles } from './plan';
 import { useSessionsPlateformes } from './useSessionsPlateformes';
@@ -57,7 +57,7 @@ import SousPageCatalogueQuarantaine from './SousPageCatalogueQuarantaine';
 // └──────────────────────────────────────────────────────────────────────────┘
 // Noms propres : ils ne se traduisent pas (même table que SousPagePlateformes
 // et que le module de republication).
-const NOMS_PF_REPUB = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', opla: 'Opla' };
+const NOMS_PF_REPUB = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', opla: 'Opla', depop: 'Depop' };
 
 const SOUS_PAGES = {
   abonnement:    { titre: (T) => T.gAbonnement,    Composant: SousPageAbonnement },
@@ -108,6 +108,10 @@ export default function ReglagesPage({
   // (utils/stockFiltres.plateformesDuCompte), jamais une liste recopiée ici —
   // c'est exactement la divergence corrigée le 17/09 (Opla absente des cartes).
   const plateformesSession = useMemo(() => plateformesDeReleve(plateformesOuvertes, oplaRelie), [plateformesOuvertes, oplaRelie]);
+  // (10/10) Les plateformes que l'app PROPOSE à ce compte (même réponse que la
+  // publication) : la republication automatique Depop n'a de ligne que là où
+  // Depop est ouverte (extension ≥ 0.6.106, utils/basculeOplaDepop.js).
+  const plateformesCompte = useMemo(() => plateformesDuCompte(plateformesOuvertes ?? []), [plateformesOuvertes]);
   const sessionsLocales = useSessionsPlateformes({ userId: user?.id, plateformes: plateformesSession });
   // La vérité serveur (2026-09-23) : c'est elle que l'écran Plateformes et le
   // compteur du hub affichent. Le calcul local reste le repli.
@@ -288,6 +292,7 @@ export default function ReglagesPage({
           palierApp={palierApp}
           lecture={planifiee.lecture}
           onReessayer={planifiee.recharger}
+          plateformesCompte={plateformesCompte}
         />
       )}
       {PLATEFORMES_PLANIFIEES.includes(ecranRepub) && (

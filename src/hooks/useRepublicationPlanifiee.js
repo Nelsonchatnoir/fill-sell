@@ -6,8 +6,9 @@
 // que des composants).
 //
 // UN SEUL CONTRAT, désormais par plateforme :
-//   · `republish_planifiee_etat_multi()` rend les QUATRE plateformes (Vinted,
-//     Leboncoin, Beebs, Opla) plus l'enveloppe de compte, en un appel ;
+//   · `republish_planifiee_etat_multi()` rend TOUTES les plateformes (Vinted,
+//     Leboncoin, Beebs, Opla, Depop depuis le 10/10) plus l'enveloppe de
+//     compte, en un appel ;
 //   · `republish_planifiee_etat(pf)` rend une seule plateforme ;
 //   · `republish_planifiee_regler(p)` écrit un PATCH validé côté serveur — la
 //     plateforme voyage DANS le patch (`platform`, défaut 'vinted') ;
@@ -28,15 +29,29 @@ import { palierNormalise } from '../utils/palier';
 import { demarrerRelecture } from '../utils/relectureBornee';
 
 // L'ordre d'affichage, et la seule liste : eBay n'y est pas et n'y sera pas
-// (voie API, on ne republie pas — garde-fou du 17/09).
-export const PLATEFORMES_PLANIFIEES = ['vinted', 'leboncoin', 'beebs', 'opla'];
+// (voie API, on ne republie pas — garde-fou du 17/09). Même liste que le
+// serveur (republish_planifiee_plateformes(), migration 20261009230000) :
+// Depop y est entrée à la bascule du 10/10.
+export const PLATEFORMES_PLANIFIEES = ['vinted', 'leboncoin', 'beebs', 'opla', 'depop'];
 
 // (02/10, sortie d'Opla) Les plateformes à MONTRER : une plateforme que le
 // serveur dit fermée (`ouverte: false`, coin_config republish_planifiee_pf_<pf>
 // à 0) disparaît de l'écran. C'est ainsi qu'Opla en sort le 10/10 : à la
 // bascule, handler-watch coupe sa clé, et la ligne s'efface d'elle-même.
-export function plateformesPlanifieesVisibles(parPlateforme) {
-  return PLATEFORMES_PLANIFIEES.filter((pf) => parPlateforme?.[pf]?.ouverte !== false);
+// (10/10) `plateformesCompte` : les plateformes que l'app PROPOSE à ce compte
+// (utils/stockFiltres.plateformesDuCompte) — la même règle que la publication.
+// Une plateforme « à venir » n'a donc de ligne que là où elle est ouverte :
+// Depop seulement avec une extension qui sait la faire (≥ 0.6.106,
+// utils/basculeOplaDepop.js). Sans cette liste, rien n'est filtré de plus.
+// Une plateforme ACTIVE garde toujours sa ligne : ce qui tourne se voit, et
+// s'arrête, même si l'extension n'est pas (encore) lue.
+export function plateformesPlanifieesVisibles(parPlateforme, plateformesCompte = null) {
+  return PLATEFORMES_PLANIFIEES.filter((pf) => {
+    const e = parPlateforme?.[pf];
+    if (e?.ouverte === false) return false;
+    if (e?.actif === true || !Array.isArray(plateformesCompte)) return true;
+    return plateformesCompte.includes(pf);
+  });
 }
 
 // Fuseau de l'appareil : envoyé à chaque écriture, validé par le serveur. La
@@ -196,7 +211,7 @@ export function useRepublicationPlanifiee({ userId, poll = true, multi = false, 
     return () => relecture.arreter();
   }, [userId, poll, pollMs, cle, lire]);
 
-  // { vinted: {...}, leboncoin: {...}, … } — toujours les quatre clés en mode
+  // { vinted: {...}, leboncoin: {...}, … } — toujours toutes les clés en mode
   // multi, pour que l'écran n'ait jamais à deviner une absence.
   const parPlateforme = useMemo(() => {
     const liste = Array.isArray(etatMulti?.plateformes) ? etatMulti.plateformes : [];
