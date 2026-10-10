@@ -234,9 +234,13 @@ Si `/legal` portait `X-Robots-Tag` : retirer la règle `/app-shell.html` de
 - `/auth` (bouton « Se connecter » du popup de l'extension) passe par la SPA puis
   `/` : une redirection `/auth` → `/login` serait plus directe (revue A M2).
 - GTM et Google Ads : sous consentement sur le web depuis le 09/10 (ci-dessus).
-  RESTE : l'app NATIVE (aucun bandeau) les charge toujours sans accord, et
-  `/legal` (partagée avec le natif) les décrit encore comme avant — décision
-  de Nico (bandeau dans l'app ou balises retirées du natif), puis le texte.
+  **FAIT le 10/10 (décision de Nico : pas de bandeau dans l'app native)** : les
+  builds hors site (natif, OTA, dev) retirent GTM, Google Ads, le noscript et le
+  dns-prefetch GTM de la coquille (`scripts/vite-plugin-natif-sans-google.mjs`,
+  `sansBalisesGoogle`, `selftest:site-balises` § 6 bis) — le build REFUSE tout
+  traceur restant ; `/legal` § 5 réécrite d'après ce qui est réellement chargé
+  (web : Google Analytics, Google Ads, pixel Meta après « Accepter » ; Vercel
+  Web Analytics sans cookie ; app native : aucun traceur).
 - Les contrôles de livraison OTA / binaires ne vérifient pas encore que
   `dist/index.html` est la coquille (revue A M4, point 2).
 - `site/donnees/plateformes.yml` : les pays ouverts (Vinted hors de France avec

@@ -481,7 +481,7 @@ Alerte : `veille-cpu` (cron `veille-cpu-2min`) prévient support@fillsell.app
 au-delà de 70 % pendant 10 min, au plus une fois par heure, puis au retour
 sous 50 %. L'ops-digest affiche le maximum des 24 h.
 
-## ⛔ SITE VITRINE STATIQUE (09/10, branche `seo-crosslisting` — vaut dès sa fusion sur main)
+## ⛔ SITE VITRINE STATIQUE (09/10, en production le 10/10)
 
 Le site public (accueil, guides, FAQ, blog) est généré en HTML statique par
 `npm run build:vercel` ; l'app reste la SPA. Trois gestes pour TOUT terminal
@@ -499,6 +499,11 @@ Le site public (accueil, guides, FAQ, blog) est généré en HTML statique par
   `HTML_PUBLIC_PERMIS` (`routes-app.mjs`).
 ⛔ `build:vercel` ne sert QUE Vercel : le natif et l'OTA restent `npm run build`
 (jamais `FILLSELL_SITE=1` vers `dist/`).
+⛔ **Traceurs (10/10, Nico)** : sur le web, Google (GTM, Google Ads) et le pixel
+Meta ne se chargent qu'après « Accepter » (bandeau maison) ; l'app NATIVE n'a pas
+de bandeau et ne charge AUCUNE balise Google (`scripts/vite-plugin-natif-sans-google.mjs`,
+le build refuse tout traceur restant). Une balise ajoutée ou retirée = `/legal` § 5
+mise à jour le même jour (`src/pages/Legal.jsx`).
 
 ## Format des réponses
 

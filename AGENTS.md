@@ -4,24 +4,22 @@
 fin) et `docs/agents/consignes-2026-09-28.md` (règles) remplacent tout historique
 contraire. `functions list`, `cron.job` et `profiles.extension_build` font foi.
 
-- **Servi** : ext. **0.6.104** ; 0.6.105 zip prêt ; min **0.6.81** ; OTA 2.9.67 ; `docs/reprise/terminal-depop-0910.md`.
-- **⛔ DEPOP (09/10)** : Nico seul (drapeau 0) ; rayon par id ; dépôt rattaché par identifiant AVANT le moteur ; parcours vert.
+- **Servi** : ext. **0.6.106** ; min **0.6.81** ; OTA 2.9.73.
+- **⛔ DEPOP** : pour tous dès le 10/10 (ext. ≥ 0.6.106) ; rayon par id ; identifiant rattaché AVANT le moteur.
 - **⛔ MULTI-SYNCHRO (08/10)** : un appui = toutes les plateformes, stock DÉJÀ fusionné ; moteur v3,
   `rapprochement` v17 ; empreintes par la base ; fiche `releve_*` = `rapprocher_importer` seul ; fiches Vinted
   nouvelles jugées (mig 130000) ; fiche main ↔ Vinted : mig 150000 ; remise en ligne Vinted (mêmes photos + titre, jamais
   en ligne ensemble → la plus ancienne ; vente sur annonce remplacée refusée) : mig 160000 NON appliquée ; `docs/multi-synchro.md`.
 - **Push** (cron 34, `pushDisponible()`) ; **⛔ mail par vente** : récente prouvée, sans plafond ni récap.
-- **⛔ Republication** : jamais bloquée sur une valeur que l'annonce porte (« EU N » ≡ « N ») ; `_shared/relance-apres-maj.js` ; suppression partie = va au bout, même hors créneau.
+- **⛔ Republication** : jamais bloquée par une valeur de l'annonce (« EU N » ≡ « N ») ; `_shared/relance-apres-maj.js` ; suppression partie = au bout, même hors créneau.
 - **05/10** : Free 50 repub./mois ; palier unique ; eBay voie = création.
 - **CPU (04/10)** : tâche auto mesurée, bornée (interdit 11).
 - **04/10** : vente supprimée jamais recréée ; « Sans marque » ; texte = fiche ; colis jamais deviné.
 - **Retraits** : jamais arrêtés (1 h/3 h/6 h) ; absent de deux relevés complets → « déjà
   retirée ». **Boucles** → needs_user. **Cadence** : 50/j. **Relevés** : 5 min sans progression =
   arrêt ; partiel = `incomplete`. **Marque** hors catalogue → question. Test ≥ 999 €.
-- **Sortie d'Opla** : 10/10 00:00 Paris (`opla_sortie_le`) ; même instant : Depop pour tous, extension ≥ 0.6.106 (mig 20261009230000).
-- **⛔ Port Depop (09/10)** : jamais deviné ; défaut `platform_settings.depop.frais_port_defaut` (fusion), dit AVANT l'envoi ; gpj le pose, sinon republication → needs_user AVEC le champ (`_shared/port-depop.js`).
-- **⛔ Interdits Depop (09/10)** : une table `_shared/depop-interdits.js` ; case grisée, lot, filet gpj ; coques/étuis autorisés (titre seul) ; jamais la mode (sauf montres connectées) ; ambigus non bloqués.
-- **⛔ Republication auto Depop (10/10)** : même circuit (liste serveur, créneaux gpj v231) ; ligne de l'app si extension ≥ 0.6.106 ; un interdit n'est jamais candidat (mig 20261010100000).
+- **Opla sortie** le 10/10 00:00 (`opla_sortie_le`). **⛔ Depop** : port jamais deviné (`_shared/port-depop.js`) ; interdits = une table
+  (`_shared/depop-interdits.js`) ; republication auto : même circuit, interdit jamais candidat (mig 20261010100000).
 - **⛔ `platform_settings`** : `rpc platform_settings_fusionner` seulement.
 - **Crons coupés** : 17, 22. **Migrations** : § 3.4. **Données** : `scripts/reparations/` (`git add -f`), sauvegarde, inverse.
 - **Ouvert** : binaires **2.9.38** (AAB, iOS Codemagic) ; le reste : fin de l'état.
@@ -71,12 +69,8 @@ utilisateur). Nico = le fondateur, seul décideur.
     `src/utils/relectureBornee.js`, jamais de `setInterval` qui relit la base
     (incident CPU 99 % du 04/10 ; `CLAUDE.md`, `docs/agents/pieges.md`).
 
-**Site vitrine statique** (09/10, dès la fusion de `seo-crosslisting`) :
-`src/blog/*.md`, `site/contenu/`, `site/donnees/` touchés = `npm run site:dater`
-même commit (sinon build du site rouge ; natif, OTA, Vercel : avertissement) ;
-route ou URL `https://fillsell.app/…` nouvelle = `scripts/site/routes-app.mjs`
-ET `rewrites` de `vercel.json` (sinon 404, tout build refuse).
-Détail : `docs/agents/site-vitrine.md`.
+**Site vitrine** (`docs/agents/site-vitrine.md`) : `src/blog/`, `site/` = `site:dater` ;
+route neuve = `routes-app.mjs` + `vercel.json` ; natif sans balise Google, `/legal` § 5.
 
 ---
 
@@ -555,7 +549,7 @@ qui survit à ça, c'est du code.
 | toucher `chrome-extension/` ou livrer un zip | `docs/agents/extension.md` |
 | toucher `src/` ou faire une OTA | `src/AGENTS.md` |
 | reprendre un chantier en cours | `docs/agents/etat-2026-09-27.md` (puis la prod) |
-| lire un mot inconnu (relevé, rattachement, jumeau, garde, mur, parcage, veilleur, stepper, palier…) | `docs/agents/glossaire.md` |
+| lire un mot inconnu (relevé, rattachement, jumeau, garde, palier…) | `docs/agents/glossaire.md` |
 
 Les notes détaillées de Claude (un fait par fichier, index `MEMORY.md`) :
 `C:\Users\nicol\.claude\projects\C--Users-nicol-fill-and-sell\memory\` —
