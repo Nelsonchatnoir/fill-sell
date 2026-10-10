@@ -98,7 +98,7 @@ const privacyTexts = {
     ],
     storage: "Les données sont stockées de manière sécurisée via Supabase (infrastructure EU) et protégées par des mesures de sécurité standard.",
     rights: "Les utilisateurs peuvent demander l'accès, la modification ou la suppression de leurs données en contactant :",
-    noTrack: "FillSell ne contient aucun SDK publicitaire. Le site et l'application utilisent Google Tag Manager à des fins de mesure d'audience : comprendre comment le service est utilisé et quelles pages sont consultées. Aucune donnée n'est utilisée à des fins publicitaires, et aucune donnée n'est vendue ni cédée à un tiers.",
+    noTrack: "FillSell ne contient aucun SDK publicitaire. L'application iPhone et Android ne charge aucun traceur de mesure ni publicitaire (ni Google, ni Meta). Sur le site et l'application web, la mesure d'audience (Google Analytics) et la mesure publicitaire (Google Ads, pixel Meta) ne se chargent qu'après ton accord donné au bandeau. Aucune donnée n'est vendue ni cédée à un tiers.",
     compliance: "This app complies with Apple App Store privacy requirements.",
   },
   en: {
@@ -120,7 +120,7 @@ const privacyTexts = {
     ],
     storage: "Data is stored securely via Supabase (EU infrastructure) and protected by standard security measures.",
     rights: "Users may request access, modification, or deletion of their data by contacting:",
-    noTrack: "FillSell contains no advertising SDK. The site and the app use Google Tag Manager for audience measurement: understanding how the service is used and which pages are viewed. No data is used for advertising purposes, and no data is sold or transferred to any third party.",
+    noTrack: "FillSell contains no advertising SDK. The iPhone and Android app loads no measurement or advertising tracker (neither Google nor Meta). On the website and the web app, audience measurement (Google Analytics) and advertising measurement (Google Ads, Meta pixel) are only loaded after you accept them in the banner. No data is sold or transferred to any third party.",
     compliance: "This app complies with Apple App Store privacy requirements.",
   },
 };
@@ -684,29 +684,41 @@ export default function Legal() {
 
         {/* 5. Cookies */}
         <Section icon="🍪" title={en ? '5. Cookie Policy' : '5. Politique de cookies'}>
+          {/* (10/10/2026) Réécrite d'après ce qui est RÉELLEMENT chargé : sur le
+              web, Google (GTM → Google Analytics, Google Ads) et le pixel Meta
+              ne se chargent qu'après « Accepter » (site/js/balises-consentement.js,
+              src/utils/metaPixel.js) ; l'app native n'en charge aucun
+              (scripts/vite-plugin-natif-sans-google.mjs, aucun bandeau). Toute
+              balise ajoutée ou retirée se reporte ICI, le même jour. */}
           <p className="legal-p">
             {en
-              ? 'FillSell uses a minimal number of cookies, strictly necessary for the operation of the service:'
-              : 'FillSell utilise un nombre minimal de cookies, strictement nécessaires au fonctionnement du service :'}
+              ? 'What FillSell stores on or reads from your device, and when:'
+              : 'Ce que FillSell dépose ou lit sur ton appareil, et quand :'}
           </p>
           <ul className="legal-ul">
-            <li><span className="legal-strong">{en ? 'Session cookie:' : 'Cookie de session :'}</span> {en ? 'maintaining user connection (Supabase Auth)' : 'maintien de la connexion utilisateur (Supabase Auth)'}</li>
-            <li><span className="legal-strong">{en ? 'Local preferences:' : 'Préférences locales :'}</span> {en ? 'active tab, display settings (localStorage — not shared with third parties)' : 'onglet actif, paramètres d\'affichage (localStorage — non transmis à des tiers)'}</li>
+            <li><span className="legal-strong">{en ? 'Sign-in:' : 'Connexion :'}</span> {en ? 'your session (Supabase Auth), kept in the browser or app storage — strictly necessary, no consent required.' : 'ta session (Supabase Auth), gardée dans le stockage du navigateur ou de l\'app — strictement nécessaire, sans consentement.'}</li>
+            <li><span className="legal-strong">{en ? 'Local preferences:' : 'Préférences locales :'}</span> {en ? 'language, active tab, display settings and your answer to the banner (local storage — not shared with third parties).' : 'langue, onglet actif, réglages d\'affichage et ta réponse au bandeau (stockage local — non transmis à des tiers).'}</li>
+            <li><span className="legal-strong">{en ? 'Cookie-free audience measurement (website and web app):' : 'Mesure d\'audience sans cookie (site et app web) :'}</span> {en ? 'Vercel Web Analytics counts page views, with no cookie and no identifier.' : 'Vercel Web Analytics compte les pages vues, sans cookie ni identifiant.'}</li>
           </ul>
           <p className="legal-p" style={{ marginTop: 10 }}>
             {en
-              ? <>FillSell also uses <span className="legal-strong">Google Tag Manager</span> for <span className="legal-strong">audience measurement</span>: understanding how the site is used and which pages are viewed. No explicit consent is required for strictly necessary cookies, in accordance with the ePrivacy Directive.</>
-              : <>FillSell utilise par ailleurs <span className="legal-strong">Google Tag Manager</span> à des fins de <span className="legal-strong">mesure d'audience</span> : comprendre comment le site est utilisé et quelles pages sont consultées. Aucun consentement explicite n'est requis pour les cookies strictement nécessaires, conformément à la directive ePrivacy.</>}
+              ? <><span className="legal-strong">Only with your consent — website and web app.</span> On your first visit, a banner asks for your consent. Until you answer, and if you decline, none of the trackers below is loaded and no request is sent to Google or Meta; Google cookies already present are deleted when you decline. Declining changes nothing about how the site works.</>
+              : <><span className="legal-strong">Avec ton accord seulement — site et application web.</span> À ta première visite, un bandeau te demande ton accord. Tant que tu n'as pas répondu, et si tu refuses, aucun des traceurs ci-dessous n'est chargé et aucune requête ne part vers Google ou Meta ; les cookies Google déjà présents sont effacés au refus. Refuser ne change rien au fonctionnement du site.</>}
           </p>
-          {/* ⚠️ 13/09/2026 — ce paragraphe REMPLACE la phrase « Aucune donnée
-              n'est utilisée à des fins publicitaires » : elle est devenue
-              fausse avec l'installation du pixel Meta. Si le pixel est un jour
-              retiré, c'est ce bloc qu'il faut retirer, et l'ancienne phrase
-              qu'il faut remettre. */}
+          <ul className="legal-ul">
+            <li><span className="legal-strong">Google Analytics</span> {en ? '(loaded by Google Tag Manager) — audience measurement: how the site is used and which pages are viewed;' : '(chargé par Google Tag Manager) — mesure de fréquentation : comment le site est utilisé, quelles pages sont consultées ;'}</li>
+            <li><span className="legal-strong">Google Ads</span> — {en ? 'measuring the effectiveness of our advertising (advertising tracker);' : 'mesure de l\'efficacité de nos publicités (traceur publicitaire) ;'}</li>
+            <li><span className="legal-strong">{en ? 'Meta pixel' : 'Pixel Meta'}</span> — {en ? 'measuring the effectiveness of our Meta campaigns (advertising tracker). No personal data (email, account identifier) is sent to Meta.' : 'mesure de l\'efficacité de nos campagnes Meta (traceur publicitaire). Aucune donnée personnelle (email, identifiant de compte) n\'est transmise à Meta.'}</li>
+          </ul>
           <p className="legal-p" style={{ marginTop: 10 }}>
             {en
-              ? <>FillSell also uses the <span className="legal-strong">Meta pixel</span> to measure the effectiveness of its advertising campaigns. It is an <span className="legal-strong">advertising tracker</span>, loaded <span className="legal-strong">only after your explicit consent</span> given via the banner shown on your first visit — refusing changes nothing about how the site works. No personal data (email, account identifier) is sent to Meta. You can change your mind at any time by clearing your browser's site data.</>
-              : <>FillSell utilise également le <span className="legal-strong">pixel Meta</span> pour mesurer l'efficacité de ses campagnes publicitaires. Il s'agit d'un <span className="legal-strong">traceur publicitaire</span>, chargé <span className="legal-strong">uniquement après ton consentement explicite</span>, donné via le bandeau affiché à la première visite — refuser ne change rien au fonctionnement du site. <span className="legal-strong">Aucune donnée personnelle</span> (email, identifiant de compte) n'est transmise à Meta. Tu peux revenir sur ton choix à tout moment en effaçant les données de site de ton navigateur.</>}
+              ? 'You can change your mind at any time by clearing your browser\'s site data: the banner will ask you again.'
+              : 'Tu peux revenir sur ton choix à tout moment en effaçant les données de site de ton navigateur : le bandeau te sera reposé.'}
+          </p>
+          <p className="legal-p" style={{ marginTop: 10 }}>
+            {en
+              ? <><span className="legal-strong">iPhone and Android app:</span> no banner, and none of these trackers — no Google Analytics, no Google Ads, no Meta pixel. Only your session and local preferences are kept there.</>
+              : <><span className="legal-strong">Application iPhone et Android :</span> aucun bandeau, et aucun de ces traceurs — ni Google Analytics, ni Google Ads, ni pixel Meta. Seules ta session et tes préférences locales y sont gardées.</>}
           </p>
           <p className="legal-p" style={{ marginTop: 10 }}>
             {en
