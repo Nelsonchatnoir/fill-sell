@@ -18,6 +18,16 @@ contraire. Il se périme : `functions list`, `cron.job` et
   `lot_ecran_en_erreur`), build qui refuse toute variable non définie
   (`selftest:variables-definies`). Poids du lot FACULTATIF comme à l'unité
   (Nico). Aperçu : `node scripts/apercu/capture-lot-publication.mjs`.
+- **⛔ CHAMPS eBay : L'IA REMPLIT AVANT DE DEMANDER (10/10 soir, cas Manon)** : lot de
+  polaires importées de Vinted, 63862 « Manteaux, vestes » : `Style`/`Type` (FREE_TEXT, aucune
+  entrée de la liste ne décrit une polaire) demandés → eBay abandonné. La seconde passe FREE_TEXT
+  de la voie API (`remplirAspects`) manquait à la voie formulaire : `generate-listing` **v114**
+  (`completerAspectsIA`, mode eBay seulement, première passe inchangée ; hors liste = mot LU dans
+  le texte, sinon question) ; moteur : rien sur la liste d'une autre catégorie, une demande par
+  aspect ET catégorie, appel raté retenté (`src/publication/moteur/aspectsEbayAuto.js`).
+  Mesure `usage_logs` `ebay_aspects_ia`. ⛔ SELECTION_ONLY = liste seule ; colis jamais deviné.
+  Enquête : `docs/enquetes/manon-ebay-aspects-1010/RAPPORT.md` (« gilet » → 177856 Cyclisme :
+  défaut DISTINCT, non corrigé). Selftests `ebay-aspects-seconde-passe`, `ebay-aspects-auto`.
 - **⛔ DEPOP POUR LE SEUL COMPTE DE NICO (09/10 nuit)** : base (mig 20261009020000,
   garde `depop_autorise` : drapeau `depop_ouvert` RESTÉ À 0 ou `beta_flags.depop` —
   Nico seul), moteur commun corrigé (9eab08f : « EUR » ≡ « EU », « Comme neuf » = très
@@ -137,7 +147,7 @@ contraire. Il se périme : `functions list`, `cron.job` et
   d'EXTENSION_MIN_BUILD sans décision de Nico ; **minimum serveur 0.6.81** (inchangé : forcer la MAJ = décision de
   Nico) ; web **2.9.67** (poussé le 08/10), OTA **2.9.67 servie** (08/10
   10:50, build 9d203ac) ; `get-pending-jobs` v231 (10/10, créneaux = liste du serveur + republication auto Depop), `photo-empreinte` v3,
-  `generate-listing` v113, `lens-analysis` v107, `avis-demande` v4,
+  `generate-listing` v114 (10/10 soir), `lens-analysis` v107, `avis-demande` v4,
   `deal-analysis` v42, `voice-transcribe` v46,
   `ebay-account` v16, `send-extension-link` v13 (`true`) ;
   `rapprochement` v17, `empreintes-urls` v5, `update-job-status` v132, `handler-watch` v95, `push-ventes` v9, `voice-intent` v155, `ops-digest` v35,

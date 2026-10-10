@@ -20,6 +20,7 @@ contraire. `functions list`, `cron.job` et `profiles.extension_build` font foi.
   arrêt ; partiel = `incomplete`. **Marque** hors catalogue → question. Test ≥ 999 €.
 - **Opla sortie** le 10/10 00:00 (`opla_sortie_le`). **⛔ Depop** : port jamais deviné (`_shared/port-depop.js`) ; interdits = une table
   (`_shared/depop-interdits.js`) ; republication auto : même circuit, interdit jamais candidat (mig 20261010100000).
+- **⛔ eBay (10/10)** : FREE_TEXT vide → seconde passe IA (`completerAspectsIA`, gl v114), mot lu sinon question ; SELECTION_ONLY = liste.
 - **⛔ `platform_settings`** : `rpc platform_settings_fusionner` seulement.
 - **Crons coupés** : 17, 22. **Migrations** : § 3.4. **Données** : `scripts/reparations/` (`git add -f`), sauvegarde, inverse.
 - **Ouvert** : binaires **2.9.38** (AAB, iOS Codemagic) ; le reste : fin de l'état.
