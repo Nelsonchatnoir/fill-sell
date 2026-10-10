@@ -113,6 +113,23 @@ export function appliquerConsentement(html, script) {
 }
 
 /**
+ * index.html → la coquille NATIVE (app iPhone / Android, et l'OTA qui la
+ * remplace) — 10/10/2026, Nico : l'app native n'a PAS de bandeau de
+ * consentement, elle ne charge donc AUCUNE balise Google. Les blocs gtm,
+ * gtag-aw et gtm-noscript sont retirés ; insights (Vercel, sans cookie) et
+ * tout le reste sont intacts. Joué par le plugin natif (builds hors site :
+ * `npm run build`, natif, OTA), jamais par le build Vercel, qui les met sous
+ * consentement (appliquerConsentement).
+ */
+export function sansBalisesGoogle(html) {
+  lireBlocsBalises(html, 'index.html'); // lève si un bloc manque ou est en double
+  let sortie = String(html);
+  for (const nom of ['gtm', 'gtag-aw', 'gtm-noscript']) sortie = sortie.replace(reBlocComplet(nom), () => '');
+  // La résolution DNS anticipée de Google Tag Manager n'a plus d'objet sans GTM.
+  return sortie.replace(/[ \t]*<link rel="dns-prefetch" href="\/\/www\.googletagmanager\.com" ?\/?>[ \t]*\r?\n?/g, '');
+}
+
+/**
  * Traceurs tiers HORS du bloc « consentement » (une page vitrine ou
  * app-shell.html) : chaque référence trouvée est une balise qui partirait
  * avant l'accord. Le JSON-LD (profil TikTok de la marque : un lien) et le

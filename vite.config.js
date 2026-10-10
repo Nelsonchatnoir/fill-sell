@@ -4,6 +4,7 @@ import zipExtension from './scripts/vite-plugin-zip-extension.mjs'
 import prerenderBlog from './scripts/vite-plugin-prerender-blog.mjs'
 import appShell from './scripts/vite-plugin-app-shell.mjs'
 import siteStatique, { controleSite } from './scripts/vite-plugin-site.mjs'
+import natifSansGoogle from './scripts/vite-plugin-natif-sans-google.mjs'
 import { siteActif } from './scripts/site/actif.mjs'
 import { computeBuildId, EXTENSION_MIN_BUILD, EXTENSION_MIN_VERSION, assertExtensionMinBuildCurrent, assertArbrePropre } from './scripts/build-id.mjs'
 import { readFileSync } from 'node:fs'
@@ -65,10 +66,13 @@ export default defineConfig(({ command }) => {
     // hors site — cf. scripts/vite-plugin-prerender-blog.mjs. controleSite :
     // dans ces mêmes builds (natif, OTA), rejoue le site en jetable et refuse
     // ce que Vercel refuserait (verrou des dates, fichiers de l'app lus par
-    // motif) — l'échec arrive en local, avant le push (09/10).
+    // motif) — l'échec arrive en local, avant le push (09/10). natifSansGoogle
+    // (10/10, Nico) : l'app native n'a pas de bandeau, sa coquille ne porte
+    // donc aucune balise Google (GTM, Google Ads) — le build Vercel, lui, les
+    // garde sous consentement.
     plugins: [
       react(), zipExtension({ buildId: FILLSELL_BUILD_ID }), emitBuildJson(), appShell(),
-      ...(SITE ? [siteStatique()] : [prerenderBlog(), controleSite()]),
+      ...(SITE ? [siteStatique()] : [prerenderBlog(), controleSite(), natifSansGoogle()]),
     ],
     define: {
       // Vrai seulement dans un build du site : la route « / » de la SPA renvoie

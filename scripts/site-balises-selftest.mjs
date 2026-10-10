@@ -31,6 +31,7 @@ import { fileURLToPath } from 'node:url';
 import {
   lireBlocsBalises, formeComparable, BLOCS_BALISES, BLOCS_PAGE, RELS_PARTAGES,
   scriptConsentement, blocsSousConsentement, appliquerConsentement, traceursHorsConsentement, idsBalises,
+  sansBalisesGoogle,
 } from './site/lib/balises.mjs';
 import { brancherBalises, CONSENT_ACCORDE, CONSENT_REFUSE } from '../site/js/balises-consentement.js';
 import { balisesOuvrantes } from './site/lib/html.mjs';
@@ -151,6 +152,21 @@ ok(!/user-scalable|maximum-scale/.test(rendu), 'gabarit : viewport sans blocage 
   ok(sansBlocs(web) === sansBlocs(index), 'coquille web : tout le reste d\'index.html à l\'identique');
   const dollar = appliquerConsentement(index, '<script>a="$\'$&$1"</script>');
   ok(dollar.includes('a="$\'$&$1"'), 'coquille web : un « $\' » du code minifié est recopié tel quel');
+}
+
+// 6 bis. (10/10, Nico) La coquille NATIVE : pas de bandeau dans l'app native,
+// donc aucune balise Google (builds hors site : natif, OTA).
+{
+  const natif = sansBalisesGoogle(index);
+  ok(traceursHorsConsentement(natif).length === 0, `coquille native : traceur restant (${traceursHorsConsentement(natif).join(', ')})`);
+  ok(!/googletagmanager|AW-16622098460|GTM-TJNKL6T5|<noscript/i.test(natif), 'coquille native : ni GTM, ni Google Ads, ni noscript, ni dns-prefetch GTM');
+  ok(formeComparable(lireBlocsBalises(natif, 'coquille native', ['insights']).insights) === formeComparable(blocs.insights), 'coquille native : insights (Vercel, sans cookie) inchangé');
+  const sansGoogle = (h) => h.replace(/<!--\s*site:balises:(gtm|gtag-aw|gtm-noscript):debut[\s\S]*?<!--\s*site:balises:\1:fin\s*-->/g, '')
+    .replace(/<link rel="dns-prefetch" href="\/\/www\.googletagmanager\.com" ?\/?>/g, '').replace(/\s+/g, ' ');
+  ok(sansGoogle(natif) === sansGoogle(index), 'coquille native : tout le reste d\'index.html à l\'identique');
+  const vite = readFileSync(path.join(racine, 'vite.config.js'), 'utf8');
+  ok(/\.\.\.\(SITE \? \[siteStatique\(\)\] : \[prerenderBlog\(\), controleSite\(\), natifSansGoogle\(\)\]\)/.test(vite),
+    'vite.config.js : le plugin natif tourne dans les builds HORS site seulement (Vercel garde le consentement)');
 }
 
 // 7. Le script des balises sur un faux window.
