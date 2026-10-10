@@ -52,7 +52,7 @@ export const URLS_SITEMAP_PROD_0910 = [
 // porte 25,6 Ko de CSS (pages liées, tableau, capture en fenêtre). Mesures :
 // docs/seo/design/DESIGN.md § 4.
 const BUDGET_HTML = 120 * 1024;
-const BUDGET_CSS = 26 * 1024; // par page, feuille découpée en modules (scripts/site/lib/bundles.mjs)
+const BUDGET_CSS = 30 * 1024; // par page, feuille découpée en modules (scripts/site/lib/bundles.mjs)
 const BUDGET_DATA_URI = 1024;
 const BUDGET_SITE_JS_GZIP = 6 * 1024;
 const MOTS_MIN = {
@@ -721,7 +721,13 @@ export async function verifierSite(dossier, { racine = process.cwd(), git = true
       .replace(/<\/(p|li|h[1-6]|td|th|dt|dd|div|section|summary|figcaption|small|strong|b)>/g, '. </$1>'));
     if (PLATEFORME_SORTIE.test(h)) err(`${o} : la plateforme sortie le 10/10 est nommée (décision de Nico : nulle part)`);
     for (const r of TRACES_QUOTA) if (r.test(h)) err(`${o} : trace de la mécanique des quotas (${r.source}) — retirée le 09/10`);
-    for (const r of CHIFFRE_QUOTA) { const m = r.exec(visible); if (m) err(`${o} : chiffre de quota « ${m[0]} » (décision de Nico : aucun chiffre de quota ni de plafond)`); }
+    // (10/10, Nico) Les cartes de prix portent les volumes de l'app (tarifs.yml) :
+    // un chiffre de quota n'est permis QUE dans une carte (<li class="palier …">,
+    // fermée par son bouton) ; partout ailleurs, toujours refusé.
+    const horsCartes = texteBrut(principal.replace(/<li class="palier\b[^"]*">[\s\S]*?<\/a><\/li>/g, ' ')
+      .replace(/<(td|li|section)\b[^>]*\bdata-tiers\b[^>]*>[\s\S]*?<\/\1>/g, ' ')
+      .replace(/<\/(p|li|h[1-6]|td|th|dt|dd|div|section|summary|figcaption|small|strong|b)>/g, '. </$1>'));
+    for (const r of CHIFFRE_QUOTA) { const m = r.exec(horsCartes); if (m) err(`${o} : chiffre de quota « ${m[0]} » hors des cartes de prix (décision de Nico : aucun chiffre de quota ni de plafond ailleurs)`); }
     const jeton = /\{\{[^{}]*\}\}/.exec(visible);
     if (jeton) err(`${o} : jeton non remplacé « ${jeton[0]} »`);
     // Lignes de tableau JOINTES : un th et ses td forment une phrase, une fin

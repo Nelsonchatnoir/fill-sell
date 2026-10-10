@@ -17,7 +17,10 @@ export const BUDGET_SITE_JS_GZIP = 6 * 1024;
 // aux 9 modules de la démonstration les pages liées (liees), un tableau (defile) et la
 // capture de l'extension en fenêtre (cadres) — 25 638 o mesurés ; le socle n'a presque
 // rien d'inutile à l'accueil (485 o au plus, dont des classes posées par le JS).
-export const BUDGET_CSS = 26 * 1024;
+// Relevé à 30 Ko le 10/10 (Nico : cartes de prix au dessin EXACT des cartes de palier de
+// l'app, badges animés compris — module tarifs 1,7 → 5,2 Ko ; menu refait) : 29 211 o
+// mesurés sur l'accueil, Lighthouse mobile de l'accueil repassé (mesure dans le commit).
+export const BUDGET_CSS = 30 * 1024;
 
 /** Bundle IIFE minifié d'une entrée ; `define` remplace les constantes __FS_…__. */
 export async function bundler(entree, { racine, define = {} }) {

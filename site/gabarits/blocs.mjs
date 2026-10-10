@@ -140,17 +140,35 @@ export function video(site, page) {
 
 // ── Tarifs ─────────────────────────────────────────────────────────────────
 /** Cartes des paliers (site/donnees/tarifs.yml) : nom, prix par mois, ce qui est inclus — jamais un chiffre de quota. */
+// ── Badges des paliers (10/10, Nico) ───────────────────────────────────────
+// Les cartes de prix ont le dessin des cartes de palier de l'app (feuille des
+// offres, src/components/ConversionModal.jsx) et les MÊMES badges que
+// src/components/PlanBadge.jsx, taille « sm » comme dans ces cartes : mêmes
+// icônes (tracés copiés), mêmes dégradés, même reflet (CSS du module tarifs).
+// Le nom du palier reste le TEXTE du <h3> (aucun mot changé) ; le Gratuit porte
+// la pastille de la carte Free de l'app. Copie côté site : l'app n'importe rien d'ici.
+const ICONES_PALIER = {
+  premium: '<svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><defs><linearGradient id="fs-gold-premium" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FCEBAE"/><stop offset="1" stop-color="#E3AE43"/></linearGradient></defs><path d="M12 2l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.8 6.1 20.9l1.2-6.6L2.5 9.9l6.6-.9z" fill="url(#fs-gold-premium)" stroke="rgba(255,255,255,0.5)" stroke-width="0.5"/></svg>',
+  pro: '<svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><defs><linearGradient id="fs-gold-pro" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FBE9A6"/><stop offset="0.5" stop-color="#E7B84C"/><stop offset="1" stop-color="#C79433"/></linearGradient></defs><path d="M3 8l4.5 3L12 4l4.5 7L21 8l-1.8 10.5H4.8L3 8z" fill="url(#fs-gold-pro)" stroke="rgba(255,255,255,0.35)" stroke-width="0.4" stroke-linejoin="round"/><circle cx="12" cy="4" r="1.1" fill="url(#fs-gold-pro)"/><circle cx="3" cy="8" r="1.1" fill="url(#fs-gold-pro)"/><circle cx="21" cy="8" r="1.1" fill="url(#fs-gold-pro)"/></svg>',
+  business: '<svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><defs><linearGradient id="fs-plat-business" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#F4FFFD"/><stop offset="0.5" stop-color="#9BE8DC"/><stop offset="1" stop-color="#F2C98A"/></linearGradient></defs><path d="M7 3h10l4 6-9 12L3 9l4-6z" fill="url(#fs-plat-business)" stroke="rgba(255,255,255,0.5)" stroke-width="0.5" stroke-linejoin="round"/><path d="M3 9h18M7 3l5 6 5-6M8 9l4 12 4-12" fill="none" stroke="rgba(10,20,17,0.35)" stroke-width="0.7" stroke-linejoin="round"/></svg>',
+};
+// Pro et Business : cartes sombres dans l'app (fond, coches or).
+const PALIERS_SOMBRES = new Set(['pro', 'business']);
+const badgePalier = (id, nom) => (ICONES_PALIER[id]
+  ? `<span class="badge-palier badge-${id}"><span class="badge-reflet" aria-hidden="true"></span>${ICONES_PALIER[id]}<span class="badge-texte">${nom}</span></span>`
+  : `<span class="pastille-palier">${nom}</span>`);
+
 export function cartesTarifs(site, page, { titre = true } = {}) {
   const d = page.tarifs;
   if (!d) return '';
   const t = TEXTES[page.lang];
   const l = page.lang;
-  const cartes = d.paliers.map((p) => `<li class="carte palier${p.mis_en_avant ? ' palier-avant' : ''}">` +
+  const cartes = d.paliers.map((p) => `<li class="palier palier-${esc(p.id)}${PALIERS_SOMBRES.has(p.id) ? ' palier-sombre' : ''}${p.mis_en_avant ? ' palier-avant' : ''}">` +
     `${p.mis_en_avant ? habillage(`<p class="palier-badge">${esc(t.misEnAvant)}</p>`) : ''}` +
-    `<h3>${esc(p.nom[l])}</h3><p class="palier-pour">${esc(p.pour[l])}</p>` +
+    `<h3 class="palier-nom">${badgePalier(p.id, esc(p.nom[l]))}</h3><p class="palier-pour">${esc(p.pour[l])}</p>` +
     `<p class="palier-prix"><span class="montant">${esc(prix(p.prix, l, d.devise))}</span> <span class="periode">${esc(t.parMois)}</span></p>` +
     `<ul>${p.inclus[l].map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` +
-    `<a class="bouton ${p.mis_en_avant ? 'bouton-clair' : 'bouton-premier'}" href="${esc(d.inscription)}" data-cta="signup_tarifs_${esc(p.id)}">${esc(p.cta[l])}</a></li>`).join('');
+    `<a class="palier-bouton" href="${esc(d.inscription)}" data-cta="signup_tarifs_${esc(p.id)}">${esc(p.cta[l])}</a></li>`).join('');
   const communs = `<div class="carte communs"><h3>${esc(t.communsTitre)}</h3><ul>${d.communs[l].map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>`;
   return `<section class="bloc-tarifs" aria-labelledby="tarifs-titre"><div class="cadre">` +
     (titre ? `<h2 id="tarifs-titre">${esc(t.tarifsTitre)}</h2><p class="chapo-section">${esc(t.tarifsChapo)}</p>` : `<h2 id="tarifs-titre" class="sr">${esc(t.tarifsTitre)}</h2>`) +

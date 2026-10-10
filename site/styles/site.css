@@ -229,9 +229,9 @@ h3 { font-size: 1.22rem; line-height: 1.25; letter-spacing: -.02em; margin: 0 0 
 .etiquettes li::before { content: ""; position: absolute; left: 11px; top: 50%; width: 6px; height: 6px; margin-top: -3px; border-radius: 50%; background: var(--to); box-shadow: inset 0 0 0 1.5px var(--gc); }
 
 /* Coche dessinée (points clés, tarifs, « choisis FillSell si », verdict « oui »). */
-.essentiel li::before, .palier li::before, .communs li::before, .choisir-nous li::before, .v-oui::before { content: ""; position: absolute; left: 0; top: 2px; width: 20px; height: 20px; border-radius: 50%; background: var(--sf); }
-.essentiel li::after, .palier li::after, .communs li::after, .choisir-nous li::after, .v-oui::after { content: ""; position: absolute; left: 7px; top: 6px; width: 5px; height: 9px; border: solid var(--bl); border-width: 0 2.5px 2.5px 0; transform: rotate(45deg); }
-.essentiel li, .palier li, .communs li, .choisir li { position: relative; padding-left: 30px; }
+.essentiel li::before, .communs li::before, .choisir-nous li::before, .v-oui::before { content: ""; position: absolute; left: 0; top: 2px; width: 20px; height: 20px; border-radius: 50%; background: var(--sf); }
+.essentiel li::after, .communs li::after, .choisir-nous li::after, .v-oui::after { content: ""; position: absolute; left: 7px; top: 6px; width: 5px; height: 9px; border: solid var(--bl); border-width: 0 2.5px 2.5px 0; transform: rotate(45deg); }
+.essentiel li, .communs li, .choisir li { position: relative; padding-left: 30px; }
 
 .essentiel { margin: clamp(36px, 6vw, 72px) 0 0; padding: clamp(22px, 4vw, 40px); }
 .accueil .essentiel { margin-bottom: clamp(48px, 7vw, 88px); }
@@ -449,20 +449,60 @@ h3 { font-size: 1.22rem; line-height: 1.25; letter-spacing: -.02em; margin: 0 0 
 .paliers { list-style: none; margin: 36px 0 0; padding: 0; display: grid; gap: 18px; }
 @media (min-width: 700px) { .paliers { grid-template-columns: 1fr 1fr; } }
 @media (min-width: 1180px) { .paliers { grid-template-columns: repeat(4, 1fr); } }
-.palier { position: relative; display: flex; flex-direction: column; padding: 28px 24px 24px; }
-.palier h3 { font-size: 1.35rem; margin: 0; }
-.palier-pour { margin: 4px 0 0; color: var(--gr); font-size: .95rem; }
-.palier-prix { margin: 18px 0 16px; }
-.montant { font-size: 2.6rem; font-weight: 700; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
-.periode { color: var(--gr); font-weight: 600; }
-.palier ul, .communs ul { list-style: none; margin: 0 0 24px; padding: 0; display: grid; gap: 10px; font-size: .95rem; }
-.palier .bouton { margin-top: auto; padding-inline: 12px; font-size: .95rem; white-space: nowrap; }
-.palier-avant { background: radial-gradient(90% 60% at 100% 0, rgba(78,205,196,.22), transparent 70%), var(--en); color: var(--ss); }
-.palier-avant h3 { color: var(--ss); }
-.palier-avant .palier-pour, .palier-avant .periode { color: var(--s2); }
-.palier-avant li::before { background: var(--me); }
-.palier-avant li::after { border-color: var(--en); }
-.palier-badge { position: absolute; top: -13px; left: 24px; margin: 0; padding: 4px 12px; border-radius: 999px; background: var(--pe); color: var(--en); font-size: .8rem; font-weight: 700; }
+/* Cartes de prix = cartes de palier de l'app (10/10, Nico) : valeurs reprises
+   TELLES QUELLES de src/components/ConversionModal.jsx (Free/Premium/Pro/
+   BusinessPlanCard, LignesDiff) et des badges « sm » de PlanBadge.jsx (reflet
+   fs-badge-shine 3,6 s linéaire, décalé de 0 / 0,6 / 1,2 s). Ce que l'app n'a
+   pas : la phrase « pour » (style des petites mentions de l'app), le bouton de
+   la carte Gratuite (celui de Premium) et « Notre conseil » (pastille de l'app,
+   teinte du bouton Pro). L'ordre du texte ne change pas (grille nommée).
+   .palier-sombre = Pro et Business (fond sombre, coches or). */
+.paliers { gap: 12px; }
+.palier { position: relative; display: grid; grid-template: "nom prix" "pour pour" "liste liste" 1fr "bouton bouton" / 1fr auto; padding: 20px 18px 18px; border-radius: 22px; background: #F6F5F1; border: 1px solid #E7E3D8; color: #10201B; }
+.palier-premium { border: 1.5px solid #2F9E90; box-shadow: 0 12px 30px -16px rgba(27,110,98,.4); }
+.palier-pro { background: radial-gradient(130% 120% at 100% 0%, rgba(232,149,109,.28), transparent 58%), #10201B; border: 1.5px solid rgba(214,178,96,.55); box-shadow: 0 14px 34px -14px rgba(16,32,27,.5); }
+.palier-business { overflow: hidden; background: radial-gradient(140% 110% at 0% 0%, rgba(155,232,220,.16), transparent 55%), radial-gradient(130% 120% at 100% 100%, rgba(242,201,138,.14), transparent 55%), #060B09; border: 1.5px solid rgba(174,233,223,.5); box-shadow: 0 16px 40px -14px rgba(0,0,0,.65), 0 0 30px -8px rgba(174,233,223,.35); }
+.palier-sombre, .palier-sombre .montant { color: #F6F5F1; }
+.palier-nom { grid-area: nom; align-self: center; justify-self: start; margin: 0; font-size: 1em; line-height: 1; }
+.palier-prix { grid-area: prix; margin: 0; text-align: right; }
+.palier-pour { grid-area: pour; margin: 14px 0 12px; }
+/* Gris FONCÉ de l'app (#5C6560, 5,6:1) : son gris clair #8A8578 ne fait que 3,4:1 sur la carte (Lighthouse). */
+.palier-pour, .periode { font-size: 10.5px; font-weight: 600; color: #5C6560; }
+.palier-pour, .palier ul { font-size: 12.5px; line-height: 1.35; }
+.montant { display: block; font-size: 22px; font-weight: 700; letter-spacing: -.02em; line-height: 1; color: #10201B; }
+.palier-gratuit .montant { color: #5C6560; }
+.periode { display: block; margin-top: 2px; }
+.palier-sombre .montant { font-size: 24px; }
+.palier-sombre .periode, .palier-sombre .palier-pour { color: rgba(246,245,241,.6); }
+.palier ul { grid-area: liste; list-style: none; margin: 0 0 18px; padding: 0; display: grid; align-content: start; gap: 9px; font-weight: 600; }
+.palier li { position: relative; padding-left: 26px; }
+.palier li::before { content: ""; position: absolute; left: 0; top: 1px; width: 17px; height: 17px; border-radius: 50%; background: rgba(47,158,144,.15); }
+.palier li::after { content: ""; position: absolute; left: 7px; top: 4.5px; width: 3px; height: 6.5px; border: solid #1B6E62; border-width: 0 1.4px 1.4px 0; transform: rotate(45deg); }
+.palier-sombre li::before { background: rgba(232,149,109,.22); }
+.palier-sombre li::after { border-color: #F2C98A; }
+.palier-bouton, .palier-bouton:hover { grid-area: bouton; display: block; padding: 15px; border-radius: 14px; background: linear-gradient(120deg, #2F9E90, #1B6E62); color: #fff; font-size: 14.5px; font-weight: 700; line-height: 1.2; text-align: center; text-decoration: none; white-space: nowrap; box-shadow: 0 10px 22px -8px rgba(47,158,144,.5); }
+.palier-pro .palier-bouton { background: linear-gradient(120deg, #E8956D, #F2B48C); color: #10201B; box-shadow: 0 10px 22px -8px rgba(232,149,109,.5); }
+.palier-business .palier-bouton { background: linear-gradient(120deg, #F4FFFD, #9BE8DC 55%, #F2C98A); color: #060B09; box-shadow: 0 10px 26px -8px rgba(174,233,223,.55); }
+.palier-badge, .pastille-palier { padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: .04em; line-height: 1.3; }
+.palier-badge { position: absolute; top: -11px; left: 18px; margin: 0; background: linear-gradient(120deg, #E8956D, #F2B48C); color: #10201B; }
+.pastille-palier { display: inline-block; background: #EDEAE0; border: 1px solid #E7E3D8; color: #5C6560; }
+.badge-palier { position: relative; overflow: hidden; display: inline-flex; align-items: center; gap: 5px; padding: 7px 12px; border-radius: 999px; line-height: normal; }
+.badge-palier svg, .badge-texte { position: relative; }
+.badge-texte { font-size: 12.5px; font-weight: 700; letter-spacing: .02em; white-space: nowrap; -webkit-background-clip: text; background-clip: text; color: transparent; }
+.badge-reflet { position: absolute; inset: 0 auto 0 0; width: 36px; background: linear-gradient(90deg, transparent, rgba(255,255,255,.55), transparent); animation: fs-badge-shine 3.6s linear infinite; }
+.badge-premium { background: linear-gradient(135deg, #37AC9C 0%, #1B6E62 100%); box-shadow: 0 4px 12px -3px rgba(27,110,98,.55); }
+.badge-premium .badge-texte { letter-spacing: .01em; color: #fff; }
+.badge-pro { background: linear-gradient(135deg, #1C4038 0%, #0D1F1A 100%); border: 1px solid rgba(214,178,96,.55); box-shadow: 0 4px 14px -3px rgba(13,31,26,.65), 0 0 16px -6px rgba(214,178,96,.4), inset 0 1px 0 rgba(255,255,255,.12); }
+.badge-pro .badge-texte { background-image: linear-gradient(135deg, #FBE9A6, #E7B84C); }
+.badge-pro .badge-reflet { width: 40px; background: linear-gradient(90deg, transparent, rgba(240,205,120,.5), transparent); animation-delay: .6s; }
+.badge-business { background: linear-gradient(135deg, #161616 0%, #000 100%); border: 1px solid rgba(174,233,223,.55); box-shadow: 0 4px 14px -3px rgba(0,0,0,.7), 0 0 16px -5px rgba(174,233,223,.5), inset 0 1px 0 rgba(255,255,255,.16); }
+.badge-business .badge-texte { background-image: linear-gradient(120deg, #F4FFFD, #9BE8DC 45%, #F2C98A); }
+.badge-business .badge-reflet { width: 44px; background: linear-gradient(90deg, transparent, rgba(233,255,250,.55), transparent); animation-delay: 1.2s; }
+@keyframes fs-badge-shine { 0% { transform: translateX(-60px) skewX(-18deg); } 45%, 100% { transform: translateX(360px) skewX(-18deg); } }
+/* Moins d'animations : badges fixes, en couleur (comme l'app : reflet masqué). */
+@media (prefers-reduced-motion: reduce) { .badge-reflet { opacity: 0; } }
+/* Bloc « Dans tous les forfaits » : sa liste, inchangée (règle autrefois commune avec .palier ul). */
+.communs ul { list-style: none; margin: 0 0 24px; padding: 0; display: grid; gap: 10px; font-size: .95rem; }
 .communs { margin-top: 22px; padding: 22px 24px; }
 .communs h3 { font-size: 1.05rem; color: var(--sf); margin-bottom: 14px; }
 .communs ul { margin: 0; }
