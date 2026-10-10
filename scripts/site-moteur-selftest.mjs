@@ -284,16 +284,19 @@ ok(langueXDefault(['fr', 'en']) === 'en' && langueXDefault(['fr', 'de']) === 'fr
   ok(pfInconnue && pfInconnue.includes("n'est pas une plateforme ouverte"), `plateforme inconnue refusée (${pfInconnue})`);
 }
 
-// ── 15. Tarifs : aucun chiffre dans ce qui est inclus ──────────────────────
+// ── 15. Tarifs : chiffres de quota dans les lignes des cartes SEULEMENT ─────
+// (10/10, Nico : les cartes portent les volumes de l'app ; « pour », « communs »
+// et « mentions » restent sans chiffre.)
 {
   const temp = mkdtempSync(path.join(tmpdir(), 'fs-tarifs-'));
   try {
     mkdirSync(path.join(temp, 'site', 'donnees'), { recursive: true });
     const vrai = readFileSync(path.join(racine, 'site', 'donnees', 'tarifs.yml'), 'utf8');
-    ok(!(await leve(() => lireTarifs(racine, ['fr', 'en']))), 'site/donnees/tarifs.yml accepté');
-    ecrire(path.join(temp, 'site', 'donnees', 'tarifs.yml'), vrai.replace('Support par e-mail', '40 annonces par mois'));
+    ok(!(await leve(() => lireTarifs(racine, ['fr', 'en']))), 'site/donnees/tarifs.yml accepté (chiffres des cartes compris)');
+    ok(/\d+ annonces créées et publiées/.test(vrai), 'les lignes des cartes portent le volume d\'annonces');
+    ecrire(path.join(temp, 'site', 'donnees', 'tarifs.yml'), vrai.replace('Pour vendre chaque semaine', '40 annonces par mois'));
     const e = await leve(() => lireTarifs(temp, ['fr', 'en']));
-    ok(e && e.includes('aucun chiffre de quota'), `chiffre de quota dans les tarifs refusé (${e})`);
+    ok(e && e.includes('aucun chiffre de quota'), `chiffre de quota hors des lignes des cartes refusé (${e})`);
   } finally {
     rmSync(temp, { recursive: true, force: true });
   }

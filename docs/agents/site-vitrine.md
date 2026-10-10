@@ -288,3 +288,11 @@ Si `/legal` portait `X-Robots-Tag` : retirer la règle `/app-shell.html` de
 - **Menu** : bouton « Menu » en pilule, « Se connecter » en tête du panneau
   (`.menu-compte`), « Plateformes » repliée à chaque ouverture ; barre
   d'ordinateur dès **1200 px** (plus 1080), libellés jamais coupés.
+- **Cartes de prix** (`cartesTarifs`, module CSS `tarifs`) : dessin EXACT des cartes
+  de palier de l'app (`ConversionModal.jsx`) et badges « sm » de `PlanBadge.jsx`
+  (reflet 3,6 s) — copie côté site, l'app n'est pas touchée ; un changement de
+  dessin dans l'app se reporte ici. Les lignes portent les VOLUMES de l'app
+  (`tarifs.yml` › `inclus`, valeurs de `coin_config` relues le 10/10 : un quota
+  changé en base = `tarifs.yml` changé le même jour) ; chiffre de quota refusé
+  partout ailleurs (`donnees.mjs`, `site:verifier`). Budget de CSS en ligne
+  relevé à 30 Ko (`bundles.mjs`, `verify-site.mjs`).

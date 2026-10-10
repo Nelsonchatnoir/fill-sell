@@ -3,9 +3,12 @@
 # Source : fiche de vérité § 10 et F58 (docs/seo/etat-des-lieux/03-fiche-de-verite.md),
 # décisions de Nico du 09/10 (03c-decisions-nico-0910.md, décision 3) :
 #   · prix mensuels, EUR, sans engagement, aucun prix annuel, aucun essai ;
-#   · ⛔ AUCUN chiffre de quota ni de plafond, nulle part : le build REFUSE un
-#     chiffre dans `pour`, `inclus` et `communs` (les volumes restent dans l'app,
-#     feuille des offres, et dans les CGV) ;
+#   · (10/10, Nico : « il faut les chiffres ») les cartes portent les volumes
+#     de l'app — annonces, republications, retouches IA par mois —, mêmes
+#     phrases que la feuille des offres (ConversionModal.jsx, lignesDiff),
+#     valeurs de coin_config relues en prod le 10/10. Un quota changé en base =
+#     ce fichier changé le même jour. Partout AILLEURS (pages, llms), toujours
+#     aucun chiffre de quota : site:verifier ne l'accepte que dans .paliers ;
 #   · ⛔ la republication automatique n'est écrite à côté d'AUCUN palier (ni ici,
 #     ni « dans tous les forfaits » tant que P1 n'est pas tranché) : elle se dit
 #     ailleurs, sans palier ;
@@ -28,13 +31,13 @@ paliers:
     inclus:
       fr:
         - "Lens : une photo, une annonce rédigée"
-        - "Un volume d'annonces chaque mois pour démarrer"
-        - "Une annonce qui remonte en un appui"
+        - "5 annonces créées et publiées sur toutes tes plateformes par mois"
+        - "50 republications par mois"
         - "Marges et bénéfices calculés pour toi"
       en:
         - "Lens: one photo, one written listing"
-        - "A monthly batch of listings to get going"
-        - "Bump a listing with one tap"
+        - "5 listings created and published on all your platforms a month"
+        - "50 repostings a month"
         - "Margins and profit worked out for you"
   - id: premium
     prix: 12.99
@@ -43,13 +46,15 @@ paliers:
     cta: { fr: "Passer Premium", en: "Go Premium" }
     inclus:
       fr:
-        - "Bien plus d'annonces rédigées chaque mois"
-        - "Retouche photo par l'IA : lumière et fond"
+        - "40 annonces créées et publiées sur toutes tes plateformes par mois"
+        - "1 500 republications par mois"
+        - "Retouche IA — 5 annonces retouchées par mois (jusqu'à 5 photos chacune)"
         - "Republier en lot, d'un geste"
         - "Support par e-mail"
       en:
-        - "Far more written listings every month"
-        - "AI photo touch-up: lighting and background"
+        - "40 listings created and published on all your platforms a month"
+        - "1,500 repostings a month"
+        - "AI touch-up — 5 listings retouched a month (up to 5 photos each)"
         - "Repost in bulk, in one go"
         - "Email support"
   - id: pro
@@ -60,13 +65,15 @@ paliers:
     cta: { fr: "Passer Pro", en: "Go Pro" }
     inclus:
       fr:
-        - "Un gros volume d'annonces chaque mois"
-        - "Plus de photos retouchées par l'IA"
+        - "120 annonces créées et publiées sur toutes tes plateformes par mois"
+        - "5 000 republications par mois"
+        - "Retouche IA — 20 annonces retouchées par mois (jusqu'à 5 photos chacune)"
         - "Republier en lot, sans y penser"
         - "Support prioritaire"
       en:
-        - "A big monthly volume of listings"
-        - "More AI-touched photos"
+        - "120 listings created and published on all your platforms a month"
+        - "5,000 repostings a month"
+        - "AI touch-up — 20 listings retouched a month (up to 5 photos each)"
         - "Bulk reposting, without a second thought"
         - "Priority support"
   - id: business
@@ -76,14 +83,14 @@ paliers:
     cta: { fr: "Passer Business", en: "Go Business" }
     inclus:
       fr:
-        - "Le plus haut volume, sur tout"
-        - "Retouche photo IA au plus haut volume"
-        - "Republication en lot au plus haut volume"
+        - "300 annonces créées et publiées sur toutes tes plateformes par mois"
+        - "Republications illimitées — tu republies quand tu veux, autant que tu veux"
+        - "Retouche IA — 50 annonces retouchées par mois (jusqu'à 5 photos chacune)"
         - "Support prioritaire"
       en:
-        - "The highest volume, on everything"
-        - "AI photo touch-up at the highest volume"
-        - "Bulk reposting at the highest volume"
+        - "300 listings created and published on all your platforms a month"
+        - "Unlimited repostings — repost whenever you want, as much as you want"
+        - "AI touch-up — 50 listings retouched a month (up to 5 photos each)"
         - "Priority support"
 
 # Dans TOUS les forfaits (fiche de vérité F24, F33, F44, F48, F49, F50).
