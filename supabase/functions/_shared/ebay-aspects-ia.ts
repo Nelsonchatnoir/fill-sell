@@ -21,7 +21,10 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import { valeurDeListeCorrespondante } from "./texte-comparable.ts";
 
-export interface AspectDemande { name: string; mode: string; allowedValues: string[]; libre?: boolean; }
+// libre : true = 2e passe de la voie API (remplirAspects) ; "titre" = 2e passe
+// de la voie formulaire (completerAspectsIA) : un aspect par appel, le mot
+// recopié du texte, contrôlé ensuite (valeurLueDansLeContexte).
+export interface AspectDemande { name: string; mode: string; allowedValues: string[]; libre?: boolean | "titre"; }
 export interface ContexteArticle {
   titre?: string | null; description?: string | null; marque?: string | null; modele?: string | null;
   matiere?: string | null; couleur?: string | null; taille?: string | null; genre?: string | null;
@@ -64,6 +67,10 @@ function ligneDemande(a: AspectDemande): string {
     return `- "${a.name}" — LISTE FERMÉE, réponds UNIQUEMENT par une de ces valeurs recopiée caractère pour caractère (apostrophes, accents, espaces compris), sinon null : ${liste.slice(0, LISTE_FERMEE_MAX).join(" | ")}`;
   }
   if (a.name === "Marque") return `- "Marque" — texte libre : la marque telle qu'elle est écrite dans le contexte, sinon null (jamais une marque plausible)`;
+  // (10/10, cas Manon) Seconde passe de la voie formulaire, UN aspect par appel :
+  // demandés ensemble, « Type » et « Style » d'un « Pull polaire 1/4 zip »
+  // revenaient avec Type seul (le modèle évite de répéter un mot du titre).
+  if (a.libre === "titre") return `- "${a.name}" — texte libre court (1 à 4 mots), RECOPIÉ du titre ou de la description : le mot ou le groupe de mots qui dit ce « ${a.name} » de l'article (ex. pour un Style : « Polaire », « 1/4 zip », « Col roulé », « Oversize » ; pour un Type : « Pull polaire », « Sweat », « Robe longue »). Un mot déjà utilisé pour un autre aspect peut resservir. null seulement si le texte ne dit rien qui s'en approche`;
   // 2e passe (aspect FREE_TEXT resté vide après la liste) : eBay accepte le
   // texte libre — on demande le terme EXACT du contexte, sans liste.
   if (a.libre) return `- "${a.name}" — texte libre court (1 à 4 mots) : le terme EXACT qui décrit cet aspect dans le contexte (ex. le type ou le style d'article tel qu'écrit dans le titre : « Short de bain », « Sweat », « Robe longue ») ; null seulement si le contexte ne dit rien`;
@@ -254,13 +261,14 @@ export async function completerAspectsIA(
     d && typeof d.name === "string" && d.mode === "FREE_TEXT" && d.name !== "Marque"
     && !ASPECT_DEFAULTS[d.name] && !String(premiere.aspects[d.name] ?? "").trim());
   if (!restants.length || !premiere.appel_ia) return { ...premiere, seconde_passe: [] };
-  const seconde = await resoudreAspectsIA(restants.map((d) => ({ ...d, libre: true })), contexte, opts);
+  // Un appel PAR aspect, en parallèle (même durée qu'un seul appel).
+  const secondes = await Promise.all(restants.map((d) => resoudreAspectsIA([{ ...d, libre: "titre" }], contexte, opts)));
   const ctx = contexteEnTexte(contexte);
   const aspects = { ...premiere.aspects };
-  const refuses = [...premiere.refuses, ...seconde.refuses];
+  const refuses = [...premiere.refuses, ...secondes.flatMap((s) => s.refuses)];
   const posees: string[] = [];
-  for (const d of restants) {
-    const v = String(seconde.aspects[d.name] ?? "").trim();
+  for (const [i, d] of restants.entries()) {
+    const v = String(secondes[i].aspects[d.name] ?? "").trim();
     if (!v) continue;
     const dansLaListe = (d.allowedValues ?? []).length ? valeurDeListeCorrespondante(v, d.allowedValues) : null;
     if (dansLaListe) { aspects[d.name] = dansLaListe; posees.push(d.name); continue; }

@@ -85,14 +85,17 @@ rejouer([{ Type: "Veste", Style: null }, { Style: "Polaire" }]);
   ok(r.aspects.Style === "Polaire", "Style = « Polaire », lu dans le titre", JSON.stringify(r.aspects));
   ok(JSON.stringify(r.seconde_passe) === JSON.stringify(["Style"]), "seconde_passe = [Style]", JSON.stringify(r.seconde_passe));
   ok(!/"Type"/.test(appels[1]) && /"Style"/.test(appels[1]), "la seconde passe ne redemande QUE Style", appels[1]);
-  ok(/terme EXACT/.test(appels[1]), "la seconde passe demande le terme exact du contexte");
+  ok(/RECOPIÉ du titre/.test(appels[1]), "la seconde passe demande le mot recopié du texte");
 }
 // « Pull polaire L.L.Bean » : Type ET Style vides à la première passe.
-rejouer([{}, { Type: "Pull polaire", Style: "Polaire" }]);
+rejouer([{}, { Type: "Pull polaire" }, { Style: "Polaire" }]);
 {
   const pull = { titre: "Pull polaire L.L.Bean | Taille M Femme | Couleur rouge | 1/4 zip", marque: "L.L. Bean" };
   const r = await completerAspectsIA(demandes63862(), pull, OPTS);
   ok(r.aspects.Type === "Pull polaire" && r.aspects.Style === "Polaire", "Pull polaire : Type et Style lus dans le titre", JSON.stringify(r.aspects));
+  // (10/10 soir, rejeu réel) demandés ENSEMBLE, Style revenait vide : un appel par aspect.
+  ok(appels.length === 3 && /"Type"/.test(appels[1]) && !/"Style"/.test(appels[1]) && /"Style"/.test(appels[2]) && !/"Type"/.test(appels[2]),
+    "seconde passe : UN aspect par appel (Type, puis Style)", appels.length);
 }
 
 console.log("\n3. La seconde passe préfère la liste, écrite comme la liste l'écrit");
