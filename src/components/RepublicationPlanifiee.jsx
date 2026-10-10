@@ -54,16 +54,21 @@ import { humanizeJobError } from '../utils/shared';
 import { fuseauLocal, extensionRefuse, nombreAttendu, plateformesPlanifieesVisibles, droitRepublication } from '../hooks/useRepublicationPlanifiee';
 
 // Noms propres : ils ne se traduisent pas (même table que SousPagePlateformes).
-const NOMS = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', opla: 'Opla' };
+const NOMS = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', opla: 'Opla', depop: 'Depop' };
 // Ce que fait une republication, PAR PLATEFORME — et c'est différent :
-// Vinted / Leboncoin / Beebs retirent puis redéposent (l'annonce change
-// d'identifiant) ; Opla MODIFIE L'ANNONCE EN PLACE (PATCH, même identifiant,
-// rien n'est supprimé). Le dire, plutôt que laisser croire à un cycle unique.
+// Vinted / Leboncoin / Beebs / Depop retirent puis redéposent (l'annonce
+// change d'identifiant) ; Opla MODIFIE L'ANNONCE EN PLACE (PATCH, même
+// identifiant, rien n'est supprimé). Le dire, plutôt que laisser croire à un
+// cycle unique.
 const GESTE = {
   vinted:    { fr: 'Retrait puis redépôt', en: 'Remove then repost' },
   leboncoin: { fr: 'Retrait puis redépôt', en: 'Remove then repost' },
   beebs:     { fr: 'Retrait puis redépôt', en: 'Remove then repost' },
   opla:      { fr: 'Modification sur place', en: 'Edited in place' },
+  // (10/10) Depop : la machine de republication de l'extension la retire
+  // (absence relue) puis la recrée — même doctrine que Leboncoin et Beebs :
+  // rien n'est retiré tant que la recréation n'est pas sûre.
+  depop:     { fr: 'Retrait puis redépôt', en: 'Remove then repost' },
 };
 // ⛔ EST-CE QUE CE GESTE FAIT RÉELLEMENT REMONTER L'ANNONCE ? (mesuré le 18/09)
 // Sur Opla : NON, et ce n'est pas une opinion. Le fil du catalogue est servi
@@ -81,7 +86,9 @@ const GESTE = {
 // retrait + redépôt n'est pas livré et prouvé, l'écran DOIT le dire : sans
 // ça, le module consommerait le plafond du jour du compte (et le quota
 // mensuel, commun aux quatre plateformes) pour un résultat nul.
-const REMONTE_LE_FIL = { vinted: true, leboncoin: true, beebs: true, opla: false };
+// Depop (10/10) : retrait puis recréation — l'annonce recréée est NEUVE, comme
+// sur Vinted, Leboncoin et Beebs.
+const REMONTE_LE_FIL = { vinted: true, leboncoin: true, beebs: true, opla: false, depop: true };
 
 // ── Palette : celle des maquettes (RepublicationAutoCard.dc.html) = UI de
 // ui.jsx + les deux ambres de la carte. ─────────────────────────────────────
@@ -251,6 +258,8 @@ function texteErreurReglage(code, fr) {
     reseau:           fr ? 'Réglage non enregistré (réseau). Réessaie.' : 'Setting not saved (network). Try again.',
     unauthorized:     fr ? 'Session expirée — reconnecte-toi.' : 'Session expired — sign in again.',
     invalid_platform: fr ? 'Plateforme inconnue.' : 'Unknown platform.',
+    // (10/10) Garde serveur : un réglage Depop là où Depop n'est pas ouverte.
+    depop_non_ouvert: fr ? 'Depop n’est pas encore ouverte sur ton compte.' : 'Depop is not open on your account yet.',
   };
   return M[code] ?? (fr ? `Réglage refusé (${code}).` : `Setting refused (${code}).`);
 }
@@ -606,7 +615,10 @@ function EcranPlein({ titre, sousTitre, onClose, droite = null, children, pied =
 //
 // CET ÉCRAN NE RÈGLE RIEN. Il montre l'état des quatre d'un coup d'œil et ouvre
 // celui qu'on veut changer (RepublicationPlanifieeReglages, l'écran existant,
-// porté sur une plateforme). Une cinquième plateforme = une ligne de plus.
+// porté sur une plateforme). Une cinquième plateforme = une ligne de plus :
+// c'est ainsi que Depop y entre le 10/10 — sa ligne n'existe que pour un
+// compte à qui l'app propose Depop (`plateformesCompte`, même règle que la
+// publication : extension ≥ 0.6.106).
 //
 // L'INTERRUPTEUR DU HAUT. Avec quatre plateformes, il ne peut plus « activer »
 // (activer laquelle ?). Il MET TOUT EN PAUSE : le couper arrête les
@@ -680,6 +692,10 @@ export function RepublicationPlanifieePlateformes({
   // (04/10) Le palier de l'app (utils/palier.js) et l'état de la lecture :
   // sans réponse du serveur, l'écran dit qu'il lit — il ne refuse rien.
   palierApp = null, lecture = 'ok', onReessayer = null,
+  // (10/10) Les plateformes que l'app propose à ce compte
+  // (stockFiltres.plateformesDuCompte) : Depop n'a de ligne que là où elle
+  // est ouverte. null = aucun filtre de plus (comportement d'avant).
+  plateformesCompte = null,
 }) {
   const fr = lang !== 'en';
   const enService = interrupteur === 1;
@@ -690,8 +706,10 @@ export function RepublicationPlanifieePlateformes({
   const actives = Number(etatMulti?.actives) || 0;
   const enveloppe = etatMulti?.enveloppe ?? null;
   // (02/10) Les plateformes montrées : une plateforme fermée côté serveur
-  // (Opla après la sortie du 10/10) n'a plus de ligne.
-  const pfsVisibles = useMemo(() => plateformesPlanifieesVisibles(parPlateforme), [parPlateforme]);
+  // (Opla après la sortie du 10/10) n'a plus de ligne ; (10/10) une plateforme
+  // que l'app ne propose pas à ce compte (Depop sans extension ≥ 0.6.106) non
+  // plus, sauf si elle tourne déjà.
+  const pfsVisibles = useMemo(() => plateformesPlanifieesVisibles(parPlateforme, plateformesCompte), [parPlateforme, plateformesCompte]);
   const vinted = parPlateforme?.vinted ?? null;
   const quota = Number(vinted?.quota_mensuel);
   const faits = Number(vinted?.faits_mois);

@@ -155,6 +155,8 @@ import { estChampEtatVinted, libelleEtatVinted, nomChampEtat } from '../utils/et
 import { searchMatch } from '../utils/recherche';
 import { completerTexteDuVendeur, aCompleter as aCompleterTexteVendeur, DELAI_DETAIL_VINTED_MS } from '../publication/texteDuVendeur';
 import { uniteDuChamp, valeurAvecUnite, nombreSansUnite } from '../utils/champsDimension';
+import { ChampPortDepop } from '../components/PortDepop';
+import { lirePortSaisi } from '../utils/fraisPortDepop';
 import { SecondaryButton, Loader } from '../components/ui';
 import {
   EXT_SONDE_MS, SYNC_POLL_MS, SYNC_POLL_MAX_MS,
@@ -1431,6 +1433,11 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
   // marque » en un geste, la recherche dans le catalogue de la plateforme.
   // Chaque choix valide d'un tap : pas de bouton « Valider » grisé.
   const questionMarque = estQuestionMarqueHorsCatalogue(job, f) && !champsSup.length && !descriptionRequise;
+  // (09/10 soir) LES FRAIS DE PORT DEPOP : le champ de l'app (« € », clavier
+  // numérique, prix d'envoi suivi en un geste) — à la publication comme à
+  // l'arrêt d'une republication avant tout retrait (annonce importée sans port).
+  const questionPortDepop = job.platform === "depop" && f?.field_key === "depopPort" && !champsSup.length && !descriptionRequise;
+  const portDepopInvalide = questionPortDepop && lirePortSaisi(value).valeur == null;
   const valider = async ({ sansValeur = false, valeur = null } = {}) => {
     if (saving) return;
     // La valeur pré-choisie depuis l'annonce vaut réponse tant que la personne
@@ -1589,6 +1596,15 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
         {questionMarque ? (
           <QuestionMarque job={job} f={f} lang={lang} saving={saving}
             onChoisir={(v) => { setValue(v); valider({ valeur: v }); }} />
+        ) : questionPortDepop ? (
+          <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+            <div style={{ fontSize:12.5, lineHeight:1.5, color:"#6B7A75" }}>
+              {lang === "en"
+                ? "Depop asks for the shipping price the buyer pays. Enter it — the listing then resumes by itself. Your listing hasn't been touched."
+                : "Depop demande le prix de livraison que paie l'acheteur. Indique-le — l'annonce repartira toute seule. Ton annonce n'a pas été touchée."}
+            </div>
+            <ChampPortDepop lang={lang} id={`port-depop-nu-${job.id}`} valeur={value} onChange={setValue} zFeuille={1100} autoFocus />
+          </div>
         ) : (<>
         {f && (<>
         <div style={{ fontSize:15, fontWeight:600, color:NU_T.ink, marginBottom:4 }}>
@@ -1782,8 +1798,8 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
           </button>
           {!questionMarque && <button
             onClick={() => valider({ sansValeur: valeursIndisponibles })}
-            disabled={saving || (!!f && !valeursIndisponibles && !String(value || valeurProposee || "").trim()) || descriptionManquante || champsSupManquants}
-            style={{ flex:1.4, padding:"10px 0", borderRadius:12, border:"none", background: saving || (!!f && !valeursIndisponibles && !String(value || valeurProposee || "").trim()) || descriptionManquante || champsSupManquants ? "#B9C4C0" : "#1B6E62", color:"#fff", fontSize:13, fontWeight:700, cursor: saving ? "wait" : "pointer", fontFamily:"inherit" }}
+            disabled={saving || (!!f && !valeursIndisponibles && !String(value || valeurProposee || "").trim()) || descriptionManquante || champsSupManquants || portDepopInvalide}
+            style={{ flex:1.4, padding:"10px 0", borderRadius:12, border:"none", background: saving || (!!f && !valeursIndisponibles && !String(value || valeurProposee || "").trim()) || descriptionManquante || champsSupManquants || portDepopInvalide ? "#B9C4C0" : "#1B6E62", color:"#fff", fontSize:13, fontWeight:700, cursor: saving ? "wait" : "pointer", fontFamily:"inherit" }}
           >
             {saving
               ? (lang === "en" ? "Saving…" : "Enregistrement…")

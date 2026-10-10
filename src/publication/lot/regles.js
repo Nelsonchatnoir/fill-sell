@@ -215,6 +215,12 @@ export function bilanArticle(m, decisions = {}, lang = "fr") {
   if (plateformesAuPoids(plateformes).length && poidsConnu(m, decisions) == null) {
     motifs.push({ cle: "poids", libelle: en ? "Weight" : "Poids" });
   }
+  // (09/10 soir) DEPOP : les frais de port que paie l'acheteur — le prix par
+  // défaut des Réglages, ou celui dit UNE fois pour le lot (LivraisonDuLot).
+  // Sans eux, l'article est À COMPLÉTER, jamais une question après l'envoi.
+  if (plateformes.includes("depop") && m.portDepop?.manquant) {
+    motifs.push({ cle: "port_depop", libelle: en ? "Depop shipping" : "Port Depop" });
+  }
   // Plus aucune plateforme où partir (toutes exclues) : rien ne partira.
   if (!plateformes.length) {
     motifs.push({ cle: "aucune", libelle: en ? "Nowhere to publish" : "Aucune plateforme" });

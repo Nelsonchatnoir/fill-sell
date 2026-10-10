@@ -153,6 +153,9 @@ const FR = {
   erreurSauvegarde: '❌ Erreur lors de la sauvegarde',
   transporteurs: 'Mes transporteurs',
   transporteursValeurEbay: 'eBay',
+  portDepop: 'Frais de port Depop',
+  portDepopEnregistre: '✅ Prix de livraison Depop enregistré !',
+  portDepopRetire: 'Prix par défaut retiré',
 
   // ── Automatismes ────────────────────────────────────────────────────────
   republicationAuto: 'Republication automatique',
@@ -349,6 +352,9 @@ const EN = {
   erreurSauvegarde: '❌ Save failed',
   transporteurs: 'My shipping methods',
   transporteursValeurEbay: 'eBay',
+  portDepop: 'Depop shipping price',
+  portDepopEnregistre: '✅ Depop shipping price saved!',
+  portDepopRetire: 'Default price removed',
 
   republicationAuto: 'Automatic reposting',
   plateformesActives: 'platforms on',

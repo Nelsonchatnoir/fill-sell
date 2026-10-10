@@ -124,6 +124,19 @@ export const GROUPES = [
         libelle: (T) => T.transporteurs,
         ouvre: 'transporteurs',
       },
+      {
+        // (09/10 soir) Depop : le prix de livraison que paie l'acheteur, saisi
+        // UNE fois, appliqué à toutes les annonces Depop (stepper, lot,
+        // republication, annonces importées). Visible là où Depop est ouverte.
+        id: 'port-depop',
+        icone: Truck,
+        libelle: (T) => T.portDepop,
+        valeur: (c, T) => (c.portDepop?.valeur != null
+          ? c.portDepop.texte
+          : (c.portDepop?.lue ? { texte: T.aRenseigner, alerte: true } : null)),
+        ouvre: 'port-depop',
+        visible: (c) => Boolean(c.depopOuverte),
+      },
     ],
   },
 

@@ -127,7 +127,7 @@ contraire. Il se périme : `functions list`, `cron.job` et
   **0.6.103 JAMAIS téléversée** ; jamais
   d'EXTENSION_MIN_BUILD sans décision de Nico ; **minimum serveur 0.6.81** (inchangé : forcer la MAJ = décision de
   Nico) ; web **2.9.67** (poussé le 08/10), OTA **2.9.67 servie** (08/10
-  10:50, build 9d203ac) ; `get-pending-jobs` v227, `photo-empreinte` v3,
+  10:50, build 9d203ac) ; `get-pending-jobs` v231 (10/10, créneaux = liste du serveur + republication auto Depop), `photo-empreinte` v3,
   `generate-listing` v113, `lens-analysis` v107, `avis-demande` v4,
   `deal-analysis` v42, `voice-transcribe` v46,
   `ebay-account` v16, `send-extension-link` v13 (`true`) ;
@@ -249,6 +249,39 @@ contraire. Il se périme : `functions list`, `cron.job` et
   (mig 20261009230000 : `depop_autorise` lit `opla_sortie_le` ; republication
   auto Depop ouverte) ; l'app ne la montre qu'à une extension ≥ 0.6.106
   (`src/utils/basculeOplaDepop.js`), le site bascule seul (`src/utils/siteAvecDepop.js`).
+- **⛔ FRAIS DE PORT DEPOP (09/10 soir, Nico : zéro friction)** : en France Depop
+  ne fournit aucune étiquette, le vendeur fixe le port (0 à 99,99 €) — jamais
+  deviné. Prix par défaut dans Réglages › Expédition
+  (`platform_settings.depop.frais_port_defaut`, fusion seulement) ; le stepper
+  et le lot le pré-remplissent et le DEMANDENT avant l'envoi (lot : une fois) ;
+  feuille « Envoi suivi en France » (tarifs officiels Colissimo 01/04/2026 et
+  Mondial Relay 15/06/2026, `src/utils/envoiSuiviFrance.js`, à revoir au
+  01/01/2027) ; gpj **v228** pose le défaut sur tout job Depop sans port, sinon
+  une republication (annonce importée) passe en needs_user AVEC le champ, avant
+  tout retrait (`_shared/port-depop.js`). Selftest `selftest:port-depop`.
+- **⛔ CATÉGORIES INTERDITES PAR DEPOP (09/10 soir, Nico)** : UNE table,
+  `_shared/depop-interdits.js` (icône de `detectObjectIcon` → règle + citation
+  officielle, centre d'aide en-gb lu le 09/10 : électrique/électronique —
+  « Items that use electrical power (including batteries and solar power) are
+  not allowed » —, puériculture). Appareils photo et montres classiques
+  autorisés ; aucune catégorie de mode bloquée (sauf ⏱️ montres connectées,
+  nommées par Depop) ; ambigus NON bloqués (`DEPOP_A_VERIFIER` : jeux en
+  disque, DVD, horloges…). App : case Depop grisée avec la phrase ; lot :
+  exclus de Depop seulement, comptés avant l'envoi (`lot/ExclusDepop.jsx`) ;
+  gpj **v230** : filet sur tout job Depop qui dépose → needs_user, jamais servi.
+  Selftest `selftest:depop-interdits`.
+- **⛔ REPUBLICATION AUTOMATIQUE DEPOP (10/10 matin, Nico)** : MÊME circuit que
+  Vinted, Leboncoin, Beebs (balayage `republish_planifiee_sweep`, mêmes paliers,
+  plafonds et quotas) ; app : ligne Depop dans « Republication automatique »
+  seulement si l'app propose Depop au compte (`plateformesDuCompte`, extension
+  ≥ 0.6.106), une plateforme active garde sa ligne ; gpj **v231** : les créneaux
+  viennent de la liste DU SERVEUR (plus de liste en dur) ; une republication
+  AUTO d'un article interdit par Depop est close sans question (annonce
+  intacte, verdict `depop_interdit`) et l'article n'est plus jamais candidat
+  (mig **20261010100000 APPLIQUÉE**, feu vert nommé : `<plateforme>_interdit`
+  exclu des candidats). Preuve réelle chez Nico (job 7cd5edaf, parti seul au
+  créneau, recréé, ancienne en 404, test retirée). Selftest
+  `selftest:republication-auto-depop`.
 - **⛔ `platform_settings`** (02/10) : jamais d'update/PATCH de l'objet entier,
   toujours `rpc platform_settings_fusionner` ; la garde en base refuse le reste.
 - **Ventes (02/10 soir)** : `ventes.annonce_id` = la preuve (numéro d'annonce) ;

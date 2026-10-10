@@ -30,7 +30,7 @@ import {
 } from '../components/RepublicationPlanifiee';
 import { useRepublicationPlanifiee, republicationPlanifieeExposee, PLATEFORMES_PLANIFIEES, plateformesPlanifieesVisibles, droitRepublication } from '../hooks/useRepublicationPlanifiee';
 import { palierDesDrapeaux, aAuMoins, nomDuPalier } from '../utils/palier';
-import { plateformesDeReleve } from '../utils/stockFiltres';
+import { plateformesDeReleve, plateformesDuCompte } from '../utils/stockFiltres';
 import { txt } from './textes';
 import { GROUPES, entreesVisibles } from './plan';
 import { useSessionsPlateformes } from './useSessionsPlateformes';
@@ -44,6 +44,8 @@ import SousPageAbonnement from './SousPageAbonnement';
 import SousPagePlateformes from './SousPagePlateformes';
 import SousPageExpedition from './SousPageExpedition';
 import SousPageTransporteurs from './SousPageTransporteurs';
+import SousPagePortDepop from './SousPagePortDepop';
+import { usePortDepopParDefaut, formaterPort } from '../utils/fraisPortDepop';
 import SousPagePreferences from './SousPagePreferences';
 import SousPageCompte from './SousPageCompte';
 import SousPageCatalogueQuarantaine from './SousPageCatalogueQuarantaine';
@@ -55,13 +57,14 @@ import SousPageCatalogueQuarantaine from './SousPageCatalogueQuarantaine';
 // └──────────────────────────────────────────────────────────────────────────┘
 // Noms propres : ils ne se traduisent pas (même table que SousPagePlateformes
 // et que le module de republication).
-const NOMS_PF_REPUB = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', opla: 'Opla' };
+const NOMS_PF_REPUB = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', opla: 'Opla', depop: 'Depop' };
 
 const SOUS_PAGES = {
   abonnement:    { titre: (T) => T.gAbonnement,    Composant: SousPageAbonnement },
   plateformes:   { titre: (T) => T.gPlateformes,   Composant: SousPagePlateformes },
   expedition:    { titre: (T) => T.adresseRemise,  Composant: SousPageExpedition },
   transporteurs: { titre: (T) => T.transporteurs,  Composant: SousPageTransporteurs },
+  'port-depop':  { titre: (T) => T.portDepop,      Composant: SousPagePortDepop },
   preferences:   { titre: (T) => T.gPreferences,   Composant: SousPagePreferences },
   compte:        { titre: (T) => T.gCompte,        Composant: SousPageCompte },
   'catalogue-quarantaine': { titre: (T) => T.champsPlateformes, Composant: SousPageCatalogueQuarantaine },
@@ -105,6 +108,10 @@ export default function ReglagesPage({
   // (utils/stockFiltres.plateformesDuCompte), jamais une liste recopiée ici —
   // c'est exactement la divergence corrigée le 17/09 (Opla absente des cartes).
   const plateformesSession = useMemo(() => plateformesDeReleve(plateformesOuvertes, oplaRelie), [plateformesOuvertes, oplaRelie]);
+  // (10/10) Les plateformes que l'app PROPOSE à ce compte (même réponse que la
+  // publication) : la republication automatique Depop n'a de ligne que là où
+  // Depop est ouverte (extension ≥ 0.6.106, utils/basculeOplaDepop.js).
+  const plateformesCompte = useMemo(() => plateformesDuCompte(plateformesOuvertes ?? []), [plateformesOuvertes]);
   const sessionsLocales = useSessionsPlateformes({ userId: user?.id, plateformes: plateformesSession });
   // La vérité serveur (2026-09-23) : c'est elle que l'écran Plateformes et le
   // compteur du hub affichent. Le calcul local reste le repli.
@@ -121,6 +128,8 @@ export default function ReglagesPage({
   );
 
   const courante = pile.length ? pile[pile.length - 1] : null;
+  // (09/10 soir) Le prix de livraison Depop par défaut (ligne du hub).
+  const portDepop = usePortDepopParDefaut(user?.id);
 
   const ouvrir = (idSousPage, idEntree) => {
     track('reglages_ouvrir', { entree: idEntree ?? idSousPage });
@@ -226,6 +235,12 @@ export default function ReglagesPage({
     sessions, plateformesSession, verite,
     // (02/10) Opla encore proposée à la publication (avant la sortie du 10/10).
     oplaOuverte: (plateformesOuvertes ?? []).includes('opla'),
+    // (09/10 soir) Depop ouverte pour ce compte : la ligne « Frais de port Depop ».
+    depopOuverte: (plateformesOuvertes ?? []).includes('depop'),
+    portDepop: {
+      valeur: portDepop.valeur, lue: portDepop.lue,
+      texte: portDepop.valeur != null ? (lang === 'en' ? `€${formaterPort(portDepop.valeur, 'en')}` : `${formaterPort(portDepop.valeur, 'fr')} €`) : null,
+    },
     republication: {
       exposee: planifieeExposee,
       // ⚠️ 18/09 : le module porte QUATRE plateformes. « actif » veut donc dire
@@ -277,6 +292,7 @@ export default function ReglagesPage({
           palierApp={palierApp}
           lecture={planifiee.lecture}
           onReessayer={planifiee.recharger}
+          plateformesCompte={plateformesCompte}
         />
       )}
       {PLATEFORMES_PLANIFIEES.includes(ecranRepub) && (

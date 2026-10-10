@@ -19,6 +19,9 @@ contraire. `functions list`, `cron.job` et `profiles.extension_build` font foi.
   retirée ». **Boucles** → needs_user. **Cadence** : 50/j. **Relevés** : 5 min sans progression =
   arrêt ; partiel = `incomplete`. **Marque** hors catalogue → question. Test ≥ 999 €.
 - **Sortie d'Opla** : 10/10 00:00 Paris (`opla_sortie_le`) ; même instant : Depop pour tous, extension ≥ 0.6.106 (mig 20261009230000).
+- **⛔ Port Depop (09/10)** : jamais deviné ; défaut `platform_settings.depop.frais_port_defaut` (fusion), dit AVANT l'envoi ; gpj le pose, sinon republication → needs_user AVEC le champ (`_shared/port-depop.js`).
+- **⛔ Interdits Depop (09/10)** : une table `_shared/depop-interdits.js` ; case grisée, lot, filet gpj ; coques/étuis autorisés (titre seul) ; jamais la mode (sauf montres connectées) ; ambigus non bloqués.
+- **⛔ Republication auto Depop (10/10)** : même circuit (liste serveur, créneaux gpj v231) ; ligne de l'app si extension ≥ 0.6.106 ; un interdit n'est jamais candidat (mig 20261010100000).
 - **⛔ `platform_settings`** : `rpc platform_settings_fusionner` seulement.
 - **Crons coupés** : 17, 22. **Migrations** : § 3.4. **Données** : `scripts/reparations/` (`git add -f`), sauvegarde, inverse.
 - **Ouvert** : binaires **2.9.38** (AAB, iOS Codemagic) ; le reste : fin de l'état.

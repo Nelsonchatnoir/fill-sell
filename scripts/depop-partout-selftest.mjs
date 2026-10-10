@@ -40,8 +40,9 @@ const IGNORES = new Set(["node_modules", "dist", "build"]);
 // signature fait tomber le test : une exception ne couvre que ce qu'elle a vu.
 export const EXCEPTIONS = [
   // ── SERVEUR ────────────────────────────────────────────────────────────────
-  { fichier: "supabase/functions/get-pending-jobs/index.ts", signature: "tableau:beebs,leboncoin,opla,vinted", n: 1,
-    raison: "Créneaux de republication PLANIFIÉE (PF_CRENEAU) : Depop n'en a pas — la migration 20261009020000 laisse republish_planifiee_* inchangées ; un job Depop n'est jamais retenu par une fenêtre." },
+  // (10/10) Plus d'exception pour les créneaux de la republication PLANIFIÉE :
+  // get-pending-jobs prend la liste du serveur (republish_planifiee_fenetres_courantes),
+  // Depop comprise — plus aucune liste écrite en dur.
   { fichier: "supabase/functions/get-pending-jobs/index.ts", signature: "tableau:beebs,ebay,leboncoin,opla", n: 1,
     raison: "Ligne gardée à l'octet (selftest:beebs-age-republication) : Depop y est ajoutée juste à côté, « || j.platform === \"depop\" »." },
   { fichier: "supabase/functions/resolve-categorie/index.ts", signature: "tableau:beebs,ebay,leboncoin,opla,vinted", n: 1,
@@ -66,12 +67,8 @@ export const EXCEPTIONS = [
     raison: "Machines hybrides / génériques, même table : Depop n'a aucun rayon jeux vidéo ni de champ console." },
   { fichier: "src/utils/jeuxVideo.js", signature: "objet:beebs,ebay,leboncoin,opla,vinted", n: 1,
     raison: "Feuilles jeu / console / accessoire par LIBELLÉS : le rayon Depop se pose par identifiant (icône), et 🎮 n'y a pas de rayon." },
-  { fichier: "src/components/RepublicationPlanifiee.jsx", signature: "objet:beebs,leboncoin,opla,vinted", n: 3,
-    raison: "Republication PLANIFIÉE (noms, geste, fil) : Depop n'en a pas — republish_planifiee_* inchangées par la migration 20261009020000 ; la republication Depop est manuelle." },
-  { fichier: "src/hooks/useRepublicationPlanifiee.js", signature: "tableau:beebs,leboncoin,opla,vinted", n: 1,
-    raison: "Plateformes de la republication PLANIFIÉE : Depop n'en a pas (republication manuelle seulement)." },
-  { fichier: "src/reglages/ReglagesPage.jsx", signature: "objet:beebs,leboncoin,opla,vinted", n: 1,
-    raison: "Noms du module de republication PLANIFIÉE des Réglages : Depop n'en a pas." },
+  // (10/10) La republication PLANIFIÉE nomme Depop (écran, hook, Réglages) :
+  // ses trois exceptions du 09/10 sont retirées, la règle s'applique.
   { fichier: "src/publication/moteur/champsPartages.js", signature: "tableau:beebs,ebay,leboncoin,opla,vinted", n: 1,
     raison: "Propagation de la MATIÈRE : elle ne part pas chez Depop (facultative, non envoyée par le connecteur) — taille, couleur et marque, elles, la nomment." },
   { fichier: "src/publication/moteur/champsPartages.js", signature: "objet:beebs,leboncoin,opla,vinted", n: 2,

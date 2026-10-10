@@ -36,7 +36,10 @@ CapacitorUpdater.notifyAppReady().catch((e) => {
 // l'entrée (demandée une seconde avant d'être servie, au déploiement) a été
 // gardé une heure par Cloudflare : page blanche pour tout le monde, aucune
 // erreur de code. Ajouter ce repère a aussi renommé l'entrée.
-window.__fillsellEntree = true
+// (10/10, 10:23) Même incident au déploiement de c23bf52 : l'entrée
+// index-pcp8JIQj.js gardée en 404 (variante Origin, cf-cache-status HIT,
+// max-age 4 h). La date du dernier renommage, écrite ici, renomme l'entrée.
+window.__fillsellEntree = '2026-10-10'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // UN DÉPLOIEMENT PENDANT QU'UN ONGLET EST OUVERT = ÉCRAN BLANC. PLUS MAINTENANT.

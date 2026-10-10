@@ -35,6 +35,8 @@ import "./lot.css";
 import ListingPreviewScreen from "../../components/ListingPreviewScreen";
 import BlocQuestions from "../BlocQuestions";
 import CarteRayon from "../../components/CarteRayon";
+import { CartePortDepop } from "../../components/PortDepop";
+import ExclusDepop from "./ExclusDepop";
 import BoutonMeConnecter from "../../components/BoutonMeConnecter";
 import BarreProgression from "../../components/BarreProgression";
 import { Carte, Puce, Logo, Bouton } from "../composants";
@@ -645,6 +647,13 @@ export default function LotPublication({
   const aCompleter = lot ? lot.ids.filter((id) => etats[id]?.phase === "questions") : [];
   const annoncesPretes = prets.reduce((n, id) => n + [...(moteursRef.current.get(id)?.plateformesPubliables ?? [])].length, 0);
   const preparationFinie = Boolean(lot) && enPrep.length === 0;
+  // (09/10 soir) Les articles d'une catégorie que DEPOP INTERDIT : exclus de
+  // Depop seulement (la case de leur moteur est grisée), comptés et dits AVANT
+  // l'envoi — le reste du lot part normalement, jamais un lot bloqué pour ça.
+  const exclusDepop = lot && lot.plateformes.includes("depop")
+    ? lot.ids.filter((id) => !["retire", "envoye"].includes(etats[id]?.phase) && moteursRef.current.get(id)?.depopInterdit)
+      .map((id) => ({ id, message: moteursRef.current.get(id).depopInterdit.message, quoi: moteursRef.current.get(id).depopInterdit.quoi }))
+    : [];
   // La livraison du lot atteint chaque copie Leboncoin dès la préparation
   // finie (transporteurs retenus compris), puis à chaque changement.
   useEffect(() => {
@@ -1115,8 +1124,11 @@ export function EcranAvant({
         <LivraisonDuLot en={en} ids={lot.ids.filter((id) => !["retire", "envoye"].includes(etats[id]?.phase))} parId={parId} moteurs={moteurs}
           poidsDe={poidsDe} poserPoids={poserPoids} poserPoidsDuLot={poserPoidsDuLot}
           livraison={livraison} poserTransporteurs={poserTransporteurs} poserFormat={poserFormat}
-          colisVinted={colisVinted} choisirColisVinted={choisirColisVinted} />
+          colisVinted={colisVinted} choisirColisVinted={choisirColisVinted} userId={userId} />
       )}
+
+      {/* (09/10 soir) Ce que Depop refuse : combien d'articles, et pourquoi. */}
+      {preparationFinie && !envoi && <ExclusDepop en={en} exclus={exclusDepop} />}
 
       {/* Une réponse pour plusieurs articles : même champ, même liste. */}
       {communes.map((g) => (
@@ -1266,6 +1278,10 @@ export function ArticleAQuestions({ id, en, item, m, st, decision, decider, tran
 
       {/* Les questions du moteur : le MÊME bloc que le stepper. */}
       <BlocQuestions m={m} />
+
+      {/* (09/10 soir) Les frais de port Depop de CET article, quand ni le
+          prix par défaut ni celui du lot ne l'ont rempli. */}
+      {m.portDepop?.manquant && <CartePortDepop m={m} id={`port-depop-${id}`} />}
 
       {motifs.some((x) => x.cle === "cta") && (m.motifsCtaGris ?? []).length > 0 && (
         <div className="fsn-q fsn-q--bloque">

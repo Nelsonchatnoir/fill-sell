@@ -1,7 +1,7 @@
 {
   "name": "fillsell",
   "private": true,
-  "version": "2.9.69",
+  "version": "2.9.73",
   "type": "module",
   "scripts": {
     "postinstall": "node -e \"if(process.env.VERCEL){console.log('Vercel: patch-package saute (patches natifs seulement, et le cache de build casse leur application)')}else{require('child_process').execSync('patch-package',{stdio:'inherit'})}\"",
@@ -117,6 +117,8 @@
     "selftest:depop-mapping": "node --import ./scripts/loader-ext.mjs scripts/depop-mapping-selftest.mjs",
     "selftest:moteur-faiblesses-depop": "node --import ./scripts/loader-ext.mjs scripts/moteur-faiblesses-depop-selftest.mjs",
     "selftest:depop-acces": "node scripts/depop-acces-selftest.mjs",
+    "selftest:port-depop": "node --import ./scripts/loader-ext.mjs scripts/port-depop-selftest.mjs",
+    "selftest:depop-interdits": "node --import ./scripts/loader-ext.mjs scripts/depop-interdits-selftest.mjs",
     "selftest:identifiant-avant-moteur": "node scripts/identifiant-avant-moteur-selftest.mjs",
     "selftest:depop-reprise-lecture": "node scripts/depop-reprise-lecture-selftest.mjs",
     "selftest:annonce-partagee-tranchee": "node scripts/annonce-partagee-tranchee-selftest.mjs",
@@ -124,6 +126,7 @@
     "selftest:bascule-opla-depop": "node --import ./scripts/loader-ext.mjs scripts/bascule-opla-depop-selftest.mjs",
     "selftest:annonce-autre-fiche-jamais-jumeau": "node --import ./scripts/loader-ext.mjs scripts/annonce-autre-fiche-jamais-jumeau-selftest.mjs",
     "selftest:depop-partout": "node scripts/depop-partout-selftest.mjs",
+    "selftest:republication-auto-depop": "node --import ./scripts/loader-ext.mjs scripts/republication-auto-depop-selftest.mjs",
     "gen:vinted-branche": "node scripts/gen-vinted-branche.mjs",
     "selftest:tailles": "node scripts/tailles-selftest.mjs",
     "selftest:leboncoin-vendu": "node scripts/leboncoin-vendu-selftest.mjs",

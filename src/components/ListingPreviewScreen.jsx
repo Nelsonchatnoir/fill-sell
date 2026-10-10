@@ -47,10 +47,11 @@ import { mentionsAutrePlateforme, messageMentions } from "../utils/descriptionMe
 import { normalizeVintedTitle } from "../utils/vintedTitle";
 import { getEbayCategoryId } from "../utils/ebayCategories";
 import { getBeebsCategoryPath, beebsGenreRequired } from "../utils/beebsCategories";
-import { getPlatformSupport } from "../utils/platformCompat";
+import { getPlatformSupport, depopInterdit } from "../utils/platformCompat";
 // Règles du catalogue Beebs (2026-09-11) : le MÊME fichier que le filet serveur
 // (get-pending-jobs) — verdict sur source certaine, motif écrit sous la case.
 import { verdictBeebsInterdit, messageBeebsInterdit } from "../../supabase/functions/_shared/beebs-interdits.js";
+import { messageDepopInterdit } from "../../supabase/functions/_shared/depop-interdits.js";
 import { computeRemovalInfo } from "../utils/publicationState";
 import { chercherJumeauxEnLigne } from "../utils/jumeauxEnLigne";
 import { demarrerDictee, dicteeDisponible, ajouterDictee } from "../utils/dictee";
@@ -70,6 +71,7 @@ import {
 } from "../utils/childSizes";
 import { PLATEFORMES_STOCK_OUVERTES, PLATEFORMES_STOCK_A_VENIR, PLATEFORMES_JAMAIS_PRECOCHEES } from "../utils/stockFiltres";
 import { deriverCopieDepop, DEPOP_DESCRIPTION_MAX, DEPOP_HASHTAGS_MAX, compterHashtagsDepop } from "../utils/depopPublication";
+import { usePortDepopParDefaut, lirePortSaisi, formaterPort } from "../utils/fraisPortDepop";
 // La résolution de catégorie et de champs plateforme — SORTIE de handlePublish
 // le 20/09 pour tourner à la fin de la génération. Même code, même ordre,
 // mêmes messages : un déménagement, pas une réécriture (en-tête du module).
@@ -5321,10 +5323,17 @@ export default function ListingPreviewScreen({
   // Motif d'une case grisée, par plateforme : Beebs a SON texte (marque ou
   // catégorie nommée, « règle de Beebs », jamais culpabilisant), les autres
   // gardent le motif générique par statut.
+  // (09/10 soir) Depop : la phrase de SA règle (« Depop n'accepte pas les
+  // objets électriques ou électroniques »), même table que le serveur.
+  const depopInterditArticle = useMemo(() => depopInterdit(
+    detectObjectIcon(initialListing?.titre, initialListing?.description, initialListing?.categorie), articlePourCompat,
+  ), [initialListing, articlePourCompat]);
   const motifSupport = (p, support) =>
     p === "beebs" && support === "prohibited" && beebsInterdit
       ? messageBeebsInterdit(beebsInterdit, lang)
-      : supportMessage(t, support, PLATFORM_LABELS[p]);
+      : p === "depop" && support === "prohibited" && depopInterditArticle
+        ? messageDepopInterdit(depopInterditArticle, lang)
+        : supportMessage(t, support, PLATFORM_LABELS[p]);
   const platformSupport = useMemo(() => {
     const icon = detectObjectIcon(
       initialListing?.titre,
@@ -7017,6 +7026,33 @@ export default function ListingPreviewScreen({
   const plateformesPubliables = useMemo(
     () => calculerPlateformesPubliables({ selected, platformListings, lbcAdresseManquante, platformSupport }),
     [selected, platformListings, lbcAdresseManquante, platformSupport]);
+
+  // ── DEPOP : LES FRAIS DE PORT, DITS AVANT L'ENVOI (09/10 soir, Nico) ──────
+  // En France, Depop ne fournit aucune étiquette : le vendeur fixe le prix de
+  // livraison que paie l'acheteur (obligatoire, moins de 100 €). Le champ est
+  // pré-rempli avec le prix par défaut des Réglages (platform_settings.depop.
+  // frais_port_defaut), modifiable article par article, et visible sur
+  // « Confirmer » sans ouvrir de carte. Sans prix, Depop attend une réponse
+  // AVANT l'envoi — plus jamais une question après coup (utils/fraisPortDepop).
+  const portDepopDefaut = usePortDepopParDefaut(userId);
+  const portDepopToucheRef = useRef(false);
+  const portDepopSaisi = edited?.depop?.platform_fields?.depopPort;
+  useEffect(() => {
+    if (portDepopToucheRef.current || portDepopDefaut.valeur == null || !edited?.depop) return;
+    if (String(portDepopSaisi ?? "").trim() !== "") return;
+    const v = formaterPort(portDepopDefaut.valeur, lang);
+    setEdited(prev => prev?.depop && String(prev.depop.platform_fields?.depopPort ?? "").trim() === ""
+      ? { ...prev, depop: { ...prev.depop, platform_fields: { ...(prev.depop.platform_fields ?? {}), depopPort: v } } }
+      : prev);
+  }, [portDepopDefaut.valeur, Boolean(edited?.depop), portDepopSaisi, lang]); // eslint-disable-line react-hooks/exhaustive-deps
+  const poserPortDepop = (v) => {
+    portDepopToucheRef.current = true;
+    setEdited(prev => prev?.depop
+      ? { ...prev, depop: { ...prev.depop, platform_fields: { ...(prev.depop.platform_fields ?? {}), depopPort: v } } }
+      : prev);
+  };
+  const portDepopManquant = selected.has("depop") && [...plateformesPubliables].includes("depop")
+    && lirePortSaisi(portDepopSaisi).valeur == null;
 
   // ── UN JUMEAU DÉJÀ EN LIGNE SUR LA PLATEFORME VISÉE (2026-09-21) ─────────
   // Le verrou `publishedSet` ne voit que les jobs de CET article. Quand le
@@ -10017,6 +10053,8 @@ export default function ListingPreviewScreen({
     vintedGenreBlocked ||
     beebsGenreBlocked ||
     descriptionVideVinted ||
+    // (09/10 soir) Depop cochée sans frais de port : on les dit avant l'envoi.
+    portDepopManquant ||
     // (25/09) Un rayon À CHOISIR (refusé, aucun rayon sûr à sa place) : la
     // plateforme attend la réponse, comme pour un champ obligatoire — on la
     // choisit, ou on décoche la plateforme. (05/10) Aussi quand AUCUN mot
@@ -10104,6 +10142,7 @@ export default function ListingPreviewScreen({
         : `Rayon ${nomPlateforme(p)} à choisir — aucun rayon sûr trouvé (sur sa carte, liste prête)`);
     }
     if (descriptionVideVinted) m.push(lang === "en" ? "Vinted description to write" : "Description Vinted à écrire");
+    if (portDepopManquant) m.push(lang === "en" ? "Depop shipping price to fill in" : "Frais de port Depop à indiquer");
     if (refusSansQuestion) m.push(String(resolutionAffichee?.refus?.message ?? (lang === "en" ? "Category to pick" : "Rayon à choisir")));
     // ── RIEN DE COCHÉ : ON LE DIT, ET ON DIT QUOI COCHER (2026-09-22) ───────
     // 🚨 LE DÉFAUT, mail de Romain du 22/09 à 13h48 (« Donc je ne sais pas ce
@@ -10433,6 +10472,7 @@ export default function ListingPreviewScreen({
     if (vintedGenreBlocked || descriptionVideVinted) ajoute("vinted");
     if (beebsGenreBlocked) ajoute("beebs");
     for (const p of Object.keys(rayonsAChoisir)) ajoute(p);
+    if (portDepopManquant) ajoute("depop");
     const out = {};
     for (const p of Object.keys(platformListings?.platforms ?? {})) {
       if (!selected.has(p)) continue;
@@ -10460,6 +10500,8 @@ export default function ListingPreviewScreen({
     // grise TOUT le bouton : on dit laquelle, et on offre de partir sans elle
     // — jamais un bouton gris dont la seule issue est « Quitter ».
     ...missingSharedFieldsDetailed.flatMap(f => f.platforms ?? []),
+    // (09/10 soir) « Continuer sans Depop » quand ses frais de port manquent.
+    ...(portDepopManquant ? ["depop"] : []),
   ])].filter(p => selected.has(p));
   // Par plateforme cochée, les questions qui la retiennent — pour sa ligne de
   // « Confirmer » (« Attend une réponse : Taille, Département »), au lieu de
@@ -10582,6 +10624,15 @@ export default function ListingPreviewScreen({
     exclusionsPrevues, plateformesRetirables, questionsParPlateforme,
     // (25/09) Le rayon à choisir, posé sur « Confirmer » avec ses candidats.
     rayonsAChoisir, suggestionsParPf, choisirRayon,
+    // (09/10 soir) L'article est d'une catégorie que Depop interdit (le lot le
+    // compte et le dit avant l'envoi) : { regle, quoi, citation, message }.
+    depopInterdit: depopInterditArticle ? { ...depopInterditArticle, message: messageDepopInterdit(depopInterditArticle, lang) } : null,
+    // (09/10 soir) Les frais de port Depop : le champ de « Confirmer » et du lot.
+    portDepop: {
+      visee: selected.has("depop") && [...plateformesPubliables].includes("depop"),
+      saisie: portDepopSaisi ?? "", manquant: portDepopManquant,
+      defaut: portDepopDefaut.valeur, poser: poserPortDepop,
+    },
     publishError, publishing, motifsCtaGris, ctaDisabled, ctaBlockingActive, requiredBlocking, publishedStateLoaded,
     ctaLabel: step === 3 ? ctaLabel() : null,
     // Le suivi
