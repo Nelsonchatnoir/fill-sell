@@ -54,6 +54,8 @@ import { maisonDesLivres, feuillesDuNoeud, sortDeLaMaison } from "./motObjetOuSu
 import { jeuVideoDeLArticle, cheminJeuVideo, classementAgeEcrit, classementPourPlateforme, plateformeEbayDuJeu,
          VINTED_CHAMP_PLATEFORME, VINTED_CHAMP_CLASSEMENT, EBAY_ASPECT_CLASSEMENT, EBAY_ASPECT_PLATEFORME } from "./jeuxVideo";
 import { familleDeLObjet, plausibiliteDuChemin } from "./familleCategorie";
+// (10/10) eBay : un vêtement de mode ne part pas en sport sans que le texte le dise.
+import { vetoBrancheSpecialisee } from "./brancheSpecialiseeEbay";
 import { getEbayCategoryPath, getEbayCategoryId, ebayGenreRequired } from "./ebayCategories";
 import { getBeebsCategoryPath, beebsGenreRequired } from "./beebsCategories";
 import { isChildGenre, toPlatformChildSize, lbcChildSizeCategory } from "./childSizes";
@@ -658,6 +660,9 @@ export async function resoudrePublication({
   // garde la trace sur le job : sans elle, « pourquoi cette catégorie n'a
   // pas été posée ? » redevient une reconstitution à rebours.
   const escamotageParPf = {};
+  // (10/10) Feuilles eBay écartées par la règle « mode hors branche
+  // spécialisée » — gardées pour la trace du job.
+  const brancheSpecialiseeEcartee = {};
   if (motCategorie) {
     await Promise.all(plateformesAPublier.map(async (platform) => {
       const pfE = edited[platform]?.platform_fields ?? {};
@@ -698,7 +703,25 @@ export async function resoudrePublication({
             );
           }
         }
-        if (r.certitude === "exact" && !horsMaison) categorieParMotParPf[platform] = r;
+        // ── eBay : UN VÊTEMENT DE MODE NE PART PAS EN SPORT SANS QUE LE TEXTE
+        // LE DISE (10/10, Nico — gilet de Manon en « Cyclisme › Gilets ») ──
+        // Une feuille exacte d'une branche spécialisée (sport, auto-moto,
+        // protection, animalerie) qui nomme un vêtement n'est une certitude que
+        // si le titre, la description ou l'objet disent la spécialité. Sinon
+        // certitude retirée : l'étape 3 (candidates filtrées) puis l'icône
+        // tranchent. Cf. utils/brancheSpecialiseeEbay.js.
+        let brancheEcartee = null;
+        if (r.certitude === "exact" && platform === "ebay") {
+          brancheEcartee = vetoBrancheSpecialisee({
+            plateforme: platform, chemin: r.chemin,
+            titre: frTitrePublication, description: frDescriptionPublication, mot: motCategorie,
+          });
+          if (brancheEcartee) {
+            brancheSpecialiseeEcartee[platform] = brancheEcartee;
+            console.warn(`[publish] ${platform} — « ${motCategorie} » tombe sur « ${r.chemin.join(" > ")} » : ${brancheEcartee.motif} — certitude retirée`);
+          }
+        }
+        if (r.certitude === "exact" && !horsMaison && !brancheEcartee) categorieParMotParPf[platform] = r;
         if (r.escamotage) {
           escamotageParPf[platform] = r.escamotage;
           console.warn(`[publish] ${platform} — ${r.escamotage.motif}`);
@@ -734,7 +757,11 @@ export async function resoudrePublication({
   // ⛔ Une source CERTAINE n'est jamais écrasée : on ne ratisse que pour
   //    les plateformes sans correspondance exacte.
   if (motCategorie) {
-    const aRatisser = plateformesAPublier.filter(p => !categorieParMotParPf[p]);
+    // (10/10) eBay écarté à l'étape 2 (« mode hors branche spécialisée ») ne
+    // rejoint PAS l'appel commun : la demande faite à l'IA reste à l'octet
+    // celle d'avant pour Vinted, Leboncoin, Beebs et Depop (une seule question
+    // pour toutes les plateformes) ; eBay prend le chemin de son icône.
+    const aRatisser = plateformesAPublier.filter(p => !categorieParMotParPf[p] && !(p === "ebay" && brancheSpecialiseeEcartee.ebay));
     const candidats = candidatsRatisses;
     await Promise.all(aRatisser.map(async (platform) => {
       const pfE = edited[platform]?.platform_fields ?? {};
@@ -804,6 +831,22 @@ export async function resoudrePublication({
         });
         for (const [platform, choix] of Object.entries(choixIa?.choix ?? {})) {
           if (!Array.isArray(choix?.chemin) || !choix.chemin.length) continue;
+          // (10/10) eBay : un choix de l'IA dans un rayon « vêtement » de sport,
+          // auto-moto, protection, animalerie ou collection que le texte ne
+          // justifie pas n'est pas retenu (« Polo NAF NAF col volant » choisi en
+          // Golf › Polos, 22/09) — l'icône reprend la main. La question posée à
+          // l'IA, elle, n'a pas changé : les autres plateformes ne bougent pas.
+          if (platform === "ebay") {
+            const vetoChoix = vetoBrancheSpecialisee({
+              plateforme: platform, chemin: choix.chemin,
+              titre: frTitrePublication, description: frDescriptionPublication, mot: motCategorie,
+            });
+            if (vetoChoix) {
+              brancheSpecialiseeEcartee.ebay = vetoChoix;
+              console.warn(`[publish] ebay — choix de l'IA « ${choix.chemin.join(" > ")} » non retenu : ${vetoChoix.motif}`);
+              continue;
+            }
+          }
           categorieParMotParPf[platform] = { chemin: choix.chemin, id: choix.id ?? null, choisiParIa: true };
         }
         const retenus = Object.keys(choixIa?.choix ?? {});
@@ -1217,7 +1260,11 @@ export async function resoudrePublication({
           pf.ebayAspects = aspectsEbay;
         }
       }
-      if (!parMotEbay && categoryPath && categoryId) poseParIcone.ebay = { chemin: categoryPath, id: String(categoryId) };
+      // (10/10) Le chemin de l'icône qui REMPLACE une feuille écartée par la règle
+      // « mode hors branche spécialisée » n'entre pas dans la vérification
+      // commune : elle aussi est UNE question pour toutes les plateformes, et elle
+      // doit rester celle d'avant pour Vinted, Leboncoin, Beebs et Depop.
+      if (!parMotEbay && categoryPath && categoryId && !brancheSpecialiseeEcartee.ebay) poseParIcone.ebay = { chemin: categoryPath, id: String(categoryId) };
       if (ebayGenreRequired(icon)) pf.ebayGenreRequired = true;
       // Couleur : l'extension consomme colors[0] (les specifics eBay
       // Couleur sont mono-valeur) — même split que Vinted, dominante
@@ -1892,6 +1939,47 @@ export async function resoudrePublication({
             : `ATTENTE (${res.motif})`)
       );
     }));
+  }
+
+  // ══ eBay : LE CHEMIN FINAL PASSE LA MÊME RÈGLE (10/10, Nico) ═════════════
+  // Les étapes 2 et 3 écartent déjà les feuilles « vêtement » de sport,
+  // auto-moto, protection et animalerie que le texte ne justifie pas. Ce
+  // dernier contrôle couvre les autres chemins (icône, vérification, descente
+  // de l'arbre) : un tel chemin est remplacé par celui de l'icône quand il
+  // passe la règle ; sinon il est retiré — la question du rayon part (voie
+  // formulaire), ou le serveur choisit parmi les suggestions d'eBay (voie API).
+  // ⛔ Le choix de la personne est reposé APRÈS ce module : jamais touché.
+  if (pfParPlateforme.ebay) {
+    const pf = pfParPlateforme.ebay;
+    const textesVeto = { titre: frTitrePublication, description: frDescriptionPublication, mot: motCategorie };
+    const veto = Array.isArray(pf.ebayCategoryPath) && pf.ebayCategoryPath.length
+      ? vetoBrancheSpecialisee({ plateforme: "ebay", chemin: pf.ebayCategoryPath, ...textesVeto })
+      : null;
+    if (veto) {
+      const icone = pf.categorie_icone ?? null;
+      const cheminIcone = icone ? getEbayCategoryPath(icone, pf.genre) : null;
+      const idIcone = icone ? getEbayCategoryId(icone, pf.genre) : null;
+      const iconeValable = Boolean(cheminIcone && idIcone
+        && !vetoBrancheSpecialisee({ plateforme: "ebay", chemin: cheminIcone, ...textesVeto }));
+      pf.categorie_branche_specialisee = {
+        ...veto, source_avant: pf.categorie_source ?? null,
+        remplace_par: iconeValable ? cheminIcone : null,
+      };
+      if (iconeValable) {
+        pf.ebayCategoryPath = cheminIcone;
+        pf.ebayCategoryId = idIcone;
+        pf.categorie_source = "icone_mode_hors_sport";
+      } else {
+        delete pf.ebayCategoryPath;
+        delete pf.ebayCategoryId;
+        if (ebayVoieApi === true) pf.categorie_incertaine = true;
+      }
+      console.warn(`[publish] ebay — chemin final « ${veto.chemin_ecarte.join(" > ")} » écarté (${veto.motif})` +
+        (iconeValable ? ` → « ${cheminIcone.join(" > ")} » (icône)` : " → aucun chemin sûr : rayon à choisir / suggestions d'eBay"));
+    } else if (brancheSpecialiseeEcartee.ebay) {
+      // Écartée à l'étape 2, le chemin final est sain : la trace reste sur le job.
+      pf.categorie_branche_specialisee = { ...brancheSpecialiseeEcartee.ebay, source_avant: null, remplace_par: pf.ebayCategoryPath ?? null };
+    }
   }
 
   // ══ AUCUN RAYON TROUVÉ : ON DEMANDE, ON NE BLOQUE JAMAIS (03/10, Nico) ════
