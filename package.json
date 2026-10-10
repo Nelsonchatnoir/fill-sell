@@ -110,6 +110,7 @@
     "selftest:bascule-opla-depop": "node --import ./scripts/loader-ext.mjs scripts/bascule-opla-depop-selftest.mjs",
     "selftest:annonce-autre-fiche-jamais-jumeau": "node --import ./scripts/loader-ext.mjs scripts/annonce-autre-fiche-jamais-jumeau-selftest.mjs",
     "selftest:depop-partout": "node scripts/depop-partout-selftest.mjs",
+    "selftest:republication-auto-depop": "node --import ./scripts/loader-ext.mjs scripts/republication-auto-depop-selftest.mjs",
     "gen:vinted-branche": "node scripts/gen-vinted-branche.mjs",
     "selftest:tailles": "node scripts/tailles-selftest.mjs",
     "selftest:leboncoin-vendu": "node scripts/leboncoin-vendu-selftest.mjs",
