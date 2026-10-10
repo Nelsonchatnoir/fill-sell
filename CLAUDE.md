@@ -259,6 +259,9 @@ contraire. Il se périme : `functions list`, `cron.job` et
   (mig 20261009230000 : `depop_autorise` lit `opla_sortie_le` ; republication
   auto Depop ouverte) ; l'app ne la montre qu'à une extension ≥ 0.6.106
   (`src/utils/basculeOplaDepop.js`), le site bascule seul (`src/utils/siteAvecDepop.js`).
+  (10/10 après-midi) Une copie Opla rédigée AVANT la bascule ne se repropose
+  plus (écran « Confirmer » du stepper) : le moteur ne garde que les copies des
+  plateformes que le compte voit (`src/publication/copiesProposees.js`).
 - **⛔ FRAIS DE PORT DEPOP (09/10 soir, Nico : zéro friction)** : en France Depop
   ne fournit aucune étiquette, le vendeur fixe le port (0 à 99,99 €) — jamais
   deviné. Prix par défaut dans Réglages › Expédition

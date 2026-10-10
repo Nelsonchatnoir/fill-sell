@@ -121,5 +121,19 @@ dit('base : republication automatique Depop ouverte (pf_depop = 1, liste planifi
   && mig.includes("'opla', 'depop']::text[]") && mig.includes("('republish_espacement_min_depop_sec', 900, now())"));
 dit('base : aucun mail, aucune notification, aucun retrait dans la migration', !/envoyer|net\.http|push|armer_retrait|cross_post_jobs/i.test(mig.replace(/^--.*$/gm, '')));
 
+console.log('F. (10/10, Nico) une copie Opla d\'avant la bascule ne se repropose jamais à la publication');
+const { copiesProposees } = await import('../src/publication/copiesProposees.js');
+const fiche = { platforms: { vinted: { title: 'a' }, leboncoin: { title: 'b' }, ebay: { title: 'c' }, beebs: { title: 'd' }, opla: { title: 'e' }, depop: { title: 'f' } } };
+const apres = etatBascule({ maintenant: MINUIT, interrupteur: null, versionsExtension: ['0.6.106'] });
+const visiblesApres = ['vinted', 'leboncoin', 'ebay', 'beebs', ...apres.plateformesOuvertes];
+const vues = Object.keys(copiesProposees(fiche, visiblesApres, sf.PLATEFORMES_STOCK_A_VENIR).platforms);
+dit(`après 00:00 : les copies proposées sont ${vues.join(', ')} — jamais Opla`, !vues.includes('opla') && vues.includes('depop') && vues.length === 5);
+dit('sans extension Depop : ni Opla ni Depop', !Object.keys(copiesProposees(fiche, ['vinted'], sf.PLATEFORMES_STOCK_A_VENIR).platforms).some((p) => p === 'opla' || p === 'depop'));
+dit('rien à retirer : le MÊME objet (aucun rendu de plus)', copiesProposees({ platforms: { vinted: {} } }, [], sf.PLATEFORMES_STOCK_A_VENIR).platforms.vinted !== undefined
+  && (() => { const l = { platforms: { vinted: {} } }; return copiesProposees(l, [], sf.PLATEFORMES_STOCK_A_VENIR) === l; })());
+const moteur = lire('src/components/ListingPreviewScreen.jsx');
+dit('moteur : TOUTES les listes de l\'écran lisent les copies filtrées (une seule porte)', moteur.includes('const [platformListingsBrut, setPlatformListings]')
+  && moteur.includes('copiesProposees(platformListingsBrut,') && !/\[platformListings, setPlatformListings\]/.test(moteur));
+
 if (echecs) { console.log(`\n[selftest:bascule-opla-depop] ${echecs} ÉCHEC(S)`); process.exit(1); }
 console.log('\n[selftest:bascule-opla-depop] OK — avant 00:00 l\'état d\'aujourd\'hui ; à 00:00 Opla absente (synchronisation seule au compte relié), Depop à sa place là où l\'extension sait la faire, rien sinon.');

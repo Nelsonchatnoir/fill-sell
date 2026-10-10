@@ -70,6 +70,7 @@ import {
   childAxesForGenre,
 } from "../utils/childSizes";
 import { PLATEFORMES_STOCK_OUVERTES, PLATEFORMES_STOCK_A_VENIR, PLATEFORMES_JAMAIS_PRECOCHEES } from "../utils/stockFiltres";
+import { copiesProposees } from "../publication/copiesProposees";
 import { deriverCopieDepop, DEPOP_DESCRIPTION_MAX, DEPOP_HASHTAGS_MAX, compterHashtagsDepop } from "../utils/depopPublication";
 import { usePortDepopParDefaut, lirePortSaisi, formaterPort } from "../utils/fraisPortDepop";
 // La résolution de catégorie et de champs plateforme — SORTIE de handlePublish
@@ -4878,7 +4879,18 @@ export default function ListingPreviewScreen({
   // Step 2 — résultats generate-listing
   const [generatingPlatforms, setGeneratingPlatforms] = useState(false);
   const [platformError, setPlatformError]             = useState("");
-  const [platformListings, setPlatformListings]       = useState(draft?.platformListings ?? null);
+  const [platformListingsBrut, setPlatformListings]   = useState(draft?.platformListings ?? null);
+  // (10/10, Nico : « on ne peut plus publier sur Opla ») Une fiche rédigée
+  // avant la sortie d'Opla garde sa copie Opla : sans ce filtre, l'écran
+  // « Confirmer » et la rangée de l'étape 2 la reproposaient. Une plateforme
+  // « à venir » que le compte ne voit pas n'a plus de copie à l'écran ni dans
+  // les jobs (publication/copiesProposees.js) ; l'état brut, lui, la garde.
+  // Clé texte : un tableau neuf à chaque rendu ne refait jamais l'objet (aucune boucle d'effets).
+  const cleVisibles = (Array.isArray(plateformesVisibles) ? plateformesVisibles : []).join("|");
+  const platformListings = useMemo(
+    () => copiesProposees(platformListingsBrut, cleVisibles ? cleVisibles.split("|") : [], PLATFORMS_A_VENIR),
+    [platformListingsBrut, cleVisibles],
+  );
   const [processedPhotos, setProcessedPhotos]         = useState(draft?.processedPhotos ?? []);
   // ── LA MARQUE DE LA FICHE N'EST JAMAIS REDEMANDÉE (03/10, cas Ornella) ────
   // À l'ARRIVÉE des copies — brouillon (ici), fiche rouverte et rédaction
