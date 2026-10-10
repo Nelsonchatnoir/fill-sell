@@ -108,7 +108,7 @@ Limite : avant ce correctif, les lignes eBay ne nommaient pas l'article (corrig�
 - Mesures (Hauteur, Largeur, Longueur…) : seulement si les chiffres sont dans le texte.
 - Un aspect FREE_TEXT dont ni la liste ni le texte ne disent rien (ex. « Longueur de la robe »
   sur une robe dont le titre ne dit pas la longueur) : la question part, liste en main.
-- **Défaut distinct, non corrigé ici** : `resoudreParMot("gilet")` rend EXACTEMENT la feuille
+- **Défaut distinct, CORRIGÉ le 10/10 nuit** (`docs/enquetes/ebay-mode-hors-sport-1010/RAPPORT.md`) : `resoudreParMot("gilet")` rend EXACTEMENT la feuille
   177856 « Cyclisme › Gilets » (reproduit) ; « veste » rend 36124 « Cyclisme › Vestes ». Le
   gilet de Manon serait parti en équipement de cycliste. Mesuré sur 60 jours : 1 job en 177856
   (le sien), 1 en 36124 (une vraie veste de cyclisme). À trancher : un changement de catégorie

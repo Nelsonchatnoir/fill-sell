@@ -27,7 +27,16 @@ contraire. Il se périme : `functions list`, `cron.job` et
   aspect ET catégorie, appel raté retenté (`src/publication/moteur/aspectsEbayAuto.js`).
   Mesure `usage_logs` `ebay_aspects_ia`. ⛔ SELECTION_ONLY = liste seule ; colis jamais deviné.
   Enquête : `docs/enquetes/manon-ebay-aspects-1010/RAPPORT.md` (« gilet » → 177856 Cyclisme :
-  défaut DISTINCT, non corrigé). Selftests `ebay-aspects-seconde-passe`, `ebay-aspects-auto`.
+  corrigé le 10/10 nuit, ligne suivante). Selftests `ebay-aspects-seconde-passe`, `ebay-aspects-auto`.
+- **⛔ eBay : UN VÊTEMENT DE MODE NE PART PAS EN SPORT (10/10 nuit, Nico)** : « gilet » →
+  Cyclisme › Gilets, « veste » → Cyclisme › Vestes, « sac » → Golf › Sacs, « basket » →
+  Collections › Pins, « collier » → Animalerie › Colliers… étaient des feuilles EXACTES (sans
+  IA). Règle (`src/utils/brancheSpecialiseeEbay.js`, eBay SEULEMENT) : un rayon « vêtement » de
+  Sports (hors Vacances), Auto-moto, Bricolage, Animalerie, Collections n'est retenu que si le
+  titre / la description / l'objet disent la spécialité (sous Sports : un sport nommé suffit) ;
+  sinon icône, question ou suggestion eBay. ⛔ La question IA COMMUNE aux plateformes n'est
+  jamais modifiée (écart après la réponse). 8 annonces déjà mal rangées (3 en ligne), RIEN modifié :
+  `docs/enquetes/ebay-mode-hors-sport-1010/RAPPORT.md`. Selftest `branche-specialisee-ebay`.
 - **⛔ DEPOP POUR LE SEUL COMPTE DE NICO (09/10 nuit)** : base (mig 20261009020000,
   garde `depop_autorise` : drapeau `depop_ouvert` RESTÉ À 0 ou `beta_flags.depop` —
   Nico seul), moteur commun corrigé (9eab08f : « EUR » ≡ « EU », « Comme neuf » = très
