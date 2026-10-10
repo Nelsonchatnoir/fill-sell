@@ -9,6 +9,15 @@ terminal Problèmes » / « 05/10 après-midi » / « 06/10 » / « 06/10 soir �
 contraire. Il se périme : `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
 
+- **⛔ PUBLICATION EN LOT : PAGE BLANCHE (09/10 22:13 → 10/10, Nico et Louis)** :
+  `EcranAvant` lisait `userId` (f06c91f, port Depop, 2.9.70) et `exclusDepop`
+  (4b34f9e, 2.9.71) sans les recevoir → tout lot tombait à la fin de la
+  préparation (bloc Livraison). Corrigé à la racine : props passées,
+  `BarriereErreur` par moteur, article, ligne et bloc (article cassé = mis de
+  côté, journal `usage_logs` `lot_article_mis_de_cote` / `lot_bloc_en_erreur` /
+  `lot_ecran_en_erreur`), build qui refuse toute variable non définie
+  (`selftest:variables-definies`). Poids du lot FACULTATIF comme à l'unité
+  (Nico). Aperçu : `node scripts/apercu/capture-lot-publication.mjs`.
 - **⛔ DEPOP POUR LE SEUL COMPTE DE NICO (09/10 nuit)** : base (mig 20261009020000,
   garde `depop_autorise` : drapeau `depop_ouvert` RESTÉ À 0 ou `beta_flags.depop` —
   Nico seul), moteur commun corrigé (9eab08f : « EUR » ≡ « EU », « Comme neuf » = très
@@ -200,7 +209,8 @@ contraire. Il se périme : `functions list`, `cron.job` et
   l'envoi (`src/publication/texteDeLaFiche.js`) ; ⛔ aucun format de colis
   deviné (seul `format_colis_source: 'manuel'` part ; poids de la fiche et
   transporteurs retenus `platform_settings.leboncoin.transporteurs` posés au
-  service ; lot : sans poids, LBC/Beebs « à compléter ») ; prix/quantité des
+  service ; lot : poids FACULTATIF depuis le 10/10, comme à l'unité — sans
+  poids, Leboncoin et Beebs gardent leur estimation) ; prix/quantité des
   fiches modifiables en lot — les annonces en ligne ne suivent pas.
 - **Retraits (04/10)** : jamais arrêtés sur un raté technique ni sur
   `/main/banned` (reprise 1 h, 3 h, 6 h jusqu'à la preuve) ; un retrait Vinted
@@ -556,6 +566,14 @@ autre le 18/09 pour avoir cherché dans les fichiers d'abord :
 vide qu'un crash, **et le build est vert dans les deux cas**. Depuis e67aae3 la
 garde `vite:preloadError` (src/main.jsx) recharge une fois toute seule — un
 écran blanc qui SURVIT à ça, alors oui, c'est du code.
+
+⛔ **Une variable lue sans être reçue = page blanche, build vert** (10/10,
+publication en lot : `ReferenceError: userId is not defined` dès la fin de la
+préparation, du 09/10 22:13 au 10/10). Le build la REFUSE désormais
+(`selftest:variables-definies`, joué par `prebuild` : `no-undef` sur `src/`,
+~5 s). Un écran qui enchaîne des articles pose des barrières
+(`src/components/BarriereErreur.jsx`) : l'article qui casse est mis de côté
+avec une phrase, les autres continuent — jamais tout l'écran.
 
 ## Déploiement des Edge Functions
 

@@ -291,7 +291,8 @@ Ordre de diagnostic non négociable :
 Avec `lazy()` + `<Suspense fallback={null}>`, un 404 de chunk rend le même
 écran vide qu'un crash, build vert dans les deux cas. La garde
 `vite:preloadError` (`src/main.jsx`) recharge une fois seule : un écran blanc
-qui survit à ça, c'est du code.
+qui survit à ça, c'est du code. Variable non définie = page blanche, build
+vert : le build la refuse (`selftest:variables-definies`, 10/10).
 
 ---
 
