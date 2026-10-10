@@ -163,3 +163,113 @@ export async function resoudreAspectsIA(
   }
   return { aspects: out, refuses, demandes: propres.length, appel_ia: true };
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LA SECONDE PASSE, AUSSI POUR LE FORMULAIRE (10/10/2026, cas Manon Simon)
+// ═══════════════════════════════════════════════════════════════════════════
+// Publication en lot de quatre vêtements importés de Vinted (polaires et gilet)
+// vers eBay, catégorie 63862 « Manteaux, vestes » : « Style » demandé sur trois
+// articles, « Type » sur un — tous FREE_TEXT, et aucune des 17 entrées de la
+// liste eBay de « Style » (Anorak, Bombers, Caban, Parka, Trench…) ne décrit
+// une polaire. La première passe, fidèle à « ne jamais inventer », a rendu
+// null ; l'écran a posé la question ; la personne a quitté eBay.
+// La voie API, elle, ne se serait pas arrêtée là : remplirAspects
+// (ebay-publication.ts) relance depuis le 06/09 une SECONDE passe sur les
+// aspects FREE_TEXT restés vides — « le terme exact du contexte ». La voie
+// formulaire (stepper, lot : generate-listing resolve_aspects) ne l'avait pas.
+// Même article, même catégorie : rempli par l'API, demandé par l'extension.
+// UNE règle, deux appelants — c'est ce que dit l'en-tête de ce module.
+//
+// ⛔ LA PREMIÈRE PASSE NE CHANGE PAS : une valeur qu'elle rend aujourd'hui est
+//    rendue demain, à l'identique. La seconde ne touche QUE ce qu'elle a
+//    laissé vide — là où, sans elle, une question part chez la personne.
+// ⛔ CE QUE LA SECONDE PASSE A LE DROIT DE POSER :
+//    · une entrée de la liste eBay (recopiée telle quelle), toujours ;
+//    · sinon, sur un aspect qu'eBay déclare FREE_TEXT (il accepte une valeur
+//      hors de ses suggestions, le formulaire la valide par Entrée — doctrine
+//      du 30/07 dans ebay.js), le mot LU dans le contexte : chaque mot de la
+//      valeur figure dans le titre, la description ou les attributs lus.
+//      Une valeur que le texte ne porte pas est refusée (motif tracé) — la
+//      question part, avec la liste.
+//    · JAMAIS sur un SELECTION_ONLY (liste imposée par eBay), jamais la
+//      Marque (référentiel, doctrine des marques fantômes).
+
+// Petits mots qui ne portent rien : une valeur ne se juge pas sur eux.
+const MOTS_VIDES_LECTURE = new Set([
+  "a", "au", "aux", "de", "du", "des", "d", "la", "le", "les", "l", "en", "et", "ou",
+  "pour", "avec", "sans", "un", "une", "sur", "par", "the", "of", "and", "for", "with",
+]);
+
+function motsLecture(s: unknown): string[] {
+  return String(s ?? "")
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(" ")
+    .filter(Boolean);
+}
+
+// Singulier / pluriel seulement (« polaires » = « polaire », « manteaux » =
+// « manteau ») — jamais une racine plus courte : « pull » n'est pas « pullover ».
+function formesLecture(mot: string): string[] {
+  const f = [mot];
+  if (mot.length > 3) {
+    if (/eaux$/.test(mot)) f.push(mot.slice(0, -1));
+    if (/aux$/.test(mot)) f.push(`${mot.slice(0, -3)}al`);
+    if (/[sx]$/.test(mot)) f.push(mot.slice(0, -1));
+  }
+  return f;
+}
+
+/**
+ * Chaque mot porteur de la valeur se lit-il dans le contexte ? (« Polaire »
+ * dans « Veste polaire Champion | Full zip » : oui ; « Manteau basique » : non.)
+ * Une valeur sans mot porteur n'est jamais « lue ».
+ */
+export function valeurLueDansLeContexte(valeur: unknown, contexteTexte: unknown): boolean {
+  const porteurs = motsLecture(valeur).filter((m) => !MOTS_VIDES_LECTURE.has(m));
+  if (!porteurs.length) return false;
+  const lus = new Set<string>();
+  for (const m of motsLecture(contexteTexte)) for (const f of formesLecture(m)) lus.add(f);
+  return porteurs.every((m) => formesLecture(m).some((f) => lus.has(f)));
+}
+
+export interface ResultatCompletion extends ResultatAspectsIA {
+  /** Les aspects posés par la SECONDE passe (absents de la première). */
+  seconde_passe: string[];
+}
+
+/**
+ * Première passe (inchangée), puis seconde passe sur les aspects FREE_TEXT
+ * qu'elle a laissés vides — même règle que la voie API (remplirAspects).
+ */
+export async function completerAspectsIA(
+  demandes: AspectDemande[],
+  contexte: ContexteArticle,
+  opts: { apiKey: string; onUsage?: (data: unknown) => void; maxTokens?: number },
+): Promise<ResultatCompletion> {
+  const premiere = await resoudreAspectsIA(demandes, contexte, opts);
+  const restants = demandes.filter((d) =>
+    d && typeof d.name === "string" && d.mode === "FREE_TEXT" && d.name !== "Marque"
+    && !ASPECT_DEFAULTS[d.name] && !String(premiere.aspects[d.name] ?? "").trim());
+  if (!restants.length || !premiere.appel_ia) return { ...premiere, seconde_passe: [] };
+  const seconde = await resoudreAspectsIA(restants.map((d) => ({ ...d, libre: true })), contexte, opts);
+  const ctx = contexteEnTexte(contexte);
+  const aspects = { ...premiere.aspects };
+  const refuses = [...premiere.refuses, ...seconde.refuses];
+  const posees: string[] = [];
+  for (const d of restants) {
+    const v = String(seconde.aspects[d.name] ?? "").trim();
+    if (!v) continue;
+    const dansLaListe = (d.allowedValues ?? []).length ? valeurDeListeCorrespondante(v, d.allowedValues) : null;
+    if (dansLaListe) { aspects[d.name] = dansLaListe; posees.push(d.name); continue; }
+    if (!valeurLueDansLeContexte(v, ctx)) {
+      refuses.push({ name: d.name, valeur: v, motif: "hors liste et absent du texte" });
+      continue;
+    }
+    aspects[d.name] = v;
+    posees.push(d.name);
+  }
+  return { aspects, refuses, demandes: premiere.demandes, appel_ia: true, seconde_passe: posees };
+}

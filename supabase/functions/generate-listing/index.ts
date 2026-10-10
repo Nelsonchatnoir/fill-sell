@@ -34,7 +34,7 @@ const CORS = {
 // (canonicalisation, état mappé, pose ISBN) vivent désormais dans
 // _shared/redaction-plateformes.ts — extraits tels quels, partagés avec le
 // mode unifié de lens-analysis : une seule source de prompts, un seul contrat.
-import { resoudreAspectsIA } from "../_shared/ebay-aspects-ia.ts";
+import { resoudreAspectsIA, completerAspectsIA } from "../_shared/ebay-aspects-ia.ts";
 import {
   VERSION_PROMPT,
   construireContexteArticle,
@@ -408,12 +408,48 @@ serve(async (req) => {
           mode: a.mode ?? (Array.isArray(a.allowedValues) && a.allowedValues.length ? "SELECTION_ONLY" : "FREE_TEXT"),
           allowedValues: Array.isArray(a.allowedValues) ? a.allowedValues : [],
         }));
-        const ia = await resoudreAspectsIA(demandes, {
+        const contexteIa = {
           titre: it.titre, marque: it.marque, modele: it.modele, matiere: it.matiere, couleur: it.couleur,
           taille: it.taille, genre: it.genre, type: it.type, description: it.description,
           attributs: it.attributs && typeof it.attributs === "object" ? it.attributs : null,
-        }, { apiKey: Deno.env.get("ANTHROPIC_API_KEY") ?? "", onUsage: trackClaude });
-        return json({ aspects: { ...out, ...ia.aspects }, refuses: ia.refuses });
+        };
+        const optsIa = { apiKey: Deno.env.get("ANTHROPIC_API_KEY") ?? "", onUsage: trackClaude };
+        // (10/10, cas Manon) L'encart eBay du stepper et du lot envoie le MODE
+        // de chaque aspect (depuis le 06/09) ; le canal générique
+        // Vinted/Leboncoin/Beebs n'en envoie pas. Seul le premier reçoit la
+        // seconde passe FREE_TEXT de la voie API (completerAspectsIA) — le
+        // générique reste exactement tel qu'il était.
+        const modeEbayExplicite = askAI.some((a: { mode?: unknown }) => typeof a.mode === "string" && a.mode);
+        if (!modeEbayExplicite) {
+          const ia = await resoudreAspectsIA(demandes, contexteIa, optsIa);
+          return json({ aspects: { ...out, ...ia.aspects }, refuses: ia.refuses });
+        }
+        const ia = await completerAspectsIA(demandes, contexteIa, optsIa);
+        const obtenus = Object.keys(ia.aspects);
+        console.log(`[generate-listing] resolve_aspects eBay — ${demandes.length} demandé(s), ${obtenus.length} posé(s)`
+          + `${ia.seconde_passe.length ? ` dont ${ia.seconde_passe.length} en seconde passe (${ia.seconde_passe.join(", ")})` : ""}`
+          + `${ia.refuses.length ? `, ${ia.refuses.length} refusé(s) (${ia.refuses.map((r) => `${r.name} : ${r.motif}`).join(" ; ")})` : ""}`);
+        // Mesure (10/10) : ce que l'IA a rempli et ce qui part en question — la
+        // ligne que champ_requis_bloquant ne donnait pas (combien de questions
+        // évitées). Noms d'aspects et valeurs posées (« Veste », « Polaire » :
+        // 65 caractères au plus) — jamais le titre ni la description.
+        {
+          const invId = Number(body.aspects_inventaire_id);
+          const { error: logErr } = await adminClient.from("usage_logs").insert({
+            user_id: user.id, feature: "ebay_aspects_ia",
+            metadata: {
+              categorie: typeof body.categorie_ebay === "string" || typeof body.categorie_ebay === "number" ? String(body.categorie_ebay) : null,
+              inventaire_id: Number.isFinite(invId) && invId > 0 ? String(invId) : null,
+              demandes: demandes.map((d: { name: string }) => d.name),
+              obtenus, valeurs: ia.aspects, seconde_passe: ia.seconde_passe,
+              restants: demandes.map((d: { name: string }) => d.name).filter((n: string) => !obtenus.includes(n)),
+              refuses: ia.refuses.map((r) => ({ name: r.name, motif: r.motif })),
+              claude_calls: cost.claude_calls,
+            },
+          });
+          if (logErr) console.error("[generate-listing] usage_logs (ebay_aspects_ia):", logErr.message);
+        }
+        return json({ aspects: { ...out, ...ia.aspects }, refuses: ia.refuses, seconde_passe: ia.seconde_passe });
       }
       const lines = askAI.map((a: { name: string; allowedValues?: string[] }) => {
         const allowed = Array.isArray(a.allowedValues) ? a.allowedValues.slice(0, 60) : [];
