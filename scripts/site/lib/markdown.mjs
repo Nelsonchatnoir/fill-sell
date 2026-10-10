@@ -383,6 +383,46 @@ function rehypeSite(ctx) {
     };
     visiterHast(arbre);
 
+    // 1 bis. Comparatif (type classement, 10/10, Nico) : chaque comparatif
+    //    REPLIÉ, déplié au toucher. Une section ## qui porte des ### garde son
+    //    titre et son introduction visibles (la réponse courte reste lue
+    //    d'emblée) et replie chacun de ses ### ; une section ## sans ### se
+    //    replie entière. La FAQ (plus bas) garde son propre repli. Le texte
+    //    reste dans le HTML (<details>), tel quel : même empreinte des dates.
+    if (ctx.type === 'classement') {
+      const tous = arbre.children;
+      const faqA = tous.findIndex((n) => estTitre(n, 'h2') && TITRE_FAQ.test(texteHast(n)));
+      const borne = faqA >= 0 ? faqA : tous.length;
+      const repli = (titre, corps) => el('details', { className: ['repli'] }, [
+        el('summary', {}, [titre]),
+        el('div', { className: ['repli-corps'] }, corps),
+      ]);
+      const plie = [];
+      let k = 0;
+      while (k < borne && !estTitre(tous[k], 'h2')) plie.push(tous[k++]);
+      while (k < borne) {
+        const h2 = tous[k];
+        let j = k + 1;
+        while (j < borne && !estTitre(tous[j], 'h2')) j++;
+        const section = tous.slice(k + 1, j);
+        if (section.some((n) => estTitre(n, 'h3'))) {
+          plie.push(h2);
+          let m = 0;
+          while (m < section.length && !estTitre(section[m], 'h3')) plie.push(section[m++]);
+          while (m < section.length) {
+            const h3 = section[m++];
+            const corps = [];
+            while (m < section.length && !estTitre(section[m], 'h3')) corps.push(section[m++]);
+            plie.push(repli(h3, corps));
+          }
+        } else {
+          plie.push(repli(h2, section));
+        }
+        k = j;
+      }
+      arbre.children = [...plie, ...tous.slice(borne)];
+    }
+
     // 2. FAQ en <details>.
     const enfants = arbre.children;
     let debut;

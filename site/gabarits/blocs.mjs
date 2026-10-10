@@ -230,22 +230,26 @@ export function cartesAlternatives(site, page) {
 }
 
 // ── Classement ─────────────────────────────────────────────────────────────
+// Chaque comparatif REPLIÉ, déplié au toucher (10/10, Nico) : le titre dans le
+// <summary>, le tableau dans le HTML (référencement), comme le corps de la page
+// (markdown.mjs, étape « 1 bis »).
+const replie = (titre) => `<details class="repli"><summary>${titre}</summary><div class="repli-corps">`;
 export function blocClassement(site, page) {
   const c = page.classementDonnees;
   const t = TEXTES[page.lang];
   const l = (langueTexte) => langSi(langueTexte, page.lang);
-  const grille = `<section class="bloc-grille" data-tiers aria-labelledby="grille-titre"><h2 id="grille-titre">${esc(t.classementGrille)}</h2>` +
+  const grille = `<section class="bloc-grille" data-tiers aria-labelledby="grille-titre">${replie(`<h2 id="grille-titre">${esc(t.classementGrille)}</h2>`)}` +
     `<div class="comparaison" role="region" tabindex="0" data-defile aria-label="${esc(t.classementGrille)}"><table><thead><tr><th scope="col">${esc(t.critere)}</th><th scope="col">${esc(t.classementPoids)}</th></tr></thead><tbody>` +
     c.criteres.filter((x) => x.poids > 0).map((x) => `<tr><th scope="row"${l(x.nomLangue)}>${esc(x.nom)}<small${x.grilleLangue !== x.nomLangue ? l(x.grilleLangue) || ` lang="${esc(page.lang)}"` : ''}>${esc(x.grille)}</small></th><td data-outil="${esc(t.classementPoids)}">${x.poids}</td></tr>`).join('') +
-    `</tbody></table></div></section>`;
+    `</tbody></table></div></div></details></section>`;
   const ids = c.criteres.filter((x) => x.poids > 0).map((x) => x.id);
-  const notes = `<section class="bloc-notes" aria-labelledby="notes-titre"><h2 id="notes-titre">${esc(t.classementNotes)}</h2>` +
+  const notes = `<section class="bloc-notes" aria-labelledby="notes-titre">${replie(`<h2 id="notes-titre">${esc(t.classementNotes)}</h2>`)}` +
     `<ol class="podium">${c.notes.map((n, i) => `<li class="${n.slug === 'fillsell' ? 'podium-nous' : ''}"><span class="rang" aria-hidden="true">${i + 1}</span><span class="podium-nom">${esc(c.nom(n.slug))}</span><span class="podium-total">${n.total}<small>/100</small></span><meter min="0" max="100" value="${n.total}" aria-hidden="true">${n.total}</meter></li>`).join('')}</ol>` +
     `<div class="comparaison" role="region" tabindex="0" data-defile aria-label="${esc(t.classementNotes)}"><table><thead><tr><th scope="col">${esc(t.classementOutil)}</th>${ids.map((id) => `<th scope="col">${esc(id)}</th>`).join('')}<th scope="col">${esc(t.classementTotal)}</th></tr></thead><tbody>` +
     c.notes.map((n) => `<tr class="${n.slug === 'fillsell' ? 'ligne-nous' : ''}"><th scope="row">${esc(c.nom(n.slug))}</th>${ids.map((id) => `<td data-outil="${esc(id)}">${n[id]}</td>`).join('')}<td data-outil="${esc(t.classementTotal)}"><strong>${n.total}</strong></td></tr>`).join('') +
-    `</tbody></table></div></section>`;
-  const variantes = `<section class="bloc-variantes" data-tiers aria-labelledby="var-titre"><h2 id="var-titre">${esc(t.classementVariantes)}</h2><ul class="variantes">${c.variantes.map((v) => `<li class="carte"><h3${l(v.nomLangue)}>${esc(v.nom)}</h3><p${l(v.ordreLangue)}>${esc(v.ordre)}</p></li>`).join('')}</ul></section>`;
-  const hors = c.hors.length ? `<section class="bloc-hors" data-tiers aria-labelledby="hors-titre"><h2 id="hors-titre">${esc(t.classementHors)}</h2><ul class="hors">${c.hors.map((h) => `<li><strong>${esc(c.nom(h.slug))}</strong> <span${l(h.raisonLangue)}>${esc(h.raison)}</span></li>`).join('')}</ul></section>` : '';
+    `</tbody></table></div></div></details></section>`;
+  const variantes = `<section class="bloc-variantes" data-tiers aria-labelledby="var-titre">${replie(`<h2 id="var-titre">${esc(t.classementVariantes)}</h2>`)}<ul class="variantes">${c.variantes.map((v) => `<li class="carte"><h3${l(v.nomLangue)}>${esc(v.nom)}</h3><p${l(v.ordreLangue)}>${esc(v.ordre)}</p></li>`).join('')}</ul></div></details></section>`;
+  const hors = c.hors.length ? `<section class="bloc-hors" data-tiers aria-labelledby="hors-titre">${replie(`<h2 id="hors-titre">${esc(t.classementHors)}</h2>`)}<ul class="hors">${c.hors.map((h) => `<li><strong>${esc(c.nom(h.slug))}</strong> <span${l(h.raisonLangue)}>${esc(h.raison)}</span></li>`).join('')}</ul></div></details></section>` : '';
   return `${notes}${grille}${variantes}${hors}`;
 }
 
