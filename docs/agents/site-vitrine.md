@@ -272,3 +272,19 @@ Si `/legal` portait `X-Robots-Tag` : retirer la règle `/app-shell.html` de
   fichiers binaires, aucun code) ; le build natif ne diffère que d'elles et du
   libellé anglais du bandeau de consentement (« Read our privacy policy »,
   jamais affiché dans l'app).
+
+## Retouches du 10/10 après-midi (Nico)
+
+- **Accueil** : aucune comparaison avec un autre outil (bloc « FillSell face aux
+  autres outils » retiré de `/` et `/en`, colonne « Comparer » du pied réduite
+  au comparatif sur l'accueil seulement, `build-site.mjs` › `pied`). Les
+  comparaisons vivent sur `/comparatif/meilleures-applications-crosslisting`.
+- **Comparatif (type `classement`)** : chaque comparatif REPLIÉ (`<details
+  class="repli">`, contenu dans le HTML) — blocs du gabarit (`blocClassement`)
+  et corps (`markdown.mjs`, étape « 1 bis ») ; une ancre ouvre son repli (site.js).
+- **Titres de l'accueil** : reflet animé de l'ancienne accueil 2441cab
+  (`.reflet`, `refletsTitres` dans `accueil.mjs`), coupé si
+  `prefers-reduced-motion`.
+- **Menu** : bouton « Menu » en pilule, « Se connecter » en tête du panneau
+  (`.menu-compte`), « Plateformes » repliée à chaque ouverture ; barre
+  d'ordinateur dès **1200 px** (plus 1080), libellés jamais coupés.

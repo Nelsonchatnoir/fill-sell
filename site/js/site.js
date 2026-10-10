@@ -109,8 +109,9 @@ if (bouton && entete) {
   bouton.addEventListener('click', () => {
     const ouvert = entete.classList.toggle('menu-ouvert');
     bouton.setAttribute('aria-expanded', ouvert ? 'true' : 'false');
-    // Dans le panneau mobile, la liste des plateformes est dépliée d'emblée.
-    if (ouvert) entete.querySelectorAll('details.sous-menu').forEach((m) => { m.open = true; });
+    // Les sous-menus (« Plateformes ») s'ouvrent REPLIÉS, à chaque ouverture :
+    // ils ne se déplient qu'au toucher (10/10, Nico).
+    if (ouvert) entete.querySelectorAll('details.sous-menu').forEach((m) => { m.open = false; });
   });
   // Échap ferme le menu ET rend le focus au bouton : sinon il tombait sur
   // <body> quand un lien du menu l'avait (revue de la fondation M-10).
@@ -128,9 +129,21 @@ if (bouton && entete) {
     const vers = e.relatedTarget;
     if (entete.classList.contains('menu-ouvert') && vers instanceof Element && !entete.contains(vers)) fermer();
   });
-  const large = w.matchMedia('(min-width: 1080px)');
+  const large = w.matchMedia('(min-width: 1200px)');
   if (large.addEventListener) large.addEventListener('change', (e) => { if (e.matches) fermer(); });
 }
+
+// ── Un lien vers un titre replié (sommaire, ancre partagée) le déplie ────────
+// (comparatif, 10/10 : chaque comparatif replié par défaut ; FAQ de même).
+const deplierCible = () => {
+  let id = '';
+  try { id = decodeURIComponent(location.hash.slice(1)); } catch { /* ancre mal formée */ }
+  const cible = id && d.getElementById(id);
+  const repli = cible && cible.closest('details');
+  if (repli && !repli.open) repli.open = true;
+};
+w.addEventListener('hashchange', deplierCible);
+deplierCible();
 
 // ── « Ouvrir l'app » quand une session existe (revue A M1-4) ──────────────────
 let stockage = null;

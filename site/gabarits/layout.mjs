@@ -28,8 +28,13 @@ import { attrsAutreLangue } from './composants.mjs';
 //
 // En-tête : logo, navigation (Comment ça marche, Plateformes [sous-menu en
 // <details> : marche sans JS], Comparatif, Tarifs, Blog, FAQ), langue,
-// « Se connecter », CTA. Mobile : logo + CTA + bouton de menu ; le panneau
-// porte la navigation, la langue et la connexion.
+// « Se connecter », CTA. Mobile : logo + CTA + bouton « Menu » (pilule, deux
+// traits qui deviennent une croix) ; le panneau porte EN TÊTE « Se connecter »
+// et le CTA (bloc .menu-compte, 10/10, Nico : la connexion visible tout de
+// suite, plus en bas), puis la navigation (« Plateformes » repliée à chaque
+// ouverture, site.js), puis la langue. Sur ordinateur, .menu-compte est
+// masqué et la connexion vit en fin de barre (.entete-large) : un seul des
+// deux exemplaires est affiché à la fois (display: none).
 // ORDRE DU DOM = ordre visuel, sur mobile COMME sur ordinateur (revue
 // technique C-1, WCAG 2.4.3) : logo, CTA « téléphone », bouton de menu, PUIS
 // le panneau <nav> — ouvert, le Tab suivant le bouton entre dans le menu, au
@@ -50,7 +55,14 @@ function selecteurLangues(page, t) {
   return liens.length ? `<span class="langues" role="group" aria-label="${esc(t.autresLangues)}">${liens.join('')}</span>` : '';
 }
 
-const lienNav = (l, classe = '') => `<a${classe ? ` class="${classe}"` : ''} href="${esc(l.chemin)}"${l.courant ? ' aria-current="page"' : ''}${attrsAutreLangue(l.hreflang)}>${esc(l.libelle)}</a>`;
+// Barre d'ordinateur (≥ 1200 px) : un libellé long n'y garde que son premier
+// mot (« Comparatif ») — sinon la barre ne tient pas sur une ligne ; la suite
+// reste dans le HTML (.nav-suite), entière dans le menu mobile et le pied.
+const libelleNav = (libelle) => {
+  const i = libelle.indexOf(' ');
+  return libelle.length > 20 && i > 0 ? `${esc(libelle.slice(0, i))}<span class="nav-suite">${esc(libelle.slice(i))}</span>` : esc(libelle);
+};
+const lienNav = (l, classe = '') => `<a${classe ? ` class="${classe}"` : ''} href="${esc(l.chemin)}"${l.courant ? ' aria-current="page"' : ''}${attrsAutreLangue(l.hreflang)}>${libelleNav(l.libelle)}</a>`;
 
 function entete({ site, page, t }) {
   const items = site.navigation(page).map((n) => (n.sous
@@ -62,12 +74,18 @@ function entete({ site, page, t }) {
 <div class="cadre entete-ligne">
 ${marque}
 ${cta('entete-cta')}
-<button type="button" class="menu-bouton" data-menu aria-expanded="false" aria-controls="navigation" aria-label="${esc(t.menu)}"><span></span></button>
-<nav class="navigation" id="navigation" aria-label="${esc(t.navigation)}"><ul>${items}</ul>
+<button type="button" class="menu-bouton" data-menu aria-expanded="false" aria-controls="navigation"><span class="menu-bouton-icone" aria-hidden="true"></span>${esc(t.menu)}</button>
+<nav class="navigation" id="navigation" aria-label="${esc(t.navigation)}">
+<div class="menu-compte">
+<a class="bouton bouton-premier bouton-petit" href="/app" data-si-jeton hidden>${esc(t.ouvrirApp)}</a>
+<a class="bouton bouton-contour bouton-petit" href="/login" data-cta="login">${esc(t.seConnecter)}</a>
+${cta('menu-cta')}
+</div>
+<ul>${items}</ul>
 <div class="entete-actions">
 ${selecteurLangues(page, t)}
-<a class="bouton bouton-premier bouton-petit" href="/app" data-si-jeton hidden>${esc(t.ouvrirApp)}</a>
-<a class="lien-connexion" href="/login" data-cta="login">${esc(t.seConnecter)}</a>
+<a class="bouton bouton-premier bouton-petit entete-large" href="/app" data-si-jeton hidden>${esc(t.ouvrirApp)}</a>
+<a class="lien-connexion entete-large" href="/login" data-cta="login">${esc(t.seConnecter)}</a>
 ${cta('entete-cta-large')}
 </div>
 </nav>

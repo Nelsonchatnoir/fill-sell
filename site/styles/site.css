@@ -121,45 +121,84 @@ h3 { font-size: 1.22rem; line-height: 1.25; letter-spacing: -.02em; margin: 0 0 
 .logo { display: inline-flex; align-items: center; gap: 9px; margin-right: auto; text-decoration: none; }
 .logo img { border-radius: 9px; }
 .wordmark { font-weight: 700; font-style: italic; font-size: 1.32rem; letter-spacing: -.03em; color: var(--en); padding-right: 2px; background: linear-gradient(135deg, var(--sa), var(--pe)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
-.menu-bouton { display: none; width: 44px; height: 44px; padding: 0; border: 1px solid var(--tf); border-radius: 12px; background: var(--bl); cursor: pointer; }
-/* Barres en BORDURES, pas en fonds : le mode contraste élevé (forced-colors)
-   efface les fonds et ne laissait qu'un carré vide ; il garde les bordures,
-   dans la couleur du système (revue technique M-8). */
-.menu-bouton span, .menu-bouton span::before, .menu-bouton span::after { display: block; position: relative; width: 18px; height: 0; margin: auto; border-top: 2px solid var(--en); border-radius: 2px; }
-.menu-bouton span::before, .menu-bouton span::after { content: ""; position: absolute; }
-.menu-bouton span::before { top: -6px; }
-.menu-bouton span::after { top: 6px; }
-.js .menu-bouton { display: block; }
+/* Bouton « Menu » (10/10, Nico : le carré à trois traits jugé laid) : une
+   pilule, comme les boutons de l'ancienne accueil, deux traits qui se croisent
+   à l'ouverture. Traits en BORDURES, pas en fonds : le mode contraste élevé
+   (forced-colors) efface les fonds et garde les bordures (revue technique M-8). */
+.menu-bouton { display: none; align-items: center; gap: 10px; height: 42px; padding: 0 16px 0 14px; border: 1px solid var(--tf); border-radius: 999px; background: var(--bl); color: var(--en); font: inherit; font-size: .95rem; font-weight: 600; cursor: pointer; box-shadow: 0 1px 2px rgba(16,32,27,.06); transition: background-color .2s ease, color .2s ease, border-color .2s ease; }
+.menu-bouton:hover { border-color: var(--sa); }
+.menu-bouton-icone { position: relative; display: block; width: 18px; height: 12px; flex: none; }
+.menu-bouton-icone::before, .menu-bouton-icone::after { content: ""; position: absolute; left: 0; right: 0; height: 0; border-top: 2px solid currentColor; border-radius: 2px; transition: transform .25s cubic-bezier(.2,.7,.3,1), top .25s cubic-bezier(.2,.7,.3,1); }
+.menu-bouton-icone::before { top: 1px; }
+.menu-bouton-icone::after { top: 8px; right: 5px; }
+.menu-bouton[aria-expanded="true"] { background: var(--en); border-color: var(--en); color: var(--ss); }
+.menu-bouton[aria-expanded="true"] .menu-bouton-icone::before { top: 5px; transform: rotate(45deg); }
+.menu-bouton[aria-expanded="true"] .menu-bouton-icone::after { top: 5px; right: 0; transform: rotate(-45deg); }
+.js .menu-bouton { display: inline-flex; }
 .navigation { flex-basis: 100%; padding: 6px 0 16px; }
 .entete-cta-large { display: none; }
 .js .navigation { display: none; }
-.js .menu-ouvert .navigation { display: block; max-height: calc(100vh - 70px); overflow-y: auto; }
+.js .menu-ouvert .navigation { display: block; max-height: calc(100vh - 70px); max-height: calc(100dvh - 70px); overflow-y: auto; overscroll-behavior: contain; }
 .navigation ul { list-style: none; margin: 0; padding: 0; }
 .navigation li a, .sous-menu summary { display: block; padding: 12px 4px; color: var(--en); font-weight: 600; text-decoration: none; border-bottom: 1px solid var(--tr); cursor: pointer; }
 .navigation a[aria-current="page"] { color: var(--sf); }
 .sous-menu summary { list-style: none; }
 .sous-menu summary::-webkit-details-marker { display: none; }
-.sous-menu summary::after { content: ""; display: inline-block; width: 7px; height: 7px; margin: 0 0 3px 10px; border: solid currentColor; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.sous-menu summary::after { content: ""; display: inline-block; width: 7px; height: 7px; margin: 0 0 3px 10px; border: solid currentColor; border-width: 0 2px 2px 0; transform: rotate(45deg); transition: transform .2s ease; }
+.sous-menu[open] summary::after { transform: translateY(3px) rotate(225deg); }
 .sous-menu li a { padding-left: 18px; font-weight: 500; }
+/* En tête du panneau : « Se connecter » (et « Ouvrir l'app » quand une session
+   existe), puis le CTA quand l'en-tête ne le montre plus (≤ 400 px). */
+.menu-compte { display: flex; flex-wrap: wrap; gap: 10px; padding: 8px 0 14px; }
+.menu-compte .bouton { flex: 1 1 auto; min-height: 46px; font-size: .95rem; white-space: nowrap; }
+.menu-compte .bouton-contour { background: var(--bl); }
 .entete-actions { display: flex; align-items: center; gap: 16px; padding-top: 14px; }
+.entete-large { display: none; }
 .langues { display: flex; gap: 6px; }
 .langue { font-weight: 700; font-size: .82rem; color: var(--en); text-decoration: none; padding: 7px 11px; border: 1px solid var(--tf); border-radius: 999px; background: var(--bl); }
 .lien-connexion { font-weight: 600; color: var(--en); text-decoration: none; }
+@media (min-width: 401px) { .menu-cta { display: none; } }
+@media (max-width: 1199px) {
+  /* Menu ouvert, le panneau passe à la ligne : sans ce rembourrage, la
+     première ligne perdait ses 62 px et le bouton remontait contre le haut. */
+  .entete-ligne { padding-block: 10px; }
+  .navigation > ul > li > a, .sous-menu summary { padding: 15px 4px; font-size: 1.05rem; }
+  .sous-menu summary { display: flex; align-items: center; justify-content: space-between; }
+  .navigation > ul > li > a { position: relative; padding-right: 28px; }
+  .navigation > ul > li > a::after { content: ""; position: absolute; right: 8px; top: 50%; width: 7px; height: 7px; margin-top: -4px; border: solid var(--tf); border-width: 2px 2px 0 0; transform: rotate(45deg); }
+  .sous-menu summary::after { margin: 0 4px 3px 10px; }
+  .sous-menu ul { padding: 4px 0 8px; border-bottom: 1px solid var(--tr); }
+  .sous-menu li a { border: 0; padding: 10px 4px 10px 18px; color: var(--gr); }
+  .sous-menu li a[aria-current="page"] { color: var(--sf); }
+}
+@media (max-width: 1199px) and (prefers-reduced-motion: no-preference) {
+  .js .menu-ouvert .navigation { animation: menu-entre .22s cubic-bezier(.2,.7,.3,1); }
+}
+@keyframes menu-entre { from { opacity: 0; transform: translateY(-8px); } }
 @media (max-width: 400px) { .entete-cta { display: none; } }
-@media (min-width: 1080px) {
-  .entete-ligne { flex-wrap: nowrap; min-height: 70px; gap: 20px; }
-  .logo { margin-right: 8px; }
+/* Barre complète dès 1200 px (10/10) : sous ce seuil, ses libellés passaient
+   sur deux lignes (« Comment ça / marche », « Se / connecter ») ; le bouton
+   « Menu » prend le relais. Aucun libellé ne se coupe dans la barre. */
+@media (min-width: 1200px) {
+  .entete-ligne { flex-wrap: nowrap; min-height: 70px; gap: 16px; }
+  .logo { margin-right: 8px; flex: none; }
+  .nav-suite { display: none; }
   .js .menu-bouton { display: none; }
   .navigation, .js .navigation { display: flex; flex: 1; align-items: center; justify-content: space-between; padding: 0; }
   .entete-cta { display: none; }
   .entete-cta-large { display: inline-flex; }
   .navigation > ul { display: flex; gap: 2px; }
-  .navigation li a, .sous-menu summary { border: 0; padding: 8px 12px; border-radius: 10px; font-size: .95rem; color: var(--gr); }
+  .navigation li a, .sous-menu summary { border: 0; padding: 8px 10px; border-radius: 10px; font-size: .93rem; color: var(--gr); white-space: nowrap; }
   .navigation li a:hover, .sous-menu summary:hover, .navigation a[aria-current="page"] { color: var(--en); background: var(--bl); }
   .nav-sous { position: relative; }
   .sous-menu ul { position: absolute; top: calc(100% + 8px); left: 0; min-width: 220px; padding: 8px; background: var(--bl); border-radius: 16px; box-shadow: var(--oc), 0 0 0 1px var(--tr); }
   .sous-menu li a { padding: 10px 12px; color: var(--en); }
-  .entete-actions { padding: 0; }
+  .entete-actions { padding: 0; gap: 10px; }
+  .entete-cta-large { white-space: nowrap; }
+  .menu-compte { display: none; }
+  .entete-large { display: inline-flex; }
+  .lien-connexion { padding: 8px 15px; border: 1px solid var(--tr); border-radius: 999px; font-size: .9rem; color: var(--gr); white-space: nowrap; }
+  .lien-connexion:hover { color: var(--en); border-color: var(--tf); background: var(--bl); }
 }
 
 /* Héros et tête de page : halo teal en haut à droite, pêche en bas à gauche. */
@@ -562,3 +601,36 @@ h3 { font-size: 1.22rem; line-height: 1.25; letter-spacing: -.02em; margin: 0 0 
 .defile table { border-collapse: collapse; width: 100%; min-width: 540px; font-size: .94rem; }
 .defile th, .defile td { padding: 11px 14px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--tr); }
 .defile th { background: var(--pa); }
+
+/* @module reflet : reflet */
+/* Reflet des titres de l'accueil (10/10, Nico) : l'animation de TEXTE de
+   l'ancienne accueil (2441cab, LandingPage.jsx : fsShimmer — dégradé 300 %,
+   4,5 s, ease-in-out, sans fin), mêmes teintes : teal sur fond clair, teal
+   clair sur fond sombre. Le texte reste du texte (background-clip). Sans
+   mouvement demandé, ou sans background-clip: text : la couleur fixe. */
+.reflet { color: var(--sf); }
+.sombre .reflet, .appel .reflet { color: var(--me); }
+@media (prefers-reduced-motion: no-preference) {
+  @supports ((-webkit-background-clip: text) or (background-clip: text)) {
+    .reflet { background-image: linear-gradient(90deg, #2F9E90 0%, #2F9E90 40%, #6FDFD3 50%, #2F9E90 60%, #2F9E90 100%); background-size: 300% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; animation: reflet 4.5s ease-in-out infinite; }
+    .sombre .reflet, .appel .reflet { background-image: linear-gradient(90deg, #4ECDC4 0%, #4ECDC4 40%, #C6F5EF 50%, #4ECDC4 60%, #4ECDC4 100%); }
+  }
+}
+@keyframes reflet { 0% { background-position: 150% 0; } 100% { background-position: -150% 0; } }
+@media (forced-colors: active) { .reflet { background: none; -webkit-text-fill-color: CanvasText; color: CanvasText; } }
+
+/* @module repli : repli */
+/* Comparatif (10/10, Nico) : chaque comparatif REPLIÉ, déplié au toucher —
+   même geste que la FAQ (« + » qui tourne). Le contenu reste dans le HTML. */
+.repli { border-bottom: 1px solid var(--tf); }
+.repli > summary { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 18px 0; cursor: pointer; list-style: none; }
+.repli > summary::-webkit-details-marker { display: none; }
+.repli > summary > h2, .repli > summary > h3 { margin: 0; }
+.repli > summary > h2 { font-size: clamp(1.3rem, 1.1rem + .8vw, 1.7rem); }
+.repli > summary > h3 { font-size: 1.12rem; }
+.repli > summary::after { content: "+"; flex: none; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-size: 1.4rem; font-weight: 500; background: var(--bl); box-shadow: 0 0 0 1px var(--tf); transition: transform .2s; }
+.repli[open] > summary::after { transform: rotate(45deg); }
+.repli-corps { padding: 0 0 22px; }
+.repli-corps > :first-child { margin-top: 0; }
+/* Repliés à la suite, les blocs du comparatif se serrent comme une liste. */
+.bloc-grille:has(> .repli), .bloc-variantes:has(> .repli), .bloc-hors:has(> .repli) { margin-top: 0; }
