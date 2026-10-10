@@ -240,6 +240,8 @@
     "selftest:texte-du-vendeur": "node --import ./scripts/loader-ext.mjs scripts/texte-du-vendeur-selftest.mjs",
     "selftest:beebs-retrait-preuve": "node scripts/beebs-retrait-preuve-selftest.mjs",
     "selftest:ebay-saisie-libre": "node scripts/ebay-saisie-libre-selftest.mjs",
+    "selftest:ebay-aspects-auto": "node --import ./scripts/loader-ext.mjs scripts/ebay-aspects-auto-selftest.mjs",
+    "selftest:ebay-aspects-seconde-passe": "deno run --allow-read scripts/ebay-aspects-seconde-passe-selftest.ts",
     "selftest:statue-rayon": "node scripts/statue-rayon-selftest.mjs",
     "selftest:peinture-poids": "node --import ./scripts/loader-ext.mjs scripts/peinture-poids-selftest.mjs",
     "selftest:beebs-taille-hors-liste": "node scripts/beebs-taille-hors-liste-selftest.mjs",

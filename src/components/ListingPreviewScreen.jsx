@@ -135,6 +135,8 @@ import {
   deduireOptionDuTexte, estFourreTout, listeCandidatsDabord, textesDeLAnnonce,
   tailleDuJob, tailleDansListeEbay,
 } from "../publication/moteur/listes";
+// (10/10, cas Manon) Ce que l'encart eBay remplit seul, et quand.
+import { aspectsADemanderIa, valeursAutoAReprendre } from "../publication/moteur/aspectsEbayAuto";
 import { VINTED_COLORS } from "../utils/vintedColors";
 import { optionDepuisTextes } from "../../supabase/functions/_shared/option-du-texte.js";
 import { extensionAMettreAJour } from "../utils/extensionAJour";
@@ -7430,6 +7432,17 @@ export default function ListingPreviewScreen({
   }, [edited, initialListing, activeAiIcon]);
   // (02/10, lot) La catégorie eBay dont les aspects exigés ont été LUS.
   const [ebayAspectsLusPour, setEbayAspectsLusPour] = useState(null);
+  // ── LA LISTE EST-ELLE CELLE DE LA CATÉGORIE COURANTE ? (10/10, cas Manon) ──
+  // Quand la catégorie change (celle de l'icône, puis celle que la résolution
+  // pose sur la copie), ebayRequiredPreview garde la liste d'AVANT le temps de
+  // la relecture. Les poses automatiques (défauts, option nommée par le titre),
+  // l'extraction IA et sa marque « terminée » travaillaient pendant ce temps
+  // sur la liste d'avant, sous la clé de la nouvelle : une valeur d'une autre
+  // catégorie collée là (« Type : Pull » de « Pulls, cardigans » restée sur
+  // un vêtement rangé en « Manteaux, vestes »), une catégorie marquée « IA
+  // faite » sans que ses propres champs lui aient été demandés. Elles
+  // n'agissent plus que sur la liste de la catégorie courante.
+  const ebayListeAJour = Boolean(ebayPreviewCategoryId) && ebayAspectsLusPour === ebayPreviewCategoryId;
   useEffect(() => {
     if (!ebayPreviewCategoryId) { setEbayRequiredPreview(null); setEbayAspectsLusPour(null); return; }
     let alive = true;
@@ -7577,8 +7590,38 @@ export default function ListingPreviewScreen({
   // la PREMIÈRE apparition de chaque aspect — jamais deux fois (on ne recouvre
   // pas un champ que l'utilisateur a vidé exprès).
   const aspectDefaultsPoses = useRef(new Set());
+  // (10/10) Ce que le moteur a posé LUI-MÊME dans pf.ebayAspects (défaut,
+  // option nommée par le texte, extraction IA), et pour quelle catégorie :
+  // { [nom d'aspect]: { categorie, valeur } }. Une saisie de la personne n'y
+  // entre jamais — et une valeur qu'elle a retouchée en sort.
+  const ebayAutoPoses = useRef({});
   useEffect(() => {
-    if (!ebayRequiredStatus || !ebayPreviewCategoryId) return;
+    if (!ebayRequiredStatus || !ebayPreviewCategoryId || !ebayListeAJour) return;
+    // ── UNE VALEUR POSÉE PAR NOUS POUR UNE AUTRE CATÉGORIE (10/10) ─────────
+    // La catégorie a changé depuis la pose : une valeur qui n'est pas dans la
+    // liste de CETTE catégorie n'y a pas été choisie — elle est retirée, et
+    // l'aspect repart comme neuf (option nommée, puis IA, puis question).
+    // Une valeur valable ici reste, et change d'étiquette. Ce que la personne
+    // a posé ou retouché n'est jamais touché.
+    {
+      const { retirer, reetiqueter, oublier } = valeursAutoAReprendre({
+        categorie: ebayPreviewCategoryId, autoPoses: ebayAutoPoses.current,
+        aspects: edited.ebay?.platform_fields?.ebayAspects ?? {}, statut: ebayRequiredStatus,
+        listeFermee: isEbayClosedList, norm: normAspectVal,
+      });
+      for (const nom of oublier) delete ebayAutoPoses.current[nom];
+      for (const nom of reetiqueter) ebayAutoPoses.current[nom] = { ...ebayAutoPoses.current[nom], categorie: ebayPreviewCategoryId };
+      for (const nom of retirer) delete ebayAutoPoses.current[nom];
+      if (retirer.length) {
+        setEdited(prev => {
+          if (!prev.ebay) return prev;
+          const asp = { ...(prev.ebay.platform_fields?.ebayAspects ?? {}) };
+          for (const nom of retirer) delete asp[nom];
+          return { ...prev, ebay: { ...prev.ebay, platform_fields: { ...prev.ebay.platform_fields, ebayAspects: asp } } };
+        });
+        return;
+      }
+    }
     // Clé composite catégorie|genre (2026-07-19) : le Département dérive du
     // genre — un genre posé ou corrigé APRÈS la première passe doit rejouer
     // la pose (une passe par (catégorie, genre), toujours pas de boucle).
@@ -7651,6 +7694,9 @@ export default function ListingPreviewScreen({
       }
     }
     if (!Object.keys(toSet).length) return;
+    for (const [nom, valeur] of Object.entries(toSet)) {
+      ebayAutoPoses.current[nom] = { categorie: ebayPreviewCategoryId, valeur: String(valeur ?? "").trim() };
+    }
     setEdited(prev => prev.ebay ? {
       ...prev,
       ebay: {
@@ -7661,7 +7707,7 @@ export default function ListingPreviewScreen({
         },
       },
     } : prev);
-  }, [ebayRequiredStatus, ebayPreviewCategoryId, edited, plateformeJeuEbay]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ebayRequiredStatus, ebayPreviewCategoryId, ebayListeAJour, edited, plateformeJeuEbay]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Pré-sélection auto (2026-07-18) : au step Publier, une valeur dédiée hors
   // liste avec un rapprochement sûr est remplacée d'office par le libellé eBay
@@ -7705,8 +7751,26 @@ export default function ListingPreviewScreen({
   // manquants après ce passage relèvent du fallback UI (Phase 3), jamais
   // d'une valeur devinée. Les aspects à défaut déterministe (MPN…) sont
   // EXCLUS : ils sont déjà posés par l'effet ci-dessus, pas de tokens gâchés.
-  const aspectsResolvedFor = useRef(null);
+  // ── (10/10, cas Manon : polaires en lot vers eBay) TROIS TROUS FERMÉS ────
+  //   1. la passe partait sur la liste de la catégorie D'AVANT (relecture en
+  //      cours) et marquait la nouvelle « IA faite » — ebayListeAJour ;
+  //   2. « une seule tentative par catégorie » : un exigé devenu manquant
+  //      APRÈS le premier appel (valeur d'une autre catégorie retirée, liste
+  //      relue) n'était jamais demandé à l'IA — chaque aspect l'est désormais
+  //      une fois PAR catégorie (jamais deux : un champ que la personne a vidé
+  //      exprès n'est pas rempli à nouveau) ;
+  //   3. un appel qui n'aboutissait pas (réseau du téléphone, erreur serveur)
+  //      valait « l'IA n'a rien trouvé » : question immédiate. Il est retenté
+  //      une fois.
+  // Le serveur, lui, fait désormais la seconde passe FREE_TEXT de la voie API
+  // (generate-listing → completerAspectsIA) : même règle, mêmes garde-fous.
+  const aspectsDemandesIa = useRef(new Set()); // `${catégorie}|${aspect}` déjà demandés
+  const ebayCategorieCourante = useRef(null);
+  useEffect(() => { ebayCategorieCourante.current = ebayPreviewCategoryId; }, [ebayPreviewCategoryId]);
+  const [ebayIaEnVol, setEbayIaEnVol] = useState(0);
   useEffect(() => {
+    const cat = ebayPreviewCategoryId;
+    if (!cat || !ebayRequiredStatus || !ebayListeAJour) return;
     // MÊME fonction que la pose ci-dessus (2026-08-11) : sans ça « Modèle »
     // partirait quand même à l'IA sur un objet sans marque, pour qu'elle
     // réponde null — un appel payé pour rien, et une ligne qui reste rouge le
@@ -7715,15 +7779,18 @@ export default function ListingPreviewScreen({
       edited.ebay?.platform_fields?.marque
       ?? edited.ebay?.platform_fields?.ebayAspects?.["Marque"] ?? ""
     ).trim();
-    const missing = (ebayRequiredStatus ?? [])
-      .filter(a => a.state === "missing" && !defautAspectEbay(a, { marque: marqueEbay, famille: initialListing?.famille ?? null, plateformeJeu: plateformeJeuEbay }))
-      .map(a => a.name);
-    if (!missing.length && ebayPreviewCategoryId && ebayRequiredStatus && ebayIaFiniePour !== ebayPreviewCategoryId) {
-      setEbayIaFiniePour(ebayPreviewCategoryId);
+    const { aDemander, fini } = aspectsADemanderIa({
+      categorie: cat, listeAJour: ebayListeAJour, statut: ebayRequiredStatus, dejaDemandes: aspectsDemandesIa.current,
+      aDefaut: a => defautAspectEbay(a, { marque: marqueEbay, famille: initialListing?.famille ?? null, plateformeJeu: plateformeJeuEbay }),
+      enVol: ebayIaEnVol,
+    });
+    if (!aDemander.length) {
+      if (fini && ebayIaFiniePour !== cat) setEbayIaFiniePour(cat);
+      return;
     }
-    if (!missing.length || !ebayPreviewCategoryId) return;
-    if (aspectsResolvedFor.current === ebayPreviewCategoryId) return;
-    aspectsResolvedFor.current = ebayPreviewCategoryId;
+    for (const n of aDemander) aspectsDemandesIa.current.add(`${cat}|${n}`);
+    if (ebayIaFiniePour === cat) setEbayIaFiniePour(null);
+    setEbayIaEnVol(n => n + 1);
     (async () => {
       try {
         // allowedValues déjà portées par la preview (même fetch) : pas de
@@ -7742,8 +7809,8 @@ export default function ListingPreviewScreen({
         //   · Marque → JAMAIS de liste (doctrine marques fantômes), recalée
         //     après coup ; listes longues → texte libre.
         // On envoie donc le mode, et la liste selon ces règles.
-        const details = (ebayRequiredStatus ?? [])
-          .filter(a => missing.includes(a.name))
+        const details = ebayRequiredStatus
+          .filter(a => aDemander.includes(a.name))
           .map(a => {
             const liste = a.allowedValues ?? [];
             const envoyer = a.mode === "SELECTION_ONLY"
@@ -7753,33 +7820,52 @@ export default function ListingPreviewScreen({
           });
         if (!details.length) return;
         const src = edited.ebay ?? {};
-        const { data: res } = await supabase.functions.invoke("generate-listing", {
-          body: {
-            resolve_aspects: true,
-            aspects: details,
-            item_data: {
-              titre:       src.title || initialListing?.titre || "",
-              marque:      src.platform_fields?.marque || initialListing?.marque || null,
-              // Contexte enrichi (Phase 1) : modèle/matière/couleur aident
-              // l'IA à extraire les obligatoires extractibles (Nom de parfum
-              // souvent = modèle, Volume/Taille d'écran dans le titre…).
-              // lensPourChamps (2026-07-28) : modèle non confirmé retiré et
-              // reference_fabricant repassée au filtre MPN — c'est CE contexte
-              // qui alimente les aspects eBay en saisie libre.
-              modele:      src.platform_fields?.modele || lensPourChamps?.modele || null,
-              matiere:     src.platform_fields?.matiere || initialListing?.matiere || null,
-              couleur:     src.platform_fields?.colors?.[0] || src.platform_fields?.couleur || initialListing?.couleur || null,
-              description: src.description || initialListing?.description || null,
-              type:        initialListing?.categorie || null,
-              // attributs_visibles de lens-analysis (Phase 2), assainis.
-              attributs:   lensPourChamps?.attributs_visibles ?? null,
-            },
+        const corps = {
+          resolve_aspects: true,
+          aspects: details,
+          // (10/10) Mesure côté serveur (usage_logs ebay_aspects_ia) : quel
+          // article, quelle catégorie — rien d'autre ne change.
+          aspects_inventaire_id: invId ?? null,
+          categorie_ebay: String(cat),
+          item_data: {
+            titre:       src.title || initialListing?.titre || "",
+            marque:      src.platform_fields?.marque || initialListing?.marque || null,
+            // Contexte enrichi (Phase 1) : modèle/matière/couleur aident
+            // l'IA à extraire les obligatoires extractibles (Nom de parfum
+            // souvent = modèle, Volume/Taille d'écran dans le titre…).
+            // lensPourChamps (2026-07-28) : modèle non confirmé retiré et
+            // reference_fabricant repassée au filtre MPN — c'est CE contexte
+            // qui alimente les aspects eBay en saisie libre.
+            modele:      src.platform_fields?.modele || lensPourChamps?.modele || null,
+            matiere:     src.platform_fields?.matiere || initialListing?.matiere || null,
+            couleur:     src.platform_fields?.colors?.[0] || src.platform_fields?.couleur || initialListing?.couleur || null,
+            description: src.description || initialListing?.description || null,
+            type:        initialListing?.categorie || null,
+            // attributs_visibles de lens-analysis (Phase 2), assainis.
+            attributs:   lensPourChamps?.attributs_visibles ?? null,
           },
-        });
+        };
+        // Un appel qui n'aboutit pas n'est pas « l'IA n'a rien trouvé » : il
+        // est retenté une fois, 1,5 s plus tard. Deux échecs : la question part,
+        // comme avant — jamais de valeur devinée.
+        let res = null;
+        for (let essai = 1; essai <= 2 && res === null; essai++) {
+          try {
+            const { data, error } = await supabase.functions.invoke("generate-listing", { body: corps });
+            if (error) throw error;
+            res = data ?? {};
+          } catch (e) {
+            if (essai === 1) await new Promise(r => setTimeout(r, 1500));
+            else console.warn("[stepper] extraction des aspects eBay injoignable :", e?.message ?? e);
+          }
+        }
         const values = res?.aspects && typeof res.aspects === "object" ? res.aspects : {};
         const clean = Object.fromEntries(Object.entries(values).filter(([k, v]) =>
-          missing.includes(k) && typeof v === "string" && v.trim() && v.trim().toLowerCase() !== "null"));
+          aDemander.includes(k) && typeof v === "string" && v.trim() && v.trim().toLowerCase() !== "null"));
         if (!Object.keys(clean).length) return;
+        // Une réponse revenue APRÈS un changement de catégorie ne vaut que pour
+        // l'ancienne : elle ne pose rien (la nouvelle a sa propre demande).
+        if (ebayCategorieCourante.current !== cat) return;
         // (02/10 soir) La réponse de l'IA COMBLE, elle n'écrase jamais : une
         // valeur posée entre-temps (défaut déterministe, saisie de la personne)
         // garde la main.
@@ -7788,6 +7874,7 @@ export default function ListingPreviewScreen({
           const avant = prev.ebay.platform_fields?.ebayAspects ?? {};
           const comble = Object.fromEntries(Object.entries(clean).filter(([k]) => !String(avant[k] ?? "").trim()));
           if (!Object.keys(comble).length) return prev;
+          for (const [k, v] of Object.entries(comble)) ebayAutoPoses.current[k] = { categorie: cat, valeur: String(v).trim() };
           return {
             ...prev,
             ebay: {
@@ -7797,9 +7884,9 @@ export default function ListingPreviewScreen({
           };
         });
       } catch { /* micro-appel de secours : jamais bloquant */ }
-      finally { setEbayIaFiniePour(ebayPreviewCategoryId); }
+      finally { setEbayIaEnVol(n => Math.max(0, n - 1)); }
     })();
-  }, [ebayRequiredStatus, ebayPreviewCategoryId, edited, initialListing, plateformeJeuEbay]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ebayRequiredStatus, ebayPreviewCategoryId, ebayListeAJour, ebayIaEnVol, ebayIaFiniePour, edited, initialListing, plateformeJeuEbay]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Requis Vinted/LBC/Beebs AVANT publication (chantier 1.A, 2026-07-16) ──
   // Même philosophie que le bloc eBay ci-dessus, mais la source est le
@@ -8626,6 +8713,7 @@ export default function ListingPreviewScreen({
           champBloquantVus.current[k] = {
             platform: gp, champs: [a.label ?? a.key],
             categorie: genericCategoryKeys?.[gp] ?? initialListing?.categorie ?? null,
+            inventaire_id: invId ?? null,
           };
           logChampBloquant("affiche", champBloquantVus.current[k]);
         }
@@ -8640,7 +8728,9 @@ export default function ListingPreviewScreen({
       const k = `ebay:${a.name}`;
       actifs.add(k);
       if (!champBloquantVus.current[k]) {
-        champBloquantVus.current[k] = { platform: "ebay", champs: [a.name], categorie: ebayPreviewCategoryId ?? null };
+        // (10/10) L'article est nommé, comme pour les questions partagées : on
+        // sait enfin QUEL article a buté, pas seulement sur quoi.
+        champBloquantVus.current[k] = { platform: "ebay", champs: [a.name], categorie: ebayPreviewCategoryId ?? null, inventaire_id: invId ?? null };
         logChampBloquant("affiche", champBloquantVus.current[k]);
       }
     }
@@ -8822,22 +8912,34 @@ export default function ListingPreviewScreen({
               ? []
               : (a.allowedValues ?? []).slice(0, 60),
           }));
-          const { data: res } = await supabase.functions.invoke("generate-listing", {
-            body: {
-              resolve_aspects: true,
-              aspects: details,
-              item_data: {
-                titre:       src.title || initialListing?.titre || "",
-                marque:      src.platform_fields?.marque || initialListing?.marque || null,
-                modele:      src.platform_fields?.modele || lensPourChamps?.modele || null,
-                matiere:     src.platform_fields?.matiere || initialListing?.matiere || null,
-                couleur:     src.platform_fields?.colors?.[0] || src.platform_fields?.couleur || initialListing?.couleur || null,
-                description: src.description || initialListing?.description || null,
-                type:        initialListing?.categorie || null,
-                attributs:   lensPourChamps?.attributs_visibles ?? null,
-              },
+          const corps = {
+            resolve_aspects: true,
+            aspects: details,
+            item_data: {
+              titre:       src.title || initialListing?.titre || "",
+              marque:      src.platform_fields?.marque || initialListing?.marque || null,
+              modele:      src.platform_fields?.modele || lensPourChamps?.modele || null,
+              matiere:     src.platform_fields?.matiere || initialListing?.matiere || null,
+              couleur:     src.platform_fields?.colors?.[0] || src.platform_fields?.couleur || initialListing?.couleur || null,
+              description: src.description || initialListing?.description || null,
+              type:        initialListing?.categorie || null,
+              attributs:   lensPourChamps?.attributs_visibles ?? null,
             },
-          });
+          };
+          // (10/10) Même règle que l'encart eBay : un appel qui n'aboutit pas
+          // (réseau du téléphone, erreur serveur) n'est pas « l'IA n'a rien
+          // trouvé » — il est retenté une fois avant que la question parte.
+          let res = null;
+          for (let essai = 1; essai <= 2 && res === null; essai++) {
+            try {
+              const { data, error } = await supabase.functions.invoke("generate-listing", { body: corps });
+              if (error) throw error;
+              res = data ?? {};
+            } catch (e) {
+              if (essai === 1) await new Promise(r => setTimeout(r, 1500));
+              else console.warn(`[stepper] extraction des champs ${gp} injoignable :`, e?.message ?? e);
+            }
+          }
           const values = res?.aspects && typeof res.aspects === "object" ? res.aspects : {};
           // resolve_aspects répond par LIBELLÉ ; le canal générique écrit par
           // CLÉ plateforme (code serveur / for= / libellé Beebs) — mappage
