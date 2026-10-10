@@ -127,7 +127,7 @@ contraire. Il se périme : `functions list`, `cron.job` et
   **0.6.103 JAMAIS téléversée** ; jamais
   d'EXTENSION_MIN_BUILD sans décision de Nico ; **minimum serveur 0.6.81** (inchangé : forcer la MAJ = décision de
   Nico) ; web **2.9.67** (poussé le 08/10), OTA **2.9.67 servie** (08/10
-  10:50, build 9d203ac) ; `get-pending-jobs` v230 (09/10, port + interdits Depop), `photo-empreinte` v3,
+  10:50, build 9d203ac) ; `get-pending-jobs` v231 (10/10, créneaux = liste du serveur + republication auto Depop), `photo-empreinte` v3,
   `generate-listing` v113, `lens-analysis` v107, `avis-demande` v4,
   `deal-analysis` v42, `voice-transcribe` v46,
   `ebay-account` v16, `send-extension-link` v13 (`true`) ;
@@ -270,6 +270,18 @@ contraire. Il se périme : `functions list`, `cron.job` et
   exclus de Depop seulement, comptés avant l'envoi (`lot/ExclusDepop.jsx`) ;
   gpj **v230** : filet sur tout job Depop qui dépose → needs_user, jamais servi.
   Selftest `selftest:depop-interdits`.
+- **⛔ REPUBLICATION AUTOMATIQUE DEPOP (10/10 matin, Nico)** : MÊME circuit que
+  Vinted, Leboncoin, Beebs (balayage `republish_planifiee_sweep`, mêmes paliers,
+  plafonds et quotas) ; app : ligne Depop dans « Republication automatique »
+  seulement si l'app propose Depop au compte (`plateformesDuCompte`, extension
+  ≥ 0.6.106), une plateforme active garde sa ligne ; gpj **v231** : les créneaux
+  viennent de la liste DU SERVEUR (plus de liste en dur) ; une republication
+  AUTO d'un article interdit par Depop est close sans question (annonce
+  intacte, verdict `depop_interdit`) et l'article n'est plus jamais candidat
+  (mig **20261010100000 APPLIQUÉE**, feu vert nommé : `<plateforme>_interdit`
+  exclu des candidats). Preuve réelle chez Nico (job 7cd5edaf, parti seul au
+  créneau, recréé, ancienne en 404, test retirée). Selftest
+  `selftest:republication-auto-depop`.
 - **⛔ `platform_settings`** (02/10) : jamais d'update/PATCH de l'objet entier,
   toujours `rpc platform_settings_fusionner` ; la garde en base refuse le reste.
 - **Ventes (02/10 soir)** : `ventes.annonce_id` = la preuve (numéro d'annonce) ;

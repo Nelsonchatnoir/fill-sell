@@ -24,3 +24,9 @@
 - Écran « republication planifiée » de l'app sans ligne Depop (`PLATEFORMES_PLANIFIEES`,
   exceptions de `selftest:depop-partout` à retirer en même temps).
 - `selftest:veille-commandes` rouge AVANT ce lot (extension non touchée ici).
+
+## 10/10 matin — FAIT
+- get-pending-jobs **v231** : plus de `PF_CRENEAU` en dur (liste du serveur, Depop comprise).
+- Écran « republication planifiée » : ligne Depop (extension ≥ 0.6.106), exceptions de
+  `selftest:depop-partout` retirées. Preuve réelle : republication auto Depop 7cd5edaf
+  (cf. `docs/agents/etat-2026-10-01.md`, « 10/10 matin »).
