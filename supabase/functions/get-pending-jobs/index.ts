@@ -464,11 +464,16 @@ serve(async (req) => {
     // ont CHACUNE leur créneau, leurs jours et leur plafond. Un job Leboncoin
     // ne se juge donc plus sur la fenêtre Vinted — c'était le seul endroit du
     // serveur qui l'aurait fait.
-    // UN aller-retour pour les quatre (republish_planifiee_fenetres_courantes).
+    // UN aller-retour pour toutes (republish_planifiee_fenetres_courantes).
     // Repli sur l'ancienne RPC mono-plateforme si la migration n'est pas encore
     // jouée : le comportement d'avant, à l'identique, jamais un point de panne.
+    // (10/10) LA LISTE DES PLATEFORMES EST CELLE DU SERVEUR : la RPC parcourt
+    // republish_planifiee_plateformes() et rend une clé par plateforme. On les
+    // prend TOUTES, jamais une liste recopiée ici — la liste en dur (Vinted,
+    // Leboncoin, Beebs, Opla) laissait une republication automatique Depop
+    // partir hors de son créneau. Une plateforme ouverte demain est retenue
+    // par sa fenêtre sans toucher à ce fichier.
     type Fenetre = { actif: boolean; dans_creneau: boolean; reprise: string | null; fin: string | null };
-    const PF_CRENEAU = ["vinted", "leboncoin", "beebs", "opla"] as const;
     let creneauxCache: Record<string, Fenetre> | null | undefined;
     const lireCreneaux = async (): Promise<Record<string, Fenetre>> => {
       if (creneauxCache !== undefined && creneauxCache !== null) return creneauxCache;
@@ -486,7 +491,7 @@ serve(async (req) => {
         const { data, error } = await userClient.rpc("republish_planifiee_fenetres_courantes");
         if (error) throw error;
         const m = (data ?? {}) as Record<string, Record<string, unknown> | null>;
-        for (const pf of PF_CRENEAU) poser(pf, m[pf] ?? null);
+        for (const [pf, f] of Object.entries(m)) poser(pf, f ?? null);
       } catch (_e) {
         try {
           const { data: fen } = await userClient.rpc("republish_planifiee_fenetre_courante");
@@ -3393,6 +3398,12 @@ serve(async (req) => {
     // (publication, republication, remise en vente, ancienne app) d'un article
     // interdit ne part JAMAIS vers l'extension : needs_user avec la phrase de
     // la règle, rien n'est retiré ni débité de plus. Fiche absente = servi.
+    // (10/10) REPUBLICATION AUTOMATIQUE : personne ne l'a demandée, aucune
+    // question n'est posée. Tant que rien n'est retiré (retraitEngage), elle
+    // est CLOSE (cancelled : unité rendue par republish_refund_on_terminal,
+    // annonce Depop intacte) et le verdict `depop_interdit` posé sur le job
+    // retire l'article des candidats (republish_planifiee_candidats, migration
+    // 20261010100000) : il ne repart plus jamais en automatique sur Depop.
     let heldDepopInterdit = 0;
     if (!includeProcessing && !includeNeedsUser) {
       const depotsDepop = out.filter((j) =>
@@ -3412,15 +3423,25 @@ serve(async (req) => {
             const verdict = verdictDepopInterdit(icone, icone === "🎮" ? (familleJeuVideo(titre, description)?.famille ?? null) : null, titre);
             if (!verdict) continue;
             const pfI = ((j.platform_fields as Record<string, unknown> | null) ?? {});
-            const { data: maj } = await userClient.from("cross_post_jobs")
-              .update({
-                status: "needs_user",
-                error: `${messageDepopInterdit(verdict, "fr")} Cet article ne partira pas sur Depop : rien n'a été envoyé.`,
-                platform_fields: { ...pfI, depop_interdit: { ...verdict, depuis: new Date().toISOString(), source: "get-pending-jobs" } },
-              })
-              .eq("id", j.id).eq("status", "pending").select("id");
+            const depopInterdit = { ...verdict, depuis: new Date().toISOString(), source: "get-pending-jobs" };
+            const autoIntacte = j.action === "republish" && pfI["republish_source"] === "auto" && !retraitEngage(j);
+            const { data: maj } = autoIntacte
+              ? await userClient.from("cross_post_jobs")
+                .update({
+                  status: "cancelled",
+                  error: `Republication automatique Depop non lancée : ${messageDepopInterdit(verdict, "fr")} Ton annonce Depop est intacte, rien n'a été retiré.`,
+                  platform_fields: { ...pfI, depop_interdit: depopInterdit },
+                })
+                .eq("id", j.id).eq("status", "pending").select("id")
+              : await userClient.from("cross_post_jobs")
+                .update({
+                  status: "needs_user",
+                  error: `${messageDepopInterdit(verdict, "fr")} Cet article ne partira pas sur Depop : rien n'a été envoyé.`,
+                  platform_fields: { ...pfI, depop_interdit: depopInterdit },
+                })
+                .eq("id", j.id).eq("status", "pending").select("id");
             aRetenir.add(String(j.id));
-            console.log(`[get-pending-jobs] dépôt depop ${String(j.id).slice(0, 8)} (${j.action}) : catégorie interdite par Depop (${icone} ${verdict.quoi}) — needs_user${(maj ?? []).length ? "" : " (déjà sorti de pending)"}`);
+            console.log(`[get-pending-jobs] dépôt depop ${String(j.id).slice(0, 8)} (${j.action}) : catégorie interdite par Depop (${icone} ${verdict.quoi}) — ${autoIntacte ? "republication automatique close, annonce intacte" : "needs_user"}${(maj ?? []).length ? "" : " (déjà sorti de pending)"}`);
           }
           if (aRetenir.size) {
             const avant = out.length;
