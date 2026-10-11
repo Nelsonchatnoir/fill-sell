@@ -1694,7 +1694,13 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
           {libelleChamp(f)}
         </div>
         <div style={{ fontSize:12.5, lineHeight:1.5, color:"#6B7A75", marginBottom:14 }}>
-          {valeursIndisponibles
+          {job.platform === "vinted" && f?.field_key === "vinted_boutique"
+            // (11/10, Louis) Un article sans boutique, chez un compte à plusieurs
+            // boutiques Vinted : la personne choisit, rien n'est choisi pour elle.
+            ? (lang === "en"
+              ? "This item has no Vinted shop yet. Pick the one it belongs to: it will only ever be published there, never on another one."
+              : "Cet article n'a pas encore de boutique Vinted. Choisis celle à laquelle il appartient : il ne sera publié que sur elle, jamais sur une autre.")
+            : valeursIndisponibles
             ? (lang === "en"
               ? `${platformLabel} only accepts values from its own list for this field, and we could not read that list during the last attempt.`
               : `${platformLabel} n'accepte que des valeurs de sa propre liste pour ce champ, et nous n'avons pas réussi à lire cette liste au dernier passage.`)
