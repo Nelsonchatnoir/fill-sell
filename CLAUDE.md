@@ -4,11 +4,22 @@
 « 03/10 nuit — clôture Louis + marque + prix » et « 04/10 matin —
 complément », « 04/10 fin de matinée — chantier Louis », « 04/10 soir —
 incident CPU », « 04/10 nuit — six défauts clients » et « 05/10 — lot
-terminal Problèmes » / « 05/10 après-midi » / « 06/10 » / « 06/10 soir » / « 06/10 nuit » / « 08/10 nuit — MULTI-SYNCHRO » / « 08/10 matin — boucles » / « 08/10 fin de matinée — SUJET CLOS » / « 08/10 après-midi — complément » / « 08/10 soir — fin du chantier multi-synchro » / « 08/10 nuit — Bebertdeals : remise en ligne Vinted » / « 08/10 nuit — VENTES PROUVÉES » / « 09/10 nuit — DEPOP » / « 09/10 fin de matinée — DEPOP : reprise complète » / « 11/10 — une vente signalée une fois » / « 11/10 midi — LOT UNIQUE » / « 11/10 après-midi — POIDS LEBONCOIN » / « 11/10 fin d'après-midi — BOUTIQUE, ANCIENNETÉ, QUOTA » / « 11/10 soir — LOT DE DIX POINTS » / « 11/10 nuit — LOT LOUIS (fin) » en fin ; reprises : `docs/reprise/terminal-depop-0910.md`, `docs/reprise/terminal-ventes-prouvees-0810.md`, `docs/reprise/terminal-bebertdeals-0810.md`, `docs/reprise/terminal-boucles-0810.md`, `docs/reprise/terminal-cloture-multi-synchro-0810.md`, `docs/reprise/terminal-complement-0810.md`, `docs/reprise/terminal-fin-multi-synchro-0810.md`) et
+terminal Problèmes » / « 05/10 après-midi » / « 06/10 » / « 06/10 soir » / « 06/10 nuit » / « 08/10 nuit — MULTI-SYNCHRO » / « 08/10 matin — boucles » / « 08/10 fin de matinée — SUJET CLOS » / « 08/10 après-midi — complément » / « 08/10 soir — fin du chantier multi-synchro » / « 08/10 nuit — Bebertdeals : remise en ligne Vinted » / « 08/10 nuit — VENTES PROUVÉES » / « 09/10 nuit — DEPOP » / « 09/10 fin de matinée — DEPOP : reprise complète » / « 11/10 — une vente signalée une fois » / « 11/10 midi — LOT UNIQUE » / « 11/10 après-midi — POIDS LEBONCOIN » / « 11/10 fin d'après-midi — BOUTIQUE, ANCIENNETÉ, QUOTA » / « 11/10 soir — LOT DE DIX POINTS » / « 11/10 nuit — LOT LOUIS (fin) » / « 11/10 nuit — DEPOP COMME OPLA » en fin ; reprises : `docs/reprise/terminal-depop-0910.md`, `docs/reprise/terminal-ventes-prouvees-0810.md`, `docs/reprise/terminal-bebertdeals-0810.md`, `docs/reprise/terminal-boucles-0810.md`, `docs/reprise/terminal-cloture-multi-synchro-0810.md`, `docs/reprise/terminal-complement-0810.md`, `docs/reprise/terminal-fin-multi-synchro-0810.md`) et
 `docs/agents/consignes-2026-09-28.md` (règles), qui remplacent tout historique
 contraire. Il se périme : `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
 
+- **⛔ 11/10 nuit — DEPOP COMME OPLA** — rapport `docs/enquetes/depop-comme-opla-1110/RAPPORT.md` : ⛔ **jamais de
+  file silencieuse** — trace `extension_postes[…].depop_acces` (gpj), « Autoriser Depop » posé par handler-watch
+  (`_shared/acces-depop.js` : 15 min avec un poste sans accès, 1 h sans aucun poste autorisé, jamais si un poste
+  du compte a l'accès), levé par gpj / l'extension / handler-watch ; bouton « Autoriser Depop » dans l'app ;
+  ⛔ **le rayon Depop passe par le moteur** (`_shared/depop-rayon.js` v3 : feuilles officielles, libellés corrigés,
+  resolve-categorie v14, garde-fous — vêtement jamais en chaussures, Enfants jamais sans indice, enfant ET adulte
+  = question ; gpj ne sert jamais une publication Depop sans rayon du moteur, handler-watch recalcule) ; Depop
+  **jamais pré-cochée** dans le lot ; connexion : « connecte-toi à Depop sur ton ordinateur ». 6 jobs Simon/Jake
+  traités par la règle (5 rayons corrigés, 1 question) ; audit : 5 rayons faux, aucun parti. gpj **v239**, hw
+  **v99**, ujs **v134**, rc **v14** ; OTA **2.9.85** ; extension inchangée ; parcours réel chez Nico PAS fait
+  (aucune session fillsell.app dans le Chrome piloté).
 - **⛔ 11/10 nuit — LOT LOUIS (fin)** — rapport `docs/enquetes/lot-louis-1110/RAPPORT.md` : **la ligne du
   créneau suit le réglage** (mig **20261011180000 APPLIQUÉE** : Vinted @evat figé depuis 14:15, fin déplacée
   12–14 → 23:59 ; 4 republications parties seules dès 17:18) ; **un attribut distinctif écarte la paire
@@ -222,11 +233,11 @@ contraire. Il se périme : `functions list`, `cron.job` et
   BUILD_ID 2026-10-08T23:39:13Z+8f88cdd) ; 0.6.102 servie avant (b230ebe) ;
   **0.6.103 JAMAIS téléversée** ; jamais
   d'EXTENSION_MIN_BUILD sans décision de Nico ; **minimum serveur 0.6.81** (inchangé : forcer la MAJ = décision de
-  Nico) ; web et OTA **2.9.84** (11/10 nuit, build `2026-10-11T16:32:26Z+1dc13d2`) ; `get-pending-jobs` v237 (11/10 soir ; v231 le 10/10 : créneaux = liste du serveur + republication auto Depop), `photo-empreinte` v3,
+  Nico) ; web et OTA **2.9.85** (11/10 nuit, build `2026-10-11T17:44:00Z+9ffb9ef`) ; `get-pending-jobs` v239 (11/10 nuit, Depop) ; avant : v237 (11/10 soir ; v231 le 10/10 : créneaux = liste du serveur + republication auto Depop), `photo-empreinte` v3,
   `generate-listing` v116 (11/10 soir, `resolve_couleur`), `lens-analysis` v107, `avis-demande` v4,
   `deal-analysis` v42, `voice-transcribe` v46,
   `ebay-account` v16, `send-extension-link` v13 (`true`) ;
-  `rapprochement` v19 (11/10 nuit), `empreintes-urls` v5, `update-job-status` v132, `handler-watch` v95, `push-ventes` v10, `check-listing-status` v37, `voice-intent` v155, `ops-digest` v35,
+  `rapprochement` v19 (11/10 nuit), `empreintes-urls` v5, `update-job-status` v134, `handler-watch` v99, `resolve-categorie` v14, `push-ventes` v10, `check-listing-status` v37, `voice-intent` v155, `ops-digest` v35,
   `ebay-api-worker` v84 (11/10 : action `reviser_annonce` rayon_regle, à la main), `ebay-releve-api` v4, `releve-completer` v2,
   `veille-cpu` v2, `ebay-ventes-sync` v5, `ebay-oauth-callback` v10, `ebay-notifications` v5,
   `email-tunnel` v72 et `stripe-webhook` v57 (`false`) ; migrations

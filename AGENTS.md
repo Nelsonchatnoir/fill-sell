@@ -4,7 +4,8 @@
 fin) et `docs/agents/consignes-2026-09-28.md` (règles) remplacent tout historique
 contraire. `functions list`, `cron.job` et `profiles.extension_build` font foi.
 
-- **Servi** : ext. **0.6.106** (0.6.110 à téléverser, embarque 0.6.109/0.6.108/0.6.107 ; 0.6.109 brûlée au test réel) ; min **0.6.81** ; OTA 2.9.84 ; gpj v237 ; gl v116 ; rapprochement v19.
+- **Servi** : ext. **0.6.106** (0.6.110 à téléverser, embarque 0.6.109/0.6.108/0.6.107 ; 0.6.109 brûlée au test réel) ; min **0.6.81** ; OTA 2.9.85 ; gpj v239 ; hw v99 ; gl v116 ; rapprochement v19.
+- **⛔ 11/10 nuit — Depop comme Opla** (`docs/enquetes/depop-comme-opla-1110/RAPPORT.md`) : jamais de file silencieuse (`_shared/acces-depop.js`, « Autoriser Depop ») ; rayon par le moteur (`_shared/depop-rayon.js`) ; jamais pré-cochée.
 - **⛔ 11/10 nuit (Louis, `docs/enquetes/lot-louis-1110/RAPPORT.md`)** : créneau = le réglage (mig 180000) ; attribut distinctif = paire écartée (mig 190000) ; logo italique en dégradé : marge en em ≥ .25em.
 - **⛔ 11/10 (Louis)** : publication Vinted = boutique de la fiche seulement ; quota par compte (`quotas_par_compte`) ; date réelle des imports Leboncoin.
 - **⛔ 11/10 soir** (`docs/enquetes/lot-1110-soir/RAPPORT.md`) : poids LBC FACULTATIF (« Laisser Leboncoin estimer » par défaut,
