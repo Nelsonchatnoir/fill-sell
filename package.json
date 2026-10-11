@@ -312,7 +312,16 @@
     "selftest:creneau-suit-le-reglage": "node scripts/creneau-suit-le-reglage-selftest.mjs",
     "selftest:marque-italique-entiere": "node scripts/marque-italique-entiere-selftest.mjs",
     "selftest:depop-rayon": "node scripts/depop-rayon-selftest.mjs",
-    "selftest:depop-file-jamais-silencieuse": "node scripts/depop-file-jamais-silencieuse-selftest.mjs"
+    "selftest:depop-file-jamais-silencieuse": "node scripts/depop-file-jamais-silencieuse-selftest.mjs",
+    "selftest:rayon-refuse-moteur": "node scripts/rayon-refuse-moteur-selftest.mjs",
+    "selftest:disjoncteur-compte": "node scripts/disjoncteur-compte-selftest.mjs",
+    "selftest:retrait-vendu-jamais-silencieux": "node scripts/retrait-vendu-jamais-silencieux-selftest.mjs",
+    "selftest:achats-store-issue": "node scripts/achats-store-issue-selftest.mjs",
+    "selftest:lot-sans-plafond": "node scripts/lot-sans-plafond-selftest.mjs",
+    "selftest:roue-reglages-visible": "node scripts/roue-reglages-visible-selftest.mjs",
+    "selftest:popup-compteur-depop": "node scripts/popup-compteur-depop-selftest.mjs",
+    "selftest:champs-lbc-auto": "node scripts/champs-lbc-auto-selftest.mjs",
+    "selftest:question-jamais-sans-choix": "node scripts/question-jamais-sans-choix-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

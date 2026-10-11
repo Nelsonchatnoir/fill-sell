@@ -86,7 +86,8 @@ console.log("\nC. UN JOB DEPOP NE VA QU'AU POSTE QUI DÉCLARE « depop_acces »"
 {
   const gpj = lire("supabase/functions/get-pending-jobs/index.ts");
   dit("get-pending-jobs lit la capacité", gpj.includes(`const posteAvecDepop = capacites.includes("depop_acces");`));
-  dit("et écarte tout job Depop sans elle", /if \(!posteAvecDepop\) \{\s*const avantD = out\.length;\s*out = out\.filter\(\(j\) => j\.platform !== "depop"\);/.test(gpj));
+  // (12/10, A9) … de la file d'EXÉCUTION ; le popup (lecture, include_needs_user) les voit pour les compter.
+  dit("et écarte tout job Depop sans elle (file d'exécution)", /if \(!posteAvecDepop && !includeNeedsUser\) \{\s*const avantD = out\.length;\s*out = out\.filter\(\(j\) => j\.platform !== "depop"\);/.test(gpj));
   dit("l'extension ne la déclare qu'avec la permission", bg.includes(`caps.push((await depopAccesAccorde()) ? "depop_acces" : "sans_depop");`));
   dit("la permission est lue sur l'origine exacte", /async function depopAccesAccorde\(\) \{\s*try \{ return await chrome\.permissions\.contains\(\{ origins: \[DEPOP_ORIGINE\] \}\); \}/.test(bg));
   dit("les scripts Depop ne sont enregistrés que pour www.depop.com", bg.includes(`const DEPOP_ORIGINE = "https://www.depop.com/*";`)

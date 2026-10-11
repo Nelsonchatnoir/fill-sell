@@ -79,7 +79,8 @@ console.log("\nC. GET-PENDING-JOBS");
   dit("un poste autorisé relance les jobs « Autoriser Depop » (≤ 1 fois / 10 min)", gpj.includes("rearmerJobsDepopParques(admin, user.id, sessionId)") && gpj.includes("avant.rearme_depop_le"));
   dit("la relance cible needs_user_source = depop_acces, en compare-and-swap", /\.eq\("platform_fields->>needs_user_source", "depop_acces"\)[\s\S]{0,1600}\.eq\("id", j\.id\)\.eq\("status", "needs_user"\)/.test(gpj));
   dit("le relevé Depop reste en file pour le poste autorisé", gpj.includes("relevé Depop laissé en file pour le poste autorisé"));
-  dit("un poste sans accès ne reçoit toujours aucun job Depop (règle du 09/10)", gpj.includes('if (!posteAvecDepop) {') && gpj.includes('out = out.filter((j) => j.platform !== "depop");'));
+  // (12/10, A9) La file d'EXÉCUTION seulement : le popup (include_needs_user, lecture) voit ses jobs Depop pour les compter.
+  dit("un poste sans accès ne reçoit toujours aucun job Depop (règle du 09/10)", gpj.includes('if (!posteAvecDepop && !includeNeedsUser) {') && gpj.includes('out = out.filter((j) => j.platform !== "depop");'));
   const pe = lire("supabase/functions/_shared/poste-extension.ts");
   dit("poste-extension : posteAvecAccesDepop / posteSansAccesDepop", pe.includes("export function posteAvecAccesDepop") && pe.includes("export function posteSansAccesDepop"));
 }
