@@ -49,9 +49,12 @@ const ECRANS = [
   ['09b-questions-a-completer-long', 'questions', /Poids du colis/, 1700],
   ['10-tout-est-pret', 'pret', /Envoyer \d+ annonces/, 844],
   // (10/10) Le bloc Livraison s'affiche à la fin de la préparation (page
-  // blanche du 09/10 22:13 au 10/10) ; le poids y est FACULTATIF, comme à
-  // l'unité : aucun article « à compléter » pour un poids.
-  ['10b-pret-poids-facultatif', 'pret', /Poids du colis \(facultatif\)[\s\S]*Comme pour un article publié seul/, 1700],
+  // blanche du 09/10 22:13 au 10/10). (11/10) Le poids y est OBLIGATOIRE pour
+  // Leboncoin (régression du 10/10 13:50 corrigée) : tous ont un poids ici.
+  ['10b-pret-poids-leboncoin', 'pret', /Poids du colis \(obligatoire pour Leboncoin\)[\s\S]*Tous ont un poids/, 1700],
+  // (11/10, Louis) Un lot Leboncoin sans poids : rien n'est prêt, le poids se
+  // donne une fois pour le lot, ou article par article.
+  ['10e-lot-leboncoin-sans-poids', 'poids-lbc', /Poids du colis \(obligatoire pour Leboncoin\)[\s\S]*7 articles Leboncoin sans poids[\s\S]*Appliquer aux 7 sans poids[\s\S]*Poids Leboncoin[\s\S]*Ou un poids pour tout le lot/, 2400],
   // (10/10) Un article qui casse est mis de côté, les autres restent.
   ['10c-article-casse-mis-de-cote', 'casse', /Cette partie n'a pas pu s'afficher[\s\S]*Robe midi Marc Cain[\s\S]*Cluedo édition 2019[\s\S]*Mis de côté : cet article n'a pas pu être préparé ici[\s\S]*Puzzle 1000 pièces Ravensburger Venise[\s\S]*Mis de côté[\s\S]*Peluche loup et renard Jellycat/, 1700],
   ['10d-ecran-casse-dernier-recours', 'ecran-casse', /Le lot s'est arrêté sur un problème d'affichage[\s\S]*Revenir au stock/, 844],

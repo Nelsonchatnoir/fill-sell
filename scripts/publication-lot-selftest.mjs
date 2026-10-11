@@ -110,8 +110,10 @@ const job = (o) => ({ action: 'publish', status: 'published', created_at: '2026-
     plateformesPubliables: new Set(['vinted', 'leboncoin']), jumeaux: [],
     initialListing: { poids_g: 450 },
   };
-  verifier(bilanArticle({ ...base, initialListing: {} }).pret && !bilanArticle({ ...base, initialListing: {} }).motifs.some((x) => x.cle === 'poids'),
-    '(10/10) Leboncoin sans poids : prêt, comme à l’unité (Leboncoin garde son estimation)');
+  verifier(!bilanArticle({ ...base, initialListing: {} }).pret && bilanArticle({ ...base, initialListing: {} }).motifs.some((x) => x.cle === 'poids'),
+    '(11/10) Leboncoin sans poids : à compléter (poids), jamais prêt — régression du 10/10 13:50 corrigée');
+  verifier(bilanArticle({ ...base, initialListing: {}, plateformesPubliables: new Set(['vinted']) }).pret,
+    '(11/10) sans Leboncoin, pas de poids exigé (Vinted : une taille)');
   verifier(bilanArticle(base).pret, 'au repos, rien à demander, texte du vendeur : prêt');
   verifier(!bilanArticle({ ...base, preparationAuRepos: false }).pret, 'moteur pas au repos : jamais prêt');
   verifier(bilanArticle({ ...base, nbQuestions: 2 }).motifs[0].libelle === '2 réponses', 'les questions du moteur sont comptées');

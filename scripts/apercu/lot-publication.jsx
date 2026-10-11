@@ -72,9 +72,13 @@ function Avant({ etape }) {
     // (03/10) Le 6e article : sa description est lue sur Vinted, au rythme des dépôts.
     if (enPrep) etats[id] = i === 5 ? { phase: 'lecture', lecture: 'vinted' } : { phase: i < 2 ? 'pret' : i === 2 ? 'questions' : i < 5 ? (i === 3 ? 'redaction' : 'verification') : 'attente' };
     else if (etape === 'pret' || etape === 'envoi') etats[id] = { phase: etape === 'envoi' && i < 3 ? 'envoye' : etape === 'envoi' && i === 3 ? 'envoi' : 'pret', envoyees: pfs(id) };
+    else if (etape === 'poids-lbc') etats[id] = { phase: 'questions', motifs: [{ cle: 'poids', libelle: 'Poids Leboncoin' }] };
     else etats[id] = { phase: i === 0 || i === 2 ? 'questions' : 'pret' };
     moteurs.set(id, moteurFactice(t, tpl, { plateformes: pfs(id) }));
   });
+  // (11/10) Le poids Leboncoin : connu (500 g) dans les scènes « prêt », à
+  // donner dans la scène du lot de Louis (articles Leboncoin sans poids).
+  const poidsScene = etape === 'poids-lbc' || etape === 'questions' ? () => null : () => 500;
   if (etape === 'casse') {
     // (10/10) Un article dont la carte lève à l'affichage (103, à compléter)
     // et un dont la LIGNE lève (104, prêt) : chacun est mis de côté, le bloc
@@ -123,7 +127,8 @@ function Avant({ etape }) {
       retour={{ onClick: noop }} quitter={{ onClick: noop }} cta={cta} ctaDesactive={enPrep || etape === 'envoi'} onCta={noop} sous={sous}>
       <EcranAvant en={false} lang="fr" L={L} lot={lot} etats={etats} lignes={lot.ids} parId={parId} moteurs={moteurs} decisions={{}}
         prepares={prepares} preparationFinie={!enPrep} prets={prets} aCompleter={aCompleter} annoncesPretes={annoncesPretes}
-        communes={communes} repondreCommune={noop} decider={noop} trancherJumeau={noop} sansPlateforme={noop} retirerDuLot={noop} envoi={envoi} />
+        communes={communes} repondreCommune={noop} decider={noop} trancherJumeau={noop} sansPlateforme={noop} retirerDuLot={noop} envoi={envoi}
+        poidsDe={poidsScene} poserPoids={noop} poserPoidsDuLot={noop} />
     </CoqueLot>
   );
 }
@@ -269,6 +274,7 @@ const SCENES = {
   preparation: () => <Avant etape="preparation" />,
   questions: () => <Avant etape="questions" />,
   pret: () => <Avant etape="pret" />,
+  'poids-lbc': () => <Avant etape="poids-lbc" />,
   envoi: () => <Avant etape="envoi" />,
   casse: () => <Avant etape="casse" />,
   'ecran-casse': () => <EcranCasse />,
