@@ -55,7 +55,7 @@ ok(/marqueVintedSansQuestion\(\{ pf, attrs: fiche\?\.attributs \?\? null, marque
 ok(/if \(j\.platform !== "vinted" \|\| \(j\.action \?\? "publish"\) !== "publish"\) continue;/.test(bloc), "publication seulement : la republication rejoue son annonce (pas d'IA)");
 const iF = gpj.indexOf("MARQUE ET COULEUR VINTED DEPUIS LA FICHE");
 const blocF = gpj.slice(iF, gpj.indexOf("L'ABSENCE DE MARQUE, TRADUITE POUR CHAQUE PLATEFORME", iF));
-ok(/repArticle\?\.source === "reponse_article"/.test(blocF) && /\.select\("id, attributs, marque"\)/.test(blocF), "la réponse de l'article (marque_vinted) est appliquée depuis la fiche");
+ok(/repArticle\?\.source === "reponse_article"/.test(blocF) && /\.select\("id, attributs, marque(?:, titre, description)?"\)/.test(blocF), "la réponse de l'article (marque_vinted) est appliquée depuis la fiche");
 ok(/import \{ couleursVintedSansQuestion, marqueVintedSansQuestion \} from "\.\.\/_shared\/vinted-couleur-marque-filet\.js";/.test(gpj), "import du filet");
 
 console.log(ko ? `\n✗ ${ko} échec(s)` : "\nTout est vert.");
