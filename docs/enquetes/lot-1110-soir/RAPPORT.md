@@ -210,3 +210,39 @@ plafond Premium 50/jour (12 faites) → 38 au plus aujourd'hui, le reste à part
 - Commits : da56c61 (1), 060e5d6 (3), 218bac6 (8), 3b3e85c (5 serveur), 3470714 (4 serveur), 8f97cc7 + 4b62efe
   (extension 7/5/4), dd2a742 (6), f7750bb (9), be8387b (10), 8eb4685 (9-10 serveur), d3b0d54 (tests câblés),
   81ef9cc (version).
+
+## Test réel du pré-vol Leboncoin (11/10, 16:05 → 17:05, poste de Nico, compte nicolas.svobodny)
+
+Push du lot : `f19330d..73c29e9` (14 commits), selftests 270/270 avant ; web en ligne `2026-10-11T13:57:42Z+73c29e9`.
+OTA : aucun fichier d'app changé depuis 81ef9cc → **2.9.83 reste servie** (canal production lu : 2.9.83), rien ressservi.
+Site : test des résultats enrichis sur https://fillsell.app/ (16:01:35) → 1 seul avertissement, « aggregateRating » (facultatif).
+
+**0.6.109 chargée à 16:05:49** (copie de développement rechargée seule). Annonces de test à 999 €, publiées depuis l'app.
+- **Cas A (0.6.109) — TOMBÉ** : T1 3286465199 → job 7fbaf36f. Pré-vol 16:16:26 verdict `ok`, retrait 16:16:42,
+  recréation 16:20:32 (T2 3286477846), 11 annonces en ligne = 10 + T2, T1 disparue. MAIS sortie du pré-vol
+  `{ brouillon_jete: false, motif_sortie: "quitter_introuvable" }` : le dépôt est resté interrompu jusqu'à la
+  recréation (qui l'a repris). Cause relevée sur la vraie page : deux boutons « Quitter » — texte (`hidden! lg:block!`,
+  > 1024 px) et icône SANS texte `aria-label="Quitter"` (`block lg:hidden`) ; la fenêtre de travail est minimisée, sans
+  taille → mise en page étroite → seul le bouton-icône existe ; la sortie ne cherchait que le texte.
+- **Correctif 0.6.110** (1cf1432, a3c5aef) : contrôles Leboncoin trouvés par leur NOM (texte, aria-label, title),
+  visibilité sans layout — sortie du pré-vol, sortie « brouillon bloquant » (même défaut latent : offsetParent nul en
+  fenêtre minimisée) et diagnostic. Selftest étendu (fenêtre étroite), contre-épreuve rouge. 270/270.
+  Zip : `build/CWS-0.6.110-A-TELEVERSER/fillsell-extension-0.6.110-a3c5aef-cws.zip` (BUILD_ID 2026-10-11T14:31:05Z+a3c5aef),
+  chargé chez Nico à 16:35:05 ; 0.6.109 dans `build/CWS-PERIMES/`, numéro brûlé.
+- **Cas A (0.6.110) — VERT** : T4 3286502485 → job c8a82caf. Pré-vol 16:49:44 `ok`, sortie
+  `{ brouillon_jete: true }` ; page de dépôt relue VIERGE à 16:50:57 (entre la sortie et la recréation, aucun dialogue) ;
+  retrait 16:50:01 ; recréation T5 3286512950 (16:55) ; « Mes annonces » 17:03:27 : 11 = 10 + T5.
+- **Cas B — NON PROUVÉ en réel** (trois murs, aucun défaut de FillSell constaté) : (1) l'État retiré du job est
+  réhydraté par get-pending-jobs depuis la fiche (CHAMPS_CAPTURE, voulu) — le pré-vol passe à raison, la recréation a
+  l'État ; (2) le « Produit » de Jeux & Jouets est pré-rempli par Leboncoin (T_B 3286515073 publiée SANS notre Produit,
+  marque « Hasbro » pré-remplie) — cas « 8 sur 9 passent » ; (3) T_B et T6 3286519360 (État de la fiche passé à
+  « Inconnu », source manuelle, pour forcer le refus) sont RETENUES par la modération Leboncoin (« Annonce introuvable »,
+  absentes de « Mes annonces » à 17:03, même photo que T5). Vu à la main sur la vraie page (16:2x) : sans État,
+  « Continuer » est refusé (« Ce champ est requis ») et Leboncoin ne le pré-remplit pas — c'est le chemin que le pré-vol
+  transforme en question avant retrait.
+- **Défaut trouvé, non corrigé** (app, choix du rayon à la main dans « Ce qui va partir ») : après passage de
+  « Électronique > Jeux vidéo » à « Loisirs > Jeux & Jouets », le Produit répondu a été ÉCARTÉ (`lbcAspectsEcartes`
+  jugé contre l'ANCIEN rayon) et `console_brand` (ancien rayon) gardé — job 8e5d2ee4.
+- Nettoyage : T2 (4c3f01f8), T5 (860428b8) retirées ; annonce Vinted de test 10307046444 du 09/10 retirée (ed2a435f) ;
+  T_B / T6 en modération : à retirer si Leboncoin les valide. Fiches de test créées : F3 1791729478750, F4 1791730353942,
+  F5 1791730636507 (État « Inconnu »).

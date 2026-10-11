@@ -21,8 +21,9 @@ contraire. Il se périme : `functions list`, `cron.job` et
   « Multicolore » ; republication sans IA) ; **aucune marque → « Sans marque »**, réponse « marque » rangée sur
   l'article (`attributs.marque_vinted`) ; boutique Vinted relue juste avant le dépôt (0.6.109). Mig **20261011170000
   APPLIQUÉE** (prix de recréation d'une vente prouvée / à confirmer). gpj **v237** ; OTA **2.9.83** ; extension
-  **0.6.109 À TÉLÉVERSER** (`build/CWS-0.6.109-A-TELEVERSER/`, preuve réelle « Quitter sans enregistrer » du pré-vol
-  LBC à faire avant). Selftests 270/270.
+  **0.6.110 À TÉLÉVERSER** (`build/CWS-0.6.110-A-TELEVERSER/`, BUILD_ID `2026-10-11T14:31:05Z+a3c5aef` ; la 0.6.109
+  est TOMBÉE au test réel : « Quitter » introuvable en fenêtre de travail étroite → bouton-icône aria-label, corrigé ;
+  numéro 0.6.109 brûlé, dossier dans CWS-PERIMES). Test réel 11/10 : rapport du lot, § « Test réel ». Selftests 270/270.
 - **⛔ 11/10 fin d'après-midi (Louis)** — rapport `docs/enquetes/louis-republication-boutique-quota-1110/RAPPORT.md` :
   **une publication Vinted (remise en vente comprise) ne part que sur la boutique de sa fiche** (gpj **v235**,
   `verifierBoutiquePublicationVinted` ; article sans boutique chez un compte à plusieurs boutiques = question fermée

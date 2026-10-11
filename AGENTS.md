@@ -4,7 +4,7 @@
 fin) et `docs/agents/consignes-2026-09-28.md` (règles) remplacent tout historique
 contraire. `functions list`, `cron.job` et `profiles.extension_build` font foi.
 
-- **Servi** : ext. **0.6.106** (0.6.109 à téléverser, embarque 0.6.108/0.6.107) ; min **0.6.81** ; OTA 2.9.83 ; gpj v237 ; gl v116.
+- **Servi** : ext. **0.6.106** (0.6.110 à téléverser, embarque 0.6.109/0.6.108/0.6.107 ; 0.6.109 brûlée au test réel) ; min **0.6.81** ; OTA 2.9.83 ; gpj v237 ; gl v116.
 - **⛔ 11/10 (Louis)** : publication Vinted = boutique de la fiche seulement ; quota par compte (`quotas_par_compte`) ; date réelle des imports Leboncoin.
 - **⛔ 11/10 soir** (`docs/enquetes/lot-1110-soir/RAPPORT.md`) : poids LBC FACULTATIF (« Laisser Leboncoin estimer » par défaut,
   choix retenu ; règle « jamais sans poids » RETIRÉE) ; stock et ventes lus EN ENTIER (PostgREST coupe à 1 000) ; pré-vol de
