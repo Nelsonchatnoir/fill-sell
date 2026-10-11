@@ -1982,7 +1982,10 @@ serve(async (req) => {
   try {
     const { data: depopRows } = await supabase
       .from("cross_post_jobs")
-      .select("id, user_id, action, status, error, created_at, platform_fields")
+      // ⛔ `platform` est LU : la règle (demanderAutorisationDepop) l'exige — sans
+      // lui, chaque job passait « hors champ » et aucune demande n'était posée
+      // (v97, 11/10 19:30 : 0 demande sur les 6 jobs de Simon et Jake).
+      .select("id, user_id, platform, action, status, error, created_at, platform_fields")
       .eq("platform", "depop").in("status", ["pending", "needs_user"]).limit(500);
     // deno-lint-ignore no-explicit-any
     const rowsD = ((depopRows ?? []) as any[]).filter((j) => j.status === "pending"
@@ -2009,6 +2012,7 @@ serve(async (req) => {
               .update({ status: "pending", error: null, platform_fields: pf })
               .eq("id", j.id).eq("status", "needs_user");
             if (!rErr) depopReprises++;
+            else console.warn(`[handler-watch] depop ${String(j.id).slice(0, 8)} : relance refusée — ${rErr.message}`);
             continue;
           }
           const msg = autorisationDepopRequise(String(j.action ?? "publish"));
@@ -2017,6 +2021,7 @@ serve(async (req) => {
             const { error: mErr } = await supabase.from("cross_post_jobs")
               .update({ error: msg, platform_fields: pf }).eq("id", j.id).eq("status", "needs_user");
             if (!mErr) depopMessages++;
+            else console.warn(`[handler-watch] depop ${String(j.id).slice(0, 8)} : message refusé — ${mErr.message}`);
           }
           continue;
         }
@@ -2033,6 +2038,7 @@ serve(async (req) => {
           .update({ status: "needs_user", error: msg, platform_fields: pf })
           .eq("id", j.id).eq("status", "pending");
         if (!dErr) depopDemandes++;
+        else console.warn(`[handler-watch] depop ${String(j.id).slice(0, 8)} : demande « Autoriser Depop » refusée — ${dErr.message}`);
       }
       if (depopDemandes || depopReprises || depopMessages) {
         console.log(`[handler-watch] depop : ${depopDemandes} job(s) → « Autoriser Depop », ${depopReprises} relancé(s) (poste autorisé), ${depopMessages} message(s) remis au texte unique`);
@@ -2111,7 +2117,8 @@ serve(async (req) => {
       if (rr.id) {
         const pfR = appliquerRayonDepop(pf, rr.id, { source: "ia", trace: traceRayonDepop(rr, { par: "handler-watch" }), par: "handler-watch" }) as Record<string, unknown> | null;
         if (pfR) {
-          if (Array.isArray(pf.depopCategoryPath) && pf.depopCategoryPath.join("/") !== rr.id) {
+          // La trace garde le PREMIER rayon remplacé (celui d'avant le moteur), jamais écrasée.
+          if (Array.isArray(pf.depopCategoryPath) && pf.depopCategoryPath.join("/") !== rr.id && !pf.depop_rayon_avant) {
             pfR.depop_rayon_avant = { id: pf.depopCategoryPath.join("/"), source: pf.categorie_source ?? null, remplace_le: new Date().toISOString() };
           }
           const { error: e2 } = await supabase.from("cross_post_jobs").update({ platform_fields: pfR }).eq("id", j.id).eq("status", j.status);
@@ -2129,7 +2136,7 @@ serve(async (req) => {
       }
       // Le doute : la question fermée, rien ne part ; l'ancien rayon n'est gardé qu'en trace.
       const pfQ: Record<string, unknown> = { ...pf, depop_rayon: traceRayonDepop(rr, { par: "handler-watch" }), depop_rayon_essais: essais };
-      if (Array.isArray(pf.depopCategoryPath)) pfQ.depop_rayon_avant = { id: pf.depopCategoryPath.join("/"), source: pf.categorie_source ?? null, retire_le: new Date().toISOString() };
+      if (Array.isArray(pf.depopCategoryPath) && !pf.depop_rayon_avant) pfQ.depop_rayon_avant = { id: pf.depopCategoryPath.join("/"), source: pf.categorie_source ?? null, retire_le: new Date().toISOString() };
       delete pfQ.depopCategoryPath; delete pfQ.depopCategoryId; delete pfQ.depopCategoryLibelles;
       pfQ.needsUserField = rr.question;
       pfQ.needs_user_source = "rayon_depop";

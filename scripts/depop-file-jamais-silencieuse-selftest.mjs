@@ -87,6 +87,13 @@ console.log("\nC. GET-PENDING-JOBS");
 console.log("\nD. HANDLER-WATCH");
 {
   const hw = lire("supabase/functions/handler-watch/index.ts");
+  // (11/10 19:30, v97) La requête ne lisait pas `platform` : la règle jugeait chaque job « hors champ ».
+  const debut = hw.indexOf("DEPOP : JAMAIS DE FILE SILENCIEUSE");
+  const bloc = debut >= 0 ? hw.slice(debut, hw.indexOf('.eq("platform", "depop").in("status", ["pending", "needs_user"])', debut)) : "";
+  const sel = bloc.match(/\.select\("([^"]*)"\)/);
+  dit("la requête des jobs Depop lit `platform` (sinon la règle juge tout « hors champ »)", !!sel && sel[1].split(/,\s*/).includes("platform"), sel ? sel[1] : "requête introuvable");
+  dit("un job SANS `platform` n'est jamais demandé (c'est pourquoi la colonne doit être lue)", demanderAutorisationDepop({ status: "pending", created_at: iso(T0 - 120 * 60_000), platform_fields: {} }, null, T0).pourquoi === "hors_champ");
+  dit("tout refus d'écriture est journalisé", hw.includes("demande « Autoriser Depop » refusée"));
   dit("demande posée par la règle unique (demanderAutorisationDepop)", hw.includes("demanderAutorisationDepop(j, postesJ, maintenantD)") && hw.includes("pf.needs_user_source = SOURCE_DEPOP_ACCES;"));
   dit("le message est LE texte unique (autorisationDepopRequise)", hw.includes("autorisationDepopRequise(String(j.action ?? \"publish\"))"));
   dit("relance quand un poste autorisé est vu (repartirApresAutorisationDepop)", hw.includes("repartirApresAutorisationDepop(postesJ, maintenantD)"));
