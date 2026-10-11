@@ -250,7 +250,12 @@ ok("une seule fois par plateforme et par poste : les passages suivants n'en écr
   evts.filter((m) => m.evenement === "amorcage").length === amorcagesAvant);
 
 console.log("\n9. Bornes écrites dans le fichier qui part dans le paquet");
-const SOURCE = fs.readFileSync(path.join(DOSSIER, "background.js"), "utf8");
+// Fins de ligne (11/10) : git garde background.js en LF ; un poste Windows
+// (core.autocrlf) l'extrait en CRLF, et le texte cherché plus bas (sur deux
+// lignes) n'était plus trouvé — rouge depuis le 09/10 sans aucun défaut de la
+// veille (code juste, zip juste). On lit le texte tel que git le garde et que
+// le paquet l'emporte : la propriété vérifiée ne change pas.
+const SOURCE = fs.readFileSync(path.join(DOSSIER, "background.js"), "utf8").replace(/\r\n/g, "\n");
 const borne = (nom) => SOURCE.match(new RegExp(`^const ${nom} = ([^;]+);`, "m"))?.[1];
 ok("10 min", borne("VEILLE_COMMANDES_MS") === "10 * 60 * 1000");
 ok("coupure 24 h", borne("VEILLE_COMMANDES_COUPURE_MS") === "24 * 60 * 60 * 1000");
