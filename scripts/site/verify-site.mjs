@@ -7,7 +7,7 @@ import {
   ORIGINE, urlAbsolue, texteBrut, mots, balisesOuvrantes, attributs, contenuPrincipal, texteComparable, decoderEntites,
 } from './lib/html.mjs';
 import { lireBlocsBalises, formeComparable, idsBalises, traceursHorsConsentement, RE_TOUS_BLOCS, BLOCS_PAGE, RELS_PARTAGES } from './lib/balises.mjs';
-import { empreinteContenu, lireVerrou, verrouAuCommit } from './lib/dates.mjs';
+import { empreinteContenu, lireVerrou, verrouAuCommit, dateHeureFuseauValide } from './lib/dates.mjs';
 import { routeAppPour, cheminReserve, sourceVersRegex, ROUTES_APP, HTML_PUBLIC_PERMIS } from './routes-app.mjs';
 import { verifierCoquille, MARQUEUR_RACINE } from '../vite-plugin-app-shell.mjs';
 import { LANGUES, langueXDefault } from '../../site/langues.mjs';
@@ -629,6 +629,8 @@ export async function verifierSite(dossier, { racine = process.cwd(), git = true
           if (!existsSync(path.join(dossier, ...new URL(u).pathname.split('/').filter(Boolean)))) err(`${o} : VideoObject : ${u} absent de la sortie`);
         }
         for (const champ of ['name', 'description', 'uploadDate', 'duration']) if (!n[champ]) err(`${o} : VideoObject sans « ${champ} »`);
+        // (11/10, Search Console) uploadDate : ISO 8601 complet AVEC fuseau (« 2026-10-09T12:00:00+02:00 »), jamais le jour seul.
+        if (n.uploadDate && !dateHeureFuseauValide(n.uploadDate)) err(`${o} : VideoObject.uploadDate « ${n.uploadDate} » sans heure ni fuseau (ISO 8601 complet attendu, ex. 2026-10-09T12:00:00+02:00)`);
       }
       // BreadcrumbList = fil d'Ariane VISIBLE, étape par étape.
       const fil = filVisible(h);

@@ -1,4 +1,5 @@
 import { ORIGINE } from '../../scripts/site/lib/html.mjs';
+import { dateHeureParis } from '../../scripts/site/lib/dates.mjs';
 import { langue } from '../langues.mjs';
 import { TEXTES } from './textes.mjs';
 
@@ -121,6 +122,10 @@ function howTo(page) {
 
 function videoJsonLd(page) {
   const v = page.video;
+  // (11/10, Search Console) ISO 8601 complet AVEC fuseau, jamais le jour seul
+  // (scripts/site/lib/dates.mjs, dateHeureParis) ; illisible → le build s'arrête.
+  const uploadDate = dateHeureParis(v.miseEnLigne);
+  if (!uploadDate) throw new Error(`[site] ${page.url} : VideoObject.uploadDate illisible (« ${v.miseEnLigne} ») — AAAA-MM-JJ ou date-heure ISO 8601 avec fuseau`);
   return {
     '@type': 'VideoObject',
     '@id': `${baseId(page)}#video`,
@@ -128,7 +133,7 @@ function videoJsonLd(page) {
     description: v.description,
     thumbnailUrl: [absolue(v.affiche)],
     contentUrl: absolue(v.sources.find((s) => s.type.startsWith('video/mp4')).url),
-    uploadDate: v.miseEnLigne,
+    uploadDate,
     duration: v.duree,
     inLanguage: v.langueVideo,
     width: v.largeur,

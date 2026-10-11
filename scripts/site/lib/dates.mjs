@@ -47,6 +47,42 @@ export function dateValide(valeur) {
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === valeur;
 }
 
+// ── DATE ET HEURE AVEC FUSEAU, POUR LES DONNÉES STRUCTURÉES (11/10/2026) ────
+// Search Console (Vidéos, https://fillsell.app/) : « fuseau horaire manquant »
+// et « valeur de date et heure incorrecte » pour uploadDate, qui valait le
+// jour seul (« 2026-10-09 »). Toute propriété de date-HEURE d'un nœud
+// schema.org (VideoObject.uploadDate) sort en ISO 8601 COMPLET, fuseau
+// compris : « 2026-10-09T12:00:00+02:00 ». Quand seul le JOUR est connu,
+// l'heure est midi, heure de Paris — une convention : midi garde le même jour
+// calendaire en UTC (minuit +02:00 tomberait la veille, 22:00Z) ; le décalage
+// suit l'heure d'été du jour même (+02:00 l'été, +01:00 l'hiver). Une valeur
+// déjà complète (video.json « mise_en_ligne ») est gardée telle quelle.
+const FORME_DATE_HEURE_FUSEAU = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?(Z|[+-]\d{2}:\d{2})$/;
+
+/** Une date-heure ISO 8601 complète, AVEC fuseau, qui existe. */
+export function dateHeureFuseauValide(valeur) {
+  if (typeof valeur !== 'string' || !FORME_DATE_HEURE_FUSEAU.test(valeur)) return false;
+  return dateValide(valeur.slice(0, 10)) && !Number.isNaN(Date.parse(valeur));
+}
+
+/** Le décalage de Paris (« +02:00 » / « +01:00 ») le jour AAAA-MM-JJ, à midi. */
+export function decalageParis(jour) {
+  const nom = new Intl.DateTimeFormat('en-US', { timeZone: 'Europe/Paris', timeZoneName: 'longOffset' })
+    .formatToParts(new Date(`${jour}T12:00:00Z`)).find((p) => p.type === 'timeZoneName')?.value ?? '';
+  const m = /^GMT([+-]\d{2}):?(\d{2})?$/.exec(nom);
+  return m ? `${m[1]}:${m[2] ?? '00'}` : '+00:00';
+}
+
+/**
+ * « 2026-10-09 » → « 2026-10-09T12:00:00+02:00 » ; une date-heure complète
+ * avec fuseau → inchangée ; autre chose → null (jamais une valeur inventée).
+ */
+export function dateHeureParis(valeur) {
+  if (dateHeureFuseauValide(valeur)) return valeur;
+  if (!dateValide(valeur)) return null;
+  return `${valeur}T12:00:00${decalageParis(valeur)}`;
+}
+
 /** La date est-elle après aujourd'hui (Paris) ? Une date du futur n'est jamais une mise à jour. */
 export const dateFuture = (valeur, aujourdhui = aujourdhuiParis()) => valeur > aujourdhui;
 
