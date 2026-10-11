@@ -10084,6 +10084,34 @@ serve(async (req) => {
             }
           }
           if (retenus.size) out = out.filter((j) => !retenus.has(String(j.id)));
+          // Les AUTRES republications retenues du même compte (en file derrière :
+          // une seule 'captured' est servie par plateforme et par passage)
+          // reçoivent le même motif, une fois chacune — jamais « en attente »
+          // sans dire pourquoi. Bornées (50), compare-and-swap sur pending.
+          for (const frere of ((horsLigne ?? []) as Array<Record<string, unknown>>)) {
+            const { data: autres } = await adminR.from("cross_post_jobs")
+              .select("id, error, platform_fields")
+              .eq("user_id", user.id).eq("platform", String(frere["platform"])).eq("action", "republish")
+              .eq("status", "pending").eq("platform_fields->>republish_step", "captured")
+              .neq("id", String(frere["id"])).limit(50);
+            const titre = String(frere["title"] ?? "").split("\n")[0].replace(/\s+/g, " ").trim().slice(0, 80);
+            const pfF = (frere["platform_fields"] as Record<string, unknown> | null) ?? {};
+            const restriction = /selling-restriction/.test(JSON.stringify(pfF["error_technique"] ?? "") + String(pfF["last_diagnostic"] ? JSON.stringify(pfF["last_diagnostic"]) : ""));
+            for (const a of ((autres ?? []) as Array<Record<string, unknown>>)) {
+              if (retenus.has(String(a["id"]))) continue;
+              const pfA = (a["platform_fields"] as Record<string, unknown> | null) ?? {};
+              const prec = pfA["retenue_hors_ligne"] as Record<string, unknown> | null | undefined;
+              if (prec && typeof prec === "object" && String(prec["job"] ?? "") === String(frere["id"])) continue; // déjà dit
+              const pfW: Record<string, unknown> = { ...pfA };
+              pfW["retenue_hors_ligne"] = { job: frere["id"], titre: titre || null, depuis: new Date().toISOString(), pose_par: "get-pending-jobs", ...(restriction ? { restriction_vinted: true } : {}) };
+              if (a["error"] && String(a["error"]) !== messageRetenueHorsLigne(titre, restriction)) {
+                pfW["erreurs_archivees"] = archiverErreur(pfW["erreurs_archivees"], a["error"], "pending", "get-pending-jobs (republication retenue par une annonce hors ligne)");
+              }
+              await adminR.from("cross_post_jobs")
+                .update({ error: messageRetenueHorsLigne(titre, restriction), platform_fields: pfW })
+                .eq("id", String(a["id"])).eq("status", "pending");
+            }
+          }
         }
       } catch (e) {
         console.warn(`[get-pending-jobs] retenue « une annonce hors ligne » : ${String((e as Error)?.message ?? e)} — file servie telle quelle`);

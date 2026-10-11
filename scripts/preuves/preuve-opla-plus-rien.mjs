@@ -144,7 +144,8 @@ begin
   perform pg_temp.verif(v_m = 0 and v_k = v_n, 'R1. rattrapage : ' || v_n || ' job(s) Opla vivant(s) → ' || v_k || ' clos, plus aucun vivant');
   select count(*) into v_k from cross_post_jobs j join _vivants_avant a on a.id = j.id
    where j.action = 'delete' and j.error = '${MSG_RETRAIT.replace(/'/g, "''")}';
-  perform pg_temp.verif(v_k >= 1, 'R1. les retraits clos portent la phrase de Nico (' || v_k || ')');
+  perform pg_temp.verif(v_k >= 1 or not exists (select 1 from _vivants_avant), 'R1. les retraits clos portent la phrase de Nico (' || v_k || ')' ||
+    case when not exists (select 1 from _vivants_avant) then ' — rattrapage déjà fait : plus aucun job Opla vivant' else '' end);
   select count(*) into v_n from _autres_avant a join cross_post_jobs j on j.id = a.id where j.status is distinct from a.status;
   perform pg_temp.verif(v_n = 0, 'R2. aucun job d''une autre plateforme n''a bougé');
   select count(*) into v_n from vinted_sync_runs where platform = 'opla' and status in ('queued', 'running');
