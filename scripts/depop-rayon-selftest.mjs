@@ -124,7 +124,6 @@ console.log("\nF. LE MOTEUR DE BOUT EN BOUT (IA SIMULÉE) — LES 6 JOBS DU 11/1
     { n: "Simon c30d08eb (short)", ctx: { titre: "Short de basket Jordan noir, bleu et blanc - Taille M Enfant (10-12 ans / 140-152 cm)", description: "Je vends ce short de sport / basket de la marque Jordan (Nike) pour enfant", taille: "M", horsMode: false, origine: ["Hommes", "Vêtements", "Vêtements de sport et accessoires", "Shorts"] }, ia: "kidswear/bottoms/shorts" },
     { n: "Simon c04cd76a (sweat)", ctx: { titre: "Sweat Nike bleu / gris - Taille S", description: "sweat à col rond de la marque Nike pour homme", taille: "S", horsMode: false }, ia: "menswear/tops/sweatshirts" },
     { n: "Simon d088073e (sweat à capuche)", ctx: { titre: "Sweat à capuche Carhartt WIP gris - Taille M", description: "sweat à capuche (hoodie) pour homme", taille: "M", horsMode: false }, ia: "menswear/tops/hoodies" },
-    { n: "Simon f441eebf (lot de t-shirts)", ctx: { titre: "Lot de 2 T-shirts de sport Nike & Under Armour - Taille S (Enfant XL / S Homme)", description: "lot de 2 t-shirts", taille: "S", horsMode: false }, ia: "menswear/tops/tshirts" },
     { n: "Jake afc6f4d6 (baskets)", ctx: { titre: "Woman size 39 trainers new", description: "Burgundy mesh trainers with white sole", taille: "39", horsMode: false }, ia: "womenswear/footwear/trainers" },
     { n: "Jake 6002227e (baskets)", ctx: { titre: "Womans new size 38 trainers", description: "Women's knit trainers", taille: "38", horsMode: false }, ia: "womenswear/footwear/trainers" },
   ];
@@ -132,6 +131,11 @@ console.log("\nF. LE MOTEUR DE BOUT EN BOUT (IA SIMULÉE) — LES 6 JOBS DU 11/1
     const r = await resoudreRayonDepop(c.ctx, iaQuiChoisit(c.ia));
     dit(`${c.n} → ${texteRayonDepop(c.ia)}`, r.id === c.ia, JSON.stringify({ id: r.id, motif: r.motif, detail: r.detail }));
   }
+  // Le lot mixte (« Enfant XL / S Homme ») : une QUESTION, sans même demander à l'IA.
+  let appele = false;
+  const rLot = await resoudreRayonDepop({ titre: "Lot de 2 T-shirts de sport Nike & Under Armour - Taille S (Enfant XL / S Homme)", description: "lot de 2 t-shirts", taille: "S", horsMode: false, origine: ["Hommes", "Vêtements", "Vêtements de sport et accessoires", "Hauts et t-shirts"] }, async () => { appele = true; return { choix: {} }; });
+  dit("Simon f441eebf (lot « Enfant XL / S Homme ») → QUESTION « enfant_et_adulte », l'IA n'est pas appelée", !rLot.id && rLot.motif === "enfant_et_adulte" && !appele && rLot.question?.allowed_values.length > 0, JSON.stringify({ motif: rLot.motif }));
+  dit("le short d'enfant classé « Hommes » sur Vinted n'est PAS mixte (l'adulte ne vient que de l'origine)", indicesAgeGenre({ titre: SIX[0].ctx.titre, description: SIX[0].ctx.description, origine: SIX[0].ctx.origine }).texteAdulte === false);
   // L'ancien rayon faux, s'il revenait de l'IA : jamais posé, une question.
   const r1 = await resoudreRayonDepop(SIX[0].ctx, iaQuiChoisit("kidswear/footwear/trainers"));
   dit("l'IA choisirait Enfants › Chaussures › Baskets pour le short : QUESTION, rien n'est posé", !r1.id && r1.motif === "vetement_en_chaussures" && r1.question?.field_key === "depopCategorie");

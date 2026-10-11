@@ -42,7 +42,9 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import { FEUILLES_DEPOP } from "./depop-feuilles.js";
 
-export const VERSION_RAYON_DEPOP = 2;
+// 3 (11/10 soir) : un article qui se dit À LA FOIS enfant et adulte (« Taille S
+// (Enfant XL / S Homme) ») devient une question — la v2 laissait l'IA trancher.
+export const VERSION_RAYON_DEPOP = 3;
 /** La source posée sur le job (`platform_fields.categorie_source`). */
 export const SOURCE_RAYON_DEPOP = "moteur_depop_v2";
 /** Le champ de la question « Rayon Depop » (réponse : le libellé corrigé). */
@@ -150,6 +152,10 @@ export function indicesAgeGenre({ titre = "", description = "", genre = "", orig
   }
   const mh = texte.match(RE_HOMME); if (mh) ind.homme.push(`« ${mh[0]} »`);
   const mf = texte.match(RE_FEMME); if (mf) ind.femme.push(`« ${mf[0]} »`);
+  // Ce que dit le TEXTE seul (ni le genre de la fiche, ni la catégorie
+  // d'origine) : un texte qui se dit enfant ET adulte est un article mixte.
+  ind.texteEnfant = ind.enfant.some((x) => /^(mot|âge|taille en cm) /.test(x));
+  ind.texteAdulte = !!(mh || mf);
   return ind;
 }
 
@@ -306,6 +312,11 @@ export async function resoudreRayonDepop(ctx, demanderIA) {
   const departements = departementsDepop(indices, { horsMode: ctx.horsMode ?? null });
   const candidats = candidatsRayonDepop(departements);
   const base = { indices, famille, departements };
+  // L'article se dit, dans son propre texte, enfant ET adulte (un lot « Enfant
+  // XL / S Homme ») : aucun rayon unique n'est sûr — la personne choisit.
+  if (indices.texteEnfant && indices.texteAdulte) {
+    return { ...base, question: questionRayonDepop(base), motif: "enfant_et_adulte", detail: `l'article se dit à la fois enfant (${indices.enfant[0]}) et adulte (${[...indices.homme, ...indices.femme][0]})`, rejete: null };
+  }
   const dire = (l) => (l.length ? l.join(", ") : "");
   const attributs = {
     description: String(ctx.description ?? "").replace(/\s+/g, " ").trim(),
