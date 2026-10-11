@@ -1092,6 +1092,9 @@ export function RepublicationPlanifieeReglages({ lang, platform = 'vinted', sess
   const boutiques = Array.isArray(etat?.boutiques) ? etat.boutiques : [];
   const multi = etat?.multi_boutiques === true && boutiques.length >= 2;
   const connectee = etat?.boutique_connectee?.user_id ?? null;
+  const loginConnectee = etat?.boutique_connectee?.login
+    ?? (Array.isArray(etat?.boutiques) ? etat.boutiques.find((b) => String(b.user_id ?? '') === String(connectee ?? ''))?.login : null)
+    ?? null;
   const parBoutique = etat?.eligibles?.par_boutique ?? {};
 
   const ligneEtat = (
@@ -1179,6 +1182,16 @@ export function RepublicationPlanifieeReglages({ lang, platform = 'vinted', sess
           {multi && (
             <Section titre={fr ? 'Boutiques Vinted' : 'Vinted shops'} sousTitre={fr ? 'Même créneau pour toutes · plafond du jour par boutique' : 'Same slot for all · daily cap per shop'}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {/* (11/10, Louis) La boutique réellement ouverte, et quand on l'a lue. */}
+                <div style={{ fontWeight: 600, fontSize: 12.5, color: connectee != null ? P.teal : P.mute2 }}>
+                  {connectee != null
+                    ? (fr
+                      ? `Chrome est ouvert sur ${loginConnectee ? `@${loginConnectee}` : `#${connectee}`}${etat?.boutique_connectee?.at ? ` — lu à ${heureDans(etat.boutique_connectee.at, s.fuseau, fr)}` : ''}.`
+                      : `Chrome is open on ${loginConnectee ? `@${loginConnectee}` : `#${connectee}`}${etat?.boutique_connectee?.at ? ` — read at ${heureDans(etat.boutique_connectee.at, s.fuseau, fr)}` : ''}.`)
+                    : (fr
+                      ? "On ne sait pas encore sur quelle boutique Chrome est ouvert : ouvre vinted.fr dans Chrome, c'est lu en quelques minutes."
+                      : "We don't know yet which shop Chrome is open on: open vinted.fr in Chrome, it's read within minutes.")}
+                </div>
                 {boutiques.map((b) => {
                   const id = String(b.user_id ?? '');
                   const nom = b.login ? `@${b.login}` : `#${id}`;
@@ -1201,7 +1214,12 @@ export function RepublicationPlanifieeReglages({ lang, platform = 'vinted', sess
                         <div style={{ fontWeight: 700, fontSize: 13.5 }}>{nom}</div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 500, fontSize: 12, marginTop: 2, color: estConnectee ? P.teal : P.mute }}>
                           <span style={{ width: 6, height: 6, borderRadius: 99, background: estConnectee ? P.teal : P.mute }} />
-                          {estConnectee ? (fr ? 'Chrome connecté · passe ce créneau' : 'Chrome signed in · goes this slot') : (fr ? 'Attend que Chrome soit sur ce compte' : 'Waits for Chrome on this account')}
+                          {/* (11/10, Louis) La vérité : la boutique réellement ouverte dans
+                              Chrome, ou « pas encore lue » — jamais « attend » quand on ne sait pas. */}
+                          {estConnectee ? (fr ? 'Chrome connecté · passe ce créneau' : 'Chrome signed in · goes this slot')
+                            : connectee != null
+                              ? (fr ? `Chrome est sur ${loginConnectee ? `@${loginConnectee}` : 'une autre boutique'} · celle-ci attend son tour` : `Chrome is on ${loginConnectee ? `@${loginConnectee}` : 'another shop'} · this one waits its turn`)
+                              : (fr ? 'Boutique ouverte dans Chrome pas encore lue' : 'Shop open in Chrome not read yet')}
                           {actif && Number.isFinite(eligB) && <span style={{ color: P.mute2 }}>· {eligB} {fr ? 'éligibles' : 'eligible'}</span>}
                         </div>
                         {retard && (
