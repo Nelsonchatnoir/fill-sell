@@ -178,6 +178,7 @@
     "selftest:mail-apres-vente": "node scripts/mail-apres-vente-selftest.mjs",
     "selftest:vente-signalee-une-fois": "node scripts/vente-signalee-une-fois-selftest.mjs",
     "selftest:lien-ventes-apres-connexion": "node scripts/lien-ventes-apres-connexion-selftest.mjs",
+    "selftest:publier-depuis-stock": "node scripts/publier-depuis-stock-selftest.mjs",
     "selftest:ventes-relevees-identifiant-seul": "node scripts/ventes-relevees-identifiant-seul-selftest.mjs",
     "selftest:une-vente-par-article": "node scripts/une-vente-par-article-selftest.mjs",
     "selftest:ebay-commande-exemplaire": "node scripts/ebay-commande-exemplaire-selftest.mjs",

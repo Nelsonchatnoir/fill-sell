@@ -9955,6 +9955,17 @@ const StockTab = memo(function StockTab({
               {lang==='fr'?"Modifier le prix ou la quantité de plusieurs articles":"Change the price or quantity of several items"}
             </button>
           )}
+          {/* (11/10, Louis) Cocher DANS le Stock, filtre gardé, les articles à
+              publier : le mode du lot (cases sur les cartes, « Tout (N) » sur
+              ce que la vue montre, Continuer) ouvre la publication en lot
+              EXISTANTE — mêmes règles, mêmes questions, aucun second circuit.
+              Seulement s'il y a, dans CETTE vue, un article qui peut partir. */}
+          {lotActionnablesVue.length>0&&!modeModif&&!modeBrouillons&&!modePrixAchat&&!modeRepublish&&!modeLot&&vueStock!=='vendus'&&(
+            <button type="button" className="sk-btn" onClick={()=>{entrerModeLot([]);track('lot_publication_selection',{depuis:'stock',vue:lotActionnablesVue.length,filtre:filtreOuTriActif});}}
+              style={{display:"block",marginTop:2,padding:"4px 2px",background:"none",border:"none",font:"inherit",fontSize:12.5,fontWeight:700,color:SK.tealDeep,cursor:"pointer",textAlign:"left"}}>
+              {lang==='fr'?"Choisir des articles à publier":"Pick items to publish"}
+            </button>
+          )}
           {pucesFiltres.length>0&&(
             <div style={{marginTop:8}}>
               <FiltresActifs lang={lang} puces={pucesFiltres} onToutEffacer={reinitialiserFiltresStock}/>
