@@ -298,7 +298,7 @@ export function horsListeBloque({ regle = "classique", platform, key, inputType,
 //   · AUCUNE marque nulle part (fiche, Lens, copies, aucune lecture partielle
 //     sur l'étiquette) → « Sans marque » d'office — moteur/reponsesPartagees.js
 //     (sansMarqueDOffice). Une marque présente hors catalogue garde sa question.
-export { vintedExigeUneMarque, vintedExigeUneCouleur, valeurUneLettre } from "../../../supabase/functions/_shared/vinted-exigences.js";
+export { vintedExigeUneMarque, vintedExigeUneCouleur, vintedExigeUnIsbn, ISBN_ABSENT, valeurUneLettre } from "../../../supabase/functions/_shared/vinted-exigences.js";
 
 // ── RAYON VINTED « NEUF SEULEMENT » : C'EST LE RAYON QU'ON CHANGE (24/09) ───
 // Relevé réel du formulaire le 24/09 : « Casques de sécurité » (Maison >

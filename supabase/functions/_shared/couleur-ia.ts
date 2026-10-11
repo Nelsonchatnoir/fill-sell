@@ -94,11 +94,11 @@ async function enBase64(url: string): Promise<SourceImage | null> {
  * Les 1 à 2 photos envoyées à l'IA. Ne lève jamais : une photo qui résiste
  * est comptée dans `ecartees` et le reste continue.
  */
-export async function photosPourCouleurIA(urls: unknown, supabaseUrl: string): Promise<{ sources: SourceImage[]; ecartees: number }> {
+export async function photosPourCouleurIA(urls: unknown, supabaseUrl: string, max = 2): Promise<{ sources: SourceImage[]; ecartees: number }> {
   const propres = (Array.isArray(urls) ? urls : [])
     .map((u) => (typeof u === "string" ? u.trim() : ""))
     .filter((u) => /^https?:\/\//i.test(u))
-    .slice(0, 2);
+    .slice(0, Math.max(1, Math.min(4, max)));
   const une = async (url: string): Promise<SourceImage | null> => {
     if (!estChezNous(url)) return hotePhotoAutorise(url) ? await enBase64(url) : null;
     const borne = new Promise<null>((r) => setTimeout(() => r(null), DELAI_PHOTO_MS));

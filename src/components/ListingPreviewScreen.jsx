@@ -14,6 +14,7 @@ import AnalyseMarche from "./AnalyseMarche";
 // `{ type, url }` — la forme de generate-listing, la seule que les handlers
 // de l'extension savent lire. Règle et incident dans utils/photos.js.
 import { urlPhoto, urlsPhotos, entreesPhotos, estPhotoRetouchee, MIN_PHOTOS, MAX_PHOTOS } from "../utils/photos";
+import { normalizeIsbn, resoudreIsbn } from "../../supabase/functions/_shared/isbn.js";
 // La galerie (ajouter / retirer / réordonner) et ses primitives sont partagées
 // avec le formulaire d'ajout manuel depuis le 19/09 — extraites d'ici, rendu
 // inchangé.
@@ -137,7 +138,7 @@ import {
 // jugent une valeur contre une liste avec le même code que cet écran.
 import {
   normAspectVal, nearestAllowedValue, jugerValeurContreListe, horsListeBloque, vintedExigeUneMarque,
-  vintedExigeUneCouleur, valeurUneLettre, rayonNeufSeulement, messageRayonNeuf,
+  vintedExigeUneCouleur, vintedExigeUnIsbn, ISBN_ABSENT, valeurUneLettre, rayonNeufSeulement, messageRayonNeuf,
   deduireOptionDuTexte, estFourreTout, listeCandidatsDabord, textesDeLAnnonce,
   tailleDuJob, tailleDansListeEbay,
 } from "../publication/moteur/listes";
@@ -8099,6 +8100,18 @@ export default function ListingPreviewScreen({
           if (platform === "vinted" && variante === "nouvelle" && !rows.some(r => r.field_key === "color") && vintedExigeUneCouleur(String(key).split(" > "))) {
             rows = [...rows, { field_key: "color", field_label: "Couleur", required: true, input_type: null, allowed_values: [...VINTED_COLORS], synthetique: "vinted_couleur_exigee" }];
           }
+          // ── VINTED EXIGE UN ISBN POUR UN LIVRE (12/10, Morgane) — cf. vinted-exigences.js ──
+          // « Blake & Mortimer » (BD) partait sans ISBN : le catalogue avait
+          // appris la ligne isbn des BD en « facultatif », et n'en avait AUCUNE
+          // pour « Enfants et jeunes adultes » ni « Manuels scolaires ». La règle
+          // remplace la mémoire du catalogue : tout « Livres › … » (sauf
+          // coloriage) demande l'ISBN — avec la réponse fermée « Ce livre n'a
+          // pas d'ISBN » (livre ancien, auto-édité) : jamais un envoi muet.
+          // Une ligne isbn du catalogue (facultative ou non) est REMPLACÉE :
+          // c'est la règle qui dit si l'ISBN est exigé, pas le dernier relevé.
+          if (platform === "vinted" && vintedExigeUnIsbn(String(key).split(" > "))) {
+            rows = [...rows.filter(r => r.field_key !== "isbn"), { field_key: "isbn", field_label: "ISBN", required: true, input_type: null, allowed_values: [ISBN_ABSENT], synthetique: "vinted_isbn_exige" }];
+          }
           // (11/10, point 9) Toute ligne `color` de Vinted porte la palette
           // ENTIÈRE (29) : 67 des 77 rayons où le catalogue l'exige n'en avaient
           // relevé que 20 (Marron, Jaune, Multicolore… absents). À l'écran comme
@@ -8357,7 +8370,10 @@ export default function ListingPreviewScreen({
   // parallèle EXACT de genericKnownSource (les deux évoluent ensemble).
   const genericDedicatedTarget = (platform, key) => {
     if (platform === "vinted") {
-      return { brand: "marque", model: "modele", internal_memory_capacity: "stockage", condition: "etat", color: "couleur", size: "taille", material: "matiere" }[key] ?? null;
+      // isbn (12/10, Morgane) : parallèle EXACT de genericKnownSource — la
+      // réponse atterrit dans pf.isbn (lu par vinted.js ET par les contrôles
+      // serveur), plus seulement dans vintedAspects.isbn.
+      return { brand: "marque", model: "modele", internal_memory_capacity: "stockage", condition: "etat", color: "couleur", size: "taille", material: "matiere", isbn: "isbn" }[key] ?? null;
     }
     if (platform === "leboncoin") {
       if (/_brand$/.test(key)) return "marque";
@@ -8916,7 +8932,12 @@ export default function ListingPreviewScreen({
       const vu = champBloquantVus.current[k];
       if (!actifs.has(k) && vu && !vu.complete) {
         vu.complete = true;
-        logChampBloquant("complete", vu);
+        // (12/10, Morgane) Une question qui disparaît parce que le RAYON a
+        // changé n'a pas été « complétée » : « retiree », avec le rayon
+        // d'après (la lecture « elle l'a rempli 5 fois » en comptait 2 ainsi).
+        const catApres = vu.platform === "ebay" ? (ebayPreviewCategoryId ?? null) : (genericCategoryKeys?.[vu.platform] ?? initialListing?.categorie ?? null);
+        const rayonChange = vu.categorie != null && catApres != null && String(catApres) !== String(vu.categorie);
+        logChampBloquant(rayonChange ? "retiree" : "complete", rayonChange ? { ...vu, categorie_apres: catApres } : vu);
       }
     }
     champBloquantRestants.current = actifs;
@@ -9325,6 +9346,56 @@ export default function ListingPreviewScreen({
     });
     setCouleurTraites(prev => new Set([...prev, ...besoins.map(b => b.cle)]));
   }, [besoinsCouleur, couleurTraites, iaGeneriqueEnVol, ebayIaFiniePour, ebayIaEnVol, ebayListeAJour, couleurIaTour]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── L'ISBN SE LIT AVANT D'ÊTRE DEMANDÉ (12/10, Morgane) ─────────────────────
+  // Un livre importé (Leboncoin n'a pas d'ISBN, pas de Lens) arrivait à la
+  // question « ISBN » alors qu'il est souvent écrit dans l'annonce ou imprimé
+  // au dos, sur une des photos. Avant la question : le TEXTE (fiche, titre,
+  // description — _shared/isbn.js), puis UN appel resolve_isbn (1 à 4 photos,
+  // réponse contrôlée par la clé). Compté dans iaGeneriqueEnVol : le lot
+  // l'attend. Trouvé → posé dans pf.isbn (le canal que vinted.js lit), trace
+  // isbn_auto, jamais par-dessus une saisie. Rien → la question reste, avec
+  // « Ce livre n'a pas d'ISBN ».
+  const isbnIaRef = useRef("aucun");
+  const ligneIsbnVinted = (genericRequiredStatus?.vinted ?? []).find(a => a.key === "isbn") ?? null;
+  const isbnAChercher = Boolean(ligneIsbnVinted && ligneIsbnVinted.state !== "ok" && !texteEnVolPar.current.has("vinted"));
+  useEffect(() => {
+    if (!isbnAChercher || isbnIaRef.current !== "aucun") return;
+    const copie = edited.vinted ?? {};
+    const pfV = copie.platform_fields ?? {};
+    if (String(pfV.isbn ?? "").trim() || String(pfV.vintedAspects?.isbn ?? "").trim()) return;
+    const titre = copie.title || initialListing?.titre || "";
+    const description = copie.description || initialListing?.description || null;
+    const attrs = attributsBase ?? initialListing?.attributs ?? null;
+    const isbnFiche = attrs?.isbn && typeof attrs.isbn === "object" ? attrs.isbn.v : attrs?.isbn;
+    const poser = (isbn13, source) => setEdited(prev => {
+      const c = prev.vinted;
+      if (!c) return prev;
+      const pf = c.platform_fields ?? {};
+      if (String(pf.isbn ?? "").trim() || String(pf.vintedAspects?.isbn ?? "").trim()) return prev; // une saisie arrivée entre-temps
+      return { ...prev, vinted: { ...c, platform_fields: { ...pf, isbn: isbn13, isbn_auto: { valeur: isbn13, source, le: new Date().toISOString() } } } };
+    });
+    const texte = resoudreIsbn({ article: isbnFiche, description, titre });
+    if (texte) { isbnIaRef.current = "fait"; poser(texte.isbn13, texte.source); return; }
+    const photosIa = urlsPhotos(processedPhotos?.length ? processedPhotos : photos).slice(0, 4);
+    if (!photosIa.length) { isbnIaRef.current = "fait"; return; }
+    isbnIaRef.current = "en_vol";
+    setIaGeneriqueEnVol(n => n + 1);
+    (async () => {
+      try {
+        const delai = new Promise(r => setTimeout(() => r({ data: null, error: "delai" }), 9000));
+        const { data, error } = await Promise.race([supabase.functions.invoke("generate-listing", {
+          body: { resolve_isbn: true, photos: photosIa, isbn_inventaire_id: invId ?? null, item_data: { titre, description } },
+        }), delai]);
+        const n = !error && typeof data?.isbn === "string" ? normalizeIsbn(data.isbn) : null;
+        if (n?.ok) poser(n.isbn13, data.source === "photo" ? "photo" : String(data.source ?? "ia"));
+      } catch { /* la question reste : rien d'inventé */ }
+      finally {
+        isbnIaRef.current = "fait";
+        setIaGeneriqueEnVol(n => Math.max(0, n - 1));
+      }
+    })();
+  }, [isbnAChercher]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Trace d'une option lue dans l'annonce (2026-09-24) : elle part avec le job
   // (platform_fields.option_du_texte.<clé>) — d'où vient la valeur, et ce

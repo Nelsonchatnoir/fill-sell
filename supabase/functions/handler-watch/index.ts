@@ -22,6 +22,9 @@ import { demanderAutorisationDepop, repartirApresAutorisationDepop, CLES_RELANCE
 import { resoudreRayonDepop, traceRayonDepop, rayonDepopAJour, reponseRayonDepop, MESSAGE_RAYON_DEPOP } from "../_shared/depop-rayon.js";
 import { appliquerRayonDepop } from "../../../src/utils/depopPublication.js";
 import { decisionRecreationBloquee, messageRecreationBloquee, messageRecreationRetenueCompte, causeCompte, essaisRates, SOURCE_RECREATION_BLOQUEE } from "../_shared/recreation-bloquee.js";
+import { photosPourCouleurIA } from "../_shared/couleur-ia.ts";
+import { resoudreIsbnArticle } from "../_shared/isbn-ia.ts";
+import { ISBN_ABSENT } from "../_shared/vinted-exigences.js";
 import { rayonRefuseDuJob, resoudreRayonRefuse, feuillesCandidates, pfApresRayon, questionRayonRefuse, messageRayonAChoisir, CLE_REPONSE_RAYON, ESSAIS_RAYON_MAX } from "../_shared/rayon-refuse-moteur.js";
 import { horsModeDepop } from "../../../src/utils/depopCategories.js";
 import { detectObjectIcon } from "../../../src/utils/shared.js";
@@ -2351,6 +2354,75 @@ serve(async (req) => {
     if (recreationsSignalees) console.log(`[handler-watch] ${recreationsSignalees} remise(s) en ligne bloquée(s) signalée(s) — la file des autres articles n'est plus gelée`);
   } catch (e) {
     console.error("[handler-watch] remises en ligne bloquées :", (e as Error)?.message ?? e);
+  }
+
+  // ══ L'ISBN D'UN LIVRE SE LIT SUR SES PHOTOS AVANT DE LE DEMANDER (12/10, Morgane) ══
+  // (_shared/isbn-ia.ts) Une publication Vinted arrêtée sur l'ISBN (question
+  // posée par get-pending-jobs avant tout essai, ou refus 400 « ISBN valide »)
+  // : UNE lecture des photos de la fiche (4e de couverture, code-barres),
+  // réponse contrôlée par la clé. Lisible → posé (pf.isbn + vintedAspects.isbn),
+  // le job repart SEUL. Illisible → la question devient complète et sans jargon
+  // : saisir l'ISBN, ou « Ce livre n'a pas d'ISBN » (jamais un envoi muet) ; si
+  // Vinted a DÉJÀ refusé le livre sans ISBN, ce choix n'est plus proposé et le
+  // message le dit. Une seule lecture par job (isbn_photos_lu). Borné : 6/passage.
+  let isbnLus = 0, isbnQuestions = 0;
+  try {
+    const { data: enIsbn } = await supabase.from("cross_post_jobs")
+      .select("id, user_id, platform, action, status, title, error, inventaire_id, platform_fields")
+      .eq("platform", "vinted").eq("action", "publish").eq("status", "needs_user")
+      .eq("platform_fields->needsUserField->>field_key", "isbn")
+      .order("created_at", { ascending: true }).limit(30);
+    // À traiter : photos pas encore lues — OU déjà lues, mais Vinted a refusé
+    // le livre SANS ISBN (« Ce livre n'a pas d'ISBN » choisi, puis 400) et le
+    // message ne le dit pas encore. Au plus 6 par passage.
+    // deno-lint-ignore no-explicit-any
+    const refuseSansIsbn = (pf: any) => pf?.isbn_absent === true || String(pf?.vintedAspects?.isbn ?? "").trim() === ISBN_ABSENT;
+    // deno-lint-ignore no-explicit-any
+    const aTraiter = ((enIsbn ?? []) as any[]).filter((j) => !j.platform_fields?.isbn_photos_lu
+      || (refuseSansIsbn(j.platform_fields) && !String(j.error ?? "").startsWith("Vinted a refusé ce livre sans ISBN"))).slice(0, 6);
+    // deno-lint-ignore no-explicit-any
+    for (const j of aTraiter as any[]) {
+      const pf = { ...(j.platform_fields ?? {}) };
+      const dejaLues = !!pf.isbn_photos_lu;
+      const { data: fiche } = dejaLues ? { data: null } : await supabase.from("inventaire").select("titre, description, photos").eq("id", j.inventaire_id).maybeSingle();
+      // deno-lint-ignore no-explicit-any
+      const urls = (Array.isArray((fiche as any)?.photos) ? (fiche as any).photos : []).map((p: any) => (typeof p === "string" ? p : p?.url)).filter((u: unknown) => typeof u === "string");
+      const prep = dejaLues ? { sources: [], ecartees: 0 } : await photosPourCouleurIA(urls, Deno.env.get("SUPABASE_URL") ?? "", 4);
+      const r = dejaLues ? { isbn13: null, source: null, motif: "deja_lues" } : await resoudreIsbnArticle(
+        // deno-lint-ignore no-explicit-any
+        { images: prep.sources, titre: String((fiche as any)?.titre ?? j.title ?? ""), description: (fiche as any)?.description ?? null },
+        { apiKey: Deno.env.get("ANTHROPIC_API_KEY") ?? "" },
+      );
+      if (!dejaLues) pf.isbn_photos_lu = { le: new Date().toISOString(), photos: prep.sources.length, isbn: r.isbn13, source: r.source, motif: r.motif ?? null, par: "handler-watch" };
+      if (r.isbn13) {
+        pf.isbn = r.isbn13;
+        pf.vintedAspects = { ...(pf.vintedAspects ?? {}), isbn: r.isbn13 };
+        delete pf.isbn_absent; delete pf.needsUserField; delete pf.needs_user_source; delete pf.isbn_a_lire_photos;
+        if (j.error) pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error, j.status, "handler-watch (ISBN lu sur les photos, le job repart)");
+        const { data: maj } = await supabase.from("cross_post_jobs").update({ status: "pending", error: null, platform_fields: pf })
+          .eq("id", j.id).eq("status", "needs_user").select("id");
+        if (maj?.length) { isbnLus++; console.log(`[handler-watch] ISBN ${r.isbn13} lu (${r.source}) pour ${String(j.id).slice(0, 8)} → repart seul`); }
+        continue;
+      }
+      // Illisible : la question complète, sans jargon.
+      const dejaRefuseSansIsbn = refuseSansIsbn(pf);
+      pf.needsUserField = {
+        ...(pf.needsUserField ?? {}), field_key: "isbn", field_label: "ISBN", platform: "vinted",
+        target: { root: "vintedAspects", key: "isbn" }, input_type: null,
+        allowed_values: dejaRefuseSansIsbn ? [] : [ISBN_ABSENT],
+        aide: "Au dos du livre, sous le code-barres, ou sur la page de copyright : 13 chiffres qui commencent par 978 ou 979.",
+      };
+      const message = dejaRefuseSansIsbn
+        ? "Vinted a refusé ce livre sans ISBN : il ne peut partir sur Vinted qu'avec son numéro ISBN (au dos du livre, sous le code-barres, ou sur la page de copyright). Saisis-le avec « ✋ Compléter » et la publication repart d'elle-même — ou annule la publication Vinted de cet article : les autres plateformes ne sont pas touchées. Rien n'a été mis en ligne sur Vinted."
+        : "Vinted exige l'ISBN de ce livre, et il n'est lisible ni dans ton annonce ni sur tes photos. Saisis-le avec « ✋ Compléter » (au dos du livre, sous le code-barres, ou sur la page de copyright : 978… ou 979…), ou choisis « Ce livre n'a pas d'ISBN » : la publication repart d'elle-même. Rien n'a été mis en ligne sur Vinted.";
+      if (j.error && j.error !== message) pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error, j.status, "handler-watch (question ISBN complète, photos lues)");
+      const { data: maj } = await supabase.from("cross_post_jobs").update({ error: message, platform_fields: pf })
+        .eq("id", j.id).eq("status", "needs_user").select("id");
+      if (maj?.length) isbnQuestions++;
+    }
+    if (isbnLus || isbnQuestions) console.log(`[handler-watch] ISBN Vinted : ${isbnLus} lu(s) sur les photos (jobs repartis), ${isbnQuestions} question(s) complétée(s)`);
+  } catch (e) {
+    console.error("[handler-watch] ISBN sur les photos :", (e as Error)?.message ?? e);
   }
 
   // ══ LA RECONNEXION FAIT REPARTIR LES JOBS, SANS QU'ON CLIQUE (2026-09-22) ══

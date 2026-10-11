@@ -421,6 +421,17 @@ export async function resoudrePublication({
   // du run réel du 12/07 était exactement cette classe.
   const ASPECTS_PF_KEY = { ...GENERIC_ASPECTS_PF_KEY, ebay: "ebayAspects" };
   const sanitizeJobFields = (platform, pf) => {
+    // (12/10, Morgane) « Ce livre n'a pas d'ISBN » est une DÉCISION, pas un
+    // ISBN : jamais tapé dans le formulaire Vinted. Il devient isbn_absent
+    // (départ sans ISBN assumé, lu par get-pending-jobs).
+    if (platform === "vinted") {
+      const absent = "Ce livre n'a pas d'ISBN";
+      if (String(pf.isbn ?? "").trim() === absent || String(pf.vintedAspects?.isbn ?? "").trim() === absent) {
+        pf.isbn_absent = true;
+        delete pf.isbn;
+        if (pf.vintedAspects && typeof pf.vintedAspects === "object") { pf.vintedAspects = { ...pf.vintedAspects }; delete pf.vintedAspects.isbn; }
+      }
+    }
     const OPEN_TEXT_KEYS = ["marque", "matiere", "couleur", "modele"];
     // Espaces parasites des relevés/committs ("Boutique italienne ").
     for (const k of OPEN_TEXT_KEYS) if (typeof pf[k] === "string") pf[k] = pf[k].trim();

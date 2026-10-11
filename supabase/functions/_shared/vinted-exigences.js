@@ -82,6 +82,31 @@ export function vintedExigeUneCouleur(cheminCategorie) {
   return !VINTED_SANS_COULEUR.some((prefixe) => commencePar(c, prefixe));
 }
 
+// ── VINTED EXIGE UN ISBN POUR UN LIVRE (12/10/2026, Morgane) ─────────────────
+// « Blake & Mortimer – Le Mystère de la Grande Pyramide » (BD 5425, importé de
+// Leboncoin) : refusé HTTP 400 « ISBN valide », alors que l'app ne l'avait pas
+// demandé — le catalogue (platform_category_aspects) avait appris la ligne
+// `isbn` des BD en « facultatif » (relevé du formulaire, 20/09) et ne l'a
+// passée à « obligatoire » que sur le refus de Morgane. Même trou ce jour-là
+// pour « Enfants et jeunes adultes » (3 feuilles) et « Manuels scolaires » :
+// aucune ligne isbn. Vinted n'est pas constant (Tintin au Tibet, BD sans ISBN,
+// accepté la même minute) : dans le doute, on DEMANDE (règle du 25/09).
+// LA RÈGLE : tout rayon « Livres et médias › Livres › … » exige un ISBN, SAUF
+// « Livres de coloriage et d'activités et revues de jeux » (5427, mesuré sans
+// ISBN — handler-watch RAYONS_SANS_ISBN) ; Magazines, Musique, Vidéo n'en ont
+// jamais. Sans rayon : rien à juger. Un livre SANS ISBN (ancien, auto-édité) se
+// dit en une réponse fermée (ISBN_ABSENT) — jamais un envoi muet.
+export const VINTED_RAYONS_LIVRES_SANS_ISBN = [5427];
+export const ISBN_ABSENT = "Ce livre n'a pas d'ISBN";
+
+/** @param {unknown[]} cheminCategorie @param {unknown} [catalogId] @returns {boolean} */
+export function vintedExigeUnIsbn(cheminCategorie, catalogId = null) {
+  const c = chemin(cheminCategorie);
+  if (VINTED_RAYONS_LIVRES_SANS_ISBN.includes(Number(catalogId))) return false;
+  if (c[0] !== "livres et medias" || c[1] !== "livres") return false;
+  return !String(c[2] ?? "").startsWith("livres de coloriage");
+}
+
 /** Une valeur d'UNE lettre (« S », « p », « ? ») n'est une marque, une couleur,
  *  une matière ni un modèle pour personne : l'app la retire à l'insert
  *  (sanitizeJobFields, suspect_values) — elle ne compte donc pas comme une

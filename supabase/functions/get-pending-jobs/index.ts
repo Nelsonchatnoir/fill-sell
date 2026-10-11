@@ -21,7 +21,7 @@ import { preuveAccesOpla } from "../_shared/preuve-opla.ts";
 // (25/09) Ce que Vinted exige quel que soit le catalogue — la MÊME règle que le
 // stepper (moteur/listes.js la ré-exporte) — et sa palette de couleurs (module
 // de données sans import, comme leboncoinFeuilles.js plus bas).
-import { vintedExigeUneCouleur, vintedExigeUneMarque, valeurUneLettre } from "../_shared/vinted-exigences.js";
+import { vintedExigeUneCouleur, vintedExigeUneMarque, vintedExigeUnIsbn, ISBN_ABSENT, valeurUneLettre } from "../_shared/vinted-exigences.js";
 import { traduireAbsenceMarqueJob, appliquerMarqueRetenue, SANS_MARQUE } from "../_shared/marque-absente.js";
 import { couleursVintedSansQuestion, marqueVintedSansQuestion } from "../_shared/vinted-couleur-marque-filet.js";
 import { ecarterFormatDevine, formatChoisi, livraisonLbcAuService } from "../_shared/livraison-poids.js";
@@ -8544,19 +8544,21 @@ serve(async (req) => {
     let vintedFiche = 0;
     // (11/10 soir) La fiche de chaque publication Vinted, gardée pour le filet
     // « couleur / marque sans question » plus bas (_shared/vinted-couleur-marque-filet.js).
-    const ficheVintedPub = new Map<number, { attributs: Record<string, unknown> | null; marque: string | null }>();
+    const ficheVintedPub = new Map<number, { attributs: Record<string, unknown> | null; marque: string | null; titre?: string | null; description?: string | null }>();
     try {
       const depotsVinted = (out as unknown as Array<Record<string, unknown>>)
         .filter((j) => j.platform === "vinted" && j.action === "publish" && j.inventaire_id != null);
       if (depotsVinted.length) {
         const ids = [...new Set(depotsVinted.map((j) => Number(j.inventaire_id)))];
-        const { data: arts } = await userClient.from("inventaire").select("id, attributs, marque").in("id", ids);
+        const { data: arts } = await userClient.from("inventaire").select("id, attributs, marque, titre, description").in("id", ids);
         const attrsParArticle = new Map<number, Record<string, unknown>>();
-        for (const a of (arts ?? []) as Array<{ id: number; attributs: unknown; marque?: unknown }>) {
+        for (const a of (arts ?? []) as Array<{ id: number; attributs: unknown; marque?: unknown; titre?: unknown; description?: unknown }>) {
           if (a.attributs && typeof a.attributs === "object") attrsParArticle.set(Number(a.id), a.attributs as Record<string, unknown>);
           ficheVintedPub.set(Number(a.id), {
             attributs: a.attributs && typeof a.attributs === "object" ? a.attributs as Record<string, unknown> : null,
             marque: typeof a.marque === "string" ? a.marque : null,
+            titre: typeof a.titre === "string" ? a.titre : null,
+            description: typeof a.description === "string" ? a.description : null,
           });
         }
         // Une valeur DU VENDEUR : saisie à la main, capture de son annonce,
@@ -8720,17 +8722,59 @@ serve(async (req) => {
           }
           const couleurManque = false; // jamais une question (ci-dessus)
           const marqueManque = vintedExigeUneMarque(chemin) && !vraie(pf.marque) && !vraie(aspects.brand);
-          if (!couleurManque && !marqueManque) continue;
+          // ── (12/10, Morgane) UN LIVRE NE PART JAMAIS SANS ISBN, NI SANS LE DIRE ──
+          // « Blake & Mortimer » (BD 5425) parti avec "isbn":null → 400 « ISBN
+          // valide » : le filet ne connaissait que la couleur et la marque.
+          // L'ISBN se cherche d'abord PARTOUT où il est déjà (réponse, champ du
+          // job, fiche, description, titre — _shared/isbn.js) ; trouvé, il est
+          // posé là où l'extension le lit (pf.isbn ET vintedAspects.isbn) ;
+          // « Ce livre n'a pas d'ISBN » tranché par la personne = départ assumé.
+          // Sinon : la question AVANT tout essai, et handler-watch tente de le
+          // lire sur les photos (isbn_a_lire_photos) — trouvé, le job repart seul.
+          let isbnManque = false;
+          if (vintedExigeUnIsbn(chemin, pf.catalog_id ?? pf.vinted_catalog_id ?? null)) {
+            // « Ce livre n'a pas d'ISBN » peut arriver par la réponse (Compléter)
+            // ou par le champ dédié (stepper) : une DÉCISION, jamais tapée chez Vinted.
+            const pfIsbnAbsent = String(pf.isbn ?? "").trim() === ISBN_ABSENT;
+            if (pfIsbnAbsent) delete pf.isbn;
+            const reponse = String(aspects.isbn ?? "").trim() || (pfIsbnAbsent ? ISBN_ABSENT : "");
+            const attrsF = (fiche?.attributs ?? {}) as Record<string, unknown>;
+            const isbnFiche = attrsF.isbn && typeof attrsF.isbn === "object" ? (attrsF.isbn as Record<string, unknown>).v : attrsF.isbn;
+            // Un ISBN VALIDE l'emporte toujours (même après « pas d'ISBN ») ;
+            // sinon le choix « Ce livre n'a pas d'ISBN » fait partir sans ;
+            // sinon la question.
+            const r = resoudreIsbn({ reponse: reponse === ISBN_ABSENT ? null : reponse, capture: pf.isbn, article: isbnFiche, description: pf.description ?? fiche?.description ?? null, titre: pf.title ?? fiche?.titre ?? j.title ?? null });
+            if (r) {
+              pf.isbn = r.isbn13;
+              pf.vintedAspects = { ...aspects, isbn: r.isbn13 };
+              delete pf.isbn_absent;
+              if (r.source !== "reponse" && r.source !== "capture") pf.isbn_sans_question = { valeur: r.isbn13, source: r.source, trouve: r.trouve, le: new Date().toISOString(), pose_par: "get-pending-jobs (_shared/isbn.js)" };
+            } else if (pf.isbn_absent === true || reponse === ISBN_ABSENT) {
+              pf.isbn_absent = true;
+              if (reponse === ISBN_ABSENT) { const sans = { ...aspects }; delete sans.isbn; pf.vintedAspects = sans; }
+            } else {
+              isbnManque = true;
+              if (reponse) pf.isbn_saisi_invalide = { valeur: reponse.slice(0, 40), raison: normalizeIsbn(reponse).ok ? null : (normalizeIsbn(reponse) as { raison?: string }).raison ?? null, le: new Date().toISOString() };
+            }
+          }
+          if (!couleurManque && !marqueManque && !isbnManque) continue;
           const champs: Array<Record<string, unknown>> = [];
           if (marqueManque) champs.push({ field_key: "brand", field_label: "Marque", target: { root: "vintedAspects", key: "brand" }, platform: "vinted" });
           if (couleurManque) champs.push({ field_key: "color", field_label: "Couleur", allowed_values: [...VINTED_COLORS], input_type: "select", target: { root: "vintedAspects", key: "color" }, platform: "vinted" });
+          if (isbnManque) champs.push({ field_key: "isbn", field_label: "ISBN", allowed_values: [ISBN_ABSENT], input_type: null, target: { root: "vintedAspects", key: "isbn" }, platform: "vinted", aide: "Au dos du livre, sous le code-barres : 13 chiffres qui commencent par 978 ou 979." });
+          if (isbnManque) pf.isbn_a_lire_photos = { depuis: new Date().toISOString(), pose_par: "get-pending-jobs" };
           const libelles = champs.map((c) => String(c.field_label));
           const rayon = chemin[chemin.length - 1];
-          const message =
-            `Vinted exige ${libelles.length > 1 ? "une marque et une couleur" : (marqueManque ? "une marque" : "une couleur")} pour le rayon « ${rayon} », ` +
-            `et ton annonce n'en porte pas encore. Choisis-${libelles.length > 1 ? "les" : "la"} ci-dessous (bouton « ✋ Compléter »)` +
-            `${marqueManque ? " — « Sans marque » convient pour un objet sans marque" : ""} : la publication repart d'elle-même. ` +
-            "Rien n'a été envoyé à Vinted.";
+          const isbnSaisi = isbnManque ? String(aspects.isbn ?? "").trim() : "";
+          const message = isbnManque && !marqueManque
+            ? `${isbnSaisi && isbnSaisi !== ISBN_ABSENT ? `L'ISBN saisi « ${isbnSaisi.slice(0, 30)} » n'est pas valide (un chiffre manque ou est de trop ?). ` : ""}` +
+              `Vinted exige l'ISBN de ce livre (rayon « ${rayon} ») et ton annonce n'en porte pas${isbnSaisi ? " de valide" : ""}. FillSell le cherche sur tes photos ; ` +
+              "s'il n'y est pas lisible, saisis-le (au dos du livre, sous le code-barres : 978… ou 979…) avec « ✋ Compléter », " +
+              "ou choisis « Ce livre n'a pas d'ISBN » : la publication repart d'elle-même. Rien n'a été envoyé à Vinted."
+            : `Vinted exige ${libelles.length > 1 ? libelles.map((l) => l === "ISBN" ? "l'ISBN" : `une ${l.toLowerCase()}`).join(" et ") : (marqueManque ? "une marque" : "une couleur")} pour le rayon « ${rayon} », ` +
+              `et ton annonce n'en porte pas encore. Choisis-${libelles.length > 1 ? "les" : "la"} ci-dessous (bouton « ✋ Compléter »)` +
+              `${marqueManque ? " — « Sans marque » convient pour un objet sans marque" : ""} : la publication repart d'elle-même. ` +
+              "Rien n'a été envoyé à Vinted.";
           const pfNu: Record<string, unknown> = {
             ...pf,
             needsUserField: champs[0],

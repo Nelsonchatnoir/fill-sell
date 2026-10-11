@@ -36,6 +36,7 @@ const CORS = {
 // mode unifié de lens-analysis : une seule source de prompts, un seul contrat.
 import { resoudreAspectsIA, completerAspectsIA } from "../_shared/ebay-aspects-ia.ts";
 import { listeCouleurPropre, photosPourCouleurIA, resoudreCouleurIA, MODELE_COULEUR } from "../_shared/couleur-ia.ts";
+import { resoudreIsbnArticle, MODELE_ISBN } from "../_shared/isbn-ia.ts";
 import {
   VERSION_PROMPT,
   construireContexteArticle,
@@ -399,6 +400,49 @@ serve(async (req) => {
       }
       console.log(`[generate-listing] resolve_couleur — ${r.couleur ? `« ${r.couleur} » (${r.source})` : `rien (${r.motif})`}, ${prep.sources.length} photo(s), ${Date.now() - debut} ms`);
       return json({ couleur: r.couleur, source: r.source, ...(r.motif ? { motif: r.motif } : {}) });
+    }
+
+    // ── Mode ciblé "resolve_isbn" (12/10/2026, Morgane) ─────────────────────────
+    // Un livre pour Vinted sans ISBN (fiche importée : Leboncoin n'en a pas, pas
+    // de Lens) : le TEXTE d'abord (_shared/isbn.js), puis 1 à 4 PHOTOS (4e de
+    // couverture, code-barres) lues par Haiku — réponse contrôlée par la clé
+    // (_shared/isbn-ia.ts). Rien de lisible → { isbn: null, motif } : l'app pose
+    // alors la question « ISBN » (avec « Ce livre n'a pas d'ISBN »). Micro-appel
+    // de secours, aucun débit ; plafond 400 / compte / 24 h comme resolve_couleur.
+    // Entrée : photos: string[] (≤ 4), item_data { titre, description },
+    // isbn_inventaire_id. Réponse : { isbn: string|null, source, motif? }.
+    if (body.resolve_isbn === true) {
+      const it = item_data ?? {};
+      const debut = Date.now();
+      {
+        const { count } = await adminClient.from("usage_logs").select("id", { count: "exact", head: true })
+          .eq("user_id", user.id).eq("feature", "isbn_auto")
+          .gte("created_at", new Date(Date.now() - 24 * 3600 * 1000).toISOString());
+        if ((count ?? 0) >= 400) return json({ isbn: null, source: null, motif: "plafond" });
+      }
+      const prep = await photosPourCouleurIA(body.photos, supabaseUrl, 4);
+      const r = await resoudreIsbnArticle(
+        { images: prep.sources, titre: String(it.titre ?? ""), description: it.description ?? null },
+        { apiKey: Deno.env.get("ANTHROPIC_API_KEY") ?? "", onUsage: trackClaude },
+      );
+      {
+        const invId = Number(body.isbn_inventaire_id);
+        const { error: logErr } = await adminClient.from("usage_logs").insert({
+          user_id: user.id, feature: "isbn_auto",
+          metadata: {
+            inventaire_id: Number.isFinite(invId) && invId > 0 ? String(invId) : null,
+            photos_envoyees: prep.sources.length, photos_ecartees: prep.ecartees,
+            isbn: r.isbn13, source: r.source, motif: r.motif ?? null, ...(r.brut ? { brut: r.brut } : {}),
+            modele: MODELE_ISBN,
+            claude_calls: cost.claude_calls, claude_input_tokens: cost.claude_in, claude_output_tokens: cost.claude_out,
+            cost_usd: Number(((cost.claude_in / 1e6) * 1 + (cost.claude_out / 1e6) * 5).toFixed(5)),
+            duree_ms: Date.now() - debut,
+          },
+        });
+        if (logErr) console.error("[generate-listing] usage_logs (isbn_auto):", logErr.message);
+      }
+      console.log(`[generate-listing] resolve_isbn — ${r.isbn13 ? `${r.isbn13} (${r.source})` : `rien (${r.motif})`}, ${prep.sources.length} photo(s), ${Date.now() - debut} ms`);
+      return json({ isbn: r.isbn13, source: r.source, ...(r.motif ? { motif: r.motif } : {}) });
     }
 
     // ── Mode ciblé "resolve_aspects" (2026-07-16, chantier champs obligatoires) ──
