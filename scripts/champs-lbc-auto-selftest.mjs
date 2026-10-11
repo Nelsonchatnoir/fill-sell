@@ -88,5 +88,24 @@ verifier(/const \{ simples, paire \} = champsLbcSecondePasse\(list, \{ categorie
 verifier(/objet identifié : \$\{objet\}/.test(lps) && /catégorie Vinted : \$\{cheminVinted\.join\(" > "\)\}/.test(lps) && /genre: src\.platform_fields\?\.genre \|\| v\("genre"\)/.test(lps), 'seconde passe : tout le contexte de la fiche (objet IA, catégorie Vinted, genre, taille, marque)');
 verifier(/reponseDansLaListe\(valeurs\[a\.label\], a\.allowedValues\)/.test(lps) && /feature: "lbc_champs_ia"/.test(lps) && /setIaGeneriqueEnVol\(\(n\) => n \+ 1\)/.test(lps), 'réponse contrôlée, mesure lbc_champs_ia, le lot attend la fin de la passe');
 
+console.log('\n5. Un thème n’est pas un objet (« Moules noel », Louis, 11/10 21:51 : parti en Décoration › Rangement)');
+const S = await import(pathToFileURL(join(RACINE, 'src/utils/shared.js')).href);
+// Rejoue la règle de resolveArticleIconDetail (le composant n'est pas importable ici).
+const iconeDe = (titre, aiIcon, aiObjet = '') => {
+  const motCle = S.detectObjectKeywordDetail(titre, '');
+  const iconeDuMotIa = aiObjet ? S.detectObjectIconKeyword(aiObjet, '') : null;
+  const motTheme = motCle?.passe === 1 && /^no[eë]l$/.test(String(motCle.mot ?? ''));
+  const iaValide = aiIcon && aiIcon !== '📦' && S.ALL_OBJECT_ICONS.includes(aiIcon) ? aiIcon : null;
+  const ecarte = motTheme && (iconeDuMotIa ?? iaValide) != null && (iconeDuMotIa ?? iaValide) !== motCle.icon;
+  if (motCle && !ecarte) return motCle.icon;
+  return iconeDuMotIa ?? iaValide ?? '📦';
+};
+verifier(iconeDe('Moules noel', '🍳', 'moule de cuisson') === '🍳', '« Moules noel », l’IA nomme un moule de cuisson (🍳) : 🍳, plus 🎄');
+verifier(iconeDe('Boule de noël rouge', '🎄', 'boule de Noël') === '🎄', '« Boule de noël », l’IA dit 🎄 : 🎄 (inchangé)');
+verifier(iconeDe('Pull de noël taille M', '🧶') === '🧶', '« Pull de noël » : le mot-objet « pull » décide (inchangé)');
+verifier(iconeDe('Déco de noël', null) === '🎄', 'aucune IA : le thème reste le seul signal (inchangé)');
+verifier(iconeDe('Crèche de noël', '🏠') === S.detectObjectIconKeyword('Crèche de noël', ''), 'un vrai objet de Noël du titre (crèche) n’est jamais écarté');
+verifier(/const motTheme = motCle\?\.passe === 1 && \/\^no\[eë\]l\$\/\.test/.test(lps) && /if \(motCle && !passe2Ecartee && !themeEcarte\) \{/.test(lps), 'resolveArticleIconDetail porte la règle (le seul mot écarté : « noël »)');
+
 console.log(`\n${ko ? `✗ ${ko} échec(s)` : '✓ tout est vert'} — ${ok} contrôles`);
 process.exit(ko ? 1 : 0);

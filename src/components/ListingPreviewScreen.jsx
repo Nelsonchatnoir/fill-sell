@@ -670,7 +670,18 @@ function resolveArticleIconDetail({ initialListing, edited, pf, aiIcon = null, a
     estAnglaisAvere(frDesc) ||
     (iconeDuMotIa != null && iconeDuMotIa !== motCle.icon)
   );
-  if (motCle && !passe2Ecartee) {
+  // ── UN THÈME N'EST PAS UN OBJET (12/10, Louis « Moules noel ») ────────────
+  // « noël » dit POUR QUELLE FÊTE, jamais CE QUE C'EST : « Moules noel » (des
+  // moules à gâteau, Vinted « Cuisson et pâtisserie › Moules de cuisson »)
+  // partait en 🎄 → Leboncoin « Décoration », Univers « Rangement » — l'IA, elle,
+  // avait nommé « moule de cuisson » (🍳). Un mot de THÈME du titre ne décide
+  // donc que si l'IA ne nomme pas un autre objet ; « boule de sapin »,
+  // « crèche », « guirlande de sapin » restent des objets (même icône, rien ne
+  // change). ⛔ Aucun autre mot du titre n'est touché.
+  const motTheme = motCle?.passe === 1 && /^no[eë]l$/.test(String(motCle.mot ?? ""));
+  const iconeIaValide = aiIcon && aiIcon !== "📦" && VALID_OBJECT_ICONS.has(aiIcon) ? aiIcon : null;
+  const themeEcarte = motTheme && ((iconeDuMotIa ?? iconeIaValide) != null) && (iconeDuMotIa ?? iconeIaValide) !== motCle.icon;
+  if (motCle && !passe2Ecartee && !themeEcarte) {
     // passe 1 = le titre, la source du vendeur : source « mot_cle », comme
     // avant, MOT POUR MOT — le garde-fou n'écarte jamais un mot du titre et ne
     // doit pas commencer aujourd'hui.
