@@ -83,7 +83,11 @@ serve(async (req) => {
     const rawPrice = Number(body.price);
     const priceOverride = Number.isFinite(rawPrice) && rawPrice > 0 ? rawPrice : undefined;
 
-    const result = await orchestrateSale(admin, user.id, jobId, { priceOverride, declaree: true });
+    // remettre_en_vente (11/10, optionnel) : false = « Ne pas remettre en vente »
+    // depuis la liste « Ventes à confirmer ». Absent ou autre valeur : comme avant.
+    const remettreEnVente = body.remettre_en_vente === false ? false : undefined;
+
+    const result = await orchestrateSale(admin, user.id, jobId, { priceOverride, declaree: true, remettreEnVente });
     if (!result.ok) return json({ error: result.reason ?? "Orchestration impossible" }, 409);
     return json({ success: true, sale: result });
   } catch (err: unknown) {

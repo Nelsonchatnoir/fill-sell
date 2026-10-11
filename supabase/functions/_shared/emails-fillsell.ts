@@ -603,7 +603,12 @@ export interface ContexteVentes {
   retraitsACliquer: number;
   /** Dépôts Beebs en vérification, retirés automatiquement à leur mise en ligne. */
   retraitsBeebsAuto: number;
+  /** (11/10) Vente DÉTECTÉE, pas encore enregistrée : à confirmer dans l'app. */
+  aConfirmer?: boolean;
 }
+
+/** (11/10) Le lien du mail « Vendu » : la liste « Ventes à confirmer » de l'app. */
+export const URL_VENTES_A_CONFIRMER = `${URL_APP}/app?ventes=a-decider`;
 
 function euros(n: number, lang: Langue): string {
   const v = Math.round(Number(n) || 0);
@@ -637,10 +642,21 @@ export function mailVentes(ctx: ContexteVentes, lang: Langue): MailPret {
 
   const corps = [
     paragraphe(fr ? "Salut," : "Hi,"),
-    paragraphe(fr
-      ? (seule ? "Bonne nouvelle, une vente vient d'être enregistrée :" : `Bonne nouvelle, ${n} ventes viennent d'être enregistrées :`)
-      : (seule ? "Good news, a sale has just been recorded:" : `Good news, ${n} sales have just been recorded:`)),
+    // (11/10, Louis) Une vente DÉTECTÉE n'est pas encore enregistrée : on ne
+    // dit pas « enregistrée », on dit où la confirmer.
+    paragraphe(ctx.aConfirmer
+      ? (fr
+        ? (seule ? "Bonne nouvelle, une vente vient d'être repérée :" : `Bonne nouvelle, ${n} ventes viennent d'être repérées :`)
+        : (seule ? "Good news, a sale has just been spotted:" : `Good news, ${n} sales have just been spotted:`))
+      : (fr
+        ? (seule ? "Bonne nouvelle, une vente vient d'être enregistrée :" : `Bonne nouvelle, ${n} ventes viennent d'être enregistrées :`)
+        : (seule ? "Good news, a sale has just been recorded:" : `Good news, ${n} sales have just been recorded:`))),
     listePuces(lignes),
+    ...(ctx.aConfirmer
+      ? [paragraphe(fr
+        ? "Confirme-la dans FillSell : elle est enregistrée et tu choisis de remettre l'article en vente ou non."
+        : "Confirm it in FillSell: it gets recorded and you choose whether to list the item again.")]
+      : []),
     ...(sansPrixAchat
       ? [paragraphe(fr
         ? "Ajoute le prix d'achat d'un article dans FillSell pour connaître ton bénéfice."
@@ -656,7 +672,10 @@ export function mailVentes(ctx: ContexteVentes, lang: Langue): MailPret {
         ? "Les dépôts Beebs encore en vérification seront retirés automatiquement dès que Beebs les aura mis en ligne."
         : "Beebs listings still under review will be taken down automatically as soon as Beebs puts them online.")]
       : []),
-    boutonPrincipal(fr ? "Ouvrir FillSell" : "Open FillSell", URL_APP),
+    // (11/10) Le bouton mène à la liste « Ventes à confirmer » (Stock), plus à
+    // l'accueil du site : c'est là que la vente se confirme.
+    boutonPrincipal(ctx.aConfirmer ? (fr ? "Confirmer la vente" : "Confirm the sale") : (fr ? "Ouvrir FillSell" : "Open FillSell"),
+      URL_VENTES_A_CONFIRMER),
   ];
 
   return {
@@ -668,9 +687,13 @@ export function mailVentes(ctx: ContexteVentes, lang: Langue): MailPret {
         ? (seule ? "Une vente de plus." : `${n} ventes, un seul mail.`)
         : (seule ? "One more sale." : `${n} sales, one email.`),
       corps,
-      raisonEnvoi: fr
-        ? "Tu reçois ce message parce que des ventes ont été enregistrées sur ton compte FillSell."
-        : "You're getting this message because sales were recorded on your FillSell account.",
+      raisonEnvoi: ctx.aConfirmer
+        ? (fr
+          ? "Tu reçois ce message parce qu'une vente a été repérée sur une de tes plateformes."
+          : "You're getting this message because a sale was spotted on one of your marketplaces.")
+        : (fr
+          ? "Tu reçois ce message parce que des ventes ont été enregistrées sur ton compte FillSell."
+          : "You're getting this message because sales were recorded on your FillSell account."),
     }),
   };
 }

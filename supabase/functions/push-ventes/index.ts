@@ -22,7 +22,7 @@ import { margeUnitaire, prixAchatNum } from "../../../src/utils/comptabilite.js"
 type NoteServie = {
   id: number; user_id: string; appareils: Appareil[]; push?: boolean; mail?: boolean;
   email?: string | null; lang?: string | null; plateforme?: string | null; titre?: string | null;
-  prix?: number | string | null; inventaire_id?: number | null;
+  prix?: number | string | null; inventaire_id?: number | null; a_decider?: boolean;
 } & Record<string, unknown>;
 
 type VerdictMail = { statut: "envoye" | "deja_envoye" | "a_reessayer" | "echec" | "sans_adresse"; motif?: string };
@@ -49,6 +49,9 @@ async function envoyerMailVente(
     }],
     retraitsACliquer: 0,
     retraitsBeebsAuto: 0,
+    // (11/10) Vente détectée, non enregistrée : le mail dit de la confirmer
+    // (liste « Ventes à confirmer »). Absent (base d'avant) : texte d'avant.
+    aConfirmer: n.a_decider === true,
   }, langue(n.lang));
   const r = await envoyerEmail({
     to: adresse, subject: sujet, html, type: `vente:${n.id}`,
