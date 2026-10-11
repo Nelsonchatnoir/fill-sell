@@ -19,6 +19,7 @@ import { preuveAccesOpla } from "../_shared/preuve-opla.ts";
 // de données sans import, comme leboncoinFeuilles.js plus bas).
 import { vintedExigeUneCouleur, vintedExigeUneMarque, valeurUneLettre } from "../_shared/vinted-exigences.js";
 import { traduireAbsenceMarqueJob, appliquerMarqueRetenue, SANS_MARQUE } from "../_shared/marque-absente.js";
+import { couleursVintedSansQuestion, marqueVintedSansQuestion } from "../_shared/vinted-couleur-marque-filet.js";
 import { ecarterFormatDevine, formatChoisi, livraisonLbcAuService } from "../_shared/livraison-poids.js";
 import { decisionPoidsLbc } from "../_shared/poids-leboncoin.js";
 import { classementAgeEcrit, familleJeuVideo, ageBeebsDuClassement, ageBeebsJeuVideoLu } from "../../../src/utils/jeuxVideo.js";
@@ -8337,15 +8338,22 @@ serve(async (req) => {
     // marque »), on n'y touche pas. Servi, pas persisté ici : comme la couleur
     // Leboncoin, l'extension renvoie le pf au statut suivant. Best-effort.
     let vintedFiche = 0;
+    // (11/10 soir) La fiche de chaque publication Vinted, gardée pour le filet
+    // « couleur / marque sans question » plus bas (_shared/vinted-couleur-marque-filet.js).
+    const ficheVintedPub = new Map<number, { attributs: Record<string, unknown> | null; marque: string | null }>();
     try {
       const depotsVinted = (out as unknown as Array<Record<string, unknown>>)
         .filter((j) => j.platform === "vinted" && j.action === "publish" && j.inventaire_id != null);
       if (depotsVinted.length) {
         const ids = [...new Set(depotsVinted.map((j) => Number(j.inventaire_id)))];
-        const { data: arts } = await userClient.from("inventaire").select("id, attributs").in("id", ids);
+        const { data: arts } = await userClient.from("inventaire").select("id, attributs, marque").in("id", ids);
         const attrsParArticle = new Map<number, Record<string, unknown>>();
-        for (const a of (arts ?? []) as Array<{ id: number; attributs: unknown }>) {
+        for (const a of (arts ?? []) as Array<{ id: number; attributs: unknown; marque?: unknown }>) {
           if (a.attributs && typeof a.attributs === "object") attrsParArticle.set(Number(a.id), a.attributs as Record<string, unknown>);
+          ficheVintedPub.set(Number(a.id), {
+            attributs: a.attributs && typeof a.attributs === "object" ? a.attributs as Record<string, unknown> : null,
+            marque: typeof a.marque === "string" ? a.marque : null,
+          });
         }
         // Une valeur DU VENDEUR : saisie à la main, capture de son annonce,
         // synchro Vinted, relevé de ses annonces. Jamais lens / IA / backfill.
@@ -8383,6 +8391,16 @@ serve(async (req) => {
               pf.colors = [c.v];
               trace.couleur = { valeur: c.v, avant: null, source: `inventaire.attributs.couleur (${c.source})` };
             }
+          }
+          // (11/10 soir, lucyburaux988) La réponse donnée pour CET article à la
+          // question « marque hors catalogue » (attributs.marque_vinted { v, de })
+          // vaut pour toutes ses publications Vinted : jamais redemandée.
+          const repArticle = marqueVintedSansQuestion({ pf, attrs });
+          if (repArticle?.source === "reponse_article") {
+            const avantM = String(pf.marque ?? aspects.brand ?? "").trim() || null;
+            pf.marque = repArticle.marque;
+            if (String(aspects.brand ?? "").trim()) pf.vintedAspects = { ...aspects, brand: repArticle.marque };
+            trace.marque = { valeur: repArticle.marque, avant: avantM, source: "inventaire.attributs.marque_vinted (réponse de la personne pour cet article)" };
           }
           if (Object.keys(trace).length) {
             pf.vinted_deduit = { ...trace, le: new Date().toISOString(), pose_par: "get-pending-jobs (fiche de l'article, sources du vendeur)" };
@@ -8474,7 +8492,29 @@ serve(async (req) => {
           const aspects = (pf.vintedAspects && typeof pf.vintedAspects === "object") ? (pf.vintedAspects as Record<string, unknown>) : {};
           const vraie = (v: unknown) => { const t = String(v ?? "").trim(); return t && !valeurUneLettre(t) ? t : ""; };
           const colors = Array.isArray(pf.colors) ? (pf.colors as unknown[]).filter((c) => vraie(c)) : [];
-          const couleurManque = vintedExigeUneCouleur(chemin) && !vraie(pf.couleur) && !colors.length && !vraie(aspects.color);
+          // ── (11/10 soir, Nico) LA COULEUR NE BLOQUE JAMAIS ─────────────────
+          // vinted.js ne lit QUE fields.colors (palette) : sans libellé de la
+          // palette, la couleur de la copie ou de la FICHE (Lens compris) y
+          // est ramenée, sinon « Multicolore » — jamais une question.
+          // (_shared/vinted-couleur-marque-filet.js ; publication seulement.)
+          const fiche = ficheVintedPub.get(Number(j.inventaire_id)) ?? null;
+          if (vintedExigeUneCouleur(chemin) && !colors.some((c) => (VINTED_COLORS as readonly string[]).includes(String(c)))) {
+            const c = couleursVintedSansQuestion({ pf, attrs: fiche?.attributs ?? null });
+            pf.colors = c.colors;
+            if (!vraie(pf.couleur)) pf.couleur = c.colors[0];
+            pf.couleur_sans_question = { colors: c.colors, source: c.source, de: c.de, le: new Date().toISOString(), pose_par: "get-pending-jobs (_shared/vinted-couleur-marque-filet.js)" };
+            console.log(`[get-pending-jobs] Vinted ${String(j.id).slice(0, 8)} : couleur ← « ${c.colors.join(", ")} » (${c.source}${c.de ? `, de « ${c.de} »` : ""}) — aucune question`);
+          }
+          // ── (11/10 soir) FICHE SANS AUCUNE MARQUE → « Sans marque », sans question.
+          if (vintedExigeUneMarque(chemin) && !vraie(pf.marque) && !vraie(aspects.brand)) {
+            const m = marqueVintedSansQuestion({ pf, attrs: fiche?.attributs ?? null, marqueColonne: fiche?.marque ?? null });
+            if (m) {
+              pf.marque = m.marque;
+              pf.marque_sans_question = { valeur: m.marque, source: m.source, le: new Date().toISOString(), pose_par: "get-pending-jobs (_shared/vinted-couleur-marque-filet.js)" };
+              console.log(`[get-pending-jobs] Vinted ${String(j.id).slice(0, 8)} : marque ← « ${m.marque} » (${m.source}) — aucune question`);
+            }
+          }
+          const couleurManque = false; // jamais une question (ci-dessus)
           const marqueManque = vintedExigeUneMarque(chemin) && !vraie(pf.marque) && !vraie(aspects.brand);
           if (!couleurManque && !marqueManque) continue;
           const champs: Array<Record<string, unknown>> = [];
