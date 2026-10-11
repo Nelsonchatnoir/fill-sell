@@ -222,6 +222,7 @@
     "selftest:lot-poids-leboncoin": "node --import ./scripts/loader-ext.mjs scripts/lot-poids-leboncoin-selftest.mjs",
     "selftest:site-upload-date": "node scripts/site-upload-date-selftest.mjs",
     "selftest:publication-boutique-vinted": "node scripts/publication-boutique-vinted-selftest.mjs",
+    "selftest:quota-et-date-reelle": "node scripts/quota-et-date-reelle-selftest.mjs",
     "selftest:variables-definies": "node scripts/variables-definies-selftest.mjs",
     "selftest:texte-de-la-fiche": "node --import ./scripts/loader-ext.mjs scripts/texte-de-la-fiche-selftest.mjs",
     "selftest:marque-absente": "deno run --allow-read --allow-env --allow-net scripts/marque-absente-selftest.ts",
