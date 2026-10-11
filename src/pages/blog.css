@@ -42,7 +42,9 @@
   font-style: italic; font-weight: 800; font-size: 18px;
   background: var(--grad); -webkit-background-clip: text;
   background-clip: text; -webkit-text-fill-color: transparent;
-  padding-right: 4px;
+  /* Italique en dégradé : marge en em, sinon le « l » final est rogné
+     (11/10, selftest:marque-italique-entiere). */
+  padding-right: .3em;
 }
 .blog-nav-links { display: flex; align-items: center; gap: 20px; }
 .blog-nav-link {

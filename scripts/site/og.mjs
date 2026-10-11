@@ -49,7 +49,7 @@ body::after { content: ""; position: absolute; bottom: -260px; left: -160px; wid
 .haut { display: flex; align-items: center; justify-content: space-between; }
 .marque { display: flex; align-items: center; gap: 16px; }
 .marque img { width: 64px; height: 64px; border-radius: 16px; }
-.marque b { font-size: 44px; font-weight: 700; font-style: italic; letter-spacing: -.03em; background: linear-gradient(135deg, #2F9E90, #E8956D); -webkit-background-clip: text; color: transparent; padding-right: 4px; }
+.marque b { font-size: 44px; font-weight: 700; font-style: italic; letter-spacing: -.03em; background: linear-gradient(135deg, #2F9E90, #E8956D); -webkit-background-clip: text; color: transparent; padding-right: .25em; }
 .surtitre { display: flex; align-items: center; gap: 12px; font-size: 26px; font-weight: 600; color: #1B6E62; }
 .surtitre::before { content: ""; width: 16px; height: 16px; border-radius: 50%; box-shadow: inset 0 0 0 4px #E8956D; }
 h1 { margin-top: auto; font-size: ${taille}px; line-height: 1.02; letter-spacing: -.045em; font-weight: 700; max-width: 1000px; }

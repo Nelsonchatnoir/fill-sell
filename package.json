@@ -309,7 +309,8 @@
     "selftest:republication-requis-avant-retrait": "node scripts/republication-requis-avant-retrait-selftest.mjs",
     "selftest:vinted-couleur-marque-filet": "node scripts/vinted-couleur-marque-filet-selftest.mjs",
     "selftest:doublon-attribut-distinctif": "node scripts/doublon-attribut-distinctif-selftest.mjs",
-    "selftest:creneau-suit-le-reglage": "node scripts/creneau-suit-le-reglage-selftest.mjs"
+    "selftest:creneau-suit-le-reglage": "node scripts/creneau-suit-le-reglage-selftest.mjs",
+    "selftest:marque-italique-entiere": "node scripts/marque-italique-entiere-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

@@ -120,7 +120,11 @@ h3 { font-size: 1.22rem; line-height: 1.25; letter-spacing: -.02em; margin: 0 0 
 .entete-ligne { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-height: 62px; }
 .logo { display: inline-flex; align-items: center; gap: 9px; margin-right: auto; text-decoration: none; }
 .logo img { border-radius: 9px; }
-.wordmark { font-weight: 700; font-style: italic; font-size: 1.32rem; letter-spacing: -.03em; color: var(--en); padding-right: 2px; background: linear-gradient(135deg, var(--sa), var(--pe)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+/* Logo texte en italique peint en dégradé (background-clip: text) : le dégradé
+   ne couvre QUE la boîte, et l'italique penche au-delà. Marge droite en em
+   (≥ .25em, suit la taille) : le dernier « l » n'est jamais rogné, à toute
+   largeur (règle du 11/10, selftest:marque-italique-entiere). */
+.wordmark { font-weight: 700; font-style: italic; font-size: 1.32rem; letter-spacing: -.03em; color: var(--en); padding-right: .25em; white-space: nowrap; background: linear-gradient(135deg, var(--sa), var(--pe)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
 /* Bouton « Menu » (10/10, Nico : le carré à trois traits jugé laid) : une
    pilule, comme les boutons de l'ancienne accueil, deux traits qui se croisent
    à l'ouverture. Traits en BORDURES, pas en fonds : le mode contraste élevé

@@ -58,9 +58,10 @@
   background-clip: text;
   -webkit-text-fill-color: transparent;
   /* Un gras italique déborde de sa boîte à droite : sans ces deux règles, le
-     « l » final est rogné. C'est l'autre moitié du « étroit » signalé. */
+     « l » final est rogné. C'est l'autre moitié du « étroit » signalé.
+     Marge en em (≥ .25em, suit la taille ; 11/10, selftest:marque-italique-entiere). */
   overflow: visible;
-  padding-right: 6px;
+  padding-right: .3em;
 }
 
 /* UNE SEULE des deux images à la fois — c'est la règle dont l'absence a produit
