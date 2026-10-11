@@ -81,7 +81,11 @@ ok(txtExt.includes("Les autres republications attendent sa remise en ligne, pour
   && GPJ.includes("Les autres republications attendent sa remise en ligne, pour ne jamais laisser deux annonces hors ligne. Rien n'a été retiré."), 'même texte côté serveur et côté extension');
 ok(/selling-restriction/.test(VJS), 'vinted.js reconnaît /selling-restriction');
 ok(/CAPTURE_VINTED_BORNE_MS\s*=\s*90/.test(BG) || /CAPTURE_VINTED_BORNE_MS = 90_000/.test(BG), 'capture de republication bornée à 90 s (ltouze)');
-ok(/"version": "0\.6\.107"/.test(lire('chrome-extension/manifest.json')), 'manifest 0.6.107');
+// (11/10) La 0.6.108 embarque la 0.6.107 (jamais téléversée) : 0.6.107 OU PLUS.
+ok((() => {
+  const v = (lire('chrome-extension/manifest.json').match(/"version": "(\d+)\.(\d+)\.(\d+)"/) || []).slice(1).map(Number);
+  return v.length === 3 && v[0] * 1e6 + v[1] * 1e3 + v[2] >= 6107;
+})(), 'manifest 0.6.107 ou plus');
 
 console.log('\n5. Le rattrapage, par la règle');
 ok(/platform_fields ->> 'needs_user_source' = 'tache_sans_demarrage'/.test(RATT) && /platform_fields ->> 'republish_step' = 'captured'/.test(RATT)

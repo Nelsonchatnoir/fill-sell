@@ -209,7 +209,8 @@ ok(/if \(p\.optionnel && oplaSortiePasse\(\)\) continue;/.test(p) && /if \(p\.op
 // ── Manifeste ───────────────────────────────────────────────────────────────
 console.log('\nManifeste');
 const man = JSON.parse(lire('chrome-extension/manifest.json').replace(/^﻿/, ''));
-ok(man.version === '0.6.107', `version 0.6.107 (vu ${man.version})`);
+// (11/10) La 0.6.108 embarque la 0.6.107 (jamais téléversée) : 0.6.107 OU PLUS.
+ok(String(man.version).split('.').map(Number).reduce((a, n) => a * 1000 + n, 0) >= 6107, `version 0.6.107 ou plus (vu ${man.version})`);
 
 console.log(ko ? `\n✗ ${ko} échec(s)` : '\nTOUT PASSE');
 process.exit(ko ? 1 : 0);
