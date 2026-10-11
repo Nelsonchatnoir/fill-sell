@@ -91,12 +91,18 @@ begin
 
   -- B4. UNE vente vue par trois chemins : signal de la veille sur l'annonce
   --     FillSell, relevé Vinted « sold », commande relevée.
-  insert into cross_post_jobs (user_id, inventaire_id, platform, status, action, title, price, platform_listing_id, published_at)
-  values (u, i1, 'vinted', 'published', 'publish', 'Robe Mango corail (preuve)', 15, '990000001', now() - interval '2 days')
+  -- (06/10 soir) Une vente Vinted n'est notée que si l'annonce a été VUE EN
+  -- LIGNE hier ou aujourd'hui : la veille l'a lue en ligne il y a 3 h, le
+  -- relevé du dressing a vu la fiche en ligne il y a 1 h — comme en vrai.
+  update inventaire set vinted_status = 'active', last_synced_at = now() - interval '60 minutes' where id = i1;
+  insert into cross_post_jobs (user_id, inventaire_id, platform, status, action, title, price, platform_listing_id, published_at, vu_en_ligne_le)
+  values (u, i1, 'vinted', 'published', 'publish', 'Robe Mango corail (preuve)', 15, '990000001', now() - interval '2 days', now() - interval '3 hours')
   returning id into j1;
   -- (06/10) Une vente de job n'est annoncée que si elle est RÉCENTE : la veille
-  -- l'a vue disparaître il y a 2 h, comme en vrai.
-  update cross_post_jobs set platform_fields = coalesce(platform_fields, '{}'::jsonb)
+  -- l'a vue disparaître il y a 2 h, comme en vrai. (09/10, 20261009160000) Une
+  -- note de job n'annonce rien avant la vente ENREGISTRÉE : la vente prouvée
+  -- l'enregistre sur le job (status 'sold') — ici dans la même écriture.
+  update cross_post_jobs set status = 'sold', sold_at = now(), platform_fields = coalesce(platform_fields, '{}'::jsonb)
     || jsonb_build_object('sale_signal', 'sold', 'unavailable_since', to_char(now() - interval '2 hours', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'))
    where id = j1;
   update inventaire set vinted_status = 'sold', statut = 'vendu' where id = i1;
@@ -160,6 +166,8 @@ begin
   -- Tri : tout a plus de 15 s (sauf B1 qui attend son annonce, < 3 min).
   update push_ventes set cree_le = cree_le - interval '1 minute' where user_id = u;
   update push_ventes set cree_le = cree_le - interval '4 minutes' where user_id = u and commande_ref like 'PREUVE-B7%';
+  -- La note du job Vinted attend 2 min que le dressing confirme : les trois chemins de B4 ont 3 min.
+  update push_ventes set cree_le = cree_le - interval '2 minutes' where user_id = u and inventaire_id = i1;
   v_res := push_ventes_a_envoyer(50);
   select count(*) into v_n from jsonb_array_elements(v_res -> 'notes') e where (e ->> 'inventaire_id')::bigint = i1;
   select count(*) into v_m from push_ventes where user_id = u and inventaire_id = i1 and statut = 'doublon';
@@ -198,9 +206,10 @@ begin
   delete from push_ventes where user_id = u;
   for v_n in 1..3 loop
     insert into push_ventes (user_id, origine, plateforme, titre, cles, statut, cree_le) values
-      (u, 'job', 'vinted', 'Trio ' || v_n, array['job:trio' || v_n, 'annonce:vinted:trio' || v_n, 'fiche:trio' || v_n], 'a_envoyer', now() - interval '40 seconds'),
-      (u, 'vinted', 'vinted', 'Trio ' || v_n, array['fiche:trio' || v_n, 'annonce:vinted:trio' || v_n], 'a_envoyer', now() - interval '35 seconds'),
-      (u, 'commande', 'vinted', 'Trio ' || v_n, array['commande:vinted:T' || v_n, 'annonce:vinted:trio' || v_n], 'a_envoyer', now() - interval '30 seconds');
+      -- (la note de job Vinted attend 2 min que le dressing confirme : les neuf notes ont plus de 2 min, mêmes écarts)
+      (u, 'job', 'vinted', 'Trio ' || v_n, array['job:trio' || v_n, 'annonce:vinted:trio' || v_n, 'fiche:trio' || v_n], 'a_envoyer', now() - interval '160 seconds'),
+      (u, 'vinted', 'vinted', 'Trio ' || v_n, array['fiche:trio' || v_n, 'annonce:vinted:trio' || v_n], 'a_envoyer', now() - interval '155 seconds'),
+      (u, 'commande', 'vinted', 'Trio ' || v_n, array['commande:vinted:T' || v_n, 'annonce:vinted:trio' || v_n], 'a_envoyer', now() - interval '150 seconds');
   end loop;
   v_res := push_ventes_a_envoyer(50);
   select count(*) into v_m from push_ventes where user_id = u and statut = 'doublon';

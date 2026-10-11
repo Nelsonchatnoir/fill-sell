@@ -82,7 +82,10 @@ begin
   insert into cross_post_jobs (user_id, inventaire_id, platform, status, action, title, price, platform_listing_id, published_at, last_checked_at)
   values (u, i1, 'vinted', 'published', 'publish', 'Baskets preuve mail', 40, '990000101', now() - interval '3 days', now() - interval '2 hours')
   returning id into j1;
-  update cross_post_jobs set platform_fields = coalesce(platform_fields, '{}'::jsonb)
+  -- (09/10, 20261009160000) Une note de job n'annonce rien tant que la vente
+  -- n'est pas ENREGISTRÉE : comme en vrai, la vente prouvée l'enregistre sur
+  -- le job (status 'sold') — le signal et l'enregistrement, ici dans la même écriture.
+  update cross_post_jobs set status = 'sold', sold_at = now(), platform_fields = coalesce(platform_fields, '{}'::jsonb)
     || jsonb_build_object('sale_signal', 'sold', 'unavailable_since', to_char(now() - interval '1 hour', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'))
    where id = j1;
   select count(*) into v_n from push_ventes where user_id = u and job_id = j1 and statut = 'a_envoyer';
@@ -129,6 +132,8 @@ begin
    where id = j5;
   select count(*) into v_n from push_ventes where user_id = u and job_id = j5 and statut = 'a_envoyer';
   perform pg_temp.verif(v_n = 1, 'M6. commande eBay du moment (disparue il y a 2 h) → une note');
+  -- (09/10) La commande est ENREGISTRÉE (le reçu qu'écrit enregistrer_vente_atomique) : la note peut partir.
+  insert into ventes_operations (user_id, cle, inventaire_id, job_id, resultat) values (u, 'annonce:ebay:990000105', i5, j5, '{}');
 
   -- M7. « Vendue ? » confirmée par la personne → déclarée, jamais envoyée.
   insert into cross_post_jobs (user_id, inventaire_id, platform, status, action, title, price, platform_listing_id, published_at, last_checked_at)
@@ -156,6 +161,8 @@ begin
 
   -- ── La décision ────────────────────────────────────────────────────────
   update push_ventes set cree_le = cree_le - interval '1 minute' where user_id = u;
+  -- La note du job Vinted attend 2 min que le dressing confirme : les trois chemins de M2 ont 3 min.
+  update push_ventes set cree_le = cree_le - interval '2 minutes' where user_id = u and inventaire_id = i1;
   v_res := push_ventes_a_envoyer(50);
   select count(*) into v_n from jsonb_array_elements(v_res -> 'notes') e where (e ->> 'inventaire_id')::bigint = i1;
   select count(*) into v_m from push_ventes where user_id = u and inventaire_id = i1 and statut = 'doublon';
@@ -200,6 +207,8 @@ begin
   values (u, i6, 'leboncoin', 'published', 'publish', 'Lampe LBC preuve', 18, 'PREUVE-LBC-J', now() - interval '3 days', now() - interval '30 minutes')
   returning id into j6;
   update cross_post_jobs set status = 'sold', sold_at = now() where id = j6;
+  -- (09/10) Vente ENREGISTRÉE (reçu) : la note du job peut partir.
+  insert into ventes_operations (user_id, cle, inventaire_id, job_id, resultat) values (u, 'annonce:leboncoin:PREUVE-LBC-J', i6, j6, '{}');
   update push_ventes set cree_le = cree_le - interval '1 minute' where user_id = u and job_id = j6;
   v_res := push_ventes_a_envoyer(50);
   select e into v_note from jsonb_array_elements(v_res -> 'notes') e where (e ->> 'inventaire_id')::bigint = i6;
