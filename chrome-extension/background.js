@@ -3420,6 +3420,12 @@ async function processJob(rawJob, accessToken) {
   // `permissions.contains` se lit à CHAQUE job : la réponse vient du
   // navigateur, jamais d'un cache du service worker.
   if (job.platform === "opla") {
+    // (11/10) Opla sortie : aucun onglet Opla, rien d'écrit — le serveur clôt
+    // ses jobs (le cas ne devrait plus se présenter : il ne les sert plus).
+    if (await oplaSortieActive()) {
+      console.log(`[background] Job ${job.id} → opla : Opla n'est plus prise en charge par FillSell — sauté, aucun onglet ouvert`);
+      return { status: "skipped", error: "Opla n'est plus prise en charge par FillSell — job laissé au serveur" };
+    }
     if (!(await oplaAccesAccorde())) {
       // ⛔ 0.6.64 : CE POSTE NE PREND PAS LE JOB — IL NE LE PARQUE PLUS.
       // Louis, nuit du 23/09 : deux profils Chrome sur un même compte, un seul
@@ -10765,6 +10771,24 @@ async function oplaAccesAccorde() {
   catch { return false; }
 }
 
+// ── SORTIE D'OPLA : PLUS AUCUNE ACTION OPLA DE CE POSTE (11/10) ─────────────
+// La sortie (coin_config opla_sortie_le, 10/10 00:00 Paris) n'était lue que
+// par le popup : le service worker relevait encore Opla (alarme quotidienne,
+// veilleur), relisait les annonces Opla publiées et traitait les jobs Opla.
+// La vérité est celle du SERVEUR (contexte.opla.sortie_active de
+// get-pending-jobs, mémorisé par le popup dans CLE_OPLA_SORTIE) ; sans elle
+// (popup jamais ouvert depuis), la date de la sortie fait foi. Lue à chaque
+// usage, jamais en cache. Rien ne change pour les autres plateformes.
+const CLE_OPLA_SORTIE = "fillsell_opla_sortie";
+const OPLA_SORTIE_REPLI_MS = Date.parse("2026-10-10T00:00:00+02:00");
+async function oplaSortieActive() {
+  try {
+    const v = (await chrome.storage.local.get(CLE_OPLA_SORTIE))?.[CLE_OPLA_SORTIE];
+    if (v && typeof v.active === "boolean") return v.active;
+  } catch { /* stockage illisible : la date fait foi */ }
+  return Date.now() >= OPLA_SORTIE_REPLI_MS;
+}
+
 async function assurerScriptsOpla() {
   try {
     const deja = await chrome.scripting.getRegisteredContentScripts({ ids: [OPLA_SCRIPTS_ID] });
@@ -10986,6 +11010,8 @@ async function assurerScriptOplaSurOnglet(tabId) {
 // autres.
 async function rearmerJobsOplaEnAttente(accessToken) {
   let relances = 0;
+  // (11/10) Sortie d'Opla : aucun job Opla n'est remis en file depuis ce poste.
+  if (await oplaSortieActive()) return relances;
   try {
     const rows = await restRequest(
       "cross_post_jobs?select=id,platform_fields&platform=eq.opla&status=eq.needs_user" +
@@ -11999,6 +12025,9 @@ async function reportPlatformSessions(accessToken, { plateformes = ["vinted", "l
   // donnée par l'appelant), et chez un poste qui a la permission d'hôte —
   // partout ailleurs, la sonde reste à l'identique.
   if (!arguments[1]?.plateformes && (await depopAccesAccorde())) plateformes = [...plateformes, "depop"];
+  // (11/10) Sortie d'Opla : la session Opla n'est plus sondée (aucune requête
+  // vers opla.co) — non mesurée, donc rien d'écrit pour elle.
+  if (plateformes.includes("opla") && await oplaSortieActive()) plateformes = plateformes.filter((pf) => pf !== "opla");
   // Throttle PERSISTÉ, par plateforme et à la cadence de CHAQUE plateforme
   // (cf. en-tête de SESSION_PROBE_INTERVALS_MS).
   // `forcer` : le bouton « Vérifier » du popup passe outre — c'est un geste
@@ -13842,6 +13871,7 @@ async function captureVintedItem(vintedItemId) {
 // une vraie réponse du content script (même en échec), jamais le timeout de
 // 5 min (là, on ne sait pas ce qui a été fait). La capture est une LECTURE :
 // la rejouer ne peut rien dupliquer.
+const CAPTURE_VINTED_BORNE_MS = 90_000; // (11/10) attente maximale de la sonde de capture
 async function captureVintedItemUnlocked(vintedItemId) {
   const id = String(vintedItemId ?? "").trim();
   if (!id) return { success: false, error: "id d'article Vinted manquant" };
@@ -13861,9 +13891,24 @@ async function captureVintedItemUnlocked(vintedItemId) {
       return { success: false, error: `onglet de travail Vinted : ${String(e?.message ?? e)}` };
     }
     let injoignable = false;
-    const res = await sendMessageToTab(tabId, { type: "VINTED_ITEM_CAPTURE", vintedItemId: id })
+    // ── BORNÉE ET ÉVEILLÉE (11/10, ltouze 4cb3085f) ──────────────────────────
+    // La sonde pouvait ne JAMAIS répondre sur une page d'annonce : l'attente
+    // (300 s) dépassait la vie du service worker (30 s d'inactivité), le cycle
+    // mourait sans rien écrire, et la file s'arrêtait sur ce job à chaque
+    // passage (19,5 h chez ltouze, trois republications du même article
+    // figées). Désormais : 90 s au plus, le worker tenu éveillé pendant
+    // l'attente (getPlatformInfo toutes les 20 s, comme les relevés), et un
+    // dépassement rendu comme tel (delaiDepasse) — l'appelant l'écrit.
+    // Une capture qui répond ne voit aucune différence. Jamais rejouée ici.
+    let delaiDepasse = false;
+    const reveilCapture = setInterval(() => chrome.runtime.getPlatformInfo().catch(() => {}), 20_000);
+    const res = await sendMessageToTab(tabId, { type: "VINTED_ITEM_CAPTURE", vintedItemId: id }, CAPTURE_VINTED_BORNE_MS)
       .catch((e) => {
         const msg = String(e?.message ?? e);
+        if (msg.startsWith("Timeout:")) {
+          delaiDepasse = true;
+          return { success: false, delaiDepasse: true, error: `lecture de l'annonce sans réponse en ${Math.round(CAPTURE_VINTED_BORNE_MS / 1000)} s` };
+        }
         // ⚠️ ÉLARGI LE 2026-09-07 (claeys59450, 06/09 19:56) : la 2e tentative
         // ne se déclenchait que sur « Receiving end does not exist » / « Could
         // not establish connection ». L'échec réellement observé était
@@ -13877,7 +13922,9 @@ async function captureVintedItemUnlocked(vintedItemId) {
         // rejouer ne peut rien dupliquer (c'est ce qui autorise le retry).
         injoignable = CANAL_COUPE_RE.test(msg) || msg.includes("Could not establish connection");
         return { success: false, error: `sonde injoignable : ${msg}` };
-      });
+      })
+      .finally(() => clearInterval(reveilCapture));
+    if (delaiDepasse) return res;
     if (!injoignable) return res ?? { success: false, error: "réponse vide du content script" };
     derniereErreur = res;
     if (tentative === 1) {
@@ -13898,7 +13945,8 @@ async function capturerEtPersisterDepuisExtension({ vintedItemId, inventaireId, 
   const id = String(vintedItemId ?? "").trim();
   const capture = await captureVintedItemUnlocked(id);
   if (!capture?.success) {
-    return { success: false, error: capture?.error ?? "capture en échec" };
+    // (11/10) Le dépassement de délai voyage jusqu'à processRepublishJob, qui l'écrit.
+    return { success: false, error: capture?.error ?? "capture en échec", ...(capture?.delaiDepasse ? { delaiDepasse: true } : {}) };
   }
 
   // Re-hébergement des photos : remplace le marqueur 'photos_rehebergees' posé
@@ -16121,6 +16169,16 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
   const token = session.access_token;
   const userId = decodeJwtSub(token);
   if (!userId) return { ok: false, reason: "session" };
+  // (11/10) Sortie d'Opla : plus AUCUN relevé Opla, quel que soit le
+  // déclencheur (bouton, app, alarme, veilleur). Une commande servie est close.
+  if (platform === "opla" && await oplaSortieActive()) {
+    if (runId) {
+      await restRequest(`vinted_sync_runs?id=eq.${runId}&status=eq.queued`, token, {
+        method: "PATCH", body: JSON.stringify({ status: "cancelled", finished_at: new Date().toISOString(), erreur: "Opla n'est plus prise en charge par FillSell (sortie du 10/10)" }),
+      }).catch(() => {});
+    }
+    return { ok: false, reason: "opla_sortie" };
+  }
   if (!(await syncMultiOuverte(token, userId))) {
     if (runId) {
       await restRequest(`vinted_sync_runs?id=eq.${runId}&status=eq.queued`, token, {
@@ -16348,6 +16406,8 @@ async function traiterRelevesEnAttente() {
 // « Mes annonces » à la fin de ce cycle (jamais pendant : le poll tient le
 // verrou et l'onglet). Une demande par plateforme et par cycle.
 function demanderRelevePourRattachement(platform) {
+  // (11/10) Opla : la demande est refusée plus loin si la sortie est active
+  // (lancerRelevePlateforme, raison « opla_sortie ») — rien n'est lu.
   if (RELEVE_PLATEFORMES.includes(platform)) relevesDemandes.add(platform);
 }
 
@@ -16372,6 +16432,7 @@ async function releverQuotidien() {
   for (const platform of RELEVE_PLATEFORMES) {
     if (ecartees.includes(platform)) continue;
     if (platform === "depop" && !(await depopAccesAccorde())) continue;
+    if (platform === "opla" && await oplaSortieActive()) continue; // (11/10) sortie d'Opla : plus relevée
     const jobs = await restRequest(
       `cross_post_jobs?user_id=eq.${userId}&platform=eq.${platform}&status=eq.published&action=in.(publish,republish)&select=id&limit=1`, token,
     ).catch(() => []);
@@ -17046,6 +17107,7 @@ async function lireVentesDepopOnglet() {
 async function lancerReleveVentes({ platform, declencheur = "cron" } = {}) {
   if (!VENTES_PLATEFORMES.includes(platform)) return { ok: false, reason: "plateforme" };
   if (platform === "depop" && !(await depopAccesAccorde())) return { ok: false, reason: "depop_acces" };
+  if (platform === "opla" && await oplaSortieActive()) return { ok: false, reason: "opla_sortie" }; // (11/10) plus aucun relevé Opla
   if (releveVentesEnCours) return { ok: false, reason: "deja_en_cours" };
   const session = await getValidSession();
   if (!session?.access_token) return { ok: false, reason: "session" };
@@ -19644,6 +19706,11 @@ async function lireVerifPrioritaires(session) {
 
 async function checkPublishedListings(session) {
   let jobs;
+  // (11/10) Sortie d'Opla : aucune annonce Opla n'est plus relue. Écartées DÈS
+  // la lecture (jamais après) : jamais revérifiées, elles garderaient le plus
+  // vieux last_checked_at et occuperaient la fenêtre des 60 au détriment des
+  // autres plateformes.
+  const sansOpla = await oplaSortieActive();
   try {
     jobs = await restRequest(
       "cross_post_jobs" +
@@ -19656,6 +19723,7 @@ async function checkPublishedListings(session) {
         // ligne — sans lui, un article republié sortait de la détection de
         // vente (le publish d'origine est clos 'cancelled' à la suppression).
         "&status=eq.published&action=in.(publish,republish)&listing_url=not.is.null" +
+        (sansOpla ? "&platform=neq.opla" : "") +
         // limit 30 → 60 (2026-08-24, point F) : la fenêtre de 30 pouvait être
         // entièrement occupée par des jobs en délai de grâce ou en
         // temporisation « unknown » un jour de gros lot — les annonces dues
@@ -19705,7 +19773,8 @@ async function checkPublishedListings(session) {
   // (05/10) Vérification PRIORITAIRE (veillerCommandes) : en tête du cycle,
   // sans délai de grâce ni intervalle de 2 h — une commande neuve dit « relis
   // maintenant », et la lecture ci-dessous reste la seule à conclure.
-  const prioritaires = await lireVerifPrioritaires(session).catch(() => []);
+  const prioritaires = (await lireVerifPrioritaires(session).catch(() => []))
+    .filter((j) => !(sansOpla && j?.platform === "opla"));
   const idsPrio = new Set(prioritaires.map((j) => j.id));
   if (prioritaires.length) console.log(`[background] Détection : ${prioritaires.length} annonce(s) relue(s) en priorité (commande neuve)`);
   const due = [...prioritaires, ...(jobs ?? [])
@@ -21635,6 +21704,12 @@ async function marquerRepublishSupprime(jobId, verdictBrut) {
 // (relancer_republish) et la saisie du champ manquant quand le refus serveur
 // l'a nommé (needs_user_field, même contrat que le chemin publish).
 async function replanifierOuArreterRecreation(accessToken, job, pf, result) {
+  // (11/10, jonathanrabany) Recréation refusée par /selling-restriction : ni
+  // retentative comptée, ni « Republier maintenant » — l'attente de la levée,
+  // dite telle quelle (testé AVANT l'écriture texte du diagnostic ci-dessous).
+  if (result?.sellingRestriction) {
+    return await replanifierRestrictionVenteVinted(accessToken, job, pf, result, true);
+  }
   if (result?.diagnostic) pf.last_diagnostic = String(result.diagnostic).slice(0, 2000);
   if (result?.serverRequired?.length) pf.server_required_fields = result.serverRequired;
   // ── FORMAT DE COLIS REFUSÉ À LA RECRÉATION (0.6.84) ─────────────────────
@@ -21760,6 +21835,52 @@ async function replanifierRestrictionVinted(accessToken, job, pf, result) {
   await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: messageFinal });
   console.warn(`[republish] job ${job.id} : /listing-restriction — reprises épuisées (${reprises}), pause explicite`);
   return { status: "needsUser", error: "restriction Vinted — reprises automatiques épuisées" };
+}
+
+// ── /selling-restriction : VINTED A RESTREINT LES VENTES DU COMPTE (11/10) ──
+// jonathanrabany (@stilyjoe) : le Cendrier, retiré le 07/10 à 22:08, ne se
+// recréait pas — 28 essais en 3,5 jours sous « page de dépôt non atteinte…
+// rien à faire », alors que Vinted renvoyait /items/new sur /selling-restriction.
+// Ce n'est ni un throttle (cf. /listing-restriction, levé en quelques minutes)
+// ni de notre fait : seule la personne peut voir et lever ce que Vinted lui
+// demande. Le job reste pending (jamais needs_user, jamais « Republier
+// maintenant » : il n'y a rien à relancer de notre côté), recul LONG (1 h, 3 h,
+// puis 6 h), le relevé de la page part dans last_diagnostic (objet, lu aussi
+// par pas-de-rouge pour une date de fin), et le texte dit la vérité selon que
+// l'annonce est encore en ligne (étape 'captured') ou déjà retirée ('deleted').
+// Aucune tentative de recréation consommée, aucune unité touchée.
+const SELLING_RESTRICTION_DELAIS_MIN = [60, 180, 360];
+async function replanifierRestrictionVenteVinted(accessToken, job, pf, result, annonceRetiree) {
+  const actuel = await jobStatusNow(accessToken, job.id);
+  if (actuel && actuel !== "processing" && actuel !== "pending") {
+    console.warn(`[republish] job ${job.id} : statut devenu "${actuel}" — reprise restriction de vente ABANDONNÉE.`);
+    return { status: "retry", error: String(result?.error ?? "restriction de vente Vinted") };
+  }
+  if (result?.diagnostic) {
+    pf.last_diagnostic = typeof result.diagnostic === "object" && result.diagnostic !== null
+      ? result.diagnostic
+      : String(result.diagnostic).slice(0, 2000);
+  }
+  const messageVinted = String(result?.restrictionMessage ?? "").trim().slice(0, 500);
+  const prec = pf.selling_restriction && typeof pf.selling_restriction === "object" ? pf.selling_restriction : null;
+  const n = (Number(prec?.n) || 0) + 1;
+  const delaiMin = SELLING_RESTRICTION_DELAIS_MIN[Math.min(n - 1, SELLING_RESTRICTION_DELAIS_MIN.length - 1)];
+  const maintenant = new Date().toISOString();
+  pf.selling_restriction = { n, depuis: prec?.depuis ?? maintenant, derniere: maintenant };
+  pf.next_action_after = new Date(Date.now() + delaiMin * 60_000).toISOString();
+  delete pf.needs_user_source;
+  const titre = String(job.title ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
+  const debut = "Vinted a restreint les mises en vente de ton compte : ouvre " + VO.domaineVintedAffiche() +
+    " dans " + VO.navigateurCourt() + " pour voir ce que Vinted demande. ";
+  const etat = annonceRetiree
+    ? `${titre ? `Ton annonce « ${titre} »` : "Ton annonce"} a été retirée avant la restriction et attend sa remise en ligne : ` +
+      "rien d'autre n'est retiré tant que la restriction n'est pas levée ; la remise en ligne repartira seule ensuite. " +
+      "Rien n'est perdu, toutes ses données sont sauvegardées."
+    : "Ton annonce est toujours en ligne : rien n'est retiré tant que la restriction n'est pas levée ; la republication repartira seule ensuite.";
+  const suffixe = messageVinted ? ` Message affiché par Vinted : « ${messageVinted} »` : "";
+  await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: debut + etat + suffixe });
+  console.warn(`[republish] job ${job.id} : /selling-restriction (${annonceRetiree ? "annonce retirée" : "annonce en ligne"}) — nouvel essai dans ${delaiMin} min (n°${n})`);
+  return { status: "retry", error: `restriction de vente Vinted — nouvel essai dans ${delaiMin} min` };
 }
 
 // ── Conclusion COMMUNE après soumission d'une recréation (2026-08-12) ────────
@@ -22898,6 +23019,37 @@ async function rearmerSuppressionNonProuvee(accessToken, job, errorMsg) {
   });
 }
 
+// ── UNE REPUBLICATION RETENUE LE DIT, ELLE NE SE TAIT PLUS (11/10) ───────────
+// jonathanrabany : 8 republications Vinted à l'étape 'captured', servies 61 à
+// 62 fois, jamais démarrées. L'invariant « une seule annonce hors ligne » avait
+// raison de ne rien retirer (le Cendrier, supprimé le 07/10, ne revenait pas :
+// compte Vinted sous /selling-restriction) — mais il rendait « skipped » SANS
+// RIEN ÉCRIRE : la réservation comptait chaque service, get-pending-jobs les
+// mettait de côté « n'arrive pas à démarrer… ferme Chrome », diagnostic faux.
+// Désormais : une écriture à chaque fois que l'invariant retient le job (on
+// n'arrive ici qu'une fois l'attente précédente échue, la porte de
+// next_action_after saute le job avant) — le job RESTE pending, porte
+// retenue_hors_ligne {job, titre, depuis} et une attente de 30 min ; l'écriture
+// pending rend la réservation (ecrire_statut_job_extension) et une attente
+// programmée n'est jamais comptée « sans démarrage » (tacheAMettreDeCote).
+// Rien n'est retiré. Le frère revenu en ligne, le passage suivant efface la
+// marque et le job repart comme avant.
+async function retenirDerriereAnnonceHorsLigne(accessToken, job, pf, frere) {
+  const prec = pf.retenue_hors_ligne && typeof pf.retenue_hors_ligne === "object" ? pf.retenue_hors_ligne : null;
+  const titre = String(frere?.title ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
+  pf.retenue_hors_ligne = {
+    job: frere?.id ?? null,
+    titre: titre || null,
+    depuis: prec && String(prec.job ?? "") === String(frere?.id ?? "") && prec.depuis ? prec.depuis : new Date().toISOString(),
+  };
+  pf.next_action_after = new Date(Date.now() + 30 * 60_000).toISOString();
+  delete pf.needs_user_source;
+  const msg = `En attente : ${titre ? `ton annonce « ${titre} »` : "ton annonce retirée"} a été retirée et n'est pas encore revenue en ligne. ` +
+    "Les autres republications attendent sa remise en ligne, pour ne jamais laisser deux annonces hors ligne. Rien n'a été retiré.";
+  await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: msg });
+  return msg;
+}
+
 async function processRepublishJobPlateforme(job, accessToken) {
   const pf = { ...(job.platform_fields ?? {}) };
   const step = pf.republish_step ?? "a_capturer";
@@ -23227,17 +23379,20 @@ async function processRepublishJobPlateforme(job, accessToken) {
       const horsLigne = await restRequest(
         `cross_post_jobs?user_id=eq.${decodeJwtSub(accessToken)}&action=eq.republish` +
         `&platform=eq.${job.platform}&id=neq.${job.id}&status=in.(pending,processing)` +
-        `&platform_fields->>republish_step=eq.deleted&select=id&limit=1`,
+        `&platform_fields->>republish_step=eq.deleted&select=id,title&limit=1`,
         accessToken, { headers: { Prefer: "return=representation" } },
       );
       if (Array.isArray(horsLigne) && horsLigne.length) {
         console.log(`[republish] job ${job.id} : retrait reporté — une annonce ${label} du compte est déjà hors ligne (job ${horsLigne[0].id})`);
-        return { status: "skipped", error: `une annonce ${label} est déjà hors ligne — sa recréation passe d'abord` };
+        // (11/10) Retenu, et DIT : plus jamais un « skipped » muet (cf. retenirDerriereAnnonceHorsLigne).
+        const msg = await retenirDerriereAnnonceHorsLigne(accessToken, job, pf, horsLigne[0]);
+        return { status: "skipped", error: msg };
       }
     } catch (e) {
       console.warn(`[republish] job ${job.id} : invariant hors-ligne invérifiable (${e?.message ?? e}) — retrait reporté`);
       return { status: "skipped", error: "invariant hors-ligne invérifiable — retrait reporté" };
     }
+    delete pf.retenue_hors_ligne; // (11/10) plus retenu : la marque part avec l'écriture suivante
 
     pf.processing_since = new Date().toISOString();
     delete pf.next_action_after;
@@ -23658,6 +23813,33 @@ async function processRepublishJob(job, accessToken) {
         ...(Number.isFinite(Number(cap.httpStatus)) ? { http: Number(cap.httpStatus) } : {}),
       };
 
+      // ── LA LECTURE NE RÉPOND PAS : ÉCRIT, ESPACÉ, PUIS ARRÊTÉ (11/10) ────
+      // ltouze (4cb3085f) : la sonde de capture ne répondait jamais sur cette
+      // annonce, le cycle mourait sans écrire, la file restait derrière.
+      // Bornée à 90 s (captureVintedItemUnlocked), elle s'écrit ici : deux
+      // reprises espacées (30 min) — un aléa passe —, puis un arrêt dit, au
+      // 3e dépassement. Rien n'a été touché dans aucun cas ; les autres
+      // republications passent pendant l'attente.
+      if (cap.delaiDepasse) {
+        const precD = pf.capture_sans_reponse && typeof pf.capture_sans_reponse === "object" ? pf.capture_sans_reponse : null;
+        const nD = (Number(precD?.n) || 0) + 1;
+        pf.capture_sans_reponse = { n: nD, depuis: precD?.depuis ?? pf.capture_echec.at, derniere: pf.capture_echec.at };
+        if (nD < 3) {
+          pf.next_action_after = new Date(Date.now() + 30 * 60_000).toISOString();
+          delete pf.needs_user_source;
+          const msgD = "La lecture de ton annonce sur Vinted n'a pas répondu à temps. Rien n'a été touché, ton annonce est intacte. " +
+            "Nouvel essai automatique dans une demi-heure ; tes autres republications passent en attendant.";
+          await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: msgD });
+          console.warn(`[republish] job ${job.id} : capture sans réponse (${nD}/3) — nouvel essai dans 30 min`);
+          return { status: "skipped", error: `capture sans réponse (${nD}/3)` };
+        }
+        const msgF = `Republication annulée avant toute suppression : la lecture de ton annonce sur Vinted ne répond pas (${nD} essais espacés). ` +
+          "Ton annonce est intacte. Tu peux la relancer plus tard depuis l'app.";
+        await updateJobStatus(accessToken, job.id, "failed", { platform_fields: pf, error: msgF });
+        console.warn(`[republish] job ${job.id} : capture sans réponse ${nD} fois — arrêt dit (failed)`);
+        return { status: "failed", error: msgF };
+      }
+
       // ── ANTI-ROBOT : ON SE CALME, ON N'ACCUSE PERSONNE (2026-09-23) ──────
       // AVANT ce bloc, un 403 arrivait ici sous l'étiquette « session Vinted
       // refusée » (les deux codes étaient confondus dans lireDetailArticle) et
@@ -23759,6 +23941,7 @@ async function processRepublishJob(job, accessToken) {
 
     pf.capture_id = cap.capture_id;
     pf.republish_step = "captured";
+    delete pf.capture_sans_reponse; // (11/10) la lecture a répondu : le compte de dépassements repart de zéro
     // Le titre du job reste celui de l'inventaire, posé par la RPC : c'est de
     // l'affichage (popup, cartes), et update-job-status a un contrat de champs
     // qui lui est propre — on ne lui passe pas un `title` non prévu pour du
@@ -23842,17 +24025,21 @@ async function processRepublishJob(job, accessToken) {
         // Leboncoin hors ligne n'a pas à retenir un retrait Vinted — les deux
         // chaînes ne partagent ni page, ni fenêtre hors ligne.
         `&platform=eq.vinted&id=neq.${job.id}&status=in.(pending,processing)` +
-        `&platform_fields->>republish_step=eq.deleted&select=id&limit=1`,
+        `&platform_fields->>republish_step=eq.deleted&select=id,title&limit=1`,
         accessToken, { headers: { Prefer: "return=representation" } },
       );
       if (Array.isArray(horsLigne) && horsLigne.length) {
         console.log(`[republish] job ${job.id} : suppression reportée — une annonce du compte est déjà hors ligne (job ${horsLigne[0].id}), sa recréation passe d'abord`);
-        return { status: "skipped", error: "une annonce est déjà hors ligne — sa recréation passe d'abord" };
+        // (11/10, jonathanrabany) Retenu, et DIT : plus jamais un « skipped »
+        // muet servi 61 fois (cf. retenirDerriereAnnonceHorsLigne).
+        const msg = await retenirDerriereAnnonceHorsLigne(accessToken, job, pf, horsLigne[0]);
+        return { status: "skipped", error: msg };
       }
     } catch (e) {
       console.warn(`[republish] job ${job.id} : invariant hors-ligne invérifiable (${e?.message ?? e}) — suppression reportée par prudence`);
       return { status: "skipped", error: "invariant hors-ligne invérifiable — suppression reportée" };
     }
+    delete pf.retenue_hors_ligne; // (11/10) plus retenu : la marque part avec l'écriture suivante
 
     try {
       // ── Borne de fraîcheur À L'EXÉCUTION (point 3 validé, 2026-08-05) ────
@@ -24210,6 +24397,11 @@ async function processRepublishJob(job, accessToken) {
         // content script rend ce motif avant tout geste, les deux sont
         // exclusifs. Les AUTRES motifs (DataDome, connexion, photos pas
         // arrivées, canal coupé…) gardent leur chemin inchangé.
+        // (11/10) /selling-restriction : restriction des VENTES du compte,
+        // annonce intacte — jamais le générique « rien à faire ».
+        if (result?.sellingRestriction) {
+          return await replanifierRestrictionVenteVinted(accessToken, job, pf, result, false);
+        }
         if (result?.listingRestriction) {
           return await replanifierRestrictionVinted(accessToken, job, pf, result);
         }

@@ -292,7 +292,8 @@
     "selftest:releve-fin-claire": "node scripts/releve-fin-claire-selftest.mjs",
     "selftest:rattachement-avant-stock": "node scripts/rattachement-avant-stock-selftest.mjs",
     "selftest:synchroniser-repli-file": "node scripts/synchroniser-repli-file-selftest.mjs",
-    "selftest:sonde-vinted-401": "node scripts/sonde-vinted-401-selftest.mjs"
+    "selftest:sonde-vinted-401": "node scripts/sonde-vinted-401-selftest.mjs",
+    "selftest:extension-0-6-107": "node scripts/extension-0-6-107-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

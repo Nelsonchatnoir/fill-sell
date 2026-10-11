@@ -173,7 +173,8 @@ await cas("d'. le contexte serveur : seul un domaine Vinted étranger connu est 
 await cas("e. manifest : aucune permission obligatoire nouvelle ; domaines étrangers seulement en optionnel (+ WAR)", () => {
   const man = JSON.parse(lire("chrome-extension/manifest.json").replace(/^﻿/, ""));
   const ref = JSON.parse(execFileSync("git", ["-C", RACINE, "show", "02f9f67:chrome-extension/manifest.json"]).toString().replace(/^﻿/, ""));
-  assert.equal(man.version, "0.6.106");
+  // (11/10) La 0.6.107 PORTE ce chantier : on exige « 0.6.106 ou après ».
+  assert.ok(/^0\.6\.(\d+)$/.test(man.version) && Number(man.version.split(".")[2]) >= 106, `version ${man.version} ≥ 0.6.106`);
   assert.deepEqual(man.permissions, ref.permissions, "permissions inchangées");
   assert.deepEqual(man.host_permissions, ref.host_permissions, "host_permissions inchangées");
   assert.deepEqual(man.content_scripts, ref.content_scripts, "content_scripts inchangés");

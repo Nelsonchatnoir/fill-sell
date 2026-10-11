@@ -3008,7 +3008,14 @@ async function remplirFormulaireVinted(job) {
   // needs_user sur ce motif. needsUser:true CONSERVÉ pour le flux publish :
   // ré-armement borné historique (rearmBounded), qui n'écrit jamais
   // needs_user non plus (pending borné puis failed).
-  if (location.pathname.startsWith("/listing-restriction")) {
+  // (11/10, jonathanrabany) /selling-restriction : Vinted RESTREINT les ventes
+  // du compte (pas un throttle de volume). Le cas tombait dans le « pathname
+  // inattendu » générique — « nouvelle tentative au prochain passage, rien à
+  // faire » pendant 3,5 jours sur une annonce déjà retirée. Même relevé du
+  // message, motif dédié (sellingRestriction) : le background ne promet plus
+  // rien et dit à la personne d'aller voir ce que Vinted demande.
+  const restrictionVente = location.pathname.startsWith("/selling-restriction");
+  if (location.pathname.startsWith("/listing-restriction") || restrictionVente) {
     // RELEVÉ du message Vinted (2026-08-29, complément — cas nadegemarcelin) :
     // seule l'utilisatrice voit cette page, et elle ne la voit justement PAS
     // (onglet de travail invisible). On relève le contenu VISIBLE — titre,
@@ -3040,6 +3047,20 @@ async function remplirFormulaireVinted(job) {
       ? [releve.titre, releve.corps.startsWith(releve.titre) ? releve.corps.slice(releve.titre.length).trim() : releve.corps]
           .filter(Boolean).join(" — ").slice(0, 500)
       : "";
+    if (restrictionVente) {
+      return {
+        success: false,
+        needsUser: true,
+        sellingRestriction: true,
+        restrictionMessage: messageVinted || null,
+        diagnostic: releve ? { signal: "selling_restriction", ...releve } : { signal: "selling_restriction", url: String(location.href).slice(0, 300) },
+        error:
+          "RESTRICTION VINTED : Vinted a restreint les mises en vente de ce compte " +
+          "(page /selling-restriction à la place du formulaire de dépôt). Ouvrir " + VINTED_DOMAINE_PAGE +
+          " dans " + navigateurCourtPage() + " pour voir ce que Vinted demande." +
+          (messageVinted ? ` Message de Vinted : « ${messageVinted} »` : ""),
+      };
+    }
     return {
       success: false,
       needsUser: true,

@@ -122,6 +122,8 @@ const state = {
   oplaRelie: null,
   // La bascule de la sortie (interrupteur serveur, le 10/10) est-elle passée ?
   oplaSortieActive: false,
+  // (11/10) Le serveur a-t-il répondu sur la sortie ? (sinon la date fait foi)
+  oplaSortieConnue: false,
   // Depop (09/10) : accès dans CE navigateur, jobs en file, ouverture serveur.
   depopAcces: null,
   depopEnAttente: [],
@@ -256,6 +258,13 @@ async function fetchPendingJobs(accessToken) {
   const relie = data?.contexte?.opla?.relie;
   state.oplaRelie = relie === true || relie === false ? relie : null;
   state.oplaSortieActive = data?.contexte?.opla?.sortie_active === true;
+  // (11/10) Mémorisée pour le service worker (oplaSortieActive) : il ne relève,
+  // ne sonde ni ne relit plus Opla après la sortie. Seulement une réponse lisible.
+  const sortieServeur = data?.contexte?.opla?.sortie_active;
+  state.oplaSortieConnue = sortieServeur === true || sortieServeur === false;
+  if (state.oplaSortieConnue) {
+    chrome.storage.local.set({ fillsell_opla_sortie: { active: sortieServeur, le: new Date().toISOString() } }).catch(() => {});
+  }
   state.depopEnAttente = jobs.filter((j) => j.platform === "depop");
   state.depopOuverte = data?.contexte?.depop?.ouverte === true;
   state.vintedEtranger = FILLSELL_VINTED.domaineEtrangerDuServeur(data?.contexte?.vinted_etranger);
@@ -414,6 +423,14 @@ const PLATFORM_LOGO = {
 // La ligne Depop n'existe que là où elle a un sens (cf. PLATFORMS).
 function depopVisible() {
   return state.depopOuverte === true || state.depopAcces === true || state.depopEnAttente.length > 0;
+}
+// (11/10) Sortie d'Opla : passée, la ligne Opla (et « Autoriser Opla ») n'existe
+// plus dans le popup, relié ou non. Le serveur fait foi (contexte.opla.
+// sortie_active) ; sans réponse lisible, la date de la sortie.
+const OPLA_SORTIE_REPLI_MS = Date.parse("2026-10-10T00:00:00+02:00");
+function oplaSortiePasse() {
+  if (state.oplaSortieConnue === true) return state.oplaSortieActive === true;
+  return Date.now() >= OPLA_SORTIE_REPLI_MS;
 }
 function logoHtml(key, size) {
   const l = PLATFORM_LOGO[key];
@@ -758,7 +775,7 @@ function calculerEtats() {
   for (const p of PLATFORMS) {
     // (02/10, sortie d'Opla) Compte sans dressing Opla synchronisé : Opla n'a
     // aucun état — ni « à autoriser », ni bandeau d'alerte.
-    if (p.optionnel && state.oplaRelie === false) { state.etats[p.key] = { etat: null, sous: null }; continue; }
+    if (p.optionnel && (state.oplaRelie === false || oplaSortiePasse())) { state.etats[p.key] = { etat: null, sous: null }; continue; }
     if (p.depop && !depopVisible()) { state.etats[p.key] = { etat: null, sous: null }; continue; }
     state.etats[p.key] = state.session ? etatPlateforme(p, sondeFraichePour(p.key)) : { etat: null, sous: null };
   }
@@ -934,6 +951,8 @@ function renderPlateformes() {
     // Accès accordé : ligne ordinaire, mêmes états et même « Vérifier ».
     // (02/10, sortie d'Opla) Pas de dressing Opla synchronisé : pas de ligne.
     if (p.optionnel && state.oplaRelie === false) continue;
+    // (11/10) Sortie d'Opla passée : plus de ligne Opla ni d'« Autoriser Opla ».
+    if (p.optionnel && oplaSortiePasse()) continue;
     // ── VINTED HORS DE FRANCE (0.6.106) : « Autoriser vinted.<pays> » ───────
     // Montré SEULEMENT quand le serveur désigne un domaine étranger
     // (contexte.vinted_etranger) et que ce navigateur ne l'a pas encore
