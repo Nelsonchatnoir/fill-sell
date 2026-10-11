@@ -1,5 +1,6 @@
 import { NativePurchases } from '@capgo/native-purchases';
 import { Capacitor } from '@capacitor/core';
+import { classerIssueAchat } from './issueAchat.js';
 
 export const PRODUCT_IDS = {
   sub: 'app.fillsell.premium.sub',        // Founder (fermé aux nouveaux, gardé pour restore)
@@ -106,7 +107,12 @@ export const purchasePremium = async (productId = PRODUCT_IDS.sub, appAccountTok
     return { isPremium, receipt: result?.receipt ?? null, purchaseToken: result?.purchaseToken ?? null, cancelled: false };
   } catch (e) {
     console.error('[IAP] purchasePremium error — code:', e?.code, 'message:', e?.message);
-    if (e?.code === 'USER_CANCELLED') return { isPremium: false, receipt: null, cancelled: true };
+    // (12/10, A8) Le plugin rejette par MESSAGE (« User cancelled »…), jamais
+    // par le code USER_CANCELLED : l'annulation n'était jamais reconnue.
+    const issue = classerIssueAchat(e);
+    if (issue.issue === 'annule') return { isPremium: false, receipt: null, cancelled: true, issue };
+    if (issue.issue === 'en_attente') return { isPremium: false, receipt: null, cancelled: false, enAttente: true, issue };
+    if (e && typeof e === 'object') e.issueAchat = issue;
     throw e;
   }
 };
@@ -133,7 +139,9 @@ export const purchaseCoins = async (productId, appAccountToken = undefined) => {
     return { receipt: result?.receipt ?? null, jwsRepresentation: result?.jwsRepresentation ?? null, purchaseToken: result?.purchaseToken ?? null, cancelled: false };
   } catch (e) {
     console.error('[IAP] purchaseCoins error — code:', e?.code, 'message:', e?.message);
-    if (e?.code === 'USER_CANCELLED') return { receipt: null, jwsRepresentation: null, purchaseToken: null, cancelled: true };
+    const issue = classerIssueAchat(e);
+    if (issue.issue === 'annule') return { receipt: null, jwsRepresentation: null, purchaseToken: null, cancelled: true, issue };
+    if (e && typeof e === 'object') e.issueAchat = issue;
     throw e;
   }
 };
