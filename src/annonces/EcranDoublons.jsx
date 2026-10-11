@@ -79,6 +79,15 @@ export default function EcranDoublons({ lang, items, doublons, onClose, onDecisi
   );
   const paire = file[0] ?? null;
   const orphelin = !!paire?.orphelin;
+  // (11/10, Louis) Le bandeau « Noté » concerne la paire À LAQUELLE on vient de
+  // répondre : affiché au-dessus de la SUIVANTE, il faisait croire que la
+  // même question revenait. Il le dit, puis s'efface (minuterie locale, aucune
+  // relecture de la base).
+  useEffect(() => {
+    if (!fait) return undefined;
+    const t = setTimeout(() => setFait(null), 4000);
+    return () => clearTimeout(t);
+  }, [fait]);
   // (2026-09-27) « Déjà vendu ? » : une annonce encore en ligne ressemble à un
   // objet VENDU. « Oui » réunit les deux fiches ET retire l'annonce encore en
   // ligne (le serveur arme le retrait) ; « Non » : deux articles différents.
@@ -186,8 +195,12 @@ export default function EcranDoublons({ lang, items, doublons, onClose, onDecisi
                 : (fr ? 'Est-ce le même article ?' : 'Is it the same item?')}
             </div>
             {paire && (
+              // (11/10, Louis) Le vrai nombre restant — « 1 sur 43 » restait à 1
+              // à chaque réponse et se lisait comme la même question.
               <div style={{ marginTop: 2, fontSize: 11.5, fontWeight: 500, color: A.texteSecondaire, fontVariantNumeric: 'tabular-nums' }}>
-                {fr ? `1 sur ${file.length}` : `1 of ${file.length}`}
+                {fr
+                  ? `${file.length} ${file.length > 1 ? 'questions restantes' : 'question restante'}${traitees.size ? ` · ${traitees.size} ${traitees.size > 1 ? 'réponses enregistrées' : 'réponse enregistrée'}` : ''}`
+                  : `${file.length} ${file.length > 1 ? 'questions left' : 'question left'}${traitees.size ? ` · ${traitees.size} ${traitees.size > 1 ? 'answers saved' : 'answer saved'}` : ''}`}
               </div>
             )}
           </div>
@@ -198,7 +211,9 @@ export default function EcranDoublons({ lang, items, doublons, onClose, onDecisi
         {fait && (
           <div className="rv-up" style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '6px 0 12px', padding: '10px 12px', borderRadius: 12, background: A.menthe, border: `1px solid ${A.mentheBord}` }}>
             <span aria-hidden="true" style={{ color: A.tealDeep, fontSize: 13, fontWeight: 700, lineHeight: 1 }}>✓</span>
-            <span style={{ flex: 1, minWidth: 0, fontSize: 12, lineHeight: 1.45, color: A.ink }}>{fait}</span>
+            <span style={{ flex: 1, minWidth: 0, fontSize: 12, lineHeight: 1.45, color: A.ink }}>
+              {paire ? (fr ? `Paire précédente — ${fait}` : `Previous pair — ${fait}`) : fait}
+            </span>
           </div>
         )}
         {info && (

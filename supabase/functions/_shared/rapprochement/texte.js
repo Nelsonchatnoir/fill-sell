@@ -171,6 +171,80 @@ const VOISINES = {
   bleu: ['gris', 'noir', 'vert', 'violet'], rouge: ['rose', 'orange', 'marron', 'violet'], rose: ['rouge', 'violet', 'orange', 'beige'],
   vert: ['bleu', 'jaune', 'marron', 'gris', 'beige'], jaune: ['orange', 'beige', 'creme', 'vert', 'marron'], orange: ['rouge', 'jaune', 'marron', 'rose', 'beige'], violet: ['rose', 'bleu', 'rouge'],
 };
+// ── ATTRIBUT DISTINCTIF (11/10, Louis — « Est-ce le même article ? » en boucle)
+// Copie FIDÈLE de la règle en base (mig 20261011190000 : doublon_couleurs,
+// doublon_nombres, doublon_attribut_distinctif — la base garde la question,
+// le moteur ne la produit plus, ni ne rattache à une autre variante).
+// « Gris et Rose » / « Noir et Rose » : chacun nomme une couleur que l'autre
+// n'a pas → deux articles, sans question. Tolérance : deux titres d'UNE
+// couleur, voisines, l'une nommée par une nuance (anthracite ~ noir).
+export const D_BASES = {
+  blanc: ['blanc', 'blanche', 'blancs', 'blanches'], noir: ['noir', 'noire', 'noirs', 'noires'], gris: ['gris', 'grise', 'grises'],
+  bleu: ['bleu', 'bleue', 'bleus', 'bleues'], rouge: ['rouge', 'rouges'], rose: ['rose', 'roses', 'pink'],
+  vert: ['vert', 'verte', 'verts', 'vertes'], jaune: ['jaune', 'jaunes'], orange: ['orange', 'oranges'],
+  violet: ['violet', 'violette', 'violets', 'violettes'], marron: ['marron', 'marrons', 'brun', 'brune'], beige: ['beige', 'beiges'],
+};
+export const D_NUANCES = {
+  blanc: ['ecru', 'ivoire', 'creme', 'vanille'], beige: ['sable', 'nude', 'camel', 'taupe', 'chameau'],
+  marron: ['chocolat', 'cognac', 'caramel', 'noisette', 'chataigne', 'tabac'], gris: ['anthracite', 'chine', 'argent', 'argente', 'argentee', 'acier'],
+  bleu: ['marine', 'turquoise', 'ciel', 'azur', 'indigo', 'denim', 'cobalt', 'navy'], rouge: ['bordeaux', 'carmin', 'cerise', 'grenat'],
+  rose: ['fuchsia', 'framboise', 'saumon', 'poudre', 'magenta'], vert: ['kaki', 'olive', 'emeraude', 'menthe', 'sapin', 'pistache', 'anis'],
+  jaune: ['moutarde', 'citron', 'ocre', 'curry', 'dore', 'doree'], orange: ['corail', 'abricot', 'rouille', 'brique', 'terracotta', 'cuivre'],
+  violet: ['mauve', 'lilas', 'prune', 'lavande', 'parme', 'aubergine', 'pourpre'],
+};
+export const D_VOISINES = {
+  blanc: ['beige', 'gris'], beige: ['blanc', 'marron', 'jaune', 'orange', 'rose', 'gris'], marron: ['beige', 'orange', 'jaune', 'rouge', 'vert', 'gris', 'noir'],
+  noir: ['gris', 'marron', 'bleu'], gris: ['noir', 'blanc', 'beige', 'bleu', 'vert', 'marron'], bleu: ['gris', 'noir', 'vert', 'violet'],
+  rouge: ['rose', 'orange', 'marron', 'violet'], rose: ['rouge', 'violet', 'orange', 'beige'], vert: ['bleu', 'jaune', 'marron', 'gris', 'beige'],
+  jaune: ['orange', 'beige', 'vert', 'marron'], orange: ['rouge', 'jaune', 'marron', 'rose', 'beige'], violet: ['rose', 'bleu', 'rouge'],
+};
+const D_MULTI = / (multicolore|multicolor|motifs?|fleuri|fleurs?|imprime|rayures?|raye|rayee|carreaux|leopard|pois|camouflage|arc en ciel) /;
+function dNorm(s) {
+  return ' ' + String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/œ/g, 'o').replace(/æ/g, 'e').replace(/[’'\-_/.,;:!?()[\]{}"«»+*&#]/g, ' ').replace(/\s+/g, ' ').trim() + ' ';
+}
+export function couleursDistinctif(titre) {
+  const v = dNorm(titre);
+  const base = [], nuance = [];
+  for (const [k, ms] of Object.entries(D_BASES)) if (ms.some((m) => v.includes(` ${m} `)) && !base.includes(k)) base.push(k);
+  for (const [k, ms] of Object.entries(D_NUANCES)) if (ms.some((m) => v.includes(` ${m} `)) && !nuance.includes(k) && !base.includes(k)) nuance.push(k);
+  return { base, nuance, multi: D_MULTI.test(v) };
+}
+export function nombresObjet(titre) {
+  const brut = String(titre ?? '').toLowerCase();
+  const s = ' ' + brut.replace(/[^a-z0-9àâäçéèêëîïôöùûüœ,.]+/g, ' ') + ' ';
+  const out = new Set();
+  const tous = (re, f) => { for (const m of s.matchAll(re)) out.add(f(m)); };
+  tous(/ lot de (\d+)(?= )/g, (m) => 'q' + m[1]);
+  tous(/ (\d+) ?(?:pots?|pieces?|pièces?|pcs|unites?|unités?|paires?|exemplaires?|couvercles?|bouteilles?|verres?|assiettes?|tasses?|cartes?|livres?|tomes?|figurines?)(?= )/g, (m) => 'q' + m[1]);
+  tous(/ x ?(\d+)(?= )/g, (m) => 'q' + m[1]);
+  tous(/ (\d+) ?x(?= )/g, (m) => 'q' + m[1]);
+  tous(/ (\d+(?:[.,]\d+)?) ?(ml|cl|l|litres?|g|kg|cm|mm|m|go|to|mah|w|v)(?= )/g, (m) => 'u' + m[1].replace(',', '.') + m[2]);
+  tous(/ (?:taille|t|pointure|p) ?(\d{2,3})(?= )/g, (m) => 't' + m[1]);
+  tous(/ (\d+) ?(ans|mois)(?= )/g, (m) => 'a' + m[1] + m[2]);
+  const r = ' ' + brut.replace(/[-_/]/g, '').replace(/[^a-z0-9]+/g, ' ') + ' ';
+  for (const m of r.matchAll(/ ([a-z]{1,4}\d{2,}[a-z]{0,2})(?= )/g)) out.add('r' + m[1]);
+  return out;
+}
+/** 'couleur' | 'nombre' | null — même verdict que doublon_attribut_distinctif (titres). */
+export function attributDistinctif(titreA, titreB) {
+  const ca = couleursDistinctif(titreA), cb = couleursDistinctif(titreB);
+  if (!ca.multi && !cb.multi) {
+    const at = [...new Set([...ca.base, ...ca.nuance])], bt = [...new Set([...cb.base, ...cb.nuance])];
+    if (at.length && bt.length) {
+      const aSeul = at.filter((x) => !bt.includes(x)), bSeul = bt.filter((x) => !at.includes(x));
+      if (aSeul.length && bSeul.length) {
+        const tolere = at.length === 1 && bt.length === 1 && (D_VOISINES[at[0]] ?? []).includes(bt[0])
+          && (ca.nuance.length === 1 || cb.nuance.length === 1);
+        if (!tolere) return 'couleur';
+      }
+    }
+  }
+  const na = nombresObjet(titreA), nb = nombresObjet(titreB);
+  if (na.size && nb.size && [...na].some((x) => !nb.has(x)) && [...nb].some((x) => !na.has(x))) return 'nombre';
+  return null;
+}
+
 export function couleursCompatibles2(A, B) {
   if (!A.set.size || !B.set.size || A.multi || B.multi) return null;
   for (const a of A.set) { if (B.set.has(a)) return true; for (const v of VOISINES[a] || []) if (B.set.has(v)) return true; }

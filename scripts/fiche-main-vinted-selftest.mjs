@@ -86,8 +86,15 @@ console.log('2. Jamais la photo seule, jamais le titre seul : la question, hors 
   const H = main(1, 'Robe Sézane Lou fleurie taille 38', P('sez', 100), { taille: '38' });
   const etr = vin(3, 'Lot de 3 bodies bébé 6 mois', P('sez', 100));
   const q1 = question(plan(d([H, etr], { vintedAJuger: ['3'] })));
-  ok(!fusion(plan(d([H, etr], { vintedAJuger: ['3'] }))) && q1.length === 1 && q1[0].garde === '1' && q1[0].absorbe === '3',
-    'même photo, titre étranger : la question (gardée = la fiche de la personne), jamais une fusion');
+  // (11/10, règle de Nico — Louis) Un attribut distinctif différent écarte la
+  // paire d'office : robe « taille 38 » / « lot de 3 bodies 6 mois » → deux
+  // articles, sans question (remplace « même photo, titre étranger → question »).
+  ok(!fusion(plan(d([H, etr], { vintedAJuger: ['3'] }))) && q1.length === 0,
+    'même photo, titre étranger AUX ATTRIBUTS DIFFÉRENTS (taille 38 / lot de 3, 6 mois) : deux articles, ni question ni fusion');
+  const etrSans = vin(8, 'Lampe de salon', P('sez', 100));
+  const q1b = question(plan(d([H, etrSans], { vintedAJuger: ['8'] })));
+  ok(!fusion(plan(d([H, etrSans], { vintedAJuger: ['8'] }))) && q1b.length === 1 && q1b[0].garde === '1' && q1b[0].absorbe === '8',
+    'même photo, titre étranger SANS attribut distinctif : la question (gardée = la fiche de la personne), jamais une fusion');
   const t = vin(4, 'Robe Sézane Lou fleurie taille 38', P('aut', 700), { taille: '38' });
   const q2 = plan(d([H, t], { vintedAJuger: ['4'] }));
   ok(!fusion(q2) && question(q2).length === 1 && question(q2)[0].motif === 'titre_sans_photo', 'même titre, aucune photo commune : la question, jamais une fusion');
@@ -99,7 +106,7 @@ console.log('2. Jamais la photo seule, jamais le titre seul : la question, hors 
   ok(!fusion(q3) && question(q3).length === 1, 'photo seulement proche, même titre : la question');
   const taille = vin(6, 'Robe Sézane modèle Lou à fleurs 42', P('sez', 100), { taille: '42' });
   const q4 = plan(d([H, taille], { vintedAJuger: ['6'] }));
-  ok(!fusion(q4) && question(q4).length === 1 && /taille/.test(question(q4)[0].motif), 'même photo, tailles contradictoires (38 / 42) : la question');
+  ok(!fusion(q4) && question(q4).length === 0, 'même photo, tailles contradictoires (38 / 42) : deux articles, sans question (règle du 11/10)');
   const rien = vin(7, 'Lampe de chevet laiton', P('lam', 400));
   ok(regle(plan(d([H, rien], { vintedAJuger: ['7'] }))).length === 0, 'aucun rapport : aucun geste');
 }

@@ -82,7 +82,14 @@ console.log('2. Jamais la photo seule, jamais le titre seul');
   ok(d3?.decision === 'a_verifier', 'titre identique sans photo commune → à vérifier, jamais une fusion');
   const taille = annonce('a4', 'leboncoin', 'Jupe bleu marine taille XS', [memePhoto('j1d', 11), memePhoto('j2d', 12)], { taille: '34 - XS' });
   const { d: d4 } = decisionDe(donneesDe(F, [taille]), 'Aa4');
-  ok(d4?.decision === 'a_verifier', 'même photo, taille contradictoire (M / XS) → à vérifier (Nico, point 2)');
+  // (11/10, règle de Nico — Louis) remplace « taille contradictoire → à vérifier » (point 2) :
+  // une taille différente écarte la paire d'office — ni fusion, ni question.
+  ok(d4?.decision !== 'a_verifier' && !String(d4?.decision ?? '').startsWith('fusion'),
+    `même photo, taille contradictoire (M / XS) → deux articles, ni question ni fusion (règle du 11/10) [${d4?.decision}]`);
+  const variante = annonce('a5', 'leboncoin', 'Jupe noire taille M', [memePhoto('j1e', 11), memePhoto('j2e', 12), memePhoto('j3e', 13)], { taille: '38 - M' });
+  const { d: d5 } = decisionDe(donneesDe(F, [variante]), 'Aa5');
+  ok(d5?.decision !== 'a_verifier' && !String(d5?.decision ?? '').startsWith('fusion'),
+    `même photo, autre couleur (bleu marine / noire) → deux articles, ni question ni fusion (Louis, 11/10) [${d5?.decision}]`);
   const e = evaluer(decisionDe(donneesDe(F, [bon]), 'Aa1').N[0], decisionDe(donneesDe(F, [bon]), 'Aa1').N[1]);
   ok(e.niveau === 'fort' && e.motif === 'photo_multi', 'l’arête forte porte son motif (photo_multi)');
 }

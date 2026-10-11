@@ -101,7 +101,8 @@ export function forcesDe(donnees) {
     if (y && y !== x) out.push([x, y, 'oui', parJob ? 'preuve_identifiant' : 'oui_utilisateur']);
   }
   for (const d of donnees.doublons ?? []) {
-    if (d.decide_par !== 'utilisateur' || d.statut !== 'refusee') continue;
+    // (11/10) Une paire close par la règle d'attribut distinctif vaut un « non ».
+    if ((d.decide_par !== 'utilisateur' && d.decide_par !== 'regle') || d.statut !== 'refusee') continue;
     const ga = [rep(d.garde), ...(parFiche.get(String(d.garde)) ?? []).map((a) => 'A' + a.id)].filter(Boolean);
     const gb = [rep(d.absorbe), ...(parFiche.get(String(d.absorbe)) ?? []).map((a) => 'A' + a.id)].filter(Boolean);
     for (const x of ga) for (const y of gb) if (x !== y) out.push([x, y, 'non', 'refus_utilisateur']);
@@ -115,7 +116,11 @@ export function texte(x, y) {
   const di = T.dimensionsCompatibles(x.di, y.di);
   const ma = (x.ma && y.ma) ? (x.ma === y.ma || x.ma.includes(y.ma) || y.ma.includes(x.ma)) : null;
   const sim = T.similarite(x.je, y.je); const wj = wjac(x.je, y.je, POIDS);
-  const conflits = [ty === false && 'type', co === false && 'couleur', tl === false && 'taille', di === false && 'dimensions'].filter(Boolean);
+  // (11/10) Attribut distinctif (couleur stricte, nombre qui dit l'objet) :
+  // même règle que la garde en base — deux variantes ne sont jamais un doute.
+  const dist = T.attributDistinctif(x.titre, y.titre);
+  const conflits = [ty === false && 'type', (co === false || dist === 'couleur') && 'couleur', tl === false && 'taille',
+    di === false && 'dimensions', dist === 'nombre' && 'nombre'].filter(Boolean);
   const exact = !!x.tn && x.tn === y.tn;
   const accordFort = exact || wj >= 0.5 || (sim.cont >= 0.6 && sim.communs >= 2);
   const memeType = T.typesCompatibles(x.ty, y.ty) === true;
@@ -144,6 +149,13 @@ export function evaluer(x, y, S = SEUILS) {
   const photo = (nMulti >= 2 || nMulti3 >= 3) ? 'multi' : ph.best <= S.quasi ? 'quasi' : ph.best <= S.une ? 'une' : ph.best <= S.proche ? 'proche' : 'aucune';
   let niveau = 'rien', motif = '';
   const c = t.conflits;
+  // (11/10, Louis) Un attribut DISTINCTIF différent (couleur, nombre, taille,
+  // dimension) écarte la paire d'office : ni rattachement, ni question — même
+  // photo comprise (un vendeur photographie pareil toutes ses couleurs).
+  const distinctifs = c.filter((k) => k === 'couleur' || k === 'nombre' || k === 'taille' || k === 'dimensions');
+  if (distinctifs.length) {
+    return { niveau: 'rien', motif: 'attribut_distinctif_' + distinctifs.join('_'), ph, photo, prixR, sim: t.sim, wj: t.wj, conflits: c };
+  }
   if (photo === 'multi') {
     if (!c.length && t.accordFaible) { niveau = 'fort'; motif = 'photo_multi'; } else { niveau = 'doute'; motif = 'photo_multi_' + (c.join('_') || 'titre_different'); }
   } else if (photo === 'quasi') {
