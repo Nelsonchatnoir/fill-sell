@@ -21,6 +21,11 @@ export const POSE_PAR_ORIGINE_PROUVEE = "handler-watch (origine prouvée du job)
 export const POSE_PAR_PAGE_EXACTE = "extension (propriétaire lu sur la page exacte)";
 // (11/10) Une publication Vinted retenue sur la boutique de sa fiche (get-pending-jobs).
 export const POSE_PAR_PUBLICATION_BOUTIQUE = "get-pending-jobs (publication, boutique de la fiche)";
+// (12/10, A6) La garde « identité prouvée » de get-pending-jobs (boutique de
+// l'article lue en base ≠ boutique ouverte) : elle ne se levait JAMAIS — un
+// retrait d'article vendu restait en attente même une fois la bonne boutique
+// ouverte. Levée comme les autres : quand CETTE boutique est vue connectée.
+export const POSE_PAR_IDENTITE_PROUVEE = "get-pending-jobs (identité prouvée)";
 
 /** Le marqueur posé peut-il être levé quand la sonde voit cette boutique ? */
 export function attenteBoutiqueLevable(garde) {
@@ -31,7 +36,8 @@ export function attenteBoutiqueLevable(garde) {
     // (11/10, Louis) Une PUBLICATION retenue sur la boutique de sa fiche
     // (identite-boutique.js, verifierBoutiquePublicationVinted) repart seule,
     // elle aussi, dès que CETTE boutique est vue connectée.
-    || garde.pose_par === POSE_PAR_PUBLICATION_BOUTIQUE;
+    || garde.pose_par === POSE_PAR_PUBLICATION_BOUTIQUE
+    || garde.pose_par === POSE_PAR_IDENTITE_PROUVEE;
 }
 
 /** Le texte de la carte : quelle boutique ouvrir, et que rien n'est touché. */

@@ -152,7 +152,8 @@ ok("aucun « pépites » nulle part", !/p[ée]pite/i.test(readFileSync(new URL("
 console.log("\n── 6. Le câblage du Stock ─────────────────────────────────────");
 {
   const src = readFileSync(new URL("../src/tabs/StockTab.jsx", import.meta.url), "utf8").replace(/\r\n/g, "\n");
-  ok("calcul sur les jobs DÉJÀ chargés (tousLesJobs, fichesToutes)", /retraitsBloquesParConnexion\(\{ jobs: tousLesJobs, fiches: fichesToutes \}\)/.test(src));
+  // (12/10, A6) + murs « boutique » et « ordinateur » : l'extension et les pseudos des boutiques, déjà chargés.
+  ok("calcul sur les jobs DÉJÀ chargés (tousLesJobs, fichesToutes)", /retraitsBloquesParConnexion\(\{ jobs: tousLesJobs, fiches: fichesToutes, extensionVueLe: [^,]+, loginsBoutiques: loginsBoutiquesRetrait \}\)/.test(src));
   ok("aucune lecture neuve : pas de requête dans le calcul", !/retraitsBloquesParConnexion[\s\S]{0,200}supabase/.test(src));
   // (05/10, Nico) Jamais un bandeau empilé en haut du Stock (refonte du
   // 03/10) : le signal vit dans « À régler », qui ouvre un écran dédié.
@@ -166,7 +167,8 @@ console.log("\n── 6. Le câblage du Stock ───────────�
   ok("« À régler » : ligne 'retraits' en tête", /const lignesARegler = \[\n(?:\s*\/\/.*\n)*\s*\{ cle: 'retraits', n: nbRetraitsBloques/.test(src));
   // (05/10, relu au harnais) Le bouton COMPACT : la variante « bouton »
   // débordait de la carte à 360 et 390 px.
-  ok("carte vendue : la ligne et « Me connecter » (compact), jamais sur « compte bloqué » (06/10)", /ligneCarteRetraitBloque\(p, lang, murDe\.get\(p\)\)\}\s*<\/span>\s*\{murDe\.get\(p\) !== 'compte_bloque' && <BoutonMeConnecter userId=\{user\.id\} platform=\{p\}[^>]*variante="bouton" compact\/>\}/.test(src));
+  // (12/10, A6) « Me connecter » pour un mur de CONNEXION seulement (ni compte bloqué, ni boutique, ni ordinateur).
+  ok("carte vendue : la ligne et « Me connecter » (compact), jamais sur « compte bloqué » (06/10)", /ligneCarteRetraitBloque\(p, lang, murDe\.get\(p\), boutiqueDe\.get\(p\)\)\}\s*<\/span>\s*\{murDe\.get\(p\) === 'connexion' && <BoutonMeConnecter userId=\{user\.id\} platform=\{p\}[^>]*variante="bouton" compact\/>\}/.test(src));
   ok("Opla reconnue par le mur ancré (jumeau de handler-watch)", /opla: \/\^Connexion Opla requise\/i/.test(src));
   const ecran = readFileSync(new URL("../src/stock/EcranARegler.jsx", import.meta.url), "utf8");
   ok("écran « À régler » : icône de la ligne 'retraits'", /retraits: AlertTriangle/.test(ecran));
@@ -195,7 +197,9 @@ console.log("\n── 7. (06/10) Vinted : session absente, session illisible, «
   ok("session illisible avant le retrait (session_inconnue) → compté", retraitBloqueParConnexion(piro, MAINTENANT));
   ok("boutique d'origine inconnue (pas une connexion) → pas compté", !retraitBloqueParConnexion(autreBoutique, MAINTENANT));
   const r7 = retraitsBloquesParConnexion({ jobs: [ger, piro, dead, sandra, autreBoutique], fiches: f7, maintenant: MAINTENANT });
-  ok("4 retraits Vinted à régler (2 connexion, 2 compte bloqué)", r7.total === 4, r7.total);
+  // (12/10, A6) La boutique d'origine inconnue n'est pas une connexion, mais elle n'attend
+  // plus en silence : mur « boutique » (nerema75, « nous n'arrivons pas à prouver… »).
+  ok("5 retraits Vinted à régler (2 connexion, 2 compte bloqué, 1 boutique)", r7.total === 5 && r7.parPlateforme.some((g) => g.mur === "boutique"), r7.total);
   const gCx = r7.parPlateforme.find((g) => g.platform === "vinted" && g.mur === "connexion");
   const gCb = r7.parPlateforme.find((g) => g.platform === "vinted" && g.mur === "compte_bloque");
   ok("deux cartes Vinted distinctes (connexion / compte bloqué)", gCx?.lignes.length === 2 && gCb?.lignes.length === 2, r7.parPlateforme.map((g) => `${g.platform}:${g.mur}:${g.lignes.length}`));
@@ -206,7 +210,7 @@ console.log("\n── 7. (06/10) Vinted : session absente, session illisible, «
   const seulCb = ligneARegler(retraitsBloquesParConnexion({ jobs: [dead], fiches: f7, maintenant: MAINTENANT }), "fr");
   ok("« À régler » seulement « compte bloqué » : le geste est l'appli Vinted", /appli Vinted/.test(seulCb.detail), seulCb.detail);
   const ecran = readFileSync(new URL("../src/stock/EcranRetraitsBloques.jsx", import.meta.url), "utf8");
-  ok("l'écran ne montre jamais « Me connecter » sur une carte « compte bloqué »", /\{userId && g\.mur !== 'compte_bloque' && \(/.test(ecran));
+  ok("l'écran ne montre jamais « Me connecter » sur une carte « compte bloqué » (ni boutique, ni ordinateur, 12/10)", /\{userId && \(g\.mur \?\? 'connexion'\) === 'connexion' && \(/.test(ecran));
 }
 
 console.log(echecs ? `\n${echecs} échec(s)` : "\nTout est vert.");
