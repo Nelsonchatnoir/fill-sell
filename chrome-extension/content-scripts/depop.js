@@ -487,6 +487,17 @@ async function fillListingForm(job) {
         error: "Le pays de ton profil Depop n'a pas pu être lu : ouvre « Sell » une fois sur depop.com, puis relance.", t0 });
     }
 
+    // ── PRÉ-VOL DE RECRÉATION D'UNE REPUBLICATION (11/10, point 4) ──────────
+    // Republier sur Depop = SUPPRIMER puis RECRÉER : tout ce qui précède
+    // (session, rayon, état, genre, marque, taille, lieu, port) se tranche
+    // ICI, AVANT la suppression — une question (marque, taille…) part alors
+    // pendant que l'annonce est encore en ligne. Arrêt juste avant les
+    // photos : rien n'est envoyé, rien n'est créé chez Depop.
+    if (pf.republish_prevol_only === true) {
+      depopTracer("pré-vol de recréation : session, rayon, état, marque, taille et lieu résolus — arrêt AVANT les photos, rien n'est créé");
+      return depopSortie({ success: true, republishPreflight: true, unfilledRequired: [], warnings: [], t0 });
+    }
+
     depopEtape("photos");
     const ids = [];
     for (let i = 0; i < v.photos.length; i++) ids.push(await depopMonterPhoto(v.photos[i], i));

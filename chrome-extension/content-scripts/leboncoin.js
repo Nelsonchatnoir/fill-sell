@@ -1157,6 +1157,12 @@ async function fillListingForm(job) {
 
   const fields = job.platform_fields || {};
   const warnings = [];
+  // (11/10, point 4 — voirememe) PRÉ-VOL DE RECRÉATION d'une republication :
+  // le MÊME remplissage que le futur redépôt (titre, catégorie, photos,
+  // critères, « Continuer »), lancé AVANT le retrait de l'annonce d'origine.
+  // Arrêt dès la page suivante — ni description, ni prix, ni dépôt — et le
+  // wizard est quitté sans rien enregistrer (lbcFinPrevolRecreation).
+  const prevolRecreation = fields.republish_prevol_only === true;
   // (0.6.68) Une republication REJOUE l'annonce d'origine : ses critères sont
   // ceux que la personne avait choisis, « Autre » compris (cf. fillCriterionSafe).
   REJOUE_ANNONCE_D_ORIGINE = fields.republish_recreation === true || fields.republish_step != null;
@@ -1413,7 +1419,10 @@ async function fillListingForm(job) {
     // (#body) ou la page prix d'un flux paginé (#price_cents). Un brouillon
     // arrêté à l'étape critères (label condition seul) n'est pas repris.
     const stadeReprenable = Boolean(document.querySelector("textarea#body, #body, #price_cents"));
-    if (correspond && stadeReprenable) {
+    // (11/10, point 4) Un pré-vol ne REPREND jamais un dépôt restauré : il doit
+    // prouver lui-même les critères — le brouillon est jeté (chemin officiel
+    // ci-dessous), le pré-vol repart d'un wizard vierge au passage suivant.
+    if (correspond && stadeReprenable && !prevolRecreation) {
       console.log(
         `[leboncoin] Brouillon restauré = CE job (titre « ${titreBrouillon} ») — reprise automatique à l'aperçu, sans intervention.`
       );
@@ -1567,7 +1576,19 @@ async function fillListingForm(job) {
   if (repriseBrouillon) {
     bodyArea = document.querySelector("textarea#body, #body");
   } else {
-    const avance = await lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired);
+    let avance;
+    try {
+      avance = await lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired);
+    } catch (e) {
+      // Pré-vol : rien n'est laissé derrière, même sur une exception — le
+      // wizard est quitté sans enregistrer, puis l'exception suit son chemin
+      // (le background n'y voit aucune preuve : rien n'est retiré).
+      if (prevolRecreation) await lbcQuitterDepotSansEnregistrer(t).catch(() => null);
+      throw e;
+    }
+    // (11/10, point 4) Pré-vol de recréation : la preuve (ou le champ bloquant)
+    // part ICI, avant l'étape 4 — aucune description, aucun prix, aucun dépôt.
+    if (prevolRecreation) return await lbcFinPrevolRecreation(avance, { warnings, unfilledRequired, t, trace });
     if (avance.blocked) return avance.blocked;
     ({ bodyArea, enumerated } = avance);
   }
@@ -3276,6 +3297,63 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
   }
 
   return { bodyArea, enumerated };
+}
+
+// ── PRÉ-VOL DE RECRÉATION : SORTIE PROPRE DU WIZARD (11/10, point 4) ─────────
+// Un wizard interrompu SANS le dialogue de sortie est RESTAURÉ par Leboncoin
+// au retour sur /deposer-une-annonce (prouvé live le 03/09, cf. le bloc
+// « brouillon bloquant » de fillListingForm) — exactement ce que chaque
+// dry-run laissait derrière lui. Le pré-vol sort donc par le chemin officiel,
+// « Quitter » → « Quitter sans enregistrer » : rien n'est gardé chez
+// Leboncoin, le redépôt repart d'un wizard vierge. Le clic final NAVIGUE hors
+// du wizard : il part 150 ms après, la réponse part avant (même geste que le
+// brouillon bloquant). Bouton ou dialogue introuvable → on le DIT
+// (jete:false) ; le dépôt suivant sait reprendre ou jeter ce qu'il trouve.
+// Visibilité lue sans layout (fenêtre de travail minimisée).
+async function lbcQuitterDepotSansEnregistrer(t) {
+  const visible = (re) => [...document.querySelectorAll("button, [role='button']")]
+    .find((b) => estVisibleSansLayoutLbc(b) && re.test((b.textContent ?? "").replace(/\s+/g, " ").trim())) ?? null;
+  const quitter = visible(/^quitter$/i);
+  if (!quitter) {
+    t("pré-vol : bouton « Quitter » introuvable — le dépôt en cours n'a pas pu être abandonné");
+    return { jete: false, motif: "quitter_introuvable" };
+  }
+  quitter.click();
+  const sansEnregistrer = await waitFor(() => visible(/quitter sans enregistrer/i), 5000);
+  if (!sansEnregistrer) {
+    t("pré-vol : dialogue de sortie non apparu après « Quitter »");
+    return { jete: false, motif: "dialogue_absent" };
+  }
+  setTimeout(() => { try { sansEnregistrer.click(); } catch { /* navigation en cours */ } }, 150);
+  t("pré-vol : « Quitter » → « Quitter sans enregistrer » — rien n'est gardé chez Leboncoin");
+  return { jete: true };
+}
+
+// La réponse du pré-vol de recréation (11/10, point 4), même contrat que
+// Beebs : { success, republishPreflight } quand Leboncoin a accepté les
+// critères (la page suivante est affichée), ou le champ BLOQUANT tel que le
+// « Continuer » l'a refusé (needsUserField + allowed_values relevées sur
+// place) — le background le demande AVANT tout retrait. Jamais une valeur
+// choisie à la place de la personne : le repli « Autre » reste limité à
+// *_product / decoration_type, comme au dépôt.
+async function lbcFinPrevolRecreation(avance, { warnings, unfilledRequired, t, trace }) {
+  const sortie = await lbcQuitterDepotSansEnregistrer(t)
+    .catch((e) => ({ jete: false, motif: String(e?.message ?? e).slice(0, 80) }));
+  const prevolRecreation = { brouillon_jete: sortie?.jete === true, ...(sortie?.motif ? { motif_sortie: sortie.motif } : {}) };
+  if (avance?.blocked) return { ...avance.blocked, prevolRecreation, trace };
+  console.log("[leboncoin] pré-vol de recréation : critères acceptés par Leboncoin (page suivante affichée) — aucun dépôt");
+  return {
+    success: true,
+    republishPreflight: true,
+    prevolRecreation,
+    warnings,
+    // Leboncoin est passé à la page suivante : c'est LUI le juge des requis.
+    // Nos pseudo-requis (univers, produit, quantité) restent en trace.
+    unfilledRequired: [],
+    ...(unfilledRequired.length ? { requisNonBloquants: [...unfilledRequired] } : {}),
+    discoveredRequired: avance?.enumerated ?? [],
+    trace,
+  };
 }
 
 // Relevé d'écran joint aux erreurs post-aperçu (2026-07-19) : titres, boutons

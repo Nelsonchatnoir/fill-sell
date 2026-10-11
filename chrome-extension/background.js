@@ -3546,6 +3546,34 @@ async function processJob(rawJob, accessToken) {
       }
     }
 
+    // ── LA BOUTIQUE VINTED, AVANT TOUT FORMULAIRE (11/10, point 7 — Louis) ──
+    // Compte à plusieurs boutiques, publication qui porte la sienne : la garde
+    // part avec le job (vinted.js la relit juste avant le clic de dépôt). Une
+    // AUTRE boutique déjà lisible ici (cycle, puis onglet de travail tel quel)
+    // → rien n'est rempli, le job attend sa boutique. Illisible → le
+    // remplissage suit, la page de dépôt tranche avant le clic.
+    if (job.platform === "vinted" && job.action === "publish") {
+      const gardeBoutique = await gardeBoutiqueDepotVintedDuJob(accessToken, job);
+      if (gardeBoutique) {
+        job.boutique_depot = gardeBoutique;
+        // Lecture FRAÎCHE (jamais le cache de 90 s : la personne vient peut-être
+        // de changer de boutique), puis l'onglet de travail tel qu'il est.
+        const identCycle = await identiteVintedDuCycle({ forcer: true }).catch(() => null);
+        const ident = identCycle?.user_id ? { ...identCycle, source: "service_worker" } : await identiteVintedParOnglet();
+        if (ident?.user_id && String(ident.user_id) !== gardeBoutique.attendue) {
+          return await retenirPublicationPourBoutique(accessToken, job, gardeBoutique, {
+            verdict: "mauvaise_boutique", etape: "avant_formulaire",
+            lue: String(ident.user_id), login_lu: ident.login ?? null, source: ident.source ?? null,
+          });
+        }
+        if (ident?.user_id && job.platform_fields?.attente_boutique) {
+          // La bonne boutique est ouverte : l'attente d'un passage précédent est levée.
+          job.platform_fields = { ...job.platform_fields };
+          delete job.platform_fields.attente_boutique;
+        }
+      }
+    }
+
     // processing_since : horodatage du DÉBUT de traitement, lu par
     // recoverStaleProcessingJobs pour repêcher un job dont le worker est mort en
     // route. Sans lui, la reprise se baserait sur created_at — qui peut être bien
@@ -3973,6 +4001,17 @@ async function processJob(rawJob, accessToken) {
       });
       console.warn(`[background] Job ${job.id} : formats de colis non chargés par la page Vinted (constat ${nR}) — rien soumis, nouvel essai dans ${delaiR} min`);
       return { status: "retry", error: "formats de colis non chargés par la page — nouvel essai rapproché" };
+    }
+
+    // ── LA PAGE DE DÉPÔT A RELU UNE AUTRE BOUTIQUE (11/10, point 7) ─────────
+    // vinted.js a relu users/current juste avant le clic : autre boutique, ou
+    // identité illisible chez un compte à plusieurs boutiques → RIEN n'a été
+    // soumis. Le job attend sa boutique, sans tentative consommée.
+    if (job.platform === "vinted" && result?.boutiqueDepotRetenue && !result?.success && job.boutique_depot) {
+      return await retenirPublicationPourBoutique(accessToken, job, job.boutique_depot, {
+        ...(result.boutiqueDepot && typeof result.boutiqueDepot === "object" ? result.boutiqueDepot : {}),
+        etape: "avant_depot",
+      });
     }
 
     if (result?.dryRun) {
@@ -10817,7 +10856,10 @@ async function retirerScriptsOpla() {
 
 /** Les capacités déclarées à chaque poll — jamais déduites d'un numéro. */
 async function capacitesDeclarees() {
-  const caps = ["taille_par_id", "preuves_retraits_point1_v1", "champs_annonce_republication_v1"];
+  // (11/10, point 4) « prevol_recreation_v1 » : une republication Leboncoin ou
+  // Depop fait tourner le VRAI formulaire de recréation AVANT tout retrait
+  // (prevolRecreationAvantRetrait) — le serveur sait que ce poste l'a.
+  const caps = ["taille_par_id", "preuves_retraits_point1_v1", "champs_annonce_republication_v1", "prevol_recreation_v1"];
   caps.push((await oplaAccesAccorde()) ? "opla_acces" : "sans_opla");
   // depop (09/10) : le serveur ne sert un job Depop qu'au poste qui déclare
   // « depop_acces » (une extension qui ne connaît pas Depop ne déclare rien).
@@ -12099,10 +12141,13 @@ async function reportPlatformSessions(accessToken, { plateformes = ["vinted", "l
   // suivant les prend. Lecture-fusion par job (platform_fields se remplace en
   // entier via PostgREST) — volume borné par le nombre de jobs en attente,
   // cadence bornée par la sonde (10 min). L'utilisateur n'a RIEN à relancer.
+  // (11/10, point 7) Les PUBLICATIONS aussi : une publication retenue juste
+  // avant son dépôt parce que la boutique ouverte n'était pas celle de sa
+  // fiche (retenirPublicationPourBoutique) repart dès que CETTE boutique est vue.
   if (sessions.vinted_identite?.user_id) {
     try {
       const enAttente = await restRequest(
-        `cross_post_jobs?user_id=eq.${sub}&status=eq.pending&action=eq.republish&platform=eq.vinted` +
+        `cross_post_jobs?user_id=eq.${sub}&status=eq.pending&action=in.(publish,republish)&platform=eq.vinted` +
         `&platform_fields->attente_boutique->>user_id=eq.${encodeURIComponent(sessions.vinted_identite.user_id)}` +
         `&select=id,platform_fields&limit=200`,
         accessToken, { headers: { Prefer: "return=representation" } },
@@ -12122,7 +12167,7 @@ async function reportPlatformSessions(accessToken, { plateformes = ["vinted", "l
         } catch { /* repris au prochain cycle de sonde, ou à l'échéance 15 min */ }
       }
       if (liberes) {
-        console.log(`[background] boutique @${sessions.vinted_identite.login ?? sessions.vinted_identite.user_id} connectée — ${liberes} republication(s) en attente libérée(s)`);
+        console.log(`[background] boutique @${sessions.vinted_identite.login ?? sessions.vinted_identite.user_id} connectée — ${liberes} publication(s)/republication(s) en attente libérée(s)`);
       }
     } catch (e) {
       console.warn("[background] libération des attentes de boutique:", e?.message ?? e);
@@ -12176,6 +12221,128 @@ async function preuveBoutiqueVintedApresDepot(platformFields) {
   };
   delete pf.vinted_boutique_a_estampiller;
   return pf;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// LA BOUTIQUE VINTED D'UNE PUBLICATION, RELUE JUSTE AVANT LE DÉPÔT
+// (11/10, point 7 — Louis : @neyenonie → @evat)
+// ══════════════════════════════════════════════════════════════════════════
+// Le 11/10 à 10:40, la remise en vente d'un article de @neyenonie est partie
+// sur @evat : Chrome était ouvert sur @evat, et l'extension ne lisait la
+// boutique qu'APRÈS le dépôt (users/current_apres_depot, ci-dessus).
+// get-pending-jobs (v235, verifierBoutiquePublicationVinted) ne sert plus une
+// publication que sur la boutique de sa fiche, et la pose sur le job servi
+// (platform_fields.vinted_account_id) — mais la boutique ouverte peut changer
+// entre le service et le dépôt. Côté extension, pour un compte à PLUSIEURS
+// boutiques confirmées et un job qui porte sa boutique :
+//   · avant tout formulaire : l'identité du cycle, à défaut celle lue par
+//     l'onglet de travail TEL QU'IL EST (aucune navigation, rien ne
+//     s'intercale entre /items/new et le remplissage) — une AUTRE boutique →
+//     rien n'est rempli ;
+//   · juste avant le clic de dépôt (vinted.js, job.boutique_depot) : la page
+//     de dépôt relit users/current — autre boutique OU identité illisible →
+//     rien n'est soumis ;
+//   · dans les deux cas le job ATTEND sa boutique : pending, attente_boutique
+//     {user_id, login, depuis}, échéance 15 min, AUCUNE tentative consommée ;
+//     la sonde le libère dès qu'elle voit cette boutique connectée.
+// Compte à une boutique, job sans boutique attendue : rien ne change. La
+// recréation d'une republication (annonce déjà retirée) et la une-passe (son
+// retrait exige déjà la preuve de boutique) ne passent pas ici.
+
+/** La boutique attendue d'une PUBLICATION Vinted servie, ou "" (pure). */
+function boutiqueAttendueDepotVinted(job) {
+  if (job?.platform !== "vinted" || job?.action !== "publish") return "";
+  const pf = job.platform_fields ?? {};
+  if (pf.republish_recreation === true || pf.republish_delete_then_submit) return "";
+  return String(pf.vinted_account_id ?? "").trim();
+}
+
+/** La garde posée sur le job (lue par vinted.js avant le clic), ou null (pure). */
+function gardeBoutiqueDepotVinted(job, boutiques) {
+  const attendue = boutiqueAttendueDepotVinted(job);
+  if (!attendue) return null;
+  const liste = (Array.isArray(boutiques) ? boutiques : []).filter((b) => String(b?.user_id ?? "").trim());
+  const ids = new Set(liste.map((b) => String(b.user_id).trim()));
+  if (ids.size < 2) return null; // une seule boutique : aucune vérification bloquante
+  const login = liste.find((b) => String(b.user_id).trim() === attendue)?.login ?? null;
+  return { attendue, login_attendu: login ? String(login) : null, multi: true };
+}
+
+/** Le texte de la carte (pure) : quelle boutique ouvrir, rien publié ailleurs. */
+// Le domaine vient de l'appelant (VO.domaineVintedAffiche() : vinted.fr, ou
+// celui du vendeur étranger) — jamais écrit ici.
+function messageAttenteBoutiqueDepot({ verdict, loginAttendu = null, navigateur = "Chrome", domaine = null } = {}) {
+  const qui = loginAttendu ? `ta boutique Vinted @${loginAttendu}` : "ton autre boutique Vinted";
+  const ou = domaine || "Vinted";
+  if (verdict === "identite_illisible") {
+    return `En attente de ${qui} : cet article ne se publie que sur elle, et FillSell n'a pas pu lire quelle boutique est ouverte dans ${navigateur}. ` +
+      `Rien n'a été publié. Nouvel essai tout seul dans un quart d'heure ; si une autre boutique est ouverte, ouvre celle-ci sur ${ou}.`;
+  }
+  return `En attente de ${qui} : cet article appartient à cette boutique, il ne se publie que sur elle. ` +
+    `Ouvre-la sur ${ou} dans ${navigateur}, la publication repartira toute seule. Rien n'a été publié ailleurs.`;
+}
+
+// L'IDENTITÉ VINTED LUE PAR L'ONGLET DE TRAVAIL (11/10, points 5 et 7). La
+// page appelle users/current avec ses propres en-têtes et renouvelle son jeton
+// — là où le service worker prend un 401 (jeton d'une heure) ou un 403 (Rémi,
+// trois boutiques). Lecture PURE de l'onglet TEL QU'IL EST : aucun onglet
+// ouvert, aucune navigation ; absent, déchargé, hors Vinted ou muet → null.
+async function identiteVintedParOnglet() {
+  try {
+    const tabId = await findExistingWorkTabId("vinted");
+    if (tabId == null) return null;
+    const t = await chrome.tabs.get(tabId).catch(() => null);
+    if (!t || t.discarded || !/^https:\/\/([^/]*\.)?vinted\./i.test(t.url || "")) return null;
+    const r = await sendMessageToTabOnce(tabId, { type: "VINTED_CURRENT_USER" }, 30_000).catch(() => null);
+    if (r?.success && r.userId) return { user_id: String(r.userId), login: r.login ? String(r.login) : null, source: "onglet" };
+  } catch { /* illisible */ }
+  return null;
+}
+
+// La garde du job courant. La liste des boutiques se relit dans le profil
+// (une lecture par publication d'un job qui porte sa boutique). Lecture
+// impossible → null : le chemin d'avant (le serveur a vérifié au service).
+async function gardeBoutiqueDepotVintedDuJob(accessToken, job) {
+  if (!boutiqueAttendueDepotVinted(job)) return null;
+  try {
+    const sub = decodeJwtSub(accessToken);
+    const prof = await restRequest(`profiles?id=eq.${sub}&select=vinted_sync_pin`, accessToken);
+    return gardeBoutiqueDepotVinted(job, lireBoutiquesPin(prof?.[0]?.vinted_sync_pin).boutiques);
+  } catch (e) {
+    console.warn(`[background] Job ${job.id} : boutiques du compte illisibles — garde de boutique au dépôt non posée (le serveur a vérifié au service) :`, String(e?.message ?? e));
+    return null;
+  }
+}
+
+// Le job ATTEND sa boutique : rien n'a été déposé, aucune tentative consommée.
+async function retenirPublicationPourBoutique(accessToken, job, garde, constat) {
+  const actuel = await jobStatusNow(accessToken, job.id).catch(() => null);
+  if (actuel && actuel !== "processing" && actuel !== "pending") {
+    console.warn(`[background] Job ${job.id} : statut devenu "${actuel}" — attente de boutique ABANDONNÉE (on ne réécrit pas par-dessus)`);
+    return { status: "skipped", error: `statut ${actuel} — attente de boutique non posée` };
+  }
+  const pf = { ...(job.platform_fields ?? {}) };
+  delete pf.processing_since;
+  delete pf.needs_user_source;
+  const maintenant = new Date().toISOString();
+  tracerGarde(pf, "garde_boutique_depot", {
+    verdict: constat?.verdict ?? "inconnu", etape: constat?.etape ?? null,
+    boutique_attendue: garde.attendue, boutique_lue: constat?.lue ?? null, source: constat?.source ?? null,
+    champs_verifies: ["vinted_account_id", "identite_connectee"],
+  });
+  pf.attente_boutique = {
+    user_id: garde.attendue,
+    login: garde.login_attendu ?? pf.attente_boutique?.login ?? null,
+    depuis: pf.attente_boutique?.depuis ?? maintenant,
+  };
+  pf.next_action_after = new Date(Date.now() + 15 * 60_000).toISOString();
+  const msg = messageAttenteBoutiqueDepot({
+    verdict: constat?.verdict, loginAttendu: pf.attente_boutique.login,
+    navigateur: VO.navigateurCourt(), domaine: VO.domaineVintedAffiche(),
+  });
+  await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: msg });
+  console.warn(`[background] Job ${job.id} : publication Vinted RETENUE ${constat?.etape ?? ""} (${constat?.verdict}) — boutique attendue ${garde.attendue}, lue ${constat?.lue ?? "illisible"} : rien déposé, aucune tentative consommée, nouvel essai dans 15 min`);
+  return { status: "skipped", error: `publication retenue : boutique ${constat?.verdict ?? "inconnue"}` };
 }
 
 // Signal SÛR de déconnexion (2026-07-30) : la garde d'entrée d'un handler
@@ -22081,9 +22248,12 @@ async function conclureRecreationApresSoumission(accessToken, job, pf, jobRecrea
 //     boutique) : l'annonce a réellement disparu — vendue, retirée, supprimée
 //     par Vinted. L'article est daté disparu_le (le flux « plus en ligne —
 //     vendue ? » de l'app prend le relais) et le job s'arrête en le disant ;
-//   · identité illisible (401 ambigu, réseau) ou article sans boutique
-//     d'origine chez un compte multi-boutiques : on ne tranche PAS — attente
-//     bornée (15 min, 4 fois), puis needs_user avec la marche à suivre.
+//   · identité illisible (401 ambigu, réseau) chez un compte à UNE boutique,
+//     ou article sans boutique d'origine chez un compte multi-boutiques : on
+//     ne tranche PAS — attente bornée (15 min, 4 fois), puis needs_user avec
+//     la marche à suivre. (11/10, point 5) Identité illisible chez un compte
+//     à PLUSIEURS boutiques dont l'article porte la sienne : ATTENTE DE
+//     BOUTIQUE, comme une autre boutique ouverte — sans compteur.
 // Mesuré avant ce correctif (Ornella, 14 j) : 6 républications tombées en
 // failed « annonce introuvable (HTTP 404) » — les 6 visaient des annonces
 // vendues (3) ou retirées (Robe paysanne, ×3), et l'article restait « en
@@ -22093,6 +22263,27 @@ async function conclureRecreationApresSoumission(accessToken, job, pf, jobRecrea
 // ⛔ Aucune requête réseau nouvelle vers Vinted : l'identité vient de
 //    identiteVintedDuCycle (déjà relevée à la porte de la boutique, cache
 //    90 s) ; à l'étape 'captured' seul le cache est lu, jamais re-frappé.
+//    (11/10, point 5) Seule exception : chez un compte à PLUSIEURS boutiques
+//    dont l'article porte la sienne, une identité illisible se relit par
+//    l'onglet de travail (users/current de la page, identiteVintedParOnglet).
+// ── LE VERDICT, PUR (11/10, point 5 — testé par scripts/
+// republication-404-boutique-selftest.mjs) ──────────────────────────────────
+//   · boutique de l'article connue, une AUTRE boutique ouverte → attente ;
+//   · boutique connue, identité illisible, compte à PLUSIEURS boutiques →
+//     attente aussi (« attente_boutique ») : sans compteur, sans pause
+//     « introuvable » — l'annonce vit peut-être sur l'autre boutique ;
+//   · boutique connue, identité illisible, compte à UNE boutique → indéterminé
+//     borné (« identite_inconnue », chemin d'avant, inchangé) ;
+//   · article sans boutique chez un compte à plusieurs → indéterminé borné ;
+//   · sinon (la BONNE boutique, ou mono-boutique sans boutique) → disparue.
+function verdictIntrouvable404Republication({ boutique, identite, multiBoutiques }) {
+  const b = String(boutique ?? "").trim();
+  const i = String(identite ?? "").trim();
+  if (b && i && i !== b) return "mauvaise_boutique";
+  if (b && !i) return multiBoutiques ? "attente_boutique" : "identite_inconnue";
+  if (!b && multiBoutiques) return "boutique_inconnue";
+  return "disparue";
+}
 async function traiterIntrouvable404Republication({ accessToken, job, pf, userId, etape, boutiqueArticle = null, identCourante = undefined }) {
   let boutique = boutiqueArticle;
   if (boutique == null) {
@@ -22107,29 +22298,55 @@ async function traiterIntrouvable404Republication({ accessToken, job, pf, userId
   const ident = identCourante === undefined
     ? (Date.now() - identiteVintedCache.at < 90_000 ? identiteVintedCache.val : null)
     : identCourante;
-  const identId = ident?.user_id ? String(ident.user_id) : "";
+  let identId = ident?.user_id ? String(ident.user_id) : "";
+  let identLogin = ident?.login ?? null;
+  let identSource = identId ? (ident?.source ?? "service_worker") : null;
   let boutiques = [];
   try {
     const prof = await restRequest(`profiles?id=eq.${userId}&select=vinted_sync_pin`, accessToken);
     boutiques = lireBoutiquesPin(prof?.[0]?.vinted_sync_pin).boutiques;
   } catch { /* liste inconnue = mono-boutique présumée */ }
   const multiBoutiques = boutiques.length >= 2;
-  const verdict =
-    boutique && identId && identId !== boutique ? "mauvaise_boutique"
-    : boutique && !identId ? "identite_inconnue"
-    : !boutique && multiBoutiques ? "boutique_inconnue"
-    : "disparue";
+  // ── (11/10, point 5 — Rémi, trois boutiques) L'IDENTITÉ PAR L'ONGLET, AVANT
+  // DE CONCLURE. La sonde du service worker prend souvent 401/403 : la garde
+  // laissait alors capturer (« identite_inconnue_capture_seule »), le 404 de
+  // l'endpoint d'édition (annonce de @celineetmarie, Chrome sur @narema75)
+  // tombait en « identite_inconnue », et au 5e passage la republication
+  // s'arrêtait « introuvable » — 10 jobs, annonces EN LIGNE. Chez un compte à
+  // plusieurs boutiques, quand l'article porte la sienne, on lit d'abord
+  // l'identité par l'onglet de travail (la page qui vient de répondre 404) ;
+  // toujours illisible → ATTENTE DE BOUTIQUE, jamais un compteur ni une pause
+  // « introuvable ». Compte à une boutique : inchangé.
+  if (multiBoutiques && boutique && !identId) {
+    const parOnglet = await identiteVintedParOnglet();
+    if (parOnglet?.user_id) {
+      identId = String(parOnglet.user_id);
+      identLogin = parOnglet.login ?? null;
+      identSource = "onglet";
+    }
+  }
+  const verdict = verdictIntrouvable404Republication({ boutique, identite: identId, multiBoutiques });
   const maintenant = new Date().toISOString();
-  pf.introuvable_404 = { at: maintenant, etape, verdict, identite: identId || null, boutique_article: boutique || null };
+  pf.introuvable_404 = {
+    at: maintenant, etape, verdict, identite: identId || null, boutique_article: boutique || null,
+    ...(identSource ? { source_identite: identSource } : {}),
+  };
 
-  if (verdict === "mauvaise_boutique") {
+  if (verdict === "mauvaise_boutique" || verdict === "attente_boutique") {
     const loginAttendu = boutiques.find((b) => String(b.user_id) === boutique)?.login ?? pf.attente_boutique?.login ?? null;
     pf.attente_boutique = { user_id: boutique, login: loginAttendu, depuis: pf.attente_boutique?.depuis ?? maintenant };
     pf.next_action_after = new Date(Date.now() + 15 * 60_000).toISOString();
     await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: null });
     const qui = loginAttendu ? `@${loginAttendu}` : `la boutique ${boutique}`;
-    console.log(`[republish] job ${job.id} : 404 de capture sous @${ident.login ?? identId} — l'annonce vit sur ${qui}, en attente de ce dressing (aucune tentative consommée)`);
-    return { status: "skipped", error: `404 sous une autre boutique — en attente du dressing ${qui}` };
+    console.log(verdict === "mauvaise_boutique"
+      ? `[republish] job ${job.id} : 404 de capture sous @${identLogin ?? identId} — l'annonce vit sur ${qui}, en attente de ce dressing (aucune tentative consommée)`
+      : `[republish] job ${job.id} : 404 de capture, boutique ouverte illisible (compte à plusieurs boutiques) — l'annonce vit sur ${qui}, en attente de ce dressing (aucun compteur, aucune tentative consommée)`);
+    return {
+      status: "skipped",
+      error: verdict === "mauvaise_boutique"
+        ? `404 sous une autre boutique — en attente du dressing ${qui}`
+        : `404 sous une boutique illisible — en attente du dressing ${qui}`,
+    };
   }
   if (verdict === "identite_inconnue" || verdict === "boutique_inconnue") {
     const n = (Number(pf.introuvable_indetermine?.n) || 0) + 1;
@@ -22798,6 +23015,155 @@ async function prevolFormulaireRecreationBeebs(job) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// LEBONCOIN ET DEPOP : LE VRAI FORMULAIRE DE RECRÉATION AVANT LE RETRAIT
+// (11/10, point 4 — voirememe, job 66bbae2b)
+// ══════════════════════════════════════════════════════════════════════════
+// Republication Leboncoin du 11/10 : annonce RETIRÉE à 12:03:36, puis la
+// recréation a buté sur le critère obligatoire « Produit » (toy_type, Jeux &
+// Jouets, 29 valeurs), absent de l'annonce d'origine — article hors ligne.
+// Leboncoin ne découvre ses requis qu'au remplissage (titre → catégorie →
+// photos → critères → « Continuer ») ; Depop pose ses questions (marque,
+// taille, genre, lieu) dans fillListingForm, APRÈS la suppression. Le pré-vol
+// de page (page vide) et celui de la copie ne pouvaient pas le voir.
+// Même contrat que Beebs (prevolFormulaireRecreationBeebs) : le VRAI
+// remplisseur tourne en mode republish_prevol_only, sans aucun dépôt —
+//   · Leboncoin : titre, catégorie, PHOTOS (Leboncoin pré-remplit souvent les
+//     critères d'après le titre et les photos : 8 republications sur 9 sans
+//     « Produit » sont passées), critères, clic « Continuer » ; la page
+//     suivante apparaît → preuve, ARRÊT (ni description, ni prix, ni dépôt),
+//     et le wizard est quitté par « Quitter sans enregistrer » : rien n'est
+//     gardé chez Leboncoin, la recréation repart d'un dépôt vierge ;
+//   · Depop : session, rayon, état, marque, taille, lieu — arrêt AVANT les
+//     photos, rien n'est créé chez Depop.
+// Verdicts (verdictPrevolRecreation, pur) :
+//   · preuve positive → le retrait suit ;
+//   · un champ à choisir (needsUserField + allowed_values) → needs_user AVANT
+//     tout retrait, l'annonce reste en ligne ;
+//   · session fermée → attente de connexion (traiterMurDeConnexion) ;
+//   · blocage que seule la personne lève (attenteUtilisateur) → needs_user ;
+//   · brouillon Leboncoin jeté → nouvel essai dans une minute ;
+//   · pas de preuve (onglet muet, page illisible, défaut de notre code) →
+//     pending +30 min, aucun essai consommé, annonce intacte.
+// ⛔ Aucune valeur devinée : « Produit » n'est jamais choisi par nous, et le
+//    repli « Autre » (*_product, decoration_type) n'est pas étendu.
+// Le poste le déclare au serveur : capacité « prevol_recreation_v1 ».
+const PLATEFORMES_PREVOL_RECREATION = ["leboncoin", "depop"];
+
+async function prevolFormulaireRecreation(job) {
+  const handler = PLATFORM_HANDLERS[job.platform];
+  const url = typeof handler?.newListingUrl === "function" ? handler.newListingUrl(job) : handler?.newListingUrl;
+  if (!url) throw new Error(`pas de page de dépôt connue pour ${job.platform}`);
+  if (job.platform === "depop") await assurerScriptsDepop();
+  const tabId = await ouvrirOngletTravailJob(job.platform, handler.entryUrl ?? url);
+  if (job.platform === "depop") {
+    const v = await assurerScriptDepopSurOnglet(tabId);
+    if (!v.ok) throw new Error(`pas de réponse du content script Depop (${v.motif})`);
+  }
+  // Le MÊME job que la recréation (étape 'deleted' → processJob) : même forme,
+  // même titre nettoyé — plus le drapeau qui arrête avant tout dépôt.
+  const jobPrevol = sanitizeJob({
+    ...job,
+    action: "publish",
+    listing_url: null,
+    platform_listing_id: null,
+    platform_fields: {
+      ...(job.platform_fields ?? {}),
+      republish_recreation: true,
+      republish_prevol_only: true,
+    },
+  });
+  const result = await envoyerFillListing(tabId, jobPrevol);
+  return { tabId, result };
+}
+
+/** Le verdict d'un pré-vol de recréation Leboncoin/Depop (pur). */
+function verdictPrevolRecreation(resultat) {
+  const r = resultat && typeof resultat === "object" ? resultat : {};
+  const champs = Array.isArray(r.unfilledRequired) ? r.unfilledRequired.map((x) => String(x)).filter(Boolean) : [];
+  // Seule la PREUVE de pré-vol autorise : un « succès » sans elle (un dépôt ?)
+  // retombe plus bas en « illisible », jamais en permission de retirer.
+  if (r.success === true && r.republishPreflight === true && champs.length === 0) return "ok";
+  if (r.needsUserField?.field_key && r.needsUserField?.field_label) return "champ_a_choisir";
+  if (r.draftDiscarded === true) return "brouillon_jete";
+  if (r.sessionPage === "morte" || /^(?:Connexion|Reconnexion)\s+\S+\s+requise/i.test(String(r.error ?? ""))) return "session";
+  if (r.attenteUtilisateur === true) return "attente_utilisateur";
+  if (EXCEPTION_JS_RE.test(String(r.error ?? ""))) return "defaut_fillsell";
+  return "illisible";
+}
+
+const DOMAINE_PREVOL_RECREATION = { leboncoin: "leboncoin.fr", depop: "depop.com" };
+
+// Rend null quand le retrait peut suivre, sinon le résultat de job à rendre.
+async function prevolRecreationAvantRetrait({ accessToken, job, pf, label }) {
+  let resultat = null;
+  try {
+    ({ result: resultat } = await prevolFormulaireRecreation({ ...job, platform_fields: pf }));
+  } catch (e) {
+    resultat = { success: false, error: String(e?.message ?? e) };
+    console.warn(`[republish] job ${job.id} : pré-vol complet ${label} injoignable — ${resultat.error}`);
+  }
+  if (resultat?.discoveredRequired?.length) {
+    persistDiscoveredAspects(accessToken, { ...job, platform_fields: pf }, resultat.discoveredRequired).catch(() => {});
+  }
+  const verdict = verdictPrevolRecreation(resultat);
+  const maintenant = new Date().toISOString();
+  tracerGarde(pf, "prevol_formulaire_recreation", {
+    verdict, plateforme: job.platform, etape: "avant_retrait",
+    champs_verifies: job.platform === "leboncoin"
+      ? ["titre", "categorie", "photos", "criteres", "continuer"]
+      : ["session", "rayon", "etat", "genre", "marque", "taille", "lieu", "port"],
+    ...(resultat?.needsUserField?.field_label ? { champ: String(resultat.needsUserField.field_label).slice(0, 80) } : {}),
+    ...(resultat?.prevolRecreation && typeof resultat.prevolRecreation === "object" ? { sortie: resultat.prevolRecreation } : {}),
+  });
+  job.platform_fields = pf;
+  if (verdict === "ok") {
+    delete pf.next_action_after;
+    pf.republish_prevol_formulaire = { at: maintenant, verdict: "ok", plateforme: job.platform };
+    console.log(`[republish] job ${job.id} : pré-vol complet ${label} — formulaire de recréation remplissable jusqu'au bout, retrait autorisé`);
+    return null;
+  }
+  if (verdict === "champ_a_choisir") {
+    const libelle = String(resultat.needsUserField.field_label);
+    pf.republish_prevol_formulaire = { at: maintenant, verdict, plateforme: job.platform, champ: libelle.slice(0, 80) };
+    resultat.error = `Republication ${label} mise en pause AVANT tout retrait, ton annonce est toujours en ligne : ${label} exige « ${libelle} » pour ce rayon et aucune valeur certaine n'a pu être posée. `
+      + "Rien n'a été touché. Choisis la valeur dans l'app : la republication repartira seule.";
+    await markNeedsUser(accessToken, job, resultat);
+    console.warn(`[republish] job ${job.id} : retrait ${label} REFUSÉ — « ${libelle} » à choisir (pré-vol complet)`);
+    return { status: "needsUser", error: resultat.error };
+  }
+  if (verdict === "session") {
+    pf.republish_prevol_formulaire = { at: maintenant, verdict, plateforme: job.platform };
+    const errMur = `Connexion ${label} requise : se connecter sur ${DOMAINE_PREVOL_RECREATION[job.platform] ?? job.platform} dans ${VO.navigateurCourt()}. `
+      + "La republication repartira toute seule, ton annonce n'a pas été touchée.";
+    await traiterMurDeConnexion(accessToken, { ...job, platform_fields: pf }, {
+      error: errMur,
+      sessionPage: resultat?.sessionPage ?? null,
+      diagnostic: { signal: "prevol_formulaire_recreation", plateforme: job.platform },
+    }, errMur);
+    console.warn(`[republish] job ${job.id} : pré-vol complet ${label} — session fermée, aucun retrait, attente de connexion`);
+    return { status: "needsUser", error: errMur };
+  }
+  if (verdict === "attente_utilisateur") {
+    pf.republish_prevol_formulaire = { at: maintenant, verdict, plateforme: job.platform, motif: String(resultat?.attenteMotif ?? "").slice(0, 60) || null };
+    const msg = `Republication ${label} mise en pause AVANT tout retrait, ton annonce est toujours en ligne : ${motifLisible(resultat?.error ?? "", 300)}`;
+    await marquerAttenteUtilisateur(accessToken, job, { ...resultat, error: msg });
+    console.warn(`[republish] job ${job.id} : retrait ${label} REFUSÉ — ${resultat?.attenteMotif ?? "attente utilisateur"} (pré-vol complet)`);
+    return { status: "needsUser", error: msg };
+  }
+  // Aucune preuve : jamais une permission de retirer. Ce qui n'exige pas de
+  // choix se resonde seul, sans tentative consommée ; l'annonce est intacte.
+  const delaiMin = verdict === "brouillon_jete" ? 1 : 30;
+  pf.next_action_after = new Date(Date.now() + delaiMin * 60_000).toISOString();
+  pf.republish_prevol_formulaire = {
+    at: maintenant, verdict, plateforme: job.platform,
+    detail: String(resultat?.error ?? "aucune preuve positive du formulaire").slice(0, 300),
+  };
+  await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: null });
+  console.warn(`[republish] job ${job.id} : retrait ${label} reporté (${verdict}) — le formulaire de recréation n'est pas prouvé remplissable, nouvel essai dans ${delaiMin} min`);
+  return { status: "skipped", error: `pré-vol complet ${label} non concluant (${verdict}) — rien retiré` };
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 // LEBONCOIN : L'ADRESSE PROUVÉE AVANT LE RETRAIT (0.6.82, 01/10)
 // ══════════════════════════════════════════════════════════════════════════
 // Le Lucky Luke de josephinecerni (« Chantemerle-lès-Grignan 26230 ») et le
@@ -23422,6 +23788,19 @@ async function processRepublishJobPlateforme(job, accessToken) {
     }
     delete pf.retenue_hors_ligne; // (11/10) plus retenu : la marque part avec l'écriture suivante
 
+    // ── LEBONCOIN, DEPOP : LE VRAI FORMULAIRE DE RECRÉATION AVANT LE RETRAIT ──
+    // (11/10, point 4 — voirememe, « Produit » découvert APRÈS le retrait.)
+    // Même contrat que Beebs : remplisseur réel en republish_prevol_only, sans
+    // dépôt ; un champ à choisir → question AVANT tout retrait ; pas de preuve
+    // → rien n'est retiré (cf. prevolRecreationAvantRetrait). Placé après
+    // l'invariant « une seule annonce hors ligne » : un job retenu ne refait
+    // pas tout le formulaire à chaque passage. Une suppression DÉJÀ envoyée
+    // pour cette annonce va au bout (retraitEngage) : pas de pré-vol alors.
+    if (PLATEFORMES_PREVOL_RECREATION.includes(job.platform) && !suppressionDejaEnvoyee(job, pf)) {
+      const refus = await prevolRecreationAvantRetrait({ accessToken, job, pf, label });
+      if (refus) return refus;
+    }
+
     pf.processing_since = new Date().toISOString();
     delete pf.next_action_after;
     job.platform_fields = pf;
@@ -23766,6 +24145,14 @@ async function processRepublishJob(job, accessToken) {
         boutiqueArticle = String(inv?.[0]?.vinted_account_id ?? "").trim();
         if (boutiqueArticle) {
           identCourante = await identiteVintedDuCycle();
+          // (11/10, point 5) Un job qui ATTEND déjà cette boutique (posé par un
+          // 404 de capture) ne recapture pas à l'aveugle quand la sonde est
+          // illisible : l'onglet de travail, tel qu'il est, dit la boutique
+          // ouverte — une autre → l'attente continue, sans un appel de plus
+          // à l'endpoint d'édition.
+          if (!identCourante?.user_id && String(pf.attente_boutique?.user_id ?? "") === boutiqueArticle) {
+            identCourante = await identiteVintedParOnglet();
+          }
           if (identCourante?.user_id && identCourante.user_id !== boutiqueArticle) {
             // Le pseudo attendu se lit dans la liste des boutiques confirmées
             // — sinon libellé générique, jamais un identifiant à l'écran.

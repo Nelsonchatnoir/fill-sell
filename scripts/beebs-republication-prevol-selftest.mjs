@@ -6,7 +6,10 @@ const beebs = fs.readFileSync(new URL("../chrome-extension/content-scripts/beebs
 const serveur = fs.readFileSync(new URL("../supabase/functions/get-pending-jobs/index.ts", import.meta.url), "utf8");
 
 const iPrevol = background.indexOf("prevolFormulaireRecreationBeebs({ ...job, platform_fields: pf })");
-const iRetrait = background.indexOf("({ result } = await executerRetraitViaHandler(job, accessToken));", iPrevol);
+// (11/10) Ancre recalée : depuis la 0.6.104 l'appel rend aussi l'onglet
+// (`({ result, tabId: tabRetrait } = …)`) — l'ancienne forme exacte n'existait
+// plus et ce test tombait sans rapport avec la règle qu'il garde.
+const iRetrait = background.indexOf("await executerRetraitViaHandler(job, accessToken));", iPrevol);
 assert.ok(iPrevol > 0 && iRetrait > iPrevol, "le pré-vol Beebs complet précède le retrait");
 assert.match(background.slice(iPrevol, iRetrait), /if \(!ok\)[\s\S]*return \{ status: "skipped"/,
   "sans preuve positive, la branche rend la main avant le retrait");

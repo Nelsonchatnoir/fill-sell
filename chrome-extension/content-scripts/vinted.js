@@ -1051,6 +1051,26 @@ async function vintedUtilisateurCourant() {
   }
 }
 
+// ── LA BOUTIQUE DU DÉPÔT, RELUE JUSTE AVANT LE CLIC (11/10, point 7) ─────────
+// Le background pose job.boutique_depot = { attendue, login_attendu, multi }
+// sur une PUBLICATION d'un compte à plusieurs boutiques (cf.
+// gardeBoutiqueDepotVinted, background.js). Verdict PUR sur la réponse de
+// vintedUtilisateurCourant (la page elle-même : ses en-têtes, son jeton) :
+//   · pas de garde, ou compte à une boutique → « sans_garde » (rien ne change) ;
+//   · identité illisible (401, 403, réseau, session anonyme) → on ne dépose pas ;
+//   · une AUTRE boutique → on ne dépose pas ;
+//   · la boutique attendue → le dépôt part.
+function verdictBoutiqueAvantDepotVinted(garde, ident) {
+  const attendue = String(garde?.attendue ?? "").trim();
+  if (!attendue || garde?.multi !== true) return { verdict: "sans_garde" };
+  const lue = ident && ident.success === true ? String(ident.userId ?? "").trim() : "";
+  if (!lue) {
+    return { verdict: "identite_illisible", attendue, lue: null, motif: String(ident?.error ?? "").slice(0, 160) || null };
+  }
+  if (lue !== attendue) return { verdict: "mauvaise_boutique", attendue, lue, login_lu: ident.login ?? null };
+  return { verdict: "boutique_ok", attendue, lue };
+}
+
 // ── Lecture du dressing (sync, 2026-08-03) ───────────────────────────────────
 // UNE page de dressing par appel. Le background pilote la pagination et les
 // pauses : ce fichier ne boucle JAMAIS tout seul sur le réseau de Vinted.
@@ -4763,6 +4783,32 @@ async function remplirFormulaireVinted(job) {
   // pose de DERNIÈRE PASSE, le prix est relu — la vérification d'avant ne
   // voyait pas ce clic-là. Déjà commité → aucun geste.
   if (colisRepose && job.price != null) await ensurePriceCommitted(job.price);
+
+  // ══ LA BOUTIQUE, RELUE JUSTE AVANT LE CLIC DE DÉPÔT (11/10, point 7) ══════
+  // Louis : une remise en vente de @neyenonie est partie sur @evat — Chrome
+  // était sur @evat et la boutique n'était lue qu'APRÈS le dépôt. Une
+  // publication d'un compte à plusieurs boutiques porte sa boutique
+  // (job.boutique_depot) : la page la relit ICI, au dernier geste. Autre
+  // boutique, ou identité illisible → RIEN n'est soumis ; le background met le
+  // job en attente de sa boutique (aucune tentative consommée). Recréation et
+  // une-passe exclues : leur retrait est déjà gardé par sa preuve de boutique.
+  if (job.boutique_depot && !recreation && !onePass) {
+    const identDepot = await vintedUtilisateurCourant()
+      .catch((e) => ({ success: false, error: String(e?.message ?? e) }));
+    const constatBoutique = verdictBoutiqueAvantDepotVinted(job.boutique_depot, identDepot);
+    if (constatBoutique.verdict === "mauvaise_boutique" || constatBoutique.verdict === "identite_illisible") {
+      console.warn(`[vinted] boutique avant dépôt : ${constatBoutique.verdict} (attendue ${constatBoutique.attendue}, lue ${constatBoutique.lue ?? "illisible"}) — RIEN n'est soumis`);
+      return {
+        success: false,
+        boutiqueDepotRetenue: true,
+        boutiqueDepot: { ...constatBoutique, source: "page_de_depot" },
+        error: "Publication retenue avant le dépôt : la boutique Vinted ouverte n'est pas celle de l'article (ou n'a pas pu être lue). Rien n'a été soumis à Vinted.",
+        warnings,
+        diagnostic: `boutique avant dépôt : ${constatBoutique.verdict} — attendue ${constatBoutique.attendue}, lue ${constatBoutique.lue ?? "illisible"}` +
+          `${identDepot?.httpStatus ? ` (users/current HTTP ${identDepot.httpStatus})` : ""} — rien soumis`,
+      };
+    }
+  }
 
   // publish.submit (migré au registre — criticité red, clé SANS fallback, §8
   // de l'audit ; l'assert du registre — visible au sens getComputedStyle +
