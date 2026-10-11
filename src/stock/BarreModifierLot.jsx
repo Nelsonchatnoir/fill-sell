@@ -10,6 +10,7 @@
 //    « tes annonces en ligne ne changent pas » est sous le bouton, toujours.
 import { useState } from "react";
 import { OPERATIONS_PRIX, lireNombre, planPrix, planQuantite, parValeur } from "./modifierEnLot";
+import { parLots } from "../utils/parLots.js";
 
 const LIBELLES_OP = {
   fr: { fixer: "Fixer à", plus_euros: "+ €", moins_euros: "− €", plus_pct: "+ %", moins_pct: "− %" },
@@ -39,12 +40,16 @@ export default function BarreModifierLot({ lang = "fr", affiches = [], sel, setS
     setBilan(null);
     let faits = 0;
     let erreur = null;
-    for (const g of parValeur(plan.changements)) {
-      let req = supabase.from("inventaire").update(champ === "prix" ? { prix_vente: g.valeur } : { quantite: g.valeur }).in("id", g.ids);
-      if (userId) req = req.eq("user_id", userId);
-      const { error } = await req;
-      if (error) { erreur = error.message; break; }
-      faits += g.ids.length;
+    // (11/10) Par lots de 400 (utils/parLots.js) : un .in() de plus de ~800
+    // identifiants tombe, et le Stock peut maintenant en montrer 3 000.
+    groupes: for (const g of parValeur(plan.changements)) {
+      for (const lot of parLots(g.ids)) {
+        let req = supabase.from("inventaire").update(champ === "prix" ? { prix_vente: g.valeur } : { quantite: g.valeur }).in("id", lot);
+        if (userId) req = req.eq("user_id", userId);
+        const { error } = await req;
+        if (error) { erreur = error.message; break groupes; }
+        faits += lot.length;
+      }
     }
     setOccupe(false);
     const laisses = (plan.ignores?.length ?? 0);

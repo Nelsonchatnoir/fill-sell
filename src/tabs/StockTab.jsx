@@ -171,6 +171,8 @@ import {
   republishVisiblePour, relancerRepublishVinted,
 } from '../utils/vintedSync';
 import { decisionDemarrage, decisionQuestionBoutique, attentesDeConnexion, jobAttendConnexion, texteConnecteToi } from '../annonces/synchroniser.js';
+import { lirePrixAnnoncesVinted } from '../utils/prixAnnoncesVinted.js';
+import { parLots } from '../utils/parLots.js';
 
 // ── UN SEUL JEU D'ICÔNES (03/10/2026, refonte du Stock) ────────────────────
 // Plus aucun émoji dans l'écran Stock : une icône Lucide au trait, posée dans
@@ -5809,20 +5811,18 @@ const StockTab = memo(function StockTab({
       .filter(id => !(id in prixAnnonces));
     if (!ids.length) return;
     let annule = false;
-    supabase.from('vinted_listing_snapshots')
-      .select('vinted_item_id,price')
-      .eq('user_id', user.id).in('vinted_item_id', ids)
-      .order('captured_at', { ascending: false }).limit(1000)
-      .then(({ data, error }) => {
-        if (annule) return;
-        // Ids sans relevé notés null — sinon l'effet re-requêterait à chaque rendu.
-        setPrixAnnonces(prev => {
-          const n = { ...prev };
-          for (const id of ids) if (!(id in n)) n[id] = null;
-          if (!error) for (const r of (data || [])) if (n[r.vinted_item_id] == null) n[r.vinted_item_id] = r.price;
-          return n;
-        });
+    // (11/10) Par LOTS de 400 (utils/prixAnnoncesVinted.js) : l'inventaire est
+    // désormais lu en entier (jusqu'à 3 434 fiches) et un seul .in() de plus
+    // de ~1 100 identifiants tombe (1 150 → connexion coupée, 2 000 → 400).
+    lirePrixAnnoncesVinted(supabase, user.id, ids).then((lus) => {
+      if (annule) return;
+      // Ids sans relevé notés null — sinon l'effet re-requêterait à chaque rendu.
+      setPrixAnnonces(prev => {
+        const n = { ...prev };
+        for (const id of ids) if (n[id] == null) n[id] = lus[id] ?? null;
+        return n;
       });
+    }, () => {});
     return () => { annule = true; };
   }, [items, user?.id, prixAnnonces]);
   // Prix RÉELLEMENT demandé sur l'annonce Vinted d'un article, ou null. Numérique
@@ -8177,12 +8177,24 @@ const StockTab = memo(function StockTab({
     const avant={};ids.forEach(id=>{avant[id]=paPatchs[id];});
     setPaPatchs(p=>{const n={...p};ids.forEach(id=>{n[id]={buy:pa};});return n;});
     setPaErr(null);
-    let req=supabase.from('inventaire').update({prix_achat:pa,prix_achat_inconnu:false}).in('id',ids);
-    if(user?.id) req=req.eq('user_id',user.id);
-    const {error}=await req;
+    // (11/10) Par lots de 400 (utils/parLots.js) : un .in() de plus de ~800
+    // identifiants tombe, et le Stock peut maintenant en montrer 3 000.
+    // Un lot en erreur : ceux d'après ne partent pas, et seuls les articles
+    // NON écrits reprennent leur affichage d'avant.
+    const ecrits=new Set();
+    let error=null;
+    for(const lot of parLots(ids)){
+      let req=supabase.from('inventaire').update({prix_achat:pa,prix_achat_inconnu:false}).in('id',lot);
+      if(user?.id) req=req.eq('user_id',user.id);
+      ({error}=await req);
+      if(error) break;
+      lot.forEach(id=>ecrits.add(id));
+    }
     if(error){
-      setPaPatchs(p=>{const n={...p};ids.forEach(id=>{if(avant[id]===undefined)delete n[id];else n[id]=avant[id];});return n;});
+      const nonEcrits=ids.filter(id=>!ecrits.has(id));
+      setPaPatchs(p=>{const n={...p};nonEcrits.forEach(id=>{if(avant[id]===undefined)delete n[id];else n[id]=avant[id];});return n;});
       setPaErr({id:ids.length===1?ids[0]:null,message:error.message});
+      if(ecrits.size) rafraichirApresSync();
       return false;
     }
     rafraichirApresSync();
@@ -8192,11 +8204,18 @@ const StockTab = memo(function StockTab({
   async function marquerInconnuStock(ids){
     if(!ids.length) return false;
     setPaErr(null);
-    let req=supabase.from('inventaire').update({prix_achat_inconnu:true}).in('id',ids);
-    if(user?.id) req=req.eq('user_id',user.id);
-    const {error}=await req;
-    if(error){setPaErr({id:ids.length===1?ids[0]:null,message:error.message});return false;}
-    setPaPatchs(p=>{const n={...p};ids.forEach(id=>{n[id]={inconnu:true};});return n;});
+    // (11/10) Par lots de 400, comme ecrirePrixAchatStock.
+    const ecrits=[];
+    let error=null;
+    for(const lot of parLots(ids)){
+      let req=supabase.from('inventaire').update({prix_achat_inconnu:true}).in('id',lot);
+      if(user?.id) req=req.eq('user_id',user.id);
+      ({error}=await req);
+      if(error) break;
+      ecrits.push(...lot);
+    }
+    if(ecrits.length) setPaPatchs(p=>{const n={...p};ecrits.forEach(id=>{n[id]={inconnu:true};});return n;});
+    if(error){setPaErr({id:ids.length===1?ids[0]:null,message:error.message});if(ecrits.length) rafraichirApresSync();return false;}
     rafraichirApresSync();
     return true;
   }

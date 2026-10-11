@@ -55,7 +55,9 @@ console.log("4. l'écran dit la vérité");
 const barre = lire("src/stock/BarreModifierLot.jsx");
 ok(/Les annonces déjà en ligne ne changent pas, sur aucune plateforme/.test(barre), "en-tête : les annonces en ligne ne changent pas, sur aucune plateforme");
 ok(/Tes annonces en ligne gardent leur prix \(une republication aussi\)/.test(barre) && /Tes annonces en ligne n'ont pas changé/.test(barre), "sous le bouton et au bilan : rien ne part vers les annonces");
-ok(/update\(champ === "prix" \? \{ prix_vente: g\.valeur \} : \{ quantite: g\.valeur \}\)\.in\("id", g\.ids\)/.test(barre) && /eq\("user_id", userId\)/.test(barre), "écriture : la fiche seule (prix_vente ou quantite), bornée à la personne");
+// (11/10) Par lots de 400 (utils/parLots.js) : un .in() de plus de ~800 identifiants tombe.
+ok(/update\(champ === "prix" \? \{ prix_vente: g\.valeur \} : \{ quantite: g\.valeur \}\)\.in\("id", lot\)/.test(barre)
+  && /for \(const lot of parLots\(g\.ids\)\) \{/.test(barre) && /eq\("user_id", userId\)/.test(barre), "écriture : la fiche seule (prix_vente ou quantite), bornée à la personne, par lots de 400");
 const stock = lire("src/tabs/StockTab.jsx");
 ok(/<BarreModifierLot /.test(stock) && /Modifier le prix ou la quantité de plusieurs articles/.test(stock), "Stock : la porte et la barre du mode");
 ok(/filter\(\(i\) => i\.statut === 'stock'\)/.test(stock), "Stock : seuls les articles en stock (jamais un vendu)");

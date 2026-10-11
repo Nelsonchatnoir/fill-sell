@@ -173,6 +173,9 @@ import { useSortieOpla } from './hooks/useSortieOpla';
 import { etatBascule } from './utils/basculeOplaDepop.js';
 import { useDemandeAvis } from './hooks/useDemandeAvis';
 import { palierDuProfil, droitsDuPalier, palierLePlusHaut } from './utils/palier';
+import { lireToutesPagesRecentsDabord } from './utils/lireToutesPages';
+import { prixParDefautDuBandeau, preuveDeVente, retireeProposable } from './utils/prixBandeauVente';
+import { dansLaBoutique } from './utils/filtreBoutique';
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler);
 ChartJS.defaults.font.family = "'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif";
 import './App.css';
@@ -3435,6 +3438,11 @@ export default function App({ loginOnly = false }){
       return;
     }
     if(!silencieux) setLoading(true);
+    // Lecture COMPLÈTE par pages (11/10, Rémi) : rend {data,error} comme une
+    // requête seule — une page en erreur annule le tout et l'écran garde son
+    // dernier affichage, jamais une liste à moitié lue.
+    const enEntier=(construire)=>lireToutesPagesRecentsDabord(construire)
+      .then(data=>({data,error:null}),error=>({data:null,error}));
     const [v,i,p]=await Promise.all([
       // ⚠️ Tiebreaker `id` OBLIGATOIRE derrière created_at (06/08) : la sync
       // du dressing insère par tranches de 8 → jusqu'à 8 lignes partagent le
@@ -3456,7 +3464,12 @@ export default function App({ loginOnly = false }){
       // enregistrer », déjà enregistrés. La bannière aurait redemandé un travail
       // déjà fait, et un second enregistrement aurait créé des doublons
       // (`ventes` n'a aucune contrainte d'unicité sur inventaire_id).
-      supabase.from('ventes').select('*').eq('user_id',uid).order('created_at',{ascending:false}).order('id',{ascending:false}).limit(3000),
+      // ⛔ (11/10) Ce plafond n'a JAMAIS été tenu : PostgREST coupe toute
+      // réponse à 1 000 lignes, sans erreur (Content-Range 0-999/*). 3 comptes
+      // avaient 1 562 ventes invisibles. Lecture par pages de 1 000, même
+      // ordre (created_at desc, id desc), mêmes colonnes — cf.
+      // utils/lireToutesPages.js. Plus aucun plafond ici.
+      enEntier(()=>supabase.from('ventes').select('*').eq('user_id',uid)),
       // ⚠️ Plafond relevé de 500 à 3000 (03/08). Il était DÉJÀ atteint (800
       // lignes sur le compte de test) : au-delà, l'inventaire était tronqué en
       // silence et tous les totaux — investi, valeur du stock, bénéfices —
@@ -3469,7 +3482,13 @@ export default function App({ loginOnly = false }){
       // rien à faire dans le stock, mais il doit rester en base pour que la
       // fusion se défasse. UN SEUL endroit filtre, ici : c'est la seule requête
       // qui charge l'inventaire de l'app.
-      supabase.from('inventaire').select('*').eq('user_id',uid).is('fusionne_dans',null).order('created_at',{ascending:false}).order('id',{ascending:false}).limit(3000),
+      // ⛔ (11/10, Rémi : « 17 articles sur 900 » sous @narema75 pour 187 sur
+      // 1 218) Le `.limit(3000)` d'ici n'était pas tenu : PostgREST rend 1 000
+      // lignes au plus, sans erreur. 18 comptes au-delà : 9 267 fiches en
+      // stock et 1 390 vendues absentes de l'app (totaux, filtres, lot,
+      // republication faux). Lecture par pages de 1 000, même ordre, mêmes
+      // colonnes, même filtre — cf. utils/lireToutesPages.js.
+      enEntier(()=>supabase.from('inventaire').select('*').eq('user_id',uid).is('fusionne_dans',null)),
       supabase.from('profiles').select('is_premium,is_pro,is_business,is_comped,is_founder,apple_original_transaction_id,google_purchase_token,subscription_cancel_at_period_end,subscription_period_end,currency,username,platform_settings,extension_last_seen_at,extension_build,onboarded_at,ebay_voie_api').eq('id',uid).maybeSingle(),
     ]);
     if(!v.error) setSales((v.data||[]).map(mapSale));
@@ -4009,6 +4028,11 @@ export default function App({ loginOnly = false }){
   const avgM=caComptabilise>0?(totalM/caComptabilise)*100:0;
   const stock=useMemo(()=>items.filter(i=>i.statut==="stock"),[items]);
   const sold=useMemo(()=>items.filter(i=>i.statut==="vendu"),[items]);
+  // La fiche d'un job en une lecture (11/10) : l'inventaire est désormais lu EN
+  // ENTIER (jusqu'à 3 434 fiches) — un `items.find` par bandeau ne passe plus
+  // à l'échelle sur un compte à plusieurs centaines d'alertes.
+  const itemParId=useMemo(()=>new Map(items.map(i=>[String(i.id),i])),[items]);
+  const ficheDuJob=(job)=>job?.inventaire_id!=null?(itemParId.get(String(job.inventaire_id))??null):null;
   // Vendus importés du dressing SANS ligne `ventes` : Vinted ne communique ni
   // la date de vente ni le prix réellement payé — la ligne de vente n'est
   // écrite QUE quand l'utilisateur complète (VentesTab, mode dédié). Le lien
@@ -4069,8 +4093,9 @@ export default function App({ loginOnly = false }){
       // « sans_origine » (03/09 soir) : les articles jamais estampillés
       // (vinted_account_id NULL) doivent rester atteignables une fois les
       // pills de boutique posées — sinon ils ne vivent que sous « Toutes ».
-      .filter(i=>filterBoutique==="Toutes"
-        ||(filterBoutique==="sans_origine"?i.vinted_account_id==null:String(i.vinted_account_id??'')===filterBoutique))
+      // (11/10) La règle vit dans utils/filtreBoutique.js : la MÊME pour les
+      // vendus (soldFiltre), qui l'ignoraient.
+      .filter(i=>dansLaBoutique(i,filterBoutique))
       // marqueKey (2026-08-31) : le libellé de la pill est recalculé
       // (« Capitalisée »), la marque de l'article est brute — un
       // .toLowerCase() sans trim ni normalisation des espaces laissait
@@ -4101,10 +4126,13 @@ export default function App({ loginOnly = false }){
       .map(([i])=>i);
     return [...g1,...g2];
   },[stock,filterType,clesMarques,filterBoutique,search]);
+  // (11/10, Rémi) Les vendus suivent la boutique choisie, comme le stock :
+  // « Vendu » sous @narema75 montrait les ventes de toutes les boutiques.
   const soldFiltre=useMemo(()=>sold
     .filter(i=>filterType==="Tous"||i.type===filterType)
+    .filter(i=>dansLaBoutique(i,filterBoutique))
     .filter(i=>filterMarqueSold==="Toutes"||marqueKey(i.marque)===marqueKey(filterMarqueSold))
-    .filter(i=>searchMatch(i,search)),[sold,filterType,filterMarqueSold,search]);
+    .filter(i=>searchMatch(i,search)),[sold,filterType,filterBoutique,filterMarqueSold,search]);
   // ── Garde-fous « la marque a disparu du stock » — LE BUG DU 31/08 ──────────
   // Ils comparaient la marque de la pill (libellé RECALCULÉ, cf. marqueKey)
   // à `i.marque` BRUTE en égalité STRICTE : toute marque dont la base ne
@@ -4710,8 +4738,10 @@ export default function App({ loginOnly = false }){
     // (négociation, remise main propre marchandée…).
     const saisi=parseFloat(String(salePriceDraft[job.id]??'').replace(',','.'));
     // Défaut = ce que montre le champ : prix lu sur la page si la plateforme
-    // l'expose (Vinted), sinon prix de mise en ligne.
-    const defaut=Number(job.platform_fields?.detected_price??job.price)||0;
+    // l'expose (Vinted), sinon prix de mise en ligne — y compris celui d'une
+    // REPUBLICATION (prix_recreation, republish_snapshot.prix), puis le prix
+    // de la fiche (11/10, Rémi : 27 bandeaux au prix vide). Jamais 0 inventé.
+    const defaut=prixParDefautDuBandeau(job,ficheDuJob(job))??0;
     const prix=Number.isFinite(saisi)&&saisi>0?saisi:defaut;
     if(!prix){setToast({visible:true,message:lang==='fr'?'Prix de vente requis':'Sale price required'});setTimeout(()=>setToast({visible:false,message:""}),3000);return;}
     // Une vente déjà en vol (ou tout juste enregistrée) : ce tap est celui
@@ -4831,6 +4861,10 @@ export default function App({ loginOnly = false }){
   // n'existe plus) et le drapeau levé — aucune ligne de vente, aucun inventaire
   // touché. Le bandeau ne réapparaîtra pas.
   async function dismissUnavailable(job){
+    // ⛔ (11/10, Rémi) Jamais sous une PREUVE de vente (sale_signal='sold') :
+    // le bouton n'y est plus proposé, et ce chemin refuse quand même — 5 taps
+    // avaient annulé 5 jobs vendus, sans aucune ligne de vente.
+    if(preuveDeVente(job)){console.warn('[dismissUnavailable] refusé : preuve de vente sur le job',job?.id);return;}
     const pf={...(job.platform_fields||{})};
     delete pf.unavailable_since;
     const{error}=await supabase.from('cross_post_jobs')
@@ -4883,7 +4917,7 @@ export default function App({ loginOnly = false }){
   };
   // (08/10, Louis) Une annonce Vinted remplacée par une annonce EN LIGNE de la
   // même fiche n'est jamais une question « Vendue ? » (vintedRemplaceeParUneEnLigne).
-  const remplaceeEnLigne=(job)=>vintedRemplaceeParUneEnLigne(job,items.find(i=>String(i.id)===String(job.inventaire_id)));
+  const remplaceeEnLigne=(job)=>vintedRemplaceeParUneEnLigne(job,itemParId.get(String(job.inventaire_id)));
   async function masquerAlerte(job,on){
     const pf={...(job.platform_fields||{})};
     if(on){pf.alerte_masquee_pour=String(pf.unavailable_since??'');pf.alerte_masquee_le=new Date().toISOString();}
@@ -5022,6 +5056,13 @@ export default function App({ loginOnly = false }){
   // les range. Leurs deux vraies réponses restent offertes dans la modale.
   const aVerifier=useMemo(()=>unavailableListings.filter(j=>estAVerifier(j)&&!remplaceeEnLigne(j)),
     [unavailableListings,items]); // eslint-disable-line react-hooks/exhaustive-deps
+  // (11/10) La revue en liste (RevueAutresPlateformes) montre
+  // `detected_price ?? job.price` : elle reçoit le prix de la MÊME règle que
+  // le bandeau et l'envoi (prixParDefautDuBandeau), dans `price` SEULEMENT —
+  // platform_fields reste intact (dismissUnavailable le réécrit tel quel).
+  const avecPrixDuBandeau=(j)=>({...j,price:prixParDefautDuBandeau(j,ficheDuJob(j))});
+  const disparusAutresPfPrix=useMemo(()=>disparusAutresPf.map(avecPrixDuBandeau),[disparusAutresPf,itemParId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const aVerifierPrix=useMemo(()=>aVerifier.map(avecPrixDuBandeau),[aVerifier,itemParId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Le compteur de tête : ce qui attend VRAIMENT une réponse, les deux files
   // réunies. Les jobs 'sold' et 'cancelled' qui portent encore le drapeau n'y
@@ -8503,8 +8544,10 @@ export default function App({ loginOnly = false }){
           // Preuve positive de vente (Vinted : is_closed + item_closing_action)
           const vendu=pf.sale_signal==='sold';
           // Prix pré-rempli : celui lu sur la page si la plateforme l'expose,
-          // sinon le prix de mise en ligne. Modifiable dans les deux cas.
-          const prixDefaut=pf.detected_price??job.price;
+          // sinon le prix de mise en ligne — celui d'une REPUBLICATION compris
+          // (11/10 : detected_price et price y sont NULL), puis celui de la
+          // fiche. Modifiable dans tous les cas ; MÊME règle que l'envoi.
+          const prixDefaut=prixParDefautDuBandeau(job,ficheDuJob(job));
           return (
             <div key={job.id} style={{background:UI.paper,border:`1px solid ${vendu?UI.teal+'55':UI.border}`,borderLeft:`4px solid ${vendu?UI.teal:UI.amber}`,borderRadius:16,padding:"14px 16px",marginBottom:14,display:"flex",flexDirection:"column",gap:10}}>
               <div style={{fontSize:14,color:UI.ink,lineHeight:1.55}}>
@@ -8544,7 +8587,7 @@ export default function App({ loginOnly = false }){
                   débarrasser de la question, et toutes les stats deviennent du
                   bruit indétectable. Marge absente > marge fausse. */}
               {(()=>{
-                const art=items.find(i=>String(i.id)===String(job.inventaire_id));
+                const art=ficheDuJob(job);
                 if(!art||prixAchatConnu(art)||art.prix_achat_inconnu)return null;
                 return (
                   <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
@@ -8577,10 +8620,14 @@ export default function App({ loginOnly = false }){
                   style={{padding:"9px 18px",borderRadius:999,border:"none",background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,color:"#fff",fontSize:13.5,fontWeight:700,cursor:busy?"default":"pointer",opacity:busy?.6:1,fontFamily:"inherit"}}>
                   {ceBandeau?(lang==='fr'?'…':'…'):(lang==='fr'?'Oui, enregistrer la vente':'Yes, record the sale')}
                 </button>
-                <button disabled={busy} onClick={()=>dismissUnavailable(job)}
-                  style={{padding:"9px 16px",borderRadius:999,border:`1px solid ${UI.border}`,background:UI.card,color:UI.mute2,fontSize:13.5,fontWeight:600,cursor:busy?"default":"pointer",fontFamily:"inherit"}}>
-                  {lang==='fr'?"Non, je l'ai retirée":"No, I removed it"}
-                </button>
+                {/* ⛔ (11/10, Rémi) Jamais sous une preuve de vente : « je l'ai
+                    retirée » y contredit la plateforme et annulait la vente. */}
+                {retireeProposable(job)&&(
+                  <button disabled={busy} onClick={()=>dismissUnavailable(job)}
+                    style={{padding:"9px 16px",borderRadius:999,border:`1px solid ${UI.border}`,background:UI.card,color:UI.mute2,fontSize:13.5,fontWeight:600,cursor:busy?"default":"pointer",fontFamily:"inherit"}}>
+                    {lang==='fr'?"Non, je l'ai retirée":"No, I removed it"}
+                  </button>
+                )}
                 {/* LA TROISIÈME SORTIE, visuellement en retrait : ni fond, ni
                     bordure, corps plus petit. Elle n'écrit rien — c'est une
                     RESPIRATION, pas une décision. Le titre dit le délai en
@@ -8756,7 +8803,7 @@ export default function App({ loginOnly = false }){
                   la même que celle tapée là-bas, jamais deux états qui
                   divergent. */}
               <RevueAutresPlateformes
-                lang={lang} jobs={disparusAutresPf} busyId={confirmingSale}
+                lang={lang} jobs={disparusAutresPfPrix} busyId={confirmingSale}
                 devise={currency==='EUR'?'€':currency}
                 prixDraft={salePriceDraft} setPrixDraft={setSalePriceDraft}
                 achatDraft={buyPriceDraft} setAchatDraft={setBuyPriceDraft}
@@ -8774,7 +8821,7 @@ export default function App({ loginOnly = false }){
                   continue, et une preuve positive de vente les ramènera
                   d'elle-même en « 🎉 Vendue ». */}
               <RevueAutresPlateformes
-                lang={lang} jobs={aVerifier} busyId={confirmingSale}
+                lang={lang} jobs={aVerifierPrix} busyId={confirmingSale}
                 devise={currency==='EUR'?'€':currency}
                 prixDraft={salePriceDraft} setPrixDraft={setSalePriceDraft}
                 achatDraft={buyPriceDraft} setAchatDraft={setBuyPriceDraft}
