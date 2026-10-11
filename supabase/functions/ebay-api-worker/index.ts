@@ -41,7 +41,7 @@ import { titrePourJob, titreVide, CLE_TITRE_SAISI } from "../_shared/titre-du-jo
 import { cheminsRefusesParLApp, cleChemin, mappingRefuseParLApp, suggestionsSansRefus } from "../_shared/rayon-refuse-ebay.ts";
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
 import { tailleDansGrille } from "../_shared/tailles.js";
-import { compteEbayApiUsable, MESSAGE_EBAY_COMPTE_A_FINIR, SOURCE_EBAY_COMPTE_A_FINIR } from "../_shared/ebay-voie.ts";
+import { etatCompteEbayApi, messageEbayCompteAFinir, SOURCE_EBAY_COMPTE_A_FINIR } from "../_shared/ebay-voie.ts";
 import { messageSiteEtranger, siteDuCompteEbay, siteEbayEtranger, SOURCE_EBAY_SITE_ETRANGER } from "../_shared/ebay-site.ts";
 import { idAnnonceEbay, preuveIntentionRetraitRepublicationEbayMemorisee, preuveRetraitRepublicationEbayMemorisee, verifierOffreRetraitEbay, verifierSourceRetraitEbay, type SourceRetraitEbay } from "../_shared/ebay-retrait-identite.ts";
 // Module PUR (aucun import, aucune API navigateur) : le rétro-test doit
@@ -106,19 +106,24 @@ async function rerouterPublicationsVersApi(admin: SupabaseClient): Promise<Recor
     .in("user_id", ids).limit(50);
   let versApi = 0, parquees = 0;
   const pretParCompte = new Map<string, boolean>();
+  const aFinirParCompte = new Map<string, { etape: "vendeur" | "conditions"; url: string } | null>();
   for (const j of (jobs ?? []) as Array<{ id: string; user_id: string; error: string | null; platform_fields: Record<string, unknown> | null }>) {
-    if (!pretParCompte.has(j.user_id)) pretParCompte.set(j.user_id, await compteEbayApiUsable(admin, j.user_id));
+    if (!pretParCompte.has(j.user_id)) {
+      const etat = await etatCompteEbayApi(admin, j.user_id);
+      pretParCompte.set(j.user_id, etat.usable);
+      aFinirParCompte.set(j.user_id, etat.aFinir);
+    }
     const pret = pretParCompte.get(j.user_id) === true;
     const pf: Record<string, unknown> = { ...(j.platform_fields ?? {}) };
     for (const k of ["needs_user_source", "next_action_after", "needsUserAttempts", "needsUserBoucle", "needs_user_tick_le",
       "needs_user_actif_ms", "needs_user_vu_le", "needs_user_vu_erreur", "processing_since", "pas_de_rouge", "pas_de_rouge_reprises"]) delete pf[k];
     if (j.error) pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error, "pending", "ebay-api-worker (voie extension → api, compte relié)");
     pf.voie_reroutee = { le: new Date().toISOString(), de: "extension", vers: "api", compte_pret: pret };
-    if (!pret) pf.needs_user_source = SOURCE_EBAY_COMPTE_A_FINIR;
+    if (!pret) { pf.needs_user_source = SOURCE_EBAY_COMPTE_A_FINIR; pf.ebay_a_finir = aFinirParCompte.get(j.user_id) ?? null; }
     const { data: maj } = await admin.from("cross_post_jobs")
       .update(pret
         ? { voie: "api", error: null, platform_fields: pf }
-        : { voie: "api", status: "needs_user", error: MESSAGE_EBAY_COMPTE_A_FINIR, platform_fields: pf })
+        : { voie: "api", status: "needs_user", error: messageEbayCompteAFinir(aFinirParCompte.get(j.user_id) ?? null), platform_fields: pf })
       .eq("id", j.id).eq("status", "pending").eq("voie", "extension").select("id");
     if (maj?.length) { if (pret) versApi++; else parquees++; }
   }
@@ -3463,9 +3468,10 @@ Deno.serve(async (req) => {
           continue;
         }
       }
-      if ((job.action === "publish" || job.action === "republish") && !(await compteEbayApiUsable(admin, job.user_id))) {
-        job.platform_fields = { ...(job.platform_fields ?? {}), needs_user_source: SOURCE_EBAY_COMPTE_A_FINIR };
-        await marquer(admin, job, { status: "needs_user", error: MESSAGE_EBAY_COMPTE_A_FINIR }, { etape: "compte", quoi: "compte_pas_pret" });
+      const etatCompte = (job.action === "publish" || job.action === "republish") ? await etatCompteEbayApi(admin, job.user_id) : null;
+      if (etatCompte && !etatCompte.usable) {
+        job.platform_fields = { ...(job.platform_fields ?? {}), needs_user_source: SOURCE_EBAY_COMPTE_A_FINIR, ebay_a_finir: etatCompte.aFinir };
+        await marquer(admin, job, { status: "needs_user", error: messageEbayCompteAFinir(etatCompte.aFinir) }, { etape: "compte", quoi: "compte_pas_pret" });
         resultats.push({ job: job.id, issue: "needs_user", motif: "compte_pas_pret" });
         continue;
       }

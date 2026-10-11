@@ -305,6 +305,23 @@ export function republicationAnnonceDisparue(job) {
 export const EBAY_SELLER_HUB_URL = 'https://www.ebay.fr/sh/ovw';
 export function lienVerificationEbay(job, lang = 'fr') {
   if (job?.platform !== 'ebay' || job?.status !== 'needs_user') return null;
+  // (12/10, Nico) « Compte eBay à finir » : le lien DIRECT vers ce qui reste
+  // (posé par ebay-api-worker, _shared/ebay-voie.ts etapeEbayAFinir) — conditions
+  // de vente, ou compte vendeur (Seller Hub) ; un job parqué avant le 12/10
+  // (sans étape) ouvre le Seller Hub, qui mène aux deux.
+  if (job?.platform_fields?.needs_user_source === 'ebay_compte_a_finir') {
+    const aFinir = job.platform_fields.ebay_a_finir;
+    const conditions = aFinir?.etape === 'conditions';
+    return {
+      url: typeof aFinir?.url === 'string' && /^https:\/\/www\.ebay\.fr\//.test(aFinir.url) ? aFinir.url : EBAY_SELLER_HUB_URL,
+      libelle: lang === 'en'
+        ? (conditions ? 'Create my eBay selling policies' : 'Finish my eBay seller account')
+        : (conditions ? 'Créer mes conditions de vente eBay' : 'Finir mon compte vendeur eBay'),
+      aide: lang === 'en'
+        ? 'Once eBay lets your account sell, this listing goes out on its own.'
+        : "Dès qu'eBay laisse ton compte vendre, cette annonce part toute seule.",
+    };
+  }
   const motif = String(job?.platform_fields?.last_diagnostic?.motif_ebay ?? '');
   if (!/^KYC_/i.test(motif)) return null;
   return {

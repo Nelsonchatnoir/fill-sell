@@ -44,6 +44,50 @@ export const MESSAGE_EBAY_COMPTE_A_FINIR =
   "il reste à finir sa configuration (paiement, retours, livraison). Rien n'a été envoyé à eBay — " +
   "l'annonce partira toute seule dès que ton compte sera prêt.";
 
+// ── (12/10, Nico) LE LIEN DIRECT VERS CE QUI RESTE À FINIR CHEZ eBAY ─────────
+// « ajoute au message le lien direct vers la page eBay où finir la
+// configuration du compte vendeur ». Liens VÉRIFIÉS seulement (garde-fou Nico,
+// src/utils/ebayParcours.js LIENS_EBAY, relevés le 05/09 et le 22/09) :
+//   · statut vendeur bloqué par eBay (vérification d'identité, inscription) :
+//     le Seller Hub, seule porte vivante (src/utils/shared.js EBAY_SELLER_HUB_URL) ;
+//   · conditions de vente (paiement, retours, livraison) absentes :
+//     la page des conditions de vente.
+export const LIEN_EBAY_VENDEUR = "https://www.ebay.fr/sh/ovw";
+export const LIEN_EBAY_CONDITIONS = "https://www.ebay.fr/bp/manage";
+
+/** Ce qui reste à finir chez eBay pour une ligne ebay_accounts, et son lien — ou null (compte prêt / absent). */
+// deno-lint-ignore no-explicit-any
+export function etapeEbayAFinir(a: any): { etape: "vendeur" | "conditions"; url: string } | null {
+  if (!a || a.revoked_at != null || compteEbayApiUsableDepuisLigne(a)) return null;
+  const ss = a.seller_state;
+  if (!ss || ss.bloque_par_etat_ebay !== false) return { etape: "vendeur", url: LIEN_EBAY_VENDEUR };
+  return { etape: "conditions", url: LIEN_EBAY_CONDITIONS };
+}
+
+/** Le message « compte à finir », avec l'étape nommée et son lien direct. */
+export function messageEbayCompteAFinir(etape: { etape: "vendeur" | "conditions"; url: string } | null): string {
+  if (!etape) return MESSAGE_EBAY_COMPTE_A_FINIR;
+  const quoi = etape.etape === "vendeur"
+    ? "il reste à finir ton compte vendeur chez eBay (vérification ou inscription vendeur)"
+    : "il reste à créer tes conditions de vente chez eBay (paiement, retours, livraison)";
+  return `Ton compte eBay est bien relié à FillSell, mais eBay ne le laisse pas encore vendre : ${quoi}. ` +
+    `C'est ici : ${etape.url} — rien n'a été envoyé à eBay, et l'annonce partira toute seule dès que ton compte sera prêt.`;
+}
+
+/** L'état du compte en UNE lecture : utilisable, et sinon ce qui reste à finir. (service_role) */
+// deno-lint-ignore no-explicit-any
+export async function etatCompteEbayApi(admin: any, userId: string): Promise<{ usable: boolean; aFinir: { etape: "vendeur" | "conditions"; url: string } | null }> {
+  try {
+    const { data } = await admin
+      .from("ebay_accounts")
+      .select("revoked_at, fulfillment_policy_id, payment_policy_id, return_policy_id, seller_state")
+      .eq("user_id", userId).maybeSingle();
+    return { usable: compteEbayApiUsableDepuisLigne(data), aFinir: etapeEbayAFinir(data) };
+  } catch {
+    return { usable: false, aFinir: null };
+  }
+}
+
 /** Y a-t-il une connexion API eBay NON révoquée pour ce compte ? (service_role) */
 export async function compteEbayApiConnecte(admin: any, userId: string): Promise<boolean> {
   try {
