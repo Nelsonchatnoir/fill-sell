@@ -5,7 +5,7 @@ import { EXTENSION_MIN_BUILD, posteExtensionCompatible } from "../_shared/versio
 const MESSAGE_MISE_A_JOUR_EXTENSION =
   // (03/10, point 24) Le geste le plus simple d'abord : fermer Chrome et le rouvrir.
   "Mets l’extension FillSell à jour : ferme Chrome complètement puis rouvre-le — ta file reprendra toute seule après la mise à jour. Tes annonces restent en ligne.";
-import { verifierBoutiqueOperation, identiteBoutiqueFraiche, origineBoutiqueProuvee, depotVintedExactParAnnonce, importVintedExactParAnnonce, idAnnonceVintedExact } from "../_shared/identite-boutique.js";
+import { verifierBoutiqueOperation, identiteBoutiqueFraiche, origineBoutiqueProuvee, depotVintedExactParAnnonce, importVintedExactParAnnonce, idAnnonceVintedExact, verifierBoutiquePublicationVinted, boutiqueChoisieVersId } from "../_shared/identite-boutique.js";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
@@ -174,7 +174,7 @@ import { localisationLbcATaper } from "../_shared/lbc-localisation.js";
 import { candidatesDepuisRetrait, depotPeutEtrePartiDepuis, jugerCandidates } from "../_shared/recreation-deja-partie.js";
 import { BUILD_COLIS_DANS_ENVOI, VERSION_COLIS_DANS_ENVOI, RETENUE_COLIS_ANCIEN_POSTE, envoiColisProuve, messageColisAttendMiseAJour, colisVintedRetenuAuService } from "../_shared/vinted-colis.js";
 import { tacheAMettreDeCote, messageTacheSansDemarrage, SOURCE_TACHE_SANS_DEMARRAGE } from "../_shared/tache-sans-demarrage.js";
-import { attenteBoutiqueLevable } from "../_shared/attente-autre-boutique.js";
+import { attenteBoutiqueLevable, POSE_PAR_PUBLICATION_BOUTIQUE, messageAttenteBoutique } from "../_shared/attente-autre-boutique.js";
 import { OPLA_PRIX_MAX, prixOplaTropHaut, messagePrixOplaTropHaut } from "../_shared/opla-prix.js";
 import { palierDuProfil } from "../_shared/palier.js";
 
@@ -6013,13 +6013,29 @@ serve(async (req) => {
           if (!origine) historiquesOperations.set(String(j.id), await historiqueListingProuve(j, profil?.vinted_sync_pin?.boutiques));
         }));
         for (const j of operations) {
-          const pf = (j.platform_fields ?? {}) as Record<string, unknown>;
+          let pf = (j.platform_fields ?? {}) as Record<string, unknown>;
+          // (11/10, Louis) La boutique CHOISIE par la personne pour un article
+          // sans boutique (question « boutique_a_choisir ») devient l'origine
+          // du job — seulement une boutique confirmée, jamais un défaut.
+          if (fiable && j.platform === "vinted" && j.action === "publish" && !String(pf.vinted_account_id ?? "").trim() && pf.vinted_boutique_choisie) {
+            const choisie = boutiqueChoisieVersId(pf.vinted_boutique_choisie, profil?.vinted_sync_pin?.boutiques);
+            if (choisie) {
+              pf = { ...pf, vinted_account_id: choisie, vinted_boutique_choisie_le: new Date().toISOString() };
+              await userClient.from("cross_post_jobs").update({ platform_fields: pf }).eq("id", j.id).eq("status", "pending");
+              j.platform_fields = pf;
+            }
+          }
           const { origine, contradictoire } = origineBoutiqueProuvee(origines.get(String(j.inventaire_id)), pf.vinted_account_id);
           const historique = !origine ? (historiquesOperations.get(String(j.id)) ?? { prouve: false }) : { prouve: false };
-          const motif = contradictoire ? "origine_contradictoire" : verifierBoutiqueOperation({ action: j.action, platform: j.platform,
+          const motif = contradictoire ? "origine_contradictoire" : (verifierBoutiqueOperation({ action: j.action, platform: j.platform,
             boutiqueArticle: origine, boutiqueSession: identite?.user_id,
             boutiques: profil?.vinted_sync_pin?.boutiques, lectureFiable: fiable, sessionRequise: false,
-            historiqueListingProuve: historique.prouve });
+            historiqueListingProuve: historique.prouve })
+            // (11/10, Louis) Une PUBLICATION Vinted (remise en vente comprise)
+            // ne part que sur la boutique de sa fiche (identite-boutique.js).
+            ?? verifierBoutiquePublicationVinted({ action: j.action, platform: j.platform,
+              boutiqueArticle: origine, boutiqueSession: identite?.user_id,
+              boutiques: profil?.vinted_sync_pin?.boutiques, lectureFiable: fiable }));
           // Une lecture manquée n'autorise aucune opération sur une fiche dont
           // on n'a pas pu vérifier l'origine. Le prochain poll relit la preuve.
           if (!motif && (fiable || j.inventaire_id == null)) {
@@ -6054,6 +6070,25 @@ serve(async (req) => {
           }
           retenus.add(String(j.id));
           if (!fiable) continue;
+          // (11/10, Louis) PUBLICATION d'un article sans boutique, compte à
+          // plusieurs boutiques : la personne CHOISIT (liste fermée de ses
+          // boutiques confirmées), rien ne part avant — jamais un défaut.
+          // Source à part (« boutique_a_choisir ») : la reprise automatique
+          // des attentes de boutique ne la relance jamais sans ce choix.
+          if (j.action === "publish" && j.platform === "vinted" && motif === "origine_inconnue") {
+            const logins = [...loginsDesBoutiques(profil?.vinted_sync_pin).entries()]
+              .map(([id, login]) => (login ? `@${login}` : String(id)));
+            if (logins.length >= 2) {
+              await userClient.from("cross_post_jobs").update({ status: "needs_user",
+                error: "Sur quelle de tes boutiques Vinted publier cet article ? Il ne part sur aucune avant ta réponse : rien n'est choisi pour toi.",
+                platform_fields: { ...pf, needs_user_source: "boutique_a_choisir",
+                  needsUserField: { platform: "vinted", field_key: "vinted_boutique", field_label: "Boutique Vinted", input_type: "select",
+                    allowed_values: logins, options_completes: true, target: { root: null, key: "vinted_boutique_choisie" } },
+                  boutique_a_choisir: { le: new Date().toISOString(), boutiques: logins, session: identite?.user_id ?? null, pose_par: "get-pending-jobs (publication sans boutique)" } },
+              }).eq("id", j.id).eq("status", "pending");
+              continue;
+            }
+          }
           // Une vérification impossible reste une attente serveur. La garde
           // retient ce job à chaque poll sans inventer une boutique étrangère.
           // (2026-10-01) Plus jamais en silence pour une republication : la
@@ -6078,7 +6113,11 @@ serve(async (req) => {
             }
             continue;
           }
-          const message = motif === "boutique_etrangere"
+          const publicationAilleurs = j.action === "publish" && j.platform === "vinted" && motif === "boutique_etrangere";
+          const loginOrigine = publicationAilleurs ? (loginsDesBoutiques(profil?.vinted_sync_pin).get(String(origine)) ?? null) : null;
+          const message = publicationAilleurs
+            ? messageAttenteBoutique(loginOrigine, "publish")
+            : motif === "boutique_etrangere"
             ? "Cette annonce appartient à une autre boutique Vinted que celle ouverte dans Chrome. Connecte-toi à la boutique qui porte cette annonce, puis relance."
             : motif === "boutique_non_confirmee"
             ? "La boutique d'origine de cet article n'est pas confirmée sur ton compte FillSell. Si c'est bien ta boutique, connecte-toi à celle-ci sur Vinted et confirme-la dans « Actualiser mon dressing ». Sinon, ne relance pas cette opération."
@@ -6088,7 +6127,9 @@ serve(async (req) => {
           await userClient.from("cross_post_jobs").update({ status: "needs_user", error: message,
             platform_fields: { ...pf, needs_user_source: "boutique_etrangere",
               boutique_etrangere: { motif, article: origine || null, session: identite?.user_id ?? null,
-                login_session: identite?.login ?? null, le: new Date().toISOString(), pose_par: "get-pending-jobs (identité prouvée)" } }
+                login_session: identite?.login ?? null, le: new Date().toISOString(),
+                // (11/10) Une publication attend SA boutique et repart seule quand elle est vue connectée.
+                pose_par: publicationAilleurs ? POSE_PAR_PUBLICATION_BOUTIQUE : "get-pending-jobs (identité prouvée)" } }
           }).eq("id", j.id).eq("status", "pending");
         }
       }

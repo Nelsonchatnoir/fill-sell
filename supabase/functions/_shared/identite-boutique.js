@@ -25,6 +25,50 @@ export function verifierBoutiqueOperation({ action, platform, boutiqueArticle, b
   return null;
 }
 
+// ── UNE PUBLICATION VINTED PART SUR LA BOUTIQUE DE L'ARTICLE (11/10, Louis) ──
+// Le 11/10 à 10:40, la remise en vente des « 12 adaptateurs pour pots La
+// Laitière – M » (fiche de @neyenonie, 247512093) est partie sur @evat
+// (371531), la boutique ouverte dans Chrome : une publication ne passait par
+// AUCUNE garde de boutique (« une publication neuve part toujours sur la
+// boutique ouverte »), et l'extension ne lisait la boutique qu'APRÈS le dépôt.
+// Règle de Nico : un article appartient à la boutique d'où il vient ; il ne se
+// publie ni ne se republie JAMAIS sur une autre. Boutique inconnue → il attend,
+// jamais un choix par défaut.
+//   · article AVEC sa boutique : publiée seulement si la session ouverte est
+//     CELLE-LÀ ; une autre boutique ouverte → « boutique_etrangere » (attente,
+//     reprise seule dès que la sonde voit la bonne) ; session illisible chez un
+//     compte à plusieurs boutiques → « session_inconnue » (gardée en file) ;
+//     boutique hors de la liste confirmée → « boutique_non_confirmee » ;
+//   · article SANS boutique chez un compte à plusieurs boutiques →
+//     « origine_inconnue » : la personne choisit (question fermée), rien ne part
+//     avant ;
+//   · compte à une boutique (ou aucune confirmée), article sans boutique :
+//     inchangé.
+// La garde posée se lève seule (attente-autre-boutique.js, POSE_PAR_PUBLICATION_BOUTIQUE).
+
+export function verifierBoutiquePublicationVinted({ action, platform, boutiqueArticle, boutiqueSession, boutiques, lectureFiable }) {
+  if (platform !== 'vinted' || action !== 'publish') return null;
+  if (!lectureFiable) return 'lecture_indisponible';
+  const confirmees = new Set((Array.isArray(boutiques) ? boutiques : []).map(b => String(b?.user_id ?? '').trim()).filter(Boolean));
+  const multi = confirmees.size >= 2;
+  const origine = String(boutiqueArticle ?? '').trim();
+  const session = String(boutiqueSession ?? '').trim();
+  if (!origine) return multi ? 'origine_inconnue' : null;
+  if (confirmees.size && !confirmees.has(origine)) return 'boutique_non_confirmee';
+  if (session && session !== origine) return 'boutique_etrangere';
+  if (!session && multi) return 'session_inconnue';
+  return null;
+}
+
+/** La boutique choisie par la personne (« @login » ou numéro) → son numéro, si elle est confirmée. */
+export function boutiqueChoisieVersId(choix, boutiques) {
+  const c = String(choix ?? '').trim().replace(/^@/, '').toLowerCase();
+  if (!c) return null;
+  const b = (Array.isArray(boutiques) ? boutiques : []).find((x) =>
+    String(x?.user_id ?? '').trim() === c || String(x?.login ?? '').trim().toLowerCase() === c);
+  return b ? String(b.user_id).trim() : null;
+}
+
 export function idAnnonceVintedExact(j) {
   const colonne = String(j?.platform_listing_id || '').trim();
   const lienBrut = String(j?.listing_url || '').trim();

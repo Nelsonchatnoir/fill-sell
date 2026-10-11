@@ -19,18 +19,26 @@
 
 export const POSE_PAR_ORIGINE_PROUVEE = "handler-watch (origine prouvée du job)";
 export const POSE_PAR_PAGE_EXACTE = "extension (propriétaire lu sur la page exacte)";
+// (11/10) Une publication Vinted retenue sur la boutique de sa fiche (get-pending-jobs).
+export const POSE_PAR_PUBLICATION_BOUTIQUE = "get-pending-jobs (publication, boutique de la fiche)";
 
 /** Le marqueur posé peut-il être levé quand la sonde voit cette boutique ? */
 export function attenteBoutiqueLevable(garde) {
   if (!garde || typeof garde !== "object") return false;
   if (garde.motif !== "boutique_etrangere") return false;
   if (!String(garde.article ?? "").trim()) return false;
-  return garde.pose_par === POSE_PAR_PAGE_EXACTE || garde.pose_par === POSE_PAR_ORIGINE_PROUVEE;
+  return garde.pose_par === POSE_PAR_PAGE_EXACTE || garde.pose_par === POSE_PAR_ORIGINE_PROUVEE
+    // (11/10, Louis) Une PUBLICATION retenue sur la boutique de sa fiche
+    // (identite-boutique.js, verifierBoutiquePublicationVinted) repart seule,
+    // elle aussi, dès que CETTE boutique est vue connectée.
+    || garde.pose_par === POSE_PAR_PUBLICATION_BOUTIQUE;
 }
 
 /** Le texte de la carte : quelle boutique ouvrir, et que rien n'est touché. */
 export function messageAttenteBoutique(login, action = "republish") {
   const qui = login ? `ta boutique Vinted @${login}` : "ton autre boutique Vinted";
+  // (11/10) Une publication : rien n'est encore en ligne, rien ne part ailleurs.
+  if (action === "publish") return `En attente de ${qui} : cet article appartient à cette boutique, il ne se publie que sur elle. Ouvre-la sur vinted.fr dans Chrome, la publication repartira toute seule. Rien n'a été publié ailleurs.`;
   const suite = action === "delete" ? "le retrait repartira tout seul" : "la republication repartira toute seule";
   return `En attente de ${qui} : ouvre-la sur vinted.fr dans Chrome, ${suite}. Ton annonce est toujours en ligne, rien n'a été retiré.`;
 }
