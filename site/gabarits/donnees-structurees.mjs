@@ -2,6 +2,7 @@ import { ORIGINE } from '../../scripts/site/lib/html.mjs';
 import { dateHeureParis } from '../../scripts/site/lib/dates.mjs';
 import { langue } from '../langues.mjs';
 import { TEXTES } from './textes.mjs';
+import { prix } from './composants.mjs';
 
 // JSON-LD du site vitrine, UN @graph par page (09/10/2026, architecture § 5,
 // revue B M1, docs/seo/FORMAT-CONTENU.md § 3).
@@ -74,20 +75,22 @@ function pageWeb(page, type = 'WebPage') {
   };
 }
 
-/** Offres de l'application : un Offer par palier, prix mensuel affiché. */
+/**
+ * Offres de l'application : un Offer par palier, prix mensuel affiché.
+ * (11/10, Search Console › Applications logicielles) Plus de `priceSpecification` :
+ * Google refuse le type `UnitPriceSpecification` dans une application
+ * (« Type d'objet non valide pour le champ "priceSpecification" », un par offre),
+ * et `billingDuration` n'existe que sur ce type. Le « par mois » est dit par la
+ * `description`, le texte même de la carte de prix (« 12,99 € / mois »).
+ */
 export function offres(tarifs, lang) {
   return tarifs.paliers.map((p) => ({
     '@type': 'Offer',
     name: `FillSell ${p.nom[lang]}`,
+    description: `${prix(p.prix, lang, tarifs.devise)} ${TEXTES[lang].parMois}`,
     price: p.prix.toFixed(2),
     priceCurrency: tarifs.devise,
     url: ORIGINE + tarifs.inscription,
-    priceSpecification: {
-      '@type': 'UnitPriceSpecification',
-      price: p.prix.toFixed(2),
-      priceCurrency: tarifs.devise,
-      billingDuration: 'P1M',
-    },
   }));
 }
 
