@@ -31,6 +31,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { appelAutorise, loggerAppelIA, tokensDe } from "../_shared/usage-guard.ts";
+import { plafondResolveCategorie } from "../_shared/plafond-resolve-categorie.js";
 
 const ALLOWED_ORIGINS = [
   "https://fillsell.app", "capacitor://localhost", "https://localhost", "http://localhost:5173",
@@ -167,9 +168,17 @@ serve(async (req) => {
   // Volume réel mesuré le 07/09 : 25 articles par jour reçoivent une catégorie
   // calculée, tous utilisateurs confondus. 300/jour et par utilisateur est
   // donc ~12× la pointe de TOUT le parc — inatteignable sans une boucle.
-  if (userId && !(await appelAutorise(admin, userId, "resolve_categorie", 300))) {
-    console.warn(`[resolve-categorie] garde-fou atteint pour ${userId}`);
-    return json({ error: "rate_limited" }, 429);
+  // (12/10, A1) Le plafond suit le PALIER : la publication en lot n'a plus de
+  // limite de 20 articles, et un article coûte ~3 appels (Louis, Business : 65
+  // appels pour un lot de 20, 278 sur 24 h le 11/10 — au bord de 300). Toujours
+  // un garde-fou contre une boucle, jamais un frein à un vrai lot.
+  if (userId) {
+    const { data: palier } = await admin.rpc("palier_de", { p_user: userId });
+    const seuil = plafondResolveCategorie(typeof palier === "string" ? palier : null);
+    if (!(await appelAutorise(admin, userId, "resolve_categorie", seuil))) {
+      console.warn(`[resolve-categorie] garde-fou atteint pour ${userId} (${seuil}/24 h, palier ${palier ?? "?"})`);
+      return json({ error: "rate_limited" }, 429);
+    }
   }
 
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
