@@ -75,6 +75,7 @@ import BandeauDejaVendu from '../annonces/BandeauDejaVendu';
 import QuestionMarque from '../annonces/QuestionMarque';
 import { estQuestionMarqueHorsCatalogue, marqueDemandee } from '../utils/questionMarque';
 import { marqueComparable, estSansMarque } from '../../supabase/functions/_shared/marque-absente.js';
+import { attributMarqueVinted } from '../publication/moteur/reponsesPartagees.js';
 import { attendIdentiteLbc, attentesIdentiteLbc } from '../../supabase/functions/_shared/lbc-identite.js';
 // ⛔ UNE SEULE LECTURE DU MUR pour les trois surfaces (carte de sync du
 //    dressing, carte « Mes annonces en ligne », parcours d'entrée) : celle
@@ -1577,6 +1578,8 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
       // l'orthographe d'une plateforme) vaut pour CETTE copie, jamais pour la
       // fiche — la marque de l'article reste la sienne sur les autres
       // plateformes.
+      //   (11/10) Elle est rangée À PART, pour Vinted seulement :
+      //   attributs.marque_vinted { v, de } — bloc plus bas.
       // ── LA MARQUE DU CATALOGUE CHOISIE EST RETENUE (04/10, Louis) ─────────
       // Une marque que Vinted ne connaît pas, remplacée ici par une marque de
       // son catalogue : le couple est retenu (platform_settings.vinted.
@@ -1589,6 +1592,24 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
         if (demandee && v && !estSansMarque(v) && !estSansMarque(demandee) && marqueComparable(demandee) !== marqueComparable(v)) {
           fusionnerReglages(["vinted", "marques_retenues"], { [marqueComparable(demandee)]: v })
             .then(({ error }) => { if (error) console.warn("[marque] choix non retenu :", error.message); }, () => {});
+        }
+      }
+      // ── (11/10, Nico) LA RÉPONSE VAUT POUR L'ARTICLE, JAMAIS REDEMANDÉE ────
+      // Elle ne valait que pour CETTE tâche : la publication Vinted suivante du
+      // même article reposait la question. Elle est rangée sur la fiche, À PART
+      // de la marque de l'article (qui reste la sienne ailleurs) :
+      //   attributs.marque_vinted = { v: le choix (« Sans marque » compris),
+      //     de: la marque demandée, source: 'manuel', at }
+      // Le trigger inventaire_attributs_fusion fusionne (rang « manuel », le
+      // plus haut) : rien d'autre n'est touché. L'app (copie Vinted qui porte
+      // `de` → `v`, moteur/reponsesPartagees) et get-pending-jobs la lisent.
+      // Best-effort : le job est déjà reparti.
+      if (!sansValeur && questionMarque && job.platform === "vinted" && job.inventaire_id != null) {
+        const marqueVinted = attributMarqueVinted({ choix: v, demandee: marqueDemandee(job, f) });
+        if (marqueVinted) {
+          try {
+            await supabase.from("inventaire").update({ attributs: { marque_vinted: marqueVinted } }).eq("id", job.inventaire_id);
+          } catch { /* la fiche garde ce qu'elle avait ; le job, lui, est reparti */ }
         }
       }
       if (!sansValeur && job.inventaire_id != null && !questionMarque) {

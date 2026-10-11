@@ -77,6 +77,13 @@ export default function QuestionMarque({ job, f, lang = 'fr', saving = false, on
         {fr
           ? `${plateforme} ne connaît pas la marque${demandee ? ` « ${demandee} »` : ''} et ne permet plus d'en créer une. Cherche-la dans la liste de ${plateforme} (elle y est peut-être sous un autre nom), ou publie en « Sans marque ». Rien n'a été envoyé à ${plateforme}.`
           : `${plateforme} doesn't know the brand${demandee ? ` “${demandee}”` : ''} and no longer lets you create one. Look for it in ${plateforme}'s list (it may have another name), or publish as “No brand”. Nothing was sent to ${plateforme}.`}
+        {/* (11/10) La réponse est rangée sur l'article (attributs.marque_vinted) :
+            ses publications Vinted suivantes la reprennent, sans redemander. */}
+        {job?.platform === 'vinted' && job?.inventaire_id != null && (
+          <span style={{ display: 'block', marginTop: 4 }}>
+            {fr ? `Ton choix vaut pour cet article : il ne te sera plus demandé pour ${plateforme}.` : `Your choice is kept for this item: you won't be asked again for ${plateforme}.`}
+          </span>
+        )}
       </div>
       {ligne('Sans marque', true)}
       <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#8A9893', margin: '12px 0 6px' }}>

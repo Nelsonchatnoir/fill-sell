@@ -125,8 +125,11 @@ import {
 } from "../publication/moteur/champsPartages";
 // (03/10, cas Ornella) Une réponse partagée atteint les plateformes qu'elle
 // vise, verrou ou pas ; la marque de la fiche comble une copie vide.
+// (11/10, Nico) Aucune marque nulle part → « Sans marque » d'office ; la
+// réponse « marque hors catalogue » rangée sur la fiche vaut pour l'article.
 import {
   marqueDeLaFiche, marqueUtilisable, comblerMarquesVides, ciblesDeLaReponse, ecrireReponsePartagee,
+  sansMarqueDOffice, appliquerMarqueVintedArticle,
 } from "../publication/moteur/reponsesPartagees.js";
 // (chantier du 24/09) normAspectVal et nearestAllowedValue ont déménagé dans le
 // moteur, à l'identique : la carte (champsDuRayon) et la publication en masse
@@ -4929,7 +4932,17 @@ export default function ListingPreviewScreen({
   // Le poids TAPÉ sur la carte Leboncoin (un geste, pas une valeur reprise) :
   // lui seul autorise à réécrire un poids que la fiche porte déjà.
   const poidsSaisiAuStepperRef = useRef(false);
-  const comblerMarqueFiche = (copies) => comblerPoidsFiche(comblerMarquesVides(copies, marqueDeLaFiche(initialListing)).edited);
+  // (11/10, Nico) Aux MÊMES trois arrivées, après la marque de la fiche :
+  //   · la réponse « marque hors catalogue » déjà donnée pour CET article
+  //     (attributs.marque_vinted { v, de }) remplace `de` sur la copie Vinted ;
+  //   · AUCUNE marque nulle part (fiche, Lens, copies, aucune lecture
+  //     partielle d'étiquette dans les notes de Lens) → « Sans marque » sur
+  //     chaque copie, sans question — la valeur exacte du bouton. Rien sur la
+  //     fiche. Une marque présente hors catalogue garde sa question.
+  const comblerMarqueFiche = (copies) => comblerPoidsFiche(sansMarqueDOffice(
+    appliquerMarqueVintedArticle(comblerMarquesVides(copies, marqueDeLaFiche(initialListing)).edited, initialListing?.attributs).edited,
+    { fiche: initialListing, notesLens: initialListing?.notes ?? null },
+  ).edited);
   const [edited, setEdited]                           = useState(() => comblerMarqueFiche(draft?.edited ?? {}));
   // ── L'OPTION PHOTOS AVEC LAQUELLE LE TEXTE EN MAIN A ÉTÉ RÉDIGÉ (01/10) ────
   // « Publier » rouvre désormais TOUJOURS l'écran « Où publier ? », fiche
@@ -8027,6 +8040,15 @@ export default function ListingPreviewScreen({
           // cliente). Avant ce 400, rien n'était demandé et le job partait
           // sans marque. Une ligne synthétique porte l'exigence — sauf
           // « Livres et médias », dont le formulaire n'a pas de champ Marque.
+          // ⚠️ RÈGLE DU 24/09 REMPLACÉE LE 11/10 (Nico, cas lucyburaux988) : elle
+          // disait « aucune annonce Vinted sans marque, pas de Sans marque
+          // d'office » — cinq questions « Marque » sur des parures qui n'avaient
+          // AUCUNE marque. Désormais, quand aucune marque n'existe nulle part
+          // (fiche, Lens, copies, aucune lecture partielle d'étiquette), les
+          // copies arrivent déjà en « Sans marque » (comblerMarqueFiche →
+          // moteur/reponsesPartagees.sansMarqueDOffice) et cette ligne est
+          // satisfaite sans question. Elle ne reste une question que pour une
+          // copie vidée à la main, ou une lecture partielle de Lens.
           if (platform === "vinted" && variante === "nouvelle" && !rows.some(r => r.field_key === "brand") && vintedExigeUneMarque(String(key).split(" > "))) {
             rows = [...rows, { field_key: "brand", field_label: "Marque", required: true, input_type: null, allowed_values: [], synthetique: "vinted_marque_exigee" }];
           }
@@ -8754,8 +8776,22 @@ export default function ListingPreviewScreen({
     // pendant le départ.
     if (publishing) return;
     const actifs = new Set();
+    // (11/10, point 10) UNE LIGNE = UN AFFICHAGE. Un aspect dont le champ
+    // partagé est déjà posé en question (« Marque · Vinted ») n'est pas une
+    // seconde question : même règle que l'encart (moteur/regles.questionsAPoser).
+    // Avant, la même question « Marque » laissait deux lignes « affiche » (le
+    // rayon synthétique vinted_marque_exigee + la question partagée) et deux
+    // « complete » — les « 20 questions » de lucyburaux988 étaient 5 affichages.
+    const partageEnQuestion = (gp, sk) => Boolean(sk)
+      && (SHARED_PROPAGATION[sk] ?? []).includes(gp)
+      && missingSharedFieldsDetailed.some(f => f.key === sk);
+    // (11/10, point 9) La couleur que le moteur va poser seul n'est pas une
+    // question : rien n'est compté tant que la couleur automatique n'a pas fini.
+    const couleurRetenue = (x) => couleurEnAttente && estChampCouleur(x);
     for (const [gp, list] of Object.entries(genericRequiredStatus ?? {})) {
       for (const a of list.filter(aspectBloquant)) {
+        if (partageEnQuestion(gp, genericFieldToSharedKey(gp, a.key))) continue;
+        if (couleurRetenue({ platform: gp, key: a.key })) continue;
         const k = `${gp}:${a.key}`;
         actifs.add(k);
         if (!champBloquantVus.current[k]) {
@@ -8774,6 +8810,8 @@ export default function ListingPreviewScreen({
     // catégorie terminée — un champ qu'elle va remplir n'est pas un blocage.
     for (const a of (ebayRequiredStatus ?? []).filter(aspectBloquant)) {
       if (a.state === "missing" && ebayIaFiniePour !== ebayPreviewCategoryId) continue;
+      if (partageEnQuestion("ebay", a.sharedKey)) continue;
+      if (couleurRetenue({ platform: "ebay", key: a.name, sharedKey: a.sharedKey })) continue;
       const k = `ebay:${a.name}`;
       actifs.add(k);
       if (!champBloquantVus.current[k]) {
@@ -8789,6 +8827,7 @@ export default function ListingPreviewScreen({
     // avec l'article — la même feature, le même cycle affiche/complete/abandonne.
     const libellesPartages = { taille: t("fieldSizeLabel"), couleur: t("fieldColorLabel"), matiere: t("fieldMaterialLabel"), marque: t("fieldBrandLabel") };
     for (const f of missingSharedFieldsDetailed) {
+      if (couleurRetenue({ partage: f.key })) continue;
       for (const p of f.platforms ?? []) {
         const k = `${p}:partage:${f.key}`;
         actifs.add(k);
@@ -8810,7 +8849,7 @@ export default function ListingPreviewScreen({
       }
     }
     champBloquantRestants.current = actifs;
-  }, [step, publishing, genericRequiredStatus, ebayRequiredStatus, ebayIaFiniePour, ebayPreviewCategoryId, missingSharedFieldsDetailed]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [step, publishing, genericRequiredStatus, ebayRequiredStatus, ebayIaFiniePour, ebayPreviewCategoryId, missingSharedFieldsDetailed, couleurEnAttente]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { doneRef.current = done; }, [done]);
   useEffect(() => () => {
     if (doneRef.current) return;

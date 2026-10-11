@@ -28,8 +28,31 @@
 // ET LA MARQUE DE LA FICHE N'EST JAMAIS REDEMANDÉE : une copie dont la marque
 // est vide (ou d'une seule lettre) la reprend de la fiche, au chargement des
 // copies (rédaction, fiche rouverte, brouillon) — jamais pendant une frappe.
-import { SHARED_PROPAGATION } from "./champsPartages.js";
+//
+// ── (11/10, Nico) AUCUNE MARQUE NULLE PART → « SANS MARQUE », SANS QUESTION ──
+// Cas lucyburaux988 (10/10) : cinq parures publiées vers Vinted, cinq questions
+// « Marque » alors qu'AUCUNE marque n'existait (Lens : marque nulle, « sans
+// marque visible » ; rédaction : marque null) — réponse « Sans marque » 4 fois
+// sur 5. La règle du 24/09 (« pas de Sans marque d'office ») est REMPLACÉE :
+// fiche sans marque, Lens sans marque, aucune copie qui en porte, et aucune
+// lecture partielle d'étiquette dans les notes de Lens → chaque copie reçoit
+// « Sans marque » (la valeur exacte du bouton), aux trois arrivées des copies,
+// jamais pendant une frappe, jamais sur la fiche (sansMarqueDOffice).
+// Ce qui ne change PAS : une marque présente mais absente du catalogue Vinted
+// garde sa question (« Sans marque » ou une marque de la liste, jamais une
+// autre marque en silence) ; une marque du catalogue passe ; une marque tapée
+// par la personne n'est jamais redemandée.
+//
+// ── (11/10) UNE RÉPONSE « MARQUE HORS CATALOGUE » VAUT POUR L'ARTICLE ───────
+// La question posée par l'extension (Vinted ne connaît pas la marque) ne
+// valait que pour SA tâche : la publication Vinted suivante du même article la
+// reposait. La réponse est rangée sur la fiche, à part de la marque de
+// l'article (attributs.marque_vinted = { v, de, source: 'manuel', at } —
+// StockTab) ; une copie Vinted qui porte `de` (ou rien) reçoit `v`
+// (appliquerMarqueVintedArticle). Même contrat côté serveur (get-pending-jobs).
+import { SHARED_PROPAGATION, NO_BRAND_VALUE } from "./champsPartages.js";
 import { valeurUneLettre } from "../../../supabase/functions/_shared/vinted-exigences.js";
+import { marqueComparable } from "../../../supabase/functions/_shared/marque-absente.js";
 
 /** Une marque utilisable : au moins deux caractères (une lettre n'est pas une réponse). */
 export function marqueUtilisable(v) {
@@ -126,4 +149,117 @@ export function ecrireReponsePartagee({ edited, overrides = {}, key, value, cibl
     ov[p] = s;
   }
   return { edited: next, overrides: ov };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// (11/10) « SANS MARQUE » D'OFFICE QUAND AUCUNE MARQUE N'EXISTE NULLE PART
+// ═══════════════════════════════════════════════════════════════════════════
+// Une LECTURE PARTIELLE d'étiquette dans les notes de Lens peut être une
+// marque : la question reste. Formes écrites par lens-analysis (prompt FR et
+// EN) : « texte lisible sur l'objet : "…" », « texte partiellement lisible sur
+// l'étiquette », « texte lu sur l'étiquette : "…" — marque introuvable »,
+// « lettres de l'étiquette : B-O-N-O-B-O », « inscription partiellement
+// illisible » ; 'text legible on the item', 'partly legible text on the
+// label', 'text read on the label', 'label letters'.
+// « aucun texte lisible », « pas de texte lisible » ne sont PAS des lectures.
+const LECTURES_PARTIELLES = [
+  /texte (partiellement )?(lisible|lu)\b/gi,
+  /lettres de l['’]etiquette/gi,
+  /inscription (partiellement )?(illisible|lisible)/gi,
+  /\b(partly |partially )?legible text\b/gi,
+  /\btext (partly |partially )?(legible|read)\b/gi,
+  /\blabel letters\b/gi,
+  /\binscription partly illegible\b/gi,
+];
+const NEGATION_AVANT = /(aucun|aucune|pas de|sans|nul|no|without)\s*$/i;
+
+/** Les notes de Lens portent-elles une lecture (même partielle) d'étiquette ? */
+export function lectureMarquePartielle(notes) {
+  const t = String(notes ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "");
+  if (!t.trim()) return false;
+  for (const re of LECTURES_PARTIELLES) {
+    re.lastIndex = 0;
+    let m;
+    while ((m = re.exec(t))) {
+      if (!NEGATION_AVANT.test(t.slice(Math.max(0, m.index - 14), m.index))) return true;
+    }
+  }
+  return false;
+}
+
+const texteNonVide = (v) => String(v ?? "").trim();
+
+/** Une copie porte-t-elle une marque, quelle qu'elle soit (une lettre comprise : prudence) ? */
+function copiePorteUneMarque(p, pf) {
+  if (texteNonVide(pf?.marque)) return true;
+  if (p === "vinted" && texteNonVide(pf?.vintedAspects?.brand)) return true;
+  if (p === "ebay" && texteNonVide(pf?.ebayAspects?.Marque)) return true;
+  if (p === "beebs" && texteNonVide(pf?.beebsAspects?.Marque)) return true;
+  if (p === "depop" && texteNonVide(pf?.depopMarque)) return true;
+  return false;
+}
+
+/** La fiche porte-t-elle une marque (colonne, attribut, réponse Vinted rangée) ? */
+function fichePorteUneMarque(fiche) {
+  if (!fiche || typeof fiche !== "object") return false;
+  if (texteNonVide(fiche.marque)) return true;
+  const a = fiche.attributs?.marque;
+  if (texteNonVide(a && typeof a === "object" ? a.v : a)) return true;
+  const mv = fiche.attributs?.marque_vinted;
+  return Boolean(mv && typeof mv === "object" && (texteNonVide(mv.de) || texteNonVide(mv.v)));
+}
+
+/**
+ * « Sans marque » sur chaque copie quand AUCUNE marque n'existe nulle part.
+ * @param {object} edited  les copies { [plateforme]: { platform_fields } }
+ * @param {object} p
+ * @param {object|null} p.fiche      la fiche (initialListing : marque, attributs) — pour un scan
+ *                                   Lens, c'est le résultat de Lens lui-même (marque = celle lue)
+ * @param {string|null} [p.lensMarque]  la marque lue par Lens, si elle vit ailleurs
+ * @param {string|null} [p.notesLens]   les notes de Lens (lecture partielle → la question reste)
+ * Rend `{ edited, posees }` — `edited` est l'objet d'entrée quand rien ne change.
+ */
+export function sansMarqueDOffice(edited, { fiche = null, lensMarque = null, notesLens = null, plateformes = SHARED_PROPAGATION.marque } = {}) {
+  if (!edited || typeof edited !== "object") return { edited, posees: [] };
+  const presentes = plateformes.filter((p) => edited[p]);
+  if (!presentes.length) return { edited, posees: [] };
+  if (fichePorteUneMarque(fiche) || texteNonVide(lensMarque)) return { edited, posees: [] };
+  if (lectureMarquePartielle(notesLens)) return { edited, posees: [] };
+  if (Object.entries(edited).some(([p, c]) => copiePorteUneMarque(p, c?.platform_fields))) return { edited, posees: [] };
+  const next = { ...edited };
+  for (const p of presentes) {
+    next[p] = { ...edited[p], platform_fields: { ...(edited[p].platform_fields ?? {}), marque: NO_BRAND_VALUE } };
+  }
+  return { edited: next, posees: presentes };
+}
+
+/**
+ * La réponse déjà donnée pour CET article à la question « marque hors
+ * catalogue » de Vinted (fiche : attributs.marque_vinted = { v, de }) : la
+ * copie Vinted qui porte `de` — ou aucune marque — reçoit `v`. Jamais une
+ * autre marque ; jamais une autre plateforme. Même règle que le serveur.
+ * Rend `{ edited, appliquee }` — `edited` est l'objet d'entrée quand rien ne change.
+ */
+export function appliquerMarqueVintedArticle(edited, attributs) {
+  const rep = attributs && typeof attributs === "object" ? attributs.marque_vinted : null;
+  const copie = edited?.vinted;
+  if (!copie || !rep || typeof rep !== "object") return { edited, appliquee: null };
+  const v = texteNonVide(rep.v);
+  const de = texteNonVide(rep.de);
+  if (!v) return { edited, appliquee: null };
+  const pf = copie.platform_fields ?? {};
+  const actuelle = texteNonVide(pf.marque) || texteNonVide(pf.vintedAspects?.brand);
+  if (actuelle && !(de && marqueComparable(actuelle) === marqueComparable(de))) return { edited, appliquee: null };
+  if (actuelle && marqueComparable(actuelle) === marqueComparable(v)) return { edited, appliquee: null };
+  const nouveau = { ...pf, marque: v };
+  if (texteNonVide(pf.vintedAspects?.brand)) nouveau.vintedAspects = { ...pf.vintedAspects, brand: v };
+  return { edited: { ...edited, vinted: { ...copie, platform_fields: nouveau } }, appliquee: { de: actuelle || null, vers: v } };
+}
+
+/** La valeur rangée sur la fiche quand la personne répond à la question
+ *  « marque hors catalogue » (StockTab) — « Sans marque » compris. */
+export function attributMarqueVinted({ choix, demandee, maintenant = new Date() }) {
+  const v = texteNonVide(choix);
+  if (!v) return null;
+  return { v, de: texteNonVide(demandee) || null, source: "manuel", at: maintenant.toISOString() };
 }
