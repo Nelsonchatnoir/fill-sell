@@ -17,9 +17,15 @@
 
 export const STATUTS_LUS = Object.freeze(['pending', 'processing', 'published', 'failed', 'needs_user', 'deleted', 'cancelled', 'dry_run_completed']);
 export const STATUTS_VIVANTS = Object.freeze(['pending', 'processing', 'needs_user']);
-// Au-delà, la liste d'identifiants ne tient plus dans une adresse raisonnable :
-// on relit tout.
+// Au-delà, la liste d'identifiants ne tient plus dans une adresse raisonnable.
+// (12/10, A1 — lots de centaines d'articles) Avant : on relisait TOUT
+// l'historique toutes les 20 s dès 200 jobs en cours (un lot de 100 articles
+// sur 3 plateformes suffisait) — la requête du 04/10. Désormais le filtre
+// léger se passe des identifiants (en cours + nés depuis), et seuls les jobs
+// SORTIS des statuts « en cours » depuis le tour d'avant (idsSortis, peu
+// nombreux en 20 s) sont relus par leur identifiant, par lots de TAILLE_LOT_SORTIS.
 export const VIVANTS_MAX = 200;
+export const TAILLE_LOT_SORTIS = 150;
 
 /** Le plus récent d'abord : created_at puis id, décroissants (le tri SQL). */
 export function comparerJobs(a, b) {
@@ -82,8 +88,15 @@ export function plusRecent(parId) {
 export function filtreLeger({ vivants, depuis }) {
   if (!depuis) return null;
   const ids = (vivants ?? []).filter((x) => /^[0-9a-f-]{36}$/i.test(String(x)));
-  if (ids.length > VIVANTS_MAX) return null;
   const morceaux = [`status.in.(${STATUTS_VIVANTS.join(',')})`, `created_at.gte."${depuis}"`];
-  if (ids.length) morceaux.push(`id.in.(${ids.join(',')})`);
+  // Trop de jobs en cours : pas d'identifiants dans l'adresse — idsSortis
+  // complète la lecture (cf. VIVANTS_MAX).
+  if (ids.length && ids.length <= VIVANTS_MAX) morceaux.push(`id.in.(${ids.join(',')})`);
   return morceaux.join(',');
+}
+
+/** Les jobs en cours au tour d'avant que la lecture légère n'a pas rendus (sortis de « en cours »). */
+export function idsSortis(vivantsAvant, lignes) {
+  const vus = new Set((lignes ?? []).map((l) => String(l?.id)));
+  return (vivantsAvant ?? []).filter((id) => !vus.has(String(id)));
 }

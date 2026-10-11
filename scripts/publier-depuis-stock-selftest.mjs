@@ -12,9 +12,9 @@
 //   2. le mode porte sur la liste FILTRÉE (stockRetenu ?? stockFiltre), et
 //      seulement sur ce que la règle unique du lot accepte
 //      (articleSelectionnable : en stock, avec photo, pas déjà partout) ;
-//   3. « Tout (N) » et le toucher restent bornés à LOT_MAX_ARTICLES (20,
-//      inchangé) ; « Continuer » ouvre LotPublication (le même composant, les
-//      mêmes props que les autres portes) ;
+//   3. (12/10, A1) « Tout (N) » et le toucher ne sont plus bornés (plafond de
+//      20 retiré, Louis) ; la barre dit le quota restant quand la sélection le
+//      dépasse ; « Continuer » ouvre LotPublication (même composant) ;
 //   4. rien d'autre ne change : la sélection du haut (« Publier »), l'appel
 //      sous un filtre « Pas encore sur X », la règle des plateformes occupées.
 import { readFileSync } from 'node:fs';
@@ -55,9 +55,12 @@ ok(/if \(String\(item\.statut \?\? ""\) === "vendu" \|\| item\.sold === true\) r
   'règle inchangée : jamais vendu, jamais sans photo, jamais déjà partout');
 
 console.log('\n3. Bornes et suite');
-ok(/export const LOT_MAX_ARTICLES = 20;/.test(REGLES), 'LOT_MAX_ARTICLES = 20 (inchangé)');
-ok(/: \(prev\.length >= LOT_MAX_ARTICLES \? prev : \[\.\.\.prev, id\]\)\);/.test(STOCK), 'le toucher s\'arrête au plafond');
-ok(/onTout=\{\(\)=>setLotSel\(prev=>\{const vus=lotActionnablesVue\.map\(i=>i\.id\);[^}]*if\(n\.length>=LOT_MAX_ARTICLES\)break;/.test(STOCK), '« Tout (N) » = ce que la vue montre, au plafond près');
+// (12/10, A1) Le plafond de 20 est retiré : plus rien ne borne le lot, sauf le quota du palier.
+ok(!/LOT_MAX_ARTICLES/.test(REGLES + STOCK + ENTREES), 'plus aucun plafond de 20 (regles, Stock, portes du lot)');
+ok(/: \[\.\.\.prev, id\]\);/.test(STOCK) && /coche: lotSelSet\.has\(item\.id\)/.test(STOCK), 'le toucher ajoute sans plafond, appartenance par Set');
+const onTout = STOCK.match(/onTout=\{\(\)=>setLotSel[^\n]*/)?.[0] ?? '';
+ok(/for\(const i of lotActionnablesVue\)/.test(onTout) && !/break;/.test(onTout), '« Tout (N) » = toute la vue, sans plafond');
+ok(/restantes=\{Number\.isFinite\(quotas\?\.annonces\?\.restantes\)/.test(STOCK) && /data-quota-depasse/.test(ENTREES), 'la barre dit le quota restant quand la sélection le dépasse');
 ok(/onContinuer=\{\(\)=>ouvrirLot\(filtreDiffusion\?\.mode==='pas_encore'\?\[filtreDiffusion\.platform\]:null\)\}/.test(STOCK), '« Continuer » → ouvrirLot (plateforme du filtre pré-choisie)');
 ok(/setLotOuvert\(\{ articles, plateformes \}\);/.test(STOCK) && /\{lotOuvert&&\(\s*<LotPublication/.test(STOCK), 'ouvrirLot ouvre LotPublication, le même composant');
 ok(/const articles = lotSel\.map\(id => parId\.get\(id\)\)\.filter\(Boolean\)\.filter\(i => lotSelectionnables\.has\(i\.id\)\);/.test(STOCK), 'seuls les articles cochés ET acceptés partent dans le lot');

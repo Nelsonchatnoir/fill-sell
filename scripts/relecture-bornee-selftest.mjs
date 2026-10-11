@@ -140,7 +140,12 @@ ok(!JSON.stringify(fusion).includes(uid(3)), 'un job sorti de la liste disparaî
 const f = J.filtreLeger({ vivants: J.idsVivants(base), depuis: J.plusRecent(base) });
 ok(f.includes('status.in.(pending,processing,needs_user)') && f.includes(`id.in.(${uid(2)},${uid(3)})`) && f.includes('created_at.gte."2026-10-04T11:00:00.000000+00:00"'), 'filtre : en cours, ceux qui l’étaient, nés depuis');
 ok(J.filtreLeger({ vivants: [], depuis: null }) === null, 'rien de connu → lecture complète');
-ok(J.filtreLeger({ vivants: Array.from({ length: 201 }, (_, i) => uid(i)), depuis: 'x' }) === null, 'trop de jobs en cours → lecture complète');
+// (12/10, A1) Trop de jobs en cours : plus jamais la lecture complète toutes
+// les 20 s — le filtre se passe des identifiants, idsSortis complète.
+const fTrop = J.filtreLeger({ vivants: Array.from({ length: 201 }, (_, i) => uid(i)), depuis: 'x' });
+ok(fTrop !== null && !fTrop.includes('id.in.') && fTrop.includes('status.in.(pending,processing,needs_user)'), 'trop de jobs en cours → filtre léger SANS identifiants (jamais la lecture complète)');
+ok(J.idsSortis([uid(2), uid(3), uid(9)], [{ id: uid(3) }]).join() === [uid(2), uid(9)].join(), 'idsSortis : les jobs en cours au tour d’avant que la lecture n’a pas rendus');
+ok(J.TAILLE_LOT_SORTIS * 37 < 8000, 'lots de relecture par identifiant : adresse bornée');
 
 // ── 4. Les écrans corrigés relisent par relectureBornee ────────────────────
 console.log('4. écrans');
@@ -153,7 +158,7 @@ ok(/useRepublicationPlanifiee\(\{ userId: user\?\.id, multi: true, pollMs: 30000
 const opla = lire('src/utils/oplaAcces.js');
 ok(opla.includes('demarrerRelecture(') && !/setInterval\(tick, 60 \* 1000\)/.test(opla), 'Accès Opla : 5 min bornées, plus 60 s fixes');
 const stock = lire('src/tabs/StockTab.jsx');
-ok(stock.includes('fusionnerJobs(parId, lignes)') && !/\}, 20000\);/.test(stock), 'Stock : jobs relus par morceaux, plus de lecture complète toutes les 20 s');
+ok(stock.includes('fusionnerJobs(parId, [...lignes, ...complements])') && stock.includes('idsSortis(vivantsAvant, lignes)') &&!/\}, 20000\);/.test(stock), 'Stock : jobs relus par morceaux, plus de lecture complète toutes les 20 s');
 
 console.log(ko ? `\n${ko} échec(s)` : '\nTout est vert.');
 process.exit(ko ? 1 : 0);

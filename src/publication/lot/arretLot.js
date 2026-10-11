@@ -30,13 +30,19 @@ export async function arreterDepots(supabase, { userId, jobs }) {
   const enVol = (jobs ?? []).filter((j) => String(j.action ?? "publish") === "publish" && j.status === "processing").length;
   const ids = cibles.map((j) => j.id).filter((id) => id && !String(id).startsWith("optimistic-"));
   if (!ids.length) return { arretes: [], enVol };
-  const { data, error } = await supabase.from("cross_post_jobs")
-    .update({ status: "cancelled", error: MESSAGE_ARRET_DEPOT })
-    .in("id", ids).eq("user_id", userId).eq("action", "publish")
-    .in("status", ["pending", "needs_user"])
-    .is("listing_url", null)
-    .select("id, platform_fields");
-  if (error) throw error;
+  // (12/10, A1) Par lots de 150 identifiants (uuid) : un lot de centaines
+  // d'articles ne tient pas dans une seule adresse.
+  const data = [];
+  for (let k = 0; k < ids.length; k += 150) {
+    const { data: lotArretes, error } = await supabase.from("cross_post_jobs")
+      .update({ status: "cancelled", error: MESSAGE_ARRET_DEPOT })
+      .in("id", ids.slice(k, k + 150)).eq("user_id", userId).eq("action", "publish")
+      .in("status", ["pending", "needs_user"])
+      .is("listing_url", null)
+      .select("id, platform_fields");
+    if (error) throw error;
+    data.push(...(lotArretes ?? []));
+  }
   const le = new Date().toISOString();
   await Promise.all((data ?? []).map((r) => {
     const pf = (r.platform_fields && typeof r.platform_fields === "object") ? r.platform_fields : {};

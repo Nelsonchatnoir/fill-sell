@@ -23,10 +23,14 @@ const PLATEFORMES_JAMAIS_PRECOCHEES = Object.freeze(["depop"]);
 // DÉFAUT, quand un appelant n'en donne pas, reste les quatre d'avant.
 export const PLATEFORMES_LOT = Object.freeze(["vinted", "leboncoin", "ebay", "beebs", "depop"]);
 export const PLATEFORMES_LOT_DEFAUT = Object.freeze(["vinted", "leboncoin", "ebay", "beebs"]);
-// Un lot, c'est 20 articles au plus (décision à confirmer, cf. rapport) :
-// l'extension dépose une annonce après l'autre, et aucun frein serveur n'existe
-// encore pour les dépôts — au-delà, on prépare le lot suivant.
-export const LOT_MAX_ARTICLES = 20;
+// (12/10, A1, Nico) PLUS DE PLAFOND DE 20 ARTICLES PAR LOT — à l'unité comme en
+// lot, depuis le Stock comme ailleurs (Louis, Business, bloqué à 20). La seule
+// limite est le quota du palier (annonces restantes), dit avant de lancer. Le
+// rythme anti-robot ne dépend pas du lot : l'extension dépose une annonce après
+// l'autre (8 à 20 s entre deux, chrome-extension/config.js), les jobs arrivent
+// un par un (un appel spend_coins_and_publish par article), et l'index
+// cross_post_jobs_un_seul_publish_actif_par_article_plateforme refuse tout
+// doublon. Gardé par scripts/lot-sans-plafond-selftest.mjs.
 // Préparations en même temps (une rédaction = un appel serveur et quelques
 // lectures) : trois suffisent à ne jamais attendre, sans charger le serveur.
 export const PREPARATIONS_SIMULTANEES = 3;

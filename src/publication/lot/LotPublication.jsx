@@ -62,6 +62,7 @@ import {
   poidsConnu, lirePoidsSaisi,
 } from "./regles";
 import LivraisonDuLot from "./LivraisonDuLot";
+import { parLots } from "../../utils/parLots.js";
 import BarriereErreur from "../../components/BarriereErreur";
 import { transporteursPourPoids } from "../../utils/leboncoinColis";
 import { fusionnerReglages } from "../../utils/reglagesPlateformes";
@@ -301,9 +302,14 @@ function EcranDuLot({
       }, () => {});
     const ids = (articles ?? []).map((a) => a.id);
     if (ids.length) {
-      supabase.from("fiches_annonce").select("inventaire_id, fiche").eq("user_id", userId).in("inventaire_id", ids)
-        .then(({ data }) => { if (vivant) setFiches(Object.fromEntries((data ?? []).map((r) => [String(r.inventaire_id), r.fiche]))); },
-          () => { if (vivant) setFiches({}); });
+      // (12/10, A1) Par lots de 400 (utils/parLots.js) : un lot de centaines
+      // d'articles ne tient pas dans une seule adresse. Tout ou rien.
+      Promise.all(parLots(ids).map((lotIds) => supabase.from("fiches_annonce").select("inventaire_id, fiche").eq("user_id", userId).in("inventaire_id", lotIds)))
+        .then((reps) => {
+          if (!vivant) return;
+          if (reps.some((r) => r.error)) { setFiches({}); return; }
+          setFiches(Object.fromEntries(reps.flatMap((r) => r.data ?? []).map((r) => [String(r.inventaire_id), r.fiche])));
+        }, () => { if (vivant) setFiches({}); });
     } else setFiches({});
     return () => { vivant = false; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -393,6 +399,7 @@ function EcranDuLot({
   const [etape, setEtape] = useState("plateformes"); // plateformes | avant | envoi | fin
   const [lot, setLot] = useState(null); // { id, le, ids: [], plateformes: [] }
   const [etats, setEtats] = useState({}); // id → { phase, raison?, envoyees?, exclusions? }
+  const envoiEnCoursRef = useRef(false);
   const [decisions, setDecisions] = useState({}); // id → { texteValide, jumeauxTranches: Set }
   const [actifs, setActifs] = useState(() => new Set()); // moteurs montés
   const moteursRef = useRef(new Map());
@@ -531,7 +538,10 @@ function EcranDuLot({
     const enPrep = lot.ids.filter((id) => PHASES_MOTEUR.has(etats[id]?.phase)).length;
     const places = PREPARATIONS_SIMULTANEES - enPrep;
     const aMonter = places > 0 ? lot.ids.filter((id) => etats[id]?.phase === "attente" && lusRef.current.has(id)).slice(0, places) : [];
-    const garder = (id) => !["quota", "rien", "erreur", "retire", "refuse"].includes(etats[id]?.phase);
+    // (12/10, A1) « envoye » aussi : un article parti n'a plus besoin de son
+    // moteur (le suivi lit la base) — avec des centaines d'articles, seuls les
+    // moteurs utiles restent montés.
+    const garder = (id) => !["quota", "rien", "erreur", "retire", "refuse", "envoye"].includes(etats[id]?.phase);
     const suivant = new Set([...actifs].filter(garder));
     for (const id of aMonter) suivant.add(id);
     if (aMonter.length) setEtats((prev) => {
@@ -698,8 +708,16 @@ function EcranDuLot({
   });
   async function envoyer() {
     if (!lot) return;
+    // (12/10, A1) Un seul envoi à la fois : un double appui ne relance jamais
+    // la boucle (l'index unique du serveur refuserait le doublon, mais rien
+    // ne doit même le tenter).
+    if (envoiEnCoursRef.current) return;
     const ids = lot.ids.filter((id) => etatsRef.current[id]?.phase === "pret");
     if (!ids.length) return;
+    envoiEnCoursRef.current = true;
+    try { await envoyerUnParUn(ids); } finally { envoiEnCoursRef.current = false; }
+  }
+  async function envoyerUnParUn(ids) {
     setEtape("envoi");
     setEnvoi({ fait: 0, total: ids.length });
     let parti = 0;

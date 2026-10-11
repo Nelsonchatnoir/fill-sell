@@ -7,7 +7,6 @@
 import { ChevronRight, Package, Upload, Undo2, CircleCheck } from "lucide-react";
 import { R } from "../../reglages/theme";
 import { NOM } from "../texte";
-import { LOT_MAX_ARTICLES } from "./regles";
 import "./lot.css";
 
 const TOUCHE = 44;
@@ -35,22 +34,24 @@ export function LignePublierPlusieurs({ lang, nombre, onOuvrir }) {
   );
 }
 
-/** Sous un filtre « Pas encore sur X » / « Nulle part » : la suite naturelle. */
+/** Sous un filtre « Pas encore sur X » / « Nulle part » : la suite naturelle.
+ *  (12/10, A1) Plus de plafond de 20 : tout le filtre part dans le lot ; seul
+ *  le quota du palier limite, et l'écran du lot le dit avant de lancer. */
 export function AppelFiltrePublier({ lang, nombre, plateforme, onPublier }) {
   if (!nombre) return null;
   const fr = lang !== "en";
-  const n = Math.min(nombre, LOT_MAX_ARTICLES);
+  const n = nombre;
   const sur = plateforme ? (fr ? ` sur ${NOM(plateforme)}` : ` on ${NOM(plateforme)}`) : "";
   return (
     <button type="button" onClick={onPublier} className="pa-call fs-focus">
       <Upload size={18} strokeWidth={2} aria-hidden="true" style={{ flexShrink: 0 }} />
       <span style={{ flex: 1, minWidth: 0 }}>
         <span className="n">{fr
-          ? `Publier ${nombre > 1 ? (nombre > n ? `les ${n} premiers` : `ces ${n} articles`) : "cet article"}${sur}`
-          : `Publish ${nombre > 1 ? (nombre > n ? `the first ${n}` : `these ${n} items`) : "this item"}${sur}`}</span>
+          ? `Publier ${nombre > 1 ? `ces ${n} articles` : "cet article"}${sur}`
+          : `Publish ${nombre > 1 ? `these ${n} items` : "this item"}${sur}`}</span>
         <span className="sub">{fr
-          ? (nombre > n ? `Un lot, c'est ${LOT_MAX_ARTICLES} articles au plus : les suivants partiront dans le lot d'après.` : "Tu choisis les plateformes, on prépare, tu vérifies. Rien ne part sans toi.")
-          : (nombre > n ? `A batch holds ${LOT_MAX_ARTICLES} items at most: the next ones go in the following batch.` : "You pick the platforms, we prepare, you check. Nothing goes out without you.")}</span>
+          ? "Tu choisis les plateformes, on prépare, tu vérifies. Rien ne part sans toi."
+          : "You pick the platforms, we prepare, you check. Nothing goes out without you."}</span>
       </span>
       <ChevronRight size={17} strokeWidth={2} aria-hidden="true" />
     </button>
@@ -66,27 +67,34 @@ export function EnteteModeLot({ lang, onQuitter }) {
       <span style={{ flex: 1, minWidth: 0 }}>
         <span className="n">{fr ? "Quitter la publication en lot" : "Exit batch publishing"}</span>
         <span className="sub">{fr
-          ? `Touche les articles à publier (${LOT_MAX_ARTICLES} au plus), puis Continuer. Les filtres restent utilisables.`
-          : `Tap the items to publish (${LOT_MAX_ARTICLES} at most), then Continue. Filters still work.`}</span>
+          ? "Touche les articles à publier, puis Continuer. Les filtres restent utilisables."
+          : "Tap the items to publish, then Continue. Filters still work."}</span>
       </span>
     </button>
   );
 }
 
-/** La barre collante : le compte, tout cocher, vider, continuer. */
-export function BarreSelectionLot({ lang, n, nVue, onTout, onVider, onContinuer, plein }) {
+/** La barre collante : le compte, tout cocher, vider, continuer.
+ *  (12/10, A1) Plus de plafond de 20. La seule limite est le QUOTA du palier
+ *  (annonces restantes ce mois, quotas_etat) : dépassé, la barre le dit AVANT
+ *  de lancer — l'écran du lot proposera ensuite la suite (formule au-dessus,
+ *  ou ce qui tient dans le quota). `restantes` null = quota inconnu : rien. */
+export function BarreSelectionLot({ lang, n, nVue, onTout, onVider, onContinuer, restantes = null }) {
   const fr = lang !== "en";
-  const toutPris = nVue > 0 && n >= Math.min(nVue, LOT_MAX_ARTICLES);
+  const toutPris = nVue > 0 && n >= nVue;
+  const auDela = Number.isFinite(restantes) && n > restantes;
   return (
     <div className="pa-bar" role="region" aria-label={fr ? "Sélection du lot" : "Batch selection"}>
       <span className="lbl" aria-live="polite">
         {n ? (fr ? `${n} sélectionné${n > 1 ? "s" : ""}` : `${n} selected`) : (fr ? "Touche des articles" : "Tap some items")}
-        {plein ? <span style={{ fontWeight: 600, color: "#8A6100" }}>{fr ? ` · ${LOT_MAX_ARTICLES} au plus par lot` : ` · ${LOT_MAX_ARTICLES} per batch at most`}</span> : null}
+        {auDela ? <span data-quota-depasse="1" style={{ fontWeight: 600, color: "#8A6100" }}>{fr
+          ? ` · il te reste ${restantes} annonce${restantes > 1 ? "s" : ""} ce mois : rien ne part au-delà sans ton accord`
+          : ` · ${restantes} listing${restantes > 1 ? "s" : ""} left this month: nothing goes beyond that without your OK`}</span> : null}
       </span>
       <button type="button" className="apply" disabled={!n} onClick={onContinuer}>{fr ? "Continuer" : "Continue"}</button>
       {nVue > 0 && (
         <button type="button" className="pa-ghost" onClick={toutPris ? onVider : onTout}>
-          {toutPris ? (fr ? "Aucun" : "None") : (fr ? `Tout (${Math.min(nVue, LOT_MAX_ARTICLES)})` : `All (${Math.min(nVue, LOT_MAX_ARTICLES)})`)}
+          {toutPris ? (fr ? "Aucun" : "None") : (fr ? `Tout (${nVue})` : `All (${nVue})`)}
         </button>
       )}
       {n > 0 && <button type="button" className="pa-ghost" onClick={onVider} aria-label={fr ? "Vider la sélection" : "Clear selection"}>✕</button>}

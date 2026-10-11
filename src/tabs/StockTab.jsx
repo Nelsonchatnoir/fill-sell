@@ -96,12 +96,12 @@ import { FeuilleListe, Z_FEUILLE_DESSUS } from '../components/FiltresStock';
 // Présentation dans src/stock/ ; la logique (lecture des jobs, gestes,
 // filtres) reste ICI, inchangée. Règles sans écran : src/stock/regles.js.
 import { CSS_STOCK } from '../stock/css';
-import { S as SK } from '../stock/jetons';
+import { S as SK, DEGRADE } from '../stock/jetons';
 import { TitreStock, Gestes, LigneRepublicationAuto, EntreeAjouter, FeuilleAjouter } from '../stock/Haut';
 import BlocSynchro, { CartePoint } from '../stock/BlocSynchro';
 // (06/10) « Synchroniser » refusé pour une boutique à confirmer → cette feuille.
 import ConfirmationBoutique from '../stock/ConfirmationBoutique';
-import { STATUTS_LUS, indexerJobs, fusionnerJobs, regrouperParArticle, idsVivants, plusRecent, filtreLeger } from '../stock/jobsIncrementaux';
+import { STATUTS_LUS, indexerJobs, fusionnerJobs, regrouperParArticle, idsVivants, plusRecent, filtreLeger, idsSortis, VIVANTS_MAX, TAILLE_LOT_SORTIS } from '../stock/jobsIncrementaux';
 import BarreModifierLot from '../stock/BarreModifierLot';
 import { demarrerRelecture } from '../utils/relectureBornee';
 import { BarreRecherche, FiltresRapides, FiltresActifs, EnTeteListe, FeuilleTri, PanneauFiltres, VideAvecSortie } from '../stock/Liste';
@@ -138,7 +138,7 @@ import { propsStepperArticle } from '../publication/lot/propsArticle';
 import LotPublication from '../publication/lot/LotPublication';
 import SuiviLot from '../publication/lot/SuiviLot';
 import { AppelFiltrePublier, EnteteModeLot, BarreSelectionLot, LigneLotEnCours } from '../publication/lot/EntreesStock';
-import { PLATEFORMES_LOT, LOT_MAX_ARTICLES, articleSelectionnable, suiviDuLot, idLotDeJob, CLE_REPRISE_LOT, repriseValable } from '../publication/lot/regles';
+import { PLATEFORMES_LOT, articleSelectionnable, suiviDuLot, idLotDeJob, CLE_REPRISE_LOT, repriseValable } from '../publication/lot/regles';
 import { genericFieldToSharedKey, EBAY_ASPECT_LABELS } from '../publication/moteur/champsPartages';
 import { natureNeedsUser, texteEnCoursConfirmation, lienVerificationEbay,
   champsServeurSaisissables, needsUserOuvrable, republicationAnnonceDisparue,
@@ -6828,9 +6828,15 @@ const StockTab = memo(function StockTab({
   // vente) : lus sur les jobs DÉJÀ chargés (la lecture du Stock prend toutes
   // les actions et tous les articles, vendus et supprimés compris) — aucune
   // requête de plus. Bandeau en tête, ligne « À régler », carte vendue.
+  // (12/10, A6) + la boutique Vinted à ouvrir et l'ordinateur éteint : un
+  // retrait d'article vendu n'attend jamais en silence.
+  const loginsBoutiquesRetrait = useMemo(
+    () => Object.fromEntries((boutiquesVinted ?? []).filter((b) => b?.user_id != null && b?.login).map((b) => [String(b.user_id), b.login])),
+    [boutiquesVinted],
+  );
   const retraitsBloques = useMemo(
-    () => retraitsBloquesParConnexion({ jobs: tousLesJobs, fiches: fichesToutes }),
-    [tousLesJobs, fichesToutes],
+    () => retraitsBloquesParConnexion({ jobs: tousLesJobs, fiches: fichesToutes, extensionVueLe: extensionStatus ? (extensionStatus.lastSeenAt ?? null) : undefined, loginsBoutiques: loginsBoutiquesRetrait }),
+    [tousLesJobs, fichesToutes, extensionStatus, loginsBoutiquesRetrait],
   );
   // ── (06/10 soir) LEBONCOIN DEMANDE NOM ET PRÉNOM : UNE CARTE PAR COMPTE ──
   // Motif EXACT (_shared/lbc-identite.js) : ces tâches sortent des lignes par
@@ -7269,13 +7275,17 @@ const StockTab = memo(function StockTab({
     return ok;
   }, [stockFiltre, jobsByInventaire, plateformesLotCompte, lang]);
   const lotActionnablesVue = (stockRetenu ?? stockFiltre).filter(i => lotSelectionnables.has(i.id));
+  // (12/10, A1) Plus de plafond de 20 (Louis, Business, bloqué à 20) : la
+  // seule limite est le quota du palier, dite par la barre avant de lancer.
+  // Appartenance par Set : des centaines d'articles cochés restent fluides.
+  const lotSelSet = useMemo(() => new Set(lotSel), [lotSel]);
   const basculerLot = (id) => setLotSel(prev => prev.includes(id)
     ? prev.filter(x => x !== id)
-    : (prev.length >= LOT_MAX_ARTICLES ? prev : [...prev, id]));
+    : [...prev, id]);
   const entrerModeLot = (preselection = []) => {
     setModeLot(true); setModeRepublish(false); setModePrixAchat(false); setModeBrouillons(false);
     setRepubSel(new Set()); setRepubLot(null); setPaSel(new Set());
-    setLotSel(preselection.slice(0, LOT_MAX_ARTICLES));
+    setLotSel([...preselection]);
   };
   const quitterModeLot = () => { setModeLot(false); setLotSel([]); };
   const ouvrirLot = (plateformes = null) => {
@@ -7322,8 +7332,7 @@ const StockTab = memo(function StockTab({
     if (!repriseValable(r)) return;
     const parId = new Map(stockFiltreComplet.map(i => [String(i.id), i]));
     const articles = r.ids.map(id => parId.get(String(id))).filter(Boolean)
-      .filter(i => articleSelectionnable(i, jobsByInventaire[i.id] || [], plateformesLotCompte, lang).ok)
-      .slice(0, LOT_MAX_ARTICLES);
+      .filter(i => articleSelectionnable(i, jobsByInventaire[i.id] || [], plateformesLotCompte, lang).ok);
     if (!articles.length) return;
     entrerModeLot(articles.map(i => i.id));
     setLotOuvert({ articles, plateformes: Array.isArray(r.plateformes) ? r.plateformes : null });
@@ -7891,7 +7900,8 @@ const StockTab = memo(function StockTab({
     };
 
     const relireLeger = async () => {
-      const filtre = parId ? filtreLeger({ vivants: idsVivants(parId), depuis: plusRecent(parId) }) : null;
+      const vivantsAvant = parId ? idsVivants(parId) : [];
+      const filtre = parId ? filtreLeger({ vivants: vivantsAvant, depuis: plusRecent(parId) }) : null;
       if (!filtre) return relire();
       const { data: lignes, error } = await supabase
         .from("cross_post_jobs")
@@ -7905,7 +7915,20 @@ const StockTab = memo(function StockTab({
       if (error || !lignes) return false;
       // Une lecture légère pleine (1 000) ne prouve rien du reste : on relit tout.
       if (lignes.length >= 1000) return relire();
-      poser(fusionnerJobs(parId, lignes));
+      // (12/10, A1) Plus de VIVANTS_MAX jobs en cours (lot de centaines
+      // d'articles) : le filtre n'a pas porté les identifiants ; les jobs qui
+      // ont QUITTÉ « en cours » depuis le tour d'avant sont relus par lots.
+      const complements = [];
+      if (vivantsAvant.length > VIVANTS_MAX) {
+        for (const lot of parLots(idsSortis(vivantsAvant, lignes), TAILLE_LOT_SORTIS)) {
+          const { data: sortis, error: eS } = await supabase
+            .from("cross_post_jobs").select(SELECT_JOBS).eq("user_id", user.id).in("id", lot);
+          if (annule) return true;
+          if (eS || !sortis) return false;
+          complements.push(...sortis);
+        }
+      }
+      poser(fusionnerJobs(parId, [...lignes, ...complements]));
       return true;
     };
 
@@ -8965,7 +8988,7 @@ const StockTab = memo(function StockTab({
       // rouge et le survol dit pourquoi — la ligne et le bouton sont dessous.
       const bloques = retraitsBloques.parArticle.get(String(item.id));
       if (bloques?.length) {
-        return { ...pastilleCourte({ genre: 'vendu', date: dateCourte(item.date_vente ?? item.date ?? null, lang) }, lang), ...sans, ton: 'echec', titre: bloques.map((b) => ligneCarteRetraitBloque(b.platform, lang, b.mur)).join(' · ') };
+        return { ...pastilleCourte({ genre: 'vendu', date: dateCourte(item.date_vente ?? item.date ?? null, lang) }, lang), ...sans, ton: 'echec', titre: bloques.map((b) => ligneCarteRetraitBloque(b.platform, lang, b.mur, b.boutique ?? null)).join(' · ') };
       }
       return { ...pastilleCourte({ genre: 'vendu', date: dateCourte(item.date_vente ?? item.date ?? null, lang) }, lang), ...sans };
     }
@@ -9075,27 +9098,30 @@ const StockTab = memo(function StockTab({
       // (06/10) « Compte bloqué » chez Vinted : pas un mur de connexion — la
       // ligne dit de retirer l'annonce dans l'appli Vinted, jamais « Me connecter ».
       const murDe = new Map(bloques.map((b) => [b.platform, b.mur ?? 'connexion']));
+      // (12/10, A6) « Me connecter » seulement pour un mur de CONNEXION : une
+      // boutique à ouvrir ou Chrome éteint ne se règlent pas par une connexion.
+      const boutiqueDe = new Map(bloques.map((b) => [b.platform, b.boutique ?? null]));
       const element = pfBloquees.length && user?.id ? (
         <div onClick={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()}
           style={{display:'flex',flexDirection:'column',gap:8,padding:'9px 10px',borderRadius:12,background:SK.rougeFond,border:`1px solid ${SK.rougeBord}`}}>
           {pfBloquees.map(([p, j]) => (
             <div key={p} style={{display:'flex',flexDirection:'column',gap:8}}>
               <span style={{fontSize:12,lineHeight:'16px',fontWeight:700,color:SK.rouge}}>
-                <IconeTexte icone={AlertTriangle} taille={12} style={{marginRight:4}}/>{ligneCarteRetraitBloque(p, lang, murDe.get(p))}
+                <IconeTexte icone={AlertTriangle} taille={12} style={{marginRight:4}}/>{ligneCarteRetraitBloque(p, lang, murDe.get(p), boutiqueDe.get(p))}
               </span>
-              {murDe.get(p) !== 'compte_bloque' && <BoutonMeConnecter userId={user.id} platform={p} motif={murDeConnexion(j) ?? MOTIFS.CONNEXION} lang={lang} variante="bouton" compact/>}
+              {murDe.get(p) === 'connexion' && <BoutonMeConnecter userId={user.id} platform={p} motif={murDeConnexion(j) ?? MOTIFS.CONNEXION} lang={lang} variante="bouton" compact/>}
             </div>
           ))}
         </div>
       ) : null;
       const mur = pfBloquees.length && user?.id ? (
         <div style={{display:'flex',flexDirection:'column',gap:12}}>
-          {pfBloquees.filter(([p]) => murDe.get(p) !== 'compte_bloque').map(([p, j]) => <BoutonMeConnecter key={p} userId={user.id} platform={p} motif={murDeConnexion(j) ?? MOTIFS.CONNEXION} lang={lang} variante="ligne"/>)}
+          {pfBloquees.filter(([p]) => murDe.get(p) === 'connexion').map(([p, j]) => <BoutonMeConnecter key={p} userId={user.id} platform={p} motif={murDeConnexion(j) ?? MOTIFS.CONNEXION} lang={lang} variante="ligne"/>)}
         </div>
       ) : null;
       return {
         principale: null, element, mur, prixAchat: null, note: null, bas: null, action: null,
-        infos: pfBloquees.map(([p]) => ({ cle: `retrait-bloque-${p}`, ton: 'echec', texte: ligneCarteRetraitBloque(p, lang, murDe.get(p)) })),
+        infos: pfBloquees.map(([p]) => ({ cle: `retrait-bloque-${p}`, ton: 'echec', texte: ligneCarteRetraitBloque(p, lang, murDe.get(p), boutiqueDe.get(p)) })),
         menu: [
           { cle: 'modifier', icone: Pencil, libelle: fr ? "Modifier l'article" : 'Edit item', onTap: d.openEdit },
           ...(onDupliquer ? [{ cle: 'dupliquer', icone: Copy, libelle: fr ? 'Dupliquer' : 'Duplicate', detail: fr ? 'Une nouvelle fiche en stock, sans annonce' : 'A new stock item, with no listing', onTap: () => onDupliquer(item) }] : []),
@@ -9287,7 +9313,7 @@ const StockTab = memo(function StockTab({
   // articles en stock seulement — jamais un vendu, jamais un brouillon.
   const modifAffiches = modeModif ? ((stockRetenu && vueStock !== 'vendus') ? stockRetenu : stockFiltre).filter((i) => i.statut === 'stock') : [];
   const selectionArticle = (item) => {
-    if (modeLot) return { coche: lotSel.includes(item.id), onBasculer: () => basculerLot(item.id) };
+    if (modeLot) return { coche: lotSelSet.has(item.id), onBasculer: () => basculerLot(item.id) };
     if (modeRepublish && repubSelectionnable(item)) return { coche: repubSel.has(item.id), onBasculer: () => setRepubSel((prev) => { const n = new Set(prev); if (n.has(item.id)) n.delete(item.id); else n.add(item.id); return n; }) };
     if (modePrixAchat && paIncomplet(item)) return { coche: paSel.has(item.id), onBasculer: () => setPaSel((prev) => { const n = new Set(prev); if (n.has(item.id)) n.delete(item.id); else n.add(item.id); return n; }) };
     if (modeModif && !modeLot && !modeRepublish && !modePrixAchat && item.statut === 'stock') return { coche: modifSel.has(item.id), onBasculer: () => setModifSel((prev) => { const n = new Set(prev); if (n.has(item.id)) n.delete(item.id); else n.add(item.id); return n; }) };
@@ -10082,23 +10108,28 @@ const StockTab = memo(function StockTab({
                 onChoisir={(cle)=>{setVueStock(cle===vueStock&&cle!=='tous'?'tous':cle);setShowAllStock(false);}}/>
             </div>
           )}
+          {/* (11/10, Louis) Cocher DANS le Stock, filtre gardé, les articles à
+              publier : le mode du lot (cases sur les cartes, « Tout (N) » sur
+              ce que la vue montre, Continuer) ouvre la publication en lot
+              EXISTANTE — mêmes règles, mêmes questions, aucun second circuit.
+              Seulement s'il y a, dans CETTE vue, un article qui peut partir.
+              (12/10, A2) Louis ne l'a pas trouvé : petit lien vert sous les
+              filtres. C'est un VRAI BOUTON désormais — plein, icône, 44 px,
+              pleine largeur sur téléphone — vu au premier coup d'œil. */}
+          {lotActionnablesVue.length>0&&!modeModif&&!modeBrouillons&&!modePrixAchat&&!modeRepublish&&!modeLot&&vueStock!=='vendus'&&(
+            <button type="button" className="sk-btn fs-focus stock-choisir-lot" data-geste="choisir-articles-a-publier"
+              onClick={()=>{entrerModeLot([]);track('lot_publication_selection',{depuis:'stock',vue:lotActionnablesVue.length,filtre:filtreOuTriActif});}}
+              style={{display:"inline-flex",alignItems:"center",justifyContent:"center",gap:8,marginTop:10,minHeight:44,padding:"10px 18px",borderRadius:999,border:"none",background:DEGRADE,color:"#fff",font:"inherit",fontSize:14,fontWeight:700,cursor:"pointer",boxShadow:"0 6px 16px -8px rgba(27,110,98,0.6)"}}>
+              <ListChecks size={18} strokeWidth={2.2} aria-hidden="true" style={{flexShrink:0}}/>
+              <span>{lang==='fr'?"Choisir des articles à publier":"Pick items to publish"}</span>
+            </button>
+          )}
           {/* (04/10, Louis) La porte du mode « Modifier en lot » : discrète,
               une ligne, jamais dans un autre mode. */}
           {stock.length>1&&!modeModif&&!modeBrouillons&&!modePrixAchat&&!modeRepublish&&!modeLot&&vueStock!=='vendus'&&(
             <button type="button" className="sk-btn" onClick={()=>{setModeModif(true);setModifSel(new Set());}}
               style={{display:"block",marginTop:6,padding:"4px 2px",background:"none",border:"none",font:"inherit",fontSize:12.5,fontWeight:700,color:SK.tealDeep,cursor:"pointer",textAlign:"left"}}>
               {lang==='fr'?"Modifier le prix ou la quantité de plusieurs articles":"Change the price or quantity of several items"}
-            </button>
-          )}
-          {/* (11/10, Louis) Cocher DANS le Stock, filtre gardé, les articles à
-              publier : le mode du lot (cases sur les cartes, « Tout (N) » sur
-              ce que la vue montre, Continuer) ouvre la publication en lot
-              EXISTANTE — mêmes règles, mêmes questions, aucun second circuit.
-              Seulement s'il y a, dans CETTE vue, un article qui peut partir. */}
-          {lotActionnablesVue.length>0&&!modeModif&&!modeBrouillons&&!modePrixAchat&&!modeRepublish&&!modeLot&&vueStock!=='vendus'&&(
-            <button type="button" className="sk-btn" onClick={()=>{entrerModeLot([]);track('lot_publication_selection',{depuis:'stock',vue:lotActionnablesVue.length,filtre:filtreOuTriActif});}}
-              style={{display:"block",marginTop:2,padding:"4px 2px",background:"none",border:"none",font:"inherit",fontSize:12.5,fontWeight:700,color:SK.tealDeep,cursor:"pointer",textAlign:"left"}}>
-              {lang==='fr'?"Choisir des articles à publier":"Pick items to publish"}
             </button>
           )}
           {pucesFiltres.length>0&&(
@@ -10742,8 +10773,8 @@ const StockTab = memo(function StockTab({
               <>
                 <EnteteModeLot lang={lang} onQuitter={quitterModeLot}/>
                 <BarreSelectionLot lang={lang} n={lotSel.length} nVue={lotActionnablesVue.length}
-                  plein={lotSel.length>=LOT_MAX_ARTICLES}
-                  onTout={()=>setLotSel(prev=>{const vus=lotActionnablesVue.map(i=>i.id);const n=[...prev.filter(id=>lotSelectionnables.has(id))];for(const id of vus){if(n.length>=LOT_MAX_ARTICLES)break;if(!n.includes(id))n.push(id);}return n;})}
+                  restantes={Number.isFinite(quotas?.annonces?.restantes)?quotas.annonces.restantes:null}
+                  onTout={()=>setLotSel(prev=>{const n=[...prev.filter(id=>lotSelectionnables.has(id))];const deja=new Set(n);for(const i of lotActionnablesVue){if(!deja.has(i.id)){deja.add(i.id);n.push(i.id);}}return n;})}
                   onVider={()=>setLotSel([])}
                   onContinuer={()=>ouvrirLot(filtreDiffusion?.mode==='pas_encore'?[filtreDiffusion.platform]:null)}/>
                 {lotActionnablesVue.length===0&&(
@@ -11179,8 +11210,8 @@ const StockTab = memo(function StockTab({
           <EcranSelection lang={lang}
             titre={lang==='fr'?'Publier plusieurs articles':'Publish several items'}
             grandTitre={n?(lang==='fr'?`${nombreFr(n,lang)} article${n>1?'s':''} pas encore partout`:`${n} item${n>1?'s':''} not everywhere yet`):(lang==='fr'?'Tout est déjà partout':'Everything is already everywhere')}
-            sousTitre={n?(lang==='fr'?`Tout est déjà coché${n>LOT_MAX_ARTICLES?` (les ${LOT_MAX_ARTICLES} premiers : ${LOT_MAX_ARTICLES} au plus par lot)`:''} : décoche ceux que tu veux garder.`:`Everything is ticked${n>LOT_MAX_ARTICLES?` (the first ${LOT_MAX_ARTICLES}: ${LOT_MAX_ARTICLES} per batch at most)`:''}: untick what you want to keep.`):null}
-            articles={articles} max={LOT_MAX_ARTICLES}
+            sousTitre={n?(lang==='fr'?'Tout est déjà coché : décoche ceux que tu veux garder.':'Everything is ticked: untick what you want to keep.'):null}
+            articles={articles}
             bouton={{icone:Upload,libelle:(k)=>lang==='fr'?`Publier ${nombreFr(k,lang)} article${k>1?'s':''}`:`Publish ${k} item${k>1?'s':''}`}}
             note={lang==='fr'?'Tu choisis ensuite les plateformes : rien ne part avant ta confirmation.':'You pick the platforms next: nothing goes out before you confirm.'}
             vide={<div style={{marginTop:16}}><VideAvecSortie lang={lang} texte={lang==='fr'?'Chaque article avec une photo est déjà en ligne sur toutes tes plateformes.':'Every item with a photo is already live on all your platforms.'} libelleSortie={lang==='fr'?'Fermer':'Close'} onSortie={()=>{setGesteOuvert(null);setPublierContexte(null);}}/></div>}

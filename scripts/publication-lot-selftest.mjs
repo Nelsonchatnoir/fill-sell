@@ -13,8 +13,9 @@
 //     un article qui ressemble se tranche ; le moteur pas au repos n'est jamais prêt ;
 //   · le suivi met ce qui demande un geste en tête, l'arrêt demandé n'est
 //     jamais un échec, et seul un dépôt pas commencé s'arrête.
+import { readFileSync } from 'node:fs';
 import {
-  PLATEFORMES_LOT, LOT_MAX_ARTICLES, plateformesOccupees, plateformesLibres, articleSelectionnable,
+  PLATEFORMES_LOT, plateformesOccupees, plateformesLibres, articleSelectionnable,
   resumeParPlateforme, choixInitial, ficheCouvre, partagerQuota, dureeEstimeeMin, libelleDuree,
   bilanArticle, texteARelire, suiviDuLot, etatJobLot, depotArretable, marqueLot, idLotDeJob,
   groupesReponseCommune,
@@ -32,7 +33,8 @@ const job = (o) => ({ action: 'publish', status: 'published', created_at: '2026-
 {
   const item = { id: 1, photos: ['https://x/1.jpg'], statut: 'stock' };
   verifier(!PLATEFORMES_LOT.includes('opla'), 'Opla n’est jamais une plateforme du lot');
-  verifier(LOT_MAX_ARTICLES === 20, 'un lot, c’est 20 articles au plus');
+  // (12/10, A1) Plus de plafond de 20 : la constante n'existe plus (le quota du palier est la seule limite).
+  verifier(!/LOT_MAX_ARTICLES/.test(readFileSync(new URL('../src/publication/lot/regles.js', import.meta.url), 'utf8')), 'plus de plafond de 20 articles par lot');
   verifier(egal(plateformesLibres(item, []), ['vinted', 'leboncoin', 'ebay', 'beebs']), 'article neuf : les quatre plateformes sont libres');
   const jobs = [
     job({ platform: 'leboncoin', status: 'published' }),
