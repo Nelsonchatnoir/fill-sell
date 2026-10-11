@@ -4,11 +4,26 @@
 « 03/10 nuit — clôture Louis + marque + prix » et « 04/10 matin —
 complément », « 04/10 fin de matinée — chantier Louis », « 04/10 soir —
 incident CPU », « 04/10 nuit — six défauts clients » et « 05/10 — lot
-terminal Problèmes » / « 05/10 après-midi » / « 06/10 » / « 06/10 soir » / « 06/10 nuit » / « 08/10 nuit — MULTI-SYNCHRO » / « 08/10 matin — boucles » / « 08/10 fin de matinée — SUJET CLOS » / « 08/10 après-midi — complément » / « 08/10 soir — fin du chantier multi-synchro » / « 08/10 nuit — Bebertdeals : remise en ligne Vinted » / « 08/10 nuit — VENTES PROUVÉES » / « 09/10 nuit — DEPOP » / « 09/10 fin de matinée — DEPOP : reprise complète » en fin ; reprises : `docs/reprise/terminal-depop-0910.md`, `docs/reprise/terminal-ventes-prouvees-0810.md`, `docs/reprise/terminal-bebertdeals-0810.md`, `docs/reprise/terminal-boucles-0810.md`, `docs/reprise/terminal-cloture-multi-synchro-0810.md`, `docs/reprise/terminal-complement-0810.md`, `docs/reprise/terminal-fin-multi-synchro-0810.md`) et
+terminal Problèmes » / « 05/10 après-midi » / « 06/10 » / « 06/10 soir » / « 06/10 nuit » / « 08/10 nuit — MULTI-SYNCHRO » / « 08/10 matin — boucles » / « 08/10 fin de matinée — SUJET CLOS » / « 08/10 après-midi — complément » / « 08/10 soir — fin du chantier multi-synchro » / « 08/10 nuit — Bebertdeals : remise en ligne Vinted » / « 08/10 nuit — VENTES PROUVÉES » / « 09/10 nuit — DEPOP » / « 09/10 fin de matinée — DEPOP : reprise complète » / « 11/10 — une vente signalée une fois » en fin ; reprises : `docs/reprise/terminal-depop-0910.md`, `docs/reprise/terminal-ventes-prouvees-0810.md`, `docs/reprise/terminal-bebertdeals-0810.md`, `docs/reprise/terminal-boucles-0810.md`, `docs/reprise/terminal-cloture-multi-synchro-0810.md`, `docs/reprise/terminal-complement-0810.md`, `docs/reprise/terminal-fin-multi-synchro-0810.md`) et
 `docs/agents/consignes-2026-09-28.md` (règles), qui remplacent tout historique
 contraire. Il se périme : `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
 
+- **⛔ UNE ANNONCE VENDUE NE SE SIGNALE QU'UNE FOIS (11/10, Louis)** : le « doublon »
+  de `push_ventes_a_envoyer` ne regardait que 3 jours et jamais le reçu → ventes traitées
+  remailées 3 à 5 jours plus tard (fiche à quantité pointée sur une ANCIENNE annonce que le
+  dressing revoit « sold »). Mig **20261011100000 APPLIQUÉE** (feu vert nommé) :
+  `push_vente_deja_signalee` (reçu `ventes_operations` AVANT le signal, même commande ou
+  même annonce déjà annoncée/déclarée, SANS fenêtre ; ⛔ eBay = la commande, jamais l'annonce ;
+  Leboncoin : deux commandes = deux ventes) à la naissance de la note ET avant tout envoi.
+  **Ventes à confirmer** (`ventes_a_decider`, `src/components/VentesADecider.jsx`, tête des
+  bandeaux) : vente détectée et annoncée, non enregistrée, AVEC OU SANS téléphone ; « Remettre en
+  vente » / « Ne pas remettre » = MÊME déclaration (check-listing-status → enregistrer_vente_declaree
+  `p_remettre_en_vente` → remise `abandonnee`/`choix_personne`). Mail « Vendu » →
+  `/app?ventes=a-decider`. ⛔ 0 appareil push dans le parc : binaire 2.9.62 jamais fabriqué.
+  Rattrapage : 10 notes de Louis classées doublon (`_backup_1110_push_ventes_doublon`).
+  Rapport `docs/enquetes/louis-ventes-remailees-1110/RAPPORT.md` ; selftest
+  `selftest:vente-signalee-une-fois`, preuve `scripts/preuves/preuve-vente-signalee-une-fois.mjs`.
 - **⛔ PUBLICATION EN LOT : PAGE BLANCHE (09/10 22:13 → 10/10, Nico et Louis)** :
   `EcranAvant` lisait `userId` (f06c91f, port Depop, 2.9.70) et `exclusDepop`
   (4b34f9e, 2.9.71) sans les recevoir → tout lot tombait à la fin de la
@@ -159,8 +174,8 @@ contraire. Il se périme : `functions list`, `cron.job` et
   `generate-listing` v115 (10/10 soir), `lens-analysis` v107, `avis-demande` v4,
   `deal-analysis` v42, `voice-transcribe` v46,
   `ebay-account` v16, `send-extension-link` v13 (`true`) ;
-  `rapprochement` v17, `empreintes-urls` v5, `update-job-status` v132, `handler-watch` v95, `push-ventes` v9, `voice-intent` v155, `ops-digest` v35,
-  `ebay-api-worker` v79, `ebay-releve-api` v4, `releve-completer` v2,
+  `rapprochement` v17, `empreintes-urls` v5, `update-job-status` v132, `handler-watch` v95, `push-ventes` v10, `check-listing-status` v37, `voice-intent` v155, `ops-digest` v35,
+  `ebay-api-worker` v84 (11/10 : action `reviser_annonce` rayon_regle, à la main), `ebay-releve-api` v4, `releve-completer` v2,
   `veille-cpu` v2, `ebay-ventes-sync` v5, `ebay-oauth-callback` v10, `ebay-notifications` v5,
   `email-tunnel` v72 et `stripe-webhook` v57 (`false`) ; migrations
   20261008020000 / 030000 / 040000 (multi-synchro) appliquées — ⚠️ depuis le 05/10 15:55,
@@ -170,7 +185,7 @@ contraire. Il se périme : `functions list`, `cron.job` et
   les versions d'un cran sans changer le code.
 - **Notifications push à chaque vente (06/10, binaire 2.9.62 / vc33)** : base
   appliquée (mig 20261006140000 + 150000, cron 34 `push-ventes-1min`),
-  `push-ventes` v7 et `check-listing-status` v36 (`false`) ; le push reste
+  `push-ventes` v10 et `check-listing-status` v37 (`false`) ; le push reste
   inerte sans téléphone (la note, elle, porte aussi le MAIL de vente). Clés et binaires : `npm run
   binaires:2.9.62` (fichiers dans Téléchargements, `docs/push/CLES-NICO.md`) ;
   ⛔ jamais d'AAB sans `google-services.json`. Tout appel natif passe par

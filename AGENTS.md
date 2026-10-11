@@ -10,7 +10,9 @@ contraire. `functions list`, `cron.job` et `profiles.extension_build` font foi.
   `rapprochement` v17 ; empreintes par la base ; fiche `releve_*` = `rapprocher_importer` seul ; fiches Vinted
   nouvelles jugées (mig 130000) ; fiche main ↔ Vinted : mig 150000 ; remise en ligne Vinted (mêmes photos + titre, jamais
   en ligne ensemble → la plus ancienne ; vente sur annonce remplacée refusée) : mig 160000 NON appliquée ; `docs/multi-synchro.md`.
-- **Push** (cron 34, `pushDisponible()`) ; **⛔ mail par vente** : récente prouvée, sans plafond ni récap.
+- **Push** (cron 34, `pushDisponible()` ; 0 appareil, binaire 2.9.62 jamais fabriqué) ; **⛔ mail par vente** : récente prouvée, sans plafond ni récap.
+  **⛔ Une annonce vendue ne se signale qu'une fois** (11/10, mig 20261011100000) : `push_vente_deja_signalee`, sans fenêtre,
+  eBay = commande seule ; ventes détectées à confirmer dans l'app, avec ou sans téléphone (`ventes_a_decider`, même déclaration).
 - **⛔ Republication** : jamais bloquée par une valeur de l'annonce (« EU N » ≡ « N ») ; `_shared/relance-apres-maj.js` ; suppression partie = au bout, même hors créneau.
 - **05/10** : Free 50 repub./mois ; palier unique ; eBay voie = création.
 - **CPU (04/10)** : tâche auto mesurée, bornée (interdit 11).
