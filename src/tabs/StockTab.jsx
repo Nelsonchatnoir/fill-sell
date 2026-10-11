@@ -1779,7 +1779,24 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
             </div>
           ) : (
           <>
-          {uniteF ? (
+          {f?.field_key === "isbn" ? (
+            /* (12/10, Morgane) L'ISBN se TAPE (13 chiffres) : un vrai champ, pas
+               un « Autre valeur… » caché derrière un menu ; et le livre qui
+               n'en a pas se dit en un tap, quand la question le permet. */
+            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+              <input type="text" inputMode="numeric" autoComplete="off" value={value === "Ce livre n'a pas d'ISBN" ? "" : value}
+                onChange={(ev) => setValue(ev.target.value)} placeholder="978…"
+                aria-label={lang === "en" ? "ISBN" : "ISBN du livre"}
+                style={{ width:"100%", padding:"10px 12px", borderRadius:12, border:`1px solid ${NU_T.border}`, fontSize:16, fontFamily:"inherit", outline:"none", boxSizing:"border-box", background:NU_T.chip, color:NU_T.ink }} />
+              {f.aide && <div style={{ fontSize:12, lineHeight:1.45, color:NU_T.mute }}>{f.aide}</div>}
+              {Array.isArray(allowed) && allowed.includes("Ce livre n'a pas d'ISBN") && (
+                <button type="button" disabled={saving} onClick={() => { setValue("Ce livre n'a pas d'ISBN"); valider({ valeur: "Ce livre n'a pas d'ISBN" }); }}
+                  style={{ alignSelf:"flex-start", padding:"9px 14px", borderRadius:999, border:`1px solid ${NU_T.border}`, background:"#fff", color:NU_T.ink, fontSize:13.5, fontWeight:700, cursor: saving ? "wait" : "pointer", fontFamily:"inherit" }}>
+                  {lang === "en" ? "This book has no ISBN" : "Ce livre n'a pas d'ISBN"}
+                </button>
+              )}
+            </div>
+          ) : uniteF ? (
             <ChampAvecUnite value={value || valeurProposee || ""} unite={uniteF} onChange={setValue} lang={lang} />
           ) : (
           <AspectValueInput

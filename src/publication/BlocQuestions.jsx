@@ -13,6 +13,7 @@
 // dès que plus rien ne bloque.
 import { useState } from "react";
 import { AspectValueInput } from "../components/ListingPreviewScreen";
+import { ISBN_ABSENT } from "../../supabase/functions/_shared/vinted-exigences.js";
 import { questionsAPoser, aspectBloquant, propagerReponseTaille, tailleAmbigue } from "./moteur/regles";
 import { genericFieldToSharedKey, SHARED_PROPAGATION, NO_BRAND_VALUE, PLATFORM_LABELS } from "./moteur/champsPartages";
 import { listeFaitFoiRelevee, listeCandidatsDabord, champARecherche, valeurUneLettre } from "./moteur/listes";
@@ -333,15 +334,18 @@ export default function BlocQuestions({ m }) {
             <div key={`g:${gp}:${a.key}`} className={`fsn-q${aspectBloquant(a) ? " fsn-q--bloque" : ""}`}>
               <div className="fsn-row fsn-row--between"><div className="fsn-q-t">{a.label}</div><Puce ton={aspectBloquant(a) ? "geste" : "ok"}>{NOM(gp)}</Puce></div>
               <div className="fsn-q-why">
-                {a.state === "invalid"
+                {gp === "vinted" && a.key === "isbn"
+                  ? (en ? "Vinted requires the ISBN of a book — on the back, under the barcode (978… or 979…)." : "Vinted exige l'ISBN d'un livre — au dos, sous le code-barres (978… ou 979…).")
+                  : a.state === "invalid"
                   ? (en ? `“${a.value}” is not in the list this platform accepts.` : `« ${a.value} » n'est pas dans la liste que cette plateforme accepte.`)
                   : (a.allowedValues?.length
                       ? (en ? "Required here — the values come from its form." : "Exigé ici — les valeurs viennent de son formulaire.")
                       : (en ? "Required here — free text." : "Exigé ici — texte libre."))}
               </div>
               <AspectValueInput
-                value={a.state === "invalid" ? (a.suggested ?? a.value ?? "") : a.value}
-                allowedValues={a.allowedValues}
+                value={gp === "vinted" && a.key === "isbn" && a.value === ISBN_ABSENT ? "" : (a.state === "invalid" ? (a.suggested ?? a.value ?? "") : a.value)}
+                // (12/10, Morgane) L'ISBN se TAPE : jamais derrière « Autre valeur… ».
+                allowedValues={gp === "vinted" && a.key === "isbn" ? [] : a.allowedValues}
                 // (12/10, A10bis) Une liste qui FAIT FOI (fermée, entière) : une
                 // valeur hors liste y est bloquante — « Autre valeur… » n'y menait
                 // qu'à une impasse (Louis, « Moules noel »). Sélecteur fermé.
@@ -355,6 +359,12 @@ export default function BlocQuestions({ m }) {
                 tailleTexte={16}
                 idBase={`fsn-gen-${gp}-${slug(a.key)}`}
               />
+              {gp === "vinted" && a.key === "isbn" && (
+                <button type="button" className={`fsn-choice${a.value === ISBN_ABSENT ? " fsn-choice--on" : ""}`} style={{ alignSelf: "flex-start" }}
+                  onClick={() => ecrire(ISBN_ABSENT)}>
+                  {a.value === ISBN_ABSENT ? "✓ " : ""}{en ? "This book has no ISBN" : ISBN_ABSENT}
+                </button>
+              )}
               {sk === "marque" && (
                 <button type="button" className={`fsn-choice${a.value === NO_BRAND_VALUE ? " fsn-choice--on" : ""}`} style={{ alignSelf: "flex-start" }}
                   onClick={() => ecrire(NO_BRAND_VALUE)}>

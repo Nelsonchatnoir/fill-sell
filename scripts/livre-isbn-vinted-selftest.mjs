@@ -55,6 +55,10 @@ verifier(/if \(String\(pf\.isbn \?\? ""\)\.trim\(\) \|\| String\(pf\.vintedAspec
 const rp = lire('src/utils/resolutionPublication.js');
 verifier(/pf\.isbn_absent = true;\s*\n\s*delete pf\.isbn;/.test(rp), '« Ce livre n’a pas d’ISBN » devient isbn_absent : jamais tapé chez Vinted');
 verifier(/logChampBloquant\(rayonChange \? "retiree" : "complete"/.test(lps), 'mesure : une question retirée par un changement de rayon n’est plus comptée « complétée »');
+const bq = lire('src/publication/BlocQuestions.jsx');
+verifier(/allowedValues=\{gp === "vinted" && a\.key === "isbn" \? \[\] : a\.allowedValues\}/.test(bq) && /onClick=\{\(\) => ecrire\(ISBN_ABSENT\)\}/.test(bq), 'stepper et lot : l’ISBN se tape (jamais derrière « Autre valeur… »), « Ce livre n’a pas d’ISBN » en un tap');
+const st = lire('src/tabs/StockTab.jsx');
+verifier(/\{f\?\.field_key === "isbn" \? \(/.test(st) && /aria-label=\{lang === "en" \? "ISBN" : "ISBN du livre"\}/.test(st) && /allowed\.includes\("Ce livre n'a pas d'ISBN"\)/.test(st), '« Compléter » : un vrai champ ISBN, l’aide, et « Ce livre n’a pas d’ISBN » quand la question le permet (aperçu : capture-question-isbn)');
 
 console.log('\n5. Le serveur : aucun départ sans ISBN, ni sans le dire');
 const gpj = lire('supabase/functions/get-pending-jobs/index.ts');
