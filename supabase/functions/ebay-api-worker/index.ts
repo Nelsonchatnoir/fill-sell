@@ -49,10 +49,12 @@ import { idAnnonceEbay, preuveIntentionRetraitRepublicationEbayMemorisee, preuve
 import { detectObjectIconKeyword } from "../../../src/utils/shared.js";
 import { CLES_QUESTION_PLUS_EN_LIGNE, drapeauAvantLaFin, lireQuantiteEbay as lireQuantiteEbayPur, verdictAnnonceEbay } from "../_shared/ebay-etat-annonce.js";
 import {
-  aspectsCategorie, choisirCondition, conditionsCategorie, descripteursCondition, descriptionEbay, emplacementMarchand, enrichirDepuisAttributs, marquerAspectFerme,
+  aspectsCategorie, assemblerAspects, choisirCondition, conditionsCategorie, descripteursCondition, descriptionEbay, emplacementMarchand, enrichirDepuisAttributs, marquerAspectFerme,
   lireErreurEbay, lireRefus25129, motifReelEbay, MARKETPLACE, remplirAspects, skuPour, suggererCategories, titreEbay, urlAnnonce, urlsPhotos,
-  type AttributsInventaire, type ErreurEbay, type PlatformFields,
+  type AspectCatalogue, type AttributsInventaire, type ErreurEbay, type PlatformFields,
 } from "../_shared/ebay-publication.ts";
+import { completerAspectsIA, valeurLueDansLeContexte } from "../_shared/ebay-aspects-ia.ts";
+import { valeurDeListeCorrespondante } from "../_shared/texte-comparable.ts";
 
 const HANDLER_BUILD = "ebay-api-worker 3-lens";
 const LOT_MAX = 10;
@@ -2653,6 +2655,329 @@ async function veillerVentesEbay(admin: SupabaseClient, env: EbayEnv): Promise<R
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// RANGER UNE ANNONCE EN LIGNE DANS LE RAYON QUE DONNE LA RÈGLE D'AUJOURD'HUI
+// (11/10, trois annonces de Tessy publiées avant 2.9.78)
+// ═══════════════════════════════════════════════════════════════════════════
+// « Sac MNG camel » en Golf › Sacs, deux paires de baskets enfant en
+// Collections › Pins › Basket : rangées par le mot, avant la règle « un
+// vêtement de mode ne part pas en sport sans que le texte le dise » (e4de241).
+// Décision de Nico : les ranger SANS supprimer ni republier (même numéro, vues
+// et favoris gardés), par l'offre existante.
+// ⛔ Appelé à la main (x-cron-secret), une annonce désignée, jamais par le cron.
+// ⛔ Le rayon CIBLE n'est pas choisi ici : `pf_resolution` est ce que
+//    resoudrePublication (app, règle brancheSpecialiseeEbay comprise) rend
+//    pour l'article, rejoué par scripts/reparations/20261011_ebay_categories_tessy.mjs ;
+//    il passe ensuite la résolution serveur de la voie API (resoudreCategorie),
+//    comme une publication. Une question, ou un rayon d'une branche spécialisée
+//    à l'arrivée, et l'annonce est LAISSÉE.
+// ⛔ L'offre et l'article sont relus EN ENTIER et réécrits en entier : seuls
+//    categoryId, l'état dans le vocabulaire du nouveau rayon (choisirCondition,
+//    la règle du dépôt) et les aspects OBLIGATOIRES du nouveau rayon changent.
+//    Un champ de l'offre ou de l'article que ce code ne sait pas réécrire, et
+//    rien ne part (une réécriture partielle l'effacerait).
+// ⛔ Aspect obligatoire : liste fermée → une entrée de la liste ; texte libre →
+//    un mot LU dans le titre ou la description de l'annonce. Sinon : laissée.
+// ⛔ L'écriture exige la sauvegarde en base (table désignée) et l'empreinte de
+//    la lecture à blanc : une annonce qui a bougé depuis n'est pas touchée.
+//    Refus d'eBay : un essai, l'article retrouve son contenu d'avant, rien d'autre.
+const CLES_OFFRE_ECRITES = ["availableQuantity", "categoryId", "charity", "extendedProducerResponsibility", "format", "hideBuyerDetails",
+  "includeCatalogProductDetails", "listingDescription", "listingDuration", "listingPolicies", "listingStartDate", "lotSize",
+  "merchantLocationKey", "pricingSummary", "quantityLimitPerBuyer", "regulatory", "secondaryCategoryId", "storeCategoryNames", "tax"];
+const CLES_OFFRE_LUES = ["offerId", "sku", "marketplaceId", "listing", "status"];
+const CLES_ARTICLE_ECRITES = ["availability", "condition", "conditionDescription", "conditionDescriptors", "packageWeightAndSize", "product"];
+const CLES_ARTICLE_LUES = ["sku", "locale", "groupIds", "inventoryItemGroupKeys"];
+// Les champs de rayon du job, remplacés en bloc par ceux de la règle.
+const CLES_RAYON_JOB = ["ebayCategoryId", "ebayCategoryPath", "categorie_source", "categorie_incertaine", "categorie_par_mot",
+  "categorie_verification", "categorie_plausibilite", "categorie_branche_specialisee", "rayon_a_choisir", "rayon_a_reessayer",
+  "ebayCategorieAttente", "categorie_icone"];
+const RACINES_SPECIALISEES_EBAY = new Set(["Sports, vacances", "Auto, moto - pièces, accessoires", "Bricolage", "Animalerie", "Collections"]);
+const TABLE_SAUVEGARDE_RE = /^_backup_\d{4}_ebay_[a-z_]+$/;
+
+function stable(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(stable).join(",")}]`;
+  if (v && typeof v === "object") {
+    return `{${Object.keys(v as Record<string, unknown>).sort().map((k) => `${JSON.stringify(k)}:${stable((v as Record<string, unknown>)[k])}`).join(",")}}`;
+  }
+  return JSON.stringify(v ?? null);
+}
+async function empreinteDe(v: unknown): Promise<string> {
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(stable(v)));
+  return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+function sousObjet(o: Record<string, unknown>, cles: string[]): Record<string, unknown> {
+  const r: Record<string, unknown> = {};
+  for (const k of cles) if (o[k] !== undefined) r[k] = o[k];
+  return r;
+}
+
+type LectureAnnonce = { ok: true; offre: Record<string, any>; article: Record<string, any>; browse: Record<string, unknown>; etat: Record<string, unknown> } | { ok: false; motif: string; detail?: unknown };
+async function lireAnnonceEntiere(env: EbayEnv, token: string, offerId: string, sku: string, listingId: string): Promise<LectureAnnonce> {
+  const appToken = await obtenirJetonApplicatif(env);
+  const [rb, ro, ra] = await Promise.all([
+    fetch(`${hotes(env).api}/buy/browse/v1/item/get_item_by_legacy_id?legacy_item_id=${listingId}`, {
+      headers: { Authorization: `Bearer ${appToken}`, "X-EBAY-C-MARKETPLACE-ID": MARKETPLACE, Accept: "application/json" },
+    }).then(async (r) => ({ http: r.status, json: await r.json().catch(() => null) as Record<string, any> | null })),
+    appelEbay(env, token, `/sell/inventory/v1/offer/${encodeURIComponent(offerId)}`),
+    appelEbay(env, token, `/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`),
+  ]);
+  if (rb.http !== 200 || !rb.json) return { ok: false, motif: `browse_http_${rb.http}` };
+  if (ro.http !== 200 || !ro.json) return { ok: false, motif: `lecture_offre_${ro.http}`, detail: lireErreurEbay(ro.json, ro.texte).message };
+  if (ra.http !== 200 || !ra.json) return { ok: false, motif: `lecture_article_${ra.http}`, detail: lireErreurEbay(ra.json, ra.texte).message };
+  const b = rb.json;
+  const verdict = verdictAnnonceEbay(b, Date.now()) as EtatAnnonce;
+  const dispo = (b.estimatedAvailabilities as Array<Record<string, unknown>> | undefined)?.[0] ?? {};
+  const offre = ro.json as Record<string, any>;
+  const browse = {
+    categoryId: b.categoryId ?? null, categoryPath: b.categoryPath ?? null, prix: b.price ?? null, titre: b.title ?? null,
+    vendeur: (b.seller as Record<string, unknown> | undefined)?.username ?? null, fin: b.itemEndDate ?? null,
+    disponibilite: dispo.estimatedAvailabilityStatus ?? null, quantite: lireQuantiteEbay(dispo), formats: b.buyingOptions ?? null,
+    etat_article: b.condition ?? null,
+  };
+  const etat = {
+    verdict: verdict.verdict, en_vente: browse.fin == null, disponibilite: browse.disponibilite, quantite: browse.quantite,
+    offre: offre.status ?? null, annonce: offre.listing?.listingStatus ?? null, listing_id_offre: offre.listing?.listingId ?? null,
+    vendus_offre: offre.listing?.soldQuantity ?? null, rayon_ebay: browse.categoryId, rayon_offre: offre.categoryId ?? null,
+  };
+  return { ok: true, offre, article: ra.json as Record<string, any>, browse, etat };
+}
+
+async function reviserRayonParLaRegle(admin: SupabaseClient, env: EbayEnv, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const jobId = String(body.job_id ?? "");
+  const dryRun = body.dry_run === true;
+  const rayonActuel = String(body.rayon_actuel ?? "");
+  const pfRes = (body.pf_resolution && typeof body.pf_resolution === "object") ? body.pf_resolution as Record<string, unknown> : null;
+  if (!/^[0-9a-f-]{36}$/i.test(jobId) || !/^\d+$/.test(rayonActuel) || !pfRes) return { ok: false, motif: "parametres" };
+  const { data: j } = await admin.from("cross_post_jobs")
+    .select("id, user_id, inventaire_id, platform, action, status, voie, title, description, price, platform_fields").eq("id", jobId).maybeSingle();
+  const job = j as (Job & { voie?: string }) | null;
+  const pfJob = { ...((job?.platform_fields ?? {}) as Record<string, unknown>) };
+  const api = (pfJob.ebay_api ?? {}) as Record<string, unknown>;
+  const sku = String(api.sku ?? ""), offerId = String(api.offer_id ?? ""), listingId = String(api.listing_id ?? "");
+  if (!job || job.platform !== "ebay" || job.voie !== "api" || job.status !== "published" || !sku || !offerId || !/^\d{9,15}$/.test(listingId)) {
+    return { ok: false, motif: "pas_une_annonce_api_publiee" };
+  }
+  if (String(pfJob.ebayCategoryId ?? "") !== rayonActuel) return { ok: false, motif: "rayon_actuel_different", sur_le_job: pfJob.ebayCategoryId ?? null };
+  const { data: compte } = await admin.from("ebay_accounts").select("ebay_user_id").eq("user_id", job.user_id).maybeSingle();
+  const pseudo = String((compte as { ebay_user_id?: string } | null)?.ebay_user_id ?? "");
+  const jeton = await obtenirAccessToken(admin, job.user_id);
+  if (!jeton.ok) return { ok: false, motif: `jeton_${jeton.motif}` };
+  const token = jeton.token as string;
+
+  // ── 1. LECTURE : en ligne, invendue, la nôtre, dans le rayon attendu ────────
+  const lu = await lireAnnonceEntiere(env, token, offerId, sku, listingId);
+  if (!lu.ok) return { ok: false, motif: lu.motif, detail: lu.detail ?? null };
+  const { offre, article, browse, etat } = lu;
+  const q = browse.quantite as QuantiteEbay;
+  const laisser = (motif: string, extra: Record<string, unknown> = {}) => ({ ok: false, laissee: true, motif, annonce: listingId, etat, ...extra });
+  if (!pseudo || String(browse.vendeur ?? "").toLowerCase() !== pseudo.toLowerCase()) return laisser("vendeur_different", { vendeur: browse.vendeur });
+  if (etat.verdict !== "vivante" || browse.fin != null) return laisser("annonce_pas_en_vente");
+  if (offre.status !== "PUBLISHED" || offre.listing?.listingStatus !== "ACTIVE" || String(offre.listing?.listingId ?? "") !== listingId) return laisser("offre_pas_publiee");
+  if (!q.exacte || (q.vendus ?? 0) !== 0 || !((q.disponible ?? 0) >= 1) || Number(offre.listing?.soldQuantity ?? 0) !== 0) return laisser("vente_ou_quantite_inattendue");
+  if (String(offre.categoryId ?? "") !== rayonActuel || String(browse.categoryId ?? "") !== rayonActuel) return laisser("rayon_ebay_different");
+  const inconnusOffre = Object.keys(offre).filter((k) => !CLES_OFFRE_ECRITES.includes(k) && !CLES_OFFRE_LUES.includes(k));
+  const inconnusArticle = Object.keys(article).filter((k) => !CLES_ARTICLE_ECRITES.includes(k) && !CLES_ARTICLE_LUES.includes(k));
+  if (inconnusOffre.length || inconnusArticle.length) return laisser("champ_non_reecrivable", { offre: inconnusOffre, article: inconnusArticle });
+  const empreinte = await empreinteDe({ offre, article });
+  const sauvegarde = { offer_id: offerId, sku, offre, article, browse, empreinte };
+
+  // ── 3. LE RAYON : la règle de l'app, puis la résolution serveur ─────────────
+  const inv = await lireInventaire(admin, job.inventaire_id);
+  const pfBase: Record<string, unknown> = { ...pfJob };
+  for (const k of CLES_RAYON_JOB) delete pfBase[k];
+  const pfCible: Record<string, unknown> = { ...pfBase, ...pfRes };
+  if (pfCible.ebayCategoryId != null) pfCible.ebayCategoryId = String(pfCible.ebayCategoryId);
+  const enrichi = enrichirDepuisAttributs(pfCible as PlatformFields, inv.attributs);
+  const pf = enrichi.pf as Record<string, unknown>;
+  const supportNonLivre = estSupportNonLivre(inv.titre, job.title, job.description);
+  pf.support_non_livre = supportNonLivre;
+  const famille = (String(pf.famille ?? "") === "livres_medias" && supportNonLivre) ? null : ((pf.famille as string | null) ?? null);
+  pf.__userId = job.user_id; pf.__admin = admin;
+  const categorie = await resoudreCategorie(env, token, { title: inv.titre || job.title }, pf as PlatformFields, famille);
+  delete pf.__userId; delete pf.__admin;
+  if ("choix" in categorie) return laisser("rayon_a_demander", { choix: categorie.choix, detail: categorie.motif, sauvegarde });
+  const idCible = String(categorie.id), cheminCible = categorie.chemin;
+  const infoCategorie = { de: rayonActuel, vers: idCible, chemin: cheminCible, source: categorie.source, detail: (categorie as { detail?: string }).detail ?? null, regle: pfRes.ebayCategoryId ?? null };
+  if (RACINES_SPECIALISEES_EBAY.has(cheminCible[0]) && !(cheminCible[0] === "Sports, vacances" && cheminCible[1] === "Vacances")) {
+    return laisser("rayon_dans_une_branche_specialisee", { categorie: infoCategorie, sauvegarde });
+  }
+  if (idCible === rayonActuel) return laisser("deja_dans_ce_rayon", { categorie: infoCategorie });
+  if (body.categorie_attendue != null && String(body.categorie_attendue) !== idCible) {
+    return laisser("rayon_different_de_la_lecture", { categorie: infoCategorie, attendu: body.categorie_attendue });
+  }
+
+  // ── L'état, dans le vocabulaire du nouveau rayon (règle du dépôt) ───────────
+  const conds = await conditionsCategorie(env, token, idCible);
+  const cond = choisirCondition(pf.etat as string, conds);
+  if (!cond) return laisser("etat_sans_correspondance", { categorie: infoCategorie, etat_fiche: pf.etat ?? null, sauvegarde });
+  const desc = descripteursCondition(pf.etat as string, cond, (pf.ebayAspects ?? {}) as Record<string, unknown>);
+  if (desc.manquant) return laisser("descripteur_etat_a_demander", { categorie: infoCategorie, descripteur: desc.manquant.nom, sauvegarde });
+  const conditionAvant = String(article.condition ?? "");
+  const memeCondition = cond.enumValue === conditionAvant;
+  const condition = { de: conditionAvant, vers: cond.enumValue, libelle: cond.libelle, change: !memeCondition };
+
+  // ── 5. Les aspects OBLIGATOIRES du nouveau rayon ───────────────────────────
+  const catAsp = await aspectsCategorie(admin, env, token, idCible);
+  if ("erreur" in catAsp) return laisser("aspects_illisibles", { categorie: infoCategorie, detail: catAsp.erreur });
+  const aspectsAvant = ((article.product?.aspects ?? {}) as Record<string, string[]>);
+  const aspectsApres: Record<string, string[]> = JSON.parse(JSON.stringify(aspectsAvant));
+  const titre = String(article.product?.title ?? job.title ?? ""), description = String(article.product?.description ?? job.description ?? "");
+  const texteAnnonce = `${titre}\n${description.replace(/<[^>]+>/g, " ")}`;
+  const requis = catAsp.aspects.filter((a) => a.required);
+  const aRemplir: AspectCatalogue[] = [];
+  const conserves: Record<string, string> = {};
+  for (const a of requis) {
+    const actuel = (aspectsAvant[a.name] ?? []).map(String).filter(Boolean);
+    if (actuel.length) {
+      if (a.mode !== "SELECTION_ONLY" || !a.allowedValues.length) { conserves[a.name] = actuel.join(" | "); continue; }
+      const dansListe = actuel.map((v) => valeurDeListeCorrespondante(v, a.allowedValues)).filter(Boolean) as string[];
+      if (dansListe.length === actuel.length) {
+        if (dansListe.some((v, i) => v !== actuel[i])) aspectsApres[a.name] = dansListe;
+        conserves[a.name] = dansListe.join(" | ");
+        continue;
+      }
+    }
+    aRemplir.push(a);
+  }
+  const ajoutes: Record<string, { valeur: string; source: string }> = {};
+  const refuses: Array<{ name: string; valeur: string | null; motif: string }> = [];
+  if (aRemplir.length) {
+    // La règle du dépôt d'abord (choix du job, champs de la fiche, genre → Département)…
+    const pfAsp = { ...pf, ebayAspects: { ...((pf.ebayAspects ?? {}) as Record<string, unknown>) } } as PlatformFields;
+    const premier = assemblerAspects(pfAsp, aRemplir);
+    const valeurs: Record<string, { valeur: string; source: string }> = {};
+    for (const a of aRemplir) {
+      const v = premier.aspects[a.name]?.[0];
+      if (v) valeurs[a.name] = { valeur: v, source: String(premier.sources[a.name] ?? "job") };
+    }
+    // … puis l'IA sous contrainte de la liste pour ce qui manque encore.
+    const restants = aRemplir.filter((a) => !valeurs[a.name]);
+    if (restants.length) {
+      const ia = await completerAspectsIA(restants.map((a) => ({ name: a.name, mode: a.mode, allowedValues: a.allowedValues })),
+        contexteDuJob(job, pf as PlatformFields), { apiKey: Deno.env.get("ANTHROPIC_API_KEY") ?? "" });
+      for (const a of restants) { const v = String(ia.aspects[a.name] ?? "").trim(); if (v) valeurs[a.name] = { valeur: v, source: "ia" }; }
+      for (const r of ia.refuses) refuses.push({ name: r.name, valeur: r.valeur, motif: r.motif });
+    }
+    // Le contrôle de Nico : liste fermée → une entrée de la liste ; texte libre → lu dans l'annonce.
+    for (const a of aRemplir) {
+      const v = valeurs[a.name];
+      if (!v) { refuses.push({ name: a.name, valeur: null, motif: "aucune valeur" }); continue; }
+      if (a.mode === "SELECTION_ONLY" && a.allowedValues.length) {
+        const entree = valeurDeListeCorrespondante(v.valeur, a.allowedValues);
+        if (!entree) { refuses.push({ name: a.name, valeur: v.valeur, motif: "hors de la liste fermée" }); continue; }
+        aspectsApres[a.name] = [entree]; ajoutes[a.name] = { valeur: entree, source: v.source };
+      } else {
+        if (!valeurLueDansLeContexte(v.valeur, texteAnnonce)) { refuses.push({ name: a.name, valeur: v.valeur, motif: "texte libre absent du titre et de la description" }); continue; }
+        aspectsApres[a.name] = [v.valeur]; ajoutes[a.name] = { valeur: v.valeur, source: v.source };
+      }
+    }
+  }
+  const manquants = requis.filter((a) => !(aspectsApres[a.name] ?? []).length).map((a) => a.name);
+  const aspects = { requis: requis.map((a) => `${a.name} (${a.mode === "SELECTION_ONLY" ? "liste fermée" : "texte libre"})`), conserves, ajoutes, refuses, manquants };
+  if (manquants.length) return laisser("aspect_obligatoire_impossible_a_remplir", { categorie: infoCategorie, condition, aspects, sauvegarde });
+
+  const articleChange = !memeCondition || stable(aspectsApres) !== stable(aspectsAvant) || desc.descripteurs.length > 0;
+  const corpsArticle: Record<string, unknown> = {
+    ...sousObjet(article, CLES_ARTICLE_ECRITES),
+    condition: cond.enumValue,
+    product: { ...article.product, aspects: aspectsApres },
+  };
+  if (!memeCondition) {
+    delete corpsArticle.conditionDescriptors;
+    if (desc.descripteurs.length) corpsArticle.conditionDescriptors = desc.descripteurs;
+  } else if (desc.descripteurs.length) corpsArticle.conditionDescriptors = desc.descripteurs;
+  const corpsOffre: Record<string, unknown> = { ...sousObjet(offre, CLES_OFFRE_ECRITES), categoryId: idCible };
+  const prevu = { categorie: infoCategorie, condition, aspects, article_reecrit: articleChange };
+  if (dryRun) return { ok: true, dry_run: true, job: job.id, annonce: listingId, etat, ...prevu, sauvegarde };
+
+  // ── 2. LA SAUVEGARDE EN BASE, ET RIEN N'A BOUGÉ DEPUIS ──────────────────────
+  const table = String(body.table_sauvegarde ?? "");
+  if (!TABLE_SAUVEGARDE_RE.test(table)) return { ok: false, motif: "table_sauvegarde_invalide" };
+  const { data: sv, error: svErr } = await admin.from(table).select("empreinte").eq("listing_id", listingId).maybeSingle();
+  if (svErr || !sv) return { ok: false, motif: "sauvegarde_absente", detail: svErr?.message ?? null };
+  if ((sv as { empreinte: string }).empreinte !== empreinte || String(body.empreinte_attendue ?? "") !== empreinte) {
+    return laisser("annonce_changee_depuis_la_sauvegarde");
+  }
+
+  // ── 4. L'ÉCRITURE : l'article (si besoin), puis l'offre entière ─────────────
+  if (articleChange) {
+    const pa = await appelEbay(env, token, `/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`, { method: "PUT", body: corpsArticle });
+    if (![200, 201, 204].includes(pa.http)) {
+      const e = lireErreurEbay(pa.json, pa.texte);
+      return { ok: false, refus_ebay: true, etape: "article", http: pa.http, ebay: e.message, errorId: e.errorId, ...prevu };
+    }
+  }
+  const po = await appelEbay(env, token, `/sell/inventory/v1/offer/${encodeURIComponent(offerId)}`, { method: "PUT", body: corpsOffre });
+  if (![200, 204].includes(po.http)) {
+    const e = lireErreurEbay(po.json, po.texte);
+    let articleRemis: unknown = null;
+    if (articleChange) {
+      const rr = await appelEbay(env, token, `/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`, { method: "PUT", body: sousObjet(article, CLES_ARTICLE_ECRITES) }).catch(() => null);
+      articleRemis = rr ? rr.http : "echec_reseau";
+    }
+    return { ok: false, refus_ebay: true, etape: "offre", http: po.http, ebay: e.message, errorId: e.errorId, article_remis_http: articleRemis, ...prevu };
+  }
+
+  // ── 7. RELECTURE chez eBay et comparaison avec la sauvegarde ────────────────
+  const apres = await lireAnnonceEntiere(env, token, offerId, sku, listingId);
+  let controle: Record<string, unknown> = { relecture: apres.ok ? "ok" : apres.motif };
+  if (apres.ok) {
+    const o2 = apres.offre, a2 = apres.article;
+    const offreAttendue: Record<string, unknown> = { ...sousObjet(offre, CLES_OFFRE_ECRITES), categoryId: idCible };
+    const ecartsOffre = CLES_OFFRE_ECRITES.filter((k) => stable(o2[k]) !== stable(offreAttendue[k]));
+    const ecartsProduit = ["title", "description", "imageUrls", "brand", "mpn", "ean", "upc", "isbn", "epid", "subtitle", "videoIds"]
+      .filter((k) => stable(a2.product?.[k]) !== stable(article.product?.[k]));
+    controle = {
+      relecture: "ok",
+      meme_annonce: String(o2.listing?.listingId ?? "") === listingId,
+      en_ligne: o2.status === "PUBLISHED" && o2.listing?.listingStatus === "ACTIVE" && apres.browse.fin == null,
+      rayon_offre: o2.categoryId ?? null, rayon_annonce: apres.browse.categoryId ?? null, chemin_annonce: apres.browse.categoryPath ?? null,
+      prix_avant: browse.prix, prix_apres: apres.browse.prix, quantite_avant: browse.quantite, quantite_apres: apres.browse.quantite,
+      ecarts_offre: ecartsOffre, ecarts_produit: ecartsProduit,
+      disponibilite_identique: stable(a2.availability) === stable(article.availability),
+      condition: a2.condition ?? null, aspects_apres: a2.product?.aspects ?? null,
+    };
+  }
+  // Le job dit ce qui est en ligne (aucun job créé : ce job-ci, son rayon).
+  const pfMaj: Record<string, unknown> = {
+    ...pfJob, ebayCategoryId: idCible, ebayCategoryPath: cheminCible,
+    revision_rayon_regle: {
+      le: new Date().toISOString(), par: "ebay-api-worker (rayon_regle, 11/10 — règle mode hors branche spécialisée)",
+      avant: { ebayCategoryId: pfJob.ebayCategoryId ?? null, ebayCategoryPath: pfJob.ebayCategoryPath ?? null },
+      categorie: infoCategorie, condition, aspects: { ajoutes, conserves }, controle, table_sauvegarde: table,
+    },
+  };
+  await admin.from("cross_post_jobs").update({ platform_fields: pfMaj }).eq("id", job.id).eq("status", "published");
+  console.log(`[ebay-api-worker] annonce ${listingId} rangée : ${rayonActuel} → ${idCible} (${cheminCible.join(" > ")}) — ${JSON.stringify(controle).slice(0, 400)}`);
+  return { ok: true, job: job.id, annonce: listingId, ...prevu, controle };
+}
+
+// L'inverse : l'offre et l'article sauvegardés, réécrits tels quels.
+async function restaurerAnnonceSauvegardee(admin: SupabaseClient, env: EbayEnv, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const table = String(body.table_sauvegarde ?? "");
+  const listingId = String(body.listing_id ?? "");
+  if (!TABLE_SAUVEGARDE_RE.test(table) || !/^\d{9,15}$/.test(listingId)) return { ok: false, motif: "parametres" };
+  const { data: sv } = await admin.from(table).select("job_id, offer_id, sku, offre, article, job_platform_fields").eq("listing_id", listingId).maybeSingle();
+  const s = sv as { job_id: string; offer_id: string; sku: string; offre: Record<string, unknown>; article: Record<string, unknown>; job_platform_fields: Record<string, unknown> | null } | null;
+  if (!s) return { ok: false, motif: "sauvegarde_absente" };
+  const { data: j } = await admin.from("cross_post_jobs").select("id, user_id, platform_fields").eq("id", s.job_id).maybeSingle();
+  if (!j) return { ok: false, motif: "job_absent" };
+  const jeton = await obtenirAccessToken(admin, (j as { user_id: string }).user_id);
+  if (!jeton.ok) return { ok: false, motif: `jeton_${jeton.motif}` };
+  const token = jeton.token as string;
+  const pa = await appelEbay(env, token, `/sell/inventory/v1/inventory_item/${encodeURIComponent(s.sku)}`, { method: "PUT", body: sousObjet(s.article, CLES_ARTICLE_ECRITES) });
+  if (![200, 201, 204].includes(pa.http)) { const e = lireErreurEbay(pa.json, pa.texte); return { ok: false, etape: "article", http: pa.http, ebay: e.message }; }
+  const po = await appelEbay(env, token, `/sell/inventory/v1/offer/${encodeURIComponent(s.offer_id)}`, { method: "PUT", body: sousObjet(s.offre, CLES_OFFRE_ECRITES) });
+  if (![200, 204].includes(po.http)) { const e = lireErreurEbay(po.json, po.texte); return { ok: false, etape: "offre", http: po.http, ebay: e.message }; }
+  const pfAvant = s.job_platform_fields ?? {};
+  const pf = { ...((j as { platform_fields: Record<string, unknown> }).platform_fields ?? {}),
+    ebayCategoryId: pfAvant.ebayCategoryId ?? null, ebayCategoryPath: pfAvant.ebayCategoryPath ?? null,
+    revision_rayon_annulee: { le: new Date().toISOString(), table } };
+  await admin.from("cross_post_jobs").update({ platform_fields: pf }).eq("id", s.job_id);
+  const relu = await lireAnnonceEntiere(env, token, s.offer_id, s.sku, listingId);
+  return { ok: true, annonce: listingId, relu: relu.ok ? relu.etat : relu.motif };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // BAISSER LA QUANTITÉ D'UNE ANNONCE eBAY, SUR DÉCISION (01/10, lot point 4)
 // ═══════════════════════════════════════════════════════════════════════════
 // Appelée à la main (x-cron-secret), jamais par le cron. xxewwer : l'annonce
@@ -2730,6 +3055,9 @@ async function reviserQuantiteAnnonce(admin: SupabaseClient, env: EbayEnv, body:
 // de l'article ET de l'annonce publique. Même numéro d'annonce, rien n'est
 // republié ni décompté.
 async function reviserAnnonce(admin: SupabaseClient, env: EbayEnv, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  // (11/10) Deux modes à part, appelés à la main sur trois annonces désignées.
+  if (body.rayon_regle === true) return await reviserRayonParLaRegle(admin, env, body);
+  if (body.restaurer === true) return await restaurerAnnonceSauvegardee(admin, env, body);
   const jobId = String(body.job_id ?? "");
   const dryRun = body.dry_run === true;
   if (!/^[0-9a-f-]{36}$/i.test(jobId)) return { ok: false, motif: "parametres" };
