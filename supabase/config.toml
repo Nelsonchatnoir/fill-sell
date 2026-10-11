@@ -55,6 +55,10 @@ verify_jwt = false
 [functions.apple-notification-history]
 verify_jwt = false
 
+# (12/10, A8) Audit lecture seule : palier payé chez Apple / Google contre palier chez nous. Garde x-cron-secret.
+[functions.abonnements-stores-audit]
+verify_jwt = false
+
 [functions.apple-subscription-status]
 verify_jwt = false
 

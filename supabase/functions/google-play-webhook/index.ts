@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
-import { notifierPaiement, alerterPaiementNonCredite } from "../_shared/payment-notify.ts";
+import { notifierPaiement, alerterPaiementNonCredite, signalerNotificationStoreInconnue, journaliserNotificationStore } from "../_shared/payment-notify.ts";
+import { decisionGoogle, ligneJournal } from "../_shared/notifications-stores.js";
 import { lectureCloudGoogle, ecritureCloudStore, PRODUIT_CLOUD_GOOGLE } from "../_shared/cloud-option.js";
 import { profilCloudPourStore } from "../_shared/cloud-essai-store.ts";
 
@@ -92,6 +93,33 @@ serve(async (req) => {
 
     const notification = JSON.parse(atob(dataB64));
     const { packageName, subscriptionNotification } = notification;
+
+    // ── (12/10, A8) CHAQUE NOTIFICATION EST ENREGISTRÉE ; UNE INCONNUE EST SIGNALÉE ──
+    // (_shared/notifications-stores.js) Abonnement : la décision de la table ;
+    // achat ponctuel (pack) : 1 = achat, 2 = annulation ; test : sans effet ;
+    // tout le reste (dont voidedPurchaseNotification, jamais traitée ici) :
+    // inconnu → alerte à support@, rien d'appliqué. Le traitement qui suit est
+    // celui d'avant (plus la mise en pause, ci-dessous).
+    {
+      const otpJ = notification.oneTimeProductNotification;
+      const subJ = subscriptionNotification;
+      let typeJ = "inconnu", sousTypeJ: string | null = null;
+      let decisionJ: { effet: string | null; connu: boolean };
+      if (subJ) { const d = decisionGoogle(subJ.notificationType); typeJ = "abonnement"; sousTypeJ = d.nom; decisionJ = d; }
+      else if (otpJ) { typeJ = "achat_ponctuel"; sousTypeJ = String(otpJ.notificationType); decisionJ = otpJ.notificationType === 1 ? { effet: "pack", connu: true } : otpJ.notificationType === 2 ? { effet: "aucun_effet", connu: true } : { effet: null, connu: false }; }
+      else if (notification.testNotification) { typeJ = "test"; decisionJ = { effet: "aucun_effet", connu: true }; }
+      else if (notification.voidedPurchaseNotification) { typeJ = "achat_annule"; sousTypeJ = `produit_${notification.voidedPurchaseNotification.productType ?? "?"}_remboursement_${notification.voidedPurchaseNotification.refundType ?? "?"}`; decisionJ = { effet: null, connu: false }; }
+      else { decisionJ = { effet: null, connu: false }; }
+      const produitJ = (subJ?.subscriptionId ?? otpJ?.sku ?? null) as string | null;
+      await journaliserNotificationStore(supabaseAdmin, ligneJournal({
+        canal: "google", type: typeJ, sousType: sousTypeJ, decision: decisionJ, produit: produitJ,
+        transaction: (notification.voidedPurchaseNotification?.orderId ?? null) as string | null,
+        detail: { eventTimeMillis: notification.eventTimeMillis ?? null },
+      }));
+      if (!decisionJ.connu) {
+        await signalerNotificationStoreInconnue({ canal: "google", type: typeJ, sous_type: sousTypeJ, produit: produitJ, ref: (notification.voidedPurchaseNotification?.orderId ?? null) as string | null });
+      }
+    }
 
     // ── Consumables : packs de Pépites (2026-07-28) ───────────────────────
     // Miroir du fix apple-iap-webhook du même jour : Play envoie un
@@ -222,7 +250,10 @@ serve(async (req) => {
     // la seconde de l'annulation, sur un mois pourtant payé.
     // 6=IN_GRACE_PERIOD reste volontairement non traité (accès conservé).
     const PREMIUM_ON_TYPES  = [1, 2, 4, 7];
-    const PREMIUM_OFF_TYPES = [5, 12, 13];
+    // (12/10, A8) + 10 = SUBSCRIPTION_PAUSED : l'abonnement mis en pause par la
+    // personne n'est plus payé — le droit s'arrête, comme ON_HOLD ; la reprise
+    // arrive en 1 = RECOVERED (déjà « on »). Table : _shared/notifications-stores.js.
+    const PREMIUM_OFF_TYPES = [5, 10, 12, 13];
     const CANCELED_TYPE = 3;
 
     let isPremium: boolean | null = null;

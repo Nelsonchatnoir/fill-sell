@@ -53,6 +53,71 @@ serve(async (req) => {
     const endDate   = body.endDate   ? Date.parse(body.endDate)   : Date.now();
 
     const jwt = await genererJWTApple(BUNDLE_ID);
+
+    // ── (12/10, A8) L'HISTORIQUE COMPLET D'UN ABONNEMENT, DÉCODÉ ─────────────
+    // POST { historique: "<originalTransactionId>" } → toutes ses transactions
+    // (App Store Server API v2, /inApps/v2/history), champs Apple tels quels :
+    // produit, dates, prix, isUpgraded, revocationDate/Reason (prorata d'un
+    // passage de palier), offres. Lecture seule — c'est ce qu'on montre avant
+    // de rejouer une notification jetée (Ciddjy, 07/10).
+    if (typeof body.historique === "string" && /^[0-9]{6,30}$/.test(body.historique)) {
+      const transactions: Array<Record<string, unknown>> = [];
+      let revision: string | undefined;
+      let tours = 0;
+      do {
+        const url = new URL(`${APPLE_PROD_URL}/inApps/v2/history/${body.historique}`);
+        url.searchParams.set("sort", "ASCENDING");
+        if (revision) url.searchParams.set("revision", revision);
+        const r = await fetch(url, { headers: { Authorization: `Bearer ${jwt}` } });
+        if (!r.ok) {
+          return new Response(JSON.stringify({ error: `apple_${r.status}`, detail: (await r.text()).slice(0, 500) }), {
+            status: 502, headers: { "Content-Type": "application/json" },
+          });
+        }
+        const page = await r.json();
+        for (const s of page.signedTransactions ?? []) {
+          try { transactions.push(decodeJWSPayload(s as string)); }
+          catch (e) { transactions.push({ decodeError: String((e as Error)?.message ?? e) }); }
+        }
+        revision = page.hasMore ? page.revision : undefined;
+        tours++;
+      } while (revision && tours < 20);
+      return new Response(JSON.stringify({ count: transactions.length, transactions }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // ── (12/10, A8) LA NOTIFICATION DE TEST D'APPLE — LE WEBHOOK VÉRIFIE-T-IL ENCORE ? ──
+    // POST { test_notification: "envoyer" } → Apple envoie une notification TEST,
+    // SIGNÉE, à l'URL de production d'apple-iap-webhook ; rend son jeton.
+    // POST { test_notification: "<jeton>" } → ce qu'Apple a reçu de notre webhook
+    // (sendAttempts : SUCCESS = HTTP 200, donc signature vérifiée). C'est la
+    // preuve, après un déploiement du webhook, que la vérification de signature
+    // (@peculiar/x509, résolu par esm.sh à chaque déploiement) marche toujours.
+    // Une TEST n'a aucun effet sur aucun compte.
+    if (typeof body.test_notification === "string") {
+      const envoyer = body.test_notification === "envoyer";
+      if (!envoyer && !/^[A-Za-z0-9._-]{8,200}$/.test(body.test_notification)) {
+        return new Response(JSON.stringify({ error: "jeton illisible" }), { status: 400, headers: { "Content-Type": "application/json" } });
+      }
+      const url = envoyer
+        ? `${APPLE_PROD_URL}/inApps/v1/notifications/test`
+        : `${APPLE_PROD_URL}/inApps/v1/notifications/test/${body.test_notification}`;
+      const r = await fetch(url, { method: envoyer ? "POST" : "GET", headers: { Authorization: `Bearer ${jwt}` } });
+      const texte = await r.text();
+      if (!r.ok) {
+        return new Response(JSON.stringify({ error: `apple_${r.status}`, detail: texte.slice(0, 500) }), { status: 502, headers: { "Content-Type": "application/json" } });
+      }
+      const rep = JSON.parse(texte || "{}");
+      let notification: Record<string, unknown> | null = null;
+      try { notification = rep.signedPayload ? decodeJWSPayload(rep.signedPayload) : null; } catch { notification = null; }
+      return new Response(JSON.stringify({
+        testNotificationToken: rep.testNotificationToken ?? body.test_notification,
+        type: notification?.notificationType ?? null, uuid: notification?.notificationUUID ?? null,
+        sendAttempts: rep.sendAttempts ?? null,
+      }), { headers: { "Content-Type": "application/json" } });
+    }
+
     const notifications: Array<Record<string, unknown>> = [];
     let paginationToken: string | undefined;
     let pages = 0;
@@ -80,7 +145,13 @@ serve(async (req) => {
           const data = notif.data as Record<string, unknown> | undefined;
           const txJws = data?.signedTransactionInfo as string | undefined;
           const tx = txJws ? decodeJWSPayload(txJws) : {};
+          // (12/10, A8) `transactionId` + `brut: true` : la notification
+          // SIGNÉE par Apple, telle quelle — pour la rejouer dans
+          // apple-iap-webhook (qui revérifie la signature) quand un défaut du
+          // webhook l'avait jetée (passage Premium → Pro de Ciddjy, 07/10).
+          if (body.transactionId && String(tx.transactionId ?? "") !== String(body.transactionId)) continue;
           notifications.push({
+            ...(body.brut === true && body.transactionId ? { signedPayload: item.signedPayload } : {}),
             type: notif.notificationType,
             subtype: notif.subtype ?? null,
             productId: tx.productId ?? null,

@@ -70,6 +70,55 @@ export async function alerterPaiementNonCredite(a: Omit<AlertePaiement, "ok">): 
   await envoyer({ ...a, ok: false });
 }
 
+// ── (12/10, A8) UNE NOTIFICATION DE STORE INCONNUE : ENREGISTRÉE ET SIGNALÉE ──
+// Ciddjy (07/10) : un passage Premium → Pro payé chez Apple, jeté en silence.
+// Toute notification d'Apple ou de Google que la table de décision
+// (_shared/notifications-stores.js) ne connaît pas part ici : une alerte à
+// support@ (même canal que les paiements non crédités — rien n'a été appliqué,
+// c'est à regarder) ; la ligne du journal est écrite par le webhook.
+// ⛔ Ni le journal ni ce signalement ne retiennent un paiement (Nico, 11/10 :
+// « l'écriture dans le journal ne doit JAMAIS bloquer le traitement d'un
+// paiement ») : tout est avalé ET borné à DELAI_JOURNAL_MS — une insertion ou
+// un envoi qui ne répond pas (verrou, réseau pendu) est laissé derrière, le
+// paiement continue (banc : scripts/preuves/preuve-webhooks-journal.ts, mode
+// « bloque »).
+const DELAI_JOURNAL_MS = 2000;
+function auPlus<T>(p: PromiseLike<T>, ms: number): Promise<T | "delai"> {
+  let minuteur: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([
+    Promise.resolve(p),
+    new Promise<"delai">((ok) => { minuteur = setTimeout(() => ok("delai"), ms); }),
+  ]).finally(() => clearTimeout(minuteur));
+}
+
+export async function signalerNotificationStoreInconnue(n: {
+  canal: "apple" | "google"; type: string; sous_type?: string | null;
+  produit?: string | null; user_id?: string | null; ref?: string | null;
+}): Promise<void> {
+  const r = await auPlus(alerterPaiementNonCredite({
+    canal: n.canal, type: "abonnement", user_id: n.user_id ?? null, produit: n.produit ?? null, ref: n.ref ?? null, rpc: null,
+    erreur: `Notification ${n.canal === "apple" ? "Apple" : "Google Play"} INCONNUE : ${n.type}${n.sous_type ? ` / ${n.sous_type}` : ""}. `
+      + "Rien n'a été appliqué au compte. Elle est enregistrée (stores_notifications_journal, connu = false) : "
+      + "décider de son effet dans _shared/notifications-stores.js.",
+  }), DELAI_JOURNAL_MS).catch(() => null);
+  if (r === "delai") console.error("[payment-notify] signalement d'une notification inconnue : pas de réponse en 2 s, le paiement continue —", JSON.stringify(n));
+}
+
+/** (12/10, A8) Une ligne du journal des notifications — best-effort, borné, jamais bloquant. */
+export async function journaliserNotificationStore(
+  // deno-lint-ignore no-explicit-any
+  admin: { from: (t: string) => any },
+  ligne: Record<string, unknown>,
+): Promise<void> {
+  try {
+    const r = await auPlus(admin.from("stores_notifications_journal").insert(ligne), DELAI_JOURNAL_MS);
+    if (r === "delai") console.error("[payment-notify] journal des notifications : pas de réponse en 2 s, le paiement continue sans attendre —", JSON.stringify(ligne));
+    else if (r?.error) console.error("[payment-notify] journal des notifications :", r.error.message, "—", JSON.stringify(ligne));
+  } catch (e) {
+    console.error("[payment-notify] journal des notifications impossible :", (e as Error)?.message, "—", JSON.stringify(ligne));
+  }
+}
+
 // ── Paiement ÉCHOUÉ côté client (2026-08-07) ─────────────────────────────────
 // Cas Matt (05/08) : 3D Secure jamais validé à la souscription, facture
 // annulée par Stripe, personne n'a rien su — ni lui, ni Nico — avant une

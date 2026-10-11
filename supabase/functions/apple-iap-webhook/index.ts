@@ -1,9 +1,22 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import * as x509 from "https://esm.sh/@peculiar/x509@1.9.0";
-import { notifierPaiement, alerterPaiementNonCredite } from "../_shared/payment-notify.ts";
+import { notifierPaiement, alerterPaiementNonCredite, signalerNotificationStoreInconnue, journaliserNotificationStore } from "../_shared/payment-notify.ts";
 import { lectureCloudApple, ecritureCloudStore } from "../_shared/cloud-option.js";
 import { profilCloudPourStore } from "../_shared/cloud-essai-store.ts";
+import { decisionApple, ligneJournal } from "../_shared/notifications-stores.js";
+
+// (12/10, A8) Lecture SANS vérification d'un JWS déjà reçu — pour le JOURNAL
+// seulement (produit, compte, transaction) : aucune décision n'en dépend, la
+// vérification de signature garde la main sur tout ce qui s'applique.
+function lireSansVerifier(jws: unknown): Record<string, unknown> | null {
+  if (typeof jws !== "string" || jws.split(".").length !== 3) return null;
+  try {
+    const b64 = jws.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    const bin = atob(b64.padEnd(b64.length + (4 - (b64.length % 4)) % 4, "="));
+    return JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0))));
+  } catch { return null; }
+}
 
 const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -156,10 +169,37 @@ serve(async (req) => {
     }
 
     const notificationType = notification.notificationType as string;
+    // (12/10, A8) Le sous-type compte : DID_CHANGE_RENEWAL_PREF / UPGRADE est un
+    // passage IMMÉDIAT à un palier supérieur (même groupe d'abonnement), payé au
+    // prorata — Apple n'envoie AUCUN SUBSCRIBED pour lui (table de décision,
+    // _shared/notifications-stores.js).
+    const notificationSubtype = typeof notification.subtype === "string" ? notification.subtype : null;
     const data = notification.data as Record<string, unknown> | undefined;
 
     const signedTransactionInfo = data?.signedTransactionInfo as string | undefined;
     const signedRenewalInfo     = data?.signedRenewalInfo     as string | undefined;
+
+    // ── (12/10, A8) CHAQUE NOTIFICATION EST ENREGISTRÉE ; UNE INCONNUE EST SIGNALÉE ──
+    // (_shared/notifications-stores.js) La décision de la table, écrite AVANT
+    // tout traitement dans stores_notifications_journal ; un type ou un
+    // sous-type que la table ne connaît pas part en alerte à support@ — plus
+    // jamais jeté en silence (Ciddjy, 07/10). Le traitement qui suit est
+    // celui d'avant, plus les décisions nouvelles de la table (plus bas).
+    const decisionNotif = decisionApple(notificationType, notificationSubtype);
+    {
+      const txJ = lireSansVerifier(signedTransactionInfo) ?? lireSansVerifier(signedRenewalInfo) ?? {};
+      const produitJ = (txJ.productId ?? txJ.autoRenewProductId ?? null) as string | null;
+      const userJ = (txJ.appAccountToken ?? null) as string | null;
+      const origJ = (txJ.originalTransactionId ?? null) as string | null;
+      await journaliserNotificationStore(supabaseAdmin, ligneJournal({
+        canal: "apple", type: notificationType, sousType: notificationSubtype, decision: decisionNotif,
+        produit: produitJ, userId: userJ, transaction: (txJ.transactionId ?? null) as string | null, transactionOriginale: origJ,
+        detail: { notificationUUID: notification.notificationUUID ?? null, environnement: (data?.environment ?? null) },
+      }));
+      if (!decisionNotif.connu) {
+        await signalerNotificationStoreInconnue({ canal: "apple", type: notificationType, sous_type: notificationSubtype, produit: produitJ, user_id: userJ, ref: origJ });
+      }
+    }
 
     if (!signedTransactionInfo) {
       // DID_CHANGE_RENEWAL_STATUS peut arriver sans signedTransactionInfo
@@ -444,6 +484,19 @@ serve(async (req) => {
     let isPremium: boolean | null = null;
     if (PREMIUM_ON.includes(notificationType))  isPremium = true;
     if (PREMIUM_OFF.includes(notificationType)) isPremium = false;
+    // ── (12/10, A8) LE PASSAGE PREMIUM → PRO (OU BUSINESS) CHEZ UN ABONNÉ APPLE ──
+    // Ciddjy, 07/10 20:54 : Premium Apple, passe Pro dans l'app — Apple facture
+    // le prorata et envoie DID_CHANGE_RENEWAL_PREF (sous-type UPGRADE, produit
+    // app.fillsell.pro2.sub). Ce webhook ne lisait pas le sous-type et l'a jeté
+    // (« Unhandled type ») : payé Pro, resté Premium. Un UPGRADE est immédiat :
+    // il vaut un achat du NOUVEAU produit (même écriture, même dotation). Un
+    // DOWNGRADE, lui, ne prend effet qu'au renouvellement : rien maintenant.
+    // Même règle pour toutes les décisions nouvelles de la table : offre
+    // utilisée (OFFER_REDEEMED achat / reprise / montée), remboursement annulé
+    // (REFUND_REVERSED) → on ; fin de période de grâce → off. Les types d'avant
+    // gardent exactement leur effet (PREMIUM_ON / PREMIUM_OFF ci-dessus).
+    if (isPremium === null && decisionNotif.connu && decisionNotif.effet === "on") isPremium = true;
+    if (isPremium === null && decisionNotif.connu && decisionNotif.effet === "off") isPremium = false;
 
     // DID_CHANGE_RENEWAL_STATUS avec signedTransactionInfo : lire autoRenewStatus
     let cancelAtPeriodEnd = false;
