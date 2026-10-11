@@ -21,6 +21,8 @@ import { autorisationOplaRequise, autorisationDepopRequise, SOURCE_DEPOP_ACCES }
 import { demanderAutorisationDepop, repartirApresAutorisationDepop, CLES_RELANCE_DEPOP } from "../_shared/acces-depop.js";
 import { resoudreRayonDepop, traceRayonDepop, rayonDepopAJour, reponseRayonDepop, MESSAGE_RAYON_DEPOP } from "../_shared/depop-rayon.js";
 import { appliquerRayonDepop } from "../../../src/utils/depopPublication.js";
+import { decisionRecreationBloquee, messageRecreationBloquee, causeCompte, essaisRates, SOURCE_RECREATION_BLOQUEE } from "../_shared/recreation-bloquee.js";
+import { rayonRefuseDuJob, resoudreRayonRefuse, feuillesCandidates, pfApresRayon, questionRayonRefuse, messageRayonAChoisir, CLE_REPONSE_RAYON, ESSAIS_RAYON_MAX } from "../_shared/rayon-refuse-moteur.js";
 import { horsModeDepop } from "../../../src/utils/depopCategories.js";
 import { detectObjectIcon } from "../../../src/utils/shared.js";
 import { postesVivants, posteAvecAccesOpla, posteSansAccesOpla } from "../_shared/poste-extension.ts";
@@ -1727,6 +1729,12 @@ serve(async (req) => {
       // la relance du mur (MUR_CONNEXION, plus bas) le reprend dès qu'une sonde
       // prouve la session.
       if (j.action === "delete" && retraitBloqueParConnexion(j)) return false;
+      // ── (12/10, A6) NI UN RETRAIT APRÈS VENTE, NI UN RETRAIT QUI ATTEND SA
+      //    BOUTIQUE VINTED : le solder laissait l'annonce d'un article VENDU en
+      //    ligne (double vente) et effaçait le seul signal de l'app — il reste,
+      //    l'app le dit en tête (bandeau « Vendu, encore en ligne »).
+      if (j.action === "delete" && (j.platform_fields?.needs_user_source === "boutique_etrangere"
+        || /armer_retrait_job/.test(String(j.platform_fields?.arme_par?.pose_par ?? "")))) return false;
       // ── (06/10 soir) LEBONCOIN ATTEND NOM ET PRÉNOM : JAMAIS SOLDÉ < 30 j ──
       // Un geste sur le COMPTE (une carte dans l'app), pas sur l'article : ces
       // publications repartent seules quand le compte est complété (éclaireur
@@ -2152,6 +2160,190 @@ serve(async (req) => {
     if (depopRayons || depopQuestions) console.log(`[handler-watch] depop : ${depopRayons} rayon(s) posé(s) par le moteur, ${depopQuestions} question(s) « Rayon Depop »`);
   } catch (e) {
     console.error("[handler-watch] depop / rayon :", (e as Error)?.message ?? e);
+  }
+
+  // ══ UNE CATÉGORIE QUE LA PLATEFORME N'ACCEPTE PLUS : LE MOTEUR CHOISIT (12/10, A3) ══
+  // (_shared/rayon-refuse-moteur.js) L'Horloge puzzle de Louis : Vinted a
+  // découpé « Enfants › Jeux et jouets » en sous-rayons, la republication
+  // s'est arrêtée AVANT tout retrait et attendait une réponse que la fiche
+  // donnait. Ici, pour Vinted (niveau intermédiaire), Beebs (rayon absent de la
+  // copie) et Leboncoin (rayon absent ou refusé au pré-vol) : le moteur
+  // choisit une FEUILLE de l'arbre réel (sous le rayon d'origine pour Vinted),
+  // la pose là où l'extension la lit (capture de la republication Vinted, champ
+  // du job ailleurs) et remet le job en file à la MÊME étape : le pré-vol
+  // refait son contrôle avec le nouveau rayon avant tout retrait. Doute (l'IA
+  // répond null) : la question, avec des FEUILLES — une réponse suffit. IA
+  // injoignable : nouvel essai au passage suivant (3 au plus). Borné : 8 jobs
+  // par passage, jobs de moins de 30 jours.
+  let rayonsPoses = 0, rayonsQuestions = 0;
+  try {
+    const depuis30j = new Date(Date.now() - 30 * 86400_000).toISOString();
+    const [vintedQ, beebsQ, lbcQ] = await Promise.all([
+      supabase.from("cross_post_jobs").select("id, user_id, platform, action, status, error, title, description, inventaire_id, platform_fields")
+        .eq("platform", "vinted").eq("status", "needs_user").in("action", ["publish", "republish"])
+        .eq("platform_fields->needsUserField->>field_key", "categoryLevelChoice").gte("created_at", depuis30j).limit(20),
+      supabase.from("cross_post_jobs").select("id, user_id, platform, action, status, error, title, description, inventaire_id, platform_fields")
+        .eq("platform", "beebs").eq("action", "republish").eq("status", "needs_user")
+        .contains("platform_fields", { republish_prevol_manquants: ["le rayon Beebs"] }).gte("created_at", depuis30j).limit(20),
+      supabase.from("cross_post_jobs").select("id, user_id, platform, action, status, error, title, description, inventaire_id, platform_fields")
+        .eq("platform", "leboncoin").eq("action", "republish").in("status", ["pending", "needs_user"])
+        .ilike("platform_fields->republish_prevol_formulaire->>detail", "%Catégorie:%").gte("created_at", depuis30j).limit(20),
+    ]);
+    // deno-lint-ignore no-explicit-any
+    type PlanRayon = { plateforme: string; base: string[]; enfantsVivants?: string[] | null; exclure?: string[] | null };
+    // deno-lint-ignore no-explicit-any
+    const candidats = ([...(vintedQ.data ?? []), ...(beebsQ.data ?? []), ...(lbcQ.data ?? [])] as any[])
+      .map((j) => ({ j, plan: rayonRefuseDuJob(j) as PlanRayon | null }))
+      .filter((x): x is { j: any; plan: PlanRayon } => {
+        const { j, plan } = x;
+        if (!plan) return false;
+        const rm = (j.platform_fields ?? {}).rayon_moteur;
+        // Une question de dernier recours déjà posée attend la personne.
+        if (rm?.doute && j.status === "needs_user" && (j.platform_fields ?? {}).needsUserField?.field_key === CLE_REPONSE_RAYON) return false;
+        return Number(rm?.essais ?? 0) < ESSAIS_RAYON_MAX || !!rm?.chemin;
+      })
+      .slice(0, 8);
+    const urlIA = `${Deno.env.get("SUPABASE_URL")}/functions/v1/resolve-categorie`;
+    const secretIA = Deno.env.get("CRON_SECRET") ?? "";
+    for (const { j, plan } of candidats) {
+      const pf = { ...(j.platform_fields ?? {}) };
+      const rmAvant = (pf.rayon_moteur && typeof pf.rayon_moteur === "object") ? pf.rayon_moteur : null;
+      let choix: { chemin: string[]; id: string | null; source: string } | null = null;
+      let r: Record<string, unknown> | null = null;
+      // Un choix déjà fait pour CE rayon : republication Vinted RECAPTURÉE
+      // depuis (nouvelle capture, rayon d'origine revenu) → il se repose sans
+      // nouvel appel, la fiche n'a pas changé. Même capture, ou pas de capture :
+      // la plateforme a refusé ce choix aussi → la question, jamais une boucle.
+      const recapture = plan.plateforme === "vinted" && j.action === "republish"
+        && rmAvant?.capture_id != null && String(rmAvant.capture_id) !== String(pf.capture_id ?? "");
+      if (rmAvant?.chemin && !rmAvant?.doute && recapture && Array.isArray(rmAvant.base) && rmAvant.base.join(" > ") === plan.base.join(" > ")) {
+        choix = { chemin: rmAvant.chemin as string[], id: (rmAvant.id as string | null) ?? null, source: String(rmAvant.source ?? "ia") };
+      } else if (rmAvant?.chemin && !rmAvant?.doute) {
+        r = { doute: true, motif: "choix_refuse_par_la_plateforme", feuilles: feuillesCandidates({ plateforme: plan.plateforme, base: plan.base, enfantsVivants: plan.enfantsVivants ?? null, exclure: rmAvant.chemin as string[], titre: String(j.title ?? "") }) };
+      } else {
+        let fiche: Record<string, unknown> | null = null;
+        if (j.inventaire_id != null) {
+          const { data: f } = await supabase.from("inventaire").select("titre, description, type, attributs").eq("id", j.inventaire_id).maybeSingle();
+          fiche = (f as Record<string, unknown> | null) ?? null;
+        }
+        const attrs = ((fiche?.attributs ?? {}) as Record<string, unknown>);
+        const valeur = (x: unknown) => (x && typeof x === "object" ? (x as { v?: unknown }).v : x);
+        const snap = (pf.republish_snapshot && typeof pf.republish_snapshot === "object") ? pf.republish_snapshot as Record<string, unknown> : {};
+        r = await resoudreRayonRefuse({
+          plateforme: plan.plateforme, base: plan.base, enfantsVivants: plan.enfantsVivants ?? null, exclure: plan.exclure ?? null,
+          titre: String(j.title || fiche?.titre || snap.titre || ""),
+          description: String(j.description || fiche?.description || snap.description || "").slice(0, 400),
+          objet: String(pf.categorie_objet_ia ?? valeur(attrs.objet) ?? ""),
+          marque: String(pf.marque ?? valeur(attrs.marque) ?? snap.marque ?? ""),
+          genre: String(pf.genre ?? valeur(attrs.genre) ?? ""),
+          taille: String(pf.taille ?? valeur(attrs.taille) ?? snap.taille ?? ""),
+          user_id: String(j.user_id),
+        }, async (corps: Record<string, unknown>) => {
+          const rep = await fetch(urlIA, { method: "POST", headers: { "content-type": "application/json", "x-cron-secret": secretIA }, body: JSON.stringify(corps) });
+          if (!rep.ok) throw new Error(`resolve-categorie HTTP ${rep.status}`);
+          return await rep.json();
+        }) as Record<string, unknown>;
+        if (r.chemin) choix = { chemin: r.chemin as string[], id: (r.id as string | null) ?? null, source: String(r.source ?? "ia") };
+      }
+      if (choix) {
+        // Republication Vinted : l'extension relit la CAPTURE (par capture_id)
+        // pour construire le formulaire — le rayon se pose LÀ, jamais ailleurs.
+        if (plan.plateforme === "vinted" && j.action === "republish") {
+          const capId = Number(pf.capture_id);
+          if (!Number.isFinite(capId)) continue;
+          const { data: cap } = await supabase.from("vinted_republish_captures").select("id, libelles")
+            .eq("id", capId).eq("user_id", j.user_id).maybeSingle();
+          if (!cap) continue;
+          const lib = ((cap as { libelles?: Record<string, unknown> }).libelles ?? {}) as Record<string, unknown>;
+          const { error: cErr } = await supabase.from("vinted_republish_captures").update({
+            libelles: { ...lib, categoryPath: choix.chemin, ...(choix.id ? { catalog_id_depot: Number(choix.id) } : {}),
+              rayon_refuse_par_vinted: lib.rayon_refuse_par_vinted ?? lib.categoryPath ?? null },
+          }).eq("id", capId).eq("user_id", j.user_id);
+          if (cErr) { console.warn(`[handler-watch] rayon ${String(j.id).slice(0, 8)} : capture ${capId} non mise à jour — ${cErr.message}`); continue; }
+        }
+        const pfR = pfApresRayon(j, choix, { plateforme: plan.plateforme, base: plan.base, source: choix.source, par: "handler-watch" });
+        if (j.error) pfR.erreurs_archivees = archiverErreur(pfR.erreurs_archivees, j.error, j.status, "handler-watch (rayon choisi par le moteur)");
+        const { data: maj } = await supabase.from("cross_post_jobs")
+          .update({ status: "pending", error: null, platform_fields: pfR }).eq("id", j.id).eq("status", j.status).select("id");
+        if (maj?.length) {
+          rayonsPoses++;
+          console.log(`[handler-watch] rayon ${String(j.id).slice(0, 8)} (${plan.plateforme} ${j.action}) : « ${plan.base.join(" › ") || "—"} » refusé → « ${choix.chemin.join(" › ")} » (${choix.source}) — job remis en file, le pré-vol refait son contrôle avant tout retrait`);
+        }
+        continue;
+      }
+      const essais = Number(rmAvant?.essais ?? 0) + 1;
+      if (r?.iaIndisponible && essais < ESSAIS_RAYON_MAX) {
+        await supabase.from("cross_post_jobs").update({ platform_fields: { ...pf, rayon_moteur: { ...(rmAvant ?? {}), essais, base: plan.base, motif: "ia_indisponible", le: new Date().toISOString() } } })
+          .eq("id", j.id).eq("status", j.status);
+        continue;
+      }
+      // Le DOUTE : la question, avec des feuilles (une réponse suffit) — ou,
+      // sans feuille connue, la question de l'extension telle quelle.
+      const feuilles = (r?.feuilles as Array<{ chemin: string[]; id: string | null }> | undefined) ?? [];
+      const pfQ: Record<string, unknown> = { ...pf, rayon_moteur: { plateforme: plan.plateforme, base: plan.base, essais, doute: true, motif: String(r?.motif ?? "doute"), le: new Date().toISOString() } };
+      let message = j.error as string | null;
+      if (feuilles.length) {
+        pfQ.needsUserField = questionRayonRefuse({ plateforme: plan.plateforme, base: plan.base, feuilles, cleChamp: CLE_REPONSE_RAYON });
+        pfQ.champs_a_completer = [String((pfQ.needsUserField as Record<string, unknown>).field_label)];
+        pfQ.needs_user_source = "champ_a_choisir";
+        delete pfQ.categoryLevelChoice;
+        message = messageRayonAChoisir(plan.plateforme, plan.base);
+        if (j.error && j.error !== message) pfQ.erreurs_archivees = archiverErreur(pfQ.erreurs_archivees, j.error, j.status, "handler-watch (rayon à choisir, dernier recours)");
+      }
+      const { data: majQ } = await supabase.from("cross_post_jobs")
+        .update({ status: "needs_user", error: message, platform_fields: pfQ }).eq("id", j.id).eq("status", j.status).select("id");
+      if (majQ?.length) {
+        rayonsQuestions++;
+        console.log(`[handler-watch] rayon ${String(j.id).slice(0, 8)} (${plan.plateforme}) : aucun choix sûr (${String(r?.motif ?? "doute")}) → question, ${feuilles.length} feuille(s) proposée(s)`);
+      }
+    }
+    if (rayonsPoses || rayonsQuestions) console.log(`[handler-watch] rayons refusés : ${rayonsPoses} posé(s) par le moteur, ${rayonsQuestions} question(s) de dernier recours`);
+  } catch (e) {
+    console.error("[handler-watch] rayon refusé :", (e as Error)?.message ?? e);
+  }
+
+  // ══ UNE ANNONCE RETIRÉE QUI NE REVIENT PAS NE GÈLE PLUS LES AUTRES (12/10, A5) ══
+  // (_shared/recreation-bloquee.js) L'invariant « une seule annonce hors ligne
+  // à la fois » retenait sans limite toutes les republications d'une
+  // plateforme derrière une remise en ligne qui échoue (Cendrier de
+  // jonathanrabany : 28 échecs, 8 republications gelées 4 jours). Au-delà de 2
+  // échecs et 2 h, elle SORT de la file (needs_user, « Republier maintenant »)
+  // et l'invariant se lève partout — extension (toutes versions), serveur,
+  // balayage. Cause du compte (restriction Vinted, session) : elle reste et
+  // retient, c'est la protection ; la trace le dit une fois. Borné : 50 jobs.
+  let recreationsSignalees = 0;
+  try {
+    const { data: horsLigne } = await supabase.from("cross_post_jobs")
+      .select("id, user_id, platform, action, status, title, error, created_at, platform_fields")
+      .eq("action", "republish").in("status", ["pending", "processing"])
+      .eq("platform_fields->>republish_step", "deleted").order("created_at", { ascending: true }).limit(50);
+    // deno-lint-ignore no-explicit-any
+    for (const j of (horsLigne ?? []) as any[]) {
+      const decision = decisionRecreationBloquee(j);
+      if (!decision) continue;
+      const pf = { ...(j.platform_fields ?? {}) };
+      if (decision === "proteger") {
+        if (pf.recreation_retient_compte) continue;
+        pf.recreation_retient_compte = { cause: causeCompte(pf), le: new Date().toISOString(), par: "handler-watch" };
+        await supabase.from("cross_post_jobs").update({ platform_fields: pf }).eq("id", j.id).eq("status", j.status);
+        continue;
+      }
+      const message = messageRecreationBloquee(j);
+      pf.needs_user_source = SOURCE_RECREATION_BLOQUEE;
+      pf.recreation_bloquee = { le: new Date().toISOString(), essais: essaisRates(pf), par: "handler-watch", statut_avant: j.status };
+      delete pf.next_action_after; delete pf.processing_since;
+      if (j.error && j.error !== message) pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error, j.status, "handler-watch (remise en ligne bloquée, sortie de la file)");
+      const { data: maj } = await supabase.from("cross_post_jobs")
+        .update({ status: "needs_user", error: message, platform_fields: pf }).eq("id", j.id).eq("status", j.status).select("id");
+      if (maj?.length) {
+        await supabase.from("jobs_reservations_extension").delete().eq("job_id", String(j.id));
+        recreationsSignalees++;
+        console.log(`[handler-watch] republication ${String(j.id).slice(0, 8)} (${j.platform}) : remise en ligne ratée ${essaisRates(pf)} fois → sortie de la file (needs_user), les autres republications repartent`);
+      }
+    }
+    if (recreationsSignalees) console.log(`[handler-watch] ${recreationsSignalees} remise(s) en ligne bloquée(s) signalée(s) — la file des autres articles n'est plus gelée`);
+  } catch (e) {
+    console.error("[handler-watch] remises en ligne bloquées :", (e as Error)?.message ?? e);
   }
 
   // ══ LA RECONNEXION FAIT REPARTIR LES JOBS, SANS QU'ON CLIQUE (2026-09-22) ══

@@ -16,6 +16,7 @@ import { sessionIdDuJwt, identifiantPosteExtension, postesVivants, posteCourt, p
 import { CLES_RELANCE_DEPOP } from "../_shared/acces-depop.js";
 import { rayonDepopAJour, reponseRayonDepop } from "../_shared/depop-rayon.js";
 import { appliquerRayonDepop } from "../../../src/utils/depopPublication.js";
+import { cheminDeLaReponse, pfApresRayon, CLE_REPONSE_RAYON } from "../_shared/rayon-refuse-moteur.js";
 import { preuveAccesOpla } from "../_shared/preuve-opla.ts";
 // (25/09) Ce que Vinted exige quel que soit le catalogue — la MÊME règle que le
 // stepper (moteur/listes.js la ré-exporte) — et sa palette de couleurs (module
@@ -3548,7 +3549,12 @@ serve(async (req) => {
     }
 
     // ── DEPOP (09/10) : aucun job Depop à un poste sans l'accès ─────────────
-    if (!posteAvecDepop) {
+    // (12/10, A9) La FILE D'EXÉCUTION seulement. Le popup lit la file pour
+    // l'AFFICHER (include_needs_user, aucune réservation, aucune exécution) et
+    // ne déclare pas les capacités du poste : filtré lui aussi, il ne voyait
+    // jamais les jobs Depop — « Autoriser Depop » sans le nombre en attente,
+    // précisément chez le poste qui n'a pas l'accès. Toutes versions d'extension.
+    if (!posteAvecDepop && !includeNeedsUser) {
       const avantD = out.length;
       out = out.filter((j) => j.platform !== "depop");
       if (out.length !== avantD) {
@@ -3617,6 +3623,69 @@ serve(async (req) => {
         } catch (e) {
           console.warn(`[get-pending-jobs] interdits Depop : ${String((e as Error)?.message ?? e)} — rien de modifié`);
         }
+      }
+    }
+
+    // ── UNE CATÉGORIE REFUSÉE PAR LA PLATEFORME (12/10, A3) ─────────────────
+    // (_shared/rayon-refuse-moteur.js ; le choix du moteur se fait dans
+    // handler-watch.) Ici, AVANT de servir, deux traductions sans IA :
+    //   · la réponse de la personne à la question de dernier recours
+    //     (`rayonChoisi`, un chemin complet « A › B ») devient le rayon que
+    //     l'extension lit — jamais servie telle quelle (categoryLevelChoice ne
+    //     descend que d'un niveau, beebsCategoryPath attend un tableau) ;
+    //   · une republication Vinted RECAPTURÉE depuis le choix (nouvelle
+    //     capture, rayon d'origine revenu) reçoit le rayon déjà choisi : le
+    //     pré-vol passe du premier coup, toujours AVANT tout retrait.
+    if (!includeProcessing && !includeNeedsUser && out.some((j) => ["vinted", "beebs", "leboncoin"].includes(String(j.platform)))) {
+      try {
+        const adminRayon = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        const aRetenirRayon = new Set<string>();
+        for (const j of out) {
+          const pfJ = ((j.platform_fields ?? {}) as Record<string, unknown>);
+          const rm = (pfJ.rayon_moteur && typeof pfJ.rayon_moteur === "object") ? pfJ.rayon_moteur as Record<string, unknown> : null;
+          const reponse = String(pfJ[CLE_REPONSE_RAYON] ?? "").trim();
+          const capId = Number(pfJ.capture_id);
+          const recapturee = j.platform === "vinted" && j.action === "republish" && rm?.chemin && !rm?.doute
+            && Number.isFinite(capId) && String(rm.capture_id ?? "") !== String(capId);
+          if (!reponse && !recapturee) continue;
+          const base = Array.isArray(rm?.base) ? (rm!.base as string[]) : [];
+          const choix = reponse
+            ? cheminDeLaReponse({ plateforme: String(j.platform), base, reponse })
+            : { chemin: rm!.chemin as string[], id: (rm!.id as string | null) ?? null };
+          if (!choix) {
+            // Réponse illisible (liste périmée) : rien n'est servi, handler-watch repose la question.
+            aRetenirRayon.add(String(j.id));
+            continue;
+          }
+          if (j.platform === "vinted" && j.action === "republish") {
+            if (!Number.isFinite(capId)) { aRetenirRayon.add(String(j.id)); continue; }
+            const { data: cap } = await adminRayon.from("vinted_republish_captures").select("id, libelles")
+              .eq("id", capId).eq("user_id", user.id).maybeSingle();
+            if (!cap) { aRetenirRayon.add(String(j.id)); continue; }
+            const lib = ((cap as { libelles?: Record<string, unknown> }).libelles ?? {}) as Record<string, unknown>;
+            const capChemin = Array.isArray(lib.categoryPath) ? (lib.categoryPath as string[]).join(" > ") : "";
+            // Recapture : on ne touche la capture que si elle porte ENCORE le rayon refusé.
+            if (reponse || capChemin === base.join(" > ")) {
+              const { error: cErr } = await adminRayon.from("vinted_republish_captures").update({
+                libelles: { ...lib, categoryPath: choix.chemin, ...(choix.id ? { catalog_id_depot: Number(choix.id) } : {}),
+                  rayon_refuse_par_vinted: lib.rayon_refuse_par_vinted ?? lib.categoryPath ?? null },
+              }).eq("id", capId).eq("user_id", user.id);
+              if (cErr) { aRetenirRayon.add(String(j.id)); continue; }
+            }
+          }
+          const pfR = pfApresRayon(j, choix, { plateforme: String(j.platform), base, source: reponse ? "personne" : String(rm?.source ?? "ia"), par: "get-pending-jobs" });
+          const { data: majR } = await adminRayon.from("cross_post_jobs").update({ platform_fields: pfAPersister(pfR) })
+            .eq("id", String(j.id)).eq("status", "pending").select("id");
+          if ((majR ?? []).length) {
+            (j as { platform_fields: unknown }).platform_fields = pfR;
+            console.log(`[get-pending-jobs] job ${String(j.id).slice(0, 8)} (${j.platform} ${j.action}) : rayon ${reponse ? "répondu par la personne" : "du moteur reposé sur la nouvelle capture"} → « ${choix.chemin.join(" › ")} »`);
+          } else {
+            aRetenirRayon.add(String(j.id));
+          }
+        }
+        if (aRetenirRayon.size) out = out.filter((j) => !aRetenirRayon.has(String(j.id)));
+      } catch (e) {
+        console.warn(`[get-pending-jobs] rayon refusé : ${String((e as Error)?.message ?? e)} — file servie telle quelle`);
       }
     }
 
@@ -5653,6 +5722,18 @@ serve(async (req) => {
             heldBoutique = aRetenir.size;
             if (!includeProcessing && !includeNeedsUser) {
               out = out.filter((j) => !aRetenir.has(String(j.id)));
+              // (12/10, A6) La bonne boutique est ouverte : le motif « ouvre ta
+              // boutique » posé plus tôt part avec le service du retrait.
+              for (const j of out) {
+                if (j.action !== "delete" || j.platform !== "vinted") continue;
+                const pfL = (j.platform_fields as Record<string, unknown> | null) ?? {};
+                if (!pfL["attente_boutique_retrait"]) continue;
+                const pfSans = { ...pfL };
+                delete pfSans["attente_boutique_retrait"];
+                const { data: majL } = await userClient.from("cross_post_jobs").update({ platform_fields: pfAPersister(pfSans), error: null })
+                  .eq("id", String(j.id)).eq("status", "pending").select("id");
+                if ((majL ?? []).length) (j as { platform_fields: unknown }).platform_fields = pfSans;
+              }
             }
             if (heldBoutique) {
               // Pseudo de chaque dressing d'origine, lu dans le PIN de sync.
@@ -5676,6 +5757,33 @@ serve(async (req) => {
                 par_boutique_login: logins,
                 par_action: parAction,
               };
+              // ── (12/10, A6) UN RETRAIT RETENU LE DIT — JAMAIS EN SILENCE ────
+              // Ornella : jupe vendue à 16:49, retrait Vinted retenu ici (annonce
+              // sur 472079, Chrome sur @luciatrendyshop) sans RIEN écrire : l'app
+              // ne pouvait pas le dire. Le retrait porte désormais la boutique à
+              // ouvrir (attente_boutique_retrait) et le message ; écrit UNE fois
+              // par boutique (compare-and-swap sur pending), levé dès qu'il part
+              // (l'extension réécrit platform_fields et l'erreur au service).
+              if (!includeProcessing && !includeNeedsUser) {
+                for (const j of candidats) {
+                  if (j.action !== "delete" || !aRetenir.has(String(j.id))) continue;
+                  const o = origine.get(String(j.inventaire_id)) ?? "";
+                  const pfD = { ...((j.platform_fields as Record<string, unknown> | null) ?? {}) };
+                  const prec = pfD["attente_boutique_retrait"] as Record<string, unknown> | undefined;
+                  if (prec && String(prec["boutique"] ?? "") === o && String(prec["connectee"] ?? "") === identId) continue;
+                  const login = logins[o] ?? null;
+                  pfD["attente_boutique_retrait"] = {
+                    boutique: o, login, connectee: identId, login_connectee: vu.login ?? null,
+                    depuis: new Date().toISOString(), pose_par: "get-pending-jobs (boutique ouverte ≠ boutique de l'annonce)",
+                  };
+                  const message = `Retrait Vinted en attente : cette annonce est sur ta boutique ${login ? `@${login}` : "Vinted"}, `
+                    + `et Chrome est ouvert sur ${vu.login ? `@${vu.login}` : "une autre boutique"}. Ouvre ta boutique ${login ? `@${login}` : "qui porte l'annonce"} sur vinted.fr dans Chrome, `
+                    + "sur ton ordinateur : FillSell retirera l'annonce aussitôt. Rien n'a été touché.";
+                  if (j.error && String(j.error) !== message) pfD["erreurs_archivees"] = archiverErreur(pfD["erreurs_archivees"], j.error, "pending", "get-pending-jobs (retrait retenu : autre boutique)");
+                  await userClient.from("cross_post_jobs").update({ error: message, platform_fields: pfAPersister(pfD) })
+                    .eq("id", String(j.id)).eq("status", "pending");
+                }
+              }
               console.log(
                 `[get-pending-jobs] userId=${user.id} : Chrome connecté au dressing ` +
                 `${identId}${vu.login ? ` (@${vu.login})` : ""} [relevé ${vu.source} ` +
