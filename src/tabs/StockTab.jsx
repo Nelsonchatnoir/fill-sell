@@ -157,6 +157,7 @@ import { completerTexteDuVendeur, aCompleter as aCompleterTexteVendeur, DELAI_DE
 import { uniteDuChamp, valeurAvecUnite, nombreSansUnite } from '../utils/champsDimension';
 import { ChampPortDepop } from '../components/PortDepop';
 import { lirePortSaisi } from '../utils/fraisPortDepop';
+import { grammesLbc } from '../../supabase/functions/_shared/poids-leboncoin.js';
 import { SecondaryButton, Loader } from '../components/ui';
 import {
   EXT_SONDE_MS, SYNC_POLL_MS, SYNC_POLL_MAX_MS,
@@ -1343,6 +1344,35 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
   }, [job.id]);
 
   // Rien à ouvrir : ni aspect à trancher, ni champ serveur saisissable.
+  // (11/10) LE POIDS LEBONCOIN : une publication Leboncoin sans poids n'est
+  // jamais servie (get-pending-jobs, _shared/poids-leboncoin.js). Le poids se
+  // dit ICI, en grammes ou en kilos, et — UNE fois pour le lot — vaut pour
+  // les autres annonces Leboncoin du même lot qui attendent la même réponse.
+  const questionPoidsLbc = job.platform === "leboncoin" && f?.field_key === "lbcPoidsGrammes" && !champsSup.length && !descriptionRequise;
+  const poidsLbcLu = questionPoidsLbc ? grammesLbc(value) : null;
+  const poidsLbcInvalide = questionPoidsLbc && poidsLbcLu == null;
+  const lotDuJob = job.platform_fields?.lot_publication?.id ?? job.bulk_batch_id ?? null;
+  const [autresDuLot, setAutresDuLot] = useState([]);
+  const [memePoidsPourLot, setMemePoidsPourLot] = useState(true);
+  useEffect(() => {
+    let alive = true;
+    if (!questionPoidsLbc || !lotDuJob) return undefined;
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from("cross_post_jobs")
+          .select("id, inventaire_id, bulk_batch_id, error, status, platform_fields")
+          .eq("platform", "leboncoin").eq("action", "publish").eq("status", "needs_user")
+          .eq("platform_fields->needsUserField->>field_key", "lbcPoidsGrammes")
+          .neq("id", job.id)
+          .limit(300);
+        if (!alive) return;
+        setAutresDuLot((data ?? []).filter((j) => (j.platform_fields?.lot_publication?.id ?? j.bulk_batch_id ?? null) === lotDuJob));
+      } catch { /* sans la liste, la réponse vaut pour cette annonce seule */ }
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job.id, questionPoidsLbc, lotDuJob]);
   if (!f && !descriptionRequise) return null;
 
   // Chaque source est filtrée par listeDeChoixExploitable : une liste
@@ -1468,6 +1498,11 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
         if (target.root) newPf[target.root] = { ...(pf[target.root] ?? {}), [target.key]: v };
         else newPf[target.key] = v;
       }
+      // (11/10) Le poids Leboncoin part en grammes entiers, jamais la saisie brute.
+      if (questionPoidsLbc && !sansValeur) {
+        if (poidsLbcLu == null) { setSaving(false); return; }
+        newPf.lbcPoidsGrammes = poidsLbcLu;
+      }
       // Trace persistante « tranché par l'utilisateur » (2026-07-19, boucle
       // needs_user État/Beauté) : les handlers ont des gardes légitimes
       // « déjà rempli → conservé » (pré-remplissage eBay, valeur d'origine du
@@ -1480,7 +1515,7 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
       // vide sur la valeur d'origine du job dans les handlers.
       if (target && !sansValeur) {
         const resolvedKey = target.root ? `${target.root}.${target.key}` : String(target.key);
-        newPf.needsUserResolved = { ...(pf.needsUserResolved ?? {}), [resolvedKey]: v };
+        newPf.needsUserResolved = { ...(pf.needsUserResolved ?? {}), [resolvedKey]: questionPoidsLbc ? poidsLbcLu : v };
       }
       // Champs supplémentaires (needsUserFields) : même routage, même trace
       // « tranché par l'utilisateur », dans la MÊME écriture.
@@ -1573,6 +1608,31 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
           } catch { /* la fiche garde ce qu'elle avait ; le job, lui, est reparti */ }
         }
       }
+      // (11/10) LE POIDS LEBONCOIN : sur la fiche (le seul champ Poids, jamais
+      // par-dessus un poids connu), et — une fois pour le lot — sur les autres
+      // annonces Leboncoin du lot qui attendent la même réponse. Chacune
+      // repart seule ; une déjà reprise n'est jamais touchée. Best-effort.
+      if (questionPoidsLbc && !sansValeur && poidsLbcLu != null) {
+        const autres = memePoidsPourLot ? autresDuLot : [];
+        const fiches = [job.inventaire_id, ...autres.map((a) => a.inventaire_id)].filter((x) => x != null);
+        for (const a of autres) {
+          try {
+            const pfA = { ...(a.platform_fields ?? {}), needsUserAttempts: 0, lbcPoidsGrammes: poidsLbcLu };
+            delete pfA.needsUserField; delete pfA.needsUserFields;
+            pfA.erreurs_archivees = archiverErreur(pfA.erreurs_archivees, a.error, a.status, "relance_manuelle (✋ poids du lot)");
+            for (const k of ["needs_user_tick_le", "needs_user_actif_ms", "needs_user_vu_le", "needs_user_vu_erreur"]) delete pfA[k];
+            pfA.needsUserResolved = { ...(pfA.needsUserResolved ?? {}), lbcPoidsGrammes: poidsLbcLu };
+            pfA.poids_lbc_du_lot = { depuis_job: job.id, le: new Date().toISOString() };
+            await supabase.from("cross_post_jobs")
+              .update({ status: "pending", error: null, platform_fields: pfA })
+              .eq("id", a.id).eq("status", "needs_user").select("id");
+          } catch { /* cette annonce garde sa question */ }
+        }
+        try {
+          if (fiches.length) await supabase.from("inventaire").update({ poids_g: poidsLbcLu }).in("id", fiches).is("poids_g", null);
+        } catch { /* la fiche garde ce qu'elle avait ; les jobs, eux, sont repartis */ }
+        track("poids_lbc_repondu", { lot: Boolean(lotDuJob), autres: autres.length });
+      }
       onDone?.(job.id);
     } catch (e) {
       setSaving(false);
@@ -1596,6 +1656,29 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
         {questionMarque ? (
           <QuestionMarque job={job} f={f} lang={lang} saving={saving}
             onChoisir={(v) => { setValue(v); valider({ valeur: v }); }} />
+        ) : questionPoidsLbc ? (
+          <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+            <div style={{ fontSize:15, fontWeight:600, color:NU_T.ink }}>{lang === "en" ? "Parcel weight" : "Poids du colis"}</div>
+            <div style={{ fontSize:12.5, lineHeight:1.5, color:"#6B7A75" }}>
+              {lang === "en"
+                ? "Leboncoin prices the parcel by weight: without it, nothing goes to Leboncoin — nothing is guessed. Enter it and the listing resumes by itself. It is saved on the item."
+                : "Leboncoin calcule l'envoi au poids : sans lui, rien ne part sur Leboncoin — rien n'est deviné. Indique-le et l'annonce repartira toute seule. Il est gardé sur la fiche."}
+            </div>
+            <input type="text" inputMode="decimal" autoFocus value={value} onChange={(e) => setValue(e.target.value)}
+              placeholder={lang === "en" ? "e.g. 650 g or 1.2 kg" : "ex. 650 g ou 1,2 kg"} aria-label={lang === "en" ? "Parcel weight" : "Poids du colis"}
+              style={{ width:"100%", boxSizing:"border-box", padding:"11px 12px", borderRadius:12, border:`1px solid ${String(value).trim() && poidsLbcInvalide ? "#B42318" : NU_T.border}`, fontSize:16, fontFamily:"inherit", color:NU_T.ink }} />
+            {String(value).trim() !== "" && poidsLbcInvalide && (
+              <div style={{ fontSize:12, color:"#B42318" }}>{lang === "en" ? "A weight in grams or kilos, e.g. 650 g or 1.2 kg." : "Un poids en grammes ou en kilos, par exemple 650 g ou 1,2 kg."}</div>
+            )}
+            {autresDuLot.length > 0 && (
+              <label style={{ display:"flex", gap:10, alignItems:"flex-start", fontSize:13, lineHeight:1.45, color:NU_T.ink, cursor:"pointer" }}>
+                <input type="checkbox" checked={memePoidsPourLot} onChange={(e) => setMemePoidsPourLot(e.target.checked)} style={{ marginTop:3 }} />
+                <span>{lang === "en"
+                  ? `Same weight for the ${autresDuLot.length} other Leboncoin listing${autresDuLot.length > 1 ? "s" : ""} of this batch waiting for it`
+                  : `Le même poids pour ${autresDuLot.length > 1 ? `les ${autresDuLot.length} autres annonces Leboncoin du lot qui l'attendent` : "l'autre annonce Leboncoin du lot qui l'attend"}`}</span>
+              </label>
+            )}
+          </div>
         ) : questionPortDepop ? (
           <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
             <div style={{ fontSize:12.5, lineHeight:1.5, color:"#6B7A75" }}>
@@ -1798,8 +1881,8 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
           </button>
           {!questionMarque && <button
             onClick={() => valider({ sansValeur: valeursIndisponibles })}
-            disabled={saving || (!!f && !valeursIndisponibles && !String(value || valeurProposee || "").trim()) || descriptionManquante || champsSupManquants || portDepopInvalide}
-            style={{ flex:1.4, padding:"10px 0", borderRadius:12, border:"none", background: saving || (!!f && !valeursIndisponibles && !String(value || valeurProposee || "").trim()) || descriptionManquante || champsSupManquants || portDepopInvalide ? "#B9C4C0" : "#1B6E62", color:"#fff", fontSize:13, fontWeight:700, cursor: saving ? "wait" : "pointer", fontFamily:"inherit" }}
+            disabled={saving || (!!f && !valeursIndisponibles && !String(value || valeurProposee || "").trim()) || descriptionManquante || champsSupManquants || portDepopInvalide || poidsLbcInvalide}
+            style={{ flex:1.4, padding:"10px 0", borderRadius:12, border:"none", background: saving || (!!f && !valeursIndisponibles && !String(value || valeurProposee || "").trim()) || descriptionManquante || champsSupManquants || portDepopInvalide || poidsLbcInvalide ? "#B9C4C0" : "#1B6E62", color:"#fff", fontSize:13, fontWeight:700, cursor: saving ? "wait" : "pointer", fontFamily:"inherit" }}
           >
             {saving
               ? (lang === "en" ? "Saving…" : "Enregistrement…")
