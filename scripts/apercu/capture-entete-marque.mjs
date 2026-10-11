@@ -160,23 +160,53 @@ for (const theme of ['light', 'dark']) {
   }
 }
 
-console.log('\n2. En-tête de l\'app — mobile (le bloc du milieu est masqué ≤ 768 px)');
+// (12/10, A7) LA ROUE DES RÉGLAGES : entière dans l'écran, cliquable (le point
+// en son centre la touche, rien ne la recouvre), sans chevauchement, et le
+// CHIFFRE du compteur jamais coupé — de 320 à 1920 px, tous paliers, compteur
+// de 1 à 5 chiffres, français et anglais. Avant le 12/10 : 320 px « Pro » et
+// 360-375 px « Business 1000 » la poussaient hors de l'écran (10 à 65 px).
+async function roueEtChiffre(p) {
+  return p.evaluate(() => {
+    const roue = document.querySelector('.tb-right .tb-icon-btn-light');
+    const r = roue.getBoundingClientRect();
+    const cible = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    const chip = document.querySelector('.tb-quota-chip');
+    let chiffreEntier = true;
+    if (chip) {
+      // Le chiffre est le premier nœud texte du chip : sa boîte doit tenir dans le chip.
+      const t = [...chip.childNodes].find((n) => n.nodeType === 3 && n.textContent.trim());
+      const rg = document.createRange(); rg.selectNodeContents(t);
+      const rt = rg.getBoundingClientRect(); const rc = chip.getBoundingClientRect();
+      chiffreEntier = rt.left >= rc.left - 0.5 && rt.right <= rc.right + 0.5 && rt.width > 0;
+    }
+    const largeur = document.documentElement.clientWidth;
+    return { gauche: r.left, droite: r.right, largeur, touchable: !!cible && (cible === roue || roue.contains(cible)), chiffreEntier };
+  });
+}
+const VARIANTES_ROUE = [
+  ...VARIANTES,
+  { nom: '10000 annonces, Business', q: '?compteur=10000&palier=business' },
+  { nom: '1 annonce, Pro', q: '?compteur=1&palier=pro' },
+  { nom: '1000 annonces, Business (anglais)', q: '?compteur=1000&palier=business&lang=en' },
+];
+console.log('\n2. En-tête de l\'app — mobile (le bloc du milieu est masqué ≤ 768 px) et roue des réglages 320 → 1920 px');
 for (const theme of ['light', 'dark']) {
-  for (const largeur of [768, 600, 481, 430, 414, 390, 375, 360, 320]) {
-    for (const v of VARIANTES.slice(0, 2)) {
-      if (theme === 'dark' && v.nom !== '31 annonces, Pro') continue;
+  for (const largeur of [1920, 1280, 769, 768, 600, 481, 430, 414, 390, 375, 360, 340, 320]) {
+    for (const v of VARIANTES_ROUE) {
+      if (theme === 'dark' && v.nom !== '31 annonces, Pro' && v.nom !== '1000 annonces, Business') continue;
       const p = await page(largeur, 800, theme, URL_APP(v.q));
       const m = await mesuresEnTete(p);
-      verifier(m.gaucheFin <= m.droiteDebut - 4, `${theme} ${largeur} px, ${v.nom} : compteur et pastille ne se touchent pas`, `fin gauche ${m.gaucheFin.toFixed(1)}, début droite ${m.droiteDebut.toFixed(1)}${m.centreVisible ? ', centre VISIBLE' : ''}`);
-      // L'ANCIEN rendu (avant le 11/10 : centre flex 1 entre ses voisins), rejoué
-      // par une feuille ajoutée : le contenu de l'en-tête ne déborde jamais PLUS qu'avant.
-      const ancien = await p.addStyleTag({ content: '.tb-left{display:contents !important} .tb-right{flex:0 0 auto !important;justify-content:normal !important} .header-centre{flex:1 1 0% !important}' });
-      const mAncien = await mesuresEnTete(p);
-      await ancien.evaluate((n) => n.remove());
-      const deborde = Math.max(0, m.droiteFin - m.largeur);
-      const debordeAvant = Math.max(0, mAncien.droiteFin - mAncien.largeur);
-      verifier(!m.debordement && m.gaucheDebut >= 0 && deborde <= debordeAvant + 0.5, `${theme} ${largeur} px, ${v.nom} : jamais plus de débordement qu'avant`, deborde > 0 ? `PRÉEXISTANT : réglages coupés de ${deborde.toFixed(1)} px, avant ${debordeAvant.toFixed(1)} px` : 'rien ne déborde');
-      if ([390, 320].includes(largeur) || (largeur === 768 && v.nom === '31 annonces, Pro')) await p.screenshot({ path: path.join(SORTIE, `app-${theme}-${largeur}-${v.q.includes('1000') ? 'business-1000' : 'pro-31'}.png`), clip: { x: 0, y: 0, width: largeur, height: 110 } });
+      const roue = await roueEtChiffre(p);
+      verifier(roue.gauche >= 0 && roue.droite <= roue.largeur + 0.5 && roue.touchable && !m.debordement,
+        `${theme} ${largeur} px, ${v.nom} : roue des réglages entière et cliquable`, `roue ${roue.gauche.toFixed(1)} → ${roue.droite.toFixed(1)} / ${roue.largeur} px${roue.touchable ? '' : ', RECOUVERTE'}`);
+      verifier(roue.chiffreEntier, `${theme} ${largeur} px, ${v.nom} : chiffre du compteur entier`);
+      if (largeur <= 768) {
+        verifier(m.gaucheFin <= m.droiteDebut - 4, `${theme} ${largeur} px, ${v.nom} : compteur et pastille ne se touchent pas`, `fin gauche ${m.gaucheFin.toFixed(1)}, début droite ${m.droiteDebut.toFixed(1)}${m.centreVisible ? ', centre VISIBLE' : ''}`);
+      }
+      verifier(p.__erreurs.length === 0, `${theme} ${largeur} px, ${v.nom} : aucune erreur de page`, p.__erreurs.join(' | '));
+      if (largeur > 768) { await p.context().close(); continue; }
+      const nomCapture = v.q.includes('10000') ? 'business-10000' : v.q.includes('lang=en') ? 'business-1000-en' : v.q.includes('1000') ? 'business-1000' : v.q.includes('premium') ? 'premium-5' : v.q.includes('aucun') ? 'nu' : v.q.includes('compteur=1&') ? 'pro-1' : 'pro-31';
+      if ([390, 375, 360, 320].includes(largeur) || (largeur === 768 && v.nom === '31 annonces, Pro')) await p.screenshot({ path: path.join(SORTIE, `app-${theme}-${largeur}-${nomCapture}.png`), clip: { x: 0, y: 0, width: largeur, height: 110 } });
       if (v.nom === '31 annonces, Pro') {
         // ≤ 480 px avec compteur, le mot « FillSell » cède la place (App.css) ; ailleurs il doit être entier.
         const nomVisible = await p.locator('.tb-logo .name').first().isVisible();

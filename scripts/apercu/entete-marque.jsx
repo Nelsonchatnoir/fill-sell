@@ -30,6 +30,7 @@ const brut = q.get('compteur');
 const compteur = brut === null ? 31 : brut === 'aucun' ? null : Number(brut);
 const palier = q.get('palier') || 'pro';
 const ventes = Number(q.get('ventes') ?? 2);
+const lang = q.get('lang') === 'en' ? 'en' : 'fr';
 
 function EnTete() {
   return (
@@ -37,10 +38,14 @@ function EnTete() {
       <div className="tb-left">
         <BrandMark onClick={() => {}} />
         {compteur != null && (
-          <button style={{ background: 'transparent', border: 'none', padding: 0, minHeight: 44, display: 'inline-flex', alignItems: 'center', cursor: 'pointer', flexShrink: 0, fontFamily: 'inherit', color: 'inherit', opacity: 1 }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '6px 10px', borderRadius: 999, background: 'rgba(0,0,0,0.05)', color: UI.ink, fontSize: 12.5, fontWeight: 700, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+          <button className="tb-quota" style={{ background: 'transparent', border: 'none', padding: 0, minHeight: 44, display: 'inline-flex', alignItems: 'center', cursor: 'pointer', fontFamily: 'inherit', color: 'inherit', opacity: 1 }}>
+            <span className="tb-quota-chip" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '6px 10px', borderRadius: 999, background: 'rgba(0,0,0,0.05)', color: UI.ink, fontSize: 12.5, fontWeight: 700, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
               {compteur}
-              <span style={{ fontWeight: 600, opacity: 0.65 }}>{`annonce${compteur > 1 ? 's' : ''} restante${compteur > 1 ? 's' : ''}`}</span>
+              <span className="tb-quota-libelle" style={{ fontWeight: 600, opacity: 0.65 }}>
+                {lang === 'en'
+                  ? <><span className="tb-quota-mot">{`listing${compteur > 1 ? 's' : ''} `}</span>left</>
+                  : <><span className="tb-quota-mot">{`annonce${compteur > 1 ? 's' : ''} `}</span>{`restante${compteur > 1 ? 's' : ''}`}</>}
+              </span>
             </span>
           </button>
         )}

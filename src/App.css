@@ -113,6 +113,28 @@ input, textarea, select { font-family: inherit; font-size: 16px; }
    Avant, le centre (flex 1) se plaçait ENTRE ses voisins et glissait. */
 .tb-left { display: flex; align-items: center; gap: 10px; flex: 1 1 0; }
 .tb-right { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex: 1 1 0; }
+.tb-quota { flex-shrink: 0; }
+/* (12/10, A7) LA ROUE DES RÉGLAGES RESTE TOUJOURS À L'ÉCRAN. Sous 768 px le
+   bloc du milieu est masqué : la droite (palier, réglages) ne cède JAMAIS de
+   place, c'est la gauche qui s'adapte — le mot « annonces » part d'abord
+   (≤ 420 px), le libellé se coupe en dernier recours, jamais le chiffre.
+   Avant : 320 px avec « Pro », 360-375 px avec « Business » et un compteur à
+   4 chiffres, la roue sortait de l'écran de 10 à 65 px.
+   Gardé par node scripts/apercu/capture-entete-marque.mjs (320 → 1920 px). */
+@media (max-width: 768px) {
+  .tb-left { flex: 1 1 auto; min-width: 0; }
+  .tb-right { flex: 0 0 auto; }
+  .tb-quota { flex-shrink: 1; min-width: 0; }
+  .tb-quota-chip { min-width: 0; max-width: 100%; }
+  .tb-quota-libelle { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+}
+@media (max-width: 420px) {
+  .tb-quota-mot { display: none; }
+}
+@media (max-width: 360px) {
+  .tb-left { gap: 6px; }
+  .tb-right { gap: 6px; }
+}
 @media (max-width: 480px) {
   .topbar { padding-left: 12px; padding-right: 12px; }
   /* Compteur de quota affiché en en-tête (classe posée par App.jsx quand le
@@ -696,3 +718,9 @@ input, textarea, select { font-family: inherit; font-size: 16px; }
      Elle ne sert à rien tant qu'une modale est ouverte. */
 html.fs-modale-ouverte, html.fs-modale-ouverte body { overscroll-behavior: none; }
 html.fs-modale-ouverte .bnav { display: none !important; }
+
+/* (12/10, A2) « Choisir des articles à publier » : un vrai bouton, pleine
+   largeur sur téléphone (StockTab, .stock-choisir-lot). */
+@media (max-width: 480px) {
+  .stock-choisir-lot { width: 100%; }
+}

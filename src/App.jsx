@@ -7,6 +7,7 @@ import { Browser } from '@capacitor/browser';
 import { App as CapacitorApp } from '@capacitor/app';
 import { SplashScreen } from '@capacitor/splash-screen';
 import { initIAP, purchasePremium, restorePurchases, listenCoinTransactionUpdates, recoverAndroidCoinPurchases, findActivePlayPremiumSub, PRODUCT_IDS } from './lib/iap';
+import { classerIssueAchat } from './lib/issueAchat';
 import { paiementsAndroidCoupes, messagePaiementAndroidCoupe } from './utils/androidPayments';
 import { track } from './analytics/analytics';
 import { poserSourceSurProfil } from './utils/acquisition';
@@ -157,6 +158,8 @@ import FileAnnoncesADepiler from './components/FileAnnoncesADepiler';
 // (11/10, Louis) Ventes détectées à confirmer, avec ou sans téléphone : la
 // décision « remettre en vente ou non » ne dépend plus de la notification.
 import VentesADecider, { ANCRE_VENTES_A_CONFIRMER } from './components/VentesADecider';
+import RetraitsVendusBloques from './components/RetraitsVendusBloques';
+import { retraitsBloquesParConnexion } from './utils/retraitsBloques';
 import RevueAutresPlateformes from './components/RevueAutresPlateformes';
 import { lireFusionsActives, defaireFusion } from './utils/fusionArticles';
 import { apresNouvellesPhotos } from './utils/parcoursLens';
@@ -2305,6 +2308,9 @@ export default function App({ loginOnly = false }){
   // (11/10) Ventes DÉTECTÉES et annoncées (push ou mail), pas encore
   // enregistrées : rpc ventes_a_decider (la base décide ce qui est à confirmer).
   const [ventesADecider,setVentesADecider]=useState([]);
+  // (12/10, A6) Les retraits encore en file (toutes plateformes) : le bandeau
+  // « Vendu, encore en ligne » ne dépend plus du Stock ouvert.
+  const [retraitsEnFile,setRetraitsEnFile]=useState([]);
   const [venteDecideeEnCours,setVenteDecideeEnCours]=useState(null);
   // ── ALERTES « PLUS EN LIGNE » MASQUABLES (2026-09-17, demande d'une PRO) ──
   // Deux masques, RÉVERSIBLES, qui ne touchent QUE l'affichage :
@@ -2418,6 +2424,14 @@ export default function App({ loginOnly = false }){
   // utils/extensionTrace. Une extension vue une fois l'est pour toujours : un
   // ordinateur éteint aujourd'hui ne ramène jamais l'étape « installer ».
   const [extensionTraceAilleurs,setExtensionTraceAilleurs]=useState(false);
+  // (12/10, A6) Retraits bloqués (mêmes règles que « À régler » du Stock) :
+  // le bandeau prioritaire n'en garde que les articles VENDUS.
+  const retraitsVendusBloques=useMemo(()=>retraitsBloquesParConnexion({
+    jobs:retraitsEnFile,
+    fiches:items,
+    extensionVueLe:extensionSeenLoaded?(extensionLastSeenAt??null):undefined,
+    loginsBoutiques:Object.fromEntries((boutiquesVinted??[]).filter(b=>b?.user_id!=null&&b?.login).map(b=>[String(b.user_id),b.login])),
+  }),[retraitsEnFile,items,extensionSeenLoaded,extensionLastSeenAt,boutiquesVinted]);
   // eBay par API (lot 2b, 06/09) : drapeau PAR COMPTE posé par Nico en base
   // (profiles.ebay_voie_api). Lu ici, jamais écrit par le client. Sert à
   // l'écran de publication pour arrêter un article sans photo AVANT le job
@@ -3169,6 +3183,13 @@ export default function App({ loginOnly = false }){
     // Programme Founder fermé aux nouveaux (2026-07) : jamais PRODUCT_IDS.sub ici.
     // Il reste référencé dans restorePurchases pour les Founders existants.
     const productId=isBusinessPurchase?PRODUCT_IDS.business:isProPurchase?PRODUCT_IDS.pro:PRODUCT_IDS.standard;
+    // (12/10, A8) L'ISSUE de chaque tentative, pas seulement son ouverture :
+    // usage_logs 'checkout_issue' {issue: reussi | annule | en_attente | erreur,
+    // code, etape: store | validation_google | confirmation_serveur}. Une
+    // tentative = une ligne d'ouverture + une ligne d'issue.
+    let etapeAchat='store';
+    const passage=isPremium&&(isProPurchase||isBusinessPurchase)?'montee_de_palier':'achat';
+    const issueTunnel=(issue,extra={})=>logTunnel('checkout_issue',{canal,tier:tierLog,origine,passage,issue,etape:etapeAchat,...extra});
     try{
       // ── checkout_open / checkout_abandon (2026-08-09) ──────────────────
       // On journalise juste AVANT de demander la feuille au store : c'est le
@@ -3179,8 +3200,19 @@ export default function App({ loginOnly = false }){
       // ferme la feuille ou touche « Annuler » : c'est l'abandon, le trou
       // exact entre le clic et l'achat qu'on ne voyait pas.
       logTunnel('checkout_open',{canal,tier:tierLog,origine});
-      const {cancelled,purchaseToken}=await purchasePremium(productId,user.id,{oldPurchaseToken:upgradeOldToken});
-      if(cancelled){logTunnel('checkout_abandon',{canal,tier:tierLog,origine,motif:'annule'});return;}
+      const {cancelled,enAttente,issue:issueStore,purchaseToken}=await purchasePremium(productId,user.id,{oldPurchaseToken:upgradeOldToken});
+      if(cancelled){
+        logTunnel('checkout_abandon',{canal,tier:tierLog,origine,motif:'annule'});
+        issueTunnel('annule',{code:issueStore?.code??'USER_CANCELLED'});
+        return; // annulé par la personne : aucun message d'erreur
+      }
+      if(enAttente){
+        issueTunnel('en_attente',{code:issueStore?.code??'PENDING'});
+        setToast({visible:true,message:lang==='fr'?"Achat en attente d'approbation : ton accès s'ouvrira dès qu'il sera validé.":'Purchase awaiting approval: your access opens as soon as it is approved.'});
+        setTimeout(()=>setToast({visible:false,message:''}),8000);
+        return;
+      }
+      etapeAchat=platform==='android'?'validation_google':'confirmation_serveur';
       if(platform==='android'){
         // ⛔ NE JAMAIS réintroduire ici un supabase.from('profiles').update(...).
         // Ce bloc a contenu, du lancement au 2026-08-05, une écriture directe
@@ -3196,11 +3228,13 @@ export default function App({ loginOnly = false }){
           body:{productId,purchaseToken,userId:user.id},
         });
         if(vgErr||!vg?.is_premium) throw new Error(vgErr?.message||vg?.error||'Google purchase not confirmed by server');
+        etapeAchat='confirmation_serveur';
       }
       // iOS : le droit vient d'apple-iap-webhook. Android : de la fonction
       // ci-dessus. Dans les deux cas on ne croit que le serveur.
       const confirme=await attendreConfirmationServeur(user.id,{pro:isProPurchase||isBusinessPurchase,business:isBusinessPurchase});
       if(!confirme) throw new Error('Premium not confirmed by server');
+      issueTunnel('reussi');
       monterPalier(isBusinessPurchase?'business':isProPurchase?'pro':'premium'); // cumulatif : Business ⊇ Pro ⊇ Premium
       setShowPremiumWelcome(true);
     }catch(e){
@@ -3220,11 +3254,16 @@ export default function App({ loginOnly = false }){
           &&(!isBusinessPurchase||data?.is_business===true)
           &&(platform!=='android'||data?.google_product_id===productId);
         if(droitAcquis){
+          issueTunnel('reussi',{apres_erreur:String(e?.message??e).slice(0,120)});
           monterPalier(isBusinessPurchase?'business':isProPurchase?'pro':'premium');
           setShowPremiumWelcome(true);
           return;
         }
       }catch(err){console.warn('[IAP] relecture après échec:',err?.message);}
+      {
+        const cl=e?.issueAchat??classerIssueAchat(e);
+        issueTunnel(cl.issue==='erreur'?'erreur':cl.issue,{code:cl.code,message:cl.message});
+      }
       const errMsg=e?.message||e?.code||String(e);
       setToast({visible:true,message:`❌ ${errMsg}`});
       setTimeout(()=>setToast({visible:false,message:''}),8000);
@@ -3718,6 +3757,15 @@ export default function App({ loginOnly = false }){
     // jamais un écran cassé). Lue avec le reste, jamais en boucle.
     supabase.rpc('ventes_a_decider').then(({data,error})=>setVentesADecider(!error&&Array.isArray(data)?data:[]))
       .catch(()=>setVentesADecider([]));
+    // (12/10, A6) Retraits encore en file — un retrait d'article VENDU qui ne
+    // peut pas partir se dit en tête (bandeau ci-dessous). Lu avec le reste,
+    // jamais en boucle ; une erreur laisse la liste vide.
+    supabase.from('cross_post_jobs')
+      .select('id, platform, action, status, title, error, created_at, inventaire_id, listing_url, platform_fields')
+      .eq('user_id',uid).eq('action','delete').in('status',['pending','processing','needs_user'])
+      .order('created_at',{ascending:false}).limit(200)
+      .then(({data,error})=>setRetraitsEnFile(!error&&Array.isArray(data)?data:[]))
+      .catch(()=>setRetraitsEnFile([]));
     // Propositions du moteur de rattachement (best-effort, jamais bloquant).
     lirePropositionsParJob(uid).then((p)=>setPropositionsParJob(p||{})).catch(()=>setPropositionsParJob({}));
 
@@ -8249,17 +8297,21 @@ export default function App({ loginOnly = false }){
             title={isBusiness
               ?(lang==='fr'?"Annonces restantes ce mois-ci":"Listings left this month")
               :(lang==='fr'?"Annonces restantes ce mois-ci — voir les offres":"Listings left this month — see plans")}
-            style={{background:"transparent",border:"none",padding:0,minHeight:44,display:"inline-flex",alignItems:"center",cursor:isBusiness?"default":"pointer",flexShrink:0,fontFamily:"inherit",color:"inherit",opacity:1}}
+            className="tb-quota"
+            style={{background:"transparent",border:"none",padding:0,minHeight:44,display:"inline-flex",alignItems:"center",cursor:isBusiness?"default":"pointer",fontFamily:"inherit",color:"inherit",opacity:1}}
           >
             {/* « 5 annonces » ne disait pas s'il s'agit du restant ou du
                 total (relevé Nico 02/09 soir) : le mot « restantes » est
-                DANS le chip, pas seulement dans le title. */}
-            <span style={{display:"inline-flex",alignItems:"center",gap:4,padding:"6px 10px",borderRadius:999,background:"rgba(0,0,0,0.05)",color:UI.ink,fontSize:12.5,fontWeight:700,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>
+                DANS le chip, pas seulement dans le title.
+                (12/10, A7) Sur petit écran, le mot « annonces » cède la place
+                (.tb-quota-mot, App.css) et le libellé se coupe en dernier
+                recours : la roue des réglages ne sort JAMAIS de l'écran. */}
+            <span className="tb-quota-chip" style={{display:"inline-flex",alignItems:"center",gap:4,padding:"6px 10px",borderRadius:999,background:"rgba(0,0,0,0.05)",color:UI.ink,fontSize:12.5,fontWeight:700,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>
               {quotas.annonces.restantes}
-              <span style={{fontWeight:600,opacity:0.65}}>
+              <span className="tb-quota-libelle" style={{fontWeight:600,opacity:0.65}}>
                 {lang==='fr'
-                  ?`annonce${quotas.annonces.restantes>1?"s":""} restante${quotas.annonces.restantes>1?"s":""}`
-                  :`listing${quotas.annonces.restantes>1?"s":""} left`}
+                  ?<><span className="tb-quota-mot">{`annonce${quotas.annonces.restantes>1?"s":""} `}</span>{`restante${quotas.annonces.restantes>1?"s":""}`}</>
+                  :<><span className="tb-quota-mot">{`listing${quotas.annonces.restantes>1?"s":""} `}</span>left</>}
               </span>
             </span>
           </button>
@@ -8398,6 +8450,12 @@ export default function App({ loginOnly = false }){
         {/* (11/10, Louis) Ventes détectées à confirmer — avec ou sans téléphone.
             En tête de la zone des bandeaux (Stock compris) ; le lien du mail
             « Vendu » y mène. Rien quand il n'y a rien. */}
+        {/* (12/10, A6) PRIORITÉ : un article vendu encore en ligne parce que son
+            retrait ne peut pas partir (boutique Vinted à ouvrir, Chrome fermé,
+            reconnexion, compte bloqué). Se lève seul quand le retrait est fait. */}
+        <RetraitsVendusBloques lang={lang} retraits={retraitsVendusBloques}
+          onVoir={()=>{setTab(1);localStorage.setItem('tab','1');}} />
+
         <VentesADecider lang={lang} devise={currency==='EUR'?'€':currency}
           ventes={ventesADecider} enCours={venteDecideeEnCours} onDecider={deciderVenteDetectee} />
 
