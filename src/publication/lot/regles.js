@@ -208,16 +208,20 @@ export function bilanArticle(m, decisions = {}, lang = "fr") {
   if (jumeauxOuverts.length) {
     motifs.push({ cle: "jumeau", libelle: en ? "Same item?" : "Même article ?" });
   }
-  // LE POIDS n'est JAMAIS une question du lot (10/10, Nico : « le lot doit se
-  // comporter exactement comme l'unité »). À l'unité, sans poids, Leboncoin
-  // garde l'estimation qu'il pré-coche d'après le rayon (format et palier) et
-  // Beebs son pré-remplissage, ou le palier du rayon (extension) — rien n'est
-  // demandé. Le lot faisait de l'absence de poids un « À compléter » (04/10) :
-  // c'était le seul écart. Le poids connu (lot, copie Leboncoin, fiche) part
-  // et choisit le palier exact ; le format deviné par la rédaction reste
-  // écarté au service du job (_shared/livraison-poids.js). Un champ « Poids
-  // du colis » qu'une plateforme EXIGE (compte pro Leboncoin) reste une
-  // question du moteur, comptée ci-dessus, comme au stepper.
+  // LE POIDS LEBONCOIN (11/10, Nico — régression du 10/10 13:50, 9bdcfce) :
+  // un article qui part sur Leboncoin SANS poids est À COMPLÉTER, jamais
+  // « Prêt » — comme le 04/10. Le lot du 10/10 13:50 l'avait rendu
+  // facultatif : les 12 livres (11/10 10:07) et les 18 vêtements (11:05) de
+  // Louis sont partis sans poids (Leboncoin a gardé son estimation, 100 g).
+  // Le poids se donne UNE fois pour le lot (bloc Livraison), réglable article
+  // par article, gardé sur la fiche ; le serveur ne sert jamais une
+  // publication Leboncoin sans poids (_shared/poids-leboncoin.js).
+  // Beebs (seul) reste au 10/10 : sans poids, son pré-remplissage ou le
+  // palier du rayon. Le format deviné par la rédaction reste écarté au
+  // service du job (_shared/livraison-poids.js).
+  if (poidsExigePour(plateformes) && poidsConnu(m, decisions) == null) {
+    motifs.push({ cle: "poids", libelle: en ? "Leboncoin weight" : "Poids Leboncoin" });
+  }
   // (09/10 soir) DEPOP : les frais de port que paie l'acheteur — le prix par
   // défaut des Réglages, ou celui dit UNE fois pour le lot (LivraisonDuLot).
   // Sans eux, l'article est À COMPLÉTER, jamais une question après l'envoi.
@@ -240,8 +244,8 @@ export function bilanArticle(m, decisions = {}, lang = "fr") {
 // ── LE POIDS ET LE COLIS, PAR PLATEFORME (04/10, relevé live) ─────────────
 // Ce que chaque plateforme demande VRAIMENT, et ce que le lot en fait :
 //   · Leboncoin : un format (une TAILLE : Petit / Moyen / Volumineux) et un
-//     palier de POIDS → le poids connu choisit le palier, sinon l'estimation
-//     de Leboncoin reste (10/10, comme à l'unité) ; format s'il est choisi ;
+//     palier de POIDS → poids EXIGÉ (11/10, retour à la règle du 04/10 ;
+//     facultatif du 10/10 13:50 au 11/10 = régression) ; format s'il est choisi ;
 //   · Beebs : « Format du colis » = un palier de POIDS → le poids connu, sinon
 //     le pré-remplissage de Beebs ou le palier du rayon (extension) ;
 //   · Vinted : une TAILLE de colis, jamais un poids → pas de poids exigé ;
@@ -252,6 +256,9 @@ export function bilanArticle(m, decisions = {}, lang = "fr") {
 //     viennent de la politique d'expédition du compte.
 export const PLATEFORMES_AU_POIDS = Object.freeze(["leboncoin", "beebs"]);
 export const plateformesAuPoids = (plateformes) => [...(plateformes ?? [])].filter((p) => PLATEFORMES_AU_POIDS.includes(p));
+/** (11/10) Où le poids est EXIGÉ avant l'envoi : Leboncoin seulement. */
+export const PLATEFORMES_POIDS_EXIGE = Object.freeze(["leboncoin"]);
+export const poidsExigePour = (plateformes) => [...(plateformes ?? [])].some((p) => PLATEFORMES_POIDS_EXIGE.includes(p));
 
 /** Le poids connu de l'article (grammes), ou null : réglé dans le lot, sur la copie Leboncoin, ou sur la fiche. */
 export function poidsConnu(m, decisions = {}) {

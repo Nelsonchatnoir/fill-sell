@@ -56,7 +56,7 @@ import {
   plateformesLibres, resumeParPlateforme, choixInitial, ficheCouvre, partagerQuota,
   dureeEstimeeMin, libelleDuree, bilanArticle, jumeauxQuiRetiennent, marqueLot, groupesReponseCommune,
   palierCourant, palierSuivant, canalAppareil, canalAbonnement, monteePossibleIci, CLE_REPRISE_LOT,
-  poidsConnu,
+  poidsConnu, lirePoidsSaisi,
 } from "./regles";
 import LivraisonDuLot from "./LivraisonDuLot";
 import BarriereErreur from "../../components/BarriereErreur";
@@ -1265,7 +1265,7 @@ export function EcranAvant({
           secours={<ArticleMisDeCote en={en} item={parId.get(id)?.item} />}>
           <ArticleAQuestions id={id} en={en} L={L} item={parId.get(id)?.item} m={moteurs.get(id)} st={etats[id]}
             decision={decisions[id] ?? {}} decider={decider} trancherJumeau={trancherJumeau} sansPlateforme={sansPlateforme} retirerDuLot={retirerDuLot}
-            lecture={lectures[id] ?? null} />
+            lecture={lectures[id] ?? null} poserPoids={poserPoids} />
         </BarriereErreur>
       ))}
 
@@ -1328,9 +1328,10 @@ function LigneArticle({ id, en, L, item, st, m, envoi, retirerDuLot }) {
 
 // Un article qui attend une réponse : SES questions, posées par le même bloc
 // que le stepper, plus ce que le lot ajoute (texte à relire, prix, jumeau).
-export function ArticleAQuestions({ id, en, item, m, st, decision, decider, trancherJumeau, sansPlateforme, retirerDuLot, lecture = null }) {
+export function ArticleAQuestions({ id, en, item, m, st, decision, decider, trancherJumeau, sansPlateforme, retirerDuLot, lecture = null, poserPoids = null }) {
   if (!m) return null;
   const motifs = st?.motifs ?? [];
+  const aPoids = motifs.some((x) => x.cle === "poids");
   const aTexte = motifs.some((x) => x.cle === "texte");
   const aPrix = motifs.some((x) => x.cle === "prix");
   const plateformes = [...(m.plateformesPubliables ?? [])];
@@ -1359,6 +1360,21 @@ export function ArticleAQuestions({ id, en, item, m, st, decision, decider, tran
           <input className="fsn-input" type="number" inputMode="decimal" min="1" step="0.5" defaultValue={m.price ?? ""}
             onBlur={(ev) => m.poserPrixGeneral?.(ev.target.value)} onKeyDown={(ev) => { if (ev.key === "Enter") ev.currentTarget.blur(); }}
             placeholder={en ? "Price in €" : "Prix en €"} />
+        </div>
+      )}
+
+      {/* (11/10) Le poids Leboncoin de CET article — ou une fois pour tout le
+          lot, dans le bloc Livraison plus haut. */}
+      {aPoids && poserPoids && (
+        <div className="fsn-q fsn-q--bloque">
+          <div className="fsn-q-t">{en ? "Parcel weight" : "Poids du colis"}</div>
+          <div className="fsn-q-why">{en
+            ? "Leboncoin prices the parcel by weight — nothing is guessed. Or give one weight for the whole batch in Shipping, above. Saved on the item."
+            : "Leboncoin calcule l'envoi au poids — rien n'est deviné. Ou un poids pour tout le lot, dans Livraison, plus haut. Gardé sur la fiche."}</div>
+          <input className="fsn-input" type="text" inputMode="decimal" placeholder={en ? "e.g. 650 g or 1.2 kg" : "ex. 650 g ou 1,2 kg"}
+            aria-label={en ? "Parcel weight" : "Poids du colis"}
+            onBlur={(ev) => { const g = lirePoidsSaisi(ev.target.value); if (g) poserPoids(id, g); }}
+            onKeyDown={(ev) => { if (ev.key === "Enter") ev.currentTarget.blur(); }} />
         </div>
       )}
 
