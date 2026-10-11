@@ -45,8 +45,8 @@ export const EXCEPTIONS = [
   // Depop comprise — plus aucune liste écrite en dur.
   { fichier: "supabase/functions/get-pending-jobs/index.ts", signature: "tableau:beebs,ebay,leboncoin,opla", n: 1,
     raison: "Ligne gardée à l'octet (selftest:beebs-age-republication) : Depop y est ajoutée juste à côté, « || j.platform === \"depop\" »." },
-  { fichier: "supabase/functions/resolve-categorie/index.ts", signature: "tableau:beebs,ebay,leboncoin,opla,vinted", n: 1,
-    raison: "Arbitrage de catégorie par LIBELLÉS : la catégorie Depop se pose par identifiant seulement (faiblesse 3, depopCategoryPath), jamais par cette fonction." },
+  // (11/10) resolve-categorie : exception RETIRÉE — Depop y est nommée (moteur de
+  // rayon, _shared/depop-rayon.js : l'IA tranche par clé, l'identifiant part).
   { fichier: "supabase/functions/_shared/etat-plateformes.js", signature: "objet:beebs,ebay,leboncoin,opla,vestiaire,vinted", n: 5,
     raison: "Libellés FRANÇAIS de l'état écrits dans les textes : l'état Depop est un identifiant (brand_new…), posé par l'app depuis le palier (src/utils/depopAttributs.js, DEPOP_ETAT_PAR_PALIER) ; aucun texte Depop ne l'écrit." },
   { fichier: "supabase/functions/_shared/titre-du-job.js", signature: "objet:beebs,ebay,leboncoin,opla,vinted", n: 1,

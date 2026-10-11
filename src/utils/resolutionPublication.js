@@ -64,7 +64,9 @@ import { rayonContreditLaFiche } from "./rayonIncoherent";
 import { estFourreToutCatalogue } from "./fourreTout";
 import { VERDICTS_REFUS, aReprendreApresRefus, cheminsRefuses, familleVetoDe, rayonApresRefus, appliquerRayonApresRefus } from "./rayonApresRefus";
 import { champsDepop, tailleDepop } from "./depopPublication.js";
-import { depopGenreRequired } from "./depopCategories.js";
+import { depopGenreRequired, horsModeDepop } from "./depopCategories.js";
+// (11/10) Le rayon Depop par le moteur commun — même module que le serveur.
+import { resoudreRayonDepop, traceRayonDepop, SOURCE_RAYON_DEPOP } from "../../supabase/functions/_shared/depop-rayon.js";
 
 // ── L'EMPREINTE — À QUELLES CONDITIONS UN PRÉ-CALCUL RESTE VALABLE ────────
 // Elle couvre TOUT ce que la résolution lit : les copies, leurs champs, les
@@ -1351,22 +1353,55 @@ export async function resoudrePublication({
     }
     if (platform === "depop") {
       // ── DEPOP (09/10/2026) — les champs du connecteur (content-scripts/
-      // depop.js), posés par IDENTIFIANT (utils/depopPublication.js) : rayon
-      // [département, groupe, type] depuis l'icône + le genre — JAMAIS un
-      // libellé ni resolve-categorie (faiblesse 3) ; sans rayon sûr, la
-      // question « rayon à choisir » (fin de fonction). État, couleurs, marque
-      // (« Sans marque » → « Other » chez Depop), genre enfant, frais de port :
-      // ce qui manque n'est pas inventé, le connecteur le DEMANDE.
+      // depop.js), posés par IDENTIFIANT (utils/depopPublication.js). État,
+      // couleurs, marque (« Sans marque » → « Other » chez Depop), genre
+      // enfant, frais de port : ce qui manque n'est pas inventé, le connecteur
+      // le DEMANDE.
+      // ── LE RAYON PAR LE MOTEUR (11/10, mission de Nico) ─────────────────
+      // Plus jamais la table icône → rayon : « Short de basket … Enfant »
+      // partait en Enfants › Chaussures › Baskets (le mot « basket » faisait
+      // 👟), « Woman size 39 trainers » en Femme › Robes. Le rayon vient du
+      // moteur commun (_shared/depop-rayon.js) : l'IA tranche (resolve-
+      // categorie, appel À PART : la question des autres plateformes ne
+      // change pas) parmi les feuilles officielles des départements que la
+      // fiche rend plausibles, et les garde-fous jugent (vêtement jamais en
+      // chaussures, enfant jamais sans indice explicite, genre dit jamais
+      // contredit). Doute ou IA injoignable : AUCUN rayon → la question
+      // « rayon à choisir » (fin de fonction), jamais un rayon faux.
       const genreDepop = (pf.genre && pf.genre !== "Mixte") ? pf.genre : genrePourCategorie("depop");
-      const { champs } = champsDepop({ icon: iconeArticle, genre: genreDepop, pf });
+      let rayonDepop = null;
+      try {
+        rayonDepop = await resoudreRayonDepop({
+          titre: frTitrePublication || edited.depop?.title || initialListing?.titre || "",
+          description: frDescriptionPublication || "",
+          genre: genreDepop || "",
+          origine: Array.isArray(origineCat?.chemin) ? origineCat.chemin : null,
+          objet: activeAiObjet ?? "",
+          horsMode: horsModeDepop(iconeArticle),
+          taille: String(pf.taille ?? ""),
+          marque: String(pf.marque ?? ""),
+        }, async (corps) => {
+          if (!supabase) throw new Error("client indisponible");
+          const { data, error } = await supabase.functions.invoke("resolve-categorie", { body: corps });
+          if (error) throw error;
+          return data;
+        });
+      } catch (e) {
+        console.warn("[publish] depop — moteur de rayon indisponible (question au vendeur) :", e?.message ?? e);
+      }
+      const { champs } = champsDepop({ icon: iconeArticle, genre: genreDepop, pf, rayonParMoteur: true, categorieId: rayonDepop?.id ?? null });
       delete champs.depopTaille; // posée après la garde des tailles inventées
+      delete pf.depopCategoryPath; delete pf.depopCategoryId; delete pf.depopCategoryLibelles;
       Object.assign(pf, champs);
+      if (rayonDepop) pf.depop_rayon = traceRayonDepop(rayonDepop, { par: "app" });
       if (champs.depopCategoryId) {
-        // Les libellés, pour AFFICHER le rayon (carte Rayon) — rien d'autre.
-        try {
-          const { FEUILLES } = await import("./arbres/depopFeuilles.js");
-          pf.depopCategoryLibelles = FEUILLES.find((f) => f.id === champs.depopCategoryId)?.chemin ?? champs.depopCategoryPath;
-        } catch { pf.depopCategoryLibelles = champs.depopCategoryPath; }
+        // Les libellés CORRIGÉS, pour AFFICHER le rayon (carte Rayon) — ce
+        // qui part est l'identifiant.
+        pf.depopCategoryLibelles = rayonDepop?.libelles ?? champs.depopCategoryPath;
+        pf.categorie_source = SOURCE_RAYON_DEPOP;
+        console.log(`[publish] depop — rayon ${champs.depopCategoryId} (moteur : ${rayonDepop?.source ?? "?"})`);
+      } else if (rayonDepop) {
+        console.warn(`[publish] depop — aucun rayon sûr (${rayonDepop.motif}${rayonDepop.detail ? ` : ${rayonDepop.detail}` : ""}) : QUESTION au vendeur`);
       }
     }
     // ── Tailles ENFANT (2026-07-15) : conversion canonique → libellé

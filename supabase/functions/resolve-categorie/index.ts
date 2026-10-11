@@ -42,7 +42,12 @@ const ALLOWED_ORIGINS = [
 // a un depuis src/utils/arbres/oplaFeuilles.js (886 feuilles relevées).
 // ⛔ Rien d'autre ne change ici : cette fonction ne connaît toujours aucun
 //    arbre, elle arbitre DANS la liste que l'appelant lui envoie.
-const PLATEFORMES = ["vinted", "leboncoin", "beebs", "ebay", "opla"] as const;
+// `depop` (11/10/2026, mission de Nico) : la catégorie Depop passe par le
+// moteur commun. L'appelant (_shared/depop-rayon.js) envoie les feuilles
+// OFFICIELLES des départements plausibles sous des libellés CORRIGÉS ; la
+// réponse rend la feuille d'origine, donc son IDENTIFIANT Depop. Appel SÉPARÉ
+// des quatre autres : la question qu'elles reçoivent ne change pas d'un octet.
+const PLATEFORMES = ["vinted", "leboncoin", "beebs", "ebay", "opla", "depop"] as const;
 type Plateforme = typeof PLATEFORMES[number];
 
 // `sous` (2026-09-25) : ce que CONTIENT une branche — les libellés de son

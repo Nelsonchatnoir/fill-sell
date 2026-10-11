@@ -87,8 +87,11 @@ const NOM_PLATEFORME = { vinted: 'Vinted', leboncoin: 'Leboncoin', ebay: 'eBay',
 // rend [] exprès) ; ici, c'est la PERSONNE qui choisit, dans les feuilles que
 // le formulaire de Depop propose (libellés français, doublons précisés en
 // anglais) — et c'est l'identifiant de la feuille qui part.
+// (11/10) Sous les libellés CORRIGÉS du moteur (« Débardeurs et caracos », pas
+// « Vestes ») — l'identifiant, lui, ne change pas.
 const feuillesPourChoisir = (platform) => (platform === 'depop'
-  ? import('../utils/arbres/depopFeuilles.js').then((m) => m.FEUILLES)
+  ? Promise.all([import('../utils/arbres/depopFeuilles.js'), import('../../supabase/functions/_shared/depop-rayon.js')])
+    .then(([m, r]) => m.FEUILLES.map((f) => ({ ...f, chemin: r.libellesRayonDepop(f.id) ?? f.chemin })))
   : feuillesDe(platform));
 
 /** Recherche dans les feuilles relevées : tous les mots tapés doivent être

@@ -22,11 +22,13 @@
 // (« rayon à choisir », CarteRayon).
 // ═══════════════════════════════════════════════════════════════════════════
 
-import { getDepopCategory } from "./depopCategories.js";
+import { getDepopCategory, DEPOP_GENRE_ENFANT } from "./depopCategories.js";
 import {
   depopEtat, depopCouleurs, DEPOP_TAILLE_ENFANT, depopPointureEnfant, depopMarqueAbsente, DEPOP_ETAT_PAR_PALIER,
 } from "./depopAttributs.js";
 import { couperAuMot } from "./texteConforme.js";
+// (11/10) Les libellés corrigés et la trace du moteur de rayon (module partagé avec le serveur).
+import { libellesRayonDepop, VERSION_RAYON_DEPOP, SOURCE_RAYON_DEPOP, CLE_QUESTION_RAYON_DEPOP } from "../../supabase/functions/_shared/depop-rayon.js";
 
 export const DEPOP_DESCRIPTION_MAX = 1000;
 export const DEPOP_HASHTAGS_MAX = 5;
@@ -109,10 +111,14 @@ export function tailleDepop(taille, chemin) {
  *   personne devra dire (« rayon » : la carte « rayon à choisir » ; le reste :
  *   les questions du connecteur).
  */
-export function champsDepop({ icon, genre, pf = {} }) {
+export function champsDepop({ icon, genre, pf = {}, rayonParMoteur = false, categorieId = null }) {
   const champs = {};
   const manques = [];
-  const cat = getDepopCategory(icon, genre);
+  // (11/10) `rayonParMoteur` : le rayon vient du MOTEUR (_shared/depop-rayon.js :
+  // l'IA tranche dans les feuilles officielles, les garde-fous jugent) — jamais
+  // de la table icône → rayon, qui faisait d'un « Short de basket » des
+  // baskets. Sans identifiant rendu par le moteur : aucun rayon, la question.
+  const cat = rayonParMoteur ? categorieDepuisId(categorieId, genre) : getDepopCategory(icon, genre);
   const chemin = cat ? [cat.departement, cat.groupe, cat.type_produit] : null;
   if (chemin) {
     champs.depopCategoryPath = chemin;
@@ -135,6 +141,56 @@ export function champsDepop({ icon, genre, pf = {} }) {
   if (port !== "" && Number.isFinite(Number(port)) && Number(port) >= 0 && Number(port) < 100) champs.depopPort = Math.round(Number(port) * 100) / 100;
   else manques.push("port");
   return { champs, manques };
+}
+
+/** La catégorie (même forme que getDepopCategory) d'un identifiant rendu par le
+ *  moteur ; le genre enfant vient du genre de la fiche, sinon il se demande. */
+function categorieDepuisId(id, genre) {
+  const chemin = cheminDepopDepuisId(id);
+  if (!chemin) return null;
+  const [departement, groupe, type_produit] = chemin;
+  const enfant = departement === "kidswear";
+  const genre_enfant = enfant ? (DEPOP_GENRE_ENFANT[genre] ?? null) : null;
+  return { departement, groupe, type_produit, cle: chemin.join("/"), genre_enfant, genre_a_demander: enfant && !genre_enfant };
+}
+
+/**
+ * (11/10) Pose sur les champs d'un job Depop le rayon `id` et ce qui en dépend
+ * (taille enfant, genre enfant, état de la beauté) — pour le serveur
+ * (handler-watch : rayon recalculé avant tout départ ; get-pending-jobs :
+ * réponse à la question « Rayon Depop ») comme pour l'app. Pur : rend une copie.
+ * @param {object} pf  les platform_fields du job
+ * @param {string} id  « département/groupe/type »
+ * @param {{ source: 'ia'|'personne', trace?: object|null, par: string }} o
+ */
+export function appliquerRayonDepop(pf, id, { source, trace = null, par }) {
+  const chemin = cheminDepopDepuisId(id);
+  if (!chemin) return null;
+  const sortie = { ...(pf ?? {}) };
+  const cat = categorieDepuisId(id, sortie.genre ?? "");
+  sortie.depopCategoryPath = chemin;
+  sortie.depopCategoryId = chemin.join("/");
+  sortie.depopCategoryLibelles = libellesRayonDepop(id) ?? chemin;
+  if (cat?.genre_enfant) sortie.depopGenre = cat.genre_enfant;
+  else if (chemin[0] !== "kidswear") delete sortie.depopGenre;
+  const t = tailleDepop(sortie.taille, chemin);
+  if (t) sortie.depopTaille = t;
+  if (sortie.etat) {
+    const etat = depopEtat(sortie.etat, chemin[2]);
+    if (etat.id) sortie.depopEtat = etat.id;
+    else if (etat.refus === "etat_neuf_seulement" && etat.palier) sortie.depopEtat = DEPOP_ETAT_PAR_PALIER[etat.palier];
+  }
+  if (source === "personne") {
+    sortie.categorie_source = "choix_humain";
+    sortie.categorie_choisie = { chemin: sortie.depopCategoryLibelles, id: sortie.depopCategoryId, le: new Date().toISOString() };
+    sortie.depop_rayon = { version: VERSION_RAYON_DEPOP, le: new Date().toISOString(), par, id: sortie.depopCategoryId, source: "personne" };
+  } else {
+    sortie.categorie_source = SOURCE_RAYON_DEPOP;
+    sortie.depop_rayon = trace ?? { version: VERSION_RAYON_DEPOP, le: new Date().toISOString(), par, id: sortie.depopCategoryId, source };
+  }
+  if (sortie.needsUserField?.field_key === CLE_QUESTION_RAYON_DEPOP) delete sortie.needsUserField;
+  delete sortie.rayon_a_choisir;
+  return sortie;
 }
 
 /** Le chemin [département, groupe, type] d'un identifiant « d/g/t » (ou null). */

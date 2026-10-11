@@ -277,6 +277,18 @@ export function depopCategoryStatus(icon) {
 }
 
 /**
+ * (11/10) L'objet est-il HORS MODE pour Depop (département « Tout le reste ») ?
+ * true : l'icône est dans HORS_MODE ; false : dans MODE ; null : on ne sait pas.
+ * Sert au moteur de rayon (_shared/depop-rayon.js) à choisir les départements
+ * proposés à l'IA — jamais à poser un rayon.
+ */
+export function horsModeDepop(icon) {
+  if (Object.prototype.hasOwnProperty.call(HORS_MODE, icon)) return true;
+  if (Object.prototype.hasOwnProperty.call(MODE, icon)) return false;
+  return null;
+}
+
+/**
  * La catégorie Depop d'une icône pour un genre.
  * @param {string} icon  — emoji de detectObjectIcon
  * @param {string} genre — « Femme » | « Homme » | « Fille » | « Garçon » |
