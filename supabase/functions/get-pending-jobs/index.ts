@@ -53,6 +53,7 @@ import { PLATEFORMES_RELEVE, RETRAIT_SANS_NUMERO_GESTE_MS, RETRAIT_SANS_NUMERO_R
 import { requalificationCompteVintedBloque } from "../_shared/vinted-compte-bloque.js";
 import { boutiqueConnecteeVinted, loginsDesBoutiques } from "../_shared/boutique-connectee.js";
 import { leverPauseIntrouvable, champsApresLevee } from "../_shared/introuvable-boutique.js";
+import { cleCategorieLbc, requisParCategorie, requisManquantsAvantRetrait, questionAvantRetraitLbc } from "../_shared/requis-recreation-lbc.js";
 import { BUILD_EBAY_FIN_PAR_NUMERO, BUILD_BEEBS_ADRESSE_STRICTE, BUILD_BEEBS_FORMAT_EXPLICITE } from "../_shared/correctifs-extension.js";
 import { formatBeebsExplicite, formatBeebsDuChoix } from "../_shared/beebs-format-colis.js";
 import { AGE_ANGLAIS_RE, NOMBRE_NU_RE, ORDRE_EXACT_D_ABORD, TAILLE_PREFIXEE_RE, grilleDuDernierEchecTaille, normaliserTaille, tailleAServir, tailleAServirPublication } from "../_shared/vinted-taille-republication.ts";
@@ -6861,6 +6862,78 @@ serve(async (req) => {
       }
     }
 
+    // ══ (11/10, voirememe) LEBONCOIN : RIEN NE SE RETIRE SANS SES REQUIS PROUVÉS ══
+    // Republication auto de la peluche Squishmallow (66bbae2b) : annonce
+    // RETIRÉE à 12:03, puis recréation bloquée sur « Produit » (toy_type,
+    // Jeux & Jouets), champ absent de l'annonce d'origine — l'article est
+    // hors ligne. Leboncoin avait déjà REFUSÉ ce champ précis sur ce rayon
+    // (platform_category_aspects, source server_400, depuis le 19/09) : la
+    // connaissance existait avant le retrait, personne ne la relisait. Même
+    // geste que le pré-vol Vinted ci-dessus (seule l'étape 'captured', celle
+    // qui tient encore l'annonce en ligne, peut être retenue ; 'deleted' ne
+    // bloque jamais ; trois tours de question au plus), pour Leboncoin :
+    // un requis PROUVÉ (required + server_400 — jamais 'dom' : Leboncoin
+    // pré-remplit d'après titre et photos) absent des critères repris de
+    // l'annonce (lbcAspects, lbcProduit) → needs_user AVANT tout retrait,
+    // ANNONCE INTACTE, avec la liste fermée de Leboncoin. Rien n'est deviné
+    // (pas d'IA à la republication).
+    // ⚠️ Un poste qui déclare « prevol_recreation_v1 » (extension ≥ 0.6.109)
+    // fait mieux : il déroule le VRAI formulaire jusqu'aux critères avant le
+    // retrait (il voit le pré-remplissage de Leboncoin) — ce filet ne vaut
+    // alors plus. Mesuré (18/09 → 11/10) : 9 republications Leboncoin du rayon
+    // sans « Produit », 8 parties quand même (Leboncoin l'a pré-rempli), 1
+    // bloquée hors ligne (voirememe) — le prix de ce filet sur les anciens
+    // postes : une question, l'annonce toujours en ligne.
+    let heldRequisLbc = 0;
+    if (!includeProcessing && !includeNeedsUser && !capacites.includes("prevol_recreation_v1")) {
+      const aJugerL = out.filter((j) => j.platform === "leboncoin" && j.action === "republish"
+        && cleCategorieLbc((j.platform_fields ?? {}) as Record<string, unknown>));
+      if (aJugerL.length) {
+        try {
+          const cles = [...new Set(aJugerL.map((j) => cleCategorieLbc((j.platform_fields ?? {}) as Record<string, unknown>)))];
+          const { data: requisL } = await userClient.from("platform_category_aspects")
+            .select("category_key, field_key, field_label, allowed_values")
+            .eq("platform", "leboncoin").eq("required", true).eq("source", "server_400").in("category_key", cles);
+          const parCle = requisParCategorie((requisL ?? []) as Array<Record<string, unknown>>);
+          const aRetenirL = new Set<string>();
+          for (const j of aJugerL) {
+            const d = requisManquantsAvantRetrait(j as never, parCle);
+            if (!d) continue;
+            const pf = (j.platform_fields ?? {}) as Record<string, unknown>;
+            const q = questionAvantRetraitLbc(d.manquants, Number((pf.prevol_destination as Record<string, unknown> | undefined)?.tours ?? 0));
+            const pfEcrit: Record<string, unknown> = { ...pf };
+            delete pfEcrit.needsUserField;
+            delete pfEcrit.needsUserFields;
+            const { data: majL } = await userClient.from("cross_post_jobs")
+              .update({
+                status: "needs_user",
+                error: q.message,
+                platform_fields: {
+                  ...pfEcrit,
+                  ...(q.champ ? { needsUserField: q.champ } : {}),
+                  prevol_destination: {
+                    categorie: d.categorie, manquants: d.manquants.map((m) => m.key), tours: q.tours, redemande: q.redemande,
+                    le: new Date().toISOString(), source: "get-pending-jobs (requis Leboncoin prouvés, poste sans pré-vol de recréation)",
+                  },
+                },
+              })
+              .eq("id", j.id).eq("status", "pending").select("id");
+            aRetenirL.add(String(j.id));
+            console.log(
+              `[get-pending-jobs] republish leboncoin ${String(j.id).slice(0, 8)} NON SERVI à l'étape 'captured' : ` +
+              `requis prouvé « ${d.manquants.map((m) => m.key).join(", ")} » absent pour « ${d.categorie} » — needs_user, ANNONCE INTACTE` +
+              `${(majL ?? []).length ? "" : " (déjà sortie de pending)"}`,
+            );
+          }
+          if (aRetenirL.size) {
+            const avant = out.length;
+            out = out.filter((j) => !aRetenirL.has(String(j.id)));
+            heldRequisLbc = avant - out.length;
+          }
+        } catch (_e) { /* best-effort : en cas de pépin, comme avant ce bloc */ }
+      }
+    }
+
     // ══ UNE PLATEFORME QUI FIGE NE CONFISQUE PLUS LE POSTE (2026-09-25) ══════
     // MeMiniandMove : ses retraits Leboncoin/Beebs figeaient 30 à 60 min à
     // chaque cycle, passaient en tête (rang « delete » de l'extension) et les
@@ -6932,6 +7005,7 @@ serve(async (req) => {
       (heldRetrait0625 ? `, ${heldRetrait0625} republish retenu(s) (coupe-circuit retrait taille_par_id)` : "") +
       (isbnDeduits ? `, ${isbnDeduits} ISBN déduit(s) sans rien demander` : "") +
       (heldRequisDestination ? `, ${heldRequisDestination} republish → needs_user AVANT suppression (requis de la catégorie de destination introuvable)` : "") +
+      (heldRequisLbc ? `, ${heldRequisLbc} republish Leboncoin → needs_user AVANT retrait (requis prouvé absent, poste sans pré-vol de recréation)` : "") +
       (heldIsbnCapture ? `, ${heldIsbnCapture} republish retenu(s) AVANT suppression (ISBN capturé non standard)` : ""),
     );
 
@@ -10483,6 +10557,7 @@ serve(async (req) => {
       // arrêtées AVANT toute suppression faute d'un requis prouvé, et ISBN
       // retrouvés tout seuls (description/titre) plutôt que demandés.
       jobs_retenus_prevol_destination: heldRequisDestination,
+      jobs_retenus_prevol_leboncoin: heldRequisLbc,
       isbn_deduits: isbnDeduits,
       // sessions_pause (2026-09-10) : par plateforme connue morte, combien de
       // jobs attendent, depuis quelle observation, et quel job sert de sonde.
