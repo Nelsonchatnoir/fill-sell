@@ -8229,7 +8229,14 @@ export default function App({ loginOnly = false }){
             plus jamais la boutique d'unités. Zone tactile 44 px conservée.
           · topbar--solde et tabular-nums conservés (mêmes contraintes
             d'écran étroit que le solde d'hier). */}
+      {/* (11/10, Nico) Trois groupes : gauche (logo, compteur), centre (profit),
+          droite (palier, réglages). Les deux côtés ont la MÊME part de largeur
+          (.tb-left / .tb-right, App.css) : le centre tombe au milieu réel de
+          l'en-tête, donc au-dessus de l'onglet « Lens », quelle que soit la
+          largeur du compteur ou de la pastille. Avant, le centre se plaçait
+          entre ses deux voisins et glissait vers le plus étroit. */}
       <div className={quotas?.annonces?.plafond!=null?"topbar topbar--solde":"topbar"}>
+        <div className="tb-left">
         <BrandMark onClick={()=>{setTab(0);localStorage.setItem('tab','0');}}/>
         {quotas?.annonces?.plafond!=null&&(
           // (03/10, point 18) Business est la formule du haut : il n'y a pas
@@ -8257,7 +8264,8 @@ export default function App({ loginOnly = false }){
             </span>
           </button>
         )}
-        <div className="header-centre" style={{flex:1,textAlign:"center"}}>
+        </div>
+        <div className="header-centre" style={{textAlign:"center"}}>
           <div style={{fontSize:13,fontWeight:700,color:UI.ink,letterSpacing:"-0.02em",lineHeight:1}}>
             {fmt(tm.profit)}<span style={{opacity:0.55,fontSize:11,fontWeight:700}}> {t('profit')}</span>
           </div>

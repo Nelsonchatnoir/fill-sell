@@ -27,8 +27,10 @@ const TABS = [
 export function EnTete({ tm = { profit: 0, count: 0 }, isPro = true, badgePalier = false }) {
   return (
     <div className="topbar">
-      <BrandMark onClick={() => {}} />
-      <div className="header-centre" style={{ flex: 1, textAlign: 'center' }}>
+      <div className="tb-left">
+        <BrandMark onClick={() => {}} />
+      </div>
+      <div className="header-centre" style={{ textAlign: 'center' }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: UI.ink, letterSpacing: '-0.02em', lineHeight: 1 }}>
           {formatCurrency(tm.profit, 'EUR')}<span style={{ opacity: 0.55, fontSize: 11, fontWeight: 700 }}> profit</span>
         </div>

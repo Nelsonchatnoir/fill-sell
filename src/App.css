@@ -105,7 +105,14 @@ input, textarea, select { font-family: inherit; font-size: 16px; }
   transition: background 0.15s;
 }
 .tb-icon-btn-light:active { background: rgba(0,0,0,0.1); transform: scale(0.97); }
-.tb-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+/* (11/10, Nico) Gauche et droite prennent la MÊME part de l'en-tête
+   (flex 1 1 0) : le bloc du milieu (profit du mois) tombe au centre réel,
+   aligné sur l'onglet « Lens », même quand le compteur d'annonces est bien
+   plus large que la pastille de palier. Leur largeur minimale reste celle de
+   leur contenu : faute de place, le centre se décale, il ne chevauche jamais.
+   Avant, le centre (flex 1) se plaçait ENTRE ses voisins et glissait. */
+.tb-left { display: flex; align-items: center; gap: 10px; flex: 1 1 0; }
+.tb-right { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex: 1 1 0; }
 @media (max-width: 480px) {
   .topbar { padding-left: 12px; padding-right: 12px; }
   /* Compteur de quota affiché en en-tête (classe posée par App.jsx quand le
@@ -153,7 +160,7 @@ input, textarea, select { font-family: inherit; font-size: 16px; }
 .mobile-nav { display: none; }
 .bnav { display: none; }
 .header-stats { display: flex; }
-.header-centre { display: flex; flex-direction: column; align-items: center; }
+.header-centre { display: flex; flex-direction: column; align-items: center; flex: none; }
 .header-brand-text { display: inline; }
 .logo-desktop { display: block; }
 .logo-mobile { display: none; }
