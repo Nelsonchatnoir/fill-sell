@@ -122,10 +122,11 @@ function RequireAuth({ children }) {
   // les chemins de login (handleLogin, AuthCallback) — sinon navigate('/app')
   // l'avale. (Depuis le 2026-09-01, /extension est PUBLIQUE et ne passe plus
   // par ici — le mécanisme reste pour toute future route protégée listée dans
-  // postLoginRedirect.ALLOWED_TARGETS.)
+  // postLoginRedirect.ALLOWED_TARGETS.) (11/10) Le lien du mail « Vendu »
+  // (/app?ventes=a-decider) est la seule cible /app : la recherche voyage avec.
   useEffect(() => {
-    if (user === null) rememberPostLoginTarget(location.pathname);
-  }, [user, location.pathname]);
+    if (user === null) rememberPostLoginTarget(location.pathname, location.search);
+  }, [user, location.pathname, location.search]);
   if (user === undefined) return null;
   if (!user) return <Navigate to="/" replace state={{ from: location }} />;
   return children;

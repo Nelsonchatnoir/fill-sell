@@ -4813,7 +4813,16 @@ export default function App({ loginOnly = false }){
     if(!voulu)return;
     setTab(1);try{localStorage.setItem('tab','1');}catch{/* idem */}
     logTunnel('ventes_a_confirmer',{action:'lien_mail',n:ventesADecider.length});
-    setTimeout(()=>{document.getElementById(ANCRE_VENTES_A_CONFIRMER)?.scrollIntoView({behavior:'smooth',block:'start'});},400);
+    // (11/10) La liste arrive APRÈS le chargement (rpc lue avec le reste, sans
+    // l'attendre) : un seul essai à 400 ms tombait souvent avant elle. On
+    // attend qu'elle soit peinte — au plus 10 s, sans rien relire en base.
+    let essais=0;
+    const viser=()=>{
+      const el=document.getElementById(ANCRE_VENTES_A_CONFIRMER);
+      if(el){el.scrollIntoView({behavior:'smooth',block:'start'});return;}
+      if(++essais<40)setTimeout(viser,250);
+    };
+    setTimeout(viser,400);
   },[user?.id,loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // « Non, je l'ai retirée » : pas une vente. Le job est clos (l'annonce
@@ -6466,7 +6475,8 @@ export default function App({ loginOnly = false }){
         // Splash pendant le chargement des données — évite le flash d'app vide
         setAppLoading(true);
         await fetchAll(u.id);
-        navigate('/app');
+        // (11/10) Cible mémorisée par RequireAuth (lien du mail « Vendu ») : elle prime, une fois.
+        navigate(consumePostLoginTarget() ?? '/app');
       }
     } catch (e) {
       // FIX 2 : annulation silencieuse (code 1001 iOS ou USER_CANCELLED)
@@ -6554,7 +6564,7 @@ export default function App({ loginOnly = false }){
           setUser(data.session.user);
           setAppLoading(true); // splash pendant fetchAll, comme handleAppleSignIn
           await fetchAll(data.session.user.id);
-          navigate('/app');
+          navigate(consumePostLoginTarget() ?? '/app'); // (11/10) même règle que la connexion par e-mail
         }
       } catch (e) {
         console.error('OAuth deep link error:', e);

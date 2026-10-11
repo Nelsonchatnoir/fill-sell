@@ -6,6 +6,12 @@
 // destination (tous les chemins font navigate('/app') en dur). C'est le
 // maillon central de l'accroche : sans ça, l'écran de pitch ne sert à rien.
 //
+// (11/10) Le lien du mail « Vendu » (/app?ventes=a-decider) : ouvert
+// déconnecté, RequireAuth renvoyait vers « / » AVANT que l'app lise le
+// paramètre — après connexion on retombait sur /app, sans la liste « Ventes à
+// confirmer ». C'est la SEULE cible /app retenue, et seulement avec ce
+// paramètre-là : tout autre /app reste ignoré, comme avant.
+//
 // localStorage et non le state du routeur : le flux OAuth web (Google/Apple)
 // QUITTE le site et revient par /auth/callback — tout state React est perdu
 // en route. La cible survit aussi au détour par la landing (RequireAuth
@@ -16,12 +22,24 @@
 //  - TTL 30 min : pas de téléportation surprise vers /extension au login de
 //    la semaine suivante si la visite du lien n'a pas abouti sur le moment.
 const KEY = 'fs_next_after_login';
-const ALLOWED_TARGETS = ['/extension'];
+export const CIBLE_VENTES_A_DECIDER = '/app?ventes=a-decider';
+const ALLOWED_TARGETS = ['/extension', CIBLE_VENTES_A_DECIDER];
 const TTL_MS = 30 * 60 * 1000;
 
-export function rememberPostLoginTarget(path) {
-  if (!ALLOWED_TARGETS.includes(path)) return;
-  try { localStorage.setItem(KEY, JSON.stringify({ path, ts: Date.now() })); } catch { /* storage indisponible : le login retombera sur /app */ }
+// Chemin + recherche → cible de la liste fermée, ou null.
+export function cibleApresConnexion(path, search = '') {
+  if (path === '/app') {
+    try {
+      return new URLSearchParams(search || '').get('ventes') === 'a-decider' ? CIBLE_VENTES_A_DECIDER : null;
+    } catch { return null; }
+  }
+  return ALLOWED_TARGETS.includes(path) ? path : null;
+}
+
+export function rememberPostLoginTarget(path, search = '') {
+  const cible = cibleApresConnexion(path, search);
+  if (!cible) return;
+  try { localStorage.setItem(KEY, JSON.stringify({ path: cible, ts: Date.now() })); } catch { /* storage indisponible : le login retombera sur /app */ }
 }
 
 // Lit ET efface (consommation unique). null = rien à honorer → /app.
