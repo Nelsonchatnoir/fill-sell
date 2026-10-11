@@ -224,6 +224,7 @@
     "selftest:publication-boutique-vinted": "node scripts/publication-boutique-vinted-selftest.mjs",
     "selftest:quota-et-date-reelle": "node scripts/quota-et-date-reelle-selftest.mjs",
     "selftest:variables-definies": "node scripts/variables-definies-selftest.mjs",
+    "selftest:stock-ventes-en-entier": "node scripts/stock-ventes-en-entier-selftest.mjs",
     "selftest:texte-de-la-fiche": "node --import ./scripts/loader-ext.mjs scripts/texte-de-la-fiche-selftest.mjs",
     "selftest:marque-absente": "deno run --allow-read --allow-env --allow-net scripts/marque-absente-selftest.ts",
     "selftest:tailles-prefixe-age": "deno run --allow-read --allow-env --allow-net scripts/tailles-prefixe-age-selftest.ts",
@@ -285,6 +286,8 @@
     "selftest:beebs-age-republication": "node scripts/beebs-age-republication-selftest.mjs",
     "selftest:beebs-taille-nivake": "node scripts/beebs-taille-nivake-selftest.mjs",
     "selftest:question-marque": "node scripts/question-marque-selftest.mjs",
+    "selftest:couleur-auto": "node --import ./scripts/loader-ext.mjs scripts/couleur-auto-selftest.mjs",
+    "selftest:marque-sans-question": "node --import ./scripts/loader-ext.mjs scripts/marque-sans-question-selftest.mjs",
     "selftest:vinted-vendue-hors-ligne": "node --import ./scripts/loader-ext.mjs scripts/vinted-vendue-hors-ligne-selftest.mjs",
     "selftest:lbc-transporteurs-exacts": "node scripts/lbc-transporteurs-exacts-selftest.mjs",
     "selftest:colis-vinted-retenu": "node scripts/colis-vinted-retenu-selftest.mjs",
@@ -298,7 +301,13 @@
     "selftest:rattachement-avant-stock": "node scripts/rattachement-avant-stock-selftest.mjs",
     "selftest:synchroniser-repli-file": "node scripts/synchroniser-repli-file-selftest.mjs",
     "selftest:sonde-vinted-401": "node scripts/sonde-vinted-401-selftest.mjs",
-    "selftest:extension-0-6-107": "node scripts/extension-0-6-107-selftest.mjs"
+    "selftest:extension-0-6-107": "node scripts/extension-0-6-107-selftest.mjs",
+    "selftest:publication-boutique-avant-depot": "node scripts/publication-boutique-avant-depot-selftest.mjs",
+    "selftest:republication-404-boutique": "node scripts/republication-404-boutique-selftest.mjs",
+    "selftest:prevol-recreation-lbc-depop": "node scripts/prevol-recreation-lbc-depop-selftest.mjs",
+    "selftest:files-repartent": "node scripts/files-repartent-selftest.mjs",
+    "selftest:republication-requis-avant-retrait": "node scripts/republication-requis-avant-retrait-selftest.mjs",
+    "selftest:vinted-couleur-marque-filet": "node scripts/vinted-couleur-marque-filet-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
