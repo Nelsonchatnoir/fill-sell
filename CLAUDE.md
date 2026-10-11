@@ -4,11 +4,24 @@
 « 03/10 nuit — clôture Louis + marque + prix » et « 04/10 matin —
 complément », « 04/10 fin de matinée — chantier Louis », « 04/10 soir —
 incident CPU », « 04/10 nuit — six défauts clients » et « 05/10 — lot
-terminal Problèmes » / « 05/10 après-midi » / « 06/10 » / « 06/10 soir » / « 06/10 nuit » / « 08/10 nuit — MULTI-SYNCHRO » / « 08/10 matin — boucles » / « 08/10 fin de matinée — SUJET CLOS » / « 08/10 après-midi — complément » / « 08/10 soir — fin du chantier multi-synchro » / « 08/10 nuit — Bebertdeals : remise en ligne Vinted » / « 08/10 nuit — VENTES PROUVÉES » / « 09/10 nuit — DEPOP » / « 09/10 fin de matinée — DEPOP : reprise complète » / « 11/10 — une vente signalée une fois » / « 11/10 midi — LOT UNIQUE » / « 11/10 après-midi — POIDS LEBONCOIN » / « 11/10 fin d'après-midi — BOUTIQUE, ANCIENNETÉ, QUOTA » / « 11/10 soir — LOT DE DIX POINTS » / « 11/10 nuit — LOT LOUIS (fin) » / « 11/10 nuit — DEPOP COMME OPLA » en fin ; reprises : `docs/reprise/terminal-depop-0910.md`, `docs/reprise/terminal-ventes-prouvees-0810.md`, `docs/reprise/terminal-bebertdeals-0810.md`, `docs/reprise/terminal-boucles-0810.md`, `docs/reprise/terminal-cloture-multi-synchro-0810.md`, `docs/reprise/terminal-complement-0810.md`, `docs/reprise/terminal-fin-multi-synchro-0810.md`) et
+terminal Problèmes » / « 05/10 après-midi » / « 06/10 » / « 06/10 soir » / « 06/10 nuit » / « 08/10 nuit — MULTI-SYNCHRO » / « 08/10 matin — boucles » / « 08/10 fin de matinée — SUJET CLOS » / « 08/10 après-midi — complément » / « 08/10 soir — fin du chantier multi-synchro » / « 08/10 nuit — Bebertdeals : remise en ligne Vinted » / « 08/10 nuit — VENTES PROUVÉES » / « 09/10 nuit — DEPOP » / « 09/10 fin de matinée — DEPOP : reprise complète » / « 11/10 — une vente signalée une fois » / « 11/10 midi — LOT UNIQUE » / « 11/10 après-midi — POIDS LEBONCOIN » / « 11/10 fin d'après-midi — BOUTIQUE, ANCIENNETÉ, QUOTA » / « 11/10 soir — LOT DE DIX POINTS » / « 11/10 nuit — LOT LOUIS (fin) » / « 11/10 nuit — DEPOP COMME OPLA » / « 12/10 nuit — CLÔTURE » en fin ; reprises : `docs/reprise/terminal-depop-0910.md`, `docs/reprise/terminal-ventes-prouvees-0810.md`, `docs/reprise/terminal-bebertdeals-0810.md`, `docs/reprise/terminal-boucles-0810.md`, `docs/reprise/terminal-cloture-multi-synchro-0810.md`, `docs/reprise/terminal-complement-0810.md`, `docs/reprise/terminal-fin-multi-synchro-0810.md`) et
 `docs/agents/consignes-2026-09-28.md` (règles), qui remplacent tout historique
 contraire. Il se périme : `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
 
+- **⛔ 12/10 nuit — CLÔTURE (A1 → A11, Morgane)** — rapport `docs/enquetes/cloture-1210/RAPPORT.md` : plus de plafond à 20
+  (seule limite le quota, dit avant de lancer ; lot réel de 21 sur Depop) et vrai bouton « Choisir des articles à publier » ;
+  ⛔ **un rayon que la plateforme n'accepte plus est choisi par le moteur** (`_shared/rayon-refuse-moteur.js`, feuilles seulement,
+  handler-watch débloque les jobs en pause — l'Horloge de Louis est repartie seule) ; disjoncteur = échec DU COMPTE seul
+  (mig **20261012090000 APPLIQUÉE**) ; remise en ligne ratée : sortie de file, ou protection DITE si la cause est le compte ;
+  ⛔ **jamais un retrait d'article vendu en silence** (murs « boutique » nommée / « ordinateur », bandeau prioritaire) ;
+  roue visible 320 → 1920 ; ⛔ **chaque notification Apple/Google a sa décision** (`_shared/notifications-stores.js`,
+  journal `stores_notifications_journal` mig **20261012100000 APPLIQUÉE**, borné à 2 s, JAMAIS bloquant ; inconnu = alerte ;
+  Ciddjy réparé) ; compteur Depop du popup (serveur) ; champs Leboncoin remplis seuls, jamais une question sans choix ;
+  « noël » n'est pas un objet ; ⛔ **un livre ne part jamais sur Vinted sans ISBN, ni sans le dire** (`vintedExigeUnIsbn`,
+  ISBN lu sur les photos `_shared/isbn-ia.ts`, « Ce livre n'a pas d'ISBN ») ; eBay « compte à finir » = lien direct.
+  gpj **v241**, hw **v102**, gl **v117**, rc **v15**, worker **v85**, webhooks Apple **v37** / Google **v28** ;
+  OTA **2.9.86** ; push `0a1ff78` ; extension INCHANGÉE : **0.6.110 BONNE À TÉLÉVERSER**. Selftests 285/285.
 - **⛔ 11/10 nuit — DEPOP COMME OPLA** — rapport `docs/enquetes/depop-comme-opla-1110/RAPPORT.md` : ⛔ **jamais de
   file silencieuse** — trace `extension_postes[…].depop_acces` (gpj), « Autoriser Depop » posé par handler-watch
   (`_shared/acces-depop.js` : 15 min avec un poste sans accès, 1 h sans aucun poste autorisé, jamais si un poste
@@ -233,12 +246,12 @@ contraire. Il se périme : `functions list`, `cron.job` et
   BUILD_ID 2026-10-08T23:39:13Z+8f88cdd) ; 0.6.102 servie avant (b230ebe) ;
   **0.6.103 JAMAIS téléversée** ; jamais
   d'EXTENSION_MIN_BUILD sans décision de Nico ; **minimum serveur 0.6.81** (inchangé : forcer la MAJ = décision de
-  Nico) ; web et OTA **2.9.85** (11/10 nuit, build `2026-10-11T17:44:00Z+9ffb9ef`) ; `get-pending-jobs` v239 (11/10 nuit, Depop) ; avant : v237 (11/10 soir ; v231 le 10/10 : créneaux = liste du serveur + republication auto Depop), `photo-empreinte` v3,
-  `generate-listing` v116 (11/10 soir, `resolve_couleur`), `lens-analysis` v107, `avis-demande` v4,
+  Nico) ; web et OTA **2.9.86** (12/10 nuit, build `2026-10-11T20:26:41Z+0a1ff78`) ; `get-pending-jobs` v241 (12/10 nuit, ISBN) ; avant : v239 (11/10 nuit, Depop), v237 (11/10 soir ; v231 le 10/10 : créneaux = liste du serveur + republication auto Depop), `photo-empreinte` v3,
+  `generate-listing` v117 (12/10 nuit, `resolve_isbn`), `lens-analysis` v107, `avis-demande` v4,
   `deal-analysis` v42, `voice-transcribe` v46,
   `ebay-account` v16, `send-extension-link` v13 (`true`) ;
-  `rapprochement` v19 (11/10 nuit), `empreintes-urls` v5, `update-job-status` v134, `handler-watch` v99, `resolve-categorie` v14, `push-ventes` v10, `check-listing-status` v37, `voice-intent` v155, `ops-digest` v35,
-  `ebay-api-worker` v84 (11/10 : action `reviser_annonce` rayon_regle, à la main), `ebay-releve-api` v4, `releve-completer` v2,
+  `rapprochement` v19 (11/10 nuit), `empreintes-urls` v5, `update-job-status` v134, `handler-watch` v102, `resolve-categorie` v15, `push-ventes` v10, `check-listing-status` v37, `voice-intent` v155, `ops-digest` v35,
+  `ebay-api-worker` v85 (12/10 : lien « compte à finir »), `ebay-releve-api` v4, `releve-completer` v2,
   `veille-cpu` v2, `ebay-ventes-sync` v5, `ebay-oauth-callback` v10, `ebay-notifications` v5,
   `email-tunnel` v72 et `stripe-webhook` v57 (`false`) ; migrations
   20261008020000 / 030000 / 040000 (multi-synchro) appliquées — ⚠️ depuis le 05/10 15:55,
