@@ -29,7 +29,8 @@ assert.doesNotMatch(gpj, /avait été deviné, pas lu/, "plus de message faux su
 // 2bis. Et le PRIX de l'annonce en ligne (10 €), pas celui de la tâche du 19/09 (12 €).
 assert.match(gpj, /UNE REPUBLICATION REMET L'ANNONCE AU PRIX OÙ ELLE EST/);
 assert.ok(gpj.includes(`pfP(j)["prix_republication"] == null`), "un prix de republication choisi par la personne prime");
-assert.ok(gpj.includes(`.update({ price: enLigne, platform_fields: pf })`), "le prix relevé de l'annonce est posé sur la tâche");
+// (11/10, A3) l'écriture passe par pfAPersister : une copie SERVIE n'est jamais figée en base.
+assert.ok(gpj.includes(`.update({ price: enLigne, platform_fields: pfAPersister(pf) })`), "le prix relevé de l'annonce est posé sur la tâche");
 assert.ok(gpj.includes(`["beebs", "leboncoin", "ebay", "opla"].includes(String(j.platform))`), "Vinted garde sa copie par capture complète");
 
 // 2ter. (03/10 nuit, nivake03) La TAILLE affichée par l'annonce l'emporte

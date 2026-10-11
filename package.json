@@ -181,6 +181,7 @@
     "selftest:publier-depuis-stock": "node scripts/publier-depuis-stock-selftest.mjs",
     "selftest:declencheurs-droits": "node scripts/declencheurs-droits-selftest.mjs",
     "selftest:opla-plus-rien": "node scripts/opla-plus-rien-selftest.mjs",
+    "selftest:republication-retenue-dite": "node scripts/republication-retenue-dite-selftest.mjs",
     "selftest:ventes-relevees-identifiant-seul": "node scripts/ventes-relevees-identifiant-seul-selftest.mjs",
     "selftest:une-vente-par-article": "node scripts/une-vente-par-article-selftest.mjs",
     "selftest:ebay-commande-exemplaire": "node scripts/ebay-commande-exemplaire-selftest.mjs",

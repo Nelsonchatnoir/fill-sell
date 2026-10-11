@@ -293,6 +293,35 @@ function versionAuMoins(a: string, b: string): boolean {
 // ⛔ JAMAIS DE VALEUR DE COMPLAISANCE : un champ absent de la capture reste
 //    absent ici. Une capture réellement incomplète doit continuer à bloquer le
 //    retrait — c'est ce que la garde existe pour faire.
+// ── CE QUI EST SERVI NE S'ÉCRIT PAS (11/10, A3, jonathanrabany) ─────────────
+// La copie d'annonce ci-dessous est servie EN MÉMOIRE seulement (le job n'en
+// avait pas). Une écriture de ce même passage (mise de côté, attente…)
+// repartait de la version SERVIE et la figeait en base : 8 republications
+// portaient une copie « servi_par_le_serveur », les seules du parc. Toute
+// écriture de platform_fields après le service passe par ici : la copie
+// servie et sa trace en sont retirées (le job n'avait rien, il ne garde rien).
+// Sans copie servie, rien ne change.
+function pfAPersister(pf: Record<string, unknown>): Record<string, unknown> {
+  if (!pf || typeof pf !== "object" || !("republish_copie_servie" in pf)) return pf;
+  const p: Record<string, unknown> = { ...pf };
+  delete p["republish_copie_servie"];
+  const snap = p["republish_snapshot"] as Record<string, unknown> | null | undefined;
+  if (snap && typeof snap === "object" && snap["servi_par_le_serveur"] === true) delete p["republish_snapshot"];
+  return p;
+}
+
+// ── UNE REPUBLICATION RETENUE PAR UNE ANNONCE HORS LIGNE (11/10, A3) ────────
+// Le texte est celui de l'extension 0.6.107 (retenirDerriereAnnonceHorsLigne),
+// plus, quand Vinted restreint les mises en vente du compte (relevé sur la
+// republication qui retient, error_technique « /selling-restriction »), ce
+// que la personne doit savoir — jamais « rien à faire ».
+function messageRetenueHorsLigne(titre: string, restriction: boolean): string {
+  const t = titre ? `ton annonce « ${titre} »` : "ton annonce retirée";
+  return `En attente : ${t} a été retirée et n'est pas encore revenue en ligne. ` +
+    "Les autres republications attendent sa remise en ligne, pour ne jamais laisser deux annonces hors ligne. Rien n'a été retiré." +
+    (restriction ? " Vinted a restreint les mises en vente de ton compte : ouvre vinted.fr pour voir ce que Vinted demande ; tout repartira seul une fois la restriction levée." : "");
+}
+
 function copieRepublishDepuisCapture(
   pf: Record<string, unknown>,
   cap: Record<string, unknown>,
@@ -8242,7 +8271,7 @@ serve(async (req) => {
           };
           delete pfNu.processing_since;
           const { data: maj, error: uErr } = await userClient.from("cross_post_jobs")
-            .update({ status: "needs_user", error: message, platform_fields: pfNu })
+            .update({ status: "needs_user", error: message, platform_fields: pfAPersister(pfNu) })
             .eq("id", j.id as string).eq("status", "pending").select("id");
           if (uErr) {
             console.warn(`[get-pending-jobs] Vinted ${String(j.id).slice(0, 8)} : question « ${libelles.join(", ")} » non écrite (${uErr.message}) — servi tel quel`);
@@ -8330,7 +8359,7 @@ serve(async (req) => {
             const actuel = Number(j.price);
             if (enLigne == null || (Number.isFinite(actuel) && Math.abs(actuel - enLigne) < 0.005)) continue;
             const pf = { ...pfP(j), prix_repris_de_l_annonce: { avant: Number.isFinite(actuel) ? actuel : null, apres: enLigne, source: "relevé de l'annonce en ligne", le: new Date().toISOString(), pose_par: "get-pending-jobs" } };
-            const { error: pErr } = await userClient.from("cross_post_jobs").update({ price: enLigne, platform_fields: pf }).eq("id", j.id as string);
+            const { error: pErr } = await userClient.from("cross_post_jobs").update({ price: enLigne, platform_fields: pfAPersister(pf) }).eq("id", j.id as string);
             if (pErr) { console.warn(`[get-pending-jobs] prix de republication ${String(j.id).slice(0, 8)} non repris (${pErr.message})`); continue; }
             (j as Record<string, unknown>).price = enLigne;
             (j as Record<string, unknown>).platform_fields = pf;
@@ -8458,7 +8487,7 @@ serve(async (req) => {
             };
             delete pfNu.processing_since;
             const { data: maj, error: uErr } = await userClient.from("cross_post_jobs")
-              .update({ status: "needs_user", error: message, platform_fields: pfNu })
+              .update({ status: "needs_user", error: message, platform_fields: pfAPersister(pfNu) })
               .eq("id", j.id as string).eq("status", "pending").select("id");
             if (uErr) {
               console.warn(`[get-pending-jobs] ${j.platform} ${String(j.id).slice(0, 8)} : question « ${champ.field_label} » non écrite (${uErr.message}) — servi tel quel`);
@@ -8516,7 +8545,7 @@ serve(async (req) => {
           delete pfNu.processing_since;
           aRetenir.add(String(j.id)); // Une panne d'écriture ne doit pas autoriser ce dépôt.
           const { data: maj, error: uErr } = await userClient.from("cross_post_jobs")
-            .update({ status: "needs_user", error: message, platform_fields: pfNu })
+            .update({ status: "needs_user", error: message, platform_fields: pfAPersister(pfNu) })
             .eq("id", j.id as string).eq("status", "pending").select("id");
           if (uErr) {
             console.warn(`[get-pending-jobs] leboncoin ${String(j.id).slice(0, 8)} : question non enregistrée (${uErr.message}) — dépôt retenu`);
@@ -9700,7 +9729,7 @@ serve(async (req) => {
                   pfNeuf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error, "pending", "get-pending-jobs (pause anti-robot du compte)");
                 }
                 const { error: wErr } = await userClient.from("cross_post_jobs")
-                  .update({ error: ANTIROBOT_COMPTE_MSG, platform_fields: pfNeuf })
+                  .update({ error: ANTIROBOT_COMPTE_MSG, platform_fields: pfAPersister(pfNeuf) })
                   .eq("id", j.id as string).eq("status", "pending");
                 if (wErr) console.warn(`[get-pending-jobs] pause anti-robot : message non posé sur ${String(j.id).slice(0, 8)} (${wErr.message})`);
               }
@@ -9719,7 +9748,7 @@ serve(async (req) => {
                     mur_geste: { type: "verification_antirobot", le: new Date().toISOString(), depuis: depuisAr, pause_compte: true } };
                   delete pfG.next_action_after; delete pfG.processing_since;
                   const { data: maj } = await userClient.from("cross_post_jobs")
-                    .update({ status: "needs_user", error: messagePauseVintedGeste(), platform_fields: pfG })
+                    .update({ status: "needs_user", error: messagePauseVintedGeste(), platform_fields: pfAPersister(pfG) })
                     .eq("id", j.id as string).eq("status", "pending").select("id");
                   n += (maj ?? []).length;
                 }
@@ -9756,7 +9785,7 @@ serve(async (req) => {
             pfNeuf.antirobot_pause_levee_le = new Date().toISOString();
             delete pfNeuf.attente_antirobot_compte;
             const { error: wErr } = await userClient.from("cross_post_jobs")
-              .update({ ...(j.error === ANTIROBOT_COMPTE_MSG ? { error: null } : {}), platform_fields: pfNeuf })
+              .update({ ...(j.error === ANTIROBOT_COMPTE_MSG ? { error: null } : {}), platform_fields: pfAPersister(pfNeuf) })
               .eq("id", j.id as string).eq("status", "pending");
             if (wErr) console.warn(`[get-pending-jobs] pause anti-robot levée : marqueur non retiré sur ${String(j.id).slice(0, 8)} (${wErr.message})`);
           }
@@ -9955,7 +9984,7 @@ serve(async (req) => {
             pf.needs_user_source = "ebay_compte_chrome";
             pf.ebay_compte_chrome = { relie: ident.relie, chrome: ident.chrome ?? null, le: new Date().toISOString() };
             await admin.from("cross_post_jobs")
-              .update({ status: "needs_user", error: message, platform_fields: pf })
+              .update({ status: "needs_user", error: message, platform_fields: pfAPersister(pf) })
               .eq("id", j.id).eq("status", "pending");
           }
           out = out.filter((j) => j.platform !== "ebay");
@@ -10001,6 +10030,66 @@ serve(async (req) => {
       out = out.filter((j) => PLATEFORMES_POSTE_CLOUD.includes(String(j.platform)));
     }
 
+    // ══ (11/10, A3) UNE TÂCHE SERVIE EST DÉMARRABLE — OU RETENUE ET DITE ══════
+    // jonathanrabany : 8 republications Vinted à l'étape 'captured' servies 61
+    // fois, jamais démarrées, puis « mises de côté » avec un faux motif
+    // (« ferme Chrome »). L'extension les sautait EN SILENCE : l'invariant « une
+    // seule annonce hors ligne à la fois, par plateforme » (background.js,
+    // étape 'captured', Vinted et LBC/Beebs/Depop) refuse tout retrait tant
+    // qu'une AUTRE republication du compte, sur la même plateforme, est à
+    // l'étape 'deleted' (annonce retirée, pas encore recréée — ici : Vinted
+    // restreint les mises en vente du compte depuis le 07/10).
+    // Règle, toutes versions d'extension : une telle republication n'est PAS
+    // servie ; elle reste en file, avec son motif écrit UNE fois
+    // (retenue_hors_ligne) et sa réservation remise à zéro — jamais servie 60
+    // fois en silence, jamais mise de côté à tort. Elle repart seule dès que
+    // l'annonce retirée est revenue (le frère quitte l'étape 'deleted').
+    // Même lecture que l'extension (même plateforme, statut pending/processing,
+    // étape 'deleted') ; illisible → on sert comme avant (l'extension garde sa
+    // garde, échec fermé).
+    if (!includeProcessing && !includeNeedsUser && out.some((j) => j.action === "republish"
+      && String(((j.platform_fields as Record<string, unknown> | null) ?? {})["republish_step"] ?? "") === "captured")) {
+      try {
+        const adminR = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        const { data: horsLigne, error: hErr } = await adminR.from("cross_post_jobs")
+          .select("id, platform, title, platform_fields")
+          .eq("user_id", user.id).eq("action", "republish").in("status", ["pending", "processing"])
+          .eq("platform_fields->>republish_step", "deleted")
+          .order("created_at", { ascending: true }).limit(50);
+        if (!hErr && (horsLigne ?? []).length) {
+          const retenus = new Set<string>();
+          for (const j of out) {
+            const pfJ = (j.platform_fields as Record<string, unknown> | null) ?? {};
+            if (j.action !== "republish" || String(pfJ["republish_step"] ?? "") !== "captured") continue;
+            const frere = ((horsLigne ?? []) as Array<Record<string, unknown>>)
+              .find((h) => String(h["platform"]) === String(j.platform) && String(h["id"]) !== String(j.id));
+            if (!frere) continue;
+            retenus.add(String(j.id));
+            const prec = pfJ["retenue_hors_ligne"] as Record<string, unknown> | null | undefined;
+            if (prec && typeof prec === "object" && String(prec["job"] ?? "") === String(frere["id"])) continue; // déjà dit
+            const titre = String(frere["title"] ?? "").split("\n")[0].replace(/\s+/g, " ").trim().slice(0, 80);
+            const pfF = (frere["platform_fields"] as Record<string, unknown> | null) ?? {};
+            const restriction = /selling-restriction/.test(JSON.stringify(pfF["error_technique"] ?? "") + String(pfF["last_diagnostic"] ? JSON.stringify(pfF["last_diagnostic"]) : ""));
+            const pfW: Record<string, unknown> = { ...pfAPersister(pfJ) };
+            pfW["retenue_hors_ligne"] = { job: frere["id"], titre: titre || null, depuis: new Date().toISOString(), pose_par: "get-pending-jobs", ...(restriction ? { restriction_vinted: true } : {}) };
+            if (j.error && String(j.error) !== messageRetenueHorsLigne(titre, restriction)) {
+              pfW["erreurs_archivees"] = archiverErreur(pfW["erreurs_archivees"], j.error, "pending", "get-pending-jobs (republication retenue par une annonce hors ligne)");
+            }
+            const { data: majR } = await adminR.from("cross_post_jobs")
+              .update({ error: messageRetenueHorsLigne(titre, restriction), platform_fields: pfW })
+              .eq("id", j.id as string).eq("status", "pending").select("id");
+            if ((majR ?? []).length) {
+              await adminR.from("jobs_reservations_extension").delete().eq("job_id", String(j.id));
+              console.log(`[get-pending-jobs] userId=${user.id} : republication ${String(j.id).slice(0, 8)} (${j.platform}) retenue — l'annonce du job ${String(frere["id"]).slice(0, 8)} est hors ligne${restriction ? " (restriction Vinted)" : ""} ; motif écrit, rien servi`);
+            }
+          }
+          if (retenus.size) out = out.filter((j) => !retenus.has(String(j.id)));
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] retenue « une annonce hors ligne » : ${String((e as Error)?.message ?? e)} — file servie telle quelle`);
+      }
+    }
+
     // Point C : seule la file d'exécution réserve. Le popup reste une lecture.
     // Même forme de réponse pour 0.6.69, 0.6.75 et les versions antérieures.
     if (!includeProcessing && !includeNeedsUser && out.length) {
@@ -10032,7 +10121,7 @@ serve(async (req) => {
               const pfD = { ...((j.platform_fields as Record<string, unknown> | null) ?? {}) };
               pfD.next_action_after = new Date(Date.now() + 30 * 60_000).toISOString();
               pfD.tache_sans_demarrage = { servie_n: Number(resa!.servi_n), depuis: String(resa!.premier_service), le: new Date().toISOString(), pose_par: "get-pending-jobs (retrait espacé, jamais mis de côté)" };
-              const { data: majD } = await admin.from("cross_post_jobs").update({ platform_fields: pfD })
+              const { data: majD } = await admin.from("cross_post_jobs").update({ platform_fields: pfAPersister(pfD) })
                 .eq("id", j.id as string).eq("status", "pending").select("id");
               if (majD?.length) deCote.add(String(j.id));
               continue;
@@ -10044,7 +10133,7 @@ serve(async (req) => {
               le: new Date().toISOString(), pose_par: "get-pending-jobs",
             };
             const { data: maj } = await admin.from("cross_post_jobs")
-              .update({ status: "needs_user", error: messageTacheSansDemarrage(j, resa), platform_fields: pf })
+              .update({ status: "needs_user", error: messageTacheSansDemarrage(j, resa), platform_fields: pfAPersister(pf) })
               .eq("id", j.id as string).eq("status", "pending").select("id");
             if (maj?.length) {
               deCote.add(String(j.id));

@@ -50,7 +50,7 @@ ok(/ADD COLUMN IF NOT EXISTS servi_n integer NOT NULL DEFAULT 1/.test(mig) && /A
 ok(/IF r\.poste=p_poste THEN\s+-- \(03\/10\)[^\n]*\n\s+UPDATE jobs_reservations_extension SET servi_n=servi_n\+1 WHERE job_id=v_id;/.test(mig), "même poste, réservation non commencée : compté");
 ok(/servi_n=CASE WHEN jobs_reservations_extension\.poste=EXCLUDED\.poste AND NOT jobs_reservations_extension\.commence\s+THEN jobs_reservations_extension\.servi_n\+1 ELSE 1 END/.test(mig), "réservation renouvelée : le compte continue sur le même poste, repart sinon");
 const gpj = lire("supabase/functions/get-pending-jobs/index.ts");
-ok(/if \(!tacheAMettreDeCote\(j, resa\)\) continue;/.test(gpj) && /\.update\(\{ status: "needs_user", error: messageTacheSansDemarrage\(j, resa\), platform_fields: pf \}\)\s+\.eq\("id", j\.id as string\)\.eq\("status", "pending"\)/.test(gpj),
+ok(/if \(!tacheAMettreDeCote\(j, resa\)\) continue;/.test(gpj) && /\.update\(\{ status: "needs_user", error: messageTacheSansDemarrage\(j, resa\), platform_fields: (?:pfAPersister\(pf\)|pf) \}\)\s+\.eq\("id", j\.id as string\)\.eq\("status", "pending"\)/.test(gpj),
   "get-pending-jobs : mise de côté conditionnelle, la file servie sans elle");
 const stock = lire("src/tabs/StockTab.jsx");
 ok(/'tache_sans_demarrage',\s*\n\];/.test(stock) && /delete pf\.tache_sans_demarrage;/.test(stock), "app : la relance la remet en file");
