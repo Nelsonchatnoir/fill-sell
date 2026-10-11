@@ -66,8 +66,8 @@ export default function VentesADecider({ lang, devise = '€', ventes = [], enCo
           {fr ? `Ventes à confirmer (${ventes.length})` : `Sales to confirm (${ventes.length})`}
         </div>
         <div style={{ fontSize: 12.5, color: P.mute2, lineHeight: 1.5, marginTop: 2 }}>
-          {fr ? 'Ces ventes ont été vues sur la plateforme. Confirme le prix : la vente est enregistrée et tu choisis de remettre l’article en vente ou non.'
-              : 'These sales were seen on the marketplace. Confirm the price: the sale is recorded and you choose whether to list the item again.'}
+          {fr ? 'Ces ventes ont été vues sur la plateforme. Confirme le prix : dans les deux cas la vente est enregistrée et ton stock baisse d’une unité. « Remettre en vente » republie la même annonce ; « Ne pas remettre » garde le stock sans nouvelle annonce.'
+              : 'These sales were seen on the marketplace. Confirm the price: either way the sale is recorded and your stock drops by one. “List again” republishes the same listing; “Don’t list again” keeps the stock without a new listing.'}
         </div>
       </div>
 
@@ -87,7 +87,7 @@ export default function VentesADecider({ lang, devise = '€', ventes = [], enCo
               <strong>{fr ? `Vendue sur ${plat}` : `Sold on ${plat}`}</strong>
               {' — '}« {v.titre || (fr ? 'Article' : 'Item')} »
               <div style={{ fontSize: 12.5, color: P.mute2 }}>
-                {fr ? `Vue ${quand(v.detectee_le, fr)}` : `Seen ${quand(v.detectee_le, fr)}`}
+                {fr ? `Signalée ${quand(v.detectee_le, fr)}` : `Reported ${quand(v.detectee_le, fr)}`}
                 {reste > 0 && (fr ? ` · il t’en restera ${reste.toLocaleString('fr-FR')}` : ` · ${reste.toLocaleString('en-GB')} left after this sale`)}
                 {v.listing_url && (
                   <> · <a href={v.listing_url} target="_blank" rel="noreferrer" style={{ color: P.tealDeep, fontWeight: 600 }}>
@@ -119,12 +119,6 @@ export default function VentesADecider({ lang, devise = '€', ventes = [], enCo
                 </button>
               )}
             </div>
-            {reste > 0 && (
-              <div style={{ fontSize: 11.5, color: P.mute, lineHeight: 1.5 }}>
-                {fr ? `Dans les deux cas la vente est enregistrée et ton stock baisse d’une unité. « Remettre en vente » republie la même annonce sur ${plat} ; « Ne pas remettre » garde le stock sans nouvelle annonce.`
-                    : `Either way the sale is recorded and your stock drops by one. “List again” republishes the same listing on ${plat}; “Don’t list again” keeps the stock without a new listing.`}
-              </div>
-            )}
           </div>
         );
       })}
