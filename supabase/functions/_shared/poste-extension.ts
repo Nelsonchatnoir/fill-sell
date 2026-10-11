@@ -32,6 +32,11 @@ export type Poste = {
   preuve_opla_cherchee_le?: string; // (24/09) dernière recherche de preuve pour ce poste (au plus 1 / 10 min)
   navigateur?: string | null;     // (09/10, Marta) navigateur du poste, lu sur le User-Agent (_shared/navigateur-poste.js)
   pays?: string | null;           // (09/10) pays du réseau du poste (cf-ipcountry)
+  // (11/10) Depop, comme Opla : la permission d'hôte www.depop.com de CE poste,
+  // déclarée à chaque poll (« depop_acces » / « sans_depop », extension ≥ 0.6.105).
+  depop_acces?: boolean | null;
+  depop_acces_le?: string;
+  rearme_depop_le?: string;       // dernière relance des jobs « Autoriser Depop » faite pour ce poste
 };
 
 export const POSTE_TTL_MS = 48 * 3600_000;
@@ -73,13 +78,13 @@ export function postesVivants(brut: unknown, maintenant = Date.now()): Record<st
 
 type Options = { saufSession?: string | null; depuisMs?: number; maintenant?: number };
 
-function chercher(postes: Record<string, Poste>, acces: boolean, o: Options): { session: string; le: string } | null {
+function chercher(postes: Record<string, Poste>, acces: boolean, o: Options, cle: "opla_acces" | "depop_acces" = "opla_acces"): { session: string; le: string } | null {
   const maintenant = o.maintenant ?? Date.now();
   const depuis = o.depuisMs ?? POSTE_FRAIS_MS;
   let meilleur: { session: string; le: string } | null = null;
   for (const [sid, p] of Object.entries(postes)) {
     if (o.saufSession && sid === o.saufSession) continue;
-    if (p.opla_acces !== acces) continue;
+    if (p[cle] !== acces) continue;
     const le = Date.parse(String(p.le ?? ""));
     if (!Number.isFinite(le) || maintenant - le > depuis) continue;
     if (!meilleur || le > Date.parse(meilleur.le)) meilleur = { session: sid, le: String(p.le) };
@@ -95,6 +100,16 @@ export function posteAvecAccesOpla(postes: Record<string, Poste>, o: Options = {
 /** Un poste dont l'ABSENCE d'accès Opla est connue et vu depuis `depuisMs`. */
 export function posteSansAccesOpla(postes: Record<string, Poste>, o: Options = {}) {
   return chercher(postes, false, o);
+}
+
+/** (11/10) Un poste (autre que `saufSession`) dont l'accès DEPOP est prouvé et vu depuis `depuisMs`. */
+export function posteAvecAccesDepop(postes: Record<string, Poste>, o: Options = {}) {
+  return chercher(postes, true, o, "depop_acces");
+}
+
+/** (11/10) Un poste dont l'ABSENCE d'accès Depop est connue (« sans_depop ») et vu depuis `depuisMs`. */
+export function posteSansAccesDepop(postes: Record<string, Poste>, o: Options = {}) {
+  return chercher(postes, false, o, "depop_acces");
 }
 
 /** Pour les journaux : les 8 premiers caractères, jamais la session entière. */

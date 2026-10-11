@@ -12,7 +12,10 @@ import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
 import { ETATS_VINTED, langueVintedDuJob, paysDeLaLangue, PAYS_VINTED_EURO, type LangueVinted } from "../_shared/vinted-pays.ts";
 import { navigateurDeUA, paysDeEntete, vintedEtranger } from "../_shared/navigateur-poste.js";
 import { vintedIdsPourPublication } from "../_shared/vinted-ids-publication.ts";
-import { sessionIdDuJwt, identifiantPosteExtension, postesVivants, posteCourt, posteAvecAccesOpla, POSTE_TTL_MS, type Poste } from "../_shared/poste-extension.ts";
+import { sessionIdDuJwt, identifiantPosteExtension, postesVivants, posteCourt, posteAvecAccesOpla, posteAvecAccesDepop, POSTE_TTL_MS, type Poste } from "../_shared/poste-extension.ts";
+import { CLES_RELANCE_DEPOP } from "../_shared/acces-depop.js";
+import { rayonDepopAJour, reponseRayonDepop } from "../_shared/depop-rayon.js";
+import { appliquerRayonDepop } from "../../../src/utils/depopPublication.js";
 import { preuveAccesOpla } from "../_shared/preuve-opla.ts";
 // (25/09) Ce que Vinted exige quel que soit le catalogue — la MÊME règle que le
 // stepper (moteur/listes.js la ré-exporte) — et sa palette de couleurs (module
@@ -402,6 +405,36 @@ async function rearmerJobsOplaParques(admin: any, userId: string, sessionId: str
     if (j.error) {
       pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error, "needs_user",
         "get-pending-jobs → pending (poste avec accès Opla en ligne)");
+    }
+    const { error } = await admin.from("cross_post_jobs")
+      .update({ status: "pending", error: null, platform_fields: pf })
+      .eq("id", j.id).eq("status", "needs_user");
+    if (!error) n++;
+  }
+  return n;
+}
+
+// ── (11/10) LES JOBS « AUTORISER DEPOP » REPARTENT QUAND UN POSTE AUTORISÉ POLLE
+// Même patron que rearmerJobsOplaParques : un par un, compare-and-swap sur le
+// statut, erreur archivée. Le marqueur `depop_acces_accorde_le` est celui que
+// pose l'extension à l'octroi (rearmerJobsDepopEnAttente) : même trace.
+// deno-lint-ignore no-explicit-any
+async function rearmerJobsDepopParques(admin: any, userId: string, sessionId: string): Promise<number> {
+  const { data: rows } = await admin
+    .from("cross_post_jobs")
+    .select("id, error, platform_fields")
+    .eq("user_id", userId).eq("platform", "depop").eq("status", "needs_user")
+    .eq("platform_fields->>needs_user_source", "depop_acces")
+    .limit(200);
+  let n = 0;
+  for (const j of (rows ?? []) as Array<{ id: string; error: string | null; platform_fields: Record<string, unknown> | null }>) {
+    const pf: Record<string, unknown> = { ...(j.platform_fields ?? {}) };
+    for (const k of CLES_RELANCE_DEPOP) delete pf[k];
+    pf.depop_acces_accorde_le = new Date().toISOString();
+    pf.depop_acces_accorde_par = `get-pending-jobs · poste ${posteCourt(sessionId)}`;
+    if (j.error) {
+      pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error, "needs_user",
+        "get-pending-jobs → pending (poste avec accès Depop en ligne)");
     }
     const { error } = await admin.from("cross_post_jobs")
       .update({ status: "pending", error: null, platform_fields: pf })
@@ -932,6 +965,12 @@ serve(async (req) => {
           if (declare) patchPoste.opla_acces_le = patchPoste.le;
           else if (avant.opla_acces === false) posteSansOpla = true;
           else if (avant.opla_acces === true) posteAvecOpla = true;
+          // ── DEPOP (11/10) : LA TRACE PAR POSTE, comme Opla ─────────────────
+          // L'extension ≥ 0.6.105 dit « depop_acces » ou « sans_depop » à chaque
+          // poll : c'est ce que lit handler-watch pour demander « Autoriser
+          // Depop » (jamais une file silencieuse) et pour relancer.
+          if (posteAvecDepop) { patchPoste.depop_acces = true; patchPoste.depop_acces_le = patchPoste.le; }
+          else if (capacites.includes("sans_depop")) { patchPoste.depop_acces = false; patchPoste.depop_acces_le = patchPoste.le; }
           // ── UN POSTE QUI NE DÉCLARE RIEN (≤ 0.6.63) : LA PREUVE EN BASE
           //    (2026-09-24, solene.mantero / Thomas Dri) ──────────────────────
           // Appris « sans accès » par un parcage, il ne recevait plus aucun job
@@ -974,6 +1013,16 @@ serve(async (req) => {
               patchPoste.rearme_le = patchPoste.le;
               const n = await rearmerJobsOplaParques(admin, user.id, sessionId, sortieOpla);
               if (n) console.log(`[get-pending-jobs] userId=${user.id} poste ${posteCourt(sessionId)} avec accès Opla : ${n} job(s) parqué(s) « Autoriser Opla » relancé(s)`);
+            }
+          }
+          // (11/10) Un poste AVEC accès Depop polle : les jobs « Autoriser Depop »
+          // repartent pour lui — au plus une relance par 10 min et par poste.
+          if (posteAvecDepop) {
+            const dernierD = Date.parse(String(avant.rearme_depop_le ?? ""));
+            if (!Number.isFinite(dernierD) || Date.now() - dernierD > 10 * 60_000) {
+              patchPoste.rearme_depop_le = patchPoste.le;
+              const n = await rearmerJobsDepopParques(admin, user.id, sessionId);
+              if (n) console.log(`[get-pending-jobs] userId=${user.id} poste ${posteCourt(sessionId)} avec accès Depop : ${n} job(s) « Autoriser Depop » relancé(s)`);
             }
           }
           // Fusion ATOMIQUE (RPC noter_poste_extension, verrou de ligne) : deux
@@ -1965,6 +2014,14 @@ serve(async (req) => {
         && posteAvecAccesOpla(postesDuCompte, { saufSession: sessionId, depuisMs: 2 * 3600_000 })) {
       syncCommandsAnnonces = syncCommandsAnnonces.filter((c) => c.platform !== "opla");
       console.log(`[get-pending-jobs] userId=${user.id} poste ${posteCourt(sessionId)} sans accès Opla : relevé Opla laissé en file pour le poste autorisé`);
+    }
+    // (11/10) DEPOP, même règle qu'Opla : un poste SANS accès Depop laisse le
+    // relevé Depop en file quand un AUTRE poste du compte a l'accès (vu depuis
+    // 2 h) — sinon son relevé revenait « absente » à la place de l'autre.
+    if (!posteAvecDepop && syncCommandsAnnonces.some((c) => c.platform === "depop")
+        && posteAvecAccesDepop(postesDuCompte, { saufSession: sessionId, depuisMs: 2 * 3600_000 })) {
+      syncCommandsAnnonces = syncCommandsAnnonces.filter((c) => c.platform !== "depop");
+      console.log(`[get-pending-jobs] userId=${user.id} poste ${posteCourt(sessionId)} sans accès Depop : relevé Depop laissé en file pour le poste autorisé`);
     }
     // (05/10) Poste Cloud : seuls ses relevés (Vinted, Leboncoin, Beebs) — les
     // autres restent en file pour l'ordinateur ou l'API.
@@ -3560,6 +3617,45 @@ serve(async (req) => {
         } catch (e) {
           console.warn(`[get-pending-jobs] interdits Depop : ${String((e as Error)?.message ?? e)} — rien de modifié`);
         }
+      }
+    }
+
+    // ── DEPOP : LE RAYON VIENT DU MOTEUR, JAMAIS DE L'ANCIENNE TABLE (11/10) ──
+    // (_shared/depop-rayon.js) Une PUBLICATION Depop ne part qu'avec un rayon
+    // rendu par le moteur (trace depop_rayon à jour), choisi par la personne
+    // (categorie_source « choix_humain »), ou répondu à la question « Rayon
+    // Depop » (traduit ici, sans IA). Sinon elle reste en file, intacte :
+    // handler-watch la recalcule (ou pose la question) avant tout départ —
+    // c'est le cas des jobs créés avant ce moteur (« Short de basket » en
+    // Enfants › Chaussures, chez Simon) et par une app pas encore à jour.
+    // Republication et retrait : le rayon est celui de l'annonce en ligne.
+    if (!includeProcessing && !includeNeedsUser && out.some((j) => j.platform === "depop" && j.action === "publish")) {
+      try {
+        const aRetenir = new Set<string>();
+        for (const j of out) {
+          if (j.platform !== "depop" || j.action !== "publish") continue;
+          const pfR = ((j.platform_fields ?? {}) as Record<string, unknown>);
+          if (rayonDepopAJour(pfR)) continue;
+          const idRepondu = reponseRayonDepop(pfR);
+          const repondu = (idRepondu ? appliquerRayonDepop(pfR, idRepondu, { source: "personne", par: "get-pending-jobs" }) : null) as Record<string, unknown> | null;
+          if (repondu) {
+            const { data: maj } = await userClient.from("cross_post_jobs").update({ platform_fields: repondu })
+              .eq("id", String(j.id)).eq("status", "pending").select("id");
+            if ((maj ?? []).length) {
+              (j as { platform_fields: unknown }).platform_fields = repondu;
+              console.log(`[get-pending-jobs] job ${String(j.id).slice(0, 8)} (depop publish) : rayon répondu par la personne → ${(repondu.depopCategoryPath as string[]).join("/")}`);
+              continue;
+            }
+          }
+          aRetenir.add(String(j.id));
+        }
+        if (aRetenir.size) {
+          out = out.filter((j) => !aRetenir.has(String(j.id)));
+          console.log(`[get-pending-jobs] userId=${user.id} : ${aRetenir.size} publication(s) Depop sans rayon du moteur — laissée(s) en file, handler-watch recalcule avant tout départ`);
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] rayon Depop : ${String((e as Error)?.message ?? e)} — aucune publication Depop servie à ce passage`);
+        out = out.filter((j) => !(j.platform === "depop" && j.action === "publish"));
       }
     }
 

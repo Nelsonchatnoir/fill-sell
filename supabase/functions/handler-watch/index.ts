@@ -17,7 +17,12 @@ import { MOTIF_LBC_IDENTITE, FENETRE_IDENTITE_MS, ECLAIREUR_INTERVALLE_MS, atten
 import { estCdnPlateforme, estCdnPlateformeHorsVinted } from "../_shared/photos-rapatriement.ts";
 import { rearmerJobsEbayConnexionSiUtilisable, SOURCES_EBAY_REARMABLES } from "../_shared/ebay-voie.ts";
 // Opla : UN message pour l'attente d'autorisation (2026-09-23), partagé.
-import { autorisationOplaRequise } from "../_shared/textes-jobs.ts";
+import { autorisationOplaRequise, autorisationDepopRequise, SOURCE_DEPOP_ACCES } from "../_shared/textes-jobs.ts";
+import { demanderAutorisationDepop, repartirApresAutorisationDepop, CLES_RELANCE_DEPOP } from "../_shared/acces-depop.js";
+import { resoudreRayonDepop, traceRayonDepop, rayonDepopAJour, reponseRayonDepop, MESSAGE_RAYON_DEPOP } from "../_shared/depop-rayon.js";
+import { appliquerRayonDepop } from "../../../src/utils/depopPublication.js";
+import { horsModeDepop } from "../../../src/utils/depopCategories.js";
+import { detectObjectIcon } from "../../../src/utils/shared.js";
 import { postesVivants, posteAvecAccesOpla, posteSansAccesOpla } from "../_shared/poste-extension.ts";
 // (02/10) Reprise des « en cours » figés, jugée sur le poste qui tient le job.
 import { ageProcessing, motifReprise, silenceDuDetenteur, REPRISE_AGE_MIN_MS } from "../_shared/reprise-processing.js";
@@ -1962,6 +1967,184 @@ serve(async (req) => {
     }
   } catch (e) {
     console.error("[handler-watch] opla / aucun poste autorisé :", (e as Error)?.message ?? e);
+  }
+
+  // ══ DEPOP : JAMAIS DE FILE SILENCIEUSE (11/10, mission de Nico) ══════════
+  // (_shared/acces-depop.js) Le même patron qu'Opla ci-dessus, pour Depop :
+  //   1. tout job « Autoriser Depop » porte LE message (textes-jobs.ts), et
+  //      repart dès qu'un poste avec accès est vu depuis 30 min (filet de la
+  //      relance de get-pending-jobs et de celle de l'extension à l'octroi) ;
+  //   2. un job Depop en file depuis 15 min sans aucun poste autorisé reçoit
+  //      « Autoriser Depop » (poste sans accès vu depuis 30 min, ou plus d'une
+  //      heure sans aucun poste autorisé : anciennes extensions, poste éteint).
+  //      Un poste du compte AYANT l'accès (48 h) ne déclenche jamais la demande.
+  let depopReprises = 0, depopMessages = 0, depopDemandes = 0;
+  try {
+    const { data: depopRows } = await supabase
+      .from("cross_post_jobs")
+      .select("id, user_id, action, status, error, created_at, platform_fields")
+      .eq("platform", "depop").in("status", ["pending", "needs_user"]).limit(500);
+    // deno-lint-ignore no-explicit-any
+    const rowsD = ((depopRows ?? []) as any[]).filter((j) => j.status === "pending"
+      || j.platform_fields?.needs_user_source === SOURCE_DEPOP_ACCES);
+    if (rowsD.length) {
+      const postesD = new Map<string, unknown>();
+      const idsD = [...new Set(rowsD.map((j) => String(j.user_id)))];
+      for (let i = 0; i < idsD.length; i += 200) {
+        const { data: profs } = await supabase.from("profiles").select("id, extension_postes").in("id", idsD.slice(i, i + 200));
+        // deno-lint-ignore no-explicit-any
+        for (const p of (profs ?? []) as any[]) postesD.set(String(p.id), p.extension_postes ?? null);
+      }
+      const maintenantD = Date.now();
+      for (const j of rowsD) {
+        const postesJ = postesD.get(String(j.user_id)) ?? null;
+        const pf = { ...(j.platform_fields ?? {}) };
+        if (j.status === "needs_user") {
+          if (repartirApresAutorisationDepop(postesJ, maintenantD)) {
+            for (const k of CLES_RELANCE_DEPOP) delete pf[k];
+            pf.depop_acces_reprise_le = new Date(maintenantD).toISOString();
+            pf.depop_acces_reprise_par = "handler-watch (poste avec accès Depop vu depuis 30 min)";
+            if (j.error) pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error, "needs_user", "handler-watch → pending (poste avec accès Depop)");
+            const { error: rErr } = await supabase.from("cross_post_jobs")
+              .update({ status: "pending", error: null, platform_fields: pf })
+              .eq("id", j.id).eq("status", "needs_user");
+            if (!rErr) depopReprises++;
+            continue;
+          }
+          const msg = autorisationDepopRequise(String(j.action ?? "publish"));
+          if (String(j.error ?? "") !== msg) {
+            pf.needs_user_vu_erreur = msg.slice(0, 200);
+            const { error: mErr } = await supabase.from("cross_post_jobs")
+              .update({ error: msg, platform_fields: pf }).eq("id", j.id).eq("status", "needs_user");
+            if (!mErr) depopMessages++;
+          }
+          continue;
+        }
+        const v = demanderAutorisationDepop(j, postesJ, maintenantD);
+        if (!v.demander) continue;
+        const msg = autorisationDepopRequise(String(j.action ?? "publish"));
+        delete pf.next_action_after; delete pf.processing_since;
+        pf.needs_user_source = SOURCE_DEPOP_ACCES;
+        pf.depop_acces_attendu_le = new Date(maintenantD).toISOString();
+        pf.depop_acces_attendu_par = `handler-watch (${v.pourquoi === "poste_sans_acces" ? "poste sans accès Depop vu depuis 30 min" : "aucun poste avec accès Depop depuis plus d'une heure"})`;
+        pf.needs_user_vu_erreur = msg.slice(0, 200);
+        if (j.error) pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error, "pending", "handler-watch → needs_user (aucun poste avec accès Depop)");
+        const { error: dErr } = await supabase.from("cross_post_jobs")
+          .update({ status: "needs_user", error: msg, platform_fields: pf })
+          .eq("id", j.id).eq("status", "pending");
+        if (!dErr) depopDemandes++;
+      }
+      if (depopDemandes || depopReprises || depopMessages) {
+        console.log(`[handler-watch] depop : ${depopDemandes} job(s) → « Autoriser Depop », ${depopReprises} relancé(s) (poste autorisé), ${depopMessages} message(s) remis au texte unique`);
+      }
+    }
+  } catch (e) {
+    console.error("[handler-watch] depop / autorisation :", (e as Error)?.message ?? e);
+  }
+
+  // ══ DEPOP : LE RAYON RECALCULÉ AVANT TOUT DÉPART (11/10, mission de Nico) ══
+  // (_shared/depop-rayon.js) Une PUBLICATION Depop dont le rayon n'a pas été
+  // rendu par le moteur (créée avant lui, ou par une app pas encore à jour —
+  // « Short de basket » en Enfants › Chaussures, baskets en Femme › Robes)
+  // n'est jamais servie (get-pending-jobs). Ici : la réponse de la personne
+  // est traduite ; sinon le moteur recalcule (IA resolve-categorie + garde-
+  // fous) ; un doute devient la question « Rayon Depop ». Le statut ne bouge
+  // pas quand un rayon est trouvé (le job attend toujours son poste) ; rien
+  // n'est jamais supprimé. IA injoignable : rien n'est écrit, nouvel essai au
+  // passage suivant (5 au plus, puis la question). Borné : 10 jobs par passage.
+  let depopRayons = 0, depopQuestions = 0;
+  try {
+    const { data: aJuger } = await supabase
+      .from("cross_post_jobs")
+      .select("id, user_id, action, status, error, title, description, inventaire_id, platform_fields")
+      .eq("platform", "depop").eq("action", "publish").in("status", ["pending", "needs_user"])
+      .order("created_at", { ascending: true }).limit(200);
+    // deno-lint-ignore no-explicit-any
+    const lot = ((aJuger ?? []) as any[]).filter((j) => {
+      const pf = j.platform_fields ?? {};
+      if (rayonDepopAJour(pf)) return false;
+      // Une question « Rayon Depop » posée attend sa réponse (la réponse
+      // remet le job en file, et get-pending-jobs / ce bloc la traduisent).
+      if (j.status === "needs_user" && pf.needs_user_source === "rayon_depop") return false;
+      return true;
+    }).slice(0, 10);
+    const urlIA = `${Deno.env.get("SUPABASE_URL")}/functions/v1/resolve-categorie`;
+    const secretIA = Deno.env.get("CRON_SECRET") ?? "";
+    for (const j of lot) {
+      const pf = { ...(j.platform_fields ?? {}) };
+      const idRepondu = reponseRayonDepop(pf);
+      if (idRepondu) {
+        const pfR = appliquerRayonDepop(pf, idRepondu, { source: "personne", par: "handler-watch" }) as Record<string, unknown> | null;
+        if (pfR) {
+          const { error: e1 } = await supabase.from("cross_post_jobs").update({ platform_fields: pfR }).eq("id", j.id).eq("status", j.status);
+          if (!e1) depopRayons++;
+        }
+        continue;
+      }
+      let fiche: Record<string, unknown> | null = null;
+      if (j.inventaire_id != null) {
+        const { data: f } = await supabase.from("inventaire").select("titre, description, type, attributs").eq("id", j.inventaire_id).maybeSingle();
+        fiche = (f as Record<string, unknown> | null) ?? null;
+      }
+      const attrs = ((fiche?.attributs ?? {}) as Record<string, unknown>);
+      const valeur = (x: unknown) => (x && typeof x === "object" ? (x as { v?: unknown }).v : x);
+      const titre = String(j.title || fiche?.titre || "");
+      const description = String(j.description || fiche?.description || "");
+      const cv = attrs.categorie_vinted as { chemin?: unknown } | undefined;
+      const origine = cv && typeof cv === "object" && Array.isArray(cv.chemin) ? (cv.chemin as string[]) : null;
+      const r = await resoudreRayonDepop({
+        titre, description,
+        genre: String(pf.genre ?? valeur(attrs.genre) ?? ""),
+        origine,
+        objet: String(valeur(attrs.objet) ?? ""),
+        horsMode: horsModeDepop(detectObjectIcon(titre, description, (fiche?.type as string | null) ?? null)),
+        taille: String(pf.taille ?? valeur(attrs.taille) ?? ""),
+        marque: String(pf.marque ?? valeur(attrs.marque) ?? ""),
+        user_id: String(j.user_id),
+      }, async (corps: Record<string, unknown>) => {
+        const rep = await fetch(urlIA, { method: "POST", headers: { "content-type": "application/json", "x-cron-secret": secretIA }, body: JSON.stringify(corps) });
+        if (!rep.ok) throw new Error(`resolve-categorie HTTP ${rep.status}`);
+        return await rep.json();
+      });
+      // deno-lint-ignore no-explicit-any
+      const rr = r as any;
+      if (rr.id) {
+        const pfR = appliquerRayonDepop(pf, rr.id, { source: "ia", trace: traceRayonDepop(rr, { par: "handler-watch" }), par: "handler-watch" }) as Record<string, unknown> | null;
+        if (pfR) {
+          if (Array.isArray(pf.depopCategoryPath) && pf.depopCategoryPath.join("/") !== rr.id) {
+            pfR.depop_rayon_avant = { id: pf.depopCategoryPath.join("/"), source: pf.categorie_source ?? null, remplace_le: new Date().toISOString() };
+          }
+          const { error: e2 } = await supabase.from("cross_post_jobs").update({ platform_fields: pfR }).eq("id", j.id).eq("status", j.status);
+          if (!e2) {
+            depopRayons++;
+            console.log(`[handler-watch] depop ${String(j.id).slice(0, 8)} : rayon ${(pf.depopCategoryPath ?? []).join("/") || "—"} → ${rr.id} (moteur)`);
+          }
+        }
+        continue;
+      }
+      const essais = (Number(pf.depop_rayon_essais) || 0) + 1;
+      if (rr.iaIndisponible && essais < 5) {
+        await supabase.from("cross_post_jobs").update({ platform_fields: { ...pf, depop_rayon_essais: essais } }).eq("id", j.id).eq("status", j.status);
+        continue;
+      }
+      // Le doute : la question fermée, rien ne part ; l'ancien rayon n'est gardé qu'en trace.
+      const pfQ: Record<string, unknown> = { ...pf, depop_rayon: traceRayonDepop(rr, { par: "handler-watch" }), depop_rayon_essais: essais };
+      if (Array.isArray(pf.depopCategoryPath)) pfQ.depop_rayon_avant = { id: pf.depopCategoryPath.join("/"), source: pf.categorie_source ?? null, retire_le: new Date().toISOString() };
+      delete pfQ.depopCategoryPath; delete pfQ.depopCategoryId; delete pfQ.depopCategoryLibelles;
+      pfQ.needsUserField = rr.question;
+      pfQ.needs_user_source = "rayon_depop";
+      delete pfQ.next_action_after; delete pfQ.processing_since;
+      if (j.error) pfQ.erreurs_archivees = archiverErreur(pfQ.erreurs_archivees, j.error, j.status, "handler-watch (rayon Depop à choisir)");
+      const { error: e3 } = await supabase.from("cross_post_jobs")
+        .update({ status: "needs_user", error: MESSAGE_RAYON_DEPOP, platform_fields: pfQ }).eq("id", j.id).eq("status", j.status);
+      if (!e3) {
+        depopQuestions++;
+        console.log(`[handler-watch] depop ${String(j.id).slice(0, 8)} : aucun rayon sûr (${rr.motif}) → question « Rayon Depop »`);
+      }
+    }
+    if (depopRayons || depopQuestions) console.log(`[handler-watch] depop : ${depopRayons} rayon(s) posé(s) par le moteur, ${depopQuestions} question(s) « Rayon Depop »`);
+  } catch (e) {
+    console.error("[handler-watch] depop / rayon :", (e as Error)?.message ?? e);
   }
 
   // ══ LA RECONNEXION FAIT REPARTIR LES JOBS, SANS QU'ON CLIQUE (2026-09-22) ══

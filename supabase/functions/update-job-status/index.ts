@@ -2460,10 +2460,14 @@ serve(async (req) => {
             // (05/10) Un retrait qui attend = un article vendu dont l'annonce
             // reste en ligne : on dit le risque (préfixe inchangé, il est lu
             // par ATTENTE_SESSION_RE).
+            // (11/10, Nico) Depop : « connecte-toi à Depop sur ton ordinateur »,
+            // ni navigateur ni onglet (le préfixe d'ancrage, lui, ne bouge pas).
+            const ouSeConnecter = jrow.platform === "depop" ? "" : " dans Chrome";
+            const geste = jrow.platform === "depop" ? " — connecte-toi à Depop sur ton ordinateur" : "";
             messageEffectif = jrow.action === "delete"
-              ? `En attente de ta connexion à ${label} dans Chrome : ton article est vendu mais son annonce est encore ` +
+              ? `En attente de ta connexion à ${label}${ouSeConnecter}${geste} : ton article est vendu mais son annonce est encore ` +
                 `en ligne sur ${label} (risque de double vente). Le retrait repartira tout seul dès que tu seras reconnecté(e).`
-              : `En attente de ta connexion à ${label} dans Chrome : ${quoi} repartira toute seule ` +
+              : `En attente de ta connexion à ${label}${ouSeConnecter}${geste} : ${quoi} repartira toute seule ` +
                 `dès que tu seras reconnecté(e).`;
             raisonRequalif = `session ${jrow.platform} morte : attente sans tentative (observation ${pfAttenteSession.attente_session && (pfAttenteSession.attente_session as Record<string, unknown>).observations})`;
             }
