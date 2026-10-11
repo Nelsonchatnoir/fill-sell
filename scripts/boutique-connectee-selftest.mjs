@@ -30,7 +30,7 @@ ok(b?.userId === "472079" && b.fraiche === false, "au-delà de 30 min : connue, 
 ok(boutiqueConnecteeVinted({ sessions: null, run: null, maintenant: T0 }) === null, "rien de relevé : null, on ne devine pas");
 ok(loginsDesBoutiques(PIN).get("257364012") === "luciatrendyshop", "pseudos lus dans le pin de synchro");
 const gpj = lire("supabase/functions/get-pending-jobs/index.ts");
-ok(/const vu = boutiqueConnecteeVinted\(\{ sessions, run \}\);/.test(gpj) && !/source: "sync_dressing",\s+id:/.test(gpj),
+ok(/const vu = boutiqueConnecteeVinted\(\{ sessions, run, capture \}\);/.test(gpj) && !/source: "sync_dressing",\s+id:/.test(gpj),
   "get-pending-jobs garde sa garde de boutique avec CETTE règle (plus de copie en ligne)");
 const sync = lire("src/utils/vintedSync.js");
 ok(/const vu = boutiqueConnecteeVinted\(\{ sessions: data\?\.extension_sessions \?\? null, run: runs\?\.data\?\.\[0\] \?\? null \}\);/.test(sync)

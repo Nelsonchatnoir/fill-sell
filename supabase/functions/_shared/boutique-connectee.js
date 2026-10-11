@@ -15,6 +15,11 @@
 // relevé du dressing (vinted_sync_runs, le compte RÉELLEMENT lu) ; le plus
 // RÉCENT tranche, et il ne décide que s'il a moins de 30 min. Au-delà, on ne
 // devine pas (le serveur sert, l'extension garde à la capture).
+// (11/10, Rémi — sonde users/current en 403 la moitié du temps) TROISIÈME
+// relevé, facultatif : la boutique lue SUR LA PAGE de l'annonce par la
+// dernière capture de republication (vinted_republish_captures.payload.
+// boutique_preuve : session, login_session, lu_le) — c'est le compte
+// réellement connecté dans Chrome à cet instant, prouvé par Vinted.
 // ES module sans import : lu par Deno (get-pending-jobs) et par l'app (Vite).
 
 export const BOUTIQUE_FRAICHEUR_MS = 30 * 60 * 1000;
@@ -22,10 +27,11 @@ export const BOUTIQUE_FRAICHEUR_MS = 30 * 60 * 1000;
 /**
  * @param {{ sessions?: Record<string, unknown> | null,
  *           run?: { vinted_user_id?: unknown, vinted_login?: unknown, started_at?: unknown } | null,
+ *           capture?: { session?: unknown, login_session?: unknown, lu_le?: unknown } | null,
  *           maintenant?: number }} p
- * @returns {{ userId: string, login: string | null, source: "sonde" | "sync_dressing", at: number, fraiche: boolean } | null}
+ * @returns {{ userId: string, login: string | null, source: "sonde" | "sync_dressing" | "capture", at: number, fraiche: boolean } | null}
  */
-export function boutiqueConnecteeVinted({ sessions = null, run = null, maintenant = Date.now() } = {}) {
+export function boutiqueConnecteeVinted({ sessions = null, run = null, capture = null, maintenant = Date.now() } = {}) {
   const ident = sessions && typeof sessions === "object" ? sessions["vinted_identite"] : null;
   const sources = [
     {
@@ -39,6 +45,12 @@ export function boutiqueConnecteeVinted({ sessions = null, run = null, maintenan
       userId: run && run.vinted_user_id != null ? String(run.vinted_user_id).trim() : "",
       login: run && run.vinted_login != null ? String(run.vinted_login) : null,
       at: Date.parse(String(run?.started_at ?? "")),
+    },
+    {
+      source: "capture",
+      userId: capture && capture.session != null ? String(capture.session).trim() : "",
+      login: capture && capture.login_session != null ? String(capture.login_session) : null,
+      at: Date.parse(String(capture?.lu_le ?? "")),
     },
   ].filter((s) => s.userId && Number.isFinite(s.at));
   sources.sort((a, b) => b.at - a.at);

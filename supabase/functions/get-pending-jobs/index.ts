@@ -52,6 +52,7 @@ import { aspectsDeLaCapture, completerAspects, exigencesCouvertes, CHAMPS_VINTED
 import { PLATEFORMES_RELEVE, RETRAIT_SANS_NUMERO_GESTE_MS, RETRAIT_SANS_NUMERO_RELEVE_MS, jugerRetraitIntrouvable, messageRetraitSansNumeroAToi } from "../_shared/retrait-introuvable.js";
 import { requalificationCompteVintedBloque } from "../_shared/vinted-compte-bloque.js";
 import { boutiqueConnecteeVinted, loginsDesBoutiques } from "../_shared/boutique-connectee.js";
+import { leverPauseIntrouvable, champsApresLevee } from "../_shared/introuvable-boutique.js";
 import { BUILD_EBAY_FIN_PAR_NUMERO, BUILD_BEEBS_ADRESSE_STRICTE, BUILD_BEEBS_FORMAT_EXPLICITE } from "../_shared/correctifs-extension.js";
 import { formatBeebsExplicite, formatBeebsDuChoix } from "../_shared/beebs-format-colis.js";
 import { AGE_ANGLAIS_RE, NOMBRE_NU_RE, ORDRE_EXACT_D_ABORD, TAILLE_PREFIXEE_RE, grilleDuDernierEchecTaille, normaliserTaille, tailleAServir, tailleAServirPublication } from "../_shared/vinted-taille-republication.ts";
@@ -1763,6 +1764,9 @@ serve(async (req) => {
     } catch (_e) { /* jamais un point de panne */ }
 
     let syncCommand: { id: string } | null = null;
+    // (11/10) L'âge de la demande de relevé du dressing : elle ne retient les
+    // jobs Vinted que FRAÎCHE (30 min), comme les relevés d'annonces.
+    let syncCommandFrais = false;
     if (versionAuMoins(version, SYNC_VERSION_MIN) && !includeProcessing) {
       try {
         // Marque en 'expired' les demandes trop vieilles AVANT de lire. Sans
@@ -1776,7 +1780,7 @@ serve(async (req) => {
         const ttl = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
         const { data: cmds } = await userClient
           .from("vinted_sync_runs")
-          .select("id")
+          .select("id, queued_at")
           .eq("kind", "dressing")
           .eq("status", "queued")
           .gte("queued_at", ttl)
@@ -1784,7 +1788,10 @@ serve(async (req) => {
           .limit(1);
         if (cmds?.length && compteEnPauseAr) {
           console.log(`[get-pending-jobs] userId=${user.id} : relevé Vinted ${String(cmds[0].id).slice(0, 8)} RETENU — compte en pause anti-robot, il partira à la levée`);
-        } else if (cmds?.length) syncCommand = { id: cmds[0].id as string };
+        } else if (cmds?.length) {
+          syncCommand = { id: cmds[0].id as string };
+          syncCommandFrais = Date.now() - Date.parse(String((cmds[0] as { queued_at?: unknown }).queued_at ?? "")) < 30 * 60_000;
+        }
       } catch (_e) { /* la file de sync ne doit JAMAIS bloquer la distribution des jobs */ }
     }
     // ══ UNE DEMANDE DE RELEVÉ JAMAIS RÉCLAMÉE REPART AU RETOUR DE CHROME ══════
@@ -2105,6 +2112,20 @@ serve(async (req) => {
       historiquesBoutique.set(cle, detail);
       return detail;
     };
+    // (11/10, Rémi) La boutique lue SUR LA PAGE par la dernière capture de
+    // republication (moins de 30 min) — troisième source d'identité, à côté
+    // de la sonde et du relevé du dressing (_shared/boutique-connectee.js).
+    const derniereCaptureBoutique = async (): Promise<{ session?: unknown; login_session?: unknown; lu_le?: unknown } | null> => {
+      try {
+        const { data } = await userClient.from("vinted_republish_captures")
+          .select("captured_at, boutique_preuve:payload->boutique_preuve")
+          .eq("user_id", user.id)
+          .gte("captured_at", new Date(Date.now() - 30 * 60_000).toISOString())
+          .order("captured_at", { ascending: false }).limit(1);
+        const bp = (data?.[0] as { boutique_preuve?: Record<string, unknown> } | undefined)?.boutique_preuve;
+        return bp && typeof bp === "object" && bp.session ? bp : null;
+      } catch (_e) { return null; }
+    };
     // Une identité temporairement inconnue n'exige pas un clic de relance.
     // Retour arrière de la garde serveur « session inconnue » du point A :
     // l'absence de télémétrie ne prouve pas une boutique étrangère. L'origine
@@ -2168,6 +2189,51 @@ serve(async (req) => {
             .eq("platform_fields->boutique_etrangere->>le", garde.le);
         }
       }
+    }
+    // ══ (11/10, Rémi) « INTROUVABLE » SOUS UNE IDENTITÉ ILLISIBLE = ATTENTE ════
+    // 10 republications de @celineetmarie en pause « introuvable_indetermine »
+    // (5ᵉ 404 à la capture) alors que Chrome était sur @narema75 et que la
+    // sonde rendait 403 : leurs annonces étaient EN LIGNE. Aucune levée
+    // n'existait. Règle (_shared/introuvable-boutique.js) : une pause posée à
+    // la CAPTURE (rien de retiré), sous une identité illisible ou une autre
+    // boutique, pour un article dont la boutique est connue, repart toute
+    // seule dès que CETTE boutique est vue connectée (sonde, relevé ou
+    // capture, < 30 min) — jamais avant, jamais sur une autre, deux fois au
+    // plus par tâche. Best-effort : jamais un point de panne.
+    if (!includeProcessing && !includeNeedsUser) {
+      try {
+        const { data: pauses } = await userClient.from("cross_post_jobs")
+          .select("id, status, action, platform, platform_fields, inventaire:inventaire_id(vinted_account_id)")
+          .eq("user_id", user.id).eq("platform", "vinted").eq("action", "republish").eq("status", "needs_user")
+          .eq("platform_fields->>needs_user_source", "introuvable_indetermine")
+          .order("created_at", { ascending: true }).limit(20);
+        if (pauses?.length) {
+          const [{ data: profI }, { data: runsI }, captureI] = await Promise.all([
+            userClient.from("profiles").select("extension_sessions").eq("id", user.id).maybeSingle(),
+            userClient.from("vinted_sync_runs").select("vinted_user_id, vinted_login, started_at")
+              .eq("kind", "dressing").not("vinted_user_id", "is", null).not("started_at", "is", null)
+              .order("started_at", { ascending: false }).limit(1),
+            derniereCaptureBoutique(),
+          ]);
+          const vuI = boutiqueConnecteeVinted({
+            sessions: (profI?.extension_sessions ?? null) as Record<string, unknown> | null,
+            run: (runsI?.[0] ?? null) as { vinted_user_id?: unknown; vinted_login?: unknown; started_at?: unknown } | null,
+            capture: captureI,
+          });
+          for (const pz of pauses as Array<Record<string, unknown>>) {
+            const art = Array.isArray(pz.inventaire) ? pz.inventaire[0] : pz.inventaire;
+            const boutiqueFiche = (art as { vinted_account_id?: unknown } | null)?.vinted_account_id;
+            const d = leverPauseIntrouvable(pz as never, vuI, boutiqueFiche != null ? String(boutiqueFiche) : null);
+            if (!d.lever) continue;
+            const suite = champsApresLevee((pz.platform_fields ?? {}) as Record<string, unknown>, d.boutique, vuI);
+            const { data: majZ } = await userClient.from("cross_post_jobs")
+              .update({ status: "pending", error: null, platform_fields: suite })
+              .eq("id", String(pz.id)).eq("status", "needs_user")
+              .eq("platform_fields->>needs_user_source", "introuvable_indetermine").select("id");
+            console.log(`[get-pending-jobs] job ${String(pz.id).slice(0, 8)} (vinted republish) : pause « introuvable » posée sous une identité illisible — boutique ${d.boutique} vue connectée (${vuI?.source}) → ${(majZ ?? []).length ? "repart (attente levée)" : "déjà sortie de la pause"}`);
+          }
+        }
+      } catch (_e) { /* jamais un point de panne */ }
     }
     const lireFile = () => userClient
       .from("cross_post_jobs")
@@ -4986,8 +5052,21 @@ serve(async (req) => {
     // jobs ont attendu derrière eux (verrou FIFO de l'extension), puis Chrome
     // s'est fermé — jamais faits. Une demande de plus de 30 min ne retient
     // plus rien (jamais une file gelée par un relevé que personne ne prend).
+    // ══ (11/10, hu.anastasia) UN RELEVÉ NE RETIENT QUE SA PLATEFORME ══════════
+    // Un relevé Beebs demandé par l'app à 13:06:54 (session Beebs morte, pris
+    // seulement à 13:36 et fini « page de connexion ») a gelé ses 215
+    // republications VINTED pendant 4 polls (13:11 → 13:34) : la retenue
+    // valait pour TOUS les jobs, de TOUTES les plateformes, à chaque poll tant
+    // que la demande restait en file. Règle (Nico : « un article bloqué ne
+    // retient jamais les autres ») : une demande de relevé ne retient que les
+    // jobs de SA plateforme (dressing → Vinted ; annonces → la sienne), et
+    // seulement FRAÎCHE (moins de 30 min, dressing compris — avant : jusqu'à
+    // 6 h pour le dressing). Les autres plateformes partent dans ce cycle.
     let heldSync = 0;
-    const syncDevant = Boolean(syncCommand) || syncCommandsAnnonces.some((c) => relevesFrais.has(c.id));
+    const plateformesRelevees = new Set<string>();
+    if (syncCommand && syncCommandFrais) plateformesRelevees.add("vinted");
+    for (const c of syncCommandsAnnonces) if (relevesFrais.has(c.id)) plateformesRelevees.add(c.platform);
+    const syncDevant = plateformesRelevees.size > 0;
     if (syncDevant && !includeProcessing && !includeNeedsUser && out.length) {
       // (02/10, nivake03) EXEMPTION : une republication à l'étape 'deleted'
       // n'attend jamais derrière une sync — son annonce est hors ligne. Même
@@ -4995,11 +5074,11 @@ serve(async (req) => {
       const horsLigne = (j: { action: string; platform_fields: unknown }) => j.action === "republish"
         && String(((j.platform_fields ?? {}) as Record<string, unknown>).republish_step ?? "") === "deleted";
       const avantSync = out.length;
-      out = out.filter(horsLigne);
+      out = out.filter((j) => horsLigne(j) || !plateformesRelevees.has(String(j.platform)));
       heldSync = avantSync - out.length;
       console.log(
         `[get-pending-jobs] userId=${user.id} : demande de sync ${syncCommand?.id ?? syncCommandsAnnonces.map((c) => c.platform).join("+")} servie ` +
-        `→ ${heldSync} job(s) retenu(s) en pending pour ce cycle (la sync passe devant)`,
+        `→ ${heldSync} job(s) ${[...plateformesRelevees].join("+")} retenu(s) en pending pour ce cycle (la sync passe devant SA plateforme ; les autres partent)`,
       );
     }
 
@@ -5422,7 +5501,7 @@ serve(async (req) => {
       if (candidats.length) {
         try {
           // Deux relevés d'identité, le plus RÉCENT tranche.
-          const [{ data: prof }, { data: runs }] = await Promise.all([
+          const [{ data: prof }, { data: runs }, capture] = await Promise.all([
             // vinted_sync_pin joint à un SELECT qui existait déjà (aucune
             // requête de plus) : c'est lui qui porte le PSEUDO des boutiques,
             // sans quoi le message ne peut nommer que celle qui est connectée
@@ -5436,14 +5515,17 @@ serve(async (req) => {
               .not("started_at", "is", null)
               .order("started_at", { ascending: false })
               .limit(1),
+            derniereCaptureBoutique(),
           ]);
           const sessions = (prof?.extension_sessions ?? null) as Record<string, unknown> | null;
           const run = (runs?.[0] ?? null) as
             { vinted_user_id?: unknown; vinted_login?: unknown; started_at?: unknown } | null;
           // (03/10, point 16) LA règle, partagée avec l'app — sonde et relevé
           // du dressing, le plus récent tranche, fraîcheur 30 min
-          // (_shared/boutique-connectee.js). Même calcul qu'ici avant, à l'octet.
-          const vu = boutiqueConnecteeVinted({ sessions, run });
+          // (_shared/boutique-connectee.js). (11/10, Rémi) + la boutique lue
+          // sur la page par la dernière capture : la sonde rend 403 la moitié
+          // du temps, la capture voit le compte réellement connecté.
+          const vu = boutiqueConnecteeVinted({ sessions, run, capture });
           const fraiche = vu != null && vu.fraiche;
           if (vu && fraiche) {
             const identId = vu.userId;
@@ -6410,11 +6492,27 @@ serve(async (req) => {
         // sans un seul geste Beebs le 01/10, sans aucune trace. Chaque
         // plateforme a désormais son « 1 retrait + 1 vérification » ; la
         // cadence de l'extension (espacement global entre gestes) ne change pas.
+        // (11/10, Rémi — « un article bloqué ne retient jamais les autres »)
+        // Le candidat était le plus ANCIEN par date de création : une tâche qui
+        // échoue (404 de capture, attente de 15 min) revenait EN TÊTE à chaque
+        // fin d'attente et reprenait le seul tour de sa plateforme — les plus
+        // récentes n'étaient jamais servies (c78ca8c4, 55991165, 9fc7af3c,
+        // ad794e50, 857f60c1 : jamais servies avant 13:42). Désormais une tâche
+        // reportée reprend sa place à la FIN de son attente (clé = la plus
+        // tardive de sa création et de son next_action_after échu) : file
+        // équitable, aucune tâche oubliée.
+        const placeDansLaFile = (j: { platform_fields: unknown; created_at?: unknown }) => {
+          const naa = Date.parse(String(pfOf(j)["next_action_after"] ?? ""));
+          const cree = Date.parse(String(j.created_at ?? ""));
+          return Math.max(Number.isFinite(naa) ? naa : 0, Number.isFinite(cree) ? cree : 0);
+        };
         const garder = new Set<string>();
         for (const pfm of new Set(filePipeline.map((j) => String(j.platform)))) {
           for (const etape of ["captured", "a_capturer"]) {
-            const cand = filePipeline.find((j) => String(j.platform) === pfm && stepOf(j) === etape && !enAttenteProgrammee(j));
-            if (cand) garder.add(String(cand.id));
+            const cands = filePipeline.filter((j) => String(j.platform) === pfm && stepOf(j) === etape && !enAttenteProgrammee(j));
+            if (!cands.length) continue;
+            const cand = cands.reduce((a, b) => (placeDansLaFile(b) < placeDansLaFile(a) ? b : a));
+            garder.add(String(cand.id));
           }
         }
         const avant = out.length;
