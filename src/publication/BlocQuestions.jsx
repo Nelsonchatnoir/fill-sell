@@ -342,7 +342,10 @@ export default function BlocQuestions({ m }) {
               <AspectValueInput
                 value={a.state === "invalid" ? (a.suggested ?? a.value ?? "") : a.value}
                 allowedValues={a.allowedValues}
-                strict={false}
+                // (12/10, A10bis) Une liste qui FAIT FOI (fermée, entière) : une
+                // valeur hors liste y est bloquante — « Autre valeur… » n'y menait
+                // qu'à une impasse (Louis, « Moules noel »). Sélecteur fermé.
+                strict={faitFoi}
                 closedMax={faitFoi ? m.EBAY_CLOSED_LIST_MAX : undefined}
                 // (03/10) Marque (et Modèle Vinted) : le référentiel de la
                 // plateforme dépasse notre relevé — on tape, la liste suggère.

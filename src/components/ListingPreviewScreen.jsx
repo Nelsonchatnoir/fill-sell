@@ -36,6 +36,7 @@ import { detectObjectIcon, detectObjectIconKeyword, detectObjectKeywordDetail, A
 import { getVintedCategoryPath, vintedGenreRequired } from "../utils/vintedCategories";
 import { getLbcCategoryPath, getLbcBabyEquipment, getLbcFreePhotoQuota } from "../utils/lbcCategories";
 import { lbcProduitsDependants, lbcListePlate, lbcFeuilleDependante, lbcPaireDepuisTextes } from "../utils/lbcMaisonJardin";
+import { universLbcDeLaFiche, champsLbcSecondePasse, reponseDansLaListe, paireDeLaReponse } from "../publication/moteur/champsLbcAuto";
 import { gardeFouCategorie } from "../utils/categorieGardeFou";
 // Détecteur de langue, partagé mot pour mot avec lens-analysis (même fichier,
 // chargé par Vite ici et par Deno là-bas) : la garde qui refuse de nourrir la
@@ -3252,21 +3253,38 @@ export function AspectValueInput({ value, allowedValues, strict = false, closedM
       </select>
     );
   }
-  if (n > 30) {
-    const listId = `aspect-dl-${idBase}`;
+  // ── (12/10, A10bis) JAMAIS UNE QUESTION SANS CHOIX ─────────────────────────
+  // Louis, « Moules noel » (11/10 19:57) : « Univers » et « Produit » affichaient
+  // « les valeurs viennent de son formulaire » au-dessus d'un champ VIDE. Deux
+  // impasses : « Autre valeur… » basculait en saisie libre SANS retour (rien ne
+  // remettait `libre` à false), et une liste de plus de 30 valeurs devenait un
+  // <datalist> — invisible sur iPhone (Safari iOS ne l'affiche pas). Désormais
+  // une liste connue se choisit toujours dans un vrai sélecteur, quelle que soit
+  // sa longueur, et la saisie libre garde un chemin de retour vers la liste.
+  if (n > 30 && !libre) {
+    const horsListe = value && !vals.some(v => normAspectVal(v) === normAspectVal(value));
     return (
-      <>
-        <input type="text" list={listId} value={value ?? ""} onChange={ev => onChange(ev.target.value)}
-          placeholder="—" style={{ ...base, background:T.chip, color:T.ink }} />
-        <datalist id={listId}>
-          {vals.map(v => <option key={v} value={v} />)}
-        </datalist>
-      </>
+      <select value={value ?? ""}
+        onChange={ev => { if (ev.target.value === OTHER_SENTINEL) { setLibre(true); return; } onChange(ev.target.value); }}
+        style={{ ...base, background:T.chip, color: value ? T.ink : T.mute }}>
+        <option value="">—</option>
+        {horsListe && <option value={value}>{libelle(value)}</option>}
+        {vals.map(v => <option key={v} value={v}>{libelle(v)}</option>)}
+        {!strict && <option value={OTHER_SENTINEL}>Autre valeur…</option>}
+      </select>
     );
   }
   return (
-    <input type="text" value={value ?? ""} onChange={ev => onChange(ev.target.value)}
-      placeholder="—" style={{ ...base, background:T.chip, color:T.ink }} />
+    <>
+      <input type="text" value={value ?? ""} onChange={ev => onChange(ev.target.value)}
+        placeholder="—" style={{ ...base, background:T.chip, color:T.ink }} />
+      {libre && n > 0 && (
+        <button type="button" data-retour-liste="1" onClick={() => setLibre(false)}
+          style={{ marginTop:6, padding:"4px 2px", background:"none", border:"none", font:"inherit", fontSize:12.5, fontWeight:700, color:T.ink, textDecoration:"underline", cursor:"pointer", textAlign:"left" }}>
+          ↩ Revenir à la liste ({n} choix)
+        </button>
+      )}
+    </>
   );
 }
 
@@ -4639,8 +4657,12 @@ export default function ListingPreviewScreen({
       } catch { /* mode dégradé indisponible : pas de bandeau, jamais bloquant */ }
     };
     lire();
+    // (12/10, A1) Dans un LOT (pilote), une lecture par moteur suffit : des
+    // centaines de moteurs montés relisaient chacun la base toutes les 60 s.
+    if (pilote) return () => { alive = false; };
     const timer = setInterval(lire, 60_000);
     return () => { alive = false; clearInterval(timer); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase, lang]);
 
   const [lightboxUrl, setLightboxUrl] = useState(null);
@@ -8543,6 +8565,21 @@ export default function ListingPreviewScreen({
         // foi. Les champs TEXTE réels (isbn…) restent bloquants : l'utilisateur
         // PEUT les connaître.
         const ferme = ["combobox", "dropdown", "list"].includes(String(r.input_type ?? "").toLowerCase());
+        // ── (12/10, A10bis) LE « PRODUIT » ATTEND SON « UNIVERS » (Maison & Jardin) ──
+        // Sa liste DÉPEND de l'Univers/Type (lbcMaisonJardin.js) : demandé avant,
+        // il montrait la liste du catalogue — celle d'UN autre Univers, appris
+        // au hasard (« Moules noel » : les produits de « Décoration murale ») —
+        // et la personne, sans son objet dans la liste, tombait dans « Autre
+        // valeur… ». Tant que l'Univers est vide : pas de question Produit (la
+        // question Univers, elle, bloque) ; l'Univers choisi, la bonne liste.
+        const feuilleRow = platform === "leboncoin" ? lbcFeuilleDependante(genericCategoryKeys?.[platform]) : null;
+        // (Seulement si l'Univers est lui-même une question de ce rayon : sinon
+        // le Produit resterait sans garde.)
+        if (feuilleRow && key === feuilleRow.produitKey && rows.some((x) => x.field_key === feuilleRow.typeKey)
+            && !String(genericKnownSource(platform, feuilleRow.typeKey, pf) ?? aspects[feuilleRow.typeKey] ?? "").trim()) {
+          return { key, label, state: "missing", value: "", allowedValues: [], inputType: r.input_type,
+                   dedicatedTarget: genericDedicatedTarget(platform, key), blocking: false, attendUnivers: feuilleRow.typeKey };
+        }
         return { key, label, state: "missing", value: "", allowedValues, inputType: r.input_type,
                  dedicatedTarget: genericDedicatedTarget(platform, key),
                  blocking: !(ferme && allowedValues.length === 0) };
@@ -8574,12 +8611,35 @@ export default function ListingPreviewScreen({
       // Univers / Produit : des champs d'identité — la description seule ne les décide pas (03/10).
       const chercher = ({ options }) => optionDepuisTextes({ options, textes, identite: true });
       const feuilleMJ = platform === "leboncoin" ? lbcFeuilleDependante(genericCategoryKeys?.[platform]) : null;
+      // (12/10, A10) La fiche, pour l'Univers Leboncoin : attributsBase quand
+      // l'init l'a lue, sinon la ligne passée par le Stock.
+      const ficheAttrs = (attributsBase && typeof attributsBase === "object") ? attributsBase
+        : (initialListing?.attributs && typeof initialListing.attributs === "object" ? initialListing.attributs : {});
+      const valeurFiche = (c) => { const x = ficheAttrs?.[c]; return x && typeof x === "object" ? x.v : x; };
       const enrichi = status.map((a) => {
         const aTrancher = a.state === "missing" || (a.state === "invalid" && !a.suggested)
           || (a.state === "ok" && estFourreTout(a.value));
         if (!aTrancher || !a.allowedValues?.length) return a;
         if (a.dedicatedTarget && SHARED_FIELD_KEYS.includes(a.dedicatedTarget)) return a;
         if (a.key === "title" || a.key === "photos" || a.key === "description") return a;
+        // ── (12/10, A10, Louis) L'UNIVERS QUE LA FICHE DIT DÉJÀ ───────────────
+        // 13 vêtements « Enfants › Vêtements pour filles », tailles « 8 ans » :
+        // « Univers » demandé à la main. Genre de la fiche ou des copies,
+        // racine de la catégorie Vinted, taille enfant, mot du titre — toutes
+        // d'accord, et la valeur dans LA liste (moteur/champsLbcAuto.js) ;
+        // sinon la suite (texte, IA, question), comme avant.
+        if (platform === "leboncoin" && a.dedicatedTarget === "univers" && a.state !== "ok") {
+          const u = universLbcDeLaFiche({
+            genres: [pf.genre, valeurFiche("genre"), edited.vinted?.platform_fields?.genre, edited.beebs?.platform_fields?.genre].filter(Boolean),
+            cheminVinted: ficheAttrs?.categorie_vinted?.chemin ?? edited.vinted?.platform_fields?.categoryPath ?? null,
+            taille: pf.taille || valeurFiche("taille") || "",
+            titre: edited[platform]?.title || initialListing?.titre || "",
+            allowedValues: a.allowedValues,
+          });
+          if (u && normAspectVal(u.valeur) !== normAspectVal(a.value ?? "")) {
+            return { ...a, suggested: u.valeur, blocking: false, deduit: { valeur: u.valeur, source: `fiche:${u.source}` } };
+          }
+        }
         let ded = deduireOptionDuTexte({ platform, key: a.key, label: a.label, allowedValues: a.allowedValues, textes });
         if (!ded) return a;
         let paire = null;
@@ -9067,6 +9127,96 @@ export default function ListingPreviewScreen({
     // genericCategoryKeys/edited/initialListing (identités instables). La garde
     // genericResolvedFor borne déjà à une tentative par (plateforme, catégorie).
   }, [genericRequiredStatus, genericCategoryKeysSig]);
+
+  // ── (12/10, A10) LEBONCOIN : LA SECONDE PASSE, AVANT TOUTE QUESTION ───────
+  // (moteur/champsLbcAuto.js) Après la première passe (ci-dessus, une par
+  // catégorie, champs « manquants » seulement, contexte réduit), un champ
+  // Leboncoin à liste encore vide OU hors liste repart à l'IA avec TOUTE la
+  // fiche — objet identifié par l'IA, genre, catégorie Vinted, taille, marque —
+  // et une réponse CONTRÔLÉE (une entrée de LA liste, sinon rien). Une liste
+  // qui change (Produit qui suit son Univers/Type) redonne une chance. Maison
+  // & Jardin : UNE demande sur les paires « Type › Produit ». Mesure :
+  // usage_logs « lbc_champs_ia ». Une demande par (catégorie, champ, liste).
+  const lbcSecondePasseFaite = useRef(new Set());
+  useEffect(() => {
+    const list = genericRequiredStatus?.leboncoin;
+    const categorie = genericCategoryKeys?.leboncoin;
+    if (!list || !categorie || texteEnVolPar.current.has("leboncoin")) return;
+    const touches = new Set([...(sharedOverrides.leboncoin ?? [])]);
+    const { simples, paire } = champsLbcSecondePasse(list, { categorie, deja: lbcSecondePasseFaite.current, touchesParLaPersonne: touches });
+    if (!simples.length && !paire) return;
+    for (const s of simples) lbcSecondePasseFaite.current.add(s.cle);
+    if (paire) lbcSecondePasseFaite.current.add(paire.cle);
+    const src = edited.leboncoin ?? {};
+    const ficheAttrs = (attributsBase && typeof attributsBase === "object") ? attributsBase : (initialListing?.attributs ?? {});
+    const v = (c) => { const x = ficheAttrs?.[c]; return x && typeof x === "object" ? x.v : x; };
+    const cheminVinted = ficheAttrs?.categorie_vinted?.chemin ?? edited.vinted?.platform_fields?.categoryPath ?? null;
+    const objet = activeAiObjet ?? src.platform_fields?.categorie_objet_ia ?? null;
+    const aspects = [
+      ...simples.map((a) => ({ name: a.label, allowedValues: a.allowedValues.slice(0, 200) })),
+      ...(paire ? [{ name: "Univers et produit", allowedValues: paire.options.slice(0, 200) }] : []),
+    ];
+    setIaGeneriqueEnVol((n) => n + 1);
+    (async () => {
+      const posees = {};
+      try {
+        const corps = {
+          resolve_aspects: true,
+          aspects,
+          item_data: {
+            titre: src.title || initialListing?.titre || "",
+            description: src.description || initialListing?.description || null,
+            marque: src.platform_fields?.marque || v("marque") || null,
+            genre: src.platform_fields?.genre || v("genre") || null,
+            taille: src.platform_fields?.taille || v("taille") || null,
+            type: [objet ? `objet identifié : ${objet}` : null, Array.isArray(cheminVinted) ? `catégorie Vinted : ${cheminVinted.join(" > ")}` : null, `catégorie Leboncoin : ${categorie}`].filter(Boolean).join(" ; "),
+            attributs: lensPourChamps?.attributs_visibles ?? null,
+          },
+        };
+        let res = null;
+        for (let essai = 1; essai <= 2 && res === null; essai++) {
+          try {
+            const { data, error } = await supabase.functions.invoke("generate-listing", { body: corps });
+            if (error) throw error;
+            res = data ?? {};
+          } catch (e) {
+            if (essai === 1) await new Promise((r) => setTimeout(r, 1500));
+            else console.warn("[stepper] seconde passe Leboncoin injoignable :", e?.message ?? e);
+          }
+        }
+        const valeurs = res?.aspects && typeof res.aspects === "object" ? res.aspects : {};
+        for (const a of simples) {
+          const exacte = reponseDansLaListe(valeurs[a.label], a.allowedValues);
+          if (!exacte) continue;
+          const versDedie = a.dedicatedTarget && !canalGeneriquePose("leboncoin", a.key) && !SHARED_FIELD_KEYS.includes(a.dedicatedTarget);
+          if (versDedie) setPlatformDedicatedField("leboncoin", a.dedicatedTarget, exacte);
+          else setPlatformAspect("leboncoin", a.key, exacte);
+          posees[a.label] = exacte;
+        }
+        if (paire) {
+          const x = paireDeLaReponse(categorie, reponseDansLaListe(valeurs["Univers et produit"], paire.options));
+          if (x) {
+            // Le Type d'abord (la liste du Produit en dépend), puis le Produit,
+            // chacun dans le canal que l'extension lit (même routage que ci-dessus).
+            for (const [cle, val] of [[x.typeKey, x.type], [x.produitKey, x.produit]]) {
+              const ligne = list.find((l) => l.key === cle);
+              const versDedie = ligne?.dedicatedTarget && !canalGeneriquePose("leboncoin", cle) && !SHARED_FIELD_KEYS.includes(ligne.dedicatedTarget);
+              if (versDedie) setPlatformDedicatedField("leboncoin", ligne.dedicatedTarget, val);
+              else setPlatformAspect("leboncoin", cle, val);
+            }
+            posees["Univers et produit"] = `${x.type} › ${x.produit}`;
+          }
+        }
+        const demandes = aspects.map((a) => a.name);
+        supabase.from("usage_logs").insert({
+          user_id: userId, feature: "lbc_champs_ia",
+          metadata: { categorie, inventaire_id: inventaireId ?? null, demandes, posees, restants: demandes.filter((n) => !(n in posees)) },
+        }).then(() => {}, () => {});
+      } catch { /* jamais bloquant : la question reste */ }
+      finally { setIaGeneriqueEnVol((n) => Math.max(0, n - 1)); }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [genericRequiredStatus, iaGeneriqueEnVol]);
 
   // ── LA COULEUR NE BLOQUE JAMAIS (11/10, Nico — moteur/couleurAuto.js) ─────
   // Cas jakefawright : figurine sans couleur, passe texte vide → question
