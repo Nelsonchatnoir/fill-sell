@@ -79,6 +79,32 @@ export function decisionRecreationBloquee(job, maintenant = Date.now()) {
   return causeCompte(pf) ? "proteger" : "signaler";
 }
 
+/**
+ * Le message du job qui RESTE en file parce que la cause est le compte
+ * (« proteger ») : jamais « rien à faire de ton côté » — la personne apprend
+ * ce qui retient l'annonce, que ses autres annonces sont gardées en ligne
+ * exprès, et le seul geste utile (Cendrier de jonathanrabany, 12/10 :
+ * « /selling-restriction » depuis 4 jours, message « on réessaie tout seuls »).
+ */
+export function messageRecreationRetenueCompte(job) {
+  const pf = job?.platform_fields ?? {};
+  const nom = NOM[job?.platform] ?? job?.platform ?? "la plateforme";
+  const titre = String(job?.title ?? "").split("\n")[0].replace(/\s+/g, " ").trim().slice(0, 80);
+  const le = retireeLe(pf);
+  const date = le ? new Date(le).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", timeZone: "Europe/Paris" }) : null;
+  const annonce = `Ton annonce${titre ? ` « ${titre} »` : ""} a été retirée de ${nom}${date ? ` le ${date}` : ""}`;
+  const cause = causeCompte(pf);
+  const pourquoi = cause === "restriction"
+    ? `et ne peut pas revenir en ligne : ${nom} limite en ce moment les mises en vente de ton compte. Ouvre ${nom} sur ton ordinateur pour lire son message (ou écris à son support)`
+    : cause === "session"
+      ? `et attend ta connexion : connecte-toi à ${nom} dans Chrome, sur ton ordinateur`
+      : cause === "compte_bloque"
+        ? `et ne peut pas revenir en ligne : ${nom} affiche « compte bloqué » sur ton ordinateur. Ouvre ${nom} pour lire son message`
+        : `et ne peut pas revenir en ligne : ${nom} vérifie ton compte (contrôle anti-robot). Ouvre ${nom} sur ton ordinateur et passe sa vérification`;
+  return `${annonce} ${pourquoi}. FillSell réessaie tout seul dès que c'est levé, et ne retire aucune autre de tes annonces ${nom} d'ici là : elles restent en ligne. `
+    + `Rien n'est perdu : titre, description, photos et champs sont gardés.`;
+}
+
 /** Le message du job sorti de la file. */
 export function messageRecreationBloquee(job) {
   const pf = job?.platform_fields ?? {};

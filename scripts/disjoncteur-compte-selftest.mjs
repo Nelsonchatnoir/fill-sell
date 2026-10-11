@@ -73,7 +73,13 @@ console.log('\nA5. Une annonce retirée qui ne revient pas ne gèle plus les aut
 const T = Date.parse('2026-10-12T10:00:00Z');
 const job = (pf, extra = {}) => ({ action: 'republish', status: 'pending', title: 'Cendrier', platform: 'vinted', created_at: '2026-10-07T20:33:33Z', ...extra, platform_fields: { republish_step: 'deleted', ...pf } });
 const cendrier = job({ deleted_at_serveur: '2026-10-07T22:15:35Z', recreation_reprises: 28, recreation_reprise: { n: 28 } });
-verifier(R.decisionRecreationBloquee(cendrier, T) === 'signaler', 'Cendrier (28 échecs, retiré depuis 4 j) → sort de la file');
+verifier(R.decisionRecreationBloquee(cendrier, T) === 'signaler', '28 échecs, retirée depuis 4 j, cause inconnue → sort de la file');
+// Le VRAI Cendrier (jonathanrabany, relu le 12/10) : « /selling-restriction » sur @stilyjoe — cause du COMPTE.
+const cendrierReel = job({ deleted_at_serveur: '2026-10-07T22:15:35Z', recreation_reprises: 29, recreation_reprise: { n: 29, brut: 'Page de dépôt Vinted non atteinte (pathname inattendu (/selling-restriction)) alors que le compte (@stilyjoe) répond' }, error_technique: { brut: 'Page de dépôt Vinted non atteinte (pathname inattendu (/selling-restriction))' } }, { error: "Ton annonce a été retirée de Vinted et n'est pas encore revenue en ligne : sa remise en ligne n'a pas abouti à l'essai précédent. On réessaie tout seuls vers 01:27 — rien à faire de ton côté." });
+verifier(R.decisionRecreationBloquee(cendrierReel, T) === 'proteger', 'le vrai Cendrier (restriction Vinted du compte) → il reste et protège les autres annonces');
+const msgCompte = R.messageRecreationRetenueCompte(cendrierReel);
+verifier(/limite en ce moment les mises en vente de ton compte/.test(msgCompte) && /ne retire aucune autre de tes annonces Vinted/.test(msgCompte) && /Ouvre Vinted sur ton ordinateur/.test(msgCompte) && !/rien à faire/.test(msgCompte), 'retenu par le compte : JAMAIS « rien à faire » — la cause, le geste, les autres annonces gardées en ligne', msgCompte);
+verifier(/connecte-toi à Vinted dans Chrome/.test(R.messageRecreationRetenueCompte(job({ deleted_at_serveur: '2026-10-07T22:15:35Z', recreation_reprises: 4, attente_session: true }))), 'retenu par la session : « connecte-toi à Vinted dans Chrome »');
 verifier(R.decisionRecreationBloquee(job({ deleted_at_serveur: '2026-10-12T09:30:00Z', recreation_reprises: 5 }), T) === null, 'retiré depuis 30 min : on laisse la remise en ligne se faire');
 verifier(R.decisionRecreationBloquee(job({ deleted_at_serveur: '2026-10-11T09:30:00Z', recreation_reprises: 1 }), T) === null, 'un seul échec : on laisse réessayer');
 verifier(R.decisionRecreationBloquee(job({ deleted_at_serveur: '2026-10-07T22:15:35Z', recreation_reprises: 28, selling_restriction: { n: 3 } }), T) === 'proteger', 'restriction Vinted (cause du COMPTE) → elle reste et protège');
@@ -86,6 +92,7 @@ verifier(/Cendrier/.test(msg) && /Republier maintenant/.test(msg) && /Rien n'est
 const hw = lire('supabase/functions/handler-watch/index.ts');
 const blocHw = hw.slice(hw.indexOf('UNE ANNONCE RETIRÉE QUI NE REVIENT PAS NE GÈLE PLUS LES AUTRES (12/10, A5)'));
 verifier(/decisionRecreationBloquee\(j\)/.test(blocHw) && /status: "needs_user", error: message/.test(blocHw) && /SOURCE_RECREATION_BLOQUEE/.test(blocHw), 'handler-watch : la remise en ligne bloquée sort de la file (needs_user, motif nommé)');
+verifier(/const messageCompte = messageRecreationRetenueCompte\(j\);/.test(blocHw) && /error: messageCompte/.test(blocHw) && /if \(pf\.recreation_retient_compte && j\.error === messageCompte\) continue;/.test(blocHw), 'handler-watch : retenu par le compte = le message le dit (réécrit seulement s’il a changé)');
 verifier(/\.limit\(50\)/.test(blocHw.slice(0, 2500)) && /jobs_reservations_extension/.test(blocHw.slice(0, 4000)), 'handler-watch : borné (50), réservation rendue');
 // L'invariant de l'extension et de get-pending-jobs ne lit que pending/processing à 'deleted' : needs_user le lève, toutes versions.
 const bg = lire('chrome-extension/background.js');

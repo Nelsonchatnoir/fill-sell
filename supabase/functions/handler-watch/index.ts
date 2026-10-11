@@ -21,7 +21,7 @@ import { autorisationOplaRequise, autorisationDepopRequise, SOURCE_DEPOP_ACCES }
 import { demanderAutorisationDepop, repartirApresAutorisationDepop, CLES_RELANCE_DEPOP } from "../_shared/acces-depop.js";
 import { resoudreRayonDepop, traceRayonDepop, rayonDepopAJour, reponseRayonDepop, MESSAGE_RAYON_DEPOP } from "../_shared/depop-rayon.js";
 import { appliquerRayonDepop } from "../../../src/utils/depopPublication.js";
-import { decisionRecreationBloquee, messageRecreationBloquee, causeCompte, essaisRates, SOURCE_RECREATION_BLOQUEE } from "../_shared/recreation-bloquee.js";
+import { decisionRecreationBloquee, messageRecreationBloquee, messageRecreationRetenueCompte, causeCompte, essaisRates, SOURCE_RECREATION_BLOQUEE } from "../_shared/recreation-bloquee.js";
 import { rayonRefuseDuJob, resoudreRayonRefuse, feuillesCandidates, pfApresRayon, questionRayonRefuse, messageRayonAChoisir, CLE_REPONSE_RAYON, ESSAIS_RAYON_MAX } from "../_shared/rayon-refuse-moteur.js";
 import { horsModeDepop } from "../../../src/utils/depopCategories.js";
 import { detectObjectIcon } from "../../../src/utils/shared.js";
@@ -2323,9 +2323,16 @@ serve(async (req) => {
       if (!decision) continue;
       const pf = { ...(j.platform_fields ?? {}) };
       if (decision === "proteger") {
-        if (pf.recreation_retient_compte) continue;
-        pf.recreation_retient_compte = { cause: causeCompte(pf), le: new Date().toISOString(), par: "handler-watch" };
-        await supabase.from("cross_post_jobs").update({ platform_fields: pf }).eq("id", j.id).eq("status", j.status);
+        // Jamais en silence : le message dit la cause du compte et le geste ;
+        // réécrit seulement s'il a changé (un nouvel essai raté remet le texte
+        // générique « on réessaie »), jamais une ligne inchangée.
+        const messageCompte = messageRecreationRetenueCompte(j);
+        if (pf.recreation_retient_compte && j.error === messageCompte) continue;
+        if (!pf.recreation_retient_compte) pf.recreation_retient_compte = { cause: causeCompte(pf), le: new Date().toISOString(), par: "handler-watch" };
+        if (j.error && j.error !== messageCompte && !/ne retire aucune autre de tes annonces/.test(j.error)) {
+          pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error, j.status, "handler-watch (remise en ligne retenue par le compte, message dit)");
+        }
+        await supabase.from("cross_post_jobs").update({ platform_fields: pf, error: messageCompte }).eq("id", j.id).eq("status", j.status);
         continue;
       }
       const message = messageRecreationBloquee(j);
