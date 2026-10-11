@@ -16231,6 +16231,11 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
     // les envoie que si la base les a (un upsert avec une colonne inconnue est
     // refusé EN ENTIER, relevé perdu). Sondé une fois par run.
     const statsPossibles = await restRequest("annonces_plateforme?select=vues,favoris&limit=1", token).then(() => true).catch(() => false);
+    // (11/10) La date réelle de mise en ligne (Leboncoin : first_publication_date)
+    // ne s'envoie que si la base a la colonne — même règle que vues / favoris :
+    // un upsert avec une colonne inconnue est refusé EN ENTIER.
+    const dateLue = annonces.some((a) => a.publiee_le);
+    const datePossible = dateLue && await restRequest("annonces_plateforme?select=publiee_le&limit=1", token).then(() => true).catch(() => false);
     // ⚠️ Number(null) vaut 0 : un prix ILLISIBLE doit rester NULL (bande
     //    incertaine), jamais devenir 0 € — même règle pour vues / favoris.
     const nombreOuNull = (v) => (v == null || v === "" ? null : (Number.isFinite(Number(v)) ? Number(v) : null));
@@ -16239,6 +16244,7 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
       titre: a.titre ?? null, prix: nombreOuNull(a.prix),
       photo_url: a.photo_url ?? null,
       ...(statsPossibles ? { vues: nombreOuNull(a.vues), favoris: nombreOuNull(a.favoris) } : {}),
+      ...(datePossible ? { publiee_le: a.publiee_le ?? null } : {}),
       statut_plateforme: ["en_ligne", "en_verification", "desactivee", "vendue"].includes(a.statut) ? a.statut : "inconnu",
       run_id: run.id, vu_le: maintenant(), disparu_le: null, updated_at: maintenant(),
     }));
@@ -16621,6 +16627,27 @@ async function releverLeboncoinParApi() {
       const n = Array.isArray(v) ? Number(v[0]) : Number(v);
       return Number.isFinite(n) ? n : null;
     };
+    // (11/10, Nico) LA DATE RÉELLE DE MISE EN LIGNE, lue sur l'annonce :
+    // first_publication_date (« 2026-10-11 10:09:12 », heure de Paris, sans
+    // fuseau — vérifié sur l'annonce 3286147174, publiée à 08:09 UTC). Elle
+    // reste la même quand l'annonce est remontée (index_date, lui, change).
+    // Rendue en ISO avec le décalage de Paris du jour ; illisible → null
+    // (la republication garde alors son comportement d'avant).
+    const dateParis = (brut) => {
+      const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})$/.exec(String(brut ?? '').trim());
+      if (!m) return null;
+      const [, an, mo, jo, h, mi, se] = m.map(Number);
+      const commeUtc = Date.UTC(an, mo - 1, jo, h, mi, se);
+      if (!Number.isFinite(commeUtc)) return null;
+      try {
+        const nom = new Intl.DateTimeFormat('en-US', { timeZone: 'Europe/Paris', timeZoneName: 'longOffset' })
+          .formatToParts(new Date(commeUtc)).find((x) => x.type === 'timeZoneName')?.value ?? '';
+        const o = /^GMT([+-])(\d{2}):?(\d{2})?$/.exec(nom);
+        const minutes = o ? (o[1] === '-' ? -1 : 1) * (Number(o[2]) * 60 + Number(o[3] ?? 0)) : 0;
+        const t = commeUtc - minutes * 60_000;
+        return Number.isFinite(t) && t <= Date.now() + 86_400_000 ? new Date(t).toISOString() : null;
+      } catch { return null; }
+    };
     const vues = new Map();
     let actives = null, total = null, pages = 0, motif = null;
     // (27/09) Statuts vus, comptés : « 4 en ligne sur 5 annoncées » doit
@@ -16707,6 +16734,7 @@ async function releverLeboncoinParApi() {
           vues: nombre(a?.stats?.Views),
           favoris: nombre(a?.stats?.Favorites),
           statut: actif ? "en_ligne" : "inconnu",
+          publiee_le: dateParis(a?.first_publication_date),
           source_releve: "api_dashboard",
           capture_liste: captureDe(a),
         });
