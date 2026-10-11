@@ -139,6 +139,11 @@ import {
 } from "../publication/moteur/listes";
 // (10/10, cas Manon) Ce que l'encart eBay remplit seul, et quand.
 import { aspectsADemanderIa, valeursAutoAReprendre } from "../publication/moteur/aspectsEbayAuto";
+// (11/10, Nico) La couleur ne bloque jamais : posée seule, à la publication.
+import {
+  avecPaletteVintedComplete, couleursExigeesVides, couleurConnue, listePourIa, posesCouleur,
+  reponseCouleurControlee, estChampCouleur, couleurAutoEnAttente, photosPourCouleur, DELAI_COULEUR_IA_MS,
+} from "../publication/moteur/couleurAuto";
 import { VINTED_COLORS } from "../utils/vintedColors";
 import { optionDepuisTextes } from "../../supabase/functions/_shared/option-du-texte.js";
 import { extensionAMettreAJour } from "../utils/extensionAJour";
@@ -8039,6 +8044,11 @@ export default function ListingPreviewScreen({
           if (platform === "vinted" && variante === "nouvelle" && !rows.some(r => r.field_key === "color") && vintedExigeUneCouleur(String(key).split(" > "))) {
             rows = [...rows, { field_key: "color", field_label: "Couleur", required: true, input_type: null, allowed_values: [...VINTED_COLORS], synthetique: "vinted_couleur_exigee" }];
           }
+          // (11/10, point 9) Toute ligne `color` de Vinted porte la palette
+          // ENTIÈRE (29) : 67 des 77 rayons où le catalogue l'exige n'en avaient
+          // relevé que 20 (Marron, Jaune, Multicolore… absents). À l'écran comme
+          // pour l'IA (moteur/couleurAuto.js).
+          rows = avecPaletteVintedComplete(platform, rows);
 
           // ── Repli d'options intra-plateforme (Vinted) — fix « Espace de
           // stockage » en texte libre (2026-07-18) ──────────────────────────
@@ -8718,6 +8728,20 @@ export default function ListingPreviewScreen({
   const [exclusionsDuClic, setExclusionsDuClic] = useState([]);
   const [fournee, setFournee] = useState(null);
   const [prixAchatInconnu, setPrixAchatInconnu] = useState(false);
+  // ── LA COULEUR AUTOMATIQUE (11/10, Nico — moteur/couleurAuto.js) ─────────
+  // Les couleurs EXIGÉES et VIDES de cet article (ligne Vinted `color`,
+  // aspects eBay « Couleur… »), hors copie retouchée à la main pour la
+  // couleur. `couleurTraites` : les (plateforme, rayon, champ) déjà traités —
+  // posés (connue, IA, repli) une fois, jamais deux. Tant qu'un besoin n'est
+  // pas traité, la question n'est pas comptée (« affiche » = une question
+  // RESTÉE après l'IA) et le pilote du lot attend (preparationAuRepos).
+  const besoinsCouleur = useMemo(() => couleursExigeesVides({
+    genericRequiredStatus, ebayRequiredStatus,
+    categories: { vinted: genericCategoryKeys?.vinted ?? "", ebay: ebayPreviewCategoryId ?? "" },
+    verrous: sharedOverrides,
+  }), [genericRequiredStatus, ebayRequiredStatus, genericCategoryKeysSig, ebayPreviewCategoryId, sharedOverrides]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [couleurTraites, setCouleurTraites] = useState(() => new Set());
+  const couleurEnAttente = couleurAutoEnAttente(besoinsCouleur, couleurTraites);
   const champBloquantVus = useRef({});      // "gp:key" → {platform, champ, categorie, complete?}
   const champBloquantRestants = useRef(new Set());
   const doneRef = useRef(false);
@@ -8805,6 +8829,10 @@ export default function ListingPreviewScreen({
   // (02/10, lot) Micro-appels d'extraction en vol : le pilote du lot attend
   // qu'ils aient répondu avant de compter ce qui reste à demander.
   const [iaGeneriqueEnVol, setIaGeneriqueEnVol] = useState(0);
+  // (11/10) Les plateformes dont la passe TEXTE est en vol — tenu À LA MAIN,
+  // synchrone : la couleur automatique (plus bas) ne part qu'après elle, et
+  // l'état iaGeneriqueEnVol n'est relu qu'au rendu suivant.
+  const texteEnVolPar = useRef(new Set());
   useEffect(() => {
     for (const [gp, list] of Object.entries(genericRequiredStatus ?? {})) {
       const catKey = genericCategoryKeys[gp];
@@ -8915,6 +8943,7 @@ export default function ListingPreviewScreen({
       );
       if (!askable.length) continue;
       setIaGeneriqueEnVol(n => n + 1);
+      texteEnVolPar.current.add(gp);
       (async () => {
         try {
           // 2. Vocabulaire OUVERT : transmettre une liste relevée (partielle)
@@ -8992,13 +9021,110 @@ export default function ListingPreviewScreen({
             else setPlatformAspect(gp, a.key, exacte);
           }
         } catch { /* micro-appel de secours : jamais bloquant */ }
-        finally { setIaGeneriqueEnVol(n => Math.max(0, n - 1)); }
+        finally { texteEnVolPar.current.delete(gp); setIaGeneriqueEnVol(n => Math.max(0, n - 1)); }
       })();
     }
     // Deps par SIGNATURE (fix boucle 2026-07-16) : jamais l'objet
     // genericCategoryKeys/edited/initialListing (identités instables). La garde
     // genericResolvedFor borne déjà à une tentative par (plateforme, catégorie).
   }, [genericRequiredStatus, genericCategoryKeysSig]);
+
+  // ── LA COULEUR NE BLOQUE JAMAIS (11/10, Nico — moteur/couleurAuto.js) ─────
+  // Cas jakefawright : figurine sans couleur, passe texte vide → question
+  // « Couleur » → publication Vinted abandonnée. À la PUBLICATION (stepper et
+  // lot — la republication n'entre pas ici), une couleur exigée (Vinted
+  // `color`, eBay « Couleur… ») restée VIDE après la passe texte est posée
+  // seule, SANS question :
+  //   1. la couleur que l'article porte déjà (une copie, la fiche, Lens),
+  //      ramenée à la palette (« Black » → Noir) ;
+  //   2. sinon UN appel resolve_couleur par article (la PHOTO et le texte, une
+  //      entrée de la liste, contrôlée), compté dans iaGeneriqueEnVol : le lot
+  //      l'attend ; sa réponse sert à toutes les plateformes de l'article ;
+  //   3. l'IA échoue (pas de photo, erreur, > 6 s, hors liste) → « Multicolore ».
+  // Écrit dans le canal que l'extension lit (vintedAspects.color — celui de
+  // setPlatformAspect —, ebayAspects), SANS trace de saisie (aucun verrou),
+  // jamais par-dessus une valeur arrivée entre-temps, RIEN sur la fiche ;
+  // trace platform_fields.couleur_auto { valeur, source: texte|photo|repli
+  // (connue : couleur déjà portée, ramenée à la palette), de?, le }.
+  const couleurIaRef = useRef({ etat: "aucun", reponse: null });
+  const [couleurIaTour, setCouleurIaTour] = useState(0);
+  useEffect(() => {
+    const prete = (b) => b.platform === "vinted"
+      ? genericResolvedFor.current.vinted === genericCategoryKeys?.vinted && !texteEnVolPar.current.has("vinted")
+      : (ebayListeAJour && ebayIaFiniePour === ebayPreviewCategoryId && ebayIaEnVol === 0);
+    const besoins = besoinsCouleur.filter(b => !couleurTraites.has(b.cle) && prete(b));
+    if (!besoins.length) return;
+    const connue = couleurConnue({
+      copies: edited, partagee: sharedFields?.couleur ?? null,
+      ficheAttributs: attributsBase ?? initialListing?.attributs ?? null,
+      lens: initialListing?.couleur ?? null,
+    });
+    const ia = couleurIaRef.current;
+    if (!connue && ia.etat === "en_vol") return; // la réponse relancera cet effet
+    if (!connue && ia.etat === "aucun") {
+      const liste = listePourIa(besoins);
+      const photosIa = photosPourCouleur(urlsPhotos(processedPhotos?.length ? processedPhotos : photos));
+      couleurIaRef.current = { etat: "en_vol", reponse: null };
+      setIaGeneriqueEnVol(n => n + 1);
+      (async () => {
+        let reponse = null;
+        try {
+          // Pas de photo : rien à regarder que la passe texte n'ait déjà lu —
+          // repli direct, aucun appel.
+          if (photosIa.length) {
+            const copie = edited.vinted ?? edited.ebay ?? {};
+            const corps = {
+              resolve_couleur: true, liste, photos: photosIa,
+              couleur_inventaire_id: invId ?? null,
+              plateformes: [...new Set(besoins.map(b => b.platform))],
+              categorie: besoins[0]?.platform === "vinted" ? (genericCategoryKeys?.vinted ?? null) : (ebayPreviewCategoryId ?? null),
+              item_data: {
+                titre: copie.title || initialListing?.titre || "",
+                description: copie.description || initialListing?.description || null,
+                type: initialListing?.categorie || null,
+              },
+            };
+            const delai = new Promise(r => setTimeout(() => r({ data: null, error: "delai" }), DELAI_COULEUR_IA_MS));
+            const { data, error } = await Promise.race([supabase.functions.invoke("generate-listing", { body: corps }), delai]);
+            if (!error) reponse = reponseCouleurControlee(data, liste);
+          }
+        } catch { /* repli, jamais une question */ }
+        finally {
+          couleurIaRef.current = { etat: "fait", reponse };
+          setIaGeneriqueEnVol(n => Math.max(0, n - 1));
+          setCouleurIaTour(n => n + 1);
+        }
+      })();
+      return;
+    }
+    const maintenant = new Date().toISOString();
+    const poses = posesCouleur({ besoins, connue, reponseIa: connue ? null : ia.reponse });
+    setEdited(prev => {
+      let next = prev;
+      for (const { besoin, valeur, source, de } of poses) {
+        const p = besoin.platform;
+        const copie = next[p];
+        if (!copie || !valeur) continue;
+        const pf = copie.platform_fields ?? {};
+        // Jamais par-dessus une couleur arrivée entre-temps (saisie, IA texte).
+        const deja = p === "vinted"
+          ? String(pf.couleur || pf.colors?.[0] || pf.vintedAspects?.color || "").trim()
+          : String(pf.couleur || pf.colors?.[0] || pf.ebayAspects?.[besoin.key] || "").trim();
+        if (deja) continue;
+        const canal = p === "vinted" ? "vintedAspects" : "ebayAspects";
+        const cle = p === "vinted" ? "color" : besoin.key;
+        if (p === "ebay") ebayAutoPoses.current[cle] = { categorie: ebayPreviewCategoryId, valeur };
+        if (next === prev) next = { ...prev };
+        next[p] = { ...copie, platform_fields: {
+          ...pf,
+          [canal]: { ...(pf[canal] ?? {}), [cle]: valeur },
+          couleur_auto: { valeur, source, ...(de ? { de } : {}), le: maintenant },
+        } };
+      }
+      return next;
+    });
+    setCouleurTraites(prev => new Set([...prev, ...besoins.map(b => b.cle)]));
+  }, [besoinsCouleur, couleurTraites, iaGeneriqueEnVol, ebayIaFiniePour, ebayIaEnVol, ebayListeAJour, couleurIaTour]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Trace d'une option lue dans l'annonce (2026-09-24) : elle part avec le job
   // (platform_fields.option_du_texte.<clé>) — d'où vient la valeur, et ce
@@ -10669,6 +10795,9 @@ export default function ListingPreviewScreen({
     if (catalogueLuPour !== genericCategoryKeysSig) return false;
     if (jumeauxPour !== cleJumeaux) return false;
     if (iaGeneriqueEnVol > 0) return false;
+    // (11/10) Une couleur exigée et vide n'est pas encore une question : la
+    // couleur automatique la pose (connue, IA photo, repli) — on l'attend.
+    if (couleurEnAttente) return false;
     if (selected.has("ebay") && ebayPreviewCategoryId) {
       if (ebayAspectsLusPour !== ebayPreviewCategoryId) return false;
       if (ebayRequiredPreview && ebayIaFiniePour !== ebayPreviewCategoryId) return false;

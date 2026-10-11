@@ -101,7 +101,62 @@ const VINTED_COLOR_VARIANTS = {
   "transparente": "Transparence",
   "multicolor": "Multicolore",
   "multi": "Multicolore",
+  // ── ANGLAIS → FRANÇAIS, LES 29 (11/10/2026, point 9 — doctrine de Nico :
+  // « la couleur ne bloque jamais ») ─────────────────────────────────────
+  // Lens répond dans la LANGUE DU COMPTE (« Black », « Burgundy » : prompt
+  // anglais de lens-analysis) et les relevés portent les CODES serveur de
+  // Vinted (« GREY », « BROWN », « LIGHT-BLUE ») : rien de tout cela ne se
+  // normalisait — color_unmapped, rien posé, puis la question « Couleur ».
+  // Relevé en base (cross_post_jobs.color_unmapped, 60 jours) : GREY ×5,
+  // Black, BROWN, Burgundy, Grey, Lilas, Prune. Chaque libellé de la palette
+  // a ici son nom anglais courant et son code serveur (commentaires de
+  // VINTED_COLORS). Toujours CONSERVATRICE : un synonyme exact, jamais « au
+  // plus proche » (Taupe, Vert d'eau restent hors palette). Lue aussi par le
+  // SERVEUR (get-pending-jobs importe ce fichier).
+  "black": "Noir",
+  "grey": "Gris", "gray": "Gris",
+  "light grey": "Gris", "light gray": "Gris", "dark grey": "Gris", "dark gray": "Gris",
+  "white": "Blanc",
+  "cream": "Crème", "ivory": "Crème", "off white": "Crème", "off-white": "Crème",
+  "body": "Beige",                // code serveur de « Beige »
+  "nude": "Beige",
+  "apricot": "Abricot",
+  "coral": "Corail",
+  "red": "Rouge",
+  "burgundy": "Bordeaux", "maroon": "Bordeaux",
+  "hot pink": "Fuchsia", "magenta": "Fuchsia",
+  "pink": "Rose", "light pink": "Rose",
+  "purple": "Violet",
+  "prune": "Violet",              // relevé en base (color_unmapped)
+  "lilac": "Lila", "lavender": "Lila",
+  "lilas": "Lila",                // orthographe française, relevée en base
+  "light blue": "Bleu clair", "light-blue": "Bleu clair", "sky blue": "Bleu clair", "baby blue": "Bleu clair",
+  "blue": "Bleu",
+  "navy blue": "Marine", "dark blue": "Marine", "bleu fonce": "Marine",
+  "mint": "Menthe", "mint green": "Menthe", "vert menthe": "Menthe",
+  "green": "Vert",
+  "dark green": "Vert foncé", "dark-green": "Vert foncé",
+  "khaki": "Kaki", "olive": "Kaki", "olive green": "Kaki", "vert olive": "Kaki",
+  "brown": "Marron", "dark brown": "Marron", "light brown": "Marron", "brun": "Marron",
+  "mustard": "Moutarde",
+  "yellow": "Jaune",
+  "golden": "Doré",
+  "multicolour": "Multicolore", "multicolored": "Multicolore", "multicoloured": "Multicolore",
+  "multi-colour": "Multicolore", "multi-color": "Multicolore", "multi color": "Multicolore", "multi colour": "Multicolore",
+  "multicouleur": "Multicolore", "various": "Multicolore",
+  "clear": "Transparence", "translucide": "Transparence",
 };
+
+// Les variantes cherchées comme MOTS dans un segment que la palette n'a pas
+// reconnu (« Heather grey » → Gris, « Navy blue stripes » → Marine), les
+// expressions de plusieurs mots d'abord. Les clés qui ne sont pas des mots
+// de couleur hors contexte (« or », « body » — le code serveur de Beige —,
+// « clear », « various », « multi ») n'y entrent pas : seules, elles valent ;
+// au milieu d'une phrase (« Body suit black »), jamais.
+const PAS_EN_MOT = new Set(["or", "body", "clear", "various", "multi"]);
+const VARIANTES_PAR_MOTS = Object.keys(VINTED_COLOR_VARIANTS)
+  .filter((k) => k.length > 2 && !PAS_EN_MOT.has(k))
+  .sort((a, b) => b.split(/[\s-]+/).length - a.split(/[\s-]+/).length || b.length - a.length);
 
 // Scan par mots entiers, libellés composés d'abord ("Bleu clair", "Vert
 // foncé" avant "Bleu"/"Vert") : "Bleu gris" → Bleu + Gris, "Gris anthracite"
@@ -122,9 +177,10 @@ export function normalizeVintedColors(raw) {
   const push = (title) => {
     if (title && !out.includes(title) && out.length < 2) out.push(title);
   };
-  // Mêmes séparateurs que l'ancien split (dominante d'abord).
+  // Mêmes séparateurs que l'ancien split (dominante d'abord), plus « and »
+  // (11/10 : « Black and White » de Lens en anglais).
   const segments = String(raw ?? "")
-    .split(/\s+et\s+|[,/&+]/i)
+    .split(/\s+(?:et|and)\s+|[,/&+]/i)
     .map((s) => s.trim())
     .filter(Boolean);
   for (const seg of segments) {
@@ -132,9 +188,18 @@ export function normalizeVintedColors(raw) {
     if (PALETTE_BY_KEY.has(key)) { push(PALETTE_BY_KEY.get(key)); continue; }
     if (VINTED_COLOR_VARIANTS[key]) { push(VINTED_COLOR_VARIANTS[key]); continue; }
     let rest = ` ${key} `;
+    let trouve = false;
     for (const title of SCAN_ORDER) {
       const k = ` ${strip(title)} `;
-      if (rest.includes(k)) { push(title); rest = rest.replace(k, " "); }
+      if (rest.includes(k)) { push(title); rest = rest.replace(k, " "); trouve = true; }
+    }
+    // (11/10) Aucun libellé de la palette dans le segment : ses MOTS sont
+    // cherchés parmi les variantes (anglais compris) — « Heather grey ».
+    if (trouve) continue;
+    let reste = ` ${key.replace(/-/g, " ")} `;
+    for (const v of VARIANTES_PAR_MOTS) {
+      const k = ` ${v.replace(/-/g, " ")} `;
+      if (reste.includes(k)) { push(VINTED_COLOR_VARIANTS[v]); reste = reste.replace(k, " "); }
     }
   }
   const brut = String(raw ?? "").trim();

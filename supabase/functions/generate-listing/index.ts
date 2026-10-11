@@ -35,6 +35,7 @@ const CORS = {
 // _shared/redaction-plateformes.ts — extraits tels quels, partagés avec le
 // mode unifié de lens-analysis : une seule source de prompts, un seul contrat.
 import { resoudreAspectsIA, completerAspectsIA } from "../_shared/ebay-aspects-ia.ts";
+import { listeCouleurPropre, photosPourCouleurIA, resoudreCouleurIA, MODELE_COULEUR } from "../_shared/couleur-ia.ts";
 import {
   VERSION_PROMPT,
   construireContexteArticle,
@@ -336,6 +337,68 @@ serve(async (req) => {
         console.error("[generate-listing] resolve_genre exception:", e);
       }
       return json({ genre: null });
+    }
+
+    // ── Mode ciblé "resolve_couleur" (11/10/2026, point 9 — Nico : « la couleur
+    // ne bloque jamais ») ────────────────────────────────────────────────────
+    // À CÔTÉ de resolve_aspects, qui ne change pas. Appelé par le moteur de
+    // publication (src/publication/moteur/couleurAuto.js, stepper et lot) quand
+    // une couleur exigée reste vide après la passe TEXTE : Haiku 4.5 regarde 1 à
+    // 2 PHOTOS (préparées comme lens-analysis), le titre et la description, et
+    // rend UNE entrée de la liste donnée — contrôlée (_shared/couleur-ia.ts) ;
+    // hors liste, délai, erreur, pas de photo → { couleur: null, motif } : l'app
+    // pose « Multicolore », jamais une question. Micro-appel de secours d'une
+    // publication : aucun débit (comme resolve_genre / resolve_aspects).
+    // Entrée : liste: string[] (≤ 60), photos: string[] (≤ 2), item_data
+    // { titre, description, type }, couleur_inventaire_id, plateformes, categorie.
+    // Réponse : { couleur: string|null, source: "photo"|"texte"|null, motif? }.
+    // Mesure : usage_logs « couleur_auto » (même forme qu'ebay_aspects_ia).
+    if (body.resolve_couleur === true) {
+      const it = item_data ?? {};
+      const debut = Date.now();
+      // Filet contre une boucle d'appels (un écran qui se remonterait sans
+      // fin) : 400 par compte et par 24 h — un lot de 100 articles en demande
+      // au plus 100. Au-delà : refus sans appel IA (l'app pose « Multicolore »).
+      // Index usage_logs_user_feature_created : lecture d'un compte seulement.
+      {
+        const { count } = await adminClient.from("usage_logs").select("id", { count: "exact", head: true })
+          .eq("user_id", user.id).eq("feature", "couleur_auto")
+          .gte("created_at", new Date(Date.now() - 24 * 3600 * 1000).toISOString());
+        if ((count ?? 0) >= 400) {
+          console.warn(`[generate-listing] resolve_couleur — plafond 24 h atteint (${count}) pour ${user.id}`);
+          return json({ couleur: null, source: null, motif: "plafond" });
+        }
+      }
+      const liste = listeCouleurPropre(body.liste);
+      const prep = liste.length
+        ? await photosPourCouleurIA(body.photos, supabaseUrl)
+        : { sources: [], ecartees: 0 };
+      const r = await resoudreCouleurIA(
+        { liste, images: prep.sources, titre: String(it.titre ?? ""), description: it.description ?? null, type: it.type ?? null },
+        { apiKey: Deno.env.get("ANTHROPIC_API_KEY") ?? "", onUsage: trackClaude },
+      );
+      {
+        const invId = Number(body.couleur_inventaire_id);
+        const { error: logErr } = await adminClient.from("usage_logs").insert({
+          user_id: user.id, feature: "couleur_auto",
+          metadata: {
+            inventaire_id: Number.isFinite(invId) && invId > 0 ? String(invId) : null,
+            plateformes: Array.isArray(body.plateformes) ? body.plateformes.map(String).slice(0, 6) : [],
+            categorie: typeof body.categorie === "string" || typeof body.categorie === "number" ? String(body.categorie).slice(0, 200) : null,
+            liste_n: liste.length,
+            photos_envoyees: prep.sources.length, photos_ecartees: prep.ecartees,
+            couleur: r.couleur, source: r.source, motif: r.motif ?? null,
+            ...(r.brut ? { brut: r.brut } : {}),
+            modele: MODELE_COULEUR,
+            claude_calls: cost.claude_calls, claude_input_tokens: cost.claude_in, claude_output_tokens: cost.claude_out,
+            cost_usd: Number(((cost.claude_in / 1e6) * 1 + (cost.claude_out / 1e6) * 5).toFixed(5)),
+            duree_ms: Date.now() - debut,
+          },
+        });
+        if (logErr) console.error("[generate-listing] usage_logs (couleur_auto):", logErr.message);
+      }
+      console.log(`[generate-listing] resolve_couleur — ${r.couleur ? `« ${r.couleur} » (${r.source})` : `rien (${r.motif})`}, ${prep.sources.length} photo(s), ${Date.now() - debut} ms`);
+      return json({ couleur: r.couleur, source: r.source, ...(r.motif ? { motif: r.motif } : {}) });
     }
 
     // ── Mode ciblé "resolve_aspects" (2026-07-16, chantier champs obligatoires) ──

@@ -42,6 +42,7 @@
 //    devient jamais 44) et n'arrondit rien. Sans correspondance sûre, il rend
 //    « à compléter » avec la liste, et c'est la personne qui choisit.
 import { texteComparable } from "../../utils/texteComparable.js";
+import { normalizeVintedColors } from "../../utils/vintedColors.js";
 import { tailleDansGrille } from "../../../supabase/functions/_shared/tailles.js";
 import {
   optionDepuisTextes, champDeductibleDuTexte, estFourreTout, listeCandidatsDabord, textesDeLAnnonce,
@@ -119,10 +120,14 @@ export const BEEBS_PACKAGE_BY_FORMAT = {
 };
 
 /** La valeur telle que l'EXTENSION la présentera à la liste de la plateforme
- *  — aujourd'hui, seul le format de colis Beebs est traduit avant la pose. */
+ *  — le format de colis Beebs est traduit avant la pose ; la couleur Vinted
+ *  aussi (11/10) : l'app la ramène à la palette au clic Publier
+ *  (resolutionPublication → normalizeVintedColors), « Black » part « Noir ».
+ *  Juger « Black » hors palette, c'était juger une valeur qui ne partira pas. */
 export function valeurPourListe(platform, key, value) {
   const v = String(value ?? "").trim();
   if (platform === "beebs" && key === "Format du colis" && BEEBS_PACKAGE_BY_FORMAT[v]) return BEEBS_PACKAGE_BY_FORMAT[v];
+  if (platform === "vinted" && key === "color" && v) return normalizeVintedColors(v).colors[0] ?? v;
   return v;
 }
 
@@ -287,8 +292,12 @@ export function horsListeBloque({ regle = "classique", platform, key, inputType,
 // serveur (get-pending-jobs) applique la MÊME au service du job, pour les
 // écrans et les extensions d'avant. Aucune logique ici, un relais.
 // Règle de Nico : aucune annonce Vinted ne part avec une marque ou une couleur
-// vide — « Sans marque » se PROPOSE, il ne se pose pas tout seul ; dans le
-// doute, on demande.
+// vide. ⚠️ REMPLACÉE LE 11/10 (Nico) pour ce qui se pose SANS question :
+//   · couleur exigée et vide → posée automatiquement (connue, sinon IA sur la
+//     photo, sinon « Multicolore ») — moteur/couleurAuto.js, jamais une question ;
+//   · AUCUNE marque nulle part (fiche, Lens, copies, aucune lecture partielle
+//     sur l'étiquette) → « Sans marque » d'office — moteur/reponsesPartagees.js
+//     (sansMarqueDOffice). Une marque présente hors catalogue garde sa question.
 export { vintedExigeUneMarque, vintedExigeUneCouleur, valeurUneLettre } from "../../../supabase/functions/_shared/vinted-exigences.js";
 
 // ── RAYON VINTED « NEUF SEULEMENT » : C'EST LE RAYON QU'ON CHANGE (24/09) ───
