@@ -70,3 +70,33 @@ Hors périmètre : les suggestions d'eBay elles-mêmes (voie API, rayon incertai
 toilette » en Vacances › Trousses, juste) ; « tableau » → Bricolage › Peintures (autre homonymie).
 
 Selftest : `selftest:branche-specialisee-ebay` (arbre relevé + les 16 dépôts réels + câblage).
+
+## 4. 11/10 — les 3 annonces encore en ligne (Tessy), rangées sans republier
+
+Décision de Nico : ranger les trois annonces EN LIGNE de Tessy (voie API) dans la bonne catégorie,
+sans supprimer ni republier (même numéro, vues et favoris gardés). Outil :
+`ebay-api-worker` **v84**, action `reviser_annonce` mode `rayon_regle` (x-cron-secret, à la main ;
+inverse : mode `restaurer`) ; pilote et rejeu de la règle :
+`scripts/reparations/20261011_ebay_categories_tessy.mjs` ; sauvegarde AVANT écriture (offre
+getOffer + article getInventoryItem + annonce publique + job) :
+`_backup_1110_ebay_categories_tessy` (`…_sauvegarde.sql`).
+
+- **Lecture (11/10 ~10:00)** : les trois en vente, 1 disponible, 0 vendu, offre PUBLISHED / ACTIVE.
+- **Catégorie cible = la règle d'aujourd'hui** (resoudrePublication + brancheSpecialiseeEbay, eBay
+  seul, voie API, appels IA réels en rejeu ; puis resoudreCategorie du serveur) : Sac → 169291
+  « Femme : sacs, sacs à main » ; Jordan bébé → 147285 « Bébé : chaussures » ; Adidas CF I →
+  155202 « Enfant unisexe : chaussures ».
+- **Champs exigés du nouveau rayon** : liste fermée → entrée de la liste ; texte libre → mot LU
+  dans le titre ou la description de l'annonce, sinon l'annonce est LAISSÉE.
+- **800760163791 Adidas Tensaur — CORRIGÉE** : 121414 Pins › Basket → 155202 ; ajoutés Couleur
+  « Blanc », Département « Enfant unisexe », Marque « adidas », Style « Baskets », Pointure EU « 23 »
+  (Type « Sportif » gardé) ; état NEW inchangé (eBay l'affiche « Neuf avec emballage » dans ce
+  rayon). Relu : même numéro, en ligne, 37,10 €, 1 disponible, offre (prix, quantité, politiques,
+  description, emplacement) et article (titre, description, 11 photos, disponibilité) identiques.
+- **800745317785 Sac MNG — LAISSÉE** : 169291 exige « Matière extérieure » et « Style » en texte
+  libre ; ni « cuir » (la fiche dit d'ailleurs « Cuir synthétique », le job « Cuir ») ni « Sac porté
+  épaule » ne se lisent dans le titre ou la description.
+- **800760155217 Jordan bébé — LAISSÉE** : 147285 exige « Style » ; « Baskets » ne se lit ni dans le
+  titre ni dans la description (« paire de Jordan pour bébé »).
+- Aucun job créé, aucun mail, aucune autre annonce ; le job de l'Adidas porte le nouveau rayon et
+  la trace `revision_rayon_regle`.
