@@ -4,7 +4,10 @@
 fin) et `docs/agents/consignes-2026-09-28.md` (règles) remplacent tout historique
 contraire. `functions list`, `cron.job` et `profiles.extension_build` font foi.
 
-- **Servi** : ext. **0.6.106** ; min **0.6.81** ; OTA 2.9.73.
+- **Servi** : ext. **0.6.106** (0.6.107 à téléverser) ; min **0.6.81** ; OTA 2.9.80 ; gpj v233.
+- **⛔ 11/10** (`docs/enquetes/lot-1110/RAPPORT.md`) : déclencheur aux droits de l'appelant = fonctions ouvertes à
+  authenticated seulement (403 du 09/10, mig 120000) ; fiche vendue par le dressing → vente prouvée ; Opla : plus
+  AUCUNE action (mig 130000, A3/A4 révoqués) ; republication retenue = non servie, motif écrit (gpj v233).
 - **⛔ DEPOP** : pour tous dès le 10/10 (ext. ≥ 0.6.106) ; rayon par id ; identifiant rattaché AVANT le moteur.
 - **⛔ MULTI-SYNCHRO (08/10)** : un appui = toutes les plateformes, stock DÉJÀ fusionné ; moteur v3,
   `rapprochement` v17 ; empreintes par la base ; fiche `releve_*` = `rapprocher_importer` seul ; fiches Vinted

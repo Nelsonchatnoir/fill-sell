@@ -4,11 +4,21 @@
 « 03/10 nuit — clôture Louis + marque + prix » et « 04/10 matin —
 complément », « 04/10 fin de matinée — chantier Louis », « 04/10 soir —
 incident CPU », « 04/10 nuit — six défauts clients » et « 05/10 — lot
-terminal Problèmes » / « 05/10 après-midi » / « 06/10 » / « 06/10 soir » / « 06/10 nuit » / « 08/10 nuit — MULTI-SYNCHRO » / « 08/10 matin — boucles » / « 08/10 fin de matinée — SUJET CLOS » / « 08/10 après-midi — complément » / « 08/10 soir — fin du chantier multi-synchro » / « 08/10 nuit — Bebertdeals : remise en ligne Vinted » / « 08/10 nuit — VENTES PROUVÉES » / « 09/10 nuit — DEPOP » / « 09/10 fin de matinée — DEPOP : reprise complète » / « 11/10 — une vente signalée une fois » en fin ; reprises : `docs/reprise/terminal-depop-0910.md`, `docs/reprise/terminal-ventes-prouvees-0810.md`, `docs/reprise/terminal-bebertdeals-0810.md`, `docs/reprise/terminal-boucles-0810.md`, `docs/reprise/terminal-cloture-multi-synchro-0810.md`, `docs/reprise/terminal-complement-0810.md`, `docs/reprise/terminal-fin-multi-synchro-0810.md`) et
+terminal Problèmes » / « 05/10 après-midi » / « 06/10 » / « 06/10 soir » / « 06/10 nuit » / « 08/10 nuit — MULTI-SYNCHRO » / « 08/10 matin — boucles » / « 08/10 fin de matinée — SUJET CLOS » / « 08/10 après-midi — complément » / « 08/10 soir — fin du chantier multi-synchro » / « 08/10 nuit — Bebertdeals : remise en ligne Vinted » / « 08/10 nuit — VENTES PROUVÉES » / « 09/10 nuit — DEPOP » / « 09/10 fin de matinée — DEPOP : reprise complète » / « 11/10 — une vente signalée une fois » / « 11/10 midi — LOT UNIQUE » en fin ; reprises : `docs/reprise/terminal-depop-0910.md`, `docs/reprise/terminal-ventes-prouvees-0810.md`, `docs/reprise/terminal-bebertdeals-0810.md`, `docs/reprise/terminal-boucles-0810.md`, `docs/reprise/terminal-cloture-multi-synchro-0810.md`, `docs/reprise/terminal-complement-0810.md`, `docs/reprise/terminal-fin-multi-synchro-0810.md`) et
 `docs/agents/consignes-2026-09-28.md` (règles), qui remplacent tout historique
 contraire. Il se périme : `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
 
+- **⛔ LOT UNIQUE DU 11/10 (midi)** — rapport `docs/enquetes/lot-1110/RAPPORT.md` :
+  **A5** signal de vente Vinted refusé en 403 depuis le 09/10 (~12:00 : déclencheur aux droits de l'appelant →
+  `_ts_ou_null`) → fiches « vendu » sans ligne ; **mig 20261011120000 APPLIQUÉE** (definer + garde
+  `inventaire_0_vendu_vinted_par_la_vente`), rattrapage 37 ventes / 14 « Vendue ? », 0 mail ;
+  ⛔ tout déclencheur aux droits de l'appelant n'appelle QUE des fonctions ouvertes à authenticated
+  (`selftest:declencheurs-droits -- --prod`). **A2** Opla : **mig 20261011130000 APPLIQUÉE**, A3/A4 du 02/10
+  RÉVOQUÉS — plus AUCUNE action Opla (job né ou relancé = clos, aucun relevé, aucune question) ; 31 jobs clos.
+  **A3** gpj **v233** : republication retenue par une autre à 'deleted' = non servie, motif écrit ;
+  `pfAPersister` (rien de servi n'est figé en base). **A1/A4** app. OTA **2.9.80** ; handler-watch v96 ;
+  extension **0.6.107** À TÉLÉVERSER (`build/CWS-0.6.107-A-TELEVERSER/`).
 - **⛔ UNE ANNONCE VENDUE NE SE SIGNALE QU'UNE FOIS (11/10, Louis)** : le « doublon »
   de `push_ventes_a_envoyer` ne regardait que 3 jours et jamais le reçu → ventes traitées
   remailées 3 à 5 jours plus tard (fiche à quantité pointée sur une ANCIENNE annonce que le
