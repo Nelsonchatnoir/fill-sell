@@ -176,6 +176,7 @@
     "selftest:remise-en-ligne-vinted": "node scripts/remise-en-ligne-vinted-selftest.mjs",
     "selftest:ventes-prouvees": "node scripts/ventes-prouvees-selftest.mjs",
     "selftest:mail-apres-vente": "node scripts/mail-apres-vente-selftest.mjs",
+    "selftest:vente-signalee-une-fois": "node scripts/vente-signalee-une-fois-selftest.mjs",
     "selftest:ventes-relevees-identifiant-seul": "node scripts/ventes-relevees-identifiant-seul-selftest.mjs",
     "selftest:une-vente-par-article": "node scripts/une-vente-par-article-selftest.mjs",
     "selftest:ebay-commande-exemplaire": "node scripts/ebay-commande-exemplaire-selftest.mjs",

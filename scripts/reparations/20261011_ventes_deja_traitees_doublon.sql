@@ -1,0 +1,53 @@
+-- ═══════════════════════════════════════════════════════════════════════════
+-- RATTRAPAGE 11/10 — les notes déjà parties pour une vente DÉJÀ signalée sont
+-- classées « doublon » PAR LA RÈGLE (push_vente_deja_signalee, migration
+-- 20261011100000), jamais à la main.
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Ce qui change : statut → 'doublon', motif → 'rattrapage_1110:<motif de la
+-- règle>'. Ce qui NE change PAS : part_le, mail_statut, resultat (le mail est
+-- bien parti, l'historique le garde). Aucune vente, aucune fiche, aucun job,
+-- aucun mail. La liste « Ventes à confirmer » n'en dépend pas (elle exclut déjà
+-- toute vente traitée) : ce rattrapage ne range que le journal.
+-- Règle appliquée « dans l'ordre » (p_anterieures = true) : une note n'est
+-- doublon que d'une vente enregistrée AVANT elle, ou d'une note annoncée AVANT
+-- elle (id plus petit) — le premier signalement d'une vente reste le sien.
+--
+-- Exécution, une section à la fois (npx supabase db query --linked -f …) :
+--   1. SIMULATION (lecture seule) ; 2. SAUVEGARDE ; 3. APPLICATION ; 4. relecture.
+--   INVERSE : section 5.
+
+-- ── 1. SIMULATION ───────────────────────────────────────────────────────────
+-- select p.id, left(p.user_id::text, 8) as compte, p.plateforme, p.annonce_id, p.statut, p.mail_statut,
+--        to_char(p.cree_le at time zone 'Europe/Paris', 'DD/MM HH24:MI') as cree,
+--        public.push_vente_deja_signalee(p.user_id, p.plateforme, p.cles, p.cree_le, p.id, true) as motif
+--   from public.push_ventes p
+--  where p.part_le is not null and p.statut not in ('doublon', 'declaree')
+--    and p.origine not in ('declaree', 'essai')
+--    and public.push_vente_deja_signalee(p.user_id, p.plateforme, p.cles, p.cree_le, p.id, true) is not null
+--  order by p.user_id, p.id;
+
+-- ── 2. SAUVEGARDE (avant toute écriture) ───────────────────────────────────
+-- create table if not exists public._backup_1110_push_ventes_doublon as
+--   select p.*, now() as sauve_le from public.push_ventes p where false;
+-- insert into public._backup_1110_push_ventes_doublon
+--   select p.*, now() from public.push_ventes p
+--    where p.part_le is not null and p.statut not in ('doublon', 'declaree')
+--      and p.origine not in ('declaree', 'essai')
+--      and public.push_vente_deja_signalee(p.user_id, p.plateforme, p.cles, p.cree_le, p.id, true) is not null;
+-- revoke all on public._backup_1110_push_ventes_doublon from anon, authenticated;
+
+-- ── 3. APPLICATION (les seules lignes sauvegardées) ─────────────────────────
+-- update public.push_ventes p
+--    set statut = 'doublon',
+--        motif = 'rattrapage_1110:' || public.push_vente_deja_signalee(p.user_id, p.plateforme, p.cles, p.cree_le, p.id, true)
+--  where p.id in (select b.id from public._backup_1110_push_ventes_doublon b)
+--    and p.statut not in ('doublon', 'declaree');
+
+-- ── 4. RELECTURE ────────────────────────────────────────────────────────────
+-- select p.id, p.annonce_id, p.statut, p.motif, p.mail_statut from public.push_ventes p
+--  where p.id in (select id from public._backup_1110_push_ventes_doublon) order by p.id;
+
+-- ── 5. INVERSE ──────────────────────────────────────────────────────────────
+-- update public.push_ventes p set statut = b.statut, motif = b.motif
+--   from public._backup_1110_push_ventes_doublon b
+--  where p.id = b.id and p.statut = 'doublon' and p.motif like 'rattrapage_1110:%';
