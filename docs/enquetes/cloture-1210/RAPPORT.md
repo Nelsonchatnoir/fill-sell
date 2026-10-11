@@ -60,9 +60,16 @@ l'ISBN 3 fois (pas 5 : 2 « complete » étaient des questions retirées par un 
   retirée puis recréée à l'identique, 10341269903 (étape `recreated`), puis retirée.
 - **Nettoyage (B4)** : 21 retraits Depop demandés depuis l'app (« Gérer les plateformes »), 21 `deleted` (22:49 → 22:59) ;
   boutique Depop relue : 3 annonces, celles de Nico, aucune de test ; Leboncoin « Mes annonces » relu : 10 en ligne, 0 de
-  test ; Vinted de test retirée (23:00). **Aucun job de test en file.** Les 21 fiches de test restent au stock (traçabilité
-  des preuves) — inverse prêt : `scripts/reparations/20261012_articles_test_lot_depop_INVERSE.sql` (sauf n°2 et n°3 tant
-  que Leboncoin ne les a pas tranchées).
+  test ; Vinted de test retirée (23:00). **Aucun job de test en file.**
+  **Fin du nettoyage (11/10 23:28)** — relu en page dans le Chrome de Nico : Depop « Active (3 listings) » à 6, 28 et 80 €
+  (celles de Nico) ; Vinted 10341135019 (publication) et 10341269903 (republication) : « Page not found » ; Leboncoin
+  « En ligne (10) », aucune de test ; 3286784431 et 3286784845 (n°2, n°3) : « Cette annonce est désactivée » (modération).
+  **19 fiches de test supprimées** (n°1, 4 → 21) par `scripts/reparations/20261012_articles_test_lot_depop_INVERSE.sql` :
+  garde dans la requête (aucun job en file, aucune publication à `published`, aucune vente), sauvegarde
+  `_backup_1210_articles_test_lot_depop` (78 lignes : 19 fiches, 19 `fiches_annonce`, 40 liens de jobs ; RLS, aucun droit
+  client), restauration écrite en tête du script ; 0 retrait armé par le déclencheur, 40 jobs gardés (détachés),
+  0 job créé. **Restent n°2 et n°3** (1791800000002/3) : le même script les retirera quand leur publication Leboncoin ne
+  sera plus à `published` ; s'ils passent en ligne, les retirer d'abord.
 - **A9 en réel** : la requête du popup (sans capacités de poste) depuis la session de Nico rend les 9 jobs Depop en file.
 - **A11 (contrôle unique après service)** : depuis le service (22:28) jusqu'à 22:55, 0 passage en échec ni en question sur
   les autres comptes (journal update-job-status ; 21 sur les 6 h d'avant), jobs nés dans les 15 min : 24 (payants), 0
@@ -83,6 +90,7 @@ l'ISBN 3 fois (pas 5 : 2 « complete » étaient des questions retirées par un 
 - **« Moules noel » de Louis** : en ligne en Décoration › Rangement depuis 21:51 — rien modifié chez Leboncoin, à
   corriger par Louis (ou une republication, qui prendra le bon rayon).
 - **2 T-shirts de test Leboncoin en modération** (n°2, n°3) : non retirables tant que Leboncoin ne les a pas validés
-  (« Leboncoin vérifie ton annonce »). FillSell relit Leboncoin à chaque passage ; s'ils passent en ligne, les retirer.
+  (« Leboncoin vérifie ton annonce » ; encore « désactivées » à 23:25). FillSell relit Leboncoin à chaque passage ; s'ils
+  passent en ligne, les retirer, puis relancer le script de nettoyage (il retire leurs 2 fiches, les seules restantes).
 - Le compteur « annonces restantes » de l'en-tête ne se met à jour qu'au rechargement (91 affiché, 70 réels) —
   préexistant, non corrigé.
