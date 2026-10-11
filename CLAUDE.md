@@ -4,11 +4,22 @@
 « 03/10 nuit — clôture Louis + marque + prix » et « 04/10 matin —
 complément », « 04/10 fin de matinée — chantier Louis », « 04/10 soir —
 incident CPU », « 04/10 nuit — six défauts clients » et « 05/10 — lot
-terminal Problèmes » / « 05/10 après-midi » / « 06/10 » / « 06/10 soir » / « 06/10 nuit » / « 08/10 nuit — MULTI-SYNCHRO » / « 08/10 matin — boucles » / « 08/10 fin de matinée — SUJET CLOS » / « 08/10 après-midi — complément » / « 08/10 soir — fin du chantier multi-synchro » / « 08/10 nuit — Bebertdeals : remise en ligne Vinted » / « 08/10 nuit — VENTES PROUVÉES » / « 09/10 nuit — DEPOP » / « 09/10 fin de matinée — DEPOP : reprise complète » / « 11/10 — une vente signalée une fois » / « 11/10 midi — LOT UNIQUE » / « 11/10 après-midi — POIDS LEBONCOIN » en fin ; reprises : `docs/reprise/terminal-depop-0910.md`, `docs/reprise/terminal-ventes-prouvees-0810.md`, `docs/reprise/terminal-bebertdeals-0810.md`, `docs/reprise/terminal-boucles-0810.md`, `docs/reprise/terminal-cloture-multi-synchro-0810.md`, `docs/reprise/terminal-complement-0810.md`, `docs/reprise/terminal-fin-multi-synchro-0810.md`) et
+terminal Problèmes » / « 05/10 après-midi » / « 06/10 » / « 06/10 soir » / « 06/10 nuit » / « 08/10 nuit — MULTI-SYNCHRO » / « 08/10 matin — boucles » / « 08/10 fin de matinée — SUJET CLOS » / « 08/10 après-midi — complément » / « 08/10 soir — fin du chantier multi-synchro » / « 08/10 nuit — Bebertdeals : remise en ligne Vinted » / « 08/10 nuit — VENTES PROUVÉES » / « 09/10 nuit — DEPOP » / « 09/10 fin de matinée — DEPOP : reprise complète » / « 11/10 — une vente signalée une fois » / « 11/10 midi — LOT UNIQUE » / « 11/10 après-midi — POIDS LEBONCOIN » / « 11/10 fin d'après-midi — BOUTIQUE, ANCIENNETÉ, QUOTA » en fin ; reprises : `docs/reprise/terminal-depop-0910.md`, `docs/reprise/terminal-ventes-prouvees-0810.md`, `docs/reprise/terminal-bebertdeals-0810.md`, `docs/reprise/terminal-boucles-0810.md`, `docs/reprise/terminal-cloture-multi-synchro-0810.md`, `docs/reprise/terminal-complement-0810.md`, `docs/reprise/terminal-fin-multi-synchro-0810.md`) et
 `docs/agents/consignes-2026-09-28.md` (règles), qui remplacent tout historique
 contraire. Il se périme : `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
 
+- **⛔ 11/10 fin d'après-midi (Louis)** — rapport `docs/enquetes/louis-republication-boutique-quota-1110/RAPPORT.md` :
+  **une publication Vinted (remise en vente comprise) ne part que sur la boutique de sa fiche** (gpj **v235**,
+  `verifierBoutiquePublicationVinted` ; article sans boutique chez un compte à plusieurs boutiques = question fermée
+  « Boutique Vinted », jamais un défaut) ; l'annonce partie sur @evat (https://www.vinted.fr/items/10327294017) est
+  LAISSÉE, Nico décide ; 47 imports rattachés à leur boutique (`_backup_1110_boutique_imports_vinted`).
+  **Ancienneté** : Vinted lit déjà la date de l'annonce (`listed_at_guess`) ; Leboncoin importé = date réelle
+  (`annonces_plateforme.publiee_le`, mig **20261011151000 APPLIQUÉE**, extension **0.6.108 À TÉLÉVERSER**
+  `build/CWS-0.6.108-A-TELEVERSER/`, embarque la 0.6.107) ; Beebs/Depop : aucune date lue → inchangés.
+  **Quota par compte** : `quotas_par_compte` + `quota_annonces_compte` (mig **20261011150000 APPLIQUÉE**) ;
+  Louis = 1 000/mois ; retirer : `delete from public.quotas_par_compte where user_id = '…';`. OTA **2.9.82**.
+  Search Console : « Valider la correction » lancé pour les deux problèmes uploadDate.
 - **⛔ POIDS LEBONCOIN : JAMAIS UNE PUBLICATION SANS POIDS (11/10, Louis)** — rapport
   `docs/enquetes/louis-poids-lot-1110/RAPPORT.md` : 9bdcfce (10/10 13:50, 2.9.75) avait rendu le poids du lot
   « facultatif » → 12 livres et 18 vêtements de Louis partis sans poids (Leboncoin : 100 g, S ; le lot de 19:44
