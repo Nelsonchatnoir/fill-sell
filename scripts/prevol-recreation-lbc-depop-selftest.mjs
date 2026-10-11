@@ -224,20 +224,31 @@ assert.doesNotMatch(lrCode, /toy_type/, "« Produit » des jouets n'est jamais c
 ok("leboncoin.js : photos envoyées ; repli « Autre » limité à *_product / decoration_type (toy_type jamais deviné)");
 
 // Simulation de la sortie : le DOM de Leboncoin, en miniature.
-function domLbc() {
+// (11/10, test réel 0.6.109) `etroite` : la mise en page de la fenêtre de
+// travail minimisée — le bouton texte « Quitter » est masqué (« hidden!
+// lg:block! »), seul le bouton-icône SANS texte, aria-label="Quitter", est
+// affiché. La sortie ne le voyait pas (« quitter_introuvable », job 7fbaf36f).
+function domLbc({ etroite = false } = {}) {
   const boutons = [];
-  const bouton = (texte, onClick) => { const b = { textContent: texte, clics: 0, click() { this.clics++; onClick?.(); } }; boutons.push(b); return b; };
+  const bouton = (texte, onClick, { aria = null, cache = false } = {}) => {
+    const b = { textContent: texte, cache, clics: 0, getAttribute: (n) => (n === "aria-label" ? aria : null), click() { this.clics++; onClick?.(); } };
+    boutons.push(b); return b;
+  };
   const sansEnregistrer = { b: null };
   bouton("Retour"); bouton("Continuer");
-  const quitter = bouton("Quitter", () => { sansEnregistrer.b ??= bouton("Quitter sans enregistrer"); });
-  return { document: { querySelectorAll: () => boutons }, quitter, sansEnregistrer };
+  const ouvrir = () => { sansEnregistrer.b ??= bouton("Quitter sans enregistrer"); };
+  const quitterTexte = bouton("Quitter", ouvrir, { cache: etroite });
+  const quitterIcone = bouton("", ouvrir, { aria: "Quitter", cache: !etroite });
+  return { document: { querySelectorAll: () => boutons }, quitter: etroite ? quitterIcone : quitterTexte, autreQuitter: etroite ? quitterTexte : quitterIcone, sansEnregistrer };
 }
 const monterSortie = (dom) => new Function("ctx", `
   const { document, estVisibleSansLayoutLbc, waitFor } = ctx;
+  ${extraireFonctionJs(lbc, "nomsControleLbc")}
+  ${extraireFonctionJs(lbc, "boutonLbcParNom")}
   ${extraireFonctionJs(lbc, "lbcQuitterDepotSansEnregistrer")}
   ${extraireFonctionJs(lbc, "lbcFinPrevolRecreation")}
   return lbcFinPrevolRecreation;
-`)({ document: dom.document, estVisibleSansLayoutLbc: () => true, waitFor: async (f) => f() ?? null });
+`)({ document: dom.document, estVisibleSansLayoutLbc: (b) => !b.cache, waitFor: async (f) => f() ?? null });
 console.log = () => {};
 try {
   const dom = domLbc();
@@ -262,14 +273,43 @@ try {
   assert.equal(dom2.sansEnregistrer.b.clics, 1, "même bloqué, rien n'est laissé chez Leboncoin");
   assert.equal(verdictPrevolRecreation(r2), "champ_a_choisir");
 
-  const sansQuitter = { document: { querySelectorAll: () => [{ textContent: "Continuer", click() { throw new Error("jamais"); } }] } };
+  const sansQuitter = { document: { querySelectorAll: () => [{ textContent: "Continuer", getAttribute: () => null, click() { throw new Error("jamais"); } }] } };
   const r3 = await monterSortie(sansQuitter)({ bodyArea: {}, enumerated: [] }, { warnings: [], unfilledRequired: [], t: () => {}, trace: [] });
   assert.equal(r3.prevolRecreation.brouillon_jete, false);
   assert.equal(r3.prevolRecreation.motif_sortie, "quitter_introuvable");
+
+  // Fenêtre de travail minimisée (mise en page étroite) : le bouton-icône
+  // aria-label « Quitter » est LE bouton — preuve ET champ bloquant.
+  for (const avance of [{ bodyArea: {}, enumerated: [] }, { blocked: BLOQUE_PRODUIT }]) {
+    const domE = domLbc({ etroite: true });
+    const rE = await monterSortie(domE)(avance, { warnings: [], unfilledRequired: [], t: () => {}, trace: [] });
+    assert.equal(rE.prevolRecreation.brouillon_jete, true, "fenêtre étroite : la sortie trouve le bouton-icône");
+    assert.equal(rE.prevolRecreation.motif_sortie, undefined);
+    assert.equal(domE.quitter.clics, 1, "le bouton-icône aria-label=\"Quitter\" est cliqué");
+    assert.equal(domE.autreQuitter.clics, 0, "jamais le bouton masqué");
+    await new Promise((res) => setTimeout(res, 250));
+    assert.equal(domE.sansEnregistrer.b.clics, 1);
+  }
 } finally {
   console.log = log;
 }
-ok("sortie du wizard : « Quitter » → « Quitter sans enregistrer » (clic différé après la réponse), preuve ou champ bloquant rendus ; sans bouton, on le dit");
+ok("sortie du wizard : « Quitter » → « Quitter sans enregistrer » (clic différé après la réponse), preuve ou champ bloquant rendus ; fenêtre étroite : bouton-icône aria-label ; sans bouton, on le dit");
+
+// Même règle partout où leboncoin.js cherche « Quitter » : par le NOM
+// (boutonLbcParNom), jamais par offsetParent (nul en fenêtre minimisée) ni par
+// le seul texte — le chemin « brouillon bloquant » compris.
+{
+  const code = lbc.split("\n").map((l) => l.replace(/\/\/.*$/, "")).join("\n");
+  assert.doesNotMatch(code, /offsetParent !== null && \/\^?quitter/i, "aucun « Quitter » cherché par offsetParent");
+  assert.doesNotMatch(code, /\/\^quitter\$\/i\.test\(\(b\.textContent/, "aucun « Quitter » cherché par son seul texte");
+  const fl2 = extraireFonctionJs(lbc, "fillListingForm");
+  assert.match(fl2, /const btnQuitter = boutonLbcParNom\(\/\^quitter\$\/i\);/);
+  assert.match(fl2, /waitFor\(\(\) => boutonLbcParNom\(\/quitter sans enregistrer\/i\), 5000\)/);
+  const nomsDe = new Function(`${extraireFonctionJs(lbc, "nomsControleLbc")}\nreturn nomsControleLbc;`)();
+  assert.deepEqual(nomsDe({ textContent: "  ", getAttribute: (n) => (n === "aria-label" ? "Quitter" : null) }), ["Quitter"]);
+  assert.deepEqual(nomsDe({ textContent: " Quitter\n", getAttribute: () => null }), ["Quitter"]);
+}
+ok("leboncoin.js : tout « Quitter » (pré-vol, brouillon bloquant, diagnostic) se trouve par son nom accessible, sans offsetParent");
 
 // ── 6. depop.js : arrêt juste avant les photos ──────────────────────────────
 const fd = extraireFonctionJs(dp, "fillListingForm");

@@ -113,11 +113,10 @@ const MSG_LBC_ESCROW_IDENTITE =
 // fiable n'a été relevé en session réelle — on ne devine pas.
 function diagnostiquerPageLbc() {
   const q = (sel) => { try { return Boolean(document.querySelector(sel)); } catch { return null; } };
+  // (11/10) Même lecture que les gestes (boutonLbcParNom) : nom accessible,
+  // visibilité sans layout — sinon le relevé dit « pas de Quitter » à tort.
   const boutonVisible = (re) => {
-    try {
-      return [...document.querySelectorAll("button")]
-        .some((b) => b.offsetParent !== null && re.test((b.textContent ?? "").replace(/\s+/g, " ").trim()));
-    } catch { return null; }
+    try { return boutonLbcParNom(re) != null; } catch { return null; }
   };
   let titres = [];
   try {
@@ -869,6 +868,27 @@ function estVisibleSansLayoutLbc(el) {
   }
   return true;
 }
+
+// ── UN CONTRÔLE LEBONCOIN SE TROUVE PAR SON NOM, PAS PAR SON SEUL TEXTE (11/10) ──
+// Test réel de la 0.6.109 (job 7fbaf36f, 11/10 16:16) : le pré-vol de
+// recréation a prouvé le formulaire, puis n'a trouvé AUCUN « Quitter »
+// (sortie « quitter_introuvable ») — le dépôt est resté interrompu chez
+// Leboncoin jusqu'à la recréation. Le wizard porte DEUX boutons « Quitter » :
+// un bouton texte (« hidden! lg:block! », affiché au-delà de 1024 px) et un
+// bouton-icône SANS texte, aria-label="Quitter" (« block lg:hidden »). La
+// fenêtre de travail est créée minimisée et sans taille : mise en page
+// étroite, seul le bouton-icône est à l'écran. Un contrôle se reconnaît donc à
+// son NOM : texte, aria-label ou title — visibilité lue SANS layout
+// (offsetParent est nul dans la fenêtre minimisée : le chemin « brouillon
+// bloquant » ne trouvait pas non plus son « Quitter »).
+function nomsControleLbc(el) {
+  const net = (s) => String(s ?? "").replace(/\s+/g, " ").trim();
+  return [net(el?.textContent), net(el?.getAttribute?.("aria-label")), net(el?.getAttribute?.("title"))].filter(Boolean);
+}
+function boutonLbcParNom(re) {
+  return [...document.querySelectorAll("button, [role='button']")]
+    .find((b) => estVisibleSansLayoutLbc(b) && nomsControleLbc(b).some((n) => re.test(n))) ?? null;
+}
 // ⚠️ Le tiroir « Gérer » (fenêtre étroite, 24/09) est LUI AUSSI un
 // role="dialog" et il porte « Supprimer l’annonce » : sans précaution, il
 // passait pour la modale de confirmation. La modale qui porte le bouton
@@ -1479,13 +1499,14 @@ async function fillListingForm(job) {
       // passage suivant dépose sur wizard neuf. Si le canal meurt avant la
       // réponse, le motif transitoire fait le même travail, en plus lent.
       relayerEtape("brouillon_bloquant");
-      const btnQuitter = [...document.querySelectorAll("button")]
-        .find((b) => b.offsetParent !== null && /^quitter$/i.test((b.textContent ?? "").trim()));
+      // (11/10) Par son NOM, visibilité sans layout (cf. boutonLbcParNom) :
+      // en fenêtre de travail minimisée, ni offsetParent ni le texte ne
+      // trouvaient ce bouton — ce chemin retombait toujours sur l'ancien.
+      const btnQuitter = boutonLbcParNom(/^quitter$/i);
       if (btnQuitter) {
         t("brouillon bloquant : « Quitter » cliqué (chemin officiel LBC, prouvé live 03/09)");
         btnQuitter.click();
-        const sansEnreg = await waitFor(() => [...document.querySelectorAll("button")]
-          .find((b) => b.offsetParent !== null && /quitter sans enregistrer/i.test((b.textContent ?? "").replace(/\s+/g, " ").trim())) ?? null, 5000);
+        const sansEnreg = await waitFor(() => boutonLbcParNom(/quitter sans enregistrer/i), 5000);
         if (sansEnreg) {
           t("dialogue « interrompre votre dépôt » : « Quitter sans enregistrer » — l'état en cours est jeté, redépôt au prochain passage");
           setTimeout(() => { try { sansEnreg.click(); } catch { /* navigation en cours */ } }, 150);
@@ -1529,8 +1550,8 @@ async function fillListingForm(job) {
       // apprendre le libellé du contrôle si LBC en change — c'est ce relevé
       // qui manquait pour comprendre les 9 échecs.
       const boutonsVisibles = [...document.querySelectorAll("button")]
-        .filter((b) => b.offsetParent !== null)
-        .map((b) => (b.textContent ?? "").replace(/\s+/g, " ").trim())
+        .filter((b) => estVisibleSansLayoutLbc(b))
+        .map((b) => nomsControleLbc(b)[0] ?? "")
         .filter(Boolean).slice(0, 15);
       // ── DERNIER VERROU AVANT DE PRONONCER LE MOT « BROUILLON » (2026-09-14)
       // C'est PAR ICI que sont sortis les six messages de samira.460 (08/09) et
@@ -3311,15 +3332,15 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
 // (jete:false) ; le dépôt suivant sait reprendre ou jeter ce qu'il trouve.
 // Visibilité lue sans layout (fenêtre de travail minimisée).
 async function lbcQuitterDepotSansEnregistrer(t) {
-  const visible = (re) => [...document.querySelectorAll("button, [role='button']")]
-    .find((b) => estVisibleSansLayoutLbc(b) && re.test((b.textContent ?? "").replace(/\s+/g, " ").trim())) ?? null;
-  const quitter = visible(/^quitter$/i);
+  // Par son NOM (bouton-icône aria-label en fenêtre étroite, cf.
+  // boutonLbcParNom) ; le bandeau peut se repeindre juste après « Continuer ».
+  const quitter = await waitFor(() => boutonLbcParNom(/^quitter$/i), 5000);
   if (!quitter) {
     t("pré-vol : bouton « Quitter » introuvable — le dépôt en cours n'a pas pu être abandonné");
     return { jete: false, motif: "quitter_introuvable" };
   }
   quitter.click();
-  const sansEnregistrer = await waitFor(() => visible(/quitter sans enregistrer/i), 5000);
+  const sansEnregistrer = await waitFor(() => boutonLbcParNom(/quitter sans enregistrer/i), 5000);
   if (!sansEnregistrer) {
     t("pré-vol : dialogue de sortie non apparu après « Quitter »");
     return { jete: false, motif: "dialogue_absent" };
