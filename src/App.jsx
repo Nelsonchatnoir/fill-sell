@@ -154,6 +154,9 @@ import { useFondFige } from './utils/modale';
 import ReglagesPage from './reglages/ReglagesPage';
 import FusionArticleModal from './components/FusionArticleModal';
 import FileAnnoncesADepiler from './components/FileAnnoncesADepiler';
+// (11/10, Louis) Ventes détectées à confirmer, avec ou sans téléphone : la
+// décision « remettre en vente ou non » ne dépend plus de la notification.
+import VentesADecider, { ANCRE_VENTES_A_CONFIRMER } from './components/VentesADecider';
 import RevueAutresPlateformes from './components/RevueAutresPlateformes';
 import { lireFusionsActives, defaireFusion } from './utils/fusionArticles';
 import { apresNouvellesPhotos } from './utils/parcoursLens';
@@ -2296,6 +2299,10 @@ export default function App({ loginOnly = false }){
   // Annonces constatées HORS LIGNE sans preuve de vente (Phase B, 2026-07-12) :
   // le doute n'est jamais écrit en base — l'utilisateur confirme ou infirme.
   const [unavailableListings,setUnavailableListings]=useState([]);
+  // (11/10) Ventes DÉTECTÉES et annoncées (push ou mail), pas encore
+  // enregistrées : rpc ventes_a_decider (la base décide ce qui est à confirmer).
+  const [ventesADecider,setVentesADecider]=useState([]);
+  const [venteDecideeEnCours,setVenteDecideeEnCours]=useState(null);
   // ── ALERTES « PLUS EN LIGNE » MASQUABLES (2026-09-17, demande d'une PRO) ──
   // Deux masques, RÉVERSIBLES, qui ne touchent QUE l'affichage :
   //   · par alerte : platform_fields.alerte_masquee_pour = l'épisode
@@ -3686,6 +3693,10 @@ export default function App({ loginOnly = false }){
       .not('inventaire_id','is',null)
       .not('platform_fields->>unavailable_since','is',null);
     setUnavailableListings(unavail||[]);
+    // (11/10) Ventes à confirmer (best-effort : une erreur laisse la liste vide,
+    // jamais un écran cassé). Lue avec le reste, jamais en boucle.
+    supabase.rpc('ventes_a_decider').then(({data,error})=>setVentesADecider(!error&&Array.isArray(data)?data:[]))
+      .catch(()=>setVentesADecider([]));
     // Propositions du moteur de rattachement (best-effort, jamais bloquant).
     lirePropositionsParJob(uid).then((p)=>setPropositionsParJob(p||{})).catch(()=>setPropositionsParJob({}));
 
@@ -4755,6 +4766,55 @@ export default function App({ loginOnly = false }){
       setTimeout(()=>{venteEnVolRef.current=false;setConfirmingSale(null);},800);
     }
   }
+
+  // ── « Ventes à confirmer » (11/10, Louis) : MÊME chemin que le bandeau ─────
+  // check-listing-status → enregistrer_vente_declaree → enregistrer_vente_atomique
+  // (reçu ventes_operations, quantité, remises_en_vente). Seul change
+  // remettre_en_vente : false = la remise de CETTE vente naît close
+  // (motif choix_personne). Une vente décidée quitte la liste pour de bon :
+  // son reçu l'en exclut côté base.
+  async function deciderVenteDetectee(v,remettre,prixSaisiParLaPersonne){
+    if(!v?.job_id||venteEnVolRef.current)return;
+    const prix=prixSaisiParLaPersonne??(Number(v.prix)>0?Number(v.prix):null);
+    if(!prix){setToast({visible:true,message:lang==='fr'?'Prix de vente requis':'Sale price required'});setTimeout(()=>setToast({visible:false,message:""}),3000);return;}
+    venteEnVolRef.current=true;
+    const cle=v.cle??`${v.plateforme}:${v.annonce_id}`;
+    setVenteDecideeEnCours(cle);
+    try{
+      const{error}=await supabase.functions.invoke('check-listing-status',{body:{job_id:v.job_id,price:prix,remettre_en_vente:remettre!==false}});
+      if(error)throw await erreurAvecRaison(error);
+      setVentesADecider(prev=>prev.filter(x=>(x.cle??`${x.plateforme}:${x.annonce_id}`)!==cle));
+      logTunnel('ventes_a_confirmer',{action:'decidee',remettre:remettre!==false,plateforme:v.plateforme,quantite:v.quantite??null});
+      await fetchAll(user.id,{silencieux:true});
+    }catch(e){
+      console.error('[deciderVenteDetectee]',e?.message??e);
+      setToast({visible:true,message:e?.raison??t('genericError')});
+      setTimeout(()=>setToast({visible:false,message:""}),e?.raison?9000:3000);
+      logTunnel('ventes_a_confirmer',{action:'refusee',plateforme:v.plateforme,raison:String(e?.raison??e?.message??'').slice(0,160)});
+    }finally{
+      setTimeout(()=>{venteEnVolRef.current=false;setVenteDecideeEnCours(null);},800);
+    }
+  }
+  // Le lien du mail « Vendu » (/app?ventes=a-decider) : l'intention survit à
+  // la connexion (sessionStorage), puis ouvre le Stock sur la liste.
+  useEffect(()=>{
+    try{
+      if(new URLSearchParams(window.location.search).get('ventes')==='a-decider'){
+        sessionStorage.setItem('fillsell:ventes-a-decider','1');
+        const url=new URL(window.location.href);url.searchParams.delete('ventes');
+        window.history.replaceState(window.history.state,'',url.pathname+url.search+url.hash);
+      }
+    }catch{/* stockage indisponible : le Stock montre la liste de toute façon */}
+  },[]);
+  useEffect(()=>{
+    if(!user?.id||loading)return;
+    let voulu=false;
+    try{voulu=sessionStorage.getItem('fillsell:ventes-a-decider')==='1';sessionStorage.removeItem('fillsell:ventes-a-decider');}catch{/* idem */}
+    if(!voulu)return;
+    setTab(1);try{localStorage.setItem('tab','1');}catch{/* idem */}
+    logTunnel('ventes_a_confirmer',{action:'lien_mail',n:ventesADecider.length});
+    setTimeout(()=>{document.getElementById(ANCRE_VENTES_A_CONFIRMER)?.scrollIntoView({behavior:'smooth',block:'start'});},400);
+  },[user?.id,loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // « Non, je l'ai retirée » : pas une vente. Le job est clos (l'annonce
   // n'existe plus) et le drapeau levé — aucune ligne de vente, aucun inventaire
@@ -8273,6 +8333,12 @@ export default function App({ loginOnly = false }){
       )}
 
       <div ref={scrollRef} className="wrap page-pad" style={{padding:"18px 14px 16px",background:"var(--bg)",flex:"1",overflowY:"auto",WebkitOverflowScrolling:"touch",minHeight:0}}>
+
+        {/* (11/10, Louis) Ventes détectées à confirmer — avec ou sans téléphone.
+            En tête de la zone des bandeaux (Stock compris) ; le lien du mail
+            « Vendu » y mène. Rien quand il n'y a rien. */}
+        <VentesADecider lang={lang} devise={currency==='EUR'?'€':currency}
+          ventes={ventesADecider} enCours={venteDecideeEnCours} onDecider={deciderVenteDetectee} />
 
         {/* Bandeau retrait cross-plateforme : visible sur tous les onglets tant
             que des annonces d'un article vendu restent en ligne ailleurs.
