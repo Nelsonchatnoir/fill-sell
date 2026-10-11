@@ -168,6 +168,9 @@ export function verdictAccesOpla(d = {}) {
  * toute seule », jamais « Autoriser Opla ».
  */
 export function parcageDepasse(job, v) {
+  // (11/10) La preuve est celle d'OPLA : jamais pour un job d'une autre
+  // plateforme (un parcage « Autoriser Depop » se lisait « repart seul »).
+  if (job?.platform && job.platform !== "opla") return false;
   if (!v || v.verdict !== "autorise") return false;
   const tp = tempsParcage(job);
   const tv = t(v.le);

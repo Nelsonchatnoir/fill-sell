@@ -18,7 +18,7 @@
 import { useState } from 'react';
 import PlatformLogo from './platform-logos/PlatformLogo';
 import { UI } from './ui';
-import { MOTIFS, NOMS_PLATEFORME, estWeb, lienWeb, useDemandeConnexion, demanderAutorisationOplaSurLeWeb } from '../utils/connexionPlateformes';
+import { MOTIFS, NOMS_PLATEFORME, estWeb, lienWeb, useDemandeConnexion, demanderAutorisationOplaSurLeWeb, demanderAutorisationDepopSurLeWeb } from '../utils/connexionPlateformes';
 import { demarrerConnexionEbay, ouvrirConsentementEbay } from '../utils/ebayCompte';
 
 // ⟦opla-autorisation-app:début⟧
@@ -30,11 +30,24 @@ export const MESSAGE_AUTORISATION_OPLA =
   "Appuie sur « Autoriser Opla » : c'est une seule fois, et la publication repart toute seule.";
 // ⟦opla-autorisation-app:fin⟧
 
+// ⟦depop-autorisation-app:début⟧
+// (11/10) Le MÊME message que le serveur (_shared/textes-jobs.ts,
+// autorisationDepopRequise, forme « publication ») et l'extension — vérifié par
+// scripts/depop-file-jamais-silencieuse-selftest.mjs. Ni icône, ni menu, ni Chrome.
+export const MESSAGE_AUTORISATION_DEPOP =
+  "Depop attend ton autorisation pour que FillSell y dépose tes annonces. " +
+  "Appuie sur « Autoriser Depop » : c'est une seule fois, et la publication repart toute seule.";
+// ⟦depop-autorisation-app:fin⟧
+
 const T = {
   fr: {
     meConnecter: 'Me connecter',
     meReconnecter: 'Me reconnecter',
     autoriser: 'Autoriser Opla',
+    autoriserDepop: 'Autoriser Depop',
+    depopAcces: MESSAGE_AUTORISATION_DEPOP,
+    ouvertePopupDepop: "La fenêtre FillSell s'est ouverte sur ton ordinateur : appuie sur « Autoriser Depop ».",
+    depopExtensionAbsente: "L'extension FillSell n'est pas installée sur cet ordinateur : c'est elle qui publie sur Depop.",
     ouvrirEbay: 'Ouvrir eBay',
     // Les phrases d'état — courtes, rassurantes, jamais culpabilisantes.
     pasConnecte: (n) => `Tu n'es pas connecté à ${n} sur ton ordinateur.`,
@@ -70,6 +83,10 @@ const T = {
     meConnecter: 'Sign in',
     meReconnecter: 'Sign in again',
     autoriser: 'Allow Opla',
+    autoriserDepop: 'Allow Depop',
+    depopAcces: 'Depop is waiting for your permission so FillSell can list there. Tap “Autoriser Depop”: once is enough, and the listing goes out on its own.',
+    ouvertePopupDepop: 'The FillSell window opened on your computer: tap “Autoriser Depop”.',
+    depopExtensionAbsente: 'The FillSell extension is not installed on this computer: it is what publishes on Depop.',
     ouvrirEbay: 'Open eBay',
     pasConnecte: (n) => `You're not signed in to ${n} on your computer.`,
     reauth: 'eBay is asking you to sign in again to sell.',
@@ -100,6 +117,7 @@ const T = {
 /** Le libellé du bouton, par motif. */
 function libelle(t, platform, motif) {
   if (motif === MOTIFS.AUTORISER_OPLA) return t.autoriser;
+  if (motif === MOTIFS.AUTORISER_DEPOP) return t.autoriserDepop;
   if (motif === MOTIFS.VENDEUR_EBAY) return t.ouvrirEbay;
   if (motif === MOTIFS.REAUTH_EBAY) return t.meReconnecter;
   return t.meConnecter;
@@ -109,6 +127,7 @@ function libelle(t, platform, motif) {
 function phraseMur(lang, platform, motif) {
   const t = T[lang === 'en' ? 'en' : 'fr'];
   if (motif === MOTIFS.AUTORISER_OPLA) return t.oplaAcces;
+  if (motif === MOTIFS.AUTORISER_DEPOP) return t.depopAcces;
   if (motif === MOTIFS.VENDEUR_EBAY) return t.vendeur;
   if (motif === MOTIFS.REAUTH_EBAY) return t.reauth;
   return t.pasConnecte(NOMS_PLATEFORME[platform] ?? platform);
@@ -158,6 +177,8 @@ export default function BoutonMeConnecter({
   // bouton demande donc à l'extension d'OUVRIR cette page (pont
   // fillsell-auth.js) ; la personne y appuie sur « Autoriser Opla ».
   const oplaSurWeb = web && motif === MOTIFS.AUTORISER_OPLA;
+  // (11/10) Depop : la même permission d'hôte, le même pont.
+  const depopSurWeb = web && motif === MOTIFS.AUTORISER_DEPOP;
 
   const lancer = async (motifEffectif = motif) => {
     const r = await demander(platform, motifEffectif);
@@ -166,7 +187,7 @@ export default function BoutonMeConnecter({
 
   const lancerOplaSurLeWeb = async () => {
     setEtatOplaWeb('demande');
-    const r = await demanderAutorisationOplaSurLeWeb();
+    const r = depopSurWeb ? await demanderAutorisationDepopSurLeWeb() : await demanderAutorisationOplaSurLeWeb();
     if (r.dejaAccordee) { setEtatOplaWeb('deja'); if (onOuverte) onOuverte(); return; }
     if (r.ok && r.ouverte) { setEtatOplaWeb('ouverte'); if (onOuverte) onOuverte(); return; }
     setEtatOplaWeb(r.motif === 'extension_absente' ? 'absente' : 'refusee');
@@ -176,7 +197,7 @@ export default function BoutonMeConnecter({
     // eBay PAS CONNECTÉ → les deux voies, côte à côte. Une reconnexion de
     // sécurité, elle, passe TOUJOURS par le site : l'API n'y peut rien.
     if (platform === 'ebay' && motif === MOTIFS.CONNEXION) { setModaleEbay(true); return; }
-    if (oplaSurWeb) { lancerOplaSurLeWeb(); return; }
+    if (oplaSurWeb || depopSurWeb) { lancerOplaSurLeWeb(); return; }
     lancer();
   };
 
@@ -197,10 +218,11 @@ export default function BoutonMeConnecter({
   const messageEtat =
     etat === 'ouverte'
       ? (motif === MOTIFS.AUTORISER_OPLA ? t.ouvertePopup
+        : motif === MOTIFS.AUTORISER_DEPOP ? t.ouvertePopupDepop
         : motif === MOTIFS.VENDEUR_EBAY ? t.ouverteEbayVendeur
         : t.ouverte(nom))
       : etat === 'deja' ? t.oplaDejaAccordee
-      : etat === 'absente' ? t.oplaExtensionAbsente
+      : etat === 'absente' ? (motif === MOTIFS.AUTORISER_DEPOP ? t.depopExtensionAbsente : t.oplaExtensionAbsente)
       : etat === 'muette' ? t.muette
       : etat === 'trop_vieille' ? t.tropVieille
       : etat === 'refusee' ? t.refusee

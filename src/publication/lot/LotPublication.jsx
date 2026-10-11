@@ -38,6 +38,9 @@ import CarteRayon from "../../components/CarteRayon";
 import { CartePortDepop } from "../../components/PortDepop";
 import ExclusDepop from "./ExclusDepop";
 import BoutonMeConnecter from "../../components/BoutonMeConnecter";
+import { MOTIFS } from "../../utils/connexionPlateformes";
+// (11/10) Les postes du compte disent si Depop est autorisée (trace écrite par get-pending-jobs).
+import { etatAccesDepop } from "../../../supabase/functions/_shared/acces-depop.js";
 import BarreProgression from "../../components/BarreProgression";
 import { Carte, Puce, Logo, Bouton } from "../composants";
 import { NOM } from "../texte";
@@ -282,7 +285,7 @@ function EcranDuLot({
     lireProchaineRemiseAZero(userId).then((d) => { if (vivant) setRemise(d); }, () => {});
     // Le mur de conversion : où l'abonnement a été pris, et le quota de
     // chaque palier (coin_config fait foi, le repli de la modale sinon).
-    supabase.from("profiles").select("is_comped, apple_original_transaction_id, google_purchase_token, stripe_customer_id, platform_settings")
+    supabase.from("profiles").select("is_comped, apple_original_transaction_id, google_purchase_token, stripe_customer_id, platform_settings, extension_postes")
       .eq("id", userId).maybeSingle()
       .then(({ data, error }) => {
         if (!vivant) return;
@@ -306,6 +309,10 @@ function EcranDuLot({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const sessions = sessionsDepuisVerite(verite);
+  // (11/10) Aucun poste du compte n'a l'autorisation Depop (48 h) : la ligne
+  // Depop cochée le dit, avec LE bouton — ses annonces attendront le geste.
+  // Profil pas encore lu, ou illisible : rien n'est dit (jamais un faux mur).
+  const depopAAutoriser = profil && profil.extension_postes !== undefined && !etatAccesDepop(profil.extension_postes).avecAcces;
   const ebayBloque = Boolean(ctx.ebayCompte?.voieApi) && Boolean(ctx.ebayCompte?.lu) && ebayCompteUtilisable(ctx.ebayCompte?.etat) === false;
   const ebayParServeur = Boolean(ctx.ebayCompte?.voieApiReelle);
   // Venu d'un filtre « Pas encore sur X » : X seule, cochée d'office ; sinon
@@ -970,7 +977,7 @@ function EcranDuLot({
               sessions={sessions} pauses={pauses} ebayBloque={ebayBloque} ebayParServeur={ebayParServeur}
               quotas={quotas} restantes={restantes} remise={remise} partage={partage} annoncesPrevues={annoncesPrevues} duree={duree}
               extensionNeverSeen={ctx.extensionNeverSeen} extensionLastSeenAt={ctx.extensionLastSeenAt}
-              fichesLues={fiches != null} boutiqueVinted={boutiqueVinted}
+              fichesLues={fiches != null} boutiqueVinted={boutiqueVinted} depopAAutoriser={depopAAutoriser}
               mur={murActif ? {
                 palierVise, quotaVise: palierVise ? quotasPaliers[palierVise] ?? null : null,
                 onMonter: onMonterDePalier && palierVise ? monterDePalier : null, renvoiBoutique, essaiAchat,
@@ -1042,7 +1049,7 @@ export function CoqueLot({ en, ecran, titre, numeroEcran, retour = null, quitter
 export function EcranPlateformes({
   en, lang, userId, donnees, resume, choix, basculer, sessions, pauses, ebayBloque, ebayParServeur,
   quotas, restantes, remise, partage, annoncesPrevues, duree, extensionNeverSeen, extensionLastSeenAt, fichesLues, boutiqueVinted = null,
-  mur = null,
+  mur = null, depopAAutoriser = false,
 }) {
   const n = donnees.length;
   const vus = donnees.slice(0, 6);
@@ -1131,7 +1138,13 @@ export function EcranPlateformes({
                   <Logo platform={p} size={26} desature={indispo} />
                   <span className="fsn-pf-t"><b>{NOM(p)}</b><small>{sousTexte}</small></span>
                 </button>
-                {on && sessionFermee && (
+                {on && p === "depop" && depopAAutoriser && (
+                  <div className="fsn-pf-sous" style={{ marginTop: 6 }}>
+                    <span>{en ? "Depop needs your permission on your computer, once: its listings will wait for it, then go out on their own." : "Depop demande ton autorisation sur ton ordinateur, une seule fois : ses annonces l'attendront, puis partiront toutes seules."}</span>
+                    <div className="fsn-pf-geste"><BoutonMeConnecter userId={userId} platform="depop" motif={MOTIFS.AUTORISER_DEPOP} lang={lang} variante="bouton" /></div>
+                  </div>
+                )}
+                {on && sessionFermee && !(p === "depop" && depopAAutoriser) && (
                   <div className="fsn-pf-sous" style={{ marginTop: 6 }}>
                     <span>{en ? `You're signed out of ${NOM(p)} on your computer: its listings will wait for you.` : `Tu n'es pas connecté à ${NOM(p)} sur ton ordinateur : ses annonces t'attendront.`}</span>
                     <div className="fsn-pf-geste"><BoutonMeConnecter userId={userId} platform={p} lang={lang} variante="bouton" /></div>

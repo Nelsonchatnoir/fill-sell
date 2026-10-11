@@ -154,7 +154,11 @@ export default function EcranSuivi({ m }) {
       // ne redemande pas un geste déjà fait ; sinon, LE bouton, ici aussi.
       case "attente_autorisation": return parcageDepasse(e.job, m.oplaAccesDetail)
         ? { texte: en ? "Opla is allowed: it goes out on its own in a moment." : "Opla est autorisée : elle repart toute seule dans un instant.", droite: <Puce ton="mute">{en ? "queued" : "en file"}</Puce> }
-        : { texte: en ? "Waiting for your Opla permission — it goes out on its own once granted." : "Attend ton autorisation Opla — partira toute seule une fois accordée.", droite: <Puce ton="geste">{en ? "Permission" : "Autorisation"}</Puce>,
+        // (11/10) Depop : la même attente, le même bouton (_shared/acces-depop.js).
+        : p === "depop"
+          ? { texte: en ? "Waiting for your Depop permission — it goes out on its own once granted." : "Attend ton autorisation Depop — partira toute seule une fois accordée.", droite: <Puce ton="geste">{en ? "Permission" : "Autorisation"}</Puce>,
+              geste: m.userId ? <BoutonMeConnecter userId={m.userId} platform="depop" motif={MOTIFS.AUTORISER_DEPOP} lang={m.lang} variante="bouton" /> : null }
+          : { texte: en ? "Waiting for your Opla permission — it goes out on its own once granted." : "Attend ton autorisation Opla — partira toute seule une fois accordée.", droite: <Puce ton="geste">{en ? "Permission" : "Autorisation"}</Puce>,
             geste: m.userId ? <BoutonMeConnecter userId={m.userId} platform="opla" motif={MOTIFS.AUTORISER_OPLA} lang={m.lang} variante="bouton" /> : null };
       case "attente_connexion": return { texte: en ? "Waiting for you to sign in on your computer." : "Attend ta connexion sur ton ordinateur.", droite: <Puce ton="geste">{en ? "Sign in" : "Connexion"}</Puce> };
       case "attente": return { texte: (e.job?.error ? humanizeJobError(e.job, en ? "en" : "fr") : "") || (en ? "Waiting for something on your side." : "Attend quelque chose de ton côté."), droite: <Puce ton="geste">{en ? "Waiting" : "Attente"}</Puce> };
@@ -245,6 +249,9 @@ export default function EcranSuivi({ m }) {
           renderGeste={(job) => {
             if (job?.platform_fields?.needs_user_source === "opla_acces" && m.userId) {
               return <BoutonMeConnecter userId={m.userId} platform="opla" motif={MOTIFS.AUTORISER_OPLA} lang={m.lang} variante="bouton" />;
+            }
+            if (job?.platform === "depop" && job?.platform_fields?.needs_user_source === "depop_acces" && m.userId) {
+              return <BoutonMeConnecter userId={m.userId} platform="depop" motif={MOTIFS.AUTORISER_DEPOP} lang={m.lang} variante="bouton" />;
             }
             if (m.onCompleter && job?.status === "needs_user" && job?.action === "publish" && needsUserOuvrable(job)) {
               return <button type="button" className="fsn-btn fsn-btn--secondary fsn-btn--sm" onClick={() => { setFileOuverte(false); m.onCompleter(job); }}>{en ? "Complete" : "Compléter"}</button>;

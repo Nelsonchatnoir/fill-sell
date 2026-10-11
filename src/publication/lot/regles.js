@@ -11,6 +11,11 @@ import { computeRemovalInfo, plateformesReserveesParRepublication, estArretUtili
 import { attentesParPlateforme } from "../../utils/etatsPublication.js";
 import { PALIERS as PALIERS_COMPTE, palierDesDrapeaux } from "../../utils/palier.js";
 import { poidsLbcManquantPour } from "../../utils/choixPoidsLeboncoin.js";
+// La liste de l'unité (utils/stockFiltres.js, PLATEFORMES_JAMAIS_PRECOCHEES),
+// recopiée : stockFiltres importe sans extension, ce module reste lisible par
+// node seul (selftest:publication-lot) — selftest:depop-file-jamais-silencieuse
+// vérifie que les deux disent la même chose.
+const PLATEFORMES_JAMAIS_PRECOCHEES = Object.freeze(["depop"]);
 
 // Opla quitte FillSell le 10/10 : jamais dans un lot, ni avant ni après.
 // Depop (09/10) : dans le lot pour le SEUL compte où elle est ouverte — le lot
@@ -103,7 +108,12 @@ export function choixInitial(resume, { memorise = null, enPause = [], ebayBloque
     const garde = ouvertes.filter((p) => memorise.includes(p));
     if (garde.length) return garde;
   }
-  return ouvertes;
+  // (11/10, Simon BORGET) Depop n'est JAMAIS pré-cochée — la règle de l'unité
+  // (stockFiltres.PLATEFORMES_JAMAIS_PRECOCHEES, le stepper la suit depuis le
+  // 09/10) que le lot ignorait : Simon, qui ne vend que sur Vinted, a vu ses
+  // quatre articles partir aussi vers Depop sans l'avoir choisi. Proposée,
+  // jamais cochée d'office ; un choix mémorisé (lot précédent) la garde.
+  return ouvertes.filter((p) => !PLATEFORMES_JAMAIS_PRECOCHEES.includes(p));
 }
 
 // ── Le quota du mois ───────────────────────────────────────────────────────

@@ -106,7 +106,7 @@ export default function EcranOuPublier({ m }) {
           {en ? `Complete “${attente.champ}”` : `Compléter « ${attente.champ} »`}
         </button>
       );
-      else if (attente.kind === "attente_autorisation" && m.userId) geste = <BoutonMeConnecter userId={m.userId} platform={p} motif={MOTIFS.AUTORISER_OPLA} lang={m.lang} variante="bouton" />;
+      else if (attente.kind === "attente_autorisation" && m.userId) geste = <BoutonMeConnecter userId={m.userId} platform={p} motif={attente.motif === "autoriser_depop" ? MOTIFS.AUTORISER_DEPOP : MOTIFS.AUTORISER_OPLA} lang={m.lang} variante="bouton" />;
       else if (attente.kind === "attente_connexion" && m.userId) geste = <BoutonMeConnecter userId={m.userId} platform={p} motif={attente.motif === "reauth_ebay" ? MOTIFS.REAUTH_EBAY : MOTIFS.CONNEXION} lang={m.lang} variante="bouton" />;
     }
     else if (compteAbsent) {

@@ -4098,7 +4098,7 @@ function StepPublish({ selected, setSelected, userId = null, platformSessions = 
           // autorisation ou une connexion s'accorde (le même bouton que la
           // carte et les Réglages). Le geste fait, le dépôt repart seul.
           const a = attentes?.[p];
-          const motifBouton = a?.kind === "attente_autorisation" ? MOTIFS.AUTORISER_OPLA
+          const motifBouton = a?.kind === "attente_autorisation" ? (a.motif === "autoriser_depop" ? MOTIFS.AUTORISER_DEPOP : MOTIFS.AUTORISER_OPLA)
             : a?.kind === "attente_connexion" ? (a.motif === "reauth_ebay" ? MOTIFS.REAUTH_EBAY : MOTIFS.CONNEXION)
             : null;
           return (

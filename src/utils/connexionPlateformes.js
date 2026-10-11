@@ -126,6 +126,7 @@ export function estWeb() {
  */
 export function lienWeb(platform, motif = MOTIFS.CONNEXION) {
   if (motif === MOTIFS.AUTORISER_OPLA || platform === 'opla') return null;
+  if (motif === MOTIFS.AUTORISER_DEPOP) return null; // (11/10) une permission, pas une page
   if (motif === MOTIFS.VENDEUR_EBAY) return EBAY_VENDEUR_URL;
   return PLATFORM_LOGIN_URLS[platform] ?? null;
 }
@@ -144,12 +145,16 @@ export const MOTIFS = Object.freeze({
   //    geste de la personne, sur une page d'extension. L'extension ouvre donc
   //    son POPUP, où le bouton « Autoriser Opla » existe depuis le 16/09.
   AUTORISER_OPLA: 'autoriser_opla',
+  // (11/10) DEPOP, la même chose : permission d'hôte www.depop.com, accordée
+  // dans le panneau de l'extension (l'extension ≥ 0.6.105 l'ouvre sur ce motif,
+  // web comme téléphone).
+  AUTORISER_DEPOP: 'autoriser_depop',
 });
 
 /** L'adresse à ouvrir pour un motif donné (informative : c'est l'extension qui ouvre). */
 export function adressePour(platform, motif = MOTIFS.CONNEXION) {
   if (motif === MOTIFS.VENDEUR_EBAY || motif === MOTIFS.REAUTH_EBAY) return 'https://www.ebay.fr/sl/sell';
-  if (motif === MOTIFS.AUTORISER_OPLA) return null; // c'est le popup, pas une page web
+  if (motif === MOTIFS.AUTORISER_OPLA || motif === MOTIFS.AUTORISER_DEPOP) return null; // c'est le popup, pas une page web
   return ADRESSE_CONNEXION[platform] ?? null;
 }
 
@@ -215,6 +220,25 @@ export function demanderAutorisationOplaSurLeWeb() {
     const minuteur = setTimeout(() => finir({ ok: false, ouverte: false, dejaAccordee: false, motif: 'extension_absente' }), AUTORISATION_OPLA_ATTENTE_MS);
     window.addEventListener('message', onMessage);
     try { window.postMessage({ __fillsellCmd: 'AUTORISER_OPLA' }, window.location.origin); }
+    catch { finir({ ok: false, ouverte: false, dejaAccordee: false, motif: 'extension_absente' }); }
+  });
+}
+
+// (11/10) « AUTORISER DEPOP » SUR LE WEB — même pont, même contrat qu'Opla
+// (fillsell-auth.js relaie AUTORISER_DEPOP depuis la 0.6.105 ; réponse
+// __fillsellDepopOuverture). Rend { ok, ouverte, dejaAccordee, motif }.
+export function demanderAutorisationDepopSurLeWeb() {
+  return new Promise((resolve) => {
+    let fini = false;
+    const finir = (r) => { if (fini) return; fini = true; window.removeEventListener('message', onMessage); clearTimeout(minuteur); resolve(r); };
+    const onMessage = (e) => {
+      if (e.source !== window || !e.data?.__fillsellDepopOuverture) return;
+      const rep = e.data.__fillsellDepopOuverture;
+      finir({ ok: rep?.ok === true, ouverte: rep?.ouverte === true, dejaAccordee: rep?.dejaAccordee === true, motif: rep?.ok ? null : 'refusee' });
+    };
+    const minuteur = setTimeout(() => finir({ ok: false, ouverte: false, dejaAccordee: false, motif: 'extension_absente' }), AUTORISATION_OPLA_ATTENTE_MS);
+    window.addEventListener('message', onMessage);
+    try { window.postMessage({ __fillsellCmd: 'AUTORISER_DEPOP' }, window.location.origin); }
     catch { finir({ ok: false, ouverte: false, dejaAccordee: false, motif: 'extension_absente' }); }
   });
 }

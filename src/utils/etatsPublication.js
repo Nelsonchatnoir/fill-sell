@@ -60,6 +60,8 @@ export function natureAttente(job) {
   // attente d'un champ ni d'une connexion. Elle repart seule si X est réactivée.
   if (source === "plateforme_ecartee") return { kind: "attente_plateforme_ecartee" };
   if (job?.platform === "opla" && source === "opla_acces") return { kind: "attente_autorisation", motif: "autoriser_opla" };
+  // (11/10) Depop, la même attente (handler-watch, _shared/acces-depop.js).
+  if (job?.platform === "depop" && source === "depop_acces") return { kind: "attente_autorisation", motif: "autoriser_depop" };
   if (source === "ebay_connexion_requise" || source === "ebay_compte_a_finir") return { kind: "attente_connexion", motif: "connexion" };
   // (01/10) Chrome connecté à un AUTRE compte eBay que celui relié à FillSell :
   // l'erreur du job nomme le bon compte (« Connecte-toi … avec le compte X »).

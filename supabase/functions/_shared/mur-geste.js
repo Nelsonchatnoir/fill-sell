@@ -101,6 +101,10 @@ function suiteDuMessage(platform, { etapeRetiree = false, retrait = false } = {}
 /** Le message « connexion » — début de phrase partagé (relancer_jobs_connexion, handler-watch, app). */
 export function messageConnexionRequise(platform, opts = {}) {
   const nom = NOM[platform] ?? platform;
+  // (11/10, Nico) Depop : « connecte-toi à Depop sur ton ordinateur », point —
+  // ni navigateur ni onglet. Le début « Connexion Depop requise » reste : c'est
+  // lui que reconnaissent le serveur et l'app (bouton « Me connecter »).
+  if (platform === "depop") return `Connexion ${nom} requise : connecte-toi à ${nom} sur ton ordinateur. ` + suiteDuMessage(platform, opts);
   return `Connexion ${nom} requise : reconnecte-toi à ${nom} dans Chrome, sur ton ordinateur. ` + suiteDuMessage(platform, opts);
 }
 
