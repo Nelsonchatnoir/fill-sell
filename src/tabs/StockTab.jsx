@@ -8501,7 +8501,11 @@ const StockTab = memo(function StockTab({
     // vendue, et son dernier prix demandé y est un contexte
     // légitime de la vente — cette pastille-là n'est pas touchée.
     const prixAnnonce=item.vinted_item_id&&!item.disparu_le?prixAnnonces[item.vinted_item_id]:null;
-    const jobsAll=jobsByInventaire[item.id]||[];
+    // (11/10, Nico) Après la bascule (Opla absente de plateformesOuvertes),
+    // Opla disparaît de la carte : ni logo « en ligne », ni attente, ni
+    // retrait — FillSell ne la suit plus. L'historique (Ventes, suivi des
+    // jobs) la garde, sans erreur.
+    const jobsAll=(jobsByInventaire[item.id]||[]).filter(j=>j.platform!=='opla'||plateformesOuvertes.includes('opla'));
     // Défini ICI (avant repubEligible qui le lit — TDZ) ; la
     // règle et ses raisons vivent sur le bloc logosEnLigne/
     // enLigne plus bas, et la source unique dans le helper.

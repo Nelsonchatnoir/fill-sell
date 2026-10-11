@@ -60,10 +60,11 @@ console.log('C. À PARTIR DE 00:00 — Opla absente, Depop à sa place (si l\'ex
 for (const instant of [MINUIT, MATIN]) {
   const h = instant === MINUIT ? '00:00' : '09:00';
   const relie = etatBascule({ maintenant: instant, interrupteur: INTER, ...COMPTES['relié à Opla (extension 0.6.106)'] });
-  dit(`${h} relié : Opla jamais proposée, synchronisation gardée`, !relie.oplaProposee && relie.oplaSuivie);
+  // (11/10, Nico) A3 révoqué : même relié, plus aucune synchronisation Opla.
+  dit(`${h} relié : Opla jamais proposée, synchronisation ARRÊTÉE (11/10)`, !relie.oplaProposee && !relie.oplaSuivie);
   dit(`${h} relié : Depop présente, bandeau Opla éteint`, relie.depopVisible && !relie.bandeauOpla);
   dit(`${h} relié : publication / republication = les quatre + Depop, sans Opla`, meme(sf.plateformesDuCompte(relie.plateformesOuvertes), ['vinted', 'leboncoin', 'beebs', 'ebay', 'depop']));
-  dit(`${h} relié : relevé = + Opla (synchronisation seule)`, sf.plateformesDeReleve(relie.plateformesOuvertes, true).includes('opla'));
+  dit(`${h} relié : relevé SANS Opla (11/10)`, !sf.plateformesDeReleve(relie.plateformesOuvertes, relie.oplaSuivie).includes('opla'));
   const neuf = etatBascule({ maintenant: instant, interrupteur: INTER, ...COMPTES['neuf (aucune extension)'] });
   dit(`${h} neuf : ni Opla ni Depop, ni bandeau`, !neuf.oplaProposee && !neuf.oplaSuivie && !neuf.depopVisible && !neuf.bandeauOpla);
   dit(`${h} neuf : plateformes = les quatre, relevé sans Opla`, meme(sf.plateformesDuCompte(neuf.plateformesOuvertes), ['vinted', 'leboncoin', 'beebs', 'ebay'])
@@ -101,10 +102,11 @@ dit('/legal : Depop nommée à partir du 10/10 (non-affiliation, republication, 
   && legal.includes('« Autoriser Depop »') && legal.includes('(Vinted, Leboncoin, eBay, Beebs, Depop, Opla)'));
 dit('logo Depop des mails présent (public/email/logo-depop.png)', fs.existsSync(path.join(RACINE, 'public/email/logo-depop.png')));
 
-console.log('E. LES GARDES — aucune annonce Opla retirée par la bascule, retraits jamais bloqués');
+console.log('E. LES GARDES — aucune annonce Opla retirée par la bascule ; (11/10) plus aucune action Opla, retraits compris');
 dit('un retrait Opla n\'est jamais une « publication Opla »', !sortie.estPublicationOpla({ platform: 'opla', action: 'delete', status: 'pending' }));
-dit('un retrait Opla en attente n\'est jamais clos par la sortie', !sortie.oplaACloreJob({ platform: 'opla', action: 'delete', status: 'pending' })
-  && !sortie.oplaACloreJob({ platform: 'opla', action: 'delete', status: 'needs_user' }));
+dit('(11/10) un retrait Opla en attente est clos par la sortie, avec la phrase de Nico', sortie.oplaACloreJob({ platform: 'opla', action: 'delete', status: 'pending' })
+  && sortie.oplaACloreJob({ platform: 'opla', action: 'delete', status: 'needs_user' })
+  && /retire-la toi-même sur Opla/.test(sortie.messageClotureOpla('delete')));
 dit('une publication / republication Opla en attente est close (rien publié, rien retiré)', sortie.oplaACloreJob({ platform: 'opla', action: 'publish', status: 'pending' })
   && sortie.oplaACloreJob({ platform: 'opla', action: 'republish', status: 'needs_user' }) && !sortie.oplaACloreJob({ platform: 'opla', action: 'republish', status: 'published' }));
 const clos = sortie.clotureOpla({ platform: 'opla', action: 'republish', status: 'pending', platform_fields: {} }, { maintenant: MINUIT });

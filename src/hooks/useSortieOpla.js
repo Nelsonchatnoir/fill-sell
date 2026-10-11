@@ -6,8 +6,8 @@
 //     chaque minute : la bascule a lieu d'elle-même dans une app ouverte.
 //     Avant la bascule, Opla fonctionne comme avant ;
 //   · relie   — ce compte a-t-il un dressing Opla synchronisé (oplaRelie) ?
-//     Après la bascule, seul ce cas garde la synchronisation (relevé, ventes,
-//     retraits) ;
+//     (11/10, Nico) Après la bascule, plus rien : relie vaut false pour tout le
+//     monde (ni relevé, ni ventes, ni retraits, ni case de vente « Opla ») ;
 //   · bandeau — TOUT compte qui n'a pas encore touché « J'ai compris »
 //     (usage_logs, feature 'opla_bandeau' : côté serveur, par compte), dès
 //     maintenant ; variante 'relie' (dressing Opla synchronisé : ce qui
@@ -17,7 +17,7 @@
 // retombe sur la date par défaut (jamais une bascule déplacée par une panne).
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { OPLA_SORTIE, oplaRelie, sortieOplaActive } from '../../supabase/functions/_shared/opla-sortie.js';
+import { OPLA_SORTIE, oplaRelie, oplaSuivie, sortieOplaActive } from '../../supabase/functions/_shared/opla-sortie.js';
 import { etatBascule } from '../utils/basculeOplaDepop.js';
 
 export function useSortieOpla(userId) {
@@ -85,5 +85,7 @@ export function useSortieOpla(userId) {
   // (règle unique : utils/basculeOplaDepop.js).
   const active = sortieOplaActive(maintenant, valeurInterrupteur);
   const bandeau = etatBascule({ maintenant, interrupteur: valeurInterrupteur, oplaRelie: relie, bandeauVu }).bandeauOpla;
-  return { active, relie, bandeau, variante: relie === true ? 'relie' : 'general', compris, maintenant, interrupteur: valeurInterrupteur };
+  // (11/10) Après la bascule, Opla n'est plus suivie, même pour un compte relié.
+  const relieSuivi = oplaSuivie({ sortie: active }) ? relie : false;
+  return { active, relie: relieSuivi, bandeau, variante: relie === true ? 'relie' : 'general', compris, maintenant, interrupteur: valeurInterrupteur };
 }

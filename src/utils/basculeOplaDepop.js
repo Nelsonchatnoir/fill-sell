@@ -9,16 +9,16 @@
 // À partir de la bascule :
 //   · Opla n'est plus PROPOSÉE nulle part (publication, republication, lot,
 //     réglage, onboarding, bandeau de prévention) ;
-//   · un compte au dressing Opla déjà synchronisé (oplaRelie) garde la SEULE
-//     synchronisation : relevé, ventes vues sur Opla, retraits — un retrait Opla
-//     n'est jamais bloqué (double vente) ;
+//   · (11/10, Nico) plus AUCUNE action Opla pour personne : même un compte au
+//     dressing Opla synchronisé (oplaRelie) n'a plus ni relevé, ni ventes vues
+//     sur Opla, ni retraits (_shared/opla-sortie.js, oplaSuivie) ;
 //   · Depop prend sa place, ouverte à tous par la base (depop_autorise lit le
 //     même interrupteur, migration 20261009230000) — mais l'app ne la MONTRE
 //     qu'à une extension qui sait la faire (≥ 0.6.106). Sinon rien ne
 //     s'affiche à la place : ni Opla, ni message.
 // Avant la bascule : l'état d'aujourd'hui (Opla proposée, Depop pour la seule
 // bêta du compte — depop_autorise côté serveur — et toujours ≥ 0.6.106).
-import { sortieOplaActive } from '../../supabase/functions/_shared/opla-sortie.js';
+import { sortieOplaActive, oplaSuivie } from '../../supabase/functions/_shared/opla-sortie.js';
 
 /** La première extension qui sait faire Depop dans l'app (décision de Nico). */
 export const DEPOP_EXTENSION_MIN = '0.6.106';
@@ -74,7 +74,8 @@ export function etatBascule({
   return {
     sortie,
     oplaProposee: !sortie,
-    oplaSuivie: !sortie || oplaRelie === true,
+    // (11/10) Relié ou non, FillSell ne suit plus Opla après la bascule.
+    oplaSuivie: oplaSuivie({ sortie }),
     depopVisible,
     bandeauOpla: !sortie && !interrupteurCoupe(interrupteur) && relieConnu && bandeauVu === false,
     plateformesOuvertes: [...(sortie ? [] : ['opla']), ...(depopVisible ? ['depop'] : [])],

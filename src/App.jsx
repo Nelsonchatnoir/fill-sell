@@ -2449,7 +2449,7 @@ export default function App({ loginOnly = false }){
   // plateformes_visibles (profil) garde la PRIORITÉ D'AFFICHAGE : les comptes
   // qui le portent voient la case même quand l'interrupteur est à 0 ; il ne
   // l'active jamais à lui seul (la borne de build n'est jamais contournée).
-  const [oplaConfig,setOplaConfig]=useState({ouvert:false,min:null,lu:false});
+  const [oplaConfig,setOplaConfig]=useState({min:null,lu:false});
   const [extensionVersion,setExtensionVersion]=useState(null);
   // ── LA VOIE RÉELLE, lue UNE fois pour toute l'app (07/09/2026) ────────────
   // Le drapeau seul ne dit PAS par où part un job eBay : le trigger
@@ -3519,12 +3519,14 @@ export default function App({ loginOnly = false }){
     // ── Opla : interrupteur serveur + version d'extension du compte ─────────
     // Deux lectures ISOLÉES (même raison que ci-dessus : l'échec de l'une ne
     // coûte que le drapeau qu'elle porte). Fail-closed dans les deux cas.
-    supabase.from('coin_config').select('key, value').in('key',['opla_ouvert','opla_extension_min'])
+    // (11/10) opla_ouvert n'est plus lue : elle ne commandait plus rien depuis
+    // le 18/09 ; la seule vérité d'Opla est opla_sortie_le (useSortieOpla).
+    supabase.from('coin_config').select('key, value').in('key',['opla_extension_min'])
       .then(({data,error})=>{
-        if(error||!Array.isArray(data)){setOplaConfig({ouvert:false,min:null,lu:true});return;}
+        if(error||!Array.isArray(data)){setOplaConfig({min:null,lu:true});return;}
         const par=Object.fromEntries(data.map(r=>[r.key,Number(r.value)]));
         const min=Number.isFinite(par.opla_extension_min)&&par.opla_extension_min>0?par.opla_extension_min:null;
-        setOplaConfig({ouvert:par.opla_ouvert===1,min,lu:true});
+        setOplaConfig({min,lu:true});
       });
     supabase.from('profiles').select('extension_version').eq('id',uid).maybeSingle()
       .then(({data,error})=>{setExtensionVersion(error?null:(data?.extension_version??null));});

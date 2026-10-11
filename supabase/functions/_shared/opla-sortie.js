@@ -14,11 +14,21 @@
 //       message vrai, ne comptent dans aucun quota, et AUCUNE annonce n'est
 //       retirée d'Opla à cause de cette clôture.
 //
+// ⛔ (11/10, Nico) APRÈS LA SORTIE, PLUS AUCUNE ACTION OPLA, POUR PERSONNE :
+//    A3 et A4 sont RÉVOQUÉS. Ni relevé (app, cron, veilleur), ni veille des
+//    ventes, ni retrait, ni republication, ni créneau, pour aucun compte —
+//    « relié » ou non. Tout job Opla qui attend encore (publication,
+//    republication ET retrait) est clos avec un message vrai ; un retrait clos
+//    le dit : la copie est peut-être encore en ligne sur Opla, à retirer
+//    soi-même. La base porte la même règle (opla_sortie_passee(),
+//    garde_opla_sortie_jobs, migration 20261011130000) : aucun job Opla ne
+//    reste vivant, d'où qu'il vienne.
+//
 // ⛔ CE MODULE NE LIT RIEN ET N'ÉCRIT RIEN. Il est importé tel quel par les
 //    fonctions edge (Deno) et par l'app (Vite) : un seul texte, une seule
 //    définition de « Opla relié », un seul critère de clôture.
-// ⛔ Les RETRAITS (action 'delete') ne sont JAMAIS concernés : c'est la
-//    protection contre la double vente (A4).
+// (Jusqu'au 11/10, les RETRAITS (action 'delete') n'étaient jamais concernés
+//  — A4, révoqué : voir plus haut.)
 
 // ══ L'INTERRUPTEUR : LA SORTIE DÉMARRE LE 10/10 (consigne de Nico, 02/10) ══
 // Jusqu'au 10 octobre 2026 à 00:00 (Paris), Opla fonctionne exactement comme
@@ -63,7 +73,12 @@ export function sortieOplaActive(maintenant, valeurConfig) {
 // La phrase exigée par Nico, puis ce qui est vrai pour la personne.
 export const MESSAGE_OPLA_INDISPONIBLE = "Opla n'est plus disponible dans FillSell.";
 
+// (11/10) Le retrait d'un article vendu ailleurs : la phrase de Nico.
+export const MESSAGE_RETRAIT_OPLA_SORTIE =
+  "Opla n'est plus pris en charge par FillSell : cette annonce vendue est peut-être encore en ligne sur Opla, retire-la toi-même sur Opla.";
+
 export function messageClotureOpla(action) {
+  if (action === "delete") return MESSAGE_RETRAIT_OPLA_SORTIE;
   if (action === "republish") {
     return `${MESSAGE_OPLA_INDISPONIBLE} Ton annonce Opla n'a pas été touchée, et cela ne compte pas dans tes limites.`;
   }
@@ -77,6 +92,11 @@ export function estPublicationOpla(job) {
   return action === "publish" || action === "republish";
 }
 
+/** (11/10) Tout job Opla, quelle que soit l'action (retraits compris). */
+export function estJobOpla(job) {
+  return !!job && String(job.platform ?? "") === "opla";
+}
+
 // Les statuts qu'on clôt : ce qui attend encore d'être fait. Un job
 // 'processing' est entre les mains d'une extension (pris avant la sortie) :
 // on le laisse finir ; s'il fige, la reprise le remet en 'pending' et il est
@@ -85,8 +105,9 @@ export function estPublicationOpla(job) {
 const STATUTS_A_CLORE = new Set(["pending", "needs_user"]);
 export const STATUTS_OPLA_A_CLORE = Object.freeze([...STATUTS_A_CLORE]);
 
+// (11/10) Publication, republication ET retrait : plus rien ne part vers Opla.
 export function oplaACloreJob(job) {
-  return estPublicationOpla(job) && STATUTS_A_CLORE.has(String(job.status ?? ""));
+  return estJobOpla(job) && STATUTS_A_CLORE.has(String(job.status ?? ""));
 }
 
 /**
@@ -122,4 +143,12 @@ export function clotureOpla(job, { par, maintenant, archiver } = {}) {
  */
 export function oplaRelie({ releveOplaFait, annonceOplaConnue } = {}) {
   return releveOplaFait === true || annonceOplaConnue === true;
+}
+
+/**
+ * (11/10) FillSell suit-il encore Opla pour ce compte ? Avant la sortie : oui.
+ * Après : NON, relié ou pas (A3 révoqué) — ni relevé, ni ventes, ni retraits.
+ */
+export function oplaSuivie({ sortie } = {}) {
+  return sortie !== true;
 }

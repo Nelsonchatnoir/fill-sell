@@ -1637,12 +1637,12 @@ serve(async (req) => {
     const { data: coupe } = await supabase.from("coin_config").update({ value: 0 })
       .eq("key", "republish_planifiee_pf_opla").eq("value", 1).select("key");
     if ((coupe ?? []).length) console.log("[handler-watch] sortie Opla : republication planifiée Opla coupée (republish_planifiee_pf_opla 1 → 0)");
+    // (11/10, Nico) RETRAITS compris : plus aucun job Opla ne reste en attente.
     const { data: aClore } = await supabase
       .from("cross_post_jobs")
       .select("id, user_id, platform, action, status, error, platform_fields")
       .eq("platform", "opla")
       .in("status", STATUTS_OPLA_A_CLORE)
-      .or("action.is.null,action.in.(publish,republish)")
       .order("created_at", { ascending: true })
       .limit(100);
     // deno-lint-ignore no-explicit-any
@@ -1824,7 +1824,8 @@ serve(async (req) => {
   // 16/09) sans arrêter les autres.
   let oplaReprises = 0;
   let oplaMessages = 0;
-  try {
+  // (11/10, Nico) Après la sortie, aucun job Opla parqué ne repart.
+  if (!sortieOpla) try {
     const { data: parques } = await supabase
       .from("cross_post_jobs")
       .select("id, user_id, action, error, created_at, platform_fields")
@@ -1917,7 +1918,8 @@ serve(async (req) => {
   // nommé « Autoriser Opla » — le même texte, le même bouton. Dès qu'un poste
   // avec accès polle, get-pending-jobs relance.
   let oplaDemandes = 0;
-  try {
+  // (11/10, Nico) Après la sortie, on ne demande plus « Autoriser Opla ».
+  if (!sortieOpla) try {
     const seuil = new Date(now - 15 * 60_000).toISOString();
     const { data: enFile } = await supabase
       .from("cross_post_jobs")

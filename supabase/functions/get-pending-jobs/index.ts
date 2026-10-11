@@ -31,7 +31,7 @@ import { verdictDepopInterdit, messageDepopInterdit } from "../_shared/depop-int
 import { detectObjectIcon } from "../../../src/utils/shared.js";
 // (02/10) Sortie d'Opla : plus aucune publication ni republication Opla ; la
 // synchronisation continue pour les seuls comptes déjà reliés.
-import { estPublicationOpla, oplaACloreJob, clotureOpla, oplaRelie, MESSAGE_OPLA_INDISPONIBLE, OPLA_SORTIE, sortieOplaActive } from "../_shared/opla-sortie.js";
+import { oplaACloreJob, clotureOpla, oplaRelie, MESSAGE_OPLA_INDISPONIBLE, OPLA_SORTIE, sortieOplaActive } from "../_shared/opla-sortie.js";
 import { titrePourJob, titreVide, CLE_TITRE_SAISI } from "../_shared/titre-du-job.js";
 import { servirRetraitsEbayParNumero } from "../_shared/retrait-ebay-par-numero.js";
 import { decisionAdresseRepublicationLbc, rueDesReglagesMemeCommune, texteRefuseCommune, textesErreurJob } from "../_shared/lbc-voie-des-reglages.js";
@@ -349,15 +349,15 @@ function copieRepublishDepuisCapture(
 // posait l'extension : même trace, lisible en SQL.
 // deno-lint-ignore no-explicit-any
 async function rearmerJobsOplaParques(admin: any, userId: string, sessionId: string, sortieOpla: boolean): Promise<number> {
-  // (02/10, sortie d'Opla) Une fois la sortie basculée (sortieOpla), seuls les
-  // RETRAITS repartent : une publication ou republication Opla parquée n'est
-  // plus jamais relancée, elle est close (handler-watch, et la file plus bas).
-  let requete = admin
+  // (11/10, Nico) Une fois la sortie basculée (sortieOpla), plus AUCUN job Opla
+  // ne repart — retraits compris : ils sont clos avec leur message (plus bas,
+  // handler-watch, et la base : garde_opla_sortie_jobs).
+  if (sortieOpla) return 0;
+  const requete = admin
     .from("cross_post_jobs")
     .select("id, error, platform_fields")
     .eq("user_id", userId).eq("platform", "opla").eq("status", "needs_user")
     .eq("platform_fields->>needs_user_source", "opla_acces");
-  if (sortieOpla) requete = requete.eq("action", "delete");
   const { data: rows } = await requete.limit(200);
   let n = 0;
   for (const j of (rows ?? []) as Array<{ id: string; error: string | null; platform_fields: Record<string, unknown> | null }>) {
@@ -1932,7 +1932,9 @@ serve(async (req) => {
     if (posteCloud && syncCommandsAnnonces.some((c) => !PLATEFORMES_POSTE_CLOUD.includes(c.platform))) {
       syncCommandsAnnonces = syncCommandsAnnonces.filter((c) => PLATEFORMES_POSTE_CLOUD.includes(c.platform));
     }
-    // ══ SORTIE D'OPLA : PAS DE RELEVÉ OPLA POUR UN COMPTE NON RELIÉ (02/10) ══
+    // ══ SORTIE D'OPLA : PLUS AUCUN RELEVÉ OPLA (02/10 ; 11/10 : pour personne) ══
+    // (11/10, Nico) A3 révoqué : après la bascule, même un compte relié n'a
+    // plus de relevé Opla. Toute demande est close, sans ouvrir aucun onglet.
     // ⛔ À partir de la bascule seulement (sortieOpla, l'interrupteur lu en tête).
     // A2 : pour un compte qui n'a jamais synchronisé de dressing Opla, Opla
     // n'existe plus — ni relevé, ni connexion. Les demandes (premier relevé
@@ -1941,21 +1943,18 @@ serve(async (req) => {
     // relevés (ventes vues sur Opla, retraits des copies ailleurs).
     // Lecture impossible → on sert comme avant (un filtre qui échoue ne retient rien).
     const relevesOplaDemandes = syncCommandsAnnonces.filter((c) => c.platform === "opla").map((c) => c.id);
-    let oplaRelieCompte: boolean | null = null;
+    const oplaRelieCompte: boolean | null = null;   // (11/10) plus lu ici : le contexte du popup le lit à la demande
     if (sortieOpla && relevesOplaDemandes.length) {
       const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-      oplaRelieCompte = await oplaRelieDuCompte(admin, user.id);
-      if (oplaRelieCompte === false) {
-        syncCommandsAnnonces = syncCommandsAnnonces.filter((c) => c.platform !== "opla");
-        try {
-          await admin.from("vinted_sync_runs")
-            .update({ status: "cancelled", finished_at: new Date().toISOString(),
-              erreur: `${MESSAGE_OPLA_INDISPONIBLE} Relevé non fait : aucun dressing Opla synchronisé sur ce compte (sortie d'Opla du 02/10).` })
-            .in("id", relevesOplaDemandes).eq("status", "queued");
-          console.log(`[get-pending-jobs] userId=${user.id} : ${relevesOplaDemandes.length} relevé(s) Opla clos — compte sans dressing Opla synchronisé (sortie d'Opla)`);
-        } catch (e) {
-          console.warn(`[get-pending-jobs] sortie Opla, relevés non clos : ${String((e as Error)?.message ?? e)} — retirés de ce poll seulement`);
-        }
+      syncCommandsAnnonces = syncCommandsAnnonces.filter((c) => c.platform !== "opla");
+      try {
+        await admin.from("vinted_sync_runs")
+          .update({ status: "cancelled", finished_at: new Date().toISOString(),
+            erreur: `${MESSAGE_OPLA_INDISPONIBLE} Relevé non fait : Opla n'est plus pris en charge par FillSell (sortie d'Opla).` })
+          .in("id", relevesOplaDemandes).eq("status", "queued");
+        console.log(`[get-pending-jobs] userId=${user.id} : ${relevesOplaDemandes.length} relevé(s) Opla clos — sortie d'Opla, plus aucun relevé Opla`);
+      } catch (e) {
+        console.warn(`[get-pending-jobs] sortie Opla, relevés non clos : ${String((e as Error)?.message ?? e)} — retirés de ce poll seulement`);
       }
     }
 
@@ -2354,12 +2353,14 @@ serve(async (req) => {
     // attendent encore (pending, needs_user lus par le popup) sont closes ici,
     // tout de suite, avec le message vrai — handler-watch fait de même sur
     // tout le parc toutes les 3 min. Rien n'est envoyé à Opla, aucune annonce
-    // n'y est retirée ni modifiée. Les RETRAITS Opla restent servis (A4 :
-    // protection contre la double vente). Un job 'processing' (pris avant la
-    // sortie) reste visible et finit son cours.
+    // n'y est retirée ni modifiée. (11/10, Nico) Plus AUCUN job Opla n'est
+    // servi, RETRAITS compris (A4 révoqué) : un retrait Opla en attente est clos
+    // avec la phrase de Nico (la copie est peut-être encore en ligne sur Opla,
+    // à retirer soi-même). La base clôt aussi tout job Opla né ou relancé
+    // après la sortie (garde_opla_sortie_jobs).
     if (sortieOpla) {
       const aClore = out.filter((j) => oplaACloreJob(j));
-      out = out.filter((j) => !(estPublicationOpla(j) && String(j.status) !== "processing"));
+      out = out.filter((j) => j.platform !== "opla");
       if (aClore.length) {
         try {
           const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -2370,7 +2371,7 @@ serve(async (req) => {
               .eq("id", j.id as string).eq("status", String(j.status)).select("id");
             clos += (maj ?? []).length;
           }
-          if (clos) console.log(`[get-pending-jobs] userId=${user.id} : ${clos} publication(s)/republication(s) Opla close(s) — sortie d'Opla, rien envoyé à Opla`);
+          if (clos) console.log(`[get-pending-jobs] userId=${user.id} : ${clos} job(s) Opla clos — sortie d'Opla, rien envoyé à Opla`);
         } catch (e) {
           console.warn(`[get-pending-jobs] sortie Opla : clôture différée à handler-watch — ${String((e as Error)?.message ?? e)}`);
         }

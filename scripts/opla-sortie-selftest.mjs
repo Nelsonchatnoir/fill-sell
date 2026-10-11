@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   OPLA_SORTIE, MESSAGE_OPLA_INDISPONIBLE, messageClotureOpla, estPublicationOpla,
   oplaACloreJob, clotureOpla, oplaRelie, STATUTS_OPLA_A_CLORE, sortieOplaActive, debutSortieOpla,
+  estJobOpla, oplaSuivie, MESSAGE_RETRAIT_OPLA_SORTIE,
 } from "../supabase/functions/_shared/opla-sortie.js";
 import { archiverErreur } from "../supabase/functions/_shared/erreurs-archivees.js";
 
@@ -26,7 +27,19 @@ assert.equal(oplaACloreJob(j({ status: "needs_user", platform_fields: { needs_us
 assert.equal(oplaACloreJob(j({ status: "processing" })), false, "pris par une extension : il finit son cours");
 assert.equal(oplaACloreJob(j({ status: "published", handler_build: "releve-annonces" })), false, "suivi d'un relevé (A3) jamais touché");
 assert.equal(oplaACloreJob(j({ status: "sold" })), false);
-assert.equal(oplaACloreJob(j({ action: "delete", status: "needs_user", platform_fields: { needs_user_source: "opla_acces" } })), false, "A4");
+// (11/10, Nico) A4 RÉVOQUÉ : plus aucune action Opla — un retrait en attente se clôt aussi,
+// avec la phrase de Nico (la copie est peut-être encore en ligne : à retirer soi-même).
+assert.equal(oplaACloreJob(j({ action: "delete", status: "needs_user", platform_fields: { needs_user_source: "opla_acces" } })), true, "11/10 : retrait Opla en attente → clos");
+assert.equal(oplaACloreJob(j({ action: "delete", status: "pending" })), true, "11/10 : retrait Opla en file → clos");
+assert.equal(oplaACloreJob(j({ action: "delete", status: "deleted" })), false, "un retrait fait n'est jamais touché");
+assert.equal(estJobOpla(j({ action: "delete" })), true);
+assert.equal(estJobOpla(j({ platform: "vinted" })), false);
+assert.equal(MESSAGE_RETRAIT_OPLA_SORTIE, "Opla n'est plus pris en charge par FillSell : cette annonce vendue est peut-être encore en ligne sur Opla, retire-la toi-même sur Opla.");
+assert.equal(messageClotureOpla("delete"), MESSAGE_RETRAIT_OPLA_SORTIE, "retrait clos : la phrase de Nico");
+assert.equal(clotureOpla(j({ action: "delete", status: "needs_user" }), { par: "t" }).error, MESSAGE_RETRAIT_OPLA_SORTIE);
+// (11/10) A3 RÉVOQUÉ : après la sortie, Opla n'est plus suivie, relié ou non.
+assert.equal(oplaSuivie({ sortie: false }), true, "avant la sortie : suivie");
+assert.equal(oplaSuivie({ sortie: true }), false, "après la sortie : plus suivie, pour personne");
 
 // La clôture : statut, message vrai, marqueur, rien à relancer.
 const avant = j({ status: "needs_user", error: "Opla attend ton autorisation…", platform_fields: { needs_user_source: "opla_acces", next_action_after: "2026-10-02T10:00:00Z", opla_categorie: "x" } });

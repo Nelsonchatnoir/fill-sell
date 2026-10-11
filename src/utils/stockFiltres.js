@@ -79,10 +79,11 @@ export const PLATEFORMES_STOCK = ['vinted', 'leboncoin', 'beebs', 'ebay', 'opla'
 // elle n'est proposée QUE quand App.jsx la déclare ouverte (plateformesOuvertes
 // = ['opla'] jusqu'à la bascule, [] ensuite). Après la bascule : plus de case
 // dans la publication, la republication ni les chips « Pas encore sur ».
-// Elle RESTE dans PLATEFORMES_STOCK (données) : une annonce Opla existante se
-// voit toujours sur sa carte et se retire toujours (plateformesDeLArticle), et
-// les comptes au dressing Opla synchronisé gardent leur relevé
-// (plateformesDeReleve) — ventes vues sur Opla, copies retirées ailleurs.
+// Elle RESTE dans PLATEFORMES_STOCK (données : l'historique se lit sans
+// erreur). (11/10, Nico) Plus aucune action Opla après la bascule : une
+// annonce Opla ne se retire plus d'ici (plateformesDeLArticle) et aucun compte
+// n'a plus de relevé Opla (plateformesDeReleve, oplaRelie = false après la
+// bascule — useSortieOpla).
 export const PLATEFORMES_STOCK_OUVERTES = ['vinted', 'leboncoin', 'beebs', 'ebay'];
 // ── DEPOP (09/10/2026) : « à venir » comme Opla — elle n'est proposée QUE
 // quand App.jsx la déclare ouverte (rpc depop_autorise : coin_config
@@ -127,6 +128,8 @@ export function plateformesDeLArticle(jobsAll, plateformesOuvertes = []) {
   const portees = new Set();
   for (const j of jobsAll ?? []) {
     if (!j || j.action === 'delete' || !STATUTS_VIVANTS.has(j.status)) continue;
+    // (11/10) Opla fermée (après la bascule) : sa copie ne se retire plus d'ici.
+    if (j.platform === 'opla' && !plateformesOuvertes.includes('opla')) continue;
     if (PLATEFORMES_STOCK.includes(j.platform) && !base.includes(j.platform)) portees.add(j.platform);
   }
   return portees.size ? [...base, ...PLATEFORMES_STOCK.filter((p) => portees.has(p))] : base;
