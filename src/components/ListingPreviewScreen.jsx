@@ -73,6 +73,8 @@ import { PLATEFORMES_STOCK_OUVERTES, PLATEFORMES_STOCK_A_VENIR, PLATEFORMES_JAMA
 import { copiesProposees } from "../publication/copiesProposees";
 import { deriverCopieDepop, DEPOP_DESCRIPTION_MAX, DEPOP_HASHTAGS_MAX, compterHashtagsDepop } from "../utils/depopPublication";
 import { usePortDepopParDefaut, lirePortSaisi, formaterPort } from "../utils/fraisPortDepop";
+import { useChoixPoidsLeboncoin } from "../utils/useChoixPoidsLeboncoin";
+import { poidsLbcManquantPour } from "../utils/choixPoidsLeboncoin";
 // La résolution de catégorie et de champs plateforme — SORTIE de handlePublish
 // le 20/09 pour tourner à la fin de la génération. Même code, même ordre,
 // mêmes messages : un déménagement, pas une réécriture (en-tête du module).
@@ -7049,6 +7051,9 @@ export default function ListingPreviewScreen({
   // « Confirmer » sans ouvrir de carte. Sans prix, Depop attend une réponse
   // AVANT l'envoi — plus jamais une question après coup (utils/fraisPortDepop).
   const portDepopDefaut = usePortDepopParDefaut(userId);
+  // (11/10 soir) Le poids Leboncoin : « Laisser Leboncoin estimer » (défaut)
+  // ou « Saisir le poids », retenu pour le compte (utils/useChoixPoidsLeboncoin).
+  const choixPoidsLbc = useChoixPoidsLeboncoin(userId);
   const portDepopToucheRef = useRef(false);
   const portDepopSaisi = edited?.depop?.platform_fields?.depopPort;
   useEffect(() => {
@@ -7068,17 +7073,19 @@ export default function ListingPreviewScreen({
   const portDepopManquant = selected.has("depop") && [...plateformesPubliables].includes("depop")
     && lirePortSaisi(portDepopSaisi).valeur == null;
 
-  // ── LEBONCOIN : LE POIDS, DIT AVANT L'ENVOI (11/10, Nico) ────────────────
-  // Une publication Leboncoin sans poids n'est jamais servie à l'extension
-  // (_shared/poids-leboncoin.js) : sans le poids de la copie ni celui de la
-  // fiche, il se demande ICI, sur « Confirmer » (components/PoidsLeboncoin),
-  // Publier grisé avec son motif et « Continuer sans Leboncoin » — jamais une
-  // question après coup. Le poids tapé est celui de l'article : reporté sur
-  // la fiche au clic Publier (poidsSaisiAuStepperRef).
+  // ── LEBONCOIN : LE POIDS, ESTIMÉ OU SAISI (11/10 soir, Nico) ─────────────
+  // « Le poids obligatoire est une friction de trop » : sans poids, Leboncoin
+  // publie et estime d'après le rayon. Sur « Confirmer », quand ni la copie ni
+  // la fiche n'ont de poids, la carte (components/PoidsLeboncoin) offre
+  // « Laisser Leboncoin estimer » (PAR DÉFAUT, rien n'est demandé) ou « Saisir
+  // le poids » ; le choix est retenu pour les publications suivantes. Seul
+  // « Saisir » sans poids grise Publier (motif dit, l'autre choix à un tap).
+  // Le poids tapé est celui de l'article : reporté sur la fiche au clic
+  // Publier (poidsSaisiAuStepperRef). Un poids de la fiche part toujours.
   const poidsLbcSaisi = edited?.leboncoin?.platform_fields?.lbcPoidsGrammes;
   const poidsLbcVise = selected.has("leboncoin") && [...plateformesPubliables].includes("leboncoin");
   const poidsLbcManquant = poidsLbcVise
-    && lirePoidsGrammes(poidsLbcSaisi).valeur == null && poidsDeLaFiche == null;
+    && poidsLbcManquantPour(choixPoidsLbc.choix, lirePoidsGrammes(poidsLbcSaisi).valeur ?? poidsDeLaFiche);
   const poserPoidsLbc = (g) => {
     poidsSaisiAuStepperRef.current = true;
     setEdited(prev => prev?.leboncoin
@@ -10277,7 +10284,7 @@ export default function ListingPreviewScreen({
     }
     if (descriptionVideVinted) m.push(lang === "en" ? "Vinted description to write" : "Description Vinted à écrire");
     if (portDepopManquant) m.push(lang === "en" ? "Depop shipping price to fill in" : "Frais de port Depop à indiquer");
-    if (poidsLbcManquant) m.push(lang === "en" ? "Leboncoin parcel weight to fill in" : "Poids du colis Leboncoin à indiquer");
+    if (poidsLbcManquant) m.push(lang === "en" ? "Leboncoin parcel weight to fill in (or let Leboncoin estimate)" : "Poids du colis Leboncoin à indiquer (ou laisser Leboncoin estimer)");
     if (refusSansQuestion) m.push(String(resolutionAffichee?.refus?.message ?? (lang === "en" ? "Category to pick" : "Rayon à choisir")));
     // ── RIEN DE COCHÉ : ON LE DIT, ET ON DIT QUOI COCHER (2026-09-22) ───────
     // 🚨 LE DÉFAUT, mail de Romain du 22/09 à 13h48 (« Donc je ne sais pas ce
@@ -10638,8 +10645,6 @@ export default function ListingPreviewScreen({
     ...missingSharedFieldsDetailed.flatMap(f => f.platforms ?? []),
     // (09/10 soir) « Continuer sans Depop » quand ses frais de port manquent.
     ...(portDepopManquant ? ["depop"] : []),
-    // (11/10) « Continuer sans Leboncoin » quand son poids manque.
-    ...(poidsLbcManquant ? ["leboncoin"] : []),
   ])].filter(p => selected.has(p));
   // Par plateforme cochée, les questions qui la retiennent — pour sa ligne de
   // « Confirmer » (« Attend une réponse : Taille, Département »), au lieu de
@@ -10774,6 +10779,7 @@ export default function ListingPreviewScreen({
     // (11/10) Le poids Leboncoin : le champ de « Confirmer » quand il manque.
     poidsLbc: {
       visee: poidsLbcVise, manquant: poidsLbcManquant, poser: poserPoidsLbc,
+      choix: choixPoidsLbc.choix, choisir: choixPoidsLbc.choisir,
       saisie: lirePoidsGrammes(poidsLbcSaisi).valeur ?? null, fiche: poidsDeLaFiche,
     },
     publishError, publishing, motifsCtaGris, ctaDisabled, ctaBlockingActive, requiredBlocking, publishedStateLoaded,

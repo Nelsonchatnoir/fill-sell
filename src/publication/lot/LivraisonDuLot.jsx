@@ -6,11 +6,13 @@
 // rédaction, article par article. Règle de Nico : aucun format deviné en
 // silence (écarté au service du job, _shared/livraison-poids.js) ; le lot
 // reçoit, AVANT l'envoi :
-//   · un POIDS FACULTATIF (10/10, Nico : « le lot se comporte exactement
-//     comme l'unité ») : sans lui, Leboncoin et Beebs gardent leur estimation
-//     d'après le rayon, comme pour un article publié seul — jamais une
-//     question. Une valeur pour le lot, réglable article par article (détail
-//     replié), écrite sur la fiche (inventaire.poids_g, le seul champ Poids) ;
+//   · le POIDS (11/10 soir, Nico : « le poids obligatoire est une friction de
+//     trop ») : pour Leboncoin, « Laisser Leboncoin estimer » (PAR DÉFAUT —
+//     Leboncoin publie et estime d'après le rayon) ou « Saisir le poids »
+//     (une valeur pour le lot, réglable article par article, écrite sur la
+//     fiche — inventaire.poids_g, le seul champ Poids) ; le choix est retenu
+//     pour les publications suivantes (utils/useChoixPoidsLeboncoin.js). Un
+//     poids déjà sur la fiche part toujours. Beebs seul : facultatif ;
 //   · les TRANSPORTEURS Leboncoin, ceux que la page propose vraiment
 //     (relevé du 04/10, utils/leboncoinColis.js), retenus pour la suite ;
 //   · le FORMAT Leboncoin : estimé par Leboncoin (par défaut, le même pour
@@ -28,6 +30,7 @@ import { useState } from "react";
 import { Carte } from "../composants";
 import { LBC_TRANSPORTEURS, LBC_FORMATS, transporteursPourPoids } from "../../utils/leboncoinColis";
 import { plateformesAuPoids, lirePoidsSaisi } from "./regles";
+import { POIDS_LBC_ESTIMER, POIDS_LBC_SAISIR, choixPoidsValide } from "../../utils/choixPoidsLeboncoin";
 import { ChampPortDepop } from "../../components/PortDepop";
 import { usePortDepopParDefaut, lirePortSaisi, formaterPort } from "../../utils/fraisPortDepop";
 
@@ -36,6 +39,7 @@ const titreDe = (item) => String(item?.titre ?? item?.title ?? "").trim();
 export default function LivraisonDuLot({
   en, ids, parId, moteurs, poidsDe, poserPoids, poserPoidsDuLot, livraison, poserTransporteurs, poserFormat,
   colisVinted = [], choisirColisVinted = () => {}, userId = null,
+  choixPoidsLbc = POIDS_LBC_ESTIMER, choisirPoidsLbc = () => {},
 }) {
   const [poidsLot, setPoidsLot] = useState("");
   const [poidsParArticle, setPoidsParArticle] = useState(false); // le détail, replié
@@ -74,9 +78,13 @@ export default function LivraisonDuLot({
     setGardeDefaut(r.ok ? "ok" : "rate");
   };
   const sansPoids = auPoids.filter((id) => poidsDe(id) == null);
-  // (11/10) Leboncoin EXIGE le poids : tant qu'un article Leboncoin n'en a
-  // pas, ce bloc est une question (ambre), et l'article est « à compléter ».
+  // (11/10 soir) Leboncoin : « Laisser Leboncoin estimer » (défaut) ou
+  // « Saisir le poids ». Seul « Saisir » fait de ce bloc une question (ambre)
+  // tant qu'un article Leboncoin n'a pas de poids.
+  const saisirLbc = avecLbc.length > 0 && choixPoidsValide(choixPoidsLbc) === POIDS_LBC_SAISIR;
   const lbcSansPoids = avecLbc.filter((id) => poidsDe(id) == null);
+  const lbcAvecPoids = avecLbc.length - lbcSansPoids.length;
+  const champPoidsVisible = !avecLbc.length || saisirLbc;
   const gLot = lirePoidsSaisi(poidsLot);
   const choisis = livraison.transporteurs; // null = ceux que Leboncoin propose
   const coche = (nom) => (choisis ? choisis.includes(nom) : true);
@@ -89,22 +97,41 @@ export default function LivraisonDuLot({
   return (
     <Carte titre={en ? "Shipping" : "Livraison"}>
       {auPoids.length > 0 && (
-        <div className={`fsn-q${lbcSansPoids.length ? " fsn-q--bloque" : ""}`}>
-          <div className="fsn-q-t">{avecLbc.length
-            ? (en ? "Parcel weight (required for Leboncoin)" : "Poids du colis (obligatoire pour Leboncoin)")
-            : (en ? "Parcel weight (optional)" : "Poids du colis (facultatif)")}</div>
-          <div className="fsn-q-why">{avecLbc.length
-            ? (en
-              ? "Leboncoin prices the parcel by weight: without it, nothing goes to Leboncoin — nothing is guessed. One weight for the batch, adjustable item by item, saved on each item."
-              : "Leboncoin calcule l'envoi au poids : sans lui, rien ne part sur Leboncoin — rien n'est deviné. Un poids pour le lot, réglable article par article, gardé sur chaque fiche.")
-            : (en
-              ? "As for an item published on its own: without a weight, Beebs estimates the parcel from the category. A weight given here picks the exact band and is saved on the item."
-              : "Comme pour un article publié seul : sans poids, Beebs estime le colis d'après le rayon. Un poids donné ici choisit le palier exact et reste sur la fiche.")}</div>
-          {lbcSansPoids.length > 0 && (
-            <div className="fsn-q-why" style={{ color: "#92400E", fontWeight: 600 }}>{en
-              ? `${lbcSansPoids.length} Leboncoin item${lbcSansPoids.length > 1 ? "s" : ""} without a weight.`
-              : `${lbcSansPoids.length > 1 ? `${lbcSansPoids.length} articles Leboncoin` : "1 article Leboncoin"} sans poids.`}</div>
+        <div className={`fsn-q${saisirLbc && lbcSansPoids.length ? " fsn-q--bloque" : ""}`}>
+          <div className="fsn-q-t">{en ? "Parcel weight" : "Poids du colis"}</div>
+          {avecLbc.length > 0 && (
+            <>
+              <div className="fsn-q-why">{en
+                ? "Without a weight, Leboncoin publishes and estimates the parcel from the category (e.g. 250 g, size S, for a pyjama). A weight already on an item always goes. Your choice is kept for your next listings."
+                : "Sans poids, Leboncoin publie et estime le colis d'après le rayon (ex. 250 g, format S, pour un pyjama). Un poids déjà sur la fiche part toujours. Ton choix est gardé pour tes prochaines publications."}</div>
+              <div className="fsn-choices" role="radiogroup" aria-label={en ? "Leboncoin parcel weight" : "Poids du colis Leboncoin"}>
+                <button type="button" role="radio" aria-checked={!saisirLbc} className={`fsn-choice${!saisirLbc ? " fsn-choice--on" : ""}`}
+                  onClick={() => choisirPoidsLbc(POIDS_LBC_ESTIMER)}>
+                  {en ? "Let Leboncoin estimate" : "Laisser Leboncoin estimer"}
+                </button>
+                <button type="button" role="radio" aria-checked={saisirLbc} className={`fsn-choice${saisirLbc ? " fsn-choice--on" : ""}`}
+                  onClick={() => choisirPoidsLbc(POIDS_LBC_SAISIR)}>
+                  {en ? "Enter the weight" : "Saisir le poids"}
+                </button>
+              </div>
+              {!saisirLbc && lbcAvecPoids > 0 && (
+                <div className="fsn-q-why">{en
+                  ? `${lbcAvecPoids} Leboncoin item${lbcAvecPoids > 1 ? "s" : ""} already ha${lbcAvecPoids > 1 ? "ve" : "s"} a weight: it goes with the listing.`
+                  : `${lbcAvecPoids > 1 ? `${lbcAvecPoids} articles Leboncoin ont` : "1 article Leboncoin a"} déjà un poids sur la fiche : il part avec l'annonce.`}</div>
+              )}
+              {saisirLbc && lbcSansPoids.length > 0 && (
+                <div className="fsn-q-why" style={{ color: "#92400E", fontWeight: 600 }}>{en
+                  ? `${lbcSansPoids.length} Leboncoin item${lbcSansPoids.length > 1 ? "s" : ""} without a weight.`
+                  : `${lbcSansPoids.length > 1 ? `${lbcSansPoids.length} articles Leboncoin` : "1 article Leboncoin"} sans poids.`}</div>
+              )}
+            </>
           )}
+          {!avecLbc.length && (
+            <div className="fsn-q-why">{en
+              ? "Optional. As for an item published on its own: without a weight, Beebs estimates the parcel from the category. A weight given here picks the exact band and is saved on the item."
+              : "Facultatif. Comme pour un article publié seul : sans poids, Beebs estime le colis d'après le rayon. Un poids donné ici choisit le palier exact et reste sur la fiche."}</div>
+          )}
+          {champPoidsVisible && (<>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <input className="fsn-input" style={{ maxWidth: 170 }} type="text" inputMode="decimal" value={poidsLot}
               onChange={(ev) => setPoidsLot(ev.target.value)} placeholder={en ? "e.g. 650 g or 1.2 kg" : "ex. 650 g ou 1,2 kg"}
@@ -138,6 +165,7 @@ export default function LivraisonDuLot({
               </div>
             );
           })}
+          </>)}
         </div>
       )}
 

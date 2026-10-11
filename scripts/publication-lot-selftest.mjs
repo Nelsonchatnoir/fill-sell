@@ -110,8 +110,10 @@ const job = (o) => ({ action: 'publish', status: 'published', created_at: '2026-
     plateformesPubliables: new Set(['vinted', 'leboncoin']), jumeaux: [],
     initialListing: { poids_g: 450 },
   };
-  verifier(!bilanArticle({ ...base, initialListing: {} }).pret && bilanArticle({ ...base, initialListing: {} }).motifs.some((x) => x.cle === 'poids'),
-    '(11/10) Leboncoin sans poids : à compléter (poids), jamais prêt — régression du 10/10 13:50 corrigée');
+  verifier(!bilanArticle({ ...base, initialListing: {}, poidsLbcChoix: 'saisir' }).pret && bilanArticle({ ...base, initialListing: {}, poidsLbcChoix: 'saisir' }).motifs.some((x) => x.cle === 'poids'),
+    '(11/10 soir) Leboncoin sans poids, « Saisir le poids » : à compléter (poids), jamais prêt');
+  verifier(bilanArticle({ ...base, initialListing: {} }).pret && bilanArticle({ ...base, initialListing: {}, poidsLbcChoix: 'estimer' }).pret,
+    '(11/10 soir) Leboncoin sans poids, « Laisser Leboncoin estimer » (défaut) : prêt — Leboncoin estime');
   verifier(bilanArticle({ ...base, initialListing: {}, plateformesPubliables: new Set(['vinted']) }).pret,
     '(11/10) sans Leboncoin, pas de poids exigé (Vinted : une taille)');
   verifier(bilanArticle(base).pret, 'au repos, rien à demander, texte du vendeur : prêt');

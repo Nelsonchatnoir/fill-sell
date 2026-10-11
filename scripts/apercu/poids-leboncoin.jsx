@@ -1,20 +1,25 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// APERÇU — le poids du colis Leboncoin, demandé avant l'envoi (11/10/2026)
+// APERÇU — le poids du colis Leboncoin : estimé ou saisi (11/10/2026 soir)
 // ═══════════════════════════════════════════════════════════════════════════
 // Outil de RELECTURE, jamais livré. Monte les composants RÉELS, sans session,
 // avec le FAUX client Supabase (vite-modale-free.config.mjs : aucun réseau ;
 // écritures appliquées EN MÉMOIRE seulement, pour prouver le geste) :
-//   ?scene=confirmer  la carte « Poids du colis (Leboncoin) » de « Confirmer »
-//   ?scene=regler     la question « À régler » d'une publication du lot de
-//                     Louis retenue par le serveur (3 annonces du même lot
-//                     attendent leur poids, 1 d'un autre lot)
+//   ?scene=confirmer  la carte « Poids du colis (Leboncoin) » de « Confirmer » :
+//                     « Laisser Leboncoin estimer » (défaut) / « Saisir le poids »
+//   ?scene=regler     la question « À régler » d'une publication retenue par
+//                     l'ANCIENNE règle (get-pending-jobs v234, 11/10 12:42 →
+//                     v236) : le serveur n'en pose plus, mais une question déjà
+//                     posée se répond toujours (3 du même lot, 1 d'un autre)
 //
 //     node scripts/apercu/capture-poids-leboncoin.mjs
 import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { CartePoidsLeboncoin } from '../../src/components/PoidsLeboncoin.jsx';
 import { NeedsUserModal } from '../../src/tabs/StockTab.jsx';
-import { QUESTION_POIDS_LBC, MESSAGE_POIDS_LBC } from '../../supabase/functions/_shared/poids-leboncoin.js';
+// La question telle que get-pending-jobs v234 la posait (retirée le 11/10 soir).
+const QUESTION_POIDS_LBC = { field_key: 'lbcPoidsGrammes', field_label: 'Poids du colis (g)', input_type: 'number',
+  explication: "Leboncoin calcule l'envoi au poids. Sans lui, l'annonce ne part pas : rien n'est deviné.", target: { root: null, key: 'lbcPoidsGrammes' } };
+const MESSAGE_POIDS_LBC = "Publication Leboncoin en attente : indique le poids du colis. Rien n'est parti sur Leboncoin, l'annonce partira toute seule après ta réponse.";
 
 const q = new URLSearchParams(location.search);
 const scene = q.get('scene') ?? 'confirmer';
@@ -38,11 +43,14 @@ window.__FIXTURE = {
 
 function Confirmer() {
   const [g, setG] = useState(null);
-  const m = { lang: 'fr', poidsLbc: { visee: true, manquant: g == null, poser: setG, saisie: g, fiche: null } };
+  const [choix, setChoix] = useState('estimer'); // le défaut
+  const manquant = choix === 'saisir' && g == null;
+  const m = { lang: 'fr', poidsLbc: { visee: true, manquant, poser: setG, saisie: g, fiche: null, choix, choisir: setChoix } };
   return (
     <div className="fsn" style={{ padding: 16, maxWidth: 560, margin: '0 auto' }}>
       <CartePoidsLeboncoin m={m} />
-      <p id="etat" style={{ fontSize: 12 }}>{g == null ? 'Publier grisé : Poids du colis Leboncoin à indiquer' : `poids posé sur la copie : ${g} g`}</p>
+      <p id="etat" style={{ fontSize: 12 }}>{manquant ? 'Publier grisé : Poids du colis Leboncoin à indiquer' : g == null ? 'Publier actif : Leboncoin estime le poids' : `Publier actif : poids posé sur la copie : ${g} g`}</p>
+      <p id="choix" style={{ fontSize: 12 }}>choix retenu : {choix}</p>
     </div>
   );
 }

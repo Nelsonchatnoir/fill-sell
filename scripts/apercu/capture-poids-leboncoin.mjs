@@ -1,12 +1,15 @@
-// Captures téléphone du poids du colis Leboncoin (11/10/2026) — « Confirmer »
-// du stepper et question « À régler » d'une publication retenue par le
-// serveur. Outil de relecture, jamais livré.
+// Captures téléphone du poids du colis Leboncoin (11/10/2026 soir) —
+// « Confirmer » du stepper (« Laisser Leboncoin estimer » par défaut, « Saisir
+// le poids ») et question « À régler » d'une publication retenue par l'ancienne
+// règle serveur (v234). Outil de relecture, jamais livré.
 //
 //     node scripts/apercu/capture-poids-leboncoin.mjs
 //
 // Ce qu'il PROUVE (390 × 844 et 360 × 740) :
-//   · « Confirmer » : le champ est là tant que le poids manque, « 1,2 kg » pose
-//     1 200 g sur la copie, une saisie illisible est dite ;
+//   · « Confirmer » : « Laisser Leboncoin estimer » est choisi d'office, aucun
+//     champ, Publier actif ; « Saisir le poids » ouvre le champ et grise
+//     Publier tant qu'il est vide ; « 1,2 kg » pose 1 200 g sur la copie ; une
+//     saisie illisible est dite ; revenir à « estimer » retire le poids tapé ;
 //   · « À régler » : « Valider » grisé sans poids lisible ; la réponse part en
 //     GRAMMES (1 200) ; « le même poids pour les 2 autres annonces du lot »
 //     relance les 2 autres du MÊME lot, jamais celle d'un autre lot ; la fiche
@@ -48,21 +51,33 @@ try {
     page.on('pageerror', (e) => erreurs.push(String(e)));
     page.on('console', (m) => { if (m.type() === 'error') erreurs.push(m.text()); });
 
-    // 1. « Confirmer » : le champ, tant que le poids manque.
+    // 1. « Confirmer » : « Laisser Leboncoin estimer » d'office, rien ne bloque.
     await page.goto(`${BASE}?scene=confirmer`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(500);
     let texte = await page.locator('body').innerText();
-    verifier(/Poids du colis \(Leboncoin\)/.test(texte) && /rien ne part sur Leboncoin/.test(texte), '« Confirmer » : le champ et le pourquoi');
-    verifier(/Publier grisé/.test(texte), 'sans poids : Publier grisé');
-    await page.screenshot({ path: path.join(SORTIE, `01-confirmer-vide-${largeur}.png`) });
+    verifier(/Poids du colis \(Leboncoin\)/.test(texte) && /Sans poids, Leboncoin publie et estime le colis/.test(texte), '« Confirmer » : la carte et le pourquoi');
+    const estimer = page.getByRole('radio', { name: 'Laisser Leboncoin estimer' });
+    const saisirR = page.getByRole('radio', { name: 'Saisir le poids' });
+    verifier(await estimer.getAttribute('aria-checked') === 'true', 'par défaut : « Laisser Leboncoin estimer »');
+    verifier(await page.locator('#poids-lbc-stepper').count() === 0, 'estimer : aucun champ à remplir');
+    verifier(/Publier actif : Leboncoin estime le poids/.test(texte), 'estimer : Publier actif, sans poids');
+    await page.screenshot({ path: path.join(SORTIE, `01-confirmer-estimer-${largeur}.png`) });
+    // « Saisir le poids » : le champ, Publier attend.
+    await saisirR.click(); await page.waitForTimeout(150);
+    texte = await page.locator('body').innerText();
+    verifier(/choix retenu : saisir/.test(texte) && /Publier grisé/.test(texte), '« Saisir le poids » : retenu, Publier grisé tant que le champ est vide');
     const champ = page.locator('#poids-lbc-stepper');
     await champ.fill('abc'); await champ.blur(); await page.waitForTimeout(150);
     verifier(/Un poids en grammes ou en kilos/.test(await page.locator('body').innerText()), 'saisie illisible : dite simplement');
     await champ.fill('1,2 kg'); await champ.blur(); await page.waitForTimeout(150);
     texte = await page.locator('body').innerText();
-    verifier(/poids posé sur la copie : 1200 g/.test(texte), '« 1,2 kg » : 1 200 g sur la copie');
-    verifier(/Poids du colis \(Leboncoin\)/.test(texte), 'le champ reste à l’écran après la saisie');
-    await page.screenshot({ path: path.join(SORTIE, `02-confirmer-rempli-${largeur}.png`) });
+    verifier(/poids posé sur la copie : 1200 g/.test(texte), '« 1,2 kg » : 1 200 g sur la copie, Publier actif');
+    await page.screenshot({ path: path.join(SORTIE, `02-confirmer-saisir-${largeur}.png`) });
+    verifier(parseFloat(await champ.evaluate((e) => getComputedStyle(e).fontSize)) >= 16, 'champ à 16 px (pas de zoom iOS)');
+    // Retour à « estimer » : le poids tapé ici ne part plus.
+    await estimer.click(); await page.waitForTimeout(150);
+    texte = await page.locator('body').innerText();
+    verifier(/choix retenu : estimer/.test(texte) && /Publier actif : Leboncoin estime le poids/.test(texte), 'retour à « estimer » : le poids tapé est retiré, Leboncoin estime');
     verifier(await page.evaluate(() => document.documentElement.scrollWidth) <= largeur, 'pas de défilement horizontal');
 
     // 2. « À régler » : la question du serveur, une fois pour le lot.

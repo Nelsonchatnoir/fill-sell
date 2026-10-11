@@ -20,7 +20,7 @@ import { preuveAccesOpla } from "../_shared/preuve-opla.ts";
 import { vintedExigeUneCouleur, vintedExigeUneMarque, valeurUneLettre } from "../_shared/vinted-exigences.js";
 import { traduireAbsenceMarqueJob, appliquerMarqueRetenue, SANS_MARQUE } from "../_shared/marque-absente.js";
 import { ecarterFormatDevine, formatChoisi, livraisonLbcAuService } from "../_shared/livraison-poids.js";
-import { decisionPoidsLbc, QUESTION_POIDS_LBC, MESSAGE_POIDS_LBC } from "../_shared/poids-leboncoin.js";
+import { decisionPoidsLbc } from "../_shared/poids-leboncoin.js";
 import { classementAgeEcrit, familleJeuVideo, ageBeebsDuClassement, ageBeebsJeuVideoLu } from "../../../src/utils/jeuxVideo.js";
 import { estFourreToutCatalogue } from "../../../src/utils/fourreTout.js";
 import { VINTED_COLORS } from "../../../src/utils/vintedColors.js";
@@ -2937,14 +2937,13 @@ serve(async (req) => {
     // Leboncoin, la même pour des articles identiques), le poids de la fiche
     // part s'il manque, et les transporteurs retenus aussi (bornés au poids).
     // Mémoire du poll seulement ; best-effort : servi comme avant si raté.
-    // (11/10, Nico — _shared/poids-leboncoin.js) PUIS : une publication encore
-    // SANS poids n'est JAMAIS servie. needs_user avec le champ « Poids du
-    // colis » (l'app le demande, une fois pour le lot) ; rien n'est envoyé à
-    // Leboncoin. Si la lecture rate, ces jobs restent en file (non servis).
+    // (11/10 soir, Nico — _shared/poids-leboncoin.js) PUIS : un poids écrit
+    // autrement (« 650 g ») est servi en grammes ; une publication SANS poids
+    // est servie telle quelle, Leboncoin estime (la règle « jamais servie sans
+    // poids » de la v234 est retirée : friction de trop).
     if (!includeProcessing && !includeNeedsUser) {
       const lbcJobs = out.filter((j) => j.platform === "leboncoin" && (j.action ?? "publish") === "publish");
       if (lbcJobs.length) {
-        const retenusPoids = new Set<string>();
         try {
           const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
           const ids = [...new Set(lbcJobs.map((j) => j.inventaire_id).filter((v) => v != null))];
@@ -2962,22 +2961,11 @@ serve(async (req) => {
               poidsFiche: j.inventaire_id != null ? poidsL.get(String(j.inventaire_id)) : null,
               transporteursRetenus: Array.isArray(retenus) ? retenus : null,
             });
-            // ── LE POIDS, OU RIEN NE PART (11/10) ──────────────────────────────
+            // ── LE POIDS EN GRAMMES ; SANS POIDS, LEBONCOIN ESTIME (11/10 soir) ─
             const dP = decisionPoidsLbc({ ...j, platform_fields: pfL });
             if (dP.action === "normaliser") {
               pfL.lbcPoidsGrammes = dP.valeur;
               fait.push(`poids ← ${dP.valeur} g`);
-            } else if (dP.action === "demander") {
-              const pfQ: Record<string, unknown> = { ...((j.platform_fields ?? {}) as Record<string, unknown>), needsUserField: QUESTION_POIDS_LBC };
-              pfQ.erreurs_archivees = archiverErreur(pfQ.erreurs_archivees, (j as { error?: string | null }).error ?? null, "pending", "get-pending-jobs (poids Leboncoin à indiquer)");
-              pfQ.poids_lbc_demande = { le: new Date().toISOString(), pose_par: "get-pending-jobs (_shared/poids-leboncoin.js)" };
-              delete pfQ.next_action_after; delete pfQ.processing_since;
-              retenusPoids.add(String(j.id));
-              const { data: majP } = await admin.from("cross_post_jobs")
-                .update({ status: "needs_user", error: MESSAGE_POIDS_LBC, platform_fields: pfQ })
-                .eq("id", String(j.id)).eq("user_id", user.id).eq("status", "pending").select("id");
-              console.log(`[get-pending-jobs] job ${String(j.id).slice(0, 8)} (leboncoin publish) : aucun poids (ni job ni fiche) → ${(majP ?? []).length ? "needs_user avec le champ « Poids du colis »" : "non servi (déjà sorti de pending)"}`);
-              continue;
             }
             // Compte PRO : le poids connu remplit SON champ « Poids du colis »
             // (même tranche que la republication) — la mémoire par tranche,
@@ -2992,14 +2980,8 @@ serve(async (req) => {
           }
           if (touches) console.log(`[get-pending-jobs] user=${user.id} livraison Leboncoin au service : ${touches} job(s)`);
         } catch (e) {
-          // La règle du poids ne se lève jamais sur un raté : une publication
-          // dont on n'a pas PROUVÉ le poids reste en file, non servie.
-          for (const j of lbcJobs) {
-            if (decisionPoidsLbc(j).action === "demander") retenusPoids.add(String(j.id));
-          }
-          console.warn(`[get-pending-jobs] livraison Leboncoin : ${String((e as Error)?.message ?? e)} — servi tel quel, sauf ${retenusPoids.size} publication(s) sans poids prouvé (laissées en file)`);
+          console.warn(`[get-pending-jobs] livraison Leboncoin : ${String((e as Error)?.message ?? e)} — servi tel quel`);
         }
-        if (retenusPoids.size) out = out.filter((j) => !retenusPoids.has(String(j.id)));
       }
     }
 

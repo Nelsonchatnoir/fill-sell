@@ -62,6 +62,7 @@ import LivraisonDuLot from "./LivraisonDuLot";
 import BarriereErreur from "../../components/BarriereErreur";
 import { transporteursPourPoids } from "../../utils/leboncoinColis";
 import { fusionnerReglages } from "../../utils/reglagesPlateformes";
+import { useChoixPoidsLeboncoin } from "../../utils/useChoixPoidsLeboncoin";
 import {
   cleColisRetenu, grilleColisVinted, chargerGrilleColisRelevee, colisRetenusDuProfil, colisRetenuDuRayon,
   colisVintedDeLaFiche, semerColisRetenus, colisRetenusEnCache, retenirColisVinted,
@@ -233,6 +234,11 @@ function EcranDuLot({
   const { userId, supabase, lang } = ctx;
   const en = lang === "en";
   const L = LIBELLE_PHASE[en ? "en" : "fr"];
+  // (11/10 soir, Nico) Le poids Leboncoin : « Laisser Leboncoin estimer » (par
+  // défaut) ou « Saisir le poids », retenu pour le compte. Le bilan de chaque
+  // article le lit (m.poidsLbcChoix) : seul « Saisir » sans poids le retient.
+  const poidsLbc = useChoixPoidsLeboncoin(userId);
+  const poidsLbcChoixRef = useRef(poidsLbc.choix); poidsLbcChoixRef.current = poidsLbc.choix;
   const plateformesCompte = (ctx.plateformesCompte ?? PLATEFORMES_LOT_DEFAUT).filter((p) => PLATEFORMES_LOT.includes(p));
   const fermer = (r) => {
     try { localStorage.removeItem(CLE_REPRISE_LOT(userId)); } catch { /* rien */ }
@@ -589,7 +595,7 @@ function EcranDuLot({
             else planifierTick(1500);
             continue;
           }
-          const b = bilanArticle({ ...m, preparationAuRepos: true, quantiteFiche: quantiteDe(id) }, decisions[id], lang);
+          const b = bilanArticle({ ...m, preparationAuRepos: true, quantiteFiche: quantiteDe(id), poidsLbcChoix: poidsLbcChoixRef.current }, decisions[id], lang);
           const nouvelle = b.pret ? "pret" : "questions";
           if (nouvelle !== phase || JSON.stringify(st.motifs ?? []) !== JSON.stringify(b.motifs)) patchs[id] = { phase: nouvelle, motifs: b.motifs };
         }
@@ -602,7 +608,7 @@ function EcranDuLot({
       return n;
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tick, lot, etats, actifs, decisions]);
+  }, [tick, lot, etats, actifs, decisions, poidsLbc.choix]);
 
   function raisonRien(bilan, plateformes) {
     const lignes = [];
@@ -695,7 +701,7 @@ function EcranDuLot({
       if (etatsRef.current[id]?.phase === "erreur") { setEnvoi((e) => ({ ...e, fait: e.fait + 1 })); continue; }
       const m = moteursRef.current.get(id);
       let b = null;
-      try { b = m ? bilanArticle({ ...m, preparationAuRepos: true, quantiteFiche: quantiteDe(id) }, decisionsRef.current[id], lang) : null; }
+      try { b = m ? bilanArticle({ ...m, preparationAuRepos: true, quantiteFiche: quantiteDe(id), poidsLbcChoix: poidsLbcChoixRef.current }, decisionsRef.current[id], lang) : null; }
       catch (e) { mettreDeCote(id, e, "envoi_bilan"); setEnvoi((x) => ({ ...x, fait: x.fait + 1 })); continue; }
       if (!m || !b?.pret) { majEtat(id, { phase: "questions", motifs: b?.motifs ?? [] }); setEnvoi((e) => ({ ...e, fait: e.fait + 1 })); continue; }
       majEtat(id, { phase: "envoi" });
@@ -983,6 +989,7 @@ function EcranDuLot({
               poserPoidsDuLot={poserPoidsDuLot} poserTransporteurs={poserTransporteurs} poserFormat={poserFormat}
               colisVinted={colisVinted} choisirColisVinted={choisirColisVinted}
               userId={userId} exclusDepop={exclusDepop} mettreDeCote={mettreDeCote} signalerErreurBloc={signalerErreurBloc}
+              choixPoidsLbc={poidsLbc.choix} choisirPoidsLbc={poidsLbc.choisir}
             />
           )}
           {etape === "fin" && lot && (
@@ -1185,6 +1192,8 @@ export function EcranAvant({
   // (10/10) Ce que l'écran parent sait et que ce composant lisait SANS le
   // recevoir (page blanche du 09/10 22:13 au 10/10) : passé, jamais supposé.
   userId = null, exclusDepop = [], mettreDeCote = () => {}, signalerErreurBloc = () => {},
+  // (11/10 soir) Le choix du poids Leboncoin du lot — reçu, jamais supposé.
+  choixPoidsLbc = "estimer", choisirPoidsLbc = () => {},
 }) {
   const total = lot.ids.length;
   // Un bloc commun qui casse est remplacé par une phrase ; le lot continue.
@@ -1238,7 +1247,8 @@ export function EcranAvant({
         <LivraisonDuLot en={en} ids={lot.ids.filter((id) => !["retire", "envoye", "erreur"].includes(etats[id]?.phase))} parId={parId} moteurs={moteurs}
           poidsDe={poidsDe} poserPoids={poserPoids} poserPoidsDuLot={poserPoidsDuLot}
           livraison={livraison} poserTransporteurs={poserTransporteurs} poserFormat={poserFormat}
-          colisVinted={colisVinted} choisirColisVinted={choisirColisVinted} userId={userId} />
+          colisVinted={colisVinted} choisirColisVinted={choisirColisVinted} userId={userId}
+          choixPoidsLbc={choixPoidsLbc} choisirPoidsLbc={choisirPoidsLbc} />
       ))}
 
       {/* (09/10 soir) Ce que Depop refuse : combien d'articles, et pourquoi. */}
@@ -1369,8 +1379,8 @@ export function ArticleAQuestions({ id, en, item, m, st, decision, decider, tran
         <div className="fsn-q fsn-q--bloque">
           <div className="fsn-q-t">{en ? "Parcel weight" : "Poids du colis"}</div>
           <div className="fsn-q-why">{en
-            ? "Leboncoin prices the parcel by weight — nothing is guessed. Or give one weight for the whole batch in Shipping, above. Saved on the item."
-            : "Leboncoin calcule l'envoi au poids — rien n'est deviné. Ou un poids pour tout le lot, dans Livraison, plus haut. Gardé sur la fiche."}</div>
+            ? "You chose to enter the weight. Or one weight for the whole batch — or \"Let Leboncoin estimate\" — in Shipping, above. Saved on the item."
+            : "Tu as choisi de saisir le poids. Ou un poids pour tout le lot — ou « Laisser Leboncoin estimer » — dans Livraison, plus haut. Gardé sur la fiche."}</div>
           <input className="fsn-input" type="text" inputMode="decimal" placeholder={en ? "e.g. 650 g or 1.2 kg" : "ex. 650 g ou 1,2 kg"}
             aria-label={en ? "Parcel weight" : "Poids du colis"}
             onBlur={(ev) => { const g = lirePoidsSaisi(ev.target.value); if (g) poserPoids(id, g); }}

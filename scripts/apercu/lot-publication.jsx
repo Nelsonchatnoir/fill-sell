@@ -11,6 +11,7 @@
 //
 //     node scripts/apercu/capture-lot-publication.mjs
 //     (ou : vite, puis /scripts/apercu/lot-publication.html#scene=<nom>)
+import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import '../../src/base.css';
 import '../../src/App.css';
@@ -62,6 +63,9 @@ const POIDS = ['Moins de 250 g', '250 g à 500 g', '500 g à 1 kg', '1 à 2 kg',
 
 function Avant({ etape }) {
   const { t, tpl } = useTranslation('fr');
+  // (11/10 soir) Le choix du poids Leboncoin : « Laisser Leboncoin estimer »
+  // (défaut) ; la scène « poids-lbc-saisir » part de « Saisir le poids ».
+  const [choixPoids, setChoixPoids] = useState(etape === 'poids-lbc-saisir' ? 'saisir' : 'estimer');
   const lot = { id: 'apercu', le: '2026-10-02T21:40:00Z', ids: A.map((a) => String(a.id)), plateformes: ['vinted', 'leboncoin', 'ebay', 'beebs'] };
   const enPrep = etape === 'preparation';
   const etats = {};
@@ -72,13 +76,17 @@ function Avant({ etape }) {
     // (03/10) Le 6e article : sa description est lue sur Vinted, au rythme des dépôts.
     if (enPrep) etats[id] = i === 5 ? { phase: 'lecture', lecture: 'vinted' } : { phase: i < 2 ? 'pret' : i === 2 ? 'questions' : i < 5 ? (i === 3 ? 'redaction' : 'verification') : 'attente' };
     else if (etape === 'pret' || etape === 'envoi') etats[id] = { phase: etape === 'envoi' && i < 3 ? 'envoye' : etape === 'envoi' && i === 3 ? 'envoi' : 'pret', envoyees: pfs(id) };
-    else if (etape === 'poids-lbc') etats[id] = { phase: 'questions', motifs: [{ cle: 'poids', libelle: 'Poids Leboncoin' }] };
+    // (11/10 soir) Lot Leboncoin sans poids : prêt quand Leboncoin estime ;
+    // à compléter (motif poids) seulement en « Saisir le poids ».
+    else if (etape === 'poids-lbc' || etape === 'poids-lbc-saisir') etats[id] = choixPoids === 'saisir'
+      ? { phase: 'questions', motifs: [{ cle: 'poids', libelle: 'Poids Leboncoin' }] }
+      : { phase: 'pret', envoyees: pfs(id) };
     else etats[id] = { phase: i === 0 || i === 2 ? 'questions' : 'pret' };
     moteurs.set(id, moteurFactice(t, tpl, { plateformes: pfs(id) }));
   });
   // (11/10) Le poids Leboncoin : connu (500 g) dans les scènes « prêt », à
   // donner dans la scène du lot de Louis (articles Leboncoin sans poids).
-  const poidsScene = etape === 'poids-lbc' || etape === 'questions' ? () => null : () => 500;
+  const poidsScene = etape === 'poids-lbc' || etape === 'poids-lbc-saisir' || etape === 'questions' ? () => null : () => 500;
   if (etape === 'casse') {
     // (10/10) Un article dont la carte lève à l'affichage (103, à compléter)
     // et un dont la LIGNE lève (104, prêt) : chacun est mis de côté, le bloc
@@ -128,7 +136,8 @@ function Avant({ etape }) {
       <EcranAvant en={false} lang="fr" L={L} lot={lot} etats={etats} lignes={lot.ids} parId={parId} moteurs={moteurs} decisions={{}}
         prepares={prepares} preparationFinie={!enPrep} prets={prets} aCompleter={aCompleter} annoncesPretes={annoncesPretes}
         communes={communes} repondreCommune={noop} decider={noop} trancherJumeau={noop} sansPlateforme={noop} retirerDuLot={noop} envoi={envoi}
-        poidsDe={poidsScene} poserPoids={noop} poserPoidsDuLot={noop} />
+        poidsDe={poidsScene} poserPoids={noop} poserPoidsDuLot={noop}
+        choixPoidsLbc={choixPoids} choisirPoidsLbc={setChoixPoids} />
     </CoqueLot>
   );
 }
@@ -275,6 +284,7 @@ const SCENES = {
   questions: () => <Avant etape="questions" />,
   pret: () => <Avant etape="pret" />,
   'poids-lbc': () => <Avant etape="poids-lbc" />,
+  'poids-lbc-saisir': () => <Avant etape="poids-lbc-saisir" />,
   envoi: () => <Avant etape="envoi" />,
   casse: () => <Avant etape="casse" />,
   'ecran-casse': () => <EcranCasse />,

@@ -1,20 +1,21 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// LEBONCOIN — UNE PUBLICATION SANS POIDS N'EST JAMAIS SERVIE (11/10/2026, Nico)
+// LEBONCOIN — LE POIDS D'UNE PUBLICATION, LU EN GRAMMES (11/10/2026)
 // ═══════════════════════════════════════════════════════════════════════════
-// Louis (Business), 11/10 : 12 livres (10:07) et 18 vêtements (11:05) publiés
-// en lot SANS poids — Leboncoin a gardé son estimation du rayon (livres :
-// 100 g, format S). Le lot ne demandait plus le poids depuis 9bdcfce (10/10
-// 13:50, « poids facultatif comme à l'unité ») ; celui du 10/10 19:44 n'avait
-// le sien (500 g) que parce que les fiches le portaient déjà.
+// Historique : le 11/10 midi (Louis, 12 livres et 18 vêtements partis sans
+// poids), get-pending-jobs v234 ne servait PLUS une publication Leboncoin
+// sans poids (needs_user « Poids du colis »).
+// Décision de Nico, 11/10 soir : « le poids obligatoire est une friction de
+// trop ». Sans poids, Leboncoin publie et estime lui-même d'après le rayon
+// (100 g format S pour un livre, 250 g pour un pyjama) : c'est acceptable.
+// La personne choisit dans l'app « Laisser Leboncoin estimer » (par défaut)
+// ou « Saisir le poids » (src/utils/choixPoidsLeboncoin.js).
 //
-// Règle à la racine, côté serveur : get-pending-jobs ne sert JAMAIS à
-// l'extension une PUBLICATION Leboncoin sans poids. Après le poids de la fiche
-// (_shared/livraison-poids.js, inventaire.poids_g), il reste :
+// Ce que fait le serveur, au service d'une PUBLICATION Leboncoin, après le
+// poids de la fiche (_shared/livraison-poids.js, inventaire.poids_g) :
 //   · un poids lisible (nombre, « 650 », « 650 g », « 1,2 kg ») → servi, en
-//     grammes entiers ;
-//   · rien → needs_user AVEC le champ « Poids du colis » : l'app le demande
-//     (une fois pour le lot, StockTab), le job repart seul après la réponse.
-//     Rien n'est envoyé à Leboncoin, aucun poids n'est inventé.
+//     grammes entiers (jamais une question en boucle sur une écriture) ;
+//   · rien → SERVI tel quel : Leboncoin estime. Aucun poids n'est inventé,
+//     aucune publication n'est retenue pour son poids.
 // La REPUBLICATION n'est pas concernée : elle reprend le poids que l'annonce
 // en ligne affiche (autre chemin, inchangé).
 // ES module sans import (Deno + node). Pur : scripts/lot-poids-leboncoin-selftest.mjs.
@@ -43,23 +44,12 @@ export function grammesLbc(brut) {
   return r >= 1 && r <= POIDS_LBC_MAX_G ? r : null;
 }
 
-export const QUESTION_POIDS_LBC = Object.freeze({
-  field_key: "lbcPoidsGrammes",
-  field_label: "Poids du colis (g)",
-  input_type: "number",
-  explication: "Leboncoin calcule l'envoi au poids. Sans lui, l'annonce ne part pas : rien n'est deviné.",
-  target: { root: null, key: "lbcPoidsGrammes" },
-});
-
-export const MESSAGE_POIDS_LBC =
-  "Publication Leboncoin en attente : indique le poids du colis. Rien n'est parti sur Leboncoin, l'annonce partira toute seule après ta réponse.";
-
 /**
- * Que faire d'un job avant de le servir ?
- * @returns {{ action: "rien" } | { action: "normaliser", valeur: number } | { action: "demander" }}
- *   rien       : pas une publication Leboncoin, ou poids déjà en grammes ;
- *   normaliser : un poids lisible mais écrit autrement (« 650 g ») → grammes ;
- *   demander   : aucun poids → needs_user avec QUESTION_POIDS_LBC.
+ * Que faire d'un job avant de le servir ? Jamais le retenir.
+ * @returns {{ action: "rien" } | { action: "normaliser", valeur: number }}
+ *   rien       : pas une publication Leboncoin, poids déjà en grammes, ou
+ *                AUCUN poids (Leboncoin estime — 11/10 soir, Nico) ;
+ *   normaliser : un poids lisible mais écrit autrement (« 650 g ») → grammes.
  */
 export function decisionPoidsLbc(job) {
   if (!job || job.platform !== "leboncoin") return { action: "rien" };
@@ -67,7 +57,7 @@ export function decisionPoidsLbc(job) {
   const pf = job.platform_fields && typeof job.platform_fields === "object" ? job.platform_fields : {};
   const brut = pf.lbcPoidsGrammes;
   const g = grammesLbc(brut);
-  if (g == null) return { action: "demander" };
+  if (g == null) return { action: "rien" };
   if (typeof brut === "number" && brut === g) return { action: "rien" };
   return { action: "normaliser", valeur: g };
 }
