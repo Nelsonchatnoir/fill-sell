@@ -27,6 +27,7 @@ import { verdictConfirmation, puceVerrouillee } from "./plateformes";
 import BlocQuestions from "./BlocQuestions";
 import CarteRayon from "../components/CarteRayon";
 import { CartePortDepop } from "../components/PortDepop";
+import { CartePoidsLeboncoin } from "../components/PoidsLeboncoin";
 
 const LIBELLE_MOTIF = {
   fr: { sans_adresse: "adresse de remise manquante", interdite: "produit refusé par la plateforme", sans_annonce: "aucune annonce rédigée", champ_manquant: "attend une réponse" },
@@ -118,6 +119,10 @@ export default function EcranConfirmer({ m }) {
           la carte Depop — pré-remplis avec le prix par défaut, modifiables
           pour cet article ; sans prix, Depop attend cette réponse. ── */}
       <CartePortDepop m={m} />
+
+      {/* ── LE POIDS LEBONCOIN (11/10) : demandé ici quand ni la copie ni la
+          fiche n'en ont — sans lui, rien ne part sur Leboncoin. ── */}
+      <CartePoidsLeboncoin m={m} />
 
       {/* ── LE RAYON À CHOISIR (25/09) ─────────────────────────────────────
           Le rayon envisagé a été refusé par la vérification, et aucun rayon
