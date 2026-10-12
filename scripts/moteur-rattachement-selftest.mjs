@@ -162,7 +162,8 @@ console.log('6. La chaîne serveur : migration, fonction edge, empreintes');
   ok(/REVOKE ALL ON FUNCTION public\.rapprochement_v3_appliquer[^;]*FROM PUBLIC, anon, authenticated/.test(mig), 'appliquer n’est pas appelable par un client');
   ok(/'reason', 'recent'/.test(mig) && /rapprochement_relancer\(v_user\)/.test(mig), '« Synchroniser » pendant la cadence : « recent », pas un refus, et le rangement repart');
   ok(/ebay-releve-api/.test(mig) && /v_api THEN/.test(mig), 'eBay relié par l’API : relevé réveillé tout de suite par l’API');
-  ok(/rpc\("rapprochement_v3_lire"/.test(fn) && /rpc\("rapprochement_v3_appliquer"/.test(fn) && /empreintes-urls/.test(fn), 'la fonction edge lit, fait empreinter, applique');
+  // (12/10, v20) la lecture passe par rpcBrut (réponse mesurée), le calcul par la passe en tranches
+  ok(/(rpc|rpcBrut)\("rapprochement_v3_lire"/.test(fn) && /rpc\("rapprochement_v3_appliquer"/.test(fn) && /empreintes-urls/.test(fn), 'la fonction edge lit, fait empreinter, applique');
   const migE = lire('supabase/migrations/20261008040000_rapprochement_v3_empreinter_pgnet.sql');
   ok(/rpc\("rapprochement_v3_empreinter"/.test(fn) && /RELANCE_PHOTOS_MS/.test(fn) && /passages < PASSAGES_PHOTOS_MAX/.test(fn) && /net\.http_post/.test(migE) && /REVOKE ALL ON FUNCTION public\.rapprochement_v3_empreinter/.test(migE), 'photos manquantes → mises en file par la base (pg_net), relance 12 s après, jamais un classement sans elles (six relectures sans progrès)');
   ok(/variantesDepuisRgba/.test(img) && /variantes: e\.variantes/.test(emp) && /not\("variantes", "is", null\)/.test(emp), 'empreintes-urls calcule et garde les lectures du centre ; une ligne sans variantes est recalculée');

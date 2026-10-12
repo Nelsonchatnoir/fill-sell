@@ -11,7 +11,8 @@ const verifier = (ok, msg) => { if (!ok) echecs.push(msg); };
 
 const def = src.indexOf("const rattacherParIdentifiant = async");
 const appel = src.indexOf("await rattacherParIdentifiant(user)");
-const lecture = src.indexOf('admin.rpc("rapprochement_v3_lire"');
+// (12/10, v20) la lecture passe par rpcBrut (réponse mesurée)
+const lecture = src.indexOf('rpcBrut("rapprochement_v3_lire"');
 verifier(def > 0, "rattacherParIdentifiant absente");
 verifier(appel > 0 && lecture > 0 && appel < lecture, "le rattachement par identifiant doit précéder rapprochement_v3_lire");
 const corps = def > 0 ? src.slice(def, src.indexOf("\n  };", def)) : "";

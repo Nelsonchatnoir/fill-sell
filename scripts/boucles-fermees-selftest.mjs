@@ -31,7 +31,8 @@ ok("PASSES_INACHEVEES_MAX = 3", nombre("PASSES_INACHEVEES_MAX") === 3, String(no
 ok("un geste en rouvre trois de plus, pas davantage (6)", nombre("PASSES_INACHEVEES_MAX_GESTE") === 6);
 ok("RELANCES_MAX borné (12)", nombre("RELANCES_MAX") === 12);
 const iCompte = fn.indexOf("passages: -(inachevees + 1)");
-const iLire = fn.indexOf('admin.rpc("rapprochement_v3_lire"');
+// (12/10, v20) la lecture passe par rpcBrut (réponse mesurée)
+const iLire = fn.indexOf('rpcBrut("rapprochement_v3_lire"');
 ok("le compteur est écrit AVANT la lecture et la passe (une invocation tuée reste comptée)", iCompte > 0 && iLire > 0 && iCompte < iLire, `${iCompte} / ${iLire}`);
 ok("valeurs négatives seulement (les ≥ 0 du moteur v2 valent 0)", /Number\(compte\?\.passages\) < 0 \? -Number\(compte\?\.passages\) : 0/.test(fn));
 ok("arrêt = « termine » + bilan.arret, jamais une passe de plus", /etat: "termine"[\s\S]{0,200}arret: \{ motif: "passes_inachevees"/.test(fn));

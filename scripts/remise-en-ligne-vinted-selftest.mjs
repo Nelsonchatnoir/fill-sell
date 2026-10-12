@@ -173,9 +173,10 @@ console.log('6. La migration, la fonction edge, le moteur');
   ok(/'utilisateur:photo_rapprochement_v3_remise'/.test(mig), 'fusions journalisées sous leur propre marque (défaisables une à une)');
   ok(/DROP FUNCTION IF EXISTS public\.rapprochement_v3_remise_possible/.test(inv) && /DELETE FROM public\.coin_config WHERE key IN \('rapprochement_remise_en_ligne', 'vente_garde_remise_en_ligne'\)/.test(inv), 'l\'inverse existe et retire tout');
   const edge = lire('supabase/functions/rapprochement/index.ts');
-  ok(/passe\(donnees, map, \{ mode, fichesMain: porteeMain, remises: porteeRemises \}\)/.test(edge) && /remises: "toutes"/.test(edge), 'la fonction edge transmet la portée (et la relance la garde)');
+  // (12/10, v20) la passe en tranches reçoit la même portée
+  ok(/passe\(donnees, null, \{ mode, fichesMain: porteeMain, remises: porteeRemises,/.test(edge) && /remises: "toutes"/.test(edge), 'la fonction edge transmet la portée (et la relance la garde)');
   const p = lire('supabase/functions/_shared/rapprochement/passe.js');
-  ok(/remisesEnLigne\(donnees, N, \{ portee: porteeRemises, exclus: prisesMain \}\)/.test(p), 'la passe appelle la règle après les fiches à la main');
+  ok(/remisesEnLigne\(donnees, N, \{ portee: porteeRemises, exclus: prisesMain, calcul \}\)/.test(p), 'la passe appelle la règle après les fiches à la main');
 }
 
 if (process.argv.includes('--prod')) {

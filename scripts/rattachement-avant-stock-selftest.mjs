@@ -132,8 +132,9 @@ ok(/'vendu_encore_en_ligne', jsonb_build_object\('annonce_id', a\.id, 'par', 'ut
 console.log('5. Le réveil serveur et le filet');
 ok(/\[functions\.rapprochement\]\s*\nverify_jwt = false/.test(cfg), 'rapprochement : verify_jwt = false (appelée par la base)');
 ok(/x-cron-secret/.test(fn) && /secret !== attendu/.test(fn), 'garde maison x-cron-secret');
-ok(/rpc\("rapprochement_v3_lire"/.test(fn) && /rpc\("rapprochement_v3_appliquer"/.test(fn) && /empreintes-urls/.test(fn), 'la fonction lit tout le compte, fait empreinter en parallèle et applique le plan (v3, 08/10)');
-ok(/relance: rang \+ 1/.test(fn) && /rang < RELANCES_MAX/.test(fn), 'une chaîne de relances bornée (RELANCES_MAX), un seul appel edge → edge par invocation');
+ok(/(rpc|rpcBrut)\("rapprochement_v3_lire"/.test(fn) && /rpc\("rapprochement_v3_appliquer"/.test(fn) && /empreintes-urls/.test(fn), 'la fonction lit tout le compte, fait empreinter en parallèle et applique le plan (v3, 08/10)');
+// (12/10, v20) une chaîne de tranches a sa propre borne (RELANCES_MAX_TRANCHES), toujours finie
+ok(/relance: rang \+ 1/.test(fn) && /rang < \(enTranches \? RELANCES_MAX_TRANCHES : RELANCES_MAX\)/.test(fn) && /const RELANCES_MAX_TRANCHES = \d+;/.test(fn), 'une chaîne de relances bornée (RELANCES_MAX, RELANCES_MAX_TRANCHES), un seul appel edge → edge par invocation');
 ok(/trg_rapprochement_fin_run/.test(mig) && /NEW\.status NOT IN \('queued', 'running'\)/.test(mig), 'un relevé qui finit (ou s’arrête) réveille le moteur');
 ok(/cron\.schedule\('rapprochement-1min'/.test(mig) && /maj_le < now\(\) - interval '45 seconds'/.test(mig), 'le filet ne part que s’il y a un compte en retard');
 
