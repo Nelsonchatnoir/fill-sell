@@ -225,9 +225,13 @@ serve(async (req) => {
   const garderChantier = async (user: string, chantier: string, nouveaux: Array<{ cle: string; contenu: unknown; remplace?: string }>) => {
     if (!nouveaux.length) return 0;
     const rangs = mesurer(() => nouveaux.map((n) => ({ user_id: user, chantier, cle: n.cle, contenu: JSON.stringify(n.contenu) })));
-    for (let i = 0; i < rangs.length; i += 20) {
-      const { error } = await admin.from("rapprochement_tranches").upsert(rangs.slice(i, i + 20), { onConflict: "user_id,chantier,cle" });
+    // par paquets d'environ 1 Mo (une liste de candidates peut peser plusieurs Mo à elle seule)
+    for (let i = 0; i < rangs.length;) {
+      let j = i, taille = 0;
+      while (j < rangs.length && (j === i || taille + rangs[j].contenu.length < 1_000_000)) { taille += rangs[j].contenu.length; j++; }
+      const { error } = await admin.from("rapprochement_tranches").upsert(rangs.slice(i, j), { onConflict: "user_id,chantier,cle" });
       if (error) throw new Error(`chantier (écriture) : ${error.message}`);
+      i = j;
     }
     // une liste assemblée remplace ses parts
     for (const n of nouveaux) if (n.remplace) {
