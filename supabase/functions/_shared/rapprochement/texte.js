@@ -1,6 +1,10 @@
 // Lecture du texte d'une annonce : titre normalisé, mots qui comptent, type d'objet,
 // couleurs, tailles, dimensions, marque. Tout est fermé et explicable.
-export const norm = (t) => String(t ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\b(t|tee)[\s-]?shirts?\b/g, 'tshirt').replace(/\bsweat[\s-]?shirts?\b/g, 'sweat')
+// (12/10) Les accents combinants (U+0300 à U+036F), écrits en ASCII : le déploiement
+// par le connecteur Supabase rend les échappements unicode du source en caractères
+// bruts (invisibles) — la même plage, sans rien qui puisse changer en route.
+const ACCENTS = new RegExp(`[${String.fromCharCode(0x300)}-${String.fromCharCode(0x36f)}]`, 'g');
+export const norm = (t) => String(t ?? '').normalize('NFD').replace(ACCENTS, '').toLowerCase().replace(/\b(t|tee)[\s-]?shirts?\b/g, 'tshirt').replace(/\bsweat[\s-]?shirts?\b/g, 'sweat')
   .replace(/œ/g, 'oe').replace(/æ/g, 'ae').replace(/[×x](?=\s*\d)/g, ' x ').replace(/[^a-z0-9,.]+/g, ' ').replace(/(?<!\d)[,.]|[,.](?!\d)/g, ' ').replace(/\s+/g, ' ').trim();
 
 const VIDES = new Set(['pour', 'avec', 'sans', 'par', 'sur', 'les', 'des', 'une', 'aux', 'est', 'dans', 'tres', 'bon', 'etat', 'neuf', 'neuve',
@@ -200,7 +204,7 @@ export const D_VOISINES = {
 };
 const D_MULTI = / (multicolore|multicolor|motifs?|fleuri|fleurs?|imprime|rayures?|raye|rayee|carreaux|leopard|pois|camouflage|arc en ciel) /;
 function dNorm(s) {
-  return ' ' + String(s ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  return ' ' + String(s ?? '').toLowerCase().normalize('NFD').replace(ACCENTS, '')
     .replace(/œ/g, 'o').replace(/æ/g, 'e').replace(/[’'\-_/.,;:!?()[\]{}"«»+*&#]/g, ' ').replace(/\s+/g, ' ').trim() + ' ';
 }
 export function couleursDistinctif(titre) {
