@@ -200,7 +200,7 @@ export const D_VOISINES = {
 };
 const D_MULTI = / (multicolore|multicolor|motifs?|fleuri|fleurs?|imprime|rayures?|raye|rayee|carreaux|leopard|pois|camouflage|arc en ciel) /;
 function dNorm(s) {
-  return ' ' + String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+  return ' ' + String(s ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .replace(/œ/g, 'o').replace(/æ/g, 'e').replace(/[’'\-_/.,;:!?()[\]{}"«»+*&#]/g, ' ').replace(/\s+/g, ' ').trim() + ' ';
 }
 export function couleursDistinctif(titre) {
