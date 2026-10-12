@@ -70,14 +70,36 @@
 // que la lecture ne rend pas `remise_en_ligne_actif` (migration 20261008160000
 // + coin_config rapprochement_remise_en_ligne = 1). { remises: "toutes" } :
 // le rattrapage du stock existant (décision de Nico).
+//
+// ⛔ UNE INVOCATION NE DÉPASSE JAMAIS SON BUDGET DE CPU (v20, 12/10, ferreirasab).
+// Une fonction edge n'a que 2 s de CPU par appel, la même limite sur tous les
+// plans. Le compte de ferreirasab (3 082 nœuds, 59 028 lectures de photos de
+// vêtements d'enfant sur fond blanc) demandait 3,5 s de passe : « CPU Time
+// exceeded » à CHAQUE passe (12/10, 09:01 → 09:30 UTC, 2,4 à 3,2 s mesurés), puis
+// le disjoncteur arrêtait le compte. La passe se fait désormais EN TRANCHES
+// (_shared/rapprochement/tranches.js) : les paires candidates (par parts de
+// tiroirs) et les paires évaluées (par morceaux) sont calculées tant que le
+// budget de l'invocation le permet (BUDGET_CPU_MS, mesuré : parse des lectures,
+// calcul, écriture du chantier), gardées en base (rapprochement_tranches, sous la
+// signature des données lues), et l'invocation suivante reprend où elle
+// s'arrête. Quand rien ne manque, la passe se termine d'un trait — les mêmes
+// candidates dans le même ordre, les mêmes paires évaluées, donc les mêmes
+// décisions qu'un calcul d'un seul tenant (selftest rapprochement-tranches, sur
+// les comptes réels). Une tranche qui a gardé quelque chose est un progrès (le
+// disjoncteur repart de 0) ; une invocation tuée ne l'est pas (il compte, comme
+// avant). Les empreintes se lisent sous forme compacte
+// (rapprochement_v3_empreintes_compactes : 3,2 Mo au lieu de 9 pour ferreirasab).
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
-import { urlsDe, manquantesDe, passe } from "../_shared/rapprochement/passe.js";
+import { urlsDe, passe } from "../_shared/rapprochement/passe.js";
+import { photoDepuisCompacte, compacteComplete } from "../_shared/rapprochement/photos.js";
+import { Suite, calculEnTranches, cacheDepuis } from "../_shared/rapprochement/tranches.js";
 
 const BUDGET_MS = 110_000;
 const PHOTOS_PAR_PASSE = 600;       // 100 appels pg_net de 6 photos (empreintes-urls : 2 s de CPU par requête)
 const RELANCE_PHOTOS_MS = 12_000;   // le temps que les 100 appels aboutissent avant de relire
 const RELANCES_MAX = 12;            // 12 × 600 photos par chaîne ; au-delà, le filet rapprochement-1min reprend
+const RELANCES_MAX_TRANCHES = 40;   // (v20) une chaîne de tranches : ~1 s chacune, sous la limite de 60 appels edge → edge par minute
 const COMPTES_PAR_APPEL = 4;
 const DECISIONS_PAR_LOT = 150;
 const PASSAGES_PHOTOS_MAX = 6;      // six relectures sans progrès (546, image morte) : on classe avec ce qu'on a
@@ -85,13 +107,22 @@ const PASSES_INACHEVEES_MAX = 3;    // passes de suite sans rien écrire : le co
 const PASSES_INACHEVEES_MAX_GESTE = 6; // … un geste de la personne en rouvre trois de plus, pas davantage
 const GESTE_RECENT_MS = 30 * 60_000;
 const DECLENCHEURS_GESTE = ["bouton", "bouton_distant", "app", "bouton:redemande", "bouton_distant:redemande", "app:redemande"];
+// (v20) Le budget de CPU d'une invocation : la limite du runtime est 2 s ; on
+// vise BUDGET_CPU_MS au plus (lectures, calcul, chantier), une unité de calcul
+// commencée allant toujours au bout (une part de tiroirs ≈ 0,1 s).
+const BUDGET_CPU_MS = 900;
+const CALCUL_MS_MAX = 550;          // le calcul de la passe dans une invocation
+const CALCUL_MS_MIN = 150;          // … même quand les lectures ont coûté cher (au moins une unité)
+const MARGE_MS = 150;               // ce qui n'est pas mesuré (runtime, requêtes, journal)
+const VERSION_TRANCHES = "v20-1";   // un changement du moteur invalide les chantiers d'avant
+const URLS_PAR_LECTURE = 2500;
 
 const json = (corps: unknown, status = 200) =>
   new Response(JSON.stringify(corps), { status, headers: { "Content-Type": "application/json" } });
 
 type Donnees = { fiches: unknown[]; annonces: unknown[]; geste_recent?: boolean; vinted_a_juger?: unknown[]; vinted_juge_jusqu_a?: string | null; vinted_reste?: boolean;
   fiches_main_a_juger?: unknown[]; fiches_main_juge_jusqu_a?: string | null; fiches_main_reste?: boolean };
-type Empreinte = { url: string; dhash: string; phash: string; variantes: unknown };
+type Compacte = unknown[];
 
 serve(async (req) => {
   const secret = req.headers.get("x-cron-secret");
@@ -101,8 +132,24 @@ serve(async (req) => {
   let body: { user_id?: unknown; relance?: unknown; reparer?: unknown; simuler?: unknown; precedent?: unknown; passages?: unknown; fiches_main?: unknown; remises?: unknown } = {};
   try { body = await req.json(); } catch { /* corps vide : le filet */ }
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-  const admin = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
+  const cleService = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  const admin = createClient(supabaseUrl, cleService);
   const debut = Date.now();
+  // (v20) Le CPU mesuré de l'invocation : tout ce qui calcule sans attendre le
+  // réseau (lecture des réponses, signature, passe, écriture du chantier).
+  let cpuMs = 0;
+  const mesurer = <T>(f: () => T): T => { const t = performance.now(); try { return f(); } finally { cpuMs += performance.now() - t; } };
+  // Un appel RPC dont on mesure la lecture de la réponse (le texte, puis le JSON).
+  const rpcBrut = async (nom: string, args: unknown) => {
+    const r = await fetch(`${supabaseUrl}/rest/v1/rpc/${nom}`, {
+      method: "POST",
+      headers: { apikey: cleService, Authorization: `Bearer ${cleService}`, "Content-Type": "application/json" },
+      body: mesurer(() => JSON.stringify(args)),
+    });
+    const txt = await r.text();
+    if (!r.ok) throw new Error(`${nom} : ${r.status} ${txt.slice(0, 200)}`);
+    return mesurer(() => JSON.parse(txt));
+  };
   const reste = () => BUDGET_MS - (Date.now() - debut);
   const reparer = body.reparer === true;
   const simuler = body.simuler === true;
@@ -140,17 +187,57 @@ serve(async (req) => {
     }
   };
 
+  // (v20) Les empreintes sous forme compacte (photos.js : photoDepuisCompacte ≡
+  // photoDepuisEmpreinte) ; une photo n'est lue qu'au premier besoin.
   const lireEmpreintes = async (urls: string[]) => {
-    const map = new Map<string, Empreinte>();
+    const lignes = new Map<string, Compacte>();
     const illisibles = new Set<string>();
-    for (let i = 0; i < urls.length; i += 400) {
-      const { data, error } = await admin.rpc("rapprochement_v3_empreintes", { p_urls: urls.slice(i, i + 400) });
-      if (error) throw new Error(`empreintes : ${error.message}`);
-      const d = (data ?? {}) as { empreintes?: Empreinte[]; illisibles?: string[] };
-      for (const e of d.empreintes ?? []) map.set(e.url, e);
-      for (const u of d.illisibles ?? []) illisibles.add(u);
+    for (let i = 0; i < urls.length; i += URLS_PAR_LECTURE) {
+      const d = (await rpcBrut("rapprochement_v3_empreintes_compactes", { p_urls: urls.slice(i, i + URLS_PAR_LECTURE) })) as { e?: Compacte[]; illisibles?: string[] };
+      mesurer(() => { for (const e of d?.e ?? []) lignes.set(String(e[0]), e); for (const u of d?.illisibles ?? []) illisibles.add(u); });
     }
-    return { map, illisibles };
+    return { lignes, illisibles };
+  };
+
+  // (v20) LE CHANTIER : ce que les invocations d'avant ont calculé pour CES données.
+  const signature = async (donnees: Donnees & Record<string, unknown>, manquantes: string[], nbEmpreintes: number, mode: string) => {
+    const texte = mesurer(() => JSON.stringify([VERSION_TRANCHES, mode, porteeMain, porteeRemises, donnees.fiches, donnees.annonces,
+      donnees.fusions ?? null, donnees.doublons ?? null, donnees.vinted_a_juger ?? null, donnees.fiches_main_a_juger ?? null,
+      donnees.fiches_main_actif ?? null, donnees.remise_en_ligne_actif ?? null, donnees.vinted_nouvelles ?? null,
+      donnees.vinted_releves_complets ?? null, nbEmpreintes, manquantes]));
+    const h = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(texte)));
+    return Array.from(h.slice(0, 16), (b) => b.toString(16).padStart(2, "0")).join("");
+  };
+  const lireChantier = async (user: string, chantier: string) => {
+    // les chantiers d'avant du compte (des données qui ont changé) : effacés
+    const { data: anciens } = await admin.from("rapprochement_tranches").delete().eq("user_id", user).neq("chantier", chantier).select("cle")
+      .then((r) => r, () => ({ data: null }));
+    const lignes: Array<{ cle: string; contenu: string }> = [];
+    for (let de = 0; ; de += 500) {
+      const { data, error } = await admin.from("rapprochement_tranches").select("cle, contenu").eq("user_id", user).eq("chantier", chantier)
+        .order("cle").range(de, de + 499);
+      if (error) throw new Error(`chantier : ${error.message}`);
+      lignes.push(...((data ?? []) as Array<{ cle: string; contenu: string }>));
+      if (!data || data.length < 500) break;
+    }
+    return { cache: mesurer(() => cacheDepuis(lignes)), anciens: (anciens ?? []).length, lignes: lignes.length };
+  };
+  const garderChantier = async (user: string, chantier: string, nouveaux: Array<{ cle: string; contenu: unknown; remplace?: string }>) => {
+    if (!nouveaux.length) return 0;
+    const rangs = mesurer(() => nouveaux.map((n) => ({ user_id: user, chantier, cle: n.cle, contenu: JSON.stringify(n.contenu) })));
+    for (let i = 0; i < rangs.length; i += 20) {
+      const { error } = await admin.from("rapprochement_tranches").upsert(rangs.slice(i, i + 20), { onConflict: "user_id,chantier,cle" });
+      if (error) throw new Error(`chantier (écriture) : ${error.message}`);
+    }
+    // une liste assemblée remplace ses parts
+    for (const n of nouveaux) if (n.remplace) {
+      await admin.from("rapprochement_tranches").delete().eq("user_id", user).eq("chantier", chantier).like("cle", `${n.remplace}%`).neq("cle", n.cle)
+        .then(() => {}, () => {});
+    }
+    return rangs.length;
+  };
+  const effacerChantier = async (user: string) => {
+    await admin.from("rapprochement_tranches").delete().eq("user_id", user).then(() => {}, () => {});
   };
 
   // (08/10) PAR LA BASE, jamais par un fetch d'ici, et JAMAIS ATTENDUES ICI.
@@ -224,10 +311,17 @@ serve(async (req) => {
   const bilan: Record<string, unknown>[] = [];
   let inacheve = false;
   let relanceApres = 0; // ms avant la relance (le temps que les photos demandées arrivent)
+  let enTranches = false; // (v20) une passe s'est arrêtée au bout de son budget : la suite tout de suite
+  // (v20) le filet (sans user_id) purge les chantiers abandonnés depuis un jour
+  if (!(typeof body.user_id === "string" && body.user_id)) {
+    await admin.from("rapprochement_tranches").delete().lt("cree_le", new Date(Date.now() - 86_400_000).toISOString()).then(() => {}, () => {});
+  }
   for (const user of comptes) {
     const parCompte: Record<string, unknown> = { user, photos: 0 };
     try {
       if (reste() < 15_000) { inacheve = true; break; }
+      // (v20) un compte de plus seulement si l'invocation a encore du CPU devant elle
+      if (cpuMs > BUDGET_CPU_MS / 3) { inacheve = true; break; }
       // La base qui peine passe avant tout (règle du 04/10).
       const { data: cpu } = await admin.from("veille_cpu").select("pct").not("pct", "is", null).order("le", { ascending: false }).limit(1).maybeSingle();
       if (Number((cpu as { pct?: number } | null)?.pct) > 70) { parCompte.etat = "cpu"; bilan.push(parCompte); continue; }
@@ -262,13 +356,12 @@ serve(async (req) => {
       // ── A bis. L'identifiant d'un dépôt FillSell, avant tout le reste ──
       if (!simuler) parCompte.par_identifiant = await rattacherParIdentifiant(user).catch(() => 0);
       // ── B. Tout le compte, en un appel ──
-      const { data: lu, error: eLu } = await admin.rpc("rapprochement_v3_lire", { p_user: user });
-      if (eLu) throw new Error(`lecture : ${eLu.message}`);
-      const donnees = lu as Donnees;
+      const donnees = (await rpcBrut("rapprochement_v3_lire", { p_user: user }).catch((e) => { throw new Error(`lecture : ${(e as Error).message}`); })) as Donnees;
       // ── C. Les empreintes manquantes : demandées par la base, relues à la relance ──
-      const urls = urlsDe(donnees);
-      const { map, illisibles } = await lireEmpreintes(urls);
-      const manquantes = manquantesDe(urls, map, illisibles);
+      const urls = mesurer(() => urlsDe(donnees)) as string[];
+      const { lignes: empreintes, illisibles } = await lireEmpreintes(urls);
+      // (comme manquantesDe : ni ligne, ni les deux empreintes et leurs variantes ; hors illisibles)
+      const manquantes = mesurer(() => urls.filter((u) => !illisibles.has(u) && !compacteComplete(empreintes.get(u))));
       parCompte.photos_manquantes = manquantes.length;
       if (manquantes.length) {
         // Progrès depuis l'invocation d'avant (état du compte ; en simulation, le script le passe).
@@ -286,13 +379,40 @@ serve(async (req) => {
         }
         parCompte.classe_sans_photos = manquantes.length; // six relectures sans progrès : on classe avec ce qu'on a
       }
-      // ── D. La passe ──
-      await etat(user, { etat: "decision", photos_manquantes: manquantes.length });
+      // ── D. La passe, en tranches (v20) ──
       const mode = reparer ? "reparation" : "normal";
       const t0 = Date.now();
-      const { decisions, bilan: b } = passe(donnees, map, { mode, fichesMain: porteeMain, remises: porteeRemises });
+      const chantier = await signature(donnees as Donnees & Record<string, unknown>, manquantes, empreintes.size, mode);
+      const { cache, anciens, lignes: lignesLues } = await lireChantier(user, chantier);
+      const nouveaux: Array<{ cle: string; contenu: unknown; remplace?: string }> = [];
+      const calculMs = Math.max(CALCUL_MS_MIN, Math.min(CALCUL_MS_MAX, BUDGET_CPU_MS - MARGE_MS - cpuMs));
+      const budget = { fin: performance.now() + calculMs, unites: 0 };
+      const calcul = calculEnTranches({ cache, budget, nouveaux });
+      const photosDe = (us: string[]) => us.map((u) => photoDepuisCompacte(empreintes.get(u) as unknown[] | undefined)).filter(Boolean);
+      let resultat: ReturnType<typeof passe> | null = null;
+      let suite: string | null = null;
+      try {
+        resultat = mesurer(() => passe(donnees, null, { mode, fichesMain: porteeMain, remises: porteeRemises, calcul, photosDe, paresseux: true }));
+      } catch (e) {
+        if (!(e instanceof Suite)) throw e;
+        suite = e.quoi;
+      }
+      const gardees = await garderChantier(user, chantier, nouveaux);
+      parCompte.tranche = { chantier: chantier.slice(0, 12), unites: budget.unites, gardees, relues: lignesLues, anciens, suite, calcul_ms: calculMs };
+      if (suite !== null) {
+        // Une tranche qui a gardé quelque chose est un progrès : le disjoncteur repart
+        // de 0 — sauf si un chantier inachevé vient d'être abandonné (données qui
+        // changent sans cesse) : celle-là compte comme une passe sans écriture.
+        const progres = gardees > 0 && anciens === 0;
+        await etat(user, { etat: "decision", photos_manquantes: manquantes.length, passages: progres ? 0 : -(inachevees + 1) });
+        parCompte.etat = simuler ? "simule_tranche" : "tranche";
+        if (!simuler && gardees > 0) { inacheve = true; enTranches = true; }
+        bilan.push(parCompte); continue;
+      }
+      const { decisions, bilan: b } = resultat as ReturnType<typeof passe>;
+      await etat(user, { etat: "decision", photos_manquantes: manquantes.length });
       parCompte.passe = b; parCompte.decisions = decisions.length; parCompte.photos_sans_empreinte = manquantes.length;
-      if (simuler) { parCompte.etat = "simule"; parCompte.plan = decisions.slice(0, 2000); bilan.push(parCompte); continue; }
+      if (simuler) { parCompte.etat = "simule"; parCompte.plan = decisions.slice(0, 5000); bilan.push(parCompte); continue; }
       // ── E. L'écriture, par lots ──
       const geste = donnees.geste_recent === true || reparer || String(compte?.bilan?.motif ?? "").startsWith("recent:");
       await etat(user, { etat: "creation", creation_le: new Date().toISOString(), a_traiter: decisions.length, traitees: 0 });
@@ -338,6 +458,8 @@ serve(async (req) => {
       parCompte.fiches_main_a_juger = (donnees.fiches_main_a_juger ?? []).length;
       const vintedReste = fini && erreurs.length === 0 && (donnees.vinted_reste === true || donnees.fiches_main_reste === true);
       if (vintedReste) { inacheve = true; parCompte.vinted_reste = true; }
+      // (v20) la passe a abouti : son chantier ne sert plus (la suivante relira d'autres données)
+      await effacerChantier(user);
       await etat(user, {
         ...vintedJuge,
         ...mainJuge,
@@ -354,7 +476,7 @@ serve(async (req) => {
     bilan.push(parCompte);
   }
 
-  if (inacheve && rang < RELANCES_MAX && !simuler) {
+  if (inacheve && rang < (enTranches ? RELANCES_MAX_TRANCHES : RELANCES_MAX) && !simuler) {
     // Un seul appel edge → edge par invocation (la limite du runtime est à 60
     // par minute) ; après RELANCE_PHOTOS_MS quand des photos sont en route.
     const suite = new Promise((r) => setTimeout(r, relanceApres)).then(() => fetch(`${supabaseUrl}/functions/v1/rapprochement`, {
@@ -367,7 +489,7 @@ serve(async (req) => {
     (globalThis as any).EdgeRuntime?.waitUntil?.(suite);
   }
 
-  const sortie = { comptes: bilan.map((b) => ({ ...b, plan: undefined })), duree_ms: Date.now() - debut, inacheve };
+  const sortie = { comptes: bilan.map((b) => ({ ...b, plan: undefined })), duree_ms: Date.now() - debut, cpu_ms: Math.round(cpuMs), inacheve };
   console.log("[rapprochement]", JSON.stringify(sortie).slice(0, 4000));
-  return json({ comptes: bilan, duree_ms: Date.now() - debut, inacheve });
+  return json({ comptes: bilan, duree_ms: Date.now() - debut, cpu_ms: Math.round(cpuMs), inacheve });
 });
