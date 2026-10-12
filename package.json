@@ -173,6 +173,7 @@
     "selftest:aucune-fiche-sans-v3": "node scripts/aucune-fiche-sans-v3-selftest.mjs",
     "selftest:republication-va-au-bout": "node scripts/republication-va-au-bout-selftest.mjs",
     "selftest:fiche-main-vinted": "node scripts/fiche-main-vinted-selftest.mjs",
+    "selftest:rapprochement-tranches": "node scripts/rapprochement-tranches-selftest.mjs",
     "selftest:remise-en-ligne-vinted": "node scripts/remise-en-ligne-vinted-selftest.mjs",
     "selftest:ventes-prouvees": "node scripts/ventes-prouvees-selftest.mjs",
     "selftest:mail-apres-vente": "node scripts/mail-apres-vente-selftest.mjs",

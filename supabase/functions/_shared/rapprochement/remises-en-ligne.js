@@ -47,7 +47,7 @@
 // fiches en ligne. Une annonce nouvelle VENDUE n'est pas jugée ici (ses copies
 // restées sur l'ancienne fiche sont une réparation à part, jamais automatique).
 // La base garde ses gardes à l'écriture (rapprochement_v3_remise_possible).
-import { candidatsDe, texte, pesee, SEUILS } from './moteur.js';
+import { texte, pesee, SEUILS, CALCUL_DIRECT } from './moteur.js';
 import { comparerPhotos } from './photos.js';
 
 const MARGE_RELEVE_MS = 5 * 60_000;
@@ -120,7 +120,7 @@ export function evaluerRemise(x, y) {
  * Rend { decisions, bilan } ; decisions = remise_en_ligne | remise_en_ligne_a_verifier.
  * `exclus` : ids de fiches (sans « F ») qu'une autre règle de la même passe a déjà prises.
  */
-export function remisesEnLigne(donnees, N, { portee = 'nouvelles', exclus = new Set(), S = SEUILS } = {}) {
+export function remisesEnLigne(donnees, N, { portee = 'nouvelles', exclus = new Set(), S = SEUILS, calcul = CALCUL_DIRECT } = {}) {
   const actif = portee === 'toutes' || donnees.remise_en_ligne_actif === true;
   if (!actif) return { decisions: [], bilan: null };
   const t0 = Date.now();
@@ -149,7 +149,7 @@ export function remisesEnLigne(donnees, N, { portee = 'nouvelles', exclus = new 
   // ne sont évaluées que pour une nouvelle qui a une chaîne.
   const jugesIds = new Set(juges.map((n) => n.id));
   const autresDe = new Map();
-  for (const [i, j] of candidatsDe(NV, new Set(juges.map((n) => idx.get(n.id))))) {
+  for (const [i, j] of calcul.candidats('remises', NV, new Set(juges.map((n) => idx.get(n.id))))) {
     for (const [a, b] of [[NV[i], NV[j]], [NV[j], NV[i]]]) {
       if (!jugesIds.has(a.id)) continue;
       const st = etat.get(b.id);

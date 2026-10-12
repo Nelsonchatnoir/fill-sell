@@ -65,3 +65,29 @@ export function comparerPhotos(A, B) {
   for (const [d, i, j] of paires) { if (ui.has(i) || uj.has(j)) continue; ui.add(i); uj.add(j); choisies.push(d); }
   return { best: choisies[0] ?? 99, second: choisies[1] ?? 99, liste: choisies };
 }
+
+// ── LA FORME COMPACTE (12/10, rapprochement_v3_empreintes_compactes) ─────────
+// Une ligne = [url, dhash, phash, variantes?, c70 d, c70 p, p85 d, p85 p, g45 d,
+// g45 p, g60 d, g60 p, g35 d, g35 p] ; chaque empreinte : 16 chiffres hexa (les
+// 64 bits de la chaîne binaire), { brut: valeur d'origine } quand ce n'est pas
+// une chaîne de 64 bits, null quand elle manque. Trois fois moins lourde que les
+// lignes de photo_empreintes (ferreirasab : 3,2 Mo au lieu de 9) ; la photo qui
+// en sort est CELLE de photoDepuisEmpreinte, lecture pour lecture.
+const hexa = (h) => [parseInt(h.slice(0, 8), 16) >>> 0, parseInt(h.slice(8), 16) >>> 0];
+const valeur = (x) => (typeof x === 'string' ? (x.length === 16 ? hexa(x) : null) : x && typeof x === 'object' && 'brut' in x ? bits(x.brut) : null);
+const presente = (x) => (typeof x === 'string' ? x.length > 0 : !!(x && typeof x === 'object' && x.brut));
+export function photoDepuisCompacte(r) {
+  if (!r) return null;
+  const d = valeur(r[1]), p = valeur(r[2]);
+  if (!d || !p) return null;
+  const lectures = [{ k: 'plein', d, p }];
+  for (let q = 0; q < VARIANTES.length; q++) {
+    const a = r[4 + 2 * q], b = r[5 + 2 * q];
+    if (a == null && b == null) continue;
+    const dd = valeur(a), pp = valeur(b);
+    if (dd && pp) lectures.push({ k: VARIANTES[q], d: dd, p: pp });
+  }
+  return { u: r[0], lectures };
+}
+/** Empreinte complète (comme manquantesDe : les deux empreintes et des variantes). */
+export const compacteComplete = (r) => !!r && presente(r[1]) && presente(r[2]) && r[3] === 1;

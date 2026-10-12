@@ -49,24 +49,29 @@ export function pesee(N) { POIDS = idf(N); }
 // ── LES NŒUDS ───────────────────────────────────────────────────────────────
 // `donnees` = ce que rend rapprochement_v3_lire (fiches, annonces, fusions,
 // doublons) ; `photosDe(urls)` rend les photos comparables (photos.js).
-export function construireNoeuds(donnees, photosDe, { maxPhotos = 6 } = {}) {
+// (12/10) `paresseux` : la passe en tranches (tranches.js) reconstruit les nœuds à
+// chaque invocation ; leurs lectures (mots, couleurs, photos…) ne sont calculées
+// qu'au premier accès — les MÊMES valeurs que mk(), seulement plus tard (une
+// invocation qui ne compare rien ne lit ni titre ni photo).
+export function construireNoeuds(donnees, photosDe, { maxPhotos = 6, paresseux = false } = {}) {
   const N = [];
   const vus = new Set();
+  const fab = paresseux ? mkParesseux : (n, urls) => mk({ ...n, emps: photosDe(urls) });
   for (const f of donnees.fiches ?? []) {
     // Les articles importés d'un relevé sont représentés par leur annonce.
     if (String(f.origine ?? '').startsWith('releve_') || f.fusionne_dans) continue;
     if (!['stock', 'vendu'].includes(f.statut)) continue;
     const pf = f.vinted_item_id || f.origine === 'vinted_sync' ? 'vinted' : 'fiche';
-    N.push(mk({ id: 'F' + f.id, pf, titre: f.titre, prix: f.prix, taille: f.taille, marque: f.marque,
-      emps: photosDe((f.photos ?? []).slice(0, maxPhotos)), vendu: f.statut === 'vendu', ref: f }));
+    N.push(fab({ id: 'F' + f.id, pf, titre: f.titre, prix: f.prix, taille: f.taille, marque: f.marque,
+      vendu: f.statut === 'vendu', ref: f }, (f.photos ?? []).slice(0, maxPhotos), photosDe));
     vus.add('F' + f.id);
   }
   for (const a of donnees.annonces ?? []) {
     if (!PLATEFORMES_RELEVE.includes(a.platform)) continue;
     if (a.ignoree_par_utilisateur) continue;           // (5) définitif
     if (a.hors_liste || a.ebay_bloque) continue;        // jamais rien sur un relevé non probant
-    N.push(mk({ id: 'A' + a.id, pf: a.platform, titre: a.titre, prix: a.prix, taille: a.taille, marque: a.marque,
-      emps: photosDe((a.photos ?? []).slice(0, maxPhotos)), vendu: false, ref: a }));
+    N.push(fab({ id: 'A' + a.id, pf: a.platform, titre: a.titre, prix: a.prix, taille: a.taille, marque: a.marque,
+      vendu: false, ref: a }, (a.photos ?? []).slice(0, maxPhotos), photosDe));
   }
   return N;
 }
@@ -74,6 +79,18 @@ function mk(n) {
   n.ty = T.types(n.titre); n.co = T.couleurs(n.titre); n.tl = T.sansTailleUnique(T.tailles(n.titre, n.taille)); n.je = T.jetons(n.titre);
   n.di = T.dimensions(n.titre); n.ma = T.marqueUtile(n.marque); n.tn = T.norm(n.titre).replace(/[^a-z0-9 ]/g, '').trim();
   n.emps = Array.isArray(n.emps) ? n.emps.filter(Boolean) : [];
+  return n;
+}
+function paresse(n, cle, f) {
+  Object.defineProperty(n, cle, { configurable: true, enumerable: true,
+    get() { const v = f(); Object.defineProperty(n, cle, { value: v, writable: true, enumerable: true, configurable: true }); return v; } });
+}
+function mkParesseux(n, urls, photosDe) {
+  paresse(n, 'ty', () => T.types(n.titre)); paresse(n, 'co', () => T.couleurs(n.titre));
+  paresse(n, 'tl', () => T.sansTailleUnique(T.tailles(n.titre, n.taille))); paresse(n, 'je', () => T.jetons(n.titre));
+  paresse(n, 'di', () => T.dimensions(n.titre)); paresse(n, 'ma', () => T.marqueUtile(n.marque));
+  paresse(n, 'tn', () => T.norm(n.titre).replace(/[^a-z0-9 ]/g, '').trim());
+  paresse(n, 'emps', () => { const e = photosDe(urls); return Array.isArray(e) ? e.filter(Boolean) : []; });
   return n;
 }
 
@@ -262,10 +279,173 @@ export function candidatsDe(N, actifs = null) {
   return out;
 }
 
+// ── LES MÊMES PAIRES, EN TRANCHES (12/10) ───────────────────────────────────
+// Le compte de ferreirasab (3 082 nœuds, 59 028 lectures, 708 336 entrées de
+// tiroirs : vêtements d'enfant sur fond blanc) faisait 1,2 s de candidatsDe à lui
+// seul — deux fois par passe — et la fonction mourait à chaque passe (CPU Time
+// exceeded, 2,4 à 3,2 s). La même liste, en morceaux bornés :
+//   · PHOTOS. Les tiroirs se répartissent en P parts par leur clé (clé % P) :
+//     une part ne garde que les tiroirs de ses clés — TOUTES les entrées d'une
+//     clé sont dans la même part, donc n (la taille du tiroir) est exact. Une
+//     part se parcourt elle-même par morceaux de tiroirs (dans l'ordre de leur
+//     première entrée), l'horloge relue entre deux tiroirs. Chaque paire retenue
+//     sort avec sa POSITION dans la boucle d'origine : (première entrée du
+//     tiroir, entrée a, entrée b), les entrées numérotées dans l'ordre exact où
+//     candidatsDe les pousse. candidatsDe parcourt ses tiroirs dans l'ordre de
+//     leur première entrée et ses paires (a < b) dans l'ordre des entrées : la
+//     plus petite position d'une paire, tous morceaux confondus, est l'endroit
+//     où candidatsDe l'aurait ajoutée.
+//   · TITRES. La boucle des titres (i croissant) se découpe par plages de i ;
+//     chaque plage rend ses paires dans l'ordre d'origine.
+//   · L'ASSEMBLAGE trie les paires photo par position, puis ajoute les paires
+//     de titres qui n'y sont pas, dans leur ordre : la liste de candidatsDe, à
+//     l'identique et dans le même ordre (prouvé sur les comptes réels :
+//     selftest rapprochement-tranches).
+/** Les entrées de tiroirs de N (lectures × 12 clés) : sert à choisir P. */
+export function entreesDe(N) { let n = 0; for (const x of N) for (const ph of x.emps) n += ph.lectures.length * 12; return n; }
+/**
+ * Un morceau de la part r (sur P) des paires photo, à partir de son tiroir n° `depuis`
+ * (ordre de première entrée), tant que `continuer()` (relu tous les 64 tiroirs ; au
+ * moins un tiroir). Rend { paires: [cle, premiere, a, b, …], suivant } (suivant = -1 : la part est finie).
+ */
+export function candidatsPhotoPartie(N, actifs, P, r, depuis = 0, continuer = () => true) {
+  const cle = (i, j) => (i < j ? i * 100000 + j : j * 100000 + i);
+  const retenue = (i, j) => !actifs || actifs.has(i) || actifs.has(j);
+  const tiroirs = new Map();
+  let seq = 0;
+  for (let i = 0; i < N.length; i++) {
+    for (const ph of N[i].emps) for (const l of ph.lectures) {
+      for (const k of clesDe(l)) {
+        if (k % P === r) { let t = tiroirs.get(k); if (!t) { t = []; tiroirs.set(k, t); } t.push(i, l, seq); }
+        seq++;
+      }
+    }
+  }
+  const vus = new Set();
+  const out = [];
+  let rang = -1, suivant = -1;
+  for (const [, t] of tiroirs) {
+    rang++;
+    if (rang < depuis) continue;
+    if (rang > depuis && (rang & 63) === 0 && !continuer()) { suivant = rang; break; }
+    const n = t.length / 3;
+    if (n < 2 || n > TIROIR_MAX) continue;
+    const premiere = t[2];
+    for (let a = 0; a < t.length; a += 3) for (let b = a + 3; b < t.length; b += 3) {
+      if (t[a] === t[b] || !retenue(t[a], t[b])) continue;
+      const k = cle(t[a], t[b]);
+      if (vus.has(k)) continue;
+      if (dLectureIdx(t[a + 1], t[b + 1]) <= COLLISION_MAX) { vus.add(k); out.push(k, premiere, t[a + 2], t[b + 2]); }
+    }
+  }
+  return { paires: out, suivant };
+}
+/**
+ * Les paires de titres pour i dans [i0, …), tant que `continuer()` (relu tous les 32 i ;
+ * au moins un i) : la seconde moitié de candidatsDe, mot pour mot, sans le dédoublonnage
+ * (fait à l'assemblage). Rend { paires: [cle, …], suivant } (suivant = -1 : fini).
+ */
+export function candidatsTitresPartie(N, actifs, i0 = 0, continuer = () => true) {
+  const cle = (i, j) => (i < j ? i * 100000 + j : j * 100000 + i);
+  const retenue = (i, j) => !actifs || actifs.has(i) || actifs.has(j);
+  const MOT_MAX = 500;
+  const parMot = new Map();
+  for (let i = 0; i < N.length; i++) for (const m of N[i].je) { let l = parMot.get(m); if (!l) { l = []; parMot.set(m, l); } l.push(i); }
+  const communs = new Map();
+  const out = [];
+  let i = i0;
+  for (; i < N.length; i++) {
+    if (i > i0 && (i & 31) === 0 && !continuer()) break;
+    communs.clear();
+    const na = N[i].je.size;
+    for (const m of N[i].je) {
+      const l = parMot.get(m); if (!l || l.length > MOT_MAX) continue;
+      for (const j of l) if (j > i) communs.set(j, 1);
+    }
+    for (const j of communs.keys()) {
+      let c = 0; const A = N[i].je, B = N[j].je;
+      if (A.size <= B.size) { for (const m of A) if (B.has(m)) c++; } else { for (const m of B) if (A.has(m)) c++; }
+      const nb = B.size, petit = Math.min(na, nb);
+      if (!retenue(i, j)) continue;
+      if (c / (na + nb - c) >= 0.59 || (c >= 3 && c === petit)) out.push(cle(i, j));
+    }
+  }
+  return { paires: out, suivant: i >= N.length ? -1 : i };
+}
+/**
+ * L'assemblage : `photo` = les morceaux photo (toutes parts, n'importe quel ordre),
+ * `titres` = les morceaux de titres DANS L'ORDRE de i. Rend la liste de candidatsDe(N, actifs).
+ */
+export function candidatsAssembler(photo, titres) {
+  // Chaque morceau sort déjà trié par position (ses tiroirs dans l'ordre de leur
+  // première entrée, ses paires dans l'ordre des entrées) : une fusion des morceaux
+  // (tas binaire sur leur tête) donne toutes les occurrences dans l'ordre des
+  // positions ; la première occurrence d'une paire est sa plus petite position.
+  const plus = (p, q, u, v) => p[q + 1] - u[v + 1] || p[q + 2] - u[v + 2] || p[q + 3] - u[v + 3];
+  const tas = [];   // [morceau, indice]
+  const avant = (x, y) => plus(x[0], x[1], y[0], y[1]) < 0;
+  const monter = (i) => { while (i > 0) { const j = (i - 1) >> 1; if (!avant(tas[i], tas[j])) break; [tas[i], tas[j]] = [tas[j], tas[i]]; i = j; } };
+  const descendre = (i) => { for (;;) { const g = 2 * i + 1, d = g + 1; let m = i;
+    if (g < tas.length && avant(tas[g], tas[m])) m = g; if (d < tas.length && avant(tas[d], tas[m])) m = d;
+    if (m === i) return; [tas[i], tas[m]] = [tas[m], tas[i]]; i = m; } };
+  for (const p of photo) if (p.length) { tas.push([p, 0]); monter(tas.length - 1); }
+  const paires = new Set();
+  while (tas.length) {
+    const h = tas[0];
+    paires.add(h[0][h[1]]);
+    h[1] += 4;
+    if (h[1] >= h[0].length) { const der = tas.pop(); if (tas.length) { tas[0] = der; descendre(0); } } else descendre(0);
+  }
+  for (const t of titres) for (const k of t) paires.add(k);
+  const out = [];
+  for (const k of paires) out.push([Math.floor(k / 100000), k % 100000]);
+  return out;
+}
+
+// ── LES PAIRES ÉVALUÉES (12/10 : sorties de rapprocher pour être découpées) ──
+// Les étapes 1 (arêtes entre plateformes) et 2 (deux annonces d'une même
+// plateforme) de rapprocher, sur les candidates [k0, k1) : chaque liste garde
+// l'ordre des candidates, comme les deux boucles d'origine (elles sont
+// indépendantes : aucune ne lit ce que l'autre écrit).
+// `indices` (optionnel) : reçoit, dans le même ordre, l'indice de la candidate
+// de chaque arête (indices.aretes) et de chaque paire d'une même plateforme (indices.memes).
+export function paireAretes(N, cand, k0, k1, S = SEUILS, indices = null) {
+  const aretes = [], memes = [];
+  for (let k = k0; k < k1; k++) {
+    const [i, j] = cand[k];
+    const x = N[i], y = N[j];
+    if (x.pf !== y.pf) {
+      const e = evaluer(x, y, S);
+      e.x = x; e.y = y;
+      if (e.niveau !== 'rien' || e.ph.best <= S.plausible) { aretes.push(e); if (indices) indices.aretes.push(k); }
+      continue;
+    }
+    if (!x.emps.length || !y.emps.length) continue;
+    // Une annonce publiée deux fois porte la même couverture : la couverture
+    // d'abord (36 lectures), le reste seulement si elle est proche — coronado,
+    // 643 articles Vinted de catalogue : 60 000 paires × 1 296 lectures sinon.
+    if (dPhoto(x.emps[0], y.emps[0]) > S.proche) continue;
+    const ph = comparerPhotos(x.emps, y.emps); if (ph.best > S.plausible) continue;
+    const t = texte(x, y);
+    if (!t.conflits.length && (t.sim.cont >= 0.5 || t.wj >= 0.4)) { memes.push({ x, y, ph, t }); if (indices) indices.memes.push(k); }
+  }
+  return { aretes, memes };
+}
+
+/** Le calcul d'un seul tenant (la passe d'avant, telle quelle). */
+export const CALCUL_DIRECT = Object.freeze({
+  candidats: (_etiquette, N, actifs) => candidatsDe(N, actifs),
+  paires: (_etiquette, N, cand, S) => paireAretes(N, cand, 0, cand.length, S),
+});
+
 // ── LA PASSE ────────────────────────────────────────────────────────────────
 // `poidsDe` : les nœuds qui pèsent les mots (idf) — par défaut N ; un sous-graphe
 // (fiches-main.js) passe le graphe complet pour peser ses titres comme lui.
-export function rapprocher(N, { S = SEUILS, forces = [], actifs = null, poidsDe = null } = {}) {
+// `calcul` (12/10) : d'où viennent les candidates et les paires évaluées —
+// CALCUL_DIRECT (tout de suite, d'un seul tenant) ou la passe en tranches
+// (tranches.js : reprises d'une invocation à l'autre). `etiquette` nomme ce
+// graphe dans la passe ('principal', 'main'…), pour les retrouver.
+export function rapprocher(N, { S = SEUILS, forces = [], actifs = null, poidsDe = null, calcul = CALCUL_DIRECT, etiquette = 'principal' } = {}) {
   POIDS = idf(poidsDe ?? N);
   const parPf = new Map(); for (const n of N) { if (!parPf.has(n.pf)) parPf.set(n.pf, []); parPf.get(n.pf).push(n); }
   const aretes = [];
@@ -280,33 +460,20 @@ export function rapprocher(N, { S = SEUILS, forces = [], actifs = null, poidsDe 
   //      proche » (jac ≥ 0,6) ou « titre inclus » (cont = 1, ≥ 3 mots) soit possible.
   //    Les paires hors candidates sont « rien » par construction (evaluer ne
   //    rend fort/doute qu'avec une photo ≤ 12 ou un titre très proche).
-  const cand = candidatsDe(N, actifs);
-  for (const [i, j] of cand) {
-    const x = N[i], y = N[j];
-    if (x.pf === y.pf) continue;
-    const e = evaluer(x, y, S);
-    e.x = x; e.y = y;
-    if (e.niveau !== 'rien' || e.ph.best <= S.plausible) aretes.push(e);
-  }
+  const cand = calcul.candidats(etiquette, N, actifs);
+  // (les arêtes entre plateformes ; et, pour l'étape 2, les annonces d'une même
+  // plateforme qui se ressemblent — paireAretes, même ordre que les candidates)
+  const { aretes: evaluees, memes } = calcul.paires(etiquette, N, cand, S);
+  for (const e of evaluees) aretes.push(e);
   // 2. concurrents PLAUSIBLES : même photo (≤ 7) ET titre proche, sans conflit.
   //    Deux annonces d'une MÊME plateforme ainsi liées = deux exemplaires (ou une
   //    annonce en double) : aucune annonce d'ailleurs ne peut savoir laquelle elle est.
   const plausible = (e) => e.ph.best <= S.plausible && !e.conflits.length && (e.sim.cont >= 0.5 || e.wj >= 0.4);
   const partagee = new Map();
   const pairesMemePlateforme = [];
-  for (const [i, j] of cand) {
-    const x = N[i], y = N[j];
-    if (x.pf !== y.pf || !x.emps.length || !y.emps.length) continue;
-    // Une annonce publiée deux fois porte la même couverture : la couverture
-    // d'abord (36 lectures), le reste seulement si elle est proche — coronado,
-    // 643 articles Vinted de catalogue : 60 000 paires × 1 296 lectures sinon.
-    if (dPhoto(x.emps[0], y.emps[0]) > S.proche) continue;
-    const ph = comparerPhotos(x.emps, y.emps); if (ph.best > S.plausible) continue;
-    const t = texte(x, y);
-    if (!t.conflits.length && (t.sim.cont >= 0.5 || t.wj >= 0.4)) {
-      for (const [a, b] of [[x, y], [y, x]]) partagee.set(a.id, (partagee.get(a.id) || []).concat(b.id));
-      pairesMemePlateforme.push({ x, y, ph, t });
-    }
+  for (const { x, y, ph, t } of memes) {
+    for (const [a, b] of [[x, y], [y, x]]) partagee.set(a.id, (partagee.get(a.id) || []).concat(b.id));
+    pairesMemePlateforme.push({ x, y, ph, t });
   }
   const plaus = new Map();
   for (const e of aretes) if (plausible(e)) for (const [a, b] of [[e.x, e.y], [e.y, e.x]]) { const k = a.id + '|' + b.pf; plaus.set(k, (plaus.get(k) || 0) + 1); }

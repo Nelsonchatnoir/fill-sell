@@ -9,7 +9,7 @@
 // une photo sans empreinte est simplement absente de la comparaison (jamais
 // une preuve avec une photo manquante : moins de photos = moins de paires).
 import { photoDepuisEmpreinte } from './photos.js';
-import { construireNoeuds, forcesDe, rapprocher, planifier, resumer, candidatsDe, autoDecidee, vintedAJuger } from './moteur.js';
+import { construireNoeuds, forcesDe, rapprocher, planifier, resumer, autoDecidee, vintedAJuger, CALCUL_DIRECT } from './moteur.js';
 import { fichesMain } from './fiches-main.js';
 import { remisesEnLigne } from './remises-en-ligne.js';
 
@@ -39,10 +39,21 @@ export function manquantesDe(urls, empreintes, illisibles = new Set()) {
 // `fichesMain` : portée de la règle « fiche à la main face à une fiche Vinted »
 // (fiches-main.js) — 'nouvelles' (défaut, inerte sans `donnees.fiches_main_actif`)
 // ou 'toutes' (le rattrapage du stock existant).
-export function passe(donnees, empreintes, { mode = 'normal', fichesMain: porteeMain = 'nouvelles', remises: porteeRemises = 'nouvelles' } = {}) {
+// (12/10) `calcul` : CALCUL_DIRECT (d'un seul tenant, comme avant) ou la passe en
+// tranches (tranches.js) — les mêmes candidates, les mêmes paires évaluées, donc
+// les mêmes décisions ; seul le moment du calcul change. `photosDe` (optionnel)
+// remplace la lecture des empreintes (`empreintes` : Map url → ligne photo_empreintes).
+/**
+ * @param {any} donnees
+ * @param {Map<string, any> | null} empreintes
+ * @param {{ mode?: string, fichesMain?: string, remises?: string, calcul?: any,
+ *           photosDe?: ((urls: string[]) => any[]) | null, paresseux?: boolean }} [options]
+ */
+export function passe(donnees, empreintes, { mode = 'normal', fichesMain: porteeMain = 'nouvelles', remises: porteeRemises = 'nouvelles',
+  calcul = CALCUL_DIRECT, photosDe: lirePhotos = null, paresseux = false } = {}) {
   const t0 = Date.now();
-  const photosDe = (urls) => urls.map((u) => photoDepuisEmpreinte(empreintes.get(u))).filter(Boolean);
-  const N = construireNoeuds(donnees, photosDe);
+  const photosDe = lirePhotos ?? ((urls) => urls.map((u) => photoDepuisEmpreinte(empreintes.get(u))).filter(Boolean));
+  const N = construireNoeuds(donnees, photosDe, { paresseux });
   const forces = forcesDe(donnees);
   // mode normal : seules les annonces encore sans article (ni décidées, ni
   // ignorées) ont une décision à prendre — les paires qui ne les touchent pas
@@ -57,10 +68,10 @@ export function passe(donnees, empreintes, { mode = 'normal', fichesMain: portee
     actifs = new Set(N.map((n, i) => ((n.id.startsWith('A') && !n.ref.inventaire_id) || aJuger.has(n.id) ? i : -1)).filter((i) => i >= 0));
     if (aJuger.size) {
       const vinted = new Set(N.map((n, i) => (aJuger.has(n.id) ? i : -1)).filter((i) => i >= 0));
-      for (const [i, j] of candidatsDe(N, vinted)) for (const k of [i, j]) if (N[k].id.startsWith('A') && autoDecidee(N[k].ref)) actifs.add(k);
+      for (const [i, j] of calcul.candidats('principal:vinted', N, vinted)) for (const k of [i, j]) if (N[k].id.startsWith('A') && autoDecidee(N[k].ref)) actifs.add(k);
     }
   }
-  const R = rapprocher(N, { forces, actifs });
+  const R = rapprocher(N, { forces, actifs, calcul, etiquette: 'principal' });
   const decisions = planifier(donnees, N, R, { mode });
   // les relevés non probants : ignorés, comme avant (jamais une création)
   for (const a of donnees.annonces ?? []) {
@@ -92,13 +103,13 @@ export function passe(donnees, empreintes, { mode = 'normal', fichesMain: portee
   // part, après le graphe complet (les décisions des annonces ne bougent pas) ;
   // ses décisions passent après les rattachements (la fusion emporte avec elle
   // ce qui vient d'être rattaché à la fiche du dressing) et avant les créations.
-  const main = fichesMain(donnees, N, { portee: porteeMain });
+  const main = fichesMain(donnees, N, { portee: porteeMain, calcul });
   // (08/10 soir, Bebertdeals) la remise en ligne Vinted : deux fiches Vinted de la
   // même boutique qui n'ont jamais été en ligne ensemble (remises-en-ligne.js) ;
   // inerte sans `remise_en_ligne_actif` (portée « nouvelles »). Une fiche déjà prise
   // par la règle des fiches à la main ne lui est pas soumise (la règle d'avant gagne).
   const prisesMain = new Set(main.decisions.flatMap((x) => [String(x.garde), String(x.absorbe)]));
-  const remises = remisesEnLigne(donnees, N, { portee: porteeRemises, exclus: prisesMain });
+  const remises = remisesEnLigne(donnees, N, { portee: porteeRemises, exclus: prisesMain, calcul });
   const ajouts = main.decisions.concat(remises.decisions);
   const rang = { fusionner: 0, attacher: 1, fusionner_fiche: 2, remise_en_ligne: 2.5, groupe: 3, a_verifier: 4, fiche_a_verifier: 5, remise_en_ligne_a_verifier: 5.5, annonce_en_double: 6, creer: 7, entrer_stock: 8, ignorer: 9, question_caduque: 10 };
   const toutes = ajouts.length ? decisions.concat(ajouts).sort((p, q) => (rang[p.type] ?? 99) - (rang[q.type] ?? 99)) : decisions;

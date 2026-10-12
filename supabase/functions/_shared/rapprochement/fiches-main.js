@@ -39,7 +39,7 @@
 // Vinted en vol ; fiche du dressing en stock, que la personne n'a pas touchée ;
 // jamais deux annonces d'une même plateforme ; une paire tranchée n'est jamais
 // reposée. Une garde qui refuse la fusion pose la question à la place.
-import { rapprocher, forcesDe, candidatsDe } from './moteur.js';
+import { rapprocher, forcesDe, CALCUL_DIRECT } from './moteur.js';
 
 export const estMain = (n) => n.pf === 'fiche';
 export const estVinted = (n) => n.pf === 'vinted';
@@ -74,7 +74,7 @@ export function forcesFiches(donnees) {
  * La règle sur un compte. `N` = les nœuds de la passe (construireNoeuds).
  * Rend { decisions, bilan } ; decisions = fusionner_fiche | fiche_a_verifier.
  */
-export function fichesMain(donnees, N, { portee = 'nouvelles' } = {}) {
+export function fichesMain(donnees, N, { portee = 'nouvelles', calcul = CALCUL_DIRECT } = {}) {
   const actif = portee === 'toutes' || donnees.fiches_main_actif === true;
   if (!actif) return { decisions: [], bilan: null };
   const NF = N.filter((n) => estMain(n) || estVinted(n));
@@ -84,8 +84,8 @@ export function fichesMain(donnees, N, { portee = 'nouvelles' } = {}) {
   const t0 = Date.now();
   // les jugés, puis leurs vis-à-vis de l'autre côté (leurs concurrents comptent)
   const actifs = new Set(NF.map((n, i) => (juges.has(n.id) ? i : -1)).filter((i) => i >= 0));
-  for (const [i, j] of candidatsDe(NF, new Set(actifs))) if (NF[i].pf !== NF[j].pf) { actifs.add(i); actifs.add(j); }
-  const R = rapprocher(NF, { forces: forcesFiches(donnees), actifs, poidsDe: N });
+  for (const [i, j] of calcul.candidats('main:juges', NF, new Set(actifs))) if (NF[i].pf !== NF[j].pf) { actifs.add(i); actifs.add(j); }
+  const R = rapprocher(NF, { forces: forcesFiches(donnees), actifs, poidsDe: N, calcul, etiquette: 'main' });
 
   const fortes = new Map();
   for (const e of R.aretes) if (e.niveau === 'fort') fortes.set(cle(e.x.id, e.y.id), e);
