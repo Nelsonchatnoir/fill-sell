@@ -9,6 +9,14 @@ terminal Problèmes » / « 05/10 après-midi » / « 06/10 » / « 06/10 soir �
 contraire. Il se périme : `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
 
+- **⛔ 12/10 — RAPPROCHEMENT EN TRANCHES (ferreirasab)** — rapport `docs/enquetes/ferreira-cpu-1210/RAPPORT.md` : la passe
+  dépassait les 2 s de CPU d'une fonction edge (3 082 nœuds) → elle se calcule EN TRANCHES reprises d'une invocation à l'autre
+  (`_shared/rapprochement/tranches.js`, chantier `rapprochement_tranches`, mig **20261012120000 APPLIQUÉE**), budget 900 ms
+  de CPU par invocation (max mesuré 822), mêmes décisions que la v19 (`scripts/preuves/preuve-rapprochement-tranches.mjs`, 7 comptes réels) ;
+  ⛔ **la lecture est rangée par identifiant avant tout** (`ordonner`, passe.js : `rapprochement_v3_lire` n'a pas d'ORDER BY) ;
+  ⛔ déploiement par le connecteur : aucun `\uXXXX` dans le source (rendu en caractères bruts). `rapprochement` **v22** servie
+  depuis la branche `claude/rapprochement-cpu-timeout-0229m9` — ⛔ **à fusionner dans main avant tout déploiement de
+  `rapprochement` depuis main** (sinon retour à la v19). Rattachements manuels de Nico du 12/10 rejugés (434/475 confirmés).
 - **⛔ 12/10 nuit — CLÔTURE (A1 → A11, Morgane)** — rapport `docs/enquetes/cloture-1210/RAPPORT.md` : plus de plafond à 20
   (seule limite le quota, dit avant de lancer ; lot réel de 21 sur Depop) et vrai bouton « Choisir des articles à publier » ;
   ⛔ **un rayon que la plateforme n'accepte plus est choisi par le moteur** (`_shared/rayon-refuse-moteur.js`, feuilles seulement,

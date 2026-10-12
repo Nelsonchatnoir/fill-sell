@@ -4,7 +4,9 @@
 fin) et `docs/agents/consignes-2026-09-28.md` (règles) remplacent tout historique
 contraire. `functions list`, `cron.job` et `profiles.extension_build` font foi.
 
-- **Servi** : ext. **0.6.106** (**0.6.110 BONNE À TÉLÉVERSER**, prouvée en réel le 12/10) ; min **0.6.81** ; OTA 2.9.86 ; gpj v241 ; hw v102 ; gl v117 ; rapprochement v19.
+- **Servi** : ext. **0.6.106** (**0.6.110 BONNE À TÉLÉVERSER**, prouvée en réel le 12/10) ; min **0.6.81** ; OTA 2.9.86 ; gpj v241 ; hw v102 ; gl v117 ; rapprochement **v22** (branche, à fusionner).
+- **⛔ 12/10 — rapprochement en tranches** (`docs/enquetes/ferreira-cpu-1210/RAPPORT.md`) : passe en tranches sous ~900 ms
+  de CPU (mig 20261012120000), mêmes décisions que v19 ; lecture rangée par identifiant (`ordonner`) ; aucun `\uXXXX` dans le source.
 - **⛔ 12/10 nuit — clôture** (`docs/enquetes/cloture-1210/RAPPORT.md`) : pas de plafond à 20 (quota seul) ; rayon refusé = moteur
   (`_shared/rayon-refuse-moteur.js`) ; disjoncteur = compte seul (mig 090000) ; jamais un retrait d'article vendu en silence ;
   notifications Apple/Google : table de décision + journal jamais bloquant (mig 100000) ; livre Vinted = ISBN (`vintedExigeUnIsbn`, lu sur photo).
