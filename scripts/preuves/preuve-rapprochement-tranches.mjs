@@ -38,13 +38,14 @@ for (const f of ['passe.js', 'moteur.js', 'photos.js', 'texte.js', 'idf.js', 'fi
   fs.writeFileSync(path.join(dirRef, f), execSync(`git show ${ref}:supabase/functions/_shared/rapprochement/${f}`, { cwd: racine, encoding: 'utf8', maxBuffer: 1 << 26 }));
 }
 const REF = await import(path.join(dirRef, 'passe.js'));
-const { passe, urlsDe, manquantesDe } = await import('../../supabase/functions/_shared/rapprochement/passe.js');
+const { passe, urlsDe, manquantesDe, ordonner } = await import('../../supabase/functions/_shared/rapprochement/passe.js');
 const { photoDepuisCompacte, compacteComplete, photoDepuisEmpreinte } = await import('../../supabase/functions/_shared/rapprochement/photos.js');
 const { calculEnTranches, cacheDepuis, Suite } = await import('../../supabase/functions/_shared/rapprochement/tranches.js');
 
 // les données
 const hexBin = (h) => BigInt('0x' + h).toString(2).padStart(64, '0');
-let donnees = JSON.parse(fs.readFileSync(path.join(dossier, `${nom}-lire.json`), 'utf8'))[0].d;
+// rangée comme dans la fonction edge (ordonner) : la référence et le moteur actuel lisent la même chose
+let donnees = ordonner(JSON.parse(fs.readFileSync(path.join(dossier, `${nom}-lire.json`), 'utf8'))[0].d);
 const e = JSON.parse(fs.readFileSync(path.join(dossier, `${nom}-emp.json`), 'utf8'))[0];
 const map = new Map(), compactes = new Map();
 const K = ['c70', 'p85', 'g45', 'g60', 'g35'];

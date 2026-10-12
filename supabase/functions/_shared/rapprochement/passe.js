@@ -27,6 +27,30 @@ export function urlsDe(donnees, { maxPhotos = 6 } = {}) {
   return [...out];
 }
 
+// (12/10) L'ORDRE DE LA LECTURE NE DÉCIDE RIEN. rapprochement_v3_lire agrège les
+// fiches, les annonces, les fusions et les questions sans ORDER BY : selon la
+// connexion et le plan qu'elle garde en cache (index ou tas), deux lectures des
+// MÊMES données rendent deux ordres. La passe en tranches signe ce qu'elle lit —
+// un autre ordre, un autre chantier : le 12/10 à 11:29, ferreirasab alternait
+// entre deux signatures d'une invocation à l'autre, sans aucune écriture, et le
+// disjoncteur a arrêté le compte — et l'ordre des nœuds départage les égalités du
+// moteur. Tout est donc rangé par identifiant avant la signature et avant la passe.
+const parTexte = (f) => (a, b) => { const x = f(a), y = f(b); return x < y ? -1 : x > y ? 1 : 0; };
+export function ordonner(donnees) {
+  if (!donnees || typeof donnees !== 'object') return donnees;
+  const trie = (l, f) => (Array.isArray(l) ? l.slice().sort(parTexte(f)) : l);
+  return {
+    ...donnees,
+    fiches: trie(donnees.fiches, (f) => String(f.id)),
+    annonces: trie(donnees.annonces, (a) => String(a.id)),
+    fusions: trie(donnees.fusions, (x) => JSON.stringify([x.garde, x.absorbe, x.par ?? null, x.defaite ?? null])),
+    doublons: trie(donnees.doublons, (d) => String(d.id)),
+    vinted_a_juger: trie(donnees.vinted_a_juger, String),
+    fiches_main_a_juger: trie(donnees.fiches_main_a_juger, String),
+    vinted_nouvelles: trie(donnees.vinted_nouvelles, String),
+  };
+}
+
 /** Les URL sans empreinte complète (ligne absente, ou sans variantes), hors illisibles. */
 export function manquantesDe(urls, empreintes, illisibles = new Set()) {
   return urls.filter((u) => {

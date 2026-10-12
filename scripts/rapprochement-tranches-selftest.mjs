@@ -18,6 +18,9 @@
 //     « manquantes » que les lignes de photo_empreintes, cas tordus compris ;
 //   · aucune unité ne dépasse son budget de beaucoup (mesuré) ;
 //   · la fonction edge et la migration portent bien la chaîne.
+//   · l'ordre de la lecture ne change rien : deux lectures des mêmes données dans
+//     deux ordres (rapprochement_v3_lire n'a pas d'ORDER BY) rangées par ordonner
+//     donnent la même signature et les mêmes décisions.
 // La preuve sur les comptes RÉELS (Corinne, de63ca45, 7373c96c, ferreirasab…) :
 // scripts/preuves/rapprochement-tranches-equivalence.mjs (données de prod, hors dépôt).
 //
@@ -26,7 +29,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { construireNoeuds, candidatsDe, candidatsPhotoPartie, candidatsTitresPartie, candidatsAssembler } from '../supabase/functions/_shared/rapprochement/moteur.js';
-import { passe, urlsDe, manquantesDe } from '../supabase/functions/_shared/rapprochement/passe.js';
+import { passe, urlsDe, manquantesDe, ordonner } from '../supabase/functions/_shared/rapprochement/passe.js';
 import { photoDepuisEmpreinte, photoDepuisCompacte, compacteComplete } from '../supabase/functions/_shared/rapprochement/photos.js';
 import { calculEnTranches, cacheDepuis, Suite } from '../supabase/functions/_shared/rapprochement/tranches.js';
 
@@ -209,7 +212,36 @@ console.log('3. Les empreintes compactes donnent les mêmes photos et les mêmes
   ok(us.every((u) => JSON.stringify(photoDepuisEmpreinte(E2.get(u))) === JSON.stringify(photoDepuisCompacte(compacte(E2.get(u))))), `${us.length} photos fabriquées : mêmes lectures`);
 }
 
-console.log('4. La fonction edge et la migration portent la chaîne');
+console.log("4. L'ordre de la lecture ne décide rien (ordonner)");
+{
+  // rapprochement_v3_lire agrège sans ORDER BY : deux lectures des mêmes données peuvent
+  // rendre deux ordres (12/10 11:29, ferreirasab). Rangées, elles sont la même chose.
+  const melanger = (l, r) => { const x = l.slice(); for (let i = x.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [x[i], x[j]] = [x[j], x[i]]; } return x; };
+  const lecture = (d, graine) => {
+    const r = alea(graine);
+    return { ...d, fiches: melanger(d.fiches, r), annonces: melanger(d.annonces, r), doublons: melanger(d.doublons ?? [], r), fusions: melanger(d.fusions ?? [], r),
+      vinted_a_juger: melanger(d.vinted_a_juger ?? [], r) };
+  };
+  for (const [graine, o, opts] of [
+    [51, { fiches: 90 }, { mode: 'normal' }],
+    [52, { fiches: 90, doubles: 0.3 }, { mode: 'reparation' }],
+    [53, { fiches: 70, main: 20 }, { mode: 'normal', fichesMain: 'toutes' }],
+  ]) {
+    const { donnees, E } = compte(graine, o);
+    const a = ordonner(lecture(donnees, 1)), b = ordonner(lecture(donnees, 2));
+    const memeLecture = JSON.stringify(a) === JSON.stringify(b);
+    const da = passe(structuredClone(a), E, opts).decisions, db = passe(structuredClone(b), E, opts).decisions;
+    const t = passeEnTranches(b, E, opts, { budgetMs: 60 });
+    ok(memeLecture && JSON.stringify(da) === JSON.stringify(db) && JSON.stringify(da) === JSON.stringify(t.res.decisions),
+      `compte ${graine} (${opts.mode}) : deux ordres de lecture, une seule lecture rangée, ${da.length} décisions identiques (en tranches aussi)`);
+  }
+  ok(JSON.stringify(ordonner(ordonner({ fiches: [{ id: '2' }, { id: '10' }], annonces: [] }))) === JSON.stringify(ordonner({ fiches: [{ id: '10' }, { id: '2' }], annonces: [] })), 'ordonner est stable et idempotent');
+  const f = lire('supabase/functions/rapprochement/index.ts');
+  const iO = f.indexOf('ordonner(lu)'), iS = f.indexOf('await signature(donnees');
+  ok(iO > 0 && iS > iO, 'index.ts : la lecture est rangée avant la signature et la passe');
+}
+
+console.log('5. La fonction edge et la migration portent la chaîne');
 {
   const f = lire('supabase/functions/rapprochement/index.ts');
   ok(/calculEnTranches\(/.test(f) && /instanceof Suite/.test(f) && /paresseux: true/.test(f), 'index.ts : passe en tranches (calculEnTranches, Suite, nœuds paresseux)');

@@ -89,9 +89,13 @@
 // disjoncteur repart de 0) ; une invocation tuée ne l'est pas (il compte, comme
 // avant). Les empreintes se lisent sous forme compacte
 // (rapprochement_v3_empreintes_compactes : 3,2 Mo au lieu de 9 pour ferreirasab).
+// La lecture est rangée par identifiant avant tout (passe.js, ordonner) : sans
+// ORDER BY, deux lectures des mêmes données rendaient deux ordres selon la connexion,
+// donc deux signatures — le 12/10 à 11:29, le chantier de ferreirasab repartait de
+// zéro à chaque invocation et le disjoncteur a arrêté le compte.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
-import { urlsDe, passe } from "../_shared/rapprochement/passe.js";
+import { urlsDe, passe, ordonner } from "../_shared/rapprochement/passe.js";
 import { photoDepuisCompacte, compacteComplete } from "../_shared/rapprochement/photos.js";
 import { Suite, calculEnTranches, cacheDepuis } from "../_shared/rapprochement/tranches.js";
 
@@ -114,7 +118,7 @@ const BUDGET_CPU_MS = 900;
 const CALCUL_MS_MAX = 550;          // le calcul de la passe dans une invocation
 const CALCUL_MS_MIN = 150;          // … même quand les lectures ont coûté cher (au moins une unité)
 const MARGE_MS = 150;               // ce qui n'est pas mesuré (runtime, requêtes, journal)
-const VERSION_TRANCHES = "v20-1";   // un changement du moteur invalide les chantiers d'avant
+const VERSION_TRANCHES = "v20-2";   // un changement du moteur invalide les chantiers d'avant (v20-2 : lecture rangée)
 const URLS_PAR_LECTURE = 2500;
 
 const json = (corps: unknown, status = 200) =>
@@ -360,7 +364,9 @@ serve(async (req) => {
       // ── A bis. L'identifiant d'un dépôt FillSell, avant tout le reste ──
       if (!simuler) parCompte.par_identifiant = await rattacherParIdentifiant(user).catch(() => 0);
       // ── B. Tout le compte, en un appel ──
-      const donnees = (await rpcBrut("rapprochement_v3_lire", { p_user: user }).catch((e) => { throw new Error(`lecture : ${(e as Error).message}`); })) as Donnees;
+      // (rangée par identifiant : la lecture n'a pas d'ordre garanti, la signature et les nœuds en ont besoin — passe.js, ordonner)
+      const lu = (await rpcBrut("rapprochement_v3_lire", { p_user: user }).catch((e) => { throw new Error(`lecture : ${(e as Error).message}`); })) as Donnees;
+      const donnees = mesurer(() => ordonner(lu)) as Donnees;
       // ── C. Les empreintes manquantes : demandées par la base, relues à la relance ──
       const urls = mesurer(() => urlsDe(donnees)) as string[];
       const { lignes: empreintes, illisibles } = await lireEmpreintes(urls);
