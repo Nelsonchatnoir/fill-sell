@@ -63,6 +63,11 @@ INSERT INTO _backup_1210_ferreira_rejuge_rapprochements SELECT now(), r.* FROM r
  WHERE r.user_id = '18e461c1-7107-4f40-b07f-6de8fb5c2948' AND r.par = 'utilisateur' AND r.decision IN ('attache', 'detache')
    AND r.created_at BETWEEN '2026-10-12 09:10:50+00' AND '2026-10-12 09:27:30+00'
    AND r.annonce_id IN (SELECT annonce_id FROM _cand_1210_ferreira UNION SELECT annonce_id FROM _photo_cand_1210 UNION SELECT annonce_id FROM _jumeaux_1210);
+-- (une table créée dans public est lisible par l'API : RLS sans règle, droits retirés)
+ALTER TABLE _backup_1210_ferreira_rejuge_annonces ENABLE ROW LEVEL SECURITY;
+ALTER TABLE _backup_1210_ferreira_rejuge_jobs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE _backup_1210_ferreira_rejuge_rapprochements ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON _backup_1210_ferreira_rejuge_annonces, _backup_1210_ferreira_rejuge_jobs, _backup_1210_ferreira_rejuge_rapprochements FROM anon, authenticated;
 
 DO $$
 BEGIN
