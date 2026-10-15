@@ -117,9 +117,9 @@ try {
     const r = await fn({ accessToken: "t", job: { id: "remi-3", inventaire_id: 42 }, pf: {}, userId: "u", etape: "a_capturer", boutiqueArticle: CELINE, identCourante: null });
     assert.equal(r.status, "failed");
     assert.equal(ecrits[0].status, "failed");
-    assert.match(ecrits[0].extra.error, /n'est plus en ligne sur Vinted/);
-    assert.equal(patchs.length, 1, "article daté disparu_le");
-    ok("404 sous la BONNE boutique (lue par l'onglet) → disparue, comme avant");
+    assert.match(ecrits[0].extra.error, /Vinted n'a pas rendu cette annonce/);
+    assert.equal(patchs.length, 0, "(15/10, 0.6.113) jamais daté disparu_le sur un 404 seul");
+    ok("404 sous la BONNE boutique (lue par l'onglet) → verdict « disparue » rapporté, article jamais daté sur cette seule lecture (le serveur met en pause)");
   }
   // d. Compte à UNE boutique, identité illisible : chemin d'avant (compteur, puis needs_user), onglet jamais lu.
   {

@@ -1186,6 +1186,9 @@ async function fillListingForm(job) {
   // (0.6.68) Une republication REJOUE l'annonce d'origine : ses critères sont
   // ceux que la personne avait choisis, « Autre » compris (cf. fillCriterionSafe).
   REJOUE_ANNONCE_D_ORIGINE = fields.republish_recreation === true || fields.republish_step != null;
+  // (15/10, 0.6.113) Le texte de l'article : une marque devinée par Leboncoin
+  // n'est gardée que si l'article la NOMME (cf. marquePreRemplieNonCitee).
+  TEXTE_ARTICLE_LBC = normalizeFuzzy(`${job.title ?? ""} ${job.description ?? ""}`);
   // Champs OBLIGATOIRES (au sens du code existant, pas d'une liste inventée)
   // qu'on n'a pas su remplir. Deux seulement sont documentés comme bloquants
   // par des dry-runs réels : l'univers du rayon Mode ("Veuillez choisir un
@@ -3993,6 +3996,28 @@ const VALEURS_NON_RECONNUES = {};
 // (0.6.68) Vrai pendant le remplissage d'une REPUBLICATION : l'annonce d'origine
 // fait foi, y compris quand elle dit « Autre » (posé par fillListingForm).
 let REJOUE_ANNONCE_D_ORIGINE = false;
+// (15/10, 0.6.113) Titre + description de l'article en cours (normalisés).
+let TEXTE_ARTICLE_LBC = "";
+
+// ── LA MARQUE DEVINÉE PAR LEBONCOIN (15/10, 0.6.113 — point 7) ───────────────
+// Ornella 495e9ffc (11/10) : « Support de fond photo télescopique », sans
+// marque → Leboncoin a pré-rempli « Canon », GARDÉ par la règle du repli
+// générique (« Sans marque » ne remplace jamais une valeur précise) → refus de
+// modération. Une marque n'est pas un rayon : une marque que l'article ne
+// nomme nulle part (titre, description) est fausse — elle n'est jamais gardée.
+// « SEB » des rangements de Louis : nommée, gardée.
+// ⛔ La « Marque de la console » (console_brand, jeux vidéo) n'est PAS la marque
+// de l'article : Leboncoin la déduit de « PS4 » (« Sony »), elle est juste.
+// La 0.6.112 la remplaçait par « Autre » (régression, 114 jobs en 30 j) :
+// ce champ garde toujours son pré-rempli.
+function marqueConsole(labelSelector) {
+  const label = document.querySelector(labelSelector);
+  return /console_brand$/i.test(String(label?.getAttribute?.("for") ?? ""));
+}
+function marqueCiteeDansLArticle(marque) {
+  const m = normalizeFuzzy(String(marque ?? ""));
+  return !!m && !!TEXTE_ARTICLE_LBC && containsAsWords(TEXTE_ARTICLE_LBC, m);
+}
 
 async function releverOptionsCritere(labelSelector) {
   try {
@@ -4082,6 +4107,11 @@ async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, {
       return false;
     }
     const prefilled = skipIfPrefilled && input.value.trim() ? input.value.trim() : null;
+    // (15/10, 0.6.113) Marque : console_brand garde son pré-rempli ; une marque
+    // pré-remplie que l'article ne nomme pas n'est jamais gardée.
+    const estMarqueConsole = fieldName === "marque" && marqueConsole(labelSelector);
+    const marquePreRemplieNonCitee = fieldName === "marque" && !estMarqueConsole && !!prefilled
+      && !estValeurGenerique(prefilled) && !marqueCiteeDansLArticle(prefilled);
     const prefilledConvient = prefilled && (etatExact
       ? etatLeboncoinExactParmi(rawList, [prefilled]) != null
       : prefilledMatchesTarget(prefilled, rawValue));
@@ -4106,7 +4136,7 @@ async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, {
     // faisait disparaître le Produit « Autre » — seule option de l'Univers
     // « Autre » — et la recréation, annonce déjà retirée, butait sur une
     // question. On rejoue l'annonce à l'identique, comme sa localisation.
-    if (prefilled && estValeurGenerique(rawValue) && !estValeurGenerique(prefilled) && !REJOUE_ANNONCE_D_ORIGINE) {
+    if (prefilled && estValeurGenerique(rawValue) && !estValeurGenerique(prefilled) && !REJOUE_ANNONCE_D_ORIGINE && !marquePreRemplieNonCitee) {
       const note = `${fieldName}: pré-rempli LBC "${prefilled}" CONSERVÉ — notre valeur "${rawValue}" est un repli générique, jamais mieux qu'une valeur précise posée par Leboncoin`;
       console.log(`[leboncoin] ${note}`);
       warnings.push(note);
@@ -4244,7 +4274,8 @@ async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, {
     // différent : l'option générique « Autre » si la liste l'offre (vrai : une
     // autre marque) — jamais « Sans marque » (l'article en a une). Sans « Autre »
     // visible, le pré-rempli reste (comportement d'avant) et le journal le dit.
-    const marqueDevineeFausse = fieldName === "marque" && prefilled && !prefilledMatchesTarget(prefilled, rawValue);
+    const marqueDevineeFausse = fieldName === "marque" && !estMarqueConsole && prefilled
+      && !prefilledMatchesTarget(prefilled, rawValue) && !marqueCiteeDansLArticle(prefilled);
     if (!match && (!prefilled || marqueDevineeFausse)) {
       // Pas d'option pour notre valeur et rien à préserver : replis génériques
       // éventuels (marque → « Autre »/« Sans marque ») avant d'abandonner.

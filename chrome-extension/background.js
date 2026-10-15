@@ -22450,32 +22450,19 @@ async function traiterIntrouvable404Republication({ accessToken, job, pf, userId
     await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
     return { status: "needsUser", error: `404 de capture, ${verdict} — 4 essais sans pouvoir trancher` };
   }
-  // Disparue : l'article est daté (disparu_le), jamais supprimé — le flux
-  // « plus en ligne — vendue ? » de l'app fait le reste. Écriture RLS (la
-  // ligne appartient à l'utilisateur), bornée à disparu_le encore vide : une
-  // date déjà posée par la sync n'est pas réécrite.
-  let articleDate = false;
-  if (job.inventaire_id != null) {
-    try {
-      await restRequest(
-        `inventaire?id=eq.${job.inventaire_id}&user_id=eq.${userId}&disparu_le=is.null`, accessToken,
-        { method: "PATCH", body: JSON.stringify({ disparu_le: maintenant }) },
-      );
-      articleDate = true;
-    } catch (e) {
-      console.warn(`[republish] job ${job.id} : inventaire ${job.inventaire_id} non daté disparu_le —`, String(e?.message ?? e));
-    }
-  }
-  pf.introuvable_404.article_date = articleDate;
+  // ⛔ (15/10, 0.6.113 — DeadRoz, 60 republications) UN 404 SEUL N'EST PAS UNE
+  // PREUVE : l'endpoint d'édition a répondu 404 sur des annonces relevées EN
+  // LIGNE ensuite. L'article n'est JAMAIS daté « disparu » sur cette seule
+  // lecture (plus de PATCH disparu_le) ; le serveur (update-job-status) met la
+  // republication en pause « introuvable à confirmer », et handler-watch la
+  // reprend ou la clôt sur la preuve d'un relevé. Rien n'a été retiré.
+  pf.introuvable_404.article_date = false;
   const msg =
-    "Republication impossible : cette annonce n'est plus en ligne sur Vinted (vendue, retirée ou supprimée depuis sa dernière lecture). " +
-    "FillSell n'a rien supprimé. " +
-    (articleDate
-      ? "L'article est marqué « plus en ligne » dans ton Stock : si tu l'as vendu, marque-le vendu ; sinon remets-le en ligne depuis Vinted puis synchronise ton dressing."
-      : "Si tu l'as vendu, marque-le vendu dans l'app ; sinon remets-le en ligne depuis Vinted puis synchronise ton dressing.");
+    "Republication en pause : Vinted n'a pas rendu cette annonce à la lecture (introuvable). FillSell n'a rien supprimé ; " +
+    "le prochain relevé de ta boutique dira si elle est encore en ligne.";
   await updateJobStatus(accessToken, job.id, "failed", { platform_fields: pf, error: msg });
   await recordRecentResult(job, "failed", msg).catch(() => {});
-  console.warn(`[republish] job ${job.id} : 404 de capture sous la boutique de l'article (${identId || "mono-boutique"}) — annonce disparue, article ${articleDate ? "daté disparu_le" : "NON daté"}`);
+  console.warn(`[republish] job ${job.id} : 404 de capture sous la boutique de l'article (${identId || "mono-boutique"}) — lecture seule, le serveur met en pause (aucune date « disparue »)`);
   return { status: "failed", error: msg };
 }
 

@@ -61,8 +61,17 @@ ok(/const brutAmbigu = !brut \|\| \/\^\(etat \)\?neuf\$\/\.test\(normEtatLbc\(br
   '2d. l\'état précis de la fiche n\'est servi à l\'extension que si l\'état du job est vide ou « Neuf » nu');
 
 // La marque devinée par Leboncoin
-ok(/const marqueDevineeFausse = fieldName === "marque" && prefilled && !prefilledMatchesTarget\(prefilled, rawValue\);/.test(LBC)
-  && /if \(!match && \(!prefilled \|\| marqueDevineeFausse\)\) \{/.test(LBC), '3a. marque devinée ≠ marque de l\'article : le repli « Autre » est tenté');
+ok(/const marqueDevineeFausse = fieldName === "marque" && !estMarqueConsole && prefilled\s+&& !prefilledMatchesTarget\(prefilled, rawValue\) && !marqueCiteeDansLArticle\(prefilled\);/.test(LBC)
+  && /if \(!match && \(!prefilled \|\| marqueDevineeFausse\)\) \{/.test(LBC), '3a. marque devinée ≠ marque de l\'article (et que l\'article ne nomme pas) : le repli « Autre » est tenté');
+// (15/10, 0.6.113 — point 7) Ornella « Canon » : le repli générique ne garde
+// plus une marque que l'article ne nomme pas ; console_brand (jeux vidéo) garde
+// toujours son pré-rempli (« Sony » déduit de PS4 — régression de la 0.6.112).
+ok(/const marquePreRemplieNonCitee = fieldName === "marque" && !estMarqueConsole && !!prefilled\s+&& !estValeurGenerique\(prefilled\) && !marqueCiteeDansLArticle\(prefilled\);/.test(LBC)
+  && /!REJOUE_ANNONCE_D_ORIGINE && !marquePreRemplieNonCitee\) \{/.test(LBC),
+  '3c. « Sans marque » remplace une marque pré-remplie que l\'article ne nomme pas (Ornella, « Canon »)');
+ok(/function marqueConsole\(labelSelector\) \{[\s\S]{0,200}console_brand\$\/i/.test(LBC) && /const estMarqueConsole = fieldName === "marque" && marqueConsole\(labelSelector\);/.test(LBC),
+  '3d. la marque de la console (console_brand) n\'est jamais remplacée par « Autre »');
+ok(/TEXTE_ARTICLE_LBC = normalizeFuzzy\(`\$\{job\.title \?\? ""\} \$\{job\.description \?\? ""\}`\);/.test(LBC), '3e. le texte de l\'article (titre + description) est posé à chaque remplissage');
 ok(/marqueDevineeFausse \? fallbackValues\.filter\(\(v\) => !\/\^sans marque\$\/i\.test\(String\(v\)\)\) : fallbackValues/.test(LBC),
   '3b. jamais « Sans marque » à la place d\'une marque devinée (l\'article en a une)');
 
