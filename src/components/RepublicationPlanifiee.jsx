@@ -1356,7 +1356,11 @@ export function RepublicationPlanifieeReglages({ lang, platform = 'vinted', sess
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 8, fontWeight: 500, fontSize: 12.5, lineHeight: 1.45, color: P.mute2 }}>
                   <span style={{ width: 6, height: 6, borderRadius: 99, background: P.teal, flexShrink: 0, marginTop: 6 }} />
                   <span>
-                    {fr ? `Ce plafond est celui de ${nomPf}. Toutes plateformes confondues, ton forfait autorise ${nf(plafondPalier, fr)} republications par jour — il en reste ${nf(Number(etat.aujourdhui.restants_compte), fr)} aujourd'hui.`
+                    {/* (15/10) Aperçu d'un gratuit : c'est ce que le plan Pro autorise, pas « ton forfait ». */}
+                    {apercu
+                      ? (fr ? `Ce plafond est celui de ${nomPf}. Toutes plateformes confondues, le plan Pro autorise ${nf(plafondPalier, fr)} republications par jour.`
+                        : `This cap is for ${nomPf}. Across all platforms the Pro plan allows ${nf(plafondPalier, fr)} reposts a day.`)
+                      : fr ? `Ce plafond est celui de ${nomPf}. Toutes plateformes confondues, ton forfait autorise ${nf(plafondPalier, fr)} republications par jour — il en reste ${nf(Number(etat.aujourdhui.restants_compte), fr)} aujourd'hui.`
                         : `This cap is for ${nomPf}. Across all platforms your plan allows ${nf(plafondPalier, fr)} reposts a day — ${nf(Number(etat.aujourdhui.restants_compte), fr)} left today.`}
                   </span>
                 </div>
