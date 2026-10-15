@@ -39,6 +39,8 @@ import { S, OMBRE, DEGRADE, DEGRADE_TUILE } from './jetons';
 import { nombreFr } from './regles';
 import { lireNavigateurExtension, navigateurDeLApp, noteNavigateur } from '../utils/navigateurExtension';
 import { paysVintedDeLAppareil, noteVintedEtranger, retenirPaysAppareil, paysVintedOuvert } from '../utils/vintedEtrangerApp';
+import { noterGeste } from '../utils/dernierGeste';
+import { ABSENCES_AVANT_PAUSE } from '../annonces/absencesDeSuite.js';
 
 // Le point d'une pastille de plateforme : teal = à jour ; ambre = à reprendre
 // ou un geste attend ; gris = jamais synchronisée / pas de compte.
@@ -187,6 +189,8 @@ export default function BlocSynchro({
     setResume(!actifGlobal && tuiles.some((t) => t.e.phase === 'fait' && !t.vide));
   }
   useEffect(() => { onResume?.(resume); }, [resume, onResume]);
+  // (15/10, P17) Une synchro demandée vient de finir : c'est « après quoi » pour la mesure des offres.
+  useEffect(() => { if (resume) noterGeste('synchro_finie'); }, [resume]);
   // « Annonces à vérifier » : les ARTICLES à vérifier (07/10 — hors du stock
   // affiché, avec leur question « Est-ce le même article ? ») et les annonces
   // proposées d'avant (écran de rattachement). StockTab les compte dans
@@ -297,6 +301,10 @@ export default function BlocSynchro({
   // titre court et son geste (planche 08). Le verrou des gestes est celui du
   // bouton principal : une demande à la fois, jamais pendant une vague.
   const synchroDe = (t) => ({ libelle: T.ctaPointSynchro(t.nom), icone: RefreshCw, onTap: () => r.lancer(t.p), desactive: occupeLancer });
+  // (15/10, P17) Deux « pas connecté » de suite : la carte le dit et porte
+  // « Synchroniser <nom> » (le bouton principal ne la relance plus).
+  const absencesDe = (p) => Number(r.runs[p]?.absences_de_suite) || 0;
+  const enSerie = (p) => absencesDe(p) >= ABSENCES_AVANT_PAUSE;
   const reessayer = (t) => ({ libelle: T.ctaPointReessayer, icone: RotateCcw, onTap: () => r.lancer(t.p), desactive: occupeLancer });
   // « Ton ordinateur n'a pas répondu » : seulement les demandes que
   // l'ordinateur n'a JAMAIS prises (Chrome fermé). Une demande annulée par la
@@ -305,7 +313,9 @@ export default function BlocSynchro({
   const signaux = [
     ...tuiles.filter((t) => t.vide).map((t) => ({ cle: `vide-${t.p}`, platform: t.p, titre: T.titrePointVide(t.nom), texte: T.signalVideRepete(t.nom), bouton: synchroDe(t) })),
     ...tuiles.filter((t) => t.e.phase === 'absente' && !murDe.has(t.p) && !(t.p === 'opla' && t.e.opla && oplaAutorisee))
-      .map((t) => ({ cle: t.p, platform: t.p, titre: t.e.opla ? T.titrePointOpla : T.titrePointNonConnecte(t.nom), texte: t.e.opla ? T.signalOpla : [T.signalNonConnecte(t.nom), noteNav(t.nom), noteVinted(t.p)].filter(Boolean).join(' ') })),
+      .map((t) => ({ cle: t.p, platform: t.p, titre: t.e.opla ? T.titrePointOpla : T.titrePointNonConnecte(t.nom),
+        texte: t.e.opla ? T.signalOpla : [enSerie(t.p) ? T.murRepriseDeSuite(t.nom, absencesDe(t.p)) : T.signalNonConnecte(t.nom), noteNav(t.nom), noteVinted(t.p)].filter(Boolean).join(' '),
+        ...(t.e.opla || !enSerie(t.p) ? {} : { bouton: synchroDe(t) }) })),
     ...tuiles.filter((t) => t.e.phase === 'echec' && !murDe.has(t.p)).map((t) => {
       // (06/10) Vinted arrêté sur une boutique pas encore suivie : le geste est
       // « Choisir ma boutique » — il ouvre la confirmation (« Ajouter @x » /
@@ -550,9 +560,10 @@ export default function BlocSynchro({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <BoutonMeConnecter userId={r.userId} platform={m.platform} motif={m.motif} lang={lang} variante="ligne" onOuverte={r.recharger} />
                   {noteNav(m.nom) && <span style={{ fontSize: 12, lineHeight: '16px', fontWeight: 600, color: S.ambreEncre }}>{noteNav(m.nom)}</span>}
-                  <span style={{ fontSize: 12, lineHeight: '16px', fontWeight: 500, color: S.ink2 }}>{T.murReprise}</span>
+                  <span style={{ fontSize: 12, lineHeight: '16px', fontWeight: 500, color: S.ink2 }}>{enSerie(m.platform) ? T.murRepriseDeSuite(m.nom, absencesDe(m.platform)) : T.murReprise}</span>
                 </div>
-              )} />
+              )}
+              bouton={m.platform !== 'vinted' && enSerie(m.platform) ? synchroDe({ p: m.platform, nom: m.nom }) : null} />
           ))}
           {signaux.map((sg) => (
             <CartePoint key={sg.cle} platform={sg.platform ?? null} icone={sg.icone ?? null} titre={sg.titre} texte={sg.texte} bouton={sg.bouton ?? null} />

@@ -66,6 +66,7 @@ import { parLots } from "../../utils/parLots.js";
 import BarriereErreur from "../../components/BarriereErreur";
 import { transporteursPourPoids } from "../../utils/leboncoinColis";
 import { fusionnerReglages } from "../../utils/reglagesPlateformes";
+import { noterGeste } from "../../utils/dernierGeste";
 import { useChoixPoidsLeboncoin } from "../../utils/useChoixPoidsLeboncoin";
 import {
   cleColisRetenu, grilleColisVinted, chargerGrilleColisRelevee, colisRetenusDuProfil, colisRetenuDuRayon,
@@ -75,7 +76,6 @@ import {
 const CLE_CHOIX = "fs_lot_plateformes";
 const lireChoixMemorise = () => { try { const v = JSON.parse(localStorage.getItem(CLE_CHOIX) ?? "null"); return Array.isArray(v) ? v : null; } catch { return null; } };
 const ecrireChoixMemorise = (v) => { try { localStorage.setItem(CLE_CHOIX, JSON.stringify(v)); } catch { /* navigation privée : rien */ } };
-const CLE_PLUS_TARD = (uid) => `fs_lot_plus_tard_${uid}`;
 
 // Les phases d'un article : où il en est, dans les mots de l'écran.
 // `lecture` : sa description est lue là où il est en ligne (aucun moteur
@@ -83,8 +83,8 @@ const CLE_PLUS_TARD = (uid) => `fs_lot_plus_tard_${uid}`;
 const PHASES_MOTEUR = new Set(["montage", "redaction", "verification"]);
 const PHASES_EN_PREPARATION = new Set(["lecture", ...PHASES_MOTEUR]);
 const LIBELLE_PHASE = {
-  fr: { attente: "En attente", lecture: "Ta description…", montage: "Lecture…", redaction: "Rédaction…", verification: "Vérification…", pret: "Prêt", questions: "À compléter", quota: "Mois prochain", rien: "Ne part pas", erreur: "Pas préparé", retire: "Retiré du lot", envoi: "Envoi…", envoye: "En file", refuse: "Pas parti" },
-  en: { attente: "Waiting", lecture: "Your description…", montage: "Reading…", redaction: "Writing…", verification: "Checking…", pret: "Ready", questions: "To complete", quota: "Next month", rien: "Not going", erreur: "Not prepared", retire: "Removed", envoi: "Sending…", envoye: "Queued", refuse: "Not sent" },
+  fr: { attente: "En attente", lecture: "Ta description…", montage: "Lecture…", redaction: "Rédaction…", verification: "Vérification…", pret: "Prêt", questions: "À compléter", quota: "Reste au stock", rien: "Ne part pas", erreur: "Pas préparé", retire: "Retiré du lot", envoi: "Envoi…", envoye: "En file", refuse: "Pas parti" },
+  en: { attente: "Waiting", lecture: "Your description…", montage: "Reading…", redaction: "Writing…", verification: "Checking…", pret: "Ready", questions: "To complete", quota: "Stays in stock", rien: "Not going", erreur: "Not prepared", retire: "Removed", envoi: "Sending…", envoye: "Queued", refuse: "Not sent" },
 };
 const NOM_PALIER = { premium: "Premium", pro: "Pro", business: "Business" };
 // Un abonnement se change là où il a été pris : payé ailleurs qu'ici, on dit
@@ -381,6 +381,7 @@ function EcranDuLot({
   useEffect(() => {
     if (!murActif || murJournalise.current) return;
     murJournalise.current = true;
+    noterGeste("mur_lot");
     journaliser("lot_mur_quota_affiche", metaMur());
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [murActif]);
@@ -456,11 +457,9 @@ function EcranDuLot({
     ecrireChoixMemorise(choix);
     const id = (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const nouveauLot = { id, le: new Date().toISOString(), ids, plateformes: [...choix] };
-    // Les articles qui attendent le mois prochain : gardés sur cet appareil,
-    // proposés au prochain lot (jamais préparés, donc jamais décomptés).
-    if (partage.plusTard.length) {
-      try { localStorage.setItem(CLE_PLUS_TARD(userId), JSON.stringify({ ids: partage.plusTard.map((d) => d.id), apres: remise ?? null })); } catch { /* rien */ }
-    }
+    // (15/10, P17) Les articles au-delà du quota ne sont ni préparés ni
+    // décomptés : ils RESTENT DANS LE STOCK, rien ne les « garde » pour plus
+    // tard (la liste écrite ici avant le 15/10 n'était relue nulle part).
     setLot(nouveauLot);
     // Les articles qui ont leur description (et, du dressing, leur catégorie)
     // vont droit au moteur ; les autres passent d'abord par la lecture.
@@ -918,7 +917,7 @@ function EcranDuLot({
     disabled = !n || fiches == null || quotas == null;
     cta = fiches == null || quotas == null ? (en ? "Reading your items…" : "Lecture de tes articles…")
       : !n ? (!choix.length ? (en ? "Tick at least one platform" : "Coche au moins une plateforme")
-          : partage.plusTard.length ? (en ? "Everything waits for your new month" : "Tout attend ton nouveau mois")
+          : partage.plusTard.length ? (en ? "This month's free items are used" : "Ton quota du mois est utilisé")
           : (en ? "Nothing to publish with this choice" : "Rien à publier avec ce choix"))
       : murActif
         // Le second choix du mur : continuer avec ce que le quota permet.
@@ -926,7 +925,7 @@ function EcranDuLot({
         : (en ? `Prepare ${annoncesPrevues} listing${annoncesPrevues > 1 ? "s" : ""}` : `Préparer ${annoncesPrevues} annonce${annoncesPrevues > 1 ? "s" : ""}`);
     onCta = preparer;
     sous = [murActif && n
-      ? (en ? `The other ${partage.plusTard.length} wait for your new month: nothing is lost. Nothing goes out yet.` : `${partage.plusTard.length > 1 ? `Les ${partage.plusTard.length} autres attendent` : "L'autre attend"} ton nouveau mois : rien n'est perdu. Rien ne part encore.`)
+      ? (en ? `The other ${partage.plusTard.length} stay in your stock: you can publish them from your new month${dateCourte(remise, en) ? ` (${dateCourte(remise, en)})` : ""}. Nothing goes out yet.` : `${partage.plusTard.length > 1 ? `Les ${partage.plusTard.length} autres restent` : "L'autre reste"} dans ton stock : tu pourras ${partage.plusTard.length > 1 ? "les" : "le"} publier dès ton nouveau mois${dateCourte(remise, en) ? ` (le ${dateCourte(remise, en)})` : ""}. Rien ne part encore.`)
       : (en ? "Nothing goes out yet: we prepare, you check." : "Rien ne part encore : on prépare, tu vérifies.")];
   } else if (etape === "avant") {
     if (!preparationFinie) {
@@ -1100,17 +1099,17 @@ export function EcranPlateformes({
           <div className="fsn-card-p">
             {partage.maintenant.length
               ? (en
-                  ? `${partage.maintenant.length} item${partage.maintenant.length > 1 ? "s" : ""} can go now; ${partage.plusTard.length} will wait for your new month${dateRemise ? ` (${dateRemise})` : ""}.`
-                  : `${partage.maintenant.length > 1 ? `${partage.maintenant.length} articles peuvent` : "1 article peut"} partir maintenant ; ${partage.plusTard.length > 1 ? `${partage.plusTard.length} attendront` : "1 attendra"} ton nouveau mois${dateRemise ? ` (le ${dateRemise})` : ""}.`)
+                  ? `${partage.maintenant.length} item${partage.maintenant.length > 1 ? "s" : ""} can go now; the other ${partage.plusTard.length} stay in your stock, to publish from your new month${dateRemise ? ` (${dateRemise})` : ""}.`
+                  : `${partage.maintenant.length > 1 ? `${partage.maintenant.length} articles peuvent` : "1 article peut"} partir maintenant ; ${partage.plusTard.length > 1 ? `les ${partage.plusTard.length} autres restent` : "l'autre reste"} dans ton stock, à publier dès ton nouveau mois${dateRemise ? ` (le ${dateRemise})` : ""}.`)
               : (en
-                  ? `Your ${partage.plusTard.length} item${partage.plusTard.length > 1 ? "s" : ""} will wait for your new month${dateRemise ? ` (${dateRemise})` : ""}.`
-                  : `${partage.plusTard.length > 1 ? `Tes ${partage.plusTard.length} articles attendront` : "Ton article attendra"} ton nouveau mois${dateRemise ? ` (le ${dateRemise})` : ""}.`)}
+                  ? `Your ${partage.plusTard.length} item${partage.plusTard.length > 1 ? "s" : ""} stay in your stock, to publish from your new month${dateRemise ? ` (${dateRemise})` : ""}.`
+                  : `${partage.plusTard.length > 1 ? `Tes ${partage.plusTard.length} articles restent` : "Ton article reste"} dans ton stock, à publier dès ton nouveau mois${dateRemise ? ` (le ${dateRemise})` : ""}.`)}
           </div>
           {mur.onMonter && !mur.renvoiBoutique && (
             <Bouton onClick={mur.onMonter}>
               {en
-                ? `Switch to ${NOM_PALIER[mur.palierVise]}${mur.quotaVise ? ` — ${mur.quotaVise} listings a month` : ""}`
-                : `Passer à ${NOM_PALIER[mur.palierVise]}${mur.quotaVise ? ` — ${mur.quotaVise} annonces par mois` : ""}`}
+                ? `Switch to ${NOM_PALIER[mur.palierVise]}${mur.quotaVise ? ` — ${mur.quotaVise} items a month, on all your platforms` : ""}`
+                : `Passer à ${NOM_PALIER[mur.palierVise]}${mur.quotaVise ? ` — ${mur.quotaVise} articles par mois, sur toutes tes plateformes` : ""}`}
             </Bouton>
           )}
           {mur.renvoiBoutique && (
@@ -1185,8 +1184,8 @@ export function EcranPlateformes({
                   ? (en ? "You've used all your listings for this month." : "Tu as utilisé toutes tes annonces de ce mois-ci.")
                   : (en ? "Your texts are already written: this batch doesn't use your monthly listings." : "Tes textes sont déjà rédigés : ce lot ne prend rien sur tes annonces du mois."))
               : (en
-                  ? `Uses ${partage.aConsommer} of your monthly listings (${Math.max(0, (restantes ?? ann.restantes ?? 0) - partage.aConsommer)} left after).`
-                  : `Prend ${partage.aConsommer} de tes annonces du mois (il t'en restera ${Math.max(0, (restantes ?? ann.restantes ?? 0) - partage.aConsommer)}).`)}
+                  ? `Uses ${partage.aConsommer} item${partage.aConsommer > 1 ? "s" : ""} of your monthly quota (${Math.max(0, (restantes ?? ann.restantes ?? 0) - partage.aConsommer)} left after) — an item published on several platforms counts once.`
+                  : `Compte ${partage.aConsommer} article${partage.aConsommer > 1 ? "s" : ""} sur ton quota du mois (il t'en restera ${Math.max(0, (restantes ?? ann.restantes ?? 0) - partage.aConsommer)}) — un article publié sur plusieurs plateformes compte pour un.`)}
           </div>
         )}
         {duree && annoncesPrevues > 0 && (
@@ -1528,7 +1527,7 @@ export function EcranFin({ en, L, lot, etats, lignes, parId, extensionNeverSeen,
               const d = parId.get(id);
               const st = etats[id] ?? {};
               const raison = st.raison
-                || (st.phase === "quota" ? (en ? `Waits for your new month${dateRemise ? ` (${dateRemise})` : ""}.` : `Attend ton nouveau mois${dateRemise ? ` (le ${dateRemise})` : ""}.`)
+                || (st.phase === "quota" ? (en ? `Stays in your stock, to publish from your new month${dateRemise ? ` (${dateRemise})` : ""}.` : `Reste dans ton stock, à publier dès ton nouveau mois${dateRemise ? ` (le ${dateRemise})` : ""}.`)
                 : st.phase === "questions" ? (en ? "An answer was missing: it's prepared, finish it from its card." : "Il manquait une réponse : il est préparé, termine-le depuis sa carte.")
                 : st.phase === "retire" ? (en ? "You kept it for later." : "Tu l'as gardé pour plus tard.")
                 : null);

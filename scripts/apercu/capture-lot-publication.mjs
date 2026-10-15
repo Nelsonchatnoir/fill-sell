@@ -41,7 +41,7 @@ const ECRANS = [
   ['03-stock-selection', 'stock-selection', /3 sélectionnés/, 844],
   ['04-ou-publier', 'ou-publier', /Où les publier \?/i, 844],
   ['05-ou-publier-session-fermee', 'ou-publier-session', /Tu n'es pas connecté à Leboncoin/, 844],
-  ['06-ou-publier-quota-atteint', 'ou-publier-quota', /Ton quota ne suffit pas pour tout le lot[\s\S]*Passer à Premium — 40 annonces par mois[\s\S]*Continuer avec 2 articles/, 844],
+  ['06-ou-publier-quota-atteint', 'ou-publier-quota', /Ton quota ne suffit pas pour tout le lot[\s\S]*Passer à Premium — 40 articles par mois, sur toutes tes plateformes[\s\S]*Continuer avec 2 articles/, 844],
   ['06b-mur-abonnement-app-store', 'ou-publier-quota-boutique', /payé sur l'App Store : change de formule depuis l'app FillSell sur ton iPhone/, 844],
   ['07-ou-publier-extension-absente', 'ou-publier-extension', /L'extension FillSell n'est pas encore installée/, 844],
   ['08-preparation-en-cours', 'preparation', /préparés[\s\S]*Lecture de ta description sur Vinted, au rythme de tes dépôts/, 844],

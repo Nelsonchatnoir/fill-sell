@@ -154,7 +154,7 @@ const donneesLot = CLES_LOT.map((k) => {
   return { id: String(item.id), item, jobs };
 });
 const parId = new Map(donneesLot.map((d) => [d.id, d]));
-const LIB = { attente: 'En attente', lecture: 'Ta description…', montage: 'Lecture…', redaction: 'Rédaction…', verification: 'Vérification…', pret: 'Prêt', questions: 'À compléter', quota: 'Mois prochain', rien: 'Ne part pas', erreur: 'Pas préparé', retire: 'Retiré du lot', envoi: 'Envoi…', envoye: 'En file', refuse: 'Pas parti' };
+const LIB = { attente: 'En attente', lecture: 'Ta description…', montage: 'Lecture…', redaction: 'Rédaction…', verification: 'Vérification…', pret: 'Prêt', questions: 'À compléter', quota: 'Reste au stock', rien: 'Ne part pas', erreur: 'Pas préparé', retire: 'Retiré du lot', envoi: 'Envoi…', envoye: 'En file', refuse: 'Pas parti' };
 const enLigneSur = (d) => new Set(d.jobs.filter((j) => j.action === 'publish' && j.status === 'published').map((j) => j.platform));
 const ciblesDe = (d, choix) => choix.filter((p) => !enLigneSur(d).has(p));
 

@@ -30,7 +30,11 @@ console.log('1. Plus de plafond de 20');
 const avecPlafond = fichiers('src').filter((f) => /LOT_MAX_ARTICLES/.test(lire(f)));
 verifier(!avecPlafond.length, 'aucune trace de LOT_MAX_ARTICLES dans src/', avecPlafond.join(', '));
 const stock = lire('src/tabs/StockTab.jsx');
-verifier(!/max=\{LOT_MAX/.test(stock) && /articles=\{articles\}\n/.test(stock.slice(stock.indexOf("sousTitre={n?(lang==='fr'?'Tout est déjà coché"), stock.indexOf("sousTitre={n?(lang==='fr'?'Tout est déjà coché") + 400)), 'la sélection « Publier » (EcranSelection) n’a plus de max');
+// (15/10, P17) La sélection « Publier » d'un compte gratuit pré-coche au plus
+// ce que le mois offre (prop `initiale`) — ce n'est PAS un plafond : aucun `max`.
+const iPub = stock.indexOf("titre={lang==='fr'?'Publier plusieurs articles':'Publish several items'}");
+const blocPub = stock.slice(iPub, stock.indexOf('onConfirmer=', iPub));
+verifier(!/max=\{LOT_MAX/.test(stock) && iPub > 0 && /articles=\{articles\}\n/.test(blocPub) && !/\bmax=/.test(blocPub), 'la sélection « Publier » (EcranSelection) n’a plus de max');
 const entrees = lire('src/publication/lot/EntreesStock.jsx');
 verifier(!/20 au plus|at most/.test(entrees), 'plus aucun texte « 20 au plus »');
 

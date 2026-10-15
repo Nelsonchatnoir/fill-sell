@@ -142,9 +142,16 @@ const PASTILLE_ICONE = {
 // tuile fait 128 px AU MOINS : sur un écran étroit, les sous-textes de Nico
 // prennent plus de lignes, la tuile grandit et la grille garde les trois à la
 // même hauteur (relu au harnais capture-tuiles-stock, de 320 à 1280 px).
-export function Gestes({ lang = 'fr', variante = 'tuiles', publier, remonter, aRegler }) {
+// (15/10, P17) Un geste peut porter `offert` : ce que le mois GRATUIT offre
+// encore (« Gratuit : encore 50 republications ce mois-ci »), dit sur le geste
+// même — le premier geste après une synchro est un geste gratuit, jamais une
+// offre. `ordre` (lignes seulement : « À faire maintenant ») met un geste en tête.
+export function Gestes({ lang = 'fr', variante = 'tuiles', publier, remonter, aRegler, ordre = null }) {
   const D = definitions(lang);
-  const gestes = [['publier', publier], ['remonter', remonter], ['aRegler', aRegler]].filter(([, g]) => g);
+  const parCle = { publier, remonter, aRegler };
+  const cles = variante === 'lignes' && Array.isArray(ordre) && ordre.length === 3 ? ordre : ['publier', 'remonter', 'aRegler'];
+  const gestes = cles.map((c) => [c, parCle[c]]).filter(([, g]) => g);
+  const offert = (g, style, court = false) => { const t = court ? (g.offertCourt ?? g.offert) : g.offert; return t ? <span style={{ display: 'block', fontSize: 12, lineHeight: '16px', fontWeight: 700, color: S.tealDeep, ...style }}>{t}</span> : null; };
   if (variante === 'lignes') {
     return (
       <div>
@@ -163,6 +170,7 @@ export function Gestes({ lang = 'fr', variante = 'tuiles', publier, remonter, aR
               <span style={{ flex: 1, minWidth: 0 }}>
                 <span style={{ display: 'block', fontSize: 15, lineHeight: '20px', fontWeight: 700 }}>{d.titreLong ?? d.titre}</span>
                 <span style={{ display: 'block', fontSize: 12, lineHeight: '16px', fontWeight: 500, color: S.ink2 }}>{(g.long ?? d.long)(g.n)}</span>
+                {offert(g)}
               </span>
               <ChevronRight size={20} color={S.chevron} aria-hidden="true" style={{ flexShrink: 0 }} />
             </button>
@@ -191,6 +199,7 @@ export function Gestes({ lang = 'fr', variante = 'tuiles', publier, remonter, aR
                 <span style={{ display: 'block', fontSize: 12.5, lineHeight: '20px', fontWeight: 500, color: plein ? 'rgba(255,255,255,0.92)' : S.ink2 }}>
                   <strong className="sk-chiffres" style={{ fontWeight: 700, color: plein ? '#FFFFFF' : S.ink }}>{nombreFr(g.n, lang)}</strong> {(g.long ?? d.long)(g.n)}
                 </span>
+                {offert(g, plein ? { color: '#FFFFFF' } : {})}
               </span>
               <ChevronRight size={20} color={plein ? '#FFFFFF' : S.chevron} aria-hidden="true" style={{ flexShrink: 0 }} />
             </button>
@@ -218,6 +227,7 @@ export function Gestes({ lang = 'fr', variante = 'tuiles', publier, remonter, aR
             </span>
             <span style={{ marginTop: 8, fontSize: 14, lineHeight: '20px', fontWeight: 700 }}>{d.titre}</span>
             <span style={{ marginTop: 2, fontSize: 11, lineHeight: '14px', fontStyle: 'italic', fontWeight: 500, color: plein ? '#FFFFFF' : S.ink2 }}>{g.court ?? d.court}</span>
+            {offert(g, { marginTop: 4, fontSize: 11, lineHeight: '14px', ...(plein ? { color: '#FFFFFF' } : {}) }, true)}
           </button>
         );
       })}

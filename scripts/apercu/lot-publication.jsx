@@ -41,7 +41,7 @@ const A = [
 ];
 const donnees = A.map((item) => ({ id: String(item.id), item, jobs: item.vinted_item_id ? [] : [] }));
 const parId = new Map(donnees.map((d) => [d.id, d]));
-const L = { attente: 'En attente', lecture: 'Ta description…', montage: 'Lecture…', redaction: 'Rédaction…', verification: 'Vérification…', pret: 'Prêt', questions: 'À compléter', quota: 'Mois prochain', rien: 'Ne part pas', erreur: 'Pas préparé', retire: 'Retiré du lot', envoi: 'Envoi…', envoye: 'En file', refuse: 'Pas parti' };
+const L = { attente: 'En attente', lecture: 'Ta description…', montage: 'Lecture…', redaction: 'Rédaction…', verification: 'Vérification…', pret: 'Prêt', questions: 'À compléter', quota: 'Reste au stock', rien: 'Ne part pas', erreur: 'Pas préparé', retire: 'Retiré du lot', envoi: 'Envoi…', envoye: 'En file', refuse: 'Pas parti' };
 
 // ── Un moteur FACTICE à la forme de celui du stepper ───────────────────────
 function moteurFactice(t, tpl, p = {}) {
@@ -157,7 +157,7 @@ function OuPublier({ variante }) {
   return (
     <CoqueLot en={false} ecran="lot-plateformes" titre={`Publier ${sel.length} articles`} numeroEcran={1}
       retour={{ onClick: noop }} quitter={{ onClick: noop }} cta={quota ? `Continuer avec ${partage.maintenant.length} articles` : `Préparer ${annonces} annonces`} onCta={noop}
-      sous={[quota ? `Les ${partage.plusTard.length} autres attendent ton nouveau mois : rien n'est perdu. Rien ne part encore.` : 'Rien ne part encore : on prépare, tu vérifies.']}>
+      sous={[quota ? `Les ${partage.plusTard.length} autres restent dans ton stock : tu pourras les publier dès ton nouveau mois. Rien ne part encore.` : 'Rien ne part encore : on prépare, tu vérifies.']}>
       <EcranPlateformes en={false} lang="fr" userId="x" donnees={sel} resume={resume} choix={choix} basculer={noop}
         sessions={variante === 'session' ? { leboncoin: false } : {}}
         pauses={variante === 'extension' ? { beebs: "Beebs a changé sa page de dépôt : on adapte l'extension, tes annonces Beebs repartiront toutes seules." } : {}}

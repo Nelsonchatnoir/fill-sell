@@ -9,6 +9,7 @@ import { createPortal } from 'react-dom';
 // import de composant orphelin passe sous le radar — vérifié à la main.
 import { Check, ChevronRight, AlertTriangle, Pause } from 'lucide-react';
 import { useExtensionAutreCompte, texteExtensionAutreCompte } from '../utils/extensionAutreCompte';
+import { noterGeste } from '../utils/dernierGeste';
 import { useTranslation } from '../i18n/useTranslation';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { track } from '../analytics/analytics';
@@ -5363,7 +5364,7 @@ export function RepublishProgressSheet({ lang, job, onClose, onSaisieRelance, re
 
 // Grille 2026-08-08 : la republication coûte price_republish pour TOUT LE
 // MONDE — l'ancienne prop `gratuit` (Premium/Pro) est morte avec la gratuité.
-function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiquesVinted = [], boutiqueConnectee = null, multiOuverte = false, choixInitial = null, oplaAcces = null, oplaVerdict = null, userId = null, plafond = null, dejaEnFile = 0 }) {
+function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiquesVinted = [], boutiqueConnectee = null, multiOuverte = false, choixInitial = null, oplaAcces = null, oplaVerdict = null, userId = null, plafond = null, dejaEnFile = 0, repubMois = null }) {
   const fr = lang !== 'en';
   const solo = items.length === 1;
   // ── PLATEFORMES (2026-09-17, republication multiplateforme) ───────────────
@@ -5594,6 +5595,15 @@ function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiqu
         {partageDuJour && (
           <div role="status" style={{ background: '#FFF6E3', border: '1px solid #EED9A6', borderRadius: 12, padding: '10px 12px', fontSize: 12, color: '#8A6100', lineHeight: 1.55, marginBottom: 12 }}>
             <IconeTexte icone={Hourglass} taille={12} style={{ marginRight: 4 }} />{partageDuJour.texte}
+          </div>
+        )}
+        {/* (15/10, P17, Chiara) Gratuit : le MOIS, dit avant le clic — la feuille
+            ne parlait que de la limite du jour. Le refus du serveur reste le filet. */}
+        {repubMois && Number.isFinite(repubMois.restantes) && nbEnvois > 0 && (
+          <div role="status" style={{ background: '#F0FDFB', border: '1px solid rgba(13,148,136,0.18)', borderRadius: 12, padding: '10px 12px', fontSize: 12, color: '#1B6E62', lineHeight: 1.55, marginBottom: 12 }}>
+            {nbEnvois <= repubMois.restantes
+              ? (fr ? `Gratuit : il t’en restera ${repubMois.restantes - nbEnvois} ce mois-ci${repubMois.remise ? ` (remise à zéro le ${repubMois.remise})` : ''}.` : `Free: you will have ${repubMois.restantes - nbEnvois} left this month${repubMois.remise ? ` (resets on ${repubMois.remise})` : ''}.`)
+              : (fr ? `Ton mois gratuit en couvre encore ${repubMois.restantes} sur ${nbEnvois}${repubMois.remise ? ` (remise à zéro le ${repubMois.remise})` : ''} : décoche ce que tu peux garder pour plus tard.` : `Your free month still covers ${repubMois.restantes} of ${nbEnvois}${repubMois.remise ? ` (resets on ${repubMois.remise})` : ''}: untick what can wait.`)}
           </div>
         )}
         <button onClick={confirmer} disabled={!nbEnvois}
@@ -6150,6 +6160,7 @@ const StockTab = memo(function StockTab({
   // prop est absente (hôte sans modale).
   const ouvrirModalePlafondRepub = (res) => {
     if (typeof ouvrirModalePlafond !== 'function') return false;
+    noterGeste('plafond_repub');
     ouvrirModalePlafond('plafond_republication_free', {
       trigger: 'republish_cap',
       plafondRepub: { plafond: res?.plafond ?? null, faites: res?.faites ?? null, remise_le: res?.remise_le ?? null },
@@ -7361,6 +7372,7 @@ const StockTab = memo(function StockTab({
     const articles = lotSel.map(id => parId.get(id)).filter(Boolean).filter(i => lotSelectionnables.has(i.id));
     if (!articles.length) return;
     setLotOuvert({ articles, plateformes });
+    noterGeste('lot_ouvert');
     track('lot_publication_ouvert', { articles: articles.length });
   };
   // Le lot le plus récent (identifiant posé sur ses jobs) : tant qu'il avance,
@@ -8663,8 +8675,33 @@ const StockTab = memo(function StockTab({
     { cle: 'brouillons', n: brouillons.length, titre: lang === 'fr' ? (brouillons.length > 1 ? 'Brouillons à finir' : 'Brouillon à finir') : 'Drafts to finish',
       detail: lang === 'fr' ? 'Annonces préparées, pas encore publiées — déjà décomptées.' : 'Listings prepared, not published yet — already counted.', onOuvrir: ouvrirModeBrouillons },
   ];
-  const gestePublier = { n: aPublierTout.length, onOuvrir: () => { setPublierContexte(null); setGesteOuvert('publier'); } };
-  const gesteRemonter = republishActif ? { n: aRemonterTout.length, onOuvrir: () => setGesteOuvert('remonter') } : null;
+  // ── (15/10, P17) LE GESTE GRATUIT, TOUT DE SUITE ───────────────────────────
+  // Mesuré le 15/10 : sur 47 nouveaux inscrits qui ont synchronisé, 23 ont buté
+  // sur le mur de quota du lot (13 dans les 10 min) — parce que la sélection
+  // cochait TOUT (Orlanne : 20 cochés pour 5 annonces gratuites, 12 s après sa
+  // synchro) — et Chiara a vidé ses 50 republications en un lot. Un compte
+  // gratuit voit sur « Publier » et « Remonter » ce que son mois lui offre
+  // encore, et la sélection n'en coche pas plus (il peut en cocher davantage :
+  // le mur ne vient qu'alors). Compteurs déjà chargés (quotas_etat via App) :
+  // aucune lecture de plus, AUCUN quota ne change.
+  const offertGratuit = (() => {
+    if (quotas?.palier !== 'free') return { annonces: null, repub: null, remise: null };
+    const nb = (v) => (v !== null && v !== undefined && Number.isFinite(Number(v)) ? Math.max(0, Number(v)) : null);
+    return { annonces: nb(quotas?.annonces?.restantes), repub: nb(quotas?.republication?.restantes), remise: jourRemise(quotas?.republication?.remise_le, lang === 'en' ? 'en' : 'fr') };
+  })();
+  const texteOffert = (n, genre) => {
+    if (!(n > 0)) return null;
+    const fr = lang !== 'en';
+    if (genre === 'repub') return fr ? `Gratuit : encore ${nombreFr(n, lang)} republication${n > 1 ? 's' : ''} ce mois-ci` : `Free: ${n} more repost${n > 1 ? 's' : ''} this month`;
+    return fr ? `Gratuit : encore ${nombreFr(n, lang)} article${n > 1 ? 's' : ''} ce mois-ci, sur toutes tes plateformes` : `Free: ${n} more item${n > 1 ? 's' : ''} this month, on all your platforms`;
+  };
+  // Sur les tuiles (étroites), la forme courte : « Gratuit : encore N ce mois-ci ».
+  const texteOffertCourt = (n) => (n > 0 ? (lang !== 'en' ? `Gratuit : encore ${nombreFr(n, lang)} ce mois-ci` : `Free: ${n} more this month`) : null);
+  const gestePublier = { n: aPublierTout.length, offert: aPublierTout.length ? texteOffert(offertGratuit.annonces, 'annonces') : null, offertCourt: aPublierTout.length ? texteOffertCourt(offertGratuit.annonces) : null, onOuvrir: () => { setPublierContexte(null); setGesteOuvert('publier'); } };
+  const gesteRemonter = republishActif ? { n: aRemonterTout.length, offert: aRemonterTout.length ? texteOffert(offertGratuit.repub, 'repub') : null, offertCourt: aRemonterTout.length ? texteOffertCourt(offertGratuit.repub) : null, onOuvrir: () => setGesteOuvert('remonter') } : null;
+  // Juste après une synchro (« À faire maintenant ») : un compte gratuit qui a
+  // des annonces à remonter commence par là — son geste gratuit le plus visible.
+  const ordreAFaire = offertGratuit.repub > 0 && (gesteRemonter?.n ?? 0) > 0 ? ['remonter', 'publier', 'aRegler'] : null;
   // (05/10) Un retrait bloqué passe avant tout : la tuile le dit, en peu de mots.
   const gesteARegler = { n: nbARegler, onOuvrir: () => setGesteOuvert('a_regler'),
     ...(nbRetraitsBloques > 0 ? {
@@ -9646,7 +9683,7 @@ const StockTab = memo(function StockTab({
                 />
               }
               alertes={alertesCompte}
-              aFaire={<Gestes lang={lang} variante="lignes" publier={gestePublier} remonter={gesteRemonter} aRegler={gesteARegler}/>}
+              aFaire={<Gestes lang={lang} variante="lignes" ordre={ordreAFaire} publier={gestePublier} remonter={gesteRemonter} aRegler={gesteARegler}/>}
               onResume={setResumeSynchro}
               onARattacher={noterAVerifier}
             />
@@ -11345,11 +11382,21 @@ const StockTab = memo(function StockTab({
             ligne2:manque.length?(lang==='fr'?`pas encore sur ${manque.map(p=>LABEL_PF[p]??p).join(', ')}`:`not yet on ${manque.map(p=>LABEL_PF[p]??p).join(', ')}`):null};
         });
         const n=articles.length;
+        // (15/10, P17) Gratuit : jamais plus de cochés que ce que le mois offre encore.
+        const offertsPub=offertGratuit.annonces;
+        const coupePub=offertsPub!=null&&n>offertsPub;
         return(
           <EcranSelection lang={lang}
             titre={lang==='fr'?'Publier plusieurs articles':'Publish several items'}
             grandTitre={n?(lang==='fr'?`${nombreFr(n,lang)} article${n>1?'s':''} pas encore partout`:`${n} item${n>1?'s':''} not everywhere yet`):(lang==='fr'?'Tout est déjà partout':'Everything is already everywhere')}
-            sousTitre={n?(lang==='fr'?'Tout est déjà coché : décoche ceux que tu veux garder.':'Everything is ticked: untick what you want to keep.'):null}
+            sousTitre={n?(coupePub
+              ?(offertsPub>0
+                ?(lang==='fr'
+                  ?`Ton mois gratuit publie encore ${nombreFr(offertsPub,lang)} article${offertsPub>1?'s':''} : ${offertsPub>1?`les ${nombreFr(offertsPub,lang)} premiers sont cochés`:'le premier est coché'}. Rien ne part avant ta confirmation.`
+                  :`Your free month still publishes ${offertsPub} item${offertsPub>1?'s':''}: ${offertsPub>1?`the first ${offertsPub} are ticked`:'the first one is ticked'}. Nothing goes out before you confirm.`)
+                :(lang==='fr'?'Les articles gratuits du mois sont utilisés : coche ceux que tu veux publier.':"This month's free items are used: tick the ones you want to publish."))
+              :(lang==='fr'?'Tout est déjà coché : décoche ceux que tu veux garder.':'Everything is ticked: untick what you want to keep.')):null}
+            initiale={coupePub?new Set(articles.slice(0,offertsPub).map(a=>a.id)):null}
             articles={articles}
             bouton={{icone:Upload,libelle:(k)=>lang==='fr'?`Publier ${nombreFr(k,lang)} article${k>1?'s':''}`:`Publish ${k} item${k>1?'s':''}`}}
             note={lang==='fr'?'Tu choisis ensuite les plateformes : rien ne part avant ta confirmation.':'You pick the platforms next: nothing goes out before you confirm.'}
@@ -11360,6 +11407,7 @@ const StockTab = memo(function StockTab({
               setGesteOuvert(null);
               setLotOuvert({articles:choisis,plateformes:publierContexte?.plateformes??null});
               setPublierContexte(null);
+              noterGeste('lot_ouvert');
               track('lot_publication_ouvert',{articles:choisis.length,depuis:'geste_publier'});
             }}
             onFermer={()=>{setGesteOuvert(null);setPublierContexte(null);}}/>
@@ -11373,11 +11421,23 @@ const StockTab = memo(function StockTab({
             ligne2:jours!=null?(lang==='fr'?`en ligne depuis ${jours} j`:`live for ${jours} d`):null};
         }).sort((a,b)=>(b.jours??0)-(a.jours??0));
         const n=articles.length;
+        // (15/10, P17) Gratuit : les plus anciennes d'abord, jamais plus que le mois n'en offre encore.
+        const offertsRep=offertGratuit.repub;
+        const coupeRep=offertsRep!=null&&n>offertsRep;
         return(
           <EcranSelection lang={lang}
+            initiale={coupeRep?new Set(articles.slice(0,offertsRep).map(a=>a.id)):null}
             titre={lang==='fr'?'Remonter mes annonces':'Bump my listings'}
             grandTitre={n?(lang==='fr'?`${nombreFr(n,lang)} annonce${n>1?'s perdent':' perd'} en visibilité`:`${n} listing${n>1?'s':''} losing visibility`):(lang==='fr'?'Rien ne perd en visibilité':'Nothing is losing visibility')}
-            sousTitre={n?(lang==='fr'?'Tout est déjà coché : décoche celles que tu veux garder.':'Everything is ticked: untick the ones you want to keep.'):(lang==='fr'?`Une annonce en ligne depuis ${SEUIL_ANCIENNE_JOURS} jours ou plus apparaîtra ici.`:`A listing live for ${SEUIL_ANCIENNE_JOURS} days or more will show up here.`)}
+            sousTitre={n?(coupeRep
+              ?(offertsRep>0
+                ?(lang==='fr'
+                  ?`Ton mois gratuit compte encore ${nombreFr(offertsRep,lang)} republication${offertsRep>1?'s':''}${offertGratuit.remise?` (remise à zéro le ${offertGratuit.remise})`:''} : ${offertsRep>1?`les ${nombreFr(offertsRep,lang)} plus anciennes sont cochées`:'la plus ancienne est cochée'}.`
+                  :`Your free month still has ${offertsRep} repost${offertsRep>1?'s':''}${offertGratuit.remise?` (resets on ${offertGratuit.remise})`:''}: ${offertsRep>1?'the oldest ones are ticked':'the oldest one is ticked'}.`)
+                :(lang==='fr'
+                  ?`Les republications gratuites du mois sont faites${offertGratuit.remise?` (remise à zéro le ${offertGratuit.remise})`:''} : coche celles que tu veux remonter.`
+                  :`This month's free reposts are used${offertGratuit.remise?` (resets on ${offertGratuit.remise})`:''}: tick the ones you want to bump.`))
+              :(lang==='fr'?'Tout est déjà coché : décoche celles que tu veux garder.':'Everything is ticked: untick the ones you want to keep.')):(lang==='fr'?`Une annonce en ligne depuis ${SEUIL_ANCIENNE_JOURS} jours ou plus apparaîtra ici.`:`A listing live for ${SEUIL_ANCIENNE_JOURS} days or more will show up here.`)}
             articles={articles}
             bouton={{icone:ChevronsUp,libelle:(k)=>lang==='fr'?`Remonter ${nombreFr(k,lang)} annonce${k>1?'s':''}`:`Bump ${k} listing${k>1?'s':''}`}}
             note={repubEnPause?(lang==='fr'?'Remontée en maintenance : de retour très vite.':'Bumping under maintenance: back very soon.'):(lang==='fr'?'Ton ordinateur les republie une à une.':'Your computer reposts them one by one.')}
@@ -11544,6 +11604,7 @@ const StockTab = memo(function StockTab({
           oplaVerdict={oplaVerdictRepub}
           plafond={repubPlafondEtat}
           dejaEnFile={repubJobsVivants.length}
+          repubMois={offertGratuit.repub!=null?{restantes:offertGratuit.repub,remise:offertGratuit.remise}:null}
           onClose={()=>setRepubSheet(null)}
           onConfirm={(cibles,choix)=>{
             setRepubSheet(null);
