@@ -38,6 +38,7 @@ import Feuille from './Feuille';
 import { S, OMBRE, DEGRADE, DEGRADE_TUILE } from './jetons';
 import { nombreFr } from './regles';
 import { lireNavigateurExtension, navigateurDeLApp, noteNavigateur } from '../utils/navigateurExtension';
+import { paysVintedDeLAppareil, noteVintedEtranger, retenirPaysAppareil, paysVintedOuvert } from '../utils/vintedEtrangerApp';
 
 // Le point d'une pastille de plateforme : teal = à jour ; ambre = à reprendre
 // ou un geste attend ; gris = jamais synchronisée / pas de compte.
@@ -223,6 +224,20 @@ export default function BlocSynchro({
   }, [ouvert, r.userId]);
   const navApp = useMemo(() => navigateurDeLApp(), []);
   const noteNav = (plateforme) => noteNavigateur({ ext: navExt, app: navApp, plateforme, lang });
+  // (15/10, lot B — Marta) Vinted pas connecté sur un appareil d'un autre pays
+  // Vinted de la zone euro : le point nomme le domaine et les deux gestes, et
+  // l'app note le pays (une fois) pour que le popup propose « Autoriser ».
+  const paysApp = useMemo(() => paysVintedDeLAppareil(), []);
+  const vintedAbsent = tuiles.some((t) => t.p === 'vinted' && t.e.phase === 'absente');
+  const [paysOuvert, setPaysOuvert] = useState(false);
+  useEffect(() => {
+    if (!ouvert || !paysApp || !vintedAbsent) return undefined;
+    let vivant = true;
+    retenirPaysAppareil(paysApp);
+    paysVintedOuvert(paysApp).then((o) => { if (vivant) setPaysOuvert(o); }).catch(() => {});
+    return () => { vivant = false; };
+  }, [ouvert, paysApp, vintedAbsent]);
+  const noteVinted = (p) => (p === 'vinted' && paysApp ? noteVintedEtranger({ pays: paysApp, navigateur: navExt, ouvert: paysOuvert, lang }) : null);
 
   if (!ouvert || !r.userId) return ligneVinted ? <div aria-hidden="true" style={{ display: 'none' }}>{ligneVinted}</div> : null;
 
@@ -290,7 +305,7 @@ export default function BlocSynchro({
   const signaux = [
     ...tuiles.filter((t) => t.vide).map((t) => ({ cle: `vide-${t.p}`, platform: t.p, titre: T.titrePointVide(t.nom), texte: T.signalVideRepete(t.nom), bouton: synchroDe(t) })),
     ...tuiles.filter((t) => t.e.phase === 'absente' && !murDe.has(t.p) && !(t.p === 'opla' && t.e.opla && oplaAutorisee))
-      .map((t) => ({ cle: t.p, platform: t.p, titre: t.e.opla ? T.titrePointOpla : T.titrePointNonConnecte(t.nom), texte: t.e.opla ? T.signalOpla : [T.signalNonConnecte(t.nom), noteNav(t.nom)].filter(Boolean).join(' ') })),
+      .map((t) => ({ cle: t.p, platform: t.p, titre: t.e.opla ? T.titrePointOpla : T.titrePointNonConnecte(t.nom), texte: t.e.opla ? T.signalOpla : [T.signalNonConnecte(t.nom), noteNav(t.nom), noteVinted(t.p)].filter(Boolean).join(' ') })),
     ...tuiles.filter((t) => t.e.phase === 'echec' && !murDe.has(t.p)).map((t) => {
       // (06/10) Vinted arrêté sur une boutique pas encore suivie : le geste est
       // « Choisir ma boutique » — il ouvre la confirmation (« Ajouter @x » /

@@ -10,7 +10,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
 import { ETATS_VINTED, langueVintedDuJob, paysDeLaLangue, PAYS_VINTED_EURO, type LangueVinted } from "../_shared/vinted-pays.ts";
-import { navigateurDeUA, paysDeEntete, vintedEtranger } from "../_shared/navigateur-poste.js";
+import { navigateurDeUA, paysDeEntete, vintedEtranger, paysAppareilDesReglages } from "../_shared/navigateur-poste.js";
 import { vintedIdsPourPublication } from "../_shared/vinted-ids-publication.ts";
 import { sessionIdDuJwt, identifiantPosteExtension, postesVivants, posteCourt, posteAvecAccesOpla, posteAvecAccesDepop, POSTE_TTL_MS, type Poste } from "../_shared/poste-extension.ts";
 import { CLES_RELANCE_DEPOP } from "../_shared/acces-depop.js";
@@ -7303,10 +7303,16 @@ serve(async (req) => {
           .limit(1);
         contexte.sync = runs?.[0] ?? null;
       } catch (_e) { /* le contexte ne doit JAMAIS empêcher de publier */ }
+      // (15/10, lot B — Marta) platform_settings lu dans la même requête : le
+      // pays de l'appareil noté par l'app (vinted.pays_appareil) désigne le
+      // vendeur Vinted étranger quand le réseau ne le dit pas (cf-ipcountry
+      // n'arrive jamais jusqu'ici).
+      let paysAppareilCtx: string | null = null;
       try {
         const { data: prof } = await userClient
-          .from("profiles").select("extension_sessions").eq("id", user.id).maybeSingle();
+          .from("profiles").select("extension_sessions, platform_settings").eq("id", user.id).maybeSingle();
         contexte.sessions = prof?.extension_sessions ?? null;
+        paysAppareilCtx = paysAppareilDesReglages(prof?.platform_settings ?? null);
       } catch (_e) { /* idem */ }
       // (09/10, Marta) LE VENDEUR VINTED ÉTRANGER : le popup ≥ 0.6.106 lui
       // propose « Autoriser vinted.<cc> » (permission OPTIONNELLE) — jamais à un
@@ -7321,6 +7327,7 @@ serve(async (req) => {
           .filter((r) => Number(r.value) === 1).map((r) => r.key.replace("vinted_pays_", "").toUpperCase()));
         contexte.vinted_etranger = vintedEtranger({
           paysSonde: /^[A-Z]{2}$/.test(String(ident?.pays ?? "")) ? String(ident!.pays) : null,
+          paysAppareil: paysAppareilCtx,
           paysReseau: paysDeEntete(req.headers.get("cf-ipcountry")),
           ouverts: ouvertsCtx,
           sessionVintedFr: s.vinted === true,
