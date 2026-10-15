@@ -6,6 +6,7 @@ const MESSAGE_MISE_A_JOUR_EXTENSION =
   // (03/10, point 24) Le geste le plus simple d'abord : fermer Chrome et le rouvrir.
   "Mets l’extension FillSell à jour : ferme Chrome complètement puis rouvre-le — ta file reprendra toute seule après la mise à jour. Tes annonces restent en ligne.";
 import { verifierBoutiqueOperation, identiteBoutiqueFraiche, origineBoutiqueProuvee, depotVintedExactParAnnonce, importVintedExactParAnnonce, idAnnonceVintedExact, verifierBoutiquePublicationVinted, boutiqueChoisieVersId } from "../_shared/identite-boutique.js";
+import { boutiquePublicationVinted } from "../_shared/boutique-publication-vinted.js";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
@@ -25,7 +26,7 @@ import { vintedExigeUneCouleur, vintedExigeUneMarque, vintedExigeUnIsbn, ISBN_AB
 import { traduireAbsenceMarqueJob, appliquerMarqueRetenue, SANS_MARQUE } from "../_shared/marque-absente.js";
 import { couleursVintedSansQuestion, marqueVintedSansQuestion } from "../_shared/vinted-couleur-marque-filet.js";
 import { ecarterFormatDevine, formatChoisi, livraisonLbcAuService } from "../_shared/livraison-poids.js";
-import { decisionPoidsLbc } from "../_shared/poids-leboncoin.js";
+import { decisionPoidsLbc, poidsManquantCompteExige } from "../_shared/poids-leboncoin.js";
 import { classementAgeEcrit, familleJeuVideo, ageBeebsDuClassement, ageBeebsJeuVideoLu } from "../../../src/utils/jeuxVideo.js";
 import { estFourreToutCatalogue } from "../../../src/utils/fourreTout.js";
 import { VINTED_COLORS } from "../../../src/utils/vintedColors.js";
@@ -151,7 +152,7 @@ import { normalizeIsbn, resoudreIsbn } from "../_shared/isbn.js";
 // La preuve qu'un ISBN capturé non standard repasse chez Vinted, lue sur les
 // faits (2026-10-01, carhoa) — module JS, le même que son autotest.
 import { estIsbnCaptureNonStandard, valeurIsbnCapturee, valeursProuvees, PREUVES_ISBN_ETABLIES } from "../_shared/isbn-capture-preuve.js";
-import { RETENUE_ISBN_CAPTURE, RETENUE_BOUTIQUE_INCONNUE, RETENUE_EXTENSION_A_JOUR, retenueServeurDe, poserRetenueServeur, leverRetenueServeur } from "../../../src/utils/retenueServeur.js";
+import { RETENUE_ISBN_CAPTURE, RETENUE_BOUTIQUE_INCONNUE, RETENUE_EXTENSION_A_JOUR, RETENUE_ANNONCE_PARTAGEE, retenueServeurDe, poserRetenueServeur, leverRetenueServeur } from "../../../src/utils/retenueServeur.js";
 // Valeurs d'ISBN capturé non standard déjà prouvées chez Vinted : une preuve
 // ne se perd pas, on ne la relit pas en base à chaque poll de l'isolat.
 // (02/10) Amorcé par les preuves ÉTABLIES (isbn-capture-preuve.js) : un isolat
@@ -3151,6 +3152,30 @@ serve(async (req) => {
             if (fait.length) { j.platform_fields = pfL; touches++; }
           }
           if (touches) console.log(`[get-pending-jobs] user=${user.id} livraison Leboncoin au service : ${touches} job(s)`);
+          // ── (15/10 soir, PAUGUES) UN COMPTE QUI EXIGE LE POIDS : JAMAIS SANS ──
+          // Formulaire Leboncoin PRO : « Poids du colis* » obligatoire, AUCUNE
+          // estimation. La règle du 11/10 (« sans poids, Leboncoin estime ») est
+          // fausse pour lui. Signal posé par handler-watch sur preuve
+          // (platform_settings.leboncoin.poids_exige) : une publication sans
+          // poids devient LA question en grammes AVANT tout dépôt — réglée en un
+          // geste pour tout le lot dans l'app ; jamais un poids inventé.
+          const poidsExige = (reglagesL.leboncoin as Record<string, unknown> | undefined)?.poids_exige;
+          if (poidsExige) {
+            const sansPoidsL = lbcJobs.filter((j) => poidsManquantCompteExige(j, reglagesL.leboncoin as Record<string, unknown>));
+            for (const j of sansPoidsL) {
+              const pfQ = { ...((j.platform_fields ?? {}) as Record<string, unknown>), needs_user_source: "champ_a_choisir",
+                needsUserField: { platform: "leboncoin", field_key: "lbcPoidsGrammes", field_label: "Poids du colis", input_type: "text", target: { root: null, key: "lbcPoidsGrammes" } },
+                poids_exige_question: { le: new Date().toISOString(), pose_par: "get-pending-jobs (compte Leboncoin qui exige le poids)" } };
+              await userClient.from("cross_post_jobs").update({ status: "needs_user", platform_fields: pfQ,
+                error: "Leboncoin exige le poids du colis sur ton compte et ne l'estime pas : indique-le (une fois pour tout le lot), la publication part ensuite toute seule. Rien n'a été envoyé." })
+                .eq("id", j.id).eq("status", "pending");
+            }
+            if (sansPoidsL.length) {
+              const ids = new Set(sansPoidsL.map((j) => String(j.id)));
+              out = out.filter((j) => !ids.has(String(j.id)));
+              console.log(`[get-pending-jobs] user=${user.id} compte Leboncoin qui exige le poids : ${sansPoidsL.length} publication(s) sans poids → question en grammes avant tout dépôt`);
+            }
+          }
         } catch (e) {
           console.warn(`[get-pending-jobs] livraison Leboncoin : ${String((e as Error)?.message ?? e)} — servi tel quel`);
         }
@@ -4981,10 +5006,16 @@ serve(async (req) => {
     try {
       const pfR = (j: { platform_fields: unknown }) =>
         ((j.platform_fields && typeof j.platform_fields === "object") ? j.platform_fields : {}) as Record<string, unknown>;
-      const cleDe = (j: { platform: unknown; listing_url?: unknown; platform_listing_id?: unknown }) => {
-        const id = idDepuisLien(String(j.platform ?? ""), j.listing_url) ?? (String(j.platform_listing_id ?? "").trim() || null);
-        return id ? { id, cle: `${String(j.platform)}:${id}` } : null;
+      // (15/10 soir, Louis) Un job dont le lien et l'identifiant désignent deux
+      // annonces (7fe6a7b3 : lien de l'autre fiche, identifiant du dépôt) les
+      // porte TOUTES LES DEUX ici : la garde ne lit jamais une seule moitié. La
+      // base les remet d'accord (cross_post_jobs_lien_suit_identifiant).
+      const clesDe = (j: { platform: unknown; listing_url?: unknown; platform_listing_id?: unknown }) => {
+        const ids = [idDepuisLien(String(j.platform ?? ""), j.listing_url), String(j.platform_listing_id ?? "").trim() || null]
+          .filter((x, i, t): x is string => !!x && t.indexOf(x) === i);
+        return ids.map((id) => ({ id, cle: `${String(j.platform)}:${id}` }));
       };
+      const cleDe = (j: { platform: unknown; listing_url?: unknown; platform_listing_id?: unknown }) => clesDe(j)[0] ?? null;
       const vaRetirer = (j: { action: string | null; platform_fields: unknown }) => {
         const a = j.action ?? "publish";
         if (a === "delete") return true;
@@ -5046,7 +5077,7 @@ serve(async (req) => {
       // ── 2. Les croisements : la question, jamais l'attente muette ──────────
       const destructeurs = out.filter((j) => vaRetirer(j) && cleDe(j) && j.inventaire_id != null);
       if (destructeurs.length) {
-        const cles = new Set(destructeurs.map((j) => cleDe(j)!.cle));
+        const cles = new Set(destructeurs.flatMap((j) => clesDe(j).map((c) => c.cle)));
         const { data: tousJobs } = await userClient
           .from("cross_post_jobs")
           .select("id, platform, inventaire_id, listing_url, platform_listing_id, title, price")
@@ -5056,19 +5087,49 @@ serve(async (req) => {
         const articlesParAnnonce = new Map<string, Map<number, { titre: string; prix: number | null }>>();
         for (const r of (tousJobs ?? [])) {
           const row = r as { platform: string; inventaire_id: number; listing_url: string | null; platform_listing_id: string | null; title: string | null; price: number | null };
-          const c = cleDe(row);
-          if (!c || !cles.has(c.cle)) continue;
-          if (!articlesParAnnonce.has(c.cle)) articlesParAnnonce.set(c.cle, new Map());
-          const m = articlesParAnnonce.get(c.cle)!;
-          if (!m.has(row.inventaire_id)) m.set(row.inventaire_id, { titre: String(row.title ?? "").slice(0, 70), prix: row.price ?? null });
+          for (const c of clesDe(row)) {
+            if (!cles.has(c.cle)) continue;
+            if (!articlesParAnnonce.has(c.cle)) articlesParAnnonce.set(c.cle, new Map());
+            const m = articlesParAnnonce.get(c.cle)!;
+            if (!m.has(row.inventaire_id)) m.set(row.inventaire_id, { titre: String(row.title ?? "").slice(0, 70), prix: row.price ?? null });
+          }
         }
         const bloques = new Set<string>();
         const traces: string[] = [];
+        let tenusCascade = 0;
         for (const j of destructeurs) {
-          const c = cleDe(j)!;
-          const articles = articlesParAnnonce.get(c.cle);
-          if (!articles || articles.size < 2) continue;
+          const c = clesDe(j).find((x) => (articlesParAnnonce.get(x.cle)?.size ?? 0) >= 2);
+          if (!c) continue;
+          const articles = articlesParAnnonce.get(c.cle)!;
           bloques.add(String(j.id));
+          // ── (15/10 soir, Louis) FILLSELL TRANCHE D'ABORD ─────────────────
+          // Identifiants, puis photos, puis l'IA (rapprochement-ia, mode
+          // « annonces_partagees », cron 53) : le job est RETENU (pending, rien
+          // n'est retiré, la file dit « ton annonce est intacte »). La question
+          // ne se pose que si la cascade a conclu « incertain » pour CETTE annonce.
+          {
+            const pfC = { ...pfR(j) };
+            const apC = (pfC["annonce_partagee"] ?? {}) as Record<string, unknown>;
+            const casc = (apC["cascade"] ?? {}) as Record<string, unknown>;
+            const memeAnnonce = String(apC["annonce"] ?? "") === c.id;
+            // Filet : une cascade qui n'a pas conclu en 30 min (cron arrêté…)
+            // ne laisse jamais le job en attente muette — la question vient.
+            const tenuDepuis = Date.parse(String(casc["depuis"] ?? ""));
+            const cascadeMuette = memeAnnonce && casc["etat"] === "a_trancher" && Number.isFinite(tenuDepuis) && Date.now() - tenuDepuis > 30 * 60_000;
+            if (!(memeAnnonce && casc["etat"] === "incertain") && !cascadeMuette) {
+              if (!(memeAnnonce && casc["etat"] === "a_trancher")) {
+                const maintenantC = new Date().toISOString();
+                const optionsC = [...articles.entries()].map(([inv, a]) => ({ inventaire_id: inv, label: `« ${a.titre || "article sans titre"} »${a.prix != null ? ` — ${a.prix} €` : ""}` }));
+                const pfHold = poserRetenueServeur({ ...pfC, annonce_partagee: { ...apC, annonce: c.id, plateforme: j.platform, options: optionsC,
+                  depuis: String(apC["depuis"] ?? maintenantC), cascade: { etat: "a_trancher", depuis: maintenantC } } },
+                  RETENUE_ANNONCE_PARTAGEE, maintenantC, { annonce: c.id }) ?? { ...pfC, annonce_partagee: { ...apC, annonce: c.id, cascade: { etat: "a_trancher", depuis: maintenantC } } };
+                await userClient.from("cross_post_jobs").update({ platform_fields: pfHold }).eq("id", j.id).eq("status", "pending");
+              }
+              tenusCascade++;
+              traces.push(`${String(j.id).slice(0, 8)} (annonce ${c.id}, ${articles.size} articles) : retenu, FillSell tranche`);
+              continue;
+            }
+          }
           const vus = new Map<string, number>();
           const options = [...articles.entries()].map(([inv, a]) => {
             let label = `« ${a.titre || "article sans titre"} »${a.prix != null ? ` — ${a.prix} €` : ""}`;
@@ -5080,7 +5141,10 @@ serve(async (req) => {
           const pf = { ...pfR(j) };
           const apAvant = (pf["annonce_partagee"] ?? {}) as Record<string, unknown>;
           const depuis = String(apAvant["depuis"] ?? (pf["retrait_bloque_url_partagee"] as Record<string, unknown> | undefined)?.["le"] ?? new Date().toISOString());
-          pf["annonce_partagee"] = { annonce: c.id, plateforme: j.platform, options, depuis };
+          // La cascade a conclu « incertain » : elle reste écrite (la base ne la
+          // relance pas, la question est la dernière étape).
+          pf["annonce_partagee"] = { annonce: c.id, plateforme: j.platform, options, depuis, cascade: apAvant["cascade"] ?? null };
+          if (retenueServeurDe(pf)?.motif === RETENUE_ANNONCE_PARTAGEE) delete pf["retenue_serveur"];
           pf["needs_user_source"] = "annonce_partagee";
           pf["needsUserField"] = {
             platform: j.platform,
@@ -5102,8 +5166,8 @@ serve(async (req) => {
         if (bloques.size) {
           out = out.filter((j) => !bloques.has(String(j.id)));
           console.warn(
-            `[get-pending-jobs] user=${user.id} : ${bloques.size} geste(s) de RETRAIT → needs_user « quel article vend cette annonce ? », ` +
-            `rien n'est retiré : ${traces.join(" ; ")}`,
+            `[get-pending-jobs] user=${user.id} : ${bloques.size} geste(s) de RETRAIT sur une annonce partagée — ${tenusCascade} retenu(s) le temps ` +
+            `que FillSell tranche, ${bloques.size - tenusCascade} question(s) « quel article vend cette annonce ? » ; rien n'est retiré : ${traces.join(" ; ")}`,
           );
         }
       }
@@ -6359,7 +6423,7 @@ serve(async (req) => {
       const retenus = new Set<string>();
       if (operations.length) {
         const { data: profil, error: erreurProfil } = await userClient.from("profiles")
-          .select("extension_sessions,vinted_sync_pin").eq("id", user.id).maybeSingle();
+          .select("extension_sessions,vinted_sync_pin,platform_settings").eq("id", user.id).maybeSingle();
         const ids = [...new Set(operations.map(j => j.inventaire_id).filter(x => x != null))];
         const { data: articles, error: erreurArticles } = ids.length
           ? await lireParLots((lot) => userClient.from("inventaire").select("id,vinted_account_id").in("id", lot), ids)
@@ -6375,13 +6439,34 @@ serve(async (req) => {
         }));
         for (const j of operations) {
           let pf = (j.platform_fields ?? {}) as Record<string, unknown>;
-          // (11/10, Louis) La boutique CHOISIE par la personne pour un article
-          // sans boutique (question « boutique_a_choisir ») devient l'origine
-          // du job — seulement une boutique confirmée, jamais un défaut.
-          if (fiable && j.platform === "vinted" && j.action === "publish" && !String(pf.vinted_account_id ?? "").trim() && pf.vinted_boutique_choisie) {
-            const choisie = boutiqueChoisieVersId(pf.vinted_boutique_choisie, profil?.vinted_sync_pin?.boutiques);
-            if (choisie) {
-              pf = { ...pf, vinted_account_id: choisie, vinted_boutique_choisie_le: new Date().toISOString() };
+          // ── (15/10 soir, Louis — Nico) UNE PUBLICATION NE BLOQUE PLUS SUR LA
+          // BOUTIQUE (_shared/boutique-publication-vinted.js) : article lié →
+          // sa boutique ; sinon la boutique changée dans la file, puis celle
+          // par défaut des Réglages, puis celle ouverte dans le navigateur.
+          // Jamais une boutique hors du compte. La boutique retenue devient
+          // celle du job (vinted_account_id) : l'extension la relit avant le
+          // dépôt (autre boutique → rien n'est soumis, le job l'attend).
+          // Une boutique posée ICI (vinted_boutique_auto) se recalcule à chaque
+          // service tant que la publication n'est pas partie ; une boutique
+          // posée à la création du job (sans cette trace) ne bouge pas.
+          if (fiable && j.platform === "vinted" && j.action === "publish" && !String(origines.get(String(j.inventaire_id)) ?? "").trim()
+              && (!String(pf.vinted_account_id ?? "").trim() || pf.vinted_boutique_auto)) {
+            const auto = (pf.vinted_boutique_auto ?? null) as Record<string, unknown> | null;
+            const choix = boutiquePublicationVinted({
+              boutiqueChoisie: pf.vinted_boutique_choisie ?? null,
+              boutiqueDefaut: ((profil?.platform_settings as Record<string, unknown> | null)?.vinted as Record<string, unknown> | undefined)?.boutique_defaut ?? null,
+              boutiqueSession: identite?.user_id ?? null,
+              boutiques: profil?.vinted_sync_pin?.boutiques,
+            });
+            if (choix.boutique && choix.boutique !== String(pf.vinted_account_id ?? "").trim()) {
+              pf = { ...pf, vinted_account_id: choix.boutique,
+                vinted_boutique_auto: { source: choix.source, le: new Date().toISOString(), pose_par: "get-pending-jobs (boutique-publication-vinted)" } };
+              await userClient.from("cross_post_jobs").update({ platform_fields: pf }).eq("id", j.id).eq("status", "pending");
+              j.platform_fields = pf;
+            } else if (!choix.boutique && choix.motif === "session_inconnue" && auto?.source === "session") {
+              // La boutique ouverte n'est plus lisible : on n'en garde pas une ancienne.
+              const { vinted_account_id: _a, vinted_boutique_auto: _b, ...sans } = pf;
+              pf = sans;
               await userClient.from("cross_post_jobs").update({ platform_fields: pf }).eq("id", j.id).eq("status", "pending");
               j.platform_fields = pf;
             }
@@ -6436,20 +6521,11 @@ serve(async (req) => {
           // boutiques confirmées), rien ne part avant — jamais un défaut.
           // Source à part (« boutique_a_choisir ») : la reprise automatique
           // des attentes de boutique ne la relance jamais sans ce choix.
-          if (j.action === "publish" && j.platform === "vinted" && motif === "origine_inconnue") {
-            const logins = [...loginsDesBoutiques(profil?.vinted_sync_pin).entries()]
-              .map(([id, login]) => (login ? `@${login}` : String(id)));
-            if (logins.length >= 2) {
-              await userClient.from("cross_post_jobs").update({ status: "needs_user",
-                error: "Sur quelle de tes boutiques Vinted publier cet article ? Il ne part sur aucune avant ta réponse : rien n'est choisi pour toi.",
-                platform_fields: { ...pf, needs_user_source: "boutique_a_choisir",
-                  needsUserField: { platform: "vinted", field_key: "vinted_boutique", field_label: "Boutique Vinted", input_type: "select",
-                    allowed_values: logins, options_completes: true, target: { root: null, key: "vinted_boutique_choisie" } },
-                  boutique_a_choisir: { le: new Date().toISOString(), boutiques: logins, session: identite?.user_id ?? null, pose_par: "get-pending-jobs (publication sans boutique)" } },
-              }).eq("id", j.id).eq("status", "pending");
-              continue;
-            }
-          }
+          // (15/10 soir) Plus de question « boutique_a_choisir » : sans boutique
+          // lisible (navigateur fermé, sonde muette) ou avec une boutique ouverte
+          // qui n'est pas sur ce compte, la publication ATTEND en file, sans
+          // geste — elle part dès qu'une boutique du compte est vue ouverte.
+          if (j.action === "publish" && j.platform === "vinted" && motif === "origine_inconnue") continue;
           // Une vérification impossible reste une attente serveur. La garde
           // retient ce job à chaque poll sans inventer une boutique étrangère.
           // (2026-10-01) Plus jamais en silence pour une republication : la
@@ -9490,7 +9566,10 @@ serve(async (req) => {
             const poids = String(res["lbcAspects.estimated_parcel_weight"] ?? "").trim();
             if (poids) {
               const t = trancheColis(pf, p.inventaire_id);
-              if (!memoire.poids.has(t)) memoire.poids.set(t, poids);
+              // (15/10 soir, PAUGUES) Jamais une tranche apprise SANS format : tous
+              // les jobs sans format partagent la case « (absent) » — la réponse
+              // d'une broche (« Jusqu'à 100 g ») partait sur un buste en bronze.
+              if (t !== "(absent)" && !memoire.poids.has(t)) memoire.poids.set(t, poids);
             }
           }
           if (memoire.new_item_type || memoire.poids.size) {

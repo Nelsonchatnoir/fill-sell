@@ -109,8 +109,12 @@ const gpj = lire("supabase/functions/get-pending-jobs/index.ts");
 const bloc = gpj.slice(gpj.indexOf("LEBONCOIN : AUCUN FORMAT DEVINÉ, LE POIDS DE LA FICHE"), gpj.indexOf("OPLA : UN PRIX AU-DESSUS DE SON PLAFOND"));
 ok(bloc.length > 500 && /decisionPoidsLbc\(\{ \.\.\.j, platform_fields: pfL \}\)/.test(bloc) && bloc.indexOf("livraisonLbcAuService(") < bloc.indexOf("decisionPoidsLbc({"),
   "gpj : le poids de la fiche d'abord, puis la lecture en grammes");
-ok(!/needs_user/.test(bloc) && !/retenusPoids/.test(bloc) && !/QUESTION_POIDS_LBC|MESSAGE_POIDS_LBC/.test(gpj),
-  "gpj : plus aucune publication Leboncoin retenue pour son poids (ni needs_user, ni filtre, ni sur une lecture ratée)");
+// (15/10 soir, PAUGUES) SEULE exception : un compte où Leboncoin EXIGE le poids
+// (formulaire PRO, preuve notée par handler-watch) — jamais un particulier.
+const blocSansExige = bloc.replace(/\/\/ ── \(15\/10 soir, PAUGUES\) UN COMPTE QUI EXIGE LE POIDS[\s\S]*$/, "");
+ok(!/needs_user/.test(blocSansExige) && !/retenusPoids/.test(bloc) && !/QUESTION_POIDS_LBC|MESSAGE_POIDS_LBC/.test(gpj)
+  && /if \(poidsExige\) \{/.test(bloc) && /poidsManquantCompteExige\(j, reglagesL\.leboncoin/.test(bloc),
+  "gpj : aucune publication retenue pour son poids, sauf chez un compte où Leboncoin l'EXIGE (preuve notée)");
 ok(P.QUESTION_POIDS_LBC === undefined && !Object.values(P).some((v) => typeof v === "function" && /demander/.test(String(v))), "_shared/poids-leboncoin.js : plus de « demander »");
 const lps = lire("src/components/ListingPreviewScreen.jsx");
 ok(/const poidsLbcManquant = poidsLbcVise\s*&& poidsLbcManquantPour\(choixPoidsLbc\.choix, lirePoidsGrammes\(poidsLbcSaisi\)\.valeur \?\? poidsDeLaFiche\);/.test(lps),

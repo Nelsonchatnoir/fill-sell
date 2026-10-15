@@ -84,26 +84,27 @@ console.log("4. CHAQUE ATTENTE DIT POURQUOI");
   ok(s(job({ status: "needs_user", platform_fields: { needs_user_source: "prevol_negatif" } })).groupe === "geste", "une vraie question reste un geste");
   const repub = job({ action: "republish", platform_fields: { republish_step: "a_capturer" } });
   const plafond = { retenue: true, motif: "plafond", reprise: "2026-10-01T22:00:00Z" };
-  ok(s(repub, { ...ctx, plafond }).raison === "En pause jusqu'à demain 00:00 (limite du jour)", s(repub, { ...ctx, plafond }).raison);
+  // (15/10 soir, Nico) Plus jamais l'heure de reprise : l'état seul (« ça fait fuir »).
+  ok(s(repub, { ...ctx, plafond }).raison === "En pause (limite du jour)", s(repub, { ...ctx, plafond }).raison);
   const rythme = { retenue: true, motif: "pause", reprise: iso(146) };
-  ok(s(repub, { ...ctx, plafond: rythme }).raison === "En pause jusqu'à 17:26 (rythme de republication)", s(repub, { ...ctx, plafond: rythme }).raison);
+  ok(s(repub, { ...ctx, plafond: rythme }).raison === "En pause (rythme de republication)", s(repub, { ...ctx, plafond: rythme }).raison);
   ok(s(repub, { ...ctx, plafond: { retenue: true, motif: "plafond", reprise: null } }).raison === "En pause (limite du jour)", "reprise inconnue : pas d'heure inventée");
   ok(s(job({}), { ...ctx, plafond }).groupe === "a_venir", "la limite des republications ne retient pas une publication");
   const auto = job({ action: "republish", platform_fields: { republish_step: "a_capturer", republish_source: "auto" } });
-  ok(s(auto, { ...ctx, creneaux: { vinted: { dans_creneau: false, reprise: iso(60) } } }).raison === "En pause jusqu'à 16:00 (créneau de republication)", "hors créneau : l'heure du prochain créneau");
+  ok(s(auto, { ...ctx, creneaux: { vinted: { dans_creneau: false, reprise: iso(60) } } }).raison === "En pause (créneau de republication)", "hors créneau : en pause, sans heure");
   const essai = job({ error: "Vinted ne répond pas", platform_fields: { next_action_after: iso(20) } });
-  ok(s(essai).raison === "Nouvel essai à 15:20", s(essai).raison);
-  ok(s(job({ error: "x", platform_fields: { next_action_after: iso(-20) } })).raison === "Nouvel essai dans un instant", "essai dont l'heure est passée : pas d'heure");
+  ok(s(essai).raison === "Nouvel essai automatique, rien à faire", s(essai).raison);
+  ok(s(job({ error: "x", platform_fields: { next_action_after: iso(-20) } })).raison === "Nouvel essai automatique, rien à faire", "essai dont l'heure est passée : pas d'heure");
   ok(s(job({ platform: "beebs" }), { ...ctx, plateformesEnPause: new Set(["beebs"]) }).raison === "Beebs est en pause de notre côté — reprise automatique", "plateforme en pause de notre côté");
   ok(s(job({ status: "needs_user", error: "Taille manquante" })).groupe === "geste", "needs_user : un geste à faire");
   const connexion = job({ platform: "beebs", error: "En attente de ta connexion à Beebs", platform_fields: { attente_session: { depuis: iso(-5) } } });
   ok(s(connexion).raison === "Un geste à faire : connecte-toi à Beebs sur ton ordinateur", "session fermée : le geste de connexion");
   const horsLigne = job({ action: "republish", platform: "leboncoin", platform_fields: { republish_step: "deleted", deleted_at: iso(-2), next_action_after: iso(3) } });
-  ok(s(horsLigne).groupe === "en_cours" && s(horsLigne).raison === "Hors ligne quelques minutes : remise en ligne vers 15:03", "hors ligne entre retrait et remise en ligne : en cours, avec l'heure prévue");
+  ok(s(horsLigne).groupe === "en_cours" && s(horsLigne).raison === "Hors ligne quelques minutes : remise en ligne en cours", "hors ligne entre retrait et remise en ligne : en cours, sans heure promise");
   ok(s(horsLigne, { ...ctx, plafond }).groupe === "en_cours", "la limite du jour ne retient jamais une annonce hors ligne");
   // (03/10, point 23 — nivake03) « quelques minutes » seulement quand c'est vrai.
   const horsLigneLongtemps = job({ action: "republish", platform_fields: { republish_step: "deleted", deleted_at: iso(-4 * 24 * 60 - 30), next_action_after: iso(5) } });
-  ok(/^Hors ligne depuis le \d{1,2} \S+ : nouvel essai de remise en ligne vers \d\d:\d\d$/.test(s(horsLigneLongtemps).raison) && !/quelques minutes/.test(s(horsLigneLongtemps).raison),
+  ok(/^Hors ligne depuis le \d{1,2} \S+ : remise en ligne dès que possible$/.test(s(horsLigneLongtemps).raison) && !/quelques minutes/.test(s(horsLigneLongtemps).raison),
     "retirée depuis 4 jours : « Hors ligne depuis le … », plus jamais « quelques minutes »", s(horsLigneLongtemps).raison);
   ok(s(job({ action: "republish", platform_fields: { republish_step: "captured", attente_boutique: { login: "louis" } } })).raison === "En attente de ta boutique @louis : ouvre-la sur vinted.fr dans Chrome, ça repartira tout seul",
     "attente de la bonne boutique Vinted — (03/10, point 16) la phrase dit désormais quelle boutique OUVRIR");

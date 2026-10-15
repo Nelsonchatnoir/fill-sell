@@ -22,6 +22,8 @@
     "site:og": "node scripts/site/og.mjs",
     "site:preuve-consentement": "node scripts/site/preuve-consentement.mjs",
     "selftest:site-aiguillage": "node scripts/site-aiguillage-selftest.mjs",
+    "selftest:annonce-partagee-cascade": "node scripts/annonce-partagee-cascade-selftest.mjs",
+    "selftest:questions-tranchees": "node scripts/questions-tranchees-selftest.mjs",
     "selftest:site-routes-app": "node scripts/site-routes-app-selftest.mjs",
     "selftest:site-balises": "node scripts/site-balises-selftest.mjs",
     "selftest:site-blog-lecteurs": "node scripts/site-blog-lecteurs-selftest.mjs",

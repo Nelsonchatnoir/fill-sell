@@ -75,7 +75,7 @@ const st = lire("src/tabs/StockTab.jsx");
 ok(/boutiques: \(boutiquesVinted\?\.length \?\? 0\) >= 1 \? \{ connectee: boutiqueConnectee, liste: boutiquesVinted, origines: originesBoutique \} : null/.test(st),
   "le Stock passe la boutique aux barres et à la file");
 const fdj = lire("src/components/FileDesJobs.jsx");
-ok(/libelleAction\(job, lang, boutiques\)/.test(fdj) && /boutiques: contexte\?\.boutiques \?\? autonome\?\.boutiques \?\? null/.test(fdj), "la file l'affiche, y compris ouverte hors du Stock");
+ok(/libelleAction\(job, lang, prevue \? null : boutiques\)/.test(fdj) && /boutiques: contexte\?\.boutiques \?\? autonome\?\.boutiques \?\? null/.test(fdj), "la file l'affiche, y compris ouverte hors du Stock (15/10 : la boutique prévue d'une publication, ChoixBoutiqueFile)");
 
 if (ko) { console.error(`\n✗ ${ko} échec(s)`); process.exit(1); }
 console.log("\n✓ multi-boutiques : chaque ligne dit sa boutique, l'attente dit laquelle ouvrir");

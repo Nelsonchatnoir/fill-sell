@@ -61,3 +61,19 @@ export function decisionPoidsLbc(job) {
   if (typeof brut === "number" && brut === g) return { action: "rien" };
   return { action: "normaliser", valeur: g };
 }
+
+/**
+ * (15/10 soir, PAUGUES) Un compte où Leboncoin EXIGE le poids (formulaire PRO,
+ * « Poids du colis* » sans estimation — preuve notée par handler-watch dans
+ * platform_settings.leboncoin.poids_exige) : une PUBLICATION sans poids ni
+ * tranche n'est jamais servie, elle devient la question en grammes AVANT tout
+ * dépôt (réglée en un geste pour le lot). Jamais un poids inventé.
+ * @returns {boolean} true = à demander avant de servir
+ */
+export function poidsManquantCompteExige(job, reglagesLeboncoin) {
+  if (!job || job.platform !== "leboncoin" || String(job.action ?? "publish") !== "publish") return false;
+  if (!reglagesLeboncoin || typeof reglagesLeboncoin !== "object" || !reglagesLeboncoin.poids_exige) return false;
+  const pf = job.platform_fields && typeof job.platform_fields === "object" ? job.platform_fields : {};
+  const a = pf.lbcAspects && typeof pf.lbcAspects === "object" ? pf.lbcAspects : {};
+  return grammesLbc(pf.lbcPoidsGrammes) == null && !String(a.estimated_parcel_weight ?? "").trim();
+}

@@ -61,8 +61,11 @@ ok(/la republication repartira toute seule/.test(A.messageAttenteBoutique('x', '
 console.log('4. câblage (get-pending-jobs)');
 const gpj = lire('supabase/functions/get-pending-jobs/index.ts');
 ok(/\?\? verifierBoutiquePublicationVinted\(\{ action: j\.action, platform: j\.platform,/.test(gpj), 'la règle des publications suit celle des opérations existantes');
-ok(/boutiqueChoisieVersId\(pf\.vinted_boutique_choisie, profil\?\.vinted_sync_pin\?\.boutiques\)/.test(gpj), 'le choix de la personne devient l\'origine du job');
-ok(/needs_user_source: "boutique_a_choisir"/.test(gpj) && /input_type: "select",\s*\n?\s*allowed_values: logins/.test(gpj), 'article sans boutique : question fermée, source à part');
+// (15/10 soir, Nico) Plus de question « boutique_a_choisir » : article sans
+// boutique → choix de la file, puis défaut des Réglages, puis boutique ouverte
+// (scripts/questions-tranchees-selftest.mjs, _shared/boutique-publication-vinted.js).
+ok(/boutiqueChoisie: pf\.vinted_boutique_choisie \?\? null/.test(gpj) && /vinted_account_id: choix\.boutique/.test(gpj), 'le choix de la personne (file) devient l\'origine du job');
+ok(!/needs_user_source: "boutique_a_choisir"/.test(gpj) && /motif === "origine_inconnue"\) continue;/.test(gpj), 'article sans boutique : plus jamais de question, la publication attend une boutique du compte');
 ok(/\.eq\("platform_fields->>needs_user_source", "boutique_etrangere"\)/.test(gpj), 'la reprise automatique ne lit que « boutique_etrangere » (jamais la question)');
 ok(/pose_par: publicationAilleurs \? POSE_PAR_PUBLICATION_BOUTIQUE/.test(gpj), 'publication retenue : levable (reprend seule)');
 const st = lire('src/tabs/StockTab.jsx');
