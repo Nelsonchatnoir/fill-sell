@@ -111,3 +111,30 @@
 - **La file** : le bouton mène à l'action en un tap (Répondre → mini-éditeur) ; AUCUNE heure ni durée promise
   (`sansEstimation`) ; une attente automatique (relevé à venir, pause technique avant retrait, eBay étranger,
   plateforme écartée) est une pause, jamais un geste.
+
+## 15/10 soir (3) — clôture du rouge (rapport `docs/enquetes/cloture-rouge-1510/RAPPORT.md`)
+- **Jamais un deuxième dépôt Beebs à l'aveugle** (`_shared/depot-sans-numero.js`, gpj v252+) : une publication Beebs
+  dont le dernier essai a PU partir (essai commencé sans fin relevée, formulaire muet après le clic, « non confirmé »
+  avec une requête captée) est retenue : relevé du compte demandé, puis annonce apparue depuis (reliée à rien,
+  numérotée après l'essai) aux photos de NOTRE copie → rattachée, aucune → redépôt autorisé (`depot_verifie`),
+  doute → question (`depot_deja_parti`, une relance de la personne vaut réponse). « Non confirmé » SANS aucune
+  requête = rien n'est parti : un nouvel essai n'est pas à l'aveugle.
+- **Toute remise en ligne Beebs part avec ≥ 5 caractères de description** : la sienne (annonce capturée) → celle de
+  la FICHE → les faits du job. Couleur/matière ajoutées aux publications seulement.
+- **Une recréation bloquée repart seule quand la cause est levée** (`_shared/recreation-bloquee.js`,
+  `CAUSES_LEVEES_PAR_LE_SERVEUR`, handler-watch v110+) : une fois par cause et par job, jamais sur une cause du
+  compte ; message vrai sans durée.
+- **Dépôt muet** (handler-watch v110+, `_shared/depot-muet.js`) : l'attente se compte depuis la DERNIÈRE REMISE EN
+  FILE (création, fermeture précédente, `remis_en_file_le` posé par la base sur needs_user/failed/cancelled →
+  pending — mig 20261015210000 —, relance de l'app, archive de relance). Une reprise technique n'en est pas une.
+- **Feuille Leboncoin** (`_shared/lbc-feuille-corrigee.js`, gpj) : publication rangée dans une feuille Maison &
+  Jardin sans paire réelle (fourre-tout) et dont aucun Produit n'est nommé dans l'annonce, quand UNE seule autre
+  feuille porte un Produit nommé → cette feuille, avec sa paire (lampe Accolay → Décoration › Éclairage › Lampe à
+  poser). Deux candidates : rien ne bouge.
+- **Mots-clés Leboncoin** (décision de Nico, 15/10, remplace le 10/09) : une ligne « Mots-clés : / Keywords : /
+  Tags : » compte dans les 5 ; au-delà (avec les hashtags restants), elle part du texte ENVOYÉ.
+- **Marque Vinted hors catalogue** (ujs v137, gpj v252, extension 0.6.114) : la question « Sans marque ou une
+  marque du catalogue » part UNE fois avant toute suppression (plus de reprise ni de champ retiré) ; la réponse
+  (rangée sur l'article, servie en `marque_choisie`) prime sur la marque capturée à la recréation, l'ancien
+  brand_id n'est plus transmis. NON fait : poser le brand_id capturé dans le corps de la recréation (« reprendre
+  exactement l'annonce ») — exige un essai réel sur le compte de Nico avant (la recréation suit la suppression).

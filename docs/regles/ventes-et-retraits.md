@@ -95,3 +95,11 @@
 - **Ventes (02/10 soir)** : `ventes.annonce_id` = la preuve (numéro d'annonce) ;
   la même cession se FUSIONNE dans la vente saisie (la saisie prime), jamais
   deux ventes, jamais sur le titre (migration 20261002210000).
+
+## 15/10 soir (3) — retrait eBay par la voie qui marche
+- Un retrait eBay d'un compte RELIÉ (jeton non révoqué) arrêté faute de session eBay dans Chrome passe en voie API
+  (ebay-api-worker v86, `_shared/ebay-retrait-trading.js`) : GetItem avant (même numéro, vendeur = compte relié,
+  active ; déjà vendue → on le dit ; terminée → rien à faire ; autre compte → question), EndFixedPriceItem / EndItem,
+  GetItem après = preuve. Compte NON relié : aucune voie serveur, le mur dit aussi « relie ton compte eBay ».
+- Retrait Beebs sans numéro : une annonce « non reliée » numérotée avant le dépôt ne le bloque plus (voir
+  rapprochement-et-releves.md) ; deux relevés complets concluent comme avant.

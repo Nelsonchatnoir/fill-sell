@@ -215,3 +215,19 @@ trois relevés et deux reprises lancés tout seuls, aucun Vinted abouti, un faux
   la personne décide ; décision appliquée par `annonce_partagee_attribuer` (defaire_croisement_annonce) ; une
   republication capturée sur la mauvaise annonce est RECAPTURÉE. get-pending-jobs retient le geste
   (« ton annonce est intacte ») et ne pose la question qu'après « incertain » (filet : 30 min).
+
+## 15/10 soir (3) — identité par les photos de NOTRE copie (cascade identifiant → photos → IA)
+- **Dépôt sans numéro rattaché par le relevé** (`_shared/depot-sans-numero.js`, beebs-lien v14) : annonce du compte
+  reliée à rien, vue après le dépôt, non numérotée avant lui, aux photos de la COPIE envoyée (trancherParPhotos,
+  une seule « même », les autres « autre »), appariement mutuel → numéro posé (`lien_par_photos`), URL seulement si
+  en ligne. Jamais titre/prix/date. Remplace la règle du 29/09 « identifiant seul ». 1re passe : nicolas.menar ×3.
+- **Recréation « peut-être déjà partie »** (`jugerCandidates`, gpj + handler-watch) : une seule candidate aux photos
+  de notre copie (pas celles de la fiche : la personne poste avec les siennes) = notre dépôt → rattachée, aucun
+  redépôt (camille.ferren 3288747290). Doute : la question, comme avant.
+- **Numérotée avant le dépôt** (`numeroteeAvantLeDepot`, Beebs seulement — mesuré : 0 inversion réelle sur 314 966
+  paires ; Leboncoin non monotone) : une annonce de numéro inférieur à une annonce vue avant le dépôt ne peut pas
+  être ce dépôt (Joe0410 : 33911255 « Polo Scott » du 06/09).
+- **Titre du job aligné sur l'annonce prouvée** (`_shared/titre-aligne.js`, handler-watch v110+, Leboncoin) : même
+  numéro, même fiche, photos identiques → le titre des jobs devient le titre en ligne (`titre_aligne`), le job arrêté
+  par « Contradiction d'identité » repart ; le titre de la fiche n'est jamais touché. Au recâblage,
+  `rapprocher_recabler_job` emporte le titre de l'annonce visée (mig 20261015210000).
