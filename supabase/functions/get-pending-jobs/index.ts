@@ -181,6 +181,8 @@ import { completerJobOpla, type OplaMem } from "../_shared/opla-completion.ts";
 import { plateformesFigees, rotationFiges, gelSansConstat } from "../_shared/rotation-figes.js";
 // La tranche « Poids du colis » d'une annonce Leboncoin relue depuis ses grammes (25/09).
 import { trancheLbcDepuisGrammes } from "../_shared/lbc-poids-tranche.js";
+import { poidsColisDeLAnnonceLbc } from "../_shared/lbc-poids-annonce.js";
+import { frereHorsLigne, retenueLevee, plateformesRetenuesPar, MESSAGE_EN_FILE } from "../_shared/retenue-hors-ligne.js";
 import { localisationLbcATaper } from "../_shared/lbc-localisation.js";
 import { candidatesDepuisRetrait, depotPeutEtrePartiDepuis, jugerCandidates } from "../_shared/recreation-deja-partie.js";
 import { BUILD_COLIS_DANS_ENVOI, VERSION_COLIS_DANS_ENVOI, RETENUE_COLIS_ANCIEN_POSTE, envoiColisProuve, messageColisAttendMiseAJour, colisVintedRetenuAuService } from "../_shared/vinted-colis.js";
@@ -330,7 +332,7 @@ function pfAPersister(pf: Record<string, unknown>): Record<string, unknown> {
 function messageRetenueHorsLigne(titre: string, restriction: boolean): string {
   const t = titre ? `ton annonce « ${titre} »` : "ton annonce retirée";
   return `En attente : ${t} a été retirée et n'est pas encore revenue en ligne. ` +
-    "Les autres republications attendent sa remise en ligne, pour ne jamais laisser deux annonces hors ligne. Rien n'a été retiré." +
+    "Cette republication attend qu'elle soit recréée, pour ne jamais laisser deux annonces hors ligne. Ton annonce à toi est toujours en ligne." +
     (restriction ? " Vinted a restreint les mises en vente de ton compte : ouvre vinted.fr pour voir ce que Vinted demande ; tout repartira seul une fois la restriction levée." : "");
 }
 
@@ -4385,6 +4387,10 @@ serve(async (req) => {
             const liv: string[] = [];
             const ship = attrLbc("shipping_type");
             const vals = Array.isArray(ship?.["values"]) ? (ship!["values"] as unknown[]).map(String) : null;
+            // (15/10) Le poids d'une annonce en MAIN PROPRE (40 000 g gardés par
+            // Leboncoin) n'est jamais un poids de colis : jamais repris
+            // (_shared/lbc-poids-annonce.js). Fiche ou copie, sinon Leboncoin estime.
+            const poidsAnnonce = poidsColisDeLAnnonceLbc(bruts);
             // (05/10, Nico) « Les transporteurs cochés doivent être exactement
             // ceux choisis, au dépôt comme à la republication » : un choix
             // RETENU par la personne passe devant ce que l'annonce affiche (un
@@ -4393,7 +4399,7 @@ serve(async (req) => {
             const retenusLbc = reponduL("lbcTransporteurs") ? null : await transporteursLbcRetenus();
             if (retenusLbc) {
               const avantT = Array.isArray(pf["lbcTransporteurs"]) ? (pf["lbcTransporteurs"] as unknown[]).map(String) : null;
-              const pfR: Record<string, unknown> = { lbcPoidsGrammes: pf["lbcPoidsGrammes"] ?? Number(attrLbc("estimated_parcel_weight")?.["value"]) };
+              const pfR: Record<string, unknown> = { lbcPoidsGrammes: pf["lbcPoidsGrammes"] ?? poidsAnnonce.grammes };
               livraisonLbcAuService(pfR, { transporteursRetenus: retenusLbc });
               const voulus = Array.isArray(pfR["lbcTransporteurs"]) ? (pfR["lbcTransporteurs"] as string[]) : null;
               if (voulus && JSON.stringify(avantT) !== JSON.stringify(voulus)) {
@@ -4412,7 +4418,8 @@ serve(async (req) => {
               const avantF = String(pf["format_colis"] ?? pf["lbcFormatColis"] ?? "").trim();
               pf["format_colis"] = FORMATS[taille]; liv.push(`format ← ${FORMATS[taille]}${avantF ? ` (annonce ; copie : ${avantF})` : ""}`);
             }
-            const grammes = Number(attrLbc("estimated_parcel_weight")?.["value"]);
+            const grammes = Number(poidsAnnonce.grammes);
+            if (poidsAnnonce.raison === "main_propre") liv.push("poids de l'annonce ignoré (main propre, pas un poids de colis)");
             if (Number.isFinite(grammes) && grammes > 0 && !reponduL("lbcPoidsGrammes") && Math.round(grammes) !== Number(pf["lbcPoidsGrammes"])) {
               const avantP = Number(pf["lbcPoidsGrammes"]) > 0 ? Number(pf["lbcPoidsGrammes"]) : null;
               pf["lbcPoidsGrammes"] = Math.round(grammes); liv.push(`poids ← ${Math.round(grammes)} g${avantP ? ` (annonce ; copie : ${avantP} g)` : ""}`);
@@ -10738,22 +10745,63 @@ serve(async (req) => {
     // Même lecture que l'extension (même plateforme, statut pending/processing,
     // étape 'deleted') ; illisible → on sert comme avant (l'extension garde sa
     // garde, échec fermé).
-    if (!includeProcessing && !includeNeedsUser && out.some((j) => j.action === "republish"
-      && String(((j.platform_fields as Record<string, unknown> | null) ?? {})["republish_step"] ?? "") === "captured")) {
+    const aRetenir = out.some((j) => j.action === "republish"
+      && String(((j.platform_fields as Record<string, unknown> | null) ?? {})["republish_step"] ?? "") === "captured");
+    if (!includeProcessing && !includeNeedsUser) {
       try {
         const adminR = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        // (15/10) Les retenues posées : lues à chaque passage (une lecture
+        // indexée par compte, 50 au plus), même quand la file servie n'a
+        // aucune republication 'captured' (l'attente de 30 min de l'extension
+        // la retire de la file).
+        const { data: marques } = await adminR.from("cross_post_jobs")
+          .select("id, error, platform_fields")
+          .eq("user_id", user.id).eq("action", "republish").eq("status", "pending")
+          .not("platform_fields->retenue_hors_ligne", "is", null)
+          .limit(50);
+        if (!aRetenir && !(marques ?? []).length) throw new Error("__rien_a_retenir__");
         const { data: horsLigne, error: hErr } = await adminR.from("cross_post_jobs")
           .select("id, platform, title, platform_fields")
           .eq("user_id", user.id).eq("action", "republish").in("status", ["pending", "processing"])
           .eq("platform_fields->>republish_step", "deleted")
           .order("created_at", { ascending: true }).limit(50);
+        // ══ (15/10, RoCotCot) LE MOTIF SE LÈVE QUAND L'ANNONCE EST REVENUE ════
+        // « Bop It » recréée à 16:16:59, trois jobs Beebs disaient encore à 16:18
+        // « … n'est pas encore revenue en ligne » ; « Guerlain » revenue à 14:41,
+        // message changé à 15:06 ; ~111 min de message faux sur 3 h 40 d'attente.
+        // À chaque passage : toute republication pending du compte qui porte une
+        // retenue dont le frère n'est PLUS hors ligne perd la retenue (et
+        // l'attente de 30 min que l'extension lui avait posée), et dit vrai :
+        // « En file ». Bornée (50), compare-and-swap sur pending, ancien message
+        // archivé. Rien n'est servi ni retiré ici.
+        if (!hErr) {
+          const idsHorsLigne = new Set(((horsLigne ?? []) as Array<Record<string, unknown>>).map((h) => String(h["id"])));
+          for (const m of ((marques ?? []) as Array<Record<string, unknown>>)) {
+            const pfM = (m["platform_fields"] as Record<string, unknown> | null) ?? {};
+            const levee = retenueLevee(pfM, idsHorsLigne, Date.now());
+            if (!levee) continue;
+            const pfW: Record<string, unknown> = { ...pfM, ...levee.champs };
+            for (const k of levee.retirer) delete pfW[k];
+            if (m["error"]) pfW["erreurs_archivees"] = archiverErreur(pfW["erreurs_archivees"], m["error"], "pending", "get-pending-jobs (retenue levée : l'annonce retirée est revenue)");
+            const { data: majL } = await adminR.from("cross_post_jobs")
+              .update({ error: MESSAGE_EN_FILE, platform_fields: pfW })
+              .eq("id", String(m["id"])).eq("status", "pending").select("id");
+            if ((majL ?? []).length) {
+              const ji = out.find((j) => String(j.id) === String(m["id"]));
+              if (ji) { ji.platform_fields = pfW; ji.error = MESSAGE_EN_FILE; }
+              console.log(`[get-pending-jobs] userId=${user.id} : retenue levée sur ${String(m["id"]).slice(0, 8)} (l'annonce du job ${String((pfM["retenue_hors_ligne"] as Record<string, unknown> | null)?.["job"] ?? "").slice(0, 8)} est revenue)`);
+            }
+          }
+        }
         if (!hErr && (horsLigne ?? []).length) {
           const retenus = new Set<string>();
           for (const j of out) {
             const pfJ = (j.platform_fields as Record<string, unknown> | null) ?? {};
             if (j.action !== "republish" || String(pfJ["republish_step"] ?? "") !== "captured") continue;
-            const frere = ((horsLigne ?? []) as Array<Record<string, unknown>>)
-              .find((h) => String(h["platform"]) === String(j.platform) && String(h["id"]) !== String(j.id));
+            // (15/10) Leboncoin, Beebs et Depop forment UN groupe : une annonce
+            // retirée sur l'une retient tout nouveau retrait sur les trois
+            // (_shared/retenue-hors-ligne.js). Vinted reste par plateforme.
+            const frere = frereHorsLigne(j, (horsLigne ?? []) as Array<Record<string, unknown>>);
             if (!frere) continue;
             retenus.add(String(j.id));
             const prec = pfJ["retenue_hors_ligne"] as Record<string, unknown> | null | undefined;
@@ -10781,8 +10829,8 @@ serve(async (req) => {
           // sans dire pourquoi. Bornées (50), compare-and-swap sur pending.
           for (const frere of ((horsLigne ?? []) as Array<Record<string, unknown>>)) {
             const { data: autres } = await adminR.from("cross_post_jobs")
-              .select("id, error, platform_fields")
-              .eq("user_id", user.id).eq("platform", String(frere["platform"])).eq("action", "republish")
+              .select("id, platform, error, platform_fields")
+              .eq("user_id", user.id).in("platform", plateformesRetenuesPar(String(frere["platform"]))).eq("action", "republish")
               .eq("status", "pending").eq("platform_fields->>republish_step", "captured")
               .neq("id", String(frere["id"])).limit(50);
             const titre = String(frere["title"] ?? "").split("\n")[0].replace(/\s+/g, " ").trim().slice(0, 80);
@@ -10805,7 +10853,9 @@ serve(async (req) => {
           }
         }
       } catch (e) {
-        console.warn(`[get-pending-jobs] retenue « une annonce hors ligne » : ${String((e as Error)?.message ?? e)} — file servie telle quelle`);
+        if (String((e as Error)?.message ?? e) !== "__rien_a_retenir__") {
+          console.warn(`[get-pending-jobs] retenue « une annonce hors ligne » : ${String((e as Error)?.message ?? e)} — file servie telle quelle`);
+        }
       }
     }
 
