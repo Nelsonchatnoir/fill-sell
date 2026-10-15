@@ -55,6 +55,8 @@ import {
 } from "../_shared/ebay-publication.ts";
 import { completerAspectsIA, valeurLueDansLeContexte } from "../_shared/ebay-aspects-ia.ts";
 import { valeurDeListeCorrespondante } from "../_shared/texte-comparable.ts";
+import { appelTrading } from "../_shared/ebay-trading-releve.ts";
+import { lireItemTrading, verdictAvantRetraitTrading, preuveApresRetraitTrading, retraitBloqueParSessionEbay } from "../_shared/ebay-retrait-trading.js";
 
 const HANDLER_BUILD = "ebay-api-worker 3-lens";
 const LOT_MAX = 10;
@@ -1870,9 +1872,107 @@ async function lireEtatHorsLigneAvantSuite(env: EbayEnv, listingId: string): Pro
   }
 }
 
+// ── RETRAIT PAR L'API TRADING (15/10 soir, point 3, Amega Gaming) ───────────
+// (_shared/ebay-retrait-trading.js) Une annonce que NOTRE API n'a pas créée
+// (déposée par l'extension, importée par le relevé) d'un compte RELIÉ : GetItem
+// relu avant (même numéro, même vendeur que le compte relié, active), puis
+// EndFixedPriceItem / EndItem, puis GetItem relu après — la preuve. Jamais le
+// titre, jamais une annonce d'un autre compte.
+async function retirerParTrading(admin: SupabaseClient, env: EbayEnv, token: string, job: Job, itemId: string): Promise<Record<string, unknown>> {
+  const { data: compte } = await admin.from("ebay_accounts").select("ebay_user_id, revoked_at").eq("user_id", job.user_id).maybeSingle();
+  const relie = compte && !compte.revoked_at ? String(compte.ebay_user_id ?? "") : "";
+  const lire = async () => {
+    try {
+      const r = await appelTrading(env, token, "GetItem", `<ItemID>${itemId}</ItemID><DetailLevel>ReturnAll</DetailLevel>`);
+      return r.http === 200 ? lireItemTrading(r.xml) : null;
+    } catch { return null; }
+  };
+  const avant = verdictAvantRetraitTrading({ itemId, compteEbay: relie, lecture: await lire() });
+  if (avant.geste === "illisible") {
+    await marquer(admin, job, { status: "pending", error: "Retrait eBay reporté : l'annonce n'a pas pu être relue chez eBay. Aucune annonce n'a été touchée." },
+      { etape: "trading_getitem", quoi: "illisible", motif: avant.motif ?? null, annonce: itemId });
+    return { job: job.id, issue: "pending", motif: "getitem_illisible", annonce: itemId };
+  }
+  if (avant.geste === "identite") {
+    await marquer(admin, job, { status: "failed", error: `Retrait eBay arrêté par FillSell avant tout geste : eBay ne rend pas exactement l'annonce ${itemId}. Aucune annonce n'a été touchée.` },
+      { etape: "trading_getitem", quoi: "identite", motif: avant.motif ?? null, annonce: itemId });
+    return { job: job.id, issue: "failed", motif: "identite", annonce: itemId };
+  }
+  if (avant.geste === "autre_compte") {
+    job.platform_fields = { ...(job.platform_fields ?? {}), needs_user_source: "ebay_annonce_autre_compte" };
+    await marquer(admin, job, { status: "needs_user", error: `Cette annonce eBay (${itemId}) n'est pas sur le compte eBay relié à FillSell (@${relie}). Retire-la toi-même sur ebay.fr, connecté avec le compte qui l'a publiée : FillSell ne peut pas y toucher.` },
+      { etape: "trading_getitem", quoi: "annonce_autre_compte_ebay", motif: avant.motif ?? null, annonce: itemId });
+    return { job: job.id, issue: "needs_user", motif: "annonce_autre_compte_ebay", annonce: itemId };
+  }
+  if (avant.geste === "deja_vendue") {
+    await marquer(admin, job, { status: "cancelled", error: "Retrait eBay annulé : eBay confirme que cette annonce a aussi été vendue sur eBay. Aucune autre annonce n'a été touchée." },
+      { etape: "trading_getitem", quoi: "annonce_deja_vendue", annonce: itemId });
+    return { job: job.id, issue: "cancelled", motif: "annonce_deja_vendue", annonce: itemId };
+  }
+  if (avant.geste === "deja_terminee") {
+    await marquer(admin, job, { status: "deleted", error: null, platform_listing_id: itemId },
+      { etape: "retire", quoi: "annonce_deja_terminee_sans_vente", source: "trading_getitem", annonce: itemId }, { listing_id: itemId, withdrawn_at: new Date().toISOString(), voie_retrait: "trading" });
+    return { job: job.id, issue: "deleted", motif: "deja_terminee", listing_id: itemId };
+  }
+  let reponse: { http: number; xml: string } | null = null;
+  try {
+    reponse = await appelTrading(env, token, String(avant.appel), `<ItemID>${itemId}</ItemID><EndingReason>NotAvailable</EndingReason>`);
+  } catch (e) {
+    reponse = { http: 0, xml: String((e as Error)?.message ?? e).slice(0, 200) };
+  }
+  const apres = preuveApresRetraitTrading({ itemId, lecture: await lire() });
+  if (apres.prouve) {
+    const fin = new Date().toISOString();
+    await marquer(admin, job, { status: "deleted", error: null, platform_listing_id: itemId },
+      { etape: "retire", source: "trading", appel: avant.appel, http: reponse?.http ?? null, statut_ebay: apres.statut, fin_ebay: apres.fin ?? null, annonce: itemId },
+      { listing_id: itemId, withdrawn_at: fin, voie_retrait: "trading" });
+    console.log(`[ebay-api-worker] retrait ${String(job.id).slice(0, 8)} : annonce ${itemId} terminée par ${avant.appel} (relue ${apres.statut})`);
+    return { job: job.id, issue: "deleted", listing_id: itemId, source: "trading" };
+  }
+  const erreur = reponse ? lireItemTrading(reponse.xml).erreurs[0] ?? null : null;
+  await marquer(admin, job, { status: "pending", error: "Retrait eBay reporté : eBay n'a pas confirmé la fin de l'annonce. FillSell réessaie ; rien d'autre n'a été touché." },
+    { etape: "trading_fin", quoi: "fin_non_prouvee", appel: avant.appel, http: reponse?.http ?? null, erreur, relecture: apres.motif ?? null, annonce: itemId });
+  return { job: job.id, issue: "pending", motif: "fin_non_prouvee", annonce: itemId };
+}
+
+// Les retraits d'un compte RELIÉ arrêtés faute de session eBay dans Chrome
+// passent par l'API (15/10 soir) : voie 'extension' → 'api' (permis par
+// cross_post_jobs_voie_stable depuis pending/needs_user), pending. Le worker
+// les prend dans sa boucle ; retirer() choisit l'API Trading quand l'annonce
+// n'est pas une publication de notre API. Borné : 20 par passage.
+async function rerouterRetraitsVersApi(admin: SupabaseClient): Promise<Record<string, unknown>> {
+  const { data: comptes } = await admin.from("ebay_accounts").select("user_id").is("revoked_at", null).limit(1000);
+  const relies = ((comptes ?? []) as Array<{ user_id: string }>).map((c) => String(c.user_id));
+  if (!relies.length) return { relies: 0, reroutes: 0 };
+  let reroutes = 0;
+  for (let i = 0; i < relies.length; i += 200) {
+    const { data: jobs } = await admin.from("cross_post_jobs")
+      .select("id, user_id, platform, action, status, error, voie, listing_url, platform_listing_id, platform_fields")
+      .eq("platform", "ebay").eq("action", "delete").eq("voie", "extension").in("status", ["needs_user", "pending"])
+      .in("user_id", relies.slice(i, i + 200)).limit(20);
+    for (const j of (jobs ?? []) as Array<Record<string, unknown>>) {
+      if (!retraitBloqueParSessionEbay(j)) continue;
+      if (!/^\d{9,}$/.test(idAnnonceEbay(j as unknown as Job))) continue;
+      const pf = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
+      if (j.error) pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, String(j.error), String(j.status), "ebay-api-worker (retrait : voie extension → API Trading, compte relié)");
+      for (const k of ["needs_user_source", "attente_session", "ebay_connexion_requise", "mur_geste", "next_action_after", "processing_since"]) delete pf[k];
+      pf.retrait_par_api = { le: new Date().toISOString(), motif: "session eBay absente dans Chrome, compte relié par l'API" };
+      const { data: maj } = await admin.from("cross_post_jobs")
+        .update({ voie: "api", status: "pending", error: null, platform_fields: pf })
+        .eq("id", String(j.id)).eq("status", String(j.status)).eq("voie", "extension").select("id");
+      if (maj?.length) { reroutes++; console.log(`[ebay-api-worker] retrait ${String(j.id).slice(0, 8)} : session eBay absente, compte relié → voie API`); }
+    }
+  }
+  return { relies: relies.length, reroutes };
+}
+
 async function retirer(admin: SupabaseClient, env: EbayEnv, token: string, job: Job): Promise<Record<string, unknown>> {
   const idAnnonce = idAnnonceEbay(job);
   const precedent = idAnnonce ? await publicationApiExacte(admin, job.user_id, idAnnonce) : null;
+
+  // (15/10 soir) Aucune publication de NOTRE API ne porte cette annonce
+  // (dépôt par l'extension, import du relevé) : l'API Trading, gardée.
+  if (!precedent && /^\d{9,}$/.test(idAnnonce)) return await retirerParTrading(admin, env, token, job, idAnnonce);
 
   // ⛔ L'article et son SKU ne prouvent pas une annonce. Le job 8ce613d3
   // ciblait 377506248476, mais sa source a5d466df portait en interne
@@ -3416,6 +3516,12 @@ Deno.serve(async (req) => {
   try { reroutees = await rerouterPublicationsVersApi(admin); }
   catch (e) { reroutees = { erreur: String((e as Error)?.message ?? e).slice(0, 200) }; }
 
+  // ── Retraits d'un compte relié bloqués faute de session eBay (15/10 soir) ──
+  // Voie API (Trading) au lieu d'attendre Chrome : avant la sortie anticipée.
+  let retraitsApi: Record<string, unknown> = {};
+  try { retraitsApi = await rerouterRetraitsVersApi(admin); }
+  catch (e) { retraitsApi = { erreur: String((e as Error)?.message ?? e).slice(0, 200) }; }
+
   let cible = admin.from("cross_post_jobs")
     .select("id, user_id, inventaire_id, platform, action, status, title, description, price, photos, platform_fields, listing_url, platform_listing_id, created_at, voie")
     .eq("platform", "ebay").eq("voie", "api").eq("status", "pending")
@@ -3423,7 +3529,7 @@ Deno.serve(async (req) => {
   if (body.job_id) cible = cible.eq("id", body.job_id);
   const { data: jobs, error } = await cible;
   if (error) return json({ error: error.message }, 500);
-  if (!jobs?.length) return json({ traites: 0, reprises, veille, quantites, vendeurs, aveugles, reroutees });
+  if (!jobs?.length) return json({ traites: 0, reprises, veille, quantites, vendeurs, aveugles, reroutees, retraitsApi });
 
   const resultats: Record<string, unknown>[] = [];
   // Budget de la passe (lot 2) : au-delà de SCANS_MAX_PAR_PASSE scans Lens ou
@@ -3503,5 +3609,5 @@ Deno.serve(async (req) => {
     }
   }
   console.log(`[ebay-api-worker] ${resultats.length} job(s) : ${resultats.map((r) => `${String(r.job).slice(0, 8)}=${r.issue}`).join(", ")}`);
-  return json({ traites: resultats.length, scans_lens: passe.scans, veille, quantites, vendeurs, aveugles, reroutees, resultats });
+  return json({ traites: resultats.length, scans_lens: passe.scans, veille, quantites, vendeurs, aveugles, reroutees, retraitsApi, resultats });
 });

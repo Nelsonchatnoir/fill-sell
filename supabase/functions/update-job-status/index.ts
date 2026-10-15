@@ -2826,8 +2826,17 @@ serve(async (req) => {
           (Array.isArray(pfCourant.champs_a_completer) ? pfCourant.champs_a_completer as unknown[] : [])
             .map(normaliseCleChamp).filter(Boolean),
         )];
+        // (15/10 soir, point 8 — Romain « 6 verres Pago », patrick giry « Paris
+        // 2024 ») Une marque que l'extension a PROUVÉE absente du catalogue
+        // Vinted (raison « marque_hors_catalogue » : le menu ne la propose pas,
+        // Vinted n'en crée plus) n'est pas une grille lue trop tôt : la
+        // reprendre deux fois puis retirer la question finissait en boucle de
+        // « relancer » sans aucun choix. La question part telle quelle, UNE fois,
+        // avant toute suppression (« Sans marque » ou une marque du catalogue).
+        const marqueHorsCatalogue = String(((pfCourant.needsUserField ?? {}) as Record<string, unknown>).raison ?? "") === "marque_hors_catalogue";
         const prevolNegatif = String(pfCourant.needs_user_source ?? "") === "prevol_negatif"
           && pfCourant.republish_step === "captured" && !pfCourant.deleted_at
+          && !marqueHorsCatalogue
           && cles.length > 0 && cles.every((c) => c in GRILLE_CHAMPS_CAPTURE);
         if (prevolNegatif) {
           const { data: jrow } = await userClient

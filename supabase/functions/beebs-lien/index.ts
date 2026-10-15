@@ -9,6 +9,8 @@ import {
   restaurerPublicationBeebsConfirmee,
   type ReleveBeebsExact,
 } from "../_shared/beebs-lien-exact.ts";
+import { rattacherParPhotos, urlsAnnonce, candidatesDesDepots } from "../_shared/depot-sans-numero.js";
+import { urlsPhotos } from "../_shared/recreation-deja-partie.js";
 
 // beebs-lien — rattachement EXACT des dépôts Beebs sans identifiant.
 // Appelée par pg_cron (x-cron-secret), verify_jwt=false inchangé.
@@ -265,16 +267,94 @@ serve(async (req) => {
       }
     }
 
+    // ── LES PHOTOS DE NOTRE COPIE (15/10 soir, cascade de Nico) ──────────────
+    // (_shared/depot-sans-numero.js) Un dépôt toujours sans numéro après les
+    // voies exactes ci-dessus : une annonce du relevé reliée à RIEN, apparue
+    // après lui, non numérotée avant lui, aux photos de notre copie, unique et
+    // mutuelle → son numéro. Le doute ne rattache rien. Comptes bornés à 10 par
+    // passage, lectures par pages de 1 000 (PostgREST).
+    let rattachesParPhotos = 0;
+    const restants = jobs.filter((j) => j.status === "published" || j.status === "pending");
+    const { data: encoreSansNumero } = restants.length
+      ? await supabase.from("cross_post_jobs").select("id, user_id, status, photos, published_at, created_at, inventaire_id, platform_fields, platform_listing_id")
+        .in("id", restants.map((j) => j.id)).is("platform_listing_id", null)
+      : { data: [] };
+    const parCompte = new Map<string, Array<Record<string, unknown>>>();
+    for (const j of (encoreSansNumero ?? []) as Array<Record<string, unknown>>) {
+      const u = String(j.user_id);
+      if (!parCompte.has(u)) parCompte.set(u, []);
+      parCompte.get(u)!.push(j);
+    }
+    for (const [userId, depots] of [...parCompte].slice(0, 10)) {
+      const lignes: Array<Record<string, unknown>> = [];
+      for (let page = 0; page < 6; page++) {
+        const { data: lot, error: lErr } = await supabase.from("annonces_plateforme")
+          .select("id, listing_id, url, statut_plateforme, photo_url, capture, created_at, job_id, inventaire_id, disparu_le, retiree_le")
+          .eq("user_id", userId).eq("platform", "beebs").order("listing_id", { ascending: true }).range(page * 1000, page * 1000 + 999);
+        if (lErr) throw new Error(`relevé du compte ${userId} : ${lErr.message}`);
+        lignes.push(...((lot ?? []) as Array<Record<string, unknown>>));
+        if ((lot ?? []).length < 1000) break;
+      }
+      const urls = new Set<string>();
+      for (const d of depots) for (const u of urlsPhotos(d.photos)) urls.add(u);
+      for (const a of candidatesDesDepots(depots, lignes)) for (const u of urlsAnnonce(a)) urls.add(u);
+      if (!urls.size) continue;
+      const toutes = [...urls];
+      const empreintes = new Map<string, unknown>();
+      for (let i = 0; i < toutes.length; i += 200) {
+        const { data: emp } = await supabase.from("photo_empreintes").select("url, dhash, phash, variantes").in("url", toutes.slice(i, i + 200));
+        for (const e of (emp ?? []) as Array<Record<string, unknown>>) empreintes.set(String(e.url), e);
+      }
+      const choix = rattacherParPhotos({ depots, lignes, empreinte: (u: string) => empreintes.get(u) });
+      for (const [jobId, c] of choix) {
+        const d = depots.find((x) => String(x.id) === jobId)!;
+        const pf = { ...((d.platform_fields ?? {}) as Record<string, unknown>) };
+        const attente = (pf["attente_identifiant_beebs"] && typeof pf["attente_identifiant_beebs"] === "object")
+          ? pf["attente_identifiant_beebs"] as Record<string, unknown> : null;
+        delete pf["attente_identifiant_beebs"]; delete pf["lien_en_attente"]; delete pf["listing_url_abandon"];
+        pf["lien_par_photos"] = { at: new Date().toISOString(), listing_id: c.listing_id, preuve: c.preuve, photos: c.photos, statut: c.statut };
+        // Une URL Beebs en base veut dire « en ligne » : posée seulement si le
+        // relevé l'a vue en ligne ; en vérification, le numéro suffit.
+        const url = c.statut === "en_ligne" ? lienDepuisId("beebs", c.listing_id) : null;
+        const { data: maj, error: majErr } = await supabase.from("cross_post_jobs")
+          .update({
+            status: "published", error: null, platform_listing_id: c.listing_id,
+            ...(url ? { listing_url: url } : {}),
+            published_at: (d.published_at as string | null)
+              ?? (typeof attente?.["depot_confirme_le"] === "string" ? attente["depot_confirme_le"] as string : new Date().toISOString()),
+            platform_fields: pf,
+          })
+          .eq("id", jobId).in("status", ["published", "pending"]).is("platform_listing_id", null).select("id");
+        if (majErr) throw new Error(`rattachement par photos ${jobId}: ${majErr.message}`);
+        if (!(maj ?? []).length) continue;
+        const ligne = lignes.find((a) => String(a.listing_id) === c.listing_id);
+        if (ligne) {
+          const { data: majA } = await supabase.from("annonces_plateforme")
+            .update({ job_id: jobId, inventaire_id: d.inventaire_id ?? null, source_rapprochement: "job", updated_at: new Date().toISOString() })
+            .eq("id", String(ligne.id)).is("job_id", null).is("inventaire_id", null).select("id");
+          if ((majA ?? []).length && d.inventaire_id != null) {
+            await supabase.from("rapprochements").insert({
+              user_id: userId, annonce_id: String(ligne.id), inventaire_id: d.inventaire_id, decision: "attache", par: "job", score: 1,
+              detail: { job_id: jobId, motif: "photos_de_la_copie", photos: c.photos, source: "beebs-lien" },
+            });
+          }
+        }
+        rattachesParPhotos++;
+        console.log(`[beebs-lien] dépôt ${jobId.slice(0, 8)} : annonce ${c.listing_id} (${c.statut}) — ${c.preuve}`);
+      }
+    }
+
     return new Response(JSON.stringify({
       ok: true,
       depots: jobs.length,
       rattaches,
+      rattaches_par_photos: rattachesParPhotos,
       ambigus,
       confirmes_par_utilisateur: confirmesParUtilisateur,
       publications_restaurees: publicationsRestaurees,
       liens_a_confirmer: liensAConfirmer,
       selection_exhaustive: selectionExhaustive,
-      regle: "identifiant de relevé exact ; jamais titre/prix/date/photo",
+      regle: "identifiant de relevé exact, puis photos de notre copie (15/10) ; jamais titre/prix/date",
     }), { headers: { "Content-Type": "application/json" } });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);

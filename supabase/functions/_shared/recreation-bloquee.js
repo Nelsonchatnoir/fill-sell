@@ -116,3 +116,88 @@ export function messageRecreationBloquee(job) {
     + `(${essaisRates(pf)} essais). Rien n'est perdu : titre, description, photos et champs sont gardés. Ouvre ${nom} sur ton ordinateur pour vérifier ton compte, `
     + `puis appuie sur « Republier maintenant » : elle repartira. Tes autres republications, elles, continuent.`;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// UNE REMISE EN LIGNE BLOQUÉE REPART SEULE DÈS QUE LA CAUSE EST LEVÉE (15/10 soir)
+// ═══════════════════════════════════════════════════════════════════════════
+// Cas fondateur : ana0115, Beebs, « Tee shirt femme » (6ce123e7) — annonce
+// retirée le 15/10 à 15:02, cinq redépôts refusés par le formulaire Beebs
+// (« Ajouter au moins 5 caractères » : la copie n'avait aucune description),
+// sortie de la file à 17:03 (needs_user « recreation_bloquee »). La cause
+// était DE NOTRE CÔTÉ ; une fois corrigée (get-pending-jobs sert la
+// description de la fiche), rien ne la faisait repartir : l'article restait
+// hors ligne jusqu'à un geste de la personne.
+//
+// LA RÈGLE : une remise en ligne sortie de la file pour une cause que le
+// serveur corrige désormais (signature PRÉCISE dans la trace de l'échec,
+// plateforme visée) repart toute seule — UNE fois par cause et par job
+// (`recreation_relancee[code]`). Si elle rate encore, elle ressort de la file
+// par la porte ordinaire (2 échecs, 2 h) et n'est plus relancée pour cette
+// cause : le nouveau diagnostic est la mesure qui manquait.
+// Les essais déjà ratés sont mis de côté (`recreation_essais_avant_relance`),
+// sinon la sortie de file la reprendrait au passage suivant, avant tout essai.
+export const CAUSES_LEVEES_PAR_LE_SERVEUR = [
+  {
+    code: "description_beebs_trop_courte",
+    plateformes: ["beebs"],
+    signature: /Ajouter au moins 5 caract/i,
+    // « Ajouter au moins 5 caractères » vaut aussi pour un TITRE trop court :
+    // la cause n'est la nôtre que si la copie n'a pas de description.
+    condition: (job) => String(job?.description ?? "").trim().length < 5,
+    // get-pending-jobs v251 : toute remise en ligne Beebs part avec au moins
+    // 5 caractères (annonce → fiche → faits du job).
+    correctif: "get-pending-jobs sert la description de la fiche (ou des faits du job) à toute remise en ligne Beebs",
+  },
+];
+
+/** Les textes où vit le motif d'un échec de remise en ligne. */
+function textesEchec(job) {
+  const pf = job?.platform_fields ?? {};
+  return [
+    String(job?.error ?? ""),
+    String(pf.error_technique?.brut ?? ""),
+    String(pf.recreation_reprise?.brut ?? ""),
+    typeof pf.last_diagnostic === "string" ? pf.last_diagnostic : JSON.stringify(pf.last_diagnostic ?? ""),
+    ...(Array.isArray(pf.erreurs_archivees) ? pf.erreurs_archivees.map((e) => String(e?.erreur ?? "")) : []),
+  ].join(" \n ");
+}
+
+/** La cause levée qui permet de relancer ce job, ou null. */
+export function causeLeveePourRelance(job) {
+  const pf = (job?.platform_fields && typeof job.platform_fields === "object") ? job.platform_fields : {};
+  if (job?.action !== "republish" || job?.status !== "needs_user") return null;
+  if (pf.needs_user_source !== SOURCE_RECREATION_BLOQUEE || pf.republish_step !== "deleted") return null;
+  if (causeCompte(pf)) return null; // la cause est le compte : jamais relancé d'office
+  const textes = textesEchec(job);
+  for (const c of CAUSES_LEVEES_PAR_LE_SERVEUR) {
+    if (!c.plateformes.includes(job.platform)) continue;
+    if (pf.recreation_relancee && pf.recreation_relancee[c.code]) continue; // une fois par cause
+    if (c.signature.test(textes) && (!c.condition || c.condition(job))) return c;
+  }
+  return null;
+}
+
+/** Le platform_fields du job remis en file pour cette cause (pur). */
+export function champsRelanceCauseLevee(pf0 = {}, cause, maintenant = new Date().toISOString()) {
+  const pf = { ...pf0 };
+  pf.recreation_essais_avant_relance = {
+    le: maintenant,
+    recreation_reprises: pf.recreation_reprises ?? null,
+    recreation_reprise: pf.recreation_reprise ?? null,
+    recreation_tentee: pf.recreation_tentee ?? null,
+    recreation_bloquee: pf.recreation_bloquee ?? null,
+  };
+  delete pf.recreation_reprises; delete pf.recreation_reprise; delete pf.recreation_tentee;
+  delete pf.recreation_bloquee; delete pf.needs_user_source; delete pf.next_action_after; delete pf.processing_since;
+  delete pf.pas_de_rouge; delete pf.error_technique;
+  pf.recreation_relancee = { ...(pf.recreation_relancee ?? {}), [cause.code]: { le: maintenant, par: "handler-watch", correctif: cause.correctif } };
+  return pf;
+}
+
+/** Le message de la remise en file : vrai, sans durée promise. */
+export function messageRelanceCauseLevee(job) {
+  const nom = NOM[job?.platform] ?? job?.platform ?? "la plateforme";
+  const titre = String(job?.title ?? "").split("\n")[0].replace(/\s+/g, " ").trim().slice(0, 80);
+  return `Ton annonce${titre ? ` « ${titre} »` : ""} est hors ligne sur ${nom} : sa remise en ligne avait échoué à cause d'un défaut de notre côté, `
+    + `maintenant corrigé. FillSell la remet en ligne tout seul, rien à faire de ton côté. Titre, description, photos et champs sont gardés.`;
+}

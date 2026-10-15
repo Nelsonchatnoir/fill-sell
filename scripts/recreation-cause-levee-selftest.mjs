@@ -1,0 +1,61 @@
+// Autotest — une remise en ligne bloquée repart seule dès que la cause est
+// levée — `npm run selftest:recreation-cause-levee`
+// (_shared/recreation-bloquee.js + get-pending-jobs + handler-watch).
+// Cas réel du 15/10 : ana0115, Beebs, « Tee shirt femme » (6ce123e7) : annonce
+// retirée à 15:02, 5 redépôts refusés « Ajouter au moins 5 caractères »
+// (description vide dans la copie, 182 caractères sur la fiche), sortie de la
+// file à 17:03 (needs_user « recreation_bloquee »).
+import { causeLeveePourRelance, champsRelanceCauseLevee, messageRelanceCauseLevee, essaisRates,
+  decisionRecreationBloquee, SOURCE_RECREATION_BLOQUEE } from "../supabase/functions/_shared/recreation-bloquee.js";
+import fs from "node:fs";
+
+let ko = 0;
+const ok = (c, nom, d = "") => { if (c) console.log(`  ✓ ${nom}`); else { console.error(`  ✗ ${nom}${d ? `\n      ${d}` : ""}`); ko++; } };
+
+const ana = {
+  id: "6ce123e7-f37a-47d0-8c2e-999151a3c51b", action: "republish", platform: "beebs", status: "needs_user",
+  title: "Tee shirt femme", description: null,
+  error: "Ton annonce « Tee shirt femme » a été retirée de Beebs le 15/10 et FillSell n'a pas réussi à la remettre en ligne (5 essais).",
+  platform_fields: {
+    needs_user_source: SOURCE_RECREATION_BLOQUEE, republish_step: "deleted", deleted_at: "2026-10-15T13:02:50.263Z",
+    recreation_reprise: { n: 5, brut: "Dépôt Beebs non confirmé : … le formulaire affiche : Ajouter au moins 5 caractères | Titre de votre annonce15/100 …" },
+    recreation_bloquee: { essais: 5, le: "2026-10-15T15:03:02.859Z", par: "handler-watch" },
+    error_technique: { brut: "Ton annonce a été retirée de Beebs et n'a pas pu être redéposée automatiquement : Dépôt Beebs non confirmé : … Ajouter au moins 5 caractères …" },
+  },
+};
+
+console.log("\n1. ANA0115 : LA CAUSE (DESCRIPTION VIDE) EST LEVÉE PAR LE SERVEUR");
+const c = causeLeveePourRelance(ana);
+ok(c?.code === "description_beebs_trop_courte", "cause reconnue sur la trace de l'échec", JSON.stringify(c));
+const pf = champsRelanceCauseLevee(ana.platform_fields, c, "2026-10-15T19:30:00Z");
+ok(!pf.needs_user_source && pf.republish_step === "deleted", "remise en file à l'étape « deleted » (l'annonce est hors ligne, rien n'est retiré de plus)");
+ok(essaisRates(pf) === 0, "essais ratés mis de côté : la sortie de file ne la reprend pas avant un nouvel essai");
+ok(decisionRecreationBloquee({ ...ana, status: "pending", platform_fields: pf }, Date.parse("2026-10-15T19:35:00Z")) === null,
+  "juste après la relance, decisionRecreationBloquee ne la ressort pas");
+ok(pf.recreation_essais_avant_relance?.recreation_reprise?.n === 5, "les essais d'avant restent tracés");
+ok(pf.recreation_relancee?.description_beebs_trop_courte?.le === "2026-10-15T19:30:00Z", "relance tracée par cause");
+const msg = messageRelanceCauseLevee(ana);
+ok(/hors ligne sur Beebs/.test(msg) && /défaut de notre côté/.test(msg) && !/\d+ ?(min|h)\b|vers \d/.test(msg), "message vrai, sans durée promise", msg);
+
+console.log("\n2. UNE FOIS PAR CAUSE, JAMAIS SUR LE COMPTE, JAMAIS HORS CAS");
+ok(causeLeveePourRelance({ ...ana, platform_fields: { ...ana.platform_fields, recreation_relancee: { description_beebs_trop_courte: { le: "x" } } } }) === null,
+  "déjà relancée pour cette cause : plus jamais d'office");
+ok(causeLeveePourRelance({ ...ana, description: "Tee shirt femme collection Minnie" }) === null,
+  "« Ajouter au moins 5 caractères » avec une description présente (titre trop court ?) : pas notre cause");
+ok(causeLeveePourRelance({ ...ana, platform_fields: { ...ana.platform_fields, attente_session: { depuis: "x" } } }) === null,
+  "session du compte en cause : jamais relancée d'office");
+ok(causeLeveePourRelance({ ...ana, platform: "leboncoin" }) === null, "autre plateforme : pas cette cause");
+const autre = { ...ana, platform_fields: { ...ana.platform_fields, recreation_reprise: { n: 5, brut: "Beebs refuse la taille « 8XL »" }, error_technique: { brut: "taille refusée" } }, error: "x" };
+ok(causeLeveePourRelance(autre) === null, "autre motif d'échec : rien n'est relancé");
+ok(causeLeveePourRelance({ ...ana, status: "pending" }) === null, "seulement un job sorti de la file (needs_user)");
+
+console.log("\n3. LE SERVEUR SERT LA DESCRIPTION DE LA FICHE À TOUTE REMISE EN LIGNE BEEBS");
+const gpj = fs.readFileSync(new URL("../supabase/functions/get-pending-jobs/index.ts", import.meta.url), "utf8");
+ok(/j\.platform === "beebs" && \(j\.action === "publish" \|\| j\.action === "republish"\)/.test(gpj), "le bloc « description Beebs » couvre les republications");
+ok(/select\("id, attributs, description"\)/.test(gpj) && /descFiche\.trim\(\)\.length >= BEEBS_DESCRIPTION_MIN/.test(gpj), "la description de la FICHE passe avant les faits du job");
+ok(/if \(j\.action !== "publish"\) \{/.test(gpj), "couleur / matière ajoutées aux publications seulement (une republication recopie son annonce)");
+const hw = fs.readFileSync(new URL("../supabase/functions/handler-watch/index.ts", import.meta.url), "utf8");
+ok(/causeLeveePourRelance\(j\)/.test(hw) && /\.eq\("id", j\.id\)\.eq\("status", "needs_user"\)/.test(hw), "handler-watch relance (CAS sur needs_user)");
+
+console.log(ko ? `\n${ko} ÉCHEC(S)` : "\nTOUT VERT");
+process.exit(ko ? 1 : 0);

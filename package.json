@@ -350,7 +350,13 @@
     "selftest:lbc-poids-main-propre": "node scripts/lbc-poids-main-propre-selftest.mjs",
     "selftest:retenue-hors-ligne": "node scripts/retenue-hors-ligne-selftest.mjs",
     "selftest:introuvable-a-confirmer": "node scripts/introuvable-a-confirmer-selftest.mjs",
-    "selftest:vente-relevee-sans-annonce": "node scripts/vente-relevee-sans-annonce-selftest.mjs"
+    "selftest:vente-relevee-sans-annonce": "node scripts/vente-relevee-sans-annonce-selftest.mjs",
+    "selftest:depot-muet": "node scripts/depot-muet-selftest.mjs",
+    "selftest:recreation-cause-levee": "node scripts/recreation-cause-levee-selftest.mjs",
+    "selftest:depot-sans-numero": "node scripts/depot-sans-numero-selftest.mjs",
+    "selftest:titre-aligne": "node scripts/titre-aligne-selftest.mjs",
+    "selftest:ebay-retrait-trading": "node scripts/ebay-retrait-trading-selftest.mjs",
+    "selftest:lbc-feuille-corrigee": "node scripts/lbc-feuille-corrigee-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

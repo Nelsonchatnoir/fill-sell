@@ -8,7 +8,7 @@
 //     la seule annonce (34080027) est reliée à un autre dépôt, et vendue ;
 //   · ornellaracano 52c13161 : 34084113 en ligne, reliée à rien ;
 //   · nicolas.menar be0395a6 (eBay 377453677328) : EN LIGNE au relevé du 01/10.
-import { jugerRetraitIntrouvable, releveComplet, neeApresLeDepot, messageRetraitSansNumeroAToi,
+import { jugerRetraitIntrouvable, releveComplet, neeApresLeDepot, messageRetraitSansNumeroAToi, numeroteeAvantLeDepot,
   RETRAIT_SANS_NUMERO_GESTE_MS, RETRAIT_SANS_NUMERO_RELEVE_MS,
   jugerRetraitVintedIntrouvable, numeroRetraitVinted } from "../supabase/functions/_shared/retrait-introuvable.js";
 import fs from "node:fs";
@@ -165,6 +165,37 @@ ok(jugerRetraitVintedIntrouvable({ ...fb9, platform: "beebs" }, { releves: avecU
 ok(jugerRetraitVintedIntrouvable({ ...fb9, listing_url: null }, { releves: avecUnDePlus }) === null, "sans numéro : rien");
 const hwSrc = fs.readFileSync(new URL("../supabase/functions/handler-watch/index.ts", import.meta.url), "utf8");
 ok(/jugerRetraitVintedIntrouvable\(/.test(hwSrc) && /vinted_listing_snapshots/.test(hwSrc), "handler-watch juge les retraits Vinted ouverts sur tout le parc");
+
+
+console.log("\n9. NUMÉROTÉE AVANT LE DÉPÔT (BEEBS) : JOE0410, T-SHIRT NASA (15/10 soir)");
+// Relevé en base le 15/10 : retrait 450b05b6 armé le 11/10 ; dépôt 3b0346fa
+// confirmé le 30/09 07:03:54 sans numéro ; 33911255 « Polo Scott homme L »
+// (déposé le 06/09, job ba7cc76b) revu « en vérification » le 30/09 à 17:56,
+// non relié ; 34070523 et 34076845 vus les 29/09 au soir, reliés.
+const joeAnnonces = [
+  { listing_id: "33911255", job_id: null, inventaire_id: null, vu_le: "2026-10-15T16:58:18Z", statut_plateforme: "en_verification", created_at: "2026-09-30T15:56:41Z" },
+  { listing_id: "34070523", job_id: "j-a", inventaire_id: 1787440315560007, vu_le: "2026-10-15T16:58:18Z", statut_plateforme: "en_ligne", created_at: "2026-09-29T18:23:57Z" },
+  { listing_id: "34076845", job_id: "j-b", inventaire_id: 1787440314926002, vu_le: "2026-10-15T16:58:18Z", statut_plateforme: "en_ligne", created_at: "2026-09-29T19:52:56Z" },
+  { listing_id: "34078845", job_id: "j-c", inventaire_id: 1787440311242099, vu_le: "2026-10-15T16:58:18Z", statut_plateforme: "en_ligne", created_at: "2026-09-30T05:49:09Z" },
+];
+const depotNasaLe = "2026-09-30T05:03:54.09Z";
+ok(numeroteeAvantLeDepot("beebs", joeAnnonces[0], { lignes: joeAnnonces, depotLe: depotNasaLe }), "33911255 < 34076845 (vu le 29/09, avant le dépôt) → numérotée avant : ce n'est pas le T-shirt");
+ok(!numeroteeAvantLeDepot("beebs", { listing_id: "34078900" }, { lignes: joeAnnonces, depotLe: depotNasaLe }), "un numéro au-dessus du plancher n'est pas exclu");
+ok(!numeroteeAvantLeDepot("leboncoin", { listing_id: "3000" }, { lignes: [{ listing_id: "9999", created_at: "2026-09-01T00:00:00Z" }], depotLe: depotNasaLe }), "Leboncoin : numérotation non monotone, aucune exclusion");
+ok(!numeroteeAvantLeDepot("beebs", joeAnnonces[0], { lignes: joeAnnonces, depotLe: null }), "sans date de dépôt : aucune exclusion");
+const vJoe = jugerRetraitIntrouvable(retraitBeebs("450b05b6", "2026-10-11T10:13:00Z"), {
+  releves: [R("2026-10-15T17:00:00Z", 303, 302), R("2026-10-15T16:57:59Z", 303, 302)],
+  annonces: joeAnnonces, depotId: "3b0346fa-59b7-4d2f-a5e2-f48b0944f566", depotLe: depotNasaLe,
+});
+ok(vJoe?.verdict === "deja_retire" && vJoe.numeroteesAvantDepot?.[0] === "33911255", "deux relevés complets, la seule annonce libre existait avant le dépôt → rien à retirer", JSON.stringify(vJoe));
+ok(/existait déjà avant ce dépôt d'après son numéro \(n° 33911255\)/.test(vJoe?.message ?? ""), "le message dit pourquoi l'annonce libre est écartée");
+ok(!/Polo|Nasa/i.test(vJoe?.message ?? ""), "jamais par le titre");
+const vJoeSansPlancher = jugerRetraitIntrouvable(retraitBeebs("450b05b6", "2026-10-11T10:13:00Z"), {
+  releves: [R("2026-10-15T17:00:00Z", 303, 302), R("2026-10-15T16:57:59Z", 303, 302)],
+  annonces: [joeAnnonces[0]], depotId: "3b0346fa", depotLe: depotNasaLe,
+});
+ok(vJoeSansPlancher?.verdict === "non_reliee", "sans annonce vue avant le dépôt pour fixer le plancher : la règle d'avant (non reliée) tient");
+
 
 if (ko) { console.error(`\n✗ ${ko} échec(s)`); process.exit(1); }
 console.log("\n✓ retraits introuvables : deux relevés complets, par numéro, message vrai");

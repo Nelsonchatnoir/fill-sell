@@ -23,6 +23,8 @@
 // Ce module ne fait que JUGER, sur des données passées en paramètre (pur,
 // sans I/O, Deno + Node) ; get-pending-jobs lit, écrit et sert.
 
+import { trancherParPhotos } from "./annonce-partagee.js";
+
 // Étapes du remplissage Leboncoin à partir desquelles le dépôt a pu partir
 // (relayerEtape de leboncoin.js), et pages qui prouvent qu'il est parti.
 const ETAPES_ENVOI = new Set(["depot", "options"]);
@@ -129,18 +131,76 @@ export function candidatesDepuisRetrait({ jobId, ancienId, deletedAt, lignes, in
  *   · { verdict: "aucune" }                      → on peut redéposer ;
  *   · { verdict: "certaine", retenue }           → rattachement automatique ;
  *   · { verdict: "incertaine", raisons, liens }  → needs_user avec les liens.
- * @param {{ candidates: any[], listingIdProuve?: string | null }} arg
+ * @param {{ candidates: any[], listingIdProuve?: string | null, empreintesCopie?: any[] | null, empreintesParCandidate?: Map<string, any[]> | null }} arg
  */
-export function jugerCandidates({ candidates, listingIdProuve = null }) {
+export function jugerCandidates({ candidates, listingIdProuve = null, empreintesCopie = null, empreintesParCandidate = null }) {
   if (!candidates.length) return { verdict: "aucune" };
   const liens = candidates.map((c) => c.url || c.listing_id).filter(Boolean);
+  const preuve = String(listingIdProuve ?? "").trim();
+  if (candidates.length === 1 && preuve && String(candidates[0].listing_id) === preuve && candidates[0].statut_plateforme === "en_ligne") {
+    return { verdict: "certaine", retenue: candidates[0], preuve: "identifiant conservé après le dépôt" };
+  }
+  // ── LES PHOTOS DE NOTRE COPIE (15/10 soir, camille.ferren 5b6c8cc9) ──────
+  // Cascade identifiants → photos → IA (Nico, 15/10). « Kit calendrier de
+  // l'avent » : annonce 3288747290 apparue à 12:34, pendant la remise en
+  // ligne, avec EXACTEMENT les photos de notre copie (dHash et pHash à 0-1
+  // bit), quand l'annonce d'origine de la personne portait d'autres photos.
+  // C'est notre dépôt. La preuve compare la COPIE envoyée (photos du job), pas
+  // la fiche : une annonce mise en ligne à la main par la personne porte ses
+  // propres photos. Une seule candidate doit avoir les mêmes photos, toutes les
+  // autres aucune photo approchante (trancherParPhotos, seuils du moteur).
+  // En doute : la question, comme avant. Le risque résiduel (deux exemplaires
+  // aux mêmes photos) ne crée jamais de doublon : il en manquerait un.
+  if (Array.isArray(empreintesCopie) && empreintesCopie.length && empreintesParCandidate instanceof Map) {
+    const parCandidate = new Map(candidates.map((c) => [String(c.listing_id), empreintesParCandidate.get(String(c.listing_id)) ?? []]));
+    const ph = trancherParPhotos(empreintesCopie, parCandidate);
+    const retenue = ph.fiche ? candidates.find((c) => String(c.listing_id) === String(ph.fiche)) : null;
+    if (retenue && /^(en_ligne|en_verification)$/.test(String(retenue.statut_plateforme ?? ""))) {
+      return { verdict: "certaine", retenue, preuve: "photos identiques à celles de notre copie", photos: ph.niveaux };
+    }
+    if (candidates.length > 1) {
+      return { verdict: "incertaine", raisons: [`${candidates.length} annonces apparues depuis le retrait`], liens, photos: ph.niveaux };
+    }
+    return { verdict: "incertaine", raisons: ["aucun identifiant de dépôt ni photo identique ne prouve que cette annonce est le même exemplaire"], liens, photos: ph.niveaux };
+  }
   if (candidates.length > 1) {
     return { verdict: "incertaine", raisons: [`${candidates.length} annonces apparues depuis le retrait`], liens };
   }
-  const c = candidates[0];
-  const preuve = String(listingIdProuve ?? "").trim();
-  if (preuve && String(c.listing_id) === preuve && c.statut_plateforme === "en_ligne") {
-    return { verdict: "certaine", retenue: c };
-  }
   return { verdict: "incertaine", raisons: ["aucun identifiant de dépôt ne prouve que cette annonce est le même exemplaire"], liens };
+}
+
+/** Les URL https d'un champ photos (chaînes ou objets { url }). */
+export function urlsPhotos(v, n = 6) {
+  return (Array.isArray(v) ? v : [])
+    .map((x) => (typeof x === "string" ? x : x && typeof x === "object" ? x.url : null))
+    .filter((u) => typeof u === "string" && /^https:\/\//.test(u))
+    .slice(0, n);
+}
+
+/**
+ * @param {any} pf0
+ * @param {any} c
+ * @param {{ trace?: any, preuve?: string | null, photos?: any, posePar?: string, maintenant?: string }} [opts]
+ * @returns {Record<string, any>}
+ * Le patch qui rattache une remise en ligne à l'annonce déjà partie (identité
+ * CERTAINE) : le job devient « published » à l'étape « recreated », sans
+ * redépôt. Même forme que get-pending-jobs (redépôt interrompu). Pur.
+ */
+export function patchRattachementRecreation(pf0, c, { trace = null, preuve = null, photos = null, posePar = "handler-watch", maintenant = new Date().toISOString() } = {}) {
+  const url = String(c?.url ?? "") || null;
+  const pf = {
+    ...(pf0 ?? {}),
+    republish_step: "recreated",
+    recreated_at: String(c?.created_at ?? maintenant),
+    new_listing_url: url,
+    ...(trace ? { recreation_verifiee: trace } : {}),
+    rattachement_recreation: {
+      le: maintenant, listing_id: String(c?.listing_id ?? ""),
+      preuve: preuve ?? "identifiant conservé après le dépôt",
+      ...(photos ? { photos } : {}),
+      pose_par: posePar,
+    },
+  };
+  delete pf.needs_user_source;
+  return { status: "published", error: null, published_at: maintenant, platform_listing_id: String(c?.listing_id ?? ""), listing_url: url, platform_fields: pf };
 }

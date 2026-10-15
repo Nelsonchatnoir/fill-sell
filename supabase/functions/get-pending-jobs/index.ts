@@ -23,7 +23,7 @@ import { preuveAccesOpla } from "../_shared/preuve-opla.ts";
 // stepper (moteur/listes.js la ré-exporte) — et sa palette de couleurs (module
 // de données sans import, comme leboncoinFeuilles.js plus bas).
 import { vintedExigeUneCouleur, vintedExigeUneMarque, vintedExigeUnIsbn, ISBN_ABSENT, valeurUneLettre } from "../_shared/vinted-exigences.js";
-import { traduireAbsenceMarqueJob, appliquerMarqueRetenue, SANS_MARQUE } from "../_shared/marque-absente.js";
+import { traduireAbsenceMarqueJob, appliquerMarqueRetenue, SANS_MARQUE, marqueComparable as marqueComparableM } from "../_shared/marque-absente.js";
 import { couleursVintedSansQuestion, marqueVintedSansQuestion } from "../_shared/vinted-couleur-marque-filet.js";
 import { ecarterFormatDevine, formatChoisi, livraisonLbcAuService } from "../_shared/livraison-poids.js";
 import { decisionPoidsLbc, poidsManquantCompteExige } from "../_shared/poids-leboncoin.js";
@@ -138,7 +138,7 @@ function cheminLbcDepuisUrl(url: unknown): string[] | null {
   return _LBC_PAR_JETONS.get(_jetonsFeuille(m[1])) ?? null;
 }
 import { nettoyerDescriptionLeboncoin, nettoyerTitreLeboncoin } from "../_shared/description-leboncoin.ts";
-import { completerDescriptionBeebs } from "../_shared/description-beebs.ts";
+import { completerDescriptionBeebs, BEEBS_DESCRIPTION_MIN } from "../_shared/description-beebs.ts";
 import { tempererMajuscules } from "../_shared/titre-majuscules.ts";
 // Règles du catalogue Beebs (2026-09-11) : le MÊME fichier que l'app
 // (src/utils/platformCompat.js) — module JS sans import, chargé tel quel.
@@ -185,7 +185,9 @@ import { trancheLbcDepuisGrammes } from "../_shared/lbc-poids-tranche.js";
 import { poidsColisDeLAnnonceLbc } from "../_shared/lbc-poids-annonce.js";
 import { frereHorsLigne, retenueLevee, plateformesRetenuesPar, MESSAGE_EN_FILE } from "../_shared/retenue-hors-ligne.js";
 import { localisationLbcATaper } from "../_shared/lbc-localisation.js";
-import { candidatesDepuisRetrait, depotPeutEtrePartiDepuis, jugerCandidates } from "../_shared/recreation-deja-partie.js";
+import { candidatesDepuisRetrait, depotPeutEtrePartiDepuis, jugerCandidates, urlsPhotos } from "../_shared/recreation-deja-partie.js";
+import { depotPublicationPeutEtrePartiDepuis, candidatesDuDepot, rattacherParPhotos, urlsAnnonce } from "../_shared/depot-sans-numero.js";
+import { corrigerFeuilleLbc } from "../_shared/lbc-feuille-corrigee.js";
 import { BUILD_COLIS_DANS_ENVOI, VERSION_COLIS_DANS_ENVOI, RETENUE_COLIS_ANCIEN_POSTE, envoiColisProuve, messageColisAttendMiseAJour, colisVintedRetenuAuService } from "../_shared/vinted-colis.js";
 import { tacheAMettreDeCote, messageTacheSansDemarrage, SOURCE_TACHE_SANS_DEMARRAGE } from "../_shared/tache-sans-demarrage.js";
 import { attenteBoutiqueLevable, POSE_PAR_PUBLICATION_BOUTIQUE, messageAttenteBoutique } from "../_shared/attente-autre-boutique.js";
@@ -1396,7 +1398,8 @@ serve(async (req) => {
           if (v?.verdict !== "deja_retire") continue;
           pfJ.erreurs_archivees = archiverErreur(pfJ.erreurs_archivees, j.error as string, "needs_user", "get-pending-jobs (retrait sans numéro : deux relevés complets)");
           pfJ.retrait_conclu = { le: new Date().toISOString(), par: "deux_releves_complets", releves: v.releves, numero: null,
-            ...(v.neesApresDepot ? { nees_apres_depot: v.neesApresDepot } : {}) };
+            ...(v.neesApresDepot ? { nees_apres_depot: v.neesApresDepot } : {}),
+            ...(v.numeroteesAvantDepot ? { numerotees_avant_depot: v.numeroteesAvantDepot } : {}) };
           delete pfJ.needs_user_source;
           const { data: maj } = await admin.from("cross_post_jobs")
             .update({ status: "cancelled", error: v.message, platform_fields: pfJ })
@@ -4634,13 +4637,25 @@ serve(async (req) => {
         const ancienId = String(pf["old_platform_listing_id"] ?? "").trim()
           || (String(pf["old_listing_url"] ?? "").match(/(\d{6,})(?:[/?#]|$)/)?.[1] ?? "");
         const { data: lignes } = await userClient.from("annonces_plateforme")
-          .select("listing_id, url, titre, prix, photo_url, statut_plateforme, job_id, inventaire_id, created_at, disparu_le")
+          .select("listing_id, url, titre, prix, photo_url, capture, statut_plateforme, job_id, inventaire_id, created_at, disparu_le")
           .eq("platform", plateforme).gte("created_at", String(pf["deleted_at"])).limit(50);
         const candidates = candidatesDepuisRetrait({ jobId: idJ, ancienId, deletedAt: pf["deleted_at"], lignes: lignes ?? [], inventaireId: j.inventaire_id ?? null });
-        // Point A : seul l'identifiant conservé après la réponse du dépôt fait preuve.
+        // Cascade (15/10 soir) : l'identifiant conservé après le dépôt, puis
+        // les photos de NOTRE copie contre celles des candidates (empreintes).
+        const urlsCopie = urlsPhotos(j.photos);
+        const urlsParCandidate = new Map<string, string[]>(candidates.map((c: Record<string, unknown>) => [String(c["listing_id"]),
+          [...new Set([...urlsPhotos((c["capture"] as Record<string, unknown> | null)?.["photos"], 4), ...urlsPhotos([c["photo_url"]], 1)])]]));
+        const toutesUrls = [...new Set([...urlsCopie, ...[...urlsParCandidate.values()].flat()])];
+        const { data: empR } = toutesUrls.length && candidates.length
+          ? await createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!)
+            .from("photo_empreintes").select("url, dhash, phash, variantes").in("url", toutesUrls.slice(0, 200))
+          : { data: [] };
+        const empParUrl = new Map(((empR ?? []) as Array<Record<string, unknown>>).map((e) => [String(e.url), e]));
         const juge = jugerCandidates({
           candidates,
           listingIdProuve: String(pf["new_platform_listing_id"] ?? "") || null,
+          empreintesCopie: urlsCopie.map((u) => empParUrl.get(u)).filter(Boolean),
+          empreintesParCandidate: new Map([...urlsParCandidate].map(([id, us]) => [id, us.map((u) => empParUrl.get(u)).filter(Boolean)])),
         });
         const trace = {
           apres: susp.at, le: new Date().toISOString(), releve: String(fait.id), verdict: juge.verdict,
@@ -4668,7 +4683,8 @@ serve(async (req) => {
             recreation_verifiee: trace,
             rattachement_recreation: {
               le: new Date().toISOString(), listing_id: String(c["listing_id"]),
-              preuve: "identifiant conservé après le dépôt",
+              preuve: String((juge as { preuve?: string }).preuve ?? "identifiant conservé après le dépôt"),
+              ...((juge as { photos?: unknown }).photos ? { photos: (juge as { photos?: unknown }).photos } : {}),
               pose_par: "get-pending-jobs (redépôt interrompu : annonce déjà partie)",
             },
           };
@@ -4695,6 +4711,143 @@ serve(async (req) => {
     } catch (e) {
       out = out.filter((j) => !suspectsRedepot.has(String(j.id)));
       console.warn(`[get-pending-jobs] vérification avant redépôt : ${String((e as Error)?.message ?? e)} — ${suspectsRedepot.size} job(s) suspect(s) retenu(s) ce cycle`);
+    }
+
+    // ══ JAMAIS UN DEUXIÈME DÉPÔT BEEBS À L'AVEUGLE (15/10 soir, Ciddjy) ═══════
+    // (_shared/depot-sans-numero.js) Même règle que la remise en ligne
+    // ci-dessus, pour les PUBLICATIONS Beebs : un essai qui a pu envoyer le
+    // dépôt (poste muet en route, formulaire muet après le clic, requête partie
+    // sans confirmation) n'est jamais redéposé sans relire le compte :
+    //   · pas de relevé COMPLET commencé après l'essai → relevé demandé, job
+    //     retenu (au plus 6 h, puis la question) ;
+    //   · une annonce reliée à rien, apparue depuis, au numéro plus grand que
+    //     tout ce que le compte avait avant l'essai, aux photos de notre copie
+    //     → rattachée (published), aucun redépôt ;
+    //   · aucune candidate → redépôt autorisé (tracé `depot_verifie`) ;
+    //   · une candidate qu'aucune preuve ne tranche → la question, jamais de
+    //     redépôt. ⛔ Fermé en cas de doute : une erreur retient le job.
+    const suspectsDepotBeebs = new Set(
+      (out as unknown as Array<Record<string, unknown>>)
+        .filter((j) => j.action === "publish" && j.platform === "beebs" && j.status === "pending"
+          && depotPublicationPeutEtrePartiDepuis("beebs", (j.platform_fields ?? {}) as Record<string, unknown>))
+        .map((j) => String(j.id)),
+    );
+    if (suspectsDepotBeebs.size) {
+      const retenus = new Set<string>(suspectsDepotBeebs);
+      try {
+        const adminD = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        const { data: runsB } = await userClient.from("vinted_sync_runs")
+          .select("id, status, erreur, items_vus, started_at, queued_at")
+          .eq("user_id", user.id).eq("kind", "annonces").eq("platform", "beebs")
+          .order("started_at", { ascending: false, nullsFirst: false }).limit(10);
+        const listeB = (runsB ?? []) as Array<Record<string, unknown>>;
+        const completB = (r: Record<string, unknown>) => {
+          const err = String(r.erreur ?? "");
+          return r.status === "done" && !err.startsWith("[incomplet]") && (Number(r.items_vus ?? 0) > 0 || err.startsWith("[vide]"));
+        };
+        let lignesB: Array<Record<string, unknown>> | null = null;
+        for (const j of (out as unknown as Array<Record<string, unknown>>).filter((x) => suspectsDepotBeebs.has(String(x.id)))) {
+          const idJ = String(j.id);
+          const pf = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
+          const susp = depotPublicationPeutEtrePartiDepuis("beebs", pf)!;
+          const tSusp = Date.parse(susp.at);
+          const fait = listeB.find((r) => completB(r) && Date.parse(String(r.started_at ?? "")) > tSusp);
+          if (!fait) {
+            const attenteDepuis = Date.parse(String(pf["depot_attente_releve_depuis"] ?? "")) || Date.now();
+            if (Date.now() - attenteDepuis > 6 * 3600_000) {
+              const pfN = { ...pf, needs_user_source: "depot_deja_parti", depot_deja_parti: { le: new Date().toISOString(), verdict: "releve_introuvable", essai: susp } };
+              await userClient.from("cross_post_jobs").update({
+                status: "needs_user", platform_fields: pfN,
+                error: "Un essai précédent a peut-être déjà mis cette annonce en ligne sur Beebs, et tes annonces n'ont pas pu être relues depuis. "
+                  + "Pour ne jamais la mettre en double, on ne redépose pas à l'aveugle : regarde tes annonces Beebs — si elle y est, il n'y a rien à faire ; sinon relance d'un clic.",
+              }).eq("id", idJ).eq("status", "pending");
+              continue;
+            }
+            if (!listeB.some((r) => r.status === "queued" || r.status === "running" || r.status === "claimed")) {
+              const { error: qErr } = await userClient.from("vinted_sync_runs").insert({
+                user_id: user.id, kind: "annonces", platform: "beebs", status: "queued",
+                declencheur: "serveur:verif_redepot", queued_at: new Date().toISOString(),
+              });
+              listeB.unshift({ status: "queued" });
+              console.log(`[get-pending-jobs] dépôt Beebs ${idJ.slice(0, 8)} : ${susp.raison} — relevé mis en file avant tout redépôt${qErr ? ` (refusé : ${qErr.message})` : ""}`);
+            }
+            const msgAttente = "On relit tes annonces Beebs avant de redéposer : un essai précédent a peut-être déjà mis cette annonce en ligne, "
+              + "et elle ne doit jamais partir en double. Rien à faire de ton côté.";
+            if (j.error !== msgAttente || !pf["depot_attente_releve_depuis"]) {
+              await userClient.from("cross_post_jobs").update({ error: msgAttente, platform_fields: { ...pf, depot_attente_releve_depuis: pf["depot_attente_releve_depuis"] ?? new Date(attenteDepuis).toISOString() } })
+                .eq("id", idJ).eq("status", "pending");
+            }
+            continue;
+          }
+          // Le relevé du compte, et le plancher des numéros : les annonces vues
+          // AVANT l'essai, et nos dépôts numérotés confirmés avant lui.
+          if (!lignesB) {
+            lignesB = [];
+            for (let page = 0; page < 6; page++) {
+              const { data: lot } = await adminD.from("annonces_plateforme")
+                .select("id, listing_id, url, statut_plateforme, photo_url, capture, created_at, job_id, inventaire_id, disparu_le, retiree_le")
+                .eq("user_id", user.id).eq("platform", "beebs").order("listing_id", { ascending: true }).range(page * 1000, page * 1000 + 999);
+              lignesB.push(...((lot ?? []) as Array<Record<string, unknown>>));
+              if ((lot ?? []).length < 1000) break;
+            }
+            const { data: numerotes } = await adminD.from("cross_post_jobs").select("platform_listing_id, published_at")
+              .eq("user_id", user.id).eq("platform", "beebs").not("platform_listing_id", "is", null).not("published_at", "is", null)
+              .order("published_at", { ascending: false }).limit(200);
+            for (const n of (numerotes ?? []) as Array<Record<string, unknown>>) {
+              if (/^\d+$/.test(String(n.platform_listing_id ?? ""))) lignesB.push({ listing_id: String(n.platform_listing_id), created_at: n.published_at, job_id: "plancher", inventaire_id: -1 });
+            }
+          }
+          const depot = { id: idJ, photos: j.photos, published_at: susp.at, created_at: susp.at };
+          const cands = candidatesDuDepot(depot, lignesB);
+          if (!cands.length) {
+            const pfN: Record<string, unknown> = { ...pf, depot_verifie: { apres: susp.at, le: new Date().toISOString(), releve: String(fait.id), verdict: "aucune" } };
+            delete pfN["depot_attente_releve_depuis"];
+            const { data: maj } = await userClient.from("cross_post_jobs").update({ platform_fields: pfN })
+              .eq("id", idJ).eq("status", "pending").select("id");
+            if ((maj ?? []).length) {
+              j.platform_fields = pfN;
+              retenus.delete(idJ);
+              console.log(`[get-pending-jobs] dépôt Beebs ${idJ.slice(0, 8)} : relevé ${String(fait.id).slice(0, 8)} postérieur à l'essai, aucune annonce apparue → redépôt autorisé`);
+            }
+            continue;
+          }
+          const urls = [...new Set([...urlsPhotos(j.photos), ...cands.flatMap((a) => urlsAnnonce(a))])];
+          const { data: empB } = await adminD.from("photo_empreintes").select("url, dhash, phash, variantes").in("url", urls.slice(0, 200));
+          const empParUrlB = new Map(((empB ?? []) as Array<Record<string, unknown>>).map((e) => [String(e.url), e]));
+          const choix = rattacherParPhotos({ depots: [depot], lignes: lignesB, empreinte: (u: string) => empParUrlB.get(u) }).get(idJ);
+          if (choix) {
+            const url = choix.statut === "en_ligne" ? lienDepuisId("beebs", choix.listing_id) : null;
+            const pfN: Record<string, unknown> = { ...pf, depot_verifie: { apres: susp.at, le: new Date().toISOString(), releve: String(fait.id), verdict: "certaine" },
+              lien_par_photos: { at: new Date().toISOString(), listing_id: choix.listing_id, preuve: choix.preuve, photos: choix.photos, statut: choix.statut } };
+            delete pfN["depot_attente_releve_depuis"];
+            const { data: maj } = await userClient.from("cross_post_jobs").update({
+              status: "published", error: null, published_at: susp.at, platform_listing_id: choix.listing_id, ...(url ? { listing_url: url } : {}), platform_fields: pfN,
+            }).eq("id", idJ).eq("status", "pending").select("id");
+            if ((maj ?? []).length) {
+              const ligne = lignesB.find((a) => String(a.listing_id) === choix.listing_id && a.id);
+              if (ligne) await adminD.from("annonces_plateforme").update({ job_id: idJ, inventaire_id: j.inventaire_id ?? null, source_rapprochement: "job", updated_at: new Date().toISOString() })
+                .eq("id", String(ligne.id)).is("job_id", null).is("inventaire_id", null);
+              console.log(`[get-pending-jobs] dépôt Beebs ${idJ.slice(0, 8)} : annonce ${choix.listing_id} déjà partie (${choix.preuve}) → RATTACHÉE, aucun redépôt`);
+            }
+            continue;
+          }
+          const liens = cands.map((a) => String(a.url ?? "") || lienDepuisId("beebs", String(a.listing_id)) || String(a.listing_id)).slice(0, 3);
+          const pfN: Record<string, unknown> = { ...pf, needs_user_source: "depot_deja_parti", depot_deja_parti: { le: new Date().toISOString(), verdict: "incertaine", liens, releve: String(fait.id), essai: susp } };
+          delete pfN["depot_attente_releve_depuis"];
+          await userClient.from("cross_post_jobs").update({
+            status: "needs_user", platform_fields: pfN,
+            error: `Une annonce Beebs apparue depuis le dernier essai pourrait être cet article : ${liens.join(" ; ")}. `
+              + "On ne redépose pas, pour ne jamais la mettre en double (ni son numéro ni ses photos ne prouvent que c'est ce dépôt). "
+              + "Regarde-la sur Beebs : si c'est lui, il n'y a rien à faire ; sinon relance d'un clic.",
+          }).eq("id", idJ).eq("status", "pending");
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] vérification avant redépôt Beebs : ${String((e as Error)?.message ?? e)} — ${suspectsDepotBeebs.size} dépôt(s) retenu(s) ce cycle`);
+      }
+      if (retenus.size) {
+        out = out.filter((j) => !retenus.has(String(j.id)));
+        console.log(`[get-pending-jobs] userId=${user.id} : ${retenus.size} dépôt(s) Beebs retenu(s) — essai précédent peut-être parti, relevé avant tout redépôt`);
+      }
     }
 
     // ══ BEEBS : SA CATÉGORIE EST DÉJÀ CHEZ NOUS (2026-09-20) ═══════════════
@@ -6195,7 +6348,8 @@ serve(async (req) => {
                 await adminR.from("cross_post_jobs").update({
                   status: "cancelled", error: verdict.message,
                   platform_fields: { ...pf, retrait_attend_lien: { ...attente, conclu_le: nowIso, motif: "releves_complets" },
-                    retrait_conclu: { le: nowIso, par: "deux_releves_complets", releves: verdict.releves, numero: verdict.numero } },
+                    retrait_conclu: { le: nowIso, par: "deux_releves_complets", releves: verdict.releves, numero: verdict.numero,
+                      ...(verdict.numeroteesAvantDepot ? { numerotees_avant_depot: verdict.numeroteesAvantDepot } : {}) } },
                 }).eq("id", d.id).eq("status", "pending");
                 // Le dépôt jamais vu en ligne (published sans lien NI numéro) :
                 // il ne compte plus dans les limites, l'unité est rendue s'il en a pris une.
@@ -8539,6 +8693,25 @@ serve(async (req) => {
     // l'IA n'y touche pas. Best-effort : une exception laisse la description
     // telle quelle. `description_nettoyage` dit à l'extension ce qui est parti
     // (informatif ; les versions qui ne le lisent pas l'ignorent).
+    // ── (15/10 soir, point 9 — PAUGUES, lampe Accolay) LA FEUILLE QUE L'OBJET
+    // NOMME : une publication Leboncoin rangée dans une feuille Maison & Jardin
+    // sans paire réelle, quand UNE seule autre feuille porte un Produit nommé
+    // dans l'annonce, part dans celle-là (_shared/lbc-feuille-corrigee.js).
+    // Écrit en base (la question « Produit » ne revient plus), CAS sur pending.
+    try {
+      for (const j of (out as unknown as Array<Record<string, unknown>>)) {
+        if (j.platform !== "leboncoin" || j.action !== "publish" || j.status !== "pending") continue;
+        const r = corrigerFeuilleLbc((j.platform_fields ?? {}) as Record<string, unknown>, `${String(j.title ?? "")} ${String(j.description ?? "")}`);
+        if (!r) continue;
+        const { data: maj } = await userClient.from("cross_post_jobs").update({ platform_fields: pfAPersister(r.pf) })
+          .eq("id", String(j.id)).eq("status", "pending").select("id");
+        if (!(maj ?? []).length) continue;
+        j.platform_fields = r.pf;
+        console.log(`[get-pending-jobs] Leboncoin ${String(j.id).slice(0, 8)} : feuille « ${r.avant.join(" > ")} » sans paire réelle → « ${r.apres.join(" > ")} » (${r.paire.univers} / ${r.paire.produit}, nommé dans l'annonce)`);
+      }
+    } catch (e) {
+      console.warn(`[get-pending-jobs] feuille Leboncoin corrigée : ${String((e as Error)?.message ?? e)} — jobs servis tels quels`);
+    }
     let nettoyagesLbc = 0;
     try {
       for (const j of out as unknown as Array<Record<string, unknown>>) {
@@ -8628,18 +8801,29 @@ serve(async (req) => {
     // liste Beebs, sinon avertit et continue (champ facultatif). L'extension
     // renvoie le pf au statut suivant, la valeur se retrouve en base par ce
     // seul chemin. Best-effort : jamais un point de panne.
+    // ── ET LA REMISE EN LIGNE D'UNE REPUBLICATION (15/10 soir, ana0115) ──────
+    // « Tee shirt femme » (6ce123e7) : annonce Beebs retirée à 15:02, cinq
+    // redépôts refusés « Ajouter au moins 5 caractères » — la copie n'avait
+    // AUCUNE description (annonce importée par le relevé, capture sans texte),
+    // alors que la fiche en porte 182 caractères. Ce bloc ne servait que les
+    // publications. Désormais, toute remise en ligne Beebs (republication)
+    // part avec une description d'au moins 5 caractères, dans cet ordre :
+    // la sienne (copie de l'annonce) → celle de la FICHE → les faits du job.
+    // Celle de la fiche est le texte de la personne, jamais une invention.
     let beebsDescriptions = 0; let beebsValeurs = 0;
     try {
       const depotsBeebs = (out as unknown as Array<Record<string, unknown>>)
-        .filter((j) => j.platform === "beebs" && j.action === "publish");
+        .filter((j) => j.platform === "beebs" && (j.action === "publish" || j.action === "republish"));
       if (depotsBeebs.length) {
         const ids = [...new Set(depotsBeebs.map((j) => j.inventaire_id).filter((x) => x != null))];
         const attrsParArticle = new Map<string, Record<string, unknown>>();
+        const descParArticle = new Map<string, string>();
         if (ids.length) {
-          const { data: arts } = await lireParLots((lot) => userClient.from("inventaire").select("id, attributs").in("id", lot), ids);
+          const { data: arts } = await lireParLots((lot) => userClient.from("inventaire").select("id, attributs, description").in("id", lot), ids);
           for (const a of (arts ?? []) as Record<string, unknown>[]) {
             const at = a.attributs;
             if (at && typeof at === "object") attrsParArticle.set(String(a.id), at as Record<string, unknown>);
+            if (typeof a.description === "string" && a.description.trim()) descParArticle.set(String(a.id), a.description);
           }
         }
         const valeurCertaine = (attrs: Record<string, unknown> | undefined, cle: string): { v: string; source: string } | null => {
@@ -8653,7 +8837,16 @@ serve(async (req) => {
         for (const j of depotsBeebs) {
           const pfJ = ((j.platform_fields ?? {}) as Record<string, unknown>);
           const complements: Record<string, unknown> = {};
-          // 1. Description : minimum de 5 caractères.
+          // 1. Description : minimum de 5 caractères. Celle de la fiche d'abord
+          //    quand celle du job est trop courte (republication sans texte).
+          const descJob = typeof j.description === "string" ? j.description : "";
+          const descFiche = descParArticle.get(String(j.inventaire_id)) ?? "";
+          if (descJob.trim().length < BEEBS_DESCRIPTION_MIN && descFiche.trim().length >= BEEBS_DESCRIPTION_MIN) {
+            j.description = descFiche;
+            complements.description = { motif: "minimum_beebs_5", source: "fiche", caracteres: descFiche.length };
+            beebsDescriptions++;
+            console.log(`[get-pending-jobs] description Beebs ${String(j.id).slice(0, 8)} (${j.action}) : vide ou < 5 car. → ${descFiche.length} car. de la fiche`);
+          }
           const r = completerDescriptionBeebs(typeof j.description === "string" ? j.description : "", {
             titre: typeof j.title === "string" ? j.title : "",
             etat: typeof pfJ["etat"] === "string" ? (pfJ["etat"] as string) : "",
@@ -8667,6 +8860,8 @@ serve(async (req) => {
             console.log(`[get-pending-jobs] description Beebs ${String(j.id).slice(0, 8)} : vide ou < 5 car. → ${r.texte.length} car. depuis les faits du job (${r.ajouts.join(" + ")})`);
           }
           // 2. Couleur / Matière depuis l'annonce Vinted de la vendeuse.
+          //    Publication seulement : une republication recopie SON annonce.
+          if (j.action !== "publish") { if (Object.keys(complements).length) j.beebs_complements_serveur = complements; continue; }
           const attrs = attrsParArticle.get(String(j.inventaire_id));
           const colors = Array.isArray(pfJ["colors"]) ? (pfJ["colors"] as unknown[]).filter((c) => typeof c === "string" && c.trim()) : [];
           const pfSuite: Record<string, unknown> = { ...pfJ };
@@ -8792,6 +8987,36 @@ serve(async (req) => {
       if (vintedFiche) console.log(`[get-pending-jobs] user=${user.id} marque/couleur Vinted posées depuis la fiche : ${vintedFiche}`);
     } catch (e) {
       console.warn(`[get-pending-jobs] marque/couleur Vinted depuis la fiche : ${String((e as Error)?.message ?? e)} — jobs servis tels quels`);
+    }
+
+    // ── LA RÉPONSE « MARQUE » DE LA PERSONNE VAUT AUSSI POUR SES REPUBLICATIONS
+    // (15/10 soir, point 8 — Romain « Pago », patrick giry « Paris 2024 ») ──
+    // La recréation repartait toujours de la marque CAPTURÉE : une marque que
+    // Vinted ne propose plus (ancienne marque libre) était redemandée à chaque
+    // essai, la réponse ignorée — boucle. La réponse donnée pour CET article
+    // (attributs.marque_vinted { v, de }, de = la marque refusée) est servie en
+    // `marque_choisie` ; l'extension (0.6.114) la pose à la place de la marque
+    // capturée et oublie l'identifiant capturé. Rien n'est écrit en base.
+    try {
+      const repubsVinted = (out as unknown as Array<Record<string, unknown>>)
+        .filter((j) => j.platform === "vinted" && j.action === "republish" && j.inventaire_id != null);
+      if (repubsVinted.length) {
+        const ids = [...new Set(repubsVinted.map((j) => Number(j.inventaire_id)))];
+        const { data: arts } = await lireParLots((lot) => userClient.from("inventaire").select("id, attributs").in("id", lot), ids);
+        const parId = new Map(((arts ?? []) as Array<Record<string, unknown>>).map((a) => [Number(a.id), (a.attributs ?? {}) as Record<string, unknown>]));
+        for (const j of repubsVinted) {
+          const pfR = ((j.platform_fields ?? {}) as Record<string, unknown>);
+          const rep = parId.get(Number(j.inventaire_id))?.marque_vinted as Record<string, unknown> | undefined;
+          const capturee = String(((pfR.republish_snapshot ?? {}) as Record<string, unknown>).marque ?? "").trim();
+          const v = String(rep?.v ?? "").trim();
+          const de = String(rep?.de ?? "").trim();
+          if (!v || !capturee || !de || marqueComparableM(de) !== marqueComparableM(capturee) || marqueComparableM(v) === marqueComparableM(capturee)) continue;
+          j.platform_fields = { ...pfR, marque_choisie: v, marque_choisie_trace: { capturee, reponse: v, source: "inventaire.attributs.marque_vinted", le: new Date().toISOString() } };
+          console.log(`[get-pending-jobs] republication Vinted ${String(j.id).slice(0, 8)} : marque « ${capturee} » hors catalogue → réponse de la personne « ${v} »`);
+        }
+      }
+    } catch (e) {
+      console.warn(`[get-pending-jobs] marque choisie (republication Vinted) : ${String((e as Error)?.message ?? e)} — servies telles quelles`);
     }
 
     // ══ L'ABSENCE DE MARQUE, TRADUITE POUR CHAQUE PLATEFORME (04/10, Louis) ══

@@ -95,8 +95,11 @@ export function messageRecreationBloquee(platform, deletedAt) {
 function suiteDuMessage(platform, { etapeRetiree = false, retrait = false, publication = false } = {}) {
   const nom = NOM[platform] ?? platform;
   if (retrait) {
+    // (15/10 soir, point 3) eBay a une seconde voie : un compte relié à
+    // FillSell est retiré par l'API, sans Chrome (ebay-api-worker).
     return `Ton article est vendu mais son annonce est encore en ligne sur ${nom} (risque de double vente) : ` +
-      "FillSell la retire tout seul dès que c'est fait.";
+      "FillSell la retire tout seul dès que c'est fait." +
+      (platform === "ebay" ? " Tu peux aussi relier ton compte eBay dans FillSell (Réglages › Compte eBay) : FillSell la retirera alors sans ton ordinateur." : "");
   }
   if (publication) return "Rien n'a été publié ; tout repartira tout seul ensuite.";
   return etapeRetiree ? "Ton annonce sera remise en ligne toute seule ensuite." : "Ton annonce est intacte ; tout repartira tout seul ensuite.";

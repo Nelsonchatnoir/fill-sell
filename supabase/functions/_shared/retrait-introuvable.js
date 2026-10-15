@@ -89,6 +89,40 @@ export function neeApresLeDepot(a, { releves = [], depotLe = null } = {}) {
   return sansElle.length >= 2;
 }
 
+// ── UNE ANNONCE NUMÉROTÉE AVANT LE DÉPÔT N'EST PAS LE DÉPÔT (15/10 soir) ────
+// Cas fondateur : Joe0410, retrait Beebs du « T-shirt Shein manches courtes
+// Nasa 13-14 ans » (450b05b6), déposé le 30/09 à 07:03 sans numéro. Le retrait
+// attendait depuis le 11/10 une annonce « non reliée », n° 33911255 — le
+// « Polo Scott homme L », déposé le 06/09 (job ba7cc76b) et revenu dans « En
+// vérification » le 30/09 à 17:56. Il bloquait le retrait du T-shirt.
+// FAIT MESURÉ (15/10, 314 966 paires de dépôts Beebs à numéro, 45 jours) :
+// Beebs numérote ses annonces dans l'ordre de leur création — les 8 seules
+// inversions viennent toutes d'un même job dont NOTRE heure de confirmation
+// a été posée en retard (1fb42c23). Une annonce VUE par un relevé avant le
+// dépôt existait donc avant lui ; toute annonce de numéro plus petit aussi.
+// Le plancher = le plus grand numéro vu (première vue) au moins 10 minutes
+// avant le dépôt ; une annonce sous ce plancher ne peut pas être ce dépôt.
+// Preuve par les numéros et les dates de relevé — jamais par le titre. Elle
+// n'identifie rien, elle EXCLUT. Beebs seulement : la numérotation Leboncoin
+// n'est pas monotone sur nos données (677 inversions sur 790 495 paires).
+const NUMEROTATION_CROISSANTE = new Set(["beebs"]);
+export function numeroteeAvantLeDepot(platform, a, { lignes = [], depotLe = null } = {}) {
+  if (!NUMEROTATION_CROISSANTE.has(platform)) return false;
+  const tDepot = ms(depotLe);
+  if (!Number.isFinite(tDepot)) return false;
+  const n = numeroLigne(platform, a);
+  if (!/^\d+$/.test(String(n ?? ""))) return false;
+  let plancher = null;
+  for (const l of Array.isArray(lignes) ? lignes : []) {
+    const nl = numeroLigne(platform, l);
+    const vu = ms(l?.created_at);
+    if (!/^\d+$/.test(String(nl ?? "")) || !Number.isFinite(vu) || vu > tDepot - MARGE_DEPOT_MS) continue;
+    const b = BigInt(nl);
+    if (plancher == null || b > plancher) plancher = b;
+  }
+  return plancher != null && BigInt(n) < plancher;
+}
+
 /** La première apparition de chaque numéro (plusieurs lignes possibles pour un même numéro). */
 function premieresVues(platform, lignes) {
   const m = new Map();
@@ -110,7 +144,7 @@ function premieresVues(platform, lignes) {
  *   items_vus, total_entries, erreur), tout ordre ; annonces : lignes
  *   annonces_plateforme du compte et de la plateforme (listing_id, url,
  *   job_id, inventaire_id, vu_le, disparu_le, retiree_le).
- * @returns {null | { verdict: 'deja_retire'|'attente'|'non_reliee', numero: string|null, releves: string[], message: string, nonReliees?: string[], neesApresDepot?: string[] }}
+ * @returns {null | { verdict: 'deja_retire'|'attente'|'non_reliee', numero: string|null, releves: string[], message: string, nonReliees?: string[], neesApresDepot?: string[], numeroteesAvantDepot?: string[] }}
  */
 export function jugerRetraitIntrouvable(retrait, { releves = [], annonces = [], depotId = null, depotLe = null, maintenant = Date.now() } = {}) {
   if (!retrait || retrait.action !== "delete" || !PLATEFORMES_RELEVE.has(retrait.platform)) return null;
@@ -160,8 +194,11 @@ export function jugerRetraitIntrouvable(retrait, { releves = [], annonces = [], 
   const sansLien = vues.filter((a) => !a.job_id && a.inventaire_id == null);
   const neesApres = sansLien.filter((a) => neeApresLeDepot({ premiere_vue_le: vuesLe.get(numeroLigne(P, a)) ?? ms(a.created_at) },
     { releves, depotLe }));
-  const libres = sansLien.filter((a) => !neesApres.includes(a));
+  // (15/10 soir) Numérotée avant le dépôt (Beebs) : ne peut pas être lui.
+  const numeroteesAvant = sansLien.filter((a) => !neesApres.includes(a) && numeroteeAvantLeDepot(P, a, { lignes, depotLe }));
+  const libres = sansLien.filter((a) => !neesApres.includes(a) && !numeroteesAvant.includes(a));
   const exclues = [...new Set(neesApres.map((a) => numeroLigne(P, a)).filter(Boolean))];
+  const avant = [...new Set(numeroteesAvant.map((a) => numeroLigne(P, a)).filter(Boolean))];
   if (libres.length) {
     const ids = [...new Set(libres.map((a) => numeroLigne(P, a)).filter(Boolean))].slice(0, 3);
     return {
@@ -175,10 +212,12 @@ export function jugerRetraitIntrouvable(retrait, { releves = [], annonces = [], 
   return {
     verdict: "deja_retire", numero: null, releves: datesValides,
     ...(exclues.length ? { neesApresDepot: exclues } : {}),
+    ...(avant.length ? { numeroteesAvantDepot: avant } : {}),
     message: `Rien à retirer sur ${nom} : ton compte n'y affiche aucune annonce qui pourrait être celle-ci ` +
       `(relevés complets du ${datesValides[1]} et du ${datesValides[0]} — chaque annonce en ligne y est reliée par son numéro ` +
       "à un autre article" +
       (exclues.length ? `, ou n'y est apparue que bien après ce dépôt (n° ${exclues.join(", n° ")})` : "") +
+      (avant.length ? `, ou existait déjà avant ce dépôt d'après son numéro (n° ${avant.join(", n° ")})` : "") +
       "). Elle n'a jamais été mise en ligne, ou elle est déjà retirée. Cette publication ne compte pas dans tes limites.",
   };
 }

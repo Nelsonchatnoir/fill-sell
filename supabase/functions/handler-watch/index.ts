@@ -26,7 +26,7 @@ import { autorisationOplaRequise, autorisationDepopRequise, SOURCE_DEPOP_ACCES }
 import { demanderAutorisationDepop, repartirApresAutorisationDepop, CLES_RELANCE_DEPOP } from "../_shared/acces-depop.js";
 import { resoudreRayonDepop, traceRayonDepop, rayonDepopAJour, reponseRayonDepop, MESSAGE_RAYON_DEPOP } from "../_shared/depop-rayon.js";
 import { appliquerRayonDepop } from "../../../src/utils/depopPublication.js";
-import { decisionRecreationBloquee, messageRecreationBloquee, messageRecreationRetenueCompte, causeCompte, essaisRates, SOURCE_RECREATION_BLOQUEE } from "../_shared/recreation-bloquee.js";
+import { decisionRecreationBloquee, messageRecreationBloquee, messageRecreationRetenueCompte, causeCompte, essaisRates, SOURCE_RECREATION_BLOQUEE, causeLeveePourRelance, champsRelanceCauseLevee, messageRelanceCauseLevee } from "../_shared/recreation-bloquee.js";
 import { photosPourCouleurIA } from "../_shared/couleur-ia.ts";
 import { resoudreIsbnArticle } from "../_shared/isbn-ia.ts";
 import { ISBN_ABSENT } from "../_shared/vinted-exigences.js";
@@ -51,6 +51,10 @@ import { reclasserAutreBoutique } from "../_shared/attente-autre-boutique.js";
 import { loginsDesBoutiques } from "../_shared/boutique-connectee.js";
 import { republicationFinie, champsRepublicationFinie } from "../_shared/republication-finie.js";
 import { trancherQuestions } from "../_shared/questions-tranchees.ts";
+import { depotMuetDepuis } from "../_shared/depot-muet.js";
+import { candidatesDepuisRetrait, jugerCandidates, urlsPhotos, patchRattachementRecreation } from "../_shared/recreation-deja-partie.js";
+import { titreNommeAnnonce, decisionAlignementTitre, CONTRADICTION_IDENTITE_RE } from "../_shared/titre-aligne.js";
+import { urlsAnnonce } from "../_shared/depot-sans-numero.js";
 
 // handler-watch — surveillance QUASI TEMPS RÉEL des handlers de l'extension.
 // Appelée par pg_cron toutes les 3 min (header x-cron-secret, même mécanique
@@ -2421,6 +2425,167 @@ serve(async (req) => {
     console.error("[handler-watch] remises en ligne bloquées :", (e as Error)?.message ?? e);
   }
 
+  // ══ LE TITRE DU JOB SUIT L'ANNONCE PROUVÉE (15/10 soir, point 6) ══════════
+  // (_shared/titre-aligne.js) La garde Leboncoin de l'extension compare le titre
+  // affiché au titre du JOB, une copie qui diverge (annonce modifiée sur
+  // Leboncoin, recâblage qui garde l'ancien titre) : XEWER « Pure PS3 » et
+  // DeadRoz « Jean Levi's L 950 » bloqués sans fin. Identité prouvée (même
+  // numéro, même fiche, photos identiques) → le titre des jobs de cette annonce
+  // devient le titre en ligne (trace `titre_aligne`), et un job arrêté par la
+  // contradiction repart. Sinon rien ne bouge : la garde protège. Borné : 60.
+  let titresAlignes = 0, contradictionsRelancees = 0;
+  try {
+    const { data: lbcVivants } = await supabase.from("cross_post_jobs")
+      .select("id, user_id, platform, action, status, title, error, inventaire_id, platform_listing_id, platform_fields")
+      .eq("platform", "leboncoin").in("action", ["republish", "delete"]).in("status", ["pending", "needs_user"])
+      .not("platform_listing_id", "is", null).not("inventaire_id", "is", null)
+      .order("created_at", { ascending: false }).limit(60);
+    // deno-lint-ignore no-explicit-any
+    for (const j of (lbcVivants ?? []) as any[]) {
+      const pfJ = (j.platform_fields ?? {}) as Record<string, unknown>;
+      if (j.action === "republish" && ["deleted", "recreated"].includes(String(pfJ.republish_step ?? ""))) continue;
+      const { data: ann } = await supabase.from("annonces_plateforme")
+        .select("listing_id, titre, inventaire_id, photo_url, capture, disparu_le, retiree_le")
+        .eq("user_id", j.user_id).eq("platform", "leboncoin").eq("listing_id", String(j.platform_listing_id)).maybeSingle();
+      if (!ann || !ann.titre || titreNommeAnnonce(String(ann.titre), String(j.title ?? ""))) continue;
+      const { data: fiche } = await supabase.from("inventaire").select("photos").eq("id", j.inventaire_id).maybeSingle();
+      const urlsA = urlsAnnonce(ann);
+      const urlsF = urlsPhotos(fiche?.photos, 6);
+      if (!urlsA.length || !urlsF.length) continue;
+      const { data: emp } = await supabase.from("photo_empreintes").select("url, dhash, phash, variantes").in("url", [...urlsA, ...urlsF]);
+      // deno-lint-ignore no-explicit-any
+      const parUrl = new Map(((emp ?? []) as any[]).map((e) => [String(e.url), e]));
+      const d = decisionAlignementTitre({
+        job: j, annonce: ann,
+        empreintesAnnonce: urlsA.map((u) => parUrl.get(u)).filter(Boolean),
+        empreintesFiche: urlsF.map((u) => parUrl.get(u)).filter(Boolean),
+      });
+      if (!d?.aligner || !d.titre) continue;
+      const { data: freres } = await supabase.from("cross_post_jobs")
+        .select("id, status, action, title, error, platform_fields")
+        .eq("user_id", j.user_id).eq("platform", "leboncoin").eq("inventaire_id", j.inventaire_id)
+        .eq("platform_listing_id", String(j.platform_listing_id)).in("status", ["published", "pending", "needs_user"]).limit(20);
+      // deno-lint-ignore no-explicit-any
+      for (const f of (freres ?? []) as any[]) {
+        if (String(f.title ?? "") === d.titre) continue;
+        const pfF = { ...((f.platform_fields ?? {}) as Record<string, unknown>) };
+        pfF.titre_aligne = { le: new Date().toISOString(), avant: f.title, apres: d.titre, preuve: d.preuve, photos: d.niveaux ?? null, annonce: String(j.platform_listing_id), pose_par: "handler-watch" };
+        const snap = pfF.republish_snapshot as Record<string, unknown> | undefined;
+        if (snap && typeof snap === "object" && typeof snap.titre === "string") pfF.republish_snapshot = { ...snap, titre: d.titre };
+        const textes = [String(f.error ?? ""), String((pfF.error_technique as Record<string, unknown> | undefined)?.brut ?? ""),
+          typeof pfF.last_diagnostic === "string" ? pfF.last_diagnostic : JSON.stringify(pfF.last_diagnostic ?? "")].join(" \n ");
+        const relancer = f.status === "needs_user" && CONTRADICTION_IDENTITE_RE.test(textes);
+        if (relancer) {
+          pfF.erreurs_archivees = archiverErreur(pfF.erreurs_archivees, f.error, f.status, "handler-watch (titre aligné sur l'annonce prouvée)");
+          for (const k of ["needs_user_source", "pas_de_rouge", "error_technique", "next_action_after", "processing_since"]) delete pfF[k];
+          pfF.needsUserAttempts = 0;
+        }
+        const { data: maj } = await supabase.from("cross_post_jobs")
+          .update({ title: d.titre, platform_fields: pfF, ...(relancer ? { status: "pending", error: null } : {}) })
+          .eq("id", f.id).eq("status", f.status).select("id");
+        if (maj?.length) {
+          titresAlignes++;
+          if (relancer) contradictionsRelancees++;
+          console.log(`[handler-watch] titre aligné ${String(f.id).slice(0, 8)} (${f.action}/${f.status}) : « ${String(f.title).slice(0, 60)} » → « ${d.titre.slice(0, 60)} » (annonce ${j.platform_listing_id}, ${d.preuve})${relancer ? " — repart" : ""}`);
+        }
+      }
+    }
+    if (titresAlignes) console.log(`[handler-watch] ${titresAlignes} titre(s) de job aligné(s) sur l'annonce prouvée, ${contradictionsRelancees} job(s) relancé(s)`);
+  } catch (e) {
+    console.error("[handler-watch] titres alignés :", (e as Error)?.message ?? e);
+  }
+
+  // ══ UNE REMISE EN LIGNE « PEUT-ÊTRE DÉJÀ PARTIE » SE TRANCHE PAR LES PHOTOS (15/10 soir) ══
+  // (_shared/recreation-deja-partie.js, jugerCandidates) camille.ferren 5b6c8cc9 :
+  // question posée à 12:45 sur l'annonce 3288747290, apparue pendant la remise
+  // en ligne avec EXACTEMENT les photos de notre copie. get-pending-jobs ne
+  // juge que les jobs en file ; une question déjà posée reste jugée ici dès
+  // que les empreintes existent : identité certaine → rattachée (published),
+  // sans redépôt ; sinon la question reste. Borné : 20 jobs, aucun redépôt.
+  let dejaPartiesRattachees = 0;
+  try {
+    const { data: enDoute } = await supabase.from("cross_post_jobs")
+      .select("id, user_id, platform, action, status, title, error, inventaire_id, photos, created_at, platform_fields")
+      .eq("action", "republish").eq("status", "needs_user")
+      .eq("platform_fields->>needs_user_source", "recreation_deja_partie")
+      .order("created_at", { ascending: true }).limit(20);
+    // deno-lint-ignore no-explicit-any
+    for (const j of (enDoute ?? []) as any[]) {
+      const pf = (j.platform_fields ?? {}) as Record<string, unknown>;
+      if (pf.republish_step !== "deleted" || !pf.deleted_at) continue;
+      const ancienId = String(pf.old_platform_listing_id ?? "").trim()
+        || (String(pf.old_listing_url ?? "").match(/(\d{6,})(?:[/?#]|$)/)?.[1] ?? "");
+      const { data: lignes } = await supabase.from("annonces_plateforme")
+        .select("listing_id, url, titre, prix, photo_url, capture, statut_plateforme, job_id, inventaire_id, created_at, disparu_le")
+        .eq("user_id", j.user_id).eq("platform", j.platform).gte("created_at", String(pf.deleted_at)).limit(50);
+      const candidates = candidatesDepuisRetrait({ jobId: j.id, ancienId, deletedAt: pf.deleted_at, lignes: lignes ?? [], inventaireId: j.inventaire_id ?? null });
+      if (!candidates.length) continue;
+      const urlsCopie = urlsPhotos(j.photos);
+      // deno-lint-ignore no-explicit-any
+      const urlsParCandidate = new Map<string, string[]>(candidates.map((c: any) => [String(c.listing_id),
+        [...new Set([...urlsPhotos(c.capture?.photos, 4), ...urlsPhotos([c.photo_url], 1)])]]));
+      const toutes = [...new Set([...urlsCopie, ...[...urlsParCandidate.values()].flat()])];
+      if (!urlsCopie.length || !toutes.length) continue;
+      const { data: emp } = await supabase.from("photo_empreintes").select("url, dhash, phash, variantes").in("url", toutes.slice(0, 200));
+      // deno-lint-ignore no-explicit-any
+      const parUrl = new Map(((emp ?? []) as any[]).map((e) => [String(e.url), e]));
+      const juge = jugerCandidates({
+        candidates, listingIdProuve: String(pf.new_platform_listing_id ?? "") || null,
+        empreintesCopie: urlsCopie.map((u) => parUrl.get(u)).filter(Boolean),
+        empreintesParCandidate: new Map([...urlsParCandidate].map(([id, us]) => [id, us.map((u) => parUrl.get(u)).filter(Boolean)])),
+      // deno-lint-ignore no-explicit-any
+      }) as any;
+      if (juge.verdict !== "certaine") continue;
+      const patch = patchRattachementRecreation(pf, juge.retenue, {
+        trace: { le: new Date().toISOString(), verdict: "certaine", candidates: candidates.map((c: Record<string, unknown>) => String(c.listing_id)) },
+        preuve: juge.preuve, photos: juge.photos ?? null, posePar: "handler-watch (remise en ligne déjà partie, tranchée par les photos)",
+      });
+      // deno-lint-ignore no-explicit-any
+      const pfP = patch.platform_fields as any;
+      if (j.error) pfP.erreurs_archivees = archiverErreur(pfP.erreurs_archivees, j.error, j.status, "handler-watch (annonce déjà partie : identité prouvée)");
+      const { data: maj } = await supabase.from("cross_post_jobs").update(patch).eq("id", j.id).eq("status", "needs_user").select("id");
+      if (maj?.length) {
+        dejaPartiesRattachees++;
+        console.log(`[handler-watch] republication ${String(j.id).slice(0, 8)} (${j.platform}) : annonce ${String(juge.retenue?.listing_id)} déjà partie, ${juge.preuve} → rattachée (published), aucun redépôt`);
+      }
+    }
+    if (dejaPartiesRattachees) console.log(`[handler-watch] ${dejaPartiesRattachees} remise(s) en ligne déjà partie(s) rattachée(s) par preuve`);
+  } catch (e) {
+    console.error("[handler-watch] remises en ligne déjà parties :", (e as Error)?.message ?? e);
+  }
+
+  // ══ UNE REMISE EN LIGNE BLOQUÉE REPART SEULE DÈS QUE LA CAUSE EST LEVÉE (15/10 soir) ══
+  // (_shared/recreation-bloquee.js, CAUSES_LEVEES_PAR_LE_SERVEUR) ana0115 « Tee
+  // shirt femme » : hors ligne depuis 15:02, sortie de la file sur un défaut de
+  // NOTRE copie (description vide). Une cause corrigée côté serveur relance le
+  // job une fois, sans geste ; un compte en cause n'est jamais relancé d'office.
+  // Borné : 50 jobs lus, une écriture par job relancé, aucune ligne inchangée.
+  let recreationsRelancees = 0;
+  try {
+    const { data: bloquees } = await supabase.from("cross_post_jobs")
+      .select("id, user_id, platform, action, status, title, description, error, created_at, platform_fields")
+      .eq("action", "republish").eq("status", "needs_user")
+      .eq("platform_fields->>needs_user_source", SOURCE_RECREATION_BLOQUEE)
+      .order("created_at", { ascending: true }).limit(50);
+    // deno-lint-ignore no-explicit-any
+    for (const j of (bloquees ?? []) as any[]) {
+      const cause = causeLeveePourRelance(j);
+      if (!cause) continue;
+      const pf = champsRelanceCauseLevee(j.platform_fields ?? {}, cause, new Date().toISOString()) as Record<string, unknown>;
+      if (j.error) pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error, j.status, `handler-watch (cause levée : ${cause.code})`);
+      const { data: maj } = await supabase.from("cross_post_jobs")
+        .update({ status: "pending", error: messageRelanceCauseLevee(j), platform_fields: pf })
+        .eq("id", j.id).eq("status", "needs_user").select("id");
+      if (maj?.length) {
+        recreationsRelancees++;
+        console.log(`[handler-watch] republication ${String(j.id).slice(0, 8)} (${j.platform}) : cause levée (${cause.code}) → remise en file, l'annonce repart seule`);
+      }
+    }
+    if (recreationsRelancees) console.log(`[handler-watch] ${recreationsRelancees} remise(s) en ligne relancée(s) : cause corrigée côté serveur`);
+  } catch (e) {
+    console.error("[handler-watch] remises en ligne à cause levée :", (e as Error)?.message ?? e);
+  }
+
   // ══ L'ISBN D'UN LIVRE SE LIT SUR SES PHOTOS AVANT DE LE DEMANDER (12/10, Morgane) ══
   // (_shared/isbn-ia.ts) Une publication Vinted arrêtée sur l'ISBN (question
   // posée par get-pending-jobs avant tout essai, ou refus 400 « ISBN valide »)
@@ -3555,13 +3720,13 @@ serve(async (req) => {
       // La fermeture précédente (`pending_muet_clos_le`) fait donc repartir
       // le compteur : un job relancé après une fermeture a de nouveau dix
       // jours complets pour aboutir.
-      const ne = Date.parse(String(j.created_at));
-      const clos = Date.parse(String(pf.pending_muet_clos_le ?? ""));
-      const depuis = Number.isFinite(clos) ? Math.max(ne, clos) : ne;
-      // Le temps passé en pause anti-robot ne compte pas (2026-09-25).
-      const pause = Math.max(0, Number(pf.antirobot_pause_cumul_ms) || 0);
-      if (now - depuis - pause < PENDING_MUET_JOURS * 24 * 3600 * 1000) continue;
-      const jours = Math.floor((now - depuis - pause) / 86400000);
+      // (15/10 soir, geronimo 14887481) TOUTE remise en file le fait repartir :
+      // relance depuis l'app, remise en file par la base ou à la main — pas
+      // seulement une fermeture précédente (_shared/depot-muet.js). Le temps
+      // passé en pause anti-robot ne compte toujours pas (2026-09-25).
+      const etatMuet = depotMuetDepuis(j, { maintenant: now, jours: PENDING_MUET_JOURS });
+      if (!etatMuet.muet) continue;
+      const jours = etatMuet.jours;
       // ⛔ G11 : le message dit que ça vient de chez nous, n'accuse personne,
       //    ne donne pas de consigne et ne cite aucun chiffre.
       const msg =

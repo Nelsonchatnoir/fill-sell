@@ -105,5 +105,38 @@ ok("titre différent → incertaine",
 ok("deux candidates → incertaine, deux liens",
   (() => { const v = jugerCandidates({ candidates: [enLigne[0], { ...enLigne[0], listing_id: "3276289397", url: "u2" }], titres, prix: 44.99, photoIdentique: () => true }); return v.verdict === "incertaine" && v.liens.length === 2; })());
 
+
+console.log("\n5. LES PHOTOS DE NOTRE COPIE TRANCHENT (15/10 soir, camille.ferren 5b6c8cc9)");
+// Empreintes RELEVÉES en base le 15/10 (photo_empreintes) : copie du job =
+// rehosted/…_watch_0/1.jpg ; annonce 3288747290 apparue à 12:34 (photos
+// acbf41…, 665e04…) ; annonce d'origine 3122354807 (photo 173941…).
+const { readFileSync } = await import("node:fs");
+const EMP = JSON.parse(readFileSync(new URL("./fixtures/empreintes-camille-calendrier-1510.json", import.meta.url), "utf8"));
+const e = (u) => ({ url: u, ...EMP[u] });
+const COPIE = [
+  "https://tojihnuawsoohlolangc.supabase.co/storage/v1/object/public/listing-photos/6a7595b1-d223-4e33-8951-e32e4ff4ac59/rehosted/1791995031180005/1791995941335_watch_0.jpg",
+  "https://tojihnuawsoohlolangc.supabase.co/storage/v1/object/public/listing-photos/6a7595b1-d223-4e33-8951-e32e4ff4ac59/rehosted/1791995031180005/1791995941335_watch_1.jpg",
+].map(e);
+const NOUVELLE = [
+  "https://img.leboncoin.fr/api/v1/lbcpb1/images/ac/bf/41/acbf41f3982f231fb744302fef259b9fe865fb39.jpg?rule=ad-large",
+  "https://img.leboncoin.fr/api/v1/lbcpb1/images/66/5e/04/665e049acba7bd1e5b3c3d7a8c29b3cc5f8d3ec6.jpg?rule=ad-large",
+].map(e);
+const ORIGINE = ["https://img.leboncoin.fr/api/v1/lbcpb1/images/17/39/41/17394166cacd6290604c16095ddf927f3df9debe.jpg?rule=ad-large"].map(e);
+const candCamille = [{ listing_id: "3288747290", url: "https://www.leboncoin.fr/ad/loisirs_creatifs/3288747290", statut_plateforme: "en_ligne", created_at: "2026-10-15T10:35:45Z" }];
+const vC = jugerCandidates({ candidates: candCamille, empreintesCopie: COPIE, empreintesParCandidate: new Map([["3288747290", NOUVELLE]]) });
+ok("camille : photos identiques à NOTRE copie → certaine (rattachée, aucun redépôt)", vC.verdict === "certaine" && vC.retenue?.listing_id === "3288747290" && /photos/.test(vC.preuve ?? ""), JSON.stringify(vC));
+const vO = jugerCandidates({ candidates: [{ ...candCamille[0], listing_id: "999" }], empreintesCopie: COPIE, empreintesParCandidate: new Map([["999", ORIGINE]]) });
+ok("une annonce aux photos de la personne (pas les nôtres) → incertaine (question)", vO.verdict === "incertaine", JSON.stringify(vO));
+const vSans = jugerCandidates({ candidates: candCamille, empreintesCopie: COPIE, empreintesParCandidate: new Map([["3288747290", []]]) });
+ok("empreintes de la candidate absentes → incertaine (on attendra les empreintes)", vSans.verdict === "incertaine");
+const vDeux = jugerCandidates({ candidates: [candCamille[0], { ...candCamille[0], listing_id: "3288747291" }], empreintesCopie: COPIE,
+  empreintesParCandidate: new Map([["3288747290", NOUVELLE], ["3288747291", NOUVELLE]]) });
+ok("deux candidates aux mêmes photos → incertaine (deux exemplaires possibles)", vDeux.verdict === "incertaine");
+const vDeuxDont1 = jugerCandidates({ candidates: [candCamille[0], { ...candCamille[0], listing_id: "3288747291" }], empreintesCopie: COPIE,
+  empreintesParCandidate: new Map([["3288747290", NOUVELLE], ["3288747291", ORIGINE]]) });
+ok("deux candidates, une seule aux photos de la copie, l'autre sans photo approchante → certaine sur la bonne", vDeuxDont1.verdict === "certaine" && vDeuxDont1.retenue.listing_id === "3288747290", JSON.stringify(vDeuxDont1.photos));
+ok("annonce disparue entre-temps (statut autre) → jamais rattachée", jugerCandidates({ candidates: [{ ...candCamille[0], statut_plateforme: "desactivee" }], empreintesCopie: COPIE, empreintesParCandidate: new Map([["3288747290", NOUVELLE]]) }).verdict === "incertaine");
+
+
 if (ko) { console.log(`\n✗ ${ko} échec(s)`); process.exit(1); }
 console.log("\n✓ tous les cas passent");
