@@ -261,6 +261,17 @@ export function gardeAspectsEbay({ pfE, ebayRequiredFull, outils }) {
       // Gates et handlers lisent colors[0] AVANT couleur : écrire les deux.
       set: v => { pfE.couleur = v; if (Array.isArray(pfE.colors) && pfE.colors.length) pfE.colors = [v, ...pfE.colors.slice(1)]; } },
     { labels: ["Matière", "Matériau", "Matériaux", "Matière de la couche extérieure", "Matière doublure externe", "Matière extérieure"], value: () => pfE.matiere, set: v => { pfE.matiere = v; } },
+    // ⛔ (15/10, Romain GUERIN — Polaroid, 31388) « Modèle » et « Capacité de
+    // stockage » vivent dans pf.modele / pf.stockage : c'est là que la
+    // rédaction eBay, la carte du rayon et la question les écrivent, là que
+    // l'encart les lit (puce ✓) et là que les DEUX voies les envoient (worker
+    // CHAMP_PAR_ASPECT, ebay.js fields.modele). La garde ne lisait que
+    // pf.ebayAspects : « Modèle » rempli à l'écran, refusé au clic, sans
+    // aucun endroit où l'écrire pour passer (depuis 642b6e2, 24/09).
+    // Aucun rapprochement sur ces deux-là : la valeur part telle qu'écrite
+    // (liste FREE_TEXT = suggestions) — jamais remplacée par une voisine.
+    { labels: ["Modèle"], value: () => pfE.modele, set: v => { pfE.modele = v; }, sansRapprochement: true },
+    { labels: ["Capacité de stockage"], value: () => pfE.stockage, set: v => { pfE.stockage = v; }, sansRapprochement: true },
   ];
   // Même normalisation que normalizeFuzzy de ebay.js.
   const normFuzzy = s => String(s).trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
@@ -282,7 +293,7 @@ export function gardeAspectsEbay({ pfE, ebayRequiredFull, outils }) {
     // « 44 », « XXL » → « 2XL »), jamais un rapprochement par mots sur un
     // nombre — il lisait « 44.5 » comme « 44 ».
     const estTaille = known?.labels?.includes("Taille");
-    const nearest = estTaille
+    const nearest = known?.sansRapprochement ? null : estTaille
       ? (tailleDansGrille(val, allowed)?.valeur ?? (/\d/.test(val) ? null : nearestAllowedValue(val, allowed)))
       : nearestAllowedValue(val, allowed);
     if (nearest) {
@@ -303,6 +314,19 @@ export function gardeAspectsEbay({ pfE, ebayRequiredFull, outils }) {
     });
   }
   return { missingEmpty, invalides, rapproches, horsListe };
+}
+
+// (15/10, Romain GUERIN) Les aspects eBay encore VIDES pour la garde — mêmes
+// lectures qu'elle, sur une COPIE (la copie eBay n'est jamais touchée). Sert à
+// savoir qu'une question posée au clic a reçu sa réponse là où la garde
+// regarde, pour que la publication reparte seule.
+export function aspectsEbayEncoreVides(pfE, noms) {
+  const copie = JSON.parse(JSON.stringify(pfE ?? {}));
+  return gardeAspectsEbay({
+    pfE: copie,
+    ebayRequiredFull: (noms ?? []).map((name) => ({ name })),
+    outils: { nearestAllowedValue: () => null, listeFaitFoi: () => false },
+  }).missingEmpty;
 }
 
 // ── LES QUESTIONS À POSER (l'encart rouge de StepPublish, 2026-08-28) ───────

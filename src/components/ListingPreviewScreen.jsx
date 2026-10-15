@@ -118,7 +118,7 @@ import {
   aspectBloquant, plateformesPubliables as calculerPlateformesPubliables,
   champsBloquantsParPlateforme, plateformesBloqueesChamps as calculerPlateformesBloqueesChamps,
   descriptionVintedVide, calculerExclusions, motifAucunePlateforme, cleCategorieRequis,
-  construireJobs, plateformesSansChemin, gardeAspectsEbay, questionsParPlateforme as calculerQuestionsParPlateforme,
+  construireJobs, plateformesSansChemin, gardeAspectsEbay, aspectsEbayEncoreVides, questionsParPlateforme as calculerQuestionsParPlateforme,
 } from "../publication/moteur/regles";
 import {
   NO_BRAND_VALUE, SHARED_FIELD_KEYS, SHARED_PROPAGATION, EBAY_ASPECT_LABELS,
@@ -5252,6 +5252,14 @@ export default function ListingPreviewScreen({
   const [publishing, setPublishing]     = useState(false);
   const [publishError, setPublishError] = useState("");
   const [done, setDone]                 = useState(false);
+  // (15/10, Romain GUERIN) Un aspect eBay EXIGÉ et vide au clic : la question
+  // est posée sur l'écran (« Confirmer », bloc des questions), et la
+  // publication REPART SEULE dès que la réponse est écrite là où la garde la
+  // lit — une fois par ensemble de champs (jamais en boucle : un second refus
+  // sur les mêmes champs attend le bouton « Publier »).
+  const [relanceEbay, setRelanceEbay]   = useState(null); // { cle, noms } | null
+  const relanceEbayFaites = useRef(new Set());
+  const handlePublishRef = useRef(null);
   // Écran d'accroche extension (2026-08-04). extSeenOverride : le bouton
   // « J'ai installé — vérifier » de l'écran a relu le profil et trouvé un
   // extension_last_seen_at → la garde se lève pour la session sans attendre
@@ -10124,7 +10132,13 @@ export default function ListingPreviewScreen({
           : tpl("stepPublishEbayValueNotAllowedPick", { name: v.name, value: v.val, count: v.count }));
         const guardMessages = [];
         if (verdict.missingEmpty.length) {
-          guardMessages.push(tpl("stepPublishEbayRequiredMissing", { fields: verdict.missingEmpty.join(", ") }));
+          // (15/10) La question est posée ICI (bloc des questions de l'écran) ;
+          // la publication repart seule à la réponse, sauf si elle a déjà été
+          // relancée une fois pour ces mêmes champs.
+          const cleRelance = [...verdict.missingEmpty].sort().join("|");
+          const relancable = !verdict.invalides.length && !relanceEbayFaites.current.has(cleRelance);
+          if (relancable) setRelanceEbay({ cle: cleRelance, noms: [...verdict.missingEmpty] });
+          guardMessages.push(tpl(relancable ? "stepPublishEbayRequiredMissing" : "stepPublishEbayRequiredMissingManuel", { fields: verdict.missingEmpty.map(n => (lang === "en" ? `“${n}”` : `« ${n} »`)).join(", ") }));
         }
         guardMessages.push(...invalidMessages);
         if (guardMessages.length) {
@@ -10479,6 +10493,33 @@ export default function ListingPreviewScreen({
       setPublishing(false);
     }
   }
+
+  handlePublishRef.current = handlePublish;
+  // (15/10, Romain GUERIN) La réponse à la question du clic relance la
+  // publication : quand tous les champs refusés sont remplis (lus comme la
+  // garde les lit) et que personne n'est en train de taper dans un champ
+  // texte — un choix dans une liste part tout de suite, une saisie libre part
+  // quand on quitte le champ. Même handlePublish : verrou `publishing`, aucun
+  // débit avant la garde.
+  useEffect(() => {
+    if (!relanceEbay || publishing || done) return undefined;
+    let annule = false;
+    let minuteur = null;
+    const verifier = () => {
+      if (annule) return;
+      const pfE = edited.ebay?.platform_fields;
+      if (!pfE || aspectsEbayEncoreVides(pfE, relanceEbay.noms).length) return;
+      const actif = typeof document !== "undefined" ? document.activeElement : null;
+      if (actif && actif.tagName === "INPUT" && !["checkbox", "radio", "button"].includes(actif.type)) return;
+      relanceEbayFaites.current.add(relanceEbay.cle);
+      setRelanceEbay(null);
+      handlePublishRef.current?.();
+    };
+    const planifier = () => { clearTimeout(minuteur); minuteur = setTimeout(verifier, 900); };
+    planifier();
+    document.addEventListener("focusout", planifier);
+    return () => { annule = true; clearTimeout(minuteur); document.removeEventListener("focusout", planifier); };
+  }, [relanceEbay, edited, publishing, done]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Nav ───────────────────────────────────────────────────────────────────
   const displayPreviews = pickedPreviews.length > 0 ? pickedPreviews : photos;

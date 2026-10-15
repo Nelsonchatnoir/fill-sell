@@ -333,7 +333,9 @@
     "selftest:livre-isbn-vinted": "node scripts/livre-isbn-vinted-selftest.mjs",
     "selftest:republication-pause-reglages": "node scripts/republication-pause-reglages-selftest.mjs",
     "selftest:textes-republication-exacts": "node scripts/textes-republication-exacts-selftest.mjs",
-    "selftest:stripe-un-paiement": "deno run --allow-read --allow-write --allow-env --allow-run scripts/preuves/preuve-stripe-un-paiement.ts"
+    "selftest:stripe-un-paiement": "deno run --allow-read --allow-write --allow-env --allow-run scripts/preuves/preuve-stripe-un-paiement.ts",
+    "selftest:ebay-modele-garde": "node scripts/ebay-modele-garde-selftest.mjs",
+    "selftest:messages-cause-vraie": "node scripts/messages-cause-vraie-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
