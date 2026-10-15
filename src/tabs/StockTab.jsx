@@ -33,7 +33,7 @@ import { etatAttenteBoutique, lignesAttenteBoutique, phraseRassurance, messageFi
 import { phraseMiseAJourExtension } from '../utils/extensionAJour';
 import { retenueServeurDuJob, phraseRetenueServeur } from '../utils/retenueServeur';
 import { partageRepublicationsDuJour } from '../utils/plafondRepublication';
-import { retraitsBloquesParConnexion, ligneCarteRetraitBloque, ligneARegler as ligneAReglerRetraits } from '../utils/retraitsBloques';
+import { retraitsBloquesParConnexion, ligneCarteRetraitBloque, ligneARegler as ligneAReglerRetraits, articlesVendusEncoreEnLigne, detailArticleVenduEnLigne, retraitsHorsArticlesVendus, retraitsEnAttenteParArticle } from '../utils/retraitsBloques';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import OplaAutorisationModal from '../components/OplaAutorisationModal';
 import { useOplaAcces, phraseAccesOpla, parcageDepasse } from '../utils/oplaAcces';
@@ -110,6 +110,7 @@ import MenuArticle from '../stock/MenuArticle';
 import EcranSelection from '../stock/EcranSelection';
 import EcranARegler from '../stock/EcranARegler';
 import EcranRetraitsBloques from '../stock/EcranRetraitsBloques';
+import EcranPlein from '../stock/EcranPlein';
 import EcranIdentiteLbc from '../stock/EcranIdentiteLbc';
 import {
   actionPrincipale, libelleAction, ancienneteJours, estAncienne, pastilleCourte, dateCourte, nombreFr,
@@ -123,7 +124,7 @@ import {
   Upload, ChevronsUp, BadgeEuro, Pencil, Copy, Trash2, Layers, ListChecks, Eye, Store, ExternalLink, Activity,
   CircleAlert, Laptop, KeyRound, Wrench, PauseCircle, Clock, RotateCcw,
   PenLine, Mic, Hourglass, Sparkles, Plus, BarChart3, Package, Tag, Hash, ShoppingCart, ShoppingBag,
-  Banknote, Receipt, Archive, Camera, Info, CircleCheck, Undo2, Lightbulb, Heart, CalendarClock, Weight,
+  Banknote, Receipt, Archive, Camera, Info, CircleCheck, Undo2, Lightbulb, Heart, CalendarClock, Weight, CircleX,
 } from 'lucide-react';
 import VoiceResultCard from '../components/voice/VoiceResultCard';
 import { Btn } from '../components/voice/VoiceKit';
@@ -5711,6 +5712,21 @@ const StockTab = memo(function StockTab({
   // (03/10) « Dupliquer » — menu « … » de la carte : App crée la copie
   // (src/stock/dupliquer.js) et ouvre sa fiche en modification.
   onDupliquer = null,
+  // ⛔ (12/10 soir, Nico) PLUS AUCUN BANDEAU : tout ce qui attendait en haut de
+  // l'app (zone des bandeaux d'App.jsx) vit dans « À régler ». App garde ses
+  // lectures et ses gestes ; le Stock les range :
+  //   · pendingRemovals : annonces d'un article vendu encore en ligne qui
+  //     attendent l'accord (« Retirer » → onRetirerVendus, « Plus tard » →
+  //     onPlusTardVendus — armRemovals / reporterRetraits d'App, inchangés) ;
+  //   · plusEnLigne : { n, nMasquees, rendre({ fermer }), onAfficherMasquees,
+  //     ouvrirQuestion(jobId) } — les annonces « plus en ligne — vendue ? »,
+  //     leurs questions rendues par App dans un écran ouvert d'ici ;
+  //     ouvrirQuestion met CELLE d'une annonce en tête, même reportée (15/10,
+  //     « Répondre » du stepper).
+  pendingRemovals = [],
+  onRetirerVendus = null,
+  onPlusTardVendus = null,
+  plusEnLigne = null,
 }) {
   const { t, tpl } = useTranslation(lang);
   const isMobile = useIsMobile(); // P4 : réactif (grille desktop ↔ liste mobile)
@@ -6855,6 +6871,30 @@ const StockTab = memo(function StockTab({
     () => retraitsBloquesParConnexion({ jobs: tousLesJobs, fiches: fichesToutes, extensionVueLe: extensionStatus ? (extensionStatus.lastSeenAt ?? null) : undefined, loginsBoutiques: loginsBoutiquesRetrait }),
     [tousLesJobs, fichesToutes, extensionStatus, loginsBoutiquesRetrait],
   );
+  // ── (12/10 soir, Nico) UN ARTICLE VENDU ENCORE EN LIGNE = UNE LIGNE DE
+  // « À RÉGLER » (plus aucun bandeau). Ses retraits qui attendent la personne
+  // et ses annonces à retirer avec son accord (pending_removal, lu par App),
+  // un article par ligne ; le tap ouvre SA fiche (menu de l'article), qui
+  // porte le geste. Le reste des retraits bloqués (fiche en stock ou
+  // supprimée) garde la ligne « retraits » et son écran.
+  const aRetirerParArticle = useMemo(() => retraitsEnAttenteParArticle(pendingRemovals), [pendingRemovals]);
+  const vendusEnLigne = useMemo(
+    () => articlesVendusEncoreEnLigne({ retraits: retraitsBloques, pendingRemovals, fiches: fichesToutes }),
+    [retraitsBloques, pendingRemovals, fichesToutes],
+  );
+  const retraitsAutres = useMemo(() => retraitsHorsArticlesVendus(retraitsBloques, vendusEnLigne), [retraitsBloques, vendusEnLigne]);
+  // Annonces à retirer d'un article dont la fiche n'existe plus : groupées
+  // comme l'ancien bandeau (article, sinon titre), dans l'écran des retraits.
+  const aRetirerSansFiche = useMemo(() => {
+    const groupes = new Map();
+    for (const j of pendingRemovals ?? []) {
+      if (j?.inventaire_id != null && fichesToutes.has(String(j.inventaire_id))) continue;
+      const k = String(j?.inventaire_id ?? j?.title ?? j?.id);
+      if (!groupes.has(k)) groupes.set(k, []);
+      groupes.get(k).push(j);
+    }
+    return [...groupes.values()];
+  }, [pendingRemovals, fichesToutes]);
   // ── (06/10 soir) LEBONCOIN DEMANDE NOM ET PRÉNOM : UNE CARTE PAR COMPTE ──
   // Motif EXACT (_shared/lbc-identite.js) : ces tâches sortent des lignes par
   // article et deviennent UNE ligne de « À régler » (EcranIdentiteLbc).
@@ -8543,17 +8583,38 @@ const StockTab = memo(function StockTab({
   const nbAttenteAction = attenteAction?.total ?? 0;
   // (05/10) Les retraits bloqués par une connexion COMPTENT : une annonce
   // vendue encore en ligne attend un geste (se reconnecter), comme le reste.
-  const nbRetraitsBloques = retraitsBloques.total;
+  // (12/10 soir) UN par article vendu encore en ligne (sa ligne), plus les
+  // retraits restants (fiche en stock ou supprimée) et les annonces à retirer
+  // d'un article sans fiche — jamais deux fois le même article.
+  const nbVendusEnLigne = vendusEnLigne.length;
+  const nbRetraitsAutres = retraitsAutres.total + aRetirerSansFiche.reduce((t, g) => t + g.length, 0);
+  const nbRetraitsBloques = nbVendusEnLigne + nbRetraitsAutres;
   const nbIdentiteLbc = identiteLbc.length ? 1 : 0; // une carte par compte, quel que soit le nombre d'annonces
   const nbAVerifier = aVerifier.ouvrir ? aVerifier.n : 0;
-  const nbARegler = nbRetraitsBloques + nbIdentiteLbc + nbAttenteAction + questionsDejaVendu.length + nbAVerifier + nbSansPrix + brouillons.length;
-  const ligneRetraits = ligneAReglerRetraits(retraitsBloques, lang);
+  // (12/10 soir) Les annonces « plus en ligne — vendue ? » (questions d'App,
+  // jadis des bandeaux sur tous les onglets) : comptées comme elles s'affichent.
+  const nbPlusEnLigne = plusEnLigne?.n ?? 0;
+  const nbARegler = nbRetraitsBloques + nbIdentiteLbc + nbAttenteAction + questionsDejaVendu.length + nbAVerifier + nbSansPrix + brouillons.length + nbPlusEnLigne;
+  const ligneRetraits = retraitsAutres.total
+    ? ligneAReglerRetraits(retraitsAutres, lang)
+    : { titre: lang === 'fr' ? (nbRetraitsAutres > 1 ? 'Annonces encore en ligne à retirer' : 'Annonce encore en ligne à retirer') : (nbRetraitsAutres > 1 ? 'Listings still live to remove' : 'Listing still live to remove'),
+      detail: lang === 'fr' ? 'Un article vendu dont la fiche a été supprimée : retire son annonce pour ne pas le vendre deux fois.' : 'A sold item whose card was deleted: remove its listing so it isn’t sold twice.' };
   const ouvrirModePrixAchat = () => { setGesteOuvert(null); setModePrixAchat(true); setModeBrouillons(false); setModeRepublish(false); setModeLot(false); setPaSel(new Set()); setPaOpenId(null); setPaErr(null); sauterAuxArticles(); };
   const ouvrirModeBrouillons = () => { setGesteOuvert(null); setModeBrouillons(true); setModePrixAchat(false); setModeRepublish(false); setModeLot(false); setShowAllStock(false); sauterAuxArticles(); };
   const lignesARegler = [
     // En tête : le seul point où un acheteur peut payer un article déjà parti.
-    // Le tap ouvre « Annonces à retirer », qui porte « Me connecter ».
-    { cle: 'retraits', n: nbRetraitsBloques, titre: ligneRetraits.titre, detail: ligneRetraits.detail,
+    // (12/10 soir, Nico) Un article vendu encore en ligne = UNE ligne : son
+    // titre, la plateforme et le geste ; le tap ouvre SA fiche (le menu de
+    // l'article : la consigne, « Me connecter » ou « Retirer », « Modifier »…).
+    ...vendusEnLigne.map((a) => ({
+      cle: `vendu:${a.inventaireId}`, groupe: 'vendus', article: true, n: 1, ton: a.ton,
+      titre: a.titre ?? (lang === 'fr' ? 'Article vendu' : 'Sold item'),
+      detail: detailArticleVenduEnLigne(a, lang),
+      onOuvrir: () => { setGesteOuvert(null); setMenuArticleId(a.inventaireId); },
+    })),
+    // Le reste des retraits : le tap ouvre « Annonces à retirer », qui porte
+    // « Me connecter ».
+    { cle: 'retraits', n: nbRetraitsAutres, titre: ligneRetraits.titre, detail: ligneRetraits.detail,
       onOuvrir: () => setGesteOuvert('retraits') },
     { cle: 'lbc_identite', n: nbIdentiteLbc, titre: lang === 'fr' ? 'Leboncoin : ton nom et ton prénom' : 'Leboncoin: your first and last name',
       detail: lang === 'fr'
@@ -8569,6 +8630,11 @@ const StockTab = memo(function StockTab({
     { cle: 'ventes', n: questionsDejaVendu.length, titre: lang === 'fr' ? 'Déjà vendu ?' : 'Already sold?',
       detail: lang === 'fr' ? 'Un article vendu a peut-être encore une annonce en ligne : réponds pour ne pas le vendre deux fois.' : 'A sold item may still have a listing online: answer to avoid selling it twice.',
       onOuvrir: () => { setGesteOuvert(null); setEcranDejaVendu(true); } },
+    // (12/10 soir) Les annonces qui ne sont plus en ligne : vendue, retirée, ou
+    // « je ne sais pas » — toutes plateformes, mêmes questions qu'avant.
+    { cle: 'plus_en_ligne', n: nbPlusEnLigne, titre: lang === 'fr' ? (nbPlusEnLigne > 1 ? 'Annonces plus en ligne' : 'Annonce plus en ligne') : (nbPlusEnLigne > 1 ? 'Listings no longer online' : 'Listing no longer online'),
+      detail: lang === 'fr' ? 'Vendue, retirée, ou tu ne sais pas : réponds annonce par annonce, rien n’est enregistré sans toi.' : 'Sold, removed, or you don’t know: answer one by one, nothing is recorded without you.',
+      onOuvrir: () => setGesteOuvert('plus_en_ligne') },
     { cle: 'prix', n: nbSansPrix, titre: lang === 'fr' ? "Prix d'achat à compléter" : 'Purchase prices to complete',
       detail: lang === 'fr' ? 'Sans lui, ni marge ni bénéfice ne se calculent.' : 'Without it, neither margin nor profit can be computed.', onOuvrir: ouvrirModePrixAchat },
     { cle: 'brouillons', n: brouillons.length, titre: lang === 'fr' ? (brouillons.length > 1 ? 'Brouillons à finir' : 'Brouillon à finir') : 'Drafts to finish',
@@ -9003,9 +9069,14 @@ const StockTab = memo(function StockTab({
       // (05/10) Vendu mais ENCORE EN LIGNE ailleurs, retrait bloqué par une
       // connexion : le mot reste « Vendu » (c'est vrai), le point passe au
       // rouge et le survol dit pourquoi — la ligne et le bouton sont dessous.
-      const bloques = retraitsBloques.parArticle.get(String(item.id));
-      if (bloques?.length) {
-        return { ...pastilleCourte({ genre: 'vendu', date: dateCourte(item.date_vente ?? item.date ?? null, lang) }, lang), ...sans, ton: 'echec', titre: bloques.map((b) => ligneCarteRetraitBloque(b.platform, lang, b.mur, b.boutique ?? null)).join(' · ') };
+      const bloques = retraitsBloques.parArticle.get(String(item.id)) ?? [];
+      // (12/10 soir) + les annonces à retirer avec son accord (pending_removal) ;
+      // la bonne boutique Vinted à ouvrir n'est jamais une alarme (ambre).
+      const aRetirer = (aRetirerParArticle.get(String(item.id)) ?? []).filter((j) => !bloques.some((b) => b.platform === j.platform));
+      if (bloques.length || aRetirer.length) {
+        const alarme = bloques.some((b) => (b.mur ?? 'connexion') !== 'boutique');
+        const lignes = [...bloques.map((b) => ligneCarteRetraitBloque(b.platform, lang, b.mur, b.boutique ?? null)), ...[...new Set(aRetirer.map((j) => j.platform))].map((p) => ligneCarteRetraitBloque(p, lang, 'a_retirer'))];
+        return { ...pastilleCourte({ genre: 'vendu', date: dateCourte(item.date_vente ?? item.date ?? null, lang) }, lang), ...sans, ton: alarme ? 'echec' : 'regler', titre: lignes.join(' · ') };
       }
       return { ...pastilleCourte({ genre: 'vendu', date: dateCourte(item.date_vente ?? item.date ?? null, lang) }, lang), ...sans };
     }
@@ -9118,19 +9189,36 @@ const StockTab = memo(function StockTab({
       // (12/10, A6) « Me connecter » seulement pour un mur de CONNEXION : une
       // boutique à ouvrir ou Chrome éteint ne se règlent pas par une connexion.
       const boutiqueDe = new Map(bloques.map((b) => [b.platform, b.boutique ?? null]));
-      const element = pfBloquees.length && user?.id ? (
+      // (12/10 soir, Nico) Les annonces de cet article vendu qui attendent son
+      // accord pour être retirées (pending_removal — l'ancien bandeau « 🎉 Vendu :
+      // … retirer ? ») : la fiche porte « Retirer » et « Plus tard », les MÊMES
+      // gestes qu'avant (armRemovals / reporterRetraits d'App).
+      const aRetirer = (aRetirerParArticle.get(String(item.id)) ?? []).filter((j) => !murDe.has(j.platform));
+      const pfARetirer = [...new Set(aRetirer.map((j) => j.platform))];
+      // La bonne boutique Vinted à ouvrir, un retrait qui attend l'accord :
+      // ambre ; un vrai mur (connexion, compte bloqué, ordinateur) : rouge.
+      const alarme = pfBloquees.some(([p]) => murDe.get(p) !== 'boutique');
+      const tonMur = (m) => (m === 'boutique' || m === 'a_retirer' ? { encre: SK.ambreEncre, icone: Store } : { encre: SK.rouge, icone: AlertTriangle });
+      const element = (pfBloquees.length || pfARetirer.length) && user?.id ? (
         <div onClick={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()}
-          style={{display:'flex',flexDirection:'column',gap:8,padding:'9px 10px',borderRadius:12,background:SK.rougeFond,border:`1px solid ${SK.rougeBord}`}}>
+          style={{display:'flex',flexDirection:'column',gap:8,padding:'9px 10px',borderRadius:12,background:alarme?SK.rougeFond:SK.ambreFond,border:`1px solid ${alarme?SK.rougeBord:SK.ambreBord}`}}>
           {pfBloquees.map(([p, j]) => (
             <div key={p} style={{display:'flex',flexDirection:'column',gap:8}}>
-              <span style={{fontSize:12,lineHeight:'16px',fontWeight:700,color:SK.rouge}}>
-                <IconeTexte icone={AlertTriangle} taille={12} style={{marginRight:4}}/>{ligneCarteRetraitBloque(p, lang, murDe.get(p), boutiqueDe.get(p))}
+              <span style={{fontSize:12,lineHeight:'16px',fontWeight:700,color:tonMur(murDe.get(p)).encre}}>
+                <IconeTexte icone={tonMur(murDe.get(p)).icone} taille={12} style={{marginRight:4}}/>{ligneCarteRetraitBloque(p, lang, murDe.get(p), boutiqueDe.get(p))}
               </span>
               {murDe.get(p) === 'connexion' && <BoutonMeConnecter userId={user.id} platform={p} motif={murDeConnexion(j) ?? MOTIFS.CONNEXION} lang={lang} variante="bouton" compact/>}
             </div>
           ))}
+          {pfARetirer.map((p) => (
+            <span key={`a-retirer-${p}`} style={{fontSize:12,lineHeight:'16px',fontWeight:700,color:SK.ambreEncre}}>
+              <IconeTexte icone={Store} taille={12} style={{marginRight:4}}/>{ligneCarteRetraitBloque(p, lang, 'a_retirer')}
+            </span>
+          ))}
         </div>
       ) : null;
+      const nomsARetirer = pfARetirer.map((p) => PLATFORM_LABELS[p] || p);
+      const listeARetirer = nomsARetirer.length > 1 ? `${nomsARetirer.slice(0, -1).join(', ')} ${fr ? 'et' : 'and'} ${nomsARetirer[nomsARetirer.length - 1]}` : (nomsARetirer[0] ?? '');
       const mur = pfBloquees.length && user?.id ? (
         <div style={{display:'flex',flexDirection:'column',gap:12}}>
           {pfBloquees.filter(([p]) => murDe.get(p) === 'connexion').map(([p, j]) => <BoutonMeConnecter key={p} userId={user.id} platform={p} motif={murDeConnexion(j) ?? MOTIFS.CONNEXION} lang={lang} variante="ligne"/>)}
@@ -9138,8 +9226,13 @@ const StockTab = memo(function StockTab({
       ) : null;
       return {
         principale: null, element, mur, prixAchat: null, note: null, bas: null, action: null,
-        infos: pfBloquees.map(([p]) => ({ cle: `retrait-bloque-${p}`, ton: 'echec', texte: ligneCarteRetraitBloque(p, lang, murDe.get(p), boutiqueDe.get(p)) })),
+        infos: [
+          ...pfBloquees.map(([p]) => ({ cle: `retrait-bloque-${p}`, ton: murDe.get(p) === 'boutique' ? 'regler' : 'echec', texte: ligneCarteRetraitBloque(p, lang, murDe.get(p), boutiqueDe.get(p)) })),
+          ...pfARetirer.map((p) => ({ cle: `a-retirer-${p}`, ton: 'regler', texte: ligneCarteRetraitBloque(p, lang, 'a_retirer') })),
+        ],
         menu: [
+          ...(aRetirer.length && onRetirerVendus ? [{ cle: 'retirer-vendu', icone: CircleX, libelle: fr ? `Retirer de ${listeARetirer}` : `Remove from ${listeARetirer}`, detail: fr ? `FillSell ${aRetirer.length > 1 ? 'les' : 'la'} retire depuis ton ordinateur` : `FillSell removes ${aRetirer.length > 1 ? 'them' : 'it'} from your computer`, onTap: () => onRetirerVendus(aRetirer) }] : []),
+          ...(aRetirer.length && onPlusTardVendus ? [{ cle: 'retirer-plus-tard', icone: Clock, libelle: fr ? 'Plus tard' : 'Later', detail: fr ? 'Rien n’est retiré, et la question ne revient plus' : 'Nothing is removed, and the question won’t come back', onTap: () => onPlusTardVendus(aRetirer) }] : []),
           { cle: 'modifier', icone: Pencil, libelle: fr ? "Modifier l'article" : 'Edit item', onTap: d.openEdit },
           ...(onDupliquer ? [{ cle: 'dupliquer', icone: Copy, libelle: fr ? 'Dupliquer' : 'Duplicate', detail: fr ? 'Une nouvelle fiche en stock, sans annonce' : 'A new stock item, with no listing', onTap: () => onDupliquer(item) }] : []),
           { cle: 'supprimer', icone: Trash2, libelle: fr ? "Supprimer l'article" : 'Delete item', danger: true, onTap: () => delItem(item.id) },
@@ -11286,13 +11379,37 @@ const StockTab = memo(function StockTab({
         );
       })()}
       {gesteOuvert==='a_regler'&&(
-        <EcranARegler lang={lang} lignes={lignesARegler} onFermer={()=>setGesteOuvert(null)}/>
+        <EcranARegler lang={lang} lignes={lignesARegler} onFermer={()=>setGesteOuvert(null)}
+          pied={plusEnLigne?.nMasquees>0?(
+            // (12/10 soir) Les alertes « plus en ligne » masquées (« Masquer »,
+            // 17/09) restent hors du compte, comme avant : on dit qu'elles
+            // existent et on les montre au tap — jamais perdues.
+            <button type="button" className="sk-btn" data-pied="masquees"
+              onClick={()=>{plusEnLigne.onAfficherMasquees?.();setGesteOuvert('plus_en_ligne');}}
+              style={{display:'block',margin:'12px auto 0',padding:'8px 12px',border:'none',background:'transparent',color:SK.tealDeep,fontSize:12,lineHeight:'16px',fontWeight:600}}>
+              {lang==='fr'
+                ?`${plusEnLigne.nMasquees} alerte${plusEnLigne.nMasquees>1?'s':''} « plus en ligne » masquée${plusEnLigne.nMasquees>1?'s':''} · afficher`
+                :`${plusEnLigne.nMasquees} hidden “no longer online” alert${plusEnLigne.nMasquees>1?'s':''} · show`}
+            </button>
+          ):null}/>
       )}
       {/* (05/10) Retraits bloqués par une connexion : un écran, ouvert depuis
-          « À régler » — jamais un bandeau empilé en haut du Stock (Nico). */}
+          « À régler » — jamais un bandeau empilé en haut du Stock (Nico).
+          (12/10 soir) Sans les articles vendus qui ont leur propre ligne ;
+          avec les annonces à retirer d'un article dont la fiche n'existe plus. */}
       {gesteOuvert==='retraits'&&(
-        <EcranRetraitsBloques lang={lang} retraits={retraitsBloques} userId={user?.id}
+        <EcranRetraitsBloques lang={lang} retraits={retraitsAutres} userId={user?.id}
+          aRetirer={aRetirerSansFiche} onRetirer={onRetirerVendus} onPlusTard={onPlusTardVendus}
           motifDe={(j)=>murDeConnexion(j)??MOTIFS.CONNEXION} onFermer={()=>setGesteOuvert('a_regler')}/>
+      )}
+      {/* (12/10 soir, Nico) « Annonces plus en ligne » : les questions qui
+          s'empilaient en haut de TOUS les onglets (« Vendue ? », « 🎉 Vendue
+          sur X », « Annonce remplacée ? », la file à passer en revue), rendues
+          par App — ses gestes, ses saisies — dans un écran ouvert d'ici. */}
+      {gesteOuvert==='plus_en_ligne'&&plusEnLigne?.rendre&&(
+        <EcranPlein lang={lang} titre={lang==='fr'?'Annonces plus en ligne':'Listings no longer online'} onFermer={()=>setGesteOuvert('a_regler')}>
+          {plusEnLigne.rendre({fermer:()=>setGesteOuvert(null)})}
+        </EcranPlein>
       )}
       {gesteOuvert==='lbc_identite'&&(
         <EcranIdentiteLbc lang={lang} attentes={identiteLbc}
@@ -11783,6 +11900,10 @@ const StockTab = memo(function StockTab({
           // retirant l'annonce ni en décochant — on ferme le stepper et on
           // ouvre le mini-éditeur du job, le même que la carte.
           onCompleter={(job)=>{clearStepperPersistence();setPublishItem(null);onStepperOpenChange?.(false);if(needsUserOuvrable(job))setNeedsUserJob(job);else if(job?.error)setFailJobModal(job);}}
+          // (15/10, Louis) « Répondre » sous une plateforme dont l'annonce n'est
+          // plus vue : la question « Vendue ? » de CETTE annonce, en tête de
+          // « Annonces plus en ligne » (même reportée) — sa réponse libère la case.
+          onRepondreDisparue={plusEnLigne?.ouvrirQuestion?(job)=>{clearStepperPersistence();setPublishItem(null);onStepperOpenChange?.(false);plusEnLigne.ouvrirQuestion(job.id);setGesteOuvert('plus_en_ligne');}:null}
           ebayCompte={ebayCompte}
           plateformesVisibles={plateformesVisibles}
           plateformesOuvertes={plateformesOuvertes}

@@ -158,13 +158,15 @@ console.log("\n── 6. Le câblage du Stock ───────────�
   // (05/10, Nico) Jamais un bandeau empilé en haut du Stock (refonte du
   // 03/10) : le signal vit dans « À régler », qui ouvre un écran dédié.
   ok("aucun bandeau de retraits en haut du Stock", !src.includes("{retraitsBloques.total>0&&(") && !/<div ref=\{bandeauRetraitsRef\}/.test(src));
-  ok("la ligne « À régler » ouvre l'écran des retraits", /\{ cle: 'retraits', n: nbRetraitsBloques[\s\S]{0,200}onOuvrir: \(\) => setGesteOuvert\('retraits'\) \}/.test(src));
-  ok("l'écran est rendu, retour vers « À régler »", /\{gesteOuvert==='retraits'&&\(\s*<EcranRetraitsBloques [^>]*retraits=\{retraitsBloques\}[\s\S]{0,200}onFermer=\{\(\)=>setGesteOuvert\('a_regler'\)\}/.test(src));
+  // (12/10 soir, Nico) Un article VENDU (fiche présente) a sa PROPRE ligne
+  // (selftest:a-regler-sans-bandeau) ; la ligne « retraits » garde le reste.
+  ok("la ligne « À régler » ouvre l'écran des retraits", /\{ cle: 'retraits', n: nbRetraitsAutres[\s\S]{0,200}onOuvrir: \(\) => setGesteOuvert\('retraits'\) \}/.test(src));
+  ok("l'écran est rendu, retour vers « À régler »", /\{gesteOuvert==='retraits'&&\(\s*<EcranRetraitsBloques [^>]*retraits=\{retraitsAutres\}[\s\S]{0,300}onFermer=\{\(\)=>setGesteOuvert\('a_regler'\)\}/.test(src));
   const ecranRetraits = readFileSync(new URL("../src/stock/EcranRetraitsBloques.jsx", import.meta.url), "utf8");
   ok("l'écran : la phrase, « Me connecter » par plateforme et la liste des articles", /texteRetraitsBloques\(g, lang\)/.test(ecranRetraits) && /<BoutonMeConnecter userId=\{userId\} platform=\{g\.platform\}/.test(ecranRetraits) && /g\.lignes\.map\(\(l\) =>/.test(ecranRetraits));
   ok("l'écran garde le gabarit de la refonte (EcranPlein)", /<EcranPlein /.test(ecranRetraits));
   ok("« À régler » compte les retraits bloqués", /const nbARegler = nbRetraitsBloques \+ (?:nbIdentiteLbc \+ )?nbAttenteAction/.test(src));
-  ok("« À régler » : ligne 'retraits' en tête", /const lignesARegler = \[\n(?:\s*\/\/.*\n)*\s*\{ cle: 'retraits', n: nbRetraitsBloques/.test(src));
+  ok("« À régler » : les articles vendus encore en ligne en tête, puis la ligne 'retraits'", /const lignesARegler = \[\n(?:\s*\/\/.*\n)*\s*\.\.\.vendusEnLigne\.map\([\s\S]{0,900}\{ cle: 'retraits', n: nbRetraitsAutres/.test(src));
   // (05/10, relu au harnais) Le bouton COMPACT : la variante « bouton »
   // débordait de la carte à 360 et 390 px.
   // (12/10, A6) « Me connecter » pour un mur de CONNEXION seulement (ni compte bloqué, ni boutique, ni ordinateur).

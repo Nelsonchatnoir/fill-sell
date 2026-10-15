@@ -27,10 +27,14 @@ import { fileURLToPath } from 'node:url';
 import { lireToutesPagesRecentsDabord, filtreApresCle } from '../src/utils/lireToutesPages.js';
 import { prixParDefautDuBandeau, prixLisible, retireeProposable, preuveDeVente } from '../src/utils/prixBandeauVente.js';
 import { dansLaBoutique } from '../src/utils/filtreBoutique.js';
+import { trierParVente } from '../src/utils/triVendus.js';
 
 const RACINE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const lire = (rel) => fs.readFileSync(path.join(RACINE, rel), 'utf8').replace(/\r\n/g, '\n');
 const APP = lire('src/App.jsx');
+// (12/10 soir) Les questions « plus en ligne » vivent dans « À régler » : leur
+// carte est QuestionsPlusEnLigne, App lui passe ses gestes.
+const QPL = lire('src/components/QuestionsPlusEnLigne.jsx');
 let n = 0;
 const ok = (cond, msg) => { assert.ok(cond, msg); n++; };
 
@@ -325,7 +329,7 @@ ok(prixLisible(true) === null && prixLisible('abc') === null && prixLisible(-3) 
   ok(enrichi.platform_fields === republication.platform_fields, 'revue en liste : platform_fields intact (dismissUnavailable le réécrit tel quel)');
 }
 // L'app : le bandeau, l'envoi et la revue lisent la MÊME règle.
-ok(APP.includes('const prixDefaut=prixParDefautDuBandeau(job,ficheDuJob(job));'), 'bandeau : prix pré-rempli = prixParDefautDuBandeau');
+ok(QPL.includes('const prixDefaut = prixParDefautDuBandeau(job, ficheDuJob(job));') && APP.includes('ficheDuJob={ficheDuJob}'), 'carte « Vendue » (À régler) : prix pré-rempli = prixParDefautDuBandeau');
 ok(APP.includes('const defaut=prixParDefautDuBandeau(job,ficheDuJob(job))??0;'), 'confirmSaleFromBanner : même règle que le champ');
 ok(!/^(?!\s*\/\/).*detected_price\s*\?\?\s*job\.price/m.test(APP), 'App.jsx : plus aucun `detected_price ?? job.price` (prix vide sur une republication)');
 ok(APP.includes('jobs={disparusAutresPfPrix}') && APP.includes('jobs={aVerifierPrix}'), 'revue en liste : les deux blocs reçoivent les jobs au prix du bandeau');
@@ -338,11 +342,12 @@ ok(retireeProposable(republication) === false && preuveDeVente(republication) ==
 ok(retireeProposable({ platform_fields: { unavailable_since: '2026-10-11' } }) === true, 'simple disparition : « je l\'ai retirée » proposé');
 ok(retireeProposable({}) === true && retireeProposable(null) === true, 'job sans drapeau : proposé (comportement d\'avant)');
 {
-  // Le bouton du bandeau est conditionné…
-  const i = APP.indexOf('{lang===\'fr\'?"Non, je l\'ai retirée":"No, I removed it"}');
-  ok(i > 0, 'bandeau : le bouton « Non, je l\'ai retirée » est trouvé');
-  const avant = APP.slice(Math.max(0, i - 600), i);
-  ok(/\{retireeProposable\(job\)&&\(\s*<button disabled=\{busy\} onClick=\{\(\)=>dismissUnavailable\(job\)\}/.test(avant), 'bandeau : « Non, je l\'ai retirée » n\'existe que si retireeProposable(job)');
+  // Le bouton de la carte (QuestionsPlusEnLigne, « À régler ») est conditionné…
+  const i = QPL.indexOf('{fr ? "Non, je l\'ai retirée" : \'No, I removed it\'}');
+  ok(i > 0, 'carte : le bouton « Non, je l\'ai retirée » est trouvé');
+  const avant = QPL.slice(Math.max(0, i - 400), i);
+  ok(/\{retireeProposable\(job\) && \(\s*<button type="button" disabled=\{busy\} onClick=\{\(\) => onRetiree\(job\)\}/.test(avant)
+    && APP.includes('onRetiree={dismissUnavailable}'), 'carte : « Non, je l\'ai retirée » n\'existe que si retireeProposable(job) (→ dismissUnavailable)');
   // … et le chemin d'écriture refuse quand même.
   const d = APP.indexOf('async function dismissUnavailable(job){');
   const corps = APP.slice(d, d + 700);
@@ -362,7 +367,8 @@ ok(dansLaBoutique({ vinted_account_id: '1' }, 'Toutes') && dansLaBoutique({}, un
   const m = /const soldFiltre=useMemo\(\(\)=>([\s\S]*?),\[([^\]]*)\]\);/.exec(APP);
   ok(!!m, 'soldFiltre trouvé dans App.jsx');
   ok(m[2].split(',').map((s) => s.trim()).includes('filterBoutique'), 'soldFiltre se recalcule quand la boutique change (dépendance filterBoutique)');
-  const soldFiltre = new Function('sold', 'filterType', 'filterBoutique', 'filterMarqueSold', 'search', 'marqueKey', 'searchMatch', 'dansLaBoutique', `return ${m[1]};`);
+  ok(m[2].split(',').map((s) => s.trim()).includes('sales'), 'soldFiltre se recalcule quand une vente arrive (dépendance sales : tri par vente)');
+  const soldFiltre = new Function('sold', 'filterType', 'filterBoutique', 'filterMarqueSold', 'search', 'marqueKey', 'searchMatch', 'dansLaBoutique', 'sales', 'trierParVente', `return ${m[1]};`);
   const vendus = [
     { id: 1, type: 'Vêtements', marque: 'Zara', vinted_account_id: '295151754' },
     { id: 2, type: 'Vêtements', marque: 'Zara', vinted_account_id: '32977976' },
@@ -370,7 +376,18 @@ ok(dansLaBoutique({ vinted_account_id: '1' }, 'Toutes') && dansLaBoutique({}, un
   ];
   const mk = (s) => String(s ?? '').trim().toLowerCase();
   const tous = () => true;
-  const sous = (b) => soldFiltre(vendus, 'Tous', b, 'Toutes', '', mk, tous, dansLaBoutique).map((i) => i.id);
+  const sous = (b) => soldFiltre(vendus, 'Tous', b, 'Toutes', '', mk, tous, dansLaBoutique, [], trierParVente).map((i) => i.id);
+  // (15/10, Louis) Du plus récemment VENDU au plus ancien, quelle que soit la création de la fiche.
+  {
+    const fiches = [{ id: 10 }, { id: 11 }, { id: 12, date: '2026-10-01T09:00:00Z' }, { id: 13 }];
+    const ventes = [
+      { inventaire_id: 13, date: '2026-10-13', cree_le: '2026-10-13T09:35:00Z' },
+      { inventaire_id: 11, date: '2026-10-13', cree_le: '2026-10-13T11:07:00Z' },
+      { inventaire_id: 10, date: '2026-09-02', cree_le: '2026-10-14T08:00:00Z' },
+    ];
+    const r = soldFiltre(fiches, 'Tous', 'Toutes', 'Toutes', '', mk, tous, dansLaBoutique, ventes, trierParVente).map((i) => i.id);
+    assert.deepEqual(r, [11, 13, 12, 10], 'Vendu : ventes du 13/10 en tête (11:07 puis 09:35), puis la date de fiche, puis la vente du 02/09 saisie tard'); n++;
+  }
   assert.deepEqual(sous('295151754'), [1], 'Vendu sous @narema75 : ses ventes seulement'); n++;
   assert.deepEqual(sous('sans_origine'), [3], 'Vendu sous « sans origine » : les fiches non estampillées'); n++;
   assert.deepEqual(sous('Toutes'), [1, 2, 3], 'Vendu sous « Toutes » : tout'); n++;

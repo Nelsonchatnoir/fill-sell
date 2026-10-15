@@ -226,15 +226,16 @@ export function texteRetraitsBloques(groupe, lang = 'fr') {
   const nVendus = groupe.nVendus ?? groupe.lignes.filter((l) => l.vendu).length;
   const plus = n > 1;
   // (12/10, A6) La boutique Vinted de l'annonce n'est pas celle ouverte dans Chrome.
+  // (12/10 soir, Nico) « En attente de la bonne boutique » : ni alarme, ni
+  // « risque de double vente » — le geste, et c'est tout.
   if (groupe.mur === 'boutique') {
     const b = groupe.boutique;
     const quoi = nVendus === n
       ? (fr ? `${n} article${plus ? 's' : ''} vendu${plus ? 's' : ''} encore en ligne sur ${nom}` : `${n} sold item${plus ? 's' : ''} still live on ${nom}`)
       : (fr ? `${n} annonce${plus ? 's' : ''} à retirer encore en ligne sur ${nom}` : `${n} listing${plus ? 's' : ''} to remove still live on ${nom}`);
-    const risqueB = nVendus > 0 ? (fr ? ' — risque de double vente' : ' — risk of selling twice') : '';
     return fr
-      ? `${quoi} : ${plus ? 'elles sont' : 'elle est'} sur ${b ? `ta boutique ${b}` : 'une autre de tes boutiques Vinted'}. Ouvre ${b ? `ta boutique ${b}` : 'cette boutique'} sur vinted.fr dans Chrome, sur ton ordinateur : FillSell ${plus ? 'les' : 'la'} retirera aussitôt${risqueB}.`
-      : `${quoi}: ${plus ? 'they are' : 'it is'} on ${b ? `your shop ${b}` : 'another of your Vinted shops'}. Open ${b ? `your shop ${b}` : 'that shop'} on vinted.fr in Chrome, on your computer: FillSell will remove ${plus ? 'them' : 'it'} right away${risqueB}.`;
+      ? `${quoi} : ${plus ? 'elles sont' : 'elle est'} sur ${b ? `ta boutique ${b}` : 'une autre de tes boutiques Vinted'}. Ouvre ${b ? `ta boutique ${b}` : 'cette boutique'} sur vinted.fr dans Chrome, sur ton ordinateur : FillSell ${plus ? 'les' : 'la'} retirera aussitôt.`
+      : `${quoi}: ${plus ? 'they are' : 'it is'} on ${b ? `your shop ${b}` : 'another of your Vinted shops'}. Open ${b ? `your shop ${b}` : 'that shop'} on vinted.fr in Chrome, on your computer: FillSell will remove ${plus ? 'them' : 'it'} right away.`;
   }
   // (12/10, A6) L'extension ne tourne pas : Chrome fermé ou ordinateur éteint.
   if (groupe.mur === 'ordinateur') {
@@ -268,10 +269,16 @@ export function texteRetraitsBloques(groupe, lang = 'fr') {
 /** La ligne de la carte d'un article vendu dont le retrait attend. */
 export function ligneCarteRetraitBloque(platform, lang = 'fr', mur = 'connexion', boutique = null) {
   const nom = nomDe(platform);
+  // (12/10 soir) Rattachée à une fiche déjà vendue : le retrait attend l'accord.
+  if (mur === 'a_retirer') {
+    return lang === 'en'
+      ? `Still live on ${nom} — tap "Remove" so FillSell takes it down (risk of selling twice)`
+      : `Encore en ligne sur ${nom} — touche « Retirer » pour que FillSell la retire (risque de double vente)`;
+  }
   if (mur === 'boutique') {
     return lang === 'en'
-      ? `Still live on ${nom} — open ${boutique ? `your shop ${boutique}` : 'the Vinted shop that holds it'} in Chrome to remove it (risk of selling twice)`
-      : `Encore en ligne sur ${nom} — ouvre ${boutique ? `ta boutique ${boutique}` : 'la boutique Vinted qui la porte'} dans Chrome pour la retirer (risque de double vente)`;
+      ? `Still live on ${nom} — open ${boutique ? `your shop ${boutique}` : 'the Vinted shop that holds it'} in Chrome to remove it`
+      : `Encore en ligne sur ${nom} — ouvre ${boutique ? `ta boutique ${boutique}` : 'la boutique Vinted qui la porte'} dans Chrome pour la retirer`;
   }
   if (mur === 'ordinateur') {
     return lang === 'en'
@@ -308,8 +315,8 @@ export function ligneARegler(bloques, lang = 'fr') {
       detail: murs.has('ordinateur')
         ? (fr ? `Ouvre Chrome sur ton ordinateur pour que FillSell ${n > 1 ? 'les' : 'la'} retire — risque de double vente.` : `Open Chrome on your computer so FillSell can remove ${n > 1 ? 'them' : 'it'} — risk of selling twice.`)
         : (fr
-          ? `Ouvre ${boutiques.length === 1 ? `ta boutique ${boutiques[0]}` : (g0?.boutique ? `tes boutiques ${boutiques.join(', ')}` : 'la boutique Vinted qui les porte')} dans Chrome pour que FillSell ${n > 1 ? 'les' : 'la'} retire — risque de double vente.`
-          : `Open ${boutiques.length === 1 ? `your shop ${boutiques[0]}` : (g0?.boutique ? `your shops ${boutiques.join(', ')}` : 'the Vinted shop that holds them')} in Chrome so FillSell can remove ${n > 1 ? 'them' : 'it'} — risk of selling twice.`),
+          ? `Ouvre ${boutiques.length === 1 ? `ta boutique ${boutiques[0]}` : (g0?.boutique ? `tes boutiques ${boutiques.join(', ')}` : 'la boutique Vinted qui les porte')} dans Chrome pour que FillSell ${n > 1 ? 'les' : 'la'} retire.`
+          : `Open ${boutiques.length === 1 ? `your shop ${boutiques[0]}` : (g0?.boutique ? `your shops ${boutiques.join(', ')}` : 'the Vinted shop that holds them')} in Chrome so FillSell can remove ${n > 1 ? 'them' : 'it'}.`),
     };
   }
   const titre = fr ? (n > 1 ? 'Annonces encore en ligne à retirer' : 'Annonce encore en ligne à retirer') : (n > 1 ? 'Listings still live to remove' : 'Listing still live to remove');
@@ -346,5 +353,178 @@ export function ligneARegler(bloques, lang = 'fr') {
   const suiteCb = cb.length
     ? (fr ? `${phrase ? ' ; ' : ''}« compte bloqué » sur ${lister(cb)} : retire-les depuis l'appli` : `${phrase ? '; ' : ''}"account blocked" on ${lister(cb)}: remove them from the app`)
     : '';
-  return { titre, detail: `${phrase}${suiteCb}${fr ? ' — risque de double vente.' : ' — risk of selling twice.'}` };
+  // (12/10 soir) Le risque n'est dit que pour un mur qui n'est pas « boutique ».
+  const risqueMele = (bloques?.parPlateforme ?? []).some((g) => (g.mur ?? 'connexion') !== 'boutique');
+  return { titre, detail: `${phrase}${suiteCb}${risqueMele ? (fr ? ' — risque de double vente.' : ' — risk of selling twice.') : '.'}` };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// (12/10 soir, Nico) PLUS AUCUN BANDEAU — UN ARTICLE VENDU ENCORE EN LIGNE
+// EST UNE LIGNE DE « À RÉGLER », ET NULLE PART AILLEURS
+// ═══════════════════════════════════════════════════════════════════════════
+// Le bandeau rouge « Un article vendu est encore en ligne » (A6) doublait
+// « À régler » et sortait du dessin de l'app. Chaque article VENDU dont une
+// annonce reste en ligne devient UNE ligne : son titre, la plateforme, le
+// geste. Deux sources, déjà lues (aucune requête de plus) :
+//   · un retrait en file qui attend la personne (les murs ci-dessus) ;
+//   · une annonce rattachée à une fiche déjà vendue, dont le retrait attend
+//     son accord (platform_fields.pending_removal, l'ancien bandeau
+//     « 🎉 Vendu : … — retirer ? »).
+// Seuls les articles dont la FICHE existe : la ligne ouvre la fiche. Le reste
+// (fiche supprimée, article en stock) reste dans la ligne « retraits ».
+// ⛔ Affichage seulement : aucun statut, aucun job, aucune surveillance touchés.
+
+/**
+ * Le geste pour un groupe de plateformes d'un article vendu encore en ligne
+ * (même mur, même boutique) : { mur, boutique, noms[] }.
+ */
+function gesteVenduEnLigne(g, lang = 'fr') {
+  const fr = lang !== 'en';
+  const plus = (g.noms?.length ?? 0) > 1;
+  const noms = listerNoms(g.noms ?? [], lang);
+  const la = fr ? (plus ? 'les' : 'la') : (plus ? 'them' : 'it');
+  switch (g.mur) {
+    case 'boutique':
+      return fr
+        ? `ouvre ${g.boutique ? `ta boutique ${g.boutique}` : 'la boutique Vinted qui la porte'} sur vinted.fr dans Chrome, sur ton ordinateur : FillSell ${la} retirera aussitôt`
+        : `open ${g.boutique ? `your shop ${g.boutique}` : 'the Vinted shop that holds it'} on vinted.fr in Chrome, on your computer: FillSell will remove ${la} right away`;
+    case 'ordinateur':
+      return fr
+        ? `ouvre Chrome sur ton ordinateur : FillSell ${la} retirera aussitôt`
+        : `open Chrome on your computer: FillSell will remove ${la} right away`;
+    case 'compte_bloque':
+      return fr
+        ? `${noms} affiche « compte bloqué » sur ton ordinateur : retire-${la} depuis l'appli ${noms} si tu peux, FillSell réessaie tout seul`
+        : `${noms} shows "account blocked" on your computer: remove ${la} from the ${noms} app if you can, FillSell keeps retrying`;
+    case 'a_retirer':
+      return fr
+        ? `${plus ? 'elles attendent' : 'elle attend'} ton accord : touche « Retirer » dans la fiche, FillSell ${la} retire depuis ton ordinateur`
+        : `${plus ? 'they are' : 'it is'} waiting for your go-ahead: tap "Remove" on the item, FillSell removes ${la} from your computer`;
+    default: // 'connexion'
+      return fr
+        ? `reconnecte-toi à ${noms} dans Chrome, sur ton ordinateur : FillSell ${la} retirera aussitôt`
+        : `sign back in to ${noms} in Chrome, on your computer: FillSell will remove ${la} right away`;
+  }
+}
+
+function listerNoms(arr, lang = 'fr') {
+  const fr = lang !== 'en';
+  return arr.length > 1 ? `${arr.slice(0, -1).join(', ')} ${fr ? 'et' : 'and'} ${arr[arr.length - 1]}` : (arr[0] ?? '');
+}
+
+/** Les annonces à retirer avec l'accord de la personne (pending_removal), par article. */
+export function retraitsEnAttenteParArticle(pendingRemovals = []) {
+  const m = new Map();
+  for (const j of pendingRemovals ?? []) {
+    if (!j || j.inventaire_id == null) continue;
+    const k = String(j.inventaire_id);
+    if (!m.has(k)) m.set(k, []);
+    m.get(k).push(j);
+  }
+  return m;
+}
+
+/**
+ * Les articles VENDUS encore en ligne, un par article (fiche présente).
+ * @returns {{ inventaireId, fiche, titre, plateformes: {platform, mur, boutique, jobs}[], aRetirer: object[], ton: 'regler'|'echec' }[]}
+ *   aRetirer : les jobs pending_removal (le geste « Retirer » de la fiche) ;
+ *   ton : 'regler' (ambre) quand rien n'est une alarme — la bonne boutique à
+ *   ouvrir, un retrait qui attend ton accord ; sinon 'echec' (le rouge des
+ *   retraits bloqués d'avant).
+ */
+export function articlesVendusEncoreEnLigne({ retraits = null, pendingRemovals = [], fiches = null } = {}) {
+  const parArticle = new Map();
+  const entree = (id, fiche) => {
+    const k = String(id);
+    if (!parArticle.has(k)) {
+      parArticle.set(k, {
+        inventaireId: fiche?.id ?? id, fiche,
+        titre: String(fiche?.title ?? fiche?.titre ?? '').trim() || null,
+        plateformes: [], aRetirer: [], recent: 0,
+      });
+    }
+    return parArticle.get(k);
+  };
+  // 1. Les retraits en file qui attendent la personne (vendus, fiche présente).
+  for (const g of retraits?.parPlateforme ?? []) {
+    for (const l of g.lignes ?? []) {
+      if (!l.vendu || !l.fiche || l.inventaireId == null) continue;
+      const a = entree(l.inventaireId, l.fiche);
+      if (!a.titre && l.titre) a.titre = l.titre;
+      const mur = g.mur ?? 'connexion';
+      const deja = a.plateformes.find((p) => p.platform === g.platform && p.mur === mur);
+      if (deja) deja.jobs.push(l.job);
+      else a.plateformes.push({ platform: g.platform, mur, boutique: l.boutique ?? null, jobs: [l.job] });
+      a.recent = Math.max(a.recent, ts(l.job?.created_at));
+    }
+  }
+  // 2. Les annonces d'un article vendu à retirer avec son accord. Une
+  //    plateforme dont un retrait est déjà en file n'en reçoit pas un second.
+  for (const [k, jobs] of retraitsEnAttenteParArticle(pendingRemovals)) {
+    const fiche = lireFiche(fiches, k);
+    if (!fiche) continue;
+    const a = entree(k, fiche);
+    if (!a.titre) a.titre = String(jobs[0]?.title ?? '').trim() || null;
+    for (const j of jobs) {
+      if (a.plateformes.some((p) => p.platform === j.platform && p.mur !== 'a_retirer')) continue;
+      a.aRetirer.push(j);
+      const deja = a.plateformes.find((p) => p.platform === j.platform && p.mur === 'a_retirer');
+      if (deja) deja.jobs.push(j);
+      else a.plateformes.push({ platform: j.platform, mur: 'a_retirer', boutique: null, jobs: [j] });
+      a.recent = Math.max(a.recent, ts(j.created_at));
+    }
+  }
+  const rang = (p) => { const i = ORDRE.indexOf(p); return i < 0 ? ORDRE.length : i; };
+  return [...parArticle.values()]
+    .filter((a) => a.plateformes.length > 0)
+    .map((a) => ({
+      ...a,
+      plateformes: a.plateformes.sort((x, y) => rang(x.platform) - rang(y.platform)),
+      ton: a.plateformes.every((p) => p.mur === 'boutique' || p.mur === 'a_retirer') ? 'regler' : 'echec',
+    }))
+    .sort((x, y) => y.recent - x.recent);
+}
+
+/** Le détail de la ligne « À régler » d'un article vendu encore en ligne. */
+export function detailArticleVenduEnLigne(article, lang = 'fr') {
+  const fr = lang !== 'en';
+  const pfs = article?.plateformes ?? [];
+  if (!pfs.length) return null;
+  const noms = [...new Set(pfs.map((p) => nomDe(p.platform)))];
+  const majuscule = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+  const tete = fr ? `Vendu, encore en ligne sur ${listerNoms(noms, lang)}.` : `Sold, still live on ${listerNoms(noms, lang)}.`;
+  // Un geste par mur (et par boutique), jamais le même geste répété.
+  const groupes = new Map();
+  for (const p of pfs) {
+    const k = `${p.mur}|${p.boutique ?? ''}`;
+    if (!groupes.has(k)) groupes.set(k, { mur: p.mur, boutique: p.boutique ?? null, noms: [] });
+    const g = groupes.get(k);
+    if (!g.noms.includes(nomDe(p.platform))) g.noms.push(nomDe(p.platform));
+  }
+  const liste = [...groupes.values()];
+  const gestes = liste.length === 1
+    ? majuscule(gesteVenduEnLigne(liste[0], lang))
+    // Préfixe « Vinted : » seulement quand le geste ne nomme pas déjà la plateforme.
+    : liste.map((g) => ((g.mur === 'connexion' || g.mur === 'compte_bloque')
+      ? gesteVenduEnLigne(g, lang)
+      : `${listerNoms(g.noms, lang)}${fr ? ' : ' : ': '}${gesteVenduEnLigne(g, lang)}`)).join(fr ? ' ; ' : '; ');
+  // Le risque n'est dit que hors « boutique » (12/10 soir, Nico).
+  const risque = pfs.some((p) => p.mur !== 'boutique');
+  return `${tete} ${gestes}${risque ? (fr ? ' — risque de double vente.' : ' — risk of selling twice.') : '.'}`;
+}
+
+/**
+ * Les retraits bloqués SANS les articles vendus qui ont déjà leur ligne
+ * (fiche en stock, fiche supprimée) : la ligne « retraits » de « À régler ».
+ */
+export function retraitsHorsArticlesVendus(retraits, articles = []) {
+  const ids = new Set((articles ?? []).map((a) => String(a.inventaireId)));
+  const parPlateforme = (retraits?.parPlateforme ?? [])
+    .map((g) => {
+      const lignes = (g.lignes ?? []).filter((l) => !(l.inventaireId != null && ids.has(String(l.inventaireId)) && l.vendu && l.fiche));
+      return { ...g, lignes, nVendus: lignes.filter((l) => l.vendu).length };
+    })
+    .filter((g) => g.lignes.length > 0);
+  const parArticle = new Map([...(retraits?.parArticle ?? new Map())].filter(([k]) => !ids.has(String(k))));
+  return { total: parPlateforme.reduce((t, g) => t + g.lignes.length, 0), parPlateforme, parArticle };
 }

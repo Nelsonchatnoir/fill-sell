@@ -94,6 +94,53 @@ ok(/DROP TRIGGER IF EXISTS cross_post_jobs_signal_vente_vu_en_ligne/.test(INV)
   && !/signaux_vente_reconcilier\(40\)/.test(fonction(INV, 'ventes_prouvees_tick')),
   '6. l\'inverse rend les définitions d\'avant et retire le neuf');
 
+// 7. L'app : les deux sorties de la carte et le stepper qui ne ment plus
+{
+  const APP = lire('src/App.jsx');
+  const QPL = lire('src/components/QuestionsPlusEnLigne.jsx');
+  ok(/supabase\.rpc\('signal_vente_trancher',\{p_job:job\.id,p_reponse:reponse\}\)/.test(APP)
+    && /onPasVendue=\{\(job\)=>trancherSignalVente\(job,'pas_vendue'\)\}/.test(APP)
+    && /onDejaEnregistree=\{\(job\)=>trancherSignalVente\(job,'meme_vente'\)\}/.test(APP), '7a. App : « Ce n\'est pas vendu » / « Déjà enregistrée » passent par la base');
+  ok(/vendu && onPasVendue && \(/.test(QPL) && /vendu && onDejaEnregistree && art\?\.statut === 'vendu' && \(/.test(QPL),
+    '7b. carte : « Ce n\'est pas vendu » sous un « vendu » ; « Déjà enregistrée » seulement si l\'article est déjà vendu');
+  ok(/pf\.sale_signal==='sold'&&pf\.signal_conteste\?\.le\s*&&Date\.now\(\)-Date\.parse\(pf\.signal_conteste\.le\)<24\*3600_000\)return null;/.test(APP),
+    '7c. une carte contestée se tait 24 h (relue entre-temps)');
+}
+{
+  // Le stepper (Rangement gris de Louis, jobs réels du 14/10) : « déjà en ligne » faux.
+  const { plateformesEnDoute, phraseDouteEnLigne } = await import(new URL('../src/utils/publicationState.js', import.meta.url).href);
+  const pf = (o) => ({ ...o });
+  const jobs = [
+    { id: '07bc4850', platform: 'vinted', status: 'published', action: 'publish', published_at: '2026-10-06T15:14:00Z', created_at: '2026-10-06T15:10:00Z',
+      platform_fields: pf({ sale_signal: 'unavailable', unavailable_since: '2026-10-07T07:16:51.813Z', reporte_n: '1' }) },
+    { id: 'c5a19bcb', platform: 'vinted', status: 'sold', action: 'publish', published_at: '2026-10-04T20:11:00Z', created_at: '2026-10-04T20:00:00Z', platform_fields: pf({ sale_signal: 'sold' }) },
+    { id: '092597a3', platform: 'beebs', status: 'published', action: 'republish', published_at: '2026-10-12T08:36:04Z', created_at: '2026-10-12T08:30:00Z', platform_fields: {} },
+    { id: 'c8b3855b', platform: 'leboncoin', status: 'published', action: 'publish', published_at: '2026-09-29T17:47:05Z', created_at: '2026-09-29T17:40:00Z', platform_fields: {} },
+  ];
+  const d = plateformesEnDoute(jobs);
+  ok(Object.keys(d).join(',') === 'vinted' && d.vinted.job.id === '07bc4850' && d.vinted.vendue === false,
+    '7d. Rangement gris : Vinted « en doute » (07bc4850), Beebs et Leboncoin restent « en ligne »');
+  ok(phraseDouteEnLigne(d.vinted, 'fr') === 'Plus vue en ligne depuis le 07/10 : vendue ou retirée ? Ta réponse libère la case',
+    '7e. la phrase dit depuis quand (heure de Paris) et le geste, jamais « déjà en ligne »');
+  const avecRepublication = [...jobs, { id: 'r', platform: 'vinted', status: 'pending', action: 'republish', created_at: '2026-10-15T08:00:00Z', platform_fields: { republish_step: 'a_capturer' } }];
+  ok(!plateformesEnDoute(avecRepublication).vinted, '7f. jamais « en doute » pendant une republication en vol');
+  const uneEnLigne = [...jobs, { id: 'n', platform: 'vinted', status: 'published', action: 'publish', published_at: '2026-10-14T08:00:00Z', created_at: '2026-10-14T08:00:00Z', platform_fields: {} }];
+  ok(!plateformesEnDoute(uneEnLigne).vinted, '7g. une autre annonce de la plateforme vue en ligne : « déjà en ligne » reste vrai');
+  const LPS = lire('src/components/ListingPreviewScreen.jsx');
+  const OUP = lire('src/publication/EcranOuPublier.jsx');
+  const CONF = lire('src/publication/EcranConfirmer.jsx');
+  const ST = lire('src/tabs/StockTab.jsx');
+  const APP = lire('src/App.jsx');
+  ok(/m\[p\] = fetchedDoute\[p\]\s*\? phraseDouteEnLigne\(fetchedDoute\[p\], lang\)/.test(LPS)
+    && /douteEnLigne=\{fetchedDoute\}/.test(LPS) && /douteEnLigne: fetchedDoute, onRepondreDisparue,/.test(LPS),
+    '7h. stepper : la phrase et le geste dans les deux variantes');
+  ok(/m\.onRepondreDisparue\(m\.douteEnLigne\[p\]\.job\)/.test(OUP) && /m\.onRepondreDisparue\(m\.douteEnLigne\[p\]\.job\)/.test(CONF),
+    '7i. nouveau stepper : « Répondre » sur « Où publier » et « Confirmer »');
+  ok(/onRepondreDisparue=\{plusEnLigne\?\.ouvrirQuestion\?/.test(ST) && /ouvrirQuestion:\(id\)=>setQuestionForcee\(id\)/.test(APP)
+    && /if\(!forcee&&\(estAVerifier\(job\)\|\|estReporte\(job\)\)\)return null;/.test(APP),
+    '7j. « Répondre » ouvre la question de CETTE annonce, même reportée');
+}
+
 if (process.argv.includes('--prod')) {
   const sql = `select jsonb_build_object(
     'trig', (select count(*) from pg_trigger where tgname='cross_post_jobs_signal_vente_vu_en_ligne' and not tgisinternal),

@@ -154,12 +154,11 @@ import { createPortal } from 'react-dom';
 import { useFondFige } from './utils/modale';
 import ReglagesPage from './reglages/ReglagesPage';
 import FusionArticleModal from './components/FusionArticleModal';
-import FileAnnoncesADepiler from './components/FileAnnoncesADepiler';
+import QuestionsPlusEnLigne from './components/QuestionsPlusEnLigne';
+import { trierParVente } from './utils/triVendus';
 // (11/10, Louis) Ventes détectées à confirmer, avec ou sans téléphone : la
 // décision « remettre en vente ou non » ne dépend plus de la notification.
 import VentesADecider, { ANCRE_VENTES_A_CONFIRMER } from './components/VentesADecider';
-import RetraitsVendusBloques from './components/RetraitsVendusBloques';
-import { retraitsBloquesParConnexion } from './utils/retraitsBloques';
 import RevueAutresPlateformes from './components/RevueAutresPlateformes';
 import { lireFusionsActives, defaireFusion } from './utils/fusionArticles';
 import { apresNouvellesPhotos } from './utils/parcoursLens';
@@ -177,7 +176,7 @@ import { etatBascule } from './utils/basculeOplaDepop.js';
 import { useDemandeAvis } from './hooks/useDemandeAvis';
 import { palierDuProfil, droitsDuPalier, palierLePlusHaut } from './utils/palier';
 import { lireToutesPagesRecentsDabord } from './utils/lireToutesPages';
-import { prixParDefautDuBandeau, preuveDeVente, retireeProposable } from './utils/prixBandeauVente';
+import { prixParDefautDuBandeau, preuveDeVente } from './utils/prixBandeauVente';
 import { dansLaBoutique } from './utils/filtreBoutique';
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler);
 ChartJS.defaults.font.family = "'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif";
@@ -984,7 +983,7 @@ const TEXTAREA_PLACEHOLDERS=VOICE_EXAMPLES.map(e=>e.text);
 // qui tirait vers le bas toutes les moyennes qui lisent marginPct (les quatre
 // agrégations de graphe plus bas le faisaient). `margin` était déjà correct
 // (null tel quel), c'est le pourcentage qui mentait. Corrigé le 11/08.
-function mapSale(v){return{id:v.id,title:v.titre,prix_vente:v.prix_vente,buy:v.prix_achat,sell:v.prix_vente,inventaire_id:v.inventaire_id??null,ship:0,margin:v.benefice,marginPct:(v.benefice==null||!(v.prix_vente>0))?null:(v.benefice/v.prix_vente)*100,date:v.date,date_vente:v.date||v.created_at,marque:v.marque||"",type:v.type||"",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0,description:v.description||null,emplacement:v.emplacement||null,plateforme:v.plateforme||null,quantite:v.quantite||null};}
+function mapSale(v){return{id:v.id,title:v.titre,prix_vente:v.prix_vente,buy:v.prix_achat,sell:v.prix_vente,inventaire_id:v.inventaire_id??null,cree_le:v.created_at??null,ship:0,margin:v.benefice,marginPct:(v.benefice==null||!(v.prix_vente>0))?null:(v.benefice/v.prix_vente)*100,date:v.date,date_vente:v.date||v.created_at,marque:v.marque||"",type:v.type||"",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0,description:v.description||null,emplacement:v.emplacement||null,plateforme:v.plateforme||null,quantite:v.quantite||null};}
 
 // Groups consecutive rows with same title+date+sell price into one display row
 function groupSales(arr){
@@ -2305,12 +2304,14 @@ export default function App({ loginOnly = false }){
   // Annonces constatées HORS LIGNE sans preuve de vente (Phase B, 2026-07-12) :
   // le doute n'est jamais écrit en base — l'utilisateur confirme ou infirme.
   const [unavailableListings,setUnavailableListings]=useState([]);
+  // (15/10) La question « plus en ligne » demandée depuis le stepper (job id).
+  const [questionForcee,setQuestionForcee]=useState(null);
   // (11/10) Ventes DÉTECTÉES et annoncées (push ou mail), pas encore
   // enregistrées : rpc ventes_a_decider (la base décide ce qui est à confirmer).
   const [ventesADecider,setVentesADecider]=useState([]);
-  // (12/10, A6) Les retraits encore en file (toutes plateformes) : le bandeau
-  // « Vendu, encore en ligne » ne dépend plus du Stock ouvert.
-  const [retraitsEnFile,setRetraitsEnFile]=useState([]);
+  // (15/10) La liste a-t-elle été lue au moins une fois ? (lien du mail « Vendu »)
+  const [ventesADeciderLues,setVentesADeciderLues]=useState(false);
+  const [lienVentesVoulu,setLienVentesVoulu]=useState(false);
   const [venteDecideeEnCours,setVenteDecideeEnCours]=useState(null);
   // ── ALERTES « PLUS EN LIGNE » MASQUABLES (2026-09-17, demande d'une PRO) ──
   // Deux masques, RÉVERSIBLES, qui ne touchent QUE l'affichage :
@@ -2424,14 +2425,6 @@ export default function App({ loginOnly = false }){
   // utils/extensionTrace. Une extension vue une fois l'est pour toujours : un
   // ordinateur éteint aujourd'hui ne ramène jamais l'étape « installer ».
   const [extensionTraceAilleurs,setExtensionTraceAilleurs]=useState(false);
-  // (12/10, A6) Retraits bloqués (mêmes règles que « À régler » du Stock) :
-  // le bandeau prioritaire n'en garde que les articles VENDUS.
-  const retraitsVendusBloques=useMemo(()=>retraitsBloquesParConnexion({
-    jobs:retraitsEnFile,
-    fiches:items,
-    extensionVueLe:extensionSeenLoaded?(extensionLastSeenAt??null):undefined,
-    loginsBoutiques:Object.fromEntries((boutiquesVinted??[]).filter(b=>b?.user_id!=null&&b?.login).map(b=>[String(b.user_id),b.login])),
-  }),[retraitsEnFile,items,extensionSeenLoaded,extensionLastSeenAt,boutiquesVinted]);
   // eBay par API (lot 2b, 06/09) : drapeau PAR COMPTE posé par Nico en base
   // (profiles.ebay_voie_api). Lu ici, jamais écrit par le client. Sert à
   // l'écran de publication pour arrêter un article sans photo AVANT le job
@@ -3755,17 +3748,11 @@ export default function App({ loginOnly = false }){
     setUnavailableListings(unavail||[]);
     // (11/10) Ventes à confirmer (best-effort : une erreur laisse la liste vide,
     // jamais un écran cassé). Lue avec le reste, jamais en boucle.
-    supabase.rpc('ventes_a_decider').then(({data,error})=>setVentesADecider(!error&&Array.isArray(data)?data:[]))
-      .catch(()=>setVentesADecider([]));
-    // (12/10, A6) Retraits encore en file — un retrait d'article VENDU qui ne
-    // peut pas partir se dit en tête (bandeau ci-dessous). Lu avec le reste,
-    // jamais en boucle ; une erreur laisse la liste vide.
-    supabase.from('cross_post_jobs')
-      .select('id, platform, action, status, title, error, created_at, inventaire_id, listing_url, platform_fields')
-      .eq('user_id',uid).eq('action','delete').in('status',['pending','processing','needs_user'])
-      .order('created_at',{ascending:false}).limit(200)
-      .then(({data,error})=>setRetraitsEnFile(!error&&Array.isArray(data)?data:[]))
-      .catch(()=>setRetraitsEnFile([]));
+    supabase.rpc('ventes_a_decider').then(({data,error})=>{setVentesADecider(!error&&Array.isArray(data)?data:[]);setVentesADeciderLues(true);})
+      .catch(()=>{setVentesADecider([]);setVentesADeciderLues(true);});
+    // (12/10 soir, Nico) Plus de lecture des retraits en file ici : le bandeau
+    // « Vendu, encore en ligne » (A6) n'existe plus — ces retraits vivent dans
+    // « À régler » du Stock, qui les lit déjà (aucune requête de plus).
     // Propositions du moteur de rattachement (best-effort, jamais bloquant).
     lirePropositionsParJob(uid).then((p)=>setPropositionsParJob(p||{})).catch(()=>setPropositionsParJob({}));
 
@@ -4176,11 +4163,13 @@ export default function App({ loginOnly = false }){
   },[stock,filterType,clesMarques,filterBoutique,search]);
   // (11/10, Rémi) Les vendus suivent la boutique choisie, comme le stock :
   // « Vendu » sous @narema75 montrait les ventes de toutes les boutiques.
-  const soldFiltre=useMemo(()=>sold
+  // (15/10, Louis) … du plus récemment VENDU au plus ancien (utils/triVendus.js) :
+  // rangés par création de fiche, ses ventes du 13/10 tombaient au rang 61.
+  const soldFiltre=useMemo(()=>trierParVente(sold
     .filter(i=>filterType==="Tous"||i.type===filterType)
     .filter(i=>dansLaBoutique(i,filterBoutique))
     .filter(i=>filterMarqueSold==="Toutes"||marqueKey(i.marque)===marqueKey(filterMarqueSold))
-    .filter(i=>searchMatch(i,search)),[sold,filterType,filterBoutique,filterMarqueSold,search]);
+    .filter(i=>searchMatch(i,search)),sales),[sold,filterType,filterBoutique,filterMarqueSold,search,sales]);
   // ── Garde-fous « la marque a disparu du stock » — LE BUG DU 31/08 ──────────
   // Ils comparaient la marque de la pill (libellé RECALCULÉ, cf. marqueKey)
   // à `i.marque` BRUTE en égalité STRICTE : toute marque dont la base ne
@@ -4847,6 +4836,39 @@ export default function App({ loginOnly = false }){
     }
   }
 
+  // ── LES DEUX AUTRES SORTIES D'UNE CARTE « VENDUE » (15/10, P1-0) ─────────
+  // Louis (adaptateurs Vert) : la plateforme disait « vendue », Vinted montrait
+  // l'annonce en ligne, la vente était refusée — et la carte revenait à chaque
+  // rechargement. La BASE tranche (signal_vente_trancher), jamais l'app :
+  //   · 'pas_vendue' : démentie si le relevé voit l'annonce en ligne ; refusée
+  //     si le relevé la voit vendue ; sinon FillSell la relit (carte tue 24 h) ;
+  //   · 'meme_vente' : l'article est déjà vendu par une vente saisie — l'annonce
+  //     est classée vendue sur CETTE vente, rien n'est compté deux fois.
+  // Aucune vente, aucun stock, aucun mail n'est écrit par l'app.
+  async function trancherSignalVente(job,reponse){
+    if(!job?.id||venteEnVolRef.current)return;
+    venteEnVolRef.current=true;
+    setConfirmingSale(job.id);
+    try{
+      const{data,error}=await supabase.rpc('signal_vente_trancher',{p_job:job.id,p_reponse:reponse});
+      if(error)throw error;
+      if(data?.ok)setUnavailableListings(prev=>prev.filter(j=>j.id!==job.id));
+      if(data?.reason){
+        setToast({visible:true,message:data.reason});
+        setTimeout(()=>setToast({visible:false,message:""}),data?.ok?6000:9000);
+      }
+      logTunnel('signal_vente_tranche',{reponse,issue:data?.issue??(data?.meme_cession?'meme_vente':null)??data?.code??null,platform:job.platform});
+      if(questionForcee===job.id&&data?.ok)setQuestionForcee(null);
+      await fetchAll(user.id,{silencieux:true});
+    }catch(e){
+      console.error('[trancherSignalVente]',e?.message??e);
+      setToast({visible:true,message:t('genericError')});
+      setTimeout(()=>setToast({visible:false,message:""}),3000);
+    }finally{
+      setTimeout(()=>{venteEnVolRef.current=false;setConfirmingSale(null);},800);
+    }
+  }
+
   // ── « Ventes à confirmer » (11/10, Louis) : MÊME chemin que le bandeau ─────
   // check-listing-status → enregistrer_vente_declaree → enregistrer_vente_atomique
   // (reçu ventes_operations, quantité, remises_en_vente). Seul change
@@ -4891,11 +4913,26 @@ export default function App({ loginOnly = false }){
     let voulu=false;
     try{voulu=sessionStorage.getItem('fillsell:ventes-a-decider')==='1';sessionStorage.removeItem('fillsell:ventes-a-decider');}catch{/* idem */}
     if(!voulu)return;
+    setLienVentesVoulu(true);
+  },[user?.id,loading]); // eslint-disable-line react-hooks/exhaustive-deps
+  // (15/10, Louis : « je reçois bien les emails de vente, par contre rien dans
+  // FillSell ») Une vente PROUVÉE est enregistrée seule (cron des ventes
+  // prouvées) : le mail dit « Ouvrir FillSell », et le lien menait à une liste
+  // « Ventes à confirmer » VIDE. On attend la liste (lue avec le reste) : vide,
+  // c'est l'onglet Ventes qui s'ouvre — la vente y est, en tête ; sinon le
+  // Stock, sur la liste à confirmer, comme avant.
+  useEffect(()=>{
+    if(!lienVentesVoulu||!ventesADeciderLues)return;
+    setLienVentesVoulu(false);
+    if(!ventesADecider.length){
+      setTab(3);try{localStorage.setItem('tab','3');}catch{/* idem */}
+      logTunnel('ventes_a_confirmer',{action:'lien_mail',n:0,ouvre:'ventes'});
+      return;
+    }
     setTab(1);try{localStorage.setItem('tab','1');}catch{/* idem */}
     logTunnel('ventes_a_confirmer',{action:'lien_mail',n:ventesADecider.length});
-    // (11/10) La liste arrive APRÈS le chargement (rpc lue avec le reste, sans
-    // l'attendre) : un seul essai à 400 ms tombait souvent avant elle. On
-    // attend qu'elle soit peinte — au plus 10 s, sans rien relire en base.
+    // (11/10) La liste est lue ; on attend qu'elle soit PEINTE — au plus 10 s,
+    // sans rien relire en base.
     let essais=0;
     const viser=()=>{
       const el=document.getElementById(ANCRE_VENTES_A_CONFIRMER);
@@ -4903,7 +4940,7 @@ export default function App({ loginOnly = false }){
       if(++essais<40)setTimeout(viser,250);
     };
     setTimeout(viser,400);
-  },[user?.id,loading]); // eslint-disable-line react-hooks/exhaustive-deps
+  },[lienVentesVoulu,ventesADeciderLues]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // « Non, je l'ai retirée » : pas une vente. Le job est clos (l'annonce
   // n'existe plus) et le drapeau levé — aucune ligne de vente, aucun inventaire
@@ -5117,6 +5154,89 @@ export default function App({ loginOnly = false }){
   // sont pas — ils ne réclament rien (582 et 19 côté Vinted, relevés le 18/09)
   // — et `unavailableListings` ne charge que les 'published'.
   const nbADepiler=disparusATrancher.length+disparusAutresPf.length;
+
+  // ══ (12/10 soir, Nico) « ANNONCES PLUS EN LIGNE » — DANS « À RÉGLER », PLUS
+  // JAMAIS EN BANDEAU ═══════════════════════════════════════════════════════
+  // Ces questions s'empilaient en haut de TOUS les onglets (zone des bandeaux).
+  // Elles vivent désormais dans un écran ouvert depuis « À régler » du Stock
+  // (StockTab : ligne 'plus_en_ligne', prop plusEnLigne). MÊMES gardes, MÊMES
+  // gestes, MÊMES saisies qu'avant — seul l'endroit change ; ni la détection,
+  // ni la surveillance, ni un statut ne bougent.
+  // Une question « plus en ligne » s'affiche-t-elle ? null = non ; sinon
+  // { masquee, proposition }. Le masque (« Masquer », 17/09) ne cache pas la
+  // question ici : c'est l'appelant qui décide (compte sans les masquées,
+  // « afficher » les montre).
+  const questionPlusEnLigne=(job)=>{
+    const pf=job.platform_fields||{};
+    // (08/10, Louis) Remplacée par une annonce EN LIGNE de la même fiche : aucune question.
+    if(remplaceeEnLigne(job))return null;
+    // (15/10, Louis) La question demandée depuis le stepper (« Répondre » sous
+    // une plateforme dont l'annonce n'est plus vue) s'affiche même reportée,
+    // masquée ou rangée dans la revue : c'est elle qui libère la case.
+    const forcee=questionForcee!=null&&job.id===questionForcee;
+    // (15/10) « Ce n'est pas vendu » : FillSell relit l'annonce ; la carte se
+    // tait 24 h (signal_vente_trancher pose signal_conteste) — jamais une boucle.
+    if(!forcee&&pf.sale_signal==='sold'&&pf.signal_conteste?.le
+      &&Date.now()-Date.parse(pf.signal_conteste.le)<24*3600_000)return null;
+    const masquee=forcee?false:alerteEstMasquee(job);
+    // Reporté (« Je ne sais pas ») : la question se tait jusqu'à ce que
+    // REPORT_JOURS_EXT jours d'extension ouverte se soient écoulés.
+    // Reporté REPORT_MAX fois : elle ne revient plus du tout — l'article
+    // rejoint « à vérifier » dans la modale, où ses deux vraies réponses
+    // restent accessibles. Trois fois sans réponse n'est PAS une réponse,
+    // et continuer à poser la question ne la fera pas apparaître.
+    if(!forcee&&(estAVerifier(job)||estReporte(job)))return null;
+    const proposition=pf.sale_signal!=='sold'?(propositionsParJob[job.id]??null):null;
+    if(proposition)return {masquee,proposition};
+    // GARDE A (2026-08-24) : article en REPUBLICATION vivante → l'absence
+    // de son annonce Vinted est la nôtre (suppression avant recréation),
+    // jamais une vente. Aucune question, la republication suit son cours.
+    if(job.platform==='vinted'&&job.inventaire_id!=null&&republishActifsInv.has(String(job.inventaire_id)))return null;
+    // Dédup avec la REVUE des disparus : un « plus en ligne » Vinted sans
+    // preuve de vente dont l'article est déjà dans la file de revue y est
+    // traité là-bas (groupé) — deux questions simultanées sur le même
+    // article seraient une invitation à la double confirmation.
+    if(!forcee&&job.platform==='vinted'&&pf.sale_signal!=='sold'&&job.inventaire_id!=null
+      &&disparusATrancher.some(i=>String(i.id)===String(job.inventaire_id)))return null;
+    return {masquee,proposition:null,forcee};
+  };
+  const questionsPlusEnLigne=unavailableListings.map(job=>({job,q:questionPlusEnLigne(job)})).filter(x=>x.q)
+    .sort((a,b)=>(b.q.forcee?1:0)-(a.q.forcee?1:0));
+  const nbMasqueesPlusEnLigne=questionsPlusEnLigne.filter(x=>x.q.masquee).length;
+  // LE COMPTE DE « À RÉGLER » : les questions visibles (masquées exclues,
+  // comme avant), plus les articles Vinted de la file de revue qui n'ont pas
+  // déjà leur question (un article, une place). La file des autres
+  // plateformes (disparusAutresPf) est faite de ces mêmes questions.
+  const idsVintedQuestions=new Set(questionsPlusEnLigne.filter(x=>!x.q.masquee&&x.job.platform==='vinted'&&x.job.inventaire_id!=null).map(x=>String(x.job.inventaire_id)));
+  const nbPlusEnLigne=questionsPlusEnLigne.filter(x=>!x.q.masquee).length
+    +disparusATrancher.filter(i=>!idsVintedQuestions.has(String(i.id))).length;
+  // « Je ne sais plus » (prix d'achat) : exclut DÉFINITIVEMENT l'article des
+  // calculs de marge (prix_achat reste NULL) et on ne repose plus la question.
+  async function marquerPrixAchatInconnu(job){
+    setBuyPriceDraft(p=>({...p,[job.id]:''}));
+    if(job.inventaire_id==null)return;
+    await supabase.from('inventaire').update({prix_achat_inconnu:true})
+      .eq('id',job.inventaire_id).eq('user_id',user.id);
+    setItems(prev=>prev.map(i=>String(i.id)===String(job.inventaire_id)?{...i,prix_achat_inconnu:true}:i));
+  }
+  // L'écran « Annonces plus en ligne » de « À régler » (StockTab l'ouvre et
+  // passe `fermer` : la revue en lot s'ouvre APRÈS l'avoir fermé, sinon la
+  // modale passerait dessous).
+  const rendrePlusEnLigne=({fermer})=>(
+    <QuestionsPlusEnLigne lang={lang} currency={currency}
+      questions={questionsPlusEnLigne} montrerMasquees={montrerMasquees} nbMasquees={nbMasqueesPlusEnLigne}
+      pfMasquees={Object.entries(alertesMasqueesPf||{}).filter(([,on])=>on===true).map(([p])=>p)}
+      nbADepiler={nbADepiler} confirmingSale={confirmingSale}
+      salePriceDraft={salePriceDraft} setSalePriceDraft={setSalePriceDraft}
+      buyPriceDraft={buyPriceDraft} setBuyPriceDraft={setBuyPriceDraft}
+      ficheDuJob={ficheDuJob} reportJoursExt={REPORT_JOURS_EXT} reportMax={REPORT_MAX}
+      onOuvrirRevue={()=>{fermer();setDisparusModal(true);}}
+      onAccepterProposition={accepterProposition} onRefuserProposition={refuserProposition}
+      onConfirmerVente={confirmSaleFromBanner} onRetiree={dismissUnavailable} onReporter={reporterAlerte}
+      onPasVendue={(job)=>trancherSignalVente(job,'pas_vendue')} onDejaEnregistree={(job)=>trancherSignalVente(job,'meme_vente')}
+      onMasquer={masquerAlerte} onPrixAchatInconnu={marquerPrixAchatInconnu}
+      onBasculerMasquees={()=>setMontrerMasquees(v=>!v)} onReafficherPlateforme={(p)=>masquerAlertesPlateforme(p,false)}/>
+  );
 
   // Prix pré-rempli de la revue = dernier prix AFFICHÉ sur Vinted (relevés
   // vinted_listing_snapshots), comme dans VentesTab. PROPOSÉ dans un champ
@@ -8450,277 +8570,23 @@ export default function App({ loginOnly = false }){
         {/* (11/10, Louis) Ventes détectées à confirmer — avec ou sans téléphone.
             En tête de la zone des bandeaux (Stock compris) ; le lien du mail
             « Vendu » y mène. Rien quand il n'y a rien. */}
-        {/* (12/10, A6) PRIORITÉ : un article vendu encore en ligne parce que son
-            retrait ne peut pas partir (boutique Vinted à ouvrir, Chrome fermé,
-            reconnexion, compte bloqué). Se lève seul quand le retrait est fait. */}
-        <RetraitsVendusBloques lang={lang} retraits={retraitsVendusBloques}
-          onVoir={()=>{setTab(1);localStorage.setItem('tab','1');}} />
-
+        {/* ⛔ (12/10 soir, Nico) PLUS AUCUN BANDEAU « vendu, encore en ligne » ni
+            « plus en ligne » ICI : TOUS les problèmes vont dans « À régler » du
+            Stock, et nulle part ailleurs. Ce qui vivait dans cette zone, sur
+            TOUS les onglets :
+              · « Un article vendu est encore en ligne » (A6, 12/10) → une ligne
+                par article dans « À régler » (StockTab : vendusEnLigne), qui
+                ouvre sa fiche ;
+              · « 🎉 Vendu : … Encore en ligne sur X — retirer ? » →
+                pendingRemovals passés au Stock : la fiche porte « Retirer » et
+                « Plus tard » (mêmes gestes, armRemovals / reporterRetraits) ;
+              · la ligne « Alertes « plus en ligne » / Masquer … » → retirée ;
+              · les questions « Vendue ? », « 🎉 Vendue sur X », « Annonce
+                remplacée ? » et « N articles attendent ta réponse » → l'écran
+                « Annonces plus en ligne » (rendrePlusEnLigne), ouvert depuis
+                « À régler ». */}
         <VentesADecider lang={lang} devise={currency==='EUR'?'€':currency}
           ventes={ventesADecider} enCours={venteDecideeEnCours} onDecider={deciderVenteDetectee} />
-
-        {/* Bandeau retrait cross-plateforme : visible sur tous les onglets tant
-            que des annonces d'un article vendu restent en ligne ailleurs.
-            "Plus tard" masque localement (le flag reste → réapparaît au
-            prochain chargement), "Retirer" arme les jobs delete. */}
-        {pendingRemovals.length>0&&Object.entries(
-          pendingRemovals.reduce((acc,j)=>{
-            const k=String(j.inventaire_id??j.title??j.id);
-            (acc[k]=acc[k]||[]).push(j);return acc;
-          },{})
-        ).map(([k,group])=>{
-          const PLAT={vinted:'Vinted',leboncoin:'Leboncoin',beebs:'Beebs',ebay:'eBay',opla:'Opla',depop:'Depop',vestiaire:'Vestiaire'};
-          const platLabels=group.map(g=>PLAT[g.platform]||g.platform).join(', ');
-          return (
-            <div key={k} style={{background:UI.paper,border:`1px solid ${UI.amber}55`,borderLeft:`4px solid ${UI.amber}`,borderRadius:16,padding:"14px 16px",marginBottom:14,display:"flex",flexDirection:"column",gap:10}}>
-              <div style={{fontSize:14,color:UI.ink,lineHeight:1.55}}>
-                <strong>🎉 {lang==='fr'?'Vendu :':'Sold:'} « {group[0].title||(lang==='fr'?'Article':'Item')} »</strong>
-                <br/>
-                {lang==='fr'
-                  ?<>Encore en ligne sur <strong>{platLabels}</strong> — retirer {group.length>1?`ces ${group.length} annonces`:'cette annonce'} ?</>
-                  :<>Still live on <strong>{platLabels}</strong> — remove {group.length>1?`these ${group.length} listings`:'this listing'}?</>}
-              </div>
-              <div style={{display:"flex",gap:10}}>
-                <button onClick={()=>armRemovals(group)}
-                  style={{padding:"9px 18px",borderRadius:999,border:"none",background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,color:"#fff",fontSize:13.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                  {lang==='fr'?`Retirer (${group.length})`:`Remove (${group.length})`}
-                </button>
-                <button onClick={()=>reporterRetraits(group)}
-                  style={{padding:"9px 16px",borderRadius:999,border:`1px solid ${UI.border}`,background:UI.card,color:UI.mute2,fontSize:13.5,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
-                  {lang==='fr'?'Plus tard':'Later'}
-                </button>
-              </div>
-            </div>
-          );
-        })}
-
-        {/* ── Masquer les alertes « plus en ligne » (2026-09-17) : par plateforme
-            (chips) et compteur des masquées, réversible. Aucune écriture sur le
-            veilleur ni sur la vente. */}
-        {(()=>{
-          const PLAT={vinted:'Vinted',leboncoin:'Leboncoin',beebs:'Beebs',ebay:'eBay',opla:'Opla',depop:'Depop'};
-          const questions=unavailableListings.filter(j=>(j.platform_fields||{}).sale_signal!=='sold'&&!remplaceeEnLigne(j));
-          if(!questions.length)return null;
-          const masquees=questions.filter(alerteEstMasquee);
-          const plateformes=[...new Set(questions.map(j=>j.platform))];
-          return (
-            <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",fontSize:12,color:UI.mute2,margin:"0 0 10px"}}>
-              <span style={{fontWeight:600}}>{lang==='fr'?'Alertes « plus en ligne »':'“No longer online” alerts'}</span>
-              {plateformes.map(p=>{
-                const on=alertesMasqueesPf?.[p]===true;
-                return (
-                  <button key={p} type="button" onClick={()=>masquerAlertesPlateforme(p,!on)}
-                    title={lang==='fr'?"Masque toutes les alertes de cette plateforme en attendant le rattachement automatique. La surveillance continue.":"Hides every alert from this platform until automatic matching. Monitoring continues."}
-                    style={{padding:"4px 10px",borderRadius:999,border:`1px solid ${on?UI.teal:UI.border}`,background:on?"#E7F3F0":"transparent",color:on?UI.tealDeep:UI.mute2,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
-                    {on?(lang==='fr'?`${PLAT[p]??p} : masquées`:`${PLAT[p]??p}: hidden`):(lang==='fr'?`Masquer ${PLAT[p]??p}`:`Hide ${PLAT[p]??p}`)}
-                  </button>
-                );
-              })}
-              {masquees.length>0&&(
-                <button type="button" onClick={()=>setMontrerMasquees(v=>!v)}
-                  style={{marginLeft:"auto",background:"none",border:"none",color:UI.tealDeep,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",padding:0}}>
-                  {montrerMasquees
-                    ?(lang==='fr'?'Cacher les masquées':'Hide the hidden ones')
-                    :(lang==='fr'?`${masquees.length} masquée${masquees.length>1?'s':''} · afficher`:`${masquees.length} hidden · show`)}
-                </button>
-              )}
-              <span style={{width:"100%",fontSize:11.5,color:UI.mute}}>
-                {lang==='fr'
-                  ?'Masquer ne coupe rien : la surveillance continue, et une vente se déclare toujours depuis la fiche de l’article.'
-                  :'Hiding stops nothing: monitoring continues, and a sale is still recorded from the item card.'}
-              </span>
-            </div>
-          );
-        })()}
-        {/* Annonce hors ligne : on demande TOUJOURS, on n'écrit jamais tout seul.
-            Deux libellés selon la force du signal, un seul comportement — le clic
-            "Oui" est le SEUL chemin qui écrit en base (vente, inventaire, marges).
-            Décision produit 2026-07-12 : même Vinted, dont la preuve de vente est
-            fiable, passe par ici — le prix réel peut différer du prix affiché
-            (négociation) et un vendeur à volume ne corrigerait jamais après coup. */}
-        {/* ── LE COMPTEUR DE LA FILE, EN TÊTE (2026-09-18, point b) ──────────
-            Il est posé AVANT la liste des annonces une par une, et c'est tout
-            le correctif : le bandeau « Passer en revue » existait déjà et la
-            zone des bandeaux est globale (aucun garde `tab===`, donc déjà
-            visible sur le Tableau) — mais il était rendu APRÈS cette liste.
-            Sur un compte à 263 alertes, il fallait franchir 263 cartes pour
-            trouver le chemin qui les traite toutes. Le compteur n'était pas
-            absent, il était enterré sous la file elle-même.
-            Information et pas injonction : cf. le bandeau du composant. */}
-        <FileAnnoncesADepiler lang={lang} nb={nbADepiler} onOuvrir={()=>setDisparusModal(true)} />
-
-        {unavailableListings.map(job=>{
-          const PLAT={vinted:'Vinted',leboncoin:'Leboncoin',beebs:'Beebs',ebay:'eBay',vestiaire:'Vestiaire',opla:'Opla',depop:'Depop'};
-          const plat=PLAT[job.platform]||job.platform;
-          // (25/09) Inactif pendant QUELQUE vente que ce soit — cf. venteEnVolRef.
-          const busy=confirmingSale!=null;
-          const ceBandeau=confirmingSale===job.id;
-          const pf=job.platform_fields||{};
-          // Masquée (par alerte ou par plateforme) : cachée tant que
-          // « afficher » n'est pas demandé — l'alerte existe toujours.
-          // (08/10, Louis) Remplacée par une annonce EN LIGNE de la même fiche : aucune question.
-          if(remplaceeEnLigne(job))return null;
-          const masquee=alerteEstMasquee(job);
-          if(masquee&&!montrerMasquees)return null;
-          // Reporté (« Je ne sais pas ») : le bandeau se tait jusqu'à ce que
-          // REPORT_JOURS_EXT jours d'extension ouverte se soient écoulés.
-          // Reporté REPORT_MAX fois : il ne revient plus du tout — l'article
-          // rejoint « à vérifier » dans la modale, où ses deux vraies réponses
-          // restent accessibles. Trois fois sans réponse n'est PAS une réponse,
-          // et continuer à poser la question ne la fera pas apparaître.
-          if(estAVerifier(job)||estReporte(job))return null;
-          const proposition=pf.sale_signal!=='sold'?(propositionsParJob[job.id]??null):null;
-          if(proposition){
-            return (
-              <div key={job.id} style={{background:UI.paper,border:`1px solid ${UI.border}`,borderLeft:`4px solid ${UI.teal}`,borderRadius:16,padding:"14px 16px",marginBottom:14,display:"flex",flexDirection:"column",gap:10}}>
-                <div style={{fontSize:14,color:UI.ink,lineHeight:1.55}}>
-                  <strong>{lang==='fr'?'Annonce remplacée ?':'Listing replaced?'}</strong>
-                  <br/>
-                  {lang==='fr'
-                    ?<>« {job.title||'Article'} » n'est plus à son ancienne adresse sur <strong>{plat}</strong>, mais une annonce au même titre{proposition.prix!=null?` (${proposition.prix} €)`:''} est en ligne. C'est la même ?</>
-                    :<>“{job.title||'Item'}” is no longer at its old address on <strong>{plat}</strong>, but a listing with the same title{proposition.prix!=null?` (€${proposition.prix})`:''} is online. Is it the same one?</>}
-                  {proposition.url&&<> <a href={proposition.url} target="_blank" rel="noreferrer" style={{color:UI.tealDeep,fontWeight:600}}>{lang==='fr'?'Voir l’annonce':'View listing'}</a></>}
-                </div>
-                <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
-                  <button disabled={busy} onClick={()=>accepterProposition(job,proposition)}
-                    style={{padding:"9px 18px",borderRadius:999,border:"none",background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,color:"#fff",fontSize:13.5,fontWeight:700,cursor:busy?"default":"pointer",fontFamily:"inherit"}}>
-                    {ceBandeau?'…':(lang==='fr'?"Oui, c'est elle":'Yes, that’s it')}
-                  </button>
-                  <button disabled={busy} onClick={()=>refuserProposition(job,proposition)}
-                    style={{padding:"9px 16px",borderRadius:999,border:`1px solid ${UI.border}`,background:UI.card,color:UI.mute2,fontSize:13.5,fontWeight:600,cursor:busy?"default":"pointer",fontFamily:"inherit"}}>
-                    {lang==='fr'?'Non':'No'}
-                  </button>
-                </div>
-                <div style={{fontSize:11.5,color:UI.mute,lineHeight:1.5}}>
-                  {lang==='fr'?'« Oui » rattache la nouvelle annonce à cet article et lève l’alerte — rien n’est retiré, aucune vente n’est enregistrée.':'“Yes” links the new listing to this item and clears the alert — nothing is removed, no sale is recorded.'}
-                </div>
-              </div>
-            );
-          }
-          // GARDE A (2026-08-24) : article en REPUBLICATION vivante → l'absence
-          // de son annonce Vinted est la nôtre (suppression avant recréation),
-          // jamais une vente. Aucun bandeau, la republication suit son cours.
-          if(job.platform==='vinted'&&job.inventaire_id!=null&&republishActifsInv.has(String(job.inventaire_id)))return null;
-          // Dédup avec la REVUE des disparus : un « plus en ligne » Vinted sans
-          // preuve de vente dont l'article est déjà dans la file de revue y est
-          // traité là-bas (groupé) — deux questions simultanées sur le même
-          // article seraient une invitation à la double confirmation.
-          if(job.platform==='vinted'&&pf.sale_signal!=='sold'&&job.inventaire_id!=null
-            &&disparusATrancher.some(i=>String(i.id)===String(job.inventaire_id)))return null;
-          // Preuve positive de vente (Vinted : is_closed + item_closing_action)
-          const vendu=pf.sale_signal==='sold';
-          // Prix pré-rempli : celui lu sur la page si la plateforme l'expose,
-          // sinon le prix de mise en ligne — celui d'une REPUBLICATION compris
-          // (11/10 : detected_price et price y sont NULL), puis celui de la
-          // fiche. Modifiable dans tous les cas ; MÊME règle que l'envoi.
-          const prixDefaut=prixParDefautDuBandeau(job,ficheDuJob(job));
-          return (
-            <div key={job.id} style={{background:UI.paper,border:`1px solid ${vendu?UI.teal+'55':UI.border}`,borderLeft:`4px solid ${vendu?UI.teal:UI.amber}`,borderRadius:16,padding:"14px 16px",marginBottom:14,display:"flex",flexDirection:"column",gap:10}}>
-              <div style={{fontSize:14,color:UI.ink,lineHeight:1.55}}>
-                <strong>{vendu
-                  ?(lang==='fr'?`🎉 Vendue sur ${plat} !`:`🎉 Sold on ${plat}!`)
-                  :(lang==='fr'?'Annonce plus en ligne':'Listing no longer online')}</strong>
-                <br/>
-                {vendu
-                  ?(lang==='fr'
-                    ?<>« {job.title||'Article'} » — confirme le prix pour l'enregistrer.</>
-                    :<>“{job.title||'Item'}” — confirm the price to record it.</>)
-                  :(lang==='fr'
-                    ?<>« {job.title||'Article'} » n'est plus en ligne sur <strong>{plat}</strong>. Vendue ?</>
-                    :<>“{job.title||'Item'}” is no longer online on <strong>{plat}</strong>. Sold?</>)}
-              </div>
-              {/* Prix éditable : la vente a pu être négociée (offre acceptée,
-                  marchandage en remise main propre) — même sur Vinted, qui
-                  n'expose PAS le montant d'une offre acceptée. C'est ce montant
-                  qui sera enregistré comme prix_vente. */}
-              <div style={{display:"flex",alignItems:"center",gap:8}}>
-                <label style={{fontSize:13,color:UI.mute2,fontWeight:600}}>
-                  {lang==='fr'?'Prix de vente':'Sale price'}
-                </label>
-                <input type="text" inputMode="decimal" disabled={busy}
-                  value={salePriceDraft[job.id]??(prixDefaut!=null?String(prixDefaut):'')}
-                  onChange={e=>setSalePriceDraft(p=>({...p,[job.id]:e.target.value}))}
-                  style={{width:90,padding:"7px 10px",borderRadius:10,border:`1px solid ${UI.border}`,background:UI.card,color:UI.ink,fontSize:14,fontWeight:700,fontFamily:"inherit"}}/>
-                <span style={{fontSize:13,color:UI.mute2}}>{currency==='EUR'?'€':currency}</span>
-              </div>
-              {/* PRIX D'ACHAT — demandé ICI, au seul moment où la personne s'en
-                  souvient et où elle veut répondre. Affiché uniquement si
-                  l'article est lié à l'inventaire ET que son prix d'achat est
-                  encore inconnu (les articles importés du dressing Vinted sont
-                  exactement dans ce cas).
-                  « Je ne sais plus » est OBLIGATOIRE et pas décoratif : sans
-                  porte de sortie, les gens inventent un chiffre pour se
-                  débarrasser de la question, et toutes les stats deviennent du
-                  bruit indétectable. Marge absente > marge fausse. */}
-              {(()=>{
-                const art=ficheDuJob(job);
-                if(!art||prixAchatConnu(art)||art.prix_achat_inconnu)return null;
-                return (
-                  <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-                    <label style={{fontSize:13,color:UI.mute2,fontWeight:600}}>
-                      {lang==='fr'?"Tu l'avais payé combien ?":'What did you pay for it?'}
-                    </label>
-                    <input type="text" inputMode="decimal" disabled={busy}
-                      value={buyPriceDraft[job.id]??''}
-                      onChange={e=>setBuyPriceDraft(p=>({...p,[job.id]:e.target.value}))}
-                      style={{width:90,padding:"7px 10px",borderRadius:10,border:`1px solid ${UI.border}`,background:UI.card,color:UI.ink,fontSize:14,fontWeight:700,fontFamily:"inherit"}}/>
-                    <span style={{fontSize:13,color:UI.mute2}}>{currency==='EUR'?'€':currency}</span>
-                    <button type="button" disabled={busy}
-                      onClick={async()=>{
-                        // Exclut DÉFINITIVEMENT cet article des calculs de marge
-                        // (prix_achat reste NULL) et on ne repose plus la question.
-                        setBuyPriceDraft(p=>({...p,[job.id]:''}));
-                        if(job.inventaire_id==null)return;
-                        await supabase.from('inventaire').update({prix_achat_inconnu:true})
-                          .eq('id',job.inventaire_id).eq('user_id',user.id);
-                        setItems(prev=>prev.map(i=>String(i.id)===String(job.inventaire_id)?{...i,prix_achat_inconnu:true}:i));
-                      }}
-                      style={{padding:"6px 12px",borderRadius:999,border:`1px solid ${UI.border}`,background:"transparent",color:UI.mute2,fontSize:12.5,fontWeight:600,cursor:busy?"default":"pointer",fontFamily:"inherit"}}>
-                      {lang==='fr'?'Je ne sais plus':"I don't remember"}
-                    </button>
-                  </div>
-                );
-              })()}
-              <div style={{display:"flex",gap:10}}>
-                <button disabled={busy} onClick={()=>confirmSaleFromBanner(job)}
-                  style={{padding:"9px 18px",borderRadius:999,border:"none",background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,color:"#fff",fontSize:13.5,fontWeight:700,cursor:busy?"default":"pointer",opacity:busy?.6:1,fontFamily:"inherit"}}>
-                  {ceBandeau?(lang==='fr'?'…':'…'):(lang==='fr'?'Oui, enregistrer la vente':'Yes, record the sale')}
-                </button>
-                {/* ⛔ (11/10, Rémi) Jamais sous une preuve de vente : « je l'ai
-                    retirée » y contredit la plateforme et annulait la vente. */}
-                {retireeProposable(job)&&(
-                  <button disabled={busy} onClick={()=>dismissUnavailable(job)}
-                    style={{padding:"9px 16px",borderRadius:999,border:`1px solid ${UI.border}`,background:UI.card,color:UI.mute2,fontSize:13.5,fontWeight:600,cursor:busy?"default":"pointer",fontFamily:"inherit"}}>
-                    {lang==='fr'?"Non, je l'ai retirée":"No, I removed it"}
-                  </button>
-                )}
-                {/* LA TROISIÈME SORTIE, visuellement en retrait : ni fond, ni
-                    bordure, corps plus petit. Elle n'écrit rien — c'est une
-                    RESPIRATION, pas une décision. Le titre dit le délai en
-                    clair, parce qu'un bouton qui fait disparaître une question
-                    sans dire quand elle revient se lit comme un enterrement. */}
-                {!vendu&&!masquee&&(
-                  <button disabled={busy} onClick={()=>reporterAlerte(job)}
-                    title={lang==='fr'
-                      ?`Ne décide rien et n'écrit rien. La question revient après ${REPORT_JOURS_EXT} jours d'utilisation de l'extension — pas au bout de ${REPORT_JOURS_EXT} jours de calendrier. Après ${REPORT_MAX} reports, l'annonce passe dans « à vérifier » et ne s'affiche plus ici.`
-                      :`Decides nothing and writes nothing. The question comes back after ${REPORT_JOURS_EXT} days of actually using the extension — not ${REPORT_JOURS_EXT} calendar days. After ${REPORT_MAX} deferrals it moves to “to check” and stops showing here.`}
-                    style={{padding:"9px 14px",borderRadius:999,border:"none",background:"transparent",color:UI.mute2,fontSize:13,fontWeight:600,cursor:busy?"default":"pointer",fontFamily:"inherit"}}>
-                    {lang==='fr'?'Je ne sais pas':"I don't know"}
-                  </button>
-                )}
-                {!vendu&&(
-                  <button disabled={busy} onClick={()=>masquerAlerte(job,!masquee)}
-                    title={masquee
-                      ?(lang==='fr'?"Réaffiche cette alerte.":"Shows this alert again.")
-                      :(lang==='fr'?"Masque cette alerte sans rien décider : l'annonce reste surveillée, tu pourras la réafficher.":"Hides this alert without deciding anything: the listing stays monitored, you can show it again.")}
-                    style={{padding:"9px 14px",borderRadius:999,border:"none",background:"transparent",color:UI.mute2,fontSize:13,fontWeight:600,cursor:busy?"default":"pointer",fontFamily:"inherit"}}>
-                    {masquee?(lang==='fr'?'Réafficher':'Show again'):(lang==='fr'?'Masquer':'Hide')}
-                  </button>
-                )}
-              </div>
-            </div>
-          );
-        })}
 
         {/* ── Disparus du dressing : UN bandeau de synthèse (2026-08-24) ──
             Jamais un bandeau par article : la sync marque disparu_le en bloc
@@ -9012,6 +8878,8 @@ export default function App({ loginOnly = false }){
             openUpgradeModal={openUpgradeModal}
             onStepperOpenChange={setListingStepperOpen}
             onAddByPhoto={()=>{setTab(2);localStorage.setItem('tab',2);}}
+            pendingRemovals={pendingRemovals} onRetirerVendus={armRemovals} onPlusTardVendus={reporterRetraits}
+            plusEnLigne={{n:nbPlusEnLigne,nMasquees:nbMasqueesPlusEnLigne,rendre:rendrePlusEnLigne,onAfficherMasquees:()=>setMontrerMasquees(true),ouvrirQuestion:(id)=>setQuestionForcee(id)}}
             onDupliquer={(item)=>dupliquerFiche(item,'carte')}
           />
         )}

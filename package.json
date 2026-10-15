@@ -317,6 +317,8 @@
     "selftest:rayon-refuse-moteur": "node scripts/rayon-refuse-moteur-selftest.mjs",
     "selftest:disjoncteur-compte": "node scripts/disjoncteur-compte-selftest.mjs",
     "selftest:retrait-vendu-jamais-silencieux": "node scripts/retrait-vendu-jamais-silencieux-selftest.mjs",
+    "selftest:a-regler-sans-bandeau": "node scripts/a-regler-sans-bandeau-selftest.mjs",
+    "selftest:signal-vente-jamais-en-boucle": "node scripts/signal-vente-jamais-en-boucle-selftest.mjs",
     "selftest:achats-store-issue": "node scripts/achats-store-issue-selftest.mjs",
     "selftest:lot-sans-plafond": "node scripts/lot-sans-plafond-selftest.mjs",
     "selftest:roue-reglages-visible": "node scripts/roue-reglages-visible-selftest.mjs",

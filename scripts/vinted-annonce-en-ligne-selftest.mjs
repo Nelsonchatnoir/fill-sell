@@ -45,7 +45,9 @@ ok("sans fiche : la question reste", vintedRemplaceeParUneEnLigne(JOB_DISPARU, n
 console.log("\n[2] L'app s'en sert partout où la question s'affiche ou se compte");
 const app = lire("src/App.jsx");
 ok("le bandeau saute la copie remplacée", /if\(remplaceeEnLigne\(job\)\)return null;/.test(app));
-ok("le compteur des questions aussi", /sale_signal!=='sold'&&!remplaceeEnLigne\(j\)\)/.test(app));
+// (12/10 soir) Les questions vivent dans « À régler » : leur compte passe par
+// questionPlusEnLigne, dont la première garde est la même.
+ok("le compteur des questions aussi", /const questionPlusEnLigne=\(job\)=>\{[\s\S]{0,200}if\(remplaceeEnLigne\(job\)\)return null;/.test(app) && /const nbPlusEnLigne=questionsPlusEnLigne\.filter/.test(app));
 ok("« à vérifier » aussi", /estAVerifier\(j\)&&!remplaceeEnLigne\(j\)/.test(app));
 
 console.log("\n[3] La base : migrations 20261008110000 et 20261008111000");

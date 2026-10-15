@@ -8,28 +8,34 @@
 // est devenue « Remonter »). Chaque ligne rouvre la porte qui EXISTAIT :
 // la feuille d'attente, l'écran des doublons, le mode prix d'achat, le mode
 // brouillons. Aucun chemin neuf.
-import { ChevronRight, CircleAlert, BadgeEuro, Tag, PenLine, AlertTriangle, UserRound } from 'lucide-react';
+// ⛔ (12/10 soir, Nico) PLUS AUCUN BANDEAU : TOUS les problèmes vivent ICI, et
+//    nulle part ailleurs — un article vendu encore en ligne est UNE ligne
+//    (son titre, la plateforme, le geste ; le tap ouvre sa fiche), les annonces
+//    « plus en ligne — vendue ? » une ligne qui ouvre leurs questions. Même
+//    ligne, mêmes polices, mêmes couleurs : jamais un bloc coloré.
+import { ChevronRight, CircleAlert, BadgeEuro, Tag, PenLine, AlertTriangle, UserRound, Store, EyeOff } from 'lucide-react';
 import EcranPlein from './EcranPlein';
 import { S } from './jetons';
 import { nombreFr } from './regles';
 
-const ICONES = { retraits: AlertTriangle, lbc_identite: UserRound, attente: CircleAlert, ventes: BadgeEuro, prix: Tag, brouillons: PenLine };
+const ICONES = { retraits: AlertTriangle, lbc_identite: UserRound, attente: CircleAlert, ventes: BadgeEuro, prix: Tag, brouillons: PenLine, plus_en_ligne: EyeOff };
 // (05/10) Une annonce vendue encore en ligne (retrait bloqué par une
-// connexion) : rouge, comme le bandeau du haut — un risque de double vente,
-// pas une information à compléter.
+// connexion) : rouge — un risque de double vente, pas une information à
+// compléter. (12/10 soir) Une ligne peut dire son ton elle-même (`ton`) :
+// la bonne boutique Vinted à ouvrir n'est jamais une alarme (ambre).
 const ROUGES = new Set(['retraits']);
 
-export default function EcranARegler({ lang = 'fr', lignes = [], onFermer, actif = true }) {
+export default function EcranARegler({ lang = 'fr', lignes = [], onFermer, actif = true, pied = null }) {
   const fr = lang !== 'en';
   const total = lignes.reduce((t, l) => t + (l.n || 0), 0);
   // La phrase dit ce qu'il y a VRAIMENT, rien de plus.
-  const present = (...cles) => lignes.some((l) => cles.includes(l.cle) && l.n > 0);
+  const present = (...cles) => lignes.some((l) => cles.includes(l.groupe ?? l.cle) && l.n > 0);
   const parts = [
-    present('retraits') && (fr ? 'des annonces encore en ligne à retirer' : 'live listings to remove'),
+    present('vendus', 'retraits') && (fr ? 'des annonces encore en ligne à retirer' : 'live listings to remove'),
     present('lbc_identite') && (fr ? 'ton compte Leboncoin à compléter' : 'your Leboncoin account to complete'),
     present('attente') && (fr ? 'des annonces qui attendent ton geste' : 'listings waiting on you'),
     present('a_verifier') && (fr ? 'des annonces à vérifier' : 'listings to check'),
-    present('ventes') && (fr ? 'des ventes à confirmer' : 'sales to confirm'),
+    present('ventes', 'plus_en_ligne') && (fr ? 'des ventes à confirmer' : 'sales to confirm'),
     present('prix', 'brouillons') && (fr ? 'des infos à compléter' : 'info to complete'),
   ].filter(Boolean);
   const liste = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} ${fr ? 'et' : 'and'} ${parts[parts.length - 1]}` : (parts[0] ?? '');
@@ -51,17 +57,22 @@ export default function EcranARegler({ lang = 'fr', lignes = [], onFermer, actif
       {lignes.some((l) => l.n > 0) && (
         <div style={{ marginTop: 16, borderRadius: 16, overflow: 'hidden', background: '#FFFFFF', boxShadow: `inset 0 0 0 1px ${S.border}` }}>
           {lignes.filter((l) => l.n > 0).map((l) => {
-            const I = ICONES[l.cle] ?? CircleAlert;
+            // Une ligne d'ARTICLE (vendu, encore en ligne) : son titre, sa
+            // plateforme et le geste — pas de nombre (c'est UN article).
+            const I = l.icone ?? (l.groupe === 'vendus' ? (l.ton === 'regler' ? Store : AlertTriangle) : (ICONES[l.cle] ?? CircleAlert));
+            const rouge = l.ton ? l.ton === 'echec' : ROUGES.has(l.cle);
             return (
-              <button key={l.cle} type="button" className="sk-btn sk-presse" onClick={l.onOuvrir}
+              <button key={l.cle} type="button" className="sk-btn sk-presse" onClick={l.onOuvrir} data-ligne={l.groupe ?? l.cle}
                 style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', minHeight: 64, padding: '8px 16px', boxSizing: 'border-box', border: 'none', background: 'transparent', boxShadow: `inset 0 -1px 0 ${S.borderSoft}`, textAlign: 'left', color: S.ink }}>
-                <span style={{ width: 40, height: 40, borderRadius: 12, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: ROUGES.has(l.cle) ? S.rougeFond : S.ambreFond, color: ROUGES.has(l.cle) ? S.rouge : S.ambreEncre }}>
+                <span style={{ width: 40, height: 40, borderRadius: 12, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: rouge ? S.rougeFond : S.ambreFond, color: rouge ? S.rouge : S.ambreEncre }}>
                   <I size={20} strokeWidth={2} aria-hidden="true" />
                 </span>
-                <span className="sk-chiffres" style={{ minWidth: 32, flexShrink: 0, fontSize: 24, lineHeight: '28px', fontWeight: 700, letterSpacing: '-0.03em' }}>{nombreFr(l.n, lang)}</span>
+                {!l.article && (
+                  <span className="sk-chiffres" style={{ minWidth: 32, flexShrink: 0, fontSize: 24, lineHeight: '28px', fontWeight: 700, letterSpacing: '-0.03em' }}>{nombreFr(l.n, lang)}</span>
+                )}
                 <span style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ display: 'block', fontSize: 15, lineHeight: '20px', fontWeight: 700 }}>{l.titre}</span>
-                  {l.detail && <span style={{ display: 'block', fontSize: 12, lineHeight: '16px', fontWeight: 500, color: S.ink2, marginTop: 2 }}>{l.detail}</span>}
+                  <span style={{ display: 'block', fontSize: 15, lineHeight: '20px', fontWeight: 700, overflowWrap: 'anywhere' }}>{l.titre}</span>
+                  {l.detail && <span style={{ display: 'block', fontSize: 12, lineHeight: '16px', fontWeight: 500, color: S.ink2, marginTop: 2, overflowWrap: 'anywhere' }}>{l.detail}</span>}
                 </span>
                 <ChevronRight size={20} color={S.chevron} aria-hidden="true" style={{ flexShrink: 0 }} />
               </button>
@@ -69,6 +80,7 @@ export default function EcranARegler({ lang = 'fr', lignes = [], onFermer, actif
           })}
         </div>
       )}
+      {pied}
     </EcranPlein>
   );
 }

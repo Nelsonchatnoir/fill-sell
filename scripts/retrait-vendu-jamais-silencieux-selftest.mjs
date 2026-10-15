@@ -10,9 +10,12 @@
 //      silencieuse > 15 min, retrait en attente > 15 min) — même levée : le
 //      dernier retrait de l'annonce seulement, qui disparaît dès qu'il aboutit ;
 //   2. la phrase dit le GESTE (« ouvre ta boutique @x », « ouvre Chrome ») et
-//      le risque de double vente ; jamais « Me connecter » hors connexion ;
-//   3. bandeau PRIORITAIRE de l'app (tous onglets, articles vendus seulement),
-//      en tête de la zone des bandeaux, données relues avec le reste ;
+//      le risque de double vente — sauf pour la bonne boutique à ouvrir
+//      (12/10 soir, Nico : ni alarme ni « double vente ») ; jamais
+//      « Me connecter » hors connexion ;
+//   3. (12/10 soir, Nico) PLUS AUCUN BANDEAU : l'article vendu encore en ligne
+//      est UNE ligne de « À régler » (son titre, la plateforme, le geste ; le
+//      tap ouvre sa fiche) — selftest:a-regler-sans-bandeau pour le détail ;
 //   4. get-pending-jobs : un retrait retenu pour une autre boutique porte la
 //      boutique à ouvrir (attente_boutique_retrait) et le message — levé dès
 //      que la bonne boutique est ouverte ;
@@ -50,7 +53,9 @@ const bloques = M.retraitsBloquesParConnexion({ jobs: [ornella, nerema, retrait(
 const gB = bloques.parPlateforme.find((g) => g.mur === 'boutique' && g.boutique === '@ornella-vend');
 verifier(!!gB && gB.nVendus === 1, 'groupe « boutique @ornella-vend », 1 article vendu');
 const phrase = M.texteRetraitsBloques(gB, 'fr');
-verifier(/vendu/.test(phrase) && /ouvre ta boutique @ornella-vend/i.test(phrase) && /double vente/.test(phrase) && /ordinateur/.test(phrase), 'la phrase : vendu, « ouvre ta boutique @ornella-vend », ordinateur, double vente', phrase);
+verifier(/vendu/.test(phrase) && /ouvre ta boutique @ornella-vend/i.test(phrase) && /ordinateur/.test(phrase), 'la phrase : vendu, « ouvre ta boutique @ornella-vend », ordinateur', phrase);
+// (12/10 soir, Nico) « En attente de la bonne boutique » : pas d'alarme.
+verifier(!/double vente/.test(phrase) && !/double vente/.test(M.ligneCarteRetraitBloque('vinted', 'fr', 'boutique', '@ornella-vend')), 'la bonne boutique à ouvrir : jamais « risque de double vente »', phrase);
 verifier(!bloques.parPlateforme.some((g) => g.mur === 'ordinateur'), 'extension vue à l’instant : aucun mur « ordinateur »');
 const sansExt = M.retraitsBloquesParConnexion({ jobs: [retrait({ id: 'r5' })], fiches, maintenant: T, extensionVueLe: '2026-10-09T10:00:00Z' });
 verifier(sansExt.parPlateforme[0]?.mur === 'ordinateur' && /ouvre Chrome sur ton ordinateur/.test(M.texteRetraitsBloques(sansExt.parPlateforme[0], 'fr')), 'ordinateur éteint : « ouvre Chrome sur ton ordinateur »');
@@ -69,17 +74,19 @@ const meles = M.retraitsBloquesParConnexion({
 const lm = M.ligneARegler(meles, 'fr');
 verifier(/ouvre ta boutique @ornella-vend dans Chrome/i.test(lm.detail) && /ouvre Chrome sur ton ordinateur/.test(lm.detail) && /reconnecte-toi à Beebs/.test(lm.detail) && !/Reconnecte-toi à Vinted/.test(lm.detail), '« À régler », murs mêlés : un geste par mur (boutique, ordinateur, reconnexion), jamais « reconnecte-toi » pour une boutique', lm.detail);
 verifier(!/Vinted, Vinted/.test(lm.detail), '« À régler » : aucune plateforme nommée deux fois', lm.detail);
+const seuleBoutique = M.ligneARegler(M.retraitsBloquesParConnexion({ jobs: [ornella], fiches, maintenant: T, extensionVueLe: '2026-10-11T17:29:00Z' }), 'fr');
+verifier(/ouvre ta boutique @ornella-vend/i.test(seuleBoutique.detail) && !/double vente/.test(seuleBoutique.detail), '« À régler », la bonne boutique seule : le geste, sans alarme', seuleBoutique.detail);
 
-console.log('\n3. Le bandeau prioritaire de l’app');
+console.log('\n3. Plus aucun bandeau : « À régler » (12/10 soir, Nico)');
 const app = lire('src/App.jsx');
-const bandeau = lire('src/components/RetraitsVendusBloques.jsx');
-const iBandeau = app.indexOf('<RetraitsVendusBloques');
-verifier(iBandeau > 0 && iBandeau < app.indexOf('<VentesADecider'), 'en TÊTE de la zone des bandeaux (avant « Ventes à confirmer »), tous onglets');
-verifier(/\.eq\('action','delete'\)\.in\('status',\['pending','processing','needs_user'\]\)/.test(app) && /setRetraitsEnFile/.test(app), 'les retraits en file sont relus avec le reste (fetchAll)');
-verifier(/extensionVueLe:extensionSeenLoaded\?\(extensionLastSeenAt\?\?null\):undefined/.test(app), 'le mur « ordinateur » ne juge qu’une fois le profil lu');
-verifier(/filter\(\(l\) => l\.vendu\)/.test(bandeau) && /if \(!groupes\.length\) return null;/.test(bandeau), 'le bandeau ne garde que les articles VENDUS, et rien quand il n’y a rien');
+verifier(!/<RetraitsVendusBloques/.test(app) && !/setRetraitsEnFile/.test(app), 'plus de bandeau « Vendu, encore en ligne » dans l’app (ni sa lecture)');
+const vendus = M.articlesVendusEncoreEnLigne({ retraits: bloques, pendingRemovals: [], fiches });
+verifier(vendus.length === 1 && vendus[0].titre === 'Jupe H&M' && vendus[0].ton === 'regler', 'la jupe vendue : UNE ligne « À régler », ambre (la bonne boutique à ouvrir)', JSON.stringify(vendus.map((v) => [v.titre, v.ton])));
+const detailJupe = M.detailArticleVenduEnLigne(vendus[0], 'fr');
+verifier(/Vinted/.test(detailJupe) && /ouvre ta boutique @ornella-vend sur vinted\.fr dans Chrome, sur ton ordinateur : FillSell la retirera aussitôt/i.test(detailJupe) && !/double vente/.test(detailJupe), 'sa ligne : la plateforme et le geste, sans alarme', detailJupe);
 const stock = lire('src/tabs/StockTab.jsx');
 verifier(/murDe\.get\(p\) === 'connexion' && <BoutonMeConnecter/.test(stock) && /extensionVueLe: extensionStatus \?/.test(stock), 'Stock : « Me connecter » pour une connexion seulement ; murs jugés avec l’extension');
+verifier(/onOuvrir: \(\) => \{ setGesteOuvert\(null\); setMenuArticleId\(a\.inventaireId\); \}/.test(stock), 'la ligne ouvre la fiche de l’article (l’ancien « Voir dans le Stock »)');
 
 console.log('\n4. Le serveur');
 const gpj = lire('supabase/functions/get-pending-jobs/index.ts');
