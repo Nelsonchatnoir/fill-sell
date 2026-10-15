@@ -14,6 +14,8 @@ import { indexerRelevesVides } from '../annonces/releveVide';
 import { indexerRetraits, annonceRetiree } from '../annonces/retraits.js';
 import { lireToutesPages } from './lireToutesPages.js';
 import { FILTRE_SANS_VEILLE } from './declencheursReleve.js';
+import { absenceDePlateforme } from '../annonces/etatReleve.js';
+import { absencesDeSuite } from '../annonces/absencesDeSuite.js';
 
 // Dérivée de la table unique du stock (utils/stockFiltres) : toutes sauf
 // Vinted, qui a son propre relevé (carte « Relever mes annonces Vinted »).
@@ -75,8 +77,13 @@ export async function lireDerniersRunsReleve(userId) {
     .order('started_at', { ascending: false, nullsFirst: false })
     .limit(60);
   if (error) return {};
+  // (15/10, P17) Le dernier run porte la série de « pas connecté » d'affilée
+  // de sa plateforme (absences_de_suite) — lue sur ces mêmes lignes, aucune
+  // requête de plus.
+  const listes = {};
+  for (const r of data ?? []) (listes[r.platform] ??= []).push(r);
   const par = {};
-  for (const r of data ?? []) if (!par[r.platform]) par[r.platform] = r;
+  for (const [p, liste] of Object.entries(listes)) par[p] = { ...liste[0], absences_de_suite: absencesDeSuite(liste, absenceDePlateforme) };
   return par;
 }
 

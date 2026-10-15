@@ -27,6 +27,9 @@ import {
 import { ciblesReleve } from './synchroniser.js';
 import { avecDernierReleveVide } from './releveVide';
 import { lireDoublonsProposes } from '../utils/doublons';
+import { relancerAvecTout } from './absencesDeSuite.js';
+import { etatSession } from '../utils/sessionsPlateformes.js';
+import { textesAnnonces } from './textes.js';
 
 // Le poll : la base rend compte, jamais l'extension.
 // (04/10, incident CPU 99 %) Sept requêtes par tour, dont releves_vides_signales
@@ -167,6 +170,13 @@ export function useReleveAnnonces({ lang, user, ouvert, plateformes, lancerVinte
       }
       const run = runs[p] ?? null;
       if (run && (run.status === 'queued' || run.status === 'running')) continue;
+      // (15/10, P17) Deux « pas connecté » de suite et aucune connexion revue :
+      // on ne relance pas — on le dit, avec le geste (« Synchroniser <nom> »).
+      if (!relancerAvecTout({ absences: Number(run?.absences_de_suite) || 0, sessionOk: etatSession(choix?.sessions ?? null, p) === 'ok' })) {
+        refus.push(textesAnnonces(lang).pasRelanceSansConnexion(LABEL_RELEVE[p] ?? p));
+        track('releve_tout_saute', { platform: p, motif: 'pas_connecte_de_suite', absences: Number(run?.absences_de_suite) || 0 });
+        continue;
+      }
       // Opla sans autorisation : sautée, avec son motif. Un geste GLOBAL ne
       // doit pas faire surgir une modale — le bouton de SA tuile, lui, la pose
       // (c'est le clic qui la vise).

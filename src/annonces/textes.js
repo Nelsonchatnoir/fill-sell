@@ -167,6 +167,11 @@ const FR = {
   // La promesse que handler-watch tient désormais : la reprise est faite par
   // le serveur dès que la session est prouvée fraîche, sans nouveau clic.
   murReprise: 'Une fois connecté, appuie sur « Synchroniser ».',
+  // (15/10, P17 — Marie Vincent) Deux « pas connecté » de suite : « Synchroniser »
+  // ne relance plus la plateforme (annonces/absencesDeSuite.js) — on dit où se
+  // connecter et le SEUL geste qui la relance.
+  murRepriseDeSuite: (nom, n) => `Toujours pas connecté à ${nom} après ${n} synchronisations. Connecte-toi à ${nom} dans le Chrome où l'extension FillSell est installée (si tu as plusieurs ordinateurs ou profils Chrome : dans celui qui reste ouvert), puis touche « Synchroniser ${nom} ». D'ici là, « Synchroniser » ne relance plus ${nom}.`,
+  pasRelanceSansConnexion: (nom) => `${nom} pas relancé : toujours pas connecté sur ton ordinateur. Connecte-toi, puis touche « Synchroniser ${nom} ».`,
 
   note: "Synchroniser ne publie rien : FillSell lit « Mes annonces » sur chaque plateforme et rattache ce qu'il reconnaît à ton stock.",
 
@@ -319,6 +324,8 @@ const EN = {
     ? `${nom}: ${n} listing${n > 1 ? 's' : ''} synced and filed into your stock.`
     : `${nom}: sync finished, nothing online for now.`),
   murReprise: 'Once signed in, tap “Sync”.',
+  murRepriseDeSuite: (nom, n) => `Still not signed in to ${nom} after ${n} syncs. Sign in to ${nom} in the Chrome where the FillSell extension is installed (if you use several computers or Chrome profiles: in the one that stays open), then tap “Sync ${nom}”. Until then, “Sync” no longer retries ${nom}.`,
+  pasRelanceSansConnexion: (nom) => `${nom} not retried: still not signed in on your computer. Sign in, then tap “Sync ${nom}”.`,
 
   note: 'Syncing publishes nothing: FillSell reads “My listings” on each platform and matches what it recognises to your stock.',
 
