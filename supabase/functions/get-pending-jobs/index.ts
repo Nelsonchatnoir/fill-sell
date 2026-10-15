@@ -9224,7 +9224,10 @@ serve(async (req) => {
         }
         if (v === "neuf" || v === "etat neuf") return etatNeuf; // grille B → null : ne se devine pas
         if (v === "satisfaisant" || v === "correct" || v === "etat correct" || v === "etat satisfaisant") {
-          return parNorm.get("etat satisfaisant") ?? null;
+          // (15/10, P8 — Louis 150c7da9) La grille « Électronique » nomme le même
+          // niveau « État satisfaisant - fonctionnel » (même code Leboncoin,
+          // etatsatisfaisant) : c'est la même valeur, pas une devinette.
+          return parNorm.get("etat satisfaisant") ?? parNorm.get("etat satisfaisant - fonctionnel") ?? null;
         }
         return null;
       };
@@ -9568,7 +9571,12 @@ serve(async (req) => {
               ? String(pf.etat ?? "").trim() : "";
             const precis = j.inventaire_id != null ? (etatParArticle.get(Number(j.inventaire_id)) ?? "") : "";
             const brut = String(pf.etat ?? "").trim();
-            const candidatsEtat = [...new Set([resolu, precis, brut].filter(Boolean))];
+            // (15/10, P8 — DeadRoz, compte Leboncoin PRO) L'état CHOISI pour cette
+            // publication (le job, au stepper) passe avant l'état de la fiche :
+            // 30 publications en 30 j étaient parties avec l'état de la fiche à la
+            // place de celui choisi. La fiche ne sert que si l'état du job n'a pas
+            // d'équivalent EXACT dans la grille (ex. « Neuf » nu sur la grille Mode).
+            const candidatsEtat = [...new Set([resolu, brut, precis].filter(Boolean))];
             if (candidatsEtat.length) {
               const g = await grilleEtatLeboncoin(pf, chemin);
               if (g) {
@@ -9579,7 +9587,8 @@ serve(async (req) => {
                   if (m) {
                     pose = m;
                     depuis = c === resolu ? "réponse de l'utilisateur (needsUserResolved.etat)"
-                      : c === precis ? "inventaire.attributs.etat (état saisi sur Vinted)" : "platform_fields.etat";
+                      : c === brut ? "platform_fields.etat (état choisi pour cette publication)"
+                      : "inventaire.attributs.etat (état de la fiche)";
                     break;
                   }
                 }
@@ -9590,7 +9599,12 @@ serve(async (req) => {
                   console.log(`[get-pending-jobs] état Leboncoin ${String(j.id).slice(0, 8)} (${chemin}) : « ${candidatsEtat.join(" / ")} » sans correspondance EXACTE dans la grille [${g.grille.join(", ")}] — rien posé, la liste reste à trancher`);
                 }
               }
-              if (precis && !pf.lbc_etat_precis && normEtatLbc(precis) !== normEtatLbc(brut)) {
+              // (15/10, P8 — DeadRoz) L'état précis de la fiche n'est servi que si
+              // l'état du job est VIDE ou AMBIGU (« Neuf » nu, l'aplatissement de
+              // l'ancien stepper) : l'extension le préfère à l'état du job, et un
+              // état choisi pour cette publication ne se remplace jamais.
+              const brutAmbigu = !brut || /^(etat )?neuf$/.test(normEtatLbc(brut));
+              if (precis && brutAmbigu && !pf.lbc_etat_precis && normEtatLbc(precis) !== normEtatLbc(brut)) {
                 // Sans grille (ou sans correspondance), l'extension 0.6.42 mappe
                 // elle-même contre la liste LIVE : elle doit connaître la valeur PRÉCISE.
                 pf.lbc_etat_precis = precis;

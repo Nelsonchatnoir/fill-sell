@@ -323,6 +323,7 @@
     "selftest:vente-vinted-annulee": "node scripts/vente-vinted-annulee-selftest.mjs",
     "selftest:tete-de-file": "node scripts/tete-de-file-selftest.mjs",
     "selftest:reprise-technique": "node scripts/reprise-technique-selftest.mjs",
+    "selftest:champs-lbc-etat-marque": "node scripts/champs-lbc-etat-marque-selftest.mjs",
     "selftest:achats-store-issue": "node scripts/achats-store-issue-selftest.mjs",
     "selftest:lot-sans-plafond": "node scripts/lot-sans-plafond-selftest.mjs",
     "selftest:roue-reglages-visible": "node scripts/roue-reglages-visible-selftest.mjs",
