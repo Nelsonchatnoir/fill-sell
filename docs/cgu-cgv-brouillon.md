@@ -297,10 +297,13 @@ les fonctionnalités réservées aux formules payantes cessent d'être accessibl
 la fin de la période payée. Vos données, votre inventaire et votre historique
 restent accessibles dans la formule gratuite.
 
-**Plafond de sécurité.** La republication automatique est plafonnée à
-45 republications par jour, quelle que soit la formule. Ce plafond protège votre
-compte Vinted contre les restrictions que la plateforme applique aux activités à
-haute fréquence ; ce n'est pas une limite commerciale.
+**Rythme et maximum quotidien.** La republication automatique part une annonce
+à la fois, à un rythme espacé, les jours et dans les créneaux que vous choisissez,
+dans la limite d'un maximum quotidien propre à chaque formule, affiché dans
+l'application. Le rythme espacé protège vos comptes contre les restrictions que
+les plateformes appliquent aux activités à haute fréquence. (15/10 : l'ancien
+« 45 par jour, quelle que soit la formule » était faux — Pro 170, Business sans
+maximum pratique.)
 
 **Évolution.** FillSell peut faire évoluer les volumes moyennant un préavis
 raisonnable porté à votre connaissance dans l'application. Une évolution ne
