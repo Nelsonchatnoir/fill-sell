@@ -2460,6 +2460,72 @@ serve(async (req) => {
     console.error("[handler-watch] republications déjà recréées :", (e as Error)?.message ?? e);
   }
 
+  // ══ REPRISE DES DÉPÔTS « MIS DE CÔTÉ » À TORT, PAR PAQUETS (15/10, phase 3) ══
+  // Avant la migration 20261015020000 (15/10 ~02:45 Paris), la réservation
+  // comptait un « service sans démarrage » pour CHAQUE tâche d'une file servie
+  // entière : des dépôts qui attendaient leur tour ont été passés needs_user
+  // « tache_sans_demarrage » (Ciddjy : 68 dépôts Beebs le 14/10). Ils n'ont
+  // JAMAIS commencé (aucun dépôt, aucun doublon possible). Ils reprennent leur
+  // place par la règle, par paquets de 10 par compte : le paquet suivant ne part
+  // que quand le précédent n'a plus rien en file ; DISJONCTEUR : plus de 10 %
+  // d'échecs parmi les tâches déjà reprises du compte (5 au moins) → arrêt net,
+  // dit dans le journal. Comptes actifs seulement (extension vue < 7 j).
+  // Marqueur reprise_1510 (paquet, motif, avant) ; message effacé archivé.
+  let reprisesMisesDeCote = 0;
+  try {
+    const AVANT_REGLE = Date.parse("2026-10-15T00:45:00Z");
+    const { data: misDeCote } = await supabase
+      .from("cross_post_jobs")
+      .select("id, user_id, status, error, created_at, platform_fields")
+      .eq("status", "needs_user").eq("action", "publish")
+      .eq("platform_fields->>needs_user_source", "tache_sans_demarrage")
+      .order("created_at", { ascending: true })
+      .limit(300);
+    // deno-lint-ignore no-explicit-any
+    const parCompte = new Map<string, any[]>();
+    // deno-lint-ignore no-explicit-any
+    for (const j of (misDeCote ?? []) as any[]) {
+      const le = Date.parse(String(((j.platform_fields ?? {}).tache_sans_demarrage ?? {}).le ?? ""));
+      if (!Number.isFinite(le) || le >= AVANT_REGLE) continue; // posée par la règle corrigée : elle reste à la personne
+      const l = parCompte.get(String(j.user_id)) ?? [];
+      l.push(j); parCompte.set(String(j.user_id), l);
+    }
+    for (const [userId, jobs] of parCompte) {
+      const { data: prof } = await supabase.from("profiles").select("extension_last_seen_at").eq("id", userId).maybeSingle();
+      const vu = Date.parse(String(prof?.extension_last_seen_at ?? ""));
+      if (!Number.isFinite(vu) || Date.now() - vu > 7 * 24 * 3600_000) continue; // compte inactif : rien ne repart
+      const { data: repris } = await supabase.from("cross_post_jobs")
+        .select("status, platform_fields")
+        .eq("user_id", userId).not("platform_fields->reprise_1510", "is", null).limit(500);
+      // deno-lint-ignore no-explicit-any
+      const r = (repris ?? []) as any[];
+      if (r.some((x) => x.status === "pending" || x.status === "processing")) continue; // le paquet d'avant tourne encore
+      const echecs = r.filter((x) => x.status === "failed"
+        || (x.status === "needs_user" && String((x.platform_fields ?? {}).needs_user_source ?? "") !== "tache_sans_demarrage")).length;
+      if (r.length >= 5 && echecs / r.length > 0.10) {
+        console.warn(`[handler-watch] reprise des dépôts mis de côté : compte ${userId.slice(0, 8)} — DISJONCTEUR (${echecs}/${r.length} échecs > 10 %), plus rien ne repart`);
+        continue;
+      }
+      const paquet = `auto-${Math.floor(r.length / 10) + 1}`;
+      for (const j of jobs.slice(0, 10)) {
+        const pf = { ...(j.platform_fields ?? {}) } as Record<string, unknown>;
+        const avant = pf.tache_sans_demarrage ?? null;
+        for (const k of ["needs_user_source", "needsUserField", "needsUserAttempts", "needsUserBoucle", "needsUserResolved",
+          "next_action_after", "error_technique", "processing_since", "needs_user_actif_ms", "needs_user_tick_le",
+          "needs_user_vu_le", "needs_user_vu_erreur", "needs_user_sans_motif", "tache_sans_demarrage"]) delete pf[k];
+        pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error, "needs_user", "handler-watch (dépôt mis de côté à tort, repris)");
+        pf.reprise_1510 = { le: new Date().toISOString(), paquet, motif: "tache_sans_demarrage posée à tort (file servie entière) — règle corrigée, migration 20261015020000", avant };
+        const { data: maj } = await supabase.from("cross_post_jobs")
+          .update({ status: "pending", error: null, platform_fields: pf })
+          .eq("id", j.id).eq("status", "needs_user").select("id");
+        if (maj?.length) reprisesMisesDeCote++;
+      }
+      console.log(`[handler-watch] reprise des dépôts mis de côté : compte ${userId.slice(0, 8)} — paquet ${paquet} (${Math.min(10, jobs.length)} sur ${jobs.length} restants), ${r.length} déjà repris, ${echecs} échec(s)`);
+    }
+  } catch (e) {
+    console.error("[handler-watch] reprise des dépôts mis de côté :", (e as Error)?.message ?? e);
+  }
+
   // ══ LA RECONNEXION FAIT REPARTIR LES JOBS, SANS QU'ON CLIQUE (2026-09-22) ══
   // Chantier « Me connecter ». Le mur nº1 des nouveaux inscrits, c'est une
   // plateforme pas connectée ; le deuxième, c'est qu'après s'être reconnecté,
@@ -4463,7 +4529,7 @@ serve(async (req) => {
   }
 
   if (alerts.length === 0) {
-    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_sortie_clos: oplaSortieClos, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, attentes_session_levees: attentesLevees, releves_repris: relevesRepris, dressings_repris: dressingsRepris, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil, tailles_reveil: taillesReveil, reprises_port: reprisesPort, retraits_connexion_dits: retraitsConnexionDits, relances_apres_maj: relancesApresMaj, tailles_tranchees: taillesTranchees, identite_lbc_eclaireurs: identiteLbcEclaireurs, identite_lbc_reprises: identiteLbcReprises, republications_finies: republicationsFinies }), {
+    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_sortie_clos: oplaSortieClos, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, attentes_session_levees: attentesLevees, releves_repris: relevesRepris, dressings_repris: dressingsRepris, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil, tailles_reveil: taillesReveil, reprises_port: reprisesPort, retraits_connexion_dits: retraitsConnexionDits, relances_apres_maj: relancesApresMaj, tailles_tranchees: taillesTranchees, identite_lbc_eclaireurs: identiteLbcEclaireurs, identite_lbc_reprises: identiteLbcReprises, republications_finies: republicationsFinies, reprises_mises_de_cote: reprisesMisesDeCote }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -4518,7 +4584,7 @@ serve(async (req) => {
   }
 
   if (toEmail.length === 0) {
-    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_sortie_clos: oplaSortieClos, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, attentes_session_levees: attentesLevees, releves_repris: relevesRepris, dressings_repris: dressingsRepris, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil, tailles_reveil: taillesReveil, reprises_port: reprisesPort, retraits_connexion_dits: retraitsConnexionDits, relances_apres_maj: relancesApresMaj, tailles_tranchees: taillesTranchees, identite_lbc_eclaireurs: identiteLbcEclaireurs, identite_lbc_reprises: identiteLbcReprises, republications_finies: republicationsFinies }), {
+    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_sortie_clos: oplaSortieClos, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, attentes_session_levees: attentesLevees, releves_repris: relevesRepris, dressings_repris: dressingsRepris, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil, tailles_reveil: taillesReveil, reprises_port: reprisesPort, retraits_connexion_dits: retraitsConnexionDits, relances_apres_maj: relancesApresMaj, tailles_tranchees: taillesTranchees, identite_lbc_eclaireurs: identiteLbcEclaireurs, identite_lbc_reprises: identiteLbcReprises, republications_finies: republicationsFinies, reprises_mises_de_cote: reprisesMisesDeCote }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -4572,7 +4638,7 @@ serve(async (req) => {
     console.error("[handler-watch] RESEND_API_KEY manquant — incident détecté mais non notifié");
   }
 
-  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_sortie_clos: oplaSortieClos, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, attentes_session_levees: attentesLevees, releves_repris: relevesRepris, dressings_repris: dressingsRepris, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil, tailles_reveil: taillesReveil, reprises_port: reprisesPort, retraits_connexion_dits: retraitsConnexionDits, relances_apres_maj: relancesApresMaj, tailles_tranchees: taillesTranchees, identite_lbc_eclaireurs: identiteLbcEclaireurs, identite_lbc_reprises: identiteLbcReprises, republications_finies: republicationsFinies }), {
+  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_sortie_clos: oplaSortieClos, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, attentes_session_levees: attentesLevees, releves_repris: relevesRepris, dressings_repris: dressingsRepris, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil, tailles_reveil: taillesReveil, reprises_port: reprisesPort, retraits_connexion_dits: retraitsConnexionDits, relances_apres_maj: relancesApresMaj, tailles_tranchees: taillesTranchees, identite_lbc_eclaireurs: identiteLbcEclaireurs, identite_lbc_reprises: identiteLbcReprises, republications_finies: republicationsFinies, reprises_mises_de_cote: reprisesMisesDeCote }), {
     headers: { "Content-Type": "application/json" },
   });
 });

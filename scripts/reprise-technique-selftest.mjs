@@ -79,5 +79,19 @@ ok(i0 > 0 && i1 > i0, '0. le prédicat de reprise est trouvé dans handler-watch
   ok(/const finies = out\.filter\(\(j\) => j\.status === "pending" && republicationFinie\(j\)\);/.test(GPJ), '3d. get-pending-jobs : même règle, partagée');
 }
 
+// 4. Les dépôts « mis de côté » à tort reprennent par paquets (phase 3)
+{
+  const i = HW.indexOf('// ══ REPRISE DES DÉPÔTS « MIS DE CÔTÉ » À TORT, PAR PAQUETS');
+  const bloc = HW.slice(i, HW.indexOf('// ══ LA RECONNEXION FAIT REPARTIR LES JOBS', i));
+  ok(i > 0 && /const AVANT_REGLE = Date\.parse\("2026-10-15T00:45:00Z"\);/.test(bloc) && /if \(!Number\.isFinite\(le\) \|\| le >= AVANT_REGLE\) continue;/.test(bloc),
+    '4a. seules les mises de côté d\'AVANT la règle corrigée repartent');
+  ok(/\.eq\("action", "publish"\)/.test(bloc), '4b. des dépôts seulement (jamais commencés : aucun doublon possible) — jamais une republication');
+  ok(/if \(r\.some\(\(x\) => x\.status === "pending" \|\| x\.status === "processing"\)\) continue;/.test(bloc) && /jobs\.slice\(0, 10\)/.test(bloc),
+    '4c. par paquets de 10 : le suivant attend que le précédent n\'ait plus rien en file');
+  ok(/if \(r\.length >= 5 && echecs \/ r\.length > 0\.10\) \{/.test(bloc) && /DISJONCTEUR/.test(bloc), '4d. disjoncteur : plus de 10 % d\'échecs → arrêt net, dit');
+  ok(/Date\.now\(\) - vu > 7 \* 24 \* 3600_000\) continue;/.test(bloc), '4e. comptes actifs seulement (extension vue < 7 j)');
+  ok(/pf\.reprise_1510 = \{/.test(bloc) && /archiverErreur\(pf\.erreurs_archivees, j\.error, "needs_user"/.test(bloc), '4f. marqueur reprise_1510 posé, message archivé');
+}
+
 console.log(`\n${total - echecs}/${total} contrôles verts`);
 process.exit(echecs ? 1 : 0);
