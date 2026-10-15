@@ -203,3 +203,15 @@ trois relevés et deux reprises lancés tout seuls, aucun Vinted abouti, un faux
   `usage_logs.feature = 'confirmation_boutique'`. Aucun plafond de boutiques
   par palier n'existe (06/10).
 
+
+## ⛔ UNE ANNONCE N'APPARTIENT JAMAIS À DEUX FICHES (15/10 soir, Louis — Nico)
+- Le lien d'un job SUIT son identifiant, à l'INSERT comme à l'UPDATE (`cross_post_jobs_lien_suit_identifiant`,
+  mig 20261015190000) : identifiant rendu au dépôt (Leboncoin `lbc_depot`), sinon l'identifiant ; un lien d'une
+  autre annonce est remplacé (ou vidé : l'extension le retrouve PAR L'IDENTIFIANT). Cause du cas Louis : lien
+  retrouvé par le TITRE (24/09, 0.6.66) puis identifiant réel du dépôt posé sans que le lien suive.
+- Une annonce portée par plusieurs fiches se tranche SEULE avant toute question (`_shared/annonce-partagee.js`,
+  fonction `rapprochement-ia` mode `annonces_partagees`, cron 53) : identifiants → photos (capture en taille
+  réelle) → IA (Haiku, exclusion au texte, « même » seulement sur photo) ; fiche VENDUE parmi les candidates =
+  la personne décide ; décision appliquée par `annonce_partagee_attribuer` (defaire_croisement_annonce) ; une
+  republication capturée sur la mauvaise annonce est RECAPTURÉE. get-pending-jobs retient le geste
+  (« ton annonce est intacte ») et ne pose la question qu'après « incertain » (filet : 30 min).

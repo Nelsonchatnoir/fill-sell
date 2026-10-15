@@ -92,3 +92,22 @@
 <!-- ex-CLAUDE.md L453-454 : Publication en lot (03/10) -->
 - **Publication en lot (03/10)** : livrée ; `docs/publication-en-lot.md` ;
   migration 20261003010000 (un arrêt ne repart jamais) appliquée.
+
+## ⛔ PLUS AUCUN « GESTE À FAIRE » QUE L'APP PEUT TRANCHER SEULE (15/10 soir, Nico)
+- Une publication ou une republication lancée PART ; une question seulement si aucune donnée fiable n'existe
+  (`_shared/questions-tranchees.ts`, handler-watch).
+- **Boutique Vinted** (`_shared/boutique-publication-vinted.js`) : article lié → sa boutique ; sinon la boutique
+  changée dans la file, puis la boutique par défaut (Réglages › Mes plateformes, `platform_settings.vinted.
+  boutique_defaut`), puis la boutique ouverte dans le navigateur à l'envoi. Jamais une boutique hors du compte ;
+  l'extension relit la boutique avant le dépôt. Plus de question « boutique_a_choisir ».
+- **État** (`_shared/etat-correspondance.js`) : annonce capturée → fiche → autres plateformes, traduit dans la
+  grille demandée ; jamais deviné (« État neuf » ≠ « avec / sans étiquette »).
+- **Sans objet** : publication/republication non engagée d'un article à vente ENREGISTRÉE, republication
+  orpheline → annulées, rien retiré.
+- **Poids Leboncoin exigé** (compte PRO, « Poids du colis* » sans estimation) : noté sur preuve
+  (`platform_settings.leboncoin.poids_exige`) → « Saisir le poids » d'office au lot et à l'unité, gpj ne sert
+  jamais une publication sans poids ; « un poids pour tout le lot » règle aussi la question en tranche et les
+  annonces du lot en file, modifiable article par article. Jamais une tranche apprise « sans format ».
+- **La file** : le bouton mène à l'action en un tap (Répondre → mini-éditeur) ; AUCUNE heure ni durée promise
+  (`sansEstimation`) ; une attente automatique (relevé à venir, pause technique avant retrait, eBay étranger,
+  plateforme écartée) est une pause, jamais un geste.
