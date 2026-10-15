@@ -27,9 +27,12 @@
 // plus dans l'appel est REMISE (« restantes ») : jamais notée en échec — une
 // URL en échec est « illisible » pour le moteur et pour fusion_photo_tick —,
 // elle reste sans empreinte et l'appelant la redemande à sa passe suivante.
+// (15/10, P16) Un échec PASSAGER (429 de notre stockage, 5xx, réseau, délai,
+// décodeur pas prêt) n'est jamais noté non plus — c'était 498 photos « illisibles »
+// pour toujours. Sur un 429, l'appel s'arrête là : on n'insiste pas.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
-import { budgetDecodage, DecodageRemis, empreinterUrl, hoteAutorise } from "../_shared/empreinte-telechargement.ts";
+import { budgetDecodage, DecodageRemis, EchecPassager, empreinterUrl, hoteAutorise } from "../_shared/empreinte-telechargement.ts";
 
 const MAX_URLS = 8;
 const BUDGET_MS = 40_000;
@@ -62,6 +65,7 @@ serve(async (req) => {
   let calculees = 0;
   let restantes = 0;
   const echecs: Array<{ url: string; motif: string }> = [];
+  const passageres: Array<{ url: string; motif: string }> = [];
   const decodage = budgetDecodage(BUDGET_DECODAGE_MS);
   let remise = false;
   for (const url of urls) {
@@ -80,6 +84,13 @@ serve(async (req) => {
     } catch (err) {
       // Remise (budget de l'appel atteint) : rien n'est écrit, la photo reste à faire.
       if (err instanceof DecodageRemis) { remise = true; restantes++; continue; }
+      // Passager : rien n'est écrit, la photo reste à faire ; sur un 429, on n'insiste pas.
+      if (err instanceof EchecPassager) {
+        passageres.push({ url, motif: err.message.slice(0, 160) });
+        restantes++;
+        if (/^HTTP 429\b/.test(err.message)) remise = true;
+        continue;
+      }
       const motif = String((err as Error)?.message ?? err).slice(0, 160);
       echecs.push({ url, motif });
       const { data: prec } = await admin.from("photo_empreintes_echecs").select("essais").eq("url", url).maybeSingle();
@@ -92,6 +103,7 @@ serve(async (req) => {
   const sortie = {
     demandees: urls.length, deja_connues: deja.size, calculees, echouees: echecs.length, restantes,
     duree_ms: Date.now() - debut, decodage_ms: Math.round(decodage.consommeMs), decodages: decodage.decodages,
+    passageres: passageres.length, ...(passageres.length ? { passagere: passageres[0].motif } : {}),
   };
   console.log("[empreintes-urls]", JSON.stringify(sortie));
   return json({ ...sortie, echecs: echecs.slice(0, 10) });

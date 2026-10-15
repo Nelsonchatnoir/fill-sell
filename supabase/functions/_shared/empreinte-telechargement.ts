@@ -161,6 +161,26 @@ export class DecodageRemis extends Error {
   constructor() { super("budget de calcul de l'appel atteint : photo remise"); this.name = "DecodageRemis"; }
 }
 
+// ── UN ÉCHEC PASSAGER N'EST PAS UNE PHOTO ILLISIBLE (15/10, P16) ────────────
+// Toute URL notée dans photo_empreintes_echecs est « illisible » pour le moteur
+// de rapprochement et pour fusion_photo_tick : sa fiche part sans photo, et la
+// paire devient « titre_sans_photo ». Or 498 de ces échecs (ferreirasab : 139)
+// étaient des « HTTP 429 » de NOTRE stockage, sous une rafale de 100 appels de
+// 6 photos ; 47 un décodeur pas encore prêt. Désormais : notre stockage ou la
+// plateforme qui dit « plus tard » (408, 425, 429, 5xx), un réseau coupé, un
+// délai dépassé ou un décodeur pas prêt = un échec PASSAGER — jamais noté, la
+// photo reste à faire et l'appelant la redemande (dans ses propres bornes :
+// passages comptés, relances espacées). Une version de la photo qui échoue
+// pour une raison passagère suffit : l'autre version qui dirait « trop de
+// pixels » (l'originale de 12 Mpx derrière une version réduite refusée en 429)
+// ne la condamne plus.
+const RE_PASSAGER = /^HTTP (408|425|429|5\d\d)\b|error sending request|connection (reset|closed|refused)|timed? ?out|AbortError|aborted|Cannot access '[A-Za-z]+' before initialization|décodeur WebP : HTTP/i;
+export function estPassager(motif: string): boolean { return RE_PASSAGER.test(String(motif ?? "")); }
+/** L'échec d'une photo pour une raison PASSAGÈRE : jamais noté en échec, la photo est redemandée. */
+export class EchecPassager extends Error {
+  constructor(motif: string) { super(motif); this.name = "EchecPassager"; }
+}
+
 export async function decoderEmpreinte(buf: Uint8Array, budget?: BudgetDecodage): Promise<Empreinte & { largeur: number; hauteur: number; variantes: Variantes }> {
   const dim = dimensionsEnTete(buf);
   if (dim && dim.largeur * dim.hauteur > MAX_PIXELS) throw new Error(`trop de pixels (${dim.largeur}×${dim.hauteur})`);
@@ -210,11 +230,16 @@ export async function empreinterUrl(url: string, supabaseUrl: string, budget?: B
   const reduite = urlTransformee(url, supabaseUrl);
   const essais = reduite ? [reduite, url] : [urlAllegee(url), url];
   let derniere: unknown = null;
+  let passager: string | null = null;
   for (const u of [...new Set(essais)]) {
     try { return await decoderEmpreinte(await telecharger(u), budget); } catch (e) {
       if (e instanceof DecodageRemis) throw e; // remise : on n'essaie pas une autre version de la photo
+      const err = e as Error;
+      const motif = err?.name === "AbortError" ? `AbortError (${TIMEOUT_MS / 1000} s)` : String(err?.message ?? e);
+      if (!passager && estPassager(motif)) passager = motif;
       derniere = e;
     }
   }
+  if (passager) throw new EchecPassager(passager);
   throw derniere ?? new Error("échec");
 }

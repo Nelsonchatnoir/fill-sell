@@ -100,7 +100,12 @@ import { photoDepuisCompacte, compacteComplete } from "../_shared/rapprochement/
 import { Suite, calculEnTranches, cacheDepuis } from "../_shared/rapprochement/tranches.js";
 
 const BUDGET_MS = 110_000;
-const PHOTOS_PAR_PASSE = 600;       // 100 appels pg_net de 6 photos (empreintes-urls : 2 s de CPU par requête)
+// (15/10, P16) 180 = 30 appels pg_net de 6 photos (600 avant) : 100 appels d'un
+// coup faisaient répondre NOTRE stockage en 429 (498 photos notées illisibles,
+// ferreirasab 139). Les photos restantes partent à la relance suivante ; le
+// compteur de passages sans progrès (PASSAGES_PHOTOS_MAX) ne bouge pas tant
+// que chaque passe en rapporte.
+const PHOTOS_PAR_PASSE = 180;       // 30 appels pg_net de 6 photos (empreintes-urls : 2 s de CPU par requête)
 const RELANCE_PHOTOS_MS = 12_000;   // le temps que les 100 appels aboutissent avant de relire
 const RELANCES_MAX = 12;            // 12 × 600 photos par chaîne ; au-delà, le filet rapprochement-1min reprend
 const RELANCES_MAX_TRANCHES = 40;   // (v20) une chaîne de tranches : ~1 s chacune, sous la limite de 60 appels edge → edge par minute

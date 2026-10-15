@@ -65,6 +65,18 @@ ok(/if \(remise \|\| Date\.now\(\) - debut > BUDGET_MS\) \{ restantes\+\+; conti
 const t = lire("../supabase/functions/_shared/empreinte-telechargement.ts");
 ok(/if \(e instanceof DecodageRemis\) throw e;/.test(t), "une remise n'essaie pas une autre version de la photo");
 
+console.log("3 bis. Un échec PASSAGER n'est jamais une photo illisible (P16)");
+const { estPassager } = await import("../supabase/functions/_shared/empreinte-telechargement.ts");
+ok(estPassager("HTTP 429") && estPassager("HTTP 503") && estPassager("HTTP 408"), "429, 5xx, 408 : passagers (498 photos notées illisibles avant le 15/10)");
+ok(estPassager("Cannot access 'ImageType' before initialization") && estPassager("error sending request for url (https://images1.vinted.net/x)") && estPassager("AbortError (15 s)"), "décodeur pas prêt, réseau coupé, délai dépassé : passagers");
+ok(!estPassager("HTTP 404") && !estPassager("hôte hors liste") && !estPassager("trop de pixels (3000×2500)") && !estPassager("image illisible") && !estPassager("HTTP 415"), "404, 415, hôte hors liste, trop de pixels, image illisible : de vrais échecs");
+const tel = lire("../supabase/functions/_shared/empreinte-telechargement.ts");
+ok(/if \(passager\) throw new EchecPassager\(passager\);\n  throw derniere \?\? new Error\("échec"\);/.test(tel), "une version passagère suffit : l'originale « trop de pixels » derrière un 429 ne condamne plus la photo");
+const iPass = f.indexOf("if (err instanceof EchecPassager) {");
+ok(iPass > 0 && iPass < f.indexOf("echecs.push({ url, motif });") && /if \(\/\^HTTP 429\\b\/\.test\(err\.message\)\) remise = true;/.test(f), "empreintes-urls : passager attrapé AVANT toute écriture d'échec ; sur un 429, l'appel s'arrête");
+const rap = lire("../supabase/functions/rapprochement/index.ts");
+ok(/const PHOTOS_PAR_PASSE = 180;/.test(rap), "rapprochement : 30 appels de 6 photos par passe (100 avant : rafale → 429)");
+
 console.log("4. handler-watch : le filet des photos, une page par heure");
 const h = lire("../supabase/functions/handler-watch/index.ts");
 ok(/if \(budget > 0 && new Date\(\)\.getUTCMinutes\(\) < 3\) \{/.test(h), "une fois par heure (au lieu de toutes les 3 min)");
