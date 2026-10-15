@@ -142,6 +142,7 @@ import { tempererMajuscules } from "../_shared/titre-majuscules.ts";
 // (src/utils/platformCompat.js) — module JS sans import, chargé tel quel.
 import { verdictBeebsInterdit, messageBeebsInterdit } from "../_shared/beebs-interdits.js";
 import { lireParLots } from "../_shared/par-lots.ts";
+import { teteDeFile } from "../_shared/tete-de-file.js";
 // ISBN : même table de vérité que le content script (normalisation, filtre du
 // remplissage « 13 zéros », lecture dans le texte libre). Module JS sans import.
 import { normalizeIsbn, resoudreIsbn } from "../_shared/isbn.js";
@@ -10697,9 +10698,14 @@ serve(async (req) => {
     // Même forme de réponse pour 0.6.69, 0.6.75 et les versions antérieures.
     if (!includeProcessing && !includeNeedsUser && out.length) {
       const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+      // (15/10, P4 — Ciddjy) Seule la tête de file (la tâche que l'extension
+      // commencera en premier, même ordre qu'elle : _shared/tete-de-file.js)
+      // compte un « service sans démarrage » ; les autres attendent leur tour.
+      const servis = out.slice(0, 100);
       const { data: pris, error: erreurReservation } = await admin.rpc("reserver_jobs_extension", {
         p_user: user.id, p_poste: identifiantPosteExtension(authHeader, body.poste_instance),
-        p_jobs: out.slice(0, 100).map(j => j.id),
+        p_jobs: servis.map(j => j.id),
+        p_tete: teteDeFile(servis),
       });
       if (erreurReservation) return json({ error: "La réservation des jobs est indisponible. La file sera relue au prochain passage." }, 503);
       const idsPris = new Set(Array.isArray(pris) ? pris.map(String) : []);

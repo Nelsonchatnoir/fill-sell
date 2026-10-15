@@ -20,7 +20,7 @@ const verifier = (c, quoi) => { if (c) { ok++; console.log(`  ✓ ${quoi}`); } e
 
 const gpj = lire('supabase/functions/get-pending-jobs/index.ts');
 verifier(/if \(!posteAvecDepop && !includeNeedsUser\) \{\s*\n\s*const avantD = out\.length;\s*\n\s*out = out\.filter\(\(j\) => j\.platform !== "depop"\);/.test(gpj), 'get-pending-jobs : le filtre Depop ne vaut que pour la file d’exécution');
-verifier(/if \(!includeProcessing && !includeNeedsUser && out\.length\) \{\s*\n\s*const admin = createClient[\s\S]{0,200}reserver_jobs_extension/.test(gpj), 'le popup (include_needs_user) ne réserve rien : afficher ses jobs Depop n’en sert aucun');
+verifier(/if \(!includeProcessing && !includeNeedsUser && out\.length\) \{\s*\n\s*const admin = createClient[\s\S]{0,700}reserver_jobs_extension/.test(gpj), 'le popup (include_needs_user) ne réserve rien : afficher ses jobs Depop n’en sert aucun');
 const popup = lire('chrome-extension/popup.js');
 verifier(/include_needs_user: true/.test(popup) && /state\.depopEnAttente = jobs\.filter\(\(j\) => j\.platform === "depop"\);/.test(popup), 'le popup compte les jobs Depop de la réponse (inchangé, toutes versions)');
 verifier(/\(\$\{n\} en attente\)/.test(popup), 'la phrase « Autoriser Depop » porte le nombre en attente');
