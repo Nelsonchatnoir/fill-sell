@@ -104,12 +104,10 @@ const ok = (c, l, d = '') => { total++; if (!c) echecs++; console.log(`${c ? '�
 
 // 5. Une republication recréée est finie (Ornella 9a7b9499)
 {
-  const i = GPJ.indexOf('const finies = out.filter((j) => {');
-  const bloc = GPJ.slice(i, GPJ.indexOf('});', i) + 3);
-  const corps = bloc.replace(/^const finies = out\.filter\(/, '').replace(/\);$/, '')
-    .replace(/ as Record<string, unknown>/g, '');
-  // eslint-disable-next-line no-new-func
-  const finie = new Function(`return ${corps};`)();
+  // La règle vit dans _shared/republication-finie.js (partagée avec handler-watch).
+  const i = GPJ.indexOf('const finies = out.filter((j) => j.status === "pending" && republicationFinie(j));');
+  const { republicationFinie } = await import(pathToFileURL(path.join(RACINE, 'supabase/functions/_shared/republication-finie.js')).href);
+  const finie = (j) => j.status === 'pending' && republicationFinie(j);
   const ornella = { action: 'republish', status: 'pending', platform_listing_id: '10352378300',
     platform_fields: { republish_step: 'recreated', recreated_at: '2026-10-12T17:39:58.638Z', old_vinted_item_id: '10070657616', new_vinted_item_id: '10352378300' } };
   ok(i > 0 && finie(ornella) === true, '5a. Ornella : recréée (10352378300 ≠ 10070657616) → close « published », jamais resservie');

@@ -44,6 +44,7 @@ import { jugerRetraitBeebsParReleves, numeroRetraitBeebs } from "../_shared/beeb
 import { etatReprisPourJob } from "../_shared/etat-repris.ts";
 import { reclasserAutreBoutique } from "../_shared/attente-autre-boutique.js";
 import { loginsDesBoutiques } from "../_shared/boutique-connectee.js";
+import { republicationFinie, champsRepublicationFinie } from "../_shared/republication-finie.js";
 
 // handler-watch — surveillance QUASI TEMPS RÉEL des handlers de l'extension.
 // Appelée par pg_cron toutes les 3 min (header x-cron-secret, même mécanique
@@ -2425,6 +2426,40 @@ serve(async (req) => {
     console.error("[handler-watch] ISBN sur les photos :", (e as Error)?.message ?? e);
   }
 
+  // ══ UNE REPUBLICATION RECRÉÉE N'ATTEND PLUS PERSONNE (15/10, P3 — Ornella) ══
+  // Même règle que get-pending-jobs (_shared/republication-finie.js) pour une
+  // tâche déjà passée à la personne : à l'étape 'recreated', avec le numéro de
+  // sa nouvelle annonce (≠ l'ancienne), elle est close « published » — plus
+  // jamais un « Étape de republication inconnue » à relancer, ce qui aurait
+  // retiré la NOUVELLE annonce. Bornée (50), écrite seulement si elle change.
+  let republicationsFinies = 0;
+  try {
+    const { data: recreees } = await supabase
+      .from("cross_post_jobs")
+      .select("id, user_id, platform, action, status, error, published_at, platform_listing_id, platform_fields")
+      .in("status", ["needs_user", "failed"]).eq("action", "republish")
+      .eq("platform_fields->>republish_step", "recreated")
+      .gte("created_at", new Date(Date.now() - 30 * 24 * 60 * 60_000).toISOString())
+      .limit(50);
+    // deno-lint-ignore no-explicit-any
+    for (const j of (recreees ?? []) as any[]) {
+      if (!republicationFinie(j)) continue;
+      const pf = champsRepublicationFinie(j.platform_fields, String(j.platform_listing_id),
+        "handler-watch (étape recreated, nouvelle annonce connue)");
+      pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error, j.status, "handler-watch (republication déjà recréée)");
+      const { data: maj } = await supabase.from("cross_post_jobs")
+        .update({ status: "published", error: null, platform_fields: pf,
+          ...(j.published_at ? {} : { published_at: String((j.platform_fields ?? {}).recreated_at ?? new Date().toISOString()) }) })
+        .eq("id", j.id).in("status", ["needs_user", "failed"]).select("id");
+      if (maj?.length) {
+        republicationsFinies++;
+        console.log(`[handler-watch] republication ${String(j.id).slice(0, 8)} (${j.platform}) : déjà recréée (annonce ${j.platform_listing_id}) → published, plus rien à relancer`);
+      }
+    }
+  } catch (e) {
+    console.error("[handler-watch] republications déjà recréées :", (e as Error)?.message ?? e);
+  }
+
   // ══ LA RECONNEXION FAIT REPARTIR LES JOBS, SANS QU'ON CLIQUE (2026-09-22) ══
   // Chantier « Me connecter ». Le mur nº1 des nouveaux inscrits, c'est une
   // plateforme pas connectée ; le deuxième, c'est qu'après s'être reconnecté,
@@ -2516,9 +2551,47 @@ serve(async (req) => {
     // deno-lint-ignore no-explicit-any
     const verificationAFaire = (j: any) => j.status === "needs_user"
       && String(((j.platform_fields ?? {}) as Record<string, unknown>).needs_user_source ?? "") === "verification_antirobot";
+    // (15/10, P2 — Louis) UNE REPUBLICATION MISE EN PAUSE AVANT TOUT RETRAIT
+    // parce que la plateforme bloquait la LECTURE de l'annonce (anti-robot :
+    // republish_etat_indetermine, « relancer ») : l'annonce est intacte, rien
+    // n'a été retiré. 17 republications Leboncoin de Louis attendaient un clic
+    // depuis le 14/10 au matin. Elles repartent comme un mur de connexion :
+    // seulement quand la sonde revoit la plateforme RÉPONDRE (true, jamais un
+    // null d'anti-robot), fraîche, APRÈS le dernier blocage ; trois fois au
+    // plus sur le même mur ; trois par compte et par plateforme à chaque passage
+    // (jamais une rafale de lectures) — jamais un défi contourné.
+    // (P11) Même porte pour une republication en pause AVANT tout retrait dont le
+    // motif est TECHNIQUE (lecture refusée par l'anti-robot, session à rouvrir,
+    // formulaire non capté) — jamais un champ, une marque, un rayon, un mur
+    // payant, une configuration de compte : ceux-là attendent la personne.
+    const MOTIF_TECHNIQUE_RE = /protection anti-?robot|v[ée]rification anti-?robot|bot_shield|DataDome|Connexion (Vinted|Leboncoin|Beebs|eBay|Depop|Opla) requise|configuration non capt[ée]e/i;
+    const MOTIF_PERSONNE_RE = /champ|Marque|taille|rayon|cat[ée]gorie|interdit|payant|Boostez|option gratuite|nom et (ton )?pr[ée]nom|configuration de vendeur|exige/i;
+    // deno-lint-ignore no-explicit-any
+    const etatIndetermineAvantRetrait = (j: any) => {
+      if (j.action !== "republish" || j.status !== "needs_user") return false;
+      const pfj = (j.platform_fields ?? {}) as Record<string, unknown>;
+      if (!["", "a_capturer", "captured"].includes(String(pfj.republish_step ?? ""))) return false;
+      const ind = pfj.republish_etat_indetermine as Record<string, unknown> | undefined;
+      if (ind && typeof ind === "object" && Number.isFinite(Date.parse(String(ind.dernier ?? ind.depuis ?? "")))) return true;
+      if (String(pfj.needs_user_source ?? "") !== "relancer") return false;
+      const err = String(j.error ?? "");
+      // « configuration non captée » : le formulaire n'a pas été lu (il sera
+      // rechargé) — technique même s'il parle des champs du rayon.
+      if (/configuration non capt[ée]e/i.test(err)) return true;
+      return MOTIF_TECHNIQUE_RE.test(err) && !MOTIF_PERSONNE_RE.test(err.replace(MOTIF_TECHNIQUE_RE, ""));
+    };
+    // L'instant du blocage : le dernier connu (jamais une sonde d'avant).
+    const bloqueLeDe = (pf: Record<string, unknown>) => {
+      const ind = (pf.republish_etat_indetermine ?? {}) as Record<string, unknown>;
+      const t = [ind.dernier, ind.depuis, (pf.needs_user_sans_motif as Record<string, unknown> | undefined)?.le, pf.needs_user_vu_le]
+        .map((x) => Date.parse(String(x ?? ""))).filter((x) => Number.isFinite(x));
+      return t.length ? Math.max(...t) : NaN;
+    };
+    const reprisesEtatParCompte = new Map<string, number>();
     // deno-lint-ignore no-explicit-any
     const candidats = ((bloques ?? []) as any[]).filter((j) =>
-      murOplaLeve(j) || MUR_CONNEXION[j.platform]?.test(String(j.error ?? "")) || antirobotApresRetrait(j) || verificationAFaire(j));
+      murOplaLeve(j) || MUR_CONNEXION[j.platform]?.test(String(j.error ?? "")) || antirobotApresRetrait(j) || verificationAFaire(j)
+      || etatIndetermineAvantRetrait(j));
     if (candidats.length) {
       const ids = [...new Set(candidats.map((j) => String(j.user_id)))];
       const sessionsPar = new Map<string, Record<string, unknown>>();
@@ -2573,6 +2646,20 @@ serve(async (req) => {
         if (verificationAFaire(j)) {
           const mis = Date.parse(String(((pf.mur_geste ?? {}) as Record<string, unknown>).le ?? ""));
           if (!Number.isFinite(mis) || vu <= mis) continue; // la sonde doit être postérieure au geste demandé
+        }
+        const etatIndetermine = etatIndetermineAvantRetrait(j);
+        if (etatIndetermine) {
+          const ind = (pf.republish_etat_indetermine ?? null) as Record<string, unknown> | null;
+          const bloqueLe = bloqueLeDe(pf);
+          if (!(vu > bloqueLe)) continue; // la plateforme doit avoir répondu APRÈS le dernier blocage
+          const cle = `${j.user_id}|${j.platform}`;
+          const deja = reprisesEtatParCompte.get(cle) ?? 0;
+          if (deja >= 3) continue; // trois par compte et par plateforme à ce passage : jamais une rafale
+          reprisesEtatParCompte.set(cle, deja + 1);
+          // Le compteur de lectures de l'extension repart : sinon la première
+          // lecture referait aussitôt la pause (n déjà au maximum).
+          pf.republish_etat_indetermine_leve = { le: new Date().toISOString(), sonde: new Date(vu).toISOString(), avant: ind };
+          delete pf.republish_etat_indetermine;
         }
         delete pf.needs_user_source; delete pf.needs_user_actif_ms; delete pf.needs_user_tick_le;
         delete pf.needs_user_vu_le; delete pf.needs_user_vu_erreur; delete pf.needsUserAttempts;
@@ -4376,7 +4463,7 @@ serve(async (req) => {
   }
 
   if (alerts.length === 0) {
-    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_sortie_clos: oplaSortieClos, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, attentes_session_levees: attentesLevees, releves_repris: relevesRepris, dressings_repris: dressingsRepris, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil, tailles_reveil: taillesReveil, reprises_port: reprisesPort, retraits_connexion_dits: retraitsConnexionDits, relances_apres_maj: relancesApresMaj, tailles_tranchees: taillesTranchees, identite_lbc_eclaireurs: identiteLbcEclaireurs, identite_lbc_reprises: identiteLbcReprises }), {
+    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_sortie_clos: oplaSortieClos, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, attentes_session_levees: attentesLevees, releves_repris: relevesRepris, dressings_repris: dressingsRepris, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil, tailles_reveil: taillesReveil, reprises_port: reprisesPort, retraits_connexion_dits: retraitsConnexionDits, relances_apres_maj: relancesApresMaj, tailles_tranchees: taillesTranchees, identite_lbc_eclaireurs: identiteLbcEclaireurs, identite_lbc_reprises: identiteLbcReprises, republications_finies: republicationsFinies }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -4431,7 +4518,7 @@ serve(async (req) => {
   }
 
   if (toEmail.length === 0) {
-    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_sortie_clos: oplaSortieClos, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, attentes_session_levees: attentesLevees, releves_repris: relevesRepris, dressings_repris: dressingsRepris, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil, tailles_reveil: taillesReveil, reprises_port: reprisesPort, retraits_connexion_dits: retraitsConnexionDits, relances_apres_maj: relancesApresMaj, tailles_tranchees: taillesTranchees, identite_lbc_eclaireurs: identiteLbcEclaireurs, identite_lbc_reprises: identiteLbcReprises }), {
+    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_sortie_clos: oplaSortieClos, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, attentes_session_levees: attentesLevees, releves_repris: relevesRepris, dressings_repris: dressingsRepris, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil, tailles_reveil: taillesReveil, reprises_port: reprisesPort, retraits_connexion_dits: retraitsConnexionDits, relances_apres_maj: relancesApresMaj, tailles_tranchees: taillesTranchees, identite_lbc_eclaireurs: identiteLbcEclaireurs, identite_lbc_reprises: identiteLbcReprises, republications_finies: republicationsFinies }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -4485,7 +4572,7 @@ serve(async (req) => {
     console.error("[handler-watch] RESEND_API_KEY manquant — incident détecté mais non notifié");
   }
 
-  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_sortie_clos: oplaSortieClos, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, attentes_session_levees: attentesLevees, releves_repris: relevesRepris, dressings_repris: dressingsRepris, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil, tailles_reveil: taillesReveil, reprises_port: reprisesPort, retraits_connexion_dits: retraitsConnexionDits, relances_apres_maj: relancesApresMaj, tailles_tranchees: taillesTranchees, identite_lbc_eclaireurs: identiteLbcEclaireurs, identite_lbc_reprises: identiteLbcReprises }), {
+  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_sortie_clos: oplaSortieClos, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, attentes_session_levees: attentesLevees, releves_repris: relevesRepris, dressings_repris: dressingsRepris, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil, tailles_reveil: taillesReveil, reprises_port: reprisesPort, retraits_connexion_dits: retraitsConnexionDits, relances_apres_maj: relancesApresMaj, tailles_tranchees: taillesTranchees, identite_lbc_eclaireurs: identiteLbcEclaireurs, identite_lbc_reprises: identiteLbcReprises, republications_finies: republicationsFinies }), {
     headers: { "Content-Type": "application/json" },
   });
 });

@@ -143,6 +143,7 @@ import { tempererMajuscules } from "../_shared/titre-majuscules.ts";
 import { verdictBeebsInterdit, messageBeebsInterdit } from "../_shared/beebs-interdits.js";
 import { lireParLots } from "../_shared/par-lots.ts";
 import { teteDeFile } from "../_shared/tete-de-file.js";
+import { republicationFinie, champsRepublicationFinie } from "../_shared/republication-finie.js";
 // ISBN : même table de vérité que le content script (normalisation, filtre du
 // remplissage « 13 zéros », lecture dans le texte libre). Module JS sans import.
 import { normalizeIsbn, resoudreIsbn } from "../_shared/isbn.js";
@@ -2365,22 +2366,12 @@ serve(async (req) => {
     // annonce (distinct de l'ancien) n'est JAMAIS resservi — il est clos
     // « published », tracé. Sans numéro : servi comme avant (aucune conclusion).
     if (!includeProcessing && !includeNeedsUser) {
-      const finies = out.filter((j) => {
-        const pf = (j.platform_fields ?? {}) as Record<string, unknown>;
-        const lid = String(j.platform_listing_id ?? "").trim();
-        // L'ancienne annonce (Vinted : old_vinted_item_id ; autres : old_platform_listing_id)
-        // et la nouvelle si l'extension l'a nommée (new_vinted_item_id, new_listing_url).
-        const ancien = String(pf["old_platform_listing_id"] ?? pf["old_vinted_item_id"] ?? "").trim();
-        const nouveau = String(pf["new_vinted_item_id"]
-          ?? (String(pf["new_listing_url"] ?? "").match(/(\d{6,})(?:[-/?#]|$)/)?.[1] ?? "")).trim();
-        return j.action === "republish" && j.status === "pending" && pf["republish_step"] === "recreated"
-          && !!pf["recreated_at"] && lid !== "" && lid !== ancien && (!nouveau || nouveau === lid);
-      });
+      // Règle partagée avec handler-watch (_shared/republication-finie.js).
+      const finies = out.filter((j) => j.status === "pending" && republicationFinie(j));
       for (const j of finies) {
         try {
-          const pf = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
-          for (const k of ["needs_user_source", "needsUserField", "needsUserAttempts", "next_action_after", "processing_since", "error_technique"]) delete pf[k];
-          pf["republication_finie"] = { le: new Date().toISOString(), annonce: String(j.platform_listing_id), pose_par: "get-pending-jobs (étape recreated, nouvelle annonce connue)" };
+          const pf = champsRepublicationFinie(j.platform_fields as Record<string, unknown>, String(j.platform_listing_id),
+            "get-pending-jobs (étape recreated, nouvelle annonce connue)");
           const { data: maj } = await userClient.from("cross_post_jobs")
             .update({ status: "published", error: null, platform_fields: pf })
             .eq("id", j.id).eq("status", "pending").select("id");
