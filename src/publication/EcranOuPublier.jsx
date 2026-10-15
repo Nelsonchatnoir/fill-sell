@@ -89,6 +89,16 @@ export default function EcranOuPublier({ m }) {
 
     let etat = null; let ton = null; let geste = null;
     if (pasEncoreOuverte) { etat = m.motifAVenir(p); ton = "mute"; }
+    // (15/10, Louis) Annonce plus vue en ligne : jamais « déjà en ligne » —
+    // depuis quand, et la question qui libère la case.
+    else if (dejaEnLigne && m.douteEnLigne?.[p]) {
+      etat = m.motifsVerrouillage?.[p] ?? ""; ton = "geste";
+      if (m.onRepondreDisparue) geste = (
+        <button type="button" className="fsn-btn fsn-btn--secondary fsn-btn--sm" data-repondre-disparue={p} onClick={() => m.onRepondreDisparue(m.douteEnLigne[p].job)}>
+          {en ? "Answer" : "Répondre"}
+        </button>
+      );
+    }
     else if (dejaEnLigne) { etat = en ? "Already online for this item" : "Déjà en ligne pour cet article"; ton = "ok"; }
     else if (enCours) { etat = en ? "A publication is already under way" : "Une publication est déjà en cours"; ton = "ok"; }
     else if (enAttente && attente.kind === "attente_autorisation" && parcageDepasse(attente.job, m.oplaAccesDetail)) {

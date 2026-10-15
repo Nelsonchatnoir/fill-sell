@@ -173,6 +173,12 @@ export default function EcranConfirmer({ m }) {
                   {en ? `Complete “${a.champ}”` : `Compléter « ${a.champ} »`}
                 </button>
               );
+              // (15/10, Louis) Annonce plus vue en ligne : la question qui libère la case.
+              else if (m.douteEnLigne?.[p] && m.onRepondreDisparue) geste = (
+                <button type="button" className="fsn-btn fsn-btn--secondary fsn-btn--sm" data-repondre-disparue={p} onClick={() => m.onRepondreDisparue(m.douteEnLigne[p].job)}>
+                  {en ? "Answer" : "Répondre"}
+                </button>
+              );
             } else if (cochee && exclue) {
               sous = (en ? "Won't go out: " : "Ne partira pas : ") + L[exclue.motif] + (exclue.motif === "champ_manquant" && exclue.champs?.length ? ` (${exclue.champs.join(", ")})` : "");
               ton = "geste";

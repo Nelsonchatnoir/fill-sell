@@ -54,7 +54,7 @@ import { getPlatformSupport, depopInterdit } from "../utils/platformCompat";
 // (get-pending-jobs) — verdict sur source certaine, motif écrit sous la case.
 import { verdictBeebsInterdit, messageBeebsInterdit } from "../../supabase/functions/_shared/beebs-interdits.js";
 import { messageDepopInterdit } from "../../supabase/functions/_shared/depop-interdits.js";
-import { computeRemovalInfo } from "../utils/publicationState";
+import { computeRemovalInfo, plateformesEnDoute, phraseDouteEnLigne } from "../utils/publicationState";
 import { chercherJumeauxEnLigne } from "../utils/jumeauxEnLigne";
 import { demarrerDictee, dicteeDisponible, ajouterDictee } from "../utils/dictee";
 // Les attentes par plateforme et le geste qui débloque (2026-09-23).
@@ -3300,7 +3300,7 @@ export function AspectValueInput({ value, allowedValues, strict = false, closedM
   );
 }
 
-function StepPublish({ selected, setSelected, userId = null, platformSessions = null, platformListings, publishError, lang, demanderPrixAchat = false, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, beebsGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [], pausedReasons = {}, plateformesVerrouillees = [], motifsVerrouillage = {}, lbcPhotoCap = null, lbcAdresseManquante = null, ebayVoieApiReelle = false, descriptionMentions = null, descriptionVideVinted = false, onOuvrirCopie = null, jumeauxEnLigne = [], oplaVerdict = null, attentes = {}, onCompleter = null }) {
+function StepPublish({ selected, setSelected, userId = null, platformSessions = null, platformListings, publishError, lang, demanderPrixAchat = false, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, beebsGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [], pausedReasons = {}, plateformesVerrouillees = [], motifsVerrouillage = {}, lbcPhotoCap = null, lbcAdresseManquante = null, ebayVoieApiReelle = false, descriptionMentions = null, descriptionVideVinted = false, onOuvrirCopie = null, jumeauxEnLigne = [], oplaVerdict = null, attentes = {}, onCompleter = null, douteEnLigne = {}, onRepondreDisparue = null }) {
   const { t, tpl } = useTranslation(lang);
   const chips = [...selected].filter(p => platformListings?.platforms?.[p]);
   // Voie API eBay (07/09/2026, prouvée sur le job d9463010) : le relevé de
@@ -4141,6 +4141,16 @@ function StepPublish({ selected, setSelected, userId = null, platformSessions = 
                   <BoutonMeConnecter userId={userId} platform={p} motif={motifBouton} lang={lang} variante="bouton" />
                 </div>
               )}
+              {douteEnLigne?.[p] && onRepondreDisparue && (
+                <button
+                  type="button"
+                  data-repondre-disparue={p}
+                  onClick={() => onRepondreDisparue(douteEnLigne[p].job)}
+                  style={{ marginTop:6, minHeight:40, padding:"0 14px", borderRadius:20, border:`1px solid ${T.border}`, background:T.card ?? "#fff", color:T.ink, fontFamily:"inherit", fontSize:13.5, fontWeight:600, cursor:"pointer" }}
+                >
+                  {lang === "en" ? "Answer" : "Répondre"}
+                </button>
+              )}
               {a?.bloque && a.kind === "attente_champ" && onCompleter && (
                 <button
                   type="button"
@@ -4400,6 +4410,10 @@ export default function ListingPreviewScreen({
   // « Compléter » un dépôt en attente d'un champ depuis l'écran Publier
   // (2026-09-23) : l'hôte ferme le stepper et ouvre le mini-éditeur du job.
   onCompleter = null,
+  // (15/10, Louis) « Répondre » sous une plateforme « en doute » (annonce plus
+  // vue en ligne) : l'hôte ferme le stepper et ouvre la question « Vendue ? »
+  // de CETTE annonce dans « À régler » — sa réponse libère la case.
+  onRepondreDisparue = null,
   // eBay par API (lot 2b, 06/09) : true = ce compte publie eBay par le worker
   // serveur (profiles.ebay_voie_api, posé par Nico). Un article SANS PHOTO ne
   // part alors jamais en job : arrêté ici, cause nommée.
@@ -5103,16 +5117,21 @@ export default function ListingPreviewScreen({
   // clic, message « retire… ou décoche ». On les lit ici, même relecture, et
   // la rangée dit l'ÉTAT et le GESTE (utils/etatsPublication.js).
   const [fetchedAttentes, setFetchedAttentes] = useState({});
+  // (15/10, Louis) Les plateformes « déjà en ligne » dont l'annonce n'est plus
+  // vue (plateformesEnDoute) : même lecture, autre phrase, et la question qui
+  // libère la case (onRepondreDisparue).
+  const [fetchedDoute, setFetchedDoute] = useState({});
   useEffect(() => {
-    if (!invId) { setFetchedPublished([]); setFetchedQueued([]); setFetchedAttentes({}); return; } // article hors stock : rien à relire
+    if (!invId) { setFetchedPublished([]); setFetchedQueued([]); setFetchedAttentes({}); setFetchedDoute({}); return; } // article hors stock : rien à relire
     let cancelled = false;
     setFetchedPublished(null);
     setFetchedQueued([]);
     setFetchedAttentes({});
+    setFetchedDoute({});
     (async () => {
       const { data, error } = await supabase
         .from("cross_post_jobs")
-        .select("id, platform, status, action, created_at, error, platform_fields")
+        .select("id, platform, status, action, created_at, published_at, error, platform_fields")
         .eq("inventaire_id", invId)
         .in("status", ["pending", "processing", "published", "deleted", "needs_user", "failed"]);
       if (cancelled) return;
@@ -5125,6 +5144,7 @@ export default function ListingPreviewScreen({
       setFetchedPublished(info?.publishedActive ?? []);
       setFetchedQueued(info?.queued ?? []);
       setFetchedAttentes(error || !data ? {} : attentesParPlateforme(data));
+      setFetchedDoute(error || !data ? {} : plateformesEnDoute(connus));
     })();
     return () => { cancelled = true; };
   }, [invId, supabase]);
@@ -5166,12 +5186,14 @@ export default function ListingPreviewScreen({
   //    même relecture des jobs que la garde de publication.
   const motifsVerrouillage = useMemo(() => {
     const m = {};
-    for (const p of publishedSet) m[p] = lang === "en" ? "already online for this item" : "déjà en ligne pour cet article";
+    for (const p of publishedSet) m[p] = fetchedDoute[p]
+      ? phraseDouteEnLigne(fetchedDoute[p], lang)
+      : (lang === "en" ? "already online for this item" : "déjà en ligne pour cet article");
     for (const p of queuedSet) if (!m[p]) m[p] = lang === "en" ? "a publication is already under way" : "une publication est déjà en cours";
     for (const p of attenteSet) if (!m[p]) m[p] = phraseEtat(p, fetchedAttentes[p], lang);
     return m;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [alreadyPublishedKey, queuedKey, attentesKey, lang]);
+  }, [alreadyPublishedKey, queuedKey, attentesKey, lang, fetchedDoute]);
 
   // ── Compte eBay pas paramétré → eBay grisé (07/09/2026, demande Joséphine) ─
   // « Utilisable » = exactement ce que le trigger cross_post_jobs_voie_ebay
@@ -11145,6 +11167,7 @@ export default function ListingPreviewScreen({
     basculer: (p) => setSelected(prev => { const s = new Set(prev); if (s.has(p)) s.delete(p); else s.add(p); return s; }),
     platformSupport, categorieFermee, motifSupport,
     publishedSet, queuedSet, lockedSet, attentes: fetchedAttentes, motifsVerrouillage,
+    douteEnLigne: fetchedDoute, onRepondreDisparue,
     phraseEtat: (p, a) => phraseEtat(p, a, lang),
     pausedPlatforms, pausedReasons, motifPause: (p) => messagePause(tpl, pausedReasons, p, PLATFORM_LABELS[p]),
     ebayBloque, motifEbay: messageCompteEbay(ebayMotif, lang, ebayEtatCompte),
@@ -11568,6 +11591,8 @@ export default function ListingPreviewScreen({
             motifsVerrouillage={motifsVerrouillage}
             attentes={fetchedAttentes}
             onCompleter={onCompleter}
+            douteEnLigne={fetchedDoute}
+            onRepondreDisparue={onRepondreDisparue}
             lbcPhotoCap={lbcPhotoCap}
             lbcAdresseManquante={lbcAdresseManquante}
             jumeauxEnLigne={jumeaux}

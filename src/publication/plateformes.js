@@ -146,6 +146,8 @@ export function puceVerrouillee(p, m, lang = "fr") {
   const e = etatVerrouillee(p, m);
   if (e === "attente") return { ton: "geste", libelle: "!" };
   if (e === "en_cours") return { ton: "ok", libelle: en ? "Under way" : "En cours" };
+  // (15/10, Louis) Annonce plus vue en ligne : la pastille ne dit pas « En ligne ».
+  if (m?.douteEnLigne?.[p]) return { ton: "geste", libelle: en ? "Not seen" : "Plus vue" };
   return { ton: "ok", libelle: en ? "Live" : "En ligne" };
 }
 

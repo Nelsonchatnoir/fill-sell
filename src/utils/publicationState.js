@@ -135,6 +135,54 @@ export function plateformesReserveesParRepublication(jobsAll) {
   return [...reservees];
 }
 
+// ── « DÉJÀ EN LIGNE » D'UNE ANNONCE QUE PLUS PERSONNE NE VOIT (15/10, Louis) ──
+// Rangement gris de Louis : son annonce Vinted n'est plus dans sa boutique
+// depuis le 07/10 (unavailable_since), la question « Vendue ? » a été reportée,
+// et le stepper disait encore « déjà en ligne pour cet article » — faux, et sans
+// issue. Le verrou RESTE (la garde serveur already_published le tient : une
+// fiche, une annonce par plateforme) ; ce qui change, c'est la phrase et le
+// geste : depuis quand l'annonce n'est plus vue, et la question qui libère la
+// case. Une plateforme n'est « en doute » que si TOUTES ses annonces publiées
+// le sont, et jamais pendant une publication ou une republication en vol.
+// Rend { [plateforme]: { job, depuis, vendue } }.
+export function plateformesEnDoute(jobsAll) {
+  const tous = Array.isArray(jobsAll) ? jobsAll : [];
+  const jobs = tous.filter(j => j.action !== "delete");
+  const { publishedActive } = computeRemovalInfo(tous);
+  const reservees = new Set(plateformesReserveesParRepublication(tous));
+  const out = {};
+  for (const p of publishedActive) {
+    if (reservees.has(p)) continue;
+    if (jobs.some(j => j.platform === p && (j.status === "pending" || j.status === "processing"))) continue;
+    const pubs = jobs.filter(j => j.platform === p && j.status === "published");
+    if (!pubs.length || !pubs.every(j => j.platform_fields?.unavailable_since)) continue;
+    const dernier = pubs.reduce((a, b) => (miseEnLigneDe(b) > miseEnLigneDe(a) ? b : a));
+    out[p] = {
+      job: dernier,
+      depuis: dernier.platform_fields.unavailable_since,
+      vendue: dernier.platform_fields.sale_signal === "sold",
+    };
+  }
+  return out;
+}
+
+/** La phrase du verrou « en doute » (stepper, deux variantes) — jamais « déjà en ligne ». */
+export function phraseDouteEnLigne(d, lang = "fr") {
+  const en = lang === "en";
+  const t = Date.parse(d?.depuis ?? "");
+  const date = Number.isFinite(t)
+    ? new Date(t).toLocaleDateString(en ? "en-GB" : "fr-FR", { day: "2-digit", month: "2-digit", timeZone: "Europe/Paris" })
+    : null;
+  if (d?.vendue) {
+    return en
+      ? `Sold according to the platform${date ? ` (${date})` : ""}: confirm the sale to free this box`
+      : `Vendue d'après la plateforme${date ? ` (le ${date})` : ""} : confirme la vente pour libérer la case`;
+  }
+  return en
+    ? `No longer seen online${date ? ` since ${date}` : ""}: sold or removed? Your answer frees this box`
+    : `Plus vue en ligne${date ? ` depuis le ${date}` : ""} : vendue ou retirée ? Ta réponse libère la case`;
+}
+
 // ── « Encore en ligne » AVANT d'enregistrer une vente (2026-08-11) ───────────
 // Enregistrer une vente ne retire RIEN : ni confirmSell (modale « Marquer comme
 // vendu ») ni confirmSellDirect (intent vocal inventory_sell) n'arment de job
