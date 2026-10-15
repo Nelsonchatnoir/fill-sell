@@ -324,3 +324,6 @@ verify_jwt = false
 [functions.veille-cpu]
 # Appelée par pg_cron (veille-cpu-2min, x-cron-secret) — 04/10/2026.
 verify_jwt = false
+
+[functions.rapprochement-ia]
+verify_jwt = false
