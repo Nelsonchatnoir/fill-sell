@@ -213,8 +213,10 @@ export default function BlocSynchro({
   const nbArticlesAVerifier = itemsAVerifier.length;
   const nbAVerifier = nbArticlesAVerifier + r.aRattacher.length;
   const ouvrirAVerifierRef = useRef(null);
-  ouvrirAVerifierRef.current = () => (nbArticlesAVerifier > 0 ? setEcranAVerifier(true) : setEcran(true));
-  const ouvrirAVerifier = useCallback(() => ouvrirAVerifierRef.current?.(), []);
+  // (15/10, P16) Ouvert depuis une carte « À vérifier » du Stock : SA question d'abord.
+  const [premiereAV, setPremiereAV] = useState(null);
+  ouvrirAVerifierRef.current = (id = null) => { setPremiereAV(id ?? null); return nbArticlesAVerifier > 0 ? setEcranAVerifier(true) : setEcran(true); };
+  const ouvrirAVerifier = useCallback((id) => ouvrirAVerifierRef.current?.(id), []);
   useEffect(() => { onARattacher?.({ n: nbAVerifier, ouvrir: ouvrirAVerifier }); }, [nbAVerifier, onARattacher, ouvrirAVerifier]);
   // (09/10, Marta) Le navigateur où tourne l'extension : UNE lecture par
   // ouverture du bloc, jamais en boucle. Il n'est nommé que s'il n'est pas
@@ -603,7 +605,7 @@ export default function BlocSynchro({
       )}
       {ecranAVerifier && (
         <EcranDoublons lang={lang} items={tousItems} doublons={[]} mode="a_verifier" userId={r.userId}
-          paires={pairesAV} orphelins={orphelinsAV}
+          paires={pairesAV} orphelins={orphelinsAV} premiere={premiereAV}
           onClose={() => setEcranAVerifier(false)}
           onDecision={() => { r.recharger(); if (typeof onRattache === 'function') onRattache(); }} />
       )}

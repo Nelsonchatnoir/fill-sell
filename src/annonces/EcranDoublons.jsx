@@ -56,7 +56,14 @@ function CarteFiche({ item, fr, garde, etiquette }) {
 // puis `orphelins` (plus d'article auquel le comparer : « Le mettre dans mon
 // stock »). Un article à vérifier n'est PAS dans le stock affiché : chaque
 // réponse l'y fait entrer (« non »), ou le réunit à l'autre (« oui »).
-export default function EcranDoublons({ lang, items, doublons, onClose, onDecision, mode = null, paires = null, orphelins = null, userId = null }) {
+// (15/10, P16) PAR PETITS LOTS : ferreirasab avait 895 questions d'affilée après
+// sa synchro, et n'a plus rien fait. Dix à la fois, les plus chères d'abord ;
+// après dix réponses, une pause qui dit ce qui reste — « Continuer » ou « Plus
+// tard » (rien n'est perdu, la file reste dans « À régler »).
+export const QUESTIONS_PAR_LOT = 10;
+const valeurDe = (d) => Math.max(Number(d?.a?.sell) || 0, Number(d?.b?.sell) || 0);
+
+export default function EcranDoublons({ lang, items, doublons, onClose, onDecision, mode = null, paires = null, orphelins = null, userId = null, premiere = null }) {
   const fr = lang !== 'en';
   const aVerifier = mode === 'a_verifier';
   const [busy, setBusy] = useState(false);
@@ -74,10 +81,19 @@ export default function EcranDoublons({ lang, items, doublons, onClose, onDecisi
   const file = useMemo(
     () => (aVerifier
       ? [...(paires ?? []), ...(orphelins ?? []).map((b) => ({ id: `orphelin:${b.id}`, orphelin: true, b, preuves: null }))]
-      : pairesAffichables(doublons, items)).filter((d) => !traitees.has(d.id)),
-    [aVerifier, paires, orphelins, doublons, items, traitees],
+      : pairesAffichables(doublons, items)).filter((d) => !traitees.has(d.id))
+      // (15/10, P16) les plus chères d'abord (tri stable : à valeur égale, l'ordre d'avant)
+      .map((d, i) => ({ d, i })).sort((x, y) => valeurDe(y.d) - valeurDe(x.d) || x.i - y.i).map((x) => x.d)
+      // (15/10, P16) ouverte depuis une carte « À vérifier » : SA question en premier
+      .sort((x, y) => (premiere != null && String(y?.b?.id) === String(premiere) ? 1 : 0) - (premiere != null && String(x?.b?.id) === String(premiere) ? 1 : 0)),
+    [aVerifier, paires, orphelins, doublons, items, traitees, premiere],
   );
-  const paire = file[0] ?? null;
+  // La pause tous les QUESTIONS_PAR_LOT réponses : vue une fois par palier.
+  const [lotsContinues, setLotsContinues] = useState(0);
+  const enPause = file.length > 0 && traitees.size > 0 && traitees.size % QUESTIONS_PAR_LOT === 0 && lotsContinues < traitees.size / QUESTIONS_PAR_LOT;
+  const numeroDansLot = (traitees.size % QUESTIONS_PAR_LOT) + 1;
+  const tailleLot = Math.min(QUESTIONS_PAR_LOT, file.length + (traitees.size % QUESTIONS_PAR_LOT));
+  const paire = enPause ? null : (file[0] ?? null);
   const orphelin = !!paire?.orphelin;
   // (11/10, Louis) Le bandeau « Noté » concerne la paire À LAQUELLE on vient de
   // répondre : affiché au-dessus de la SUIVANTE, il faisait croire que la
@@ -197,10 +213,11 @@ export default function EcranDoublons({ lang, items, doublons, onClose, onDecisi
             {paire && (
               // (11/10, Louis) Le vrai nombre restant — « 1 sur 43 » restait à 1
               // à chaque réponse et se lisait comme la même question.
+              // (15/10, P16) Par lots de dix : « Question 3 sur 10 · encore 265 ensuite ».
               <div style={{ marginTop: 2, fontSize: 11.5, fontWeight: 500, color: A.texteSecondaire, fontVariantNumeric: 'tabular-nums' }}>
                 {fr
-                  ? `${file.length} ${file.length > 1 ? 'questions restantes' : 'question restante'}${traitees.size ? ` · ${traitees.size} ${traitees.size > 1 ? 'réponses enregistrées' : 'réponse enregistrée'}` : ''}`
-                  : `${file.length} ${file.length > 1 ? 'questions left' : 'question left'}${traitees.size ? ` · ${traitees.size} ${traitees.size > 1 ? 'answers saved' : 'answer saved'}` : ''}`}
+                  ? `Question ${numeroDansLot} sur ${tailleLot}${file.length - (tailleLot - numeroDansLot + 1) > 0 ? ` · encore ${file.length - (tailleLot - numeroDansLot + 1)} ensuite` : ''}`
+                  : `Question ${numeroDansLot} of ${tailleLot}${file.length - (tailleLot - numeroDansLot + 1) > 0 ? ` · ${file.length - (tailleLot - numeroDansLot + 1)} more after` : ''}`}
               </div>
             )}
           </div>
@@ -223,7 +240,28 @@ export default function EcranDoublons({ lang, items, doublons, onClose, onDecisi
           <div style={{ margin: '6px 0 12px', padding: '10px 12px', borderRadius: 12, background: '#FDECEA', border: '1px solid #F3C7C2', fontSize: 12, lineHeight: 1.45, color: A.rougeTexte }}>{erreur}</div>
         )}
 
-        {!paire ? (
+        {enPause ? (
+          // (15/10, P16) La pause entre deux lots : ce qui est fait, ce qui reste, et le choix.
+          <div className="rv-up" data-pause-lot="1" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '28px 8px 10px', textAlign: 'center' }}>
+            <div style={{ width: 56, height: 56, borderRadius: 28, background: DEGRADE, color: '#FFFFFF', fontSize: 24, fontWeight: 700, lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✓</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: A.ink }}>
+              {fr ? `${traitees.size} réponses enregistrées — merci` : `${traitees.size} answers saved — thanks`}
+            </div>
+            <div style={{ fontSize: 12.5, lineHeight: 1.5, color: A.texteSecondaire, maxWidth: 340 }}>
+              {fr
+                ? `Il en reste ${file.length}. Tu peux continuer maintenant ou plus tard : elles t'attendent dans « À régler », rien n'est perdu.`
+                : `${file.length} left. Carry on now or later: they wait for you in “To fix”, nothing is lost.`}
+            </div>
+            <button type="button" onClick={() => setLotsContinues(traitees.size / QUESTIONS_PAR_LOT)} className="rv-cta rv-focus"
+              style={{ marginTop: 4, minHeight: 44, padding: '0 22px', borderRadius: 999, border: 'none', background: DEGRADE, color: '#FFFFFF', fontFamily: 'inherit', fontSize: 13.5, fontWeight: 700, cursor: 'pointer' }}>
+              {fr ? `Continuer (${Math.min(QUESTIONS_PAR_LOT, file.length)} de plus)` : `Continue (${Math.min(QUESTIONS_PAR_LOT, file.length)} more)`}
+            </button>
+            <button type="button" onClick={onClose} className="rv-focus"
+              style={{ minHeight: 44, padding: '0 22px', borderRadius: 999, border: `1px solid ${A.border}`, background: A.card, color: A.ink, fontFamily: 'inherit', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+              {fr ? 'Plus tard' : 'Later'}
+            </button>
+          </div>
+        ) : !paire ? (
           <div className="rv-up" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '28px 8px 10px', textAlign: 'center' }}>
             <div style={{ width: 56, height: 56, borderRadius: 28, background: DEGRADE, color: '#FFFFFF', fontSize: 24, fontWeight: 700, lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✓</div>
             <div style={{ fontSize: 15, fontWeight: 700, color: A.ink }}>{aVerifier ? (fr ? 'Tout est rangé' : 'All sorted') : (fr ? 'Plus aucune question' : 'No more questions')}</div>

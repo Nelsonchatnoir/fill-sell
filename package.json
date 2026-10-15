@@ -341,7 +341,8 @@
     "selftest:empreintes-budget": "deno run --allow-read --allow-net=deno.land scripts/empreintes-budget-selftest.ts",
     "selftest:extension-autre-compte": "node scripts/extension-autre-compte-selftest.mjs",
     "selftest:parcours-apres-synchro": "node scripts/parcours-apres-synchro-selftest.mjs",
-    "selftest:rapprochement-republication": "node scripts/rapprochement-republication-selftest.mjs"
+    "selftest:rapprochement-republication": "node scripts/rapprochement-republication-selftest.mjs",
+    "selftest:fiches-a-verifier-visibles": "node scripts/fiches-a-verifier-visibles-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

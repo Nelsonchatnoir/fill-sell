@@ -10,6 +10,7 @@ import { createPortal } from 'react-dom';
 import { Check, ChevronRight, AlertTriangle, Pause } from 'lucide-react';
 import { useExtensionAutreCompte, texteExtensionAutreCompte } from '../utils/extensionAutreCompte';
 import { noterGeste } from '../utils/dernierGeste';
+import SectionAVerifier from '../stock/SectionAVerifier';
 import { useTranslation } from '../i18n/useTranslation';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { track } from '../analytics/analytics';
@@ -11211,6 +11212,12 @@ const StockTab = memo(function StockTab({
                       onQuitter={()=>{setModeModif(false);setModifSel(new Set());}}
                       supabase={supabase} userId={user?.id} onFait={rafraichirApresSync}/>
                   </div>
+                )}
+                {/* (15/10, P16) Les fiches en doute, VISIBLES au Stock (à part, badge
+                    « À vérifier ») : un tap ouvre SA question. Hors des totaux, des
+                    lots et des publications — elles ne sont pas dans `items`. */}
+                {!modeBrouillons&&!modePrixAchat&&!modeRepublish&&!modeLot&&!modeModif&&itemsAVerifier.length>0&&(
+                  <SectionAVerifier lang={lang} items={itemsAVerifier} onOuvrir={aVerifier.ouvrir}/>
                 )}
                 {(()=>{
                   const listeVue=modeBrouillons?[]:modePrixAchat?stockFiltre.filter(paIncomplet):modeRepublish?repubActionnablesVue:modeLot?lotActionnablesVue:modeModif?modifAffiches:listeStock;

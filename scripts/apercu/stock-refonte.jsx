@@ -159,7 +159,10 @@ function BarreOnglets() {
 function AppMini({ F }) {
   const profil = F.tables.profiles[0] ?? {};
   const user = F.utilisateur;
-  const [items] = useState(() => F.tables.inventaire.filter((r) => r.fusionne_dans == null).map(mapItem));
+  // (15/10) comme App.jsx : les fiches « à vérifier » (stock + a_verifier) vivent à part.
+  const estAVerifier = (r) => r.statut === 'stock' && r.a_verifier != null;
+  const [items] = useState(() => F.tables.inventaire.filter((r) => r.fusionne_dans == null && !estAVerifier(r)).map(mapItem));
+  const [itemsAVerifier] = useState(() => F.tables.inventaire.filter((r) => r.fusionne_dans == null && estAVerifier(r)).map((r) => ({ ...mapItem(r), a_verifier: r.a_verifier })));
   const [filterType, setFilterType] = useState('Tous');
   const [filterMarque, setFilterMarque] = useState([]);
   const [filterMarqueSold, setFilterMarqueSold] = useState('Toutes');
@@ -237,7 +240,7 @@ function AppMini({ F }) {
           ouvrirModalePlafond={stub('ouvrirModalePlafond')}
           ouvrirReglagesRepublication={stub('ouvrirReglagesRepublication')}
           quotas={F.rpc.quotas_etat}
-          items={items} user={user} voiceUsedToday={0}
+          items={items} itemsAVerifier={itemsAVerifier} user={user} voiceUsedToday={0}
           extensionStatus={{ lastSeenAt: profil.extension_last_seen_at ?? null, build: profil.extension_build ?? null, outdated: false }}
           extensionNeverSeen={false}
           ebayCompte={{ voieApi: true, etat: null, lu: false, voieApiReelle: true, rafraichir() {} }}

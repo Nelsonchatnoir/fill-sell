@@ -69,7 +69,8 @@ ok(/d\.decide_par !== 'regle'/.test(moteur), 'le moteur tient une paire close pa
 
 console.log('4. L\'écran « Est-ce le même article ? »');
 const ecran = lire('src/annonces/EcranDoublons.jsx');
-ok(!/`1 sur \$\{file\.length\}`/.test(ecran) && /questions restantes/.test(ecran), 'le compteur dit le vrai nombre restant (plus « 1 sur N »)');
+// (15/10, P16) Par lots de dix : « Question k sur 10 · encore M ensuite », M calculé sur la file réelle.
+ok(!/`1 sur \$\{file\.length\}`/.test(ecran) && /encore \$\{file\.length - \(tailleLot - numeroDansLot \+ 1\)\} ensuite/.test(ecran) && /Il en reste \$\{file\.length\}/.test(ecran), 'le compteur dit le vrai nombre restant (plus « 1 sur N »), lot par lot');
 ok(/Paire précédente — \$\{fait\}/.test(ecran) && /setTimeout\(\(\) => setFait\(null\), 4000\)/.test(ecran), 'le bandeau « Noté » dit qu\'il concerne la paire précédente, puis s\'efface');
 
 console.log(`\n✓ doublon-attribut-distinctif : ${n} contrôles verts`);
