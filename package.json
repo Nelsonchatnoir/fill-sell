@@ -335,7 +335,8 @@
     "selftest:textes-republication-exacts": "node scripts/textes-republication-exacts-selftest.mjs",
     "selftest:stripe-un-paiement": "deno run --allow-read --allow-write --allow-env --allow-run scripts/preuves/preuve-stripe-un-paiement.ts",
     "selftest:ebay-modele-garde": "node scripts/ebay-modele-garde-selftest.mjs",
-    "selftest:messages-cause-vraie": "node scripts/messages-cause-vraie-selftest.mjs"
+    "selftest:messages-cause-vraie": "node scripts/messages-cause-vraie-selftest.mjs",
+    "selftest:extension-0-6-112": "node scripts/extension-0-6-112-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

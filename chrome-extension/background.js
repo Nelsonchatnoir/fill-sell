@@ -10586,7 +10586,36 @@ function preuveDeLecture(lecture, url) {
   };
 }
 
-async function checkListingState(url, platform) {
+// (15/10, lot G) Disjoncteur des lectures de fond, par plateforme, dans
+// chrome.storage.local : { [plateforme]: { jusqua, n, depuis } }. Pause de 1 h
+// au premier blocage, doublée à chaque blocage suivant (6 h au plus), levée
+// par la première lecture de routine qui revoit une annonce en ligne.
+const DISJONCTEUR_LECTURE_KEY = "disjoncteur_lecture_fond";
+async function lireDisjoncteursLecture() {
+  try { return (await chrome.storage.local.get(DISJONCTEUR_LECTURE_KEY))[DISJONCTEUR_LECTURE_KEY] ?? {}; }
+  catch { return {}; }
+}
+async function armerDisjoncteurLecture(platform) {
+  try {
+    const tous = await lireDisjoncteursLecture();
+    const prec = tous[platform] ?? null;
+    const n = Math.min(4, (Number(prec?.n) || 0) + 1);
+    const pauseMs = Math.min(6, 2 ** (n - 1)) * 60 * 60 * 1000;
+    tous[platform] = { jusqua: Date.now() + pauseMs, n, depuis: prec?.depuis ?? new Date().toISOString(), arme_le: new Date().toISOString() };
+    await chrome.storage.local.set({ [DISJONCTEUR_LECTURE_KEY]: tous });
+  } catch { /* stockage indisponible : la pause est seulement perdue */ }
+}
+async function leverDisjoncteurLecture(platform) {
+  try {
+    const tous = await lireDisjoncteursLecture();
+    if (!tous[platform]) return;
+    delete tous[platform];
+    await chrome.storage.local.set({ [DISJONCTEUR_LECTURE_KEY]: tous });
+    console.log(`[background] ${platform} : lecture de routine revue en ligne — pause des lectures de fond levée`);
+  } catch { /* rien */ }
+}
+
+async function checkListingState(url, platform, { routine = false } = {}) {
   if (platform === "opla") return lireEtatOpla(url);
   if (platform === "depop") return lireEtatDepop(url);
   if (platform === "vinted") return checkVintedUnanime(url);
@@ -10620,6 +10649,17 @@ async function checkListingState(url, platform) {
     if (res.state === "active") vuActive = true;
     if (res.raison) raisons.push(res.raison);
     console.log(`[background] leboncoin : tir ${tir}/${LBC_CHECK_TIRS} → ${res.state}${res.raison ? ` (${res.raison})` : ""}`);
+    // ── (15/10, lot G — Louis) LA VÉRIFICATION DE ROUTINE NE TIRE PLUS TROIS
+    // FOIS POUR RIEN. Mesuré chez Louis (325 annonces) : ≈ 2 500 vérifications
+    // et ≈ 7 500 lectures de page par jour, dont 2 sur 3 confirmaient un « en
+    // ligne » déjà prouvé. En ROUTINE (boucle de détection) : un « en ligne »
+    // prouvé (list_id lu) suffit pour ce passage — une annonce supprimée sera
+    // vue au passage suivant, et les ventes Leboncoin arrivent par les
+    // commandes (54 sur 54 depuis le 15/09). Un anti-robot au premier tir :
+    // on n'insiste pas. HORS routine (avant / après un retrait, une
+    // republication) : les trois tirs, comme avant — aucune protection retirée.
+    if (routine && res.state === "active") break;
+    if (routine && String(res.raison ?? "").startsWith("bot_shield")) break;
   }
 
   // Aucun 410/404 en LBC_CHECK_TIRS lectures. Un "active" vient d'une preuve
@@ -17363,10 +17403,18 @@ async function lancerReleveVentes({ platform, declencheur = "cron" } = {}) {
     let bilanDetail = null;
     if (platform === "vinted") {
       const deja = new Set(etat.vinted?.detailles_v2 ?? []);
+      // (15/10, lot H — Louis, 4 ventes annulées du 13/10) Une commande ANNULÉE
+      // (statut machine « failed ») déjà détaillée par une version d'avant la
+      // règle d'annulation (0.6.111, mig 20261015010000) n'a jamais transmis
+      // ses annonces au serveur, et sa référence, mémorisée dans detailles_v2,
+      // n'était plus jamais relue : la fiche restait « vendue ». Elle est relue
+      // UNE fois (mémoire `annulees_v1`), jamais en boucle — seulement les
+      // commandes de la première page de la liste (les 100 dernières).
+      const annuleesFaites = new Set(etat.vinted?.annulees_v1 ?? []);
       const arriere = await arriereVentesVintedSansArticle(token, userId).catch(() => []);
       const vus = new Set();
       const restants = [...(lecture.aDetailler ?? []), ...arriere]
-        .filter((r) => r?.ref && !deja.has(r.ref) && !vus.has(r.ref) && vus.add(r.ref));
+        .filter((r) => r?.ref && (!deja.has(r.ref) || (r.statut === "failed" && !annuleesFaites.has(r.ref))) && !vus.has(r.ref) && vus.add(r.ref));
       const file = restants.slice(0, VINTED_DETAIL_PAR_RUN);
       let lus = 0, echecs = 0, envoyes = 0;
       const faitsOk = [];
@@ -17386,8 +17434,10 @@ async function lancerReleveVentes({ platform, declencheur = "cron" } = {}) {
           }
         }
       }
-      const mem = [...deja, ...faitsOk];
-      etat.vinted = { ...(etat.vinted ?? {}), detailles_v2: mem.slice(-VINTED_DETAIL_MEMOIRE) };
+      const mem = [...new Set([...deja, ...faitsOk])];
+      const refsAnnulees = new Set(file.filter((r) => r?.statut === "failed").map((r) => r.ref));
+      const annulees = [...new Set([...annuleesFaites, ...faitsOk.filter((r) => refsAnnulees.has(r))])];
+      etat.vinted = { ...(etat.vinted ?? {}), detailles_v2: mem.slice(-VINTED_DETAIL_MEMOIRE), annulees_v1: annulees.slice(-VINTED_DETAIL_MEMOIRE) };
       if (file.length) {
         console.log(`[ventes][vinted] détail : ${lus} lu(s), ${envoyes} envoyé(s), ${echecs} échec(s), ` +
           `${Math.max(0, restants.length - file.length)} en attente (dont arriéré en base : ${arriere.length})`);
@@ -19999,9 +20049,31 @@ async function checkPublishedListings(session) {
     if (wardrobeCycle === undefined) wardrobeCycle = lireWardrobeConnecte();
     return wardrobeCycle;
   };
-  for (let i = 0; i < due.length; i++) {
-    const job = due[i];
-    let { state, price, en_verification: enVerification, exact: lectureExacte } = await checkListingState(job.listing_url, job.platform);
+  // ── (15/10, lot G — Louis) DISJONCTEUR DES LECTURES DE FOND, PAR PLATEFORME ──
+  // Le 13/10 vers 15:20, Leboncoin a bloqué la lecture de Louis : la boucle a
+  // continué (≈ 1 220 vérifications, ≈ 3 660 lectures refusées jusqu'au
+  // lendemain 01:13). Désormais, une vérification de routine qui tombe sur
+  // l'anti-robot coupe les AUTRES vérifications de cette plateforme pour ce
+  // passage, et met ses lectures de fond en pause (1 h, puis 2 h, 4 h, 6 h au
+  // plus si le blocage dure) — sans rien conclure ni compter d'échec. Les
+  // retraits, republications et commandes ne passent pas par ici : inchangés.
+  const disjoncteurs = await lireDisjoncteursLecture();
+  const dueOuverts = due.filter((j) => !(disjoncteurs[j.platform]?.jusqua > Date.now()));
+  if (dueOuverts.length < due.length) {
+    console.log(`[background] Détection : ${due.length - dueOuverts.length} vérification(s) remise(s) — lecture de fond en pause sur ${[...new Set(due.filter((j) => !dueOuverts.includes(j)).map((j) => j.platform))].join(", ")} (anti-robot récent)`);
+  }
+  const coupees = new Set();
+  for (let i = 0; i < dueOuverts.length; i++) {
+    const job = dueOuverts[i];
+    if (coupees.has(job.platform)) continue;
+    let { state, price, en_verification: enVerification, exact: lectureExacte, raison: raisonLecture } = await checkListingState(job.listing_url, job.platform, { routine: true });
+    if (state === "unknown" && String(raisonLecture ?? "").startsWith("bot_shield") && job.platform === "leboncoin") {
+      coupees.add(job.platform);
+      await armerDisjoncteurLecture(job.platform);
+      console.warn(`[background] ${job.platform} : anti-robot sur une vérification de routine — lectures de fond de ${job.platform} en pause (${job.id} non compté)`);
+      continue;
+    }
+    if (state === "active" && job.platform === "leboncoin" && disjoncteurs[job.platform]) await leverDisjoncteurLecture(job.platform);
     console.log(`[background] ${job.platform} ${job.id} → ${state}${price ? ` (prix page : ${price} €)` : ""}${enVerification ? " (en vérification chez Vinted)" : ""}`);
 
     // ── Repli wardrobe (Vinted seulement, cf. lireWardrobeConnecte) ─────────
@@ -20063,7 +20135,7 @@ async function checkPublishedListings(session) {
         body: JSON.stringify(patchUnknown),
       }).catch((e) => console.warn("[background] PATCH unknown:", String(e?.message ?? e)));
 
-      if (i < due.length - 1) await sleep(randInt(SALE_CHECK_PAUSE_MIN_MS, SALE_CHECK_PAUSE_MAX_MS));
+      if (i < dueOuverts.length - 1) await sleep(randInt(SALE_CHECK_PAUSE_MIN_MS, SALE_CHECK_PAUSE_MAX_MS));
       continue;
     }
 
@@ -20163,7 +20235,7 @@ async function checkPublishedListings(session) {
               method: "PATCH",
               body: JSON.stringify(patch), // last_checked_at seul : on a bien lu, on ne conclut rien de plus
             }).catch((e) => console.warn("[background] PATCH job:", String(e?.message ?? e)));
-            if (i < due.length - 1) await sleep(randInt(SALE_CHECK_PAUSE_MIN_MS, SALE_CHECK_PAUSE_MAX_MS));
+            if (i < dueOuverts.length - 1) await sleep(randInt(SALE_CHECK_PAUSE_MIN_MS, SALE_CHECK_PAUSE_MAX_MS));
             continue;
           }
         } catch (e) {
@@ -20303,7 +20375,7 @@ async function checkPublishedListings(session) {
       body: JSON.stringify(patch),
     }).catch((e) => console.warn("[background] PATCH job:", String(e?.message ?? e)));
 
-    if (i < due.length - 1) await sleep(randInt(SALE_CHECK_PAUSE_MIN_MS, SALE_CHECK_PAUSE_MAX_MS));
+    if (i < dueOuverts.length - 1) await sleep(randInt(SALE_CHECK_PAUSE_MIN_MS, SALE_CHECK_PAUSE_MAX_MS));
   }
 }
 
@@ -24277,6 +24349,27 @@ async function processRepublishJob(job, accessToken) {
       // Le bon geste, c'est d'ESPACER : 45 minutes, comme le fait déjà
       // pas-de-rouge pour l'anti-robot. Rien à faire côté utilisateur, et on
       // le dit — ici c'est vrai, la reprise aboutira.
+      // ── (15/10, lot C — carhoa) UN 403 SANS CONNEXION N'EST PAS UN ANTI-ROBOT ──
+      // Le 403 de la lecture ne dit ni « bloqué » ni « déconnecté » ; le cookie
+      // posé par la connexion Vinted (v_uid) tranche — la même preuve que le
+      // relevé (classifierCause403). Aucune session dans ce navigateur : le
+      // geste est la connexion, et la republication repart seule ensuite
+      // (relancer_jobs_connexion, needs_user_source session_vinted). Session
+      // présente ou cookie illisible : rien ne change ci-dessous.
+      if (cap.accesRefuse) {
+        const cause403 = await classifierCause403().catch(() => "indetermine");
+        pf.capture_echec.cause403 = cause403;
+        if (cause403 === "session_absente") {
+          pf.capture_echec.motif = "lecture de l'annonce refusée par Vinted (HTTP 403) — aucune session Vinted dans ce navigateur";
+          pf.needs_user_source = "session_vinted";
+          delete pf.next_action_after; delete pf.blocage_antirobot; delete pf.attente_antirobot_compte;
+          const msgCo = `Connexion Vinted requise : connecte-toi sur ${VO.domaineVintedAffiche()} dans ${VO.navigateurCourt()}, sur ton ordinateur. ` +
+            "Ton annonce est intacte, rien n'a été touché ; la republication repartira toute seule dès que tu seras connecté.";
+          await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msgCo });
+          console.warn(`[republish] job ${job.id} : lecture 403 et AUCUNE session Vinted dans ce navigateur (cookie de connexion absent) — connexion requise, pas d'anti-robot`);
+          return { status: "needsUser", error: "capture 403 : connexion Vinted absente" };
+        }
+      }
       if (/protection anti-robot|CHALLENGE|anti-?robot/i.test(String(cap.error ?? ""))) {
         pf.next_action_after = new Date(Date.now() + 45 * 60_000).toISOString();
         delete pf.needs_user_source;
