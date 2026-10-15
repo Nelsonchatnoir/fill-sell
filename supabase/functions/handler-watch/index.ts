@@ -37,7 +37,7 @@ import { posteVivant, messageInterruption } from "../_shared/interruption-poste.
 import { requalificationCompteVintedBloque } from "../_shared/vinted-compte-bloque.js";
 import { requalificationMiseANiveauEbay } from "../_shared/ebay-mise-a-niveau.js";
 import { OPLA_PRIX_MAX, prixOplaTropHaut, messagePrixOplaTropHaut } from "../_shared/opla-prix.js";
-import { PAUSE_VINTED_GESTE_MS, messagePauseVintedGeste } from "../_shared/mur-geste.js";
+import { PAUSE_VINTED_GESTE_MS, messagePauseVintedGeste, connexionVintedAbsenteProuvee, murConnexionVintedProuve } from "../_shared/mur-geste.js";
 import { retraitBloqueParConnexion } from "../_shared/mur-geste.js";
 import { jugerRetraitVintedIntrouvable, numeroRetraitVinted } from "../_shared/retrait-introuvable.js";
 import { jugerRetraitBeebsParReleves, numeroRetraitBeebs } from "../_shared/beebs-preuve-retrait.js";
@@ -1295,9 +1295,14 @@ serve(async (req) => {
       // deno-lint-ignore no-explicit-any
       for (const p of (profs ?? []) as any[]) sessionsAr.set(String(p.id), p.extension_sessions ?? {});
     }
-    let nAr = 0;
+    // (15/10, lot C — carhoa) La connexion Vinted PROUVÉE absente (dernier
+    // relevé : cookie de connexion absent, « [cause403] session_absente ») :
+    // ce n'est pas un anti-robot. Le geste est « Connexion Vinted requise »
+    // (relancée seule à la reconnexion), jamais « vérification anti-robot ».
+    const preuveAbsence = await preuvesConnexionVintedAbsente(supabase, idsAr, sessionsAr);
+    let nAr = 0; let nCo = 0;
     for (const j of lignesAr) {
-      if (nAr >= 60) break;
+      if (nAr + nCo >= 60) break;
       const pf = { ...(j.platform_fields ?? {}) } as Record<string, unknown>;
       if (j.action === "republish" && String(pf.republish_step ?? "") === "deleted") continue;
       const marq = (pf.attente_antirobot_compte && typeof pf.attente_antirobot_compte === "object")
@@ -1307,18 +1312,71 @@ serve(async (req) => {
       const s = sessionsAr.get(String(j.user_id)) ?? {};
       const vuVinted = Date.parse(String((s.checked_at_par_plateforme as Record<string, string> | undefined)?.vinted ?? s.checked_at ?? ""));
       if (s.vinted === true && Number.isFinite(vuVinted) && vuVinted > depuisMs) continue;
+      const absence = preuveAbsence.get(String(j.user_id));
+      if (absence?.prouvee) {
+        const { pf: pfC, message } = murConnexionVintedProuveArchive(j, pf, absence.le, "handler-watch (pause Vinted > 6 h, connexion absente prouvée)");
+        const { data: maj } = await supabase.from("cross_post_jobs")
+          .update({ status: "needs_user", error: message, platform_fields: pfC })
+          .eq("id", j.id).eq("status", "pending").select("id");
+        nCo += (maj ?? []).length;
+        continue;
+      }
       pf.needs_user_source = "verification_antirobot";
       pf.mur_geste = { type: "verification_antirobot", le: new Date().toISOString(), depuis: new Date(depuisMs).toISOString(), pause_compte: true, pose_par: "handler-watch" };
       delete pf.next_action_after; delete pf.processing_since;
       pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error ?? null, "pending", "handler-watch (pause anti-robot Vinted > 6 h)");
       const { data: maj } = await supabase.from("cross_post_jobs")
-        .update({ status: "needs_user", error: messagePauseVintedGeste(), platform_fields: pf })
+        .update({ status: "needs_user", error: messagePauseVintedGeste({ depuis: new Date(depuisMs).toISOString(), publication: j.action === "publish", retrait: j.action === "delete" }), platform_fields: pf })
         .eq("id", j.id).eq("status", "pending").select("id");
       nAr += (maj ?? []).length;
     }
     if (nAr) console.log(`[handler-watch] ${nAr} job(s) Vinted en pause anti-robot depuis plus de 6 h : passés à la personne (toutes versions, poste éteint compris)`);
+    if (nCo) console.log(`[handler-watch] ${nCo} job(s) Vinted en pause depuis plus de 6 h : connexion Vinted PROUVÉE absente → « Connexion Vinted requise » (repartent seuls à la reconnexion)`);
   } catch (e) {
     console.error("[handler-watch] pause anti-robot Vinted > 6 h :", (e as Error)?.message ?? e);
+  }
+
+  // ══ (15/10, lot C — carhoa) UN MUR « ANTI-ROBOT » DÉJÀ POSÉ SUR UNE CONNEXION
+  //    PROUVÉE ABSENTE : REQUALIFIÉ ══════════════════════════════════════════
+  // Les jobs passés à la personne en « vérification anti-robot » par la règle
+  // des 6 h, chez un compte dont le dernier relevé Vinted a lu les cookies et
+  // n'y a trouvé AUCUNE session : même geste que ci-dessus. Aucune annonce
+  // touchée (étape avant retrait) ; une recréation ('deleted') n'entre pas ici.
+  try {
+    const { data: murs } = await supabase.from("cross_post_jobs")
+      .select("id, user_id, action, error, platform_fields")
+      .eq("platform", "vinted").eq("status", "needs_user")
+      .eq("platform_fields->>needs_user_source", "verification_antirobot")
+      .not("platform_fields->mur_geste->>pause_compte", "is", null)
+      .limit(200);
+    // deno-lint-ignore no-explicit-any
+    const lignes = (murs ?? []) as any[];
+    if (lignes.length) {
+      const ids = [...new Set(lignes.map((j) => String(j.user_id)))];
+      const sess = new Map<string, Record<string, unknown>>();
+      for (let i = 0; i < ids.length; i += 200) {
+        const { data: profs } = await supabase.from("profiles").select("id, extension_sessions").in("id", ids.slice(i, i + 200));
+        // deno-lint-ignore no-explicit-any
+        for (const p of (profs ?? []) as any[]) sess.set(String(p.id), p.extension_sessions ?? {});
+      }
+      const preuves = await preuvesConnexionVintedAbsente(supabase, ids, sess);
+      let n = 0;
+      for (const j of lignes) {
+        if (n >= 60) break;
+        const pf = { ...(j.platform_fields ?? {}) } as Record<string, unknown>;
+        if (j.action === "republish" && String(pf.republish_step ?? "") === "deleted") continue;
+        const absence = preuves.get(String(j.user_id));
+        if (!absence?.prouvee) continue;
+        const { pf: pfC, message } = murConnexionVintedProuveArchive(j, pf, absence.le, "handler-watch (mur anti-robot requalifié : connexion absente prouvée)");
+        const { data: maj } = await supabase.from("cross_post_jobs")
+          .update({ error: message, platform_fields: pfC })
+          .eq("id", j.id).eq("status", "needs_user").select("id");
+        n += (maj ?? []).length;
+      }
+      if (n) console.log(`[handler-watch] ${n} mur(s) « vérification anti-robot » Vinted requalifié(s) : la connexion était absente (cookie de session absent au relevé) → « Connexion Vinted requise »`);
+    }
+  } catch (e) {
+    console.error("[handler-watch] requalification connexion Vinted :", (e as Error)?.message ?? e);
   }
 
   // ══ eBay EXIGE UNE MISE À NIVEAU DU COMPTE VENDEUR : LE VRAI MOTIF (03/10, point 14) ══
@@ -4642,3 +4700,49 @@ serve(async (req) => {
     headers: { "Content-Type": "application/json" },
   });
 });
+
+// ── (15/10, lot C — carhoa) LA PREUVE QU'AUCUNE SESSION VINTED N'EST OUVERTE ──
+// Par compte : les relevés Vinted des dernières 24 h (le dernier fini porte-t-il
+// « [cause403] session_absente » ?) et le dernier succès Vinted (dépôt ou
+// republication aboutis par l'extension) — _shared/mur-geste.js tranche.
+// Lectures bornées : comptes déjà retenus par l'appelant, 24 h, 400 lignes.
+// deno-lint-ignore no-explicit-any
+async function preuvesConnexionVintedAbsente(supabase: any, ids: string[], sessions: Map<string, Record<string, unknown>>) {
+  const out = new Map<string, { prouvee: boolean; le: string | null }>();
+  if (!ids.length) return out;
+  const depuis = new Date(Date.now() - 24 * 3600_000).toISOString();
+  const runs = new Map<string, Array<Record<string, unknown>>>();
+  const succes = new Map<string, number>();
+  for (let i = 0; i < ids.length; i += 100) {
+    const lot = ids.slice(i, i + 100);
+    const { data: r } = await supabase.from("vinted_sync_runs")
+      .select("user_id, status, erreur, started_at, finished_at")
+      .in("user_id", lot).eq("kind", "dressing").gte("started_at", depuis)
+      .order("started_at", { ascending: false }).limit(400);
+    // deno-lint-ignore no-explicit-any
+    for (const x of (r ?? []) as any[]) { const l = runs.get(String(x.user_id)) ?? []; l.push(x); runs.set(String(x.user_id), l); }
+    const { data: p } = await supabase.from("cross_post_jobs")
+      .select("user_id, published_at")
+      .in("user_id", lot).eq("platform", "vinted").in("action", ["publish", "republish"])
+      .in("status", ["published", "sold"]).not("handler_build", "is", null).gte("published_at", depuis)
+      .order("published_at", { ascending: false }).limit(400);
+    // deno-lint-ignore no-explicit-any
+    for (const x of (p ?? []) as any[]) {
+      const t = Date.parse(String(x.published_at ?? ""));
+      if (Number.isFinite(t) && t > (succes.get(String(x.user_id)) ?? -Infinity)) succes.set(String(x.user_id), t);
+    }
+  }
+  for (const id of ids) {
+    out.set(id, connexionVintedAbsenteProuvee({ runs: runs.get(id) ?? [], dernierSucces: succes.get(id) ?? -Infinity, sessions: sessions.get(id) ?? null }));
+  }
+  return out;
+}
+
+// Le mur « Connexion Vinted requise » posé sur preuve (_shared/mur-geste.js),
+// l'ancien message archivé.
+// deno-lint-ignore no-explicit-any
+function murConnexionVintedProuveArchive(j: any, pf: Record<string, unknown>, preuveLe: string | null, motifArchive: string) {
+  const { pf: pfC, message } = murConnexionVintedProuve(j, pf, preuveLe, "handler-watch");
+  pfC.erreurs_archivees = archiverErreur(pfC.erreurs_archivees, j.error ?? null, String(j.status ?? "pending"), motifArchive);
+  return { pf: pfC, message };
+}

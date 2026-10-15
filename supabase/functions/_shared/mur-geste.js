@@ -89,12 +89,16 @@ export function messageRecreationBloquee(platform, deletedAt) {
 // (05/10) Pour un RETRAIT, « Ton annonce est intacte » était faux et
 // dangereux : l'article est vendu et son annonce reste en ligne tant que le
 // geste n'est pas fait (Joséphine, 8 retraits Opla). La fin de phrase le dit.
-function suiteDuMessage(platform, { etapeRetiree = false, retrait = false } = {}) {
+// (15/10, lot C — Hassan Said) Pour une PUBLICATION, il n'y a pas encore
+// d'annonce : « Ton annonce est intacte » était faux (« Connexion Beebs
+// requise… Ton annonce est intacte » sur ses dépôts Beebs).
+function suiteDuMessage(platform, { etapeRetiree = false, retrait = false, publication = false } = {}) {
   const nom = NOM[platform] ?? platform;
   if (retrait) {
     return `Ton article est vendu mais son annonce est encore en ligne sur ${nom} (risque de double vente) : ` +
       "FillSell la retire tout seul dès que c'est fait.";
   }
+  if (publication) return "Rien n'a été publié ; tout repartira tout seul ensuite.";
   return etapeRetiree ? "Ton annonce sera remise en ligne toute seule ensuite." : "Ton annonce est intacte ; tout repartira tout seul ensuite.";
 }
 
@@ -142,13 +146,14 @@ export function jugerMurGeste(job) {
   const plat = String(job?.platform ?? "");
   const etapeRetiree = job?.action === "republish" && pf.republish_step === "deleted";
   const retrait = job?.action === "delete";
+  const publication = job?.action === "publish";
   // 1. Connexion : l'attente de session, nommée par la page, persistante.
   const att = pf.attente_session;
   if (att && typeof att === "object" && ATTENTE_SESSION_RE.test(String(job?.error ?? ""))
       && (Number(att.observations) || 0) >= CONNEXION_OBSERVATIONS_MIN) {
     pf.mur_geste = { type: "connexion", le: new Date().toISOString(), depuis: att.depuis ?? null, observations: Number(att.observations) || 0 };
     pf.needs_user_source = "connexion";
-    return { geste: "connexion", message: messageConnexionRequise(plat, { etapeRetiree, retrait }), pf, change: true };
+    return { geste: "connexion", message: messageConnexionRequise(plat, { etapeRetiree, retrait, publication }), pf, change: true };
   }
   // 2. Challenge à résoudre : compté par observation distincte.
   const obs = observationChallenge(pf);
@@ -173,7 +178,7 @@ export function jugerMurGeste(job) {
     pf.needs_user_source = "verification_antirobot";
     const message = obs.source === "prevol_recreation"
       ? messageRecreationBloquee(plat, pf.deleted_at ?? pf.deleted_at_serveur ?? null)
-      : messageVerificationAntirobot(plat, { etapeRetiree, retrait });
+      : messageVerificationAntirobot(plat, { etapeRetiree, retrait, publication });
     return { geste: "verification_antirobot", message, pf, change: true };
   }
   return { geste: null, pf, change };
@@ -187,7 +192,71 @@ export function jugerMurGeste(job) {
 // lui, continue de tester). handler-watch les relance quand la sonde de
 // sessions revoit Vinted répondre.
 export const PAUSE_VINTED_GESTE_MS = 6 * 3600_000;
-export function messagePauseVintedGeste() {
-  return "Vinted bloque tes actions depuis plusieurs heures : ouvre vinted.fr dans Chrome, connecte-toi si Vinted te le demande " +
-    "et passe la vérification si elle s'affiche. Ton annonce est intacte ; tout repartira tout seul ensuite.";
+// (15/10, lot C — carhoa) « depuis plusieurs heures » était faux : deux refus à
+// trois minutes d'écart, puis l'ordinateur éteint six heures. On dit ce qu'on
+// a VU (le premier refus, daté), et la fin de phrase suit l'action.
+// `opts` : { depuis: ISO du premier refus, publication, etapeRetiree, retrait }.
+export function messagePauseVintedGeste(opts = {}) {
+  const t = ms(opts?.depuis);
+  const quand = Number.isFinite(t)
+    ? ` depuis le ${new Date(t).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "2-digit", month: "2-digit" })} à ${new Date(t).toLocaleTimeString("fr-FR", { timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit" })}`
+    : "";
+  return `Vinted refuse l'accès à tes annonces${quand} : ouvre vinted.fr dans Chrome, connecte-toi si Vinted te le demande ` +
+    "et passe la vérification si elle s'affiche. " + suiteDuMessage("vinted", opts);
+}
+
+// ── (15/10, lot C — carhoa) UN 403 VINTED SANS CONNEXION N'EST PAS UN ANTI-ROBOT ──
+// carhoa : 17 republications passées « Vinted bloque tes actions… vérification
+// anti-robot » alors que le relevé de 01:32 avait LU les cookies du navigateur
+// et n'y avait trouvé AUCUNE session (marqueur « [cause403] session_absente »,
+// cookie v_uid posé par la connexion Vinted, background.js classifierCause403).
+// Un 403 seul ne dit ni « bloqué » ni « déconnecté » ; ce cookie, lui, tranche.
+// Connexion PROUVÉE absente = le dernier relevé Vinted fini porte ce marqueur,
+// dans les 24 h, et rien n'a marché sur Vinted depuis (ni dépôt, ni sonde qui
+// revoit Vinted répondre). Alors le geste est « Connexion Vinted requise » (le
+// début de phrase que relancer_jobs_connexion et l'app reconnaissent), et le
+// job repart seul à la reconnexion — jamais « vérification anti-robot ».
+export const CAUSE403_SESSION_ABSENTE_RE = /\[cause403\]\s*session_absente/i;
+/**
+ * @param {{ runs?: Array<{ status?: string, erreur?: string|null, started_at?: string, finished_at?: string|null }>,
+ *           dernierSucces?: number, sessions?: Record<string, any>|null, maintenant?: number }} p
+ * @returns {{ prouvee: boolean, le: string|null }}
+ */
+export function connexionVintedAbsenteProuvee({ runs = [], dernierSucces = -Infinity, sessions = null, maintenant = Date.now() } = {}) {
+  const finis = (runs ?? []).filter((r) => r && !["queued", "running", "claimed"].includes(String(r.status ?? "")))
+    .sort((a, b) => (ms(b.started_at) || 0) - (ms(a.started_at) || 0));
+  const dernier = finis[0];
+  const non = { prouvee: false, le: null };
+  if (!dernier || !CAUSE403_SESSION_ABSENTE_RE.test(String(dernier.erreur ?? ""))) return non;
+  const t = ms(dernier.finished_at ?? dernier.started_at);
+  if (!Number.isFinite(t) || maintenant - t > 24 * 3600_000) return non;
+  if (Number.isFinite(dernierSucces) && dernierSucces > t) return non;
+  const s = sessions && typeof sessions === "object" ? sessions : {};
+  const vu = ms(s.checked_at_par_plateforme?.vinted ?? s.checked_at);
+  if (s.vinted === true && Number.isFinite(vu) && vu > t) return non;
+  return { prouvee: true, le: new Date(t).toISOString() };
+}
+
+/**
+ * (15/10, lot C — carhoa) Le mur « Connexion Vinted requise » posé sur PREUVE
+ * (connexionVintedAbsenteProuvee) : les marqueurs anti-robot sont mis de côté
+ * (relancer_jobs_connexion ne relance jamais un job qui les porte), le geste
+ * est celui de la connexion — l'app montre « Me connecter », la sonde ou le
+ * relevé qui revoit Vinted le relance. L'appelant archive l'ancien message.
+ * @returns {{ pf: Record<string, any>, message: string }}
+ */
+export function murConnexionVintedProuve(job, pf0, preuveLe, posePar) {
+  const pf = { ...(pf0 && typeof pf0 === "object" ? pf0 : {}) };
+  const antirobot = {};
+  for (const k of ["attente_antirobot_compte", "blocage_antirobot", "mur_antirobot"]) { if (k in pf) { antirobot[k] = pf[k]; delete pf[k]; } }
+  if (Object.keys(antirobot).length) pf.antirobot_requalifie = { le: new Date().toISOString(), preuve: "cause403_session_absente", preuve_le: preuveLe ?? null, ...antirobot };
+  pf.needs_user_source = "connexion";
+  pf.mur_geste = { type: "connexion", le: new Date().toISOString(), preuve: "cause403_session_absente", preuve_le: preuveLe ?? null, pose_par: posePar };
+  delete pf.next_action_after; delete pf.processing_since;
+  const message = messageConnexionRequise("vinted", {
+    etapeRetiree: job?.action === "republish" && pf.republish_step === "deleted",
+    retrait: job?.action === "delete",
+    publication: job?.action === "publish",
+  });
+  return { pf, message };
 }

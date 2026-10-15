@@ -38,7 +38,7 @@ import { detectObjectIcon } from "../../../src/utils/shared.js";
 // (02/10) Sortie d'Opla : plus aucune publication ni republication Opla ; la
 // synchronisation continue pour les seuls comptes déjà reliés.
 import { oplaACloreJob, clotureOpla, oplaRelie, MESSAGE_OPLA_INDISPONIBLE, OPLA_SORTIE, sortieOplaActive } from "../_shared/opla-sortie.js";
-import { titrePourJob, titreVide, CLE_TITRE_SAISI } from "../_shared/titre-du-job.js";
+import { titrePourJob, titreVide, couperTitre, CLE_TITRE_SAISI } from "../_shared/titre-du-job.js";
 import { servirRetraitsEbayParNumero } from "../_shared/retrait-ebay-par-numero.js";
 import { decisionAdresseRepublicationLbc, rueDesReglagesMemeCommune, texteRefuseCommune, textesErreurJob } from "../_shared/lbc-voie-des-reglages.js";
 import { tailleBeebsDeLaFiche } from "../_shared/beebs-taille-de-la-fiche.js";
@@ -49,7 +49,8 @@ import { pausePageDepotLbc, decisionPausePageDepotLbc } from "../_shared/lbc-pau
 import { impasseRecreationVinted, decisionImpasseRecreation } from "../_shared/recreation-impasse-vinted.js";
 import { messageRetenueCreneau, messageRetenuePause, retraitEngage } from "../_shared/retenue-creneau.js";
 import { posteApresDefaut } from "../_shared/defaut-fillsell.js";
-import { jugerMurGeste, messagePauseVintedGeste, PAUSE_VINTED_GESTE_MS } from "../_shared/mur-geste.js";
+import { jugerMurGeste, messagePauseVintedGeste, PAUSE_VINTED_GESTE_MS, connexionVintedAbsenteProuvee, murConnexionVintedProuve } from "../_shared/mur-geste.js";
+import { restrictionVinted, messageRestrictionVinted } from "../_shared/pas-de-rouge.js";
 // Champs exigés au dépôt par rayon Vinted, appris sur les refus 400 (cache de
 // l'isolat, 15 min : la lecture parcourt la table — ~200 ms).
 const CACHE_EXIGES_VINTED = new Map<string, { codes: Set<string>; at: number }>();
@@ -3252,6 +3253,34 @@ serve(async (req) => {
           console.warn(`[get-pending-jobs] format de colis Vinted : ${String((e as Error)?.message ?? e)} — distribution normale`);
         }
       }
+    }
+
+    // ══ (15/10, lot C — Hassan Said) LE TITRE REFUSÉ PAR VINTED, RÉÉCRIT PAR
+    //    LA PERSONNE ═══════════════════════════════════════════════════════════
+    // Vinted a refusé le titre (400 validation_error, « Le titre contient trop
+    // de symboles d'affilée ») : pas-de-rouge a posé la question « Titre »
+    // (pf.titre_refuse + needsUserField → pf.titre_saisi). La réponse REMPLACE
+    // le titre du job — jamais le titre refusé resservi à l'identique. Sans
+    // réponse, le job reste à la personne (needs_user) : il n'arrive pas ici.
+    try {
+      for (const j of (out as unknown as Array<Record<string, unknown>>)) {
+        if (j.action !== "publish" && j.action !== "republish") continue;
+        const pf = (j.platform_fields && typeof j.platform_fields === "object") ? (j.platform_fields as Record<string, unknown>) : {};
+        if (!pf.titre_refuse || titreVide(pf[CLE_TITRE_SAISI])) continue;
+        const nouveau = couperTitre(pf[CLE_TITRE_SAISI], String(j.platform));
+        if (!nouveau || nouveau === String(j.title ?? "")) continue;
+        const ancien = String(j.title ?? "");
+        const pfN: Record<string, unknown> = { ...pf, titre_refuse_remplace: { le: new Date().toISOString(), ancien: ancien.slice(0, 200), motif: (pf.titre_refuse as Record<string, unknown>)?.motif ?? null } };
+        delete pfN.titre_refuse;
+        j.title = nouveau;
+        j.platform_fields = pfN;
+        const { error: tErr } = await userClient.from("cross_post_jobs")
+          .update({ title: nouveau, platform_fields: pfAPersister(pfN) })
+          .eq("id", j.id as string).eq("status", "pending");
+        console.log(`[get-pending-jobs] ${j.platform} ${String(j.id).slice(0, 8)} : titre refusé par la plateforme remplacé par la réponse de la personne${tErr ? ` — servi, non écrit (${tErr.message})` : ""}`);
+      }
+    } catch (e) {
+      console.warn("[get-pending-jobs] titre refusé réécrit :", (e as Error)?.message ?? e);
     }
 
     // ══ AUCUN JOB SERVI SANS TITRE (2026-09-25, patrick giry) ═══════════════
@@ -10180,6 +10209,53 @@ serve(async (req) => {
     }
 
 
+    // ══ (15/10, lot C — Kossiwa) VINTED A RESTREINT LE COMPTE : AUCUNE
+    //    PUBLICATION VINTED SERVIE AVANT LA FIN ════════════════════════════════
+    // Kossiwa (« Compte restreint jusqu'au 18/10/2026 », page /selling-restriction) :
+    // 2 publications, 5 essais chacune → 10 ouvertures du formulaire de dépôt
+    // sur un compte restreint avant que la date ne soit lue. La restriction est
+    // celle du COMPTE : dès qu'un job Vinted de la file l'a lue (last_diagnostic,
+    // date à venir), aucune publication ni republication Vinted du compte n'est
+    // servie avant la fin — le message le dit, l'échéance est posée. Les
+    // retraits (articles vendus) restent servis. Aucune lecture de plus : la
+    // file est déjà chargée. Best-effort : illisible → servi comme avant.
+    if (!includeProcessing && !includeNeedsUser) {
+      try {
+        const pfRx = (j: { platform_fields?: unknown }) =>
+          (j.platform_fields && typeof j.platform_fields === "object") ? j.platform_fields as Record<string, unknown> : {};
+        let restriction: { jusquau: string; fin: number; libelle: string } | null = null;
+        for (const j of (jobs ?? []).filter((x) => x.platform === "vinted")) {
+          const r = restrictionVinted(pfRx(j));
+          if (r && typeof r.fin === "number" && r.fin > Date.now() && (!restriction || r.fin > restriction.fin)) restriction = r as { jusquau: string; fin: number; libelle: string };
+        }
+        if (restriction) {
+          const retenus = out.filter((j) => j.platform === "vinted" && (j.action === "publish" || j.action === "republish"));
+          if (retenus.length) {
+            const idsR = new Set(retenus.map((j) => String(j.id)));
+            out = out.filter((j) => !idsR.has(String(j.id)));
+            const echeance = new Date(restriction.fin + 5 * 60_000).toISOString();
+            let ecritures = 0;
+            for (const j of retenus) {
+              if (ecritures >= 40) break;
+              const pf = pfRx(j);
+              const message = messageRestrictionVinted(restriction, String(j.action), pf);
+              if (j.error === message && pf.next_action_after === echeance) continue;
+              ecritures++;
+              const pfN: Record<string, unknown> = { ...pf, next_action_after: echeance, restriction_compte: { jusquau: restriction.jusquau, fin: new Date(restriction.fin).toISOString(), pose_le: new Date().toISOString() } };
+              if (j.error && j.error !== message) pfN.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error, "pending", "get-pending-jobs (compte Vinted restreint)");
+              const { error: wErr } = await userClient.from("cross_post_jobs")
+                .update({ error: message, platform_fields: pfAPersister(pfN) })
+                .eq("id", j.id as string).eq("status", "pending");
+              if (wErr) console.warn(`[get-pending-jobs] restriction Vinted : message non posé sur ${String(j.id).slice(0, 8)} (${wErr.message})`);
+            }
+            console.log(`[get-pending-jobs] userId=${user.id} : compte Vinted restreint jusqu'au ${restriction.jusquau} — ${retenus.length} publication(s)/republication(s) Vinted non servie(s) avant la fin`);
+          }
+        }
+      } catch (e) {
+        console.warn("[get-pending-jobs] restriction du compte Vinted :", (e as Error)?.message ?? e);
+      }
+    }
+
     // ══ ANTI-ROBOT SUR LE COMPTE VINTED : TOUT VINTED EN PAUSE (2026-09-25) ══
     // (Point 4 du GO de Nico.) Carla (ltouze) : 7 republications, 7 annonces
     // différentes, toutes refusées par la protection anti-robot de Vinted —
@@ -10225,6 +10301,11 @@ serve(async (req) => {
       "Vinted demande une vérification anti-robot sur ton compte : tes actions Vinted sont en pause, rien n'a été touché. " +
       "Ouvre vinted.fr dans Chrome : connecte-toi à ton compte si Vinted te le demande, et passe la vérification si elle s'affiche — " +
       "tout repartira seul. Tes autres plateformes continuent normalement.";
+    // (15/10, lot C — carhoa) Même pause, vraie cause : le dernier relevé a lu
+    // les cookies du navigateur et n'y a trouvé AUCUNE session Vinted.
+    const PAUSE_CONNEXION_MSG =
+      "Connexion Vinted requise : reconnecte-toi à Vinted dans Chrome, sur ton ordinateur — Vinted refuse l'accès à tes annonces " +
+      "tant que tu n'es pas connecté. Tes actions Vinted attendent, rien n'a été touché ; tout repartira seul. Tes autres plateformes continuent normalement.";
     const idsAntirobot = new Set<string>();
     let antirobotPause: Record<string, unknown> | null = null;
     if (!includeProcessing && !includeNeedsUser) {
@@ -10277,6 +10358,16 @@ serve(async (req) => {
             const apres = obsAr.filter((o) => o.at > dernierSucces);
             if (nbArticles(apres) >= 2) {
               enPause = true;
+              let absenceAr: { prouvee: boolean; le: string | null } = { prouvee: false, le: null };
+              try {
+                const { data: runsAr } = await userClient.from("vinted_sync_runs")
+                  .select("status, erreur, started_at, finished_at")
+                  .eq("user_id", user.id).eq("kind", "dressing")
+                  .gte("started_at", new Date(Date.now() - 24 * 3600_000).toISOString())
+                  .order("started_at", { ascending: false }).limit(3);
+                absenceAr = connexionVintedAbsenteProuvee({ runs: (runsAr ?? []) as Array<Record<string, unknown>>, dernierSucces, sessions: s });
+              } catch (_e) { /* illisible : la pause d'avant, telle quelle */ }
+              const msgPause = absenceAr.prouvee ? PAUSE_CONNEXION_MSG : ANTIROBOT_COMPTE_MSG;
               const vintedOut = out.filter((j) => j.platform === "vinted");
               const garder = new Set<string>(vintedOut
                 .filter((j) => j.action === "republish" && String(pfAr(j).republish_step ?? "") === "deleted")
@@ -10305,7 +10396,7 @@ serve(async (req) => {
               for (const j of fileVinted) {
                 if (garder.has(String(j.id)) || ecritures >= 40) continue;
                 const pf = pfAr(j);
-                if (pf.attente_antirobot_compte && j.error === ANTIROBOT_COMPTE_MSG) continue;
+                if (pf.attente_antirobot_compte && j.error === msgPause) continue;
                 ecritures++;
                 const pfNeuf: Record<string, unknown> = {
                   ...pf,
@@ -10313,11 +10404,12 @@ serve(async (req) => {
                   // de là que la levée compte le temps passé en pause.
                   attente_antirobot_compte: { depuis: depuisAr, derniere_obs: new Date(dernierRefus).toISOString(), articles: nbArticles(apres), http: 403, pose_le: new Date().toISOString() },
                 };
-                if (j.error && j.error !== ANTIROBOT_COMPTE_MSG) {
+                if (j.error && j.error !== ANTIROBOT_COMPTE_MSG && j.error !== PAUSE_CONNEXION_MSG) {
                   pfNeuf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error, "pending", "get-pending-jobs (pause anti-robot du compte)");
                 }
+                if (absenceAr.prouvee) pfNeuf.connexion_absente = { preuve: "cause403_session_absente", le: absenceAr.le };
                 const { error: wErr } = await userClient.from("cross_post_jobs")
-                  .update({ error: ANTIROBOT_COMPTE_MSG, platform_fields: pfAPersister(pfNeuf) })
+                  .update({ error: msgPause, platform_fields: pfAPersister(pfNeuf) })
                   .eq("id", j.id as string).eq("status", "pending");
                 if (wErr) console.warn(`[get-pending-jobs] pause anti-robot : message non posé sur ${String(j.id).slice(0, 8)} (${wErr.message})`);
               }
@@ -10332,11 +10424,22 @@ serve(async (req) => {
                   if (garder.has(String(j.id)) || n >= 40) continue;
                   const pf = pfAr(j);
                   if (j.action === "republish" && String(pf.republish_step ?? "") === "deleted") continue;
+                  // (15/10) Connexion PROUVÉE absente : le geste est la connexion
+                  // (repart seul à la reconnexion), jamais « vérification anti-robot ».
+                  if (absenceAr.prouvee) {
+                    const { pf: pfC, message } = murConnexionVintedProuve(j, pf, absenceAr.le, "get-pending-jobs");
+                    pfC.erreurs_archivees = archiverErreur(pfC.erreurs_archivees, j.error ?? null, "pending", "get-pending-jobs (pause Vinted > 6 h, connexion absente prouvée)");
+                    const { data: majC } = await userClient.from("cross_post_jobs")
+                      .update({ status: "needs_user", error: message, platform_fields: pfAPersister(pfC) })
+                      .eq("id", j.id as string).eq("status", "pending").select("id");
+                    n += (majC ?? []).length;
+                    continue;
+                  }
                   const pfG: Record<string, unknown> = { ...pf, needs_user_source: "verification_antirobot",
                     mur_geste: { type: "verification_antirobot", le: new Date().toISOString(), depuis: depuisAr, pause_compte: true } };
                   delete pfG.next_action_after; delete pfG.processing_since;
                   const { data: maj } = await userClient.from("cross_post_jobs")
-                    .update({ status: "needs_user", error: messagePauseVintedGeste(), platform_fields: pfAPersister(pfG) })
+                    .update({ status: "needs_user", error: messagePauseVintedGeste({ depuis: depuisAr, publication: j.action === "publish", retrait: j.action === "delete" }), platform_fields: pfAPersister(pfG) })
                     .eq("id", j.id as string).eq("status", "pending").select("id");
                   n += (maj ?? []).length;
                 }
@@ -10371,9 +10474,9 @@ serve(async (req) => {
             const debutPause = Math.max(Number.isFinite(poseMs) ? poseMs : Date.now(), Number.isFinite(neMs) ? neMs : -Infinity);
             pfNeuf.antirobot_pause_cumul_ms = Math.max(0, Number(pf.antirobot_pause_cumul_ms) || 0) + Math.max(0, Date.now() - debutPause);
             pfNeuf.antirobot_pause_levee_le = new Date().toISOString();
-            delete pfNeuf.attente_antirobot_compte;
+            delete pfNeuf.attente_antirobot_compte; delete pfNeuf.connexion_absente;
             const { error: wErr } = await userClient.from("cross_post_jobs")
-              .update({ ...(j.error === ANTIROBOT_COMPTE_MSG ? { error: null } : {}), platform_fields: pfAPersister(pfNeuf) })
+              .update({ ...(j.error === ANTIROBOT_COMPTE_MSG || j.error === PAUSE_CONNEXION_MSG ? { error: null } : {}), platform_fields: pfAPersister(pfNeuf) })
               .eq("id", j.id as string).eq("status", "pending");
             if (wErr) console.warn(`[get-pending-jobs] pause anti-robot levée : marqueur non retiré sur ${String(j.id).slice(0, 8)} (${wErr.message})`);
           }

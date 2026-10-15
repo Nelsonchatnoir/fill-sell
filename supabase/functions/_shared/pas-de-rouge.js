@@ -57,6 +57,50 @@ function acte(action) {
   return "la publication";
 }
 
+// ── (15/10, lot C — Kossiwa, Hassan Said) CE QUI N'A PAS ÉTÉ TOUCHÉ, DIT
+//    SELON L'ACTION ─────────────────────────────────────────────────────────
+// « Ton annonce est intacte » s'affichait sur une PUBLICATION (il n'y a pas
+// encore d'annonce), et sur une republication dont l'annonce était déjà
+// retirée. Une seule phrase par situation, jamais une phrase figée.
+export function rienTouche(action, pf = {}) {
+  if (action === "delete") return "Rien n'a été retiré : l'annonce est toujours en ligne.";
+  if (action === "republish") {
+    return pf && pf.republish_step === "deleted"
+      ? "Ton annonce, déjà retirée, sera remise en ligne dès que possible."
+      : "Rien n'a été touché, ton annonce est intacte.";
+  }
+  return "Rien n'a été publié.";
+}
+
+/** Le message d'un compte Vinted restreint jusqu'à une date (r = restrictionVinted(pf)). */
+export function messageRestrictionVinted(r, action, pf = {}) {
+  const Acte = acte(action).replace(/^la /, "La ").replace(/^le /, "Le ");
+  return `Vinted a restreint ton compte jusqu'au ${r.jusquau} (« ${r.libelle} ») : d'ici là, il n'accepte ni nouvelle annonce ni ` +
+    `modification — de toi comme de FillSell. ${rienTouche(action, pf)} ${Acte} repart toute seule dès la fin de la restriction, ` +
+    "sans rien faire de ton côté.";
+}
+
+// ── (15/10, lot C — Hassan Said) VINTED REFUSE UN CHAMP NOMMÉ ─────────────
+// POST /api/v2/item_upload/items → HTTP 400 validation_error, errors[{ field,
+// value }] : « Le titre contient trop de symboles d'affilée ». La cause est
+// CONNUE et DÉTERMINISTE (le même titre redonnera le même refus) : jamais
+// « on ne sait pas encore pourquoi », jamais une reprise à l'identique.
+// Lu sur la réponse brute de Vinted (sonde réseau de l'extension), sinon sur
+// la phrase de l'extension (« Vinted a refusé la publication : … — l'annonce
+// n'a PAS été créée. Champ exigé par Vinted : Titre »).
+const REFUS_CHAMP_JSON_RE = /\\?"errors\\?"\s*:\s*\[\s*\{\s*\\?"field\\?"\s*:\s*\\?"([a-z_]+)\\?"\s*,\s*\\?"value\\?"\s*:\s*\\?"([^"\\]{2,200})/i;
+const REFUS_CHAMP_PHRASE_RE = /Vinted a refusé la (?:re)?publication : (.{2,200}?) — l'annonce n'a PAS été créée\. Champ exigé par Vinted : ([^.(]{2,40})/i;
+const CHAMP_VINTED = { title: "title", titre: "title", description: "description", price: "price", prix: "price" };
+export function refusChampVinted(texte) {
+  const t = String(texte ?? "");
+  if (!/validation_error|Champ exigé par Vinted/i.test(t)) return null;
+  const j = REFUS_CHAMP_JSON_RE.exec(t);
+  if (j && CHAMP_VINTED[j[1].toLowerCase()]) return { champ: CHAMP_VINTED[j[1].toLowerCase()], texte: j[2].trim() };
+  const p = REFUS_CHAMP_PHRASE_RE.exec(t);
+  const cle = p ? CHAMP_VINTED[p[2].trim().toLowerCase()] : null;
+  return p && cle ? { champ: cle, texte: p[1].trim() } : null;
+}
+
 /** (05/10) Un retrait bloqué : l'article est vendu, l'annonce encore en ligne. */
 function risqueRetrait(action, nom) {
   return action === "delete"
@@ -288,10 +332,7 @@ function classerEchecSansRegleRetrait(arg) {
         return {
           verdict: "reprise", statut: "pending", motif: "compte_restreint",
           dansMinutes: Math.max(5, Math.ceil(encore / 60_000) + 5),
-          message:
-            `Vinted a restreint ton compte jusqu'au ${r.jusquau} (« ${r.libelle} ») : d'ici là, il n'accepte ni nouvelle annonce ni ` +
-            `modification — de toi comme de FillSell. Rien n'a été touché, ton annonce est intacte. ${acte(action).replace(/^la /, "La ").replace(/^le /, "Le ")} ` +
-            "repart toute seule dès la fin de la restriction, sans rien faire de ton côté.",
+          message: messageRestrictionVinted(r, action, pf),
         };
       }
       return {
@@ -299,6 +340,30 @@ function classerEchecSansRegleRetrait(arg) {
         message:
           `La restriction de ton compte Vinted${r.jusquau ? ` (jusqu'au ${r.jusquau})` : ""} est terminée : ` +
           `${acte(action)} repart toute seule, l'état réel de l'annonce est revérifié avant tout geste.`,
+      };
+    }
+  }
+
+  // ── 0 ter. (15/10) VINTED REFUSE UN CHAMP NOMMÉ : la personne réécrit ──
+  if (platform === "vinted" && (action === "publish" || action === "republish")) {
+    const refus = refusChampVinted(t);
+    if (refus && refus.champ === "title") {
+      return {
+        verdict: "a_toi", statut: "needs_user", motif: "vinted_titre_refuse", source: "champ_a_choisir",
+        champ: { field_key: "title", field_label: "Titre", input_type: "text", target: { root: null, key: "titre_saisi" }, platform: "vinted" },
+        pf: { titre_refuse: { motif: refus.texte, le: new Date().toISOString() } },
+        message:
+          `Vinted refuse le titre de cette annonce : « ${refus.texte} ». ${rienTouche(action, pf)} ` +
+          `Écris un autre titre ci-dessous (bouton « ✋ Compléter ») : ${acte(action)} repart d'elle-même avec ce titre.`,
+      };
+    }
+    if (refus) {
+      const libelle = refus.champ === "price" ? "le prix" : "la description";
+      return {
+        verdict: "a_toi", statut: "needs_user", motif: `vinted_${refus.champ}_refuse`, source: "relancer",
+        message:
+          `Vinted refuse ${libelle} de cette annonce : « ${refus.texte} ». ${rienTouche(action, pf)} ` +
+          `Corrige ${libelle} dans la fiche de l'article, puis relance d'un clic ci-dessous.`,
       };
     }
   }
@@ -785,14 +850,14 @@ function classerEchecSansRegleRetrait(arg) {
   //    borne la boucle. Au-delà de 3 reprises, « relancer » ambre.
   if (essais < 3 && reprisesFaites < 3) {
     return reprise("inconnu_reprise",
-      `${acte(action).replace(/^la /, "La ").replace(/^le /, "Le ")} n'a pas abouti et ton annonce n'a pas ` +
-      "été touchée. On ne sait pas encore pourquoi : on refait un essai tout seuls.", 15);
+      `${acte(action).replace(/^la /, "La ").replace(/^le /, "Le ")} n'a pas abouti. ${rienTouche(action, pf)} ` +
+      "On ne sait pas encore pourquoi : on refait un essai tout seuls.", 15);
   }
   return {
     verdict: "a_toi", statut: "needs_user", motif: "inconnu_relancer", source: "relancer",
     message:
       `${acte(action).replace(/^la /, "La ").replace(/^le /, "Le ")} n'a pas abouti après plusieurs essais ` +
-      "automatiques, et ton annonce n'a pas été touchée. Tu peux la relancer d'un clic ci-dessous ; " +
+      `automatiques. ${rienTouche(action, pf)} Tu peux la relancer d'un clic ci-dessous ; ` +
       "si ça bloque encore, écris-nous, on regarde avec toi.",
   };
 }
