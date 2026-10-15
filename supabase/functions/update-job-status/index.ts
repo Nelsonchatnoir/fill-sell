@@ -28,6 +28,7 @@ import { marqueurDeDeveloppeur, porteDuVocabulaireDeDeveloppeur, porteUnPrefixeD
 // Trois sorties, jamais une quatrième : reprise (chez nous) · à toi (avec le
 // bouton ou le choix) · info neutre (job clos). Plus aucun `failed` rouge.
 import { classerEchec, estTailleHorsGrille, restrictionVinted } from "../_shared/pas-de-rouge.js";
+import { marqueIntrouvable, messagePause, SOURCE_INTROUVABLE } from "../_shared/introuvable-a-confirmer.js";
 import { questionEnFrancais } from "../_shared/question-francais.js";
 // L'option que l'annonce nomme déjà (24/09) — module JS sans import, le même
 // que l'app (stepper, modale « Compléter »).
@@ -1398,20 +1399,32 @@ serve(async (req) => {
             pfBody.republish_step !== "deleted" && !pfBody.deleted_at &&
             pfBase.republish_step !== "deleted" && !pfBase.deleted_at;
           if (jrow?.action === "republish" && jrow.platform === "vinted" && avantSuppression) {
+            // ⛔ (15/10, point 14 — DeadRoz, 60 republications) UN 404 SEUL N'EST
+            // PAS UNE PREUVE : l'endpoint d'édition a répondu 404 sur des annonces
+            // relevées EN LIGNE ensuite (3 comptes). Plus jamais « cancelled » sur
+            // cette seule lecture : PAUSE (needs_user introuvable_a_confirmer), rien
+            // retiré ; handler-watch la reprend quand un relevé revoit l'annonce,
+            // la clôt (message d'avant) quand un relevé complet ne la voit plus
+            // (_shared/introuvable-a-confirmer.js).
+            const at404 = String(((pfBody.introuvable_404 ?? {}) as Record<string, unknown>).at ?? "") || new Date().toISOString();
             pfDisparue = {
               ...pfBody,
-              annonce_disparue: {
-                at: new Date().toISOString(),
-                motif: typeof body.error === "string" ? body.error.slice(0, 300) : null,
-                pose_par: "update-job-status (404 confirmé à la capture = annonce plus en ligne, pas un échec)",
-              },
+              ...marqueIntrouvable(pfBase, { platform: "vinted", lecture: "item_upload_404", at: at404 }),
+              needs_user_source: SOURCE_INTROUVABLE,
             };
-            statutEffectif = "cancelled";
-            messageEffectif =
-              "Cette annonce n'est plus en ligne sur Vinted (vendue, retirée ou supprimée depuis sa dernière lecture). " +
-              "FillSell n'a rien retiré. Si tu l'as vendue, marque-la vendue ; sinon remets-la en ligne sur Vinted, " +
-              "puis synchronise ton dressing.";
-            raisonRequalif = "annonce disparue (404 confirmé avant toute suppression) : cancelled neutre";
+            statutEffectif = "needs_user";
+            messageEffectif = messagePause("vinted");
+            raisonRequalif = "404 de l'endpoint d'édition (lecture seule) : pause « introuvable à confirmer », jamais un verdict";
+            // La fiche n'est jamais datée « disparue » par cette seule lecture :
+            // l'extension (≤ 0.6.112) l'a datée à l'instant exact de la lecture.
+            try {
+              const jInv = await userClient.from("cross_post_jobs").select("inventaire_id").eq("id", jobId).maybeSingle();
+              const invId = (jInv?.data as { inventaire_id?: unknown } | null)?.inventaire_id;
+              if (invId != null && at404) {
+                await userClient.from("inventaire").update({ disparu_le: null }).eq("user_id", user.id)
+                  .eq("id", invId as number).eq("disparu_le", at404);
+              }
+            } catch (_e) { /* la date reste : la question « vendue ? » la montrera, rien de pire qu'avant */ }
           }
         }
       } catch (e) {

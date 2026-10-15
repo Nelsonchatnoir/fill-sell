@@ -43,6 +43,7 @@
  */
 
 import { autorisationOplaRequise, connexionOplaRequise, cookiesOplaTropVolumineux } from "./textes-jobs.ts";
+import { marqueIntrouvable, messagePause, SOURCE_INTROUVABLE } from "./introuvable-a-confirmer.js";
 import { lectureRefusBeebs, taillesCompatibles } from "./beebs-refus-formulaire.js";
 import { BUILD_COLIS_DANS_ENVOI, refusColisVinted, colisEnvoyeEtRefuse, messageColisAttendMiseAJour, messageColisRefuseMemeEnvoye, posteAvecEnvoiColis, messageColisNonAfficheParLaPage } from "./vinted-colis.js";
 
@@ -565,12 +566,15 @@ function classerEchecSansRegleRetrait(arg) {
         "Tes autres plateformes ne sont pas concernées.",
     };
   }
+  // ⛔ (15/10, point 14) Une lecture « plus en ligne » AVANT tout retrait n'est
+  // jamais un verdict : pause, rien retiré, confirmée ou démentie par un relevé
+  // (_shared/introuvable-a-confirmer.js, handler-watch). Le message d'avant ne
+  // part plus que sur preuve.
   if (action === "republish" && DISPARUE_RE.test(t) && /plus en ligne|n'existe plus/i.test(t)) {
     return {
-      verdict: "info", statut: "cancelled", motif: "annonce_disparue",
-      message:
-        `Cette annonce n'est plus en ligne sur ${nom} (vendue, retirée ou supprimée depuis sa dernière lecture). ` +
-        "FillSell n'a rien retiré. Si tu l'as vendue, marque-la vendue ; sinon remets-la en ligne, puis synchronise.",
+      verdict: "attente", statut: "needs_user", motif: "introuvable_a_confirmer", source: SOURCE_INTROUVABLE,
+      pf: marqueIntrouvable(pf, { platform, lecture: "etat_unavailable" }),
+      message: messagePause(platform),
     };
   }
 

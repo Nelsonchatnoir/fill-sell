@@ -346,7 +346,8 @@
     "selftest:vercel-ignorer-build": "node scripts/vercel-ignorer-build-selftest.mjs",
     "selftest:republication-apercu-gratuit": "node --import ./scripts/loader-ext.mjs scripts/republication-apercu-gratuit-selftest.mjs",
     "selftest:lbc-poids-main-propre": "node scripts/lbc-poids-main-propre-selftest.mjs",
-    "selftest:retenue-hors-ligne": "node scripts/retenue-hors-ligne-selftest.mjs"
+    "selftest:retenue-hors-ligne": "node scripts/retenue-hors-ligne-selftest.mjs",
+    "selftest:introuvable-a-confirmer": "node scripts/introuvable-a-confirmer-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

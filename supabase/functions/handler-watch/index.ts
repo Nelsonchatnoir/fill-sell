@@ -1,5 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { retraitEngage } from "../_shared/retenue-creneau.js";
+import {
+  decisionIntrouvable, messageDisparueConfirmee, messagePersistant,
+  SOURCE_INTROUVABLE, SOURCE_INTROUVABLE_PERSISTANT, REPRISES_PAR_COMPTE_ET_PASSAGE,
+} from "../_shared/introuvable-a-confirmer.js";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
 // (06/10, dbz70) Une taille refusée que le serveur sait désormais servir repart seule.
@@ -2593,6 +2597,85 @@ serve(async (req) => {
     }
   } catch (e) {
     console.error("[handler-watch] reprise des dépôts mis de côté :", (e as Error)?.message ?? e);
+  }
+
+  // ══ « INTROUVABLE À CONFIRMER » : REPRISE OU CLÔTURE SUR PREUVE (15/10, point 14) ══
+  // Une republication mise en pause parce qu'UNE lecture a dit « plus en ligne »
+  // (DeadRoz : 60 annulées sur un 404 de l'endpoint d'édition) : un relevé fait
+  // APRÈS la lecture tranche (_shared/introuvable-a-confirmer.js). Revue en
+  // ligne → elle repart (3 reprises au plus ; 3 par compte et par passage :
+  // jamais d'un coup, l'extension garde sa cadence et refait sa lecture avant
+  // tout retrait). Absente d'un relevé complet, vendue, fermée → close avec le
+  // message d'avant. Sinon elle attend. Lectures bornées (200 jobs, un compte à
+  // la fois), aucune écriture sur une ligne inchangée.
+  let introuvablesRepris = 0; let introuvablesClos = 0;
+  try {
+    const { data: enPause } = await supabase.from("cross_post_jobs")
+      .select("id, user_id, platform, status, error, inventaire_id, platform_listing_id, listing_url, created_at, platform_fields")
+      .eq("status", "needs_user").eq("action", "republish")
+      .eq("platform_fields->>needs_user_source", SOURCE_INTROUVABLE)
+      .order("created_at", { ascending: true }).limit(200);
+    // deno-lint-ignore no-explicit-any
+    const parCompteI = new Map<string, any[]>();
+    // deno-lint-ignore no-explicit-any
+    for (const j of (enPause ?? []) as any[]) {
+      const l = parCompteI.get(String(j.user_id)) ?? []; l.push(j); parCompteI.set(String(j.user_id), l);
+    }
+    for (const [userId, jobs] of parCompteI) {
+      // deno-lint-ignore no-explicit-any
+      const plusAncienne = Math.min(...jobs.map((j: any) => Date.parse(String(((j.platform_fields ?? {}).introuvable_a_confirmer ?? {}).depuis ?? "")) || Date.now()));
+      const { data: runs } = await supabase.from("vinted_sync_runs")
+        .select("platform, kind, status, started_at, finished_at, vinted_user_id")
+        .eq("user_id", userId).eq("status", "done").in("kind", ["dressing", "annonces"])
+        .gt("started_at", new Date(plusAncienne).toISOString())
+        .order("started_at", { ascending: true }).limit(50);
+      // deno-lint-ignore no-explicit-any
+      const invIds = [...new Set(jobs.map((j: any) => j.inventaire_id).filter((x: unknown) => x != null))];
+      const { data: fiches } = invIds.length
+        ? await supabase.from("inventaire").select("id, statut, last_synced_at, vinted_status, vinted_account_id").in("id", invIds.slice(0, 200))
+        : { data: [] };
+      // deno-lint-ignore no-explicit-any
+      const ficheDe = new Map(((fiches ?? []) as any[]).map((x) => [String(x.id), x]));
+      let reprisesCompte = 0;
+      for (const j of jobs) {
+        const pf = { ...(j.platform_fields ?? {}) } as Record<string, unknown>;
+        let annonce = null;
+        if (j.platform !== "vinted") {
+          const ident = String(j.platform_listing_id ?? "").trim();
+          let q = supabase.from("annonces_plateforme").select("vu_le, statut_plateforme, disparu_le").eq("user_id", userId).eq("platform", j.platform);
+          q = ident ? q.eq("listing_id", ident) : (j.listing_url ? q.eq("url", j.listing_url) : q.eq("job_id", j.id));
+          const { data: a } = await q.limit(1).maybeSingle();
+          annonce = a ?? null;
+        }
+        // deno-lint-ignore no-explicit-any
+        const runsPf = ((runs ?? []) as any[]).filter((r) => r.platform === j.platform);
+        const d = decisionIntrouvable({ job: j, fiche: ficheDe.get(String(j.inventaire_id)) ?? null, annonce, runs: runsPf });
+        const marque = (pf.introuvable_a_confirmer ?? {}) as Record<string, unknown>;
+        if (d.decision === "reprendre") {
+          if (reprisesCompte >= REPRISES_PAR_COMPTE_ET_PASSAGE) continue; // le reste au passage suivant
+          for (const k of ["needs_user_source", "needsUserField", "needsUserAttempts", "needsUserBoucle", "next_action_after",
+            "processing_since", "needs_user_actif_ms", "needs_user_tick_le", "needs_user_vu_le", "needs_user_vu_erreur", "introuvable_404"]) delete pf[k];
+          pf.introuvable_a_confirmer = { ...marque, reprises: (Number(marque.reprises) || 0) + 1, dementi_le: new Date().toISOString(), dementi_par: d.raison };
+          pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error, "needs_user", "handler-watch (introuvable démenti par un relevé, repris)");
+          const { data: maj } = await supabase.from("cross_post_jobs").update({ status: "pending", error: null, platform_fields: pf })
+            .eq("id", j.id).eq("status", "needs_user").select("id");
+          if (maj?.length) { introuvablesRepris++; reprisesCompte++; }
+        } else if (d.decision === "confirmer") {
+          pf.annonce_disparue = { at: new Date().toISOString(), motif: d.raison, pose_par: "handler-watch (introuvable confirmé par un relevé)" };
+          delete pf.needs_user_source;
+          const { data: maj } = await supabase.from("cross_post_jobs").update({ status: "cancelled", error: messageDisparueConfirmee(j.platform), platform_fields: pf })
+            .eq("id", j.id).eq("status", "needs_user").select("id");
+          if (maj?.length) introuvablesClos++;
+        } else if (d.decision === "persistant") {
+          pf.needs_user_source = SOURCE_INTROUVABLE_PERSISTANT;
+          await supabase.from("cross_post_jobs").update({ error: messagePersistant(j.platform), platform_fields: pf })
+            .eq("id", j.id).eq("status", "needs_user");
+        }
+      }
+    }
+    if (introuvablesRepris || introuvablesClos) console.log(`[handler-watch] introuvable à confirmer : ${introuvablesRepris} repris (relevé en ligne), ${introuvablesClos} clos (relevé sans l'annonce)`);
+  } catch (e) {
+    console.error("[handler-watch] introuvable à confirmer :", (e as Error)?.message ?? e);
   }
 
   // ══ LA RECONNEXION FAIT REPARTIR LES JOBS, SANS QU'ON CLIQUE (2026-09-22) ══
