@@ -155,15 +155,14 @@ export default function ReglagesPage({
   const palierApp = palierDesDrapeaux({ isPremium, isPro, isBusiness });
   const droitRepub = droitRepublication(planifiee.etatMulti ?? planifiee.etat, { palierApp, lecture: planifiee.lecture });
   const repubAutorisee = droitRepub.connu ? droitRepub.autorise === true : aAuMoins(palierApp, 'pro');
+  // ⛔ (15/10, décision de Nico) Un compte non autorisé ENTRE aussi : il voit
+  // le tableau complet et règle ses créneaux (aperçu, rien d'écrit au serveur) ;
+  // seul l'interrupteur, ou « Voir l'offre Pro », ouvre les offres.
   const ouvrirRepublication = () => {
-    if (!repubAutorisee) {
-      track('premium_click', { source: 'reglages_republication_planifiee' });
-      ouvrirOffres?.('reglages_republication_planifiee');
-      return;
-    }
-    track('republication_planifiee', { action: 'ouvrir_reglages', depuis: 'reglages' });
+    track('republication_planifiee', { action: 'ouvrir_reglages', depuis: 'reglages', ...(repubAutorisee ? {} : { apercu: true }) });
     setEcranRepub('liste');
   };
+  const offresRepublication = (origine) => ouvrirOffres?.(typeof origine === 'string' && origine ? origine : 'reglages_republication_planifiee');
   // Les sessions par plateforme sont DÉJÀ lues par cette page (l'entrée
   // « Plateformes ») : on les sert au module plutôt que d'ouvrir une seconde
   // lecture qui pourrait dire autre chose.
@@ -293,6 +292,7 @@ export default function ReglagesPage({
           lecture={planifiee.lecture}
           onReessayer={planifiee.recharger}
           plateformesCompte={plateformesCompte}
+          onOffres={offresRepublication}
         />
       )}
       {PLATEFORMES_PLANIFIEES.includes(ecranRepub) && (
@@ -310,6 +310,7 @@ export default function ReglagesPage({
           onOuvrirHistorique={() => setEcranRepub('historique')}
           palierApp={palierApp}
           lecture={planifiee.lecture}
+          onOffres={offresRepublication}
         />
       )}
       {ecranRepub === 'historique' && (

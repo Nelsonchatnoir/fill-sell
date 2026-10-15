@@ -242,8 +242,10 @@ export function Gestes({ lang = 'fr', variante = 'tuiles', publier, remonter, aR
 // ── REPUBLICATION AUTOMATIQUE — une ligne de 72 px ─────────────────────────
 // Pro : interrupteur (le MÊME geste que l'interrupteur des Réglages —
 // pauseGenerale), un tap sur la ligne ouvre les réglages. Sans Pro : liseré
-// doré et badge Pro EXACT (ProBadge de PlanBadge.jsx), toute la ligne ouvre
-// les offres. Jamais cachée : c'est un déclencheur d'abonnement.
+// doré et badge Pro EXACT (ProBadge de PlanBadge.jsx) ; (15/10, Nico) toute la
+// ligne ouvre l'ÉCRAN en aperçu (tableau complet, créneaux réglables), c'est
+// son interrupteur qui mène aux offres. Jamais cachée : c'est un déclencheur
+// d'abonnement.
 export function LigneRepublicationAuto({ lang = 'fr', autorise = false, actif = false, pauseMemorisee = false, busy = false, nomsActifs = [], onBasculer, onOuvrirReglages, onOffres }) {
   const fr = lang !== 'en';
   const titre = fr ? 'Republication automatique' : 'Automatic reposting';
@@ -263,8 +265,8 @@ export function LigneRepublicationAuto({ lang = 'fr', autorise = false, actif = 
   );
   if (!autorise) {
     return (
-      <button type="button" className="sk-btn sk-presse" onClick={onOffres}
-        aria-label={fr ? 'Republication automatique, incluse dans le plan Pro. Voir l’offre Pro' : 'Automatic reposting, included in the Pro plan. See the Pro plan'}
+      <button type="button" className="sk-btn sk-presse" onClick={onOuvrirReglages ?? onOffres}
+        aria-label={fr ? 'Republication automatique, incluse dans le plan Pro. Voir et régler les créneaux' : 'Automatic reposting, included in the Pro plan. See and set the time slots'}
         style={{
           display: 'flex', alignItems: 'center', gap: 12, width: '100%', minHeight: 72, padding: '0 16px', boxSizing: 'border-box', borderRadius: 16, textAlign: 'left',
           background: '#FFFFFF', border: `1px solid ${S.orBord}`, boxShadow: `${OMBRE.carte}, 0 0 16px -8px rgba(214,178,96,0.55)`, color: S.ink,

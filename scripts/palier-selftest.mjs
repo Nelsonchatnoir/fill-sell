@@ -215,7 +215,8 @@ try {
     lang: 'fr', etatMulti: m, parPlateforme: parPf(m), sessions: {}, interrupteur: 1, extensionStatus: ext, busy: false, erreur: null,
     palierApp, lecture, onReessayer: () => {},
   }));
-  const RESERVE = /Réservée au plan Pro|La republication automatique est réservée au plan Pro/;
+  // (15/10) Le compte non autorisé voit un APERÇU : « activation incluse dans le plan Pro ».
+  const RESERVE = /Réservée au plan Pro|La republication automatique est réservée au plan Pro|activation incluse dans le plan Pro|L’activation est incluse dans le plan Pro/;
 
   // Business (Louis), chargé
   const b = ecran(etatMulti('business', true, true), 'business');

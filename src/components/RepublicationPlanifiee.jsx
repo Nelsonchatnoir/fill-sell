@@ -26,11 +26,13 @@
 // `republish_planifiee_actif` (branche inerte à 0 : rien ne part). Une borne
 // inconnue → « — », jamais un chiffre optimiste.
 //
-// RÉSERVÉ AU PRO : `autorise` vient du serveur (republish_palier). Un compte
-// non autorisé voit le bloc avec « Activer », qui ouvre la modale de
-// conversion existante (openUpgradeModal) — exactement le comportement
-// actuel de l'accroche É6, rien de neuf. Les maquettes qui montrent un écran
-// Premium sont périmées sur ce point (module PRO, correction du 12/09 15h30).
+// RÉSERVÉ AU PRO : `autorise` vient du serveur (republish_palier).
+// ⛔ (15/10, décision de Nico) UN COMPTE NON AUTORISÉ ENTRE DANS L'ÉCRAN : il voit
+// le tableau complet et règle ses créneaux pour comprendre ce que c'est (mode
+// « aperçu » : rien n'est écrit au serveur, le brouillon reste sur l'appareil,
+// `apercuRepublication.js`) ; SEUL l'interrupteur (et « Voir l'offre Pro ») mène
+// à la modale d'offres. Le serveur refuse toujours d'activer (auto_reserve_pro) :
+// aucun prix, aucun quota, aucune cadence ne change.
 //
 // EXPOSITION : ce lot ne monte le module que si l'interrupteur global vaut 1
 // OU si le compte porte déjà un réglage (test à la main, par SQL). Sinon
@@ -52,6 +54,7 @@ import { useFondFige } from '../utils/modale';
 import PlatformLogo from './platform-logos/PlatformLogo';
 import { humanizeJobError } from '../utils/shared';
 import { fuseauLocal, extensionRefuse, nombreAttendu, plateformesPlanifieesVisibles, droitRepublication } from '../hooks/useRepublicationPlanifiee';
+import { lireBrouillonApercu, garderBrouillonApercu } from '../utils/apercuRepublication';
 
 // Noms propres : ils ne se traduisent pas (même table que SousPagePlateformes).
 const NOMS = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', opla: 'Opla', depop: 'Depop' };
@@ -366,7 +369,7 @@ function synthese(etat, { fr, enService, extensionStatus, session = null, lectur
       ? (fr ? 'Réglages illisibles pour l’instant — on réessaie' : 'Settings unreadable for now — retrying')
       : (fr ? 'Lecture de tes réglages…' : 'Reading your settings…');
   } else if (!actif) {
-    if (refuse) { etatLigne = fr ? 'Réservée au plan Pro' : 'Pro plan feature'; }
+    if (refuse) { etatLigne = fr ? 'Aperçu · activation incluse dans le plan Pro' : 'Preview · turning on is included in the Pro plan'; }
     else if (moteurLegacy) { etatLigne = fr ? 'Mode classique en cours' : 'Classic mode running'; etatTon = 'amber'; }
     else if (invalide && invalide !== 'palier' && invalide !== 'plateforme_sortie') { etatLigne = fr ? 'Réglage à corriger' : 'Setting needs fixing'; etatTon = 'amber'; }
     else { etatLigne = fr ? 'Inactive' : 'Off'; }
@@ -500,6 +503,25 @@ function PastillePro() {
     <span style={{ fontWeight: 800, fontSize: 10, letterSpacing: '.06em', textTransform: 'uppercase', color: P.ink, background: `linear-gradient(120deg,${P.amber},#F2B48C)`, borderRadius: 999, padding: '3px 8px', flexShrink: 0 }}>
       PRO
     </span>
+  );
+}
+
+// (15/10, Nico) Le bandeau d'un compte non autorisé : ce qu'il voit est un
+// aperçu, il peut tout régler, et UN geste mène à l'offre. Jamais rouge : ce
+// n'est pas une erreur.
+function BandeauApercu({ fr, onOffres, bord = 'top' }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 18px', background: P.paper, [bord === 'top' ? 'borderTop' : 'borderBottom']: `1px solid ${P.border}`, flexWrap: 'wrap' }}>
+      <span style={{ flex: '1 1 200px', minWidth: 0, fontWeight: 500, fontSize: 12.5, lineHeight: 1.45, color: P.mute2 }}>
+        {fr
+          ? 'Règle tes créneaux pour voir ce que ça donne : rien ne part tant que ce n’est pas activé. L’activation est incluse dans le plan Pro.'
+          : 'Set your time slots to see how it works: nothing goes out until it is turned on. Turning it on is included in the Pro plan.'}
+      </span>
+      <button type="button" className="rp-btn" onClick={onOffres}
+        style={{ flexShrink: 0, minHeight: 40, padding: '0 16px', borderRadius: 999, fontSize: 13, fontWeight: 800, color: '#fff', background: `linear-gradient(120deg,${P.teal},${P.tealDeep})`, boxShadow: '0 6px 16px rgba(47,158,144,.28)', whiteSpace: 'nowrap' }}>
+        {fr ? 'Voir l’offre Pro' : 'See the Pro plan'}
+      </button>
+    </div>
   );
 }
 
@@ -700,6 +722,8 @@ export function RepublicationPlanifieePlateformes({
   // (stockFiltres.plateformesDuCompte) : Depop n'a de ligne que là où elle
   // est ouverte. null = aucun filtre de plus (comportement d'avant).
   plateformesCompte = null,
+  // (15/10) Compte non autorisé : « Activer » ouvre les offres.
+  onOffres = null,
 }) {
   const fr = lang !== 'en';
   const enService = interrupteur === 1;
@@ -752,7 +776,7 @@ export function RepublicationPlanifieePlateformes({
         ? { txt: fr ? 'Réglages illisibles pour l’instant' : 'Settings unreadable for now', ton: 'amber' }
         : { txt: fr ? 'Lecture de tes réglages…' : 'Reading your settings…', ton: 'mute' };
     }
-    if (!autorise) return { txt: fr ? 'Réservée au plan Pro' : 'Pro plan feature', ton: 'mute' };
+    if (!autorise) return { txt: fr ? 'Aperçu · activation incluse dans le plan Pro' : 'Preview · turning on is included in the Pro plan', ton: 'mute' };
     if (!actives) return { txt: fr ? 'Aucune plateforme active' : 'No platform on', ton: 'mute' };
     if (!enService) return { txt: fr ? 'Pas encore en service' : 'Not in service yet', ton: 'amber' };
     const combien = fr ? `${actives} ${plur(actives, 'plateforme active', 'plateformes actives')}` : `${actives} ${plur(actives, 'platform on', 'platforms on')}`;
@@ -815,9 +839,7 @@ export function RepublicationPlanifieePlateformes({
         )}
 
         {refuse && (
-          <div style={{ padding: '12px 18px', borderTop: `1px solid ${P.border}`, fontSize: 12.5, color: P.rouge, background: P.rougeBg, fontWeight: 600 }}>
-            {texteErreurReglage('auto_reserve_pro', fr)}
-          </div>
+          <BandeauApercu fr={fr} bord="top" onOffres={() => { track('premium_click', { source: 'republication_planifiee_liste' }); onOffres?.('republication_planifiee_liste'); }} />
         )}
         {!droit.connu && droit.lecture === 'echec' && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 18px', borderTop: `1px solid ${P.border}`, background: P.amberBg }}>
@@ -869,8 +891,8 @@ export function RepublicationPlanifieeBloc({ lang, etat, interrupteur, extension
   const { actif, autorise } = s;
   const nombre = s.nombre;
   const ouvrir = () => {
-    if (s.refuse) { onActiverNonPro?.(); return; }
-    track('republication_planifiee', { action: 'ouvrir_reglages', depuis: 'bloc_stock' });
+    // (15/10) Non autorisé : l'écran s'ouvre en aperçu ; seul « Activer » mène à l'offre.
+    track('republication_planifiee', { action: 'ouvrir_reglages', depuis: 'bloc_stock', ...(s.refuse ? { apercu: true } : {}) });
     onOuvrirReglages?.();
   };
   const activer = (e) => {
@@ -1016,12 +1038,17 @@ export function RepublicationPlanifieeBloc({ lang, etat, interrupteur, extension
 // ═══════════════════════════════════════════════════════════════════════════
 // 2. L'ÉCRAN DE RÉGLAGES
 // ═══════════════════════════════════════════════════════════════════════════
-export function RepublicationPlanifieeReglages({ lang, platform = 'vinted', session = null, etat, interrupteur, extensionStatus, busy, erreur, regler, onClose, onOuvrirHistorique, palierApp = null, lecture = 'ok' }) {
+export function RepublicationPlanifieeReglages({ lang, platform = 'vinted', session = null, etat, interrupteur, extensionStatus, busy, erreur, regler, onClose, onOuvrirHistorique, palierApp = null, lecture = 'ok', onOffres = null }) {
   const fr = lang !== 'en';
   const enService = interrupteur === 1;
   const s = synthese(etat, { fr, enService, extensionStatus, session, lecture });
   const r = s.r;
   const actif = s.actif;
+  // (15/10, Nico) APERÇU : un compte que le serveur refuse règle tout, rien
+  // n'est écrit au serveur (le brouillon reste sur l'appareil) ; l'interrupteur
+  // ouvre l'offre. État inconnu (lecture en cours) : tout reste figé, comme avant.
+  const apercu = s.refuse === true;
+  const fige = busy || (!s.autorise && !apercu);
   // 18/09 : cet écran est celui d'UNE plateforme. Tout ce qu'il écrit porte
   // son nom (`platform` dans le patch) ; tout ce qu'il lit vient de l'état de
   // cette plateforme. Une plateforme que FillSell n'a pas ouverte se règle
@@ -1038,34 +1065,43 @@ export function RepublicationPlanifieeReglages({ lang, platform = 'vinted', sess
 
   // Brouillon local (réponse immédiate au doigt), ré-aligné sur l'état serveur
   // à chaque retour ; les écritures sont regroupées 500 ms.
-  const [brouillon, setBrouillon] = useState(() => ({
+  // Sans réglage serveur, le brouillon d'aperçu gardé sur l'appareil (15/10) :
+  // celui qu'un compte a réglé avant de passer Pro part à l'activation.
+  const depart = () => ({
     creneau: s.creneau, de: s.de, a: s.a, jours: s.jours,
     plafond_jour: Number(r?.plafond_jour) || Number(legacy?.plafond_jour) || plafondPalier || 1,
     age_jours: Number(r?.age_jours) || Number(legacy?.age_jours) || 30, ordre: r?.ordre ?? 'anciennes',
     plafond_boutique: r?.plafond_boutique ?? {},
-  }));
+    ...(!r ? (lireBrouillonApercu(pf) ?? {}) : {}),
+  });
+  const [brouillon, setBrouillon] = useState(depart);
   useEffect(() => {
-    setBrouillon({
-      creneau: s.creneau, de: s.de, a: s.a, jours: s.jours,
-      plafond_jour: Number(r?.plafond_jour) || Number(legacy?.plafond_jour) || plafondPalier || 1,
-      age_jours: Number(r?.age_jours) || Number(legacy?.age_jours) || 30, ordre: r?.ordre ?? 'anciennes',
-      plafond_boutique: r?.plafond_boutique ?? {},
-    });
+    setBrouillon(depart());
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [etat]);
 
   const enAttente = useRef({}); const minuterie = useRef(null);
   const appliquer = useCallback((patch, { immediat = false } = {}) => {
-    setBrouillon((b) => ({ ...b, ...patch }));
+    setBrouillon((b) => {
+      const n = { ...b, ...patch };
+      if (apercu || !r) garderBrouillonApercu(pf, n);
+      return n;
+    });
+    if (apercu) return; // aperçu : rien n'est écrit au serveur, jamais
     if (!r) return; // pas de réglage : rien à écrire tant qu'on n'active pas
     enAttente.current = { ...enAttente.current, ...patch };
     clearTimeout(minuterie.current);
     const envoyer = () => { const p = enAttente.current; enAttente.current = {}; if (Object.keys(p).length) regler(p, pf); };
     if (immediat) envoyer(); else minuterie.current = setTimeout(envoyer, 500);
-  }, [r, regler, pf]);
+  }, [r, regler, pf, apercu]);
   useEffect(() => () => clearTimeout(minuterie.current), []);
 
   const basculer = () => {
+    if (apercu && !actif) {
+      track('premium_click', { source: 'republication_planifiee_activer', platform: pf });
+      onOffres?.('republication_planifiee_activer');
+      return;
+    }
     if (actif) {
       track('republication_planifiee', { action: 'couper', platform: pf });
       regler({ actif: false, arret_motif: 'utilisateur' }, pf);
@@ -1116,7 +1152,7 @@ export function RepublicationPlanifieeReglages({ lang, platform = 'vinted', sess
 
   return (
     <EcranPlein titre={nomPf} sousTitre={fr ? 'Republication automatique' : 'Automatic reposting'} onClose={onClose}
-      droite={<Interrupteur on={actif} onChange={basculer} disabled={busy || !s.autorise || !persoValide} label={fr ? `Activer la republication automatique sur ${nomPf}` : `Turn on automatic reposting on ${nomPf}`} />}>
+      droite={<Interrupteur on={actif} onChange={basculer} disabled={fige || !persoValide} label={fr ? `Activer la republication automatique sur ${nomPf}` : `Turn on automatic reposting on ${nomPf}`} />}>
       <div style={{ background: '#fff', border: `1px solid ${P.border}`, borderRadius: 20, boxShadow: '0 1px 4px rgba(16,32,27,.05)', overflow: 'hidden' }}>
         {/* En-tête de carte : le LOGO de la plateforme (on sait où on est du
             premier coup d'œil), ce que la republication y fait réellement, et
@@ -1176,10 +1212,8 @@ export function RepublicationPlanifieeReglages({ lang, platform = 'vinted', sess
             </div>
           </div>
         )}
-        {s.refuse && (
-          <div style={{ padding: '12px 18px', borderBottom: `1px solid ${P.border}`, fontSize: 12.5, color: P.rouge, background: P.rougeBg, fontWeight: 600 }}>
-            {texteErreurReglage('auto_reserve_pro', fr)}
-          </div>
+        {apercu && (
+          <BandeauApercu fr={fr} bord="bottom" onOffres={() => { track('premium_click', { source: 'republication_planifiee_reglages', platform: pf }); onOffres?.('republication_planifiee_reglages'); }} />
         )}
         {erreur && (
           <div style={{ padding: '12px 18px', borderBottom: `1px solid ${P.border}`, fontSize: 12.5, color: P.rouge, background: P.rougeBg, fontWeight: 600 }}>
@@ -1238,7 +1272,7 @@ export function RepublicationPlanifieeReglages({ lang, platform = 'vinted', sess
                           </div>
                         )}
                       </div>
-                      <Stepper valeur={capB} min={1} max={brouillon.plafond_jour} pas={5} disabled={busy || !s.autorise} label={fr ? `Plafond ${nom}` : `Cap ${nom}`}
+                      <Stepper valeur={capB} min={1} max={brouillon.plafond_jour} pas={5} disabled={fige} label={fr ? `Plafond ${nom}` : `Cap ${nom}`}
                         suffixe={fr ? '/jour' : '/day'}
                         onChange={(v) => appliquer({ plafond_boutique: { ...(brouillon.plafond_boutique ?? {}), [id]: v } })} />
                     </div>
@@ -1255,18 +1289,18 @@ export function RepublicationPlanifieeReglages({ lang, platform = 'vinted', sess
           {/* Créneau */}
           <Section titre={fr ? 'Créneau de republication' : 'Reposting slot'} sousTitre={fr ? 'Heure locale · Chrome ouvert' : 'Local time · Chrome open'}>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              <Pilule actif={brouillon.creneau === 'matin'} disabled={busy || !s.autorise} onClick={() => choisirCreneau('matin')}>{fr ? 'Matin · 8h–10h' : 'Morning · 8–10'}</Pilule>
-              <Pilule actif={brouillon.creneau === 'midi'} disabled={busy || !s.autorise} onClick={() => choisirCreneau('midi')}>{fr ? 'Midi · 12h–14h' : 'Noon · 12–14'}</Pilule>
-              <Pilule actif={brouillon.creneau === 'soir'} disabled={busy || !s.autorise} onClick={() => choisirCreneau('soir')}>{fr ? 'Soir · 19h–22h' : 'Evening · 19–22'}</Pilule>
-              <Pilule actif={brouillon.creneau === 'perso'} disabled={busy || !s.autorise} onClick={() => choisirCreneau('perso')}>{fr ? 'Personnalisé' : 'Custom'}</Pilule>
+              <Pilule actif={brouillon.creneau === 'matin'} disabled={fige} onClick={() => choisirCreneau('matin')}>{fr ? 'Matin · 8h–10h' : 'Morning · 8–10'}</Pilule>
+              <Pilule actif={brouillon.creneau === 'midi'} disabled={fige} onClick={() => choisirCreneau('midi')}>{fr ? 'Midi · 12h–14h' : 'Noon · 12–14'}</Pilule>
+              <Pilule actif={brouillon.creneau === 'soir'} disabled={fige} onClick={() => choisirCreneau('soir')}>{fr ? 'Soir · 19h–22h' : 'Evening · 19–22'}</Pilule>
+              <Pilule actif={brouillon.creneau === 'perso'} disabled={fige} onClick={() => choisirCreneau('perso')}>{fr ? 'Personnalisé' : 'Custom'}</Pilule>
             </div>
             {brouillon.creneau === 'perso' && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
                 <span style={{ fontWeight: 500, fontSize: 13, color: P.mute2 }}>{fr ? 'De' : 'From'}</span>
-                <input type="time" className="rp-input-time" value={brouillon.de} disabled={busy || !s.autorise}
+                <input type="time" className="rp-input-time" value={brouillon.de} disabled={fige}
                   onChange={(e) => appliquer({ de: e.target.value })} />
                 <span style={{ fontWeight: 500, fontSize: 13, color: P.mute2 }}>{fr ? 'à' : 'to'}</span>
-                <input type="time" className="rp-input-time" value={brouillon.a} disabled={busy || !s.autorise}
+                <input type="time" className="rp-input-time" value={brouillon.a} disabled={fige}
                   onChange={(e) => appliquer({ a: e.target.value })} />
                 {!persoValide && <span style={{ fontSize: 12, color: P.rouge, fontWeight: 600 }}>{texteErreurReglage('creneau_invalide', fr)}</span>}
               </div>
@@ -1291,7 +1325,7 @@ export function RepublicationPlanifieeReglages({ lang, platform = 'vinted', sess
               {[1, 2, 3, 4, 5, 6, 7].map((d) => {
                 const on = brouillon.jours.includes(d);
                 return (
-                  <button key={d} type="button" aria-pressed={on} disabled={busy || !s.autorise} onClick={() => basculerJour(d)} className="rp-btn"
+                  <button key={d} type="button" aria-pressed={on} disabled={fige} onClick={() => basculerJour(d)} className="rp-btn"
                     style={{ width: 40, height: 40, borderRadius: 12, fontWeight: 700, fontSize: 12.5, transition: 'background .15s,color .15s', background: on ? P.ink : P.chip, color: on ? '#fff' : P.mute2 }}>
                     {JOURS[fr ? 'fr' : 'en'][d - 1]}
                   </button>
@@ -1304,7 +1338,7 @@ export function RepublicationPlanifieeReglages({ lang, platform = 'vinted', sess
           <div style={{ padding: '16px 0', borderBottom: `1px solid ${P.border}`, display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(230px,1fr))', gap: '16px 28px' }}>
             <div>
               <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>{multi ? (fr ? 'Plafond par jour, toutes boutiques' : 'Daily cap, all shops') : (fr ? 'Plafond par jour' : 'Daily cap')}</div>
-              <Stepper valeur={brouillon.plafond_jour} min={1} max={illimite ? 1000 : Math.max(1, plafondPalier)} pas={5} disabled={busy || !s.autorise} label={fr ? 'Plafond par jour' : 'Daily cap'}
+              <Stepper valeur={brouillon.plafond_jour} min={1} max={illimite ? 1000 : Math.max(1, plafondPalier)} pas={5} disabled={fige} label={fr ? 'Plafond par jour' : 'Daily cap'}
                 onChange={(v) => appliquer({ plafond_jour: v })} />
               <div style={{ fontWeight: 500, fontSize: 12.5, lineHeight: 1.45, color: P.mute2, marginTop: 8 }}>
                 {illimite
@@ -1330,7 +1364,7 @@ export function RepublicationPlanifieeReglages({ lang, platform = 'vinted', sess
             </div>
             <div>
               <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>{fr ? 'En ligne depuis plus de' : 'Live for more than'}</div>
-              <Stepper valeur={brouillon.age_jours} min={AGE_MIN} max={AGE_MAX} pas={1} suffixe={fr ? 'jours' : 'days'} disabled={busy || !s.autorise} label={fr ? 'Ancienneté minimale' : 'Minimum age'}
+              <Stepper valeur={brouillon.age_jours} min={AGE_MIN} max={AGE_MAX} pas={1} suffixe={fr ? 'jours' : 'days'} disabled={fige} label={fr ? 'Ancienneté minimale' : 'Minimum age'}
                 onChange={(v) => appliquer({ age_jours: v })} />
               <div style={{ fontWeight: 500, fontSize: 12.5, lineHeight: 1.45, color: P.mute2, marginTop: 8 }}>
                 {fr ? '7 jours minimum : republier une annonce mise en ligne il y a un ou deux jours est un motif que Vinted sait repérer — c’est ton compte qui prendrait le risque.'
@@ -1342,13 +1376,13 @@ export function RepublicationPlanifieeReglages({ lang, platform = 'vinted', sess
           {/* Ordre */}
           <Section titre={fr ? 'Ordre de passage' : 'Order'} sousTitre={fr ? "Quand il y a plus d'éligibles que de places" : 'When more are eligible than can go'} dernier>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              <Pilule actif={brouillon.ordre === 'anciennes'} disabled={busy || !s.autorise} onClick={() => appliquer({ ordre: 'anciennes' }, { immediat: true })}>{fr ? 'Les plus anciennes d’abord' : 'Oldest first'}</Pilule>
-              <Pilule actif={brouillon.ordre === 'prix'} disabled={busy || !s.autorise} onClick={() => appliquer({ ordre: 'prix' }, { immediat: true })}>{fr ? 'Prix élevé d’abord' : 'Highest price first'}</Pilule>
+              <Pilule actif={brouillon.ordre === 'anciennes'} disabled={fige} onClick={() => appliquer({ ordre: 'anciennes' }, { immediat: true })}>{fr ? 'Les plus anciennes d’abord' : 'Oldest first'}</Pilule>
+              <Pilule actif={brouillon.ordre === 'prix'} disabled={fige} onClick={() => appliquer({ ordre: 'prix' }, { immediat: true })}>{fr ? 'Prix élevé d’abord' : 'Highest price first'}</Pilule>
               {/* « Les moins vues » n'existe QUE sur Vinted : c'est le seul
                   endroit où l'on relève un compteur de vues. Ailleurs, ce
                   choix trierait sur du vide — on ne le propose pas. */}
               {pf === 'vinted' && (
-                <Pilule actif={brouillon.ordre === 'vues'} disabled={busy || !s.autorise} onClick={() => appliquer({ ordre: 'vues' }, { immediat: true })}>{fr ? 'Les moins vues d’abord' : 'Least viewed first'}</Pilule>
+                <Pilule actif={brouillon.ordre === 'vues'} disabled={fige} onClick={() => appliquer({ ordre: 'vues' }, { immediat: true })}>{fr ? 'Les moins vues d’abord' : 'Least viewed first'}</Pilule>
               )}
             </div>
             {brouillon.ordre === 'vues' && (

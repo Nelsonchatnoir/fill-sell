@@ -342,7 +342,11 @@
     "selftest:extension-autre-compte": "node scripts/extension-autre-compte-selftest.mjs",
     "selftest:parcours-apres-synchro": "node scripts/parcours-apres-synchro-selftest.mjs",
     "selftest:rapprochement-republication": "node scripts/rapprochement-republication-selftest.mjs",
-    "selftest:fiches-a-verifier-visibles": "node scripts/fiches-a-verifier-visibles-selftest.mjs"
+    "selftest:fiches-a-verifier-visibles": "node scripts/fiches-a-verifier-visibles-selftest.mjs",
+    "selftest:vercel-ignorer-build": "node scripts/vercel-ignorer-build-selftest.mjs",
+    "selftest:republication-apercu-gratuit": "node --import ./scripts/loader-ext.mjs scripts/republication-apercu-gratuit-selftest.mjs",
+    "selftest:lbc-poids-main-propre": "node scripts/lbc-poids-main-propre-selftest.mjs",
+    "selftest:retenue-hors-ligne": "node scripts/retenue-hors-ligne-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
