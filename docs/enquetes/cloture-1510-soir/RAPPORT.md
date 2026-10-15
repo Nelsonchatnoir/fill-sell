@@ -46,6 +46,7 @@ select extension_build, extension_sessions -> 'vinted', platform_settings -> 'vi
 
 ## Restes
 
-- Cloudflare : réglage « jamais de 404 gardé sous /assets/ » (session à ouvrir par Nico).
+- Cloudflare : FAIT le 15/10 ~17:50 (Cache Response Rule « Assets : jamais un 404 en cache », preuve : 404 `no-store`
+  `BYPASS` trois fois de suite).
 - 0.6.113 : à téléverser au Chrome Web Store (remplace la 0.6.112 en examen).
 - Point 13 : mesures après service de la 0.6.112/0.6.113.

@@ -17,7 +17,8 @@ contraire. Il se périme : `functions list`, `cron.job` et
   qu'aux doutes « Est-ce le même article ? »** (Haiku, miniatures, un verdict par paire, 1 €/compte/passage, jamais le
   titre seul, jamais deux annonces d'une plateforme, jamais chez un compte qui a dit « Non, deux exemplaires ») ;
   ⛔ **Leboncoin/Beebs/Depop = une annonce hors ligne à la fois** ; ⛔ **un push de notes seules ne reconstruit pas le
-  site** (`vercel.json` ignoreCommand) ; réglage Cloudflare 404 /assets/ EN ATTENTE de Nico ; OTA/web **2.9.93** ;
+  site** (`vercel.json` ignoreCommand) ; ⛔ **Cloudflare ne garde plus jamais un 404 sous /assets/** (Cache Response
+  Rule « Assets : jamais un 404 en cache » : no-store, BYPASS) ; OTA/web **2.9.93** ;
   extension **0.6.113 À TÉLÉVERSER** (`build/CWS-0.6.113-A-TELEVERSER/`).
 - **⛔ 15/10 jour — CLORE TOUS LES POINTS (A → H, C-bis, P16 → P18)** — état : `docs/agents/etat-2026-10-01.md` § « 15/10 jour » :
   migs **20261015100000 / 110000 / 120000 / 130000 / 140000 APPLIQUÉES** ; gpj **v247**, uj **v135**, hw **v106**,
