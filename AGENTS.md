@@ -5,6 +5,7 @@ fin) et `docs/agents/consignes-2026-09-28.md` (règles) remplacent tout historiq
 contraire. `functions list`, `cron.job` et `profiles.extension_build` font foi.
 
 - **Servi** : ext. **0.6.110** (**0.6.112 À TÉLÉVERSER**, la 0.6.111 jamais) ; min **0.6.81** ; OTA 2.9.92 ; gpj v247 ; hw v106 ; gl v117 ; rapprochement **v25** (moteur v23).
+- **⛔ 15/10 soir** (`etat-2026-10-01.md` § « 15/10 soir ») : lecture « plus en ligne » = pause, jamais un verdict ; IA (Haiku) sur les seuls doutes de fusion, bornée ; LBC/Beebs/Depop = une annonce hors ligne à la fois ; push de notes seules = pas de build (migs 20261015150000 → 180000).
 - **⛔ 15/10 jour** (`etat-2026-10-01.md` § « 15/10 jour ») : republication d'une même plateforme = une fiche si TOUT est identique, jamais après un « Non, deux exemplaires » ; plateforme à deux annonces sur une fiche vendue = « Déjà vendu ? » pour chacune ; échec passager d'empreinte jamais illisible (migs 20261015100000 → 140000).
 - **⛔ 15/10 — reprise** (`docs/enquetes/reprise-1410/RAPPORT.md`) : « Vendue » sans boucle, commande Vinted annulée → stock, tête de file (migs 20261015000000/010000/020000) ; `.in()` de masse = `_shared/par-lots.ts` ; garde de boutique = Vinted seule.
 - **⛔ 12/10 — rapprochement en tranches** (`docs/enquetes/ferreira-cpu-1210/RAPPORT.md`) : passe en tranches sous ~900 ms

@@ -4,11 +4,21 @@
 « 03/10 nuit — clôture Louis + marque + prix » et « 04/10 matin —
 complément », « 04/10 fin de matinée — chantier Louis », « 04/10 soir —
 incident CPU », « 04/10 nuit — six défauts clients » et « 05/10 — lot
-terminal Problèmes » / « 05/10 après-midi » / « 06/10 » / « 06/10 soir » / « 06/10 nuit » / « 08/10 nuit — MULTI-SYNCHRO » / « 08/10 matin — boucles » / « 08/10 fin de matinée — SUJET CLOS » / « 08/10 après-midi — complément » / « 08/10 soir — fin du chantier multi-synchro » / « 08/10 nuit — Bebertdeals : remise en ligne Vinted » / « 08/10 nuit — VENTES PROUVÉES » / « 09/10 nuit — DEPOP » / « 09/10 fin de matinée — DEPOP : reprise complète » / « 11/10 — une vente signalée une fois » / « 11/10 midi — LOT UNIQUE » / « 11/10 après-midi — POIDS LEBONCOIN » / « 11/10 fin d'après-midi — BOUTIQUE, ANCIENNETÉ, QUOTA » / « 11/10 soir — LOT DE DIX POINTS » / « 11/10 nuit — LOT LOUIS (fin) » / « 11/10 nuit — DEPOP COMME OPLA » / « 12/10 nuit — CLÔTURE » / « 15/10 nuit — REPRISE EN MAIN » / « 15/10 jour — CLORE TOUS LES POINTS » en fin ; reprises : `docs/reprise/terminal-depop-0910.md`, `docs/reprise/terminal-ventes-prouvees-0810.md`, `docs/reprise/terminal-bebertdeals-0810.md`, `docs/reprise/terminal-boucles-0810.md`, `docs/reprise/terminal-cloture-multi-synchro-0810.md`, `docs/reprise/terminal-complement-0810.md`, `docs/reprise/terminal-fin-multi-synchro-0810.md`) et
+terminal Problèmes » / « 05/10 après-midi » / « 06/10 » / « 06/10 soir » / « 06/10 nuit » / « 08/10 nuit — MULTI-SYNCHRO » / « 08/10 matin — boucles » / « 08/10 fin de matinée — SUJET CLOS » / « 08/10 après-midi — complément » / « 08/10 soir — fin du chantier multi-synchro » / « 08/10 nuit — Bebertdeals : remise en ligne Vinted » / « 08/10 nuit — VENTES PROUVÉES » / « 09/10 nuit — DEPOP » / « 09/10 fin de matinée — DEPOP : reprise complète » / « 11/10 — une vente signalée une fois » / « 11/10 midi — LOT UNIQUE » / « 11/10 après-midi — POIDS LEBONCOIN » / « 11/10 fin d'après-midi — BOUTIQUE, ANCIENNETÉ, QUOTA » / « 11/10 soir — LOT DE DIX POINTS » / « 11/10 nuit — LOT LOUIS (fin) » / « 11/10 nuit — DEPOP COMME OPLA » / « 12/10 nuit — CLÔTURE » / « 15/10 nuit — REPRISE EN MAIN » / « 15/10 jour — CLORE TOUS LES POINTS » / « 15/10 soir — MISSION DE CLÔTURE » en fin ; reprises : `docs/reprise/terminal-depop-0910.md`, `docs/reprise/terminal-ventes-prouvees-0810.md`, `docs/reprise/terminal-bebertdeals-0810.md`, `docs/reprise/terminal-boucles-0810.md`, `docs/reprise/terminal-cloture-multi-synchro-0810.md`, `docs/reprise/terminal-complement-0810.md`, `docs/reprise/terminal-fin-multi-synchro-0810.md`) et
 `docs/agents/consignes-2026-09-28.md` (règles), qui remplacent tout historique
 contraire. Il se périme : `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
 
+- **⛔ 15/10 soir — MISSION DE CLÔTURE (1 → 14)** — état : `docs/agents/etat-2026-10-01.md` § « 15/10 soir », rapport
+  `docs/enquetes/cloture-1510-soir/RAPPORT.md` : migs **20261015150000 / 160000 / 170000 / 180000 APPLIQUÉES** ;
+  gpj **v249**, uj **v136**, hw **v108**, rapprochement **v26**, **rapprochement-ia** (nouvelle, `false`, cron 53
+  `rapprochement-ia-2min`, interrupteur coin_config `rapprochement_ia_actif`) ; ⛔ **une lecture « plus en ligne »
+  n'est jamais un verdict** (pause, relevé qui tranche : `_shared/introuvable-a-confirmer.js`) ; ⛔ **l'IA ne répond
+  qu'aux doutes « Est-ce le même article ? »** (Haiku, miniatures, un verdict par paire, 1 €/compte/passage, jamais le
+  titre seul, jamais deux annonces d'une plateforme, jamais chez un compte qui a dit « Non, deux exemplaires ») ;
+  ⛔ **Leboncoin/Beebs/Depop = une annonce hors ligne à la fois** ; ⛔ **un push de notes seules ne reconstruit pas le
+  site** (`vercel.json` ignoreCommand) ; réglage Cloudflare 404 /assets/ EN ATTENTE de Nico ; OTA/web **2.9.93** ;
+  extension **0.6.113 À TÉLÉVERSER** (`build/CWS-0.6.113-A-TELEVERSER/`).
 - **⛔ 15/10 jour — CLORE TOUS LES POINTS (A → H, C-bis, P16 → P18)** — état : `docs/agents/etat-2026-10-01.md` § « 15/10 jour » :
   migs **20261015100000 / 110000 / 120000 / 130000 / 140000 APPLIQUÉES** ; gpj **v247**, uj **v135**, hw **v106**,
   stripe-webhook **v59**, empreintes-urls **v7**, rapprochement **v25** (moteur v23) ; ⛔ **republication d'une même
