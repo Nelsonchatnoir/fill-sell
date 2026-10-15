@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { retraitEngage } from "../_shared/retenue-creneau.js";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
 // (06/10, dbz70) Une taille refusée que le serveur sait désormais servir repart seule.
@@ -2529,13 +2530,19 @@ serve(async (req) => {
   // d'échecs parmi les tâches déjà reprises du compte (5 au moins) → arrêt net,
   // dit dans le journal. Comptes actifs seulement (extension vue < 7 j).
   // Marqueur reprise_1510 (paquet, motif, avant) ; message effacé archivé.
+  // (15/10 soir, Ciddjy) Une REPUBLICATION mise de côté pour la même raison
+  // (5a5d21ff, servie 13 fois quand la file partait entière) reprend aussi —
+  // seulement AVANT tout retrait (étape a_capturer / captured, aucune
+  // suppression envoyée : retraitEngage) ; l'extension relit l'annonce et refait
+  // le contrôle avant retrait avant tout geste. Une republication engagée reste
+  // à la personne.
   let reprisesMisesDeCote = 0;
   try {
     const AVANT_REGLE = Date.parse("2026-10-15T00:45:00Z");
     const { data: misDeCote } = await supabase
       .from("cross_post_jobs")
-      .select("id, user_id, status, error, created_at, platform_fields")
-      .eq("status", "needs_user").eq("action", "publish")
+      .select("id, user_id, action, status, error, created_at, platform_fields")
+      .eq("status", "needs_user").in("action", ["publish", "republish"])
       .eq("platform_fields->>needs_user_source", "tache_sans_demarrage")
       .order("created_at", { ascending: true })
       .limit(300);
@@ -2545,6 +2552,10 @@ serve(async (req) => {
     for (const j of (misDeCote ?? []) as any[]) {
       const le = Date.parse(String(((j.platform_fields ?? {}).tache_sans_demarrage ?? {}).le ?? ""));
       if (!Number.isFinite(le) || le >= AVANT_REGLE) continue; // posée par la règle corrigée : elle reste à la personne
+      if (j.action === "republish") {
+        const etape = String((j.platform_fields ?? {}).republish_step ?? "a_capturer");
+        if (!["a_capturer", "captured"].includes(etape) || retraitEngage(j)) continue; // retrait engagé : à la personne
+      }
       const l = parCompte.get(String(j.user_id)) ?? [];
       l.push(j); parCompte.set(String(j.user_id), l);
     }

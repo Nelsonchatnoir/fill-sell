@@ -85,7 +85,10 @@ ok(i0 > 0 && i1 > i0, '0. le prédicat de reprise est trouvé dans handler-watch
   const bloc = HW.slice(i, HW.indexOf('// ══ LA RECONNEXION FAIT REPARTIR LES JOBS', i));
   ok(i > 0 && /const AVANT_REGLE = Date\.parse\("2026-10-15T00:45:00Z"\);/.test(bloc) && /if \(!Number\.isFinite\(le\) \|\| le >= AVANT_REGLE\) continue;/.test(bloc),
     '4a. seules les mises de côté d\'AVANT la règle corrigée repartent');
-  ok(/\.eq\("action", "publish"\)/.test(bloc), '4b. des dépôts seulement (jamais commencés : aucun doublon possible) — jamais une republication');
+  // (15/10 soir, Ciddjy) une republication aussi — mais seulement AVANT tout retrait.
+  ok(/\.in\("action", \["publish", "republish"\]\)/.test(bloc)
+    && /if \(!\["a_capturer", "captured"\]\.includes\(etape\) \|\| retraitEngage\(j\)\) continue;/.test(bloc),
+    '4b. des dépôts, et des republications jamais engagées (aucune suppression envoyée : aucun doublon possible)');
   ok(/if \(r\.some\(\(x\) => x\.status === "pending" \|\| x\.status === "processing"\)\) continue;/.test(bloc) && /jobs\.slice\(0, 10\)/.test(bloc),
     '4c. par paquets de 10 : le suivant attend que le précédent n\'ait plus rien en file');
   ok(/if \(r\.length >= 5 && echecs \/ r\.length > 0\.10\) \{/.test(bloc) && /DISJONCTEUR/.test(bloc), '4d. disjoncteur : plus de 10 % d\'échecs → arrêt net, dit');
