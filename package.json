@@ -330,7 +330,8 @@
     "selftest:popup-compteur-depop": "node scripts/popup-compteur-depop-selftest.mjs",
     "selftest:champs-lbc-auto": "node scripts/champs-lbc-auto-selftest.mjs",
     "selftest:question-jamais-sans-choix": "node scripts/question-jamais-sans-choix-selftest.mjs",
-    "selftest:livre-isbn-vinted": "node scripts/livre-isbn-vinted-selftest.mjs"
+    "selftest:livre-isbn-vinted": "node scripts/livre-isbn-vinted-selftest.mjs",
+    "selftest:republication-pause-reglages": "node scripts/republication-pause-reglages-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

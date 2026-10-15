@@ -260,6 +260,8 @@ function texteErreurReglage(code, fr) {
     invalid_platform: fr ? 'Plateforme inconnue.' : 'Unknown platform.',
     // (10/10) Garde serveur : un réglage Depop là où Depop n'est pas ouverte.
     depop_non_ouvert: fr ? 'Depop n’est pas encore ouverte sur ton compte.' : 'Depop is not open on your account yet.',
+    // (15/10) Garde serveur : une plateforme que FillSell a quittée (Opla).
+    plateforme_sortie: fr ? 'FillSell ne travaille plus avec cette plateforme : sa republication automatique reste arrêtée.' : 'FillSell no longer works with this platform: its automatic reposting stays off.',
   };
   return M[code] ?? (fr ? `Réglage refusé (${code}).` : `Setting refused (${code}).`);
 }
@@ -366,7 +368,7 @@ function synthese(etat, { fr, enService, extensionStatus, session = null, lectur
   } else if (!actif) {
     if (refuse) { etatLigne = fr ? 'Réservée au plan Pro' : 'Pro plan feature'; }
     else if (moteurLegacy) { etatLigne = fr ? 'Mode classique en cours' : 'Classic mode running'; etatTon = 'amber'; }
-    else if (invalide && invalide !== 'palier') { etatLigne = fr ? 'Réglage à corriger' : 'Setting needs fixing'; etatTon = 'amber'; }
+    else if (invalide && invalide !== 'palier' && invalide !== 'plateforme_sortie') { etatLigne = fr ? 'Réglage à corriger' : 'Setting needs fixing'; etatTon = 'amber'; }
     else { etatLigne = fr ? 'Inactive' : 'Off'; }
   } else if (enService === false) {
     etatLigne = fr ? 'Active · pas encore en service' : 'On · not in service yet'; etatTon = 'amber';
@@ -647,7 +649,9 @@ function LignePlateforme({ pf, etat, session, fr, enService, extensionStatus, on
   // republish_planifiee, côté serveur) — et seulement quand l'état est LU.
   // Sans état : « — », jamais « Non réglée » (Louis : trois plateformes
   // réglées affichées « Non réglée » pendant une lecture de 75 s).
-  const valeur = s.inconnu ? '—'
+  // (15/10, Louis) Sans état : on DIT qu'on lit (ou que la lecture a raté),
+  // jamais un « — » muet qu'on prend pour des réglages perdus.
+  const valeur = s.inconnu ? (lecture === 'echec' ? (fr ? 'illisible' : 'unreadable') : (fr ? 'lecture…' : 'reading…'))
     : actif
       ? `${fmtCreneau(s.de, s.a, fr)} · ${s.r?.plafond_jour ?? '—'}${fr ? '/j' : '/d'}`
       : configure ? (fr ? 'En pause' : 'Paused') : (fr ? 'Non réglée' : 'Not set');
@@ -703,13 +707,19 @@ export function RepublicationPlanifieePlateformes({
   const palierNom = droit.nomPalier;
   const autorise = droit.autorise === true;
   const refuse = droit.refuse;
-  const actives = Number(etatMulti?.actives) || 0;
   const enveloppe = etatMulti?.enveloppe ?? null;
   // (02/10) Les plateformes montrées : une plateforme fermée côté serveur
   // (Opla après la sortie du 10/10) n'a plus de ligne ; (10/10) une plateforme
   // que l'app ne propose pas à ce compte (Depop sans extension ≥ 0.6.106) non
   // plus, sauf si elle tourne déjà.
   const pfsVisibles = useMemo(() => plateformesPlanifieesVisibles(parPlateforme, plateformesCompte), [parPlateforme, plateformesCompte]);
+  // (15/10, Louis) « N/M actives » compte les LIGNES MONTRÉES qui tournent :
+  // le serveur comptait Opla (quittée, ligne cachée) et l'écran disait 4/4
+  // avec une 4e ligne Depop non réglée. Sans aucun état par plateforme (lecture
+  // en cours), le chiffre du serveur.
+  const actives = pfsVisibles.some((pf) => parPlateforme?.[pf] != null)
+    ? pfsVisibles.filter((pf) => parPlateforme?.[pf]?.actif === true).length
+    : (Number(etatMulti?.actives) || 0);
   const vinted = parPlateforme?.vinted ?? null;
   const quota = Number(vinted?.quota_mensuel);
   const faits = Number(vinted?.faits_mois);
@@ -783,7 +793,7 @@ export function RepublicationPlanifieePlateformes({
             <Cellule label={fr ? 'Plateformes' : 'Platforms'} valeur={`${actives}/${pfsVisibles.length}`} sous={fr ? 'actives' : 'on'} />
             <Cellule label={enCours ? (fr ? 'En cours' : 'Running') : (fr ? 'Prochain créneau' : 'Next slot')}
               valeur={total == null ? '—' : nf(total, fr)}
-              sous={fr ? plur(total ?? 0, 'annonce', 'annonces') : plur(total ?? 0, 'listing', 'listings')} />
+              sous={total == null ? (fr ? 'pas encore connu' : 'not known yet') : (fr ? plur(total, 'annonce', 'annonces') : plur(total, 'listing', 'listings'))} />
             {quotaConnu ? (
               <Cellule label={fr ? 'Ce mois' : 'This month'} valeur={nf(faits, fr)} sous={`${fr ? 'sur' : 'of'} ${nf(quota, fr)}`}
                 enfant={<div style={{ height: 4, borderRadius: 99, background: 'rgba(16,32,27,.08)', marginTop: 9, overflow: 'hidden' }}><div style={{ height: '100%', borderRadius: 99, background: faits / quota >= 0.9 ? P.amber : P.teal, width: `${Math.min(100, Math.round(100 * faits / quota))}%` }} /></div>} />

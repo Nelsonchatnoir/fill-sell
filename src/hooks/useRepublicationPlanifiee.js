@@ -247,14 +247,21 @@ export function useRepublicationPlanifiee({ userId, poll = true, multi = false, 
 
   // « Tout mettre en pause » / « Tout relancer » : le serveur mémorise quelles
   // plateformes étaient actives et ne relance QUE celles-là.
+  // (15/10, Louis) La réponse porte `plateformes` DEUX fois côté serveur
+  // (`{ok, plateformes: n} || republish_planifiee_etat_multi()` : en jsonb, la
+  // LISTE écrase le nombre). L'ancienne lecture retirait cette liste : chaque
+  // plateforme passait à « — » (Réglages) et l'interrupteur du Stock restait
+  // éteint jusqu'à la relecture suivante (2 à 5 min) — on croyait les réglages
+  // perdus. On garde la liste ; sans liste lisible, on relit.
   const pauseGenerale = useCallback(async (reprendre = false) => {
     setBusy(true); setErreur(null);
     try {
       const { data, error } = await supabase.rpc('republish_planifiee_pause_generale', { p_reprendre: reprendre });
       if (error) { setErreur('reseau'); return { ok: false, reason: 'reseau' }; }
       if (!data?.ok) { setErreur(data?.reason ?? 'inconnu'); return data ?? { ok: false, reason: 'inconnu' }; }
-      const { ok: _ok, plateformes: _n, ...reste } = data;
-      retenir(reste, (Array.isArray(reste.plateformes) ? reste.plateformes : []).find((p) => p?.platform === 'vinted') ?? null, interrupteurRef.current);
+      const { ok: _ok, ...reste } = data;
+      if (!Array.isArray(reste.plateformes)) { await lire(); return data; }
+      retenir(reste, reste.plateformes.find((p) => p?.platform === 'vinted') ?? null, interrupteurRef.current);
       return data;
     } catch {
       setErreur('reseau');
@@ -262,7 +269,7 @@ export function useRepublicationPlanifiee({ userId, poll = true, multi = false, 
     } finally {
       setBusy(false);
     }
-  }, [retenir]);
+  }, [retenir, lire]);
 
   return { etat, etatMulti, parPlateforme, interrupteur, chargement, lecture, busy, erreur, recharger: lire, regler, pauseGenerale };
 }
