@@ -97,6 +97,9 @@ export interface NettoyageLeboncoin {
 // vendeur : « façon Zara » en clair (2 cas dans le parc) reste, une ligne
 // « Mots-clés : … » sans dièse reste (indistinguable du texte — décision
 // Nico : mieux vaut une annonce refusée qu'une description charcutée).
+// ⚠️ REMPLACÉ le 15/10 soir (décision de Nico, refus d'Ornella) : une ligne
+// ÉTIQUETÉE « Mots-clés : / Keywords : / Tags : » compte dans les cinq et part
+// au-delà (voir LIGNE_MOTS_CLES_RE plus bas). Le texte libre reste intouché.
 // La description Vinted n'est pas concernée (les hashtags y servent).
 //   1. MARQUE TIERCE : un hashtag qui est une marque du lexique ET qui n'est
 //      pas la marque de l'article (ni un préfixe / dérivé de celle-ci :
@@ -402,18 +405,38 @@ export function nettoyerDescriptionLeboncoin(description: string, contexte: Cont
 /** Le NETTOYAGE seul (mentions de sites, marques tierces, plafond de 5), sans
  *  le minimum de 10 caractères. Exporté pour que chaque règle se teste seule :
  *  passer par le tout ferait juger la propreté d'un texte sur sa longueur. */
+// ── LA LIGNE « MOTS-CLÉS : … » COMPTE DANS LES CINQ (15/10 soir, Nico) ──────
+// Ornella, « Support de fond photo télescopique » (3286567604), refusée par la
+// modération le 13/10 : 5 hashtags gardés + une ligne « Mots-clés : » de 12
+// éléments = 17 mots-clés servis, pour 5 tolérés. Décision de Nico (15/10,
+// remplace celle du 10/09 qui gardait la ligne telle quelle) : une ligne
+// étiquetée « Mots-clés : / Mots clés : / Keywords : / Tags : » compte ses
+// éléments dans le plafond ; si hashtags restants + éléments dépassent 5, la
+// LIGNE part du texte envoyé (le job en base n'est pas touché).
+const LIGNE_MOTS_CLES_RE = /^\s*(?:mots?[\s-]*cl[ée]s?|keywords?|tags?)\s*:\s*(.+)$/i;
+function elementsMotsCles(ligne: string): number {
+  const m = ligne.match(LIGNE_MOTS_CLES_RE);
+  if (!m) return 0;
+  return m[1].split(/[,;·|•\/]+/).map((x) => x.trim()).filter(Boolean).length;
+}
+
 export function nettoyerSeulement(description: string, contexte: ContexteLeboncoin = {}): NettoyageLeboncoin {
   const original = String(description ?? "");
   try {
     const aSites = termesDans(original).length > 0;
     const { marques, plafonnes } = hashtagsARetirer(original, contexte);
-    if (!aSites && !marques.size && !plafonnes.size) {
+    const hashtagsRestants = new Set((original.match(/#[^\s#]+/g) ?? []).filter((h) => !marques.has(h) && !plafonnes.has(h))).size;
+    const motsClesLignes = original.split(/\r?\n/).reduce((n, l) => n + elementsMotsCles(l), 0);
+    const motsClesEnTrop = motsClesLignes > 0 && hashtagsRestants + motsClesLignes > 5;
+    if (!aSites && !marques.size && !plafonnes.size && !motsClesEnTrop) {
       return { texte: original, modifiee: false, termes: [], retires: 0, vide: false, marques: [], plafonnes: 0 };
     }
     const termes = new Set<string>();
     let retires = 0;
     const aRetirer = new Set<string>([...marques.keys(), ...plafonnes]);
     const lignes = original.split(/\r?\n/).map((ligne) => {
+      // (15/10 soir) La ligne de mots-clés au-delà du plafond part en entier.
+      if (motsClesEnTrop && elementsMotsCles(ligne) > 0) { retires += elementsMotsCles(ligne); return null; }
       const r = aSites ? nettoyerLigne(ligne, termes) : { ligne, retires: 0 };
       retires += r.retires;
       // Hashtags de marque tierce et hashtags au-delà du plafond : le MOT

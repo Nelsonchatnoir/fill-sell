@@ -244,3 +244,25 @@ console.log("\n[selftest:description-leboncoin] OK — nettoyage, plafond, marqu
 
   if (ko) { console.error(`\n[selftest:description-leboncoin] ${ko} échec(s) sur le titre`); process.exit(1); }
 }
+
+// ── (15/10 soir, décision de Nico) LA LIGNE « MOTS-CLÉS : » COMPTE DANS LES CINQ ──
+// Ornella, « Support de fond photo télescopique » (3286567604), refusée par la
+// modération le 13/10 : 5 hashtags gardés + 12 mots-clés en clair = 17.
+{
+  const { readFileSync } = await import("node:fs");
+  let koMc = 0;
+  const vm = (c, nom, d = "") => { if (c) console.log(`  ✓ ${nom}`); else { console.error(`  ✗ ${nom}${d ? `\n      ${String(d).slice(0, 300)}` : ""}`); koMc++; } };
+  const ornella = readFileSync(join(ROOT, "scripts/fixtures/description-ornella-support-photo-1110.txt"), "utf8");
+  const r = propre(ornella, {});
+  vm(!/Mots-clés\s*:/i.test(r.texte), "Ornella : la ligne « Mots-clés : » (12 éléments) part du texte envoyé", r.texte);
+  vm(new Set(r.texte.match(/#[^\s#]+/g) ?? []).size <= 5, "Ornella : 5 hashtags distincts au plus restent (règle du 10/09)");
+  vm(/Vends support de fond photo télescopique/.test(r.texte) && /Housse noire de rangement/.test(r.texte), "le texte de la vendeuse reste intact");
+  const court = "Robe d'été en lin.\nMots-clés : robe, lin, été";
+  vm(propre(court, {}).texte === court, "3 mots-clés et aucun hashtag : sous le plafond, rien ne bouge");
+  const limite = "Robe.\nMots-clés : robe, lin\n#robe #lin #ete";
+  vm(propre(limite, {}).texte === limite, "2 mots-clés + 3 hashtags = 5 : rien ne bouge");
+  const trop = "Robe.\nKeywords : robe, lin, ete\n#robe #lin #ete";
+  vm(!/Keywords/i.test(propre(trop, {}).texte) && /#robe #lin #ete/.test(propre(trop, {}).texte), "3 + 3 = 6 : la ligne part, les hashtags restent");
+  vm(propre("Tags du jour : soleil", {}).texte === "Tags du jour : soleil", "« Tags du jour : » n'est pas une ligne de mots-clés");
+  if (koMc) { console.error(`\n[selftest:description-leboncoin] ${koMc} échec(s) sur les mots-clés`); process.exit(1); }
+}
