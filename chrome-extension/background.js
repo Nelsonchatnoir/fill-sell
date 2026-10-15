@@ -21736,6 +21736,18 @@ async function couleursDePublicationOrigine(accessToken, job) {
 }
 
 function construireJobRecreation(job, pf, cap, prix) {
+  // (15/10 soir, 0.6.114) La marque CHOISIE par la personne pour une
+  // republication, quand elle diffère de la marque capturée : servie par le
+  // serveur (marque_choisie, depuis sa réponse rangée sur l'article) ou posée sur
+  // le job par sa réponse (une republication Vinted ne porte jamais `marque`
+  // autrement — mesuré sur 9 389 jobs le 15/10). null sinon.
+  function marqueChoisieRepublication(pf, capturee) {
+    const norm = (s) => String(s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+    const choisie = String(pf?.marque_choisie ?? pf?.marque ?? "").trim();
+    if (!choisie || norm(choisie) === norm(capturee)) return null;
+    return choisie;
+  }
+
   // ── Taille par IDS (2026-08-13, captures 0.6.1 périmées) ───────────────────
   // Les captures 0.6.1 (cas réels : 166 « Veste grain de malice », 174 « Pull
   // de grossesse ») n'ont la taille QUE dans item_attributes code "size" —
@@ -21776,12 +21788,19 @@ function construireJobRecreation(job, pf, cap, prix) {
       // résout en premier (selectTailleVinted, onglet par onglet) — c'est la
       // taille EXACTE de l'annonce d'origine ; le libellé n'est que le repli.
       ...(tailleIds.length ? { taille_ids: tailleIds } : {}),
-      marque: cap.libelles?.marque ?? null,
+      // (15/10 soir, 0.6.114 — Romain « Pago », patrick giry « Paris 2024 »)
+      // La RÉPONSE de la personne à la question « marque hors catalogue »
+      // (servie en marque_choisie par get-pending-jobs, ou posée sur le job)
+      // prime sur la marque capturée : la recréation repartait toujours de la
+      // capture, la question revenait à chaque essai — boucle.
+      marque: marqueChoisieRepublication(pf, cap.libelles?.marque) ?? cap.libelles?.marque ?? null,
       // (06/10, Ciddjy « Kiabi », Carla « Burano ») L'identifiant de la marque
       // de l'annonce d'origine (brand_id du catalogue Vinted ; 1 = « Sans
       // marque ») : le formulaire reconnaît la ligne par son id, même quand son
-      // libellé tarde à s'afficher sur un poste lent.
+      // libellé tarde à s'afficher sur un poste lent. Jamais quand la personne
+      // a choisi une autre marque (l'id désignerait l'ancienne).
       ...(() => {
+        if (marqueChoisieRepublication(pf, cap.libelles?.marque)) return {};
         const id = Number(natifCap.brand_id);
         return Number.isInteger(id) && id > 1 ? { marque_id: id } : {};
       })(),

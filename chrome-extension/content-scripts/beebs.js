@@ -1944,6 +1944,15 @@ async function fillListingForm(job) {
     .catch((e) => ({ ok: false, ids: [], pages: [], motif: String(e?.message ?? e).slice(0, 120) }));
 
   const publishBtn = document.querySelector('button[type="submit"]');
+  // (15/10 soir, 0.6.114 — Ciddjy « Jogging 18 mois ») Un clic qui n'émet
+  // AUCUNE requête laissait une trace muette : on ne savait pas si le bouton
+  // existait, lequel était cliqué, ni s'il était désactivé. Relevé ici, joint
+  // au verdict « non confirmé » (observabilité seule, rien ne change au clic).
+  const boutonsSubmit = document.querySelectorAll('button[type="submit"]').length;
+  const etatClic = publishBtn
+    ? `bouton « ${String(publishBtn.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 40)} »` +
+      `${publishBtn.disabled || publishBtn.getAttribute("aria-disabled") === "true" ? " DÉSACTIVÉ" : ""} (${boutonsSubmit} bouton(s) submit)`
+    : "AUCUN bouton submit trouvé";
   publishBtn?.click();
 
   // ── PREUVE DE DÉPÔT (2026-07-13) ────────────────────────────────────────────
@@ -1981,7 +1990,7 @@ async function fillListingForm(job) {
     }
     return {
       success: false,
-      error: `${proof.error} — observabilité: catégorie via ${cheminCategorie} ; interstitiel: ${etatInterstitiel} ; session Firebase: ${etatSessionFirebase}`,
+      error: `${proof.error} — observabilité: clic : ${etatClic} ; catégorie via ${cheminCategorie} ; interstitiel: ${etatInterstitiel} ; session Firebase: ${etatSessionFirebase}`,
       warnings, unfilledRequired, discoveredRequired: enumerated,
     };
   }
