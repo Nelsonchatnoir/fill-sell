@@ -26,41 +26,40 @@ const CHAMPS_FICHE = "id, user_id, titre, description, marque, attributs, prix_v
 
 type Source = { type: "url"; url: string } | { type: "base64"; media_type: string; data: string };
 
-function versBase64(octets: Uint8Array): string {
-  let brut = "";
-  for (let i = 0; i < octets.length; i += 0x8000) brut += String.fromCharCode(...octets.subarray(i, i + 0x8000));
-  return btoa(brut);
-}
 
 // La miniature d'une photo : jamais la photo en grand.
 //  · notre Storage : réduite par le service (render/image) ;
 //  · eBay (s-lNNN) et Leboncoin (rule=) : la variante miniature de la plateforme ;
-//  · sinon : décodée et réduite ici (imagescript épinglé), bornée.
+//  · sinon (Vinted, Beebs…) : la photo est copiée UN instant dans notre Storage
+//    (ia-miniatures/), réduite par le service, puis effacée après l'appel —
+//    aucun décodage dans la fonction (15/10 : 12 décodages = WORKER_RESOURCE_LIMIT).
 const BUDGET_EPUISE = "budget" as const;
-async function miniature(url: string, supabaseUrl: string, budget: { decodages: number }): Promise<Source | null | typeof BUDGET_EPUISE> {
-  const prefixe = `${supabaseUrl.replace(/\/+$/, "")}/storage/v1/object/public/`;
-  if (url.startsWith(prefixe)) {
-    const reste = url.slice(prefixe.length).split("?")[0];
-    return { type: "url", url: `${supabaseUrl.replace(/\/+$/, "")}/storage/v1/render/image/public/${reste}?width=${COTE_MINIATURE}&height=${COTE_MINIATURE}&resize=contain&quality=70` };
-  }
+const BUCKET = "listing-photos";
+// deno-lint-ignore no-explicit-any
+type Contexte = { supabaseUrl: string; admin: any; copies: string[]; budget: { copies: number } };
+const renduStorage = (supabaseUrl: string, reste: string) =>
+  `${supabaseUrl.replace(/\/+$/, "")}/storage/v1/render/image/public/${reste}?width=${COTE_MINIATURE}&height=${COTE_MINIATURE}&resize=contain&quality=70`;
+async function miniature(url: string, cx: Contexte): Promise<Source | null | typeof BUDGET_EPUISE> {
+  const prefixe = `${cx.supabaseUrl.replace(/\/+$/, "")}/storage/v1/object/public/`;
+  if (url.startsWith(prefixe)) return { type: "url", url: renduStorage(cx.supabaseUrl, url.slice(prefixe.length).split("?")[0]) };
   if (/^https:\/\/i\.ebayimg\.com\//.test(url)) return { type: "url", url: url.replace(/s-l\d+\./, "s-l225.") };
   if (/^https:\/\/img\.leboncoin\.fr\//.test(url)) return { type: "url", url: url.replace(/([?&])rule=[^&]*/, "$1rule=ad-thumb").replace(/^([^?]+)$/, "$1?rule=ad-thumb") };
-  if (budget.decodages <= 0) return BUDGET_EPUISE;
-  budget.decodages--;
+  if (cx.budget.copies <= 0) return BUDGET_EPUISE;
+  cx.budget.copies--;
   const ctl = new AbortController();
-  const minuteur = setTimeout(() => ctl.abort(), 5000);
+  const minuteur = setTimeout(() => ctl.abort(), 6000);
   try {
     const r = await fetch(url, { signal: ctl.signal });
     if (!r.ok) { await r.body?.cancel().catch(() => {}); return null; }
+    const type = String(r.headers.get("content-type") ?? "").split(";")[0].trim();
+    if (!/^image\/(jpeg|png|webp|gif)$/.test(type)) { await r.body?.cancel().catch(() => {}); return null; }
     const octets = new Uint8Array(await r.arrayBuffer());
-    if (octets.length > 3_000_000) return null;
-    const { decode } = await import("https://deno.land/x/imagescript@1.3.0/mod.ts");
-    const image = await decode(octets) as unknown as { width: number; height: number; resize: (l: number, h: number) => unknown; encodeJPEG: (q: number) => Promise<Uint8Array> };
-    if (!image?.width || !image?.height) return null;
-    const f = COTE_MINIATURE / Math.max(image.width, image.height);
-    if (f < 1) image.resize(Math.max(1, Math.round(image.width * f)), Math.max(1, Math.round(image.height * f)));
-    const jpeg = await image.encodeJPEG(70);
-    return { type: "base64", media_type: "image/jpeg", data: versBase64(jpeg) };
+    if (octets.length > 8_000_000) return null;
+    const chemin = `ia-miniatures/${crypto.randomUUID()}.${type.split("/")[1]}`;
+    const { error } = await cx.admin.storage.from(BUCKET).upload(chemin, octets, { contentType: type, upsert: true });
+    if (error) return null;
+    cx.copies.push(chemin);
+    return { type: "url", url: renduStorage(cx.supabaseUrl, `${BUCKET}/${chemin}`) };
   } catch { return null; } finally { clearTimeout(minuteur); }
 }
 
@@ -116,12 +115,17 @@ serve(async (req) => {
   const { count: nonsPersonne } = await admin.from("inventaire_doublons").select("id", { count: "exact", head: true })
     .eq("user_id", userId).eq("statut", "refusee").eq("decide_par", "utilisateur");
   const compteDitNon = (nonsPersonne ?? 0) > 0;
-  const { data: dejaJuges } = await admin.from("rapprochement_ia_verdicts").select("paire").eq("user_id", userId).limit(5000);
+  const { data: dejaJuges } = await admin.from("rapprochement_ia_verdicts").select("id, paire, verdict, mode, applique, raison").eq("user_id", userId).limit(5000);
   const juges = new Set(((dejaJuges ?? []) as Array<{ paire: string }>).map((x) => x.paire));
+  // Un verdict de MESURE pas encore appliqué : en mode « appliquer », il sert tel
+  // quel (jamais un second appel pour la même paire).
+  const mesures = new Map(((dejaJuges ?? []) as Array<Record<string, unknown>>)
+    .filter((x) => x.mode === "mesure" && x.applique == null && (x.verdict === "meme" || x.verdict === "different"))
+    .map((x) => [String(x.paire), x]));
 
-  // Décodages locaux par appel (CPU borné : ~150 ms chacun) ; au-delà, la paire
-  // attend l'appel suivant — jamais un verdict « texte » faute de miniatures.
-  const budget = { decodages: 6 };
+  // Copies temporaires par appel (réseau, pas de CPU) ; au-delà, la paire attend
+  // l'appel suivant — jamais un verdict « texte » faute de miniatures.
+  const cx: Contexte = { supabaseUrl, admin, copies: [], budget: { copies: 60 } };
   let coutEur = 0; let traites = 0;
   const resultats: Array<Record<string, unknown>> = [];
   let arret: string | null = null;
@@ -134,6 +138,15 @@ serve(async (req) => {
     const elig = historique ? (questionEligible({ ...d, statut: "proposee" })) : questionEligible(d);
     if (!elig.ok) continue;
     const paire = clePaire(d);
+    const mesure = mode === "appliquer" && d.statut === "proposee" ? mesures.get(paire) : null;
+    if (mesure) {
+      const dec = mesure.verdict === "meme" ? "oui" : "non";
+      const { data: res, error: eDec } = await admin.rpc("inventaire_doublon_decider_ia", { p_id: d.id, p_decision: dec, p_raison: mesure.raison ?? null });
+      const applique = eDec ? `erreur:${eDec.message.slice(0, 80)}` : (res?.ok ? dec : `refus:${res?.reason ?? "?"}`);
+      await admin.from("rapprochement_ia_verdicts").update({ mode: "appliquer", applique }).eq("id", String(mesure.id));
+      resultats.push({ id: d.id, motif: d.motif, decision: dec, reprise_de_la_mesure: true, applique, usd: 0 });
+      continue;
+    }
     if (juges.has(paire)) continue; // jamais deux appels pour la même paire
     const { data: fiches } = await admin.from("inventaire").select(CHAMPS_FICHE).in("id", [d.garde, d.absorbe]);
     // deno-lint-ignore no-explicit-any
@@ -156,9 +169,9 @@ serve(async (req) => {
       if (voirImages && pa.length && pb.length) {
         // Une à une (15/10 : 12 décodages en parallèle = WORKER_RESOURCE_LIMIT).
         const ra: Array<Source | null | typeof BUDGET_EPUISE> = [];
-        for (const u of pa) ra.push(await miniature(u, supabaseUrl, budget));
+        for (const u of pa) ra.push(await miniature(u, cx));
         const rb: Array<Source | null | typeof BUDGET_EPUISE> = [];
-        for (const u of pb) rb.push(await miniature(u, supabaseUrl, budget));
+        for (const u of pb) rb.push(await miniature(u, cx));
         if ([...ra, ...rb].includes(BUDGET_EPUISE)) { traites--; coutEur += usd * USD_EN_EUR; arret = "budget_images"; break; }
         const ma = ra.filter((x) => x && x !== BUDGET_EPUISE) as Source[];
         const mb = rb.filter((x) => x && x !== BUDGET_EPUISE) as Source[];
@@ -199,6 +212,8 @@ serve(async (req) => {
     juges.add(paire);
     resultats.push({ id: d.id, motif: d.motif, statut_avant: d.statut, decide_par: d.decide_par ?? null, brut: rep.verdict, decision: g.decision, garde_fou: g.garde_fou, phase, raison: rep.raison, usd: Number(usd.toFixed(6)), applique });
   }
+  // Les copies temporaires partent dès la fin des appels (Anthropic les a lues).
+  if (cx.copies.length) await admin.storage.from(BUCKET).remove(cx.copies).catch(() => {});
   const n = resultats.filter((r) => !r.erreur).length;
   return json({
     ok: true, mode, user_id: userId, traites: n, arret,
