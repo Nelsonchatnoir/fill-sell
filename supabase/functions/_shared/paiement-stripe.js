@@ -92,3 +92,43 @@ export function causeEchec(intent, charge = null) {
       || ch?.outcome?.type === "issuer_declined") return "banque";
   return "autre";
 }
+
+// ── LE PALIER PAYÉ PAR UNE FACTURE (15/10/2026, DeadRoz) ────────────────────
+// Un seul prélèvement de 59,99 € (passage en Business, 14/10 01:20) et pourtant
+// DEUX crédits et deux « Paiement reçu » : invoice.paid, traité AVANT
+// checkout.session.completed, a retrouvé le compte par son ANCIEN identifiant
+// Stripe (client qui revient) et lu le palier sur les drapeaux du profil,
+// encore à « non » → « premium » ; puis checkout a posé Business → une autre
+// clé, un second crédit, un second mail. Le palier d'un paiement se lit sur CE
+// QUE STRIPE FACTURE, jamais sur les drapeaux : les lignes positives de la
+// facture (prix connus), sinon le prix de l'abonnement, sinon son
+// metadata.plan_type (posé par create-checkout-session). Le même palier des
+// deux côtés → upgrade_monthly_grant ne crédite qu'UNE fois (même palier :
+// no_upgrade_needed), donc un seul mail. Le prix Cloud n'est jamais un palier.
+// `prix` : { standard, pro, business } (identifiants de prix Stripe).
+// Rend 'business' | 'pro' | 'premium', ou null (illisible : l'appelant garde
+// son repli ET le journalise).
+export function palierDeFacture(invoice, abonnement = null, prix = {}) {
+  const RANG = { premium: 1, pro: 2, business: 3 };
+  const duPrix = (id) => {
+    if (!id) return null;
+    if (prix.business && id === prix.business) return "business";
+    if (prix.pro && id === prix.pro) return "pro";
+    if (prix.standard && id === prix.standard) return "premium";
+    return null;
+  };
+  const leplusHaut = (liste) => liste.filter(Boolean).sort((a, b) => RANG[b] - RANG[a])[0] ?? null;
+  const lignes = invoice?.lines?.data ?? [];
+  // Deux formes d'objets (API 2023-10-16 et 2026-03-25.dahlia) : line.price
+  // ou line.pricing.price_details.price.
+  const lu = leplusHaut(lignes
+    .filter((l) => (l?.amount ?? 0) > 0)
+    .map((l) => duPrix(l?.price?.id ?? l?.pricing?.price_details?.price ?? null)));
+  if (lu) return lu;
+  const parPrix = leplusHaut((abonnement?.items?.data ?? []).map((it) => duPrix(it?.price?.id ?? null)));
+  if (parPrix) return parPrix;
+  const pt = String(abonnement?.metadata?.plan_type ?? "");
+  if (pt === "business" || pt === "pro") return pt;
+  if (pt === "standard" || pt === "founder" || pt === "premium") return "premium";
+  return null;
+}

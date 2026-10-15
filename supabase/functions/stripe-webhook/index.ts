@@ -4,6 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { notifierPaiement, alerterPaiementNonCredite, signalerPaiementEchoue } from "../_shared/payment-notify.ts";
 import { drapeauxDepuisStripe, miseAJourProfilDepuisStripe, estAbonnementCloud } from "../_shared/cloud-option.js";
 import { faitsEchec, decisionMailEchec, causeDuPaiement } from "../_shared/paiement-echoue.js";
+import { palierDeFacture } from "../_shared/paiement-stripe.js";
 import { palierDuProfil } from "../_shared/palier.js";
 
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
@@ -459,15 +460,36 @@ serve(async (req) => {
       });
     }
 
-    if (!email) {
+    // (15/10) Le compte se retrouve par l'identifiant FillSell posé sur la
+    // session (create-checkout-session, metadata.fillsell_user_id depuis le
+    // 01/10) ; l'adresse de Checkout n'est plus qu'un repli. Avant : une
+    // adresse de paiement différente de celle du compte ne créditait RIEN, et
+    // rien ne le signalait.
+    const cibleUser = String(session.metadata?.fillsell_user_id ?? "").trim() || null;
+    if (!email && !cibleUser) {
       return new Response("No email found", { status: 400 });
     }
 
-    const { data: users } = await supabase
-      .from("profiles")
-      .select("id")
-      .eq("email", email)
-      .limit(1);
+    let users: Array<{ id: string }> | null = null;
+    if (cibleUser) {
+      const { data } = await supabase.from("profiles").select("id").eq("id", cibleUser).limit(1);
+      users = (data ?? null) as Array<{ id: string }> | null;
+    }
+    if ((!users || users.length === 0) && email) {
+      const { data } = await supabase.from("profiles").select("id").eq("email", email).limit(1);
+      users = (data ?? null) as Array<{ id: string }> | null;
+    }
+    if (!users || users.length === 0) {
+      console.error(`[webhook] checkout ${session.id} : compte introuvable (user=${cibleUser ?? "?"}, email=${email ?? "?"})`);
+      await alerterPaiementNonCredite({
+        canal: "stripe", type: "abonnement", email: email ?? null, produit: planType,
+        montant: session.amount_total != null
+          ? `${(session.amount_total / 100).toFixed(2)} ${(session.currency ?? "eur").toUpperCase()}`
+          : null,
+        ref: `stripe:${session.id}`, rpc: null,
+        erreur: "Abonnement payé sans compte FillSell retrouvé (ni par l'identifiant de la session, ni par l'adresse).",
+      });
+    }
 
     if (users && users.length > 0) {
       const profileUpdate: Record<string, unknown> = {
@@ -492,7 +514,7 @@ serve(async (req) => {
       await supabase
         .from("profiles")
         .update(profileUpdate)
-        .eq("email", email);
+        .eq("id", users[0].id);
 
       // Atomically increment founder slot counter
       if (planType === "founder") {
@@ -568,9 +590,13 @@ serve(async (req) => {
     // chemin des paliers ci-dessous créditerait les quotas du palier du compte
     // sur une facture Cloud.
     const subIdFacture = abonnementDeFacture(invoice);
+    // (15/10, DeadRoz) L'abonnement de la facture sert aussi à lire le PALIER
+    // payé (palierDeFacture), plus bas — jamais les drapeaux du profil.
+    let subFacture: Stripe.Subscription | null = null;
     if (subIdFacture) {
       try {
         const sub = await stripe.subscriptions.retrieve(subIdFacture);
+        subFacture = sub;
         if (estAbonnementCloud(sub, prixConnus())) {
           await recomputeStripeFlags(supabase, customerId);
           console.log(`[webhook] facture Cloud ${invoice.id} (${sub.id}, statut ${sub.status}, ${invoice.amount_paid ?? "?"} ${invoice.currency ?? ""}) : colonnes Cloud relues, aucun quota`);
@@ -627,7 +653,19 @@ serve(async (req) => {
       // Stripe résiduel ne doit pas voir son grant rétrogradé à 'pro'.
       // Une montée payée donne SON palier, quel que soit l'ordre d'arrivée des
       // événements (les flags viennent d'être posés juste au-dessus).
-      const tier = montee ?? (profs[0].is_business ? "business" : profs[0].is_pro ? "pro" : "premium");
+      // ⛔ (15/10, DeadRoz) Hors montée, le palier se lit sur CE QUE STRIPE
+      // FACTURE (lignes de la facture, prix puis plan_type de l'abonnement),
+      // jamais sur les drapeaux : un client qui REVIENT (ancien identifiant
+      // Stripe gardé, drapeaux encore à false) était crédité « premium » ici,
+      // puis « business » par checkout.session.completed — deux crédits, deux
+      // mails pour un seul prélèvement. Même palier des deux côtés : un seul
+      // crédit (upgrade_monthly_grant, no_upgrade_needed). Les drapeaux ne
+      // restent qu'en repli, dit dans les journaux.
+      const palierPaye = palierDeFacture(invoice, subFacture, prixConnus());
+      const tier = montee ?? palierPaye ?? (profs[0].is_business ? "business" : profs[0].is_pro ? "pro" : "premium");
+      if (!montee && !palierPaye) {
+        console.warn(`[webhook] invoice.paid ${invoice.id} : palier illisible sur la facture et l'abonnement — repli sur les drapeaux du profil (${tier})`);
+      }
       // Fin de la période facturée = échéance du prochain grant. C'est LE
       // signal de renouvellement : depuis le cycle par utilisateur, un compte
       // à canal de paiement n'est plus crédité que sur cet événement (le sweep

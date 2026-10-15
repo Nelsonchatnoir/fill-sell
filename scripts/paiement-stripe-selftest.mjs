@@ -5,7 +5,7 @@
 // Les cas reprennent la forme EXACTE des objets lus en livemode le 01/10
 // (refus 9cdr9rm4rn et nicolas.menar), réduits aux champs utiles et sans
 // donnée personnelle.
-import { choisirClientExistant, trierSessionsOuvertes, abonnementRemplacable, causeEchec } from '../supabase/functions/_shared/paiement-stripe.js';
+import { choisirClientExistant, trierSessionsOuvertes, abonnementRemplacable, causeEchec, palierDeFacture } from '../supabase/functions/_shared/paiement-stripe.js';
 
 let echecs = 0;
 const ok = (cond, quoi) => { console.log(`  ${cond ? 'ok  ' : 'ÉCHEC'} ${quoi}`); if (!cond) echecs++; };
@@ -53,6 +53,19 @@ console.log('Pourquoi le paiement n\'est pas passé');
   ok(causeEchec({ status: 'requires_action', last_payment_error: null }, null) === 'authentification', 'validation en attente → authentification');
   ok(causeEchec({ status: 'requires_payment_method', last_payment_error: null }, null) === 'aucune_tentative', 'rien tenté → aucune_tentative');
   ok(causeEchec(null) === 'aucune_tentative', 'aucune tentative du tout');
+}
+
+console.log('(15/10, DeadRoz) Le palier PAYÉ se lit sur ce que Stripe facture, jamais sur les drapeaux');
+{
+  const P = { standard: 'price_std', pro: 'price_pro', business: 'price_biz' };
+  // Facture de création réelle (forme 2026-03-25.dahlia : pricing.price_details.price).
+  ok(palierDeFacture({ lines: { data: [{ amount: 5999, pricing: { price_details: { price: 'price_biz' } } }] } }, null, P) === 'business', 'facture Business de création → business (DeadRoz : « premium » lu sur les drapeaux)');
+  ok(palierDeFacture({ lines: { data: [{ amount: 2999, price: { id: 'price_pro' } }] } }, null, P) === 'pro', 'ancienne forme (line.price) → pro');
+  ok(palierDeFacture({ lines: { data: [{ amount: -1000, price: { id: 'price_pro' } }, { amount: 3000, price: { id: 'price_biz' } }] } }, null, P) === 'business', 'facture de différence : la ligne POSITIVE fait foi (le crédit « temps non utilisé » est ignoré)');
+  ok(palierDeFacture({ lines: { data: [{ amount: 0, price: { id: 'price_biz' } }] } }, { items: { data: [{ price: { id: 'price_biz' } }] } }, P) === 'business', 'facture à 0 € (bon de réduction) → le prix de l\'abonnement');
+  ok(palierDeFacture({ lines: { data: [] } }, { metadata: { plan_type: 'founder' }, items: { data: [{ price: { id: 'price_ancien' } }] } }, P) === 'premium', 'prix historique inconnu + plan_type founder → premium');
+  ok(palierDeFacture({ lines: { data: [{ amount: 2000, price: { id: 'price_cloud' } }] } }, null, { ...P, cloud: 'price_cloud' }) === null, 'le prix Cloud n\'est jamais un palier');
+  ok(palierDeFacture({}, null, P) === null, 'illisible → null (l\'appelant garde son repli et le journalise)');
 }
 
 if (echecs) { console.error(`\n${echecs} échec(s).`); process.exit(1); }

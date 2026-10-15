@@ -332,7 +332,8 @@
     "selftest:question-jamais-sans-choix": "node scripts/question-jamais-sans-choix-selftest.mjs",
     "selftest:livre-isbn-vinted": "node scripts/livre-isbn-vinted-selftest.mjs",
     "selftest:republication-pause-reglages": "node scripts/republication-pause-reglages-selftest.mjs",
-    "selftest:textes-republication-exacts": "node scripts/textes-republication-exacts-selftest.mjs"
+    "selftest:textes-republication-exacts": "node scripts/textes-republication-exacts-selftest.mjs",
+    "selftest:stripe-un-paiement": "deno run --allow-read --allow-write --allow-env --allow-run scripts/preuves/preuve-stripe-un-paiement.ts"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
