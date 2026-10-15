@@ -614,8 +614,8 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
               </div>
               <div style={{fontSize:12,color:UI.mute2,fontWeight:500,lineHeight:1.5,marginBottom:12}}>
                 {lang==='en'
-                  ?"Trends, predictions and advice tailored to this period's sales — ready in a few seconds."
-                  :'Tendances, prédictions et conseils taillés sur tes ventes de la période — prêts en quelques secondes.'}
+                  ?"Trends, predictions and advice tailored to this period's sales — ready in a moment."
+                  :'Tendances, prédictions et conseils taillés sur tes ventes de la période — prêts dans un instant.'}
               </div>
               <button onClick={()=>{setOutdated(false);setRefreshKey(k=>k+1);}}
                 style={{background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,border:'none',color:'#fff',borderRadius:99,padding:'9px 22px',fontSize:13,fontWeight:600,cursor:'pointer',fontFamily:'inherit',boxShadow:'0 6px 16px rgba(47,158,144,0.3)'}}>

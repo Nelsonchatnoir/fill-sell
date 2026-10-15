@@ -22,7 +22,7 @@ VO.chargerOrigineVinted().catch(() => {});
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-10-05-veille-commandes (0.6.98 : veille des commandes Vinted et Leboncoin toutes les 10 min, comptes payants, " +
+  "2026-10-05-veille-commandes (0.6.98 : veille des commandes Vinted et Leboncoin toutes les 10 min, comptes payants, " + // estimation-ok: nom interne de capacité
   "bornée, mesurée, coupée 24 h au premier signe anti-robot — une commande neuve fait relire l'annonce en priorité ; " +
   "mesures du remplissage Vinted écrites aussi quand la publication réussit (instantané avant le clic, republication) ; " +
   "un retrait en attente de connexion dit le risque de double vente) — précédent : " +
@@ -33,7 +33,7 @@ const FILLSELL_BUILD =
   "2026-09-29-point1-preuves-retraits (0.6.80 : boutique Vinted prouvée avant DELETE et estampillée après dépôt ; " +
   "identifiant Beebs durable obligatoire ; formulaire Beebs complet éprouvé avant retrait de republication) — précédent : " +
   "2026-09-14-retrait-lbc-challenge-et-releve (suppression Leboncoin, 2 points : [1] un CHALLENGE anti-robot ne consomme " +
-  "PLUS de tentative — reprise gratuite toutes les 20 min, bornée à 6 h par ÉPISODE (marquerBlocageAntiRobot), au-delà " +
+  "PLUS de tentative — reprise gratuite toutes les 20 min, bornée à 6 h par ÉPISODE (marquerBlocageAntiRobot), au-delà " + // estimation-ok: nom interne de capacité
   "retour au circuit ordinaire qui compte et finit par un failed assumé ; et le motif de l'indécision de lecture est " +
   "NOMMÉ (lireEtatAnnonce rend `raison` : bot_shield / http_xxx / lecture_impossible), fini « protection anti-bot, " +
   "onglet indisponible ou page inattendue » ; [2] result.diagnostic du chemin delete est persisté dans " +
@@ -3999,7 +3999,7 @@ async function processJob(rawJob, accessToken) {
       delete pfR.needs_user_source;
       await updateJobStatus(accessToken, job.id, "pending", {
         platform_fields: pfR,
-        error: `Le formulaire de Vinted n'a pas chargé les formats de colis de ce rayon : rien n'a été envoyé à Vinted. C'est un aléa de Vinted, rien à faire : nouvel essai automatique dans ~${delaiR} min.`,
+        error: `Le formulaire de Vinted n'a pas chargé les formats de colis de ce rayon : rien n'a été envoyé à Vinted. C'est un aléa de Vinted, rien à faire : nouvel essai automatique.`,
       });
       console.warn(`[background] Job ${job.id} : formats de colis non chargés par la page Vinted (constat ${nR}) — rien soumis, nouvel essai dans ${delaiR} min`);
       return { status: "retry", error: "formats de colis non chargés par la page — nouvel essai rapproché" };
@@ -5082,7 +5082,7 @@ async function rearmBounded(accessToken, job, errorMsg) {
     console.warn(`[background] Job ${job.id} : ré-armement espacé (tentative ${attempts}/${totalEssais}, reprise dans ~${delaiMin} min) — ${errorMsg}`);
     await updateJobStatus(accessToken, job.id, "pending", {
       error: base + (/[.!?…]$/.test(base) ? "" : ".") +
-        ` Reprise automatique dans ~${delaiMin} min (tentative ${attempts}/${totalEssais}).`,
+        ` Nouvel essai automatique (tentative ${attempts}/${totalEssais}), rien à faire.`,
       platform_fields: {
         ...(job.platform_fields ?? {}),
         needsUserAttempts: attempts,
@@ -5131,7 +5131,7 @@ async function marquerAttenteSession(accessToken, job, errorMsg) {
     : job.action === "republish" ? "la republication" : "la publication";
   console.warn(
     `[background] Job ${job.id} : session ${job.platform} morte (observation ${pf.attente_session.observations}) → ` +
-    `attente, aucune tentative consommée, re-sonde dans ${delaiMin} min — ${errorMsg}`
+    `attente, aucune tentative consommée, re-sonde dans ${delaiMin} min — ${errorMsg}` // estimation-ok: journal console
   );
   // Formulation : la cadence est notre mécanique, pas son affaire (même phrase
   // qu'update-job-status). Le préfixe « En attente de ta connexion à » est une
@@ -5230,7 +5230,7 @@ async function marquerRefusPassager(accessToken, job, result, arbitrage) {
   console.warn(`[background] Job ${job.id} : mur ${job.platform} mais session bonne (${arbitrage?.par}) → refus passager ${n + 1}/3, nouvel essai dans ${delaiMin} min`);
   await updateJobStatus(accessToken, job.id, "pending", {
     error: `${label} a refusé l'accès à la page à l'instant, mais ta connexion ${label} est bonne : ` +
-      "rien à faire de ton côté, nouvel essai automatique dans quelques minutes.",
+      "rien à faire de ton côté, nouvel essai automatique.",
     platform_fields: pf,
   });
   await fermerOngletTravail(job.platform, "refus passager");
@@ -5318,7 +5318,7 @@ async function attendreFinVerificationVinted(accessToken, job, errorMsg) {
     platform_fields: pf,
     error:
       "Vinted vérifie encore cette annonce : elle est masquée aux acheteurs, et Vinted refuse de la retirer " +
-      "tant que la vérification dure. Le retrait est retenté toutes les heures et part dès qu'elle se termine — " +
+      "tant que la vérification dure. Le retrait est retenté tout seul et part dès qu'elle se termine — " +
       "rien à faire de ton côté.",
   }).catch((e) => console.error("[background] update-job-status failed:", e));
 }
@@ -5379,7 +5379,7 @@ async function marquerBlocageAntiRobot(accessToken, job, errorMsg) {
   await updateJobStatus(accessToken, job.id, "pending", {
     error:
       `${label} affiche une vérification anti-robot : la page n'a pas pu être lue et aucun geste n'a été fait. ` +
-      `${quoi} repart tout seul, nouvel essai dans ~${BLOCAGE_ANTIROBOT_MIN} min, sans consommer de tentative.`,
+      `${quoi} repart tout seul, nouvel essai automatique, sans consommer de tentative.`,
     platform_fields: pf,
   });
   return { borne: false };
@@ -12318,7 +12318,7 @@ function messageAttenteBoutiqueDepot({ verdict, loginAttendu = null, navigateur 
   const ou = domaine || "Vinted";
   if (verdict === "identite_illisible") {
     return `En attente de ${qui} : cet article ne se publie que sur elle, et FillSell n'a pas pu lire quelle boutique est ouverte dans ${navigateur}. ` +
-      `Rien n'a été publié. Nouvel essai tout seul dans un quart d'heure ; si une autre boutique est ouverte, ouvre celle-ci sur ${ou}.`;
+      `Rien n'a été publié. Nouvel essai tout seul ; si une autre boutique est ouverte, ouvre celle-ci sur ${ou}.`;
   }
   return `En attente de ${qui} : cet article appartient à cette boutique, il ne se publie que sur elle. ` +
     `Ouvre-la sur ${ou} dans ${navigateur}, la publication repartira toute seule. Rien n'a été publié ailleurs.`;
@@ -14837,7 +14837,7 @@ async function releverLiensAnnoncesDansOnglet(tabId, platform) {
   // 3 minutes, le relevé échoue « [incomplet] » : il ne conclut rien.
   let attente;
   const borne = new Promise((_, rejet) => {
-    attente = setTimeout(() => rejet(new Error("Lecture du relevé interrompue : la page ne répond plus après 3 minutes [incomplet]")), 180_000);
+    attente = setTimeout(() => rejet(new Error("Lecture du relevé interrompue : la page ne répond plus après 3 minutes [incomplet]")), 180_000); // estimation-ok: durée PASSÉE (constat)
   });
   let res;
   try { [res] = await Promise.race([injection, borne]); }
@@ -17497,7 +17497,7 @@ async function traiterCommandeSyncDistante(cmd) {
         method: "PATCH",
         body: JSON.stringify({
           status: "cancelled", finished_at: maintenant(), updated_at: maintenant(),
-          erreur: `dressing déjà synchronisé il y a moins de 15 min (prochaine sync possible dans ~${dansMin} min)`,
+          erreur: `dressing déjà synchronisé il y a peu : nouvelle synchronisation possible un peu plus tard`,
         }),
       });
       console.log(`[sync-dressing][distant] commande ${cmd.id} annulée — cadence (~${dansMin} min)`);
@@ -17773,7 +17773,7 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
           console.log(`[sync-dressing][cron] refusée par la cadence — prochaine possible dans ~${Math.round(dansMin / 60)} h`);
           await journaliserRefusCron(dernier, token).catch((e) =>
             console.warn("[sync-dressing][cron] refus non journalisé:", e?.message ?? e));
-          return { ok: false, reason: "cadence_cron", prochaine_dans_min: dansMin };
+          return { ok: false, reason: "cadence_cron", prochaine_dans_min: dansMin }; // estimation-ok: donnée interne, plus jamais affichée
         }
       } catch (e) {
         // Même doctrine que la garde 'bouton' : un aléa de lecture ne doit pas
@@ -17791,7 +17791,7 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
         if (Number.isFinite(dernierFini) && Date.now() - dernierFini < SYNC_MANUAL_COOLDOWN_MS) {
           const dansMin = Math.max(1, Math.ceil((dernierFini + SYNC_MANUAL_COOLDOWN_MS - Date.now()) / 60000));
           console.log(`[sync-dressing] dressing synchronisé il y a moins de 15 min — prochaine sync manuelle possible dans ~${dansMin} min (cron non concerné)`);
-          return { ok: false, reason: "cadence", prochaine_dans_min: dansMin };
+          return { ok: false, reason: "cadence", prochaine_dans_min: dansMin }; // estimation-ok: donnée interne, plus jamais affichée
         }
       } catch (e) {
         console.warn("[sync-dressing] lecture de cadence impossible (on laisse passer):", e?.message ?? e);
@@ -18119,7 +18119,7 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
       return await echec(
         `[anti_robot] Vinted a refusé l'accès à son API (HTTP ${ident.httpStatus ?? "?"}, protection anti-robot) — ` +
         "la connexion Vinted n'a donc pas pu être vérifiée. " +
-        "Réessaie dans quelques minutes : ta connexion Vinted n'est pas en cause. " +
+        "Réessaie un peu plus tard : ta connexion Vinted n'est pas en cause. " +
         `| [cause403] ${cause403}`,
       );
     }
@@ -18129,7 +18129,7 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
       return await echec(
         `[anti_robot] Vinted a refusé l'accès à son API (HTTP ${ident.httpStatus ?? "?"}, protection anti-robot) — ` +
         "la connexion Vinted n'a donc pas pu être vérifiée. " +
-        "Réessaie dans quelques minutes : ta connexion Vinted n'est pas en cause.",
+        "Réessaie un peu plus tard : ta connexion Vinted n'est pas en cause.",
       );
     }
 
@@ -20118,10 +20118,10 @@ async function checkPublishedListings(session) {
         // (texteSuiviLisible, src/utils/shared.js) pour les anciens postes.
         patchUnknown.error =
           `Impossible de vérifier cette annonce sur ${LABEL_PLATEFORME[job.platform] ?? job.platform} : ` +
-          "sa page n'a pas répondu comme prévu. L'annonce n'a pas été touchée ; nouvelle vérification dans 24 h.";
+          "sa page n'a pas répondu comme prévu. L'annonce n'a pas été touchée ; nouvelle vérification à un prochain passage.";
         console.warn(
           `[background] ${job.platform} ${job.id} : ABANDON après ${echecs} lectures indéterminées — ` +
-          "job marqué non vérifiable (aucune conclusion, aucune écriture), prochaine tentative dans 24 h"
+          "job marqué non vérifiable (aucune conclusion, aucune écriture), prochaine tentative dans 24 h" // estimation-ok: journal
         );
       } else {
         console.log(
@@ -20947,7 +20947,7 @@ async function recoverMissingListingUrls(session) {
             console.log(`[background] sonde LBC : « Mes annonces » a redirigé vers ${atterri} — lien de compte suivi : ${candidat}`);
           } else {
             console.warn(
-              `[background] sonde LBC : « Mes annonces » a redirigé vers ${atterri} et la page ne porte aucun lien ` +
+              `[background] sonde LBC : « Mes annonces » a redirigé vers ${atterri} et la page ne porte aucun lien ` + // estimation-ok: journal console
               "« mes annonces » — chemin réel INCONNU, relevé dans moderation_probe.chemin_reel pour décision."
             );
           }
@@ -22024,9 +22024,9 @@ async function replanifierOuArreterRecreation(accessToken, job, pf, result) {
       error: "Ton annonce a été retirée de Vinted et n'est pas encore revenue en ligne : Vinted exige le format du colis, " +
         "que son formulaire ne propose pas pour ce rayon" +
         (/package_size_id POSÉ/.test(String(result?.diagnostic ?? "")) ? ", et a refusé celui que nous lui avons envoyé" : "") +
-        ". Rien n'est perdu : toutes ses données sont sauvegardées. C'est de notre côté, rien à faire : nouvel essai automatique dans 6 h.",
+        ". Rien n'est perdu : toutes ses données sont sauvegardées. C'est de notre côté, rien à faire : nouvel essai automatique.",
     });
-    return { status: "retry", error: "format de colis refusé par Vinted — nouvel essai dans 6 h" };
+    return { status: "retry", error: "format de colis refusé par Vinted — nouvel essai automatique" };
   }
   const retries = Number(pf.recreation_retries) || 0;
   if (retries < 2) {
@@ -22035,7 +22035,7 @@ async function replanifierOuArreterRecreation(accessToken, job, pf, result) {
     pf.next_action_after = new Date(Date.now() + delaiMin * 60000).toISOString();
     await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: null });
     console.warn(`[republish] job ${job.id} : recréation échouée (${result?.error ?? "?"}) — retentative auto ${retries + 1}/2 dans ${delaiMin} min`);
-    return { status: "retry", error: `recréation échouée — retentative automatique ${retries + 1}/2 dans ${delaiMin} min` };
+    return { status: "retry", error: `recréation échouée — retentative automatique ${retries + 1}/2` };
   }
   // Motif SANS parenthèse imbriquée ni code HTTP (06/09) : le champ exigé
   // quand Vinted l'a nommé, sinon le message d'échec rendu lisible.
@@ -22117,18 +22117,18 @@ async function replanifierRestrictionVinted(accessToken, job, pf, result) {
       platform_fields: pf,
       error:
         "RESTRICTION VINTED : Vinted limite temporairement les mises en vente sur ce compte. " +
-        `Ton annonce est intacte, rien n'a été supprimé. Reprise automatique dans ~${delaiMin} min ` +
+        `Ton annonce est intacte, rien n'a été supprimé. Nouvel essai automatique ` +
         `(tentative ${reprises + 1}/${LISTING_RESTRICTION_DELAIS_MIN.length}) — rien à faire.` +
         suffixeVinted,
     });
     console.warn(`[republish] job ${job.id} : /listing-restriction — reprise différée ${reprises + 1}/${LISTING_RESTRICTION_DELAIS_MIN.length} dans ${delaiMin} min`);
-    return { status: "retry", error: `restriction Vinted — reprise différée dans ${delaiMin} min` };
+    return { status: "retry", error: `restriction Vinted — reprise différée` };
   }
   const messageFinal =
     "Vinted limite temporairement les mises en vente sur ton compte : la page de dépôt est " +
     "remplacée par un avertissement (/listing-restriction). Ton annonce est INTACTE, rien n'a " +
     `été supprimé. ${reprises} reprises automatiques espacées n'ont pas suffi — attends un peu ` +
-    "(souvent quelques minutes à quelques heures), puis relance avec « Republier maintenant » depuis l'app." +
+    "(le temps que Vinted lève sa limite), puis relance avec « Republier maintenant » depuis l'app." +
     suffixeVinted;
   await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: messageFinal });
   console.warn(`[republish] job ${job.id} : /listing-restriction — reprises épuisées (${reprises}), pause explicite`);
@@ -22178,7 +22178,7 @@ async function replanifierRestrictionVenteVinted(accessToken, job, pf, result, a
   const suffixe = messageVinted ? ` Message affiché par Vinted : « ${messageVinted} »` : "";
   await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: debut + etat + suffixe });
   console.warn(`[republish] job ${job.id} : /selling-restriction (${annonceRetiree ? "annonce retirée" : "annonce en ligne"}) — nouvel essai dans ${delaiMin} min (n°${n})`);
-  return { status: "retry", error: `restriction de vente Vinted — nouvel essai dans ${delaiMin} min` };
+  return { status: "retry", error: `restriction de vente Vinted — nouvel essai automatique` };
 }
 
 // ── Conclusion COMMUNE après soumission d'une recréation (2026-08-12) ────────
@@ -23498,7 +23498,7 @@ async function rearmerSuppressionNonProuvee(accessToken, job, errorMsg) {
   const base = String(errorMsg ?? "").trim();
   console.warn(`[background] Job ${job.id} : suppression envoyée, pas encore prouvée (${n}) — nouvelle vérification dans ~${delaiMin} min, aucun essai consommé`);
   await updateJobStatus(accessToken, job.id, "pending", {
-    error: base + (/[.!?…]$/.test(base) ? "" : ".") + ` Nouvelle vérification automatique dans ~${delaiMin} min.`,
+    error: base + (/[.!?…]$/.test(base) ? "" : ".") + ` Nouvelle vérification automatique, rien à faire.`,
     platform_fields: pf,
   });
 }
@@ -23823,7 +23823,7 @@ async function processRepublishJobPlateforme(job, accessToken) {
         const dans = delaiMin < 60 ? `${delaiMin} min` : `${Math.round(delaiMin / 60)} h`;
         const msg = `Republication ${label} en pause AVANT tout retrait : la page de dépôt ${label} ne montre pas `
           + `${quoi} là où on l'attend. Ton annonce est TOUJOURS en ligne, rien n'a été touché. `
-          + `C'est de notre côté, rien à faire : nouvel essai automatique dans ~${dans}.`;
+          + `C'est de notre côté, rien à faire : nouvel essai automatique.`;
         await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: msg });
         console.warn(`[republish] job ${job.id} : retrait REFUSÉ par le pré-vol — ${vol.manquants.join(", ")} — nouvel essai dans ${dans} (pause n°${n})`);
         return { status: "skipped", error: msg };
@@ -23938,7 +23938,7 @@ async function processRepublishJobPlateforme(job, accessToken) {
         result = { ...result, success: true, reprise: false, suppressionEnvoyee: false, preuveRetrait: relue.preuveRetrait,
           trace: [...(result.trace ?? []), ...(relue.trace ?? []).slice(-3), `preuve relue par le background (${relue.lectures} lecture(s))`] };
       } else {
-        result = { ...result, trace: [...(result.trace ?? []), `preuve relue ${relue.lectures} fois jusqu'à ~6 min après l'envoi : ${relue.verdict}`] };
+        result = { ...result, trace: [...(result.trace ?? []), `preuve relue ${relue.lectures} fois jusqu'à ~6 min après l'envoi : ${relue.verdict}`] }; // estimation-ok: trace interne, durée PASSÉE
       }
     }
     let retire = result?.success === true;
@@ -24333,7 +24333,7 @@ async function processRepublishJob(job, accessToken) {
           pf.next_action_after = new Date(Date.now() + 30 * 60_000).toISOString();
           delete pf.needs_user_source;
           const msgD = "La lecture de ton annonce sur Vinted n'a pas répondu à temps. Rien n'a été touché, ton annonce est intacte. " +
-            "Nouvel essai automatique dans une demi-heure ; tes autres republications passent en attendant.";
+            "Nouvel essai automatique ; tes autres republications passent en attendant.";
           await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: msgD });
           console.warn(`[republish] job ${job.id} : capture sans réponse (${nD}/3) — nouvel essai dans 30 min`);
           return { status: "skipped", error: `capture sans réponse (${nD}/3)` };
@@ -24381,7 +24381,7 @@ async function processRepublishJob(job, accessToken) {
         delete pf.needs_user_source;
         const msg =
           "Vinted a affiché une vérification anti-robot au lieu de ton annonce. Rien n'a été touché, " +
-          "ton annonce est toujours en ligne. On réessaie tout seuls dans trois quarts d'heure, au calme — " +
+          "ton annonce est toujours en ligne. On réessaie tout seuls, au calme — " +
           "tu peux aussi ouvrir Vinted et passer la vérification, ça ira plus vite.";
         await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: msg });
         console.warn(`[republish] job ${job.id} : capture refusée par l'anti-robot Vinted — reprise dans 45 min`);
@@ -24403,7 +24403,7 @@ async function processRepublishJob(job, accessToken) {
           const msg =
             "Vinted n'a pas voulu nous rendre ta fiche à l'instant. Ta connexion Vinted est bonne, " +
             "il n'y a rien à faire de ton côté : ton annonce est intacte et on refait un essai tout seuls " +
-            "dans un quart d'heure.";
+            "un peu plus tard.";
           await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: msg });
           console.warn(`[republish] job ${job.id} : capture refusée mais session Vinted vue vivante (${JSON.stringify(sessionVue)}) — reprise dans 15 min, pas d'accusation de session`);
           return { status: "skipped", error: `capture reportée (session bonne) : ${cap.error}` };
@@ -24720,7 +24720,7 @@ async function processRepublishJob(job, accessToken) {
           await updateJobStatus(accessToken, job.id, "needs_user", {
             platform_fields: pf,
             error: "Deux captures refaites automatiquement ont encore expiré : " + VO.navigateurPossessif() + " s'ouvre trop longtemps après. " +
-              "Republie cet article quand tu es DEVANT ton ordinateur — le clic, puis " + VO.navigateurCourt() + " ouvert une dizaine de minutes, et c'est réglé. " +
+              "Republie cet article quand tu es DEVANT ton ordinateur — le clic, puis " + VO.navigateurCourt() + " ouvert le temps de la republication, et c'est réglé. " +
               "Rien n'a été touché, ton annonce est intacte.",
           });
           return { status: "needsUser", error: `capture périmée (>24 h) — plafond de recaptures atteint (occurrence ${peremptions})` };
@@ -24960,10 +24960,10 @@ async function processRepublishJob(job, accessToken) {
             error: rate
               ? "Republication en pause AVANT tout retrait : la page de Vinted n'a pas chargé les formats de colis de ce rayon. " +
                 "Ton annonce est toujours en ligne, rien n'a été touché. C'est un aléa de Vinted, rien à faire : " +
-                `nouvel essai automatique dans ~${dans}.`
+                `nouvel essai automatique.`
               : "Republication en pause AVANT tout retrait : le formulaire de Vinted ne propose pas le format du colis pour ce rayon, " +
                 "alors que Vinted l'exige. Ton annonce est toujours en ligne, rien n'a été touché. C'est de notre côté, rien à faire : " +
-                `nouvel essai automatique dans ~${dans}.`,
+                `nouvel essai automatique.`,
           });
           console.warn(`[republish] job ${job.id} : retrait refusé — format de colis non proposé par Vinted (pause n°${n}, ${dans})`);
           return { status: "skipped", error: "format de colis non proposé — rien retiré" };
@@ -25423,7 +25423,7 @@ async function processRepublishJob(job, accessToken) {
         await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: null });
         console.warn(
           `[republish] job ${job.id} : recréation DÉJÀ tentée et dressing illisible (${raisonNonLu}) — ` +
-          "on ne recrée pas, nouvel essai dans 5 min (garde anti-doublon)",
+          "on ne recrée pas, nouvel essai automatique (garde anti-doublon)",
         );
         return { status: "skipped", error: "dressing illisible après une tentative — recréation reportée" };
       }
@@ -26020,7 +26020,7 @@ async function beebsAbsenteParModeration(job, accessToken) {
     delete pf.processing_since;
     console.warn(`[background] Job ${job.id} : annonce Beebs ${id} absente des deux onglets mais jamais vue en ligne (dépôt du ${new Date(publieLe).toISOString()}) — Beebs l'examine encore : retrait gardé, nouvelle vérification dans ~${delaiMin} min`);
     await updateJobStatus(accessToken, job.id, "pending", {
-      error: `L'annonce n'est pas encore visible sur Beebs (Beebs l'examine encore) : FillSell la retirera dès qu'elle apparaît. Nouvelle vérification automatique dans ~${delaiMin} min.`,
+      error: `L'annonce n'est pas encore visible sur Beebs (Beebs l'examine encore) : FillSell la retirera dès qu'elle apparaît. Nouvelle vérification automatique, rien à faire.`,
       platform_fields: pf,
     });
     return true;

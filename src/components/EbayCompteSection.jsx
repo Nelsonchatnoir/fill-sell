@@ -129,7 +129,7 @@ const T = {
     jours: (n) => `${n} jour${n > 1 ? 's' : ''}`,
     paiementNote: 'Paiement immédiat à l\'achat (paiements gérés par eBay).',
     retoursMode: 'Retours',
-    retoursAcceptes: 'Acceptés sous 30 jours, frais de retour à l\'acheteur',
+    retoursAcceptes: 'Acceptés sous 30 jours, frais de retour à l\'acheteur', // estimation-ok: politique eBay (réglage), pas une attente
     retoursRefuses: 'Pas de retour',
     creee: (nom) => `Politique « ${nom} » créée chez eBay et retenue pour FillSell.`,
     // ── Transporteurs (07/09) ──────────────────────────────────────────────
@@ -151,7 +151,7 @@ const T = {
     prixInvalide: (l) => `Le prix de « ${l} » doit être un montant (ex. 4.99).`,
     contenuActuel: 'Ce que voit l\'acheteur aujourd\'hui',
     sansService: "Aucun mode d'envoi domestique dans cette politique.",
-    delaiTraitement: (n) => `Expédition sous ${n} jour${n > 1 ? 's' : ''}`,
+    delaiTraitement: (n) => `Expédition sous ${n} jour${n > 1 ? 's' : ''}`, // estimation-ok: politique eBay (réglage)
     voirContenu: 'Voir ce qu\'elle contient',
     lectureContenu: 'Lecture chez eBay…',
     politiqueAmoi: 'Politique créée par FillSell',
@@ -244,7 +244,7 @@ const T = {
     jours: (n) => `${n} day${n > 1 ? 's' : ''}`,
     paiementNote: 'Immediate payment at purchase (eBay managed payments).',
     retoursMode: 'Returns',
-    retoursAcceptes: 'Accepted within 30 days, buyer pays return shipping',
+    retoursAcceptes: 'Accepted within 30 days, buyer pays return shipping', // estimation-ok: eBay policy (setting)
     retoursRefuses: 'No returns',
     creee: (nom) => `Policy “${nom}” created at eBay and selected for FillSell.`,
     transporteurs: 'My shipping methods',
@@ -265,7 +265,7 @@ const T = {
     prixInvalide: (l) => `The price for “${l}” must be an amount (e.g. 4.99).`,
     contenuActuel: 'What buyers see today',
     sansService: 'No domestic shipping method in this policy.',
-    delaiTraitement: (n) => `Ships within ${n} day${n > 1 ? 's' : ''}`,
+    delaiTraitement: (n) => `Ships within ${n} day${n > 1 ? 's' : ''}`, // estimation-ok: eBay policy (setting)
     voirContenu: 'See what it contains',
     lectureContenu: 'Reading from eBay…',
     politiqueAmoi: 'Policy created by FillSell',

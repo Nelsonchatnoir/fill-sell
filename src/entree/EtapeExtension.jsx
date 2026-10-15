@@ -68,7 +68,7 @@ export default function EtapeExtension({ c, T, onSuivant }) {
               }}
             >
               {secondesRestantes > 0
-                ? (c.fr ? `Renvoyer dans ${secondesRestantes} s` : `Resend in ${secondesRestantes}s`)
+                ? (c.fr ? 'Renvoyer (envoyé à l\'instant)' : 'Resend (just sent)')
                 : (c.fr ? 'Renvoyer' : 'Resend')}
             </LienDiscret>
           )}

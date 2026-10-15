@@ -50,7 +50,8 @@ ok(buildMs("2026-10-02T09:28:31Z+6060632 · v0.6.85") === Date.parse("2026-10-02
 
 console.log("\n5. RETENUE DE CRÉNEAU (point 2) — LE JOB DIT CE QU'IL ATTEND");
 const mc = messageRetenueCreneau("vinted", "2026-10-03T17:00:00+00:00");
-ok(/samedi 03\/10 à 19:00/.test(mc) && /Chrome est ouvert/.test(mc) && /intacte/.test(mc), "jocabroc8 : heure de reprise, condition, annonce intacte", mc);
+// (16/10, Nico) plus jamais la date ni l'heure du créneau : « prochain créneau », la condition, l'annonce intacte.
+ok(/prochain créneau/.test(mc) && !/\d{2}\/\d{2}|\d{1,2}:\d{2}/.test(mc) && /Chrome est ouvert/.test(mc) && /intacte/.test(mc), "jocabroc8 : prochain créneau sans heure, condition, annonce intacte", mc);
 ok(/prochain créneau/.test(messageRetenueCreneau("vinted", null)), "reprise inconnue : « prochain créneau »");
 
 if (ko) { console.error(`\n✗ ${ko} échec(s)`); process.exit(1); }

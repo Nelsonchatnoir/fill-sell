@@ -260,7 +260,7 @@ export default function BlocSynchro({
   // plateforme, vitesses mesurées) ; sans eux, la barre d'avant (plateformes
   // terminées sur le total de la vague).
   const pctAvancement = Math.round(100 * Math.max(0, Math.min(1, Number.isFinite(Number(av?.avancement)) ? Number(av.avancement) : vague.avancement)));
-  const tempsRestant = enCours && av ? T.tempsRestant(Number(av.secondes_restantes)) : '';
+  // (16/10, Nico) Plus de temps restant : la barre et les lignes par plateforme disent où ça en est.
   const lignesAvancement = enCours && av ? [
     ...(av.releves ?? []).map((x) => {
       const fini = x.status === 'done' || x.status === 'incomplete';
@@ -513,10 +513,7 @@ export default function BlocSynchro({
                   {(vague.enCours || rapActif) && <span aria-hidden="true" style={{ position: 'absolute', top: 0, bottom: 0, width: '28%', background: 'linear-gradient(90deg,transparent,rgba(255,255,255,.75),transparent)', animation: 'rvBalaye 1.7s ease-in-out infinite' }} />}
                 </div>
               </div>
-              {tempsRestant && (
-                <div role="status" className="sk-chiffres" style={{ marginTop: 8, fontSize: 13, lineHeight: '20px', fontWeight: 700, color: S.tealDeep, textAlign: 'center' }}>{tempsRestant}</div>
-              )}
-              <div style={{ marginTop: tempsRestant ? 0 : 8, fontSize: 12, lineHeight: '20px', fontWeight: 500, color: S.ink2, textAlign: 'center' }}>
+              <div style={{ marginTop: 8, fontSize: 12, lineHeight: '20px', fontWeight: 500, color: S.ink2, textAlign: 'center' }}>
                 {rapActif && !vague.active ? T.rapprochementSous((rap?.en_attente ?? 0) + (rap?.nouvelles ?? 0)) : T.enCoursSous}
               </div>
               {lignesAvancement.length > 0 && (

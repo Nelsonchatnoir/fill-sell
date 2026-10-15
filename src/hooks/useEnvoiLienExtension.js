@@ -94,14 +94,12 @@ export function messageEchecLien(raison, fr, dejaEnvoye = false, retryDans = nul
   // 10 minutes et trois par 24 h au plus) : rien n'est reparti. Le délai vient
   // du serveur ; on le dit en minutes ou en heures, jamais en secondes.
   if (raison === 'rafale') {
-    const s = Number(retryDans) > 0 ? Math.ceil(Number(retryDans)) : 600;
-    const min = Math.max(1, Math.ceil(s / 60));
-    const quand = min >= 90
-      ? (fr ? `dans ${Math.round(min / 60)} h` : `in ${Math.round(min / 60)}h`)
-      : (fr ? `dans ${min} min` : `in ${min} min`);
+    // (16/10, Nico) Jamais un compte à rebours : « un peu plus tard », et c'est tout.
+    void retryDans;
+    const quand = fr ? 'un peu plus tard' : 'a little later';
     return fr
-      ? `Le lien t'a déjà été envoyé il y a peu : regarde ta boîte mail (et les indésirables) — il peut mettre quelques minutes à arriver. Tu pourras en redemander un ${quand}.`
-      : `The link was already sent to you a moment ago: check your inbox (and spam) — it can take a few minutes to arrive. You can ask for another one ${quand}.`;
+      ? `Le lien t'a déjà été envoyé il y a peu : regarde ta boîte mail (et les indésirables) — il peut mettre un moment à arriver. Tu pourras en redemander un ${quand}.`
+      : `The link was already sent to you a moment ago: check your inbox (and spam) — it can take a moment to arrive. You can ask for another one ${quand}.`;
   }
   if (raison === 'no_email') {
     return fr

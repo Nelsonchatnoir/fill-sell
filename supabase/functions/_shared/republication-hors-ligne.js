@@ -98,9 +98,9 @@ export function messageGardeCorrigee(platform) {
 /** Le message unique, cohérent avec l'état réel : retirée, pas encore revenue, reprise auto. */
 export function messageRecreationEnCours(platform, prochainEssaiMs) {
   const nom = NOM[platform] ?? "la plateforme";
-  const heure = Number.isFinite(prochainEssaiMs) ? heureDeParis(prochainEssaiMs) : null;
+  void prochainEssaiMs; // (16/10, Nico) plus jamais « vers HH:MM »
   return `Ton annonce a été retirée de ${nom} et n'est pas encore revenue en ligne : sa remise en ligne ` +
-    `n'a pas abouti à l'essai précédent. On réessaie tout seuls${heure ? ` vers ${heure}` : ""} — rien à faire ` +
+    "n'a pas abouti à l'essai précédent. On réessaie tout seuls — rien à faire " +
     "de ton côté. Rien n'est perdu : titre, description, photos et champs sont conservés tels quels.";
 }
 

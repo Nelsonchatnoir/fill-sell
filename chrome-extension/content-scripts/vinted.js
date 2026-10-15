@@ -2301,7 +2301,7 @@ async function deleteListing(job) {
         error:
           "CHALLENGE Vinted n'a pas servi la page de ton annonce et nous a renvoyés à son accueil : "
           + "c'est sa protection anti-robot. Rien n'a été supprimé et ton annonce est intacte. "
-          + "On réessaie tout seul dans quelques minutes.",
+          + "On réessaie tout seul, rien à faire.",
         trace,
       };
     }
@@ -2625,7 +2625,7 @@ async function deleteVintedItemViaApi(itemId, t, trace, opts = {}) {
           error:
             `CHALLENGE Vinted a refusé la suppression : protection anti-robot (HTTP 403` +
             `${codeVinted ? `, ${codeVinted}` : ""}), ta session est valide. ` +
-            `Rien n'a été supprimé et ton annonce est intacte. On réessaie tout seul dans quelques minutes.`,
+            `Rien n'a été supprimé et ton annonce est intacte. On réessaie tout seul, rien à faire.`,
           trace,
           verdict,
         };
@@ -2675,7 +2675,7 @@ async function deleteVintedItemViaApi(itemId, t, trace, opts = {}) {
           error:
             `CHALLENGE Vinted a refusé la suppression (HTTP ${resp.status}) alors que ta session est valide : `
             + "c'est sa protection anti-robot. Rien n'a été supprimé et ton annonce est intacte. "
-            + "On réessaie tout seul dans quelques minutes.",
+            + "On réessaie tout seul, rien à faire.",
           trace,
           verdict,
         };
@@ -4758,7 +4758,7 @@ async function remplirFormulaireVinted(job) {
           return {
             success: false,
             colisFormulaireRate: true,
-            error: "Le formulaire de Vinted n'a pas chargé les formats de colis de ce rayon : rien n'a été envoyé à Vinted, nouvel essai automatique dans quelques minutes.",
+            error: "Le formulaire de Vinted n'a pas chargé les formats de colis de ce rayon : rien n'a été envoyé à Vinted, nouvel essai automatique.",
             warnings,
             diagnostic: `${diagRefD} — constat ${constats}, rien soumis`,
           };
@@ -8721,18 +8721,18 @@ async function urlToFile(url, index) {
     throw new Error(
       (/\/storage\/v1\/object\/public\/listing-photos\//.test(String(url))
         ? `La photo ${index + 1} de l'annonce n'a pas pu être lue à l'instant (elle est pourtant bien chez FillSell). ` +
-          "C'est presque toujours passager. La publication repart toute seule dans quelques minutes — rien à payer, rien à refaire. " +
+          "C'est presque toujours passager. La publication repart toute seule — rien à payer, rien à refaire. " +
           "Si rien ne repart, vérifie la connexion internet puis relance la publication depuis l'app."
         : `La photo ${index + 1} de l'annonce n'a pas pu être téléchargée depuis la page de dépôt ` +
           "(photo hébergée hors FillSell — article importé du dressing ? — ou réseau coupé). " +
-          "FillSell la rapatrie automatiquement et relance la publication sous quelques minutes — rien à payer, rien à refaire. " +
+          "FillSell la rapatrie automatiquement et relance la publication toute seule — rien à payer, rien à refaire. " +
           "Si rien ne repart, vérifie la connexion internet puis relance la publication depuis l'app.")
     );
   }
   if (!res.ok) {
     throw new Error(
       `La photo ${index + 1} de l'annonce est indisponible (HTTP ${res.status}). ` +
-      "Réessaie dans quelques minutes ; si ça persiste, remplace cette photo depuis la fiche de l'article dans l'app."
+      "Réessaie un peu plus tard ; si ça persiste, remplace cette photo depuis la fiche de l'article dans l'app."
     );
   }
   const blob = await res.blob();

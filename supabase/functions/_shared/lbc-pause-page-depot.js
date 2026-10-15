@@ -141,11 +141,10 @@ export function decisionPausePageDepotLbc(job, { releves = [], sessions = null, 
   const delaiMin = n <= 1 ? 60 : n === 2 ? 180 : 360;
   pf.pause_page_depot = { depuis: typeof prec?.depuis === "string" ? prec.depuis : iso(pause.at), derniere: iso(pause.at), n, manquants: pause.manquants, pose_par: "get-pending-jobs" };
   pf.next_action_after = iso(Math.max(pause.at + delaiMin * 60_000, maintenant + 5 * 60_000));
-  const dans = delaiMin < 60 ? `${delaiMin} min` : `${Math.round(delaiMin / 60)} h`;
   return {
     action: "reessai", status: "pending", platform_fields: pf, motif: "page de dépôt illisible, session non mise en cause",
     error: "Republication Leboncoin en pause AVANT tout retrait : la page de dépôt Leboncoin n'a pas pu être lue. " +
       "Ton annonce est TOUJOURS en ligne, rien n'a été touché. C'est de notre côté, rien à faire : " +
-      `nouvel essai automatique dans ~${dans}.`,
+      "nouvel essai automatique.",
   };
 }

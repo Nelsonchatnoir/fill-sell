@@ -461,7 +461,7 @@ ${etape("03", "Plusieurs articles d'un coup", "Tu sélectionnes, tu republies en
 <td style="padding:26px;">
 <p style="margin:0 0 10px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:11px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:#E8956D;">Ce qu'il te faut</p>
 <p style="margin:0 0 14px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:18px; font-weight:700; line-height:1.4; color:#F6F5F1;">L'extension Chrome FillSell</p>
-<p style="margin:0 0 22px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:15px; line-height:1.6; color:#EDEAE0;">À installer une seule fois sur un ordinateur — une minute. Ensuite tout se pilote depuis ton téléphone.</p>
+<p style="margin:0 0 22px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:15px; line-height:1.6; color:#EDEAE0;">À installer une seule fois sur un ordinateur. Ensuite tout se pilote depuis ton téléphone.</p>
 <table role="presentation" cellpadding="0" cellspacing="0" border="0">
 <tr>
 <td style="background-color:#2F9E90; border-radius:8px;">

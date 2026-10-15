@@ -1,18 +1,22 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // LA FILE DES JOBS — ce qui tourne, ce qui vient, ce qui attend et pourquoi
-// (chantier clarté, 01/10/2026)
+// (chantier clarté, 01/10/2026 ; une seule vérité sur l'état, 16/10/2026)
 // ═══════════════════════════════════════════════════════════════════════════
 // Calcul PUR (aucun DOM, aucune requête) : à partir des jobs de la personne et
 // de ce qu'on SAIT de son poste et du serveur, range chaque job vivant dans
 // un groupe et dit, en mots simples, POURQUOI il attend.
 //
+// ⛔ L'ÉTAT N'EST PLUS DÉCIDÉ ICI (16/10) : `etatJob` (_shared/etat-job.js)
+//    tranche, une fois, pour l'app, l'extension et le serveur — six mots : En
+//    file · En cours · Fait · À toi de jouer · En pause · Arrêtée. Ce fichier
+//    ne fait que choisir la PHRASE qui va avec le motif, et ranger la file.
 //   · en_cours — l'ordinateur (ou nos serveurs) y travaille maintenant ; une
 //     republication hors ligne en attente de sa remise en ligne en fait partie ;
-//   · a_venir  — partira à son tour, DANS L'ORDRE RÉEL de départ ;
-//   · pause    — retenu jusqu'à une heure CONNUE (rythme ou limite du jour,
-//     créneau, nouvel essai espacé), ou par le serveur (« ton annonce est
-//     intacte »), ou par une plateforme en pause de notre côté ;
-//   · geste    — attend la personne (question, connexion, autorisation).
+//   · en_file  — partira à son tour, DANS L'ORDRE RÉEL de départ ;
+//   · en_pause — retenu (rythme ou limite du jour, créneau, nouvel essai espacé,
+//     « ton annonce est intacte », plateforme en pause de notre côté, ordinateur
+//     éteint, mise à jour de l'extension) ;
+//   · a_toi    — attend la personne (question, connexion, autorisation).
 // Les jobs finis (publiés, retirés, remis en ligne, arrêtés, annulés,
 // échoués) n'y entrent pas.
 //
@@ -23,62 +27,32 @@
 // ⛔ (15/10 soir, Nico) AUCUNE ESTIMATION DE TEMPS DANS LA FILE — « ça fait
 // fuir » : ni « remise en ligne vers 17:36 », ni « nouvel essai à… », ni
 // « ~15-21 min ». On montre l'ÉTAT, jamais une durée ni une heure à venir.
-// L'heure connue sert seulement à RANGER (pause la plus proche d'abord) ; un
-// texte du serveur qui en porte une est nettoyé (sansEstimation).
+// (16/10) Plus aucune heure, même pour ranger : la file est dans l'ordre de départ.
 // ⛔ LECTURE SEULE : rien ici n'écrit, ne relance ni n'annule un job.
-// Preuve : scripts/file-des-jobs-selftest.mjs.
+// Preuve : scripts/file-des-jobs-selftest.mjs, scripts/etat-job-selftest.mjs.
 
-import { retenueServeurDuJob, RETENUE_BOUTIQUE_INCONNUE } from "./retenueServeur.js";
-import { attenteBoutiqueLevable } from "../../supabase/functions/_shared/attente-autre-boutique.js";
-import { estArretUtilisateur, estGeleLivres } from "./publicationState.js";
+import {
+  ETATS, LIBELLES, libelleEtat, etatJob, jobFini, etapeRepublication, parNosServeurs, attendConnexion,
+  attenteAutomatique, boutiqueAttendue, boutiqueDuJob, sansEstimation,
+} from "../../supabase/functions/_shared/etat-job.js";
 import { phraseMiseAJourExtension } from "./extensionAJour.js";
+
+export { ETATS, LIBELLES, libelleEtat, etatJob, etapeRepublication, parNosServeurs, attendConnexion, attenteAutomatique, boutiqueAttendue, boutiqueDuJob, sansEstimation };
 
 export const PLATEFORMES_NOM = { vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", ebay: "eBay", opla: "Opla", depop: "Depop" };
 export const nomPlateforme = (p) => PLATEFORMES_NOM[p] ?? (p ? String(p) : "");
 
 const objet = (v) => (v && typeof v === "object" && !Array.isArray(v) ? v : {});
 const pfDe = (j) => objet(j?.platform_fields);
-export const etapeRepublication = (j) => {
-  const s = pfDe(j).republish_step;
-  return ["a_capturer", "captured", "deleted", "recreated"].includes(s) ? s : "a_capturer";
-};
-export const parNosServeurs = (j) => j?.voie === "api";
 
-// Statuts qui ne bougeront plus. `recreated` est l'étape finale d'une
-// republication réussie (son statut peut rester 'processing').
-const TERMINAUX = new Set(["published", "sold", "failed", "cancelled", "dry_run_completed", "deleted"]);
-export function jobVivant(j) {
-  if (!j || TERMINAUX.has(j.status)) return false;
-  if (j.action === "republish" && etapeRepublication(j) === "recreated") return false;
-  if (estArretUtilisateur(j)) return false;
-  return ["pending", "processing", "needs_user"].includes(j.status);
-}
+export const jobVivant = (j) => !jobFini(j);
 
-// « En attente de ta connexion à … » : le job bute sur une session fermée —
-// même lecture que la carte du Stock (attenteDeConnexion).
-export const attendConnexion = (j) => j?.status === "pending"
-  && Boolean(pfDe(j).attente_session)
-  && /^En attente de ta connexion à /i.test(String(j?.error ?? ""));
-
-// ── L'heure, en heure de Paris, seulement quand elle est connue ─────────────
+// ── L'heure, en heure de Paris — pour DIRE DEPUIS QUAND, jamais à quelle heure ──
 const jourParis = (ts) => new Date(ts).toLocaleDateString("en-CA", { timeZone: "Europe/Paris" });
 const hhmmParis = (ts) => new Date(ts).toLocaleTimeString("en-GB", {
   timeZone: "Europe/Paris", hourCycle: "h23", hour: "2-digit", minute: "2-digit",
 });
-/** « 17:26 », « demain 08:00 », « le 3 oct. à 08:00 » — ou null (inconnue ou passée). */
-export function heureConnue(iso, maintenant, lang = "fr") {
-  const t = Date.parse(iso ?? "");
-  if (!Number.isFinite(t) || t <= maintenant) return null;
-  const fr = lang !== "en";
-  const h = hhmmParis(t);
-  const j = jourParis(t);
-  if (j === jourParis(maintenant)) return h;
-  if (j === jourParis(maintenant + 86400000)) return fr ? `demain ${h}` : `tomorrow ${h}`;
-  const date = new Date(t).toLocaleDateString(fr ? "fr-FR" : "en-GB", { timeZone: "Europe/Paris", day: "numeric", month: "short" });
-  return fr ? `le ${date} à ${h}` : `${date} at ${h}`;
-}
-
-/** « 10:12 » (aujourd'hui), « hier 22:40 », « le 29 sept. » — heure de Paris. */
+/** « 10:12 » (aujourd'hui), « hier 22:40 », « le 29 sept. » — heure de Paris, toujours PASSÉE. */
 export function depuisQuand(t, maintenant, lang = "fr") {
   const fr = lang !== "en";
   if (jourParis(t) === jourParis(maintenant)) return hhmmParis(t);
@@ -103,152 +77,80 @@ export function comparerDepart(a, b) {
   return tsDe(a.created_at) - tsDe(b.created_at);
 }
 
+// Les phrases, par motif. Jamais une heure, jamais une durée.
 const TEXTE = {
   fr: {
-    tour: "En attente de son tour",
-    serveurs: "Part de nos serveurs à son tour",
-    ordinateur: "En attente de ton ordinateur — Chrome fermé ou extension pas vue",
-    ordinateurSession: "En attente de ton ordinateur — l'extension doit se reconnecter à ton compte",
-    intacte: "En attente, ton annonce est intacte",
-    pauseSansHeure: (pourquoi) => `En pause${pourquoi ? ` (${pourquoi})` : ""}`,
-    limiteJour: "limite du jour",
-    rythme: "rythme de republication",
-    creneau: "créneau de republication",
-    // (15/10, P2) Republication automatique de la plateforme mise en pause : le serveur retient.
-    autoEnPause: "Republication automatique en pause : elle repartira quand tu la relanceras. Ton annonce est intacte",
-    essaiAuto: "Nouvel essai automatique, rien à faire",
-    essaiBientot: "Nouvel essai automatique, rien à faire",
-    plateformePause: (p) => `${p} est en pause de notre côté — reprise automatique`,
+    tour: "En file : elle partira à son tour",
+    serveurs: "En file : part de nos serveurs à son tour",
+    ordinateur: "En pause : ton ordinateur est éteint ou Chrome fermé — ouvre Chrome avec l'extension, ça repart tout seul",
+    ordinateur_session: "En pause : l'extension doit se reconnecter à ton compte — ouvre fillsell.app dans Chrome, ça repart tout seul",
+    retenue_serveur: "En pause, ton annonce est intacte : elle repart toute seule",
+    gel: "En pause : elle repart toute seule",
+    rythme: "En pause (rythme de republication) : elle repart toute seule",
+    limite_jour: "En pause (limite du jour) : elle repart toute seule",
+    creneau: "En pause (créneau de republication) : elle repart toute seule au prochain créneau",
+    auto_en_pause: "Republication automatique en pause : elle repartira quand tu la relanceras. Ton annonce est intacte",
+    essai: "En pause : nouvel essai automatique, rien à faire",
+    plateforme: (p) => `En pause : ${p} est en pause de notre côté — reprise automatique`,
     boutique: (login) => (login
-      ? `En attente de ta boutique @${login} : ouvre-la sur vinted.fr dans Chrome, ça repartira tout seul`
-      : "En attente de ton autre boutique Vinted : ouvre-la sur vinted.fr dans Chrome, ça repartira tout seul"),
-    // (03/10, point G) Boutique d'origine inconnue : on nomme celles à ouvrir.
-    boutiquesAOuvrir: (liste) => (liste?.length
-      ? `En attente : ouvre ${liste.join(" puis ")} sur vinted.fr dans Chrome — FillSell y cherchera l'annonce, ça repartira tout seul`
-      : "En attente : ouvre sur vinted.fr, dans Chrome, la boutique qui porte cette annonce — ça repartira tout seul"),
-    geste: "Un geste à faire",
-    connexion: (p) => `Un geste à faire : connecte-toi à ${p} sur ton ordinateur`,
-    opla: "Un geste à faire : autorise Opla dans l'extension — l'annonce partira toute seule ensuite",
-    horsLigne: "Hors ligne quelques minutes : remise en ligne en cours",
-    horsLigneDepuis: (d) => `Hors ligne depuis ${d} : remise en ligne dès que possible`,
-    // (15/10 soir) Attentes automatiques : pas un geste, une pause.
-    attenteReleve: (p) => `En pause, rien n'a été retiré : FillSell attend le prochain relevé de ${p} pour savoir si l'annonce est toujours en ligne`,
-    pauseTechnique: (p) => `En pause avant tout retrait, ton annonce est intacte : elle repart toute seule dès que ${p} répond à nouveau`,
-    ebayEtranger: "Ton compte eBay est inscrit sur un autre site qu'ebay.fr : FillSell n'y publie pas, rien n'a été envoyé",
-    plateformeEcartee: (p) => `Tu as indiqué ne pas vendre sur ${p} : rien n'est envoyé`,
-    enCours: "En cours sur ton ordinateur",
-    enCoursServeurs: "En cours sur nos serveurs",
+      ? `En pause : ouvre ta boutique @${login} sur vinted.fr dans Chrome, ça repartira tout seul`
+      : "En pause : ouvre ton autre boutique Vinted sur vinted.fr dans Chrome, ça repartira tout seul"),
+    boutiques_a_ouvrir: (liste) => (liste?.length
+      ? `En pause : ouvre ${liste.join(" puis ")} sur vinted.fr dans Chrome — FillSell y cherchera l'annonce, ça repartira tout seul`
+      : "En pause : ouvre sur vinted.fr, dans Chrome, la boutique qui porte cette annonce — ça repartira tout seul"),
+    mise_a_jour: phraseMiseAJourExtension("fr"),
+    geste: "À toi de jouer : une question t'attend",
+    pas_partie: "À toi de jouer : elle n'est pas partie, relance-la",
+    connexion: (p) => `À toi de jouer : connecte-toi à ${p} sur ton ordinateur`,
+    opla: "À toi de jouer : autorise Opla dans l'extension — l'annonce partira toute seule ensuite",
+    depop: "À toi de jouer : autorise Depop dans l'extension — l'annonce partira toute seule ensuite",
+    remise_en_ligne: "En cours : hors ligne le temps de la remise en ligne",
+    remise_en_ligne_depuis: (d) => `En cours : hors ligne depuis ${d}, remise en ligne dès que possible`,
+    releve: (p) => `En pause, rien n'a été retiré : FillSell attend le prochain relevé de ${p} pour savoir si l'annonce est toujours en ligne`,
+    technique: (p) => `En pause avant tout retrait, ton annonce est intacte : elle repart toute seule dès que ${p} répond à nouveau`,
+    ebay_etranger: "En pause : ton compte eBay est inscrit sur un autre site qu'ebay.fr, FillSell n'y publie pas — rien n'a été envoyé",
+    ecartee: (p) => `En pause : tu as indiqué ne pas vendre sur ${p}, rien n'est envoyé`,
+    en_cours_ordinateur: "En cours sur ton ordinateur",
+    en_cours_serveurs: "En cours sur nos serveurs",
   },
   en: {
-    tour: "Waiting for its turn",
-    serveurs: "Goes out from our servers in turn",
-    ordinateur: "Waiting for your computer — Chrome closed or extension not seen",
-    ordinateurSession: "Waiting for your computer — the extension must reconnect to your account",
-    intacte: "On hold, your listing is untouched",
-    pauseSansHeure: (pourquoi) => `Paused${pourquoi ? ` (${pourquoi})` : ""}`,
-    limiteJour: "daily limit",
-    rythme: "repost pacing",
-    creneau: "repost time slot",
-    autoEnPause: "Automatic reposting is paused: it resumes when you restart it. Your listing is untouched",
-    essaiAuto: "Automatic retry, nothing to do",
-    essaiBientot: "Automatic retry, nothing to do",
-    plateformePause: (p) => `${p} is paused on our side — resumes automatically`,
+    tour: "Queued: it goes out in turn",
+    serveurs: "Queued: goes out from our servers in turn",
+    ordinateur: "Paused: your computer is off or Chrome closed — open Chrome with the extension, it resumes on its own",
+    ordinateur_session: "Paused: the extension must reconnect to your account — open fillsell.app in Chrome, it resumes on its own",
+    retenue_serveur: "Paused, your listing is untouched: it resumes on its own",
+    gel: "Paused: it resumes on its own",
+    rythme: "Paused (repost pacing): it resumes on its own",
+    limite_jour: "Paused (daily limit): it resumes on its own",
+    creneau: "Paused (repost time slot): it resumes on its own at the next slot",
+    auto_en_pause: "Automatic reposting is paused: it resumes when you restart it. Your listing is untouched",
+    essai: "Paused: automatic retry, nothing to do",
+    plateforme: (p) => `Paused: ${p} is paused on our side — resumes automatically`,
     boutique: (login) => (login
-      ? `Waiting for your @${login} shop: open it on vinted.fr in Chrome, it resumes on its own`
-      : "Waiting for your other Vinted shop: open it on vinted.fr in Chrome, it resumes on its own"),
-    boutiquesAOuvrir: (liste) => (liste?.length
-      ? `On hold: open ${liste.join(" then ")} on vinted.fr in Chrome — FillSell will look for the listing, it resumes on its own`
-      : "On hold: open, on vinted.fr in Chrome, the shop that holds this listing — it resumes on its own"),
-    geste: "Something to do",
-    connexion: (p) => `Something to do: sign in to ${p} on your computer`,
-    opla: "Something to do: allow Opla in the extension — the listing then goes out on its own",
-    horsLigne: "Offline for a few minutes: going back online",
-    horsLigneDepuis: (d) => `Offline since ${d}: back online as soon as possible`,
-    attenteReleve: (p) => `Paused, nothing removed: FillSell waits for the next ${p} reading to know whether the listing is still online`,
-    pauseTechnique: (p) => `Paused before any removal, your listing is untouched: it resumes on its own as soon as ${p} answers again`,
-    ebayEtranger: "Your eBay account is registered on another site than ebay.fr: FillSell does not list there, nothing was sent",
-    plateformeEcartee: (p) => `You said you don't sell on ${p}: nothing is sent`,
-    enCours: "In progress on your computer",
-    enCoursServeurs: "In progress on our servers",
+      ? `Paused: open your @${login} shop on vinted.fr in Chrome, it resumes on its own`
+      : "Paused: open your other Vinted shop on vinted.fr in Chrome, it resumes on its own"),
+    boutiques_a_ouvrir: (liste) => (liste?.length
+      ? `Paused: open ${liste.join(" then ")} on vinted.fr in Chrome — FillSell will look for the listing, it resumes on its own`
+      : "Paused: open, on vinted.fr in Chrome, the shop that holds this listing — it resumes on its own"),
+    mise_a_jour: phraseMiseAJourExtension("en"),
+    geste: "Your move: a question is waiting for you",
+    pas_partie: "Your move: it didn't go out, relaunch it",
+    connexion: (p) => `Your move: sign in to ${p} on your computer`,
+    opla: "Your move: allow Opla in the extension — the listing then goes out on its own",
+    depop: "Your move: allow Depop in the extension — the listing then goes out on its own",
+    remise_en_ligne: "In progress: offline while it goes back online",
+    remise_en_ligne_depuis: (d) => `In progress: offline since ${d}, back online as soon as possible`,
+    releve: (p) => `Paused, nothing removed: FillSell waits for the next ${p} reading to know whether the listing is still online`,
+    technique: (p) => `Paused before any removal, your listing is untouched: it resumes on its own as soon as ${p} answers again`,
+    ebay_etranger: "Paused: your eBay account is registered on another site than ebay.fr, FillSell does not list there — nothing was sent",
+    ecartee: (p) => `Paused: you said you don't sell on ${p}, nothing is sent`,
+    en_cours_ordinateur: "In progress on your computer",
+    en_cours_serveurs: "In progress on our servers",
   },
 };
 
-// Inconnue ≠ absente : on ne dit « en attente de ton ordinateur » que sur une
-// absence CONSTATÉE (même règle que la carte du Stock).
-const extensionFraiche = (ext) => !ext || !["eteinte", "inactive", "session_expiree"].includes(ext.etat);
-
-// ── LA BOUTIQUE VINTED D'UN JOB (03/10, point 16 — Ornella) ────────────────
-// ctx.boutiques = { connectee: {userId, login, fraiche}|null, liste: [{user_id,
-// login}], origines: Map(inventaire_id → vinted_account_id) }. La boutique
-// d'un article est son ORIGINE (inventaire.vinted_account_id), comme au
-// serveur ; ouverte = boutique.connectee (_shared/boutique-connectee.js).
-const origineDe = (j, b) => {
-  const o = b?.origines instanceof Map ? b.origines.get(String(j?.inventaire_id)) : b?.origines?.[String(j?.inventaire_id)];
-  return o == null ? "" : String(o).trim();
-};
-const loginDe = (id, b) => {
-  const x = (b?.liste ?? []).find((y) => String(y?.user_id ?? "") === String(id));
-  return x?.login ? String(x.login) : null;
-};
-/** La boutique qu'attend un job retenu par la garde du serveur, sinon null (mêmes fail-open). */
-export function boutiqueAttendue(j, b) {
-  if (!b?.connectee?.userId || b.connectee.fraiche === false) return null;
-  if (j?.platform !== "vinted" || !["republish", "delete"].includes(j?.action) || j?.inventaire_id == null) return null;
-  const o = origineDe(j, b);
-  if (!o || o === String(b.connectee.userId).trim()) return null;
-  return { userId: o, login: loginDe(o, b) };
-}
-/** La boutique d'un job Vinted, pour l'étiquette « @login » — seulement à partir de deux boutiques. */
-export function boutiqueDuJob(j, b) {
-  if (j?.platform !== "vinted" || (b?.liste?.length ?? 0) < 2) return null;
-  const o = origineDe(j, b) || String(pfDe(j).vinted_account_id ?? "").trim();
-  const login = o ? loginDe(o, b) : null;
-  return login ? { userId: o, login } : null;
-}
-
-// ── LES ATTENTES AUTOMATIQUES (15/10 soir, mission de Nico) ─────────────────
-// Un needs_user n'est un « geste à faire » que s'il attend la PERSONNE. Ceux-ci
-// repartent seuls (handler-watch, relevé) ou ne demandent rien :
-//   · « introuvable_a_confirmer » : une lecture « plus en ligne » attend le
-//     relevé qui tranche (_shared/introuvable-a-confirmer.js) ;
-//   · une republication en pause AVANT tout retrait pour un motif TECHNIQUE
-//     (anti-robot, session, formulaire non capté) — mêmes motifs que la
-//     reprise sur preuve de handler-watch (MOTIF_TECHNIQUE_RE) ;
-//   · eBay sur un site étranger, plateforme écartée par la personne.
-const MOTIF_TECHNIQUE_RE = /protection anti-?robot|v[ée]rification anti-?robot|bot_shield|DataDome|Connexion (Vinted|Leboncoin|Beebs|eBay|Depop|Opla) requise|configuration non capt[ée]e|lecture de l'annonce (re|a [ée]t[ée] )?(fus[ée]e|bloqu[ée]e)|bloqu[ée] notre lecture/i;
-const MOTIF_PERSONNE_RE = /champ|Marque|taille|rayon|cat[ée]gorie|interdit|payant|Boostez|option gratuite|nom et (ton )?pr[ée]nom|configuration de vendeur|exige|passe la v[ée]rification|connecte-toi/i;
-export function attenteAutomatique(j) {
-  if (j?.status !== "needs_user") return null;
-  const pf = pfDe(j);
-  const src = String(pf.needs_user_source ?? "");
-  if (src === "introuvable_a_confirmer") return "releve";
-  if (src === "ebay_site_etranger") return "ebay_etranger";
-  if (src === "plateforme_ecartee") return "ecartee";
-  if (j.action === "republish" && ["", "a_capturer", "captured"].includes(String(pf.republish_step ?? ""))
-      && !pf.deleted_at && (src === "relancer" || src === "")) {
-    if (pf.republish_etat_indetermine && typeof pf.republish_etat_indetermine === "object") return "technique";
-    const err = String(j.error ?? "");
-    if (MOTIF_TECHNIQUE_RE.test(err) && !MOTIF_PERSONNE_RE.test(err.replace(MOTIF_TECHNIQUE_RE, ""))) return "technique";
-  }
-  return null;
-}
-
-// ── AUCUNE ESTIMATION DE TEMPS (15/10 soir, Nico) ─────────────────────────
-// Les textes du serveur et de l'extension promettent parfois une heure ou une
-// durée (« Reprise automatique dans ~6 min », « vers 17:36 ») : dans la file
-// et ses barres, la phrase qui en porte une est retirée — l'état reste.
-const ESTIMATION_RE = /~\s*\d|\bvers \d{1,2}\s*[:h]\s*\d{2}|\b(dans|d'ici|sous|en) (environ |à peu près |moins d'|moins de )?\d+(\s*-\s*\d+)?\s*(s|sec|secondes?|min|minutes?|h|heures?)\b|\b(in|within|around) (about )?~?\d+\s*(min|minutes?|h|hours?)\b|\bà \d{1,2}[:h]\d{2}\b|\bat \d{1,2}:\d{2}\b/i;
-export function sansEstimation(texte) {
-  const t = String(texte ?? "").trim();
-  if (!t || !ESTIMATION_RE.test(t)) return t;
-  const phrases = t.split(/(?<=[.!?…])\s+/);
-  const gardees = phrases.filter((p) => !ESTIMATION_RE.test(p));
-  if (gardees.length) return gardees.join(" ");
-  // Une seule phrase : on la coupe avant l'estimation.
-  const m = t.match(ESTIMATION_RE);
-  const avant = t.slice(0, m.index).replace(/[\s,:;—–-]+$/, "").trim();
-  return avant ? avant + "." : "";
-}
+// Le groupe de la file, dérivé de l'état — jamais décidé ici.
+const GROUPE_DE = { en_cours: "en_cours", en_file: "en_file", en_pause: "en_pause", a_toi: "a_toi" };
 
 /**
  * Où en est UN job vivant, et pourquoi.
@@ -257,123 +159,50 @@ export function sansEstimation(texte) {
  *         oplaAAutoriser: bool (verdict serveur « a_autoriser »),
  *         boutiques: { connectee, liste, origines } | null (multi-boutiques Vinted),
  *         extensionAMettreAJour: bool (poste sous le seuil de version, utils/extensionAJour) }
- * → { groupe: 'en_cours'|'a_venir'|'pause'|'geste', raison, heure|null, motif }
+ * → { etat, groupe: 'en_cours'|'en_file'|'en_pause'|'a_toi', raison, heure: null, motif }
  */
 export function situationJob(j, ctx = {}) {
   const maintenant = ctx.maintenant ?? Date.now();
   const lang = ctx.lang === "en" ? "en" : "fr";
   const T = TEXTE[lang];
-  const pf = pfDe(j);
   const nom = nomPlateforme(j.platform);
-  const etape = j.action === "republish" ? etapeRepublication(j) : null;
-
-  // (03/10, point H — chaussons d'Ornella) Une opération dont l'origine est
-  // PROUVÉE sur une autre boutique attend en silence : c'est la boutique qui
-  // manque, pas un geste à faire ici (_shared/attente-autre-boutique.js).
-  if (j.status === "needs_user" && pf.needs_user_source === "boutique_etrangere" && attenteBoutiqueLevable(pf.boutique_etrangere)) {
-    const g = objet(pf.boutique_etrangere);
-    const login = g.login_article ? String(g.login_article) : loginDe(g.article, ctx.boutiques);
-    return { groupe: "pause", raison: T.boutique(login), heure: null, motif: "boutique" };
-  }
-  // (15/10 soir) Une attente AUTOMATIQUE n'est pas un geste à faire.
-  if (j.status === "needs_user") {
-    const auto = attenteAutomatique(j);
-    if (auto === "releve") return { groupe: "pause", raison: T.attenteReleve(nom), heure: null, motif: "retenue_serveur" };
-    if (auto === "technique") return { groupe: "pause", raison: T.pauseTechnique(nom), heure: null, motif: "retenue_serveur" };
-    if (auto === "ebay_etranger") return { groupe: "pause", raison: T.ebayEtranger, heure: null, motif: "plateforme" };
-    if (auto === "ecartee") return { groupe: "pause", raison: T.plateformeEcartee(nom), heure: null, motif: "plateforme" };
-    return { groupe: "geste", raison: T.geste, heure: null, motif: "geste" };
-  }
-  if (attendConnexion(j)) return { groupe: "geste", raison: T.connexion(nom), heure: null, motif: "connexion" };
-  // Opla sans autorisation CONNUE (verdict serveur « a_autoriser ») : le
-  // serveur ne la sert pas, elle attend le geste — jamais « son tour ».
-  if (j.status === "pending" && j.platform === "opla" && ctx.oplaAAutoriser) {
-    return { groupe: "geste", raison: T.opla, heure: null, motif: "opla" };
-  }
-
-  // (03/10, point 16) Retenu par la garde de boutique du SERVEUR, à toute
-  // étape (une remise en ligne se fait sur la boutique d'origine) : c'est la
-  // boutique qui manque, pas son tour — on dit laquelle ouvrir.
-  if (j.status === "pending") {
-    const attendue = boutiqueAttendue(j, ctx.boutiques);
-    if (attendue) return { groupe: "pause", raison: T.boutique(attendue.login), heure: null, motif: "boutique" };
-  }
-
-  // Hors ligne entre retrait et remise en ligne : c'est EN COURS, toujours.
-  // (03/10, point 23 — nivake03) « Quelques minutes » seulement quand c'est
-  // vrai : une annonce retirée depuis plus de 30 min dit DEPUIS QUAND (la
-  // gomme de musculation était « hors ligne quelques minutes » depuis 4 jours).
-  if (etape === "deleted") {
-    const h = heureConnue(pf.next_action_after, maintenant, lang);
-    const retireeLe = Date.parse(pf.deleted_at ?? pf.deleted_at_serveur ?? "");
-    const longtemps = Number.isFinite(retireeLe) && maintenant - retireeLe > 30 * 60_000;
-    return { groupe: "en_cours", raison: longtemps ? T.horsLigneDepuis(depuisQuand(retireeLe, maintenant, lang)) : T.horsLigne, heure: h, motif: "remise_en_ligne" };
-  }
-  if (j.status === "processing") {
-    return { groupe: "en_cours", raison: parNosServeurs(j) ? T.enCoursServeurs : T.enCours, heure: null, motif: "en_cours" };
-  }
-  // (03/10, point 25 — geronimo0550) Extension trop ancienne : le serveur ne
-  // lui sert plus rien (sauf une remise en ligne commencée, traitée plus
-  // haut). Ni « son tour », ni une heure : la mise à jour, et son geste.
-  if (ctx.extensionAMettreAJour && !parNosServeurs(j)) {
-    return { groupe: "pause", raison: phraseMiseAJourExtension(lang), heure: null, motif: "mise_a_jour" };
-  }
-
-  // pending — d'abord ce qui le RETIENT, avec une heure quand elle est connue.
-  if (estGeleLivres(j)) return { groupe: "pause", raison: T.pauseSansHeure(null), heure: null, motif: "gel" };
-  const retenue = retenueServeurDuJob(j);
-  if (retenue?.motif === RETENUE_BOUTIQUE_INCONNUE) return { groupe: "pause", raison: T.boutiquesAOuvrir(retenue.boutiques), heure: null, motif: "boutique" };
-  if (retenue) return { groupe: "pause", raison: T.intacte, heure: null, motif: "retenue_serveur" };
-  // La boutique avant le plafond : c'est le geste qui débloque (marqueur posé
-  // par l'extension à la capture ; la garde du serveur est lue plus haut).
-  const boutique = objet(pf.attente_boutique);
-  if (boutique.login || pf.attente_boutique === true) {
-    return { groupe: "pause", raison: T.boutique(boutique.login ?? null), heure: null, motif: "boutique" };
-  }
-  if (j.action === "republish") {
-    const pl = ctx.plafond;
-    if (pl?.retenue) {
-      const pourquoi = pl.motif === "pause" ? T.rythme : T.limiteJour;
-      const h = heureConnue(pl.reprise, maintenant, lang);
-      return { groupe: "pause", raison: T.pauseSansHeure(pourquoi), heure: h, motif: pl.motif === "pause" ? "rythme" : "limite_jour" };
+  const v = etatJob(j, { ...ctx, maintenant });
+  const groupe = GROUPE_DE[v.etat] ?? "en_pause";
+  let raison;
+  switch (v.motif) {
+    case "boutique": raison = T.boutique(v.detail?.login ?? null); break;
+    case "boutiques_a_ouvrir": raison = T.boutiques_a_ouvrir(v.detail?.boutiques ?? []); break;
+    case "plateforme": raison = T.plateforme(nom); break;
+    case "connexion": raison = T.connexion(nom); break;
+    case "releve": raison = T.releve(nom); break;
+    case "technique": raison = T.technique(nom); break;
+    case "ecartee": raison = T.ecartee(nom); break;
+    case "remise_en_ligne": {
+      // (03/10, point 23 — nivake03) Une annonce retirée depuis plus de 30 min dit DEPUIS QUAND.
+      const pf = pfDe(j);
+      const retireeLe = Date.parse(pf.deleted_at ?? pf.deleted_at_serveur ?? "");
+      const longtemps = Number.isFinite(retireeLe) && maintenant - retireeLe > 30 * 60_000;
+      raison = longtemps ? T.remise_en_ligne_depuis(depuisQuand(retireeLe, maintenant, lang)) : T.remise_en_ligne;
+      break;
     }
-    const cr = pf.republish_source === "auto" ? ctx.creneaux?.[j.platform] : null;
-    // (15/10, P2 — Louis) Module en pause (« Tout mettre en pause ») : le serveur
-    // retient la republication auto ; la carte le dit, sans heure inventée.
-    if (cr && cr.actif === false) {
-      return { groupe: "pause", raison: T.autoEnPause, heure: null, motif: "auto_en_pause" };
-    }
-    if (cr && cr.dans_creneau === false) {
-      const h = heureConnue(cr.reprise, maintenant, lang);
-      return { groupe: "pause", raison: T.pauseSansHeure(T.creneau), heure: h, motif: "creneau" };
+    case "serveurs": raison = v.etat === ETATS.EN_COURS ? T.en_cours_serveurs : T.serveurs; break;
+    case "ordinateur": raison = v.etat === ETATS.EN_COURS ? T.en_cours_ordinateur : T.ordinateur; break;
+    default: {
+      const t = T[v.motif];
+      raison = typeof t === "function" ? t(nom) : (t ?? libelleEtat(v.etat, lang));
     }
   }
-  if (ctx.plateformesEnPause?.has?.(j.platform)) {
-    return { groupe: "pause", raison: T.plateformePause(nom), heure: null, motif: "plateforme" };
-  }
-  const essai = heureConnue(pf.next_action_after, maintenant, lang);
-  if (essai) return { groupe: "pause", raison: T.essaiAuto, heure: essai, motif: "essai" };
-  if (j.error && String(j.error).trim()) return { groupe: "pause", raison: T.essaiBientot, heure: null, motif: "essai" };
-
-  if (parNosServeurs(j)) return { groupe: "a_venir", raison: T.serveurs, heure: null, motif: "tour" };
-  if (!extensionFraiche(ctx.extension)) {
-    return {
-      groupe: "a_venir",
-      raison: ctx.extension?.etat === "session_expiree" ? T.ordinateurSession : T.ordinateur,
-      heure: null, motif: "ordinateur",
-    };
-  }
-  return { groupe: "a_venir", raison: T.tour, heure: null, motif: "tour" };
+  return { etat: v.etat, groupe, raison, heure: null, motif: v.motif, detail: v.detail ?? null };
 }
 
 /**
  * La file complète, rangée.
  * jobs : tous les jobs connus (n'importe quel ordre, les finis sont écartés).
- * → { en_cours, a_venir, pause, geste, compteurs: {enCoursOuAVenir, enPause, gestes}, total }
+ * → { en_cours, en_file, en_pause, a_toi, compteurs: {enCoursOuEnFile, enPause, aToi}, total }
  *   chaque ligne : { job, situation }
  */
 export function lireFile(jobs, ctx = {}) {
-  const groupes = { en_cours: [], a_venir: [], pause: [], geste: [] };
+  const groupes = { en_cours: [], en_file: [], en_pause: [], a_toi: [] };
   for (const j of jobs ?? []) {
     if (!jobVivant(j)) continue;
     const situation = situationJob(j, ctx);
@@ -381,34 +210,25 @@ export function lireFile(jobs, ctx = {}) {
   }
   const parDepart = (a, b) => comparerDepart(a.job, b.job);
   groupes.en_cours.sort((a, b) => (a.job.status === "processing" ? 0 : 1) - (b.job.status === "processing" ? 0 : 1) || parDepart(a, b));
-  groupes.a_venir.sort(parDepart);
-  // En pause : la reprise la plus proche d'abord (heure connue), puis l'ordre de départ.
-  const repriseDe = (l) => {
-    const pf = pfDe(l.job);
-    const iso = l.situation.motif === "essai" ? pf.next_action_after
-      : (l.situation.motif === "rythme" || l.situation.motif === "limite_jour") ? ctx.plafond?.reprise
-      : l.situation.motif === "creneau" ? ctx.creneaux?.[l.job.platform]?.reprise : null;
-    const t = Date.parse(iso ?? "");
-    return Number.isFinite(t) ? t : Number.MAX_SAFE_INTEGER;
-  };
-  groupes.pause.sort((a, b) => repriseDe(a) - repriseDe(b) || parDepart(a, b));
-  groupes.geste.sort((a, b) => tsDe(b.job.created_at) - tsDe(a.job.created_at));
+  groupes.en_file.sort(parDepart);
+  groupes.en_pause.sort(parDepart);
+  groupes.a_toi.sort((a, b) => tsDe(b.job.created_at) - tsDe(a.job.created_at));
   const compteurs = {
-    enCoursOuAVenir: groupes.en_cours.length + groupes.a_venir.length,
-    enPause: groupes.pause.length,
-    gestes: groupes.geste.length,
+    enCoursOuEnFile: groupes.en_cours.length + groupes.en_file.length,
+    enPause: groupes.en_pause.length,
+    aToi: groupes.a_toi.length,
   };
-  return { ...groupes, compteurs, total: compteurs.enCoursOuAVenir + compteurs.enPause + compteurs.gestes };
+  return { ...groupes, compteurs, total: compteurs.enCoursOuEnFile + compteurs.enPause + compteurs.aToi };
 }
 
-/** « 3 en cours ou à venir · 1 en pause · 1 geste à faire » — seulement ce qui existe. */
+/** « 3 en cours ou en file · 1 en pause · 1 à toi de jouer » — seulement ce qui existe. */
 export function phraseCompteurs(c, lang = "fr") {
   const fr = lang !== "en";
   const parts = [];
-  if (c.enCoursOuAVenir) parts.push(fr ? `${c.enCoursOuAVenir} en cours ou à venir` : `${c.enCoursOuAVenir} running or coming up`);
+  if (c.enCoursOuEnFile) parts.push(fr ? `${c.enCoursOuEnFile} en cours ou en file` : `${c.enCoursOuEnFile} in progress or queued`);
   if (c.enPause) parts.push(fr ? `${c.enPause} en pause` : `${c.enPause} paused`);
-  if (c.gestes) parts.push(fr ? `${c.gestes} geste${c.gestes > 1 ? "s" : ""} à faire` : `${c.gestes} thing${c.gestes > 1 ? "s" : ""} to do`);
-  if (!parts.length) return fr ? "Rien en cours ni à venir" : "Nothing running or coming up";
+  if (c.aToi) parts.push(fr ? `${c.aToi} à toi de jouer` : `${c.aToi} your move`);
+  if (!parts.length) return fr ? "Rien en cours ni en file" : "Nothing in progress or queued";
   return parts.join(" · ");
 }
 

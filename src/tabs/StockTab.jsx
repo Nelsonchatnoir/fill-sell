@@ -51,6 +51,8 @@ import FileDesJobs from '../components/FileDesJobs';
 import BarreJobCarte from '../components/BarreJobCarte';
 import BarreProgression from '../components/BarreProgression';
 import { articleDeJob, pisteJob, etapesJob } from '../utils/barresJobs';
+// (16/10) Les six mots de l'état d'un job, les mêmes partout.
+import { LIBELLES } from '../../supabase/functions/_shared/etat-job.js';
 // Photos : lecture des deux formes, écriture en objets { type, url } — le
 // normaliseur unique (incident lecarnetdemercury du 05/09, cf. utils/photos.js).
 import { urlsPhotos, entreesPhotos } from '../utils/photos';
@@ -2154,8 +2156,8 @@ function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose,
           ton: "vert",
           titre: fr ? "En file d'attente" : "Queued",
           detail: fr
-            ? "La publication part de nos serveurs — ton ordinateur n'a pas besoin d'être allumé. Prochain passage dans 2 min au plus."
-            : "Publishing runs from our servers — your computer doesn't need to be on. Next pass within 2 min.",
+            ? "La publication part de nos serveurs — ton ordinateur n'a pas besoin d'être allumé."
+            : "Publishing runs from our servers — your computer doesn't need to be on.",
         }
       : diagExt;
   const TONS = {
@@ -2165,19 +2167,21 @@ function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose,
     rouge:  { bg:"#FEF2F2", bord:"#FECACA", texte:"#B91C1C" },
   };
   const ton = TONS[diag.ton];
+  // (16/10) Les mots de l'état unique (_shared/etat-job.js) : En file · En cours ·
+  // À toi de jouer · Fait · Arrêtée. Un needs_user « en cours de confirmation »
+  // (la requête est partie, la plateforme n'a pas encore répondu) reste « En cours ».
+  const L = LIBELLES[fr ? "fr" : "en"];
   const LIB_STATUT = {
-    pending:    fr ? "En attente"        : "Queued",
-    processing: fr ? "Publication…"      : "Publishing…",
-    needs_user: fr ? "À compléter"       : "Needs input",
-    failed:     fr ? "Échec"             : "Failed",
+    pending:    L.en_file,
+    processing: L.en_cours,
+    needs_user: L.a_toi,
+    failed:     L.a_toi,
+    published:  L.fait,
+    cancelled:  L.arretee,
   };
-  // Un needs_user n'est « À compléter » que s'il y a un champ à remplir
-  // (2026-09-10) : en cours chez la plateforme → « En cours de confirmation »,
-  // action hors app → « Action requise ».
   const libStatut = (j) => {
     const n = natureNeedsUser(j);
-    if (n === "en_cours") return fr ? "En cours de confirmation" : "Awaiting confirmation";
-    if (n === "action") return fr ? "Action requise" : "Action needed";
+    if (n === "en_cours") return L.en_cours;
     return LIB_STATUT[j.status] || j.status;
   };
   // Un seul job par plateforme : le plus récent — même règle que les badges.
@@ -2313,7 +2317,7 @@ function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose,
                       {info.epuise
                         ? (fr ? "Relances épuisées pour ce job" : "No relaunch left for this job")
                         : info.attenteMin > 0
-                          ? (fr ? `Relancer dans ${info.attenteMin} min` : `Relaunch in ${info.attenteMin} min`)
+                          ? (fr ? 'Relancé il y a peu — un peu plus tard' : 'Relaunched recently — a little later')
                           : <><IconeTexte icone={RotateCcw} style={{ marginRight: 6 }} />{fr ? "Relancer maintenant" : "Relaunch now"}</>}
                     </button>
                   );
@@ -2681,8 +2685,8 @@ function diagnostiquerExtension(extensionStatus, lang) {
       ton: "vert",
       titre: fr ? "En file d'attente" : "Queued",
       detail: fr
-        ? "L'extension tourne — la publication part au prochain passage (toutes les 2 min)."
-        : "The extension is running — publishing starts on the next pass (every 2 min).",
+        ? "L'extension tourne — la publication part au prochain passage."
+        : "The extension is running — publishing starts on the next pass.",
     };
   }
   return {
@@ -2700,7 +2704,7 @@ function formatDepuis(ts, lang) {
   const ms = Math.max(0, Date.now() - ts);
   // Seuil sur les MILLISECONDES, pas sur les minutes arrondies : Math.round(30 s)
   // vaut 1 et affichait « 1 min » pour une demi-minute.
-  if (ms < 60000) return fr ? "moins d'une minute" : "less than a minute";
+  if (ms < 60000) return fr ? "moins d'une minute" : "less than a minute"; // estimation-ok: « depuis », une durée PASSÉE
   const min = Math.round(ms / 60000);
   if (min < 60) return `${min} min`;
   const h = Math.floor(min / 60);
@@ -3251,10 +3255,9 @@ export function VintedDressingSync({ lang, user, isNative, extensionStatus, sour
   // Ton neutre : c'est une cadence, pas une faute.
   const cadenceTexte = (() => {
     if (!enCadence) return null;
-    const dansMin = Math.max(1, Math.ceil((cadenceFinA - Date.now()) / 60000));
     return fr
-      ? `Tu pourras synchroniser dans ${dansMin} min.`
-      : `You can refresh in ${dansMin} min.`;
+      ? 'Synchronisation récente : tu pourras relancer un peu plus tard.'
+      : 'Synced recently: you can refresh a little later.';
   })();
 
   // ── Synchro impossible : UN SEUL message (refonte 2026-08-09) ─────────────
@@ -3362,14 +3365,14 @@ export function VintedDressingSync({ lang, user, isNative, extensionStatus, sour
   const autoTexte = (() => {
     if (!dejaSync || blocage || enCours || enAttenteDistante || attenteOccupee) return null;
     return fr
-      ? 'automatique toutes les 24 h quand Chrome est ouvert'
-      : 'automatic every 24 h while Chrome is open';
+      ? 'automatique une fois par jour quand Chrome est ouvert'
+      : 'automatic once a day while Chrome is open';
   })();
   // `autoTexte` n'est plus accolé à l'état (il descend sous le repli). Le
   // REPLI de secours est conservé tel quel : quand aucune synchro n'a encore
   // abouti, cette ligne reste le seul endroit qui annonce l'automatique.
   const ligneSync = derniereSyncTexte
-    || (autoTexte && (fr ? 'Synchro automatique toutes les 24 h quand Chrome est ouvert.' : 'Automatic sync every 24 h while Chrome is open.'))
+    || (autoTexte && (fr ? 'Synchro automatique une fois par jour quand Chrome est ouvert.' : 'Automatic sync once a day while Chrome is open.'))
     || null;
 
   const progression = (() => {
@@ -3568,10 +3571,9 @@ export function VintedDressingSync({ lang, user, isNative, extensionStatus, sour
   function texteRefusFile(r) {
     return (() => {
       if (r?.reason === 'cadence') {
-        const m = r.prochaine_dans_min ?? 15;
         return fr
-          ? `Tes annonces Vinted viennent d'être synchronisées — tu pourras resynchroniser dans ~${m} min.`
-          : `Your Vinted listings were just synced — you can sync again in ~${m} min.`;
+          ? 'Tes annonces Vinted viennent d\'être synchronisées — tu pourras resynchroniser un peu plus tard.'
+          : 'Your Vinted listings were just synced — you can sync again a little later.';
       }
       if (r?.reason === 'deja_en_attente') {
         return fr
@@ -3615,11 +3617,10 @@ export function VintedDressingSync({ lang, user, isNative, extensionStatus, sour
     if (repriseAuto) {
       const prochaine = Date.parse(repriseAuto[3]);
       if (Number.isFinite(prochaine) && Date.now() < prochaine + RETRY403_GRACE_MS) {
-        const min = Math.max(1, Math.ceil((prochaine - Date.now()) / 60000));
         const lus = run.items_vus ?? 0;
         return { ton: 'orange', texte: fr
-          ? `La lecture de tes annonces Vinted a été coupée${lus > 0 ? ` après ${lus} article${lus > 1 ? 's' : ''}` : ''}. Elle reprend toute seule dans ~${min} min (tentative ${repriseAuto[1]}/${repriseAuto[2]}), là où elle s'est arrêtée — laisse Chrome ouvert, rien d'autre à faire.`
-          : `Reading your Vinted listings was cut off${lus > 0 ? ` after ${lus} item${lus > 1 ? 's' : ''}` : ''}. It resumes on its own in ~${min} min (attempt ${repriseAuto[1]}/${repriseAuto[2]}), right where it stopped — keep Chrome open, nothing else to do.` };
+          ? `La lecture de tes annonces Vinted a été coupée${lus > 0 ? ` après ${lus} article${lus > 1 ? 's' : ''}` : ''}. Elle reprend toute seule (tentative ${repriseAuto[1]}/${repriseAuto[2]}), là où elle s'est arrêtée — laisse Chrome ouvert, rien d'autre à faire.`
+          : `Reading your Vinted listings was cut off${lus > 0 ? ` after ${lus} item${lus > 1 ? 's' : ''}` : ''}. It resumes on its own (attempt ${repriseAuto[1]}/${repriseAuto[2]}), right where it stopped — keep Chrome open, nothing else to do.` };
       }
     }
     if (run.status === 'done') {
@@ -3731,8 +3732,8 @@ export function VintedDressingSync({ lang, user, isNative, extensionStatus, sour
       }
       if (brut.includes('403')) {
         return { ton: 'orange', texte: fr
-          ? "Vinted n'a pas répondu à FillSell. Dans 9 cas sur 10, c'est que tu n'es pas connecté à Vinted dans ce navigateur.\n1. Ouvre vinted.fr dans un onglet du MÊME Chrome\n2. Connecte-toi\n3. Reviens ici et relance la synchronisation\nSi tu es déjà connecté, réessaie dans quelques minutes."
-          : "Vinted didn't answer FillSell. 9 times out of 10, it means you're not signed in to Vinted in this browser.\n1. Open vinted.fr in a tab of the SAME Chrome\n2. Sign in\n3. Come back here and run the sync again\nIf you're already signed in, try again in a few minutes." };
+          ? "Vinted n'a pas répondu à FillSell. Dans 9 cas sur 10, c'est que tu n'es pas connecté à Vinted dans ce navigateur.\n1. Ouvre vinted.fr dans un onglet du MÊME Chrome\n2. Connecte-toi\n3. Reviens ici et relance la synchronisation\nSi tu es déjà connecté, réessaie un peu plus tard."
+          : "Vinted didn't answer FillSell. 9 times out of 10, it means you're not signed in to Vinted in this browser.\n1. Open vinted.fr in a tab of the SAME Chrome\n2. Sign in\n3. Come back here and run the sync again\nIf you're already signed in, try again a little later." };
       }
       // ── Reprise automatique armée après un 403 (2026-08-12) ────────────────
       // Tant que l'échéance (+ marge) n'est pas passée, ce n'est PAS un échec :
@@ -3745,10 +3746,9 @@ export function VintedDressingSync({ lang, user, isNative, extensionStatus, sour
       if (retry) {
         const prochaine = Date.parse(retry[3]);
         if (Number.isFinite(prochaine) && Date.now() < prochaine + RETRY403_GRACE_MS) {
-          const min = Math.max(1, Math.ceil((prochaine - Date.now()) / 60000));
           return { ton: 'orange', texte: fr
-            ? `Vinted a momentanément bloqué la lecture (protection anti-robot). Nouvelle tentative automatique dans ~${min} min (tentative ${retry[1]}/${retry[2]}) — laisse Chrome ouvert sur ton ordinateur, rien d'autre à faire.`
-            : `Vinted temporarily blocked reading (anti-bot protection). Retrying automatically in ~${min} min (attempt ${retry[1]}/${retry[2]}) — keep Chrome open on your computer, nothing else to do.` };
+            ? `Vinted a momentanément bloqué la lecture (protection anti-robot). Nouvelle tentative automatique (tentative ${retry[1]}/${retry[2]}) — laisse Chrome ouvert sur ton ordinateur, rien d'autre à faire.`
+            : `Vinted temporarily blocked reading (anti-bot protection). Retrying automatically (attempt ${retry[1]}/${retry[2]}) — keep Chrome open on your computer, nothing else to do.` };
         }
         return { ton: 'rouge', texte: fr
           ? "Synchronisation échouée : Vinted a refusé l'accès (protection anti-robot) et la reprise automatique n'a pas pu s'exécuter — Chrome était sans doute fermé. Réessaie en le laissant ouvert ; ta connexion Vinted n'est pas en cause."
@@ -4130,8 +4130,8 @@ export function VintedDressingSync({ lang, user, isNative, extensionStatus, sour
             <div style={{fontSize:11.5,lineHeight:1.5,color:"#8A8578",marginTop:2}}>
               {repubEnVol>0
                 ?(fr
-                  ?`Elle part dès que l'article en cours est terminé — deux minutes environ. Tes ${repubEnVol} republication${repubEnVol>1?'s':''} reprennent juste après. Pas besoin de recliquer.`
-                  :`It starts as soon as the item in progress is done — about two minutes. Your ${repubEnVol} repost${repubEnVol>1?'s':''} resume right after. No need to click again.`)
+                  ?`Elle part dès que l'article en cours est terminé. Tes ${repubEnVol} republication${repubEnVol>1?'s':''} reprennent juste après. Pas besoin de recliquer.`
+                  :`It starts as soon as the item in progress is done. Your ${repubEnVol} repost${repubEnVol>1?'s':''} resume right after. No need to click again.`)
                 :(fr
                   ?`Tes republications sont en attente${repriseFile?` et reprennent ${repriseFile.quand}`:''} — elles ne retardent pas la synchronisation, qui part dès que ton ordinateur reprend la main. Pas besoin de recliquer.`
                   :`Your reposts are on hold${repriseFile?` and resume ${repriseFile.quand}`:''} — they are not delaying the sync, which starts as soon as your computer picks up. No need to click again.`)}
@@ -4176,8 +4176,8 @@ export function VintedDressingSync({ lang, user, isNative, extensionStatus, sour
                       ? "Ta synchronisation partira à la prochaine ouverture de Chrome sur ton ordinateur ; tu suis son avancée ici."
                       : "Your sync will start the next time you open Chrome on your computer; you follow its progress here.")
                   : (fr
-                      ? "Elle part au prochain passage de ton extension — 2 minutes au plus."
-                      : 'It starts at your extension’s next check — 2 minutes at most.')}
+                      ? "Elle part au prochain passage de ton extension."
+                      : 'It starts at your extension’s next check.')}
             </div>
           </div>
         </div>
@@ -4266,8 +4266,8 @@ export function VintedDressingSync({ lang, user, isNative, extensionStatus, sour
               )}
               {autoTexte&&(
                 <div style={{fontSize:11.5,lineHeight:1.5,color:"#8A8578"}}>
-                  {fr?"Synchro automatique toutes les 24 h quand Chrome est ouvert."
-                     :"Automatic sync every 24 h while Chrome is open."}
+                  {fr?"Synchro automatique une fois par jour quand Chrome est ouvert."
+                     :"Automatic sync once a day while Chrome is open."}
                 </div>
               )}
               {/* Tes boutiques (multi-boutiques confirmées uniquement). La
@@ -4909,15 +4909,18 @@ function etapeRepublication(job, fr, reprise = null, attente = null, item = null
   // DISTINGUE les états, elle ne les explique pas — l'explication vit dans
   // `titre`/`detail` (feuille d'avancement, title au survol). Points de
   // suspension = travail en cours ; sans = état posé, qui attend.
+  // (16/10) La pastille porte les mots de l'état unique (_shared/etat-job.js) ;
+  // l'étape précise (relevé, retrait, recréation) vit dans `titre`/`detail`.
+  const L = LIBELLES[fr ? 'fr' : 'en'];
   const T = {
-    file:      fr ? 'En file'      : 'Queued',
-    lecture:   fr ? 'Relevé…'      : 'Reading…',
-    prete:     fr ? 'Relevée'      : 'Saved',
-    retrait:   fr ? 'Retrait…'     : 'Removing…',
-    recreation:fr ? 'Recréation…'  : 'Recreating…',
-    enligne:   fr ? 'En ligne'               : 'Live',
-    relancer:  fr ? 'À relancer'             : 'Needs action',
-    arretee:   fr ? 'Arrêtée'                : 'Stopped',
+    file:      L.en_file,
+    lecture:   L.en_cours,
+    prete:     L.en_file,
+    retrait:   L.en_cours,
+    recreation:L.en_cours,
+    enligne:   L.fait,
+    relancer:  L.a_toi,
+    arretee:   L.arretee,
   };
   const bleu  = { fond: '#EFF3F8', bord: '#C7D6E5', encre: '#334155' };
   const vert  = { fond: '#F0FDFB', bord: 'rgba(13,148,136,0.25)', encre: '#1B6E62' };
@@ -9395,7 +9398,6 @@ const StockTab = memo(function StockTab({
     const repubVivante = stRepub === 'pending' || stRepub === 'processing' || stRepub === 'needs_user';
     const cadence = !d.repubMaintenant.length && stRepub === 'published' && repubCible?.platform_fields?.recreated_at
       && Date.now() - Date.parse(repubCible.platform_fields.recreated_at) < 24 * 3600 * 1000;
-    const restantCadence = cadence ? Math.max(1, Math.ceil((24 * 3600 * 1000 - (Date.now() - Date.parse(repubCible.platform_fields.recreated_at))) / 3600000)) : null;
     const remontable = d.repubEligibleTout && !repubGelee && d.repubMaintenant.length > 0 && !repubEnPause && !modeRepublish;
     // Les plateformes où l'article peut ENCORE partir : ni en ligne, ni déjà en
     // route (un dépôt en file ou en attente d'une réponse n'est pas « à publier »).
@@ -9492,7 +9494,7 @@ const StockTab = memo(function StockTab({
           ? (fr ? "Supprime puis recrée l'annonce à l'identique pour la faire remonter dans le fil Vinted." : 'Deletes then recreates the listing identically to bump it in the Vinted feed.')
           : (fr ? `Sur ${d.repubMaintenant.map((p) => LABEL_PF[p] ?? p).join(', ')}` : `On ${d.repubMaintenant.map((p) => LABEL_PF[p] ?? p).join(', ')}`) });
     } else if (cadence) {
-      menu.push({ cle: 'remonter', icone: ChevronsUp, libelle: fr ? `Remonter · dans ~${restantCadence} h` : `Bump · in ~${restantCadence} h`, detail: fr ? 'Une remontée par article et par 24 h.' : 'One bump per item per 24 h.', desactive: true, onTap: () => {} });
+      menu.push({ cle: 'remonter', icone: ChevronsUp, libelle: fr ? 'Remonter · déjà remontée aujourd\'hui' : 'Bump · already bumped today', detail: fr ? 'Une remontée par article et par jour.' : 'One bump per item per day.', desactive: true, onTap: () => {} });
     }
     if (d.repubLatest && (repubVivante || d.repubEtape)) menu.push({ cle: 'suivi-remontee', icone: Activity, libelle: fr ? 'Où en est la remontée' : 'Bump progress', onTap: () => setRepubProgress(d.repubLatest) });
     menu.push({ cle: 'vendu', icone: BadgeEuro, libelle: libelleAction('vendu', lang), onTap: () => markSold(item) });
@@ -11932,7 +11934,7 @@ const StockTab = memo(function StockTab({
                     {relanceBusy
                       ?(lang==="en"?"Relaunching…":"Relance…")
                       :enAttente
-                        ?(lang==="en"?`Relaunched recently — wait ~${r.attenteMin} min`:`Relancé il y a peu — patiente ~${r.attenteMin} min`)
+                        ?(lang==="en"?'Relaunched recently — try again a little later':'Relancé il y a peu — réessaie un peu plus tard')
                         :<><IconeTexte icone={RotateCcw} style={{ marginRight: 6 }} />{lang==="en"?"Relaunch now":"Relancer maintenant"}</>}
                   </button>
                   <div style={{fontSize:11,color:"#8A8578",textAlign:"center",marginBottom:8,lineHeight:1.5}}>

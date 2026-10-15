@@ -25,7 +25,7 @@ const FR = {
   lectureEchec: "Tes connexions ne se lisent pas pour l'instant. Réessaie dans un instant.",
   // L'achat
   preparation: 'On prépare ta place…',
-  poolVide: "Toutes les places Sans ordinateur sont prises pour l'instant. On en ajoute : réessaie dans quelques heures, rien n'a été demandé à ta carte.",
+  poolVide: "Toutes les places Sans ordinateur sont prises pour l'instant. On en ajoute : réessaie plus tard, rien n'a été demandé à ta carte.",
   dejaClient: "L'option Sans ordinateur est déjà active sur ton compte.",
   sansEssai: (raison) => `${raison === 'essai_deja_pris'
     ? "Tu as déjà profité de l'essai gratuit."
@@ -57,7 +57,7 @@ const EN = {
   lecture: 'Reading your connections…',
   lectureEchec: "Your connections can't be read right now. Try again in a moment.",
   preparation: 'Getting your spot ready…',
-  poolVide: 'All No computer spots are taken for now. We are adding more: try again in a few hours, nothing was asked of your card.',
+  poolVide: 'All No computer spots are taken for now. We are adding more: try again later, nothing was asked of your card.',
   dejaClient: 'The No computer add-on is already active on your account.',
   sansEssai: (raison) => `${raison === 'essai_deja_pris'
     ? 'You already used the free trial.'

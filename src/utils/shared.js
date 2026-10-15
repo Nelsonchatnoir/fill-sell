@@ -2,6 +2,8 @@
 // Used by tab components and App.jsx
 
 import { etatsVintedLisibles } from './etatsVinted.js';
+// (16/10) Le filet « aucune estimation de temps » (_shared/etat-job.js).
+import { sansEstimation } from '../../supabase/functions/_shared/etat-job.js';
 
 export const MONTHS_FR = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
 export const MONTHS_EN = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -407,8 +409,8 @@ export function raccourcirMessageJob(texte, max = 300) {
 export function texteSuiviLisible(raw, name, en) {
   if (/^Impossible de vérifier l'état de cette annonce \S+ après \d+ tentatives/i.test(raw)) {
     return en
-      ? `We could not check this listing on ${name}: its page did not answer as expected. The listing was not touched; we will check again in 24 h.`
-      : `Impossible de vérifier cette annonce sur ${name} : sa page n'a pas répondu comme prévu. L'annonce n'a pas été touchée ; nouvelle vérification dans 24 h.`;
+      ? `We could not check this listing on ${name}: its page did not answer as expected. The listing was not touched; we will check again at a later pass.`
+      : `Impossible de vérifier cette annonce sur ${name} : sa page n'a pas répondu comme prévu. L'annonce n'a pas été touchée ; nouvelle vérification à un prochain passage.`;
   }
   const remplacee = raw.match(/^Annonce (\d+) remplacée par une republication \(l'article vit désormais sur l'annonce (\d+)\) — job obsolète clos automatiquement, pas une vente\.?$/i);
   if (remplacee) {
@@ -544,7 +546,13 @@ export function texteBeebsValeurHorsListe(raw, job, en = false) {
       (retiree ? 'ton annonce Beebs a été retirée pour être republiée, elle revient en ligne dès ton choix.' : 'la publication repart dès ton choix.');
 }
 
+// (16/10, Nico) FILET UNIQUE : tout texte de job montré par l'app passe ici, et
+// en ressort sans heure promise ni durée (_shared/etat-job.js, sansEstimation).
 export function humanizeJobError(job, lang = 'fr') {
+  const t = humanizeJobErrorBrut(job, lang);
+  return typeof t === 'string' ? sansEstimation(t) : t;
+}
+function humanizeJobErrorBrut(job, lang = 'fr') {
   // États Vinted d'une page étrangère (« Very good »…) : affichés dans la langue
   // de l'app (03/10, point E) — cf. utils/etatsVinted.js.
   const raw = etatsVintedLisibles(sansMentionMonnaie(String(job?.error ?? '').trim()), job?.platform, lang);
@@ -590,8 +598,8 @@ export function humanizeJobError(job, lang = 'fr') {
       // pour ce qu'elle est — quelques minutes, pas un rattrapage — sans
       // promettre qu'elle aboutira.
       return en
-        ? `${name} is showing an anti-robot check. Open ${name} on your computer and pass it now — one automatic retry is left, within minutes.`
-        : `${name} affiche une vérification anti-robot. Ouvre ${name} sur ton ordinateur et valide-la maintenant — il reste une tentative automatique, dans les minutes qui viennent.`;
+        ? `${name} is showing an anti-robot check. Open ${name} on your computer and pass it now — one automatic retry is left, on its own.`
+        : `${name} affiche une vérification anti-robot. Ouvre ${name} sur ton ordinateur et valide-la maintenant — il reste une tentative automatique, toute seule.`;
     }
     // Terminé : c'est fini, personne ne reprendra. (Nettoyage unités 03/09 :
     // plus aucune mention de décompte — la monnaie interne n'existe plus.)
@@ -716,8 +724,8 @@ export function humanizeJobError(job, lang = 'fr') {
         : `${name} a affiché sa page de connexion à la place du formulaire de vente : rien n'a été publié et la ${acte} est arrêtée. Connecte-toi à ${name} sur ton ordinateur, puis relance la ${acte} depuis la fiche de l'article.`;
     }
     return en
-      ? `${name} is showing its sign-in page instead of the listing form. Sign in to ${name} on your computer now — an automatic retry happens within minutes, otherwise relaunch the ${acte} from the item.`
-      : `${name} affiche sa page de connexion à la place du formulaire de vente. Connecte-toi à ${name} sur ton ordinateur maintenant — une tentative automatique a lieu dans les minutes qui viennent, sinon relance la ${acte} depuis la fiche de l'article.`;
+      ? `${name} is showing its sign-in page instead of the listing form. Sign in to ${name} on your computer now — an automatic retry happens on its own, otherwise relaunch the ${acte} from the item.`
+      : `${name} affiche sa page de connexion à la place du formulaire de vente. Connecte-toi à ${name} sur ton ordinateur maintenant — une tentative automatique a lieu toute seule, sinon relance la ${acte} depuis la fiche de l'article.`;
   }
 
   // Annulations posées à la main par le support (« Annulé par le support /

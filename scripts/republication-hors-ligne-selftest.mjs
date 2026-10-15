@@ -39,7 +39,9 @@ console.log("1. Le cas réel : needs_user « Republier maintenant » après le r
   ok(d && d.pf.republish_step === "deleted", "étape conservée : la recréation repart directement");
   ok(d && !("needsUserAttempts" in d.pf) && !("needs_user_source" in d.pf), "budget utilisateur et « relancer » retirés");
   ok(d && !d.pf.verifier_doublon_avant_publication, "arrêt à la description : rien n'est parti, pas de vérification imposée");
-  ok(d && /retirée de Leboncoin/.test(d.message) && /vers 12:38/.test(d.message), "le message dit l'état réel et l'heure de Paris (12:38)");
+  // (16/10, Nico) plus jamais « vers HH:MM » : l'état réel, la reprise automatique, aucune heure promise.
+  ok(d && /retirée de Leboncoin/.test(d.message) && /On réessaie tout seuls/.test(d.message) && !/\bvers \d|\d{1,2}:\d{2}|dans ~?\d/.test(d.message),
+    "le message dit l'état réel et la reprise automatique, sans heure ni délai");
   ok(d && !/relance|clique|republier maintenant/i.test(d.message), "le message ne demande AUCUN geste");
   ok(d && /titre, description, photos et champs sont conservés/.test(d.message), "le message dit que rien n'est perdu");
   ok(d && d.pf.republish_snapshot?.photos === 2, "copie de dépôt conservée telle quelle");
@@ -127,7 +129,7 @@ console.log("6. Hors périmètre : rien ne change");
 // ── GARDE DE L'EXTENSION : JAMAIS « RIEN À FAIRE » SUR UN REFUS CERTAIN (28/09) ──
 // xxewwer, job 28f1b00e : livre « Maquillage … Livre Relié AGEP » (Loisirs >
 // Livres) retiré à 21:09, redépôt refusé 4 fois par la garde cosmétiques
-// (titre seul), réécrit ici « On réessaie tout seuls vers 22:21 — rien à faire ».
+// (titre seul), réécrit à l’époque « On réessaie tout seuls vers 22:21 — rien à faire » (depuis le 16/10 : sans heure).
 console.log("\n6. Un refus de garde n'est pas une panne passagère");
 {
   const BRUT_XXEWWER = "Ton annonce a été retirée de Leboncoin et n'a pas pu être redéposée automatiquement : Leboncoin " +

@@ -47,9 +47,9 @@ const job = (o) => ({ id: o.id ?? "j", platform: "vinted", action: "republish", 
 const surLucia = job({ id: "l", inventaire_id: "inv-l" });
 const surOrnella = job({ id: "o", inventaire_id: "inv-o" });
 const sl = situationJob(surLucia, ctx);
-ok(sl.groupe === "pause" && sl.motif === "boutique" && sl.raison === "En attente de ta boutique @luciatrendyshop : ouvre-la sur vinted.fr dans Chrome, ça repartira tout seul",
+ok(sl.groupe === "en_pause" && sl.motif === "boutique" && sl.raison === "En pause : ouvre ta boutique @luciatrendyshop sur vinted.fr dans Chrome, ça repartira tout seul",
   "job de l'AUTRE boutique : en pause, la boutique à ouvrir nommée (avant : « en attente de son tour »)", sl.raison);
-ok(situationJob(surOrnella, ctx).raison === "En attente de son tour", "job de la boutique ouverte : à son tour");
+ok(situationJob(surOrnella, ctx).raison === "En file : elle partira à son tour", "job de la boutique ouverte : à son tour");
 ok(libelleAction(surLucia, "fr", boutiques) === "Republication sur Vinted · @luciatrendyshop" && libelleAction(surOrnella, "fr", boutiques) === "Republication sur Vinted · @ornella-vend",
   "chaque ligne Vinted dit sa boutique");
 ok(libelleAction(surOrnella, "fr", { ...boutiques, liste: [PIN.boutiques[0]] }) === "Republication sur Vinted", "une seule boutique : rien d'ajouté");
@@ -63,7 +63,7 @@ ok(situationJob(surLucia, { ...ctx, boutiques: { ...boutiques, connectee: { ...b
   "boutique ouverte relevée il y a plus de 30 min : rien d'affirmé (le serveur ne retient rien)");
 ok(situationJob(job({ id: "p", action: "publish", inventaire_id: "inv-l", platform_fields: {} }), ctx).motif !== "boutique", "une publication neuve n'appartient à aucune boutique");
 const file = lireFile([surLucia, surOrnella], ctx);
-ok(file.pause.length === 1 && file.a_venir.length === 1, "la file range chacun à sa place");
+ok(file.en_pause.length === 1 && file.en_file.length === 1, "la file range chacun à sa place");
 
 console.log("\n3. LES AUTRES ÉCRANS SUIVENT LA MÊME FRAÎCHEUR");
 const perime = { userId: "472079", login: "ornella-vend", fraiche: false };

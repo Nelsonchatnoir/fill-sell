@@ -93,8 +93,8 @@ export default function ExtensionPitchScreen({
     fr ? 'Lien extension FillSell (à ouvrir sur ordinateur)' : 'FillSell extension link (open on a computer)'
   )}&body=${encodeURIComponent(
     fr
-      ? `Installe l'extension FillSell sur ton ordinateur :\n${EXTENSION_URL}\n\nElle relève tes annonces Vinted en quelques secondes et publie tes annonces sur Vinted, Leboncoin, eBay et Beebs.`
-      : `Install the FillSell extension on your computer:\n${EXTENSION_URL}\n\nIt scans your Vinted listings in seconds and posts your listings on Vinted, Leboncoin, eBay and Beebs.`
+      ? `Installe l'extension FillSell sur ton ordinateur :\n${EXTENSION_URL}\n\nElle relève tes annonces Vinted toute seule et publie tes annonces sur Vinted, Leboncoin, eBay et Beebs.`
+      : `Install the FillSell extension on your computer:\n${EXTENSION_URL}\n\nIt scans your Vinted listings on its own and posts your listings on Vinted, Leboncoin, eBay and Beebs.`
   )}`;
 
   async function copyLink() {
@@ -216,7 +216,7 @@ export default function ExtensionPitchScreen({
                     style={{ ...btnBase, background: 'none', border: 'none', padding: '8px 12px', color: secondesRestantes > 0 ? C.mute : C.tealDeep, fontSize: 12.5, fontWeight: 600, cursor: secondesRestantes > 0 ? 'default' : 'pointer', textDecoration: secondesRestantes > 0 ? 'none' : 'underline', marginBottom: 4 }}
                   >
                     {secondesRestantes > 0
-                      ? (fr ? `Renvoyer dans ${secondesRestantes} s` : `Resend in ${secondesRestantes}s`)
+                      ? (fr ? 'Renvoyer (envoyé à l\'instant)' : 'Resend (just sent)')
                       : (fr ? 'Renvoyer' : 'Resend')}
                   </button>
                 </>
@@ -274,8 +274,8 @@ export default function ExtensionPitchScreen({
             )}
             {onComputer
               ? (fr
-                  ? "Gratuite, installée en une minute."
-                  : 'Free, installed in a minute.')
+                  ? "Gratuite, installée une seule fois."
+                  : 'Free, installed once.')
               : (envoi.etat === 'envoye'
                   ? (fr ? "Ouvre-le sur ton ordinateur, dans Chrome." : 'Open it on your computer, in Chrome.')
                   : (fr ? "Le lien part à l'adresse de ton compte." : 'The link goes to your account address.'))}
@@ -284,8 +284,8 @@ export default function ExtensionPitchScreen({
           {/* ── Secondaire : après l'action, pour qui veut savoir ───────────── */}
           <p style={{ margin: '0 0 12px', fontSize: 13, color: C.mute2, lineHeight: 1.55, textAlign: 'center' }}>
             {body ?? (fr
-              ? "C'est elle qui met tes annonces en ligne pour toi sur Vinted, Leboncoin, eBay et Beebs. Elle est gratuite — et dès son installation, toutes tes annonces Vinted remontent dans FillSell en quelques secondes."
-              : 'It posts your listings for you on Vinted, Leboncoin, eBay and Beebs. It is free — and as soon as it is installed, all your Vinted listings sync into FillSell within seconds.')}
+              ? "C'est elle qui met tes annonces en ligne pour toi sur Vinted, Leboncoin, eBay et Beebs. Elle est gratuite — et dès son installation, toutes tes annonces Vinted remontent dans FillSell toutes seules."
+              : 'It posts your listings for you on Vinted, Leboncoin, eBay and Beebs. It is free — and as soon as it is installed, all your Vinted listings sync into FillSell on their own.')}
           </p>
 
           {supabase && userId && (
@@ -299,8 +299,8 @@ export default function ExtensionPitchScreen({
           {checkResult === false && (
             <p style={{ margin: '0 0 10px', fontSize: 12, color: C.mute, lineHeight: 1.5, textAlign: 'center' }}>
               {fr
-                ? "Pas encore détectée. Après l'installation, laisse Chrome ouvert 2 minutes puis réessaie."
-                : 'Not detected yet. After installing, keep Chrome open for 2 minutes and try again.'}
+                ? "Pas encore détectée. Après l'installation, laisse Chrome ouvert un moment puis réessaie."
+                : 'Not detected yet. After installing, keep Chrome open for a moment and try again.'}
             </p>
           )}
 

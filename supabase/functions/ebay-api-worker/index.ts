@@ -342,7 +342,7 @@ async function publier(
     // (25/09) Le rayon refusé, après l'attente bornée : ce n'est pas eBay qui
     // n'a « rien de meilleur », c'est l'IA qui n'a pas répondu.
     const msg = categorie.attente
-      ? "Le rayon eBay envisagé pour cet article a été écarté, et on n'a pas pu en choisir un autre (service momentanément indisponible). Relance dans quelques minutes."
+      ? "Le rayon eBay envisagé pour cet article a été écarté, et on n'a pas pu en choisir un autre (service momentanément indisponible). Relance un peu plus tard."
       : !sansMapping
       ? premierQuiTient([
           aConfirmer(complet(topChemin), complet(cheminMappe)),

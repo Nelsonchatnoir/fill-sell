@@ -63,9 +63,9 @@ const TEXTES = {
     finPublie: (p) => `En ligne sur ${p}.`,
     finRepublie: (p) => `De retour en tête sur ${p}.`,
     finRetire: (p) => `Retirée de ${p}.`,
-    geste: "Un geste à faire.",
+    geste: "À toi de jouer.",
     pasPartie: "Elle n'est pas partie : à relancer.",
-    annulee: "Annulée.",
+    annulee: "Arrêtée.",
     horsLigneArret: (p) => `Ton annonce n'est plus en ligne sur ${p} : republie-la depuis ta fiche.`,
   },
   en: {
@@ -92,9 +92,9 @@ const TEXTES = {
     finPublie: (p) => `Online on ${p}.`,
     finRepublie: (p) => `Back at the top on ${p}.`,
     finRetire: (p) => `Removed from ${p}.`,
-    geste: "Something to do.",
+    geste: "Your move.",
     pasPartie: "It didn't go out: to relaunch.",
-    annulee: "Cancelled.",
+    annulee: "Stopped.",
     horsLigneArret: (p) => `Your listing is no longer online on ${p}: repost it from the item.`,
   },
 };
@@ -208,8 +208,8 @@ export function pisteJob(job, ctx = {}) {
 
   // ── En attente (pending) : la raison vient de la file ──
   const s = situationJob(job, { ...ctx, lang, maintenant });
-  if (s.groupe === "geste") return { ...base, etape: null, etat: "echec", ton: "action", phraseEchec: s.raison };
-  if (s.groupe === "pause" || s.motif === "ordinateur") return { ...base, etape: step === "captured" ? "attente" : "file", etat: "pause", phrasePause: s.raison };
+  if (s.groupe === "a_toi") return { ...base, etape: null, etat: "echec", ton: "action", phraseEchec: s.raison };
+  if (s.groupe === "en_pause") return { ...base, etape: step === "captured" ? "attente" : "file", etat: "pause", phrasePause: s.raison };
   const etape = step === "captured" ? "attente" : "file";
   return { ...base, etape, etat: "en_cours", depuis: depuisPlausible(job?.created_at, maintenant) };
 }

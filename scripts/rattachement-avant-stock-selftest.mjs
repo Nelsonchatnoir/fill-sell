@@ -145,7 +145,8 @@ ok(/\/\^\(bouton\|bouton_distant\|app\)\$\/\.test\(base\)/.test(hw), 'jamais une
 console.log('7. L’app : la barre, le temps, la fin, les doutes hors du stock');
 ok(/lireAvancementSynchro/.test(lire('src/annonces/useReleveAnnonces.js')) && /rpc\('synchro_avancement'\)/.test(lire('src/utils/syncPlateformes.js')), 'l’avancement est lu (synchro_avancement)');
 ok(/const actifGlobal = vague\.active \|\| rapActif;/.test(bloc), 'la synchro reste « en cours » tant que le rapprochement tourne');
-ok(/T\.tempsRestant\(/.test(bloc) && /T\.stockPret/.test(bloc) && /T\.rapprochementEnCours/.test(bloc), 'temps restant, « Ton stock est prêt », phase de rapprochement');
+// (16/10, Nico) plus de temps restant : la barre et les lignes par plateforme disent l'avancement, jamais des minutes.
+ok(!/T\.tempsRestant\(/.test(bloc) && !/tempsRestant/.test(textes) && /T\.stockPret/.test(bloc) && /T\.rapprochementEnCours/.test(bloc), 'aucun temps restant, « Ton stock est prêt », phase de rapprochement');
 ok(/rapprochementEnCours: 'Rapprochement de tes annonces en cours'/.test(textes) && /stockPret: 'Ton stock est prêt'/.test(textes), 'les mots de Nico');
 ok(/cle: 'a_verifier'/.test(stock) && /nbAVerifier \+ nbSansPrix/.test(stock), '« Annonces à vérifier » dans À régler, comptées par la tuile');
 

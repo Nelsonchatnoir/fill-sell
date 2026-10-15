@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Maquettes FillSell</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap">
+<style>
+/* ── Jetons : ceux de l'app (src/components/ui.jsx, src/stock/jetons.js) ── */
+:root{
+  --canvas:#EDEAE0; --page:#FAFBFB; --paper:#F6F5F1; --card:#FFFFFF; --chip:#F2F0E9;
+  --ink:#10201B; --ink2:#5C6560; --mute:#8A8578; --border:#E7E3D8; --border-soft:#EFECE3;
+  --teal:#2F9E90; --teal-deep:#1B6E62; --menthe:#EFF4F2; --menthe-bord:#D6E2DE; --menthe-vive:#F0FDFB;
+  --ambre-fond:#FFF6E3; --ambre-bord:#EED9A6; --ambre-encre:#8A6100; --ambre-point:#E0A53C;
+  --rouge:#B91C1C; --rouge-fond:#FEF2F2; --rouge-bord:#FECACA;
+  --hors:#B5B0A3; --degrade:linear-gradient(120deg,#2F9E90,#1B6E62);
+  --ombre-cta:0 12px 26px -12px rgba(47,158,144,.75);
+  --r:16px; --r-lg:20px; --tactile:44px;
+  --duree:.32s; --courbe:cubic-bezier(.22,.61,.36,1);
+}
+/* Le cadre de la page (accueil, barre, « ce qui change ») suit le thème du lecteur… */
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--canvas:#0F1A17;--card:#16231F;--chip:#1C2824;--ink:#ECEFEA;--ink2:#A3ADA7;--mute:#7C867F;--border:#263430;--border-soft:#1E2B27;--teal-deep:#7FD1C5;color-scheme:dark}}
+:root[data-theme="dark"]{--canvas:#0F1A17;--card:#16231F;--chip:#1C2824;--ink:#ECEFEA;--ink2:#A3ADA7;--mute:#7C867F;--border:#263430;--border-soft:#1E2B27;--teal-deep:#7FD1C5;color-scheme:dark}
+/* … le téléphone, lui, montre l'app telle qu'elle est : palette claire fixe, quel que soit le thème. */
+.tel{--canvas:#EDEAE0;--page:#FAFBFB;--card:#FFFFFF;--chip:#F2F0E9;--ink:#10201B;--ink2:#5C6560;--mute:#8A8578;--border:#E7E3D8;--border-soft:#EFECE3;--teal-deep:#1B6E62;color-scheme:light;color:var(--ink)}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--canvas);color:var(--ink);font-family:"Space Grotesk",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+button{font-family:inherit}
+a{color:var(--teal-deep)}
+
+/* ── La page d'accueil des maquettes ── */
+.accueil{max-width:1120px;margin:0 auto;padding:28px 16px 60px}
+.accueil h1{font-size:28px;line-height:1.15;letter-spacing:-.03em;margin:0 0 6px}
+.accueil .sous{color:var(--ink2);font-size:15px;line-height:1.5;margin:0 0 22px;max-width:70ch}
+.accueil h2{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink2);margin:28px 0 10px}
+.grille{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
+.tuile{display:flex;flex-direction:column;gap:6px;padding:14px 16px;border-radius:var(--r);background:var(--card);border:1px solid var(--border);text-decoration:none;color:var(--ink);min-height:var(--tactile);transition:transform .12s ease,border-color .16s ease}
+.tuile:active{transform:scale(.985)}
+.tuile b{font-size:15px}
+.tuile span{font-size:12.5px;color:var(--ink2);line-height:1.45}
+.tuile .num{font-size:11px;color:var(--mute);font-weight:600}
+
+/* ── Le téléphone ── */
+.scene{min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:0}
+.barre-haut{width:100%;max-width:430px;display:flex;align-items:center;gap:8px;padding:10px 12px;font-size:12.5px;color:var(--ink2)}
+.barre-haut a{min-height:var(--tactile);display:inline-flex;align-items:center;padding:0 8px;text-decoration:none;font-weight:600}
+.barre-haut .spacer{flex:1}
+.tel{width:100%;max-width:430px;background:var(--page);min-height:calc(100dvh - 64px);position:relative;overflow:hidden;display:flex;flex-direction:column}
+@media (min-width:700px){
+  .scene{padding:18px 0 40px}
+  .tel{border-radius:34px;border:8px solid #10201B;min-height:860px;max-height:860px;box-shadow:0 30px 60px -30px rgba(16,32,27,.5)}
+}
+.ecran{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;padding:18px 20px 28px;animation:entre var(--duree) var(--courbe)}
+.ecran-pied{margin-top:auto;padding-top:16px}
+@keyframes entre{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+@keyframes respire{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.5);opacity:.4}}
+@keyframes pop{from{transform:scale(.4);opacity:0}to{transform:scale(1);opacity:1}}
+@keyframes balaye{0%{transform:translateX(-140%)}60%,100%{transform:translateX(260%)}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ── Primitives (mêmes mesures que l'app) ── */
+.kicker{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--ink2);margin:0 0 6px}
+h1.t{font-size:26px;line-height:1.15;font-weight:700;letter-spacing:-.03em;margin:0 0 8px}
+p.x{font-size:14px;line-height:1.55;color:var(--ink2);margin:0 0 16px}
+.carte{background:var(--card);border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden}
+.btn{width:100%;min-height:52px;border-radius:999px;border:0;background:var(--degrade);color:#fff;font-size:15px;font-weight:600;box-shadow:var(--ombre-cta);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:transform .12s ease}
+.btn:active{transform:scale(.98)}
+.btn.sec{background:var(--card);color:var(--ink);border:1px solid var(--border);box-shadow:none}
+.btn.doux{background:transparent;color:var(--ink2);box-shadow:none;min-height:var(--tactile);font-size:13px}
+.lien{display:block;width:100%;min-height:var(--tactile);border:0;background:none;font-size:13px;font-weight:600;color:var(--ink2);cursor:pointer;text-align:center}
+.ligne{display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid var(--border-soft);min-height:56px}
+.ligne:last-child{border-bottom:0}
+.ligne .txt{flex:1;min-width:0}
+.ligne .txt b{display:block;font-size:14.5px}
+.ligne .txt span{display:block;font-size:12.5px;color:var(--ink2);line-height:1.45}
+.logo{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;font-weight:700;font-size:13px;flex-shrink:0;color:#fff}
+.logo.vinted{background:#09B1BA}.logo.leboncoin{background:#EC5A13}.logo.ebay{background:#fff;color:#E53238;border:1px solid var(--border)}.logo.beebs{background:#0E4F4F}.logo.depop{background:#FF2300}
+.logo.sm{width:26px;height:26px;border-radius:8px;font-size:10px}
+.pastille{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:700;white-space:nowrap}
+.pastille i{width:8px;height:8px;border-radius:50%;background:var(--hors);flex-shrink:0}
+.pastille.fait{color:var(--ink)}.pastille.fait i{background:var(--teal)}
+.pastille.en_cours{color:var(--ink)}.pastille.en_cours i{background:var(--teal);animation:respire 1.6s ease-in-out infinite}
+.pastille.en_file{color:var(--ink2)}.pastille.en_file i{background:#8A938F}
+.pastille.en_pause{color:var(--ink2)}.pastille.en_pause i{background:#8A938F}
+.pastille.a_toi{color:var(--ambre-encre)}.pastille.a_toi i{background:var(--ambre-point)}
+.pastille.pas_partie{color:var(--rouge)}.pastille.pas_partie i{background:var(--rouge)}
+.pastille.arretee{color:var(--ink2)}.pastille.arretee i{background:var(--hors)}
+.bande{display:flex;gap:11px;padding:13px 16px;border-radius:var(--r);background:var(--menthe);border:1px solid var(--menthe-bord);font-size:13px;line-height:1.5}
+.bande.ambre{background:var(--ambre-fond);border-color:var(--ambre-bord);color:var(--ambre-encre)}
+.vide{padding:26px 18px;text-align:center;border:1.5px dashed var(--border);border-radius:var(--r-lg);background:var(--card)}
+.vide .ico{width:52px;height:52px;border-radius:16px;margin:0 auto 12px;background:var(--menthe);display:grid;place-items:center;font-size:24px}
+.vide b{display:block;font-size:16px;margin-bottom:4px}
+.vide span{display:block;font-size:13px;color:var(--ink2);line-height:1.5}
+.vide .btn{margin-top:14px}
+.progression{display:flex;gap:5px;margin-bottom:18px}
+.progression i{flex:1;height:4px;border-radius:2px;background:#DCD6C6;overflow:hidden;position:relative}
+.progression i.ok::after,.progression i.ici::after{content:"";position:absolute;inset:0;background:var(--degrade);transform-origin:left;transform:scaleX(1);transition:transform .45s var(--courbe)}
+.progression i.ici::after{transform:scaleX(.55)}
+.tuiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tuile-pf{display:flex;align-items:center;gap:10px;padding:14px 12px;min-height:62px;border-radius:var(--r);border:1.5px solid var(--border);background:var(--card);cursor:pointer;text-align:left;font-size:13.5px;font-weight:600}
+.tuile-pf.on{border-color:var(--teal);background:var(--menthe-vive)}
+.tuile-pf .coche{margin-left:auto;width:18px;height:18px;border-radius:9px;border:1.5px solid #DCD6C6;display:grid;place-items:center;font-size:11px;color:#fff}
+.tuile-pf.on .coche{background:var(--teal);border-color:var(--teal)}
+.coche-ok{width:26px;height:26px;border-radius:50%;background:var(--menthe);color:var(--teal-deep);display:grid;place-items:center;animation:pop .4s var(--courbe) both}
+.etape{display:flex;gap:12px;align-items:flex-start;padding:10px 0}
+.etape .rond{width:28px;height:28px;border-radius:50%;border:2px solid var(--border);display:grid;place-items:center;font-size:12px;font-weight:700;color:var(--ink2);flex-shrink:0;background:var(--card)}
+.etape.fait .rond{background:var(--teal);border-color:var(--teal);color:#fff}
+.etape.ici .rond{border-color:var(--teal);color:var(--teal-deep);position:relative}
+.etape.ici .rond::after{content:"";position:absolute;inset:-6px;border-radius:50%;border:2px solid var(--teal);opacity:.35;animation:respire 1.8s ease-in-out infinite}
+.etape .txt b{display:block;font-size:14px}
+.etape .txt span{display:block;font-size:12.5px;color:var(--ink2);line-height:1.45}
+.onglets{display:flex;justify-content:space-around;align-items:center;padding:8px 6px 10px;border-top:1px solid var(--border-soft);background:var(--card);font-size:10.5px;color:var(--ink2);margin:0 -20px -28px}
+.onglets span{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:56px;min-height:var(--tactile);justify-content:center}
+.onglets span.on{color:var(--teal-deep);font-weight:700}
+.onglets .cam{width:44px;height:44px;border-radius:50%;background:var(--degrade);color:#fff;display:grid;place-items:center;margin-top:-18px;box-shadow:0 8px 18px -8px rgba(27,110,98,.8)}
+.entete{display:flex;align-items:center;gap:10px;margin:0 0 14px}
+.entete .q{font-size:12.5px;font-weight:700;color:var(--ink);background:var(--chip);padding:7px 11px;border-radius:999px}
+.entete .spacer{flex:1}
+.entete .roue{width:40px;height:40px;border-radius:50%;background:var(--chip);display:grid;place-items:center}
+.groupe{font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:var(--ink2);margin:14px 0 8px}
+.job{display:flex;gap:10px;padding:10px;border-radius:14px;background:var(--card);border:1px solid var(--border-soft);margin-bottom:8px}
+.job .vignette{width:44px;height:44px;border-radius:10px;background:linear-gradient(140deg,#DCE3E9,#EDF1F4);flex-shrink:0}
+.job .txt{flex:1;min-width:0}
+.job .txt b{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.job .txt small{display:block;font-size:11.5px;color:var(--ink2);margin-top:2px}
+.job .txt p{margin:5px 0 0;font-size:12px;line-height:1.4;color:var(--ink2)}
+.job .txt p.a_toi{color:var(--ambre-encre);font-weight:600}
+.skel{height:10px;border-radius:5px;background:var(--chip);position:relative;overflow:hidden}
+.skel::after{content:"";position:absolute;inset:0;background:linear-gradient(105deg,transparent 30%,rgba(255,255,255,.85) 50%,transparent 70%);animation:balaye 2.2s ease-in-out infinite}
+.popup{background:#F5F6F5;border:1px solid var(--border);border-radius:14px;overflow:hidden;font-size:13px}
+.popup .tete{background:var(--degrade);color:#fff;padding:12px 14px;display:flex;align-items:center;gap:10px;font-weight:700}
+.popup .tete .pill{margin-left:auto;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.3);border-radius:99px;padding:5px 10px;font-size:11.5px}
+.popup .corps{padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+.change{width:100%;max-width:430px;padding:12px 16px 24px;font-size:13px;line-height:1.5;color:var(--ink2)}
+.change b{color:var(--ink)}
+.nav-ecran{display:flex;gap:8px;width:100%;max-width:430px;padding:0 12px}
+.nav-ecran a{flex:1;min-height:var(--tactile);display:flex;align-items:center;justify-content:center;border-radius:999px;background:var(--card);border:1px solid var(--border);text-decoration:none;font-weight:600;font-size:13px;color:var(--ink)}
+.cache{display:none}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="maquettes.js"></script>
+</body>
+</html>

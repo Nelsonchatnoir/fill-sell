@@ -33,12 +33,12 @@ console.log("\n2. LA FILE ET LES BARRES DISENT LA MISE À JOUR, JAMAIS « SON TO
 const job = (x) => ({ id: "j", inventaire_id: 1, platform: "vinted", action: "publish", status: "pending", created_at: "2026-10-02T21:00:00Z", platform_fields: {}, voie: "extension", ...x });
 const ctx = { maintenant: T, lang: "fr", extension: { etat: "vivante" }, extensionAMettreAJour: true };
 const s = situationJob(job({}), ctx);
-ok(s.groupe === "pause" && s.motif === "mise_a_jour" && s.raison === phraseMiseAJourExtension("fr"), "publication en file : « En attente de la mise à jour de l'extension : ferme Chrome… »", s.raison);
+ok(s.groupe === "en_pause" && s.motif === "mise_a_jour" && s.raison === phraseMiseAJourExtension("fr"), "publication en file : « En attente de la mise à jour de l'extension : ferme Chrome… »", s.raison);
 ok(/ferme Chrome complètement puis rouvre-le/.test(phraseMiseAJourExtension("fr")), "avec le geste le plus simple");
 ok(situationJob(job({ platform: "ebay", voie: "api" }), ctx).motif !== "mise_a_jour", "eBay par nos serveurs : pas concerné");
 ok(situationJob(job({ action: "republish", platform_fields: { republish_step: "deleted", deleted_at: "2026-10-02T23:20:00Z" } }), ctx).groupe === "en_cours",
   "une remise en ligne commencée reste servie (exception du serveur) : en cours");
-ok(situationJob(job({}), { ...ctx, extensionAMettreAJour: false }).raison === "En attente de son tour", "poste à jour : comportement d'avant");
+ok(situationJob(job({}), { ...ctx, extensionAMettreAJour: false }).raison === "En file : elle partira à son tour", "poste à jour : comportement d'avant");
 
 console.log("\n3. CHAQUE ÉCRAN");
 const stock = lire("src/tabs/StockTab.jsx");
@@ -48,8 +48,8 @@ ok(/extensionAMettreAJour: extensionStatus\?\.outdated === true \};/.test(stock)
 const { pastilleCourte } = await imp("src/stock/regles.js");
 ok(/const majRequise = extensionStatus\?\.outdated === true && d\.pendingJobs\.some\(\(j\) => j\.voie !== 'api'\);/.test(stock)
   && /if \(majRequise\) return \{ \.\.\.pastilleCourte\(\{ genre: 'maj' \}, lang\)/.test(stock)
-  && pastilleCourte({ genre: "maj" }, "fr").texte === "Mise à jour",
-  "la carte : « Mise à jour », plus « En cours… »");
+  && pastilleCourte({ genre: "maj" }, "fr").texte === "En pause",
+  "la carte : « En pause » (mise à jour de l'extension, état unique du 16/10), plus « En cours… »");
 const conf = lire("src/publication/EcranConfirmer.jsx");
 ok(/\{m\.extensionAMettreAJour && voies\.extension\.some\(p => verdict\.partent\.includes\(p\)\) && \(/.test(conf) && /ne partira qu'après la mise à jour : ferme Chrome complètement sur ton ordinateur, puis rouvre-le\./.test(conf),
   "AVANT de publier : ce qui ne partira qu'après la mise à jour, et le geste");

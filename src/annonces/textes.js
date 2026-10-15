@@ -72,7 +72,7 @@ const FR = {
   rapprochementSous: (n) => (n > 0
     ? `${n} annonce${n > 1 ? 's' : ''} à comparer à ton stock — rien n'est créé en double.`
     : 'Chaque annonce est comparée à ton stock — rien n’est créé en double.'),
-  tempsRestant: (s) => (!(s > 0) ? '' : s < 60 ? 'Moins d’une minute' : `Environ ${Math.max(1, Math.round(s / 60))} min`),
+  // (16/10, Nico) Plus jamais un temps restant : l'avancement se lit sur la barre et les lignes, pas en minutes.
   ligneLues: (lues, annoncees) => (annoncees != null && annoncees >= lues ? `${lues} sur ${annoncees}` : `${lues} annonce${lues > 1 ? 's' : ''}`),
   ligneAttente: 'en attente',
   ligneEnCours: 'en cours',
@@ -97,7 +97,7 @@ const FR = {
   // (01/10) Annonces trouvées dont la photo est en cours de lecture avant
   // l'import : on le dit tout de suite, sans délai promis au-delà de « quelques
   // minutes » (mesuré : 4 min en moyenne).
-  rangement: (n, noms) => `${n} annonce${n > 1 ? 's' : ''} trouvée${n > 1 ? 's' : ''}${noms ? ` sur ${noms}` : ''}, rangement en cours — ${n > 1 ? 'elles arrivent' : 'elle arrive'} dans ton stock d'ici quelques minutes.`,
+  rangement: (n, noms) => `${n} annonce${n > 1 ? 's' : ''} trouvée${n > 1 ? 's' : ''}${noms ? ` sur ${noms}` : ''}, rangement en cours — ${n > 1 ? 'elles arrivent' : 'elle arrive'} dans ton stock dès que le rangement est fini.`,
 
   // ── Les empêchements, dits sans accuser personne ─────────────────────────
   // (05/10, Marine) Plus aucune promesse de reprise automatique : un relevé ne
@@ -113,7 +113,7 @@ const FR = {
   titrePointBoutique: 'Vinted : boutique à confirmer',
   ctaChoisirBoutique: 'Choisir ma boutique',
   titrePointVinted: 'Vinted',
-  finAntiRobot: (nom) => `${nom} a bloqué la lecture un moment (protection anti-robot). Rien n'a été effacé : réessaie dans quelques minutes.`,
+  finAntiRobot: (nom) => `${nom} a bloqué la lecture un moment (protection anti-robot). Rien n'a été effacé : réessaie un peu plus tard.`,
   finArret: (nom) => `La synchronisation ${de(nom)} s'est arrêtée avant la fin. Rien n'a été effacé : appuie sur « Synchroniser » pour la terminer.`,
   finPasPrise: (nom) => `Ton ordinateur n'a pas pris la synchronisation ${de(nom)}. Ouvre Chrome avec l'extension FillSell, puis appuie sur « Synchroniser ».`,
   finEchec: (nom) => `La synchronisation ${de(nom)} n'a pas abouti. Rien n'a été effacé : appuie sur « Synchroniser » pour réessayer.`,
@@ -258,7 +258,6 @@ const EN = {
   rapprochementSous: (n) => (n > 0
     ? `${n} listing${n > 1 ? 's' : ''} to compare with your stock — nothing is created twice.`
     : 'Each listing is compared with your stock — nothing is created twice.'),
-  tempsRestant: (s) => (!(s > 0) ? '' : s < 60 ? 'Less than a minute' : `About ${Math.max(1, Math.round(s / 60))} min`),
   ligneLues: (lues, annoncees) => (annoncees != null && annoncees >= lues ? `${lues} of ${annoncees}` : `${lues} listing${lues > 1 ? 's' : ''}`),
   ligneAttente: 'waiting',
   ligneEnCours: 'running',
@@ -278,7 +277,7 @@ const EN = {
     ? `${n} pairs of items may be the same object.`
     : 'Two items in your stock may be the same object.'),
   doublonsCta: 'Check',
-  rangement: (n, noms) => `${n} listing${n > 1 ? 's' : ''} found${noms ? ` on ${noms}` : ''}, filing in progress — ${n > 1 ? 'they' : 'it'} will appear in your stock within a few minutes.`,
+  rangement: (n, noms) => `${n} listing${n > 1 ? 's' : ''} found${noms ? ` on ${noms}` : ''}, filing in progress — ${n > 1 ? 'they' : 'it'} will appear in your stock as soon as filing is done.`,
 
   signalNonConnecte: (nom) => `Sign in to ${nom} on your computer, then tap “Sync”.`,
   finAutreCompte: (nom) => `Your computer is signed in to another ${nom} account than the one FillSell follows. Nothing was imported. Sign in to the right ${nom} account in Chrome, then tap “Sync”.`,
@@ -288,7 +287,7 @@ const EN = {
   titrePointBoutique: 'Vinted: shop to confirm',
   ctaChoisirBoutique: 'Choose my shop',
   titrePointVinted: 'Vinted',
-  finAntiRobot: (nom) => `${nom} blocked the reading for a moment (anti-bot protection). Nothing was deleted: try again in a few minutes.`,
+  finAntiRobot: (nom) => `${nom} blocked the reading for a moment (anti-bot protection). Nothing was deleted: try again a bit later.`,
   finArret: (nom) => `The ${nom} sync stopped before the end. Nothing was deleted: tap “Sync” to finish it.`,
   finPasPrise: (nom) => `Your computer did not pick up the ${nom} sync. Open Chrome with the FillSell extension, then tap “Sync”.`,
   finEchec: (nom) => `The ${nom} sync did not complete. Nothing was deleted: tap “Sync” to try again.`,

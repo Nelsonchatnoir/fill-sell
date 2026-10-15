@@ -11,6 +11,9 @@
 // « FillSell Extension Popup » (écrans 1a nominal, 1b vide, 1c erreurs).
 // La logique de lecture (motifs ancrés, ordre de preuve Beebs, fraîcheur de
 // la sonde) est celle des commits 340004c / d025e30 / c261fb3, inchangée.
+// (16/10) Les six mots de l'état d'un job viennent d'UN module (chrome-extension/etat-job.js,
+// copie générée de _shared/etat-job.js) : le popup les affiche, il ne les décide pas.
+const MOT = (cle) => globalThis.FILLSELL_ETAT_JOB.libelleEtat(cle, "fr");
 
 const { SESSION, SESSION_OWN, BOOTSTRAP_LAST_FAIL, LAST_POLL, RECENT_RESULTS, KEEP_AWAKE, DERNIERE_PUBLICATION_OK } = FILLSELL_CONFIG.STORAGE_KEYS;
 // Le marqueur d'éveil est PERSISTÉ (le service worker MV3 meurt sans arrêt) :
@@ -811,10 +814,6 @@ function ilYA(ms) {
   return `il y a ${Math.round(h / 24)} j`;
 }
 
-function dansCombien(ms) {
-  const min = Math.ceil(ms / 60000);
-  return min <= 1 ? "dans moins d'une minute" : `dans ${min} min`;
-}
 
 // La pastille du bandeau : ce que l'extension EST en ce moment.
 //   Se connecter — pas de session FillSell ;
@@ -869,9 +868,8 @@ function renderBars() {
   if (!state.session || state.dernierPoll == null) { els.life.classList.add("hidden"); return; }
   const ecoule = Date.now() - state.dernierPoll;
   const froid = ecoule > 60 * 60 * 1000;
-  const suite = !froid && state.prochainPoll && state.prochainPoll > Date.now()
-    ? ` · prochain <b>${escapeHtml(dansCombien(state.prochainPoll - Date.now()))}</b>`
-    : "";
+  // (16/10, Nico) Plus jamais « prochain dans N min » : le dernier passage, et c'est tout.
+  const suite = "";
   els.life.innerHTML =
     `<span class="bdot${froid ? " cold" : ""}"></span>` +
     `<span>${froid ? "En veille · dernier passage" : "Dernier passage"} ${escapeHtml(ilYA(ecoule))}${suite}</span>`;
@@ -1160,26 +1158,26 @@ function etatPrete(a) {
     .filter(([k, j]) => j.status === "processing" || ["busy", "queued"].includes(state.status[k]?.phase))
     .map(([k]) => k);
   if (enCours.length) {
-    return { cls: "", html: `<i class="spin"></i>Publication en cours sur ${escapeHtml(noms(enCours))}` };
+    return { cls: "", html: `<i class="spin"></i>${MOT("en_cours")} sur ${escapeHtml(noms(enCours))}` };
   }
   const phases = entries.map(([k]) => state.status[k]?.phase).filter(Boolean);
   if (phases.length && phases.length === entries.length && phases.every((ph) => ph === "done")) {
-    return { cls: "", html: `${CHECK_SVG}Publiée` };
+    return { cls: "", html: `${CHECK_SVG}${MOT("fait")}` };
   }
   if (phases.some((ph) => ph === "err" || ph === "connect")) {
-    return { cls: "peach", html: `<i class="dot peach"></i>Un dépôt n'a pas abouti — le détail est ci-dessous` };
+    return { cls: "peach", html: `<i class="dot peach"></i>${MOT("a_toi")} : un dépôt n'a pas abouti — le détail est ci-dessous` };
   }
   const ko = entries.filter(([k, j]) => j.status === "pending" && estKo(k)).map(([k]) => k);
   if (ko.length) {
     return {
       cls: "peach",
-      html: `<i class="dot peach pulse"></i>Partira dès que ${escapeHtml(noms(ko))} ${pl(ko.length, "est rouvert", "sont rouverts")}`,
+      html: `<i class="dot peach pulse"></i>${MOT("en_pause")} : partira dès que ${escapeHtml(noms(ko))} ${pl(ko.length, "est rouvert", "sont rouverts")}`,
     };
   }
   if (extensionFroide()) {
-    return { cls: "gris", html: `<i class="dot gris"></i>Partira au prochain passage de l'extension` };
+    return { cls: "gris", html: `<i class="dot gris"></i>${MOT("en_pause")} : ton ordinateur ne passe plus — partira à son prochain passage` };
   }
-  return { cls: "", html: `<span class="dots"><i></i><i></i><i></i></span>Part au prochain passage` };
+  return { cls: "", html: `<span class="dots"><i></i><i></i><i></i></span>${MOT("en_file")} : part au prochain passage` };
 }
 
 function renderPrete() {
@@ -1251,26 +1249,31 @@ function renderFlow() {
       // mesurée fermée ou bloquée : même mot, couleur d'attente.
       const retenu = estKo(p.key);
       cls = retenu ? "peach" : "teal";
-      droite = `<span class="cell-etat${retenu ? " peach" : ""}">En file</span>`;
+      droite = `<span class="cell-etat${retenu ? " peach" : ""}">${MOT(retenu ? "en_pause" : "en_file")}</span>`;
     } else if (s === "queued") {
       // En attente de son tour (publication SÉQUENTIELLE plateforme par plateforme).
       cls = "teal";
-      droite = `<span class="cell-etat"><i class="dot peach pulse"></i>En attente…</span>`;
+      droite = `<span class="cell-etat"><i class="dot peach pulse"></i>${MOT("en_file")}</span>`;
     } else if (s === "busy") {
       cls = "teal";
-      droite = `<span class="cell-etat"><i class="spin"></i>Publication…</span>`;
+      droite = `<span class="cell-etat"><i class="spin"></i>${MOT("en_cours")}</span>`;
     } else if (s === "done") {
       cls = "teal";
-      const msg = st?.msg || (rec?.status === "dry_run_completed" ? "Prêt (test)" : "Publiée");
+      const msg = st?.msg || (rec?.status === "dry_run_completed" ? `${MOT("fait")} (test)` : MOT("fait"));
       droite = `<span class="cell-etat">${CHECK_SVG}${escapeHtml(msg)}</span>`;
     } else if (s === "connect") {
       cls = "peach";
-      droite = `<button class="lien" data-connect="${p.key}" type="button">Se connecter</button>`;
+      droite = `<span class="cell-etat peach">${MOT("a_toi")}</span> <button class="lien" data-connect="${p.key}" type="button">Se connecter</button>`;
     } else if (s === "err") {
       cls = "peach";
       const complet = texteMontrable(st?.msg) || texteMontrable(rec?.error)
         || "La fiche de l'article, dans l'appli, dit ce qui bloque.";
-      droite = `<span class="cell-etat peach" title="${escapeHtml(complet)}">Échec</span>`;
+      droite = `<span class="cell-etat peach" title="${escapeHtml(complet)}">${MOT("a_toi")}</span>`;
+    } else if (s === "pause") {
+      // Un nouvel essai automatique est programmé : en pause, pas un échec.
+      cls = "teal";
+      const complet = texteMontrable(st?.msg) || "Nouvel essai automatique, rien à faire.";
+      droite = `<span class="cell-etat" title="${escapeHtml(complet)}">${MOT("en_pause")}</span>`;
     } else if (s === "soon") {
       droite = `<span class="cell-etat gris">Bientôt</span>`;
     } else if (dejaEnLigne(p.key)) {
@@ -1399,17 +1402,13 @@ function renderQueueExtra() {
     const detail = Object.entries(parEtape).map(([e, n]) => `${n} ${e}`).join(" · ");
     lignes.push(`🔁 <b>${rep.length} ${pl(rep.length, "republication", "republications")}</b> — ${escapeHtml(detail)}`);
   }
-  // Prochain geste PRÉVU, avec son heure : les pauses de 2-5 min entre
-  // suppression et recréation sont VOLONTAIRES — sans cette ligne, on croit
-  // que c'est planté. next_action_after est la seule heure réelle.
-  let prochaine = null;
-  for (const j of state.repub) {
-    const naa = Date.parse(j.platform_fields?.next_action_after ?? "");
-    if (Number.isFinite(naa) && naa > Date.now() && (!prochaine || naa < prochaine)) prochaine = naa;
-  }
-  if (prochaine) {
-    const h = new Date(prochaine).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
-    lignes.push(`⏱️ <b>Prochaine recréation vers ${escapeHtml(h)}</b> — les gestes sont espacés de quelques minutes, comme le ferait une vraie personne`);
+  // Une recréation ATTEND VOLONTAIREMENT entre suppression et redépôt — sans
+  // cette ligne, on croit que c'est planté. (16/10, Nico) Jamais l'heure : on
+  // dit l'état, pas « vers HH:MM ».
+  const recreationEnAttente = state.repub.some((j) => (j.platform_fields?.republish_step ?? "") === "deleted"
+    && Number.isFinite(Date.parse(j.platform_fields?.next_action_after ?? "")) && Date.parse(j.platform_fields.next_action_after) > Date.now());
+  if (recreationEnAttente) {
+    lignes.push(`⏱️ <b>Recréation en pause, volontairement</b> — les gestes sont espacés, comme le ferait une vraie personne ; ça repart tout seul`);
   }
   if (state.sync?.status === "queued") {
     lignes.push(`🔄 <b>Synchronisation demandée</b> — elle part au prochain passage de l'extension`);
@@ -1745,11 +1744,14 @@ chrome.runtime.onMessage.addListener((msg) => {
   switch (msg.phase) {
     case "queued":             state.status[key] = { phase: "queued" }; break;
     case "processing":         state.status[key] = { phase: "busy" }; break;
-    case "published":          state.status[key] = { phase: "done", msg: "Publiée" }; break;
-    case "dry_run_completed":  state.status[key] = { phase: "done", msg: "Prêt (test)" }; break;
+    case "published":          state.status[key] = { phase: "done", msg: MOT("fait") }; break;
+    case "dry_run_completed":  state.status[key] = { phase: "done", msg: `${MOT("fait")} (test)` }; break;
+    // (16/10) Un ré-armement (retry) n'est pas un échec : nouvel essai automatique, en pause.
+    case "retry":
+      state.status[key] = isConnErr(msg.error) ? { phase: "connect" } : { phase: "pause", msg: shortErr(msg.error) };
+      break;
     case "needsUser":
     case "failed":
-    case "retry":
       state.status[key] = isConnErr(msg.error)
         ? { phase: "connect" }
         : { phase: "err", msg: shortErr(msg.error) };

@@ -1236,11 +1236,10 @@ serve(async (req) => {
           if (delai) pfC.next_action_after = new Date(Date.now() + delai * 60_000).toISOString();
           else delete pfC.next_action_after;
           pfC.erreurs_archivees = archiverErreur(pfC.erreurs_archivees, j.error, "needs_user", "get-pending-jobs (canal coupé avant retrait)");
-          const dansTxt = delai >= 60 ? `${Math.round(delai / 60)} h` : `${delai} minutes`;
           const { data: maj } = await admin.from("cross_post_jobs").update({
             status: "pending", platform_fields: pfC,
             error: "La republication s'interrompt sur ton ordinateur au même moment (l'onglet Vinted se ferme), avant tout retrait : " +
-              `ton annonce est intacte. C'est de notre côté, rien à faire : nouvel essai automatique ${delai ? `dans ${dansTxt}` : "au prochain passage"}.`,
+              "ton annonce est intacte. C'est de notre côté, rien à faire : nouvel essai automatique.",
           }).eq("id", j.id).eq("status", "needs_user").select("id");
           if ((maj ?? []).length) repris++;
         }
@@ -6449,13 +6448,11 @@ serve(async (req) => {
             // quoi. Une attente qui ne se dit pas est indiscernable d'une
             // panne. Le message nomme ce qu'on attend, jusqu'à quand, et
             // l'issue si ça n'arrive pas.
-            const joursRestants = Math.max(0, Math.ceil((ATTENTE_MAX_MS - (Date.now() - depuisMs)) / 86400000));
             await userClient.from("cross_post_jobs")
               .update({
                 error: `Retrait ${labelDe(d.platform)} en attente : ${labelDe(d.platform)} ne nous a pas encore donné le lien de cette annonce, `
                   + "et on ne la retire JAMAIS en la cherchant par son titre — deux annonces au même titre, "
                   + "et c'est la mauvaise qui partirait. On réessaie tout seuls à chaque passage"
-                  + (joursRestants > 0 ? ` (encore ${joursRestants} j)` : "")
                   + `. Si tu la vois dans tes annonces ${labelDe(d.platform)}, tu peux la retirer à la main — rien ne sera fait en double.`,
                 platform_fields: {
                   ...pf,

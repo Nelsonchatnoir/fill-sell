@@ -79,10 +79,12 @@ ok(!d3.platform_fields.attente_session && !d3.platform_fields.next_action_after,
 
 const d4 = decisionPausePageDepotLbc(job(), { releves: [{ status: "done", started_at: "2026-10-02T05:00:00Z", erreur: "" }], sessions: null, maintenant: MAINTENANT });
 ok(d4?.action === "reessai" && d4.status === "pending", "session bonne avant la pause, page illisible → nouvel essai (de notre fait)");
-ok(/de notre côté, rien à faire/.test(d4.error) && /nouvel essai automatique dans ~1 h/.test(d4.error) && !ATTENTE_SESSION_RE.test(d4.error), "message vrai : de notre côté, essai dans ~1 h, aucun « connecte-toi »");
+// (16/10, Nico) le palier (1 h, 3 h, 6 h) reste dans next_action_after ; le message ne promet plus aucun délai.
+ok(/de notre côté, rien à faire/.test(d4.error) && /nouvel essai automatique\./.test(d4.error) && !/~\d+ h|dans \d/.test(d4.error) && !ATTENTE_SESSION_RE.test(d4.error), "message vrai : de notre côté, nouvel essai automatique sans délai promis, aucun « connecte-toi »");
 ok(d4.platform_fields.pause_page_depot?.n === 1 && Date.parse(d4.platform_fields.next_action_after) >= MAINTENANT + 5 * 60_000, "pause comptée, échéance dans le futur");
 const d5 = decisionPausePageDepotLbc(job({ pause_page_depot: d4.platform_fields.pause_page_depot }), { releves: [], sessions: null, maintenant: MAINTENANT });
-ok(d5?.action === "reessai" && d5.platform_fields.pause_page_depot.n === 2 && /~3 h/.test(d5.error), "deuxième pause : essai dans ~3 h");
+ok(d5?.action === "reessai" && d5.platform_fields.pause_page_depot.n === 2 && !/~\d+ h|dans \d/.test(d5.error)
+  && Date.parse(d5.platform_fields.next_action_after) > Date.parse(d4.platform_fields.next_action_after), "deuxième pause : palier plus long (échéance), toujours aucun délai dans le message");
 
 ok(decisionPausePageDepotLbc(job({}, { status: "pending" }), { releves: RELEVES_XXEWWER }) === null, "rien à décider hors pause");
 

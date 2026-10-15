@@ -26,7 +26,7 @@ import { Coque, Groupe } from "./FeuilleActivite";
 import BarreProgression from "./BarreProgression";
 import GalleryPhoto, { premierePhoto } from "./GalleryPhoto";
 import PlatformLogo from "./platform-logos/PlatformLogo";
-import { lireFile, phraseCompteurs, libelleAction } from "../utils/fileDesJobs";
+import { lireFile, phraseCompteurs, libelleAction, libelleEtat } from "../utils/fileDesJobs";
 import { pisteJob, articleDeJob } from "../utils/barresJobs";
 import { fraicheurExtension } from "../utils/shared";
 import { useOplaAcces } from "../utils/oplaAcces";
@@ -117,10 +117,13 @@ function useRetenuesRepublication({ supabase, actif }) {
   return etat;
 }
 
+// Une icône par motif de l'état unique (_shared/etat-job.js).
 const ICONES = {
-  rythme: Clock, limite_jour: Clock, creneau: Clock, essai: Clock,
-  retenue_serveur: ShieldCheck, boutique: Pause, plateforme: Pause, gel: Pause,
-  ordinateur: Monitor, geste: Hand, connexion: Hand, mise_a_jour: Monitor,
+  rythme: Clock, limite_jour: Clock, creneau: Clock, essai: Clock, auto_en_pause: Clock,
+  retenue_serveur: ShieldCheck, releve: ShieldCheck, technique: ShieldCheck,
+  boutique: Pause, boutiques_a_ouvrir: Pause, plateforme: Pause, gel: Pause, ecartee: Pause, ebay_etranger: Pause,
+  ordinateur: Monitor, ordinateur_session: Monitor, mise_a_jour: Monitor,
+  geste: Hand, connexion: Hand, opla: Hand, depop: Hand, pas_partie: Hand,
 };
 
 function LigneFile({ job, item, situation, lang, geste, boutiques = null, boutiqueDefaut = null, supabase = null }) {
@@ -129,7 +132,7 @@ function LigneFile({ job, item, situation, lang, geste, boutiques = null, boutiq
   const photo = item ? premierePhoto(item.photos) : null;
   const titre = (item?.title ?? job?.title ?? "").trim() || (lang === "en" ? "Your item" : "Ton article");
   const Icone = ICONES[situation.motif] ?? null;
-  const couleur = situation.groupe === "geste" ? T.amberInk : situation.groupe === "pause" ? T.mute : T.mute;
+  const couleur = situation.groupe === "a_toi" ? T.amberInk : T.mute;
   return (
     <div style={{
       display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 10px", borderRadius: 14,
@@ -149,7 +152,7 @@ function LigneFile({ job, item, situation, lang, geste, boutiques = null, boutiq
           <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{libelleAction(job, lang, prevue ? null : boutiques)}</span>
         </div>
         {prevue && <ChoixBoutiqueFile job={job} prevue={prevue} supabase={supabase} lang={lang} />}
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 5, marginTop: 5, fontSize: 12, lineHeight: 1.4, color: couleur, fontWeight: situation.groupe === "geste" ? 600 : 500 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 5, marginTop: 5, fontSize: 12, lineHeight: 1.4, color: couleur, fontWeight: situation.groupe === "a_toi" ? 600 : 500 }}>
           {Icone && <Icone size={13} strokeWidth={2.2} style={{ flexShrink: 0, marginTop: 1.5 }} aria-hidden="true" />}
           <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{situation.raison}</span>
         </div>
@@ -199,11 +202,12 @@ export default function FileDesJobs({
   const file = useMemo(() => (listeJobs ? lireFile(listeJobs, ctx) : null), [listeJobs, ctx]);
   const ficheDe = (j) => lesFiches.get?.(String(j?.inventaire_id)) ?? null;
 
+  // (16/10) Les quatre groupes portent les mots de l'état unique (_shared/etat-job.js).
   const sections = file ? [
-    { cle: "en_cours", titre: fr ? "En cours" : "Running", lignes: file.en_cours },
-    { cle: "a_venir", titre: fr ? "À venir" : "Coming up", lignes: file.a_venir },
-    { cle: "pause", titre: fr ? "En pause" : "Paused", lignes: file.pause },
-    { cle: "geste", titre: fr ? "Un geste à faire" : "Something to do", lignes: file.geste },
+    { cle: "en_cours", titre: libelleEtat("en_cours", lang), lignes: file.en_cours },
+    { cle: "en_file", titre: libelleEtat("en_file", lang), lignes: file.en_file },
+    { cle: "en_pause", titre: libelleEtat("en_pause", lang), lignes: file.en_pause },
+    { cle: "a_toi", titre: libelleEtat("a_toi", lang), lignes: file.a_toi },
   ].filter((s) => s.lignes.length > 0) : [];
 
   return (
@@ -217,8 +221,8 @@ export default function FileDesJobs({
       {file && file.total === 0 && (
         <div style={{ padding: "18px 6px 10px", textAlign: "center", fontSize: 13, lineHeight: 1.5, color: T.mute }}>
           {fr
-            ? "Rien en cours ni à venir. Ce qui est publié, republié ou retiré n'apparaît plus ici."
-            : "Nothing running or coming up. What is listed, reposted or removed no longer shows here."}
+            ? "Rien en cours ni en file. Ce qui est publié, republié ou retiré n'apparaît plus ici."
+            : "Nothing in progress or queued. What is listed, reposted or removed no longer shows here."}
         </div>
       )}
       {sections.map((s) => (
@@ -243,7 +247,7 @@ export default function FileDesJobs({
               boutiques={ctx.boutiques}
               boutiqueDefaut={boutiqueDefaut.valeur}
               supabase={supabase}
-              geste={s.cle !== "geste" ? null
+              geste={s.cle !== "a_toi" ? null
                 : situation.motif === "opla" && userId
                   ? <BoutonMeConnecter userId={userId} platform="opla" motif={MOTIFS.AUTORISER_OPLA} lang={lang} variante="bouton" />
                   : (renderGeste ? renderGeste(job) : null)}

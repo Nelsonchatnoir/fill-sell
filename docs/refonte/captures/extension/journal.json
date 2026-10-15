@@ -1,0 +1,21 @@
+{
+  "extension": "malmbnhfmgpnkmjeefdjgnojjeghilee",
+  "le": "2026-10-15T22:04:01.387Z",
+  "ecrans": [
+    {
+      "nom": "01-popup-sans-session",
+      "note": "Popup à l’installation, avant toute connexion",
+      "texte": "FillSell CROSS-POST Se connecter PRÊTE À PUBLIER 🔐 Connecte-toi pour voir ta file Ouvre fillsell.app et connecte-toi : l'extension récupère ta session. Se connecter → 0 en file Historique Ouvrir l'appli"
+    },
+    {
+      "nom": "02-popup-connecte-aucun-job",
+      "note": "Compte de test connecté : aucune annonce, aucune plateforme",
+      "texte": "FillSell CROSS-POST Connectée PLATEFORMES Vinted Pas encore vérifié Je ne vends pas sur Vinted Vérifier Leboncoin Pas encore vérifié Je ne vends pas sur Leboncoin Vérifier eBay Pas encore vérifié Je ne vends pas sur eBay Vérifier Beebs Pas encore vérifié Je ne vends pas sur Beebs Vérifier Depop Depop attend ton autorisation pour que FillSell y dépose tes annonces. Appuie sur « Autoriser Depop » : c'est une seule fois. Autoriser Depop PRÊTE À PUBLIER 🪄 Aucune annonce à publier Crée-en une dans FillSell, elle apparaîtra ici prête à diffuser. Créer une annonce → EN ATTENTE Rien n'attend ton intervention 0 en file Historique Ouvrir l'appli v0.6.114"
+    },
+    {
+      "nom": "03-popup-connecte-apres-premier-passage",
+      "note": "Après le premier passage du poll (plateformes jamais vérifiées)",
+      "texte": "FillSell CROSS-POST Connectée PLATEFORMES Vinted Pas encore vérifié Je ne vends pas sur Vinted Vérifier Leboncoin Pas encore vérifié Je ne vends pas sur Leboncoin Vérifier eBay Pas encore vérifié Je ne vends pas sur eBay Vérifier Beebs Pas encore vérifié Je ne vends pas sur Beebs Vérifier Depop Depop attend ton autorisation pour que FillSell y dépose tes annonces. Appuie sur « Autoriser Depop » : c'est une seule fois. Autoriser Depop PRÊTE À PUBLIER 🪄 Aucune annonce à publier Crée-en une dans FillSell, elle apparaîtra ici prête à diffuser. Créer une annonce → EN ATTENTE Rien n'attend ton intervention 0 en file Historique Ouvrir l'appli v0.6.114"
+    }
+  ]
+}

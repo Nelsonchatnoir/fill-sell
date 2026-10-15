@@ -18,8 +18,8 @@ import { suiviDuLot, depotArretable } from "./regles";
 import { arreterDepots, reArreter } from "./arretLot";
 
 const GROUPES = {
-  fr: { geste: "À faire", en_cours: "En cours", file: "Dans la file", pas_parties: "Pas parties", en_ligne: "En ligne", retirees: "Retirées depuis", arretees: "Arrêtées à ta demande" },
-  en: { geste: "To do", en_cours: "Under way", file: "In the queue", pas_parties: "Not sent", en_ligne: "Live", retirees: "Removed since", arretees: "Stopped by you" },
+  fr: { geste: "À toi de jouer", en_cours: "En cours", file: "En file", pas_parties: "À toi de jouer · pas parties", en_ligne: "Fait · en ligne", retirees: "Retirées depuis", arretees: "Arrêtées à ta demande" },
+  en: { geste: "Your move", en_cours: "In progress", file: "Queued", pas_parties: "Your move · not sent", en_ligne: "Done · live", retirees: "Removed since", arretees: "Stopped by you" },
 };
 // « Leboncoin : Leboncoin demande… » : le message d'un job nomme souvent déjà sa
 // plateforme — on ne la répète pas. Seule la première phrase s'affiche ici (le
@@ -30,8 +30,8 @@ function avecPlateforme(platform, texte) {
   return t.toLowerCase().startsWith(String(nom).toLowerCase()) ? t : `${nom} : ${t}`;
 }
 const ETAT_PASTILLE = {
-  fr: { en_ligne: "en ligne", en_cours: "en cours", file: "dans la file", geste: "attend un geste", pas_partie: "pas partie", retiree: "retirée depuis", arretee: "arrêtée" },
-  en: { en_ligne: "live", en_cours: "under way", file: "queued", geste: "needs you", pas_partie: "not sent", retiree: "removed since", arretee: "stopped" },
+  fr: { en_ligne: "fait", en_cours: "en cours", file: "en file", geste: "à toi de jouer", pas_partie: "à toi de jouer", retiree: "retirée depuis", arretee: "arrêtée" },
+  en: { en_ligne: "done", en_cours: "in progress", file: "queued", geste: "your move", pas_partie: "your move", retiree: "removed since", arretee: "stopped" },
 };
 
 /**

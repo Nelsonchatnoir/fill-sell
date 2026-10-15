@@ -430,7 +430,7 @@ async function depopValiderPhotos(ids) {
       return true;
     }
   }
-  throw new Error("validation des photos Depop non terminée après ~20 s");
+  throw new Error("validation des photos Depop non terminée après ~20 s"); // estimation-ok: diagnostic interne, durée PASSÉE
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

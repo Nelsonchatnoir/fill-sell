@@ -83,10 +83,10 @@ function heureParis(iso) {
 
 export function messageRetraitCompteBloque(titre, prochainIso) {
   const quoi = titre ? ` « ${String(titre).slice(0, 80)} »` : "";
-  const h = prochainIso ? heureParis(prochainIso) : null;
+  void prochainIso; // (16/10, Nico) plus jamais « prochain essai vers HH h MM »
   return `Vinted affiche « compte bloqué » sur ton ordinateur : l'annonce${quoi} n'a PAS encore été retirée. ` +
     "Tant que Vinted affiche cette page, rien ne peut être fait sur ton compte Vinted ; FillSell réessaie tout seul" +
-    (h ? ` (prochain essai vers ${h})` : "") + " et la retirera dès que Vinted te rend l'accès. " +
+    " et la retirera dès que Vinted te rend l'accès. " +
     "Si elle est encore visible dans l'appli Vinted, retire-la toi-même pour éviter une double vente ; l'appli te dit aussi ce que Vinted attend de toi.";
 }
 

@@ -1341,13 +1341,13 @@ serve(async (req) => {
               pfV.attente_connexion = { platform: "vinted", depuis: avant?.depuis ?? v.le };
               messageEffectif = "Connecte-toi à Vinted sur ton ordinateur. Rien n'a été touché : " +
                 (jV.action === "delete" ? "le retrait repart tout seul" : "la republication repart toute seule") +
-                ` dès que tu es connecté (prochain essai dans ${dans}).`;
+                " dès que tu es connecté.";
               raisonRequalif = `pas de session Vinted dans Chrome, observation ${n} — reprise dans ${dans}`;
             } else {
               messageEffectif = (jV.action === "delete" ? "Retrait Vinted en attente : " : "Republication Vinted en attente : ") +
                 "nous n'arrivons pas encore à prouver que cette annonce appartient à la boutique Vinted ouverte dans Chrome " +
                 "(ton compte a peut-être plusieurs boutiques) — on ne touche à rien sans cette preuve. Si l'annonce est sur une autre " +
-                `de tes boutiques, connecte Chrome à celle-ci sur vinted.fr. Nouvel essai automatique dans ${dans}.`;
+                "de tes boutiques, connecte Chrome à celle-ci sur vinted.fr. Nouvel essai automatique, rien à faire.";
               raisonRequalif = `boutique invérifiable, observation ${n} — reprise dans ${dans}`;
             }
           }
@@ -1684,19 +1684,18 @@ serve(async (req) => {
             // (02/10) Un onglet MUET peut encore agir : « avant tout retrait »
             // était faux chez 9cdr9rm4rn (retrait 43 s après ce message). On ne
             // l'affirme plus ; la reprise relit l'état réel avant tout geste.
-            const dansTxt = delaiReprise >= 60 ? `${Math.round(delaiReprise / 60)} h` : `${delaiReprise} minutes`;
             messageEffectif = canalCoupeParTimeout
               ? "L'onglet Vinted n'a plus répondu pendant la republication. " +
-                `Elle reprend toute seule dans ${dansTxt} : l'état de ton annonce sera vérifié avant tout geste — ` +
+                "Elle reprend toute seule : l'état de ton annonce sera vérifié avant tout geste — " +
                 "rien à faire de ton côté."
               : reprise >= 4
                 ? "La republication s'interrompt chaque fois au même moment sur ton ordinateur (l'onglet Vinted se ferme), " +
                   "avant tout retrait : ton annonce est intacte. C'est de notre côté, rien à faire : " +
-                  `nouvel essai automatique dans ${dansTxt}.`
+                  "nouvel essai automatique."
                 : "La communication avec l'onglet Vinted s'est interrompue pendant la republication, avant tout retrait. " +
-                  `Elle reprend toute seule ${delaiReprise ? `dans ${dansTxt}` : "au prochain passage de l'extension"}, après vérification de l'état de ton annonce — ` +
+                  "Elle reprend toute seule, après vérification de l'état de ton annonce — " +
                   "rien à faire de ton côté.";
-            raisonRequalif = `${canalCoupeParTimeout ? "onglet muet (timeout)" : "canal coupé"} à l'étape captured, reprise ${reprise} (dans ${delaiReprise} min)`;
+            raisonRequalif = `${canalCoupeParTimeout ? "onglet muet (timeout)" : "canal coupé"} à l'étape captured, reprise ${reprise} (dans ${delaiReprise} min)` // estimation-ok: journal interne;
           }
         }
       } catch (e) {
@@ -1790,7 +1789,7 @@ serve(async (req) => {
             statutEffectif = "pending";
             messageEffectif =
               "Vinted vérifie encore cette annonce : elle est masquée aux acheteurs, et Vinted refuse de la retirer " +
-              `tant que la vérification dure. Le retrait est retenté toutes les heures et part dès qu'elle se termine — ` +
+              "tant que la vérification dure. Le retrait est retenté tout seul et part dès qu'elle se termine — " +
               "rien à faire de ton côté.";
             raisonRequalif = `retrait Vinted refusé, annonce masquée (vérification) — attente ${RETRAIT_VERIF_MIN} min, aucune tentative consommée`;
           }
@@ -1866,7 +1865,7 @@ serve(async (req) => {
             statutEffectif = "pending";
             messageEffectif =
               "Beebs vérifie encore cette annonce : elle n'est pas encore visible, et Beebs ne permet pas de la retirer " +
-              "tant que la vérification dure. Le retrait est retenté toutes les heures et part dès qu'elle se termine — " +
+              "tant que la vérification dure. Le retrait est retenté tout seul et part dès qu'elle se termine — " +
               "rien à faire de ton côté.";
             raisonRequalif = `retrait Beebs impossible, annonce en vérification — attente ${RETRAIT_VERIF_MIN} min, aucune tentative consommée`;
           }
@@ -1912,8 +1911,8 @@ serve(async (req) => {
           : "";
         messageEffectif =
           `Vinted vérifie encore cette annonce${quandV} et refuse de la retirer tant que la vérification dure. ` +
-          "Attention : elle peut être achetée dès la fin de la vérification. FillSell réessaie toutes les " +
-          `${RETRAIT_VERIF_VINTED_MIN} minutes ; si elle ne doit plus être vendue, essaie aussi de la supprimer toi-même dans l'appli Vinted.`;
+          "Attention : elle peut être achetée dès la fin de la vérification. FillSell réessaie tout seul, régulièrement ; " +
+          "si elle ne doit plus être vendue, essaie aussi de la supprimer toi-même dans l'appli Vinted.";
       }
     }
 
@@ -1970,7 +1969,7 @@ serve(async (req) => {
             statutEffectif = "pending";
             messageEffectif =
               "Vinted a demandé une pause (protection anti-robot) avant le retrait de l'annonce : rien n'a été supprimé, " +
-              `ton annonce est toujours en ligne. La republication reprend toute seule dans ${ANTIROBOT_REPUB_MIN} minutes — ` +
+              "ton annonce est toujours en ligne. La republication reprend toute seule — " +
               "rien à faire de ton côté.";
             raisonRequalif = `refus anti-robot à l'étape captured, reprise ${deja + 1}/${ANTIROBOT_REPUB_MAX}`;
           }
@@ -2083,7 +2082,7 @@ serve(async (req) => {
               statutEffectif = "pending";
               messageEffectif =
                 `La lecture de la photo ${numero} de ton annonce a échoué de façon passagère (HTTP ${http}) — elle est bien en place. ` +
-                "Nouvel essai automatique dans 2 minutes, avant toute suppression : rien à faire de ton côté.";
+                "Nouvel essai automatique, avant toute suppression : rien à faire de ton côté.";
               raisonRequalif = `photo ${numero} présente dans le bucket, reprise ${deja + 1}/${MAX_PHOTO_REPRISES}`;
             } else {
               console.log(
@@ -2440,8 +2439,8 @@ serve(async (req) => {
               statutEffectif = "pending";
               messageEffectif =
                 `${label} a refusé l'accès à la page à l'instant, mais ta connexion ${label} est bonne : ` +
-                "rien à faire de ton côté, nouvel essai automatique dans quelques minutes.";
-              raisonRequalif = `refus passager ${jrow.platform} (${preuveBonne}) : nouvel essai dans ${[3, 6, 10][nPassager]} min (${nPassager + 1}/3)`;
+                "rien à faire de ton côté, nouvel essai automatique.";
+              raisonRequalif = `refus passager ${jrow.platform} (${preuveBonne}) : nouvel essai dans ${[3, 6, 10][nPassager]} min (${nPassager + 1}/3)`; // estimation-ok: journal interne
             } else {
             pfAttenteSession = {
               ...pfSans,
@@ -2926,7 +2925,7 @@ serve(async (req) => {
                 messageEffectif =
                   `Le formulaire Vinted n'a pas reconnu ${cles.length > 1 ? "des informations" : "une information"} que ton annonce porte pourtant (${resume})` +
                   `${grilleAdulteEnfant ? " — la grille de tailles lue était une grille adulte" : ""}. ` +
-                  "Nouvel essai automatique dans 2 minutes, avant toute suppression : rien à faire de ton côté.";
+                  "Nouvel essai automatique, avant toute suppression : rien à faire de ton côté.";
                 raisonRequalif = `pré-vol négatif sur valeur portée par la capture (${cles.join(", ")}), reprise ${deja + 1}/${GRILLE_MAX_REPRISES}`;
                 console.log(
                   `[update-job-status] userId=${user.id} job=${jobId} — pré-vol négatif (${cles.join(", ")}) alors que la capture porte ${resume}` +
@@ -3506,7 +3505,7 @@ serve(async (req) => {
             messageEffectif =
               "Vinted n'a pas voulu nous rendre ta fiche à l'instant. Ta connexion Vinted est bonne, " +
               "il n'y a rien à faire de ton côté : ton annonce est intacte et on refait un essai " +
-              "tout seuls dans trois quarts d'heure.";
+              "tout seuls, un peu plus tard.";
             raisonRequalif = "session bonne : refus de capture ≠ session perdue";
             pfSessionBonne = p;
             console.log(`[update-job-status] userId=${user.id} job=${jobId} — session_vinted requalifié : la sonde voit Vinted vivant → reprise dans 45 min`);
@@ -3550,10 +3549,9 @@ serve(async (req) => {
               message_efface: typeof messageEffectif === "string" ? messageEffectif.slice(0, 200) : null,
             };
             statutEffectif = "pending";
-            const quand = dans >= 360 ? "dans six heures" : dans >= 180 ? "dans trois heures" : "dans trois quarts d'heure";
             messageEffectif =
               "Vinted n'a pas voulu nous rendre ta fiche à l'instant. Ton annonce est intacte, rien n'a été touché, " +
-              `et on refait un essai tout seuls ${quand}. Si tu n'es plus connecté à Vinted dans Chrome, ` +
+              "et on refait un essai tout seuls, un peu plus tard. Si tu n'es plus connecté à Vinted dans Chrome, " +
               "reconnecte-toi sur vinted.fr : la republication repartira plus vite.";
             raisonRequalif = "session muette : refus de capture sans preuve de session fermée → reprise espacée";
             pfSessionBonne = p;

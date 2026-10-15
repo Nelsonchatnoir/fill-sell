@@ -130,7 +130,7 @@ const MOTS = {
         cestQuoi: 'Tu dis si tu acceptes les retours, et sous combien de jours.',
         pourquoi: 'eBay l\'affiche sur ton annonce et le demande avant la mise en ligne.',
         bouton: 'Créer depuis FillSell',
-        apres: 'Tu choisis : retours acceptés sous 30 jours, ou pas de retour.',
+        apres: 'Tu choisis : retours acceptés sous 30 jours, ou pas de retour.', // estimation-ok: politique eBay (réglage)
       },
       lieu_expedition: {
         titre: 'D\'où part le colis',
@@ -196,7 +196,7 @@ const MOTS = {
         cestQuoi: 'You say whether you accept returns, and within how many days.',
         pourquoi: 'eBay shows it on your listing and asks for it before going live.',
         bouton: 'Create from FillSell',
-        apres: 'You choose: returns accepted within 30 days, or no returns.',
+        apres: 'You choose: returns accepted within 30 days, or no returns.', // estimation-ok: eBay policy (setting)
       },
       lieu_expedition: {
         titre: 'Where the parcel ships from',

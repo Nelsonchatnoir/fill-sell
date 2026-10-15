@@ -204,7 +204,7 @@ export default function QuestionsPlusEnLigne({
               {!vendu && !masquee && (
                 <button type="button" disabled={busy} onClick={() => onReporter(job)}
                   title={fr
-                    ? `Ne décide rien et n'écrit rien. La question revient après ${reportJoursExt} jours d'utilisation de l'extension — pas au bout de ${reportJoursExt} jours de calendrier. Après ${reportMax} reports, l'annonce passe dans « à vérifier » et ne s'affiche plus ici.`
+                    ? `Ne décide rien et n'écrit rien. La question revient après ${reportJoursExt} jours d'utilisation de l'extension /* estimation-ok: une règle de report, pas une attente */ — pas au bout de ${reportJoursExt} jours de calendrier. Après ${reportMax} reports, l'annonce passe dans « à vérifier » et ne s'affiche plus ici.`
                     : `Decides nothing and writes nothing. The question comes back after ${reportJoursExt} days of actually using the extension — not ${reportJoursExt} calendar days. After ${reportMax} deferrals it moves to “to check” and stops showing here.`}
                   style={discret(busy)}>
                   {fr ? 'Je ne sais pas' : "I don't know"}

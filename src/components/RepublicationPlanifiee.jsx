@@ -1233,8 +1233,8 @@ export function RepublicationPlanifieeReglages({ lang, platform = 'vinted', sess
                       ? `Chrome est ouvert sur ${loginConnectee ? `@${loginConnectee}` : `#${connectee}`}${etat?.boutique_connectee?.at ? ` — lu à ${heureDans(etat.boutique_connectee.at, s.fuseau, fr)}` : ''}.`
                       : `Chrome is open on ${loginConnectee ? `@${loginConnectee}` : `#${connectee}`}${etat?.boutique_connectee?.at ? ` — read at ${heureDans(etat.boutique_connectee.at, s.fuseau, fr)}` : ''}.`)
                     : (fr
-                      ? "On ne sait pas encore sur quelle boutique Chrome est ouvert : ouvre vinted.fr dans Chrome, c'est lu en quelques minutes."
-                      : "We don't know yet which shop Chrome is open on: open vinted.fr in Chrome, it's read within minutes.")}
+                      ? "On ne sait pas encore sur quelle boutique Chrome est ouvert : ouvre vinted.fr dans Chrome, c'est lu tout seul."
+                      : "We don't know yet which shop Chrome is open on: open vinted.fr in Chrome, it's read on its own.")}
                 </div>
                 {boutiques.map((b) => {
                   const id = String(b.user_id ?? '');

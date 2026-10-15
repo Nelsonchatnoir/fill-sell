@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useState } from "react";
 import { Check, AlertCircle, Pause, Clock, ChevronRight, Image as IconeImage } from "lucide-react";
 import "./BarreProgression.css";
 import GalleryPhoto from "./GalleryPhoto";
+import { LIBELLES } from "../../supabase/functions/_shared/etat-job.js";
 import {
   plagesDe, plageFraction, plageAncree, valeurDansPlage, attenteLongue, lisser,
   etatGlobal, etatNormalise, moyenne, pourcentageEcrit, VITESSE_FIN,
@@ -87,14 +88,14 @@ function useAnimationsReduitesSysteme() {
 
 const TEXTES = {
   fr: {
-    termine: "Terminé", arretee: "Arrêtée", annulee: "Annulée", pause: "En pause", attente: "En file",
+    termine: LIBELLES.fr.fait, arretee: LIBELLES.fr.a_toi, annulee: LIBELLES.fr.arretee, pause: LIBELLES.fr.en_pause, attente: LIBELLES.fr.en_file,
     surN: (a, n) => `${a} sur ${n}`,
     longue: "Ça prend plus de temps que d'habitude. On continue, rien à faire de ton côté.",
     ligneAttente: "En attente de son tour",
     voirFile: "Toute la file", ouvrirFile: "Ouvrir la file complète",
   },
   en: {
-    termine: "Done", arretee: "Stopped", annulee: "Cancelled", pause: "Paused", attente: "Queued",
+    termine: LIBELLES.en.fait, arretee: LIBELLES.en.a_toi, annulee: LIBELLES.en.arretee, pause: LIBELLES.en.en_pause, attente: LIBELLES.en.en_file,
     surN: (a, n) => `${a} of ${n}`,
     longue: "This is taking longer than usual. We're still on it — nothing to do on your side.",
     ligneAttente: "Waiting for its turn",

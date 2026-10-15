@@ -7,7 +7,7 @@
 
 (() => {
   const POLL_MS = 2000;
-  const MAX_POLLS = 150; // ~5 min : laisse le temps à l'utilisateur de se connecter
+  const MAX_POLLS = 150; // ~5 min : laisse le temps à l'utilisateur de se connecter (estimation-ok: réglage interne)
 
   let polls = 0;
   let lastSent = null;

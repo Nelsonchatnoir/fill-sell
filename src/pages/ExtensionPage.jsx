@@ -175,12 +175,12 @@ export default function ExtensionPage() {
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {(en
               ? [
-                  ["🧥", "Your Vinted listings sync into the app on their own — titles, prices, photos, within seconds."],
+                  ["🧥", "Your Vinted listings sync into the app on their own — titles, prices, photos, nothing to retype."],
                   ["🚀", d("Your listings go out to Vinted, Leboncoin, eBay and Beebs without retyping anything.")],
                   ["🔒", "We read your listings: titles, prices, photos. Nothing is published, edited or deleted."],
                 ]
               : [
-                  ["🧥", "Tes annonces Vinted remontent toutes seules dans l'app — titres, prix, photos, en quelques secondes."],
+                  ["🧥", "Tes annonces Vinted remontent toutes seules dans l'app — titres, prix, photos, sans rien ressaisir."],
                   ["🚀", d("Tes annonces partent sur Vinted, Leboncoin, eBay et Beebs sans rien ressaisir.")],
                   ["🔒", "On lit tes annonces : titres, prix, photos. Rien n'est publié, modifié ni supprimé."],
                 ]

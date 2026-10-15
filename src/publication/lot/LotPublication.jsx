@@ -83,8 +83,8 @@ const ecrireChoixMemorise = (v) => { try { localStorage.setItem(CLE_CHOIX, JSON.
 const PHASES_MOTEUR = new Set(["montage", "redaction", "verification"]);
 const PHASES_EN_PREPARATION = new Set(["lecture", ...PHASES_MOTEUR]);
 const LIBELLE_PHASE = {
-  fr: { attente: "En attente", lecture: "Ta description…", montage: "Lecture…", redaction: "Rédaction…", verification: "Vérification…", pret: "Prêt", questions: "À compléter", quota: "Reste au stock", rien: "Ne part pas", erreur: "Pas préparé", retire: "Retiré du lot", envoi: "Envoi…", envoye: "En file", refuse: "Pas parti" },
-  en: { attente: "Waiting", lecture: "Your description…", montage: "Reading…", redaction: "Writing…", verification: "Checking…", pret: "Ready", questions: "To complete", quota: "Stays in stock", rien: "Not going", erreur: "Not prepared", retire: "Removed", envoi: "Sending…", envoye: "Queued", refuse: "Not sent" },
+  fr: { attente: "En attente", lecture: "Ta description…", montage: "Lecture…", redaction: "Rédaction…", verification: "Vérification…", pret: "Prêt", questions: "À toi de jouer", quota: "Reste au stock", rien: "Ne part pas", erreur: "Pas préparé", retire: "Retiré du lot", envoi: "Envoi…", envoye: "En file", refuse: "À toi de jouer" },
+  en: { attente: "Waiting", lecture: "Your description…", montage: "Reading…", redaction: "Writing…", verification: "Checking…", pret: "Ready", questions: "Your move", quota: "Stays in stock", rien: "Not going", erreur: "Not prepared", retire: "Removed", envoi: "Sending…", envoye: "Queued", refuse: "Your move" },
 };
 const NOM_PALIER = { premium: "Premium", pro: "Pro", business: "Business" };
 // Un abonnement se change là où il a été pris : payé ailleurs qu'ici, on dit

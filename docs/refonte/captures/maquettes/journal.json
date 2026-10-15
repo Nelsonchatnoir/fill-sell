@@ -1,0 +1,264 @@
+{
+  "adresse": "file:///C:/Users/nicol/fill-and-sell/docs/refonte/maquettes/index.html",
+  "le": "2026-10-15T22:26:12.560Z",
+  "ecrans": [
+    {
+      "cle": "onboarding-1",
+      "titre": "1 · Bienvenue",
+      "peintMs": 20,
+      "navMs": 93,
+      "mots": [],
+      "texte": "BIENVENUE Vends partout. Gère tout ici. Une fiche, publiée sur Vinted, Leboncoin, eBay, Beebs et Depop. Les ventes repérées, les autres annonces retirées, les anciennes remontées. Tu pilotes depuis ce téléphone ; ton ordinateur fait le travail. V lbc e B D C'est parti",
+      "change": "Ce qui change : Un seul écran de promesse, les CINQ plateformes nommées d'entrée (Depop comprise), et une phrase vraie : c'est ton ordinateur qui publie."
+    },
+    {
+      "cle": "onboarding-2",
+      "titre": "2 · Où vends-tu déjà ?",
+      "peintMs": 32,
+      "navMs": 112,
+      "mots": [],
+      "texte": "POUR COMMENCER Où vends-tu déjà ? Coche ce que tu utilises. Tu pourras en ajouter à tout moment. ✦ Je débute, rien en ligne ✓ V Vinted lbc Leboncoin e eBay B Beebs D Depop Continuer",
+      "change": "Ce qui change : Depop entre dans la liste ; « Je débute » devient une tuile à égalité, en premier, parce que c'est la réponse de 41 comptes sur 456 (30 j)."
+    },
+    {
+      "cle": "onboarding-3",
+      "titre": "3 · Ton ordinateur fait le travail",
+      "peintMs": 26,
+      "navMs": 142,
+      "mots": [],
+      "texte": "LA MARCHE QUI COMPTE Ton ordinateur fait le travail Une extension Chrome, installée une fois sur ton ordinateur, dépose et relève tes annonces avec tes comptes déjà connectés — jamais tes mots de passe. Sans elle, rien ne part. 💻 Je suis devant mon ordinateur Installe-la maintenant depuis le Chrome Web Store. Tu reviens ici, c'est détecté tout seul. 📱 Je suis sur mon téléphone On t'envoie le lien par mail. Tes fiches attendront : elles partiront dès que l'extension tourne. Détection automatique — rien à recliquer ici M'envoyer le lien pour mon ordinateur J'installerai plus tard — mes fiches ",
+      "change": "Ce qui change : L'étape dit qu'elle est OBLIGATOIRE pour publier (plus « Passer » en silence), propose les deux situations réelles, et montre la détection en direct — sans jamais promettre un délai."
+    },
+    {
+      "cle": "onboarding-4",
+      "titre": "4 · Connecte tes plateformes",
+      "peintMs": 23,
+      "navMs": 34,
+      "mots": [],
+      "texte": "TES COMPTES Connecte tes plateformes L'extension utilise tes sessions déjà ouvertes dans Chrome. Elle ne connaît aucun mot de passe. V Vinted Boutique @marie_vide — vue dans Chrome Connectée lbc Leboncoin Connecte-toi sur leboncoin.fr dans Chrome Me connecter e eBay Relié à FillSell, mais pas encore prêt à vendre chez eBay Voir B Beebs Connecte-toi sur beebs.app dans Chrome Me connecter D Depop Une autorisation dans l'extension, une seule fois Autoriser Tu peux continuer sans tout connecter : une fiche n'ira que là où tu es connecté. Continuer",
+      "change": "Ce qui change : Un seul écran pour les cinq, avec l'état vrai et LE geste par ligne — au lieu de quatre « pas encore vérifié » dans les Réglages."
+    },
+    {
+      "cle": "onboarding-5",
+      "titre": "5 · Ta première fiche",
+      "peintMs": 11,
+      "navMs": 93,
+      "mots": [],
+      "texte": "TA PREMIÈRE FICHE Une photo, et la fiche s'écrit Prends l'article en photo : FillSell reconnaît l'objet, propose un titre, une description et un prix. Tu corriges si tu veux. Titre, description, prix conseillé 📷 Photographier mon premier article Écrire la fiche à la main",
+      "change": "Ce qui change : On montre le résultat (la fiche écrite) AVANT de demander un geste ; la photo est le seul champ."
+    },
+    {
+      "cle": "onboarding-6",
+      "titre": "6 · Où l'envoyer ?",
+      "peintMs": 40,
+      "navMs": 52,
+      "mots": [],
+      "texte": "PREMIÈRE PUBLICATION Où l'envoyer ? Veste en jean Levi's, M 38 € · fiche prête V Vinted Gratuit · 5 publications restantes ce mois ✓ lbc Leboncoin Connecte-toi d'abord sur ton ordinateur Me connecter e eBay Compte pas encore prêt chez eBay Voir B Beebs Connecte-toi d'abord sur ton ordinateur D Depop Autorise Depop dans l'extension Publier sur Vinted",
+      "change": "Ce qui change : Les plateformes NON connectées sont grisées avec leur geste, pas cochables en silence : la fiche ne « partira » que là où ça peut partir."
+    },
+    {
+      "cle": "onboarding-7",
+      "titre": "7 · C'est en file",
+      "peintMs": 32,
+      "navMs": 92,
+      "mots": [
+        "En file",
+        "En cours",
+        "Fait"
+      ],
+      "texte": "PREMIÈRE PUBLICATION C'est en file Veste en jean Levi's, M 38 € · Publication sur Vinted En file — elle part dès que ton ordinateur la prend, à son tour. ✓ Fiche prête Titre, prix, photos, rayon. 2 En file Ton ordinateur la prend quand Chrome est ouvert avec l'extension. 3 En cours Dépôt sur Vinted, dans ton Chrome. 4 Fait En ligne sur Vinted — tu reçois la fiche avec son lien. Ton ordinateur est éteint ? Elle attend, rien n'est perdu. Elle part dès que Chrome s'ouvre avec l'extension. Entrer dans FillSell",
+      "change": "Ce qui change : Le suivi vit DANS le parcours, avec les six mots : la fiche est « En file », on dit ce que ça veut dire et ce qui la ferait partir."
+    },
+    {
+      "cle": "onboarding-8",
+      "titre": "8 · Fait",
+      "peintMs": 19,
+      "navMs": 95,
+      "mots": [
+        "Fait"
+      ],
+      "texte": "✓ En ligne sur Vinted Ta première annonce est partie de ton ordinateur. FillSell la surveille : la vente, la remontée, le retrait ailleurs — tout ça, tout seul. Veste en jean Levi's, M 38 € · Vinted · voir l'annonce ↗ Fait Ajouter un deuxième article Connecter Leboncoin, eBay, Beebs ou Depop",
+      "change": "Ce qui change : La fin du parcours est la PREMIÈRE PUBLICATION faite, pas un récapitulatif : une coche, le lien, et le geste suivant (une deuxième fiche ou une plateforme de plus)."
+    },
+    {
+      "cle": "plateformes-vinted",
+      "titre": "Vinted — Session fermée",
+      "peintMs": 17,
+      "navMs": 67,
+      "mots": [
+        "À toi de jouer"
+      ],
+      "texte": "‹ Mes plateformes V Vinted À toi de jouer — tu n'es pas connectée à Vinted sur ton ordinateur. ✓ Extension installée Vue sur ton ordinateur. 2 Connecte-toi sur vinted.fr dans Chrome Comme d'habitude. FillSell ne voit pas ton mot de passe. 3 Ça repart tout seul Tes publications Vinted en pause repartent dès que la boutique est vue. Ouvrir vinted.fr sur mon ordinateur Je ne vends pas sur Vinted",
+      "change": "Ce qui change : Un seul mot d'état (À toi de jouer), le geste, et ce qui se passera après — jamais « session », « sonde », ni « dans N min »."
+    },
+    {
+      "cle": "plateformes-leboncoin",
+      "titre": "Leboncoin — Pas connecté",
+      "peintMs": 28,
+      "navMs": 63,
+      "mots": [
+        "À toi de jouer"
+      ],
+      "texte": "‹ Mes plateformes lbc Leboncoin À toi de jouer — connecte-toi à Leboncoin sur ton ordinateur. 1 Connecte-toi sur leboncoin.fr dans Chrome Ton compte, tes annonces, ton adresse de remise : rien à ressaisir ici. 2 Ça repart tout seul Les fiches en pause pour Leboncoin partent dès que la session est vue. Ouvrir leboncoin.fr sur mon ordinateur Je ne vends pas sur Leboncoin",
+      "change": "Ce qui change : Même écran que Vinted : l'état, le geste, la suite. Le compte PRO est dit s'il est détecté."
+    },
+    {
+      "cle": "plateformes-ebay",
+      "titre": "eBay — Relié, mais pas prêt chez eBay",
+      "peintMs": 24,
+      "navMs": 76,
+      "mots": [
+        "Fait",
+        "À toi de jouer"
+      ],
+      "texte": "‹ Mes plateformes e eBay À toi de jouer — ton compte eBay est relié à FillSell, mais eBay ne le laisse pas encore vendre. Rien n'a été envoyé à eBay. Dès que ces trois points sont faits chez eBay, tes annonces partent toutes seules : ✓ Inscription vendeur Faite. 2 Politiques de livraison, paiement, retours Chez eBay, une fois : elles s'appliquent à toutes tes annonces. 3 Lieu d'expédition Ton code postal, chez eBay. Ton compte eBay est sur ebay.fr ✓ (un compte sur un autre site eBay ne peut pas être suivi). Finir chez eBay (Seller Hub) Je reviendrai — mes fiches eBay attendent",
+      "change": "Ce qui change : Le cas des 20 comptes bloqués : on dit CE QU'eBay attend (trois cases), avec le lien direct, et pourquoi FillSell n'enverra rien avant."
+    },
+    {
+      "cle": "plateformes-beebs",
+      "titre": "Beebs — Pas connectée",
+      "peintMs": 19,
+      "navMs": 35,
+      "mots": [
+        "En cours",
+        "À toi de jouer"
+      ],
+      "texte": "‹ Mes plateformes B Beebs À toi de jouer — connecte-toi à Beebs sur ton ordinateur. 1 Connecte-toi sur beebs.app dans Chrome Compte Beebs classique (pas « visiteur »). 2 Bon à savoir Beebs vérifie chaque annonce à la main avant de la mettre en ligne : après le dépôt, ta fiche reste « En cours » jusqu'à son feu vert. Ouvrir beebs.app sur mon ordinateur Je ne vends pas sur Beebs",
+      "change": "Ce qui change : Beebs a sa particularité (vérification humaine des annonces) : on la dit ici, une fois, au lieu de la découvrir sur une pastille."
+    },
+    {
+      "cle": "plateformes-depop",
+      "titre": "Depop — Autorisation à donner",
+      "peintMs": 19,
+      "navMs": 31,
+      "mots": [
+        "À toi de jouer"
+      ],
+      "texte": "‹ Mes plateformes D Depop À toi de jouer — Depop attend ton autorisation dans l'extension. Depop ne propose pas de connexion automatique : FillSell travaille sur depop.com comme toi, dans ton Chrome. Chrome demande ton accord, une seule fois. 1 Appuie sur « Autoriser Depop » La fenêtre FillSell s'ouvre sur ton ordinateur ; Chrome te demande l'accord pour depop.com. 2 Connecte-toi sur depop.com Si ce n'est pas déjà fait, dans le même Chrome. 3 Ça repart tout seul Tes fiches Depop en pause partent dès l'accord donné. Autoriser Depop Je ne vends pas sur Depop",
+      "change": "Ce qui change : Le cas Depop : une permission Chrome, pas une connexion. On explique POURQUOI (Depop n'a pas d'API), le geste se fait dans l'extension."
+    },
+    {
+      "cle": "vide-tableau",
+      "titre": "Tableau vide",
+      "peintMs": 179,
+      "navMs": 194,
+      "mots": [],
+      "texte": "5 annonces gratuites ce mois ⚙ Bonjour Marie Ton tableau se remplit avec tes ventes : profit, stock, annonces en ligne. Pour l'instant, tout est à zéro — c'est normal. 📷 Commence par un article Une photo suffit : la fiche s'écrit, tu choisis où l'envoyer. Ajouter mon premier article ▦ Tableau ▤ Stock ◉ ◳ Ventes ∿ Stats",
+      "change": "Ce qui change : Un seul appel à l'action (le même que le Stock), pas deux blocs concurrents ; les compteurs à zéro sont dits en une ligne, pas en six."
+    },
+    {
+      "cle": "vide-stock",
+      "titre": "Stock vide",
+      "peintMs": 12,
+      "navMs": 82,
+      "mots": [],
+      "texte": "5 annonces gratuites ce mois ⚙ Mon stock 📦 Ton stock est vide Ici vivront tes articles : où ils sont en ligne, ce qui les attend, ce qu'ils t'ont rapporté. Une fiche = une photo. 📷 Ajouter mon premier article Importer mes annonces déjà en ligne Plateformes Vinted connectée · Leboncoin, Beebs à connecter · eBay à finir · Depop à autoriser Voir ▦ Tableau ▤ Stock ◉ ◳ Ventes ∿ Stats",
+      "change": "Ce qui change : Huit blocs → trois : ce que la page fera, LE geste (photographier), et l'état des plateformes en une ligne. Le reste (filtres, cartes/liste, republication Pro) n'apparaît qu'avec un premier article."
+    },
+    {
+      "cle": "vide-ventes",
+      "titre": "Ventes vides",
+      "peintMs": 24,
+      "navMs": 92,
+      "mots": [],
+      "texte": "5 annonces gratuites ce mois ⚙ Ventes 🎉 Aucune vente pour l'instant Dès qu'un article part sur Vinted, Leboncoin, eBay, Beebs ou Depop, il apparaît ici avec ta marge — et FillSell te propose de retirer les autres annonces d'un tap. Voir mon stock CE QUI SE PASSE À CHAQUE VENTE 1 On repère la vente Sur les cinq plateformes. 2 Tu confirmes, on retire le reste Un tap, et seulement si tu confirmes. 3 Ta marge se calcule Prix de vente moins achat et frais. ▦ Tableau ▤ Stock ◉ ◳ Ventes ∿ Stats",
+      "change": "Ce qui change : Une phrase, un geste, zéro offre payante sur un écran où rien n'a encore été vendu."
+    },
+    {
+      "cle": "vide-stats",
+      "titre": "Stats vides",
+      "peintMs": 13,
+      "navMs": 57,
+      "mots": [],
+      "texte": "5 annonces gratuites ce mois ⚙ Stats 📈 Tes stats arrivent avec ta première vente Profit, revenu, meilleures plateformes, délai de vente par article : tout se calcule tout seul à partir de tes ventes enregistrées. Voir mon stock ▦ Tableau ▤ Stock ◉ ◳ Ventes ∿ Stats",
+      "change": "Ce qui change : Des tirets « -- » → une phrase qui dit ce que la page montrera et à partir de quand (la première vente, pas une durée)."
+    },
+    {
+      "cle": "vide-lens",
+      "titre": "Lens (créer)",
+      "peintMs": 50,
+      "navMs": 71,
+      "mots": [],
+      "texte": "5 annonces gratuites ce mois ⚙ Scanne. On écrit la fiche. Une photo suffit : titre, description et prix pour chacune de tes plateformes. 📷 Touche pour scanner un article Ce que tu prépares ici attend dans ton compte : ton ordinateur le publie dès que Chrome est ouvert avec l'extension. ▦ Tableau ▤ Stock ◉ ◳ Ventes ∿ Stats",
+      "change": "Ce qui change : La promesse « Scanne, on gère le reste » reste, mais l'écran dit la vérité juste dessous : ce qui part, et d'où (ton ordinateur)."
+    },
+    {
+      "cle": "vide-reglages-plateformes",
+      "titre": "Réglages › Plateformes",
+      "peintMs": 24,
+      "navMs": 60,
+      "mots": [],
+      "texte": "‹ Réglages Mes plateformes V Vinted @marie_vide · vue dans Chrome Connectée lbc Leboncoin Connecte-toi sur ton ordinateur À connecter e eBay Relié · politiques à finir chez eBay À finir B Beebs Connecte-toi sur ton ordinateur À connecter D Depop Une autorisation dans l'extension À autoriser Ces états viennent de l'extension sur ton ordinateur. Touche une ligne pour voir le geste.",
+      "change": "Ce qui change : Plus de « pas encore vérifié » ×4 : chaque ligne porte son état vrai parmi quatre mots (Connectée · À connecter · À finir · À autoriser) et son geste."
+    },
+    {
+      "cle": "vide-recherche",
+      "titre": "Recherche sans résultat",
+      "peintMs": 60,
+      "navMs": 74,
+      "mots": [],
+      "texte": "5 annonces gratuites ce mois ⚙ Mon stock 🔍 veste cuir 🔍 Rien pour « veste cuir » Aucun de tes 12 articles ne porte ces mots. Essaie un mot seul, ou crée l'article. Effacer la recherche Créer « veste cuir » ▦ Tableau ▤ Stock ◉ ◳ Ventes ∿ Stats",
+      "change": "Ce qui change : Un « Aucun article » devient une phrase qui propose le geste utile (élargir, ou créer)."
+    },
+    {
+      "cle": "vide-popup",
+      "titre": "Popup de l'extension, à l'installation",
+      "peintMs": 75,
+      "navMs": 89,
+      "mots": [],
+      "texte": "ORDINATEUR · CHROME Le popup, juste installé FillSell Connectée · Marie ✓ C'est bon, ton ordinateur est prêt Tout se pilote depuis l'app. Ici tu verras ce qui part, et ce qui attend un geste. V Vinted @marie_vide Connectée D Depop Une autorisation, une fois Autoriser Leboncoin, eBay, Beebs : dès que tu t'y connectes dans ce Chrome, elles apparaissent ici. 0 en file Ouvrir l'appli",
+      "change": "Ce qui change : Cinq « Vérifier » → une seule phrase et un seul geste. Les plateformes n'apparaissent qu'une fois vues ; Depop est dite avec son pourquoi."
+    },
+    {
+      "cle": "vide-file",
+      "titre": "Ta file, vide",
+      "peintMs": 24,
+      "navMs": 42,
+      "mots": [
+        "En file",
+        "En cours",
+        "À toi de jouer",
+        "En pause"
+      ],
+      "texte": "Ta file ✕ 🧵 Rien en cours ni en file Chaque publication, republication ou retrait passe ici, dans l'ordre réel de départ : En cours · En file · En pause (avec la raison) · À toi de jouer. Ce qui est fait n'y reste pas.",
+      "change": "Ce qui change : La feuille « Ta file » vide dit ce qu'elle montrera, avec les quatre groupes nommés d'avance."
+    },
+    {
+      "cle": "attentes-file",
+      "titre": "Ta file (pleine)",
+      "peintMs": 42,
+      "navMs": 55,
+      "mots": [
+        "En file",
+        "En cours",
+        "À toi de jouer",
+        "En pause"
+      ],
+      "texte": "Ta file ✕ 2 en cours ou en file · 2 en pause · 1 à toi de jouer EN COURS Veste en jean Levi's, M 38 € · Publication sur Leboncoin En cours — dépôt sur Leboncoin, dans ton Chrome. EN FILE · 1 Poussette Yoyo 240 € · Publication sur Vinted En file — elle partira à son tour. EN PAUSE · 2 Console Switch + 2 jeux 185 € · Republication sur Vinted En pause (limite du jour) — ton annonce est intacte, elle repart toute seule. Lot de 6 bodies 3 mois 12 € · Publication sur Beebs En pause — nouvel essai automatique, rien à faire. À TOI DE JOUER · 1 Casque Sony WH-1000XM4 160 € · Publication sur eBay À toi ",
+      "change": "Ce qui change : Quatre groupes, six mots, zéro heure : chaque ligne dit son état et sa raison en une phrase. L'ordre est celui où ça partira vraiment."
+    },
+    {
+      "cle": "attentes-job",
+      "titre": "Suivi d'un job",
+      "peintMs": 39,
+      "navMs": 54,
+      "mots": [
+        "En cours",
+        "Fait"
+      ],
+      "texte": "‹ Mon stock Console Switch + 2 jeux 185 € · Republication sur Leboncoin En cours — hors ligne le temps de la remise en ligne ✓ Copie complète de ton annonce Photos, texte, prix : en sécurité chez nous. ✓ Ancienne annonce retirée Depuis 14:02. 3 Remise en ligne sur Leboncoin Dans ton Chrome. Les gestes sont espacés, comme le ferait une vraie personne. 4 Fait De retour en tête sur Leboncoin. Rien à faire de ton côté. Si Chrome se ferme, elle reprend là où elle en est à la prochaine ouverture. Toute la file",
+      "change": "Ce qui change : Plus de pourcentage qui glisse : les étapes réelles, celle où on en est qui respire, et l'état en un mot. « Depuis » (passé) est permis ; aucune heure à venir."
+    },
+    {
+      "cle": "attentes-synchro",
+      "titre": "Synchroniser (en cours)",
+      "peintMs": 22,
+      "navMs": 76,
+      "mots": [
+        "En file"
+      ],
+      "texte": "5 annonces gratuites ce mois ⚙ Mon stock Synchronisation 2 plateformes sur 5 V Vinted 41 annonces lbc Leboncoin 12 annonces e eBay lecture · 6 sur 20 B Beebs En file D Depop À autoriser Ton ordinateur lit tes annonces ; chaque annonce est comparée à ton stock pour ne rien créer en double. ▦ Tableau ▤ Stock ◉ ◳ Ventes ∿ Stats",
+      "change": "Ce qui change : Plus « Environ 3 min » : les plateformes une à une, avec leur état réel, et ce qui se passe derrière (le rangement)."
+    }
+  ]
+}

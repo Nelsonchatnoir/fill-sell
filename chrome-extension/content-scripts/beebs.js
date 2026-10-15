@@ -469,7 +469,7 @@ function lirePageIdentifiantsBeebs(page, chemin, reponseUrl, http, html) {
   let finale;
   try { finale = new URL(reponseUrl); } catch { out.motif = "adresse finale illisible"; return out; }
   if (!/(^|\.)beebs\.app$/.test(finale.hostname) || finale.pathname.replace(/\/$/, "") !== chemin) {
-    out.motif = `renvoyée vers ${finale.hostname}${finale.pathname}`;
+    out.motif = `renvoyée vers ${finale.hostname}${finale.pathname}`; // estimation-ok: diagnostic interne (une adresse, pas une heure)
     return out;
   }
   if (!(http >= 200 && http < 300)) { out.motif = `HTTP ${http}`; return out; }
@@ -2196,7 +2196,7 @@ async function waitForBeebsDeposit(timeoutMs = 45_000) {
 
   while (Date.now() < deadline) {
     if (/\/listing\/success/i.test(location.pathname)) {
-      return { ok: true, preuve: `redirection vers ${location.pathname}` };
+      return { ok: true, preuve: `redirection vers ${location.pathname}` }; // estimation-ok: preuve interne (une adresse)
     }
     const m = texteRenduHorsScripts().match(CONFIRME);
     if (m) return { ok: true, preuve: `message rendu « ${m[0]} »` };
@@ -4695,18 +4695,18 @@ async function urlToFile(url, index) {
     throw new Error(
       (/\/storage\/v1\/object\/public\/listing-photos\//.test(String(url))
         ? `La photo ${index + 1} de l'annonce n'a pas pu être lue à l'instant (elle est pourtant bien chez FillSell). ` +
-          "C'est presque toujours passager. La publication repart toute seule dans quelques minutes — rien à payer, rien à refaire. " +
+          "C'est presque toujours passager. La publication repart toute seule — rien à payer, rien à refaire. " +
           "Si rien ne repart, vérifie la connexion internet puis relance la publication depuis l'app."
         : `La photo ${index + 1} de l'annonce n'a pas pu être téléchargée depuis la page de dépôt ` +
           "(photo hébergée hors FillSell — article importé du dressing ? — ou réseau coupé). " +
-          "FillSell la rapatrie automatiquement et relance la publication sous quelques minutes — rien à payer, rien à refaire. " +
+          "FillSell la rapatrie automatiquement et relance la publication toute seule — rien à payer, rien à refaire. " +
           "Si rien ne repart, vérifie la connexion internet puis relance la publication depuis l'app.")
     );
   }
   if (!res.ok) {
     throw new Error(
       `La photo ${index + 1} de l'annonce est indisponible (HTTP ${res.status}). ` +
-      "Réessaie dans quelques minutes ; si ça persiste, remplace cette photo depuis la fiche de l'article dans l'app."
+      "Réessaie un peu plus tard ; si ça persiste, remplace cette photo depuis la fiche de l'article dans l'app."
     );
   }
   const blob = await res.blob();

@@ -77,14 +77,14 @@ export function messageColisNonAfficheParLaPage(action, dansMinutes = 30) {
     ? "Ton annonce a été retirée de Vinted et n'est pas encore revenue en ligne : "
     : "Ta publication Vinted n'a pas abouti, rien n'a été publié : ") +
     "la page de Vinted n'a pas affiché les formats de colis de ce rayon, que Vinted exige. " +
-    `C'est un aléa de Vinted, rien à faire de ton côté : nouvel essai automatique dans ${dansMinutes} min.`;
+    "C'est un aléa de Vinted, rien à faire de ton côté : nouvel essai automatique.";
 }
 
 export function messageColisRefuseMemeEnvoye(action) {
   return action === "republish"
     ? "Ton annonce a été retirée de Vinted et n'est pas encore revenue en ligne : Vinted exige le format du colis, que son " +
       "formulaire ne propose pas pour ce rayon, et a refusé celui que nous lui avons envoyé. Rien n'est perdu : toutes ses " +
-      "données sont sauvegardées. C'est de notre côté, rien à faire : nouvel essai automatique dans 6 h."
+      "données sont sauvegardées. C'est de notre côté, rien à faire : nouvel essai automatique."
     : "Ta publication Vinted n'a pas abouti, rien n'a été publié : Vinted exige le format du colis, que son formulaire ne " +
       "propose pas pour ce rayon, et a refusé celui que nous lui avons envoyé. La publication est arrêtée sur Vinted pour cet article.";
 }

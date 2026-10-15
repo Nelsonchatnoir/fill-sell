@@ -96,7 +96,7 @@ const ok = (c, l, d = '') => { total++; if (!c) echecs++; console.log(`${c ? '�
   const job = { id: 'x', platform: 'leboncoin', action: 'republish', status: 'pending', created_at: '2026-10-14T13:57:00Z',
     platform_fields: { republish_source: 'auto', republish_step: 'a_capturer' } };
   const enPause = situationJob(job, { creneaux: { leboncoin: { actif: false, dans_creneau: false, reprise: null } }, extension: { etat: 'ok', vu: Date.now() } });
-  ok(enPause.groupe === 'pause' && enPause.motif === 'auto_en_pause' && /en pause : elle repartira quand tu la relanceras/.test(enPause.raison),
+  ok(enPause.groupe === 'en_pause' && enPause.motif === 'auto_en_pause' && /en pause : elle repartira quand tu la relanceras/.test(enPause.raison),
     '4g. app : « Republication automatique en pause » sur la carte du job', JSON.stringify(enPause));
   const horsCreneau = situationJob(job, { creneaux: { leboncoin: { actif: true, dans_creneau: false, reprise: '2026-10-16T06:00:00Z' } } });
   ok(horsCreneau.motif === 'creneau', '4h. app : hors créneau, inchangé');

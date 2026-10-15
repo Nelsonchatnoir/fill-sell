@@ -76,7 +76,7 @@ export default function InstallExtensionCta({
                 style={{ display: 'block', width: '100%', background: 'none', border: 'none', color: secondesRestantes > 0 ? '#8A8578' : '#1B6E62', fontSize: 12, fontWeight: 600, cursor: secondesRestantes > 0 ? 'default' : 'pointer', fontFamily: 'inherit', padding: 4, textDecoration: secondesRestantes > 0 ? 'none' : 'underline' }}
               >
                 {secondesRestantes > 0
-                  ? (fr ? `Renvoyer dans ${secondesRestantes} s` : `Resend in ${secondesRestantes}s`)
+                  ? (fr ? 'Renvoyer (envoyé à l\'instant)' : 'Resend (just sent)')
                   : (fr ? 'Renvoyer' : 'Resend')}
               </button>
             </>

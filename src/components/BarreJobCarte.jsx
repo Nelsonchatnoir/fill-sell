@@ -10,17 +10,15 @@
 import { useEffect, useState } from "react";
 import BarreProgression from "./BarreProgression";
 import { pisteJob } from "../utils/barresJobs";
-import { attendConnexion } from "../utils/fileDesJobs";
+import { libelleEtat } from "../utils/fileDesJobs";
 
 const DUREE_FIN_MS = 5000;
 const COURT = { vinted: "Vinted", leboncoin: "LBC", beebs: "Beebs", ebay: "eBay", opla: "Opla", depop: "Depop" };
 
-function phrasesCourtes(piste, job, lang, ctx) {
+// (16/10) Les mots de l'état unique (_shared/etat-job.js) : « Vinted · À toi de
+// jouer », « LBC · En pause », « Beebs · Arrêtée » — jamais un vocabulaire à part.
+function phrasesCourtes(piste, job, lang) {
   const fr = lang !== "en";
-  // Le geste attendu, en deux mots : autoriser, se connecter, compléter.
-  const geste = job.status === "pending" && job.platform === "opla" && ctx?.oplaAAutoriser
-    ? (fr ? "À autoriser" : "To allow")
-    : attendConnexion(job) ? (fr ? "À connecter" : "Sign in") : (fr ? "À compléter" : "To complete");
   const pf = COURT[job.platform] ?? job.platform;
   const court = piste.etapes?.find((e) => e.cle === piste.etape)?.court ?? "";
   const fin = job.action === "delete" ? (fr ? "Retirée" : "Removed")
@@ -29,8 +27,8 @@ function phrasesCourtes(piste, job, lang, ctx) {
   return {
     phrase: `${pf} · ${court}`,
     phraseFin: `${pf} · ${fin}`,
-    phrasePause: `${pf} · ${fr ? "En attente" : "Waiting"}`,
-    phraseEchec: `${pf} · ${piste.ton === "neutre" ? (fr ? "Annulée" : "Cancelled") : geste}`,
+    phrasePause: `${pf} · ${libelleEtat("en_pause", lang)}`,
+    phraseEchec: `${pf} · ${piste.ton === "neutre" ? libelleEtat("arretee", lang) : libelleEtat("a_toi", lang)}`,
   };
 }
 
@@ -81,7 +79,7 @@ export default function BarreJobCarte({ jobs, tous, lang = "fr", ctx, onOuvrir, 
   affiches.sort((a, b) => (a.status === "processing" ? 0 : 1) - (b.status === "processing" ? 0 : 1));
   const pistes = affiches.map((j) => {
     const p = pisteJob(j, { ...ctx, lang });
-    return { ...p, ...phrasesCourtes(p, j, lang, ctx), cle: cleDe(j) };
+    return { ...p, ...phrasesCourtes(p, j, lang), cle: cleDe(j) };
   });
   const seule = pistes.length === 1 ? pistes[0] : null;
   return (

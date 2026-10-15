@@ -1,7 +1,7 @@
 {
   "name": "fillsell",
   "private": true,
-  "version": "2.9.94",
+  "version": "2.9.95",
   "type": "module",
   "scripts": {
     "postinstall": "node -e \"if(process.env.VERCEL){console.log('Vercel: patch-package saute (patches natifs seulement, et le cache de build casse leur application)')}else{require('child_process').execSync('patch-package',{stdio:'inherit'})}\"",
@@ -356,7 +356,10 @@
     "selftest:depot-sans-numero": "node scripts/depot-sans-numero-selftest.mjs",
     "selftest:titre-aligne": "node scripts/titre-aligne-selftest.mjs",
     "selftest:ebay-retrait-trading": "node scripts/ebay-retrait-trading-selftest.mjs",
-    "selftest:lbc-feuille-corrigee": "node scripts/lbc-feuille-corrigee-selftest.mjs"
+    "selftest:lbc-feuille-corrigee": "node scripts/lbc-feuille-corrigee-selftest.mjs",
+    "selftest:etat-job": "node --import ./scripts/loader-ext.mjs scripts/etat-job-selftest.mjs",
+    "selftest:aucune-estimation": "node scripts/aucune-estimation-selftest.mjs",
+    "gen:etat-job-extension": "node scripts/gen-etat-job-extension.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

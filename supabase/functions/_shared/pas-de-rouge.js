@@ -491,7 +491,7 @@ function classerEchecSansRegleRetrait(arg) {
         verdict: "reprise", statut: "pending", motif: "refus_session_bonne", dansMinutes: [3, 6, 10][reprisesFaites],
         message:
           "Opla a refusé l'accès à l'instant, mais ta connexion Opla est bonne : il n'y a rien à faire de ton côté " +
-          "et rien n'a été touché. On refait un essai tout seuls dans quelques minutes.",
+          "et rien n'a été touché. On refait un essai tout seuls.",
       };
     }
     return {
@@ -518,7 +518,7 @@ function classerEchecSansRegleRetrait(arg) {
         message:
           `${nom} nous a refusé l'accès à ta fiche à l'instant, mais ta connexion ${nom} est bonne : ` +
           "il n'y a rien à faire de ton côté et rien n'a été touché. " +
-          "On refait un essai tout seuls dans trois quarts d'heure, au calme.",
+          "On refait un essai tout seuls, au calme.",
       };
     }
     return {
@@ -713,7 +713,7 @@ function classerEchecSansRegleRetrait(arg) {
   if (PANNEAU_RE.test(t)) {
     return reprise("panneau_categorie",
       `La page de dépôt de ${nom} n'a pas fini de s'afficher avant qu'on choisisse la catégorie. ` +
-      "Rien n'a été publié. On recommence tout seuls dans quelques minutes.", 5);
+      "Rien n'a été publié. On recommence tout seuls.", 5);
   }
   if (ANTIROBOT_RE.test(t)) {
     // ── UN RETRAIT REFUSÉ SUR UNE SEULE ANNONCE N'EST PAS UN ANTI-ROBOT (25/09) ──
@@ -749,7 +749,7 @@ function classerEchecSansRegleRetrait(arg) {
   if (SERVEUR_RE.test(t)) {
     return reprise("serveur",
       `${nom} n'a pas répondu correctement pendant ${acte(action)}. Ce n'est pas ton annonce : ` +
-      "on refait un essai tout seuls dans quelques minutes.", 10);
+      "on refait un essai tout seuls.", 10);
   }
   // ── OPLA, ONGLET HORS DE www.opla.co (2026-09-27) ─────────────────────────
   // Classé « canal coupé » jusqu'ici : reprise sans fin toutes les 6 h et « tu
@@ -779,7 +779,7 @@ function classerEchecSansRegleRetrait(arg) {
     if (connecte) {
       return reprise("opla_hors_hote",
         `${acte(action).replace(/^la /, "La ").replace(/^le /, "Le ")} a été interrompue : l'onglet Opla a quitté opla.co ` +
-        "un instant. Ta connexion Opla est bonne, rien n'a été touché : on refait un essai tout seuls dans quelques minutes.",
+        "un instant. Ta connexion Opla est bonne, rien n'a été touché : on refait un essai tout seuls.",
         reprisesFaites < 3 ? [3, 6, 10][reprisesFaites] : 45);
     }
     return reprise("opla_hors_hote",

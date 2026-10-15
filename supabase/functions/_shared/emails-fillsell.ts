@@ -140,7 +140,7 @@ export function mailBienvenue(lang: Langue, lienDesinscription = ""): MailPret {
         "Prends ton article en photo : FillSell l'identifie, rédige le titre et la description, propose un prix. Tu choisis les plateformes.",
       ),
       boutonPrincipal("Installer l'extension", CWS_URL),
-      paragraphe("L'extension s'installe sur ordinateur, en une minute, une seule fois."),
+      paragraphe("L'extension s'installe sur ordinateur, une seule fois."),
       paragraphe("Une question ? Réponds à ce mail."),
     ]
     : [
@@ -196,7 +196,7 @@ export function mailCommentCaMarche(lang: Langue, lienDesinscription = ""): Mail
       paragraphe("Voilà ce qui se passe en arrière-plan une fois ton compte en route."),
       encadre(
         "Il publie pour toi",
-        "Quand tu demandes une publication, elle se fait dans une fenêtre discrète qui ne te vole jamais le focus, ou directement depuis nos serveurs selon la plateforme. Les gestes sont volontairement espacés : on travaille au rythme d'un humain. Compte quelques minutes par plateforme, c'est normal.",
+        "Quand tu demandes une publication, elle se fait dans une fenêtre discrète qui ne te vole jamais le focus, ou directement depuis nos serveurs selon la plateforme. Les gestes sont volontairement espacés : on travaille au rythme d'un humain. C'est normal si ça prend un moment.",
       ),
       encadre(
         "Il garde ton stock à jour",

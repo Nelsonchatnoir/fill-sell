@@ -20,6 +20,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { LABEL_COURT } from '../utils/republication';
+import { LIBELLES } from '../../supabase/functions/_shared/etat-job.js';
 
 // ── « Ancienne » : le plancher de republication DÉJÀ en place ──────────────
 // AGE_MIN de components/RepublicationPlanifiee.jsx (« plancher anti-ban »,
@@ -227,27 +228,31 @@ export function pastilleCourte(etat, lang = 'fr') {
   // Plusieurs plateformes : on COMPTE ; une seule : son nom court ; aucune : rien
   // (jamais « · null »).
   const quoi = n > 1 ? sep + n : pf ? sep + pf : '';
+  // (16/10) Un job se dit avec les six mots de l'état unique (_shared/etat-job.js) :
+  // En file · En cours · Fait · À toi de jouer · En pause · Arrêtée. Le ton garde la
+  // gravité (rouge = pas partie, ambre = à toi, gris = ça repart seul).
+  const L = LIBELLES[fr ? 'fr' : 'en'];
   switch (e.genre) {
     case 'republication':
       return { texte: e.court ?? (fr ? 'Remontée' : 'Bump'), ton: e.ton ?? 'neutre', pulse: !!e.pulse };
     case 'orpheline':
-      return { texte: fr ? 'Ouvre Chrome' : 'Open Chrome', ton: 'echec', pulse: false };
+      return { texte: L.a_toi, ton: 'echec', pulse: false };
     case 'pause':
-      return { texte: fr ? 'En pause' : 'Paused', ton: 'neutre', pulse: false };
+      return { texte: L.en_pause, ton: 'neutre', pulse: false };
     case 'maj':
-      return { texte: fr ? 'Mise à jour' : 'Update', ton: 'regler', pulse: false };
+      return { texte: L.en_pause, ton: 'regler', pulse: false };
     case 'attente':
-      return { texte: (fr ? 'En attente' : 'Waiting') + (e.jours >= 1 ? `${sep}${e.jours} ${fr ? 'j' : 'd'}` : ''), ton: 'neutre', pulse: false };
+      return { texte: L.en_pause + (e.jours >= 1 ? `${sep}${e.jours} ${fr ? 'j' : 'd'}` : ''), ton: 'neutre', pulse: false };
     case 'en_cours':
-      return { texte: fr ? 'En cours…' : 'Posting…', ton: 'neutre', pulse: true };
+      return { texte: L.en_cours, ton: 'neutre', pulse: true };
     case 'echec':
-      return { texte: (fr ? 'Échec' : 'Failed') + quoi, ton: 'echec', pulse: false };
+      return { texte: L.a_toi + quoi, ton: 'echec', pulse: false };
     case 'a_regler':
-      return { texte: (fr ? 'À régler' : 'To fix') + quoi, ton: 'regler', pulse: false };
+      return { texte: L.a_toi + quoi, ton: 'regler', pulse: false };
     case 'confirmation':
-      return { texte: (fr ? 'Vérification' : 'Checking') + quoi, ton: 'neutre', pulse: false };
+      return { texte: L.en_cours + quoi, ton: 'neutre', pulse: false };
     case 'en_file':
-      return { texte: (fr ? 'En file' : 'Queued') + (pf ? sep + pf : ''), ton: 'neutre', pulse: false };
+      return { texte: L.en_file + (pf ? sep + pf : ''), ton: 'neutre', pulse: false };
     case 'hors_ligne':
       return { texte: (fr ? 'Hors ligne' : 'Offline') + (e.date ? sep + e.date : ''), ton: 'hors', pulse: false };
     case 'masquee':

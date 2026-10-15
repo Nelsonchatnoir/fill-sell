@@ -621,7 +621,7 @@ function PremiumBanner({ userEmail, compact=false, source='banner', onOpenModal=
       // la phrase du serveur d'abord quand il en rend une (24/09).
       console.error('[checkout] error:', e);
       alert(e.messageClient||(e.message==='payment_unavailable'
-        ?(lang==='en'?"Payment is temporarily unavailable. We're on it — please try again shortly.":"Le paiement est momentanément indisponible. On est prévenus — réessaie dans quelques minutes.")
+        ?(lang==='en'?"Payment is temporarily unavailable. We're on it — please try again shortly.":"Le paiement est momentanément indisponible. On est prévenus — réessaie un peu plus tard.")
         :(lang==='en'?"Could not open checkout. Please try again.":"Impossible d'ouvrir le paiement. Réessaie dans un instant.")));
       setLoading(false);
     }
@@ -1842,7 +1842,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
           const ext=mimeType.includes("mp4")?"mp4":mimeType.includes("aac")?"aac":"webm";
           fd.append("audio",blob,`audio.${ext}`);fd.append("lang",lang);fd.append("duree_ms",String(dureeMs));
           const tRes=await fetch(`${SURL}/functions/v1/voice-transcribe`,{method:"POST",headers:{"Authorization":`Bearer ${vaToken}`,"apikey":supabaseAnonKey},body:fd});
-          if(!tRes.ok){const tErrJson=await tRes.json().catch(()=>({}));if(tErrJson?.error==='ai_unavailable'||tRes.status===503){setVoiceToast(lang==='fr'?'⏳ IA temporairement indisponible. Réessaie dans 30 secondes.':'⏳ AI temporarily unavailable. Please retry in 30 seconds.');setTimeout(()=>setVoiceToast(''),5000);setVaStep("");return;}if(tRes.status===429||tErrJson?.error==='quota_exceeded'){ouvrirModalePlafondVoix();setVaStep("");return;}throw new Error(lang==="en"?"Transcription failed":"Transcription échouée");}
+          if(!tRes.ok){const tErrJson=await tRes.json().catch(()=>({}));if(tErrJson?.error==='ai_unavailable'||tRes.status===503){setVoiceToast(lang==='fr'?'⏳ IA temporairement indisponible. Réessaie dans un instant.':'⏳ AI temporarily unavailable. Please retry in a moment.');setTimeout(()=>setVoiceToast(''),5000);setVaStep("");return;}if(tRes.status===429||tErrJson?.error==='quota_exceeded'){ouvrirModalePlafondVoix();setVaStep("");return;}throw new Error(lang==="en"?"Transcription failed":"Transcription échouée");}
           let tJson;try{tJson=await tRes.json();}catch{throw new Error(lang==="en"?"Invalid server response":"Réponse serveur invalide");}
           const{text,error:tErr}=tJson;
           // ── L'UNITÉ RENDUE EST RENDUE DES DEUX CÔTÉS (2026-09-19) ─────────
@@ -1877,7 +1877,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
           // Snapshot du stock (articles non vendus) transmis à la edge function pour le matching IA
           const stockSnap=items.filter(i=>i.statut!=="vendu").map(i=>({id:i.id,nom:i.title||i.nom||"",marque:i.marque||null,type:i.type||null,description:i.description||null,emplacement:i.emplacement||null,quantite:i.quantite||1,prix_achat:i.buy??i.prix_achat??null}));
           const iRes=await fetch(`${SURL}/functions/v1/voice-intent`,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${vaToken}`,"apikey":supabaseAnonKey},body:JSON.stringify({text,lang,currency,items:stockSnap})});
-          if(!iRes.ok){const iErrJson=await iRes.json().catch(()=>({}));if(iErrJson?.error==='ai_unavailable'||iRes.status===503){setVoiceToast(lang==='fr'?'⏳ IA temporairement indisponible. Réessaie dans 30 secondes.':'⏳ AI temporarily unavailable. Please retry in 30 seconds.');setTimeout(()=>setVoiceToast(''),5000);setVaStep("");return;}if(iRes.status===429||iErrJson?.error==='quota_exceeded'){/* 50/j Free (2026-07-23), Premium/Pro illimités : un 429 ne peut venir que d'un Free au plafond journalier */ouvrirModalePlafondVoix();setVaStep("");return;}throw new Error(lang==="en"?"Intent failed":"Erreur intention");}
+          if(!iRes.ok){const iErrJson=await iRes.json().catch(()=>({}));if(iErrJson?.error==='ai_unavailable'||iRes.status===503){setVoiceToast(lang==='fr'?'⏳ IA temporairement indisponible. Réessaie dans un instant.':'⏳ AI temporarily unavailable. Please retry in a moment.');setTimeout(()=>setVoiceToast(''),5000);setVaStep("");return;}if(iRes.status===429||iErrJson?.error==='quota_exceeded'){/* 50/j Free (2026-07-23), Premium/Pro illimités : un 429 ne peut venir que d'un Free au plafond journalier */ouvrirModalePlafondVoix();setVaStep("");return;}throw new Error(lang==="en"?"Intent failed":"Erreur intention");}
           let iJson;try{iJson=await iRes.json();}catch{throw new Error(lang==="en"?"Invalid server response":"Réponse serveur invalide");}
           const{tasks,error:iErr}=iJson;
           if(iErr)throw new Error(iErr);
@@ -3077,7 +3077,7 @@ export default function App({ loginOnly = false }){
       // garde-fou serveur ; le détail technique reste en console.
       console.error('[checkout] error:', e);
       alert(e.messageClient||(e.message==='payment_unavailable'
-        ?(lang==='en'?"Payment is temporarily unavailable. We're on it — please try again shortly.":"Le paiement est momentanément indisponible. On est prévenus — réessaie dans quelques minutes.")
+        ?(lang==='en'?"Payment is temporarily unavailable. We're on it — please try again shortly.":"Le paiement est momentanément indisponible. On est prévenus — réessaie un peu plus tard.")
         :(lang==='en'?"Could not open checkout. Please try again.":"Impossible d'ouvrir le paiement. Réessaie dans un instant.")));
     }
   }
@@ -4307,7 +4307,7 @@ export default function App({ loginOnly = false }){
       const iRes=await fetch(`${supabaseUrl}/functions/v1/voice-intent`,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${vpToken}`,"apikey":supabaseAnonKey},body:JSON.stringify({text,lang,currency,items:stockSnap})});
       if(!iRes.ok){
         const iErrJson=await iRes.json().catch(()=>({}));
-        if(iErrJson?.error==='ai_unavailable'||iRes.status===503){setToast({visible:true,message:lang==='fr'?'⏳ IA temporairement indisponible. Réessaie dans 30 secondes.':'⏳ AI temporarily unavailable. Please retry in 30 seconds.'});setTimeout(()=>setToast({visible:false,message:''}),5000);setVoiceStep("");setVoiceLoading(false);return;}
+        if(iErrJson?.error==='ai_unavailable'||iRes.status===503){setToast({visible:true,message:lang==='fr'?'⏳ IA temporairement indisponible. Réessaie dans un instant.':'⏳ AI temporarily unavailable. Please retry in a moment.'});setTimeout(()=>setToast({visible:false,message:''}),5000);setVoiceStep("");setVoiceLoading(false);return;}
         if(iRes.status===429||iErrJson?.error==='quota_exceeded'){
           // Garde-fou MENSUEL (bascule quotas 02/09) : reason 'monthly' =
           // borne de coût invisible, JAMAIS un paywall — message neutre.
@@ -7378,7 +7378,7 @@ export default function App({ loginOnly = false }){
             {renvoiEnCours
               ? <Loader size={19} thickness={2}/>
               : secondesAvantRenvoi>0
-                ? (fr_?`Renvoyer dans ${secondesAvantRenvoi} s`:`Resend in ${secondesAvantRenvoi}s`)
+                ? (fr_?'Renvoyer (envoyé à l\'instant)':'Resend (just sent)')
                 : (fr_?"Renvoyer l'e-mail":"Resend email")}
           </SecondaryButton>
           <span

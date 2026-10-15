@@ -40,9 +40,10 @@ export function messageRetenuePause(platform) {
 /** Le message d'une republication auto retenue hors de son créneau. */
 export function messageRetenueCreneau(platform, reprise) {
   const nom = NOM[platform] ?? platform ?? "";
-  const q = quand(reprise);
+  // (16/10, Nico) Jamais la date ni l'heure du créneau : « au prochain créneau », c'est tout.
+  void reprise;
   return `Republication automatique ${nom ? `${nom} ` : ""}en attente de ton créneau : elle repartira ` +
-    (q ? `${q} ` : "à l'ouverture de ton prochain créneau ") +
+    "à l'ouverture de ton prochain créneau " +
     "(heure de Paris), si Chrome est ouvert sur ton ordinateur à ce moment-là. Ton annonce est intacte, rien n'a été retiré.";
 }
 

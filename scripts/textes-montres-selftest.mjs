@@ -57,7 +57,7 @@ const g = jobErrorSansFaussePromesse(geronimo, "fr");
 ok(/Numéro de pièce fabricant/.test(g) && !JARGON.test(g), "geronimo0550 : le champ demandé, en mots de vendeur, même sur un job vivant", g);
 const verif = humanizeJobError({ platform: "vinted", action: "publish", status: "published",
   error: "Impossible de vérifier l'état de cette annonce vinted après 4 tentatives (page de vérification anti-bot ou format inattendu). L'annonce N'A PAS été touchée et le job reste 'published' : vérifier à la main sur la plateforme. Nouvelle tentative dans 24 h." }, "fr");
-ok(verif === "Impossible de vérifier cette annonce sur Vinted : sa page n'a pas répondu comme prévu. L'annonce n'a pas été touchée ; nouvelle vérification dans 24 h.",
+ok(verif === "Impossible de vérifier cette annonce sur Vinted : sa page n'a pas répondu comme prévu. L'annonce n'a pas été touchée ; nouvelle vérification à un prochain passage.",
   "la note de vérification (2 864 jobs en 14 jours) dit la même chose sans « job »", verif);
 const doublon = humanizeJobError({ platform: "leboncoin", action: "publish", status: "cancelled",
   error: "Annulé le 10/09 : doublon. Cet article est repris par le job 31e20d5e, remis en file après vérification qu'aucune annonce n'existe en ligne. Ton article n'est pas perdu, il part une seule fois." }, "fr");
@@ -86,7 +86,7 @@ ok(texteMontrable(geronimo.error) === null && texteMontrable("Connexion Vinted r
 
 console.log("\n4. LES SOURCES ÉCRIVENT DÉJÀ LES BONS MOTS (extension 0.6.90, veilleur)");
 const bg = lire("chrome-extension/background.js");
-ok(/`Impossible de vérifier cette annonce sur \$\{LABEL_PLATEFORME\[job\.platform\] \?\? job\.platform\} : ` \+\s+"sa page n'a pas répondu comme prévu\. L'annonce n'a pas été touchée ; nouvelle vérification dans 24 h\.";/.test(bg),
+ok(/`Impossible de vérifier cette annonce sur \$\{LABEL_PLATEFORME\[job\.platform\] \?\? job\.platform\} : ` \+\s+"sa page n'a pas répondu comme prévu\. L'annonce n'a pas été touchée ; nouvelle vérification à un prochain passage\.";/.test(bg),
   "extension : la note de vérification est la phrase de l'app, à l'octet");
 ok(/"l'ancienne publication est close, ce n'est pas une vente\."/.test(bg) && !/job obsolète clos/.test(bg), "extension : « remplacée par une republication » sans « job »");
 ok(texteSuiviLisible("Annonce 1 remplacée par une republication (l'article vit désormais sur l'annonce 2) — job obsolète clos automatiquement, pas une vente.", "Vinted", false)

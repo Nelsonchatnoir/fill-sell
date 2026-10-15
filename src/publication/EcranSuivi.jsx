@@ -11,6 +11,9 @@
 // est dit une fois, en clair.
 import { useEffect, useState } from "react";
 import { etatsFournee } from "./moteur/regles";
+import { LIBELLES } from "../../supabase/functions/_shared/etat-job.js";
+// (16/10) Les six mots de l'état unique, les mêmes que la file, les cartes et l'extension.
+const MOT = (en, cle) => LIBELLES[en ? "en" : "fr"][cle];
 // (01/10) LA barre de progression et la file complète des jobs : la fournée
 // se lit d'un coup d'œil (article, pourcentage, une ligne par plateforme),
 // et un tap sur la barre ouvre toute la file.
@@ -146,38 +149,38 @@ export default function EcranSuivi({ m }) {
     const parApi = p === "ebay" && (e.job?.voie ? e.job.voie === "api" : m.ebayVoieApiReelle);
     switch (e.kind) {
       case "en_cours": return { texte: parApi ? (en ? "Publishing from our servers…" : "Publication depuis nos serveurs…") : (en ? "In progress in Chrome" : "En cours dans Chrome"), droite: <span className="fsn-spin" aria-label={en ? "in progress" : "en cours"} /> };
-      case "publiee": return { texte: <>{en ? "Online" : "En ligne"}{e.url ? <> · <a href={e.url} target="_blank" rel="noopener noreferrer">{en ? "see the listing ↗" : "voir l'annonce ↗"}</a></> : null}{noteLivraison(e.job)}</>, droite: <Puce ton="ok" point>{en ? "Live" : "En ligne"}</Puce> };
-      case "attente_champ": return { texte: (en ? `${NOM(p)} asks for “${e.champ}”` : `${NOM(p)} demande « ${e.champ} »`), droite: <Puce ton="geste">{en ? "Question" : "Question"}</Puce>,
+      case "publiee": return { texte: <>{en ? "Online" : "En ligne"}{e.url ? <> · <a href={e.url} target="_blank" rel="noopener noreferrer">{en ? "see the listing ↗" : "voir l'annonce ↗"}</a></> : null}{noteLivraison(e.job)}</>, droite: <Puce ton="ok" point>{MOT(en, "fait")}</Puce> };
+      case "attente_champ": return { texte: (en ? `${NOM(p)} asks for “${e.champ}”` : `${NOM(p)} demande « ${e.champ} »`), droite: <Puce ton="geste">{MOT(en, "a_toi")}</Puce>,
         geste: m.onCompleter && e.job ? <button type="button" className="fsn-btn fsn-btn--secondary fsn-btn--sm" onClick={() => m.onCompleter(e.job)}>{en ? "Answer and resume" : "Répondre et relancer"}</button> : null };
       // L'autorisation Opla se lit comme partout (verdict serveur, 24/09) : un
       // parcage plus ancien que la preuve d'accès du compte repart seul — on
       // ne redemande pas un geste déjà fait ; sinon, LE bouton, ici aussi.
       case "attente_autorisation": return parcageDepasse(e.job, m.oplaAccesDetail)
-        ? { texte: en ? "Opla is allowed: it goes out on its own in a moment." : "Opla est autorisée : elle repart toute seule dans un instant.", droite: <Puce ton="mute">{en ? "queued" : "en file"}</Puce> }
+        ? { texte: en ? "Opla is allowed: it goes out on its own." : "Opla est autorisée : elle repart toute seule.", droite: <Puce ton="mute">{MOT(en, "en_file")}</Puce> }
         // (11/10) Depop : la même attente, le même bouton (_shared/acces-depop.js).
         : p === "depop"
-          ? { texte: en ? "Waiting for your Depop permission — it goes out on its own once granted." : "Attend ton autorisation Depop — partira toute seule une fois accordée.", droite: <Puce ton="geste">{en ? "Permission" : "Autorisation"}</Puce>,
+          ? { texte: en ? "Waiting for your Depop permission — it goes out on its own once granted." : "Attend ton autorisation Depop — partira toute seule une fois accordée.", droite: <Puce ton="geste">{MOT(en, "a_toi")}</Puce>,
               geste: m.userId ? <BoutonMeConnecter userId={m.userId} platform="depop" motif={MOTIFS.AUTORISER_DEPOP} lang={m.lang} variante="bouton" /> : null }
-          : { texte: en ? "Waiting for your Opla permission — it goes out on its own once granted." : "Attend ton autorisation Opla — partira toute seule une fois accordée.", droite: <Puce ton="geste">{en ? "Permission" : "Autorisation"}</Puce>,
+          : { texte: en ? "Waiting for your Opla permission — it goes out on its own once granted." : "Attend ton autorisation Opla — partira toute seule une fois accordée.", droite: <Puce ton="geste">{MOT(en, "a_toi")}</Puce>,
             geste: m.userId ? <BoutonMeConnecter userId={m.userId} platform="opla" motif={MOTIFS.AUTORISER_OPLA} lang={m.lang} variante="bouton" /> : null };
-      case "attente_connexion": return { texte: en ? "Waiting for you to sign in on your computer." : "Attend ta connexion sur ton ordinateur.", droite: <Puce ton="geste">{en ? "Sign in" : "Connexion"}</Puce> };
-      case "attente": return { texte: (e.job?.error ? humanizeJobError(e.job, en ? "en" : "fr") : "") || (en ? "Waiting for something on your side." : "Attend quelque chose de ton côté."), droite: <Puce ton="geste">{en ? "Waiting" : "Attente"}</Puce> };
-      case "refusee": return { texte: (e.job?.error ? humanizeJobError(e.job, en ? "en" : "fr") : "") || (en ? "The platform refused it." : "La plateforme a refusé."), droite: <Puce ton="refus">{en ? "Refused" : "Refusée"}</Puce> };
+      case "attente_connexion": return { texte: en ? "Waiting for you to sign in on your computer." : "Attend ta connexion sur ton ordinateur.", droite: <Puce ton="geste">{MOT(en, "a_toi")}</Puce> };
+      case "attente": return { texte: (e.job?.error ? humanizeJobError(e.job, en ? "en" : "fr") : "") || (en ? "Waiting for something on your side." : "Attend quelque chose de ton côté."), droite: <Puce ton="geste">{MOT(en, "a_toi")}</Puce> };
+      case "refusee": return { texte: (e.job?.error ? humanizeJobError(e.job, en ? "en" : "fr") : "") || (en ? "The platform refused it." : "La plateforme a refusé."), droite: <Puce ton="refus">{MOT(en, "a_toi")}</Puce> };
       // Une annulation porte sa raison quand la plateforme ne sait pas faire
       // (pas-de-rouge « info » : pas de rayon Beebs…) — on la
       // dit, au lieu d'un « Annulée. » muet.
-      case "annulee": return { texte: (String(e.job?.error ?? "").trim() ? humanizeJobError(e.job, en ? "en" : "fr") : "") || (en ? "Cancelled." : "Annulée."), droite: <Puce ton="mute">{en ? "Cancelled" : "Annulée"}</Puce> };
+      case "annulee": return { texte: (String(e.job?.error ?? "").trim() ? humanizeJobError(e.job, en ? "en" : "fr") : "") || (en ? "Cancelled." : "Annulée."), droite: <Puce ton="mute">{MOT(en, "arretee")}</Puce> };
       // Pas de rang annoncé (« 1er », « 2e ») : c'est le serveur qui ordonne la
       // file, et l'ordre observé en réel (Vinted avant Opla) n'était pas
       // celui de la fournée — on ne promet que ce qu'on sait.
       // (01/10) Opla en file SANS autorisation connue : elle ne partira pas à
       // son tour — elle attend le geste, et le bouton est là.
-      default: if (p === "opla" && oplaAAutoriser) return { texte: en ? "Waiting for your Opla permission — it goes out on its own once granted." : "Attend ton autorisation Opla — partira toute seule une fois accordée.", droite: <Puce ton="geste">{en ? "Permission" : "Autorisation"}</Puce>,
+      default: if (p === "opla" && oplaAAutoriser) return { texte: en ? "Waiting for your Opla permission — it goes out on its own once granted." : "Attend ton autorisation Opla — partira toute seule une fois accordée.", droite: <Puce ton="geste">{MOT(en, "a_toi")}</Puce>,
         geste: m.userId ? <BoutonMeConnecter userId={m.userId} platform="opla" motif={MOTIFS.AUTORISER_OPLA} lang={m.lang} variante="bouton" /> : null };
         // (03/10, point 25 — geronimo0550) Extension trop ancienne : rien ne
         // partira « à son tour » — la mise à jour d'abord, et son geste.
-        if (!parApi && m.extensionAMettreAJour) return { texte: phraseMiseAJourExtension(m.lang) + ".", droite: <Puce ton="geste">{en ? "Update" : "Mise à jour"}</Puce> };
-        return { texte: parApi ? (en ? "Queued on our servers" : "Dans la file de nos serveurs") : (en ? "Queued — Chrome takes it in turn" : "Dans la file — Chrome la prend à son tour"), droite: <Puce ton="mute">{en ? "queued" : "en file"}</Puce> };
+        if (!parApi && m.extensionAMettreAJour) return { texte: phraseMiseAJourExtension(m.lang) + ".", droite: <Puce ton="geste">{MOT(en, "en_pause")}</Puce> };
+        return { texte: parApi ? (en ? "Queued on our servers" : "Dans la file de nos serveurs") : (en ? "Queued — Chrome takes it in turn" : "Dans la file — Chrome la prend à son tour"), droite: <Puce ton="mute">{MOT(en, "en_file")}</Puce> };
     }
   };
 
@@ -209,7 +212,7 @@ export default function EcranSuivi({ m }) {
         <h1 className="fsn-h" style={{ fontSize: 20 }}>{titre}</h1>
         <p className="fsn-lead" style={{ marginTop: 4 }}>
           {tousFinis
-            ? (en ? `${nbEnLigne} online` : `${nbEnLigne} en ligne`) + (nbAttente ? (en ? ` · ${nbAttente} waiting` : ` · ${nbAttente} en attente`) : "") + (nbRefus ? (en ? ` · ${nbRefus} refused` : ` · ${nbRefus} refusée${nbRefus > 1 ? "s" : ""}`) : "")
+            ? (en ? `${nbEnLigne} online` : `${nbEnLigne} en ligne`) + (nbAttente + nbRefus ? (en ? ` · ${nbAttente + nbRefus} your move` : ` · ${nbAttente + nbRefus} à toi de jouer`) : "")
             // (03/10, point 19, Nico) Jamais « tu peux fermer » : on suit ICI.
             : (en ? `${plateformes.length} listing${plateformes.length > 1 ? "s" : ""} on their way — you follow each one here.` : `${plateformes.length} annonce${plateformes.length > 1 ? "s" : ""} en route — tu suis chacune ici.`)}
         </p>
