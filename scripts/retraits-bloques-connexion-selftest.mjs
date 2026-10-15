@@ -21,6 +21,7 @@
 import { readFileSync } from "node:fs";
 import {
   retraitsBloquesParConnexion, retraitBloqueParConnexion, texteRetraitsBloques, ligneCarteRetraitBloque, ligneARegler,
+  retraitOplaQuittee, articlesVendusEncoreEnLigne, detailArticleVenduEnLigne,
 } from "../src/utils/retraitsBloques.js";
 
 let echecs = 0;
@@ -213,6 +214,35 @@ console.log("\n── 7. (06/10) Vinted : session absente, session illisible, «
   ok("« À régler » seulement « compte bloqué » : le geste est l'appli Vinted", /appli Vinted/.test(seulCb.detail), seulCb.detail);
   const ecran = readFileSync(new URL("../src/stock/EcranRetraitsBloques.jsx", import.meta.url), "utf8");
   ok("l'écran ne montre jamais « Me connecter » sur une carte « compte bloqué » (ni boutique, ni ordinateur, 12/10)", /\{userId && \(g\.mur \?\? 'connexion'\) === 'connexion' && \(/.test(ecran));
+}
+
+// ── (15/10, XEWER) Opla quittée : un retrait CLOS d'article vendu se dit ──
+{
+  const MSG = "Opla n'est plus pris en charge par FillSell : cette annonce vendue est peut-être encore en ligne sur Opla, retire-la toi-même sur Opla.";
+  const clos = (id, inv, min, pf = {}) => ({ id, inventaire_id: inv, platform: "opla", action: "delete", status: "cancelled", error: MSG,
+    listing_url: "https://www.opla.co/annonce/art_" + inv, created_at: "2026-10-15T13:2" + min + ":00Z", platform_fields: { arme_par: { pose_par: "armer_retrait_job" }, ...pf } });
+  const fichesX = new Map([["901", { id: 901, title: "Les Sims 2 Naufragés DS", statut: "vendu" }], ["902", { id: 902, title: "Viewtiful Joe GameCube", statut: "vendu" }]]);
+  const jobsX = [clos("s1", 901, 1), clos("s2", 901, 2), clos("s3", 901, 3), clos("v1", 902, 4)];
+  const r = retraitsBloquesParConnexion({ jobs: jobsX, fiches: fichesX, maintenant: Date.parse("2026-10-15T16:00:00Z") });
+  ok("Opla quittée : un retrait clos par la sortie d'Opla est un mur (XEWER)", retraitOplaQuittee(jobsX[0]));
+  ok("Opla quittée : trois armements de la même annonce = UNE ligne", r.total === 2, r.total);
+  const g = r.parPlateforme.find((x) => x.mur === "opla_sortie");
+  ok("Opla quittée : la phrase dit de retirer soi-même sur Opla", g && /retire-les toi-même sur Opla/.test(texteRetraitsBloques(g, "fr")) && /risque de double vente/.test(texteRetraitsBloques(g, "fr")), g && texteRetraitsBloques(g, "fr"));
+  const art = articlesVendusEncoreEnLigne({ retraits: r, fiches: fichesX });
+  ok("Opla quittée : chaque article vendu a sa ligne « À régler », en rouge", art.length === 2 && art.every((a) => a.ton === "echec"), art.map((a) => a.ton));
+  ok("Opla quittée : « peut-être encore en ligne », jamais une certitude", /^Vendu, peut-être encore en ligne sur Opla\./.test(detailArticleVenduEnLigne(art[0], "fr")), detailArticleVenduEnLigne(art[0], "fr"));
+  ok("Opla quittée : la carte le dit", /Peut-être encore en ligne sur Opla/.test(ligneCarteRetraitBloque("opla", "fr", "opla_sortie")));
+  ok("Opla quittée : « C'est fait » éteint le mur", !retraitOplaQuittee(clos("x", 901, 5, { opla_retire_par_la_personne: { le: "2026-10-15T16:00:00Z" } })));
+  ok("un retrait Opla annulé pour une autre raison n'est pas ce mur", !retraitOplaQuittee({ ...jobsX[0], error: "Arrêté à ta demande." }));
+  ok("un retrait Vinted annulé n'est jamais ce mur", !retraitOplaQuittee({ ...jobsX[0], platform: "vinted" }));
+  const marque = jobsX.map((j) => ({ ...j, platform_fields: { ...j.platform_fields, opla_retire_par_la_personne: { le: "x" } } }));
+  ok("Opla quittée : marqués, plus aucune ligne", retraitsBloquesParConnexion({ jobs: marque, fiches: fichesX }).total === 0);
+  const seul = ligneARegler(r, "fr");
+  ok("« À régler » Opla seule : aucun « pour que FillSell les retire »", !/pour que FillSell/.test(seul.detail) && /retire toi-même sur Opla/.test(seul.detail), seul.detail);
+  const ecranO = readFileSync(new URL("../src/stock/EcranRetraitsBloques.jsx", import.meta.url), "utf8");
+  ok("l'écran des retraits porte « C'est fait » pour Opla", /g\.mur === 'opla_sortie' && onOplaFait/.test(ecranO));
+  const stock = readFileSync(new URL("../src/tabs/StockTab.jsx", import.meta.url), "utf8");
+  ok("la fiche porte « C'est fait : retirée d'Opla » (statut inchangé)", /cle: 'opla-fait'/.test(stock) && /\.eq\('status', 'cancelled'\)\.select\('id'\)/.test(stock));
 }
 
 console.log(echecs ? `\n${echecs} échec(s)` : "\nTout est vert.");

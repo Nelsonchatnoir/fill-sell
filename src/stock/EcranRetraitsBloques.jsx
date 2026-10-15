@@ -25,7 +25,7 @@ import { texteRetraitsBloques } from '../utils/retraitsBloques';
 // Les noms viennent de la configuration des plateformes, jamais d'une liste ici.
 import { nomPlateforme } from '../utils/fileDesJobs';
 
-export default function EcranRetraitsBloques({ lang = 'fr', retraits, userId, motifDe, onFermer, aRetirer = [], onRetirer = null, onPlusTard = null }) {
+export default function EcranRetraitsBloques({ lang = 'fr', retraits, userId, motifDe, onFermer, aRetirer = [], onRetirer = null, onPlusTard = null, onOplaFait = null }) {
   const fr = lang !== 'en';
   const total = (retraits?.total ?? 0) + aRetirer.reduce((t, g) => t + g.length, 0);
   return (
@@ -53,6 +53,13 @@ export default function EcranRetraitsBloques({ lang = 'fr', retraits, userId, mo
             </span>
             <span style={{ flex: 1, minWidth: 0, fontSize: 14, lineHeight: '20px', fontWeight: 600, color: S.ink }}>{texteRetraitsBloques(g, lang)}</span>
           </div>
+          {/* (15/10) Opla quittée : la personne retire elle-même, puis le dit. */}
+          {g.mur === 'opla_sortie' && onOplaFait && (
+            <button type="button" className="sk-btn sk-presse" onClick={() => onOplaFait(g.lignes.map((l) => l.job))}
+              style={{ alignSelf: 'flex-start', minHeight: 44, padding: '0 16px', borderRadius: 999, border: `1px solid ${S.border}`, background: '#FFFFFF', fontSize: 14, fontWeight: 700, color: S.ink }}>
+              {fr ? 'C’est fait : retirées d’Opla' : 'Done: removed from Opla'}
+            </button>
+          )}
           {userId && (g.mur ?? 'connexion') === 'connexion' && (
             <BoutonMeConnecter userId={userId} platform={g.platform} motif={motifDe(g.lignes[0]?.job)} lang={lang} variante="bouton" style={{ alignItems: 'flex-start' }} />
           )}

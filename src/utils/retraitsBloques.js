@@ -133,6 +133,24 @@ export function retraitBloqueParOrdinateur(job, extensionVueLe, maintenant = Dat
   return !vu || maintenant - vu > ATTENTE_ORDINATEUR_MS;
 }
 
+// ── (15/10, XEWER) OPLA QUITTÉE : UN RETRAIT CLOS N'EST PAS UN RETRAIT FAIT ──
+// Depuis la sortie d'Opla (bascule du 10/10, mig 20261011130000), un retrait
+// Opla armé après une vente est clos aussitôt (« cancelled ») par la garde
+// garde_opla_sortie_jobs, avec la phrase de Nico (MESSAGE_RETRAIT_OPLA_SORTIE,
+// _shared/opla-sortie.js) — et l'app n'en disait RIEN : un retrait « cancelled »
+// ne s'affichait nulle part (XEWER : « Les Sims 2 Naufragés DS », « Viewtiful
+// Joe GameCube » ; 14 comptes, 87 annonces Opla sur des fiches vendues).
+// Mur 'opla_sortie' : la personne doit retirer l'annonce elle-même sur Opla,
+// puis toucher « C'est fait » (platform_fields.opla_retire_par_la_personne,
+// posé sur les retraits clos de cette fiche ; le statut ne change pas).
+const MESSAGE_OPLA_SORTIE_RE = /Opla n'est plus pris en charge par FillSell|peut-être encore en ligne sur Opla/i;
+export function retraitOplaQuittee(job) {
+  if (!job || job.action !== 'delete' || job.platform !== 'opla' || job.status !== 'cancelled') return false;
+  const pf = job.platform_fields && typeof job.platform_fields === 'object' ? job.platform_fields : {};
+  if (pf.opla_retire_par_la_personne) return false;
+  return !!pf.opla_sortie || MESSAGE_OPLA_SORTIE_RE.test(String(job.error ?? ''));
+}
+
 /** Un retrait d'article VENDU : la fiche le dit, ou le serveur l'a armé après une vente. */
 export function retraitApresVente(job, fiche) {
   if (fiche?.statut === 'vendu') return true;
@@ -177,7 +195,8 @@ export function retraitsBloquesParConnexion({ jobs = [], fiches = null, maintena
     // Ordre : le mur le plus précis d'abord. `extensionVueLe === undefined`
     // (appelant d'avant le 12/10) : le mur « ordinateur » n'est pas jugé.
     const boutique = retraitBloqueParBoutique(j);
-    const mur = retraitBloqueParCompteVinted(j) ? 'compte_bloque'
+    const mur = retraitOplaQuittee(j) ? 'opla_sortie'
+      : retraitBloqueParCompteVinted(j) ? 'compte_bloque'
       : retraitBloqueParConnexion(j, maintenant) ? 'connexion'
         : boutique ? 'boutique'
           : (extensionVueLe !== undefined && retraitBloqueParOrdinateur(j, extensionVueLe, maintenant)) ? 'ordinateur'
@@ -247,6 +266,14 @@ export function texteRetraitsBloques(groupe, lang = 'fr') {
       ? `${quoiO} : ouvre Chrome sur ton ordinateur, FillSell ${plus ? 'les' : 'la'} retirera aussitôt${risqueO}.`
       : `${quoiO}: open Chrome on your computer, FillSell will remove ${plus ? 'them' : 'it'} right away${risqueO}.`;
   }
+  if (groupe.mur === 'opla_sortie') {
+    const quoiOp = nVendus === n
+      ? (fr ? `${n} article${plus ? 's' : ''} vendu${plus ? 's' : ''} peut-être encore en ligne sur Opla` : `${n} sold item${plus ? 's' : ''} maybe still live on Opla`)
+      : (fr ? `${n} annonce${plus ? 's' : ''} à retirer peut-être encore en ligne sur Opla` : `${n} listing${plus ? 's' : ''} to remove maybe still live on Opla`);
+    return fr
+      ? `${quoiOp} : FillSell ne gère plus Opla, retire-${plus ? 'les' : 'la'} toi-même sur Opla, puis touche « C'est fait » — risque de double vente.`
+      : `${quoiOp}: FillSell no longer handles Opla, remove ${plus ? 'them' : 'it'} yourself on Opla, then tap "Done" — risk of selling twice.`;
+  }
   if (groupe.mur === 'compte_bloque') {
     const risqueCb = nVendus > 0 ? (fr ? ' — risque de double vente' : ' — risk of selling twice') : '';
     return fr
@@ -284,6 +311,11 @@ export function ligneCarteRetraitBloque(platform, lang = 'fr', mur = 'connexion'
     return lang === 'en'
       ? `Still live on ${nom} — open Chrome on your computer to remove it (risk of selling twice)`
       : `Encore en ligne sur ${nom} — ouvre Chrome sur ton ordinateur pour la retirer (risque de double vente)`;
+  }
+  if (mur === 'opla_sortie') {
+    return lang === 'en'
+      ? 'Maybe still live on Opla — FillSell no longer handles Opla: remove it yourself on Opla (risk of selling twice)'
+      : 'Peut-être encore en ligne sur Opla — FillSell ne gère plus Opla : retire-la toi-même sur Opla (risque de double vente)';
   }
   if (mur === 'compte_bloque') {
     return lang === 'en'
@@ -350,12 +382,17 @@ export function ligneARegler(bloques, lang = 'fr') {
       ? `${majuscule(lister(gestes))} pour que FillSell ${n > 1 ? 'les' : 'la'} retire`
       : `${majuscule(lister(gestes))} so FillSell can remove ${n > 1 ? 'them' : 'it'}`)
     : '';
+  // (15/10) Opla quittée : la personne retire elle-même, FillSell ne fait rien.
+  const op = groupesDe('opla_sortie').length > 0;
+  const suiteOp = op
+    ? (fr ? `${phrase || cb.length ? ' ; ' : ''}Opla : FillSell ne la gère plus, retire toi-même sur Opla ce qui y est encore, puis « C'est fait »` : `${phrase || cb.length ? '; ' : ''}Opla: FillSell no longer handles it, remove yourself on Opla what is still there, then "Done"`)
+    : '';
   const suiteCb = cb.length
     ? (fr ? `${phrase ? ' ; ' : ''}« compte bloqué » sur ${lister(cb)} : retire-les depuis l'appli` : `${phrase ? '; ' : ''}"account blocked" on ${lister(cb)}: remove them from the app`)
     : '';
   // (12/10 soir) Le risque n'est dit que pour un mur qui n'est pas « boutique ».
   const risqueMele = (bloques?.parPlateforme ?? []).some((g) => (g.mur ?? 'connexion') !== 'boutique');
-  return { titre, detail: `${phrase}${suiteCb}${risqueMele ? (fr ? ' — risque de double vente.' : ' — risk of selling twice.') : '.'}` };
+  return { titre, detail: `${majuscule(`${phrase}${suiteCb}${suiteOp}`.replace(/^ ?; /, ''))}${risqueMele ? (fr ? ' — risque de double vente.' : ' — risk of selling twice.') : '.'}` };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -396,6 +433,10 @@ function gesteVenduEnLigne(g, lang = 'fr') {
       return fr
         ? `${noms} affiche « compte bloqué » sur ton ordinateur : retire-${la} depuis l'appli ${noms} si tu peux, FillSell réessaie tout seul`
         : `${noms} shows "account blocked" on your computer: remove ${la} from the ${noms} app if you can, FillSell keeps retrying`;
+    case 'opla_sortie':
+      return fr
+        ? `FillSell ne gère plus Opla : retire-${la} toi-même sur Opla, puis touche « C'est fait » dans la fiche`
+        : `FillSell no longer handles Opla: remove ${la} yourself on Opla, then tap "Done" on the item`;
     case 'a_retirer':
       return fr
         ? `${plus ? 'elles attendent' : 'elle attend'} ton accord : touche « Retirer » dans la fiche, FillSell ${la} retire depuis ton ordinateur`
@@ -492,7 +533,9 @@ export function detailArticleVenduEnLigne(article, lang = 'fr') {
   if (!pfs.length) return null;
   const noms = [...new Set(pfs.map((p) => nomDe(p.platform)))];
   const majuscule = (s) => s.charAt(0).toUpperCase() + s.slice(1);
-  const tete = fr ? `Vendu, encore en ligne sur ${listerNoms(noms, lang)}.` : `Sold, still live on ${listerNoms(noms, lang)}.`;
+  // (15/10) Opla quittée : FillSell ne la lit plus — « peut-être », jamais une certitude.
+  const peutEtre = pfs.every((p) => p.mur === 'opla_sortie');
+  const tete = fr ? `Vendu, ${peutEtre ? 'peut-être ' : ''}encore en ligne sur ${listerNoms(noms, lang)}.` : `Sold, ${peutEtre ? 'maybe ' : ''}still live on ${listerNoms(noms, lang)}.`;
   // Un geste par mur (et par boutique), jamais le même geste répété.
   const groupes = new Map();
   for (const p of pfs) {

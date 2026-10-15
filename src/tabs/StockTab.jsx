@@ -9237,6 +9237,28 @@ const StockTab = memo(function StockTab({
     if (extensionNeverSeen === true) { setExtPitchItem(item); return; }
     ouvrirFeuilleRepublication([item]);
   };
+  // ── (15/10, XEWER) OPLA QUITTÉE : « C'EST FAIT » ───────────────────────────
+  // La personne a retiré elle-même son annonce sur Opla : on le note sur les
+  // retraits Opla CLOS de cette fiche (platform_fields seul, statut inchangé :
+  // la garde Opla ne se déclenche pas), la ligne disparaît. Rien d'autre.
+  const marquerJobsOplaFaits = async (jobs) => {
+    if (!user?.id) return;
+    const le = new Date().toISOString();
+    const cibles = (jobs ?? []).filter((j) => j && j.action === 'delete' && j.platform === 'opla' && j.status === 'cancelled' && !j.platform_fields?.opla_retire_par_la_personne);
+    const faits = new Map();
+    for (const j of cibles) {
+      const pf = { ...(j.platform_fields ?? {}), opla_retire_par_la_personne: { le } };
+      const { data, error } = await supabase.from('cross_post_jobs').update({ platform_fields: pf })
+        .eq('id', j.id).eq('user_id', user.id).eq('status', 'cancelled').select('id');
+      if (!error && data?.length) faits.set(j.id, pf);
+    }
+    if (faits.size) {
+      setJobsByInventaire((prev) => Object.fromEntries(Object.entries(prev).map(([k, liste]) => [k, (liste ?? []).map((j) => (faits.has(j.id) ? { ...j, platform_fields: faits.get(j.id) } : j))])));
+      track('opla_retrait_fait', { n: faits.size });
+    }
+  };
+  // Tous les retraits Opla clos de la fiche (les doublons d'armement compris).
+  const marquerRetireeSurOpla = (inventaireId) => marquerJobsOplaFaits(jobsByInventaire[inventaireId] ?? []);
   const gestesArticle = (item, d, pastille) => {
     const fr = lang === 'fr';
     if (item.statut === 'vendu') {
@@ -9297,6 +9319,7 @@ const StockTab = memo(function StockTab({
         ],
         menu: [
           ...(aRetirer.length && onRetirerVendus ? [{ cle: 'retirer-vendu', icone: CircleX, libelle: fr ? `Retirer de ${listeARetirer}` : `Remove from ${listeARetirer}`, detail: fr ? `FillSell ${aRetirer.length > 1 ? 'les' : 'la'} retire depuis ton ordinateur` : `FillSell removes ${aRetirer.length > 1 ? 'them' : 'it'} from your computer`, onTap: () => onRetirerVendus(aRetirer) }] : []),
+          ...(pfBloquees.some(([p]) => murDe.get(p) === 'opla_sortie') ? [{ cle: 'opla-fait', icone: Check, libelle: fr ? 'C’est fait : retirée d’Opla' : 'Done: removed from Opla', detail: fr ? 'Tu l’as retirée toi-même sur Opla' : 'You removed it yourself on Opla', onTap: () => marquerRetireeSurOpla(item.id) }] : []),
           ...(aRetirer.length && onPlusTardVendus ? [{ cle: 'retirer-plus-tard', icone: Clock, libelle: fr ? 'Plus tard' : 'Later', detail: fr ? 'Rien n’est retiré, et la question ne revient plus' : 'Nothing is removed, and the question won’t come back', onTap: () => onPlusTardVendus(aRetirer) }] : []),
           { cle: 'modifier', icone: Pencil, libelle: fr ? "Modifier l'article" : 'Edit item', onTap: d.openEdit },
           ...(onDupliquer ? [{ cle: 'dupliquer', icone: Copy, libelle: fr ? 'Dupliquer' : 'Duplicate', detail: fr ? 'Une nouvelle fiche en stock, sans annonce' : 'A new stock item, with no listing', onTap: () => onDupliquer(item) }] : []),
@@ -11494,7 +11517,7 @@ const StockTab = memo(function StockTab({
           (12/10 soir) Sans les articles vendus qui ont leur propre ligne ;
           avec les annonces à retirer d'un article dont la fiche n'existe plus. */}
       {gesteOuvert==='retraits'&&(
-        <EcranRetraitsBloques lang={lang} retraits={retraitsAutres} userId={user?.id}
+        <EcranRetraitsBloques lang={lang} retraits={retraitsAutres} userId={user?.id} onOplaFait={(jobs) => marquerJobsOplaFaits(jobs)}
           aRetirer={aRetirerSansFiche} onRetirer={onRetirerVendus} onPlusTard={onPlusTardVendus}
           motifDe={(j)=>murDeConnexion(j)??MOTIFS.CONNEXION} onFermer={()=>setGesteOuvert('a_regler')}/>
       )}
