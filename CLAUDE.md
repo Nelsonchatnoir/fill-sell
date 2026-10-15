@@ -4,11 +4,19 @@
 « 03/10 nuit — clôture Louis + marque + prix » et « 04/10 matin —
 complément », « 04/10 fin de matinée — chantier Louis », « 04/10 soir —
 incident CPU », « 04/10 nuit — six défauts clients » et « 05/10 — lot
-terminal Problèmes » / « 05/10 après-midi » / « 06/10 » / « 06/10 soir » / « 06/10 nuit » / « 08/10 nuit — MULTI-SYNCHRO » / « 08/10 matin — boucles » / « 08/10 fin de matinée — SUJET CLOS » / « 08/10 après-midi — complément » / « 08/10 soir — fin du chantier multi-synchro » / « 08/10 nuit — Bebertdeals : remise en ligne Vinted » / « 08/10 nuit — VENTES PROUVÉES » / « 09/10 nuit — DEPOP » / « 09/10 fin de matinée — DEPOP : reprise complète » / « 11/10 — une vente signalée une fois » / « 11/10 midi — LOT UNIQUE » / « 11/10 après-midi — POIDS LEBONCOIN » / « 11/10 fin d'après-midi — BOUTIQUE, ANCIENNETÉ, QUOTA » / « 11/10 soir — LOT DE DIX POINTS » / « 11/10 nuit — LOT LOUIS (fin) » / « 11/10 nuit — DEPOP COMME OPLA » / « 12/10 nuit — CLÔTURE » en fin ; reprises : `docs/reprise/terminal-depop-0910.md`, `docs/reprise/terminal-ventes-prouvees-0810.md`, `docs/reprise/terminal-bebertdeals-0810.md`, `docs/reprise/terminal-boucles-0810.md`, `docs/reprise/terminal-cloture-multi-synchro-0810.md`, `docs/reprise/terminal-complement-0810.md`, `docs/reprise/terminal-fin-multi-synchro-0810.md`) et
+terminal Problèmes » / « 05/10 après-midi » / « 06/10 » / « 06/10 soir » / « 06/10 nuit » / « 08/10 nuit — MULTI-SYNCHRO » / « 08/10 matin — boucles » / « 08/10 fin de matinée — SUJET CLOS » / « 08/10 après-midi — complément » / « 08/10 soir — fin du chantier multi-synchro » / « 08/10 nuit — Bebertdeals : remise en ligne Vinted » / « 08/10 nuit — VENTES PROUVÉES » / « 09/10 nuit — DEPOP » / « 09/10 fin de matinée — DEPOP : reprise complète » / « 11/10 — une vente signalée une fois » / « 11/10 midi — LOT UNIQUE » / « 11/10 après-midi — POIDS LEBONCOIN » / « 11/10 fin d'après-midi — BOUTIQUE, ANCIENNETÉ, QUOTA » / « 11/10 soir — LOT DE DIX POINTS » / « 11/10 nuit — LOT LOUIS (fin) » / « 11/10 nuit — DEPOP COMME OPLA » / « 12/10 nuit — CLÔTURE » / « 15/10 nuit — REPRISE EN MAIN » / « 15/10 jour — CLORE TOUS LES POINTS » en fin ; reprises : `docs/reprise/terminal-depop-0910.md`, `docs/reprise/terminal-ventes-prouvees-0810.md`, `docs/reprise/terminal-bebertdeals-0810.md`, `docs/reprise/terminal-boucles-0810.md`, `docs/reprise/terminal-cloture-multi-synchro-0810.md`, `docs/reprise/terminal-complement-0810.md`, `docs/reprise/terminal-fin-multi-synchro-0810.md`) et
 `docs/agents/consignes-2026-09-28.md` (règles), qui remplacent tout historique
 contraire. Il se périme : `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
 
+- **⛔ 15/10 jour — CLORE TOUS LES POINTS (A → H, C-bis, P16 → P18)** — état : `docs/agents/etat-2026-10-01.md` § « 15/10 jour » :
+  migs **20261015100000 / 110000 / 120000 / 130000 / 140000 APPLIQUÉES** ; gpj **v247**, uj **v135**, hw **v106**,
+  stripe-webhook **v59**, empreintes-urls **v7**, rapprochement **v25** (moteur v23) ; ⛔ **republication d'une même
+  plateforme = une fiche seulement si TOUT est identique** (photos ≥ 2 à ≤ 2, titre, description, prix ; ni lot ni
+  quantité > 1 ; jamais chez une personne qui a répondu « Non, deux exemplaires » ; la base revérifie) ; ⛔ **une
+  plateforme à deux annonces sur une fiche vendue = « Déjà vendu ? » pour chacune**, jamais le silence, jamais un retrait
+  d'office ; ⛔ un échec PASSAGER d'empreinte (429, 5xx, réseau) n'est jamais noté illisible ; ferreirasab rejouée :
+  896 → 428 questions ; OTA/web **2.9.92** ; extension **0.6.112 À TÉLÉVERSER** (`build/CWS-0.6.112-A-TELEVERSER/`).
 - **⛔ 15/10 nuit — REPRISE EN MAIN (P1-0 → P11)** — rapport `docs/enquetes/reprise-1410/RAPPORT.md`, journal
   `journal-reprise.md` : migs **20261015000000** (« Vendue » jamais une boucle), **010000** (commande Vinted annulée →
   stock), **020000** (tête de file) APPLIQUÉES ; gpj **v245** (⛔ toute lecture `.in()` de masse par
