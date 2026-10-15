@@ -21,12 +21,19 @@
 // 40 s de budget ; une URL déjà dans le cache n'est ni téléchargée ni
 // recalculée ; une image illisible va dans photo_empreintes_echecs (comme
 // doublons-balayage).
+// (15/10, P18) Et 1 s de DÉCODAGE par appel (BUDGET_DECODAGE_MS,
+// _shared/empreinte-telechargement.ts) : 45 appels sur ~1 500 étaient coupés
+// à 2 s de CPU en 24 h, perdant leurs dernières photos. Une photo qui ne tient
+// plus dans l'appel est REMISE (« restantes ») : jamais notée en échec — une
+// URL en échec est « illisible » pour le moteur et pour fusion_photo_tick —,
+// elle reste sans empreinte et l'appelant la redemande à sa passe suivante.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
-import { empreinterUrl, hoteAutorise } from "../_shared/empreinte-telechargement.ts";
+import { budgetDecodage, DecodageRemis, empreinterUrl, hoteAutorise } from "../_shared/empreinte-telechargement.ts";
 
 const MAX_URLS = 8;
 const BUDGET_MS = 40_000;
+const BUDGET_DECODAGE_MS = 1_000;
 
 const json = (corps: unknown, status = 200) =>
   new Response(JSON.stringify(corps), { status, headers: { "Content-Type": "application/json" } });
@@ -55,12 +62,14 @@ serve(async (req) => {
   let calculees = 0;
   let restantes = 0;
   const echecs: Array<{ url: string; motif: string }> = [];
+  const decodage = budgetDecodage(BUDGET_DECODAGE_MS);
+  let remise = false;
   for (const url of urls) {
     if (deja.has(url)) continue;
-    if (Date.now() - debut > BUDGET_MS) { restantes++; continue; }
+    if (remise || Date.now() - debut > BUDGET_MS) { restantes++; continue; }
     try {
       if (!hoteAutorise(url, supabaseUrl)) throw new Error("hôte hors liste");
-      const e = await empreinterUrl(url, supabaseUrl);
+      const e = await empreinterUrl(url, supabaseUrl, decodage);
       const { error } = await admin.from("photo_empreintes").upsert({
         url, dhash: e.dhash, phash: e.phash, couleur: e.couleur, largeur: e.largeur, hauteur: e.hauteur,
         variantes: e.variantes ?? null,
@@ -69,6 +78,8 @@ serve(async (req) => {
       if (error) throw new Error(`écriture : ${error.message}`);
       calculees++;
     } catch (err) {
+      // Remise (budget de l'appel atteint) : rien n'est écrit, la photo reste à faire.
+      if (err instanceof DecodageRemis) { remise = true; restantes++; continue; }
       const motif = String((err as Error)?.message ?? err).slice(0, 160);
       echecs.push({ url, motif });
       const { data: prec } = await admin.from("photo_empreintes_echecs").select("essais").eq("url", url).maybeSingle();
@@ -80,7 +91,7 @@ serve(async (req) => {
 
   const sortie = {
     demandees: urls.length, deja_connues: deja.size, calculees, echouees: echecs.length, restantes,
-    duree_ms: Date.now() - debut,
+    duree_ms: Date.now() - debut, decodage_ms: Math.round(decodage.consommeMs), decodages: decodage.decodages,
   };
   console.log("[empreintes-urls]", JSON.stringify(sortie));
   return json({ ...sortie, echecs: echecs.slice(0, 10) });

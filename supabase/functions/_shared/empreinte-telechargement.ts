@@ -104,7 +104,86 @@ export function estWebp(buf: Uint8Array): boolean {
     && buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50;
 }
 
-export async function decoderEmpreinte(buf: Uint8Array): Promise<Empreinte & { largeur: number; hauteur: number; variantes: Variantes }> {
+// ── LE TEMPS DE CALCUL D'UN APPEL (15/10, P18) ───────────────────────────
+// Une fonction edge a 2 s de CPU par requête. Mesuré du 14/10 12:00 au 15/10
+// 12:00 (journaux d'empreintes-urls) : 1 117 ms en moyenne pour un appel de
+// 6 photos, 45 appels coupés « CPU Time exceeded » (2 007 à 2 364 ms) — le
+// décodage fait presque tout (banc local : 70 ms par million de pixels, une
+// photo Vinted 0,85 Mpx, une photo de 6 Mpx 437 ms ; plus lent sur le serveur).
+// Un appel coupé perd la photo en cours ET les suivantes.
+// Deux règles, mêmes empreintes qu'avant (rien ne change dans le calcul) :
+//   · une image trop grande est refusée AVANT d'être décodée — même verdict,
+//     même motif que le contrôle d'après décodage (lu dans l'en-tête JPEG ou
+//     PNG ; en-tête illisible ou WebP : le contrôle d'après décodage reste) ;
+//   · un appel qui porte un budget ne commence pas un décodage qu'il n'a plus
+//     le temps de finir (estimé sur les pixels de l'image, à la vitesse
+//     mesurée dans CET appel) : la photo est REMISE, jamais un échec — elle
+//     reste sans empreinte et l'appelant la redemande. Le premier décodage
+//     d'un appel part toujours : chaque appel avance.
+
+/** Largeur et hauteur lues dans l'en-tête (JPEG, PNG), sans décoder — null si l'en-tête n'est pas lu. */
+export function dimensionsEnTete(buf: Uint8Array): { largeur: number; hauteur: number } | null {
+  const n = buf.byteLength;
+  // PNG : signature de 8 octets, puis le bloc IHDR (largeur, hauteur : 4 octets chacune).
+  if (n >= 24 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47
+      && buf[12] === 0x49 && buf[13] === 0x48 && buf[14] === 0x44 && buf[15] === 0x52) {
+    const largeur = ((buf[16] << 24) >>> 0) + (buf[17] << 16) + (buf[18] << 8) + buf[19];
+    const hauteur = ((buf[20] << 24) >>> 0) + (buf[21] << 16) + (buf[22] << 8) + buf[23];
+    return largeur > 0 && hauteur > 0 ? { largeur, hauteur } : null;
+  }
+  // JPEG : FF D8, puis les segments jusqu'au premier « début de trame » (SOF).
+  if (n >= 4 && buf[0] === 0xff && buf[1] === 0xd8) {
+    let i = 2;
+    while (i + 3 < n) {
+      if (buf[i] !== 0xff) return null;
+      const m = buf[i + 1];
+      if (m === 0xff) { i++; continue; }                                   // octet de remplissage
+      if (m === 0x01 || (m >= 0xd0 && m <= 0xd8)) { i += 2; continue; }    // marqueurs sans longueur
+      if (m === 0xd9 || m === 0xda) return null;                          // fin, ou données avant toute trame
+      const longueur = (buf[i + 2] << 8) | buf[i + 3];
+      if (longueur < 2) return null;
+      if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc) {
+        if (i + 8 >= n) return null;
+        const hauteur = (buf[i + 5] << 8) | buf[i + 6], largeur = (buf[i + 7] << 8) | buf[i + 8];
+        return largeur > 0 && hauteur > 0 ? { largeur, hauteur } : null;
+      }
+      i += 2 + longueur;
+    }
+  }
+  return null;
+}
+
+/** Le temps de calcul d'un appel : budget (ms), consommé, pixels et décodages déjà faits. */
+export type BudgetDecodage = { budgetMs: number; consommeMs: number; pixels: number; decodages: number };
+export const budgetDecodage = (budgetMs: number): BudgetDecodage => ({ budgetMs, consommeMs: 0, pixels: 0, decodages: 0 });
+/** La photo est remise à l'appel suivant (budget atteint) : ce n'est JAMAIS un échec de la photo. */
+export class DecodageRemis extends Error {
+  constructor() { super("budget de calcul de l'appel atteint : photo remise"); this.name = "DecodageRemis"; }
+}
+
+export async function decoderEmpreinte(buf: Uint8Array, budget?: BudgetDecodage): Promise<Empreinte & { largeur: number; hauteur: number; variantes: Variantes }> {
+  const dim = dimensionsEnTete(buf);
+  if (dim && dim.largeur * dim.hauteur > MAX_PIXELS) throw new Error(`trop de pixels (${dim.largeur}×${dim.hauteur})`);
+  if (budget && budget.decodages > 0) {
+    const moyenne = budget.consommeMs / budget.decodages;
+    const estime = dim && budget.pixels > 0
+      ? dim.largeur * dim.hauteur * (budget.consommeMs / budget.pixels)
+      : Math.max(300, 2 * moyenne);
+    if (budget.consommeMs + estime > budget.budgetMs) throw new DecodageRemis();
+  }
+  const debut = performance.now();
+  try {
+    return await decoderSansBudget(buf);
+  } finally {
+    if (budget) {
+      budget.consommeMs += performance.now() - debut;
+      budget.decodages++;
+      budget.pixels += dim ? dim.largeur * dim.hauteur : 0;
+    }
+  }
+}
+
+async function decoderSansBudget(buf: Uint8Array): Promise<Empreinte & { largeur: number; hauteur: number; variantes: Variantes }> {
   // deno-lint-ignore no-explicit-any
   let data: any, width: number, height: number;
   if (estWebp(buf)) {
@@ -127,12 +206,15 @@ export async function decoderEmpreinte(buf: Uint8Array): Promise<Empreinte & { l
 }
 
 /** L'empreinte d'une URL : la variante la moins chère d'abord, l'originale ensuite. */
-export async function empreinterUrl(url: string, supabaseUrl: string): Promise<Empreinte & { largeur: number; hauteur: number; variantes: Variantes }> {
+export async function empreinterUrl(url: string, supabaseUrl: string, budget?: BudgetDecodage): Promise<Empreinte & { largeur: number; hauteur: number; variantes: Variantes }> {
   const reduite = urlTransformee(url, supabaseUrl);
   const essais = reduite ? [reduite, url] : [urlAllegee(url), url];
   let derniere: unknown = null;
   for (const u of [...new Set(essais)]) {
-    try { return await decoderEmpreinte(await telecharger(u)); } catch (e) { derniere = e; }
+    try { return await decoderEmpreinte(await telecharger(u), budget); } catch (e) {
+      if (e instanceof DecodageRemis) throw e; // remise : on n'essaie pas une autre version de la photo
+      derniere = e;
+    }
   }
   throw derniere ?? new Error("échec");
 }

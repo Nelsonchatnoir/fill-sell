@@ -44,6 +44,8 @@
     "https://deno.land/x/imagescript@1.3.0/v2/ops/resize.mjs": "814e78ebce8eaf8f1f918688db7b52a141405e06a36ed4b25d04413d69e7d17b",
     "https://deno.land/x/imagescript@1.3.0/v2/ops/rotate.mjs": "a1b65616717bd2eed8db406affea3263b4674dada46b56441ef38167a187455d",
     "https://deno.land/x/imagescript@1.3.0/v2/util/mem.mjs": "4968d400dae069b4bf0ef4767c1802fd2cc7d15d90eda4cfadf5b4cd19b96c6d",
+    "https://esm.sh/@jsquash/webp@1.4.0/decode.js": "1417f09822a779bc9e8b9b8079b1cfc01268a999393fe0965fc13f1e1bfb6d9a",
+    "https://esm.sh/@jsquash/webp@1.4.0/denonext/decode.mjs": "0763be8967a7caabf7c7e560f1251ad5342a3561033f17a18f6e4489d1cee3c2",
     "https://esm.sh/@supabase/auth-js@2.110.0/denonext/auth-js.mjs": "9343a81cff9b86e6c51f173c9d6bd775791755648553520722a85ba59099f38f",
     "https://esm.sh/@supabase/auth-js@2.117.0/denonext/auth-js.mjs": "729ce9ead69e0ef44a09bb068daa3900cea1ae0135ba451b12cda87fa20d3f5a",
     "https://esm.sh/@supabase/functions-js@2.110.0/denonext/functions-js.mjs": "e34b2f3b958ab4b0339bc0e58781bb264d5387162e1094fad63b35b8746c835d",

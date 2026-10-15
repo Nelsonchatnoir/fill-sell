@@ -337,7 +337,8 @@
     "selftest:ebay-modele-garde": "node scripts/ebay-modele-garde-selftest.mjs",
     "selftest:messages-cause-vraie": "node scripts/messages-cause-vraie-selftest.mjs",
     "selftest:extension-0-6-112": "node scripts/extension-0-6-112-selftest.mjs",
-    "selftest:vente-relevee-meme-cession": "node scripts/vente-relevee-meme-cession-selftest.mjs"
+    "selftest:vente-relevee-meme-cession": "node scripts/vente-relevee-meme-cession-selftest.mjs",
+    "selftest:empreintes-budget": "deno run --allow-read --allow-net=deno.land scripts/empreintes-budget-selftest.ts"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

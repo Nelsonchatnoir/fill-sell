@@ -4530,16 +4530,28 @@ serve(async (req) => {
     // ça : les fiches importées AVANT que la file n'existe (aucun backfill,
     // décision de Nico : on ne réécrit pas une fiche existante pour la faire
     // entrer dans la file), et celles dont une photo a résisté au 1.
-    // ⚠️ Son `.limit(500)` SANS tri est un plafond connu : au-delà de 500
-    // articles `releve_*` dans le parc, les lignes 501+ ne seraient jamais
-    // vues. C'est précisément ce que la file supprime pour les NOUVEAUX
-    // imports ; ce reliquat est à retirer quand l'arriéré sera vide.
-    if (budget > 0) {
+    // (15/10, P18) Il SERT : le 14/10, il a ramené les photos de 25 fiches de
+    // deux comptes que la file n'avait pas pu servir (eBay, Beebs). Mais il
+    // relisait 500 fiches TOUTES LES 3 MIN, sans tri — 79 ms et ~1 100 blocs
+    // à chaque fois (pg_stat_statements : 2 251 lectures en ~4,7 jours) —, et
+    // toujours à peu près les mêmes : 4 fiches Leboncoin du 12/10 encore sur le
+    // CDN n'y entraient pas (rang ~3 125 sur 10 476 imports). Désormais une
+    // page de 500 PAR HEURE, à tour de rôle et triée : tout le parc importé
+    // est revu en moins d'une journée, pour vingt fois moins de lectures.
+    if (budget > 0 && new Date().getUTCMinutes() < 3) {
+      const ORIGINES_IMPORT = ["releve_leboncoin", "releve_beebs", "releve_ebay", "releve_opla", "releve_depop"];
+      const { count: nbImports } = await supabase
+        .from("inventaire")
+        .select("id", { count: "exact", head: true })
+        .in("origine", ORIGINES_IMPORT);
+      const pages = Math.max(1, Math.ceil((nbImports ?? 0) / 500));
+      const page = Math.floor(Date.now() / 3_600_000) % pages;
       const { data: fiches } = await supabase
         .from("inventaire")
         .select("id, user_id, photos")
-        .in("origine", ["releve_leboncoin", "releve_beebs", "releve_ebay", "releve_opla", "releve_depop"])
-        .limit(500);
+        .in("origine", ORIGINES_IMPORT)
+        .order("id", { ascending: true })
+        .range(page * 500, page * 500 + 499);
       for (const f of (fiches ?? [])) {
         if (budget <= 0) break;
         await rapatrieUneFiche(f);
