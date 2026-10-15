@@ -4,7 +4,8 @@
 fin) et `docs/agents/consignes-2026-09-28.md` (règles) remplacent tout historique
 contraire. `functions list`, `cron.job` et `profiles.extension_build` font foi.
 
-- **Servi** : ext. **0.6.106** (**0.6.110 BONNE À TÉLÉVERSER**, prouvée en réel le 12/10) ; min **0.6.81** ; OTA 2.9.86 ; gpj v241 ; hw v102 ; gl v117 ; rapprochement **v22** (branche, à fusionner).
+- **Servi** : ext. **0.6.110** (**0.6.111 À TÉLÉVERSER**) ; min **0.6.81** ; OTA 2.9.88 ; gpj v245 ; hw v104 ; gl v117 ; rapprochement **v22** (dans main).
+- **⛔ 15/10 — reprise** (`docs/enquetes/reprise-1410/RAPPORT.md`) : « Vendue » sans boucle, commande Vinted annulée → stock, tête de file (migs 20261015000000/010000/020000) ; `.in()` de masse = `_shared/par-lots.ts` ; garde de boutique = Vinted seule.
 - **⛔ 12/10 — rapprochement en tranches** (`docs/enquetes/ferreira-cpu-1210/RAPPORT.md`) : passe en tranches sous ~900 ms
   de CPU (mig 20261012120000), mêmes décisions que v19 ; lecture rangée par identifiant (`ordonner`) ; aucun `\uXXXX` dans le source.
 - **⛔ 12/10 nuit — clôture** (`docs/enquetes/cloture-1210/RAPPORT.md`) : pas de plafond à 20 (quota seul) ; rayon refusé = moteur

@@ -9,6 +9,13 @@ terminal Problèmes » / « 05/10 après-midi » / « 06/10 » / « 06/10 soir �
 contraire. Il se périme : `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
 
+- **⛔ 15/10 nuit — REPRISE EN MAIN (P1-0 → P11)** — rapport `docs/enquetes/reprise-1410/RAPPORT.md`, journal
+  `journal-reprise.md` : migs **20261015000000** (« Vendue » jamais une boucle), **010000** (commande Vinted annulée →
+  stock), **020000** (tête de file) APPLIQUÉES ; gpj **v245** (⛔ toute lecture `.in()` de masse par
+  `_shared/par-lots.ts` ; garde de boutique = Vinted SEULE ; module auto en pause = jobs auto retenus) ; hw **v104**
+  (reprise sur preuve des pauses techniques avant retrait ; dépôts mis de côté à tort repris par paquets + disjoncteur) ;
+  OTA/web **2.9.88** ; extension **0.6.111 À TÉLÉVERSER** (`build/CWS-0.6.111-A-TELEVERSER/`). Louis : PRO = @neyenonie,
+  PERSO = @evat. rapprochement v22 : DÉJÀ dans main (vérifié 15/10, l'avertissement ci-dessous est périmé).
 - **⛔ 12/10 — RAPPROCHEMENT EN TRANCHES (ferreirasab)** — rapport `docs/enquetes/ferreira-cpu-1210/RAPPORT.md` : la passe
   dépassait les 2 s de CPU d'une fonction edge (3 082 nœuds) → elle se calcule EN TRANCHES reprises d'une invocation à l'autre
   (`_shared/rapprochement/tranches.js`, chantier `rapprochement_tranches`, mig **20261012120000 APPLIQUÉE**), budget 900 ms
