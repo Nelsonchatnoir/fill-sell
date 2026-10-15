@@ -44,7 +44,8 @@ console.log('1. Le retrait engagé se reconnaît');
 console.log('2. get-pending-jobs : aucune retenue de gouvernance sur un retrait engagé');
 {
   const g = lire('supabase/functions/get-pending-jobs/index.ts');
-  ok(/import \{ messageRetenueCreneau, retraitEngage \} from "\.\.\/_shared\/retenue-creneau\.js"/.test(g), 'retraitEngage importé');
+  // (15/10) + messageRetenuePause : la pause de la republication automatique retient aussi.
+  ok(/import \{ messageRetenueCreneau, (messageRetenuePause, )?retraitEngage \} from "\.\.\/_shared\/retenue-creneau\.js"/.test(g), 'retraitEngage importé');
   ok(/pf\["republish_step"\] !== "deleted"\s*&& !retraitEngage\(j\) && !exceptionCreneau\(pf\)/.test(g), 'créneau : un retrait engagé n\'est jamais retenu');
   ok(/\?\.\["republish_step"\] === "deleted" \|\|\s*retraitEngage\(j\)\);\s*heldRepublish = avant - out\.length;/.test(g), 'plafond du jour et pause de respiration : idem');
   ok(/\?\.\["republish_step"\] !== "deleted"\s*&& !retraitEngage\(j\)\)/.test(g), 'la trace de retenue ne s\'écrit pas sur un retrait engagé');

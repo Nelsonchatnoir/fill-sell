@@ -112,6 +112,8 @@ const TEXTE = {
     limiteJour: "limite du jour",
     rythme: "rythme de republication",
     creneau: "créneau de republication",
+    // (15/10, P2) Republication automatique de la plateforme mise en pause : le serveur retient.
+    autoEnPause: "Republication automatique en pause : elle repartira quand tu la relanceras. Ton annonce est intacte",
     essaiA: (h) => `Nouvel essai à ${h}`,
     essaiBientot: "Nouvel essai dans un instant",
     plateformePause: (p) => `${p} est en pause de notre côté — reprise automatique`,
@@ -141,6 +143,7 @@ const TEXTE = {
     limiteJour: "daily limit",
     rythme: "repost pacing",
     creneau: "repost time slot",
+    autoEnPause: "Automatic reposting is paused: it resumes when you restart it. Your listing is untouched",
     essaiA: (h) => `Next try at ${h}`,
     essaiBientot: "Next try in a moment",
     plateformePause: (p) => `${p} is paused on our side — resumes automatically`,
@@ -273,6 +276,11 @@ export function situationJob(j, ctx = {}) {
       return { groupe: "pause", raison: h ? T.pauseJusqua(h, pourquoi) : T.pauseSansHeure(pourquoi), heure: h, motif: pl.motif === "pause" ? "rythme" : "limite_jour" };
     }
     const cr = pf.republish_source === "auto" ? ctx.creneaux?.[j.platform] : null;
+    // (15/10, P2 — Louis) Module en pause (« Tout mettre en pause ») : le serveur
+    // retient la republication auto ; la carte le dit, sans heure inventée.
+    if (cr && cr.actif === false) {
+      return { groupe: "pause", raison: T.autoEnPause, heure: null, motif: "auto_en_pause" };
+    }
     if (cr && cr.dans_creneau === false) {
       const h = heureConnue(cr.reprise, maintenant, lang);
       return { groupe: "pause", raison: h ? T.pauseJusqua(h, T.creneau) : T.pauseSansHeure(T.creneau), heure: h, motif: "creneau" };

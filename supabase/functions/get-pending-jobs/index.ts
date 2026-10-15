@@ -47,7 +47,7 @@ import { ageBeebsDuReleve } from "../_shared/beebs-age-releve.js";
 import { attenteSessionEncoreEspacee } from "../_shared/attente-session.js";
 import { pausePageDepotLbc, decisionPausePageDepotLbc } from "../_shared/lbc-pause-page-depot.js";
 import { impasseRecreationVinted, decisionImpasseRecreation } from "../_shared/recreation-impasse-vinted.js";
-import { messageRetenueCreneau, retraitEngage } from "../_shared/retenue-creneau.js";
+import { messageRetenueCreneau, messageRetenuePause, retraitEngage } from "../_shared/retenue-creneau.js";
 import { posteApresDefaut } from "../_shared/defaut-fillsell.js";
 import { jugerMurGeste, messagePauseVintedGeste, PAUSE_VINTED_GESTE_MS } from "../_shared/mur-geste.js";
 // Champs exigés au dépôt par rayon Vinted, appris sur les refus 400 (cache de
@@ -141,6 +141,7 @@ import { tempererMajuscules } from "../_shared/titre-majuscules.ts";
 // Règles du catalogue Beebs (2026-09-11) : le MÊME fichier que l'app
 // (src/utils/platformCompat.js) — module JS sans import, chargé tel quel.
 import { verdictBeebsInterdit, messageBeebsInterdit } from "../_shared/beebs-interdits.js";
+import { lireParLots } from "../_shared/par-lots.ts";
 // ISBN : même table de vérité que le content script (normalisation, filtre du
 // remplissage « 13 zéros », lecture dans le texte libre). Module JS sans import.
 import { normalizeIsbn, resoudreIsbn } from "../_shared/isbn.js";
@@ -218,7 +219,7 @@ async function rayonsVintedSansColis(admin: AdminClient): Promise<Set<string>> {
     else if (r.inventaire_id != null) invIds.push(r.inventaire_id);
   }
   if (invIds.length) {
-    const { data: invs, error: e2 } = await admin.from("inventaire").select("vinted_catalog_id").in("id", [...new Set(invIds)].slice(0, 500));
+    const { data: invs, error: e2 } = await lireParLots((lot) => admin.from("inventaire").select("vinted_catalog_id").in("id", lot), [...new Set(invIds)].slice(0, 500));
     if (e2) throw new Error(`rayons sans colis (fiches) : ${e2.message}`);
     for (const i of (invs ?? []) as Array<{ vinted_catalog_id: number | null }>) if (i.vinted_catalog_id != null) rayons.add(String(i.vinted_catalog_id));
   }
@@ -546,7 +547,12 @@ serve(async (req) => {
       if (creneauxCache !== undefined && creneauxCache !== null) return creneauxCache;
       const out: Record<string, Fenetre> = {};
       const poser = (pf: string, f: Record<string, unknown> | null) => {
-        if (!f || f.actif !== true) return;
+        if (!f) return;
+        // (15/10, P2 — Louis) Un module ARRÊTÉ (pause générale, arrêt, palier
+        // perdu) est noté, plus jamais ignoré : ignoré, il laissait partir les
+        // republications auto déjà en file (trois Leboncoin de Louis servies
+        // entre 20:15 et 20:42 le 14/10, juste après sa pause de 20:13).
+        if (f.actif !== true) { out[pf] = { actif: false, dans_creneau: false, reprise: null, fin: null }; return; }
         out[pf] = {
           actif: true,
           dans_creneau: f.dans_creneau === true,
@@ -2347,6 +2353,45 @@ serve(async (req) => {
     let out = (jobs ?? []).filter((j) => !paused.has(j.platform));
     const heldBack = (jobs?.length ?? 0) - out.length;
 
+    // ══ UNE REPUBLICATION RECRÉÉE EST FINIE (15/10, P3 — Ornella 9a7b9499) ══
+    // Le legging d'Ornella a été recréé le 12/10 (annonce 10352378300, en
+    // ligne), mais l'horloge de son ordinateur retardait de 27 min : les dates
+    // du poste et celles du serveur se contredisaient, le job est revenu en
+    // file à l'étape 'recreated' — que l'extension ne connaît pas (« Étape de
+    // republication inconnue : recreated »), puis « relancer ». « Republier
+    // maintenant » aurait retiré la NOUVELLE annonce. Règle : un job de
+    // republication à l'étape 'recreated' qui porte le numéro de sa nouvelle
+    // annonce (distinct de l'ancien) n'est JAMAIS resservi — il est clos
+    // « published », tracé. Sans numéro : servi comme avant (aucune conclusion).
+    if (!includeProcessing && !includeNeedsUser) {
+      const finies = out.filter((j) => {
+        const pf = (j.platform_fields ?? {}) as Record<string, unknown>;
+        const lid = String(j.platform_listing_id ?? "").trim();
+        // L'ancienne annonce (Vinted : old_vinted_item_id ; autres : old_platform_listing_id)
+        // et la nouvelle si l'extension l'a nommée (new_vinted_item_id, new_listing_url).
+        const ancien = String(pf["old_platform_listing_id"] ?? pf["old_vinted_item_id"] ?? "").trim();
+        const nouveau = String(pf["new_vinted_item_id"]
+          ?? (String(pf["new_listing_url"] ?? "").match(/(\d{6,})(?:[-/?#]|$)/)?.[1] ?? "")).trim();
+        return j.action === "republish" && j.status === "pending" && pf["republish_step"] === "recreated"
+          && !!pf["recreated_at"] && lid !== "" && lid !== ancien && (!nouveau || nouveau === lid);
+      });
+      for (const j of finies) {
+        try {
+          const pf = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
+          for (const k of ["needs_user_source", "needsUserField", "needsUserAttempts", "next_action_after", "processing_since", "error_technique"]) delete pf[k];
+          pf["republication_finie"] = { le: new Date().toISOString(), annonce: String(j.platform_listing_id), pose_par: "get-pending-jobs (étape recreated, nouvelle annonce connue)" };
+          const { data: maj } = await userClient.from("cross_post_jobs")
+            .update({ status: "published", error: null, platform_fields: pf })
+            .eq("id", j.id).eq("status", "pending").select("id");
+          console.log(`[get-pending-jobs] republication ${String(j.id).slice(0, 8)} (${j.platform}) : déjà recréée (annonce ${String(j.platform_listing_id)}) → close « published », jamais resservie${(maj ?? []).length ? "" : " (déjà sortie de pending)"}`);
+        } catch (_e) { /* jamais un point de panne : le job reste retenu ci-dessous */ }
+      }
+      if (finies.length) {
+        const ids = new Set(finies.map((j) => String(j.id)));
+        out = out.filter((j) => !ids.has(String(j.id)));
+      }
+    }
+
     // ══ LA RECRÉATION VINTED REPREND LES CARACTÉRISTIQUES CAPTURÉES (02/10 soir, point 10) ══
     // (_shared/vinted-attributs-capture.js) Tech-t 2d37ee4a : annonce retirée,
     // recréation refusée faute de « Modèle », RAM, stockage, chargeur — que la
@@ -2565,9 +2610,10 @@ serve(async (req) => {
       );
       if (aNettoyer.length) {
         const ids = aNettoyer.map((j) => String(j.id));
-        const { data: nettoyes, error: erreurNettoyage } = await userClient.from("cross_post_jobs")
-          .update({ error: null }).in("id", ids).eq("status", "pending")
-          .eq("error", MOTIF_ATTENTE_PREUVES_POINT1).select("id");
+        // (15/10) Par lots de 150 identifiants de job (uuid, 37 caractères chacun).
+        const { data: nettoyes, error: erreurNettoyage } = await lireParLots((lot) => userClient.from("cross_post_jobs")
+          .update({ error: null }).in("id", lot).eq("status", "pending")
+          .eq("error", MOTIF_ATTENTE_PREUVES_POINT1).select("id"), ids, 150);
         if (erreurNettoyage) {
           console.warn(`[get-pending-jobs] motif d’attente Point 1 non retiré : ${erreurNettoyage.message}`);
         } else {
@@ -2583,9 +2629,9 @@ serve(async (req) => {
           const sansMotif = retenus.filter((j) => !String(j.error ?? "").trim());
           if (sansMotif.length) {
             const ids = sansMotif.map((j) => String(j.id));
-            const { data: marques, error: erreurMotif } = await userClient.from("cross_post_jobs")
+            const { data: marques, error: erreurMotif } = await lireParLots((lot) => userClient.from("cross_post_jobs")
               .update({ error: MOTIF_ATTENTE_PREUVES_POINT1 })
-              .in("id", ids).eq("status", "pending").is("error", null).select("id");
+              .in("id", lot).eq("status", "pending").is("error", null).select("id"), ids, 150);
             if (erreurMotif) {
               console.warn(`[get-pending-jobs] motif d’attente Point 1 non écrit : ${erreurMotif.message}`);
             } else {
@@ -2631,8 +2677,10 @@ serve(async (req) => {
         (j.action === "publish" || j.action === "republish" || j.action == null) && j.inventaire_id != null);
       if (aVerifier.length) {
         const ids = [...new Set(aVerifier.map((j) => j.inventaire_id))];
-        const { data: fiches } = await userClient
-          .from("inventaire").select("id, statut, quantite").in("id", ids);
+        // (15/10, P3) Par lots de 400 : en un seul \`.in()\`, une file de ~780
+        // articles rendait \`null\` — et cette garde ne retenait plus rien.
+        const { data: fiches } = await lireParLots((lot) => userClient
+          .from("inventaire").select("id, statut, quantite").in("id", lot), ids);
         const vendus = new Map<number, { statut: string; quantite: number | null; signale_sur?: string }>();
         for (const f of (fiches ?? []) as Array<{ id: number; statut: string; quantite: number | null }>) {
           if (f.statut === "vendu" || (f.quantite != null && Number(f.quantite) <= 0)) vendus.set(Number(f.id), f);
@@ -2651,11 +2699,11 @@ serve(async (req) => {
         const nonVendus = ((fiches ?? []) as Array<{ id: number; statut: string; quantite: number | null }>)
           .filter((f) => !vendus.has(Number(f.id)) && (f.quantite == null || Number(f.quantite) <= 1));
         if (nonVendus.length) {
-          const { data: preuves } = await userClient
+          const { data: preuves } = await lireParLots((lot) => userClient
             .from("cross_post_jobs").select("id, inventaire_id, platform")
-            .in("inventaire_id", nonVendus.map((f) => f.id))
+            .in("inventaire_id", lot)
             .in("action", ["publish", "republish"]).eq("status", "published")
-            .eq("platform_fields->>sale_signal", "sold");
+            .eq("platform_fields->>sale_signal", "sold"), nonVendus.map((f) => f.id));
           for (const p of (preuves ?? []) as Array<{ id: string; inventaire_id: number; platform: string }>) {
             const f = nonVendus.find((x) => Number(x.id) === Number(p.inventaire_id));
             if (f && !vendus.has(Number(f.id))) vendus.set(Number(f.id), { ...f, signale_sur: p.platform });
@@ -2734,9 +2782,12 @@ serve(async (req) => {
         j.action === "delete" && j.platform === "vinted" && j.status === "pending" && idVinted(j));
       const items = [...new Set([...republicationsVinted, ...retraitsVinted].map((j) => idVinted(j) as string))];
       if (items.length) {
-        const { data: snaps } = await userClient.from("vinted_listing_snapshots")
-          .select("vinted_item_id, status, captured_at").eq("user_id", user.id).in("vinted_item_id", items)
-          .order("captured_at", { ascending: false });
+        // (15/10, P3) Par lots de 50 annonces : un relevé par annonce et par
+        // jour, et PostgREST coupe toute réponse à 1 000 lignes — un seul
+        // \`.in()\` sur 781 annonces tombait, ou perdait les dernières.
+        const { data: snaps } = await lireParLots((lot) => userClient.from("vinted_listing_snapshots")
+          .select("vinted_item_id, status, captured_at").eq("user_id", user.id).in("vinted_item_id", lot)
+          .order("captured_at", { ascending: false }), items, 50);
         const dernier = new Map<string, { status: string; captured_at: string }>();
         for (const s of (snaps ?? []) as Array<{ vinted_item_id: string; status: string; captured_at: string }>) {
           if (!dernier.has(String(s.vinted_item_id))) dernier.set(String(s.vinted_item_id), s);
@@ -2967,8 +3018,8 @@ serve(async (req) => {
           const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
           const ids = [...new Set(beebsJobs.map((j) => j.inventaire_id))];
           const [{ data: fiches }, { data: annoncesB }, { data: appris }] = await Promise.all([
-            admin.from("inventaire").select("id, poids_g").in("id", ids),
-            admin.from("annonces_plateforme").select("inventaire_id, capture, vu_le").eq("platform", "beebs").in("inventaire_id", ids).order("vu_le", { ascending: false }),
+            lireParLots((lot) => admin.from("inventaire").select("id, poids_g").in("id", lot), ids),
+            lireParLots((lot) => admin.from("annonces_plateforme").select("inventaire_id, capture, vu_le").eq("platform", "beebs").in("inventaire_id", lot).order("vu_le", { ascending: false }), ids, 200),
             admin.from("beebs_formats_colis").select("id, titre, poids_g").limit(50),
           ]);
           const poidsDe = new Map(((fiches ?? []) as Array<{ id: number; poids_g: number | null }>).map((f) => [String(f.id), f.poids_g]));
@@ -3074,7 +3125,7 @@ serve(async (req) => {
           const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
           const ids = [...new Set(lbcJobs.map((j) => j.inventaire_id).filter((v) => v != null))];
           const [{ data: fichesL }, { data: profilL }] = await Promise.all([
-            ids.length ? admin.from("inventaire").select("id, poids_g").in("id", ids) : Promise.resolve({ data: [] }),
+            ids.length ? lireParLots((lot) => admin.from("inventaire").select("id, poids_g").in("id", lot), ids) : Promise.resolve({ data: [] }),
             admin.from("profiles").select("platform_settings").eq("id", user.id).maybeSingle(),
           ]);
           const poidsL = new Map(((fichesL ?? []) as Array<{ id: number; poids_g: number | null }>).map((f) => [String(f.id), f.poids_g]));
@@ -3165,7 +3216,7 @@ serve(async (req) => {
             const invIds = [...new Set(republiablesVinted.map((j) => j.inventaire_id).filter((v) => v != null))];
             const catInv = new Map<string, string>();
             if (rayons.size && invIds.length) {
-              const { data: invs } = await admin.from("inventaire").select("id, vinted_catalog_id").in("id", invIds);
+              const { data: invs } = await lireParLots((lot) => admin.from("inventaire").select("id, vinted_catalog_id").in("id", lot), invIds);
               for (const r of (invs ?? []) as Array<{ id: number; vinted_catalog_id: number | null }>) {
                 if (r.vinted_catalog_id != null) catInv.set(String(r.id), String(r.vinted_catalog_id));
               }
@@ -3240,7 +3291,7 @@ serve(async (req) => {
         const titreParArticle = new Map<string, string>();
         let ficheLue = true;
         if (ids.length) {
-          const { data: arts, error: aErr } = await userClient.from("inventaire").select("id, titre").in("id", ids as number[]);
+          const { data: arts, error: aErr } = await lireParLots((lot) => userClient.from("inventaire").select("id, titre").in("id", lot as number[]), ids);
           if (aErr) ficheLue = false;
           for (const a of (arts ?? []) as Array<{ id: unknown; titre: unknown }>) titreParArticle.set(String(a.id), String(a.titre ?? ""));
         }
@@ -3583,7 +3634,7 @@ serve(async (req) => {
       if (depotsDepop.length) {
         try {
           const ids = [...new Set(depotsDepop.map((j) => j.inventaire_id))];
-          const { data: arts } = await userClient.from("inventaire").select("id, titre, description, type").in("id", ids);
+          const { data: arts } = await lireParLots((lot) => userClient.from("inventaire").select("id, titre, description, type").in("id", lot), ids);
           const parArticle = new Map<string, Record<string, unknown>>();
           for (const a of (arts ?? []) as Record<string, unknown>[]) parArticle.set(String(a.id), a);
           const aRetenir = new Set<string>();
@@ -4061,12 +4112,12 @@ serve(async (req) => {
       }
       if (aCombler.length) {
         const ids = [...new Set(aCombler.map((j) => j.inventaire_id))];
-        const { data: annonces } = await userClient
+        const { data: annonces } = await lireParLots((lot) => userClient
           .from("annonces_plateforme")
           .select("inventaire_id, capture, vu_le")
           .eq("platform", "leboncoin")
-          .in("inventaire_id", ids)
-          .order("vu_le", { ascending: false });
+          .in("inventaire_id", lot)
+          .order("vu_le", { ascending: false }), ids, 200);
         // La plus récemment vue gagne, par article.
         const categorieDe = new Map<number, string>();
         for (const a of (annonces ?? [])) {
@@ -4109,8 +4160,8 @@ serve(async (req) => {
         // lisait pas.
         const attributsDe = new Map<number, Record<string, unknown>>();
         try {
-          const { data: articles } = await userClient
-            .from("inventaire").select("id, attributs").in("id", ids);
+          const { data: articles } = await lireParLots((lot) => userClient
+            .from("inventaire").select("id, attributs").in("id", lot), ids);
           for (const a of (articles ?? [])) {
             const at = (a as { attributs?: unknown }).attributs;
             if (at && typeof at === "object") attributsDe.set((a as { id: number }).id, at as Record<string, unknown>);
@@ -4640,10 +4691,10 @@ serve(async (req) => {
             || String(j["description"] ?? "").trim().length < 5));
       if (beebsACombler.length) {
         const ids = [...new Set(beebsACombler.map((j) => Number(j.inventaire_id)))];
-        const { data: annonces } = await userClient
+        const { data: annonces } = await lireParLots((lot) => userClient
           .from("annonces_plateforme").select("inventaire_id, listing_id, capture, vu_le")
-          .eq("platform", "beebs").in("inventaire_id", ids)
-          .order("vu_le", { ascending: false });
+          .eq("platform", "beebs").in("inventaire_id", lot)
+          .order("vu_le", { ascending: false }), ids, 200);
         const cheminDe = new Map<number, string[]>();
         const captureDeB = new Map<number, Record<string, unknown>>();
         // ── L'ANNONCE MÊME, PAS LA PLUS RÉCENTE DE L'ARTICLE (03/10) ────────
@@ -4695,8 +4746,8 @@ serve(async (req) => {
         const sansTaille = beebsACombler.filter((j) => !String(pfB(j)["taille"] ?? "").trim()
           && !String((captureDeB.get(Number(j.inventaire_id)) ?? {})["taille"] ?? "").trim());
         if (sansTaille.length) {
-          const { data: invsT } = await userClient.from("inventaire").select("id, attributs")
-            .in("id", [...new Set(sansTaille.map((j) => Number(j.inventaire_id)))]);
+          const { data: invsT } = await lireParLots((lot) => userClient.from("inventaire").select("id, attributs")
+            .in("id", lot), [...new Set(sansTaille.map((j) => Number(j.inventaire_id)))]);
           for (const i of (invsT ?? []) as Array<Record<string, unknown>>) {
             const t = ((i.attributs ?? {}) as Record<string, unknown>)["taille"];
             const v = (t && typeof t === "object") ? String((t as Record<string, unknown>)["v"] ?? "").trim() : "";
@@ -5115,8 +5166,8 @@ serve(async (req) => {
       if (candidatsDisparus.length) {
         try {
           const ids = [...new Set(candidatsDisparus.map((j) => j.inventaire_id))];
-          const { data: arts } = await userClient
-            .from("inventaire").select("id, disparu_le, statut, quantite").in("id", ids);
+          const { data: arts } = await lireParLots((lot) => userClient
+            .from("inventaire").select("id, disparu_le, statut, quantite").in("id", lot), ids);
           const disparus = new Set(
             ((arts ?? []) as { id: unknown; disparu_le: unknown }[])
               .filter((a) => a.disparu_le != null).map((a) => String(a.id)),
@@ -5438,7 +5489,9 @@ serve(async (req) => {
           out = out.filter((j) => {
             if (!autoHorsDeleted(j)) return true;
             const f = fenetres[String((j as { platform?: string }).platform ?? "")];
-            if (!f || f.dans_creneau) return true;
+            // Aucun module lu pour la plateforme : rien n'est retenu (inchangé).
+            // Module EN PAUSE : retenu comme hors créneau (jamais annulé).
+            if (!f || (f.actif && f.dans_creneau)) return true;
             retenus[String((j as { platform?: string }).platform ?? "?")] =
               (retenus[String((j as { platform?: string }).platform ?? "?")] ?? 0) + 1;
             return false;
@@ -5459,7 +5512,7 @@ serve(async (req) => {
               if (!heldIds.has(String(j.id))) continue;
               const plat = String((j as { platform?: string }).platform ?? "");
               const reprise = String(fenetres[plat]?.reprise ?? "");
-              const msg = messageRetenueCreneau(plat, reprise);
+              const msg = fenetres[plat]?.actif === false ? messageRetenuePause(plat) : messageRetenueCreneau(plat, reprise);
               if (!msg || String((j as { error?: string | null }).error ?? "") === msg) continue;
               try {
                 await userClient.from("cross_post_jobs").update({ error: msg })
@@ -5470,8 +5523,9 @@ serve(async (req) => {
           if (heldCreneau) {
             console.log(
               `[get-pending-jobs] userId=${user.id} : hors créneau de republication planifiée — ` +
-              Object.entries(retenus).map(([pf, n]) =>
-                `${n} ${pf} jusqu'à ${String(fenetres[pf]?.reprise ?? "?")}`).join(" · ") +
+              Object.entries(retenus).map(([pf, n]) => fenetres[pf]?.actif === false
+                ? `${n} ${pf} (republication automatique en pause)`
+                : `${n} ${pf} jusqu'à ${String(fenetres[pf]?.reprise ?? "?")}`).join(" · ") +
               ` (étape 'deleted' exemptée, manuel non concerné)`,
             );
           }
@@ -5697,8 +5751,8 @@ serve(async (req) => {
           if (vu && fraiche) {
             const identId = vu.userId;
             const ids = [...new Set(candidats.map((j) => j.inventaire_id))];
-            const { data: arts } = await userClient
-              .from("inventaire").select("id, vinted_account_id").in("id", ids);
+            const { data: arts } = await lireParLots((lot) => userClient
+              .from("inventaire").select("id, vinted_account_id").in("id", lot), ids);
             // Origine par article. Absente de la table (article supprimé
             // entre-temps) = inconnue = fail-open, comme un NULL.
             const origine = new Map<string, string>();
@@ -6201,8 +6255,8 @@ serve(async (req) => {
       if (depotsBeebs.length) {
         try {
           const ids = [...new Set(depotsBeebs.map((j) => j.inventaire_id))];
-          const { data: arts } = await userClient
-            .from("inventaire").select("id, vinted_catalog_id, attributs").in("id", ids);
+          const { data: arts } = await lireParLots((lot) => userClient
+            .from("inventaire").select("id, vinted_catalog_id, attributs").in("id", lot), ids);
           const parArticle = new Map<string, Record<string, unknown>>();
           for (const a of (arts ?? []) as Record<string, unknown>[]) parArticle.set(String(a.id), a);
           const aRetenir = new Set<string>();
@@ -6262,16 +6316,25 @@ serve(async (req) => {
     //
     // Sans origine confirmée, aucune opération ne part. Une erreur de lecture
     // retient le lot jusqu’au prochain poll ; elle ne devient pas une permission.
+    // ⛔ (15/10, P3 — linda.sidhoum) LA GARDE NE REGARDE QUE VINTED, ET LIT PAR
+    //    LOTS. Elle prenait TOUTES les opérations (Leboncoin, Beebs, eBay, Depop
+    //    compris) et lisait leurs fiches en UN `.in()` : avec 781 republications
+    //    Vinted en file, la lecture tombait, `fiable` passait à faux et 784
+    //    opérations étaient retenues à chaque appel — dont la remise en ligne de
+    //    sa « Table noire » Leboncoin (e792ab12), supprimée le 13/10 à 16:57 et
+    //    jamais recréée. La boutique est une notion Vinted : une autre plateforme
+    //    n'est jamais retenue par elle (aucun des deux contrôles ne la concerne).
     let heldBoutiqueEtrangere = 0;
+    let heldBoutiqueLecture = 0;
     if (!includeProcessing && !includeNeedsUser) {
-      const operations = out.filter(j => ["publish", "delete", "republish"].includes(j.action));
+      const operations = out.filter(j => j.platform === "vinted" && ["publish", "delete", "republish"].includes(j.action));
       const retenus = new Set<string>();
       if (operations.length) {
         const { data: profil, error: erreurProfil } = await userClient.from("profiles")
           .select("extension_sessions,vinted_sync_pin").eq("id", user.id).maybeSingle();
         const ids = [...new Set(operations.map(j => j.inventaire_id).filter(x => x != null))];
         const { data: articles, error: erreurArticles } = ids.length
-          ? await userClient.from("inventaire").select("id,vinted_account_id").in("id", ids)
+          ? await lireParLots((lot) => userClient.from("inventaire").select("id,vinted_account_id").in("id", lot), ids)
           : { data: [], error: null };
         const origines = new Map((articles ?? []).map(a => [String(a.id), String(a.vinted_account_id ?? "").trim()]));
         const identite = identiteBoutiqueFraiche(profil?.extension_sessions);
@@ -6339,7 +6402,7 @@ serve(async (req) => {
             continue;
           }
           retenus.add(String(j.id));
-          if (!fiable) continue;
+          if (!fiable) { heldBoutiqueLecture++; continue; }
           // (11/10, Louis) PUBLICATION d'un article sans boutique, compte à
           // plusieurs boutiques : la personne CHOISIT (liste fermée de ses
           // boutiques confirmées), rien ne part avant — jamais un défaut.
@@ -6576,8 +6639,8 @@ serve(async (req) => {
         && Number(pfDe(j)["capture_id"]) > 0
         && !normalizeIsbn(((pfDe(j)["vintedAspects"] ?? {}) as Record<string, unknown>)["isbn"]).ok);
       if (aVoir.length) {
-        const { data: caps } = await userClient.from("vinted_republish_captures")
-          .select("id, libelles, payload").in("id", [...new Set(aVoir.map((j) => Number(pfDe(j)["capture_id"])))]);
+        const { data: caps } = await lireParLots((lot) => userClient.from("vinted_republish_captures")
+          .select("id, libelles, payload").in("id", lot), [...new Set(aVoir.map((j) => Number(pfDe(j)["capture_id"])))]);
         const isbnParCapture = new Map<number, string>();
         for (const c of ((caps ?? []) as Array<Record<string, unknown>>)) {
           const lib = (c["libelles"] ?? {}) as Record<string, unknown>;
@@ -6798,9 +6861,9 @@ serve(async (req) => {
           && !(pfOf(j).republish_snapshot && typeof pfOf(j).republish_snapshot === "object")
           && Number(pfOf(j).capture_id) > 0);
         if (aLire.length) {
-          const { data: caps } = await userClient.from("vinted_republish_captures")
+          const { data: caps } = await lireParLots((lot) => userClient.from("vinted_republish_captures")
             .select("id, verdict, captured_at, payload, libelles, photos_urls")
-            .in("id", [...new Set(aLire.map((j) => Number(pfOf(j).capture_id)))]);
+            .in("id", lot), [...new Set(aLire.map((j) => Number(pfOf(j).capture_id)))]);
           const parId = new Map<number, Record<string, unknown>>();
           for (const c of ((caps ?? []) as Array<Record<string, unknown>>)) parId.set(Number(c.id), c);
           for (const j of aLire) {
@@ -6922,8 +6985,8 @@ serve(async (req) => {
               .filter((n) => Number.isFinite(n) && n > 0))];
             const codesParCapture = new Map<number, Set<string>>();
             if (capIds.length) {
-              const { data: caps } = await userClient
-                .from("vinted_republish_captures").select("id, payload").in("id", capIds);
+              const { data: caps } = await lireParLots((lot) => userClient
+                .from("vinted_republish_captures").select("id, payload").in("id", lot), capIds);
               for (const c of ((caps ?? []) as Record<string, unknown>[])) {
                 const natif = ((c.payload as Record<string, unknown> | null)?.natif ?? null) as Record<string, unknown> | null;
                 const attrs = Array.isArray(natif?.item_attributes) ? (natif!.item_attributes as unknown[]) : [];
@@ -7199,7 +7262,7 @@ serve(async (req) => {
       (heldRepublish ? `, ${heldRepublish} republish retenu(s) (${plafondRepublish?.motif ?? "retenue"})` : "") +
       (heldBoutique ? `, ${heldBoutique} job(s) retenu(s) (boutique Vinted non connectée)` : "") +
       // (02/10) Elle retenait en silence (jocabroc8, 2 retraits du 29/09 au 01/10).
-      (heldBoutiqueEtrangere ? `, ${heldBoutiqueEtrangere} retrait(s)/republication(s) Vinted retenu(s) (boutique d'origine non prouvée)` : "") +
+      (heldBoutiqueEtrangere ? `, ${heldBoutiqueEtrangere} opération(s) Vinted retenue(s) par la garde de boutique${heldBoutiqueLecture ? ` (dont ${heldBoutiqueLecture} faute d'avoir pu lire les fiches)` : " (boutique d'origine non prouvée)"}` : "") +
       (heldPipeline ? `, ${heldPipeline} republish retenu(s) (article par article — capture/retrait au compte-gouttes)` : "") +
       (heldLbc ? `, ${heldLbc} leboncoin retenu(s) (un seul dépôt à la fois)` : "") +
       (heldSession ? `, ${heldSession} job(s) retenu(s) (session plateforme connue morte)` : "") +
@@ -7371,12 +7434,12 @@ serve(async (req) => {
           // cause d'une photo non ré-hébergée tout en portant un libellé d'état
           // parfaitement relevé sur Vinted. Seul le libellé compte ici. Mesuré :
           // +11 jobs couverts, 321 → 332 sur 440.
-          const { data: caps } = await userClient
+          const { data: caps } = await lireParLots((lot) => userClient
             .from("vinted_republish_captures")
             .select("inventaire_id, libelles, captured_at")
             .eq("user_id", user.id)
-            .in("inventaire_id", ids)
-            .order("captured_at", { ascending: false });
+            .in("inventaire_id", lot)
+            .order("captured_at", { ascending: false }), ids, 100);
           const etatParArticle = new Map<string, { etat: string; at: string; source: string }>();
           for (const c of (caps ?? []) as Array<Record<string, unknown>>) {
             const cle = String(c.inventaire_id);
@@ -7644,12 +7707,12 @@ serve(async (req) => {
       );
       if (republishTaille.length) {
         const ids = [...new Set(republishTaille.map((j) => j.inventaire_id))];
-        const { data: caps } = await userClient
+        const { data: caps } = await lireParLots((lot) => userClient
           .from("vinted_republish_captures")
           .select("inventaire_id, libelles, captured_at")
           .eq("user_id", user.id)
-          .in("inventaire_id", ids)
-          .order("captured_at", { ascending: false });
+          .in("inventaire_id", lot)
+          .order("captured_at", { ascending: false }), ids, 100);
         const derniereCapture = new Map<string, Record<string, unknown>>();
         for (const c of (caps ?? []) as Array<Record<string, unknown>>) {
           const cle = String(c.inventaire_id);
@@ -7665,10 +7728,10 @@ serve(async (req) => {
           return TAILLE_PREFIXEE_RE.test(t) || NOMBRE_NU_RE.test(t) || AGE_ANGLAIS_RE.test(t);
         });
         if (aTraiter.length) {
-          const { data: invs } = await userClient
+          const { data: invs } = await lireParLots((lot) => userClient
             .from("inventaire")
             .select("id, attributs")
-            .in("id", [...new Set(aTraiter.map((j) => j.inventaire_id))]);
+            .in("id", lot), [...new Set(aTraiter.map((j) => j.inventaire_id))]);
           const tailleInventaire = new Map<string, { v?: unknown; source?: unknown } | null>();
           for (const i of (invs ?? []) as Array<Record<string, unknown>>) {
             const t = ((i.attributs ?? {}) as Record<string, unknown>)["taille"];
@@ -7781,11 +7844,11 @@ serve(async (req) => {
         return Number.isFinite(idCap(j)) && idCap(j) > 0;
       });
       if (sansCopie.length) {
-        const { data: caps } = await userClient
+        const { data: caps } = await lireParLots((lot) => userClient
           .from("vinted_republish_captures")
           .select("id, verdict, captured_at, payload, libelles, photos_urls")
           .eq("user_id", user.id)
-          .in("id", [...new Set(sansCopie.map(idCap))]);
+          .in("id", lot), [...new Set(sansCopie.map(idCap))]);
         const parId = new Map<number, Record<string, unknown>>();
         for (const c of ((caps ?? []) as Array<Record<string, unknown>>)) parId.set(Number(c["id"]), c);
         let servies = 0;
@@ -8462,7 +8525,7 @@ serve(async (req) => {
         const ids = [...new Set(depotsBeebs.map((j) => j.inventaire_id).filter((x) => x != null))];
         const attrsParArticle = new Map<string, Record<string, unknown>>();
         if (ids.length) {
-          const { data: arts } = await userClient.from("inventaire").select("id, attributs").in("id", ids);
+          const { data: arts } = await lireParLots((lot) => userClient.from("inventaire").select("id, attributs").in("id", lot), ids);
           for (const a of (arts ?? []) as Record<string, unknown>[]) {
             const at = a.attributs;
             if (at && typeof at === "object") attrsParArticle.set(String(a.id), at as Record<string, unknown>);
@@ -8550,7 +8613,7 @@ serve(async (req) => {
         .filter((j) => j.platform === "vinted" && j.action === "publish" && j.inventaire_id != null);
       if (depotsVinted.length) {
         const ids = [...new Set(depotsVinted.map((j) => Number(j.inventaire_id)))];
-        const { data: arts } = await userClient.from("inventaire").select("id, attributs, marque, titre, description").in("id", ids);
+        const { data: arts } = await lireParLots((lot) => userClient.from("inventaire").select("id, attributs, marque, titre, description").in("id", lot), ids);
         const attrsParArticle = new Map<number, Record<string, unknown>>();
         for (const a of (arts ?? []) as Array<{ id: number; attributs: unknown; marque?: unknown; titre?: unknown; description?: unknown }>) {
           if (a.attributs && typeof a.attributs === "object") attrsParArticle.set(Number(a.id), a.attributs as Record<string, unknown>);
@@ -8857,10 +8920,10 @@ serve(async (req) => {
           && pfP(j)["prix_republication"] == null && pfP(j)["prix_repris_de_l_annonce"] == null
           && numeroDe(j));
         if (aRegler.length) {
-          const { data: lignesP } = await userClient.from("annonces_plateforme")
+          const { data: lignesP } = await lireParLots((lot) => userClient.from("annonces_plateforme")
             .select("platform, listing_id, prix, vu_le")
-            .in("listing_id", [...new Set(aRegler.map(numeroDe))])
-            .gte("vu_le", new Date(Date.now() - 14 * 86_400_000).toISOString());
+            .in("listing_id", lot)
+            .gte("vu_le", new Date(Date.now() - 14 * 86_400_000).toISOString()), [...new Set(aRegler.map(numeroDe))], 200);
           const prixEnLigne = new Map<string, number>();
           for (const l of (lignesP ?? []) as Array<Record<string, unknown>>) {
             const p = Number(String(l.prix ?? "").replace(",", "."));
@@ -8924,7 +8987,7 @@ serve(async (req) => {
             .map((j) => Number(j.inventaire_id)))];
           const classementFiche = new Map<number, { v: string; source: string }>();
           if (idsVinted.length) {
-            const { data: arts } = await userClient.from("inventaire").select("id, attributs").in("id", idsVinted);
+            const { data: arts } = await lireParLots((lot) => userClient.from("inventaire").select("id, attributs").in("id", lot), idsVinted);
             for (const a of (arts ?? []) as Array<{ id: number; attributs: unknown }>) {
               const e = (a.attributs && typeof a.attributs === "object") ? (a.attributs as Record<string, unknown>).classement_age : null;
               const o = (e && typeof e === "object") ? e as Record<string, unknown> : null;
@@ -9244,8 +9307,8 @@ serve(async (req) => {
           .filter((j) => j.platform === "leboncoin" && j.action === "publish" && j.inventaire_id != null)
           .map((j) => Number(j.inventaire_id)))];
         if (ids.length) {
-          const { data: fiches } = await userClient
-            .from("inventaire").select("id, attributs, titre").in("id", ids);
+          const { data: fiches } = await lireParLots((lot) => userClient
+            .from("inventaire").select("id, attributs, titre").in("id", lot), ids);
           for (const f of (fiches ?? []) as Array<{ id: number; attributs: unknown }>) {
             const a = (f.attributs && typeof f.attributs === "object") ? (f.attributs as Record<string, unknown>) : null;
             const brut = a?.couleur;
@@ -9659,8 +9722,8 @@ serve(async (req) => {
         // seul (job 796582df : escarpins, étagère 543 « Chaussures à talons »,
         // jamais lue, genre jamais posé, catégorie jamais résolue).
         const etagereParArticle = new Map<number, unknown>();
-        const { data: fiches } = await userClient
-          .from("inventaire").select("id, attributs, titre, vinted_catalog_id").in("id", ids);
+        const { data: fiches } = await lireParLots((lot) => userClient
+          .from("inventaire").select("id, attributs, titre, vinted_catalog_id").in("id", lot), ids);
         for (const f of (fiches ?? []) as Array<{ id: number; attributs: unknown; titre: unknown; vinted_catalog_id: unknown }>) {
           if (f.attributs && typeof f.attributs === "object") attrsParArticle.set(Number(f.id), f.attributs as Record<string, unknown>);
           if (String(f.titre ?? "").trim()) titreParArticle.set(Number(f.id), String(f.titre).trim());
@@ -10043,10 +10106,10 @@ serve(async (req) => {
       const capIds = [...new Set(candidats.map(idCapture).filter((n) => Number.isFinite(n) && n > 0))];
       if (capIds.length) {
         // Lecture SEULE, sous RLS (les captures appartiennent à l'utilisateur).
-        const { data: caps, error: errCaps } = await userClient
+        const { data: caps, error: errCaps } = await lireParLots((lot) => userClient
           .from("vinted_republish_captures")
           .select("id, payload")
-          .in("id", capIds);
+          .in("id", lot), capIds);
         if (errCaps) throw errCaps;
         // capture LUE et sans language_book → le défaut est posable.
         const posableParCapture = new Map<number, boolean>();
@@ -10841,6 +10904,7 @@ serve(async (req) => {
       // Retraits/republications Vinted retenus : l'article appartient a une autre
       // boutique que celle ouverte dans Chrome (incident du 22/09).
       boutique_etrangere_retenus: heldBoutiqueEtrangere,
+      boutique_lecture_retenus: heldBoutiqueLecture,
       // Pré-vol de la catégorie de DESTINATION (2026-09-18) : republications
       // arrêtées AVANT toute suppression faute d'un requis prouvé, et ISBN
       // retrouvés tout seuls (description/titre) plutôt que demandés.

@@ -24,6 +24,19 @@ function quand(reprise) {
   } catch { return null; }
 }
 
+/**
+ * (15/10, P2 — Louis) Le message d'une republication auto retenue parce que la
+ * republication automatique de sa plateforme est EN PAUSE (« Tout mettre en
+ * pause », arrêt, palier perdu). Avant, une file déjà créée partait quand même :
+ * Louis a mis en pause à 20:13 le 14/10, trois republications Leboncoin sont
+ * parties entre 20:15 et 20:42.
+ */
+export function messageRetenuePause(platform) {
+  const nom = NOM[platform] ?? platform ?? "";
+  return `Republication automatique ${nom ? `${nom} ` : ""}en pause : elle repartira quand tu relanceras la ` +
+    "republication automatique (Réglages). Ton annonce est intacte, rien n'a été retiré.";
+}
+
 /** Le message d'une republication auto retenue hors de son créneau. */
 export function messageRetenueCreneau(platform, reprise) {
   const nom = NOM[platform] ?? platform ?? "";
