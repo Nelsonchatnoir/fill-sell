@@ -2616,11 +2616,13 @@ async function recoverStaleProcessingJobs(session) {
     }
 
     if (recoveries > MAX_STALE_RECOVERIES) {
+      // (15/10, P4 — Ciddjy) Plus de « cause probable » inventée : ce qu'on
+      // SAIT (interrompue deux fois, aucun dépôt retrouvé) et le geste.
+      const nomPf = { vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", ebay: "eBay", opla: "Opla", depop: "Depop" }[job.platform] ?? job.platform;
       const msg =
-        `Job resté bloqué en cours de traitement (${minutes} min) après ` +
-        `${MAX_STALE_RECOVERIES} reprises — abandonné pour éviter une boucle. ` +
-        "Cause probable : interruption répétée (navigateur fermé, veille, réseau). " +
-        "Régénérer l'annonce depuis l'app pour retenter.";
+        `Cette tâche s'est interrompue ${MAX_STALE_RECOVERIES + 1} fois sur ton ordinateur sans aller au bout (${minutes} min la dernière fois) : ` +
+        "FillSell l'arrête pour ne jamais rien déposer en double. " +
+        `Vérifie sur ${nomPf} qu'elle n'y est pas, puis relance-la depuis l'app.`;
       console.error(`[background] Job ${job.id} (${job.platform}) : ${msg}`);
       await updateJobStatus(session.access_token, job.id, "failed", {
         error: msg,
@@ -17138,6 +17140,11 @@ async function lireDetailsVentesVinted(refs) {
         // Le statut vient de la LISTE, jamais redéduit ici (cf. aDetailler).
         statut,
         listing_id: lot ? null : (tr?.item_id != null ? String(tr.item_id) : null),
+        // (15/10, P1 — Louis) Les annonces d'un LOT : jamais imputées à un article
+        // pour une vente (un montant pour plusieurs objets), mais une commande
+        // ANNULÉE se reconnaît par elles (enregistrer_ventes_relevees → la fiche
+        // revient au stock, vente_commande_annulee_vinted).
+        item_ids: lot ? ids.map((x) => String(x)) : null,
         url: null,
         // ⛔ service_fee = protection ACHETEUR. Elle ne part PAS en frais vendeur.
         frais: null,
@@ -18951,12 +18958,17 @@ async function enregistrerArticlesDressing(articles, { token, userId, reservesRe
       // Correspondance par ID VINTED d'abord (même règle que le rattrapage
       // ci-dessus : jamais le titre), inventaire_id en repli — un job publié
       // avant l'écriture de platform_listing_id peut n'avoir que ce lien-là.
+      // ⛔ (15/10, Louis — « 12 adaptateurs Vert ») Le repli ne prend QUE un job
+      // SANS numéro d'annonce. Un job qui porte son numéro est une AUTRE annonce
+      // (fiche à plusieurs exemplaires : chaque annonce est un exemplaire) : la
+      // vente d'une ancienne annonce était collée au job vivant d'une annonce EN
+      // LIGNE → « 🎉 Vendue » sans issue, démentie puis reposée à chaque synchro.
       const jobParIdVinted = new Map();
       const jobParInventaire = new Map();
       for (const j of jobsVifs) {
         const idV = j.platform_listing_id ?? extractListingId(j.listing_url, "vinted");
         if (idV != null && !jobParIdVinted.has(String(idV))) jobParIdVinted.set(String(idV), j);
-        if (j.inventaire_id != null && !jobParInventaire.has(String(j.inventaire_id))) jobParInventaire.set(String(j.inventaire_id), j);
+        if (idV == null && j.inventaire_id != null && !jobParInventaire.has(String(j.inventaire_id))) jobParInventaire.set(String(j.inventaire_id), j);
       }
       for (const a of soldFrais) {
         const invId = parVintedId.get(a.vinted_item_id)?.id ?? parJob.get(String(a.vinted_item_id)) ?? null;
