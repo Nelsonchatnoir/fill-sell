@@ -18,6 +18,8 @@ import { textesCloud } from '../cloud/textes';
 // à retirer à la sortie du Cloud (interrupteur ENCART_CLOUD_BIENTOT).
 import EncartCloudBientot from '../cloud/EncartCloudBientot';
 import { jourRemise } from '../utils/jourRemise';
+import { lireDernierGeste, canalDeLApp } from '../utils/dernierGeste';
+import { Capacitor } from '@capacitor/core';
 
 // ConversionModal — modale de conversion unique (upsell unités / Premium / Pro).
 // Design « Conversion Modals » (Claude Design, projet e47b36df) intégré le
@@ -643,6 +645,9 @@ export default function ConversionModal({
   // ordinateur », quotas Free gardés). ⛔ Jamais via onUpgrade('free'), qui
   // partirait en paiement de formule. Absente, la carte Free n'a pas de bouton.
   onCloudSeul = null,
+  // (15/10, P17) { ecran } : l'écran d'où la modale s'ouvre (stock, lens,
+  // ventes, stats, reglages, stepper…) — télémétrie seulement, jamais l'affichage.
+  contexte = null,
 }) {
   const fr = lang !== 'en';
   const [cfg, setCfg] = useState(null);
@@ -688,10 +693,47 @@ export default function ConversionModal({
         .then(({ error }) => { if (error) console.warn(`[offres] ${feature} non journalisé :`, error.message); });
     } catch (e) { console.warn(`[offres] ${feature} non journalisé :`, e?.message ?? e); }
   };
+  // (15/10, P17) OÙ, APRÈS QUOI, COMMENT, COMBIEN DE TEMPS. Chaque ouverture
+  // porte un identifiant, l'écran (prop contexte), le dernier geste marquant
+  // (utils/dernierGeste.js, en mémoire), le canal et l'âge du compte ; chaque
+  // fermeture sans formule choisie dit sa SORTIE — non_merci (le lien du bas),
+  // fond (tap hors de la feuille), echap, quitte (page cachée ou quittée, la
+  // modale encore ouverte), fermee_par_app (l'app l'a fermée : retour Android,
+  // navigation) — et sa durée. Une seule fermeture notée par ouverture.
+  const ouvertureRef = useRef({ id: null, le: 0, notee: true });
+  const contexteDeLogs = () => {
+    let canal = 'web_ordinateur';
+    try { canal = canalDeLApp({ natif: Capacitor.isNativePlatform(), plateforme: Capacitor.getPlatform() }); } catch { /* web */ }
+    return { ecran: contexte?.ecran ?? null, ...lireDernierGeste(), canal };
+  };
+  const noterFermeture = (sortie) => {
+    const o = ouvertureRef.current;
+    if (o.notee || palierCliqueRef.current) return;
+    o.notee = true;
+    logModale('offers_modal_abandon', {
+      origine: origine ?? 'non_precisee', trigger, view,
+      paliers: paliersRef.current.join(','),
+      ouverture: o.id, sortie, duree_ms: o.le ? Date.now() - o.le : null, ...contexteDeLogs(),
+    });
+  };
+  const noterFermetureRef = useRef(noterFermeture);
+  noterFermetureRef.current = noterFermeture;
   useEffect(() => {
     if (!isOpen) return;
     palierCliqueRef.current = false;
-    logModale('offers_modal_open', { origine: origine ?? 'non_precisee', trigger });
+    ouvertureRef.current = { id: Math.random().toString(36).slice(2, 10), le: Date.now(), notee: false };
+    logModale('offers_modal_open', { origine: origine ?? 'non_precisee', trigger, ouverture: ouvertureRef.current.id, ...contexteDeLogs() });
+    const quitte = () => { if (document.visibilityState === 'hidden') noterFermetureRef.current('quitte'); };
+    const pageQuittee = () => noterFermetureRef.current('quitte');
+    document.addEventListener('visibilitychange', quitte);
+    window.addEventListener('pagehide', pageQuittee);
+    return () => {
+      document.removeEventListener('visibilitychange', quitte);
+      window.removeEventListener('pagehide', pageQuittee);
+      // Fermée sans passer par la modale (l'hôte l'a démontée ou repliée) :
+      // retour Android, navigation, ou ouverture remplacée.
+      noterFermetureRef.current('fermee_par_app');
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
   // Choix d'un palier : trace posée AVANT de passer la main au checkout — le
@@ -701,7 +743,8 @@ export default function ConversionModal({
   const choisirPalier = (tier) => {
     palierCliqueRef.current = true;
     const choixCloud = interrupteurMontre;
-    logModale('offers_modal_tier_click', { tier, origine: origine ?? 'non_precisee', trigger, view, ...(choixCloud ? { cloud: avecCloud } : {}) });
+    logModale('offers_modal_tier_click', { tier, origine: origine ?? 'non_precisee', trigger, view, ...(choixCloud ? { cloud: avecCloud } : {}),
+      ouverture: ouvertureRef.current.id, duree_ms: ouvertureRef.current.le ? Date.now() - ouvertureRef.current.le : null, ...contexteDeLogs() });
     if (choixCloud) onUpgrade(tier, { cloud: avecCloud });
     else onUpgrade(tier);
   };
@@ -722,15 +765,12 @@ export default function ConversionModal({
   // TOUTES les sorties (backdrop, Escape, « Non merci ») passent ici : une
   // fermeture sans checkout est un abandon — avec les paliers qui étaient
   // affichés, pour savoir DEVANT QUOI l'utilisateur est parti.
-  const fermer = () => {
-    if (!palierCliqueRef.current) {
-      logModale('offers_modal_abandon', {
-        origine: origine ?? 'non_precisee', trigger, view,
-        paliers: paliersRef.current.join(','),
-      });
-    }
+  const fermer = (sortie = 'non_merci') => {
+    noterFermeture(typeof sortie === 'string' ? sortie : 'non_merci');
     onClose();
   };
+  const fermerParLeFond = () => fermer('fond');
+  const fermerNonMerci = () => fermer('non_merci');
 
   // Coûts et grants : lus en base à chaque ouverture. Aucune valeur en dur.
   useEffect(() => {
@@ -748,7 +788,7 @@ export default function ConversionModal({
 
   useEffect(() => {
     if (!isOpen) return;
-    const onKey = (e) => { if (e.key === 'Escape') fermer(); };
+    const onKey = (e) => { if (e.key === 'Escape') fermer('echap'); };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -817,7 +857,7 @@ export default function ConversionModal({
   // le drapeau de masquage — offre coupée, un Pro retombe sur « au maximum ».
   if (isPro && sellable.includes('business')) {
     return (
-      <Sheet onClose={fermer}>
+      <Sheet onClose={fermerParLeFond}>
         <div style={{
           display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 12,
           background: C.paper, border: `1px solid ${C.border}`, borderRadius: 999,
@@ -834,7 +874,7 @@ export default function ConversionModal({
         {blocCloudAuDessus}
         <BusinessPlanCard fr={fr} K={K} onUpgrade={choisirPalier} cloud={cloudCarte} />
         {encartCloud}
-        <Dismiss onClose={fermer} label={fr ? 'Rester en Pro' : 'Stay on Pro'} />
+        <Dismiss onClose={fermerNonMerci} label={fr ? 'Rester en Pro' : 'Stay on Pro'} />
       </Sheet>
     );
   }
@@ -845,7 +885,7 @@ export default function ConversionModal({
   // être invisible à qui a le plus de chances de le prendre.
   if (isPremium && !isPro && sellable.length > 0) {
     return (
-      <Sheet onClose={fermer}>
+      <Sheet onClose={fermerParLeFond}>
         <div style={{
           display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 12,
           background: C.paper, border: `1px solid ${C.border}`, borderRadius: 999,
@@ -862,7 +902,7 @@ export default function ConversionModal({
         {blocCloudAuDessus}
         <PlansStack fr={fr} tiers={sellable} K={K} onUpgrade={choisirPalier} cloud={cloudCarte} />
         {encartCloud}
-        <Dismiss onClose={fermer} label={fr ? 'Rester en Premium' : 'Stay on Premium'} />
+        <Dismiss onClose={fermerNonMerci} label={fr ? 'Rester en Premium' : 'Stay on Premium'} />
       </Sheet>
     );
   }
@@ -876,10 +916,10 @@ export default function ConversionModal({
   // faire ; sinon, rien de plus qu'avant (ou la ligne « déjà active »).
   if (sellable.length === 0) {
     return (
-      <Sheet onClose={fermer}>
+      <Sheet onClose={fermerParLeFond}>
         <Title>{titreCloud ?? (fr ? 'Tu es déjà au maximum.' : "You're already on the top plan.")}</Title>
         {carteAjoutCloud ?? ligneCloud}
-        <Dismiss onClose={fermer} label={fr ? 'Fermer' : 'Close'} />
+        <Dismiss onClose={fermerNonMerci} label={fr ? 'Fermer' : 'Close'} />
       </Sheet>
     );
   }
@@ -924,7 +964,7 @@ export default function ConversionModal({
   // (06/10 soir) Stock vide CONNU (0 article) : pas de bouton « Republier mes annonces ».
   const stockVide = itemCount === 0;
   return (
-    <Sheet onClose={fermer}>
+    <Sheet onClose={fermerParLeFond}>
       <div style={{
         display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 12,
         background: C.paper, border: `1px solid ${C.border}`, borderRadius: 999,
@@ -1081,7 +1121,7 @@ export default function ConversionModal({
       <PlansStack fr={fr} tiers={sellable} showFree K={K} onUpgrade={choisirPalier} avant={blocCloud} cloud={cloudCarte} voieCloudFree={voieCloudFree} />
       {encartCloud}
 
-      <Dismiss onClose={fermer} label={fr ? 'Non merci' : 'No thanks'} />
+      <Dismiss onClose={fermerNonMerci} label={fr ? 'Non merci' : 'No thanks'} />
     </Sheet>
   );
 }

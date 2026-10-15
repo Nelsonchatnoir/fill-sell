@@ -105,7 +105,8 @@ try {
   const src = lire('src/components/ConversionModal.jsx');
   const code = src.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*|\{\/\*)/.test(l)).join('\n');
   ok((code.match(/\{encartCloud\}/g) ?? []).length === 3, 'monté dans les trois vues qui montrent des formules (Pro → Business, Premium → Pro, Free)');
-  const vues = code.split(/\n\s*return \(\n\s*<Sheet onClose=\{fermer\}>/).slice(1);
+  // (15/10, P17) le tap hors de la feuille passe par fermerParLeFond (mesure de la sortie « fond »).
+  const vues = code.split(/\n\s*return \(\n\s*<Sheet onClose=\{(?:fermer|fermerParLeFond)\}>/).slice(1);
   const avecEncart = vues.filter((v) => v.includes('{encartCloud}'));
   ok(avecEncart.length === 3 && avecEncart.every((v) => {
     const iE = v.indexOf('{encartCloud}');

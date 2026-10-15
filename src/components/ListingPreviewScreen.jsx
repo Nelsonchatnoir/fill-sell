@@ -10919,6 +10919,9 @@ export default function ListingPreviewScreen({
           // morts — plus de coinPrice/coinBalance/onUseCoins. quotaInfo porte
           // le geste refusé (annonces/scans/retouches) pour l'encart dédié.
           quotaInfo={quotaModal.quotaInfo ?? null}
+          // (15/10, P17) Le point d'entrée et l'écran, pour la mesure de la fermeture.
+          origine="stepper_quota"
+          contexte={{ ecran: "stepper" }}
         />
       )}
 

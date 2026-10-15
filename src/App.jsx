@@ -3342,7 +3342,10 @@ export default function App({ loginOnly = false }){
   // la redirection Stripe tue l'onglet et donc la requête en vol.
   //
   // ORIGINES (une valeur par point d'entrée, jamais deux points pour une) :
-  //   entete                    bouton d'en-tête (web et natif)
+  //   entete                    bouton d'en-tête (web et natif) — jusqu'au 15/10
+  //   entete_quota              la pastille « N annonces restantes » de l'en-tête (15/10)
+  //   entete_offres             « Voir les offres » de l'en-tête, web et natif (15/10)
+  //   stepper_quota             quota atteint dans le stepper (sa propre modale, 15/10)
   //   banniere_stock            bannière/bloc d'abonnement de l'onglet Stock
   //   banniere_ventes           bloc d'abonnement de l'onglet Ventes
   //   dashboard_stock_presque   carte « limite du plan gratuit » du dashboard
@@ -8412,7 +8415,7 @@ export default function App({ loginOnly = false }){
           // n'ouvre plus les offres — la pastille Business, juste à droite,
           // ouvre sa formule.
           <button
-            onClick={isBusiness?undefined:()=>openUpgradeModal(null,'entete')}
+            onClick={isBusiness?undefined:()=>openUpgradeModal(null,'entete_quota')}
             disabled={isBusiness}
             title={isBusiness
               ?(lang==='fr'?"Annonces restantes ce mois-ci":"Listings left this month")
@@ -8449,11 +8452,11 @@ export default function App({ loginOnly = false }){
           {/* (03/10, point 18) Business ne voit JAMAIS d'offre dans l'en-tête, même
               si ses autres drapeaux manquaient : sa pastille de formule à la place. */}
           {!isPremium&&!isBusiness&&!isNative?(
-            <PremiumBanner userEmail={user?.email} compact source="topbar" onOpenModal={()=>openUpgradeModal(null,'entete')}/>
+            <PremiumBanner userEmail={user?.email} compact source="topbar" onOpenModal={()=>openUpgradeModal(null,'entete_offres')}/>
           ):!isPremium&&!isBusiness&&isNative?(
             // Même silhouette que le PremiumBanner compact ci-dessus : pill au
             // gabarit du badge Pro, zone tactile 44 px sur le bouton transparent.
-            <button onClick={()=>openUpgradeModal(null,'entete')} style={{background:"transparent",border:"none",padding:0,minHeight:44,display:"inline-flex",alignItems:"center",cursor:"pointer",flexShrink:0,fontFamily:"inherit"}}>
+            <button onClick={()=>openUpgradeModal(null,'entete_offres')} style={{background:"transparent",border:"none",padding:0,minHeight:44,display:"inline-flex",alignItems:"center",cursor:"pointer",flexShrink:0,fontFamily:"inherit"}}>
               <span style={{display:"inline-flex",alignItems:"center",padding:"7px 12px",borderRadius:999,background:"linear-gradient(120deg,#2F9E90,#1B6E62)",color:"#fff",fontSize:12.5,fontWeight:700,letterSpacing:"0.01em",whiteSpace:"nowrap"}}>{CTA_OFFRES(lang)}</span>
             </button>
           ):(isPremium||isBusiness)?(
@@ -9640,6 +9643,8 @@ export default function App({ loginOnly = false }){
         itemCount={items.filter(i=>i.statut!=='vendu').length}
         quotaInfo={conversionModal.quotaInfo??null}
         origine={conversionModal.origine??null}
+        // (15/10, P17) L'écran d'où elle s'ouvre — télémétrie seulement.
+        contexte={{ecran:showSettings?'reglages':(['tableau','stock','lens','ventes','stats'][tab]??'autre')}}
         plafondRepub={conversionModal.plafondRepub??null}
         offre={isNative?null:offreEnCours()}
         // (03/10, point 20) Free : ses republications du mois (50 par mois depuis le 05/10), dites AVANT les offres.

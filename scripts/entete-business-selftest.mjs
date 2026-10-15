@@ -18,7 +18,7 @@ const ok = (c, nom, d = "") => { if (c) console.log(`  ✓ ${nom}`); else { cons
 const i = app.indexOf('<div className={quotas?.annonces?.plafond!=null?"topbar topbar--solde":"topbar"}>');
 const entete = app.slice(i, app.indexOf("</div>\n      </div>", i) + 20);
 ok(i > 0 && entete.length > 500, "l'en-tête est trouvé");
-ok(/onClick=\{isBusiness\?undefined:\(\)=>openUpgradeModal\(null,'entete'\)\}/.test(entete) && /disabled=\{isBusiness\}/.test(entete),
+ok(/onClick=\{isBusiness\?undefined:\(\)=>openUpgradeModal\(null,'entete_quota'\)\}/.test(entete) && /disabled=\{isBusiness\}/.test(entete),
   "le compteur d'annonces n'ouvre plus les offres pour Business (il reste affiché : il informe)");
 ok(/\{!isPremium&&!isBusiness&&!isNative\?\(\s+<PremiumBanner/.test(entete) && /\):!isPremium&&!isBusiness&&isNative\?\(/.test(entete),
   "« Voir les offres » (web et app) : jamais pour Business, même si ses autres drapeaux manquaient");
