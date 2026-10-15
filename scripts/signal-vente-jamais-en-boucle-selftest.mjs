@@ -141,6 +141,33 @@ ok(/DROP TRIGGER IF EXISTS cross_post_jobs_signal_vente_vu_en_ligne/.test(INV)
     '7j. « Répondre » ouvre la question de CETTE annonce, même reportée');
 }
 
+// 8. L'extension (0.6.111) : la cause à la racine — la vente d'une ANCIENNE annonce
+//    n'est plus collée au job vivant d'une autre annonce de la même fiche.
+{
+  const bg = lire('chrome-extension/background.js');
+  const i = bg.indexOf('const jobParIdVinted = new Map();');
+  const j = bg.indexOf('if (!job) continue;', i);
+  ok(i > 0 && j > i, '8a. le choix du job par la synchro du dressing est trouvé');
+  const bloc = bg.slice(i, j)
+    .replace('for (const a of soldFrais) {', 'const choix = []; for (const a of soldFrais) {')
+    + 'choix.push([a.vinted_item_id, job ? job.id : null]); } return choix;';
+  // eslint-disable-next-line no-new-func
+  const choisir = new Function('jobsVifs', 'soldFrais', 'parVintedId', 'parJob', 'extractListingId', bloc);
+  const extractListingId = (u) => (String(u ?? '').match(/\/items\/(\d+)/)?.[1] ?? null);
+  // Louis, 14/10 : fiche 1789898202878 (stock 9 996) ; job vivant d7b3b535 = annonce
+  // 10289157745 EN LIGNE ; l'ancienne annonce 10269317193 de la même fiche est vendue.
+  const jobsVifs = [{ id: 'd7b3b535', inventaire_id: 1789898202878, platform_listing_id: '10289157745', listing_url: 'https://www.vinted.fr/items/10289157745' }];
+  const soldFrais = [{ vinted_item_id: '10269317193' }];
+  const parVintedId = new Map([['10269317193', { id: 1789898202878, statut: 'stock' }]]);
+  const r = choisir(jobsVifs, soldFrais, parVintedId, new Map(), extractListingId);
+  ok(r.length === 1 && r[0][1] === null, '8b. Louis : la vente de 10269317193 ne touche PLUS le job de 10289157745 (en ligne)', JSON.stringify(r));
+  const sansNumero = [{ id: 'vieux', inventaire_id: 1789898202878, platform_listing_id: null, listing_url: null }];
+  const r2 = choisir(sansNumero, soldFrais, parVintedId, new Map(), extractListingId);
+  ok(r2[0][1] === 'vieux', '8c. un job SANS numéro d\'annonce garde le repli par fiche (comportement d\'avant)');
+  const r3 = choisir(jobsVifs, [{ vinted_item_id: '10289157745' }], parVintedId, new Map(), extractListingId);
+  ok(r3[0][1] === 'd7b3b535', '8d. la vente de SA propre annonce atteint toujours son job (par numéro)');
+}
+
 if (process.argv.includes('--prod')) {
   const sql = `select jsonb_build_object(
     'trig', (select count(*) from pg_trigger where tgname='cross_post_jobs_signal_vente_vu_en_ligne' and not tgisinternal),
