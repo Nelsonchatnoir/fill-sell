@@ -20,8 +20,11 @@
 // le created_at croissant du serveur) : la republication hors ligne qui attend
 // sa remise en ligne d'abord, puis publications et retraits, puis les autres
 // republications, puis les remises en ligne qui ont déjà buté trois fois.
-// Une HEURE ne s'écrit que si elle est connue (colonne ou calcul du serveur) :
-// jamais d'estimation inventée. Heure de Paris.
+// ⛔ (15/10 soir, Nico) AUCUNE ESTIMATION DE TEMPS DANS LA FILE — « ça fait
+// fuir » : ni « remise en ligne vers 17:36 », ni « nouvel essai à… », ni
+// « ~15-21 min ». On montre l'ÉTAT, jamais une durée ni une heure à venir.
+// L'heure connue sert seulement à RANGER (pause la plus proche d'abord) ; un
+// texte du serveur qui en porte une est nettoyé (sansEstimation).
 // ⛔ LECTURE SEULE : rien ici n'écrit, ne relance ni n'annule un job.
 // Preuve : scripts/file-des-jobs-selftest.mjs.
 
@@ -107,15 +110,14 @@ const TEXTE = {
     ordinateur: "En attente de ton ordinateur — Chrome fermé ou extension pas vue",
     ordinateurSession: "En attente de ton ordinateur — l'extension doit se reconnecter à ton compte",
     intacte: "En attente, ton annonce est intacte",
-    pauseJusqua: (h, pourquoi) => `En pause jusqu'à ${h}${pourquoi ? ` (${pourquoi})` : ""}`,
     pauseSansHeure: (pourquoi) => `En pause${pourquoi ? ` (${pourquoi})` : ""}`,
     limiteJour: "limite du jour",
     rythme: "rythme de republication",
     creneau: "créneau de republication",
     // (15/10, P2) Republication automatique de la plateforme mise en pause : le serveur retient.
     autoEnPause: "Republication automatique en pause : elle repartira quand tu la relanceras. Ton annonce est intacte",
-    essaiA: (h) => `Nouvel essai à ${h}`,
-    essaiBientot: "Nouvel essai dans un instant",
+    essaiAuto: "Nouvel essai automatique, rien à faire",
+    essaiBientot: "Nouvel essai automatique, rien à faire",
     plateformePause: (p) => `${p} est en pause de notre côté — reprise automatique`,
     boutique: (login) => (login
       ? `En attente de ta boutique @${login} : ouvre-la sur vinted.fr dans Chrome, ça repartira tout seul`
@@ -127,8 +129,13 @@ const TEXTE = {
     geste: "Un geste à faire",
     connexion: (p) => `Un geste à faire : connecte-toi à ${p} sur ton ordinateur`,
     opla: "Un geste à faire : autorise Opla dans l'extension — l'annonce partira toute seule ensuite",
-    horsLigne: (h) => (h ? `Hors ligne quelques minutes : remise en ligne vers ${h}` : "Hors ligne quelques minutes : remise en ligne en cours"),
-    horsLigneDepuis: (d, h) => `Hors ligne depuis ${d} : ${h ? `nouvel essai de remise en ligne vers ${h}` : "remise en ligne dès que possible"}`,
+    horsLigne: "Hors ligne quelques minutes : remise en ligne en cours",
+    horsLigneDepuis: (d) => `Hors ligne depuis ${d} : remise en ligne dès que possible`,
+    // (15/10 soir) Attentes automatiques : pas un geste, une pause.
+    attenteReleve: (p) => `En pause, rien n'a été retiré : FillSell attend le prochain relevé de ${p} pour savoir si l'annonce est toujours en ligne`,
+    pauseTechnique: (p) => `En pause avant tout retrait, ton annonce est intacte : elle repart toute seule dès que ${p} répond à nouveau`,
+    ebayEtranger: "Ton compte eBay est inscrit sur un autre site qu'ebay.fr : FillSell n'y publie pas, rien n'a été envoyé",
+    plateformeEcartee: (p) => `Tu as indiqué ne pas vendre sur ${p} : rien n'est envoyé`,
     enCours: "En cours sur ton ordinateur",
     enCoursServeurs: "En cours sur nos serveurs",
   },
@@ -138,14 +145,13 @@ const TEXTE = {
     ordinateur: "Waiting for your computer — Chrome closed or extension not seen",
     ordinateurSession: "Waiting for your computer — the extension must reconnect to your account",
     intacte: "On hold, your listing is untouched",
-    pauseJusqua: (h, pourquoi) => `Paused until ${h}${pourquoi ? ` (${pourquoi})` : ""}`,
     pauseSansHeure: (pourquoi) => `Paused${pourquoi ? ` (${pourquoi})` : ""}`,
     limiteJour: "daily limit",
     rythme: "repost pacing",
     creneau: "repost time slot",
     autoEnPause: "Automatic reposting is paused: it resumes when you restart it. Your listing is untouched",
-    essaiA: (h) => `Next try at ${h}`,
-    essaiBientot: "Next try in a moment",
+    essaiAuto: "Automatic retry, nothing to do",
+    essaiBientot: "Automatic retry, nothing to do",
     plateformePause: (p) => `${p} is paused on our side — resumes automatically`,
     boutique: (login) => (login
       ? `Waiting for your @${login} shop: open it on vinted.fr in Chrome, it resumes on its own`
@@ -156,8 +162,12 @@ const TEXTE = {
     geste: "Something to do",
     connexion: (p) => `Something to do: sign in to ${p} on your computer`,
     opla: "Something to do: allow Opla in the extension — the listing then goes out on its own",
-    horsLigne: (h) => (h ? `Offline for a few minutes: back online around ${h}` : "Offline for a few minutes: going back online"),
-    horsLigneDepuis: (d, h) => `Offline since ${d}: ${h ? `next try to put it back online around ${h}` : "back online as soon as possible"}`,
+    horsLigne: "Offline for a few minutes: going back online",
+    horsLigneDepuis: (d) => `Offline since ${d}: back online as soon as possible`,
+    attenteReleve: (p) => `Paused, nothing removed: FillSell waits for the next ${p} reading to know whether the listing is still online`,
+    pauseTechnique: (p) => `Paused before any removal, your listing is untouched: it resumes on its own as soon as ${p} answers again`,
+    ebayEtranger: "Your eBay account is registered on another site than ebay.fr: FillSell does not list there, nothing was sent",
+    plateformeEcartee: (p) => `You said you don't sell on ${p}: nothing is sent`,
     enCours: "In progress on your computer",
     enCoursServeurs: "In progress on our servers",
   },
@@ -196,6 +206,50 @@ export function boutiqueDuJob(j, b) {
   return login ? { userId: o, login } : null;
 }
 
+// ── LES ATTENTES AUTOMATIQUES (15/10 soir, mission de Nico) ─────────────────
+// Un needs_user n'est un « geste à faire » que s'il attend la PERSONNE. Ceux-ci
+// repartent seuls (handler-watch, relevé) ou ne demandent rien :
+//   · « introuvable_a_confirmer » : une lecture « plus en ligne » attend le
+//     relevé qui tranche (_shared/introuvable-a-confirmer.js) ;
+//   · une republication en pause AVANT tout retrait pour un motif TECHNIQUE
+//     (anti-robot, session, formulaire non capté) — mêmes motifs que la
+//     reprise sur preuve de handler-watch (MOTIF_TECHNIQUE_RE) ;
+//   · eBay sur un site étranger, plateforme écartée par la personne.
+const MOTIF_TECHNIQUE_RE = /protection anti-?robot|v[ée]rification anti-?robot|bot_shield|DataDome|Connexion (Vinted|Leboncoin|Beebs|eBay|Depop|Opla) requise|configuration non capt[ée]e|lecture de l'annonce (re|a [ée]t[ée] )?(fus[ée]e|bloqu[ée]e)|bloqu[ée] notre lecture/i;
+const MOTIF_PERSONNE_RE = /champ|Marque|taille|rayon|cat[ée]gorie|interdit|payant|Boostez|option gratuite|nom et (ton )?pr[ée]nom|configuration de vendeur|exige|passe la v[ée]rification|connecte-toi/i;
+export function attenteAutomatique(j) {
+  if (j?.status !== "needs_user") return null;
+  const pf = pfDe(j);
+  const src = String(pf.needs_user_source ?? "");
+  if (src === "introuvable_a_confirmer") return "releve";
+  if (src === "ebay_site_etranger") return "ebay_etranger";
+  if (src === "plateforme_ecartee") return "ecartee";
+  if (j.action === "republish" && ["", "a_capturer", "captured"].includes(String(pf.republish_step ?? ""))
+      && !pf.deleted_at && (src === "relancer" || src === "")) {
+    if (pf.republish_etat_indetermine && typeof pf.republish_etat_indetermine === "object") return "technique";
+    const err = String(j.error ?? "");
+    if (MOTIF_TECHNIQUE_RE.test(err) && !MOTIF_PERSONNE_RE.test(err.replace(MOTIF_TECHNIQUE_RE, ""))) return "technique";
+  }
+  return null;
+}
+
+// ── AUCUNE ESTIMATION DE TEMPS (15/10 soir, Nico) ─────────────────────────
+// Les textes du serveur et de l'extension promettent parfois une heure ou une
+// durée (« Reprise automatique dans ~6 min », « vers 17:36 ») : dans la file
+// et ses barres, la phrase qui en porte une est retirée — l'état reste.
+const ESTIMATION_RE = /~\s*\d|\bvers \d{1,2}\s*[:h]\s*\d{2}|\b(dans|d'ici|sous|en) (environ |à peu près |moins d'|moins de )?\d+(\s*-\s*\d+)?\s*(s|sec|secondes?|min|minutes?|h|heures?)\b|\b(in|within|around) (about )?~?\d+\s*(min|minutes?|h|hours?)\b|\bà \d{1,2}[:h]\d{2}\b|\bat \d{1,2}:\d{2}\b/i;
+export function sansEstimation(texte) {
+  const t = String(texte ?? "").trim();
+  if (!t || !ESTIMATION_RE.test(t)) return t;
+  const phrases = t.split(/(?<=[.!?…])\s+/);
+  const gardees = phrases.filter((p) => !ESTIMATION_RE.test(p));
+  if (gardees.length) return gardees.join(" ");
+  // Une seule phrase : on la coupe avant l'estimation.
+  const m = t.match(ESTIMATION_RE);
+  const avant = t.slice(0, m.index).replace(/[\s,:;—–-]+$/, "").trim();
+  return avant ? avant + "." : "";
+}
+
 /**
  * Où en est UN job vivant, et pourquoi.
  * ctx = { maintenant, lang, extension: {etat}|null, plateformesEnPause: Set,
@@ -221,7 +275,15 @@ export function situationJob(j, ctx = {}) {
     const login = g.login_article ? String(g.login_article) : loginDe(g.article, ctx.boutiques);
     return { groupe: "pause", raison: T.boutique(login), heure: null, motif: "boutique" };
   }
-  if (j.status === "needs_user") return { groupe: "geste", raison: T.geste, heure: null, motif: "geste" };
+  // (15/10 soir) Une attente AUTOMATIQUE n'est pas un geste à faire.
+  if (j.status === "needs_user") {
+    const auto = attenteAutomatique(j);
+    if (auto === "releve") return { groupe: "pause", raison: T.attenteReleve(nom), heure: null, motif: "retenue_serveur" };
+    if (auto === "technique") return { groupe: "pause", raison: T.pauseTechnique(nom), heure: null, motif: "retenue_serveur" };
+    if (auto === "ebay_etranger") return { groupe: "pause", raison: T.ebayEtranger, heure: null, motif: "plateforme" };
+    if (auto === "ecartee") return { groupe: "pause", raison: T.plateformeEcartee(nom), heure: null, motif: "plateforme" };
+    return { groupe: "geste", raison: T.geste, heure: null, motif: "geste" };
+  }
   if (attendConnexion(j)) return { groupe: "geste", raison: T.connexion(nom), heure: null, motif: "connexion" };
   // Opla sans autorisation CONNUE (verdict serveur « a_autoriser ») : le
   // serveur ne la sert pas, elle attend le geste — jamais « son tour ».
@@ -245,7 +307,7 @@ export function situationJob(j, ctx = {}) {
     const h = heureConnue(pf.next_action_after, maintenant, lang);
     const retireeLe = Date.parse(pf.deleted_at ?? pf.deleted_at_serveur ?? "");
     const longtemps = Number.isFinite(retireeLe) && maintenant - retireeLe > 30 * 60_000;
-    return { groupe: "en_cours", raison: longtemps ? T.horsLigneDepuis(depuisQuand(retireeLe, maintenant, lang), h) : T.horsLigne(h), heure: h, motif: "remise_en_ligne" };
+    return { groupe: "en_cours", raison: longtemps ? T.horsLigneDepuis(depuisQuand(retireeLe, maintenant, lang)) : T.horsLigne, heure: h, motif: "remise_en_ligne" };
   }
   if (j.status === "processing") {
     return { groupe: "en_cours", raison: parNosServeurs(j) ? T.enCoursServeurs : T.enCours, heure: null, motif: "en_cours" };
@@ -273,7 +335,7 @@ export function situationJob(j, ctx = {}) {
     if (pl?.retenue) {
       const pourquoi = pl.motif === "pause" ? T.rythme : T.limiteJour;
       const h = heureConnue(pl.reprise, maintenant, lang);
-      return { groupe: "pause", raison: h ? T.pauseJusqua(h, pourquoi) : T.pauseSansHeure(pourquoi), heure: h, motif: pl.motif === "pause" ? "rythme" : "limite_jour" };
+      return { groupe: "pause", raison: T.pauseSansHeure(pourquoi), heure: h, motif: pl.motif === "pause" ? "rythme" : "limite_jour" };
     }
     const cr = pf.republish_source === "auto" ? ctx.creneaux?.[j.platform] : null;
     // (15/10, P2 — Louis) Module en pause (« Tout mettre en pause ») : le serveur
@@ -283,14 +345,14 @@ export function situationJob(j, ctx = {}) {
     }
     if (cr && cr.dans_creneau === false) {
       const h = heureConnue(cr.reprise, maintenant, lang);
-      return { groupe: "pause", raison: h ? T.pauseJusqua(h, T.creneau) : T.pauseSansHeure(T.creneau), heure: h, motif: "creneau" };
+      return { groupe: "pause", raison: T.pauseSansHeure(T.creneau), heure: h, motif: "creneau" };
     }
   }
   if (ctx.plateformesEnPause?.has?.(j.platform)) {
     return { groupe: "pause", raison: T.plateformePause(nom), heure: null, motif: "plateforme" };
   }
   const essai = heureConnue(pf.next_action_after, maintenant, lang);
-  if (essai) return { groupe: "pause", raison: T.essaiA(essai), heure: essai, motif: "essai" };
+  if (essai) return { groupe: "pause", raison: T.essaiAuto, heure: essai, motif: "essai" };
   if (j.error && String(j.error).trim()) return { groupe: "pause", raison: T.essaiBientot, heure: null, motif: "essai" };
 
   if (parNosServeurs(j)) return { groupe: "a_venir", raison: T.serveurs, heure: null, motif: "tour" };

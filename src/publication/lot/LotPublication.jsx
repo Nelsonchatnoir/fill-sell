@@ -1013,7 +1013,7 @@ function EcranDuLot({
               poserPoidsDuLot={poserPoidsDuLot} poserTransporteurs={poserTransporteurs} poserFormat={poserFormat}
               colisVinted={colisVinted} choisirColisVinted={choisirColisVinted}
               userId={userId} exclusDepop={exclusDepop} mettreDeCote={mettreDeCote} signalerErreurBloc={signalerErreurBloc}
-              choixPoidsLbc={poidsLbc.choix} choisirPoidsLbc={poidsLbc.choisir}
+              choixPoidsLbc={poidsLbc.choix} choisirPoidsLbc={poidsLbc.choisir} poidsExigeLbc={poidsLbc.exige}
             />
           )}
           {etape === "fin" && lot && (
@@ -1223,7 +1223,7 @@ export function EcranAvant({
   // recevoir (page blanche du 09/10 22:13 au 10/10) : passé, jamais supposé.
   userId = null, exclusDepop = [], mettreDeCote = () => {}, signalerErreurBloc = () => {},
   // (11/10 soir) Le choix du poids Leboncoin du lot — reçu, jamais supposé.
-  choixPoidsLbc = "estimer", choisirPoidsLbc = () => {},
+  choixPoidsLbc = "estimer", choisirPoidsLbc = () => {}, poidsExigeLbc = false,
 }) {
   const total = lot.ids.length;
   // Un bloc commun qui casse est remplacé par une phrase ; le lot continue.
@@ -1278,7 +1278,7 @@ export function EcranAvant({
           poidsDe={poidsDe} poserPoids={poserPoids} poserPoidsDuLot={poserPoidsDuLot}
           livraison={livraison} poserTransporteurs={poserTransporteurs} poserFormat={poserFormat}
           colisVinted={colisVinted} choisirColisVinted={choisirColisVinted} userId={userId}
-          choixPoidsLbc={choixPoidsLbc} choisirPoidsLbc={choisirPoidsLbc} />
+          choixPoidsLbc={choixPoidsLbc} choisirPoidsLbc={choisirPoidsLbc} poidsExigeLbc={poidsExigeLbc} />
       ))}
 
       {/* (09/10 soir) Ce que Depop refuse : combien d'articles, et pourquoi. */}

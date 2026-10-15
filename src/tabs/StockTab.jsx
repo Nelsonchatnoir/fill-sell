@@ -163,6 +163,7 @@ import { uniteDuChamp, valeurAvecUnite, nombreSansUnite } from '../utils/champsD
 import { ChampPortDepop } from '../components/PortDepop';
 import { lirePortSaisi } from '../utils/fraisPortDepop';
 import { grammesLbc } from '../../supabase/functions/_shared/poids-leboncoin.js';
+import { trancheLbcDepuisGrammes } from '../../supabase/functions/_shared/lbc-poids-tranche.js';
 import { SecondaryButton, Loader } from '../components/ui';
 import {
   EXT_SONDE_MS, SYNC_POLL_MS, SYNC_POLL_MAX_MS,
@@ -1357,26 +1358,39 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
   // jamais servie (get-pending-jobs, _shared/poids-leboncoin.js). Le poids se
   // dit ICI, en grammes ou en kilos, et — UNE fois pour le lot — vaut pour
   // les autres annonces Leboncoin du même lot qui attendent la même réponse.
-  const questionPoidsLbc = job.platform === "leboncoin" && f?.field_key === "lbcPoidsGrammes" && !champsSup.length && !descriptionRequise;
+  // (15/10 soir, PAUGUES) La question en TRANCHE du formulaire PRO (« Poids du
+  // colis* », estimated_parcel_weight) se règle de la même façon : un poids en
+  // grammes, sa tranche en découle — jamais une tranche choisie au hasard.
+  const questionPoidsLbc = job.platform === "leboncoin" && ["lbcPoidsGrammes", "estimated_parcel_weight"].includes(f?.field_key) && !champsSup.length && !descriptionRequise;
   const poidsLbcLu = questionPoidsLbc ? grammesLbc(value) : null;
   const poidsLbcInvalide = questionPoidsLbc && poidsLbcLu == null;
   const lotDuJob = job.platform_fields?.lot_publication?.id ?? job.bulk_batch_id ?? null;
   const [autresDuLot, setAutresDuLot] = useState([]);
   const [memePoidsPourLot, setMemePoidsPourLot] = useState(true);
+  const [poidsParArticleLot, setPoidsParArticleLot] = useState(false);
+  const [poidsAutres, setPoidsAutres] = useState({}); // id du job → saisie (vide = le poids du lot)
   useEffect(() => {
     let alive = true;
     if (!questionPoidsLbc || !lotDuJob) return undefined;
     (async () => {
       try {
+        // (15/10 soir) Les annonces du lot qui ATTENDENT le poids : la question
+        // (grammes ou tranche), et celles encore en file sans poids — le même
+        // geste les règle toutes (un poids pour le lot, modifiable article par article).
         const { data } = await supabase
           .from("cross_post_jobs")
-          .select("id, inventaire_id, bulk_batch_id, error, status, platform_fields")
-          .eq("platform", "leboncoin").eq("action", "publish").eq("status", "needs_user")
-          .eq("platform_fields->needsUserField->>field_key", "lbcPoidsGrammes")
+          .select("id, inventaire_id, bulk_batch_id, title, error, status, platform_fields")
+          .eq("platform", "leboncoin").eq("action", "publish").in("status", ["needs_user", "pending"])
           .neq("id", job.id)
-          .limit(300);
+          .limit(500);
         if (!alive) return;
-        setAutresDuLot((data ?? []).filter((j) => (j.platform_fields?.lot_publication?.id ?? j.bulk_batch_id ?? null) === lotDuJob));
+        setAutresDuLot((data ?? []).filter((j) => {
+          if ((j.platform_fields?.lot_publication?.id ?? j.bulk_batch_id ?? null) !== lotDuJob) return false;
+          const pfj = j.platform_fields ?? {};
+          if (Number(pfj.lbcPoidsGrammes) > 0 || String(pfj.lbcAspects?.estimated_parcel_weight ?? "").trim()) return false;
+          if (j.status === "pending") return true;
+          return ["lbcPoidsGrammes", "estimated_parcel_weight"].includes(pfj.needsUserField?.field_key) && !(pfj.needsUserFields?.length > 1);
+        }));
       } catch { /* sans la liste, la réponse vaut pour cette annonce seule */ }
     })();
     return () => { alive = false; };
@@ -1511,6 +1525,9 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
       if (questionPoidsLbc && !sansValeur) {
         if (poidsLbcLu == null) { setSaving(false); return; }
         newPf.lbcPoidsGrammes = poidsLbcLu;
+        // La tranche du formulaire PRO découle du poids (même table que le serveur).
+        const tranche = trancheLbcDepuisGrammes(poidsLbcLu);
+        if (tranche) newPf.lbcAspects = { ...(newPf.lbcAspects ?? pf.lbcAspects ?? {}), estimated_parcel_weight: tranche };
       }
       // Trace persistante « tranché par l'utilisateur » (2026-07-19, boucle
       // needs_user État/Beauté) : les handlers ont des gardes légitimes
@@ -1524,7 +1541,8 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
       // vide sur la valeur d'origine du job dans les handlers.
       if (target && !sansValeur) {
         const resolvedKey = target.root ? `${target.root}.${target.key}` : String(target.key);
-        newPf.needsUserResolved = { ...(pf.needsUserResolved ?? {}), [resolvedKey]: questionPoidsLbc ? poidsLbcLu : v };
+        newPf.needsUserResolved = { ...(pf.needsUserResolved ?? {}), [resolvedKey]: questionPoidsLbc ? poidsLbcLu : v,
+          ...(questionPoidsLbc && newPf.lbcAspects?.estimated_parcel_weight ? { "lbcAspects.estimated_parcel_weight": newPf.lbcAspects.estimated_parcel_weight, lbcPoidsGrammes: poidsLbcLu } : {}) };
       }
       // Champs supplémentaires (needsUserFields) : même routage, même trace
       // « tranché par l'utilisateur », dans la MÊME écriture.
@@ -1643,23 +1661,30 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
       // repart seule ; une déjà reprise n'est jamais touchée. Best-effort.
       if (questionPoidsLbc && !sansValeur && poidsLbcLu != null) {
         const autres = memePoidsPourLot ? autresDuLot : [];
-        const fiches = [job.inventaire_id, ...autres.map((a) => a.inventaire_id)].filter((x) => x != null);
+        try {
+          if (job.inventaire_id != null) await supabase.from("inventaire").update({ poids_g: poidsLbcLu }).eq("id", job.inventaire_id).is("poids_g", null);
+        } catch { /* la fiche garde ce qu'elle avait */ }
         for (const a of autres) {
           try {
-            const pfA = { ...(a.platform_fields ?? {}), needsUserAttempts: 0, lbcPoidsGrammes: poidsLbcLu };
-            delete pfA.needsUserField; delete pfA.needsUserFields;
-            pfA.erreurs_archivees = archiverErreur(pfA.erreurs_archivees, a.error, a.status, "relance_manuelle (✋ poids du lot)");
-            for (const k of ["needs_user_tick_le", "needs_user_actif_ms", "needs_user_vu_le", "needs_user_vu_erreur"]) delete pfA[k];
-            pfA.needsUserResolved = { ...(pfA.needsUserResolved ?? {}), lbcPoidsGrammes: poidsLbcLu };
-            pfA.poids_lbc_du_lot = { depuis_job: job.id, le: new Date().toISOString() };
+            // Le poids de CET article s'il a été réglé à part, sinon celui du lot.
+            const gA = grammesLbc(poidsAutres[a.id]) ?? poidsLbcLu;
+            const trancheA = trancheLbcDepuisGrammes(gA);
+            const pfA = { ...(a.platform_fields ?? {}), needsUserAttempts: 0, lbcPoidsGrammes: gA };
+            if (trancheA) pfA.lbcAspects = { ...(pfA.lbcAspects ?? {}), estimated_parcel_weight: trancheA };
+            const enQuestion = a.status === "needs_user";
+            if (enQuestion) {
+              delete pfA.needsUserField; delete pfA.needsUserFields; delete pfA.needs_user_source;
+              pfA.erreurs_archivees = archiverErreur(pfA.erreurs_archivees, a.error, a.status, "relance_manuelle (✋ poids du lot)");
+              for (const k of ["needs_user_tick_le", "needs_user_actif_ms", "needs_user_vu_le", "needs_user_vu_erreur"]) delete pfA[k];
+            }
+            pfA.needsUserResolved = { ...(pfA.needsUserResolved ?? {}), lbcPoidsGrammes: gA, ...(trancheA ? { "lbcAspects.estimated_parcel_weight": trancheA } : {}) };
+            pfA.poids_lbc_du_lot = { depuis_job: job.id, le: new Date().toISOString(), propre: gA !== poidsLbcLu };
             await supabase.from("cross_post_jobs")
-              .update({ status: "pending", error: null, platform_fields: pfA })
-              .eq("id", a.id).eq("status", "needs_user").select("id");
+              .update(enQuestion ? { status: "pending", error: null, platform_fields: pfA } : { platform_fields: pfA })
+              .eq("id", a.id).eq("status", a.status).select("id");
+            if (a.inventaire_id != null) await supabase.from("inventaire").update({ poids_g: gA }).eq("id", a.inventaire_id).is("poids_g", null);
           } catch { /* cette annonce garde sa question */ }
         }
-        try {
-          if (fiches.length) await supabase.from("inventaire").update({ poids_g: poidsLbcLu }).in("id", fiches).is("poids_g", null);
-        } catch { /* la fiche garde ce qu'elle avait ; les jobs, eux, sont repartis */ }
         track("poids_lbc_repondu", { lot: Boolean(lotDuJob), autres: autres.length });
       }
       onDone?.(job.id);
@@ -1706,6 +1731,25 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
                   ? `Same weight for the ${autresDuLot.length} other Leboncoin listing${autresDuLot.length > 1 ? "s" : ""} of this batch waiting for it`
                   : `Le même poids pour ${autresDuLot.length > 1 ? `les ${autresDuLot.length} autres annonces Leboncoin du lot qui l'attendent` : "l'autre annonce Leboncoin du lot qui l'attend"}`}</span>
               </label>
+            )}
+            {autresDuLot.length > 0 && memePoidsPourLot && (
+              <button type="button" onClick={() => setPoidsParArticleLot((x) => !x)} aria-expanded={poidsParArticleLot}
+                style={{ alignSelf:"flex-start", background:"none", border:"none", padding:0, fontSize:12.5, color:"#1B6E62", textDecoration:"underline", cursor:"pointer", fontFamily:"inherit" }}>
+                {poidsParArticleLot ? (lang === "en" ? "Hide item by item" : "Masquer le détail") : (lang === "en" ? "Set the weight item by item" : "Régler le poids article par article")}
+              </button>
+            )}
+            {autresDuLot.length > 0 && memePoidsPourLot && poidsParArticleLot && (
+              <div style={{ display:"flex", flexDirection:"column", gap:6, maxHeight:220, overflowY:"auto" }}>
+                {autresDuLot.map((a) => (
+                  <div key={a.id} style={{ display:"flex", gap:8, alignItems:"center" }}>
+                    <span style={{ flex:1, minWidth:0, fontSize:12.5, color:NU_T.ink, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{a.title || (lang === "en" ? "Item" : "Article")}</span>
+                    <input type="text" inputMode="decimal" value={poidsAutres[a.id] ?? ""} placeholder={String(value).trim() || (lang === "en" ? "batch weight" : "poids du lot")}
+                      onChange={(e) => setPoidsAutres((m) => ({ ...m, [a.id]: e.target.value }))}
+                      aria-label={lang === "en" ? "Weight of this item" : "Poids de cet article"}
+                      style={{ width:110, boxSizing:"border-box", padding:"8px 10px", borderRadius:10, border:`1px solid ${String(poidsAutres[a.id] ?? "").trim() && grammesLbc(poidsAutres[a.id]) == null ? "#B42318" : NU_T.border}`, fontSize:14, fontFamily:"inherit" }} />
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         ) : questionPortDepop ? (
@@ -4803,7 +4847,6 @@ const rangActivite = (j) => {
 // que le poll ne tient pas. Une seule source depuis le 04/09 : la ligne
 // compacte du bandeau (l'encart sablier de la liste, qui la répétait, est
 // retiré).
-const estimationRepub = (n) => n * 5 >= 60 ? `~${Math.ceil(n * 5 / 60)} h` : `~${n * 5}-${n * 7} min`;
 
 // (RepubBlocActif, RepubTerminees et repubPhraseActive ont été SUPPRIMÉS le
 //  2026-09-04. Ils n'étaient plus montés depuis la refonte 2.6.17 — aucune
@@ -5123,8 +5166,8 @@ function etapeRepublication(job, fr, reprise = null, attente = null, item = null
   return {
     cle: 'file', court: T.file, ...bleu, enFile: true,
     titre: fr ? 'En attente de ton Chrome' : 'Waiting for your Chrome',
-    detail: fr ? `La republication part dès que ton ordinateur reprend la main — environ 2 minutes si Chrome est déjà ouvert. ${ANNONCE_DISPARUE(item) ? "L'annonce n'est plus en ligne sur Vinted (retirée ou vendue) : cette republication n'a plus d'objet." : "Cette republication n'a encore rien touché."}`
-               : `The repost starts as soon as your computer picks it up — about 2 minutes if Chrome is already open. ${ANNONCE_DISPARUE(item) ? 'The listing is no longer on Vinted (removed or sold): this repost no longer applies.' : 'This repost has not touched anything yet.'}`,
+    detail: fr ? `La republication part dès que ton ordinateur reprend la main. ${ANNONCE_DISPARUE(item) ? "L'annonce n'est plus en ligne sur Vinted (retirée ou vendue) : cette republication n'a plus d'objet." : "Cette republication n'a encore rien touché."}`
+               : `The repost starts as soon as your computer picks it up. ${ANNONCE_DISPARUE(item) ? 'The listing is no longer on Vinted (removed or sold): this repost no longer applies.' : 'This repost has not touched anything yet.'}`,
   };
 }
 
@@ -5204,7 +5247,7 @@ const repubCleSaisie = (c) => String(c ?? '').toLowerCase().normalize('NFD').rep
 
 // Feuille « où ça en est » — même patron que RepublishSheet (portail, feuille
 // basse, canvas). Ouverte au tap sur la pastille de la carte.
-export function RepublishProgressSheet({ lang, job, onClose, onSaisieRelance, reprise = null, item = null, ctxBarres = null, formaterPrix = null, onOuvrirFile = null }) {
+export function RepublishProgressSheet({ lang, job, onClose, onSaisieRelance, reprise = null, item = null, ctxBarres = null, formaterPrix = null, onOuvrirFile = null, onRepondre = null }) {
   const fr = lang !== 'en';
   // ⚠️ Hooks AVANT le retour anticipé (règle des hooks) : la feuille peut
   // rendre null quand l'étape est illisible, la saisie n'existe alors pas.
@@ -5279,8 +5322,8 @@ export function RepublishProgressSheet({ lang, job, onClose, onSaisieRelance, re
 
         {attenteVolontaire && (
           <div style={{ background: '#F0FDFB', border: '1px solid rgba(13,148,136,0.25)', borderRadius: 12, padding: '10px 12px', fontSize: 12, color: '#1B6E62', lineHeight: 1.5, marginBottom: 12 }}>
-            {fr ? `Recréation prévue vers ${attenteVolontaire}. FillSell attend volontairement 2 à 5 minutes entre le retrait et la recréation, comme le ferait une vraie personne — ce n'est pas un blocage.`
-                : `Recreation planned around ${attenteVolontaire}. FillSell deliberately waits 2 to 5 minutes between removal and recreation, like a real person would — this is not a stall.`}
+            {fr ? "Ancienne annonce retirée, la recréation suit : FillSell espace volontairement ses gestes, comme le ferait une vraie personne — ce n'est pas un blocage."
+                : 'Old listing removed, recreation follows: FillSell deliberately spaces its actions, like a real person would — this is not a stall.'}
           </div>
         )}
         {heureTransition && (
@@ -5347,6 +5390,14 @@ export function RepublishProgressSheet({ lang, job, onClose, onSaisieRelance, re
               {saisieBusy ? (fr ? 'Relance…' : 'Relaunching…') : (fr ? 'Valider et relancer' : 'Save and relaunch')}
             </button>
           </div>
+        )}
+        {/* (15/10 soir) Une question en attente se règle ICI, en un tap — jamais
+            un renvoi vers la file. */}
+        {onRepondre && needsUserOuvrable(job) && (
+          <button type="button" onClick={() => onRepondre(job)}
+            style={{ width: '100%', padding: '11px 0', borderRadius: 12, border: 'none', background: 'linear-gradient(120deg,#2F9E90,#1B6E62)', color: '#fff', fontSize: 13.5, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer', marginBottom: 10 }}>
+            {fr ? 'Répondre' : 'Answer'}
+          </button>
         )}
         {et.cle === 'recreated' && job.listing_url && (
           <a href={job.listing_url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
@@ -9582,8 +9633,8 @@ const StockTab = memo(function StockTab({
               // ordinateur muet depuis plus de 10 min. Annoncer « ~5-7 min »
               // sur une file à l'arrêt depuis des heures, c'est le mensonge le
               // plus visible de l'écran.
-              const estimation=!repubPlafondEtat?.retenue&&!activite.hbMuet
-                ?estimationRepub(activite.restantes):null;
+              // (15/10 soir, Nico) Plus aucune estimation (« ~15-21 min ») : ça fait fuir.
+              const estimation=null;
               // (01/10) La barre du lot : « N sur M » réel, puis un glissement
               // doux vers le suivant pendant que l'actif travaille — jamais au
               // delà. Ordinateur muet : elle s'immobilise (le compteur dit le
@@ -11654,6 +11705,7 @@ const StockTab = memo(function StockTab({
           .find(j=>j.id===repubProgress.id)??repubProgress;
         return(
           <RepublishProgressSheet lang={lang} job={frais} reprise={repubPlafondReprise} onClose={()=>setRepubProgress(null)} onSaisieRelance={validerSaisieRelance}
+            onRepondre={(j)=>{setRepubProgress(null);setNeedsUserJob(j);}}
             item={fichesToutes.get(String(frais.inventaire_id))??null} ctxBarres={ctxBarres} formaterPrix={(n)=>fmt(n)}
             onOuvrirFile={()=>{setRepubProgress(null);setFileOuverte(true);}}/>
         );
@@ -11731,9 +11783,16 @@ const StockTab = memo(function StockTab({
             if(mur)return <BoutonMeConnecter userId={user.id} platform={job.platform} motif={mur} lang={lang} variante="bouton"/>;
             if(natureNeedsUser(job)==='en_cours')return null;
             const style={border:'none',borderRadius:999,padding:'8px 14px',cursor:'pointer',fontFamily:'inherit',fontSize:12,fontWeight:700,color:'#fff',background:'linear-gradient(120deg,#2F9E90,#1B6E62)'};
-            if(job.action==='republish')return <button type="button" style={style} onClick={()=>{fermer();setRepubProgress(job);}}>{fr?'Voir':'See'}</button>;
-            if(needsUserOuvrable(job))return <button type="button" style={style} onClick={()=>{fermer();setNeedsUserJob(job);}}>{fr?'Compléter':'Complete'}</button>;
-            if(job.error)return <button type="button" style={style} onClick={()=>{fermer();setFailJobModal(job);}}>{fr?'Voir':'See'}</button>;
+            // (15/10 soir, Louis — « bloqué sur Voir ») Le bouton mène DIRECTEMENT à
+            // l'action, en une étape, ordinateur comme téléphone : la question
+            // d'abord (mini-éditeur), puis la saisie d'une capture incomplète,
+            // puis l'écran qui porte le geste (lien, relance, abandon). Avant, une
+            // republication ouvrait « où en est ma republication », qui ne
+            // proposait pas de répondre et renvoyait à la file — une boucle.
+            if(needsUserOuvrable(job))return <button type="button" style={style} onClick={()=>{fermer();setNeedsUserJob(job);}}>{fr?'Répondre':'Answer'}</button>;
+            if(job.action==='republish'&&job.status==='needs_user'&&Array.isArray(job.platform_fields?.champs_a_completer)&&job.platform_fields.champs_a_completer.length)
+              return <button type="button" style={style} onClick={()=>{fermer();setRepubProgress(job);}}>{fr?'Compléter':'Complete'}</button>;
+            if(job.error||job.status==='needs_user')return <button type="button" style={style} onClick={()=>{fermer();setFailJobModal(job);}}>{fr?'Régler':'Fix it'}</button>;
             return null;
           }}
           pied={activite?.annulables?.length>0?(

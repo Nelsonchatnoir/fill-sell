@@ -24,6 +24,18 @@ export const CLE_REGLAGE_POIDS_LBC = 'poids_choix';
 export const POIDS_LBC_ESTIMER = 'estimer';
 export const POIDS_LBC_SAISIR = 'saisir';
 export const CHOIX_POIDS_LBC_DEFAUT = POIDS_LBC_ESTIMER;
+// ── (15/10 soir, PAUGUES) QUAND LEBONCOIN EXIGE LE POIDS ─────────────────────
+// Le formulaire Leboncoin PRO rend « Poids du colis* » OBLIGATOIRE et
+// n'estime rien : « Laisser Leboncoin estimer » y bloquait 10 articles sur 11
+// d'un lot. handler-watch note le compte sur preuve
+// (platform_settings.leboncoin.poids_exige) ; le choix devient alors « Saisir
+// le poids », sans alternative — au lot comme à l'unité, AVANT l'envoi.
+export const CLE_POIDS_EXIGE_LBC = 'poids_exige';
+/** Leboncoin exige-t-il le poids pour ce compte ? (preuve notée par le serveur) */
+export function poidsExigeDesReglages(ps) {
+  const l = ps && typeof ps === 'object' ? ps.leboncoin : null;
+  return Boolean(l && typeof l === 'object' && l[CLE_POIDS_EXIGE_LBC]);
+}
 
 /** Un choix valide, ou le défaut (« Laisser Leboncoin estimer »). */
 export function choixPoidsValide(v) {
@@ -32,6 +44,7 @@ export function choixPoidsValide(v) {
 
 /** Le choix retenu d'un objet platform_settings (défaut : estimer). */
 export function choixPoidsDesReglages(ps) {
+  if (poidsExigeDesReglages(ps)) return POIDS_LBC_SAISIR;
   const l = ps && typeof ps === 'object' ? ps.leboncoin : null;
   return choixPoidsValide(l && typeof l === 'object' ? l[CLE_REGLAGE_POIDS_LBC] : null);
 }

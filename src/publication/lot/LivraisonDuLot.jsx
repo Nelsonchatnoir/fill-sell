@@ -39,7 +39,7 @@ const titreDe = (item) => String(item?.titre ?? item?.title ?? "").trim();
 export default function LivraisonDuLot({
   en, ids, parId, moteurs, poidsDe, poserPoids, poserPoidsDuLot, livraison, poserTransporteurs, poserFormat,
   colisVinted = [], choisirColisVinted = () => {}, userId = null,
-  choixPoidsLbc = POIDS_LBC_ESTIMER, choisirPoidsLbc = () => {},
+  choixPoidsLbc = POIDS_LBC_ESTIMER, choisirPoidsLbc = () => {}, poidsExigeLbc = false,
 }) {
   const [poidsLot, setPoidsLot] = useState("");
   const [poidsParArticle, setPoidsParArticle] = useState(false); // le détail, replié
@@ -81,7 +81,8 @@ export default function LivraisonDuLot({
   // (11/10 soir) Leboncoin : « Laisser Leboncoin estimer » (défaut) ou
   // « Saisir le poids ». Seul « Saisir » fait de ce bloc une question (ambre)
   // tant qu'un article Leboncoin n'a pas de poids.
-  const saisirLbc = avecLbc.length > 0 && choixPoidsValide(choixPoidsLbc) === POIDS_LBC_SAISIR;
+  // (15/10 soir, PAUGUES) Compte où Leboncoin EXIGE le poids : pas d'« estimer ».
+  const saisirLbc = avecLbc.length > 0 && (poidsExigeLbc || choixPoidsValide(choixPoidsLbc) === POIDS_LBC_SAISIR);
   const lbcSansPoids = avecLbc.filter((id) => poidsDe(id) == null);
   const lbcAvecPoids = avecLbc.length - lbcSansPoids.length;
   const champPoidsVisible = !avecLbc.length || saisirLbc;
@@ -101,6 +102,11 @@ export default function LivraisonDuLot({
           <div className="fsn-q-t">{en ? "Parcel weight" : "Poids du colis"}</div>
           {avecLbc.length > 0 && (
             <>
+              {poidsExigeLbc ? (
+                <div className="fsn-q-why">{en
+                  ? "Leboncoin requires the parcel weight on your account and does not estimate it: give it here, once for the batch (adjustable item by item). A weight already on an item always goes."
+                  : "Leboncoin exige le poids du colis sur ton compte et ne l'estime pas : indique-le ici, une fois pour le lot (modifiable article par article). Un poids déjà sur la fiche part toujours."}</div>
+              ) : (<>
               <div className="fsn-q-why">{en
                 ? "Without a weight, Leboncoin publishes and estimates the parcel from the category (e.g. 250 g, size S, for a pyjama). A weight already on an item always goes. Your choice is kept for your next listings."
                 : "Sans poids, Leboncoin publie et estime le colis d'après le rayon (ex. 250 g, format S, pour un pyjama). Un poids déjà sur la fiche part toujours. Ton choix est gardé pour tes prochaines publications."}</div>
@@ -114,6 +120,7 @@ export default function LivraisonDuLot({
                   {en ? "Enter the weight" : "Saisir le poids"}
                 </button>
               </div>
+              </>)}
               {!saisirLbc && lbcAvecPoids > 0 && (
                 <div className="fsn-q-why">{en
                   ? `${lbcAvecPoids} Leboncoin item${lbcAvecPoids > 1 ? "s" : ""} already ha${lbcAvecPoids > 1 ? "ve" : "s"} a weight: it goes with the listing.`

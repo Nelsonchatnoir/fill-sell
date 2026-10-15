@@ -34,6 +34,8 @@ import { MOTIFS } from "../utils/connexionPlateformes";
 import BoutonMeConnecter from "./BoutonMeConnecter";
 import { boutiqueConnecteeVinted } from "../../supabase/functions/_shared/boutique-connectee.js";
 import { extensionAMettreAJour } from "../utils/extensionAJour";
+import ChoixBoutiqueFile, { boutiquePrevue } from "./ChoixBoutiqueFile";
+import { useBoutiqueVintedParDefaut } from "../utils/boutiqueVintedParDefaut";
 
 const T = {
   ink: "#10201B", mute: "#5C6560", faint: "#8A8578",
@@ -121,7 +123,9 @@ const ICONES = {
   ordinateur: Monitor, geste: Hand, connexion: Hand, mise_a_jour: Monitor,
 };
 
-function LigneFile({ job, item, situation, lang, geste, boutiques = null }) {
+function LigneFile({ job, item, situation, lang, geste, boutiques = null, boutiqueDefaut = null, supabase = null }) {
+  // (15/10 soir) Publication Vinted d'un compte à plusieurs boutiques : où elle part, et le changer.
+  const prevue = boutiquePrevue(job, boutiques, boutiqueDefaut);
   const photo = item ? premierePhoto(item.photos) : null;
   const titre = (item?.title ?? job?.title ?? "").trim() || (lang === "en" ? "Your item" : "Ton article");
   const Icone = ICONES[situation.motif] ?? null;
@@ -142,8 +146,9 @@ function LigneFile({ job, item, situation, lang, geste, boutiques = null }) {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 3, fontSize: 11.5, color: T.mute, minWidth: 0 }}>
           <PlatformLogo platform={job?.platform} size={13} />
-          <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{libelleAction(job, lang, boutiques)}</span>
+          <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{libelleAction(job, lang, prevue ? null : boutiques)}</span>
         </div>
+        {prevue && <ChoixBoutiqueFile job={job} prevue={prevue} supabase={supabase} lang={lang} />}
         <div style={{ display: "flex", alignItems: "flex-start", gap: 5, marginTop: 5, fontSize: 12, lineHeight: 1.4, color: couleur, fontWeight: situation.groupe === "geste" ? 600 : 500 }}>
           {Icone && <Icone size={13} strokeWidth={2.2} style={{ flexShrink: 0, marginTop: 1.5 }} aria-hidden="true" />}
           <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{situation.raison}</span>
@@ -169,6 +174,8 @@ export default function FileDesJobs({
   // L'autorisation Opla : la MÊME lecture partagée que le Stock et le parcours.
   const aOplaEnAttente = (listeJobs ?? []).some((j) => j.platform === "opla" && j.status === "pending");
   const opla = useOplaAcces({ userId, actif: aOplaEnAttente });
+  const aPublicationVinted = (listeJobs ?? []).some((j) => j.platform === "vinted" && j.action === "publish" && ["pending", "needs_user"].includes(j.status));
+  const boutiqueDefaut = useBoutiqueVintedParDefaut(userId, aPublicationVinted);
   // Une horloge qui avance toutes les 30 s : une pause dont l'heure est passée
   // cesse d'en afficher une, sans attendre la prochaine lecture.
   const [maintenant, setMaintenant] = useState(() => Date.now());
@@ -234,6 +241,8 @@ export default function FileDesJobs({
               situation={situation}
               lang={lang}
               boutiques={ctx.boutiques}
+              boutiqueDefaut={boutiqueDefaut.valeur}
+              supabase={supabase}
               geste={s.cle !== "geste" ? null
                 : situation.motif === "opla" && userId
                   ? <BoutonMeConnecter userId={userId} platform="opla" motif={MOTIFS.AUTORISER_OPLA} lang={lang} variante="bouton" />

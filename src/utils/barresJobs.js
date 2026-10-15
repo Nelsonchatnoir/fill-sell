@@ -22,7 +22,7 @@
 // jamais sur la suite : un job qui n'a pas commencé ne remplit pas la barre.
 // ⛔ AFFICHAGE PUR : aucune logique de job ne change ici.
 
-import { situationJob, nomPlateforme, etapeRepublication, parNosServeurs, heureConnue, libelleAction } from "./fileDesJobs.js";
+import { situationJob, nomPlateforme, etapeRepublication, parNosServeurs, libelleAction, sansEstimation } from "./fileDesJobs.js";
 import { urlsPhotos } from "./photos.js";
 
 // depop (09/10) : dépôt par l'API depuis la page (photos + création + relecture),
@@ -59,7 +59,6 @@ const TEXTES = {
     retraitAncienne: "Retrait de l'ancienne annonce — sa copie est en sécurité…",
     retraitAncienneCourt: "Retrait en cours…",
     remise: (p) => `Remise en ligne de ton annonce sur ${p}…`,
-    remiseVers: (h) => `Hors ligne quelques minutes : remise en ligne vers ${h}…`,
     remiseCourt: "Remise en ligne…",
     finPublie: (p) => `En ligne sur ${p}.`,
     finRepublie: (p) => `De retour en tête sur ${p}.`,
@@ -89,7 +88,6 @@ const TEXTES = {
     retraitAncienne: "Removing the old listing — its copy is safe…",
     retraitAncienneCourt: "Removing…",
     remise: (p) => `Putting your listing back online on ${p}…`,
-    remiseVers: (h) => `Offline for a few minutes: back online around ${h}…`,
     remiseCourt: "Going back online…",
     finPublie: (p) => `Online on ${p}.`,
     finRepublie: (p) => `Back at the top on ${p}.`,
@@ -159,7 +157,8 @@ export function pisteJob(job, ctx = {}) {
   const pf = pfDe(job);
   const etapes = etapesJob(job, lang);
   const erreur = (j) => {
-    try { return (ctx.texteErreur?.(j) || "").trim() || null; } catch { return null; }
+    // (15/10 soir, Nico) Jamais une heure ni une durée promise dans une barre.
+    try { return sansEstimation(ctx.texteErreur?.(j) || "") || null; } catch { return null; }
   };
   const base = {
     cle: String(job?.id ?? `${job?.platform}|${job?.action}`),
@@ -196,8 +195,8 @@ export function pisteJob(job, ctx = {}) {
   // ── En travail ──
   if (job?.action === "republish") {
     if (horsLigne) {
-      const h = heureConnue(pf.next_action_after, maintenant, lang);
-      return { ...base, etape: "remise", etat: "en_cours", depuis: depuisPlausible(pf.deleted_at, maintenant), phrase: h ? T.remiseVers(h) : undefined };
+      // (15/10 soir) Plus de « remise en ligne vers 17:36… » : l'étape, sans heure.
+      return { ...base, etape: "remise", etat: "en_cours", depuis: depuisPlausible(pf.deleted_at, maintenant) };
     }
     if (job.status === "processing") {
       const etape = step === "captured" ? "retrait" : "releve";

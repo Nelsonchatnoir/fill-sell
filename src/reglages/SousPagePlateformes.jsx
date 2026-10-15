@@ -23,6 +23,7 @@ import { useCallback } from 'react';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import EbayCompteSection from '../components/EbayCompteSection';
 import OplaCategoriesMemorisees from './OplaCategoriesMemorisees';
+import BoutiqueVintedParDefaut from './BoutiqueVintedParDefaut';
 import BoutonMeConnecter from '../components/BoutonMeConnecter';
 import { MOTIFS } from '../utils/connexionPlateformes';
 import { ETATS, etatOplaAffiche } from '../utils/veritePlateformes';
@@ -198,6 +199,9 @@ export default function SousPagePlateformes({ c, T }) {
           que s'il y en a. (02/10, sortie d'Opla) Elles ne servent qu'à PUBLIER
           sur Opla : le bloc disparaît à la bascule du 10/10 ; les réponses
           restent en base (platform_settings.opla.categories). */}
+      {/* (15/10 soir) Comptes à plusieurs boutiques Vinted : celle des nouvelles annonces. */}
+      <BoutiqueVintedParDefaut c={c} />
+
       {c.oplaOuverte && <OplaCategoriesMemorisees c={c} T={T} />}
 
       {/* Compte vendeur eBay — la section existante, montée telle quelle :

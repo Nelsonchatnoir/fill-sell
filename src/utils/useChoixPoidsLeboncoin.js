@@ -5,7 +5,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { fusionnerReglages } from './reglagesPlateformes';
-import { CLE_REGLAGE_POIDS_LBC, CHOIX_POIDS_LBC_DEFAUT, choixPoidsValide, choixPoidsDesReglages } from './choixPoidsLeboncoin';
+import { CLE_REGLAGE_POIDS_LBC, CHOIX_POIDS_LBC_DEFAUT, POIDS_LBC_SAISIR, choixPoidsValide, choixPoidsDesReglages, poidsExigeDesReglages } from './choixPoidsLeboncoin';
 
 // ── LECTURE PARTAGÉE (une lecture par compte et par session de l'app) ──────
 // Même forme que le port Depop par défaut (utils/fraisPortDepop.js) : le
@@ -19,7 +19,7 @@ async function lireDepuisBase(userId) {
   try {
     const { data, error } = await supabase.from('profiles').select('platform_settings').eq('id', userId).maybeSingle();
     if (error) return { choix: CHOIX_POIDS_LBC_DEFAUT, lue: false };
-    return { choix: choixPoidsDesReglages(data?.platform_settings), lue: true };
+    return { choix: choixPoidsDesReglages(data?.platform_settings), lue: true, exige: poidsExigeDesReglages(data?.platform_settings) };
   } catch {
     return { choix: CHOIX_POIDS_LBC_DEFAUT, lue: false };
   }
@@ -38,7 +38,7 @@ export function lireChoixPoidsLbc(userId) {
     // Un choix fait à l'écran pendant la lecture l'emporte (jamais écrasé).
     const deja = memoire.get(userId);
     if (deja?.lue) return { choix: deja.choix, lue: true };
-    memoire.set(userId, { choix: r.choix, lue: r.lue, promesse: null });
+    memoire.set(userId, { choix: r.choix, lue: r.lue, exige: Boolean(r.exige), promesse: null });
     prevenir();
     return r;
   });
@@ -52,8 +52,10 @@ export function lireChoixPoidsLbc(userId) {
  * revient en arrière sous le doigt). Rend { ok }.
  */
 export async function enregistrerChoixPoidsLbc(userId, choix) {
-  const c = choixPoidsValide(choix);
-  if (userId) memoire.set(userId, { choix: c, lue: true, promesse: null });
+  // (15/10 soir) Compte où Leboncoin exige le poids : « estimer » n'existe pas.
+  const exige = Boolean(userId && memoire.get(userId)?.exige);
+  const c = exige ? POIDS_LBC_SAISIR : choixPoidsValide(choix);
+  if (userId) memoire.set(userId, { choix: c, lue: true, exige, promesse: null });
   prevenir();
   if (!userId || !UUID.test(String(userId))) return { ok: false };
   const { error } = await fusionnerReglages(['leboncoin'], { [CLE_REGLAGE_POIDS_LBC]: c });
@@ -73,6 +75,7 @@ export function useChoixPoidsLeboncoin(userId) {
   return {
     choix: e?.choix ?? CHOIX_POIDS_LBC_DEFAUT,
     lue: Boolean(e?.lue),
+    exige: Boolean(e?.exige),
     choisir: (c) => enregistrerChoixPoidsLbc(userId, c),
   };
 }
