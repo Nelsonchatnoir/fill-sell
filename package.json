@@ -340,7 +340,8 @@
     "selftest:vente-relevee-meme-cession": "node scripts/vente-relevee-meme-cession-selftest.mjs",
     "selftest:empreintes-budget": "deno run --allow-read --allow-net=deno.land scripts/empreintes-budget-selftest.ts",
     "selftest:extension-autre-compte": "node scripts/extension-autre-compte-selftest.mjs",
-    "selftest:parcours-apres-synchro": "node scripts/parcours-apres-synchro-selftest.mjs"
+    "selftest:parcours-apres-synchro": "node scripts/parcours-apres-synchro-selftest.mjs",
+    "selftest:rapprochement-republication": "node scripts/rapprochement-republication-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

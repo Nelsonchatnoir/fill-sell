@@ -123,7 +123,7 @@ const BUDGET_CPU_MS = 900;
 const CALCUL_MS_MAX = 550;          // le calcul de la passe dans une invocation
 const CALCUL_MS_MIN = 150;          // … même quand les lectures ont coûté cher (au moins une unité)
 const MARGE_MS = 150;               // ce qui n'est pas mesuré (runtime, requêtes, journal)
-const VERSION_TRANCHES = "v20-2";   // un changement du moteur invalide les chantiers d'avant (v20-2 : lecture rangée)
+const VERSION_TRANCHES = "v23-1";   // un changement du moteur invalide les chantiers d'avant (v20-2 : lecture rangée ; v23-1 : republication, genre)
 const URLS_PAR_LECTURE = 2500;
 
 const json = (corps: unknown, status = 200) =>

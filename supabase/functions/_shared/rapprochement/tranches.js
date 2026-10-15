@@ -62,10 +62,10 @@ export function areteDepuis(N, cand, c) {
   return { x: N[i], y: N[j], niveau: NIVEAUX[c[1]], motif: c[2], ph: { best: c[3] }, photo: c[4], wj: c[5],
     conflits: c[6] ? c[6].split(',') : [], sim: { jac: c[7], cont: c[8], communs: c[9] } };
 }
-export function memeCompacte(k, m) { return [k, m.ph.best, m.t.wj, m.t.sim.jac, m.t.sim.cont, m.t.sim.communs]; }
+export function memeCompacte(k, m) { return [k, m.ph.best, m.t.wj, m.t.sim.jac, m.t.sim.cont, m.t.sim.communs, m.rep ? 1 : 0]; }
 export function memeDepuis(N, cand, c) {
   const [i, j] = cand[c[0]];
-  return { x: N[i], y: N[j], ph: { best: c[1] }, t: { wj: c[2], conflits: [], sim: { jac: c[3], cont: c[4], communs: c[5] } } };
+  return { x: N[i], y: N[j], ph: { best: c[1] }, t: { wj: c[2], conflits: [], sim: { jac: c[3], cont: c[4], communs: c[5] } }, rep: c[6] === 1 };
 }
 
 // L'identité d'un graphe dans la passe (ses nœuds, ses actifs) : un garde-fou —

@@ -66,18 +66,27 @@ export function construireNoeuds(donnees, photosDe, { maxPhotos = 6, paresseux =
       vendu: f.statut === 'vendu', ref: f }, (f.photos ?? []).slice(0, maxPhotos), photosDe));
     vus.add('F' + f.id);
   }
+  // (v23) Une personne qui a déjà répondu « Non, deux exemplaires » à « Annonce en
+  // double ? » garde la question : la republication n'est jamais déduite chez elle
+  // (Louis duplique ses articles sur Beebs — mêmes photos, articles distincts).
+  const repPermis = !(donnees.doublons ?? []).some((d) => d.motif === 'annonce_en_double' && d.statut === 'refusee' && d.decide_par === 'utilisateur');
   for (const a of donnees.annonces ?? []) {
     if (!PLATEFORMES_RELEVE.includes(a.platform)) continue;
     if (a.ignoree_par_utilisateur) continue;           // (5) définitif
     if (a.hors_liste || a.ebay_bloque) continue;        // jamais rien sur un relevé non probant
+    // (v23) dn : la clé de la description (rapprochement_v3_lire : desc_h, rendue
+    // seulement pour 20 caractères et plus) ; lot : « lot / plusieurs / au choix » ;
+    // nRef : les photos que l'annonce porte (une photo sans empreinte se voit).
+    const urls = (a.photos ?? []).slice(0, maxPhotos);
     N.push(fab({ id: 'A' + a.id, pf: a.platform, titre: a.titre, prix: a.prix, taille: a.taille, marque: a.marque,
-      vendu: false, ref: a }, (a.photos ?? []).slice(0, maxPhotos), photosDe));
+      vendu: false, ref: a, dn: a.desc_h ?? '', lot: a.desc_lot === true, nRef: urls.length, rp: repPermis }, urls, photosDe));
   }
   return N;
 }
 function mk(n) {
   n.ty = T.types(n.titre); n.co = T.couleurs(n.titre); n.tl = T.sansTailleUnique(T.tailles(n.titre, n.taille)); n.je = T.jetons(n.titre);
   n.di = T.dimensions(n.titre); n.ma = T.marqueUtile(n.marque); n.tn = T.norm(n.titre).replace(/[^a-z0-9 ]/g, '').trim();
+  n.ge = T.genres(n.titre);
   n.emps = Array.isArray(n.emps) ? n.emps.filter(Boolean) : [];
   return n;
 }
@@ -90,6 +99,7 @@ function mkParesseux(n, urls, photosDe) {
   paresse(n, 'tl', () => T.sansTailleUnique(T.tailles(n.titre, n.taille))); paresse(n, 'je', () => T.jetons(n.titre));
   paresse(n, 'di', () => T.dimensions(n.titre)); paresse(n, 'ma', () => T.marqueUtile(n.marque));
   paresse(n, 'tn', () => T.norm(n.titre).replace(/[^a-z0-9 ]/g, '').trim());
+  paresse(n, 'ge', () => T.genres(n.titre));
   paresse(n, 'emps', () => { const e = photosDe(urls); return Array.isArray(e) ? e.filter(Boolean) : []; });
   return n;
 }
@@ -169,6 +179,12 @@ export function evaluer(x, y, S = SEUILS) {
   // (11/10, Louis) Un attribut DISTINCTIF différent (couleur, nombre, taille,
   // dimension) écarte la paire d'office : ni rattachement, ni question — même
   // photo comprise (un vendeur photographie pareil toutes ses couleurs).
+  // (15/10, v23 — P16) « fille » contre « garçon » (« femme » contre « homme ») :
+  // un conflit — jamais fort, jamais un concurrent plausible —, sauf quand
+  // plusieurs photos sont identiques (une basket unisexe rangée « fille » ici,
+  // « garçon » là). Mesuré sur 9 comptes : 2 forts douteux retirés, aucun
+  // « oui » de la personne perdu.
+  if (photo !== 'multi' && T.genresOpposes(x.ge, y.ge)) { c.push('genre'); t.conflits = c; }
   const distinctifs = c.filter((k) => k === 'couleur' || k === 'nombre' || k === 'taille' || k === 'dimensions');
   if (distinctifs.length) {
     return { niveau: 'rien', motif: 'attribut_distinctif_' + distinctifs.join('_'), ph, photo, prixR, sim: t.sim, wj: t.wj, conflits: c };
@@ -190,6 +206,37 @@ export function evaluer(x, y, S = SEUILS) {
   return { niveau, motif, ph, photo, prixR, ...t };
 }
 
+
+// ── (15/10, v23 — P16) LA REPUBLICATION : UNE ANNONCE PUBLIÉE DEUX FOIS ─────
+// Deux annonces d'une MÊME plateforme de relevé sont le même objet quand TOUT
+// est identique : chaque photo (au moins deux, toutes lues, autant de chaque
+// côté, appariées à ≤ 2), le titre, la description (clé, 20 caractères et
+// plus), le prix ; ni « lot / plusieurs / au choix », ni quantité > 1.
+// Jamais le titre seul, jamais titre + prix (R12) : la photo ET le texte de
+// l'annonce, entiers. Chez ferreirasab : 96 paires Leboncoin (même description,
+// publiées le 11/09 puis le 30/09), 1 chez Louis, 0 ailleurs (9 comptes).
+// La base revérifie le texte, le prix et la description avant d'écrire
+// (rapprochement_republication_prouvee) et note le lien (objet_de) : à la
+// vente, les DEUX annonces sont retirées.
+// Le titre normalisé EXACTEMENT comme la base (rapprochement_texte_norm) : le moteur
+// n'envoie jamais une republication que la base refuserait (l'annonce resterait hors stock).
+const DE_SQL = 'ÀÂÄÁÃÅÉÈÊËÍÌÎÏÓÒÔÖÕÚÙÛÜÇÑŸàâäáãåéèêëíìîïóòôöõúùûüçñÿœŒæÆ';
+const EN_SQL = 'AAAAAAEEEEIIIIOOOOOUUUUCNYaaaaaaeeeeiiiiooooouuuucnyoOaA';
+export const normCommeLaBase = (t) => [...String(t ?? '')].map((c) => { const i = DE_SQL.indexOf(c); return i >= 0 ? EN_SQL[i] : c; }).join('').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+export function republication(x, y, ph) {
+  if (x.pf !== y.pf || !PLATEFORMES_RELEVE.includes(x.pf)) return false;
+  if (!x.rp || !y.rp) return false;
+  if (x.ref?.ignoree || y.ref?.ignoree) return false;
+  if (x.lot || y.lot) return false;
+  if ((Number(x.ref?.quantite ?? 1) || 1) > 1 || (Number(y.ref?.quantite ?? 1) || 1) > 1) return false;
+  if (!(Number(x.prix) > 0) || Number(x.prix) !== Number(y.prix)) return false;
+  if (!x.tn || x.tn !== y.tn) return false;
+  const tx = normCommeLaBase(x.titre); if (!tx || tx !== normCommeLaBase(y.titre)) return false;
+  if (!x.dn || x.dn !== y.dn) return false;
+  const n = x.emps.length;
+  if (n < 2 || y.emps.length !== n || (x.nRef ?? n) !== n || (y.nRef ?? n) !== n) return false;
+  return (ph?.liste ?? []).filter((d) => d <= 2).length === n;
+}
 
 // ── LES PAIRES CANDIDATES : index des photos (tiroirs) et des mots ──────────
 // Mesuré sur Corinne (951 nœuds, 16 236 lectures) : 420 paires de nœuds ont
@@ -427,7 +474,7 @@ export function paireAretes(N, cand, k0, k1, S = SEUILS, indices = null) {
     if (dPhoto(x.emps[0], y.emps[0]) > S.proche) continue;
     const ph = comparerPhotos(x.emps, y.emps); if (ph.best > S.plausible) continue;
     const t = texte(x, y);
-    if (!t.conflits.length && (t.sim.cont >= 0.5 || t.wj >= 0.4)) { memes.push({ x, y, ph, t }); if (indices) indices.memes.push(k); }
+    if (!t.conflits.length && (t.sim.cont >= 0.5 || t.wj >= 0.4)) { memes.push({ x, y, ph, t, rep: republication(x, y, ph) }); if (indices) indices.memes.push(k); }
   }
   return { aretes, memes };
 }
@@ -471,15 +518,54 @@ export function rapprocher(N, { S = SEUILS, forces = [], actifs = null, poidsDe 
   const plausible = (e) => e.ph.best <= S.plausible && !e.conflits.length && (e.sim.cont >= 0.5 || e.wj >= 0.4);
   const partagee = new Map();
   const pairesMemePlateforme = [];
-  for (const { x, y, ph, t } of memes) {
+  // (v23) LA REPUBLICATION : les deux annonces sont UN objet (rfind = son
+  // représentant) — elle ne fait ni « deux exemplaires », ni « Annonce en double ? ».
+  const repParent = new Map();
+  const rfind = (a) => { while (repParent.has(a) && repParent.get(a) !== a) a = repParent.get(a); return a; };
+  const republicationsPaires = [];
+  for (const { x, y, ph, t, rep } of memes) {
+    if (rep) {
+      for (const n of [x, y]) if (!repParent.has(n.id)) repParent.set(n.id, n.id);
+      const ra = rfind(x.id), rb = rfind(y.id); if (ra !== rb) repParent.set(rb, ra);
+      republicationsPaires.push({ x, y, ph, t });
+      continue;
+    }
     for (const [a, b] of [[x, y], [y, x]]) partagee.set(a.id, (partagee.get(a.id) || []).concat(b.id));
     pairesMemePlateforme.push({ x, y, ph, t });
   }
+  // (v23) UN VRAI SECOND EXEMPLAIRE se voit AILLEURS : si une autre plateforme
+  // porte, pour ces annonces, deux objets distincts (deux fiches Vinted
+  // jumelles…) ou une quantité > 1, ce n'est pas une republication — la paire
+  // redevient « deux exemplaires » (la question).
+  if (republicationsPaires.length) {
+    const membresRep = new Map();
+    for (const id of repParent.keys()) { const r = rfind(id); if (!membresRep.has(r)) membresRep.set(r, new Set()); membresRep.get(r).add(id); }
+    const autres = new Map(); const annules = new Set();
+    for (const e of aretes) if (plausible(e)) for (const [a, b] of [[e.x, e.y], [e.y, e.x]]) {
+      if (!repParent.has(a.id) || b.pf === a.pf) continue;
+      const r = rfind(a.id);
+      if (!autres.has(r)) autres.set(r, new Map()); const m = autres.get(r);
+      if (!m.has(b.pf)) m.set(b.pf, new Set()); m.get(b.pf).add(rfind(b.id));
+      if ((Number(b.ref?.quantite ?? 1) || 1) > 1 || (partagee.get(b.id) ?? []).length) annules.add(r);
+    }
+    for (const [r, m] of autres) for (const s of m.values()) if (s.size > 1) annules.add(r);
+    if (annules.size) {
+      const garder = [];
+      for (const p of republicationsPaires) {
+        if (!annules.has(rfind(p.x.id))) { garder.push(p); continue; }
+        for (const [a, b] of [[p.x, p.y], [p.y, p.x]]) partagee.set(a.id, (partagee.get(a.id) || []).concat(b.id));
+        pairesMemePlateforme.push({ x: p.x, y: p.y, ph: p.ph, t: p.t });
+      }
+      for (const r of annules) for (const id of membresRep.get(r) ?? []) repParent.delete(id);
+      republicationsPaires.length = 0; republicationsPaires.push(...garder);
+    }
+  }
+  // les concurrents se comptent par OBJET : deux republications d'une annonce sont un seul concurrent
   const plaus = new Map();
-  for (const e of aretes) if (plausible(e)) for (const [a, b] of [[e.x, e.y], [e.y, e.x]]) { const k = a.id + '|' + b.pf; plaus.set(k, (plaus.get(k) || 0) + 1); }
+  for (const e of aretes) if (plausible(e)) for (const [a, b] of [[e.x, e.y], [e.y, e.x]]) { const k = a.id + '|' + b.pf; if (!plaus.has(k)) plaus.set(k, new Set()); plaus.get(k).add(rfind(b.id)); }
   for (const e of aretes) {
     if (e.niveau !== 'fort') continue;
-    const p1 = plaus.get(e.x.id + '|' + e.y.pf) || 0, p2 = plaus.get(e.y.id + '|' + e.x.pf) || 0;
+    const p1 = plaus.get(e.x.id + '|' + e.y.pf)?.size || 0, p2 = plaus.get(e.y.id + '|' + e.x.pf)?.size || 0;
     if (p1 > 1 || p2 > 1) { e.niveau = 'doute'; e.motif = 'ambigu_plusieurs'; }
     else if (partagee.has(e.x.id) || partagee.has(e.y.id)) { e.niveau = 'doute'; e.motif = 'meme_photo_deux_annonces_meme_plateforme'; }
   }
@@ -505,11 +591,15 @@ export function rapprocher(N, { S = SEUILS, forces = [], actifs = null, poidsDe 
   const membres = new Map(N.map((n) => [n.id, [n]]));
   const find = (a) => { while (parent.get(a) !== a) { parent.set(a, parent.get(parent.get(a))); a = parent.get(a); } return a; };
   const fortes = aretes.filter((e) => e.niveau === 'fort').sort((a, b) => (b.force ? 1 : 0) - (a.force ? 1 : 0) || a.ph.best - b.ph.best);
-  for (const e of fortes) {
+  // (v23) les republications d'abord (un objet), puis les preuves et les arêtes fortes
+  const liensRep = republicationsPaires.map(({ x, y, ph }) => ({ x, y, niveau: 'fort', motif: 'republication', ph, rep: true }));
+  for (const e of liensRep.concat(fortes)) {
     const ra = find(e.x.id), rb = find(e.y.id); if (ra === rb) continue;
-    const pa = new Set(membres.get(ra).map((n) => n.pf));
-    if (membres.get(rb).some((n) => pa.has(n.pf))) { e.niveau = 'doute'; e.motif = 'conflit_de_groupe'; continue; }
-    parent.set(rb, ra); membres.set(ra, membres.get(ra).concat(membres.get(rb))); membres.delete(rb);
+    const ma = membres.get(ra);
+    // deux annonces d'une plateforme dans un groupe : seulement deux republications du même objet
+    const heurte = membres.get(rb).some((n) => ma.some((m) => m.pf === n.pf && !(repParent.has(n.id) && rfind(m.id) === rfind(n.id))));
+    if (heurte) { e.niveau = 'doute'; e.motif = 'conflit_de_groupe'; continue; }
+    parent.set(rb, ra); membres.set(ra, ma.concat(membres.get(rb))); membres.delete(rb);
   }
   // 5. décision par GROUPE (un article)
   const doutesDe = new Map();
@@ -537,7 +627,7 @@ export function rapprocher(N, { S = SEUILS, forces = [], actifs = null, poidsDe 
   //    même photo, c'est un vendeur de lots (option sûre : rien).
   const doubles = pairesMemePlateforme.filter(({ x, y }) => (partagee.get(x.id) || []).length === 1 && (partagee.get(y.id) || []).length === 1
     && !forcees.has(cle(x.id, y.id)));
-  return { aretes, dec, membres, find, doubles, ms: Date.now() - t0, partagee };
+  return { aretes, dec, membres, find, doubles, ms: Date.now() - t0, partagee, rfind, republicationsPaires };
 }
 
 // ── LE PLAN D'ÉCRITURE (ce que rapprochement_v3_appliquer exécute) ──────────
@@ -591,6 +681,12 @@ export function planifier(donnees, N, R, { mode = 'normal' } = {}) {
   const out = [];
   const vus = new Set();
   const fichesPlanifiees = new Set();
+  // (v23) les annonces qui sont la republication d'une autre du MÊME groupe —
+  // la base ne laisse deux annonces d'une plateforme sur une fiche que pour elles,
+  // après avoir revérifié texte, prix et description (rapprochement_republication_prouvee).
+  const enRep = new Set();
+  for (const { x, y } of R.republicationsPaires ?? []) if (R.find(x.id) === R.find(y.id)) { enRep.add(x.id); enRep.add(y.id); }
+  const republicationsDu = (annonces) => annonces.filter((a) => enRep.has('A' + a.id)).map((a) => a.id);
   // (a) les groupes
   for (const [, g] of R.membres) {
     const d0 = R.dec.get(g[0].id); if (!d0) continue;
@@ -599,7 +695,11 @@ export function planifier(donnees, N, R, { mode = 'normal' } = {}) {
       const base = parId.get(d0.base); const fiche = idFiche(base);
       for (const a of annonces) {
         if (String(a.inventaire_id ?? '') === String(fiche)) continue;       // déjà là
-        if (!a.inventaire_id) { out.push({ type: 'attacher', annonce: a.id, fiche, motif: 'photo_identique', preuve: { regle: 'rapprochement_v3', groupe: g.map((m) => m.id) } }); continue; }
+        if (!a.inventaire_id) {
+          const rep = enRep.has('A' + a.id) && annonces.some((b) => b !== a && b.platform === a.platform);
+          out.push({ type: 'attacher', annonce: a.id, fiche, motif: rep ? 'republication' : 'photo_identique', preuve: { regle: 'rapprochement_v3', groupe: g.map((m) => m.id) } });
+          continue;
+        }
         // (normal) seulement vers la fiche Vinted nouvelle qui a rouvert l'annonce
         const versVintedNouvelle = mode === 'normal' && aJuger.has(d0.base) && rouvertes.has('A' + a.id);
         if ((mode === 'reparation' || versVintedNouvelle) && autoDecidee(a)) {
@@ -607,6 +707,8 @@ export function planifier(donnees, N, R, { mode = 'normal' } = {}) {
           if (f && String(f.origine ?? '').startsWith('releve_')) {
             out.push({ type: 'fusionner', annonce: a.id, absorbe: f.id, garde: fiche,
               ...(versVintedNouvelle ? { portee: 'vinted_nouvelle' } : {}),
+              // (v23) l'article importé d'une republication rejoint la base qui porte sa sœur
+              ...(enRep.has('A' + a.id) && annonces.some((b) => b !== a && b.platform === a.platform) ? { republication: true } : {}),
               preuve: { regle: 'rapprochement_v3', groupe: g.map((m) => m.id), ...(versVintedNouvelle ? { vinted_nouvelle: fiche } : {}) } });
             fichesPlanifiees.add(String(f.id));
           }
@@ -618,7 +720,7 @@ export function planifier(donnees, N, R, { mode = 'normal' } = {}) {
       // (une annonce rouverte par une fiche Vinted ne refait pas un groupe sans elle)
       const ouvertes = annonces.filter((a) => ouverte(parId.get('A' + a.id)) && !rouvertes.has('A' + a.id));
       if (!ouvertes.length) continue;
-      out.push({ type: 'groupe', annonces: annonces.map((a) => a.id), preuve: { regle: 'rapprochement_v3' } });
+      out.push({ type: 'groupe', annonces: annonces.map((a) => a.id), republications: republicationsDu(annonces), preuve: { regle: 'rapprochement_v3' } });
       for (const a of annonces) if (a.inventaire_id) fichesPlanifiees.add(String(a.inventaire_id));
       continue;
     }
@@ -630,7 +732,7 @@ export function planifier(donnees, N, R, { mode = 'normal' } = {}) {
       const d = seulementRouvertes ? d0.doutes.find((x) => aJuger.has(x.autre.id)) : d0.doutes[0];
       if (!d) continue;
       // l'article du groupe = la première annonce (les autres s'y rattachent)
-      out.push({ type: 'a_verifier', annonces: annonces.map((a) => a.id), candidat: cible(d.autre), motif: d.e.motif,
+      out.push({ type: 'a_verifier', annonces: annonces.map((a) => a.id), republications: republicationsDu(annonces), candidat: cible(d.autre), motif: d.e.motif,
         preuves: { ...preuvesDe(d), candidats_total: d0.doutes.length, autre: d.autre.id } });
       for (const a of annonces) if (a.inventaire_id) fichesPlanifiees.add(String(a.inventaire_id));
       continue;

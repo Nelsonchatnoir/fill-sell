@@ -249,6 +249,18 @@ export function attributDistinctif(titreA, titreB) {
   return null;
 }
 
+// (15/10, v23 — P16) LE GENRE DIT PAR LE TITRE : « fille » contre « garçon »,
+// « femme » contre « homme » — mesuré chez ferreirasab : « Sweat fille Canada
+// House » contre « T-shirt garçon… » jugés FORTS sur une photo de catalogue.
+// « mixte », « unisexe » : on ne juge pas.
+export function genres(titre) {
+  const s = ' ' + norm(titre).replace(/[^a-z0-9]+/g, ' ') + ' ';
+  if (/ (mixte|unisexe|unisex) /.test(s)) return 'X';
+  const f = / (fille|filles|femme|femmes|girl|girls) /.test(s), m = / (garcon|garcons|homme|hommes|boy|boys) /.test(s);
+  return f && !m ? 'F' : m && !f ? 'M' : '';
+}
+export const genresOpposes = (a, b) => (a === 'F' && b === 'M') || (a === 'M' && b === 'F');
+
 export function couleursCompatibles2(A, B) {
   if (!A.set.size || !B.set.size || A.multi || B.multi) return null;
   for (const a of A.set) { if (B.set.has(a)) return true; for (const v of VOISINES[a] || []) if (B.set.has(v)) return true; }
