@@ -40,14 +40,17 @@ const iPointC = GPJ.indexOf('// Point C : seule la file d\'exécution réserve.'
 const regle = GPJ.slice(iRegle, iPointC);
 ok(iRegle > 0 && iRegle < iPointC, 'la règle tourne AVANT la réservation (Point C)');
 ok(/\.eq\("action", "republish"\)\.in\("status", \["pending", "processing"\]\)\s*\.eq\("platform_fields->>republish_step", "deleted"\)/.test(regle), 'même lecture que l\'extension : republish, pending/processing, étape deleted');
-ok(/String\(h\["platform"\]\) === String\(j\.platform\) && String\(h\["id"\]\) !== String\(j\.id\)/.test(regle), 'même plateforme, un AUTRE job');
+// (15/10) même plateforme d'abord ; Leboncoin, Beebs et Depop forment un groupe (_shared/retenue-hors-ligne.js).
+ok(/const frere = frereHorsLigne\(j, /.test(regle)
+  && /String\(h\?\.id \?\? ''\) !== id/.test(readFileSync(new URL('../supabase/functions/_shared/retenue-hors-ligne.js', import.meta.url), 'utf8')),
+  'même plateforme (ou son groupe), un AUTRE job');
 ok(/String\(pfJ\["republish_step"\] \?\? ""\) !== "captured"/.test(regle), 'seulement l\'étape « captured » (le retrait qui allait partir)');
 ok(/if \(prec && typeof prec === "object" && String\(prec\["job"\] \?\? ""\) === String\(frere\["id"\]\)\) continue; \/\/ déjà dit/.test(regle), 'motif écrit UNE fois (pas une écriture par passage)');
 ok(/jobs_reservations_extension"\)\.delete\(\)\.eq\("job_id", String\(j\.id\)\)/.test(regle), 'réservation remise à zéro : jamais « servie 60 fois »');
 ok(/if \(retenus\.size\) out = out\.filter\(\(j\) => !retenus\.has\(String\(j\.id\)\)\);/.test(regle), 'la tâche retenue n\'est PAS servie');
 ok(/\.eq\("id", j\.id as string\)\.eq\("status", "pending"\)/.test(regle), 'écriture en compare-and-swap sur pending');
 ok(/selling-restriction/.test(regle) && /Vinted a restreint les mises en vente de ton compte/.test(GPJ), 'restriction Vinted du compte nommée (jamais « rien à faire »)');
-ok(/catch \(e\) \{\n\s+console\.warn\(`\[get-pending-jobs\] retenue « une annonce hors ligne »/.test(regle), 'lecture impossible → servi comme avant (l\'extension garde sa garde)');
+ok(/catch \(e\) \{\n\s+if \(String\(\(e as Error\)\?\.message \?\? e\) !== "__rien_a_retenir__"\) \{\n\s+console\.warn\(`\[get-pending-jobs\] retenue « une annonce hors ligne »/.test(regle), 'lecture impossible → servi comme avant (l\'extension garde sa garde)');
 
 console.log('\n2. Ce qui est servi ne s\'écrit pas');
 const fn = GPJ.slice(GPJ.indexOf('function pfAPersister('), GPJ.indexOf('function pfAPersister(') + 600);

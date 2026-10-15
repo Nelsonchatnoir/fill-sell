@@ -332,7 +332,7 @@ function pfAPersister(pf: Record<string, unknown>): Record<string, unknown> {
 function messageRetenueHorsLigne(titre: string, restriction: boolean): string {
   const t = titre ? `ton annonce « ${titre} »` : "ton annonce retirée";
   return `En attente : ${t} a été retirée et n'est pas encore revenue en ligne. ` +
-    "Cette republication attend qu'elle soit recréée, pour ne jamais laisser deux annonces hors ligne. Ton annonce à toi est toujours en ligne." +
+    "Les autres republications attendent sa remise en ligne, pour ne jamais laisser deux annonces hors ligne. Rien n'a été retiré." +
     (restriction ? " Vinted a restreint les mises en vente de ton compte : ouvre vinted.fr pour voir ce que Vinted demande ; tout repartira seul une fois la restriction levée." : "");
 }
 

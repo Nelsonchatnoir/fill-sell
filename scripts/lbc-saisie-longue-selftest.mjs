@@ -58,7 +58,8 @@ ok(/for \(const d of DIAGNOSTICS_SAISIE\.splice\(0\)\) warnings\.push\(`descript
 
 console.log("4. Une republication rejoue l'annonce d'origine, « Autre » compris");
 ok(/REJOUE_ANNONCE_D_ORIGINE = fields\.republish_recreation === true \|\| fields\.republish_step != null;/.test(src), "drapeau posé à l'entrée du remplissage");
-ok(/estValeurGenerique\(rawValue\) && !estValeurGenerique\(prefilled\) && !REJOUE_ANNONCE_D_ORIGINE\)/.test(src), "la règle du repli générique cède sur une republication");
+// (15/10, 0.6.113) + elle cède aussi devant une marque pré-remplie que l'article ne nomme pas.
+ok(/estValeurGenerique\(rawValue\) && !estValeurGenerique\(prefilled\) && !REJOUE_ANNONCE_D_ORIGINE( && !marquePreRemplieNonCitee)?\)/.test(src), "la règle du repli générique cède sur une republication");
 
 console.log("5. La description est relue juste avant le dépôt, sans jamais bloquer");
 {

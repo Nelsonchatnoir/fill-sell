@@ -24,7 +24,8 @@ let n = 0;
 const ok = (cond, msg) => { assert.ok(cond, msg); n++; console.log(`  ✓ ${msg}`); };
 
 console.log('0. Version');
-ok(manifest.version === '0.6.112', 'manifest 0.6.112 (contient la 0.6.111, jamais téléversée)');
+// (15/10 soir) La 0.6.113 contient la 0.6.112 (téléversée, en examen) : 0.6.112 OU PLUS.
+ok((() => { const v = String(manifest.version).split('.').map(Number); return v[0] === 0 && v[1] === 6 && v[2] >= 112; })(), 'manifest 0.6.112 ou plus (contient la 0.6.111, jamais téléversée)');
 
 console.log('H. Commande Vinted annulée relue une fois');
 ok(/const annuleesFaites = new Set\(etat\.vinted\?\.annulees_v1 \?\? \[\]\);/.test(bg), 'mémoire à part des commandes annulées relues (annulees_v1)');
