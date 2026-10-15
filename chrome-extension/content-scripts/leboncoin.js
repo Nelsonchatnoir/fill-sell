@@ -3900,7 +3900,9 @@ function etatLeboncoinExactParmi(candidats, grille) {
     }
     if (v === "neuf" || v === "etat neuf") { if (etatNeuf) return etatNeuf; continue; }
     if (v === "satisfaisant" || v === "correct" || v === "etat correct" || v === "etat satisfaisant") {
-      const sat = parNorm.get("etat satisfaisant");
+      // (15/10, P8 — Louis 150c7da9) La grille « Électronique » nomme ce niveau
+      // « État satisfaisant - fonctionnel » (même code etatsatisfaisant).
+      const sat = parNorm.get("etat satisfaisant") ?? parNorm.get("etat satisfaisant - fonctionnel");
       if (sat) return sat;
     }
   }
@@ -4235,10 +4237,18 @@ async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, {
       ? trouverOptionEtatExacte(scope, optionSelector, rawList)
       : findOptionCascade(scope, optionSelector, rawValue, { sizeField, composants });
     let valeurPosee = rawValue;
-    if (!match && !prefilled) {
+    // (15/10, P8 — Ornella 495e9ffc « Canon ») LA MARQUE est une exception à la
+    // règle du pré-rempli (13/08, établie sur Type/Produit) : une marque devinée
+    // par Leboncoin qui n'est PAS celle de l'article est fausse — conservée, elle
+    // a valu deux refus de modération. Notre marque hors liste et un pré-rempli
+    // différent : l'option générique « Autre » si la liste l'offre (vrai : une
+    // autre marque) — jamais « Sans marque » (l'article en a une). Sans « Autre »
+    // visible, le pré-rempli reste (comportement d'avant) et le journal le dit.
+    const marqueDevineeFausse = fieldName === "marque" && prefilled && !prefilledMatchesTarget(prefilled, rawValue);
+    if (!match && (!prefilled || marqueDevineeFausse)) {
       // Pas d'option pour notre valeur et rien à préserver : replis génériques
       // éventuels (marque → « Autre »/« Sans marque ») avant d'abandonner.
-      for (const fb of fallbackValues) {
+      for (const fb of (marqueDevineeFausse ? fallbackValues.filter((v) => !/^sans marque$/i.test(String(v))) : fallbackValues)) {
         match = findOptionCascade(scope, optionSelector, fb, { sizeField });
         if (match) {
           valeurPosee = fb;
