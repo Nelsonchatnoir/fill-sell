@@ -8,6 +8,7 @@ import { createPortal } from 'react-dom';
 // varsIgnorePattern '^[A-Z_]' exempte tout identifiant capitalisé, donc un
 // import de composant orphelin passe sous le radar — vérifié à la main.
 import { Check, ChevronRight, AlertTriangle, Pause } from 'lucide-react';
+import { useExtensionAutreCompte, texteExtensionAutreCompte } from '../utils/extensionAutreCompte';
 import { useTranslation } from '../i18n/useTranslation';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { track } from '../analytics/analytics';
@@ -2797,7 +2798,7 @@ function StatsPlateformesPopup({ lang, item, stats = [], onClose }) {
   );
 }
 
-export function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 'stock_empty', onDone, repubEnVol = 0, repubRepriseA = null, onVoirArticles = null, boutiquesVinted = [], rechargerBoutiques = null, variante = 'carte', registerLancer = null, registerEtat = null }) {
+export function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 'stock_empty', onDone, repubEnVol = 0, repubRepriseA = null, onVoirArticles = null, boutiquesVinted = [], rechargerBoutiques = null, variante = 'carte', registerLancer = null, registerEtat = null, extensionAutreCompte = false }) {
   const fr = lang !== 'en';
   // (Le message de blocage reste UNIQUE, tous supports — cf. MESSAGE_BLOCAGE,
   // doctrine du 09/08. Le CTA d'installation sur stock vide — l'e-mail en un
@@ -3418,6 +3419,16 @@ export function VintedDressingSync({ lang, user, isNative, extensionStatus, sour
     }
     setMessage(null);
     clicAtRef.current = Date.now();
+
+    // ── (15/10, P18 — Stéphanie) L'EXTENSION DE CE NAVIGATEUR EST SUR UN AUTRE
+    // COMPTE : le chemin direct relèverait le dressing de CET AUTRE compte (le
+    // relais ne dit pas qui demande) et l'app attendrait un relevé qui n'arrive
+    // jamais. Rien ne part ; l'appui dit le geste (utils/extensionAutreCompte.js).
+    if (extensionAutreCompte) {
+      setMessage({ ton: 'orange', texte: texteExtensionAutreCompte(lang, user?.email ?? null).texte });
+      logSyncClick('refusée', 'extension_autre_compte');
+      return;
+    }
 
     // ── Routage (arbitrage Nico, 05/08) : chemin DIRECT si une extension
     // capable répond dans CE navigateur — instantané, aucun détour par la
@@ -7486,6 +7497,18 @@ const StockTab = memo(function StockTab({
     return a >= b ? extensionStatus.lastSeenAt : extSeenRelu;
   })();
   const extFraicheur = fraicheurExtension(extLastSeenBest, extSessionRejetee);
+  // (15/10, P18) L'extension qui répond dans CE navigateur ne travaille pas
+  // pour ce compte (cas Stéphanie) : constaté une fois par page, journalisé.
+  const extensionAutreCompte = useExtensionAutreCompte({
+    isNative, userId: user?.id ?? null,
+    onConstat: (c) => {
+      if (!user?.id) return;
+      supabase.from('usage_logs').insert({
+        user_id: user.id, feature: 'extension_autre_compte',
+        metadata: { jamais_vue: c?.jamaisVue === true, vue_il_y_a_min: c?.vueIlYaMs != null ? Math.round(c.vueIlYaMs / 60000) : null },
+      }).then(({ error }) => { if (error) console.warn('[extension_autre_compte] non journalisé:', error.message); });
+    },
+  });
   // Lecture du marqueur de rejet : UNE fois au montage, sans attendre que la
   // fraîcheur se dégrade — une extension qui boucle sur le 401 ne stampe plus
   // last_seen, mais pendant la première heure l'état resterait « vivante » et
@@ -8668,6 +8691,10 @@ const StockTab = memo(function StockTab({
     const fr = lang === 'fr';
     const out = [];
     const stockVide = (stock?.length ?? 0) === 0;
+    if (extensionAutreCompte) {
+      const t = texteExtensionAutreCompte(lang, user?.email ?? null);
+      out.push({ cle: 'ext-autre-compte', icone: KeyRound, ton: 'regler', titre: t.titre, texte: t.texte });
+    }
     if (isMobile && !stockVide) {
       if (extFraicheur.etat === 'session_expiree') {
         out.push({ cle: 'ext-session', icone: KeyRound, ton: 'regler',
@@ -9615,6 +9642,7 @@ const StockTab = memo(function StockTab({
                   variante="ligne"
                   registerLancer={(fn)=>{ lancerVintedRef.current=fn; }}
                   registerEtat={noterEtatVinted}
+                  extensionAutreCompte={extensionAutreCompte}
                 />
               }
               alertes={alertesCompte}
@@ -9635,6 +9663,7 @@ const StockTab = memo(function StockTab({
                 onVoirArticles={()=>galerieRef.current?.scrollIntoView({behavior:'smooth',block:'start'})}
                 boutiquesVinted={boutiquesVinted}
                 rechargerBoutiques={rechargerBoutiques}
+                extensionAutreCompte={extensionAutreCompte}
               />
             </>
           )}
