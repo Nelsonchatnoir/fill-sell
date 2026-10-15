@@ -129,7 +129,9 @@ export function forcesDe(donnees) {
   }
   for (const d of donnees.doublons ?? []) {
     // (11/10) Une paire close par la règle d'attribut distinctif vaut un « non ».
-    if ((d.decide_par !== 'utilisateur' && d.decide_par !== 'regle') || d.statut !== 'refusee') continue;
+    // (15/10) Une paire close par l'IA (« deux pièces », rapprochement-ia) aussi :
+    // la question n'est jamais reposée.
+    if ((d.decide_par !== 'utilisateur' && d.decide_par !== 'regle' && d.decide_par !== 'ia') || d.statut !== 'refusee') continue;
     const ga = [rep(d.garde), ...(parFiche.get(String(d.garde)) ?? []).map((a) => 'A' + a.id)].filter(Boolean);
     const gb = [rep(d.absorbe), ...(parFiche.get(String(d.absorbe)) ?? []).map((a) => 'A' + a.id)].filter(Boolean);
     for (const x of ga) for (const y of gb) if (x !== y) out.push([x, y, 'non', 'refus_utilisateur']);
@@ -761,10 +763,27 @@ export function planifier(donnees, N, R, { mode = 'normal' } = {}) {
   //     a été décidée ci-dessus sont couverts ; ceux d'un article relié à rien
   //     (fiche sans annonce vivante) rentrent au stock.
   if (mode === 'reparation') {
+    // (15/10, point 2 — jocabroc, qui supprime et republie ses annonces Leboncoin)
+    // Une fiche « à vérifier » sans annonce vivante ne rentre PAS au stock quand
+    // une autre fiche vivante du compte porte exactement son titre : elle y
+    // ferait un doublon visible (9 fiches mortes, 5 avec un homonyme exact). Elle
+    // reste « à vérifier », la personne tranche. Le titre ne rapproche rien ici :
+    // il RETIENT seulement.
+    const titresVivants = new Map();
+    const estVivante = (g) => !g.fusionne_dans && ['stock', 'vendu'].includes(g.statut);
+    for (const g of donnees.fiches ?? []) {
+      if (!estVivante(g)) continue;
+      const k = normCommeLaBase(g.titre); if (!k) continue;
+      titresVivants.set(k, (titresVivants.get(k) ?? 0) + 1);
+    }
     for (const f of donnees.fiches ?? []) {
       if (!f.a_verifier_auto || fichesPlanifiees.has(String(f.id))) continue;
       const aNoeud = N.some((n) => estAnnonce(n) && String(n.ref.inventaire_id ?? '') === String(f.id));
-      if (!aNoeud) out.push({ type: 'entrer_stock', fiche: f.id, annonce: null });
+      if (aNoeud) continue;
+      const k = normCommeLaBase(f.titre);
+      const autres = k ? (titresVivants.get(k) ?? 0) - (estVivante(f) ? 1 : 0) : 0;
+      if (autres > 0) continue;
+      out.push({ type: 'entrer_stock', fiche: f.id, annonce: null });
     }
   }
   // Ordre d'exécution : ce qui prouve d'abord, puis les doutes, puis les créations.
