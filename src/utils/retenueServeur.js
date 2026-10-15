@@ -27,6 +27,10 @@ export const RETENUE_BOUTIQUE_INCONNUE = "boutique_origine_inconnue";
 // deviner (Beebs : avant la 0.6.83, le pré-vol demandait la taille à l'IA —
 // ceinture « L » de nivake03 retirée, puis bloquée à la recréation).
 export const RETENUE_EXTENSION_A_JOUR = "extension_a_mettre_a_jour";
+// (15/10 soir, Louis) L'annonce visée est portée par deux fiches : rien n'est
+// retiré le temps que FillSell tranche seul (identifiants, photos, IA —
+// _shared/annonce-partagee.js) ; la question ne vient qu'après.
+export const RETENUE_ANNONCE_PARTAGEE = "annonce_partagee_a_trancher";
 const ANCIENNES_CLES = { retenue_isbn_capture: RETENUE_ISBN_CAPTURE };
 
 const objet = (v) => (v && typeof v === "object" && !Array.isArray(v) ? v : null);
@@ -54,7 +58,7 @@ export function retenueServeurDuJob(job) {
   // lui aussi (« Alphalette » d'Ornella) — et le dit, boutiques nommées.
   if (job.action === "delete") {
     const r = retenueServeurDe(pf);
-    return r && r.motif === RETENUE_BOUTIQUE_INCONNUE ? r : null;
+    return r && (r.motif === RETENUE_BOUTIQUE_INCONNUE || r.motif === RETENUE_ANNONCE_PARTAGEE) ? r : null;
   }
   if (job.action !== "republish") return null;
   if (String(pf.republish_step ?? "") === "deleted") return null;

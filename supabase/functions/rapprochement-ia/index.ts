@@ -17,6 +17,10 @@ import {
   CONSIGNE, SCHEMA_REPONSE, NIVEAUX_PHOTO_FORTE,
   questionEligible, clePaire, photosDe, messageTexte, lireReponse, coutUsd, appliquerGardeFous,
 } from "../_shared/rapprochement/ia.js";
+import {
+  candidatsDe, trancherParIdentifiant, trancherParPhotos, designe,
+  CONSIGNE_ANNONCE, messageAnnonce, schemaAnnonce, lireReponseAnnonce, decisionIA, LETTRES,
+} from "../_shared/annonce-partagee.js";
 
 const json = (corps: unknown, status = 200) =>
   new Response(JSON.stringify(corps), { status, headers: { "Content-Type": "application/json" } });
@@ -64,6 +68,9 @@ async function miniature(url: string, cx: Contexte): Promise<Source | null | typ
 }
 
 async function appelHaiku(apiKey: string, contenu: unknown[]): Promise<{ texte: string; usage: Record<string, number>; stop: string }> {
+  return await appelHaikuAvec(apiKey, CONSIGNE, SCHEMA_REPONSE, contenu);
+}
+async function appelHaikuAvec(apiKey: string, system: string, schema: unknown, contenu: unknown[]): Promise<{ texte: string; usage: Record<string, number>; stop: string }> {
   const ctl = new AbortController();
   const minuteur = setTimeout(() => ctl.abort(), DELAI_IA_MS);
   try {
@@ -74,8 +81,8 @@ async function appelHaiku(apiKey: string, contenu: unknown[]): Promise<{ texte: 
         model: MODELE_IA_FUSION,
         max_tokens: 200,
         thinking: { type: "disabled" },
-        output_config: { format: { type: "json_schema", schema: SCHEMA_REPONSE } },
-        system: CONSIGNE,
+        output_config: { format: { type: "json_schema", schema } },
+        system,
         messages: [{ role: "user", content: contenu }],
       }),
     });
@@ -84,6 +91,195 @@ async function appelHaiku(apiKey: string, contenu: unknown[]): Promise<{ texte: 
     const bloc = (j.content ?? []).find((b: { type: string }) => b.type === "text");
     return { texte: bloc?.text ?? "", usage: j.usage ?? {}, stop: String(j.stop_reason ?? "") };
   } finally { clearTimeout(minuteur); }
+}
+
+// ═══ UNE ANNONCE, DEUX FICHES : LA CASCADE (15/10 soir, Louis) ═══════════════
+// Règles : _shared/annonce-partagee.js. Travail : les jobs RETENUS par une
+// annonce partagée (needs_user « annonce_partagee » pas encore jugée, ou
+// pending « a_trancher » posé par get-pending-jobs). La décision s'applique
+// par annonce_partagee_attribuer (base) ; l'incertain est daté sur les jobs
+// (cascade.etat = 'incertain') — get-pending-jobs pose alors la question.
+const COLS_JOB = "id, platform, status, action, inventaire_id, title, listing_url, platform_listing_id, platform_fields, handler_build, created_at";
+// deno-lint-ignore no-explicit-any
+async function annoncesPartagees({ admin, supabaseUrl, apiKey, userId, mesure, annoncesExplicites = null }: { admin: any; supabaseUrl: string; apiKey: string; userId: string; mesure: boolean; annoncesExplicites?: Array<{ platform: string; L: string }> | null }) {
+  const debut = Date.now();
+  const { data: brut, error } = await admin.from("cross_post_jobs").select(COLS_JOB)
+    .eq("user_id", userId).in("status", ["needs_user", "pending"]).limit(2000);
+  if (error) return { ok: false, error: error.message };
+  // deno-lint-ignore no-explicit-any
+  const pfDe = (j: any) => (j?.platform_fields && typeof j.platform_fields === "object" ? j.platform_fields : {});
+  // deno-lint-ignore no-explicit-any
+  const retenus = ((brut ?? []) as any[]).filter((j) => {
+    const pf = pfDe(j);
+    const etat = String(pf?.annonce_partagee?.cascade?.etat ?? "");
+    return (j.status === "needs_user" && pf.needs_user_source === "annonce_partagee" && etat !== "incertain")
+      || (j.status === "pending" && etat === "a_trancher");
+  });
+  // deno-lint-ignore no-explicit-any
+  const groupes = new Map<string, { platform: string; L: string; jobs: any[] }>();
+  for (const j of retenus) {
+    const pf = pfDe(j);
+    const L = String(pf?.annonce_partagee?.annonce ?? j.platform_listing_id ?? "").trim();
+    if (!L) continue;
+    const cle = `${j.platform}:${L}`;
+    if (!groupes.has(cle)) groupes.set(cle, { platform: j.platform, L, jobs: [] });
+    groupes.get(cle)!.jobs.push(j);
+  }
+  // Le balayage du parc (annonces portées par plusieurs fiches SANS geste en
+  // attente) : mêmes étapes, mêmes gardes ; sans job retenu, un « incertain »
+  // ne pose aucune question (rien ne doit être retiré).
+  for (const a of annoncesExplicites ?? []) {
+    const cle = `${a.platform}:${a.L}`;
+    if (!groupes.has(cle)) groupes.set(cle, { platform: a.platform, L: a.L, jobs: [] });
+  }
+  const { data: cfg } = await admin.from("coin_config").select("value").eq("key", "rapprochement_ia_actif").maybeSingle();
+  const iaActif = String(cfg?.value ?? "0") === "1" && !!apiKey;
+  const cx: Contexte = { supabaseUrl, admin, copies: [], budget: { copies: 30 } };
+  const resultats: Array<Record<string, unknown>> = [];
+  let coutEur = 0;
+
+  // deno-lint-ignore no-explicit-any
+  const incertain = async (g: { platform: string; L: string; jobs: any[] }, motif: string, trace: Record<string, unknown> = {}) => {
+    resultats.push({ annonce: `${g.platform}:${g.L}`, issue: "incertain", motif, ...trace });
+    if (mesure) return;
+    for (const j of g.jobs) {
+      const pf = pfDe(j);
+      const ap = { ...(pf.annonce_partagee ?? {}), annonce: g.L, cascade: { etat: "incertain", le: new Date().toISOString(), motif, ...trace } };
+      await admin.from("cross_post_jobs").update({ platform_fields: { ...pf, annonce_partagee: ap } })
+        .eq("id", j.id).in("status", ["pending", "needs_user"]);
+    }
+  };
+  const attribuer = async (g: { platform: string; L: string }, fiche: string, par: string, raison: string) => {
+    if (mesure) { resultats.push({ annonce: `${g.platform}:${g.L}`, issue: "attribuee", fiche, par, raison, mesure: true }); return; }
+    const { data, error: e } = await admin.rpc("annonce_partagee_attribuer", {
+      p_user: userId, p_platform: g.platform, p_listing_id: g.L, p_inventaire_garde: Number(fiche), p_par: par, p_raison: raison.slice(0, 300),
+    });
+    resultats.push({ annonce: `${g.platform}:${g.L}`, issue: e ? "erreur" : "attribuee", fiche, par, raison, resultat: e ? e.message : data });
+  };
+
+  for (const g of groupes.values()) {
+    if (Date.now() - debut > DUREE_MAX_MS) break;
+    // Tous les jobs du compte sur la plateforme qui désignent l'annonce (preuves comprises).
+    const { data: jobsBruts } = await admin.from("cross_post_jobs").select(COLS_JOB)
+      .eq("user_id", userId).eq("platform", g.platform).not("inventaire_id", "is", null)
+      .or(`platform_listing_id.eq.${g.L},listing_url.ilike.%${g.L}%`).limit(300);
+    // deno-lint-ignore no-explicit-any
+    const jobs = ((jobsBruts ?? []) as any[]).filter((j) => designe(j, g.L));
+    const ids = [...new Set(jobs.map((j) => String(j.inventaire_id)))];
+    // deno-lint-ignore no-explicit-any
+    const fiches = new Map<string, any>();
+    for (let tour = 0; tour < 3 && ids.length; tour++) {
+      const manquants = ids.filter((x) => !fiches.has(x));
+      if (!manquants.length) break;
+      const { data: fs } = await admin.from("inventaire").select(CHAMPS_FICHE).in("id", manquants);
+      // deno-lint-ignore no-explicit-any
+      for (const f of (fs ?? []) as any[]) {
+        fiches.set(String(f.id), f);
+        if (f.fusionne_dans && !fiches.has(String(f.fusionne_dans))) ids.push(String(f.fusionne_dans));
+      }
+    }
+    const parFiche = candidatsDe(jobs, fiches, g.L);
+    // Une seule fiche la porte encore (lien remis d'accord) mais l'annonce du
+    // relevé peut rester rattachée à l'AUTRE fiche (Louis, 3275975415 : le
+    // relevé du 25/09 avait suivi le lien croisé) : la preuve d'identifiant
+    // de la fiche restante la lui rend (annonce_partagee_attribuer).
+    if (parFiche.size === 1) {
+      const seule = trancherParIdentifiant(parFiche, g.L);
+      if (seule && "fiche" in seule && seule.fiche) {
+        const { data: annR } = await admin.from("annonces_plateforme").select("inventaire_id")
+          .eq("user_id", userId).eq("platform", g.platform).eq("listing_id", g.L).maybeSingle();
+        if (annR?.inventaire_id != null && String(annR.inventaire_id) !== String(seule.fiche)) {
+          await attribuer(g, String(seule.fiche), "identifiant", `identifiant de l'annonce (${seule.preuve}, job ${String(seule.job ?? "").slice(0, 8)}) — annonce du relevé rendue à sa fiche`);
+          continue;
+        }
+      }
+    }
+    if (parFiche.size <= 1) {
+      // Plus partagée (lien remis d'accord, fiche fusionnée…) : les jobs repartent.
+      for (const j of g.jobs) {
+        if (mesure) { resultats.push({ annonce: `${g.platform}:${g.L}`, issue: "plus_partagee", job: j.id, mesure: true }); continue; }
+        const { data, error: e } = await admin.rpc("annonce_partagee_reprendre", { p_job: j.id, p_par: "plus_partagee", p_raison: null });
+        resultats.push({ annonce: `${g.platform}:${g.L}`, issue: "plus_partagee", job: j.id, resultat: e ? e.message : data });
+      }
+      continue;
+    }
+    // 1. Identifiants.
+    const idt = trancherParIdentifiant(parFiche, g.L);
+    if (idt && "fiche" in idt && idt.fiche) {
+      await attribuer(g, String(idt.fiche), "identifiant", `identifiant de l'annonce (${idt.preuve}, job ${String(idt.job ?? "").slice(0, 8)})`);
+      continue;
+    }
+    // 2. Photos en taille réelle (capture de l'annonce) contre les photos des fiches.
+    const { data: ann } = await admin.from("annonces_plateforme").select("titre, prix, photo_url, capture, platform")
+      .eq("user_id", userId).eq("platform", g.platform).eq("listing_id", g.L).maybeSingle();
+    const urlsDe = (v: unknown) => (Array.isArray(v) ? v : []).map((x) => (typeof x === "string" ? x : (x as { url?: string })?.url)).filter((u): u is string => typeof u === "string" && /^https:\/\//.test(u));
+    const urlsAnnonce = [...new Set([...urlsDe(ann?.capture?.photos).slice(0, 4), ...(ann?.photo_url ? [ann.photo_url] : [])])];
+    const urlsParFiche = new Map<string, string[]>([...parFiche.keys()].map((f) => [f, photosDe(fiches.get(f)).slice(0, 4)]));
+    const toutes = [...new Set([...urlsAnnonce, ...[...urlsParFiche.values()].flat()])];
+    const { data: emp } = toutes.length
+      ? await admin.from("photo_empreintes").select("url, dhash, phash, variantes").in("url", toutes)
+      : { data: [] };
+    // deno-lint-ignore no-explicit-any
+    const parUrl = new Map(((emp ?? []) as any[]).map((e) => [e.url, e]));
+    const ph = trancherParPhotos(urlsAnnonce.map((u) => parUrl.get(u)).filter(Boolean),
+      new Map([...urlsParFiche].map(([f, us]) => [f, us.map((u) => parUrl.get(u)).filter(Boolean)])));
+    // Une fiche VENDUE parmi les candidates : au-delà de l'identifiant (un fait),
+    // la personne décide — une attribution déplace la question « Déjà vendu ? ».
+    const cands = [...parFiche.keys()].slice(0, LETTRES.length).map((f) => fiches.get(f)).filter(Boolean);
+    if (cands.some((f) => f.statut === "vendu")) { await incertain(g, "fiche_vendue", { photos: ph.niveaux, photo_designe: ph.fiche ?? null }); continue; }
+    if (ph.fiche) { await attribuer(g, String(ph.fiche), "photo", `photos identiques (${JSON.stringify(ph.niveaux)})`); continue; }
+    // 3. L'IA.
+    if (!iaActif) { await incertain(g, "ia_inactive", { photos: ph.niveaux }); continue; }
+    const paire = `annonce:${g.platform}:${g.L}:${cands.map((f) => String(f.id)).sort().join("|")}`;
+    const { data: deja } = await admin.from("rapprochement_ia_verdicts").select("verdict, raison, applique").eq("user_id", userId).eq("paire", paire).maybeSingle();
+    if (deja) { await incertain(g, "ia_deja_jugee", { raison_ia: deja.raison }); continue; } // jamais deux appels pour la même annonce
+    const annonce = { platform: g.platform, titre: ann?.titre ?? jobs.find((j) => j.status === "published")?.title ?? null, description: ann?.capture?.description ?? null, prix: ann?.prix ?? null };
+    let phase: "texte" | "images" = "texte";
+    let usd = 0; let jetE = 0; let jetS = 0;
+    let rep = { verdicts: cands.map(() => "incertain"), raison: null as string | null, besoin_images: false };
+    try {
+      const schema = schemaAnnonce(cands.length);
+      const r1 = await appelHaikuAvec(apiKey, CONSIGNE_ANNONCE, schema, [{ type: "text", text: messageAnnonce({ annonce, fiches: cands }) }]);
+      usd += coutUsd(r1.usage); jetE += Number(r1.usage.input_tokens) || 0; jetS += Number(r1.usage.output_tokens) || 0;
+      rep = r1.stop === "refusal" ? rep : lireReponseAnnonce(r1.texte, cands.length);
+      let dec = decisionIA(rep.verdicts, "texte");
+      if (dec.index == null && urlsAnnonce.length) {
+        const ma: Source[] = [];
+        for (const u of urlsAnnonce.slice(0, 2)) { const m = await miniature(u, cx); if (m && m !== BUDGET_EPUISE) ma.push(m); }
+        const parts: unknown[] = [{ type: "text", text: messageAnnonce({ annonce, fiches: cands, avecImages: true }) }, { type: "text", text: "Photos de L'ANNONCE :" }, ...ma.map((source) => ({ type: "image", source }))];
+        let avecPhotos = 0;
+        for (let i = 0; i < cands.length; i++) {
+          const mf: Source[] = [];
+          for (const u of photosDe(cands[i]).slice(0, MINIATURES_PAR_FICHE)) { const m = await miniature(u, cx); if (m && m !== BUDGET_EPUISE) mf.push(m); }
+          if (mf.length) avecPhotos++;
+          parts.push({ type: "text", text: `Photos de la FICHE ${LETTRES[i]} :` }, ...mf.map((source) => ({ type: "image", source })));
+        }
+        if (ma.length && avecPhotos === cands.length) {
+          phase = "images";
+          const r2 = await appelHaikuAvec(apiKey, CONSIGNE_ANNONCE, schema, parts);
+          usd += coutUsd(r2.usage); jetE += Number(r2.usage.input_tokens) || 0; jetS += Number(r2.usage.output_tokens) || 0;
+          rep = r2.stop === "refusal" ? { ...rep, raison: "refus du modèle" } : lireReponseAnnonce(r2.texte, cands.length);
+          dec = decisionIA(rep.verdicts, "images");
+        }
+      }
+      coutEur += usd * USD_EN_EUR;
+      const fiche = dec.index != null ? String(cands[dec.index].id) : null;
+      if (!mesure) {
+        await admin.from("rapprochement_ia_verdicts").upsert({
+          user_id: userId, doublon_id: null, paire, motif: "annonce_partagee",
+          verdict: fiche ? "meme" : "incertain", verdict_brut: JSON.stringify(rep.verdicts), raison: rep.raison, phase, modele: MODELE_IA_FUSION,
+          jetons_entree: jetE, jetons_sortie: jetS, cout_usd: Number(usd.toFixed(6)), mode: "appliquer",
+          applique: fiche ? `fiche:${fiche}:${dec.motif}` : `question:${dec.motif}`,
+        }, { onConflict: "user_id,paire", ignoreDuplicates: true });
+      }
+      if (fiche) await attribuer(g, fiche, "ia", `${rep.raison ?? ""} (${dec.motif}, ${phase})`.trim());
+      else await incertain(g, `ia_${dec.motif}`, { raison_ia: rep.raison, verdicts: rep.verdicts, phase });
+    } catch (e) {
+      resultats.push({ annonce: `${g.platform}:${g.L}`, erreur: String((e as Error)?.message ?? e).slice(0, 160) });
+    }
+  }
+  if (cx.copies.length) await admin.storage.from(BUCKET).remove(cx.copies).catch(() => {});
+  return { ok: true, mode: "annonces_partagees", user_id: userId, groupes: groupes.size, resultats, cout_eur: Number(coutEur.toFixed(4)), duree_ms: Date.now() - debut };
 }
 
 serve(async (req) => {
@@ -97,6 +293,17 @@ serve(async (req) => {
   try { body = await req.json(); } catch { /* vide */ }
   const userId = String(body.user_id ?? "");
   if (!/^[0-9a-f-]{36}$/.test(userId)) return json({ error: "user_id requis" }, 400);
+  // (15/10 soir, Louis) Une annonce portée par deux fiches : la cascade
+  // identifiants → photos → IA, la question seulement si l'IA n'est pas sûre.
+  if (body.mode === "annonces_partagees") {
+    const supabaseUrlAp = Deno.env.get("SUPABASE_URL") ?? "";
+    const adminAp = createClient(supabaseUrlAp, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
+    const explicites = Array.isArray(body.annonces)
+      ? (body.annonces as Array<Record<string, unknown>>).map((a) => ({ platform: String(a.platform ?? ""), L: String(a.listing_id ?? "").trim() }))
+          .filter((a) => ["vinted", "leboncoin", "beebs", "ebay", "opla", "depop"].includes(a.platform) && /^[A-Za-z0-9_-]{4,80}$/.test(a.L)).slice(0, 20)
+      : null;
+    return json(await annoncesPartagees({ admin: adminAp, supabaseUrl: supabaseUrlAp, apiKey, userId, mesure: body.mesure === true, annoncesExplicites: explicites }));
+  }
   const mode = body.mode === "appliquer" ? "appliquer" : "mesure";
   const historique = body.historique === true && mode === "mesure";
   const limite = Math.max(1, Math.min(60, Number(body.limite) || 20));
