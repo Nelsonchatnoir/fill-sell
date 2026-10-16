@@ -10,6 +10,13 @@ import { initIAP, purchasePremium, restorePurchases, listenCoinTransactionUpdate
 import { classerIssueAchat } from './lib/issueAchat';
 import { paiementsAndroidCoupes, messagePaiementAndroidCoupe } from './utils/androidPayments';
 import { track } from './analytics/analytics';
+// (16/10, bêta messages + bordereaux) Drapeau et compteurs (une lecture hors
+// bêta, puis plus rien) ; l'espace « Messages · À expédier » n'est chargé
+// qu'à l'ouverture, par un compte bêta.
+import { lazy as lazyMessagerie, Suspense as SuspenseMessagerie } from "react";
+import { useMessagerieBeta } from './messagerie/useMessagerieBeta';
+import BarreMessagerie from './messagerie/BarreMessagerie';
+const EspaceMessagerie = lazyMessagerie(() => import('./messagerie/EspaceMessagerie'));
 import { poserSourceSurProfil } from './utils/acquisition';
 // ⚠️ PAS track() : celui-ci n'écrit que dans le dataLayer GTM. Les gestes
 // irréversibles (retrait, suppression) vont en BASE — cf. journalRetraits.js.
@@ -1976,6 +1983,10 @@ export default function App({ loginOnly = false }){
   const [cShip,setCShip]=useState("");
   const [cSaved,setCSaved]=useState(false);
   const [user,setUser]=useState(null);
+  // (16/10, bêta messages + bordereaux) — APRÈS `user` (règle TDZ du fichier).
+  // beta === false pour tout compte sans beta_flags.messages_bordereaux.
+  const messagerie=useMessagerieBeta(supabase,user?.id??null);
+  const [espaceMessagerie,setEspaceMessagerie]=useState(null);
   // ── Multi-boutiques Vinted (2026-09-03) : boutiques confirmées du compte
   // (profiles.vinted_sync_pin v2) + filtre du Stock par boutique. La liste ne
   // pilote un affichage que quand il y a AU MOINS deux boutiques.
@@ -8578,6 +8589,22 @@ export default function App({ loginOnly = false }){
             (platform_fields.check_unresolved) et l'extension retente chaque
             jour, mais l'utilisateur n'en voit plus rien.) */}
 
+        {/* (16/10) Bêta messages + bordereaux : compte bêta seulement. */}
+        {messagerie.beta&&(
+          <BarreMessagerie lang={lang} nonLus={messagerie.nonLus} aExpedier={messagerie.aExpedier}
+            onMessages={()=>setEspaceMessagerie({onglet:'messages',article:null})}
+            onExpedier={()=>setEspaceMessagerie({onglet:'expedier',article:null})}/>
+        )}
+        {messagerie.beta&&espaceMessagerie&&(
+          <SuspenseMessagerie fallback={null}>
+            <EspaceMessagerie supabase={supabase} lang={lang} ouvert
+              ongletInitial={espaceMessagerie.onglet} filtreArticle={espaceMessagerie.article}
+              photosParInventaire={photosParInventaire}
+              onChange={messagerie.relire}
+              onFermer={()=>{setEspaceMessagerie(null);messagerie.relire();}}/>
+          </SuspenseMessagerie>
+        )}
+
         {tab===0&&(
           <DashboardTab
             lang={lang} currency={currency} isPremium={isPremium} isNative={isNative} username={username}
@@ -8685,6 +8712,7 @@ export default function App({ loginOnly = false }){
             pendingRemovals={pendingRemovals} onRetirerVendus={armRemovals} onPlusTardVendus={reporterRetraits}
             plusEnLigne={{n:nbPlusEnLigne,nMasquees:nbMasqueesPlusEnLigne,rendre:rendrePlusEnLigne,onAfficherMasquees:()=>setMontrerMasquees(true),ouvrirQuestion:(id)=>setQuestionForcee(id)}}
             onDupliquer={(item)=>dupliquerFiche(item,'carte')}
+            messagerie={messagerie.beta?{parArticle:messagerie.parArticle}:null}
           />
         )}
 
@@ -8741,6 +8769,7 @@ export default function App({ loginOnly = false }){
             vendusAEnregistrer={vendusAEnregistrer}
             photosParInventaire={photosParInventaire}
             onSaleUpdated={()=>{if(user?.id)fetchAll(user.id,{silencieux:true});}}
+            messagerieBeta={messagerie.beta}
           />
         )}
         {/* StatsTab toujours monté — état local préservé entre les onglets */}

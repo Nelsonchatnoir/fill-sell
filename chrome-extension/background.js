@@ -9,6 +9,10 @@ importScripts("config.js");
 importScripts("vinted-origine.js");
 const VO = FILLSELL_VINTED;
 VO.chargerOrigineVinted().catch(() => {});
+// (0.6.116, bêta 16/10) Messagerie + commandes « à expédier » : lecteurs,
+// normaliseurs, envoyeurs verrouillés — cf. messagerie.js et
+// releverMessagerieBeta (compte porteur de beta_flags.messages_bordereaux seul).
+importScripts("messagerie.js");
 
 // Marqueur de version du service worker. Motif (2026-07-09) : un second
 // worktree (fill-and-sell-chrome-extension, branche feat/chrome-extension) a
@@ -22,6 +26,7 @@ VO.chargerOrigineVinted().catch(() => {});
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
+  "2026-10-16-messagerie-beta (0.6.116 : BÊTA messagerie + commandes « à expédier », compte porteur de beta_flags.messages_bordereaux seul — relevé en lecture derrière la veille des commandes, réponses verrouillées par liste blanche, chemin du bordereau à dernière marche fermée) — précédent : " +
   "2026-10-05-veille-commandes (0.6.98 : veille des commandes Vinted et Leboncoin toutes les 10 min, comptes payants, " + // estimation-ok: nom interne de capacité
   "bornée, mesurée, coupée 24 h au premier signe anti-robot — une commande neuve fait relire l'annonce en priorité ; " +
   "mesures du remplissage Vinted écrites aussi quand la publication réussit (instantané avant le clic, republication) ; " +
@@ -3186,6 +3191,11 @@ async function pollAndProcessJobsUnlocked() {
   // les annonces que checkPublishedListings relit en tête de ce même cycle.
   await veillerCommandes(session).catch((e) =>
     console.error("[background] veillerCommandes:", e)
+  );
+  // (0.6.116, bêta 16/10) Messagerie + commandes « à expédier », même cadence
+  // que la veille (10 min ± 90 s par plateforme) — inerte hors du compte bêta.
+  await releverMessagerieBeta(session).catch((e) =>
+    console.error("[background] releverMessagerieBeta:", String(e?.message ?? e))
   );
   await checkPublishedListings(session).catch((e) =>
     console.error("[background] checkPublishedListings:", e)
@@ -19943,6 +19953,252 @@ async function jobsARelirePourCommandes(platform, commandes, token, etat) {
     }
   }
   return ids;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MESSAGERIE + COMMANDES « À EXPÉDIER » — BÊTA (0.6.116, 16/10/2026)
+// ═══════════════════════════════════════════════════════════════════════════
+// Chantier « messages + bordereaux » (rapport docs/enquetes/
+// messages-bordereaux-1610/RAPPORT.md). Appelée à chaque poll, juste après la
+// veille des commandes, avec SA mécanique — c'est l'ordonnanceur existant :
+//   · rien sans profiles.beta_flags.messages_bordereaux (relu toutes les
+//     30 min, fail-closed : RPC absente, illisible = fermé) ;
+//   · par plateforme (Vinted, Leboncoin, Depop) : un passage toutes les
+//     10 min ± 90 s, et le serveur dit OUI avant chaque passage
+//     (messagerie_releve_autorise : bêta, interrupteur, pause, anti-robot
+//     Vinted, plateforme en pause) ;
+//   · un passage = 1 lecture de la liste des conversations, le détail de 5
+//     conversations NOUVELLES ou CHANGÉES au plus (mémoire locale de ce qui a
+//     été détaillé), 1 lecture des commandes en cours + 5 détails au plus ;
+//     1,2 à 2,8 s entre deux appels ; tout depuis l'onglet de la plateforme ;
+//   · premier signe de blocage (403, 429, captcha, DataDome) : arrêt
+//     immédiat, pause serveur (6 h, 24 h si récidive) ET locale ;
+//   · lire ≠ marquer lu : aucun appel « mark as read » n'existe ici ;
+//   · puis AU PLUS UNE réponse part, si le serveur en sort une (liste blanche
+//     relue au moment de la prise) ET que la liste blanche, relue ici, la
+//     contient encore — sinon elle est rendue en échec, jamais envoyée ;
+//   · aucun texte de message dans la console.
+// Beebs n'est pas relevé : sa messagerie web exige un numéro de téléphone
+// vérifié (compte de Nico non vérifié le 16/10).
+/* global FILLSELL_MESSAGERIE */
+const MESSAGERIE_ETAT_KEY = "messagerie_beta_etat";
+const MESSAGERIE_DROITS_MS = 30 * 60 * 1000;
+const MESSAGERIE_DETAILLES_MAX = 400;
+
+async function lireEtatMessagerie() {
+  try { return (await chrome.storage.local.get(MESSAGERIE_ETAT_KEY))?.[MESSAGERIE_ETAT_KEY] ?? {}; }
+  catch { return {}; }
+}
+async function ecrireEtatMessagerie(etat) {
+  try { await chrome.storage.local.set({ [MESSAGERIE_ETAT_KEY]: etat }); } catch { /* sans conséquence */ }
+}
+
+/** Appel d'une fonction SQL (RPC) avec le jeton du compte. Lève sur HTTP ≠ 2xx. */
+function rpcMessagerie(nom, params, token) {
+  return restRequest(`rpc/${nom}`, token, {
+    method: "POST", body: JSON.stringify(params ?? {}), headers: { Prefer: "return=representation" },
+  });
+}
+
+/** Le drapeau bêta du compte, relu toutes les 30 min. Fail-closed. */
+async function messagerieBetaDuCompte(etat, token, userId) {
+  const b = etat.beta;
+  if (b && b.user === userId && Date.now() - Number(b.le) < MESSAGERIE_DROITS_MS) return b.val === true;
+  let val = false;
+  try { val = (await rpcMessagerie("messagerie_beta", {}, token)) === true; } catch { val = false; }
+  etat.beta = { user: userId, val, le: Date.now() };
+  return val;
+}
+
+/** Pause au premier signe de blocage : serveur (6 h / 24 h) et poste. */
+async function bloquerMessagerie(platform, motif, token, e) {
+  let jusqu = Date.now() + 6 * 3600 * 1000;
+  try {
+    const r = await rpcMessagerie("messagerie_releve_bloque", { p_platform: platform, p_motif: motif }, token);
+    const t = Date.parse(r?.pause_jusqu_au ?? "");
+    if (Number.isFinite(t)) jusqu = t;
+  } catch { /* la pause locale tient quand même */ }
+  e.coupee = { le: new Date().toISOString(), jusqu, motif };
+  console.warn(`[messagerie][${platform}] signe de blocage (${motif}) — plus aucun relevé jusqu'à ${new Date(jusqu).toISOString()}`);
+}
+
+/** Un passage pour UNE plateforme. Ne lève pas : rend un bilan. */
+async function releverMessagerieUnePlateforme(platform, token, e) {
+  const M = FILLSELL_MESSAGERIE;
+  const L = M.LECTEURS[platform];
+  let requetes = 0;
+  if (platform === "leboncoin") await assurerJetonLeboncoin().catch(() => null);
+
+  // 1. La liste des conversations (une page).
+  const liste = await executerDansOngletPlateforme(platform, L.liste, platform === "vinted" ? [20] : []);
+  requetes += Number(liste?.requetes) || 0;
+  const bloc1 = M.signeBlocage(liste);
+  if (bloc1) return { bloque: bloc1, requetes };
+  if (!liste?.ok) return { motif: liste?.motif ?? "liste_illisible", requetes };
+
+  // 2. Le détail des conversations nouvelles ou changées (5 au plus).
+  const memo = e.detailles && typeof e.detailles === "object" ? e.detailles : {};
+  const parListe = M.NORMALISEURS[platform](liste, {});
+  const connues = Object.entries(memo).map(([conversation_ref, dernier_message_le]) => ({ conversation_ref, dernier_message_le }));
+  const refs = M.aDetailler(parListe.conversations, connues, M.DETAILS_MAX);
+  let details = {};
+  if (refs.length) {
+    const det = await executerDansOngletPlateforme(platform, L.details, platform === "leboncoin" ? [liste.moi ?? null, refs] : [refs]);
+    requetes += Number(det?.requetes) || 0;
+    details = det?.details ?? {};
+    const bloc2 = M.signeBlocage(det);
+    if (bloc2) return { bloque: bloc2, requetes };
+  }
+  const { conversations, messages } = M.NORMALISEURS[platform](liste, details);
+  const bilan = await rpcMessagerie("messagerie_enregistrer", {
+    p_platform: platform, p_conversations: conversations.slice(0, 60), p_messages: messages.slice(0, 300), p_etat: {},
+  }, token);
+  if (bilan?.refuse) return { refuse: bilan.refuse, requetes };
+  // Mémoire de ce qui a été détaillé : la date du dernier message vue au détail.
+  for (const c of parListe.conversations) if (Object.prototype.hasOwnProperty.call(details, c.ref)) memo[c.ref] = c.dernier_le ?? null;
+  const cles = Object.keys(memo);
+  if (cles.length > MESSAGERIE_DETAILLES_MAX) for (const k of cles.slice(0, cles.length - MESSAGERIE_DETAILLES_MAX)) delete memo[k];
+  e.detailles = memo;
+
+  // 3. Les commandes en cours (Vinted, Leboncoin).
+  let bilanCommandes = null;
+  if (L.commandes) {
+    const suivies = await restRequest(
+      `plateforme_commandes?platform=eq.${platform}&etat=in.(a_confirmer,a_expedier,expediee,inconnu)&select=commande_ref&order=maj_le.desc&limit=20`,
+      token).catch(() => []);
+    const cmd = await executerDansOngletPlateforme(platform, L.commandes,
+      [(Array.isArray(suivies) ? suivies : []).map((s) => String(s.commande_ref)), M.COMMANDES_DETAILS_MAX]);
+    requetes += Number(cmd?.requetes) || 0;
+    const bloc3 = M.signeBlocage(cmd);
+    if (bloc3) return { bloque: bloc3, requetes, bilan };
+    if (cmd?.ok) {
+      const lignes = M.NORMALISEURS_COMMANDES[platform](cmd.commandes);
+      if (lignes.length) {
+        bilanCommandes = await rpcMessagerie("commandes_enregistrer", { p_platform: platform, p_commandes: lignes.slice(0, 40) }, token);
+      }
+    }
+  }
+  return { ok: true, requetes, bilan, bilanCommandes, detailles: refs.length };
+}
+
+/**
+ * Au plus UNE réponse par passage. La liste blanche a été lue par le serveur
+ * à la prise ; elle est RELUE ici juste avant l'envoi. Ne lève pas.
+ */
+async function envoyerReponseMessagerie(token, etat) {
+  const M = FILLSELL_MESSAGERIE;
+  const prise = await rpcMessagerie("messagerie_reponse_a_envoyer", { p_platforms: [...M.PLATEFORMES_EXTENSION] }, token).catch(() => null);
+  const rep = prise?.reponse;
+  if (!rep?.id) return;
+  const rendre = (ok, resultat) => rpcMessagerie("messagerie_reponse_resultat", { p_id: rep.id, p_ok: ok, p_resultat: resultat }, token)
+    .catch((err) => console.warn("[messagerie][envoi] résultat non rendu :", String(err?.message ?? err)));
+  const lb = await restRequest(
+    `messagerie_liste_blanche?platform=eq.${encodeURIComponent(rep.platform)}&conversation_ref=eq.${encodeURIComponent(rep.conversation_ref)}&select=conversation_ref`,
+    token).catch(() => null);
+  if (!Array.isArray(lb) || !lb.length) { await rendre(false, { motif: "liste_blanche_absente" }); return; }
+  const e = etat[rep.platform] ?? {};
+  if (e.coupee && Date.now() < Number(e.coupee.jusqu)) { await rendre(false, { motif: "plateforme_en_pause" }); return; }
+  const envoyeur = M.ENVOYEURS[rep.platform];
+  if (!envoyeur) { await rendre(false, { motif: "plateforme_sans_envoi" }); return; }
+  if (rep.platform === "depop" && !(await depopAccesAccorde())) { await rendre(false, { motif: "depop_acces" }); return; }
+  let moi = null;
+  if (rep.platform === "leboncoin") {
+    await assurerJetonLeboncoin().catch(() => null);
+    const l = await executerDansOngletPlateforme("leboncoin", M.LECTEURS.leboncoin.liste, []).catch(() => null);
+    moi = l?.moi ?? null;
+  }
+  const res = await executerDansOngletPlateforme(rep.platform, envoyeur, [{
+    conversationRef: rep.conversation_ref, interlocuteurRef: rep.interlocuteur_ref ?? null,
+    annonceRef: rep.annonce_ref ?? null, texte: rep.texte, moi,
+  }]).catch(() => ({ ok: false, motif: "exception" }));
+  await rendre(res?.ok === true, { http: Number(res?.http) || null, message_ref: res?.messageRef ?? null, motif: res?.motif ?? null });
+  console.log(`[messagerie][envoi][${rep.platform}] réponse ${rep.id} : ${res?.ok === true ? "envoyée" : `échec (${res?.motif ?? "?"})`}`);
+  if (res?.bot) await bloquerMessagerie(rep.platform, res?.motif ?? "envoi_refuse", token, (etat[rep.platform] ??= {}));
+}
+
+/** Un passage de la bêta (appelé à chaque poll). Ne lève jamais. */
+async function releverMessagerieBeta(session) {
+  const M = typeof FILLSELL_MESSAGERIE === "object" ? FILLSELL_MESSAGERIE : null;
+  if (!M) return;
+  const token = session?.access_token;
+  const userId = token ? decodeJwtSub(token) : null;
+  if (!userId) return;
+  const etat = await lireEtatMessagerie();
+  if (etat.user && etat.user !== userId) { for (const k of Object.keys(etat)) delete etat[k]; }
+  etat.user = userId;
+  if (!(await messagerieBetaDuCompte(etat, token, userId))) { await ecrireEtatMessagerie(etat); return; }
+
+  const maintenant = Date.now();
+  for (const platform of M.PLATEFORMES_EXTENSION) {
+    const e = (etat[platform] ??= {});
+    if (e.coupee && maintenant < Number(e.coupee.jusqu)) continue;
+    if (Number.isFinite(Number(e.prochain)) && maintenant < Number(e.prochain)) continue;
+    e.prochain = maintenant + M.CADENCE_MS + Math.round(Math.random() * M.ALEA_MS);
+    if (platform === "depop" && !(await depopAccesAccorde())) { e.dernierMotif = "depop_acces"; continue; }
+    let aut = null;
+    try { aut = await rpcMessagerie("messagerie_releve_autorise", { p_platform: platform }, token); } catch { aut = null; }
+    if (!aut?.autorise) {
+      e.dernierMotif = aut?.motif ?? "autorisation_illisible";
+      if (aut?.motif === "beta") etat.beta = { user: userId, val: false, le: Date.now() };
+      continue;
+    }
+    const debut = Date.now();
+    const r = await releverMessagerieUnePlateforme(platform, token, e)
+      .catch((err) => ({ motif: `exception: ${String(err?.message ?? err).slice(0, 120)}` }));
+    e.dernierLe = new Date().toISOString();
+    e.dernierMotif = r?.bloque ?? r?.refuse ?? r?.motif ?? null;
+    if (r?.bloque) { await bloquerMessagerie(platform, r.bloque, token, e); continue; }
+    const b = r?.bilan ?? {};
+    const bc = r?.bilanCommandes ?? {};
+    console.log(`[messagerie][${platform}] ${r?.ok ? "relevé" : `rien (${e.dernierMotif})`} — ${r?.requetes ?? 0} requête(s), ` +
+      `${Date.now() - debut} ms ; conversations +${b.conversations_nouvelles ?? 0} ~${b.conversations_maj ?? 0} =${b.conversations_inchangees ?? 0}, ` +
+      `messages +${b.messages_nouveaux ?? 0}, rattachées ${b.rattachees ?? 0} ; commandes +${bc.nouvelles ?? 0} ~${bc.maj ?? 0}`);
+  }
+  await envoyerReponseMessagerie(token, etat).catch((err) => console.warn("[messagerie][envoi]", String(err?.message ?? err)));
+  await ecrireEtatMessagerie(etat);
+}
+
+// ── LE BORDEREAU : chemin complet, DERNIÈRE MARCHE FERMÉE (bêta 16/10) ───────
+// Aucun écran ne l'appelle encore (bouton « Bordereau » inactif tant que le
+// parcours n'est pas validé sur une vraie commande — rapport § 6). Même
+// appelée, elle ne demande AUCUN fichier : il faudrait à la fois
+// BORDEREAU_DERNIERE_MARCHE_OUVERTE = true (messagerie.js) ET
+// coin_config.bordereaux_ouverts = 1. Générer un bordereau (Vinted :
+// commander l'étiquette ; Leboncoin : confirmer la disponibilité ; Beebs :
+// accepter la commande) n'est codé NULLE PART : c'est un geste du vendeur.
+// eslint-disable-next-line no-unused-vars -- chemin codé, volontairement sans appelant tant que la dernière marche est fermée
+async function obtenirBordereauBeta(commande, token) {
+  const M = FILLSELL_MESSAGERIE;
+  const chemin = M.CHEMINS_BORDEREAU[commande?.platform];
+  if (!chemin) return { ok: false, motif: "plateforme_sans_chemin" };
+  let ouvert = false;
+  try {
+    const cfg = await restRequest("coin_config?key=eq.bordereaux_ouverts&select=value", token);
+    ouvert = Number(cfg?.[0]?.value) === 1;
+  } catch { ouvert = false; }
+  const derniereMarche = M.BORDEREAU_DERNIERE_MARCHE_OUVERTE === true && ouvert;
+  const args = commande.platform === "vinted"
+    ? [{ transactionId: commande.commande_ref, shipmentId: commande.envoi_ref ?? null, derniereMarche, numerique: commande.numerique === true }]
+    : [{ purchaseId: commande.commande_ref, derniereMarche }];
+  const r = await executerDansOngletPlateforme(commande.platform, chemin, args);
+  if (!r?.ok || !r?.base64) return r;
+  return deposerCopieBordereau(commande, r, token);
+}
+
+// La copie (5 jours au plus, effacée par bordereaux-purge) : dossier du compte
+// dans le bucket privé `bordereaux`, puis bordereau_copie_noter.
+async function deposerCopieBordereau(commande, fichier, token) {
+  const userId = decodeJwtSub(token);
+  const chemin = `${userId}/${commande.platform}-${String(commande.commande_ref).replace(/[^A-Za-z0-9_-]/g, "")}.pdf`;
+  const octets = Uint8Array.from(atob(fichier.base64), (c) => c.charCodeAt(0));
+  const res = await fetch(`${FILLSELL_CONFIG.SUPABASE_URL}/storage/v1/object/bordereaux/${chemin}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, apikey: FILLSELL_CONFIG.SUPABASE_ANON_KEY, "Content-Type": "application/pdf", "x-upsert": "true" },
+    body: octets,
+  }).catch(() => null);
+  if (!res?.ok) return { ok: false, motif: `copie_http_${res?.status ?? 0}` };
+  const note = await rpcMessagerie("bordereau_copie_noter", { p_commande: commande.id, p_chemin: chemin, p_taille: octets.length }, token).catch(() => null);
+  return { ok: true, chemin, copie: note?.id ?? null };
 }
 
 /** Les jobs à relire en priorité, tels qu'en base (publiés seulement). */

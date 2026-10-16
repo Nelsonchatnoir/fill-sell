@@ -9,7 +9,7 @@
 // ⛔ Aucun émoji : icônes Lucide (le seul jeu de l'app), au trait.
 // ⛔ Cibles tactiles ≥ 40 px : les logos (16 px) ne sont PAS des boutons —
 //    « Gérer les plateformes » vit dans le menu « … ».
-import { Ellipsis, Eye, Heart, Upload, ChevronsUp, CircleAlert, BadgeEuro, Check, Package, ChevronRight } from 'lucide-react';
+import { Ellipsis, Eye, Heart, Upload, ChevronsUp, CircleAlert, BadgeEuro, Check, Package, ChevronRight, MessageCircle } from 'lucide-react';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import GalleryPhoto from '../components/GalleryPhoto';
 import { S, OMBRE, TONS, DEGRADE } from './jetons';
@@ -128,6 +128,8 @@ function CaseSelection({ coche, lang }) {
  *   p.onOuvrir (tap carte)   p.onMenu (« … »)
  *   p.selection {coche, onBasculer} | null — mode sélection (lot, prix…)
  *   p.bas — barre de progression du job   p.note — message transitoire
+ *   p.messages — (bêta 16/10) conversations non lues sur cet article ;
+ *     null hors bêta (rien d'affiché), 0 = rien d'affiché non plus
  */
 export function CarteArticle(p) {
   const fr = p.lang !== 'en';
@@ -191,7 +193,7 @@ export function CarteArticle(p) {
           <PileLogos lang={p.lang} plateformes={p.logos?.liste ?? []} etats={p.logos?.etats ?? {}} />
         </div>
         <div className="sk-deux-lignes" style={{ marginTop: 8, fontSize: 13, lineHeight: '20px', fontWeight: 600, color: S.ink, overflowWrap: 'anywhere' }}>{p.titre}</div>
-        {(p.marque || p.vues != null || p.favoris != null || p.boutique) && (
+        {(p.marque || p.vues != null || p.favoris != null || p.boutique || p.messages > 0) && (
           <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 8, height: 16, fontSize: 12, lineHeight: '16px', fontWeight: 500, color: S.ink2, minWidth: 0 }}>
             <span className="sk-une-ligne" style={{ flex: 1, minWidth: 0 }}>{[p.marque, p.boutique].filter(Boolean).join(' · ')}</span>
             {p.vues != null && (
@@ -202,6 +204,12 @@ export function CarteArticle(p) {
             {p.favoris != null && (
               <span title={fr ? `${p.favoris} favoris` : `${p.favoris} favourites`} className="sk-chiffres" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 600, flexShrink: 0 }}>
                 <Heart size={14} strokeWidth={2} aria-hidden="true" />{p.favoris}
+              </span>
+            )}
+            {p.messages > 0 && (
+              <span title={fr ? `${p.messages} message${p.messages > 1 ? 's' : ''} non lu${p.messages > 1 ? 's' : ''}` : `${p.messages} unread`} className="sk-chiffres" data-messages-non-lus={p.messages}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 700, flexShrink: 0, color: S.tealDeep }}>
+                <MessageCircle size={14} strokeWidth={2.2} aria-hidden="true" />{p.messages}
               </span>
             )}
           </div>

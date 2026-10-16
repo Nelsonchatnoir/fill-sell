@@ -327,3 +327,13 @@ verify_jwt = false
 
 [functions.rapprochement-ia]
 verify_jwt = false
+
+# ── BÊTA MESSAGES + BORDEREAUX (16/10/2026) ─────────────────────────────────
+[functions.ebay-messagerie]
+# Deux appelants : pg_cron (ebay-messagerie-20min, x-cron-secret du vault) et
+# l'app (JWT, compte bêta) → garde maison à deux branches.
+verify_jwt = false
+
+[functions.bordereaux-purge]
+# Appelée par pg_cron (bordereaux-purge-horaire, x-cron-secret) seulement.
+verify_jwt = false

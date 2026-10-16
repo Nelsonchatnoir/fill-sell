@@ -5789,6 +5789,9 @@ const StockTab = memo(function StockTab({
   // (03/10) « Dupliquer » — menu « … » de la carte : App crée la copie
   // (src/stock/dupliquer.js) et ouvre sa fiche en modification.
   onDupliquer = null,
+  // (16/10, bêta messages + bordereaux) { parArticle: { [inventaire_id]: non lus } }
+  // pour un compte bêta, null sinon : l'indicateur « messages » de la carte.
+  messagerie = null,
   // ⛔ (12/10 soir, Nico) PLUS AUCUN BANDEAU : tout ce qui attendait en haut de
   // l'app (zone des bandeaux d'App.jsx) vit dans « À régler ». App garde ses
   // lectures et ses gestes ; le Stock les range :
@@ -9604,6 +9607,7 @@ const StockTab = memo(function StockTab({
     return (
       <CarteArticle key={item.id} {...commun}
         marque={marqueLabel(item.marque, lang) || null} vues={d.vues} favoris={d.favs} quantite={item.quantite || 1}
+        messages={messagerie ? (Number(messagerie.parArticle?.[item.id]) || 0) : null}
         action={g.principale} actionElement={saisiePa ?? g.element} onOuvrir={d.openEdit} bas={g.bas} note={g.note} />
     );
   };

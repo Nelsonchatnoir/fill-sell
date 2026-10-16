@@ -4,6 +4,7 @@ import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import GalleryPhoto, { premierePhoto } from '../components/GalleryPhoto';
 import { UI } from '../components/ui';
 import { supabase } from '../lib/supabase';
+import SectionAExpedier from '../messagerie/SectionAExpedier';
 import {
   formatCurrency,
   typeLabel, marqueLabel,
@@ -157,6 +158,8 @@ const VentesTab = memo(function VentesTab({
   // la couche optimiste `patchs` ci-dessous qui tient l'affichage en attendant
   // le prochain fetchAll.
   onSaleUpdated=()=>{},
+  // (16/10, bêta messages + bordereaux) Section « À expédier » : compte bêta seulement.
+  messagerieBeta=false,
 }) {
   const fmt = (amount, dec=null) => formatCurrency(amount, currency, dec);
   const [filterType, setFilterType] = useState("Tous");
@@ -1026,6 +1029,8 @@ const VentesTab = memo(function VentesTab({
       <style>{VENTES_CSS}</style>
       <style>{CARTES_CSS}</style>
       <style>{CSS_ECRANS}</style>
+
+      {messagerieBeta&&<SectionAExpedier supabase={supabase} lang={lang} photosParInventaire={photosParInventaire}/>}
 
       {sales.length>0&&(
         <h1 className="fsx-rise" style={{margin:'2px 0 0',fontSize:34,lineHeight:1.08,fontWeight:700,letterSpacing:'-0.025em',color:UI.ink}}>{fr?'Ventes':'Sales'}</h1>
