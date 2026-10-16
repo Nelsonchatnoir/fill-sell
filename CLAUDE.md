@@ -68,4 +68,5 @@ si elle sert à CHAQUE session. Jumeau Codex : `AGENTS.md`.
 - Base, migrations, fonctions edge (`verify_jwt` par appelant), crons, CPU, analytics : `docs/regles/base-supabase-et-fonctions.md`
 - Git, push, build, écran blanc, site vitrine, selftests : `docs/regles/depot-git-build-site.md`
 - Mails, `email_logs`, abonnements, prix d'achat : `docs/regles/mails-paiements-comptabilite.md`
+- Messagerie des plateformes, commandes « à expédier », bordereaux (bêta) : `docs/regles/messagerie-et-bordereaux.md`
 - Ménage du 15/10 (ancienne section → fichier) : `docs/menage-claude-md-1510.md`
