@@ -124,7 +124,33 @@
       .map((c) => String(c.ref));
   }
 
+  // La RÈGLE de lecture du détail, par plateforme. Quand elle change (un champ
+  // mal lu), la mémoire « déjà détaillé » du poste est oubliée UNE fois : les
+  // fils sont relus avec la nouvelle règle au rythme ordinaire (5 par passage,
+  // les plus récents d'abord), jamais en rafale.
+  // vinted 2 (16/10) : l'annonce est lue aussi dans item_ids.
+  const REGLE_DETAIL = Object.freeze({ vinted: 2, leboncoin: 1, depop: 1 });
+
+  /** La mémoire des fils détaillés du poste, oubliée si la règle a changé. */
+  function memoireDetails(etat, platform) {
+    const regle = REGLE_DETAIL[platform] ?? 1;
+    const memo = etat?.detailles && typeof etat.detailles === "object" ? etat.detailles : {};
+    if ((etat?.regleDetail ?? 1) !== regle) return { memo: {}, regle, oubliee: Object.keys(memo).length };
+    return { memo, regle, oubliee: 0 };
+  }
+
   // ── 2. Normaliseurs : VINTED ─────────────────────────────────────────────
+  // L'annonce d'une conversation Vinted : `item_id`, ou, quand Vinted le laisse
+  // vide (ventes passées : item_id, item_title, item_photo à null, constaté le
+  // 16/10 sur 8 fils de Nico), le SEUL numéro de `item_ids`. Un lot (plusieurs
+  // articles) n'est imputé à aucune annonce.
+  function articleUniqueVinted(tr) {
+    if (!tr || tr.is_bundle) return null;
+    if (tr.item_id != null) return String(tr.item_id);
+    const ids = Array.isArray(tr.item_ids) ? tr.item_ids.filter((x) => x != null && x !== "") : [];
+    return ids.length === 1 ? String(ids[0]) : null;
+  }
+
   // Liste : [{id, unread, updated_at, description, opposite_user:{id,login}, photo}]
   // Détail : {[id]: {allow_reply, opposite_user:{id,login,is_system}, transaction:{…}, messages:[…]}}
   function normaliserVinted(lecture, details = {}, maintenant = Date.now()) {
@@ -136,7 +162,7 @@
       const det = details?.[ref] ?? null;
       const tr = det?.transaction ?? null;
       const autre = det?.opposite_user ?? c.opposite_user ?? null;
-      const unique = tr && !tr.is_bundle && tr.item_id != null;
+      const article = articleUniqueVinted(tr);
       const conv = {
         ref,
         interlocuteur_ref: autre?.id != null ? String(autre.id) : null,
@@ -147,7 +173,7 @@
         photo: c.photo ?? null,
       };
       if (det) {
-        conv.annonce_ref = unique ? String(tr.item_id) : null;
+        conv.annonce_ref = article;
         conv.titre = tr?.item_title ?? null;
         conv.cote = tr?.current_user_side === "seller" ? "vendeur" : tr?.current_user_side === "buyer" ? "acheteur" : "inconnu";
         conv.systeme = Boolean(autre?.is_system) || !tr;
@@ -806,8 +832,8 @@
   g.FILLSELL_MESSAGERIE = Object.freeze({
     CADENCE_MS, ALEA_MS, DETAILS_MAX, COMMANDES_DETAILS_MAX, MESSAGES_PAR_CONVERSATION, RETENTION_MS,
     PLATEFORMES_EXTENSION, PLATEFORMES_COMMANDES, BORDEREAU_DERNIERE_MARCHE_OUVERTE,
-    texteCourt, dateIso, recente, signeBlocage, aDetailler,
-    normaliserVinted, normaliserMessageVinted, etatCommandeVinted, normaliserCommandesVinted,
+    texteCourt, dateIso, recente, signeBlocage, aDetailler, REGLE_DETAIL, memoireDetails,
+    articleUniqueVinted, normaliserVinted, normaliserMessageVinted, etatCommandeVinted, normaliserCommandesVinted,
     normaliserLeboncoin, normaliserMessageLeboncoin, etatCommandeLeboncoin, normaliserCommandesLeboncoin,
     normaliserDepop, NORMALISEURS, NORMALISEURS_COMMANDES,
     LECTEURS, ENVOYEURS, CHEMINS_BORDEREAU,

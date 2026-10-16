@@ -24,10 +24,15 @@
    (rattachement certain, plus de titre + prix) et toute la **machine d'états** de la vente ; et chez
    Leboncoin **une mise en favori arrive comme une conversation** (preuve pour les offres aux favoris).
 6. **Fait après ton feu vert (16/10 vers 15:25)** : migration `20261016170000` appliquée, drapeau actif sur
-   ton seul compte, **eBay relevé de bout en bout** (2 conversations, 4 messages, textes propres ; un second
-   passage ne réécrit rien). **Reste** : cliquer « Recharger » sur l'extension à ton retour (la 0.6.116 est
-   déjà copiée dans ton dossier) — la relève Vinted / Leboncoin / Depop démarre alors seule.
-7. **Offres aux favoris** : faisable proprement sur **eBay** (natif, anonyme, déjà consenti) ; **une par
+   ton seul compte. **Les 4 plateformes sont relevées en réel, de bout en bout** : eBay par le serveur (cron
+   20 min), Vinted, Leboncoin et Depop par ton extension, que Chrome a prise **tout seul** (pas besoin de
+   « Recharger » : ta copie se recharge d'elle-même au premier moment sûr depuis le 03/10). En base à
+   16:30 : Vinted 16 conversations / 35 messages, Leboncoin 4 / 5, eBay 2 / 4, Depop 1 / 1 ; non-lus des
+   plateformes **inchangés** après nos lectures (Vinted 7, Leboncoin 6, Depop 1).
+7. **Un défaut trouvé sur tes vraies données, corrigé (extension 0.6.118)** : sur une vente Vinted passée,
+   Vinted ne remplit plus `item_id` (le numéro n'est plus que dans `item_ids`) → 8 conversations sur 16
+   n'avaient pas d'article. Corrigé ; ces fils sont relus une fois, 5 par passage.
+8. **Offres aux favoris** : faisable proprement sur **eBay** (natif, anonyme, déjà consenti) ; **une par
    une, validée** sur Leboncoin et Depop ; **pas sur Vinted** (préférer « baisser le prix », qui prévient
    tous les favoris sans message) ; pas sur Beebs (app mobile seulement). Recommandation § 5.
 
@@ -183,17 +188,20 @@ relevé, je te donne la ligne exacte (une conversation = plateforme + numéro du
 
 ## 7. Ce qui est livré, ce qui attend
 
-**Livré (code + docs, un seul push) — inerte sans le drapeau**
-- Extension **0.6.116** (non empaquetée, **pas de zip**) : `chrome-extension/messagerie.js` (lecteurs,
-  normaliseurs, envoyeurs verrouillés, chemin du bordereau) + relève dans `background.js`, juste après
-  la veille des commandes, avec sa cadence (10 min ± 90 s) — c'est l'ordonnanceur existant.
+**Livré (code + docs) — inerte sans le drapeau**
+- Extension **0.6.116 → 0.6.117 → 0.6.118** (non empaquetées, **pas de zip** ; le zip à téléverser reste la
+  0.6.115) : `chrome-extension/messagerie.js` (lecteurs, normaliseurs, envoyeurs verrouillés, chemin du
+  bordereau) + relève dans `background.js`, juste après la veille des commandes, avec sa cadence (10 min ±
+  90 s) — c'est l'ordonnanceur existant. 0.6.117 : un passage qui n'a rien pu lire note son motif en base ;
+  lectures Depop reprises sur erreur réseau (la 0.6.116 n'écrivait rien pour Depop, sans dire pourquoi).
+  0.6.118 : annonce Vinted lue aussi dans `item_ids` ; fils déjà lus relus une fois.
 - Serveur : `ebay-messagerie` **v3** (`verify_jwt = false`, garde maison à deux branches : secret du vault
   OU session bêta) ; `bordereaux-purge` **v1** (même garde, secret seulement).
 - App (web, au push ; **pas d'OTA**) : barre « Messages · À expédier » (compte bêta seulement),
   liste toutes plateformes + conversation + réponse verrouillée, section « À expédier » dans Ventes
   (bouton « Bordereau » **inactif**), indicateur de messages sur la carte de l'article. Pour le parc :
   une lecture au chargement, puis plus rien ; carte identique.
-- Selftests : `selftest:messagerie` (26 cas), `selftest:messagerie-app` (12 cas) ; suite complète : § 8.
+- Selftests : `selftest:messagerie` (30 cas), `selftest:messagerie-app` (12 cas) ; suite complète : § 8.
 
 **APPLIQUÉE (« Feu vert sur 20261016170000 », 16/10 vers 15:25)** — migration
 **`20261016170000_messagerie_bordereaux_beta.sql`** (inverse : `supabase/rollbacks/20261016170000_messagerie_bordereaux_beta.sql`) :
@@ -207,9 +215,9 @@ anon, 3 crons, bucket privé). Drapeau posé sur ton seul compte
 (`scripts/reparations/20261016_drapeau_messagerie_nico.sql`, sauvegarde + inverse). `bordereaux-purge` v1
 déployée. CPU pendant les relevés eBay : 12 à 29 % (rien d'anormal).
 
-**Attend ton geste** : « Recharger » l'extension FillSell dans `chrome://extensions` (0.6.116 copiée dans
-`C:\Users\nicol\FillSell-Extension-Nico`, l'ancienne 0.6.110 gardée dans `build/anciennes-extensions-nico/`).
-Aucun job n'était en cours sur ton compte au moment de la copie.
+**Ton extension** : les builds sont copiés dans `C:\Users\nicol\FillSell-Extension-Nico` (l'ancienne 0.6.110
+gardée dans `build/anciennes-extensions-nico/`) ; ta copie se recharge seule au premier moment sûr (aucun job
+en vol, aucun relevé). Aucun geste de ta part : la relève a démarré à 15:52.
 
 ## 8. Garde-fous tenus, effets de bord constatés, suite
 
@@ -225,14 +233,25 @@ Aucun job n'était en cours sur ton compte au moment de la copie.
   même gabarit HTML (≈ 4 000 caractères de style avant le message) ; v1 stockait le style. Corrigé (v2 :
   le texte est extrait du corps, puis coupé) ; les 4 messages fautifs effacés et relus. Puis v3 : un passage
   sans texte nouveau ne réécrit plus les conversations. Les deux cas sont dans le selftest.
-- **Ce qui n'a pas pu être testé de bout en bout** : l'écriture en base par l'extension (Vinted, Leboncoin,
-  Depop), faute de « Recharger ». Je n'ai pas fait passer le contenu de tes messages par moi pour la
-  simuler (règle « aucune IA sur les messages ») : les lecteurs sont prouvés sur tes vraies données, les
-  normaliseurs et la base le sont par les selftests et l'essai à blanc, eBay l'est en réel.
+- **Testé de bout en bout, en réel, sur ton compte** : la relève des 4 plateformes jusqu'à la base (chiffres
+  § 0), les non-lus des plateformes inchangés après lecture, le rattachement (Leboncoin : 3 fils sur 3 qui
+  portent une annonce ; Vinted : 1, puis le défaut ci-dessous ; eBay : la question porte sur une annonce
+  retirée le 24/09, sans article de stock — rien à rattacher, c'est juste ; Depop : message de Depop
+  lui-même). Je n'ai jamais fait passer le texte de tes messages par moi (règle « aucune IA sur les
+  messages ») : vérifié par des comptes et des formes seulement.
+- **Défaut trouvé au relevé réel Vinted, corrigé (0.6.118)** : 8 conversations sur 16 (ventes passées)
+  arrivaient sans article : Vinted y laisse `item_id`, le titre et la photo à vide et ne garde le numéro que
+  dans `item_ids` (forme lue, sans contenu, sur 2 fils). Le lecteur prend désormais ce numéro unique (un lot
+  reste sans article) ; la mémoire « déjà lu » de Vinted est oubliée une fois, les fils sont relus 5 par
+  passage (jamais en rafale). Preuve sur le moteur de rattachement : l'un des 2 numéros lus désigne une fiche
+  de ton stock (`fiche_vinted`), l'autre aucun article FillSell. **À vérifier au prochain check** : les 8 fils
+  Vinted portent leur annonce (`messagerie_conversations.annonce_ref`), ≥ 1 rattaché.
+- **Pas testable aujourd'hui (et c'est voulu)** : l'envoi d'une réponse (liste blanche vide), la dernière
+  marche du bordereau (fermée), une commande « à expédier » réelle (0 en cours chez toi), Beebs (téléphone).
 - Écrans vérifiés en local à 390 px, sur données synthétiques : 23 contrôles verts
   (`scripts/apercu/capture-messagerie-beta.mjs`).
 - Suite complète des selftests et build : voir l'état final dans `docs/agents/etat-2026-10-01.md`
-  (§ 16/10 soir).
+  (§ 16/10 fin d'après-midi).
 
 ## Annexe A — Appels relevés (méthode · preuve · engage ?)
 

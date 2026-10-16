@@ -40,7 +40,13 @@
   locale.
 - **Rattachement à l'article** : par l'identifiant seulement (`messagerie_article_pour_annonce` : fiche Vinted,
   annonce relevée prouvée, dépôt FillSell prouvé) — jamais le titre. Un lot (plusieurs articles) n'est
-  rattaché à aucun.
+  rattaché à aucun. Vinted : sur une vente passée, `transaction.item_id` (et titre, photo) revient VIDE et le
+  numéro n'est plus que dans `item_ids` (constaté le 16/10, 8 fils de Nico) → `articleUniqueVinted` lit
+  `item_id`, sinon le SEUL élément d'`item_ids`.
+- **Règle de lecture changée = relecture une fois, au rythme ordinaire.** Le poste garde la mémoire des fils
+  déjà détaillés ; changer ce qu'un normaliseur lit dans le détail impose d'augmenter `REGLE_DETAIL[plateforme]`
+  (`messagerie.js`) : la mémoire de cette plateforme est oubliée une fois et les fils sont relus 5 par passage,
+  les plus récents d'abord. Jamais de relecture en rafale, jamais de réparation en base pour forcer une relecture.
 - **eBay** : messages par la Trading API (`GetMyMessages`) avec le jeton DÉJÀ consenti (aucun scope ajouté ;
   `commerce.message` reste interdit, la Message API REST répond 403) ; étiquettes : la Logistics API répond
   403 (US seulement) — le bordereau eBay s'achète dans eBay. Fonction `ebay-messagerie` (`verify_jwt = false`,

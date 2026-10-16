@@ -94,6 +94,26 @@ await cas("Vinted : un lot (plusieurs articles) n'est imputé à aucune annonce"
   assert.equal(r.conversations[0].annonce_ref, null);
 });
 
+await cas("Vinted : vente passée (item_id vide, forme relevée le 16/10) → l'annonce est le seul numéro d'item_ids", () => {
+  const tr = (extra) => ({ id: 9, status: 450, is_bundle: false, is_completed: true, item_count: 1, item_id: null,
+    item_title: null, item_photo: null, item_url: null, current_user_side: "seller", ...extra });
+  const r = M.normaliserVinted({ conversations: [
+    { id: 504, updated_at: ilYa(2) }, { id: 505, updated_at: ilYa(2) }, { id: 506, updated_at: ilYa(2) },
+  ] }, {
+    504: { transaction: tr({ item_ids: [7654321] }), messages: [] },
+    505: { transaction: tr({ item_ids: [11, 12] }), messages: [] },
+    506: { transaction: tr({ item_ids: [] }), messages: [] },
+  }, MAINTENANT);
+  const parRef = Object.fromEntries(r.conversations.map((c) => [c.ref, c]));
+  assert.equal(parRef["504"].annonce_ref, "7654321");
+  assert.equal(parRef["504"].cote, "vendeur");
+  assert.equal(parRef["505"].annonce_ref, null, "deux articles : aucun");
+  assert.equal(parRef["506"].annonce_ref, null);
+  assert.equal(M.articleUniqueVinted({ item_id: 5, item_ids: [5] }), "5", "item_id d'abord");
+  assert.equal(M.articleUniqueVinted({ is_bundle: true, item_ids: [5] }), null, "un lot : jamais");
+  assert.equal(M.articleUniqueVinted(null), null);
+});
+
 await cas("Leboncoin : annonce = list_id, côté par le propriétaire, favori sans texte, système", () => {
   const r = M.normaliserLeboncoin({ moi: "u-moi", conversations: [
     { conversation_id: "c1", item: { id: "3289322234", type: "ad", subject: "Montre", image: "i", owner_id: "u-moi" }, partners: [{ id: "u-x", name: "Xa" }], unseen_counter: 2, policies: [], last_message_sent_at: ilYa(1), last_message_preview: "Bonjour" },
@@ -202,6 +222,21 @@ await cas("à détailler : nouvelles ou changées, récentes, 5 au plus, la plus
   assert.equal(r[0], "c1");
 });
 
+await cas("règle de lecture changée : la mémoire du poste est oubliée UNE fois (Vinted 2), pas ailleurs", () => {
+  const avant = { detailles: { a: ilYa(1), b: ilYa(2) } };   // état d'une 0.6.117 : pas de regleDetail
+  const v = M.memoireDetails(avant, "vinted");
+  assert.deepEqual(v.memo, {}); assert.equal(v.oubliee, 2); assert.equal(v.regle, M.REGLE_DETAIL.vinted);
+  assert.ok(M.REGLE_DETAIL.vinted >= 2);
+  const l = M.memoireDetails(avant, "leboncoin");
+  assert.equal(l.oubliee, 0); assert.equal(Object.keys(l.memo).length, 2, "Leboncoin : règle 1, rien d'oublié");
+  const apres = M.memoireDetails({ detailles: { a: ilYa(1) }, regleDetail: M.REGLE_DETAIL.vinted }, "vinted");
+  assert.equal(apres.oubliee, 0); assert.equal(Object.keys(apres.memo).length, 1, "une seule fois");
+  assert.deepEqual(M.memoireDetails(undefined, "depop").memo, {});
+  // Relus au rythme ordinaire : la mémoire vide redonne au plus DETAILS_MAX fils par passage.
+  const liste = Array.from({ length: 16 }, (_, i) => ({ ref: `v${i}`, dernier_le: ilYa(i + 1) }));
+  assert.equal(M.aDetailler(liste, [], M.DETAILS_MAX).length, M.DETAILS_MAX);
+});
+
 // ── d. Blocage ───────────────────────────────────────────────────────────────
 await cas("signes de blocage", () => {
   assert.equal(M.signeBlocage({ http: 403 }), "http_403");
@@ -301,6 +336,16 @@ await cas("lecteurs de page : lecture seule (aucun POST/PUT/PATCH/DELETE)", () =
       assert.ok(!/method\s*:\s*["'](POST|PUT|PATCH|DELETE)/i.test(fn.toString()), `${pf}.${nom}`);
     }
   }
+});
+
+await cas("(0.6.118) background.js passe la mémoire par la règle, et la note AVANT tout retour anticipé", () => {
+  const i = SECTION.indexOf("async function releverMessagerieUnePlateforme");
+  const corps = SECTION.slice(i, SECTION.indexOf("// 3. Les commandes en cours", i));
+  const iRegle = corps.indexOf("M.memoireDetails(e, platform)");
+  const iNote = corps.indexOf("e.detailles = memo; e.regleDetail = regle;");
+  const iDetail = corps.indexOf("L.details");
+  assert.ok(iRegle > 0 && iNote > iRegle && iDetail > iNote, "règle → note → lecture du détail");
+  assert.ok(!/e\.detailles && typeof e\.detailles/.test(corps), "plus de mémoire lue sans la règle");
 });
 
 await cas("(0.6.117) un passage sans lecture note son motif en base ; Depop reprend 2 fois une erreur réseau", async () => {

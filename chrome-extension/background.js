@@ -26,6 +26,7 @@ importScripts("messagerie.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
+  "2026-10-16-messagerie-beta-3 (0.6.118 : bêta messagerie — l'annonce d'une conversation Vinted est lue aussi dans item_ids quand item_id est vide (ventes passées), et la mémoire des fils déjà lus est oubliée une fois pour les relire, 5 par passage) — précédent : " +
   "2026-10-16-messagerie-beta-2 (0.6.117 : un passage de la bêta messagerie qui n'a rien pu lire note son motif en base ; lectures Depop reprises 2 fois sur erreur réseau) — précédent : " +
   "2026-10-16-messagerie-beta (0.6.116 : BÊTA messagerie + commandes « à expédier », compte porteur de beta_flags.messages_bordereaux seul — relevé en lecture derrière la veille des commandes, réponses verrouillées par liste blanche, chemin du bordereau à dernière marche fermée) — précédent : " +
   "2026-10-05-veille-commandes (0.6.98 : veille des commandes Vinted et Leboncoin toutes les 10 min, comptes payants, " + // estimation-ok: nom interne de capacité
@@ -20045,8 +20046,11 @@ async function releverMessagerieUnePlateforme(platform, token, e) {
   if (bloc1) return { bloque: bloc1, requetes };
   if (!liste?.ok) return { motif: liste?.motif ?? "liste_illisible", requetes };
 
-  // 2. Le détail des conversations nouvelles ou changées (5 au plus).
-  const memo = e.detailles && typeof e.detailles === "object" ? e.detailles : {};
+  // 2. Le détail des conversations nouvelles ou changées (5 au plus). Une
+  // règle de lecture changée fait relire les fils déjà lus, au même rythme.
+  const { memo, regle, oubliee } = M.memoireDetails(e, platform);
+  if (oubliee) console.log(`[messagerie][${platform}] règle de lecture ${regle} : ${oubliee} fil(s) relus, ${M.DETAILS_MAX} par passage`);
+  e.detailles = memo; e.regleDetail = regle;
   const parListe = M.NORMALISEURS[platform](liste, {});
   const connues = Object.entries(memo).map(([conversation_ref, dernier_message_le]) => ({ conversation_ref, dernier_message_le }));
   const refs = M.aDetailler(parListe.conversations, connues, M.DETAILS_MAX);
