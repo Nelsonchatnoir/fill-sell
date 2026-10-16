@@ -603,15 +603,24 @@
 
   // Depop : la liste (24), jeton du cookie access_token envoyé en Bearer —
   // exactement ce que fait le site (credentials « omit » : sans cela, CORS).
+  // (0.6.117) Une lecture qui échoue « réseau » (Failed to fetch : mesuré par
+  // intermittence le 09/10, cf. depopJson de content-scripts/depop.js) est
+  // reprise deux fois (1 s, puis 2,5 s) ; une RÉPONSE (401, 404, 429…) se lit.
   async function lecteurListeDepop() {
     const m = String(document.cookie ?? "").match(/(?:^|;\s*)access_token=([^;]+)/);
     if (!m) return { ok: false, motif: "jeton_absent", requetes: 0 };
     let tok = m[1]; try { tok = decodeURIComponent(m[1]); } catch { /* tel quel */ }
-    const r = await fetch("https://webapi.depop.com/presentation/api/v1/conversations/?limit=24&unreadOnly=false", {
-      method: "GET", headers: { Accept: "application/json", Authorization: `Bearer ${tok}` }, credentials: "omit", cache: "no-store",
-    }).catch(() => null);
-    if (!r) return { ok: false, motif: "reseau", requetes: 1 };
-    if (r.status !== 200) return { ok: false, http: r.status, motif: `http_${r.status}`, requetes: 1 };
+    let r = null; let requetes = 0;
+    for (const attente of [0, 1000, 2500]) {
+      if (attente) await new Promise((ok) => setTimeout(ok, attente));
+      requetes++;
+      r = await fetch("https://webapi.depop.com/presentation/api/v1/conversations/?limit=24&unreadOnly=false", {
+        method: "GET", headers: { Accept: "application/json", Authorization: `Bearer ${tok}` }, credentials: "omit", cache: "no-store",
+      }).catch(() => null);
+      if (r) break;
+    }
+    if (!r) return { ok: false, motif: "reseau", requetes };
+    if (r.status !== 200) return { ok: false, http: r.status, motif: `http_${r.status}`, requetes };
     const j = await r.json().catch(() => null);
     const conversations = (Array.isArray(j?.objects) ? j.objects : []).map((c) => ({
       conversation_id: c?.conversation_id ?? null, last_message_text: c?.last_message_text ?? null,
@@ -619,7 +628,7 @@
       read_only: c?.read_only === true, chat_meta_status: c?.chat_meta_status ?? null,
       users: (Array.isArray(c?.users) ? c.users : []).slice(0, 1).map((u) => ({ id: u?.id ?? null, username: u?.username ?? null })),
     }));
-    return { ok: true, http: 200, conversations, requetes: 1 };
+    return { ok: true, http: 200, conversations, requetes };
   }
 
   async function lecteurDetailsDepop(refs) {
@@ -629,10 +638,15 @@
     const details = {}; let requetes = 0;
     for (const ref of refs) {
       await new Promise((ok) => setTimeout(ok, 1200 + Math.random() * 1400));
-      requetes++;
-      const r = await fetch(`https://webapi.depop.com/presentation/api/v1/conversations/${encodeURIComponent(ref)}/messages/`, {
-        method: "GET", headers: { Accept: "application/json", Authorization: `Bearer ${tok}` }, credentials: "omit", cache: "no-store",
-      }).catch(() => null);
+      let r = null;
+      for (const attente of [0, 1000, 2500]) {
+        if (attente) await new Promise((ok) => setTimeout(ok, attente));
+        requetes++;
+        r = await fetch(`https://webapi.depop.com/presentation/api/v1/conversations/${encodeURIComponent(ref)}/messages/`, {
+          method: "GET", headers: { Accept: "application/json", Authorization: `Bearer ${tok}` }, credentials: "omit", cache: "no-store",
+        }).catch(() => null);
+        if (r) break;
+      }
       if (!r) continue;
       if (r.status === 403 || r.status === 429) return { ok: false, http: r.status, motif: `http_${r.status}`, details, requetes };
       if (r.status !== 200) continue;

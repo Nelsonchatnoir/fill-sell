@@ -26,6 +26,7 @@ importScripts("messagerie.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
+  "2026-10-16-messagerie-beta-2 (0.6.117 : un passage de la bêta messagerie qui n'a rien pu lire note son motif en base ; lectures Depop reprises 2 fois sur erreur réseau) — précédent : " +
   "2026-10-16-messagerie-beta (0.6.116 : BÊTA messagerie + commandes « à expédier », compte porteur de beta_flags.messages_bordereaux seul — relevé en lecture derrière la veille des commandes, réponses verrouillées par liste blanche, chemin du bordereau à dernière marche fermée) — précédent : " +
   "2026-10-05-veille-commandes (0.6.98 : veille des commandes Vinted et Leboncoin toutes les 10 min, comptes payants, " + // estimation-ok: nom interne de capacité
   "bornée, mesurée, coupée 24 h au premier signe anti-robot — une commande neuve fait relire l'annonce en priorité ; " +
@@ -20022,6 +20023,14 @@ async function bloquerMessagerie(platform, motif, token, e) {
   console.warn(`[messagerie][${platform}] signe de blocage (${motif}) — plus aucun relevé jusqu'à ${new Date(jusqu).toISOString()}`);
 }
 
+/** Le motif d'un passage sans lecture, en base (aucun contenu : un code court). */
+async function noterEchecReleveMessagerie(platform, motif, token) {
+  await rpcMessagerie("messagerie_enregistrer", {
+    p_platform: platform, p_conversations: [], p_messages: [],
+    p_etat: { motif: String(motif ?? "illisible").slice(0, 120) },
+  }, token).catch(() => {});
+}
+
 /** Un passage pour UNE plateforme. Ne lève pas : rend un bilan. */
 async function releverMessagerieUnePlateforme(platform, token, e) {
   const M = FILLSELL_MESSAGERIE;
@@ -20134,7 +20143,11 @@ async function releverMessagerieBeta(session) {
     if (e.coupee && maintenant < Number(e.coupee.jusqu)) continue;
     if (Number.isFinite(Number(e.prochain)) && maintenant < Number(e.prochain)) continue;
     e.prochain = maintenant + M.CADENCE_MS + Math.round(Math.random() * M.ALEA_MS);
-    if (platform === "depop" && !(await depopAccesAccorde())) { e.dernierMotif = "depop_acces"; continue; }
+    if (platform === "depop" && !(await depopAccesAccorde())) {
+      e.dernierMotif = "depop_acces";
+      await noterEchecReleveMessagerie(platform, "depop_acces", token);
+      continue;
+    }
     let aut = null;
     try { aut = await rpcMessagerie("messagerie_releve_autorise", { p_platform: platform }, token); } catch { aut = null; }
     if (!aut?.autorise) {
@@ -20148,6 +20161,9 @@ async function releverMessagerieBeta(session) {
     e.dernierLe = new Date().toISOString();
     e.dernierMotif = r?.bloque ?? r?.refuse ?? r?.motif ?? null;
     if (r?.bloque) { await bloquerMessagerie(platform, r.bloque, token, e); continue; }
+    // (0.6.117) Un passage qui n'a rien pu lire le DIT en base (messagerie_releves.
+    // dernier_motif) : la 0.6.116 se taisait (Depop, 16/10 : aucune ligne, aucun motif).
+    if (!r?.ok && !r?.refuse) await noterEchecReleveMessagerie(platform, e.dernierMotif, token);
     const b = r?.bilan ?? {};
     const bc = r?.bilanCommandes ?? {};
     console.log(`[messagerie][${platform}] ${r?.ok ? "relevé" : `rien (${e.dernierMotif})`} — ${r?.requetes ?? 0} requête(s), ` +

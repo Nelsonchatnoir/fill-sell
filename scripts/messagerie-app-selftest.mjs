@@ -130,6 +130,10 @@ await cas("eBay : messages groupés par annonce × interlocuteur ; messages d'eB
   assert.equal(r.messages.find((m) => m.ref === "x2").sens, "envoye");
   assert.ok(r.conversations.find((x) => x.systeme), "message d'eBay = système");
   assert.ok(!r.messages.some((m) => m.ref === "4"), "plus de 30 jours");
+  // (relevé réel du 16/10) Un passage SANS texte relu ne donne pas d'extrait (la
+  // base garde le précédent) : jamais l'objet du mail, jamais une réécriture.
+  const sansTexte = conversationsEbay([{ message_id: "9", sender: "a", folder_id: "0", item_id: "1", subject: "Objet du mail", receive_date: "2026-10-15T10:00:00Z", read: true }], maintenant);
+  assert.equal(sansTexte.conversations[0].extrait, null);
 });
 
 await cas("eBay : commandes sans adresse, état et date limite", () => {
@@ -156,6 +160,16 @@ await cas("eBay : le texte d'un message sort du gabarit HTML, borné", () => {
   assert.equal(texteMessageEbay('<html><div id="UserInputtedText">Bonjour,<br>toujours dispo ?</div><div>pied</div></html>'), "Bonjour, toujours dispo ?");
   assert.equal(texteMessageEbay(null, "Texte brut"), "Texte brut");
   assert.ok(texteMessageEbay("<p>" + "a".repeat(5000) + "</p>").length <= 4000);
+});
+
+await cas("eBay (relevé réel du 16/10) : `Content` est du HTML avec ~4 000 car. de style avant <body> → le texte du corps, jamais le style", () => {
+  const style = "<style>" + ".c{color:#333;margin:0}".repeat(200) + "</style>";
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8">${style}</head><body><table><tr><td>Nouveau message de acheteur1</td></tr><tr><td>Est-ce encore disponible ?</td></tr></table></body></html>`;
+  const t = texteMessageEbay("", html);
+  assert.ok(t.includes("Est-ce encore disponible ?"), t.slice(0, 80));
+  assert.ok(!/color:|margin|<style|<html/.test(t), "aucun style ni balise");
+  // Et le même HTML passé par `Text` seulement.
+  assert.ok(texteMessageEbay(html, null).includes("Est-ce encore disponible ?"));
 });
 
 // ── f. Règles d'écran ────────────────────────────────────────────────────────

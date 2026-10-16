@@ -31,26 +31,44 @@ function iso(v) {
   return Number.isFinite(t) ? new Date(t).toISOString() : null;
 }
 
+// Le HTML d'un e-mail eBay → son texte. ⚠️ (16/10, relevé réel) `Content` N'EST
+// PAS du texte brut : c'est le même gabarit HTML que `Text`, avec ~4 000
+// caractères de <head>/<style> AVANT le <body> — le couper avant d'extraire
+// gardait le style et jamais le message. On extrait d'abord, on coupe après.
+function texteDuHtml(h) {
+  let zone = h;
+  const uit = h.match(/id=["']?UserInputtedText["']?[^>]*>([\s\S]*?)<\/div>/i);
+  if (uit) zone = uit[1];
+  else {
+    const corps = h.match(/<body[^>]*>([\s\S]*?)(<\/body>|$)/i);
+    zone = corps ? corps[1] : h.replace(/<head[\s\S]*?<\/head>/i, " ");
+  }
+  const texte = zone
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<(script|style|head|title)[^>]*>[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n").replace(/<\/(p|div|tr|li|h\d)>/gi, "\n").replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&#(\d+);/g, (_m, n) => String.fromCodePoint(Number(n)));
+  return court(texte, TEXTE_MAX);
+}
+
 /**
  * Le texte d'un message eBay. Le corps est un gabarit HTML d'e-mail ; le mot
- * de la personne est dans #UserInputtedText quand il existe. Sinon : le HTML
- * débarrassé de ses balises. Jamais plus de 4 000 caractères.
+ * de la personne est dans #UserInputtedText quand il existe, sinon le corps
+ * (<body>) débarrassé de ses balises. `Content` d'abord, `Text` ensuite —
+ * l'un comme l'autre peuvent être du HTML. Jamais plus de 4 000 caractères.
  * @param {string | null | undefined} html
  * @param {string | null | undefined} [contenu]
  * @returns {string | null}
  */
 export function texteMessageEbay(html, contenu = undefined) {
-  const brut = String(contenu ?? "").trim();
-  if (brut) return court(brut, TEXTE_MAX);
-  const h = String(html ?? "");
-  if (!h.trim()) return null;
-  const m = h.match(/id=["']?UserInputtedText["']?[^>]*>([\s\S]*?)<\/div>/i);
-  const zone = m ? m[1] : h;
-  const sansStyle = zone.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, " ");
-  const texte = sansStyle.replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"').replace(/&#39;/g, "'");
-  return court(texte, TEXTE_MAX);
+  for (const source of [contenu, html]) {
+    const s = String(source ?? "");
+    if (!s.trim()) continue;
+    const t = /<\s*(html|body|div|p|br|table|span|!doctype|head)\b/i.test(s) ? texteDuHtml(s) : court(s, TEXTE_MAX);
+    if (t) return t;
+  }
+  return null;
 }
 
 /**
@@ -79,7 +97,10 @@ export function conversationsEbay(entetes, maintenant = Date.now()) {
     };
     if (!g.dernier_le || Date.parse(quand) > Date.parse(g.dernier_le)) {
       g.dernier_le = quand;
-      g.extrait = court(e.texte ?? e.subject, EXTRAIT_MAX);
+      // (16/10, relevé réel) L'extrait ne vient QUE d'un texte lu ce passage :
+      // sinon null, et la base garde le précédent (jamais l'objet du mail à la
+      // place — chaque passage sans texte réécrivait les conversations).
+      g.extrait = e.texte ? court(e.texte, EXTRAIT_MAX) : null;
     }
     if (!envoye && e.read === false) g.non_lus += 1;
     if (e.response_enabled === true) g.reponse_possible = true;

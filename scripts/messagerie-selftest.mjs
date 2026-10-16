@@ -303,6 +303,23 @@ await cas("lecteurs de page : lecture seule (aucun POST/PUT/PATCH/DELETE)", () =
   }
 });
 
+await cas("(0.6.117) un passage sans lecture note son motif en base ; Depop reprend 2 fois une erreur réseau", async () => {
+  assert.ok(/if \(!r\?\.ok && !r\?\.refuse\) await noterEchecReleveMessagerie\(platform, e\.dernierMotif, token\);/.test(SECTION));
+  assert.ok(/noterEchecReleveMessagerie\(platform, "depop_acces", token\)/.test(SECTION));
+  assert.ok(/p_conversations: \[\], p_messages: \[\],\s*p_etat: \{ motif:/.test(SECTION), "aucun contenu : un code court");
+  let essais = 0;
+  globalThis.document = { cookie: "access_token=jt" };
+  globalThis.fetch = async () => { essais++; if (essais < 3) throw new TypeError("Failed to fetch"); return { status: 200, json: async () => ({ objects: [] }) }; };
+  const r = await M.LECTEURS.depop.liste();
+  assert.equal(r.ok, true);
+  assert.equal(r.requetes, 3);
+  essais = -10;
+  const r2 = await M.LECTEURS.depop.liste();
+  assert.equal(r2.ok, false);
+  assert.equal(r2.motif, "reseau");
+  assert.equal(r2.requetes, 3, "jamais plus de 3 essais");
+});
+
 // ── g. L'envoi, verrouillé ───────────────────────────────────────────────────
 await cas("background.js relit la liste blanche avant l'envoi, et n'envoie qu'UNE réponse par passage", () => {
   const i = SECTION.indexOf("async function envoyerReponseMessagerie");
