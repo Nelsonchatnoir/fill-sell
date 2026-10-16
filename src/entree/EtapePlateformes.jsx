@@ -23,6 +23,14 @@ const PLATEFORMES = [
   { id: 'leboncoin', nom: 'Leboncoin' },
   { id: 'ebay', nom: 'eBay' },
   { id: 'beebs', nom: 'Beebs' },
+  // (16/10, Nico) Depop proposée à l'entrée comme les quatre autres : elle est
+  // ouverte à tous depuis le 10/10 (depop_autorise) et demander_sync_plateforme
+  // accepte son relevé. Le reste du parcours la suit sans rien d'ajouté : le
+  // relevé la demande comme Leboncoin ou Beebs (le serveur tranche, et pose
+  // « Autoriser Depop » si l'extension n'a pas encore l'accès — jamais de file
+  // silencieuse), et la synchronisation du Stock ne garde que les plateformes
+  // qu'elle affiche (annonces/synchroniser.ciblesReleve).
+  { id: 'depop', nom: 'Depop' },
   // (02/10) Opla n'est plus proposée : sortie d'Opla, décision de Nico.
 ];
 

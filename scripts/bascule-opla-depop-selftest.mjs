@@ -116,7 +116,12 @@ dit('bandeau de prévention : règle unique (éteint à la bascule)', hook.inclu
 const app = lire('src/App.jsx');
 dit('app : Depop par etatBascule, à la même horloge que la sortie d\'Opla', app.includes('maintenant:sortieOpla.maintenant,') && app.includes('interrupteur:sortieOpla.interrupteur,'));
 const ventes = lire('src/tabs/VentesTab.jsx');
-dit('ventes : l\'état vide ne nomme plus Opla après la bascule', ventes.includes(`oplaFermee?'Vinted, Leboncoin, eBay ou Beebs'`) && app.includes('oplaFermee={oplaFermee}'));
+// (16/10) L'état vide des Ventes est refait (src/ecrans/vides/VentesVide.jsx,
+// maquette validée par Nico) : Opla y est quittée pour TOUS (10/10), il nomme
+// les cinq plateformes, Depop comprise — plus de bascule à lire dans ce texte.
+const ventesVide = lire('src/ecrans/vides/VentesVide.jsx').split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+dit('ventes : l\'état vide ne nomme plus Opla après la bascule', ventes.includes('<VentesVide ') && !/Opla/.test(ventesVide)
+  && ventesVide.includes('Vinted, Leboncoin, Beebs, eBay ou Depop'));
 const mig = lire('supabase/migrations/20261009230000_bascule_opla_depop_minuit.sql');
 dit('base : depop_autorise ouverte au même interrupteur (0 = fermée, absente = 10/10 00:00)', mig.includes("WHERE c.key = 'opla_sortie_le'") && mig.includes('now() >= to_timestamp(1791583200)') && mig.includes('WHEN c.value = 0 THEN false'));
 dit('base : republication automatique Depop ouverte (pf_depop = 1, liste planifiée, espacement 900 s)', mig.includes("('republish_planifiee_pf_depop', 1, now())")

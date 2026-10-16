@@ -120,6 +120,8 @@ import { executeVoiceTasks, groupSellLots } from './utils/voiceEngine';
 // (l'ancienne copie locale a fait survivre le bug Ralph Lauren→Luxe ; unifié 2026-07-17).
 import { detectType, normalizeMarque, marqueKey, uuidV4, DESC_MANUELLE_MAX, lirePoidsGrammes } from './utils/shared';
 import { prixAchatConnu, comptabilisables, nbSansPrixAchat, totalInvesti, totalMarge, totalCA, margeUnitaire } from './utils/comptabilite';
+import { trierVentes } from './utils/ventesStats';
+import EmptyStateDashboard from './ecrans/vides/TableauVide';
 import StockTab from './tabs/StockTab';
 import LensTab from './tabs/LensTab';
 import VentesTab from './tabs/VentesTab';
@@ -983,7 +985,7 @@ const TEXTAREA_PLACEHOLDERS=VOICE_EXAMPLES.map(e=>e.text);
 // qui tirait vers le bas toutes les moyennes qui lisent marginPct (les quatre
 // agrégations de graphe plus bas le faisaient). `margin` était déjà correct
 // (null tel quel), c'est le pourcentage qui mentait. Corrigé le 11/08.
-function mapSale(v){return{id:v.id,title:v.titre,prix_vente:v.prix_vente,buy:v.prix_achat,sell:v.prix_vente,inventaire_id:v.inventaire_id??null,cree_le:v.created_at??null,ship:0,margin:v.benefice,marginPct:(v.benefice==null||!(v.prix_vente>0))?null:(v.benefice/v.prix_vente)*100,date:v.date,date_vente:v.date||v.created_at,marque:v.marque||"",type:v.type||"",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0,description:v.description||null,emplacement:v.emplacement||null,plateforme:v.plateforme||null,quantite:v.quantite||null};}
+function mapSale(v){return{id:v.id,title:v.titre,prix_vente:v.prix_vente,buy:v.prix_achat,sell:v.prix_vente,inventaire_id:v.inventaire_id??null,cree_le:v.created_at??null,ship:0,margin:v.benefice,marginPct:(v.benefice==null||!(v.prix_vente>0))?null:(v.benefice/v.prix_vente)*100,date:v.date,date_vente:v.date||v.created_at,marque:v.marque||"",type:v.type||"",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0,description:v.description||null,emplacement:v.emplacement||null,plateforme:v.plateforme||null,plateforme_code:v.plateforme_code??null,quantite:v.quantite||null};}
 
 // Groups consecutive rows with same title+date+sell price into one display row
 function groupSales(arr){
@@ -1319,214 +1321,9 @@ function AvgDaysChart({filtered, items, lang}) {
   );
 }
 
-// État vide du Dashboard — design Claude Design « Dashboard Empty State »
-// (projet e47b36df, 2026-07-14). Header / FAB / nav bar restent ceux de l'app.
-// Logos plateformes : PlatformLogo (vraies icônes d'app), pas les pastilles
-// lettrées de la maquette. Le bloc Lens navigue vers l'onglet Lens (tab 2)
-// via le même mécanisme que la nav bar (onOpenLens branché sur setTab).
-function EmptyStateDashboard({ lang, onImport, onOpenLens, extensionAbsente = false, onExtensionInfo = null }) {
-  const fr = lang !== 'en';
-  const MicSvg = ({ size=34, stroke="#fff" }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
-  );
-  // ── Grille 2×2 réordonnée (2026-09-01, audit Tableau vide) ────────────────
-  // La republication — le geste qui tourne sans que l'utilisateur touche à
-  // rien — n'apparaissait NULLE PART sur la seule page que voit un compte à
-  // zéro, pendant que deux cartes comptables (ventes, stats) occupaient la
-  // première ligne alors qu'elles ne concernent que qui a déjà vendu. La
-  // republication passe EN TÊTE ; les deux cartes comptables FUSIONNENT en
-  // une (même geste vocal, mêmes chiffres) et redescendent en dernier — la
-  // grille reste à 4, la page ne s'allonge pas. La phrase de la carte
-  // republication est LA MÊME que l'étape 3 de « Ce que FillSell fait »
-  // (StockTab vide) : un seul discours pour un seul geste.
-  const CARDS = [
-    {
-      icon:<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>,
-      titleFr:"Tes annonces remontent toutes seules", titleEn:"Your listings climb back on their own",
-      descFr:"Une annonce qui dort est republiée pour repasser en tête des résultats, au rythme d'une vraie personne — sans que tu touches à rien.", descEn:"A listing that sits gets reposted back to the top of the results, at a human pace — without you touching a thing.",
-    },
-    {
-      // Le retrait n'est jamais « tout seul » — détection automatique,
-      // retrait SUR CONFIRMATION (pending_removal + bandeau). Même discours
-      // que la landing. Icône cloche : FillSell PRÉVIENT, l'utilisateur agit.
-      icon:<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>,
-      titleFr:"Vendu quelque part ? Tu retires les autres en un tap", titleEn:"Sold somewhere? Remove the others in one tap",
-      descFr:"FillSell repère l'annonce disparue, sur n'importe laquelle de tes plateformes — tu confirmes, et tu retires les autres en un tap.", descEn:"FillSell spots the listing that is gone, on any of your marketplaces — you confirm, and remove the others in one tap.",
-    },
-    {
-      icon:<MicSvg size={20} stroke="currentColor"/>,
-      titleFr:"Ajoute ton stock à la voix", titleEn:"Add your stock by voice",
-      descFr:"Dis « pull Zara taille M, 15 € », c'est ajouté et classé.", descEn:"Say “Zara sweater size M, €15” — added and sorted.",
-    },
-    {
-      icon:<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>,
-      titleFr:"Enregistre tes ventes, suis tes marges", titleEn:"Log your sales, track your margins",
-      descFr:"Dis « vendu 25 € » : la vente est enregistrée — profit net et marges se mettent à jour en un coup d'œil.", descEn:"Say “sold for €25”: the sale is logged — net profit and margins update at a glance.",
-    },
-  ];
-  return (
-    <div style={{display:"flex",flexDirection:"column",gap:20,fontFamily:"'Space Grotesk',sans-serif"}}>
-      <style>{`
-        @keyframes fsPulse{0%{transform:scale(1);opacity:.4}100%{transform:scale(2.05);opacity:0}}
-        @keyframes fsScan{0%,100%{transform:translateY(-44px)}50%{transform:translateY(44px)}}
-      `}</style>
-
-      {/* Hero micro — badge stock vide + exemple + mini-input vocal */}
-      <section style={{background:UI.paper,border:`1px solid ${UI.border}`,borderRadius:26,padding:"30px 22px 22px",textAlign:"center",position:"relative",overflow:"hidden",boxShadow:"0 1px 3px rgba(16,32,27,0.04), 0 12px 30px rgba(16,32,27,0.05)"}}>
-        <div style={{position:"absolute",top:-46,left:"50%",transform:"translateX(-50%)",width:240,height:190,background:"radial-gradient(ellipse at center,rgba(47,158,144,0.14),transparent 70%)",pointerEvents:"none"}}/>
-        <div style={{position:"relative",zIndex:1}}>
-          <div style={{display:"inline-flex",alignItems:"center",gap:6,padding:"5px 11px",borderRadius:999,background:"rgba(232,149,109,0.16)",marginBottom:18}}>
-            <span style={{width:6,height:6,borderRadius:99,background:UI.amber}}/>
-            <span style={{fontWeight:700,fontSize:10.5,letterSpacing:"0.1em",color:"#C46A3E",whiteSpace:"nowrap"}}>{fr?"STOCK VIDE · À TOI DE JOUER":"EMPTY STOCK · YOUR MOVE"}</span>
-          </div>
-          {/* Lot 2 : le hero dit CE QUE FAIT le produit et propose les deux
-              premiers gestes (importer / ajouter par photo). Le vocal reste
-              accessible par le FAB micro et la carte plus bas — mais ce n'est
-              plus lui, l'entrée en matière. */}
-          <div style={{position:"relative",width:80,height:80,margin:"0 auto 20px"}}>
-            <span style={{position:"absolute",inset:0,borderRadius:24,background:"rgba(47,158,144,0.28)",animation:"fsPulse 2.6s ease-out infinite"}}/>
-            <span style={{position:"absolute",inset:0,borderRadius:24,background:"rgba(47,158,144,0.28)",animation:"fsPulse 2.6s ease-out infinite",animationDelay:"1.3s"}}/>
-            <div style={{position:"relative",width:80,height:80,borderRadius:24,background:`linear-gradient(150deg,${UI.teal},${UI.tealDeep})`,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 10px 24px rgba(27,110,98,0.35)"}}>
-              <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="M3.3 7 12 12l8.7-5"/><path d="M12 22V12"/></svg>
-            </div>
-          </div>
-          {/* Titre remis à jour le 2026-09-01 (audit Tableau vide). L'ancien
-              (« …et tu sais enfin ce que chaque vente te rapporte ») vendait
-              la COMPTABILITÉ comme promesse d'entrée — elle a déjà sa carte
-              dans la grille plus bas. Le titre dit la valeur réelle du
-              produit : les annonces déjà en ligne sur Vinted remontent ici,
-              et de là elles partent sur les trois autres plateformes. C'est
-              aussi exactement ce que fait le bouton juste dessous. */}
-          <h1 style={{margin:0,fontWeight:700,fontSize:25,lineHeight:1.2,letterSpacing:"-0.02em",color:UI.ink}}>
-            {fr?"Tes annonces Vinted remontent ici — et repartent sur Leboncoin, Beebs et eBay.":"Your Vinted listings land here — and go out to Leboncoin, Beebs and eBay."}
-          </h1>
-          <button
-            onClick={onImport}
-            style={{marginTop:20,width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:9,padding:15,border:"none",borderRadius:16,background:`linear-gradient(135deg,${UI.teal},${UI.tealDeep})`,color:"#fff",fontWeight:700,fontSize:15,fontFamily:"inherit",boxShadow:"0 8px 20px rgba(27,110,98,0.3)",cursor:"pointer"}}
-          >
-            {/* Le MÊME libellé que la carte de la page Stock, où ce bouton
-                envoie (2026-08-09) : trois mots différents pour une seule
-                action — importer / synchroniser / actualiser — faisaient
-                croire à trois fonctions. Partout : « synchroniser ». */}
-            {fr?"Synchroniser mon dressing Vinted":"Sync my Vinted closet"}
-          </button>
-          <button
-            onClick={onOpenLens}
-            style={{marginTop:10,width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:9,padding:14,borderRadius:16,background:UI.canvas,border:`1px solid ${UI.border}`,color:UI.ink,fontWeight:700,fontSize:14,fontFamily:"inherit",cursor:"pointer"}}
-          >
-            {fr?"Ajouter mon premier article":"Add my first item"}
-          </button>
-        </div>
-      </section>
-
-      {/* Bandeau plateformes — vraies icônes d'app (PlatformLogo).
-          L'eyebrow dit LE GESTE (2026-09-01) : « PUBLIÉ AUTOMATIQUEMENT SUR »
-          décorait les logos sans rien dire de ce que fait l'app. Même
-          formulation que l'étape 2 de « Ce que FillSell fait » (StockTab
-          vide) — un seul discours. La ligne du dessous ne répète plus le
-          geste : elle ne garde que la suite (la vente confirmée met tout à
-          jour). */}
-      <div style={{textAlign:"center",padding:"2px 4px 0"}}>
-        <p style={{margin:0,fontWeight:700,fontSize:10.5,letterSpacing:"0.14em",color:"#A39D8E"}}>{fr?"UNE ANNONCE PRÉPARÉE UNE FOIS, DÉPOSÉE PARTOUT":"ONE LISTING PREPARED ONCE, POSTED EVERYWHERE"}</p>
-        <div style={{display:"flex",justifyContent:"center",alignItems:"center",gap:12,marginTop:14}}>
-          {/* Ordre canonique du stock (utils/stockFiltres.PLATEFORMES_STOCK) :
-              la même suite partout, jamais une liste réécrite à la main. */}
-          {["vinted","leboncoin","beebs","ebay"].map(p=>(
-            <span key={p} style={{display:"inline-flex",borderRadius:10,boxShadow:"0 2px 6px rgba(16,32,27,0.09)"}}>
-              <PlatformLogo platform={p} size={36}/>
-            </span>
-          ))}
-        </div>
-        <p style={{margin:"12px auto 0",maxWidth:288,fontSize:12.5,lineHeight:1.45,color:UI.mute,fontWeight:400}}>
-          {fr?"Dès que tu confirmes une vente, ton stock, tes ventes et tes marges se mettent à jour.":"As soon as you confirm a sale, your stock, sales and margins are updated."}
-        </p>
-      </div>
-
-      {/* Bloc Lens — cliquable, navigue vers l'onglet Lens (même mécanisme que la nav) */}
-      <section
-        onClick={onOpenLens}
-        role="button"
-        style={{background:UI.paper,border:`1px solid ${UI.border}`,borderRadius:26,overflow:"hidden",boxShadow:"0 1px 3px rgba(16,32,27,0.04), 0 12px 30px rgba(16,32,27,0.05)",cursor:"pointer"}}
-      >
-        <div style={{position:"relative",height:152,background:"linear-gradient(150deg,#123027,#1B6E62)",overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center"}}>
-          <span style={{position:"absolute",top:12,left:12,display:"flex",alignItems:"center",gap:5,padding:"5px 9px",borderRadius:8,background:"rgba(255,255,255,0.16)",fontWeight:700,fontSize:10,letterSpacing:"0.12em",color:"#fff"}}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="14.31" y1="8" x2="20.05" y2="17.94"/><line x1="9.69" y1="8" x2="21.17" y2="8"/><line x1="7.38" y1="12" x2="13.12" y2="2.06"/><line x1="9.69" y1="16" x2="3.95" y2="6.06"/><line x1="14.31" y1="16" x2="2.83" y2="16"/><line x1="16.62" y1="12" x2="10.88" y2="21.94"/></svg>
-            LENS
-          </span>
-          <div style={{position:"relative",width:104,height:104}}>
-            <span style={{position:"absolute",top:0,left:0,width:22,height:22,borderTop:"3px solid #8CE0D4",borderLeft:"3px solid #8CE0D4",borderTopLeftRadius:8}}/>
-            <span style={{position:"absolute",top:0,right:0,width:22,height:22,borderTop:"3px solid #8CE0D4",borderRight:"3px solid #8CE0D4",borderTopRightRadius:8}}/>
-            <span style={{position:"absolute",bottom:0,left:0,width:22,height:22,borderBottom:"3px solid #8CE0D4",borderLeft:"3px solid #8CE0D4",borderBottomLeftRadius:8}}/>
-            <span style={{position:"absolute",bottom:0,right:0,width:22,height:22,borderBottom:"3px solid #8CE0D4",borderRight:"3px solid #8CE0D4",borderBottomRightRadius:8}}/>
-            <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",color:"rgba(255,255,255,0.32)"}}>
-              <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="M3.3 7 12 12l8.7-5"/><path d="M12 22V12"/></svg>
-            </div>
-            <span style={{position:"absolute",left:-12,right:-12,top:"50%",height:2,background:"linear-gradient(90deg,transparent,#8CE0D4,transparent)",boxShadow:"0 0 12px #8CE0D4",animation:"fsScan 2.8s ease-in-out infinite"}}/>
-          </div>
-          <span style={{position:"absolute",bottom:12,left:0,right:0,textAlign:"center",fontWeight:600,fontSize:11,color:"rgba(255,255,255,0.68)",letterSpacing:"0.03em"}}>{fr?"Vise un article à analyser":"Point at an item to analyze"}</span>
-        </div>
-        <div style={{padding:"20px 22px 22px"}}>
-          {/* ── Texte réécrit le 15/09/2026 (demande Nico) ────────────────────
-              L'ancien texte vendait l'ACHAT (« Bon deal ou pas ? Lens tranche »,
-              « estime son prix de revente ») alors que ce que les gens font avec
-              Lens, c'est CRÉER LEUR ANNONCE. Le bloc promettait la mauvaise
-              chose.
-              Le nouveau nomme les quatre étapes dans leur ordre réel —
-              reconnaissance, prix, rédaction, publication — et dit
-              explicitement que c'est l'EXTENSION qui publie, DEPUIS
-              L'ORDINATEUR. Cette dernière phrase n'est pas décorative : un
-              nouvel utilisateur qui croit que tout se fait depuis son téléphone
-              se heurte au mur de l'extension à la fin du parcours, et ça s'est
-              payé cher ce mois-ci.
-              Mise en page, couleurs, composants et icônes : INCHANGÉS. Seules
-              les chaînes changent. Le liseré teal existait déjà et porte
-              toujours la promesse du bloc — elle a simplement changé de
-              « son prix de revente » à « rédige l'annonce ». */}
-          <h2 style={{margin:0,fontWeight:700,fontSize:20,letterSpacing:"-0.01em",color:UI.ink}}>{fr?"Photographie, l'annonce est écrite":"Photograph it, the listing is written"}</h2>
-          <p style={{margin:"10px 0 0",fontSize:14.5,lineHeight:1.55,color:UI.mute,fontWeight:400}}>
-            {fr
-              ? <>L'IA reconnaît ton article, estime son prix et <span style={{color:UI.tealDeep,fontWeight:600}}>rédige l'annonce</span> pour chacune de tes plateformes. L'extension la publie depuis ton ordinateur.</>
-              : <>The AI recognises your item, estimates its price and <span style={{color:UI.tealDeep,fontWeight:600}}>writes the listing</span> for each of your marketplaces. The extension publishes it from your computer.</>
-            }
-          </p>
-          <button
-            onClick={(e)=>{e.stopPropagation();onOpenLens?.();}}
-            style={{marginTop:18,width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:9,padding:15,border:"none",borderRadius:16,background:`linear-gradient(135deg,${UI.teal},${UI.tealDeep})`,color:"#fff",fontWeight:700,fontSize:15,fontFamily:"inherit",boxShadow:"0 8px 20px rgba(27,110,98,0.3)",cursor:"pointer"}}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M12 2l1.9 5.1L19 9l-5.1 1.9L12 16l-1.9-5.1L5 9l5.1-1.9z"/><path d="M19 14l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/></svg>
-            {fr?"Analyser avec l'IA":"Analyze with AI"}
-          </button>
-        </div>
-      </section>
-
-      {/* Grille 2x2 — 4 promesses produit */}
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-        {CARDS.map((c,i)=>(
-          <div key={i} style={{background:UI.paper,border:`1px solid ${UI.border}`,borderRadius:20,padding:16,boxShadow:"0 1px 3px rgba(16,32,27,0.04)"}}>
-            <div style={{width:38,height:38,borderRadius:12,background:"rgba(47,158,144,0.12)",display:"flex",alignItems:"center",justifyContent:"center",color:UI.tealDeep,marginBottom:12}}>
-              {c.icon}
-            </div>
-            <h3 style={{margin:0,fontWeight:700,fontSize:14.5,color:UI.ink}}>{fr?c.titleFr:c.titleEn}</h3>
-            <p style={{margin:"6px 0 0",fontSize:12.5,lineHeight:1.45,color:UI.mute,fontWeight:400}}>{fr?c.descFr:c.descEn}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Ligne discrète, non bloquante (lot 2) : l'extension n'a jamais été vue
-          sur ce compte — on le dit sans en faire un mur, avec le lien qui va bien. */}
-      {extensionAbsente&&(
-        <p style={{margin:"2px 4px 0",fontSize:12,lineHeight:1.5,color:UI.mute,fontWeight:500,textAlign:"center"}}>
-          {fr
-            ?"L'extension n'est pas encore installée sur ton ordinateur — c'est elle qui publie pour toi. "
-            :"The extension isn't installed on your computer yet — it's what publishes for you. "}
-          <button onClick={onExtensionInfo} style={{background:"none",border:"none",padding:0,fontSize:12,fontWeight:700,color:UI.tealDeep,textDecoration:"underline",cursor:"pointer",fontFamily:"inherit"}}>
-            {fr?"Installer":"Install"}
-          </button>
-        </p>
-      )}
-    </div>
-  );
-}
+// État vide du Tableau (16/10) : écran refait d'après la maquette validée par
+// Nico — src/ecrans/vides/TableauVide.jsx (même nom, mêmes gestes : onImport,
+// onOpenLens, extensionAbsente, onExtensionInfo).
 
 // tier : la MÊME modale sert aux TROIS paliers (setShowPremiumWelcome est
 // appelé pour Premium, Pro et Business). Tant qu'elle n'affichait aucun
@@ -4218,11 +4015,15 @@ export default function App({ loginOnly = false }){
   const invPrixInconnu=useMemo(
     ()=>new Set(items.filter(i=>i.prix_achat_inconnu===true).map(i=>String(i.id))),
     [items]);
+  // (16/10, règle d) La liste des ventes se lit par DATE DE VENTE décroissante,
+  // plus dans l'ordre d'enregistrement (created_at) où une vente de 2024 saisie
+  // hier passait devant une vente d'août. Un seul tri, ici, pour tout ce qui
+  // descend vers l'onglet Ventes (utils/ventesStats.trierVentes).
   const salesAvecInconnu=useMemo(()=>{
-    if(!invPrixInconnu.size) return sales;
-    return sales.map(s=>(s.inventaire_id!=null&&invPrixInconnu.has(String(s.inventaire_id))&&s.buy==null)
+    if(!invPrixInconnu.size) return trierVentes(sales);
+    return trierVentes(sales.map(s=>(s.inventaire_id!=null&&invPrixInconnu.has(String(s.inventaire_id))&&s.buy==null)
       ?{...s,prix_achat_inconnu:true}
-      :s);
+      :s));
   },[sales,invPrixInconnu]);
   const groupedSales=useMemo(()=>groupSales(salesAvecInconnu),[salesAvecInconnu]);
   const visibleSales=useMemo(()=>(showAllSales?groupedSales:groupedSales.slice(0,10)).filter(s=>searchMatch(s,searchHistory)),[groupedSales,showAllSales,searchHistory]);
@@ -8791,6 +8592,7 @@ export default function App({ loginOnly = false }){
             onExtensionInfo={()=>setShowExtensionInfo(true)}
             photosParInventaire={photosParInventaire}
             entete={enteteTableauDeBord}
+            userId={user?.id??null}
           />
         )}
 
@@ -8880,7 +8682,6 @@ export default function App({ loginOnly = false }){
             IAPUpgradeBlock={IAPUpgradeBlock}
             openUpgradeModal={openUpgradeModal}
             onStepperOpenChange={setListingStepperOpen}
-            onAddByPhoto={()=>{setTab(2);localStorage.setItem('tab',2);}}
             pendingRemovals={pendingRemovals} onRetirerVendus={armRemovals} onPlusTardVendus={reporterRetraits}
             plusEnLigne={{n:nbPlusEnLigne,nMasquees:nbMasqueesPlusEnLigne,rendre:rendrePlusEnLigne,onAfficherMasquees:()=>setMontrerMasquees(true),ouvrirQuestion:(id)=>setQuestionForcee(id)}}
             onDupliquer={(item)=>dupliquerFiche(item,'carte')}

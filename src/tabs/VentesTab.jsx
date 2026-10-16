@@ -1,17 +1,28 @@
 import { memo, useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { useTranslation } from '../i18n/useTranslation';
 import SwipeRow from '../components/SwipeRow';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import GalleryPhoto, { premierePhoto } from '../components/GalleryPhoto';
 import { UI } from '../components/ui';
 import { supabase } from '../lib/supabase';
 import {
-  formatCurrency, fmtp,
-  typeLabel, marqueLabel, MONTHS_FR, MONTHS_EN,
-  getCatTileColor, catClass, detectObjectIcon, buildCardCss,
+  formatCurrency,
+  typeLabel, marqueLabel,
+  getCatTileColor, catClass, buildCardCss,
 } from '../utils/shared';
-import { comptabilisable, comptabilisables, totalMarge, totalCA, margeUnitaire } from '../utils/comptabilite';
+import { comptabilisable, margeUnitaire, prixAchatNum } from '../utils/comptabilite';
 import { searchMatch } from '../utils/recherche';
+import { CSS_ECRANS } from '../ecrans/animations';
+import { Compteur } from '../ecrans/primitives';
+import Icone, { IconeCategorie } from '../ecrans/Icone';
+import EncartPremium from '../ecrans/EncartPremium';
+import VentesVide from '../ecrans/vides/VentesVide';
+import { NomPlateforme } from '../ecrans/pleins/communs';
+import { ENCRE2, DISCRET, PECHE_ENCRE, libellePct } from '../ecrans/pleins/jetons';
+import {
+  plateformeVente, plateformesPresentes, venteDeLaPlateforme, grouperParMois, margeMoyenne,
+  margePctVente, prixAchatZero, totalEncaisse, jourDeVente, CODES_PLATEFORME_VENTE,
+} from '../utils/ventesStats';
+import { motVendu, jourCourt, MOIS_LONGS_FR, MOIS_LONGS_EN } from '../utils/accordVendu';
 
 // ── Design 2026 (Lens / navbar) — liste des ventes ──
 // Même système de cards que StockTab (buildCardCss) + stats mensuelles / profit.
@@ -74,20 +85,6 @@ const VENTES_CSS = buildCardCss('ventes-v2') + `
 .ventes-v2 .imp-modal .box{background:#fff;border-radius:18px;padding:20px;max-width:340px;width:100%;box-shadow:0 24px 60px -20px rgba(16,32,27,.6);}
 `;
 
-// Accord du participe "Vendu(e)" : noms féminins courants détectés dans le
-// titre (même pattern mots-clés que detectObjectIcon). Masculin par défaut.
-const FEM_RE=/\b(robe|jupe|veste|chemise|blouse|doudoune|parka|combinaison|salopette|tunique|écharpe|casquette|ceinture|montre|bague|chaussures?|baskets?|bottes?|bottines?|sandales?|espadrilles?|ballerines?|chaussettes?|pochette|sacoche|valise|poupée|peluche|figurine|guitare|trompette|flûte|batterie|enceinte|tablette|imprimante|souris|console|télé|télévision|lampe|table|chaise|armoire|commode|étagère|bibliothèque|cafetière|bouilloire|machine|friteuse|perceuse|visseuse|scie|ponceuse|meuleuse|tondeuse|trottinette|raquette|tente|planche|palette|crème|poussette|cartes?|pièces?|assiettes?|tasses?|casserole|poêle|couette|parure|lunettes?|paire)\b/i;
-const soldWord=(title,lang)=>lang==='en'?'Sold':(FEM_RE.test(title||'')?'Vendue':'Vendu');
-
-// Plateforme : mapping libellé libre -> clé canonique de PlatformLogo (2026-07-13).
-// LOGOS, pas les noms écrits — même décision que StockTab (21fa63c) : le badge
-// texte « vinted » en toutes lettres était le seul restant de l'app. Le libellé
-// s.plateforme est du texte libre (saisie manuelle possible) : une valeur sans
-// clé canonique (ex. Vestiaire, sans logo) garde le badge texte d'origine.
-// (02/10 soir) opla ajoutée : la fenêtre « Vendre » envoie désormais le CODE
-// de la plateforme (« opla », « ailleurs »), plus le libellé.
-const PLATFORM_KEY={vinted:'vinted',leboncoin:'leboncoin','le bon coin':'leboncoin',lbc:'leboncoin',ebay:'ebay',beebs:'beebs',opla:'opla',depop:'depop'};
-
 // ── Constantes de volume (2026-08-11) ───────────────────────────────────────
 // Fenêtre de RENDU des ventes importées. N'a aucun effet sur la sélection ni sur
 // l'enregistrement, qui portent tous deux sur la liste filtrée complète.
@@ -113,150 +110,6 @@ function tranches(liste,taille){
   return out;
 }
 
-// ── État vide des Ventes ────────────────────────────────────────────────────
-// PLUS AUCUNE DONNÉE INVENTÉE ICI depuis le 2026-08-09. L'écran ouvrait sur un
-// carrousel « Aperçu — à quoi ça ressemble » qui faisait défiler cinq ventes
-// fictives (Sac Kelly Hermès +420 €, iPhone 12 Pro +100 €…) en boucle, barre de
-// progression comprise, au-dessus d'un « Aucune vente pour l'instant ». Le
-// libellé « Aperçu » levait l'ambiguïté sur le papier ; à l'écran, un compte
-// neuf voyait d'abord des montants qui n'étaient pas les siens.
-// Ce qui reste se vérifie : le titre, ce que FillSell fait à chaque vente, et
-// les deux boutons. Ne pas réintroduire de chiffre d'exemple, même étiqueté.
-
-// ── Le parcours RÉEL d'une vente (2026-08-09) ────────────────────────────────
-// Remplace les trois mini-stats inventées (« Marge moy. ~45 % », « Délai vente
-// ~4 jours », « Meilleure vente +420 € ») qui occupaient ce bloc. Elles étaient
-// des ordres de grandeur sortis de nulle part, affichés en gros et en vert
-// juste sous « Ce que tu vas pouvoir suivre » : impossible pour un nouveau de
-// les lire autrement que comme une promesse de résultat. On montre désormais ce
-// que FillSell FAIT — vérifiable, et vrai pour tout le monde.
-// ⚠️ Étape 2 : le retrait se fait TOUJOURS sur confirmation. Ne jamais
-// reformuler en « retire automatiquement ».
-const PARCOURS_VENTE = [
-  {
-    tile: UI.teal,
-    icon: <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>,
-    labelFr:'On repère la vente', labelEn:'We spot the sale',
-    textFr:'Vinted, Leboncoin, eBay et Beebs sont surveillés.',
-    textEn:'Vinted, Leboncoin, eBay and Beebs are watched.',
-  },
-  {
-    tile: UI.amber,
-    icon: <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6v14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V6"/></svg>,
-    labelFr:'Tu retires les autres', labelEn:'You remove the rest',
-    textFr:'En un tap, et seulement si tu confirmes.',
-    textEn:'One tap, and only if you confirm.',
-  },
-  {
-    tile: UI.tealDeep,
-    icon: <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M17 7h4v4"/></svg>,
-    labelFr:'Ta marge se calcule', labelEn:'Your margin computes',
-    textFr:"Prix de vente moins prix d'achat et frais.",
-    textEn:'Sale price minus purchase price and fees.',
-  },
-];
-
-// fmt retiré de la signature le 2026-08-09 : son seul lecteur était le
-// carrousel de ventes fictives, qui formatait des montants inventés.
-function SalesTicker({ lang, setTab, extensionAbsente = false, onExtensionInfo = null, oplaFermee = false }) {
-  // (État et boucle d'animation du carrousel retirés le 2026-08-09 avec lui :
-  //  idx / visible / progress + une requestAnimationFrame qui tournait en
-  //  permanence sur un écran vide, pour faire défiler cinq ventes inventées.)
-  const fr = lang !== 'en';
-
-  return (
-    <div style={{display:'flex',flexDirection:'column',gap:16}}>
-      <style>{`@keyframes vt-rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
-        @media (prefers-reduced-motion:reduce){.vt-anim{animation:none !important}}`}</style>
-
-
-      {/* Accroche — remise à jour le 2026-08-09. Elle ne parlait que de la
-          détection de vente, comme si les articles arrivaient là par magie :
-          rien sur les quatre plateformes surveillées, rien sur la synchro du
-          dressing Vinted qui remonte AUSSI les ventes récentes. Les deux sont
-          désormais nommées.
-          ⚠️ Le retrait reste « te proposera » : il se fait sur confirmation,
-          jamais tout seul — ne pas en faire une promesse d'automatisme. */}
-      <div className="vt-anim" style={{textAlign:'center',animation:'vt-rise 0.5s ease 0.05s both'}}>
-        <div style={{fontSize:21,fontWeight:700,letterSpacing:'-0.02em',color:UI.ink}}>
-          {fr?'Aucune vente pour l\'instant':'No sales yet'}
-        </div>
-        <div style={{fontSize:13.5,fontWeight:500,lineHeight:1.5,color:UI.mute,maxWidth:290,margin:'8px auto 0'}}>
-          {fr
-            // (09/10 soir) Bascule Opla → Depop : à la sortie d'Opla, Opla n'est
-            // plus nommée (Depop ne l'est qu'où l'extension sait la faire).
-            ?`Dès qu'un article part sur ${oplaFermee?'Vinted, Leboncoin, eBay ou Beebs':'Vinted, Leboncoin, eBay, Beebs ou Opla'}, il apparaît ici avec ta marge — et FillSell te proposera de retirer les autres annonces. Tes ventes Vinted récentes remontent aussi quand tu relèves tes annonces Vinted.`
-            :`As soon as an item sells on ${oplaFermee?'Vinted, Leboncoin, eBay or Beebs':'Vinted, Leboncoin, eBay, Beebs or Opla'}, it shows up here with your margin — and FillSell will offer to remove the other listings. Your recent Vinted sales also come across when you scan your Vinted listings.`}
-        </div>
-      </div>
-
-      {/* CTA principal — voir le Stock */}
-      <button
-        className="vt-anim"
-        onClick={()=>{setTab(1);localStorage.setItem('tab',1);}}
-        style={{width:'100%',padding:16,border:'none',borderRadius:999,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8,
-          fontFamily:'inherit',fontSize:14.5,fontWeight:700,color:'#fff',
-          background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,boxShadow:'0 12px 26px -10px rgba(47,158,144,0.5)',
-          animation:'vt-rise 0.5s ease 0.1s both'}}
-      >
-        {fr?'Voir mon stock':'See my stock'}
-      </button>
-
-      {/* Ligne discrète, non bloquante (lot 2) : extension jamais vue sur ce
-          compte — même phrase que l'accueil vide, même accroche au clic. */}
-      {extensionAbsente&&(
-        <p className="vt-anim" style={{margin:'0 4px',fontSize:12,lineHeight:1.5,color:UI.mute,fontWeight:500,textAlign:'center',animation:'vt-rise 0.5s ease 0.12s both'}}>
-          {fr
-            ?"L'extension n'est pas encore installée sur ton ordinateur — c'est elle qui publie pour toi. "
-            :"The extension isn't installed on your computer yet — it's what publishes for you. "}
-          <button onClick={()=>onExtensionInfo?.()} style={{background:'none',border:'none',padding:0,fontSize:12,fontWeight:700,color:UI.tealDeep,textDecoration:'underline',cursor:'pointer',fontFamily:'inherit'}}>
-            {fr?'Installer':'Install'}
-          </button>
-        </p>
-      )}
-
-      {/* Le parcours d'une vente — vrai pour tout le monde, aucun chiffre
-          inventé (2026-08-09). Même parti pris que l'état vide du Stock : on
-          montre ce que FillSell FAIT, pas des ordres de grandeur qui se lisent
-          comme une promesse de résultat. */}
-      <div className="vt-anim" style={{animation:'vt-rise 0.5s ease 0.15s both'}}>
-        <div style={{fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.12em',color:'#A39D8E',textAlign:'center',marginBottom:8}}>
-          {fr?'Avec FillSell':'With FillSell'}
-        </div>
-        <div style={{fontSize:13.5,fontWeight:700,color:UI.ink,textAlign:'center',marginBottom:12}}>
-          {fr?'Ce qui se passe à chaque vente':'What happens on every sale'}
-        </div>
-        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8}}>
-          {PARCOURS_VENTE.map((c,i)=>(
-            <div key={i} style={{background:'rgba(47,158,144,0.07)',border:'1px solid rgba(47,158,144,0.18)',borderRadius:16,padding:'14px 8px',textAlign:'center'}}>
-              <div style={{width:34,height:34,borderRadius:11,background:c.tile,display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 9px'}}>
-                {c.icon}
-              </div>
-              <div style={{fontSize:11,fontWeight:700,color:UI.tealDeep,lineHeight:1.3,marginBottom:5}}>
-                {fr?c.labelFr:c.labelEn}
-              </div>
-              <div style={{fontSize:9.5,fontWeight:500,lineHeight:1.4,color:'#8A8578'}}>
-                {fr?c.textFr:c.textEn}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* CTA secondaire — Stats avancées, accessible même sans aucune vente */}
-      <button
-        onClick={()=>{setTab(4);localStorage.setItem('tab',4);}}
-        style={{width:'100%',padding:15,border:'none',borderRadius:999,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:9,
-          fontFamily:'inherit',fontSize:14,fontWeight:700,color:'#fff',
-          background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,boxShadow:'0 10px 24px -10px rgba(47,158,144,0.45)',marginTop:2}}
-      >
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>
-        {fr?'Voir mes stats avancées':'See my advanced stats'}
-      </button>
-    </div>
-  );
-}
-
 // Saisie d'un prix -> nombre.
 //  · ""      -> null  : VIDE ≠ ZÉRO. On n'écrit RIEN (0 = « gratuit assumé »,
 //                       une affirmation que l'utilisateur n'a pas faite).
@@ -278,18 +131,18 @@ function parsePrix(v){
 const matchRecherche = searchMatch;
 
 const VentesTab = memo(function VentesTab({
-  lang, currency, isPremium, isNative, user,
-  sales, visibleSales, groupedSales,
+  lang, currency, isPremium, user,
+  // (16/10) visibleSales n'est plus lu : la liste se fenêtre ici, APRÈS la
+  // recherche et le filtre de plateforme (App.jsx coupait à 10 avant de chercher).
+  sales, groupedSales,
   searchHistory, setSearchHistory,
   showAllSales, setShowAllSales,
-  // (iapProduct retiré le 2026-08-09, cf. IAPUpgradeBlock.)
-  iapLoading, handleIAPPurchase, handleIAPRestore,
+  // (16/10) Le bloc d'offre est EncartPremium (même geste : openUpgradeModal) ;
+  // « Restaurer mes achats » vit dans Réglages › Abonnement.
+  iapLoading,
   // Lot 2 : ligne discrète « extension pas encore installée » de l'état vide.
   extensionAbsente = false, onExtensionInfo = null,
-  // (09/10 soir) Sortie d'Opla active (App.jsx, useSortieOpla) : Opla n'est plus nommée.
-  oplaFermee = false,
   delSale, setTab, setEditItem,
-  PremiumBanner, IAPUpgradeBlock,
   openUpgradeModal,
   // Vendus importés du dressing Vinted SANS ligne `ventes` (calculé par
   // App.jsx sur ventes.inventaire_id) : chacun attend prix de vente réel,
@@ -305,7 +158,6 @@ const VentesTab = memo(function VentesTab({
   // le prochain fetchAll.
   onSaleUpdated=()=>{},
 }) {
-  const { t } = useTranslation(lang);
   const fmt = (amount, dec=null) => formatCurrency(amount, currency, dec);
   const [filterType, setFilterType] = useState("Tous");
   const fr=lang!=='en';
@@ -320,7 +172,13 @@ const VentesTab = memo(function VentesTab({
   const [patchs,setPatchs]=useState({});
   const [modeACompleter,setModeACompleter]=useState(false);
   const [openId,setOpenId]=useState(null);      // ligne dont le champ est ouvert
-  const [draft,setDraft]=useState("");
+  // (16/10) Une saisie PAR vente : les ventes du mois montrent leur champ
+  // « Prix d'achat » directement dans la carte (maquette), il peut donc y en
+  // avoir plusieurs à l'écran. Clé = id de la ligne affichée.
+  const [drafts,setDrafts]=useState({});
+  // (16/10) Filtre par plateforme RÉELLE (utils/ventesStats.plateformeVente :
+  // « Vinted » et « vinted » sont une seule plateforme). 'toutes' = aucun.
+  const [filtrePlateforme,setFiltrePlateforme]=useState('toutes');
   const [erreur,setErreur]=useState(null);      // {id,message} — id null = barre de lot
   const [selection,setSelection]=useState(()=>new Set());
   const [prixLot,setPrixLot]=useState("");
@@ -379,9 +237,9 @@ const VentesTab = memo(function VentesTab({
   // ligne que l'utilisateur ne voit pas dans sa vue du moment.
   const lignesSelectionnees=useMemo(
     ()=>groupedSales.filter(s=>selection.has(s.id)&&!patchs[s.id]
-      &&(filterType==="Tous"||s.type===filterType)
+      &&venteDeLaPlateforme(s,filtrePlateforme)
       &&matchRecherche(s,searchHistory)),
-    [groupedSales,selection,patchs,filterType,searchHistory]);
+    [groupedSales,selection,patchs,filtrePlateforme,searchHistory]);
   const nbSel=lignesSelectionnees.length;
   const idsSelection=useMemo(()=>lignesSelectionnees.flatMap(idsCibles),[lignesSelectionnees,idsCibles]);
 
@@ -425,8 +283,15 @@ const VentesTab = memo(function VentesTab({
     return true;
   }
 
-  function ouvrirSaisie(id){setOpenId(id);setDraft("");setErreur(null);}
-  function fermerSaisie(){sauteBlur.current=true;setOpenId(null);setDraft("");setTimeout(()=>{sauteBlur.current=false;},0);}
+  const majDraftPrix=(id,v)=>setDrafts(d=>({...d,[id]:v}));
+  const viderDraftPrix=(id)=>setDrafts(d=>{if(!(id in d))return d;const n={...d};delete n[id];return n;});
+  function ouvrirSaisie(id){setOpenId(id);viderDraftPrix(id);setErreur(null);}
+  useEffect(()=>{
+    if(openId==null)return;
+    const el=document.getElementById(`pa-${openId}`);
+    if(el&&document.activeElement!==el){el.focus({preventScroll:true});el.scrollIntoView({block:'center',behavior:'smooth'});}
+  },[openId]);
+  function fermerSaisie(id){sauteBlur.current=true;setOpenId(null);viderDraftPrix(id);setTimeout(()=>{sauteBlur.current=false;},0);}
 
   // Chaînage clavier : la vente suivante de la liste AFFICHÉE qui n'a toujours
   // ni prix ni décision. `filteredSales` est déjà patché, donc une ligne validée
@@ -441,18 +306,18 @@ const VentesTab = memo(function VentesTab({
   }
 
   async function validerSaisie(ligne,{enchainer}={}){
-    const pa=parsePrix(draft);
+    const pa=parsePrix(drafts[ligne.id]);
     if(Number.isNaN(pa)){setErreur({id:ligne.id,message:fr?'Prix illisible':'Invalid price'});return;}
     const suivant=enchainer?ligneSuivante(ligne.id):null;
     sauteBlur.current=true;
-    setOpenId(suivant);setDraft("");
+    setOpenId(suivant);viderDraftPrix(ligne.id);
     setTimeout(()=>{sauteBlur.current=false;},0);
     // Champ vide : Entrée sert à PASSER la vente, pas à la déclarer gratuite.
     if(pa!==null) await enregistrerPrix(ligne,pa);
   }
 
   function onKeyPrix(e,ligne){
-    if(e.key==='Escape'){e.preventDefault();e.stopPropagation();fermerSaisie();setErreur(null);return;}
+    if(e.key==='Escape'){e.preventDefault();e.stopPropagation();fermerSaisie(ligne.id);setErreur(null);return;}
     if(e.key!=='Enter') return;
     e.preventDefault();e.stopPropagation();
     validerSaisie(ligne,{enchainer:true});
@@ -462,8 +327,9 @@ const VentesTab = memo(function VentesTab({
   // jamais après Entrée/Échap (cf. sauteBlur).
   function onBlurPrix(ligne){
     if(sauteBlur.current) return;
-    const pa=parsePrix(draft);
-    setOpenId(null);setDraft("");
+    const pa=parsePrix(drafts[ligne.id]);
+    if(openId===ligne.id)setOpenId(null);
+    viderDraftPrix(ligne.id);
     if(pa!==null&&!Number.isNaN(pa)) enregistrerPrix(ligne,pa);
   }
 
@@ -934,30 +800,37 @@ const VentesTab = memo(function VentesTab({
     executerLotImportes(lignesImpSel);
   }
 
-  // KPI mois courant — même formule que tm (App.jsx)
+  // KPI mois courant — même filtre de mois que tm (App.jsx)
   const now=new Date();
   const monthSales=salesPatchees.filter(s=>{const sd=new Date(s.date);return sd.getMonth()===now.getMonth()&&sd.getFullYear()===now.getFullYear();});
-  // `(s.margin||0)` transformait une vente sans prix d'achat en vente à marge
-  // nulle : elle ne rapportait rien au bénéfice mais pesait au dénominateur du
-  // pourcentage, qui tombait sans qu'aucune vente ait été mauvaise. Le CA sert
-  // ici de dénominateur uniquement — d'où le CA des seules ventes retenues (cet
-  // écran n'affiche aucun chiffre d'affaires, qui lui ne se filtre jamais).
-  const {total:monthProfit,exclus:monthSansAchat}=totalMarge(monthSales);
-  const monthCaComptabilise=totalCA(comptabilisables(monthSales));
-  const monthMargePct=monthCaComptabilise>0?(monthProfit/monthCaComptabilise)*100:0;
+  // (16/10, maquette validée par Nico) Les trois chiffres du haut : l'ENCAISSÉ du
+  // mois, le nombre de ventes du mois, et la marge du mois — en %, sur les seules
+  // ventes au prix d'achat > 0 (règle b, utils/ventesStats) ; « — » quand aucune
+  // n'en a, jamais « 0,0 % » (qui se lisait comme une vente à prix coûtant).
+  const encaisseMois=totalEncaisse(monthSales);
+  const margeMois=margeMoyenne(monthSales,{mode:'ponderee'});
+  // Progression des prix d'achat : compte des VENTES (lignes de la table),
+  // patchs de la session compris — « 22 / 238 ventes complètes ».
+  const nbVentesTotal=salesPatchees.length;
+  const nbVentesCompletes=salesPatchees.filter(comptabilisable).length;
+  const plateformes=useMemo(()=>plateformesPresentes(sales),[sales]);
+  const moisCourant=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
 
   // Mode « à compléter » : on repart de groupedSales (TOUTES les ventes) et non
-  // de visibleSales, plafonné à 10 lignes — sinon on inviterait à compléter 24
-  // ventes en n'en montrant que 10.
+  // d'une fenêtre de 10 lignes — sinon on inviterait à compléter 24 ventes en
+  // n'en montrant que 10.
   // ⚠️ L'appartenance à cette liste se juge sur la ligne BRUTE, pas patchée : une
   // vente qu'on vient de compléter DOIT rester à sa place. Si elle disparaissait
   // sous le curseur, la ligne suivante remonterait d'un cran à chaque Entrée et
   // le chaînage clavier sauterait une vente sur deux.
-  const baseListe=modeACompleter
+  // (16/10) groupedSales arrive TRIÉE par date de vente décroissante (App.jsx,
+  // utils/ventesStats.trierVentes) ; la recherche porte sur toutes les ventes
+  // (plus seulement sur les 10 premières), puis le filtre de plateforme.
+  const baseListe=(modeACompleter
     ?groupedSales.filter(s=>!comptabilisable(s)&&matchRecherche(s,searchHistory))
-    :visibleSales;
-  const filteredSales=(filterType==="Tous"?baseListe:baseListe.filter(s=>s.type===filterType))
-    .map(s=>patchLigne(s,s.quantite!=null?1:(s._qty||1)));
+    :groupedSales.filter(s=>matchRecherche(s,searchHistory)))
+    .filter(s=>venteDeLaPlateforme(s,filtrePlateforme));
+  const filteredSales=baseListe.map(s=>patchLigne(s,s.quantite!=null?1:(s._qty||1)));
 
   // ── Vue B : portée de la sélection globale (2026-08-11) ───────────────────
   // `lignesACompleter` = TOUTES les lignes à compléter du filtre courant. C'est
@@ -967,12 +840,24 @@ const VentesTab = memo(function VentesTab({
   // reproposerait que pour la réécrire à l'identique.
   const lignesACompleter=useMemo(
     ()=>modeACompleter?filteredSales.filter(s=>!patchs[s.id]):[],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [modeACompleter,filteredSales,patchs]);
   const nbACompleterFiltre=lignesACompleter.length;
   const tousVentesSel=nbACompleterFiltre>0&&nbSel===nbACompleterFiltre;
   const ventesSelPartielle=nbSel>0&&!tousVentesSel;
-  const ventesVisibles=modeACompleter?filteredSales.slice(0,venteRenduMax):filteredSales;
+  const LIMITE_LISTE=10;
+  const ventesVisibles=modeACompleter
+    ?filteredSales.slice(0,venteRenduMax)
+    :(showAllSales?filteredSales:filteredSales.slice(0,LIMITE_LISTE));
+  const groupesMois=grouperParMois(ventesVisibles);
+  // Total de chaque mois : sur TOUTES les ventes filtrées du mois, jamais sur la
+  // seule fenêtre affichée (une ligne « ×3 » compte trois ventes).
+  const totauxMois={};
+  for(const s of filteredSales){
+    const j=jourDeVente(s);const k=j?j.slice(0,7):'sans-date';
+    const q=s.quantite!=null?1:(s._qty||1);
+    const t=(totauxMois[k] ||= {nb:0,ca:0});
+    t.nb+=q;t.ca+=(Number(s.sell)||0)*q;
+  }
 
   const basculerToutSelectionnerVentes=useCallback(()=>{
     setSelection(prev=>{
@@ -983,69 +868,242 @@ const VentesTab = memo(function VentesTab({
     });
   },[lignesACompleter,nbACompleterFiltre]);
 
-  return (
-    <div className="ventes-v2" style={{display:"flex",flexDirection:"column",gap:12}}>
-      <style>{VENTES_CSS}</style>
+  // « Compléter en série » : la sélection multiple existante (mode « à
+  // compléter » : liste des ventes sans prix d'achat, Entrée enchaîne la
+  // suivante, sélection + prix commun en lot) — ouverte sur la PREMIÈRE vente.
+  const entrerModeACompleter=(ouvrirPremiere)=>{
+    setModeACompleter(true);setModeImportes(false);setSelection(new Set());setErreur(null);setVenteRenduMax(RENDU_PAS);
+    if(ouvrirPremiere){
+      const premiere=groupedSales.find(s=>!comptabilisable(s)&&!patchs[s.id]&&matchRecherche(s,searchHistory)&&venteDeLaPlateforme(s,filtrePlateforme));
+      setOpenId(premiere?.id??null);
+    }else setOpenId(null);
+  };
+  const quitterModeACompleter=()=>{setModeACompleter(false);setSelection(new Set());setOpenId(null);setErreur(null);};
+  const choisirPlateforme=(cle)=>{setFiltrePlateforme(cle);setSelection(new Set());setVenteRenduMax(RENDU_PAS);};
 
-      {/* ── Stats du mois ── */}
-      {sales.length>0&&(
-        <div className="stats-row">
-          <div className="stat-card">
-            <div className="stat-lbl">{t('ceMois')}</div>
-            <div className={`stat-val${monthProfit>=0?" pos":""}`}>{monthProfit>=0?"+":""}{fmt(monthProfit)}</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-lbl">{t('ventes')}</div>
-            <div className="stat-val">{monthSales.length}</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-lbl">{t('margeMoy')}</div>
-            <div className="stat-val">{fmtp(monthMargePct)}</div>
-            {/* Un total partiel doit le dire, sinon ce % passe pour une moyenne
-                sur toutes les ventes du mois. Affiché seulement s'il y a des exclus. */}
-            {monthSansAchat>0&&(
-              <div style={{fontSize:9,color:"var(--mute)",marginTop:2,lineHeight:1.25}}>
-                {lang==='en'?`excl. ${monthSansAchat} without buy price`:`hors ${monthSansAchat} sans prix d'achat`}
+  const nomMois=(g)=>g.cle==='sans-date'
+    ?(fr?'Date inconnue':'Unknown date')
+    :`${(fr?MOIS_LONGS_FR:MOIS_LONGS_EN)[g.mois]} ${g.annee}`;
+  const pastille={display:'inline-flex',alignItems:'center',gap:6,height:36,padding:'0 14px',borderRadius:18,fontSize:14,fontWeight:600,whiteSpace:'nowrap',cursor:'pointer',fontFamily:'inherit',flexShrink:0};
+  let rangCarte=0;
+
+  // La carte d'une vente (16/10, maquette) : photo, titre, date et plateforme ;
+  // à droite le prix (vente incomplète) ou le bénéfice et le % (vente complète,
+  // prix d'achat > 0) ; « prix d'achat à 0 € » sans pourcentage (règle b).
+  // La saisie du prix d'achat vit DANS la carte, par le chemin existant
+  // (enregistrerPrix) : champ ouvert d'office pour les ventes du mois, et pour
+  // toutes en « Compléter en série » ; « + prix d'achat » pour les autres.
+  const carteVente=(s)=>{
+    const j=jourDeVente(s);
+    const quand=j?jourCourt(j,lang,now):(fr?'date inconnue':'unknown date');
+    const p=plateformeVente(s);
+    const qte=s._qty||1;
+    const complete=comptabilisable(s);
+    const pct=margePctVente(s);
+    const zero=complete&&prixAchatZero(s);
+    const margeConnue=complete&&s.margin!=null&&Number.isFinite(Number(s.margin));
+    const inconnuPatch=patchs[s.id]?.inconnu;
+    const aSaisir=!complete&&!patchs[s.id];
+    const champOuvert=aSaisir&&(openId===s.id||modeACompleter||(j&&j.slice(0,7)===moisCourant));
+    const delai=Math.min(0.9,0.32+(rangCarte++)*0.05);
+    return(
+      <div key={s.id} className="fsx-rise" style={{animationDelay:`${delai.toFixed(2)}s`}}>
+        {/* Swipe gauche = supprimer (conservé) ; tap sur la carte = éditer la vente. */}
+        <SwipeRow onDelete={()=>delSale(s.id)} padInterne={0} iconeSuppression={<Icone nom="poubelle" taille={22} couleur="#FFFFFF"/>}
+          style={{borderRadius:20,border:"1px solid #E7E3D8",boxShadow:"none",background:"#fff"}}>
+          {/* _table:'ventes' — cette carte est une ligne de la table `ventes`,
+              PAS un article d'inventaire : leurs ids se chevauchent, et la
+              modale d'édition refuse d'écrire sans cible explicite. Frais
+              pré-remplis depuis la vente (2026-08-14). */}
+          <div className="vc-carte in-swipe" onClick={()=>setEditItem({...s,_table:'ventes',frais:s.sellingFees??0,sell:s.sell??""})}>
+            <div className="vc-ligne">
+              <div className="vc-photo">
+                <GalleryPhoto url={premierePhoto(photosParInventaire[s.inventaire_id])} alt={s.title}
+                  fallback={<div className={`cat-tile ${catClass(s.type)}`}><IconeCategorie type={s.type}/></div>}/>
+              </div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:'flex',alignItems:'center',gap:6,minWidth:0}}>
+                  <span className="vc-titre">{s.title}</span>
+                  {qte>1&&<span className="qty-badge">×{qte}</span>}
+                </div>
+                <div className="vc-sous">
+                  <span>{quand}</span>
+                  {p&&<span aria-hidden="true">·</span>}
+                  {p&&(CODES_PLATEFORME_VENTE.includes(p.code)
+                    ?<NomPlateforme p={p} taille={14}/>
+                    :<span className="vc-autre">{p.code==='ailleurs'?(fr?'Ailleurs':'Elsewhere'):p.libelle}</span>)}
+                </div>
+                {complete&&(
+                  <div className="vc-sous" style={{marginTop:2}}>
+                    {s.marque&&<><span style={{overflow:'hidden',textOverflow:'ellipsis'}}>{marqueLabel(s.marque,lang)}</span><span aria-hidden="true">·</span></>}
+                    <span style={{fontVariantNumeric:'tabular-nums',whiteSpace:'nowrap'}}>{fmt(prixAchatNum(s))} → {fmt(s.sell)}</span>
+                  </div>
+                )}
+              </div>
+              <div style={{textAlign:'right',flexShrink:0}}>
+                {margeConnue?(
+                  <>
+                    <div className={`vc-montant${s.margin<0?' neg':' pos'}`}>{s.margin>=0?'+':''}{fmt(s.margin)}</div>
+                    {pct!=null
+                      ?<span className="vc-pct fsx-popin" style={{animationDelay:`${(delai+0.4).toFixed(2)}s`}}>{libellePct(pct,1)}</span>
+                      :zero&&<div className="vc-zero">{fr?"prix d'achat à 0 €":'purchase price €0'}</div>}
+                  </>
+                ):(
+                  <>
+                    <div className="vc-montant">{fmt((Number(s.sell)||0)*(s.quantite!=null?1:qte))}</div>
+                    <div style={{fontSize:11.5,color:DISCRET}}>{motVendu(s.title,lang).toLowerCase()}</div>
+                    {aSaisir&&!champOuvert&&(
+                      <button type="button" className="vc-ajout" onClick={e=>{e.stopPropagation();ouvrirSaisie(s.id);}}>+ {fr?"prix d'achat":'purchase price'}</button>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+            {/* ⚠️ stopPropagation obligatoire : la carte entière ouvre la modale
+                d'édition — sans lui, le moindre clic dans le champ ferme l'écran
+                et perd la frappe en cours. */}
+            {champOuvert&&(
+              <div className="vc-saisie" onClick={e=>e.stopPropagation()}>
+                {modeACompleter&&(
+                  <input type="checkbox" className="pa-check" checked={selection.has(s.id)} onChange={()=>toggleSelection(s.id)}
+                    aria-label={fr?"Sélectionner cette vente":"Select this sale"}/>
+                )}
+                <label htmlFor={`pa-${s.id}`} className="vc-saisie-lbl">{fr?"Prix d'achat":'Purchase price'}</label>
+                {/* autoFocus : sur la vente ouverte (Entrée enchaîne la suivante,
+                    son champ est monté avec le focus). */}
+                <input id={`pa-${s.id}`} className="vc-saisie-champ" autoFocus={openId===s.id} inputMode="decimal"
+                  value={drafts[s.id]??''} placeholder={fr?"0,00":"0.00"}
+                  onChange={e=>majDraftPrix(s.id,e.target.value)}
+                  onKeyDown={e=>onKeyPrix(e,s)}
+                  onBlur={()=>onBlurPrix(s)}/>
+                <span style={{fontSize:14,color:ENCRE2}}>€</span>
+                <button type="button" className="vc-valider" onMouseDown={e=>e.preventDefault()} onClick={()=>validerSaisie(s,{enchainer:modeACompleter})}
+                  aria-label={fr?"Valider le prix d'achat":'Confirm the purchase price'}>
+                  <Icone nom="coche" taille={15} couleur="#FFFFFF" epaisseur={3}/>
+                </button>
               </div>
             )}
+            {champOuvert&&openId===s.id&&(
+              <div className="pa-hint" style={{margin:'6px 4px 0'}} onClick={e=>e.stopPropagation()}>{fr?"Entrée = suivante · Échap = annuler":"Enter = next · Esc = cancel"}</div>
+            )}
+            {erreur?.id===s.id&&<div className="pa-err" style={{margin:'6px 4px 0'}}>{erreur.message}</div>}
+            {inconnuPatch&&(
+              <div className="pa-note">{fr?"Prix d'achat inconnu — hors calcul de marge":"Purchase price unknown — excluded from margins"}</div>
+            )}
+          </div>
+        </SwipeRow>
+      </div>
+    );
+  };
+
+  const CARTES_CSS=`
+.ventes-v2 .vc-carte{flex:1;min-width:0;padding:12px;display:flex;flex-direction:column;gap:10px;cursor:pointer;background:#fff;border-radius:20px;}
+.ventes-v2 .vc-ligne{display:flex;align-items:center;gap:12px;min-width:0;}
+.ventes-v2 .vc-photo{width:56px;height:56px;border-radius:14px;overflow:hidden;flex-shrink:0;background:#F6F5F1;}
+.ventes-v2 .vc-photo img{width:100%;height:100%;object-fit:cover;display:block;}
+.ventes-v2 .vc-photo .gph-fallback{width:100%;height:100%;display:flex;align-items:center;justify-content:center;}
+.ventes-v2 .vc-photo .cat-tile{width:100%;height:100%;border-radius:14px;}
+.ventes-v2 .vc-titre{font-size:15.5px;font-weight:700;color:${UI.ink};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}
+.ventes-v2 .vc-sous{display:flex;align-items:center;gap:6px;margin-top:3px;font-size:13px;color:${ENCRE2};min-width:0;white-space:nowrap;overflow:hidden;}
+.ventes-v2 .vc-autre{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:10px;background:#ECE9E2;color:#2B3533;font-size:11px;font-weight:600;overflow:hidden;text-overflow:ellipsis;}
+.ventes-v2 .vc-montant{font-size:16px;font-weight:700;color:${UI.ink};font-variant-numeric:tabular-nums;white-space:nowrap;}
+.ventes-v2 .vc-montant.pos{color:${UI.tealDeep};}
+.ventes-v2 .vc-montant.neg{color:#B0645A;}
+.ventes-v2 .vc-pct{display:inline-flex;align-items:center;height:22px;padding:0 8px;margin-top:3px;border-radius:11px;background:#E6F1EE;color:${UI.tealDeep};font-size:11.5px;font-weight:600;white-space:nowrap;}
+.ventes-v2 .vc-zero{margin-top:3px;font-size:11.5px;color:${PECHE_ENCRE};white-space:nowrap;}
+.ventes-v2 .vc-ajout{margin-top:3px;height:24px;padding:0 9px;border:1.5px dashed #BFD9D2;border-radius:12px;background:#fff;color:${UI.tealDeep};font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;}
+.ventes-v2 .vc-saisie{display:flex;align-items:center;gap:8px;padding:8px 8px 8px 12px;border-radius:14px;border:1.5px dashed #CFE0DB;background:#F5FAF8;cursor:default;}
+.ventes-v2 .vc-saisie-lbl{font-size:13px;color:${UI.tealDeep};font-weight:600;white-space:nowrap;}
+.ventes-v2 .vc-saisie-champ{flex:1;min-width:0;border:0;outline:0;background:transparent;font:inherit;font-size:16px;font-weight:600;text-align:right;color:${UI.ink};}
+.ventes-v2 .vc-saisie-champ::placeholder{color:#B9BFBC;font-weight:500;}
+.ventes-v2 .vc-valider{width:34px;height:34px;border:0;border-radius:17px;background:${UI.tealDeep};display:flex;align-items:center;justify-content:center;flex:none;cursor:pointer;}
+.ventes-v2 .vc-filtres{display:flex;gap:8px;overflow-x:auto;padding:0 0 2px;scrollbar-width:none;margin:0 -2px;}
+.ventes-v2 .vc-filtres::-webkit-scrollbar{display:none;}
+`;
+
+  return (
+    <div className="ventes-v2 fsx-ecran" style={{display:"flex",flexDirection:"column",gap:12}}>
+      <style>{VENTES_CSS}</style>
+      <style>{CARTES_CSS}</style>
+      <style>{CSS_ECRANS}</style>
+
+      {sales.length>0&&(
+        <h1 className="fsx-rise" style={{margin:'2px 0 0',fontSize:34,lineHeight:1.08,fontWeight:700,letterSpacing:'-0.025em',color:UI.ink}}>{fr?'Ventes':'Sales'}</h1>
+      )}
+
+      {/* ── Les trois chiffres du mois (16/10) ── */}
+      {sales.length>0&&(
+        <div style={{display:'grid',gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:8}}>
+          <div className="fsx-rise" style={{animationDelay:'.05s',background:'#fff',border:`1px solid ${UI.border}`,borderRadius:20,padding:14,display:'flex',flexDirection:'column',gap:6,minWidth:0}}>
+            <span style={{fontSize:10.5,fontWeight:700,letterSpacing:'.11em',color:'#6F7774'}}>{fr?'CE MOIS':'THIS MONTH'}</span>
+            <Compteur texte={fmt(encaisseMois)} delai={0.1} style={{fontSize:20,fontWeight:700,letterSpacing:'-0.02em',color:UI.ink}}/>
+            <span style={{fontSize:11.5,color:ENCRE2}}>{fr?'encaissés':'collected'}</span>
+          </div>
+          <div className="fsx-rise" style={{animationDelay:'.1s',background:'#fff',border:`1px solid ${UI.border}`,borderRadius:20,padding:14,display:'flex',flexDirection:'column',gap:6,minWidth:0}}>
+            <span style={{fontSize:10.5,fontWeight:700,letterSpacing:'.11em',color:'#6F7774'}}>{fr?'VENTES':'SALES'}</span>
+            <Compteur texte={String(monthSales.length)} delai={0.15} style={{fontSize:20,fontWeight:700,color:UI.ink}}/>
+            <span style={{fontSize:11.5,color:ENCRE2}}>{fr?'ce mois':'this month'}</span>
+          </div>
+          <div className="fsx-rise" style={{animationDelay:'.15s',background:'#fff',border:`1px solid ${UI.border}`,borderRadius:20,padding:14,display:'flex',flexDirection:'column',gap:6,minWidth:0}}>
+            <span style={{fontSize:10.5,fontWeight:700,letterSpacing:'.11em',color:'#6F7774'}}>{fr?'MARGE':'MARGIN'}</span>
+            {margeMois.pct==null
+              ?<span style={{fontSize:20,fontWeight:700,color:DISCRET,lineHeight:'1.12em'}}>—</span>
+              :<Compteur texte={libellePct(margeMois.pct,1)} delai={0.2} style={{fontSize:20,fontWeight:700,color:UI.ink}}/>}
+            <span style={{fontSize:11.5,lineHeight:1.3,color:margeMois.pct==null&&monthSales.length>0?PECHE_ENCRE:ENCRE2}}>
+              {margeMois.pct!=null
+                ?(margeMois.retenues<monthSales.length?(fr?`sur ${margeMois.retenues} vente${margeMois.retenues>1?'s':''}`:`on ${margeMois.retenues} sale${margeMois.retenues>1?'s':''}`):(fr?'ce mois':'this month'))
+                :monthSales.length>0?(fr?"prix d'achat manquants":'purchase prices missing'):(fr?'aucune vente':'no sale')}
+            </span>
           </div>
         </div>
       )}
 
-      {/* ── Prix d'achat manquants : compteur-invitation, cliquable ──
-          ON N'OBLIGE JAMAIS : pas de modale, pas de blocage, pas de rouge. Un
-          filtre qu'on ouvre et qu'on referme, rien de plus. Reste affiché à 0
-          quand le mode est ouvert, sinon on ne pourrait plus en sortir. */}
-      {(nbACompleter>0||modeACompleter)&&(
-        <button className={`pa-call${modeACompleter?" on":""}`}
-          onClick={()=>{setModeACompleter(v=>!v);setModeImportes(false);setSelection(new Set());setOpenId(null);setErreur(null);}}>
-          <span style={{fontSize:17,flexShrink:0}}>{modeACompleter?"↩":"💡"}</span>
-          <span style={{flex:1,minWidth:0}}>
-            <span className="n">
-              {modeACompleter
-                ?(fr?"Revenir à toutes les ventes":"Back to all sales")
-                :(fr?`${nbACompleter} vente${nbACompleter>1?"s":""} sans prix d'achat`
-                    :`${nbACompleter} sale${nbACompleter>1?"s":""} without purchase price`)}
-            </span>
-            <span className="sub">
-              {modeACompleter
-                ?(nbACompleter===0
-                    ?(fr?"Tout est complété 🎉":"All done 🎉")
-                    :(fr?`Encore ${nbACompleter} à compléter · Entrée enchaîne la suivante`:`${nbACompleter} left · Enter jumps to the next one`))
-                :(fr?"Complète-les pour voir tes bénéfices":"Add them to see your profit")}
-            </span>
-          </span>
-        </button>
+      {/* ── Prix d'achat : la carte de progression (16/10) ──
+          ON N'OBLIGE JAMAIS : pas de modale, pas de blocage, pas de rouge. La
+          carte ouvre la saisie en série ; elle reste affichée tant que le mode
+          est ouvert, sinon on ne pourrait plus en sortir. */}
+      {sales.length>0&&(nbACompleter>0||modeACompleter)&&(
+        <div className="fsx-rise" style={{animationDelay:'.2s',position:'relative',overflow:'hidden',borderRadius:24,background:'radial-gradient(120% 100% at 100% 0%,#24796B 0%,#123F38 62%,#0E302B 100%)',color:'#fff',padding:18,display:'flex',flexDirection:'column',gap:12}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:10}}>
+            <div style={{minWidth:0}}>
+              <div style={{fontSize:17,fontWeight:700,letterSpacing:'-0.01em'}}>{fr?"Complète tes prix d'achat":'Add your purchase prices'}</div>
+              <div style={{fontSize:13,color:'#B9DDD4',marginTop:3,lineHeight:1.4}}>
+                {modeACompleter
+                  ?(nbACompleter===0?(fr?'Tout est complété.':'All done.'):(fr?`Encore ${nbACompleter} à compléter · Entrée enchaîne la suivante`:`${nbACompleter} left · Enter jumps to the next one`))
+                  :(fr?'Pour voir ton vrai bénéfice sur chaque vente.':'To see your real profit on every sale.')}
+              </div>
+            </div>
+            <div style={{textAlign:'right',flex:'none'}}>
+              <div style={{fontSize:22,fontWeight:700,fontVariantNumeric:'tabular-nums'}}>{nbVentesCompletes}<span style={{color:'#8DBFB3',fontSize:15}}> / {nbVentesTotal}</span></div>
+              <div style={{fontSize:11.5,color:'#8DBFB3'}}>{fr?'ventes complètes':'complete sales'}</div>
+            </div>
+          </div>
+          <div style={{height:8,borderRadius:4,background:'rgba(255,255,255,.14)',overflow:'hidden'}} aria-hidden="true">
+            <i className="fsx-gx" style={{animationDelay:'.4s',display:'block',width:`${nbVentesTotal?Math.max(2,(100*nbVentesCompletes)/nbVentesTotal):0}%`,height:'100%',borderRadius:4,background:`linear-gradient(90deg,#8CE0D4,${UI.teal})`}}/>
+          </div>
+          {modeACompleter?(
+            <button type="button" onClick={quitterModeACompleter}
+              style={{height:46,border:'1px solid rgba(255,255,255,.35)',borderRadius:23,background:'transparent',color:'#fff',fontFamily:'inherit',fontSize:15,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',gap:8,cursor:'pointer'}}>
+              <Icone nom="retour" taille={17} couleur="#FFFFFF" epaisseur={2.2}/>{fr?'Revenir à toutes les ventes':'Back to all sales'}
+            </button>
+          ):(
+            <button type="button" onClick={()=>entrerModeACompleter(true)}
+              style={{position:'relative',overflow:'hidden',height:46,border:0,borderRadius:23,background:'#fff',color:'#123F38',fontFamily:'inherit',fontSize:15,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',gap:8,cursor:'pointer'}}>
+              {fr?'Compléter en série':'Complete in a row'}<Icone nom="fleche" taille={17} couleur="#123F38" epaisseur={2.2}/>
+              <span className="fsx-shine" aria-hidden="true"/>
+            </button>
+          )}
+        </div>
       )}
 
       {/* ── Ventes Vinted importées à enregistrer — compteur-invitation ──
-          Même contrat que le compteur au-dessus : ON N'OBLIGE JAMAIS. Ces
-          lignes ne sont pas des erreurs — Vinted ne communique simplement ni
-          la date ni le prix payé, seul l'utilisateur les connaît. */}
+          Même contrat que la carte au-dessus : ON N'OBLIGE JAMAIS. Ces lignes ne
+          sont pas des erreurs — Vinted ne communique simplement ni la date ni le
+          prix payé, seul l'utilisateur les connaît. (16/10 : icône SVG.) */}
       {(nbImportes>0||modeImportes)&&(
         <button className={`pa-call${modeImportes?" on":""}`}
-          onClick={()=>{setModeImportes(v=>!v);setModeACompleter(false);setImpSel(new Set());setImpErr(null);}}>
-          <span style={{fontSize:17,flexShrink:0}}>{modeImportes?"↩":"🧾"}</span>
+          onClick={()=>{setModeImportes(v=>!v);setModeACompleter(false);setImpSel(new Set());setImpErr(null);setFilterType("Tous");}}>
+          <Icone nom={modeImportes?'retour':'recu'} taille={18} couleur={modeImportes?'#FFFFFF':UI.tealDeep}/>
           <span style={{flex:1,minWidth:0}}>
             <span className="n">
               {modeImportes
@@ -1056,7 +1114,7 @@ const VentesTab = memo(function VentesTab({
             <span className="sub">
               {modeImportes
                 ?(nbImportes===0
-                    ?(fr?"Tout est enregistré 🎉":"All recorded 🎉")
+                    ?(fr?"Tout est enregistré.":"All recorded.")
                     :(fr?`Encore ${nbImportes} à enregistrer`:`${nbImportes} left to record`))
                 :(fr?"Prix et date réels connus de toi seul — enregistre-les pour qu'elles comptent"
                     :"Only you know the real price and date — record them so they count")}
@@ -1079,12 +1137,8 @@ const VentesTab = memo(function VentesTab({
           {/* ── DEUX gestes, pas un (2026-08-11) ──────────────────────────────
               « Je ne sais plus » et « c'était gratuit » sont deux informations
               DIFFÉRENTES. La première laisse prix_achat à NULL et la marge non
-              calculable ; la seconde écrit 0, et 100 % de marge devient alors la
-              vérité. Un seul bouton pour les deux, c'était fabriquer des marges
-              de 100 % sur du vent.
-              « Je ne sais plus » n'a de cible d'inventaire que si la vente vient
-              du stock — sans article lié le drapeau ne peut pas être POSÉ, mais
-              la vente reste correctement à NULL de toute façon. */}
+              calculable ; la seconde écrit 0 (bénéfice = prix de vente, et, depuis
+              le 16/10, AUCUN pourcentage de marge). */}
           <button className="ghost" disabled={busy} onClick={marquerGratuit}>
             {fr?"C'était gratuit (0 €)":"It was free (0)"}
           </button>
@@ -1116,25 +1170,49 @@ const VentesTab = memo(function VentesTab({
         </div>
       )}
 
-      {sales.length>0&&(
-        <div style={{display:"flex",alignItems:"center",gap:8,background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:12,padding:"10px 16px",marginBottom:4}}>
-          <span style={{fontSize:14,flexShrink:0}}>🔍</span>
+      {sales.length>0&&!modeImportes&&(
+        <div className="fsx-rise" style={{animationDelay:'.25s',display:'flex',alignItems:'center',gap:10,height:50,padding:'0 16px',borderRadius:25,background:'#fff',border:`1px solid ${UI.border}`}}>
+          <Icone nom="loupe" taille={18} couleur="#6F7774" epaisseur={2.2}/>
           <input value={searchHistory} onChange={e=>setSearchHistory(e.target.value)}
-            placeholder={lang==='fr'?"Rechercher par nom, marque, description...":"Search by name, brand, description..."}
-            style={{flex:1,border:"none",outline:"none",fontSize:14,background:"transparent",fontFamily:"inherit",color:"#10201B"}}/>
-          {searchHistory&&<button onClick={()=>setSearchHistory("")} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:"#A3A9A6",flexShrink:0,padding:0,lineHeight:1}}>✕</button>}
+            aria-label={fr?'Rechercher une vente':'Search a sale'}
+            placeholder={fr?"Nom, marque, description…":"Name, brand, description…"}
+            style={{flex:1,minWidth:0,border:"none",outline:"none",fontSize:15,background:"transparent",fontFamily:"inherit",color:UI.ink}}/>
+          {searchHistory&&<button type="button" aria-label={fr?'Effacer':'Clear'} onClick={()=>setSearchHistory("")} style={{background:"none",border:"none",cursor:"pointer",color:"#A3A9A6",flexShrink:0,padding:0,display:'flex'}}><Icone nom="croix" taille={16} couleur="#A3A9A6"/></button>}
         </div>
       )}
 
-      {/* ── Filtres catégorie — mêmes pills à pastille que StockTab ──
-          En mode « ventes importées », les pastilles se construisent sur les
-          lignes EN ATTENTE, pas sur les ventes déjà enregistrées : sinon un
-          compte qui vient d'importer son dressing (0 vente enregistrée, 1 982 à
-          confirmer) n'avait aucun filtre du tout — et « tout sélectionner par
-          catégorie » n'aurait eu aucun sens. */}
-      {(modeImportes?vendusRestants.length>0:sales.length>0)&&(()=>{
-        const base=modeImportes?vendusRestants:sales;
-        const presentTypes=["Tous","Mode","High-Tech","Maison","Électroménager","Jouets","Livres","Sport","Auto-Moto","Beauté","Musique","Collection","Multimédia","Jardin","Bricolage","Autre"].filter(tp=>tp==="Tous"||base.some(s=>s.type===tp));
+      {/* ── Filtres (16/10) : plateformes RÉELLES (une ligne par plateforme,
+          casse ignorée) + « Sans prix d'achat » (le mode « à compléter »). Les
+          pastilles de CATÉGORIE ne restent qu'en mode « ventes importées », où
+          « tout sélectionner par catégorie » en a besoin. */}
+      {sales.length>0&&!modeImportes&&(
+        <div className="vc-filtres fsx-rise" style={{animationDelay:'.28s'}} role="toolbar" aria-label={fr?'Filtrer les ventes':'Filter sales'}>
+          <button type="button" onClick={()=>choisirPlateforme('toutes')} aria-pressed={filtrePlateforme==='toutes'}
+            style={{...pastille,border:filtrePlateforme==='toutes'?'1px solid transparent':`1px solid ${UI.border}`,background:filtrePlateforme==='toutes'?UI.ink:'#fff',color:filtrePlateforme==='toutes'?'#fff':UI.ink}}>
+            {fr?'Toutes':'All'}
+          </button>
+          {plateformes.map(pl=>{
+            const on=filtrePlateforme===pl.cle;
+            return(
+              <button key={pl.cle} type="button" onClick={()=>choisirPlateforme(on?'toutes':pl.cle)} aria-pressed={on}
+                style={{...pastille,padding:'0 14px 0 10px',border:on?'1px solid transparent':`1px solid ${UI.border}`,background:on?UI.ink:'#fff',color:on?'#fff':UI.ink}}>
+                {CODES_PLATEFORME_VENTE.includes(pl.code)&&<PlatformLogo platform={pl.code} size={18}/>}
+                {pl.code==='ailleurs'?(fr?'Ailleurs':'Elsewhere'):pl.libelle}
+              </button>
+            );
+          })}
+          {(nbACompleter>0||modeACompleter)&&(
+            <button type="button" onClick={()=>modeACompleter?quitterModeACompleter():entrerModeACompleter(false)} aria-pressed={modeACompleter}
+              style={{...pastille,border:modeACompleter?'1px solid transparent':`1px solid ${UI.border}`,background:modeACompleter?UI.ink:'#fff',color:modeACompleter?'#fff':UI.ink}}>
+              {fr?"Sans prix d'achat":'No purchase price'}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* ── Filtres catégorie — mode « ventes importées » seulement ── */}
+      {modeImportes&&vendusRestants.length>0&&(()=>{
+        const presentTypes=["Tous","Mode","High-Tech","Maison","Électroménager","Jouets","Livres","Sport","Auto-Moto","Beauté","Musique","Collection","Multimédia","Jardin","Bricolage","Autre"].filter(tp=>tp==="Tous"||vendusRestants.some(s=>s.type===tp));
         return presentTypes.length>1&&(
           <div className="cat-filters">
             {presentTypes.map(tp=>{
@@ -1249,7 +1327,7 @@ const VentesTab = memo(function VentesTab({
           )}
 
           {vendusRestants.length===0&&(
-            <div className="imp-info" style={{textAlign:'center'}}>{fr?"Tout est enregistré 🎉":"All recorded 🎉"}</div>
+            <div className="imp-info" style={{textAlign:'center'}}>{fr?"Tout est enregistré.":"All recorded."}</div>
           )}
           {vendusRestants.length>0&&nbFiltres===0&&(
             <div className="imp-info" style={{textAlign:'center'}}>
@@ -1268,7 +1346,7 @@ const VentesTab = memo(function VentesTab({
                     (mapItem), ses photos sont déjà là. Repli = tuile d'icône. */}
                 <div className="vphoto">
                   <GalleryPhoto url={premierePhoto(item.photos)} alt={item.title}
-                    fallback={<div className={`cat-tile ${catClass(item.type)}`}>{detectObjectIcon(item.title,item.description,item.type)}</div>}/>
+                    fallback={<div className={`cat-tile ${catClass(item.type)}`}><IconeCategorie type={item.type}/></div>}/>
                 </div>
                 <div className="left">
                   <div className="title-line">
@@ -1350,19 +1428,15 @@ const VentesTab = memo(function VentesTab({
         </>
       ):sales.length===0?(
         // Condition d'affichage inchangée : cet écran ne sort QUE si l'utilisateur
-        // n'a réellement aucune vente. Le padding bas laisse passer le FAB micro
-        // flottant (56 px + marge) : sans lui, le CTA « stats avancées » et la
-        // grille de mini-stats finissaient sous le bouton en fin de scroll.
-        <div style={{display:'flex',flexDirection:'column',gap:16,paddingBottom:'var(--nav-content-clearance)'}}>
-          <SalesTicker lang={lang} setTab={setTab} extensionAbsente={extensionAbsente} onExtensionInfo={onExtensionInfo} oplaFermee={oplaFermee}/>
-          {!isPremium&&!isNative&&(<PremiumBanner userEmail={user?.email} origine="banniere_ventes"/>)}
-          {isNative&&!isPremium&&(<IAPUpgradeBlock lang={lang} iapLoading={iapLoading} onPurchase={()=>openUpgradeModal(null,'banniere_ventes')} onRestore={handleIAPRestore}/>)}
+        // n'a réellement aucune vente. Le padding bas laisse passer le FAB micro.
+        <div style={{paddingBottom:'var(--nav-content-clearance)'}}>
+          <VentesVide lang={lang} setTab={setTab} isPremium={isPremium}
+            onOffres={()=>openUpgradeModal(null,'banniere_ventes')} offresChargement={iapLoading}
+            extensionAbsente={extensionAbsente} onExtensionInfo={onExtensionInfo}/>
         </div>
       ):(
         <>
           {/* ── Vue B : sélection globale (2026-08-11) ────────────────────────
-              Même dispositif qu'en vue A, et pour la même raison : le compte qui
-              vient d'enregistrer ses ventes Vinted en aura ~1 982 à compléter.
               Porte sur `lignesACompleter` — toutes les lignes du filtre courant,
               pas les 50 rendues. */}
           {modeACompleter&&nbACompleterFiltre>0&&(
@@ -1378,7 +1452,7 @@ const VentesTab = memo(function VentesTab({
                       :`${nbSel} of ${nbACompleterFiltre} selected`)
                   :(fr?`${nbACompleterFiltre} vente${nbACompleterFiltre>1?"s":""} à compléter`
                       :`${nbACompleterFiltre} sale${nbACompleterFiltre>1?"s":""} to complete`)}
-                {(filterType!=="Tous"||searchHistory.trim())&&(
+                {(filtrePlateforme!=='toutes'||searchHistory.trim())&&(
                   <span className="sub">
                     {fr?`vue filtrée — la sélection ne sort pas de ce qui est listé ici`
                        :`filtered view — selection stays within what is listed here`}
@@ -1393,104 +1467,33 @@ const VentesTab = memo(function VentesTab({
             </div>
           )}
 
-          {ventesVisibles.map(s=>{
-            // date NULL = vente enregistrée « je ne sais plus » (import
-            // dressing) : elle vit dans la liste et les totaux, hors des
-            // périodes — et surtout pas un « NaN undefined » à l'écran.
-            const d=s.date?new Date(s.date):null;
-            const sameYear=!d||d.getFullYear()===now.getFullYear();
-            const pKey=(s.plateforme||"").toLowerCase().trim();
-            // Sans prix d'achat il n'y a pas de marge à montrer : `s.margin>=0`
-            // était vrai pour null et la ligne affichait un « +0 € » vert, lu
-            // comme « vendu à prix coûtant » au lieu de « on ne sait pas ».
-            const margeConnue=comptabilisable(s)&&s.margin!=null&&Number.isFinite(Number(s.margin));
+          {filteredSales.length===0&&(
+            <div style={{fontSize:13.5,color:ENCRE2,textAlign:'center',padding:'14px 8px'}}>
+              {modeACompleter&&nbACompleter===0
+                ?(fr?"Toutes tes ventes ont un prix d'achat.":'All your sales have a purchase price.')
+                :(fr?'Aucune vente ne correspond à ce filtre.':'No sale matches this filter.')}
+            </div>
+          )}
+
+          {/* La liste, groupée par mois de vente (date décroissante), avec le
+              total de chaque mois (sur toutes ses ventes, pas sur la fenêtre). */}
+          {groupesMois.map(g=>{
+            const tot=totauxMois[g.cle]??{nb:0,ca:0};
             return(
-              // Swipe gauche = supprimer (conservé) ; tap sur la carte = éditer la vente.
-              <SwipeRow key={s.id} onDelete={()=>delSale(s.id)} style={{borderRadius:16,border:"1px solid #E7E3D8",boxShadow:"none"}}>
-                {/* _table:'ventes' — cette carte est une ligne de la table `ventes`,
-                    PAS un article d'inventaire : leurs ids se chevauchent, et la
-                    modale d'édition refuse d'écrire sans cible explicite. */}
-                {/* frais pré-remplis depuis la vente (2026-08-14, option B) :
-                    le 0 en dur évaporait les frais à chaque ré-édition —
-                    benefice recalculé sans eux. `sellingFees` = nom mappé
-                    (mapSale) de ventes.selling_fees. */}
-                <div className="row in-swipe" onClick={()=>setEditItem({...s,_table:'ventes',frais:s.sellingFees??0,sell:s.sell??""})}>
-                  {/* Icône crayon retirée le 2026-07-14 (comme sur le Stock) :
-                      la carte entière est déjà cliquable pour éditer. */}
-                  {/* Vignette photo (27/08) : la vente ne porte pas de photos,
-                      on les lit sur l'article via ventes.inventaire_id
-                      (photosParInventaire, App.jsx). Repli = tuile d'icône. */}
-                  <div className="vphoto">
-                    <GalleryPhoto url={premierePhoto(photosParInventaire[s.inventaire_id])} alt={s.title}
-                      fallback={<div className={`cat-tile ${catClass(s.type)}`}>{detectObjectIcon(s.title,s.description,s.type)}</div>}/>
-                  </div>
-                  <div className="left">
-                    <div className="title-line">
-                      <span className="title">{s.title}</span>
-                      {s.marque&&(<><span className="brand-dot"/><span className="brandname">{marqueLabel(s.marque,lang)}</span></>)}
-                      {(s._qty||1)>1&&<span className="qty-badge">×{s._qty}</span>}
-                    </div>
-                    <div className="meta">
-                      {soldWord(s.title,lang)} <span className="hl">{fmt(s.sell)}</span> · {typeLabel(s.type||"Autre",lang)}
-                    </div>
-                    {s.plateforme&&(
-                      <div className="icons">
-                        {PLATFORM_KEY[pKey]
-                          ?<span className="plogo" title={s.plateforme}><PlatformLogo platform={PLATFORM_KEY[pKey]} size={18}/></span>
-                          :<div className="micon ic-plateforme">{pKey==='ailleurs'?(lang==='en'?'Elsewhere':'Ailleurs'):s.plateforme}</div>}
-                      </div>
-                    )}
-                    {/* Saisie du prix d'achat manquant, DANS la ligne.
-                        ⚠️ stopPropagation obligatoire : la carte entière porte un
-                        onClick qui ouvre la modale d'édition — sans lui, le
-                        moindre clic dans le champ ferme l'écran et perd la
-                        frappe en cours. */}
-                    {!comptabilisable(s)&&!patchs[s.id]&&(
-                      <div className="pa-line" onClick={e=>e.stopPropagation()}>
-                        <input type="checkbox" className="pa-check" checked={selection.has(s.id)} onChange={()=>toggleSelection(s.id)}
-                          aria-label={fr?"Sélectionner cette vente":"Select this sale"}/>
-                        {openId===s.id?(
-                          <>
-                            {/* autoFocus : le champ est démonté puis remonté sur
-                                la vente suivante à chaque Entrée — c'est ce
-                                remontage qui donne le focus, sans ref ni effet. */}
-                            <input className="pa-input" autoFocus inputMode="decimal" value={draft}
-                              placeholder={fr?"12,50":"12.50"}
-                              onChange={e=>setDraft(e.target.value)}
-                              onKeyDown={e=>onKeyPrix(e,s)}
-                              onBlur={()=>onBlurPrix(s)}
-                              aria-label={fr?"Prix d'achat":"Purchase price"}/>
-                            <button className="pa-ok" onMouseDown={e=>e.preventDefault()} onClick={()=>validerSaisie(s)}>✓</button>
-                            <span className="pa-hint">{fr?"Entrée = suivante · Échap = annuler":"Enter = next · Esc = cancel"}</span>
-                          </>
-                        ):(
-                          <button className="pa-chip" onClick={()=>ouvrirSaisie(s.id)}>+ {fr?"prix d'achat":"purchase price"}</button>
-                        )}
-                        {erreur?.id===s.id&&<span className="pa-err">{erreur.message}</span>}
-                      </div>
-                    )}
-                    {patchs[s.id]?.inconnu&&(
-                      <div className="pa-note">{fr?"Prix d'achat inconnu — hors calcul de marge":"Purchase price unknown — excluded from margins"}</div>
-                    )}
-                  </div>
-                  <div className="right">
-                    {/* « — » ne disait rien : ni que la marge est inconnue, ni
-                        pourquoi, ni que c'est réparable. Un tiret muet se lit
-                        comme « zéro » ou comme un bug. On le dit (11/08). */}
-                    <div className={`profit${margeConnue&&s.margin<0?" neg":""}`} style={margeConnue?undefined:{color:"var(--mute)",fontSize:11,fontWeight:600,lineHeight:1.25,textAlign:"right"}}>
-                      {margeConnue
-                        ?`${s.margin>=0?"+":""}${fmt(s.margin)}`
-                        :(fr?"marge non calculable":"margin not computable")}
-                    </div>
-                    <div className="sold-date">{d?<>{d.getDate()} {(lang==='en'?MONTHS_EN:MONTHS_FR)[d.getMonth()]}{sameYear?"":` ${d.getFullYear()}`}</>:(fr?"date inconnue":"unknown date")}</div>
-                  </div>
+              <div key={g.cle} style={{display:'flex',flexDirection:'column',gap:10}}>
+                <div className="fsx-rise" style={{animationDelay:'.3s',display:'flex',alignItems:'baseline',justifyContent:'space-between',gap:8,padding:'8px 4px 0'}}>
+                  <span style={{fontSize:15,fontWeight:700,color:UI.ink}}>{nomMois(g)}</span>
+                  <span style={{fontSize:13,color:ENCRE2,fontVariantNumeric:'tabular-nums',whiteSpace:'nowrap'}}>
+                    {fr?`${tot.nb} vente${tot.nb>1?'s':''}`:`${tot.nb} sale${tot.nb>1?'s':''}`} · {fmt(tot.ca)}
+                  </span>
                 </div>
-              </SwipeRow>
+                {g.lignes.map(carteVente)}
+              </div>
             );
           })}
-          {/* Mode « à compléter » : la liste n'est plus rendue en entier depuis
-              le 11/08 (1 982 SwipeRow figeaient l'écran). Fenêtre de rendu, et
-              on dit explicitement que la sélection, elle, ne s'y limite pas. */}
+
+          {/* Mode « à compléter » : fenêtre de rendu ; la sélection, elle, ne s'y
+              limite pas — on le dit. */}
           {modeACompleter&&filteredSales.length>ventesVisibles.length&&(
             <button className="imp-more" onClick={()=>setVenteRenduMax(n=>n+RENDU_PAS)}>
               {fr?`Afficher plus (${ventesVisibles.length} sur ${filteredSales.length})`
@@ -1501,29 +1504,28 @@ const VentesTab = memo(function VentesTab({
               </span>
             </button>
           )}
-          {/* Hors mode « à compléter », le plafond de 10 de visibleSales reste. */}
-          {!modeACompleter&&!showAllSales&&groupedSales.length>10&&(
-            <button onClick={()=>setShowAllSales(true)}
-              style={{width:"100%",padding:"12px",background:"none",border:"1px solid #2F9E90",borderRadius:999,color:"#2F9E90",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
-              {lang==='fr'?`Voir plus (${groupedSales.length-10} autres)`:`Show more (${groupedSales.length-10} more)`}
+          {!modeACompleter&&!showAllSales&&filteredSales.length>LIMITE_LISTE&&(
+            <button type="button" onClick={()=>setShowAllSales(true)}
+              style={{width:"100%",height:44,marginTop:4,background:"#fff",border:"1.5px solid #CFE0DB",borderRadius:22,color:UI.tealDeep,fontSize:14.5,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+              {fr?`Voir plus (${filteredSales.length-LIMITE_LISTE} autres)`:`Show more (${filteredSales.length-LIMITE_LISTE} more)`}
             </button>
           )}
-          {!isPremium&&!isNative&&(<PremiumBanner userEmail={user?.email} origine="banniere_ventes"/>)}
-          {isNative&&!isPremium&&(<IAPUpgradeBlock lang={lang} iapLoading={iapLoading} onPurchase={()=>openUpgradeModal(null,'banniere_ventes')} onRestore={handleIAPRestore}/>)}
+          {!isPremium&&(
+            <div style={{marginTop:8}}>
+              <EncartPremium lang={lang} onOffres={()=>openUpgradeModal(null,'banniere_ventes')} desactive={iapLoading}/>
+            </div>
+          )}
         </>
       )}
 
-      {/* ── Bouton stats avancées (liste des ventes uniquement) ──
-          ⚠️ Ne PAS le rendre sur l'état vide : celui-ci a désormais son propre
-          CTA « Voir mes stats avancées » (cf. SalesTicker). Sans cette garde,
-          le bouton s'affichait une 2e fois tout en bas, sous le FAB micro. */}
+      {/* ── Bouton statistiques (liste des ventes uniquement) ──
+          ⚠️ Ne PAS le rendre sur l'état vide : celui-ci a son propre bouton
+          « Voir mes statistiques » (VentesVide). */}
       {sales.length>0&&isPremium&&(
-        <button onClick={()=>{setTab(4);localStorage.setItem('tab',4);}}
-          style={{width:"100%",marginTop:4,padding:"14px",background:"linear-gradient(120deg,#2F9E90,#1B6E62)",color:"#fff",border:"none",borderRadius:999,fontSize:14,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,fontFamily:"inherit",transition:"all 0.15s",boxShadow:"0 10px 24px -8px rgba(47,158,144,0.28)"}}
-          onMouseDown={e=>e.currentTarget.style.transform="scale(0.97)"}
-          onMouseUp={e=>e.currentTarget.style.transform="scale(1)"}
-          onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}
-        >{t('statsAvancees')}</button>
+        <button type="button" onClick={()=>{setTab(4);localStorage.setItem('tab',4);}}
+          style={{width:"100%",marginTop:4,height:50,background:`linear-gradient(135deg,${UI.teal},${UI.tealDeep})`,color:"#fff",border:"none",borderRadius:25,fontSize:15.5,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:9,fontFamily:"inherit",boxShadow:"0 10px 22px -12px rgba(27,110,98,.7)"}}>
+          <Icone nom="barres" taille={18} couleur="#FFFFFF"/>{fr?'Voir mes statistiques':'See my statistics'}
+        </button>
       )}
 
       {/* ── Vue B : confirmation au-dessus du seuil ─────────────────────────

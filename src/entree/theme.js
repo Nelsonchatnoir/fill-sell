@@ -64,6 +64,20 @@ export const CSS_ENTREE = `
 @keyframes enRangMonte { 0% { transform:translateY(66px); opacity:0 } 12% { opacity:1 } 58% { transform:translateY(0) } 90% { transform:translateY(0); opacity:1 } 100% { transform:translateY(0); opacity:0 } }
 @keyframes enOnde { from { transform:scale(1); opacity:.4 } to { transform:scale(1.6); opacity:0 } }
 .en-scene { animation: enScene .38s cubic-bezier(.22,.61,.36,1) }
+/* (16/10, Nico) Les éléments de chaque écran APPARAISSENT avec un léger rebond
+   (« pop »), l'un après l'autre. Rien d'autre ne change : mêmes étapes, mêmes
+   textes, même parcours, connexion à la même place. Entrée UNE fois par écran
+   (la scène est remontée à chaque étape), transform/opacity seulement ; un
+   élément qui porte déjà sa propre entrée (.en-monte) la garde. */
+@keyframes enPop { 0% { opacity:0; transform:translateY(8px) scale(.94) } 60% { opacity:1; transform:translateY(0) scale(1.025) } 100% { opacity:1; transform:translateY(0) scale(1) } }
+.en-scene > div:first-child > :not(.en-monte), .en-scene > :last-child:not(:first-child) { animation: enPop .5s cubic-bezier(.34,1.56,.64,1) backwards }
+.en-scene > div:first-child > :nth-child(2) { animation-delay: .06s }
+.en-scene > div:first-child > :nth-child(3) { animation-delay: .12s }
+.en-scene > div:first-child > :nth-child(4) { animation-delay: .18s }
+.en-scene > div:first-child > :nth-child(5) { animation-delay: .24s }
+.en-scene > div:first-child > :nth-child(6) { animation-delay: .3s }
+.en-scene > div:first-child > :nth-child(n+7) { animation-delay: .36s }
+.en-scene > :last-child:not(:first-child) { animation-delay: .32s }
 .en-monte { animation: enMonte .42s cubic-bezier(.22,.61,.36,1) backwards }
 .en-cta { transition: transform .12s ease, box-shadow .16s ease }
 .en-cta:active { transform: scale(.98) }
@@ -74,6 +88,6 @@ export const CSS_ENTREE = `
    demandé moins d'animation n'en reçoit aucune, et le parcours reste lisible
    (les états d'arrivée sont les états par défaut). */
 @media (prefers-reduced-motion: reduce) {
-  .en-scene, .en-monte, .en-anime, .en-anime * { animation: none !important }
+  .en-scene, .en-scene > *, .en-scene > div:first-child > *, .en-monte, .en-anime, .en-anime * { animation: none !important }
 }
 `;

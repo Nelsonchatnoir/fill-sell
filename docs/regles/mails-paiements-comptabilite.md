@@ -145,6 +145,8 @@ Règle à respecter AVANT d'ajouter un type d'email :
 
 <!-- ex-CLAUDE.md L987-1008 : Prix d'achat : vide ≠ zéro -->
 ## Prix d'achat : VIDE ≠ ZÉRO (règle posée le 03/08)
+- **(16/10, Nico)** Prix d'achat à 0 € : bénéfice compté, mais AUCUNE marge en % (ni affichée, ni dans une
+  moyenne) — `src/utils/ventesStats.js`, `docs/regles/ventes-et-retraits.md` § 16/10.
 
 `inventaire.prix_achat` **NULL = inconnu** → l'article n'entre dans **AUCUN**
 calcul de marge, de bénéfice, de total investi ni de moyenne.

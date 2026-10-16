@@ -7,6 +7,9 @@
 //   · prix d'achat NULL/absent = on ne sait pas → l'article est ÉCARTÉ ;
 //   · prix d'achat 0           = gratuit assumé (don, cadeau, lot offert)
 //                                → il compte normalement, marge = prix de vente.
+//                                (16/10, Nico) Mais AUCUNE marge en % : à 0 €,
+//                                le « 100 % » ne dit rien — utils/ventesStats.js
+//                                (margePctVente, margeMoyenne).
 // Écrire 0 pour dire « je ne sais pas » produit une marge de 100 % sur du vent :
 // c'est ce que faisaient ~90 endroits du code avant cette date, via des
 // `parseFloat(x) || 0`, `?? 0` et `Number(x ?? 0)`.

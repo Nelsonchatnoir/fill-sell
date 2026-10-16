@@ -14,6 +14,7 @@
 - 06/10 soir — un mail à chaque vente, jamais plafonné (ex-L304-316)
 - 04/10 — retraits (ex-L359-363)
 - 02/10 soir — ventes : annonce_id = la preuve (ex-L444-446)
+- 16/10 — lire une vente : plateforme normalisée, marge % au prix > 0, « Sans plateforme », tri par date
 
 <!-- ex-CLAUDE.md L123-137 : 11/10 — une annonce vendue ne se signale qu'une fois -->
 - **⛔ UNE ANNONCE VENDUE NE SE SIGNALE QU'UNE FOIS (11/10, Louis)** : le « doublon »
@@ -103,3 +104,16 @@
   GetItem après = preuve. Compte NON relié : aucune voie serveur, le mur dit aussi « relie ton compte eBay ».
 - Retrait Beebs sans numéro : une annonce « non reliée » numérotée avant le dépôt ne le bloque plus (voir
   rapprochement-et-releves.md) ; deux relevés complets concluent comme avant.
+
+## 16/10 — lire une vente : plateforme, marge %, « Sans plateforme », tri
+Une seule source, `src/utils/ventesStats.js` (selftest `selftest:ventes-stats`) ; les écrans n'agrègent rien
+eux-mêmes. Rapport : `docs/enquetes/refonte-ecrans-1610/RAPPORT.md`.
+- **Plateforme** = libellé normalisé (`plateformeVente`, miroir de `plateforme_normalisee`) : « Vinted »,
+  « vinted », « Vinted␣ » sont UNE plateforme ; le libellé corrigé par la personne prime sur `plateforme_code`
+  (aucun déclencheur ne le recalcule) ; un texte libre inconnu garde sa ligne à lui.
+- **Marge en %** : seulement si le prix d'achat est > 0 (`margePctVente`, `margeMoyenne`) — à 0 €, « prix d'achat
+  à 0 € » sans %, hors moyenne, IA comprise ; le bénéfice en euros reste compté. NULL ≠ 0 tient toujours.
+- **Ventes par plateforme** : ligne « Sans plateforme » toujours présente ; Σ lignes = revenu de la période.
+- **Ordre** : date de vente décroissante, puis enregistrement, puis id ; sans date en dernier (`trierVentes`,
+  appliqué dans `App.jsx` à ce qui descend vers l'onglet Ventes).
+

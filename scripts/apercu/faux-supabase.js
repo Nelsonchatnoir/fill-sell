@@ -76,13 +76,20 @@ function lireOu(expr) {
     cur += ch;
   }
   if (cur) parts.push(cur);
+  // (16/10) Une valeur citée (« "2026-10-16T…" », cf. lireToutesPages.filtreApresCle)
+  // perd ses guillemets ; un groupe and(…) devient { et: [conditions] } : la
+  // pagination par clé (created_at, id) de l'app se rejoue donc vraiment.
   return parts.map((p) => {
+    const et = p.match(/^and\((.*)\)$/);
+    if (et) return { et: lireOu(et[1]) };
     const m = p.match(/^([\w>-]+?)\.(not\.)?(eq|neq|in|is|gt|gte|lt|lte|like|ilike)\.(.*)$/);
     if (!m) return null;
-    const val = m[4] === 'null' ? null : m[4];
+    const brut = m[4].replace(/^"(.*)"$/, '$1');
+    const val = brut === 'null' ? null : brut;
     return [!!m[2], m[3], m[1], val];
   }).filter(Boolean);
 }
+const testerCondition = (r, c) => (c.et ? c.et.every((x) => testerCondition(r, x)) : (c[0] ? !tester(r, c[1], c[2], c[3]) : tester(r, c[1], c[2], c[3])));
 
 class Requete {
   constructor(table) {
@@ -144,7 +151,7 @@ class Requete {
     }
     let rows = (fixture().tables?.[this.table] ?? []).slice();
     rows = rows.filter((r) => this.filtres.every(([neg, op, c, v]) => (neg ? !tester(r, op, c, v) : tester(r, op, c, v))));
-    for (const groupe of this.ou) rows = rows.filter((r) => groupe.some(([neg, op, c, v]) => (neg ? !tester(r, op, c, v) : tester(r, op, c, v))));
+    for (const groupe of this.ou) rows = rows.filter((r) => groupe.some((c) => testerCondition(r, c)));
     const indexes = new Map(rows.map((r, i) => [r, i]));
     rows.sort((a, b) => {
       for (const [c, asc, nullsFirst] of this.ordres) {

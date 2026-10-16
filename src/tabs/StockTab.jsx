@@ -181,6 +181,7 @@ import {
 import { decisionDemarrage, decisionQuestionBoutique, attentesDeConnexion, jobAttendConnexion, texteConnecteToi } from '../annonces/synchroniser.js';
 import { lirePrixAnnoncesVinted } from '../utils/prixAnnoncesVinted.js';
 import { parLots } from '../utils/parLots.js';
+import CeQueFillSellFait, { BandeauStockVide } from '../ecrans/vides/StockVide.jsx';
 
 // ── UN SEUL JEU D'ICÔNES (03/10/2026, refonte du Stock) ────────────────────
 // Plus aucun émoji dans l'écran Stock : une icône Lucide au trait, posée dans
@@ -5779,8 +5780,8 @@ const StockTab = memo(function StockTab({
   // Bascule quotas (02/09) : état des compteurs (quotas_etat via App) — sert
   // le compteur de republications restantes sur le bouton de lot.
   quotas = null,
-  // Lot 2 : « Ajouter un article » de l'état vide → création par photo (Lens).
-  onAddByPhoto = null,
+  // (16/10) onAddByPhoto n'est plus lu : le bandeau du stock vide a perdu son
+  // bouton « Ajouter un article » (doublon de la carte du haut).
   // Optionnelle : point d'entrée explicite après un import de dressing réussi.
   // Non fournie, on retombe sur vaActions.fetchAll (déjà passé par App.jsx) —
   // les appelants existants n'ont donc rien à changer.
@@ -11040,121 +11041,15 @@ const StockTab = memo(function StockTab({
             {stock.length===0&&vueStock!=='vendus'?(
               <div style={{display:"flex",flexDirection:"column",gap:12}}>
 
-                {/* 1. Bannière — UN SEUL geste (2026-08-09). Le bouton
-                    « Importer mon dressing Vinted » qui vivait ici a été
-                    supprimé : il ne faisait que remonter la page jusqu'à la
-                    carte de sync, affichée à quelques centimètres au-dessus,
-                    et donnait à la MÊME action un troisième libellé (importer
-                    / synchroniser / actualiser). Un compte vide voit
-                    désormais un seul bouton par geste : synchroniser, dans la
-                    carte Vinted ; ajouter, ici. */}
-                <div style={{background:"#F0FDFB",borderRadius:12,padding:"14px 16px",border:"1px solid rgba(13,148,136,0.15)"}}>
-                  <div style={{fontSize:13.5,fontWeight:600,color:"#10201B",lineHeight:1.5,fontFamily:"inherit"}}>
-                    {lang==='fr'
-                      ?"Ton stock est vide. Ajoute ton premier article en le photographiant."
-                      :"Your stock is empty. Add your first item by photographing it."}
-                  </div>
-                  <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:12}}>
-                    <button
-                      onClick={()=>onAddByPhoto?.()}
-                      style={{width:"100%",padding:"13px",background:"linear-gradient(120deg,#2F9E90,#1B6E62)",color:"#fff",border:"none",borderRadius:999,fontSize:13.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 10px 24px -8px rgba(47,158,144,0.28)"}}
-                    >
-                      {lang==='fr'?"Ajouter un article":"Add an item"}
-                    </button>
-                  </div>
-                </div>
-
-                {/* ── 2. CE QUE FILLSELL FAIT (2026-08-09) ───────────────────
-                    Remplace les cinq FAUX articles (« Veste Zara », « Lot
-                    Pokémon »…) qui occupaient tout l'écran d'un compte vide.
-                    Ils dataient d'un produit qui ne savait que compter des
-                    marges : ils montraient « Publier / Vendre » et ne disaient
-                    RIEN de la synchro du dressing, du cross-posting ni de la
-                    republication — c'est-à-dire de tout ce pour quoi on
-                    s'inscrit aujourd'hui. Un stock vide décoré de faux stock
-                    n'apprend rien ; le parcours réel, si.
-                    Aucun bouton ici, volontairement : les deux seuls gestes de
-                    l'écran vivent au-dessus (synchroniser dans la carte
-                    Vinted, ajouter dans la bannière). Ce bloc explique, il
-                    n'agit pas.
-                    ⚠️ Chaque ligne décrit une capacité RÉELLE et ouverte à
-                    tous. L'étape 3 parle de la republication à la demande (1
-                    unité), pas de l'automatique, qui est un avantage Pro : ne
-                    pas y glisser une promesse d'automatisation. L'étape 4 dit
-                    « te prévient / tu retires » — le retrait est TOUJOURS sur
-                    confirmation, jamais automatique. */}
-                <div style={{display:"flex",alignItems:"center",gap:8}}>
-                  <div style={{flex:1,height:1,background:"rgba(0,0,0,0.08)"}}/>
-                  <span style={{fontSize:11,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.07em",whiteSpace:"nowrap",flexShrink:0}}>
-                    {lang==='fr'?"CE QUE FILLSELL FAIT":"WHAT FILLSELL DOES"}
-                  </span>
-                  <div style={{flex:1,height:1,background:"rgba(0,0,0,0.08)"}}/>
-                </div>
-
-                <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                  {[
-                    {
-                      // Le relevé couvre les CINQ depuis le 17/09. Le dressing
-                      // Vinted, lui, remonte EN ENTIER (vues et favoris) : la
-                      // capacité n’est pas la même partout, on l’écrit plutôt
-                      // que de l’aplatir.
-                      fr:["Synchronise tes annonces en ligne","Tes plateformes remontent dans ton stock — le dressing Vinted en entier, vues et favoris compris."],
-                      en:["Sync your live listings","Your marketplaces come across into your stock — the Vinted closet in full, views and favourites included."],
-                      logos:["vinted","leboncoin","beebs","ebay"],
-                    },
-                    {
-                      // Même formulation que l'eyebrow des logos du Tableau
-                      // vide (App.jsx, 2026-09-01) : un seul discours pour un
-                      // seul geste — « préparée une fois, déposée sur les
-                      // quatre ».
-                      fr:["Publie partout","Une annonce préparée une fois, déposée sur Vinted, Leboncoin, Beebs et eBay."],
-                      en:["Publish everywhere","One listing prepared once, posted to Vinted, Leboncoin, Beebs and eBay."],
-                      logos:["vinted","leboncoin","beebs","ebay"],
-                    },
-                    {
-                      // Même phrase que la carte republication du Tableau vide
-                      // (App.jsx, 2026-09-01) — sans sa clause « sans que tu
-                      // touches à rien » : ici on décrit la republication à la
-                      // demande (1 unité), l'automatique reste un avantage
-                      // Pro (cf. ⚠️ du bandeau au-dessus).
-                      // ⚠️ eBay est HORS republication (garde-fou du 17/09,
-                      // utils/republication.PLATEFORMES_REPUBLIABLES). On le dit :
-                      // « en tête de recherche Vinted » était faux depuis que la
-                      // republication couvre Leboncoin, Beebs et Opla.
-                      fr:["Republie ce qui stagne","Une annonce qui dort repasse en tête des résultats, au rythme d'une vraie personne — partout sauf sur eBay."],
-                      en:["Repost what stalls","A listing that sits climbs back to the top of the results, at a human pace — everywhere except eBay."],
-                      logos:[],
-                    },
-                    {
-                      fr:["Vendu quelque part ?","FillSell repère l'annonce disparue, sur n'importe laquelle de tes plateformes — tu confirmes, et tu retires les autres en un tap."],
-                      en:["Sold somewhere?","FillSell spots the listing that is gone, on any of your marketplaces — you confirm, and remove the others in one tap."],
-                      logos:[],
-                    },
-                  ].map((et,i)=>{
-                    const [titre,texte]=lang==='fr'?et.fr:et.en;
-                    return(
-                      <div key={i} style={{display:"flex",gap:11,alignItems:"flex-start",background:"#fff",border:"1px solid #E7E3D8",borderRadius:12,padding:"12px 14px"}}>
-                        <div style={{flexShrink:0,width:24,height:24,borderRadius:99,background:"linear-gradient(120deg,#2F9E90,#1B6E62)",color:"#fff",fontSize:12,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>
-                          {i+1}
-                        </div>
-                        <div style={{minWidth:0,flex:1}}>
-                          <div style={{fontSize:13,fontWeight:700,color:"#10201B",lineHeight:1.35}}>{titre}</div>
-                          <div style={{fontSize:11.5,lineHeight:1.5,color:"#6B7A75",marginTop:3}}>{texte}</div>
-                          {et.logos.length>0&&(
-                            <div style={{display:"flex",gap:6,marginTop:8}}>
-                              {et.logos.map(p=>(
-                                <span key={p} style={{display:"inline-flex",borderRadius:6,overflow:"hidden"}}>
-                                  <PlatformLogo platform={p} size={20}/>
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
+                {/* (16/10, maquette validée par Nico) UN SEUL « Ajouter un article » :
+                    celui de la carte du haut. Le bandeau d'un stock vide ne porte
+                    plus de bouton (c'était le doublon) : il dit où tout arrivera.
+                    « Ce que FillSell fait » : quatre étapes, chacune sa scène
+                    animée (src/ecrans/vides/StockVide.jsx). Chaque phrase y décrit
+                    une capacité RÉELLE — la republication nomme ses plateformes
+                    (pas eBay), le retrait reste sur confirmation. */}
+                <BandeauStockVide lang={lang}/>
+                <CeQueFillSellFait lang={lang}/>
               </div>
             ):(
               <div style={{display:"flex",flexDirection:"column",gap:8}}>

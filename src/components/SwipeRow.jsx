@@ -2,7 +2,11 @@ import { useRef, useEffect } from 'react';
 import { UI } from './ui';
 import { useIsMobile } from '../hooks/useIsMobile';
 
-function SwipeRow({onDelete, onEdit, children, style}){
+// (16/10) `iconeSuppression` et `padInterne` : optionnels, pour l'onglet Ventes
+// refait (icône SVG au lieu de l'émoji, carte qui porte sa propre marge
+// intérieure). Valeurs par défaut = le rendu d'avant, à l'identique : le Stock
+// ne change pas.
+function SwipeRow({onDelete, onEdit, children, style, iconeSuppression=null, padInterne="12px 14px"}){
   const isMobile = useIsMobile();
   // TOUS les hooks sont déclarés AVANT le moindre return conditionnel : isMobile
   // étant désormais réactif (P4), un early-return placé avant ces hooks casserait
@@ -65,7 +69,7 @@ function SwipeRow({onDelete, onEdit, children, style}){
 
   if(!isMobile){
     return(
-      <div style={{position:"relative",display:"flex",alignItems:"center",gap:10,padding:"12px 14px",background:"#fff",borderRadius:12,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)",transition:"background 0.15s",marginBottom:0,...style}}
+      <div style={{position:"relative",display:"flex",alignItems:"center",gap:10,padding:padInterne,background:"#fff",borderRadius:12,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)",transition:"background 0.15s",marginBottom:0,...style}}
         onMouseEnter={e=>{e.currentTarget.style.background="#F9FAFB";e.currentTarget.querySelector('.delx').style.opacity='1';if(onEdit)e.currentTarget.querySelector('.editx').style.opacity='1';}}
         onMouseLeave={e=>{e.currentTarget.style.background="#fff";e.currentTarget.querySelector('.delx').style.opacity='0';if(onEdit)e.currentTarget.querySelector('.editx').style.opacity='0';}}
       >
@@ -94,9 +98,9 @@ function SwipeRow({onDelete, onEdit, children, style}){
   return(
     <div style={{position:"relative",borderRadius:12,overflow:"hidden",maxWidth:"100%",border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)",touchAction:"pan-y",...style}}>
       <div ref={bgRef} onClick={handleDelClick} style={{position:"absolute",right:-80,top:0,bottom:0,width:80,background:UI.negative,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",opacity:0,pointerEvents:"none"}}>
-        <span style={{fontSize:22}}>🗑️</span>
+        {iconeSuppression??<span style={{fontSize:22}}>🗑️</span>}
       </div>
-      <div ref={innerRef} style={{position:"relative",zIndex:1,width:"100%",display:"flex",alignItems:"center",gap:10,padding:"12px 14px",background:"#fff",borderRadius:12,touchAction:"pan-y"}}>
+      <div ref={innerRef} style={{position:"relative",zIndex:1,width:"100%",display:"flex",alignItems:"center",gap:10,padding:padInterne,background:"#fff",borderRadius:12,touchAction:"pan-y"}}>
         {onEdit&&(
           <button onClick={e=>{e.stopPropagation();onEdit();}}
             style={{background:"#E7F3F0",color:UI.tealDeep,border:"none",borderRadius:6,padding:"5px 7px",fontSize:12,cursor:"pointer",flexShrink:0,lineHeight:1}}>
