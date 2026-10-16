@@ -45,3 +45,26 @@ export function useMessagerieBeta(supabase, userId) {
   if (!supabase || !userId || etat.user !== userId) return { ...VIDE, relire };
   return { ...etat, relire };
 }
+
+/**
+ * (16/10 nuit) Les réglages de la bêta que les écrans doivent DIRE : le mode
+ * d'envoi des réponses (2 = ouvert aux comptes bêta, 1 = liste blanche, 0 =
+ * fermé) et la génération des bordereaux (ouverte ou non). Une lecture à
+ * l'ouverture de l'écran (messagerie_compteurs), fail-closed : illisible =
+ * liste blanche et génération fermée.
+ */
+export function useReglagesMessagerie(supabase) {
+  const [reglages, setReglages] = useState({ pret: false, envoiMode: 1, generation: false });
+  useEffect(() => {
+    if (!supabase) return undefined;
+    let vivant = true;
+    supabase.rpc('messagerie_compteurs').then(({ data, error }) => {
+      if (!vivant) return;
+      if (error || !data || data.beta !== true) { setReglages({ pret: true, envoiMode: 1, generation: false }); return; }
+      const mode = Number(data.envoi_mode);
+      setReglages({ pret: true, envoiMode: Number.isFinite(mode) ? mode : 1, generation: data.generation === true });
+    }).catch(() => { if (vivant) setReglages({ pret: true, envoiMode: 1, generation: false }); });
+    return () => { vivant = false; };
+  }, [supabase]);
+  return reglages;
+}

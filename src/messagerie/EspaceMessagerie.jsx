@@ -9,9 +9,11 @@
 //     pause de sécurité) au lieu d'une liste vide ;
 //   · une conversation : messages, offre, article de ton stock ; ouvrir ici ne
 //     la marque PAS lue chez la plateforme (messagerie_vue ne touche que FillSell) ;
-//   · la réponse est ENREGISTRÉE (messagerie_repondre) mais ne part que vers
-//     une conversation de la liste blanche : l'écran dit « verrouillé » ou
-//     « envoi actif », puis l'état de chaque réponse.
+//   · la réponse est ENREGISTRÉE (messagerie_repondre) ; (16/10 nuit) elle part
+//     pour les comptes bêta sans liste blanche (coin_config.messagerie_envoi_
+//     mode = 2, dit par l'écran) : texte EXACT (aucun trim) et son empreinte
+//     SHA-256, une clé d'envoi par brouillon (gardée tant que la base n'a pas
+//     confirmé : un second appui après une coupure est le MÊME envoi).
 // Relectures bornées (utils/relectureBornee.js), jamais de setInterval.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
@@ -22,6 +24,8 @@ import { Send } from 'lucide-react';
 import { conversationNonLue, dateCourte, etatReponse, etatZoneReponse, lienConversation, montantTexte, murReleve, nomPlateforme, ORDRE_PLATEFORMES, pseudoAffiche, trierConversations } from './vue';
 import { ouvrirLien } from './ouvrir';
 import SectionAExpedier from './SectionAExpedier';
+import { empreinteTexte } from './empreinte';
+import { useReglagesMessagerie } from './useMessagerieBeta';
 
 const ENCRE2 = '#5C6560';
 const LIGNE = '#EFECE6';
@@ -112,7 +116,7 @@ function Vignette({ photo, platform, taille = 52 }) {
   );
 }
 
-function Conversation({ supabase, conv, lang, photo, onRetour, onVue }) {
+function Conversation({ supabase, conv, lang, photo, onRetour, onVue, envoiMode = 1 }) {
   const fr = lang !== 'en';
   const [messages, setMessages] = useState(null);
   const [reponses, setReponses] = useState([]);
@@ -121,6 +125,10 @@ function Conversation({ supabase, conv, lang, photo, onRetour, onVue }) {
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState(null);
   const finRef = useRef(null);
+  // (16/10 nuit) UNE clé d'envoi par brouillon, gardée tant que la base n'a pas
+  // répondu : un nouvel appui après une coupure rejoue le MÊME envoi (la base
+  // rend la même réponse), jamais un second.
+  const cleBrouillon = useRef(null);
 
   const charger = useCallback(async () => {
     const [m, r, lb] = await Promise.all([
@@ -156,18 +164,28 @@ function Conversation({ supabase, conv, lang, photo, onRetour, onVue }) {
 
   useEffect(() => { finRef.current?.scrollIntoView?.({ block: 'end' }); }, [messages, reponses]);
 
-  const zone = etatZoneReponse(conv, blanche, lang);
+  const zone = etatZoneReponse(conv, blanche, lang, envoiMode);
   const repondre = async () => {
-    const t = texte.trim();
-    if (!t || envoi || !zone.possible) return;
+    // Le texte part TEL QUEL (espaces et retours compris) ; vide = rien.
+    const exact = texte;
+    if (!exact.trim() || envoi || !zone.possible) return;
+    if (!cleBrouillon.current) cleBrouillon.current = cle();
     setEnvoi(true); setErreur(null);
-    const { error } = await supabase.rpc('messagerie_repondre', { p_conversation: conv.id, p_texte: t, p_cle: cle() });
+    const empreinte = await empreinteTexte(exact).catch(() => null);
+    const appel = (avecEmpreinte) => supabase.rpc('messagerie_repondre', {
+      p_conversation: conv.id, p_texte: exact, p_cle: cleBrouillon.current, ...(avecEmpreinte && empreinte ? { p_empreinte: empreinte } : {}),
+    });
+    let { data, error } = await appel(true);
+    // Serveur d'avant la migration 20261016220000 (sans p_empreinte) : l'appel
+    // n'a rien enregistré ; même clé, sans l'empreinte (la base garde le texte tel quel).
+    if (error && empreinte && /p_empreinte|could not find the function/i.test(String(error.message ?? ''))) ({ data, error } = await appel(false));
     setEnvoi(false);
-    if (error) { setErreur(fr ? 'Réponse non enregistrée. Réessaie.' : 'Reply not saved. Try again.'); return; }
+    if (error) { setErreur(fr ? 'Réponse non enregistrée. Réessaie : elle ne partira qu’une fois.' : 'Reply not saved. Try again: it will only go out once.'); return; }
+    cleBrouillon.current = null;
     setTexte('');
     // eBay se répond par le serveur : on lui demande tout de suite d'essayer
-    // (il ne part QUE vers une conversation de la liste blanche).
-    if (conv.platform === 'ebay') supabase.functions.invoke('ebay-messagerie', { body: { mode: 'envoyer' } }).catch(() => {});
+    // (une réponse en attente seulement).
+    if (conv.platform === 'ebay' && data?.statut === 'en_attente') supabase.functions.invoke('ebay-messagerie', { body: { mode: 'envoyer' } }).catch(() => {});
     charger();
   };
   const tz = TONS[zone.ton] ?? TONS.neutre;
@@ -248,6 +266,7 @@ export default function EspaceMessagerie({ supabase, lang = 'fr', ouvert, onFerm
   const [choisie, setChoisie] = useState(null);
   const [article, setArticle] = useState(filtreArticle);
   const [plateforme, setPlateforme] = useState(null);
+  const reglages = useReglagesMessagerie(ouvert ? supabase : null);
 
   const charger = useCallback(async () => {
     const [c, r] = await Promise.all([
@@ -310,7 +329,7 @@ export default function EspaceMessagerie({ supabase, lang = 'fr', ouvert, onFerm
       <div onClick={(e) => e.stopPropagation()}
         style={{ width: '100%', maxWidth: 560, background: '#FAFBFB', display: 'flex', flexDirection: 'column', boxShadow: '0 -8px 40px rgba(16,32,27,0.22)', minHeight: 0, fontFamily: POLICE, color: UI.ink }}>
         {choisie ? (
-          <Conversation supabase={supabase} conv={choisie} lang={lang} photo={photoDe(choisie)} onRetour={() => { setChoisie(null); charger(); }} onVue={onChange} />
+          <Conversation supabase={supabase} conv={choisie} lang={lang} photo={photoDe(choisie)} envoiMode={reglages.envoiMode} onRetour={() => { setChoisie(null); charger(); }} onVue={onChange} />
         ) : (
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 12px 10px', background: '#FFFFFF', borderBottom: `1px solid ${LIGNE}` }}>

@@ -4981,10 +4981,14 @@ function completionExtras(job, result) {
     // format de colis posé (choix, défaut Vinted…).
     ...(result.remplissage_mesures ? { remplissage_mesures: result.remplissage_mesures } : {}),
     ...(result.colis_bilan ? { colis_bilan: result.colis_bilan } : {}),
+    // (16/10) Les photos Leboncoin : combien le formulaire offrait gratuitement
+    // (lu au dépôt), combien sur la fiche, combien parties.
+    ...(result.photosLbc ? { photos_lbc: result.photosLbc } : {}),
   };
   // Un bilan hérité (copie de republication, tentative précédente) ne parle
   // jamais à la place du dépôt courant.
   if (job.platform === "leboncoin" && !result.livraisonLbc) delete extras.platform_fields.livraison_lbc;
+  if (job.platform === "leboncoin" && !result.photosLbc) delete extras.platform_fields.photos_lbc;
   return extras;
 }
 
@@ -5470,11 +5474,34 @@ async function marquerAttenteUtilisateur(accessToken, job, result) {
   console.warn(`[background] Job ${job.id} : attente utilisateur « ${motif} » → needs_user (aucune reprise espacée, aucune tentative consommée)`);
   await updateJobStatus(accessToken, job.id, "needs_user", {
     error: result.error,
-    platform_fields: {
-      ...(job.platform_fields ?? {}),
-      last_diagnostic: { quoi: motif, detail: String(result.error ?? "").slice(0, 300), at: new Date().toISOString() },
-    },
+    platform_fields: champsAttenteUtilisateur(job.platform_fields, result, motif),
   });
+}
+
+// ── UN MUR NOMMÉ N'HÉRITE JAMAIS D'UNE QUESTION PASSÉE (16/10) ───────────────
+// Le même écran « Valider et payer » de Leboncoin finissait tantôt en
+// « relancer », tantôt en « champ_a_choisir » (23 dépôts d'un même compte le
+// 14/10) : un dépôt qui avait posé une question (« Couleur », « Taille »)
+// gardait son needsUserField une fois la réponse donnée, et le filet du
+// serveur (« needs_user sans motif » → champ_a_choisir s'il reste un champ)
+// rouvrait l'éditeur sur une question déjà tranchée, sans rapport avec le mur.
+// Un mur de PAIEMENT n'est jamais une question de champ : les marqueurs de
+// question d'avant tombent, le motif est posé explicitement (« relancer »).
+// Périmètre : les murs de MURS_SANS_QUESTION seulement ; toute autre attente
+// garde l'écriture d'avant, inchangée.
+const MURS_SANS_QUESTION = Object.freeze(["lbc_options_payant_seulement"]);
+const MARQUEURS_QUESTION_PASSEE = Object.freeze([
+  "needsUserField", "needsUserFields", "champs_a_completer", "server_required_fields", "serverRequired", "needsUserBoucle",
+]);
+function champsAttenteUtilisateur(pfJob, result, motif) {
+  const pf = { ...(pfJob ?? {}) };
+  if (MURS_SANS_QUESTION.includes(motif)) {
+    for (const k of MARQUEURS_QUESTION_PASSEE) delete pf[k];
+    pf.needs_user_source = "relancer";
+  }
+  pf.last_diagnostic = { quoi: motif, detail: String(result?.error ?? "").slice(0, 300), at: new Date().toISOString() };
+  if (result?.photosLbc) pf.photos_lbc = result.photosLbc;
+  return pf;
 }
 
 // ── Statut PERSISTÉ 'needs_user' (socle 2026-07-19) ────────────────────────────
@@ -19983,9 +20010,10 @@ async function jobsARelirePourCommandes(platform, commandes, token, etat) {
 //   · premier signe de blocage (403, 429, captcha, DataDome) : arrêt
 //     immédiat, pause serveur (6 h, 24 h si récidive) ET locale ;
 //   · lire ≠ marquer lu : aucun appel « mark as read » n'existe ici ;
-//   · puis AU PLUS UNE réponse part, si le serveur en sort une (liste blanche
-//     relue au moment de la prise) ET que la liste blanche, relue ici, la
-//     contient encore — sinon elle est rendue en échec, jamais envoyée ;
+//   · puis AU PLUS UNE réponse part, si le serveur en sort une (16/10 nuit :
+//     comptes bêta sans liste blanche, mode relu à la prise) ET que son
+//     empreinte, recalculée ici, est celle du texte saisi — sinon elle est
+//     rendue en échec, jamais envoyée ;
 //   · aucun texte de message dans la console.
 // (0.6.119) Beebs est relevé : messages (si le téléphone est vérifié — sinon le
 // motif « telephone_non_verifie » est noté en base et l'app le dit) ET
@@ -20094,11 +20122,21 @@ async function releverMessagerieUnePlateforme(platform, token, e) {
     const suivies = await restRequest(
       `plateforme_commandes?platform=eq.${platform}&etat=in.(a_confirmer,a_expedier,expediee,inconnu)&select=commande_ref&order=maj_le.desc&limit=20`,
       token).catch(() => []);
+    // (16/10 nuit) Vinted : les options d'étiquette d'une commande ne sont relues
+    // qu'une fois toutes les 6 h (mémoire du poste).
+    const optionsLues = platform === "vinted" && e.optionsLues && typeof e.optionsLues === "object" ? e.optionsLues : {};
+    const optionsConnues = Object.entries(optionsLues).filter(([, le]) => Date.now() - Number(le) < 6 * 3600 * 1000).map(([k]) => k);
     const cmd = await executerDansOngletPlateforme(platform, L.commandes,
-      [(Array.isArray(suivies) ? suivies : []).map((s) => String(s.commande_ref)), M.COMMANDES_DETAILS_MAX]);
+      [(Array.isArray(suivies) ? suivies : []).map((s) => String(s.commande_ref)), M.COMMANDES_DETAILS_MAX,
+        ...(platform === "vinted" ? [optionsConnues] : [])]);
     requetes += Number(cmd?.requetes) || 0;
     const bloc3 = M.signeBlocage(cmd);
     if (bloc3) return { bloque: bloc3, requetes, bilan };
+    if (platform === "vinted" && cmd?.ok) {
+      const memo = Object.fromEntries(Object.entries(optionsLues).filter(([, le]) => Date.now() - Number(le) < 6 * 3600 * 1000));
+      for (const c of cmd.commandes ?? []) if (c?.optionsLues && c.transaction_id != null) memo[String(c.transaction_id)] = Date.now();
+      e.optionsLues = memo;
+    }
     if (cmd?.ok) {
       const lignes = M.NORMALISEURS_COMMANDES[platform](cmd.commandes);
       if (lignes.length) {
@@ -20112,20 +20150,34 @@ async function releverMessagerieUnePlateforme(platform, token, e) {
 }
 
 /**
- * Au plus UNE réponse par passage. La liste blanche a été lue par le serveur
- * à la prise ; elle est RELUE ici juste avant l'envoi. Ne lève pas.
+ * Au plus UNE réponse par passage. (16/10 nuit) Comptes bêta sans liste
+ * blanche : c'est le SERVEUR qui dit oui à la prise (messagerie_reponse_a_
+ * envoyer relit coin_config.messagerie_envoi_mode et le drapeau). Ici :
+ *   · le texte part TEL QUEL — son empreinte SHA-256 est recalculée et
+ *     comparée à celle de la base juste avant l'envoi ; différente, rien ne part ;
+ *   · la clé d'idempotence de la plateforme (Leboncoin, Depop) est le numéro de
+ *     la réponse : un envoi rejoué serait reconnu par la plateforme ;
+ *   · le résultat est rendu (3 essais) ; une réponse prise n'est JAMAIS renvoyée.
+ * Ne lève pas.
  */
 async function envoyerReponseMessagerie(token, etat) {
   const M = FILLSELL_MESSAGERIE;
   const prise = await rpcMessagerie("messagerie_reponse_a_envoyer", { p_platforms: [...M.PLATEFORMES_EXTENSION] }, token).catch(() => null);
   const rep = prise?.reponse;
   if (!rep?.id) return;
-  const rendre = (ok, resultat) => rpcMessagerie("messagerie_reponse_resultat", { p_id: rep.id, p_ok: ok, p_resultat: resultat }, token)
-    .catch((err) => console.warn("[messagerie][envoi] résultat non rendu :", String(err?.message ?? err)));
-  const lb = await restRequest(
-    `messagerie_liste_blanche?platform=eq.${encodeURIComponent(rep.platform)}&conversation_ref=eq.${encodeURIComponent(rep.conversation_ref)}&select=conversation_ref`,
-    token).catch(() => null);
-  if (!Array.isArray(lb) || !lb.length) { await rendre(false, { motif: "liste_blanche_absente" }); return; }
+  const rendre = async (ok, resultat) => {
+    const corps = { p_id: rep.id, p_ok: ok, p_resultat: { ...resultat, executant: `extension ${FILLSELL_BUILD_LABEL}`.slice(0, 80) } };
+    for (const attente of [0, 1500, 4000]) {
+      if (attente) await sleep(attente);
+      try { await rpcMessagerie("messagerie_reponse_resultat", corps, token); return; } catch { /* nouvel essai */ }
+    }
+    console.warn("[messagerie][envoi] résultat non rendu après 3 essais — la réponse ne sera jamais renvoyée");
+  };
+  const empreinte = await M.empreinteTexte(rep.texte).catch(() => null);
+  if (!rep.empreinte || !empreinte || empreinte !== rep.empreinte) {
+    await rendre(false, { motif: "empreinte_differente", empreinte_ok: false });
+    return;
+  }
   const e = etat[rep.platform] ?? {};
   if (e.coupee && Date.now() < Number(e.coupee.jusqu)) { await rendre(false, { motif: "plateforme_en_pause" }); return; }
   const envoyeur = M.ENVOYEURS[rep.platform];
@@ -20139,9 +20191,9 @@ async function envoyerReponseMessagerie(token, etat) {
   }
   const res = await executerDansOngletPlateforme(rep.platform, envoyeur, [{
     conversationRef: rep.conversation_ref, interlocuteurRef: rep.interlocuteur_ref ?? null,
-    annonceRef: rep.annonce_ref ?? null, texte: rep.texte, moi,
+    annonceRef: rep.annonce_ref ?? null, texte: rep.texte, moi, cleEnvoi: rep.id,
   }]).catch(() => ({ ok: false, motif: "exception" }));
-  await rendre(res?.ok === true, { http: Number(res?.http) || null, message_ref: res?.messageRef ?? null, motif: res?.motif ?? null });
+  await rendre(res?.ok === true, { http: Number(res?.http) || null, message_ref: res?.messageRef ?? null, motif: res?.motif ?? null, empreinte_ok: true });
   console.log(`[messagerie][envoi][${rep.platform}] réponse ${rep.id} : ${res?.ok === true ? "envoyée" : `échec (${res?.motif ?? "?"})`}`);
   if (res?.bot) await bloquerMessagerie(rep.platform, res?.motif ?? "envoi_refuse", token, (etat[rep.platform] ??= {}));
 }
@@ -20197,12 +20249,12 @@ async function releverMessagerieBeta(session) {
 
 // ── LE BORDEREAU AU CLIC (bêta, 16/10 soir — migration 20261016200000) ──────
 // Appelée par traiterDemandeBordereauBeta SEULEMENT, pour une demande née d'un
-// clic sur « Bordereau » dans l'app (bordereau_demander). La dernière marche
-// exige à la fois BORDEREAU_DERNIERE_MARCHE_OUVERTE (messagerie.js) ET
-// coin_config.bordereaux_ouverts = 1. Générer un bordereau (Vinted :
-// commander l'étiquette ; Leboncoin : confirmer la disponibilité ; Beebs :
-// accepter la commande ; eBay : acheter l'étiquette) n'est codé NULLE PART :
-// c'est un geste du vendeur, sur la plateforme.
+// clic dans l'app (bordereau_demander, ou la suite d'une génération). La
+// dernière marche exige à la fois BORDEREAU_DERNIERE_MARCHE_OUVERTE
+// (messagerie.js) ET coin_config.bordereaux_ouverts = 1. (16/10 nuit) Le geste
+// qui ENGAGE (générer) vit à part, dans genererBordereauBeta, pour une demande
+// née d'un appui APRÈS l'écran de confirmation ; eBay (acheter l'étiquette)
+// n'est codé nulle part — conditions d'eBay, aucune API en France.
 async function obtenirBordereauBeta(commande, token) {
   const M = FILLSELL_MESSAGERIE;
   const chemin = M.CHEMINS_BORDEREAU[commande?.platform];
@@ -20213,9 +20265,12 @@ async function obtenirBordereauBeta(commande, token) {
     ouvert = Number(cfg?.[0]?.value) === 1;
   } catch { ouvert = false; }
   const derniereMarche = M.BORDEREAU_DERNIERE_MARCHE_OUVERTE === true && ouvert;
+  if (commande.platform === "leboncoin") await assurerJetonLeboncoin().catch(() => null);
   const args = commande.platform === "vinted"
     ? [{ transactionId: commande.commande_ref, shipmentId: commande.envoi_ref ?? null, derniereMarche, numerique: commande.numerique === true }]
-    : [{ purchaseId: commande.commande_ref, derniereMarche }];
+    : commande.platform === "beebs"
+      ? [{ orderId: commande.commande_ref, derniereMarche }]
+      : [{ purchaseId: commande.commande_ref, derniereMarche }];
   const r = await executerDansOngletPlateforme(commande.platform, chemin, args);
   if (!r?.ok || !r?.base64) return r;
   return deposerCopieBordereau(commande, r, token);
@@ -20267,9 +20322,16 @@ async function traiterDemandeBordereauBeta(session) {
   if (etat.user && etat.user !== userId) return; // la relève du même poll a remis l'état à ce compte
   const b = etat.beta;
   if (!(b && b.user === userId && b.val === true)) return; // drapeau relu par la relève (30 min), fail-closed
-  const prise = await rpcMessagerie("bordereau_demande_a_traiter", {}, token).catch(() => null);
+  // (16/10 nuit) Cette extension sait GÉNÉRER : elle le dit au serveur, qui ne
+  // rend jamais une génération à une extension d'avant. Serveur d'avant la
+  // migration 20261016220000 (sans ce paramètre) : l'appel d'avant, qui ne rend
+  // que des récupérations.
+  const prise = await rpcMessagerie("bordereau_demande_a_traiter", { p_capacites: ["generer"] }, token)
+    .catch(() => rpcMessagerie("bordereau_demande_a_traiter", {}, token).catch(() => null));
   const d = prise?.demande;
   if (!d?.id) return;
+  if (d.action === "generer") { await genererBordereauBeta(d, token, etat); return; }
+  if (d.action === "fichier") { await suiteGenerationBeta(d, token, etat); return; }
   const rendre = (ok, motif, copie) => rpcMessagerie("bordereau_demande_resultat", {
     p_id: d.id, p_ok: ok, p_motif: motif ?? null, p_copie: copie ?? null,
   }, token).catch((err) => console.warn("[bordereau] résultat non rendu :", String(err?.message ?? err)));
@@ -20286,6 +20348,107 @@ async function traiterDemandeBordereauBeta(session) {
   const motif = String(r?.motif ?? (r?.ok ? "copie_absente" : "echec")).slice(0, 120);
   await rendre(false, motif);
   console.warn(`[bordereau][${d.platform}] demande ${String(d.id).slice(0, 8)} : échec (${motif}, étape ${r?.etape ?? "?"})`);
+  if (r?.bot) {
+    await bloquerMessagerie(d.platform, motif, token, (etat[d.platform] ??= {}));
+    await ecrireEtatMessagerie(etat);
+  }
+}
+
+// ── GÉNÉRER LE BORDEREAU (16/10 nuit — migration 20261016220000) ────────────
+// Mission de Nico : le geste qui ENGAGE (Vinted « commander l'étiquette »,
+// Leboncoin « confirmer la disponibilité », Beebs « accepter la commande »)
+// est fait par l'extension UNIQUEMENT pour une demande née d'un appui sur
+// « Générer le bordereau » dans l'app, APRÈS l'écran de confirmation
+// (bordereau_generer garde la phrase acceptée). Jamais seul, jamais en lot.
+//   1. préparer (lecture) ; 2. décider (règles pures, messagerie.js) — déjà
+//   fait chez la plateforme : AUCUN geste, on récupère ; 3. le geste UNE fois,
+//   état relu juste avant ; 4. le fichier (une tentative, puis la suite aux
+//   passages suivants : 2 min d'écart, 15 au plus).
+// Issue inconnue (réseau coupé, onglet figé) : « incertaine » — jamais refait,
+// et la base refuse toute seconde génération pour cette commande.
+// Étape rendue en 3 essais ; non rendue, la base la passe « incertaine » au
+// bout de 10 min (jamais « à refaire »).
+async function rendreEtapeGeneration(id, statut, motif, copie, geste, token) {
+  const corps = { p_id: id, p_statut: statut, p_motif: motif ?? null, p_copie: copie ?? null, p_geste: geste ?? null };
+  for (const attente of [0, 1500, 4000]) {
+    if (attente) await sleep(attente);
+    try { return await rpcMessagerie("bordereau_demande_etape", corps, token); } catch { /* nouvel essai */ }
+  }
+  console.warn(`[bordereau][generer] étape « ${statut} » non rendue après 3 essais`);
+  return null;
+}
+
+async function genererBordereauBeta(d, token, etat) {
+  const M = FILLSELL_MESSAGERIE;
+  const court = String(d.id).slice(0, 8);
+  const etape = (statut, motif, copie, geste) => rendreEtapeGeneration(d.id, statut, motif, copie, geste, token);
+  const e = etat[d.platform] ?? {};
+  if (e.coupee && Date.now() < Number(e.coupee.jusqu)) { await etape("echec", "plateforme_en_pause"); return; }
+  const preparer = M.PREPARATIONS_GENERATION?.[d.platform];
+  const geste = M.GESTES_GENERATION?.[d.platform];
+  if (!preparer || !geste) { await etape("echec", "plateforme_sans_generation"); return; }
+  if (d.platform === "leboncoin") await assurerJetonLeboncoin().catch(() => null);
+  const ref = d.platform === "vinted" ? { transactionId: d.commande_ref } : d.platform === "leboncoin" ? { purchaseId: d.commande_ref } : { orderId: d.commande_ref };
+  const bloquer = async (motif) => {
+    await bloquerMessagerie(d.platform, motif, token, (etat[d.platform] ??= {}));
+    await ecrireEtatMessagerie(etat);
+  };
+
+  // 1. Préparer : l'état de la commande et ce que la plateforme propose (GET).
+  const prep = await executerDansOngletPlateforme(d.platform, preparer, [ref]);
+  if (prep?.bot) { await etape("echec", prep.motif ?? "blocage"); await bloquer(prep.motif ?? "blocage"); return; }
+  // 2. Décider (règles pures) : déjà fait → aucun geste ; refus → rien ne part.
+  const decision = M.decisionGeneration(d.platform, prep, d.choix ?? {}, { commande_ref: d.commande_ref });
+  let fait = null;
+  if (decision.deja) {
+    fait = "deja_fait";
+  } else if (decision.refus || !decision.args) {
+    await etape("echec", String(decision.refus ?? "decision_vide").slice(0, 120));
+    console.warn(`[bordereau][generer][${d.platform}] ${court} : rien fait (${decision.refus ?? "decision_vide"})`);
+    return;
+  } else {
+    // 3. LE geste, UNE fois (l'état est relu juste avant, dans la page).
+    const res = await executerDansOngletPlateforme(d.platform, geste, [decision.args]);
+    const issue = M.issueGeneration(d.platform, res);
+    if (issue.issue === "refuse") {
+      await etape("echec", String(issue.motif ?? "refuse").slice(0, 120));
+      console.warn(`[bordereau][generer][${d.platform}] ${court} : refusé par la plateforme, rien fait (${issue.motif})`);
+      if (issue.bot) await bloquer(issue.motif ?? "blocage");
+      return;
+    }
+    if (issue.issue === "incertain") {
+      await etape("incertaine", String(issue.motif ?? "incertain").slice(0, 120));
+      console.warn(`[bordereau][generer][${d.platform}] ${court} : issue INCERTAINE (${issue.motif}) — jamais refait`);
+      return;
+    }
+    fait = issue.issue === "deja_fait" ? "deja_fait" : "fait";
+  }
+  await etape("generee", fait === "deja_fait" ? "deja_fait_sur_la_plateforme" : "geste_fait", null, fait);
+  console.log(`[bordereau][generer][${d.platform}] ${court} : ${fait === "deja_fait" ? "déjà fait sur la plateforme" : "geste fait"} — récupération du fichier`);
+  // 4. Le fichier : la plateforme crée l'étiquette en quelques instants.
+  await sleep(8000);
+  await recupererFichierGeneration(d, token, etat);
+}
+
+/** La suite d'une génération faite : le fichier seulement (aucun geste). */
+async function suiteGenerationBeta(d, token, etat) {
+  const e = etat[d.platform] ?? {};
+  if (e.coupee && Date.now() < Number(e.coupee.jusqu)) return;
+  await recupererFichierGeneration(d, token, etat);
+}
+
+async function recupererFichierGeneration(d, token, etat) {
+  const etape = (statut, motif, copie) => rendreEtapeGeneration(d.id, statut, motif, copie, null, token);
+  const numerique = [2, 3].includes(Number(d.choix?.type_etiquette));
+  const r = await obtenirBordereauBeta({ id: d.commande_id, platform: d.platform, commande_ref: d.commande_ref, envoi_ref: d.envoi_ref ?? null, numerique }, token)
+    .catch((err) => ({ ok: false, motif: `exception: ${String(err?.message ?? err).slice(0, 80)}` }));
+  if (r?.ok && r.copie) {
+    await etape("prete", null, r.copie);
+    console.log(`[bordereau][generer][${d.platform}] ${String(d.id).slice(0, 8)} : copie déposée`);
+    return;
+  }
+  const motif = String(r?.motif ?? "fichier_pas_encore_pret").slice(0, 120);
+  await etape("generee", motif);
   if (r?.bot) {
     await bloquerMessagerie(d.platform, motif, token, (etat[d.platform] ??= {}));
     await ecrireEtatMessagerie(etat);

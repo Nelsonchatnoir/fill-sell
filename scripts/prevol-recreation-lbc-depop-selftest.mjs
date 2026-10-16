@@ -215,13 +215,15 @@ assert.ok(iRemplir > 0 && iFin > iRemplir && iDescription > iFin && iSubmit > iF
 assert.match(fl.slice(iRemplir - 200, iFin), /catch \(e\) \{[\s\S]*if \(prevolRecreation\) await lbcQuitterDepotSansEnregistrer\(t\)[\s\S]*throw e;/);
 ok("leboncoin.js : titre → catégorie → photos → critères → « Continuer », puis ARRÊT avant description/prix/dépôt");
 const lr = extraireFonctionJs(lbc, "lbcRemplirJusquAApercu");
-assert.match(lr, /if \(job\.photos\?\.length\) \{\s*const photoNote = await uploadPhotos\(photoInput, job\.photos\);/, "le pré-vol envoie les photos (pré-remplissage Leboncoin)");
+// (16/10) Le pré-vol envoie les photos GRATUITES, comme le futur redépôt : le nombre est lu sur le
+// formulaire (selftest:lbc-photos-gratuites) — jamais une photo du pack payant.
+assert.match(lr, /if \(job\.photos\?\.length\) \{[\s\S]{0,400}const choixPhotos = photosAEnvoyerLbc\(job\.photos, await lireQuotaPhotosLbcStable\(\)\);[\s\S]{0,300}const photoNote = await uploadPhotos\(photoInput, choixPhotos\.photos\);/, "le pré-vol envoie les photos gratuites (pré-remplissage Leboncoin)");
 assert.match(lr, /const continueBtn = findButtonByExactText\("Continuer"\);/);
 assert.match(lr, /const repliProduit = \/_product\$\|\^decoration_type\$\/\.test\(forKey\) \? \["Autre", "Autres"\] : \[\];/);
 assert.match(lr, /if \(!crit\.required \|\| crit\.filled \|\| !\/_product\$\|\^decoration_type\$\/\.test\(crit\.key\)\) continue;/);
 const lrCode = lr.split("\n").map((l) => l.replace(/\/\/.*$/, "")).join("\n"); // sans les commentaires
 assert.doesNotMatch(lrCode, /toy_type/, "« Produit » des jouets n'est jamais choisi par nous (aucune valeur en dur)");
-ok("leboncoin.js : photos envoyées ; repli « Autre » limité à *_product / decoration_type (toy_type jamais deviné)");
+ok("leboncoin.js : photos gratuites envoyées ; repli « Autre » limité à *_product / decoration_type (toy_type jamais deviné)");
 
 // Simulation de la sortie : le DOM de Leboncoin, en miniature.
 // (11/10, test réel 0.6.109) `etroite` : la mise en page de la fenêtre de

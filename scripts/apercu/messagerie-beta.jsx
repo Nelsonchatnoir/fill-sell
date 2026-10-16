@@ -8,7 +8,10 @@
 // client (en mémoire, données SYNTHÉTIQUES — aucun message réel) : aucune
 // requête ne part, chaque appel est journalisé dans window.__appels.
 //
-//   messagerie-beta.html?ecran=barre|messages|blanche|expedier|carte
+//   messagerie-beta.html?ecran=barre|messages|verrou|blanche|expedier|carte
+// (16/10 nuit) messages = envoi ouvert (mode 2, sans liste blanche) ; verrou =
+// mode 1 hors liste blanche ; blanche = mode 1 en liste blanche ; expedier :
+// « Générer le bordereau » (Vinted, Leboncoin, Beebs) et son écran de confirmation.
 import { createRoot } from 'react-dom/client';
 import '../../src/base.css';
 import '../../src/App.css';
@@ -38,6 +41,8 @@ const DONNEES = {
     { id: 'r1', conversation_id: 'c1', texte: 'Je peux vous la laisser à 20 €.', statut: 'verrouillee', motif: 'liste_blanche', cree_le: ilYa(0.5), fini_le: null },
   ],
   messagerie_liste_blanche: ecran === 'blanche' ? [{ platform: 'vinted', conversation_ref: '501' }] : [],
+  // (16/10 nuit) Le mode d'envoi dit par messagerie_compteurs : 2 ouvert, 1 liste blanche.
+  _mode: ecran === 'verrou' || ecran === 'blanche' ? 1 : 2,
   messagerie_releves: [
     { platform: 'beebs', dernier_le: ilYa(0.1), dernier_motif: 'telephone_non_verifie', pause_jusqu_au: null },
     { platform: 'vinted', dernier_le: ilYa(0.1), dernier_motif: null, pause_jusqu_au: null },
@@ -45,11 +50,14 @@ const DONNEES = {
   ],
   plateforme_commandes: [
     { id: 'k1', platform: 'vinted', commande_ref: '9001', etat: 'a_expedier', etat_plateforme: '230', bordereau: 'pret', acheteur_pseudo: 'acheteuse_a', titre: 'Robe portefeuille bleue', photo_url: null, montant: 18, devise: 'EUR', inventaire_id: 11, conversation_ref: '501', vendue_le: ilYa(20) },
-    { id: 'k2', platform: 'leboncoin', commande_ref: '4401', etat: 'a_confirmer', etat_plateforme: 'in_progress/reserved', bordereau: 'a_generer', acheteur_pseudo: 'Marc', titre: 'Montre Casio G-Shock', photo_url: null, montant: 45, devise: 'EUR', inventaire_id: 12, transporteur: 'mondial_relay', vendue_le: ilYa(2) },
+    { id: 'k2', platform: 'leboncoin', commande_ref: '4401', etat: 'a_confirmer', etat_plateforme: 'in_progress/reserved', bordereau: 'a_generer', acheteur_pseudo: 'Marc', titre: 'Montre Casio G-Shock', photo_url: null, montant: 45, devise: 'EUR', inventaire_id: 12, transporteur: 'mondial_relay', vendue_le: ilYa(2), options_bordereau: { type_envoi: 'mondial_relay', generable: true } },
     { id: 'k6', platform: 'leboncoin', commande_ref: '4402', etat: 'a_expedier', etat_plateforme: 'in_progress/available', bordereau: 'pret', acheteur_pseudo: 'Sofia', titre: 'Lampe de bureau en laiton', photo_url: null, montant: 22, devise: 'EUR', inventaire_id: null, transporteur: 'shop2shop', vendue_le: ilYa(26) },
     { id: 'k3', platform: 'ebay', commande_ref: '12-34567-89012', etat: 'a_expedier', bordereau: 'a_obtenir', acheteur_pseudo: 'acheteur_e', titre: 'Polaire Patagonia', photo_url: null, montant: 55, devise: 'EUR', transporteur: 'FR_ColiposteColissimo', a_expedier_avant: ilYa(-30), vendue_le: ilYa(10) },
-    { id: 'k4', platform: 'beebs', commande_ref: 'ord-9f3a2', etat: 'a_confirmer', bordereau: 'a_generer', acheteur_pseudo: 'Julie D.', titre: 'Poussette Yoyo 2', photo_url: null, montant: 180, devise: 'EUR', vendue_le: ilYa(3) },
+    { id: 'k4', platform: 'beebs', commande_ref: 'ord-9f3a2', etat: 'a_confirmer', bordereau: 'a_generer', acheteur_pseudo: 'Julie D.', titre: 'Poussette Yoyo 2', photo_url: null, montant: 180, devise: 'EUR', transporteur: 'Mondial Relay', vendue_le: ilYa(3), options_bordereau: { transporteur: 'Mondial Relay', generable: true } },
     { id: 'k5', platform: 'depop', commande_ref: '77', etat: 'a_expedier', bordereau: 'sans_objet', acheteur_pseudo: 'acheteur_d', titre: 'Veste en jean Levi’s', photo_url: null, montant: 25, devise: 'EUR', a_expedier_avant: ilYa(-100), vendue_le: ilYa(8) },
+    // (16/10 nuit) À générer : Vinted (étiquette à commander, deux types), Leboncoin Colissimo (formulaire → lien).
+    { id: 'k7', platform: 'vinted', commande_ref: '9002', etat: 'a_expedier', etat_plateforme: '100', bordereau: 'a_obtenir', acheteur_pseudo: 'acheteuse_b', titre: 'Pull en laine marine', photo_url: null, montant: 32, devise: 'EUR', transporteur: 'Mondial Relay', conversation_ref: '502', vendue_le: ilYa(1), options_bordereau: { transporteur: 'Mondial Relay', types_etiquette: [1, 3], domicile_seul: false, telephone_manquant: false, generable: true } },
+    { id: 'k8', platform: 'leboncoin', commande_ref: '4403', etat: 'a_confirmer', etat_plateforme: 'in_progress/reserved', bordereau: 'a_generer', acheteur_pseudo: 'Paul', titre: 'Cadre photo doré', photo_url: null, montant: 15, devise: 'EUR', transporteur: 'colissimo', vendue_le: ilYa(4), options_bordereau: { type_envoi: 'colissimo', generable: false } },
   ],
   bordereaux_demandes: [],
   bordereaux_copies: [],
@@ -75,9 +83,17 @@ function fauxClient() {
     from: requete,
     rpc: async (nom, params) => {
       window.__appels.push({ rpc: nom, params });
-      if (nom === 'messagerie_repondre') return { data: { id: 'r-neuve', statut: 'verrouillee', motif: 'liste_blanche' }, error: null };
+      if (nom === 'messagerie_compteurs') return { data: { beta: true, non_lus: 3, conversations_non_lues: 3, par_article: {}, a_expedier: 4, envoi_mode: DONNEES._mode, generation: true }, error: null };
+      if (nom === 'messagerie_repondre') {
+        const ouvert = DONNEES._mode === 2;
+        return { data: { id: 'r-neuve', statut: ouvert ? 'en_attente' : 'verrouillee', motif: ouvert ? null : 'liste_blanche' }, error: null };
+      }
+      if (nom === 'bordereau_generer') {
+        DONNEES.bordereaux_demandes.unshift({ id: 'g-1', commande_id: params.p_commande, platform: 'vinted', action: 'generer', statut: 'demandee', motif: null, copie_id: null, essais_fichier: 0, cree_le: new Date().toISOString() });
+        return { data: { id: 'g-1', statut: 'demandee' }, error: null };
+      }
       if (nom === 'bordereau_demander') {
-        DONNEES.bordereaux_demandes.unshift({ id: 'd-1', commande_id: params.p_commande, statut: 'demandee', motif: null, copie_id: null, cree_le: new Date().toISOString() });
+        DONNEES.bordereaux_demandes.unshift({ id: 'd-1', commande_id: params.p_commande, action: 'recuperer', statut: 'demandee', motif: null, copie_id: null, cree_le: new Date().toISOString() });
         return { data: { id: 'd-1', statut: 'demandee' }, error: null };
       }
       return { data: { ok: true }, error: null };

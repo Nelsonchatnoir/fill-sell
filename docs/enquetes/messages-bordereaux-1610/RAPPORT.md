@@ -6,6 +6,9 @@
 >
 > **⟶ CLÔTURE DU 16/10 AU SOIR : § 9** (ce qui est fait par plateforme, ce qui ne marche pas et
 > pourquoi, ce qui reste à prouver au vrai achat, protocole de test de bout en bout, liste blanche).
+>
+> **⟶ 16/10 NUIT, UTILISABLE POUR DE VRAI (Nico + Ornella) : § 10** (réponses sans liste blanche, bordereaux
+> générés depuis FillSell, 10 × 15 et impression, protocole de test entre vous deux, C1 / C2 / C3, feux verts).
 
 ## 0. L'essentiel
 
@@ -483,3 +486,211 @@ la réponse s'enregistre « non envoyée » ; après l'ajout (§ 9.4), une NOUVE
     (`lens_scans`) ; la messagerie et les commandes (détachées de l'article) ;
   - **irréversible** (aucune sauvegarde automatique).
 - Ensuite : tu te reconnectes à TON Beebs dans Chrome ; aucune autre action n'est nécessaire.
+
+## 10. Utilisable pour de vrai — Nico ET Ornella (16/10 nuit, « une seule passe »)
+
+> Mission de Nico du 16/10 au soir. Rien n'a été envoyé, généré, accepté ni acheté sur une plateforme pendant
+> cette passe : le code des sites (Vinted, Leboncoin, Beebs) a été relu dans leurs fichiers publics, et une seule
+> lecture a été faite sur ton compte Vinted (l'adresse d'expédition par défaut : 200, « complète », clés seulement).
+> Aucun texte de message, aucun nom, aucune adresse recopiés ici.
+
+### 10.0 L'essentiel
+
+1. **Deux comptes bêta, personne d'autre** : toi et **Ornella = `ornellaracano@icloud.com`**
+   (`f8aa02a5-23cb-4325-bba8-127f61a75741`, 899 fiches, ≈ 1 000 jobs sur 30 jours, extension 0.6.114 du store).
+   Les deux autres comptes « ornella… » en base sont d'autres personnes (0 fiche, 0 job). Drapeau posé le 16/10
+   vers 23:40 (`scripts/reparations/20261016_drapeau_messagerie_ornella.sql`, sauvegarde + inverse) ; contrôle :
+   2 porteurs.
+2. **Répondre sans liste blanche** — dès la migration **20261016220000** appliquée (feu vert à donner, § 10.4) :
+   la réponse part sur ton appui seulement, **telle que tu l'as écrite** (plus aucun « trim », empreinte SHA-256
+   vérifiée par la base PUIS par l'exécutant juste avant l'envoi), **une seule fois** (même clé = même réponse ;
+   même texte vers la même conversation en 10 min = même réponse ; une clé par brouillon côté app ; clé
+   d'idempotence de la plateforme = numéro de notre réponse ; prise jamais renvoyée ; non prise en 24 h = jamais
+   envoyée en retard), **tracée** en base.
+3. **Générer le bordereau depuis FillSell** (Vinted « commander l'étiquette », Leboncoin « confirmer la
+   disponibilité », Beebs « accepter la commande ») : un appui → **écran de confirmation** (une phrase : ce que ça
+   engage ; Vinted : papier ou QR) → « Confirmer » → ton ordinateur fait le geste **une fois** (état relu juste
+   avant : déjà fait = on récupère, rien de plus) → le PDF (ou le code) arrive dans FillSell. **Une génération par
+   commande, à vie** (index en base ; issue inconnue = « incertaine », jamais refaite).
+4. **eBay : non, et le bouton vers eBay reste.** L'étiquette eBay est payante, elle n'a **aucune API en France**
+   (Logistics API = USPS seulement), et les conditions d'eBay (art. 3) interdisent « tout autre procédé
+   automatique » ; eBay n'empêche même pas d'acheter **deux** étiquettes pour la même commande (jusqu'à 5). Le
+   texte de l'app le dit, et renvoie à « Bordereaux d'envoi » sur eBay pour ne pas en racheter une.
+   **Depop** : pas de bordereau en France, bouton vers Depop.
+5. **Partager, imprimer, 10 × 15** : chaque bordereau s'ouvre en aperçu — « Étiquette 10 × 15 » (découpée dans l'A4,
+   tournée, PDF 100 × 150 mm pour Munbyt et autres thermiques) ou « Original » ; partager / télécharger /
+   imprimer ; « Tout imprimer » réunit les bordereaux prêts en un seul PDF ; un code sans papier s'affiche en grand,
+   plein écran.
+6. **Trois corrections à la racine** : ventes à 0 € (C1), photos payantes Leboncoin (C2), « panneau des racines
+   introuvable » (C3) — § 10.6.
+
+### 10.1 Par plateforme
+
+✅ fait et prouvé (essai à blanc, selftests) · 🟢 fait, à prouver au vrai achat · ❌ impossible (raison)
+
+| | Répondre | Générer le bordereau | Récupérer / afficher | Partager · 10 × 15 |
+|---|---|---|---|---|
+| **Vinted** | 🟢 POST …/replies, texte exact | 🟢 PUT …/shipment/order (adresse par son numéro, point relais, papier/QR au choix) | 🟢 `pdf_label` ou `digital_label` | ✅ |
+| **Leboncoin** | 🟢 clé `clientMessageId` = notre réponse | 🟢 POST …/action/validate-availability (Mondial Relay, Shop2Shop, Relais Colis) ; Colissimo / courrier suivi → sur Leboncoin (formulaire d'adresse) | 🟢 `prepare-parcel` → `label_url` | ✅ |
+| **Beebs** | 🟢 (compte au téléphone vérifié) | 🟢 action du bouton « Télécharger le bordereau » (`sellerConfirmAction`), téléphone vérifié exigé ; main propre → app Beebs | 🟡 fichier cherché dans la commande ; introuvable → « télécharge-le sur Beebs » | ✅ si fichier |
+| **eBay** | 🟢 par le serveur (API), texte exact | ❌ payante, pas d'API en France, conditions d'eBay → bouton vers eBay | — | — |
+| **Depop** | 🟢 clé `idempotency_key` = notre réponse | ❌ pas de bordereau en France → bouton vers Depop | — | — |
+
+### 10.2 Ce qui ne marche pas, ou pas encore, et pourquoi
+
+- **Aucun geste n'a encore été vu en vrai** : les appels « qui engagent » ont été relus dans le code des sites
+  (16/10 nuit), jamais exécutés. Ils seront prouvés au premier test (§ 10.3). Un refus de la plateforme ne fait
+  rien (l'app dit pourquoi, « rien n'a été fait ») ; une coupure pendant le geste → « incertaine » : vérifier sur la
+  plateforme, FillSell ne refait jamais.
+- **Beebs, le fichier** : le lien du bordereau généré n'est pas dans le code lisible du site (aucune vente vue) ;
+  s'il n'est pas dans l'objet commande, l'app dit « télécharge-le sur Beebs ».
+- **Beebs sur TON compte** : toujours sans téléphone vérifié → génération refusée (« vérifie ton numéro ») ; le test
+  Beebs se fait sur le compte d'Ornella **avec SA future extension du store** (0.6.121), ou en vendant depuis son
+  compte.
+- **Vinted, cas non couverts** : enlèvement à domicile (date à choisir), téléphone exigé par le transporteur,
+  adresse incomplète → refus clair, à faire sur Vinted.
+- **L'app mobile Android** ne sait pas partager un fichier depuis l'app (pas de plugin natif dans le binaire) : le PDF
+  est déposé dans ton dossier privé puis ouvert dans Chrome (télécharger, imprimer, envoyer à l'app Munbyt) ; il est
+  effacé au bout de 24 h. iOS : feuille de partage (non prouvée sur iPhone ; repli = même dépôt). Un « Tout
+  imprimer » de plus de 5 Mo est refusé (limite du dossier) et l'écran le dit.
+- **Le recadrage 10 × 15** n'a vu aucun vrai bordereau : détection générique (code-barres, blancs, pointillés de
+  découpe), recadrages de secours (« Ajuster »), retenus par transporteur sur l'appareil.
+
+### 10.3 Protocole de test — Nico et Ornella, entre vous deux
+
+Avant : migration 20261016220000 appliquée (§ 10.4) ; ton ordinateur allumé, Chrome ouvert (ta copie prend seule
+la 0.6.121) ; pour Beebs et pour que la relève tourne chez Ornella, la 0.6.121 du store sur SON ordinateur.
+Chaque annonce de test : **999 € ou plus**, titre « TEST — ne pas acheter », sur le compte du vendeur.
+Dans l'app : bandeau « Messages · À expédier » (au-dessus des onglets).
+
+**1. Message (toutes plateformes)**
+1. Ornella écrit sur ton annonce de test. → Elle apparaît dans « Messages » au relevé suivant (eBay : 20 min).
+2. Tu réponds depuis l'app : l'écran dit « Envoi actif : ta réponse part telle que tu l'écris… une seule fois ».
+   Écris un texte avec deux espaces au début, un retour à la ligne et un accent. Appuie **deux fois de suite** sur
+   l'envoi.
+3. Attendu : « En attente » → « Envoyée, telle que tu l'as écrite » ; chez Ornella, **un seul** message, identique
+   au caractère près. Moi : je relis `messagerie_reponses` (1 ligne, empreinte, exécutant, numéro du message).
+
+**2. Vinted** (Ornella achète ton annonce à 999 €)
+1. « À expédier » : la commande, l'acheteuse, « Générer le bordereau » (si Vinted demande un choix papier / QR,
+   l'écran te le propose).
+2. Appuie : l'écran de confirmation dit « Commander l'étiquette engage l'envoi… » → **Commander l'étiquette**.
+3. Attendu : « Génération demandée » → « Bordereau généré sur Vinted : récupération… » → « Ouvrir le bordereau ».
+   Sur Vinted : l'étiquette est commandée **une** fois. Réappuie sur « Générer » ailleurs (autre téléphone) :
+   rien ne repart (« déjà »).
+4. « Ouvrir le bordereau » → « Étiquette 10 × 15 » → « Partager ou imprimer » → l'app Munbyt (ou l'imprimante
+   thermique de l'ordinateur, papier 100 × 150). Si la découpe est mauvaise : « Ajuster le recadrage » (retenu pour
+   ce transporteur).
+5. **Annulation** : tu annules la commande **sur Vinted** sans expédier ; Ornella est remboursée. La commande quitte
+   « À expédier » au relevé suivant.
+
+**3. Leboncoin** (paiement sécurisé, Mondial Relay ou Shop2Shop)
+1. « À expédier » : « Disponibilité à confirmer » + « Générer le bordereau ».
+2. Écran : « Confirmer la disponibilité valide la vente… » → **Confirmer la disponibilité**.
+3. Attendu : Leboncoin passe la vente « disponible », le bordereau arrive dans FillSell ; impression 10 × 15 comme
+   Vinted. Colissimo / courrier suivi : l'app dit de le faire sur Leboncoin (formulaire d'adresse).
+4. **Annulation** sur Leboncoin, sans expédier.
+
+**4. Beebs** (vendeur = un compte au téléphone vérifié : celui d'Ornella ; acheteur = toi)
+1. ⚠️ **Accepter la commande débite l'acheteur** (toi, 999 €), remboursé à l'annulation. Si vous ne voulez pas de
+   ce débit : s'arrêter à l'écran de confirmation (« Annuler »), puis refuser sur Beebs.
+2. Sinon : « Générer le bordereau » → **Accepter la commande** → la commande passe « bordereau imprimé » ; le
+   fichier arrive dans FillSell, ou l'app dit « télécharge-le sur Beebs ».
+3. **Annulation** sur Beebs.
+
+**5. eBay** : la commande apparaît avec la date limite ; « Étiquette sur eBay » ouvre la commande sur eBay (rien à
+générer dans FillSell) ; annulation sur eBay. **Depop** : « Voir sur Depop ».
+
+**6. Tout imprimer** : avec deux bordereaux prêts ou plus, le bouton « Tout imprimer · N » réunit tout en un PDF
+(10 × 15 : une étiquette par page).
+
+**Moi, après chaque étape** : je relis la base (une génération par commande, statut, geste « fait » ou « déjà
+fait », copie 5 jours), en lecture seule, et je te dis ce que j'ai vu.
+
+### 10.4 Ce qui attend TON feu vert (dans cet ordre)
+
+1. **Migration 20261016220000** (messagerie ouverte + génération). Essai à blanc **33/33** (transaction annulée,
+   prod relue inchangée). Ce qu'elle fait : réponses sans liste blanche (mode 2) et texte exact + empreinte ;
+   génération (table des demandes étendue, une par commande, `bordereau_generer`, étapes, prise par capacité) ;
+   options de bordereau relevées ; purge des fichiers d'impression (24 h) ; rien de destructif (0 réponse,
+   0 demande, 0 copie, 0 commande en base). Inverse : `supabase/rollbacks/20261016220000_…`.
+   `npx supabase db query --linked -f supabase/migrations/20261016220000_messagerie_ouverte_bordereaux_generes.sql`
+   puis `npx supabase migration repair --linked --status applied 20261016220000`.
+2. **Migration 20261016221000** (C1, prix des ventes nées d'un job) puis la réparation
+   `scripts/reparations/20261016_ventes_prix_zero.sql` (aucun mail renvoyé) — § 10.6.
+3. **OTA 2.9.97** (écrans de la bêta sur l'app mobile) — prête, envoyée seulement sur ton feu vert.
+
+### 10.5 Preuves (sans rien toucher chez une plateforme)
+
+- **Essai à blanc de 20261016220000 : 33/33** (transaction annulée, données d'essai sur ton compte, prod relue
+  inchangée : ancienne `messagerie_repondre` en place, aucune clé neuve, aucun objet d'essai, cron d'avant). Dont :
+  réponse « en attente » SANS liste blanche ; texte gardé AVEC ses espaces ; **même clé → même réponse, 1 ligne** ;
+  **même texte en 10 min → même réponse** ; empreinte fausse refusée ; **prise une seule fois** ; résultat rendu une
+  seule fois ; mode 1 = liste blanche, mode 0 = reverrouillage ; **réponse non prise en 24 h → jamais envoyée en retard** ; génération sans phrase refusée ; **deux
+  générations → la même demande** ; **seconde génération écrite en direct → refusée par l'index** ; extension
+  d'avant → rien ; génération faite → suite « fichier » → prête avec la copie → une nouvelle demande rend la copie ;
+  **génération prise sans réponse → « incertaine » → jamais une seconde** ; transition interdite refusée ; options
+  de bordereau gardées, ligne inchangée jamais réécrite ; fichier d'impression de 25 h rendu à la purge, celui
+  d'1 h non.
+- **Selftests neufs** : `selftest:messagerie-generation` (17 cas : même clé d'idempotence quand on rejoue le même envoi
+  sur Leboncoin et Depop, texte qui part tel quel sur les 4 plateformes, empreinte = celle de Postgres ; corps
+  Vinted et refus ; décision « déjà fait → aucun geste » ; **0 appel qui engage quand l'étiquette est déjà
+  commandée** (Vinted 200/220/230/250, Leboncoin `available`, Beebs `LABEL_PRINTED`) ; **un seul PUT / POST**,
+  Vinted une seconde seulement après un 401 ; 500 / réseau coupé = incertain, jamais retenté ; préparation en
+  lecture seule sans nom, adresse ni téléphone en sortie ; fonctions de page autonomes) ;
+  `selftest:bordereau-impression` (50 : 10 × 15 sur de vrais PDF rendus par pdf.js, rotation, découpe, fusion) ;
+  `selftest:messagerie-app` (18, réécrit aux nouvelles règles) ; `selftest:messagerie` (44).
+
+### 10.6 Les trois corrections à la racine
+
+**C1 — Ventes à 0 €** (règle : `docs/regles/ventes-et-retraits.md` § 16/10 soir, C1)
+- **Cause** : le déclencheur `push_trg_job` (prod) passait `new.price` à la note de vente ; sur une
+  **republication**, ce prix est NULL (il vit dans `platform_fields.prix_recreation` / `republish_snapshot.prix`,
+  même trou que le 11/10) ; puis `push-ventes` écrivait `Number(null) || 0` → « vendu 0 € », et un **bénéfice
+  négatif** quand le prix d'achat était connu.
+- **Ampleur** : 128 notes sans prix depuis le 06/10 (84 sur 7 jours), toutes Vinted, toutes des republications ;
+  **45 mails « 0 € » à 17 comptes** depuis le 06/10, dont **26 à 14 comptes sur 7 jours**, dont 9 avec un bénéfice
+  négatif. Aucune notification push (0 appareil). Les **ventes** elles-mêmes (table `ventes`) ont toutes leur prix :
+  seul le prix ANNONCÉ manquait.
+- **Correctif** (migration 20261016221000, tous comptes) : UNE règle du prix d'une vente née d'un job — la vente
+  enregistrée (jamais pour eBay), sinon le prix lu à la vente, sinon le prix du job, sinon le dernier prix publié,
+  sinon la fiche ; chaque source > 0, sinon la suivante ; **rien = inconnu (NULL), jamais 0**. Le mail
+  (`push-ventes` v11) n'écrit **aucun montant ni bénéfice** quand le prix est inconnu.
+- **Réparation** : `scripts/reparations/20261016_ventes_prix_zero.sql` remet le prix sur les 128 notes (119 par la
+  vente enregistrée, 8 par le prix lu à la vente, 1 par le prix de republication ; aucune ne reste sans prix),
+  **aucun mail renvoyé** (essai à blanc : 284 mails avant, 284 après).
+- **Note 2348 (Louis)** : notre base ne connaît que **14 €** (la vente 181210, confirmée dans l'app au prix de
+  l'annonce, sans relevé de la transaction Vinted). Les 12 € réels n'existent nulle part chez nous (offre acceptée ?).
+  La réparation y mettra 14 € ; si c'est 12 €, c'est la VENTE 181210 qu'il faut corriger (Louis dans l'app, ou
+  un script sur ta décision).
+
+**C2 — Leboncoin, photos payantes** (règle : `docs/regles/plateformes.md` § 16/10)
+- **Cause** : l'extension envoyait TOUTES les photos de la fiche ; le seul plafond était une table de l'app
+  (« Divers > Autres » = 3). Lu dans le code du dépôt Leboncoin : le nombre gratuit dépend de la catégorie ET du
+  type de compte (`photosMinNumber`, sinon 3 pour un particulier, 5 pour un pro).
+- **Ampleur (30 jours)** : PAUGUES 11 dépôts bloqués à 6-11 photos ; un autre compte 23 dépôts Mode à 7-17 photos
+  (14/10) ; 2 autres comptes, 1 dépôt chacun.
+- **Correctif (extension seule, tous les comptes)** : au dépôt, l'extension LIT la galerie du formulaire (le libellé
+  du bouton d'ajout — « Ajouter 20 photos » = tout gratuit —, sinon les emplacements gratuits affichés), exige deux
+  lectures identiques, et n'envoie que les N premières photos, dans l'ordre de la fiche. Illisible : 3 photos
+  (le minimum de Leboncoin), avec une note — **jamais une photo payante**. Le bilan va dans
+  `platform_fields.photos_lbc`. Le pré-vol de recréation fait de même. Plus de plafond codé en dur dans
+  l'extension ; la table de l'app reste comme filet tant que les postes n'ont pas la 0.6.121.
+- **Le motif du mur** : le même écran finissait en `champ_a_choisir` (12 jobs) ou `relancer` (11) — une question
+  déjà tranchée restait sur le job et le filet du serveur la rouvrait. Pour ce mur, les marqueurs de question passée
+  tombent et le motif est toujours `relancer`.
+
+**C3 — « Catégorie : panneau des racines introuvable »**
+- **Cause** : l'extension ne reconnaissait le panneau des catégories que s'il contenait « Divers » ; or Leboncoin
+  filtre l'arbre par type de compte et « Divers » n'existe pas pour un compte **PRO**. PAUGUES est pro (preuve :
+  `owner.type = "pro"` sur son annonce) ; seul autre cas en 45 jours : un autre compte pro (21/09).
+- **Correctif** : le panneau est reconnu à ses racines (la liste dont la plupart des éléments, 4 au moins, sont des
+  racines connues ; des boutons seulement), relu 3 s au plus ; un échec joint un relevé de la page.
+- **Les 8 jobs de PAUGUES** (c6e69317, 1448cb67, 064ddaa6, b2c54353, 8e79a16d, c79fca01, f6e6e0bb, bc458731) :
+  `pending` en reprise automatique (toutes les 6 h, sans limite) ; ils **repartent seuls dès que le Chrome de
+  PAUGUES a la 0.6.121 du store** (il est en 0.6.114) — d'ici là chaque essai s'arrête avant les photos, rien n'est
+  déposé. 3 d'entre eux ont 6 à 9 photos : C2 leur sert aussi.
+- **À prouver au premier dépôt réel** : `platform_fields.photos_lbc` (un pro doit lire 5, Mode chez un particulier
+  20, Divers 3) ; les 8 jobs de PAUGUES `published` après sa mise à jour (si son forfait pro est épuisé, ce sera
+  « Valider et payer » avec la phrase qui dit que ce n'est pas le pack photos). Les 23 jobs de l'autre compte
+  attendent son « Relancer » (décision de la personne).

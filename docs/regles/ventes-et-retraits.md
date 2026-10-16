@@ -15,6 +15,7 @@
 - 04/10 — retraits (ex-L359-363)
 - 02/10 soir — ventes : annonce_id = la preuve (ex-L444-446)
 - 16/10 — lire une vente : plateforme normalisée, marge % au prix > 0, « Sans plateforme », tri par date
+- 16/10 soir — le prix d'une vente née d'un job ; jamais « vendu 0 € » (C1)
 
 <!-- ex-CLAUDE.md L123-137 : 11/10 — une annonce vendue ne se signale qu'une fois -->
 - **⛔ UNE ANNONCE VENDUE NE SE SIGNALE QU'UNE FOIS (11/10, Louis)** : le « doublon »
@@ -117,3 +118,22 @@ eux-mêmes. Rapport : `docs/enquetes/refonte-ecrans-1610/RAPPORT.md`.
 - **Ordre** : date de vente décroissante, puis enregistrement, puis id ; sans date en dernier (`trierVentes`,
   appliqué dans `App.jsx` à ce qui descend vers l'onglet Ventes).
 
+
+## 16/10 soir — le prix d'une vente née d'un job ; jamais « vendu 0 € » (C1)
+Cas : 128 notes de vente sans prix depuis le 06/10 (republications Vinted : `price` NULL), 45 mails « vendu 0 € »
+(17 comptes ; 26 mails à 14 comptes sur 7 jours), dont 9 avec un bénéfice négatif. Les lignes `ventes` avaient leur prix.
+- **Une règle, une fonction** : `prix_vente_du_job` (migration 20261016221000) — vente ENREGISTRÉE (son reçu
+  `ventes_operations` : la transaction relevée ou le prix confirmé par la personne ; ⛔ jamais pour eBay, une annonce en
+  quantité se vend plusieurs fois) > prix lu à la vente (`detected_price`) > prix du job > dernier prix publié
+  (`prix_recreation`, puis `republish_snapshot.prix`) > prix de la fiche du MÊME compte ; chaque source > 0, sinon la
+  suivante ; aucune → NULL (inconnu). Un 0 n'est jamais un prix de vente annoncé (`_prix_ou_null`, miroir de
+  `prixLisible`). Même ordre que le bandeau (`prixParDefautDuBandeau`).
+- **La note naît avec ce prix** (`push_trg_job`) ; **une note de job décidée annonce la vente enregistrée**
+  (`push_ventes_a_envoyer`). Une panne du calcul garde le prix d'avant : la note n'est jamais perdue.
+- **Le mail n'écrit un montant que s'il est > 0** (`prixVenteConnu`, `_shared/push-envoi.ts`, même règle que la
+  notification) : prix inconnu → « vendu » sans montant, sans bénéfice ; jamais « 0 € » (sous 0,50 € : centimes).
+  Un prix de vente connu donne un mail identique à l'octet à celui d'avant.
+- **Réparer une note née sans prix** : `scripts/reparations/20261016_ventes_prix_zero.sql` (après la migration) — colonne
+  `prix` seule, sauvegarde `_backup_1610_ventes_prix_zero`, aucun mail ni push renvoyé (push_ventes n'a aucun
+  déclencheur ; statut / mail_statut intacts). Preuves : `npm run selftest:ventes-prix-inconnu [-- --prod]`,
+  `scripts/preuves/preuve-ventes-prix-inconnu.mjs`.

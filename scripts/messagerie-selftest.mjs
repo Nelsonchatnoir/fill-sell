@@ -16,7 +16,8 @@
 //   f. jamais « marquer comme lu » (aucun appel mark_as_read / read / mark-read
 //      dans le code), jamais un texte de message dans la console ;
 //   g. l'envoi Vinted / Leboncoin / Depop a la forme relevée dans le code des
-//      sites ; background.js relit la liste blanche avant tout envoi ;
+//      sites ; (16/10 nuit) background.js revérifie l'empreinte du texte avant
+//      tout envoi (plus de liste blanche pour les comptes bêta) ;
 //   h. la migration : RLS partout, AUCUNE politique d'écriture, liste blanche
 //      en lecture seule, REVOKE anon sur chaque fonction, purge 30 j / 5 j,
 //      secret de cron jamais écrit.
@@ -655,15 +656,19 @@ await cas("(0.6.117) un passage sans lecture note son motif en base ; Depop repr
   assert.equal(r2.requetes, 3, "jamais plus de 3 essais");
 });
 
-// ── g. L'envoi, verrouillé ───────────────────────────────────────────────────
-await cas("background.js relit la liste blanche avant l'envoi, et n'envoie qu'UNE réponse par passage", () => {
+// ── g. L'envoi (16/10 nuit : comptes bêta sans liste blanche, texte exact) ───
+await cas("background.js vérifie l'empreinte du texte AVANT l'envoi, passe la clé d'idempotence, et n'envoie qu'UNE réponse par passage", () => {
   const i = SECTION.indexOf("async function envoyerReponseMessagerie");
   const corps = SECTION.slice(i, SECTION.indexOf("/** Un passage de la bêta", i));
-  const iListe = corps.indexOf("messagerie_liste_blanche?");
+  const iEmpreinte = corps.indexOf("M.empreinteTexte(rep.texte)");
+  const iCompare = corps.indexOf("empreinte !== rep.empreinte");
   const iEnvoi = corps.indexOf("executerDansOngletPlateforme(rep.platform, envoyeur");
-  assert.ok(iListe > 0 && iEnvoi > iListe, "liste blanche relue AVANT l'envoyeur");
-  assert.ok(/liste_blanche_absente/.test(corps));
+  assert.ok(iEmpreinte > 0 && iCompare > iEmpreinte && iEnvoi > iCompare, "empreinte recalculée et comparée AVANT l'envoyeur");
+  assert.ok(/empreinte_differente/.test(corps));
+  assert.ok(/cleEnvoi: rep\.id/.test(corps), "la clé d'idempotence de la plateforme = le numéro de la réponse");
+  assert.ok(/texte: rep\.texte,/.test(corps), "le texte part tel quel");
   assert.equal((corps.match(/messagerie_reponse_a_envoyer/g) || []).length, 1, "une seule prise par passage");
+  assert.equal((corps.match(/executerDansOngletPlateforme\(rep\.platform, envoyeur/g) || []).length, 1, "un seul envoi par passage");
 });
 
 await cas("envoi Vinted : forme relevée (POST …/replies, reply.body, X-CSRF-Token)", async () => {

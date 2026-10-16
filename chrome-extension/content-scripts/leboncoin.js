@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const LEBONCOIN_BUILD = "2026-10-08-ping (0.6.103 : FILLSELL_PING, réponse synchrone « je suis là ») · 2026-10-05-transporteurs-exacts (transporteurs Leboncoin : fenêtre attendue au calme après le poids, chaque case relue à neuf et vérifiée, ensemble exact avant « Valider », relu après validation et juste avant le dépôt ; un écart qui persiste = rien ne part, needsUser nommé) · 2026-10-02-mur-connexion-depot (0.6.84 : mur de connexion de la page de dépôt reconnu — jeton luat absent, phrase « Connectez-vous ou créez un compte », boutons « Me connecter » lus sans layout ; compte connecté signalé au background) · 2026-09-24-retrait-pro-tiroir-gerer (0.6.66 : annonce PRO en fenetre etroite — panneau de gestion absent sous 971 px, le controle Supprimer est cherche dans le tiroir « Gerer ») · 2026-09-14-retrait-challenge-et-releve (0.6.36, chemin de SUPPRESSION seul : le détecteur d'interstitiel anti-robot est hissé au module et interrogé AVANT de conclure « contrôle Supprimer introuvable » — sur les deux chemins, page d'annonce ET « Mes annonces » ; le relevé des actions réellement rendues part en `diagnostic` (donc en platform_fields.last_diagnostic) au lieu de mourir dans `trace` ; « Mes annonces » dit en plus combien de cartes ont été rendues ; le mur de cookies est refusé par fsConsentRefuser, la détection de la 0.6.35, et non plus par dismissDidomi qui ne voyait rien) — précédent : 2026-09-14-consentement-vu-enfin (0.6.35 : le mur de cookies Leboncoin est DÉTECTÉ — la détection part du contrôle de refus « Continuer sans accepter » et non plus du conteneur #didomi-host, qui existe à 0×0 et n'a jamais rien rendu ; refus cliqué, disparition ATTENDUE, trois points de sortie qui ne disent plus « brouillon » ; aucune tentative consommée) — précédent : 2026-09-09-adsubmit-est-la-preuve (0.6.24 : plus aucun re-clic du Continuer final dès qu'un adsubmit est parti ; 2xx = dépôt accepté, id lu ; 403 details[] = texte exact de Leboncoin)";
+const LEBONCOIN_BUILD = "2026-10-16-pro-et-photos-gratuites (catégorie : le panneau des racines est reconnu à ses racines — un compte PRO ne voit pas « Divers » ; photos : le nombre gratuit est lu sur le formulaire au dépôt, seules les premières partent, jamais une photo payante) · 2026-10-08-ping (0.6.103 : FILLSELL_PING, réponse synchrone « je suis là ») · 2026-10-05-transporteurs-exacts (transporteurs Leboncoin : fenêtre attendue au calme après le poids, chaque case relue à neuf et vérifiée, ensemble exact avant « Valider », relu après validation et juste avant le dépôt ; un écart qui persiste = rien ne part, needsUser nommé) · 2026-10-02-mur-connexion-depot (0.6.84 : mur de connexion de la page de dépôt reconnu — jeton luat absent, phrase « Connectez-vous ou créez un compte », boutons « Me connecter » lus sans layout ; compte connecté signalé au background) · 2026-09-24-retrait-pro-tiroir-gerer (0.6.66 : annonce PRO en fenetre etroite — panneau de gestion absent sous 971 px, le controle Supprimer est cherche dans le tiroir « Gerer ») · 2026-09-14-retrait-challenge-et-releve (0.6.36, chemin de SUPPRESSION seul : le détecteur d'interstitiel anti-robot est hissé au module et interrogé AVANT de conclure « contrôle Supprimer introuvable » — sur les deux chemins, page d'annonce ET « Mes annonces » ; le relevé des actions réellement rendues part en `diagnostic` (donc en platform_fields.last_diagnostic) au lieu de mourir dans `trace` ; « Mes annonces » dit en plus combien de cartes ont été rendues ; le mur de cookies est refusé par fsConsentRefuser, la détection de la 0.6.35, et non plus par dismissDidomi qui ne voyait rien) — précédent : 2026-09-14-consentement-vu-enfin (0.6.35 : le mur de cookies Leboncoin est DÉTECTÉ — la détection part du contrôle de refus « Continuer sans accepter » et non plus du conteneur #didomi-host, qui existe à 0×0 et n'a jamais rien rendu ; refus cliqué, disparition ATTENDUE, trois points de sortie qui ne disent plus « brouillon » ; aucune tentative consommée) — précédent : 2026-09-09-adsubmit-est-la-preuve (0.6.24 : plus aucun re-clic du Continuer final dès qu'un adsubmit est parti ; 2xx = dépôt accepté, id lu ; 403 details[] = texte exact de Leboncoin)";
 console.log(`[leboncoin.js] build ${LEBONCOIN_BUILD}`);
 
 // Content script Leboncoin — pilote le WIZARD de dépôt d'annonce.
@@ -49,7 +49,7 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
 
     etapeCourante = null; // nouveau job : le relevé d'étape repart de zéro
     fillListingForm(msg.job)
-      .then((result) => sendResponse(result))
+      .then((result) => sendResponse(joindreBilanPhotosLbc(result)))
       .catch((err) => sendResponse(reponseEchecInterne(err)));
 
     return true; // réponse asynchrone
@@ -1136,7 +1136,7 @@ function lancerRemplissageUnique(job) {
   globalThis.__fillsellRemplissage = etat;
   etapeCourante = null; // nouveau job : le relevé d'étape repart de zéro (comme le canal classique)
   etat.promesse = fillListingForm(job)
-    .then((result) => result, (err) => reponseEchecInterne(err))
+    .then((result) => joindreBilanPhotosLbc(result), (err) => reponseEchecInterne(err))
     .then((resultat) => { etat.resultat = resultat; etat.enCours = false; etat.phase = "termine"; return resultat; });
   return etat.promesse;
 }
@@ -1177,6 +1177,7 @@ async function fillListingForm(job) {
 
   const fields = job.platform_fields || {};
   const warnings = [];
+  bilanPhotosLbc = null; // (16/10) le bilan des photos est celui de CE dépôt, jamais du précédent
   // (11/10, point 4 — voirememe) PRÉ-VOL DE RECRÉATION d'une republication :
   // le MÊME remplissage que le futur redépôt (titre, catégorie, photos,
   // critères, « Continuer »), lancé AVANT le retrait de l'annonce d'origine.
@@ -2482,7 +2483,7 @@ async function fillListingForm(job) {
             success: false, needsUser: true, attenteUtilisateur: true, attenteMotif: "lbc_options_payant_seulement",
             warnings, unfilledRequired, discoveredRequired: enumerated,
             lbcDepot: { preuve: "ecran_options_payant", note: "barre d'action sans CTA gratuit ; seul « Valider et payer » proposé", adsubmit: depotAccepte, at: new Date().toISOString() },
-            error: `${MSG_LBC_PAYANT_SEULEMENT} — Observabilité: ${dumpEcranVisible()}`,
+            error: `${MSG_LBC_PAYANT_SEULEMENT}${motPhotosMurPayantLbc()} — Observabilité: ${dumpEcranVisible()}`,
           };
         }
         return depotNonFinalise(
@@ -2799,7 +2800,13 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
   });
   if (!photoInput) throw new Error('Élément introuvable: input[type="file"] (même après avance du wizard paginé)');
   if (job.photos?.length) {
-    const photoNote = await uploadPhotos(photoInput, job.photos);
+    // (16/10) Jamais plus de photos que le formulaire n'en offre GRATUITEMENT :
+    // le nombre est lu ici, sur la page, au moment du dépôt (cf.
+    // lireEmplacementsPhotosLbc) ; on envoie les premières, dans l'ordre de la fiche.
+    const choixPhotos = photosAEnvoyerLbc(job.photos, await lireQuotaPhotosLbcStable());
+    bilanPhotosLbc = choixPhotos.bilan;
+    if (choixPhotos.note) { console.warn(`[leboncoin] ${choixPhotos.note}`); warnings.push(choixPhotos.note); }
+    const photoNote = await uploadPhotos(photoInput, choixPhotos.photos);
     if (photoNote) warnings.push(photoNote);
   }
 
@@ -3601,6 +3608,47 @@ async function choisirSuggestionLeboncoin({ job = null, fields = {} } = {}) {
   return { etiquette: choisie.etiquette, n: propositions.length, motifArbitrage, arbitre };
 }
 
+// ── LE PANNEAU DES RACINES, RECONNU À SES RACINES (16/10/2026, PAUGUES) ─────
+// CE QUI S'EST PASSÉ : 9 dépôts de PAUGUES (15/10, compte PRO) arrêtés sur
+// « Catégorie: panneau des racines introuvable », relancés 7 fois chacun pour
+// rien ; le seul autre cas en 45 jours est MeMiniandMove (PRO, 21/09). Ce
+// n'était PAS une page lente : lu dans le code du dépôt Leboncoin (16/10),
+// le sélecteur manuel filtre l'arbre par TYPE DE COMPTE (droits « private »
+// / « pro » de chaque catégorie) et « Divers » (id 37) n'a AUCUN droit pro —
+// un compte pro ne la voit jamais. L'ancien repère (« une liste d'au moins
+// 10 éléments qui contient Divers ») ne trouvait donc JAMAIS le panneau d'un
+// pro. Les dépôts du même lot partis sur une suggestion, eux, passaient.
+// LA RÈGLE : le panneau des racines est la liste dont la plupart des éléments
+// sont des racines connues de l'arbre (4 au moins), quelle que soit la racine
+// que le compte ne voit pas. Mêmes listes en mise en page large (deux
+// panneaux) et étroite (une liste, tiroir par racine).
+const RACINES_LBC = Object.freeze([
+  "Emploi", "Véhicules", "Immobilier", "Locations de vacances", "Électronique", "Maison & Jardin",
+  "Famille", "Mode", "Loisirs", "Animaux", "Matériel professionnel", "Services", "Divers",
+]);
+function trouverPanneauRacinesLbc(doc = document) {
+  const racines = new Set(RACINES_LBC.map((r) => texteComparable(r)));
+  let panneau = null;
+  let meilleur = 0;
+  for (const u of doc.querySelectorAll("ul")) {
+    const items = [...u.children];
+    if (items.length < 4) continue;
+    // Une racine du sélecteur est un BOUTON (jamais un lien de navigation : un
+    // menu du site qui nommerait les rubriques ne doit jamais être cliqué).
+    const reconnues = items.filter((li) => li.querySelector?.("button") && racines.has(texteComparable(li.textContent))).length;
+    if (reconnues >= 4 && reconnues * 2 >= items.length && reconnues > meilleur) { panneau = u; meilleur = reconnues; }
+  }
+  return panneau;
+}
+// Ce que la page montrait quand le panneau n'a pas été reconnu (diagnostic
+// seulement, borné) : le nombre de listes et les premiers libellés des plus longues.
+function releveListesCategorieLbc(doc = document) {
+  const listes = [...doc.querySelectorAll("ul")].filter((u) => u.children.length > 0)
+    .sort((a, b) => b.children.length - a.children.length).slice(0, 3)
+    .map((u) => [...u.children].slice(0, 6).map((li) => String(li.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 30)));
+  return `${doc.querySelectorAll("ul").length} liste(s), les plus longues : ${JSON.stringify(listes)}`;
+}
+
 async function selectCategory(root, leaf, { incertaine = false, warnings = [], job = null, fields = {} } = {}) {
   // Les suggestions arrivent en asynchrone après la frappe du titre.
   await sleep(1500);
@@ -3651,10 +3699,14 @@ async function selectCategory(root, leaf, { incertaine = false, warnings = [], j
   trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   await sleep(800);
 
-  // Panneau gauche = racines (ul de 13 items — on repère par contenu)
-  const leftUl = [...document.querySelectorAll("ul")]
-    .find((u) => u.children.length >= 10 && u.textContent.includes("Divers"));
-  if (!leftUl) throw new Error("Catégorie: panneau des racines introuvable.");
+  // Panneau gauche = racines : la liste dont les éléments sont des RACINES de
+  // l'arbre Leboncoin, jamais « la liste qui contient Divers » (16/10 —
+  // trouverPanneauRacinesLbc : un compte PRO ne voit pas Divers). Relue 3 s
+  // au plus : le panneau se monte après le clic.
+  const leftUl = trouverPanneauRacinesLbc(document) ?? await waitFor(() => trouverPanneauRacinesLbc(document), 3000);
+  if (!leftUl) {
+    throw new Error(`Catégorie: panneau des racines introuvable. — Observabilité: ${releveListesCategorieLbc(document)}`);
+  }
   // Égalité stricte d'abord ; en repli, forme comparable (apostrophe, espace
   // insécable, tiret d'un libellé de rayon qui aurait changé de typographie).
   const memeLibelle = (a, b) => texteComparable(a) === texteComparable(b);
@@ -6127,6 +6179,127 @@ async function urlToFile(url, index) {
   const blob = await res.blob();
   const ext = (blob.type.split("/")[1] || "jpg").replace("jpeg", "jpg");
   return new File([blob], `photo_${index}.${ext}`, { type: blob.type });
+}
+
+// ── LES PHOTOS GRATUITES, LUES SUR LE FORMULAIRE AU MOMENT DU DÉPÔT (16/10) ──
+// CE QUI S'EST PASSÉ : au-delà du nombre de photos gratuites, Leboncoin active
+// son « Pack Photos supplémentaires » et son dernier écran n'offre plus que
+// « Valider et payer » (prouvé le 10/08 en Divers > Autres, 3 photos). L'app
+// ne plafonne que cette SEULE feuille, à la création du job (table codée en
+// dur, gardée comme filet des extensions d'avant) ; PAUGUES, compte PRO, a eu
+// 11 dépôts bloqués (Décoration, Collection, Montres & Bijoux, tous à 6 photos
+// ou plus) et un autre compte 23 dépôts Mode > Vêtements à 7-17 photos
+// (14/10). Lu dans le code du dépôt Leboncoin le 16/10 : le nombre
+// gratuit vient de la catégorie ET du type de compte (photosMinNumber de la
+// catégorie, sinon 3 pour un particulier, 5 pour un pro), le maximum payant
+// de photosMaxNumber. Aucune table publique : on LIT ce que la page offre.
+// Ce que montre la galerie avant tout envoi (composant « photos » du dépôt) :
+//   · la tuile d'ajout (data-qa-id « …-add_photos »), dont le libellé dit
+//     « Ajouter 20 photos » quand tout est gratuit (pas de pack au-delà),
+//     « Ajouter des photos » quand un pack payant existe au-delà du gratuit,
+//     « Ajouter plus de 3 photos » une fois le gratuit rempli ;
+//   · une tuile par emplacement gratuit (10 affichées au plus), puis une tuile
+//     « Ajouter des photos supplémentaires » quand il en reste au-delà.
+// Illisible : le minimum que Leboncoin accorde (3, sa valeur par défaut pour
+// un particulier) — un dépôt à 3 photos part, un dépôt payant ne part jamais.
+const LBC_PHOTOS_GRATUITES_MINIMUM = 3;
+const LBC_TUILE_EN_PLUS = '[aria-label="Ajouter des photos supplémentaires"]';
+let bilanPhotosLbc = null;
+
+/** Le nombre de photos gratuites que dit le libellé du bouton d'ajout. */
+function quotaPhotosDepuisLibelle(texte) {
+  const t = String(texte ?? "").replace(/\s+/g, " ").trim();
+  let m = t.match(/^Ajouter plus de (\d{1,3}) photos?$/i);
+  if (m) return { n: Number(m[1]), source: "libelle_plus_de" };
+  m = t.match(/^Ajouter (?:jusqu[\u0027\u2019]à )?(\d{1,3}) photos?$/i);
+  if (m) return { n: Number(m[1]), source: "libelle_sans_pack" };
+  if (/^Ajouter des photos$/i.test(t)) return { n: null, source: "libelle_pack_payant" };
+  return null;
+}
+
+/** Ce que la galerie du formulaire montre avant tout envoi (lecture seule). */
+function lireEmplacementsPhotosLbc(doc = document) {
+  const tuile = doc.querySelector('[data-qa-id$="-add_photos"]');
+  const zone = doc.querySelector('input[type="file"]')?.closest?.('[role="button"]') ?? null;
+  // Le libellé exact : son <span id="refDrop">, sinon l'aria-label de la zone
+  // de dépôt (le même texte), sinon la tuile entière (dont l'icône peut porter
+  // un titre). Le premier qui se lit l'emporte.
+  const candidats = [doc.querySelector('[id="refDrop"]')?.textContent, zone?.getAttribute?.("aria-label"), tuile?.textContent]
+    .map((t) => String(t ?? "").replace(/\s+/g, " ").trim()).filter(Boolean);
+  const libelle = candidats.find((t) => quotaPhotosDepuisLibelle(t)) ?? candidats[0] ?? "";
+  let emplacements = null;
+  let enPlus = false;
+  // La question « Vos photos » (label for=photo-input) porte la galerie : une
+  // case VIDE y est un <button role="presentation"> sans aria-label, une case
+  // remplie un <button aria-label="Photo n° k"> (code du dépôt, 16/10).
+  const section = doc.querySelector('label[for="photo-input"]')?.parentElement ?? null;
+  if (section) {
+    enPlus = Boolean(section.querySelector(LBC_TUILE_EN_PLUS));
+    const vides = [...section.querySelectorAll('button[role="presentation"]')].filter((b) => !b.getAttribute("aria-label")).length;
+    const pleines = [...section.querySelectorAll("button[aria-label]")]
+      .filter((b) => /^Photo n° \d{1,3}$/.test(String(b.getAttribute("aria-label") ?? "").trim())).length;
+    if (vides + pleines > 0) emplacements = vides + pleines;
+  }
+  if (!emplacements) {
+    // Repli : les cases vides portent « Photo n° k » (hors rayons illustrés).
+    let max = 0;
+    for (const el of doc.querySelectorAll("span")) {
+      const m = String(el.textContent ?? "").trim().match(/^Photo n° (\d{1,3})$/);
+      if (m) max = Math.max(max, Number(m[1]));
+    }
+    if (max) emplacements = max;
+  }
+  return { libelle, emplacements, enPlus };
+}
+
+/** { gratuites, source } : le libellé chiffré d'abord, sinon les emplacements montrés. */
+function quotaPhotosGratuitesLbc(lecture) {
+  const l = quotaPhotosDepuisLibelle(lecture?.libelle);
+  if (l?.n > 0) return { gratuites: l.n, source: l.source };
+  const n = Number(lecture?.emplacements);
+  if (Number.isInteger(n) && n > 0) return { gratuites: n, source: lecture?.enPlus ? "emplacements_10_au_moins" : "emplacements" };
+  return { gratuites: null, source: l?.source ?? "illisible" };
+}
+
+/** Les photos à envoyer : les N premières, dans l'ordre de la fiche, et le bilan. */
+function photosAEnvoyerLbc(photos, quota) {
+  const liste = Array.isArray(photos) ? photos : [];
+  const gratuites = Number.isInteger(quota?.gratuites) && quota.gratuites > 0 ? quota.gratuites : null;
+  const envoyees = liste.slice(0, gratuites ?? LBC_PHOTOS_GRATUITES_MINIMUM);
+  const bilan = { gratuites, source: quota?.source ?? "illisible", fiche: liste.length, envoyees: envoyees.length, at: new Date().toISOString() };
+  let note = null;
+  if (envoyees.length < liste.length) {
+    note = gratuites != null
+      ? `photos: Leboncoin offre ${gratuites} photo(s) gratuite(s) ici (lu sur le formulaire : ${bilan.source}) — les ${envoyees.length} premières envoyées sur ${liste.length}, aucune photo payante`
+      : `photos: nombre de photos gratuites illisible sur le formulaire — les ${envoyees.length} premières envoyées sur ${liste.length} (minimum gratuit de Leboncoin), aucune photo payante`;
+  }
+  return { photos: envoyees, bilan, note };
+}
+
+/** Mur « Valider et payer » : quand les photos parties tiennent dans le gratuit LU sur
+ *  le formulaire, le paiement demandé n'est pas le pack photos (forfait pro…) — on le dit. */
+function motPhotosMurPayantLbc(bp = bilanPhotosLbc) {
+  return bp?.gratuites != null && bp.envoyees <= bp.gratuites
+    ? ` FillSell n'a envoyé que ${bp.envoyees} photo(s), dans la limite gratuite affichée par Leboncoin (${bp.gratuites}) : ce n'est donc pas le pack photos qui est demandé.`
+    : "";
+}
+
+/** Le bilan des photos voyage avec TOUT résultat du dépôt (platform_fields.photos_lbc). */
+function joindreBilanPhotosLbc(resultat) {
+  if (resultat && typeof resultat === "object" && bilanPhotosLbc && resultat.photosLbc === undefined) resultat.photosLbc = bilanPhotosLbc;
+  return resultat;
+}
+
+/** Le quota lu deux fois de suite à l'identique (le pack de la catégorie arrive après elle). */
+async function lireQuotaPhotosLbcStable() {
+  let avant = null;
+  for (let i = 0; i < 6; i++) {
+    const q = quotaPhotosGratuitesLbc(lireEmplacementsPhotosLbc(document));
+    if (avant && q.gratuites === avant.gratuites && q.source === avant.source) return q;
+    avant = q;
+    await sleep(700);
+  }
+  return avant;
 }
 
 async function uploadPhotos(input, photos) {

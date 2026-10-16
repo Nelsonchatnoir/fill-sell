@@ -592,7 +592,9 @@ export interface VenteAnnoncee {
   titre: string | null;
   /** Slug. Passé par la garde des plateformes, jamais imprimé brut. */
   plateforme: string;
-  prixVente: number;
+  /** (16/10, C1) null = prix de vente INCONNU : le mail n'écrit aucun montant
+   *  (ni « 0 € », ni bénéfice). Un montant ne s'écrit que s'il est > 0. */
+  prixVente: number | null;
   /** null = prix d'achat inconnu : on n'invente pas de bénéfice. */
   benefice: number | null;
 }
@@ -615,6 +617,18 @@ function euros(n: number, lang: Langue): string {
   return lang === "fr" ? `${v} €` : `€${v}`;
 }
 
+/** (16/10, C1) Un prix de vente s'écrit seulement s'il est un nombre > 0. */
+function prixVenteConnu(v: VenteAnnoncee): boolean {
+  return typeof v.prixVente === "number" && Number.isFinite(v.prixVente) && v.prixVente > 0;
+}
+
+/** Le prix de vente écrit : à l'euro (comme avant), sauf sous 0,50 € — jamais « 0 € ». */
+function eurosPrix(n: number, lang: Langue): string {
+  if (Math.round(n) !== 0) return euros(n, lang);
+  const c = n.toFixed(2);
+  return lang === "fr" ? `${c.replace(".", ",")} €` : `€${c}`;
+}
+
 export function mailVentes(ctx: ContexteVentes, lang: Langue): MailPret {
   const fr = lang === "fr";
   const n = ctx.ventes.length;
@@ -624,14 +638,21 @@ export function mailVentes(ctx: ContexteVentes, lang: Langue): MailPret {
     const ou = v.plateforme === "ailleurs"
       ? (fr ? "vendu ailleurs" : "sold elsewhere")
       : plateformesEnClair([v.plateforme], lang);
+    // (16/10, C1) Prix de vente inconnu : AUCUN montant, aucun bénéfice —
+    // jamais « vendu 0 € » (26 mails en 7 jours, dont des bénéfices négatifs).
+    if (!prixVenteConnu(v)) {
+      return v.plateforme === "ailleurs" ? `« ${titre} » — ${ou}` : `« ${titre} » — ${ou} : ${fr ? "vendu" : "sold"}`;
+    }
+    const prix = v.prixVente as number;
     const argent = v.benefice === null
-      ? (fr ? `vendu ${euros(v.prixVente, lang)}` : `sold for ${euros(v.prixVente, lang)}`)
+      ? (fr ? `vendu ${eurosPrix(prix, lang)}` : `sold for ${eurosPrix(prix, lang)}`)
       : (fr
-        ? `vendu ${euros(v.prixVente, lang)}, ${v.benefice >= 0 ? "+" : ""}${euros(v.benefice, lang)} de bénéfice`
-        : `sold for ${euros(v.prixVente, lang)}, ${v.benefice >= 0 ? "+" : ""}${euros(v.benefice, lang)} profit`);
+        ? `vendu ${eurosPrix(prix, lang)}, ${v.benefice >= 0 ? "+" : ""}${euros(v.benefice, lang)} de bénéfice`
+        : `sold for ${eurosPrix(prix, lang)}, ${v.benefice >= 0 ? "+" : ""}${euros(v.benefice, lang)} profit`);
     return `« ${titre} » — ${ou} : ${argent}`;
   });
-  const sansPrixAchat = ctx.ventes.some((v) => v.benefice === null);
+  // Le bénéfice ne manque « faute de prix d'achat » que si le prix de vente est connu.
+  const sansPrixAchat = ctx.ventes.some((v) => prixVenteConnu(v) && v.benefice === null);
   const seule = n === 1 ? ctx.ventes[0] : null;
   const seuleAilleurs = seule?.plateforme === "ailleurs";
   const ouSeule = seule && !seuleAilleurs ? plateformesEnClair([seule.plateforme], lang) : "";

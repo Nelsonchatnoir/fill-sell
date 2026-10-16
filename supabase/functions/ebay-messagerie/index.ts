@@ -22,10 +22,10 @@ import { commandesEbay, conversationsEbay, texteMessageEbay } from "../_shared/m
 //     10 messages au plus par passage, et les commandes à expédier
 //     (getOrders NOT_STARTED|IN_PROGRESS) → messagerie_enregistrer,
 //     commandes_enregistrer ;
-//   · envoyer — UNE réponse en attente d'une conversation eBay de la liste
-//     blanche (messagerie_reponse_a_envoyer, relue juste avant), par
-//     AddMemberMessageRTQ (réponse à la question d'un acheteur). Liste blanche
-//     vide au 16/10 : ne part jamais.
+//   · envoyer — UNE réponse en attente (messagerie_reponse_a_envoyer ; 16/10
+//     nuit : comptes bêta sans liste blanche, mode relu à la prise), texte
+//     EXACT (empreinte revérifiée avant l'envoi), par AddMemberMessageRTQ
+//     (réponse à la question d'un acheteur).
 //
 // ⛔ Lire ≠ marquer lu : ReviseMyMessages n'est jamais appelé.
 // ⛔ Aucun texte de message dans un journal ; la réponse HTTP ne porte que des
@@ -191,16 +191,27 @@ async function relever(admin: SupabaseClient, env: EbayEnv, userId: string) {
   return { entetes: entetes.length, textes_lus: corps.size, bilan, commandes: bilanCommandes };
 }
 
-// ── MODE ENVOYER : une réponse de la liste blanche, jamais plus ──────────────
+// ── MODE ENVOYER : UNE réponse, jamais plus ──────────────────────────────────
+// (16/10 nuit) Comptes bêta sans liste blanche : c'est messagerie_reponse_a_
+// envoyer qui dit oui à la prise (coin_config.messagerie_envoi_mode relu, une
+// réponse à la fois, jamais renvoyée). Ici : l'empreinte SHA-256 du texte est
+// recalculée et comparée à celle de la base AVANT l'envoi — le texte qui part
+// est exactement celui saisi (l'échappement XML n'en change pas un caractère).
+async function empreinteTexte(texte: string) {
+  const h = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(texte ?? "")));
+  return [...new Uint8Array(h)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 async function envoyer(admin: SupabaseClient, env: EbayEnv, userId: string) {
   const { data: prise } = await admin.rpc("messagerie_reponse_a_envoyer", { p_platforms: ["ebay"], p_user: userId });
   const rep = (prise as { reponse?: Record<string, string> | null } | null)?.reponse;
   if (!rep?.id) return { reponse: null };
   const rendre = (ok: boolean, resultat: Record<string, unknown>) =>
-    admin.rpc("messagerie_reponse_resultat", { p_id: rep.id, p_ok: ok, p_resultat: resultat, p_user: userId });
-  const { data: lb } = await admin.from("messagerie_liste_blanche").select("conversation_ref")
-    .eq("user_id", userId).eq("platform", "ebay").eq("conversation_ref", rep.conversation_ref).limit(1);
-  if (!lb?.length) { await rendre(false, { motif: "liste_blanche_absente" }); return { envoyee: false, motif: "liste_blanche_absente" }; }
+    admin.rpc("messagerie_reponse_resultat", { p_id: rep.id, p_ok: ok, p_resultat: { ...resultat, executant: "serveur ebay-messagerie" }, p_user: userId });
+  if (!rep.empreinte || (await empreinteTexte(rep.texte)) !== rep.empreinte) {
+    await rendre(false, { motif: "empreinte_differente", empreinte_ok: false });
+    return { envoyee: false, motif: "empreinte_differente" };
+  }
   // La question à laquelle on répond : le dernier message REÇU de la conversation.
   const { data: conv } = await admin.from("messagerie_conversations").select("id, annonce_ref, interlocuteur_ref")
     .eq("user_id", userId).eq("platform", "ebay").eq("conversation_ref", rep.conversation_ref).maybeSingle();
@@ -218,7 +229,7 @@ async function envoyer(admin: SupabaseClient, env: EbayEnv, userId: string) {
     `<DisplayToPublic>false</DisplayToPublic><EmailCopyToSender>false</EmailCopyToSender>` +
     `<ParentMessageID>${echapper(String(dernier.message_ref))}</ParentMessageID><RecipientID>${echapper(String(conv.interlocuteur_ref))}</RecipientID></MemberMessage>`);
   const err = erreurTrading(r.xml);
-  await rendre(!err, { http: r.http, code: err ? err.split(" ")[0] : null, motif: err ? "trading_refus" : null });
+  await rendre(!err, { http: r.http, code: err ? err.split(" ")[0] : null, motif: err ? "trading_refus" : null, empreinte_ok: true });
   return { envoyee: !err };
 }
 
@@ -259,7 +270,7 @@ Deno.serve(async (req) => {
   const resultats: Record<string, unknown>[] = [];
   for (const userId of comptes) {
     try {
-      // Le relevé, puis AU PLUS une réponse de la liste blanche (vide au 16/10).
+      // Le relevé, puis AU PLUS une réponse en attente.
       const r = mode === "envoyer" ? await envoyer(admin, env, userId)
         : { ...(await relever(admin, env, userId)), envoi: await envoyer(admin, env, userId) };
       resultats.push(r as Record<string, unknown>);

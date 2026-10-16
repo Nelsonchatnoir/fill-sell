@@ -6,14 +6,18 @@
 //      section « À expédier » des Ventes et l'indicateur de la carte ne se
 //      rendent QUE pour un compte bêta ; hors bêta, une seule lecture puis
 //      plus rien (la relecture s'arrête) ; jamais de setInterval ;
-//   b. (16/10 soir) le bouton « Bordereau » n'est ACTIF que pour Vinted et
-//      Leboncoin, bordereau PRÊT chez la plateforme ; il dépose une demande
-//      (bordereau_demander) et rien d'autre ; tout geste qui engage ouvre la
-//      page de la plateforme (lien), jamais une action de FillSell ;
+//   b. (16/10 soir) « Récupérer le bordereau » n'est ACTIF que bordereau PRÊT
+//      chez la plateforme ; il dépose une demande (bordereau_demander) et rien
+//      d'autre. (16/10 nuit, mission de Nico) « Générer le bordereau » (Vinted,
+//      Leboncoin, Beebs) n'existe que génération ouverte et options relevées
+//      générables ; un appui ouvre l'ÉCRAN DE CONFIRMATION (phrase de ce que le
+//      geste engage), seul son second appui appelle bordereau_generer ; eBay
+//      (payant, conditions d'eBay) et Depop restent des liens ;
 //   b'. les murs des relevés (Beebs sans téléphone vérifié, session absente,
 //      pause) sont dits en clair ; un 401 seul n'en est pas un ;
-//   c. une réponse verrouillée le dit (liste blanche), une réponse en échec dit
-//      que rien n'est parti ;
+//   c. une réponse verrouillée le dit, une réponse en échec dit que rien n'est
+//      parti ; (16/10 nuit) mode 2 = envoi actif SANS liste blanche, texte exact
+//      (aucun trim), une clé d'envoi par brouillon, empreinte passée à la base ;
 //   d. non lus : même règle que messagerie_compteurs (systèmes exclus, vue
 //      dans FillSell après le dernier message = lue) ; tri et « À expédier » ;
 //   e. eBay : normaliseurs serveur (messages groupés par annonce ×
@@ -23,7 +27,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { conversationNonLue, trierConversations, etatReponse, actionCommande, commandesAExpedier, libelleEtatCommande, nomPlateforme, lienCommande, lienConversation, murReleve, delaiEnvoi, etatZoneReponse, etatDemandeBordereau, refusDemandeBordereau, pseudoAffiche, libelleTransporteur } from "../src/messagerie/vue.js";
+import { conversationNonLue, trierConversations, etatReponse, actionCommande, commandesAExpedier, libelleEtatCommande, nomPlateforme, lienCommande, lienConversation, murReleve, delaiEnvoi, etatZoneReponse, etatDemandeBordereau, refusDemandeBordereau, pseudoAffiche, libelleTransporteur, attendGeneration, phraseEngagement, libelleTypeEtiquette } from "../src/messagerie/vue.js";
 import { conversationsEbay, commandesEbay, texteMessageEbay, etatCommandeEbay } from "../supabase/functions/_shared/messagerie-ebay.js";
 
 const RACINE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -37,7 +41,7 @@ const STOCK = lire("src/tabs/StockTab.jsx");
 const VENTES = lire("src/tabs/VentesTab.jsx");
 const CARTE = lire("src/stock/Carte.jsx");
 const HOOK = lire("src/messagerie/useMessagerieBeta.js");
-const FICHIERS_UI = ["src/messagerie/EspaceMessagerie.jsx", "src/messagerie/SectionAExpedier.jsx", "src/messagerie/BarreMessagerie.jsx", "src/messagerie/vue.js", "src/messagerie/useMessagerieBeta.js", "src/messagerie/ouvrir.js"];
+const FICHIERS_UI = ["src/messagerie/EspaceMessagerie.jsx", "src/messagerie/SectionAExpedier.jsx", "src/messagerie/BarreMessagerie.jsx", "src/messagerie/vue.js", "src/messagerie/useMessagerieBeta.js", "src/messagerie/ouvrir.js", "src/messagerie/empreinte.js"];
 
 // ── a. Rien pour le parc ─────────────────────────────────────────────────────
 await cas("App : la barre et l'espace ne se rendent que pour un compte bêta", () => {
@@ -63,35 +67,61 @@ await cas("le drapeau : une lecture hors bêta puis la relecture s'arrête ; jam
 });
 
 // ── b. Le bouton « Bordereau » et les gestes qui engagent ────────────────────
-await cas("« Bordereau » ACTIF seulement pour Vinted / Leboncoin, bordereau prêt ; sinon un lien vers la plateforme", () => {
+await cas("« Récupérer » ACTIF seulement bordereau prêt (Vinted, Leboncoin, Beebs) ; « Générer » seulement génération ouverte ET options générables ; sinon un lien", () => {
   const actifs = [
     { platform: "vinted", etat: "a_expedier", bordereau: "pret", commande_ref: "9001", conversation_ref: "501" },
     { platform: "leboncoin", etat: "a_expedier", bordereau: "pret", commande_ref: "777" },
+    { platform: "beebs", etat: "a_expedier", bordereau: "pret", commande_ref: "ord-1" },
   ];
   for (const c of actifs) assert.equal(actionCommande(c).type, "bordereau", JSON.stringify(c));
+  const aGenerer = [
+    { platform: "vinted", etat: "a_expedier", bordereau: "a_obtenir", conversation_ref: "501", options_bordereau: { generable: true, types_etiquette: [1, 3] } },
+    { platform: "leboncoin", etat: "a_confirmer", bordereau: "a_generer", commande_ref: "777", options_bordereau: { generable: true, type_envoi: "shop2shop" } },
+    { platform: "beebs", etat: "a_confirmer", bordereau: "a_generer", commande_ref: "ord-1", options_bordereau: { generable: true } },
+  ];
+  for (const c of aGenerer) {
+    assert.equal(attendGeneration(c), true);
+    const ferme = actionCommande(c, "fr", false);
+    assert.equal(ferme.type, "lien", "génération fermée : un lien, jamais le geste");
+    const a = actionCommande(c, "fr", true);
+    assert.equal(a.type, "generer", JSON.stringify(c));
+    assert.equal(a.phrase, phraseEngagement(c.platform, "fr"));
+    assert.ok(a.phrase.length >= 10 && a.phrase.length <= 400, "phrase gardée en base (10 à 400)");
+  }
+  assert.deepEqual(actionCommande(aGenerer[0], "fr", true).types, [1, 3], "Vinted : les types proposés, à choisir");
+  assert.ok(phraseEngagement("beebs").includes("débite l’acheteur"), "Beebs : accepter = débiter l'acheteur (dit en une phrase)");
+  assert.ok(phraseEngagement("vinted").includes("engage"));
+  assert.ok(phraseEngagement("leboncoin").includes("valide la vente"));
+  assert.equal(phraseEngagement("ebay"), null, "eBay : aucune génération");
+  assert.equal(libelleTypeEtiquette(3), "Code QR à montrer au point relais (sans impression)");
+  // Options non générables (domicile, formulaire Leboncoin, remise en main propre) ou pas encore lues : un lien qui dit pourquoi.
+  const nonGenerables = [
+    [{ platform: "vinted", etat: "a_expedier", bordereau: "a_obtenir", options_bordereau: { generable: false, domicile_seul: true } }, "enlèvement à domicile"],
+    [{ platform: "leboncoin", etat: "a_confirmer", bordereau: "a_generer", commande_ref: "8", options_bordereau: { generable: false, type_envoi: "colissimo" } }, "ton adresse"],
+    [{ platform: "beebs", etat: "a_confirmer", bordereau: "a_generer", commande_ref: "o", options_bordereau: { generable: false } }, "Remise en main propre"],
+    [{ platform: "vinted", etat: "a_expedier", bordereau: "a_obtenir" }, "prochain passage"],
+  ];
+  for (const [c, attendu] of nonGenerables) {
+    const a = actionCommande(c, "fr", true);
+    assert.equal(a.type, "lien", JSON.stringify(c));
+    assert.ok(a.aide.includes(attendu), a.aide);
+  }
   const liens = [
-    { platform: "vinted", etat: "a_expedier", bordereau: "a_obtenir", conversation_ref: "501" },
     { platform: "vinted", etat: "a_expedier", bordereau: "indisponible" },
-    { platform: "leboncoin", etat: "a_confirmer", bordereau: "a_generer", commande_ref: "777" },
     { platform: "leboncoin", etat: "a_expedier", bordereau: "a_obtenir", commande_ref: "777" },
-    { platform: "beebs", etat: "a_confirmer", bordereau: "a_generer", commande_ref: "ord-1" },
-    { platform: "beebs", etat: "a_expedier", bordereau: "pret", commande_ref: "ord-1" },
     { platform: "ebay", etat: "a_expedier", bordereau: "a_obtenir", commande_ref: "12-345" },
     { platform: "depop", etat: "a_expedier", bordereau: "sans_objet", commande_ref: "77" },
     { platform: "vinted", etat: "inconnu", bordereau: "inconnu" },
   ];
   for (const c of liens) {
-    const a = actionCommande(c);
+    const a = actionCommande(c, "fr", true);
     assert.equal(a.type, "lien", JSON.stringify(c));
     assert.ok(/^https:\/\//.test(a.url), a.url);
     assert.ok(a.aide.length > 10);
   }
-  assert.ok(actionCommande(liens[0]).aide.includes("c’est toi qui le fais"), "Vinted : commander l'étiquette = geste du vendeur");
-  assert.ok(actionCommande(liens[2]).aide.includes("disponibilité") && actionCommande(liens[2]).aide.includes("jamais"));
-  assert.ok(actionCommande(liens[4]).aide.includes("accepter la commande"), "Beebs : générer = accepter");
-  assert.equal(actionCommande(liens[5]).type, "lien", "Beebs : bordereau prêt = lien (aucune dernière marche qui n'engage rien n'a été vue)");
-  assert.ok(actionCommande(liens[6]).aide.includes("eBay"));
-  assert.ok(actionCommande(liens[7]).aide.includes("pas de bordereau"));
+  assert.ok(actionCommande(liens[2], "fr", true).aide.includes("achète-la sur eBay"), "eBay : étiquette payante, achetée sur eBay");
+  assert.ok(actionCommande(liens[2], "fr", true).aide.includes("n’en rachète pas une seconde"));
+  assert.ok(actionCommande(liens[3], "fr", true).aide.includes("pas de bordereau"));
 });
 
 await cas("liens des plateformes (relevés le 16/10) ; l'app ne crée une demande QUE dans le geste de clic", () => {
@@ -108,8 +138,24 @@ await cas("liens des plateformes (relevés le 16/10) ; l'app ne crée une demand
   const fn = section.slice(section.indexOf("const demanderBordereau = async (c) =>"));
   assert.ok(fn.indexOf("rpc('bordereau_demander'") > 0, "dans le geste « demanderBordereau »");
   assert.ok(/onClick=\{\(\) => demanderBordereau\(c\)\}/.test(section), "branché sur le clic seulement");
-  for (const f of ["src/App.jsx", "src/messagerie/EspaceMessagerie.jsx", "src/messagerie/useMessagerieBeta.js"]) assert.ok(!/bordereau_demander/.test(lire(f)), "aucune demande depuis " + f);
-  assert.ok(/createSignedUrl\(copie\.chemin, 600\)/.test(section), "copie privée : adresse signée 10 min");
+  for (const f of ["src/App.jsx", "src/messagerie/EspaceMessagerie.jsx", "src/messagerie/useMessagerieBeta.js"]) {
+    assert.ok(!/bordereau_demander|bordereau_generer/.test(lire(f)), "aucune demande depuis " + f);
+  }
+  // (16/10 nuit) La génération : UN appel, dans confirmerGeneration, appelé SEULEMENT par le « Confirmer »
+  // de l'écran de confirmation ; le bouton « Générer » ne fait qu'ouvrir cet écran.
+  assert.equal([...section.matchAll(/rpc\('bordereau_generer'/g)].length, 1, "un seul appel à bordereau_generer");
+  const conf = section.slice(section.indexOf("const confirmerGeneration = async (c, choix, phrase) =>"));
+  assert.ok(conf.indexOf("rpc('bordereau_generer', { p_commande: c.id, p_choix: choix ?? {}, p_engagement: phrase })") > 0, "la phrase affichée part avec la demande");
+  assert.equal([...section.matchAll(/confirmerGeneration\(/g)].length, 1, "appelée à un seul endroit");
+  assert.equal([...section.matchAll(/const confirmerGeneration = /g)].length, 1, "définie une fois");
+  assert.ok(/onConfirmer=\{\(choix, phrase\) => confirmerGeneration\(confirmation\.commande, choix, phrase\)\}/.test(section), "seul « Confirmer » de l'écran l'appelle");
+  assert.ok(/onClick=\{\(\) => setConfirmation\(\{ commande: c, action \}\)\}/.test(section), "« Générer » ouvre l'écran, rien d'autre");
+  assert.ok(/\{action\.phrase\}/.test(section), "la phrase est AFFICHÉE dans l'écran");
+  assert.ok(/generationNee/.test(section), "une génération née : plus jamais le bouton");
+  // La copie privée : adresse signée 10 min (module d'impression).
+  // La copie privée : lue par la session (download), ouverte ailleurs par une adresse signée 10 min.
+  assert.ok(/storage\.from\('bordereaux'\)\.download\(copie\.chemin\)/.test(lire("src/messagerie/impression/copies.js")), "copie privée lue par la session");
+  assert.ok(/createSignedUrl\(cible, 600/.test(lire("src/messagerie/impression/partage.js")), "adresse signée 10 min");
 });
 
 await cas("demandes de bordereau : chaque état dit quoi faire ; refus en clair", () => {
@@ -120,6 +166,18 @@ await cas("demandes de bordereau : chaque état dit quoi faire ; refus en clair"
   assert.equal(etatDemandeBordereau(null), null);
   assert.ok(refusDemandeBordereau("pas_pret").includes("prêt"));
   assert.ok(refusDemandeBordereau("plafond_jour").includes("20"));
+  // (16/10 nuit) La génération : chaque état dit où on en est ; incertaine = vérifier, jamais refait.
+  const gen = (statut, motif = null, extra = {}) => etatDemandeBordereau({ action: "generer", statut, motif, ...extra }, "fr", "vinted");
+  assert.equal(gen("demandee").attente, true);
+  assert.equal(gen("generee", "geste_fait").attente, true);
+  assert.ok(gen("generee", "geste_fait").texte.includes("récupération du fichier"));
+  assert.equal(gen("generee", "fichier_pas_encore_pret", { essais_fichier: 15 }).attente, false);
+  assert.ok(etatDemandeBordereau({ action: "generer", statut: "generee", motif: "fichier_sur_beebs" }, "fr", "beebs").texte.includes("télécharge-le sur Beebs"));
+  assert.ok(gen("incertaine").texte.includes("ne la refera jamais"));
+  assert.ok(gen("echec", "adresse_vinted_incomplete").texte.includes("adresse"));
+  assert.ok(gen("echec", "http_403").texte.includes("rien n’a été fait"));
+  assert.ok(gen("echec", "inconnu_xyz").texte.includes("rien n’a été fait"));
+  assert.ok(refusDemandeBordereau("pas_a_generer").length > 10);
 });
 
 await cas("murs des relevés : Beebs sans téléphone vérifié, session absente, pause ; un 401 seul n'en est pas un", () => {
@@ -135,11 +193,23 @@ await cas("murs des relevés : Beebs sans téléphone vérifié, session absente
   assert.ok(murReleve({ platform: "ebay", dernier_motif: "jeton_revoque" }).titre.includes("eBay"));
 });
 
-await cas("zone de réponse : verrouillée hors liste blanche, active en liste blanche, fermée pour un message de la plateforme", () => {
+await cas("zone de réponse : mode 2 actif SANS liste blanche ; mode 1 verrouillée hors liste blanche ; mode 0 coupée ; fermée pour un message de la plateforme", () => {
   const v = etatZoneReponse({ platform: "vinted" }, false);
-  assert.equal(v.possible, true); assert.equal(v.verrouillee, true); assert.ok(v.texte.includes("liste blanche"));
+  assert.equal(v.possible, true); assert.equal(v.verrouillee, true); assert.ok(v.texte.includes("liste blanche"), "mode absent = liste blanche (fonctionnement d'avant)");
   const a = etatZoneReponse({ platform: "beebs" }, true);
   assert.equal(a.verrouillee, false); assert.ok(a.texte.includes("une seule fois"));
+  const ouvert = etatZoneReponse({ platform: "vinted" }, false, "fr", 2);
+  assert.equal(ouvert.verrouillee, false); assert.ok(ouvert.texte.includes("telle que tu l’écris") && ouvert.texte.includes("une seule fois"));
+  const coupe = etatZoneReponse({ platform: "vinted" }, true, "fr", 0);
+  assert.equal(coupe.verrouillee, true);
+  // L'écran : texte exact (aucun trim), une clé par brouillon gardée jusqu'à la confirmation, empreinte passée.
+  const espace = lire("src/messagerie/EspaceMessagerie.jsx");
+  const rep = espace.slice(espace.indexOf("const repondre = async () =>"), espace.indexOf("const tz = TONS[zone.ton]"));
+  assert.ok(/const exact = texte;/.test(rep), "le texte part tel quel");
+  assert.ok(!/texte\.trim\(\)/.test(rep), "aucun trim du texte envoyé");
+  assert.ok(/p_texte: exact/.test(rep) && /p_cle: cleBrouillon\.current/.test(rep), "clé du brouillon");
+  assert.ok(rep.indexOf("cleBrouillon.current = null;") > rep.indexOf("if (error)"), "la clé n'est oubliée qu'après la confirmation de la base");
+  assert.ok(/p_empreinte: empreinte/.test(rep), "empreinte SHA-256 passée à la base");
   assert.equal(etatZoneReponse({ platform: "depop", systeme: true }, true).possible, false);
   assert.equal(etatZoneReponse({ platform: "leboncoin", reponse_possible: false }, true).possible, false);
 });
@@ -172,6 +242,9 @@ await cas("réponses : verrouillée → « liste blanche », échec → « rien 
   assert.ok(etatReponse({ statut: "verrouillee", motif: "plafond_jour" }).texte.includes("20 réponses"));
   assert.ok(etatReponse({ statut: "echec" }).texte.includes("rien n’est parti"));
   assert.equal(etatReponse({ statut: "envoyee" }).ton, "ok");
+  assert.ok(etatReponse({ statut: "echec", motif: "sans_confirmation" }).texte.includes("ne la renverra jamais"), "prise sans confirmation : jamais renvoyée");
+  assert.ok(etatReponse({ statut: "echec", motif: "empreinte_differente" }).texte.includes("Rien n’est parti"));
+  assert.ok(etatReponse({ statut: "verrouillee", motif: "envoi_ferme" }).texte.includes("Rien n’est parti"));
 });
 
 // ── d. Non lus, tri, À expédier ──────────────────────────────────────────────

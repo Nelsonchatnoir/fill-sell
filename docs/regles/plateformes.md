@@ -16,6 +16,7 @@
 - 09/10 soir — frais de port Depop (ex-L409-418)
 - 09/10 soir — catégories interdites par Depop (ex-L419-429)
 - 10/10 matin — republication automatique Depop (ex-L430-441)
+- 16/10 soir — Leboncoin : comptes PRO (panneau des racines) et photos gratuites lues au dépôt
 
 <!-- ex-CLAUDE.md L59-69 : 11/10 nuit — Depop comme Opla -->
 - **⛔ 11/10 nuit — DEPOP COMME OPLA** — rapport `docs/enquetes/depop-comme-opla-1110/RAPPORT.md` : ⛔ **jamais de
@@ -134,3 +135,37 @@
   exclu des candidats). Preuve réelle chez Nico (job 7cd5edaf, parti seul au
   créneau, recréé, ancienne en 404, test retirée). Selftest
   `selftest:republication-auto-depop`.
+
+## 16/10 soir — Leboncoin : comptes PRO et photos gratuites (règles du code du dépôt, lu le 16/10)
+
+- **Le panneau des racines se reconnaît à ses racines, jamais à « Divers ».** Le sélecteur manuel de catégorie
+  filtre l'arbre par type de compte (droits `private` / `pro` de chaque catégorie) ; « Divers » (id 37) n'a aucun
+  droit pro : un compte PRO ne la voit jamais. L'ancien repère (« liste d'au moins 10 éléments qui contient
+  Divers ») ne trouvait JAMAIS le panneau d'un pro → « Catégorie: panneau des racines introuvable » à chaque
+  dépôt qui passait par le sélecteur manuel (PAUGUES, 9 dépôts le 15/10 ; MeMiniandMove le 21/09 — les deux
+  seuls comptes touchés en 45 jours, deux comptes pro). Règle : `trouverPanneauRacinesLbc`
+  (`content-scripts/leboncoin.js`) = la liste dont la plupart des éléments sont des racines connues (4 au moins),
+  mise en page large ou étroite ; un chemin dont la racine est absente (pro + « Divers > Autres ») passe par les
+  suggestions de Leboncoin (règle du 12/09, tracée `categorie_chemin_invalide`). Selftest
+  `selftest:lbc-categorie-racines` (rejoue aussi l'ancien code : il échoue sur l'arbre d'un pro).
+- **Photos : jamais plus que le gratuit, lu sur le formulaire AU DÉPÔT.** Au-delà, Leboncoin active son « Pack
+  Photos supplémentaires » et n'offre plus que « Valider et payer ». Le nombre gratuit dépend de la catégorie ET
+  du compte (`photosMinNumber` de la catégorie, sinon 3 pour un particulier, 5 pour un pro ; maximum payant
+  `photosMaxNumber`) : l'extension n'a AUCUNE table. Elle lit la galerie avant tout envoi
+  (`lireEmplacementsPhotosLbc` : libellé de la tuile d'ajout « Ajouter 20 photos » = tout gratuit, sinon les
+  emplacements montrés, 10 au plus), deux lectures identiques (le pack de la catégorie arrive après elle), et
+  n'envoie que les premières photos, dans l'ordre de la fiche ; illisible = 3 (le minimum de Leboncoin), dit dans
+  les avertissements du dépôt ; le bilan part en `platform_fields.photos_lbc` `{gratuites, source, fiche, envoyees,
+  at}` ; le pré-vol de recréation fait de même. Le plafond de l'APP (`LBC_FREE_PHOTO_QUOTA`, Divers > Autres = 3,
+  posé à la création du job, et son encart) est laissé tel quel : c'est le filet des extensions d'avant (≤ 0.6.120,
+  dont la version du Chrome Web Store) pendant la mise à jour ; avec une extension à jour il est redondant (elle
+  lit 3 sur cette feuille). Le retirer quand `profiles.extension_build` des comptes actifs porte le correctif.
+  Selftest `selftest:lbc-photos-gratuites`.
+- **Le mur « Valider et payer » n'hérite jamais d'une question passée.** Le même écran finissait tantôt en
+  `relancer`, tantôt en `champ_a_choisir` (23 dépôts d'un même compte le 14/10) : un `needsUserField` resté d'une
+  question déjà tranchée faisait choisir `champ_a_choisir` au filet du serveur et rouvrait l'éditeur.
+  `marquerAttenteUtilisateur` (`background.js`, `champsAttenteUtilisateur`) retire, pour les murs de
+  `MURS_SANS_QUESTION` (`lbc_options_payant_seulement` seulement), les marqueurs de question (`needsUserField(s)`,
+  `champs_a_completer`, `server_required_fields`, `needsUserBoucle`) et pose `needs_user_source = "relancer"` ; le
+  motif reste `last_diagnostic.quoi` ; les autres attentes gardent l'écriture d'avant. Le mur survenu avec des
+  photos dans le gratuit lu le dit (ce n'est pas le pack photos : forfait pro).

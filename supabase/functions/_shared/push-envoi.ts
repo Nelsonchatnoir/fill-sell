@@ -57,9 +57,19 @@ const NOMS: Record<string, string> = {
   vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla", depop: "Depop",
 };
 
-export function formaterPrix(prix: unknown, devise: unknown, lang = "fr"): string | null {
+/**
+ * (16/10, C1) LE prix de vente annonçable : un nombre > 0, sinon null (inconnu
+ * — jamais 0). Une seule règle pour la notification et pour le mail de vente.
+ */
+export function prixVenteConnu(prix: unknown): number | null {
+  if (prix == null || prix === "" || typeof prix === "boolean") return null;
   const n = Number(prix);
-  if (prix == null || !Number.isFinite(n) || n <= 0) return null;
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+export function formaterPrix(prix: unknown, devise: unknown, lang = "fr"): string | null {
+  const n = prixVenteConnu(prix);
+  if (n === null) return null;
   const code = typeof devise === "string" && /^[A-Z]{3}$/.test(devise) ? devise : "EUR";
   try {
     return new Intl.NumberFormat(lang === "en" ? "en-GB" : "fr-FR", {

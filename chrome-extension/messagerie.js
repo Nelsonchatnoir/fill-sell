@@ -19,12 +19,16 @@
 //     de travail de la plateforme, en LECTURE (GET) seulement. Elles ne rendent
 //     que les champs du contrat : jamais un nom, une adresse, un téléphone ;
 //  3. ENVOYEURS DE PAGE — l'envoi d'UNE réponse, jamais appelé sans une
-//     réponse sortie de messagerie_reponse_a_envoyer (liste blanche lue en
-//     base au moment de la prise, puis relue par background.js) ;
-//  4. LE CHEMIN DU BORDEREAU (Vinted, Leboncoin) jusqu'au fichier : sans
-//     `derniereMarche: true`, aucun fichier d'étiquette n'est demandé
+//     réponse sortie de messagerie_reponse_a_envoyer (16/10 nuit : comptes
+//     bêta sans liste blanche, coin_config.messagerie_envoi_mode = 2 ; texte
+//     EXACT, empreinte revérifiée par background.js juste avant l'envoi) ;
+//  4. LE CHEMIN DU BORDEREAU (Vinted, Leboncoin, Beebs) jusqu'au fichier :
+//     sans `derniereMarche: true`, aucun fichier d'étiquette n'est demandé
 //     (selftest) ; background.js ne le passe QUE pour une demande née d'un
-//     clic dans l'app (16/10 soir, migration 20261016200000).
+//     clic dans l'app (16/10 soir, migration 20261016200000) ;
+//  5. GÉNÉRER LE BORDEREAU (16/10 nuit, migration 20261016220000) : le geste
+//     qui ENGAGE, seulement pour une demande née d'un appui APRÈS l'écran de
+//     confirmation de l'app, état relu juste avant, UNE fois (§ 8).
 //
 // ⛔ CONTRATS RELEVÉS EN LECTURE SUR LE COMPTE DE NICO LE 16/10 :
 //   Vinted   GET /api/v2/inbox?page&per_page → conversations[{id, unread,
@@ -119,6 +123,117 @@
     if (v == null || v === "") return null;
     const n = Number(String(v).replace(",", "."));
     return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
+  }
+
+  // ── 1bis. GÉNÉRER LE BORDEREAU : règles pures (16/10 nuit) ─────────────
+  // Le geste qui ENGAGE (Vinted « commander l'étiquette », Leboncoin
+  // « confirmer la disponibilité », Beebs « accepter la commande ») n'est fait
+  // par l'extension QUE pour une demande née d'un appui dans l'app, après
+  // l'écran de confirmation (bordereau_generer) — jamais seul, jamais en lot.
+  // Ces règles décident CE QUI est envoyé ; elles sont testées en Node.
+
+  // Leboncoin (code du site, 16/10 nuit) : les types d'envoi dont le bordereau
+  // naît de la seule confirmation (POST …/action/validate-availability, sans
+  // formulaire). Colissimo et courrier suivi demandent l'adresse et le mode de
+  // dépôt du vendeur (formulaire) ; envoi libre, remise en main propre,
+  // Cocolis : pas de bordereau à récupérer → sur Leboncoin.
+  const LBC_TYPES_GENERABLES = Object.freeze(["mondial_relay", "mondial_relay_home", "shop2shop",
+    "relais_colis_dropoff", "relais_colis_max", "relais_colis_drive"]);
+  function typeEnvoiLeboncoin(v) {
+    const t = String(v ?? "").trim().replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase().replace(/[\s-]+/g, "_");
+    return t || null;
+  }
+
+  // Beebs (constantes du site, 16/10 nuit) : les transporteurs par identifiant ;
+  // RMP = remise en main propre (rien à générer, l'app Beebs seulement).
+  const BEEBS_TRANSPORTEURS = Object.freeze({
+    "3t2zzoKB5G3LrYlVdXa9p4": "Mondial Relay", "7ikZQ19rGLAK3KSjv3e7qF": "Chronopost",
+    "4aLGyUj1UfcDMEnF79vdbO": "Relais Colis", "3uF6wl1aNBSpcERTGRzxuE": "Colis Privé",
+    "5QAfJXcdv81jPJOE8H03ej": "Remise en main propre",
+  });
+  const BEEBS_RMP = "5QAfJXcdv81jPJOE8H03ej";
+
+  // Vinted (code du site, 16/10 nuit) : types d'étiquette 1 = PDF à imprimer,
+  // 2 = code, 3 = QR (sans impression) ; dépôts « point » (relais) ou « home »
+  // (enlèvement à domicile, date à choisir). Le résumé des options relevées en
+  // LECTURE (GET shipments/<id>/label_options) — jamais un nom, jamais un
+  // numéro de téléphone : des types et des booléens.
+  function optionsBordereauVinted(lo) {
+    if (!lo || typeof lo !== "object") return null;
+    const depots = (Array.isArray(lo.depots) ? lo.depots : []).map((d) => ({
+      type: d?.type ?? null,
+      options: (Array.isArray(d?.options) ? d.options : []).map((o) => ({
+        type: o?.type ?? null,
+        types: (Array.isArray(o?.types) ? o.types : []).map(Number).filter((x) => [1, 2, 3].includes(x)),
+        date: o?.date === true, heure: o?.heure === true, reutilisable: o?.reutilisable === true,
+      })),
+    }));
+    const pourPoint = depots.filter((d) => d.type !== "home");
+    const types = [...new Set((pourPoint.length ? pourPoint : depots).flatMap((d) => d.options.flatMap((o) => o.types)))].sort();
+    const toutDomicile = depots.length > 0 && depots.every((d) => d.type === "home" || d.options.every((o) => o.date || o.heure));
+    return {
+      transporteur: typeof lo.transporteur === "string" ? lo.transporteur.slice(0, 60) : null,
+      types_etiquette: types,
+      domicile_seul: toutDomicile,
+      telephone_manquant: lo.telephone_requis === "mandatory" && lo.telephone_present !== true,
+      generable: !toutDomicile && !(lo.telephone_requis === "mandatory" && lo.telephone_present !== true),
+    };
+  }
+
+  /**
+   * Ce que FillSell envoie pour commander l'étiquette Vinted (PUT
+   * transactions/<id>/shipment/order), à l'image du site : dépôt en point
+   * relais quand Vinted propose le choix, emballage personnel, type
+   * d'étiquette choisi dans l'app s'il y en a plusieurs. Rend {refus} quand
+   * le geste demande un choix que FillSell ne fait pas (enlèvement à domicile
+   * daté, téléphone à saisir, type à choisir) — rien n'est alors envoyé.
+   */
+  function corpsCommandeVinted(lo, adresse, typeChoisi) {
+    if (!adresse?.id) return { refus: "adresse_vinted_absente" };
+    if (adresse.complete !== true) return { refus: "adresse_vinted_incomplete" };
+    if (lo?.telephone_requis === "mandatory" && lo?.telephone_present !== true) return { refus: "telephone_vinted_requis" };
+    const depots = Array.isArray(lo?.depots) ? lo.depots : [];
+    const point = depots.find((d) => d?.type === "point") ?? null;
+    if (depots.length && !point && depots.every((d) => d?.type === "home")) return { refus: "enlevement_domicile_sur_vinted" };
+    const cible = point ?? depots[0] ?? null;
+    const options = Array.isArray(cible?.options) ? cible.options : [];
+    if (options.length && options.every((o) => o?.date === true || o?.heure === true)) return { refus: "date_a_choisir_sur_vinted" };
+    const types = [...new Set(options.flatMap((o) => (Array.isArray(o?.types) ? o.types : []).map(Number)))].filter((x) => [1, 2, 3].includes(x));
+    const choisi = Number(typeChoisi);
+    let labelType = null;
+    if (types.length > 1) {
+      if (!types.includes(choisi)) return { refus: "type_etiquette_a_choisir" };
+      labelType = choisi;
+    } else if (types.length === 1) {
+      labelType = types[0];
+    }
+    const reutilisable = depots.some((d) => (d?.options ?? []).some((o) => o?.reutilisable === true));
+    const corps = { seller_address_id: adresse.id, drop_off_type: depots.length > 1 && point ? "point" : null, label_type: labelType };
+    if (reutilisable) corps.reusable_package_selected = false;
+    return { corps };
+  }
+
+  /**
+   * (16/10 nuit) L'empreinte SHA-256 (hex) du texte EXACT d'une réponse —
+   * la même que celle de la base (encode(sha256(convert_to(texte,'UTF8')),'hex')).
+   * Recalculée juste avant l'envoi : différente, rien ne part.
+   */
+  async function empreinteTexte(texte) {
+    const octets = new TextEncoder().encode(String(texte ?? ""));
+    const h = await crypto.subtle.digest("SHA-256", octets);
+    return [...new Uint8Array(h)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  }
+
+  /** L'issue d'un geste qui engage, d'après la réponse (jamais deviné). */
+  function issueGeste(reponse) {
+    // Pas de réponse (réseau coupé, onglet figé) : la plateforme a PU recevoir
+    // le geste → incertain, jamais refait.
+    if (!reponse || !Number(reponse.http)) return { issue: "incertain", motif: "reseau" };
+    const http = Number(reponse.http);
+    if (http === 403 || http === 429 || reponse.bot) return { issue: "refuse", motif: `http_${http}`, bot: true };
+    if (http >= 500) return { issue: "incertain", motif: `http_${http}` };
+    if (http >= 400) return { issue: "refuse", motif: `http_${http}` };
+    return { issue: "fait" };
   }
 
   /** Un signe de blocage dans une réponse lue (403, 429, captcha, DataDome). */
@@ -294,6 +409,9 @@
         conversation_ref: d?.thread_id != null ? String(d.thread_id) : null,
         envoi_ref: d?.shipment?.id != null ? String(d.shipment.id) : null,
         vendue_le: dateIso(d?.debit_processed_at ?? c.date),
+        // (16/10 nuit) Ce que Vinted propose pour commander l'étiquette (lu en
+        // lecture), pour l'écran de confirmation de l'app.
+        ...(bordereau === "a_obtenir" && d?.options ? { options_bordereau: optionsBordereauVinted(d.options) } : {}),
       });
     }
     return out;
@@ -403,6 +521,12 @@
         transporteur: d?.shipping_type ?? null,
         envoi_ref: d?.parcel_id ?? null,
         vendue_le: dateIso(c.created_at),
+        // (16/10 nuit) La disponibilité se confirme depuis FillSell seulement
+        // pour les envois dont le bordereau naît de la confirmation seule.
+        ...(etat === "a_confirmer" && d?.shipping_type ? { options_bordereau: {
+          type_envoi: typeEnvoiLeboncoin(d.shipping_type),
+          generable: LBC_TYPES_GENERABLES.includes(typeEnvoiLeboncoin(d.shipping_type)),
+        } } : {}),
       });
     }
     return out;
@@ -623,7 +747,12 @@
         montant: montant(valeur),
         devise: "EUR",
         annonce_ref: unique ? (premier(unique.id, unique.product_id, unique.productId) != null ? String(premier(unique.id, unique.product_id, unique.productId)) : null) : null,
-        transporteur: texteCourt(premier(o.carrier_name, o.carrier?.name, o.carrier_id), 80),
+        // (16/10 nuit) Le transporteur en clair (identifiants du site), jamais le code.
+        transporteur: texteCourt(premier(o.carrier_name, o.carrier?.name, BEEBS_TRANSPORTEURS[String(o.carrier_id ?? "")], o.carrier_id), 80),
+        ...(etat === "a_confirmer" ? { options_bordereau: {
+          transporteur: BEEBS_TRANSPORTEURS[String(o.carrier_id ?? "")] ?? null,
+          generable: s === "WAIT_SELLER_CONFIRM" && String(o.carrier_id ?? "") !== BEEBS_RMP,
+        } } : {}),
         envoi_ref: premier(o.shipping?.tracking_number, o.shipping?.parcel_id) != null ? String(premier(o.shipping?.tracking_number, o.shipping?.parcel_id)) : null,
         // La date limite que le site affiche : déposer dans les 6 jours après le
         // bordereau (LABEL_PRINTED, calcul du site : status_updated_at + 6 j).
@@ -720,7 +849,12 @@
   }
 
   // Vinted : les commandes EN COURS (+ celles qu'on suit encore), détaillées.
-  async function lecteurCommandesVinted(suivies, detailsMax) {
+  // (16/10 nuit) Pour une commande dont l'étiquette reste à commander (envoi
+  // < 200), les options de Vinted sont lues UNE fois (GET label_options, ce
+  // que la page lit en ouvrant « obtenir le bordereau ») — sauf celles que le
+  // poste connaît déjà (optionsConnues). Ne sortent que des types et des
+  // booléens : ni nom, ni numéro de téléphone.
+  async function lecteurCommandesVinted(suivies, detailsMax, optionsConnues) {
     const renouveler = async () => { try { const x = await fetch("/web/api/auth/refresh", { method: "POST", credentials: "include", headers: { Accept: "application/json" } }); return x.ok; } catch { return false; } };
     let requetes = 1;
     const lireListe = () => fetch("/api/v2/my_orders?type=sold&status=in_progress&page=1&per_page=20", {
@@ -767,6 +901,33 @@
         offer_price: tr?.offer?.price ? { amount: tr.offer.price.amount ?? tr.offer.price, currency_code: tr.offer.currency ?? null } : null,
         debit_processed_at: tr.debit_processed_at ?? null,
       };
+      const envoi = Number(tr?.shipment?.status);
+      const connues = new Set((optionsConnues ?? []).map(String));
+      if (!o.suivie && tr?.shipment?.id != null && Number.isFinite(envoi) && envoi < 200 && !connues.has(String(o.transaction_id))) {
+        await new Promise((ok) => setTimeout(ok, 1200 + Math.random() * 1400));
+        requetes++;
+        const ro = await fetch(`/api/v2/shipments/${encodeURIComponent(tr.shipment.id)}/label_options`, {
+          credentials: "include", headers: { Accept: "application/json" }, cache: "no-store",
+        }).catch(() => null);
+        if (ro && (ro.status === 403 || ro.status === 429)) return { ok: false, http: ro.status, motif: `http_${ro.status}`, requetes };
+        const lo = ro && ro.status === 200 ? (await ro.json().catch(() => null))?.label_options : null;
+        if (lo) {
+          o.detail.options = {
+            transporteur: lo?.carrier?.name ?? null,
+            telephone_requis: lo?.sender?.phone_number_requirement ?? null,
+            telephone_present: Boolean(lo?.sender?.phone_number),
+            depots: (Array.isArray(lo?.drop_offs) ? lo.drop_offs : []).map((d) => ({
+              type: d?.type ?? null,
+              options: (Array.isArray(d?.options) ? d.options : []).map((x) => ({
+                type: x?.type ?? null, types: Array.isArray(x?.label_types) ? x.label_types : [],
+                date: x?.requires_pickup_date === true, heure: x?.requires_pickup_time === true,
+                reutilisable: x?.free_reusable_packaging_available === true,
+              })),
+            })),
+          };
+          o.optionsLues = true;
+        }
+      }
     }
     return { ok: true, http: 200, commandes: aLire.filter((o) => !o.suivie || o.detail), requetes };
   }
@@ -1164,7 +1325,9 @@
   async function envoyeurLeboncoin(r) {
     const tok = localStorage.getItem("luat");
     if (!tok || !r.moi) return { ok: false, motif: "jeton_absent" };
-    const cle = (crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`);
+    // (16/10 nuit) La clé d'idempotence de Leboncoin = le numéro de NOTRE
+    // réponse : un envoi rejoué porterait la même clé (jamais deux messages).
+    const cle = r.cleEnvoi || (crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`);
     const res = await fetch(`https://api.leboncoin.fr/messaging/proxy/api/v1/hal/${encodeURIComponent(r.moi)}/conversations/${encodeURIComponent(r.conversationRef)}/messages`, {
       method: "POST",
       headers: { authorization: `Bearer ${tok}`, Accept: "application/hal+json", "Content-Type": "application/json" },
@@ -1186,7 +1349,8 @@
       headers: { Accept: "application/json", "Content-Type": "application/json", Authorization: `Bearer ${tok}` },
       body: JSON.stringify({ user_id: Number(r.interlocuteurRef) || r.interlocuteurRef, text: r.texte,
         product_id: r.annonceRef ? (Number(r.annonceRef) || r.annonceRef) : undefined,
-        idempotency_key: crypto?.randomUUID?.() ?? `${Date.now()}` }),
+        // (16/10 nuit) Idempotence Depop = le numéro de NOTRE réponse.
+        idempotency_key: r.cleEnvoi || (crypto?.randomUUID?.() ?? `${Date.now()}`) }),
     }).catch(() => null);
     if (!res) return { ok: false, motif: "reseau" };
     const j = await res.json().catch(() => null);
@@ -1233,7 +1397,7 @@
   // 220/230/250 ; sinon le bouton « get_shipping_label » de la conversation
   // ouvre la commande de l'étiquette (PUT transactions/<id>/shipment/order :
   // choix du dépôt, de la date d'enlèvement, papier/numérique — c'est un
-  // geste qui ENGAGE, jamais fait ici). Fichier : GET transactions/<id>/
+  // geste qui ENGAGE, fait par le § 8 seulement, jamais ici). Fichier : GET transactions/<id>/
   // shipment/pdf_label → {file:{label (base64), filename}} ; QR :
   // …/digital_label ; Vinted compte l'ouverture du bordereau.
   async function cheminBordereauVinted(p) {
@@ -1318,7 +1482,390 @@
     return { ok: true, base64: btoa(bin), nom: `bordereau-${p.purchaseId}.pdf`, etapes };
   }
 
-  const CHEMINS_BORDEREAU = Object.freeze({ vinted: cheminBordereauVinted, leboncoin: cheminBordereauLeboncoin });
+  // Beebs (16/10 nuit) : aucune vente n'a encore été vue — le fichier d'un
+  // bordereau déjà généré n'est pas dans le code lisible du site (page rendue
+  // par le serveur). On relit l'objet commande de sa page (flux RSC) et on
+  // cherche une ADRESSE de bordereau (clé « label », « bordereau »…, ou un PDF) ;
+  // trouvée, elle est ouverte UNE fois. Introuvable : on le DIT (« télécharge-le
+  // sur Beebs »), on ne devine rien.
+  async function cheminBordereauBeebs(p) {
+    const etapes = [];
+    const id = String(p.orderId ?? "");
+    if (!id) return { ok: false, etape: "commande", motif: "commande_inconnue", etapes };
+    etapes.push("GET /fr/account/orders/<id> (RSC)");
+    const r = await fetch(`/fr/account/orders/${encodeURIComponent(id)}`, { credentials: "include", headers: { RSC: "1", Accept: "*/*" }, cache: "no-store" }).catch(() => null);
+    if (!r) return { ok: false, etape: "commande", motif: "reseau", etapes };
+    if (r.status === 403 || r.status === 429) return { ok: false, etape: "commande", motif: `http_${r.status}`, bot: true, etapes };
+    if (r.status !== 200) return { ok: false, etape: "commande", motif: `http_${r.status}`, etapes };
+    const t = await r.text().catch(() => "");
+    let commande = null;
+    const marcher = (v, profondeur) => {
+      if (commande || !v || typeof v !== "object" || profondeur > 60) return;
+      if (!Array.isArray(v) && typeof v.status === "string" && Array.isArray(v.products) && (v.buyer || v.seller) && String(v.id ?? id) === id) { commande = v; return; }
+      for (const x of Object.values(v)) marcher(x, profondeur + 1);
+    };
+    for (const ligne of t.split("\n")) {
+      const i = ligne.indexOf(":");
+      if (i < 0) continue;
+      const reste = ligne.slice(i + 1);
+      if (!/^[[{]/.test(reste)) continue;
+      try { marcher(JSON.parse(reste), 0); } catch { /* autre forme */ }
+      if (commande) break;
+    }
+    if (!commande) return { ok: false, etape: "commande", motif: "commande_illisible", etapes };
+    const s = String(commande.status ?? "").toUpperCase();
+    if (s !== "LABEL_PRINTED" && s !== "LABEL_PRINTED_WARNING") {
+      return { ok: false, etape: "statut", motif: s.startsWith("WAIT_SELLER_CONFIRM") ? "commande_a_accepter_sur_beebs" : "bordereau_pas_pret", statut: s, etapes };
+    }
+    // Une adresse de bordereau dans l'objet commande (2 niveaux), jamais devinée.
+    let adresse = null;
+    const chercher = (v, profondeur) => {
+      if (adresse || !v || typeof v !== "object" || profondeur > 3) return;
+      for (const [k, x] of Object.entries(v)) {
+        if (adresse) return;
+        if (typeof x === "string" && /^https:\/\//.test(x) && (/label|bordereau|etiquette/i.test(k) || /\.pdf(\?|$)/i.test(x))) { adresse = x; return; }
+        if (x && typeof x === "object" && !Array.isArray(x)) chercher(x, profondeur + 1);
+      }
+    };
+    chercher(commande.shipping ?? {}, 0);
+    if (!adresse) chercher(commande, 0);
+    if (!adresse) return { ok: false, etape: "fichier", motif: "fichier_sur_beebs", etapes };
+    if (p.derniereMarche !== true) return { ok: false, etape: "derniere_marche", motif: "fermee", prepare: { hote: new URL(adresse).host }, etapes };
+    etapes.push(`GET ${new URL(adresse).host} (bordereau)`);
+    const memeSite = /(^|\.)beebs\.app$/.test(new URL(adresse).host);
+    const f = await fetch(adresse, { credentials: memeSite ? "include" : "omit", cache: "no-store" }).catch(() => null);
+    if (!f || f.status !== 200) return { ok: false, etape: "fichier", motif: `http_${f?.status ?? 0}`, bot: f?.status === 403 || f?.status === 429, etapes };
+    const buf = new Uint8Array(await f.arrayBuffer());
+    let bin = ""; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+    return { ok: true, base64: btoa(bin), nom: `bordereau-beebs-${id}.pdf`, etapes };
+  }
+
+  const CHEMINS_BORDEREAU = Object.freeze({ vinted: cheminBordereauVinted, leboncoin: cheminBordereauLeboncoin, beebs: cheminBordereauBeebs });
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // 8. GÉNÉRER LE BORDEREAU (16/10 nuit, mission de Nico) — LE GESTE QUI
+  //    ENGAGE, sur UNE demande née d'un appui dans l'app APRÈS l'écran de
+  //    confirmation (bordereau_generer), jamais seul, jamais en lot.
+  //    Deux temps, tous deux AUTONOMES :
+  //      · PRÉPARER : lire l'état (et ce que la plateforme propose) — GET ;
+  //      · LE GESTE : relire l'état JUSTE AVANT (déjà fait → rien n'est
+  //        renvoyé), puis UN appel. Vinted seul retente après un 401 (refusé
+  //        avant tout traitement, jeton d'une heure renouvelé) ; aucune autre
+  //        seconde tentative, jamais.
+  //    Ce qui est envoyé est décidé ENTRE les deux, par des règles pures
+  //    (decisionGeneration, testée en Node). Ne sortent jamais : nom, adresse,
+  //    téléphone (l'adresse Vinted ne sort que par son numéro, pour le geste).
+  // ═════════════════════════════════════════════════════════════════════════
+
+  // Vinted (code du site, 16/10 nuit) : GET transactions/<id> (statut de
+  // l'envoi), GET shipments/<id>/label_options, GET api.<domaine>/shipping-
+  // estimation/external/shipping_address (adresse par défaut : son numéro et
+  // « complète ? » seulement), puis PUT transactions/<id>/shipment/order
+  // {seller_address_id, drop_off_type, reusable_package_selected, label_type}.
+  async function preparerGenerationVinted(p) {
+    const etapes = [];
+    const csrf = (() => { for (const s of document.querySelectorAll("script")) { const m = (s.textContent || "").match(/\\?"csrf[_-]?token\\?"\s*:\s*\\?"([^"\\]+)\\?"/i); if (m) return m[1]; } return null; })();
+    const anon = (document.cookie.split("; ").find((x) => x.indexOf("anon_id=") === 0) || "").split("=").slice(1).join("=") || null;
+    const renouveler = async () => { try { const x = await fetch("/web/api/auth/refresh", { method: "POST", credentials: "include", headers: { Accept: "application/json" } }); return x.ok; } catch { return false; } };
+    let renouvele = false;
+    const lire = async (chemin, enTetes = {}) => {
+      etapes.push(`GET ${chemin.replace(/^https:\/\/api\.[^/]+/, "api").replace(/\/\d{5,}/g, "/<n>")}`);
+      const go = () => fetch(chemin, { credentials: "include", headers: { Accept: "application/json", ...enTetes }, cache: "no-store" }).catch(() => null);
+      let r = await go();
+      if (r && r.status === 401 && !renouvele) { renouvele = true; if (await renouveler()) r = await go(); }
+      if (!r) return { http: 0, j: null, bot: false };
+      const t = await r.text().catch(() => "");
+      let j = null; try { j = JSON.parse(t); } catch { j = null; }
+      return { http: r.status, j, bot: /datadome|captcha-delivery|geo\.captcha/i.test(t.slice(0, 4000)) };
+    };
+    const t = await lire(`/api/v2/transactions/${encodeURIComponent(p.transactionId)}`);
+    if (t.http === 403 || t.http === 429 || t.bot) return { ok: false, bot: true, motif: `http_${t.http}`, etapes };
+    const tr = t.j?.transaction;
+    if (!tr) return { ok: false, motif: `transaction_illisible_http_${t.http}`, etapes };
+    const statut = Number(tr?.shipment?.status);
+    const envoi = tr?.shipment?.id ?? null;
+    if (!Number.isFinite(statut) || statut >= 200) return { ok: true, statut, etapes };
+    if (envoi == null) return { ok: false, motif: "envoi_inconnu", statut, etapes };
+    await new Promise((ok) => setTimeout(ok, 900 + Math.random() * 900));
+    const o = await lire(`/api/v2/shipments/${encodeURIComponent(envoi)}/label_options`);
+    if (o.http === 403 || o.http === 429 || o.bot) return { ok: false, bot: true, motif: `http_${o.http}`, etapes };
+    const lo = o.j?.label_options;
+    if (!lo) return { ok: false, motif: `options_illisibles_http_${o.http}`, statut, etapes };
+    await new Promise((ok) => setTimeout(ok, 900 + Math.random() * 900));
+    // La passerelle de Vinted : api.<domaine de la page> (code du site, resolveApiGatewayUrl) —
+    // jamais un domaine écrit en dur (vendeurs des autres pays de Vinted).
+    const passerelle = `https://api.${String(location.host).replace(/^www\./, "")}`;
+    const a = await lire(`${passerelle}/shipping-estimation/external/shipping_address`, {
+      Platform: "web", "X-Next-App": "marketplace-web", ...(csrf ? { "X-CSRF-Token": csrf } : {}), ...(anon ? { "X-Anon-Id": anon } : {}),
+    });
+    if (a.http === 403 || a.http === 429 || a.bot) return { ok: false, bot: true, motif: `http_${a.http}`, etapes };
+    return {
+      ok: true, statut,
+      options: {
+        transporteur: lo?.carrier?.name ?? null,
+        telephone_requis: lo?.sender?.phone_number_requirement ?? null,
+        telephone_present: Boolean(lo?.sender?.phone_number),
+        depots: (Array.isArray(lo?.drop_offs) ? lo.drop_offs : []).map((d) => ({
+          type: d?.type ?? null,
+          options: (Array.isArray(d?.options) ? d.options : []).map((x) => ({
+            type: x?.type ?? null, types: Array.isArray(x?.label_types) ? x.label_types : [],
+            date: x?.requires_pickup_date === true, heure: x?.requires_pickup_time === true,
+            reutilisable: x?.free_reusable_packaging_available === true,
+          })),
+        })),
+      },
+      // Le NUMÉRO de l'adresse (le geste l'exige) et « complète ? » — rien d'autre.
+      adresse: a.http === 200 ? { id: a.j?.address?.id ?? null, complete: a.j?.address?.is_complete === true } : null,
+      etapes,
+    };
+  }
+
+  async function commanderEtiquetteVinted(p) {
+    const etapes = [];
+    const csrf = (() => { for (const s of document.querySelectorAll("script")) { const m = (s.textContent || "").match(/\\?"csrf[_-]?token\\?"\s*:\s*\\?"([^"\\]+)\\?"/i); if (m) return m[1]; } return null; })();
+    const anon = (document.cookie.split("; ").find((x) => x.indexOf("anon_id=") === 0) || "").split("=").slice(1).join("=") || null;
+    if (!csrf) return { avant: true, motif: "csrf_absent", etapes };
+    const renouveler = async () => { try { const x = await fetch("/web/api/auth/refresh", { method: "POST", credentials: "include", headers: { Accept: "application/json" } }); return x.ok; } catch { return false; } };
+    // 1. JUSTE AVANT le geste : l'étiquette est-elle déjà commandée ?
+    etapes.push("GET /api/v2/transactions/<n>");
+    let rt = await fetch(`/api/v2/transactions/${encodeURIComponent(p.transactionId)}`, { credentials: "include", headers: { Accept: "application/json" }, cache: "no-store" }).catch(() => null);
+    if (rt && rt.status === 401 && (await renouveler())) rt = await fetch(`/api/v2/transactions/${encodeURIComponent(p.transactionId)}`, { credentials: "include", headers: { Accept: "application/json" }, cache: "no-store" }).catch(() => null);
+    if (!rt || rt.status !== 200) return { avant: true, http: rt?.status ?? 0, motif: `relecture_http_${rt?.status ?? 0}`, bot: rt?.status === 403 || rt?.status === 429, etapes };
+    const statut = Number((await rt.json().catch(() => null))?.transaction?.shipment?.status);
+    if (Number.isFinite(statut) && statut >= 200) return { avant: true, deja: true, statut, etapes };
+    // 2. LE geste, une fois (un 401 = refusé avant tout traitement : une seconde, après renouvellement).
+    const poser = () => fetch(`/api/v2/transactions/${encodeURIComponent(p.transactionId)}/shipment/order`, {
+      method: "PUT", credentials: "include", cache: "no-store",
+      headers: { Accept: "application/json", "Content-Type": "application/json", "X-CSRF-Token": csrf, ...(anon ? { "X-Anon-Id": anon } : {}) },
+      body: JSON.stringify(p.corps),
+    }).catch(() => null);
+    etapes.push("PUT /api/v2/transactions/<n>/shipment/order");
+    let r = await poser();
+    if (r && r.status === 401 && (await renouveler())) { etapes.push("PUT (après 401)"); r = await poser(); }
+    if (!r) return { http: 0, etapes };
+    const t = await r.text().catch(() => "");
+    let j = null; try { j = JSON.parse(t); } catch { j = null; }
+    return {
+      http: r.status, bot: /datadome|captcha-delivery|geo\.captcha/i.test(t.slice(0, 4000)),
+      code: j && typeof j === "object" && j.code != null ? j.code : null,
+      erreurs: Boolean(j && typeof j === "object" && "errors" in j),
+      etapes,
+    };
+  }
+
+  // Leboncoin (code du site, 16/10 nuit) : GET purchase/v2/purchases/<id>
+  // (machine d'états, type d'envoi), puis POST purchase/v1/purchases/<id>/
+  // action/validate-availability, sans corps (envois en point relais : le
+  // bordereau naît de cette confirmation). Réponse « USECASE_ENTITY_ALREADY_
+  // EXISTS » = déjà confirmée (le site dit « demande déjà traitée »).
+  async function preparerGenerationLeboncoin(p) {
+    const tok = localStorage.getItem("luat");
+    if (!tok) return { ok: false, motif: "jeton_absent", etapes: [] };
+    const etapes = ["GET /consumergoods/purchase/v2/purchases/<n>"];
+    const r = await fetch(`https://api.leboncoin.fr/api/consumergoods/purchase/v2/purchases/${encodeURIComponent(p.purchaseId)}`, {
+      headers: { authorization: `Bearer ${tok}`, accept: "application/json" },
+    }).catch(() => null);
+    if (!r) return { ok: false, motif: "reseau", etapes };
+    if (r.status === 403 || r.status === 429) return { ok: false, bot: true, motif: `http_${r.status}`, etapes };
+    if (r.status !== 200) return { ok: false, motif: `achat_http_${r.status}`, etapes };
+    const d = await r.json().catch(() => null);
+    return {
+      ok: true, statut: String(d?.fsm?.current_state?.status ?? ""),
+      evenements: (Array.isArray(d?.fsm?.states_history) ? d.fsm.states_history : []).map((s) => s?.event?.name ?? s?.event?.type ?? null).filter(Boolean),
+      type_envoi: d?.metadata?.parcelShippingType ?? null, etapes,
+    };
+  }
+
+  async function confirmerDisponibiliteLeboncoin(p) {
+    const tok = localStorage.getItem("luat");
+    if (!tok) return { avant: true, motif: "jeton_absent", etapes: [] };
+    const H = { authorization: `Bearer ${tok}`, accept: "application/json" };
+    const etapes = ["GET /consumergoods/purchase/v2/purchases/<n>"];
+    const rl = await fetch(`https://api.leboncoin.fr/api/consumergoods/purchase/v2/purchases/${encodeURIComponent(p.purchaseId)}`, { headers: H }).catch(() => null);
+    if (!rl || rl.status !== 200) return { avant: true, http: rl?.status ?? 0, motif: `relecture_http_${rl?.status ?? 0}`, bot: rl?.status === 403 || rl?.status === 429, etapes };
+    const st = String((await rl.json().catch(() => null))?.fsm?.current_state?.status ?? "");
+    if (st && st !== "reserved" && st !== "created") return { avant: true, deja: st === "available", statut: st, etapes };
+    etapes.push("POST /consumergoods/purchase/v1/purchases/<n>/action/validate-availability");
+    const r = await fetch(`https://api.leboncoin.fr/api/consumergoods/purchase/v1/purchases/${encodeURIComponent(p.purchaseId)}/action/validate-availability`, {
+      method: "POST", headers: H,
+    }).catch(() => null);
+    if (!r) return { http: 0, etapes };
+    const t = await r.text().catch(() => "");
+    let j = null; try { j = JSON.parse(t); } catch { j = null; }
+    return { http: r.status, code: j && typeof j === "object" && j.code != null ? String(j.code) : null,
+      bot: /datadome|captcha-delivery|geo\.captcha/i.test(t.slice(0, 4000)), etapes };
+  }
+
+  // Beebs (code du site, 16/10 nuit) : la page de la commande (flux RSC) porte
+  // l'objet commande ; « Télécharger le bordereau » appelle l'action serveur
+  // « sellerConfirmAction » (orderId) — son identifiant est relu dans le code
+  // de la page à chaque fois (il change à chaque mise en ligne de Beebs).
+  // Téléphone vérifié exigé (jeton), remise en main propre exclue (l'app Beebs).
+  async function preparerGenerationBeebs(p) {
+    const etapes = [];
+    const id = String(p.orderId ?? "");
+    const brut = String(document.cookie ?? "").split(/;\s*/).find((c) => c.startsWith("access_token="));
+    if (!brut) return { ok: false, motif: "session_absente", etapes };
+    let tok = brut.slice("access_token=".length);
+    try { tok = decodeURIComponent(tok); } catch { /* brut */ }
+    let charge = null;
+    try {
+      const b = String(tok.split(".")[1] ?? "").replace(/-/g, "+").replace(/_/g, "/");
+      charge = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(b + "=".repeat((4 - (b.length % 4)) % 4)), (x) => x.charCodeAt(0))));
+    } catch { charge = null; }
+    const ids = charge?.firebase?.identities ?? null;
+    const telephone = Boolean(charge?.phone_number) || (Array.isArray(ids?.phone) && ids.phone.length > 0);
+    etapes.push("GET /fr/account/orders/<id> (RSC)");
+    const r = await fetch(`/fr/account/orders/${encodeURIComponent(id)}`, { credentials: "include", headers: { RSC: "1", Accept: "*/*" }, cache: "no-store" }).catch(() => null);
+    if (!r) return { ok: false, motif: "reseau", etapes };
+    if (r.status === 403 || r.status === 429) return { ok: false, bot: true, motif: `http_${r.status}`, etapes };
+    if (r.status !== 200) return { ok: false, motif: `commande_http_${r.status}`, etapes };
+    const t = await r.text().catch(() => "");
+    let commande = null;
+    const marcher = (v, profondeur) => {
+      if (commande || !v || typeof v !== "object" || profondeur > 60) return;
+      if (!Array.isArray(v) && typeof v.status === "string" && Array.isArray(v.products) && (v.buyer || v.seller) && String(v.id ?? id) === id) { commande = v; return; }
+      for (const x of Object.values(v)) marcher(x, profondeur + 1);
+    };
+    for (const ligne of t.split("\n")) {
+      const i = ligne.indexOf(":");
+      if (i < 0) continue;
+      const reste = ligne.slice(i + 1);
+      if (!/^[[{]/.test(reste)) continue;
+      try { marcher(JSON.parse(reste), 0); } catch { /* autre forme */ }
+      if (commande) break;
+    }
+    if (!commande) return { ok: false, motif: "commande_illisible", etapes };
+    // L'identifiant de l'action serveur, lu dans le code de la page (fichiers statiques).
+    let action = null;
+    const scripts = [...new Set([...t.matchAll(/"(\/_next\/static\/[^"]+\.js)"/g)].map((m) => m[1]))].slice(0, 80);
+    for (const s of scripts) {
+      const src = await fetch(s, { cache: "force-cache" }).then((x) => (x.ok ? x.text() : "")).catch(() => "");
+      const m = src.match(/createServerReference\)\("([0-9a-f]{20,})",[^)]{0,200}?"sellerConfirmAction"\)/);
+      if (m) { action = m[1]; break; }
+    }
+    etapes.push(`code de la page : ${scripts.length} fichier(s), action ${action ? "trouvée" : "introuvable"}`);
+    return { ok: true, statut: String(commande.status ?? "").toUpperCase(), carrier_id: commande.carrier_id ?? null, telephone, action, etapes };
+  }
+
+  async function accepterCommandeBeebs(p) {
+    const etapes = [];
+    const id = String(p.orderId ?? "");
+    // 1. JUSTE AVANT le geste : la commande attend-elle encore le vendeur ?
+    etapes.push("GET /fr/account/orders/<id> (RSC)");
+    const r0 = await fetch(`/fr/account/orders/${encodeURIComponent(id)}`, { credentials: "include", headers: { RSC: "1", Accept: "*/*" }, cache: "no-store" }).catch(() => null);
+    if (!r0 || r0.status !== 200) return { avant: true, http: r0?.status ?? 0, motif: `relecture_http_${r0?.status ?? 0}`, bot: r0?.status === 403 || r0?.status === 429, etapes };
+    const t0 = await r0.text().catch(() => "");
+    let statut = null;
+    const marcher = (v, profondeur) => {
+      if (statut || !v || typeof v !== "object" || profondeur > 60) return;
+      if (!Array.isArray(v) && typeof v.status === "string" && Array.isArray(v.products) && (v.buyer || v.seller) && String(v.id ?? id) === id) { statut = String(v.status).toUpperCase(); return; }
+      for (const x of Object.values(v)) marcher(x, profondeur + 1);
+    };
+    for (const ligne of t0.split("\n")) {
+      const i = ligne.indexOf(":");
+      if (i < 0) continue;
+      const reste = ligne.slice(i + 1);
+      if (!/^[[{]/.test(reste)) continue;
+      try { marcher(JSON.parse(reste), 0); } catch { /* autre forme */ }
+      if (statut) break;
+    }
+    if (!statut) return { avant: true, motif: "commande_illisible", etapes };
+    if (statut !== "WAIT_SELLER_CONFIRM") {
+      return { avant: true, deja: ["CONFIRMED_BY_SELLER", "WAITING_GENARATING_LABEL_BY_SELLER", "LABEL_PRINTED", "LABEL_PRINTED_WARNING"].includes(statut), statut, etapes };
+    }
+    // 2. LE geste, une fois : l'action serveur du bouton « Télécharger le bordereau ».
+    etapes.push("POST /fr/account/orders/<id> (action sellerConfirmAction)");
+    const r = await fetch(`/fr/account/orders/${encodeURIComponent(id)}`, {
+      method: "POST", credentials: "include", cache: "no-store",
+      headers: { Accept: "text/x-component", "Next-Action": p.action, "Content-Type": "text/plain;charset=UTF-8" },
+      body: JSON.stringify([id]),
+    }).catch(() => null);
+    if (!r) return { http: 0, etapes };
+    const t = await r.text().catch(() => "");
+    // Le résultat de l'action : un objet {success, …} dans le flux.
+    let succes = null;
+    for (const ligne of t.split("\n")) {
+      const i = ligne.indexOf(":");
+      if (i < 0) continue;
+      try {
+        const v = JSON.parse(ligne.slice(i + 1));
+        const cand = v && typeof v === "object" ? (typeof v.success === "boolean" ? v : (v.a && typeof v.a === "object" && typeof v.a.success === "boolean" ? v.a : null)) : null;
+        if (cand) { succes = cand.success; break; }
+      } catch { /* autre forme */ }
+    }
+    return { http: r.status, succes, bot: r.status === 403 || r.status === 429 || (/captcha-delivery\.com|geo\.captcha/i.test(t) && t.length < 60000), etapes };
+  }
+
+  const PREPARATIONS_GENERATION = Object.freeze({ vinted: preparerGenerationVinted, leboncoin: preparerGenerationLeboncoin, beebs: preparerGenerationBeebs });
+  const GESTES_GENERATION = Object.freeze({ vinted: commanderEtiquetteVinted, leboncoin: confirmerDisponibiliteLeboncoin, beebs: accepterCommandeBeebs });
+
+  /**
+   * Après PRÉPARER : que faire ? {deja} (l'étiquette existe déjà : on la
+   * récupère, aucun geste), {refus} (rien ne part : le geste demande ce que
+   * FillSell ne fait pas, ou la commande n'attend plus), ou {args} du geste.
+   */
+  function decisionGeneration(platform, prep, choix, commande) {
+    if (!prep?.ok) return { refus: prep?.motif ?? "preparation_illisible" };
+    if (platform === "vinted") {
+      const s = Number(prep.statut);
+      if ([200, 220, 230, 250].includes(s)) return { deja: true };
+      if (s === 210) return { refus: "etiquette_echouee_chez_vinted" };
+      if (s === 500) return { refus: "commande_annulee" };
+      if (Number.isFinite(s) && s >= 300) return { refus: "deja_expediee" };
+      const c = corpsCommandeVinted(prep.options, prep.adresse, choix?.type_etiquette);
+      if (c.refus) return { refus: c.refus };
+      return { args: { transactionId: commande.commande_ref, corps: c.corps } };
+    }
+    if (platform === "leboncoin") {
+      const s = String(prep.statut ?? "");
+      if (s === "available" || s === "sent" || s === "received") return { deja: s === "available", ...(s !== "available" ? { refus: "deja_expediee" } : {}) };
+      if (/cancel/.test(s)) return { refus: "commande_annulee" };
+      if (s !== "reserved" && s !== "created") return { refus: `etat_${s || "inconnu"}` };
+      if (!LBC_TYPES_GENERABLES.includes(typeEnvoiLeboncoin(prep.type_envoi))) return { refus: "confirmation_sur_leboncoin" };
+      return { args: { purchaseId: commande.commande_ref } };
+    }
+    if (platform === "beebs") {
+      const s = String(prep.statut ?? "").toUpperCase();
+      if (["CONFIRMED_BY_SELLER", "WAITING_GENARATING_LABEL_BY_SELLER", "LABEL_PRINTED", "LABEL_PRINTED_WARNING"].includes(s)) return { deja: true };
+      if (s === "CANCELLED") return { refus: "commande_annulee" };
+      if (s !== "WAIT_SELLER_CONFIRM") return { refus: `etat_${s.toLowerCase() || "inconnu"}` };
+      if (String(prep.carrier_id ?? "") === BEEBS_RMP) return { refus: "remise_en_main_propre_sur_beebs" };
+      if (prep.telephone !== true) return { refus: "telephone_beebs_non_verifie" };
+      if (!prep.action) return { refus: "action_beebs_introuvable" };
+      return { args: { orderId: commande.commande_ref, action: prep.action } };
+    }
+    return { refus: "plateforme_sans_generation" };
+  }
+
+  /**
+   * Après LE GESTE : fait, déjà fait, refusé (RIEN n'a été fait chez la
+   * plateforme) ou INCERTAIN (la plateforme a pu le recevoir : jamais refait).
+   */
+  function issueGeneration(platform, res) {
+    if (!res || typeof res !== "object") return { issue: "incertain", motif: "sans_resultat" };
+    // Le geste n'est pas parti (relecture d'avant, jeton, CSRF) : rien n'a été fait.
+    if (res.avant === true) {
+      if (res.deja === true) return { issue: "deja_fait" };
+      return { issue: "refuse", motif: res.motif ?? `etat_${res.statut ?? "inconnu"}`, bot: res.bot === true };
+    }
+    // L'exécution n'a pas rendu de résultat (onglet figé, injection perdue) : incertain.
+    if (res.ok === false && /^(onglet_fige|sans_resultat|injection_impossible)$/.test(String(res.motif ?? ""))) {
+      return { issue: "incertain", motif: res.motif };
+    }
+    if (res.ok === false && res.motif === "onglet_indisponible") return { issue: "refuse", motif: "onglet_indisponible" };
+    const base = issueGeste(res);
+    if (base.issue !== "fait") return base;
+    if (platform === "vinted" && (res.erreurs === true || (res.code != null && Number(res.code) !== 0))) {
+      return { issue: "refuse", motif: `vinted_code_${res.code ?? "erreurs"}` };
+    }
+    if (platform === "leboncoin" && res.code === "USECASE_ENTITY_ALREADY_EXISTS") return { issue: "deja_fait" };
+    if (platform === "beebs") {
+      if (res.succes === false) return { issue: "refuse", motif: "beebs_refus" };
+      if (res.succes !== true) return { issue: "incertain", motif: "beebs_reponse_illisible" };
+    }
+    return { issue: "fait" };
+  }
 
   g.FILLSELL_MESSAGERIE = Object.freeze({
     CADENCE_MS, ALEA_MS, DETAILS_MAX, COMMANDES_DETAILS_MAX, MESSAGES_PAR_CONVERSATION, RETENTION_MS,
@@ -1330,5 +1877,9 @@
     BEEBS_ADMIN, dateBeebsListe, normaliserBeebs, etatCommandeBeebs, normaliserCommandesBeebs,
     NORMALISEURS, NORMALISEURS_COMMANDES,
     LECTEURS, ENVOYEURS, CHEMINS_BORDEREAU,
+    // (16/10 nuit) Générer le bordereau.
+    LBC_TYPES_GENERABLES, typeEnvoiLeboncoin, BEEBS_TRANSPORTEURS, BEEBS_RMP,
+    optionsBordereauVinted, corpsCommandeVinted, issueGeste, decisionGeneration, issueGeneration, empreinteTexte,
+    PREPARATIONS_GENERATION, GESTES_GENERATION,
   });
 })(typeof globalThis !== "undefined" ? globalThis : self);

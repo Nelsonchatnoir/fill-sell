@@ -93,3 +93,60 @@
   la plateforme a des pseudos (Vinted, eBay, Depop) ; transporteurs en clair (`libelleTransporteur`).
 - **Liste blanche** : procédure exacte (une requête par conversation, son inverse, contrôle « vide ») dans le
   rapport, § 9.4. Une réponse écrite pendant le verrou ne part jamais après coup.
+
+## Règles (16/10 nuit — « utilisable pour de vrai », mission de Nico)
+
+- **Comptes bêta : Nico et Ornella, personne d'autre.** Ornella = `ornellaracano@icloud.com`
+  (`f8aa02a5-23cb-4325-bba8-127f61a75741`, identifiée le 16/10 à 22:50 ; les deux autres comptes « ornella… » sont
+  d'autres personnes, sans activité). Script `scripts/reparations/20261016_drapeau_messagerie_ornella.sql`
+  (sauvegarde `_backup_1610_beta_flags_ornella`, inverse dans le fichier). Contrôle : `count(*)` des porteurs = 2.
+- **Répondre SANS liste blanche** (migration 20261016220000) : interrupteur `coin_config.messagerie_envoi_mode`
+  (0 fermé : les réponses en attente sont reverrouillées ; 1 liste blanche, valeur si la clé manque ; 2 ouvert aux
+  comptes bêta). Garde-fous, tous en base ou prouvés : une réponse ne naît que d'un appui (session) ; même clé =
+  même réponse ; même texte vers la même conversation en 10 min = même réponse ; l'app garde UNE clé par brouillon
+  jusqu'à la réponse de la base (un second appui après une coupure rejoue le même envoi) ; l'exécutant prend une
+  réponse à la fois et ne la renvoie JAMAIS (prise sans confirmation en 10 min → « echec / sans_confirmation »,
+  dit « vérifie sur la plateforme ») ; une réponse qu'aucun poste n'a prise en 24 h ne part jamais en retard
+  (« echec / trop_ancienne ») ; clé d'idempotence de la plateforme = numéro de notre réponse (Leboncoin
+  `clientMessageId`, Depop `idempotency_key`).
+- **Texte EXACT** : plus aucun `btrim` (seul un texte vide est refusé) ; empreinte SHA-256 du texte
+  (`messagerie_reponses.empreinte`, calculée en base, comparée à celle de l'app si elle la donne, RECALCULÉE par
+  l'exécutant — extension ou `ebay-messagerie` — juste avant l'envoi : différente, rien ne part,
+  `empreinte_differente`). Trace : statut, prise, fin, `resultat` {http, code, message_ref, executant, empreinte_ok}.
+- **Générer le bordereau = un appui, PUIS l'écran de confirmation.** Vinted « commander l'étiquette », Leboncoin
+  « confirmer la disponibilité », Beebs « accepter la commande » : l'écran dit en une phrase ce que le geste engage
+  (`phraseEngagement`, `src/messagerie/vue.js`) ; seul « Confirmer » appelle `bordereau_generer`, qui GARDE la phrase
+  (`bordereaux_demandes.engagement`) et refuse sans elle. Interrupteur `coin_config.bordereaux_generation_ouverte`
+  (et `bordereaux_ouverts`). Jamais automatique, jamais en lot.
+- **UNE génération par commande, à vie** : index unique partiel `bordereaux_demandes_une_generation` (demandée, en
+  cours, générée, prête, incertaine) ; `bordereau_generer` rend la génération existante (`deja`) ; l'extension relit
+  l'état de la plateforme AVANT le geste (déjà fait → aucun appel qui engage, on récupère) ; le geste part UNE fois
+  (Vinted : une seconde seulement après un 401, refusé avant tout traitement) ; issue inconnue (réseau coupé, 5xx,
+  onglet figé, prise sans réponse en 10 min) → « incertaine », jamais refaite. Les extensions d'avant (sans
+  `p_capacites: ['generer']`) ne reçoivent jamais une génération.
+- **Ce que FillSell envoie** (code des sites relu le 16/10 nuit, règles pures `decisionGeneration` /
+  `corpsCommandeVinted` / `issueGeneration` de `chrome-extension/messagerie.js`) :
+  · Vinted : `PUT /api/v2/transactions/<id>/shipment/order` {seller_address_id (numéro de l'adresse par défaut lu sur
+    `api.vinted.fr/shipping-estimation/external/shipping_address`, rien d'autre), drop_off_type « point » quand Vinted
+    propose point ET domicile, reusable_package_selected false si proposé, label_type choisi dans l'app (1 PDF, 2 code,
+    3 QR)} ; refus SANS geste : adresse incomplète, téléphone exigé, enlèvement à domicile / date à choisir, type à
+    choisir. Les options (`GET shipments/<id>/label_options`) sont relevées EN LECTURE une fois par 6 h et par
+    commande (`plateforme_commandes.options_bordereau` : types et booléens seulement).
+  · Leboncoin : `POST /api/consumergoods/purchase/v1/purchases/<id>/action/validate-availability` sans corps, pour les
+    seuls envois dont le bordereau naît de la confirmation (mondial_relay, mondial_relay_home, shop2shop,
+    relais_colis_*) ; Colissimo / courrier suivi (formulaire d'adresse), envoi libre, main propre → sur Leboncoin.
+    Réponse `USECASE_ENTITY_ALREADY_EXISTS` = déjà confirmée.
+  · Beebs : l'action serveur `sellerConfirmAction([orderId])` du bouton « Télécharger le bordereau », POST sur la page
+    de la commande avec `Next-Action` = identifiant relu à chaque fois dans le code de la page ; téléphone vérifié
+    exigé ; remise en main propre (transporteur `5QAfJXcdv81jPJOE8H03ej`) exclue. Le fichier : cherché dans l'objet
+    commande (clé « label »/« bordereau » ou PDF) — introuvable, l'app dit « télécharge-le sur Beebs ».
+- **Le fichier après le geste** : une tentative 8 s après, puis la « suite » (`bordereau_demande_a_traiter` rend la
+  génération « générée » sans copie : 2 min d'écart, 15 essais, 24 h) ; une copie prête ferme aussi la récupération
+  de la même commande. eBay : l'étiquette est PAYANTE et s'achète sur eBay (pas d'API en France, conditions d'eBay
+  contre tout procédé automatique) — jamais par FillSell. Depop : pas de bordereau en France.
+- **Partager, imprimer, 10 × 15** (`src/messagerie/impression/`, chargé à l'usage seulement) : original ou étiquette
+  10 × 15 (découpée dans l'A4, tournée, PDF 100 × 150 mm), recadrage retenu par transporteur sur l'appareil, codes
+  sans papier en grand, « Tout imprimer » (2 copies prêtes ou plus) en un PDF. App Android (et repli iOS) : le PDF
+  fabriqué est déposé sous `<uid>/impressions/` puis ouvert par adresse signée (10 min) ; ces fichiers, et tout
+  fichier du bucket qu'aucune copie vivante ne tient, sont effacés après 24 h (`bordereaux_a_purger` +
+  `bordereaux-purge` v2).

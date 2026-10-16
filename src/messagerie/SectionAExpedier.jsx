@@ -1,23 +1,34 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// « À EXPÉDIER » — BÊTA (16/10/2026, clôture du chantier le soir)
+// « À EXPÉDIER » — BÊTA (16/10/2026, clôture du chantier le soir ; nuit : générer)
 // ═══════════════════════════════════════════════════════════════════════════
 // Toutes les commandes en cours des cinq plateformes (plateforme_commandes,
 // lecture seule) : état, pseudo de l'acheteur, numéro, photo, montant, article
 // du stock rattaché par numéro, transporteur, date limite quand la plateforme
 // la donne. Style des écrans du 16/10 (cartes blanches, Space Grotesk).
-// Le bouton « Bordereau » (Vinted, Leboncoin, bordereau PRÊT chez la
-// plateforme) dépose UNE demande (bordereau_demander) ; l'ordinateur de la
-// personne récupère le fichier, la copie (5 jours) s'ouvre ici. Tout geste
-// qui ENGAGE se fait sur la plateforme : l'app ouvre la bonne page, rien de plus.
+//   · « Récupérer le bordereau » (bordereau PRÊT chez la plateforme) dépose UNE
+//     demande (bordereau_demander) ; l'ordinateur de la personne récupère le
+//     fichier, la copie (5 jours) s'ouvre ici ;
+//   · (16/10 nuit) « Générer le bordereau » (Vinted : commander l'étiquette ;
+//     Leboncoin : confirmer la disponibilité ; Beebs : accepter la commande)
+//     ouvre d'abord l'ÉCRAN DE CONFIRMATION — une phrase dit ce que le geste
+//     engage ; seul « Confirmer » dépose la demande (bordereau_generer, la
+//     phrase est gardée en base). Une seule génération par commande, à vie ;
+//   · la copie s'ouvre dans l'aperçu (impression/) : original ou 10 × 15,
+//     partager, télécharger, imprimer ; « Tout imprimer » réunit les prêtes.
 // Relecture : une lecture à l'ouverture ; bornée (utils/relectureBornee.js)
 // seulement pendant qu'une demande attend l'ordinateur — jamais de setInterval.
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import { UI } from '../components/ui';
 import Icone from '../ecrans/Icone';
 import { demarrerRelecture } from '../utils/relectureBornee';
-import { actionCommande, commandesAExpedier, dateCourte, delaiEnvoi, etatDemandeBordereau, libelleEtatCommande, libelleTransporteur, montantTexte, nomPlateforme, pseudoAffiche, refusDemandeBordereau } from './vue';
-import { ouvrirApres, ouvrirLien } from './ouvrir';
+import { actionCommande, commandesAExpedier, dateCourte, delaiEnvoi, etatDemandeBordereau, libelleEtatCommande, libelleTransporteur, libelleTypeEtiquette, montantTexte, nomPlateforme, pseudoAffiche, refusDemandeBordereau } from './vue';
+import { ouvrirLien } from './ouvrir';
+import { useReglagesMessagerie } from './useMessagerieBeta';
+// L'aperçu et « Tout imprimer » (pdf.js, pdf-lib derrière) ne se chargent qu'à l'usage :
+// rien de plus à l'ouverture des Ventes, pour personne.
+const ApercuBordereau = lazy(() => import('./impression/ApercuBordereau.jsx'));
+const BoutonToutImprimer = lazy(() => import('./impression/ToutImprimer.jsx').then((m) => ({ default: m.BoutonToutImprimer })));
 
 const ENCRE2 = '#5C6560';
 const LIGNE = '#EFECE6';
@@ -28,18 +39,32 @@ const TONS = Object.freeze({
   rouge: { fond: '#FEF2F2', encre: '#B91C1C' },
   neutre: { fond: '#F2F0E9', encre: ENCRE2 },
 });
-const COLONNES = 'id,platform,commande_ref,etat,etat_plateforme,bordereau,acheteur_pseudo,titre,photo_url,montant,devise,annonce_ref,inventaire_id,conversation_ref,transporteur,envoi_ref,a_expedier_avant,vendue_le';
+const COLONNES_BASE = 'id,platform,commande_ref,etat,etat_plateforme,bordereau,acheteur_pseudo,titre,photo_url,montant,devise,annonce_ref,inventaire_id,conversation_ref,transporteur,envoi_ref,a_expedier_avant,vendue_le';
+// (16/10 nuit) Colonnes posées par la migration 20261016220000 : tant qu'elle
+// n'est pas appliquée, l'écran relit sans elles (rien ne casse, pas de génération).
+const COLONNES = `${COLONNES_BASE},options_bordereau`;
+const COLS_DEMANDES = 'id,commande_id,platform,action,statut,motif,copie_id,essais_fichier,cree_le';
+const COLS_DEMANDES_BASE = 'id,commande_id,platform,statut,motif,copie_id,cree_le';
+const colonneAbsente = (e) => e?.code === '42703' || /column .* does not exist|could not find .* column/i.test(String(e?.message ?? ''));
 const ATTENTE_MAX_MS = 5 * 60_000;
+
+// Le verbe du bouton de confirmation : le geste, nommé.
+const GESTES = Object.freeze({
+  vinted: ['Commander l’étiquette', 'Order the label'],
+  leboncoin: ['Confirmer la disponibilité', 'Confirm availability'],
+  beebs: ['Accepter la commande', 'Accept the order'],
+});
 
 function Pastille({ ton = 'neutre', children }) {
   const t = TONS[ton] ?? TONS.neutre;
   return <span style={{ display: 'inline-flex', alignItems: 'center', height: 22, padding: '0 9px', borderRadius: 999, background: t.fond, color: t.encre, fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>{children}</span>;
 }
 
-function Bouton({ principal = false, desactive = false, onClick, children, ariaLabel }) {
+function Bouton({ principal = false, desactive = false, onClick, children, ariaLabel, ton = null }) {
+  const fond = principal ? (desactive ? '#ECE9E2' : (ton === 'ambre' ? '#9A6200' : UI.tealDeep)) : '#FFFFFF';
   return (
     <button type="button" onClick={onClick} disabled={desactive} aria-label={ariaLabel}
-      style={{ minHeight: 44, padding: '0 16px', borderRadius: 14, border: principal ? 'none' : `1px solid ${UI.border}`, background: principal ? (desactive ? '#ECE9E2' : UI.tealDeep) : '#FFFFFF', color: principal ? (desactive ? '#8A8578' : '#FFFFFF') : UI.ink, fontFamily: 'inherit', fontSize: 14, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: desactive ? 'default' : 'pointer', flex: '1 1 auto', minWidth: 0 }}>
+      style={{ minHeight: 44, padding: '0 16px', borderRadius: 14, border: principal ? 'none' : `1px solid ${UI.border}`, background: fond, color: principal ? (desactive ? '#8A8578' : '#FFFFFF') : UI.ink, fontFamily: 'inherit', fontSize: 14, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: desactive ? 'default' : 'pointer', flex: '1 1 auto', minWidth: 0 }}>
       {children}
     </button>
   );
@@ -51,8 +76,67 @@ function tonEtat(c) {
   return 'neutre';
 }
 
+/**
+ * L'ÉCRAN DE CONFIRMATION d'une génération : la commande, la phrase de ce que
+ * le geste engage, le type d'étiquette (Vinted, s'il y en a plusieurs), puis
+ * « Annuler » ou le geste nommé. Rien ne part sans ce second appui.
+ */
+function ConfirmationGeneration({ commande: c, action, lang, occupe, onAnnuler, onConfirmer }) {
+  const fr = lang !== 'en';
+  const types = action.types ?? [];
+  const [type, setType] = useState(types.includes(1) ? 1 : (types[0] ?? null));
+  const geste = GESTES[c.platform] ?? ['Confirmer', 'Confirm'];
+  const meta = [pseudoAffiche(c.platform, c.acheteur_pseudo), montantTexte(c.montant, c.devise), libelleTransporteur(c.transporteur)].filter(Boolean).join(' · ');
+  return (
+    <div role="dialog" aria-modal="true" aria-label={fr ? 'Générer le bordereau' : 'Generate the label'}
+      style={{ position: 'fixed', inset: 0, zIndex: 1300, background: 'rgba(16,32,27,0.5)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
+      onClick={occupe ? undefined : onAnnuler}>
+      <div onClick={(e) => e.stopPropagation()}
+        style={{ width: '100%', maxWidth: 560, background: '#FFFFFF', borderRadius: '24px 24px 0 0', padding: '18px 16px calc(18px + env(safe-area-inset-bottom))', display: 'flex', flexDirection: 'column', gap: 14, fontFamily: "'Space Grotesk',sans-serif", color: UI.ink, maxHeight: '92vh', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ width: 36, height: 36, borderRadius: 11, background: '#FFF6E3', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>
+            <PlatformLogo platform={c.platform} size={18} />
+          </span>
+          <span style={{ fontSize: 17, fontWeight: 700, flex: 1 }}>{fr ? 'Générer le bordereau ?' : 'Generate the label?'}</span>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <span style={{ fontSize: 14.5, fontWeight: 700, overflowWrap: 'anywhere' }}>{c.titre ?? (fr ? 'Article' : 'Item')}</span>
+          {meta && <span style={{ fontSize: 12.5, color: ENCRE2, overflowWrap: 'anywhere' }}>{meta}</span>}
+          <span style={{ fontSize: 12, color: '#8A918E' }}>{`${nomPlateforme(c.platform)} · ${fr ? 'commande' : 'order'} ${c.commande_ref}`}</span>
+        </div>
+        <div role="note" style={{ padding: '12px 14px', borderRadius: 14, background: '#FFF6E3', border: '1px solid #EED9A6', color: '#5C4300', fontSize: 14, fontWeight: 700, lineHeight: 1.45 }}>
+          {action.phrase}
+        </div>
+        {types.length > 1 && (
+          <fieldset style={{ border: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <legend style={{ fontSize: 13, fontWeight: 700, color: ENCRE2, marginBottom: 6 }}>{fr ? 'Ce que Vinted te donne' : 'What Vinted gives you'}</legend>
+            {types.map((t) => (
+              <label key={t} style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 44, padding: '8px 12px', borderRadius: 12, border: `1.5px solid ${type === t ? UI.tealDeep : UI.border}`, background: type === t ? MENTHE : '#FFFFFF', cursor: 'pointer', fontSize: 14, fontWeight: 600 }}>
+                <input type="radio" name="type-etiquette" checked={type === t} onChange={() => setType(t)} style={{ width: 18, height: 18, accentColor: UI.tealDeep }} />
+                {libelleTypeEtiquette(t, lang)}
+              </label>
+            ))}
+          </fieldset>
+        )}
+        <div style={{ fontSize: 12.5, color: ENCRE2, lineHeight: 1.45 }}>
+          {fr ? `Ton ordinateur (Chrome ouvert, extension active) le fait sur ${nomPlateforme(c.platform)} à son prochain passage, une seule fois, puis le bordereau s’affiche ici.` : `Your computer (Chrome open, extension on) does it on ${nomPlateforme(c.platform)} on its next pass, only once, then the label shows up here.`}
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Bouton onClick={onAnnuler} desactive={occupe} ariaLabel={fr ? 'Annuler' : 'Cancel'}>{fr ? 'Annuler' : 'Cancel'}</Bouton>
+          <Bouton principal ton="ambre" desactive={occupe || (types.length > 1 && type == null)}
+            onClick={() => onConfirmer(types.length > 1 && type != null ? { type_etiquette: type } : {}, action.phrase)}
+            ariaLabel={fr ? geste[0] : geste[1]}>
+            {occupe ? (fr ? 'Envoi…' : 'Sending…') : (fr ? geste[0] : geste[1])}
+          </Bouton>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function SectionAExpedier({ supabase, lang = 'fr', photosParInventaire = null, compact = false }) {
   const fr = lang !== 'en';
+  const reglages = useReglagesMessagerie(supabase);
   const [commandes, setCommandes] = useState(null);
   const [demandes, setDemandes] = useState({});
   const [copies, setCopies] = useState({});
@@ -60,26 +144,38 @@ export function SectionAExpedier({ supabase, lang = 'fr', photosParInventaire = 
   const [notes, setNotes] = useState({});
   const [occupee, setOccupee] = useState(null);
   const [enAttente, setEnAttente] = useState(false);
+  const [confirmation, setConfirmation] = useState(null);
+  const [apercu, setApercu] = useState(null);
   const vivant = useRef(true);
 
   const charger = useCallback(async () => {
     const maintenant = new Date().toISOString();
-    const [c, d, k] = await Promise.all([
-      supabase.from('plateforme_commandes').select(COLONNES).in('etat', ['a_confirmer', 'a_expedier', 'inconnu']).order('vendue_le', { ascending: true }).limit(60),
-      supabase.from('bordereaux_demandes').select('id,commande_id,statut,motif,copie_id,cree_le').order('cree_le', { ascending: false }).limit(60),
+    const lireCommandes = (cols) => supabase.from('plateforme_commandes').select(cols).in('etat', ['a_confirmer', 'a_expedier', 'inconnu']).order('vendue_le', { ascending: true }).limit(60);
+    const lireDemandes = (cols) => supabase.from('bordereaux_demandes').select(cols).order('cree_le', { ascending: false }).limit(60);
+    let [c, d, k] = await Promise.all([
+      lireCommandes(COLONNES),
+      lireDemandes(COLS_DEMANDES),
       supabase.from('bordereaux_copies').select('id,commande_id,chemin,expire_le').is('efface_le', null).gt('expire_le', maintenant).order('cree_le', { ascending: false }).limit(60),
     ]);
+    if (colonneAbsente(c.error)) c = await lireCommandes(COLONNES_BASE);
+    if (colonneAbsente(d.error)) d = await lireDemandes(COLS_DEMANDES_BASE);
     if (!vivant.current) return undefined;
     if (c.error) { setErreur(true); setCommandes([]); return false; }
     setErreur(false);
     setCommandes(commandesAExpedier(c.data ?? []));
+    // La demande qui parle pour la commande : une génération d'abord (elle
+    // engage), sinon la plus récente.
     const dm = {};
-    for (const x of (d.error ? [] : d.data ?? [])) if (!dm[x.commande_id]) dm[x.commande_id] = x;
+    for (const x of (d.error ? [] : d.data ?? [])) {
+      const deja = dm[x.commande_id];
+      if (!deja || (x.action === 'generer' && deja.action !== 'generer')) dm[x.commande_id] = x;
+    }
     const cp = {};
     for (const x of (k.error ? [] : k.data ?? [])) if (!cp[x.commande_id]) cp[x.commande_id] = x;
     setDemandes(dm);
     setCopies(cp);
-    setEnAttente(Object.values(dm).some((x) => x.statut === 'demandee' || x.statut === 'en_cours'));
+    setEnAttente(Object.values(dm).some((x) => !cp[x.commande_id] && (x.statut === 'demandee' || x.statut === 'en_cours'
+      || (x.action === 'generer' && x.statut === 'generee' && Number(x.essais_fichier) < 15 && x.motif !== 'fichier_sur_beebs'))));
     return undefined;
   }, [supabase]);
 
@@ -97,30 +193,48 @@ export function SectionAExpedier({ supabase, lang = 'fr', photosParInventaire = 
     return () => { clearTimeout(fin); r.arreter(); };
   }, [enAttente, charger]);
 
-  const ouvrirCopie = (copie) => ouvrirApres(async () => {
-    const { data, error } = await supabase.storage.from('bordereaux').createSignedUrl(copie.chemin, 600);
-    return error ? null : (data?.signedUrl ?? null);
-  });
+  const copiePour = (c, copie) => ({ chemin: copie.chemin, platform: c.platform, transporteur: c.transporteur ?? null, commande_ref: c.commande_ref });
 
   const demanderBordereau = async (c) => {
-    if (copies[c.id]) {
-      const ok = await ouvrirCopie(copies[c.id]);
-      if (!ok) setNotes((n) => ({ ...n, [c.id]: fr ? 'La copie n’a pas pu s’ouvrir : réessaie.' : 'The copy could not open: try again.' }));
-      return;
-    }
+    if (copies[c.id]) { setApercu(copiePour(c, copies[c.id])); return; }
     setOccupee(c.id);
     setNotes((n) => ({ ...n, [c.id]: null }));
     const { data, error } = await supabase.rpc('bordereau_demander', { p_commande: c.id });
     setOccupee(null);
     if (error) { setNotes((n) => ({ ...n, [c.id]: fr ? 'Demande non enregistrée : réessaie.' : 'Request not saved: try again.' })); return; }
-    if (data?.copie) { setCopies((k) => ({ ...k, [c.id]: { id: data.copie, chemin: data.chemin, expire_le: data.expire_le } })); return; }
+    if (data?.copie) {
+      const copie = { id: data.copie, chemin: data.chemin, expire_le: data.expire_le };
+      setCopies((k) => ({ ...k, [c.id]: copie }));
+      setApercu(copiePour(c, copie));
+      return;
+    }
     if (data?.refuse) { setNotes((n) => ({ ...n, [c.id]: refusDemandeBordereau(data.refuse, lang) })); return; }
-    setDemandes((d) => ({ ...d, [c.id]: { id: data?.id, commande_id: c.id, statut: data?.statut ?? 'demandee' } }));
+    setDemandes((d) => ({ ...d, [c.id]: { id: data?.id, commande_id: c.id, action: 'recuperer', statut: data?.statut ?? 'demandee' } }));
+    setEnAttente(true);
+  };
+
+  // Le SECOND appui (écran de confirmation) : la demande de génération.
+  const confirmerGeneration = async (c, choix, phrase) => {
+    setOccupee(c.id);
+    setNotes((n) => ({ ...n, [c.id]: null }));
+    const { data, error } = await supabase.rpc('bordereau_generer', { p_commande: c.id, p_choix: choix ?? {}, p_engagement: phrase });
+    setOccupee(null);
+    setConfirmation(null);
+    if (error) { setNotes((n) => ({ ...n, [c.id]: fr ? 'Demande non enregistrée : rien n’a été fait. Réessaie.' : 'Request not saved: nothing was done. Try again.' })); return; }
+    if (data?.copie) {
+      const copie = { id: data.copie, chemin: data.chemin, expire_le: data.expire_le };
+      setCopies((k) => ({ ...k, [c.id]: copie }));
+      setApercu(copiePour(c, copie));
+      return;
+    }
+    if (data?.refuse) { setNotes((n) => ({ ...n, [c.id]: refusDemandeBordereau(data.refuse, lang) })); return; }
+    setDemandes((d) => ({ ...d, [c.id]: { id: data?.id, commande_id: c.id, action: 'generer', statut: data?.statut ?? 'demandee', motif: data?.motif ?? null } }));
     setEnAttente(true);
   };
 
   if (commandes === null) return null;
   const nb = commandes.length;
+  const pretes = commandes.filter((c) => copies[c.id]).map((c) => copiePour(c, copies[c.id]));
   return (
     <section aria-label={fr ? 'À expédier' : 'To ship'}
       style={{ background: '#FFFFFF', border: `1px solid ${UI.border}`, borderRadius: 24, overflow: 'hidden', fontFamily: "'Space Grotesk',sans-serif", color: UI.ink }}>
@@ -134,6 +248,11 @@ export function SectionAExpedier({ supabase, lang = 'fr', photosParInventaire = 
         </span>
         <span style={{ fontSize: 11, fontWeight: 700, color: '#8A6100', background: '#FFF6E3', border: '1px solid #EED9A6', borderRadius: 999, padding: '1px 8px', flex: 'none' }}>{fr ? 'bêta' : 'beta'}</span>
       </div>
+      {pretes.length >= 2 && (
+        <div style={{ padding: '0 16px 12px', display: 'flex' }}>
+          <Suspense fallback={null}><BoutonToutImprimer copies={pretes} supabase={supabase} lang={lang} /></Suspense>
+        </div>
+      )}
 
       {erreur && <p style={{ margin: 0, padding: '0 16px 16px', fontSize: 13, color: ENCRE2 }}>{fr ? 'Lecture impossible pour le moment.' : 'Cannot read right now.'}</p>}
       {!erreur && nb === 0 && (
@@ -144,13 +263,15 @@ export function SectionAExpedier({ supabase, lang = 'fr', photosParInventaire = 
       )}
 
       {commandes.map((c) => {
-        const action = actionCommande(c, lang);
+        const action = actionCommande(c, lang, reglages.generation);
         const delai = delaiEnvoi(c, lang);
         const photo = (c.inventaire_id && photosParInventaire?.[c.inventaire_id]) || c.photo_url || null;
         const demande = demandes[c.id] ?? null;
         const copie = copies[c.id] ?? null;
-        const etatD = !copie ? etatDemandeBordereau(demande, lang) : null;
+        const etatD = !copie ? etatDemandeBordereau(demande, lang, c.platform) : null;
         const attente = etatD?.attente === true;
+        // Une génération déjà née (en cours, faite, incertaine) : plus jamais le bouton « Générer ».
+        const generationNee = demande?.action === 'generer' && ['demandee', 'en_cours', 'generee', 'prete', 'incertaine'].includes(demande.statut);
         const meta = [pseudoAffiche(c.platform, c.acheteur_pseudo), montantTexte(c.montant, c.devise), c.vendue_le ? (fr ? `vendue ${dateCourte(c.vendue_le, lang)}` : `sold ${dateCourte(c.vendue_le, lang)}`) : null].filter(Boolean).join(' · ');
         return (
           <article key={c.id} data-commande={c.platform} style={{ borderTop: `1px solid ${LIGNE}`, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -179,31 +300,57 @@ export function SectionAExpedier({ supabase, lang = 'fr', photosParInventaire = 
                 <Icone nom="horloge" taille={16} couleur={delai.urgent ? '#8A6100' : ENCRE2} epaisseur={2.2} />{delai.texte}
               </div>
             )}
-            <div style={{ fontSize: 13, color: ENCRE2, lineHeight: 1.45 }}>{action.aide}</div>
+            {!copie && !generationNee && <div style={{ fontSize: 13, color: ENCRE2, lineHeight: 1.45 }}>{action.aide}</div>}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {action.type === 'bordereau' ? (
+              {copie ? (
+                <>
+                  <Bouton principal onClick={() => setApercu(copiePour(c, copie))} ariaLabel={fr ? 'Ouvrir le bordereau' : 'Open the label'}>
+                    <Icone nom="recu" taille={17} couleur="#FFFFFF" epaisseur={2.2} />{fr ? 'Ouvrir le bordereau' : 'Open the label'}
+                  </Bouton>
+                  <Bouton onClick={() => ouvrirLien(action.url)} ariaLabel={fr ? `Voir sur ${nomPlateforme(c.platform)}` : `See on ${nomPlateforme(c.platform)}`}>
+                    {fr ? `Voir sur ${nomPlateforme(c.platform)}` : `See on ${nomPlateforme(c.platform)}`}
+                  </Bouton>
+                </>
+              ) : action.type === 'bordereau' ? (
                 <>
                   <Bouton principal desactive={attente || occupee === c.id} onClick={() => demanderBordereau(c)}
-                    ariaLabel={copie ? (fr ? 'Ouvrir le bordereau' : 'Open the label') : (fr ? 'Récupérer le bordereau' : 'Fetch the label')}>
+                    ariaLabel={fr ? 'Récupérer le bordereau' : 'Fetch the label'}>
                     <Icone nom="recu" taille={17} couleur={attente || occupee === c.id ? '#8A8578' : '#FFFFFF'} epaisseur={2.2} />
-                    {copie ? (fr ? 'Ouvrir le bordereau' : 'Open the label') : attente ? (fr ? 'Récupération…' : 'Fetching…') : action.libelle}
+                    {attente ? (fr ? 'Récupération…' : 'Fetching…') : action.libelle}
+                  </Bouton>
+                  <Bouton onClick={() => ouvrirLien(action.url)} ariaLabel={fr ? `Voir sur ${nomPlateforme(c.platform)}` : `See on ${nomPlateforme(c.platform)}`}>
+                    {fr ? `Voir sur ${nomPlateforme(c.platform)}` : `See on ${nomPlateforme(c.platform)}`}
+                  </Bouton>
+                </>
+              ) : action.type === 'generer' && !generationNee ? (
+                <>
+                  <Bouton principal ton="ambre" desactive={occupee === c.id} onClick={() => setConfirmation({ commande: c, action })} ariaLabel={action.libelle}>
+                    <Icone nom="recu" taille={17} couleur="#FFFFFF" epaisseur={2.2} />{action.libelle}
                   </Bouton>
                   <Bouton onClick={() => ouvrirLien(action.url)} ariaLabel={fr ? `Voir sur ${nomPlateforme(c.platform)}` : `See on ${nomPlateforme(c.platform)}`}>
                     {fr ? `Voir sur ${nomPlateforme(c.platform)}` : `See on ${nomPlateforme(c.platform)}`}
                   </Bouton>
                 </>
               ) : (
-                <Bouton principal={action.ton === 'ambre'} onClick={() => ouvrirLien(action.url)} ariaLabel={action.libelle}>
-                  {action.libelle}<Icone nom="fleche" taille={16} couleur={action.ton === 'ambre' ? '#FFFFFF' : UI.ink} epaisseur={2.2} />
+                <Bouton principal={action.ton === 'ambre' && !generationNee} onClick={() => ouvrirLien(action.url)} ariaLabel={action.libelle}>
+                  {action.type === 'generer' ? (fr ? `Voir sur ${nomPlateforme(c.platform)}` : `See on ${nomPlateforme(c.platform)}`) : action.libelle}
+                  <Icone nom="fleche" taille={16} couleur={action.ton === 'ambre' && !generationNee ? '#FFFFFF' : UI.ink} epaisseur={2.2} />
                 </Bouton>
               )}
             </div>
             {copie && <div style={{ fontSize: 12, color: ENCRE2 }}>{fr ? `Copie gardée jusqu’au ${dateCourte(copie.expire_le, lang)}, puis effacée.` : `Copy kept until ${dateCourte(copie.expire_le, lang)}, then erased.`}</div>}
-            {etatD && <div role="status" style={{ fontSize: 12.5, fontWeight: 600, color: (TONS[etatD.ton] ?? TONS.neutre).encre }}>{etatD.texte}</div>}
+            {etatD && <div role="status" style={{ fontSize: 12.5, fontWeight: 600, color: (TONS[etatD.ton] ?? TONS.neutre).encre, lineHeight: 1.45 }}>{etatD.texte}</div>}
             {notes[c.id] && <div role="status" style={{ fontSize: 12.5, fontWeight: 600, color: '#8A6100' }}>{notes[c.id]}</div>}
           </article>
         );
       })}
+      {confirmation && (
+        <ConfirmationGeneration commande={confirmation.commande} action={confirmation.action} lang={lang}
+          occupe={occupee === confirmation.commande.id}
+          onAnnuler={() => setConfirmation(null)}
+          onConfirmer={(choix, phrase) => confirmerGeneration(confirmation.commande, choix, phrase)} />
+      )}
+      {apercu && <Suspense fallback={null}><ApercuBordereau ouvert copie={apercu} supabase={supabase} lang={lang} onFermer={() => setApercu(null)} /></Suspense>}
     </section>
   );
 }

@@ -1,7 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import {
   type Appareil, APNS_HOTES, type BilanNote, type ConfigApns, envoyerApns, envoyerFcm, envoyerNote, lireConfigFcm,
-  resumerPourLaBase,
+  prixVenteConnu, resumerPourLaBase,
 } from "../_shared/push-envoi.ts";
 import { envoyerEmail } from "../_shared/desinscription.ts";
 import { langue, mailVentes } from "../_shared/emails-fillsell.ts";
@@ -33,18 +33,22 @@ async function envoyerMailVente(
 ): Promise<VerdictMail> {
   const adresse = String(n.email ?? "").trim();
   if (!adresse) return { statut: "sans_adresse" };
+  // (16/10, C1) Prix de vente INCONNU (note sans prix) : le mail n'écrit aucun
+  // montant et aucun bénéfice. Avant : Number(null) || 0 → « vendu 0 € », et un
+  // bénéfice négatif (0 − prix d'achat) quand le prix d'achat était connu.
+  const prixVente = prixVenteConnu(n.prix);
   let benefice: number | null = null;
-  if (n.inventaire_id != null) {
+  if (prixVente !== null && n.inventaire_id != null) {
     const { data: inv } = await admin.from("inventaire")
       .select("prix_achat, prix_achat_inconnu").eq("id", n.inventaire_id).maybeSingle();
     const pa = prixAchatNum(inv ?? null);
-    benefice = pa === null ? null : margeUnitaire({ prixVente: Number(n.prix), prixAchat: pa }).margin;
+    benefice = pa === null ? null : margeUnitaire({ prixVente, prixAchat: pa }).margin;
   }
   const { sujet, html } = mailVentes({
     ventes: [{
       titre: n.titre == null ? null : String(n.titre),
       plateforme: String(n.plateforme ?? ""),
-      prixVente: Number(n.prix) || 0,
+      prixVente,
       benefice: benefice !== null && Number.isFinite(benefice) ? benefice : null,
     }],
     retraitsACliquer: 0,
