@@ -694,3 +694,19 @@ fait », copie 5 jours), en lecture seule, et je te dis ce que j'ai vu.
   20, Divers 3) ; les 8 jobs de PAUGUES `published` après sa mise à jour (si son forfait pro est épuisé, ce sera
   « Valider et payer » avec la phrase qui dit que ce n'est pas le pack photos). Les 23 jobs de l'autre compte
   attendent son « Relancer » (décision de la personne).
+
+### 10.7 Livraison
+
+- **Code** : commit `44056ac` (+ le recalage de l'extension et ce rapport), poussé sur `main` ; web servi au push.
+- **Fonctions servies** (16/10 vers 23:59, `verify_jwt` = false avant et après) : `ebay-messagerie` v5, `bordereaux-purge`
+  v2, `push-ventes` v11 (C1 : plus jamais « vendu 0 € », effet immédiat, indépendant de la migration).
+- **Extension 0.6.121 pour le Chrome Web Store** : un seul zip, seul dans `build/CWS-0.6.121-A-TELEVERSER/` (chemin exact
+  dans le message de fin de session) ; la 0.6.115 (jamais téléversée) est rangée dans `build/CWS-PERIMES/`. Ta copie
+  (`C:\Users\nicol\FillSell-Extension-Nico`) a la 0.6.121 : Chrome la prend seul au premier moment sûr.
+- **Fiche Chrome Web Store, avant le téléversement** : autorisations **inchangées** (manifest identique à la 0.6.114 servie :
+  aucune alerte, personne n'est désactivé) ; **pratiques de confidentialité à compléter** : cocher « Communications
+  personnelles » (messagerie lue, réponses envoyées) et « Informations permettant d'identifier personnellement
+  l'utilisateur » (pseudos des acheteurs ; le bordereau porte nom et adresse, copie 5 jours), usage = fonctionnalité de
+  l'extension, ni vente ni transfert. La politique (`fillsell.app/legal` § 8.2 et § 8.5) le dit depuis ce push.
+- **OTA 2.9.97** : prête (version montée et commitée) ; `npm run build` puis
+  `npx @capgo/cli bundle upload --channel production --bundle 2.9.97 --path dist` — **seulement sur ton feu vert**.
