@@ -28,10 +28,12 @@
    20 min), Vinted, Leboncoin et Depop par ton extension, que Chrome a prise **tout seul** (pas besoin de
    « Recharger » : ta copie se recharge d'elle-même au premier moment sûr depuis le 03/10). En base à
    16:30 : Vinted 16 conversations / 35 messages, Leboncoin 4 / 5, eBay 2 / 4, Depop 1 / 1 ; non-lus des
-   plateformes **inchangés** après nos lectures (Vinted 7, Leboncoin 6, Depop 1).
-7. **Un défaut trouvé sur tes vraies données, corrigé (extension 0.6.118)** : sur une vente Vinted passée,
-   Vinted ne remplit plus `item_id` (le numéro n'est plus que dans `item_ids`) → 8 conversations sur 16
-   n'avaient pas d'article. Corrigé ; ces fils sont relus une fois, 5 par passage.
+   plateformes **inchangés** après nos lectures (Vinted 7, Leboncoin 6 fils / 8 messages, Depop 1). Les
+   **compteurs FillSell = ceux des plateformes** sur 30 jours (Vinted 4 = 4, Leboncoin 3 = 3) ; les autres
+   non-lus ont plus de 30 jours et n'entrent pas (conservation).
+7. **Un défaut trouvé sur tes vraies données, corrigé (extension 0.6.118, prise seule par Chrome à 16:44)** :
+   sur une vente Vinted passée, Vinted ne remplit plus `item_id` (le numéro n'est plus que dans `item_ids`) →
+   8 conversations sur 16 n'avaient pas d'article. Corrigé ; ces fils sont relus une fois, 5 par passage.
 8. **Offres aux favoris** : faisable proprement sur **eBay** (natif, anonyme, déjà consenti) ; **une par
    une, validée** sur Leboncoin et Depop ; **pas sur Vinted** (préférer « baisser le prix », qui prévient
    tous les favoris sans message) ; pas sur Beebs (app mobile seulement). Recommandation § 5.
@@ -246,7 +248,10 @@ en vol, aucun relevé). Aucun geste de ta part : la relève a démarré à 15:52
   passage (jamais en rafale). Preuve sur le moteur de rattachement : l'un des 2 numéros lus désigne une fiche
   de ton stock (`fiche_vinted`), l'autre aucun article FillSell. **À vérifier au prochain check** : les 8 fils
   Vinted portent leur annonce (`messagerie_conversations.annonce_ref`), ≥ 1 rattaché.
-- **Pas testable aujourd'hui (et c'est voulu)** : l'envoi d'une réponse (liste blanche vide), la dernière
+- **Verrou des réponses prouvé en prod** (transaction annulée à coup sûr, sur un de tes vrais fils Vinted) :
+  la réponse s'enregistre « verrouillée — liste_blanche », la même clé renvoie la même réponse (jamais deux),
+  l'exécutant n'a **rien à envoyer** ; 0 réponse en base après.
+- **Pas testable aujourd'hui (et c'est voulu)** : l'envoi réel d'une réponse (liste blanche vide), la dernière
   marche du bordereau (fermée), une commande « à expédier » réelle (0 en cours chez toi), Beebs (téléphone).
 - Écrans vérifiés en local à 390 px, sur données synthétiques : 23 contrôles verts
   (`scripts/apercu/capture-messagerie-beta.mjs`).
