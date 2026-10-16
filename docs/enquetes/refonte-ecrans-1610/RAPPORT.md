@@ -123,7 +123,6 @@ L'onglet Stats ne lit qu'une fois ouvert.
 - Selftests : voir l'état (`docs/agents/etat-2026-10-01.md`, 16/10 après-midi).
 
 ## Ce qui reste
-- **OTA mobile** non envoyée (la consigne était commit + push : le web part par Vercel) ;
-  procédure : `docs/agents/pieges.md` § Déploiement.
+- **OTA mobile** : envoyée sur feu vert de Nico — bundle **2.9.96** (commit `b62ced4`), canal `production` relu.
 - `selftest:vinted-origine` était déjà rouge avant ce chantier (copie générée
   `chrome-extension/etat-job.js` de la nuit) : non touché.
