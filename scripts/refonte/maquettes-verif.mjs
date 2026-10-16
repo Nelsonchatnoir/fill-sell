@@ -14,7 +14,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const RACINE = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), '..', '..');
-const OUT = path.join(RACINE, 'docs', 'refonte', 'captures', 'maquettes');
+// MAQUETTES_CAPTURES=<dossier> : captures ailleurs (vérifier une adresse publiée sans toucher aux captures commitées).
+const OUT = process.env.MAQUETTES_CAPTURES || path.join(RACINE, 'docs', 'refonte', 'captures', 'maquettes');
 fs.mkdirSync(OUT, { recursive: true });
 const adresse = process.argv[2] || 'file:///' + path.join(RACINE, 'docs', 'refonte', 'maquettes', 'index.html').replace(/\\/g, '/');
 // Les estimations interdites (mêmes familles que scripts/aucune-estimation-selftest.mjs).

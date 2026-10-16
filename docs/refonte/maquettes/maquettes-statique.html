@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Maquettes FillSell (version fixe)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap">
+<style>
+/* ── Jetons : ceux de l'app (src/components/ui.jsx, src/stock/jetons.js) ── */
+:root{
+  --canvas:#EDEAE0; --page:#FAFBFB; --paper:#F6F5F1; --card:#FFFFFF; --chip:#F2F0E9;
+  --ink:#10201B; --ink2:#5C6560; --mute:#8A8578; --border:#E7E3D8; --border-soft:#EFECE3;
+  --teal:#2F9E90; --teal-deep:#1B6E62; --menthe:#EFF4F2; --menthe-bord:#D6E2DE; --menthe-vive:#F0FDFB;
+  --ambre-fond:#FFF6E3; --ambre-bord:#EED9A6; --ambre-encre:#8A6100; --ambre-point:#E0A53C;
+  --rouge:#B91C1C; --rouge-fond:#FEF2F2; --rouge-bord:#FECACA;
+  --hors:#B5B0A3; --degrade:linear-gradient(120deg,#2F9E90,#1B6E62);
+  --ombre-cta:0 12px 26px -12px rgba(47,158,144,.75);
+  --r:16px; --r-lg:20px; --tactile:44px;
+  --duree:.32s; --courbe:cubic-bezier(.22,.61,.36,1);
+}
+/* Le cadre de la page (accueil, barre, « ce qui change ») suit le thème du lecteur… */
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--canvas:#0F1A17;--card:#16231F;--chip:#1C2824;--ink:#ECEFEA;--ink2:#A3ADA7;--mute:#7C867F;--border:#263430;--border-soft:#1E2B27;--teal-deep:#7FD1C5;color-scheme:dark}}
+:root[data-theme="dark"]{--canvas:#0F1A17;--card:#16231F;--chip:#1C2824;--ink:#ECEFEA;--ink2:#A3ADA7;--mute:#7C867F;--border:#263430;--border-soft:#1E2B27;--teal-deep:#7FD1C5;color-scheme:dark}
+/* … le téléphone, lui, montre l'app telle qu'elle est : palette claire fixe, quel que soit le thème. */
+.tel{--canvas:#EDEAE0;--page:#FAFBFB;--card:#FFFFFF;--chip:#F2F0E9;--ink:#10201B;--ink2:#5C6560;--mute:#8A8578;--border:#E7E3D8;--border-soft:#EFECE3;--teal-deep:#1B6E62;color-scheme:light;color:var(--ink)}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--canvas);color:var(--ink);font-family:"Space Grotesk",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+button{font-family:inherit}
+a{color:var(--teal-deep)}
+
+/* ── La page d'accueil des maquettes ── */
+.accueil{max-width:1120px;margin:0 auto;padding:28px 16px 60px}
+.accueil h1{font-size:28px;line-height:1.15;letter-spacing:-.03em;margin:0 0 6px}
+.accueil .sous{color:var(--ink2);font-size:15px;line-height:1.5;margin:0 0 22px;max-width:70ch}
+.accueil h2{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink2);margin:28px 0 10px}
+.grille{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
+.tuile{display:flex;flex-direction:column;gap:6px;padding:14px 16px;border-radius:var(--r);background:var(--card);border:1px solid var(--border);text-decoration:none;color:var(--ink);min-height:var(--tactile);transition:transform .12s ease,border-color .16s ease}
+.tuile:active{transform:scale(.985)}
+.tuile b{font-size:15px}
+.tuile span{font-size:12.5px;color:var(--ink2);line-height:1.45}
+.tuile .num{font-size:11px;color:var(--mute);font-weight:600}
+
+/* ── Le téléphone ── */
+.scene{min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:0}
+.barre-haut{width:100%;max-width:430px;display:flex;align-items:center;gap:8px;padding:10px 12px;font-size:12.5px;color:var(--ink2)}
+.barre-haut a{min-height:var(--tactile);display:inline-flex;align-items:center;padding:0 8px;text-decoration:none;font-weight:600}
+.barre-haut .spacer{flex:1}
+.tel{width:100%;max-width:430px;background:var(--page);min-height:calc(100dvh - 64px);position:relative;overflow:hidden;display:flex;flex-direction:column}
+@media (min-width:700px){
+  .scene{padding:18px 0 40px}
+  .tel{border-radius:34px;border:8px solid #10201B;min-height:860px;max-height:860px;box-shadow:0 30px 60px -30px rgba(16,32,27,.5)}
+}
+.ecran{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;padding:18px 20px 28px;animation:entre var(--duree) var(--courbe)}
+.ecran-pied{margin-top:auto;padding-top:16px}
+@keyframes entre{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+@keyframes respire{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.5);opacity:.4}}
+@keyframes pop{from{transform:scale(.4);opacity:0}to{transform:scale(1);opacity:1}}
+@keyframes balaye{0%{transform:translateX(-140%)}60%,100%{transform:translateX(260%)}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ── Primitives (mêmes mesures que l'app) ── */
+.kicker{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--ink2);margin:0 0 6px}
+h1.t{font-size:26px;line-height:1.15;font-weight:700;letter-spacing:-.03em;margin:0 0 8px}
+p.x{font-size:14px;line-height:1.55;color:var(--ink2);margin:0 0 16px}
+.carte{background:var(--card);border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden}
+.btn{width:100%;min-height:52px;border-radius:999px;border:0;background:var(--degrade);color:#fff;font-size:15px;font-weight:600;box-shadow:var(--ombre-cta);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:transform .12s ease}
+.btn:active{transform:scale(.98)}
+.btn.sec{background:var(--card);color:var(--ink);border:1px solid var(--border);box-shadow:none}
+.btn.doux{background:transparent;color:var(--ink2);box-shadow:none;min-height:var(--tactile);font-size:13px}
+.lien{display:block;width:100%;min-height:var(--tactile);border:0;background:none;font-size:13px;font-weight:600;color:var(--ink2);cursor:pointer;text-align:center}
+.ligne{display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid var(--border-soft);min-height:56px}
+.ligne:last-child{border-bottom:0}
+.ligne .txt{flex:1;min-width:0}
+.ligne .txt b{display:block;font-size:14.5px}
+.ligne .txt span{display:block;font-size:12.5px;color:var(--ink2);line-height:1.45}
+.logo{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;font-weight:700;font-size:13px;flex-shrink:0;color:#fff}
+.logo.vinted{background:#09B1BA}.logo.leboncoin{background:#EC5A13}.logo.ebay{background:#fff;color:#E53238;border:1px solid var(--border)}.logo.beebs{background:#0E4F4F}.logo.depop{background:#FF2300}
+.logo.sm{width:26px;height:26px;border-radius:8px;font-size:10px}
+.pastille{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:700;white-space:nowrap}
+.pastille i{width:8px;height:8px;border-radius:50%;background:var(--hors);flex-shrink:0}
+.pastille.fait{color:var(--ink)}.pastille.fait i{background:var(--teal)}
+.pastille.en_cours{color:var(--ink)}.pastille.en_cours i{background:var(--teal);animation:respire 1.6s ease-in-out infinite}
+.pastille.en_file{color:var(--ink2)}.pastille.en_file i{background:#8A938F}
+.pastille.en_pause{color:var(--ink2)}.pastille.en_pause i{background:#8A938F}
+.pastille.a_toi{color:var(--ambre-encre)}.pastille.a_toi i{background:var(--ambre-point)}
+.pastille.pas_partie{color:var(--rouge)}.pastille.pas_partie i{background:var(--rouge)}
+.pastille.arretee{color:var(--ink2)}.pastille.arretee i{background:var(--hors)}
+.bande{display:flex;gap:11px;padding:13px 16px;border-radius:var(--r);background:var(--menthe);border:1px solid var(--menthe-bord);font-size:13px;line-height:1.5}
+.bande.ambre{background:var(--ambre-fond);border-color:var(--ambre-bord);color:var(--ambre-encre)}
+.vide{padding:26px 18px;text-align:center;border:1.5px dashed var(--border);border-radius:var(--r-lg);background:var(--card)}
+.vide .ico{width:52px;height:52px;border-radius:16px;margin:0 auto 12px;background:var(--menthe);display:grid;place-items:center;font-size:24px}
+.vide b{display:block;font-size:16px;margin-bottom:4px}
+.vide span{display:block;font-size:13px;color:var(--ink2);line-height:1.5}
+.vide .btn{margin-top:14px}
+.progression{display:flex;gap:5px;margin-bottom:18px}
+.progression i{flex:1;height:4px;border-radius:2px;background:#DCD6C6;overflow:hidden;position:relative}
+.progression i.ok::after,.progression i.ici::after{content:"";position:absolute;inset:0;background:var(--degrade);transform-origin:left;transform:scaleX(1);transition:transform .45s var(--courbe)}
+.progression i.ici::after{transform:scaleX(.55)}
+.tuiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tuile-pf{display:flex;align-items:center;gap:10px;padding:14px 12px;min-height:62px;border-radius:var(--r);border:1.5px solid var(--border);background:var(--card);cursor:pointer;text-align:left;font-size:13.5px;font-weight:600}
+.tuile-pf.on{border-color:var(--teal);background:var(--menthe-vive)}
+.tuile-pf .coche{margin-left:auto;width:18px;height:18px;border-radius:9px;border:1.5px solid #DCD6C6;display:grid;place-items:center;font-size:11px;color:#fff}
+.tuile-pf.on .coche{background:var(--teal);border-color:var(--teal)}
+.coche-ok{width:26px;height:26px;border-radius:50%;background:var(--menthe);color:var(--teal-deep);display:grid;place-items:center;animation:pop .4s var(--courbe) both}
+.etape{display:flex;gap:12px;align-items:flex-start;padding:10px 0}
+.etape .rond{width:28px;height:28px;border-radius:50%;border:2px solid var(--border);display:grid;place-items:center;font-size:12px;font-weight:700;color:var(--ink2);flex-shrink:0;background:var(--card)}
+.etape.fait .rond{background:var(--teal);border-color:var(--teal);color:#fff}
+.etape.ici .rond{border-color:var(--teal);color:var(--teal-deep);position:relative}
+.etape.ici .rond::after{content:"";position:absolute;inset:-6px;border-radius:50%;border:2px solid var(--teal);opacity:.35;animation:respire 1.8s ease-in-out infinite}
+.etape .txt b{display:block;font-size:14px}
+.etape .txt span{display:block;font-size:12.5px;color:var(--ink2);line-height:1.45}
+.onglets{display:flex;justify-content:space-around;align-items:center;padding:8px 6px 10px;border-top:1px solid var(--border-soft);background:var(--card);font-size:10.5px;color:var(--ink2);margin:0 -20px -28px}
+.onglets span{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:56px;min-height:var(--tactile);justify-content:center}
+.onglets span.on{color:var(--teal-deep);font-weight:700}
+.onglets .cam{width:44px;height:44px;border-radius:50%;background:var(--degrade);color:#fff;display:grid;place-items:center;margin-top:-18px;box-shadow:0 8px 18px -8px rgba(27,110,98,.8)}
+.entete{display:flex;align-items:center;gap:10px;margin:0 0 14px}
+.entete .q{font-size:12.5px;font-weight:700;color:var(--ink);background:var(--chip);padding:7px 11px;border-radius:999px}
+.entete .spacer{flex:1}
+.entete .roue{width:40px;height:40px;border-radius:50%;background:var(--chip);display:grid;place-items:center}
+.groupe{font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:var(--ink2);margin:14px 0 8px}
+.job{display:flex;gap:10px;padding:10px;border-radius:14px;background:var(--card);border:1px solid var(--border-soft);margin-bottom:8px}
+.job .vignette{width:44px;height:44px;border-radius:10px;background:linear-gradient(140deg,#DCE3E9,#EDF1F4);flex-shrink:0}
+.job .txt{flex:1;min-width:0}
+.job .txt b{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.job .txt small{display:block;font-size:11.5px;color:var(--ink2);margin-top:2px}
+.job .txt p{margin:5px 0 0;font-size:12px;line-height:1.4;color:var(--ink2)}
+.job .txt p.a_toi{color:var(--ambre-encre);font-weight:600}
+.skel{height:10px;border-radius:5px;background:var(--chip);position:relative;overflow:hidden}
+.skel::after{content:"";position:absolute;inset:0;background:linear-gradient(105deg,transparent 30%,rgba(255,255,255,.85) 50%,transparent 70%);animation:balaye 2.2s ease-in-out infinite}
+.popup{background:#F5F6F5;border:1px solid var(--border);border-radius:14px;overflow:hidden;font-size:13px}
+.popup .tete{background:var(--degrade);color:#fff;padding:12px 14px;display:flex;align-items:center;gap:10px;font-weight:700}
+.popup .tete .pill{margin-left:auto;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.3);border-radius:99px;padding:5px 10px;font-size:11.5px}
+.popup .corps{padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+.change{width:100%;max-width:430px;padding:12px 16px 24px;font-size:13px;line-height:1.5;color:var(--ink2)}
+.change b{color:var(--ink)}
+.nav-ecran{display:flex;gap:8px;width:100%;max-width:430px;padding:0 12px}
+.nav-ecran a{flex:1;min-height:var(--tactile);display:flex;align-items:center;justify-content:center;border-radius:999px;background:var(--card);border:1px solid var(--border);text-decoration:none;font-weight:600;font-size:13px;color:var(--ink)}
+.cache{display:none}
+
+/* Version fixe : les écrans se suivent, chacun à la hauteur d'un téléphone. */
+.fixe{scroll-margin-top:0;padding-bottom:24px;border-bottom:1px solid var(--border)}
+.fixe .tel{min-height:760px}
+@media (min-width:700px){.fixe .tel{min-height:860px}}
+.accueil .note{font-size:13px;color:var(--ink2);line-height:1.5;margin:0 0 6px}
+</style>
+</head>
+<body>
+<main class="accueil" id="accueil"><h1>Maquettes de la refonte</h1>
+<p class="sous">Nuit du 15 au 16 octobre 2026 — onboarding, connexion des plateformes, états vides, attentes. Chaque écran est cliquable, pensé téléphone d'abord, avec les six mots d'état (En file · En cours · Fait · À toi de jouer · En pause · Arrêtée) et aucun temps estimé. Sous chaque écran : ce qui change par rapport à aujourd'hui, et pourquoi.</p>
+<p class="note">Version fixe, sans JavaScript : les 25 écrans se suivent sous cette liste. Touche une tuile pour y aller, « Suivant › » pour enchaîner. Généré par scripts/refonte/rendre-maquettes-statiques.mjs depuis index.html + maquettes.js.</p>
+<h2>Onboarding — de l'inscription à la première publication</h2><div class="grille"><a class="tuile" href="#onboarding-1"><span class="num">1 / 8</span><b>1 · Bienvenue</b><span>Un seul écran de promesse, les CINQ plateformes nommées d'entrée (Depop comprise), et une phrase vraie : c'est ton ordinateur qui publie.</span></a><a class="tuile" href="#onboarding-2"><span class="num">2 / 8</span><b>2 · Où vends-tu déjà ?</b><span>Depop entre dans la liste ; « Je débute » devient une tuile à égalité, en premier, parce que c'est la réponse de 41 comptes sur 456 (30 j).</span></a><a class="tuile" href="#onboarding-3"><span class="num">3 / 8</span><b>3 · Ton ordinateur fait le travail</b><span>L'étape dit qu'elle est OBLIGATOIRE pour publier (plus « Passer » en silence), propose les deux situations réelles, et montre la détection en direct — sans jamais promettre un délai.</span></a><a class="tuile" href="#onboarding-4"><span class="num">4 / 8</span><b>4 · Connecte tes plateformes</b><span>Un seul écran pour les cinq, avec l'état vrai et LE geste par ligne — au lieu de quatre « pas encore vérifié » dans les Réglages.</span></a><a class="tuile" href="#onboarding-5"><span class="num">5 / 8</span><b>5 · Ta première fiche</b><span>On montre le résultat (la fiche écrite) AVANT de demander un geste ; la photo est le seul champ.</span></a><a class="tuile" href="#onboarding-6"><span class="num">6 / 8</span><b>6 · Où l'envoyer ?</b><span>Les plateformes NON connectées sont grisées avec leur geste, pas cochables en silence : la fiche ne « partira » que là où ça peut partir.</span></a><a class="tuile" href="#onboarding-7"><span class="num">7 / 8</span><b>7 · C'est en file</b><span>Le suivi vit DANS le parcours, avec les six mots : la fiche est « En file », on dit ce que ça veut dire et ce qui la ferait partir.</span></a><a class="tuile" href="#onboarding-8"><span class="num">8 / 8</span><b>8 · Fait</b><span>La fin du parcours est la PREMIÈRE PUBLICATION faite, pas un récapitulatif : une coche, le lien, et le geste suivant (une deuxième fiche ou une plateforme de plus).</span></a></div><h2>Connexion de chaque plateforme</h2><div class="grille"><a class="tuile" href="#plateformes-vinted"><span class="num">1 / 5</span><b>Vinted — Session fermée</b><span>Un seul mot d'état (À toi de jouer), le geste, et ce qui se passera après — jamais « session », « sonde », ni « dans N min ».</span></a><a class="tuile" href="#plateformes-leboncoin"><span class="num">2 / 5</span><b>Leboncoin — Pas connecté</b><span>Même écran que Vinted : l'état, le geste, la suite. Le compte PRO est dit s'il est détecté.</span></a><a class="tuile" href="#plateformes-ebay"><span class="num">3 / 5</span><b>eBay — Relié, mais pas prêt chez eBay</b><span>Le cas des 20 comptes bloqués : on dit CE QU'eBay attend (trois cases), avec le lien direct, et pourquoi FillSell n'enverra rien avant.</span></a><a class="tuile" href="#plateformes-beebs"><span class="num">4 / 5</span><b>Beebs — Pas connectée</b><span>Beebs a sa particularité (vérification humaine des annonces) : on la dit ici, une fois, au lieu de la découvrir sur une pastille.</span></a><a class="tuile" href="#plateformes-depop"><span class="num">5 / 5</span><b>Depop — Autorisation à donner</b><span>Le cas Depop : une permission Chrome, pas une connexion. On explique POURQUOI (Depop n'a pas d'API), le geste se fait dans l'extension.</span></a></div><h2>États vides</h2><div class="grille"><a class="tuile" href="#vide-tableau"><span class="num">1 / 9</span><b>Tableau vide</b><span>Un seul appel à l'action (le même que le Stock), pas deux blocs concurrents ; les compteurs à zéro sont dits en une ligne, pas en six.</span></a><a class="tuile" href="#vide-stock"><span class="num">2 / 9</span><b>Stock vide</b><span>Huit blocs → trois : ce que la page fera, LE geste (photographier), et l'état des plateformes en une ligne. Le reste (filtres, cartes/liste, republication Pro) n'apparaît qu'avec un premier article.</span></a><a class="tuile" href="#vide-ventes"><span class="num">3 / 9</span><b>Ventes vides</b><span>Une phrase, un geste, zéro offre payante sur un écran où rien n'a encore été vendu.</span></a><a class="tuile" href="#vide-stats"><span class="num">4 / 9</span><b>Stats vides</b><span>Des tirets « -- » → une phrase qui dit ce que la page montrera et à partir de quand (la première vente, pas une durée).</span></a><a class="tuile" href="#vide-lens"><span class="num">5 / 9</span><b>Lens (créer)</b><span>La promesse « Scanne, on gère le reste » reste, mais l'écran dit la vérité juste dessous : ce qui part, et d'où (ton ordinateur).</span></a><a class="tuile" href="#vide-reglages-plateformes"><span class="num">6 / 9</span><b>Réglages › Plateformes</b><span>Plus de « pas encore vérifié » ×4 : chaque ligne porte son état vrai parmi quatre mots (Connectée · À connecter · À finir · À autoriser) et son geste.</span></a><a class="tuile" href="#vide-recherche"><span class="num">7 / 9</span><b>Recherche sans résultat</b><span>Un « Aucun article » devient une phrase qui propose le geste utile (élargir, ou créer).</span></a><a class="tuile" href="#vide-popup"><span class="num">8 / 9</span><b>Popup de l'extension, à l'installation</b><span>Cinq « Vérifier » → une seule phrase et un seul geste. Les plateformes n'apparaissent qu'une fois vues ; Depop est dite avec son pourquoi.</span></a><a class="tuile" href="#vide-file"><span class="num">9 / 9</span><b>Ta file, vide</b><span>La feuille « Ta file » vide dit ce qu'elle montrera, avec les quatre groupes nommés d'avance.</span></a></div><h2>Attentes</h2><div class="grille"><a class="tuile" href="#attentes-file"><span class="num">1 / 3</span><b>Ta file (pleine)</b><span>Quatre groupes, six mots, zéro heure : chaque ligne dit son état et sa raison en une phrase. L'ordre est celui où ça partira vraiment.</span></a><a class="tuile" href="#attentes-job"><span class="num">2 / 3</span><b>Suivi d'un job</b><span>Plus de pourcentage qui glisse : les étapes réelles, celle où on en est qui respire, et l'état en un mot. « Depuis » (passé) est permis ; aucune heure à venir.</span></a><a class="tuile" href="#attentes-synchro"><span class="num">3 / 3</span><b>Synchroniser (en cours)</b><span>Plus « Environ 3 min » : les plateformes une à une, avec leur état réel, et ce qui se passe derrière (le rangement).</span></a></div>
+</main>
+<section class="scene fixe" id="onboarding-1"><div class="barre-haut"><a href="#accueil">‹ Toutes les maquettes</a><span class="spacer"></span><span>1 / 25 · 1 · Bienvenue</span></div>
+<div class="tel"><div class="ecran"><div class="progression" aria-hidden="true"><i class="ici"></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i></div><p class="kicker">Bienvenue</p><h1 class="t">Vends partout.<br>Gère tout ici.</h1>
+  <p class="x">Une fiche, publiée sur Vinted, Leboncoin, eBay, Beebs et Depop. Les ventes repérées, les autres annonces retirées, les anciennes remontées. Tu pilotes depuis ce téléphone ; ton ordinateur fait le travail.</p>
+  <div class="carte" style="padding:16px;display:flex;justify-content:space-between"><span class="logo vinted" aria-hidden="true">V</span><span class="logo leboncoin" aria-hidden="true">lbc</span><span class="logo ebay" aria-hidden="true">e</span><span class="logo beebs" aria-hidden="true">B</span><span class="logo depop" aria-hidden="true">D</span></div>
+  <div class="ecran-pied"><button class="btn">C'est parti</button></div></div></div>
+<div class="change"><b>Ce qui change :</b> Un seul écran de promesse, les CINQ plateformes nommées d'entrée (Depop comprise), et une phrase vraie : c'est ton ordinateur qui publie.</div>
+<div class="nav-ecran"><span style="flex:1"></span><a href="#onboarding-2">Suivant ›</a></div></section>
+<section class="scene fixe" id="onboarding-2"><div class="barre-haut"><a href="#accueil">‹ Toutes les maquettes</a><span class="spacer"></span><span>2 / 25 · 2 · Où vends-tu déjà ?</span></div>
+<div class="tel"><div class="ecran"><div class="progression" aria-hidden="true"><i class="ok"></i><i class="ici"></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i></div><p class="kicker">Pour commencer</p><h1 class="t">Où vends-tu déjà ?</h1>
+  <p class="x">Coche ce que tu utilises. Tu pourras en ajouter à tout moment.</p>
+  <button class="tuile-pf on" style="width:100%;margin-bottom:10px">✦ Je débute, rien en ligne<span class="coche">✓</span></button>
+  <div class="tuiles"><button class="tuile-pf"><span class="logo vinted" aria-hidden="true">V</span>Vinted<span class="coche"></span></button><button class="tuile-pf"><span class="logo leboncoin" aria-hidden="true">lbc</span>Leboncoin<span class="coche"></span></button><button class="tuile-pf"><span class="logo ebay" aria-hidden="true">e</span>eBay<span class="coche"></span></button><button class="tuile-pf"><span class="logo beebs" aria-hidden="true">B</span>Beebs<span class="coche"></span></button><button class="tuile-pf"><span class="logo depop" aria-hidden="true">D</span>Depop<span class="coche"></span></button></div>
+  <div class="ecran-pied"><button class="btn">Continuer</button></div></div></div>
+<div class="change"><b>Ce qui change :</b> Depop entre dans la liste ; « Je débute » devient une tuile à égalité, en premier, parce que c'est la réponse de 41 comptes sur 456 (30 j).</div>
+<div class="nav-ecran"><a href="#onboarding-1">‹ Précédent</a><a href="#onboarding-3">Suivant ›</a></div></section>
+<section class="scene fixe" id="onboarding-3"><div class="barre-haut"><a href="#accueil">‹ Toutes les maquettes</a><span class="spacer"></span><span>3 / 25 · 3 · Ton ordinateur fait le travail</span></div>
+<div class="tel"><div class="ecran"><div class="progression" aria-hidden="true"><i class="ok"></i><i class="ok"></i><i class="ici"></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i></div><p class="kicker">La marche qui compte</p><h1 class="t">Ton ordinateur fait le travail</h1>
+  <p class="x">Une extension Chrome, installée une fois sur ton ordinateur, dépose et relève tes annonces avec tes comptes déjà connectés — jamais tes mots de passe. Sans elle, rien ne part.</p>
+  <div class="carte"><div class="ligne"><span class="logo" style="background:var(--menthe);color:var(--teal-deep)">💻</span><div class="txt"><b>Je suis devant mon ordinateur</b><span>Installe-la maintenant depuis le Chrome Web Store. Tu reviens ici, c'est détecté tout seul.</span></div></div>
+  <div class="ligne"><span class="logo" style="background:var(--menthe);color:var(--teal-deep)">📱</span><div class="txt"><b>Je suis sur mon téléphone</b><span>On t'envoie le lien par mail. Tes fiches attendront : elles partiront dès que l'extension tourne.</span></div></div></div>
+  <div style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:12.5px;font-weight:600;color:var(--ink2)"><span class="pastille en_cours"><i></i></span>Détection automatique — rien à recliquer ici</div>
+  <div class="ecran-pied"><button class="btn">M'envoyer le lien pour mon ordinateur</button><button class="lien">J'installerai plus tard — mes fiches attendront</button></div></div></div>
+<div class="change"><b>Ce qui change :</b> L'étape dit qu'elle est OBLIGATOIRE pour publier (plus « Passer » en silence), propose les deux situations réelles, et montre la détection en direct — sans jamais promettre un délai.</div>
+<div class="nav-ecran"><a href="#onboarding-2">‹ Précédent</a><a href="#onboarding-4">Suivant ›</a></div></section>
+<section class="scene fixe" id="onboarding-4"><div class="barre-haut"><a href="#accueil">‹ Toutes les maquettes</a><span class="spacer"></span><span>4 / 25 · 4 · Connecte tes plateformes</span></div>
+<div class="tel"><div class="ecran"><div class="progression" aria-hidden="true"><i class="ok"></i><i class="ok"></i><i class="ok"></i><i class="ici"></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i></div><p class="kicker">Tes comptes</p><h1 class="t">Connecte tes plateformes</h1>
+  <p class="x">L'extension utilise tes sessions déjà ouvertes dans Chrome. Elle ne connaît aucun mot de passe.</p>
+  <div class="carte">
+    <div class="ligne"><span class="logo vinted" aria-hidden="true">V</span><div class="txt"><b>Vinted</b><span>Boutique @marie_vide — vue dans Chrome</span></div><span class="pastille fait"><i></i>Connectée</span></div>
+    <div class="ligne"><span class="logo leboncoin" aria-hidden="true">lbc</span><div class="txt"><b>Leboncoin</b><span>Connecte-toi sur leboncoin.fr dans Chrome</span></div><button class="btn sec" style="width:auto;min-height:40px;padding:0 12px;font-size:12.5px">Me connecter</button></div>
+    <div class="ligne"><span class="logo ebay" aria-hidden="true">e</span><div class="txt"><b>eBay</b><span>Relié à FillSell, mais pas encore prêt à vendre chez eBay</span></div><a href="#plateformes-ebay" class="btn sec" style="width:auto;min-height:40px;padding:0 12px;font-size:12.5px;text-decoration:none">Voir</a></div>
+    <div class="ligne"><span class="logo beebs" aria-hidden="true">B</span><div class="txt"><b>Beebs</b><span>Connecte-toi sur beebs.app dans Chrome</span></div><button class="btn sec" style="width:auto;min-height:40px;padding:0 12px;font-size:12.5px">Me connecter</button></div>
+    <div class="ligne"><span class="logo depop" aria-hidden="true">D</span><div class="txt"><b>Depop</b><span>Une autorisation dans l'extension, une seule fois</span></div><a href="#plateformes-depop" class="btn sec" style="width:auto;min-height:40px;padding:0 12px;font-size:12.5px;text-decoration:none">Autoriser</a></div>
+  </div>
+  <p class="x" style="margin-top:12px;font-size:12.5px">Tu peux continuer sans tout connecter : une fiche n'ira que là où tu es connecté.</p>
+  <div class="ecran-pied"><button class="btn">Continuer</button></div></div></div>
+<div class="change"><b>Ce qui change :</b> Un seul écran pour les cinq, avec l'état vrai et LE geste par ligne — au lieu de quatre « pas encore vérifié » dans les Réglages.</div>
+<div class="nav-ecran"><a href="#onboarding-3">‹ Précédent</a><a href="#onboarding-5">Suivant ›</a></div></section>
+<section class="scene fixe" id="onboarding-5"><div class="barre-haut"><a href="#accueil">‹ Toutes les maquettes</a><span class="spacer"></span><span>5 / 25 · 5 · Ta première fiche</span></div>
+<div class="tel"><div class="ecran"><div class="progression" aria-hidden="true"><i class="ok"></i><i class="ok"></i><i class="ok"></i><i class="ok"></i><i class="ici"></i><i class=""></i><i class=""></i><i class=""></i></div><p class="kicker">Ta première fiche</p><h1 class="t">Une photo, et la fiche s'écrit</h1>
+  <p class="x">Prends l'article en photo : FillSell reconnaît l'objet, propose un titre, une description et un prix. Tu corriges si tu veux.</p>
+  <div class="carte" style="padding:14px"><div style="display:flex;gap:12px"><div class="job" style="margin:0;padding:0;border:0;background:none"><div class="vignette" style="width:84px;height:84px;border-radius:14px"></div></div>
+  <div style="flex:1"><div class="skel" style="width:80%;margin:6px 0 8px"></div><div class="skel" style="width:55%;margin-bottom:8px"></div><div class="skel" style="width:40%"></div><p style="margin:10px 0 0;font-size:12px;color:var(--ink2)">Titre, description, prix conseillé</p></div></div></div>
+  <div class="ecran-pied"><button class="btn">📷 Photographier mon premier article</button><button class="lien">Écrire la fiche à la main</button></div></div></div>
+<div class="change"><b>Ce qui change :</b> On montre le résultat (la fiche écrite) AVANT de demander un geste ; la photo est le seul champ.</div>
+<div class="nav-ecran"><a href="#onboarding-4">‹ Précédent</a><a href="#onboarding-6">Suivant ›</a></div></section>
+<section class="scene fixe" id="onboarding-6"><div class="barre-haut"><a href="#accueil">‹ Toutes les maquettes</a><span class="spacer"></span><span>6 / 25 · 6 · Où l'envoyer ?</span></div>
+<div class="tel"><div class="ecran"><div class="progression" aria-hidden="true"><i class="ok"></i><i class="ok"></i><i class="ok"></i><i class="ok"></i><i class="ok"></i><i class="ici"></i><i class=""></i><i class=""></i></div><p class="kicker">Première publication</p><h1 class="t">Où l'envoyer ?</h1>
+  <div class="carte" style="padding:12px;display:flex;gap:12px;align-items:center;margin-bottom:12px"><div class="vignette" style="width:56px;height:56px;border-radius:12px;background:linear-gradient(140deg,#E8E2D4,#F3EFE6)"></div><div><b style="font-size:14px">Veste en jean Levi's, M</b><div style="font-size:12.5px;color:var(--ink2)">38 € · fiche prête</div></div></div>
+  <div class="carte">
+    <div class="ligne"><span class="logo vinted" aria-hidden="true">V</span><div class="txt"><b>Vinted</b><span>Gratuit · 5 publications restantes ce mois</span></div><span class="tuile-pf on coche" style="width:22px;height:22px;padding:0;min-height:0">✓</span></div>
+    <div class="ligne" style="opacity:.6"><span class="logo leboncoin" aria-hidden="true">lbc</span><div class="txt"><b>Leboncoin</b><span>Connecte-toi d'abord sur ton ordinateur</span></div><button class="btn sec" style="width:auto;min-height:36px;padding:0 10px;font-size:12px">Me connecter</button></div>
+    <div class="ligne" style="opacity:.6"><span class="logo ebay" aria-hidden="true">e</span><div class="txt"><b>eBay</b><span>Compte pas encore prêt chez eBay</span></div><a href="#plateformes-ebay" style="font-size:12px;font-weight:700">Voir</a></div>
+    <div class="ligne" style="opacity:.6"><span class="logo beebs" aria-hidden="true">B</span><div class="txt"><b>Beebs</b><span>Connecte-toi d'abord sur ton ordinateur</span></div></div>
+    <div class="ligne" style="opacity:.6"><span class="logo depop" aria-hidden="true">D</span><div class="txt"><b>Depop</b><span>Autorise Depop dans l'extension</span></div></div>
+  </div>
+  <div class="ecran-pied"><button class="btn">Publier sur Vinted</button></div></div></div>
+<div class="change"><b>Ce qui change :</b> Les plateformes NON connectées sont grisées avec leur geste, pas cochables en silence : la fiche ne « partira » que là où ça peut partir.</div>
+<div class="nav-ecran"><a href="#onboarding-5">‹ Précédent</a><a href="#onboarding-7">Suivant ›</a></div></section>
+<section class="scene fixe" id="onboarding-7"><div class="barre-haut"><a href="#accueil">‹ Toutes les maquettes</a><span class="spacer"></span><span>7 / 25 · 7 · C'est en file</span></div>
+<div class="tel"><div class="ecran"><div class="progression" aria-hidden="true"><i class="ok"></i><i class="ok"></i><i class="ok"></i><i class="ok"></i><i class="ok"></i><i class="ok"></i><i class="ici"></i><i class=""></i></div><p class="kicker">Première publication</p><h1 class="t">C'est en file</h1>
+  <div class="job"><div class="vignette" style="background:linear-gradient(140deg,#E8E2D4,#F3EFE6)"></div><div class="txt"><b>Veste en jean Levi's, M</b><small>38 € · Publication sur Vinted</small><p><span class="pastille en_file"><i></i>En file</span> — elle part dès que ton ordinateur la prend, à son tour.</p></div></div>
+  <div class="carte" style="padding:6px 14px;margin-top:8px">
+    <div class="etape fait"><span class="rond">✓</span><div class="txt"><b>Fiche prête</b><span>Titre, prix, photos, rayon.</span></div></div>
+    <div class="etape ici"><span class="rond">2</span><div class="txt"><b>En file</b><span>Ton ordinateur la prend quand Chrome est ouvert avec l'extension.</span></div></div>
+    <div class="etape"><span class="rond">3</span><div class="txt"><b>En cours</b><span>Dépôt sur Vinted, dans ton Chrome.</span></div></div>
+    <div class="etape"><span class="rond">4</span><div class="txt"><b>Fait</b><span>En ligne sur Vinted — tu reçois la fiche avec son lien.</span></div></div>
+  </div>
+  <div class="bande" style="margin-top:12px">Ton ordinateur est éteint ? Elle attend, rien n'est perdu. Elle part dès que Chrome s'ouvre avec l'extension.</div>
+  <div class="ecran-pied"><button class="btn">Entrer dans FillSell</button></div></div></div>
+<div class="change"><b>Ce qui change :</b> Le suivi vit DANS le parcours, avec les six mots : la fiche est « En file », on dit ce que ça veut dire et ce qui la ferait partir.</div>
+<div class="nav-ecran"><a href="#onboarding-6">‹ Précédent</a><a href="#onboarding-8">Suivant ›</a></div></section>
+<section class="scene fixe" id="onboarding-8"><div class="barre-haut"><a href="#accueil">‹ Toutes les maquettes</a><span class="spacer"></span><span>8 / 25 · 8 · Fait</span></div>
+<div class="tel"><div class="ecran"><div class="progression" aria-hidden="true"><i class="ok"></i><i class="ok"></i><i class="ok"></i><i class="ok"></i><i class="ok"></i><i class="ok"></i><i class="ok"></i><i class="ici"></i></div><div style="text-align:center;padding:26px 0 6px"><span class="coche-ok" style="width:64px;height:64px;font-size:28px;margin:0 auto">✓</span></div>
+  <h1 class="t" style="text-align:center">En ligne sur Vinted</h1>
+  <p class="x" style="text-align:center">Ta première annonce est partie de ton ordinateur. FillSell la surveille : la vente, la remontée, le retrait ailleurs — tout ça, tout seul.</p>
+  <div class="job"><div class="vignette" style="background:linear-gradient(140deg,#E8E2D4,#F3EFE6)"></div><div class="txt"><b>Veste en jean Levi's, M</b><small>38 € · Vinted · <a href="#">voir l'annonce ↗</a></small><p><span class="pastille fait"><i></i>Fait</span></p></div></div>
+  <div class="ecran-pied"><button class="btn">Ajouter un deuxième article</button><button class="lien">Connecter Leboncoin, eBay, Beebs ou Depop</button></div></div></div>
+<div class="change"><b>Ce qui change :</b> La fin du parcours est la PREMIÈRE PUBLICATION faite, pas un récapitulatif : une coche, le lien, et le geste suivant (une deuxième fiche ou une plateforme de plus).</div>
+<div class="nav-ecran"><a href="#onboarding-7">‹ Précédent</a><a href="#plateformes-vinted">Suivant ›</a></div></section>
+<section class="scene fixe" id="plateformes-vinted"><div class="barre-haut"><a href="#accueil">‹ Toutes les maquettes</a><span class="spacer"></span><span>9 / 25 · Vinted — Session fermée</span></div>
+<div class="tel"><div class="ecran"><div class="entete" style="margin-bottom:6px"><span style="font-weight:700">‹ Mes plateformes</span></div>
+  <div style="display:flex;align-items:center;gap:12px;margin:8px 0 10px"><span class="logo vinted" aria-hidden="true">V</span><h1 class="t" style="margin:0">Vinted</h1></div><div class="bande ambre"><span class="pastille a_toi"><i></i>À toi de jouer</span> — tu n'es pas connectée à Vinted sur ton ordinateur.</div>
+  <div class="carte" style="margin-top:12px;padding:4px 14px"><div class="etape fait"><span class="rond">✓</span><div class="txt"><b>Extension installée</b><span>Vue sur ton ordinateur.</span></div></div>
+  <div class="etape ici"><span class="rond">2</span><div class="txt"><b>Connecte-toi sur vinted.fr dans Chrome</b><span>Comme d'habitude. FillSell ne voit pas ton mot de passe.</span></div></div>
+  <div class="etape"><span class="rond">3</span><div class="txt"><b>Ça repart tout seul</b><span>Tes publications Vinted en pause repartent dès que la boutique est vue.</span></div></div></div><div class="ecran-pied"><button class="btn">Ouvrir vinted.fr sur mon ordinateur</button><button class="lien">Je ne vends pas sur Vinted</button></div></div></div>
+<div class="change"><b>Ce qui change :</b> Un seul mot d'état (À toi de jouer), le geste, et ce qui se passera après — jamais « session », « sonde », ni « dans N min ».</div>
+<div class="nav-ecran"><a href="#onboarding-8">‹ Précédent</a><a href="#plateformes-leboncoin">Suivant ›</a></div></section>
+<section class="scene fixe" id="plateformes-leboncoin"><div class="barre-haut"><a href="#accueil">‹ Toutes les maquettes</a><span class="spacer"></span><span>10 / 25 · Leboncoin — Pas connecté</span></div>
+<div class="tel"><div class="ecran"><div class="entete" style="margin-bottom:6px"><span style="font-weight:700">‹ Mes plateformes</span></div>
+  <div style="display:flex;align-items:center;gap:12px;margin:8px 0 10px"><span class="logo leboncoin" aria-hidden="true">lbc</span><h1 class="t" style="margin:0">Leboncoin</h1></div><div class="bande ambre"><span class="pastille a_toi"><i></i>À toi de jouer</span> — connecte-toi à Leboncoin sur ton ordinateur.</div>
+  <div class="carte" style="margin-top:12px;padding:4px 14px"><div class="etape ici"><span class="rond">1</span><div class="txt"><b>Connecte-toi sur leboncoin.fr dans Chrome</b><span>Ton compte, tes annonces, ton adresse de remise : rien à ressaisir ici.</span></div></div>
+  <div class="etape"><span class="rond">2</span><div class="txt"><b>Ça repart tout seul</b><span>Les fiches en pause pour Leboncoin partent dès que la session est vue.</span></div></div></div><div class="ecran-pied"><button class="btn">Ouvrir leboncoin.fr sur mon ordinateur</button><button class="lien">Je ne vends pas sur Leboncoin</button></div></div></div>
+<div class="change"><b>Ce qui change :</b> Même écran que Vinted : l'état, le geste, la suite. Le compte PRO est dit s'il est détecté.</div>
+<div class="nav-ecran"><a href="#plateformes-vinted">‹ Précédent</a><a href="#plateformes-ebay">Suivant ›</a></div></section>
+<section class="scene fixe" id="plateformes-ebay"><div class="barre-haut"><a href="#accueil">‹ Toutes les maquettes</a><span class="spacer"></span><span>11 / 25 · eBay — Relié, mais pas prêt chez eBay</span></div>
+<div class="tel"><div class="ecran"><div class="entete" style="margin-bottom:6px"><span style="font-weight:700">‹ Mes plateformes</span></div>
+  <div style="display:flex;align-items:center;gap:12px;margin:8px 0 10px"><span class="logo ebay" aria-hidden="true">e</span><h1 class="t" style="margin:0">eBay</h1></div><div class="bande ambre"><span class="pastille a_toi"><i></i>À toi de jouer</span> — ton compte eBay est relié à FillSell, mais eBay ne le laisse pas encore vendre.</div>
+  <p class="x" style="margin:12px 0 8px">Rien n'a été envoyé à eBay. Dès que ces trois points sont faits chez eBay, tes annonces partent toutes seules :</p>
+  <div class="carte" style="padding:4px 14px"><div class="etape fait"><span class="rond">✓</span><div class="txt"><b>Inscription vendeur</b><span>Faite.</span></div></div>
+  <div class="etape ici"><span class="rond">2</span><div class="txt"><b>Politiques de livraison, paiement, retours</b><span>Chez eBay, une fois : elles s'appliquent à toutes tes annonces.</span></div></div>
+  <div class="etape"><span class="rond">3</span><div class="txt"><b>Lieu d'expédition</b><span>Ton code postal, chez eBay.</span></div></div></div>
+  <p class="x" style="margin:12px 0 0;font-size:12.5px">Ton compte eBay est sur ebay.fr ✓ (un compte sur un autre site eBay ne peut pas être suivi).</p><div class="ecran-pied"><button class="btn">Finir chez eBay (Seller Hub)</button><button class="lien">Je reviendrai — mes fiches eBay attendent</button></div></div></div>
+<div class="change"><b>Ce qui change :</b> Le cas des 20 comptes bloqués : on dit CE QU'eBay attend (trois cases), avec le lien direct, et pourquoi FillSell n'enverra rien avant.</div>
+<div class="nav-ecran"><a href="#plateformes-leboncoin">‹ Précédent</a><a href="#plateformes-beebs">Suivant ›</a></div></section>
+<section class="scene fixe" id="plateformes-beebs"><div class="barre-haut"><a href="#accueil">‹ Toutes les maquettes</a><span class="spacer"></span><span>12 / 25 · Beebs — Pas connectée</span></div>
+<div class="tel"><div class="ecran"><div class="entete" style="margin-bottom:6px"><span style="font-weight:700">‹ Mes plateformes</span></div>
+  <div style="display:flex;align-items:center;gap:12px;margin:8px 0 10px"><span class="logo beebs" aria-hidden="true">B</span><h1 class="t" style="margin:0">Beebs</h1></div><div class="bande ambre"><span class="pastille a_toi"><i></i>À toi de jouer</span> — connecte-toi à Beebs sur ton ordinateur.</div>
+  <div class="carte" style="margin-top:12px;padding:4px 14px"><div class="etape ici"><span class="rond">1</span><div class="txt"><b>Connecte-toi sur beebs.app dans Chrome</b><span>Compte Beebs classique (pas « visiteur »).</span></div></div>
+  <div class="etape"><span class="rond">2</span><div class="txt"><b>Bon à savoir</b><span>Beebs vérifie chaque annonce à la main avant de la mettre en ligne : après le dépôt, ta fiche reste « En cours » jusqu'à son feu vert.</span></div></div></div><div class="ecran-pied"><button class="btn">Ouvrir beebs.app sur mon ordinateur</button><button class="lien">Je ne vends pas sur Beebs</button></div></div></div>
+<div class="change"><b>Ce qui change :</b> Beebs a sa particularité (vérification humaine des annonces) : on la dit ici, une fois, au lieu de la découvrir sur une pastille.</div>
+<div class="nav-ecran"><a href="#plateformes-ebay">‹ Précédent</a><a href="#plateformes-depop">Suivant ›</a></div></section>
+<section class="scene fixe" id="plateformes-depop"><div class="barre-haut"><a href="#accueil">‹ Toutes les maquettes</a><span class="spacer"></span><span>13 / 25 · Depop — Autorisation à donner</span></div>
+<div class="tel"><div class="ecran"><div class="entete" style="margin-bottom:6px"><span style="font-weight:700">‹ Mes plateformes</span></div>
+  <div style="display:flex;align-items:center;gap:12px;margin:8px 0 10px"><span class="logo depop" aria-hidden="true">D</span><h1 class="t" style="margin:0">Depop</h1></div><div class="bande ambre"><span class="pastille a_toi"><i></i>À toi de jouer</span> — Depop attend ton autorisation dans l'extension.</div>
+  <p class="x" style="margin:12px 0 8px">Depop ne propose pas de connexion automatique : FillSell travaille sur depop.com comme toi, dans ton Chrome. Chrome demande ton accord, une seule fois.</p>
+  <div class="carte" style="padding:4px 14px"><div class="etape ici"><span class="rond">1</span><div class="txt"><b>Appuie sur « Autoriser Depop »</b><span>La fenêtre FillSell s'ouvre sur ton ordinateur ; Chrome te demande l'accord pour depop.com.</span></div></div>
+  <div class="etape"><span class="rond">2</span><div class="txt"><b>Connecte-toi sur depop.com</b><span>Si ce n'est pas déjà fait, dans le même Chrome.</span></div></div>
+  <div class="etape"><span class="rond">3</span><div class="txt"><b>Ça repart tout seul</b><span>Tes fiches Depop en pause partent dès l'accord donné.</span></div></div></div><div class="ecran-pied"><button class="btn">Autoriser Depop</button><button class="lien">Je ne vends pas sur Depop</button></div></div></div>
+<div class="change"><b>Ce qui change :</b> Le cas Depop : une permission Chrome, pas une connexion. On explique POURQUOI (Depop n'a pas d'API), le geste se fait dans l'extension.</div>
+<div class="nav-ecran"><a href="#plateformes-beebs">‹ Précédent</a><a href="#vide-tableau">Suivant ›</a></div></section>
+<section class="scene fixe" id="vide-tableau"><div class="barre-haut"><a href="#accueil">‹ Toutes les maquettes</a><span class="spacer"></span><span>14 / 25 · Tableau vide</span></div>
+<div class="tel"><div class="ecran"><div class="entete"><span class="q">5 annonces gratuites ce mois</span><span class="spacer"></span><span class="roue" aria-label="Réglages">⚙</span></div><h1 class="t">Bonjour Marie</h1>
+  <p class="x">Ton tableau se remplit avec tes ventes : profit, stock, annonces en ligne. Pour l'instant, tout est à zéro — c'est normal.</p>
+  <div class="vide"><div class="ico">📷</div><b>Commence par un article</b><span>Une photo suffit : la fiche s'écrit, tu choisis où l'envoyer.</span><button class="btn">Ajouter mon premier article</button></div>
+  <nav class="onglets" aria-label="Onglets">
+  <span class="on">▦<br>Tableau</span><span class="">▤<br>Stock</span>
+  <span class="cam">◉</span><span class="">◳<br>Ventes</span><span class="">∿<br>Stats</span></nav></div></div>
+<div class="change"><b>Ce qui change :</b> Un seul appel à l'action (le même que le Stock), pas deux blocs concurrents ; les compteurs à zéro sont dits en une ligne, pas en six.</div>
+<div class="nav-ecran"><a href="#plateformes-depop">‹ Précédent</a><a href="#vide-stock">Suivant ›</a></div></section>
+<section class="scene fixe" id="vide-stock"><div class="barre-haut"><a href="#accueil">‹ Toutes les maquettes</a><span class="spacer"></span><span>15 / 25 · Stock vide</span></div>
+<div class="tel"><div class="ecran"><div class="entete"><span class="q">5 annonces gratuites ce mois</span><span class="spacer"></span><span class="roue" aria-label="Réglages">⚙</span></div><h1 class="t">Mon stock</h1>
+  <div class="vide"><div class="ico">📦</div><b>Ton stock est vide</b><span>Ici vivront tes articles : où ils sont en ligne, ce qui les attend, ce qu'ils t'ont rapporté. Une fiche = une photo.</span><button class="btn">📷 Ajouter mon premier article</button><button class="lien">Importer mes annonces déjà en ligne</button></div>
+  <div class="carte" style="margin-top:12px"><div class="ligne"><div class="txt"><b style="font-size:13px">Plateformes</b><span>Vinted connectée · Leboncoin, Beebs à connecter · eBay à finir · Depop à autoriser</span></div><a href="#onboarding-4" style="font-size:12.5px;font-weight:700;text-decoration:none">Voir</a></div></div>
+  <nav class="onglets" aria-label="Onglets">
+  <span class="">▦<br>Tableau</span><span class="on">▤<br>Stock</span>
+  <span class="cam">◉</span><span class="">◳<br>Ventes</span><span class="">∿<br>Stats</span></nav></div></div>
+<div class="change"><b>Ce qui change :</b> Huit blocs → trois : ce que la page fera, LE geste (photographier), et l'état des plateformes en une ligne. Le reste (filtres, cartes/liste, republication Pro) n'apparaît qu'avec un premier article.</div>
+<div class="nav-ecran"><a href="#vide-tableau">‹ Précédent</a><a href="#vide-ventes">Suivant ›</a></div></section>
+<section class="scene fixe" id="vide-ventes"><div class="barre-haut"><a href="#accueil">‹ Toutes les maquettes</a><span class="spacer"></span><span>16 / 25 · Ventes vides</span></div>
+<div class="tel"><div class="ecran"><div class="entete"><span class="q">5 annonces gratuites ce mois</span><span class="spacer"></span><span class="roue" aria-label="Réglages">⚙</span></div><h1 class="t">Ventes</h1>
+  <div class="vide"><div class="ico">🎉</div><b>Aucune vente pour l'instant</b><span>Dès qu'un article part sur Vinted, Leboncoin, eBay, Beebs ou Depop, il apparaît ici avec ta marge — et FillSell te propose de retirer les autres annonces d'un tap.</span><button class="btn sec">Voir mon stock</button></div>
+  <div class="groupe">Ce qui se passe à chaque vente</div>
+  <div class="carte"><div class="ligne"><span class="coche-ok">1</span><div class="txt"><b>On repère la vente</b><span>Sur les cinq plateformes.</span></div></div><div class="ligne"><span class="coche-ok">2</span><div class="txt"><b>Tu confirmes, on retire le reste</b><span>Un tap, et seulement si tu confirmes.</span></div></div><div class="ligne"><span class="coche-ok">3</span><div class="txt"><b>Ta marge se calcule</b><span>Prix de vente moins achat et frais.</span></div></div></div>
+  <nav class="onglets" aria-label="Onglets">
+  <span class="">▦<br>Tableau</span><span class="">▤<br>Stock</span>
+  <span class="cam">◉</span><span class="on">◳<br>Ventes</span><span class="">∿<br>Stats</span></nav></div></div>
+<div class="change"><b>Ce qui change :</b> Une phrase, un geste, zéro offre payante sur un écran où rien n'a encore été vendu.</div>
+<div class="nav-ecran"><a href="#vide-stock">‹ Précédent</a><a href="#vide-stats">Suivant ›</a></div></section>
+<section class="scene fixe" id="vide-stats"><div class="barre-haut"><a href="#accueil">‹ Toutes les maquettes</a><span class="spacer"></span><span>17 / 25 · Stats vides</span></div>
+<div class="tel"><div class="ecran"><div class="entete"><span class="q">5 annonces gratuites ce mois</span><span class="spacer"></span><span class="roue" aria-label="Réglages">⚙</span></div><h1 class="t">Stats</h1>
+  <div class="vide"><div class="ico">📈</div><b>Tes stats arrivent avec ta première vente</b><span>Profit, revenu, meilleures plateformes, délai de vente par article : tout se calcule tout seul à partir de tes ventes enregistrées.</span><button class="btn sec">Voir mon stock</button></div>
+  <nav class="onglets" aria-label="Onglets">
+  <span class="">▦<br>Tableau</span><span class="">▤<br>Stock</span>
+  <span class="cam">◉</span><span class="">◳<br>Ventes</span><span class="on">∿<br>Stats</span></nav></div></div>
+<div class="change"><b>Ce qui change :</b> Des tirets « -- » → une phrase qui dit ce que la page montrera et à partir de quand (la première vente, pas une durée).</div>
+<div class="nav-ecran"><a href="#vide-ventes">‹ Précédent</a><a href="#vide-lens">Suivant ›</a></div></section>
+<section class="scene fixe" id="vide-lens"><div class="barre-haut"><a href="#accueil">‹ Toutes les maquettes</a><span class="spacer"></span><span>18 / 25 · Lens (créer)</span></div>
+<div class="tel"><div class="ecran"><div class="entete"><span class="q">5 annonces gratuites ce mois</span><span class="spacer"></span><span class="roue" aria-label="Réglages">⚙</span></div><div style="text-align:center;padding:10px 0 4px"><h1 class="t">Scanne.<br>On écrit la fiche.</h1><p class="x">Une photo suffit : titre, description et prix pour chacune de tes plateformes.</p>
+  <div style="width:150px;height:150px;border-radius:50%;margin:10px auto;background:var(--degrade);display:grid;place-items:center;color:#fff;font-size:44px;box-shadow:0 20px 40px -20px rgba(27,110,98,.8)">📷</div>
+  <p class="x" style="font-size:12.5px">Touche pour scanner un article</p></div>
+  <div class="bande">Ce que tu prépares ici attend dans ton compte : ton ordinateur le publie dès que Chrome est ouvert avec l'extension.</div>
+  <nav class="onglets" aria-label="Onglets">
+  <span class="">▦<br>Tableau</span><span class="">▤<br>Stock</span>
+  <span class="cam">◉</span><span class="">◳<br>Ventes</span><span class="">∿<br>Stats</span></nav></div></div>
+<div class="change"><b>Ce qui change :</b> La promesse « Scanne, on gère le reste » reste, mais l'écran dit la vérité juste dessous : ce qui part, et d'où (ton ordinateur).</div>
+<div class="nav-ecran"><a href="#vide-stats">‹ Précédent</a><a href="#vide-reglages-plateformes">Suivant ›</a></div></section>
+<section class="scene fixe" id="vide-reglages-plateformes"><div class="barre-haut"><a href="#accueil">‹ Toutes les maquettes</a><span class="spacer"></span><span>19 / 25 · Réglages › Plateformes</span></div>
+<div class="tel"><div class="ecran"><div class="entete" style="margin-bottom:6px"><span style="font-weight:700">‹ Réglages</span></div><h1 class="t">Mes plateformes</h1>
+  <div class="carte">
+    <div class="ligne"><span class="logo vinted" aria-hidden="true">V</span><div class="txt"><b>Vinted</b><span>@marie_vide · vue dans Chrome</span></div><span class="pastille fait"><i></i>Connectée</span></div>
+    <div class="ligne"><span class="logo leboncoin" aria-hidden="true">lbc</span><div class="txt"><b>Leboncoin</b><span>Connecte-toi sur ton ordinateur</span></div><span class="pastille a_toi"><i></i>À connecter</span></div>
+    <div class="ligne"><span class="logo ebay" aria-hidden="true">e</span><div class="txt"><b>eBay</b><span>Relié · politiques à finir chez eBay</span></div><span class="pastille a_toi"><i></i>À finir</span></div>
+    <div class="ligne"><span class="logo beebs" aria-hidden="true">B</span><div class="txt"><b>Beebs</b><span>Connecte-toi sur ton ordinateur</span></div><span class="pastille a_toi"><i></i>À connecter</span></div>
+    <div class="ligne"><span class="logo depop" aria-hidden="true">D</span><div class="txt"><b>Depop</b><span>Une autorisation dans l'extension</span></div><span class="pastille a_toi"><i></i>À autoriser</span></div>
+  </div>
+  <p class="x" style="margin-top:12px;font-size:12.5px">Ces états viennent de l'extension sur ton ordinateur. Touche une ligne pour voir le geste.</p></div></div>
+<div class="change"><b>Ce qui change :</b> Plus de « pas encore vérifié » ×4 : chaque ligne porte son état vrai parmi quatre mots (Connectée · À connecter · À finir · À autoriser) et son geste.</div>
+<div class="nav-ecran"><a href="#vide-lens">‹ Précédent</a><a href="#vide-recherche">Suivant ›</a></div></section>
+<section class="scene fixe" id="vide-recherche"><div class="barre-haut"><a href="#accueil">‹ Toutes les maquettes</a><span class="spacer"></span><span>20 / 25 · Recherche sans résultat</span></div>
+<div class="tel"><div class="ecran"><div class="entete"><span class="q">5 annonces gratuites ce mois</span><span class="spacer"></span><span class="roue" aria-label="Réglages">⚙</span></div><h1 class="t">Mon stock</h1><div class="carte" style="padding:10px 14px;margin-bottom:12px;color:var(--ink2);font-size:13.5px">🔍 veste cuir</div>
+  <div class="vide"><div class="ico">🔍</div><b>Rien pour « veste cuir »</b><span>Aucun de tes 12 articles ne porte ces mots. Essaie un mot seul, ou crée l'article.</span><button class="btn sec">Effacer la recherche</button><button class="lien">Créer « veste cuir »</button></div>
+  <nav class="onglets" aria-label="Onglets">
+  <span class="">▦<br>Tableau</span><span class="on">▤<br>Stock</span>
+  <span class="cam">◉</span><span class="">◳<br>Ventes</span><span class="">∿<br>Stats</span></nav></div></div>
+<div class="change"><b>Ce qui change :</b> Un « Aucun article » devient une phrase qui propose le geste utile (élargir, ou créer).</div>
+<div class="nav-ecran"><a href="#vide-reglages-plateformes">‹ Précédent</a><a href="#vide-popup">Suivant ›</a></div></section>
+<section class="scene fixe" id="vide-popup"><div class="barre-haut"><a href="#accueil">‹ Toutes les maquettes</a><span class="spacer"></span><span>21 / 25 · Popup de l'extension, à l'installation</span></div>
+<div class="tel"><div class="ecran"><p class="kicker">Ordinateur · Chrome</p><h1 class="t" style="font-size:20px">Le popup, juste installé</h1>
+  <div class="popup"><div class="tete">FillSell <span class="pill">Connectée · Marie</span></div><div class="corps">
+    <div class="vide" style="padding:18px 14px"><div class="ico" style="width:44px;height:44px;font-size:20px">✓</div><b style="font-size:14px">C'est bon, ton ordinateur est prêt</b><span style="font-size:12.5px">Tout se pilote depuis l'app. Ici tu verras ce qui part, et ce qui attend un geste.</span></div>
+    <div class="carte"><div class="ligne" style="min-height:48px"><span class="logo vinted sm" aria-hidden="true">V</span><div class="txt"><b style="font-size:13px">Vinted</b><span>@marie_vide</span></div><span class="pastille fait"><i></i>Connectée</span></div>
+    <div class="ligne" style="min-height:48px"><span class="logo depop sm" aria-hidden="true">D</span><div class="txt"><b style="font-size:13px">Depop</b><span>Une autorisation, une fois</span></div><button class="btn sec" style="width:auto;min-height:34px;padding:0 10px;font-size:12px">Autoriser</button></div></div>
+    <div style="font-size:12px;color:var(--ink2)">Leboncoin, eBay, Beebs : dès que tu t'y connectes dans ce Chrome, elles apparaissent ici.</div>
+    <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink2)"><span class="pastille en_file"><i></i>0 en file</span><span style="flex:1"></span><button class="btn sec" style="width:auto;min-height:34px;padding:0 10px;font-size:12px">Ouvrir l'appli</button></div>
+  </div></div></div></div>
+<div class="change"><b>Ce qui change :</b> Cinq « Vérifier » → une seule phrase et un seul geste. Les plateformes n'apparaissent qu'une fois vues ; Depop est dite avec son pourquoi.</div>
+<div class="nav-ecran"><a href="#vide-recherche">‹ Précédent</a><a href="#vide-file">Suivant ›</a></div></section>
+<section class="scene fixe" id="vide-file"><div class="barre-haut"><a href="#accueil">‹ Toutes les maquettes</a><span class="spacer"></span><span>22 / 25 · Ta file, vide</span></div>
+<div class="tel"><div class="ecran"><div class="entete" style="margin-bottom:6px"><span style="font-weight:700">Ta file</span><span class="spacer"></span><span>✕</span></div>
+  <div class="vide"><div class="ico">🧵</div><b>Rien en cours ni en file</b><span>Chaque publication, republication ou retrait passe ici, dans l'ordre réel de départ : En cours · En file · En pause (avec la raison) · À toi de jouer. Ce qui est fait n'y reste pas.</span></div></div></div>
+<div class="change"><b>Ce qui change :</b> La feuille « Ta file » vide dit ce qu'elle montrera, avec les quatre groupes nommés d'avance.</div>
+<div class="nav-ecran"><a href="#vide-popup">‹ Précédent</a><a href="#attentes-file">Suivant ›</a></div></section>
+<section class="scene fixe" id="attentes-file"><div class="barre-haut"><a href="#accueil">‹ Toutes les maquettes</a><span class="spacer"></span><span>23 / 25 · Ta file (pleine)</span></div>
+<div class="tel"><div class="ecran"><div class="entete" style="margin-bottom:2px"><span style="font-weight:700">Ta file</span><span class="spacer"></span><span>✕</span></div><p class="x" style="font-size:12.5px;margin-bottom:6px">2 en cours ou en file · 2 en pause · 1 à toi de jouer</p>
+  <div class="groupe">En cours</div>
+  <div class="job" style="border-color:rgba(47,158,144,.45)"><div class="vignette" style="background:linear-gradient(140deg,#E8E2D4,#F3EFE6)"></div><div class="txt"><b>Veste en jean Levi's, M</b><small>38 € · Publication sur Leboncoin</small><p><span class="pastille en_cours"><i></i>En cours</span> — dépôt sur Leboncoin, dans ton Chrome.</p></div></div>
+  <div class="groupe">En file · 1</div>
+  <div class="job"><div class="vignette" style="background:linear-gradient(140deg,#E1E7DE,#F0F3EC)"></div><div class="txt"><b>Poussette Yoyo</b><small>240 € · Publication sur Vinted</small><p><span class="pastille en_file"><i></i>En file</span> — elle partira à son tour.</p></div></div>
+  <div class="groupe">En pause · 2</div>
+  <div class="job"><div class="vignette" style="background:linear-gradient(140deg,#DCE3E9,#EDF1F4)"></div><div class="txt"><b>Console Switch + 2 jeux</b><small>185 € · Republication sur Vinted</small><p><span class="pastille en_pause"><i></i>En pause</span> (limite du jour) — ton annonce est intacte, elle repart toute seule.</p></div></div>
+  <div class="job"><div class="vignette" style="background:linear-gradient(140deg,#E8E2D4,#F3EFE6)"></div><div class="txt"><b>Lot de 6 bodies 3 mois</b><small>12 € · Publication sur Beebs</small><p><span class="pastille en_pause"><i></i>En pause</span> — nouvel essai automatique, rien à faire.</p></div></div>
+  <div class="groupe">À toi de jouer · 1</div>
+  <div class="job" style="border-color:var(--ambre-bord)"><div class="vignette" style="background:linear-gradient(140deg,#F3E4D8,#FBF2EA)"></div><div class="txt"><b>Casque Sony WH-1000XM4</b><small>160 € · Publication sur eBay</small><p class="a_toi"><span class="pastille a_toi"><i></i>À toi de jouer</span> — eBay demande le rayon : choisis-le.</p><div style="margin-top:8px"><button class="btn sec" style="min-height:40px;font-size:13px">Répondre</button></div></div></div></div></div>
+<div class="change"><b>Ce qui change :</b> Quatre groupes, six mots, zéro heure : chaque ligne dit son état et sa raison en une phrase. L'ordre est celui où ça partira vraiment.</div>
+<div class="nav-ecran"><a href="#vide-file">‹ Précédent</a><a href="#attentes-job">Suivant ›</a></div></section>
+<section class="scene fixe" id="attentes-job"><div class="barre-haut"><a href="#accueil">‹ Toutes les maquettes</a><span class="spacer"></span><span>24 / 25 · Suivi d'un job</span></div>
+<div class="tel"><div class="ecran"><div class="entete" style="margin-bottom:6px"><span style="font-weight:700">‹ Mon stock</span></div>
+  <div class="job" style="padding:12px"><div class="vignette" style="width:56px;height:56px;background:linear-gradient(140deg,#DCE3E9,#EDF1F4)"></div><div class="txt"><b style="font-size:15px">Console Switch + 2 jeux</b><small>185 € · Republication sur Leboncoin</small><p><span class="pastille en_cours"><i></i>En cours</span> — hors ligne le temps de la remise en ligne</p></div></div>
+  <div class="carte" style="padding:6px 14px;margin-top:10px">
+    <div class="etape fait"><span class="rond">✓</span><div class="txt"><b>Copie complète de ton annonce</b><span>Photos, texte, prix : en sécurité chez nous.</span></div></div>
+    <div class="etape fait"><span class="rond">✓</span><div class="txt"><b>Ancienne annonce retirée</b><span>Depuis 14:02.</span></div></div>
+    <div class="etape ici"><span class="rond">3</span><div class="txt"><b>Remise en ligne sur Leboncoin</b><span>Dans ton Chrome. Les gestes sont espacés, comme le ferait une vraie personne.</span></div></div>
+    <div class="etape"><span class="rond">4</span><div class="txt"><b>Fait</b><span>De retour en tête sur Leboncoin.</span></div></div>
+  </div>
+  <div class="bande" style="margin-top:12px">Rien à faire de ton côté. Si Chrome se ferme, elle reprend là où elle en est à la prochaine ouverture.</div>
+  <div class="ecran-pied"><button class="btn sec">Toute la file</button></div></div></div>
+<div class="change"><b>Ce qui change :</b> Plus de pourcentage qui glisse : les étapes réelles, celle où on en est qui respire, et l'état en un mot. « Depuis » (passé) est permis ; aucune heure à venir.</div>
+<div class="nav-ecran"><a href="#attentes-file">‹ Précédent</a><a href="#attentes-synchro">Suivant ›</a></div></section>
+<section class="scene fixe" id="attentes-synchro"><div class="barre-haut"><a href="#accueil">‹ Toutes les maquettes</a><span class="spacer"></span><span>25 / 25 · Synchroniser (en cours)</span></div>
+<div class="tel"><div class="ecran"><div class="entete"><span class="q">5 annonces gratuites ce mois</span><span class="spacer"></span><span class="roue" aria-label="Réglages">⚙</span></div><h1 class="t">Mon stock</h1>
+  <div class="carte" style="padding:14px"><div style="display:flex;align-items:center;gap:10px"><b style="font-size:14px">Synchronisation</b><span class="spacer" style="flex:1"></span><span style="font-size:12px;color:var(--ink2)">2 plateformes sur 5</span></div>
+  <div style="height:6px;border-radius:999px;background:var(--chip);margin:10px 0;overflow:hidden;position:relative"><span style="position:absolute;inset:0;background:var(--degrade);transform-origin:left;transform:scaleX(.4)"></span></div>
+  <div class="ligne" style="padding:8px 0;min-height:40px"><span class="logo vinted sm" aria-hidden="true">V</span><div class="txt"><b style="font-size:13px">Vinted</b></div><span class="pastille fait"><i></i>41 annonces</span></div>
+  <div class="ligne" style="padding:8px 0;min-height:40px"><span class="logo leboncoin sm" aria-hidden="true">lbc</span><div class="txt"><b style="font-size:13px">Leboncoin</b></div><span class="pastille fait"><i></i>12 annonces</span></div>
+  <div class="ligne" style="padding:8px 0;min-height:40px;background:var(--menthe);margin:0 -14px;padding:8px 14px"><span class="logo ebay sm" aria-hidden="true">e</span><div class="txt"><b style="font-size:13px">eBay</b></div><span class="pastille en_cours"><i></i>lecture · 6 sur 20</span></div>
+  <div class="ligne" style="padding:8px 0;min-height:40px"><span class="logo beebs sm" aria-hidden="true">B</span><div class="txt"><b style="font-size:13px">Beebs</b></div><span class="pastille en_file"><i></i>En file</span></div>
+  <div class="ligne" style="padding:8px 0;min-height:40px"><span class="logo depop sm" aria-hidden="true">D</span><div class="txt"><b style="font-size:13px">Depop</b></div><span class="pastille a_toi"><i></i>À autoriser</span></div>
+  <p style="margin:10px 0 0;font-size:12px;color:var(--ink2)">Ton ordinateur lit tes annonces ; chaque annonce est comparée à ton stock pour ne rien créer en double.</p></div>
+  <nav class="onglets" aria-label="Onglets">
+  <span class="">▦<br>Tableau</span><span class="on">▤<br>Stock</span>
+  <span class="cam">◉</span><span class="">◳<br>Ventes</span><span class="">∿<br>Stats</span></nav></div></div>
+<div class="change"><b>Ce qui change :</b> Plus « Environ 3 min » : les plateformes une à une, avec leur état réel, et ce qui se passe derrière (le rangement).</div>
+<div class="nav-ecran"><a href="#attentes-job">‹ Précédent</a><a href="#accueil">Fin · retour à la liste</a></div></section>
+</body>
+</html>

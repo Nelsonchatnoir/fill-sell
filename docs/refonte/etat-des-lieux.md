@@ -104,13 +104,18 @@ Direction retenue pour les maquettes (étape 3) :
 
 ## 5. Maquettes (étape 3) — à valider par Nico, rien en prod
 
-- **Le lien unique (téléphone)** : https://claude.ai/artifact/69UNak2x84i3NVY7GuMPTz — page d'accueil qui liste les 25 écrans
-  (onboarding 8, connexion des 5 plateformes, états vides 9, attentes 3), chaque écran cliquable avec sa ligne « ce qui
-  change ». Artefact PRIVÉ du compte de Nico (s'ouvre connecté à claude.ai ; partage depuis le menu de la page).
-- **Pourquoi pas Vercel** : l'intégration Vercel de la session n'a pas le droit de créer un projet (`403 forbidden` sur
-  `POST /v11/projects` et `/v13/deployments` pour `fillsell-maquettes`), et le projet `fill-sell` protège TOUTES ses adresses de
-  prévisualisation par une connexion Vercel (`ssoProtection all_except_custom_domains`) — un téléphone ne les ouvrirait
-  pas. Mise sur Vercel en un geste de Nico : `npx vercel login` puis `npx vercel deploy docs/refonte/maquettes --yes`
-  (nouveau projet, protection « Vercel Authentication » à désactiver dans ses réglages).
+- **Les 25 écrans** (onboarding 8, connexion des 5 plateformes, états vides 9, attentes 3), chacun cliquable avec sa ligne
+  « ce qui change ». Trois façons de les ouvrir sur un téléphone, détaillées dans `docs/refonte/maquettes/LISEZMOI.md` :
+  le fichier fixe `maquettes-statique.html` (sans JavaScript, envoyé à Nico le 16/10 à 07:50), l'adresse publique de dépannage
+  `raw.githack.com/Nelsonchatnoir/fill-sell/main/docs/refonte/maquettes/index.html` (page d'avertissement à passer une fois ;
+  n'existe que parce que le dépôt est public), et la prévisualisation Vercel.
+- **Pourquoi pas encore Vercel** : la nuit, l'intégration n'a pas eu le droit de créer un projet (`403` sur `fillsell-maquettes`)
+  et le projet `fill-sell` protège ses prévisualisations par une connexion Vercel (`ssoProtection all_except_custom_domains`).
+  Le 16/10 au matin, une prévisualisation sur `fill-sell` (cible preview, aucun réglage touché, fichiers prêts dans
+  `docs/refonte/maquettes/vercel-previsualisation/`) a été refusée par le classifieur de Claude Code (« Production Deploy ») :
+  feu vert de Nico requis, puis lien partageable (`patch_url_protection_bypass`) qui s'ouvre sans compte. À la main :
+  `npx vercel login` puis `npx vercel deploy docs/refonte/maquettes --yes`.
+- **L'artefact Claude** https://claude.ai/artifact/69UNak2x84i3NVY7GuMPTz (privé) s'ouvre sur ordinateur ; l'app Claude iOS
+  l'a refusé le 16/10 (« This browser isn't supported »).
 - Sources : `docs/refonte/maquettes/index.html` + `maquettes.js` (vanilla, aucun framework) ; captures
   `docs/refonte/captures/maquettes/` ; vérification `node scripts/refonte/maquettes-verif.mjs [adresse]`.
