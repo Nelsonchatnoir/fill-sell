@@ -22,12 +22,19 @@
   20 par jour. Une réponse prise et non confirmée en 10 min passe « echec » et n'est **jamais renvoyée**
   (un doublon chez l'acheteur est pire qu'un raté). Jamais d'envoi en série, jamais de réponse automatique,
   jamais d'IA sur un message.
-- **Bordereau : la dernière marche est fermée** (`BORDEREAU_DERNIERE_MARCHE_OUVERTE = false` dans
-  `chrome-extension/messagerie.js` ET `coin_config.bordereaux_ouverts` ≠ 1). **Générer** un bordereau n'est
-  codé nulle part : Vinted « commander l'étiquette » (`PUT transactions/<id>/shipment/order`), Leboncoin
-  « confirmer la disponibilité » (`POST purchases/<id>/validate-availability`), Beebs « générer » (=
-  accepter la commande, débit de l'acheteur) sont des gestes du vendeur. Le bouton « Bordereau » de l'app
-  reste inactif tant que la checklist du rapport (§ 3) n'a pas été faite sur une vraie commande.
+- **Bordereau : AU CLIC seulement** (16/10 soir, migration 20261016200000). La dernière marche (le fichier)
+  ne s'ouvre que pour une demande née d'un clic sur « Bordereau » dans l'app (`bordereau_demander`, session de
+  la personne) ; l'extension la prend (`bordereau_demande_a_traiter`, UNE à la fois), ouvre la dernière marche
+  UNE fois, dépose la copie, rend le résultat (`bordereau_demande_resultat`). Il faut à la fois
+  `BORDEREAU_DERNIERE_MARCHE_OUVERTE = true` (`chrome-extension/messagerie.js`) ET
+  `coin_config.bordereaux_ouverts = 1` (0 = tout fermé). Seul un bordereau PRÊT chez la plateforme se demande
+  (Vinted 220/230/250, Leboncoin `available` + `parcel-label-generated`) ; une demande non prise en 30 min
+  expire (poste éteint : jamais servie en retard) ; 20 demandes par jour ; une copie encore valable est rendue
+  sans rien redemander. Vinted : `pdf_label`, sinon `digital_label` UNE fois. Copie au nom UNIQUE (horodaté :
+  jamais d'écrasement), type lu dans le fichier (PDF/PNG/JPEG), 5 Mo au plus. **Générer** un bordereau n'est
+  codé nulle part : Vinted « commander l'étiquette », Leboncoin « confirmer la disponibilité », Beebs « accepter
+  la commande » (= débit de l'acheteur), eBay « acheter l'étiquette » sont des gestes du vendeur — l'app dit
+  l'état et ouvre la bonne page de la plateforme (`actionCommande`, `lienCommande` dans `src/messagerie/vue.js`).
 - **Données** : pseudo de l'interlocuteur / de l'acheteur, numéros (fil, commande, annonce, colis), texte des
   messages pour l'affichage. JAMAIS nom, adresse, téléphone, e-mail (eBay : `shipTo`,
   `buyerRegistrationAddress` jamais lus). Messages, conversations, réponses : 30 jours (`messagerie_purger`,
@@ -51,5 +58,38 @@
   `commerce.message` reste interdit, la Message API REST répond 403) ; étiquettes : la Logistics API répond
   403 (US seulement) — le bordereau eBay s'achète dans eBay. Fonction `ebay-messagerie` (`verify_jwt = false`,
   garde à deux branches : secret du vault OU session bêta).
-- **Beebs** : la messagerie et le téléchargement du bordereau exigent un numéro de téléphone vérifié sur le
-  site ; non relevé tant que ce n'est pas fait par la personne (ne jamais le saisir à sa place).
+- **Beebs** (relevé le 16/10 soir, en lecture, sur le compte d'Ornella — téléphone vérifié) : messagerie et
+  bordereau exigent un téléphone vérifié. Détection SANS requête : le jeton de session (cookie `access_token`,
+  jeton Firebase) porte l'identité « phone » (`firebase.identities.phone` / `phone_number`) ; sinon motif
+  `telephone_non_verifie` noté en base, et la page `/fr/account/chats` renvoie de toute façon vers
+  `/fr/account/phone-verification`. Ne jamais saisir un numéro à la place de la personne. Liste = HTML rendu de
+  `/fr/account/chats` (liens `/fr/account/chats/<id>` : nom public, date, aperçu, pastille) ; détail = flux RSC
+  de `/fr/account/chats/<id>` (en-tête `RSC: 1`) ; réponse = `POST https://api.beebs.app/chats/v3`
+  `{to_user_id, text}`, en-tête `authorization` = le jeton BRUT ; l'utilisateur « système » de Beebs =
+  `iwJIYrpj3cYueeS5JWCQCIKHbfx2`. Beebs n'a pas de pseudo : le nom public affiché (« Prénom N. ») en tient lieu,
+  jamais le nom complet, jamais l'avatar. Commandes = liens de la page « Ventes » (flux RSC) + objet commande de
+  la page `/fr/account/orders/<id>` (états du site WAIT_SELLER_CONFIRM → … → LABEL_PRINTED, date limite =
+  bordereau + 6 jours) — lues même quand la messagerie est murée. Ouvrir une conversation SUR LE SITE la marque
+  lue (lire le flux depuis l'extension : non prouvé, accepté par Nico le 16/10).
+
+## Règles (16/10 soir, clôture du chantier)
+
+- **Un mur se DIT, il ne se tait pas.** Une lecture empêchée par la plateforme (Beebs sans téléphone,
+  session absente, jeton absent, Depop non autorisé, eBay à reconnecter, pause de sécurité) laisse son motif
+  dans `messagerie_releves.dernier_motif` / `pause_jusqu_au` ; l'app le traduit (`murReleve`) en tête des
+  messages, avec le geste à faire. Un mur de la LISTE n'est pas un blocage : les commandes sont lues quand même.
+  Un 401 seul n'est pas un mur (jeton Vinted d'une heure) ; un incident passager (onglet indisponible) non plus.
+- **Vinted, 401 = jeton expiré** : renouvelé comme la page (`POST /web/api/auth/refresh`), puis l'appel est
+  refait UNE fois — liste, détail, commandes, chemin du bordereau, envoi d'une réponse (un 401 = refusé avant
+  tout traitement, la seconde tentative ne peut pas doubler un message). Jamais de seconde tentative après une
+  autre erreur ; jamais de boucle.
+- **Commandes de toutes les plateformes** : Vinted, Leboncoin, Beebs, Depop par l'extension (même passage que
+  les messages) ; eBay par `ebay-messagerie`, qui relit aussi par leur numéro les commandes suivies sorties du
+  filtre « à expédier » (une commande expédiée ne reste jamais « à expédier »). Commandes Beebs et Depop : formes
+  écrites d'après le code des sites (aucune vente le 16/10) — une forme inconnue n'écrit rien (Beebs) ou reste
+  « inconnu », affichée « État à vérifier » (Depop). Purge : closes 30 jours, toute commande figée 60 jours.
+- **Écrans** : aucun temps estimé (garde `selftest:aucune-estimation`) — seules les dates données par une
+  plateforme (date limite de dépôt, 48 h Beebs) s'affichent, marquées `estimation-ok:`. Arobase seulement là où
+  la plateforme a des pseudos (Vinted, eBay, Depop) ; transporteurs en clair (`libelleTransporteur`).
+- **Liste blanche** : procédure exacte (une requête par conversation, son inverse, contrôle « vide ») dans le
+  rapport, § 9.4. Une réponse écrite pendant le verrou ne part jamais après coup.

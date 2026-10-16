@@ -3,6 +3,9 @@
 > Pour Nico. Court d'abord, détail ensuite. Tout ce qui est écrit « prouvé » a été lu sur TES comptes,
 > en lecture seule, le 16/10 entre 14:10 et 15:15 (heure de Paris). Aucun message, aucune offre, aucun
 > bordereau, aucune commande touchés. Aucun nom, adresse ou texte de message recopié ici.
+>
+> **⟶ CLÔTURE DU 16/10 AU SOIR : § 9** (ce qui est fait par plateforme, ce qui ne marche pas et
+> pourquoi, ce qui reste à prouver au vrai achat, protocole de test de bout en bout, liste blanche).
 
 ## 0. L'essentiel
 
@@ -184,9 +187,8 @@ d'envoi en série ni automatique.
 
 ## 6. Comment mettre Ornella dans la liste blanche (à ton retour)
 
-La liste blanche ne s'écrit **jamais** depuis l'app. Après le feu vert de la migration et un premier
-relevé, je te donne la ligne exacte (une conversation = plateforme + numéro du fil), ou tu me dis
-« mets la conversation avec Ornella sur <plateforme> ». Une ligne SQL, et la retirer = une ligne.
+La liste blanche ne s'écrit **jamais** depuis l'app. Procédure exacte (une requête par conversation, et son
+inverse) : **§ 9.4**.
 
 ## 7. Ce qui est livré, ce qui attend
 
@@ -302,3 +304,182 @@ le bordereau » (code) ; générer = accepter la commande (aide Beebs, audit du 
 
 Sources hors comptes : aide Depop / annonce « Send Offer » (janvier 2024) ; fil communautaire eBay sur
 GetMyMessages avec le scope de base ; audit du 24/09 (`docs/AUDIT_BORDEREAUX_FAVORIS_2026-09-24.md`).
+
+## 9. Clôture du chantier (16/10 au soir) — « en une seule passe »
+
+> Mission de Nico du 16/10 au soir. Ton Chrome était connecté au compte Beebs d'Ornella (téléphone vérifié,
+> avec son accord). Tout ce qui suit a été lu en LECTURE : aucun message envoyé, aucune offre, aucune commande
+> confirmée ou acceptée, aucun bordereau généré, aucun réglage modifié, aucune annonce touchée. Aucun texte de
+> message recopié ici, aucune IA sur un message.
+
+### 9.0 L'essentiel
+
+1. **Messages : les 5 plateformes.** Vinted, Leboncoin, Depop, eBay (déjà relevés) **et Beebs** : liste =
+   page « Messages » rendue par le serveur, détail = flux de la page de la conversation, réponse =
+   `POST api.beebs.app/chats/v3` — **verrouillée par la liste blanche comme les autres**. Prouvé sur la vraie
+   page (compte d'Ornella) avec le code livré : 2 conversations lues (numéro, nom, date), détail lu
+   (interlocuteur, 2 messages bien formés), page des ventes lue ; et ta propre extension (0.6.119, prise seule
+   par Chrome à 20:29) a fait sa relève Beebs à **20:29:33 sans échec**. Rien n'est entré en base : les 2
+   conversations d'Ornella ont plus de 30 jours (règle de conservation).
+2. **« À expédier » : toutes les commandes en cours des 5 plateformes** (Vinted, Leboncoin, Beebs, Depop par
+   l'extension ; eBay par le serveur), avec état, pseudo, numéro, photo, montant, article de ton stock (par
+   numéro), transporteur en clair, date limite quand la plateforme la donne (eBay, Beebs, Depop).
+3. **Bordereau au clic, Vinted et Leboncoin, opérationnel jusqu'au bout** : ton clic sur « Bordereau » dépose
+   une demande → ton ordinateur ouvre la dernière marche UNE fois → copie gardée 5 jours → ouverte sur ton
+   téléphone (adresse signée). Migration **20261016200000** appliquée sur ton feu vert (essai à blanc 15/15).
+   Seul un bordereau déjà PRÊT chez la plateforme peut être demandé.
+4. **Les gestes qui engagent ne sont jamais faits par FillSell** : Vinted « commander l'étiquette », Leboncoin
+   « confirmer la disponibilité », Beebs « accepter la commande », eBay « acheter l'étiquette » → l'app dit
+   l'état et un bouton ouvre la bonne page de la plateforme.
+5. **Mur à la racine** : un compte Beebs sans téléphone vérifié est détecté sans aucune requête (le jeton de
+   session ne porte pas l'identité « téléphone ») → l'app dit « **Vérifie ton numéro sur Beebs** » au lieu
+   d'une messagerie vide. Même principe : session absente (« Connecte-toi à … dans Chrome »), Depop non
+   autorisé, eBay à reconnecter, pause de sécurité. Un 401 Vinted seul n'est pas un mur (jeton d'une heure,
+   renouvelé — et désormais renouvelé par nous aussi, 0.6.120).
+6. **Ton stock n'a rien reçu d'Ornella** : aucun relevé Beebs, aucune annonce relevée, aucune fiche créée,
+   aucun job créé sur ton compte pendant la session (requêtes du soir). **0 job Beebs en file, en cours ou à
+   faire** sur ton compte au début (18:58) et à la fin. **Liste blanche vide.**
+7. **Il ne reste que le test de bout en bout avec un vrai achat** (§ 9.5).
+
+### 9.1 Par plateforme
+
+✅ fait et prouvé · 🟢 fait, à prouver au vrai achat · 🟡 écrit d'après le code du site (aucune vente pour le voir) · ❌ impossible
+
+| | Messages | Répondre | « À expédier » | Bordereau |
+|---|---|---|---|---|
+| **Vinted** | ✅ | 🟢 verrouillé ; jeton renouvelé sur 401 (0.6.120) | ✅ (commandes en cours + détail) | 🟢 au clic quand prêt (220/230/250) : `pdf_label`, sinon `digital_label` une fois ; sinon « Commander sur Vinted » (lien) |
+| **Leboncoin** | ✅ | 🟢 verrouillé | ✅ (machine d'états) | 🟢 au clic quand `available` + `parcel-label-generated` ; « Confirmer sur Leboncoin » (lien) |
+| **Beebs** | ✅ si téléphone vérifié (prouvé, compte d'Ornella) ; sinon mur dit | 🟢 verrouillé (`POST /chats/v3`, jeton brut) | 🟡 page « Ventes » + objet commande de sa page | ❌ pas de dernière marche qui n'engage rien : « Accepter sur Beebs » / « Télécharger sur Beebs » (liens) |
+| **eBay** | ✅ (API) | 🟢 verrouillé (réponse à une question) | ✅ (API) ; une commande expédiée est relue (v4) | ❌ pas d'API d'étiquette en France : « Étiquette sur eBay » (lien) |
+| **Depop** | ✅ | 🟢 verrouillé | 🟡 `receipts?role=seller` | ❌ pas de bordereau Depop en France : « Voir sur Depop » (lien) |
+
+### 9.2 Ce qui ne marche pas, et pourquoi
+
+- **Beebs sur TON compte** : ton numéro est rattaché au compte d'Ornella et Beebs ne laisse pas le changer
+  soi-même → ton compte restera sans téléphone vérifié → messagerie et bordereaux Beebs fermés pour toi. L'app
+  le dira (« Vérifie ton numéro sur Beebs »). Il faut que le support Beebs déplace ton numéro, ou un autre numéro.
+- **Bordereau Beebs** : « générer le bordereau » = accepter la commande et débiter l'acheteur (geste du
+  vendeur). Le téléchargement d'un bordereau déjà généré n'est pas dans le code lisible du site (page rendue par
+  le serveur) et aucune vente n'existait pour l'observer → lien vers la commande sur Beebs.
+- **Commandes Beebs et Depop** : aucune vente sur aucun des deux comptes → formes jamais vues. Lecteurs
+  tolérants ; une forme inconnue n'écrit rien (Beebs) ou s'affiche « État à vérifier » (Depop).
+- **Étiquette eBay** : Logistics API 403 hors États-Unis (prouvé le 16/10) → lien.
+- **Ouvrir une conversation Beebs sur le site la marque lue** ; la lire depuis l'extension (flux RSC) : non
+  prouvé dans un sens ou dans l'autre (accepté par Nico le 16/10).
+
+### 9.3 Ce qui reste à prouver au vrai achat
+
+- Vinted : la commande apparaît dans « À expédier » ; bordereau prêt tout de suite ou après « Commander » ;
+  `pdf_label` ou code (`digital_label`) ; la copie s'ouvre sur ton téléphone ; « Expédiée » après dépôt.
+- Leboncoin : « Disponibilité à confirmer » → après ta confirmation, `parcel-label-generated` → « Bordereau »
+  actif → `prepare-parcel` → `label_url` → fichier.
+- Beebs : l'objet commande est bien dans la page de la commande (forme lue dans le code) ; états
+  WAIT_SELLER_CONFIRM → LABEL_PRINTED ; date limite = bordereau + 6 jours.
+- Depop : champs des reçus (`shippingStatus`, `buyer.username`, `shippingDeadline`).
+- eBay : la commande apparaît avec la date limite et le service choisi ; « expédiée » ensuite (relecture v4).
+- Messages : le message d'Ornella arrive ; une fois la conversation en liste blanche, ta réponse part **une
+  seule fois** et apparaît chez elle.
+
+### 9.4 Liste blanche — la procédure exacte (Claude l'exécute en SQL, sur ta demande)
+
+La liste blanche ne s'écrit **jamais** depuis l'app. Une conversation = plateforme + numéro du fil.
+
+1. Trouver la conversation (après le premier message d'Ornella ; pseudos seulement) :
+   ```sql
+   SELECT platform, conversation_ref, interlocuteur_pseudo, titre_annonce,
+          to_char(dernier_message_le AT TIME ZONE 'Europe/Paris', 'DD/MM HH24:MI') AS dernier
+     FROM public.messagerie_conversations
+    WHERE user_id = 'f44b5917-bccc-4431-ba41-f40571a2ed18'
+      AND platform = '<vinted|leboncoin|beebs|depop|ebay>'
+      AND interlocuteur_pseudo ILIKE '%<pseudo d''Ornella sur cette plateforme>%'
+    ORDER BY dernier_message_le DESC;
+   ```
+2. L'AJOUTER (une ligne par conversation, numéro exact) :
+   ```sql
+   INSERT INTO public.messagerie_liste_blanche (user_id, platform, conversation_ref, note)
+   VALUES ('f44b5917-bccc-4431-ba41-f40571a2ed18', '<plateforme>', '<conversation_ref>', 'Test avec Ornella')
+   ON CONFLICT DO NOTHING
+   RETURNING platform, conversation_ref;
+   ```
+3. La RETIRER (l'inverse exact) :
+   ```sql
+   DELETE FROM public.messagerie_liste_blanche
+    WHERE user_id = 'f44b5917-bccc-4431-ba41-f40571a2ed18'
+      AND platform = '<plateforme>' AND conversation_ref = '<conversation_ref>'
+   RETURNING platform, conversation_ref;
+   ```
+4. Vérifier qu'elle est vide à la fin : `SELECT count(*) FROM public.messagerie_liste_blanche;` → 0.
+
+Une réponse déjà écrite pendant que la conversation était verrouillée **ne part pas** après l'ajout (elle reste
+« verrouillée ») : seule une réponse écrite APRÈS l'ajout part. Une réponse en attente dont la conversation sort
+de la liste blanche est reverrouillée.
+
+### 9.5 Protocole de test de bout en bout (Ornella achète une annonce de Nico à 999 € ou plus, lui écrit, puis annule)
+
+Pour chaque plateforme, l'annonce de test est à **999 € ou plus**, sur ton compte ; Ornella achète depuis le
+sien. Ton ordinateur reste allumé, Chrome ouvert (l'extension relève à chaque passage ; eBay par le serveur).
+Ce que tu dois voir dans l'app : ouvre « Messages · À expédier » (bandeau au-dessus des onglets).
+
+**Vinted**
+1. Ornella t'écrit sur l'annonce, puis l'achète.
+2. Dans l'app : la conversation apparaît (« Messages »), puis la commande dans « À expédier » (pseudo, numéro,
+   prix, « Dans ton stock » si l'article y est).
+3. Si l'état dit « Commander sur Vinted » : tu commandes l'étiquette **sur Vinted** (bouton de l'app → page de
+   la conversation). Au relevé suivant, « Bordereau » devient actif.
+4. Tu appuies sur « Bordereau » sur ton téléphone → « Demande envoyée » → « Ouvrir le bordereau » : le PDF (ou
+   le code) s'ouvre.
+5. Liste blanche : je mets la conversation (§ 9.4), tu réponds depuis l'app → « Envoi actif » → la réponse
+   arrive chez Ornella une seule fois.
+6. Tu annules la vente **sur Vinted**, sans expédier ; je retire la conversation de la liste blanche.
+
+**Leboncoin**
+1. Ornella t'écrit puis achète (paiement sécurisé, Mondial Relay de préférence).
+2. Dans l'app : « Disponibilité à confirmer » + bouton « Confirmer sur Leboncoin ».
+3. Tu confirmes **sur Leboncoin** (c'est ce geste qui crée le bordereau). Au relevé suivant : « À expédier »,
+   « Bordereau » actif.
+4. « Bordereau » sur le téléphone → la copie s'ouvre.
+5. Réponse via la liste blanche (comme Vinted, § 9.4).
+6. Tu annules **sur Leboncoin** sans expédier ; retrait de la liste blanche.
+
+**Beebs** (exige un compte VENDEUR au téléphone vérifié — le tien ne l'est pas, § 9.2)
+1. Ornella achète (et t'écrit si la messagerie de ton compte est ouverte).
+2. Dans l'app : « Commande à accepter » + « Accepter sur Beebs » — et, si ton compte n'a pas de téléphone
+   vérifié, le mur « Vérifie ton numéro sur Beebs » en tête des messages.
+3. **Ne pas accepter** (accepter = générer le bordereau = débiter Ornella) : tu refuses / annules **sur Beebs**.
+4. Je vérifie que la commande a bien été lue (forme de la page) et qu'elle passe « Annulée ».
+
+**eBay**
+1. Ornella achète (paiement immédiat) et t'envoie une question.
+2. Dans l'app (relevé par le serveur) : la question dans « Messages », la commande dans « À expédier » avec la
+   date limite d'envoi et le service choisi, bouton « Étiquette sur eBay ».
+3. Réponse : liste blanche (§ 9.4), tu réponds depuis l'app → part par l'API une seule fois.
+4. Tu annules la commande **sur eBay** sans expédier → elle quitte « À expédier » au relevé suivant (v4).
+
+**Depop**
+1. Ornella achète et t'écrit.
+2. Dans l'app : la conversation, puis la commande dans « À expédier » (« Voir sur Depop », pas de bordereau en
+   France) — forme des reçus à vérifier ensemble.
+3. Réponse via la liste blanche.
+4. Tu annules **sur Depop** (remboursement) sans expédier.
+
+**Test de réponse (toutes plateformes)** : la conversation hors liste blanche → l'app dit « Envoi verrouillé »,
+la réponse s'enregistre « non envoyée » ; après l'ajout (§ 9.4), une NOUVELLE réponse → « En attente » →
+« Envoyée » ; elle apparaît UNE fois chez Ornella ; retrait de la liste blanche ; `count(*)` = 0.
+
+### 9.6 Fin de session : effacement, remise à zéro, retour sur ton Beebs
+
+- **Données Beebs relevées sur le compte d'Ornella** : 0 conversation, 0 message, 0 commande en base (ses deux
+  conversations ont plus de 30 jours ; aucune vente). Effacement passé quand même, compté (état de prod).
+- **Remise à zéro de ton inventaire : PAS NÉCESSAIRE.** Rien d'Ornella n'est entré dans ton stock (aucun relevé
+  Beebs pendant la session ; le relevé refuse de toute façon de lire le dressing d'un autre compte Beebs que
+  celui de tes annonces). Si tu la fais quand même (Réglages › « Tout remettre à zéro »,
+  `supprimer_mon_stock_sans_retrait`), voici ce qu'elle fait :
+  - **efface** : tes **80 fiches** de stock (titres, photos, **prix d'achat**, attributs, quantités, liens
+    vers les annonces) ; tes **238 ventes** (prix, bénéfices, dates — donc tout l'historique des stats et du
+    Tableau) ; les **40 fiches d'annonce** générées (`fiches_annonce`, liées aux scans Lens) ;
+  - **garde** : tes annonces EN LIGNE sur les plateformes (rien n'est retiré nulle part) ; ton compte, ton
+    abonnement, tes réglages, tes connexions (extension, eBay) ; l'historique des jobs, les annonces relevées et
+    les rapprochements (détachés de toute fiche, ils se rattacheront au prochain relevé) ; tes scans Lens
+    (`lens_scans`) ; la messagerie et les commandes (détachées de l'article) ;
+  - **irréversible** (aucune sauvegarde automatique).
+- Ensuite : tu te reconnectes à TON Beebs dans Chrome ; aucune autre action n'est nécessaire.
