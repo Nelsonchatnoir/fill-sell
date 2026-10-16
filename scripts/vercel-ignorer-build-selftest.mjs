@@ -13,6 +13,11 @@ ok(decider(['docs/agents/etat-2026-10-01.md']).ignorer === true, 'notes seules �
 ok(decider(['CLAUDE.md', 'AGENTS.md', 'docs/enquetes/x/RAPPORT.md']).ignorer === true, 'CLAUDE/AGENTS + docs → ignoré');
 ok(decider(['supabase/migrations/20261015150000_x.sql', 'supabase/rollbacks/x.sql', 'scripts/reparations/x.sql']).ignorer === true, 'migrations/réparations → ignoré');
 
+// 16/10 : les vérifications Playwright de la refonte et cet ignoreur lui-même ne servent à aucun build.
+ok(decider(['scripts/refonte/maquettes-verif.mjs', 'scripts/refonte/rendre-maquettes-statiques.mjs', 'docs/refonte/maquettes/maquettes-statique.html']).ignorer === true, 'scripts/refonte + docs → ignoré');
+ok(decider(['scripts/vercel-ignorer-build.mjs', 'scripts/vercel-ignorer-build-selftest.mjs', 'docs/x.md']).ignorer === true, 'l\'ignoreur lui-même → ignoré');
+ok(sansEffetSurLeSite('scripts/refonte-outil.mjs') === false, 'un fichier scripts/ hors du dossier refonte/ sert au build');
+
 // Tout ce qui sert au site, à l'app ou au build : on construit.
 for (const f of [
   'src/main.jsx', 'src/blog/article.md', 'site/contenu/accueil.md', 'site/dates.lock.json',

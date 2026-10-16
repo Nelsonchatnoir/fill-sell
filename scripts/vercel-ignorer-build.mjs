@@ -16,8 +16,9 @@ import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
 // Préfixes et fichiers qu'aucun build (web, site, OTA) ne lit.
-// ⛔ Ne JAMAIS y mettre src/, site/, public/, scripts/ (sauf réparations et
-// preuves), supabase/functions/ (l'app importe `_shared/palier.js`…),
+// ⛔ Ne JAMAIS y mettre src/, site/, public/, scripts/ (sauf réparations,
+// preuves et les vérifications Playwright de scripts/refonte/, qu'aucun build
+// ne lit), supabase/functions/ (l'app importe `_shared/palier.js`…),
 // chrome-extension/ (le build vérifie EXTENSION_LAST_COMMIT) ni package*.json.
 export const PREFIXES_SANS_EFFET = [
   'docs/',
@@ -25,12 +26,16 @@ export const PREFIXES_SANS_EFFET = [
   'supabase/rollbacks/',
   'scripts/reparations/',
   'scripts/preuves/',
+  'scripts/refonte/',
 ];
 export const FICHIERS_SANS_EFFET = new Set([
   'CLAUDE.md',
   'AGENTS.md',
   'supabase/AGENTS.md',
   'src/AGENTS.md',
+  // Ce fichier-ci n'est lu que par Vercel à cette étape, jamais par un build.
+  'scripts/vercel-ignorer-build.mjs',
+  'scripts/vercel-ignorer-build-selftest.mjs',
 ]);
 
 export function sansEffetSurLeSite(fichier) {
