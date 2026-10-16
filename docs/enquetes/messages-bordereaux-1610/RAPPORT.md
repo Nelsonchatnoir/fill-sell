@@ -23,9 +23,10 @@
 5. **Deux découvertes utiles** : le détail d'une vente Leboncoin donne le **numéro exact de l'annonce**
    (rattachement certain, plus de titre + prix) et toute la **machine d'états** de la vente ; et chez
    Leboncoin **une mise en favori arrive comme une conversation** (preuve pour les offres aux favoris).
-6. **Ce qui attend ton feu vert** : la migration `20261016170000` (7 tables neuves, rien de destructif,
-   § 7). Sans elle, tout le code est en place mais n'écrit rien. Puis j'active le drapeau sur ton seul
-   compte.
+6. **Fait après ton feu vert (16/10 vers 15:25)** : migration `20261016170000` appliquée, drapeau actif sur
+   ton seul compte, **eBay relevé de bout en bout** (2 conversations, 4 messages, textes propres ; un second
+   passage ne réécrit rien). **Reste** : cliquer « Recharger » sur l'extension à ton retour (la 0.6.116 est
+   déjà copiée dans ton dossier) — la relève Vinted / Leboncoin / Depop démarre alors seule.
 7. **Offres aux favoris** : faisable proprement sur **eBay** (natif, anonyme, déjà consenti) ; **une par
    une, validée** sur Leboncoin et Depop ; **pas sur Vinted** (préférer « baisser le prix », qui prévient
    tous les favoris sans message) ; pas sur Beebs (app mobile seulement). Recommandation § 5.
@@ -182,31 +183,33 @@ relevé, je te donne la ligne exacte (une conversation = plateforme + numéro du
 
 ## 7. Ce qui est livré, ce qui attend
 
-**Livré (code, commit unique, push) — inerte sans le drapeau**
+**Livré (code + docs, un seul push) — inerte sans le drapeau**
 - Extension **0.6.116** (non empaquetée, **pas de zip**) : `chrome-extension/messagerie.js` (lecteurs,
   normaliseurs, envoyeurs verrouillés, chemin du bordereau) + relève dans `background.js`, juste après
   la veille des commandes, avec sa cadence (10 min ± 90 s) — c'est l'ordonnanceur existant.
-- Serveur : `ebay-messagerie` **v1 déployée** (`verify_jwt = false`, garde maison à deux branches :
-  secret du vault OU session bêta) ; `bordereaux-purge` (même garde, secret seulement).
+- Serveur : `ebay-messagerie` **v3** (`verify_jwt = false`, garde maison à deux branches : secret du vault
+  OU session bêta) ; `bordereaux-purge` **v1** (même garde, secret seulement).
 - App (web, au push ; **pas d'OTA**) : barre « Messages · À expédier » (compte bêta seulement),
   liste toutes plateformes + conversation + réponse verrouillée, section « À expédier » dans Ventes
   (bouton « Bordereau » **inactif**), indicateur de messages sur la carte de l'article. Pour le parc :
   une lecture au chargement, puis plus rien ; carte identique.
-- Selftests : `selftest:messagerie` (26 cas), `selftest:messagerie-app` (11 cas) ; suite complète : § 8.
+- Selftests : `selftest:messagerie` (26 cas), `selftest:messagerie-app` (12 cas) ; suite complète : § 8.
 
-**Attend ton feu vert nommé** — migration **`20261016170000_messagerie_bordereaux_beta.sql`**
-(inverse : `supabase/rollbacks/20261016170000_messagerie_bordereaux_beta.sql`) :
+**APPLIQUÉE (« Feu vert sur 20261016170000 », 16/10 vers 15:25)** — migration
+**`20261016170000_messagerie_bordereaux_beta.sql`** (inverse : `supabase/rollbacks/20261016170000_messagerie_bordereaux_beta.sql`) :
 7 tables neuves (RLS : chacun lit ses lignes, **aucune** écriture directe), 14 fonctions (toutes fermées
 sans le drapeau ; `REVOKE anon` nommé), bucket privé `bordereaux` (5 Mo max), 3 crons (purge des
 messages 1×/jour ; purge des bordereaux 1×/heure **seulement s'il y a une copie expirée** ; relevé eBay
 toutes les 20 min **seulement s'il existe un compte bêta relié à eBay**). **Essai à blanc fait** (36
 vérifications, transaction annulée, prod relue inchangée). Rien d'existant n'est modifié.
-Sur feu vert : `npx supabase db query --linked -f supabase/migrations/20261016170000_messagerie_bordereaux_beta.sql`
-puis `npx supabase migration repair --linked --status applied 20261016170000`, puis le drapeau sur ton
-compte (`scripts/reparations/20261016_drapeau_messagerie_nico.sql`, sauvegarde + inverse).
+Appliquée par `db query` puis `migration repair`, prod relue (7 tables, RLS, 14 fonctions, aucune ouverte à
+anon, 3 crons, bucket privé). Drapeau posé sur ton seul compte
+(`scripts/reparations/20261016_drapeau_messagerie_nico.sql`, sauvegarde + inverse). `bordereaux-purge` v1
+déployée. CPU pendant les relevés eBay : 12 à 29 % (rien d'anormal).
 
-**Attend ton geste** : recharger l'extension (0.6.116 copiée dans `C:\Users\nicol\FillSell-Extension-Nico`,
-l'ancienne 0.6.110 gardée dans `build/anciennes-extensions-nico/`) — voir § 8.
+**Attend ton geste** : « Recharger » l'extension FillSell dans `chrome://extensions` (0.6.116 copiée dans
+`C:\Users\nicol\FillSell-Extension-Nico`, l'ancienne 0.6.110 gardée dans `build/anciennes-extensions-nico/`).
+Aucun job n'était en cours sur ton compte au moment de la copie.
 
 ## 8. Garde-fous tenus, effets de bord constatés, suite
 
@@ -218,6 +221,16 @@ l'ancienne 0.6.110 gardée dans `build/anciennes-extensions-nico/`) — voir § 
   chose chez Leboncoin, sur un message de Leboncoin lui-même (« Place à l'automne »). L'extension, elle,
   n'ouvre jamais ces pages : elle lit l'API depuis la page d'accueil.
 - eBay : ton jeton a été relu (et renouvelé s'il expirait) par la fonction serveur, jamais affiché.
+- **Défaut trouvé au premier relevé réel, corrigé** : le champ `Content` d'eBay n'est pas du texte mais le
+  même gabarit HTML (≈ 4 000 caractères de style avant le message) ; v1 stockait le style. Corrigé (v2 :
+  le texte est extrait du corps, puis coupé) ; les 4 messages fautifs effacés et relus. Puis v3 : un passage
+  sans texte nouveau ne réécrit plus les conversations. Les deux cas sont dans le selftest.
+- **Ce qui n'a pas pu être testé de bout en bout** : l'écriture en base par l'extension (Vinted, Leboncoin,
+  Depop), faute de « Recharger ». Je n'ai pas fait passer le contenu de tes messages par moi pour la
+  simuler (règle « aucune IA sur les messages ») : les lecteurs sont prouvés sur tes vraies données, les
+  normaliseurs et la base le sont par les selftests et l'essai à blanc, eBay l'est en réel.
+- Écrans vérifiés en local à 390 px, sur données synthétiques : 23 contrôles verts
+  (`scripts/apercu/capture-messagerie-beta.mjs`).
 - Suite complète des selftests et build : voir l'état final dans `docs/agents/etat-2026-10-01.md`
   (§ 16/10 soir).
 
