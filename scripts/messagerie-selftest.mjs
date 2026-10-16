@@ -165,6 +165,218 @@ await cas("aucun champ de nom, d'adresse, de téléphone ou d'e-mail ne sort des
   for (const interdit of ["Jean", "Dupont", "j@d.fr", "address", "phone"]) assert.ok(!s.includes(interdit), interdit);
 });
 
+// ── a bis. BEEBS (relevé le 16/10 au soir sur le compte d'Ornella) et DEPOP ──
+// Données SYNTHÉTIQUES aux formes relevées ; aucun message réel.
+const b64url = (o) => Buffer.from(JSON.stringify(o)).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const jwt = (charge) => `${b64url({ alg: "RS256" })}.${b64url({ iss: "https://securetoken.google.com/babytouch-782e4", ...charge })}.sig`;
+const JETON_TEL = jwt({ user_id: "u-moi", firebase: { identities: { email: ["e"], phone: ["+33600000000"] } }, phone_number: "+33600000000" });
+const JETON_SANS_TEL = jwt({ user_id: "u-moi", firebase: { identities: { email: ["e"] } } });
+
+await cas("Beebs : la date de la liste (« 27/08/2026 », « 16/10 », « 14:05 », « Hier ») → heure de Paris", () => {
+  assert.equal(M.dateBeebsListe("27/08/2026", MAINTENANT), "2026-08-26T22:00:00.000Z");
+  assert.equal(M.dateBeebsListe("16/10", MAINTENANT), "2026-10-15T22:00:00.000Z");
+  assert.equal(M.dateBeebsListe("14:05", MAINTENANT), "2026-10-16T12:05:00.000Z");
+  assert.equal(M.dateBeebsListe("Hier", MAINTENANT), "2026-10-14T22:00:00.000Z");
+  assert.equal(M.dateBeebsListe("bientôt", MAINTENANT), null);
+});
+
+await cas("Beebs : liste + détail → conversation, sens par l'émetteur, messages de Beebs = système, jamais le nom complet", () => {
+  const lecture = { moi: "u-moi", conversations: [
+    { chat_id: "3HESxABC123", nom: "Julie D.", date_texte: "10:05", apercu: "Bonjour", non_lus: 2 },
+    { chat_id: "3IVkOLD456", nom: "Paul M.", date_texte: "27/08/2026", apercu: "x", non_lus: 0 },
+    { chat_id: "3ADMIN789", nom: "Beebs", date_texte: "15/10", apercu: "Info", non_lus: 0 },
+  ] };
+  const details = {
+    "3HESxABC123": { interlocuteur: { id: "u-autre", bloque_par_moi: false }, bloque: false, messages: [
+      { id: "m1", created_at: ilYa(0.1), text: "Bonjour", from_user_id: "u-autre", is_from_admin: false, sentByMe: false },
+      { id: "m2", created_at: ilYa(0.05), text: "Oui", from_user_id: "u-moi", is_from_admin: false, sentByMe: true },
+      { id: "m3", created_at: ilYa(40), text: "vieux", from_user_id: "u-autre", is_from_admin: false },
+    ] },
+    "3ADMIN789": { interlocuteur: { id: M.BEEBS_ADMIN }, messages: [{ id: "a1", created_at: ilYa(1), text: "Info", from_user_id: M.BEEBS_ADMIN, is_from_admin: true }] },
+  };
+  const r = M.normaliserBeebs(lecture, details, MAINTENANT);
+  const c = r.conversations.find((x) => x.ref === "3HESxABC123");
+  assert.equal(c.interlocuteur_ref, "u-autre");
+  assert.equal(c.interlocuteur_pseudo, "Julie D.");
+  assert.equal(c.non_lus, 2);
+  assert.equal(c.reponse_possible, true);
+  assert.equal(c.systeme, false);
+  assert.equal(c.dernier_le, ilYa(0.05), "la date exacte du dernier message lu, pas celle de la liste");
+  assert.equal(r.conversations.find((x) => x.ref === "3IVkOLD456").dernier_le, "2026-08-26T22:00:00.000Z", "sans détail : la date de la liste");
+  assert.equal(r.conversations.find((x) => x.ref === "3ADMIN789").systeme, true);
+  assert.equal(r.messages.find((m) => m.ref === "m1").sens, "recu");
+  assert.equal(r.messages.find((m) => m.ref === "m2").sens, "envoye");
+  assert.equal(r.messages.find((m) => m.ref === "a1").sens, "plateforme");
+  assert.ok(!r.messages.some((m) => m.ref === "m3"), "plus de 30 jours");
+  assert.equal(r.conversations.find((x) => x.ref === "3HESxABC123").annonce_ref, undefined, "messagerie de personne à personne : aucune annonce devinée");
+});
+
+await cas("Beebs : téléphone non vérifié (jeton) → mur dit, AUCUNE requête ; renvoi vers phone-verification → mur", async () => {
+  let appels = 0;
+  globalThis.document = { cookie: `access_token=${JETON_SANS_TEL}` };
+  globalThis.fetch = async () => { appels++; return { status: 200, url: "https://www.beebs.app/fr/account/chats", text: async () => "" }; };
+  let r = await M.LECTEURS.beebs.liste();
+  assert.equal(r.motif, "telephone_non_verifie");
+  assert.equal(r.mur, "telephone");
+  assert.equal(appels, 0, "aucune requête sans téléphone vérifié");
+  globalThis.document = { cookie: `access_token=${JETON_TEL}` };
+  globalThis.fetch = async () => { appels++; return { status: 200, url: "https://www.beebs.app/fr/account/phone-verification", text: async () => "<html></html>" }; };
+  r = await M.LECTEURS.beebs.liste();
+  assert.equal(r.motif, "telephone_non_verifie");
+  globalThis.document = { cookie: "" };
+  r = await M.LECTEURS.beebs.liste();
+  assert.equal(r.motif, "session_absente");
+  assert.ok(!M.signeBlocage(r), "un mur n'est pas un blocage anti-robot");
+});
+
+await cas("Beebs : liste lue dans le HTML rendu (forme relevée : lien, nom, date, aperçu, pastille) ; 403 → blocage", async () => {
+  const el = (texte, enfants = []) => ({ textContent: texte ?? enfants.map((e) => e.textContent).join(" "), children: enfants });
+  const ancre = (href, nom, date, apercu, pastille) => ({
+    getAttribute: (k) => (k === "href" ? href : null),
+    children: [el(""), el(null, [el(null, [el(nom), el(date)]), el(null, pastille == null ? [el(apercu)] : [el(apercu), el(pastille)])])],
+  });
+  globalThis.DOMParser = class { parseFromString() { return { querySelectorAll: () => [
+    ancre("/fr/account/chats/3HESxABC123", "Julie D.", "10:05", "Bonjour", "2"),
+    ancre("/fr/account/chats/3IVkOLD456", "Paul M.", "27/08/2026", "Merci", null),
+    ancre("/fr/account/chats/3HESxABC123", "doublon", "", "", null),
+  ] }; } };
+  globalThis.document = { cookie: `access_token=${JETON_TEL}` };
+  const appels = [];
+  globalThis.fetch = async (url, init) => { appels.push({ url, init }); return { status: 200, url: "https://www.beebs.app/fr/account/chats", text: async () => "<html>datadome tags.js chargé sur toutes les pages</html>".padEnd(70000, " ") }; };
+  const r = await M.LECTEURS.beebs.liste();
+  assert.equal(r.ok, true, JSON.stringify(r).slice(0, 200));
+  assert.equal(r.moi, "u-moi");
+  assert.equal(r.conversations.length, 2);
+  assert.deepEqual(r.conversations[0], { chat_id: "3HESxABC123", nom: "Julie D.", date_texte: "10:05", apercu: "Bonjour", non_lus: 2 });
+  assert.equal(r.conversations[1].non_lus, 0);
+  assert.equal(appels[0].url, "/fr/account/chats");
+  assert.ok(!appels[0].init?.method, "GET");
+  globalThis.fetch = async () => ({ status: 403, url: "https://www.beebs.app/fr/account/chats", text: async () => "" });
+  const b = await M.LECTEURS.beebs.liste();
+  assert.equal(M.signeBlocage(b), "http_403", "403 sur Beebs = arrêt immédiat");
+});
+
+await cas("Beebs : détail = flux RSC de la page de la conversation → messages, interlocuteur ; ni prénom ni nom ne sortent", async () => {
+  const REF = "3HESxABC123";
+  const rsc = [
+    '0:["$","div",null,{}]',
+    `14:${JSON.stringify(["$", "$L1", null, { chatId: REF, userId: "u-autre", userImage: "https://cdn/x.jpg", firstName: "Julie", lastName: "D", blockedByMe: false, deletable: true }])}`,
+    `15:${JSON.stringify(["$", "$L2", null, { toUserId: "u-autre", blocked: false, chatId: REF }])}`,
+    `109:${JSON.stringify([["$", "$L3", null, { message: { id: "m1", created_at: "2026-10-16T08:00:00.000Z", chat_id: REF, text: "Bonjour", attachment: null, from_user_id: "u-autre", to_user_id: "u-moi", is_from_admin: false }, sentByMe: false, toUserImage: "x" }]])}`,
+    `110:${JSON.stringify(["$", "$L3", null, { message: { id: "m9", created_at: "2026-10-16T08:01:00.000Z", chat_id: "AUTRE", text: "ailleurs", from_user_id: "z", is_from_admin: false } }])}`,
+    "111:I[1234,[],\"\"]",
+  ].join("\n");
+  const appels = [];
+  globalThis.fetch = async (url, init) => { appels.push({ url, init }); return { status: 200, text: async () => rsc }; };
+  const r = await M.LECTEURS.beebs.details([REF]);
+  assert.equal(r.ok, true);
+  const d = r.details[REF];
+  assert.equal(d.interlocuteur.id, "u-autre");
+  assert.equal(d.destinataire, "u-autre");
+  assert.equal(d.bloque, false);
+  assert.equal(d.messages.length, 1, "seuls les messages de CETTE conversation");
+  assert.equal(appels[0].url, `/fr/account/chats/${REF}`);
+  assert.equal(appels[0].init.headers.RSC, "1");
+  assert.ok(!appels[0].init.method, "GET");
+  const s = JSON.stringify(r);
+  assert.ok(!s.includes("Julie") && !s.includes("cdn/x.jpg"), "ni prénom ni photo de la personne");
+});
+
+await cas("Beebs : réponse — POST api.beebs.app/chats/v3 {to_user_id, text}, jeton BRUT ; rien sans téléphone vérifié", async () => {
+  const appels = [];
+  globalThis.document = { cookie: `access_token=${JETON_TEL}` };
+  globalThis.fetch = async (url, init) => { appels.push({ url, init }); return { status: 200, json: async () => ({ success: true, data: { id: "msg-9" } }) }; };
+  const r = await M.ENVOYEURS.beebs({ interlocuteurRef: "u-autre", texte: "Oui" });
+  assert.equal(r.ok, true);
+  assert.equal(r.messageRef, "msg-9");
+  assert.equal(appels[0].url, "https://api.beebs.app/chats/v3");
+  assert.equal(appels[0].init.method, "POST");
+  assert.equal(appels[0].init.headers.authorization, JETON_TEL, "le jeton brut, pas « Bearer »");
+  assert.deepEqual(JSON.parse(appels[0].init.body), { to_user_id: "u-autre", text: "Oui" });
+  globalThis.document = { cookie: `access_token=${JETON_SANS_TEL}` };
+  const r2 = await M.ENVOYEURS.beebs({ interlocuteurRef: "u-autre", texte: "Oui" });
+  assert.equal(r2.ok, false);
+  assert.equal(r2.motif, "telephone_non_verifie");
+  assert.equal(appels.length, 1, "rien n'est parti");
+});
+
+await cas("Beebs : commandes — états du site, 48 h / 6 jours, pseudo « Prénom N. », jamais le nom ni l'adresse", () => {
+  const l = M.normaliserCommandesBeebs([
+    { id: "o1", order: { id: "o1", status: "WAIT_SELLER_CONFIRM", created_at: ilYa(0.5), buyer: { first_name: "Marie", last_name: "Durand" }, products: [{ id: 33894364, title: "Veste", price: 12, image: "https://cdn.beebs.app/x.jpg" }], total_price: 15.5 } },
+    { id: "o2", order: { id: "o2", status: "LABEL_PRINTED", status_updated_at: "2026-10-15T10:00:00.000Z", products: [{ id: 1, title: "A" }, { id: 2, title: "B" }], buyer: { firstName: "Léa" } } },
+    { id: "o3", order: { id: "o3", status: "IN_DELIVERY", products: [], buyer: {} } },
+    { id: "o4", order: null },
+  ]);
+  assert.equal(l.length, 3, "une commande sans objet n'écrit rien");
+  const [a, b, c] = l;
+  assert.equal(a.etat, "a_confirmer"); assert.equal(a.bordereau, "a_generer");
+  assert.equal(a.acheteur_pseudo, "Marie D.");
+  assert.equal(a.annonce_ref, "33894364");
+  assert.equal(a.montant, 15.5);
+  assert.equal(a.photo, "https://cdn.beebs.app/x.jpg");
+  assert.equal(a.a_expedier_avant, null);
+  assert.ok(!JSON.stringify(a).includes("Durand"));
+  assert.equal(b.etat, "a_expedier"); assert.equal(b.bordereau, "pret");
+  assert.equal(b.a_expedier_avant, "2026-10-21T10:00:00.000Z", "6 jours après le bordereau (calcul du site)");
+  assert.equal(b.titre, "2 articles"); assert.equal(b.annonce_ref, null);
+  assert.equal(c.etat, "expediee");
+  const e = (s) => M.etatCommandeBeebs(s).etat;
+  assert.equal(e("WAITING_GENARATING_LABEL_BY_SELLER"), "a_expedier");
+  assert.equal(e("WAIT_SELLER_CONFIRM_RMP"), "a_confirmer");
+  assert.equal(e("SELLER_PAID_REVIEW"), "terminee");
+  assert.equal(e("LITIGATION_RETURN_IN_DELIVERY"), "retour");
+  assert.equal(e("LOST_PARCEL"), "litige");
+  assert.equal(e("CANCELLED"), "annulee");
+  assert.equal(e("NOUVEL_ETAT"), "inconnu");
+});
+
+await cas("Beebs : lecteur des ventes — liens de la page « Ventes », objet commande de sa page ; forme inconnue = rien", async () => {
+  const liste = `5:${JSON.stringify(["$", "a", null, { href: "/fr/account/orders/list/buyer" }])}\n6:${JSON.stringify(["$", "a", null, { href: "/fr/account/orders/ord-9f3a2" }])}\n7:${JSON.stringify(["$", "a", null, { href: "/fr/account/orders/ord-77b1c" }])}`;
+  const commande = `3:${JSON.stringify(["$", "$L9", null, { order: { id: "ord-9f3a2", status: "LABEL_PRINTED", status_updated_at: "2026-10-15T10:00:00.000Z", products: [{ id: 5, title: "Robe" }], buyer: { first_name: "Marie", last_name: "Durand", address: { street: "1 rue" } }, seller: { id: "u-moi" } } }])}`;
+  const appels = [];
+  globalThis.fetch = async (url) => { appels.push(url); return { status: 200, text: async () => (url.endsWith("/list/seller") ? liste : url.endsWith("ord-9f3a2") ? commande : "0:[]") }; };
+  const r = await M.LECTEURS.beebs.commandes([], 5);
+  assert.equal(r.ok, true);
+  assert.equal(r.commandes.length, 1);
+  assert.equal(r.illisibles, 1);
+  assert.equal(r.commandes[0].order.status, "LABEL_PRINTED");
+  assert.ok(!appels.some((u) => u.includes("/list/buyer") && !u.endsWith("/list/seller")), "jamais la page « Achats »");
+  assert.ok(!JSON.stringify(r).includes("1 rue"), "jamais l'adresse");
+});
+
+await cas("Depop : commandes (« receipts ») — états, acheteur en pseudo, date limite, pas de bordereau ; forme inconnue = « inconnu »", () => {
+  const d = M.normaliserCommandesDepop([
+    { id: 77, shippingStatus: "AWAITING_SHIPPING", buyer: { username: "acheteur_d", address: "1 rue" }, items: [{ slug: "nico-veste-123", description: "Veste en jean\nTaille M", pictures: [{ url: "https://p/1.jpg" }] }], total: { amount: "25.00", currency: "EUR" }, shippingDeadline: "2026-10-20T10:00:00Z", created_at: ilYa(1) },
+    { receipt_id: "r2", shipping_status: "SHIPPED", items: [] },
+    { id: 3, status: "quelque_chose" },
+  ]);
+  assert.equal(d[0].etat, "a_expedier");
+  assert.equal(d[0].bordereau, "sans_objet");
+  assert.equal(d[0].acheteur_pseudo, "acheteur_d");
+  assert.equal(d[0].annonce_ref, "nico-veste-123");
+  assert.equal(d[0].montant, 25);
+  assert.equal(d[0].devise, "EUR");
+  assert.equal(d[0].a_expedier_avant, "2026-10-20T10:00:00.000Z");
+  assert.equal(d[0].photo, "https://p/1.jpg");
+  assert.ok(!JSON.stringify(d).includes("1 rue"));
+  assert.equal(d[1].etat, "expediee");
+  assert.equal(d[1].ref, "r2");
+  assert.equal(d[2].etat, "inconnu");
+  assert.equal(M.etatCommandeDepop("CANCELLED"), "annulee");
+  assert.equal(M.etatCommandeDepop("COMPLETED"), "terminee");
+});
+
+await cas("plateformes relevées par l'extension : Vinted, Leboncoin, Depop, Beebs (messages ET commandes)", () => {
+  assert.deepEqual([...M.PLATEFORMES_EXTENSION], ["vinted", "leboncoin", "depop", "beebs"]);
+  assert.deepEqual([...M.PLATEFORMES_COMMANDES], ["vinted", "leboncoin", "depop", "beebs"]);
+  for (const p of M.PLATEFORMES_COMMANDES) {
+    assert.equal(typeof M.LECTEURS[p].commandes, "function", p);
+    assert.equal(typeof M.NORMALISEURS_COMMANDES[p], "function", p);
+  }
+  assert.equal(typeof M.ENVOYEURS.beebs, "function");
+  assert.equal(M.REGLE_DETAIL.beebs, 1);
+});
+
 // ── b. États de commande ─────────────────────────────────────────────────────
 await cas("Vinted : statut d'envoi → état et bordereau", () => {
   const t = (u, s) => M.etatCommandeVinted(u, s);
@@ -258,8 +470,45 @@ function fetchEspion(reponses) {
   return { f, appels };
 }
 
-await cas("la constante de la dernière marche reste FERMÉE", () => {
-  assert.equal(M.BORDEREAU_DERNIERE_MARCHE_OUVERTE, false);
+await cas("(16/10 soir) dernière marche ouverte, mais SEULEMENT pour une demande née d'un clic", () => {
+  assert.equal(M.BORDEREAU_DERNIERE_MARCHE_OUVERTE, true);
+  const bg = lire("chrome-extension/background.js");
+  const appels = [...bg.matchAll(/obtenirBordereauBeta\(/g)].map((m) => m.index);
+  const definition = bg.indexOf("async function obtenirBordereauBeta(") + "async function ".length;
+  const traiteur = bg.indexOf("async function traiterDemandeBordereauBeta(");
+  const finTraiteur = bg.indexOf("/** Les jobs à relire en priorité", traiteur);
+  assert.ok(definition > 0 && traiteur > 0 && finTraiteur > traiteur);
+  const ailleurs = appels.filter((i) => i !== definition && !(i > traiteur && i < finTraiteur));
+  assert.equal(ailleurs.length, 0, "obtenirBordereauBeta n'est appelée que par l'exécutant des demandes");
+  const corps = bg.slice(traiteur, finTraiteur);
+  const iPrise = corps.indexOf('rpcMessagerie("bordereau_demande_a_traiter"');
+  const iSans = corps.indexOf("if (!d?.id) return;");
+  const iChemin = corps.indexOf("obtenirBordereauBeta(");
+  assert.ok(iPrise > 0 && iSans > iPrise && iChemin > iSans, "rien sans une demande prise en base");
+  assert.ok(/bordereau_demande_resultat/.test(corps), "le résultat est toujours rendu");
+  assert.ok(!/bordereau_demander/.test(sansCommentaires(bg)), "l'extension ne crée JAMAIS de demande (seule l'app, au clic)");
+  assert.ok(/coin_config\?key=eq\.bordereaux_ouverts/.test(bg), "l'interrupteur serveur est relu");
+});
+
+await cas("Vinted : pas de bordereau papier → le code (digital_label) demandé UNE fois", async () => {
+  const { f, appels } = fetchEspion({ "/transactions/9004": { transaction: { shipment: { id: 69, status: 230 } } }, "/shipment/digital_label": { file: { label: "iVBORw0KGgo=", filename: "code.png" } } });
+  globalThis.fetch = f;
+  const r = await M.CHEMINS_BORDEREAU.vinted({ transactionId: 9004, derniereMarche: true });
+  assert.equal(r.ok, true);
+  assert.equal(r.numerique, true);
+  assert.equal(appels.filter((a) => /pdf_label/.test(a.url)).length, 1);
+  assert.equal(appels.filter((a) => /digital_label/.test(a.url)).length, 1);
+  assert.ok(appels.every((a) => a.method === "GET"));
+});
+
+await cas("background.js : copie au nom UNIQUE (horodaté), type lu dans le fichier, 5 Mo au plus", () => {
+  const bg = lire("chrome-extension/background.js");
+  const i = bg.indexOf("async function deposerCopieBordereau(");
+  const corps = bg.slice(i, bg.indexOf("async function traiterDemandeBordereauBeta(", i));
+  assert.ok(/-\$\{Date\.now\(\)\}\.\$\{genre\.ext\}/.test(corps), "nom unique");
+  assert.ok(!/x-upsert/.test(corps), "jamais d'écrasement d'une copie");
+  assert.ok(/5 \* 1024 \* 1024/.test(corps));
+  assert.ok(/copie_non_notee/.test(corps), "une copie non notée en base n'est pas rendue « prête »");
 });
 
 await cas("Vinted : bordereau prêt, dernière marche fermée → AUCUNE requête vers le fichier", async () => {
@@ -427,6 +676,24 @@ await cas("migration : 30 jours (messages), 5 jours au plus (copies), secret de 
   assert.ok(/public\.cron_secret\(\)/.test(MIG));
   assert.ok(!/x-cron-secret['"]?\s*,\s*'[A-Za-z0-9]{12,}/.test(MIG));
   assert.ok(/liste_blanche_absente|liste_blanche/.test(MIG));
+});
+
+const MIG2 = lire("supabase/migrations/20261016200000_bordereaux_demandes_beta.sql");
+await cas("migration 20261016200000 : demandes en lecture seule, REVOKE anon, une demande = un clic (session), bordereau PRÊT seulement", () => {
+  assert.ok(/ALTER TABLE public\.bordereaux_demandes ENABLE ROW LEVEL SECURITY/.test(MIG2));
+  assert.ok(/CREATE POLICY bordereaux_demandes_lecture ON public\.bordereaux_demandes\s+FOR SELECT TO authenticated USING \(user_id = auth\.uid\(\)\)/.test(MIG2));
+  assert.ok(!/CREATE POLICY[^;]*FOR (INSERT|UPDATE|DELETE|ALL)/.test(MIG2), "aucune écriture directe");
+  for (const f of ["bordereau_demander", "bordereau_demande_a_traiter", "bordereau_demande_resultat"]) {
+    assert.ok(new RegExp(`REVOKE ALL ON FUNCTION public\\.${f}\\([^)]*\\) FROM PUBLIC, anon`).test(MIG2), `REVOKE ${f}`);
+  }
+  const demander = MIG2.slice(MIG2.indexOf("CREATE OR REPLACE FUNCTION public.bordereau_demander("), MIG2.indexOf("CREATE OR REPLACE FUNCTION public.bordereau_demande_a_traiter("));
+  assert.ok(/v_user uuid := auth\.uid\(\);/.test(demander) && /IF v_user IS NULL THEN RAISE EXCEPTION 'session requise'/.test(demander), "seule une session (l'app, au clic) crée une demande");
+  assert.ok(/v_cmd\.etat <> 'a_expedier' OR v_cmd\.bordereau <> 'pret'/.test(demander), "jamais un bordereau qui n'est pas prêt");
+  assert.ok(/platform NOT IN \('vinted','leboncoin'\)/.test(demander));
+  assert.ok(/GRANT EXECUTE ON FUNCTION public\.bordereau_demander\(uuid\) TO authenticated;/.test(MIG2), "l'app seulement (pas le service)");
+  assert.ok(/interval '30 minutes'/.test(MIG2), "une demande sans poste expire");
+  assert.ok(/bordereaux_ouverts/.test(MIG2));
+  assert.ok(fs.existsSync(path.join(RACINE, "supabase/rollbacks/20261016200000_bordereaux_demandes_beta.sql")), "inverse présent");
 });
 
 console.log(`messagerie-selftest : ${n} cas verts`);

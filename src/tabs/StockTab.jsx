@@ -9608,6 +9608,7 @@ const StockTab = memo(function StockTab({
       <CarteArticle key={item.id} {...commun}
         marque={marqueLabel(item.marque, lang) || null} vues={d.vues} favoris={d.favs} quantite={item.quantite || 1}
         messages={messagerie ? (Number(messagerie.parArticle?.[item.id]) || 0) : null}
+        onMessages={messagerie?.ouvrir ? () => messagerie.ouvrir(item.id) : undefined}
         action={g.principale} actionElement={saisiePa ?? g.element} onOuvrir={d.openEdit} bas={g.bas} note={g.note} />
     );
   };

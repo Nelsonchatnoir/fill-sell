@@ -6,7 +6,12 @@
 //      section « À expédier » des Ventes et l'indicateur de la carte ne se
 //      rendent QUE pour un compte bêta ; hors bêta, une seule lecture puis
 //      plus rien (la relecture s'arrête) ; jamais de setInterval ;
-//   b. le bouton « Bordereau » est INACTIF dans tous les cas ;
+//   b. (16/10 soir) le bouton « Bordereau » n'est ACTIF que pour Vinted et
+//      Leboncoin, bordereau PRÊT chez la plateforme ; il dépose une demande
+//      (bordereau_demander) et rien d'autre ; tout geste qui engage ouvre la
+//      page de la plateforme (lien), jamais une action de FillSell ;
+//   b'. les murs des relevés (Beebs sans téléphone vérifié, session absente,
+//      pause) sont dits en clair ; un 401 seul n'en est pas un ;
 //   c. une réponse verrouillée le dit (liste blanche), une réponse en échec dit
 //      que rien n'est parti ;
 //   d. non lus : même règle que messagerie_compteurs (systèmes exclus, vue
@@ -18,7 +23,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { conversationNonLue, trierConversations, etatReponse, boutonBordereau, commandesAExpedier, libelleEtatCommande, nomPlateforme } from "../src/messagerie/vue.js";
+import { conversationNonLue, trierConversations, etatReponse, actionCommande, commandesAExpedier, libelleEtatCommande, nomPlateforme, lienCommande, lienConversation, murReleve, delaiEnvoi, etatZoneReponse, etatDemandeBordereau, refusDemandeBordereau, pseudoAffiche, libelleTransporteur } from "../src/messagerie/vue.js";
 import { conversationsEbay, commandesEbay, texteMessageEbay, etatCommandeEbay } from "../supabase/functions/_shared/messagerie-ebay.js";
 
 const RACINE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -32,13 +37,13 @@ const STOCK = lire("src/tabs/StockTab.jsx");
 const VENTES = lire("src/tabs/VentesTab.jsx");
 const CARTE = lire("src/stock/Carte.jsx");
 const HOOK = lire("src/messagerie/useMessagerieBeta.js");
-const FICHIERS_UI = ["src/messagerie/EspaceMessagerie.jsx", "src/messagerie/SectionAExpedier.jsx", "src/messagerie/BarreMessagerie.jsx", "src/messagerie/vue.js", "src/messagerie/useMessagerieBeta.js"];
+const FICHIERS_UI = ["src/messagerie/EspaceMessagerie.jsx", "src/messagerie/SectionAExpedier.jsx", "src/messagerie/BarreMessagerie.jsx", "src/messagerie/vue.js", "src/messagerie/useMessagerieBeta.js", "src/messagerie/ouvrir.js"];
 
 // ── a. Rien pour le parc ─────────────────────────────────────────────────────
 await cas("App : la barre et l'espace ne se rendent que pour un compte bêta", () => {
   assert.ok(/\{messagerie\.beta&&\(\s*<BarreMessagerie/.test(APP), "barre sous messagerie.beta");
   assert.ok(/\{messagerie\.beta&&espaceMessagerie&&\(/.test(APP), "espace sous messagerie.beta");
-  assert.ok(/messagerie=\{messagerie\.beta\?\{parArticle:messagerie\.parArticle\}:null\}/.test(APP), "Stock : null hors bêta");
+  assert.ok(/messagerie=\{messagerie\.beta\?\{parArticle:messagerie\.parArticle,ouvrir:\(id\)=>setEspaceMessagerie\(\{onglet:'messages',article:id\}\)\}:null\}/.test(APP), "Stock : null hors bêta");
   assert.ok(/messagerieBeta=\{messagerie\.beta\}/.test(APP), "Ventes : booléen bêta");
   assert.ok(/lazyMessagerie\(\(\) => import\('\.\/messagerie\/EspaceMessagerie'\)\)/.test(APP), "espace chargé à la demande");
 });
@@ -57,25 +62,108 @@ await cas("le drapeau : une lecture hors bêta puis la relecture s'arrête ; jam
   for (const f of FICHIERS_UI) assert.ok(!/setInterval\s*\(/.test(lire(f)), f);
 });
 
-// ── b. Le bouton « Bordereau » ───────────────────────────────────────────────
-await cas("le bouton « Bordereau » est inactif dans tous les cas, et dit pourquoi", () => {
-  for (const c of [
-    { platform: "vinted", etat: "a_expedier", bordereau: "pret" },
-    { platform: "vinted", etat: "a_expedier", bordereau: "a_obtenir" },
-    { platform: "leboncoin", etat: "a_confirmer", bordereau: "a_generer" },
-    { platform: "leboncoin", etat: "a_expedier", bordereau: "indisponible" },
-    { platform: "ebay", etat: "a_expedier", bordereau: "a_obtenir" },
-    { platform: "beebs", etat: "a_expedier", bordereau: "inconnu" },
-  ]) {
-    const b = boutonBordereau(c, "fr");
-    assert.equal(b.actif, false, JSON.stringify(c));
-    assert.ok(b.titre.includes("vraie commande"));
-    assert.ok(b.aide.length > 10);
+// ── b. Le bouton « Bordereau » et les gestes qui engagent ────────────────────
+await cas("« Bordereau » ACTIF seulement pour Vinted / Leboncoin, bordereau prêt ; sinon un lien vers la plateforme", () => {
+  const actifs = [
+    { platform: "vinted", etat: "a_expedier", bordereau: "pret", commande_ref: "9001", conversation_ref: "501" },
+    { platform: "leboncoin", etat: "a_expedier", bordereau: "pret", commande_ref: "777" },
+  ];
+  for (const c of actifs) assert.equal(actionCommande(c).type, "bordereau", JSON.stringify(c));
+  const liens = [
+    { platform: "vinted", etat: "a_expedier", bordereau: "a_obtenir", conversation_ref: "501" },
+    { platform: "vinted", etat: "a_expedier", bordereau: "indisponible" },
+    { platform: "leboncoin", etat: "a_confirmer", bordereau: "a_generer", commande_ref: "777" },
+    { platform: "leboncoin", etat: "a_expedier", bordereau: "a_obtenir", commande_ref: "777" },
+    { platform: "beebs", etat: "a_confirmer", bordereau: "a_generer", commande_ref: "ord-1" },
+    { platform: "beebs", etat: "a_expedier", bordereau: "pret", commande_ref: "ord-1" },
+    { platform: "ebay", etat: "a_expedier", bordereau: "a_obtenir", commande_ref: "12-345" },
+    { platform: "depop", etat: "a_expedier", bordereau: "sans_objet", commande_ref: "77" },
+    { platform: "vinted", etat: "inconnu", bordereau: "inconnu" },
+  ];
+  for (const c of liens) {
+    const a = actionCommande(c);
+    assert.equal(a.type, "lien", JSON.stringify(c));
+    assert.ok(/^https:\/\//.test(a.url), a.url);
+    assert.ok(a.aide.length > 10);
   }
-  assert.ok(/boutonBordereau\(c, 'fr'\)|boutonBordereau\(c, lang\)/.test(lire("src/messagerie/SectionAExpedier.jsx")));
-  assert.ok(/<button type="button" disabled /.test(lire("src/messagerie/SectionAExpedier.jsx")), "rendu désactivé en dur");
-  assert.ok(boutonBordereau({ platform: "leboncoin", etat: "a_confirmer" }).aide.includes("disponibilité"));
-  assert.ok(boutonBordereau({ platform: "ebay", etat: "a_expedier" }).aide.includes("eBay"));
+  assert.ok(actionCommande(liens[0]).aide.includes("c’est toi qui le fais"), "Vinted : commander l'étiquette = geste du vendeur");
+  assert.ok(actionCommande(liens[2]).aide.includes("disponibilité") && actionCommande(liens[2]).aide.includes("jamais"));
+  assert.ok(actionCommande(liens[4]).aide.includes("accepter la commande"), "Beebs : générer = accepter");
+  assert.equal(actionCommande(liens[5]).type, "lien", "Beebs : bordereau prêt = lien (aucune dernière marche qui n'engage rien n'a été vue)");
+  assert.ok(actionCommande(liens[6]).aide.includes("eBay"));
+  assert.ok(actionCommande(liens[7]).aide.includes("pas de bordereau"));
+});
+
+await cas("liens des plateformes (relevés le 16/10) ; l'app ne crée une demande QUE dans le geste de clic", () => {
+  assert.equal(lienCommande({ platform: "vinted", conversation_ref: "501" }), "https://www.vinted.fr/inbox/501");
+  assert.equal(lienCommande({ platform: "vinted" }), "https://www.vinted.fr/my_orders");
+  assert.equal(lienCommande({ platform: "leboncoin", commande_ref: "777" }), "https://www.leboncoin.fr/compte/part/transaction/777");
+  assert.equal(lienCommande({ platform: "beebs", commande_ref: "ord-1" }), "https://www.beebs.app/fr/account/orders/ord-1");
+  assert.equal(lienCommande({ platform: "ebay", commande_ref: "12-345" }), "https://www.ebay.fr/sh/ord/details?orderid=12-345");
+  assert.equal(lienCommande({ platform: "depop" }), "https://www.depop.com/sellinghub/sold-items/");
+  assert.equal(lienConversation({ platform: "beebs", conversation_ref: "3HESx" }), "https://www.beebs.app/fr/account/chats/3HESx");
+  const section = lire("src/messagerie/SectionAExpedier.jsx");
+  const appels = [...section.matchAll(/rpc\('bordereau_demander'/g)];
+  assert.equal(appels.length, 1, "un seul appel");
+  const fn = section.slice(section.indexOf("const demanderBordereau = async (c) =>"));
+  assert.ok(fn.indexOf("rpc('bordereau_demander'") > 0, "dans le geste « demanderBordereau »");
+  assert.ok(/onClick=\{\(\) => demanderBordereau\(c\)\}/.test(section), "branché sur le clic seulement");
+  for (const f of ["src/App.jsx", "src/messagerie/EspaceMessagerie.jsx", "src/messagerie/useMessagerieBeta.js"]) assert.ok(!/bordereau_demander/.test(lire(f)), "aucune demande depuis " + f);
+  assert.ok(/createSignedUrl\(copie\.chemin, 600\)/.test(section), "copie privée : adresse signée 10 min");
+});
+
+await cas("demandes de bordereau : chaque état dit quoi faire ; refus en clair", () => {
+  assert.equal(etatDemandeBordereau({ statut: "demandee" }).attente, true);
+  assert.ok(etatDemandeBordereau({ statut: "demandee" }).texte.includes("ordinateur"));
+  assert.ok(etatDemandeBordereau({ statut: "expiree" }).texte.includes("abandonnée") && etatDemandeBordereau({ statut: "expiree" }).texte.includes("rien n’a été fait"));
+  assert.ok(etatDemandeBordereau({ statut: "echec", motif: "http_403" }).texte.includes("rien n’a été fait"));
+  assert.equal(etatDemandeBordereau(null), null);
+  assert.ok(refusDemandeBordereau("pas_pret").includes("prêt"));
+  assert.ok(refusDemandeBordereau("plafond_jour").includes("20"));
+});
+
+await cas("murs des relevés : Beebs sans téléphone vérifié, session absente, pause ; un 401 seul n'en est pas un", () => {
+  const beebs = murReleve({ platform: "beebs", dernier_motif: "telephone_non_verifie" });
+  assert.equal(beebs.titre, "Vérifie ton numéro sur Beebs");
+  assert.ok(beebs.action.url.includes("beebs.app"));
+  assert.ok(murReleve({ platform: "leboncoin", dernier_motif: "jeton_absent" }).titre.includes("Connecte-toi à Leboncoin"));
+  const p = murReleve({ platform: "vinted", dernier_motif: "http_429", pause_jusqu_au: new Date(Date.now() + 3600e3).toISOString() });
+  assert.ok(p.titre.includes("pause de sécurité"));
+  assert.equal(murReleve({ platform: "vinted", dernier_motif: "http_401" }), null, "jeton expiré, renouvelé par la page");
+  assert.equal(murReleve({ platform: "vinted", dernier_motif: null }), null);
+  assert.equal(murReleve({ platform: "depop", dernier_motif: "onglet_indisponible" }), null, "incident passager : rien à dire");
+  assert.ok(murReleve({ platform: "ebay", dernier_motif: "jeton_revoque" }).titre.includes("eBay"));
+});
+
+await cas("zone de réponse : verrouillée hors liste blanche, active en liste blanche, fermée pour un message de la plateforme", () => {
+  const v = etatZoneReponse({ platform: "vinted" }, false);
+  assert.equal(v.possible, true); assert.equal(v.verrouillee, true); assert.ok(v.texte.includes("liste blanche"));
+  const a = etatZoneReponse({ platform: "beebs" }, true);
+  assert.equal(a.verrouillee, false); assert.ok(a.texte.includes("une seule fois"));
+  assert.equal(etatZoneReponse({ platform: "depop", systeme: true }, true).possible, false);
+  assert.equal(etatZoneReponse({ platform: "leboncoin", reponse_possible: false }, true).possible, false);
+});
+
+await cas("pseudos (@ seulement là où la plateforme a des pseudos) et transporteurs en clair", () => {
+  assert.equal(pseudoAffiche("vinted", "acheteuse_a"), "@acheteuse_a");
+  assert.equal(pseudoAffiche("ebay", "acheteur_e"), "@acheteur_e");
+  assert.equal(pseudoAffiche("leboncoin", "Marc"), "Marc");
+  assert.equal(pseudoAffiche("beebs", "Julie D."), "Julie D.");
+  assert.equal(pseudoAffiche("vinted", "  "), null);
+  assert.equal(libelleTransporteur("mondial_relay"), "Mondial Relay");
+  assert.equal(libelleTransporteur("shop2shop"), "Shop2Shop");
+  assert.equal(libelleTransporteur("FR_ColiposteColissimo"), "Colissimo");
+  assert.equal(libelleTransporteur("FR_ColiposteLettreSuivie"), "Coliposte lettre suivie");
+  assert.equal(libelleTransporteur(null), null);
+});
+
+await cas("date limite : texte et urgence (< 48 h)", () => {
+  const maintenant = Date.parse("2026-10-16T12:00:00Z");
+  assert.equal(delaiEnvoi({ a_expedier_avant: "2026-10-17T10:00:00Z" }, "fr", maintenant).urgent, true);
+  assert.equal(delaiEnvoi({ a_expedier_avant: "2026-10-22T10:00:00Z" }, "fr", maintenant).urgent, false);
+  assert.ok(delaiEnvoi({ a_expedier_avant: "2026-10-22T10:00:00Z" }, "fr", maintenant).texte.startsWith("À déposer avant le 22/10"));
+  assert.equal(delaiEnvoi({ a_expedier_avant: "2026-10-15T10:00:00Z" }, "fr", maintenant).depasse, true);
+  assert.equal(delaiEnvoi({}, "fr", maintenant), null);
 });
 
 // ── c. Les réponses ──────────────────────────────────────────────────────────
@@ -101,15 +189,19 @@ await cas("non lus : systèmes exclus ; vue dans FillSell après le dernier mess
   assert.deepEqual(t.map((x) => x.id), ["b", "a", "c"]);
 });
 
-await cas("À expédier : à confirmer d'abord, puis la plus ancienne ; rien d'autre", () => {
+await cas("À expédier : à confirmer d'abord, puis la date limite la plus proche, puis les états à vérifier ; rien d'autre", () => {
   const l = commandesAExpedier([
     { id: 1, etat: "a_expedier", vendue_le: "2026-10-15T10:00:00Z" },
     { id: 2, etat: "livree" },
     { id: 3, etat: "a_confirmer", vendue_le: "2026-10-16T10:00:00Z" },
     { id: 4, etat: "a_expedier", vendue_le: "2026-10-14T10:00:00Z" },
+    { id: 5, etat: "inconnu", vendue_le: "2026-10-13T10:00:00Z" },
+    { id: 6, etat: "expediee" },
   ]);
-  assert.deepEqual(l.map((c) => c.id), [3, 4, 1]);
-  assert.equal(libelleEtatCommande("a_confirmer"), "Disponibilité à confirmer");
+  assert.deepEqual(l.map((c) => c.id), [3, 4, 1, 5]);
+  assert.equal(libelleEtatCommande("a_confirmer", "fr", "leboncoin"), "Disponibilité à confirmer");
+  assert.equal(libelleEtatCommande("a_confirmer", "fr", "beebs"), "Commande à accepter");
+  assert.equal(libelleEtatCommande("inconnu"), "État à vérifier");
   assert.equal(nomPlateforme("leboncoin"), "Leboncoin");
 });
 

@@ -8599,7 +8599,7 @@ export default function App({ loginOnly = false }){
           <SuspenseMessagerie fallback={null}>
             <EspaceMessagerie supabase={supabase} lang={lang} ouvert
               ongletInitial={espaceMessagerie.onglet} filtreArticle={espaceMessagerie.article}
-              photosParInventaire={photosParInventaire}
+              photosParInventaire={photosParInventaire} aExpedier={messagerie.aExpedier}
               onChange={messagerie.relire}
               onFermer={()=>{setEspaceMessagerie(null);messagerie.relire();}}/>
           </SuspenseMessagerie>
@@ -8712,7 +8712,7 @@ export default function App({ loginOnly = false }){
             pendingRemovals={pendingRemovals} onRetirerVendus={armRemovals} onPlusTardVendus={reporterRetraits}
             plusEnLigne={{n:nbPlusEnLigne,nMasquees:nbMasqueesPlusEnLigne,rendre:rendrePlusEnLigne,onAfficherMasquees:()=>setMontrerMasquees(true),ouvrirQuestion:(id)=>setQuestionForcee(id)}}
             onDupliquer={(item)=>dupliquerFiche(item,'carte')}
-            messagerie={messagerie.beta?{parArticle:messagerie.parArticle}:null}
+            messagerie={messagerie.beta?{parArticle:messagerie.parArticle,ouvrir:(id)=>setEspaceMessagerie({onglet:'messages',article:id})}:null}
           />
         )}
 

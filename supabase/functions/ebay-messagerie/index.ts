@@ -169,11 +169,24 @@ async function relever(admin: SupabaseClient, env: EbayEnv, userId: string) {
   const r = await appelEbay(env, jeton.token, "/sell/fulfillment/v1/order?limit=50&filter=orderfulfillmentstatus:%7BNOT_STARTED%7CIN_PROGRESS%7D");
   let bilanCommandes: unknown = null;
   if (r.http === 200) {
-    const lignes = commandesEbay((r.json as { orders?: unknown[] } | null)?.orders ?? []);
+    const orders = ((r.json as { orders?: Array<{ orderId?: string }> } | null)?.orders ?? []);
+    // (v4, 16/10 soir) Une commande expédiée SORT de ce filtre : sans relecture,
+    // elle restait « à expédier » dans FillSell. Les commandes suivies en base et
+    // absentes de la liste sont relues par leur numéro (getOrders orderIds, 50 au plus).
+    const vus = new Set(orders.map((o) => String(o?.orderId ?? "")));
+    const { data: suivies } = await admin.from("plateforme_commandes").select("commande_ref")
+      .eq("user_id", userId).eq("platform", "ebay").in("etat", ["a_confirmer", "a_expedier", "inconnu"]).limit(50);
+    const aRelire = (suivies ?? []).map((s: { commande_ref: string }) => String(s.commande_ref))
+      .filter((ref) => ref && !vus.has(ref) && /^[0-9A-Za-z-]{5,60}$/.test(ref));
+    if (aRelire.length) {
+      const rr = await appelEbay(env, jeton.token, `/sell/fulfillment/v1/order?orderIds=${aRelire.map(encodeURIComponent).join(",")}`);
+      if (rr.http === 200) orders.push(...((rr.json as { orders?: Array<{ orderId?: string }> } | null)?.orders ?? []));
+    }
+    const lignes = commandesEbay(orders);
     if (lignes.length) {
       const { data } = await admin.rpc("commandes_enregistrer", { p_platform: "ebay", p_commandes: lignes.slice(0, 40), p_user: userId });
-      bilanCommandes = data;
-    } else bilanCommandes = { aucune: true };
+      bilanCommandes = { ...(data as Record<string, unknown> ?? {}), relues: aRelire.length };
+    } else bilanCommandes = { aucune: true, relues: aRelire.length };
   } else bilanCommandes = { http: r.http };
   return { entetes: entetes.length, textes_lus: corps.size, bilan, commandes: bilanCommandes };
 }

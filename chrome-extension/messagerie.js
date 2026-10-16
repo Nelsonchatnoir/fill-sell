@@ -21,9 +21,10 @@
 //  3. ENVOYEURS DE PAGE — l'envoi d'UNE réponse, jamais appelé sans une
 //     réponse sortie de messagerie_reponse_a_envoyer (liste blanche lue en
 //     base au moment de la prise, puis relue par background.js) ;
-//  4. LE CHEMIN DU BORDEREAU (Vinted, Leboncoin), codé jusqu'à la dernière
-//     marche, qui reste FERMÉE : sans `derniereMarche: true`, aucun fichier
-//     d'étiquette n'est jamais demandé (selftest).
+//  4. LE CHEMIN DU BORDEREAU (Vinted, Leboncoin) jusqu'au fichier : sans
+//     `derniereMarche: true`, aucun fichier d'étiquette n'est demandé
+//     (selftest) ; background.js ne le passe QUE pour une demande née d'un
+//     clic dans l'app (16/10 soir, migration 20261016200000).
 //
 // ⛔ CONTRATS RELEVÉS EN LECTURE SUR LE COMPTE DE NICO LE 16/10 :
 //   Vinted   GET /api/v2/inbox?page&per_page → conversations[{id, unread,
@@ -54,8 +55,25 @@
 //    PATCH …/mark-read) que ce fichier n'appelle jamais : lire ≠ marquer lu
 //    (prouvé sur Depop le 16/10 : 1 non lu avant, 1 après).
 // ⛔ Aucun texte de message dans un console.log ni dans un journal.
-// ⛔ Beebs : la messagerie web exige la vérification du numéro de téléphone
-//    (compte de Nico non vérifié le 16/10 : rien saisi) — non relevée.
+// ⛔ Beebs (relevé le 16/10 au soir, en lecture, sur le compte d'Ornella —
+//    téléphone vérifié) : la messagerie web n'existe que pour un compte dont
+//    le téléphone est vérifié — le jeton de session (cookie access_token,
+//    jeton Firebase) porte alors l'identité « phone » ; sinon la page
+//    /fr/account/chats renvoie vers /fr/account/phone-verification. Sans
+//    téléphone : motif `telephone_non_verifie`, et l'app le DIT (« vérifie ton
+//    numéro sur Beebs ») au lieu d'une messagerie vide. Liste : HTML rendu par
+//    le serveur (/fr/account/chats) ; détail : flux RSC de /fr/account/chats/
+//    <id> (messages {id, created_at, chat_id, text, attachment, from_user_id,
+//    to_user_id, is_from_admin}) ; réponse : POST https://api.beebs.app/
+//    chats/v3 {to_user_id, text}, en-tête `authorization` = le jeton brut
+//    (code du site). Ouvrir une conversation SUR LE SITE la marque lue ; lire
+//    son flux RSC d'ici : non prouvé (accepté par Nico le 16/10).
+// ⛔ Commandes Beebs et Depop : AUCUNE vente sur les comptes de Nico ni
+//    d'Ornella le 16/10 — lecteurs écrits d'après le code des sites (Beebs :
+//    page « Ventes » et page de la commande en flux RSC, états
+//    WAIT_SELLER_CONFIRM → LABEL_PRINTED → IN_DELIVERY… ; Depop :
+//    GET …/receipts/?role=seller). À prouver à la première vraie vente ; une
+//    forme illisible n'écrit RIEN.
 // ═══════════════════════════════════════════════════════════════════════════
 (function (g) {
   "use strict";
@@ -68,11 +86,17 @@
   const MESSAGES_PAR_CONVERSATION = 30;
   const EXTRAIT_MAX = 140;
   const RETENTION_MS = 30 * 24 * 3600 * 1000;
-  const PLATEFORMES_EXTENSION = Object.freeze(["vinted", "leboncoin", "depop"]);
-  const PLATEFORMES_COMMANDES = Object.freeze(["vinted", "leboncoin"]);
-  // La dernière marche du bordereau (le fichier d'étiquette) reste FERMÉE :
-  // elle ne s'ouvrira qu'après validation sur une vraie commande (rapport § 6).
-  const BORDEREAU_DERNIERE_MARCHE_OUVERTE = false;
+  const PLATEFORMES_EXTENSION = Object.freeze(["vinted", "leboncoin", "depop", "beebs"]);
+  const PLATEFORMES_COMMANDES = Object.freeze(["vinted", "leboncoin", "depop", "beebs"]);
+  // La dernière marche du bordereau (le fichier d'étiquette) : OUVERTE le
+  // 16/10 au soir (mission de Nico, migration 20261016200000) — mais elle ne
+  // part QUE pour une demande née d'un clic dans l'app (bordereau_demander →
+  // bordereau_demande_a_traiter), et seulement si coin_config.
+  // bordereaux_ouverts = 1. Rien d'autre n'appelle les chemins du bordereau.
+  const BORDEREAU_DERNIERE_MARCHE_OUVERTE = true;
+  // Beebs : l'utilisateur « système » (messages de Beebs lui-même), relevé
+  // dans le code du site (ADMIN_USER_ID).
+  const BEEBS_ADMIN = "iwJIYrpj3cYueeS5JWCQCIKHbfx2";
 
   // ── 1. Outils purs ───────────────────────────────────────────────────────
   function texteCourt(s, n = EXTRAIT_MAX) {
@@ -129,7 +153,7 @@
   // fils sont relus avec la nouvelle règle au rythme ordinaire (5 par passage,
   // les plus récents d'abord), jamais en rafale.
   // vinted 2 (16/10) : l'annonce est lue aussi dans item_ids.
-  const REGLE_DETAIL = Object.freeze({ vinted: 2, leboncoin: 1, depop: 1 });
+  const REGLE_DETAIL = Object.freeze({ vinted: 2, leboncoin: 1, depop: 1, beebs: 1 });
 
   /** La mémoire des fils détaillés du poste, oubliée si la règle a changé. */
   function memoireDetails(etat, platform) {
@@ -415,8 +439,207 @@
     return { conversations, messages };
   }
 
-  const NORMALISEURS = Object.freeze({ vinted: normaliserVinted, leboncoin: normaliserLeboncoin, depop: normaliserDepop });
-  const NORMALISEURS_COMMANDES = Object.freeze({ vinted: normaliserCommandesVinted, leboncoin: normaliserCommandesLeboncoin });
+  // Depop, commandes (« receipts », rôle vendeur) : AUCUNE vente relevée le
+  // 16/10 (liste vide sur le compte de Nico : {objects:[], page_info}) ; les
+  // champs viennent du code du site (shippingStatus, shippingDeadline,
+  // buyer.username, trackingNumber, shipping_provider). Lecture tolérante,
+  // camelCase ou snake_case ; un état inconnu reste « inconnu » (l'app le
+  // montre quand même dans « À expédier », « état à vérifier »).
+  // ⛔ Pas de bordereau Depop en France : bordereau « sans_objet ».
+  function etatCommandeDepop(statut) {
+    const s = String(statut ?? "").toLowerCase();
+    if (!s) return "inconnu";
+    if (/cancel|refund|void/.test(s)) return "annulee";
+    if (/complete|finished|done|closed/.test(s)) return "terminee";
+    if (/deliver/.test(s)) return "livree";
+    if (/label_expired|expired/.test(s)) return "a_expedier";
+    if (/await|to_ship|not_shipped|ready_to_ship|unshipped|pending|paid|new|purchased|sold/.test(s)) return "a_expedier";
+    if (/ship|transit|dispatch|sent|in_delivery/.test(s)) return "expediee";
+    if (/dispute|issue|problem|litig/.test(s)) return "litige";
+    if (/return/.test(s)) return "retour";
+    return "inconnu";
+  }
+
+  const premier = (...vals) => vals.find((v) => v != null && v !== "");
+
+  function normaliserCommandesDepop(commandes) {
+    const out = [];
+    for (const o of commandes ?? []) {
+      const ref = premier(o?.id, o?.receiptId, o?.receipt_id, o?.purchaseId, o?.purchase_id);
+      if (ref == null) continue;
+      const statut = premier(o.shippingStatus, o.shipping_status, o.status, o.state);
+      const lignes = premier(o.items, o.products, o.purchasedProducts, o.purchased_products, o.lineItems, o.line_items) ?? [];
+      const unique = Array.isArray(lignes) && lignes.length === 1 ? (lignes[0]?.product ?? lignes[0]) : null;
+      const photos = unique ? premier(unique.pictures, unique.photos, unique.images, unique.preview) : null;
+      const photo = Array.isArray(photos) ? premier(photos[0]?.url, photos[0]?.["320"], photos[0]?.formats?.P2?.url, typeof photos[0] === "string" ? photos[0] : null)
+        : (typeof photos === "object" && photos ? premier(photos.url, photos["320"]) : null);
+      const total = premier(o.total, o.totalPrice, o.total_price, o.price, o.amount, o.pricing);
+      const valeur = typeof total === "object" && total
+        ? premier(total.amount, total.total, total.value, total.price_amount, total.priceAmount) : total;
+      const devise = typeof total === "object" && total ? premier(total.currency, total.currency_name, total.currencyName) : premier(o.currency);
+      const etat = etatCommandeDepop(statut);
+      out.push({
+        ref: String(ref), etat,
+        bordereau: "sans_objet",
+        etat_plateforme: statut != null ? texteCourt(String(statut), 80) : null,
+        acheteur_pseudo: premier(o.buyer?.username, o.buyer?.user_name, o.buyerUsername, o.buyer_username) ?? null,
+        titre: unique ? texteCourt(premier(unique.description, unique.title, unique.name), 200)
+          : (Array.isArray(lignes) && lignes.length > 1 ? `${lignes.length} articles` : null),
+        photo: photo ?? null,
+        montant: montant(valeur),
+        devise: devise ?? null,
+        annonce_ref: unique ? (premier(unique.slug, unique.productSlug, unique.product_slug, unique.id) ?? null) : null,
+        transporteur: texteCourt(premier(o.shipping_provider, o.shippingProvider, o.shipping?.provider, o.shipping?.provider_name), 80),
+        envoi_ref: premier(o.trackingNumber, o.tracking_number) != null ? String(premier(o.trackingNumber, o.tracking_number)) : null,
+        a_expedier_avant: etat === "a_expedier" ? dateIso(premier(o.shippingDeadline, o.shipping_deadline, o.shipBy, o.ship_by)) : null,
+        vendue_le: dateIso(premier(o.soldAt, o.sold_at, o.created_at, o.createdAt, o.date, o.purchased_at)),
+      });
+    }
+    return out;
+  }
+
+  // ── 4bis. Normaliseurs : BEEBS (messages) ───────────────────────────────
+  // La date d'un élément de la liste (/fr/account/chats) : « 27/08/2026 »
+  // (relevé), « 27/08 », « 14:05 » (aujourd'hui), « Hier ». Heure de Paris.
+  function dateBeebsListe(texte, maintenant = Date.now()) {
+    const t = String(texte ?? "").trim().toLowerCase();
+    if (!t) return null;
+    const paris = (y, mo, d, h = 0, mi = 0) => {
+      // Décalage de Paris à cette date (été +2, hiver +1), sans dépendance.
+      const essai = new Date(Date.UTC(y, mo - 1, d, h, mi));
+      const local = new Date(essai.toLocaleString("en-US", { timeZone: "Europe/Paris" }));
+      const utc = new Date(essai.toLocaleString("en-US", { timeZone: "UTC" }));
+      return new Date(essai.getTime() - (local.getTime() - utc.getTime())).toISOString();
+    };
+    const aujourdhui = new Date(new Date(maintenant).toLocaleString("en-US", { timeZone: "Europe/Paris" }));
+    let m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+    if (m) return paris(Number(m[3].length === 2 ? `20${m[3]}` : m[3]), Number(m[2]), Number(m[1]));
+    m = t.match(/^(\d{1,2})\/(\d{1,2})$/);
+    if (m) return paris(aujourdhui.getFullYear(), Number(m[2]), Number(m[1]));
+    m = t.match(/^(\d{1,2})[:h](\d{2})$/);
+    if (m) return paris(aujourdhui.getFullYear(), aujourdhui.getMonth() + 1, aujourdhui.getDate(), Number(m[1]), Number(m[2]));
+    if (/^(hier|yesterday)$/.test(t)) {
+      const h = new Date(aujourdhui.getTime() - 86400000);
+      return paris(h.getFullYear(), h.getMonth() + 1, h.getDate());
+    }
+    return null;
+  }
+
+  // Liste : {moi, conversations:[{chat_id, nom, date_texte, apercu, non_lus}]} ;
+  // détail : {[id]: {interlocuteur:{id}, bloque, messages:[{id, created_at,
+  // text, attachment, from_user_id, is_from_admin, sentByMe}]}}.
+  // Beebs n'a pas de pseudo : le nom public affiché (« Prénom N. ») en tient
+  // lieu — jamais le nom complet. Une conversation Beebs n'est liée à aucune
+  // annonce (messagerie de personne à personne).
+  function normaliserBeebs(lecture, details = {}, maintenant = Date.now()) {
+    const moi = lecture?.moi != null ? String(lecture.moi) : null;
+    const conversations = [];
+    const messages = [];
+    for (const c of lecture?.conversations ?? []) {
+      const ref = c?.chat_id ? String(c.chat_id) : null;
+      if (!ref) continue;
+      const det = details?.[ref] ?? null;
+      const autreId = det?.interlocuteur?.id != null ? String(det.interlocuteur.id) : (det?.destinataire != null ? String(det.destinataire) : null);
+      const lus = Array.isArray(det?.messages) ? det.messages : [];
+      const dates = lus.map((m) => Date.parse(m?.created_at ?? "")).filter(Number.isFinite);
+      const conv = {
+        ref,
+        interlocuteur_ref: autreId,
+        interlocuteur_pseudo: texteCourt(c.nom, 80),
+        dernier_le: dates.length ? new Date(Math.max(...dates)).toISOString() : dateBeebsListe(c.date_texte, maintenant),
+        extrait: texteCourt(c.apercu),
+        non_lus: Math.max(0, Number(c.non_lus) || 0),
+      };
+      if (det) {
+        conv.systeme = autreId === BEEBS_ADMIN;
+        conv.reponse_possible = det.bloque === true || det.interlocuteur?.bloque_par_moi === true ? false : true;
+      }
+      conversations.push(conv);
+      for (const m of lus.slice(-MESSAGES_PAR_CONVERSATION)) {
+        if (m?.id == null) continue;
+        const quand = dateIso(m.created_at);
+        if (!quand || !recente(quand, maintenant)) continue;
+        const admin = m.is_from_admin === true || String(m.from_user_id ?? "") === BEEBS_ADMIN;
+        const envoye = m.sentByMe === true || (moi != null && String(m.from_user_id ?? "") === moi);
+        messages.push({ conversation_ref: ref, ref: String(m.id),
+          sens: admin ? "plateforme" : (envoye ? "envoye" : "recu"),
+          type: admin ? "systeme" : "texte",
+          texte: m.text ?? null, envoye_le: quand });
+      }
+    }
+    return { conversations, messages };
+  }
+
+  // ── 4ter. Normaliseurs : BEEBS (commandes) ──────────────────────────────
+  // États du site (OrderStatusEnum, code de la page de commande, 16/10) :
+  // WAIT_SELLER_CONFIRM (48 h pour accepter — « générer le bordereau » =
+  // ACCEPTER la commande et débiter l'acheteur : geste du vendeur, jamais
+  // FillSell) → CONFIRMED_BY_SELLER / WAITING_GENARATING_LABEL_BY_SELLER
+  // (bordereau en cours de création) → LABEL_PRINTED / _WARNING (bordereau
+  // prêt, 6 jours pour déposer, < 48 h = WARNING) → IN_DELIVERY → DELIVERED /
+  // RETRIEVED_BY_BUYER → APPROVED_BY_BUYER → SELLER_PAID(_REVIEW) ;
+  // CANCELLED, LOST_PARCEL, LITIGATION*, LITIGATION_RETURN_*.
+  function etatCommandeBeebs(statut) {
+    const s = String(statut ?? "").toUpperCase();
+    if (!s) return { etat: "inconnu", bordereau: "inconnu" };
+    if (s.startsWith("WAIT_SELLER_CONFIRM")) return { etat: "a_confirmer", bordereau: "a_generer" };
+    if (s === "CONFIRMED_BY_SELLER" || s === "WAITING_GENARATING_LABEL_BY_SELLER") return { etat: "a_expedier", bordereau: "a_obtenir" };
+    if (s === "LABEL_PRINTED" || s === "LABEL_PRINTED_WARNING") return { etat: "a_expedier", bordereau: "pret" };
+    if (s === "IN_DELIVERY") return { etat: "expediee", bordereau: "sans_objet" };
+    if (s === "DELIVERED" || s === "DELIVERED_WARNING" || s === "RETRIEVED_BY_BUYER") return { etat: "livree", bordereau: "sans_objet" };
+    if (s === "APPROVED_BY_BUYER" || s.startsWith("SELLER_PAID")) return { etat: "terminee", bordereau: "sans_objet" };
+    if (s === "CANCELLED") return { etat: "annulee", bordereau: "sans_objet" };
+    if (s.startsWith("LITIGATION_RETURN")) return { etat: "retour", bordereau: "sans_objet" };
+    if (s === "LOST_PARCEL" || s.includes("LITIGATION") || s.includes("ARRANGEMENT")) return { etat: "litige", bordereau: "sans_objet" };
+    return { etat: "inconnu", bordereau: "inconnu" };
+  }
+
+  // [{id, order:{status, status_updated_at, created_at, carrier_id, products[],
+  //   buyer{first_name|firstName, last_name|lastName}, total…}}]
+  function normaliserCommandesBeebs(commandes) {
+    const out = [];
+    for (const c of commandes ?? []) {
+      const o = c?.order ?? null;
+      const ref = premier(o?.id, c?.id);
+      if (ref == null || !o) continue;
+      const { etat, bordereau } = etatCommandeBeebs(o.status);
+      const produits = Array.isArray(o.products) ? o.products : [];
+      const unique = produits.length === 1 ? produits[0] : null;
+      const photo = unique ? premier(unique.image, unique.thumbnail, Array.isArray(unique.images) ? unique.images[0] : null, Array.isArray(unique.pictures) ? unique.pictures[0] : null) : null;
+      const acheteur = o.buyer ?? null;
+      const prenom = premier(acheteur?.first_name, acheteur?.firstName);
+      const nomFamille = premier(acheteur?.last_name, acheteur?.lastName);
+      const pseudo = prenom ? `${String(prenom).trim()}${nomFamille ? ` ${String(nomFamille).trim().charAt(0)}.` : ""}` : null;
+      const total = premier(o.total_price, o.totalPrice, o.total, o.price, o.amount, unique?.price);
+      const valeur = typeof total === "object" && total ? premier(total.amount, total.value) : total;
+      const majLe = dateIso(premier(o.status_updated_at, o.updated_at));
+      const s = String(o.status ?? "").toUpperCase();
+      out.push({
+        ref: String(ref), etat, bordereau,
+        etat_plateforme: o.status ? texteCourt(String(o.status), 80) : null,
+        acheteur_pseudo: pseudo ? texteCourt(pseudo, 80) : null,
+        titre: unique ? texteCourt(premier(unique.title, unique.name, unique.label), 200) : (produits.length > 1 ? `${produits.length} articles` : null),
+        photo: typeof photo === "string" ? photo : (photo?.url ?? null),
+        montant: montant(valeur),
+        devise: "EUR",
+        annonce_ref: unique ? (premier(unique.id, unique.product_id, unique.productId) != null ? String(premier(unique.id, unique.product_id, unique.productId)) : null) : null,
+        transporteur: texteCourt(premier(o.carrier_name, o.carrier?.name, o.carrier_id), 80),
+        envoi_ref: premier(o.shipping?.tracking_number, o.shipping?.parcel_id) != null ? String(premier(o.shipping?.tracking_number, o.shipping?.parcel_id)) : null,
+        // La date limite que le site affiche : déposer dans les 6 jours après le
+        // bordereau (LABEL_PRINTED, calcul du site : status_updated_at + 6 j).
+        a_expedier_avant: (s === "LABEL_PRINTED" || s === "LABEL_PRINTED_WARNING") && majLe
+          ? new Date(Date.parse(majLe) + 6 * 86400000).toISOString() : null,
+        vendue_le: dateIso(premier(o.created_at, o.createdAt)),
+      });
+    }
+    return out;
+  }
+
+  const NORMALISEURS = Object.freeze({ vinted: normaliserVinted, leboncoin: normaliserLeboncoin, depop: normaliserDepop, beebs: normaliserBeebs });
+  const NORMALISEURS_COMMANDES = Object.freeze({
+    vinted: normaliserCommandesVinted, leboncoin: normaliserCommandesLeboncoin,
+    depop: normaliserCommandesDepop, beebs: normaliserCommandesBeebs,
+  });
 
   // ═════════════════════════════════════════════════════════════════════════
   // 5. LECTEURS DE PAGE — AUTONOMES. Ne rien y référencer d'extérieur.
@@ -684,10 +907,215 @@
     return { ok: true, details, requetes };
   }
 
+  // Depop : les ventes (« receipts », rôle vendeur), 1 page de 12 — l'appel
+  // de la page « Sold » du site. Jeton du cookie en Bearer, comme la liste.
+  async function lecteurCommandesDepop() {
+    const m = String(document.cookie ?? "").match(/(?:^|;\s*)access_token=([^;]+)/);
+    if (!m) return { ok: false, motif: "jeton_absent", requetes: 0 };
+    let tok = m[1]; try { tok = decodeURIComponent(m[1]); } catch { /* tel quel */ }
+    let r = null; let requetes = 0;
+    for (const attente of [0, 1000, 2500]) {
+      if (attente) await new Promise((ok) => setTimeout(ok, attente));
+      requetes++;
+      r = await fetch("https://webapi.depop.com/presentation/api/v1/receipts/?role=seller&limit=12", {
+        method: "GET", headers: { Accept: "application/json", Authorization: `Bearer ${tok}` }, credentials: "omit", cache: "no-store",
+      }).catch(() => null);
+      if (r) break;
+    }
+    if (!r) return { ok: false, motif: "reseau", requetes };
+    if (r.status !== 200) return { ok: false, http: r.status, motif: `http_${r.status}`, requetes };
+    const j = await r.json().catch(() => null);
+    if (!j || !Array.isArray(j.objects)) return { ok: false, http: 200, motif: "forme_inconnue", requetes };
+    // Seuls les champs du contrat sortent de la page (jamais d'adresse).
+    const garder = (o) => {
+      if (!o || typeof o !== "object") return null;
+      const p = {};
+      for (const k of ["id", "receiptId", "receipt_id", "purchaseId", "purchase_id", "shippingStatus", "shipping_status", "status", "state",
+        "shippingDeadline", "shipping_deadline", "shipBy", "ship_by", "trackingNumber", "tracking_number", "shipping_provider", "shippingProvider",
+        "soldAt", "sold_at", "created_at", "createdAt", "date", "purchased_at", "currency"]) if (o[k] != null) p[k] = o[k];
+      for (const k of ["total", "totalPrice", "total_price", "price", "amount", "pricing"]) {
+        const v = o[k];
+        if (v == null) continue;
+        p[k] = typeof v === "object" ? { amount: v.amount ?? v.total ?? v.value ?? v.price_amount ?? v.priceAmount ?? null, currency: v.currency ?? v.currency_name ?? v.currencyName ?? null } : v;
+      }
+      if (o.buyer) p.buyer = { username: o.buyer.username ?? o.buyer.user_name ?? null };
+      if (o.buyerUsername ?? o.buyer_username) p.buyer_username = o.buyerUsername ?? o.buyer_username;
+      if (o.shipping) p.shipping = { provider: o.shipping.provider ?? null, provider_name: o.shipping.provider_name ?? null };
+      for (const k of ["items", "products", "purchasedProducts", "purchased_products", "lineItems", "line_items"]) {
+        if (!Array.isArray(o[k])) continue;
+        p[k] = o[k].slice(0, 10).map((x) => {
+          const q = x?.product ?? x ?? {};
+          return { id: q.id ?? null, slug: q.slug ?? q.productSlug ?? q.product_slug ?? null, description: q.description ?? q.title ?? q.name ?? null,
+            pictures: Array.isArray(q.pictures) ? q.pictures.slice(0, 1) : (Array.isArray(q.photos) ? q.photos.slice(0, 1) : (Array.isArray(q.images) ? q.images.slice(0, 1) : null)) };
+        });
+      }
+      return p;
+    };
+    return { ok: true, http: 200, commandes: j.objects.map(garder).filter(Boolean), requetes };
+  }
+
+  // Beebs : la liste des conversations, HTML rendu par le serveur de
+  // /fr/account/chats (relevé le 16/10 : <a href="/fr/account/chats/<id>">
+  // [avatar] [ [nom] [date] ] [ [aperçu] [pastille de non-lus ?] ]).
+  // Le téléphone vérifié est lu AVANT toute requête, dans le jeton de session
+  // (identités Firebase) : sans lui, aucune requête — le mur est dit.
+  async function lecteurListeBeebs() {
+    const brut = String(document.cookie ?? "").split(/;\s*/).find((c) => c.startsWith("access_token="));
+    if (!brut) return { ok: false, motif: "session_absente", mur: "connexion", requetes: 0 };
+    let tok = brut.slice("access_token=".length);
+    try { tok = decodeURIComponent(tok); } catch { /* jeton brut */ }
+    let charge = null;
+    try {
+      const b = String(tok.split(".")[1] ?? "").replace(/-/g, "+").replace(/_/g, "/");
+      const octets = Uint8Array.from(atob(b + "=".repeat((4 - (b.length % 4)) % 4)), (x) => x.charCodeAt(0));
+      charge = JSON.parse(new TextDecoder().decode(octets));
+    } catch { charge = null; }
+    const moi = charge ? (String(charge.user_id ?? charge.sub ?? "").trim() || null) : null;
+    const ids = charge?.firebase?.identities ?? null;
+    const telephone = Boolean(charge?.phone_number) || (Array.isArray(ids?.phone) && ids.phone.length > 0);
+    if (charge && !telephone) return { ok: false, motif: "telephone_non_verifie", mur: "telephone", requetes: 0, moi };
+    const r = await fetch("/fr/account/chats", { credentials: "include", headers: { Accept: "text/html" }, cache: "no-store" }).catch(() => null);
+    if (!r) return { ok: false, motif: "reseau", requetes: 1 };
+    let finale = "";
+    try { finale = new URL(r.url).pathname; } catch { finale = ""; }
+    if (/phone-verification/.test(finale)) return { ok: false, motif: "telephone_non_verifie", mur: "telephone", requetes: 1, moi };
+    if (/\/(login|signin|sign-in|connexion|auth)\b/.test(finale)) return { ok: false, motif: "session_absente", mur: "connexion", requetes: 1 };
+    const html = await r.text().catch(() => "");
+    // Toute page Beebs charge DataDome : seul un DÉFI (petite page captcha) est un mur.
+    const defi = /captcha-delivery\.com|geo\.captcha/i.test(html) && html.length < 60000;
+    if (r.status === 403 || r.status === 429 || defi) return { ok: false, http: r.status, bot: true, motif: defi ? "captcha" : `http_${r.status}`, requetes: 1 };
+    if (r.status !== 200) return { ok: false, http: r.status, motif: `http_${r.status}`, requetes: 1 };
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const vus = new Set();
+    const conversations = [];
+    for (const a of doc.querySelectorAll('a[href*="/account/chats/"]')) {
+      const m = String(a.getAttribute("href") ?? "").match(/\/account\/chats\/([A-Za-z0-9_-]{6,80})/);
+      if (!m || vus.has(m[1])) continue;
+      vus.add(m[1]);
+      const corps = a.children[a.children.length - 1] ?? null;
+      const l1 = corps?.children?.[0] ?? null;
+      const l2 = corps?.children?.[1] ?? null;
+      const texte = (el) => String(el?.textContent ?? "").replace(/\s+/g, " ").trim() || null;
+      const pastille = l2 && l2.children.length > 1 ? texte(l2.children[l2.children.length - 1]) : null;
+      conversations.push({
+        chat_id: m[1],
+        nom: texte(l1?.children?.[0]),
+        date_texte: texte(l1?.children?.[1]),
+        apercu: texte(l2?.children?.[0]),
+        non_lus: l2 && l2.children.length > 1 ? (Number.parseInt(pastille ?? "", 10) || 1) : 0,
+      });
+    }
+    return { ok: true, http: 200, moi, conversations, requetes: 1 };
+  }
+
+  // Beebs : le détail d'une conversation = le flux RSC de sa page (ce que le
+  // site charge en l'ouvrant). Ne sortent que : l'identifiant de
+  // l'interlocuteur, « bloqué », et les messages (jamais prénom ni nom).
+  async function lecteurDetailsBeebs(refs) {
+    const details = {}; let requetes = 0;
+    for (const ref of refs) {
+      await new Promise((ok) => setTimeout(ok, 1200 + Math.random() * 1400));
+      requetes++;
+      const r = await fetch(`/fr/account/chats/${encodeURIComponent(ref)}`, {
+        credentials: "include", headers: { RSC: "1", Accept: "*/*" }, cache: "no-store",
+      }).catch(() => null);
+      if (!r) continue;
+      if (r.status === 403 || r.status === 429) return { ok: false, http: r.status, bot: true, motif: `http_${r.status}`, details, requetes };
+      if (r.status !== 200) continue;
+      const t = await r.text().catch(() => "");
+      const out = { interlocuteur: null, destinataire: null, bloque: null, messages: [] };
+      const vusMsg = new Set();
+      const marcher = (v, profondeur) => {
+        if (!v || typeof v !== "object" || profondeur > 60) return;
+        if (!Array.isArray(v)) {
+          const msg = v.message;
+          if (msg && typeof msg === "object" && msg.id != null && msg.chat_id != null && "from_user_id" in msg) {
+            if (String(msg.chat_id) === String(ref) && !vusMsg.has(String(msg.id))) {
+              vusMsg.add(String(msg.id));
+              out.messages.push({ id: String(msg.id), created_at: msg.created_at ?? null, text: msg.text ?? null,
+                attachment: msg.attachment ? true : false, from_user_id: msg.from_user_id ?? null,
+                is_from_admin: msg.is_from_admin === true, sentByMe: v.sentByMe === true });
+            }
+          } else if (typeof v.chatId === "string" && String(v.chatId) === String(ref)) {
+            if (v.userId != null && ("firstName" in v || "userImage" in v)) out.interlocuteur = { id: String(v.userId), bloque_par_moi: v.blockedByMe === true };
+            if (v.toUserId != null && "blocked" in v) { out.destinataire = String(v.toUserId); out.bloque = v.blocked === true; }
+          }
+        }
+        for (const x of Object.values(v)) marcher(x, profondeur + 1);
+      };
+      for (const ligne of t.split("\n")) {
+        const i = ligne.indexOf(":");
+        if (i < 0) continue;
+        const reste = ligne.slice(i + 1);
+        if (!/^[[{]/.test(reste)) continue;
+        try { marcher(JSON.parse(reste), 0); } catch { /* ligne d'une autre forme */ }
+      }
+      details[String(ref)] = out;
+    }
+    return { ok: true, details, requetes };
+  }
+
+  // Beebs : les ventes. La page « Ventes » (flux RSC) porte les liens des
+  // commandes ; la page d'une commande porte l'objet commande passé à la page
+  // (status, products, buyer, seller…). Aucune vente sur aucun compte le 16/10 :
+  // un objet introuvable n'écrit RIEN (motif rendu).
+  async function lecteurCommandesBeebs(suivies, detailsMax) {
+    let requetes = 1;
+    const r = await fetch("/fr/account/orders/list/seller", { credentials: "include", headers: { RSC: "1", Accept: "*/*" }, cache: "no-store" }).catch(() => null);
+    if (!r) return { ok: false, motif: "reseau", requetes };
+    if (r.status === 403 || r.status === 429) return { ok: false, http: r.status, bot: true, motif: `http_${r.status}`, requetes };
+    if (r.status !== 200) return { ok: false, http: r.status, motif: `http_${r.status}`, requetes };
+    const t = await r.text().catch(() => "");
+    const ids = [];
+    // Un numéro de commande porte au moins un chiffre (jamais « list », « history »…).
+    for (const m of t.matchAll(/\/account\/orders\/(?!list\b|history\b|buyer\b|seller\b)((?=[A-Za-z_-]*\d)[A-Za-z0-9_-]{6,80})/g)) if (!ids.includes(m[1])) ids.push(m[1]);
+    for (const s of suivies ?? []) if (!ids.includes(String(s))) ids.push(String(s));
+    const commandes = [];
+    let illisibles = 0;
+    for (const id of ids.slice(0, detailsMax)) {
+      await new Promise((ok) => setTimeout(ok, 1200 + Math.random() * 1400));
+      requetes++;
+      const rd = await fetch(`/fr/account/orders/${encodeURIComponent(id)}`, { credentials: "include", headers: { RSC: "1", Accept: "*/*" }, cache: "no-store" }).catch(() => null);
+      if (!rd) continue;
+      if (rd.status === 403 || rd.status === 429) return { ok: false, http: rd.status, bot: true, motif: `http_${rd.status}`, requetes };
+      if (rd.status !== 200) continue;
+      const td = await rd.text().catch(() => "");
+      let trouve = null;
+      const marcher = (v, profondeur) => {
+        if (trouve || !v || typeof v !== "object" || profondeur > 60) return;
+        if (!Array.isArray(v) && typeof v.status === "string" && Array.isArray(v.products) && (v.buyer || v.seller)
+            && String(v.id ?? id) === String(id)) { trouve = v; return; }
+        for (const x of Object.values(v)) marcher(x, profondeur + 1);
+      };
+      for (const ligne of td.split("\n")) {
+        const i = ligne.indexOf(":");
+        if (i < 0) continue;
+        const reste = ligne.slice(i + 1);
+        if (!/^[[{]/.test(reste)) continue;
+        try { marcher(JSON.parse(reste), 0); } catch { /* ligne d'une autre forme */ }
+        if (trouve) break;
+      }
+      if (!trouve) { illisibles++; continue; }
+      const o = trouve;
+      // Seuls les champs du contrat sortent de la page (jamais d'adresse, de téléphone).
+      commandes.push({ id, order: {
+        id: o.id ?? id, status: o.status, status_updated_at: o.status_updated_at ?? o.updated_at ?? null,
+        created_at: o.created_at ?? null, carrier_id: o.carrier_id ?? null, carrier_name: o.carrier?.name ?? o.carrier_name ?? null,
+        total_price: o.total_price ?? o.totalPrice ?? o.total ?? o.price ?? null,
+        buyer: o.buyer ? { first_name: o.buyer.first_name ?? o.buyer.firstName ?? null, last_name: o.buyer.last_name ?? o.buyer.lastName ?? null } : null,
+        shipping: o.shipping ? { tracking_number: o.shipping.tracking_number ?? null, parcel_id: o.shipping.parcel_id ?? null } : null,
+        products: (o.products ?? []).slice(0, 10).map((p) => ({ id: p?.id ?? p?.product_id ?? null, title: p?.title ?? p?.name ?? null,
+          price: p?.price ?? null, image: p?.image ?? (Array.isArray(p?.images) ? p.images[0] : null) ?? p?.thumbnail ?? null })),
+      } });
+    }
+    return { ok: true, http: 200, commandes, requetes, illisibles };
+  }
+
   const LECTEURS = Object.freeze({
     vinted: { liste: lecteurListeVinted, details: lecteurDetailsVinted, commandes: lecteurCommandesVinted },
     leboncoin: { liste: lecteurListeLeboncoin, details: lecteurDetailsLeboncoin, commandes: lecteurCommandesLeboncoin },
-    depop: { liste: lecteurListeDepop, details: lecteurDetailsDepop, commandes: null },
+    depop: { liste: lecteurListeDepop, details: lecteurDetailsDepop, commandes: lecteurCommandesDepop },
+    beebs: { liste: lecteurListeBeebs, details: lecteurDetailsBeebs, commandes: lecteurCommandesBeebs },
   });
 
   // ═════════════════════════════════════════════════════════════════════════
@@ -747,10 +1175,38 @@
       motif: res.status >= 300 ? `http_${res.status}` : null, bot: res.status === 403 || res.status === 429 };
   }
 
-  const ENVOYEURS = Object.freeze({ vinted: envoyeurVinted, leboncoin: envoyeurLeboncoin, depop: envoyeurDepop });
+  // Beebs (code du site, createChatMessage) : POST https://api.beebs.app/chats/v3
+  // {to_user_id, text}, en-tête `authorization` = le jeton Firebase BRUT (pas
+  // « Bearer »). Sans téléphone vérifié dans le jeton : rien ne part.
+  async function envoyeurBeebs(r) {
+    const brut = String(document.cookie ?? "").split(/;\s*/).find((c) => c.startsWith("access_token="));
+    if (!brut) return { ok: false, motif: "jeton_absent" };
+    let tok = brut.slice("access_token=".length);
+    try { tok = decodeURIComponent(tok); } catch { /* jeton brut */ }
+    let charge = null;
+    try {
+      const b = String(tok.split(".")[1] ?? "").replace(/-/g, "+").replace(/_/g, "/");
+      charge = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(b + "=".repeat((4 - (b.length % 4)) % 4)), (x) => x.charCodeAt(0))));
+    } catch { charge = null; }
+    const ids = charge?.firebase?.identities ?? null;
+    if (charge && !(charge.phone_number || (Array.isArray(ids?.phone) && ids.phone.length))) return { ok: false, motif: "telephone_non_verifie" };
+    if (!r.interlocuteurRef) return { ok: false, motif: "destinataire_inconnu" };
+    const res = await fetch("https://api.beebs.app/chats/v3", {
+      method: "POST",
+      headers: { authorization: tok, Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({ to_user_id: r.interlocuteurRef, text: r.texte }),
+    }).catch(() => null);
+    if (!res) return { ok: false, motif: "reseau" };
+    const j = await res.json().catch(() => null);
+    const ok = res.status >= 200 && res.status < 300 && j?.success !== false;
+    return { ok, http: res.status, messageRef: j?.data?.id != null ? String(j.data.id) : null,
+      motif: ok ? null : `http_${res.status}`, bot: res.status === 403 || res.status === 429 };
+  }
+
+  const ENVOYEURS = Object.freeze({ vinted: envoyeurVinted, leboncoin: envoyeurLeboncoin, depop: envoyeurDepop, beebs: envoyeurBeebs });
 
   // ═════════════════════════════════════════════════════════════════════════
-  // 7. LE CHEMIN DU BORDEREAU — jusqu'à la DERNIÈRE MARCHE, fermée.
+  // 7. LE CHEMIN DU BORDEREAU — la dernière marche seulement sur demande (clic).
   //    AUTONOMES. Sans `derniereMarche: true`, aucune requête vers le fichier
   //    d'étiquette ne part (selftest : un fetch espion le prouve).
   // ═════════════════════════════════════════════════════════════════════════
@@ -785,8 +1241,18 @@
     }
     const f = await lire(derniere);
     const label = f.j?.file?.label ?? null;
-    return label ? { ok: true, base64: label, nom: f.j?.file?.filename ?? "bordereau.pdf", etapes }
-      : { ok: false, etape: "fichier", motif: `http_${f.http}`, etapes };
+    if (label) return { ok: true, base64: label, nom: f.j?.file?.filename ?? "bordereau.pdf", etapes };
+    if (f.http === 403 || f.http === 429) return { ok: false, etape: "fichier", motif: `http_${f.http}`, bot: true, etapes };
+    // (16/10 soir) Pas de bordereau papier : certains transporteurs n'ont qu'un
+    // code (digital_label) — demandé UNE fois, jamais plus. Forme à prouver à
+    // la première vraie commande.
+    if (!p.numerique) {
+      const q = await lire(`/api/v2/transactions/${encodeURIComponent(p.transactionId)}/shipment/digital_label`);
+      const code = q.j?.file?.label ?? q.j?.digital_label?.label ?? null;
+      if (code) return { ok: true, base64: code, nom: q.j?.file?.filename ?? "bordereau-code.png", numerique: true, etapes };
+      return { ok: false, etape: "fichier", motif: `http_${f.http}_puis_${q.http}`, bot: q.http === 403 || q.http === 429, etapes };
+    }
+    return { ok: false, etape: "fichier", motif: `http_${f.http}`, etapes };
   }
 
   // Leboncoin (code du site + vente terminée de Nico, 16/10) : la vente doit
@@ -821,7 +1287,7 @@
       return { ok: false, etape: "derniere_marche", motif: "fermee", prepare: { url, qr: prep.j?.with_qrcode === true }, etapes };
     }
     const f = await lire(url, "application/pdf");
-    if (!f.r || f.http !== 200) return { ok: false, etape: "fichier", motif: `http_${f.http}`, etapes };
+    if (!f.r || f.http !== 200) return { ok: false, etape: "fichier", motif: `http_${f.http}`, bot: f.http === 403 || f.http === 429, etapes };
     const buf = new Uint8Array(await f.r.arrayBuffer());
     let bin = ""; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
     return { ok: true, base64: btoa(bin), nom: `bordereau-${p.purchaseId}.pdf`, etapes };
@@ -835,7 +1301,9 @@
     texteCourt, dateIso, recente, signeBlocage, aDetailler, REGLE_DETAIL, memoireDetails,
     articleUniqueVinted, normaliserVinted, normaliserMessageVinted, etatCommandeVinted, normaliserCommandesVinted,
     normaliserLeboncoin, normaliserMessageLeboncoin, etatCommandeLeboncoin, normaliserCommandesLeboncoin,
-    normaliserDepop, NORMALISEURS, NORMALISEURS_COMMANDES,
+    normaliserDepop, etatCommandeDepop, normaliserCommandesDepop,
+    BEEBS_ADMIN, dateBeebsListe, normaliserBeebs, etatCommandeBeebs, normaliserCommandesBeebs,
+    NORMALISEURS, NORMALISEURS_COMMANDES,
     LECTEURS, ENVOYEURS, CHEMINS_BORDEREAU,
   });
 })(typeof globalThis !== "undefined" ? globalThis : self);

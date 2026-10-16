@@ -206,12 +206,19 @@ export function CarteArticle(p) {
                 <Heart size={14} strokeWidth={2} aria-hidden="true" />{p.favoris}
               </span>
             )}
-            {p.messages > 0 && (
+            {p.messages > 0 && (p.onMessages ? (
+              // (16/10 soir, bêta) Un appui sur l'indicateur ouvre les messages de CET article.
+              <button type="button" onClick={(e) => { e.stopPropagation(); p.onMessages(); }} className="sk-chiffres" data-messages-non-lus={p.messages}
+                aria-label={fr ? `${p.messages} message${p.messages > 1 ? 's' : ''} non lu${p.messages > 1 ? 's' : ''} : ouvrir` : `${p.messages} unread: open`}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 700, flexShrink: 0, color: S.tealDeep, background: S.menthe, border: `1px solid ${S.mentheBord}`, borderRadius: 999, padding: '0 7px', height: 20, margin: '-2px 0', fontFamily: 'inherit', fontSize: 12, cursor: 'pointer' }}>
+                <MessageCircle size={13} strokeWidth={2.2} aria-hidden="true" />{p.messages}
+              </button>
+            ) : (
               <span title={fr ? `${p.messages} message${p.messages > 1 ? 's' : ''} non lu${p.messages > 1 ? 's' : ''}` : `${p.messages} unread`} className="sk-chiffres" data-messages-non-lus={p.messages}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 700, flexShrink: 0, color: S.tealDeep }}>
                 <MessageCircle size={14} strokeWidth={2.2} aria-hidden="true" />{p.messages}
               </span>
-            )}
+            ))}
           </div>
         )}
         <div style={{ flex: 1, minHeight: 16 }} />
