@@ -578,13 +578,54 @@ await cas("aucun texte de message, d'extrait ni de corps dans la console", () =>
   for (const l of lignes) assert.ok(!/\.texte\b|\.text\b|\.body\b|extrait|description/.test(l), l.trim());
 });
 
-await cas("lecteurs de page : lecture seule (aucun POST/PUT/PATCH/DELETE)", () => {
+await cas("lecteurs de page : lecture seule (aucun POST/PUT/PATCH/DELETE ; seul le renouvellement du jeton Vinted, comme la page)", () => {
+  const RENOUV = /const renouveler = async \(\) => \{ try \{ const x = await fetch\("\/web\/api\/auth\/refresh", \{ method: "POST", credentials: "include", headers: \{ Accept: "application\/json" \} \}\); return x\.ok; \} catch \{ return false; \} \};/;
   for (const [pf, l] of Object.entries(M.LECTEURS)) {
     for (const [nom, fn] of Object.entries(l)) {
       if (!fn) continue;
-      assert.ok(!/method\s*:\s*["'](POST|PUT|PATCH|DELETE)/i.test(fn.toString()), `${pf}.${nom}`);
+      const sans = fn.toString().replace(RENOUV, "");
+      assert.ok(!/method\s*:\s*["'](POST|PUT|PATCH|DELETE)/i.test(sans), `${pf}.${nom}`);
     }
   }
+});
+
+await cas("(0.6.119) Vinted : un 401 renouvelle le jeton comme la page, puis UNE seule nouvelle lecture ; l'envoi refait UNE fois après un 401, jamais après une autre erreur", async () => {
+  let appels = [];
+  let premier = true;
+  globalThis.fetch = async (url, init = {}) => {
+    appels.push({ url, method: init.method ?? "GET" });
+    if (url === "/web/api/auth/refresh") return { ok: true, status: 200 };
+    if (premier) { premier = false; return { status: 401, text: async () => "" }; }
+    return { status: 200, text: async () => JSON.stringify({ conversations: [{ id: 1, unread: false, updated_at: ilYa(1) }] }) };
+  };
+  const r = await M.LECTEURS.vinted.liste(20);
+  assert.equal(r.ok, true);
+  assert.deepEqual(appels.map((a) => `${a.method} ${a.url.split("?")[0]}`), ["GET /api/v2/inbox", "POST /web/api/auth/refresh", "GET /api/v2/inbox"]);
+  // Toujours 401 après renouvellement : on s'arrête, jamais de boucle.
+  appels = [];
+  globalThis.fetch = async (url, init = {}) => { appels.push({ url, method: init.method ?? "GET" }); return url === "/web/api/auth/refresh" ? { ok: true, status: 200 } : { status: 401, text: async () => "" }; };
+  const r2 = await M.LECTEURS.vinted.liste(20);
+  assert.equal(r2.ok, false);
+  assert.equal(appels.length, 3, "1 lecture + 1 renouvellement + 1 lecture, jamais plus");
+  // L'envoi : 401 → renouvellement → UNE seconde tentative.
+  globalThis.document = { querySelectorAll: () => [{ textContent: '{\\"csrf_token\\":\\"tok123\\"}' }], cookie: "anon_id=a1" };
+  appels = [];
+  let essai = 0;
+  globalThis.fetch = async (url, init = {}) => {
+    appels.push({ url, method: init.method ?? "GET" });
+    if (url === "/web/api/auth/refresh") return { ok: true, status: 200 };
+    essai++;
+    return essai === 1 ? { status: 401, json: async () => ({}) } : { status: 200, json: async () => ({ conversation: { messages: [{ entity: { id: 7 } }] } }) };
+  };
+  const e = await M.ENVOYEURS.vinted({ conversationRef: "501", texte: "Oui" });
+  assert.equal(e.ok, true);
+  assert.equal(appels.filter((a) => a.url.endsWith("/replies")).length, 2, "deux POST seulement : le refusé (401) et le bon");
+  // Une autre erreur (500) : AUCUNE seconde tentative.
+  appels = [];
+  globalThis.fetch = async (url, init = {}) => { appels.push({ url, method: init.method ?? "GET" }); return { status: 500, json: async () => ({}) }; };
+  const e2 = await M.ENVOYEURS.vinted({ conversationRef: "501", texte: "Oui" });
+  assert.equal(e2.ok, false);
+  assert.equal(appels.length, 1, "un seul POST après une erreur qui n'est pas un 401");
 });
 
 await cas("(0.6.118) background.js passe la mémoire par la règle, et la note AVANT tout retour anticipé", () => {

@@ -649,33 +649,42 @@
 
   // Vinted : la liste (1 page, 20 conversations).
   async function lecteurListeVinted(parPage) {
-    const r = await fetch(`/api/v2/inbox?page=1&per_page=${parPage}`, {
+    // (0.6.119) Le jeton d'accès Vinted vit 1 h : un 401 le fait renouveler
+    // comme la page (POST /web/api/auth/refresh), puis la lecture est refaite UNE fois.
+    const renouveler = async () => { try { const x = await fetch("/web/api/auth/refresh", { method: "POST", credentials: "include", headers: { Accept: "application/json" } }); return x.ok; } catch { return false; } };
+    const lire = () => fetch(`/api/v2/inbox?page=1&per_page=${parPage}`, {
       credentials: "include", headers: { Accept: "application/json" }, cache: "no-store",
     }).catch(() => null);
-    if (!r) return { ok: false, motif: "reseau", requetes: 1 };
+    let r = await lire();
+    let requetes = 1;
+    if (r && r.status === 401 && (await renouveler())) { r = await lire(); requetes = 2; }
+    if (!r) return { ok: false, motif: "reseau", requetes };
     const t = await r.text().catch(() => "");
     const bot = /datadome|captcha-delivery|geo\.captcha|Are you a human/i.test(t.slice(0, 5000));
-    if (r.status !== 200 || !t.trim().startsWith("{")) return { ok: false, http: r.status, bot, motif: `http_${r.status}`, requetes: 1 };
+    if (r.status !== 200 || !t.trim().startsWith("{")) return { ok: false, http: r.status, bot, motif: `http_${r.status}`, requetes };
     let j = null;
-    try { j = JSON.parse(t); } catch { return { ok: false, http: 200, motif: "json", requetes: 1 }; }
+    try { j = JSON.parse(t); } catch { return { ok: false, http: 200, motif: "json", requetes }; }
     const conversations = (Array.isArray(j?.conversations) ? j.conversations : []).map((c) => ({
       id: c?.id ?? null, unread: c?.unread === true, updated_at: c?.updated_at ?? null,
       description: c?.description ?? null,
       opposite_user: c?.opposite_user ? { id: c.opposite_user.id ?? null, login: c.opposite_user.login ?? null } : null,
       photo: Array.isArray(c?.item_photos) && c.item_photos[0] ? (c.item_photos[0].url ?? null) : null,
     }));
-    return { ok: true, http: 200, conversations, requetes: 1 };
+    return { ok: true, http: 200, conversations, requetes };
   }
 
   // Vinted : le détail de quelques conversations (1 appel chacune, pause humaine).
   async function lecteurDetailsVinted(refs) {
-    const details = {}; let requetes = 0;
+    const renouveler = async () => { try { const x = await fetch("/web/api/auth/refresh", { method: "POST", credentials: "include", headers: { Accept: "application/json" } }); return x.ok; } catch { return false; } };
+    const details = {}; let requetes = 0; let renouvele = false;
     for (const ref of refs) {
       await new Promise((ok) => setTimeout(ok, 1200 + Math.random() * 1400));
       requetes++;
-      const r = await fetch(`/api/v2/conversations/${encodeURIComponent(ref)}`, {
+      const lire = () => fetch(`/api/v2/conversations/${encodeURIComponent(ref)}`, {
         credentials: "include", headers: { Accept: "application/json" }, cache: "no-store",
       }).catch(() => null);
+      let r = await lire();
+      if (r && r.status === 401 && !renouvele) { renouvele = true; if (await renouveler()) { r = await lire(); requetes++; } }
       if (!r) continue;
       if (r.status === 403 || r.status === 429) return { ok: false, http: r.status, motif: `http_${r.status}`, details, requetes };
       const t = await r.text().catch(() => "");
@@ -712,10 +721,13 @@
 
   // Vinted : les commandes EN COURS (+ celles qu'on suit encore), détaillées.
   async function lecteurCommandesVinted(suivies, detailsMax) {
+    const renouveler = async () => { try { const x = await fetch("/web/api/auth/refresh", { method: "POST", credentials: "include", headers: { Accept: "application/json" } }); return x.ok; } catch { return false; } };
     let requetes = 1;
-    const r = await fetch("/api/v2/my_orders?type=sold&status=in_progress&page=1&per_page=20", {
+    const lireListe = () => fetch("/api/v2/my_orders?type=sold&status=in_progress&page=1&per_page=20", {
       credentials: "include", headers: { Accept: "application/json" }, cache: "no-store",
     }).catch(() => null);
+    let r = await lireListe();
+    if (r && r.status === 401 && (await renouveler())) { r = await lireListe(); requetes++; }
     if (!r) return { ok: false, motif: "reseau", requetes };
     const t = await r.text().catch(() => "");
     const bot = /datadome|captcha-delivery|geo\.captcha|Are you a human/i.test(t.slice(0, 5000));
@@ -1130,11 +1142,18 @@
     }
     const anon = (document.cookie.split("; ").find((x) => x.indexOf("anon_id=") === 0) || "").split("=").slice(1).join("=") || null;
     if (!csrf) return { ok: false, motif: "csrf_absent" };
-    const res = await fetch(`/api/v2/conversations/${encodeURIComponent(r.conversationRef)}/replies`, {
+    // (0.6.119) Un 401 (jeton d'accès d'une heure expiré) = réponse REFUSÉE avant
+    // tout traitement : le jeton est renouvelé comme la page, puis UNE seconde
+    // tentative — jamais plus, et jamais après une autre erreur (un doublon chez
+    // l'acheteur est pire qu'un raté).
+    const renouveler = async () => { try { const x = await fetch("/web/api/auth/refresh", { method: "POST", credentials: "include", headers: { Accept: "application/json" } }); return x.ok; } catch { return false; } };
+    const poster = () => fetch(`/api/v2/conversations/${encodeURIComponent(r.conversationRef)}/replies`, {
       method: "POST", credentials: "include",
       headers: { Accept: "application/json", "Content-Type": "application/json", "X-CSRF-Token": csrf, ...(anon ? { "X-Anon-Id": anon } : {}) },
       body: JSON.stringify({ reply: { body: r.texte, photo_temp_uuids: [], is_personal_data_sharing_check_skipped: false } }),
     }).catch(() => null);
+    let res = await poster();
+    if (res && res.status === 401 && (await renouveler())) res = await poster();
     if (!res) return { ok: false, motif: "reseau" };
     const j = await res.json().catch(() => null);
     const dernier = Array.isArray(j?.conversation?.messages) ? j.conversation.messages[j.conversation.messages.length - 1] : null;
@@ -1219,9 +1238,15 @@
   // …/digital_label ; Vinted compte l'ouverture du bordereau.
   async function cheminBordereauVinted(p) {
     const etapes = [];
+    const renouveler = async () => { try { const x = await fetch("/web/api/auth/refresh", { method: "POST", credentials: "include", headers: { Accept: "application/json" } }); return x.ok; } catch { return false; } };
+    let renouvele = false;
     const lire = async (chemin) => {
       etapes.push(`GET ${chemin}`);
-      const r = await fetch(chemin, { credentials: "include", headers: { Accept: "application/json" }, cache: "no-store" }).catch(() => null);
+      let r = await fetch(chemin, { credentials: "include", headers: { Accept: "application/json" }, cache: "no-store" }).catch(() => null);
+      if (r && r.status === 401 && !renouvele) {
+        renouvele = true;
+        if (await renouveler()) r = await fetch(chemin, { credentials: "include", headers: { Accept: "application/json" }, cache: "no-store" }).catch(() => null);
+      }
       if (!r) return { http: 0, j: null };
       return { http: r.status, j: await r.json().catch(() => null) };
     };

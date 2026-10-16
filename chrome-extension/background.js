@@ -26,6 +26,7 @@ importScripts("messagerie.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
+  "2026-10-16-messagerie-beta-5 (0.6.120 : bêta messagerie — Vinted : un 401 (jeton d'accès d'une heure expiré) fait renouveler le jeton comme la page puis refaire UNE fois la lecture, le chemin du bordereau ou l'envoi d'une réponse (jamais après une autre erreur)) — précédent : " +
   "2026-10-16-messagerie-beta-4 (0.6.119 : bêta messagerie — Beebs relevé (messages, réponse verrouillée par la liste blanche, commandes), mur « téléphone non vérifié » dit au lieu d'une messagerie vide ; commandes Depop ; bordereau Vinted / Leboncoin au CLIC dans l'app (demande → dernière marche une fois → copie 5 jours, nom unique)) — précédent : " +
   "2026-10-16-messagerie-beta-3 (0.6.118 : bêta messagerie — l'annonce d'une conversation Vinted est lue aussi dans item_ids quand item_id est vide (ventes passées), et la mémoire des fils déjà lus est oubliée une fois pour les relire, 5 par passage) — précédent : " +
   "2026-10-16-messagerie-beta-2 (0.6.117 : un passage de la bêta messagerie qui n'a rien pu lire note son motif en base ; lectures Depop reprises 2 fois sur erreur réseau) — précédent : " +
