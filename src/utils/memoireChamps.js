@@ -18,11 +18,38 @@ const TABLE = "memoire_champs_categorie";
 const COLONNES = "plateforme, compte, categorie, champ, valeur, inventaire_id, repondu_le";
 const PAGE = 1000;
 
-const etat = new Map(); // userId → { map: Map|null, promesse: Promise|null, abonnes: Set }
+// ── L'INTERRUPTEUR (18/10 nuit) ─────────────────────────────────────────────
+// La preuve réelle de bout en bout n'a pas pu être faite cette nuit (sur le
+// compte de Nico, la rédaction IA remplit déjà l'Univers de Mode : la question
+// n'apparaît plus depuis le correctif A10 du 11/10). Règle de la nuit : livré
+// ÉTEINT. FAIL-CLOSED, même modèle que publication/interrupteur.js :
+//   1. profiles.beta_flags.memoire_categorie = true | false (un compte) ;
+//   2. coin_config.memoire_categorie_ouverte = 1 (tout le monde).
+// Éteint : mémoire vide, rien retenu, rien posé, section Réglages masquée —
+// l'écran pose ses questions exactement comme avant.
+export const CLE_PROFIL_MEMOIRE = "memoire_categorie";
+export const CLE_CONFIG_MEMOIRE = "memoire_categorie_ouverte";
+async function memoireOuverte(supabase, userId) {
+  try {
+    const { data, error } = await supabase.from("profiles").select("beta_flags").eq("id", userId).maybeSingle();
+    if (!error && data?.beta_flags?.[CLE_PROFIL_MEMOIRE] === true) return true;
+    if (!error && data?.beta_flags?.[CLE_PROFIL_MEMOIRE] === false) return false;
+  } catch { /* colonne absente = fermé */ }
+  try {
+    const { data, error } = await supabase.from("coin_config").select("value").eq("key", CLE_CONFIG_MEMOIRE).maybeSingle();
+    return !error && Number(data?.value) === 1;
+  } catch { return false; }
+}
+
+const etat = new Map(); // userId → { map: Map|null, ouverte: boolean|null, promesse: Promise|null, abonnes: Set }
 const de = (userId) => {
-  if (!etat.has(userId)) etat.set(userId, { map: null, promesse: null, abonnes: new Set() });
+  if (!etat.has(userId)) etat.set(userId, { map: null, ouverte: null, promesse: null, abonnes: new Set() });
   return etat.get(userId);
 };
+/** L'interrupteur tel que lu (null tant que la lecture n'a pas répondu). */
+export function memoireOuverteEnCache(userId) {
+  return userId ? (etat.get(userId)?.ouverte ?? null) : null;
+}
 const prevenir = (userId) => {
   const e = de(userId);
   for (const cb of e.abonnes) { try { cb(e.map); } catch { /* un abonné ne casse pas les autres */ } }
@@ -46,7 +73,11 @@ export function chargerMemoire(supabase, userId) {
   const e = de(userId);
   if (e.map) return Promise.resolve(e.map);
   if (!e.promesse) {
-    e.promesse = lireToutes(supabase, userId)
+    e.promesse = memoireOuverte(supabase, userId)
+      .then((ouverte) => {
+        e.ouverte = ouverte;
+        return ouverte ? lireToutes(supabase, userId) : [];
+      })
       .then((lignes) => { e.map = indexerMemoire(lignes); return e.map; })
       .catch((err) => {
         console.warn("[mémoire] lecture impossible — les questions restent posées :", err?.message ?? err);
@@ -77,6 +108,8 @@ export function abonnerMemoire(userId, cb) {
  */
 export async function retenirReponses(supabase, userId, lignes) {
   if (!supabase || !userId || !Array.isArray(lignes) || !lignes.length) return { ok: true, n: 0 };
+  // Éteinte (ou pas encore lue) : rien n'est retenu.
+  if (de(userId).ouverte !== true) return { ok: true, n: 0, eteinte: true };
   const rows = lignes.map((l) => ({ user_id: userId, plateforme: l.plateforme, compte: l.compte, categorie: l.categorie, champ: l.champ, valeur: l.valeur, inventaire_id: l.inventaire_id ?? null }));
   const { data, error } = await supabase.from(TABLE)
     .upsert(rows, { onConflict: "user_id,plateforme,compte,categorie,champ" })
@@ -96,9 +129,12 @@ export async function retenirReponses(supabase, userId, lignes) {
 
 /** Réglages : toutes les entrées, triées pour l'affichage. */
 export async function listerMemoire(supabase, userId) {
-  if (!supabase || !userId) return [];
-  const lignes = await lireToutes(supabase, userId);
+  if (!supabase || !userId) return null;
   const e = de(userId);
+  e.ouverte = await memoireOuverte(supabase, userId);
+  // Éteinte : null = la section Réglages ne s'affiche pas.
+  if (!e.ouverte) { e.map = new Map(); prevenir(userId); return null; }
+  const lignes = await lireToutes(supabase, userId);
   e.map = indexerMemoire(lignes);
   prevenir(userId);
   return lignes;

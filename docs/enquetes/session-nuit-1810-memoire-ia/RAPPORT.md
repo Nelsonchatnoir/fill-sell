@@ -3,7 +3,24 @@
 Heures de Paris. Ordre de travail : 1, 5, 3, 2, 4. Chaque point dit FAIT ET PROUVÉ, FAIT À PROUVER ou PAS FAIT, avec
 la preuve ou la raison. Selftests de départ (17/10 23:40) : **345 / 346** (seul rouge : `vinted-origine`, d'avant).
 
-## POINT 1 — MÉMOIRE COMPTE × CATÉGORIE — (en cours)
+## POINT 1 — MÉMOIRE COMPTE × CATÉGORIE — FAIT, À PROUVER (livré derrière un interrupteur ÉTEINT)
+
+### En clair
+- Le mécanisme est fait, testé (selftest 60/60) et sa table est en prod (essai à blanc 8/8, appliquée à 00:06).
+- La preuve réelle demandée (A demandé → réponse → B rempli sans question → publié) **n'a pas pu être faite** : sur le
+  compte de Nico, la rédaction IA remplit déjà l'Univers de Mode (« Homme » posé sur un T-shirt sans genre, carte
+  Leboncoin « Déjà rempli »), donc la question n'apparaît pas ; la carte ne permet pas de vider l'Univers. Essai fait à
+  00:20 sur deux fiches d'essai (999 €), quitté avant publication, fiches retirées ensuite (0 job, 0 annonce). Une
+  rédaction a consommé 1 annonce du quota de Nico (66 → 65).
+- Donc, règle de la nuit : **livré ÉTEINT**. Interrupteur fail-closed : `profiles.beta_flags.memoire_categorie` (un
+  compte) puis `coin_config.memoire_categorie_ouverte` (tous). Éteint = rien lu, rien posé, rien retenu, section Réglages
+  masquée. Pour l'allumer chez Nico seul : `update profiles set beta_flags = coalesce(beta_flags,'{}'::jsonb) ||
+  '{"memoire_categorie":true}'::jsonb where id = 'f44b5917-bccc-4431-ba41-f40571a2ed18';`
+- **Le chiffre qui compte** : depuis le correctif A10 du 11/10 au soir, les champs retenus n'ont été demandés qu'UNE
+  fois (Mode, 0 réponse antérieure) : **0 question évitée sur 6 jours**. Les 68 « évitées » de la fenêtre de 7 jours
+  viennent presque toutes d'UN lot du 11/10 au matin (compte faf5021a, 71 questions), avant ce correctif. Les questions
+  qui restent (Décoration 18, Livres 6, Sport 3) portent sur des FAMILLES D'OBJETS, où la mémoire se tromperait une fois
+  sur trois : le bon levier y est la déduction par le texte (« Déco » ≠ « Décoration », audit du lot 3), pas la mémoire.
 
 ### La règle
 Quand la personne répond ELLE-MÊME à un champ requis qui dépend du RAYON, l'app retient sa réponse pour
@@ -44,7 +61,7 @@ job publié ; « juste » = la réponse précédente du MÊME compte sur le MÊM
 La base refuse tout autre champ (CHECK `memoire_champs_categorie_champ_du_rayon`) ; le module se tait aussi si la liste
 d'un champ retenu cesse d'être une liste de publics. Ajouter un champ = décision de Nico + migration.
 
-### Mesure « avant » (7 jours au 17/10 23:59)
+### Mesure « avant » (7 jours au 17/10 23:59 — voir « Le chiffre qui compte » plus haut)
 - `champs_requis_veille()` : 413 questions affichées en 7 j (606 la semaine d'avant) ; Univers Leboncoin 103.
 - Questions qui auraient été évitées par la mémoire (rejeu, mémoire = réponse précédente du compte sur le rayon) :
   **69 sur 76** questions des champs retenus (Univers Mode > Vêtements 68 / 73, Chaussures 1 / 3), **0 remplie à tort** ;

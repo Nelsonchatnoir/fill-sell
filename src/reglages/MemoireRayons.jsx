@@ -17,12 +17,14 @@ const LIBELLES = { clothing_type: 'Univers', shoe_type: 'Univers', accessories_u
 export default function MemoireRayons({ c, T }) {
   const userId = c.user?.id ?? null;
   const [lignes, setLignes] = useState(null);
+  // Mémoire éteinte (interrupteur, utils/memoireChamps) : la section ne s'affiche pas.
+  const [eteinte, setEteinte] = useState(false);
   const [enCours, setEnCours] = useState(false);
   useEffect(() => {
     if (!userId) return undefined;
     let mort = false;
     listerMemoire(supabase, userId)
-      .then((l) => { if (!mort) setLignes(l); })
+      .then((l) => { if (mort) return; if (l === null) setEteinte(true); else setLignes(l); })
       .catch(() => { if (!mort) setLignes([]); });
     return () => { mort = true; };
   }, [userId]);
@@ -48,6 +50,7 @@ export default function MemoireRayons({ c, T }) {
     return new Date(d).toLocaleDateString(c.lang === 'en' ? 'en-GB' : 'fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit' });
   };
 
+  if (eteinte) return null;
   return (
     <Groupe intitule={T.sMemoireRayon}>
       <Carte>

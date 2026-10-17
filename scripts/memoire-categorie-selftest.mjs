@@ -107,6 +107,51 @@ ok(lire('src/reglages/SousPagePreferences.jsx').includes('<MemoireRayons c={c} T
 const DATA = lire('src/utils/memoireChamps.js');
 ok(!/setInterval/.test(DATA) && /range\(debut, debut \+ PAGE - 1\)/.test(DATA), 'lecture : une fois par compte, par pages, jamais d\'intervalle');
 
+console.log('4 bis. L\'interrupteur (livré ÉTEINT : la preuve réelle n\'a pas pu être faite cette nuit)');
+const D = await import(pathToFileURL(path.join(RACINE, 'src/utils/memoireChamps.js')).href);
+const fauxClient = ({ beta = undefined, config = 0, lignes = [] } = {}) => {
+  const journal = { lectures: 0, ecritures: 0 };
+  const chaine = (table) => {
+    const q = {
+      _table: table,
+      select() { return q; }, eq() { return q; }, order() { return q; }, gte() { return q; },
+      range() { journal.lectures++; return Promise.resolve({ data: table === 'memoire_champs_categorie' ? lignes : [], error: null }); },
+      maybeSingle() {
+        if (table === 'profiles') return Promise.resolve({ data: { beta_flags: beta === undefined ? {} : { memoire_categorie: beta } }, error: null });
+        if (table === 'coin_config') return Promise.resolve({ data: { value: config }, error: null });
+        return Promise.resolve({ data: null, error: null });
+      },
+      upsert(rows) { journal.ecritures++; return { select: () => Promise.resolve({ data: rows, error: null }) }; },
+      delete() { journal.ecritures++; return q; },
+    };
+    return q;
+  };
+  return { from: chaine, journal };
+};
+const LIGNE = { plateforme: 'leboncoin', compte: 'principal', categorie: 'Mode > Vêtements', champ: 'clothing_type', valeur: 'Femme' };
+{
+  const sb = fauxClient({ config: 0, lignes: [LIGNE] });
+  const m = await D.chargerMemoire(sb, 'u-eteinte');
+  const r = await D.retenirReponses(sb, 'u-eteinte', [LIGNE]);
+  ok(m.size === 0 && sb.journal.lectures === 0 && D.memoireOuverteEnCache('u-eteinte') === false, 'éteinte (défaut, coin_config 0) : la table n\'est même pas lue, mémoire vide');
+  ok(r.eteinte === true && sb.journal.ecritures === 0, 'éteinte : rien n\'est retenu au clic Publier');
+  ok((await D.listerMemoire(sb, 'u-eteinte')) === null, 'éteinte : la section Réglages ne s\'affiche pas');
+}
+{
+  const sb = fauxClient({ beta: true, config: 0, lignes: [LIGNE] });
+  const m = await D.chargerMemoire(sb, 'u-beta');
+  const r = await D.retenirReponses(sb, 'u-beta', [{ ...LIGNE, valeur: 'Homme' }]);
+  ok(m.size === 1 && r.n === 1 && sb.journal.ecritures === 1, 'allumée pour UN compte (beta_flags.memoire_categorie) : lue et retenue');
+}
+{
+  const sb = fauxClient({ beta: false, config: 1, lignes: [LIGNE] });
+  ok((await D.chargerMemoire(sb, 'u-exclu')).size === 0, 'un compte exclu (beta false) reste éteint même ouverte à tous');
+}
+{
+  const sb = fauxClient({ config: 1, lignes: [LIGNE] });
+  ok((await D.chargerMemoire(sb, 'u-tous')).size === 1, 'ouverte à tous (coin_config 1) : lue');
+}
+
 console.log('5. La base');
 const MIG = lire('supabase/migrations/20261018030000_memoire_champs_categorie.sql');
 const check = [...MIG.matchAll(/\('(leboncoin|ebay|vinted|beebs|depop)', '([^']+)'\)/g)].map((m) => `${m[1]}|${m[2]}`).sort();
