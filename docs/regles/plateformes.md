@@ -229,3 +229,30 @@ Rapport : `docs/enquetes/dix-points-1710/RAPPORT.md` (points 1, 4, 5, 7, 9).
   Selftest `publication-moteur` [M]. Extension (prochaine version, feu vert de Nico) : Leboncoin et Beebs en égalité
   exacte sinon « Autre » (plus d'inclusion, plus de choix par IA dans la liste) ; Depop : égalité qui ignore espaces,
   tirets, points, apostrophes (jamais `&` ni `+`), plusieurs candidates → l'exacte, sinon « Other ».
+
+## 18/10 — Leboncoin, compte PRO hors forfait : FillSell prépare le dépôt, la personne clique « Valider et payer » (décision de Nico)
+- Remplace la règle du 17/10 (publications retenues + éclaireur toutes les 12 h) pour les postes qui ont la nouvelle
+  extension ; l'ancienne règle reste telle quelle pour les postes d'avant (motif `lbc_options_payant_seulement`).
+  Règle et motifs EXACTS : `supabase/functions/_shared/lbc-forfait.js`.
+- PUBLICATION d'un compte prouvé PRO (preuve `general_sales_condition` / `custom_ref` sur ses jobs, dite à l'extension
+  par `platform_fields.compte_pro` dans la réponse de get-pending-jobs, ou vue sur le formulaire) au mur « Valider et
+  payer » : l'extension laisse le dépôt tel quel sur cet écran, ne clique JAMAIS le paiement, pose le motif
+  `lbc_valider_et_payer` (needs_user, aucune tentative consommée, `attente_paiement.depuis`) ; le background détache
+  l'onglet de la fenêtre de travail, le déplace dans la fenêtre de la personne et l'active (sans voler le focus), puis
+  le surveille : page de confirmation (`/deposer-une-annonce/confirmation`) ou page de l'annonce → job `published`
+  (`lbc_depot.preuve = paiement_utilisateur`, numéro lu sur la page s'il y est) ; onglet fermé → `onglet_ferme_le`.
+  Un seul dépôt préparé par cycle de l'extension.
+- UNE publication à la fois par compte (get-pending-jobs) : aucune tant qu'une attente de paiement est vivante (moins
+  de 24 h, onglet ouvert) ou close SANS paiement (onglet fermé, 24 h passées) ; après un paiement, la plus ancienne
+  publication retenue ou au mur revient en file toute seule ; les autres publications restent en file SANS écriture ;
+  la publication que la personne a demandé de « Préparer à nouveau » (carte) passe toujours.
+- REPUBLICATION pas encore retirée d'un compte pro au mur : retenue (needs_user, `MSG_FORFAIT_LBC_REPUBLICATION_RETENUE`)
+  — un redépôt payant retirerait l'annonce en ligne ; elle repart quand une publication du compte passe SANS paiement.
+  Un dépôt payé par la personne (`paiement_utilisateur`) ne lève jamais le mur (gpj, handler-watch).
+- App : une carte « Leboncoin : ton forfait pro » par compte (`EcranForfaitLbc`), deux parcours ; état de plateforme
+  « prête sur Leboncoin : clique « Valider et payer » dans l'onglet… » (`a_payer_lbc`). Un particulier ne voit aucune
+  différence (son mur payant reste le pack photos, annonce par annonce).
+- Garde-fous : aucun paiement par FillSell ; aucun redépôt automatique après un onglet fermé ; un compte non prouvé
+  pro n'entre jamais ; le relevé Leboncoin d'un compte pro lit 0 annonce (route particulier) — les dépôts faits à la
+  main par la personne ne sont pas vus par FillSell (cas DeadRoz, 14/10 : non vérifiable, rien redéposé d'office).
+- Selftest : `lbc-forfait-pro` (§ 8).

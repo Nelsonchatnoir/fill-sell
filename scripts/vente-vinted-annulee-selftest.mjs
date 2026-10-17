@@ -81,7 +81,10 @@ ok(!/vente_commande_annulee_vinted\(v_vente_id/.test(fonction(INV, 'enregistrer_
     .filter((f) => /CREATE (OR REPLACE )?FUNCTION public\.vente_commande_annulee_vinted\(/.test(lire(`${DOSSIER}/${f}`))).pop();
   const EN_VIGUEUR = lire(`${DOSSIER}/${derniere}`);
   const r8 = fonction(EN_VIGUEUR, 'vente_commande_annulee_vinted');
-  ok(/coalesce\(v\.source, ''\) = 'releve' OR j\.id IS NOT NULL/.test(r8) && /timestamptz '2026-10-13 00:00:00\+02'/.test(r8)
+  // (18/10, règle de Nico) plus AUCUNE date-charnière : une commande échouée, annulée ou
+  // remboursée n'est jamais une vente, quelle que soit sa date — seule la vente SAISIE reste.
+  ok(/coalesce\(v\.source, ''\) = 'releve' OR j\.id IS NOT NULL/.test(r8) && !/timestamptz '2026-10-13 00:00:00\+02'/.test(r8)
+    && !/annulation_anterieure_a_la_regle/.test(r8) && /'vente_saisie_jamais_retiree'/.test(r8)
     && /UPDATE inventaire SET statut = 'stock', quantite = v_q WHERE id = i\.id AND statut = 'vendu'/.test(r8)
     && /DELETE FROM ventes_operations o WHERE o\.user_id = v\.user_id AND o\.cle = 'annonce:vinted:' \|\| v\.annonce_id/.test(r8)
     && /INSERT INTO ventes_supprimees/.test(r8) && /coalesce\(v\.commande_ref, p_commande\)/.test(r8)
@@ -89,11 +92,21 @@ ok(!/vente_commande_annulee_vinted\(v_vente_id/.test(fonction(INV, 'enregistrer_
     && /L''annonce Vinted reste fermée : remets-le en vente quand tu veux\./.test(r8) && !/push_ventes|envoyer|email/.test(r8)
     && /'ventes_annulees_retrait_pause'/.test(r8) && /ventes_annulees_attente_go/.test(r8)
     && /REVOKE ALL ON FUNCTION public\.vente_commande_annulee_vinted\(bigint, text, text, timestamptz\) FROM PUBLIC, anon, authenticated/.test(EN_VIGUEUR),
-    `8. la règle en vigueur (${derniere}) garde 2 à 5 : preuve, stock, reçu, trace, job, interrupteur, fermée à l'app`);
+    `8. la règle en vigueur (${derniere}) garde 2 à 5 : preuve, stock, reçu, trace, job, interrupteur, fermée à l'app (plus de date-charnière)`);
   if (derniere !== '20261015010000_vente_vinted_annulee.sql') {
     const inverse = lire(`supabase/rollbacks/${derniere}`);
-    const seul = (t) => { const a = t.indexOf('AS $function$', t.indexOf('FUNCTION public.vente_commande_annulee_vinted(')); return t.slice(a, t.indexOf('$function$', a + 13) + 10); };
-    ok(seul(inverse) === seul(MIG), `8b. l'inverse de ${derniere} rend le corps de 20261015010000 à l'octet`);
+    const seul = (t) => { const a = t.indexOf('AS $function$', t.indexOf('FUNCTION public.vente_commande_annulee_vinted(')); return a < 0 ? '' : t.slice(a, t.indexOf('$function$', a + 13) + 10); };
+    // L'inverse rend le corps d'AVANT : soit écrit en toutes lettres (le corps de la
+    // migration précédente), soit rejoué depuis la sauvegarde de prod que la migration
+    // garde (18/10 : _backup_1810_fonctions_commande_annulee, md5 relus après coup).
+    const precedentes = readdirSync(path.join(RACINE, DOSSIER)).filter((f) => f.endsWith('.sql') && f < derniere).sort()
+      .filter((f) => /CREATE (OR REPLACE )?FUNCTION public\.vente_commande_annulee_vinted\(/.test(lire(`${DOSSIER}/${f}`)));
+    const precedente = precedentes.pop();
+    const depuisSauvegarde = /INSERT INTO public\._backup_1810_fonctions_commande_annulee/.test(EN_VIGUEUR)
+      && /FOR r IN SELECT \* FROM public\._backup_1810_fonctions_commande_annulee ORDER BY ordre LOOP\s+EXECUTE r\.def;/.test(inverse)
+      && /IF v_md5 IS DISTINCT FROM r\.md5 THEN/.test(inverse);
+    ok(depuisSauvegarde || (precedente && seul(inverse) === seul(lire(`${DOSSIER}/${precedente}`))),
+      `8b. l'inverse de ${derniere} rend le corps d'avant (${depuisSauvegarde ? 'sauvegarde de prod rejouée, md5 vérifiés' : `corps de ${precedente} à l'octet`})`);
   }
 }
 

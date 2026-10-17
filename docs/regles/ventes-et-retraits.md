@@ -176,3 +176,28 @@ Cas : 128 notes de vente sans prix depuis le 06/10 (republications Vinted : `pri
   `scripts/reparations/20261017_ventes_vinted_en_lot.sql` (sauvegardes, inverse, 0 mail). Interrupteur `coin_config`
   `ventes_vinted_lot_depuis` (0 = règle coupée). Migration 20261017120000 ; selftests `vente-vinted-en-lot`,
   `releve-ventes-trace`.
+
+## 18/10 — une commande échouée, annulée ou remboursée n'est JAMAIS une vente (règle de Nico ; migration 20261018000000)
+- Sur aucune plateforme, chez aucun compte, quelle que soit la date de la commande : `vente_commande_annulee_vinted` n'a
+  plus de date-charnière (le 13/10 du 15/10 est retiré). Une vente née d'une PREUVE (relevé, ou annonce FillSell close
+  « vendue » sur son numéro) est retirée, tracée (`ventes_supprimees`, `usage_logs vente_retiree` avec les reçus), la
+  fiche revient au stock avec l'état d'annonce du relevé, le job est clos (ou republié s'il a été revu en ligne) ; seule
+  une vente SAISIE à la main reste, signalée une fois (`vente_saisie_jamais_retiree`). Aucun mail.
+- Les COPIES retirées à cause de cette vente reviennent par les jobs normaux : chaque retrait `deleted` d'une autre
+  plateforme armé par `vente_article_serveur` à l'instant de la vente (± 2 min), dont le dépôt est `cancelled`, donne une
+  ligne `remises_en_vente` sur ce dépôt (marqué `vente_annulee_remise`) ; `remises_en_vente_tick` crée la publication
+  avec SES gardes (déjà en vente, plafond du palier, poste absent, plateforme en pause, jamais un débit ; restant =
+  quantité de la fiche). Jamais un dépôt direct depuis la règle.
+- `ventes_statut_classe` : Vinted `canceled` / `cancelled` et eBay `refunded` sont des annulations (en plus de `failed`,
+  `fully_refunded`, `cancelled`). Leboncoin, Depop, Opla inchangés.
+- Les trois définitions d'avant sont gardées dans `_backup_1810_fonctions_commande_annulee` ; l'inverse
+  (`supabase/rollbacks/20261018000000_…`) les rejoue et relit les md5. Essai à blanc généré
+  (`scripts/essais/20261018000000_generer.mjs` → `_essai.sql`, 14/14 le 18/10, ROLLBACK).
+- Passe sur le parc (18/10) : les trois ventes « signalées, antérieures à la règle » (108583 casque VR, 125191 BlazBlue,
+  167304 pull Mango — les seules) retirées par `scripts/reparations/20261018_ventes_commandes_failed.sql`
+  (sauvegardes `_backup_1810_ventes_failed_*`, inverse, 0 mail : 101 → 101) ; les 3 copies de 125191 (Leboncoin, eBay,
+  Beebs) en file de remise en vente. La vente eBay saisie signalée le 10/10 (`vente_saisie_commande_annulee`) reste :
+  une saisie n'est jamais retirée.
+- Note 2348 de Louis (puzzle Vilainous) : montant 12 € (décision de Nico) sur la vente 181210 et la note
+  (`scripts/reparations/20261018_note_2348_louis_12_euros.sql`, sauvegarde `_backup_1810_note_2348`, inverse, 0 mail).
+- Selftests : `commande-annulee-jamais-vente`, `vente-vinted-annulee` (point 8 réécrit : plus de date-charnière).

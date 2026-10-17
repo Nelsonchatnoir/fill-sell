@@ -84,6 +84,9 @@ export function natureAttente(job) {
   // jamais une question de champ. Même « kind » que l'attente générique (les
   // écrans de suivi la traitent déjà) ; seule la phrase change.
   if (job?.platform === "leboncoin" && pf.last_diagnostic?.quoi === "lbc_options_payant_seulement") return { kind: "attente", motif: "paiement_lbc" };
+  // (18/10) Le dépôt est PRÊT sur « Valider et payer » : la personne paie elle-même dans
+  // l'onglet laissé ouvert (jamais FillSell) — une attente de paiement, nommée.
+  if (job?.platform === "leboncoin" && pf.last_diagnostic?.quoi === "lbc_valider_et_payer") return { kind: "attente", motif: "a_payer_lbc" };
   return { kind: "attente" };
 }
 
@@ -131,6 +134,7 @@ export function phraseEtat(platform, etat, lang = "fr") {
       return en ? "waiting for your Depop seller setup" : "en attente de ta configuration de vendeur Depop";
     case "attente":
       if (etat?.motif === "paiement_lbc") return en ? `waiting: ${nom} asks for a payment for this listing` : `en attente : ${nom} demande un paiement pour ce dépôt`;
+      if (etat?.motif === "a_payer_lbc") return en ? `ready on ${nom}: click “Valider et payer” in the ${nom} tab on your computer` : `prête sur ${nom} : clique « Valider et payer » dans l'onglet ${nom} ouvert sur ton ordinateur`;
       return en ? "a publication is waiting" : "une publication est en attente";
     case "refusee":
       return en ? "last publication refused — you can publish again" : "dernière publication refusée — tu peux republier";

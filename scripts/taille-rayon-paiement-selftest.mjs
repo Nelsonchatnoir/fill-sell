@@ -106,9 +106,13 @@ console.log("\n3. LEBONCOIN QUI DEMANDE À ÊTRE PAYÉ N'EST PAS UNE PANNE");
   ok(/publier \(mon \|l\['’\]\)annonce/.test(lbc),
     "« Publier mon annonce » est reconnu comme un chemin gratuit");
   const i = lbc.indexOf("LEBONCOIN DEMANDE À ÊTRE PAYÉ");
-  const bloc = i < 0 ? "" : lbc.slice(i, i + 1600);
+  // (18/10) Le bloc porte d'abord le parcours du compte PRO (dépôt préparé, onglet
+  // gardé, motif lbc_valider_et_payer) puis la règle d'avant : fenêtre élargie.
+  const bloc = i < 0 ? "" : lbc.slice(i, i + 3400);
   ok(/attenteUtilisateur: true, attenteMotif: "lbc_options_payant_seulement"/.test(bloc),
     "l'écran payant pose une attente PERSISTÉE — aucune reprise");
+  ok(/attenteMotif: "lbc_valider_et_payer", garderOnglet: true/.test(bloc) && bloc.indexOf("lbc_valider_et_payer") < bloc.indexOf("lbc_options_payant_seulement"),
+    "(18/10) un compte PRO : le dépôt est préparé et l'onglet laissé à la personne, avant la règle d'avant");
   ok(/if \(surEcranOptions\(\) && trouverBoutonPayant\(\)\)/.test(bloc),
     "et seulement quand le bouton payant est là : une page pas finie de se rendre reste une reprise");
   // ⛔ Le bouton payant est RECONNU, jamais cliqué.

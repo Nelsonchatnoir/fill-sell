@@ -38,7 +38,7 @@ import { delaiAttenteSessionMin } from "../_shared/attente-session.js";
 // Une republication retirée ne s'arrête jamais avant sa recréation (25/09) —
 // module JS sans import, le même qu'exécute scripts/republication-hors-ligne-selftest.mjs.
 import { decisionRecreationHorsLigne } from "../_shared/republication-hors-ligne.js";
-import { MOTIF_LBC_PAYANT, MARQUEURS_QUESTION_PASSEE } from "../_shared/lbc-forfait.js";
+import { MOTIFS_LBC_PAIEMENT, MARQUEURS_QUESTION_PASSEE } from "../_shared/lbc-forfait.js";
 import { pageCompteVintedBloque, messageCompteVintedBloque, retraitCompteBloqueEnReprise, SOURCE_COMPTE_VINTED_BLOQUE } from "../_shared/vinted-compte-bloque.js";
 import { BUILD_COLIS_DEMANDE } from "../_shared/vinted-colis.js";
 import { reponseMarqueDepop, champsApresMarqueDepop } from "../_shared/marque-depop.js";
@@ -4638,7 +4638,7 @@ serve(async (req) => {
     if (statutEffectif === "needs_user" && patch.platform_fields && typeof patch.platform_fields === "object") {
       const pfMur = patch.platform_fields as Record<string, unknown>;
       const diagMur = pfMur["last_diagnostic"] as Record<string, unknown> | undefined;
-      if (String(diagMur?.["quoi"] ?? "") === MOTIF_LBC_PAYANT) {
+      if (MOTIFS_LBC_PAIEMENT.includes(String(diagMur?.["quoi"] ?? ""))) {
         const pfN = { ...pfMur };
         for (const k of MARQUEURS_QUESTION_PASSEE) delete pfN[k];
         pfN["needs_user_source"] = "relancer";

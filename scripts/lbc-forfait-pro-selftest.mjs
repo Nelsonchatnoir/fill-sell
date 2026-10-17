@@ -9,8 +9,11 @@ import fs from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
-  MOTIF_LBC_PAYANT, ECLAIREUR_FORFAIT_INTERVALLE_MS, ESPACEMENT_REPRISE_FORFAIT_MS, FENETRE_FORFAIT_MS, MARQUEURS_QUESTION_PASSEE,
-  MSG_FORFAIT_LBC_RETENUE, FILTRE_PREUVE_PRO, URL_LEBONCOIN,
+  MOTIF_LBC_PAYANT, MOTIF_LBC_A_PAYER, MOTIFS_LBC_PAIEMENT, ATTENTE_PAIEMENT_MS, PREUVE_PAIEMENT_UTILISATEUR,
+  ECLAIREUR_FORFAIT_INTERVALLE_MS, ESPACEMENT_REPRISE_FORFAIT_MS, FENETRE_FORFAIT_MS, MARQUEURS_QUESTION_PASSEE,
+  MSG_FORFAIT_LBC_RETENUE, MSG_FORFAIT_LBC_REPUBLICATION_RETENUE, MSG_LBC_A_PAYER, FILTRE_PREUVE_PRO, URL_LEBONCOIN,
+  dernierMotifMur, estAttentePaiement, attentePaiementVivante, attentePaiementCloseSansPaiement, attentesPaiementVivantes,
+  partagerCandidatsAPayer, preparationDemandeeApres, prochainePublicationAPreparer, champsPreparerDeNouveau, publicationPayee, motifDiagnostic,
   jobProuvePro, compteProuvePro, murVuLe, dernierMurForfait, publicationApresMur, attendForfaitLbc, attentesForfaitLbc,
   candidatRetenueForfait, estEclaireurForfait, partagerCandidatsForfait, eclaireurForfaitLbc, champsRetenueForfait,
   champsEclaireurForfait, champsRepriseForfait, adressageDemande,
@@ -70,8 +73,8 @@ const iBloc = ujs.indexOf("LE MUR « VALIDER ET PAYER » N'HÉRITE JAMAIS D'UNE 
 const iFilet = ujs.indexOf("PLUS JAMAIS DE needs_user MUET (2026-09-27");
 ok(iBloc > 0 && iFilet > iBloc, "le bloc passe AVANT le filet « needs_user sans motif » (qui ne remplit qu'un motif vide)");
 const bloc = ujs.slice(iBloc, iFilet);
-ok(/import \{ MOTIF_LBC_PAYANT, MARQUEURS_QUESTION_PASSEE \} from "\.\.\/_shared\/lbc-forfait\.js";/.test(ujs), "une seule règle (module partagé)");
-ok(/=== MOTIF_LBC_PAYANT/.test(bloc) && /for \(const k of MARQUEURS_QUESTION_PASSEE\) delete pfN\[k\];/.test(bloc) && /pfN\["needs_user_source"\] = "relancer";/.test(bloc),
+ok(/import \{ MOTIFS_LBC_PAIEMENT, MARQUEURS_QUESTION_PASSEE \} from "\.\.\/_shared\/lbc-forfait\.js";/.test(ujs), "une seule règle (module partagé)");
+ok(/MOTIFS_LBC_PAIEMENT\.includes\(String\(diagMur\?\.\["quoi"\] \?\? ""\)\)/.test(bloc) && /for \(const k of MARQUEURS_QUESTION_PASSEE\) delete pfN\[k\];/.test(bloc) && /pfN\["needs_user_source"\] = "relancer";/.test(bloc),
   "motif EXACT → marqueurs de question retirés, motif « relancer »");
 // La règle rejouée sur un mur écrit par la 0.6.110 (cas b1b9bb68).
 const pfPoste = { ...lot[0].platform_fields, needsUserField: { field_key: "estimated_parcel_weight" } };
@@ -92,7 +95,7 @@ const gBloc = gpj.slice(iG, gpj.indexOf("UNE REPUBLICATION D'ANNONCE EN LIGNE A 
 ok(iG > iPorte && iPorte > 0, "la garde suit la porte pro (poll d'exécution)");
 ok(/if \(!includeProcessing && !includeNeedsUser\) \{/.test(gBloc) && /const candidatsForfait = out\.filter\(\(j\) => candidatRetenueForfait\(j as never\)\);\s+if \(candidatsForfait\.length\) \{/.test(gBloc),
   "aucune lecture tant qu'aucun job Leboncoin n'est dans la réponse");
-ok(/\.in\("status", \["needs_user", "pending", "processing"\]\)/.test(gBloc) && /\.eq\("platform_fields->last_diagnostic->>quoi", MOTIF_LBC_PAYANT\)/.test(gBloc) && /\.gte\("created_at", new Date\(Date\.now\(\) - FENETRE_FORFAIT_MS\)/.test(gBloc),
+ok(/\.in\("status", \["needs_user", "pending", "processing"\]\)/.test(gBloc) && /\.in\("platform_fields->last_diagnostic->>quoi", \[\.\.\.MOTIFS_LBC_PAIEMENT\]\)/.test(gBloc) && /\.gte\("created_at", new Date\(Date\.now\(\) - FENETRE_FORFAIT_MS\)/.test(gBloc),
   "mur lu par le motif EXACT, 30 j, y compris l'éclaireur remis en file");
 ok(/\.eq\("status", "published"\)\s*\.gt\("published_at", new Date\(murForfait\)\.toISOString\(\)\)/.test(gBloc) && /\.or\(FILTRE_PREUVE_PRO\)/.test(gBloc),
   "aucune publication passée depuis le mur, et compte prouvé pro");
@@ -124,7 +127,8 @@ ok(/if \(comptesForfaitLbc\.has\(String\(j\.user_id\)\) && attendForfaitLbc\(\{ 
   "jamais soldé à 72 h tant qu'il a moins de 30 j (compte prouvé pro, preuve lue sur ses attentes puis en base)");
 const iH = hw.indexOf("LEBONCOIN N'OFFRE PLUS QUE « VALIDER ET PAYER » À UN COMPTE PRO :\n  //    L'ÉCLAIREUR");
 const hBloc = hw.slice(iH, hw.indexOf("[handler-watch] forfait Leboncoin pro:", iH));
-ok(iH > 0 && /\.in\("status", \["needs_user", "pending", "processing"\]\)/.test(hBloc) && /\.eq\("platform_fields->last_diagnostic->>quoi", MOTIF_LBC_PAYANT\)/.test(hBloc), "lecture par le motif EXACT, 30 j");
+ok(iH > 0 && /\.in\("status", \["needs_user", "pending", "processing"\]\)/.test(hBloc) && /\.in\("platform_fields->last_diagnostic->>quoi", \[\.\.\.MOTIFS_LBC_PAIEMENT\]\)/.test(hBloc)
+   && /preuve:platform_fields->lbc_depot->>preuve/.test(hBloc), "lecture par les motifs EXACTS (les deux parcours), 30 j, preuve de paiement lue");
 ok(/if \(traitesF >= 10\) break;/.test(hBloc) && /now - \(vu as number\) > 24 \* 3_600_000\) continue;/.test(hBloc), "10 comptes par passage, poste vu < 24 h");
 ok(/if \(!mur \|\| publicationApresMur\(pubsDuCompte as never\[\], mur\)\)/.test(hBloc) && /champsRepriseForfait\(j\.platform_fields/.test(hBloc) && /\.eq\("id", String\(j\.id\)\)\.eq\("status", "needs_user"\)/.test(hBloc),
   "publication passée après le mur → toutes les attentes repartent (compare-and-swap)");
@@ -154,8 +158,8 @@ ok(/\{ cle: 'lbc_forfait', n: nbForfaitLbc,/.test(st) && /setGesteOuvert\('lbc_f
   "la ligne ouvre l'écran dédié (avec la « ligne d'adressage » quand un mur la porte)");
 ok(/if \(newPf\.needs_user_source === "champ_a_choisir"\) delete newPf\.needs_user_source;/.test(st), "« ✋ Compléter » ferme la question : son motif ne survit pas à la relance");
 const ec = lire("src/stock/EcranForfaitLbc.jsx");
-ok(/champsEclaireurForfait\(eclaireur\.platform_fields, 'geste'/.test(ec) && /\.eq\('status', 'needs_user'\)/.test(ec), "« C'est fait » : UN éclaireur, compare-and-swap");
-ok(/attentes\.find\(\(j\) => String\(j\?\.action \?\? 'publish'\) === 'publish'\)/.test(ec), "l'éclaireur de la carte est une PUBLICATION");
+ok(/relancer\(eclaireur, \(pf, iso\) => champsEclaireurForfait\(pf, 'geste', iso\)/.test(ec) && /\.eq\('status', 'needs_user'\)/.test(ec), "« C'est fait » : UN éclaireur, compare-and-swap");
+ok(/attentes\.find\(\(j\) => String\(j\?\.action \?\? 'publish'\) === 'publish' && motifDiagnostic\(j\) === MOTIF_LBC_PAYANT\)/.test(ec), "l'éclaireur de la carte est une PUBLICATION au mur de l'ancienne extension");
 ok(/href=\{URL_LEBONCOIN\}/.test(ec) && URL_LEBONCOIN === "https://www.leboncoin.fr/", "« Ouvrir Leboncoin » (aucune adresse devinée)");
 ok(/ligne d’adressage/.test(ec) && adressageDemande([{ error: "titres [\"Mise à jour de ligne d’adressage requise\"]" }]) && !adressageDemande([{ error: MUR }]), "la ligne d'adressage n'est dite que si un mur la porte");
 const ep = await import(pathToFileURL(join(ROOT, "src/utils/etatsPublication.js")).href);
@@ -173,5 +177,98 @@ ok(textes.length > 5 && textes.every((x) => !DUREE.test(x)), "aucune durée ni h
 ok(textes.every((x) => !TECH.test(x)), "aucun mot technique dans un texte montré", textes.filter((x) => TECH.test(x)).join(" | "));
 ok(!/\p{Extended_Pictographic}/u.test(MSG_FORFAIT_LBC_RETENUE + ec), "aucun émoji");
 
-console.log(ko ? `\n✗ ${ko} échec(s)` : "\n✓ Leboncoin, compte pro au mur du paiement : une carte, un éclaireur, plus rien sur le mur — tout est vert");
+console.log("\n8. (18/10) FILLSELL PRÉPARE, LA PERSONNE PAIE : « VALIDER ET PAYER » LUI APPARTIENT");
+const prete = (id, h, extra = {}, status = "needs_user") => ({
+  id, platform: "leboncoin", status, action: "publish", created_at: t("01:45"), error: MSG_LBC_A_PAYER,
+  platform_fields: { needs_user_source: "relancer", last_diagnostic: { quoi: MOTIF_LBC_A_PAYER, at: t(h) }, attente_paiement: { depuis: t(h) }, ...extra },
+});
+ok(MOTIF_LBC_A_PAYER === "lbc_valider_et_payer" && MOTIFS_LBC_PAIEMENT.includes(MOTIF_LBC_PAYANT) && MOTIFS_LBC_PAIEMENT.includes(MOTIF_LBC_A_PAYER)
+  && ATTENTE_PAIEMENT_MS === 24 * 3_600_000 && PREUVE_PAIEMENT_UTILISATEUR === "paiement_utilisateur", "motif exact, 24 h, preuve nommée");
+ok(attendForfaitLbc(prete("p1", "10:00"), true) && estAttentePaiement(prete("p1", "10:00")) && !estAttentePaiement(mur("m1", "10:00"))
+  && !estAttentePaiement(prete("p2", "10:00", {}, "pending")) && !estAttentePaiement({ ...prete("p3", "10:00"), action: "republish" }),
+  "un dépôt prêt = Leboncoin + needs_user + publication + motif lbc_valider_et_payer ; il entre dans la carte");
+const t10 = Date.parse(t("10:00"));
+ok(attentePaiementVivante(prete("p4", "10:00"), t10 + 3_600_000) && !attentePaiementVivante(prete("p5", "10:00"), t10 + ATTENTE_PAIEMENT_MS + 1)
+  && !attentePaiementVivante(prete("p6", "10:00", { attente_paiement: { depuis: t("10:00"), onglet_ferme_le: t("10:30") } }), t10 + 3_600_000),
+  "vivante moins de 24 h, onglet ouvert ; close après 24 h ou onglet fermé");
+ok(attentePaiementCloseSansPaiement(prete("p7", "10:00", { attente_paiement: { depuis: t("10:00"), onglet_ferme_le: t("10:30") } }), t10 + 3_600_000)
+  && !attentePaiementCloseSansPaiement(prete("p8", "10:00"), t10 + 3_600_000) && attentesPaiementVivantes([prete("p9", "10:00"), mur("m2", "10:00")], t10 + 60_000).length === 1,
+  "close sans paiement : onglet fermé ou 24 h ; les vivantes se listent");
+ok(murVuLe(prete("p10", "10:00")) === t10 && dernierMotifMur([mur("m3", "03:16"), prete("p11", "10:00")]) === MOTIF_LBC_A_PAYER
+  && dernierMotifMur([mur("m4", "11:00"), prete("p12", "10:00")]) === MOTIF_LBC_PAYANT && dernierMotifMur([]) === null,
+  "le dépôt prêt compte comme un mur vu ; le dernier mur dit le parcours");
+ok(!publicationApresMur([{ status: "published", published_at: t("12:00"), preuve: PREUVE_PAIEMENT_UTILISATEUR }], t10)
+  && !publicationApresMur([{ status: "published", published_at: t("12:00"), platform_fields: { lbc_depot: { preuve: PREUVE_PAIEMENT_UTILISATEUR } } }], t10)
+  && publicationApresMur([{ status: "published", published_at: t("12:00") }], t10) && publicationPayee({ preuve: PREUVE_PAIEMENT_UTILISATEUR }),
+  "un dépôt payé par la personne ne prouve rien sur le forfait : il ne lève pas le mur");
+const candsP = [pend("n1"), pend("n2"), pend("r1", "republish", { republish_step: "captured" }), pend("d1", "publish", { forfait_lbc: { prepare_de_nouveau_le: t("12:00") } })];
+let part = partagerCandidatsAPayer(candsP, true, t10);
+ok(part.servis.map((j) => j.id).join(",") === "n1" && part.silencieux.map((j) => j.id).join(",") === "n2,d1" && part.retenus.map((j) => j.id).join(",") === "r1",
+  "auto : UNE publication servie, les autres en file sans écriture, la republication retenue");
+part = partagerCandidatsAPayer(candsP, false, t10);
+ok(part.servis.map((j) => j.id).join(",") === "d1" && part.silencieux.map((j) => j.id).join(",") === "n1,n2" && part.retenus.map((j) => j.id).join(",") === "r1",
+  "attente en cours : seule la publication « Préparer à nouveau » (demandée après le mur) passe");
+ok(partagerCandidatsAPayer([pend("n3")], false, t10).servis.length === 0 && preparationDemandeeApres(candsP[3], t10) && !preparationDemandeeApres(candsP[3], Date.parse(t("13:00"))),
+  "rien ne passe pendant une attente vivante ou close sans paiement ; une demande d'avant le mur ne compte pas");
+ok(prochainePublicationAPreparer([prete("p13", "10:00"), mur("m5", "03:16"), { ...mur("m6", "03:16"), created_at: t("00:30") }, mur("m7", "03:16", {}, "republish")])?.id === "m6"
+  && prochainePublicationAPreparer([prete("p14", "10:00")]) === null,
+  "après un paiement : la plus ancienne PUBLICATION retenue ou au mur revient en file, jamais le dépôt prêt ni une republication");
+const pfP = champsPreparerDeNouveau({ needs_user_source: "relancer", attente_paiement: { depuis: t("10:00"), onglet_ferme_le: t("10:30") }, next_action_after: "x", forfait_lbc: { n_preparations: 1 } }, t("12:00"));
+ok(!pfP.attente_paiement && !pfP.needs_user_source && !pfP.next_action_after && pfP.needsUserAttempts === 0 && pfP.forfait_lbc.prepare_de_nouveau_le === t("12:00") && pfP.forfait_lbc.n_preparations === 2,
+  "« Préparer à nouveau » : l'attente tombe, la demande est datée et comptée");
+const pfRet = champsRetenueForfait({}, t("12:00"), MOTIF_LBC_A_PAYER);
+ok(pfRet.last_diagnostic.quoi === MOTIF_LBC_A_PAYER && pfRet.last_diagnostic.retenue_avant_essai === true && murVuLe({ platform_fields: pfRet }) === 0
+  && champsRetenueForfait({}, t("12:00"), "autre").last_diagnostic.quoi === MOTIF_LBC_PAYANT, "republication retenue sous le motif du compte ; jamais un mur vu ; motif inconnu → ancien motif");
+ok(eclaireurForfaitLbc([prete("p15", "10:00")], true, Date.parse(t("23:00"))) === null && eclaireurForfaitLbc([prete("p16", "10:00"), mur("m8", "03:16")], true, Date.parse(t("23:00")))?.id === "m8",
+  "aucun éclaireur sur un dépôt prêt (nouvelle extension) ; l'ancien mur garde le sien");
+// L'extension : le mur d'un compte PRO laisse l'onglet, le particulier garde la règle d'avant.
+const lbcJs = lire("chrome-extension/content-scripts/leboncoin.js");
+const iMur = lbcJs.indexOf("if (surEcranOptions() && trouverBoutonPayant()) {");
+const blocMur = lbcJs.slice(iMur, lbcJs.indexOf("return depotNonFinalise(", iMur));
+ok(iMur > 0 && /if \(estComptePro\(job, enumerated\)\) \{/.test(blocMur) && /attenteMotif: "lbc_valider_et_payer", garderOnglet: true/.test(blocMur)
+  && /preuve: "ecran_options_payant_pret"/.test(blocMur) && /error: MSG_LBC_A_PAYER,/.test(blocMur)
+  && /attenteMotif: "lbc_options_payant_seulement",/.test(blocMur) && blocMur.indexOf("estComptePro") < blocMur.indexOf("lbc_options_payant_seulement"),
+  "extension : compte pro → dépôt préparé, onglet gardé, motif lbc_valider_et_payer ; sinon la règle d'avant");
+ok(/j\?\.platform_fields\?\.compte_pro === true\s*\|\| \(Array\.isArray\(champs\) && champs\.some\(\(c\) => \/general_sales_condition\|custom_ref\/\.test\(String\(c\?\.key \?\? ""\)\)\)\)/.test(lbcJs),
+  "compte pro : dit par le serveur (compte_pro) ou vu sur le formulaire pro");
+const mExt = lbcJs.match(/const MSG_LBC_A_PAYER =\s*((?:"[^"\n]*"\s*\+?\s*)+);/);
+ok(mExt && eval(`(${mExt[1]})`) === MSG_LBC_A_PAYER, "le texte du dépôt prêt est le même dans l'extension et la règle partagée");
+ok(!/trouverBoutonPayant\(\)\.click|boutonPayant\.click|valider et payer[^\n]*\.click\(/i.test(lbcJs), "FillSell ne clique JAMAIS « Valider et payer »");
+ok(/^const MURS_SANS_QUESTION = Object\.freeze\(\["lbc_options_payant_seulement", "lbc_valider_et_payer"\]\);/m.test(bg)
+  && /if \(result\?\.garderOnglet === true\) pf\.attente_paiement = \{ depuis: new Date\(\)\.toISOString\(\) \};/.test(bg)
+  && /if \(result\.garderOnglet === true\) await rendreOngletALaPersonne\(job, motif\)/.test(bg), "background : le mur n'hérite d'aucune question, l'attente est datée, l'onglet est rendu");
+ok(/async function rendreOngletALaPersonne\(job, motif\)/.test(bg) && /await chrome\.storage\.session\.remove\(key\)\.catch/.test(bg) && /chrome\.windows\.getLastFocused\(\{ windowTypes: \["normal"\] \}\)/.test(bg)
+  && /chrome\.tabs\.move\(tabId, \{ windowId: cible, index: -1 \}\)/.test(bg) && /drawAttention: true/.test(bg) && !/rendreOngletALaPersonne[\s\S]{0,2500}focused: true/.test(bg.slice(bg.indexOf("async function rendreOngletALaPersonne"))),
+  "l'onglet est détaché, déplacé dans la fenêtre de la personne, activé — sans voler le focus");
+ok(/chrome\.tabs\.onUpdated\.addListener\(\(tabId, info, tab\) => \{\s*\(async \(\) => \{\s*const att = await lireAttentePaiementLbc\(\);/.test(bg)
+  && /leboncoin\\\.fr\\\/deposer-une-annonce\\\/confirmation/.test(bg) && /async function conclureDepotPayeLbc\(att, url\)/.test(bg)
+  && /preuve: "paiement_utilisateur"/.test(bg) && /await updateJobStatus\(session\.access_token, att\.jobId, "published", extra\);/.test(bg)
+  && /chrome\.tabs\.onRemoved\.addListener\(\(tabId\) => \{\s*\(async \(\) => \{\s*const att = await lireAttentePaiementLbc\(\);/.test(bg) && /onglet_ferme_le: new Date\(\)\.toISOString\(\)/.test(bg),
+  "deux écouteurs : confirmation → publié (preuve paiement_utilisateur), onglet fermé → noté");
+ok(/if \(actuel !== "needs_user"\) \{ console\.warn\(`\[background\] dépôt payé : le job/.test(bg) && /let lbcPaiementPrepare = false;/.test(bg)
+  && /if \(lbcPaiementPrepare && job\.platform === "leboncoin" && String\(job\.action \?\? "publish"\) === "publish"\) \{/.test(bg)
+  && /if \(outcome\?\.garderOnglet === true && job\.platform === "leboncoin"\) lbcPaiementPrepare = true;/.test(bg),
+  "jamais une écriture sur un job qui n'attend plus ; un seul dépôt préparé par cycle");
+// Le serveur : le nouveau parcours dans get-pending-jobs, le compte pro dit à l'extension.
+ok(/if \(motifMur === MOTIF_LBC_A_PAYER\) \{/.test(gBloc) && /const autoServir = !attenteVivante && !attenteClose;/.test(gBloc)
+  && /partagerCandidatsAPayer\(candidatsForfait as never\[\], autoServir, murForfait\)/.test(gBloc)
+  && /error: MSG_FORFAIT_LBC_REPUBLICATION_RETENUE, platform_fields: pf \}\)\s*\.eq\("id", String\(j\.id\)\)\.eq\("status", "pending"\)/.test(gBloc)
+  && /const idsHors = new Set\(\[\.\.\.retenus, \.\.\.silencieux\]\.map/.test(gBloc) && /prochainePublicationAPreparer\(mursLus as never\[\]\)/.test(gBloc)
+  && /champsPreparerDeNouveau\(ligne\.platform_fields as Record<string, unknown>, maintenantIso\)/.test(gBloc),
+  "get-pending-jobs : une publication à la fois, republications retenues, la suivante remise en file après un paiement");
+ok(/platform_fields->lbc_depot->>preuve\.is\.null,platform_fields->lbc_depot->>preuve\.neq\.paiement_utilisateur/.test(gBloc), "une publication payée par la personne ne lève pas le mur (serveur)");
+ok(/const pubsLbc = out\.filter\(\(j\) => j\.platform === "leboncoin" && String\(j\.action \?\? "publish"\) === "publish"\);/.test(gpj)
+  && /for \(const j of pubsLbc\) j\.platform_fields = \{ \.\.\.\(\(j\.platform_fields as Record<string, unknown>\) \?\? \{\}\), compte_pro: true \};/.test(gpj),
+  "compte prouvé pro → platform_fields.compte_pro dans la réponse (jamais écrit)");
+// L'app : la carte des deux parcours, l'état d'une plateforme.
+ok(/estAttentePaiement\(j\)/.test(ec) && /attentePaiementVivante\(j, maintenant\)/.test(ec) && /champsPreparerDeNouveau/.test(ec)
+  && /Préparer à nouveau/.test(ec) && /Préparer la prochaine/.test(ec) && /Valider et payer/.test(ec) && /C[’']est toi qui paies, jamais FillSell/.test(ec),
+  "la carte : dépôt prêt (« Valider et payer » dans l'onglet), onglet fermé (« Préparer à nouveau »), suivante, republications");
+const natP = ep.natureAttente(prete("p17", "10:00"));
+ok(natP.kind === "attente" && natP.motif === "a_payer_lbc" && /Valider et payer/.test(ep.phraseEtat("leboncoin", natP)) && /onglet/.test(ep.phraseEtat("leboncoin", natP)),
+  "l'état d'une plateforme : prête, à payer dans l'onglet");
+const textes8 = [MSG_LBC_A_PAYER, MSG_FORFAIT_LBC_REPUBLICATION_RETENUE];
+ok(textes8.every((x) => !DUREE.test(x) && !TECH.test(x) && !/\p{Extended_Pictographic}/u.test(x)), "textes du 18/10 : ni durée, ni mot technique, ni émoji");
+
+console.log(ko ? `\n✗ ${ko} échec(s)` : "\n✓ Leboncoin, compte pro au mur du paiement : une carte, FillSell prépare et la personne paie — tout est vert");
 process.exit(ko ? 1 : 0);

@@ -3134,11 +3134,19 @@ async function pollAndProcessJobsUnlocked() {
 
   for (const j of jobs) emitProgress({ jobId: j.id, platform: j.platform, phase: "queued" });
 
+  // (18/10) UN SEUL dépôt Leboncoin préparé sur « Valider et payer » par cycle :
+  // dès qu'un dépôt attend le paiement de la personne, les autres publications
+  // Leboncoin du cycle restent en file (le serveur les sert une par une ensuite).
+  let lbcPaiementPrepare = false;
   // Séquentiel : un onglet de publication à la fois, avec une pause entre
   // chaque job (FILLSELL_CONFIG.JOB_DELAY_MS) pour ne pas enchaîner les
   // onglets trop vite.
   for (let i = 0; i < jobs.length; i++) {
     const job = jobs[i];
+    if (lbcPaiementPrepare && job.platform === "leboncoin" && String(job.action ?? "publish") === "publish") {
+      console.log(`[background] Job ${job.id} : laissé en file — un dépôt Leboncoin attend déjà « Valider et payer » sur ce cycle`);
+      continue;
+    }
     // ── LA MISE À JOUR PASSE ENTRE DEUX JOBS (2026-10-01) ──────────────────
     // Une file chargée (remialbertholl : 60 republications) ne laissait jamais
     // l'extension au repos : la mise à jour attendait des heures. Quand une
@@ -3157,6 +3165,7 @@ async function pollAndProcessJobsUnlocked() {
     }
     emitProgress({ jobId: job.id, platform: job.platform, phase: "processing" });
     const outcome = await processJob(job, session.access_token);
+    if (outcome?.garderOnglet === true && job.platform === "leboncoin") lbcPaiementPrepare = true;
     // Même persistance des échecs que le flux popup (cf. recordRecentResult) :
     // un job échoué en poll de fond doit aussi s'afficher « Échec » au popup.
     if (outcome && ["failed", "needsUser", "retry"].includes(outcome.status)) {
@@ -4082,7 +4091,7 @@ async function processJob(rawJob, accessToken) {
       // PERSISTÉ, Relancer depuis le Stock (voir marquerAttenteUtilisateur).
       if (result.attenteUtilisateur === true) {
         await marquerAttenteUtilisateur(accessToken, job, result);
-        return { status: "needsUser", error: result.error };
+        return { status: "needsUser", error: result.error, attenteMotif: result.attenteMotif ?? null, garderOnglet: result.garderOnglet === true };
       }
       // ── Tri (a)/(b) du socle needs_user (2026-07-19) ────────────────────────
       // (a) Le handler a identifié UN champ précis à trancher (needsUserField
@@ -5480,7 +5489,144 @@ async function marquerAttenteUtilisateur(accessToken, job, result) {
     error: result.error,
     platform_fields: champsAttenteUtilisateur(job.platform_fields, result, motif),
   });
+  // (18/10) Leboncoin, compte pro hors forfait : le dépôt est prêt sur « Valider et
+  // payer » — l'onglet est rendu à la personne et surveillé (jamais fermé ici).
+  if (result.garderOnglet === true) await rendreOngletALaPersonne(job, motif).catch((e) =>
+    console.warn(`[background] Job ${job.id} : onglet à rendre à la personne — ${String(e?.message ?? e)}`));
 }
+
+// ── (18/10) LE DÉPÔT LEBONCOIN PRÊT SUR « VALIDER ET PAYER » : L'ONGLET EST RENDU
+//    À LA PERSONNE, PUIS SURVEILLÉ ──────────────────────────────────────────────
+// Règle : _shared/lbc-forfait.js (motif lbc_valider_et_payer). FillSell ne clique
+// JAMAIS le paiement. L'onglet de travail (fenêtre de travail minimisée) est
+// détaché de sa plateforme (le prochain job Leboncoin ouvrira le sien), déplacé
+// dans la fenêtre de la personne et activé — sans prendre le focus de force
+// (drawAttention). Son identifiant est gardé en storage.session ; deux écouteurs
+// de haut niveau suivent l'onglet :
+//   · page de confirmation de Leboncoin (/deposer-une-annonce/confirmation) ou
+//     page de l'annonce → le dépôt est « publié » (preuve paiement_utilisateur,
+//     numéro lu dans la page s'il y est) ;
+//   · onglet fermé → noté sur la tâche (attente_paiement.onglet_ferme_le) : la
+//     carte propose « Préparer à nouveau », le serveur peut préparer la suivante.
+// Jamais de boucle : des événements, un storage, rien d'autre.
+const ATTENTE_PAIEMENT_LBC_KEY = "fillsell_lbc_paiement_attendu";
+async function lireAttentePaiementLbc() {
+  try {
+    const store = await chrome.storage.session.get(ATTENTE_PAIEMENT_LBC_KEY);
+    const a = store[ATTENTE_PAIEMENT_LBC_KEY];
+    return a && typeof a === "object" && a.jobId && Number.isInteger(a.tabId) ? a : null;
+  } catch { return null; }
+}
+async function rendreOngletALaPersonne(job, motif) {
+  const key = workTabKey(job.platform);
+  const store = await chrome.storage.session.get(key).catch(() => ({}));
+  const tabId = store[key];
+  if (tabId == null || !(await chrome.tabs.get(tabId).catch(() => null))) {
+    console.warn(`[background] Job ${job.id} : aucun onglet de travail ${job.platform} à rendre (${motif})`);
+    return;
+  }
+  // Détaché : plus jamais réutilisé ni fermé par les jobs suivants.
+  await chrome.storage.session.remove(key).catch(() => {});
+  // La fenêtre de la personne : la dernière fenêtre normale qui n'est pas une fenêtre de travail.
+  const { union: travail } = await fenetresTravailVivantes().catch(() => ({ union: [] }));
+  let cible = null;
+  const derniere = await chrome.windows.getLastFocused({ windowTypes: ["normal"] }).catch(() => null);
+  if (derniere && !travail.includes(derniere.id)) cible = derniere.id;
+  if (cible == null) {
+    const toutes = await chrome.windows.getAll({ windowTypes: ["normal"] }).catch(() => []);
+    const libre = (toutes ?? []).find((w) => !travail.includes(w.id) && w.state !== "minimized") ?? (toutes ?? []).find((w) => !travail.includes(w.id));
+    if (libre) cible = libre.id;
+  }
+  if (cible != null) {
+    await chrome.tabs.move(tabId, { windowId: cible, index: -1 }).catch((e) => console.warn("[background] onglet à déplacer :", String(e?.message ?? e)));
+    await chrome.windows.update(cible, { drawAttention: true }).catch(() => {});
+  } else {
+    // Aucune fenêtre de la personne : l'onglet prend sa propre fenêtre, visible.
+    const w = await chrome.windows.create({ tabId, focused: false, state: "normal" }).catch(() => null);
+    if (w) cible = w.id;
+  }
+  await chrome.tabs.update(tabId, { active: true }).catch(() => {});
+  await chrome.storage.session.set({ [ATTENTE_PAIEMENT_LBC_KEY]: { jobId: String(job.id), tabId, windowId: cible, depuis: new Date().toISOString(), motif } }).catch(() => {});
+  console.warn(`[background] Job ${job.id} : onglet Leboncoin ${tabId} rendu à la personne (fenêtre ${cible ?? "?"}) — « Valider et payer » lui appartient`);
+}
+// Le numéro de l'annonce sur la page de confirmation (lien « Voir mon annonce »), ou null.
+function sondeConfirmationLbc() {
+  const ids = [];
+  for (const a of document.querySelectorAll("a[href]")) {
+    const h = String(a.getAttribute("href") ?? "");
+    const m = h.match(/leboncoin\.fr\/(?:ad\/[^/]+|vi)\/(\d{7,})|^\/(?:ad\/[^/]+|vi)\/(\d{7,})/);
+    if (m) ids.push(m[1] ?? m[2]);
+  }
+  return { url: `${location.origin}${location.pathname}`, ids: [...new Set(ids)], titre: String(document.title ?? "").slice(0, 120) };
+}
+async function conclureDepotPayeLbc(att, url) {
+  await chrome.storage.session.remove(ATTENTE_PAIEMENT_LBC_KEY).catch(() => {});
+  let sonde = null;
+  try {
+    const [res] = await chrome.scripting.executeScript({ target: { tabId: att.tabId }, func: sondeConfirmationLbc });
+    sonde = res?.result ?? null;
+  } catch (e) { console.warn("[background] sonde de confirmation Leboncoin :", String(e?.message ?? e)); }
+  const session = await getValidSession();
+  if (!session?.access_token) { console.warn("[background] dépôt payé : aucune session, rien d'écrit"); return; }
+  const actuel = await jobStatusNow(session.access_token, att.jobId);
+  if (actuel !== "needs_user") { console.warn(`[background] dépôt payé : le job ${att.jobId} est « ${actuel} », rien d'écrit`); return; }
+  let pf = {};
+  try {
+    const r = await restRequest(`cross_post_jobs?id=eq.${encodeURIComponent(att.jobId)}&select=platform_fields`, session.access_token,
+      { method: "GET", headers: { Prefer: "return=representation" } });
+    const rows = await r.json().catch(() => []);
+    pf = rows?.[0]?.platform_fields ?? {};
+  } catch { /* copie vide : la fusion ci-dessous garde au moins le dépôt */ }
+  const id = sonde?.ids?.[0] ?? null;
+  const extra = {
+    error: null,
+    platform_fields: {
+      ...pf, needsUserAttempts: 0,
+      lbc_depot: { ...(pf.lbc_depot ?? {}), preuve: "paiement_utilisateur", id, confirmation_url: String(url ?? sonde?.url ?? "").slice(0, 200), at: new Date().toISOString() },
+      attente_paiement: { ...(pf.attente_paiement ?? {}), payee_le: new Date().toISOString() },
+    },
+  };
+  for (const k of ["needs_user_source", "needs_user_tick_le", "needs_user_actif_ms", "needs_user_vu_le", "needs_user_vu_erreur", "next_action_after"]) delete extra.platform_fields[k];
+  if (id) extra.listing_url = `https://www.leboncoin.fr/ad/x/${id}`;
+  await updateJobStatus(session.access_token, att.jobId, "published", extra);
+  console.warn(`[background] Job ${att.jobId} : dépôt Leboncoin payé par la personne → publié${id ? ` (annonce ${id})` : " (numéro non lu sur la page)"}`);
+}
+async function noterOngletPaiementFermeLbc(att) {
+  await chrome.storage.session.remove(ATTENTE_PAIEMENT_LBC_KEY).catch(() => {});
+  const session = await getValidSession();
+  if (!session?.access_token) return;
+  try {
+    const r = await restRequest(`cross_post_jobs?id=eq.${encodeURIComponent(att.jobId)}&status=eq.needs_user&select=platform_fields`, session.access_token,
+      { method: "GET", headers: { Prefer: "return=representation" } });
+    const rows = await r.json().catch(() => []);
+    if (!rows?.[0]) return;
+    const pf = rows[0].platform_fields ?? {};
+    if (pf.last_diagnostic?.quoi !== "lbc_valider_et_payer") return;
+    await restRequest(`cross_post_jobs?id=eq.${encodeURIComponent(att.jobId)}&status=eq.needs_user`, session.access_token, {
+      method: "PATCH",
+      body: JSON.stringify({ platform_fields: { ...pf, attente_paiement: { ...(pf.attente_paiement ?? {}), onglet_ferme_le: new Date().toISOString() } } }),
+    });
+    console.warn(`[background] Job ${att.jobId} : l'onglet « Valider et payer » a été fermé sans paiement — noté (la carte propose « Préparer à nouveau »)`);
+  } catch (e) { console.warn("[background] onglet de paiement fermé, non noté :", String(e?.message ?? e)); }
+}
+chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
+  (async () => {
+    const att = await lireAttentePaiementLbc();
+    if (!att || att.tabId !== tabId) return;
+    const url = String(info?.url ?? tab?.url ?? "");
+    if (!url) return;
+    if (/leboncoin\.fr\/deposer-une-annonce\/confirmation/.test(url) || (info?.status === "complete" && /leboncoin\.fr\/(?:ad\/[^/]+|vi)\/\d{7,}/.test(url))) {
+      await conclureDepotPayeLbc(att, url);
+    }
+  })().catch((e) => console.warn("[background] suivi de l'onglet « Valider et payer » :", String(e?.message ?? e)));
+});
+chrome.tabs.onRemoved.addListener((tabId) => {
+  (async () => {
+    const att = await lireAttentePaiementLbc();
+    if (!att || att.tabId !== tabId) return;
+    await noterOngletPaiementFermeLbc(att);
+  })().catch((e) => console.warn("[background] onglet « Valider et payer » fermé :", String(e?.message ?? e)));
+});
 
 // ── UN MUR NOMMÉ N'HÉRITE JAMAIS D'UNE QUESTION PASSÉE (16/10) ───────────────
 // Le même écran « Valider et payer » de Leboncoin finissait tantôt en
@@ -5493,7 +5639,7 @@ async function marquerAttenteUtilisateur(accessToken, job, result) {
 // question d'avant tombent, le motif est posé explicitement (« relancer »).
 // Périmètre : les murs de MURS_SANS_QUESTION seulement ; toute autre attente
 // garde l'écriture d'avant, inchangée.
-const MURS_SANS_QUESTION = Object.freeze(["lbc_options_payant_seulement"]);
+const MURS_SANS_QUESTION = Object.freeze(["lbc_options_payant_seulement", "lbc_valider_et_payer"]);
 const MARQUEURS_QUESTION_PASSEE = Object.freeze([
   "needsUserField", "needsUserFields", "champs_a_completer", "server_required_fields", "serverRequired", "needsUserBoucle",
 ]);
@@ -5505,6 +5651,10 @@ function champsAttenteUtilisateur(pfJob, result, motif) {
   }
   pf.last_diagnostic = { quoi: motif, detail: String(result?.error ?? "").slice(0, 300), at: new Date().toISOString() };
   if (result?.photosLbc) pf.photos_lbc = result.photosLbc;
+  if (result?.lbcDepot) pf.lbc_depot = result.lbcDepot;
+  // (18/10) Le dépôt est PRÊT sur « Valider et payer » : l'attente de paiement commence
+  // (le serveur ne sert aucune autre publication Leboncoin tant qu'elle est vivante).
+  if (result?.garderOnglet === true) pf.attente_paiement = { depuis: new Date().toISOString() };
   return pf;
 }
 

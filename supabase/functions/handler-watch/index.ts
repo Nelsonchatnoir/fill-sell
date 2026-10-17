@@ -16,7 +16,7 @@ import { RELANCES_APRES_MAJ, regleDeRelance, posteALeBuild, champsRelance, sourc
 import { reponseTailleAuto, champsApresReponseTaille } from "../_shared/taille-question-auto.js";
 import { MOTIF_LBC_IDENTITE, FENETRE_IDENTITE_MS, ECLAIREUR_INTERVALLE_MS, attendIdentiteLbc, attentesIdentiteLbc, eclaireurIdentiteLbc, champsEclaireur, champsReprise } from "../_shared/lbc-identite.js";
 import {
-  MOTIF_LBC_PAYANT, FENETRE_FORFAIT_MS, ECLAIREUR_FORFAIT_INTERVALLE_MS, FILTRE_PREUVE_PRO, motifDiagnostic as motifDiagnosticForfait,
+  MOTIFS_LBC_PAIEMENT, FENETRE_FORFAIT_MS, ECLAIREUR_FORFAIT_INTERVALLE_MS, FILTRE_PREUVE_PRO, motifDiagnostic as motifDiagnosticForfait,
   attendForfaitLbc, attentesForfaitLbc, compteProuvePro, dernierMurForfait, publicationApresMur, eclaireurForfaitLbc,
   champsEclaireurForfait, champsRepriseForfait,
 } from "../_shared/lbc-forfait.js";
@@ -1803,7 +1803,7 @@ serve(async (req) => {
       }
       const aProuver: string[] = [];
       for (const [u, l] of parCompteForfait) {
-        if (!l.some((j) => motifDiagnosticForfait(j) === MOTIF_LBC_PAYANT)) continue;
+        if (!l.some((j) => MOTIFS_LBC_PAIEMENT.includes(String(motifDiagnosticForfait(j) ?? "")))) continue;
         if (compteProuvePro(l)) comptesForfaitLbc.add(u); else aProuver.push(u);
       }
       if (aProuver.length) {
@@ -4547,7 +4547,9 @@ serve(async (req) => {
       .select("id, user_id, inventaire_id, status, action, platform, error, created_at, platform_fields")
       .in("status", ["needs_user", "pending", "processing"])
       .eq("platform", "leboncoin")
-      .eq("platform_fields->last_diagnostic->>quoi", MOTIF_LBC_PAYANT)
+      // (18/10) les deux motifs : mur vu par une ancienne extension, ou dépôt prêt
+      // sur « Valider et payer » (nouvelle) — l'éclaireur ne vaut que pour le premier.
+      .in("platform_fields->last_diagnostic->>quoi", [...MOTIFS_LBC_PAIEMENT])
       .gte("created_at", new Date(now - FENETRE_FORFAIT_MS).toISOString())
       .limit(500);
     const parCompteF = new Map<string, Array<Record<string, unknown>>>();
@@ -4573,9 +4575,11 @@ serve(async (req) => {
         const murDe = new Map(comptesPro.map((u) => [u, dernierMurForfait(parCompteF.get(u) as never[])]));
         const mursVus = [...murDe.values()].filter((m) => m > 0);
         // Les publications Leboncoin passées depuis le plus ancien de ces murs.
+        // (18/10) un dépôt payé par la personne (lbc_depot.preuve = paiement_utilisateur) ne
+        // prouve rien sur le forfait : publicationApresMur l'ignore (colonne preuve).
         const { data: pubs } = mursVus.length
           ? await supabase.from("cross_post_jobs")
-            .select("user_id, status, published_at")
+            .select("user_id, status, published_at, preuve:platform_fields->lbc_depot->>preuve")
             .in("user_id", comptesPro).eq("platform", "leboncoin").eq("status", "published")
             .gt("published_at", new Date(Math.min(...mursVus)).toISOString())
             .limit(1000)

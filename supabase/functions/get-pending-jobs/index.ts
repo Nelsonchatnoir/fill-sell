@@ -48,7 +48,12 @@ import { tourDeTailleEnFrancais, brancheDeTaille } from "../_shared/taille-de-se
 import { ageBeebsDuReleve } from "../_shared/beebs-age-releve.js";
 import { attenteSessionEncoreEspacee } from "../_shared/attente-session.js";
 import { pausePageDepotLbc, decisionPausePageDepotLbc } from "../_shared/lbc-pause-page-depot.js";
-import { MOTIF_LBC_PAYANT, FENETRE_FORFAIT_MS, FILTRE_PREUVE_PRO, MSG_FORFAIT_LBC_RETENUE, candidatRetenueForfait, dernierMurForfait, partagerCandidatsForfait, champsRetenueForfait } from "../_shared/lbc-forfait.js";
+import {
+  MOTIF_LBC_A_PAYER, MOTIFS_LBC_PAIEMENT, FENETRE_FORFAIT_MS, FILTRE_PREUVE_PRO, MSG_FORFAIT_LBC_RETENUE,
+  MSG_FORFAIT_LBC_REPUBLICATION_RETENUE, candidatRetenueForfait, dernierMurForfait, dernierMotifMur, partagerCandidatsForfait,
+  partagerCandidatsAPayer, attentePaiementVivante, attentePaiementCloseSansPaiement, prochainePublicationAPreparer,
+  champsRetenueForfait, champsPreparerDeNouveau,
+} from "../_shared/lbc-forfait.js";
 import { impasseRecreationVinted, decisionImpasseRecreation } from "../_shared/recreation-impasse-vinted.js";
 import { messageRetenueCreneau, messageRetenuePause, retraitEngage } from "../_shared/retenue-creneau.js";
 import { posteApresDefaut } from "../_shared/defaut-fillsell.js";
@@ -4254,44 +4259,119 @@ serve(async (req) => {
         if (candidatsForfait.length) {
           // Le mur se lit aussi sur un job remis en file (l'éclaireur garde son
           // dernier mur) : sinon relancer l'éclaireur ferait « reculer » le mur.
+          // (18/10) Les deux motifs : mur vu par une ancienne extension
+          // (lbc_options_payant_seulement) ou dépôt PRÊT sur « Valider et payer »
+          // (lbc_valider_et_payer, nouvelle extension) — le dernier mur décide du parcours.
           const { data: mursForfait } = await userClient.from("cross_post_jobs")
-            .select("id, diag:platform_fields->last_diagnostic")
+            .select("id, status, action, created_at, diag:platform_fields->last_diagnostic, attente:platform_fields->attente_paiement")
             .eq("user_id", user.id).eq("platform", "leboncoin").in("status", ["needs_user", "pending", "processing"])
-            .eq("platform_fields->last_diagnostic->>quoi", MOTIF_LBC_PAYANT)
+            .in("platform_fields->last_diagnostic->>quoi", [...MOTIFS_LBC_PAIEMENT])
             .gte("created_at", new Date(Date.now() - FENETRE_FORFAIT_MS).toISOString())
             .limit(200);
-          const murForfait = dernierMurForfait(((mursForfait ?? []) as Array<{ diag: unknown }>)
-            .map((m) => ({ platform_fields: { last_diagnostic: m.diag } })) as never[]);
+          const mursLus = ((mursForfait ?? []) as Array<{ id: string; status: string; action: string | null; created_at: string; diag: unknown; attente: unknown }>)
+            .map((m) => ({ id: m.id, platform: "leboncoin", status: m.status, action: m.action ?? "publish", created_at: m.created_at,
+              platform_fields: { last_diagnostic: m.diag, attente_paiement: m.attente } }));
+          const murForfait = dernierMurForfait(mursLus as never[]);
           if (murForfait) {
+            // (18/10) Un dépôt PAYÉ par la personne (lbc_depot.preuve = paiement_utilisateur)
+            // ne prouve rien sur le forfait : il ne lève pas le mur.
             const { data: passeeDepuis } = await userClient.from("cross_post_jobs").select("id")
               .eq("user_id", user.id).eq("platform", "leboncoin").eq("status", "published")
-              .gt("published_at", new Date(murForfait).toISOString()).limit(1);
+              .gt("published_at", new Date(murForfait).toISOString())
+              .or("platform_fields->lbc_depot->>preuve.is.null,platform_fields->lbc_depot->>preuve.neq.paiement_utilisateur")
+              .limit(1);
             const { data: preuvePro } = (passeeDepuis ?? []).length ? { data: [] } : await userClient.from("cross_post_jobs").select("id")
               .eq("user_id", user.id).eq("platform", "leboncoin")
               .gte("created_at", new Date(Date.now() - FENETRE_FORFAIT_MS).toISOString())
               .or(FILTRE_PREUVE_PRO).limit(1);
             if (!(passeeDepuis ?? []).length && (preuvePro ?? []).length) {
-              const { servis, retenus } = partagerCandidatsForfait(candidatsForfait as never[], murForfait) as
-                { servis: Array<Record<string, unknown>>; retenus: Array<Record<string, unknown>> };
+              const motifMur = dernierMotifMur(mursLus as never[]);
               const maintenantIso = new Date().toISOString();
-              for (const j of retenus) {
-                const pf = champsRetenueForfait(j.platform_fields as Record<string, unknown>, maintenantIso) as Record<string, unknown>;
-                // L'erreur précédente n'est jamais perdue (règle du 17/09 soir).
-                pf["erreurs_archivees"] = archiverErreur(pf["erreurs_archivees"], j.error as string, "pending", "get-pending-jobs (retenue avant essai : compte Leboncoin pro au mur du paiement)");
-                const { error: uErr } = await userClient.from("cross_post_jobs")
-                  .update({ status: "needs_user", error: MSG_FORFAIT_LBC_RETENUE, platform_fields: pf })
-                  .eq("id", String(j.id)).eq("status", "pending");
-                if (uErr) console.warn(`[get-pending-jobs] mur forfait Leboncoin : retenue du job ${String(j.id).slice(0, 8)} non écrite (${uErr.message}) — retenu quand même pour ce poll`);
-              }
-              const idsRetenus = new Set(retenus.map((j) => String(j.id)));
-              out = out.filter((j) => !idsRetenus.has(String(j.id)));
-              if (idsRetenus.size) {
-                console.log(
-                  `[get-pending-jobs] userId=${user.id} : compte Leboncoin pro au mur du paiement (mur vu le ${new Date(murForfait).toISOString()}) → ` +
-                  `${idsRetenus.size} job(s) retenu(s) avant essai${servis.length ? `, éclaireur ${String(servis[0].id).slice(0, 8)} servi` : ""}`,
-                );
+              if (motifMur === MOTIF_LBC_A_PAYER) {
+                // ══ (18/10) NOUVEAU PARCOURS : FILLSELL PRÉPARE, LA PERSONNE PAIE ══
+                // UNE publication préparée à la fois : aucune tant qu'un dépôt prêt
+                // attend son paiement (moins de 24 h, onglet ouvert), sinon la première ;
+                // les autres restent en file SANS écriture. Les republications pas encore
+                // retirées sont retenues (needs_user, carte) : un redépôt payant
+                // retirerait l'annonce en ligne.
+                const attenteVivante = mursLus.some((m) => attentePaiementVivante(m as never));
+                // Une attente close SANS paiement (onglet fermé, 24 h passées) : rien ne se
+                // prépare tout seul derrière — la carte propose « Préparer à nouveau ».
+                const attenteClose = mursLus.some((m) => attentePaiementCloseSansPaiement(m as never));
+                const autoServir = !attenteVivante && !attenteClose;
+                const { servis, silencieux, retenus } = partagerCandidatsAPayer(candidatsForfait as never[], autoServir, murForfait) as
+                  { servis: Array<Record<string, unknown>>; silencieux: Array<Record<string, unknown>>; retenus: Array<Record<string, unknown>> };
+                // Après un paiement, la publication suivante (retenue ou au mur, la plus
+                // ancienne) revient en file toute seule — UNE, servie au poll suivant.
+                if (autoServir && !servis.length && !silencieux.length) {
+                  const suivante = prochainePublicationAPreparer(mursLus as never[]) as Record<string, unknown> | null;
+                  if (suivante) {
+                    const { data: ligne } = await userClient.from("cross_post_jobs").select("id, error, platform_fields")
+                      .eq("id", String(suivante.id)).eq("status", "needs_user").maybeSingle();
+                    if (ligne) {
+                      const pf = champsPreparerDeNouveau(ligne.platform_fields as Record<string, unknown>, maintenantIso) as Record<string, unknown>;
+                      pf["erreurs_archivees"] = archiverErreur(pf["erreurs_archivees"], ligne.error as string, "needs_user", "get-pending-jobs (dépôt précédent payé : la publication suivante se prépare)");
+                      const { data: maj } = await userClient.from("cross_post_jobs").update({ status: "pending", error: null, platform_fields: pf })
+                        .eq("id", String(ligne.id)).eq("status", "needs_user").select("id");
+                      if ((maj ?? []).length) console.log(`[get-pending-jobs] userId=${user.id} : publication Leboncoin ${String(ligne.id).slice(0, 8)} remise en file (la suivante à préparer)`);
+                    }
+                  }
+                }
+                for (const j of retenus) {
+                  const pf = champsRetenueForfait(j.platform_fields as Record<string, unknown>, maintenantIso, MOTIF_LBC_A_PAYER) as Record<string, unknown>;
+                  pf["erreurs_archivees"] = archiverErreur(pf["erreurs_archivees"], j.error as string, "pending", "get-pending-jobs (republication retenue : compte Leboncoin pro hors forfait, un redépôt serait payant)");
+                  const { error: uErr } = await userClient.from("cross_post_jobs")
+                    .update({ status: "needs_user", error: MSG_FORFAIT_LBC_REPUBLICATION_RETENUE, platform_fields: pf })
+                    .eq("id", String(j.id)).eq("status", "pending");
+                  if (uErr) console.warn(`[get-pending-jobs] forfait Leboncoin : republication ${String(j.id).slice(0, 8)} non retenue en base (${uErr.message}) — retenue quand même pour ce poll`);
+                }
+                const idsHors = new Set([...retenus, ...silencieux].map((j) => String(j.id)));
+                out = out.filter((j) => !idsHors.has(String(j.id)));
+                if (idsHors.size || servis.length) {
+                  console.log(
+                    `[get-pending-jobs] userId=${user.id} : compte Leboncoin pro, dépôts à payer par la personne (dernier mur ${new Date(murForfait).toISOString()}) → ` +
+                    `${servis.length ? `publication ${String(servis[0].id).slice(0, 8)} servie seule` : `aucune publication servie (${attenteVivante ? "un dépôt attend « Valider et payer »" : "rien à préparer"})`}, ` +
+                    `${silencieux.length} en file, ${retenus.length} republication(s) retenue(s)`,
+                  );
+                }
+              } else {
+                // ══ ANCIENNE EXTENSION (17/10) : PLUS RIEN SUR CE MUR, UN ÉCLAIREUR ══
+                const { servis, retenus } = partagerCandidatsForfait(candidatsForfait as never[], murForfait) as
+                  { servis: Array<Record<string, unknown>>; retenus: Array<Record<string, unknown>> };
+                for (const j of retenus) {
+                  const pf = champsRetenueForfait(j.platform_fields as Record<string, unknown>, maintenantIso) as Record<string, unknown>;
+                  // L'erreur précédente n'est jamais perdue (règle du 17/09 soir).
+                  pf["erreurs_archivees"] = archiverErreur(pf["erreurs_archivees"], j.error as string, "pending", "get-pending-jobs (retenue avant essai : compte Leboncoin pro au mur du paiement)");
+                  const { error: uErr } = await userClient.from("cross_post_jobs")
+                    .update({ status: "needs_user", error: MSG_FORFAIT_LBC_RETENUE, platform_fields: pf })
+                    .eq("id", String(j.id)).eq("status", "pending");
+                  if (uErr) console.warn(`[get-pending-jobs] mur forfait Leboncoin : retenue du job ${String(j.id).slice(0, 8)} non écrite (${uErr.message}) — retenu quand même pour ce poll`);
+                }
+                const idsRetenus = new Set(retenus.map((j) => String(j.id)));
+                out = out.filter((j) => !idsRetenus.has(String(j.id)));
+                if (idsRetenus.size) {
+                  console.log(
+                    `[get-pending-jobs] userId=${user.id} : compte Leboncoin pro au mur du paiement (mur vu le ${new Date(murForfait).toISOString()}) → ` +
+                    `${idsRetenus.size} job(s) retenu(s) avant essai${servis.length ? `, éclaireur ${String(servis[0].id).slice(0, 8)} servi` : ""}`,
+                  );
+                }
               }
             }
+          }
+        }
+        // ══ (18/10) LE COMPTE EST PRO : L'EXTENSION LE SAIT AVANT LE DÉPÔT ════════
+        // platform_fields.compte_pro (réponse seulement, jamais écrit) sur chaque
+        // publication Leboncoin servie : au mur « Valider et payer », l'extension
+        // prépare le dépôt et laisse l'onglet à la personne — un particulier garde
+        // la règle d'avant. Une lecture, seulement s'il y a une publication Leboncoin.
+        const pubsLbc = out.filter((j) => j.platform === "leboncoin" && String(j.action ?? "publish") === "publish");
+        if (pubsLbc.length) {
+          const { data: preuveProDepot } = await userClient.from("cross_post_jobs").select("id")
+            .eq("user_id", user.id).eq("platform", "leboncoin")
+            .gte("created_at", new Date(Date.now() - FENETRE_FORFAIT_MS).toISOString())
+            .or(FILTRE_PREUVE_PRO).limit(1);
+          if ((preuveProDepot ?? []).length) {
+            for (const j of pubsLbc) j.platform_fields = { ...((j.platform_fields as Record<string, unknown>) ?? {}), compte_pro: true };
           }
         }
       } catch (e) {

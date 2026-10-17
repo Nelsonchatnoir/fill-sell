@@ -379,6 +379,7 @@
     "selftest:dressing-garde-commande-annulee": "node scripts/dressing-garde-commande-annulee-selftest.mjs",
     "selftest:vente-vinted-en-lot": "node scripts/vente-vinted-en-lot-selftest.mjs",
     "selftest:releve-ventes-trace": "node scripts/releve-ventes-trace-selftest.mjs",
+    "selftest:commande-annulee-jamais-vente": "node scripts/commande-annulee-jamais-vente-selftest.mjs",
     "gen:etat-job-extension": "node scripts/gen-etat-job-extension.mjs"
   },
   "dependencies": {

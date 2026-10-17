@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const LEBONCOIN_BUILD = "2026-10-16-pro-et-photos-gratuites (catégorie : le panneau des racines est reconnu à ses racines — un compte PRO ne voit pas « Divers » ; photos : le nombre gratuit est lu sur le formulaire au dépôt, seules les premières partent, jamais une photo payante) · 2026-10-08-ping (0.6.103 : FILLSELL_PING, réponse synchrone « je suis là ») · 2026-10-05-transporteurs-exacts (transporteurs Leboncoin : fenêtre attendue au calme après le poids, chaque case relue à neuf et vérifiée, ensemble exact avant « Valider », relu après validation et juste avant le dépôt ; un écart qui persiste = rien ne part, needsUser nommé) · 2026-10-02-mur-connexion-depot (0.6.84 : mur de connexion de la page de dépôt reconnu — jeton luat absent, phrase « Connectez-vous ou créez un compte », boutons « Me connecter » lus sans layout ; compte connecté signalé au background) · 2026-09-24-retrait-pro-tiroir-gerer (0.6.66 : annonce PRO en fenetre etroite — panneau de gestion absent sous 971 px, le controle Supprimer est cherche dans le tiroir « Gerer ») · 2026-09-14-retrait-challenge-et-releve (0.6.36, chemin de SUPPRESSION seul : le détecteur d'interstitiel anti-robot est hissé au module et interrogé AVANT de conclure « contrôle Supprimer introuvable » — sur les deux chemins, page d'annonce ET « Mes annonces » ; le relevé des actions réellement rendues part en `diagnostic` (donc en platform_fields.last_diagnostic) au lieu de mourir dans `trace` ; « Mes annonces » dit en plus combien de cartes ont été rendues ; le mur de cookies est refusé par fsConsentRefuser, la détection de la 0.6.35, et non plus par dismissDidomi qui ne voyait rien) — précédent : 2026-09-14-consentement-vu-enfin (0.6.35 : le mur de cookies Leboncoin est DÉTECTÉ — la détection part du contrôle de refus « Continuer sans accepter » et non plus du conteneur #didomi-host, qui existe à 0×0 et n'a jamais rien rendu ; refus cliqué, disparition ATTENDUE, trois points de sortie qui ne disent plus « brouillon » ; aucune tentative consommée) — précédent : 2026-09-09-adsubmit-est-la-preuve (0.6.24 : plus aucun re-clic du Continuer final dès qu'un adsubmit est parti ; 2xx = dépôt accepté, id lu ; 403 details[] = texte exact de Leboncoin)";
+const LEBONCOIN_BUILD = "2026-10-18-pro-valider-et-payer (compte PRO hors forfait : le dépôt est préparé jusqu'à l'écran « Valider et payer », l'onglet est laissé à la personne qui paie elle-même — motif lbc_valider_et_payer, jamais un clic sur le paiement ; particulier inchangé) · 2026-10-16-pro-et-photos-gratuites (catégorie : le panneau des racines est reconnu à ses racines — un compte PRO ne voit pas « Divers » ; photos : le nombre gratuit est lu sur le formulaire au dépôt, seules les premières partent, jamais une photo payante) · 2026-10-08-ping (0.6.103 : FILLSELL_PING, réponse synchrone « je suis là ») · 2026-10-05-transporteurs-exacts (transporteurs Leboncoin : fenêtre attendue au calme après le poids, chaque case relue à neuf et vérifiée, ensemble exact avant « Valider », relu après validation et juste avant le dépôt ; un écart qui persiste = rien ne part, needsUser nommé) · 2026-10-02-mur-connexion-depot (0.6.84 : mur de connexion de la page de dépôt reconnu — jeton luat absent, phrase « Connectez-vous ou créez un compte », boutons « Me connecter » lus sans layout ; compte connecté signalé au background) · 2026-09-24-retrait-pro-tiroir-gerer (0.6.66 : annonce PRO en fenetre etroite — panneau de gestion absent sous 971 px, le controle Supprimer est cherche dans le tiroir « Gerer ») · 2026-09-14-retrait-challenge-et-releve (0.6.36, chemin de SUPPRESSION seul : le détecteur d'interstitiel anti-robot est hissé au module et interrogé AVANT de conclure « contrôle Supprimer introuvable » — sur les deux chemins, page d'annonce ET « Mes annonces » ; le relevé des actions réellement rendues part en `diagnostic` (donc en platform_fields.last_diagnostic) au lieu de mourir dans `trace` ; « Mes annonces » dit en plus combien de cartes ont été rendues ; le mur de cookies est refusé par fsConsentRefuser, la détection de la 0.6.35, et non plus par dismissDidomi qui ne voyait rien) — précédent : 2026-09-14-consentement-vu-enfin (0.6.35 : le mur de cookies Leboncoin est DÉTECTÉ — la détection part du contrôle de refus « Continuer sans accepter » et non plus du conteneur #didomi-host, qui existe à 0×0 et n'a jamais rien rendu ; refus cliqué, disparition ATTENDUE, trois points de sortie qui ne disent plus « brouillon » ; aucune tentative consommée) — précédent : 2026-09-09-adsubmit-est-la-preuve (0.6.24 : plus aucun re-clic du Continuer final dès qu'un adsubmit est parti ; 2xx = dépôt accepté, id lu ; 403 details[] = texte exact de Leboncoin)";
 console.log(`[leboncoin.js] build ${LEBONCOIN_BUILD}`);
 
 // Content script Leboncoin — pilote le WIZARD de dépôt d'annonce.
@@ -2371,6 +2371,16 @@ async function fillListingForm(job) {
     "là — rien n'a été mis en ligne. Si tu as un compte pro, regarde le forfait d'annonces de ton espace " +
     "Leboncoin : c'est lui qui ouvre le dépôt gratuit. Tu peux publier cette annonce à la main, ou la " +
     "relancer ici quand le bouton gratuit revient.";
+  // (18/10) Le même texte que _shared/lbc-forfait.js MSG_LBC_A_PAYER (contrôlé par le selftest).
+  const MSG_LBC_A_PAYER =
+    "Ton annonce est prête sur Leboncoin : dans l'onglet Leboncoin ouvert sur ton ordinateur, clique « Valider et payer » " +
+    "(ton compte pro est hors forfait, Leboncoin fait payer ce dépôt). FillSell ne paie jamais à ta place. " +
+    "Si l'onglet a été fermé, appuie sur « Préparer à nouveau » dans « À régler ».";
+  // (18/10) Compte PRO : dit par le serveur (platform_fields.compte_pro, preuve sur ses
+  // jobs) ou vu sur le formulaire (un champ que seul le formulaire pro porte).
+  const estComptePro = (j, champs) =>
+    j?.platform_fields?.compte_pro === true
+    || (Array.isArray(champs) && champs.some((c) => /general_sales_condition|custom_ref/.test(String(c?.key ?? ""))));
   const MSG_LBC_NON_FINALISE =
     "Leboncoin a reçu l'annonce, mais l'option gratuite « Déposer sans booster mon annonce » n'a pas pu être " +
     "choisie — sans ce choix, Leboncoin ne met pas l'annonce en ligne. Relance la publication depuis le Stock : " +
@@ -2478,6 +2488,25 @@ async function fillListingForm(job) {
         // dépôts inachevés dans son compte et zéro chance d'aboutir.
         // attenteUtilisateur ⇒ needs_user PERSISTÉ, aucune reprise.
         if (surEcranOptions() && trouverBoutonPayant()) {
+          // ── (18/10, décision de Nico) COMPTE PRO HORS FORFAIT : FILLSELL PRÉPARE,
+          //    LA PERSONNE PAIE ─────────────────────────────────────────────────
+          // Le dépôt est complet jusqu'à l'écran « Valider et payer » : on ne
+          // clique JAMAIS ce bouton, on LAISSE L'ONGLET TEL QUEL (garderOnglet :
+          // le background le rend à la fenêtre de la personne et le surveille)
+          // et la tâche attend, nommée `lbc_valider_et_payer` — aucune reprise,
+          // aucune tentative consommée, aucun nouveau dépôt inachevé chez
+          // Leboncoin. Compte PRO seulement (preuve du serveur
+          // platform_fields.compte_pro, ou le formulaire pro lu ici) : un
+          // particulier garde la règle d'avant (pack photos, annonce par annonce).
+          if (estComptePro(job, enumerated)) {
+            console.warn("[leboncoin] /options : compte pro hors forfait — dépôt préparé, l'onglet reste ouvert pour « Valider et payer » (jamais cliqué par FillSell)");
+            return {
+              success: false, needsUser: true, attenteUtilisateur: true, attenteMotif: "lbc_valider_et_payer", garderOnglet: true,
+              warnings, unfilledRequired, discoveredRequired: enumerated,
+              lbcDepot: { preuve: "ecran_options_payant_pret", note: "dépôt préparé jusqu'à « Valider et payer » : la personne paie elle-même, FillSell ne clique jamais", adsubmit: depotAccepte, at: new Date().toISOString() },
+              error: MSG_LBC_A_PAYER,
+            };
+          }
           console.warn("[leboncoin] /options : aucune option gratuite, seul le paiement est proposé — arrêt, sans reprise");
           return {
             success: false, needsUser: true, attenteUtilisateur: true, attenteMotif: "lbc_options_payant_seulement",
