@@ -19,7 +19,8 @@
 //   H. l'extension : item_ids de toute commande, relecture lots_v1 bornée,
 //      normalisation '<ref>:<article>', veille → commandes_vinted_noter (3 au plus),
 //      tolérante à une RPC absente (404, PGRST202 : rien, aucune erreur visible).
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';
+import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import path from 'node:path';
@@ -283,7 +284,12 @@ if (process.argv.includes('--prod')) {
     'veille_app', has_function_privilege('authenticated', 'public.commandes_vinted_noter(jsonb)', 'execute'),
     'regle_fermee', not has_function_privilege('authenticated', 'public.vente_vinted_lot_eclater(uuid,text,text)', 'execute'),
     'rls', (select relrowsecurity from pg_class where oid = 'public.vinted_commandes_articles'::regclass)) as r;`;
-  const res = spawnSync('npx', ['supabase', 'db', 'query', '--linked', sql], { cwd: RACINE, encoding: 'utf8', shell: true });
+  // (17/10) La requête passe par un fichier : sous Windows, le shell de spawnSync coupe
+  // une requête de plusieurs lignes à guillemets (le contrôle rendait « undefined »).
+  const fichier = path.join(os.tmpdir(), `vente-vinted-en-lot-prod-${process.pid}.sql`);
+  writeFileSync(fichier, sql, 'utf8');
+  const res = spawnSync('npx', ['supabase', 'db', 'query', '--linked', '-f', `"${fichier}"`], { cwd: RACINE, encoding: 'utf8', shell: true });
+  try { unlinkSync(fichier); } catch { /* fichier temporaire */ }
   const txt = String(res.stdout ?? '');
   let r = null;
   try { r = JSON.parse(txt.slice(txt.indexOf('{'))).rows?.[0]?.r; } catch { r = null; }
