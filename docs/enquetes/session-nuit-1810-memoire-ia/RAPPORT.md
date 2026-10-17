@@ -3,6 +3,23 @@
 Heures de Paris. Ordre de travail : 1, 5, 3, 2, 4. Chaque point dit FAIT ET PROUVÉ, FAIT À PROUVER ou PAS FAIT, avec
 la preuve ou la raison. Selftests de départ (17/10 23:40) : **345 / 346** (seul rouge : `vinted-origine`, d'avant).
 
+## RÉSUMÉ (à lire en premier)
+| Point | Statut | En une ligne |
+|---|---|---|
+| 1. Mémoire compte × catégorie | **FAIT, À PROUVER — livré ÉTEINT** | Mécanisme, table (RLS) et réglages faits ; seuls les champs « public du rayon » sont retenus (mesuré). Preuve réelle impossible : la rédaction IA remplit déjà l'Univers de Mode, et ces champs n'ont été demandés qu'UNE fois depuis le 12/10 → **0 question évitable aujourd'hui**. |
+| 5. Cache et regroupement IA | **FAIT ET PROUVÉ** (cache, partage) ; regroupement **NON activé** | Haiku 4.5 partout ; catégorie = 92 % du coût de déduction ; 26 % des appels étaient des jumeaux payés deux fois. Partage dans l'app + cache serveur des catégories allumés : **−69 % d'appels de catégorie** (estimé). Regroupement des aspects eBay : −13 % de coût mais qualité en baisse sur 91 vrais articles → éteint. |
+| 3. Ventes Beebs | **FAIT (enquête prouvée)**, pas de correctif | 0 vente Beebs jamais détectée seule (le veilleur ne PEUT pas dire « vendu ») ; 12 ventes Beebs confirmées au clic, dont 6 rangées « Ailleurs » depuis le 02/10. Trois correctifs proposés. |
+| 2. Preuve Leboncoin « Marque : Paris 2024 » | **PAS FAIT** ; retrait Depop **PROUVÉ** | L'annonce est encore « En cours de vérification » chez Leboncoin ; son dépôt date d'avant le correctif ; l'app interdit à juste titre republication et retrait. Depop : 404 relu. |
+| 4. Les deux rouges anciens | **FAIT ET PROUVÉ** | Lint : ne plante plus (il lisait les copies minifiées android/ios/build). `vinted-origine` : vert à la racine, test intact → extension **0.6.125**. |
+
+**Chiffres** : questions évitées par la mémoire : 0 sur les 6 derniers jours (68 sur la fenêtre de 7 j, mais presque toutes d'un lot
+du 11/10 d'avant le correctif A10) · coût IA par article : 0,0129 $ → ≈ 0,0104 $ (déduction 0,0049 $ → ≈ 0,0019 $) ·
+qualité : partage et cache identiques par construction (cache : 110 / 110 champs identiques, 0 appel) ; regroupement :
+67,5 % de valeurs justes contre 71,3 % → refusé.
+**Livraison** : un seul zip à téléverser, `build\CWS-0.6.125-A-TELEVERSER\fillsell-extension-0.6.125-9d11d42-cws.zip` (aucune
+permission nouvelle) · web 9d11d42 servi · OTA **2.9.100** · selftests **345/346 → 350/350**.
+**Reste à Nico** : téléverser le zip. Rien d'autre n'est à faire ; trois décisions l'attendent, sans urgence (fin du rapport).
+
 ## POINT 1 — MÉMOIRE COMPTE × CATÉGORIE — FAIT, À PROUVER (livré derrière un interrupteur ÉTEINT)
 
 ### En clair
@@ -187,3 +204,74 @@ attrapés par l'expression ? commande en attente ?) : **à vérifier**.
 - **Preuve** : `vinted-origine` 10 cas verts, sans qu'une ligne du selftest ait changé ; nouveau `lien-vinted` (11) ;
   `etat-job`, `attente-boutique`, `file-des-jobs`, `boutique-connectee`, `a-regler-sans-bandeau`, `aucune-estimation` verts.
 - **Conséquence** : `chrome-extension/` change → extension **0.6.125** (voir la livraison).
+
+## POINT 2 — PREUVE LEBONCOIN « MARQUE : PARIS 2024 » — PAS FAIT (Leboncoin vérifie encore l'annonce) ; retrait Depop PROUVÉ
+- **Leboncoin 3290209516** (compte de Nico, Electrastuff) : la page publique est joignable (relue à 00:56, « hier à
+  19:32 », 999 €) avec la description « Article de TEST FillSell, ne pas acheter. T-shirt imprimé homme, taille M, très bon
+  état, coloris bleu. » — **sans** « Marque : Paris 2024 ». C'est attendu : ce dépôt a été fait à 19:32 par le build
+  `2026-10-17T17:18:57Z+9129f95-dirty`, AVANT le correctif de la garde de description (8f15a6c, 0.6.124) ; il ne peut pas
+  prouver ce correctif. Dans « Mes annonces » de Nico, Leboncoin la classe toujours **« En cours de vérification »**
+  (relu à 01:00).
+- L'app dit la même chose (« Leboncoin vérifie ton annonce ») : sa garde interdit la republication (doublon) et ne propose
+  pour le retrait qu'« Oublier » — faux ici, donc pas cliqué. Rien forcé. Synchronisation Leboncoin lancée par le geste
+  de l'app à 00:58 (le dernier relevé datait du 17/10 11:27, avant le dépôt) : le relevé de 00:59 voit 3290209516 au
+  statut « inconnu » (en vérification) → le lien n'est pas rattaché, comme la règle le veut (`trancher_publications_sans_lien`
+  ne rattache qu'une annonce « en ligne »).
+- **Depop** : job de retrait 1f339da9 `deleted` (17/10 21:35), page relue à 00:57 : « 404 Page not found ». **Prouvé.**
+- Beebs (pour mémoire) : l'annonce 34185769 a été retirée par Beebs ; le job de retrait attend (« pas encore visible »).
+- **Reste** : quand Leboncoin aura fini sa vérification, le prochain relevé rattache le lien ; alors retrait par l'app.
+  La preuve « Marque : Paris 2024 » sur Leboncoin demande un NOUVEAU dépôt par la 0.6.124 ou plus (republication de cette
+  annonce une fois en ligne, puis retrait) — selftest `marques-exactes` (62) en attendant.
+
+## INCIDENTS DE LA NUIT
+- **Aucun en prod** (pas d'écran blanc, aucune fonction en erreur). Web relu après chaque push : 5cd453f, 915f92d,
+  05113e2, 9d11d42 servis, entrée 200 avec `Origin`, /app rendu, console propre.
+- **Évité de justesse** : la carte du lot lisait deux valeurs qu'elle ne recevait pas (`posesDuLot`, `changerPosesDuLot`
+  calculées dans le parent) — **`build:essai` était vert**, c'est ESLint sur les fichiers touchés qui l'a vu, avant le
+  push. Même classe que la page blanche du lot du 09/10. Leçon : `npx eslint <fichiers touchés>` avant chaque push (le lint
+  complet ne plante plus).
+
+## CHOIX PRIS SANS NICO
+1. Mémoire : liste réduite aux champs qui disent le PUBLIC du rayon (données à l'appui) ; Univers / Produit de Décoration,
+   genres de livres et âge Beebs exclus ; livrée **éteinte** faute de preuve réelle possible.
+2. Deux fiches d'essai créées par SQL sur le compte de Nico (999 €), jamais publiées, retirées ensuite (0 job, 0 annonce) ;
+   une rédaction IA a consommé 1 annonce de son quota (66 → 65).
+3. IA : partage des questions de catégorie dans l'app ACTIVÉ ; cache serveur des catégories ALLUMÉ à 00:49
+   (`coin_config.ia_cache_categorie = 1`) après le banc et le contrôle de bout en bout ; cache des aspects éteint (gain
+   nul) ; regroupement éteint (qualité) ; `generate-listing` non redéployé ; fonction de banc `ia-banc-deduction` laissée
+   en place (lecture seule, secret de cron) pour rejouer la comparaison.
+4. Ventes Beebs : aucun code ; trois correctifs proposés (C0, C1, C2).
+5. Leboncoin : synchronisation lancée sur le compte de Nico ; ni republication ni « Oublier ».
+6. Lint : seuls les artefacts sont ignorés ; les 906 erreurs d'avant ne sont pas traitées.
+7. Selftests : contrôles de FORME mis à la nouvelle forme du code, propriété inchangée — `champs-deduits` (2),
+   `couleur-auto` (1), `depop-rayon` (1) ; `rayon-refuse` reverdi en changeant MON code, pas le test. `vinted-origine` :
+   aucune ligne changée.
+8. Copie non empaquetée de l'extension chez Nico non rechargée (elle tourne en 0.6.124 `ced6cfd` ; la 0.6.125 ne change
+   que les phrases du popup pour un vendeur étranger).
+
+## LIVRAISON
+- **Le seul zip à téléverser** : `C:\Users\nicol\fill-and-sell\build\CWS-0.6.125-A-TELEVERSER\fillsell-extension-0.6.125-9d11d42-cws.zip`
+  (BUILD_ID `2026-10-17T23:03:01Z+9d11d42`, 551 Ko) — contient TOUTE la 0.6.124. La 0.6.124 est rangée :
+  `build\CWS-PERIMES\PERIME-fillsell-extension-0.6.124-ced6cfd-JAMAIS-TELEVERSE-remplace-par-0.6.125-9d11d42.zip`.
+- **Manifest relu** (zip 0.6.125 contre zip 0.6.124) : seule la version change — **aucune permission nouvelle**
+  (permissions storage, alarms, scripting, cookies, power ; 8 hôtes obligatoires, 19 optionnels, identiques). Pratiques de
+  confidentialité CWS inchangées (mêmes cases que la 0.6.124).
+- `EXTENSION_MIN_BUILD` NON relevé (reste `2026-09-30T20:16:41Z`). Après l'acceptation CWS : `"0.6.125"` dans
+  `ALREADY_PUBLISHED` (`scripts/package-extension.mjs`) et `EXTENSION_MIN_BUILD = '2026-10-17T23:03:01Z'`.
+- **Web** : 9d11d42 servi (`build.json` `2026-10-17T23:03:57Z+9d11d42`, entrée `assets/index-DucCGZYm.js` 200 avec `Origin`,
+  /app et Réglages › Préférences rendus, console propre) ; le commit de documentation final ne change pas l'app.
+- **OTA 2.9.100** (build `2026-10-17T23:05:32Z+fff63e8`), canal production relu : 2.9.99 → **2.9.100**.
+- **Fonctions** : `resolve-categorie` v15 → **v16** (`verify_jwt` false, inchangé) ; `ia-banc-deduction` **v2** (nouvelle,
+  false, garde par secret de cron) ; `generate-listing` v117 inchangée.
+- **Migrations appliquées** (avec inverse) : `20261018030000_memoire_champs_categorie` (00:06),
+  `20261018040000_ia_questions_cache` (00:36).
+- **Interrupteurs** : `ia_cache_categorie = 1` ; `ia_cache_aspects = 0` ; `ia_aspects_groupes = 0` ;
+  `memoire_categorie_ouverte` absent (= éteint).
+- **Selftests** : avant **345 / 346** (rouge : `vinted-origine`) ; après **350 / 350** ; nouveaux : `memoire-categorie` (60),
+  `question-categorie` (12), `claude-cache` (20), `lien-vinted` (11).
+
+## CE QUI RESTE À NICO
+- **Téléverser le zip 0.6.125** et « Envoyer pour examen ». C'est tout ce qui est à faire.
+- Décisions, quand il le voudra (rien ne presse, rien n'est cassé) : allumer la mémoire (chez lui d'abord, une ligne SQL
+  plus haut) ; C2 Beebs (vente déclarée rangée « Beebs », 6 ventes à réparer) ; l'annonce Leboncoin d'essai 3290209516
+  (999 €, en vérification) — l'app la retirera dès qu'elle sera en ligne, ou à supprimer sur Leboncoin.
