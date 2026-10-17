@@ -3979,6 +3979,11 @@ serve(async (req) => {
       if (pf.republish_step !== "captured") continue;
       const source = String(pf.needs_user_source ?? "");
       if (source === "livres_isbn_garde" || source === "republish_couleur_garde") continue;
+      // (17/10, a6e773d4) Une pause « introuvable » appartient à SA règle
+      // (_shared/introuvable-a-confirmer.js) : une capture, même valide, faite
+      // AVANT la lecture ratée ne prouve pas que l'annonce est encore en ligne
+      // — seul un relevé qui revoit CET identifiant la fait repartir.
+      if (source === SOURCE_INTROUVABLE || source === SOURCE_INTROUVABLE_PERSISTANT) continue;
       // (04/10, cielmo 638f2293) Sortie de boucle (même échec répété :
       // boucle_technique) ou mise de côté « servie sans démarrer » : la tâche
       // attend « Relancer » après un redémarrage de Chrome. Une capture n'y

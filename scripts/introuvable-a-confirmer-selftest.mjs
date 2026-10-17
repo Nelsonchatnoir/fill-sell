@@ -146,5 +146,11 @@ ok(/from\("vinted_listing_snapshots"\)/.test(zone) && /\.in\("vinted_item_id", i
   'handler-watch : trace Vinted par identifiant exact (relevé du jour + fiche qui porte CE vinted_item_id)');
 ok(!/select\("id, statut, last_synced_at, vinted_status, vinted_account_id"\)/.test(zone), 'handler-watch : la fiche du job n’est plus lue comme preuve');
 ok(/if \(!tracesLisibles\)/.test(zone) && /if \(eA\) continue;/.test(zone), 'handler-watch : une lecture ratée n’est jamais une absence');
+// (17/10, a6e773d4) Le « réveil par capture fraîche » ne réveille jamais une pause « introuvable » :
+// une capture faite AVANT la lecture ratée ne prouve rien (le job, remis en pause à 13:15, était re-pendu à 13:18).
+const iReveil = hw.indexOf('le gel n\'a plus d\'objet');
+const zoneReveil = iReveil > 0 ? hw.slice(Math.max(0, iReveil - 6000), iReveil) : '';
+ok(/if \(source === SOURCE_INTROUVABLE \|\| source === SOURCE_INTROUVABLE_PERSISTANT\) continue;/.test(zoneReveil),
+  'handler-watch : le réveil par capture saute les pauses « introuvable » (leur règle seule décide)');
 
 console.log(`✓ selftest:introuvable-a-confirmer — ${n} assertions`);
