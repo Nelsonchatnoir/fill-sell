@@ -89,8 +89,9 @@ export const BUILD_EBAY_SAISIE_LIBRE = "2026-10-03T11:30:00Z";
 // publication s'arrêtait sur « Plusieurs marques Depop s'écrivent… ». Le
 // serveur ne tranche jamais cette question (ce serait perdre une vraie marque) :
 // elle repart une fois, dès qu'un poste porte la règle exacte (0.6.123).
-// ⚠️ PROVISOIRE, jamais atteinte : le vrai BUILD_ID est posé au paquet de la 0.6.123.
-export const BUILD_DEPOP_MARQUE = "2099-01-01T00:00:00Z";
+// BUILD_ID de la 0.6.123 (zip build/CWS-0.6.123-A-TELEVERSER/, 2026-10-17T13:13:01Z+250dc2f),
+// posé au paquet le 17/10 (« 2099 » avant, valeur jamais atteinte).
+export const BUILD_DEPOP_MARQUE = "2026-10-17T13:13:01Z";
 
 export const CORRECTIFS_EXTENSION = [
   {

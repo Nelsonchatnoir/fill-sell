@@ -156,7 +156,7 @@ console.log("\nC. LE FILET SERVEUR (extensions ≤ 0.6.122, publications seuleme
 console.log("\nD. LE CORRECTIF D'EXTENSION (question ambiguë), DORMANT");
 {
   const c = C.CORRECTIFS_EXTENSION.find((x) => x.cle === "depop_marque_ambigue");
-  ok(!!c && c.platform === "depop" && c.buildMin === C.BUILD_DEPOP_MARQUE && C.BUILD_DEPOP_MARQUE === "2099-01-01T00:00:00Z", "entrée depop_marque_ambigue, build provisoire jamais atteint");
+  ok(!!c && c.platform === "depop" && c.buildMin === C.BUILD_DEPOP_MARQUE && C.BUILD_DEPOP_MARQUE === "2026-10-17T13:13:01Z", "entrée depop_marque_ambigue, build de la 0.6.123 (posé au paquet du 17/10)");
   const amb = { platform: "depop", action: "publish", status: "needs_user", handler_build: "2026-10-15T19:36:02Z+18cc681 · v0.6.114",
     error: "Plusieurs marques Depop s'écrivent « H&M » : écris-la exactement comme sur Depop, ou « Autre » si l'article n'a pas de marque.",
     platform_fields: { needsUserField: { field_key: "depopMarque" }, needs_user_source: "champ_a_choisir" } };

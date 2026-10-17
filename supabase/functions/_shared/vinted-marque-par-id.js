@@ -29,12 +29,12 @@
 //
 // Pur, sans import (Deno + Node).
 
-// ⚠️ VALEUR PROVISOIRE, JAMAIS ATTEINTE : tant qu'elle reste là, rien ne
-// s'active (ni la preuve servie, ni le réarmement des jobs arrêtés par la
-// question « marque »). Valeur réelle posée au paquet 0.6.123 : le BUILD_ID
-// (préfixe horodaté) du premier build d'extension qui pose la marque par son
-// identifiant.
-export const BUILD_VINTED_MARQUE_PAR_ID = "2099-01-01T00:00:00Z";
+// Le BUILD_ID (préfixe horodaté) du premier build d'extension qui pose la
+// marque par son identifiant : la 0.6.123 (zip build/CWS-0.6.123-A-TELEVERSER/,
+// BUILD_ID 2026-10-17T13:13:01Z+250dc2f, posé au paquet le 17/10 ; « 2099 »
+// avant, valeur jamais atteinte). La preuve d'envoi reste exigée avant tout
+// retrait (envoiMarqueProuve) : ce build ne l'ouvre pas à lui seul.
+export const BUILD_VINTED_MARQUE_PAR_ID = "2026-10-17T13:13:01Z";
 
 /** L'identifiant de la marque de l'annonce d'origine (republish_snapshot.brand_id > 1), ou null. */
 export function marqueAIdentifiantCapturee(pf) {
