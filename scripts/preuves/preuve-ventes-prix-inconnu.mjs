@@ -63,6 +63,9 @@ create temp table avant on commit drop as
 select (select max(id) from push_ventes) as max_id,
        (select count(*) from push_ventes where job_id is not null and prix is null) as sans_prix,
        (select count(*) from push_ventes where job_id is not null and prix is null and mail_statut = 'envoye') as mails_sans_prix,
+       -- note 2348 (Louis) : jamais touchée par la réparation (décision de Nico en attente, 17/10)
+       (select count(*) from push_ventes where id = 2348 and job_id is not null and prix is null) as n_2348,
+       (select count(*) from push_ventes where id = 2348 and job_id is not null and prix is null and mail_statut = 'envoye') as mail_2348,
        (select count(*) from email_logs where email_type like 'vente:%') as mails_vente,
        (select count(*) from push_ventes where statut = 'a_envoyer' or mail_statut = 'a_envoyer') as en_file,
        (select ${EMPREINTE_HORS_PRIX} from push_ventes pv) as empreinte_hors_prix,
@@ -160,10 +163,10 @@ declare a record; v int; w int; x text; y text; z text; v_rejouee boolean := ${A
 begin
   if not v_rejouee then return; end if;
   select * into a from avant;
-  select count(*) into v from push_ventes where job_id is not null and prix is null and id <= a.max_id;
-  perform pg_temp.verif(v = 0, format('S1. notes sans prix nées d''un job : %s → %s', a.sans_prix, v));
+  select count(*) into v from push_ventes where job_id is not null and prix is null and id <= a.max_id and id <> 2348;
+  perform pg_temp.verif(v = 0, format('S1. notes sans prix nées d''un job (hors note 2348, laissée) : %s → %s', a.sans_prix - a.n_2348, v));
   select count(*) into v from public._backup_1610_ventes_prix_zero where sauve_le = now();
-  perform pg_temp.verif(v = a.sans_prix, format('S2. sauvegarde : %s ligne(s) (prix avant / après)', v));
+  perform pg_temp.verif(v = a.sans_prix - a.n_2348, format('S2. sauvegarde : %s ligne(s) (prix avant / après)', v));
   select count(*) into v from public._backup_1610_ventes_prix_zero where sauve_le = now() and (prix_avant is not null or prix_apres <= 0);
   perform pg_temp.verif(v = 0, 'S3. seules des notes SANS prix sont touchées ; aucun prix remis à 0 ou moins');
   select ${EMPREINTE_HORS_PRIX} into x from push_ventes pv;
@@ -180,9 +183,11 @@ begin
    where vv.created_at > now() - interval '40 days';
   perform pg_temp.verif(z is not distinct from a.empreinte_ventes, 'S8. la table ventes est intacte (prix, bénéfices)');
   select count(*) into v from public._backup_1610_ventes_prix_zero where sauve_le = now() and mail_statut = 'envoye';
-  perform pg_temp.verif(v = a.mails_sans_prix, format('S9. dont %s note(s) dont le mail « 0 € » était parti : prix remis, AUCUN renvoi', v));
+  perform pg_temp.verif(v = a.mails_sans_prix - a.mail_2348, format('S9. dont %s note(s) dont le mail « 0 € » était parti : prix remis, AUCUN renvoi', v));
   if exists (select 1 from push_ventes where id = 2348) then
-    perform pg_temp.verif(exists (select 1 from push_ventes where id = 2348 and prix = 14), 'S10. note 2348 (Louis) : 14 € (vente enregistrée 181210 = 14 €, annonce 14 €)');
+    perform pg_temp.verif(exists (select 1 from push_ventes where id = 2348 and prix is null)
+                          and not exists (select 1 from public._backup_1610_ventes_prix_zero where id = 2348),
+      'S10. note 2348 (Louis) : NON touchée, toujours sans prix (14 € chez nous, 12 € selon le vendeur : décision de Nico en attente)');
   end if;
   if exists (select 1 from push_ventes where id = 626) then
     perform pg_temp.verif(exists (select 1 from push_ventes where id = 626 and prix = 12), 'S11. note 626 : 12 € (vente enregistrée), pas les 14 € de l''annonce');
@@ -196,7 +201,7 @@ declare v int; v_rejouee boolean := ${AVEC_REPARATION ? 'true' : 'false'};
 begin
   if not v_rejouee then return; end if;
   select count(*) into v from public._backup_1610_ventes_prix_zero where sauve_le = now();
-  perform pg_temp.verif(v = (select sans_prix from avant), format('S12. rejouée une 2e fois : %s ligne(s) sauvegardée(s), rien de plus (idempotente)', v));
+  perform pg_temp.verif(v = (select sans_prix - n_2348 from avant), format('S12. rejouée une 2e fois : %s ligne(s) sauvegardée(s), rien de plus (idempotente)', v));
 end $t$;
 
 -- ── T. LE DÉCLENCHEUR, sur une COPIE de cross_post_jobs (table vivante intacte) ──

@@ -137,3 +137,6 @@ Cas : 128 notes de vente sans prix depuis le 06/10 (republications Vinted : `pri
   `prix` seule, sauvegarde `_backup_1610_ventes_prix_zero`, aucun mail ni push renvoyé (push_ventes n'a aucun
   déclencheur ; statut / mail_statut intacts). Preuves : `npm run selftest:ventes-prix-inconnu [-- --prod]`,
   `scripts/preuves/preuve-ventes-prix-inconnu.mjs`.
+- **Appliquées le 17/10** (feu vert nommé) : migration vers 09:04 (42/42 rejouées sur la prod), réparation à 09:05 —
+  127 notes, 0 mail (`email_logs` 287 → 287). ⛔ La note 2348 est EXCLUE du script (consigne de Nico : 14 € en base,
+  12 € selon le vendeur) : elle reste sans prix tant que Nico n'a pas tranché ; ne pas la « réparer » d'office.

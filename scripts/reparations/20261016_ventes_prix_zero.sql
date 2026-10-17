@@ -10,6 +10,9 @@
 -- avec un prix connu (119 par leur vente enregistrée, 8 par le prix lu à la
 -- vente, 1 par le prix de recréation). Les VENTES (table ventes) de ces notes
 -- ont toutes leur prix : rien à y réparer.
+-- ⛔ NOTE 2348 JAMAIS TOUCHÉE ICI (consigne de Nico du 17/10) : notre base dit
+--    14 € (vente 181210), le vendeur dit 12 € ; la décision est chez Nico. Elle
+--    reste sans prix (inconnu : le mail n'affiche aucun montant). Donc 127 notes.
 -- ⛔ AUCUN MAIL, AUCUNE NOTIFICATION : seule la colonne `prix` change.
 --    push_ventes n'a aucun déclencheur ; l'envoi (push_ventes_a_envoyer) ne
 --    prend que statut / mail_statut = 'a_envoyer', jamais touchés ici ; un mail
@@ -71,6 +74,7 @@ BEGIN
         JOIN public.cross_post_jobs j ON j.id = pv.job_id AND j.user_id = pv.user_id
        WHERE pv.job_id IS NOT NULL AND pv.prix IS NULL
          AND pv.id > v_dernier AND pv.id <= v_max
+         AND pv.id <> 2348   -- décision de Nico en attente : jamais touchée ici
     ), sauve AS (
       INSERT INTO public._backup_1610_ventes_prix_zero (id, user_id, job_id, prix_avant, prix_apres, statut, mail_statut)
       SELECT c.id, c.user_id, c.job_id, c.prix, c.nouveau, c.statut, c.mail_statut

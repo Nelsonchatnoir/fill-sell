@@ -17,7 +17,14 @@ const ok = (c, m) => { n++; if (c) console.log(`  ✓ ${m}`); else { ko++; conso
 const racine = fileURLToPath(new URL('..', import.meta.url));
 const lire = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 
-const vite = await createServer({ root: racine, logLevel: 'silent', server: { middlewareMode: true }, appType: 'custom' });
+// (17/10) Sans noDiscovery, Vite balayait au démarrage tous les .html du dépôt
+// (build/, screenshots-review/, docs/…) : 94 s, au-delà des 60 s du chargement
+// d'un module → rouge sans rapport avec le code. Même réglage que cloud-ecrans.
+const vite = await createServer({
+  root: racine, logLevel: 'silent', appType: 'custom',
+  server: { middlewareMode: true, hmr: false, watch: null },
+  optimizeDeps: { noDiscovery: true, include: [] },
+});
 try {
   const A = await vite.ssrLoadModule('/src/cloud/achatCloud.js');
   const C = await vite.ssrLoadModule('/src/config/cloudOffer.js');

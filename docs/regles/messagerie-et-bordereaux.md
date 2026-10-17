@@ -100,7 +100,8 @@
   (`f8aa02a5-23cb-4325-bba8-127f61a75741`, identifiée le 16/10 à 22:50 ; les deux autres comptes « ornella… » sont
   d'autres personnes, sans activité). Script `scripts/reparations/20261016_drapeau_messagerie_ornella.sql`
   (sauvegarde `_backup_1610_beta_flags_ornella`, inverse dans le fichier). Contrôle : `count(*)` des porteurs = 2.
-- **Répondre SANS liste blanche** (migration 20261016220000) : interrupteur `coin_config.messagerie_envoi_mode`
+- **Répondre SANS liste blanche** (migration 20261016220000, **APPLIQUÉE le 17/10 vers 09:00**, feu vert nommé ; 33/33
+  rejouées sur la prod ; seuls les 2 porteurs du drapeau passent, prouvé sur un compte réel sans drapeau) : interrupteur `coin_config.messagerie_envoi_mode`
   (0 fermé : les réponses en attente sont reverrouillées ; 1 liste blanche, valeur si la clé manque ; 2 ouvert aux
   comptes bêta). Garde-fous, tous en base ou prouvés : une réponse ne naît que d'un appui (session) ; même clé =
   même réponse ; même texte vers la même conversation en 10 min = même réponse ; l'app garde UNE clé par brouillon

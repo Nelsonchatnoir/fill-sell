@@ -710,3 +710,32 @@ fait », copie 5 jours), en lecture seule, et je te dis ce que j'ai vu.
   l'extension, ni vente ni transfert. La politique (`fillsell.app/legal` § 8.2 et § 8.5) le dit depuis ce push.
 - **OTA 2.9.97** : prête (version montée et commitée) ; `npm run build` puis
   `npx @capgo/cli bundle upload --channel production --bundle 2.9.97 --path dist` — **seulement sur ton feu vert**.
+
+### 10.8 Mise en ligne (17/10 matin, feux verts nommés de Nico)
+
+- **Push** : `e2ac4ae..292a875` sur `main` (17/10, avant 09:00) ; web servi au push.
+- **Migration 20261016220000** appliquée le 17/10 vers 09:00 (`db query --linked` dans une transaction,
+  `lock_timeout` 5 s, puis `migration repair`). Avant : prod relue identique à l'essai à blanc (empreintes des 12
+  fonctions = celles du 16/10 à 22:52, dernière migration 20261016200000, 0 réponse / 0 demande / 0 commande /
+  0 copie, liste blanche vide). Après : les **33 vérifications de l'essai rejouées sur la prod, 33/33** (transaction
+  annulée). Bêta : **11/11** — drapeau sur 2 comptes exactement (Nico + `ornellaracano@icloud.com`) sur 3 086 profils ;
+  pour un compte réel SANS drapeau : répondre → `refuse: beta`, prise d'envoi (session ou serveur eBay) → `beta`,
+  générer / demander un bordereau → `refuse: beta`, compteurs → `beta: false`, aucun mode d'envoi ; Nico et Ornella
+  voient le mode 2 et la génération.
+- **Migration 20261016221000** appliquée le 17/10 vers 09:04, même procédé. Avant : les 7 fonctions touchées
+  identiques à l'essai, 128 notes sans prix, aucune en file d'envoi ; essai à blanc rejoué avec la réparation
+  modifiée : 42/42. Après : **42/42 sur la prod** (migration en place, réparation rejouée dans une transaction annulée).
+- **Réparation** `scripts/reparations/20261016_ventes_prix_zero.sql` appliquée à 09:05:30 : **127 notes** ont leur prix
+  (sauvegarde 127 lignes, prix = la règle pour les 127, statut et mail_statut inchangés, aucune note qui avait un prix
+  touchée). ⛔ **Note 2348 (Louis) exclue du script** sur consigne de Nico : toujours sans prix (le mail n'écrit aucun
+  montant), la vente 181210 inchangée (14 €) — décision chez Nico. **Mails : 0** — `email_logs` « vente : » 287 avant,
+  287 après (dont 45 avant, 45 après pour ces 128 notes) ; réponses de `push-ventes` dans `net._http_response` :
+  0 mail envoyé avant comme après. Preuve sur l'état final (règle, déclencheur, décision) : 30/30.
+- **Zip CWS 0.6.121** vérifié : seul dans `build/CWS-0.6.121-A-TELEVERSER/`, les anciens dans `build/CWS-PERIMES/` ;
+  ses 37 fichiers identiques à une reconstruction depuis le code poussé (hors identifiant de build), identifiant
+  `2026-10-16T21:58:59Z+292a875` (propre, postérieur au dernier commit de l'extension), manifest 0.6.121 à la racine.
+- **OTA 2.9.97 : PAS envoyée** — Nico a relevé le 17/10 à 09:10, sur iPhone, 5 défauts des écrans bêta (pastilles,
+  retour, défilement, onglet allumé, vignette) ; l'OTA est retenue pour les embarquer (§ 10.9), feu vert à redonner.
+- **Selftests** : 328/329 (seul rouge : `vinted-origine`, d'avant le chantier). `cloud-achat` était rouge sans rapport avec
+  le code (Vite balayait 94 s tous les `.html` du dépôt avant de charger un module, délai de 60 s) : son banc a pris le
+  réglage des bancs voisins (`optimizeDeps.noDiscovery`).
