@@ -141,7 +141,7 @@ export function etatCommandeEbay(fulfillment, cancelState) {
  * état, pseudo de l'acheteur, ligne (titre, numéro d'annonce), total, date,
  * date limite d'envoi et service choisi. Jamais shipTo ni buyerRegistrationAddress.
  */
-export function commandesEbay(orders) {
+export function commandesEbay(orders, suivis = {}) {
   const out = [];
   for (const o of orders ?? []) {
     if (!o?.orderId) continue;
@@ -150,6 +150,9 @@ export function commandesEbay(orders) {
     const instr = Array.isArray(o.fulfillmentStartInstructions) ? o.fulfillmentStartInstructions[0] : null;
     const service = instr?.shippingStep?.shippingServiceCode ?? null;
     const avant = unique?.lineItemFulfillmentInstructions?.shipByDate ?? null;
+    // (17/10) Une étiquette achetée sur eBay (ou un envoi déclaré) : son numéro
+    // de suivi et son transporteur, lus par getShippingFulfillments.
+    const suivi = suivis?.[String(o.orderId)] ?? null;
     out.push({
       ref: String(o.orderId),
       etat: etatCommandeEbay(o.orderFulfillmentStatus, o.cancelStatus?.cancelState),
@@ -161,10 +164,23 @@ export function commandesEbay(orders) {
       montant: Number.isFinite(Number(o.pricingSummary?.total?.value)) ? Number(o.pricingSummary.total.value) : null,
       devise: o.pricingSummary?.total?.currency ?? null,
       annonce_ref: unique?.legacyItemId ? String(unique.legacyItemId) : null,
-      transporteur: service ? court(service, 80) : null,
+      transporteur: suivi?.transporteur ? court(suivi.transporteur, 80) : (service ? court(service, 80) : null),
+      ...(suivi?.numero ? { envoi_ref: court(suivi.numero, 100) } : {}),
       a_expedier_avant: iso(avant),
       vendue_le: iso(o.creationDate),
     });
   }
   return out;
+}
+
+/**
+ * (17/10) Le suivi d'une commande eBay (getShippingFulfillments) : le premier
+ * envoi qui porte un numéro — {numero, transporteur} — sinon null. Rien d'autre
+ * n'est lu (ni adresse, ni nom).
+ */
+export function suiviEbay(reponse) {
+  const liste = Array.isArray(reponse?.fulfillments) ? reponse.fulfillments : [];
+  const f = liste.find((x) => x?.shipmentTrackingNumber) ?? null;
+  if (!f) return null;
+  return { numero: String(f.shipmentTrackingNumber), transporteur: f.shippingCarrierCode ? String(f.shippingCarrierCode) : null };
 }

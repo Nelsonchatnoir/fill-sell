@@ -22,13 +22,21 @@
 //      dans FillSell après le dernier message = lue) ; tri et « À expédier » ;
 //   e. eBay : normaliseurs serveur (messages groupés par annonce ×
 //      interlocuteur, commandes sans adresse) ;
-//   f. aucun émoji, jamais « pépites ».
+//   f. aucun émoji, jamais « pépites » ;
+//   g. (17/10, constat de Nico sur iPhone) l'écran est une PAGE dans le
+//      conteneur qui défile (jamais une couche fixe, aucun conteneur à hauteur
+//      fixe), avec la flèche ← et son titre ; ouvrir crée une entrée
+//      d'historique, le retour la défait, un appui sur un onglet ferme ; les
+//      entrées vivent sur le Stock seul, en style neutre (seul le compteur est
+//      coloré) ; vignette : photo de l'annonce, puis la fiche, puis une icône ;
+//      toute couche de la bêta passe par Couche (portail sur body, barre du bas
+//      masquée).
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { conversationNonLue, trierConversations, etatReponse, actionCommande, commandesAExpedier, libelleEtatCommande, nomPlateforme, lienCommande, lienConversation, murReleve, delaiEnvoi, etatZoneReponse, etatDemandeBordereau, refusDemandeBordereau, pseudoAffiche, libelleTransporteur, attendGeneration, phraseEngagement, libelleTypeEtiquette } from "../src/messagerie/vue.js";
-import { conversationsEbay, commandesEbay, texteMessageEbay, etatCommandeEbay } from "../supabase/functions/_shared/messagerie-ebay.js";
+import { sourcesVignette, suiviCommande, expedieesRecentes, conversationNonLue, trierConversations, etatReponse, actionCommande, commandesAExpedier, libelleEtatCommande, nomPlateforme, lienCommande, lienConversation, murReleve, delaiEnvoi, etatZoneReponse, etatDemandeBordereau, refusDemandeBordereau, pseudoAffiche, libelleTransporteur, attendGeneration, phraseEngagement, libelleTypeEtiquette } from "../src/messagerie/vue.js";
+import { conversationsEbay, commandesEbay, texteMessageEbay, etatCommandeEbay, suiviEbay } from "../supabase/functions/_shared/messagerie-ebay.js";
 
 const RACINE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const lire = (p) => fs.readFileSync(path.join(RACINE, p), "utf8").replace(/\r\n/g, "\n");
@@ -41,11 +49,12 @@ const STOCK = lire("src/tabs/StockTab.jsx");
 const VENTES = lire("src/tabs/VentesTab.jsx");
 const CARTE = lire("src/stock/Carte.jsx");
 const HOOK = lire("src/messagerie/useMessagerieBeta.js");
-const FICHIERS_UI = ["src/messagerie/EspaceMessagerie.jsx", "src/messagerie/SectionAExpedier.jsx", "src/messagerie/BarreMessagerie.jsx", "src/messagerie/vue.js", "src/messagerie/useMessagerieBeta.js", "src/messagerie/ouvrir.js", "src/messagerie/empreinte.js"];
+const FICHIERS_UI = ["src/messagerie/EspaceMessagerie.jsx", "src/messagerie/SectionAExpedier.jsx", "src/messagerie/BarreMessagerie.jsx", "src/messagerie/vue.js", "src/messagerie/useMessagerieBeta.js", "src/messagerie/ouvrir.js", "src/messagerie/empreinte.js", "src/messagerie/useEcranMessagerie.js", "src/messagerie/Vignette.jsx", "src/messagerie/Couche.jsx"];
 
 // ── a. Rien pour le parc ─────────────────────────────────────────────────────
 await cas("App : la barre et l'espace ne se rendent que pour un compte bêta", () => {
-  assert.ok(/\{messagerie\.beta&&\(\s*<BarreMessagerie/.test(APP), "barre sous messagerie.beta");
+  assert.ok(/\{messagerie\.beta&&tab===1&&!espaceMessagerie&&\(\s*<BarreMessagerie/.test(APP), "barre sous messagerie.beta, sur le Stock seul (17/10)");
+  assert.ok(/className=\{messagerie\.beta&&espaceMessagerie\?"wrap page-pad fs-espace-beta-ouvert":"wrap page-pad"\}/.test(APP), "la classe de page n'est posée que pour un compte bêta qui a ouvert l'écran");
   assert.ok(/\{messagerie\.beta&&espaceMessagerie&&\(/.test(APP), "espace sous messagerie.beta");
   assert.ok(/messagerie=\{messagerie\.beta\?\{parArticle:messagerie\.parArticle,ouvrir:\(id\)=>setEspaceMessagerie\(\{onglet:'messages',article:id\}\)\}:null\}/.test(APP), "Stock : null hors bêta");
   assert.ok(/messagerieBeta=\{messagerie\.beta\}/.test(APP), "Ventes : booléen bêta");
@@ -67,7 +76,7 @@ await cas("le drapeau : une lecture hors bêta puis la relecture s'arrête ; jam
 });
 
 // ── b. Le bouton « Bordereau » et les gestes qui engagent ────────────────────
-await cas("« Récupérer » ACTIF seulement bordereau prêt (Vinted, Leboncoin, Beebs) ; « Générer » seulement génération ouverte ET options générables ; sinon un lien", () => {
+await cas("« Récupérer » ACTIF bordereau prêt (Vinted, Leboncoin, Beebs) ; « Générer » dans FillSell dès que la commande attend le geste ; (17/10) la plateforme seulement en dernier recours", () => {
   const actifs = [
     { platform: "vinted", etat: "a_expedier", bordereau: "pret", commande_ref: "9001", conversation_ref: "501" },
     { platform: "leboncoin", etat: "a_expedier", bordereau: "pret", commande_ref: "777" },
@@ -81,25 +90,39 @@ await cas("« Récupérer » ACTIF seulement bordereau prêt (Vinted, Leboncoin,
   ];
   for (const c of aGenerer) {
     assert.equal(attendGeneration(c), true);
+    // (17/10) Génération FERMÉE par le serveur : jamais le geste, jamais un renvoi — l'attente est dite.
     const ferme = actionCommande(c, "fr", false);
-    assert.equal(ferme.type, "lien", "génération fermée : un lien, jamais le geste");
+    assert.equal(ferme.type, "attente", "génération fermée : ni le geste, ni un renvoi vers la plateforme");
+    // Réglages pas encore lus (null) : le bouton reste (la base refuse si c'est fermé).
+    assert.equal(actionCommande(c, "fr", null).type, "generer", "réglages pas encore lus : le bouton reste (cause de « c'est toi qui le fais »)");
     const a = actionCommande(c, "fr", true);
     assert.equal(a.type, "generer", JSON.stringify(c));
     assert.equal(a.phrase, phraseEngagement(c.platform, "fr"));
     assert.ok(a.phrase.length >= 10 && a.phrase.length <= 400, "phrase gardée en base (10 à 400)");
   }
   assert.deepEqual(actionCommande(aGenerer[0], "fr", true).types, [1, 3], "Vinted : les types proposés, à choisir");
+  // (17/10) Vinted, options pas encore relues : le bouton reste, papier ou QR au choix (l'extension vérifie juste avant).
+  const sansOptions = actionCommande({ platform: "vinted", etat: "a_expedier", bordereau: "a_obtenir" }, "fr", true);
+  assert.equal(sansOptions.type, "generer");
+  assert.deepEqual(sansOptions.types, [1, 3]);
+  assert.equal(sansOptions.typesSupposes, true);
+  // (17/10) Leboncoin Colissimo / courrier suivi : dans FillSell, avec l'adresse de l'expéditeur.
+  for (const t of ["colissimo", "courrier_suivi"]) {
+    const a = actionCommande({ platform: "leboncoin", etat: "a_confirmer", bordereau: "a_generer", commande_ref: "8", options_bordereau: { generable: true, type_envoi: t, adresse_requise: true } }, "fr", true);
+    assert.equal(a.type, "generer", t); assert.equal(a.adresse, true, t);
+    assert.equal(a.phrase, phraseEngagement("leboncoin", "fr", "adresse"));
+    assert.ok(a.phrase.includes("adresse de ton compte Leboncoin") && a.phrase.length <= 400);
+  }
   assert.ok(phraseEngagement("beebs").includes("débite l’acheteur"), "Beebs : accepter = débiter l'acheteur (dit en une phrase)");
   assert.ok(phraseEngagement("vinted").includes("engage"));
   assert.ok(phraseEngagement("leboncoin").includes("valide la vente"));
   assert.equal(phraseEngagement("ebay"), null, "eBay : aucune génération");
   assert.equal(libelleTypeEtiquette(3), "Code QR à montrer au point relais (sans impression)");
-  // Options non générables (domicile, formulaire Leboncoin, remise en main propre) ou pas encore lues : un lien qui dit pourquoi.
+  // Ce que FillSell ne fait PAS (et dit pourquoi) : le seul cas d'un lien.
   const nonGenerables = [
     [{ platform: "vinted", etat: "a_expedier", bordereau: "a_obtenir", options_bordereau: { generable: false, domicile_seul: true } }, "enlèvement à domicile"],
-    [{ platform: "leboncoin", etat: "a_confirmer", bordereau: "a_generer", commande_ref: "8", options_bordereau: { generable: false, type_envoi: "colissimo" } }, "ton adresse"],
+    [{ platform: "leboncoin", etat: "a_confirmer", bordereau: "a_generer", commande_ref: "8", options_bordereau: { generable: false, type_envoi: "custom_shipping" } }, "rien à générer"],
     [{ platform: "beebs", etat: "a_confirmer", bordereau: "a_generer", commande_ref: "o", options_bordereau: { generable: false } }, "Remise en main propre"],
-    [{ platform: "vinted", etat: "a_expedier", bordereau: "a_obtenir" }, "prochain passage"],
   ];
   for (const [c, attendu] of nonGenerables) {
     const a = actionCommande(c, "fr", true);
@@ -108,10 +131,8 @@ await cas("« Récupérer » ACTIF seulement bordereau prêt (Vinted, Leboncoin,
   }
   const liens = [
     { platform: "vinted", etat: "a_expedier", bordereau: "indisponible" },
-    { platform: "leboncoin", etat: "a_expedier", bordereau: "a_obtenir", commande_ref: "777" },
     { platform: "ebay", etat: "a_expedier", bordereau: "a_obtenir", commande_ref: "12-345" },
     { platform: "depop", etat: "a_expedier", bordereau: "sans_objet", commande_ref: "77" },
-    { platform: "vinted", etat: "inconnu", bordereau: "inconnu" },
   ];
   for (const c of liens) {
     const a = actionCommande(c, "fr", true);
@@ -119,9 +140,21 @@ await cas("« Récupérer » ACTIF seulement bordereau prêt (Vinted, Leboncoin,
     assert.ok(/^https:\/\//.test(a.url), a.url);
     assert.ok(a.aide.length > 10);
   }
-  assert.ok(actionCommande(liens[2], "fr", true).aide.includes("achète-la sur eBay"), "eBay : étiquette payante, achetée sur eBay");
-  assert.ok(actionCommande(liens[2], "fr", true).aide.includes("n’en rachète pas une seconde"));
-  assert.ok(actionCommande(liens[3], "fr", true).aide.includes("pas de bordereau"));
+  // (17/10) Ce qui se prépare chez la plateforme : FillSell le guette, rien à faire, aucun bouton qui renvoie.
+  const attentes = [
+    { platform: "leboncoin", etat: "a_expedier", bordereau: "a_obtenir", commande_ref: "777" },
+    { platform: "beebs", etat: "a_expedier", bordereau: "a_obtenir", commande_ref: "o" },
+    { platform: "vinted", etat: "inconnu", bordereau: "inconnu" },
+  ];
+  for (const c of attentes) {
+    const a = actionCommande(c, "fr", true);
+    assert.equal(a.type, "attente", JSON.stringify(c));
+    assert.ok(/^https:\/\//.test(a.url) && a.aide.length > 10);
+  }
+  assert.equal(actionCommande(liens[1], "fr", true).libelle, "Acheter l’étiquette sur eBay", "eBay : le lien ne sert qu'à l'achat");
+  assert.ok(actionCommande(liens[1], "fr", true).aide.includes("seul geste à faire sur eBay"));
+  assert.ok(actionCommande(liens[1], "fr", true).aide.includes("n’en rachète pas une seconde"));
+  assert.ok(actionCommande(liens[2], "fr", true).aide.includes("pas de bordereau"));
 });
 
 await cas("liens des plateformes (relevés le 16/10) ; l'app ne crée une demande QUE dans le geste de clic", () => {
@@ -161,7 +194,7 @@ await cas("liens des plateformes (relevés le 16/10) ; l'app ne crée une demand
 await cas("demandes de bordereau : chaque état dit quoi faire ; refus en clair", () => {
   assert.equal(etatDemandeBordereau({ statut: "demandee" }).attente, true);
   assert.ok(etatDemandeBordereau({ statut: "demandee" }).texte.includes("ordinateur"));
-  assert.ok(etatDemandeBordereau({ statut: "expiree" }).texte.includes("abandonnée") && etatDemandeBordereau({ statut: "expiree" }).texte.includes("rien n’a été fait"));
+  assert.ok(etatDemandeBordereau({ statut: "expiree" }).texte.includes("Réessaie ici") && etatDemandeBordereau({ statut: "expiree" }).texte.includes("rien n’a été fait"), "(17/10) on réessaie dans FillSell");
   assert.ok(etatDemandeBordereau({ statut: "echec", motif: "http_403" }).texte.includes("rien n’a été fait"));
   assert.equal(etatDemandeBordereau(null), null);
   assert.ok(refusDemandeBordereau("pas_pret").includes("prêt"));
@@ -172,7 +205,7 @@ await cas("demandes de bordereau : chaque état dit quoi faire ; refus en clair"
   assert.equal(gen("generee", "geste_fait").attente, true);
   assert.ok(gen("generee", "geste_fait").texte.includes("récupération du fichier"));
   assert.equal(gen("generee", "fichier_pas_encore_pret", { essais_fichier: 15 }).attente, false);
-  assert.ok(etatDemandeBordereau({ action: "generer", statut: "generee", motif: "fichier_sur_beebs" }, "fr", "beebs").texte.includes("télécharge-le sur Beebs"));
+  assert.ok(etatDemandeBordereau({ action: "generer", statut: "generee", motif: "fichier_sur_beebs" }, "fr", "beebs").texte.includes("FillSell le cherche à chaque passage"), "(17/10) le fichier Beebs : FillSell continue de le chercher");
   assert.ok(gen("incertaine").texte.includes("ne la refera jamais"));
   assert.ok(gen("echec", "adresse_vinted_incomplete").texte.includes("adresse"));
   assert.ok(gen("echec", "http_403").texte.includes("rien n’a été fait"));
@@ -321,6 +354,19 @@ await cas("eBay : commandes sans adresse, état et date limite", () => {
   assert.equal(etatCommandeEbay("NOT_STARTED", "CANCELED"), "annulee");
 });
 
+await cas("(17/10) eBay : une étiquette achetée → son suivi (numéro, transporteur) s'affiche dans FillSell ; jamais une adresse", () => {
+  assert.deepEqual(suiviEbay({ fulfillments: [{ fulfillmentId: "F1", shipmentTrackingNumber: "6A1234567890", shippingCarrierCode: "COLISSIMO", shipTo: { fullName: "Jean Dupont" } }] }), { numero: "6A1234567890", transporteur: "COLISSIMO" });
+  assert.equal(suiviEbay({ fulfillments: [] }), null);
+  assert.equal(suiviEbay(null), null);
+  const [c] = commandesEbay([{ orderId: "12-345", orderFulfillmentStatus: "FULFILLED", lineItems: [{ title: "Montre" }], fulfillmentStartInstructions: [{ shippingStep: { shippingServiceCode: "FR_ColiposteColissimo" } }] }],
+    { "12-345": { numero: "6A1234567890", transporteur: "COLISSIMO" } });
+  assert.equal(c.etat, "expediee"); assert.equal(c.envoi_ref, "6A1234567890"); assert.equal(c.transporteur, "COLISSIMO");
+  const [d] = commandesEbay([{ orderId: "12-346", orderFulfillmentStatus: "NOT_STARTED", lineItems: [{ title: "X" }] }]);
+  assert.equal(d.envoi_ref, undefined, "sans envoi : aucun numéro inventé");
+  const fn = lire("supabase/functions/ebay-messagerie/index.ts");
+  assert.ok(fn.includes(".slice(0, 10);") && fn.includes("/shipping_fulfillment`"), "10 lectures de suivi au plus par passage");
+});
+
 await cas("eBay : le texte d'un message sort du gabarit HTML, borné", () => {
   assert.equal(texteMessageEbay('<html><div id="UserInputtedText">Bonjour,<br>toujours dispo ?</div><div>pied</div></html>'), "Bonjour, toujours dispo ?");
   assert.equal(texteMessageEbay(null, "Texte brut"), "Texte brut");
@@ -335,6 +381,130 @@ await cas("eBay (relevé réel du 16/10) : `Content` est du HTML avec ~4 000 car
   assert.ok(!/color:|margin|<style|<html/.test(t), "aucun style ni balise");
   // Et le même HTML passé par `Text` seulement.
   assert.ok(texteMessageEbay(html, null).includes("Est-ce encore disponible ?"));
+});
+
+// ── g. (17/10) Une page, pas une couche ; retour ; vignettes ; couches ─────────
+await cas("(17/10) l'écran est une PAGE : aucune couche fixe, aucun conteneur à hauteur fixe ; la flèche ← et le titre", () => {
+  const espace = lire("src/messagerie/EspaceMessagerie.jsx");
+  assert.ok(!/position:\s*'fixed'/.test(espace), "aucune couche fixe dans l'écran");
+  assert.ok(!/height:\s*'100%'/.test(espace) && !/overflowY:\s*'auto'/.test(espace), "aucun conteneur à hauteur fixe qui défile à part");
+  assert.ok(!/function Segments/.test(espace), "plus d'onglets dans l'écran : chaque entrée ouvre son écran");
+  assert.ok(/className="fs-espace-beta" data-ecran-beta=\{onglet\}/.test(espace) && /className="fs-espace-beta" data-ecran-beta="conversation"/.test(espace));
+  assert.equal((espace.match(/onClick=\{onRetour\} aria-label=\{fr \? 'Retour' : 'Back'\}/g) ?? []).length, 2, "la flèche ← sur la liste et sur la conversation");
+  assert.ok(/fr \? 'À expédier' : 'To ship'\) : 'Messages'/.test(espace), "le titre de chaque écran");
+  assert.ok(/import '\.\/espace\.css';/.test(espace));
+  assert.ok(/\.fs-espace-beta-ouvert > :not\(\.fs-espace-beta\) \{ display: none !important; \}/.test(lire("src/messagerie/espace.css")), "le contenu de l'onglet est masqué (monté), pas démonté");
+  assert.ok(/overflowX: 'auto', flex: 'none'/.test(espace), "les filtres défilent sur le côté, jamais écrasés");
+  assert.ok(/scrollMarginBottom: 'var\(--nav-content-clearance, 140px\)'/.test(espace), "la fin d'une conversation se pose au-dessus de la barre du bas");
+  assert.ok(/fallback=\{<div className="fs-espace-beta"\/>\}/.test(APP), "pendant le chargement, la page reste celle de l'écran");
+});
+
+await cas("(17/10) historique : ouvrir = une entrée ; ← = retour du navigateur ; un onglet ferme ; ouvrir ne change jamais d'onglet", () => {
+  const h = lire("src/messagerie/useEcranMessagerie.js");
+  assert.ok(h.includes("window.history.pushState({ ...(window.history.state ?? {}), [CLE]: suivant }, '')"), "une entrée par écran (l'adresse ne change pas, l'état du routeur est gardé)");
+  assert.ok(h.includes("window.addEventListener('popstate', surRetour)") && h.includes("const surRetour = () => appliquer(etatHistorique());"), "retour du navigateur, geste iOS, retour Android : l'entrée d'arrivée dit l'écran");
+  assert.ok(h.includes("if (etatHistorique()?.n === v.n) { window.history.back(); return; }"), "la flèche fait exactement le retour du navigateur");
+  assert.ok(h.includes("const NAVIGATIONS = '.bnav, .desktop-nav';") && h.includes("document.addEventListener('click', surAppui, true)"), "un appui sur un onglet (barre du bas, bureau) ferme l'écran");
+  assert.ok(h.includes("window.history.go(-h.n)"), "fermer retire les entrées poussées");
+  assert.ok(!/setTab/.test(h) && !/setTab/.test(lire("src/messagerie/EspaceMessagerie.jsx")), "l'écran ne change jamais d'onglet");
+  assert.ok(APP.includes("const ecranMessagerie=useEcranMessagerie(scrollRef,tab);"), "branché sur le conteneur qui défile");
+  assert.ok(APP.indexOf("const scrollRef=useRef(null);") < APP.indexOf("useEcranMessagerie(scrollRef,tab)"), "déclaré APRÈS scrollRef (règle TDZ)");
+  assert.ok(APP.indexOf("const [tab,setTab]=") < APP.indexOf("useEcranMessagerie(scrollRef,tab)"), "déclaré APRÈS tab (règle TDZ)");
+});
+
+await cas("(17/10) entrées du Stock : même style neutre, seul le compteur porte la couleur", () => {
+  const b = lire("src/messagerie/BarreMessagerie.jsx");
+  assert.ok(!/actif/.test(b) && !/S\.menthe/.test(b), "aucun état « sélectionné »");
+  assert.ok(b.includes('style={pilule} data-entree-beta="messages"') && b.includes('style={pilule} data-entree-beta="expedier"'), "les deux pastilles : le même style");
+  assert.ok(b.includes("background: S.tealDeep, color: '#FFFFFF'"), "le compteur de non-lus, coloré");
+});
+
+await cas("(17/10) vignette : la photo de l'annonce, puis la fiche du stock (liste lue par le normaliseur), puis une icône ; jamais la liste dans src", () => {
+  assert.deepEqual(sourcesVignette("https://a/1.jpg", [{ url: "https://f/1.jpg" }, "https://f/2.jpg"]), ["https://a/1.jpg", "https://f/1.jpg", "https://f/2.jpg"]);
+  assert.deepEqual(sourcesVignette(null, [{ url: "https://f/1.jpg", type: "original" }]), ["https://f/1.jpg"], "objets {url} de la fiche");
+  assert.deepEqual(sourcesVignette(null, ["https://f/1.jpg", "https://f/1.jpg", "  "]), ["https://f/1.jpg"], "sans doublon, entrées vides écartées");
+  assert.deepEqual(sourcesVignette("https://f/1.jpg", ["https://f/1.jpg"]), ["https://f/1.jpg"]);
+  assert.deepEqual(sourcesVignette(null, null), [], "rien : l'icône neutre");
+  assert.equal(sourcesVignette(null, ["a", "b", "c", "d", "e"]).length, 3, "trois photos de la fiche au plus");
+  const v = lire("src/messagerie/Vignette.jsx");
+  assert.ok(v.includes("onError={suivante}") && v.includes("if (!e.currentTarget.naturalWidth) suivante();"), "une image qui casse (ou 0 px) passe à la suivante");
+  for (const f of ["src/messagerie/EspaceMessagerie.jsx", "src/messagerie/SectionAExpedier.jsx"]) {
+    const t = lire(f);
+    assert.ok(!/photosParInventaire\?\.\[[^\]]+\]\)\s*\|\|/.test(t), "plus jamais la liste de la fiche passée comme adresse : " + f);
+    assert.ok(t.includes("sourcesVignette(") && t.includes("<Vignette "), f);
+    assert.ok(!t.includes("<img src={photo}"), f);
+  }
+});
+
+await cas("(17/10) toute couche de la bêta passe par Couche : portail sur body, barre du bas masquée, Échap et retour Android", () => {
+  const c = lire("src/messagerie/Couche.jsx");
+  assert.ok(c.includes("createPortal(") && c.includes("document.body"), "portail sur body");
+  assert.ok(c.includes("useFondFige(true)") && c.includes("useEchap(onFermer)") && c.includes("useRetourAndroid(onFermer)"));
+  const couches = ["src/messagerie/SectionAExpedier.jsx", "src/messagerie/impression/ApercuBordereau.jsx", "src/messagerie/impression/ToutImprimer.jsx", "src/messagerie/impression/CodeDepot.jsx"];
+  for (const f of couches) {
+    const t = lire(f);
+    const fixes = (t.match(/position: 'fixed'/g) ?? []).length;
+    const portees = (t.match(/<Couche[ >]/g) ?? []).length;
+    assert.ok(fixes > 0 && portees === fixes, `${f} : ${fixes} couche(s) fixe(s), ${portees} dans Couche`);
+  }
+  assert.ok(lire("src/messagerie/impression/CodeDepot.jsx").includes("<Couche premierPlan={false}>"), "le plein écran du code, ouvert PAR l'aperçu : Échap et retour Android ne ferment pas les deux");
+});
+
+await cas("(17/10, règle de Nico) TOUTES les cartes : aucune ne dit « c'est toi qui le fais » ; la plateforme n'est un bouton que pour ce que FillSell ne fait pas", () => {
+  const etats = ["a_confirmer", "a_expedier", "inconnu"];
+  const bords = ["a_generer", "a_obtenir", "pret", "indisponible", "sans_objet", "inconnu"];
+  const options = [null, { generable: true }, { generable: true, types_etiquette: [1] }, { generable: true, type_envoi: "colissimo", adresse_requise: true }, { generable: false, domicile_seul: true }];
+  let vus = 0;
+  for (const platform of ["vinted", "leboncoin", "beebs", "ebay", "depop"]) for (const etat of etats) for (const bordereau of bords) for (const o of options) for (const gen of [null, true]) {
+    const c = { platform, etat, bordereau, commande_ref: "R1", options_bordereau: o };
+    const a = actionCommande(c, "fr", gen);
+    vus++;
+    assert.ok(!/c’est toi qui le fais|C’est toi qui le fais/.test(a.aide ?? ""), `« c'est toi qui le fais » : ${JSON.stringify(c)}`);
+    // Ce que FillSell sait faire est un geste FillSell.
+    if (["vinted", "leboncoin", "beebs"].includes(platform) && etat === "a_expedier" && bordereau === "pret") assert.equal(a.type, "bordereau");
+    if (attendGeneration(c) && o?.generable !== false) assert.equal(a.type, "generer", JSON.stringify(c));
+    // Un lien n'existe que pour : eBay à expédier (achat), Depop à expédier, un « non générable » dit, Vinted « indisponible ».
+    if (a.type === "lien") {
+      const permis = (platform === "ebay" && etat === "a_expedier") || (platform === "depop" && etat === "a_expedier")
+        || (attendGeneration(c) && o?.generable === false) || (platform === "vinted" && bordereau === "indisponible" && etat === "a_expedier");
+      assert.ok(permis, `lien non permis : ${JSON.stringify(c)}`);
+    }
+  }
+  assert.ok(vus >= 900, String(vus));
+});
+
+await cas("(17/10, décision de Nico) Colissimo : l'expéditeur est l'adresse du COMPTE Leboncoin — aucune adresse saisie ni gardée dans FillSell", () => {
+  const section = lire("src/messagerie/SectionAExpedier.jsx");
+  assert.ok(/data-expediteur="compte-leboncoin"/.test(section) && /l’adresse enregistrée dans ton compte Leboncoin/.test(section), "l'écran le dit");
+  assert.ok(!/<input type="text"|name=\{`expediteur-/.test(section) && !/fusionnerReglages|platform_settings/.test(section), "aucun champ d'adresse, rien écrit dans les réglages");
+  const bg = lire("chrome-extension/background.js");
+  const gen = bg.slice(bg.indexOf("async function genererBordereauBeta"), bg.indexOf("async function suiteGenerationBeta"));
+  assert.ok(gen.length > 100 && !/expediteur|platform_settings/.test(gen), "le poste ne lit aucune adresse dans FillSell");
+  assert.ok(etatDemandeBordereau({ action: "generer", statut: "echec", motif: "adresse_expediteur_a_completer" }, "fr", "leboncoin").texte.includes("compte Leboncoin est incomplète"));
+});
+
+await cas("(17/10) suivi lisible (eBay, Depop, Beebs) et expédiées depuis 3 jours ; jamais un numéro interne (Vinted, Leboncoin)", () => {
+  assert.equal(suiviCommande({ platform: "ebay", envoi_ref: "6A123", transporteur: "FR_ColiposteColissimo" }).texte, "Suivi Colissimo : 6A123");
+  assert.equal(suiviCommande({ platform: "depop", envoi_ref: "XY9" }).texte, "Suivi : XY9");
+  assert.equal(suiviCommande({ platform: "vinted", envoi_ref: "123" }), null, "Vinted : numéro d'envoi interne");
+  assert.equal(suiviCommande({ platform: "leboncoin", envoi_ref: "P9" }), null, "Leboncoin : numéro de colis interne");
+  const maintenant = Date.parse("2026-10-17T12:00:00Z");
+  const l = expedieesRecentes([
+    { id: 1, etat: "expediee", maj_le: "2026-10-17T10:00:00Z" }, { id: 2, etat: "expediee", maj_le: "2026-10-13T10:00:00Z" },
+    { id: 3, etat: "a_expedier", maj_le: "2026-10-17T10:00:00Z" }, { id: 4, etat: "expediee", maj_le: "2026-10-16T10:00:00Z" },
+  ], maintenant);
+  assert.deepEqual(l.map((c) => c.id), [1, 4]);
+});
+
+await cas("(17/10) les cartes : le geste FillSell en bouton ; la plateforme en lien discret (dernier recours) ; réglages à trois états", () => {
+  const section = lire("src/messagerie/SectionAExpedier.jsx");
+  assert.ok(/function LienSecours\(/.test(section) && /data-lien-secours/.test(section), "le lien de dernier recours");
+  assert.ok(/\{action\.type !== 'lien' && action\.url && <LienSecours /.test(section));
+  assert.ok(!/<Bouton onClick=\{\(\) => ouvrirLien\(action\.url\)\} ariaLabel=\{fr \? `Voir sur/.test(section), "plus de bouton « Voir sur … » à côté du geste FillSell");
+  assert.ok(/actionCommande\(c, lang, reglages\.generation\)/.test(section));
+  const hook = lire("src/messagerie/useMessagerieBeta.js");
+  assert.ok(/useState\(\{ pret: false, envoiMode: 1, generation: null \}\)/.test(hook), "pas encore lus : null, jamais « fermé »");
+  assert.ok(/generation: data\.generation === true \? true : data\.generation === false \? false : null/.test(hook));
 });
 
 // ── f. Règles d'écran ────────────────────────────────────────────────────────

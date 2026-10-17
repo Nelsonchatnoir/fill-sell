@@ -17,14 +17,21 @@
 //     partager, télécharger, imprimer ; « Tout imprimer » réunit les prêtes.
 // Relecture : une lecture à l'ouverture ; bornée (utils/relectureBornee.js)
 // seulement pendant qu'une demande attend l'ordinateur — jamais de setInterval.
+// (17/10, constat de Nico sur iPhone) Dans la page « À expédier » (dansPage),
+// le titre est celui de la page ; la vignette suit la règle de Vignette.jsx
+// (photo de l'annonce, sinon la fiche rattachée, sinon une icône) ; l'écran de
+// confirmation est une Couche (portail sur body, barre du bas masquée) — sur
+// iPhone, ses boutons passaient sous la barre du bas.
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import { UI } from '../components/ui';
 import Icone from '../ecrans/Icone';
 import { demarrerRelecture } from '../utils/relectureBornee';
-import { actionCommande, commandesAExpedier, dateCourte, delaiEnvoi, etatDemandeBordereau, libelleEtatCommande, libelleTransporteur, libelleTypeEtiquette, montantTexte, nomPlateforme, pseudoAffiche, refusDemandeBordereau } from './vue';
+import { sourcesVignette, suiviCommande, expedieesRecentes, actionCommande, commandesAExpedier, dateCourte, delaiEnvoi, etatDemandeBordereau, libelleEtatCommande, libelleTransporteur, libelleTypeEtiquette, montantTexte, nomPlateforme, pseudoAffiche, refusDemandeBordereau } from './vue';
 import { ouvrirLien } from './ouvrir';
 import { useReglagesMessagerie } from './useMessagerieBeta';
+import Couche from './Couche';
+import Vignette from './Vignette';
 // L'aperçu et « Tout imprimer » (pdf.js, pdf-lib derrière) ne se chargent qu'à l'usage :
 // rien de plus à l'ouverture des Ventes, pour personne.
 const ApercuBordereau = lazy(() => import('./impression/ApercuBordereau.jsx'));
@@ -78,8 +85,10 @@ function tonEtat(c) {
 
 /**
  * L'ÉCRAN DE CONFIRMATION d'une génération : la commande, la phrase de ce que
- * le geste engage, le type d'étiquette (Vinted, s'il y en a plusieurs), puis
- * « Annuler » ou le geste nommé. Rien ne part sans ce second appui.
+ * le geste engage, le type d'étiquette (Vinted : papier ou QR — options pas
+ * encore relues comprises), l'expéditeur (Leboncoin Colissimo / courrier suivi :
+ * l'adresse du compte Leboncoin, lue au moment du geste), puis « Annuler » ou le
+ * geste nommé. Rien ne part sans ce second appui.
  */
 function ConfirmationGeneration({ commande: c, action, lang, occupe, onAnnuler, onConfirmer }) {
   const fr = lang !== 'en';
@@ -87,7 +96,9 @@ function ConfirmationGeneration({ commande: c, action, lang, occupe, onAnnuler, 
   const [type, setType] = useState(types.includes(1) ? 1 : (types[0] ?? null));
   const geste = GESTES[c.platform] ?? ['Confirmer', 'Confirm'];
   const meta = [pseudoAffiche(c.platform, c.acheteur_pseudo), montantTexte(c.montant, c.devise), libelleTransporteur(c.transporteur)].filter(Boolean).join(' · ');
+  const choix = (types.length > 1 || action.typesSupposes) && type != null ? { type_etiquette: type } : {};
   return (
+    <Couche onFermer={occupe ? undefined : onAnnuler}>
     <div role="dialog" aria-modal="true" aria-label={fr ? 'Générer le bordereau' : 'Generate the label'}
       style={{ position: 'fixed', inset: 0, zIndex: 1300, background: 'rgba(16,32,27,0.5)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
       onClick={occupe ? undefined : onAnnuler}>
@@ -109,32 +120,51 @@ function ConfirmationGeneration({ commande: c, action, lang, occupe, onAnnuler, 
         </div>
         {types.length > 1 && (
           <fieldset style={{ border: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <legend style={{ fontSize: 13, fontWeight: 700, color: ENCRE2, marginBottom: 6 }}>{fr ? 'Ce que Vinted te donne' : 'What Vinted gives you'}</legend>
+            <legend style={{ fontSize: 13, fontWeight: 700, color: ENCRE2, marginBottom: 6 }}>{fr ? 'Dépôt en point relais : ce que Vinted te donne' : 'Drop-off at a parcel point: what Vinted gives you'}</legend>
             {types.map((t) => (
               <label key={t} style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 44, padding: '8px 12px', borderRadius: 12, border: `1.5px solid ${type === t ? UI.tealDeep : UI.border}`, background: type === t ? MENTHE : '#FFFFFF', cursor: 'pointer', fontSize: 14, fontWeight: 600 }}>
                 <input type="radio" name="type-etiquette" checked={type === t} onChange={() => setType(t)} style={{ width: 18, height: 18, accentColor: UI.tealDeep }} />
                 {libelleTypeEtiquette(t, lang)}
               </label>
             ))}
+            {action.typesSupposes && <div style={{ fontSize: 12.5, color: ENCRE2, lineHeight: 1.4 }}>{fr ? 'Ton ordinateur vérifie juste avant de commander que Vinted propose ce type pour cette commande ; sinon rien n’est commandé et FillSell te le dit.' : 'Your computer checks right before ordering that Vinted offers this type for this order; otherwise nothing is ordered and FillSell tells you.'}</div>}
           </fieldset>
+        )}
+        {action.adresse === true && (
+          <div data-expediteur="compte-leboncoin" style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 12px', borderRadius: 14, border: `1px solid ${UI.border}`, background: '#FFFFFF', fontSize: 13, lineHeight: 1.45 }}>
+            <Icone nom="maison" taille={17} couleur={ENCRE2} epaisseur={2.1} style={{ flex: 'none', marginTop: 1 }} />
+            <span>{fr ? 'Expéditeur : l’adresse enregistrée dans ton compte Leboncoin (nom, adresse, téléphone), lue par ton ordinateur au moment du geste. Incomplète : rien ne part et FillSell te le dit.' : 'Sender: the address saved in your Leboncoin account (name, address, phone), read by your computer at the time of the step. Incomplete: nothing is sent and FillSell tells you.'}</span>
+          </div>
         )}
         <div style={{ fontSize: 12.5, color: ENCRE2, lineHeight: 1.45 }}>
           {fr ? `Ton ordinateur (Chrome ouvert, extension active) le fait sur ${nomPlateforme(c.platform)} à son prochain passage, une seule fois, puis le bordereau s’affiche ici.` : `Your computer (Chrome open, extension on) does it on ${nomPlateforme(c.platform)} on its next pass, only once, then the label shows up here.`}
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <Bouton onClick={onAnnuler} desactive={occupe} ariaLabel={fr ? 'Annuler' : 'Cancel'}>{fr ? 'Annuler' : 'Cancel'}</Bouton>
-          <Bouton principal ton="ambre" desactive={occupe || (types.length > 1 && type == null)}
-            onClick={() => onConfirmer(types.length > 1 && type != null ? { type_etiquette: type } : {}, action.phrase)}
+          <Bouton principal ton="ambre" desactive={occupe || ((types.length > 1) && type == null)}
+            onClick={() => onConfirmer(choix, action.phrase)}
             ariaLabel={fr ? geste[0] : geste[1]}>
             {occupe ? (fr ? 'Envoi…' : 'Sending…') : (fr ? geste[0] : geste[1])}
           </Bouton>
         </div>
       </div>
     </div>
+    </Couche>
   );
 }
 
-export function SectionAExpedier({ supabase, lang = 'fr', photosParInventaire = null, compact = false }) {
+/** (17/10) La plateforme en DERNIER RECOURS : un lien discret, jamais un bouton qui appelle. */
+function LienSecours({ url, platform, lang }) {
+  const fr = lang !== 'en';
+  return (
+    <button type="button" data-lien-secours onClick={() => ouvrirLien(url)}
+      style={{ alignSelf: 'flex-start', minHeight: 32, padding: '4px 0', border: 'none', background: 'none', color: ENCRE2, fontFamily: 'inherit', fontSize: 12.5, fontWeight: 600, textDecoration: 'underline', textUnderlineOffset: 3, cursor: 'pointer' }}>
+      {fr ? `Voir la commande sur ${nomPlateforme(platform)}` : `See the order on ${nomPlateforme(platform)}`}
+    </button>
+  );
+}
+
+export function SectionAExpedier({ supabase, lang = 'fr', photosParInventaire = null, dansPage = false }) {
   const fr = lang !== 'en';
   const reglages = useReglagesMessagerie(supabase);
   const [commandes, setCommandes] = useState(null);
@@ -146,6 +176,7 @@ export function SectionAExpedier({ supabase, lang = 'fr', photosParInventaire = 
   const [enAttente, setEnAttente] = useState(false);
   const [confirmation, setConfirmation] = useState(null);
   const [apercu, setApercu] = useState(null);
+  const [expediees, setExpediees] = useState([]);
   const vivant = useRef(true);
 
   const charger = useCallback(async () => {
@@ -157,6 +188,14 @@ export function SectionAExpedier({ supabase, lang = 'fr', photosParInventaire = 
       lireDemandes(COLS_DEMANDES),
       supabase.from('bordereaux_copies').select('id,commande_id,chemin,expire_le').is('efface_le', null).gt('expire_le', maintenant).order('cree_le', { ascending: false }).limit(60),
     ]);
+    // (17/10) Les commandes expédiées depuis 3 jours : leur suivi reste visible ici
+    // (une étiquette eBay achetée passe la commande « expédiée » aussitôt).
+    // Lecture annexe : sa panne ne cache jamais la liste principale.
+    try {
+      const e = await supabase.from('plateforme_commandes').select(`${COLONNES_BASE},maj_le`).eq('etat', 'expediee')
+        .gte('maj_le', new Date(Date.now() - 3 * 86400000).toISOString()).order('maj_le', { ascending: false }).limit(20);
+      if (vivant.current) setExpediees(e.error ? [] : expedieesRecentes(e.data ?? []));
+    } catch { if (vivant.current) setExpediees([]); }
     if (colonneAbsente(c.error)) c = await lireCommandes(COLONNES_BASE);
     if (colonneAbsente(d.error)) d = await lireDemandes(COLS_DEMANDES_BASE);
     if (!vivant.current) return undefined;
@@ -238,7 +277,8 @@ export function SectionAExpedier({ supabase, lang = 'fr', photosParInventaire = 
   return (
     <section aria-label={fr ? 'À expédier' : 'To ship'}
       style={{ background: '#FFFFFF', border: `1px solid ${UI.border}`, borderRadius: 24, overflow: 'hidden', fontFamily: "'Space Grotesk',sans-serif", color: UI.ink }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: compact ? '14px 16px 10px' : '16px 16px 12px' }}>
+      {!dansPage && (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 16px 12px' }}>
         <span style={{ width: 36, height: 36, borderRadius: 11, background: MENTHE, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>
           <Icone nom="colis" taille={19} couleur={UI.tealDeep} epaisseur={2.1} />
         </span>
@@ -248,24 +288,24 @@ export function SectionAExpedier({ supabase, lang = 'fr', photosParInventaire = 
         </span>
         <span style={{ fontSize: 11, fontWeight: 700, color: '#8A6100', background: '#FFF6E3', border: '1px solid #EED9A6', borderRadius: 999, padding: '1px 8px', flex: 'none' }}>{fr ? 'bêta' : 'beta'}</span>
       </div>
+      )}
       {pretes.length >= 2 && (
-        <div style={{ padding: '0 16px 12px', display: 'flex' }}>
+        <div style={{ padding: dansPage ? '14px 16px 12px' : '0 16px 12px', display: 'flex' }}>
           <Suspense fallback={null}><BoutonToutImprimer copies={pretes} supabase={supabase} lang={lang} /></Suspense>
         </div>
       )}
 
-      {erreur && <p style={{ margin: 0, padding: '0 16px 16px', fontSize: 13, color: ENCRE2 }}>{fr ? 'Lecture impossible pour le moment.' : 'Cannot read right now.'}</p>}
+      {erreur && <p style={{ margin: 0, padding: dansPage ? '16px' : '0 16px 16px', fontSize: 13, color: ENCRE2 }}>{fr ? 'Lecture impossible pour le moment.' : 'Cannot read right now.'}</p>}
       {!erreur && nb === 0 && (
-        <div style={{ padding: '6px 16px 18px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div style={{ padding: dansPage ? '18px 16px' : '6px 16px 18px', display: 'flex', flexDirection: 'column', gap: 4 }}>
           <span style={{ fontSize: 14, fontWeight: 700 }}>{fr ? 'Aucune commande à expédier' : 'Nothing to ship'}</span>
           <span style={{ fontSize: 13, color: ENCRE2, lineHeight: 1.45 }}>{fr ? 'Dès qu’une vente arrive sur une plateforme, elle apparaît ici avec l’acheteur, le numéro et ce qu’il reste à faire.' : 'As soon as a sale comes in, it shows up here with the buyer, the order number and what is left to do.'}</span>
         </div>
       )}
 
-      {commandes.map((c) => {
+      {commandes.map((c, i) => {
         const action = actionCommande(c, lang, reglages.generation);
         const delai = delaiEnvoi(c, lang);
-        const photo = (c.inventaire_id && photosParInventaire?.[c.inventaire_id]) || c.photo_url || null;
         const demande = demandes[c.id] ?? null;
         const copie = copies[c.id] ?? null;
         const etatD = !copie ? etatDemandeBordereau(demande, lang, c.platform) : null;
@@ -273,15 +313,14 @@ export function SectionAExpedier({ supabase, lang = 'fr', photosParInventaire = 
         // Une génération déjà née (en cours, faite, incertaine) : plus jamais le bouton « Générer ».
         const generationNee = demande?.action === 'generer' && ['demandee', 'en_cours', 'generee', 'prete', 'incertaine'].includes(demande.statut);
         const meta = [pseudoAffiche(c.platform, c.acheteur_pseudo), montantTexte(c.montant, c.devise), c.vendue_le ? (fr ? `vendue ${dateCourte(c.vendue_le, lang)}` : `sold ${dateCourte(c.vendue_le, lang)}`) : null].filter(Boolean).join(' · ');
+        const suivi = suiviCommande(c, lang);
+        // (17/10) Le geste FillSell en bouton ; la plateforme en dernier recours (lien discret),
+        // sauf quand c'est le SEUL geste possible (type 'lien' : il dit pourquoi).
+        const boutonFillSell = copie || action.type === 'bordereau' || (action.type === 'generer' && !generationNee);
         return (
-          <article key={c.id} data-commande={c.platform} style={{ borderTop: `1px solid ${LIGNE}`, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <article key={c.id} data-commande={c.platform} data-action={copie ? 'copie' : action.type} style={{ borderTop: dansPage && i === 0 && pretes.length < 2 ? 'none' : `1px solid ${LIGNE}`, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-              <div style={{ position: 'relative', width: 60, height: 60, borderRadius: 14, overflow: 'hidden', background: '#F2F0E9', flex: 'none' }}>
-                {photo ? <img src={photo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} /> : null}
-                <span style={{ position: 'absolute', right: 3, bottom: 3, width: 20, height: 20, borderRadius: 7, background: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 4px rgba(16,32,27,.18)' }}>
-                  <PlatformLogo platform={c.platform} size={14} />
-                </span>
-              </div>
+              <Vignette sources={sourcesVignette(c.photo_url, c.inventaire_id ? photosParInventaire?.[c.inventaire_id] : null)} platform={c.platform} taille={60} icone="colis" />
               <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                   <Pastille ton={tonEtat(c)}>{libelleEtatCommande(c.etat, lang, c.platform)}</Pastille>
@@ -293,6 +332,7 @@ export function SectionAExpedier({ supabase, lang = 'fr', photosParInventaire = 
                 <div style={{ fontSize: 12, color: '#8A918E', overflowWrap: 'anywhere' }}>
                   {[`${fr ? 'Commande' : 'Order'} ${c.commande_ref}`, libelleTransporteur(c.transporteur)].filter(Boolean).join(' · ')}
                 </div>
+                {suivi && <div data-suivi style={{ fontSize: 12.5, fontWeight: 600, color: UI.ink, overflowWrap: 'anywhere' }}>{suivi.texte}</div>}
               </div>
             </div>
             {delai && (
@@ -301,49 +341,57 @@ export function SectionAExpedier({ supabase, lang = 'fr', photosParInventaire = 
               </div>
             )}
             {!copie && !generationNee && <div style={{ fontSize: 13, color: ENCRE2, lineHeight: 1.45 }}>{action.aide}</div>}
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {copie ? (
-                <>
+            {(boutonFillSell || action.type === 'lien') && (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {copie ? (
                   <Bouton principal onClick={() => setApercu(copiePour(c, copie))} ariaLabel={fr ? 'Ouvrir le bordereau' : 'Open the label'}>
                     <Icone nom="recu" taille={17} couleur="#FFFFFF" epaisseur={2.2} />{fr ? 'Ouvrir le bordereau' : 'Open the label'}
                   </Bouton>
-                  <Bouton onClick={() => ouvrirLien(action.url)} ariaLabel={fr ? `Voir sur ${nomPlateforme(c.platform)}` : `See on ${nomPlateforme(c.platform)}`}>
-                    {fr ? `Voir sur ${nomPlateforme(c.platform)}` : `See on ${nomPlateforme(c.platform)}`}
-                  </Bouton>
-                </>
-              ) : action.type === 'bordereau' ? (
-                <>
+                ) : action.type === 'bordereau' ? (
                   <Bouton principal desactive={attente || occupee === c.id} onClick={() => demanderBordereau(c)}
                     ariaLabel={fr ? 'Récupérer le bordereau' : 'Fetch the label'}>
                     <Icone nom="recu" taille={17} couleur={attente || occupee === c.id ? '#8A8578' : '#FFFFFF'} epaisseur={2.2} />
                     {attente ? (fr ? 'Récupération…' : 'Fetching…') : action.libelle}
                   </Bouton>
-                  <Bouton onClick={() => ouvrirLien(action.url)} ariaLabel={fr ? `Voir sur ${nomPlateforme(c.platform)}` : `See on ${nomPlateforme(c.platform)}`}>
-                    {fr ? `Voir sur ${nomPlateforme(c.platform)}` : `See on ${nomPlateforme(c.platform)}`}
-                  </Bouton>
-                </>
-              ) : action.type === 'generer' && !generationNee ? (
-                <>
+                ) : action.type === 'generer' && !generationNee ? (
                   <Bouton principal ton="ambre" desactive={occupee === c.id} onClick={() => setConfirmation({ commande: c, action })} ariaLabel={action.libelle}>
                     <Icone nom="recu" taille={17} couleur="#FFFFFF" epaisseur={2.2} />{action.libelle}
                   </Bouton>
-                  <Bouton onClick={() => ouvrirLien(action.url)} ariaLabel={fr ? `Voir sur ${nomPlateforme(c.platform)}` : `See on ${nomPlateforme(c.platform)}`}>
-                    {fr ? `Voir sur ${nomPlateforme(c.platform)}` : `See on ${nomPlateforme(c.platform)}`}
+                ) : (
+                  // Ce que FillSell ne fait pas : un bouton BLANC (jamais l'air de l'action principale).
+                  <Bouton onClick={() => ouvrirLien(action.url)} ariaLabel={action.libelle}>
+                    {action.libelle}
+                    <Icone nom="fleche" taille={16} couleur={UI.ink} epaisseur={2.2} />
                   </Bouton>
-                </>
-              ) : (
-                <Bouton principal={action.ton === 'ambre' && !generationNee} onClick={() => ouvrirLien(action.url)} ariaLabel={action.libelle}>
-                  {action.type === 'generer' ? (fr ? `Voir sur ${nomPlateforme(c.platform)}` : `See on ${nomPlateforme(c.platform)}`) : action.libelle}
-                  <Icone nom="fleche" taille={16} couleur={action.ton === 'ambre' && !generationNee ? '#FFFFFF' : UI.ink} epaisseur={2.2} />
-                </Bouton>
-              )}
-            </div>
+                )}
+              </div>
+            )}
             {copie && <div style={{ fontSize: 12, color: ENCRE2 }}>{fr ? `Copie gardée jusqu’au ${dateCourte(copie.expire_le, lang)}, puis effacée.` : `Copy kept until ${dateCourte(copie.expire_le, lang)}, then erased.`}</div>}
             {etatD && <div role="status" style={{ fontSize: 12.5, fontWeight: 600, color: (TONS[etatD.ton] ?? TONS.neutre).encre, lineHeight: 1.45 }}>{etatD.texte}</div>}
             {notes[c.id] && <div role="status" style={{ fontSize: 12.5, fontWeight: 600, color: '#8A6100' }}>{notes[c.id]}</div>}
+            {action.type !== 'lien' && action.url && <LienSecours url={action.url} platform={c.platform} lang={lang} />}
           </article>
         );
       })}
+      {expediees.length > 0 && (
+        <div data-expediees style={{ borderTop: `1px solid ${LIGNE}`, padding: '12px 16px 14px', display: 'flex', flexDirection: 'column', gap: 10, background: '#FBFAF7' }}>
+          <span style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '.11em', color: '#6F7774', textTransform: 'uppercase' }}>{fr ? 'Expédiées depuis 3 jours' : 'Shipped in the last 3 days'}</span>
+          {expediees.map((c) => {
+            const suivi = suiviCommande(c, lang);
+            return (
+              <div key={c.id} data-expediee={c.platform} style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                <Vignette sources={sourcesVignette(c.photo_url, c.inventaire_id ? photosParInventaire?.[c.inventaire_id] : null)} platform={c.platform} taille={40} icone="colis" />
+                <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <span style={{ fontSize: 13.5, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.titre ?? (fr ? 'Article' : 'Item')}</span>
+                  <span style={{ fontSize: 12.5, color: ENCRE2, overflowWrap: 'anywhere' }}>
+                    {suivi ? suivi.texte : [nomPlateforme(c.platform), libelleTransporteur(c.transporteur), fr ? 'expédiée' : 'shipped'].filter(Boolean).join(' · ')}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
       {confirmation && (
         <ConfirmationGeneration commande={confirmation.commande} action={confirmation.action} lang={lang}
           occupe={occupee === confirmation.commande.id}

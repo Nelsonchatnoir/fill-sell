@@ -123,7 +123,8 @@ await cas("décision : déjà fait chez la plateforme → AUCUN geste ; sinon re
   assert.deepEqual(v.args, { transactionId: "T1", corps: { seller_address_id: 7, drop_off_type: null, label_type: 1 } });
   const cmdL = { commande_ref: "P1" };
   assert.deepEqual(M.decisionGeneration("leboncoin", { ok: true, statut: "available" }, {}, cmdL), { deja: true });
-  assert.equal(M.decisionGeneration("leboncoin", { ok: true, statut: "reserved", type_envoi: "colissimo" }, {}, cmdL).refus, "confirmation_sur_leboncoin");
+  // (17/10) Colissimo : générable depuis FillSell, l'adresse de l'expéditeur part avec le geste.
+  assert.deepEqual(M.decisionGeneration("leboncoin", { ok: true, statut: "reserved", type_envoi: "colissimo" }, {}, cmdL).args, { purchaseId: "P1", adresseRequise: true });
   assert.equal(M.decisionGeneration("leboncoin", { ok: true, statut: "reserved", type_envoi: "custom_shipping" }, {}, cmdL).refus, "confirmation_sur_leboncoin");
   assert.deepEqual(M.decisionGeneration("leboncoin", { ok: true, statut: "reserved", type_envoi: "Shop2Shop" }, {}, cmdL).args, { purchaseId: "P1" });
   assert.deepEqual(M.decisionGeneration("leboncoin", { ok: true, statut: "reserved", type_envoi: "mondial_relay" }, {}, cmdL).args, { purchaseId: "P1" });
@@ -311,7 +312,7 @@ await cas("commandes Beebs : transporteur en clair, remise en main propre jamais
     { purchase_id: "P2", step: "in_progress", price: 1000, detail: { statut: "reserved", evenements: [], shipping_type: "colissimo" } },
   ]);
   assert.deepEqual(l[0].options_bordereau, { type_envoi: "shop2shop", generable: true });
-  assert.equal(l[1].options_bordereau.generable, false);
+  assert.deepEqual(l[1].options_bordereau, { type_envoi: "colissimo", generable: true, adresse_requise: true }, "(17/10) Colissimo : générable, adresse requise");
 });
 
 await cas("les fonctions de page sont AUTONOMES : recréées depuis leur seul texte (comme executeScript), elles tournent", async () => {
@@ -341,6 +342,82 @@ await cas("les fonctions de page sont AUTONOMES : recréées depuis leur seul te
 
 // ── d. background.js ────────────────────────────────────────────────────────
 const BG = lire("chrome-extension/background.js");
+// ── (17/10) « Tout dans FillSell » : Colissimo, type d'étiquette, fichier Beebs ──
+await cas("(17/10) expéditeur Leboncoin = l'adresse du COMPTE Leboncoin (pré-remplie par le site), complète seulement (nom, rue, code postal, ville, téléphone)", () => {
+  const lbc = { firstname: "A", lastname: "B", street: "2 av X", complement: "Bât C", zipcode: "75002", city: "Paris", country_isocode: "FR", phone_number: "+33612345678" };
+  assert.deepEqual(M.expediteurLeboncoin(lbc), { firstname: "A", lastname: "B", street: "2 av X", complement: "Bât C", zipcode: "75002", city: "Paris", country_isocode: "FR", phone: "+33612345678" });
+  assert.equal(M.expediteurLeboncoin({ ...lbc, phone_number: "06 12 34 56 78" }).phone, "0612345678");
+  assert.equal(M.expediteurLeboncoin({ ...lbc, phone_number: "" }), null, "sans téléphone : incomplet");
+  assert.equal(M.expediteurLeboncoin({ ...lbc, zipcode: "7500" }), null);
+  assert.equal(M.expediteurLeboncoin({ ...lbc, lastname: " " }), null);
+  assert.equal(M.expediteurLeboncoin({ ...lbc, country_isocode: "BE" }), null, "Leboncoin : France seulement");
+  assert.equal(M.expediteurLeboncoin(null), null);
+  const d = M.decisionGeneration("leboncoin", { ok: true, statut: "reserved", type_envoi: "courrier_suivi" }, {}, { commande_ref: "P5" });
+  assert.deepEqual(d.args, { purchaseId: "P5", adresseRequise: true }, "aucune adresse ne transite par FillSell");
+});
+
+await cas("(17/10) Vinted : un type choisi que Vinted ne propose pas pour cette commande → rien n'est commandé (jamais un autre type)", () => {
+  const un = OPT({ depots: [{ type: "point", options: [{ types: [3] }] }] });
+  assert.equal(M.corpsCommandeVinted(un, { id: 5, complete: true }, 1).refus, "type_etiquette_indisponible");
+  assert.equal(M.corpsCommandeVinted(un, { id: 5, complete: true }).corps.label_type, 3, "sans choix et un seul type : celui-là");
+  assert.equal(M.corpsCommandeVinted(un, { id: 5, complete: true }, 3).corps.label_type, 3);
+  assert.equal(M.corpsCommandeVinted(OPT(), { id: 5, complete: true }, 2).refus, "type_etiquette_indisponible", "deux types proposés, un troisième demandé");
+});
+
+await cas("(17/10) Leboncoin Colissimo : l'adresse du compte (lue dans la page, jamais sortie) → UN POST …/proxy/v1/purchases/<id>/validate-availability ; déjà confirmée → 0 appel ; incomplète → 0 appel qui engage", async () => {
+  globalThis.localStorage = { getItem: () => "jeton" };
+  const pre = { parcel: { sender_address: { firstname: "A", lastname: "B", street: "2 av X", complement: "", zipcode: "75002", city: "Paris", country_isocode: "FR", phone_number: "0611223344" } } };
+  let { f, appels } = espion({ "GET /purchase/v2/purchases/P8": { corps: { fsm: { current_state: { status: "reserved" } } } },
+    "GET /pages/availability-confirmation/P8": { corps: pre }, "POST /proxy/v1/purchases/P8/validate-availability": { corps: {} } });
+  globalThis.fetch = f;
+  let r = await M.GESTES_GENERATION.leboncoin({ purchaseId: "P8", adresseRequise: true });
+  assert.equal(gestes(appels).length, 1);
+  assert.equal(gestes(appels)[0].url, "https://api.leboncoin.fr/api/consumergoods/proxy/v1/purchases/P8/validate-availability");
+  assert.deepEqual(JSON.parse(gestes(appels)[0].init.body), { sender: { address: { firstname: "A", lastname: "B", street: "2 av X", complement: "", zipcode: "75002", city: "Paris", country_isocode: "FR" }, contact: { phone: "0611223344" } } });
+  assert.equal(gestes(appels)[0].init.headers["content-type"], "application/json");
+  assert.ok(!JSON.stringify(r).includes("Paris") && !JSON.stringify(r).includes("0611223344"), "l'adresse du compte ne sort jamais de la page");
+  assert.equal(M.issueGeneration("leboncoin", r).issue, "fait");
+  // Déjà confirmée : 0 appel qui engage, et l'adresse n'est même pas lue.
+  ({ f, appels } = espion({ "GET /purchase/v2/purchases/P8": { corps: { fsm: { current_state: { status: "available" } } } } }));
+  globalThis.fetch = f;
+  r = await M.GESTES_GENERATION.leboncoin({ purchaseId: "P8", adresseRequise: true });
+  assert.equal(gestes(appels).length, 0); assert.equal(M.issueGeneration("leboncoin", r).issue, "deja_fait");
+  assert.ok(!appels.some((a) => a.url.includes("availability-confirmation")));
+  // Adresse du compte incomplète (sans téléphone) : rien ne part, l'app le dit.
+  ({ f, appels } = espion({ "GET /purchase/v2/purchases/P8": { corps: { fsm: { current_state: { status: "reserved" } } } },
+    "GET /pages/availability-confirmation/P8": { corps: { parcel: { sender_address: { ...pre.parcel.sender_address, phone_number: "" } } } } }));
+  globalThis.fetch = f;
+  r = await M.GESTES_GENERATION.leboncoin({ purchaseId: "P8", adresseRequise: true });
+  assert.equal(gestes(appels).length, 0, "incomplète : rien ne part");
+  const issue = M.issueGeneration("leboncoin", r);
+  assert.equal(issue.issue, "refuse"); assert.equal(issue.motif, "adresse_expediteur_a_completer");
+});
+
+await cas("(17/10) Beebs : une adresse de bordereau rendue par le geste est gardée (jamais un lien de suivi) ; la récupération l'essaie d'abord", async () => {
+  const page = (statut) => `0:{"x":1}\n5:[["$","div",null,{"order":{"id":"B9","status":"${statut}","products":[{"id":"p"}],"buyer":{"id":"u"},"shipping":{"tracking_url":"https://suivi.example/123"}}}]]`;
+  let { f } = espion({ "GET /fr/account/orders/B9": { corps: page("WAIT_SELLER_CONFIRM") },
+    "POST /fr/account/orders/B9": { corps: '0:{"a":"$@1"}\n1:{"success":true,"data":{"label":"https://cdn.beebs.example/labels/B9.pdf"}}' } });
+  globalThis.fetch = f;
+  let r = await M.GESTES_GENERATION.beebs({ orderId: "B9", action: "7f33a89f02529c251879b96621f4fc409193cc626f" });
+  assert.equal(r.fichier, "https://cdn.beebs.example/labels/B9.pdf");
+  ({ f } = espion({ "GET /fr/account/orders/B9": { corps: page("WAIT_SELLER_CONFIRM") },
+    "POST /fr/account/orders/B9": { corps: '0:{"a":"$@1"}\n1:{"success":true,"suivi":"https://tracking.example/label/1"}' } }));
+  globalThis.fetch = f;
+  r = await M.GESTES_GENERATION.beebs({ orderId: "B9", action: "7f33a89f02529c251879b96621f4fc409193cc626f" });
+  assert.equal(r.fichier, null, "un lien de suivi n'est jamais pris pour un bordereau");
+  // Récupération : le lien connu d'abord ; sans lui, la commande (6 niveaux), jamais tracking_url.
+  let appels;
+  ({ f, appels } = espion({ "GET /fr/account/orders/B9": { corps: page("LABEL_PRINTED") }, "GET cdn.beebs.example/labels/B9.pdf": { corps: "%PDF" } }));
+  globalThis.fetch = f;
+  r = await M.CHEMINS_BORDEREAU.beebs({ orderId: "B9", derniereMarche: true, fichierConnu: "https://cdn.beebs.example/labels/B9.pdf" });
+  assert.equal(r.ok, true);
+  assert.ok(appels.some((a) => a.url === "https://cdn.beebs.example/labels/B9.pdf"));
+  ({ f, appels } = espion({ "GET /fr/account/orders/B9": { corps: page("LABEL_PRINTED") } }));
+  globalThis.fetch = f;
+  r = await M.CHEMINS_BORDEREAU.beebs({ orderId: "B9", derniereMarche: true });
+  assert.equal(r.motif, "fichier_sur_beebs", "aucun bordereau dans la commande : dit, jamais deviné (le lien de suivi n'est pas pris)");
+});
+
 await cas("background.js : capacité « generer » déclarée ; décision AVANT le geste ; le geste n'est appelé qu'à UN endroit", () => {
   assert.ok(/rpcMessagerie\("bordereau_demande_a_traiter", \{ p_capacites: \["generer"\] \}, token\)/.test(BG));
   const i = BG.indexOf("async function genererBordereauBeta(");

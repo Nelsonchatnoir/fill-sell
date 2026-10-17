@@ -1,7 +1,7 @@
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { appelEbay, lireEnvEbay, obtenirAccessToken, type EbayEnv } from "../_shared/ebay-oauth.ts";
 import { appelTrading, blocs, erreurTrading, valeur } from "../_shared/ebay-trading-releve.ts";
-import { commandesEbay, conversationsEbay, texteMessageEbay } from "../_shared/messagerie-ebay.js";
+import { commandesEbay, conversationsEbay, suiviEbay, texteMessageEbay } from "../_shared/messagerie-ebay.js";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ebay-messagerie — BÊTA MESSAGERIE + COMMANDES eBAY (16/10/2026)
@@ -21,7 +21,8 @@ import { commandesEbay, conversationsEbay, texteMessageEbay } from "../_shared/m
 //     bêta) — les en-têtes des 30 derniers jours (reçus, envoyés), le texte de
 //     10 messages au plus par passage, et les commandes à expédier
 //     (getOrders NOT_STARTED|IN_PROGRESS) → messagerie_enregistrer,
-//     commandes_enregistrer ;
+//     commandes_enregistrer ; (v6, 17/10) le SUIVI d'une étiquette achetée sur
+//     eBay (getShippingFulfillments : numéro, transporteur ; 10 au plus) ;
 //   · envoyer — UNE réponse en attente (messagerie_reponse_a_envoyer ; 16/10
 //     nuit : comptes bêta sans liste blanche, mode relu à la prise), texte
 //     EXACT (empreinte revérifiée avant l'envoi), par AddMemberMessageRTQ
@@ -182,7 +183,19 @@ async function relever(admin: SupabaseClient, env: EbayEnv, userId: string) {
       const rr = await appelEbay(env, jeton.token, `/sell/fulfillment/v1/order?orderIds=${aRelire.map(encodeURIComponent).join(",")}`);
       if (rr.http === 200) orders.push(...((rr.json as { orders?: Array<{ orderId?: string }> } | null)?.orders ?? []));
     }
-    const lignes = commandesEbay(orders);
+    // (v6, 17/10) Une étiquette achetée sur eBay passe la commande « expédiée »
+    // aussitôt : son suivi (numéro, transporteur) est lu pour s'afficher dans
+    // FillSell — 10 commandes au plus par passage, celles qui ont un envoi.
+    const suivis: Record<string, { numero: string; transporteur: string | null }> = {};
+    const avecEnvoi = (orders as Array<{ orderId?: string; orderFulfillmentStatus?: string; fulfillmentHrefs?: unknown[] }>)
+      .filter((o) => o?.orderId && /^(IN_PROGRESS|FULFILLED)$/.test(String(o.orderFulfillmentStatus ?? "")) && Array.isArray(o.fulfillmentHrefs) && o.fulfillmentHrefs.length > 0)
+      .slice(0, 10);
+    for (const o of avecEnvoi) {
+      const rf = await appelEbay(env, jeton.token, `/sell/fulfillment/v1/order/${encodeURIComponent(String(o.orderId))}/shipping_fulfillment`);
+      const s = rf.http === 200 ? suiviEbay(rf.json) : null;
+      if (s) suivis[String(o.orderId)] = s;
+    }
+    const lignes = commandesEbay(orders, suivis);
     if (lignes.length) {
       const { data } = await admin.rpc("commandes_enregistrer", { p_platform: "ebay", p_commandes: lignes.slice(0, 40), p_user: userId });
       bilanCommandes = { ...(data as Record<string, unknown> ?? {}), relues: aRelire.length };

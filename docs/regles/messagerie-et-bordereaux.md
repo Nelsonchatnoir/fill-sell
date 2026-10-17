@@ -151,3 +151,55 @@
   fabriqué est déposé sous `<uid>/impressions/` puis ouvert par adresse signée (10 min) ; ces fichiers, et tout
   fichier du bucket qu'aucune copie vivante ne tient, sont effacés après 24 h (`bordereaux_a_purger` +
   `bordereaux-purge` v2).
+
+## Règles (17/10 — écrans bêta vus sur iPhone par Nico)
+- **L'écran « Messages » / « À expédier » est une PAGE, jamais une couche.** Il s'ouvre dans le conteneur qui défile de
+  l'app (`.wrap.page-pad`, sa réserve basse garde la fin au-dessus de la barre du bas) à la place du contenu de
+  l'onglet : classe `fs-espace-beta-ouvert` sur le conteneur (posée pour un compte bêta seulement), règle dans
+  `src/messagerie/espace.css` (le Stock reste monté, masqué). L'en-tête et la barre du bas restent les vrais. Cause du
+  17/10 : l'ancienne couche `position:fixed` rendue dans l'app était peinte par WebKit SOUS l'en-tête et la barre
+  (`src/utils/modale.js`, règle des couches) — croix cachée, onglet changé sous l'écran, liste écrasée.
+- **En haut : la flèche ← et le titre.** Ouvrir crée une entrée d'historique (`useEcranMessagerie.js`), une
+  conversation une de plus : la flèche, le retour du navigateur, le geste iOS (Safari) et le retour Android
+  (Capacitor 8 : `webView.goBack()` tant qu'aucune couche n'écoute) font la même chose. Un appui sur un onglet (barre
+  du bas, onglets du bureau) ferme l'écran et retire ses entrées ; un changement d'onglet venu d'ailleurs aussi.
+  Ouvrir ne change jamais d'onglet. Au retour, le Stock retrouve sa place. App iOS native : pas de geste retour
+  (WKWebView par défaut), la flèche et les onglets suffisent.
+- **Les entrées vivent sur le Stock seul** (`tab===1`), même style neutre pour « Messages » et « À expédier » ; seul le
+  compteur est coloré.
+- **Aucun conteneur à hauteur fixe** dans ces écrans : la page défile d'un seul tenant ; les filtres défilent sur le
+  côté (`flex: none`), jamais écrasés.
+- **Toute couche de la bêta passe par `src/messagerie/Couche.jsx`** : portail sur `document.body`, `useFondFige`
+  (barre du bas masquée), Échap et retour Android. Feuille « Générer le bordereau », aperçu, « Tout imprimer », code
+  en plein écran (`premierPlan={false}` : ouvert PAR l'aperçu).
+- **Vignette** (`Vignette.jsx`, sources `sourcesVignette` dans `vue.js`) : photo de l'annonce, puis photos de la fiche
+  rattachée lues par `urlsPhotos` (une LISTE : la passer à `<img src>` donnait l'image cassée « ? »), une image qui
+  casse passe à la suivante, plus rien = icône neutre.
+- **Preuves** : `selftest:messagerie-app` (23 cas) ; banc `scripts/apercu/capture-espace-beta-page.mjs` (coquille
+  d'App + vrais composants, WebKit ET Chromium à 390 px, 96 contrôles : flèche touchable sous l'en-tête, fin de liste
+  et zone de réponse au-dessus de la barre, historique, onglets, place du Stock, compte sans drapeau intact).
+
+## Règles (17/10 — « À expédier » : tout dans FillSell)
+- **Règle de Nico** : tout ce que FillSell peut faire ou récupérer se fait dans FillSell ; la plateforme n'est qu'un
+  dernier recours (lien discret « Voir la commande sur … », `LienSecours`), sauf ce que FillSell ne fait pas — la carte
+  dit pourquoi : acheter une étiquette eBay, enlèvement Vinted à domicile / téléphone exigé / étiquette refusée par
+  Vinted, envoi libre ou remise en main propre (Leboncoin, Beebs), indiquer l'envoi sur Depop. `actionCommande` (vue.js)
+  rend `generer`, `bordereau`, `attente` (la plateforme prépare, FillSell guette) ou `lien` ; une matrice de 900 cas
+  le tient (`selftest:messagerie-app`).
+- **Réglages pas encore lus ≠ génération fermée** : `useReglagesMessagerie().generation` vaut true, false (fermée par le
+  serveur) ou null (inconnue) ; inconnue, le bouton « Générer » reste (la base refuse si c'est fermé, rien ne part).
+  C'était la cause de « c'est toi qui le fais » (17/10).
+- **Vinted, options pas encore relues** : papier ou QR au choix ; l'extension vérifie juste avant le geste que Vinted
+  propose ce type (`type_etiquette_indisponible` sinon : rien n'est commandé, le bouton revient).
+- **Leboncoin Colissimo / courrier suivi** : générés depuis FillSell (`validate-availability` du proxy avec
+  `sender.address` + `contact.phone`) ; l'expéditeur est l'**adresse du compte Leboncoin** (décision de Nico) lue dans
+  la page au moment du geste (`pages/availability-confirmation/<id>` → `parcel.sender_address`), jamais sortie, jamais
+  saisie ni gardée dans FillSell ; incomplète → `adresse_expediteur_a_completer`, rien ne part.
+- **Beebs** : le site ne retélécharge pas le bordereau après `LABEL_PRINTED` (code relu le 17/10) ; l'extension garde
+  toute adresse de fichier rendue par le geste et fouille la commande (6 niveaux, jamais un lien de suivi) — à prouver
+  à la première vraie vente.
+- **eBay** : le suivi d'une étiquette achetée (`shipping_fulfillment` : numéro, transporteur ; 10 lectures au plus par
+  passage, `ebay-messagerie` v6) s'affiche ; « Expédiées depuis 3 jours » montre le suivi (eBay, Depop, Beebs) ; un
+  numéro interne (Vinted, Leboncoin) n'est jamais montré comme suivi.
+- **Ordinateur absent** : la demande attend (« En attente de ton ordinateur… ») ; non prise à temps (30 min, base),
+  rien n'est fait et le bouton revient. Passer à 24 h = migration à valider par Nico (non écrite, voir l'état de prod).

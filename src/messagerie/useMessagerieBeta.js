@@ -52,18 +52,21 @@ export function useMessagerieBeta(supabase, userId) {
  * fermé) et la génération des bordereaux (ouverte ou non). Une lecture à
  * l'ouverture de l'écran (messagerie_compteurs), fail-closed : illisible =
  * liste blanche et génération fermée.
+ * (17/10) generation : true ouverte, false FERMÉE par le serveur, null pas encore
+ * lue ou illisible — dans ce cas l'écran garde le bouton « Générer » (la base
+ * refuse si c'est fermé : rien ne part) et ne renvoie jamais vers la plateforme.
  */
 export function useReglagesMessagerie(supabase) {
-  const [reglages, setReglages] = useState({ pret: false, envoiMode: 1, generation: false });
+  const [reglages, setReglages] = useState({ pret: false, envoiMode: 1, generation: null });
   useEffect(() => {
     if (!supabase) return undefined;
     let vivant = true;
     supabase.rpc('messagerie_compteurs').then(({ data, error }) => {
       if (!vivant) return;
-      if (error || !data || data.beta !== true) { setReglages({ pret: true, envoiMode: 1, generation: false }); return; }
+      if (error || !data || data.beta !== true) { setReglages({ pret: true, envoiMode: 1, generation: null }); return; }
       const mode = Number(data.envoi_mode);
-      setReglages({ pret: true, envoiMode: Number.isFinite(mode) ? mode : 1, generation: data.generation === true });
-    }).catch(() => { if (vivant) setReglages({ pret: true, envoiMode: 1, generation: false }); });
+      setReglages({ pret: true, envoiMode: Number.isFinite(mode) ? mode : 1, generation: data.generation === true ? true : data.generation === false ? false : null });
+    }).catch(() => { if (vivant) setReglages({ pret: true, envoiMode: 1, generation: null }); });
     return () => { vivant = false; };
   }, [supabase]);
   return reglages;

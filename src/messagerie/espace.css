@@ -1,0 +1,7 @@
+/* (17/10) L'écran bêta « Messages » / « À expédier » est une PAGE : il remplace
+   le contenu de l'onglet dans le conteneur qui défile de l'app (.wrap.page-pad,
+   src/messagerie/useEcranMessagerie.js). Tant qu'il est ouvert, les autres
+   enfants du conteneur sont masqués — montés, jamais démontés : le Stock garde
+   son état et retrouve sa place au retour. La classe n'est posée sur le
+   conteneur que pour un compte bêta qui a ouvert l'écran (App.jsx). */
+.fs-espace-beta-ouvert > :not(.fs-espace-beta) { display: none !important; }

@@ -67,12 +67,12 @@ for (const ecran of ['barre', 'messages', 'verrou', 'blanche', 'expedier', 'cart
     const actifs = await page.$$eval('button[aria-label="Récupérer le bordereau"]', (bs) => bs.map((b) => !b.disabled));
     verifier(actifs.length === 2 && actifs.every(Boolean), 'À expédier : « Récupérer » actif pour les deux bordereaux prêts (Vinted, Leboncoin)', JSON.stringify(actifs));
     const generer = await page.locator('button[aria-label="Générer le bordereau"]').count();
-    verifier(generer === 3, 'À expédier : « Générer le bordereau » pour Vinted, Leboncoin (Mondial Relay) et Beebs', String(generer));
-    for (const libelle of ['Étiquette sur eBay', 'Voir sur Depop']) {
+    verifier(generer === 4, 'À expédier : « Générer le bordereau » pour Vinted, Leboncoin (Mondial Relay ET Colissimo, 17/10) et Beebs', String(generer));
+    for (const libelle of ['Acheter l’étiquette sur eBay', 'Indiquer l’envoi sur Depop']) {
       verifier(await page.locator(`button[aria-label="${libelle}"]`).count() >= 1, `À expédier : « ${libelle} » reste un lien`);
     }
-    verifier(/ton adresse et ton mode de dépôt/.test(m.texte), 'À expédier : Leboncoin Colissimo → sur Leboncoin, et pourquoi');
-    verifier(/achète-la sur eBay/.test(m.texte), 'À expédier : eBay, étiquette payante achetée sur eBay');
+    verifier(await page.locator('article[data-commande="leboncoin"]', { hasText: 'Cadre photo doré' }).locator('button[aria-label="Générer le bordereau"]').count() === 1, 'À expédier : (17/10) Leboncoin Colissimo → dans FillSell (adresse du compte Leboncoin)');
+    verifier(/seul geste à faire sur eBay/.test(m.texte), 'À expédier : eBay, seul l’ACHAT de l’étiquette se fait sur eBay');
     verifier(/Disponibilité à confirmer/.test(m.texte) && /Commande à accepter/.test(m.texte), 'À expédier : états lisibles par plateforme');
     verifier(/À déposer avant le/.test(m.texte), 'À expédier : date limite affichée');
     verifier(/@acheteuse_a/.test(m.texte) && /Commande 9001/.test(m.texte) && /Dans ton stock/.test(m.texte), 'À expédier : pseudo, numéro, article du stock');

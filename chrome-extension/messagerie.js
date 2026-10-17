@@ -144,6 +144,31 @@
     return t || null;
   }
 
+  // (17/10, mission de Nico : « tout dans FillSell ») Colissimo et courrier
+  // suivi : la confirmation porte l'ADRESSE DE L'EXPÉDITEUR (code du site, relu
+  // le 17/10 : POST consumergoods/proxy/v1/purchases/<id>/validate-availability
+  // {sender:{address:{firstname, lastname, street, complement, zipcode, city,
+  // country_isocode}, contact:{phone}}}). C'est l'adresse enregistrée dans le
+  // COMPTE LEBONCOIN de la personne (décision de Nico, 17/10) : celle que le
+  // site pré-remplit (pages/availability-confirmation/<id>,
+  // parcel.sender_address), lue DANS la page au moment du geste et jamais
+  // sortie. Incomplète chez Leboncoin : rien ne part, l'app le dit.
+  const LBC_TYPES_ADRESSE = Object.freeze(["colissimo", "courrier_suivi"]);
+  /** L'adresse du compte Leboncoin au format du geste, ou null s'il manque quoi que ce soit. */
+  function expediteurLeboncoin(a) {
+    if (!a || typeof a !== "object") return null;
+    const v = (...cles) => { for (const k of cles) { const x = a[k]; if (x != null && String(x).trim()) return String(x).trim(); } return ""; };
+    const tel = v("phone_number", "phone").replace(/[\s.-]/g, "");
+    const e = {
+      firstname: v("firstname"), lastname: v("lastname"), street: v("street"), complement: v("complement"),
+      zipcode: v("zipcode"), city: v("city"), country_isocode: (v("country_isocode") || "FR").toUpperCase(), phone: tel,
+    };
+    if (!e.firstname || !e.lastname || e.street.length < 3 || !/^\d{5}$/.test(e.zipcode) || e.city.length < 2) return null;
+    if (!/^(\+33|0033|0)[1-9]\d{8}$/.test(tel)) return null;
+    if (e.country_isocode !== "FR") return null;
+    return e;
+  }
+
   // Beebs (constantes du site, 16/10 nuit) : les transporteurs par identifiant ;
   // RMP = remise en main propre (rien à générer, l'app Beebs seulement).
   const BEEBS_TRANSPORTEURS = Object.freeze({
@@ -200,9 +225,14 @@
     if (options.length && options.every((o) => o?.date === true || o?.heure === true)) return { refus: "date_a_choisir_sur_vinted" };
     const types = [...new Set(options.flatMap((o) => (Array.isArray(o?.types) ? o.types : []).map(Number)))].filter((x) => [1, 2, 3].includes(x));
     const choisi = Number(typeChoisi);
+    const aChoisi = typeChoisi != null && Number.isFinite(choisi);
     let labelType = null;
+    // (17/10) Un type choisi dans l'app que Vinted ne propose pas pour CETTE
+    // commande (options pas encore relues au moment de l'appui) : rien n'est
+    // commandé, l'app le dit et propose les bons choix — jamais un autre type.
+    if (aChoisi && types.length && !types.includes(choisi)) return { refus: "type_etiquette_indisponible" };
     if (types.length > 1) {
-      if (!types.includes(choisi)) return { refus: "type_etiquette_a_choisir" };
+      if (!aChoisi) return { refus: "type_etiquette_a_choisir" };
       labelType = choisi;
     } else if (types.length === 1) {
       labelType = types[0];
@@ -521,11 +551,13 @@
         transporteur: d?.shipping_type ?? null,
         envoi_ref: d?.parcel_id ?? null,
         vendue_le: dateIso(c.created_at),
-        // (16/10 nuit) La disponibilité se confirme depuis FillSell seulement
-        // pour les envois dont le bordereau naît de la confirmation seule.
+        // (16/10 nuit) La disponibilité se confirme depuis FillSell pour les
+        // envois dont le bordereau naît de la confirmation ; (17/10) aussi
+        // Colissimo et courrier suivi, avec l'adresse de l'expéditeur.
         ...(etat === "a_confirmer" && d?.shipping_type ? { options_bordereau: {
           type_envoi: typeEnvoiLeboncoin(d.shipping_type),
-          generable: LBC_TYPES_GENERABLES.includes(typeEnvoiLeboncoin(d.shipping_type)),
+          generable: LBC_TYPES_GENERABLES.includes(typeEnvoiLeboncoin(d.shipping_type)) || LBC_TYPES_ADRESSE.includes(typeEnvoiLeboncoin(d.shipping_type)),
+          ...(LBC_TYPES_ADRESSE.includes(typeEnvoiLeboncoin(d.shipping_type)) ? { adresse_requise: true } : {}),
         } } : {}),
       });
     }
@@ -1517,17 +1549,20 @@
     if (s !== "LABEL_PRINTED" && s !== "LABEL_PRINTED_WARNING") {
       return { ok: false, etape: "statut", motif: s.startsWith("WAIT_SELLER_CONFIRM") ? "commande_a_accepter_sur_beebs" : "bordereau_pas_pret", statut: s, etapes };
     }
-    // Une adresse de bordereau dans l'objet commande (2 niveaux), jamais devinée.
-    let adresse = null;
+    // Une adresse de bordereau, jamais devinée : (17/10) d'abord celle rendue
+    // par le geste « Télécharger le bordereau » (s'il y en avait une), puis
+    // l'objet commande (6 niveaux, tableaux compris ; jamais un lien de suivi).
+    let adresse = typeof p.fichierConnu === "string" && /^https:\/\//.test(p.fichierConnu) ? p.fichierConnu : null;
     const chercher = (v, profondeur) => {
-      if (adresse || !v || typeof v !== "object" || profondeur > 3) return;
+      if (adresse || !v || typeof v !== "object" || profondeur > 6) return;
       for (const [k, x] of Object.entries(v)) {
         if (adresse) return;
+        if (/tracking|suivi/i.test(k)) continue;
         if (typeof x === "string" && /^https:\/\//.test(x) && (/label|bordereau|etiquette/i.test(k) || /\.pdf(\?|$)/i.test(x))) { adresse = x; return; }
-        if (x && typeof x === "object" && !Array.isArray(x)) chercher(x, profondeur + 1);
+        if (x && typeof x === "object") chercher(x, profondeur + 1);
       }
     };
-    chercher(commande.shipping ?? {}, 0);
+    if (!adresse) chercher(commande.shipping ?? {}, 0);
     if (!adresse) chercher(commande, 0);
     if (!adresse) return { ok: false, etape: "fichier", motif: "fichier_sur_beebs", etapes };
     if (p.derniereMarche !== true) return { ok: false, etape: "derniere_marche", motif: "fermee", prepare: { hote: new URL(adresse).host }, etapes };
@@ -1685,6 +1720,37 @@
     if (!rl || rl.status !== 200) return { avant: true, http: rl?.status ?? 0, motif: `relecture_http_${rl?.status ?? 0}`, bot: rl?.status === 403 || rl?.status === 429, etapes };
     const st = String((await rl.json().catch(() => null))?.fsm?.current_state?.status ?? "");
     if (st && st !== "reserved" && st !== "created") return { avant: true, deja: st === "available", statut: st, etapes };
+    // (17/10) Colissimo, courrier suivi : la confirmation porte l'adresse de
+    // l'expéditeur — celle du COMPTE LEBONCOIN (pré-remplie par le site), lue
+    // ICI et jamais sortie de la page ; incomplète : rien ne part.
+    if (p.adresseRequise === true) {
+      const complet = (a) => {
+        if (!a || typeof a !== "object") return null;
+        const v = (...cles) => { for (const k of cles) { const x = a[k]; if (x != null && String(x).trim()) return String(x).trim(); } return ""; };
+        const tel = v("phone_number", "phone").replace(/[\s.-]/g, "");
+        const e = { firstname: v("firstname"), lastname: v("lastname"), street: v("street"), complement: v("complement"),
+          zipcode: v("zipcode"), city: v("city"), country_isocode: (v("country_isocode") || "FR").toUpperCase(), phone: tel };
+        if (!e.firstname || !e.lastname || e.street.length < 3 || !/^\d{5}$/.test(e.zipcode) || e.city.length < 2) return null;
+        if (!/^(\+33|0033|0)[1-9]\d{8}$/.test(tel) || e.country_isocode !== "FR") return null;
+        return e;
+      };
+      etapes.push("GET /consumergoods/proxy/v1/pages/availability-confirmation/<n>");
+      const rp = await fetch(`https://api.leboncoin.fr/api/consumergoods/proxy/v1/pages/availability-confirmation/${encodeURIComponent(p.purchaseId)}`, { headers: H }).catch(() => null);
+      if (rp && (rp.status === 403 || rp.status === 429)) return { avant: true, http: rp.status, motif: `http_${rp.status}`, bot: true, etapes };
+      const exp = complet(rp && rp.status === 200 ? (await rp.json().catch(() => null))?.parcel?.sender_address : null);
+      if (!exp) return { avant: true, motif: "adresse_expediteur_a_completer", etapes };
+      etapes.push("POST /consumergoods/proxy/v1/purchases/<n>/validate-availability (adresse de l'expéditeur)");
+      const ra = await fetch(`https://api.leboncoin.fr/api/consumergoods/proxy/v1/purchases/${encodeURIComponent(p.purchaseId)}/validate-availability`, {
+        method: "POST", headers: { ...H, "content-type": "application/json" },
+        body: JSON.stringify({ sender: { address: { firstname: exp.firstname, lastname: exp.lastname, street: exp.street, complement: exp.complement,
+          zipcode: exp.zipcode, city: exp.city, country_isocode: exp.country_isocode }, contact: { phone: exp.phone } } }),
+      }).catch(() => null);
+      if (!ra) return { http: 0, etapes };
+      const ta = await ra.text().catch(() => "");
+      let ja = null; try { ja = JSON.parse(ta); } catch { ja = null; }
+      return { http: ra.status, code: ja && typeof ja === "object" && ja.code != null ? String(ja.code) : null,
+        bot: /datadome|captcha-delivery|geo\.captcha/i.test(ta.slice(0, 4000)), etapes };
+    }
     etapes.push("POST /consumergoods/purchase/v1/purchases/<n>/action/validate-availability");
     const r = await fetch(`https://api.leboncoin.fr/api/consumergoods/purchase/v1/purchases/${encodeURIComponent(p.purchaseId)}/action/validate-availability`, {
       method: "POST", headers: H,
@@ -1794,7 +1860,12 @@
         if (cand) { succes = cand.success; break; }
       } catch { /* autre forme */ }
     }
-    return { http: r.status, succes, bot: r.status === 403 || r.status === 429 || (/captcha-delivery\.com|geo\.captcha/i.test(t) && t.length < 60000), etapes };
+    // (17/10) Le code du site n'ouvre pas de fichier après ce geste (Beebs le
+    // fabrique ensuite) ; si la réponse porte quand même une adresse de
+    // bordereau (PDF, « label »), elle est gardée pour la récupération.
+    const fichier = [...t.matchAll(/https:\/\/[^"'\s\\<>]+/g)].map((m) => m[0])
+      .find((u) => /\.pdf(\?|$)|label|bordereau|etiquette/i.test(u) && !/tracking|suivi/i.test(u)) ?? null;
+    return { http: r.status, succes, fichier, bot: r.status === 403 || r.status === 429 || (/captcha-delivery\.com|geo\.captcha/i.test(t) && t.length < 60000), etapes };
   }
 
   const PREPARATIONS_GENERATION = Object.freeze({ vinted: preparerGenerationVinted, leboncoin: preparerGenerationLeboncoin, beebs: preparerGenerationBeebs });
@@ -1822,7 +1893,11 @@
       if (s === "available" || s === "sent" || s === "received") return { deja: s === "available", ...(s !== "available" ? { refus: "deja_expediee" } : {}) };
       if (/cancel/.test(s)) return { refus: "commande_annulee" };
       if (s !== "reserved" && s !== "created") return { refus: `etat_${s || "inconnu"}` };
-      if (!LBC_TYPES_GENERABLES.includes(typeEnvoiLeboncoin(prep.type_envoi))) return { refus: "confirmation_sur_leboncoin" };
+      const type = typeEnvoiLeboncoin(prep.type_envoi);
+      // (17/10) Colissimo, courrier suivi : la page lit l'adresse du compte
+      // Leboncoin au moment du geste (jamais sortie), ou refuse sans rien faire.
+      if (LBC_TYPES_ADRESSE.includes(type)) return { args: { purchaseId: commande.commande_ref, adresseRequise: true } };
+      if (!LBC_TYPES_GENERABLES.includes(type)) return { refus: "confirmation_sur_leboncoin" };
       return { args: { purchaseId: commande.commande_ref } };
     }
     if (platform === "beebs") {
@@ -1879,6 +1954,8 @@
     LECTEURS, ENVOYEURS, CHEMINS_BORDEREAU,
     // (16/10 nuit) Générer le bordereau.
     LBC_TYPES_GENERABLES, typeEnvoiLeboncoin, BEEBS_TRANSPORTEURS, BEEBS_RMP,
+    // (17/10) Colissimo et courrier suivi depuis FillSell.
+    LBC_TYPES_ADRESSE, expediteurLeboncoin,
     optionsBordereauVinted, corpsCommandeVinted, issueGeste, decisionGeneration, issueGeneration, empreinteTexte,
     PREPARATIONS_GENERATION, GESTES_GENERATION,
   });

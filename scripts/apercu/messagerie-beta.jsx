@@ -13,6 +13,7 @@
 // mode 1 hors liste blanche ; blanche = mode 1 en liste blanche ; expedier :
 // « Générer le bordereau » (Vinted, Leboncoin, Beebs) et son écran de confirmation.
 import { createRoot } from 'react-dom/client';
+import { useState } from 'react';
 import '../../src/base.css';
 import '../../src/App.css';
 import '../../src/App.redesign.css';
@@ -57,7 +58,7 @@ const DONNEES = {
     { id: 'k5', platform: 'depop', commande_ref: '77', etat: 'a_expedier', bordereau: 'sans_objet', acheteur_pseudo: 'acheteur_d', titre: 'Veste en jean Levi’s', photo_url: null, montant: 25, devise: 'EUR', a_expedier_avant: ilYa(-100), vendue_le: ilYa(8) },
     // (16/10 nuit) À générer : Vinted (étiquette à commander, deux types), Leboncoin Colissimo (formulaire → lien).
     { id: 'k7', platform: 'vinted', commande_ref: '9002', etat: 'a_expedier', etat_plateforme: '100', bordereau: 'a_obtenir', acheteur_pseudo: 'acheteuse_b', titre: 'Pull en laine marine', photo_url: null, montant: 32, devise: 'EUR', transporteur: 'Mondial Relay', conversation_ref: '502', vendue_le: ilYa(1), options_bordereau: { transporteur: 'Mondial Relay', types_etiquette: [1, 3], domicile_seul: false, telephone_manquant: false, generable: true } },
-    { id: 'k8', platform: 'leboncoin', commande_ref: '4403', etat: 'a_confirmer', etat_plateforme: 'in_progress/reserved', bordereau: 'a_generer', acheteur_pseudo: 'Paul', titre: 'Cadre photo doré', photo_url: null, montant: 15, devise: 'EUR', transporteur: 'colissimo', vendue_le: ilYa(4), options_bordereau: { type_envoi: 'colissimo', generable: false } },
+    { id: 'k8', platform: 'leboncoin', commande_ref: '4403', etat: 'a_confirmer', etat_plateforme: 'in_progress/reserved', bordereau: 'a_generer', acheteur_pseudo: 'Paul', titre: 'Cadre photo doré', photo_url: null, montant: 15, devise: 'EUR', transporteur: 'colissimo', vendue_le: ilYa(4), options_bordereau: { type_envoi: 'colissimo', generable: true, adresse_requise: true } },
   ],
   bordereaux_demandes: [],
   bordereaux_copies: [],
@@ -73,6 +74,7 @@ function fauxClient() {
       in(col, vs) { lignes = lignes.filter((l) => vs.map(String).includes(String(l[col]))); return q; },
       is(col, v) { lignes = lignes.filter((l) => (l[col] ?? null) === v); return q; },
       gt(col, v) { lignes = lignes.filter((l) => String(l[col] ?? '') > String(v)); return q; },
+      gte(col, v) { lignes = lignes.filter((l) => String(l[col] ?? '') >= String(v)); return q; },
       order() { return q; },
       limit(n) { lignes = lignes.slice(0, n); return q; },
       then(ok, ko) { window.__appels.push({ table }); return Promise.resolve({ data: lignes, error: null }).then(ok, ko); },
@@ -113,6 +115,13 @@ function Apercu() {
       <CarteArticle id={12} lang="fr" photo={null} titre="Montre Casio G-Shock" prix="45,00 €" pastille={{ texte: 'En ligne', ton: 'ok' }} logos={{ liste: ['leboncoin'], etats: {} }} vues={10} favoris={1} messages={null} />
     </div>
   );
-  return <EspaceMessagerie supabase={sb} lang="fr" ouvert ongletInitial="messages" aExpedier={4} onFermer={() => {}} />;
+  return <EspaceDemo />;
+}
+// (17/10) L'écran est une page pilotée par App (useEcranMessagerie) : ici, un état local.
+function EspaceDemo() {
+  const [ecranM, setEcranM] = useState({ onglet: 'messages', article: null, conversation: null, n: 1 });
+  return <EspaceMessagerie supabase={sb} lang="fr" ecran={ecranM}
+    onAller={(v) => setEcranM((e) => ({ ...v, n: e.n + 1 }))}
+    onRetour={() => setEcranM((e) => (e.n > 1 ? { ...e, conversation: null, n: e.n - 1 } : e))} />;
 }
 createRoot(document.getElementById('apercu')).render(<Apercu />);

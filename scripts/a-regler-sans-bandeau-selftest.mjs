@@ -106,7 +106,9 @@ console.log('\n2. Toutes les plateformes, toutes les causes');
 console.log('\n3. La zone des bandeaux d’App.jsx : plus rien de ce genre, sur aucun onglet');
 const app = lire('src/App.jsx');
 {
-  const z0 = app.indexOf('<div ref={scrollRef} className="wrap page-pad"');
+  // (17/10) La classe du conteneur est une expression (page bêta « Messages / À
+  // expédier » : fs-espace-beta-ouvert, compte bêta seulement) : le repère est l'ouverture.
+  const z0 = app.indexOf('<div ref={scrollRef} className=');
   const z1 = app.indexOf('{tab===0&&', z0);
   const zone = app.slice(z0, z1);
   verifier(z0 > 0 && z1 > z0, 'zone des bandeaux trouvée');

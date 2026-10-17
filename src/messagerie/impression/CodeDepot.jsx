@@ -8,15 +8,17 @@ import { useEffect, useState } from 'react';
 import { UI } from '../../components/ui';
 import Icone from '../../ecrans/Icone';
 import { ENCRE2, POLICE } from './style';
+import Couche from '../Couche';
 
 export default function CodeDepot({ url, genre = 'png', lang = 'fr', titre = null }) {
   const fr = lang !== 'en';
   const [plein, setPlein] = useState(false);
   useEffect(() => {
     if (!plein) return undefined;
-    const echap = (e) => { if (e.key === 'Escape') setPlein(false); };
-    window.addEventListener('keydown', echap);
-    return () => window.removeEventListener('keydown', echap);
+    // Échap ferme le plein écran SEUL : écouté avant l'aperçu (capture), arrêté là.
+    const echap = (e) => { if (e.key === 'Escape') { e.stopPropagation(); setPlein(false); } };
+    window.addEventListener('keydown', echap, true);
+    return () => window.removeEventListener('keydown', echap, true);
   }, [plein]);
   if (!url) return null;
   // Un PNG (QR, code-barres) s'agrandit sans lissage ; une photo (JPEG) reste lissée.
@@ -39,6 +41,7 @@ export default function CodeDepot({ url, genre = 'png', lang = 'fr', titre = nul
         </button>
       </div>
       {plein && (
+        <Couche premierPlan={false}>
         <div role="dialog" aria-modal="true" aria-label={fr ? 'Code de dépôt' : 'Drop-off code'} onClick={() => setPlein(false)}
           style={{ position: 'fixed', inset: 0, zIndex: 1400, background: '#FFFFFF', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 'max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom))', gap: 16, cursor: 'zoom-out' }}>
           <img src={url} alt={fr ? 'Code de dépôt' : 'Drop-off code'}
@@ -48,6 +51,7 @@ export default function CodeDepot({ url, genre = 'png', lang = 'fr', titre = nul
             {fr ? 'Fermer' : 'Close'}
           </button>
         </div>
+        </Couche>
       )}
     </>
   );

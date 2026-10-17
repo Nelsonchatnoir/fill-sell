@@ -20269,7 +20269,7 @@ async function obtenirBordereauBeta(commande, token) {
   const args = commande.platform === "vinted"
     ? [{ transactionId: commande.commande_ref, shipmentId: commande.envoi_ref ?? null, derniereMarche, numerique: commande.numerique === true }]
     : commande.platform === "beebs"
-      ? [{ orderId: commande.commande_ref, derniereMarche }]
+      ? [{ orderId: commande.commande_ref, derniereMarche, fichierConnu: commande.fichierConnu ?? null }]
       : [{ purchaseId: commande.commande_ref, derniereMarche }];
   const r = await executerDansOngletPlateforme(commande.platform, chemin, args);
   if (!r?.ok || !r?.base64) return r;
@@ -20422,6 +20422,12 @@ async function genererBordereauBeta(d, token, etat) {
       return;
     }
     fait = issue.issue === "deja_fait" ? "deja_fait" : "fait";
+    // (17/10) Beebs : une adresse de bordereau rendue par le geste est gardée
+    // (sur ce poste) pour la récupération du fichier.
+    if (d.platform === "beebs" && typeof res?.fichier === "string" && /^https:\/\//.test(res.fichier)) {
+      (etat.beebs_fichiers ??= {})[String(d.commande_ref)] = { url: res.fichier, le: Date.now() };
+      await ecrireEtatMessagerie(etat);
+    }
   }
   await etape("generee", fait === "deja_fait" ? "deja_fait_sur_la_plateforme" : "geste_fait", null, fait);
   console.log(`[bordereau][generer][${d.platform}] ${court} : ${fait === "deja_fait" ? "déjà fait sur la plateforme" : "geste fait"} — récupération du fichier`);
@@ -20440,7 +20446,8 @@ async function suiteGenerationBeta(d, token, etat) {
 async function recupererFichierGeneration(d, token, etat) {
   const etape = (statut, motif, copie) => rendreEtapeGeneration(d.id, statut, motif, copie, null, token);
   const numerique = [2, 3].includes(Number(d.choix?.type_etiquette));
-  const r = await obtenirBordereauBeta({ id: d.commande_id, platform: d.platform, commande_ref: d.commande_ref, envoi_ref: d.envoi_ref ?? null, numerique }, token)
+  const fichierConnu = d.platform === "beebs" ? (etat?.beebs_fichiers?.[String(d.commande_ref)]?.url ?? null) : null;
+  const r = await obtenirBordereauBeta({ id: d.commande_id, platform: d.platform, commande_ref: d.commande_ref, envoi_ref: d.envoi_ref ?? null, numerique, fichierConnu }, token)
     .catch((err) => ({ ok: false, motif: `exception: ${String(err?.message ?? err).slice(0, 80)}` }));
   if (r?.ok && r.copie) {
     await etape("prete", null, r.copie);

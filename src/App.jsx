@@ -15,6 +15,7 @@ import { track } from './analytics/analytics';
 // qu'à l'ouverture, par un compte bêta.
 import { lazy as lazyMessagerie, Suspense as SuspenseMessagerie } from "react";
 import { useMessagerieBeta } from './messagerie/useMessagerieBeta';
+import { useEcranMessagerie } from './messagerie/useEcranMessagerie';
 import BarreMessagerie from './messagerie/BarreMessagerie';
 const EspaceMessagerie = lazyMessagerie(() => import('./messagerie/EspaceMessagerie'));
 import { poserSourceSurProfil } from './utils/acquisition';
@@ -1986,7 +1987,8 @@ export default function App({ loginOnly = false }){
   // (16/10, bêta messages + bordereaux) — APRÈS `user` (règle TDZ du fichier).
   // beta === false pour tout compte sans beta_flags.messages_bordereaux.
   const messagerie=useMessagerieBeta(supabase,user?.id??null);
-  const [espaceMessagerie,setEspaceMessagerie]=useState(null);
+  // (17/10) L'écran ouvert (espaceMessagerie) est déclaré APRÈS scrollRef : il
+  // en a besoin (règle TDZ du fichier).
   // ── Multi-boutiques Vinted (2026-09-03) : boutiques confirmées du compte
   // (profiles.vinted_sync_pin v2) + filtre du Stock par boutique. La liste ne
   // pilote un affichage que quand il y a AU MOINS deux boutiques.
@@ -2625,6 +2627,12 @@ export default function App({ loginOnly = false }){
   const titleInputRef=useRef(null);
   const listRef=useRef(null);
   const scrollRef=useRef(null);
+  // (17/10, bêta) L'écran « Messages » / « À expédier » est une PAGE dans
+  // scrollRef, pas une couche : historique, retour, fermeture par les onglets
+  // et place du Stock rendue au retour — src/messagerie/useEcranMessagerie.js.
+  const ecranMessagerie=useEcranMessagerie(scrollRef,tab);
+  const espaceMessagerie=ecranMessagerie.ecran;
+  const setEspaceMessagerie=ecranMessagerie.aller;
   const [editItem,setEditItem]=useState(null);
   // ── NOTIFICATIONS DE VENTES (06/10) ────────────────────────────────────────
   // La proposition (« Sois prévenu dès qu'un article se vend ») : jamais au
@@ -8380,7 +8388,7 @@ export default function App({ loginOnly = false }){
         </div>
       )}
 
-      <div ref={scrollRef} className="wrap page-pad" style={{padding:"18px 14px 16px",background:"var(--bg)",flex:"1",overflowY:"auto",WebkitOverflowScrolling:"touch",minHeight:0}}>
+      <div ref={scrollRef} className={messagerie.beta&&espaceMessagerie?"wrap page-pad fs-espace-beta-ouvert":"wrap page-pad"} style={{padding:"18px 14px 16px",background:"var(--bg)",flex:"1",overflowY:"auto",WebkitOverflowScrolling:"touch",minHeight:0}}>
 
         {/* (11/10, Louis) Ventes détectées à confirmer — avec ou sans téléphone.
             En tête de la zone des bandeaux (Stock compris) ; le lien du mail
@@ -8589,19 +8597,20 @@ export default function App({ loginOnly = false }){
             (platform_fields.check_unresolved) et l'extension retente chaque
             jour, mais l'utilisateur n'en voit plus rien.) */}
 
-        {/* (16/10) Bêta messages + bordereaux : compte bêta seulement. */}
-        {messagerie.beta&&(
+        {/* (16/10) Bêta messages + bordereaux : compte bêta seulement.
+            (17/10) Les entrées vivent sur le Stock seul ; l'écran ouvert est une
+            PAGE qui remplace le contenu de l'onglet (fs-espace-beta-ouvert). */}
+        {messagerie.beta&&tab===1&&!espaceMessagerie&&(
           <BarreMessagerie lang={lang} nonLus={messagerie.nonLus} aExpedier={messagerie.aExpedier}
             onMessages={()=>setEspaceMessagerie({onglet:'messages',article:null})}
             onExpedier={()=>setEspaceMessagerie({onglet:'expedier',article:null})}/>
         )}
         {messagerie.beta&&espaceMessagerie&&(
-          <SuspenseMessagerie fallback={null}>
-            <EspaceMessagerie supabase={supabase} lang={lang} ouvert
-              ongletInitial={espaceMessagerie.onglet} filtreArticle={espaceMessagerie.article}
-              photosParInventaire={photosParInventaire} aExpedier={messagerie.aExpedier}
-              onChange={messagerie.relire}
-              onFermer={()=>{setEspaceMessagerie(null);messagerie.relire();}}/>
+          <SuspenseMessagerie fallback={<div className="fs-espace-beta"/>}>
+            <EspaceMessagerie supabase={supabase} lang={lang} ecran={espaceMessagerie}
+              onAller={setEspaceMessagerie} onRetour={ecranMessagerie.retour}
+              photosParInventaire={photosParInventaire}
+              onChange={messagerie.relire}/>
           </SuspenseMessagerie>
         )}
 

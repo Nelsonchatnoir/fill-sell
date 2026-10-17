@@ -15,17 +15,26 @@
 //     SHA-256, une clé d'envoi par brouillon (gardée tant que la base n'a pas
 //     confirmé : un second appui après une coupure est le MÊME envoi).
 // Relectures bornées (utils/relectureBornee.js), jamais de setInterval.
+// (17/10, constat de Nico sur iPhone) Ce n'est plus une couche plein écran :
+// c'est une PAGE, montée par App dans le conteneur qui défile, à la place du
+// contenu de l'onglet — l'en-tête et la barre du bas restent les vrais. En
+// haut, la flèche ← et le titre ; retour du navigateur, geste iOS, retour
+// Android et appui sur un onglet : useEcranMessagerie.js. Aucun conteneur à
+// hauteur fixe : la page défile d'un seul tenant, la réserve basse de
+// .page-pad garde la fin au-dessus de la barre.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import { UI } from '../components/ui';
 import Icone from '../ecrans/Icone';
 import { demarrerRelecture } from '../utils/relectureBornee';
-import { Send } from 'lucide-react';
-import { conversationNonLue, dateCourte, etatReponse, etatZoneReponse, lienConversation, montantTexte, murReleve, nomPlateforme, ORDRE_PLATEFORMES, pseudoAffiche, trierConversations } from './vue';
+import { ArrowLeft, Send } from 'lucide-react';
+import { sourcesVignette, conversationNonLue, dateCourte, etatReponse, etatZoneReponse, lienConversation, montantTexte, murReleve, nomPlateforme, ORDRE_PLATEFORMES, pseudoAffiche, trierConversations } from './vue';
 import { ouvrirLien } from './ouvrir';
 import SectionAExpedier from './SectionAExpedier';
 import { empreinteTexte } from './empreinte';
 import { useReglagesMessagerie } from './useMessagerieBeta';
+import Vignette from './Vignette';
+import './espace.css';
 
 const ENCRE2 = '#5C6560';
 const LIGNE = '#EFECE6';
@@ -43,23 +52,6 @@ const POLICE = "'Space Grotesk',sans-serif";
 
 function cle() {
   try { return crypto.randomUUID(); } catch { return `r-${Date.now()}-${Math.random().toString(16).slice(2)}`; }
-}
-
-function Segments({ valeur, onChange, options }) {
-  return (
-    <div role="tablist" style={{ display: 'flex', padding: 4, borderRadius: 18, background: '#ECE9E2', gap: 2, flex: 1, minWidth: 0 }}>
-      {options.map(([k, libelle, compte]) => {
-        const on = k === valeur;
-        return (
-          <button key={k} type="button" role="tab" aria-selected={on} onClick={() => onChange(k)}
-            style={{ flex: 1, minWidth: 0, height: 36, border: 0, borderRadius: 14, background: on ? '#FFFFFF' : 'transparent', boxShadow: on ? '0 2px 6px rgba(16,32,27,.08)' : 'none', fontFamily: 'inherit', fontSize: 14, fontWeight: on ? 700 : 600, color: on ? UI.ink : ENCRE2, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-            {libelle}
-            {compte > 0 && <span className="sk-chiffres" style={{ minWidth: 20, height: 20, borderRadius: 999, background: k === 'expedier' ? '#E0A53C' : UI.tealDeep, color: '#FFFFFF', fontSize: 11, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 6px' }}>{compte}</span>}
-          </button>
-        );
-      })}
-    </div>
-  );
 }
 
 function Mur({ mur }) {
@@ -104,19 +96,7 @@ function Bulle({ m, lang }) {
   );
 }
 
-function Vignette({ photo, platform, taille = 52 }) {
-  return (
-    <div style={{ position: 'relative', width: taille, height: taille, borderRadius: 14, overflow: 'hidden', background: '#F2F0E9', flex: 'none' }}>
-      {photo ? <img src={photo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-        : <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icone nom="recu" taille={20} couleur="#B5B0A3" epaisseur={1.8} /></span>}
-      <span style={{ position: 'absolute', right: 3, bottom: 3, width: 20, height: 20, borderRadius: 7, background: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 4px rgba(16,32,27,.18)' }}>
-        <PlatformLogo platform={platform} size={14} />
-      </span>
-    </div>
-  );
-}
-
-function Conversation({ supabase, conv, lang, photo, onRetour, onVue, envoiMode = 1 }) {
+function Conversation({ supabase, conv, lang, sources, onRetour, onVue, envoiMode = 1 }) {
   const fr = lang !== 'en';
   const [messages, setMessages] = useState(null);
   const [reponses, setReponses] = useState([]);
@@ -192,13 +172,13 @@ function Conversation({ supabase, conv, lang, photo, onRetour, onVue, envoiMode 
   const sousTitre = [nomPlateforme(conv.platform), conv.titre_annonce].filter(Boolean).join(' · ');
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, fontFamily: POLICE, color: UI.ink }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderBottom: `1px solid ${LIGNE}`, background: '#FFFFFF' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, fontFamily: POLICE, color: UI.ink }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px 8px 4px', borderRadius: 20, border: `1px solid ${UI.border}`, background: '#FFFFFF' }}>
         <button type="button" onClick={onRetour} aria-label={fr ? 'Retour' : 'Back'}
           style={{ width: 44, height: 44, border: 'none', borderRadius: 12, background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flex: 'none' }}>
-          <Icone nom="retour" taille={20} couleur={UI.ink} epaisseur={2.2} />
+          <ArrowLeft size={22} strokeWidth={2.2} color={UI.ink} aria-hidden="true" />
         </button>
-        <Vignette photo={photo} platform={conv.platform} taille={42} />
+        <Vignette sources={sources} platform={conv.platform} taille={42} />
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ fontSize: 15, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {pseudoAffiche(conv.platform, conv.interlocuteur_pseudo) ?? nomPlateforme(conv.platform)}
@@ -213,14 +193,16 @@ function Conversation({ supabase, conv, lang, photo, onRetour, onVue, envoiMode 
         )}
       </div>
       {(conv.inventaire_id || conv.offre_montant != null) && (
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: '8px 14px', borderBottom: `1px solid ${LIGNE}`, background: '#FFFFFF' }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: '0 4px' }}>
           {conv.inventaire_id ? <span style={{ fontSize: 12, fontWeight: 700, color: '#1B6E62', background: MENTHE, borderRadius: 999, padding: '3px 10px' }}>{fr ? 'Article de ton stock' : 'Item in your stock'}</span> : null}
           {conv.offre_montant != null ? <span style={{ fontSize: 12, fontWeight: 700, color: '#8A6100', background: '#FFF6E3', borderRadius: 999, padding: '3px 10px' }}>{fr ? 'Offre' : 'Offer'} {montantTexte(conv.offre_montant, conv.offre_devise)}{conv.offre_statut ? ` · ${conv.offre_statut}` : ''}</span> : null}
         </div>
       )}
-      <div style={{ flex: 1, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 10, background: '#FAFBFB' }}>
-        {messages === null && <p style={{ fontSize: 13, color: ENCRE2 }}>{fr ? 'Chargement…' : 'Loading…'}</p>}
-        {messages?.length === 0 && <p style={{ fontSize: 13, color: ENCRE2, lineHeight: 1.45 }}>{fr ? 'Les messages de cette conversation arrivent au prochain relevé de ton extension, ordinateur allumé.' : 'Messages arrive with your extension’s next read, computer on.'}</p>}
+      {/* (17/10) Les messages suivent la page, qui défile d'un seul tenant : aucun
+          conteneur à hauteur fixe. */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '4px 2px' }}>
+        {messages === null && <p style={{ margin: 0, fontSize: 13, color: ENCRE2 }}>{fr ? 'Chargement…' : 'Loading…'}</p>}
+        {messages?.length === 0 && <p style={{ margin: 0, fontSize: 13, color: ENCRE2, lineHeight: 1.45 }}>{fr ? 'Les messages de cette conversation arrivent au prochain relevé de ton extension, ordinateur allumé.' : 'Messages arrive with your extension’s next read, computer on.'}</p>}
         {messages?.map((m) => <Bulle key={m.id} m={m} lang={lang} />)}
         {reponses.map((r) => {
           const e = etatReponse(r, lang);
@@ -232,9 +214,8 @@ function Conversation({ supabase, conv, lang, photo, onRetour, onVue, envoiMode 
             </div>
           );
         })}
-        <div ref={finRef} />
       </div>
-      <div style={{ borderTop: `1px solid ${LIGNE}`, padding: 12, display: 'flex', flexDirection: 'column', gap: 8, background: '#FFFFFF' }}>
+      <div style={{ borderRadius: 20, border: `1px solid ${UI.border}`, padding: 12, display: 'flex', flexDirection: 'column', gap: 8, background: '#FFFFFF' }}>
         <div role="status" style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 10px', borderRadius: 12, background: tz.fond, color: tz.encre, fontSize: 12.5, fontWeight: 600, lineHeight: 1.4 }}>
           <Icone nom={zone.verrouillee ? 'alerte' : zone.possible ? 'coche' : 'croix'} taille={15} couleur={tz.encre} epaisseur={2.3} style={{ flex: 'none', marginTop: 1 }} />
           <span>{zone.texte}</span>
@@ -243,7 +224,7 @@ function Conversation({ supabase, conv, lang, photo, onRetour, onVue, envoiMode 
           <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
             <textarea value={texte} onChange={(e) => setTexte(e.target.value.slice(0, 2000))} rows={2}
               placeholder={fr ? 'Écrire une réponse…' : 'Write a reply…'} aria-label={fr ? 'Réponse' : 'Reply'}
-              style={{ flex: 1, resize: 'none', borderRadius: 14, border: `1px solid ${UI.border}`, padding: '10px 12px', fontSize: 15, fontFamily: 'inherit', minHeight: 48, color: UI.ink, background: '#FFFFFF' }} />
+              style={{ flex: 1, resize: 'none', borderRadius: 14, border: `1px solid ${UI.border}`, padding: '10px 12px', fontSize: 16, fontFamily: 'inherit', minHeight: 48, color: UI.ink, background: '#FFFFFF' }} />
             <button type="button" onClick={repondre} disabled={!texte.trim() || envoi}
               aria-label={zone.verrouillee ? (fr ? 'Enregistrer la réponse (verrouillée)' : 'Save reply (locked)') : (fr ? 'Envoyer la réponse' : 'Send reply')}
               style={{ width: 48, height: 48, borderRadius: 14, border: 'none', background: texte.trim() && !envoi ? UI.tealDeep : '#ECE9E2', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: texte.trim() ? 'pointer' : 'default', flex: 'none' }}>
@@ -253,20 +234,28 @@ function Conversation({ supabase, conv, lang, photo, onRetour, onVue, envoiMode 
         )}
         {erreur && <div style={{ fontSize: 12.5, color: '#B91C1C' }}>{erreur}</div>}
       </div>
+      {/* La fin de la conversation, posée au-dessus de la barre du bas (marge de
+          défilement = la réserve de la barre). */}
+      <div ref={finRef} style={{ height: 1, scrollMarginBottom: 'var(--nav-content-clearance, 140px)' }} />
     </div>
   );
 }
 
-export default function EspaceMessagerie({ supabase, lang = 'fr', ouvert, onFermer, ongletInitial = 'messages', filtreArticle = null, photosParInventaire = null, onChange, aExpedier = 0 }) {
+/**
+ * L'écran bêta, en PAGE (17/10) : monté par App dans le conteneur qui défile, à
+ * la place du contenu de l'onglet (espace.css) ; l'historique, le retour et la
+ * fermeture par les onglets vivent dans useEcranMessagerie.
+ * ecran : { onglet: 'messages'|'expedier', article, conversation, n }.
+ * onAller(v) ouvre une conversation (une entrée d'historique) ; onRetour() = ←.
+ */
+export default function EspaceMessagerie({ supabase, lang = 'fr', ecran, onAller, onRetour, photosParInventaire = null, onChange }) {
   const fr = lang !== 'en';
-  // Monté à l'ouverture seulement (App) : l'état initial vient des props.
-  const [onglet, setOnglet] = useState(ongletInitial);
+  const onglet = ecran?.onglet === 'expedier' ? 'expedier' : 'messages';
   const [conversations, setConversations] = useState(null);
   const [releves, setReleves] = useState([]);
-  const [choisie, setChoisie] = useState(null);
-  const [article, setArticle] = useState(filtreArticle);
+  const [article, setArticle] = useState(ecran?.article ?? null);
   const [plateforme, setPlateforme] = useState(null);
-  const reglages = useReglagesMessagerie(ouvert ? supabase : null);
+  const reglages = useReglagesMessagerie(supabase);
 
   const charger = useCallback(async () => {
     const [c, r] = await Promise.all([
@@ -277,14 +266,33 @@ export default function EspaceMessagerie({ supabase, lang = 'fr', ouvert, onFerm
     setReleves(r.error ? [] : (r.data ?? []));
   }, [supabase]);
 
+  // Une lecture à l'ouverture des Messages, une autre à chaque retour d'une
+  // conversation (la liste reprend les non-lus).
+  const idConversation = ecran?.conversation ?? null;
   useEffect(() => {
+    if (onglet !== 'messages' || idConversation != null) return undefined;
     let vivant = true;
     (async () => {
       await Promise.resolve();
-      if (vivant && ouvert) await charger();
+      if (vivant) await charger();
     })();
     return () => { vivant = false; };
-  }, [ouvert, charger]);
+  }, [onglet, idConversation, charger]);
+  // Ouverte directement sur une conversation (retour avant du navigateur) : la liste est lue une fois.
+  useEffect(() => {
+    if (idConversation == null || conversations !== null) return undefined;
+    let vivant = true;
+    (async () => {
+      await Promise.resolve();
+      if (vivant) await charger();
+    })();
+    return () => { vivant = false; };
+  }, [idConversation, conversations, charger]);
+
+  // En quittant l'écran, les compteurs de la barre sont relus.
+  const relire = useRef(onChange);
+  useEffect(() => { relire.current = onChange; }, [onChange]);
+  useEffect(() => () => relire.current?.(), []);
 
   const murs = useMemo(() => releves.map((r) => murReleve(r, lang)).filter(Boolean)
     .sort((a, b) => Number(b.cle === 'telephone') - Number(a.cle === 'telephone')), [releves, lang]);
@@ -293,16 +301,16 @@ export default function EspaceMessagerie({ supabase, lang = 'fr', ouvert, onFerm
   const visibles = useMemo(() => parArticle.filter((c) => plateforme == null || c.platform === plateforme), [parArticle, plateforme]);
   const personnes = visibles.filter((c) => !c.systeme);
   const systemes = visibles.filter((c) => c.systeme);
-  const nonLues = (conversations ?? []).filter(conversationNonLue).length;
-  const photoDe = (c) => (c.inventaire_id && photosParInventaire?.[c.inventaire_id]) || c.photo_annonce || null;
+  // La photo de l'annonce, sinon celles de la fiche rattachée (Vignette.jsx).
+  const sourcesDe = (c) => sourcesVignette(c.photo_annonce, c.inventaire_id ? photosParInventaire?.[c.inventaire_id] : null);
+  const choisie = idConversation != null ? (conversations ?? []).find((c) => c.id === idConversation) ?? null : null;
 
-  if (!ouvert) return null;
   const ligne = (c, i) => {
     const nonLue = conversationNonLue(c);
     return (
-      <button key={c.id} type="button" onClick={() => setChoisie(c)} data-conversation={c.platform}
+      <button key={c.id} type="button" onClick={() => onAller?.({ onglet: 'messages', article, conversation: c.id })} data-conversation={c.platform}
         style={{ display: 'flex', gap: 12, alignItems: 'center', textAlign: 'left', width: '100%', minHeight: 72, padding: '12px 14px', border: 'none', borderTop: i ? `1px solid ${LIGNE}` : 'none', background: '#FFFFFF', cursor: 'pointer', fontFamily: 'inherit', color: UI.ink, opacity: c.systeme ? 0.8 : 1 }}>
-        <Vignette photo={photoDe(c)} platform={c.platform} />
+        <Vignette sources={sourcesDe(c)} platform={c.platform} />
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
             <span style={{ fontSize: 14.5, fontWeight: nonLue ? 800 : 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
@@ -322,83 +330,86 @@ export default function EspaceMessagerie({ supabase, lang = 'fr', ouvert, onFerm
     );
   };
 
-  return (
-    <div role="dialog" aria-modal="true" aria-label={fr ? 'Messages' : 'Messages'}
-      style={{ position: 'fixed', inset: 0, zIndex: 1200, background: 'rgba(16,32,27,0.45)', display: 'flex', alignItems: 'stretch', justifyContent: 'center' }}
-      onClick={onFermer}>
-      <div onClick={(e) => e.stopPropagation()}
-        style={{ width: '100%', maxWidth: 560, background: '#FAFBFB', display: 'flex', flexDirection: 'column', boxShadow: '0 -8px 40px rgba(16,32,27,0.22)', minHeight: 0, fontFamily: POLICE, color: UI.ink }}>
-        {choisie ? (
-          <Conversation supabase={supabase} conv={choisie} lang={lang} photo={photoDe(choisie)} envoiMode={reglages.envoiMode} onRetour={() => { setChoisie(null); charger(); }} onVue={onChange} />
-        ) : (
-          <>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 12px 10px', background: '#FFFFFF', borderBottom: `1px solid ${LIGNE}` }}>
-              <Segments valeur={onglet} onChange={setOnglet}
-                options={[['messages', fr ? 'Messages' : 'Messages', nonLues], ['expedier', fr ? 'À expédier' : 'To ship', aExpedier]]} />
-              <button type="button" onClick={onFermer} aria-label={fr ? 'Fermer' : 'Close'}
-                style={{ width: 44, height: 44, border: 'none', borderRadius: 12, background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flex: 'none' }}>
-                <Icone nom="croix" taille={20} couleur={UI.ink} epaisseur={2.2} />
-              </button>
-            </div>
-            <div style={{ flex: 1, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {onglet === 'expedier' ? (
-                <SectionAExpedier supabase={supabase} lang={lang} photosParInventaire={photosParInventaire} compact />
-              ) : (
-                <>
-                  {murs.map((m) => <Mur key={`${m.cle}-${m.titre}`} mur={m} />)}
-                  {(presentes.length > 1 || article != null) && (
-                    <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2 }}>
-                      {article != null && (
-                        <button type="button" onClick={() => setArticle(null)}
-                          style={{ flex: 'none', minHeight: 36, padding: '0 12px', borderRadius: 999, border: `1px solid ${UI.ink}`, background: UI.ink, color: '#FFFFFF', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                          {fr ? 'Cet article' : 'This item'}<Icone nom="croix" taille={13} couleur="#FFFFFF" epaisseur={2.4} />
-                        </button>
-                      )}
-                      {[null, ...presentes].map((p) => {
-                        const on = plateforme === p;
-                        return (
-                          <button key={p ?? 'tous'} type="button" onClick={() => setPlateforme(p)}
-                            style={{ flex: 'none', minHeight: 36, padding: '0 12px', borderRadius: 999, border: `1px solid ${on ? UI.tealDeep : UI.border}`, background: on ? MENTHE : '#FFFFFF', color: UI.ink, fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                            {p ? <PlatformLogo platform={p} size={14} /> : null}{p ? nomPlateforme(p) : (fr ? 'Toutes' : 'All')}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                  {conversations === null && <p style={{ fontSize: 13, color: ENCRE2 }}>{fr ? 'Chargement…' : 'Loading…'}</p>}
-                  {conversations !== null && visibles.length === 0 && (
-                    <div style={{ background: '#FFFFFF', border: `1px solid ${UI.border}`, borderRadius: 24, padding: '18px 16px', display: 'flex', gap: 12 }}>
-                      <span style={{ width: 36, height: 36, borderRadius: 11, background: MENTHE, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>
-                        <Icone nom="cloche" taille={18} couleur={UI.tealDeep} epaisseur={2.1} />
-                      </span>
-                      <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                        <span style={{ fontSize: 14.5, fontWeight: 700 }}>{fr ? 'Aucune conversation pour l’instant' : 'No conversation yet'}</span>
-                        <span style={{ fontSize: 13, color: ENCRE2, lineHeight: 1.45 }}>{fr ? 'Tes messages Vinted, Leboncoin, Beebs, Depop et eBay arrivent ici, relevés par ton extension (ordinateur allumé) et par eBay.' : 'Your Vinted, Leboncoin, Beebs, Depop and eBay messages arrive here, read by your extension (computer on) and by eBay.'}</span>
-                      </span>
-                    </div>
-                  )}
-                  {personnes.length > 0 && (
-                    <div style={{ background: '#FFFFFF', border: `1px solid ${UI.border}`, borderRadius: 24, overflow: 'hidden' }}>
-                      {personnes.map(ligne)}
-                    </div>
-                  )}
-                  {systemes.length > 0 && (
-                    <>
-                      <span style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '.11em', color: '#6F7774', textTransform: 'uppercase', padding: '4px 4px 0' }}>{fr ? 'Messages des plateformes' : 'Platform messages'}</span>
-                      <div style={{ background: '#FFFFFF', border: `1px solid ${UI.border}`, borderRadius: 24, overflow: 'hidden' }}>
-                        {systemes.map(ligne)}
-                      </div>
-                    </>
-                  )}
-                  <p style={{ margin: '2px 4px 0', fontSize: 12, color: '#8A918E', lineHeight: 1.45 }}>
-                    {fr ? 'Ouvrir une conversation ici ne la marque pas lue chez la plateforme. Bêta : 30 jours de messages, aucune IA.' : 'Opening a conversation here does not mark it read on the platform. Beta: 30 days of messages, no AI.'}
-                  </p>
-                </>
-              )}
-            </div>
-          </>
-        )}
+  // Une conversation : sa propre barre (← et l'interlocuteur).
+  if (choisie) {
+    return (
+      <div className="fs-espace-beta" data-ecran-beta="conversation">
+        <Conversation supabase={supabase} conv={choisie} lang={lang} sources={sourcesDe(choisie)} envoiMode={reglages.envoiMode} onRetour={onRetour} onVue={onChange} />
       </div>
+    );
+  }
+
+  const titre = onglet === 'expedier' ? (fr ? 'À expédier' : 'To ship') : 'Messages';
+  return (
+    <div className="fs-espace-beta" data-ecran-beta={onglet}
+      style={{ display: 'flex', flexDirection: 'column', gap: 12, fontFamily: POLICE, color: UI.ink }}>
+      {/* (17/10) En haut : la flèche ← (comme le retour du navigateur) et le titre. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: -6 }}>
+        <button type="button" onClick={onRetour} aria-label={fr ? 'Retour' : 'Back'}
+          style={{ width: 44, height: 44, border: 'none', borderRadius: 12, background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flex: 'none' }}>
+          <ArrowLeft size={24} strokeWidth={2.2} color={UI.ink} aria-hidden="true" />
+        </button>
+        <h1 style={{ margin: 0, fontSize: 26, fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1.15, flex: 1, minWidth: 0 }}>{titre}</h1>
+        <span style={{ fontSize: 11, fontWeight: 700, color: '#8A6100', background: '#FFF6E3', border: '1px solid #EED9A6', borderRadius: 999, padding: '1px 8px', flex: 'none' }}>{fr ? 'bêta' : 'beta'}</span>
+      </div>
+      {onglet === 'expedier' ? (
+        <>
+          <p style={{ margin: '-4px 4px 0', fontSize: 13, color: ENCRE2, lineHeight: 1.45 }}>{fr ? 'Toutes tes commandes en cours : Vinted, Leboncoin, Beebs, Depop et eBay.' : 'All your ongoing orders: Vinted, Leboncoin, Beebs, Depop and eBay.'}</p>
+          <SectionAExpedier supabase={supabase} lang={lang} photosParInventaire={photosParInventaire} dansPage />
+        </>
+      ) : (
+        <>
+          {murs.map((m) => <Mur key={`${m.cle}-${m.titre}`} mur={m} />)}
+          {(presentes.length > 1 || article != null) && (
+            // Les filtres : une rangée qui défile sur le côté si elle déborde, jamais tronquée.
+            <div data-filtres-messages style={{ display: 'flex', gap: 6, overflowX: 'auto', flex: 'none', margin: '0 -14px', padding: '2px 14px 4px', scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
+              {article != null && (
+                <button type="button" onClick={() => setArticle(null)}
+                  style={{ flex: 'none', minHeight: 36, padding: '0 12px', borderRadius: 999, border: `1px solid ${UI.ink}`, background: UI.ink, color: '#FFFFFF', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                  {fr ? 'Cet article' : 'This item'}<Icone nom="croix" taille={13} couleur="#FFFFFF" epaisseur={2.4} />
+                </button>
+              )}
+              {[null, ...presentes].map((p) => {
+                const on = plateforme === p;
+                return (
+                  <button key={p ?? 'tous'} type="button" onClick={() => setPlateforme(p)}
+                    style={{ flex: 'none', minHeight: 36, padding: '0 12px', borderRadius: 999, border: `1px solid ${on ? UI.tealDeep : UI.border}`, background: on ? MENTHE : '#FFFFFF', color: UI.ink, fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                    {p ? <PlatformLogo platform={p} size={14} /> : null}{p ? nomPlateforme(p) : (fr ? 'Toutes' : 'All')}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {conversations === null && <p style={{ margin: 0, fontSize: 13, color: ENCRE2 }}>{fr ? 'Chargement…' : 'Loading…'}</p>}
+          {conversations !== null && visibles.length === 0 && (
+            <div style={{ background: '#FFFFFF', border: `1px solid ${UI.border}`, borderRadius: 24, padding: '18px 16px', display: 'flex', gap: 12 }}>
+              <span style={{ width: 36, height: 36, borderRadius: 11, background: MENTHE, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>
+                <Icone nom="cloche" taille={18} couleur={UI.tealDeep} epaisseur={2.1} />
+              </span>
+              <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                <span style={{ fontSize: 14.5, fontWeight: 700 }}>{fr ? 'Aucune conversation pour l’instant' : 'No conversation yet'}</span>
+                <span style={{ fontSize: 13, color: ENCRE2, lineHeight: 1.45 }}>{fr ? 'Tes messages Vinted, Leboncoin, Beebs, Depop et eBay arrivent ici, relevés par ton extension (ordinateur allumé) et par eBay.' : 'Your Vinted, Leboncoin, Beebs, Depop and eBay messages arrive here, read by your extension (computer on) and by eBay.'}</span>
+              </span>
+            </div>
+          )}
+          {personnes.length > 0 && (
+            <div style={{ background: '#FFFFFF', border: `1px solid ${UI.border}`, borderRadius: 24, overflow: 'hidden' }}>
+              {personnes.map(ligne)}
+            </div>
+          )}
+          {systemes.length > 0 && (
+            <>
+              <span style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '.11em', color: '#6F7774', textTransform: 'uppercase', padding: '4px 4px 0' }}>{fr ? 'Messages des plateformes' : 'Platform messages'}</span>
+              <div style={{ background: '#FFFFFF', border: `1px solid ${UI.border}`, borderRadius: 24, overflow: 'hidden' }}>
+                {systemes.map(ligne)}
+              </div>
+            </>
+          )}
+          <p style={{ margin: '2px 4px 0', fontSize: 12, color: '#8A918E', lineHeight: 1.45 }}>
+            {fr ? 'Ouvrir une conversation ici ne la marque pas lue chez la plateforme. Bêta : 30 jours de messages, aucune IA.' : 'Opening a conversation here does not mark it read on the platform. Beta: 30 days of messages, no AI.'}
+          </p>
+        </>
+      )}
     </div>
   );
 }

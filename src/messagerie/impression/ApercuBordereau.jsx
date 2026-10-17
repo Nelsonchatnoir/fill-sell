@@ -12,7 +12,11 @@
 //     fichier est fabriqué AVANT l'appui (navigator.share exige le geste).
 // Le moteur (pdf.js, pdf-lib) n'est chargé qu'ici, à l'ouverture.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+// (17/10) Une Couche (../Couche.jsx) : portail sur document.body, barre du bas
+// masquée, Échap et retour Android — sur iPhone, une couche rendue dans l'app
+// passait sous l'en-tête et la barre du bas.
 import { UI } from '../../components/ui';
+import Couche from '../Couche';
 import Icone from '../../ecrans/Icone';
 import PlatformLogo from '../../components/platform-logos/PlatformLogo';
 import { ORDRE_RECADRAGES, libelleRecadrage, nomFichier } from './geometrie';
@@ -142,6 +146,7 @@ export default function ApercuBordereau({ ouvert = true, copie, supabase, lang =
   const imageCourante = format === '10x15' ? apercus['10x15'] : apercus.origine;
 
   return (
+    <Couche onFermer={onFermer}>
     <div role="dialog" aria-modal="true" aria-label={fr ? 'Bordereau' : 'Shipping label'}
       style={{ position: 'fixed', inset: 0, zIndex: 1300, background: '#FAFBFB', display: 'flex', flexDirection: 'column', fontFamily: POLICE, color: UI.ink, paddingTop: 'env(safe-area-inset-top,0px)', paddingBottom: 'env(safe-area-inset-bottom,0px)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderBottom: `1px solid ${LIGNE}`, background: '#FFFFFF' }}>
@@ -235,5 +240,6 @@ export default function ApercuBordereau({ ouvert = true, copie, supabase, lang =
         </div>
       )}
     </div>
+    </Couche>
   );
 }

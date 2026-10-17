@@ -739,3 +739,87 @@ fait », copie 5 jours), en lecture seule, et je te dis ce que j'ai vu.
 - **Selftests** : 328/329 (seul rouge : `vinted-origine`, d'avant le chantier). `cloud-achat` était rouge sans rapport avec
   le code (Vite balayait 94 s tous les `.html` du dépôt avant de charger un module, délai de 60 s) : son banc a pris le
   réglage des bancs voisins (`optimizeDeps.noDiscovery`).
+
+### 10.9 Écrans bêta corrigés (17/10, constat de Nico sur iPhone, Safari, 390 px)
+
+Cinq défauts vus à 09:10, une seule cause pour trois d'entre eux : l'espace était une couche `position:fixed` rendue
+DANS l'app ; WebKit la peint sous l'en-tête et la barre du bas (règle des couches, `src/utils/modale.js`).
+
+| Défaut | Cause | Correctif (bêta seulement) |
+|---|---|---|
+| 1. « Messages » vert comme sélectionné | style « actif » dès un non-lu | même style neutre pour les deux pastilles, seul le compteur coloré |
+| 2. Retour impossible | la croix de la couche était sous l'en-tête | l'écran devient une PAGE : ← + titre en haut ; entrée d'historique (retour navigateur, geste iOS, retour Android = la flèche) ; un appui sur un onglet ferme |
+| 3. Défilement bloqué | colonne flex à hauteur fixe : les cartes `overflow` rétrécissaient au lieu de déborder | la page défile d'un seul tenant dans le conteneur de l'app (réserve basse = barre + zone de sécurité) ; filtres qui défilent sur le côté |
+| 4. Mauvais onglet allumé | un appui sur la barre du bas changeait l'onglet SOUS la couche | entrées sur le Stock seul ; l'écran reste « Stock IA » ; tout appui sur un onglet ferme l'écran puis va sur l'onglet |
+| 5. Vignette « ? » | `photosParInventaire[id]` est une LISTE, passée telle quelle à `<img src>` | photo de l'annonce, puis la fiche (normaliseur `urlsPhotos`), une image qui casse passe à la suivante, sinon une icône |
+
+Même famille, corrigée au passage : la feuille « Générer le bordereau », l'aperçu, « Tout imprimer » et le code plein
+écran étaient aussi des couches rendues dans l'app (boutons du bas sous la barre sur iPhone) → `Couche.jsx` (portail
+sur `body`, barre du bas masquée, Échap, retour Android). Rien d'autre n'est touché : en-tête, barre du bas, carte
+« PROFIT NET », Stock et autres écrans inchangés (`App.jsx` : 57 messages de lint avant, les mêmes 57 après).
+
+**Testé** : banc `scripts/apercu/capture-espace-beta-page.mjs` — coquille d'App (en-tête fixe, conteneur qui défile,
+barre du bas floue cliquable) + VRAIS composants, **WebKit (moteur de Safari) et Chromium (moteur d'Android), 390 px :
+96/96** — les deux entrées ; flèche touchable sous l'en-tête ; Stock masqué, onglet « Stock IA » allumé ; filtres
+entiers ; @genevieve-69 avec la photo de la fiche, icône quand rien n'est lisible, aucune image cassée ; défilement
+jusqu'en bas (dernière conversation, « Messages des plateformes », note, zone de réponse, dernière des 12 commandes,
+carte vide à 0 commande : au-dessus de la barre) ; conversation = une entrée, ← = retour ; retour du navigateur ;
+retour à la place du Stock (600 px) ; feuille de confirmation sur `body`, barre masquée, bouton touchable, « Annuler »
+ne dépose rien ; appui sur « Tableau » et sur « Stock IA » : l'écran se ferme, ses entrées partent ; onglet changé par
+un lien pendant une conversation : l'app reste ; compte sans drapeau : aucune pastille, historique et conteneur
+intacts. Le banc a trouvé un vrai défaut avant livraison (double recul d'historique sur appui d'onglet → sortie de
+l'app sous Chromium), corrigé. Ancien banc `capture-messagerie-beta.mjs` : tout vert. `selftest:messagerie-app` : 23.
+**Pas testé ici** : les apps natives sur appareil (le moteur est le même ; retour Android vérifié dans le code de
+`@capacitor/app` 8.1 : `webView.goBack()` sans écouteur ; l'app iOS n'a pas de geste retour).
+
+**OTA 2.9.97** : jamais envoyée avant ces correctifs ; elle les embarque. Préparée (construite après le commit),
+**NON envoyée** — feu vert de Nico.
+
+### 10.10 « À expédier » : tout dans FillSell (17/10, mission de Nico)
+
+**Règle** : tout ce que FillSell peut faire ou récupérer se fait dans FillSell ; la plateforme n'est qu'un dernier
+recours (petit lien « Voir la commande sur … »), sauf pour ce que FillSell ne fait pas — et la carte dit pourquoi.
+
+**Le défaut vu (« Commande d'essai 1 », Vinted « à confirmer » → « c'est toi qui le fais, sur Vinted »)** — deux
+causes : (1) la donnée d'essai du banc était IMPOSSIBLE (Vinted ne produit jamais « à confirmer » : seuls Leboncoin et
+Beebs) ; (2) la vraie fragilité, à la racine : tant que les réglages de la bêta n'étaient pas lus (ou illisibles), la
+génération valait « fermée » et TOUTE carte retombait sur l'ancien texte « c'est toi qui le fais ». Désormais
+`generation` a trois états (ouverte, fermée par le serveur, inconnue) ; inconnue, le bouton reste (la base refuse si
+c'est fermé, rien ne part). Le banc n'a plus que des états réels (16 cartes, une par cas).
+
+| Plateforme | Dans FillSell | Lien (seulement) | Pourquoi |
+|---|---|---|---|
+| **Vinted** | Générer → papier ou QR (même si les options ne sont pas encore relues : l'extension vérifie juste avant que Vinted propose ce type, sinon rien n'est commandé) → confirmation → PDF/QR dans FillSell ; Récupérer | enlèvement à domicile, téléphone exigé, étiquette refusée par Vinted | date à choisir / donnée à saisir chez Vinted |
+| **Leboncoin** | Mondial Relay, Shop2Shop, Relais Colis ; **Colissimo et courrier suivi** (nouveau) avec l'adresse du **compte Leboncoin** de la personne (décision de Nico), lue dans la page au moment du geste, jamais sortie ; bordereau en préparation = attente dite | envoi libre, remise en main propre ; adresse du compte incomplète (la carte le dit) | pas de bordereau ; donnée du compte |
+| **Beebs** | Générer (accepter, derrière la confirmation) ; récupérer ; suivi affiché | remise en main propre | rien à générer |
+| **eBay** | suivi d'une étiquette achetée (numéro, transporteur), carte « Expédiées depuis 3 jours » | **acheter** l'étiquette | payante, conditions d'eBay, double achat possible |
+| **Depop** | acheteur, montant, date limite, suivi | « Indiquer l'envoi sur Depop » | pas de bordereau en France |
+
+**Ordinateur absent** : la demande attend dans FillSell (« En attente de ton ordinateur… rien n'est fait avant ») ; si
+aucun poste ne la prend à temps, rien n'est fait et le bouton revient — jamais un renvoi. ⚠️ Le délai d'attente reste
+**30 minutes** (base) : le passer à **24 heures** demande une migration ; son écriture a été bloquée par la sécurité de
+la session, elle n'est ni écrite ni appliquée — voir « Ce qui attend ».
+
+**Beebs, le fichier — relu dans le code du site le 17/10** : après « Télécharger le bordereau »
+(`sellerConfirmAction`), le site attend que Beebs fabrique l'étiquette (relit la commande toutes les 10 s) ; ensuite
+(LABEL_PRINTED) la page vendeur ne propose AUCUN bouton pour retélécharger, et l'objet commande ne porte que
+`shipping.tracking_url` et `drop_off_point` (le seul `label_url` du code est celui des retours). L'extension garde
+désormais toute adresse de fichier rendue par le geste et fouille la commande plus loin (jamais un lien de suivi) ;
+**à prouver à la première vraie vente** — si Beebs ne donne le fichier que par e-mail ou dans son app, FillSell ne
+pourra pas l'afficher, et la carte le dit.
+
+**Vu dans le code des sites, jamais exécuté** (aucun geste sur une vraie commande) : Leboncoin
+`POST consumergoods/proxy/v1/purchases/<id>/validate-availability` avec `{sender:{address:{…}, contact:{phone}}}` et la
+lecture `pages/availability-confirmation/<id>` (`parcel.sender_address`) ; eBay
+`GET sell/fulfillment/v1/order/<id>/shipping_fulfillment`. À prouver au premier vrai achat.
+
+**Tests** : selftests de la bêta `messagerie-app` 28 (dont une matrice de 900 combinaisons plateforme × état ×
+bordereau × options : aucune carte ne dit « c'est toi qui le fais », un lien n'existe que là où FillSell ne fait pas),
+`messagerie-generation` 21, `messagerie` 44, `bordereau-impression` 50 ; suite complète 328/329 (seul rouge
+`vinted-origine`, d'avant) ; banc `capture-espace-beta-page.mjs` **160/160** (WebKit + Chromium, 390 px : 16 cartes,
+Colissimo, Vinted papier/QR, expédiées et suivi, retour, défilement, compte sans drapeau) ; ancien banc
+`capture-messagerie-beta.mjs` vert.
+
+**Extension 0.6.122** (Leboncoin Colissimo, type Vinted indisponible, fichier Beebs) : zip seul dans
+`build/CWS-0.6.122-A-TELEVERSER/`, la 0.6.121 (jamais téléversée) rangée dans `build/CWS-PERIMES/` — **c'est la 0.6.122
+qu'il faut téléverser**. Manifest : aucune permission, aucun hôte nouveau.

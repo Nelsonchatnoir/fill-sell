@@ -14,6 +14,19 @@
 // en lot. L'étiquette eBay (payante) reste sur eBay ; Depop n'a pas de
 // bordereau en France.
 
+import { urlPhoto, urlsPhotos } from '../utils/photos.js';
+
+// (17/10) La vignette d'une conversation ou d'une commande (Vignette.jsx) :
+// la photo de l'annonce, puis les photos de la fiche du stock rattachée — une
+// LISTE (chaînes du CDN ou objets {url}), lue par le normaliseur unique. Avant,
+// la liste partait telle quelle dans <img src> : image cassée « ? ».
+const VIGNETTE_FICHE_MAX = 3;
+/** Les adresses à essayer pour une vignette, dans l'ordre, sans doublon. */
+export function sourcesVignette(photoAnnonce, photosFiche) {
+  const fiche = Array.isArray(photosFiche) ? urlsPhotos(photosFiche) : [urlPhoto(photosFiche)];
+  return [...new Set([urlPhoto(photoAnnonce), ...fiche.slice(0, VIGNETTE_FICHE_MAX)].filter(Boolean))];
+}
+
 export const NOMS_PLATEFORMES = Object.freeze({
   vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', depop: 'Depop', ebay: 'eBay',
 });
@@ -230,12 +243,16 @@ export function attendGeneration(c) {
 /**
  * La phrase de l'écran de confirmation : ce que le geste ENGAGE, en une
  * phrase. Elle est gardée en base avec la demande (bordereau_generer).
+ * (17/10) `variante` 'adresse' : Leboncoin Colissimo / courrier suivi (le
+ * bordereau porte l'adresse enregistrée dans le compte Leboncoin).
  */
-export function phraseEngagement(platform, lang = 'fr') {
+export function phraseEngagement(platform, lang = 'fr', variante = null) {
   const fr = lang !== 'en';
   switch (platform) {
     case 'vinted': return fr ? 'Commander l’étiquette engage l’envoi : Vinted attend ton colis au point relais avant la date limite qu’il fixe.' : 'Ordering the label commits you to ship: Vinted expects your parcel at the drop-off point before the deadline it sets.';
-    case 'leboncoin': return fr ? 'Confirmer la disponibilité valide la vente : Leboncoin crée le bordereau et attend ton colis dans le délai qu’il fixe.' : 'Confirming availability validates the sale: Leboncoin creates the label and expects your parcel within the time it sets.';
+    case 'leboncoin':
+      if (variante === 'adresse') return fr ? 'Confirmer la disponibilité valide la vente : Leboncoin crée le bordereau avec l’adresse de ton compte Leboncoin et attend ton colis dans le délai qu’il fixe.' : 'Confirming availability validates the sale: Leboncoin creates the label with your Leboncoin account address and expects your parcel within the time it sets.';
+      return fr ? 'Confirmer la disponibilité valide la vente : Leboncoin crée le bordereau et attend ton colis dans le délai qu’il fixe.' : 'Confirming availability validates the sale: Leboncoin creates the label and expects your parcel within the time it sets.';
     // estimation-ok: délai IMPOSÉ par Beebs (centre d'aide 360018436119 : 6 jours pour déposer)
     case 'beebs': return fr ? 'Accepter la commande débite l’acheteur : Beebs crée le bordereau et te laisse 6 jours pour déposer le colis.' : 'Accepting the order charges the buyer: Beebs creates the label and gives you 6 days to drop the parcel.';
     default: return null;
@@ -253,133 +270,164 @@ export function libelleTypeEtiquette(type, lang = 'fr') {
   }
 }
 
+/** (17/10) Les types d'envoi Leboncoin dont la confirmation porte l'adresse de l'expéditeur. */
+export const LBC_TYPES_ADRESSE = Object.freeze(['colissimo', 'courrier_suivi']);
+
 /** Pourquoi une génération n'est pas faisable depuis FillSell (options relevées). */
 function raisonNonGenerable(c, fr) {
   const o = c?.options_bordereau ?? {};
   const pf = nomPlateforme(c?.platform);
   if (c?.platform === 'vinted') {
-    if (o.domicile_seul) return fr ? 'Cette commande demande un enlèvement à domicile (date à choisir) : commande l’étiquette sur Vinted.' : 'This order needs a home pickup (date to choose): order the label on Vinted.';
-    if (o.telephone_manquant) return fr ? 'Vinted demande ton numéro de téléphone pour ce transporteur : commande l’étiquette sur Vinted.' : 'Vinted needs your phone number for this carrier: order the label on Vinted.';
+    if (o.domicile_seul) return fr ? 'Cette commande demande un enlèvement à domicile (date à choisir) : FillSell ne choisit pas de date, commande l’étiquette sur Vinted.' : 'This order needs a home pickup (date to choose): FillSell does not pick dates, order the label on Vinted.';
+    if (o.telephone_manquant) return fr ? 'Vinted demande ton numéro de téléphone pour ce transporteur : ajoute-le sur Vinted, puis génère à nouveau ici.' : 'Vinted needs your phone number for this carrier: add it on Vinted, then generate again here.';
   }
-  if (c?.platform === 'leboncoin') return fr ? 'Ce mode d’envoi demande ton adresse et ton mode de dépôt : confirme sur Leboncoin.' : 'This shipping method needs your address and drop-off choice: confirm on Leboncoin.';
-  if (c?.platform === 'beebs') return fr ? 'Remise en main propre : elle se gère dans l’app Beebs.' : 'Hand delivery: it is handled in the Beebs app.';
+  if (c?.platform === 'leboncoin') return fr ? 'Envoi libre ou remise en main propre : Leboncoin ne fournit pas de bordereau, il n’y a rien à générer. Confirme sur Leboncoin.' : 'Free shipping or hand delivery: Leboncoin provides no label, nothing to generate. Confirm on Leboncoin.';
+  if (c?.platform === 'beebs') return fr ? 'Remise en main propre : pas de bordereau, elle se gère dans l’app Beebs.' : 'Hand delivery: no label, it is handled in the Beebs app.';
   return fr ? `À faire sur ${pf}.` : `To do on ${pf}.`;
 }
 
 /**
- * L'action d'une commande dans « À expédier ».
- *   type 'bordereau' : le bouton actif (bordereau prêt chez la plateforme) ;
- *   type 'generer'   : (16/10 nuit) « Générer le bordereau » — un appui, PUIS
- *                      l'écran de confirmation (phrase d'engagement) ; seul
- *                      le second appui dépose la demande (bordereau_generer) ;
- *   type 'lien'      : ouvrir la bonne page de la plateforme, avec ce que la
- *                      personne y fait elle-même.
- * `generation` : la génération est ouverte (messagerie_compteurs).
+ * L'action d'une commande dans « À expédier » — (17/10, règle de Nico) TOUT ce
+ * que FillSell sait faire se fait dans FillSell ; la plateforme n'est qu'un
+ * dernier recours.
+ *   type 'bordereau' : bordereau prêt chez la plateforme → « Récupérer » ;
+ *   type 'generer'   : « Générer le bordereau » — un appui, PUIS l'écran de
+ *                      confirmation (phrase d'engagement) ; seul le second
+ *                      appui dépose la demande (bordereau_generer). Options pas
+ *                      encore relues : le bouton reste (l'extension les relit
+ *                      juste avant le geste) ; ordinateur éteint : la demande
+ *                      l'attend ici ;
+ *   type 'attente'   : la plateforme prépare quelque chose, FillSell le guette —
+ *                      rien à faire, le lien est discret ;
+ *   type 'lien'      : seulement ce que FillSell ne peut pas faire (et dit
+ *                      pourquoi) : acheter une étiquette eBay, enlèvement Vinted
+ *                      à domicile, remise en main propre, Depop sans bordereau.
+ * `generation` : true ouverte, false FERMÉE par le serveur, null inconnue (pas
+ * encore lue) — inconnue, le bouton reste : la base refuse si c'est fermé.
  */
-export function actionCommande(c, lang = 'fr', generation = false) {
+export function actionCommande(c, lang = 'fr', generation = null) {
   const fr = lang !== 'en';
   const pf = nomPlateforme(c?.platform);
   const url = lienCommande(c);
   const lien = (libelle, aide, ton = 'neutre') => ({ type: 'lien', libelle, aide, url, ton });
+  const attente = (aide) => ({ type: 'attente', libelle: fr ? `Voir sur ${pf}` : `See on ${pf}`, aide, url, ton: 'neutre' });
   if (PLATEFORMES_BORDEREAU.includes(c?.platform) && c?.etat === 'a_expedier' && c?.bordereau === 'pret') {
     return { type: 'bordereau', libelle: fr ? 'Récupérer le bordereau' : 'Fetch the label', ton: 'ok', url,
       aide: fr ? `Bordereau prêt sur ${pf} : FillSell le récupère par ton ordinateur et l’affiche ici, gardé 5 jours.` : `Label ready on ${pf}: FillSell fetches it through your computer and shows it here, kept 5 days.` };
   }
-  if (generation && attendGeneration(c)) {
-    const o = c.options_bordereau;
-    if (o && o.generable === true) {
-      const types = c.platform === 'vinted' && Array.isArray(o.types_etiquette) ? o.types_etiquette.map(Number).filter((t) => [1, 2, 3].includes(t)) : [];
-      return { type: 'generer', libelle: fr ? 'Générer le bordereau' : 'Generate the label', ton: 'ambre', url,
-        phrase: phraseEngagement(c.platform, lang), types,
-        aide: fr ? `FillSell fait le geste sur ${pf} par ton ordinateur, après ta confirmation, puis affiche le bordereau ici.` : `FillSell does it on ${pf} through your computer, after you confirm, then shows the label here.` };
-    }
+  if (attendGeneration(c)) {
+    const o = c.options_bordereau ?? null;
     if (o && o.generable === false) return lien(fr ? `Voir sur ${pf}` : `See on ${pf}`, raisonNonGenerable(c, fr), 'ambre');
-    return lien(fr ? `Voir sur ${pf}` : `See on ${pf}`, fr ? `FillSell lit les options de cette commande au prochain passage de ton ordinateur. En attendant, tu peux le faire sur ${pf}.` : `FillSell reads this order’s options on your computer’s next pass. Meanwhile, you can do it on ${pf}.`, 'ambre');
+    if (generation === false) {
+      return attente(fr ? 'La génération des bordereaux depuis FillSell est fermée pour le moment (bêta) : le bouton revient ici dès sa réouverture.' : 'Generating labels from FillSell is closed for now (beta): the button comes back here as soon as it reopens.');
+    }
+    const connus = c.platform === 'vinted' && Array.isArray(o?.types_etiquette) ? o.types_etiquette.map(Number).filter((t) => [1, 2, 3].includes(t)) : [];
+    // Vinted, options pas encore relues : papier ou QR au choix ; l'extension
+    // vérifie juste avant le geste que Vinted propose bien ce type (sinon : rien).
+    const types = c.platform === 'vinted' ? (connus.length ? connus : [1, 3]) : [];
+    const adresse = c.platform === 'leboncoin' && (o?.adresse_requise === true || LBC_TYPES_ADRESSE.includes(String(o?.type_envoi ?? '')));
+    return { type: 'generer', libelle: fr ? 'Générer le bordereau' : 'Generate the label', ton: 'ambre', url,
+      phrase: phraseEngagement(c.platform, lang, adresse ? 'adresse' : null), types, typesSupposes: c.platform === 'vinted' && !connus.length, adresse,
+      aide: fr ? `FillSell fait le geste sur ${pf} par ton ordinateur, après ta confirmation, puis affiche le bordereau ici.` : `FillSell does it on ${pf} through your computer, after you confirm, then shows the label here.` };
   }
   switch (c?.platform) {
     case 'vinted':
-      if (c.bordereau === 'a_obtenir') return lien(fr ? 'Commander sur Vinted' : 'Order on Vinted', fr ? 'Vinted attend que tu commandes l’étiquette (dépôt, point relais…) : c’est toi qui le fais, sur Vinted. Le bordereau arrive ensuite ici.' : 'Vinted is waiting for you to order the label (drop-off, relay point…): you do it on Vinted. The label then shows up here.', 'ambre');
-      if (c.bordereau === 'indisponible') return lien(fr ? 'Voir sur Vinted' : 'See on Vinted', fr ? 'Vinted n’a pas pu créer le bordereau : vois la commande sur Vinted.' : 'Vinted could not create the label: check the order on Vinted.', 'rouge');
+      if (c.etat === 'a_expedier' && c.bordereau === 'indisponible') return lien(fr ? 'Voir sur Vinted' : 'See on Vinted', fr ? 'Vinted n’a pas pu créer le bordereau : seul Vinted peut le refaire, vois la commande sur Vinted.' : 'Vinted could not create the label: only Vinted can redo it, check the order on Vinted.', 'rouge');
       break;
     case 'leboncoin':
-      if (c.etat === 'a_confirmer') return lien(fr ? 'Confirmer sur Leboncoin' : 'Confirm on Leboncoin', fr ? 'Confirme la disponibilité sur Leboncoin : c’est ce geste qui crée le bordereau. FillSell ne le fait jamais à ta place.' : 'Confirm availability on Leboncoin: that creates the label. FillSell never does it for you.', 'ambre');
-      if (c.bordereau === 'a_obtenir') return lien(fr ? 'Voir sur Leboncoin' : 'See on Leboncoin', fr ? 'Leboncoin prépare le bordereau : il apparaîtra ici dès qu’il est prêt.' : 'Leboncoin is preparing the label: it will show up here once ready.');
+      if (c.etat === 'a_expedier' && c.bordereau === 'a_obtenir') return attente(fr ? 'Disponibilité confirmée : Leboncoin prépare le bordereau, il arrive ici dès qu’il est prêt.' : 'Availability confirmed: Leboncoin is preparing the label, it shows up here once ready.');
       break;
     case 'beebs':
-      if (c.etat === 'a_confirmer') return lien(fr ? 'Accepter sur Beebs' : 'Accept on Beebs', fr ? 'Sur Beebs, générer le bordereau = accepter la commande (l’acheteur est débité) ; Beebs laisse 48 h pour le faire. C’est toi qui le fais, sur Beebs.' : 'On Beebs, generating the label = accepting the order (the buyer is charged); Beebs gives 48 h to do it. You do it on Beebs.', 'ambre'); // estimation-ok: délai IMPOSÉ par Beebs (centre d'aide 360018436119)
-      if (c.bordereau === 'pret') return lien(fr ? 'Télécharger sur Beebs' : 'Download on Beebs', fr ? 'Bordereau prêt sur Beebs : télécharge-le sur Beebs (téléphone vérifié), puis dépose le colis avant la date limite.' : 'Label ready on Beebs: download it on Beebs (verified phone), then drop the parcel before the deadline.');
-      if (c.bordereau === 'a_obtenir') return lien(fr ? 'Voir sur Beebs' : 'See on Beebs', fr ? 'Beebs prépare le bordereau.' : 'Beebs is preparing the label.');
+      if (c.etat === 'a_expedier' && c.bordereau === 'a_obtenir') return attente(fr ? 'Commande acceptée : Beebs prépare le bordereau, FillSell le cherche à chaque passage de ton ordinateur.' : 'Order accepted: Beebs is preparing the label, FillSell looks for it on each pass of your computer.');
       break;
     case 'ebay':
-      // (16/10 nuit) Étude : l'achat d'étiquette eBay n'a pas d'API en France et les conditions d'eBay
+      // (16/10 nuit) L'achat d'étiquette eBay n'a pas d'API en France et les conditions d'eBay
       // interdisent de le faire par un procédé automatique — FillSell ne l'achète jamais (rapport § 10).
-      if (c.etat === 'a_expedier') return lien(fr ? 'Étiquette sur eBay' : 'Label on eBay', fr ? 'eBay vend l’étiquette (Mondial Relay, Colissimo, Lettre suivie) dans la page de la commande : achète-la sur eBay — ses conditions interdisent de le faire par un outil automatique. Déjà achetée ? Elle est dans « Bordereaux d’envoi » sur eBay : n’en rachète pas une seconde.' : 'eBay sells the label (Mondial Relay, Colissimo, tracked letter) on the order page: buy it on eBay — its terms forbid doing it with an automated tool. Already bought? It is under “Shipping labels” on eBay: do not buy a second one.');
+      if (c.etat === 'a_expedier') return lien(fr ? 'Acheter l’étiquette sur eBay' : 'Buy the label on eBay', fr ? 'L’étiquette eBay est payante et ses conditions interdisent de l’acheter par un outil : c’est le seul geste à faire sur eBay. Une fois achetée, son suivi s’affiche ici — n’en rachète pas une seconde.' : 'The eBay label is paid and its terms forbid buying it with a tool: it is the only step to do on eBay. Once bought, its tracking shows up here — do not buy a second one.', 'ambre');
       break;
     case 'depop':
-      if (c.etat === 'a_expedier') return lien(fr ? 'Voir sur Depop' : 'See on Depop', fr ? 'Depop ne fournit pas de bordereau en France : expédie avec le transporteur de ton choix, puis indique l’envoi sur Depop.' : 'Depop provides no label in France: ship with the carrier of your choice, then mark it shipped on Depop.');
+      if (c.etat === 'a_expedier') return lien(fr ? 'Indiquer l’envoi sur Depop' : 'Mark shipped on Depop', fr ? 'Depop ne fournit pas de bordereau en France : expédie avec le transporteur de ton choix, puis indique l’envoi sur Depop. Tout ce que Depop donne (acheteur, date limite, suivi) est ici.' : 'Depop provides no label in France: ship with the carrier of your choice, then mark it shipped on Depop. Everything Depop gives (buyer, deadline, tracking) is here.');
       break;
     default: break;
   }
-  if (c?.etat === 'inconnu') return lien(fr ? `Voir sur ${pf}` : `See on ${pf}`, fr ? `État à vérifier sur ${pf}.` : `Check the status on ${pf}.`);
-  return lien(fr ? `Voir sur ${pf}` : `See on ${pf}`, fr ? `Vois la commande sur ${pf}.` : `See the order on ${pf}.`);
+  if (c?.etat === 'inconnu') return attente(fr ? `État pas encore reconnu : FillSell le relit au prochain passage de ton ordinateur.` : `Status not recognised yet: FillSell reads it again on your computer’s next pass.`);
+  return attente(fr ? `FillSell suit cette commande ${pf}.` : `FillSell is tracking this ${pf} order.`);
+}
+
+/** (17/10) Le numéro de suivi lisible d'une commande (eBay, Depop, Beebs), sinon null. */
+export function suiviCommande(c, lang = 'fr') {
+  const fr = lang !== 'en';
+  if (!c?.envoi_ref || !['ebay', 'depop', 'beebs'].includes(c.platform)) return null;
+  const t = libelleTransporteur(c.transporteur);
+  return { numero: String(c.envoi_ref), transporteur: t, texte: `${fr ? 'Suivi' : 'Tracking'}${t ? ` ${t}` : ''} : ${c.envoi_ref}` };
+}
+
+/** (17/10) Les commandes expédiées depuis peu (3 jours), pour en montrer le suivi. */
+export function expedieesRecentes(liste, maintenant = Date.now()) {
+  return (liste ?? []).filter((c) => c?.etat === 'expediee' && Number.isFinite(Date.parse(c.maj_le ?? ''))
+    && maintenant - Date.parse(c.maj_le) < 3 * 86400000)
+    .sort((a, b) => Date.parse(b.maj_le) - Date.parse(a.maj_le));
 }
 
 /** (16/10 nuit) Les refus d'une génération, en clair : RIEN n'a été fait chez la plateforme. */
 function motifGenerationEnClair(motif, pf, fr) {
   const m = String(motif ?? '');
   const table = {
-    adresse_vinted_incomplete: fr ? 'Ton adresse d’expédition Vinted est incomplète : complète-la sur Vinted, puis réessaie.' : 'Your Vinted shipping address is incomplete: complete it on Vinted, then retry.',
-    adresse_vinted_absente: fr ? 'Vinted n’a pas d’adresse d’expédition pour toi : ajoute-la sur Vinted, puis réessaie.' : 'Vinted has no shipping address for you: add it on Vinted, then retry.',
-    telephone_vinted_requis: fr ? 'Vinted demande ton numéro de téléphone pour ce transporteur : commande l’étiquette sur Vinted.' : 'Vinted needs your phone number for this carrier: order the label on Vinted.',
-    enlevement_domicile_sur_vinted: fr ? 'Enlèvement à domicile : la date se choisit sur Vinted.' : 'Home pickup: the date is chosen on Vinted.',
-    date_a_choisir_sur_vinted: fr ? 'Ce transporteur demande une date : commande l’étiquette sur Vinted.' : 'This carrier needs a date: order the label on Vinted.',
-    type_etiquette_a_choisir: fr ? 'Vinted propose plusieurs types d’étiquette : choisis-en un, puis réessaie.' : 'Vinted offers several label types: pick one, then retry.',
-    etiquette_echouee_chez_vinted: fr ? 'Vinted n’a pas pu créer l’étiquette : vois la commande sur Vinted.' : 'Vinted could not create the label: check the order on Vinted.',
-    confirmation_sur_leboncoin: fr ? 'Ce mode d’envoi demande ton adresse et ton mode de dépôt : confirme sur Leboncoin.' : 'This shipping method needs your address and drop-off choice: confirm on Leboncoin.',
-    remise_en_main_propre_sur_beebs: fr ? 'Remise en main propre : elle se gère dans l’app Beebs.' : 'Hand delivery: it is handled in the Beebs app.',
-    telephone_beebs_non_verifie: fr ? 'Beebs exige un numéro de téléphone vérifié pour générer le bordereau : vérifie-le sur Beebs.' : 'Beebs requires a verified phone number to generate the label: verify it on Beebs.',
-    action_beebs_introuvable: fr ? 'Le bouton de Beebs a changé : FillSell ne l’a pas trouvé. Fais-le sur Beebs (rien n’a été fait).' : 'Beebs changed its button: FillSell could not find it. Do it on Beebs (nothing was done).',
-    beebs_refus: fr ? 'Beebs a refusé (vérification de paiement ou de téléphone ?) : fais-le sur Beebs.' : 'Beebs refused (payment or phone check?): do it on Beebs.',
+    adresse_vinted_incomplete: fr ? 'Ton adresse d’expédition Vinted est incomplète : complète-la sur Vinted, puis génère à nouveau ici. Rien n’a été commandé.' : 'Your Vinted shipping address is incomplete: complete it on Vinted, then generate again here. Nothing was ordered.',
+    adresse_vinted_absente: fr ? 'Vinted n’a pas d’adresse d’expédition pour toi : ajoute-la sur Vinted, puis génère à nouveau ici. Rien n’a été commandé.' : 'Vinted has no shipping address for you: add it on Vinted, then generate again here. Nothing was ordered.',
+    telephone_vinted_requis: fr ? 'Vinted demande ton numéro de téléphone pour ce transporteur : ajoute-le sur Vinted, puis génère à nouveau ici.' : 'Vinted needs your phone number for this carrier: add it on Vinted, then generate again here.',
+    enlevement_domicile_sur_vinted: fr ? 'Enlèvement à domicile : la date se choisit sur Vinted (FillSell ne choisit pas de date).' : 'Home pickup: the date is chosen on Vinted (FillSell does not pick dates).',
+    date_a_choisir_sur_vinted: fr ? 'Ce transporteur demande une date : elle se choisit sur Vinted (FillSell ne choisit pas de date).' : 'This carrier needs a date: it is chosen on Vinted (FillSell does not pick dates).',
+    type_etiquette_a_choisir: fr ? 'Vinted propose plusieurs types d’étiquette : génère à nouveau et choisis-en un. Rien n’a été commandé.' : 'Vinted offers several label types: generate again and pick one. Nothing was ordered.',
+    type_etiquette_indisponible: fr ? 'Vinted ne propose pas ce type d’étiquette pour cette commande : rien n’a été commandé. Génère à nouveau et choisis l’autre type.' : 'Vinted does not offer this label type for this order: nothing was ordered. Generate again and pick the other type.',
+    etiquette_echouee_chez_vinted: fr ? 'Vinted n’a pas pu créer l’étiquette : seul Vinted peut la refaire, vois la commande sur Vinted.' : 'Vinted could not create the label: only Vinted can redo it, check the order on Vinted.',
+    adresse_expediteur_a_completer: fr ? 'L’adresse de ton compte Leboncoin est incomplète (nom, adresse ou téléphone) : complète-la dans ton compte Leboncoin, puis génère à nouveau ici. Rien n’a été fait.' : 'Your Leboncoin account address is incomplete (name, address or phone): complete it in your Leboncoin account, then generate again here. Nothing was done.',
+    confirmation_sur_leboncoin: fr ? 'Envoi libre ou remise en main propre : pas de bordereau à générer, confirme sur Leboncoin.' : 'Free shipping or hand delivery: no label to generate, confirm on Leboncoin.',
+    remise_en_main_propre_sur_beebs: fr ? 'Remise en main propre : pas de bordereau, elle se gère dans l’app Beebs.' : 'Hand delivery: no label, it is handled in the Beebs app.',
+    telephone_beebs_non_verifie: fr ? 'Beebs exige un numéro de téléphone vérifié pour générer le bordereau : vérifie-le sur Beebs, puis génère à nouveau ici.' : 'Beebs requires a verified phone number to generate the label: verify it on Beebs, then generate again here.',
+    action_beebs_introuvable: fr ? 'Le bouton de Beebs a changé : FillSell ne l’a pas trouvé, rien n’a été fait. Réessaie plus tard ici.' : 'Beebs changed its button: FillSell could not find it, nothing was done. Try again later here.',
+    beebs_refus: fr ? 'Beebs a refusé (vérification de paiement ou de téléphone ?) : rien n’a été fait. Réessaie plus tard ici.' : 'Beebs refused (payment or phone check?): nothing was done. Try again later here.',
     commande_annulee: fr ? 'La commande est annulée.' : 'The order is cancelled.',
     deja_expediee: fr ? 'La commande est déjà expédiée.' : 'The order is already shipped.',
-    plateforme_en_pause: fr ? `${pf} a freiné nos lectures : pause de sécurité. Fais-le sur ${pf}.` : `${pf} slowed our reads down: safety pause. Do it on ${pf}.`,
+    plateforme_en_pause: fr ? `${pf} a freiné nos lectures : pause de sécurité, rien n’a été fait. Réessaie plus tard ici.` : `${pf} slowed our reads down: safety pause, nothing was done. Try again later here.`,
   };
   if (table[m]) return table[m];
-  if (/^http_(403|429)$|captcha|blocage/.test(m)) return fr ? `${pf} a refusé : rien n’a été fait, pause de sécurité. Fais-le sur ${pf}.` : `${pf} refused: nothing was done, safety pause. Do it on ${pf}.`;
-  return fr ? `Le bordereau n’a pas pu être généré (rien n’a été fait sur ${pf}). Réessaie, ou fais-le sur ${pf}.` : `The label could not be generated (nothing was done on ${pf}). Retry, or do it on ${pf}.`;
+  if (/^http_(403|429)$|captcha|blocage/.test(m)) return fr ? `${pf} a refusé : rien n’a été fait, pause de sécurité. Réessaie plus tard ici.` : `${pf} refused: nothing was done, safety pause. Try again later here.`;
+  return fr ? `Le bordereau n’a pas pu être généré (rien n’a été fait sur ${pf}). Réessaie : le bouton est de nouveau là.` : `The label could not be generated (nothing was done on ${pf}). Retry: the button is back.`;
 }
 
 /** Ce que l'app dit d'une demande de bordereau (table bordereaux_demandes). */
 export function etatDemandeBordereau(d, lang = 'fr', platform = null) {
   const fr = lang !== 'en';
   const pf = nomPlateforme(platform ?? d?.platform);
+  const attendOrdi = fr ? 'En attente de ton ordinateur (Chrome ouvert, extension active) : rien n’est fait avant. S’il ne la prend pas à temps, rien n’est fait et le bouton revient ici.' : 'Waiting for your computer (Chrome open, extension on): nothing is done before. If it does not take it in time, nothing is done and the button comes back here.';
   if (d?.action === 'generer') {
     switch (d.statut) {
-      case 'demandee': return { ton: 'neutre', attente: true, texte: fr ? `Génération demandée : ton ordinateur la fait sur ${pf} à son prochain passage (Chrome ouvert, extension active).` : `Generation requested: your computer does it on ${pf} on its next pass (Chrome open, extension on).` };
+      case 'demandee': return { ton: 'neutre', attente: true, texte: fr ? `Génération demandée. ${attendOrdi}` : `Generation requested. ${attendOrdi}` };
       case 'en_cours': return { ton: 'neutre', attente: true, texte: fr ? `Génération en cours sur ${pf}…` : `Generating on ${pf}…` };
       case 'generee': {
-        if (d.motif === 'fichier_sur_beebs') return { ton: 'ambre', attente: false, texte: fr ? 'Bordereau généré sur Beebs : télécharge-le sur Beebs (FillSell ne trouve pas encore le fichier).' : 'Label generated on Beebs: download it on Beebs (FillSell cannot find the file yet).' };
-        if (Number(d.essais_fichier) >= 15) return { ton: 'ambre', attente: false, texte: fr ? `Bordereau généré sur ${pf}, fichier pas encore récupéré : récupère-le sur ${pf}.` : `Label generated on ${pf}, file not fetched yet: get it on ${pf}.` };
+        if (d.motif === 'fichier_sur_beebs') return { ton: 'ambre', attente: false, texte: fr ? 'Bordereau généré sur Beebs, mais le site de Beebs ne donne pas encore le fichier : FillSell le cherche à chaque passage de ton ordinateur.' : 'Label generated on Beebs, but the Beebs site does not give the file yet: FillSell looks for it on each pass of your computer.' };
+        if (Number(d.essais_fichier) >= 15) return { ton: 'ambre', attente: false, texte: fr ? `Bordereau généré sur ${pf}, mais le fichier reste introuvable après 15 essais : en dernier recours, ouvre la commande sur ${pf}.` : `Label generated on ${pf}, but the file is still missing after 15 tries: as a last resort, open the order on ${pf}.` };
         return { ton: 'ok', attente: true, texte: fr ? `Bordereau généré sur ${pf} : récupération du fichier…` : `Label generated on ${pf}: fetching the file…` };
       }
       case 'prete': return { ton: 'ok', attente: false, texte: fr ? 'Bordereau généré et récupéré.' : 'Label generated and fetched.' };
       case 'incertaine': return { ton: 'rouge', attente: false, texte: fr ? `On ne sait pas si ${pf} a reçu la demande (coupure pendant l’envoi). Vérifie la commande sur ${pf} avant tout autre geste : FillSell ne la refera jamais.` : `We do not know whether ${pf} received the request (cut during sending). Check the order on ${pf} before anything else: FillSell will never redo it.` };
-      case 'expiree': return { ton: 'ambre', attente: false, texte: fr ? 'Ton ordinateur n’a pas répondu (éteint, ou Chrome fermé) : rien n’a été fait. Réessaie quand il est allumé.' : 'Your computer did not answer (off, or Chrome closed): nothing was done. Try again when it is on.' };
+      case 'expiree': return { ton: 'ambre', attente: false, texte: fr ? 'Ton ordinateur n’a pas pris la demande à temps (éteint, ou Chrome fermé) : rien n’a été fait. Le bouton est de nouveau là : réessaie quand il est allumé.' : 'Your computer did not take the request in time (off, or Chrome closed): nothing was done. The button is back: try again when it is on.' };
       case 'echec': return { ton: 'ambre', attente: false, texte: motifGenerationEnClair(d.motif, pf, fr) };
       default: return null;
     }
   }
   switch (d?.statut) {
-    case 'demandee': return { ton: 'neutre', attente: true, texte: fr ? 'Demande envoyée : ton ordinateur récupère le bordereau à son prochain passage (Chrome ouvert, extension active).' : 'Request sent: your computer fetches the label on its next pass (Chrome open, extension on).' };
+    case 'demandee': return { ton: 'neutre', attente: true, texte: fr ? `Demande envoyée. ${attendOrdi}` : `Request sent. ${attendOrdi}` };
     case 'en_cours': return { ton: 'neutre', attente: true, texte: fr ? 'Récupération du bordereau en cours…' : 'Fetching the label…' };
     case 'prete': return { ton: 'ok', attente: false, texte: fr ? 'Bordereau récupéré.' : 'Label fetched.' };
-    case 'expiree': return { ton: 'ambre', attente: false, texte: fr ? 'Ton ordinateur n’a pas répondu (éteint, ou Chrome fermé) : la demande est abandonnée, rien n’a été fait. Réessaie quand il est allumé.' : 'Your computer did not answer (off, or Chrome closed): the request was dropped, nothing was done. Try again when it is on.' };
+    case 'expiree': return { ton: 'ambre', attente: false, texte: fr ? 'Ton ordinateur n’a pas pris la demande à temps (éteint, ou Chrome fermé) : rien n’a été fait. Réessaie ici quand il est allumé.' : 'Your computer did not take the request in time (off, or Chrome closed): nothing was done. Try again here when it is on.' };
     case 'echec': {
       const m = String(d.motif ?? '');
-      if (m === 'fichier_sur_beebs') return { ton: 'ambre', attente: false, texte: fr ? 'Beebs ne laisse pas encore FillSell lire ce fichier : télécharge le bordereau sur Beebs.' : 'Beebs does not let FillSell read this file yet: download the label on Beebs.' };
-      if (/a_obtenir|disponibilite|pas_pret|statut/.test(m)) return { ton: 'ambre', attente: false, texte: fr ? 'Le bordereau n’est plus prêt chez la plateforme : vois la commande sur la plateforme.' : 'The label is no longer ready on the platform: check the order there.' };
-      if (/http_40[13]|http_429|captcha|pause/.test(m)) return { ton: 'rouge', attente: false, texte: fr ? 'La plateforme a refusé la lecture : rien n’a été fait, pause de sécurité. Récupère le bordereau sur la plateforme.' : 'The platform refused the read: nothing was done, safety pause. Get the label on the platform.' };
-      return { ton: 'rouge', attente: false, texte: fr ? 'Le bordereau n’a pas pu être récupéré (rien n’a été fait chez la plateforme). Réessaie, ou récupère-le sur la plateforme.' : 'The label could not be fetched (nothing was done on the platform). Try again, or get it on the platform.' };
+      if (m === 'fichier_sur_beebs') return { ton: 'ambre', attente: false, texte: fr ? 'Le site de Beebs ne donne pas encore le fichier de ce bordereau : FillSell réessaie à chaque demande. En dernier recours, ouvre la commande sur Beebs.' : 'The Beebs site does not give this label file yet: FillSell retries on each request. As a last resort, open the order on Beebs.' };
+      if (/a_obtenir|disponibilite|pas_pret|statut/.test(m)) return { ton: 'ambre', attente: false, texte: fr ? 'Le bordereau n’est plus prêt chez la plateforme : FillSell relit la commande au prochain passage.' : 'The label is no longer ready on the platform: FillSell reads the order again on the next pass.' };
+      if (/http_40[13]|http_429|captcha|pause/.test(m)) return { ton: 'rouge', attente: false, texte: fr ? 'La plateforme a refusé la lecture : rien n’a été fait, pause de sécurité. Réessaie plus tard ici.' : 'The platform refused the read: nothing was done, safety pause. Try again later here.' };
+      return { ton: 'rouge', attente: false, texte: fr ? 'Le bordereau n’a pas pu être récupéré (rien n’a été fait chez la plateforme). Réessaie ici.' : 'The label could not be fetched (nothing was done on the platform). Try again here.' };
     }
     default: return null;
   }
@@ -389,10 +437,10 @@ export function etatDemandeBordereau(d, lang = 'fr', platform = null) {
 export function refusDemandeBordereau(refuse, lang = 'fr') {
   const fr = lang !== 'en';
   switch (refuse) {
-    case 'pas_a_generer': return fr ? 'Cette commande n’attend plus ce geste : vois-la sur la plateforme.' : 'This order no longer waits for that step: check it on the platform.';
+    case 'pas_a_generer': return fr ? 'Cette commande n’attend plus ce geste : FillSell la relit au prochain passage.' : 'This order no longer waits for that step: FillSell reads it again on the next pass.';
     case 'engagement':
     case 'choix': return fr ? 'Demande incomplète : rouvre l’écran de confirmation et réessaie.' : 'Incomplete request: reopen the confirmation screen and retry.';
-    case 'ferme': return fr ? 'La récupération des bordereaux est fermée pour le moment.' : 'Label fetching is closed for now.';
+    case 'ferme': return fr ? 'La génération des bordereaux est fermée pour le moment (bêta) : rien n’a été fait.' : 'Label generation is closed for now (beta): nothing was done.';
     case 'pas_pret': return fr ? 'Le bordereau n’est pas (ou plus) prêt chez la plateforme.' : 'The label is not (or no longer) ready on the platform.';
     case 'plafond_jour': return fr ? '20 demandes par jour au plus pendant la bêta.' : '20 requests a day at most during the beta.';
     case 'plateforme': return fr ? 'Cette plateforme ne permet pas de récupérer le bordereau depuis FillSell.' : 'This platform does not let FillSell fetch the label.';

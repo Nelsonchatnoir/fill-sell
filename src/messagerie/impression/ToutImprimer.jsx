@@ -7,7 +7,11 @@
 // le compte (bordereaux, pages), puis partager / télécharger / imprimer.
 // Un bordereau illisible est DIT (jamais sauté en silence).
 import { useEffect, useRef, useState } from 'react';
+// (17/10) Une Couche (../Couche.jsx) : portail sur document.body, barre du bas
+// masquée, Échap et retour Android — sur iPhone, une couche rendue dans l'app
+// passait sous l'en-tête et la barre du bas.
 import { UI } from '../../components/ui';
+import Couche from '../Couche';
 import Icone from '../../ecrans/Icone';
 import PlatformLogo from '../../components/platform-logos/PlatformLogo';
 import { chargerCopieBordereau, recadrageRetenu } from './copies';
@@ -112,6 +116,7 @@ export default function ToutImprimer({ ouvert = true, copies, supabase, lang = '
   const aDire = [...illisibles, ...sautes];
 
   return (
+    <Couche onFermer={onFermer}>
     <div role="dialog" aria-modal="true" aria-label={fr ? 'Tout imprimer' : 'Print all'}
       style={{ position: 'fixed', inset: 0, zIndex: 1300, background: '#FAFBFB', display: 'flex', flexDirection: 'column', fontFamily: POLICE, color: UI.ink, paddingTop: 'env(safe-area-inset-top,0px)', paddingBottom: 'env(safe-area-inset-bottom,0px)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderBottom: `1px solid ${LIGNE}`, background: '#FFFFFF' }}>
@@ -180,5 +185,6 @@ export default function ToutImprimer({ ouvert = true, copies, supabase, lang = '
         <div style={{ fontSize: 12, color: ENCRE2, lineHeight: 1.45 }}>{actions.aide}</div>
       </div>
     </div>
+    </Couche>
   );
 }
