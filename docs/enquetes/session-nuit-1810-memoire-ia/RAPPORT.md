@@ -118,3 +118,72 @@ d'un autre compte refusée (RLS), un autre compte ne voit ni n'efface rien, le p
 | Qualité | — | identique par construction (même question → même réponse) ; cache prouvé 110 / 110 champs identiques, 0 appel |
 Relecture : `select date_trunc('day', created_at at time zone 'Europe/Paris') j, feature, count(*) from usage_logs where feature
 in ('resolve_categorie','resolve_categorie_cache') and created_at > now() - interval '14 days' group by 1,2 order by 1;`
+
+## POINT 3 — VENTES BEEBS — FAIT (enquête prouvée) ; correctif NON codé (aucun n'est prouvable sans vraie vente)
+
+Requêtes en lecture seule le 17/10 vers 23:50 et le 18/10 vers 00:10 ; rien écrit, rien vendu, rien retiré.
+
+### Une vente Beebs a-t-elle déjà été relevée ? — détection automatique : JAMAIS ; ventes confirmées au clic : OUI
+- **0 job Beebs** avec `sale_signal = 'sold'`, **0** avec `sale_evidence`, 0 avec `detected_price` (4 411 jobs Beebs).
+- **12 annonces Beebs confirmées vendues PAR LA PERSONNE** (réponse « Oui » à « Plus en ligne, vendue ? ») :
+  - 5 avant le 28/09, écrites `beebs` (ventes 1899, 1900, 2012, 4169, 11912 ; comptes f44b5917 et f8aa02a5) ;
+  - **6 depuis le 02/10, écrites « Ailleurs »** (`plateforme_code = 'ailleurs'`, `annonce_id` = le numéro Beebs) :
+    ventes 77407, 87308, 94454, 125115, 142259, 158347 (5 comptes, 02/10 → 14/10) — invisibles comme ventes Beebs ;
+  - 1 job vendu sans ligne de vente (a064c8ef, 25/09) et 1 vente `beebs` sans job (47571, saisie à la main ?) : **à vérifier**.
+- Pourquoi « Ailleurs » : en prod, `enregistrer_vente_atomique` (md5 cf93c3b6…) écrit
+  `CASE WHEN v_proof THEN j.platform ELSE 'ailleurs' END` avec `v_proof := sale_signal = 'sold'` — règle née le 28/09
+  (`20260928111221_point_b_vente_atomique.sql`). Sans preuve, la plateforme déclarée n'est pas gardée.
+
+### Le veilleur Beebs tourne-t-il, que relève-t-il ? — OUI, mais il ne peut pas dire « vendu »
+- Il tourne : 2 933 annonces Beebs publiées (62 comptes) ; **766 relues en 24 h, 2 007 en 7 j (34 comptes)**, dernière lecture
+  le 17/10 à 23:52 ; 196 relevés « Mes annonces » terminés en 7 j (38 comptes).
+- Il lit la page PUBLIQUE de l'annonce (`chrome-extension/background.js` `detectBeebsState`, ~l. 10467) : `AVAILABLE` → en
+  ligne, toute autre valeur → « indisponible », champ absent → inconnu. **Il ne rend JAMAIS « vendu »** — le code le dit :
+  la valeur d'une vente réelle n'a jamais été observée (inchangé depuis le 12/07). Deux lectures « indisponible » posent
+  `sale_signal = 'unavailable'` (177 jobs : 116 « je l'ai retirée moi-même », 48 questions encore ouvertes, 12 vendus).
+- Aucune autre voie ne couvre Beebs : relevé des ventes (vinted, leboncoin, opla, depop), veille des commandes (vinted,
+  leboncoin), `enregistrer_ventes_relevees` (refuse beebs), `ventes_prouvees_tick` (exige `sold` ou une preuve exacte).
+  La lecture des commandes Beebs n'existe qu'en bêta messagerie (3 comptes), jamais prouvée : 0 commande écrite.
+
+### Conclusion (prouvé)
+Il y a de vraies ventes Beebs chez les utilisateurs (au moins 12 confirmées), et la détection automatique est **cassée par
+construction**, pas par un sélecteur : la page publique ne dit jamais « vendu », aucune vente n'est donc jamais prouvée,
+et la vente confirmée à la main est rangée « Ailleurs ». Signal sous-exploité : le relevé « Mes annonces » classe une carte
+« vendue » (`/vendu|sold/`) — 3 annonces, dont 34080027 vue « vendue » le 01/10, 4 jours avant la question du veilleur ;
+mais 33878149 est « vendue » au relevé alors que la page et l'index la montrent en ligne (« invendu » / « soldes »
+attrapés par l'expression ? commande en attente ?) : **à vérifier**.
+
+### Correctif — aucun codé cette nuit, trois proposés (décision de Nico)
+- **C0 — observation seule (extension)** : écrire dans le diagnostic du relevé le fragment de texte qui a classé une carte
+  Beebs « vendue » (`background.js`, classement des cartes, ~l. 15078), aucune décision changée. Non fait cette nuit : la
+  fonction injectée sert le relevé de TOUTES les plateformes et n'a pas de selftest d'exécution — risque > gain pour un
+  changement fait sans Nico.
+- **C2 — la plateforme d'une vente déclarée** : garder `p_plateforme` (Beebs) quand la personne confirme une vente sans
+  preuve, sans en faire une preuve (retraits inchangés) ; réparer les 6 ventes « Ailleurs » par script (sauvegarde,
+  inverse, 0 mail). Touche la fonction centrale des ventes : décision de Nico, migration à valider.
+- **C1 — vraie détection** : `detectBeebsState` rend « vendu » pour LA valeur observée sur une vraie page vendue + preuve
+  exacte comme Depop (`ventes_prouvees_tick` l'accepte déjà). Prouvable seulement avec la capture d'une vraie page vendue.
+
+## POINT 4 — LES DEUX ROUGES ANCIENS — FAIT ET PROUVÉ
+
+### `npm run lint` plantait
+- **Cause** : `eslint .` n'ignorait que `dist/` et parcourait les copies MINIFIÉES de l'app que Capacitor pose dans
+  `android/` et `ios/` (`assets/public`, plusieurs Mo par fichier), plus les paquets et vieilles copies de l'extension dans
+  `build/` — des artefacts non suivis par git, jamais du source → mémoire épuisée.
+- **Correctif** : `eslint.config.js` ignore `dist`, `android`, `ios`, `build` (rien de suivi par git n'est exclu).
+- **Preuve** : `npx eslint .` va au bout en 99 s. Il rend 906 erreurs et 378 avertissements, tous d'avant : surtout
+  l'extension, qui n'a pas de bloc de configuration à elle (445 « non défini » dans `background.js` : `importScripts`,
+  globales `FILLSELL_*`), `design_extract/` (96), les content scripts (84). Les corriger est un chantier à part (non fait).
+
+### `selftest:vinted-origine` était rouge
+- **Cause** : depuis le 16/10, la copie générée `chrome-extension/etat-job.js` (sources `src/utils/publicationState.js`,
+  `src/utils/retenueServeur.js`, `_shared/attente-autre-boutique.js`) portait cinq littéraux `vinted.fr` dans son CODE : le
+  lien d'une annonce importée et quatre phrases « ouvre-la sur vinted.fr dans Chrome ». La règle du 09/10 (Marta, vendeuse
+  italienne) l'interdit dans l'extension : une seule origine Vinted, `chrome-extension/vinted-origine.js`.
+- **Correctif à la racine, assertion intacte** : `_shared/lien-vinted.js` porte l'origine (vinted.fr) pour l'app et le
+  serveur — textes et liens au caractère près, inchangés ; le générateur `scripts/gen-etat-job-extension.mjs` remplace ce
+  module, dans l'extension, par l'origine de `vinted-origine.js` (le domaine du vendeur : une vendeuse italienne lit enfin
+  « vinted.it » dans le popup). Copie régénérée.
+- **Preuve** : `vinted-origine` 10 cas verts, sans qu'une ligne du selftest ait changé ; nouveau `lien-vinted` (11) ;
+  `etat-job`, `attente-boutique`, `file-des-jobs`, `boutique-connectee`, `a-regler-sans-bandeau`, `aucune-estimation` verts.
+- **Conséquence** : `chrome-extension/` change → extension **0.6.125** (voir la livraison).

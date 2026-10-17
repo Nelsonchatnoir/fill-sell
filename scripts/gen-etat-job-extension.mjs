@@ -21,13 +21,29 @@ const SOURCES = [
 export const CIBLE = 'chrome-extension/etat-job.js';
 
 const FICHIER_VERS_NOM = {
+  'lien-vinted.js': 'lienVinted',
   'publicationState.js': 'publicationState',
   'retenueServeur.js': 'retenueServeur',
   'attente-autre-boutique.js': 'attenteAutreBoutique',
 };
 
+// (18/10 nuit, point 4) _shared/lien-vinted.js n'est PAS recopié : dans
+// l'extension, l'origine Vinted est celle de chrome-extension/vinted-origine.js
+// (le domaine du vendeur, vinted.fr par défaut) — selftest:vinted-origine, a.
+// Le popup charge vinted-origine.js : l'origine est lue à l'appel, jamais au
+// chargement ; absente, aucun lien et « Vinted » dans la phrase.
+const LIEN_VINTED_EXTENSION = [
+  '// ── lien-vinted (extension) : l\'origine unique, chrome-extension/vinted-origine.js ──',
+  '__M.lienVinted = (() => {',
+  'const origineVinted = () => globalThis.FILLSELL_VINTED?.origineVinted?.() ?? null;',
+  'const domaineVinted = () => { const o = origineVinted(); return o ? new URL(o).host.replace(/^www\\./, "") : "Vinted"; };',
+  'const lienAnnonceVinted = (numero) => { const o = origineVinted(); return o ? `${o}/items/${numero}` : null; };',
+  'return { origineVinted, domaineVinted, lienAnnonceVinted };',
+  '})();',
+].join('\n');
+
 export function genererEtatJobExtension() {
-  const blocs = [];
+  const blocs = [LIEN_VINTED_EXTENSION];
   for (const [nom, chemin] of SOURCES) {
     const src = fs.readFileSync(chemin, 'utf8');
     const exportes = [];

@@ -34,6 +34,9 @@
 // « effaçait » la nouvelle (820094306007) — aucune pastille eBay, article
 // pourtant en ligne. La voie formulaire a le même trou dès qu'un publish est
 // relancé après un retrait.
+// (18/10 nuit, point 4) L'origine Vinted passe par _shared/lien-vinted.js : vinted.fr ici,
+// le domaine du vendeur dans la copie de l'extension (scripts/gen-etat-job-extension.mjs).
+import { lienAnnonceVinted } from "../../supabase/functions/_shared/lien-vinted.js";
 export function idAnnonceDe(job) {
   const direct = String(job?.platform_listing_id ?? "").trim();
   if (direct) return direct;
@@ -258,7 +261,7 @@ export function annoncesEncoreEnLigne(item, jobsAll) {
   // partout : vintedMasqueeMalgreJobs (helper ci-dessus).
   if (item?.vinted_item_id && vintedVisible
     && !enLigne.some(a => a.platform === "vinted")) {
-    enLigne.push({ platform: "vinted", url: `https://www.vinted.fr/items/${item.vinted_item_id}` });
+    enLigne.push({ platform: "vinted", url: lienAnnonceVinted(item.vinted_item_id) });
   }
   return enLigne.sort((a, b) => rangPlateforme(a.platform) - rangPlateforme(b.platform));
 }

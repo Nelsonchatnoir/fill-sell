@@ -386,6 +386,7 @@
     "selftest:memoire-categorie": "node scripts/memoire-categorie-selftest.mjs",
     "selftest:question-categorie": "node scripts/question-categorie-selftest.mjs",
     "selftest:claude-cache": "deno run --allow-read scripts/claude-cache-selftest.ts",
+    "selftest:lien-vinted": "node scripts/lien-vinted-selftest.mjs",
     "selftest:imports-jamais-masques": "node scripts/imports-jamais-masques-selftest.mjs",
     "gen:etat-job-extension": "node scripts/gen-etat-job-extension.mjs"
   },

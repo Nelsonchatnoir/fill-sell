@@ -6,7 +6,12 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  // (18/10 nuit, point 4) `npm run lint` plantait (mémoire) : `eslint .` ne
+  // s'arrêtait qu'à dist/ et parcourait les COPIES MINIFIÉES de l'app que
+  // Capacitor pose dans android/ et ios/ (assets/public : plusieurs Mo par
+  // fichier), et les paquets de l'extension et leurs vieilles copies dans
+  // build/ — des artefacts non suivis par git, jamais du source.
+  globalIgnores(['dist', 'android', 'ios', 'build']),
   {
     files: ['**/*.{js,jsx}'],
     extends: [

@@ -8,6 +8,14 @@
 // Le popup lit globalThis.FILLSELL_ETAT_JOB — un seul calcul d'état, le même que l'app.
 (() => {
 const __M = {};
+// ── lien-vinted (extension) : l'origine unique, chrome-extension/vinted-origine.js ──
+__M.lienVinted = (() => {
+const origineVinted = () => globalThis.FILLSELL_VINTED?.origineVinted?.() ?? null;
+const domaineVinted = () => { const o = origineVinted(); return o ? new URL(o).host.replace(/^www\./, "") : "Vinted"; };
+const lienAnnonceVinted = (numero) => { const o = origineVinted(); return o ? `${o}/items/${numero}` : null; };
+return { origineVinted, domaineVinted, lienAnnonceVinted };
+})();
+
 // ── src/utils/publicationState.js ──────────────────────────────────────────────────
 __M.publicationState = (() => {
 // ── Retrait ciblé (2026-07-19) : état de retrait par plateforme ──────────────
@@ -46,6 +54,9 @@ __M.publicationState = (() => {
 // « effaçait » la nouvelle (820094306007) — aucune pastille eBay, article
 // pourtant en ligne. La voie formulaire a le même trou dès qu'un publish est
 // relancé après un retrait.
+// (18/10 nuit, point 4) L'origine Vinted passe par _shared/lien-vinted.js : vinted.fr ici,
+// le domaine du vendeur dans la copie de l'extension (scripts/gen-etat-job-extension.mjs).
+const { lienAnnonceVinted } = __M.lienVinted;
 function idAnnonceDe(job) {
   const direct = String(job?.platform_listing_id ?? "").trim();
   if (direct) return direct;
@@ -270,7 +281,7 @@ function annoncesEncoreEnLigne(item, jobsAll) {
   // partout : vintedMasqueeMalgreJobs (helper ci-dessus).
   if (item?.vinted_item_id && vintedVisible
     && !enLigne.some(a => a.platform === "vinted")) {
-    enLigne.push({ platform: "vinted", url: `https://www.vinted.fr/items/${item.vinted_item_id}` });
+    enLigne.push({ platform: "vinted", url: lienAnnonceVinted(item.vinted_item_id) });
   }
   return enLigne.sort((a, b) => rangPlateforme(a.platform) - rangPlateforme(b.platform));
 }
@@ -417,6 +428,9 @@ __M.retenueServeur = (() => {
 // comme une retenue du même motif et converti à la première écriture.
 // ES module sans import (Deno + Vite).
 
+// (18/10 nuit, point 4) Le domaine Vinted nommé dans les phrases passe par _shared/lien-vinted.js
+// (vinted.fr ici, le domaine du vendeur dans la copie de l'extension).
+const { domaineVinted } = __M.lienVinted;
 const CLE_RETENUE = "retenue_serveur";
 const RETENUE_ISBN_CAPTURE = "isbn_capture_non_standard";
 // La boutique Vinted d'origine de l'article n'est connue nulle part (fiche,
@@ -502,8 +516,8 @@ function phraseRetenueServeur(fr = true, { plateforme = "Vinted", motif = null, 
       ? (fr ? "Ce retrait" : "This removal")
       : (fr ? "Cette republication" : "This repost");
     const ouvrir = liste.length
-      ? (fr ? `Ouvre ${liste.join(" puis ")} sur vinted.fr dans Chrome` : `Open ${liste.join(" then ")} on vinted.fr in Chrome`)
-      : (fr ? "Ouvre sur vinted.fr, dans Chrome, la boutique qui porte cette annonce" : "Open, on vinted.fr in Chrome, the shop that holds this listing");
+      ? (fr ? `Ouvre ${liste.join(" puis ")} sur ${domaineVinted()} dans Chrome` : `Open ${liste.join(" then ")} on ${domaineVinted()} in Chrome`)
+      : (fr ? `Ouvre sur ${domaineVinted()}, dans Chrome, la boutique qui porte cette annonce` : `Open, on ${domaineVinted()} in Chrome, the shop that holds this listing`);
     return fr
       ? {
         court: "En attente",
@@ -567,6 +581,9 @@ __M.attenteAutreBoutique = (() => {
 // par handler-watch (toutes versions).
 // ES module sans import (Deno + Vite + node).
 
+// (18/10 nuit, point 4) Le domaine Vinted nommé passe par ./lien-vinted.js (vinted.fr ici,
+// le domaine du vendeur dans la copie de l'extension).
+const { domaineVinted } = __M.lienVinted;
 const POSE_PAR_ORIGINE_PROUVEE = "handler-watch (origine prouvée du job)";
 const POSE_PAR_PAGE_EXACTE = "extension (propriétaire lu sur la page exacte)";
 // (11/10) Une publication Vinted retenue sur la boutique de sa fiche (get-pending-jobs).
@@ -594,9 +611,9 @@ function attenteBoutiqueLevable(garde) {
 function messageAttenteBoutique(login, action = "republish") {
   const qui = login ? `ta boutique Vinted @${login}` : "ton autre boutique Vinted";
   // (11/10) Une publication : rien n'est encore en ligne, rien ne part ailleurs.
-  if (action === "publish") return `En attente de ${qui} : cet article appartient à cette boutique, il ne se publie que sur elle. Ouvre-la sur vinted.fr dans Chrome, la publication repartira toute seule. Rien n'a été publié ailleurs.`;
+  if (action === "publish") return `En attente de ${qui} : cet article appartient à cette boutique, il ne se publie que sur elle. Ouvre-la sur ${domaineVinted()} dans Chrome, la publication repartira toute seule. Rien n'a été publié ailleurs.`;
   const suite = action === "delete" ? "le retrait repartira tout seul" : "la republication repartira toute seule";
-  return `En attente de ${qui} : ouvre-la sur vinted.fr dans Chrome, ${suite}. Ton annonce est toujours en ligne, rien n'a été retiré.`;
+  return `En attente de ${qui} : ouvre-la sur ${domaineVinted()} dans Chrome, ${suite}. Ton annonce est toujours en ligne, rien n'a été retiré.`;
 }
 
 /**

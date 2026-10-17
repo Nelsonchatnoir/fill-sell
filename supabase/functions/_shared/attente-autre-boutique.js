@@ -17,6 +17,9 @@
 // par handler-watch (toutes versions).
 // ES module sans import (Deno + Vite + node).
 
+// (18/10 nuit, point 4) Le domaine Vinted nommé passe par ./lien-vinted.js (vinted.fr ici,
+// le domaine du vendeur dans la copie de l'extension).
+import { domaineVinted } from "./lien-vinted.js";
 export const POSE_PAR_ORIGINE_PROUVEE = "handler-watch (origine prouvée du job)";
 export const POSE_PAR_PAGE_EXACTE = "extension (propriétaire lu sur la page exacte)";
 // (11/10) Une publication Vinted retenue sur la boutique de sa fiche (get-pending-jobs).
@@ -44,9 +47,9 @@ export function attenteBoutiqueLevable(garde) {
 export function messageAttenteBoutique(login, action = "republish") {
   const qui = login ? `ta boutique Vinted @${login}` : "ton autre boutique Vinted";
   // (11/10) Une publication : rien n'est encore en ligne, rien ne part ailleurs.
-  if (action === "publish") return `En attente de ${qui} : cet article appartient à cette boutique, il ne se publie que sur elle. Ouvre-la sur vinted.fr dans Chrome, la publication repartira toute seule. Rien n'a été publié ailleurs.`;
+  if (action === "publish") return `En attente de ${qui} : cet article appartient à cette boutique, il ne se publie que sur elle. Ouvre-la sur ${domaineVinted()} dans Chrome, la publication repartira toute seule. Rien n'a été publié ailleurs.`;
   const suite = action === "delete" ? "le retrait repartira tout seul" : "la republication repartira toute seule";
-  return `En attente de ${qui} : ouvre-la sur vinted.fr dans Chrome, ${suite}. Ton annonce est toujours en ligne, rien n'a été retiré.`;
+  return `En attente de ${qui} : ouvre-la sur ${domaineVinted()} dans Chrome, ${suite}. Ton annonce est toujours en ligne, rien n'a été retiré.`;
 }
 
 /**

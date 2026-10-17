@@ -254,6 +254,6 @@
   Préférences (« Oublier », « Tout oublier »). Mesure : `usage_logs` feature `memoire_categorie` (appliquee, modifiee,
   retenue) + `champs_requis_veille()`. Code : `src/publication/moteur/memoireCategorie.js`, `src/utils/memoireChamps.js`.
   Selftest `memoire-categorie`. Rapport : `docs/enquetes/session-nuit-1810-memoire-ia/RAPPORT.md`.
-- **ÉTEINTE à la livraison (18/10 00:50)** : preuve réelle impossible cette nuit (la rédaction IA remplit déjà l'Univers de Mode ;
+- **ÉTEINTE à la livraison (18/10 00:27)** : preuve réelle impossible cette nuit (la rédaction IA remplit déjà l'Univers de Mode ;
   0 question des champs retenus évitable depuis le correctif A10 du 11/10). Interrupteur fail-closed
   `profiles.beta_flags.memoire_categorie` puis `coin_config.memoire_categorie_ouverte` (`src/utils/memoireChamps.js`).

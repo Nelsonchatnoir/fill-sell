@@ -18,6 +18,9 @@
 // comme une retenue du même motif et converti à la première écriture.
 // ES module sans import (Deno + Vite).
 
+// (18/10 nuit, point 4) Le domaine Vinted nommé dans les phrases passe par _shared/lien-vinted.js
+// (vinted.fr ici, le domaine du vendeur dans la copie de l'extension).
+import { domaineVinted } from "../../supabase/functions/_shared/lien-vinted.js";
 export const CLE_RETENUE = "retenue_serveur";
 export const RETENUE_ISBN_CAPTURE = "isbn_capture_non_standard";
 // La boutique Vinted d'origine de l'article n'est connue nulle part (fiche,
@@ -103,8 +106,8 @@ export function phraseRetenueServeur(fr = true, { plateforme = "Vinted", motif =
       ? (fr ? "Ce retrait" : "This removal")
       : (fr ? "Cette republication" : "This repost");
     const ouvrir = liste.length
-      ? (fr ? `Ouvre ${liste.join(" puis ")} sur vinted.fr dans Chrome` : `Open ${liste.join(" then ")} on vinted.fr in Chrome`)
-      : (fr ? "Ouvre sur vinted.fr, dans Chrome, la boutique qui porte cette annonce" : "Open, on vinted.fr in Chrome, the shop that holds this listing");
+      ? (fr ? `Ouvre ${liste.join(" puis ")} sur ${domaineVinted()} dans Chrome` : `Open ${liste.join(" then ")} on ${domaineVinted()} in Chrome`)
+      : (fr ? `Ouvre sur ${domaineVinted()}, dans Chrome, la boutique qui porte cette annonce` : `Open, on ${domaineVinted()} in Chrome, the shop that holds this listing`);
     return fr
       ? {
         court: "En attente",
