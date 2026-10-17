@@ -187,3 +187,50 @@
   (`[anti_robot]`, `[pas_connecte]`), jamais « 0 annonce » ; le flux tranche sur SA liste (le compteur de Beebs n'a
   plus à égaler l'index, qui garde des annonces retirées) ; son verdict est écrit dans CHAQUE relevé.
 - **Relancé** : rien (un relevé = son « Synchroniser » ou la veille). Le prochain dira la cause en clair.
+
+## 11. Ventes Vinted en lot (Louis, risque de double vente)
+
+- **Cause** : l'extension lisait bien les numéros d'articles d'une commande Vinted (`transaction.order.item_ids`) mais
+  ne les gardait jamais ; tout le circuit de vente travaillait annonce par annonce : une commande en lot finalisée
+  devenait UNE ligne « Lot N articles » sans fiche ni annonce (cas 2 : vente 184415), et le mail partait note par note,
+  un article par mail. Cas 1 : la commande n'est pas encore finalisée ; le maillot a été vendu par la preuve de SA page
+  (vente 188018, copie Leboncoin retirée) ; la robe citrouille n'a de numéro nulle part chez FillSell.
+- **Les lots de Louis** : cas 1 = maillot (prouvé) + robe (aucune preuve en base : aucun retrait). Cas 2 : composition
+  NON prouvable en base (3 jeux de candidats, aucun prouvé) ; toutes les copies Leboncoin candidates étaient déjà
+  retirées → aucun risque de double vente connu de FillSell aujourd'hui.
+- **Robe citrouille** : jamais importée parce que l'import ne part que sur « Synchroniser » (règle du 05/10) : le dernier
+  « Synchroniser » de sa boutique (371531) date du 11/10, avant qu'elle existe ; celui du 14/10 a lu l'autre boutique
+  (247512093) ; les relevés automatiques depuis l'ont vue sans l'importer (« 11 annonces sans fiche »). FillSell ne la
+  voit sur aucune plateforme (relevé Leboncoin complet du 16/10 : rien) — une annonce posée à la main sur Leboncoin
+  après le 16/10 18:08 ne serait pas encore vue.
+- **Règle (tous les comptes)** : la commande est l'unité de vente, composition = numéros EXACTS (jamais le titre) ;
+  une vente PAR ARTICLE ; chaque article qui a une fiche passe vendu et ses copies prouvées sont retirées par le
+  circuit normal ; un article inconnu = vente sans fiche + question, jamais un retrait ; une vente déjà enregistrée par
+  la preuve de sa page est adoptée, jamais doublée ; UN mail par commande qui liste TOUS ses articles. Prix : celui de
+  Vinted par article s'il existe, sinon le total au prorata des prix d'annonce (centimes au plus grand reste, somme =
+  total), base manquante = inconnu (jamais 0) ; exemple 5,10 € sur 4 articles à 1,50 € → 1,28 / 1,28 / 1,27 / 1,27.
+- **Livré** : extension 0.6.123 (numéros de toute commande, arriéré « lot » de 30 jours relu une fois, veille →
+  composition), push-ventes v12 (un mail liste tous les articles, rétrocompatible), migration `20261017120000`
+  (essai à blanc sur la prod **35/35**). Voir § Livraison pour ce qui est appliqué.
+- **Le parc** : 114 lignes « Lot N articles » sur 30 jours (42 comptes, 1 915 €), toutes sans fiche par construction ;
+  leur composition sera relue une fois par la 0.6.123 sur chaque poste, puis réparée par
+  `scripts/reparations/20261017_ventes_vinted_en_lot.sql` (sauvegardes, inverse, 0 mail ; NON appliqué : il faut
+  d'abord les compositions relues).
+
+## 12. Ventes Vinted annulées jamais détectées (Louis)
+
+- **Cause réelle** : la seule commande que Vinted a déclarée annulée chez Louis le 13/10 est la n° 23140574853 (lot A,
+  4 gigoteuses, statut `failed`) — traitée SEULE par l'extension le 16/10 à 01:35, 27 min après l'arrivée de la 0.6.114.
+  Les ventes 144011-144014 (lot B) n'ont JAMAIS été annulées : leur commande n'a été ni `failed` ni `completed` aux deux
+  relevés ; l'idée venait d'un mail « Vente annulée » du 14/10 attribué sans numéro de commande. **Ta réparation de
+  11:37 a retiré 4 vraies ventes** → vérifié par toi sur Vinted, **remises à l'identique à 14:30** (mêmes id, fiches
+  vendu / 0 / sold, jobs sold, reçus, tes 4 lignes de journal retirées ; sauvegardes, inverse, **0 mail**).
+- **Défauts réels, corrigés** : (D1) le relevé ne laissait aucune trace de ce que Vinted dit d'une commande → une ligne
+  `releve_ventes` par passage + l'onglet « Annulées » lu en observation (0.6.123) ; (D2) le relevé de nuit défaisait le
+  retour au stock d'une commande annulée (lot A repassé « vendu » le 17/10 à 01:18) → garde, migration
+  **20261017141000 appliquée à 14:42** ; (D3) la fonction ne posait pas `vinted_status` → elle le pose (`closed`, ou
+  `active` si l'annonce est revue en ligne), tracé, et garde le reçu dans sa trace : migration **20261017140000
+  appliquée à 14:41** (essais 16/16 et 13/13). (D4, piste R4) une commande déjà annulée ne prouve plus jamais une
+  vente (règle du point 11).
+- **Ce qui attend ta décision** : le lot A (commande 23148630362 « Lot 4 articles » = rachat des gigoteuses ?) ; trois
+  ventes de commandes `failed` seulement signalées (167304 créée le 15/10 après la règle, 125191, 108583).

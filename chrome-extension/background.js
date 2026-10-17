@@ -17281,6 +17281,15 @@ const VINTED_DETAIL_PAR_RUN = 64;
 // (02/10 soir) 8 détails par injection : ~20 s, sous la garde de 45 s.
 const VINTED_DETAIL_PAR_INJECTION = 8;
 const VINTED_DETAIL_MEMOIRE = 6000;          // bornes de la mémoire locale
+// (17/10, point 11 — lots Vinted, Louis) UNE COMMANDE VINTED = SES ARTICLES. Une
+// commande en LOT déjà détaillée par une version d'avant la règle « une vente par
+// article » n'a jamais laissé sa composition au serveur : elle est relue UNE fois
+// (mémoire `lots_v1`), seulement si elle a moins de 30 jours, aux mêmes bornes
+// que le détail (64 par passage, 8 par injection).
+const VINTED_LOTS_ARRIERE_JOURS = 30;
+// Le libellé que Vinted donne à une commande à plusieurs articles : il choisit
+// seulement QUOI relire — jamais une preuve (la preuve : les item_ids lus).
+const VINTED_TITRE_LOT = /^\s*lot\s+\d+\s+articles?\s*$/i;
 
 // L'ARRIÉRÉ (02/10 soir, point 9) : les ventes Vinted relevées encore sans
 // article ni numéro d'annonce, les plus récentes d'abord — ce sont elles qui
@@ -17291,11 +17300,20 @@ const VINTED_DETAIL_MEMOIRE = 6000;          // bornes de la mémoire locale
 // lui (même file, simplement plus large).
 async function arriereVentesVintedSansArticle(token, userId) {
   const base = `ventes?user_id=eq.${userId}&plateforme_code=eq.vinted&source=eq.releve&inventaire_id=is.null` +
-    `&commande_ref=not.is.null&select=commande_ref&order=vendu_le.desc.nullslast&limit=200`;
+    `&commande_ref=not.is.null&select=commande_ref,titre,vendu_le&order=vendu_le.desc.nullslast&limit=200`;
   let rows = await restRequest(`${base}&annonce_id=is.null`, token).catch(() => null);
   if (!Array.isArray(rows)) rows = await restRequest(base, token).catch(() => null);
+  const limiteLots = Date.now() - VINTED_LOTS_ARRIERE_JOURS * 86_400_000;
   return Array.isArray(rows)
-    ? rows.map((r) => ({ ref: String(r?.commande_ref ?? ""), statut: "completed" })).filter((r) => r.ref)
+    ? rows.map((r) => {
+        const vendu = Date.parse(String(r?.vendu_le ?? ""));
+        return {
+          ref: String(r?.commande_ref ?? ""), statut: "completed",
+          // (17/10) une ligne « Lot N articles » de moins de 30 jours : relue une fois (lots_v1).
+          lot: VINTED_TITRE_LOT.test(String(r?.titre ?? "")) && Number.isFinite(vendu) && vendu >= limiteLots,
+        };
+      // Une ligne d'article d'une commande éclatée ('<ref>:<article>') n'est jamais relue ici.
+      }).filter((r) => r.ref && !r.ref.includes(":"))
     : [];
 }
 const VENTES_PAGES_MAX = 40;                 // borne dure de pagination
@@ -17341,7 +17359,11 @@ async function refsVentesConnues(token, userId, platform) {
       `&select=commande_ref&order=id.desc&limit=1000&offset=${page * 1000}`, token,
     ).catch(() => null);
     if (!Array.isArray(rows) || !rows.length) break;
-    for (const r of rows) if (r?.commande_ref) vues.add(String(r.commande_ref));
+    // (17/10) Une commande Vinted éclatée (une vente par article) porte
+    // '<ref>:<article>' : c'est la commande <ref> qui est connue.
+    for (const r of rows) {
+      if (r?.commande_ref) vues.add(platform === "vinted" ? String(r.commande_ref).split(":")[0] : String(r.commande_ref));
+    }
     if (rows.length < 1000) break;
   }
   return vues;
@@ -17419,7 +17441,23 @@ async function lireVentesVinted(connues) {
       page++;
       await new Promise((r) => setTimeout(r, 700 + Math.random() * 900));
     }
-    return { ok: rows.length > 0 || !motif, rows, aDetailler, total, pages: page, motif };
+    // (17/10, R2 c — point 12) OBSERVATION SEULE : la première page des commandes
+    // « annulées » telle que Vinted la rend (numéro + statut machine), lue UNE fois
+    // par passage et seulement si la liste a répondu, renvoyée et tracée
+    // (usage_logs 'releve_ventes') — AUCUNE décision n'est prise dessus.
+    let annuleesObservees = null;
+    if (!motif) {
+      await new Promise((r) => setTimeout(r, 700 + Math.random() * 900));
+      try {
+        const { http, j } = await api("/api/v2/my_orders?type=sold&status=cancelled&page=1&per_page=20");
+        annuleesObservees = http === 200 && j
+          ? (Array.isArray(j.my_orders) ? j.my_orders : []).slice(0, 20)
+              .map((o) => ({ ref: String(o?.transaction_id ?? ""), statut: String(o?.transaction_user_status ?? "") }))
+              .filter((o) => o.ref)
+          : { http };
+      } catch { annuleesObservees = { erreur: "lecture" }; }
+    }
+    return { ok: rows.length > 0 || !motif, rows, aDetailler, total, pages: page, motif, annuleesObservees };
   }, [VINTED_VENTES_PAGE, VENTES_PAGES_MAX, [...connues]]);
 }
 
@@ -17428,6 +17466,8 @@ async function lireVentesVinted(connues) {
 async function lireDetailsVentesVinted(refs) {
   return executerDansOngletPlateforme("vinted", async (liste) => {
     const rows = []; const faits = []; let echecs = 0;
+    // (17/10, R2 a — point 12) Les détails ratés, nommés : { ref, http }.
+    const refsEchecs = [];
     for (const { ref, statut } of liste) {
       await new Promise((r) => setTimeout(r, 900 + Math.random() * 1200));
       let j = null, http = 0;
@@ -17440,11 +17480,14 @@ async function lireDetailsVentesVinted(refs) {
         if (t.trim().startsWith("{")) j = JSON.parse(t);
       } catch { /* réseau : on réessaiera */ }
       const tr = j?.transaction;
-      if (http !== 200 || !tr) { echecs++; continue; }
-      // Un LOT (plusieurs articles dans une commande) : order.item_ids en porte
-      // plus d'un. On ne l'impute à AUCUN article — un montant unique pour
-      // plusieurs objets ne se répartit pas tout seul.
-      const ids = Array.isArray(tr?.order?.item_ids) ? tr.order.item_ids : [];
+      if (http !== 200 || !tr) { echecs++; refsEchecs.push({ ref: String(ref), http }); continue; }
+      // (17/10, point 11 — Louis) UNE COMMANDE = SES ARTICLES : les numéros EXACTS
+      // de order.item_ids (ou item_id), transmis pour TOUTE commande. Un LOT
+      // (plusieurs articles) n'est imputé à aucun article par cette ligne : le
+      // serveur en fait une vente PAR ARTICLE (vinted_commandes_articles), chacun
+      // par son numéro — jamais par le titre « Lot N articles ».
+      const ids = (Array.isArray(tr?.order?.item_ids) ? tr.order.item_ids : [])
+        .map((x) => String(x)).filter((x) => /^\d+$/.test(x));
       const lot = ids.length > 1;
       rows.push({
         ref: String(ref),
@@ -17454,12 +17497,11 @@ async function lireDetailsVentesVinted(refs) {
         vendu_le: tr?.debit_processed_at ?? tr?.status_updated_at ?? null,
         // Le statut vient de la LISTE, jamais redéduit ici (cf. aDetailler).
         statut,
-        listing_id: lot ? null : (tr?.item_id != null ? String(tr.item_id) : null),
-        // (15/10, P1 — Louis) Les annonces d'un LOT : jamais imputées à un article
-        // pour une vente (un montant pour plusieurs objets), mais une commande
-        // ANNULÉE se reconnaît par elles (enregistrer_ventes_relevees → la fiche
-        // revient au stock, vente_commande_annulee_vinted).
-        item_ids: lot ? ids.map((x) => String(x)) : null,
+        // Une commande à UN article : son numéro ; item_id vide (ventes passées) →
+        // le seul numéro de order.item_ids.
+        listing_id: lot ? null : (tr?.item_id != null ? String(tr.item_id) : (ids.length === 1 ? ids[0] : null)),
+        // (15/10, P1) une commande ANNULÉE se reconnaît aussi par ses annonces.
+        item_ids: ids.length ? ids : (tr?.item_id != null ? [String(tr.item_id)] : null),
         url: null,
         // ⛔ service_fee = protection ACHETEUR. Elle ne part PAS en frais vendeur.
         frais: null,
@@ -17467,7 +17509,7 @@ async function lireDetailsVentesVinted(refs) {
       });
       faits.push(String(ref));
     }
-    return { ok: true, rows, faits, echecs };
+    return { ok: true, rows, faits, echecs, refsEchecs };
   }, [refs]);
 }
 
@@ -17620,6 +17662,44 @@ async function lireVentesDepopOnglet() {
   return { ok: r?.ok === true, rows: Array.isArray(r?.rows) ? r.rows : [], pages: r?.pages ?? null, motif: r?.motif ?? null };
 }
 
+// (17/10, R2 b — point 12) Les bilans de TOUS les envois d'un passage, additionnés
+// (avant : seul le dernier paquet du détail était gardé).
+function cumulerBilansVentes(bilans) {
+  const total = {
+    creees: 0, deja: 0, annulees: 0, statuts_inconnus: {}, adoptees: 0, rattachees: 0,
+    lots: 0, compositions: 0, lots_eclates: 0, lots_a_reparer: 0, lots_en_doute: 0,
+  };
+  for (const b of bilans) {
+    if (!b || typeof b !== "object") continue;
+    total.creees += Number(b.creees) || 0;
+    total.deja += Number(b.deja_connues) || 0;
+    total.annulees += Number(b.annulees) || 0;
+    total.adoptees += Number(b.adoptees) || 0;
+    total.rattachees += Number(b.rattachees) || 0;
+    total.lots += Number(b.lots) || 0;
+    total.compositions += Number(b.compositions) || 0;
+    total.lots_eclates += Number(b.lots_eclates) || 0;
+    total.lots_a_reparer += Number(b.lots_a_reparer) || 0;
+    total.lots_en_doute += Number(b.lots_en_doute) || 0;
+    for (const [k, v] of Object.entries(b.statuts_inconnus ?? {})) {
+      total.statuts_inconnus[k] = (total.statuts_inconnus[k] ?? 0) + (Number(v) || 0);
+    }
+  }
+  return total;
+}
+
+// (17/10, R2 b) UNE ligne usage_logs 'releve_ventes' par passage et par plateforme :
+// ce que le relevé a lu, envoyé, raté, et ce que la base en a fait. JAMAIS
+// bloquante : écrite sans être attendue, une panne ne coûte rien au relevé.
+function tracerReleveVentes(token, userId, metadata) {
+  try {
+    restRequest("usage_logs", token, {
+      method: "POST",
+      body: JSON.stringify([{ user_id: userId, feature: "releve_ventes", metadata: { ...metadata, build: FILLSELL_BUILD_ID } }]),
+    }).catch((e) => console.warn("[ventes] trace releve_ventes non écrite (sans conséquence) :", String(e?.message ?? e)));
+  } catch { /* jamais bloquant */ }
+}
+
 // ── L'ORCHESTRATION, UNE PLATEFORME À LA FOIS ───────────────────────────────
 async function lancerReleveVentes({ platform, declencheur = "cron" } = {}) {
   if (!VENTES_PLATEFORMES.includes(platform)) return { ok: false, reason: "plateforme" };
@@ -17655,10 +17735,17 @@ async function lancerReleveVentes({ platform, declencheur = "cron" } = {}) {
       console.warn(`[ventes][${platform}] rien relevé — ${lecture?.motif ?? "motif inconnu"}`);
       etat[platform] = { ...(etat[platform] ?? {}), dernierAt: Date.now(), dernierMotif: lecture?.motif ?? null };
       await ecrireEtatVentes(etat);
+      tracerReleveVentes(token, userId, {
+        plateforme: platform, declencheur, lues: 0, pages: lecture?.pages ?? null,
+        motif: lecture?.motif ?? "illisible", bilan: cumulerBilansVentes([]), detail: null,
+      });
       return { ok: false, reason: lecture?.motif ?? "illisible" };
     }
 
     let bilan = await envoyerVentesRelevees(token, platform, lecture.rows ?? []);
+    // (17/10, R2 b) le bilan de chaque envoi, tous paquets du détail compris.
+    const bilansDetail = [];
+    let detailTrace = null;
 
     // VINTED, SECOND TEMPS : le détail, cadencé, pour l'identifiant d'annonce.
     // ── (02/10 soir, point 9) LE SECOND TEMPS N'ABOUTISSAIT PLUS ─────────────
@@ -17686,21 +17773,30 @@ async function lancerReleveVentes({ platform, declencheur = "cron" } = {}) {
       // UNE fois (mémoire `annulees_v1`), jamais en boucle — seulement les
       // commandes de la première page de la liste (les 100 dernières).
       const annuleesFaites = new Set(etat.vinted?.annulees_v1 ?? []);
+      // (17/10, point 11) Les commandes en LOT relues une fois pour leur composition.
+      const lotsFaits = new Set(etat.vinted?.lots_v1 ?? []);
       const arriere = await arriereVentesVintedSansArticle(token, userId).catch(() => []);
       const vus = new Set();
+      // (17/10, R2 b) « annulée » = le prédicat de la veille (failed, canceled,
+      // cancelled), jamais le seul « failed ».
       const restants = [...(lecture.aDetailler ?? []), ...arriere]
-        .filter((r) => r?.ref && (!deja.has(r.ref) || (r.statut === "failed" && !annuleesFaites.has(r.ref))) && !vus.has(r.ref) && vus.add(r.ref));
+        .filter((r) => r?.ref && (!deja.has(r.ref)
+          || (commandeAnnulee("vinted", r.statut) && !annuleesFaites.has(r.ref))
+          || (r.lot === true && !lotsFaits.has(r.ref))) && !vus.has(r.ref) && vus.add(r.ref));
       const file = restants.slice(0, VINTED_DETAIL_PAR_RUN);
       let lus = 0, echecs = 0, envoyes = 0;
       const faitsOk = [];
+      const refsEchecs = [];
       for (let i = 0; i < file.length; i += VINTED_DETAIL_PAR_INJECTION) {
         const paquet = file.slice(i, i + VINTED_DETAIL_PAR_INJECTION);
         const det = await lireDetailsVentesVinted(paquet);
         if (!det?.ok) { console.warn(`[ventes][vinted] détail : paquet interrompu (${det?.motif ?? "?"}) — repris au prochain passage`); break; }
         lus += det.faits?.length ?? 0; echecs += det.echecs ?? 0;
+        refsEchecs.push(...(Array.isArray(det.refsEchecs) ? det.refsEchecs : []));
         if (det.rows?.length) {
           try {
             bilanDetail = await envoyerVentesRelevees(token, "vinted", det.rows);
+            bilansDetail.push(bilanDetail);
             envoyes += det.rows.length;
             faitsOk.push(...(det.faits ?? []));
           } catch (e) {
@@ -17710,9 +17806,24 @@ async function lancerReleveVentes({ platform, declencheur = "cron" } = {}) {
         }
       }
       const mem = [...new Set([...deja, ...faitsOk])];
-      const refsAnnulees = new Set(file.filter((r) => r?.statut === "failed").map((r) => r.ref));
+      const refsAnnulees = new Set(file.filter((r) => commandeAnnulee("vinted", r?.statut)).map((r) => r.ref));
       const annulees = [...new Set([...annuleesFaites, ...faitsOk.filter((r) => refsAnnulees.has(r))])];
-      etat.vinted = { ...(etat.vinted ?? {}), detailles_v2: mem.slice(-VINTED_DETAIL_MEMOIRE), annulees_v1: annulees.slice(-VINTED_DETAIL_MEMOIRE) };
+      // Un lot n'est noté relu QUE si le serveur garde les compositions (bilan
+      // « compositions », migration 20261017120000) : avant elle, il sera relu.
+      const serveurCompose = bilansDetail.some((b) => b && typeof b === "object" && "compositions" in b);
+      const refsLots = new Set(file.filter((r) => r?.lot === true).map((r) => r.ref));
+      const lots = serveurCompose ? [...new Set([...lotsFaits, ...faitsOk.filter((r) => refsLots.has(r))])] : [...lotsFaits];
+      etat.vinted = {
+        ...(etat.vinted ?? {}), detailles_v2: mem.slice(-VINTED_DETAIL_MEMOIRE), annulees_v1: annulees.slice(-VINTED_DETAIL_MEMOIRE),
+        lots_v1: lots.slice(-VINTED_DETAIL_MEMOIRE),
+      };
+      detailTrace = {
+        lus, envoyes, echecs, refs_echecs: refsEchecs.slice(0, 20),
+        en_attente: Math.max(0, restants.length - file.length),
+        annulees_relues: file.filter((r) => commandeAnnulee("vinted", r?.statut) && deja.has(r.ref)).map((r) => r.ref).slice(0, 20),
+        lots_relus: file.filter((r) => r?.lot === true).map((r) => r.ref).slice(0, 20),
+        arriere: arriere.length,
+      };
       if (file.length) {
         console.log(`[ventes][vinted] détail : ${lus} lu(s), ${envoyes} envoyé(s), ${echecs} échec(s), ` +
           `${Math.max(0, restants.length - file.length)} en attente (dont arriéré en base : ${arriere.length})`);
@@ -17721,6 +17832,11 @@ async function lancerReleveVentes({ platform, declencheur = "cron" } = {}) {
 
     etat[platform] = { ...(etat[platform] ?? {}), dernierAt: Date.now(), dernierMotif: lecture?.motif ?? null };
     await ecrireEtatVentes(etat);
+    tracerReleveVentes(token, userId, {
+      plateforme: platform, declencheur, lues: lecture.rows?.length ?? 0, pages: lecture?.pages ?? null,
+      motif: lecture?.motif ?? null, bilan: cumulerBilansVentes([bilan, ...bilansDetail]), detail: detailTrace,
+      ...(platform === "vinted" ? { annulees_observees: lecture?.annuleesObservees ?? null } : {}),
+    });
     console.log(
       `[ventes][${platform}] (${declencheur}) ${lecture.rows?.length ?? 0} ligne(s) lue(s) — ` +
       `créées ${bilan?.creees ?? 0}, adoptées ${bilan?.adoptees ?? 0}, déjà connues ${bilan?.deja_connues ?? 0}, ` +
@@ -20038,10 +20154,48 @@ async function lireArticlesCommandesVinted(refs) {
       // Un lot porte plusieurs articles : chacun est vendu, chacun se relit.
       const ids = Array.isArray(tr?.order?.item_ids) && tr.order.item_ids.length
         ? tr.order.item_ids : (tr?.item_id != null ? [tr.item_id] : []);
-      out.push({ ref: String(ref), item_ids: ids.map(String) });
+      out.push({
+        ref: String(ref), item_ids: ids.map(String),
+        // (17/10, point 11) Ce que la commande prouve, pour le serveur
+        // (commandes_vinted_noter) : payée ou non (debit_processed_at), le montant
+        // que touche le vendeur, et l'état machine de la transaction (500 = annulée).
+        paye: tr?.debit_processed_at != null,
+        prix: tr?.offer?.price?.amount != null ? parseFloat(String(tr.offer.price.amount)) : null,
+        devise: tr?.offer?.price?.currency_code ?? null,
+        etat: tr?.status != null ? Number(tr.status) : null,
+      });
     }
     return { ok: true, articles: out, requetes, bot: http403 };
   }, [refs]);
+}
+
+// (17/10, point 11 — Louis) UNE COMMANDE PAYÉE EST LA PREUVE DE CHAQUE ARTICLE : la
+// veille envoie ses commandes neuves (3 au plus par passage) au serveur, qui
+// vend chaque article par le circuit normal, retire ses copies prouvées et fait
+// UN mail qui les liste tous (commandes_vinted_noter). failed / cancelled (ou
+// transaction à 500) : envoyée comme annulée — JAMAIS une vente (R4).
+// TOLÉRANTE : avant la migration 20261017120000 la RPC n'existe pas (404,
+// PGRST202) → rien, aucune erreur visible ; toute autre panne est seulement dite
+// dans la console, la veille continue.
+async function noterCommandesVinted(token, rows) {
+  if (!Array.isArray(rows) || !rows.length) return null;
+  try {
+    const res = await fetch(`${FILLSELL_CONFIG.SUPABASE_URL}/rest/v1/rpc/commandes_vinted_noter`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, apikey: FILLSELL_CONFIG.SUPABASE_ANON_KEY },
+      body: JSON.stringify({ p_rows: rows.slice(0, VEILLE_COMMANDES_DETAILS_MAX) }),
+    });
+    const corps = await res.json().catch(() => null);
+    if (res.status === 404 || String(corps?.code ?? "") === "PGRST202") return { absente: true };
+    if (!res.ok) {
+      console.warn(`[veille-commandes][vinted] commandes non notées (HTTP ${res.status}) — la relecture prioritaire suit son cours`);
+      return null;
+    }
+    return corps ?? {};
+  } catch (e) {
+    console.warn("[veille-commandes][vinted] commandes non notées (réseau) :", String(e?.message ?? e).slice(0, 120));
+    return null;
+  }
 }
 
 /** Une commande annulée ne désigne rien. */
@@ -20197,6 +20351,20 @@ async function jobsARelirePourCommandes(platform, commandes, token, etat) {
       etat[platform].coupee = { le: new Date().toISOString(), jusqu: Date.now() + VEILLE_COMMANDES_COUPURE_MS, motif: "detail_403" };
       compterMesureVeille(etat, platform, "coupures");
     }
+    // (17/10, point 11) Les commandes neuves lues partent au serveur AVANT la
+    // relecture : une commande PAYÉE vend chacun de ses articles (une vente par
+    // article, UN mail) ; une commande annulée (statut machine, ou transaction à
+    // 500) part comme annulée — jamais une vente.
+    const parRef = new Map(commandes.map((c) => [String(c.ref), c]));
+    const lignes = (det?.articles ?? [])
+      .filter((a) => a?.ref && Array.isArray(a.item_ids) && a.item_ids.length)
+      .map((a) => {
+        const c = parRef.get(String(a.ref)) ?? {};
+        const statut = commandeAnnulee("vinted", c.statut) ? String(c.statut) : (a.etat === 500 ? "cancelled" : String(c.statut ?? ""));
+        return { ref: String(a.ref), statut, paye: a.paye === true, date: c.date ?? null, prix: a.prix ?? null,
+                 devise: a.devise ?? null, item_ids: a.item_ids };
+      });
+    await noterCommandesVinted(token, lignes);
     const itemIds = [...new Set((det?.articles ?? []).flatMap((a) => a.item_ids))].filter((id) => /^\d+$/.test(id));
     if (!itemIds.length) return [];
     const jobs = await restRequest(

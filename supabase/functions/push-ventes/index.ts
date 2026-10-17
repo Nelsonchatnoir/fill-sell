@@ -19,20 +19,24 @@ import { margeUnitaire, prixAchatNum } from "../../../src/utils/comptabilite.js"
 //   · le bénéfice n'est écrit que si le prix d'achat est CONNU
 //     (src/utils/comptabilite.js : vide ≠ zéro).
 // Le récapitulatif quotidien « ventes du jour » (email-tunnel) est supprimé.
+// (17/10, point 11) Un article de la note d'une commande Vinted (push_ventes.articles).
+type ArticleNote = { titre?: string | null; prix?: number | string | null; inventaire_id?: number | null };
+
 type NoteServie = {
   id: number; user_id: string; appareils: Appareil[]; push?: boolean; mail?: boolean;
   email?: string | null; lang?: string | null; plateforme?: string | null; titre?: string | null;
   prix?: number | string | null; inventaire_id?: number | null; a_decider?: boolean;
+  articles?: ArticleNote[] | null;
 } & Record<string, unknown>;
 
 type VerdictMail = { statut: "envoye" | "deja_envoye" | "a_reessayer" | "echec" | "sans_adresse"; motif?: string };
 
-async function envoyerMailVente(
+// Une ligne du mail : la note elle-même (un article), ou un article de la commande —
+// même règle de prix et de bénéfice pour chacun.
+async function ligneDuMail(
   // deno-lint-ignore no-explicit-any
-  admin: any, n: NoteServie,
-): Promise<VerdictMail> {
-  const adresse = String(n.email ?? "").trim();
-  if (!adresse) return { statut: "sans_adresse" };
+  admin: any, n: ArticleNote, plateforme: string,
+) {
   // (16/10, C1) Prix de vente INCONNU (note sans prix) : le mail n'écrit aucun
   // montant et aucun bénéfice. Avant : Number(null) || 0 → « vendu 0 € », et un
   // bénéfice négatif (0 − prix d'achat) quand le prix d'achat était connu.
@@ -44,13 +48,28 @@ async function envoyerMailVente(
     const pa = prixAchatNum(inv ?? null);
     benefice = pa === null ? null : margeUnitaire({ prixVente, prixAchat: pa }).margin;
   }
+  return {
+    titre: n.titre == null ? null : String(n.titre),
+    plateforme,
+    prixVente,
+    benefice: benefice !== null && Number.isFinite(benefice) ? benefice : null,
+  };
+}
+
+async function envoyerMailVente(
+  // deno-lint-ignore no-explicit-any
+  admin: any, n: NoteServie,
+): Promise<VerdictMail> {
+  const adresse = String(n.email ?? "").trim();
+  if (!adresse) return { statut: "sans_adresse" };
+  // (17/10, point 11) UNE COMMANDE VINTED = UN MAIL QUI LISTE TOUS SES ARTICLES : la
+  // note d'une commande porte ses articles (push_ventes.articles, migration
+  // 20261017120000). Une note sans articles — toute autre vente, ou une base
+  // d'avant la migration (champ absent) — reste UN article, comme avant.
+  const articles: ArticleNote[] = Array.isArray(n.articles) && n.articles.length ? n.articles : [n];
+  const ventes = await Promise.all(articles.map((a) => ligneDuMail(admin, a, String(n.plateforme ?? ""))));
   const { sujet, html } = mailVentes({
-    ventes: [{
-      titre: n.titre == null ? null : String(n.titre),
-      plateforme: String(n.plateforme ?? ""),
-      prixVente,
-      benefice: benefice !== null && Number.isFinite(benefice) ? benefice : null,
-    }],
+    ventes,
     retraitsACliquer: 0,
     retraitsBeebsAuto: 0,
     // (11/10) Vente détectée, non enregistrée : le mail dit de la confirmer

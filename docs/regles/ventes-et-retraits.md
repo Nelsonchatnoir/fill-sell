@@ -156,3 +156,23 @@ Cas : 128 notes de vente sans prix depuis le 06/10 (republications Vinted : `pri
 - Le relevé des ventes laisse sa trace : une ligne `usage_logs` `releve_ventes` par passage (lues, bilan, statuts inconnus,
   détails ratés) et l'onglet « Annulées » de Vinted lu en observation (extension 0.6.123). Selftests
   `vente-vinted-annulee-statut`, `dressing-garde-commande-annulee`, `vente-vinted-annulee`.
+
+## 17/10 — une vente Vinted en lot = une vente par article (point 11, Louis ; rapport `docs/enquetes/dix-points-1710/RAPPORT.md` § 11)
+- La COMMANDE Vinted est l'unité de vente ; sa composition = les numéros EXACTS de `transaction.order.item_ids` (ou
+  `item_id`), lus par la session du vendeur (`vinted_commandes_articles`) ; le titre « Lot N articles » ne choisit que
+  quoi relire, jamais une identité.
+- Une vente PAR ARTICLE (`commande_ref` '<ref>:<article>', comme eBay). Chaque article qui a une fiche passe vendu par le
+  circuit normal (`enregistrer_vente_atomique`, ou fiche vendue → `inventaire_vendu_retire_ses_copies`) et ses copies
+  PROUVÉES partent. Un article inconnu de FillSell = vente sans fiche + question (`usage_logs`
+  `vente_vinted_article_inconnu`), jamais un retrait. Tout ou rien par commande (doute = rien, décision `en_doute`). Une
+  vente déjà enregistrée pour un article (preuve de sa page) est ADOPTÉE, jamais doublée.
+- Une commande PAYÉE (ni failed ni cancelled) prouve chaque article ; failed / cancelled jamais. La veille des comptes
+  payants l'envoie tout de suite (`commandes_vinted_noter`) ; le relevé de nuit couvre tout le monde.
+- UN mail par commande de moins de 24 h, qui liste TOUS ses articles (`push_ventes.articles`, push-ventes v12) ; plus
+  ancienne : aucun mail.
+- Prix : le montant par article de Vinted s'il existe ; sinon le total au prorata des prix d'annonce, centimes au plus
+  grand reste, somme = total ; base manquante = NULL, jamais 0 ; un prix saisi par la personne garde son prix.
+- Une ligne « lot » d'avant la règle est relue une fois (`lots_v1`, 30 jours, extension 0.6.123), puis réparée par
+  `scripts/reparations/20261017_ventes_vinted_en_lot.sql` (sauvegardes, inverse, 0 mail). Interrupteur `coin_config`
+  `ventes_vinted_lot_depuis` (0 = règle coupée). Migration 20261017120000 ; selftests `vente-vinted-en-lot`,
+  `releve-ventes-trace`.

@@ -377,6 +377,8 @@
     "selftest:republication-nait-avec-son-lien": "node scripts/republication-nait-avec-son-lien-selftest.mjs",
     "selftest:vente-vinted-annulee-statut": "node scripts/vente-vinted-annulee-statut-selftest.mjs",
     "selftest:dressing-garde-commande-annulee": "node scripts/dressing-garde-commande-annulee-selftest.mjs",
+    "selftest:vente-vinted-en-lot": "node scripts/vente-vinted-en-lot-selftest.mjs",
+    "selftest:releve-ventes-trace": "node scripts/releve-ventes-trace-selftest.mjs",
     "gen:etat-job-extension": "node scripts/gen-etat-job-extension.mjs"
   },
   "dependencies": {

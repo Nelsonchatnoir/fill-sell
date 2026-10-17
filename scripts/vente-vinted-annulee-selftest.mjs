@@ -67,7 +67,9 @@ ok(/'ventes_annulees_retrait_pause'/.test(regle) && /ventes_annulees_attente_go/
 ok(/REVOKE ALL ON FUNCTION public\.vente_commande_annulee_vinted\(bigint, text, text, timestamptz\) FROM PUBLIC, anon, authenticated/.test(MIG),
   '5b. la règle n\'est pas appelable par l\'app');
 // 6
-ok(/item_ids: lot \? ids\.map\(\(x\) => String\(x\)\) : null/.test(EXT), '6. l\'extension transmet les item_ids d\'un lot');
+// (17/10, point 11) forme nouvelle : les item_ids de TOUTE commande (un lot compris).
+ok(/item_ids: ids\.length \? ids : \(tr\?\.item_id != null \? \[String\(tr\.item_id\)\] : null\)/.test(EXT),
+  '6. l\'extension transmet les item_ids de toute commande (ceux d\'un lot compris)');
 // 7
 ok(!/vente_commande_annulee_vinted\(v_vente_id/.test(fonction(INV, 'enregistrer_ventes_relevees'))
   && /DROP FUNCTION IF EXISTS public\.vente_commande_annulee_vinted/.test(INV), '7. l\'inverse rend la définition d\'avant');

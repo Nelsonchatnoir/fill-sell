@@ -29,9 +29,14 @@ ok((() => { const v = String(manifest.version).split('.').map(Number); return v[
 
 console.log('H. Commande Vinted annulée relue une fois');
 ok(/const annuleesFaites = new Set\(etat\.vinted\?\.annulees_v1 \?\? \[\]\);/.test(bg), 'mémoire à part des commandes annulées relues (annulees_v1)');
-ok(/\(!deja\.has\(r\.ref\) \|\| \(r\.statut === "failed" && !annuleesFaites\.has\(r\.ref\)\)\)/.test(bg), 'une commande « failed » déjà détaillée est relue si elle ne l\'a pas été pour l\'annulation');
+// (17/10, R2 — point 12) « annulée » = le prédicat de la veille (failed, canceled, cancelled).
+ok(/\(!deja\.has\(r\.ref\)\s*\|\| \(commandeAnnulee\("vinted", r\.statut\) && !annuleesFaites\.has\(r\.ref\)\)/.test(bg), 'une commande annulée (failed / canceled / cancelled) déjà détaillée est relue si elle ne l\'a pas été pour l\'annulation');
 ok(/annulees_v1: annulees\.slice\(-VINTED_DETAIL_MEMOIRE\)/.test(bg) && /faitsOk\.filter\(\(r\) => refsAnnulees\.has\(r\)\)/.test(bg), 'notée relue SEULEMENT après la réponse du serveur : une seule relecture, jamais en boucle');
-ok(/item_ids: lot \? ids\.map\(\(x\) => String\(x\)\) : null/.test(bg) && /listing_id: lot \? null : \(tr\?\.item_id != null \? String\(tr\.item_id\) : null\)/.test(bg), 'le détail transmet l\'annonce (ou les annonces d\'un lot) : la règle serveur retrouve la vente');
+// (17/10, point 11) forme nouvelle : les numéros de TOUTE commande ; une commande à un
+// article sans item_id prend le seul numéro de order.item_ids.
+ok(/item_ids: ids\.length \? ids : \(tr\?\.item_id != null \? \[String\(tr\.item_id\)\] : null\)/.test(bg)
+  && /listing_id: lot \? null : \(tr\?\.item_id != null \? String\(tr\.item_id\) : \(ids\.length === 1 \? ids\[0\] : null\)\)/.test(bg),
+  'le détail transmet l\'annonce et les annonces de toute commande (lot compris) : la règle serveur retrouve la vente');
 
 console.log('C. Lecture 403 sans connexion');
 const iC = bg.indexOf('UN 403 SANS CONNEXION N\'EST PAS UN ANTI-ROBOT');
