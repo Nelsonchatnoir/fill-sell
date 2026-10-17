@@ -383,6 +383,7 @@
     "selftest:marques-exactes": "node scripts/marques-exactes-selftest.mjs",
     "selftest:alertes-compte": "node scripts/alertes-compte-selftest.mjs",
     "selftest:champs-deduits": "node scripts/champs-deduits-selftest.mjs",
+    "selftest:imports-jamais-masques": "node scripts/imports-jamais-masques-selftest.mjs",
     "gen:etat-job-extension": "node scripts/gen-etat-job-extension.mjs"
   },
   "dependencies": {

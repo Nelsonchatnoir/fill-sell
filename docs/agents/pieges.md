@@ -19,6 +19,17 @@ Claude sont dans `C:\Users\nicol\.claude\projects\C--Users-nicol-fill-and-sell\m
   Dans la console, `window.__fillsellEntree` absent = l'entrée n'a pas tourné.
   ⚠️ Pas de « relance de l'entrée avec ?r= » dans index.html : 14 morceaux
   importent l'entrée par son nom exact, l'app tournerait deux fois.
+- **Écran blanc INVISIBLE AU BUILD : un import masqué par une constante locale** (18/10,
+  20:18, ced6cfd, retour arrière Vercel en 3 min) : StockTab importait `alertesCompte`
+  et déclarait plus bas `const alertesCompte = (() => …)()` ; la constante locale
+  masque l'import dans TOUT le composant, le `useMemo` du haut l'a lue avant son
+  initialisation → `ReferenceError: Cannot access … before initialization` pour tout
+  le parc, `build:essai` vert, `__fillsellEntree` posé, `#root` vide. Diagnostic :
+  console de l'onglet (exception dans `App-*.js`), puis le chunk servi (`curl`) pour
+  lire le nom minifié. Remède immédiat : `request_rollback` Vercel (projet
+  `prj_b4IGAvYAsSOILXCHAwSK9jdKhO4h`, équipe `team_6VMFSj9PjuWgI8flaRhUjcrV`) vers
+  le déploiement précédent, puis le correctif (`import { x as y }`). Garde :
+  `selftest:imports-jamais-masques` (tout `src/`).
 - **OTA Capgo, pas à pas** (déplacé d'`AGENTS.md` § 3.1 le 04/10, taille) :
   1. lire le canal : `npx @capgo/cli channel list` (numéro servi sur `production`) ;
   2. monter `"version"` dans `package.json` ET `package-lock.json` au-dessus

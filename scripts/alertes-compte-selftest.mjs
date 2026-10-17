@@ -48,7 +48,13 @@ ok(TEXTES.every((x) => !/\b\d+ ?(min|h|s)\b|dans \d+/i.test(x) && !/extension_se
 // 3
 const ST = lire('src/tabs/StockTab.jsx');
 ok(/import EcranAlertesCompte from '\.\.\/stock\/EcranAlertesCompte';/.test(ST) && /import \{ etatSession, PLATEFORMES_SESSION \} from '\.\.\/utils\/sessionsPlateformes';/.test(ST)
-  && /import \{ alertesCompte, masquesARetirer, ligneAlertes, CLE_REGLAGE_ALERTES \} from '\.\.\/utils\/alertesCompte';/.test(ST), '3. StockTab : une seule règle (modules partagés)');
+  && /import \{ alertesCompte as alertesDeCompte, masquesARetirer, ligneAlertes, CLE_REGLAGE_ALERTES \} from '\.\.\/utils\/alertesCompte';/.test(ST), '3. StockTab : une seule règle (modules partagés)');
+// (18/10 20:18, écran blanc ced6cfd) StockTab possède DÉJÀ une constante locale
+// `alertesCompte` (cartes d'extension) : l'import garde un autre nom, et le
+// useMemo appelle bien l'import — jamais la constante locale (lue avant son
+// initialisation : ReferenceError dans tout le parc).
+ok(/^\s+const alertesCompte = \(\(\) => \{/m.test(ST) && /useMemo\(\n\s+\(\) => alertesDeCompte\(\{ etats: etatsCompte,/.test(ST) && !/\(\) => alertesCompte\(\{ etats:/.test(ST),
+  '3a. l\'import ne porte pas le nom de la constante locale du composant (ombre = TDZ = écran blanc)');
 ok(/const relecture = demarrerRelecture\(lire, \{ intervalleMs: 10 \* 60_000 \}\);/.test(ST) && /select\('extension_sessions, platform_settings'\)/.test(ST) && !/setInterval\(lire/.test(ST.slice(ST.indexOf('ALERTES DE COMPTE : SESSION PERDUE'), ST.indexOf('const attenteBoutique = useMemo'))),
   '3b. lecture BORNÉE (10 min, onglet visible), jamais un setInterval');
 ok(/for \(const pf of PLATEFORMES_SESSION\) out\[pf\] = etatSession\(sessionsCompte, pf, publicationsOk\[pf\] \?\? null\);/.test(ST), '3c. le verdict de session est celui de utils/sessionsPlateformes, publications lues en mémoire');

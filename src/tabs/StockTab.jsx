@@ -122,7 +122,11 @@ import EcranIdentiteLbc from '../stock/EcranIdentiteLbc';
 import EcranForfaitLbc from '../stock/EcranForfaitLbc';
 import EcranAlertesCompte from '../stock/EcranAlertesCompte';
 import { etatSession, PLATEFORMES_SESSION } from '../utils/sessionsPlateformes';
-import { alertesCompte, masquesARetirer, ligneAlertes, CLE_REGLAGE_ALERTES } from '../utils/alertesCompte';
+// ⚠️ `alertesCompte` existe DÉJÀ comme constante locale du composant (les cartes
+// d'extension, plus bas) : la règle est importée sous un autre nom, sinon la
+// constante locale masque l'import dans tout le composant et le useMemo la lit
+// avant son initialisation (écran blanc du 18/10 20:18, ced6cfd, retour arrière).
+import { alertesCompte as alertesDeCompte, masquesARetirer, ligneAlertes, CLE_REGLAGE_ALERTES } from '../utils/alertesCompte';
 import EcranVendeurPlateforme from '../stock/EcranVendeurPlateforme';
 import {
   actionPrincipale, libelleAction, ancienneteJours, estAncienne, pastilleCourte, dateCourte, nombreFr,
@@ -6589,7 +6593,7 @@ const StockTab = memo(function StockTab({
     return out;
   }, [sessionsCompte, jobsByInventaire]);
   const alertesDuCompte = useMemo(
-    () => alertesCompte({ etats: etatsCompte, jobs: Object.values(jobsByInventaire).flat(), reglage: reglageAlertes }),
+    () => alertesDeCompte({ etats: etatsCompte, jobs: Object.values(jobsByInventaire).flat(), reglage: reglageAlertes }),
     [etatsCompte, jobsByInventaire, reglageAlertes],
   );
   // Le masque d'une plateforme tombe de lui-même quand la session revient.
