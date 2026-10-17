@@ -190,7 +190,7 @@ console.log("\nI. LE CÂBLAGE");
   dit("resolve-categorie accepte « depop »", /const PLATEFORMES = \["vinted", "leboncoin", "beebs", "ebay", "opla", "depop"\] as const;/.test(rc));
   const res = lire("src/utils/resolutionPublication.js");
   dit("l'app passe par le moteur (resoudreRayonDepop, rayonParMoteur: true)", res.includes("resoudreRayonDepop(") && res.includes("rayonParMoteur: true"));
-  dit("l'app appelle resolve-categorie À PART pour Depop (la question des autres plateformes ne change pas)", /supabase\.functions\.invoke\("resolve-categorie", \{ body: corps \}\)/.test(res));
+  dit("l'app appelle resolve-categorie À PART pour Depop (la question des autres plateformes ne change pas)", /(?:supabase\.functions\.invoke\("resolve-categorie",|invoquerResolveCategorie\(supabase,) \{ body: corps \}\)/.test(res));
   const gpj = lire("supabase/functions/get-pending-jobs/index.ts");
   dit("get-pending-jobs : une publication Depop sans rayon du moteur n'est jamais servie", gpj.includes("if (rayonDepopAJour(pfR)) continue;") && gpj.includes("aRetenir.add(String(j.id));"));
   const hw = lire("supabase/functions/handler-watch/index.ts");

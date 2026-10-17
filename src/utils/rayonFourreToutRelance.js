@@ -19,6 +19,8 @@ import { candidatsParMot } from './categorieParMot';
 import { estFourreToutCatalogue } from './fourreTout';
 import { getLbcFreePhotoQuota } from './lbcCategories';
 import { entreesPhotos } from './photos';
+// (18/10 nuit, point 5) Une question de catégorie identique, en vol ou de moins de 10 min, n'est payée qu'une fois.
+import { invoquerResolveCategorie } from "./questionCategorie.js";
 
 const CHAMP_RAYON = { leboncoin: 'lbcCategoryPath', beebs: 'beebsCategoryPath', opla: 'oplaCategoryPath', vinted: 'categoryPath' };
 
@@ -33,7 +35,7 @@ export function rayonFourreToutARevoir(platform, pf) {
 const appelerResolve = async (body) => {
   for (let essai = 0; essai < 2; essai++) {
     try {
-      const { data, error } = await supabase.functions.invoke('resolve-categorie', { body });
+      const { data, error } = await invoquerResolveCategorie(supabase, { body });
       if (!error && data && data.motif !== 'ia_indisponible') return { data, injoignable: false };
     } catch { /* retenté une fois */ }
     if (essai === 0) await new Promise((ok) => setTimeout(ok, 1200));

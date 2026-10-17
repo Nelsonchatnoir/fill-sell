@@ -268,3 +268,15 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.nouvelle_table TO authenticated;
 ## pg_net
 
 `net._http_response` se purge automatiquement. Vérifier le statut immédiatement après l'appel.
+
+## Questions à l'IA : partage, cache, regroupement (18/10 nuit, point 5)
+- **Partage dans l'app** : toute question à `resolve-categorie` passe par `src/utils/questionCategorie.js` (identique en vol =
+  un appel ; < 10 min = réponse rendue ; jamais une erreur gardée). Ne jamais réintroduire un `functions.invoke("resolve-categorie")`
+  direct (selftest `question-categorie` le refuse).
+- **Cache serveur** : `_shared/claude-cache.ts` → `questionClaude(corps, { admin, fonction, interrupteur })`, table
+  `ia_questions_cache` (service_role, 30 j, empreinte sha256 de modèle + consigne + message + réglages). Interrupteurs
+  `coin_config` : `ia_cache_categorie`, `ia_cache_aspects`, `ia_aspects_groupes` (1 = allumé, relus une fois par minute et par
+  instance). Une réponse relue n'est ni payée ni comptée dans un plafond (`resolve_categorie_cache`, 0 $).
+- **Regroupement des aspects eBay** (`completerAspectsIAGroupe`) : ÉTEINT — banc du 18/10 : qualité en baisse (cas Manon).
+  Rejouer le banc avant tout changement : fonction `ia-banc-deduction` (secret de cron, lecture seule), rapport
+  `docs/enquetes/session-nuit-1810-memoire-ia/point5-banc.md`.

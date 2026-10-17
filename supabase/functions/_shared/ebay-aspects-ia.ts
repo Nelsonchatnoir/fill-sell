@@ -20,6 +20,9 @@
 // strictement déductible du contexte, sinon null.
 // ═══════════════════════════════════════════════════════════════════════════
 import { valeurDeListeCorrespondante } from "./texte-comparable.ts";
+// (18/10 nuit, point 5) La question passe par le cache quand il est allumé
+// (coin_config ia_cache_aspects) — même texte rendu, mêmes contrôles ici.
+import { questionClaude } from "./claude-cache.ts";
 
 // libre : true = 2e passe de la voie API (remplirAspects) ; "titre" = 2e passe
 // de la voie formulaire (completerAspectsIA) : un aspect par appel, le mot
@@ -96,7 +99,8 @@ export function mesureLueDansLeContexte(valeur: string, contexteTexte: string): 
 export async function resoudreAspectsIA(
   demandes: AspectDemande[],
   contexte: ContexteArticle,
-  opts: { apiKey: string; onUsage?: (data: unknown) => void; maxTokens?: number },
+  // deno-lint-ignore no-explicit-any
+  opts: { apiKey: string; onUsage?: (data: unknown) => void; maxTokens?: number; admin?: any; fetchFn?: typeof fetch; forcerCache?: boolean },
 ): Promise<ResultatAspectsIA> {
   const out: Record<string, string> = {};
   const refuses: ResultatAspectsIA["refuses"] = [];
@@ -109,10 +113,7 @@ export async function resoudreAspectsIA(
   const lignes = aDemander.map(ligneDemande).join("\n");
   let texte = "";
   try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-api-key": opts.apiKey, "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({
+    const q = await questionClaude({
         model: "claude-haiku-4-5-20251001",
         max_tokens: opts.maxTokens ?? 500,
         system:
@@ -121,15 +122,14 @@ export async function resoudreAspectsIA(
           `Cas particuliers : "Volume" au format eBay ("50 ml", jamais "50ml") ; dimensions (Hauteur/Largeur/Longueur/Dimensions) UNIQUEMENT si des mesures chiffrées figurent dans le contexte, avec l'unité ("80 cm") ; "Département" = le rayon (Femme/Homme/Fille/Garçon…) déduit du contexte ou du champ Rayon. ` +
           `Retourne UNIQUEMENT du JSON valide : {"aspects":{"<nom exact de l'aspect>":"valeur ou null"}}`,
         messages: [{ role: "user", content: `Aspects à renseigner :\n${lignes}\n\nContexte article :\n${ctx}` }],
-      }),
-    });
-    if (!res.ok) {
-      console.error("[ebay-aspects-ia] Anthropic :", res.status, (await res.text()).slice(0, 300));
+      }, { apiKey: opts.apiKey, admin: opts.admin, fonction: "aspects_ia", interrupteur: "ia_cache_aspects", fetchFn: opts.fetchFn, forcer: opts.forcerCache });
+    if (!q.ok) {
+      console.error("[ebay-aspects-ia] Anthropic :", q.statut, q.erreur ?? "");
       return { aspects: out, refuses, demandes: propres.length, appel_ia: true };
     }
-    const data = await res.json();
-    opts.onUsage?.(data);
-    texte = String(data.content?.[0]?.text ?? "");
+    // Une réponse relue du cache n'a rien coûté : aucun usage compté.
+    if (q.data) opts.onUsage?.(q.data);
+    texte = q.texte;
   } catch (e) {
     console.error("[ebay-aspects-ia] exception :", (e as Error)?.message ?? e);
     return { aspects: out, refuses, demandes: propres.length, appel_ia: true };
@@ -254,7 +254,8 @@ export interface ResultatCompletion extends ResultatAspectsIA {
 export async function completerAspectsIA(
   demandes: AspectDemande[],
   contexte: ContexteArticle,
-  opts: { apiKey: string; onUsage?: (data: unknown) => void; maxTokens?: number },
+  // deno-lint-ignore no-explicit-any
+  opts: { apiKey: string; onUsage?: (data: unknown) => void; maxTokens?: number; admin?: any; fetchFn?: typeof fetch; forcerCache?: boolean },
 ): Promise<ResultatCompletion> {
   const premiere = await resoudreAspectsIA(demandes, contexte, opts);
   const restants = demandes.filter((d) =>
@@ -280,4 +281,98 @@ export async function completerAspectsIA(
     posees.push(d.name);
   }
   return { aspects, refuses, demandes: premiere.demandes, appel_ia: true, seconde_passe: posees };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// UN SEUL APPEL PAR ARTICLE POUR TOUS SES ASPECTS (18/10 nuit, point 5)
+// ═══════════════════════════════════════════════════════════════════════════
+// completerAspectsIA fait une première passe (tous les aspects), puis UN appel
+// PAR aspect FREE_TEXT resté vide (mesuré sur 7 j : 248 appels pour 156
+// demandes, 43 % avec seconde passe). Ici, les deux passes en UNE question :
+// chaque aspect FREE_TEXT y porte À LA FOIS la liste suggérée et la consigne de
+// la seconde passe (le mot RECOPIÉ du titre, un mot pouvant resservir — la
+// leçon du cas Manon, 10/10 : demandés ensemble sans cette phrase, « Type » et
+// « Style » d'un « Pull polaire 1/4 zip » revenaient avec Type seul).
+// CONTRÔLES IDENTIQUES à l'ancien chemin, aspect par aspect :
+//   · SELECTION_ONLY : entrée de la liste, sinon refusé ;
+//   · mesure : chacun de ses nombres se lit dans le contexte, sinon refusée ;
+//   · FREE_TEXT : entrée de la liste quand elle correspond ; sinon le mot doit
+//     se LIRE dans le contexte (règle de la seconde passe), sinon refusé ;
+//   · Marque : texte libre, jamais de liste ; défauts déterministes d'abord.
+// Interrupteur coin_config ia_aspects_groupes (generate-listing) : éteint tant
+// que la comparaison ancien / nouveau sur de vrais articles n'est pas faite.
+function ligneDemandeGroupee(a: AspectDemande): string {
+  const liste = a.allowedValues ?? [];
+  if (a.mode === "SELECTION_ONLY" || a.name === "Marque") return ligneDemande(a);
+  const recopie = `sinon le mot ou groupe de mots (1 à 4 mots) RECOPIÉ du titre ou de la description qui dit ce « ${a.name} » de l'article (ex. pour un Style : « Polaire », « 1/4 zip », « Col roulé » ; pour un Type : « Pull polaire », « Sweat », « Robe longue ») — un mot déjà utilisé pour un autre aspect peut resservir ; null seulement si le texte ne dit rien qui s'en approche`;
+  if (liste.length && liste.length <= LISTE_COURTE_MAX) {
+    return `- "${a.name}" — valeurs eBay suggérées (préfère l'une d'elles, recopiée caractère pour caractère, quand elle correspond au contexte) : ${liste.join(" | ")} ; ${recopie}`;
+  }
+  return `- "${a.name}" — texte libre court : ${recopie}`;
+}
+
+export async function completerAspectsIAGroupe(
+  demandes: AspectDemande[],
+  contexte: ContexteArticle,
+  // deno-lint-ignore no-explicit-any
+  opts: { apiKey: string; onUsage?: (data: unknown) => void; maxTokens?: number; admin?: any; fetchFn?: typeof fetch; forcerCache?: boolean },
+): Promise<ResultatCompletion> {
+  const out: Record<string, string> = {};
+  const refuses: ResultatAspectsIA["refuses"] = [];
+  const propres = demandes.filter((d) => d && typeof d.name === "string" && d.name.trim()).slice(0, 14);
+  for (const d of propres) if (ASPECT_DEFAULTS[d.name]) out[d.name] = ASPECT_DEFAULTS[d.name];
+  const aDemander = propres.filter((d) => !ASPECT_DEFAULTS[d.name]);
+  const ctx = contexteEnTexte(contexte);
+  if (!aDemander.length || !ctx || !opts.apiKey) return { aspects: out, refuses, demandes: propres.length, appel_ia: false, seconde_passe: [] };
+  const lignes = aDemander.map(ligneDemandeGroupee).join("\n");
+  let texte = "";
+  try {
+    const q = await questionClaude({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: opts.maxTokens ?? 500,
+      system:
+        `Tu renseignes des caractéristiques produit eBay (« aspects ») pour une annonce d'occasion, à partir du contexte fourni. RÈGLE ABSOLUE : ne JAMAIS inventer — une valeur doit être lisible ou strictement déductible du contexte (titre, description, marque, attributs lus sur les photos), sinon null. ` +
+        `Pour une LISTE FERMÉE, la réponse est une entrée de la liste recopiée à l'identique, ou null. Pour une liste suggérée, préfère une entrée de la liste quand elle correspond au contexte ; sinon le mot du texte qui dit cet aspect, recopié tel quel, ou null. ` +
+        `Réponds à CHAQUE aspect demandé, indépendamment des autres : le même mot du titre peut servir à plusieurs aspects. ` +
+        `Cas particuliers : "Volume" au format eBay ("50 ml", jamais "50ml") ; dimensions (Hauteur/Largeur/Longueur/Dimensions) UNIQUEMENT si des mesures chiffrées figurent dans le contexte, avec l'unité ("80 cm") ; "Département" = le rayon (Femme/Homme/Fille/Garçon…) déduit du contexte ou du champ Rayon. ` +
+        `Retourne UNIQUEMENT du JSON valide : {"aspects":{"<nom exact de l'aspect>":"valeur ou null"}}`,
+      messages: [{ role: "user", content: `Aspects à renseigner :\n${lignes}\n\nContexte article :\n${ctx}` }],
+    }, { apiKey: opts.apiKey, admin: opts.admin, fonction: "aspects_ia_groupe", interrupteur: "ia_cache_aspects", fetchFn: opts.fetchFn, forcer: opts.forcerCache });
+    if (!q.ok) {
+      console.error("[ebay-aspects-ia] Anthropic (groupé) :", q.statut, q.erreur ?? "");
+      return { aspects: out, refuses, demandes: propres.length, appel_ia: true, seconde_passe: [] };
+    }
+    if (q.data) opts.onUsage?.(q.data);
+    texte = q.texte;
+  } catch (e) {
+    console.error("[ebay-aspects-ia] exception (groupé) :", (e as Error)?.message ?? e);
+    return { aspects: out, refuses, demandes: propres.length, appel_ia: true, seconde_passe: [] };
+  }
+  const m = texte.match(/\{[\s\S]*\}/);
+  if (!m) return { aspects: out, refuses, demandes: propres.length, appel_ia: true, seconde_passe: [] };
+  let brutIa: Record<string, unknown> = {};
+  try { brutIa = (JSON.parse(m[0])?.aspects ?? {}) as Record<string, unknown>; } catch { brutIa = {}; }
+  const parNom = new Map(aDemander.map((d) => [d.name, d]));
+  const horsListeLus: string[] = [];
+  for (const [nom, v] of Object.entries(brutIa)) {
+    const d = parNom.get(nom);
+    if (!d) continue;
+    const val = typeof v === "string" ? v.trim().slice(0, VALEUR_MAX) : "";
+    if (!val || val.toLowerCase() === "null") continue;
+    if (ASPECT_MESURE_RE.test(nom) && !mesureLueDansLeContexte(val, ctx)) {
+      refuses.push({ name: nom, valeur: val, motif: "mesure absente du contexte" });
+      continue;
+    }
+    const liste = d.allowedValues ?? [];
+    const recale = liste.length ? valeurDeListeCorrespondante(val, liste) : null;
+    if (d.mode === "SELECTION_ONLY") {
+      if (recale) out[nom] = recale;
+      else refuses.push({ name: nom, valeur: val, motif: "hors liste fermée" });
+      continue;
+    }
+    if (recale) { out[nom] = recale; continue; }
+    if (nom === "Marque" || valeurLueDansLeContexte(val, ctx)) { out[nom] = val; if (nom !== "Marque") horsListeLus.push(nom); continue; }
+    refuses.push({ name: nom, valeur: val, motif: "hors liste et absent du texte" });
+  }
+  return { aspects: out, refuses, demandes: propres.length, appel_ia: true, seconde_passe: horsListeLus };
 }

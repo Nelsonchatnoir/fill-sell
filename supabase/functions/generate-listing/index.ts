@@ -34,7 +34,11 @@ const CORS = {
 // (canonicalisation, état mappé, pose ISBN) vivent désormais dans
 // _shared/redaction-plateformes.ts — extraits tels quels, partagés avec le
 // mode unifié de lens-analysis : une seule source de prompts, un seul contrat.
-import { resoudreAspectsIA, completerAspectsIA } from "../_shared/ebay-aspects-ia.ts";
+import { resoudreAspectsIA, completerAspectsIA, completerAspectsIAGroupe } from "../_shared/ebay-aspects-ia.ts";
+// (18/10 nuit, point 5) Interrupteurs : ia_aspects_groupes (un seul appel par
+// article pour ses aspects eBay) et ia_cache_aspects (même question = réponse
+// déjà payée, mêmes contrôles). Éteints = le chemin d'avant, au caractère près.
+import { cacheAllume } from "../_shared/claude-cache.ts";
 import { listeCouleurPropre, photosPourCouleurIA, resoudreCouleurIA, MODELE_COULEUR } from "../_shared/couleur-ia.ts";
 import { resoudreIsbnArticle, MODELE_ISBN } from "../_shared/isbn-ia.ts";
 import {
@@ -520,7 +524,7 @@ serve(async (req) => {
           taille: it.taille, genre: it.genre, type: it.type, description: it.description,
           attributs: it.attributs && typeof it.attributs === "object" ? it.attributs : null,
         };
-        const optsIa = { apiKey: Deno.env.get("ANTHROPIC_API_KEY") ?? "", onUsage: trackClaude };
+        const optsIa = { apiKey: Deno.env.get("ANTHROPIC_API_KEY") ?? "", onUsage: trackClaude, admin: adminClient };
         // (10/10, cas Manon) L'encart eBay du stepper et du lot envoie le MODE
         // de chaque aspect (depuis le 06/09) ; le canal générique
         // Vinted/Leboncoin/Beebs n'en envoie pas. Seul le premier reçoit la
@@ -531,7 +535,10 @@ serve(async (req) => {
           const ia = await resoudreAspectsIA(demandes, contexteIa, optsIa);
           return json({ aspects: { ...out, ...ia.aspects }, refuses: ia.refuses });
         }
-        const ia = await completerAspectsIA(demandes, contexteIa, optsIa);
+        const groupe = await cacheAllume(adminClient, "ia_aspects_groupes");
+        const ia = groupe
+          ? await completerAspectsIAGroupe(demandes, contexteIa, optsIa)
+          : await completerAspectsIA(demandes, contexteIa, optsIa);
         const obtenus = Object.keys(ia.aspects);
         console.log(`[generate-listing] resolve_aspects eBay — ${demandes.length} demandé(s), ${obtenus.length} posé(s)`
           + `${ia.seconde_passe.length ? ` dont ${ia.seconde_passe.length} en seconde passe (${ia.seconde_passe.join(", ")})` : ""}`
@@ -552,6 +559,7 @@ serve(async (req) => {
               restants: demandes.map((d: { name: string }) => d.name).filter((n: string) => !obtenus.includes(n)),
               refuses: ia.refuses.map((r) => ({ name: r.name, motif: r.motif })),
               claude_calls: cost.claude_calls,
+              groupe,
             },
           });
           if (logErr) console.error("[generate-listing] usage_logs (ebay_aspects_ia):", logErr.message);

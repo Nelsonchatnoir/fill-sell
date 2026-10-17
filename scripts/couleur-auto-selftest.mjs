@@ -216,7 +216,7 @@ console.log("7. Le serveur — generate-listing resolve_couleur (_shared/couleur
   ok(iCouleur > 0 && iCouleur < iAspects, "mode resolve_couleur À CÔTÉ de resolve_aspects (avant lui)");
   ok(/feature: "couleur_auto"/.test(gl) && /photos_envoyees: prep\.sources\.length/.test(gl) && /cost_usd: Number\(/.test(gl.slice(iCouleur, iAspects)), "usage_logs « couleur_auto » : photos, tokens, coût");
   ok(/if \(\(count \?\? 0\) >= 400\) \{/.test(gl.slice(iCouleur, iAspects)), "filet contre une boucle d'appels : 400 par compte et par 24 h, sans appel IA au-delà");
-  ok(/const ia = await resoudreAspectsIA\(demandes, contexteIa, optsIa\);/.test(gl) && /const ia = await completerAspectsIA\(demandes, contexteIa, optsIa\);/.test(gl), "resolve_aspects : resoudreAspectsIA / completerAspectsIA appelés comme avant");
+  ok(/const ia = await resoudreAspectsIA\(demandes, contexteIa, optsIa\);/.test(gl) && /(?:const ia = await completerAspectsIA\(demandes, contexteIa, optsIa\);|: await completerAspectsIA\(demandes, contexteIa, optsIa\);)/.test(gl), "resolve_aspects : resoudreAspectsIA / completerAspectsIA appelés comme avant");
   const shared = lire("supabase/functions/_shared/couleur-ia.ts");
   ok(/import \{ preparerPhotos \} from "\.\.\/lens-analysis\/images\.ts";/.test(shared), "photos de notre Storage préparées comme lens-analysis (preparerPhotos)");
   ok(!/esm\.sh|deno\.land/.test(shared), "aucun import distant neuf");

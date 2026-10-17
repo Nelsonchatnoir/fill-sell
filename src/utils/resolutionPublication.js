@@ -67,6 +67,8 @@ import { champsDepop, tailleDepop } from "./depopPublication.js";
 import { depopGenreRequired, horsModeDepop } from "./depopCategories.js";
 // (11/10) Le rayon Depop par le moteur commun — même module que le serveur.
 import { resoudreRayonDepop, traceRayonDepop, SOURCE_RAYON_DEPOP } from "../../supabase/functions/_shared/depop-rayon.js";
+// (18/10 nuit, point 5) Une question de catégorie identique, en vol ou de moins de 10 min, n'est payée qu'une fois.
+import { invoquerResolveCategorie } from "./questionCategorie.js";
 
 // ── L'EMPREINTE — À QUELLES CONDITIONS UN PRÉ-CALCUL RESTE VALABLE ────────
 // Elle couvre TOUT ce que la résolution lit : les copies, leurs champs, les
@@ -830,7 +832,7 @@ export async function resoudrePublication({
     }));
     if (Object.keys(candidats).length) {
       try {
-        const { data: choixIa } = await supabase.functions.invoke("resolve-categorie", {
+        const { data: choixIa } = await invoquerResolveCategorie(supabase, {
           body: {
             titre: initialListing?.titre || edited[plateformesAPublier[0]]?.title || "",
             attributs: {
@@ -1393,7 +1395,7 @@ export async function resoudrePublication({
           marque: String(pf.marque ?? ""),
         }, async (corps) => {
           if (!supabase) throw new Error("client indisponible");
-          const { data, error } = await supabase.functions.invoke("resolve-categorie", { body: corps });
+          const { data, error } = await invoquerResolveCategorie(supabase, { body: corps });
           if (error) throw error;
           return data;
         });
@@ -1532,7 +1534,7 @@ export async function resoudrePublication({
     }
     let reponse = null;
     if (Object.keys(candidatsVerif).length) try {
-      const { data, error } = await supabase.functions.invoke("resolve-categorie", {
+      const { data, error } = await invoquerResolveCategorie(supabase, {
         body: {
           titre: initialListing?.titre || edited[plateformesAPublier[0]]?.title || "",
           attributs: {
@@ -1707,7 +1709,7 @@ export async function resoudrePublication({
   const appelerResolve = async (body) => {
     for (let essai = 0; essai < 2; essai++) {
       try {
-        const { data, error } = await supabase.functions.invoke("resolve-categorie", { body });
+        const { data, error } = await invoquerResolveCategorie(supabase, { body });
         if (!error && data && data.motif !== "ia_indisponible") return { data, injoignable: false };
       } catch { /* retenté une fois */ }
       if (essai === 0) await new Promise((ok) => setTimeout(ok, 1200));

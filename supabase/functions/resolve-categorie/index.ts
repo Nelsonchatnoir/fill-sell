@@ -32,6 +32,11 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { appelAutorise, loggerAppelIA, tokensDe } from "../_shared/usage-guard.ts";
 import { plafondResolveCategorie } from "../_shared/plafond-resolve-categorie.js";
+// (18/10 nuit, point 5) La même question (empreinte exacte : modèle, consigne,
+// message — titre, attributs, candidates) reçoit la réponse déjà payée quand
+// coin_config ia_cache_categorie = 1 ; le TEXTE rendu passe par les mêmes
+// contrôles ci-dessous (clés opaques relues). Éteint = le chemin d'avant.
+import { questionClaude } from "../_shared/claude-cache.ts";
 
 const ALLOWED_ORIGINS = [
   "https://fillsell.app", "capacitor://localhost", "https://localhost", "http://localhost:5173",
@@ -245,19 +250,14 @@ serve(async (req) => {
 
     let texteV = "";
     try {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
-        body: JSON.stringify({
+      const q = await questionClaude({
           model: "claude-haiku-4-5-20251001",
           max_tokens: 150, temperature: 0, system: SYSTEM_LISTES,
           messages: [{ role: "user", content: messageV }],
-        }),
-      });
-      if (!res.ok) { console.error("[resolve-categorie] listes IA:", await res.text()); return json({ valeurs: {}, motif: "ia_indisponible" }); }
-      const data = await res.json();
-      texteV = String(data.content?.[0]?.text ?? "");
-      try { await loggerAppelIA(admin, userPourJournal, "resolve_listes", tokensDe(data)); } catch { /* mesure */ }
+        }, { apiKey, admin, fonction: "resolve_listes", interrupteur: "ia_cache_categorie" });
+      if (!q.ok) { console.error("[resolve-categorie] listes IA:", q.statut, q.erreur ?? ""); return json({ valeurs: {}, motif: "ia_indisponible" }); }
+      texteV = q.texte;
+      if (q.data) { try { await loggerAppelIA(admin, userPourJournal, "resolve_listes", tokensDe(q.data)); } catch { /* mesure */ } }
     } catch (e) {
       console.error("[resolve-categorie] listes exception:", e);
       return json({ valeurs: {}, motif: "ia_indisponible" });
@@ -354,10 +354,7 @@ serve(async (req) => {
 
   let texte = "";
   try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({
+    const q = await questionClaude({
         model: "claude-haiku-4-5-20251001",
         max_tokens: 120,
         temperature: 0,
@@ -365,18 +362,23 @@ serve(async (req) => {
         // absence) garde SYSTEM, comme avant.
         system: corps.consigne === "plus_proche" ? SYSTEM_PLUS_PROCHE : SYSTEM,
         messages: [{ role: "user", content: message }],
-      }),
-    });
-    if (!res.ok) {
-      console.error("[resolve-categorie] IA:", await res.text());
+      }, { apiKey, admin, fonction: "resolve_categorie", interrupteur: "ia_cache_categorie" });
+    if (!q.ok) {
+      console.error("[resolve-categorie] IA:", q.statut, q.erreur ?? "");
       return json({ choix: {}, motif: "ia_indisponible" });
     }
-    const data = await res.json();
-    texte = String(data.content?.[0]?.text ?? "");
+    texte = q.texte;
     // Coût journalisé comme les autres appels IA : c'est ce qui permettra de
-    // répondre « combien ça coûte » sans réestimer à la louche.
-    try { await loggerAppelIA(admin, userPourJournal, "resolve_categorie", tokensDe(data)); }
-    catch { /* la journalisation ne fait jamais échouer un classement */ }
+    // répondre « combien ça coûte » sans réestimer à la louche. Une réponse
+    // relue du cache n'a rien coûté : une ligne « resolve_categorie_cache »
+    // (coût 0, hors plafond par palier) mesure ce que le cache a évité.
+    if (q.data) {
+      try { await loggerAppelIA(admin, userPourJournal, "resolve_categorie", tokensDe(q.data)); }
+      catch { /* la journalisation ne fait jamais échouer un classement */ }
+    } else if (journaliser && q.depuisCache && userPourJournal) {
+      try { await admin.from("usage_logs").insert({ user_id: userPourJournal, feature: "resolve_categorie_cache", metadata: { cost_usd: 0 } }); }
+      catch { /* mesure */ }
+    }
   } catch (e) {
     console.error("[resolve-categorie] exception:", e);
     return json({ choix: {}, motif: "ia_indisponible" });

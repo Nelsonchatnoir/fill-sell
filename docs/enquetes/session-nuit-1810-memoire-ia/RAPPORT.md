@@ -75,3 +75,46 @@ Migration `20261018030000_memoire_champs_categorie.sql` (inverse `supabase/rollb
 annulée) : 8 contrôles sur 8 — insertion, horodatage serveur, remplacement, champ `taille` refusé par la base, ligne
 d'un autre compte refusée (RLS), un autre compte ne voit ni n'efface rien, le propriétaire vide sa mémoire, anon exclu.
 **Appliquée le 18/10 à 00:06**, historique réparé (`applied`), table + RLS + 4 règles relues en prod.
+
+## POINT 5 — CACHE ET REGROUPEMENT DES APPELS IA — FAIT ET PROUVÉ (partage + cache des catégories) ; regroupement NON activé (qualité en baisse)
+
+### Les faits (7 jours au 17/10 23:50)
+- Fournisseur et modèle : **Anthropic, `claude-haiku-4-5-20251001`** pour toute la déduction (catégorie, aspects eBay,
+  champs Leboncoin, couleur, ISBN, genre). OpenAI ne sert qu'à la retouche photo (pas une déduction de champ).
+- Appels : `resolve-categorie` 3 179 appels (63 comptes, 3,95 $) — 3,64 par article en moyenne (médiane 1, p90 8) ;
+  rédaction `generate_listing` 2,36 appels par génération (9,32 $, classification comprise) ; aspects eBay 1,59 appel par
+  demande (une 1re passe + un appel par aspect resté vide) ; seconde passe Leboncoin 1 par lot de champs.
+- Coût : déduction ≈ 4,3 $ / 7 j, dont `resolve-categorie` ≈ 92 %. Par article qui a de l'IA (702) : **0,0129 $** en moyenne
+  (médiane 0,0101 $) ; déduction seule : **0,0049 $** en moyenne (médiane 0,0017 $).
+- Trou mesuré : **839 appels de catégorie sur 3 179 (26 %) sont un jumeau exact** (même compte, mêmes jetons, < 2 s) — la
+  même question partie deux fois en parallèle et payée deux fois ; **1 752 (55 %)** reprennent une question identique du
+  même compte posée < 10 min avant ; 447 de plus (14 %) entre 10 min et 30 jours. Aucun cache nulle part (sauf Lens).
+
+### Ce qui est livré
+1. **Partage dans l'app — ACTIVÉ** (`src/utils/questionCategorie.js`) : toute question à `resolve-categorie` passe par là ;
+   une question identique EN VOL est partagée, une réponse de moins de 10 min est rendue telle quelle ; jamais une erreur,
+   un 429 ni « ia_indisponible ». Même réponse par construction (même corps → même réponse du serveur). Selftest
+   `question-categorie` (12). Effet attendu : −1 752 appels / 7 j, −2,05 $.
+2. **Cache serveur** (`_shared/claude-cache.ts`, table `ia_questions_cache`, migration 20261018040000 appliquée à 00:36, RLS,
+   service_role seul) : empreinte sha256 exacte de la question (modèle, consigne, message = contenu de l'article, plateforme,
+   liste des champs ou candidates) → l'article change, la question change ; 30 jours ; mêmes contrôles sur le texte relu ;
+   une relecture n'est ni payée ni comptée dans le plafond (ligne `resolve_categorie_cache` à 0 $). Interrupteurs par
+   fonction : `ia_cache_categorie` (voir la livraison plus bas), `ia_cache_aspects` = 0 (gain négligeable : 4,5 % de
+   répétitions sur ≈ 0,21 $ / 7 j, et ce chemin n'a pas de température fixée). Selftest `claude-cache` (20).
+3. **Regroupement des aspects eBay en UN appel** (`completerAspectsIAGroupe`) — **ÉTEINT** (`ia_aspects_groupes = 0`) : banc
+   sur 91 vrais articles (`point5-banc.md`) : −13 % de coût par article mais 85,7 % de champs remplis contre 91,8 %, 67,5 %
+   justes contre 71,3 %, accord 81,7 % contre 96,1 % de bruit. Cause : le défaut connu du cas Manon (un mot du titre n'est
+   pas réutilisé pour deux aspects). L'ancien chemin reste. `generate-listing` n'est PAS redéployé (v117 inchangée) : ses
+   deux interrupteurs sont éteints, et le redéployer embarquerait par ricochet six jours de changements d'autres lots
+   (`etat-job.js` via `src/utils/shared.js`) pour un effet nul.
+
+### Coût par article avant / après (estimation par rejeu des 7 jours ; mesure réelle à relire vers le 25/10)
+| | Avant | Après (partage + cache catégorie) |
+|---|---|---|
+| Appels `resolve-categorie` / 7 j | 3 179 | ≈ 980 (−69 %) |
+| Déduction / 7 j | ≈ 4,3 $ | ≈ 1,7 $ (−61 %) |
+| Déduction par article (moyenne) | 0,0049 $ | ≈ 0,0019 $ |
+| IA totale par article (moyenne) | 0,0129 $ | ≈ 0,0104 $ (−19 %) |
+| Qualité | — | identique par construction (même question → même réponse) ; cache prouvé 110 / 110 champs identiques, 0 appel |
+Relecture : `select date_trunc('day', created_at at time zone 'Europe/Paris') j, feature, count(*) from usage_logs where feature
+in ('resolve_categorie','resolve_categorie_cache') and created_at > now() - interval '14 days' group by 1,2 order by 1;`
