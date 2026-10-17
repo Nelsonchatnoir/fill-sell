@@ -21,6 +21,7 @@ import { tailleDansGrille } from "../../supabase/functions/_shared/tailles.js";
 import { VINTED_COLORS } from "../utils/vintedColors";
 import { Carte, Puce } from "./composants";
 import { NOM } from "./texte";
+import { posesMemoireVisibles } from "./moteur/memoireCategorie";
 
 // L'objet de jetons attendu par AspectValueInput : des variables, jamais des
 // couleurs en dur.
@@ -109,7 +110,10 @@ export default function BlocQuestions({ m }) {
   const descriptionVide = m.descriptionVideVinted;
   const montrerDescription = descriptionVide || (descriptionTouchee && m.selected?.has("vinted"));
   const total = q.redTotal + (demandePrixAchat ? 1 : 0) + (montrerDescription ? 1 : 0);
-  if (!total && !m.vintedGenreBlocked && !m.beebsGenreBlocked) return null;
+  // (18/10 nuit, point 1) Ce que la mémoire « compte × catégorie » a posé sur
+  // cet article : visible, et modifiable — jamais une valeur posée en silence.
+  const poses = posesMemoireVisibles(m);
+  if (!total && !poses.length && !m.vintedGenreBlocked && !m.beebsGenreBlocked) return null;
   const restants = q.redRestants + (m.prixAchatManquant ? 1 : 0) + (descriptionVide ? 1 : 0);
 
   const origine = (texte) => texte ? <span className="qui"> · {texte}</span> : null;
@@ -312,6 +316,9 @@ export default function BlocQuestions({ m }) {
             // Une taille répondue ici vaut aussi ailleurs (02/10, point 11).
             if (sk === "taille") { repondreTaille(gp, a, v); return; }
             toucherGeneric(gp, a.key);
+            // (18/10 nuit) Une réponse à un champ du RAYON est retenue au clic
+            // Publier (moteur/memoireCategorie) — seulement un choix dans la liste.
+            m.noterReponseQuestion?.(gp, a, v);
             if (a.dedicatedTarget && m.setPlatformDedicatedField) m.setPlatformDedicatedField(gp, a.dedicatedTarget, v);
             else m.setPlatformAspect(gp, a.key, v);
             if (sk) m.noterReponseFicheValeur?.(sk, v);
@@ -375,6 +382,27 @@ export default function BlocQuestions({ m }) {
           );
         })}
 
+        {poses.map(({ k, pose, valeur }) => (
+          <div key={`mem:${k}`} className="fsn-q" data-memoire={k}>
+            <div className="fsn-row fsn-row--between"><div className="fsn-q-t">{pose.label}</div><Puce ton="ok">{NOM(pose.plateforme)}</Puce></div>
+            <div className="fsn-q-why">
+              {pose.modifiee
+                ? (en ? "Your answer — it will be remembered for this category." : "Ta réponse — elle sera retenue pour ce rayon.")
+                : (en ? `Taken from your last answer for “${pose.categorie}”. Change it if this item is different.` : `Repris de ta dernière réponse pour « ${pose.categorie} ». Change-la si cet article est différent.`)}
+            </div>
+            <AspectValueInput
+              value={valeur}
+              allowedValues={pose.allowedValues}
+              strict
+              closedMax={m.EBAY_CLOSED_LIST_MAX}
+              onChange={v => changerPoseMemoire(m, pose, v)}
+              T={TN}
+              tailleTexte={16}
+              idBase={`fsn-mem-${slug(k)}`}
+            />
+          </div>
+        ))}
+
         {q.redEbayAspects.map(a => (
           <div key={`e:${a.name}`} className={`fsn-q${aspectBloquant(a) ? " fsn-q--bloque" : ""}`}>
             <div className="fsn-row fsn-row--between"><div className="fsn-q-t">{a.label ?? a.name}</div><Puce ton={aspectBloquant(a) ? "geste" : "ok"}>eBay</Puce></div>
@@ -391,6 +419,7 @@ export default function BlocQuestions({ m }) {
               onChange={v => {
                 if (a.sharedKey === "taille") { repondreTaille("ebay", a, v); return; }
                 toucherEbay(a.name);
+                if (!a.sharedKey) m.noterReponseQuestion?.("ebay", a, v);
                 if (a.sharedKey && m.setEbaySharedField) { m.noterReponseFiche?.(a.sharedKey); m.setEbaySharedField(a.sharedKey, v); }
                 else m.setEbayAspect(a.name, v);
               }}
@@ -406,4 +435,15 @@ export default function BlocQuestions({ m }) {
       {m.beebsGenreBlocked && <div className="fsn-card-p">{t("beebsGenreRequired")}</div>}
     </Carte>
   );
+}
+
+// ── LA MÉMOIRE « COMPTE × CATÉGORIE » (18/10 nuit, point 1) ───────────────
+// La personne change une valeur posée par la mémoire : même canal que la
+// question (champ dédié d'abord), et c'est SA réponse — retenue au publish.
+function changerPoseMemoire(m, pose, v) {
+  const ligne = { key: pose.champ, name: pose.champ, allowedValues: pose.allowedValues, dedicatedTarget: pose.dedicatedTarget };
+  m.noterReponseQuestion?.(pose.plateforme, ligne, v);
+  if (pose.plateforme === "ebay") { m.setEbayAspect?.(pose.champ, v); return; }
+  if (pose.dedicatedTarget && m.setPlatformDedicatedField) m.setPlatformDedicatedField(pose.plateforme, pose.dedicatedTarget, v);
+  else m.setPlatformAspect?.(pose.plateforme, pose.champ, v);
 }

@@ -57,8 +57,10 @@ ok(/const ageFiche = ageDitSurLaFiche\(\);/.test(LPS) && /r\.platform === "beebs
 const decl = LPS.indexOf('const [iaGeneriqueEnVol, setIaGeneriqueEnVol] = useState(0);');
 const retenue = LPS.indexOf('const iaGeneriqueRetenue = iaGeneriqueEnVol > 0;');
 ok(decl > 0 && retenue > decl && LPS.indexOf('const [iaGeneriqueEnVol, setIaGeneriqueEnVol]', decl + 10) === -1, 'iaGeneriqueEnVol déclaré UNE fois, avant la télémétrie qui le lit');
-ok(/if \(iaGeneriqueRetenue && !champBloquantVus\.current\[k\]\) continue;\n\s+actifs\.add\(k\);/.test(LPS), 'une IA générique en vol n\'ouvre pas de ligne « affiche » — et ne ferme jamais une ligne ouverte');
-ok(/missingSharedFieldsDetailed, couleurEnAttente, iaGeneriqueEnVol\]\); \/\/ eslint-disable-line react-hooks\/exhaustive-deps/.test(LPS), 'la télémétrie se rejoue quand l\'IA a fini');
+// (18/10 nuit) La même garde porte aussi l'attente de la mémoire « compte × catégorie » (memoireRetenue) :
+// l'IA en vol retient toujours une ligne NOUVELLE, jamais une ligne déjà ouverte.
+ok(/if \((?:iaGeneriqueRetenue|\(iaGeneriqueRetenue \|\| memoireRetenue\)) && !champBloquantVus\.current\[k\]\) continue;\n\s+actifs\.add\(k\);/.test(LPS), 'une IA générique en vol n\'ouvre pas de ligne « affiche » — et ne ferme jamais une ligne ouverte');
+ok(/missingSharedFieldsDetailed, couleurEnAttente, iaGeneriqueEnVol(?:, memoireCat)?\]\); \/\/ eslint-disable-line react-hooks\/exhaustive-deps/.test(LPS), 'la télémétrie se rejoue quand l\'IA a fini');
 const LST = lire('src/publication/moteur/listes.js');
 ok(/import \{ toPlatformChildSize \} from "\.\.\/\.\.\/utils\/childSizes\.js";/.test(LST) && /const enfant = toPlatformChildSize\(v, platform\);/.test(LST) && LST.indexOf('const enfant = toPlatformChildSize') < LST.indexOf('const t = tailleDansGrille(v, vals'), 'le moteur traduit AVANT le vocabulaire des tailles, et seulement vers une valeur de la grille');
 

@@ -18,6 +18,8 @@ import { fusionnerReglages } from '../utils/reglagesPlateformes';
 import { CLE_REGLAGE_ALERTES } from '../utils/alertesCompte';
 // (06/10) Notifications de ventes : ne rend RIEN sans le module natif.
 import ReglageNotifications from '../notifications/ReglageNotifications';
+// (18/10 nuit, point 1) Les réponses retenues par rayon : voir, oublier, vider.
+import MemoireRayons from './MemoireRayons';
 
 export default function SousPagePreferences({ c, T }) {
   const [pseudo, setPseudo] = useState(c.username ?? '');
@@ -132,6 +134,8 @@ export default function SousPagePreferences({ c, T }) {
         </Carte>
         <Note>{T.deviseNote}</Note>
       </Groupe>
+
+      <MemoireRayons c={c} T={T} />
 
       <ReglageNotifications lang={c.lang} />
     </>

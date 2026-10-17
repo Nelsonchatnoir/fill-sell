@@ -36,6 +36,12 @@ const FR = {
   sAlertesCompte: 'Alertes de compte',
   alertesCompte: 'Me prévenir quand une connexion est perdue ou un compte restreint',
   alertesCompteNote: 'Une seule ligne dans « À régler » du Stock, masquable plateforme par plateforme. Rien n’est envoyé, rien n’est touché.',
+  sMemoireRayon: 'Réponses retenues par rayon',
+  memoireRayonNote: 'Quand tu choisis toi-même le public d’un rayon (Univers Leboncoin : Femme, Homme, Enfant… ; Département eBay), FillSell le reprend sur le prochain article du même rayon, sans te reposer la question. Jamais la taille, la marque, l’état, la couleur ni la matière : ceux-là sont propres à chaque article.',
+  memoireRayonVide: 'Aucune réponse retenue pour l’instant.',
+  memoireRayonOublier: 'Oublier',
+  memoireRayonVider: 'Tout oublier',
+  memoireRayonVidee: 'Réponses oubliées : la question reviendra.',
   sLeboncoin: 'Leboncoin',
 
   // ── Consommation ────────────────────────────────────────────────────────
@@ -246,6 +252,12 @@ const EN = {
   sAlertesCompte: 'Account alerts',
   alertesCompte: 'Warn me when a sign-in is lost or an account is restricted',
   alertesCompteNote: 'A single line in the Stock’s “To fix”, hideable platform by platform. Nothing is sent, nothing is changed.',
+  sMemoireRayon: 'Answers remembered per category',
+  memoireRayonNote: 'When you choose a category’s audience yourself (Leboncoin “Univers”: Women, Men, Kids… ; eBay “Department”), FillSell reuses it on the next item of the same category instead of asking again. Never the size, brand, condition, colour or material: those belong to each item.',
+  memoireRayonVide: 'No answer remembered yet.',
+  memoireRayonOublier: 'Forget',
+  memoireRayonVider: 'Forget all',
+  memoireRayonVidee: 'Answers forgotten: the question will come back.',
   sLeboncoin: 'Leboncoin',
 
   ceMoisCi: 'This month',

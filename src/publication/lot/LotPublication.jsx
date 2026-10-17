@@ -62,6 +62,7 @@ import {
   palierCourant, palierSuivant, canalAppareil, canalAbonnement, monteePossibleIci, CLE_REPRISE_LOT,
   poidsConnu, lirePoidsSaisi,
 } from "./regles";
+import { posesMemoireVisibles } from "../moteur/memoireCategorie";
 import LivraisonDuLot from "./LivraisonDuLot";
 import { parLots } from "../../utils/parLots.js";
 import BarriereErreur from "../../components/BarriereErreur";
@@ -894,8 +895,41 @@ function EcranDuLot({
     for (const e of g.entrees) {
       const m = moteursRef.current.get(e.id);
       if (!m) continue;
+      // (18/10 nuit) La réponse commune est une réponse de la personne : un
+      // champ du RAYON est retenu au clic Publier de chaque article.
+      m.noterReponseQuestion?.(e.gp, e.a, valeur);
       if (e.a.dedicatedTarget && m.setPlatformDedicatedField) m.setPlatformDedicatedField(e.gp, e.a.dedicatedTarget, valeur);
       else m.setPlatformAspect?.(e.gp, e.a.key, valeur);
+    }
+  };
+
+  // ── LA MÉMOIRE « COMPTE × CATÉGORIE » DANS LE LOT (18/10 nuit, point 1) ──
+  // Ce que la mémoire a posé, regroupé par (plateforme, champ, rayon, valeur) :
+  // dit avant l'envoi, et modifiable pour tous les articles du groupe d'un
+  // geste (la nouvelle valeur devient la réponse de la personne, retenue).
+  const posesDuLot = (() => {
+    if (!lot || !preparationFinie || envoi) return [];
+    const groupes = new Map();
+    for (const id of lot.ids) {
+      if (["retire", "envoye"].includes(etats[id]?.phase)) continue;
+      const m = moteursRef.current.get(id);
+      for (const { pose, valeur } of posesMemoireVisibles(m)) {
+        const cle = [pose.plateforme, pose.champ, pose.categorie, valeur].join("␟");
+        if (!groupes.has(cle)) groupes.set(cle, { cle, pose, valeur, ids: [] });
+        groupes.get(cle).ids.push(id);
+      }
+    }
+    return [...groupes.values()];
+  })();
+  const changerPosesDuLot = (g, valeur) => {
+    for (const id of g.ids) {
+      const m = moteursRef.current.get(id);
+      if (!m) continue;
+      const ligne = { key: g.pose.champ, name: g.pose.champ, allowedValues: g.pose.allowedValues, dedicatedTarget: g.pose.dedicatedTarget };
+      m.noterReponseQuestion?.(g.pose.plateforme, ligne, valeur);
+      if (g.pose.plateforme === "ebay") { m.setEbayAspect?.(g.pose.champ, valeur); continue; }
+      if (g.pose.dedicatedTarget && m.setPlatformDedicatedField) m.setPlatformDedicatedField(g.pose.plateforme, g.pose.dedicatedTarget, valeur);
+      else m.setPlatformAspect?.(g.pose.plateforme, g.pose.champ, valeur);
     }
   };
 
@@ -1008,6 +1042,7 @@ function EcranDuLot({
               moteurs={moteursRef.current} decisions={decisions} prepares={prepares} preparationFinie={preparationFinie}
               prets={prets} aCompleter={aCompleter} annoncesPretes={annoncesPretes} communes={communes}
               repondreCommune={repondreCommune} decider={decider} trancherJumeau={trancherJumeau}
+              posesDuLot={posesDuLot} changerPosesDuLot={changerPosesDuLot}
               sansPlateforme={sansPlateforme} retirerDuLot={retirerDuLot} envoi={envoi} supabase={supabase}
               lectures={lectures}
               livraison={{ transporteurs: transporteursDuLot, format: livraison.format }} poidsDe={poidsDe} poserPoids={poserPoids}
@@ -1225,6 +1260,8 @@ export function EcranAvant({
   userId = null, exclusDepop = [], mettreDeCote = () => {}, signalerErreurBloc = () => {},
   // (11/10 soir) Le choix du poids Leboncoin du lot — reçu, jamais supposé.
   choixPoidsLbc = "estimer", choisirPoidsLbc = () => {}, poidsExigeLbc = false,
+  // (18/10 nuit) Ce que la mémoire « compte × catégorie » a posé — reçu, jamais supposé.
+  posesDuLot = [], changerPosesDuLot = () => {},
 }) {
   const total = lot.ids.length;
   // Un bloc commun qui casse est remplacé par une phrase ; le lot continue.
@@ -1284,6 +1321,20 @@ export function EcranAvant({
 
       {/* (09/10 soir) Ce que Depop refuse : combien d'articles, et pourquoi. */}
       {preparationFinie && !envoi && blocProtege("exclus_depop", <ExclusDepop en={en} exclus={exclusDepop} />)}
+
+      {/* (18/10 nuit) Ce que la mémoire a repris de tes dernières réponses. */}
+      {posesDuLot.length > 0 && blocProtege("poses_memoire", posesDuLot.map((g) => (
+        <Carte key={g.cle} gravite="info" titre={`${g.pose.label} · ${NOM(g.pose.plateforme)}`}>
+          <div className="fsn-card-p">{en
+            ? `“${g.valeur}” on ${g.ids.length} item${g.ids.length > 1 ? "s" : ""}: taken from your last answer for “${g.pose.categorie}”. Tap another value to change it for all of them.`
+            : `« ${g.valeur} » sur ${g.ids.length} article${g.ids.length > 1 ? "s" : ""} : repris de ta dernière réponse pour « ${g.pose.categorie} ». Touche une autre valeur pour la changer sur tous.`}</div>
+          <div className="fsn-choices">
+            {(g.pose.allowedValues ?? []).slice(0, 12).map((v) => (
+              <button key={v} type="button" className={`fsn-choice${v === g.valeur ? " fsn-choice--on" : ""}`} onClick={() => { if (v !== g.valeur) changerPosesDuLot(g, v); }}>{v === g.valeur ? "✓ " : ""}{v}</button>
+            ))}
+          </div>
+        </Carte>
+      )))}
 
       {/* Une réponse pour plusieurs articles : même champ, même liste. */}
       {communes.length > 0 && blocProtege("reponses_communes", communes.map((g) => (

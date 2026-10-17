@@ -233,10 +233,24 @@
   semaine d'avant ; à relire autour du 25/10). Compteur `champs_requis` (nouveaux + champs qui doublent avec ≥ 20 affichages).
 - **Ordre des sources** (inchangé, rappel) : valeur de la personne → fiche (copie d'une plateforme : `attributs.<champ>` posé
   par la synchro, un relevé, le Lens, la saisie) → mapping (tables `childSizes`, `tailles`, synonymes) → IA en dernier
-  (micro-appels `resolve_aspects`, plafonds par palier, pas de cache hors Lens identify). **Non fait le 18/10** (décision
+  (micro-appels `resolve_aspects`, plafonds par palier, pas de cache hors Lens identify). **Non fait le 18/10 en journée — la mémoire est faite la nuit suivante, section plus bas** (décision
   Nico) : mémoire « réponse du compte pour cette catégorie » (aucune n'existe pour Univers, Produit, Taille, Âge, Couleur,
   Style, Longueur — seules Opla catégories, colis Vinted, marques retenues, poids/new_item_type Leboncoin existent) ;
   cache / regroupement des appels IA (`resolve-categorie` ≈ 3 appels par article, 3 689 / 7 j, sans cache). Coût mesuré :
   génération ≈ 0,011 $ par article (Haiku 4.5), import gratuit, 1 000 articles Business ≈ 12-15 $ ; plafond
   `resolve-categorie` 4 000 / 24 h atteint vers 1 300 articles.
 - Selftest : `champs-deduits` (29).
+
+## Mémoire « compte × catégorie » des réponses (18/10 nuit, point 1)
+- **Règle** : une réponse donnée PAR LA PERSONNE à un champ requis qui dit le PUBLIC du rayon est retenue pour
+  utilisateur × compte × plateforme × catégorie cible × champ (`memoire_champs_categorie`, RLS) et reposée seule sur le
+  prochain article du même rayon. Liste exacte (CHECK de la migration 20261018030000) : Leboncoin `clothing_type`,
+  `shoe_type`, `accessories_univers` ; eBay `Département`. Jamais un champ de l'article ni un Univers / Produit / Type /
+  Genre qui nomme une famille d'objets (rejeu sur 60 j : Décoration 11/16 et 8/16, livres 0/5 ; Mode 59/59).
+- **Ordre** : saisie → fiche (genre, catégorie Vinted, taille enfant, mot du titre) → texte → **mémoire** → IA → question.
+  Champ VIDE et REQUIS seulement ; valeur hors de la grille du jour = ignorée ; texte qui nomme un autre public = rien.
+  Retenue au clic Publier (plateformes envoyées, copie qui porte encore la réponse), jamais une ligne inchangée.
+- **Visible et réversible** : questions (« Repris de ta dernière réponse… », modifiable), carte du lot, Réglages ›
+  Préférences (« Oublier », « Tout oublier »). Mesure : `usage_logs` feature `memoire_categorie` (appliquee, modifiee,
+  retenue) + `champs_requis_veille()`. Code : `src/publication/moteur/memoireCategorie.js`, `src/utils/memoireChamps.js`.
+  Selftest `memoire-categorie`. Rapport : `docs/enquetes/session-nuit-1810-memoire-ia/RAPPORT.md`.

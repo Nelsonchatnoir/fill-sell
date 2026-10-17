@@ -153,6 +153,11 @@ import { VINTED_COLORS } from "../utils/vintedColors";
 import { optionDepuisTextes } from "../../supabase/functions/_shared/option-du-texte.js";
 import { extensionAMettreAJour } from "../utils/extensionAJour";
 import { sansListesEmpruntees } from "../utils/catalogueListes.js";
+// (18/10 nuit, point 1) La mémoire « compte × catégorie » : la réponse donnée
+// par la personne à un champ du RAYON (Univers-public Leboncoin, Département
+// eBay) se repose seule sur le prochain article du même rayon.
+import { valeurDeMemoire, reponseARetenir, lignesAEcrire, COMPTE_PRINCIPAL } from "../publication/moteur/memoireCategorie.js";
+import { chargerMemoire, memoireEnCache, abonnerMemoire, retenirReponses } from "../utils/memoireChamps.js";
 
 // Palette identique à LensTab.jsx et à la navbar (thème clair 2026).
 const T = {
@@ -3300,7 +3305,7 @@ export function AspectValueInput({ value, allowedValues, strict = false, closedM
   );
 }
 
-function StepPublish({ selected, setSelected, userId = null, platformSessions = null, platformListings, publishError, lang, demanderPrixAchat = false, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, beebsGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [], pausedReasons = {}, plateformesVerrouillees = [], motifsVerrouillage = {}, lbcPhotoCap = null, lbcAdresseManquante = null, ebayVoieApiReelle = false, descriptionMentions = null, descriptionVideVinted = false, onOuvrirCopie = null, jumeauxEnLigne = [], oplaVerdict = null, attentes = {}, onCompleter = null, douteEnLigne = {}, onRepondreDisparue = null }) {
+function StepPublish({ selected, setSelected, userId = null, platformSessions = null, platformListings, publishError, lang, demanderPrixAchat = false, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, beebsGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, onReponseQuestion = null, pausedPlatforms = [], pausedReasons = {}, plateformesVerrouillees = [], motifsVerrouillage = {}, lbcPhotoCap = null, lbcAdresseManquante = null, ebayVoieApiReelle = false, descriptionMentions = null, descriptionVideVinted = false, onOuvrirCopie = null, jumeauxEnLigne = [], oplaVerdict = null, attentes = {}, onCompleter = null, douteEnLigne = {}, onRepondreDisparue = null }) {
   const { t, tpl } = useTranslation(lang);
   const chips = [...selected].filter(p => platformListings?.platforms?.[p]);
   // Voie API eBay (07/09/2026, prouvée sur le job d9463010) : le relevé de
@@ -3987,6 +3992,7 @@ function StepPublish({ selected, setSelected, userId = null, platformSessions = 
                     <button
                       onClick={() => {
                         toucherGeneric(gp, a.key);
+                        onReponseQuestion?.(gp, a, seule);
                         if (a.dedicatedTarget && onPlatformDedicatedChange) onPlatformDedicatedChange(gp, a.dedicatedTarget, seule);
                         else onPlatformAspectChange(gp, a.key, seule);
                       }}
@@ -4020,6 +4026,7 @@ function StepPublish({ selected, setSelected, userId = null, platformSessions = 
                     // avec un bouton Publier mort (cas RoCotCot du 11/08).
                     onChange={v => {
                       toucherGeneric(gp, a.key);
+                      onReponseQuestion?.(gp, a, v);
                       if (a.dedicatedTarget && onPlatformDedicatedChange) onPlatformDedicatedChange(gp, a.dedicatedTarget, v);
                       else onPlatformAspectChange(gp, a.key, v);
                     }}
@@ -4049,6 +4056,7 @@ function StepPublish({ selected, setSelected, userId = null, platformSessions = 
                   closedMax={EBAY_CLOSED_LIST_MAX}
                   onChange={v => {
                     toucherEbay(a.name);
+                    if (!a.sharedKey) onReponseQuestion?.("ebay", a, v);
                     if (a.sharedKey && onEbaySharedFieldChange) onEbaySharedFieldChange(a.sharedKey, v);
                     else onEbayAspectChange(a.name, v);
                   }}
@@ -5103,6 +5111,24 @@ export default function ListingPreviewScreen({
   // ne porte encore rien — cf. le bloc « réponses saisies » de handlePublish.
   const [reponsesFicheValeurs, setReponsesFicheValeurs] = useState(() => ({}));
   const noterReponseFicheValeur = (key, valeur) => setReponsesFicheValeurs(prev => (prev[key] === valeur ? prev : { ...prev, [key]: valeur }));
+  // ── LA MÉMOIRE « COMPTE × CATÉGORIE » (18/10 nuit, point 1) ───────────────
+  // `memoireCat` : Map des réponses retenues du compte (null tant que la
+  // lecture n'a pas répondu — le lot et la télémétrie l'attendent). Une lecture
+  // par compte et par ouverture de l'app (cache partagé, utils/memoireChamps).
+  // `posesMemoire` : ce que la mémoire a posé sur CET article, par
+  // « plateforme|champ » — montré dans les questions, modifiable.
+  // `reponsesQuestionsRef` : les réponses de la personne aux champs retenus,
+  // écrites dans la mémoire au clic Publier (plateformes envoyées seulement).
+  const [memoireCat, setMemoireCat] = useState(() => memoireEnCache(userId));
+  useEffect(() => {
+    if (!userId) { setMemoireCat(new Map()); return undefined; }
+    let vivant = true;
+    const off = abonnerMemoire(userId, (m) => { if (vivant && m) setMemoireCat(new Map(m)); });
+    chargerMemoire(supabase, userId).then((m) => { if (vivant) setMemoireCat(new Map(m)); });
+    return () => { vivant = false; off(); };
+  }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [posesMemoire, setPosesMemoire] = useState(() => ({}));
+  const reponsesQuestionsRef = useRef({});
   const [sharedOverrides, setSharedOverrides] = useState(() => // { [platform]: Set<fieldKey> }
     draft?.sharedOverrides
       ? Object.fromEntries(Object.entries(draft.sharedOverrides).map(([k, v]) => [k, new Set(v)]))
@@ -7698,10 +7724,18 @@ export default function ListingPreviewScreen({
         const ded = deduireOptionDuTexte({ platform: "ebay", key: name, label: name, allowedValues, textes: textesEbay });
         if (ded?.valeur) return { ...manquant, deduit: { valeur: ded.valeur, source: ded.source } };
         if (ded?.candidats?.length > 1) return { ...manquant, allowedValues: listeCandidatsDabord(allowedValues, ded.candidats), candidats: ded.candidats };
+        // (18/10 nuit, point 1) La dernière réponse de la personne pour cette
+        // catégorie eBay (Département seulement) — APRÈS le texte ; le genre de
+        // la copie garde la priorité dans l'effet des défauts ci-dessous.
+        const mem = valeurDeMemoire({
+          memoire: memoireCat, plateforme: "ebay", compte: COMPTE_PRINCIPAL, categorie: ebayPreviewCategoryId ?? null, ligne: manquant,
+          textes: [edited.ebay?.title || initialListing?.titre || "", edited.ebay?.description || "", activeAiObjet ?? pf.categorie_objet_ia ?? ""],
+        });
+        if (mem?.valeur) return { ...manquant, deduit: { valeur: mem.valeur, source: "memoire", repondu_le: mem.repondu_le ?? null } };
       }
       return manquant;
     });
-  }, [ebayRequiredPreview, edited, plateformesPubliables, activeAiObjet]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ebayRequiredPreview, edited, plateformesPubliables, activeAiObjet, memoireCat, ebayPreviewCategoryId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Défauts DÉTERMINISTES (Phase 1, 2026-07-16) : dès que les obligatoires de
   // la catégorie sont connus, on pose les valeurs standard eBay SÛRES
@@ -7815,6 +7849,7 @@ export default function ListingPreviewScreen({
           && !String(pfAspects[a.name] ?? "").trim() && !aspectDefaultsPoses.current.has(a.name)) {
         toSet[a.name] = a.deduit.valeur;
         aspectDefaultsPoses.current.add(a.name);
+        if (a.deduit.source === "memoire") noterPoseMemoire("ebay", a, a.deduit, ebayPreviewCategoryId ?? null);
       }
     }
     if (!Object.keys(toSet).length) return;
@@ -8694,6 +8729,18 @@ export default function ListingPreviewScreen({
       const ficheAttrs = (attributsBase && typeof attributsBase === "object") ? attributsBase
         : (initialListing?.attributs && typeof initialListing.attributs === "object" ? initialListing.attributs : {});
       const valeurFiche = (c) => { const x = ficheAttrs?.[c]; return x && typeof x === "object" ? x.v : x; };
+      // (18/10 nuit, point 1) Rien dans la fiche ni dans le texte : la dernière
+      // réponse de la personne pour CE rayon (champ du rayon, vide et requis,
+      // dans la grille d'aujourd'hui, jamais contre un public nommé par le texte).
+      const avecMemoire = (a) => {
+        const r = valeurDeMemoire({
+          memoire: memoireCat, plateforme: platform, compte: COMPTE_PRINCIPAL,
+          categorie: genericCategoryKeys?.[platform] ?? null, ligne: a,
+          textes: [edited[platform]?.title || initialListing?.titre || "", edited[platform]?.description || "", activeAiObjet ?? pf.categorie_objet_ia ?? ""],
+        });
+        if (!r?.valeur) return a;
+        return { ...a, suggested: r.valeur, blocking: false, deduit: { valeur: r.valeur, source: "memoire", repondu_le: r.repondu_le ?? null } };
+      };
       const enrichi = status.map((a) => {
         const aTrancher = a.state === "missing" || (a.state === "invalid" && !a.suggested)
           || (a.state === "ok" && estFourreTout(a.value));
@@ -8719,7 +8766,7 @@ export default function ListingPreviewScreen({
           }
         }
         let ded = deduireOptionDuTexte({ platform, key: a.key, label: a.label, allowedValues: a.allowedValues, textes });
-        if (!ded) return a;
+        if (!ded) return avecMemoire(a);
         let paire = null;
         // Maison & Jardin : le Produit introuvable sous l'Univers courant, ou
         // l'Univers lui-même à trancher → la paire nommée par l'annonce.
@@ -8744,7 +8791,7 @@ export default function ListingPreviewScreen({
         if (ded.candidats?.length > 1) {
           return { ...a, allowedValues: listeCandidatsDabord(a.allowedValues, ded.candidats), candidats: ded.candidats };
         }
-        return a;
+        return avecMemoire(a);
       });
       if (enrichi.length) out[platform] = enrichi;
     }
@@ -8754,7 +8801,7 @@ export default function ListingPreviewScreen({
     // premier rendu après une photo ajoutée ou retirée au step Photos.
     // attributsBase (24/09) : la taille Opla se juge sur la fiche quand la
     // copie n'en porte pas — la fiche arrive après le premier calcul.
-  }, [genericAspectsCatalog, plateformesPubliables, edited, genericCategoryKeysSig, processedPhotos?.length, attributsBase, initialListing?.attributs, activeAiObjet]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [genericAspectsCatalog, plateformesPubliables, edited, genericCategoryKeysSig, processedPhotos?.length, attributsBase, initialListing?.attributs, activeAiObjet, memoireCat]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── L'OPTION LUE DANS L'ANNONCE EST POSÉE (2026-09-24) ─────────────────────
   // Pose ce que genericRequiredStatus a déduit du titre / de l'objet IA / de
@@ -8781,8 +8828,9 @@ export default function ListingPreviewScreen({
         else setPlatformAspect(gp, a.key, d.valeur);
         noterOptionDuTexte(gp, a.key, {
           valeur: d.valeur, source: d.source, avant: a.value ? String(a.value) : null,
-          ...(d.paire ? { paire: d.paire } : {}), le: new Date().toISOString(),
+          ...(d.paire ? { paire: d.paire } : {}), ...(d.repondu_le ? { repondu_le: d.repondu_le } : {}), le: new Date().toISOString(),
         });
+        if (d.source === "memoire") noterPoseMemoire(gp, a, d, genericCategoryKeys?.[gp] ?? null);
       }
     }
   }, [genericRequiredStatus]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -8937,12 +8985,16 @@ export default function ListingPreviewScreen({
     // semaine étaient posés par l'IA moins de 15 s après la ligne). Une ligne
     // déjà comptée reste active : jamais un faux « complete ».
     const iaGeneriqueRetenue = iaGeneriqueEnVol > 0;
+    // (18/10 nuit, point 1) La mémoire « compte × catégorie » pas encore lue :
+    // un champ qu'elle va remplir n'est pas une question — rien de NOUVEAU
+    // n'est compté tant que la lecture n'a pas répondu (même règle que l'IA).
+    const memoireRetenue = memoireCat === null;
     for (const [gp, list] of Object.entries(genericRequiredStatus ?? {})) {
       for (const a of list.filter(aspectBloquant)) {
         if (partageEnQuestion(gp, genericFieldToSharedKey(gp, a.key))) continue;
         if (couleurRetenue({ platform: gp, key: a.key })) continue;
         const k = `${gp}:${a.key}`;
-        if (iaGeneriqueRetenue && !champBloquantVus.current[k]) continue;
+        if ((iaGeneriqueRetenue || memoireRetenue) && !champBloquantVus.current[k]) continue;
         actifs.add(k);
         if (!champBloquantVus.current[k]) {
           champBloquantVus.current[k] = {
@@ -8963,6 +9015,7 @@ export default function ListingPreviewScreen({
       if (partageEnQuestion("ebay", a.sharedKey)) continue;
       if (couleurRetenue({ platform: "ebay", key: a.name, sharedKey: a.sharedKey })) continue;
       const k = `ebay:${a.name}`;
+      if (memoireRetenue && !champBloquantVus.current[k]) continue;
       actifs.add(k);
       if (!champBloquantVus.current[k]) {
         // (10/10) L'article est nommé, comme pour les questions partagées : on
@@ -9004,7 +9057,7 @@ export default function ListingPreviewScreen({
       }
     }
     champBloquantRestants.current = actifs;
-  }, [step, publishing, genericRequiredStatus, ebayRequiredStatus, ebayIaFiniePour, ebayPreviewCategoryId, missingSharedFieldsDetailed, couleurEnAttente, iaGeneriqueEnVol]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [step, publishing, genericRequiredStatus, ebayRequiredStatus, ebayIaFiniePour, ebayPreviewCategoryId, missingSharedFieldsDetailed, couleurEnAttente, iaGeneriqueEnVol, memoireCat]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { doneRef.current = done; }, [done]);
   useEffect(() => () => {
     if (doneRef.current) return;
@@ -9473,6 +9526,45 @@ export default function ListingPreviewScreen({
         },
       },
     } : prev);
+  }
+
+  // ── LA MÉMOIRE « COMPTE × CATÉGORIE » : POSE ET RÉPONSE (18/10 nuit) ──────
+  // Une valeur posée par la mémoire se voit (BlocQuestions, lot) et se change ;
+  // la trace `memoire_categorie` (usage_logs) compte les poses, les valeurs
+  // changées par la personne et les réponses retenues — la mesure « après ».
+  function journalMemoire(issue, info) {
+    if (!userId) return;
+    supabase.from("usage_logs")
+      .insert({ user_id: userId, feature: "memoire_categorie", metadata: { ...info, issue, inventaire_id: invId ?? null } })
+      .then(({ error }) => { if (error) console.warn("[mémoire] trace non journalisée :", error.message); });
+  }
+  function noterPoseMemoire(gp, a, d, categorie) {
+    const champ = a?.key ?? a?.name;
+    if (!champ || !d?.valeur) return;
+    const k = `${gp}|${champ}`;
+    setPosesMemoire(prev => (prev[k]?.valeur === d.valeur ? prev : {
+      ...prev,
+      [k]: { plateforme: gp, champ, label: a.label ?? a.name ?? champ, valeur: d.valeur, repondu_le: d.repondu_le ?? null,
+             categorie, allowedValues: a.allowedValues ?? [], dedicatedTarget: a.dedicatedTarget ?? null, modifiee: null },
+    }));
+    journalMemoire("appliquee", { platform: gp, champ, categorie, valeur: d.valeur, repondu_le: d.repondu_le ?? null });
+  }
+  // Une réponse de la personne (bloc de questions, réponse commune du lot,
+  // valeur de la mémoire qu'elle change) : retenue au clic Publier si c'est un
+  // CHOIX dans la liste d'un champ du rayon (moteur/memoireCategorie).
+  function noterReponseQuestion(gp, a, v) {
+    const champ = a?.key ?? a?.name;
+    if (!champ) return;
+    const k = `${gp}|${champ}`;
+    const categorie = gp === "ebay" ? (ebayPreviewCategoryId ?? null) : (genericCategoryKeys?.[gp] ?? null);
+    const valeur = reponseARetenir({ plateforme: gp, champ, allowedValues: a.allowedValues, valeur: v });
+    if (!valeur || categorie == null || categorie === "") { delete reponsesQuestionsRef.current[k]; return; }
+    reponsesQuestionsRef.current[k] = { plateforme: gp, champ, categorie: String(categorie), compte: COMPTE_PRINCIPAL, valeur, cible: a.dedicatedTarget ?? null };
+    const pose = posesMemoire[k];
+    if (pose && pose.valeur !== valeur && pose.modifiee !== valeur) {
+      setPosesMemoire(prev => (prev[k] ? { ...prev, [k]: { ...prev[k], modifiee: valeur } } : prev));
+      journalMemoire("modifiee", { platform: gp, champ, categorie: String(categorie), avant: pose.valeur, valeur });
+    }
   }
 
   // Saisie manuelle d'un requis Vinted/LBC/Beebs — écrit dans le canal
@@ -10429,6 +10521,29 @@ export default function ListingPreviewScreen({
           if (atErr) console.warn("[publish] réponses non rangées sur la fiche :", atErr.message);
         }
       }
+      // ── LA MÉMOIRE « COMPTE × CATÉGORIE » (18/10 nuit, point 1) ──────────
+      // Les réponses de la personne aux champs du RAYON, pour les plateformes
+      // réellement envoyées, et seulement si la copie partie porte ENCORE
+      // cette réponse (jamais une ligne inchangée réécrite). Une nouvelle
+      // réponse remplace l'ancienne. Best-effort : la publication est partie.
+      try {
+        const lignesMem = lignesAEcrire({
+          reponses: reponsesQuestionsRef.current,
+          envoyees: rowsEnvoyees.map(r => r.platform),
+          valeurFinale: (p, champ) => {
+            const pfR = rowsEnvoyees.find(r => r.platform === p)?.platform_fields ?? {};
+            if (p === "ebay") return pfR.ebayAspects?.[champ];
+            const cible = reponsesQuestionsRef.current[`${p}|${champ}`]?.cible;
+            if (cible && String(pfR[cible] ?? "").trim()) return pfR[cible];
+            return pfR[GENERIC_ASPECTS_PF_KEY[p]]?.[champ];
+          },
+          memoire: memoireCat, inventaireId: currentInvId ?? null,
+        });
+        if (lignesMem.length) {
+          const res = await retenirReponses(supabase, userId, lignesMem);
+          if (res.ok) for (const l of lignesMem) journalMemoire("retenue", { platform: l.plateforme, champ: l.champ, categorie: l.categorie, valeur: l.valeur });
+        }
+      } catch (eMem) { console.warn("[mémoire] réponses non retenues :", eMem?.message ?? eMem); }
       if (currentInvId && price != null && Number(price) > 0) {
         const { data: prixMaj, error: prixErr } = await supabase
           .from("inventaire")
@@ -11173,6 +11288,8 @@ export default function ListingPreviewScreen({
     if (catalogueLuPour !== genericCategoryKeysSig) return false;
     if (jumeauxPour !== cleJumeaux) return false;
     if (iaGeneriqueEnVol > 0) return false;
+    // (18/10 nuit) La mémoire « compte × catégorie » doit avoir répondu.
+    if (memoireCat === null) return false;
     // (11/10) Une couleur exigée et vide n'est pas encore une question : la
     // couleur automatique la pose (connue, IA photo, repli) — on l'attend.
     if (couleurEnAttente) return false;
@@ -11269,6 +11386,9 @@ export default function ListingPreviewScreen({
     redSharedFields, redSharedFieldPlatforms, sharedFields, setSharedField, repondreChampPartage, sharedChildAxes, missingSharedFieldsDetailed, noterReponseFiche, noterReponseFicheValeur,
     vintedGenreBlocked, beebsGenreBlocked, ebayRequiredStatus, setEbayAspect, setEbaySharedField,
     genericRequiredStatus, setPlatformAspect, setPlatformDedicatedField, EBAY_CLOSED_LIST_MAX,
+    // (18/10 nuit, point 1) La mémoire « compte × catégorie » : ce qu'elle a
+    // posé sur cet article (montré, modifiable) et la réponse de la personne.
+    posesMemoire, noterReponseQuestion,
     demanderPrixAchat: prixAchatARenseigner, prixAchatSaisi, setPrixAchatSaisi, prixAchatInconnu, setPrixAchatInconnu, prixAchatManquant,
     inventoryFull, stockCount, stockLimitCfg,
     lbcPhotoCap, lbcAdresseManquante, jumeaux, descriptionMentions, descriptionVideVinted,
@@ -11670,6 +11790,7 @@ export default function ListingPreviewScreen({
             genericRequiredStatus={genericRequiredStatus}
             onPlatformAspectChange={setPlatformAspect}
             onPlatformDedicatedChange={setPlatformDedicatedField}
+            onReponseQuestion={noterReponseQuestion}
             pausedPlatforms={pausedPlatforms}
             pausedReasons={pausedReasons}
             plateformesVerrouillees={[...lockedSet]}
