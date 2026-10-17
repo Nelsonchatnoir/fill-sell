@@ -234,3 +234,42 @@
   vente (règle du point 11).
 - **Ce qui attend ta décision** : le lot A (commande 23148630362 « Lot 4 articles » = rachat des gigoteuses ?) ; trois
   ventes de commandes `failed` seulement signalées (167304 créée le 15/10 après la règle, 125191, 108583).
+
+## Livraison (17/10)
+
+- **Commits** (sur `main`, NON poussés — push refusé par la sécurité de la session) : `cf0a017` (points 0-10),
+  `5418398` (recalage), `a309dd8` (réveil par capture), `107fb25` (point 12, lot B, bêta Louis), `7e85ebf` (point 11),
+  `bc6c718` (recalage), `250dc2f` (selftest), `5fc5ed4` (BUILD_ID de la 0.6.123, version 2.9.98), puis les docs.
+- **Migrations appliquées** (essai à blanc d'abord, `db query` + `migration repair`, prod relue) : `20261017100000`
+  (24 h, 11:45), `20261017140000` (annulation : état d'annonce, 14:41), `20261017141000` (garde du relevé de nuit,
+  14:42), `20261017120000` (ventes en lot, 15:11 ; 53/53 sur la prod). **Préparée, NON appliquée** (refus de la
+  sécurité de la session) : `20261017110000` (Amiral, point 8 ; essai 18/18).
+- **Fonctions** (`verify_jwt` lus avant/après, inchangés) : `get-pending-jobs` **v256** (true), `update-job-status`
+  **v140**, `handler-watch` **v115**, `ebay-api-worker` **v88**, `push-ventes` **v12** (false) ; `ebay-account` **v18**
+  (true). 0 erreur dans les journaux depuis 13:13.
+- **Réparations appliquées** (sauvegarde + inverse, 0 mail — `email_logs` compté avant/après à chaque fois) : rejugement
+  « introuvable » (4 jobs), relance Fluxen (1 job), pause a6e773d4, **lot B de Louis remis** (4 ventes), drapeau bêta de
+  Louis. **Préparées, NON appliquées** : copie de 317adae1 (après la migration Amiral), réparation des ventes en lot
+  (après relecture des compositions par la 0.6.123).
+- **Extension 0.6.123** : zip seul dans `build/CWS-0.6.123-A-TELEVERSER/fillsell-extension-0.6.123-250dc2f-cws.zip`
+  (BUILD_ID `2026-10-17T13:13:01Z+250dc2f`, 37 fichiers, manifest 0.6.123, aucune permission nouvelle). La 0.6.122
+  reste seule dans `build/CWS-0.6.122-A-TELEVERSER/`. Ta copie (`C:\Users\nicol\FillSell-Extension-Nico`) a la 0.6.123
+  (ancienne copie 0.6.122 gardée dans `build/anciennes-extensions-nico/`).
+- **OTA 2.9.98 ENVOYÉE** (feu vert partout, 15:15 ; canal production 2.9.96 → 2.9.98 ; build `2026-10-17T13:14:42Z+5fc5ed4`) :
+  elle contient tout ce qu'aurait contenu la 2.9.97 (écrans bêta) + les écrans de ce jour. La 2.9.97 n'est jamais partie.
+- **Selftests** : 341, **340 verts**, seul rouge `vinted-origine` (d'avant la session) ; suite passée par lots (mémoire).
+
+## Ce qu'il te reste à faire
+
+1. **Pousser** : `! git push origin main` (refusé ici) — le web (Vercel) n'a rien de ce jour tant que ce n'est pas fait.
+2. **Migration Amiral** (point 8), puis la réparation de 317adae1 :
+   `! npx supabase db query --linked -f supabase/migrations/20261017110000_republication_nait_avec_son_lien.sql`
+   `! npx supabase migration repair --linked --status applied 20261017110000`
+   `! npx supabase db query --linked -f scripts/reparations/20261017_copie_republication_reconstruite.sql`
+   (personne ne clique « Relancer » sur 317adae1 avant).
+3. **Chrome Web Store** : téléverser la **0.6.122** (et ses 2 cases de confidentialité) ; la **0.6.123** seulement APRÈS
+   l'acceptation de la 0.6.122.
+4. **Point 6, essai réel** (§ 6 bis) : une fiche de test « Paris 2024 » à 999 € — dis-moi quand le job est en file.
+5. **Décisions** : « Chic Me » → Other (Depop, règle stricte) ; lot A de Louis (23148630362 = rachat des gigoteuses ?) ;
+   3 ventes de commandes `failed` seulement signalées (167304, 125191, 108583) ; DeadRoz : a-t-il payé lui-même des
+   dépôts du 14/10 (avant « C'est fait ») ?
