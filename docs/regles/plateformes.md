@@ -18,6 +18,7 @@
 - 10/10 matin — republication automatique Depop (ex-L430-441)
 - 16/10 soir — Leboncoin : comptes PRO (panneau des racines) et photos gratuites lues au dépôt
 - 17/10 — eBay un seul état (plafond 0, retours refusés), Leboncoin pro au mur du paiement, Depop marque et configuration vendeur
+- 17/10 soir — la marque de l'annonce fait foi (toutes plateformes)
 
 <!-- ex-CLAUDE.md L59-69 : 11/10 nuit — Depop comme Opla -->
 - **⛔ 11/10 nuit — DEPOP COMME OPLA** — rapport `docs/enquetes/depop-comme-opla-1110/RAPPORT.md` : ⛔ **jamais de
@@ -212,3 +213,19 @@ Rapport : `docs/enquetes/dix-points-1710/RAPPORT.md` (points 1, 4, 5, 7, 9).
   (`EcranVendeurPlateforme`, « C'est fait ») ; reprise sur preuve (publication passée au-delà du contrôle vendeur
   depuis le dernier mur vu, ou sonde `extension_sessions.depop_vendeur`, 0.6.123), sinon éclaireur au barème ;
   jamais soldé à 72 h (moins de 30 j). Selftests `depop-marque`, `depop-vendeur-mur`.
+
+## 17/10 soir — LA MARQUE DE L'ANNONCE FAIT FOI (toutes plateformes)
+
+- **⛔ Consigne de Nico (17/10)** : « Chic Me » reste « Chic Me » ; jamais « Other » ni « sans marque » tant que la
+  plateforme accepte de la poser ; une plateforme qui la refuse VRAIMENT se signale à Nico, on ne tranche pas. Rapport
+  `docs/enquetes/marques-1710/RAPPORT.md`. Mesuré le 17/10 (formulaires, comptes de Nico, rien enregistré) : **Vinted
+  accepte de nouveau une marque hors catalogue** (« Utiliser "X" comme marque », T-shirts et Encadrements ; absente
+  chez patrick et Romain les 14-16/10 : l'offre varie, l'extension la lit à chaque dépôt), **eBay** oui (texte libre),
+  **Depop, Leboncoin, Beebs non** (listes fermées, « Other » / « Autre »).
+- **Jamais une autre marque** : une marque n'est jamais rapprochée d'une voisine par ses mots (« Daily paper » →
+  « Paper », « Chicago Bulls » → « BULLS » mesurés sur eBay). App : `estChampMarque` (`src/publication/moteur/listes.js`)
+  — présence = ok, écriture exacte de la liste si elle y est, sinon la marque telle quelle ; eBay FREE_TEXT jamais
+  « invalide » ; SELECTION_ONLY = vrai refus, la personne choisit (`gardeAspectsEbay`, Marque `sansRapprochement`).
+  Selftest `publication-moteur` [M]. Extension (prochaine version, feu vert de Nico) : Leboncoin et Beebs en égalité
+  exacte sinon « Autre » (plus d'inclusion, plus de choix par IA dans la liste) ; Depop : égalité qui ignore espaces,
+  tirets, points, apostrophes (jamais `&` ni `+`), plusieurs candidates → l'exacte, sinon « Other ».

@@ -96,6 +96,20 @@ export function champARecherche(platform, key) {
   return false;
 }
 
+// ⛔ LA MARQUE DE L'ANNONCE FAIT FOI (17/10, Nico : « Chic Me reste Chic Me »).
+// Une marque n'est JAMAIS rapprochée d'une autre par ses mots : le
+// rapprochement par jetons posait d'office « Paper » pour « Daily paper »,
+// « BULLS » pour « Chicago Bulls », « Calvin Klein » pour « Calvin Klein
+// Jeans » (copies eBay mesurées sur 60 jours). Une marque présente est
+// gardée telle quelle — l'écriture exacte de la liste si elle y est —, et
+// c'est la plateforme qui tranche au dépôt (création de marque Vinted, liste
+// fermée ailleurs). Les champs Marque des relevés, et l'aspect eBay.
+export function estChampMarque(platform, key) {
+  const k = String(key ?? "");
+  if (platform === "ebay") return k === "Marque";
+  return champARecherche(platform, k) && k !== "model";
+}
+
 /** La liste relevée de CE champ fait-elle foi ? (règle du bandeau) */
 export function listeFaitFoiRelevee({ platform, key, inputType, allowedValues }) {
   const vals = Array.isArray(allowedValues) ? allowedValues : [];
@@ -230,6 +244,8 @@ export function jugerValeurContreListe({ platform, key, value, allowedValues, ch
     //    vocabulaire des tailles vient de dire non : la personne choisit.
     return { dans: false, valeurListe: null, suggested: null };
   }
+  // Une marque hors du relevé reste la sienne : présence = ok (estChampMarque).
+  if (estChampMarque(platform, key)) return { dans: true, valeurListe: v, suggested: null };
   return { dans: false, valeurListe: null, suggested: nearestAllowedValue(v, vals) };
 }
 

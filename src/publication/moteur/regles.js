@@ -255,7 +255,11 @@ export function gardeAspectsEbay({ pfE, ebayRequiredFull, outils }) {
   // colors[0] prioritaire). Alias Mode : monture/extérieure/doublure = nos
   // couleur/matière — mêmes listes que ebay.js.
   const knownAspects = [
-    { labels: ["Marque"], value: () => pfE.marque, set: v => { pfE.marque = v; } },
+    // ⛔ (17/10, Nico) La marque de l'annonce fait foi : jamais rapprochée
+    // d'une voisine (« Daily paper » partait en « Paper »). Hors d'une liste
+    // FREE_TEXT elle part telle quelle ; hors d'une liste SELECTION_ONLY, eBay
+    // la refuse vraiment : la personne choisit (moteur/listes.js, estChampMarque).
+    { labels: ["Marque"], value: () => pfE.marque, set: v => { pfE.marque = v; }, sansRapprochement: true },
     { labels: ["Taille", "Pointure EU", "Pointure"], value: () => String(pfE.taille ?? "").replace(/^EU\s*/i, ""), set: v => { pfE.taille = v; } },
     { labels: ["Couleur", "Couleur de la monture", "Couleur extérieure"], value: () => pfE.colors?.[0] || pfE.couleur,
       // Gates et handlers lisent colors[0] AVANT couleur : écrire les deux.

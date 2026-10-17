@@ -137,7 +137,7 @@ import {
 // moteur, à l'identique : la carte (champsDuRayon) et la publication en masse
 // jugent une valeur contre une liste avec le même code que cet écran.
 import {
-  normAspectVal, nearestAllowedValue, jugerValeurContreListe, horsListeBloque, vintedExigeUneMarque,
+  normAspectVal, nearestAllowedValue, jugerValeurContreListe, horsListeBloque, vintedExigeUneMarque, estChampMarque,
   vintedExigeUneCouleur, vintedExigeUnIsbn, ISBN_ABSENT, valeurUneLettre, rayonNeufSeulement, messageRayonNeuf,
   deduireOptionDuTexte, estFourreTout, listeCandidatsDabord, textesDeLAnnonce,
   tailleDuJob, tailleDansListeEbay,
@@ -7647,13 +7647,19 @@ export default function ListingPreviewScreen({
         // `suggested` = valeur de la liste la plus proche, auto-appliquée
         // par l'effet ci-dessous au step Publier.
         const sendVal = src.send ? String(src.send(srcVal)).trim() : srcVal;
-        if (isEbayClosedList(allowedValues, mode) &&
+        // Marque (17/10, Nico) : en texte libre (FREE_TEXT), eBay accepte la
+        // marque de l'annonce telle quelle — jamais « invalide ».
+        const marqueLibre = estChampMarque("ebay", name) && !listeFaitFoi("ebay", mode);
+        if (isEbayClosedList(allowedValues, mode) && !marqueLibre &&
             !allowedValues.some(v => normAspectVal(v) === normAspectVal(sendVal))) {
           return {
             name, state: "invalid", sharedKey: src.key, value: srcVal,
             // Taille (02/10, point 11) : le vocabulaire des tailles, jamais un
             // rapprochement par mots sur un nombre (« W34 | FR 44 » → « 44 »).
-            suggested: src.key === "taille" ? tailleDansListeEbay(sendVal, allowedValues) : nearestAllowedValue(sendVal, allowedValues),
+            // Marque (17/10, Nico) : jamais rapprochée d'une voisine (estChampMarque) ;
+            // hors d'une liste qui fait foi, la personne choisit.
+            suggested: src.key === "taille" ? tailleDansListeEbay(sendVal, allowedValues)
+              : estChampMarque("ebay", name) ? null : nearestAllowedValue(sendVal, allowedValues),
             // `blocking` (2026-07-29, doctrine « liste = suggestion ») : seule
             // une liste QUI FAIT FOI grise le CTA. eBay SELECTION_ONLY = eBay
             // déclare le champ fermé → on bloque. FREE_TEXT = eBay déclare le
@@ -8559,7 +8565,9 @@ export default function ListingPreviewScreen({
             }
             return { key, label, state: "ok", value: src, allowedValues, inputType: r.input_type, dedicatedTarget: target };
           }
-          if (target && allowedValues.length && allowedValues.length <= EBAY_CLOSED_LIST_MAX &&
+          // (17/10, Nico) Une marque hors du relevé reste la sienne (estChampMarque) :
+          // jamais « invalide », jamais rapprochée d'une autre.
+          if (target && allowedValues.length && allowedValues.length <= EBAY_CLOSED_LIST_MAX && !estChampMarque(platform, key) &&
               !allowedValues.some(v => normAspectVal(v) === normAspectVal(src))) {
             return {
               key, label, state: "invalid", value: src,

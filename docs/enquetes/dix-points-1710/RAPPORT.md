@@ -261,6 +261,10 @@
 
 ## Ce qu'il te reste à faire
 
+> **Mise à jour 17/10 15:29-15:31 (session suivante)** : 1 (push) et 2 (migration Amiral + réparation de 317adae1) sont
+> FAITS et vérifiés — `docs/agents/etat-2026-10-01.md` § 17/10 fin d'après-midi. « Chic Me » : voir
+> `docs/enquetes/marques-1710/RAPPORT.md`.
+
 1. **Pousser** : `! git push origin main` (refusé ici) — le web (Vercel) n'a rien de ce jour tant que ce n'est pas fait.
 2. **Migration Amiral** (point 8), puis la réparation de 317adae1 :
    `! npx supabase db query --linked -f supabase/migrations/20261017110000_republication_nait_avec_son_lien.sql`

@@ -589,5 +589,39 @@ console.log("\n[taille des bas] Patrick Giry, 02/10 — Vinted, Opla, Leboncoin,
   ok("enfant : « 12 ans » sur Opla", juge("opla", "size", "12 ans", ["10 ans", "12 ans"]).valeurListe === "12 ans");
 }
 
-console.log(ko ? `\n${ko} KO` : "\nTout est vert.");
+console.log("\n[M] la marque de l'annonce fait foi — jamais rapprochée d'une autre (17/10, Nico)");
+{
+  // Les champs Marque : ceux des relevés et l'aspect eBay ; jamais « model » ni une taille.
+  ok("estChampMarque : Vinted brand, Leboncoin *_brand, Beebs Marque, eBay Marque",
+    L.estChampMarque("vinted", "brand") && L.estChampMarque("leboncoin", "clothing_brand") && L.estChampMarque("beebs", "Marque") && L.estChampMarque("ebay", "Marque"));
+  ok("estChampMarque : ni Vinted model, ni une taille, ni la Matière",
+    !L.estChampMarque("vinted", "model") && !L.estChampMarque("vinted", "size") && !L.estChampMarque("beebs", "Matière") && !L.estChampMarque("ebay", "Taille"));
+  // Relevés : « Chic Me » hors liste reste « Chic Me » (présence = ok), jamais « Chic ».
+  const relevé = ["Chic", "Zara", "H&M", "Daily Paper"];
+  const v1 = L.jugerValeurContreListe({ platform: "vinted", key: "brand", value: "Chic Me", allowedValues: relevé });
+  ok("Vinted : « Chic Me » hors du relevé → gardée telle quelle, aucune suggestion", v1.dans === true && v1.valeurListe === "Chic Me" && v1.suggested === null, JSON.stringify(v1));
+  const v2 = L.jugerValeurContreListe({ platform: "leboncoin", key: "clothing_brand", value: "Chic Me", allowedValues: relevé });
+  ok("Leboncoin : idem, jamais « Chic »", v2.dans === true && v2.suggested === null, JSON.stringify(v2));
+  const v3 = L.jugerValeurContreListe({ platform: "beebs", key: "Marque", value: "daily paper", allowedValues: relevé });
+  ok("Beebs : l'écriture EXACTE de la liste quand la marque y est (« daily paper » → « Daily Paper »)", v3.dans === true && v3.valeurListe === "Daily Paper", JSON.stringify(v3));
+  ok("Non-régression : une Matière garde son rapprochement par mots", L.jugerValeurContreListe({ platform: "beebs", key: "Matière", value: "Coton 60% Polyester 40%", allowedValues: ["Coton", "Laine"] }).suggested === "Coton");
+  // eBay (garde au clic) : le vrai rapprochement par jetons, celui de l'écran.
+  const listeFaitFoi = (platform, mode) => platform === "ebay" && mode === "SELECTION_ONLY";
+  const pfL = { marque: "Daily paper", ebayAspects: {} };
+  const vL = R.gardeAspectsEbay({ pfE: pfL, ebayRequiredFull: [{ name: "Marque", allowedValues: ["Paper", "Nike"], mode: "FREE_TEXT" }], outils: { nearestAllowedValue: L.nearestAllowedValue, listeFaitFoi } });
+  ok("eBay FREE_TEXT : « Daily paper » part telle quelle (plus « Paper »), signalée hors liste", pfL.marque === "Daily paper" && !vL.rapproches.length && vL.horsListe.some(x => x.name === "Marque"), JSON.stringify(vL));
+  const pfF = { marque: "Chicago Bulls", ebayAspects: {} };
+  const vF = R.gardeAspectsEbay({ pfE: pfF, ebayRequiredFull: [{ name: "Marque", allowedValues: ["BULLS", "Nike"], mode: "SELECTION_ONLY" }], outils: { nearestAllowedValue: L.nearestAllowedValue, listeFaitFoi } });
+  ok("eBay SELECTION_ONLY : « Chicago Bulls » jamais remplacée par « BULLS » — refus, la personne choisit", pfF.marque === "Chicago Bulls" && vF.invalides.some(x => x.name === "Marque"), JSON.stringify(vF));
+  const pfC = { couleur: "Rouge", colors: ["Rouge"], ebayAspects: {} };
+  R.gardeAspectsEbay({ pfE: pfC, ebayRequiredFull: [{ name: "Couleur", allowedValues: ["Rouge foncé"], mode: "FREE_TEXT" }], outils: { nearestAllowedValue: L.nearestAllowedValue, listeFaitFoi } });
+  ok("Non-régression eBay : la couleur garde son rapprochement", pfC.couleur === "Rouge foncé");
+  // L'écran (ListingPreviewScreen) : les trois endroits qui posaient d'office une voisine.
+  const ecran = readFileSync(join(ROOT, "src/components/ListingPreviewScreen.jsx"), "utf8");
+  ok("écran : la branche classique n'invalide jamais une marque", /EBAY_CLOSED_LIST_MAX && !estChampMarque\(platform, key\) &&/.test(ecran));
+  ok("écran eBay : marque en texte libre jamais « invalide », jamais de suggestion",
+    ecran.includes('const marqueLibre = estChampMarque("ebay", name) && !listeFaitFoi("ebay", mode);') && ecran.includes('estChampMarque("ebay", name) ? null : nearestAllowedValue(sendVal, allowedValues)'));
+}
+
+console.log(ko ?`\n${ko} KO` : "\nTout est vert.");
 process.exit(ko ? 1 : 0);

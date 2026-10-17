@@ -83,6 +83,9 @@
   nomme (`moteur/reponsesPartagees.js`) ; la marque de la fiche n'est jamais
   redemandée ; ⛔ Vinted ne crée PLUS de marque libre (03/10) : marque exacte
   du catalogue, sinon une QUESTION, jamais « Sans marque » en silence.
+  ⚠️ (17/10) Vinted OFFRE DE NOUVEAU « Utiliser "X" comme marque » (relevé compte de Nico, deux rayons) ;
+  l'extension la prend quand elle nomme la marque, la question reste pour un vrai refus
+  (`docs/regles/plateformes.md` § 17/10 soir).
   ⛔ Annonce de test : 999 € ou plus, jamais le tableau de Nico. **Republication** : âge et prix repris de L'annonce en ligne.
   Question « Marque » hors catalogue (`src/annonces/QuestionMarque.jsx`) : le
   pourquoi, « Sans marque » en un tap, recherche dans le catalogue Vinted
