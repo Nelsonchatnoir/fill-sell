@@ -17,6 +17,7 @@
 - 09/10 soir — catégories interdites par Depop (ex-L419-429)
 - 10/10 matin — republication automatique Depop (ex-L430-441)
 - 16/10 soir — Leboncoin : comptes PRO (panneau des racines) et photos gratuites lues au dépôt
+- 17/10 — eBay un seul état (plafond 0, retours refusés), Leboncoin pro au mur du paiement, Depop marque et configuration vendeur
 
 <!-- ex-CLAUDE.md L59-69 : 11/10 nuit — Depop comme Opla -->
 - **⛔ 11/10 nuit — DEPOP COMME OPLA** — rapport `docs/enquetes/depop-comme-opla-1110/RAPPORT.md` : ⛔ **jamais de
@@ -169,3 +170,45 @@
   `champs_a_completer`, `server_required_fields`, `needsUserBoucle`) et pose `needs_user_source = "relancer"` ; le
   motif reste `last_diagnostic.quoi` ; les autres attentes gardent l'écriture d'avant. Le mur survenu avec des
   photos dans le gratuit lu le dit (ce n'est pas le pack photos : forfait pro).
+
+## 17/10 — eBay (un seul état du compte, retours), Leboncoin (compte pro au mur du paiement), Depop (marque, configuration vendeur)
+
+Rapport : `docs/enquetes/dix-points-1710/RAPPORT.md` (points 1, 4, 5, 7, 9).
+
+- **⛔ 17/10 — eBay : UN SEUL ÉTAT DU COMPTE, ET « PAS DE RETOUR » REFUSÉ PAR eBAY** — règle unique
+  `supabase/functions/_shared/ebay-etat-compte.js` (`etatCompteEbay`), lue par l'app (carte du Stock, stepper, lot,
+  Réglages › Compte eBay) et par le serveur (`_shared/ebay-voie.ts` → ebay-api-worker, handler-watch, ebay-account) :
+  une politique est faite quand elle est RETENUE, jamais parce qu'elle existe chez eBay ; plafond de vente eBay
+  (`seller_state.selling_limit`) à 0 en quantité OU en montant = jamais « prêt » (carte « eBay n'autorise pas encore
+  ce compte à vendre » + Seller Hub ; le serveur parque avant tout appel, `ebay_a_finir.etape` plafond / vendeur /
+  retours / parcours / conditions). Les lignes du relevé ne décident plus rien (Louis : Réglages « prêt », carte
+  « 2 étapes », plafond 0/0). Refus 25002 `ReturnsAcceptedOption` (Fluxen, vendeur pro) : la politique de retours
+  retenue est retirée (garde sur son id), job « compte à finir — retours » ré-armé par le circuit existant — FillSell
+  ne choisit JAMAIS la politique à la place de la personne ; `creer_politique` met à jour la politique FillSell du
+  même nom (PUT) au lieu de la recréer (les 3 essais « 30 jours » de Fluxen avaient échoué en 502 sur ce nom).
+  Selftests `ebay-etat-unique`, `ebay-retours-obligatoires`.
+- **⛔ 17/10 — Compte Leboncoin PRO au mur « Valider et payer » : une carte, un éclaireur, plus rien sur le mur.**
+  DeadRoz, 14/10 : 26 murs et 5 dépôts passés, intercalés, avec les mêmes 10 photos. C'est le COMPTE, ni l'annonce
+  ni le pack photos. Règle unique `_shared/lbc-forfait.js` : motif exact `last_diagnostic.quoi = lbc_options_payant_seulement` ;
+  compte prouvé pro quand une erreur (courante ou archivée) d'un job Leboncoin porte `general_sales_condition`/`custom_ref` ;
+  jamais un particulier. update-job-status : le mur n'hérite d'aucune question (toutes versions). get-pending-jobs :
+  mur vu < 30 j sans publication passée depuis → publications et republications pas encore retirées retenues avant
+  essai (needs_user, `forfait_lbc.retenue_le`, jamais un mur vu), un éclaireur à la fois. handler-watch : éclaireur
+  (plus ancienne publication) au plus toutes les 12 h ; tout repart (45 s) dès qu'une publication passe après le
+  dernier mur ; jamais soldé < 30 j. App : carte « Leboncoin : ton forfait pro » (« C'est fait » = un éclaireur).
+  « ✋ Compléter » efface `needs_user_source = champ_a_choisir`. `selftest:lbc-forfait-pro`.
+- **⛔ 17/10 — DEPOP : LA MARQUE N'EST JAMAIS UNE QUESTION, LA CONFIGURATION VENDEUR EST UN GESTE DE COMPTE**
+  (Thibault, Romain, Héloïse ; rapport `docs/enquetes/dix-points-1710/RAPPORT.md` § 4-5). Marque
+  (`_shared/marque-depop.js`, appliquée au dépôt par `content-scripts/depop.js` sur la liste vivante de Depop) :
+  absence (« Autres », « Divers », « Sans »…) ou nom commun de vêtement (« Short », « T shirt »… ; jamais « gant »,
+  « polo », « bob », « top ») → « Other » (`unbranded`) ; égalité EXACTE, casse, accents et espaces multiples ignorés,
+  avec le nom ou l'identifiant d'UNE marque active → elle ; sinon « Other ». Jamais une autre marque, jamais une
+  question ; le remplacement est dit (`depop_marque_other`). Extensions ≤ 0.6.122 (publications) : update-job-status
+  et handler-watch (questions tranchées, règle 5) répondent « Sans marque » ; une question « Plusieurs marques… »
+  attend le correctif `depop_marque_ambigue` (`BUILD_DEPOP_MARQUE`, build 0.6.123). Configuration vendeur
+  (`_shared/vendeur-depop.js`, patron de `lbc-identite.js`) : motif `depop_vendeur_a_configurer` → source
+  `depop_vendeur` et message unique ; get-pending-jobs ne sert plus aucune publication Depop du compte (retenue
+  `vendeur_depop.retenue_le`, jamais un mur vu ; retraits jamais retenus ; éclaireur servi) ; UNE carte « À régler »
+  (`EcranVendeurPlateforme`, « C'est fait ») ; reprise sur preuve (publication passée au-delà du contrôle vendeur
+  depuis le dernier mur vu, ou sonde `extension_sessions.depop_vendeur`, 0.6.123), sinon éclaireur au barème ;
+  jamais soldé à 72 h (moins de 30 j). Selftests `depop-marque`, `depop-vendeur-mur`.

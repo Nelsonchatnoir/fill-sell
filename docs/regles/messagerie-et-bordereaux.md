@@ -29,7 +29,7 @@
   `BORDEREAU_DERNIERE_MARCHE_OUVERTE = true` (`chrome-extension/messagerie.js`) ET
   `coin_config.bordereaux_ouverts = 1` (0 = tout fermé). Seul un bordereau PRÊT chez la plateforme se demande
   (Vinted 220/230/250, Leboncoin `available` + `parcel-label-generated`) ; une demande non prise en 30 min
-  expire (poste éteint : jamais servie en retard) ; 20 demandes par jour ; une copie encore valable est rendue
+  expire (poste éteint : jamais servie en retard ; **24 h depuis le 17/10**, migration 20261017100000) ; 20 demandes par jour ; une copie encore valable est rendue
   sans rien redemander. Vinted : `pdf_label`, sinon `digital_label` UNE fois. Copie au nom UNIQUE (horodaté :
   jamais d'écrasement), type lu dans le fichier (PDF/PNG/JPEG), 5 Mo au plus. **Générer** un bordereau n'est
   codé nulle part : Vinted « commander l'étiquette », Leboncoin « confirmer la disponibilité », Beebs « accepter
@@ -201,5 +201,11 @@
 - **eBay** : le suivi d'une étiquette achetée (`shipping_fulfillment` : numéro, transporteur ; 10 lectures au plus par
   passage, `ebay-messagerie` v6) s'affiche ; « Expédiées depuis 3 jours » montre le suivi (eBay, Depop, Beebs) ; un
   numéro interne (Vinted, Leboncoin) n'est jamais montré comme suivi.
-- **Ordinateur absent** : la demande attend (« En attente de ton ordinateur… ») ; non prise à temps (30 min, base),
-  rien n'est fait et le bouton revient. Passer à 24 h = migration à valider par Nico (non écrite, voir l'état de prod).
+- **Ordinateur absent** : la demande attend (« En attente de ton ordinateur… ») ; non prise à temps, rien n'est fait
+  et le bouton revient. **24 h** (feu vert de Nico, migration **20261017100000** appliquée le 17/10 à 11:45 ; 30 min
+  avant) : récupérer comme générer (bordereau Vinted, disponibilité Leboncoin, acceptation Beebs).
+- **Garde-fou du geste (17/10)** : juste avant tout geste, l'extension relit la commande chez la plateforme
+  (`decisionGeneration`, puis relecture dans le geste lui-même) ; annulée, expédiée, en échec chez Vinted (210) ou
+  déjà traitée entre-temps = AUCUN geste, refus nommé (`commande_annulee`, `deja_expediee`) — seule une étiquette
+  prête ou en préparation vaut « déjà fait » (0.6.123 ; la 0.6.122 rendait « déjà fait » pour tout statut Vinted ≥ 200,
+  sans geste non plus). `selftest:messagerie-generation`.

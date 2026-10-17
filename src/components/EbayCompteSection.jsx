@@ -3,7 +3,8 @@ import { UI, Eyebrow } from './ui';
 import PlatformLogo from './platform-logos/PlatformLogo';
 import { demarrerConnexionEbay, lireEtatEbay, agirEbay, ouvrirConsentementEbay } from '../utils/ebayCompte';
 import EbayParcours from './EbayParcours';
-import { etatsEbayDepuisChecklist, LIENS_EBAY, motsEbay } from '../utils/ebayParcours';
+import { LIENS_EBAY, motsEbay } from '../utils/ebayParcours';
+import { etatCompteEbay } from '../../supabase/functions/_shared/ebay-etat-compte.js';
 import { supabase } from '../lib/supabase';
 import { fusionnerReglages } from '../utils/reglagesPlateformes';
 
@@ -130,7 +131,7 @@ const T = {
     paiementNote: 'Paiement immédiat à l\'achat (paiements gérés par eBay).',
     retoursMode: 'Retours',
     retoursAcceptes: 'Acceptés sous 30 jours, frais de retour à l\'acheteur', // estimation-ok: politique eBay (réglage), pas une attente
-    retoursRefuses: 'Pas de retour',
+    retoursRefuses: 'Pas de retour (vendeurs particuliers seulement)',
     creee: (nom) => `Politique « ${nom} » créée chez eBay et retenue pour FillSell.`,
     // ── Transporteurs (07/09) ──────────────────────────────────────────────
     transporteurs: 'Mes transporteurs',
@@ -245,7 +246,7 @@ const T = {
     paiementNote: 'Immediate payment at purchase (eBay managed payments).',
     retoursMode: 'Returns',
     retoursAcceptes: 'Accepted within 30 days, buyer pays return shipping', // estimation-ok: eBay policy (setting)
-    retoursRefuses: 'No returns',
+    retoursRefuses: 'No returns (private sellers only)',
     creee: (nom) => `Policy “${nom}” created at eBay and selected for FillSell.`,
     transporteurs: 'My shipping methods',
     transporteursIntro: 'Choose how you ship. Buyers will see these options on all your eBay listings.',
@@ -683,15 +684,21 @@ export default function EbayCompteSection({ lang = 'fr', user, vue = 'complet' }
   };
 
   // ── LE PARCOURS GUIDÉ (22/09/2026, dossier Romain) ────────────────────────
-  // Les verdicts par étape viennent de utils/ebayParcours, le MÊME module que
-  // lisent le stepper et la carte d'article. Un seul endroit décrit eBay.
-  const etatsParcours = useMemo(() => etatsEbayDepuisChecklist(checklist), [checklist]);
-  // Parcours fini = plus rien ne peut passer au vert : on cesse de relire au
-  // retour dans l'app (quota eBay, cf. DELAI_RELECTURE_MS).
+  // (17/10, Louis) Les verdicts viennent de LA règle partagée avec le serveur
+  // (etatCompteEbay, _shared/ebay-etat-compte.js), appliquée à `etat` — que le
+  // serveur relit APRÈS chaque relevé. Plus jamais des lignes du relevé, qui
+  // disaient « ok » dès qu'une politique EXISTAIT chez eBay, retenue ou non :
+  // Réglages disait « eBay est prêt » pendant que la carte du Stock disait
+  // « il reste 2 étapes », et personne ne lisait le plafond de vente à zéro.
+  const etatCompte = useMemo(() => etatCompteEbay(etat), [etat]);
+  const etatsParcours = etatCompte.etapes;
+  // Parcours fini = compte PRÊT : plus rien ne peut passer au vert, on cesse de
+  // relire au retour dans l'app (quota eBay, cf. DELAI_RELECTURE_MS). Un compte
+  // bloqué par eBay (plafond à zéro) reste relu : c'est là qu'on voit le
+  // plafond se lever.
   useEffect(() => {
-    const lues = Object.values(etatsParcours).filter((v) => v !== 'inconnu');
-    parcoursFini.current = lues.length > 0 && lues.every((v) => v === 'ok');
-  }, [etatsParcours]);
+    parcoursFini.current = etatCompte.pret;
+  }, [etatCompte]);
 
   const connecte = Boolean(etat?.connecte);
   const aReconnecter = Boolean(etat?.a_reconnecter);
@@ -701,8 +708,11 @@ export default function EbayCompteSection({ lang = 'fr', user, vue = 'complet' }
   // Repli : dérivé de la checklist déjà relevée, aucune lecture de plus.
   const lignesChecklist = checklist?.lignes ?? [];
   const ligneLivraison = lignesChecklist.find((l) => l.cle === 'politique_livraison') ?? null;
-  const limite = checklist?.selling_limit;
-  const montant = limite?.amount?.value != null ? `${Number(limite.amount.value).toLocaleString(langue === 'fr' ? 'fr-FR' : 'en-GB')} ${limite.amount.currency ?? ''}`.trim() : null;
+  // Le plafond de vente eBay, lu par la règle partagée. À zéro, c'est la carte
+  // « eBay n'autorise pas encore ce compte à vendre » du parcours qui le dit ;
+  // sinon une ligne discrète, informative.
+  const limite = etatCompte.plafond && !etatCompte.plafond.nul ? etatCompte.plafond : null;
+  const montant = limite?.montant != null ? `${limite.montant.toLocaleString(langue === 'fr' ? 'fr-FR' : 'en-GB')} ${limite.devise ?? ''}`.trim() : null;
 
   const rendreFormulaireCreation = (type) => (
     <div style={{ background: UI.card, border: `1px solid ${UI.border}`, borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -1145,13 +1155,14 @@ export default function EbayCompteSection({ lang = 'fr', user, vue = 'complet' }
             <EbayParcours
               lang={langue}
               etats={etatsParcours}
+              etatCompte={etatCompte}
               chargement={chargement}
               rendreCorps={rendreCorpsEtape}
               rendrePret={() => (ligneLivraison ? rendreLivraison(ligneLivraison, true) : null)}
             />
           )}
-          {limite && (limite.quantity != null || montant) && (
-            <div style={{ fontSize: 11.5, color: UI.mute, lineHeight: 1.4 }}>{t.plafond(limite.quantity, montant)}</div>
+          {limite && (limite.quantite != null || montant) && (
+            <div style={{ fontSize: 11.5, color: UI.mute, lineHeight: 1.4 }}>{t.plafond(limite.quantite, montant)}</div>
           )}
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 2 }}>

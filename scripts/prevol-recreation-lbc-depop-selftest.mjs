@@ -357,15 +357,19 @@ async function depopAvec({ marque = { id: "nike", nom: "Nike" }, taille = { idGr
   assert.equal(r.success, true); assert.equal(r.republishPreflight, true);
   assert.equal(appels.photos, 0, "aucune photo envoyée"); assert.equal(appels.json, 0, "aucune création");
   assert.equal(verdictPrevolRecreation(r), "ok");
-  const q = await depopAvec({ marque: { question: { field_key: "depopMarque", field_label: "Marque (Depop)", input_type: "text", explication: "« Zzz » n'est pas dans la liste" } } });
+  // (17/10, Nico) La marque n'est plus jamais une question : hors de la liste
+  // Depop, elle part en « Other » (depopResoudreMarque rend `remplacee`), et
+  // le pré-vol de recréation conclut sans rien envoyer.
+  const q = await depopAvec({ marque: { id: "unbranded", nom: "Other", remplacee: { de: "Zzz", motif: "hors_liste_depop" } } });
   const rq = await q.fn({ id: "d2", platform_fields: { republish_recreation: true, republish_prevol_only: true } });
-  assert.equal(verdictPrevolRecreation(rq), "champ_a_choisir");
+  assert.equal(verdictPrevolRecreation(rq), "ok");
   assert.equal(q.appels.photos + q.appels.json, 0);
+  assert.ok(!/marque\.question/.test(fd), "fillListingForm ne pose plus aucune question de marque");
   const pub = await depopAvec();
   const rp = await pub.fn({ id: "d3", platform_fields: {} });
   assert.equal(rp.success, true); assert.ok(rp.listingUrl);
   assert.equal(pub.appels.photos, 1, "une publication normale envoie toujours ses photos");
 }
-ok("depop : pré-vol → preuve sans photo ni création ; marque hors liste → question avant retrait ; publication normale inchangée");
+ok("depop : pré-vol → preuve sans photo ni création ; marque hors liste → « Other », jamais une question ; publication normale inchangée");
 
 console.log(`\n✓ prevol-recreation-lbc-depop : ${n} contrôles verts`);

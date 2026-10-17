@@ -54,7 +54,10 @@
 //                            applicable ») → on ne l'affiche PAS ;
 //   · « vérification KYC » ← getKYC rend 204 vide pour tout le monde depuis
 //                            la fin de l'onboarding global → pas affiché.
-//   Le plafond de vente (sellingLimit) est relevé et stocké, informatif.
+//   Le plafond de vente (sellingLimit) est relevé et stocké. (17/10) À zéro, en
+//   quantité OU en montant, eBay n'autorise pas ce compte à vendre : il n'est
+//   JAMAIS prêt (règle unique _shared/ebay-etat-compte.js, app et serveur), et
+//   bloque_par_etat_ebay le porte aussi.
 // ═══════════════════════════════════════════════════════════════════════════
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import {
@@ -78,6 +81,7 @@ import {
 // (update-job-status) repart TOUTE SEULE en voie API dès que le compte devient
 // utilisable — c'est ici qu'on le sait (statut/checklist relisent l'état).
 import { compteEbayApiUsableDepuisLigne, rearmerJobsEbayConnexionSiUtilisable } from "../_shared/ebay-voie.ts";
+import { plafondEbay } from "../_shared/ebay-etat-compte.js";
 import { domaineSiteEbay, messageSiteEtranger, siteDuCompteEbay, siteEbayEtranger } from "../_shared/ebay-site.ts";
 
 // localhost:5177 : le serveur de développement des essais réels (session déjà
@@ -216,7 +220,9 @@ async function releverChecklist(admin: SupabaseClient, env: EbayEnv, token: stri
     // clé ne change pas — le trigger et le miroir de l'app la lisent
     // littéralement, la renommer les casserait tous les deux en silence.
     bloque_par_etat_ebay: inscription === "manque" || programme === "manque" || lieu === "manque"
-      || [livraison, paiement, retours].some((x) => x.etat === "manque"),
+      || [livraison, paiement, retours].some((x) => x.etat === "manque")
+      // (17/10, Louis) eBay plafonne le compte à 0 article OU 0 € : il ne peut rien vendre.
+      || plafondEbay(sellingLimit)?.nul === true,
     at: new Date().toISOString(),
   };
   await admin.from("ebay_accounts").update({ seller_state: sellerState, seller_state_at: sellerState.at }).eq("user_id", userId);
@@ -725,14 +731,35 @@ Deno.serve(async (req) => {
         serviceCode = service.code;
         console.log(`[ebay-account] politique livraison : mode=${mode} → ${service.code} (${service.libelle}, ${service.categorie})`);
       }
-      const r = await appelEbay(env, token, TYPES[type].chemin, { method: "POST", body: corpsCreation(type, options, serviceCode) });
+      // (17/10, Fluxen) La politique FillSell d'un type porte TOUJOURS le même
+      // nom (« Paiement FillSell », « Retours FillSell ») : la recréer était
+      // refusée par eBay — trois refus le 15/10, et aucun moyen de passer de
+      // « Pas de retour » aux retours acceptés. Même règle que la livraison
+      // (poser_livraison) : si elle existe déjà chez eBay sous ce nom, on la MET
+      // À JOUR (PUT, corps complet : c'est la nôtre, adressée par son nom) ;
+      // sinon on la crée. Une politique faite par le vendeur, sous un autre
+      // nom, n'est jamais touchée.
+      const corps = corpsCreation(type, options, serviceCode);
+      let idExistant = "";
+      if (type !== "fulfillment") {
+        const ex = await appelEbay(env, token, `${TYPES[type].chemin}/get_by_policy_name?marketplace_id=${MARKETPLACE}&name=${encodeURIComponent(corps.name)}`);
+        if (ex.http === 200 && ex.json && typeof ex.json === "object") idExistant = String((ex.json as Record<string, unknown>)[TYPES[type].id] ?? "");
+      }
+      const r = idExistant
+        ? await appelEbay(env, token, `${TYPES[type].chemin}/${encodeURIComponent(idExistant)}`, { method: "PUT", body: corps })
+        : await appelEbay(env, token, TYPES[type].chemin, { method: "POST", body: corps });
       if (r.http < 200 || r.http >= 300) {
-        return json({ error: `eBay a refusé la création : ${messageErreurEbay(r.json, r.texte)}`, http: r.http }, 502);
+        return json({ error: `eBay a refusé ${idExistant ? "la mise à jour" : "la création"} : ${messageErreurEbay(r.json, r.texte)}`, http: r.http }, 502);
       }
       const cree = r.json as Record<string, unknown> | null;
-      const id = String(cree?.[TYPES[type].id] ?? "");
+      const id = String(cree?.[TYPES[type].id] ?? idExistant);
       if (!id) return json({ error: "eBay a répondu sans identifiant de politique." }, 502);
       await admin.from("ebay_accounts").update({ [TYPES[type].colonne]: id }).eq("user_id", user.id);
+      // Le choix est journalisé : le 15/10, il a fallu le déduire de la taille de la requête.
+      console.log(`[ebay-account] politique ${type} ${idExistant ? "maj" : "creation"}=${id} user=${user.id}${type === "return" ? ` retours=${String(options.retours ?? "acceptes_30")}` : ""}`);
+      // (17/10) Retours de nouveau retenus après un refus d'eBay : les
+      // publications parquées repartent (le compte est peut-être prêt).
+      await rearmerJobsEbayConnexionSiUtilisable(admin, user.id).catch(() => {});
       const checklist = await releverChecklist(admin, env, token, user.id);
       const { compte } = await lireCompte(admin, user.id);
       return json({ etat: etatPublic(compte), checklist, creee: { id, name: String(cree?.name ?? "") } });

@@ -471,6 +471,11 @@ async function readItemsProbeOutcome() {
         languePosee: c?.languePosee ?? null,
         // colisPose (0.6.84) : même question pour package_size_id.
         colisPose: c?.colisPose ?? null,
+        // marquePosee (17/10) : même question pour brand_id (marque de
+        // l'annonce d'origine posée par son identifiant) ; marqueEnvoyee :
+        // les clés brand* réellement parties dans le corps.
+        marquePosee: c?.marquePosee ?? null,
+        marqueEnvoyee: c?.marqueEnvoyee ?? null,
       };
     }
     if (last && refus) break;
@@ -714,6 +719,25 @@ function armerColisPourPost(id) {
   try {
     const n = Number(id);
     window.postMessage({ __fillsellArmeColis: true, id: Number.isInteger(n) && n > 0 ? n : null }, window.location.origin);
+  } catch { /* l'armement ne doit JAMAIS casser le remplissage */ }
+}
+
+// ── Marque de l'annonce en ligne : pose de son IDENTIFIANT au POST (17/10) ───
+// patrick giry « Paris 2024 » (brand_id 305315), Romain « pago » (352029) :
+// anciennes marques libres que ni le menu Marque de Vinted (30 s) ni
+// /api/v2/brands ne proposent plus, alors que l'annonce en ligne les porte
+// (payload d'édition : brand_id + brand_dto). Même canal, même règle que
+// l'ISBN et le colis : la sonde ne pose `brand_id` que si la page l'a laissé
+// nul/absent, jamais d'écrasement. L'id armé est CELUI DE L'ANNONCE (capture,
+// natif.brand_id), jamais un id cherché ou deviné. Passer null DÉSARME.
+function armerMarquePourPost(id, titre = null) {
+  try {
+    const n = Number(id);
+    window.postMessage({
+      __fillsellArmeMarque: true,
+      id: Number.isInteger(n) && n > 1 ? n : null,
+      titre: String(titre ?? "").trim() || null,
+    }, window.location.origin);
   } catch { /* l'armement ne doit JAMAIS casser le remplissage */ }
 }
 // L'id à poser : celui de l'annonce d'origine s'il est dans la table relevée,
@@ -3215,6 +3239,10 @@ async function remplirFormulaireVinted(job) {
     isbn: "isbn",
   };
   for (const [dedie, code] of Object.entries(_bridge)) {
+    // (17/10, Nico) Republication : la marque de l'annonce EN LIGNE, connue par
+    // son identifiant capturé (marque_id, posé par construireJobRecreation), est
+    // reprise telle quelle — aucune réponse ne la remplace.
+    if (dedie === "marque" && Number(fields.marque_id) > 1) continue;
     const v = String(_va[code] ?? "").trim();
     if (v) fields[dedie] = v;
   }
@@ -3322,6 +3350,13 @@ async function remplirFormulaireVinted(job) {
   armerLangueLivrePourPost(null);
   // Format de colis : même raison (0.6.84).
   armerColisPourPost(null);
+  // Marque par son identifiant : même raison (17/10) — un armement qui traîne
+  // poserait la marque d'une annonce sur l'article suivant.
+  armerMarquePourPost(null);
+  // { id, titre } quand la marque de l'annonce d'origine part par son
+  // identifiant (menu de Vinted muet) : lu par la porte des requis et par la
+  // garde de retrait de l'une-passe, plus bas.
+  let marqueParId = null;
 
   // ══ B.5 ÉTENDU À TOUT LE REMPLISSAGE (2026-08-09, 3 annonces d'Ornella) ═════
   // B.5 ne couvrait QUE ensurePhotosLanded — la toute dernière garde, juste
@@ -3776,7 +3811,14 @@ async function remplirFormulaireVinted(job) {
   if (fields.marque) {
     // (03/10) Une marque que Vinted ne connaît pas devient une QUESTION
     // (« Sans marque » ou une marque de sa liste) — jamais un choix à la place.
-    const questionMarque = await selectVintedBrand(fields.marque, warnings, { marqueId: fields.marque_id });
+    // (17/10) SAUF la marque de l'annonce d'origine d'une republication
+    // (marque_capturee + marque_id, posés par construireJobRecreation) : quand
+    // le menu ne la propose pas, elle part par son identifiant (sonde du POST).
+    const questionMarque = await selectVintedBrand(fields.marque, warnings, {
+      marqueId: fields.marque_id,
+      marqueCapturee: fields.marque_capturee ?? null,
+    });
+    if (questionMarque?.poseeParId) marqueParId = { id: questionMarque.marqueId, titre: String(fields.marque) };
     if (questionMarque?.needsUser) {
       return {
         success: false, ...questionMarque, warnings,
@@ -4238,6 +4280,19 @@ async function remplirFormulaireVinted(job) {
     return { discovered: [], unfilled: [], hadConfig: false };
   });
   jalonRemplissage("Requis");
+  // (17/10) La marque de l'annonce d'origine part par son identifiant, dans le
+  // corps du dépôt (sonde) : un #brand vide côté page n'est pas un requis
+  // manquant. La garde de retrait plus bas vérifie, elle, que #brand est
+  // toujours vide (aucune autre marque ne peut partir à la place).
+  if (marqueParId) {
+    // Libellé du code `brand` tel que la config du rayon le nomme (page non
+    // française comprise), plus le libellé serveur — jamais un autre champ.
+    const libellesMarque = new Set([
+      VINTED_SERVER_FIELD_LABELS.brand,
+      ...(requiredState.discovered ?? []).filter((d) => d?.key === "brand").map((d) => d.label),
+    ].map(texteComparable));
+    requiredState.unfilled = requiredState.unfilled.filter((l) => !libellesMarque.has(texteComparable(l)));
+  }
 
   // (02/10 soir, point 10 B) Une-passe (l'annonce d'origine est encore en
   // ligne) : les caractéristiques de l'annonce d'origine non reposées comptent
@@ -4510,6 +4565,29 @@ async function remplirFormulaireVinted(job) {
       warnings.push(`format de colis : ${diagRef}`);
     }
     if (colisSectionAbsente) warnings.push(`format de colis : section absente — format ${colisIdPourPost} envoyé directement (envoi prouvé)`);
+  }
+
+  // ── (17/10) MARQUE PAR SON IDENTIFIANT : RIEN N'EST RETIRÉ SANS PREUVE ─────
+  // La marque de l'annonce d'origine ne partira que dans le corps du dépôt
+  // (sonde). L'annonce n'est RETIRÉE que si (1) #brand est toujours vide —
+  // aucune autre marque ne peut partir à la place — et (2) le serveur a
+  // constaté qu'un dépôt où la sonde a posé brand_id a été accepté par Vinted
+  // (marque_injection_prouvee, servi par get-pending-jobs). Sinon : pause
+  // AVANT tout retrait, annonce intacte, rien soumis — jamais une question.
+  if (onePass?.item_id && !recreation && marqueParId) {
+    const brandPage = String(document.querySelector('#brand, [data-testid="brand-select-dropdown-input"]')?.value ?? "").trim();
+    if (brandPage || job.platform_fields?.marque_injection_prouvee !== true) {
+      return {
+        success: false,
+        marqueParIdNonProuvee: true,
+        error: "La marque de ton annonce n'est plus proposée par le menu de Vinted : FillSell la reprendra telle quelle, " +
+          "par son identifiant, dès que cet envoi direct est vérifié. Rien n'a été retiré, rien n'a été soumis.",
+        warnings,
+        diagnostic: `marque « ${marqueParId.titre} » (id ${marqueParId.id}) : ` +
+          (brandPage ? `#brand porte « ${brandPage} » — aucune autre marque ne part à sa place` : "envoi direct par identifiant pas encore prouvé (marque_injection_prouvee absent)") +
+          " — retrait refusé",
+      };
+    }
   }
 
   // ── UNE-PASSE : suppression de l'annonce d'origine JUSTE avant le clic ────
@@ -4956,6 +5034,8 @@ async function remplirFormulaireVinted(job) {
         sonde.refus?.isbnPose ? `isbn POSÉ dans le corps par la sonde (${sonde.refus.isbnPose}) — la page l'avait laissé vide` : null,
         sonde.refus?.languePosee ? `language_book POSÉ dans le corps par la sonde (ids ${sonde.refus.languePosee}) — la page l'avait laissé vide` : null,
         sonde.refus?.colisPose ? `package_size_id POSÉ dans le corps par la sonde (${sonde.refus.colisPose}) — la page l'avait laissé vide` : null,
+        sonde.refus?.marquePosee ? `brand_id POSÉ dans le corps par la sonde (${sonde.refus.marquePosee}, marque de l'annonce d'origine) — la page l'avait laissé vide` : null,
+        sonde.refus?.marqueEnvoyee ? `marque dans le corps du POST : ${JSON.stringify(sonde.refus.marqueEnvoyee).slice(0, 160)}` : null,
         sonde.refus?.reponse ? `réponse : ${sonde.refus.reponse}` : null,
         `champs exigés : ${details}`,
         serverRequired.map((f) => {
@@ -6532,7 +6612,10 @@ async function selectVintedNoBrand(trigger) {
   }
 }
 
-async function selectVintedBrand(marque, warnings, { marqueId = null } = {}) {
+// (17/10) `marqueCapturee` : le libellé de la marque de l'annonce d'origine
+// (republication, construireJobRecreation). L'identifiant `marqueId` ne peut
+// partir dans le corps du dépôt que pour CETTE marque — jamais pour une autre.
+async function selectVintedBrand(marque, warnings, { marqueId = null, marqueCapturee = null } = {}) {
   const trigger = '#brand, [data-testid="brand-select-dropdown-input"]';
   // « Sans marque » demandé par l'app : chemin natif direct — inutile de
   // chercher au catalogue (pas d'aria-label sur #empty-brand) et la création
@@ -6596,16 +6679,21 @@ async function selectVintedBrand(marque, warnings, { marqueId = null } = {}) {
   // #brand doit porter la marque demandée. Sinon : échec AVANT le dépôt,
   // rien n'est soumis, aucune autre marque n'est posée.
   const demandee = String(marque ?? "").trim();
+  // (06/10) Marque de l'annonce d'origine connue par son id (republication) :
+  // on lui laisse 30 s pour s'afficher (postes lents : Ciddjy, Carla), au lieu
+  // de conclure « inconnue » en 10 s. (17/10) Sorti du `try` : la voie « par
+  // identifiant » plus bas le lit aussi.
+  const idMarque = Number.isInteger(Number(marqueId)) && Number(marqueId) > 1 ? Number(marqueId) : null;
+  // L'id ne vaut que pour LA marque capturée sur l'annonce d'origine.
+  const idDeLAnnonce = idMarque && String(marqueCapturee ?? "").trim()
+    && texteComparable(marqueCapturee) === texteComparable(demandee) ? idMarque : null;
+  const attenteMs = idMarque ? 30000 : 10000;
   let choix = null;
   try {
     await openDropdown(trigger);
     const search = await waitForElement("#brand-search-input", 5000);
     await typeHuman(search, demandee);
-    // (06/10) Marque de l'annonce d'origine connue par son id (republication) :
-    // elle EXISTE au catalogue — on lui laisse 30 s pour s'afficher (postes
-    // lents : Ciddjy, Carla), au lieu de conclure « inconnue » en 10 s.
-    const idMarque = Number.isInteger(Number(marqueId)) && Number(marqueId) > 1 ? Number(marqueId) : null;
-    choix = await attendreChoixMarque(demandee, idMarque ? 30000 : 10000, idMarque);
+    choix = await attendreChoixMarque(demandee, attenteMs, idMarque);
   } catch (e) {
     // ── Catégorie SANS champ Marque, valeur RÉELLE (2026-08-23) : relevé DOM
     // — les formulaires Livres et médias n'ont AUCUN champ #brand. L'absence
@@ -6627,6 +6715,24 @@ async function selectVintedBrand(marque, warnings, { marqueId = null } = {}) {
     choix.el.click();
     await humanPause();
     await confirmDropdownIfNeeded(); // « Fait » — c'est LUI qui commite #brand (création)
+  }
+  // ── (17/10, Nico) REPUBLICATION : LA MARQUE DE L'ANNONCE, PAR SON IDENTIFIANT ──
+  // patrick giry « Paris 2024 » (brand_id 305315), Romain « pago » (352029) :
+  // anciennes marques libres que ni le menu (30 s) ni /api/v2/brands ne
+  // proposent plus, alors que l'annonce en ligne les porte. Rien n'est demandé,
+  // rien n'est choisi à la place : #brand reste vide côté page et
+  // l'identifiant CAPTURÉ part dans le corps du dépôt (sonde, jamais
+  // d'écrasement). Vaut aussi quand la ligne a été cliquée mais que #brand est
+  // resté vide. Si #brand porte une AUTRE valeur, on ne touche à rien : la
+  // question ou l'arrêt ci-dessous, comme avant — jamais une autre marque.
+  const surLaPage = String(document.querySelector(trigger)?.value ?? "").trim();
+  if (idDeLAnnonce && !surLaPage) {
+    await closeAnyOpenDropdown();
+    armerMarquePourPost(idDeLAnnonce, demandee);
+    const note = `marque : « ${demandee} » (id ${idDeLAnnonce}, celle de l'annonce en ligne) non proposée par le menu de Vinted — posée par son identifiant dans le corps du dépôt`;
+    console.warn(`[vinted] ${note}`);
+    warnings.push(note);
+    return { poseeParId: true, marqueId: idDeLAnnonce };
   }
   // ── VINTED NE CONNAÎT PAS CETTE MARQUE ET N'EN CRÉE PLUS (relevé du 03/10) ──
   // Formulaire vinted.fr, compte de Nico, 03/10 ~21:20 : pour « Zorglubia »,
@@ -6653,7 +6759,7 @@ async function selectVintedBrand(marque, warnings, { marqueId = null } = {}) {
         `Vinted ne connaît pas la marque « ${demandee} » et ne permet plus d'en créer une nouvelle. ` +
         "Choisis-la dans la liste de Vinted si elle y est sous un autre nom, ou « Sans marque » (bouton « ✋ Compléter ») : la publication repart d'elle-même. " +
         "Rien n'a été envoyé à Vinted.",
-      diagnostic: `Marque "${demandee}" : ${choix.type === "inconnue" ? "seule la ligne « Sans marque » proposée" : "aucune ligne exacte ni de création en 10 s"} ; suggestions : ${[...(choix.suggestions ?? []), ...catalogue].slice(0, 10).join(" · ") || "aucune"}`,
+      diagnostic: `Marque "${demandee}" : ${choix.type === "inconnue" ? "seule la ligne « Sans marque » proposée" : `aucune ligne exacte ni de création en ${Math.round(attenteMs / 1000)} s${idMarque ? ` (id ${idMarque} attendu)` : ""}`} ; suggestions : ${[...(choix.suggestions ?? []), ...catalogue].slice(0, 10).join(" · ") || "aucune"}`,
       needsUserField: {
         platform: "vinted", field_key: "brand", field_label: "Marque", input_type: "list_search",
         allowed_values: proposees, target: { key: "marque" },
@@ -6679,7 +6785,7 @@ async function selectVintedBrand(marque, warnings, { marqueId = null } = {}) {
   );
   err.diagnostic = choix
     ? `Marque "${demandee}" : ligne ${choix.type === "libre" ? "« Utiliser … comme marque »" : "du catalogue"} cliquée, mais #brand porte « ${posee} »`
-    : `Marque "${demandee}" : ni ligne exacte du catalogue ni ligne de création nommant cette marque en 10 s (#brand = « ${posee} »)`;
+    : `Marque "${demandee}" : ni ligne exacte du catalogue ni ligne de création nommant cette marque en ${Math.round(attenteMs / 1000)} s (#brand = « ${posee} »)`;
   throw err;
 }
 

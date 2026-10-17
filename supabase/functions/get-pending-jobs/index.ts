@@ -15,6 +15,7 @@ import { navigateurDeUA, paysDeEntete, vintedEtranger, paysAppareilDesReglages }
 import { vintedIdsPourPublication } from "../_shared/vinted-ids-publication.ts";
 import { sessionIdDuJwt, identifiantPosteExtension, postesVivants, posteCourt, posteAvecAccesOpla, posteAvecAccesDepop, POSTE_TTL_MS, type Poste } from "../_shared/poste-extension.ts";
 import { CLES_RELANCE_DEPOP } from "../_shared/acces-depop.js";
+import { MOTIF_VENDEUR_DEPOP, SOURCE_VENDEUR_DEPOP, MESSAGE_VENDEUR_DEPOP, attentesVendeurDepop, derniereObservationMur, estEclaireurFrais, champsRetenue } from "../_shared/vendeur-depop.js";
 import { rayonDepopAJour, reponseRayonDepop } from "../_shared/depop-rayon.js";
 import { appliquerRayonDepop } from "../../../src/utils/depopPublication.js";
 import { cheminDeLaReponse, pfApresRayon, CLE_REPONSE_RAYON } from "../_shared/rayon-refuse-moteur.js";
@@ -47,6 +48,7 @@ import { tourDeTailleEnFrancais, brancheDeTaille } from "../_shared/taille-de-se
 import { ageBeebsDuReleve } from "../_shared/beebs-age-releve.js";
 import { attenteSessionEncoreEspacee } from "../_shared/attente-session.js";
 import { pausePageDepotLbc, decisionPausePageDepotLbc } from "../_shared/lbc-pause-page-depot.js";
+import { MOTIF_LBC_PAYANT, FENETRE_FORFAIT_MS, FILTRE_PREUVE_PRO, MSG_FORFAIT_LBC_RETENUE, candidatRetenueForfait, dernierMurForfait, partagerCandidatsForfait, champsRetenueForfait } from "../_shared/lbc-forfait.js";
 import { impasseRecreationVinted, decisionImpasseRecreation } from "../_shared/recreation-impasse-vinted.js";
 import { messageRetenueCreneau, messageRetenuePause, retraitEngage } from "../_shared/retenue-creneau.js";
 import { posteApresDefaut } from "../_shared/defaut-fillsell.js";
@@ -189,6 +191,7 @@ import { candidatesDepuisRetrait, depotPeutEtrePartiDepuis, jugerCandidates, url
 import { depotPublicationPeutEtrePartiDepuis, candidatesDuDepot, rattacherParPhotos, urlsAnnonce } from "../_shared/depot-sans-numero.js";
 import { corrigerFeuilleLbc } from "../_shared/lbc-feuille-corrigee.js";
 import { BUILD_COLIS_DANS_ENVOI, VERSION_COLIS_DANS_ENVOI, RETENUE_COLIS_ANCIEN_POSTE, envoiColisProuve, messageColisAttendMiseAJour, colisVintedRetenuAuService } from "../_shared/vinted-colis.js";
+import { BUILD_VINTED_MARQUE_PAR_ID, envoiMarqueProuve, enPauseMarqueParId, marqueAIdentifiantCapturee } from "../_shared/vinted-marque-par-id.js";
 import { tacheAMettreDeCote, messageTacheSansDemarrage, SOURCE_TACHE_SANS_DEMARRAGE } from "../_shared/tache-sans-demarrage.js";
 import { attenteBoutiqueLevable, POSE_PAR_PUBLICATION_BOUTIQUE, messageAttenteBoutique } from "../_shared/attente-autre-boutique.js";
 import { OPLA_PRIX_MAX, prixOplaTropHaut, messagePrixOplaTropHaut } from "../_shared/opla-prix.js";
@@ -246,6 +249,29 @@ async function envoiColisProuveParc(admin: AdminClient): Promise<boolean> {
     if (error) throw error;
     const prouve = envoiColisProuve(((data ?? []) as Array<{ preuve: unknown }>).map((r) => r.preuve));
     cacheEnvoiColisProuve = { at: Date.now(), prouve };
+    return prouve;
+  } catch (_e) {
+    return false; // jamais « prouvé » sur une lecture ratée
+  }
+}
+// ── (17/10) La marque de l'annonce posée par son identifiant : la preuve du
+// PARC (_shared/vinted-marque-par-id.js), même lecture et même cache que le
+// colis. Mesuré le 17/10 : 268 ms sur 30 jours (62 700 lignes, index
+// created_at) quand aucune preuve n'existe — d'où le cache de 10 min, et la
+// lecture n'a lieu que pour un poste qui porte le correctif.
+let cacheEnvoiMarqueProuve: { at: number; prouve: boolean } | null = null;
+async function envoiMarqueProuveParc(admin: AdminClient): Promise<boolean> {
+  if (cacheEnvoiMarqueProuve && Date.now() - cacheEnvoiMarqueProuve.at < COLIS_CACHE_MS) return cacheEnvoiMarqueProuve.prouve;
+  try {
+    const depuis = new Date(Date.now() - 30 * 86_400_000).toISOString();
+    const { data, error } = await admin.from("cross_post_jobs")
+      .select("preuve:platform_fields->marque_pose_envoi")
+      .eq("platform", "vinted").gte("created_at", depuis)
+      .not("platform_fields->marque_pose_envoi", "is", null)
+      .limit(300);
+    if (error) throw error;
+    const prouve = envoiMarqueProuve(((data ?? []) as Array<{ preuve: unknown }>).map((r) => r.preuve) as Array<{ id?: number; http?: number; le?: string }>);
+    cacheEnvoiMarqueProuve = { at: Date.now(), prouve };
     return prouve;
   } catch (_e) {
     return false; // jamais « prouvé » sur une lecture ratée
@@ -3284,6 +3310,53 @@ serve(async (req) => {
       }
     }
 
+    // ══ (17/10) LA MARQUE DE L'ANNONCE PAR SON IDENTIFIANT (patrick giry
+    //    « Paris 2024 », Romain « pago » — _shared/vinted-marque-par-id.js) ══
+    //   · un poste qui porte le correctif reçoit `marque_injection_prouvee` sur
+    //     ses republications Vinted pas encore retirées quand l'envoi direct de
+    //     la marque par son identifiant a été accepté par Vinted (preuve du
+    //     parc) : seule clé qui autorise l'une-passe à retirer une annonce dont
+    //     la marque ne partira que par son identifiant ;
+    //   · une republication mise en PAUSE par l'extension faute de cette preuve
+    //     (pause_marque_par_id) n'est resservie qu'une fois la preuve acquise,
+    //     et seulement à un poste à jour — sinon elle rejouerait le formulaire
+    //     pour rien. Elle reste « en pause », annonce intacte, jamais une question.
+    // Best-effort : une lecture ratée = rien de prouvé (aucun retrait sur
+    // identifiant), les autres jobs servis tels quels.
+    {
+      const republiablesMarque = out.filter((j) => j.platform === "vinted" && j.action === "republish"
+        && String(((j.platform_fields ?? {}) as Record<string, unknown>).republish_step ?? "a_capturer") !== "deleted");
+      if (republiablesMarque.length) {
+        const posteAJourMarque = buildMsDe(buildDuPoll) >= buildMsDe(BUILD_VINTED_MARQUE_PAR_ID);
+        let marqueProuvee = false;
+        if (posteAJourMarque) {
+          try {
+            const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+            marqueProuvee = await envoiMarqueProuveParc(admin);
+          } catch (e) {
+            console.warn(`[get-pending-jobs] marque par identifiant : ${String((e as Error)?.message ?? e)} — rien de prouvé`);
+          }
+        }
+        const retenusMarque = new Set<string>();
+        for (const j of republiablesMarque) {
+          if (enPauseMarqueParId(j) && !(posteAJourMarque && marqueProuvee)) { retenusMarque.add(String(j.id)); continue; }
+          const pfM = (j.platform_fields ?? {}) as Record<string, unknown>;
+          if (marqueProuvee) j.platform_fields = { ...pfM, marque_injection_prouvee: true };
+          // Le drapeau n'est jamais une donnée : l'extension réécrit la copie
+          // servie en base, et une preuve révoquée (refus plus récent) ne doit
+          // plus rien autoriser — il ne part que lorsqu'il est vrai, ICI.
+          else if ("marque_injection_prouvee" in pfM) {
+            const { marque_injection_prouvee: _perime, ...reste } = pfM;
+            j.platform_fields = reste;
+          }
+        }
+        if (retenusMarque.size) {
+          out = out.filter((j) => !retenusMarque.has(String(j.id)));
+          console.log(`[get-pending-jobs] userId=${user.id} : ${retenusMarque.size} republication(s) Vinted en pause « marque par identifiant » retenue(s) — ${posteAJourMarque ? "envoi direct pas encore prouvé" : `poste « ${buildDuPoll.slice(0, 40) || "build inconnu"} » sans le correctif`}`);
+        }
+      }
+    }
+
     // ══ (15/10, lot C — Hassan Said) LE TITRE REFUSÉ PAR VINTED, RÉÉCRIT PAR
     //    LA PERSONNE ═══════════════════════════════════════════════════════════
     // Vinted a refusé le titre (400 validation_error, « Le titre contient trop
@@ -3660,6 +3733,67 @@ serve(async (req) => {
       out = out.filter((j) => j.platform !== "depop");
       if (out.length !== avantD) {
         console.log(`[get-pending-jobs] userId=${user.id} poste ${posteCourt(sessionId)} sans accès Depop : ${avantD - out.length} job(s) Depop laissé(s) en file`);
+      }
+    }
+
+    // ── DEPOP DEMANDE DE TERMINER LA CONFIGURATION DE VENDEUR : PLUS AUCUN JOB (17/10) ──
+    // (_shared/vendeur-depop.js) Tant qu'une tâche Depop du compte attend la
+    // configuration vendeur, aucune publication ni republication Depop n'est
+    // servie : elle taperait le même mur (Thibault, 39 publications, chacune au
+    // mur). Chacune passe en attente du MÊME geste — needs_user `depop_vendeur`,
+    // le message du compte, `vendeur_depop.retenue_le` (une retenue n'est jamais
+    // un mur VU) — en compare-and-swap sur pending, au plus 40 par passage :
+    // l'app les compte dans UNE carte. Seul l'éclaireur relancé part ; les
+    // retraits ne sont jamais retenus. Une publication Depop du compte faite
+    // depuis le dernier mur VU prouve que le compte vend : rien n'est retenu
+    // (update-job-status et handler-watch relâchent les tâches en attente).
+    // Poll d'exécution seul ; illisible → file servie telle quelle.
+    if (!includeProcessing && !includeNeedsUser && out.some((j) => j.platform === "depop" && j.action !== "delete")) {
+      try {
+        const { data: mursV, error: eMursV } = await userClient.from("cross_post_jobs")
+          .select("id, platform, action, status, created_at, platform_fields")
+          .eq("user_id", user.id).eq("platform", "depop").eq("status", "needs_user")
+          .or(`platform_fields->>needs_user_source.eq.${SOURCE_VENDEUR_DEPOP},platform_fields->last_diagnostic->>quoi.eq.${MOTIF_VENDEUR_DEPOP}`)
+          .limit(50);
+        if (eMursV) throw new Error(eMursV.message);
+        const attentesV = attentesVendeurDepop((mursV ?? []) as never[]) as Array<Record<string, unknown>>;
+        if (attentesV.length) {
+          const vuV = derniereObservationMur(attentesV as never[]);
+          let prouveV = false;
+          if (Number.isFinite(vuV)) {
+            const { data: pubV, error: ePubV } = await userClient.from("cross_post_jobs").select("id")
+              .eq("user_id", user.id).eq("platform", "depop").in("status", ["published", "sold"])
+              .in("action", ["publish", "republish"]).neq("handler_build", "releve-annonces")
+              .gt("published_at", new Date(vuV).toISOString()).limit(1);
+            if (ePubV) throw new Error(ePubV.message);
+            prouveV = (pubV ?? []).length > 0;
+          }
+          if (!prouveV) {
+            const maintenantV = Date.now();
+            const eclaireurV = out.find((j) => j.platform === "depop" && j.action !== "delete" && estEclaireurFrais(j as never, maintenantV));
+            const retenusV = out.filter((j) => j.platform === "depop" && j.action !== "delete" && j !== eclaireurV);
+            let posesV = 0;
+            for (const j of retenusV) {
+              if (posesV >= 40) break;
+              const pfV = champsRetenue((j.platform_fields ?? {}) as Record<string, unknown>, new Date(maintenantV).toISOString()) as Record<string, unknown>;
+              const erreurV = (j as { error?: string | null }).error ?? null;
+              if (erreurV && erreurV !== MESSAGE_VENDEUR_DEPOP) {
+                pfV.erreurs_archivees = archiverErreur(pfV.erreurs_archivees, erreurV, "pending", "get-pending-jobs (configuration vendeur Depop à terminer)");
+              }
+              const { data: majV } = await userClient.from("cross_post_jobs")
+                .update({ status: "needs_user", error: MESSAGE_VENDEUR_DEPOP, platform_fields: pfAPersister(pfV) })
+                .eq("id", String(j.id)).eq("status", "pending").select("id");
+              posesV += (majV ?? []).length;
+            }
+            if (retenusV.length) {
+              const idsV = new Set(retenusV.map((j) => String(j.id)));
+              out = out.filter((j) => !idsV.has(String(j.id)));
+              console.log(`[get-pending-jobs] userId=${user.id} : configuration vendeur Depop à terminer — ${retenusV.length} job(s) Depop retenu(s), ${posesV} passé(s) en attente du geste${eclaireurV ? `, éclaireur ${String(eclaireurV.id).slice(0, 8)} servi` : ""}`);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] configuration vendeur Depop : ${String((e as Error)?.message ?? e)} — file servie telle quelle`);
       }
     }
 
@@ -4098,6 +4232,70 @@ serve(async (req) => {
         }
       } catch (e) {
         console.warn(`[get-pending-jobs] porte pro Leboncoin : ${String((e as Error)?.message ?? e)} — distribution normale`);
+      }
+    }
+
+    // ══ COMPTE LEBONCOIN PRO AU MUR « VALIDER ET PAYER » : PLUS RIEN SUR CE
+    //    MUR (17/10, DeadRoz — 26 dépôts au même mur en une nuit) ═════════════
+    // Règle et motif EXACT : _shared/lbc-forfait.js. Tant que le compte, prouvé
+    // pro, a un mur VU depuis moins de 30 j et qu'aucune publication Leboncoin
+    // n'est passée depuis ce mur, ses publications et ses republications pas
+    // encore retirées ne partent plus : elles rejoignent la carte du compte
+    // (needs_user, motif du mur, « retenue avant essai »), aucune tentative
+    // consommée. Seul l'éclaireur (forfait_lbc.eclaireur_le postérieur au mur :
+    // « C'est fait » de la carte, ou handler-watch) est servi, un à la fois.
+    // Un particulier n'est jamais retenu (son mur payant est le pack photos).
+    // Coût : rien tant qu'aucun job Leboncoin n'est dans la réponse ; sinon une
+    // lecture du mur (index user_id+status), puis seulement s'il y a un mur.
+    // Best-effort : lecture ou écriture illisible → distribution d'avant.
+    if (!includeProcessing && !includeNeedsUser) {
+      try {
+        const candidatsForfait = out.filter((j) => candidatRetenueForfait(j as never));
+        if (candidatsForfait.length) {
+          // Le mur se lit aussi sur un job remis en file (l'éclaireur garde son
+          // dernier mur) : sinon relancer l'éclaireur ferait « reculer » le mur.
+          const { data: mursForfait } = await userClient.from("cross_post_jobs")
+            .select("id, diag:platform_fields->last_diagnostic")
+            .eq("user_id", user.id).eq("platform", "leboncoin").in("status", ["needs_user", "pending", "processing"])
+            .eq("platform_fields->last_diagnostic->>quoi", MOTIF_LBC_PAYANT)
+            .gte("created_at", new Date(Date.now() - FENETRE_FORFAIT_MS).toISOString())
+            .limit(200);
+          const murForfait = dernierMurForfait(((mursForfait ?? []) as Array<{ diag: unknown }>)
+            .map((m) => ({ platform_fields: { last_diagnostic: m.diag } })) as never[]);
+          if (murForfait) {
+            const { data: passeeDepuis } = await userClient.from("cross_post_jobs").select("id")
+              .eq("user_id", user.id).eq("platform", "leboncoin").eq("status", "published")
+              .gt("published_at", new Date(murForfait).toISOString()).limit(1);
+            const { data: preuvePro } = (passeeDepuis ?? []).length ? { data: [] } : await userClient.from("cross_post_jobs").select("id")
+              .eq("user_id", user.id).eq("platform", "leboncoin")
+              .gte("created_at", new Date(Date.now() - FENETRE_FORFAIT_MS).toISOString())
+              .or(FILTRE_PREUVE_PRO).limit(1);
+            if (!(passeeDepuis ?? []).length && (preuvePro ?? []).length) {
+              const { servis, retenus } = partagerCandidatsForfait(candidatsForfait as never[], murForfait) as
+                { servis: Array<Record<string, unknown>>; retenus: Array<Record<string, unknown>> };
+              const maintenantIso = new Date().toISOString();
+              for (const j of retenus) {
+                const pf = champsRetenueForfait(j.platform_fields as Record<string, unknown>, maintenantIso) as Record<string, unknown>;
+                // L'erreur précédente n'est jamais perdue (règle du 17/09 soir).
+                pf["erreurs_archivees"] = archiverErreur(pf["erreurs_archivees"], j.error as string, "pending", "get-pending-jobs (retenue avant essai : compte Leboncoin pro au mur du paiement)");
+                const { error: uErr } = await userClient.from("cross_post_jobs")
+                  .update({ status: "needs_user", error: MSG_FORFAIT_LBC_RETENUE, platform_fields: pf })
+                  .eq("id", String(j.id)).eq("status", "pending");
+                if (uErr) console.warn(`[get-pending-jobs] mur forfait Leboncoin : retenue du job ${String(j.id).slice(0, 8)} non écrite (${uErr.message}) — retenu quand même pour ce poll`);
+              }
+              const idsRetenus = new Set(retenus.map((j) => String(j.id)));
+              out = out.filter((j) => !idsRetenus.has(String(j.id)));
+              if (idsRetenus.size) {
+                console.log(
+                  `[get-pending-jobs] userId=${user.id} : compte Leboncoin pro au mur du paiement (mur vu le ${new Date(murForfait).toISOString()}) → ` +
+                  `${idsRetenus.size} job(s) retenu(s) avant essai${servis.length ? `, éclaireur ${String(servis[0].id).slice(0, 8)} servi` : ""}`,
+                );
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] mur forfait Leboncoin : ${String((e as Error)?.message ?? e)} — distribution normale`);
       }
     }
 
@@ -5633,6 +5831,39 @@ serve(async (req) => {
           }
         }
       } catch (_e) { /* filet best-effort : jamais un point de panne */ }
+    }
+    // ── UNE TRACE DE RETENUE PÉRIMÉE SE LÈVE (17/10, nerema75) ───────────────
+    // La trace ci-dessus est une photo datée : jamais enlevée, elle survivait à
+    // minuit et faisait croire à un plafond (nerema75 : 25 jobs « plafond » le
+    // 17/10, 0 republication faite ce jour-là — retenus en fait par une autre
+    // boutique). Sa reprise passée (ou illisible), elle se lève. Bornée (40 par
+    // poll), sur `pending` seulement, UNE écriture par job ; la copie servie au
+    // poste la perd aussi (sinon il la réécrirait). Lecture de la trace en base :
+    // vivante seulement si `status = 'pending'` ET `reprise > now()`.
+    // Pendant une retenue, le bloc ci-dessus réécrit lui-même les traces (même
+    // motif, nouvelle reprise) : rien à lever, jamais deux écritures du même job.
+    if (!includeProcessing && !includeNeedsUser && plafondRepublish?.retenue !== true) {
+      try {
+        const maintenantMs = Date.now();
+        const perimees = (jobs ?? []).filter((j) => {
+          if (j.action !== "republish" || j.status !== "pending") return false;
+          const r = ((j.platform_fields ?? {}) as Record<string, unknown>)["retenue_republication"] as Record<string, unknown> | undefined;
+          if (!r || typeof r !== "object") return false;
+          const reprise = Date.parse(String(r.reprise ?? ""));
+          return !Number.isFinite(reprise) || reprise <= maintenantMs;
+        }).slice(0, 40);
+        let levees = 0;
+        for (const j of perimees) {
+          const pf = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
+          delete pf["retenue_republication"];
+          const { error: errLev } = await userClient.from("cross_post_jobs").update({ platform_fields: pf })
+            .eq("id", j.id).eq("status", "pending");
+          if (!errLev) { (j as { platform_fields: unknown }).platform_fields = pf; levees++; }
+        }
+        if (levees) console.log(`[get-pending-jobs] userId=${user.id} : ${levees} trace(s) de retenue périmée(s) levée(s)`);
+      } catch (e) {
+        console.warn("[get-pending-jobs] trace de retenue périmée non levée (sans effet sur la file) :", (e as Error)?.message ?? e);
+      }
     }
 
     // ── COUPE-CIRCUIT : LE RETRAIT VINTED EST RETENU POUR LES CLIENTS
@@ -8994,6 +9225,11 @@ serve(async (req) => {
     // (attributs.marque_vinted { v, de }, de = la marque refusée) est servie en
     // `marque_choisie` ; l'extension (0.6.114) la pose à la place de la marque
     // capturée et oublie l'identifiant capturé. Rien n'est écrit en base.
+    // ⛔ (17/10, Nico) Plus jamais, pour un poste qui porte le correctif
+    // (BUILD_VINTED_MARQUE_PAR_ID), quand l'annonce porte une vraie marque à
+    // identifiant (republish_snapshot.brand_id > 1) : une republication reprend
+    // EXACTEMENT la marque de l'annonce en ligne, par son identifiant si le
+    // menu de Vinted ne la propose plus (_shared/vinted-marque-par-id.js).
     try {
       const repubsVinted = (out as unknown as Array<Record<string, unknown>>)
         .filter((j) => j.platform === "vinted" && j.action === "republish" && j.inventaire_id != null);
@@ -9001,8 +9237,17 @@ serve(async (req) => {
         const ids = [...new Set(repubsVinted.map((j) => Number(j.inventaire_id)))];
         const { data: arts } = await lireParLots((lot) => userClient.from("inventaire").select("id, attributs").in("id", lot), ids);
         const parId = new Map(((arts ?? []) as Array<Record<string, unknown>>).map((a) => [Number(a.id), (a.attributs ?? {}) as Record<string, unknown>]));
+        // Le poste pose-t-il la marque de l'annonce par son identifiant ? Un
+        // poste plus ancien garde la règle du 15/10 (sinon il reposerait la
+        // question à chaque essai : la boucle que cette réponse a fermée).
+        const posteMarqueParIdR = buildMsDe(buildDuPoll) >= buildMsDe(BUILD_VINTED_MARQUE_PAR_ID);
         for (const j of repubsVinted) {
           const pfR = ((j.platform_fields ?? {}) as Record<string, unknown>);
+          // (17/10, Nico) L'annonce en ligne porte une vraie marque à
+          // identifiant : elle est reprise TELLE QUELLE (l'extension la pose par
+          // son identifiant si le menu ne la propose pas) — aucune réponse ne
+          // la remplace (_shared/vinted-marque-par-id.js).
+          if (posteMarqueParIdR && marqueAIdentifiantCapturee(pfR) != null) continue;
           const rep = parId.get(Number(j.inventaire_id))?.marque_vinted as Record<string, unknown> | undefined;
           const capturee = String(((pfR.republish_snapshot ?? {}) as Record<string, unknown>).marque ?? "").trim();
           const v = String(rep?.v ?? "").trim();
@@ -9053,7 +9298,11 @@ serve(async (req) => {
           const retenues = ((reglagesM.vinted ?? {}) as Record<string, unknown>).marques_retenues;
           if (retenues && typeof retenues === "object") {
             let n = 0;
-            for (const j of vintedPub) if (appliquerMarqueRetenue(j, retenues as Record<string, unknown>)) n++;
+            // (17/10) Un poste qui pose la marque de l'annonce par son
+            // identifiant (_shared/vinted-marque-par-id.js) : une republication
+            // à marque identifiée garde la sienne, telle qu'en ligne.
+            const posteMarqueParId = buildMsDe(buildDuPoll) >= buildMsDe(BUILD_VINTED_MARQUE_PAR_ID);
+            for (const j of vintedPub) if (appliquerMarqueRetenue(j, retenues as Record<string, unknown>, new Date(), { annonceParIdentifiant: posteMarqueParId })) n++;
             if (n) console.log(`[get-pending-jobs] user=${user.id} marque retenue appliquée : ${n} job(s) Vinted`);
           }
         } catch (e) {

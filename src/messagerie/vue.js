@@ -387,8 +387,8 @@ function motifGenerationEnClair(motif, pf, fr) {
     telephone_beebs_non_verifie: fr ? 'Beebs exige un numéro de téléphone vérifié pour générer le bordereau : vérifie-le sur Beebs, puis génère à nouveau ici.' : 'Beebs requires a verified phone number to generate the label: verify it on Beebs, then generate again here.',
     action_beebs_introuvable: fr ? 'Le bouton de Beebs a changé : FillSell ne l’a pas trouvé, rien n’a été fait. Réessaie plus tard ici.' : 'Beebs changed its button: FillSell could not find it, nothing was done. Try again later here.',
     beebs_refus: fr ? 'Beebs a refusé (vérification de paiement ou de téléphone ?) : rien n’a été fait. Réessaie plus tard ici.' : 'Beebs refused (payment or phone check?): nothing was done. Try again later here.',
-    commande_annulee: fr ? 'La commande est annulée.' : 'The order is cancelled.',
-    deja_expediee: fr ? 'La commande est déjà expédiée.' : 'The order is already shipped.',
+    commande_annulee: fr ? `La commande a été annulée sur ${pf} : rien n’a été fait.` : `The order was cancelled on ${pf}: nothing was done.`,
+    deja_expediee: fr ? `La commande est déjà expédiée sur ${pf} : rien n’a été fait.` : `The order is already shipped on ${pf}: nothing was done.`,
     plateforme_en_pause: fr ? `${pf} a freiné nos lectures : pause de sécurité, rien n’a été fait. Réessaie plus tard ici.` : `${pf} slowed our reads down: safety pause, nothing was done. Try again later here.`,
   };
   if (table[m]) return table[m];
@@ -400,10 +400,13 @@ function motifGenerationEnClair(motif, pf, fr) {
 export function etatDemandeBordereau(d, lang = 'fr', platform = null) {
   const fr = lang !== 'en';
   const pf = nomPlateforme(platform ?? d?.platform);
-  const attendOrdi = fr ? 'En attente de ton ordinateur (Chrome ouvert, extension active) : rien n’est fait avant. S’il ne la prend pas à temps, rien n’est fait et le bouton revient ici.' : 'Waiting for your computer (Chrome open, extension on): nothing is done before. If it does not take it in time, nothing is done and the button comes back here.';
+  // (17/10, migration 20261017100000) Une demande attend l'ordinateur 24 h (30 min avant).
+  const attendOrdi = fr ? 'En attente de ton ordinateur (Chrome ouvert, extension active), 24 h au plus : rien n’est fait avant. Passé 24 h, rien n’est fait et le bouton revient ici.' : 'Waiting for your computer (Chrome open, extension on), 24 h at most: nothing is done before. After 24 h, nothing is done and the button comes back here.';
+  // Garde-fou du geste : l'extension relit la commande juste avant (decisionGeneration).
+  const relitAvant = fr ? `Juste avant, il relit la commande sur ${pf} : annulée ou déjà traitée entre-temps, rien n’est fait.` : `Right before, it reads the order again on ${pf}: cancelled or already handled in the meantime, nothing is done.`;
   if (d?.action === 'generer') {
     switch (d.statut) {
-      case 'demandee': return { ton: 'neutre', attente: true, texte: fr ? `Génération demandée. ${attendOrdi}` : `Generation requested. ${attendOrdi}` };
+      case 'demandee': return { ton: 'neutre', attente: true, texte: fr ? `Génération demandée. ${attendOrdi} ${relitAvant}` : `Generation requested. ${attendOrdi} ${relitAvant}` };
       case 'en_cours': return { ton: 'neutre', attente: true, texte: fr ? `Génération en cours sur ${pf}…` : `Generating on ${pf}…` };
       case 'generee': {
         if (d.motif === 'fichier_sur_beebs') return { ton: 'ambre', attente: false, texte: fr ? 'Bordereau généré sur Beebs, mais le site de Beebs ne donne pas encore le fichier : FillSell le cherche à chaque passage de ton ordinateur.' : 'Label generated on Beebs, but the Beebs site does not give the file yet: FillSell looks for it on each pass of your computer.' };
@@ -412,7 +415,7 @@ export function etatDemandeBordereau(d, lang = 'fr', platform = null) {
       }
       case 'prete': return { ton: 'ok', attente: false, texte: fr ? 'Bordereau généré et récupéré.' : 'Label generated and fetched.' };
       case 'incertaine': return { ton: 'rouge', attente: false, texte: fr ? `On ne sait pas si ${pf} a reçu la demande (coupure pendant l’envoi). Vérifie la commande sur ${pf} avant tout autre geste : FillSell ne la refera jamais.` : `We do not know whether ${pf} received the request (cut during sending). Check the order on ${pf} before anything else: FillSell will never redo it.` };
-      case 'expiree': return { ton: 'ambre', attente: false, texte: fr ? 'Ton ordinateur n’a pas pris la demande à temps (éteint, ou Chrome fermé) : rien n’a été fait. Le bouton est de nouveau là : réessaie quand il est allumé.' : 'Your computer did not take the request in time (off, or Chrome closed): nothing was done. The button is back: try again when it is on.' };
+      case 'expiree': return { ton: 'ambre', attente: false, texte: fr ? 'Ton ordinateur n’a pas pris la demande dans les 24 h (éteint, ou Chrome fermé) : rien n’a été fait. Le bouton est de nouveau là : réessaie quand il est allumé.' : 'Your computer did not take the request within 24 h (off, or Chrome closed): nothing was done. The button is back: try again when it is on.' };
       case 'echec': return { ton: 'ambre', attente: false, texte: motifGenerationEnClair(d.motif, pf, fr) };
       default: return null;
     }
@@ -421,7 +424,7 @@ export function etatDemandeBordereau(d, lang = 'fr', platform = null) {
     case 'demandee': return { ton: 'neutre', attente: true, texte: fr ? `Demande envoyée. ${attendOrdi}` : `Request sent. ${attendOrdi}` };
     case 'en_cours': return { ton: 'neutre', attente: true, texte: fr ? 'Récupération du bordereau en cours…' : 'Fetching the label…' };
     case 'prete': return { ton: 'ok', attente: false, texte: fr ? 'Bordereau récupéré.' : 'Label fetched.' };
-    case 'expiree': return { ton: 'ambre', attente: false, texte: fr ? 'Ton ordinateur n’a pas pris la demande à temps (éteint, ou Chrome fermé) : rien n’a été fait. Réessaie ici quand il est allumé.' : 'Your computer did not take the request in time (off, or Chrome closed): nothing was done. Try again here when it is on.' };
+    case 'expiree': return { ton: 'ambre', attente: false, texte: fr ? 'Ton ordinateur n’a pas pris la demande dans les 24 h (éteint, ou Chrome fermé) : rien n’a été fait. Réessaie ici quand il est allumé.' : 'Your computer did not take the request within 24 h (off, or Chrome closed): nothing was done. Try again here when it is on.' };
     case 'echec': {
       const m = String(d.motif ?? '');
       if (m === 'fichier_sur_beebs') return { ton: 'ambre', attente: false, texte: fr ? 'Le site de Beebs ne donne pas encore le fichier de ce bordereau : FillSell réessaie à chaque demande. En dernier recours, ouvre la commande sur Beebs.' : 'The Beebs site does not give this label file yet: FillSell retries on each request. As a last resort, open the order on Beebs.' };

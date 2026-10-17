@@ -23,6 +23,8 @@
 // computeRemovalInfo (publicationState.js) — ce module ne juge que les
 // attentes et les refus, pour ne rien changer à ce qui marchait.
 
+import { attendVendeurDepop } from "../../supabase/functions/_shared/vendeur-depop.js";
+
 const PUBLIE = new Set(["publish", "republish"]);
 const CONNEXION_RE = /^Connexion\s+\S+\s+requise/i;
 const REAUTH_RE = /^REAUTH VENTE eBay/i;
@@ -62,6 +64,8 @@ export function natureAttente(job) {
   if (job?.platform === "opla" && source === "opla_acces") return { kind: "attente_autorisation", motif: "autoriser_opla" };
   // (11/10) Depop, la même attente (handler-watch, _shared/acces-depop.js).
   if (job?.platform === "depop" && source === "depop_acces") return { kind: "attente_autorisation", motif: "autoriser_depop" };
+  // (17/10) Depop attend la configuration vendeur du COMPTE (_shared/vendeur-depop.js).
+  if (job?.platform === "depop" && attendVendeurDepop({ status: "needs_user", ...job })) return { kind: "attente_vendeur_depop" };
   if (source === "ebay_connexion_requise" || source === "ebay_compte_a_finir") return { kind: "attente_connexion", motif: "connexion" };
   // (01/10) Chrome connecté à un AUTRE compte eBay que celui relié à FillSell :
   // l'erreur du job nomme le bon compte (« Connecte-toi … avec le compte X »).
@@ -75,6 +79,11 @@ export function natureAttente(job) {
     || (Array.isArray(pf.champs_a_completer) && pf.champs_a_completer[0])
     || null;
   if (champ) return { kind: "attente_champ", champ: String(champ) };
+  // (17/10) Leboncoin n'offre que « Valider et payer » pour ce dépôt (motif EXACT
+  // posé par l'extension, _shared/lbc-forfait.js) : une attente de paiement,
+  // jamais une question de champ. Même « kind » que l'attente générique (les
+  // écrans de suivi la traitent déjà) ; seule la phrase change.
+  if (job?.platform === "leboncoin" && pf.last_diagnostic?.quoi === "lbc_options_payant_seulement") return { kind: "attente", motif: "paiement_lbc" };
   return { kind: "attente" };
 }
 
@@ -118,7 +127,10 @@ export function phraseEtat(platform, etat, lang = "fr") {
       return en ? `waiting for you to sign in to ${nom}` : `en attente de ta connexion à ${nom}`;
     case "attente_plateforme_ecartee":
       return en ? `paused: you said you don't sell on ${nom}` : `en pause : tu as indiqué ne pas vendre sur ${nom}`;
+    case "attente_vendeur_depop":
+      return en ? "waiting for your Depop seller setup" : "en attente de ta configuration de vendeur Depop";
     case "attente":
+      if (etat?.motif === "paiement_lbc") return en ? `waiting: ${nom} asks for a payment for this listing` : `en attente : ${nom} demande un paiement pour ce dépôt`;
       return en ? "a publication is waiting" : "une publication est en attente";
     case "refusee":
       return en ? "last publication refused — you can publish again" : "dernière publication refusée — tu peux republier";
@@ -146,6 +158,7 @@ export function messageRefusPublication(platforms, { publiees = new Set(), enFil
       if (a.kind === "attente_champ") lignes.push(en ? `${nom}: a publication is waiting for “${a.champ}” — complete it from the item card, it will go out on its own.` : `${nom} : une publication attend « ${a.champ} » — complète-le depuis la carte de l'article, elle partira toute seule.`);
       else if (a.kind === "attente_autorisation") lignes.push(en ? `${nom}: a publication is waiting for your permission — tap “Autoriser Opla”, it will go out on its own.` : `${nom} : une publication attend ton autorisation — appuie sur « Autoriser Opla », elle partira toute seule.`);
       else if (a.kind === "attente_connexion") lignes.push(en ? `${nom}: a publication is waiting for you to sign in — tap “Sign in”, it will go out on its own.` : `${nom} : une publication attend ta connexion — appuie sur « Me connecter », elle partira toute seule.`);
+      else if (a.kind === "attente_vendeur_depop") lignes.push(en ? `${nom}: a publication is waiting for your Depop seller setup — finish it once on depop.com, it will go out on its own.` : `${nom} : une publication attend ta configuration de vendeur Depop — termine-la une fois sur depop.com, elle partira toute seule.`);
       else lignes.push(en ? `${nom}: a publication is already waiting — nothing to redo.` : `${nom} : une publication est déjà en attente — rien à refaire.`);
     } else if (enFile.has(p)) {
       lignes.push(en ? `${nom}: a publication is already under way — nothing to redo.` : `${nom} : une publication est déjà en cours — rien à refaire.`);

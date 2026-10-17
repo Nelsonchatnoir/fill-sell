@@ -12,8 +12,10 @@
 //   · un seul message au content script doit durer plus de 300 s ;
 //   · une reprise après une suppression envoyée consomme de nouveau un essai,
 //     ou redit « rien n'a été touché » ;
-//   · le relevé déclare la liste « rendue » par le flux sans que les trois
-//     concordent (onglets lus, compteur de Beebs = index, identifiants connus) ;
+//   · le relevé déclare la liste « rendue » par le flux sans passer par la
+//     règle jugerFluxMesAnnoncesBeebs (17/10 : onglets lus, liste « en ligne »
+//     entière et tenue par l'index — exécutée par selftest:beebs-flux-mes-annonces),
+//     ou n'écrit plus le verdict du flux dans le run ;
 //   · le manifeste n'est plus en 0.6.104 ou le BUILD du content script l'oublie.
 //
 //   npm run selftest:beebs-preuve-relue
@@ -39,7 +41,8 @@ console.log('1. Content script : la preuve se relit sans aucun geste');
   const c = corps(s, 'async function confirmerRetraitParMesAnnonces(idCible, t) {', '\n}\n');
   ok(/const suppressionEnvoyeeLe = new Date\(\)\.toISOString\(\);/.test(c) && /suppressionEnvoyee: true, suppressionEnvoyeeLe,/.test(c), 'l\'heure d\'envoi de la suppression remonte au background');
   ok(/for \(const attente of \[0, 10_000, 20_000, 40_000, 60_000\]\)/.test(c), 'le content script relit toujours ~2 min, pas plus (un message borné à 300 s)');
-  ok(/^const BEEBS_BUILD = "2026-10-08-preuve-relue \(0\.6\.104/m.test(s), 'empreinte de version du content script à jour');
+  // (17/10) Une empreinte plus récente peut passer devant : la 0.6.104 doit rester dans la chaîne.
+  ok(/^const BEEBS_BUILD = ".*2026-10-08-preuve-relue \(0\.6\.104/m.test(s), 'empreinte de version du content script à jour');
 }
 
 console.log('2. Background : relecture bornée à ~6 min après l\'envoi, service worker éveillé');
@@ -73,17 +76,24 @@ console.log('3. Aucune reprise ne consomme d\'essai tant que la suppression n\'e
   ok(/updateJobStatus\(accessToken, job\.id, "pending"/.test(f) && !/"failed"|"needs_user"/.test(f), 'le job reste en file : jamais « failed » sur une suppression non prouvée');
 }
 
-console.log('4. Relevé : le flux ne tranche que si tout concorde');
+console.log('4. Relevé : le flux ne tranche que par sa règle, et le dit dans le run');
 {
-  const r = corps(b, '« MES ANNONCES » PEINTE VIDE : LE FLUX DE LA PAGE TRANCHE', 'if (concordent) beebsPageMuette = null;');
+  // (17/10, Ornella) La règle vit dans une fonction PURE, exécutée cas par cas
+  // par selftest:beebs-flux-mes-annonces ; ici, le câblage.
+  const r = corps(b, '« MES ANNONCES » PEINTE VIDE : LE FLUX DE LA PAGE TRANCHE', 'beebsAntiRobot = false;');
   ok(r.length > 0, 'branche présente');
-  ok(/if \(beebsPageMuette != null && idx\?\.ok && idx\.exhaustif && Number\.isFinite\(idx\.total\)\)/.test(r), 'seulement page peinte vide ET index au total exact');
+  ok(/if \(\(beebsPageMuette != null \|\| beebsAntiRobot\) && idx\?\.ok && idx\.exhaustif && Number\.isFinite\(idx\.total\)\)/.test(r),
+    'seulement page peinte vide (ou mur anti-robot) ET index au total exact');
   ok(/sendMessageToTab\(dernierTabId, \{ type: "BEEBS_IDS_MES_ANNONCES" \}, 60_000\)/.test(r), 'le flux lu par la commande existante (lecture pure)');
-  ok(/flux\?\.ok === true && pEnLigne\?\.ok === true && pVerif\?\.ok === true/.test(r), 'les deux onglets lus');
-  ok(/Number\(pEnLigne\.annoncees\) === Number\(idx\.total\)/.test(r), 'le compteur « en ligne » de Beebs = le total de l\'index');
-  ok(/\(pEnLigne\.ids \?\? \[\]\)\.every\(\(id\) => idsIndex\.has\(String\(id\)\)\)/.test(r) && /\(pVerif\.ids \?\? \[\]\)\.every\(\(id\) => annonces\.has\(String\(id\)\)\)/.test(r),
-    'chaque identifiant du flux est connu (index en ligne, relevé en vérification)');
-  ok(/beebsPageMuette = Number\(idx\.total\)/.test(b) && /listeRendue: beebsPageMuette == null/.test(b), 'sinon la page reste muette : rien n\'est conclu (comme avant)');
+  ok(/const juge = jugerFluxMesAnnoncesBeebs\(\{/.test(r) && /if \(juge\.rendue\) \{/.test(r), 'le verdict vient de jugerFluxMesAnnoncesBeebs, et de lui seul');
+  ok(/beebsFluxTrace = juge\.trace;/.test(r) && /\.\.\.\(platform === "beebs" && beebsFluxTrace \? \[beebsFluxTrace\] : \[\]\)/.test(b),
+    'le verdict du flux part dans le run (défilement), relevé fini comme incomplet');
+  const j = corps(b, 'function jugerFluxMesAnnoncesBeebs(', '\nasync function releverAnnoncesPlateforme(');
+  ok(/pEnLigne\?\.ok !== true/.test(j) && /pVerif\?\.ok !== true/.test(j), 'les deux onglets lus');
+  ok(/enLigne\.every\(\(id\) => index\.has\(id\)\)/.test(j), 'chaque identifiant « en ligne » du flux est dans l\'index');
+  ok(/enLigne\.length !== compteur && compteur !== total/.test(j), 'liste « en ligne » entière, sinon (tronquée) compteur = index comme avant');
+  ok(/verif\.filter\(\(id\) => connuesMap\.has\(id\)\)/.test(j), '« en vérification » : seules les annonces connues entrent au relevé');
+  ok(/beebsPageMuette = Number\(idx\.total\)/.test(b) && /listeRendue: beebsPageMuette == null && !beebsAntiRobot/.test(b), 'sinon la page reste muette : rien n\'est conclu (comme avant)');
 }
 
 console.log('4 bis. Retrait : « déjà absente » n\'est pas « retirée » tant que Beebs modère (exécuté)');

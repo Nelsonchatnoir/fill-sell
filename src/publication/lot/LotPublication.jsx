@@ -48,6 +48,7 @@ import { bilanPlateformes } from "../plateformes";
 import { urlPhoto, urlsPhotos } from "../../utils/photos";
 import { lireVeritePlateformes, sessionsDepuisVerite } from "../../utils/veritePlateformes";
 import { ebayCompteUtilisable } from "../../utils/ebayCompte";
+import { resumeEbay } from "../../utils/ebayParcours";
 import { lireProchaineRemiseAZero } from "../../reglages/quotas";
 import { agirEbay } from "../../utils/ebayCompte";
 import { businessOfferVisible } from "../../config/businessOffer";
@@ -991,7 +992,7 @@ function EcranDuLot({
           {etape === "plateformes" && (
             <EcranPlateformes
               en={en} lang={lang} userId={userId} donnees={donnees} resume={resume} choix={choix} basculer={basculer}
-              sessions={sessions} pauses={pauses} ebayBloque={ebayBloque} ebayParServeur={ebayParServeur}
+              sessions={sessions} pauses={pauses} ebayBloque={ebayBloque} ebayParServeur={ebayParServeur} ebayEtat={ctx.ebayCompte?.etat ?? null}
               quotas={quotas} restantes={restantes} remise={remise} partage={partage} annoncesPrevues={annoncesPrevues} duree={duree}
               extensionNeverSeen={ctx.extensionNeverSeen} extensionLastSeenAt={ctx.extensionLastSeenAt}
               fichesLues={fiches != null} boutiqueVinted={boutiqueVinted} depopAAutoriser={depopAAutoriser}
@@ -1064,7 +1065,7 @@ export function CoqueLot({ en, ecran, titre, numeroEcran, retour = null, quitter
 
 // ═══ ÉCRAN 1 — « OÙ LES PUBLIER ? » ═════════════════════════════════════════
 export function EcranPlateformes({
-  en, lang, userId, donnees, resume, choix, basculer, sessions, pauses, ebayBloque, ebayParServeur,
+  en, lang, userId, donnees, resume, choix, basculer, sessions, pauses, ebayBloque, ebayParServeur, ebayEtat = null,
   quotas, restantes, remise, partage, annoncesPrevues, duree, extensionNeverSeen, extensionLastSeenAt, fichesLues, boutiqueVinted = null,
   mur = null, depopAAutoriser = false,
 }) {
@@ -1139,7 +1140,7 @@ export function EcranPlateformes({
             let sousTexte;
             if (r.possibles === 0) sousTexte = en ? "Already there for all of them" : "Déjà en ligne pour tous";
             else if (pause) sousTexte = pause || (en ? "Paused on our side for now" : "En pause de notre côté pour l'instant");
-            else if (eb) sousTexte = en ? "Your eBay account isn't ready to sell yet: finish it in Settings" : "Ton compte eBay n'est pas encore prêt à vendre : termine-le dans Réglages";
+            else if (eb) sousTexte = resumeEbay(ebayEtat, en ? "en" : "fr").phrase; // (17/10) la règle unique : plafond eBay à zéro ou étape qui reste, nommés
             else {
               const a = en ? `${r.possibles} item${r.possibles > 1 ? "s" : ""}` : `${r.possibles} article${r.possibles > 1 ? "s" : ""}`;
               const d = r.dejaLa ? (en ? ` · ${r.dejaLa} already there` : ` · ${r.dejaLa} y ${r.dejaLa > 1 ? "sont" : "est"} déjà`) : "";

@@ -247,10 +247,13 @@ export function depopPointureEnfant(valeur) {
 }
 
 // ── MARQUE ──────────────────────────────────────────────────────────────────
-// Obligatoire chez Depop. L'absence de marque (estSansMarque, la seule liste)
-// part en `unbranded` — l'option « Other » du formulaire. Une vraie marque se
-// cherche dans la liste Depop au moment du dépôt (21 752 marques relevées) ;
-// introuvable → question, jamais `unbranded` à sa place.
+// Obligatoire chez Depop. L'absence de marque (estSansMarque) part en
+// « Sans marque », que le connecteur traduit en `unbranded` — l'option « Other »
+// du formulaire. (17/10, Nico) Au dépôt, la marque se cherche par égalité
+// EXACTE (casse, accents et espaces multiples ignorés) dans la liste vivante de
+// Depop ; une absence, un nom commun de vêtement ou une marque introuvable
+// partent en « Other » — jamais une autre marque, jamais une question
+// (supabase/functions/_shared/marque-depop.js, content-scripts/depop.js).
 export const DEPOP_SANS_MARQUE = "unbranded";
 export function depopMarqueAbsente(valeur) {
   return !String(valeur ?? "").trim() || estSansMarque(valeur);

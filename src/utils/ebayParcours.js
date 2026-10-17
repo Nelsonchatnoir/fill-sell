@@ -19,39 +19,38 @@
 //    phrase livrée, dans les deux langues.
 //
 // ⛔ QUOTA : 5 000 appels eBay par jour pour TOUT le parc. Ce module ne fait
-//    AUCUN appel. Il sait lire deux sources :
-//      · `etat` (action 'statut' : un SELECT, zéro appel eBay) — c'est lui que
-//        lisent l'app et ses écrans, partout ;
-//      · `checklist` (5 appels Account API) — relevée seulement dans les
-//        Réglages, quand la personne regarde vraiment son compte.
-//    Les deux donnent le MÊME verdict par étape, c'est la garantie qu'un écran
-//    gratuit ne contredit jamais l'écran payant.
+//    AUCUN appel. Ses verdicts viennent d'UNE règle, partagée avec le serveur
+//    (supabase/functions/_shared/ebay-etat-compte.js), appliquée à `etat`
+//    (action 'statut' : un SELECT, zéro appel eBay ; les Réglages reçoivent le
+//    même `etat`, relu par le serveur après chaque relevé).
+//    (17/10, Louis) Les lignes du relevé (`checklist`) ne décident PLUS rien :
+//    elles disaient « ok » dès qu'une politique EXISTAIT chez eBay, retenue ou
+//    non — d'où « eBay est prêt » dans les Réglages pendant que la carte du
+//    Stock disait « il reste 2 étapes ». Elles ne servent plus qu'à lister les
+//    politiques existantes, pour en choisir une.
 // ═══════════════════════════════════════════════════════════════════════════
+import { ETAPES_EBAY as ETAPES_DE_LA_REGLE, etatCompteEbay } from '../../supabase/functions/_shared/ebay-etat-compte.js';
 
 // L'ORDRE D'eBAY, pas le nôtre : une politique ne peut pas se créer avant que
 // les conditions de vente soient activées, et rien ne se publie avant
-// l'inscription vendeur. Le serveur rend ses lignes dans cet ordre-là
-// (ebay-account/index.ts) ; on le fige ici pour que l'écran ne dépende pas de
-// l'ordre d'un tableau JSON.
-export const ETAPES_EBAY = [
-  'inscription_vendeur',
-  'politiques_activees',
-  'politique_livraison',
-  'politique_paiement',
-  'politique_retours',
-  'lieu_expedition',
-];
+// l'inscription vendeur. Il est figé dans la règle partagée
+// (_shared/ebay-etat-compte.js) pour que l'écran et le serveur ne dépendent
+// pas de l'ordre d'un tableau JSON.
+export const ETAPES_EBAY = ETAPES_DE_LA_REGLE;
 
 // Les étapes qui se règlent CHEZ eBAY (on sort de l'app), avec le lien exact.
 // ⛔ Aucun lien qui n'ait été ouvert et vérifié (garde-fou Nico) :
 //    /sl/sell, /bp/policyoptin, /bp/manage — relevés le 05/09 dans la session
-//    de Nico, revérifiés le 22/09.
+//    de Nico, revérifiés le 22/09 ; /sh/ovw (le Seller Hub) — relevé le 10/09,
+//    seule porte vivante du compte vendeur (EBAY_SELLER_HUB_URL, utils/shared.js).
 export const LIENS_EBAY = {
   inscription_vendeur: 'https://www.ebay.fr/sl/sell',
   politiques_activees: 'https://www.ebay.fr/bp/policyoptin',
   politique_livraison: 'https://www.ebay.fr/bp/manage',
   politique_paiement: 'https://www.ebay.fr/bp/manage',
   politique_retours: 'https://www.ebay.fr/bp/manage',
+  // (17/10) Pas une étape : là où eBay dit pourquoi il plafonne le compte à zéro.
+  compte_vendeur: 'https://www.ebay.fr/sh/ovw',
 };
 
 // Les étapes qu'on sait faire NOUS-MÊMES, sans que la personne sorte de l'app.
@@ -86,6 +85,20 @@ const MOTS = {
   fr: {
     pret: 'eBay est prêt, tes articles peuvent partir.',
     pretSous: 'Tes annonces eBay partent de nos serveurs. Ton ordinateur peut rester éteint.',
+    // (17/10) eBay plafonne le compte à zéro : ce n'est pas une étape à nous,
+    // c'est eBay qui n'autorise pas encore ce compte à vendre.
+    bloque: {
+      titre: 'eBay n\'autorise pas encore ce compte à vendre',
+      texte: (plafond) => `Son plafond de vente est à ${plafond} par mois : tant qu'il est à zéro, eBay refuse toute mise en vente et FillSell n'envoie rien. eBay ne nous en donne pas la raison ; il l'affiche sur ton compte vendeur. Dès qu'il le relève, tes annonces partent toutes seules.`,
+      bouton: 'Ouvrir mon compte vendeur eBay',
+    },
+    plafond: (p) => {
+      const q = p?.quantite;
+      const mt = p?.montant;
+      const articles = typeof q === 'number' ? `${q.toLocaleString('fr-FR')} article${q > 1 ? 's' : ''}` : null;
+      const somme = typeof mt === 'number' ? `${mt.toLocaleString('fr-FR')} ${!p?.devise || p.devise === 'EUR' ? '€' : p.devise}` : null;
+      return [articles, somme].filter(Boolean).join(' et ') || 'zéro';
+    },
     compteur: (n, total) => `Étape ${n} sur ${total}`,
     restantes: (n) => (n > 1 ? `${n} étapes à finir` : '1 étape à finir'),
     cestQuoi: 'Ce que c\'est',
@@ -130,7 +143,7 @@ const MOTS = {
         cestQuoi: 'Tu dis si tu acceptes les retours, et sous combien de jours.',
         pourquoi: 'eBay l\'affiche sur ton annonce et le demande avant la mise en ligne.',
         bouton: 'Créer depuis FillSell',
-        apres: 'Tu choisis : retours acceptés sous 30 jours, ou pas de retour.', // estimation-ok: politique eBay (réglage)
+        apres: 'Tu choisis : retours acceptés sous 30 jours, ou pas de retour. « Pas de retour » est réservé aux vendeurs particuliers : eBay oblige les vendeurs professionnels à accepter les retours.', // estimation-ok: politique eBay (réglage)
       },
       lieu_expedition: {
         titre: 'D\'où part le colis',
@@ -147,6 +160,12 @@ const MOTS = {
       manque: (titre) => `eBay : il reste une étape — ${titre.toLowerCase()}.`,
       manquePlusieurs: (titre, n) => `eBay : il reste ${n} étapes, à commencer par ${titre.toLowerCase()}.`,
       inconnu: 'eBay : ton compte vendeur n\'est pas fini de paramétrer.',
+      // (17/10) eBay plafonne le compte à zéro : on le dit, puis ce qui reste ici.
+      bloque: (plafond) => `eBay n'autorise pas encore ce compte à vendre : son plafond de vente est à ${plafond}.`,
+      bloqueEtapes: (titre, n) => (n > 1
+        ? ` Il te reste aussi ${n} étapes ici, à commencer par ${titre.toLowerCase()}.`
+        : ` Il te reste aussi une étape ici : ${titre.toLowerCase()}.`),
+      bloqueSeul: ' C\'est eBay qui le relève : ouvre ton compte vendeur eBay pour voir ce qu\'il attend.',
     },
     geste: 'Reprendre où j\'en suis',
     gesteRelier: 'Relier eBay',
@@ -154,6 +173,18 @@ const MOTS = {
   en: {
     pret: 'eBay is ready — your items can go out.',
     pretSous: 'Your eBay listings go out from our servers. Your computer can stay off.',
+    bloque: {
+      titre: 'eBay does not let this account sell yet',
+      texte: (plafond) => `Its selling limit is ${plafond} per month: while it is zero, eBay refuses every listing and FillSell sends nothing. eBay does not tell us why; it shows it on your seller account. As soon as eBay lifts it, your listings go out on their own.`,
+      bouton: 'Open my eBay seller account',
+    },
+    plafond: (p) => {
+      const q = p?.quantite;
+      const mt = p?.montant;
+      const articles = typeof q === 'number' ? `${q.toLocaleString('en-GB')} item${q === 1 ? '' : 's'}` : null;
+      const somme = typeof mt === 'number' ? `${!p?.devise || p.devise === 'EUR' ? '€' : `${p.devise} `}${mt.toLocaleString('en-GB')}` : null;
+      return [articles, somme].filter(Boolean).join(' and ') || 'zero';
+    },
     compteur: (n, total) => `Step ${n} of ${total}`,
     restantes: (n) => (n > 1 ? `${n} steps left` : '1 step left'),
     cestQuoi: 'What it is',
@@ -196,7 +227,7 @@ const MOTS = {
         cestQuoi: 'You say whether you accept returns, and within how many days.',
         pourquoi: 'eBay shows it on your listing and asks for it before going live.',
         bouton: 'Create from FillSell',
-        apres: 'You choose: returns accepted within 30 days, or no returns.', // estimation-ok: eBay policy (setting)
+        apres: 'You choose: returns accepted within 30 days, or no returns. “No returns” is for private sellers only: eBay requires business sellers to accept returns.', // estimation-ok: eBay policy (setting)
       },
       lieu_expedition: {
         titre: 'Where the parcel ships from',
@@ -212,6 +243,11 @@ const MOTS = {
       manque: (titre) => `eBay: one step left — ${titre.toLowerCase()}.`,
       manquePlusieurs: (titre, n) => `eBay: ${n} steps left, starting with ${titre.toLowerCase()}.`,
       inconnu: 'eBay: your seller account is not fully set up yet.',
+      bloque: (plafond) => `eBay does not let this account sell yet: its selling limit is ${plafond}.`,
+      bloqueEtapes: (titre, n) => (n > 1
+        ? ` You also have ${n} steps left here, starting with ${titre.toLowerCase()}.`
+        : ` You also have one step left here: ${titre.toLowerCase()}.`),
+      bloqueSeul: ' eBay is the one who lifts it: open your eBay seller account to see what it is waiting for.',
     },
     geste: 'Pick up where I left off',
     gesteRelier: 'Link eBay',
@@ -220,46 +256,21 @@ const MOTS = {
 
 export const motsEbay = (lang) => MOTS[lang === 'en' ? 'en' : 'fr'];
 
-// ── LES VERDICTS, DEPUIS LA SOURCE GRATUITE ────────────────────────────────
-// `etat` = la vue publique rendue par l'action 'statut' (aucun appel eBay).
-// `seller_state` y est le relevé de la dernière checklist, stocké en base :
-// il dit, par étape, true / false / null (jamais lu). `politiques` dit quelle
-// politique est RETENUE pour FillSell.
+// ── LES VERDICTS : LA RÈGLE PARTAGÉE ───────────────────────────────────────
+// `etat` = la vue publique rendue par ebay-account (aucun appel eBay).
+// `seller_state` y est le relevé de la dernière checklist, stocké en base ;
+// `politiques` dit quelle politique est RETENUE pour FillSell.
 //
-// Une politique compte pour faite quand elle est RETENUE — pas quand le compte
-// en possède une : c'est l'identifiant retenu que lit le trigger, et lui seul
-// décide de la voie. Avoir dix politiques chez eBay sans en désigner une ne
-// publie rien (c'était l'écart exact du dossier Romain).
+// Le verdict de chaque étape vient de etatCompteEbay (_shared/ebay-etat-compte.js),
+// la MÊME fonction que le serveur applique avant de publier. Une politique est
+// faite quand elle est RETENUE — c'est l'identifiant retenu que porte l'offre —,
+// jamais parce que le compte en possède une chez eBay (dossier Romain, 22/09).
+// (17/10) etatsEbayDepuisChecklist est SUPPRIMÉE : les lignes du relevé
+// disaient « ok » dès qu'une politique existait chez eBay. Réglages affichait
+// « eBay est prêt » à Louis sans politique de paiement ni de retours retenue,
+// avec un plafond de vente eBay à zéro.
 export function etatsEbayDepuisEtat(etat) {
-  const s = etat?.seller_state ?? null;
-  const pol = etat?.politiques ?? null;
-  const tri = (v) => (v == null ? 'inconnu' : v ? 'ok' : 'manque');
-  const triPolitique = (retenue, dispo) => {
-    if (retenue) return 'ok';
-    // Aucune retenue : si on sait que le compte n'en a aucune, c'est « manque ».
-    // Si on sait qu'il en a, c'est « manque » aussi — il reste à en désigner
-    // une. On ne dit « inconnu » que si on n'a jamais rien lu.
-    if (dispo == null && !s) return 'inconnu';
-    return 'manque';
-  };
-  return {
-    inscription_vendeur: tri(s?.inscription_vendeur),
-    politiques_activees: tri(s?.politiques_activees),
-    politique_livraison: triPolitique(pol?.fulfillment, s?.politiques?.livraison),
-    politique_paiement: triPolitique(pol?.payment, s?.politiques?.paiement),
-    politique_retours: triPolitique(pol?.return, s?.politiques?.retours),
-    lieu_expedition: tri(s?.lieu_expedition),
-  };
-}
-
-// `checklist` = le relevé complet (Réglages). Les lignes indéterminables ne
-// sont PAS renvoyées par le serveur : leur absence vaut 'inconnu', jamais un
-// conditionnel à l'écran.
-export function etatsEbayDepuisChecklist(checklist) {
-  const par = new Map((checklist?.lignes ?? []).map((l) => [l.cle, l.etat]));
-  const out = {};
-  for (const cle of ETAPES_EBAY) out[cle] = par.get(cle) ?? 'inconnu';
-  return out;
+  return etatCompteEbay(etat).etapes;
 }
 
 // ── LE PARCOURS, DANS L'ORDRE ──────────────────────────────────────────────
@@ -298,6 +309,9 @@ export function progressionEbay(etats) {
     restantes: lues.length - faites.length,
     // « Prêt » exige qu'on ait LU au moins une étape : un compte dont on ne
     // sait rien n'est pas déclaré prêt.
+    // ⚠️ (17/10) Ce « prêt » ne connaît que les étapes. Un écran qui dit
+    // « eBay est prêt » lit etatCompteEbay(etat).pret, qui tient aussi compte
+    // du plafond de vente eBay (zéro = jamais prêt).
     pret: lues.length > 0 && faites.length === lues.length,
   };
 }
@@ -307,35 +321,44 @@ export function progressionEbay(etats) {
 // de savoir ce qu'il y avait à faire ». Elle ne diagnostique rien, elle ne
 // gronde pas, et elle est toujours accompagnée d'un bouton par l'appelant.
 //
-// Rend { pret, motif, cle, phrase, bouton } :
-//   · motif 'non_connecte' | 'a_reconnecter' | 'a_finir' | 'inconnu' | null
+// Rend { pret, motif, cle, phrase, bouton, etat } :
+//   · motif 'non_connecte' | 'a_reconnecter' | 'bloque_par_ebay' | 'a_finir' | 'inconnu' | null
 //   · cle   l'étape à reprendre, quand on la connaît
+//   · etat  le verdict complet de la règle partagée (etatCompteEbay)
+// (17/10) Plafond de vente eBay à zéro (quantité OU montant) : jamais « prêt ».
+// La phrase dit que c'est eBay qui n'autorise pas encore ce compte à vendre,
+// puis ce qui reste à faire ici, s'il en reste.
 export function resumeEbay(etat, lang = 'fr') {
   const m = motsEbay(lang);
-  if (!etat || !etat.connecte) {
-    const aReconnecter = Boolean(etat?.a_reconnecter);
+  const e = etatCompteEbay(etat);
+  if (e.statut === 'non_relie' || e.statut === 'a_reconnecter') {
+    const aReconnecter = e.statut === 'a_reconnecter';
     return {
       pret: false,
       motif: aReconnecter ? 'a_reconnecter' : 'non_connecte',
       cle: null,
       phrase: aReconnecter ? m.resume.a_reconnecter : m.resume.non_connecte,
       bouton: m.gesteRelier,
+      etat: e,
     };
   }
-  const etats = etatsEbayDepuisEtat(etat);
-  const prog = progressionEbay(etats);
-  if (prog.pret) return { pret: true, motif: null, cle: null, phrase: m.pret, bouton: null };
-  const cle = etapeCouranteEbay(etats);
+  if (e.pret) return { pret: true, motif: null, cle: null, phrase: m.pret, bouton: null, etat: e };
+  const cle = e.manquantes[0] ?? null;
+  const titre = cle ? m.etapes[cle].titre : '';
+  if (e.statut === 'bloque_par_ebay') {
+    const suite = cle ? m.resume.bloqueEtapes(titre, e.manquantes.length) : m.resume.bloqueSeul;
+    return { pret: false, motif: 'bloque_par_ebay', cle, phrase: m.resume.bloque(m.plafond(e.plafond)) + suite, bouton: m.geste, etat: e };
+  }
   if (!cle) {
     // Rien de lu : on ne nomme pas une étape qu'on n'a pas relevée.
-    return { pret: false, motif: 'inconnu', cle: null, phrase: m.resume.inconnu, bouton: m.geste };
+    return { pret: false, motif: 'inconnu', cle: null, phrase: m.resume.inconnu, bouton: m.geste, etat: e };
   }
-  const titre = m.etapes[cle].titre;
   return {
     pret: false,
     motif: 'a_finir',
     cle,
-    phrase: prog.restantes > 1 ? m.resume.manquePlusieurs(titre, prog.restantes) : m.resume.manque(titre),
+    phrase: e.manquantes.length > 1 ? m.resume.manquePlusieurs(titre, e.manquantes.length) : m.resume.manque(titre),
     bouton: m.geste,
+    etat: e,
   };
 }

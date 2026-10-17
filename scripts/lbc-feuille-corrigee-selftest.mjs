@@ -34,10 +34,16 @@ console.log("\n3. GET-PENDING-JOBS L'APPLIQUE AUX PUBLICATIONS EN FILE");
 const gpj = fs.readFileSync(new URL("../supabase/functions/get-pending-jobs/index.ts", import.meta.url), "utf8");
 ok(/corrigerFeuilleLbc\(\(j\.platform_fields/.test(gpj) && /j\.platform !== "leboncoin" \|\| j\.action !== "publish" \|\| j\.status !== "pending"/.test(gpj), "publications Leboncoin en file seulement, CAS sur pending");
 
-console.log("\n4. LA MARQUE CHOISIE VAUT POUR LA REPUBLICATION VINTED (point 8)");
+console.log("\n4. LA MARQUE DE LA REPUBLICATION VINTED (point 8 du 15/10, règle du 17/10)");
 const bg = fs.readFileSync(new URL("../chrome-extension/background.js", import.meta.url), "utf8");
-ok(/marque: marqueChoisieRepublication\(pf, cap\.libelles\?\.marque\) \?\? cap\.libelles\?\.marque \?\? null/.test(bg), "la recréation pose la marque choisie avant la marque capturée");
-ok(/if \(marqueChoisieRepublication\(pf, cap\.libelles\?\.marque\)\) return \{\};/.test(bg), "l'identifiant de l'ancienne marque n'est pas transmis quand la personne en a choisi une autre");
+// (17/10, Nico) Une republication reprend EXACTEMENT la marque de l'annonce en
+// ligne : une marque à identifiant (brand_id > 1) part toujours avec son
+// identifiant — la réponse de la personne (marque_choisie) ne vaut plus que
+// pour une marque sans identifiant (détail : selftest:vinted-marque-par-identifiant).
+ok(/if \(String\(capturee \?\? ""\)\.trim\(\) && Number\.isInteger\(id\) && id > 1\) \{\s*return \{ marque: capturee, marque_id: id, marque_capturee: capturee \};\s*\}/.test(bg),
+  "marque à identifiant : la recréation pose la marque capturée et son identifiant (17/10)");
+ok(/return \{ marque: marqueChoisieRepublication\(pf, capturee\) \?\? capturee \?\? null \};/.test(bg),
+  "marque sans identifiant : la réponse de la personne passe avant la marque capturée (point 8)");
 const ujs = fs.readFileSync(new URL("../supabase/functions/update-job-status/index.ts", import.meta.url), "utf8");
 ok(/&& !marqueHorsCatalogue\s/.test(ujs), "update-job-status : une marque hors catalogue n'est plus « reprise » puis retirée de la question");
 ok(/marque_choisie: v,/.test(gpj), "get-pending-jobs sert la réponse rangée sur l'article");

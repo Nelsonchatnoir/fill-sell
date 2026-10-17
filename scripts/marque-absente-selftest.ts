@@ -88,6 +88,19 @@ const jb2 = job("beebs", { marque: "Kiabi Home" });
 ok(appliquerMarqueRetenue(jb2, retenues) === null && jb2.platform_fields.marque === "Kiabi Home", "Beebs : non touché (le choix portait sur le catalogue Vinted)");
 const jn = job("vinted", { marque: "Nike" });
 ok(appliquerMarqueRetenue(jn, retenues) === null && jn.platform_fields.marque === "Nike", "une marque sans remplacement retenu ne bouge pas");
+// (17/10, Nico) Republication dont l'annonce en ligne porte une vraie marque à
+// identifiant, servie à un poste qui la pose par son identifiant : reprise
+// TELLE QUELLE, aucune marque retenue ne la remplace.
+const jrep = job("vinted", { republish_snapshot: { marque: "Kiabi Home", brand_id: 305315 }, vintedAspects: { brand: "Kiabi Home" } }, "republish");
+ok(appliquerMarqueRetenue(jrep, retenues, new Date(), { annonceParIdentifiant: true }) === null && (jrep.platform_fields.vintedAspects as Record<string, unknown>).brand === "Kiabi Home",
+  "poste à jour, republication à identifiant (brand_id 305315) : la marque retenue ne remplace jamais celle de l'annonce");
+const jrepSans = job("vinted", { republish_snapshot: { marque: "Sans marque", brand_id: 1 }, vintedAspects: { brand: "Kiabi Home" } }, "republish");
+ok(appliquerMarqueRetenue(jrepSans, retenues, new Date(), { annonceParIdentifiant: true })?.vers === "Kiabi", "republication sans identifiant de vraie marque : la règle d'avant s'applique");
+const jrepAncien = job("vinted", { republish_snapshot: { marque: "Kiabi Home", brand_id: 305315 }, vintedAspects: { brand: "Kiabi Home" } }, "republish");
+ok(appliquerMarqueRetenue(jrepAncien, retenues)?.vers === "Kiabi", "poste plus ancien (sans la pose par identifiant) : la règle du 04/10, inchangée");
+ok(/appliquerMarqueRetenue\(j, retenues as Record<string, unknown>, new Date\(\), \{ annonceParIdentifiant: posteMarqueParId \}\)/.test(gpj)
+  && /const posteMarqueParId = buildMsDe\(buildDuPoll\) >= buildMsDe\(BUILD_VINTED_MARQUE_PAR_ID\);/.test(gpj),
+  "get-pending-jobs : la garde ne vaut que pour un poste qui porte le correctif (BUILD_VINTED_MARQUE_PAR_ID)");
 const stockTab = Deno.readTextFileSync(new URL("../src/tabs/StockTab.jsx", import.meta.url));
 ok(/fusionnerReglages\(\["vinted", "marques_retenues"\], \{ \[marqueComparable\(demandee\)\]: v \}\)/.test(stockTab) && /!estSansMarque\(v\)/.test(stockTab),
   "Stock : la réponse à la question « Marque » est retenue (jamais une absence)");

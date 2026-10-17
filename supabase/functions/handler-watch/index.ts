@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { retraitEngage } from "../_shared/retenue-creneau.js";
 import {
-  decisionIntrouvable, messageDisparueConfirmee, messagePersistant,
+  decisionIntrouvable, identifiantAnnonceJob, messageDisparueConfirmee, messagePersistant,
   SOURCE_INTROUVABLE, SOURCE_INTROUVABLE_PERSISTANT, REPRISES_PAR_COMPTE_ET_PASSAGE,
 } from "../_shared/introuvable-a-confirmer.js";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
@@ -15,6 +15,16 @@ import { archiverErreur } from "../_shared/erreurs-archivees.js";
 import { RELANCES_APRES_MAJ, regleDeRelance, posteALeBuild, champsRelance, sourceDeRegle } from "../_shared/relance-apres-maj.js";
 import { reponseTailleAuto, champsApresReponseTaille } from "../_shared/taille-question-auto.js";
 import { MOTIF_LBC_IDENTITE, FENETRE_IDENTITE_MS, ECLAIREUR_INTERVALLE_MS, attendIdentiteLbc, attentesIdentiteLbc, eclaireurIdentiteLbc, champsEclaireur, champsReprise } from "../_shared/lbc-identite.js";
+import {
+  MOTIF_LBC_PAYANT, FENETRE_FORFAIT_MS, ECLAIREUR_FORFAIT_INTERVALLE_MS, FILTRE_PREUVE_PRO, motifDiagnostic as motifDiagnosticForfait,
+  attendForfaitLbc, attentesForfaitLbc, compteProuvePro, dernierMurForfait, publicationApresMur, eclaireurForfaitLbc,
+  champsEclaireurForfait, champsRepriseForfait,
+} from "../_shared/lbc-forfait.js";
+import {
+  MOTIF_VENDEUR_DEPOP, SOURCE_VENDEUR_DEPOP, FENETRE_VENDEUR_DEPOP_MS, POSTE_RECENT_MS, attendVendeurDepop, attentesVendeurDepop,
+  eclaireurVendeurDepop, derniereObservationMur, controleVendeurPasse, sondeVendeurDepopOk,
+  champsEclaireur as champsEclaireurVendeurDepop, champsReprise as champsRepriseVendeurDepop,
+} from "../_shared/vendeur-depop.js";
 // Liste FERMÉE des CDN des plateformes dont on importe des annonces — UNE
 // seule source, partagée avec generate-listing (elle a divergé une fois : le
 // filet ne connaissait que Vinted et les photos Beebs d'un article importé
@@ -1776,6 +1786,36 @@ serve(async (req) => {
       .from("cross_post_jobs")
       .select("id, user_id, platform, action, error, created_at, platform_fields")
       .eq("status", "needs_user");
+    // ── (17/10) LES COMPTES LEBONCOIN PRO AU MUR « VALIDER ET PAYER » ───────
+    // (_shared/lbc-forfait.js) Ceux dont une attente porte ce motif ET que la
+    // preuve dit pro — lue sur leurs attentes, sinon en base (bornée). Un
+    // particulier n'y entre jamais : son mur payant se règle annonce par annonce.
+    const comptesForfaitLbc = new Set<string>();
+    try {
+      // deno-lint-ignore no-explicit-any
+      const parCompteForfait = new Map<string, any[]>();
+      // deno-lint-ignore no-explicit-any
+      for (const j of (attente ?? []) as any[]) {
+        if (j.platform !== "leboncoin") continue;
+        const u = String(j.user_id);
+        if (!parCompteForfait.has(u)) parCompteForfait.set(u, []);
+        parCompteForfait.get(u)!.push(j);
+      }
+      const aProuver: string[] = [];
+      for (const [u, l] of parCompteForfait) {
+        if (!l.some((j) => motifDiagnosticForfait(j) === MOTIF_LBC_PAYANT)) continue;
+        if (compteProuvePro(l)) comptesForfaitLbc.add(u); else aProuver.push(u);
+      }
+      if (aProuver.length) {
+        const { data: preuves } = await supabase.from("cross_post_jobs").select("user_id")
+          .in("user_id", aProuver.slice(0, 200)).eq("platform", "leboncoin")
+          .gte("created_at", new Date(now - FENETRE_FORFAIT_MS).toISOString())
+          .or(FILTRE_PREUVE_PRO).limit(1000);
+        for (const p of (preuves ?? []) as Array<{ user_id: string }>) comptesForfaitLbc.add(String(p.user_id));
+      }
+    } catch (e) {
+      console.warn("[handler-watch] comptes Leboncoin pro au mur du paiement :", (e as Error)?.message ?? e);
+    }
     // deno-lint-ignore no-explicit-any
     const lignes = ((attente ?? []) as any[]).filter((j) => {
       if (j.action === "republish" && j.platform_fields?.republish_step === "deleted") return false;
@@ -1812,6 +1852,16 @@ serve(async (req) => {
       // publications repartent seules quand le compte est complété (éclaireur
       // toutes les 12 h, plus bas) — les solder effacerait ce qu'elles attendent.
       if (attendIdentiteLbc({ ...j, status: "needs_user" }) && now - Date.parse(String(j.created_at ?? "")) < FENETRE_IDENTITE_MS) return false;
+      // ── (17/10) LEBONCOIN N'OFFRE PLUS QUE « VALIDER ET PAYER » À UN COMPTE
+      //    PRO : JAMAIS SOLDÉ < 30 j ── Même doctrine : un geste sur le COMPTE
+      // (une carte), repris par l'éclaireur (plus bas) — les solder effacerait
+      // ce qu'elles attendent (_shared/lbc-forfait.js).
+      if (comptesForfaitLbc.has(String(j.user_id)) && attendForfaitLbc({ ...j, status: "needs_user" }, true)
+          && now - Date.parse(String(j.created_at ?? "")) < FENETRE_FORFAIT_MS) return false;
+      // ── (17/10) DEPOP ATTEND LA CONFIGURATION VENDEUR : JAMAIS SOLDÉ < 30 j ──
+      // Même geste sur le COMPTE (une carte dans l'app) : ces publications
+      // repartent seules quand Depop accepte le vendeur (_shared/vendeur-depop.js).
+      if (attendVendeurDepop({ ...j, status: "needs_user" }) && now - Date.parse(String(j.created_at ?? "")) < FENETRE_VENDEUR_DEPOP_MS) return false;
       return true;
     });
     const lastSeen = new Map<string, number>();
@@ -2765,15 +2815,22 @@ serve(async (req) => {
     console.error("[handler-watch] reprise des dépôts mis de côté :", (e as Error)?.message ?? e);
   }
 
-  // ══ « INTROUVABLE À CONFIRMER » : REPRISE OU CLÔTURE SUR PREUVE (15/10, point 14) ══
+  // ══ « INTROUVABLE À CONFIRMER » : REPRISE OU CLÔTURE SUR PREUVE (15/10, point 14 ; 17/10) ══
   // Une republication mise en pause parce qu'UNE lecture a dit « plus en ligne »
-  // (DeadRoz : 60 annulées sur un 404 de l'endpoint d'édition) : un relevé fait
-  // APRÈS la lecture tranche (_shared/introuvable-a-confirmer.js). Revue en
-  // ligne → elle repart (3 reprises au plus ; 3 par compte et par passage :
-  // jamais d'un coup, l'extension garde sa cadence et refait sa lecture avant
-  // tout retrait). Absente d'un relevé complet, vendue, fermée → close avec le
-  // message d'avant. Sinon elle attend. Lectures bornées (200 jobs, un compte à
-  // la fois), aucune écriture sur une ligne inchangée.
+  // (DeadRoz : 60 annulées sur un 404 de l'endpoint d'édition) : les relevés faits
+  // APRÈS la lecture tranchent (_shared/introuvable-a-confirmer.js). Revue en
+  // ligne PAR SON IDENTIFIANT EXACT → elle repart (3 reprises au plus ; 3 par
+  // compte et par passage : jamais d'un coup, l'extension garde sa cadence et
+  // refait sa lecture avant tout retrait). Absente de DEUX relevés complets (non
+  // vides, de sa boutique Vinted), vendue, fermée → close avec le message
+  // d'avant. Sinon elle attend. Lectures bornées (200 jobs, un compte à la
+  // fois, index), aucune écriture sur une ligne inchangée.
+  // ⛔ (17/10, DeadRoz) Plus jamais « les 50 plus anciens relevés, toutes
+  //    plateformes » : 87 relevés Leboncoin vides (serveur:verif_redepot) ont
+  //    caché le relevé Vinted décisif (rang 89). On lit les relevés NON VIDES des
+  //    seules plateformes en pause, du plus récent au plus ancien. Et plus jamais
+  //    la fiche du job comme preuve : elle peut porter une AUTRE annonce
+  //    (a6e773d4) — la trace se lit sur l'annonce exacte.
   let introuvablesRepris = 0; let introuvablesClos = 0;
   try {
     const { data: enPause } = await supabase.from("cross_post_jobs")
@@ -2788,34 +2845,78 @@ serve(async (req) => {
       const l = parCompteI.get(String(j.user_id)) ?? []; l.push(j); parCompteI.set(String(j.user_id), l);
     }
     for (const [userId, jobs] of parCompteI) {
+      // L'absence se compte depuis la PREMIÈRE lecture ratée : la fenêtre part de
+      // là (un jour de marge pour retrouver le relevé qui a vu l'annonce).
       // deno-lint-ignore no-explicit-any
-      const plusAncienne = Math.min(...jobs.map((j: any) => Date.parse(String(((j.platform_fields ?? {}).introuvable_a_confirmer ?? {}).depuis ?? "")) || Date.now()));
-      const { data: runs } = await supabase.from("vinted_sync_runs")
-        .select("platform, kind, status, started_at, finished_at, vinted_user_id")
+      const debutFenetre = Math.min(...jobs.map((j: any) => {
+        const m = ((j.platform_fields ?? {}).introuvable_a_confirmer ?? {}) as Record<string, unknown>;
+        return Date.parse(String(m.premiere ?? m.depuis ?? "")) || Date.now();
+      })) - 86_400_000;
+      // deno-lint-ignore no-explicit-any
+      const plateformes = [...new Set(jobs.map((j: any) => String(j.platform)))];
+      const { data: runs, error: eRuns } = await supabase.from("vinted_sync_runs")
+        .select("platform, kind, status, started_at, finished_at, vinted_user_id, items_vus, total_entries, erreur")
         .eq("user_id", userId).eq("status", "done").in("kind", ["dressing", "annonces"])
-        .gt("started_at", new Date(plusAncienne).toISOString())
-        .order("started_at", { ascending: true }).limit(50);
+        .in("platform", plateformes).gt("items_vus", 0)
+        .gt("started_at", new Date(debutFenetre).toISOString())
+        .order("started_at", { ascending: false }).limit(50);
       // deno-lint-ignore no-explicit-any
       const invIds = [...new Set(jobs.map((j: any) => j.inventaire_id).filter((x: unknown) => x != null))];
       const { data: fiches } = invIds.length
-        ? await supabase.from("inventaire").select("id, statut, last_synced_at, vinted_status, vinted_account_id").in("id", invIds.slice(0, 200))
+        ? await supabase.from("inventaire").select("id, statut, vinted_account_id").in("id", invIds.slice(0, 200))
         : { data: [] };
       // deno-lint-ignore no-explicit-any
       const ficheDe = new Map(((fiches ?? []) as any[]).map((x) => [String(x.id), x]));
+      // La trace de CHAQUE annonce Vinted, par son identifiant exact : son relevé
+      // du jour (vinted_listing_snapshots, écrit pour toute annonce vue) et la
+      // fiche qui porte CE vinted_item_id — jamais la fiche du job.
+      // deno-lint-ignore no-explicit-any
+      const itemsV = ([...new Set(jobs.filter((j: any) => j.platform === "vinted").map((j: any) => identifiantAnnonceJob(j)).filter(Boolean))] as string[]).slice(0, 200);
+      const traceV = new Map<string, { vu_le: string; statut: string }>();
+      const garderTrace = (id: unknown, le: unknown, statut: unknown) => {
+        const k = String(id ?? ""); const quand = Date.parse(String(le ?? ""));
+        if (!k || !Number.isFinite(quand)) return;
+        const avant = traceV.get(k);
+        if (!avant || quand > Date.parse(avant.vu_le)) traceV.set(k, { vu_le: String(le), statut: String(statut ?? "") });
+      };
+      let tracesLisibles = !eRuns;
+      if (itemsV.length) {
+        const [rSnaps, rPorteuses] = await Promise.all([
+          supabase.from("vinted_listing_snapshots").select("vinted_item_id, captured_at, status")
+            .eq("user_id", userId).in("vinted_item_id", itemsV)
+            .gte("captured_on", new Date(debutFenetre).toISOString().slice(0, 10)).limit(2000),
+          supabase.from("inventaire").select("vinted_item_id, last_synced_at, vinted_status")
+            .eq("user_id", userId).in("vinted_item_id", itemsV).limit(400),
+        ]);
+        // deno-lint-ignore no-explicit-any
+        for (const s of (rSnaps.data ?? []) as any[]) garderTrace(s.vinted_item_id, s.captured_at, s.status);
+        // deno-lint-ignore no-explicit-any
+        for (const f of (rPorteuses.data ?? []) as any[]) garderTrace(f.vinted_item_id, f.last_synced_at, f.vinted_status);
+        if (rSnaps.error || rPorteuses.error) tracesLisibles = false;
+      }
+      // Une lecture ratée n'est jamais une absence : le compte attend le passage suivant.
+      if (!tracesLisibles) { console.warn(`[handler-watch] introuvable à confirmer : relevés ou traces illisibles pour ${userId.slice(0, 8)} — rien de jugé ce passage`); continue; }
       let reprisesCompte = 0;
       for (const j of jobs) {
         const pf = { ...(j.platform_fields ?? {}) } as Record<string, unknown>;
-        let annonce = null;
-        if (j.platform !== "vinted") {
+        const fiche = ficheDe.get(String(j.inventaire_id)) ?? null;
+        let vu: { vu_le: unknown; statut: unknown } | null = null;
+        if (j.platform === "vinted") {
+          vu = traceV.get(String(identifiantAnnonceJob(j) ?? "")) ?? null;
+        } else {
           const ident = String(j.platform_listing_id ?? "").trim();
-          let q = supabase.from("annonces_plateforme").select("vu_le, statut_plateforme, disparu_le").eq("user_id", userId).eq("platform", j.platform);
+          let q = supabase.from("annonces_plateforme").select("vu_le, statut_plateforme").eq("user_id", userId).eq("platform", j.platform);
           q = ident ? q.eq("listing_id", ident) : (j.listing_url ? q.eq("url", j.listing_url) : q.eq("job_id", j.id));
-          const { data: a } = await q.limit(1).maybeSingle();
-          annonce = a ?? null;
+          const { data: a, error: eA } = await q.limit(1).maybeSingle();
+          if (eA) continue; // illisible : jamais une absence
+          vu = a ? { vu_le: a.vu_le, statut: a.statut_plateforme } : null;
         }
+        const boutique = j.platform === "vinted"
+          ? (String(pf.vinted_account_id ?? "").trim() || String(fiche?.vinted_account_id ?? "").trim() || null)
+          : null;
         // deno-lint-ignore no-explicit-any
         const runsPf = ((runs ?? []) as any[]).filter((r) => r.platform === j.platform);
-        const d = decisionIntrouvable({ job: j, fiche: ficheDe.get(String(j.inventaire_id)) ?? null, annonce, runs: runsPf });
+        const d = decisionIntrouvable({ job: j, fiche, vu, runs: runsPf, boutique });
         const marque = (pf.introuvable_a_confirmer ?? {}) as Record<string, unknown>;
         if (d.decision === "reprendre") {
           if (reprisesCompte >= REPRISES_PAR_COMPTE_ET_PASSAGE) continue; // le reste au passage suivant
@@ -4053,6 +4154,105 @@ serve(async (req) => {
     console.error("[handler-watch] questions tranchées:", (e as Error)?.message ?? e);
   }
 
+  // ── DEPOP DEMANDE LA CONFIGURATION DE VENDEUR : LA PREUVE, SINON L'ÉCLAIREUR (17/10) ──
+  // Romain, Héloïse, Thibault : des publications arrêtées au même mur, qui ne
+  // repartaient jamais seules (_shared/vendeur-depop.js). Par compte :
+  // 1. preuve que Depop accepte le vendeur — une publication Depop du compte
+  //    passée au-delà du contrôle vendeur depuis le dernier mur VU, ou la sonde
+  //    de l'extension (canSell) → toutes les tâches en attente repartent,
+  //    espacées de 45 s ;
+  // 2. sinon, UN éclaireur (la plus ancienne) au barème, poste vu récemment ;
+  //    s'il revient au même mur, rien d'autre ne part.
+  // ⛔ Motif ou source EXACTS seulement, 30 j, 10 comptes par passage,
+  //    compare-and-swap sur needs_user.
+  let vendeurDepopEclaireurs = 0;
+  let vendeurDepopReprises = 0;
+  try {
+    const { data: mursV } = await supabase
+      .from("cross_post_jobs")
+      .select("id, user_id, status, action, platform, error, created_at, platform_fields")
+      .eq("status", "needs_user")
+      .eq("platform", "depop")
+      .or(`platform_fields->>needs_user_source.eq.${SOURCE_VENDEUR_DEPOP},platform_fields->last_diagnostic->>quoi.eq.${MOTIF_VENDEUR_DEPOP}`)
+      .gte("created_at", new Date(now - FENETRE_VENDEUR_DEPOP_MS).toISOString())
+      .limit(500);
+    const parCompteV = new Map<string, Array<Record<string, unknown>>>();
+    for (const j of ((mursV ?? []) as Array<Record<string, unknown>>).filter((x) => attendVendeurDepop(x as never))) {
+      const u = String(j.user_id);
+      if (!parCompteV.has(u)) parCompteV.set(u, []);
+      parCompteV.get(u)!.push(j);
+    }
+    // Les comptes qui peuvent avancer (poste vu dans les 24 h, ou sonde qui lit
+    // canSell), le plus anciennement tenté d'abord : 10 par passage, aucun oublié.
+    const tousV = [...parCompteV.keys()];
+    const { data: profsV } = tousV.length
+      ? await supabase.from("profiles").select("id, extension_last_seen_at, extension_sessions").in("id", tousV)
+      : { data: [] };
+    const profDeV = new Map(((profsV ?? []) as Array<Record<string, unknown>>).map((p) => [String(p.id), p]));
+    const tenteLe = (u: string) => Math.max(derniereObservationMur(parCompteV.get(u) as never[]),
+      ...(parCompteV.get(u) ?? []).map((j) => {
+        const vd = ((j.platform_fields ?? {}) as Record<string, unknown>).vendeur_depop as Record<string, unknown> | undefined;
+        return Date.parse(String(vd?.eclaireur_le ?? "")) || -Infinity;
+      }));
+    const comptesV = tousV.filter((u) => {
+      const p = profDeV.get(u) ?? {};
+      const vu = Date.parse(String(p.extension_last_seen_at ?? ""));
+      return (Number.isFinite(vu) && now - vu <= 24 * 3_600_000) || sondeVendeurDepopOk(p.extension_sessions, -Infinity);
+    }).sort((a, b) => tenteLe(a) - tenteLe(b)).slice(0, 10);
+    if (comptesV.length) {
+      // Les preuves : les publications Depop récentes de ces comptes (publiées,
+      // ou arrêtées APRÈS le contrôle vendeur — une question de marque, de
+      // taille…), et la sonde de chaque compte. Une lecture bornée de plus.
+      const { data: recentsV } = await supabase.from("cross_post_jobs")
+        .select("user_id, status, action, platform, handler_build, published_at, fin:platform_fields->work_window_state->at_end, vendeur_depop:platform_fields->vendeur_depop")
+        .eq("platform", "depop").in("user_id", comptesV).in("action", ["publish", "republish"])
+        .gte("created_at", new Date(now - FENETRE_VENDEUR_DEPOP_MS).toISOString())
+        .limit(1000);
+      // Seules la fin de l'essai (étape du connecteur) et la trace de l'éclaireur
+      // sont lues, pas tout platform_fields.
+      const recentsJobsV: Array<Record<string, unknown>> = ((recentsV ?? []) as Array<Record<string, unknown>>)
+        .map((r): Record<string, unknown> => ({ ...r, platform_fields: { work_window_state: { at_end: r.fin ?? null }, vendeur_depop: r.vendeur_depop ?? null } }));
+      for (const u of comptesV) {
+        const enAttente = attentesVendeurDepop(parCompteV.get(u) as never[]) as Array<Record<string, unknown>>;
+        if (!enAttente.length) continue;
+        const depuis = derniereObservationMur(enAttente as never[]);
+        const p = profDeV.get(u) ?? {};
+        const preuve = recentsJobsV.some((r) => String(r.user_id) === u && controleVendeurPasse(r as never, depuis))
+          || sondeVendeurDepopOk(p.extension_sessions, depuis);
+        if (preuve) {
+          let k = 0;
+          for (const j of enAttente) {
+            const pf = champsRepriseVendeurDepop(j.platform_fields as Record<string, unknown>, k, now, "handler-watch (preuve que Depop accepte le vendeur)") as Record<string, unknown>;
+            pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error as string, "needs_user", "handler-watch (configuration vendeur Depop faite)");
+            const { data: maj } = await supabase.from("cross_post_jobs")
+              .update({ status: "pending", error: null, platform_fields: pf })
+              .eq("id", String(j.id)).eq("status", "needs_user").select("id");
+            if ((maj ?? []).length) { vendeurDepopReprises++; k++; }
+          }
+          if (k) console.log(`[handler-watch] compte ${u.slice(0, 8)} : Depop accepte le vendeur → ${k} publication(s) relâchée(s), espacées de 45 s`);
+          continue;
+        }
+        const vu = Date.parse(String(p.extension_last_seen_at ?? ""));
+        if (!Number.isFinite(vu) || now - vu > POSTE_RECENT_MS) continue; // poste éteint : rien à tenter
+        // Un éclaireur déjà en route (pending, processing) compte : jamais deux à la fois.
+        const ecl = eclaireurVendeurDepop(enAttente as never[], now, recentsJobsV.filter((r) => String(r.user_id) === u) as never[]) as Record<string, unknown> | null;
+        if (!ecl) continue;
+        const pf = champsEclaireurVendeurDepop(ecl.platform_fields as Record<string, unknown>, "handler-watch (barème)", new Date(now).toISOString()) as Record<string, unknown>;
+        pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, ecl.error as string, "needs_user", "handler-watch (éclaireur : Depop accepte-t-il le vendeur ?)");
+        const { data: maj } = await supabase.from("cross_post_jobs")
+          .update({ status: "pending", error: null, platform_fields: pf })
+          .eq("id", String(ecl.id)).eq("status", "needs_user").select("id");
+        if ((maj ?? []).length) {
+          vendeurDepopEclaireurs++;
+          console.log(`[handler-watch] compte ${u.slice(0, 8)} : éclaireur Depop ${String(ecl.id).slice(0, 8)} relancé (${enAttente.length} en attente de la configuration vendeur)`);
+        }
+      }
+    }
+    if (vendeurDepopEclaireurs || vendeurDepopReprises) console.log(`[handler-watch] configuration vendeur Depop : ${vendeurDepopEclaireurs} éclaireur(s), ${vendeurDepopReprises} reprise(s)`);
+  } catch (e) {
+    console.error("[handler-watch] configuration vendeur Depop:", (e as Error)?.message ?? e);
+  }
+
   // ── UN ARRÊT « ONGLET MUET » REPART QUAND SA CAUSE EST LEVÉE (06/10) ──────
   // Carla (11 nappes), Ciddjy, Jen : le remplissage coupé net à 300 s par le
   // chemin classique, trois fois, puis `needs_user` « relancer »
@@ -4320,6 +4520,118 @@ serve(async (req) => {
     }
   } catch (e) {
     console.error("[handler-watch] identité Leboncoin:", (e as Error)?.message ?? e);
+  }
+
+  // ── LEBONCOIN N'OFFRE PLUS QUE « VALIDER ET PAYER » À UN COMPTE PRO :
+  //    L'ÉCLAIREUR, PUIS TOUT LE COMPTE (17/10, DeadRoz) ──────────────────────
+  // _shared/lbc-forfait.js — jumeau du bloc « nom et prénom » ci-dessus.
+  // 1. Une publication Leboncoin du compte est passée après le dernier mur VU
+  //    (l'éclaireur, ou une autre) : le forfait couvre de nouveau les dépôts,
+  //    toutes les attentes du compte repartent, espacées de 45 s.
+  // 2. Sinon, au plus UN éclaireur par compte toutes les 12 h — la plus ancienne
+  //    PUBLICATION en attente, jamais une republication (elle retirerait
+  //    l'annonce en ligne avant de buter) —, poste vu < 24 h.
+  // Le mur se lit aussi sur un job remis en file (l'éclaireur garde son dernier
+  // mur) ; une retenue avant essai ne compte jamais comme un mur vu.
+  // ⛔ Compte prouvé pro, motif EXACT, 30 j, 10 comptes par passage, compare-and-swap.
+  let forfaitLbcEclaireurs = 0;
+  let forfaitLbcReprises = 0;
+  try {
+    const { data: mursForfait } = await supabase
+      .from("cross_post_jobs")
+      .select("id, user_id, inventaire_id, status, action, platform, error, created_at, platform_fields")
+      .in("status", ["needs_user", "pending", "processing"])
+      .eq("platform", "leboncoin")
+      .eq("platform_fields->last_diagnostic->>quoi", MOTIF_LBC_PAYANT)
+      .gte("created_at", new Date(now - FENETRE_FORFAIT_MS).toISOString())
+      .limit(500);
+    const parCompteF = new Map<string, Array<Record<string, unknown>>>();
+    for (const j of (mursForfait ?? []) as Array<Record<string, unknown>>) {
+      const u = String(j.user_id);
+      if (!parCompteF.has(u)) parCompteF.set(u, []);
+      parCompteF.get(u)!.push(j);
+    }
+    const comptesF = [...parCompteF.keys()].filter((u) => parCompteF.get(u)!.some((j) => attendForfaitLbc(j as never, true)));
+    if (comptesF.length) {
+      // La preuve PRO : sur les jobs au mur eux-mêmes, sinon en base (bornée).
+      const prouves = new Set(comptesF.filter((u) => compteProuvePro(parCompteF.get(u) as never[])));
+      const aProuverF = comptesF.filter((u) => !prouves.has(u)).slice(0, 200);
+      if (aProuverF.length) {
+        const { data: preuves } = await supabase.from("cross_post_jobs").select("user_id")
+          .in("user_id", aProuverF).eq("platform", "leboncoin")
+          .gte("created_at", new Date(now - FENETRE_FORFAIT_MS).toISOString())
+          .or(FILTRE_PREUVE_PRO).limit(1000);
+        for (const p of (preuves ?? []) as Array<{ user_id: string }>) prouves.add(String(p.user_id));
+      }
+      const comptesPro = comptesF.filter((u) => prouves.has(u));
+      if (comptesPro.length) {
+        const murDe = new Map(comptesPro.map((u) => [u, dernierMurForfait(parCompteF.get(u) as never[])]));
+        const mursVus = [...murDe.values()].filter((m) => m > 0);
+        // Les publications Leboncoin passées depuis le plus ancien de ces murs.
+        const { data: pubs } = mursVus.length
+          ? await supabase.from("cross_post_jobs")
+            .select("user_id, status, published_at")
+            .in("user_id", comptesPro).eq("platform", "leboncoin").eq("status", "published")
+            .gt("published_at", new Date(Math.min(...mursVus)).toISOString())
+            .limit(1000)
+          : { data: [] };
+        // Le dernier éclaireur lancé (toute issue) : jamais deux dans l'intervalle.
+        const { data: lances } = await supabase.from("cross_post_jobs")
+          .select("user_id, ecl:platform_fields->forfait_lbc->>eclaireur_le")
+          .in("user_id", comptesPro).eq("platform", "leboncoin")
+          .not("platform_fields->forfait_lbc->>eclaireur_le", "is", null)
+          .limit(1000);
+        const dernierEcl = new Map<string, number>();
+        for (const l of (lances ?? []) as Array<{ user_id: string; ecl: string | null }>) {
+          const t = Date.parse(String(l.ecl ?? ""));
+          if (Number.isFinite(t)) dernierEcl.set(String(l.user_id), Math.max(dernierEcl.get(String(l.user_id)) ?? 0, t));
+        }
+        const { data: profsF } = await supabase.from("profiles").select("id, extension_last_seen_at").in("id", comptesPro);
+        const vuDeF = new Map(((profsF ?? []) as Array<{ id: string; extension_last_seen_at: string | null }>)
+          .map((p) => [p.id, Date.parse(p.extension_last_seen_at ?? "")]));
+        let traitesF = 0;
+        for (const u of comptesPro) {
+          if (traitesF >= 10) break;
+          const enAttente = attentesForfaitLbc(parCompteF.get(u) as never[], true) as Array<Record<string, unknown>>;
+          if (!enAttente.length) continue;
+          const mur = murDe.get(u) ?? 0;
+          const pubsDuCompte = ((pubs ?? []) as Array<Record<string, unknown>>).filter((p) => String(p.user_id) === u);
+          if (!mur || publicationApresMur(pubsDuCompte as never[], mur)) {
+            traitesF++;
+            let k = 0;
+            for (const j of enAttente) {
+              const pf = champsRepriseForfait(j.platform_fields as Record<string, unknown>, k, now) as Record<string, unknown>;
+              pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error as string, "needs_user", "handler-watch (Leboncoin a de nouveau accepté une publication du compte : le forfait couvre les dépôts)");
+              const { data: maj } = await supabase.from("cross_post_jobs")
+                .update({ status: "pending", error: null, platform_fields: pf })
+                .eq("id", String(j.id)).eq("status", "needs_user").select("id");
+              if ((maj ?? []).length) { forfaitLbcReprises++; k++; }
+            }
+            console.log(`[handler-watch] compte ${u.slice(0, 8)} : ${mur ? "une publication Leboncoin est passée après le mur du paiement" : "aucun mur du paiement vu sur ces attentes"} → ${k} attente(s) relâchée(s), espacées de 45 s`);
+            continue;
+          }
+          const vu = vuDeF.get(u);
+          if (!Number.isFinite(vu) || now - (vu as number) > 24 * 3_600_000) continue; // poste éteint : rien à tenter
+          const ecl = eclaireurForfaitLbc(enAttente as never[], true, now, ECLAIREUR_FORFAIT_INTERVALLE_MS, dernierEcl.get(u) ?? 0) as Record<string, unknown> | null;
+          if (!ecl) continue;
+          traitesF++;
+          const pf = champsEclaireurForfait(ecl.platform_fields as Record<string, unknown>, "handler-watch", new Date(now).toISOString()) as Record<string, unknown>;
+          pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, ecl.error as string, "needs_user", "handler-watch (éclaireur : Leboncoin accepte-t-il de nouveau un dépôt sans paiement ?)");
+          const { data: maj } = await supabase.from("cross_post_jobs")
+            .update({ status: "pending", error: null, platform_fields: pf })
+            .eq("id", String(ecl.id)).eq("status", "needs_user").select("id");
+          if ((maj ?? []).length) {
+            forfaitLbcEclaireurs++;
+            console.log(`[handler-watch] compte ${u.slice(0, 8)} : éclaireur Leboncoin ${String(ecl.id).slice(0, 8)} relancé (${enAttente.length} en attente du forfait pro)`);
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.error("[handler-watch] forfait Leboncoin pro:", (e as Error)?.message ?? e);
+  }
+  if (forfaitLbcEclaireurs || forfaitLbcReprises) {
+    console.log(`[handler-watch] forfait Leboncoin pro : ${forfaitLbcEclaireurs} éclaireur(s), ${forfaitLbcReprises} reprise(s)`);
   }
 
   // ── UN RETRAIT VINTED SANS SESSION DIT « CONNECTE-TOI », MÊME POSTE ÉTEINT ──

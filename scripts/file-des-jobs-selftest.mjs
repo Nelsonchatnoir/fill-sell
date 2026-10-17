@@ -84,10 +84,13 @@ console.log("4. CHAQUE ATTENTE DIT POURQUOI, AVEC LE MOT DE L'ÉTAT, SANS HEURE"
   const repub = job({ action: "republish", platform_fields: { republish_step: "a_capturer" } });
   const plafond = { retenue: true, motif: "plafond", reprise: "2026-10-01T22:00:00Z" };
   // (15/10 soir, Nico) Plus jamais l'heure de reprise : l'état seul (« ça fait fuir »).
-  ok(s(repub, { ...ctx, plafond }).raison === "En pause (limite du jour) : elle repart toute seule", s(repub, { ...ctx, plafond }).raison);
+  // (17/10, Nico) Exception : la limite du jour dit minuit (heure de Paris), la règle du
+  // plafond — jamais l'heure de CE job (« celle-ci à son tour »).
+  const phraseLimite = "En pause (limite du jour atteinte) : la file repart à minuit (heure de Paris), celle-ci à son tour";
+  ok(s(repub, { ...ctx, plafond }).raison === phraseLimite, s(repub, { ...ctx, plafond }).raison);
   const rythme = { retenue: true, motif: "pause", reprise: iso(146) };
   ok(s(repub, { ...ctx, plafond: rythme }).raison === "En pause (rythme de republication) : elle repart toute seule", s(repub, { ...ctx, plafond: rythme }).raison);
-  ok(s(repub, { ...ctx, plafond: { retenue: true, motif: "plafond", reprise: null } }).raison === "En pause (limite du jour) : elle repart toute seule", "reprise inconnue : pas d'heure inventée");
+  ok(s(repub, { ...ctx, plafond: { retenue: true, motif: "plafond", reprise: null } }).raison === phraseLimite, "reprise inconnue : la règle (minuit), jamais une heure de job inventée");
   ok(s(job({}), { ...ctx, plafond }).groupe === "en_file", "la limite des republications ne retient pas une publication");
   const auto = job({ action: "republish", platform_fields: { republish_step: "a_capturer", republish_source: "auto" } });
   ok(s(auto, { ...ctx, creneaux: { vinted: { dans_creneau: false, reprise: iso(60) } } }).raison === "En pause (créneau de republication) : elle repart toute seule au prochain créneau", "hors créneau : en pause, sans heure");

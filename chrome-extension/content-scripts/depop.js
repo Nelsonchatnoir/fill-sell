@@ -35,10 +35,11 @@
 //    jeton invalide, coupure, Cloudflare) ne dit ni « déconnecté », ni « retirée »,
 //    ni « vendue » : on le dit tel quel et on reprend plus tard.
 // ⛔ CE QUI N'A PAS D'ÉQUIVALENT DEPOP DEVIENT UNE QUESTION (taille hors de la
-//    grille de la feuille, marque introuvable dans la liste Depop, genre d'un
-//    article enfant, frais de port) — jamais une valeur choisie à la place de la
-//    personne. Seule l'ABSENCE de marque part en « Other » (`unbranded`), comme
-//    le formulaire de Depop le propose lui-même.
+//    grille de la feuille, genre d'un article enfant, frais de port) — jamais
+//    une valeur choisie à la place de la personne.
+// ⛔ LA MARQUE N'EST JAMAIS UNE QUESTION (17/10, Nico) : égalité EXACTE avec une
+//    marque de la liste Depop, sinon « Other » (`unbranded`), l'option du
+//    formulaire de Depop — jamais une autre marque (depopResoudreMarque).
 // ═══════════════════════════════════════════════════════════════════════════
 
 /* eslint-disable no-unused-vars */
@@ -97,9 +98,12 @@ const DEPOP_MSG_SESSION =
 const DEPOP_MSG_SESSION_RETRAIT =
   "Connexion Depop requise : ta session Depop est fermée sur ton ordinateur. " +
   "Appuie sur « Me connecter » et connecte-toi à Depop — dès que c'est fait, le retrait repart tout seul.";
+// (17/10) Un geste sur le COMPTE, une seule fois : le serveur rassemble les
+// publications qui l'attendent en UNE carte et les relâche toutes dès que
+// Depop accepte le vendeur (_shared/vendeur-depop.js, même texte, à l'octet).
 const DEPOP_MSG_VENDEUR =
-  "Depop demande de terminer ta configuration de vendeur avant toute mise en ligne (moyen de paiement à relier sur depop.com). " +
-  "Ta connexion n'est pas en cause : termine cette étape sur depop.com sur ton ordinateur, puis relance la publication.";
+  "Depop demande de terminer ta configuration de vendeur (ajouter un moyen de paiement) avant ta première mise en ligne. " +
+  "Fais-le une seule fois sur depop.com, sur ton ordinateur : tes publications Depop repartiront toutes seules. Rien n'a été publié ni retiré.";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 1. L'API
@@ -211,21 +215,13 @@ const DEPOP_PAYS_EURO = new Set(["FR", "BE", "DE", "IT", "ES", "NL", "IE", "AT",
 // ═══════════════════════════════════════════════════════════════════════════
 let depopAttributsCache = null;
 let depopGrillesCache = null;
+// Liste illisible → exception → nouvel essai plus tard : jamais « Other » à
+// cause du réseau.
 async function depopAttributs() {
   if (depopAttributsCache) return depopAttributsCache;
   const r = await depopJson(DEPOP_ENDPOINTS.attributs, { authentifie: false });
   if (!r.ok || !Array.isArray(r.corps?.brand)) throw new Error(`référentiel Depop illisible (HTTP ${r.statut || r.erreurReseau || "?"})`);
-  const marques = new Map();
-  const ambigues = new Set();
-  for (const b of r.corps.brand) {
-    if (!b?.id || b.status !== "active") continue;
-    for (const cle of new Set([depopNormaliser(b.name), depopNormaliser(b.id)])) {
-      if (!cle) continue;
-      if (marques.has(cle) && marques.get(cle).id !== b.id) ambigues.add(cle);
-      else marques.set(cle, { id: b.id, nom: b.name });
-    }
-  }
-  depopAttributsCache = { marques, ambigues };
+  depopAttributsCache = depopIndexMarques(r.corps.brand);
   return depopAttributsCache;
 }
 async function depopGrilles() {
@@ -256,10 +252,66 @@ async function depopLieu(pays) {
   return pays === "FR" ? { ...DEPOP_LIEU_FR } : null;
 }
 
-function depopNormaliser(s) {
-  return String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+// ── LA MARQUE DEPOP : UNE RÈGLE, JAMAIS DE QUESTION (17/10, Nico) ────────────
+// Thibault : « Autres », « Short », « T shirt », Jules, Bonobo… revenaient en
+// question, la réponse redemandée à l'identique. Et l'ancienne clé ignorait
+// « & » et « + » (« H&M » = « H&M+ », « Lacoste » = « Lacoste + »).
+//   1. une valeur qui dit « pas de marque », ou un nom commun de vêtement
+//      (listes fermées ci-dessous, copies À L'IDENTIQUE de
+//      supabase/functions/_shared/marque-depop.js) → « Other » (`unbranded`) ;
+//   2. égalité EXACTE — casse, accents et espaces multiples ignorés — avec le
+//      nom (ou l'identifiant) d'UNE marque active de la liste Depop → elle ;
+//   3. sinon → « Other ». Jamais une autre marque, jamais une ressemblance,
+//      jamais une question ; le remplacement est tracé et dit.
+// ⚠️ « Şans », « Generic », « No Brand », « Pantalón », « Maillot », « Slip »,
+//    « Chapeau » sont AUSSI des marques de la liste Depop : les listes fermées
+//    passent AVANT elle, ces mots ne deviennent jamais une marque.
+function depopCleMarque(s) {
+  return String(s ?? "")
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[‘’ʼ`´]/g, "'")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/^[\s\-–—_.,;:!?()"'«»]+|[\s\-–—_.,;:!?()"'«»]+$/g, "");
 }
-const DEPOP_SANS_MARQUE_MOTS = new Set(["", "sansmarque", "aucunemarque", "aucune", "nobrand", "unbranded", "other", "autre", "autresansmarque", "nonmarque", "generique"]);
+const DEPOP_SANS_MARQUE_MOTS = new Set([
+  "", "sans marque", "sans", "aucune", "aucune marque", "aucun", "pas de marque", "non marque", "non marquee",
+  "marque generique", "generique", "sans marque generique", "sans marque / generique",
+  "no brand", "nobrand", "unbranded", "unbranded generic", "unbranded / generic", "generic", "generic brand",
+  "other", "others", "autre", "autres", "autre marque", "autres marques", "divers", "diverse", "diverses",
+  "inconnu", "inconnue", "marque inconnue",
+]);
+const DEPOP_NOMS_COMMUNS = new Set([
+  "short", "shorts", "jean", "jeans", "t shirt", "t-shirt", "tshirt", "tee shirt", "tee-shirt",
+  "pantalon", "robe", "jupe", "veste", "pull", "chemise", "manteau", "maillot", "slip", "chapeau",
+  "gilet", "blouson", "sweat", "debardeur", "legging", "leggings", "echarpe", "bonnet", "chaussures", "baskets",
+]);
+// « absence » | « nom_commun » quand la valeur n'est pas une marque, null sinon.
+function depopNonMarque(valeur) {
+  const cle = depopCleMarque(valeur);
+  if (DEPOP_SANS_MARQUE_MOTS.has(cle)) return "absence";
+  const parties = cle.split(/\s*\/\s*/).filter(Boolean);
+  if (parties.length > 1 && parties.every((p) => DEPOP_SANS_MARQUE_MOTS.has(p))) return "absence";
+  if (DEPOP_NOMS_COMMUNS.has(cle)) return "nom_commun";
+  return null;
+}
+// L'index de la liste Depop : les noms (forme comparable) et les identifiants
+// (minuscules), marques ACTIVES seulement. Deux marques sous la même forme
+// (aucune dans le relevé du 08/10) → ambiguë → « Other », jamais l'une des deux.
+function depopIndexMarques(liste) {
+  const parNom = new Map();
+  const parId = new Map();
+  const ambigues = new Set();
+  for (const b of Array.isArray(liste) ? liste : []) {
+    if (!b?.id || b.status !== "active") continue;
+    parId.set(String(b.id).toLowerCase(), { id: b.id, nom: b.name });
+    const cle = depopCleMarque(b.name);
+    if (!cle) continue;
+    if (parNom.has(cle) && parNom.get(cle).id !== b.id) ambigues.add(cle);
+    else parNom.set(cle, { id: b.id, nom: b.name });
+  }
+  return { parNom, parId, ambigues };
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 4. LES QUESTIONS (format du socle needs_user, cf. markNeedsUser)
@@ -324,22 +376,17 @@ function depopPrevol(job) {
     couleurs: (Array.isArray(pf.depopCouleurs) ? pf.depopCouleurs : []).map(String).filter((c) => Object.prototype.hasOwnProperty.call(DEPOP_COULEUR_LIBELLE, c)).slice(0, 2) };
 }
 
-// La marque : l'absence part en « Other » (`unbranded`) — c'est l'option du
-// formulaire de Depop. Une vraie marque se cherche dans la liste Depop
-// (21 752 marques) ; introuvable ou ambiguë → question, jamais `unbranded`.
+// La marque (règle du 17/10, plus haut) : la valeur choisie pour Depop, sinon
+// celle de la fiche. Rend { id, nom } — et `remplacee` { de, motif } quand une
+// valeur non vide part en « Other ». Jamais de question.
 function depopResoudreMarque(pf, referentiel) {
-  const choisie = String(pf.depopMarque ?? "").trim();
-  const brute = choisie || String(pf.marque ?? "").trim();
-  const cle = depopNormaliser(brute);
-  if (DEPOP_SANS_MARQUE_MOTS.has(cle)) return { id: "unbranded", nom: "Other" };
-  if (referentiel.ambigues.has(cle)) {
-    return { question: depopQuestion("depopMarque", "Marque (Depop)", { input_type: "text",
-      explication: `Plusieurs marques Depop s'écrivent « ${brute} » : écris-la exactement comme sur Depop, ou « Autre » si l'article n'a pas de marque.` }) };
-  }
-  const trouvee = referentiel.marques.get(cle);
-  if (trouvee) return trouvee;
-  return { question: depopQuestion("depopMarque", "Marque (Depop)", { input_type: "text",
-    explication: `« ${brute} » n'est pas dans la liste des marques de Depop. Écris la marque comme Depop l'écrit, ou « Autre » si l'article n'a pas de marque.` }) };
+  const brute = String(pf.depopMarque ?? "").trim() || String(pf.marque ?? "").trim();
+  const cle = depopCleMarque(brute);
+  const autre = (motif) => ({ id: "unbranded", nom: "Other", ...(cle && motif !== "absence" ? { remplacee: { de: brute.slice(0, 80), motif } } : {}) });
+  const nonMarque = depopNonMarque(brute);
+  if (nonMarque) return autre(nonMarque);
+  if (referentiel.ambigues.has(cle)) return autre("ambigue");
+  return referentiel.parNom.get(cle) ?? referentiel.parId.get(brute.toLowerCase()) ?? autre("hors_liste_depop");
 }
 
 // La taille : la grille EXACTE de la feuille, dans la région du compte. La
@@ -474,7 +521,7 @@ async function fillListingForm(job) {
     depopEtape("referentiels");
     const [referentiel, grilles] = await Promise.all([depopAttributs(), depopGrilles()]);
     const marque = depopResoudreMarque(pf, referentiel);
-    if (marque.question) return depopSortie({ success: false, needsUser: true, motif_prevol: "marque", error: marque.question.explication, needsUserField: marque.question, t0 });
+    if (marque.remplacee) depopTracer(`marque « ${marque.remplacee.de} » → Other (${marque.remplacee.motif})`);
     const taille = depopResoudreTaille(pf, v.chemin, depopRegion(session.pays), grilles);
     if (taille.refus) {
       return depopSortie({ success: false, needsUser: true, attenteUtilisateur: true, attenteMotif: "depop_rayon_inconnu",
@@ -552,6 +599,11 @@ async function fillListingForm(job) {
     depopTracer(`relecture : HTTP ${lu.statut} ${lu.corps?.status ?? ""}`);
     const warnings = [];
     if (v.photosEcartees) warnings.push({ code: "depop_photos_plafond", message: `Depop accepte 8 photos au plus : ${v.photosEcartees} photo(s) de la fiche ne sont pas parties.` });
+    if (marque.remplacee) {
+      warnings.push({ code: "depop_marque_other", message: marque.remplacee.motif === "nom_commun"
+        ? `« ${marque.remplacee.de} » n'est pas une marque : l'annonce Depop est partie en « Other » (sans marque).`
+        : `« ${marque.remplacee.de} » n'est pas dans la liste des marques Depop : l'annonce est partie en « Other » (sans marque).` });
+    }
     return depopSortie({
       success: true,
       listingUrl: depopUrlPublique(c.corps.slug),

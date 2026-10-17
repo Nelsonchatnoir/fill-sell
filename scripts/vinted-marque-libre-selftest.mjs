@@ -22,7 +22,7 @@ assert.ok(corps.includes("texteComparable(posee) === texteComparable(demandee)")
 assert.ok(corps.includes("if (choix?.el) {"), "on ne clique que sur une ligne trouvée");
 assert.match(corps, /needsUser: true,[\s\S]{0,400}Vinted ne connaît pas la marque/, "marque inconnue de Vinted → une question, pas un choix");
 assert.ok(corps.includes(`allowed_values: proposees, target: { key: "marque" }`), "la réponse s'écrit dans la marque de la copie");
-assert.match(src, /const questionMarque = await selectVintedBrand\(fields\.marque, warnings, \{ marqueId: fields\.marque_id \}\);\s*if \(questionMarque\?\.needsUser\)/, "la question remonte jusqu'au résultat du dépôt (et l'id de la marque d'origine voyage, 06/10)");
+assert.match(src, /const questionMarque = await selectVintedBrand\(fields\.marque, warnings, \{\s*marqueId: fields\.marque_id,\s*marqueCapturee: fields\.marque_capturee \?\? null,\s*\}\);\s*if \(questionMarque\?\.poseeParId\) marqueParId = [^\n]+\n\s*if \(questionMarque\?\.needsUser\)/, "la question remonte jusqu'au résultat du dépôt (et l'id de la marque d'origine voyage, 06/10 ; la marque capturée et la pose par identifiant, 17/10)");
 assert.doesNotMatch(corps, /nearest|approch|includes\(cible\)|startsWith\(cible\)/i, "aucun rapprochement");
 
 // ── 2. Le comportement : la vraie fonction sur un faux panneau ─────────────

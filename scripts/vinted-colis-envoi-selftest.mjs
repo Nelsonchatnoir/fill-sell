@@ -85,7 +85,11 @@ ok(sondeArmee(1).corpsAvecColis(URL, "pas du json") === null, "corps illisible �
 ok(sondeArmee(-4).corpsAvecColis(URL, corps(article({ package_size_id: null }))) === null, "id invalide → jamais armé");
 
 console.log("\n3. LA CHAÎNE COMPLÈTE");
-ok(/const avecColis = corpsAvecColis\(url, avant \?\? body\);/.test(bg) && /return avecColis \?\? avant;/.test(bg), "corpsPourDepot enchaîne ISBN → langue → colis");
+// (17/10) La marque de l'annonce d'origine (par son identifiant) ferme la chaîne,
+// APRÈS le colis : le corps qui sort du colis est celui qu'elle reçoit.
+ok(/const avecColis = corpsAvecColis\(url, avant \?\? body\);/.test(bg)
+  && /const avantMarque = avecColis \?\? avant;\s*const avecMarque = corpsAvecMarque\(url, avantMarque \?\? body\);\s*return avecMarque \?\? avantMarque;/.test(bg),
+  "corpsPourDepot enchaîne ISBN → langue → colis → marque");
 ok((bg.match(/colisPose = dernierePoseColis/g) ?? []).length === 2, "fetch ET XMLHttpRequest relaient la pose (colisPose)");
 ok(/function armerColisPourPost\(id\)/.test(vt) && /__fillsellArmeColis: true/.test(vt), "vinted.js arme par __fillsellArmeColis");
 ok(/armerColisPourPost\(null\);/.test(vt), "vinted.js désarme à chaque remplissage");

@@ -35,7 +35,7 @@ import { palierDesDrapeaux, aAuMoins } from '../utils/palier';
 import { etatAttenteBoutique, lignesAttenteBoutique, phraseRassurance, messageFicheAttenteBoutique } from '../utils/attenteBoutique';
 import { phraseMiseAJourExtension } from '../utils/extensionAJour';
 import { retenueServeurDuJob, phraseRetenueServeur } from '../utils/retenueServeur';
-import { partageRepublicationsDuJour } from '../utils/plafondRepublication';
+import { partageRepublicationsDuJour, phraseLimiteAtteinte, ecoulementFile } from '../utils/plafondRepublication';
 import { retraitsBloquesParConnexion, ligneCarteRetraitBloque, ligneARegler as ligneAReglerRetraits, articlesVendusEncoreEnLigne, detailArticleVenduEnLigne, retraitsHorsArticlesVendus, retraitsEnAttenteParArticle } from '../utils/retraitsBloques';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import OplaAutorisationModal from '../components/OplaAutorisationModal';
@@ -82,6 +82,8 @@ import { estQuestionMarqueHorsCatalogue, marqueDemandee } from '../utils/questio
 import { marqueComparable, estSansMarque } from '../../supabase/functions/_shared/marque-absente.js';
 import { attributMarqueVinted } from '../publication/moteur/reponsesPartagees.js';
 import { attendIdentiteLbc, attentesIdentiteLbc } from '../../supabase/functions/_shared/lbc-identite.js';
+import { attendForfaitLbc, attentesForfaitLbc, compteProuvePro, adressageDemande } from '../../supabase/functions/_shared/lbc-forfait.js';
+import { attendVendeurDepop, attentesVendeurDepop, champsEclaireur as champsEclaireurVendeurDepop, URL_DEPOP } from '../../supabase/functions/_shared/vendeur-depop.js';
 // ⛔ UNE SEULE LECTURE DU MUR pour les trois surfaces (carte de sync du
 //    dressing, carte « Mes annonces en ligne », parcours d'entrée) : celle
 //    d'annonces/etatReleve. Une seconde signature ici aurait fini par mentir.
@@ -117,6 +119,8 @@ import EcranARegler from '../stock/EcranARegler';
 import EcranRetraitsBloques from '../stock/EcranRetraitsBloques';
 import EcranPlein from '../stock/EcranPlein';
 import EcranIdentiteLbc from '../stock/EcranIdentiteLbc';
+import EcranForfaitLbc from '../stock/EcranForfaitLbc';
+import EcranVendeurPlateforme from '../stock/EcranVendeurPlateforme';
 import {
   actionPrincipale, libelleAction, ancienneteJours, estAncienne, pastilleCourte, dateCourte, nombreFr,
   FILTRES_RAPIDES, libelleFiltreRapide, entreDansFiltreRapide, TRANCHES_ANCIENNETE, libelleTranche, trancheAnciennete,
@@ -383,6 +387,9 @@ const MURS_LEVES_A_LA_RELANCE = [
   'connexion', 'session_vinted',
   'ebay_connexion_requise', 'ebay_compte_a_finir', 'ebay_compte_chrome', 'ebay_compte_vendeur_inactif',
   'compte_vinted_bloque',
+  // (17/10) Depop attend la configuration vendeur du compte : la relance vaut
+  // « c'est fait » (le serveur la sert comme éclaireur et repose le mur s'il tient).
+  'depop_vendeur',
   // (03/10, point F) Mise de côté par le serveur (servie sans jamais
   // démarrer) : la relance la remet en file, le compteur repart de zéro.
   'tache_sans_demarrage',
@@ -1512,6 +1519,11 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
           : { root: NU_CHANNEL_BY_PLATFORM[job.platform] ?? null, key: f.field_key };
       const newPf = { ...pf, needsUserAttempts: 0 };
       delete newPf.needsUserField;
+      // (17/10) La réponse FERME la question : son motif « champ_a_choisir »
+      // ne survit pas à la relance. Sinon le mur suivant (« Valider et payer »
+      // de Leboncoin chez un pro, 12 dépôts le 14/10) héritait d'une question
+      // déjà tranchée. L'essai suivant pose son propre motif.
+      if (newPf.needs_user_source === "champ_a_choisir") delete newPf.needs_user_source;
       // Le motif de l'arrêt est archivé avant d'être effacé (2026-09-12) —
       // `error` repasse à null pour l'affichage, comme avant.
       newPf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, job.error, job.status, "relance_manuelle (✋ Compléter)");
@@ -6983,6 +6995,27 @@ const StockTab = memo(function StockTab({
     () => attentesIdentiteLbc(tousLesJobs).filter((j) => fichesToutes.has(String(j.inventaire_id))),
     [tousLesJobs, fichesToutes],
   );
+  // ── (17/10) LEBONCOIN N'OFFRE PLUS QUE « VALIDER ET PAYER » À UN COMPTE PRO :
+  //    UNE CARTE PAR COMPTE ── (_shared/lbc-forfait.js) Motif EXACT + compte
+  // prouvé pro (champ du seul formulaire pro dans une erreur de ses jobs) : ces
+  // tâches sortent des lignes par article et deviennent UNE ligne de
+  // « À régler » (EcranForfaitLbc). La preuve n'est cherchée que s'il y a un mur.
+  const compteLbcPro = useMemo(
+    () => tousLesJobs.some((j) => attendForfaitLbc(j, true)) && compteProuvePro(tousLesJobs),
+    [tousLesJobs],
+  );
+  const forfaitLbc = useMemo(
+    () => attentesForfaitLbc(tousLesJobs, compteLbcPro).filter((j) => fichesToutes.has(String(j.inventaire_id))),
+    [tousLesJobs, compteLbcPro, fichesToutes],
+  );
+  // ── (17/10) DEPOP DEMANDE LA CONFIGURATION DE VENDEUR : UNE CARTE PAR COMPTE ──
+  // (_shared/vendeur-depop.js) Mur vu par l'extension ou publication retenue
+  // par le serveur : ces tâches sortent des lignes par article et deviennent
+  // UNE ligne de « À régler » (EcranVendeurDepop).
+  const vendeurDepop = useMemo(
+    () => attentesVendeurDepop(tousLesJobs).filter((j) => fichesToutes.has(String(j.inventaire_id))),
+    [tousLesJobs, fichesToutes],
+  );
   // ── LA FOURNÉE, FIGÉE (2026-09-19) ────────────────────────────────────────
   // POURQUOI un état et pas un simple calcul : le périmètre du lot de
   // republications était RE-DÉDUIT à chaque poll (le bulk_batch_id du vivant le
@@ -7107,6 +7140,10 @@ const StockTab = memo(function StockTab({
       if (estArretUtilisateur(j) || estGeleLivres(j)) continue;
       // Un geste sur le COMPTE Leboncoin (nom et prénom) : une seule carte, pas une ligne par article.
       if (attendIdentiteLbc(j)) continue;
+      // (17/10) Le mur « Valider et payer » d'un compte Leboncoin pro : une seule carte aussi.
+      if (attendForfaitLbc(j, compteLbcPro)) continue;
+      // (17/10) Même chose pour la configuration vendeur Depop : une seule carte.
+      if (attendVendeurDepop(j)) continue;
       const cause = j.status === 'needs_user' ? 'completer'
         : j.status === 'failed' ? 'echec' : null;
       if (!cause) continue;
@@ -7140,7 +7177,7 @@ const StockTab = memo(function StockTab({
       gravite: echecs > 0 ? 'echec' : 'completer',
       ids: [...new Set(lignes.map((l) => String(l.job.inventaire_id)))],
     };
-  }, [activiteParCle, fichesParId, lang]);
+  }, [activiteParCle, fichesParId, lang, compteLbcPro]);
   // Les deux feuilles du haut de page. Affichage seul : elles n'écrivent rien,
   // elles rouvrent les portes qui existent déjà.
   const [fileOuverte, setFileOuverte] = useState(false);
@@ -8684,11 +8721,13 @@ const StockTab = memo(function StockTab({
   const nbRetraitsAutres = retraitsAutres.total + aRetirerSansFiche.reduce((t, g) => t + g.length, 0);
   const nbRetraitsBloques = nbVendusEnLigne + nbRetraitsAutres;
   const nbIdentiteLbc = identiteLbc.length ? 1 : 0; // une carte par compte, quel que soit le nombre d'annonces
+  const nbForfaitLbc = forfaitLbc.length ? 1 : 0; // (17/10) le mur « Valider et payer » d'un compte pro : une carte aussi
+  const nbVendeurDepop = vendeurDepop.length ? 1 : 0; // (17/10) une carte par compte, comme Leboncoin
   const nbAVerifier = aVerifier.ouvrir ? aVerifier.n : 0;
   // (12/10 soir) Les annonces « plus en ligne — vendue ? » (questions d'App,
   // jadis des bandeaux sur tous les onglets) : comptées comme elles s'affichent.
   const nbPlusEnLigne = plusEnLigne?.n ?? 0;
-  const nbARegler = nbRetraitsBloques + nbIdentiteLbc + nbAttenteAction + questionsDejaVendu.length + nbAVerifier + nbSansPrix + brouillons.length + nbPlusEnLigne;
+  const nbARegler = nbRetraitsBloques + nbIdentiteLbc + nbAttenteAction + nbForfaitLbc + nbVendeurDepop + questionsDejaVendu.length + nbAVerifier + nbSansPrix + brouillons.length + nbPlusEnLigne;
   const ligneRetraits = retraitsAutres.total
     ? ligneAReglerRetraits(retraitsAutres, lang)
     : { titre: lang === 'fr' ? (nbRetraitsAutres > 1 ? 'Annonces encore en ligne à retirer' : 'Annonce encore en ligne à retirer') : (nbRetraitsAutres > 1 ? 'Listings still live to remove' : 'Listing still live to remove'),
@@ -8715,6 +8754,18 @@ const StockTab = memo(function StockTab({
         ? `${identiteLbc.length} annonce${identiteLbc.length > 1 ? 's' : ''} Leboncoin en attente : complète ton compte une fois, elles partent toutes seules.`
         : `${identiteLbc.length} Leboncoin listing${identiteLbc.length > 1 ? 's' : ''} waiting: complete your account once, they go out on their own.`,
       onOuvrir: () => setGesteOuvert('lbc_identite') },
+    // (17/10) Leboncoin n'offre plus que « Valider et payer » à ce compte pro : une seule ligne.
+    { cle: 'lbc_forfait', n: nbForfaitLbc, titre: lang === 'fr' ? 'Leboncoin : ton forfait pro' : 'Leboncoin: your pro plan',
+      detail: lang === 'fr'
+        ? `${forfaitLbc.length} annonce${forfaitLbc.length > 1 ? 's' : ''} Leboncoin en attente : Leboncoin demande un paiement pour chaque nouvelle annonce de ton compte pro, et FillSell ne paie jamais à ta place.`
+        : `${forfaitLbc.length} Leboncoin listing${forfaitLbc.length > 1 ? 's' : ''} waiting: Leboncoin asks your pro account to pay for every new listing, and FillSell never pays for you.`,
+      onOuvrir: () => setGesteOuvert('lbc_forfait') },
+    // (17/10) Depop : un geste sur le COMPTE (configuration de vendeur), une seule ligne.
+    { cle: 'vendeur_plateforme', n: nbVendeurDepop, titre: lang === 'fr' ? 'Depop : termine ta configuration de vendeur' : 'Depop: finish your seller setup',
+      detail: lang === 'fr'
+        ? `${vendeurDepop.length} annonce${vendeurDepop.length > 1 ? 's' : ''} Depop en attente : ajoute ton moyen de paiement sur Depop une fois, elles partent toutes seules.`
+        : `${vendeurDepop.length} Depop listing${vendeurDepop.length > 1 ? 's' : ''} waiting: add your payment method on Depop once, they go out on their own.`,
+      onOuvrir: () => setGesteOuvert('vendeur_plateforme') },
     { cle: 'attente', n: nbAttenteAction, titre: lang === 'fr' ? (nbAttenteAction > 1 ? 'Annonces qui attendent ton geste' : 'Annonce qui attend ton geste') : 'Listings waiting on you',
       detail: attenteAction ? [attenteAction.echecs > 0 ? (lang === 'fr' ? `${attenteAction.echecs} pas partie${attenteAction.echecs > 1 ? 's' : ''}` : `${attenteAction.echecs} didn't go out`) : null, attenteAction.aCompleter > 0 ? (lang === 'fr' ? `${attenteAction.aCompleter} à compléter` : `${attenteAction.aCompleter} to complete`) : null].filter(Boolean).join(' · ') : null,
       onOuvrir: () => { setGesteOuvert(null); setAttenteOuverte(true); } },
@@ -9643,6 +9694,13 @@ const StockTab = memo(function StockTab({
               // plus visible de l'écran.
               // (15/10 soir, Nico) Plus aucune estimation (« ~15-21 min ») : ça fait fuir.
               const estimation=null;
+              // (17/10, Nico) La limite du jour ATTEINTE se dit ici, sur la carte la plus
+              // vue : la barre passe en pause et la phrase dit minuit et la durée de toute
+              // la file (utils/plafondRepublication). Une republication déjà retirée va au
+              // bout (le serveur ne la retient pas) : jamais la phrase pour elle.
+              const limiteAtteinte=repubPlafondEtat?.retenue===true&&repubPlafondEtat.motif==='plafond'
+                &&activite.actif.action==='republish'&&activite.actif.status==='pending'&&repubStepDe(activite.actif)!=='deleted';
+              const phraseLimite=limiteAtteinte?phraseLimiteAtteinte({etat:repubPlafondEtat,enFile:repubJobsVivants.length,lang}):null;
               // (01/10) La barre du lot : « N sur M » réel, puis un glissement
               // doux vers le suivant pendant que l'actif travaille — jamais au
               // delà. Ordinateur muet : elle s'immobilise (le compteur dit le
@@ -9691,8 +9749,11 @@ const StockTab = memo(function StockTab({
                   <div style={{marginTop:11}}>
                     <BarreProgression seulePiste lang={lang}
                       fraction={activite.faites/activite.total} pas={1/activite.total} dureePas={dureeUnJob}
-                      etat={activite.hbMuet?'pause':'en_cours'}/>
+                      etat={activite.hbMuet||phraseLimite?'pause':'en_cours'}/>
                   </div>
+                  {phraseLimite&&(
+                    <div role="status" style={{fontSize:12,lineHeight:1.5,marginTop:8,color:"#5C6560"}}>{phraseLimite}</div>
+                  )}
                 </button>
               );
             })()}
@@ -11105,8 +11166,11 @@ const StockTab = memo(function StockTab({
                 {(()=>{
                   if(modePrixAchat||modeRepublish)return null;
                   const p=repubPlafondEtat;
-                  if(!republishActif||!p||!repubBandeau)return null;
-                  const restantes=repubBandeau.file.length+(repubBandeau.actif&&!repubJobFini(repubBandeau.actif)?1:0);
+                  if(!republishActif||!p)return null;
+                  // (17/10, Nico) TOUTE la file (toutes plateformes, lot ou republication
+                  // automatique), plus seulement le dernier lot : c'est elle que la
+                  // limite retient.
+                  const restantes=repubJobsVivants.length;
                   if(restantes<=0)return null;
                   const reste=Number.isFinite(p.limite)&&Number.isFinite(p.faits)?p.limite-p.faits:null;
                   const proche=!p.retenue&&reste!==null&&reste>0&&reste<=REPUB_PLAFOND_PROCHE;
@@ -11117,19 +11181,28 @@ const StockTab = memo(function StockTab({
                   const motif=p.retenue?(p.motif??'plafond'):null;
                   const r=repriseRepub(p.reprise,fr,motif);
                   if(!r)return null; // état vieilli : rien plutôt qu'une reprise fausse
-                  const texte=motif==='pause'
-                    ?(fr
+                  let texte;
+                  if(motif==='plafond'){
+                    // La carte du haut le dit déjà quand elle porte une republication en file.
+                    const carteLeDit=activite&&activite.actif.action==='republish'&&activite.actif.status==='pending'&&repubStepDe(activite.actif)!=='deleted';
+                    if(carteLeDit)return null;
+                    texte=phraseLimiteAtteinte({etat:p,enFile:restantes,lang});
+                  }else if(motif==='pause'){
+                    texte=fr
                       ?`${p.sequence||p.faits} republications d'affilée — les ${restantes} suivantes reprennent ${r.quand}. FillSell laisse souffler ton compte Vinted entre deux séries, tu n'as rien à faire.`
-                      :`${p.sequence||p.faits} reposts in a row — the next ${restantes} resume ${r.quand}. FillSell lets your Vinted account breathe between streaks, nothing to do on your side.`)
-                    :motif==='plafond'
-                    ?(fr
-                      ?`${p.faits} republications sur ${p.limite} aujourd'hui — les ${restantes} suivantes reprennent ${r.quand}. FillSell les étale pour protéger ton compte Vinted, tu n'as rien à faire.`
-                      :`${p.faits} of ${p.limite} reposts today — the next ${restantes} resume ${r.quand}. FillSell paces them to protect your Vinted account, nothing to do on your side.`)
-                    :(fr
-                      ?`${p.faits} republications sur ${p.limite} aujourd'hui — au-delà, la suite reprend ${r.quand}. FillSell les étale pour protéger ton compte Vinted.`
-                      :`${p.faits} of ${p.limite} reposts today — beyond that, the rest resumes ${r.quand}. FillSell paces them to protect your Vinted account.`);
+                      :`${p.sequence||p.faits} reposts in a row — the next ${restantes} resume ${r.quand}. FillSell lets your Vinted account breathe between streaks, nothing to do on your side.`;
+                  }else{
+                    const e=ecoulementFile({etat:p,enFile:restantes});
+                    const duree=e&&e.joursSuivants>1
+                      ?(fr?` Pour les ${restantes} en file, ça prendra environ ${e.jours} jours.`:` For the ${restantes} queued, it will take about ${e.jours} days.`) // estimation-ok: calcul sur la limite du palier — Nico, 17/10
+                      :'';
+                    texte=fr
+                      ?`${p.faits} republications sur ${p.limite} aujourd'hui (toutes plateformes) — au-delà, la suite repart à minuit (heure de Paris), ${p.limite} par jour.${duree}` // estimation-ok: règle du plafond (minuit, heure de Paris) — Nico, 17/10
+                      :`${p.faits} of ${p.limite} reposts today (all platforms) — beyond that, the rest resumes at midnight (Paris time), ${p.limite} a day.${duree}`; // estimation-ok: règle du plafond — Nico, 17/10
+                  }
+                  if(!texte)return null;
                   return(
-                    <div style={{fontSize:11.5,lineHeight:1.5,color:"#8A8578",margin:"2px 2px 4px"}}>{texte}</div>
+                    <div role="status" style={{fontSize:12,lineHeight:1.5,color:"#5C6560",margin:"2px 2px 4px"}}>{texte}</div>
                   );
                 })()}
                 {/* (Les republications en pause faute de la bonne boutique
@@ -11485,6 +11558,17 @@ const StockTab = memo(function StockTab({
       )}
       {gesteOuvert==='lbc_identite'&&(
         <EcranIdentiteLbc lang={lang} attentes={identiteLbc}
+          titreDe={(j)=>fichesToutes.get(String(j.inventaire_id))?.titre ?? j.title}
+          onRelance={()=>rafraichirApresSync()} onFermer={()=>setGesteOuvert('a_regler')}/>
+      )}
+      {gesteOuvert==='lbc_forfait'&&(
+        <EcranForfaitLbc lang={lang} attentes={forfaitLbc} adressage={adressageDemande(forfaitLbc)}
+          titreDe={(j)=>fichesToutes.get(String(j.inventaire_id))?.titre ?? j.title}
+          onRelance={()=>rafraichirApresSync()} onFermer={()=>setGesteOuvert('a_regler')}/>
+      )}
+      {gesteOuvert==='vendeur_plateforme'&&(
+        <EcranVendeurPlateforme lang={lang} platform="depop" nom={PLATFORM_LABELS.depop} url={URL_DEPOP} attentes={vendeurDepop}
+          preparerEclaireur={(pf)=>champsEclaireurVendeurDepop(pf,'geste',new Date().toISOString())}
           titreDe={(j)=>fichesToutes.get(String(j.inventaire_id))?.titre ?? j.title}
           onRelance={()=>rafraichirApresSync()} onFermer={()=>setGesteOuvert('a_regler')}/>
       )}

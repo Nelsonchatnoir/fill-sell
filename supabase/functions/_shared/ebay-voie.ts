@@ -10,8 +10,10 @@
 // porte le ré-armement automatique — même principe qu'« Autoriser Opla » :
 //   · `compteEbayApiConnecte`  : y a-t-il une connexion OAuth NON révoquée ?
 //   · `compteEbayApiUsable`    : le compte est-il PRÊT à publier par API —
-//                                MIROIR EXACT du trigger cross_post_jobs_voie_ebay
-//                                (connexion + 3 politiques + checklist verte) ;
+//                                (17/10) LA règle partagée avec l'app,
+//                                etatCompteEbay (_shared/ebay-etat-compte.js) :
+//                                connexion, 3 politiques RETENUES, étapes vertes,
+//                                plafond de vente eBay non nul ;
 //   · `rearmerJobsEbayConnexionSiUtilisable` : quand le compte devient
 //     utilisable, les publications parquées repartent en voie='api', pending.
 //
@@ -21,6 +23,7 @@
 //    le job attend en needs_user, avec son bouton « Connecte ton compte eBay ».
 //
 // deno-lint-ignore-file no-explicit-any
+import { etatCompteEbay } from "./ebay-etat-compte.js";
 
 /** Le marqueur porté par un job parqué : nommé, donc mesurable et filtrable. */
 export const SOURCE_EBAY_CONNEXION_REQUISE = "ebay_connexion_requise";
@@ -44,6 +47,17 @@ export const MESSAGE_EBAY_COMPTE_A_FINIR =
   "il reste à finir sa configuration (paiement, retours, livraison). Rien n'a été envoyé à eBay — " +
   "l'annonce partira toute seule dès que ton compte sera prêt.";
 
+/**
+ * (17/10, Fluxen) eBay refuse « Pas de retour » pour CE compte (refus 25002,
+ * paramètre ReturnsAcceptedOption : vendeur professionnel, retours obligatoires).
+ * Rien n'est en ligne ; la politique de retours n'est plus retenue — c'est la
+ * personne qui en choisit une autre, jamais FillSell à sa place.
+ */
+export const MESSAGE_EBAY_RETOURS_OBLIGATOIRES =
+  "eBay refuse « Pas de retour » sur ton compte : il exige que tu acceptes les retours " +
+  "(c'est la règle pour les vendeurs professionnels). Dans Réglages › Compte eBay, choisis les retours acceptés : " +
+  "rien n'a été mis en ligne, et l'annonce partira toute seule.";
+
 // ── (12/10, Nico) LE LIEN DIRECT VERS CE QUI RESTE À FINIR CHEZ eBAY ─────────
 // « ajoute au message le lien direct vers la page eBay où finir la
 // configuration du compte vendeur ». Liens VÉRIFIÉS seulement (garde-fou Nico,
@@ -55,28 +69,50 @@ export const MESSAGE_EBAY_COMPTE_A_FINIR =
 export const LIEN_EBAY_VENDEUR = "https://www.ebay.fr/sh/ovw";
 export const LIEN_EBAY_CONDITIONS = "https://www.ebay.fr/bp/manage";
 
-/** Ce qui reste à finir chez eBay pour une ligne ebay_accounts, et son lien — ou null (compte prêt / absent). */
+/**
+ * Ce qui reste à finir pour une ligne ebay_accounts, et son lien — ou null (compte prêt / absent).
+ * (17/10) Lu sur LA règle partagée (etatCompteEbay) :
+ *   · plafond   — eBay plafonne le compte à zéro : c'est eBay, sur le compte vendeur (Seller Hub) ;
+ *   · vendeur   — inscription vendeur pas finie, ou rien de relevé : Seller Hub ;
+ *   · retours   — seule la politique de retours manque : à choisir dans FillSell (aucun lien eBay) ;
+ *   · parcours  — le reste se règle dans FillSell (conditions qui EXISTENT chez eBay à choisir,
+ *                 lieu d'expédition, activation) : aucun lien eBay ;
+ *   · conditions — des conditions de vente n'existent nulle part : la page eBay (12/10, Nico).
+ */
+export type EtapeEbayAFinir = { etape: "plafond" | "vendeur" | "retours" | "parcours" | "conditions"; url: string | null };
 // deno-lint-ignore no-explicit-any
-export function etapeEbayAFinir(a: any): { etape: "vendeur" | "conditions"; url: string } | null {
-  if (!a || a.revoked_at != null || compteEbayApiUsableDepuisLigne(a)) return null;
-  const ss = a.seller_state;
-  if (!ss || ss.bloque_par_etat_ebay !== false) return { etape: "vendeur", url: LIEN_EBAY_VENDEUR };
-  return { etape: "conditions", url: LIEN_EBAY_CONDITIONS };
+export function etapeEbayAFinir(a: any): EtapeEbayAFinir | null {
+  if (!a || a.revoked_at != null) return null;
+  const e = etatCompteEbay(a);
+  if (e.pret) return null;
+  if (e.statut === "bloque_par_ebay") return { etape: "plafond", url: LIEN_EBAY_VENDEUR };
+  if (e.statut === "inconnu" || e.etapes.inscription_vendeur === "manque") return { etape: "vendeur", url: LIEN_EBAY_VENDEUR };
+  if (e.manquantes.length === 1 && e.manquantes[0] === "politique_retours") return { etape: "retours", url: null };
+  const aCreerChezEbay = e.manquantes.some((c: string) => c.startsWith("politique_") && !e.aChoisir.includes(c));
+  return aCreerChezEbay ? { etape: "conditions", url: LIEN_EBAY_CONDITIONS } : { etape: "parcours", url: null };
 }
 
-/** Le message « compte à finir », avec l'étape nommée et son lien direct. */
-export function messageEbayCompteAFinir(etape: { etape: "vendeur" | "conditions"; url: string } | null): string {
+const QUOI_A_FINIR: Record<EtapeEbayAFinir["etape"], string> = {
+  plafond: "eBay n'autorise pas encore ce compte à vendre : son plafond de vente est à zéro, et c'est eBay qui le relève, sur ton compte vendeur",
+  vendeur: "eBay ne le laisse pas encore vendre : il reste à finir ton compte vendeur chez eBay (vérification ou inscription vendeur)",
+  retours: "il reste à choisir, dans Réglages › Compte eBay, si tu acceptes les retours",
+  parcours: "il reste à finir son réglage dans FillSell : ouvre Réglages › Compte eBay, l'étape qui reste y est indiquée",
+  conditions: "eBay ne le laisse pas encore vendre : il reste à créer tes conditions de vente chez eBay (paiement, retours, livraison)",
+};
+
+/** Le message « compte à finir », avec l'étape nommée et, s'il y en a un, son lien direct. */
+export function messageEbayCompteAFinir(etape: EtapeEbayAFinir | null): string {
   if (!etape) return MESSAGE_EBAY_COMPTE_A_FINIR;
-  const quoi = etape.etape === "vendeur"
-    ? "il reste à finir ton compte vendeur chez eBay (vérification ou inscription vendeur)"
-    : "il reste à créer tes conditions de vente chez eBay (paiement, retours, livraison)";
-  return `Ton compte eBay est bien relié à FillSell, mais eBay ne le laisse pas encore vendre : ${quoi}. ` +
-    `C'est ici : ${etape.url} — rien n'a été envoyé à eBay, et l'annonce partira toute seule dès que ton compte sera prêt.`;
+  const quoi = QUOI_A_FINIR[etape.etape] ?? QUOI_A_FINIR.parcours;
+  const suite = "n'a été envoyé à eBay, et l'annonce partira toute seule dès que ton compte sera prêt.";
+  return etape.url
+    ? `Ton compte eBay est bien relié à FillSell, mais ${quoi}. C'est ici : ${etape.url} — rien ${suite}`
+    : `Ton compte eBay est bien relié à FillSell, mais ${quoi}. Rien ${suite}`;
 }
 
 /** L'état du compte en UNE lecture : utilisable, et sinon ce qui reste à finir. (service_role) */
 // deno-lint-ignore no-explicit-any
-export async function etatCompteEbayApi(admin: any, userId: string): Promise<{ usable: boolean; aFinir: { etape: "vendeur" | "conditions"; url: string } | null }> {
+export async function etatCompteEbayApi(admin: any, userId: string): Promise<{ usable: boolean; aFinir: EtapeEbayAFinir | null }> {
   try {
     const { data } = await admin
       .from("ebay_accounts")
@@ -103,17 +139,16 @@ export async function compteEbayApiConnecte(admin: any, userId: string): Promise
 }
 
 /**
- * Le compte est-il PRÊT à publier par l'API ? Miroir mot pour mot du trigger
- * cross_post_jobs_voie_ebay (migration 20260906150000) :
- *   revoked_at IS NULL
- *   AND fulfillment_policy_id / payment_policy_id / return_policy_id NON NULL
- *   AND seller_state->>'bloque_par_etat_ebay' = 'false'
+ * Le compte est-il PRÊT à publier par l'API ? (17/10) LA règle partagée avec
+ * l'app (etatCompteEbay, _shared/ebay-etat-compte.js) : relié, 3 politiques
+ * RETENUES, étapes vertes, et plafond de vente eBay non nul — zéro en quantité
+ * OU en montant, eBay n'autorise pas ce compte à vendre : on parque AVANT tout
+ * appel. Le trigger cross_post_jobs_voie_ebay ne décide plus de la préparation
+ * depuis le 27/09 (relié = voie API, prêt ou non).
  */
 export function compteEbayApiUsableDepuisLigne(a: any): boolean {
   if (!a || a.revoked_at != null) return false;
-  if (!a.fulfillment_policy_id || !a.payment_policy_id || !a.return_policy_id) return false;
-  const ss = a.seller_state;
-  return !!ss && ss.bloque_par_etat_ebay === false;
+  return etatCompteEbay(a).pret;
 }
 
 export async function compteEbayApiUsable(admin: any, userId: string): Promise<boolean> {

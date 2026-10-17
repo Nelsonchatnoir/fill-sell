@@ -84,8 +84,21 @@ ok(/const clesDe = /.test(gpj) && /clesDe\(j\)\.find/.test(gpj), "la garde lit l
 const mig = lire("supabase/migrations/20261015190000_une_annonce_une_fiche.sql");
 ok(/BEFORE INSERT OR UPDATE OF listing_url, platform_listing_id ON public\.cross_post_jobs/.test(mig), "en base : le lien suit l'identifiant, à l'INSERT comme à l'UPDATE");
 ok(/annonce_partagee_attribuer/.test(mig) && /defaire_croisement_annonce\(p_user, p_platform, v_lid, p_inventaire_garde\)/.test(mig), "la décision s'applique par defaire_croisement_annonce");
-ok(/republish_step', 'a_capturer'/.test(mig), "une republication capturée sur la mauvaise annonce est RECAPTURÉE");
+ok(/republish_step', 'a_capturer'/.test(mig), "une republication capturée sur la mauvaise annonce est relue (règle du 15/10)");
 ok(/'mode', 'annonces_partagees'/.test(mig), "le tick (cron 53) appelle la cascade");
+// (17/10, Amiral 317adae1) La recapture n'existe que pour Vinted : la copie d'une
+// republication Leboncoin/Beebs/Depop (faite par le serveur, rien ne la refait)
+// n'est JAMAIS retirée — réalignée sur l'annonce désignée ; sans lien, arrêtée.
+const mig17 = lire("supabase/migrations/20261017110000_republication_nait_avec_son_lien.sql");
+const debutReprendre = mig17.indexOf("CREATE OR REPLACE FUNCTION public.annonce_partagee_reprendre(");
+const reprendre17 = debutReprendre >= 0 ? mig17.slice(debutReprendre, mig17.indexOf("$function$;", debutReprendre)) : "";
+const brancheVinted = reprendre17.slice(reprendre17.indexOf("IF j.platform = 'vinted' THEN"), reprendre17.indexOf("ELSIF NULLIF(btrim(j.listing_url), '') IS NOT NULL"));
+const autres = reprendre17.slice(reprendre17.indexOf("ELSIF NULLIF(btrim(j.listing_url), '') IS NOT NULL"));
+ok(reprendre17.length > 0 && /- 'republish_snapshot'/.test(brancheVinted), "17/10 : Vinted — la copie est retirée, l'extension recapture (inchangé)");
+ok(autres.length > 0 && !/- 'republish_snapshot'/.test(autres) && /'realignee'/.test(autres) && /'listing_url', j\.listing_url, 'platform_listing_id', v_lid/.test(autres),
+  "17/10 : Leboncoin/Beebs/Depop — la copie n'est JAMAIS retirée, elle est réalignée sur l'annonce désignée");
+ok(/'issue', 'clos_lien_incertain'/.test(autres) && /Republication arrêtée avant tout retrait/.test(autres),
+  "17/10 : sans lien exact, la republication est arrêtée (rien retiré), jamais laissée à échouer");
 const ia = lire("supabase/functions/rapprochement-ia/index.ts");
 ok(/body\.mode === "annonces_partagees"/.test(ia) && /cands\.some\(\(f\) => f\.statut === "vendu"\)/.test(ia), "rapprochement-ia : mode « annonces_partagees », jamais l'IA sur une fiche vendue");
 ok(/jamais deux appels pour la même annonce/.test(ia), "un verdict par annonce (jamais deux appels)");

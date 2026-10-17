@@ -8,6 +8,7 @@
 import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
 import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase';
+import { etatCompteEbay } from '../../supabase/functions/_shared/ebay-etat-compte.js';
 
 const TRACE = '[ebay-compte]';
 const DELAI_SESSION_MS = 8000;
@@ -86,15 +87,13 @@ export async function ouvrirConsentementEbay(url) {
   window.location.assign(url);
 }
 
-// ── « Ce compte eBay est-il utilisable ? » — MIROIR EXACT du trigger ────────
-// La décision de voie vit en base (cross_post_jobs_voie_ebay, migration
-// 20260906150000) et nulle part ailleurs. Le prédicat ci-dessous en est le
-// reflet À L'ÉCRAN, mot pour mot :
-//   revoked_at IS NULL
-//   AND fulfillment_policy_id IS NOT NULL
-//   AND payment_policy_id IS NOT NULL
-//   AND return_policy_id IS NOT NULL
-//   AND (seller_state->>'bloque_par_etat_ebay') = 'false'
+// ── « Ce compte eBay est-il prêt à vendre ? » — LA RÈGLE PARTAGÉE ───────────
+// (17/10) Depuis le 27/09 le trigger cross_post_jobs_voie_ebay ne décide plus
+// de la préparation (relié = voie API, prêt ou non) : c'est ebay-api-worker qui
+// parque une publication tant que le compte n'est pas prêt. Écran et serveur
+// appliquent la MÊME fonction, etatCompteEbay (_shared/ebay-etat-compte.js) :
+// relié, politiques RETENUES, étapes vertes, et plafond de vente eBay non nul
+// (zéro en quantité OU en montant = jamais prêt).
 // `etat` est la vue publique rendue par ebay-account (action 'statut') : une
 // simple lecture de ebay_accounts, AUCUN appel à eBay.
 //
@@ -106,12 +105,9 @@ export async function ouvrirConsentementEbay(url) {
 // Tri-état : null = pas encore lu (on ne conclut pas), true/false sinon.
 export function ebayCompteUtilisable(etat) {
   if (!etat) return etat === null || etat === undefined ? null : false;
-  if (!etat.connecte || etat.a_reconnecter) return false;
-  const pol = etat.politiques ?? {};
-  if (!pol.fulfillment || !pol.payment || !pol.return) return false;
-  // seller_state absent = checklist jamais relevée → le trigger ne bascule pas
-  // non plus (NULL ->> renvoie NULL, jamais 'false'). Même verdict ici.
-  return etat.seller_state?.bloque_par_etat_ebay === false;
+  // seller_state absent = checklist jamais relevée : statut 'inconnu', pas prêt
+  // (le serveur parque de même).
+  return etatCompteEbay(etat).pret;
 }
 
 // ── LA VOIE d'une publication eBay — miroir du trigger d'AUJOURD'HUI ────────
@@ -134,13 +130,14 @@ export function ebayVoieApiDuCompte(etat) {
 }
 
 // Motif LE PLUS EN AMONT du refus — une seule phrase à afficher, jamais un
-// diagnostic. 'non_connecte' | 'a_reconnecter' | 'a_finir' (politiques ou
-// checklist rouge : dans les deux cas le geste est le même, finir dans
-// Réglages › Compte eBay).
+// diagnostic. 'non_connecte' | 'a_reconnecter' | 'bloque_par_ebay' (plafond de
+// vente eBay à zéro : c'est eBay) | 'a_finir' (politiques ou checklist rouge :
+// le geste est le même, finir dans Réglages › Compte eBay).
 export function motifEbayInutilisable(etat) {
-  if (!etat || !etat.connecte) return etat?.a_reconnecter ? 'a_reconnecter' : 'non_connecte';
-  if (etat.a_reconnecter) return 'a_reconnecter';
-  return 'a_finir';
+  const statut = etatCompteEbay(etat).statut;
+  if (statut === 'non_relie') return 'non_connecte';
+  if (statut === 'a_reconnecter') return 'a_reconnecter';
+  return statut === 'bloque_par_ebay' ? 'bloque_par_ebay' : 'a_finir';
 }
 
 // ── Répartition d'un lot par VOIE — source unique de la question « qui a ────

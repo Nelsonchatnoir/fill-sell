@@ -313,15 +313,22 @@ export function lienVerificationEbay(job, lang = 'fr') {
   // (sans étape) ouvre le Seller Hub, qui mène aux deux.
   if (job?.platform_fields?.needs_user_source === 'ebay_compte_a_finir') {
     const aFinir = job.platform_fields.ebay_a_finir;
+    // (17/10) Ce qui se règle DANS FillSell (choisir ses conditions de vente,
+    // ses retours, son lieu d'expédition) n'a pas de lien eBay : le geste est
+    // le parcours eBay de l'app (Réglages › Compte eBay).
+    if (aFinir?.etape === 'parcours' || aFinir?.etape === 'retours') return null;
     const conditions = aFinir?.etape === 'conditions';
+    // (17/10) Plafond de vente eBay à zéro : c'est eBay qui le relève, sur le
+    // compte vendeur (Seller Hub).
+    const plafond = aFinir?.etape === 'plafond';
     return {
       url: typeof aFinir?.url === 'string' && /^https:\/\/www\.ebay\.fr\//.test(aFinir.url) ? aFinir.url : EBAY_SELLER_HUB_URL,
       libelle: lang === 'en'
-        ? (conditions ? 'Create my eBay selling policies' : 'Finish my eBay seller account')
-        : (conditions ? 'Créer mes conditions de vente eBay' : 'Finir mon compte vendeur eBay'),
+        ? (conditions ? 'Create my eBay selling policies' : plafond ? 'Open my eBay seller account' : 'Finish my eBay seller account')
+        : (conditions ? 'Créer mes conditions de vente eBay' : plafond ? 'Ouvrir mon compte vendeur eBay' : 'Finir mon compte vendeur eBay'),
       aide: lang === 'en'
-        ? 'Once eBay lets your account sell, this listing goes out on its own.'
-        : "Dès qu'eBay laisse ton compte vendre, cette annonce part toute seule.",
+        ? (plafond ? 'Once eBay lifts your selling limit, this listing goes out on its own.' : 'Once eBay lets your account sell, this listing goes out on its own.')
+        : (plafond ? "Dès qu'eBay relève ton plafond de vente, cette annonce part toute seule." : "Dès qu'eBay laisse ton compte vendre, cette annonce part toute seule."),
     };
   }
   const motif = String(job?.platform_fields?.last_diagnostic?.motif_ebay ?? '');

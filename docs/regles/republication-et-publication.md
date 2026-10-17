@@ -7,6 +7,8 @@
 
 ## Sommaire
 
+- 17/10 — « introuvable » sur l'annonce exacte (2 relevés complets) ; une republication naît avec son lien et garde sa copie (en fin de fichier)
+- 17/10 — la limite du jour se dit en entier : minuit, « environ N jours » (exception à la règle du 16/10) (en fin de fichier)
 - 16/10 nuit — une seule vérité sur les attentes : six mots d'état, une source, aucun temps estimé (en fin de fichier)
 - 09-10/10 — publication en lot : page blanche (ex-L138-146)
 - 08/10 — une republication dont la suppression est partie va au bout (ex-L250-263)
@@ -137,8 +139,18 @@
 - **Marque Vinted hors catalogue** (ujs v137, gpj v252, extension 0.6.114) : la question « Sans marque ou une
   marque du catalogue » part UNE fois avant toute suppression (plus de reprise ni de champ retiré) ; la réponse
   (rangée sur l'article, servie en `marque_choisie`) prime sur la marque capturée à la recréation, l'ancien
-  brand_id n'est plus transmis. NON fait : poser le brand_id capturé dans le corps de la recréation (« reprendre
-  exactement l'annonce ») — exige un essai réel sur le compte de Nico avant (la recréation suit la suppression).
+  brand_id n'est plus transmis. (17/10 : remplacé, voir la ligne suivante.)
+- **Fait (17/10, Nico — `_shared/vinted-marque-par-id.js`, extension 0.6.123)** : une republication reprend EXACTEMENT la marque
+  de l'annonce en ligne — la ligne du menu si Vinted la propose, sinon son `brand_id` capturé, posé dans le corps du dépôt par la
+  sonde (jamais d'écrasement) ; `brand_id` 1 = « Sans marque » natif. Aucune question ; pour une marque à identifiant, ni
+  `marque_choisie`, ni `marques_retenues`, ni la fiche ne changent l'annonce (la question du 03/10 reste pour les publications
+  neuves). L'une-passe ne retire l'annonce que si l'envoi direct est PROUVÉ (`marque_pose_envoi` : 2xx ET marque relue dans la
+  réponse, sans refus depuis → gpj sert `marque_injection_prouvee`) et que `#brand` est vide ; sinon pause avant tout retrait
+  (`pause_marque_par_id`, « En pause », jamais needs_user, aucune durée). Une recréation (annonce déjà retirée) pose l'identifiant
+  sans attendre la preuve. Les arrêts « marque » des builds d'avant repartent seuls une fois (`CORRECTIFS_EXTENSION`
+  `vinted_marque_par_identifiant`). ⚠️ Preuve à faire en réel (compte de Nico, annonce de test ≥ 999 €, protocole du rapport
+  `docs/enquetes/dix-points-1710/RAPPORT.md` § 6) : tant qu'elle manque, aucune annonce n'est retirée pour ce motif.
+  Selftest `selftest:vinted-marque-par-identifiant`.
 
 ## 16/10 nuit — UNE SEULE VÉRITÉ SUR LES ATTENTES (mission de Nico ; détail `docs/refonte/etape-1-attentes.md`)
 - **Six mots, les mêmes partout** (app, extension, serveur, mails) : **En file** (ça partira seul, à son tour) ·
@@ -161,3 +173,35 @@
 - **Loaders** : la phrase dit l'étape réelle (« Dépôt en cours sur Vinted, dans ton Chrome… »), jamais un délai ;
   Synchroniser = plateformes terminées sur visées + une ligne par plateforme. Ouvert (décision de Nico) : le
   pourcentage animé de `BarreProgression` (glisse sur des durées médianes) — maquette « étapes sans % » proposée.
+
+## 17/10 — LA LIMITE DU JOUR SE DIT EN ENTIER (mission de Nico ; rapport `docs/enquetes/dix-points-1710/RAPPORT.md` § 3)
+- **Exception écrite à la règle du 16/10 « aucun temps estimé »** (décision de Nico, 17/10) : la limite du jour dit
+  qu'elle est atteinte, que la file **repart à minuit (heure de Paris)** — c'est la règle du plafond, le compteur du
+  serveur repart au jour de Paris — et **combien de temps il faut pour écouler la file** (« ça prendra environ N
+  jours », N = calcul sur la limite du palier, jamais une vitesse mesurée). Lignes marquées `estimation-ok:`.
+- **Avant le clic** (feuille Republier, `partageRepublicationsDuJour`) : « Ta limite est de 50 republications par jour
+  (toutes plateformes) : 50 partent aujourd'hui, les 635 autres à partir de minuit (heure de Paris), 50 par jour. Pour
+  toute ta file, ça prendra environ 14 jours. » — la file déjà en attente passe avant.
+- **Pendant la retenue** (`phraseLimiteAtteinte`, motif « plafond » seulement ; la pause de respiration garde sa
+  phrase) : carte du haut du Stock (barre en pause), en tête de « Ta file », et ligne de la liste sur TOUTE la file
+  (`repubJobsVivants`, plus le dernier lot seul). Chaque job dit « la file repart à minuit, celle-ci à son tour » —
+  jamais l'heure de CE job. Un état lu avant minuit (écran resté ouvert) repart de 0 au changement de jour.
+- **La trace `platform_fields.retenue_republication`** (get-pending-jobs) est une photo datée : vivante seulement si
+  `status = 'pending'` ET `reprise > now()`. Périmée, elle se lève (gpj, 40 par poll, hors retenue). Le 17/10, 25
+  traces « plafond » de nerema75 étaient périmées depuis 35 h : ses 25 republications attendent en fait une AUTRE
+  boutique Vinted (« ouvre ta boutique @… »), ce que l'app dit déjà — normal.
+- Aucun plafond changé (`coin_config` intouché). Selftest `selftest:republication-plafond-message` (texte, durée,
+  câblage, levée de la trace).
+
+## 17/10 — « INTROUVABLE » TRANCHÉ SUR L'ANNONCE EXACTE ; UNE REPUBLICATION NAÎT AVEC SON LIEN ET GARDE SA COPIE (DeadRoz, Amiral ; rapport `docs/enquetes/dix-points-1710/RAPPORT.md` § 2 et § 8)
+- **Pause « introuvable à confirmer »** (`_shared/introuvable-a-confirmer.js`, handler-watch) : la trace se lit par l'IDENTIFIANT
+  EXACT (Vinted : `vinted_listing_snapshots` ou la fiche qui porte CE `vinted_item_id` ; autres : `annonces_plateforme`), jamais la
+  fiche du job (elle peut porter une autre annonce, ou rester « active » figée par la garde É4 du relevé). Revue en ligne →
+  reprise ; close sur fiche vendue, trace vendue/fermée, ou DEUX relevés complets (total connu, lus ≥ annoncés, NON vides, de
+  SA boutique Vinted) sans elle, comptés depuis la première lecture ratée. Un relevé vide ne prouve rien. handler-watch lit les
+  relevés de LA plateforme, non vides, du plus récent (le 16/10, 87 relevés Leboncoin vides cachaient le relevé Vinted).
+- **Naissance d'une republication** (`spend_coins_and_republish`, mig 20261017110000) : hors Vinted, le lien et la copie désignent la
+  même annonce (le lien suit le numéro quand ils se contredisent, comme le déclencheur `cross_post_jobs_lien_suit_identifiant`) ;
+  lien inconnu ou annonce de deux fiches → refus `lien_annonce_incertain` avant tout décompte (refus d'article au créneau, qui
+  passe au candidat suivant). Une copie hors Vinted n'est jamais retirée (`annonce_partagee_reprendre` la réaligne ; sans lien
+  exact, arrêtée, rien retiré). Selftests `introuvable-a-confirmer`, `republication-nait-avec-son-lien`, `annonce-partagee-cascade`.

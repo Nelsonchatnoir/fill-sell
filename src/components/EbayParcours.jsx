@@ -9,6 +9,12 @@
 // dit ce que c'est, pourquoi eBay le demande, et porte UN seul geste. Ce qui
 // est déjà fait se replie. Quand il ne reste rien : « eBay est prêt ».
 //
+// (17/10, Louis) « Prêt » ne se dit QUE si la règle partagée le dit
+// (`etatCompte`, etatCompteEbay de _shared/ebay-etat-compte.js) : un plafond de
+// vente eBay à zéro n'est jamais « prêt ». La carte dit alors que c'est eBay
+// qui n'autorise pas encore ce compte à vendre, avec le lien vers le compte
+// vendeur eBay, et les étapes qui restent ici s'il en reste.
+//
 // ⛔ CE COMPOSANT NE PARLE À PERSONNE. Il ne fait aucun appel, ne tient aucun
 //    état de compte : il reçoit les verdicts (utils/ebayParcours) et rend le
 //    CORPS de l'étape courante par render-prop. Toute la mécanique (politiques,
@@ -17,7 +23,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import { useState } from 'react';
 import { UI } from './ui';
-import { etapesEbay, etapeCouranteEbay, progressionEbay, motsEbay } from '../utils/ebayParcours';
+import { etapesEbay, etapeCouranteEbay, progressionEbay, motsEbay, LIENS_EBAY } from '../utils/ebayParcours';
 
 const carte = {
   background: UI.card,
@@ -62,11 +68,13 @@ function Barre({ faites, total }) {
  * @param {object}   props
  * @param {'fr'|'en'} props.lang
  * @param {object}   props.etats        { [cle]: 'ok' | 'manque' | 'inconnu' }
+ * @param {object}   props.etatCompte   le verdict de la règle partagée (etatCompteEbay) :
+ *                                      lui seul dit « prêt » ou « bloqué par eBay »
  * @param {function} props.rendreCorps  (cle) => ReactNode — les contrôles de l'étape
  * @param {function} props.rendrePret   () => ReactNode — ce que voit l'acheteur, tout vert
  * @param {boolean}  props.chargement   relevé en cours (on n'affiche pas un verdict périmé)
  */
-export default function EbayParcours({ lang = 'fr', etats, rendreCorps, rendrePret, chargement = false }) {
+export default function EbayParcours({ lang = 'fr', etats, etatCompte = null, rendreCorps, rendrePret, chargement = false }) {
   const m = motsEbay(lang);
   const [faitesOuvertes, setFaitesOuvertes] = useState(false);
   // Une étape déjà faite qu'on rouvre pour la CHANGER (ses transporteurs, son
@@ -81,15 +89,54 @@ export default function EbayParcours({ lang = 'fr', etats, rendreCorps, rendrePr
   const faites = liste.filter((e) => e.fait);
   // Rang affiché : la position de l'étape courante parmi les étapes LUES.
   const rang = courante ? liste.findIndex((e) => e.cle === courante.cle) + 1 : liste.length;
+  // « Prêt » : la règle partagée quand on l'a (plafond eBay compris), sinon les
+  // seules étapes (ancien appelant).
+  const pret = etatCompte ? etatCompte.pret : prog.pret;
+
+  // ── eBAY N'AUTORISE PAS ENCORE CE COMPTE À VENDRE (17/10) ─────────────────
+  // Plafond de vente eBay à zéro, en quantité OU en montant : ce n'est pas une
+  // étape à nous, c'est eBay. On le dit en premier, avec le lien vers le compte
+  // vendeur eBay ; les étapes qui restent ici suivent, s'il en reste.
+  const bloque = etatCompte?.statut === 'bloque_par_ebay' ? (
+    <div style={{ ...carte, background: `${UI.amber}14`, border: `1px solid ${UI.amber}55`, gap: 6 }}>
+      <div style={{ fontSize: 14.5, fontWeight: 800, color: '#9A5A3A' }}>{m.bloque.titre}</div>
+      <div style={{ fontSize: 12.5, color: UI.ink, lineHeight: 1.5 }}>{m.bloque.texte(m.plafond(etatCompte.plafond))}</div>
+      <a
+        href={LIENS_EBAY.compte_vendeur} target="_blank" rel="noopener noreferrer"
+        style={{ alignSelf: 'flex-start', fontSize: 13, fontWeight: 700, color: UI.tealDeep, textDecoration: 'none' }}
+      >
+        {m.bloque.bouton}
+      </a>
+    </div>
+  ) : null;
 
   if (!liste.length) {
     return chargement ? null : null;
   }
 
+  // Bloqué par eBay et plus rien à faire ici : la carte d'eBay, et ce qui est
+  // déjà fait — jamais « eBay est prêt ».
+  if (bloque && !courante) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {bloque}
+        <BlocFaites
+          liste={faites}
+          m={m}
+          ouvert={faitesOuvertes}
+          setOuvert={setFaitesOuvertes}
+          etapeRouverte={etapeRouverte}
+          setEtapeRouverte={setEtapeRouverte}
+          rendreCorps={rendreCorps}
+        />
+      </div>
+    );
+  }
+
   // ── TOUT EST VERT ────────────────────────────────────────────────────────
   // L'écran ne dit plus « 6 coches » : il dit la seule chose qui compte, puis
   // montre ce que voit l'acheteur et laisse le changer.
-  if (prog.pret) {
+  if (pret) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div style={{
@@ -118,6 +165,7 @@ export default function EbayParcours({ lang = 'fr', etats, rendreCorps, rendrePr
   // ── IL RESTE DES ÉTAPES ──────────────────────────────────────────────────
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {bloque}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
           <span style={{ fontSize: 11.5, fontWeight: 800, color: UI.mute2, letterSpacing: '.04em' }}>

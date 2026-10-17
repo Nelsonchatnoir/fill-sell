@@ -41,7 +41,7 @@ import { titrePourJob, titreVide, CLE_TITRE_SAISI } from "../_shared/titre-du-jo
 import { cheminsRefusesParLApp, cleChemin, mappingRefuseParLApp, suggestionsSansRefus } from "../_shared/rayon-refuse-ebay.ts";
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
 import { tailleDansGrille } from "../_shared/tailles.js";
-import { etatCompteEbayApi, messageEbayCompteAFinir, SOURCE_EBAY_COMPTE_A_FINIR } from "../_shared/ebay-voie.ts";
+import { etatCompteEbayApi, messageEbayCompteAFinir, MESSAGE_EBAY_RETOURS_OBLIGATOIRES, SOURCE_EBAY_COMPTE_A_FINIR, type EtapeEbayAFinir } from "../_shared/ebay-voie.ts";
 import { messageSiteEtranger, siteDuCompteEbay, siteEbayEtranger, SOURCE_EBAY_SITE_ETRANGER } from "../_shared/ebay-site.ts";
 import { idAnnonceEbay, preuveIntentionRetraitRepublicationEbayMemorisee, preuveRetraitRepublicationEbayMemorisee, verifierOffreRetraitEbay, verifierSourceRetraitEbay, type SourceRetraitEbay } from "../_shared/ebay-retrait-identite.ts";
 // Module PUR (aucun import, aucune API navigateur) : le rétro-test doit
@@ -50,7 +50,7 @@ import { detectObjectIconKeyword } from "../../../src/utils/shared.js";
 import { CLES_QUESTION_PLUS_EN_LIGNE, drapeauAvantLaFin, lireQuantiteEbay as lireQuantiteEbayPur, verdictAnnonceEbay } from "../_shared/ebay-etat-annonce.js";
 import {
   aspectsCategorie, assemblerAspects, choisirCondition, conditionsCategorie, descripteursCondition, descriptionEbay, emplacementMarchand, enrichirDepuisAttributs, marquerAspectFerme,
-  lireErreurEbay, lireRefus25129, motifReelEbay, MARKETPLACE, remplirAspects, skuPour, suggererCategories, titreEbay, urlAnnonce, urlsPhotos,
+  lireErreurEbay, lireRefus25129, motifReelEbay, MARKETPLACE, refusRetoursObligatoires, remplirAspects, skuPour, suggererCategories, titreEbay, urlAnnonce, urlsPhotos,
   type AspectCatalogue, type AttributsInventaire, type ErreurEbay, type PlatformFields,
 } from "../_shared/ebay-publication.ts";
 import { completerAspectsIA, valeurLueDansLeContexte } from "../_shared/ebay-aspects-ia.ts";
@@ -108,7 +108,7 @@ async function rerouterPublicationsVersApi(admin: SupabaseClient): Promise<Recor
     .in("user_id", ids).limit(50);
   let versApi = 0, parquees = 0;
   const pretParCompte = new Map<string, boolean>();
-  const aFinirParCompte = new Map<string, { etape: "vendeur" | "conditions"; url: string } | null>();
+  const aFinirParCompte = new Map<string, EtapeEbayAFinir | null>();
   for (const j of (jobs ?? []) as Array<{ id: string; user_id: string; error: string | null; platform_fields: Record<string, unknown> | null }>) {
     if (!pretParCompte.has(j.user_id)) {
       const etat = await etatCompteEbayApi(admin, j.user_id);
@@ -650,6 +650,32 @@ async function publier(
         await marquer(admin, job, { status: "pending", error: null }, { etape: "publish", quoi: "aspects_rafraichis_25129", http: pub.http, message: e.message, cache: "erreur" in frais ? `échec : ${frais.erreur}` : `${frais.aspects.length} aspects relus (Taxonomy)` }, { sku, offer_id: offerId, tentatives, aspects_rafraichis: true });
         return { job: job.id, issue: "aspects_rafraichis", http: pub.http, ebay: e };
       }
+    }
+    // (17/10, Fluxen) eBay refuse « Pas de retour » pour CE compte (25002,
+    // ReturnsAcceptedOption : vendeur professionnel, retours obligatoires).
+    // La politique de retours retenue n'est plus utilisable : elle cesse d'être
+    // RETENUE (réglage FillSell — rien n'est touché chez eBay, et FillSell n'en
+    // choisit JAMAIS une autre à la place de la personne). Le compte n'est plus
+    // prêt : la règle unique redemande les retours partout, la publication est
+    // parquée « compte à finir », et le circuit existant la ré-arme dès qu'une
+    // politique est retenue (rearmerJobsEbayConnexionSiUtilisable). Pas de
+    // boucle : sans politique retenue, rien n'est relancé.
+    // Garde .eq("return_policy_id", …) : une politique choisie entre-temps
+    // n'est jamais effacée.
+    if (refusRetoursObligatoires(e)) {
+      const { error: errRetrait } = await admin.from("ebay_accounts").update({ return_policy_id: null })
+        .eq("user_id", job.user_id).eq("return_policy_id", compte.return_policy_id);
+      if (errRetrait) console.error(`[ebay-api-worker] job ${job.id} : politique de retours non retirée — ${errRetrait.message}`);
+      job.platform_fields = {
+        ...(job.platform_fields ?? {}),
+        needs_user_source: SOURCE_EBAY_COMPTE_A_FINIR,
+        ebay_a_finir: { etape: "retours", url: null },
+        ebay_retours_refuses: { return_policy_id: compte.return_policy_id, le: new Date().toISOString() },
+      };
+      await marquer(admin, job, { status: "needs_user", error: MESSAGE_EBAY_RETOURS_OBLIGATOIRES },
+        { etape: "publish", quoi: "retours_obligatoires", http: pub.http, errorId: e.errorId, message: e.message, ...diagRefus(e, null) },
+        { sku, offer_id: offerId, tentatives });
+      return { job: job.id, issue: "needs_user", motif: "retours_obligatoires" };
     }
     const refus = messageRefus("la publication", pub.http, e);
     await marquer(admin, job, { status: verdictHttp(pub.http, tentatives), error: refus.error }, { etape: "publish", http: pub.http, errorId: e.errorId, message: e.message, ...diagRefus(e, refus.motif) }, { sku, offer_id: offerId, tentatives });

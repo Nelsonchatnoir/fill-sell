@@ -14,8 +14,14 @@
 //   3. sans objet : publication ou republication (pas encore engagée) d'un
 //      article dont la VENTE est enregistrée ; republication orpheline (sa
 //      fiche n'existe plus) → annulées, rien n'est retiré ni publié.
+//   5. (17/10) « Marque (Depop) » d'une publication : hors de la liste de
+//      Depop → « Sans marque » (« Other »), jamais une autre marque
+//      (_shared/marque-depop.js) ; une question « ambiguë » reste au
+//      correctif d'extension.
 // deno-lint-ignore-file no-explicit-any
 import { estQuestionEtat, etatDepuisSources, etatsDuJob } from "./etat-correspondance.js";
+import { reponseMarqueDepop, champsApresMarqueDepop, QUESTION_MARQUE_DEPOP } from "./marque-depop.js";
+import { archiverErreur } from "./erreurs-archivees.js";
 
 const TICKS = ["needs_user_tick_le", "needs_user_actif_ms", "needs_user_vu_le", "needs_user_vu_erreur"];
 const NOMS: Record<string, string> = { vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", ebay: "eBay", opla: "Opla", depop: "Depop" };
@@ -170,6 +176,27 @@ export async function trancherQuestions(supabase: any): Promise<Record<string, n
       });
       if (!e) (n as Record<string, number>).poids_exige = ((n as Record<string, number>).poids_exige ?? 0) + 1;
     }
+  }
+  // ── 5. (17/10, Nico) « Marque (Depop) » : jamais une question ─────────────
+  // Les extensions ≤ 0.6.122 demandent la marque quand elle n'est pas dans la
+  // liste de Depop (« Jules », « Bonobo », « Autres », « Short »…). La règle :
+  // hors de la liste → « Sans marque » (« Other » chez Depop), jamais une autre
+  // marque, jamais la fiche (_shared/marque-depop.js). Publications seulement ;
+  // une question « Plusieurs marques Depop s'écrivent… » n'est jamais tranchée
+  // ici. Une fois par job (marque_depop_tranchee), compare-and-swap sur needs_user.
+  const { data: marquesDepop } = await supabase.from("cross_post_jobs")
+    .select("id, platform, action, status, error, platform_fields")
+    .eq("status", "needs_user").eq("platform", "depop").eq("action", "publish")
+    .eq("platform_fields->needsUserField->>field_key", QUESTION_MARQUE_DEPOP)
+    .order("created_at", { ascending: true }).limit(200);
+  for (const j of (marquesDepop ?? []) as any[]) {
+    const rep = reponseMarqueDepop(j);
+    if (!rep) continue;
+    const pf = champsApresMarqueDepop(j.platform_fields ?? {}, rep, maintenant, "handler-watch") as Record<string, any>;
+    pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error ?? null, "needs_user", "handler-watch (marque Depop hors de la liste : « Sans marque »)");
+    const { data } = await supabase.from("cross_post_jobs").update({ status: "pending", error: null, platform_fields: pf })
+      .eq("id", j.id).eq("status", "needs_user").select("id");
+    if (data?.length) (n as Record<string, number>).marque_depop = ((n as Record<string, number>).marque_depop ?? 0) + 1;
   }
   return n;
 }

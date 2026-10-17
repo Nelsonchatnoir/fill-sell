@@ -231,3 +231,11 @@ trois relevés et deux reprises lancés tout seuls, aucun Vinted abouti, un faux
   numéro, même fiche, photos identiques → le titre des jobs devient le titre en ligne (`titre_aligne`), le job arrêté
   par « Contradiction d'identité » repart ; le titre de la fiche n'est jamais touché. Au recâblage,
   `rapprocher_recabler_job` emporte le titre de l'annonce visée (mig 20261015210000).
+
+## ⛔ 17/10 — BEEBS : « MES ANNONCES » NON PEINTE — LE FLUX TRANCHE SUR SA LISTE, LE MUR SE NOMME (Ornella)
+- La vérification anti-robot de Beebs (DataDome, servie SOUS l'adresse de la liste : 403, captcha-delivery) s'écrit `[anti_robot]`,
+  le renvoi vers /fr/auth `[pas_connecte]` : jamais « 0 annonce », jamais un compte vide.
+- Page non peinte : le flux de « Mes annonces » tranche si ses deux onglets sont lus et que la liste « en ligne » est ENTIÈRE et tenue
+  par l'index (`jugerFluxMesAnnoncesBeebs`) — le compteur de Beebs n'a pas à égaler l'index (une annonce retirée y reste des heures :
+  5 contre 7 le 16/10) ; tronquée (> 60) : compteur = index ; « en vérification » : les connues entrent au relevé, une inconnue est
+  comptée, jamais inventée. Le verdict `[flux] … → …` est TOUJOURS écrit dans le run (extension 0.6.123). `selftest:beebs-flux-mes-annonces`.

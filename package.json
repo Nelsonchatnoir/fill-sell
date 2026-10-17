@@ -367,6 +367,14 @@
     "selftest:lbc-feuille-corrigee": "node scripts/lbc-feuille-corrigee-selftest.mjs",
     "selftest:etat-job": "node --import ./scripts/loader-ext.mjs scripts/etat-job-selftest.mjs",
     "selftest:aucune-estimation": "node scripts/aucune-estimation-selftest.mjs",
+    "selftest:beebs-flux-mes-annonces": "node scripts/beebs-flux-mes-annonces-selftest.mjs",
+    "selftest:ebay-etat-unique": "node --import ./scripts/loader-ext.mjs scripts/ebay-etat-unique-selftest.mjs",
+    "selftest:ebay-retours-obligatoires": "deno run --allow-read --allow-env --allow-net scripts/ebay-retours-obligatoires-selftest.ts",
+    "selftest:lbc-forfait-pro": "node scripts/lbc-forfait-pro-selftest.mjs",
+    "selftest:depop-marque": "node scripts/depop-marque-selftest.mjs",
+    "selftest:depop-vendeur-mur": "node scripts/depop-vendeur-mur-selftest.mjs",
+    "selftest:vinted-marque-par-identifiant": "node scripts/vinted-marque-par-identifiant-selftest.mjs",
+    "selftest:republication-nait-avec-son-lien": "node scripts/republication-nait-avec-son-lien-selftest.mjs",
     "gen:etat-job-extension": "node scripts/gen-etat-job-extension.mjs"
   },
   "dependencies": {

@@ -4516,6 +4516,10 @@ async function processJob(rawJob, accessToken) {
         extrasPublie.platform_fields = await preuveBoutiqueVintedApresDepot(extrasPublie.platform_fields);
         const colisEnvoi = await preuveColisEnvoi(tabId).catch(() => null);
         if (colisEnvoi) extrasPublie.platform_fields = { ...(extrasPublie.platform_fields ?? {}), colis_pose_envoi: colisEnvoi };
+        // (17/10) La marque posée par son identifiant : la réponse de Vinted
+        // part avec le job (preuve servie au parc par get-pending-jobs).
+        const marqueEnvoi = await preuveMarqueEnvoi(tabId).catch(() => null);
+        if (marqueEnvoi) extrasPublie.platform_fields = { ...(extrasPublie.platform_fields ?? {}), marque_pose_envoi: marqueEnvoi };
       }
       if (job.platform === "leboncoin" && result.lbcDepot) {
         extrasPublie.platform_fields = { ...(extrasPublie.platform_fields ?? {}), lbc_depot: result.lbcDepot };
@@ -8396,15 +8400,87 @@ async function installNetworkProbe(tabId, platform) {
             return corrige;
           } catch { return null; }
         };
+        // ══ POSE DE LA MARQUE DE L'ANNONCE D'ORIGINE PAR SON IDENTIFIANT (17/10) ══
+        // patrick giry « Paris 2024 » (brand_id 305315), Romain « pago »
+        // (352029) : le payload d'édition de l'annonce en ligne (GET
+        // item_upload/items/{id}) porte brand_id + brand_dto ; le menu Marque
+        // de Vinted ne propose plus ces anciennes marques libres, et le
+        // remplissage ne savait poser une marque qu'en cliquant sa ligne. On
+        // pose l'id CAPTURÉ (armé par vinted.js, armerMarquePourPost), dans
+        // l'objet qui porte catalog_id, sur la seule création, et SEULEMENT si
+        // la page a laissé brand_id nul/absent — jamais d'écrasement d'une
+        // marque posée par la page. `brand` (libellé) n'est rempli que si la
+        // clé existe déjà, vide : aucune clé inventée hors brand_id (clé du
+        // payload de la même ressource). La clé réellement envoyée est relevée
+        // à chaque dépôt (marqueEnvoyeeOf) : c'est la preuve qui manquait.
+        window.__fsMarqueAPoser = null;
+        const marqueArmee = () => {
+          const a = window.__fsMarqueAPoser;
+          if (!(Number(a?.id) > 1)) return null;
+          return (Date.now() - (a.armeeA ?? 0)) < ISBN_ARME_TTL_MS ? a : null;
+        };
+        window.addEventListener("message", (e) => {
+          if (e.source !== window || !e.data?.__fillsellArmeMarque) return;
+          const id = Number(e.data.id);
+          const titre = typeof e.data.titre === "string" && e.data.titre.trim() ? e.data.titre.trim().slice(0, 120) : null;
+          window.__fsMarqueAPoser = Number.isInteger(id) && id > 1 ? { id, titre, armeeA: Date.now() } : null;
+        });
+        let dernierePoseMarque = null;
+        const corpsAvecMarque = (url, body) => {
+          dernierePoseMarque = null;
+          const a = marqueArmee();
+          if (!a) return null;
+          if (!/item_upload\/items(?:[?#]|$)/i.test(String(url))) return null;
+          if (typeof body !== "string" || body.charAt(0) !== "{") return null;
+          let j;
+          try { j = JSON.parse(body); } catch { return null; }
+          if (!j || typeof j !== "object" || Array.isArray(j)) return null;
+          const cible = (j.item && typeof j.item === "object" && !Array.isArray(j.item)) ? j.item : j;
+          if (!("catalog_id" in cible)) return null; // pas le corps d'un article
+          if (Number(cible.brand_id) > 0) return null; // la page a posé une marque : on n'y touche pas
+          cible.brand_id = a.id;
+          if ("brand" in cible && !String(cible.brand ?? "").trim() && a.titre) cible.brand = a.titre;
+          try {
+            const corrige = JSON.stringify(j);
+            dernierePoseMarque = a.id;
+            return corrige;
+          } catch { return null; }
+        };
+        // Relevé PASSIF, à chaque création : les clés « brand* » de l'objet de
+        // l'article réellement envoyé (valeurs bornées). Jamais bloquant.
+        const marqueEnvoyeeOf = (url, body) => {
+          if (!/item_upload\/items(?:[?#]|$)/i.test(String(url)) || typeof body !== "string" || body.charAt(0) !== "{") return null;
+          try {
+            const j = JSON.parse(body);
+            const c = (j?.item && typeof j.item === "object" && !Array.isArray(j.item)) ? j.item : j;
+            if (!c || typeof c !== "object" || !("catalog_id" in c)) return null;
+            const cles = Object.keys(c).filter((k) => /brand/i.test(k)).slice(0, 6);
+            return Object.fromEntries(cles.map((k) => [k, c[k] !== null && typeof c[k] === "object" ? "(objet)" : String(c[k] ?? "null").slice(0, 60)]));
+          } catch { return null; }
+        };
+        // La marque RELUE dans la réponse de création (item.brand_id, sinon
+        // item.brand_dto.id) : seule preuve que Vinted a pris l'identifiant
+        // posé — un 200 qui l'aurait ignoré ne prouve rien. null = illisible.
+        const marqueRelueOf = (txt) => {
+          try {
+            const j = JSON.parse(String(txt ?? ""));
+            const it = j?.item && typeof j.item === "object" && !Array.isArray(j.item) ? j.item : null;
+            const v = Number(it?.brand_id ?? it?.brand_dto?.id);
+            return Number.isInteger(v) && v > 0 ? v : null;
+          } catch { return null; }
+        };
         // Les poses s'enchaînent sur le MÊME corps : l'ISBN d'abord (chemin
-        // éprouvé, inchangé), la langue ensuite, le format de colis enfin.
+        // éprouvé, inchangé), la langue ensuite, le format de colis, puis la
+        // marque de l'annonce d'origine (17/10).
         // Rend le corps final, ou null s'il n'y avait rien à faire.
         const corpsPourDepot = (url, body) => {
           const avecIsbn = corpsAvecIsbn(url, body);
           const avecLangue = corpsAvecLangueLivre(url, avecIsbn ?? body);
           const avant = avecLangue ?? avecIsbn;
           const avecColis = corpsAvecColis(url, avant ?? body);
-          return avecColis ?? avant;
+          const avantMarque = avecColis ?? avant;
+          const avecMarque = corpsAvecMarque(url, avantMarque ?? body);
+          return avecMarque ?? avantMarque;
         };
 
         const origFetch = window.fetch;
@@ -8415,6 +8491,7 @@ async function installNetworkProbe(tabId, platform) {
           let isbnPose = null;
           let languePosee = null;
           let colisPose = null;
+          let marquePosee = null;
           try {
             // Corps lisible uniquement : un Request porteur d'un flux n'est pas
             // réécrit (angle mort assumé, jamais une publication cassée).
@@ -8424,6 +8501,7 @@ async function installNetworkProbe(tabId, platform) {
                 isbnPose = dernierePoseIsbn;
                 languePosee = dernierePoseLangue;
                 colisPose = dernierePoseColis;
+                marquePosee = dernierePoseMarque;
                 corpsEnvoye = corrige;
                 args = [input, { ...init, body: corrige }];
               }
@@ -8447,6 +8525,11 @@ async function installNetworkProbe(tabId, platform) {
                 isbnPose,
                 languePosee,
                 colisPose,
+                // (17/10) brand_id posé par la sonde, les clés brand* parties, et
+                // la marque relue dans la réponse (la preuve que Vinted l'a prise).
+                marquePosee,
+                marqueEnvoyee: marqueEnvoyeeOf(url, corpsEnvoye),
+                marqueRelue: marquePosee ? marqueRelueOf(txt) : null,
                 annonceId: annonceIdOf(txt),
                 succesVinted: succesVintedOf(txt),
                 reponse: extraitSain(txt),
@@ -8464,10 +8547,11 @@ async function installNetworkProbe(tabId, platform) {
           let isbnPose = null;
           let languePosee = null;
           let colisPose = null;
+          let marquePosee = null;
           try {
             if (String(this.__m).toUpperCase() !== "GET" && typeof body === "string") {
               const corrige = corpsPourDepot(this.__u ?? "", body);
-              if (corrige != null) { corpsEnvoye = corrige; isbnPose = dernierePoseIsbn; languePosee = dernierePoseLangue; colisPose = dernierePoseColis; }
+              if (corrige != null) { corpsEnvoye = corrige; isbnPose = dernierePoseIsbn; languePosee = dernierePoseLangue; colisPose = dernierePoseColis; marquePosee = dernierePoseMarque; }
             }
           } catch { /* idem */ }
           try {
@@ -8485,6 +8569,9 @@ async function installNetworkProbe(tabId, platform) {
                   isbnPose,
                   languePosee,
                   colisPose,
+                  marquePosee,
+                  marqueEnvoyee: marqueEnvoyeeOf(this.__u, typeof corpsEnvoye === "string" ? corpsEnvoye : null),
+                  marqueRelue: marquePosee ? marqueRelueOf(corps) : null,
                   annonceId: annonceIdOf(corps),
                   succesVinted: succesVintedOf(corps),
                   reponse: extraitSain(corps),
@@ -9291,6 +9378,33 @@ async function preuveColisEnvoi(tabId) {
     const c = captures[i];
     if (!/item_upload\/items/i.test(String(c?.url ?? "")) || !c?.colisPose) continue;
     return { id: Number(c.colisPose), http: Number(c.status) || null, le: new Date().toISOString(), build: FILLSELL_BUILD_ID };
+  }
+  return null;
+}
+
+// ── LA PREUVE QUE LA MARQUE ENVOYÉE PAR SON IDENTIFIANT PASSE (17/10) ───────
+// Le POST de création dont la sonde a dû poser brand_id (marque de l'annonce
+// d'origine que le menu de Vinted ne proposait plus) : sa réponse est la
+// preuve, dans un sens ou dans l'autre, avec les clés brand* réellement
+// parties. Écrite sur le job (platform_fields.marque_pose_envoi) : le serveur
+// s'en sert pour autoriser, ou non, le retrait d'une annonce dont la marque ne
+// peut partir que par son identifiant (marque_injection_prouvee). null sinon.
+async function preuveMarqueEnvoi(tabId) {
+  if (tabId == null) return null;
+  const { captures } = await readProbeCaptures(tabId).catch(() => ({ captures: [] }));
+  for (let i = captures.length - 1; i >= 0; i--) {
+    const c = captures[i];
+    if (!/item_upload\/items/i.test(String(c?.url ?? "")) || !c?.marquePosee) continue;
+    const relue = Number(c.marqueRelue) > 0 ? Number(c.marqueRelue) : null;
+    return {
+      id: Number(c.marquePosee), http: Number(c.status) || null,
+      envoyee: c.marqueEnvoyee && typeof c.marqueEnvoyee === "object" ? c.marqueEnvoyee : null,
+      // La marque que Vinted a REMISE dans sa réponse : seule une relecture
+      // égale à l'identifiant posé confirme l'envoi (un 200 qui l'ignore ne
+      // prouve rien — _shared/vinted-marque-par-id.js, envoiMarqueProuve).
+      relue, confirmee: relue != null && relue === Number(c.marquePosee),
+      le: new Date().toISOString(), build: FILLSELL_BUILD_ID,
+    };
   }
   return null;
 }
@@ -11320,7 +11434,12 @@ async function sonderSessionDepop() {
   const tabId = await findExistingWorkTabId("depop").catch(() => null);
   if (tabId != null) {
     const r = await sendMessageToTabOnce(tabId, { type: "DEPOP_SESSION" }, 8000).catch(() => null);
-    if (r?.connecte === true) return { etat: true, http: 200, identite: r.id ? { user_id: String(r.id), login: r.username ?? null } : null };
+    // (17/10) La réponse porte aussi le statut vendeur (sellerStatus → canSell) :
+    // remonté tel quel (true / false / null illisible), le serveur relâche les
+    // publications qui attendent la configuration vendeur dès qu'il lit true
+    // (_shared/vendeur-depop.js, sondeVendeurDepopOk).
+    const vendeur = typeof r?.vendeur?.canSell === "boolean" ? r.vendeur.canSell : null;
+    if (r?.connecte === true) return { etat: true, http: 200, identite: r.id ? { user_id: String(r.id), login: r.username ?? null } : null, vendeur };
     if (r?.connecte === false) return { etat: false, http: r.motif ?? 401 };
   }
   return { etat: true, http: "jeton_present" };
@@ -12016,7 +12135,7 @@ async function probePlatformSessions(plateformes = ["vinted", "leboncoin", "ebay
     vinted: vinted.etat, leboncoin: leboncoin.etat, ebay: ebay.etat, beebs: beebs.etat, opla: opla.etat,
     // Depop n'apparaît QUE chez un poste qui l'a sondée : les autres comptes
     // gardent extension_sessions exactement comme avant (aucune clé de plus).
-    ...(plateformes.includes("depop") ? { depop: depop.etat } : {}),
+    ...(plateformes.includes("depop") ? { depop: depop.etat, depop_vendeur: depop.vendeur ?? null } : {}),
     // ── LA PORTE DU RELEVÉ eBAY, À PART (2026-09-22) ────────────────────────
     // `ebay` reste la session de VENTE : c'est elle qui arbitre la garde de
     // publication et la reprise des jobs, et on n'y touche pas. `ebay_hub` dit
@@ -12108,6 +12227,8 @@ async function ecrireExtensionSessions(accessToken, sub, releve, previous) {
       fusion.http[pf] = prevHttp[pf] ?? null;
       fusion.checked_at_par_plateforme[pf] = prevPar[pf] ?? prev.checked_at ?? null;
       if (pf === "vinted") fusion.vinted_identite = prev.vinted_identite ?? null;
+      // (17/10) Le statut vendeur Depop suit la session Depop, avec la même date.
+      if (pf === "depop") fusion.depop_vendeur = prev.depop_vendeur ?? null;
     }
     final = fusion;
   }
@@ -14529,6 +14650,13 @@ async function releverLiensAnnoncesDansOnglet(tabId, platform) {
       const formulaireConnexion = () => Boolean(
         document.querySelector("input[type='password'], form[action*='signin' i], #userid, #pass"),
       );
+      // (17/10, Ornella) Beebs : la vérification anti-robot (DataDome) est
+      // servie SOUS l'adresse de « Mes annonces », sans renvoi — mêmes repères
+      // que estPageBotShieldBeebs (beebs.js). Sans eux, elle se lisait
+      // « 0 annonce affichée », comme une page simplement non peinte.
+      const murAntiRobot = () => plateforme === "beebs" && (
+        Boolean(document.querySelector('iframe[src*="captcha-delivery"], iframe[src*="geo.captcha"], script[src*="captcha-delivery"]'))
+        || /geo\.captcha|captcha-delivery|Please enable JS and disable any ad blocker/i.test(String(document.documentElement?.innerHTML ?? "").slice(0, 4000)));
       // Ce que la page MONTRAIT, en une ligne (cf. le retour en fin de fonction).
       const etatDeLaPage = (liens) => {
         const txt = document.body?.innerText ?? "";
@@ -14536,6 +14664,7 @@ async function releverLiensAnnoncesDansOnglet(tabId, platform) {
           etat: document.readyState, liens,
           titre_hub: /annonces?\s+en\s+cours|active\s+listings?/i.test(txt),
           connexion: formulaireConnexion(),
+          anti_robot: murAntiRobot(),
           texte: txt.replace(/\s+/g, " ").trim().slice(0, 140),
         };
       };
@@ -14986,6 +15115,62 @@ async function ouvrirOngletReleve(platform, url) {
 const RELEVE_REPRISE_TECHNIQUE_MAX = 2;
 const RELEVE_REPRISE_TECHNIQUE_RE = /\[reprise-technique\] tentative (\d)\//;
 
+// ── (17/10, Ornella) LE FLUX DE « MES ANNONCES » TRANCHE SUR SA PROPRE LISTE,
+// ET LE DIT ───────────────────────────────────────────────────────────────────
+// Fonction PURE (selftest:beebs-flux-mes-annonces l'exécute), appelée quand la
+// page de travail n'a rien peint (ou a montré la vérification anti-robot).
+// Avant : la liste n'était « rendue » que si le compteur de Beebs
+// (« nb_products ») ÉGALAIT le total de l'index public. Or ils divergent dès
+// qu'une annonce retirée reste indexée (mesuré le 16/10 : deux annonces
+// retirées à 19:32 encore dans l'index à 23:04 — compteur 5, index 7 ; un autre
+// compte, 112 contre 113) : toute page peinte vide d'un tel compte restait
+// « muette ». Et la raison du refus n'était écrite nulle part (console seule).
+// La liste vaut « rendue » quand :
+//   · les deux onglets sont lus (un mur — anti-robot, connexion — se NOMME) ;
+//   · « en ligne » : compteur > 0, chacune de ses annonces est dans l'index
+//     (même vendeur, l'index la couvre), et la liste est ENTIÈRE (n = compteur)
+//     — tronquée (au-delà de 60), le compteur doit égaler l'index, comme avant ;
+//   · « en vérification » (onglet lu en entier : autant de clés que de cartes) :
+//     ses annonces DÉJÀ CONNUES de FillSell entrent au relevé (statut
+//     en_verification, leurs champs gardés) ; une inconnue est comptée, jamais
+//     inventée (aucun titre, aucune photo) — le serveur ne date de toute façon
+//     aucune disparition Beebs (constater_absences_releve : moderation_beebs).
+// Rend { rendue, motif, mur, verification: [identifiants connus à ajouter],
+// inconnues, trace } ; `trace` part TOUJOURS dans le run.
+function jugerFluxMesAnnoncesBeebs({ flux = null, totalIndex = null, idsIndex = [], connues = null } = {}) {
+  const pages = Array.isArray(flux?.pages) ? flux.pages : [];
+  const pEnLigne = pages.find((p) => p?.page === "en_ligne") ?? null;
+  const pVerif = pages.find((p) => p?.page === "en_verification") ?? null;
+  const enLigne = (Array.isArray(pEnLigne?.ids) ? pEnLigne.ids : []).map(String);
+  const verif = (Array.isArray(pVerif?.ids) ? pVerif.ids : []).map(String);
+  const compteur = pEnLigne?.annoncees == null ? NaN : Number(pEnLigne.annoncees);
+  const total = totalIndex == null ? NaN : Number(totalIndex);
+  const index = new Set([...(idsIndex ?? [])].map(String));
+  const connuesMap = connues instanceof Map ? connues : new Map();
+  let motif = null;
+  if (!flux) motif = "flux sans réponse";
+  else if (pEnLigne?.ok !== true) motif = `« en ligne » illisible : ${pEnLigne?.motif ?? "onglet absent"}`;
+  else if (pVerif?.ok !== true) motif = `« en vérification » illisible : ${pVerif?.motif ?? "onglet absent"}`;
+  else if (!Number.isFinite(compteur)) motif = "compteur de Beebs absent du flux";
+  else if (compteur <= 0 || enLigne.length === 0) motif = `aucune annonce « en ligne » dans le flux (compteur ${compteur})`;
+  else if (!enLigne.every((id) => index.has(id))) motif = "une annonce « en ligne » du flux est absente de l'index";
+  else if (enLigne.length !== compteur && compteur !== total) {
+    motif = `liste « en ligne » tronquée (${enLigne.length}/${compteur}) et compteur différent de l'index (${Number.isFinite(total) ? total : "?"})`;
+  }
+  const verification = motif ? [] : verif.filter((id) => connuesMap.has(id));
+  const inconnues = motif ? 0 : verif.length - verification.length;
+  return {
+    rendue: motif === null,
+    motif,
+    mur: pEnLigne?.mur ?? pVerif?.mur ?? null,
+    verification,
+    inconnues,
+    trace: `[flux] en ligne ${enLigne.length}/${Number.isFinite(compteur) ? compteur : "?"}, en vérification ${verif.length}`
+      + (inconnues ? ` (dont ${inconnues} inconnue(s) de FillSell, lue(s) au prochain relevé peint)` : "")
+      + `, index ${Number.isFinite(total) ? total : "?"} → ${motif ? `rien n'est conclu (${motif})` : "liste lue par le flux"}`,
+  };
+}
+
 async function releverAnnoncesPlateforme(platform, { token = null, userId = null } = {}) {
   const annonces = new Map();
   let complet = true;
@@ -15009,6 +15194,16 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
   // Beebs (2026-09-25) : la page n'a rien rendu alors que l'index montre des
   // annonces en ligne pour ce vendeur — cf. le bloc de l'index plus bas.
   let beebsPageMuette = null; // = le total de l'index quand la page est muette
+  // (17/10, Ornella) Un mur se NOMME : la vérification anti-robot vue sur une
+  // page de « Mes annonces », le mur rendu par le flux (anti_robot |
+  // connexion), et le verdict du flux, TOUJOURS écrit dans le run.
+  let beebsAntiRobot = false;
+  let beebsMurFlux = null;
+  let beebsFluxTrace = null;
+  // (17/10) Les annonces Beebs que FillSell connaît (listing_id → url, titre,
+  // prix, photo) : une annonce « en vérification » lue par le flux entre au
+  // relevé avec SES champs, jamais avec des champs vides.
+  const connuesBeebs = new Map();
   // (27/09) Les identifiants que l'index a rendus : chacun est LU, quel que
   // soit le statut que la page lui donne (« vendue », en vérification…).
   const beebsIdsIndex = new Set();
@@ -15177,6 +15372,9 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
       const vusAvantPage = annonces.size; // sert la garde « cette page n'a rien ajouté »
       const r = await releverLiensAnnoncesDansOnglet(tabId, platform).catch((e) => ({ annonces: [], diag: { erreur: String(e?.message ?? e) }, surLaListe: false }));
       if (r?.horsListe && !pagesHorsListe.includes(r.horsListe)) pagesHorsListe.push(r.horsListe);
+      // (17/10, Ornella) Beebs : sa vérification anti-robot, servie sous
+      // l'adresse de la liste, n'est pas « 0 annonce affichée » — elle se nomme.
+      if (platform === "beebs" && r?.page?.anti_robot === true) beebsAntiRobot = true;
       // ── eBAY : UN MUR RENDU SUR PLACE, SANS REDIRECTION (2026-09-23) ──────
       // Le formulaire de connexion peut être peint SUR l'adresse du Hub, sans
       // passer par signin.ebay.fr : l'URL ne dit rien, la page si. Même
@@ -15318,12 +15516,22 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
     let idsConnus = [];
     try {
       if (token && userId) {
+        // (17/10) Avec leurs champs : une annonce « en vérification » lue par le
+        // flux entre au relevé telle que FillSell la connaît (cf. plus bas).
         const rows = await restRequest(
           `annonces_plateforme?user_id=eq.${userId}&platform=eq.beebs&disparu_le=is.null` +
-          `&select=listing_id&order=vu_le.desc&limit=200`,
+          `&select=listing_id,url,titre,prix,photo_url&order=vu_le.desc&limit=200`,
           token,
         );
-        idsConnus = (Array.isArray(rows) ? rows : []).map((r) => String(r?.listing_id ?? "")).filter(Boolean);
+        for (const r of (Array.isArray(rows) ? rows : [])) {
+          const id = String(r?.listing_id ?? "");
+          if (!id) continue;
+          idsConnus.push(id);
+          connuesBeebs.set(id, {
+            url: r?.url ?? `https://www.beebs.app/fr/p/${id}`,
+            titre: r?.titre ?? null, prix: r?.prix ?? null, photo_url: r?.photo_url ?? null,
+          });
+        }
       }
     } catch (e) {
       console.warn(`[releve][beebs] annonces connues illisibles (${String(e?.message ?? e)}) — graines de la page seules`);
@@ -15381,25 +15589,33 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
     // incomplet (rien conclu, ventes et disparitions en attente). Le flux de la
     // page — lu par fetch dans la session de la personne, comme les preuves de
     // retrait (BEEBS_IDS_MES_ANNONCES) — porte le compteur de Beebs
-    // (« nb_products ») et les identifiants des deux onglets. La liste vaut
-    // « rendue » seulement si TOUT concorde :
-    //   · les deux onglets lus (« en vérification » en entier) ;
-    //   · le compteur « en ligne » de Beebs = le total exact de l'index ;
-    //   · chaque identifiant « en ligne » du flux est dans l'index, chaque
-    //     identifiant « en vérification » est déjà relevé.
+    // (« nb_products ») et les identifiants des deux onglets.
+    // (17/10, Ornella) La règle est celle de jugerFluxMesAnnoncesBeebs (plus
+    // haut) : le flux tranche sur SA liste — entière et tenue par l'index, le
+    // compteur de Beebs n'a plus à ÉGALER l'index (une annonce retirée y reste
+    // un temps) —, les annonces « en vérification » connues entrent au relevé,
+    // un mur (anti-robot, connexion) se nomme, et le verdict est ÉCRIT dans le
+    // run (avant : console seule — le 17/10, rien ne disait pourquoi).
     // Le moindre écart : la page reste muette, rien n'est conclu (comme avant).
-    if (beebsPageMuette != null && idx?.ok && idx.exhaustif && Number.isFinite(idx.total)) {
+    if ((beebsPageMuette != null || beebsAntiRobot) && idx?.ok && idx.exhaustif && Number.isFinite(idx.total)) {
       const flux = await sendMessageToTab(dernierTabId, { type: "BEEBS_IDS_MES_ANNONCES" }, 60_000).catch(() => null);
-      const pEnLigne = (flux?.pages ?? []).find((p) => p.page === "en_ligne");
-      const pVerif = (flux?.pages ?? []).find((p) => p.page === "en_verification");
-      const idsIndex = new Set((idx.articles ?? []).map((a) => String(a?.listing_id ?? "")).filter(Boolean));
-      const concordent = flux?.ok === true && pEnLigne?.ok === true && pVerif?.ok === true
-        && Number(pEnLigne.annoncees) === Number(idx.total)
-        && (pEnLigne.ids ?? []).length > 0
-        && (pEnLigne.ids ?? []).every((id) => idsIndex.has(String(id)))
-        && (pVerif.ids ?? []).every((id) => annonces.has(String(id)));
-      console.log(`[releve][beebs] page peinte vide — flux de « Mes annonces » : ${flux?.ok ? `en ligne ${pEnLigne?.n ?? "?"}/${pEnLigne?.annoncees ?? "?"}, en vérification ${pVerif?.n ?? "?"}` : "illisible"}, index ${idx.total} → ${concordent ? "liste lue par le flux" : "rien n'est conclu"}`);
-      if (concordent) beebsPageMuette = null;
+      const juge = jugerFluxMesAnnoncesBeebs({
+        flux, totalIndex: idx.total, connues: connuesBeebs,
+        idsIndex: (idx.articles ?? []).map((a) => String(a?.listing_id ?? "")).filter(Boolean),
+      });
+      beebsFluxTrace = juge.trace;
+      beebsMurFlux = juge.mur;
+      console.log(`[releve][beebs] « Mes annonces » non peinte — ${juge.trace}`);
+      if (juge.rendue) {
+        for (const id of juge.verification) {
+          if (!annonces.has(id)) {
+            annonces.set(id, { ...connuesBeebs.get(id), listing_id: id, statut: "en_verification", source_releve: "flux_mes_annonces" });
+          }
+        }
+        // Le flux a lu la liste entière : ni page muette, ni mur à dire.
+        beebsPageMuette = null;
+        beebsAntiRobot = false;
+      }
     }
   }
 
@@ -15462,12 +15678,20 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
       // lue « vendue » sur la page restait comptée absente, et le relevé se
       // disait partiel à vie (« 0 sur 1 »).
       total: beebsTotalIndex, comptees: Math.max(enLigne(), [...beebsIdsIndex].filter((id) => annonces.has(id)).length),
-      libelle: "dans l'index public de Beebs", listeRendue: beebsPageMuette == null,
-      absent: (beebsPageMuette != null
-        ? `« Mes annonces » de Beebs n'a rien rendu alors que l'index public en montre ${beebsPageMuette}`
-        : beebsIndexMotif
-          ? `l'index public de Beebs n'a rien pu dire (${beebsIndexMotif})`
-          : "l'index public de Beebs n'a pas rendu de total exact") + horsListe,
+      // (17/10, Ornella) Une vérification anti-robot vue sur la page (et que le
+      // flux n'a pas levée) laisse la liste NON rendue, comme une page muette.
+      libelle: "dans l'index public de Beebs", listeRendue: beebsPageMuette == null && !beebsAntiRobot,
+      // (17/10) Le mur se NOMME, avec les marqueurs que lit situationFinReleve
+      // (src/annonces/finReleve.js) : « [anti_robot] », « [pas_connecte] ».
+      absent: (beebsAntiRobot || beebsMurFlux === "anti_robot"
+        ? "[anti_robot] Beebs a montré sa vérification anti-robot à la place de « Mes annonces »"
+        : beebsMurFlux === "connexion"
+          ? "[pas_connecte] « Mes annonces » de Beebs renvoie vers sa page de connexion"
+          : beebsPageMuette != null
+            ? `« Mes annonces » de Beebs n'a rien rendu alors que l'index public en montre ${beebsPageMuette}`
+            : beebsIndexMotif
+              ? `l'index public de Beebs n'a rien pu dire (${beebsIndexMotif})`
+              : "l'index public de Beebs n'a pas rendu de total exact") + horsListe,
     },
   };
   // ══════════════════════════════════════════════════════════════════════════
@@ -15507,7 +15731,9 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
     } catch (e) {
       console.warn(`[releve][${platform}] annonces connues illisibles (${e?.message ?? e}) — on ne conclut pas « compte vide »`);
     }
-    comptePeutEtreVide = dejaConnues === 0;
+    // (17/10) Une vérification anti-robot (Beebs) ne prouve jamais un compte
+    // vide : la page n'a rien montré du compte.
+    comptePeutEtreVide = dejaConnues === 0 && !beebsAntiRobot;
     if (dejaConnues > 0) {
       console.log(`[releve][${platform}] 0 annonce vue MAIS des annonces connues en base — incomplet, rien n'est conclu disparu`);
     }
@@ -15553,6 +15779,9 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
       + ` (${d.paliers} défilement(s), ${ARRET_FR[d.arret] ?? d.arret})`),
     ...(platform === "beebs" && Number.isFinite(beebsTotalIndex)
       ? [`index public Beebs : ${beebsTotalIndex} annonce(s) en ligne, ${enLigne()} lue(s) au total`] : []),
+    // (17/10, Ornella) Le verdict du flux de « Mes annonces », TOUJOURS dit —
+    // relevé fini comme incomplet : c'est lui qui dit POURQUOI.
+    ...(platform === "beebs" && beebsFluxTrace ? [beebsFluxTrace] : []),
   ].join(" | ") || null;
   return {
     annonces: [...annonces.values()], complet, illisibles, erreur: erreurCouverture, vide,
@@ -22305,22 +22534,31 @@ function construireJobRecreation(job, pf, cap, prix) {
       // résout en premier (selectTailleVinted, onglet par onglet) — c'est la
       // taille EXACTE de l'annonce d'origine ; le libellé n'est que le repli.
       ...(tailleIds.length ? { taille_ids: tailleIds } : {}),
-      // (15/10 soir, 0.6.114 — Romain « Pago », patrick giry « Paris 2024 »)
-      // La RÉPONSE de la personne à la question « marque hors catalogue »
-      // (servie en marque_choisie par get-pending-jobs, ou posée sur le job)
-      // prime sur la marque capturée : la recréation repartait toujours de la
-      // capture, la question revenait à chaque essai — boucle.
-      marque: marqueChoisieRepublication(pf, cap.libelles?.marque) ?? cap.libelles?.marque ?? null,
-      // (06/10, Ciddjy « Kiabi », Carla « Burano ») L'identifiant de la marque
-      // de l'annonce d'origine (brand_id du catalogue Vinted ; 1 = « Sans
-      // marque ») : le formulaire reconnaît la ligne par son id, même quand son
-      // libellé tarde à s'afficher sur un poste lent. Jamais quand la personne
-      // a choisi une autre marque (l'id désignerait l'ancienne).
+      // ── LA MARQUE DE L'ANNONCE EN LIGNE, TELLE QUELLE (17/10, Nico) ──────
+      // Une republication reprend EXACTEMENT la marque de l'annonce : quand
+      // elle porte une vraie marque (brand_id > 1, capturé sur le payload
+      // d'édition), son libellé ET son identifiant partent toujours — le
+      // formulaire clique sa ligne si Vinted la propose, sinon l'identifiant
+      // part dans le corps du dépôt (vinted.js, armerMarquePourPost). Ni la
+      // fiche, ni une réponse (marque_choisie, servie avant le 17/10 pour
+      // Romain « pago » et patrick giry « Paris 2024 »), ni une marque retenue
+      // ne la remplacent. brand_id 1 = « Sans marque » (ligne native).
+      // La réponse de la personne ne vaut plus que pour une annonce dont la
+      // marque n'a pas d'identifiant (jamais vu : 2 223/2 223 captures récentes
+      // en portent un).
       ...(() => {
-        if (marqueChoisieRepublication(pf, cap.libelles?.marque)) return {};
+        const capturee = cap.libelles?.marque ?? null;
         const id = Number(natifCap.brand_id);
-        return Number.isInteger(id) && id > 1 ? { marque_id: id } : {};
+        if (String(capturee ?? "").trim() && Number.isInteger(id) && id > 1) {
+          return { marque: capturee, marque_id: id, marque_capturee: capturee };
+        }
+        return { marque: marqueChoisieRepublication(pf, capturee) ?? capturee ?? null };
       })(),
+      // La preuve servie par get-pending-jobs (envoi direct de la marque par
+      // son identifiant accepté par Vinted) : seule clé qui autorise
+      // l'une-passe à retirer une annonce dont la marque ne partira que par
+      // son identifiant (vinted.js, garde de retrait).
+      ...(pf.marque_injection_prouvee === true ? { marque_injection_prouvee: true } : {}),
       colors: cap.libelles?.couleurs ?? null,
       // (0.6.85) Le format CHOISI par la personne (question posée avant le
       // retrait, colis_choisi) prime : c'est la seule source quand l'annonce
@@ -22708,6 +22946,10 @@ async function conclureRecreationApresSoumission(accessToken, job, pf, jobRecrea
   // (200 ou 400) part avec le job, dans tous les cas (cf. preuveColisEnvoi).
   const colisEnvoi = await preuveColisEnvoi(tabId).catch(() => null);
   if (colisEnvoi) pf.colis_pose_envoi = colisEnvoi;
+  // (17/10) Même chose pour la marque de l'annonce d'origine posée par son
+  // identifiant (cf. preuveMarqueEnvoi) : 200 ou 400, la preuve part avec le job.
+  const marqueEnvoi = await preuveMarqueEnvoi(tabId).catch(() => null);
+  if (marqueEnvoi) pf.marque_pose_envoi = marqueEnvoi;
   // ── Catalogue des requis : les RECRÉATIONS écrivent aussi (2026-09-10) ──
   // Mesuré : 0 job republish ne porte categoryPath au niveau du job, donc
   // ~1 600 recréations/45 j n'alimentaient JAMAIS platform_category_aspects
@@ -25433,6 +25675,9 @@ async function processRepublishJob(job, accessToken) {
       if (verdictSuppression) pf.suppression_verdict = verdictSuppression;
 
       if (!aSupprime) {
+        // (17/10) Une pause « marque par identifiant » d'un passage précédent
+        // ne survit pas à un autre motif : la raison dite est celle de CE passage.
+        if (!result?.marqueParIdNonProuvee) delete pf.pause_marque_par_id;
         // ── RIEN n'a été supprimé : l'annonce d'origine est intacte ─────────
         // /listing-restriction (2026-08-29) : throttle Vinted, PAS une action
         // utilisateur — reprise différée en pending (recul progressif), jamais
@@ -25447,6 +25692,31 @@ async function processRepublishJob(job, accessToken) {
         }
         if (result?.listingRestriction) {
           return await replanifierRestrictionVinted(accessToken, job, pf, result);
+        }
+        // ── (17/10) MARQUE PAR SON IDENTIFIANT, ENVOI PAS ENCORE PROUVÉ ─────
+        // vinted.js a refusé de retirer : la marque de l'annonce d'origine ne
+        // partirait que par son identifiant (le menu de Vinted ne la propose
+        // plus — patrick giry « Paris 2024 », Romain « pago ») et cet envoi
+        // direct n'est pas encore prouvé (marque_injection_prouvee, servi par
+        // get-pending-jobs, qui ne ressert ce job qu'une fois la preuve
+        // acquise). Annonce intacte, rien soumis, RIEN À DEMANDER : pending,
+        // jamais needs_user ; les traces de l'ancienne question sont levées.
+        if (result?.marqueParIdNonProuvee) {
+          const precM = pf.pause_marque_par_id && typeof pf.pause_marque_par_id === "object" ? pf.pause_marque_par_id : null;
+          const nM = (Number(precM?.n) || 0) + 1;
+          const maintenantM = new Date().toISOString();
+          pf.pause_marque_par_id = { depuis: precM?.depuis ?? maintenantM, derniere: maintenantM, n: nM };
+          pf.next_action_after = new Date(Date.now() + (nM <= 1 ? 60 : nM === 2 ? 180 : 360) * 60_000).toISOString();
+          if (result?.diagnostic) pf.last_diagnostic = String(result.diagnostic).slice(0, 2000);
+          for (const k of ["needs_user_source", "needsUserField", "champs_a_completer", "needsUserBoucle"]) delete pf[k];
+          await updateJobStatus(accessToken, job.id, "pending", {
+            platform_fields: pf,
+            error: "Republication en pause AVANT tout retrait : la marque de ton annonce n'est plus proposée par le menu de Vinted. " +
+              "FillSell la reprendra telle quelle, par son identifiant, dès que cet envoi direct est vérifié. " +
+              "Ton annonce est toujours en ligne, rien n'a été touché, rien à faire.",
+          });
+          console.warn(`[republish] job ${job.id} : retrait refusé — marque par identifiant pas encore prouvée (pause n°${nM})`);
+          return { status: "skipped", error: "marque par identifiant pas encore prouvée — rien retiré" };
         }
         // ── FORMAT DE COLIS NON PROPOSÉ PAR LE FORMULAIRE (0.6.84) ─────────
         // vinted.js a refusé de retirer : la section « Format du colis » est

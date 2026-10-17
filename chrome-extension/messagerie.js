@@ -1667,7 +1667,13 @@
     if (rt && rt.status === 401 && (await renouveler())) rt = await fetch(`/api/v2/transactions/${encodeURIComponent(p.transactionId)}`, { credentials: "include", headers: { Accept: "application/json" }, cache: "no-store" }).catch(() => null);
     if (!rt || rt.status !== 200) return { avant: true, http: rt?.status ?? 0, motif: `relecture_http_${rt?.status ?? 0}`, bot: rt?.status === 403 || rt?.status === 429, etapes };
     const statut = Number((await rt.json().catch(() => null))?.transaction?.shipment?.status);
-    if (Number.isFinite(statut) && statut >= 200) return { avant: true, deja: true, statut, etapes };
+    // (17/10, demande qui a pu attendre 24 h) Même lecture que decisionGeneration : seule une
+    // étiquette prête ou en préparation est « déjà faite » ; annulée, expédiée, en échec = rien.
+    if ([200, 220, 230, 250].includes(statut)) return { avant: true, deja: true, statut, etapes };
+    if (Number.isFinite(statut) && statut >= 200) {
+      const motif = statut === 500 ? "commande_annulee" : statut === 210 ? "etiquette_echouee_chez_vinted" : statut >= 300 ? "deja_expediee" : `etat_${statut}`;
+      return { avant: true, statut, motif, etapes };
+    }
     // 2. LE geste, une fois (un 401 = refusé avant tout traitement : une seconde, après renouvellement).
     const poser = () => fetch(`/api/v2/transactions/${encodeURIComponent(p.transactionId)}/shipment/order`, {
       method: "PUT", credentials: "include", cache: "no-store",
@@ -1719,7 +1725,11 @@
     const rl = await fetch(`https://api.leboncoin.fr/api/consumergoods/purchase/v2/purchases/${encodeURIComponent(p.purchaseId)}`, { headers: H }).catch(() => null);
     if (!rl || rl.status !== 200) return { avant: true, http: rl?.status ?? 0, motif: `relecture_http_${rl?.status ?? 0}`, bot: rl?.status === 403 || rl?.status === 429, etapes };
     const st = String((await rl.json().catch(() => null))?.fsm?.current_state?.status ?? "");
-    if (st && st !== "reserved" && st !== "created") return { avant: true, deja: st === "available", statut: st, etapes };
+    // (17/10) Annulée ou déjà expédiée entre-temps : rien ne part, et le motif le dit.
+    if (st && st !== "reserved" && st !== "created") {
+      const motif = st === "available" ? null : /cancel/.test(st) ? "commande_annulee" : /^(sent|received|money-unblocked|finished)$/.test(st) ? "deja_expediee" : `etat_${st}`;
+      return { avant: true, deja: st === "available", statut: st, ...(motif ? { motif } : {}), etapes };
+    }
     // (17/10) Colissimo, courrier suivi : la confirmation porte l'adresse de
     // l'expéditeur — celle du COMPTE LEBONCOIN (pré-remplie par le site), lue
     // ICI et jamais sortie de la page ; incomplète : rien ne part.
@@ -1838,7 +1848,8 @@
     }
     if (!statut) return { avant: true, motif: "commande_illisible", etapes };
     if (statut !== "WAIT_SELLER_CONFIRM") {
-      return { avant: true, deja: ["CONFIRMED_BY_SELLER", "WAITING_GENARATING_LABEL_BY_SELLER", "LABEL_PRINTED", "LABEL_PRINTED_WARNING"].includes(statut), statut, etapes };
+      // (17/10) Annulée entre-temps : rien ne part, et le motif le dit.
+      return { avant: true, deja: ["CONFIRMED_BY_SELLER", "WAITING_GENARATING_LABEL_BY_SELLER", "LABEL_PRINTED", "LABEL_PRINTED_WARNING"].includes(statut), statut, ...(statut === "CANCELLED" ? { motif: "commande_annulee" } : {}), etapes };
     }
     // 2. LE geste, une fois : l'action serveur du bouton « Télécharger le bordereau ».
     etapes.push("POST /fr/account/orders/<id> (action sellerConfirmAction)");

@@ -78,6 +78,10 @@ export function comparerDepart(a, b) {
 }
 
 // Les phrases, par motif. Jamais une heure, jamais une durée.
+// (17/10, Nico) Seule exception : la limite du jour dit « minuit (heure de
+// Paris) » — c'est la règle du plafond (le compteur du serveur repart au jour
+// de Paris), pas une estimation. Chaque job repart À SON TOUR : jamais
+// « celle-ci repart à minuit » (la 600e d'une file partira bien plus tard).
 const TEXTE = {
   fr: {
     tour: "En file : elle partira à son tour",
@@ -87,7 +91,7 @@ const TEXTE = {
     retenue_serveur: "En pause, ton annonce est intacte : elle repart toute seule",
     gel: "En pause : elle repart toute seule",
     rythme: "En pause (rythme de republication) : elle repart toute seule",
-    limite_jour: "En pause (limite du jour) : elle repart toute seule",
+    limite_jour: "En pause (limite du jour atteinte) : la file repart à minuit (heure de Paris), celle-ci à son tour", // estimation-ok: règle du plafond (minuit, heure de Paris) — Nico, 17/10
     creneau: "En pause (créneau de republication) : elle repart toute seule au prochain créneau",
     auto_en_pause: "Republication automatique en pause : elle repartira quand tu la relanceras. Ton annonce est intacte",
     essai: "En pause : nouvel essai automatique, rien à faire",
@@ -121,7 +125,7 @@ const TEXTE = {
     retenue_serveur: "Paused, your listing is untouched: it resumes on its own",
     gel: "Paused: it resumes on its own",
     rythme: "Paused (repost pacing): it resumes on its own",
-    limite_jour: "Paused (daily limit): it resumes on its own",
+    limite_jour: "Paused (daily limit reached): the queue resumes at midnight (Paris time), this one in turn", // estimation-ok: règle du plafond — Nico, 17/10
     creneau: "Paused (repost time slot): it resumes on its own at the next slot",
     auto_en_pause: "Automatic reposting is paused: it resumes when you restart it. Your listing is untouched",
     essai: "Paused: automatic retry, nothing to do",

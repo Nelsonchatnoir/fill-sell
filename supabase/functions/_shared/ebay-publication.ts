@@ -56,6 +56,17 @@ export function lireErreurEbay(json: unknown, texte: string): ErreurEbay {
   return { errorId: null, message: texte.slice(0, 300), brut: brutEbay(texte, json) };
 }
 
+/** (17/10, Fluxen) Refus 25002 « Spécifiez des conditions de retour valides »
+ *  avec le paramètre ReturnsAcceptedOption : eBay refuse « Pas de retour » pour
+ *  CE compte (vendeur professionnel : les retours sont obligatoires). Relevé sur
+ *  pièce : job b731ae0f du 15/10, politique « Pas de retour » créée par FillSell,
+ *  quatre refus identiques à la mise en ligne. Les comptes particuliers publient
+ *  avec la même politique (7 comptes, 20 annonces) : c'est le compte, pas le corps. */
+export function refusRetoursObligatoires(e: ErreurEbay): boolean {
+  if (Number(e.errorId) !== 25002) return false;
+  return (e.params ?? []).some((p) => String(p.value ?? "").trim() === "ReturnsAcceptedOption");
+}
+
 /** L'aspect et la valeur d'un refus 25129 (« no longer support custom values
  *  for <aspect> »), lus SANS se fier à la position des paramètres.
  *  30/09, patrick.giry07 : eBay rend 0 = « Saisissez une valeur valide pour

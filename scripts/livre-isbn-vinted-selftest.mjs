@@ -86,6 +86,12 @@ const l2 = S.lienVerificationEbay({ platform: 'ebay', status: 'needs_user', plat
 verifier(l1?.url === 'https://www.ebay.fr/bp/manage' && /conditions de vente/.test(l1.libelle) && l2?.url === 'https://www.ebay.fr/sh/ovw', 'l’app : un bouton vers la page eBay (conditions, ou Seller Hub pour un job d’avant)');
 verifier(S.lienVerificationEbay({ platform: 'ebay', status: 'needs_user', platform_fields: { needs_user_source: 'ebay_compte_a_finir', ebay_a_finir: { url: 'https://evil.example/' } } }, 'fr')?.url === 'https://www.ebay.fr/sh/ovw', 'jamais un lien hors ebay.fr');
 verifier(S.lienVerificationEbay({ platform: 'ebay', status: 'needs_user', platform_fields: { needs_user_source: 'ebay_connexion_requise' } }, 'fr') === null, '« connexion requise » : pas de lien eBay (le geste est « Relier mon compte »)');
+// (17/10) Plafond de vente eBay à zéro : le Seller Hub, nommé comme tel ; ce qui
+// se règle DANS FillSell (choisir ses conditions, ses retours) : aucun lien eBay.
+const l3 = S.lienVerificationEbay({ platform: 'ebay', status: 'needs_user', platform_fields: { needs_user_source: 'ebay_compte_a_finir', ebay_a_finir: { etape: 'plafond', url: 'https://www.ebay.fr/sh/ovw' } } }, 'fr');
+verifier(l3?.url === 'https://www.ebay.fr/sh/ovw' && /compte vendeur/.test(l3.libelle) && /plafond de vente/.test(l3.aide), 'plafond à zéro : « Ouvrir mon compte vendeur eBay », et l’aide le nomme');
+verifier(['parcours', 'retours'].every((etape) => S.lienVerificationEbay({ platform: 'ebay', status: 'needs_user', platform_fields: { needs_user_source: 'ebay_compte_a_finir', ebay_a_finir: { etape, url: null } } }, 'fr') === null),
+  'à choisir dans FillSell (conditions, retours) : pas de lien eBay');
 
 console.log(`\n${ko ? `✗ ${ko} échec(s)` : '✓ tout est vert'} — ${ok} contrôles`);
 process.exit(ko ? 1 : 0);

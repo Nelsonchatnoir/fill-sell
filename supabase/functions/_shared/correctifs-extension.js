@@ -25,8 +25,9 @@
 //     correctif (`build_min_requis`) : un autre profil Chrome resté en 0.6.63
 //     ne le brûle pas ;
 //   · le BUILD_ID fait foi (préfixe horodaté), jamais le numéro de version.
-// ES module, un seul import relatif lui-même sans import (Deno + Node).
+// ES module, deux imports relatifs eux-mêmes sans import (Deno + Node).
 import { lectureRefusBeebs } from "./beebs-refus-formulaire.js";
+import { BUILD_VINTED_MARQUE_PAR_ID, marqueAIdentifiantCapturee } from "./vinted-marque-par-id.js";
 
 /** Le préfixe horodaté d'un BUILD_ID (« 2026-09-24T14:34:46Z+aa459a7 · v0.6.66 ») en ms, NaN sinon. */
 export function buildMsDe(build) {
@@ -82,7 +83,30 @@ export const BUILD_EBAY_FIN_PAR_NUMERO = "2026-10-02T08:01:46Z";
 // inputTexteDeLaLigne, 0.6.90) : tout build produit depuis le porte.
 export const BUILD_EBAY_SAISIE_LIBRE = "2026-10-03T11:30:00Z";
 
+// ── LA MARQUE DEPOP PAR ÉGALITÉ EXACTE (17/10, Nico — _shared/marque-depop.js) ──
+// Jusqu'à la 0.6.122, la clé du connecteur Depop ignorait « & » et « + » :
+// « H&M » et « H&M+ », « Lacoste » et « Lacoste + » se confondaient et la
+// publication s'arrêtait sur « Plusieurs marques Depop s'écrivent… ». Le
+// serveur ne tranche jamais cette question (ce serait perdre une vraie marque) :
+// elle repart une fois, dès qu'un poste porte la règle exacte (0.6.123).
+// ⚠️ PROVISOIRE, jamais atteinte : le vrai BUILD_ID est posé au paquet de la 0.6.123.
+export const BUILD_DEPOP_MARQUE = "2099-01-01T00:00:00Z";
+
 export const CORRECTIFS_EXTENSION = [
+  {
+    // (17/10) Rien n'a été créé chez Depop : la question tombe avant les
+    // photos et la création, et avant tout retrait en republication. La marque
+    // du job reste celle de la fiche ; le poste à jour la trouve telle quelle
+    // dans la liste de Depop, sinon il publie en « Other », jamais une autre.
+    cle: "depop_marque_ambigue",
+    platform: "depop",
+    actions: ["publish", "republish"],
+    signature: /^Plusieurs marques Depop s'écrivent/,
+    buildMin: BUILD_DEPOP_MARQUE,
+    version: "0.6.123",
+    motif: "marque Depop lue par égalité exacte (« H&M » n'est plus confondue avec « H&M+ »)",
+    clesARetirer: ["needsUserField", "needsUserFields", "needs_user_source", "needsUserBoucle", "boucle_needs_user", "pas_de_rouge", "pas_de_rouge_reprises", "needsUserAttempts"],
+  },
   {
     // (2026-10-03, point 7) Rien n'a été soumis (« publication NON tentée ») :
     // le réarmement ne peut pas créer de doublon. La valeur est déjà sur le job.
@@ -148,6 +172,33 @@ export const CORRECTIFS_EXTENSION = [
     // La question « ISBN » posée après l'échec n'a plus lieu d'être, et la
     // recréation repart avec son budget d'essais entier.
     clesARetirer: ["needsUserField", "needsUserFields", "server_required_fields", "recreation_retries", "recreation_tentee"],
+  },
+  {
+    // (2026-10-17, patrick giry « Paris 2024 » 3730ef49, Romain « pago »
+    // 770bed7f — cf. _shared/vinted-marque-par-id.js) La marque de l'annonce
+    // en ligne (brand_id capturé > 1) que le menu de Vinted ne propose plus :
+    // les builds d'avant posaient la question « Sans marque ou une marque du
+    // catalogue » (0.6.94+), s'arrêtaient sur « Le champ Marque n'a pas pu
+    // être renseigné / posé » (≤ 0.6.93), ou recréaient sans marque après le
+    // retrait (400 `brand`). Le build qui la pose par son identifiant relance
+    // le job, UNE fois : une republication pas encore retirée repart de la
+    // relecture de l'annonce (a_capturer, gpj), une annonce déjà retirée est
+    // recréée avec sa marque. Rien n'est demandé à la personne.
+    cle: "vinted_marque_par_identifiant",
+    platform: "vinted",
+    actions: ["republish"],
+    signature: /Vinted ne connaît pas la marque|Le champ Marque n'a pas pu être (renseigné|posé)|Vinted exige « Marque »|"field":"brand"/,
+    buildMin: BUILD_VINTED_MARQUE_PAR_ID,
+    version: "0.6.123",
+    motif: "marque de l'annonce en ligne reprise par son identifiant capturé quand le menu de Vinted ne la propose plus",
+    // Seulement si l'annonce d'origine porte une vraie marque à identifiant :
+    // sans lui, la question reste la seule issue honnête.
+    condition: (job) => marqueAIdentifiantCapturee(job?.platform_fields) != null,
+    clesARetirer: [
+      "needsUserField", "needsUserFields", "champs_a_completer", "boucle_needs_user",
+      "taille_grille_refus", "taille_grille_reprise", "taille_grille_reprise_derniere",
+      "server_required_fields", "recreation_retries", "recreation_tentee",
+    ],
   },
 ];
 

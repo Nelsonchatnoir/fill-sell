@@ -203,6 +203,13 @@ export function etatJob(j, ctx = {}) {
     const retenue = retenueServeurDuJob(j);
     if (retenue?.motif === RETENUE_BOUTIQUE_INCONNUE) return { etat: ETATS.EN_PAUSE, motif: "boutiques_a_ouvrir", detail: { boutiques: retenue.boutiques ?? [] } };
     if (retenue) return { etat: ETATS.EN_PAUSE, motif: "retenue_serveur" };
+    // (17/10) Republication dont la marque de l'annonce ne partira que par son
+    // identifiant, envoi direct pas encore prouvé (pause_marque_par_id, posé
+    // par l'extension AVANT tout retrait) : annonce intacte, ça repart seul —
+    // jamais « à toi de jouer », jamais une durée.
+    if (j.action === "republish" && etape !== "deleted" && pf.pause_marque_par_id && typeof pf.pause_marque_par_id === "object") {
+      return { etat: ETATS.EN_PAUSE, motif: "retenue_serveur" };
+    }
     const boutique = objet(pf.attente_boutique);
     if (boutique.login || pf.attente_boutique === true) return { etat: ETATS.EN_PAUSE, motif: "boutique", detail: { login: boutique.login ?? null } };
     if (j.action === "republish") {

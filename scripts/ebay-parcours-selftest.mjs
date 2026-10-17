@@ -9,16 +9,17 @@
 //      autre chose qu'UN seul geste ;
 //   3. un ordre qui ne serait pas celui d'eBay ;
 //   4. un lien non vérifié ;
-//   5. un désaccord entre les deux sources de vérité (l'état gratuit et le
-//      relevé complet) sur une même réalité de compte ;
+//   5. un verdict tiré d'autre chose que LA règle (17/10 : les lignes du relevé
+//      disaient « prêt » quand la carte disait « il reste 2 étapes ») ;
 //   6. une phrase courte qui ne NOMMERAIT pas l'étape qui reste — c'est tout
 //      le dossier : « pas évident de savoir ce qu'il y avait à faire ».
 // ═══════════════════════════════════════════════════════════════════════════
 import {
   ETAPES_EBAY, LIENS_EBAY, ETAPES_FAISABLES_ICI, MOTS_INTERDITS_ECRAN,
   motsEbay, etapesEbay, etapeCouranteEbay, progressionEbay,
-  etatsEbayDepuisEtat, etatsEbayDepuisChecklist, resumeEbay,
+  etatsEbayDepuisEtat, resumeEbay,
 } from '../src/utils/ebayParcours.js';
+import * as moduleParcours from '../src/utils/ebayParcours.js';
 
 let echecs = 0;
 const ok = (nom) => console.log(`  ✓ ${nom}`);
@@ -94,6 +95,10 @@ const LIENS_VERIFIES = new Set([
   'https://www.ebay.fr/bp/policyoptin',
   'https://www.ebay.fr/bp/manage',
   'https://www.ebay.fr/sl/sell',
+  // Le Seller Hub — relevé le 10/09, seule porte vivante du compte vendeur
+  // (EBAY_SELLER_HUB_URL, src/utils/shared.js). (17/10) Lien de la carte
+  // « eBay n'autorise pas encore ce compte à vendre ».
+  'https://www.ebay.fr/sh/ovw',
 ]);
 const liensInconnus = Object.entries(LIENS_EBAY).filter(([, url]) => !LIENS_VERIFIES.has(url));
 verifier('aucun lien exposé qui n\'ait été vérifié', liensInconnus.length === 0,
@@ -107,8 +112,8 @@ verifier('tout ce qui peut se faire dans FillSell y est faisable',
 verifier('l\'inscription vendeur est la SEULE étape qui sorte de l\'app',
   !ETAPES_FAISABLES_ICI.has('inscription_vendeur') && ETAPES_FAISABLES_ICI.size === 5);
 
-// ── 5. LES DEUX SOURCES DISENT LA MÊME CHOSE ──────────────────────────────
-console.log('\n5. Les deux sources de vérité');
+// ── 5. UNE SEULE RÈGLE (17/10 ; « les deux sources » jusqu'au 16/10) ──────
+console.log('\n5. Une seule règle');
 // LE CAS ROMAIN, tel qu'il est en base le 22/09 : compte relié, inscription
 // faite, conditions de vente activées, des politiques existent chez eBay —
 // mais AUCUNE n'est retenue pour FillSell, et le lieu d'expédition manque.
@@ -124,21 +129,17 @@ const ROMAIN_ETAT = {
     lieu_expedition: false,
   },
 };
-const ROMAIN_CHECKLIST = {
-  lignes: [
-    { cle: 'inscription_vendeur', etat: 'ok' },
-    { cle: 'politiques_activees', etat: 'ok' },
-    { cle: 'politique_livraison', etat: 'manque', existantes: [{ id: 'a' }, { id: 'b' }] },
-    { cle: 'politique_paiement', etat: 'manque', existantes: [{ id: 'c' }] },
-    { cle: 'politique_retours', etat: 'manque', existantes: [{ id: 'd' }] },
-    { cle: 'lieu_expedition', etat: 'manque' },
-  ],
-};
+// (17/10, Louis) Il n'y a plus DEUX sources. Les lignes du relevé disaient
+// « ok » dès qu'une politique EXISTAIT chez eBay (ebay-account : `liste.length`),
+// et les Réglages affichaient « eBay est prêt » pendant que la carte du Stock
+// disait « il reste 2 étapes ». L'ancienne fixture de ce contrôle marquait ces
+// lignes « manque » — une forme que le serveur ne produisait JAMAIS : le test
+// passait sur une réalité inventée. Désormais une seule règle
+// (_shared/ebay-etat-compte.js), et aucun verdict tiré des lignes du relevé.
 const parEtat = etatsEbayDepuisEtat(ROMAIN_ETAT);
-const parChecklist = etatsEbayDepuisChecklist(ROMAIN_CHECKLIST);
-verifier('l\'état gratuit et le relevé complet donnent le même verdict (cas Romain)',
-  JSON.stringify(parEtat) === JSON.stringify(parChecklist),
-  `gratuit : ${JSON.stringify(parEtat)}\n      complet : ${JSON.stringify(parChecklist)}`);
+verifier('plus aucun verdict tiré des lignes du relevé (une seule règle)',
+  !('etatsEbayDepuisChecklist' in moduleParcours),
+  `exporté : ${Object.keys(moduleParcours).join(', ')}`);
 verifier('avoir des politiques chez eBay sans en retenir une ne suffit pas',
   parEtat.politique_livraison === 'manque',
   `lu : ${parEtat.politique_livraison}`);
@@ -179,6 +180,15 @@ const aReconnecter = resumeEbay({ connecte: false, a_reconnecter: true }, 'fr');
 verifier('une reconnexion se dit sans accuser personne',
   aReconnecter.motif === 'a_reconnecter' && !/erreur|échec|problème/i.test(aReconnecter.phrase),
   aReconnecter.phrase);
+// (17/10, Louis) Plafond de vente eBay à zéro : jamais « prêt », même tout vert ici.
+const plafondZero = resumeEbay({
+  connecte: true, a_reconnecter: false,
+  politiques: { fulfillment: 'a', payment: 'b', return: 'c' },
+  seller_state: { inscription_vendeur: true, politiques_activees: true, politiques: { livraison: 1, paiement: 1, retours: 1 }, lieu_expedition: true, selling_limit: { quantity: 0, amount: { value: '0', currency: 'EUR' } } },
+}, 'fr');
+verifier('plafond eBay à zéro : jamais « prêt », et c\'est eBay qui est nommé',
+  plafondZero.pret === false && plafondZero.motif === 'bloque_par_ebay' && /n'autorise pas encore ce compte à vendre/.test(plafondZero.phrase) && !/prêt/.test(plafondZero.phrase),
+  plafondZero.phrase);
 
 // ── VERDICT ────────────────────────────────────────────────────────────────
 console.log(`\n${echecs === 0 ? '✅ parcours eBay : tout passe' : `❌ ${echecs} contrôle(s) en échec`}\n`);

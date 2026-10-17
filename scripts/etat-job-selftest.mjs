@@ -62,6 +62,8 @@ const cas = [
   [job({ status: "needs_user", action: "republish", platform_fields: { needs_user_source: "boutique_etrangere", boutique_etrangere: { motif: "boutique_etrangere", article: "1", login_article: "ornella-vend", pose_par: "handler-watch (origine prouvée du job)" } } }), "en_pause", "boutique", "autre boutique prouvée"],
   [job({ error: "En attente de ta connexion à Vinted", platform_fields: { attente_session: { depuis: iso(-5) } } }), "a_toi", "connexion", "pending qui attend une connexion"],
   [job({ action: "republish", platform_fields: { republish_step: "captured", retenue_serveur: { motif: "isbn_capture_non_standard", depuis: iso(-10) } } }), "en_pause", "retenue_serveur", "retenue serveur"],
+  // (17/10) Marque de l'annonce par son identifiant, envoi direct pas encore prouvé : en pause, annonce intacte, jamais « à toi ».
+  [job({ action: "republish", error: "Republication en pause AVANT tout retrait : la marque de ton annonce n'est plus proposée par le menu de Vinted.", platform_fields: { republish_step: "captured", pause_marque_par_id: { depuis: iso(-10), derniere: iso(-10), n: 1 }, next_action_after: iso(50) } }), "en_pause", "retenue_serveur", "marque par identifiant pas encore prouvée"],
   [job({ action: "delete", platform_fields: { retenue_serveur: { motif: "boutique_origine_inconnue", boutiques: ["@a"] } } }), "en_pause", "boutiques_a_ouvrir", "boutique d'origine inconnue"],
   [job({ action: "republish", platform_fields: { republish_step: "captured", attente_boutique: { login: "louis" } } }), "en_pause", "boutique", "attente de boutique (extension)"],
   [job({ error: "x", platform_fields: { next_action_after: iso(20) } }), "en_pause", "essai", "nouvel essai programmé"],

@@ -38,8 +38,14 @@ import { delaiAttenteSessionMin } from "../_shared/attente-session.js";
 // Une republication retirée ne s'arrête jamais avant sa recréation (25/09) —
 // module JS sans import, le même qu'exécute scripts/republication-hors-ligne-selftest.mjs.
 import { decisionRecreationHorsLigne } from "../_shared/republication-hors-ligne.js";
+import { MOTIF_LBC_PAYANT, MARQUEURS_QUESTION_PASSEE } from "../_shared/lbc-forfait.js";
 import { pageCompteVintedBloque, messageCompteVintedBloque, retraitCompteBloqueEnReprise, SOURCE_COMPTE_VINTED_BLOQUE } from "../_shared/vinted-compte-bloque.js";
 import { BUILD_COLIS_DEMANDE } from "../_shared/vinted-colis.js";
+import { reponseMarqueDepop, champsApresMarqueDepop } from "../_shared/marque-depop.js";
+import {
+  MOTIF_VENDEUR_DEPOP, SOURCE_VENDEUR_DEPOP, MESSAGE_VENDEUR_DEPOP, attentesVendeurDepop, controleVendeurPasse,
+  champsReprise as champsRepriseVendeurDepop,
+} from "../_shared/vendeur-depop.js";
 import { verdictClotureRetraitBeebs, MESSAGE_RETRAIT_BEEBS_EN_VERIFICATION } from "../_shared/beebs-preuve-retrait.js";
 import {
   controlerNumeroBeebsEnBase,
@@ -3286,6 +3292,62 @@ serve(async (req) => {
       }
     }
 
+    // ── DEPOP : LA MARQUE N'EST JAMAIS UNE QUESTION (17/10, Nico) ────────────
+    // (_shared/marque-depop.js) Les extensions ≤ 0.6.122 demandent « Marque
+    // (Depop) » quand la marque n'est pas dans la liste de Depop. Pour une
+    // PUBLICATION, la règle répond tout de suite, comme « ✋ Compléter » : une
+    // valeur d'une liste fermée (« Autres », « Short »…) ou une question qui
+    // dit « n'est pas dans la liste » → « Sans marque » (« Other »), jamais une
+    // autre marque, jamais la fiche ; le job repart (pending). Une question
+    // « Plusieurs marques Depop s'écrivent… » reste posée : le correctif
+    // d'extension la relance quand le poste porte la règle exacte. Une fois.
+    let pfMarqueDepop: Record<string, unknown> | null = null;
+    // ── DEPOP : LE MUR « CONFIGURATION VENDEUR » EST NOMMÉ (17/10, Nico) ──────
+    // (_shared/vendeur-depop.js) Le motif posé par l'extension
+    // (depop_vendeur_a_configurer) reçoit SA source — jamais « relancer » par
+    // défaut — et le message du compte : l'app le range dans UNE carte, et
+    // get-pending-jobs ne sert plus aucune publication Depop du compte.
+    let pfVendeurDepop: Record<string, unknown> | null = null;
+    if ((statutEffectif === "needs_user" || statutEffectif === "failed") && !pfMarqueGenerique && pfIn && typeof pfIn === "object") {
+      try {
+        // Le mur de CET essai seulement : l'extension date le motif au moment où
+        // elle le pose (champsAttenteUtilisateur) — un motif ancien resté sur le
+        // job ne nomme jamais un autre arrêt (session, autorisation…).
+        const diagD = (pfIn["last_diagnostic"] && typeof pfIn["last_diagnostic"] === "object")
+          ? pfIn["last_diagnostic"] as Record<string, unknown> : null;
+        const diagFraisD = Date.now() - Date.parse(String(diagD?.["at"] ?? "")) < 30 * 60_000;
+        const quoiD = diagD && diagFraisD ? String(diagD["quoi"] ?? "") : "";
+        const nufD = (pfIn["needsUserField"] && typeof pfIn["needsUserField"] === "object")
+          ? pfIn["needsUserField"] as Record<string, unknown> : null;
+        // La question « Marque (Depop) » — ou la même, rendue en boucle (failed) par le background ≤ 0.6.122.
+        const boucleD = (pfIn["boucle_needs_user"] && typeof pfIn["boucle_needs_user"] === "object")
+          ? pfIn["boucle_needs_user"] as Record<string, unknown> : null;
+        const questionMarqueD = statutEffectif === "needs_user"
+          ? String(nufD?.["field_key"] ?? "") === "depopMarque"
+          : String(boucleD?.["field_key"] ?? "") === "depopMarque";
+        if (questionMarqueD || (statutEffectif === "needs_user" && quoiD === MOTIF_VENDEUR_DEPOP)) {
+          const { data: jD } = await userClient.from("cross_post_jobs").select("platform, action").eq("id", jobId).maybeSingle();
+          if (jD?.platform === "depop" && questionMarqueD) {
+            const repD = reponseMarqueDepop({ platform: "depop", action: jD.action, status: statutEffectif,
+              error: typeof body.error === "string" ? body.error : null, platform_fields: pfIn });
+            if (repD) {
+              pfMarqueDepop = champsApresMarqueDepop(pfIn, repD, new Date().toISOString(), "update-job-status") as Record<string, unknown>;
+              statutEffectif = "pending";
+              erreurEffaceeParMarque = true;
+              raisonRequalif = raisonRequalif ?? `Depop : « ${repD.de ?? ""} » n'est pas une marque de la liste Depop → « Sans marque » (Other), sans question`;
+              console.log(`[update-job-status] userId=${user.id} job=${jobId} — ${raisonRequalif}`);
+            }
+          } else if (jD?.platform === "depop" && ["publish", "republish"].includes(String(jD.action)) && !nufD) {
+            pfVendeurDepop = { ...pfIn, needs_user_source: SOURCE_VENDEUR_DEPOP };
+            messageEffectif = MESSAGE_VENDEUR_DEPOP;
+            console.log(`[update-job-status] userId=${user.id} job=${jobId} — Depop : configuration vendeur à terminer (mur du compte, source ${SOURCE_VENDEUR_DEPOP})`);
+          }
+        }
+      } catch (e) {
+        console.error("[update-job-status] Depop (marque / configuration vendeur) :", (e as Error)?.message ?? e);
+      }
+    }
+
     // ══════════════════════════════════════════════════════════════════════
     // LA BOUTIQUE QU'ON N'A PAS LUE N'EST PAS UNE BOUTIQUE INCONNUE (22/09)
     // ══════════════════════════════════════════════════════════════════════
@@ -3865,6 +3927,8 @@ serve(async (req) => {
     if (pfAspectAveugle) patch.platform_fields = pfAspectAveugle;
     // Marque obligatoire absente → entrée « sans marque » de la liste (26/09).
     if (pfMarqueGenerique) patch.platform_fields = pfMarqueGenerique;
+    if (pfMarqueDepop) patch.platform_fields = pfMarqueDepop;
+    if (pfVendeurDepop) patch.platform_fields = pfVendeurDepop;
 
     // Détail structuré du palliatif : l'app lit champs_a_completer pour
     // afficher quoi compléter, sans re-parser le message humain.
@@ -4561,6 +4625,28 @@ serve(async (req) => {
       }
     }
 
+    // ══ LE MUR « VALIDER ET PAYER » N'HÉRITE JAMAIS D'UNE QUESTION PASSÉE —
+    //    POUR TOUTES LES EXTENSIONS (17/10, DeadRoz) ═══════════════════════════
+    // Jumeau serveur de champsAttenteUtilisateur (background.js, 0.6.121) : les
+    // postes ≤ 0.6.120 — dont la 0.6.114 servie par le store — écrivent ce mur
+    // par-dessus le needs_user_source d'une question DÉJÀ répondue (« Poids du
+    // colis », « Taille »…) ; le filet ci-dessous et le trigger ne remplissant
+    // qu'un motif vide, 12 murs sur 23 restaient en « champ_a_choisir » le 14/10.
+    // Un mur de PAIEMENT n'est jamais une question de champ : les marqueurs de
+    // question tombent, le motif est posé (« relancer »), la cause reste
+    // last_diagnostic.quoi (_shared/lbc-forfait.js).
+    if (statutEffectif === "needs_user" && patch.platform_fields && typeof patch.platform_fields === "object") {
+      const pfMur = patch.platform_fields as Record<string, unknown>;
+      const diagMur = pfMur["last_diagnostic"] as Record<string, unknown> | undefined;
+      if (String(diagMur?.["quoi"] ?? "") === MOTIF_LBC_PAYANT) {
+        const pfN = { ...pfMur };
+        for (const k of MARQUEURS_QUESTION_PASSEE) delete pfN[k];
+        pfN["needs_user_source"] = "relancer";
+        patch.platform_fields = pfN;
+        console.log(`[update-job-status] userId=${user.id} job=${jobId} — mur « Valider et payer » de Leboncoin : marqueurs de question retirés, motif « relancer »`);
+      }
+    }
+
     // ══ PLUS JAMAIS DE needs_user MUET (2026-09-27, règle de Nico) ══════════
     // « Un job ne finit jamais en rouge pour une raison que l'utilisateur peut
     // trancher. Tout needs_user a un needs_user_source, et chaque source a son
@@ -4608,6 +4694,48 @@ serve(async (req) => {
     if (updateErr) return json({ error: updateErr.message }, 500);
     if (!ecriture?.ok) return json({ error: ecriture?.reason || "Le job a changé entre-temps." }, 409);
     const updated = ecriture.job;
+
+    // ── DEPOP : LE CONTRÔLE VENDEUR PASSÉ LÈVE LE MUR DU COMPTE (17/10, Nico) ──
+    // (_shared/vendeur-depop.js) Un résultat Depop qui a passé le contrôle
+    // vendeur (publication faite, ou étape du connecteur au-delà de « session »
+    // dans ce même essai) prouve que Depop accepte ce vendeur : chaque tâche
+    // Depop du compte qui attendait la configuration vendeur (mur vu ou
+    // publication retenue) repart, espacée de 45 s, compare-and-swap sur
+    // needs_user. Best-effort : jamais un point de panne.
+    if (statutEffectif !== "processing" && !pfVendeurDepop) {
+      try {
+        const pfD = (patch.platform_fields ?? pfIn ?? {}) as Record<string, unknown>;
+        const recentD = Date.now() - 30 * 60_000;
+        // Filtre sans lecture : l'onglet de travail (ou le lien publié) est sur depop.com.
+        const finD = ((pfD["work_window_state"] ?? {}) as Record<string, unknown>)["at_end"] as Record<string, unknown> | undefined;
+        const surDepopD = /(^|\.)depop\.com\//i.test(String(finD?.["tab_url"] ?? "")) || /(^|\.)depop\.com\//i.test(String(body.listing_url ?? ""));
+        const candidatD = { platform: "depop", action: "publish", status: statutEffectif, handler_build: String(body.handler_build ?? ""),
+          published_at: statutEffectif === "published" ? new Date().toISOString() : null, platform_fields: pfD };
+        if (surDepopD && controleVendeurPasse(candidatD, statutEffectif === "published" ? -Infinity : recentD)) {
+          const { data: jD } = await userClient.from("cross_post_jobs").select("platform, action").eq("id", jobId).maybeSingle();
+          if (jD?.platform === "depop" && ["publish", "republish"].includes(String(jD.action))) {
+            const { data: mursD } = await userClient.from("cross_post_jobs")
+              .select("id, platform, action, status, created_at, error, platform_fields")
+              .eq("user_id", user.id).eq("platform", "depop").eq("status", "needs_user").neq("id", jobId)
+              .or(`platform_fields->>needs_user_source.eq.${SOURCE_VENDEUR_DEPOP},platform_fields->last_diagnostic->>quoi.eq.${MOTIF_VENDEUR_DEPOP}`)
+              .limit(200);
+            const attentesD = attentesVendeurDepop((mursD ?? []) as never[]) as Array<Record<string, unknown>>;
+            const maintenantD = Date.now();
+            let k = 0;
+            for (const m of attentesD) {
+              const pfR = champsRepriseVendeurDepop(m.platform_fields as Record<string, unknown>, k, maintenantD, "update-job-status (contrôle vendeur passé)") as Record<string, unknown>;
+              pfR.erreurs_archivees = archiverErreur(pfR.erreurs_archivees, (m.error as string | null) ?? null, "needs_user", "update-job-status (configuration vendeur Depop faite)");
+              const { data: majD } = await userClient.from("cross_post_jobs").update({ status: "pending", error: null, platform_fields: pfR })
+                .eq("id", String(m.id)).eq("status", "needs_user").select("id");
+              if ((majD ?? []).length) k++;
+            }
+            if (k) console.log(`[update-job-status] userId=${user.id} job=${jobId} : contrôle vendeur Depop passé — ${k} tâche(s) Depop relâchée(s), espacées de 45 s`);
+          }
+        }
+      } catch (e) {
+        console.warn("[update-job-status] reprise après la configuration vendeur Depop :", (e as Error)?.message ?? e);
+      }
+    }
 
     if (inventaireVintedAEstampiller != null && boutiqueVintedProuvee) {
       const { error: stampErr } = await userClient

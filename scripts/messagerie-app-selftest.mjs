@@ -196,6 +196,11 @@ await cas("demandes de bordereau : chaque état dit quoi faire ; refus en clair"
   assert.ok(etatDemandeBordereau({ statut: "demandee" }).texte.includes("ordinateur"));
   assert.ok(etatDemandeBordereau({ statut: "expiree" }).texte.includes("Réessaie ici") && etatDemandeBordereau({ statut: "expiree" }).texte.includes("rien n’a été fait"), "(17/10) on réessaie dans FillSell");
   assert.ok(etatDemandeBordereau({ statut: "echec", motif: "http_403" }).texte.includes("rien n’a été fait"));
+  // (17/10, migration 20261017100000) la demande attend l'ordinateur 24 h ; le geste relit la commande juste avant.
+  assert.ok(etatDemandeBordereau({ statut: "demandee" }).texte.includes("24 h au plus") && etatDemandeBordereau({ statut: "expiree" }).texte.includes("dans les 24 h"));
+  assert.ok(etatDemandeBordereau({ action: "generer", statut: "demandee" }, "fr", "leboncoin").texte.includes("annulée ou déjà traitée entre-temps, rien n’est fait"));
+  assert.ok(etatDemandeBordereau({ action: "generer", statut: "echec", motif: "commande_annulee" }, "fr", "vinted").texte.includes("annulée sur Vinted : rien n’a été fait"));
+  assert.ok(!/à temps|30 min/.test(JSON.stringify(["demandee", "expiree"].flatMap((s) => [etatDemandeBordereau({ statut: s }), etatDemandeBordereau({ action: "generer", statut: s })]))), "plus aucun « à temps » ni « 30 min »");
   assert.equal(etatDemandeBordereau(null), null);
   assert.ok(refusDemandeBordereau("pas_pret").includes("prêt"));
   assert.ok(refusDemandeBordereau("plafond_jour").includes("20"));

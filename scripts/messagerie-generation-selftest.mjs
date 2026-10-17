@@ -239,6 +239,38 @@ await cas("Beebs : commande DÉJÀ acceptée → 0 appel ; sinon UNE action serv
   assert.equal(M.issueGeneration("beebs", r).issue, "fait");
 });
 
+await cas("(17/10, demande qui attend 24 h) commande ANNULÉE ou EXPÉDIÉE entre-temps, relue juste avant le geste → 0 appel qui engage, refus nommé", async () => {
+  // Vinted : 500 annulée, 210 échec chez Vinted, 300+ expédiée — jamais « déjà fait ».
+  for (const [s, motif] of [[500, "commande_annulee"], [210, "etiquette_echouee_chez_vinted"], [300, "deja_expediee"], [400, "deja_expediee"]]) {
+    const { f, appels } = espion({ "GET /transactions/T6": { corps: { transaction: { shipment: { id: 9, status: s } } } } });
+    globalThis.fetch = f;
+    const r = await M.GESTES_GENERATION.vinted({ transactionId: "T6", corps: { seller_address_id: 1 } });
+    assert.equal(gestes(appels).length, 0, `Vinted ${s} : aucun PUT`);
+    assert.deepEqual(M.issueGeneration("vinted", r), { issue: "refuse", motif, bot: false }, `Vinted ${s}`);
+  }
+  // Leboncoin : annulée (par le vendeur, l'admin) ou déjà partie.
+  globalThis.localStorage = { getItem: () => "jeton" };
+  for (const [st, motif] of [["seller-cancelled", "commande_annulee"], ["admin-cancelled", "commande_annulee"], ["sent", "deja_expediee"], ["finished", "deja_expediee"]]) {
+    const { f, appels } = espion({ "GET /purchase/v2/purchases/P3": { corps: { fsm: { current_state: { status: st } } } } });
+    globalThis.fetch = f;
+    const r = await M.GESTES_GENERATION.leboncoin({ purchaseId: "P3" });
+    assert.equal(gestes(appels).length, 0, `Leboncoin ${st} : aucun POST`);
+    assert.deepEqual(M.issueGeneration("leboncoin", r), { issue: "refuse", motif, bot: false }, `Leboncoin ${st}`);
+  }
+  // Beebs : annulée.
+  const page = (statut) => `0:{"x":1}\n5:[["$","div",null,{"order":{"id":"B8","status":"${statut}","products":[{"id":"p"}],"buyer":{"id":"u"}}}]]`;
+  const { f, appels } = espion({ "GET /fr/account/orders/B8": { corps: page("CANCELLED") } });
+  globalThis.fetch = f;
+  const r = await M.GESTES_GENERATION.beebs({ orderId: "B8", action: "7f33a89f02529c251879b96621f4fc409193cc626f" });
+  assert.equal(gestes(appels).length, 0, "Beebs annulée : aucune action");
+  assert.deepEqual(M.issueGeneration("beebs", r), { issue: "refuse", motif: "commande_annulee", bot: false });
+  // La migration du 17/10 : une demande attend l'ordinateur 24 h (30 min avant), une seule ligne changée.
+  const mig = lire("supabase/migrations/20261017100000_bordereau_attente_24h.sql");
+  assert.ok(/statut = 'demandee' AND cree_le < now\(\) - interval '24 hours'/.test(mig), "expiration à 24 h");
+  assert.ok(!/30 minutes/.test(mig.split("$function$")[1]), "plus aucune expiration à 30 min dans le corps");
+  assert.ok(/statut = 'demandee' AND cree_le < now\(\) - interval '30 minutes'/.test(lire("supabase/rollbacks/20261017100000_bordereau_attente_24h.sql")), "inverse : 30 min");
+});
+
 // ── c. Lecture seule, aucune donnée personnelle ─────────────────────────────
 // La page de Vinted (la passerelle se lit sur son domaine : api.<domaine>, jamais écrit en dur).
 globalThis.location = { host: "www.vinted.fr" };

@@ -101,14 +101,25 @@ export function traduireAbsenceMarqueJob(job, maintenant = new Date()) {
  * reçoivent la marque choisie — la question ne revient pas.
  * ⛔ Jamais vers une absence de marque ; la fiche n'est pas touchée (la
  *    marque de l'article reste la sienne sur les autres plateformes).
+ * ⛔ (17/10, Nico) `annonceParIdentifiant` (get-pending-jobs : le poste pose
+ *    la marque de l'annonce par son identifiant, build ≥
+ *    BUILD_VINTED_MARQUE_PAR_ID) : jamais sur une republication dont
+ *    l'annonce en ligne porte une vraie marque à identifiant
+ *    (republish_snapshot.brand_id > 1) — elle est reprise TELLE QUELLE
+ *    (cf. _shared/vinted-marque-par-id.js). Un poste plus ancien garde la
+ *    règle du 04/10 : il ne saurait poser que la marque tapée.
  * Modifie `job.platform_fields` en place ; rend la trace ou null.
  */
-export function appliquerMarqueRetenue(job, retenues, maintenant = new Date()) {
+export function appliquerMarqueRetenue(job, retenues, maintenant = new Date(), { annonceParIdentifiant = false } = {}) {
   if (!job || String(job.platform) !== "vinted") return null;
   if (!["publish", "republish"].includes(String(job.action ?? "publish"))) return null;
   if (!retenues || typeof retenues !== "object") return null;
   const pf = (job.platform_fields && typeof job.platform_fields === "object") ? job.platform_fields : null;
   if (!pf) return null;
+  if (annonceParIdentifiant === true && String(job.action) === "republish") {
+    const idCapture = Number(pf.republish_snapshot && typeof pf.republish_snapshot === "object" ? pf.republish_snapshot.brand_id : NaN);
+    if (Number.isInteger(idCapture) && idCapture > 1) return null;
+  }
   const champs = [];
   let de = null;
   let vers = null;

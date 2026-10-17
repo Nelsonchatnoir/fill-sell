@@ -679,6 +679,10 @@ fait », copie 5 jours), en lecture seule, et je te dis ce que j'ai vu.
 - **Le motif du mur** : le même écran finissait en `champ_a_choisir` (12 jobs) ou `relancer` (11) — une question
   déjà tranchée restait sur le job et le filet du serveur la rouvrait. Pour ce mur, les marqueurs de question passée
   tombent et le motif est toujours `relancer`.
+- ⚠️ **Rectificatif du 17/10** : les « 23 dépôts Mode à 7-17 photos » du 14/10 (DeadRoz) ne relèvent PAS du pack
+  photos. C'est un compte Leboncoin **PRO hors forfait** (formulaire pro relevé ; les 5 dépôts passés le même soir
+  avaient aussi 10 photos). Les 0.6.121/0.6.122 ne les débloquent pas ; règle et carte de compte :
+  `docs/regles/plateformes.md` § 17/10, rapport `docs/enquetes/dix-points-1710/RAPPORT.md` § 7.
 
 **C3 — « Catégorie : panneau des racines introuvable »**
 - **Cause** : l'extension ne reconnaissait le panneau des catégories que s'il contenait « Divers » ; or Leboncoin
