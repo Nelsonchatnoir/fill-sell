@@ -134,8 +134,38 @@ const YEAR_BY_VALUE = new Map(CHILD_YEAR_SIZES.map((e) => [e.value.toLowerCase()
 // entrée, les fractions eBay « 27 1/3 » passent par la voie exacte d'ebay.js).
 const SHOE_RE = /^eu\s*(\d{2})(?:[.,](5))?$/i;
 
+// ── Libellés PLATEFORME → entrée (18/10, lot 3 « champs déduits ») ───────────
+// La fiche porte la taille dans le vocabulaire de la plateforme d'ORIGINE
+// (synchro Vinted « 9-12 mois / 74 cm » : 7 935 fiches en 30 j ; relevé Beebs
+// « 9 mois (67-74 cm) » ; Leboncoin « 9 mois / 74 cm »). Ces libellés sont des
+// options RÉELLES des tables ci-dessus : on les reconnaît comme la canonique,
+// et la conversion vers une autre plateforme suit la table — jamais un
+// rapprochement par cm entre plateformes. Avant, « 9-12 mois / 74 cm » n'était
+// pas reconnu, la grille Beebs disait non et la personne répondait à la main
+// (152 questions « Taille · Beebs » en 7 j, 123 fiches qui AVAIENT la taille).
+// Deux lignes peuvent porter le même libellé (« 24 mois (86-94 cm) » = 24 mois
+// et 2 ans ; « 12 ans (140-152 cm) » = 11 et 12 ans) : la ligne dont la
+// canonique OUVRE le libellé gagne (« 12 ans (…) » → 12 ans), sinon la
+// première (l'axe mois). Un libellé réduit à un nombre nu (eBay « 98 ») n'est
+// jamais indexé : la règle du nombre nu reste entière.
+const LABEL_KEYS = ["vinted", "lbc", "beebs", "ebay"];
+const PLATFORM_LABEL_INDEX = new Map();
+for (const [kind, table] of [["months", CHILD_MONTH_SIZES], ["years", CHILD_YEAR_SIZES]]) {
+  for (const entry of table) {
+    for (const k of LABEL_KEYS) {
+      const label = String(entry[k] ?? "").trim();
+      if (!label || /^\d+([.,]\d+)?$/.test(label)) continue;
+      const key = label.toLowerCase();
+      const ouvre = key.startsWith(entry.value.toLowerCase());
+      const deja = PLATFORM_LABEL_INDEX.get(key);
+      if (!deja || (ouvre && !deja.ouvre)) PLATFORM_LABEL_INDEX.set(key, { kind, entry, ouvre });
+    }
+  }
+}
+
 /**
- * Reconnaît une taille canonique ENFANT. Un nombre nu (« 36 », « 3 ») n'est
+ * Reconnaît une taille canonique ENFANT — ou le libellé EXACT qu'une des
+ * quatre plateformes lui donne (18/10). Un nombre nu (« 36 », « 3 ») n'est
  * JAMAIS reconnu — c'est précisément l'ambiguïté (taille adulte 34-52 vs
  * pointure vs mois) que ce référentiel élimine.
  * @param {string} value — platform_fields.taille
@@ -147,6 +177,10 @@ export function parseChildSize(value) {
   if (!v) return null;
   const m = MONTH_BY_VALUE.get(v);
   if (m) return { kind: "months", entry: m };
+  const y0 = YEAR_BY_VALUE.get(v);
+  if (y0) return { kind: "years", entry: y0 };
+  const p = PLATFORM_LABEL_INDEX.get(v);
+  if (p) return { kind: p.kind, entry: p.entry };
   const y = YEAR_BY_VALUE.get(v);
   if (y) return { kind: "years", entry: y };
   const shoe = v.match(SHOE_RE);

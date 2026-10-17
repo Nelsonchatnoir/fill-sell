@@ -48,6 +48,7 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
     }
 
     etapeCourante = null; // nouveau job : le relevé d'étape repart de zéro
+    MARQUE_HORS_LISTE = null; // (18/10) la marque hors liste ne survit jamais à un job
     fillListingForm(msg.job)
       .then((result) => sendResponse(joindreBilanPhotosLbc(result)))
       .catch((err) => sendResponse(reponseEchecInterne(err)));
@@ -1625,7 +1626,9 @@ async function fillListingForm(job) {
     // du wizard, c'est celui dont l'apparition instantanée se voyait le plus.
     // Insérée par blocs à rythme humain (cf. HUMAN_TYPE_MAX_CHARS).
     DIAGNOSTICS_SAISIE.length = 0;
-    await typeInto(bodyArea, job.description);
+    // (18/10) Une marque que Leboncoin n'a pas dans sa liste part dans la
+    // description (une fois, jamais en doublon).
+    await typeInto(bodyArea, descriptionAvecMarque(job.description, MARQUE_HORS_LISTE));
     for (const d of DIAGNOSTICS_SAISIE.splice(0)) warnings.push(`description — ${d}`);
     bodyArea.blur();
     await humanPause();
@@ -1840,14 +1843,17 @@ async function fillListingForm(job) {
   if (job.description) {
     const zone = document.querySelector("textarea#body, #body");
     const norm = (t) => String(t ?? "").replace(/\r\n/g, "\n").trim();
-    if (zone && "value" in zone && norm(zone.value) !== norm(job.description)) {
+    // (18/10) La description attendue est celle POSÉE : la marque hors liste y est
+    // écrite (descriptionAvecMarque) — la relecture ne doit pas l'effacer.
+    const descriptionAttendue = descriptionAvecMarque(job.description, MARQUE_HORS_LISTE);
+    if (zone && "value" in zone && norm(zone.value) !== norm(descriptionAttendue)) {
       DIAGNOSTICS_SAISIE.length = 0;
-      await typeInto(zone, job.description);
+      await typeInto(zone, descriptionAttendue);
       for (const d of DIAGNOSTICS_SAISIE.splice(0)) warnings.push(`description (avant dépôt) — ${d}`);
       zone.blur();
-      warnings.push(norm(zone.value) === norm(job.description)
+      warnings.push(norm(zone.value) === norm(descriptionAttendue)
         ? "description : changée sur la page avant le dépôt — reposée à l'identique"
-        : `description : toujours différente avant le dépôt (${norm(zone.value).length}/${norm(job.description).length} car.)`);
+        : `description : toujours différente avant le dépôt (${norm(zone.value).length}/${norm(descriptionAttendue).length} car.)`);
       await humanPause();
     }
   }
@@ -2960,8 +2966,10 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
     // à l'ouverture et ne se peuple qu'après une frappe servie par le serveur
     // Leboncoin. Sans ça, 122 jobs sur 464 (30 j) partaient sans marque —
     // seuls ceux que Leboncoin pré-remplissait lui-même s'en sortaient.
+    // (18/10) Une vraie marque hors liste → « Autre » seulement ; une absence de
+    // marque de la fiche → « Sans marque » d'abord.
     await fillCriterionSafe("marque", 'label[for$="_brand"]', fields.marque, warnings,
-      { skipIfPrefilled: true, fallbackValues: ["Autre", "Sans marque"], rechercheParFrappe: true });
+      { skipIfPrefilled: true, fallbackValues: estValeurGenerique(fields.marque) ? ["Sans marque", "Autre"] : ["Autre"], rechercheParFrappe: true });
   }
   // ── MODÈLE (2026-09-07) — un champ de RECHERCHE, jamais posé jusqu'ici ────
   // Leboncoin a un champ Modèle sur la téléphonie (`phone_model`, relevé au
@@ -4319,9 +4327,11 @@ async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, {
         await sleep(100);
       }
       const cible = normalizeFuzzy(rawValue);
+      // (18/10) La marque : égalité tolérante (casse, espaces, ponctuation, accents).
+      const estMarqueReelle = fieldName === "marque" && !estValeurGenerique(rawValue);
       const exact = [...menu.querySelectorAll(optionSelector)]
         .map((el) => ({ el, label: el.textContent.trim() }))
-        .find((o) => normalizeFuzzy(o.label) === cible);
+        .find((o) => (estMarqueReelle ? marquesEgales(o.label, rawValue) : normalizeFuzzy(o.label) === cible));
       if (exact) {
         await humanPause();
         exact.el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -4330,6 +4340,27 @@ async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, {
         console.log(`[leboncoin] ${note}`);
         warnings.push(note);
         return true;
+      }
+      // (18/10) Une vraie marque que Leboncoin ne connaît pas : « Autre » si la
+      // recherche l'offre, et la marque écrite dans la description — l'annonce part.
+      if (estMarqueReelle) {
+        MARQUE_HORS_LISTE = String(rawValue);
+        await typeInto(input, "Autre");
+        for (let i = 0; i < 25 && !menu.querySelector(optionSelector)?.textContent?.trim(); i++) {
+          await sleep(100);
+        }
+        const autre = [...menu.querySelectorAll(optionSelector)]
+          .map((el) => ({ el, label: el.textContent.trim() }))
+          .find((o) => /^(autre|autres|autremarque|autresmarques)$/.test(cleMarqueExacte(o.label)));
+        if (autre) {
+          await humanPause();
+          autre.el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+          await humanPause();
+          const note = `${fieldName}: « ${rawValue} » absent de la recherche Leboncoin → « ${autre.label} », la marque est écrite dans la description`;
+          console.warn(`[leboncoin] ≈ ${note}`);
+          warnings.push(note);
+          return true;
+        }
       }
       // Rien d'exact : on retire la frappe pour ne pas laisser un texte
       // parasite dans un champ qui n'accepte que ses propres options.
@@ -4344,9 +4375,14 @@ async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, {
       return false;
     }
 
+    // (18/10) La MARQUE : égalité exacte (casse, espaces, ponctuation, accents
+    // tolérés), jamais la cascade — « Chic » ne vaut pas « Chic Me ».
+    const marqueReelle = fieldName === "marque" && !estValeurGenerique(rawValue);
     let match = etatExact
       ? trouverOptionEtatExacte(scope, optionSelector, rawList)
-      : findOptionCascade(scope, optionSelector, rawValue, { sizeField, composants });
+      : marqueReelle
+        ? trouverOptionMarqueExacte(scope, optionSelector, rawValue)
+        : findOptionCascade(scope, optionSelector, rawValue, { sizeField, composants });
     let valeurPosee = rawValue;
     // (15/10, P8 — Ornella 495e9ffc « Canon ») LA MARQUE est une exception à la
     // règle du pré-rempli (13/08, établie sur Type/Produit) : une marque devinée
@@ -4360,11 +4396,14 @@ async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, {
     if (!match && (!prefilled || marqueDevineeFausse)) {
       // Pas d'option pour notre valeur et rien à préserver : replis génériques
       // éventuels (marque → « Autre »/« Sans marque ») avant d'abandonner.
-      for (const fb of (marqueDevineeFausse ? fallbackValues.filter((v) => !/^sans marque$/i.test(String(v))) : fallbackValues)) {
+      // (18/10) Une vraie marque hors liste → « Autre » seulement (jamais « Sans
+      // marque » : l'article en a une), et la marque part dans la description.
+      for (const fb of ((marqueDevineeFausse || marqueReelle) ? fallbackValues.filter((v) => !/^sans marque$/i.test(String(v))) : fallbackValues)) {
         match = findOptionCascade(scope, optionSelector, fb, { sizeField });
         if (match) {
           valeurPosee = fb;
-          const note = `${fieldName}: "${rawValue}" hors liste LBC → repli sur l'option générique "${match.label}"`;
+          if (marqueReelle) MARQUE_HORS_LISTE = String(rawValue);
+          const note = `${fieldName}: "${rawValue}" hors liste LBC → repli sur l'option générique "${match.label}"${marqueReelle ? " ; la marque est écrite dans la description" : ""}`;
           console.warn(`[leboncoin] ≈ ${note}`);
           warnings.push(note);
           break;
@@ -5917,6 +5956,46 @@ function texteComparable(s) {
 // partagée (bloc ci-dessus). « Jouets d'éveil » ↔ « Jouets d’éveil »,
 // « 38 - M » ↔ « 38 – M », « 128 Go » ↔ « 128 Go » (U+00A0) matchent désormais.
 const normalizeFuzzy = (s) => texteComparable(s);
+
+// ⟦marque-exacte:début⟧ (18/10, règle de Nico) LA MARQUE DE LA FICHE PART TELLE
+// QUELLE : égalité tolérante sur la casse, les espaces, la ponctuation et les
+// accents SEULEMENT (« Chic Me » = « ChicMe », « Grain de Blé » = « Grain de ble »),
+// jamais une marque contenue ou voisine (« Chic » ≠ « Chic Me », « Bonobo » ≠
+// « Bonobos », « Paper » ≠ « Daily paper »). « & » et « + » comptent (H&M ≠ H&M+).
+// Hors liste : « Autre », et la marque écrite UNE fois dans la description — pas de
+// doublon si la description la nomme déjà. L'article est publié quand même.
+let MARQUE_HORS_LISTE = null;
+function cleMarqueExacte(s) {
+  return texteComparable(s).replace(/[^a-z0-9&+]+/g, "");
+}
+function marquesEgales(a, b) {
+  const x = cleMarqueExacte(a), y = cleMarqueExacte(b);
+  return !!x && x === y;
+}
+function descriptionNommeLaMarque(description, marque) {
+  const d = texteComparable(description), m = texteComparable(marque);
+  if (!m) return true;
+  if (containsAsWords(d, m)) return true;
+  // Une marque à plusieurs mots peut être écrite collée (« ChicMe ») ; un seul mot
+  // ne se cherche qu'entier (« Bonobos » ne vaut pas « Bonobo »).
+  const dc = cleMarqueExacte(description), mc = cleMarqueExacte(marque);
+  return !!mc && mc.length >= 4 && /[^a-z0-9]/.test(m) && dc.includes(mc);
+}
+function descriptionAvecMarque(description, marque) {
+  const d = String(description ?? "");
+  const m = String(marque ?? "").trim();
+  if (!m || descriptionNommeLaMarque(d, m)) return d;
+  return `${d.replace(/\s+$/, "")}\n\nMarque : ${m}`;
+}
+/** L'option dont le libellé EST la marque (tolérance : casse, espaces, ponctuation, accents), ou null. */
+function trouverOptionMarqueExacte(root, optionSelector, text) {
+  const options = Array.from(root.querySelectorAll(optionSelector))
+    .map((el) => ({ el, label: el.textContent.trim(), norm: normalizeFuzzy(el.textContent) }))
+    .filter((o) => o.norm);
+  const exact = options.find((o) => marquesEgales(o.label, text) || o.label.split("/").some((p) => marquesEgales(p, text)));
+  return exact ? { ...exact, stage: "marque-exacte" } : null;
+}
+// ⟦marque-exacte:fin⟧
 
 // Valeurs « fourre-tout » des listes Leboncoin — un REPLI, jamais une
 // information (2026-09-07). Relevé live des 6 feuilles Maison & Jardin :

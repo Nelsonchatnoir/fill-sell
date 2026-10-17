@@ -208,3 +208,35 @@
   lien inconnu ou annonce de deux fiches → refus `lien_annonce_incertain` avant tout décompte (refus d'article au créneau, qui
   passe au candidat suivant). Une copie hors Vinted n'est jamais retirée (`annonce_partagee_reprendre` la réaligne ; sans lien
   exact, arrêtée, rien retiré). Selftests `introuvable-a-confirmer`, `republication-nait-avec-son-lien`, `annonce-partagee-cascade`.
+
+## 18/10 — CHAMPS DÉDUITS : CE QUE LA FICHE OU UNE PLATEFORME SAIT N'EST PLUS DEMANDÉ (lot 3, session sans Nico ; audit `docs/enquetes/session-sans-nico-1810/lot3-audit-champs.md`)
+- **Taille enfant** : la fiche porte la taille dans le vocabulaire de la plateforme d'ORIGINE (synchro Vinted « 9-12 mois /
+  74 cm » : 7 935 fiches en 30 j ; relevé Beebs « 9 mois (67-74 cm) » ; Leboncoin « 9 mois / 74 cm »). `src/utils/childSizes.js`
+  reconnaît désormais ces libellés EXACTS comme la canonique (`parseChildSize`, index des libellés des quatre plateformes ;
+  un nombre nu n'est toujours jamais reconnu, eBay « 98 » n'est pas indexé ; libellé partagé par deux lignes → la canonique
+  qui l'ouvre, sinon l'axe mois). Le jugement de l'écran Publier (`moteur/listes.jugerValeurContreListe`) traduit d'abord
+  par cette table vers la grille de la plateforme cible et n'accepte que l'écriture TELLE QUELLE de la grille (sinon : comme
+  avant, le vocabulaire des tailles puis la question) ; `tailleDuJob` pose cette écriture sur le job ; l'insert
+  (`toPlatformChildSize`) convertit aussi un libellé d'une autre plateforme. Jamais un rapprochement par cm entre
+  plateformes : la table relevée fait foi. Résultat attendu : plus de question « Taille · Beebs » pour un vêtement enfant
+  importé de Vinted (152 affichages, 131 articles, 123 fiches qui portaient la taille, 7 j au 17/10).
+- **Âge Beebs** : l'âge que la fiche porte déjà (`inventaire.attributs.age`, relevé de l'annonce Beebs du même article — 129
+  fiches) répond avant la question (`genericKnownSource` « Âge » → `ageDitSurLaFiche()`) et part sur la copie Beebs qui n'en
+  a pas, au départ de la publication. Jugé contre la liste comme toute valeur (hors liste → question avec suggestion).
+- **Télémétrie `champ_requis_bloquant`** : une ligne « affiche » ne s'ouvre plus pendant qu'une IA générique est en vol
+  (seconde passe Leboncoin Univers/Produit, aspects Beebs) — même règle que la couleur et qu'eBay ; une ligne déjà ouverte
+  reste active (jamais un faux « complete »). ≈ 35 des 55 « Produit · Leboncoin » de la semaine étaient cet artefact.
+- **Veille** : `champs_requis_veille(p_jours, p_limite)` (migration 20261018020000, lecture seule, service_role) → ops-digest
+  v37 « Champs obligatoires » : un champ `required` apparu depuis 7 j sur un rayon relevé depuis plus longtemps (= la
+  plateforme a ajouté un champ, à déduire plutôt que demander ; `sans_liste` quand rien n'est relevé), et les questions
+  posées par plateforme et champ, 7 j contre les 7 d'avant (mesure avant/après : 609 affichages du 11 au 17/10, 423 la
+  semaine d'avant ; à relire autour du 25/10). Compteur `champs_requis` (nouveaux + champs qui doublent avec ≥ 20 affichages).
+- **Ordre des sources** (inchangé, rappel) : valeur de la personne → fiche (copie d'une plateforme : `attributs.<champ>` posé
+  par la synchro, un relevé, le Lens, la saisie) → mapping (tables `childSizes`, `tailles`, synonymes) → IA en dernier
+  (micro-appels `resolve_aspects`, plafonds par palier, pas de cache hors Lens identify). **Non fait le 18/10** (décision
+  Nico) : mémoire « réponse du compte pour cette catégorie » (aucune n'existe pour Univers, Produit, Taille, Âge, Couleur,
+  Style, Longueur — seules Opla catégories, colis Vinted, marques retenues, poids/new_item_type Leboncoin existent) ;
+  cache / regroupement des appels IA (`resolve-categorie` ≈ 3 appels par article, 3 689 / 7 j, sans cache). Coût mesuré :
+  génération ≈ 0,011 $ par article (Haiku 4.5), import gratuit, 1 000 articles Business ≈ 12-15 $ ; plafond
+  `resolve-categorie` 4 000 / 24 h atteint vers 1 300 articles.
+- Selftest : `champs-deduits` (29).

@@ -239,3 +239,25 @@ trois relevés et deux reprises lancés tout seuls, aucun Vinted abouti, un faux
   par l'index (`jugerFluxMesAnnoncesBeebs`) — le compteur de Beebs n'a pas à égaler l'index (une annonce retirée y reste des heures :
   5 contre 7 le 16/10) ; tronquée (> 60) : compteur = index ; « en vérification » : les connues entrent au relevé, une inconnue est
   comptée, jamais inventée. Le verdict `[flux] … → …` est TOUJOURS écrit dans le run (extension 0.6.123). `selftest:beebs-flux-mes-annonces`.
+
+## 18/10 — Relevés morts sans alerte ; session perdue ou compte restreint : la personne est prévenue (lot 4, session sans Nico)
+- Un relevé est MORT quand : compte actif (extension vue depuis moins de 24 h), plateforme déjà relevée avec succès,
+  aucun `done` depuis 7 jours, quelque chose à surveiller (Vinted : toujours ; ailleurs : un dépôt publié ou une annonce
+  relevée vivante), plateforme non écartée, jamais Opla, dernier run ≠ `cancelled`. Fonction `releves_morts_veille(p_jours,
+  p_limite)` (migration 20261018010000, STABLE, service_role, LECTURE SEULE — rien n'est relancé ni clos) : cause probable lue
+  dans l'erreur du dernier run (boutique à confirmer, session fermée, mur anti-robot, panne jamais reprise) ; filet du chien
+  de garde (`running` sans progrès > 1 h, `queued` > 7 h — attendu 0/0). Lue par `ops-digest` (v36) : section « Relevés
+  morts sans alerte » (rouge au-delà de 21 j), compteur `releves_morts` dans l'objet. Enquête du 17/10 : Lohan — boutique à
+  confirmer (02 → 16/10) puis session Vinted fermée, revenu de lui-même le 17/10 14:34 ; Rui — session Vinted fermée depuis
+  le 11/09 (dormant, rien relancé) ; un refus d'appui n'écrit aucun run et une session fermée fait échouer le cron chaque
+  jour en silence : c'est ce que la veille rend visible. Le relevé reste un GESTE (règle du 05/10) : rien n'est relancé
+  d'office.
+- Session perdue ou compte restreint = UNE ligne dans « À régler » (`compte_plateforme` ; règle `src/utils/alertesCompte.js`,
+  écran `src/stock/EcranAlertesCompte.jsx`) : plateformes regroupées (« Connecte-toi à Vinted et Leboncoin »), restriction
+  Vinted lue dans le diagnostic d'un job vivant (« Compte restreint jusqu'au JJ/MM »), jamais sur `null` (session jamais
+  vérifiée), ni durée, ni mot technique, ni émoji. Masquable par plateforme (`platform_settings.alertes_compte.masquees`,
+  écrit par `platform_settings_fusionner` seulement ; le masque tombe de lui-même quand la session revient ; une restriction
+  reste masquée jusqu'à sa date de fin) ; interrupteur global Réglages › Préférences › Alertes de compte
+  (`alertes_compte.desactivees`, actif par défaut). Lecture bornée (10 min, onglet visible, `demarrerRelecture`), jamais un
+  `setInterval` ; le verdict de session est celui de `utils/sessionsPlateformes.etatSession` (le même que le reste de
+  l'app). Aucun mail, aucun push. Selftest `alertes-compte` (21).

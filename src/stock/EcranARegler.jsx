@@ -13,12 +13,12 @@
 //    (son titre, la plateforme, le geste ; le tap ouvre sa fiche), les annonces
 //    « plus en ligne — vendue ? » une ligne qui ouvre leurs questions. Même
 //    ligne, mêmes polices, mêmes couleurs : jamais un bloc coloré.
-import { ChevronRight, CircleAlert, BadgeEuro, Tag, PenLine, AlertTriangle, UserRound, Store, EyeOff, Wallet } from 'lucide-react';
+import { ChevronRight, CircleAlert, BadgeEuro, Tag, PenLine, AlertTriangle, UserRound, Store, EyeOff, Wallet, LogIn } from 'lucide-react';
 import EcranPlein from './EcranPlein';
 import { S } from './jetons';
 import { nombreFr } from './regles';
 
-const ICONES = { retraits: AlertTriangle, lbc_identite: UserRound, vendeur_plateforme: Wallet, attente: CircleAlert, ventes: BadgeEuro, prix: Tag, brouillons: PenLine, plus_en_ligne: EyeOff };
+const ICONES = { retraits: AlertTriangle, lbc_identite: UserRound, vendeur_plateforme: Wallet, compte_plateforme: LogIn, attente: CircleAlert, ventes: BadgeEuro, prix: Tag, brouillons: PenLine, plus_en_ligne: EyeOff };
 // (05/10) Une annonce vendue encore en ligne (retrait bloqué par une
 // connexion) : rouge — un risque de double vente, pas une information à
 // compléter. (12/10 soir) Une ligne peut dire son ton elle-même (`ton`) :
@@ -34,6 +34,7 @@ export default function EcranARegler({ lang = 'fr', lignes = [], onFermer, actif
     present('vendus', 'retraits') && (fr ? 'des annonces encore en ligne à retirer' : 'live listings to remove'),
     present('lbc_identite') && (fr ? 'ton compte Leboncoin à compléter' : 'your Leboncoin account to complete'),
     present('vendeur_plateforme') && (fr ? 'ta configuration de vendeur à terminer' : 'your seller setup to finish'),
+    present('compte_plateforme') && (fr ? 'une connexion ou un compte à regarder' : 'a sign-in or account to look at'),
     present('attente') && (fr ? 'des annonces qui attendent ton geste' : 'listings waiting on you'),
     present('a_verifier') && (fr ? 'des annonces à vérifier' : 'listings to check'),
     present('ventes', 'plus_en_ligne') && (fr ? 'des ventes à confirmer' : 'sales to confirm'),

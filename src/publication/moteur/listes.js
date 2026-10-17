@@ -44,6 +44,7 @@
 import { texteComparable } from "../../utils/texteComparable.js";
 import { normalizeVintedColors } from "../../utils/vintedColors.js";
 import { tailleDansGrille } from "../../../supabase/functions/_shared/tailles.js";
+import { toPlatformChildSize } from "../../utils/childSizes.js";
 import {
   optionDepuisTextes, champDeductibleDuTexte, estFourreTout, listeCandidatsDabord, textesDeLAnnonce,
 } from "../../../supabase/functions/_shared/option-du-texte.js";
@@ -229,6 +230,19 @@ export function jugerValeurContreListe({ platform, key, value, allowedValues, ch
   const exacte = vals.find(a => normAspectVal(a) === nv);
   if (exacte) return { dans: true, valeurListe: exacte, suggested: null };
   if (estChampTaille(platform, key)) {
+    // (18/10, lot 3) Une taille ENFANT écrite dans le vocabulaire d'une autre
+    // plateforme (« 9-12 mois / 74 cm » lu sur Vinted, « 9 mois / 74 cm » sur
+    // Leboncoin, « 9 mois (67-74 cm) » sur Beebs, « 9 mois » canonique) est
+    // traduite par le référentiel childSizes — table relevée, jamais un
+    // rapprochement par cm — et doit se trouver TELLE QUELLE dans la grille :
+    // sinon on continue comme avant. 152 questions « Taille · Beebs » en 7 j,
+    // 123 fiches qui portaient déjà la taille (audit du 17/10).
+    const enfant = toPlatformChildSize(v, platform);
+    if (enfant) {
+      const ne = normAspectVal(enfant);
+      const dansGrille = vals.find(a => normAspectVal(a) === ne);
+      if (dansGrille) return { dans: true, valeurListe: dansGrille, suggested: null };
+    }
     const t = tailleDansGrille(v, vals, { tableFemme: platform === "opla" && brancheFemmesOpla(cheminCategorie) });
     if (t) return { dans: true, valeurListe: t.valeur, suggested: null };
     // L'étiquette de la grille est composite avec un tiret (« 34 - XS » chez

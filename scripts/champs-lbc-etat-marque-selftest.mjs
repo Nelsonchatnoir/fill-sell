@@ -72,7 +72,8 @@ ok(/const marquePreRemplieNonCitee = fieldName === "marque" && !estMarqueConsole
 ok(/function marqueConsole\(labelSelector\) \{[\s\S]{0,200}console_brand\$\/i/.test(LBC) && /const estMarqueConsole = fieldName === "marque" && marqueConsole\(labelSelector\);/.test(LBC),
   '3d. la marque de la console (console_brand) n\'est jamais remplacée par « Autre »');
 ok(/TEXTE_ARTICLE_LBC = normalizeFuzzy\(`\$\{job\.title \?\? ""\} \$\{job\.description \?\? ""\}`\);/.test(LBC), '3e. le texte de l\'article (titre + description) est posé à chaque remplissage');
-ok(/marqueDevineeFausse \? fallbackValues\.filter\(\(v\) => !\/\^sans marque\$\/i\.test\(String\(v\)\)\) : fallbackValues/.test(LBC),
+// (18/10) le même repli vaut pour toute vraie marque hors liste (marqueReelle).
+ok(/\(marqueDevineeFausse \|\| marqueReelle\) \? fallbackValues\.filter\(\(v\) => !\/\^sans marque\$\/i\.test\(String\(v\)\)\) : fallbackValues/.test(LBC),
   '3b. jamais « Sans marque » à la place d\'une marque devinée (l\'article en a une)');
 
 console.log(`\n${total - echecs}/${total} contrôles verts`);

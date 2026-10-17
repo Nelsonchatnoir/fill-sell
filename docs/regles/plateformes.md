@@ -256,3 +256,16 @@ Rapport : `docs/enquetes/dix-points-1710/RAPPORT.md` (points 1, 4, 5, 7, 9).
   pro n'entre jamais ; le relevé Leboncoin d'un compte pro lit 0 annonce (route particulier) — les dépôts faits à la
   main par la personne ne sont pas vus par FillSell (cas DeadRoz, 14/10 : non vérifiable, rien redéposé d'office).
 - Selftest : `lbc-forfait-pro` (§ 8).
+
+## 18/10 — La vraie marque, toujours, partout (règle de Nico ; extension 0.6.124)
+- La marque de la fiche part TELLE QUELLE sur toutes les plateformes. Comparaison tolérante UNIQUEMENT sur la casse, les
+  espaces, la ponctuation et les accents (« Chic Me » = « ChicMe », « Grain de Blé » = « Grain de ble ») ; jamais une marque
+  contenue ou voisine (« Chic » pour « Chic Me », « Bonobo » ≠ « Bonobos », « Paper » pour « Daily paper ») ; « & » et « + »
+  comptent (H&M ≠ H&M+). Blocs `⟦marque-exacte⟧` de `leboncoin.js` et `beebs.js` ; `depopCleMarqueExacte` / `cleMarqueDepopCompacte`.
+- Marque libre acceptée (Vinted « Utiliser "X" comme marque », eBay texte libre) : la marque exacte, inchangé.
+- Liste fermée sans la marque (Depop, Leboncoin, Beebs) : « Other » / « Autre », plus la marque écrite UNE fois dans la
+  description (« Marque : X »), pas de doublon si la description la nomme déjà (mot entier, ou plusieurs mots écrits
+  collés) ; l'article est publié quand même. Jamais « Sans marque » pour une vraie marque. Leboncoin (Mode, menu à
+  recherche) : « Autre » cherché à son tour ; Beebs : jamais l'IA pour une marque ; Depop : deux marques sous la même forme
+  compacte → l'écriture exacte gagne, sinon « Other » (ambiguë).
+- Selftests : `marques-exactes` (62, dix marques du protocole), `depop-marque` (forme compacte), `champs-lbc-etat-marque`.

@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const BEEBS_BUILD = "2026-10-17-mur-nomme (relevé : « Mes annonces » lue par fetch — la vérification anti-robot de Beebs, servie sous la même adresse, et le renvoi vers la connexion se nomment : motif + mur) · 2026-10-08-preuve-relue (0.6.104 : BEEBS_PREUVE_RETRAIT, la preuve d'une suppression envoyée relue sans geste ; l'heure d'envoi remonte au background) · 2026-10-08-ping (0.6.103 : FILLSELL_PING, réponse synchrone « je suis là ») ·2026-10-04-format-colis-explicite (0.6.95 : un format de colis EXPLICITE — réponse de la personne, format relu sur l annonce par son identifiant, poids de la fiche — passe devant le pré-remplissage de Beebs ; les formats du formulaire sont appris par le serveur) · 2026-09-29-prevol-republication-complet (0.6.80 : le vrai formulaire, catégorie et champs dynamiques compris, doit être entièrement remplissable avant tout retrait ; aucun upload ni clic pendant ce pré-vol ; identifiant durable obligatoire) · 2026-09-24-compte-vu-sur-la-page (0.6.66 : un compte Beebs connecte vu sur n importe quelle page beebs.app leve l attente de session, desormais espacee 1 h/3 h/6 h) · 2026-09-22-page-de-depot-refaite (0.6.55 : Beebs a refait sa page de depot entre 13h26 et 15h24 le 22/09 — plus aucune classe ne nomme un role. Photos: input[type=file] ANONYME (#input-pictures mort, cause du blocage total). Champs: label.group/field-label + bouton frere a aria-haspopup. Panneaux: popovers RADIX portalises sur body, designes par aria-controls — plus aucune heuristique de panneau unique. Options: button.group/popover-item. Anciennes classes gardees en dernier maillon. Depot verifie de bout en bout sur la page du jour.)";
+const BEEBS_BUILD = "2026-10-18-marque-exacte (la marque de la fiche part telle quelle : égalité tolérante sur casse, espaces, ponctuation, accents ; jamais une marque voisine ni un choix de l'IA ; hors liste → « Autre » et la marque écrite une fois dans la description) · 2026-10-17-mur-nomme (relevé : « Mes annonces » lue par fetch — la vérification anti-robot de Beebs, servie sous la même adresse, et le renvoi vers la connexion se nomment : motif + mur) · 2026-10-08-preuve-relue (0.6.104 : BEEBS_PREUVE_RETRAIT, la preuve d'une suppression envoyée relue sans geste ; l'heure d'envoi remonte au background) · 2026-10-08-ping (0.6.103 : FILLSELL_PING, réponse synchrone « je suis là ») ·2026-10-04-format-colis-explicite (0.6.95 : un format de colis EXPLICITE — réponse de la personne, format relu sur l annonce par son identifiant, poids de la fiche — passe devant le pré-remplissage de Beebs ; les formats du formulaire sont appris par le serveur) · 2026-09-29-prevol-republication-complet (0.6.80 : le vrai formulaire, catégorie et champs dynamiques compris, doit être entièrement remplissable avant tout retrait ; aucun upload ni clic pendant ce pré-vol ; identifiant durable obligatoire) · 2026-09-24-compte-vu-sur-la-page (0.6.66 : un compte Beebs connecte vu sur n importe quelle page beebs.app leve l attente de session, desormais espacee 1 h/3 h/6 h) · 2026-09-22-page-de-depot-refaite (0.6.55 : Beebs a refait sa page de depot entre 13h26 et 15h24 le 22/09 — plus aucune classe ne nomme un role. Photos: input[type=file] ANONYME (#input-pictures mort, cause du blocage total). Champs: label.group/field-label + bouton frere a aria-haspopup. Panneaux: popovers RADIX portalises sur body, designes par aria-controls — plus aucune heuristique de panneau unique. Options: button.group/popover-item. Anciennes classes gardees en dernier maillon. Depot verifie de bout en bout sur la page du jour.)";
 console.log(`[beebs.js] build ${BEEBS_BUILD}`);
 
 // Content script Beebs — remplit le formulaire de dépôt d'annonce.
@@ -351,6 +351,7 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
       }
     }
 
+    MARQUE_HORS_LISTE_BEEBS = null; // (18/10) la marque hors liste ne survit jamais à un job
     fillListingForm(msg.job)
       .then((result) => sendResponse(result))
       // err.diagnostic (2026-08-06) : annexe technique séparée du message
@@ -1401,6 +1402,15 @@ async function fillListingForm(job) {
   if (colorValue) await selectDropdownValue("Couleur", colorValue, warnings, unfilledRequired);
 
   if (fields.marque) await selectDropdownValue("Marque", fields.marque, warnings, unfilledRequired);
+  // (18/10) Une marque que Beebs n'a pas dans sa liste part dans la description
+  // (une fois, jamais en doublon) : le champ est réécrit en entier.
+  if (MARQUE_HORS_LISTE_BEEBS && job.description) {
+    const texte = descriptionAvecMarque(job.description, MARQUE_HORS_LISTE_BEEBS);
+    if (texte !== job.description) {
+      await fillTextField("#description", texte);
+      warnings.push(`Marque: « ${MARQUE_HORS_LISTE_BEEBS} » absente de la liste Beebs → « Autre », la marque est écrite dans la description`);
+    }
+  }
 
   // Pointure (chaussures) et Taille (autre Mode) sont deux libellés distincts
   // selon la catégorie — jamais les deux en même temps, on tente les deux et
@@ -2799,6 +2809,47 @@ function texteComparable(s) {
 // Levi's, « Tape à l’œil » ↔ « Tape à l'oeil » matchent désormais.
 const normalizeFuzzy = (s) => texteComparable(s).replace(/[.,]/g, "");
 
+// ⟦marque-exacte:début⟧ (18/10, règle de Nico) LA MARQUE DE LA FICHE PART TELLE
+// QUELLE : égalité tolérante sur la casse, les espaces, la ponctuation et les
+// accents SEULEMENT (« Chic Me » = « ChicMe »), jamais une marque contenue ou
+// voisine (« Chic » ≠ « Chic Me », « Bonobo » ≠ « Bonobos », « Paper » ≠ « Daily
+// paper »), jamais un choix de l'IA. « & » et « + » comptent. Hors liste :
+// « Autre » (le bac de Beebs), et la marque écrite UNE fois dans la description —
+// pas de doublon si elle la nomme déjà. L'article est publié quand même.
+let MARQUE_HORS_LISTE_BEEBS = null;
+const MARQUE_GENERIQUE_BEEBS_RE = /^(autres?|autresmarques?|autremarque|sansmarque|generique|marquegenerique|aucune|aucunemarque|inconnue?|nobrand|unbranded)$/;
+function cleMarqueExacte(s) {
+  return texteComparable(s).replace(/[^a-z0-9&+]+/g, "");
+}
+function marquesEgales(a, b) {
+  const x = cleMarqueExacte(a), y = cleMarqueExacte(b);
+  return !!x && x === y;
+}
+function estMarqueGeneriqueBeebs(s) {
+  return MARQUE_GENERIQUE_BEEBS_RE.test(cleMarqueExacte(s));
+}
+function descriptionNommeLaMarque(description, marque) {
+  const d = texteComparable(description), m = texteComparable(marque);
+  if (!m) return true;
+  if (containsAsWords(d, m)) return true;
+  // Une marque à plusieurs mots peut être écrite collée (« ChicMe ») ; un seul mot
+  // ne se cherche qu'entier (« Bonobos » ne vaut pas « Bonobo »).
+  const dc = cleMarqueExacte(description), mc = cleMarqueExacte(marque);
+  return !!mc && mc.length >= 4 && /[^a-z0-9]/.test(m) && dc.includes(mc);
+}
+function descriptionAvecMarque(description, marque) {
+  const d = String(description ?? "");
+  const m = String(marque ?? "").trim();
+  if (!m || descriptionNommeLaMarque(d, m)) return d;
+  return `${d.replace(/\s+$/, "")}\n\nMarque : ${m}`;
+}
+/** L'option dont le libellé EST la marque (tolérance : casse, espaces, ponctuation, accents), ou null. */
+function trouverOptionMarqueExacte(options, text) {
+  const el = (Array.isArray(options) ? options : []).find((o) => marquesEgales(optionLabel(o), text));
+  return el ? { el, label: optionLabel(el), stage: "marque-exacte" } : null;
+}
+// ⟦marque-exacte:fin⟧
+
 function containsAsWords(hay, needle) {
   if (!needle) return false;
   const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -3553,7 +3604,10 @@ async function poserValeurSurChamp(
     console.log(`[beebs] ${labelText}: "${rawText}" hors catalogue — repli sur le bac générique de la liste`);
   }
 
-  let match = findOptionCascade(options, rawText, { sizeField });
+  // (18/10) La MARQUE : égalité exacte (casse, espaces, ponctuation, accents
+  // tolérés), jamais la cascade ni l'IA — « Chic » ne vaut pas « Chic Me ».
+  const marqueReelle = /^marque$/i.test(String(champ.label ?? "")) && !sizeField && !estMarqueGeneriqueBeebs(rawText);
+  let match = marqueReelle ? trouverOptionMarqueExacte(options, rawText) : findOptionCascade(options, rawText, { sizeField });
 
   // ── Conversion TAILLE US → FR (2026-09-03, chantier « les dépôts doivent
   // passer ») : une taille jean US (24-34) ne figure jamais dans la grille
@@ -3621,6 +3675,7 @@ async function poserValeurSurChamp(
     if (autre) {
       match = { el: autre, label: optionLabel(autre), stage: "repli-autre" };
       usedFallback = true;
+      if (marqueReelle) MARQUE_HORS_LISTE_BEEBS = String(rawText); // (18/10) la marque part dans la description
     }
   }
   // ── Liste FILTRÉE non vide, sans « Autre » (2026-09-11, chaussettes Alo,
@@ -3640,6 +3695,7 @@ async function poserValeurSurChamp(
     if (autre) {
       match = { el: autre, label: optionLabel(autre), stage: "repli-autre" };
       usedFallback = true;
+      if (marqueReelle) MARQUE_HORS_LISTE_BEEBS = String(rawText); // (18/10) la marque part dans la description
     } else {
       const retour = await researchPanelFor(trigger, rawText);
       if (retour.length) options = retour;
@@ -3665,7 +3721,8 @@ async function poserValeurSurChamp(
   //    sans sizeField) : une taille vient de la fiche, exactement, ou de la
   //    personne — le champ reste vide et la question est posée.
   const champTaille = sizeField || /^(taille|pointure)\b/i.test(String(champ.label ?? cle ?? ""));
-  if (!match && !champTaille) {
+  // (18/10) Jamais l'IA pour une MARQUE : une autre marque n'est pas « la plus proche ».
+  if (!match && !champTaille && !marqueReelle) {
     const libelles = options.map(optionLabel).filter(Boolean).slice(0, 60);
     if (libelles.length) {
       try {

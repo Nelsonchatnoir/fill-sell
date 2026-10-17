@@ -808,6 +808,57 @@ serve(async (req) => {
   }
   const pausesAnciennes = pausesActives.filter((x) => Date.now() - Date.parse(x.cree_le) > 86400_000).length;
 
+  // ── RELEVÉS MORTS SANS ALERTE (18/10, lot 4 : Lohan 14 j, Rui 36 j, isereshop38 56 j) ──
+  // releves_morts_veille() (migration 20261018010000) : compte dont l'extension tourne
+  // (< 24 h), plateforme déjà relevée avec succès, et plus aucun relevé réussi depuis
+  // 7 jours alors qu'il y a des annonces à surveiller — avec la cause probable lue
+  // dans le dernier run (boutique à confirmer, session fermée, mur anti-robot, panne
+  // jamais reprise). Et le filet du chien de garde (runs figés : attendu 0 / 0).
+  // Lecture seule ; illisible → section absente, le digest continue.
+  type ReleveMort = { uid: string; email: string; platform: string; dernier_releve_reussi: string; jours: number;
+    dernier_run: string; dernier_statut: string; cause_probable: string; a_surveiller: number; extension_vue: string };
+  let relevesMorts: ReleveMort[] = [];
+  let relevesFiges = { running_figes: 0, queued_oublies: 0 };
+  try {
+    const { data: rm, error: rmErr } = await supabase.rpc("releves_morts_veille");
+    if (rmErr) throw rmErr;
+    relevesMorts = ((rm as { lignes?: ReleveMort[] } | null)?.lignes ?? []) as ReleveMort[];
+    const f = (rm as { figes?: { running_figes?: number; queued_oublies?: number } } | null)?.figes;
+    relevesFiges = { running_figes: Number(f?.running_figes ?? 0) || 0, queued_oublies: Number(f?.queued_oublies ?? 0) || 0 };
+  } catch (e) {
+    console.warn("[ops-digest] releves_morts_veille illisible :", String((e as Error)?.message ?? e));
+  }
+  const relevesMortsAnciens = relevesMorts.filter((x) => Number(x.jours) > 21).length;
+  const relevesFigesTotal = relevesFiges.running_figes + relevesFiges.queued_oublies;
+
+  // ── CHAMPS OBLIGATOIRES : NOUVEAUX ET QUESTIONS POSÉES (18/10, lot 3) ──
+  // champs_requis_veille() (migration 20261018020000) : (1) un champ OBLIGATOIRE
+  // apparu depuis 7 jours sur un rayon connu depuis plus longtemps — « une
+  // plateforme ajoute un champ obligatoire », à faire déduire plutôt que
+  // demander ; (2) les questions posées à l'écran Publier (usage_logs
+  // champ_requis_bloquant) par plateforme et champ, 7 jours contre les 7 d'avant
+  // — la mesure avant/après des champs déduits. Lecture seule ; illisible →
+  // section absente, le digest continue.
+  type ChampNouveau = { platform: string; category_key: string; field_label: string; field_key: string; source: string;
+    seen_count: number; sans_liste: boolean; vu_le: string; rayon_depuis: string };
+  type ChampBloquant = { platform: string; champ: string; affiches: number; affiches_avant: number; completes: number;
+    abandons: number; articles: number; comptes: number };
+  let champsNouveaux: ChampNouveau[] = [];
+  let champsBloquants: ChampBloquant[] = [];
+  let champsTotaux = { affiches: 0, avant: 0 };
+  try {
+    const { data: cr, error: crErr } = await supabase.rpc("champs_requis_veille");
+    if (crErr) throw crErr;
+    const o = cr as { nouveaux?: ChampNouveau[]; bloquants?: ChampBloquant[]; total_affiches?: number; total_affiches_avant?: number } | null;
+    champsNouveaux = o?.nouveaux ?? [];
+    champsBloquants = o?.bloquants ?? [];
+    champsTotaux = { affiches: Number(o?.total_affiches ?? 0) || 0, avant: Number(o?.total_affiches_avant ?? 0) || 0 };
+  } catch (e) {
+    console.warn("[ops-digest] champs_requis_veille illisible :", String((e as Error)?.message ?? e));
+  }
+  // Un champ qui double d'une semaine à l'autre (et au moins 20 affichages) = une alerte.
+  const champsEnHausse = champsBloquants.filter((x) => Number(x.affiches) >= 20 && Number(x.affiches) >= 2 * Math.max(1, Number(x.affiches_avant)));
+
   // ── BOUCLES SERVEUR ARRÊTÉES (08/10, Nadège : 8 954 fois la même décision) ──
   // 1. Comptes dont le rapprochement est ARRÊTÉ : trois passes de suite entrées
   //    dans la décision sans rien écrire (rapprochement v12, passages ≤ -3).
@@ -864,6 +915,8 @@ serve(async (req) => {
     ventes_prouvees: ventesAnomalies.length + (ventesArriere > 0 ? 1 : 0),
     cpu_au_dessus_70: cpuMinutesAuDessus > 0 ? 1 : 0,
     pauses_releves: pausesActives.length,
+    releves_morts: relevesMorts.length + (relevesFigesTotal > 0 ? 1 : 0),
+    champs_requis: champsNouveaux.length + champsEnHausse.length,
     rapprochements_arretes: arretsRapprochement.length,
     decisions_repetees: decisionsRepetees.length,
     releves_auto_retenus: relevesRetenus.length,
@@ -940,6 +993,33 @@ serve(async (req) => {
     </p>
     <ul style="margin:0;padding:0 0 0 18px;">
       ${pausesActives.map((x) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#374151;">${esc(x.user_id)} — ${esc((x.platforms ?? []).join(", "))} — depuis ${esc(x.cree_le)}${x.motif ? ` — ${esc(x.motif)}` : ""}</li>`).join("")}
+    </ul>`
+  }
+    ${
+    relevesMorts.length === 0 && relevesFigesTotal === 0 ? "" : `
+    <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:${relevesMortsAnciens || relevesFigesTotal ? "#B91C1C" : "#92400E"};">
+      ${relevesMortsAnciens || relevesFigesTotal ? "🔴" : "🟠"} Relevés morts sans alerte — ${relevesMorts.length} compte/plateforme${relevesMorts.length > 1 ? "s" : ""}${relevesMortsAnciens ? ` (dont ${relevesMortsAnciens} depuis plus de 21 jours)` : ""}${relevesFigesTotal ? ` · chien de garde muet : ${relevesFiges.running_figes} running figé(s), ${relevesFiges.queued_oublies} queued oublié(s)` : ""}
+    </h2>
+    <p style="margin:0 0 8px;font-size:12px;font-family:sans-serif;color:#6B7280;">
+      Extension vue depuis moins de 24 h, plateforme déjà relevée avec succès, aucun relevé réussi depuis 7 jours, des annonces à surveiller (releves_morts_veille). Un refus d'appui ou une session fermée n'écrit aucun run : c'est ici qu'on le voit.
+    </p>
+    <ul style="margin:0;padding:0 0 0 18px;">
+      ${relevesMorts.map((x) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:${Number(x.jours) > 21 ? "#B91C1C" : "#374151"};">${esc(x.email)} — ${esc(x.platform)} — dernier relevé réussi ${esc(x.dernier_releve_reussi)} (${esc(x.jours)} j) — dernier run ${esc(x.dernier_statut)} le ${esc(x.dernier_run)} — ${esc(x.cause_probable)} — ${esc(x.a_surveiller)} à surveiller — extension vue ${esc(x.extension_vue)}</li>`).join("")}
+    </ul>`
+  }
+    ${
+    champsNouveaux.length === 0 && champsBloquants.length === 0 ? "" : `
+    <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:${champsNouveaux.length || champsEnHausse.length ? "#B91C1C" : "#374151"};">
+      ${champsNouveaux.length || champsEnHausse.length ? "🔴" : "ℹ️"} Champs obligatoires — ${champsNouveaux.length} nouveau${champsNouveaux.length > 1 ? "x" : ""} sur un rayon connu · questions posées 7 j : ${champsTotaux.affiches} (7 j d'avant : ${champsTotaux.avant})${champsEnHausse.length ? ` · en hausse : ${champsEnHausse.map((x) => `${x.platform} ${x.champ}`).join(", ")}` : ""}
+    </h2>
+    <p style="margin:0 0 8px;font-size:12px;font-family:sans-serif;color:#6B7280;">
+      champs_requis_veille : un champ requis apparu depuis 7 jours sur un rayon relevé depuis plus longtemps (platform_category_aspects) = une plateforme a ajouté un champ, à déduire plutôt que demander ; puis les questions de l'écran Publier (usage_logs champ_requis_bloquant) par plateforme et champ, avec la semaine d'avant.
+    </p>
+    ${champsNouveaux.length === 0 ? "" : `<ul style="margin:0 0 8px;padding:0 0 0 18px;">
+      ${champsNouveaux.map((x) => `<li style="margin:0 0 6px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#B91C1C;">${esc(x.platform)} — ${esc(x.category_key)} — <b>${esc(x.field_label || x.field_key)}</b>${x.sans_liste ? " (aucune valeur relevée)" : ""} — vu ${esc(x.seen_count)} fois depuis le ${esc(x.vu_le)} (rayon connu depuis le ${esc(x.rayon_depuis)}, source ${esc(x.source)})</li>`).join("")}
+    </ul>`}
+    <ul style="margin:0;padding:0 0 0 18px;">
+      ${champsBloquants.map((x) => `<li style="margin:0 0 6px;font-family:sans-serif;font-size:13px;line-height:1.6;color:${champsEnHausse.includes(x) ? "#B91C1C" : "#374151"};">${esc(x.platform)} — <b>${esc(x.champ)}</b> — ${esc(x.affiches)} affichage${Number(x.affiches) > 1 ? "s" : ""} (avant : ${esc(x.affiches_avant)}) · ${esc(x.completes)} complété${Number(x.completes) > 1 ? "s" : ""} · ${esc(x.abandons)} abandon${Number(x.abandons) > 1 ? "s" : ""} · ${esc(x.articles)} article${Number(x.articles) > 1 ? "s" : ""} · ${esc(x.comptes)} compte${Number(x.comptes) > 1 ? "s" : ""}</li>`).join("")}
     </ul>`
   }
     ${
@@ -1205,7 +1285,7 @@ serve(async (req) => {
       from: FROM,
       to: [TO],
       // (01/10) Les fournisseurs d'IA en tête, jusque dans l'objet du mail.
-      subject: `${ventesAnomalies.length ? `🔴 Ventes prouvées : ${ventesAnomalies.map((a) => a.code).join(", ")} — ` : ""}${cpuMinutesAuDessus ? `🔴 CPU base ${cpuMax} % — ` : ""}${iaSujet.length ? `🔴 IA : ${iaSujet.join(" · ")} — ` : ""}⚠️ FillSell ops-digest — ${total} anomalie${total > 1 ? "s" : ""} (failed ${counts.failed_24h} · stuck ${counts.stuck_processing} · delete ${counts.delete_overdue} · beebs ${counts.beebs_unavailable_7d} · iap ${counts.iap_alerts} · abo ${counts.awaiting_payment} · identify ${counts.lens_identify} · email_logs ${counts.email_log_doublons + counts.email_log_echecs} · resa ${counts.reservations_expirees} · gardes ${counts.sync_gardes_graves + counts.sync_gardes_anomalies} · dressings ${counts.dressings_croises} · pending48h ${counts.pending_bloques} · retenues ${retenuesServeurJobs} · tentatives ${counts.tentatives_en_cours} · stockage ${counts.stockage_au_dessus_du_seuil})`,
+      subject: `${ventesAnomalies.length ? `🔴 Ventes prouvées : ${ventesAnomalies.map((a) => a.code).join(", ")} — ` : ""}${cpuMinutesAuDessus ? `🔴 CPU base ${cpuMax} % — ` : ""}${iaSujet.length ? `🔴 IA : ${iaSujet.join(" · ")} — ` : ""}⚠️ FillSell ops-digest — ${total} anomalie${total > 1 ? "s" : ""} (failed ${counts.failed_24h} · stuck ${counts.stuck_processing} · delete ${counts.delete_overdue} · beebs ${counts.beebs_unavailable_7d} · iap ${counts.iap_alerts} · abo ${counts.awaiting_payment} · identify ${counts.lens_identify} · email_logs ${counts.email_log_doublons + counts.email_log_echecs} · resa ${counts.reservations_expirees} · gardes ${counts.sync_gardes_graves + counts.sync_gardes_anomalies} · dressings ${counts.dressings_croises} · pending48h ${counts.pending_bloques} · relevés morts ${counts.releves_morts} · champs ${counts.champs_requis} · retenues ${retenuesServeurJobs} · tentatives ${counts.tentatives_en_cours} · stockage ${counts.stockage_au_dessus_du_seuil})`,
       html,
     }),
   });

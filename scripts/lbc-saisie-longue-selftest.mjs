@@ -67,7 +67,10 @@ console.log("5. La description est relue juste avant le dépôt, sans jamais blo
   const j = src.indexOf("🚀 LIVE — Continuer final");
   ok(i > 0 && j > i, "relecture placée avant le Continuer final");
   const bloc = src.slice(i, j);
-  ok(/typeInto\(zone, job\.description\)/.test(bloc) && !/return \{/.test(bloc), "reposée si elle a changé, jamais un échec");
+  // (18/10, marques) La description attendue porte « Marque : X » quand la marque
+  // n'est pas dans la liste Leboncoin : la garde compare à CETTE écriture-là.
+  ok(/const descriptionAttendue = descriptionAvecMarque\(job\.description, MARQUE_HORS_LISTE\);/.test(bloc)
+    && /typeInto\(zone, descriptionAttendue\)/.test(bloc) && !/return \{/.test(bloc), "reposée si elle a changé (marque hors liste comprise), jamais un échec");
 }
 
 console.log(ko ? `\n✗ ${ko} échec(s)` : "\n✓ tout passe");

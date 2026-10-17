@@ -201,3 +201,30 @@ Cas : 128 notes de vente sans prix depuis le 06/10 (republications Vinted : `pri
 - Note 2348 de Louis (puzzle Vilainous) : montant 12 € (décision de Nico) sur la vente 181210 et la note
   (`scripts/reparations/20261018_note_2348_louis_12_euros.sql`, sauvegarde `_backup_1810_note_2348`, inverse, 0 mail).
 - Selftests : `commande-annulee-jamais-vente`, `vente-vinted-annulee` (point 8 réécrit : plus de date-charnière).
+
+## 18/10 — VENTES EN LOT ET PLUSIEURS EXEMPLAIRES : CONSTATS (lot 4.3 / 4.4, vérification en lecture seule, RIEN corrigé — décision Nico)
+Rapport : `docs/enquetes/session-sans-nico-1810/lot4-ventes-lot-multi-exemplaires.md`.
+- **Lot de N annonces dans UNE commande** : Vinted ✓ (0.6.123, `vente_vinted_lot_noter`) ; eBay ✓ une vente par ligne de
+  commande (`ebay-ventes-sync` + `ebay_commande_appliquer`) ; Depop ✓ une ligne par annonce `STATUS_PURCHASED`
+  (`depop.js:816-833`) ; **Leboncoin ✗** : une vente groupée (`bundle`) donne UNE ligne « lot » sans numéro d'annonce
+  (`background.js:17729`), la veille des commandes écarte les lots (`:20526`), chaque annonce attend le clic — et la ligne
+  « lot » (inventaire_id NULL) échappe à la garde anti-doublon de `enregistrer_vente_atomique` ; **Beebs ✗** : aucune vente
+  Beebs relevée (`VENTES_PLATEFORMES` sans Beebs, `enregistrer_ventes_relevees` refuse `beebs`), les commandes Beebs ne vivent
+  que dans `plateforme_commandes` (bêta) qui ne touche ni ventes ni fiches.
+- **Quantité d'une ligne eBay** : `li.quantity` jamais lu, vente écrite `quantite = 1` au prix de la ligne (toutes unités) →
+  marge fausse pour une ligne de 2 ; le stock reste juste par la quantité eBay. `ventes.quantite` vaut toujours 1 (une
+  ligne par exemplaire, `enregistrer_vente_atomique` boucle `1..v_q`).
+- **Fiche à plusieurs exemplaires** : garde serveur ✓ (`v_restant`, copies retirées seulement à 0 ; déclencheurs fiche et
+  preuve ; lots Vinted `doute:plusieurs_exemplaires_sans_annonce`). **eBay ✗** : `ebay_commande_appliquer` ne regarde que la
+  quantité eBay (`epuisee` → fiche vendue, quantité 0) et la publication API met toujours 1 exemplaire (`quantity: 1`),
+  `annonce_ebay_aligne_quantite` recopie 1 sur la fiche : une fiche à 3 exemplaires publiée sur eBay passe entière à
+  « vendu » à la première vente eBay. **Baisser la quantité eBay au lieu de retirer** : `reviserQuantiteAnnonce`
+  (`ReviseInventoryStatus`) n'est lancée qu'à la main (`reviser_quantite_annonce`), jamais par une vente ailleurs → N reste sur
+  eBay (survente possible). Leboncoin pro multi-unités : « reste ouvert » (mig 20261009190000) ; Depop : seule une annonce
+  entièrement vendue est relevée.
+- Pourquoi rien n'a été corrigé le 18/10 : chaque correctif touche `enregistrer_ventes_relevees` / `ebay_commande_appliquer`
+  (fonctions de prod réécrites depuis `pg_get_functiondef`) ou le relevé des commandes Leboncoin/Beebs, et ne se prouve
+  qu'avec de VRAIES ventes (lot Leboncoin, ligne eBay à 2, vente Beebs) — impossible sans Nico. À décider : (1) eBay
+  `li.quantity` → `quantite` ; (2) Leboncoin `bundle` : lire les annonces du lot dans le détail de la commande ; (3) relevé
+  des ventes Beebs (commandes `o.products[]` → ventes) ; (4) eBay : `ebay_commande_appliquer` tient compte de `i.quantite`
+  et une vente ailleurs révise la quantité eBay (−1) au lieu de retirer.

@@ -4881,6 +4881,17 @@ export default function ListingPreviewScreen({
     const v = champ && typeof champ === "object" ? String(champ.v ?? "").trim() : "";
     return v && /^(capture|vinted|releve|manuel)/.test(String(champ.source ?? "")) ? v : null;
   };
+  // (18/10, lot 3) L'âge Beebs que la fiche porte déjà — relevé sur l'annonce
+  // Beebs du même article (`releve_beebs`, l'écriture exacte de Beebs) ou saisi.
+  // 129 fiches le portaient et l'app ne le lisait nulle part : question posée
+  // (« 16 ans et + » pour un livre adulte) alors que la fiche répondait.
+  const ageDitSurLaFiche = () => {
+    const base = (attributsBase && typeof attributsBase === "object") ? attributsBase
+      : (initialListing?.attributs && typeof initialListing.attributs === "object" ? initialListing.attributs : null);
+    const champ = base ? base.age : null;
+    const v = champ && typeof champ === "object" ? String(champ.v ?? "").trim() : String(champ ?? "").trim();
+    return v || null;
+  };
 
   // ── Modèle à confirmer (2026-07-28) ───────────────────────────────────────
   // Tri-état : null = pas encore tranché (la carte s'affiche, le modèle est
@@ -8346,7 +8357,9 @@ export default function ListingPreviewScreen({
       if (key === "État") return pf.etat;
       if (key === "Matière") return pf.matiere;
       if (key === "Couleur") return pf.colors?.[0] || pf.couleur;
-      if (key === "Âge") return pf.age;
+      // (18/10, lot 3) L'âge que la fiche porte déjà (relevé de l'annonce Beebs
+      // du même article) répond avant la question — posé sur le job au départ.
+      if (key === "Âge") return pf.age || ageDitSurLaFiche();
       // Format canonique partagé avec LBC (Lettre/Petit colis/…) — beebs.js le
       // mappe sur les paliers de poids Beebs à la pose (2026-07-19).
       if (key === "Format du colis") return pf.format_colis;
@@ -8892,6 +8905,10 @@ export default function ListingPreviewScreen({
   const champBloquantVus = useRef({});      // "gp:key" → {platform, champ, categorie, complete?}
   const champBloquantRestants = useRef(new Set());
   const doneRef = useRef(false);
+  // (02/10, lot) Micro-appels d'extraction en vol : le pilote du lot attend
+  // qu'ils aient répondu avant de compter ce qui reste à demander. (18/10,
+  // lot 3) Déclaré ICI, avant la télémétrie qui le lit dans ses dépendances.
+  const [iaGeneriqueEnVol, setIaGeneriqueEnVol] = useState(0);
   useEffect(() => {
     if (step !== 3) return;
     // (03/10, Ornella 19:50:25) Pendant le clic Publier, les copies bougent
@@ -8913,11 +8930,19 @@ export default function ListingPreviewScreen({
     // (11/10, point 9) La couleur que le moteur va poser seul n'est pas une
     // question : rien n'est compté tant que la couleur automatique n'a pas fini.
     const couleurRetenue = (x) => couleurEnAttente && estChampCouleur(x);
+    // (18/10, lot 3) Un champ que l'IA générique est en train de poser (seconde
+    // passe Leboncoin « Univers / Produit », aspects Beebs) n'est pas encore une
+    // question : rien de NOUVEAU n'est compté tant qu'un micro-appel est en vol
+    // — même règle que la couleur et qu'eBay (35 des 55 « Produit » de la
+    // semaine étaient posés par l'IA moins de 15 s après la ligne). Une ligne
+    // déjà comptée reste active : jamais un faux « complete ».
+    const iaGeneriqueRetenue = iaGeneriqueEnVol > 0;
     for (const [gp, list] of Object.entries(genericRequiredStatus ?? {})) {
       for (const a of list.filter(aspectBloquant)) {
         if (partageEnQuestion(gp, genericFieldToSharedKey(gp, a.key))) continue;
         if (couleurRetenue({ platform: gp, key: a.key })) continue;
         const k = `${gp}:${a.key}`;
+        if (iaGeneriqueRetenue && !champBloquantVus.current[k]) continue;
         actifs.add(k);
         if (!champBloquantVus.current[k]) {
           champBloquantVus.current[k] = {
@@ -8979,7 +9004,7 @@ export default function ListingPreviewScreen({
       }
     }
     champBloquantRestants.current = actifs;
-  }, [step, publishing, genericRequiredStatus, ebayRequiredStatus, ebayIaFiniePour, ebayPreviewCategoryId, missingSharedFieldsDetailed, couleurEnAttente]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [step, publishing, genericRequiredStatus, ebayRequiredStatus, ebayIaFiniePour, ebayPreviewCategoryId, missingSharedFieldsDetailed, couleurEnAttente, iaGeneriqueEnVol]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { doneRef.current = done; }, [done]);
   useEffect(() => () => {
     if (doneRef.current) return;
@@ -8995,9 +9020,8 @@ export default function ListingPreviewScreen({
   // plateforme × catégorie. Cas cible : RAM/stockage d'un PC portable
   // présents dans le titre, plateforme d'une console (« Nintendo Switch »).
   const genericResolvedFor = useRef({});
-  // (02/10, lot) Micro-appels d'extraction en vol : le pilote du lot attend
-  // qu'ils aient répondu avant de compter ce qui reste à demander.
-  const [iaGeneriqueEnVol, setIaGeneriqueEnVol] = useState(0);
+  // `iaGeneriqueEnVol` (micro-appels d'extraction en vol) est déclaré plus
+  // haut, avant la télémétrie des champs bloquants qui en dépend (18/10).
   // (11/10) Les plateformes dont la passe TEXTE est en vol — tenu À LA MAIN,
   // synchrone : la couleur automatique (plus bas) ne part qu'après elle, et
   // l'état iaGeneriqueEnVol n'est relu qu'au rendu suivant.
@@ -9939,6 +9963,15 @@ export default function ListingPreviewScreen({
         console.log(`[publish] ${r.platform} — taille « ${r.platform_fields.taille} » → « ${t} » (écriture de la grille)`);
         return { ...r, platform_fields: { ...r.platform_fields, taille: t, taille_saisie: r.platform_fields.taille } };
       });
+      // (18/10, lot 3) L'âge Beebs que la fiche porte déjà (relevé de l'annonce
+      // Beebs du même article) part sur la copie Beebs qui n'en a pas — la même
+      // valeur que l'écran vient de juger (genericKnownSource « Âge »).
+      const ageFiche = ageDitSurLaFiche();
+      if (ageFiche) {
+        rows = rows.map(r => (r.platform === "beebs" && !String(r.platform_fields?.age ?? "").trim())
+          ? { ...r, platform_fields: { ...r.platform_fields, age: ageFiche } }
+          : r);
+      }
       // ══ LA CONTREPARTIE DE LA PORTE — AUCUN JOB SANS CATÉGORIE (2026-09-19) ══
       // La case n'est plus grisée sur un simple trou de mapping par icône : le
       // mot et l'arbitrage ont le droit d'essayer. Mais s'ils échouent AUSSI,

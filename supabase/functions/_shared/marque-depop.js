@@ -55,6 +55,11 @@ export function cleMarqueDepop(s) {
     .replace(/^[\s\-–—_.,;:!?()"'«»]+|[\s\-–—_.,;:!?()"'«»]+$/g, "");
 }
 
+/** (18/10, règle de Nico) La forme COMPACTE : casse, espaces, ponctuation et accents ignorés ; « & » et « + » gardés (H&M ≠ H&M+). Copie de depopCleMarqueExacte (content-scripts/depop.js). */
+export function cleMarqueDepopCompacte(s) {
+  return cleMarqueDepop(s).replace(/[^a-z0-9&+]+/g, "");
+}
+
 // Ce qui dit « pas de marque » : la liste commune (estSansMarque,
 // _shared/marque-absente.js) et les mots des plateformes (« Autres » de Vinted,
 // « Other » de Depop, « Divers »…). Formes comparables (cleMarqueDepop).

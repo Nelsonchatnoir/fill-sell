@@ -38,7 +38,7 @@ const ctx = vm.createContext({ console, URL, Math, Number, String, Array, Object
 ctx.globalThis = ctx;
 vm.runInContext(lire("chrome-extension/content-scripts/depop-tailles.js"), ctx, { filename: "depop-tailles.js" });
 vm.runInContext(`${lire("chrome-extension/content-scripts/depop.js")}
-;globalThis.__t = { depopCleMarque, depopNonMarque, depopIndexMarques, depopResoudreMarque, DEPOP_SANS_MARQUE_MOTS, DEPOP_NOMS_COMMUNS };`, ctx, { filename: "depop.js" });
+;globalThis.__t = { depopCleMarque, depopCleMarqueExacte, depopNonMarque, depopIndexMarques, depopResoudreMarque, DEPOP_SANS_MARQUE_MOTS, DEPOP_NOMS_COMMUNS };`, ctx, { filename: "depop.js" });
 const T = ctx.__t;
 
 const BRUT = JSON.parse(lire("docs/plateformes/depop/brut/attributes.json"));
@@ -72,10 +72,16 @@ console.log("\nB. LA RÈGLE, SUR LA LISTE DEPOP DU 08/10");
     const r = resoudre(v);
     ok(r.id === "unbranded" && r.remplacee?.motif === "nom_commun", `nom commun « ${v} » → Other (tracé), jamais la marque Depop du même nom`);
   }
-  const horsListe = ["Jules", "Bonobo", "Orchestra", "Kaporal", "Lafayette", "laure aimé", "Emma Keller", "Chic Me", "Zzz Inconnue"];
+  const horsListe = ["Jules", "Bonobo", "Orchestra", "Kaporal", "Lafayette", "laure aimé", "Emma Keller", "Zzz Inconnue"];
   for (const v of horsListe) {
     const r = resoudre(v);
     ok(r.id === "unbranded" && r.remplacee?.motif === "hors_liste_depop" && r.remplacee.de === v, `hors liste « ${v} » → Other (tracé)`);
+  }
+  // (18/10, règle de Nico) « Chic Me » retrouve « ChicMe » : la forme compacte (espaces,
+  // ponctuation, accents ignorés) vaut, l'écriture exacte gagne, « & » et « + » tiennent.
+  {
+    const r = resoudre("Chic Me");
+    ok(r.id !== "unbranded" && T.depopCleMarqueExacte(r.nom) === "chicme" && r.tolerance === "espaces_ponctuation", "« Chic Me » → la marque Depop « ChicMe » (forme compacte, dite)", JSON.stringify(r));
   }
   const exactes = [["IKKS", "ikks"], ["ikks", "ikks"], ["H&M", "h-m"], ["h&m", "h-m"], ["H&M+", "h-m-plus"], ["Lacoste", "lacoste"], ["Lacoste +", "lacoste-plus"],
     ["Forever 21", "forever-21"], ["Jack & Jones", "jack-jones"], ["Jack   &   Jones", "jack-jones"], ["Pepe Jeans", "pepe-jeans"], ["ZARA", "zara"],
@@ -105,7 +111,9 @@ console.log("\nB. LA RÈGLE, SUR LA LISTE DEPOP DU 08/10");
     const r = resoudre(v);
     if (r.id === "unbranded") continue;
     const m = parId.get(r.id);
-    if (!m || (T.depopCleMarque(m.name) !== T.depopCleMarque(v) && String(m.id).toLowerCase() !== v.trim().toLowerCase())) autres++;
+    // (18/10) la forme COMPACTE (espaces, ponctuation ignorés — jamais « & » ni « + ») vaut aussi.
+    if (!m || (T.depopCleMarque(m.name) !== T.depopCleMarque(v) && T.depopCleMarqueExacte(m.name) !== T.depopCleMarqueExacte(v)
+               && String(m.id).toLowerCase() !== v.trim().toLowerCase())) autres++;
   }
   ok(autres === 0, `${essais.length} entrées voisines : jamais une autre marque`, `${autres} faute(s)`);
   ok(essais.every((v) => !("question" in resoudre(v))), "jamais une question");

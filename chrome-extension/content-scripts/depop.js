@@ -295,12 +295,38 @@ function depopNonMarque(valeur) {
   if (DEPOP_NOMS_COMMUNS.has(cle)) return "nom_commun";
   return null;
 }
-// L'index de la liste Depop : les noms (forme comparable) et les identifiants
-// (minuscules), marques ACTIVES seulement. Deux marques sous la même forme
-// (aucune dans le relevé du 08/10) → ambiguë → « Other », jamais l'une des deux.
+// (18/10, règle de Nico) La forme COMPACTE : casse, espaces, ponctuation et accents
+// ignorés — « Chic Me » = « ChicMe », « Rocket Dog » = « Rocketdog » — mais jamais
+// « & » ni « + » (H&M ≠ H&M+). Copie à l'identique de cleMarqueDepopCompacte
+// (supabase/functions/_shared/marque-depop.js).
+function depopCleMarqueExacte(s) {
+  return depopCleMarque(s).replace(/[^a-z0-9&+]+/g, "");
+}
+// La marque hors liste part dans la description (une fois, jamais en doublon, et
+// jamais au-delà des 1 000 caractères de Depop).
+function depopDescriptionAvecMarque(description, marque) {
+  const d = String(description ?? "");
+  const m = String(marque ?? "").trim();
+  if (!m) return d;
+  // Déjà nommée : le mot entier (« Bonobos » ne vaut pas « Bonobo »), ou une marque
+  // à plusieurs mots écrite collée (« ChicMe »).
+  const m2 = depopCleMarque(m);
+  const dejaMots = !!m2 && new RegExp(`(?:^|[^a-z0-9])${m2.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:[^a-z0-9]|$)`).test(depopCleMarque(d));
+  const dc = depopCleMarqueExacte(d), mc = depopCleMarqueExacte(m);
+  const dejaCollee = !!mc && mc.length >= 4 && /[^a-z0-9]/.test(m2) && dc.includes(mc);
+  if (!mc || dejaMots || dejaCollee) return d;
+  const texte = `${d.replace(/\s+$/, "")}\n\nMarque : ${m}`;
+  return texte.length <= DEPOP_DESCRIPTION_MAX ? texte : d;
+}
+// L'index de la liste Depop : les noms (forme comparable), les identifiants
+// (minuscules) et la forme COMPACTE (18/10), marques ACTIVES seulement. Deux marques
+// sous la même forme comparable → ambiguë → « Other », jamais l'une des deux ; deux
+// marques sous la même forme compacte → l'écriture exacte gagne, sinon « Other »
+// (Depop en a 33 paires, « Rocket Dog » / « Rocketdog »).
 function depopIndexMarques(liste) {
   const parNom = new Map();
   const parId = new Map();
+  const parCompacte = new Map();
   const ambigues = new Set();
   for (const b of Array.isArray(liste) ? liste : []) {
     if (!b?.id || b.status !== "active") continue;
@@ -309,8 +335,13 @@ function depopIndexMarques(liste) {
     if (!cle) continue;
     if (parNom.has(cle) && parNom.get(cle).id !== b.id) ambigues.add(cle);
     else parNom.set(cle, { id: b.id, nom: b.name });
+    const compacte = depopCleMarqueExacte(b.name);
+    if (!compacte) continue;
+    const l = parCompacte.get(compacte) ?? [];
+    if (!l.some((x) => x.id === b.id)) l.push({ id: b.id, nom: b.name });
+    parCompacte.set(compacte, l);
   }
-  return { parNom, parId, ambigues };
+  return { parNom, parId, parCompacte, ambigues };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -386,7 +417,15 @@ function depopResoudreMarque(pf, referentiel) {
   const nonMarque = depopNonMarque(brute);
   if (nonMarque) return autre(nonMarque);
   if (referentiel.ambigues.has(cle)) return autre("ambigue");
-  return referentiel.parNom.get(cle) ?? referentiel.parId.get(brute.toLowerCase()) ?? autre("hors_liste_depop");
+  const exacte = referentiel.parNom.get(cle) ?? referentiel.parId.get(brute.toLowerCase());
+  if (exacte) return exacte;
+  // (18/10) La forme compacte : « Chic Me » retrouve « ChicMe » ; plusieurs marques
+  // Depop sous la même forme compacte sans écriture exacte → « Other », jamais l'une d'elles.
+  const compacte = depopCleMarqueExacte(brute);
+  const candidates = compacte ? (referentiel.parCompacte?.get(compacte) ?? []) : [];
+  if (candidates.length === 1) return { ...candidates[0], tolerance: "espaces_ponctuation" };
+  if (candidates.length > 1) return autre("ambigue");
+  return autre("hors_liste_depop");
 }
 
 // La taille : la grille EXACTE de la feuille, dans la région du compte. La
@@ -559,7 +598,9 @@ async function fillListingForm(job) {
       colour: v.couleurs,
       condition: v.etat,
       country: lieu.countryCode,
-      description: v.description,
+      // (18/10) Une vraie marque que Depop n'a pas dans sa liste part dans la description.
+      description: marque.remplacee && marque.remplacee.motif !== "nom_commun" && marque.remplacee.motif !== "absence"
+        ? depopDescriptionAvecMarque(v.description, marque.remplacee.de) : v.description,
       ...(v.genre ? { gender: v.genre } : {}),
       geo_position_lat: lieu.geoLat,
       geo_position_lng: lieu.geoLng,

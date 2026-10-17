@@ -33,6 +33,9 @@ const FR = {
   // ── Intitulés propres aux sous-pages ────────────────────────────────────
   sProfil: 'Profil',
   sLangueDevise: 'Langue et devise',
+  sAlertesCompte: 'Alertes de compte',
+  alertesCompte: 'Me prévenir quand une connexion est perdue ou un compte restreint',
+  alertesCompteNote: 'Une seule ligne dans « À régler » du Stock, masquable plateforme par plateforme. Rien n’est envoyé, rien n’est touché.',
   sLeboncoin: 'Leboncoin',
 
   // ── Consommation ────────────────────────────────────────────────────────
@@ -240,6 +243,9 @@ const EN = {
 
   sProfil: 'Profile',
   sLangueDevise: 'Language and currency',
+  sAlertesCompte: 'Account alerts',
+  alertesCompte: 'Warn me when a sign-in is lost or an account is restricted',
+  alertesCompteNote: 'A single line in the Stock’s “To fix”, hideable platform by platform. Nothing is sent, nothing is changed.',
   sLeboncoin: 'Leboncoin',
 
   ceMoisCi: 'This month',

@@ -145,7 +145,8 @@ console.log("\n2. LE LECTEUR DE PAGE NOMME LE MUR (lirePageIdentifiantsBeebs, ex
   const http403 = lirePage("en_ligne", chemin, `https://www.beebs.app${chemin}`, 403, "<html>Forbidden</html>");
   ok(!http403.ok && http403.motif === "HTTP 403" && http403.mur === undefined, "403 sans vérification anti-robot → « HTTP 403 », comme avant");
   ok(/pages: pages\.map\(\(p\) => \(\{ \.\.\.p, n: p\.ids\.length \}\)\)/.test(beebs), "le mur voyage avec la page jusqu'au background (lireIdsMesAnnoncesBeebs)");
-  ok(/^const BEEBS_BUILD = "2026-10-17-mur-nomme /m.test(beebs), "empreinte du content script à jour");
+  // (18/10) L'empreinte du jour précède ; celle du mur nommé reste dans la chaîne.
+  ok(/^const BEEBS_BUILD = "2026-10-18-marque-exacte .*2026-10-17-mur-nomme /m.test(beebs), "empreinte du content script à jour");
 }
 
 console.log("\n3. LE CÂBLAGE DU RELEVÉ (background.js)");

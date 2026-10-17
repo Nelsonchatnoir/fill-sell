@@ -63,7 +63,7 @@ ok(/if \(sizeField && panelSearchInput\(trigger\)\) \{\n\s+const completes = awa
 ok(/\|\| valeurAfficheeSurLAnnonce\(fields, "taille"\);/.test(src), "une taille affichée non posée n'est jamais remplacée par « Unique »");
 ok(/lireRefusFormulaireBeebs\(\{ tailleVoulue: tailles \? \[tailles\.primaire, \.\.\.tailles\.replis\] : fields\.taille/.test(src), "la taille affichée posée n'est pas lue comme un refus de Beebs");
 const iIa = src.indexOf("const champTaille = sizeField ||");
-ok(iIa > 0 && /if \(!match && !champTaille\)/.test(src.slice(iIa, iIa + 200)), "toujours aucune IA pour une taille");
+ok(iIa > 0 && /if \(!match && !champTaille && !marqueReelle\)/.test(src.slice(iIa, iIa + 320)), "toujours aucune IA pour une taille (ni pour une vraie marque, 18/10)");
 
 if (ko) { console.error(`\n✗ ${ko} échec(s)`); process.exit(1); }
 console.log("\n✓ ceinture nivake03 : la taille que l'annonce affiche est reposée, jamais demandée, jamais approchée");

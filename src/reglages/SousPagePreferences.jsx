@@ -8,18 +8,37 @@
 //   · langue   → setLang + track('change_language'), comme avant ;
 //   · devise   → saveCurrency(code), comme avant, avec son avertissement :
 //     changer de devise ne convertit rien.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { track } from '../analytics/analytics';
-import { SegmentedPills } from '../components/ui';
+import { SegmentedPills, Toggle } from '../components/ui';
 import { R } from './theme';
 import { Groupe, Carte, Champ, Bouton, Note } from './ReglagesUI';
+import { fusionnerReglages } from '../utils/reglagesPlateformes';
+import { CLE_REGLAGE_ALERTES } from '../utils/alertesCompte';
 // (06/10) Notifications de ventes : ne rend RIEN sans le module natif.
 import ReglageNotifications from '../notifications/ReglageNotifications';
 
 export default function SousPagePreferences({ c, T }) {
   const [pseudo, setPseudo] = useState(c.username ?? '');
   const [enregistrement, setEnregistrement] = useState(false);
+  // (18/10, lot 4.2) Alertes de compte (session perdue, compte restreint) :
+  // platform_settings.alertes_compte.desactivees — lu une fois, écrit par la
+  // seule voie permise (platform_settings_fusionner). Actif par défaut.
+  const [alertesActives, setAlertesActives] = useState(true);
+  useEffect(() => {
+    if (!c.user?.id) return undefined;
+    let mort = false;
+    supabase.from('profiles').select('platform_settings').eq('id', c.user.id).maybeSingle()
+      .then(({ data }) => { if (!mort) setAlertesActives(data?.platform_settings?.[CLE_REGLAGE_ALERTES]?.desactivees !== true); })
+      .catch(() => {});
+    return () => { mort = true; };
+  }, [c.user?.id]);
+  const basculerAlertes = async (on) => {
+    setAlertesActives(on);
+    const { error } = await fusionnerReglages([CLE_REGLAGE_ALERTES], { desactivees: !on });
+    if (error) { setAlertesActives(!on); c.toast(T.erreurSauvegarde); }
+  };
 
   const enregistrerPseudo = async () => {
     setEnregistrement(true);
@@ -54,6 +73,18 @@ export default function SousPagePreferences({ c, T }) {
             <span style={{ fontSize: 15, color: R.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {c.user?.email}
             </span>
+          </div>
+        </Carte>
+      </Groupe>
+
+      <Groupe intitule={T.sAlertesCompte}>
+        <Carte>
+          <div className="rg-ligne" style={{ minHeight: 60, gap: 12 }}>
+            <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <span style={{ fontSize: 15, fontWeight: 500, color: R.ink }}>{T.alertesCompte}</span>
+              <span style={{ fontSize: 12, lineHeight: '17px', color: R.texteSecondaire }}>{T.alertesCompteNote}</span>
+            </span>
+            <Toggle checked={alertesActives} onChange={basculerAlertes} />
           </div>
         </Carte>
       </Groupe>

@@ -120,6 +120,9 @@ import EcranRetraitsBloques from '../stock/EcranRetraitsBloques';
 import EcranPlein from '../stock/EcranPlein';
 import EcranIdentiteLbc from '../stock/EcranIdentiteLbc';
 import EcranForfaitLbc from '../stock/EcranForfaitLbc';
+import EcranAlertesCompte from '../stock/EcranAlertesCompte';
+import { etatSession, PLATEFORMES_SESSION } from '../utils/sessionsPlateformes';
+import { alertesCompte, masquesARetirer, ligneAlertes, CLE_REGLAGE_ALERTES } from '../utils/alertesCompte';
 import EcranVendeurPlateforme from '../stock/EcranVendeurPlateforme';
 import {
   actionPrincipale, libelleAction, ancienneteJours, estAncienne, pastilleCourte, dateCourte, nombreFr,
@@ -6554,6 +6557,49 @@ const StockTab = memo(function StockTab({
   // boutique épinglée). Aucune écriture, aucun bouton : rien n'a échoué, ça
   // attend et ça repart seul à la reconnexion.
   const originesBoutique = useMemo(() => new Map(stock.map(i => [String(i.id), i.vinted_account_id == null ? '' : String(i.vinted_account_id).trim()])), [stock]);
+  // ── (18/10, lot 4.2) ALERTES DE COMPTE : SESSION PERDUE, COMPTE RESTREINT ──
+  // Règle : utils/alertesCompte.js. Lecture bornée (10 min, onglet visible) de
+  // profiles.extension_sessions + platform_settings.alertes_compte ; le verdict
+  // de session est celui de utils/sessionsPlateformes (une publication réussie de
+  // moins de 72 h, lue dans les jobs déjà en mémoire, prouve la session).
+  const [sessionsCompte, setSessionsCompte] = useState(null);
+  const [reglageAlertes, setReglageAlertes] = useState(null);
+  useEffect(() => {
+    if (!user?.id) return undefined;
+    const lire = async () => {
+      const { data, error } = await supabase.from('profiles').select('extension_sessions, platform_settings').eq('id', user.id).maybeSingle();
+      if (error) return false;
+      setSessionsCompte(data?.extension_sessions ?? null);
+      setReglageAlertes(data?.platform_settings?.[CLE_REGLAGE_ALERTES] ?? null);
+      return true;
+    };
+    const relecture = demarrerRelecture(lire, { intervalleMs: 10 * 60_000 });
+    return () => relecture.arreter();
+  }, [user?.id]);
+  const etatsCompte = useMemo(() => {
+    if (!sessionsCompte) return null;
+    const publicationsOk = {};
+    for (const j of Object.values(jobsByInventaire).flat()) {
+      if (j?.status !== 'published') continue;
+      const t = Date.parse(j.published_at ?? j.created_at ?? '');
+      if (Number.isFinite(t) && (!publicationsOk[j.platform] || t > publicationsOk[j.platform])) publicationsOk[j.platform] = t;
+    }
+    const out = {};
+    for (const pf of PLATEFORMES_SESSION) out[pf] = etatSession(sessionsCompte, pf, publicationsOk[pf] ?? null);
+    return out;
+  }, [sessionsCompte, jobsByInventaire]);
+  const alertesDuCompte = useMemo(
+    () => alertesCompte({ etats: etatsCompte, jobs: Object.values(jobsByInventaire).flat(), reglage: reglageAlertes }),
+    [etatsCompte, jobsByInventaire, reglageAlertes],
+  );
+  // Le masque d'une plateforme tombe de lui-même quand la session revient.
+  useEffect(() => {
+    const revenues = masquesARetirer(reglageAlertes, etatsCompte);
+    if (!revenues.length) return;
+    fusionnerReglages([CLE_REGLAGE_ALERTES, 'masquees'], null, revenues)
+      .then(({ data }) => { if (data) setReglageAlertes(data?.[CLE_REGLAGE_ALERTES] ?? null); })
+      .catch(() => { /* relu au prochain passage */ });
+  }, [reglageAlertes, etatsCompte]);
   const attenteBoutique = useMemo(() => {
     if (!boutiqueConnectee?.userId) return null;
     const jobs = Object.values(jobsByInventaire).flat();
@@ -8727,7 +8773,8 @@ const StockTab = memo(function StockTab({
   // (12/10 soir) Les annonces « plus en ligne — vendue ? » (questions d'App,
   // jadis des bandeaux sur tous les onglets) : comptées comme elles s'affichent.
   const nbPlusEnLigne = plusEnLigne?.n ?? 0;
-  const nbARegler = nbRetraitsBloques + nbIdentiteLbc + nbAttenteAction + nbForfaitLbc + nbVendeurDepop + questionsDejaVendu.length + nbAVerifier + nbSansPrix + brouillons.length + nbPlusEnLigne;
+  const nbAlertesCompte = alertesDuCompte.length ? 1 : 0; // (18/10) session perdue / compte restreint : une ligne
+  const nbARegler = nbRetraitsBloques + nbIdentiteLbc + nbAttenteAction + nbForfaitLbc + nbVendeurDepop + questionsDejaVendu.length + nbAVerifier + nbSansPrix + brouillons.length + nbPlusEnLigne + nbAlertesCompte;
   const ligneRetraits = retraitsAutres.total
     ? ligneAReglerRetraits(retraitsAutres, lang)
     : { titre: lang === 'fr' ? (nbRetraitsAutres > 1 ? 'Annonces encore en ligne à retirer' : 'Annonce encore en ligne à retirer') : (nbRetraitsAutres > 1 ? 'Listings still live to remove' : 'Listing still live to remove'),
@@ -8760,6 +8807,11 @@ const StockTab = memo(function StockTab({
         ? `${forfaitLbc.length} annonce${forfaitLbc.length > 1 ? 's' : ''} Leboncoin en attente : Leboncoin demande un paiement pour chaque nouvelle annonce de ton compte pro, et FillSell ne paie jamais à ta place.`
         : `${forfaitLbc.length} Leboncoin listing${forfaitLbc.length > 1 ? 's' : ''} waiting: Leboncoin asks your pro account to pay for every new listing, and FillSell never pays for you.`,
       onOuvrir: () => setGesteOuvert('lbc_forfait') },
+    // (18/10) Session perdue sur une plateforme, ou compte Vinted restreint : une
+    // seule ligne, discrète, masquable (utils/alertesCompte.js).
+    { cle: 'compte_plateforme', n: nbAlertesCompte,
+      ...(alertesDuCompte.length ? ligneAlertes(alertesDuCompte, lang) : { titre: '', detail: '' }),
+      onOuvrir: () => setGesteOuvert('compte_plateforme') },
     // (17/10) Depop : un geste sur le COMPTE (configuration de vendeur), une seule ligne.
     { cle: 'vendeur_plateforme', n: nbVendeurDepop, titre: lang === 'fr' ? 'Depop : termine ta configuration de vendeur' : 'Depop: finish your seller setup',
       detail: lang === 'fr'
@@ -11560,6 +11612,10 @@ const StockTab = memo(function StockTab({
         <EcranIdentiteLbc lang={lang} attentes={identiteLbc}
           titreDe={(j)=>fichesToutes.get(String(j.inventaire_id))?.titre ?? j.title}
           onRelance={()=>rafraichirApresSync()} onFermer={()=>setGesteOuvert('a_regler')}/>
+      )}
+      {gesteOuvert==='compte_plateforme'&&(
+        <EcranAlertesCompte lang={lang} alertes={alertesDuCompte}
+          onMasque={(r)=>setReglageAlertes(r)} onFermer={()=>setGesteOuvert('a_regler')}/>
       )}
       {gesteOuvert==='lbc_forfait'&&(
         <EcranForfaitLbc lang={lang} attentes={forfaitLbc} adressage={adressageDemande(forfaitLbc)}

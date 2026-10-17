@@ -100,6 +100,12 @@ Alerte : `veille-cpu` (cron `veille-cpu-2min`) prévient support@fillsell.app
 au-delà de 70 % pendant 10 min, au plus une fois par heure, puis au retour
 sous 50 %. L'ops-digest affiche le maximum des 24 h.
 
+Veilles LUES par l'ops-digest (18/10, lecture seule, STABLE, service_role, section absente si
+illisible) : `releves_morts_veille(p_jours, p_limite)` (mig 20261018010000 — relevés morts
+sans alerte, filet du chien de garde) et `champs_requis_veille(p_jours, p_limite)` (mig
+20261018020000 — champ obligatoire nouveau sur un rayon connu, questions posées par champ,
+deux fenêtres). Même modèle que `ventes_prouvees_veille`. Rien n'est relancé ni écrit.
+
 
 <!-- ex-CLAUDE.md L725-800 : Déploiement des fonctions edge (geste verify_jwt, règle de l'appelant, état du 18/09) -->
 ## Déploiement des Edge Functions
