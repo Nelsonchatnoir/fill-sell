@@ -15,8 +15,10 @@
 //      une remise en ligne en silence, aucun mail ;
 //   5. même interrupteur et même liste d'attente que la règle eBay ;
 //   6. l'extension transmet les item_ids d'un lot ;
-//   7. l'inverse rend la définition d'avant.
-import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
+//   7. l'inverse rend la définition d'avant ;
+//   8. (17/10) la règle EN VIGUEUR — la dernière migration qui la définit — garde 2 à 5,
+//      et son inverse rend le corps de 20261015010000 à l'octet.
+import { readFileSync, readdirSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
@@ -69,6 +71,29 @@ ok(/item_ids: lot \? ids\.map\(\(x\) => String\(x\)\) : null/.test(EXT), '6. l\'
 // 7
 ok(!/vente_commande_annulee_vinted\(v_vente_id/.test(fonction(INV, 'enregistrer_ventes_relevees'))
   && /DROP FUNCTION IF EXISTS public\.vente_commande_annulee_vinted/.test(INV), '7. l\'inverse rend la définition d\'avant');
+// 8 (17/10, point 12) La règle EN VIGUEUR — la dernière migration qui la définit — garde
+// 2 à 5 ; si ce n'est plus 20261015010000, son inverse rend le corps d'avant à l'octet.
+{
+  const DOSSIER = 'supabase/migrations';
+  const derniere = readdirSync(path.join(RACINE, DOSSIER)).filter((f) => f.endsWith('.sql')).sort()
+    .filter((f) => /CREATE (OR REPLACE )?FUNCTION public\.vente_commande_annulee_vinted\(/.test(lire(`${DOSSIER}/${f}`))).pop();
+  const EN_VIGUEUR = lire(`${DOSSIER}/${derniere}`);
+  const r8 = fonction(EN_VIGUEUR, 'vente_commande_annulee_vinted');
+  ok(/coalesce\(v\.source, ''\) = 'releve' OR j\.id IS NOT NULL/.test(r8) && /timestamptz '2026-10-13 00:00:00\+02'/.test(r8)
+    && /UPDATE inventaire SET statut = 'stock', quantite = v_q WHERE id = i\.id AND statut = 'vendu'/.test(r8)
+    && /DELETE FROM ventes_operations o WHERE o\.user_id = v\.user_id AND o\.cle = 'annonce:vinted:' \|\| v\.annonce_id/.test(r8)
+    && /INSERT INTO ventes_supprimees/.test(r8) && /coalesce\(v\.commande_ref, p_commande\)/.test(r8)
+    && /v_snap\.status = 'active' AND v_snap\.captured_at > coalesce\(j\.sold_at, v\.created_at\)/.test(r8)
+    && /L''annonce Vinted reste fermée : remets-le en vente quand tu veux\./.test(r8) && !/push_ventes|envoyer|email/.test(r8)
+    && /'ventes_annulees_retrait_pause'/.test(r8) && /ventes_annulees_attente_go/.test(r8)
+    && /REVOKE ALL ON FUNCTION public\.vente_commande_annulee_vinted\(bigint, text, text, timestamptz\) FROM PUBLIC, anon, authenticated/.test(EN_VIGUEUR),
+    `8. la règle en vigueur (${derniere}) garde 2 à 5 : preuve, stock, reçu, trace, job, interrupteur, fermée à l'app`);
+  if (derniere !== '20261015010000_vente_vinted_annulee.sql') {
+    const inverse = lire(`supabase/rollbacks/${derniere}`);
+    const seul = (t) => { const a = t.indexOf('AS $function$', t.indexOf('FUNCTION public.vente_commande_annulee_vinted(')); return t.slice(a, t.indexOf('$function$', a + 13) + 10); };
+    ok(seul(inverse) === seul(MIG), `8b. l'inverse de ${derniere} rend le corps de 20261015010000 à l'octet`);
+  }
+}
 
 if (process.argv.includes('--prod')) {
   const sql = `select jsonb_build_object(

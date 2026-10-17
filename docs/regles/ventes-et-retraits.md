@@ -140,3 +140,19 @@ Cas : 128 notes de vente sans prix depuis le 06/10 (republications Vinted : `pri
 - **Appliquées le 17/10** (feu vert nommé) : migration vers 09:04 (42/42 rejouées sur la prod), réparation à 09:05 —
   127 notes, 0 mail (`email_logs` 287 → 287). ⛔ La note 2348 est EXCLUE du script (consigne de Nico : 14 € en base,
   12 € selon le vendeur) : elle reste sans prix tant que Nico n'a pas tranché ; ne pas la « réparer » d'office.
+
+## 17/10 — une commande Vinted annulée : ce que la base doit dire (point 12 ; rapport `docs/enquetes/dix-points-1710/RAPPORT.md` § 12)
+- Vinted dit `failed` pour une commande annulée (4 cas sur 4) et garde l'annonce d'origine « sold » des jours après :
+  ce « sold » n'est plus une vente. `vente_commande_annulee_vinted` (mig **20261017140000, appliquée le 17/10 à 14:41**)
+  rend la fiche au stock ET pose l'état d'annonce du relevé (`closed`, ou `active` si revue en ligne après la vente),
+  tracé dans `inventaire_journal` ; le reçu effacé reste dans la trace `vente_retiree` (`recus`).
+- Le relevé du dressing ne repasse plus « vendu » une fiche dont la vente de CETTE annonce a été retirée pour commande
+  annulée, tant que l'annonce n'a pas été revue en ligne et qu'aucune vente n'est écrite (garde de
+  `inventaire_vendu_vinted_par_la_vente`, mig **20261017141000, appliquée le 17/10 à 14:42**) ; job vivant, import pur,
+  écriture serveur : inchangés.
+- ⛔ Jamais une annulation tenue pour vraie sans le statut Vinted de SA commande (relevé `failed` ou vérification sur le
+  compte) : le 17/10, une vraie vente (144011-144014, Louis) a été retirée sur la foi d'un mail attribué sans numéro de
+  commande, puis remise à l'identique (`scripts/reparations/20261017_louis_lot_b_remise_ventes.sql`, 0 mail).
+- Le relevé des ventes laisse sa trace : une ligne `usage_logs` `releve_ventes` par passage (lues, bilan, statuts inconnus,
+  détails ratés) et l'onglet « Annulées » de Vinted lu en observation (extension 0.6.123). Selftests
+  `vente-vinted-annulee-statut`, `dressing-garde-commande-annulee`, `vente-vinted-annulee`.

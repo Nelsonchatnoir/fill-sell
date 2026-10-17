@@ -375,6 +375,8 @@
     "selftest:depop-vendeur-mur": "node scripts/depop-vendeur-mur-selftest.mjs",
     "selftest:vinted-marque-par-identifiant": "node scripts/vinted-marque-par-identifiant-selftest.mjs",
     "selftest:republication-nait-avec-son-lien": "node scripts/republication-nait-avec-son-lien-selftest.mjs",
+    "selftest:vente-vinted-annulee-statut": "node scripts/vente-vinted-annulee-statut-selftest.mjs",
+    "selftest:dressing-garde-commande-annulee": "node scripts/dressing-garde-commande-annulee-selftest.mjs",
     "gen:etat-job-extension": "node scripts/gen-etat-job-extension.mjs"
   },
   "dependencies": {
