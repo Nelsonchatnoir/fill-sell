@@ -1,4 +1,4 @@
-# Chantier « zéro orange + bordereaux » — 18/10/2026 (une passe, 10:55 → 13:15 Paris)
+# Chantier « zéro orange + bordereaux » — 18/10/2026 (une passe, 10:55 → 14:30 Paris)
 
 ## Résumé (à lire en premier)
 
@@ -25,7 +25,8 @@
   **corrigé en prod à 11:45** ; la reprise dépend de Vinted et d'un Edge ouvert.
 - **Lot 6** : aucun doublon possible aujourd'hui ; **un trou de mauvaise boutique fermé** (0.6.126) et le routage par
   poste en prod (12:31). Réponse à Louis : § 6.
-- **Livraison** : 9 fonctions edge, 4 migrations (inverses prêtes), 2 réparations, web + OTA 2.9.101, **zip
+- **Livraison** : 9 fonctions edge, 4 migrations (inverses prêtes), 2 réparations, web `e5b47f2` et OTA **2.9.101**
+  servis et relus (14:24-14:26), **zip
   0.6.126 à téléverser** : `build\CWS-0.6.126-A-TELEVERSER\fillsell-extension-0.6.126-7920a40-cws.zip`. La 0.6.125
   est **déjà acceptée et servie** (15 comptes à 12:45) : la 0.6.126 peut partir tout de suite. Selftests
   **350 → 358, 0 rouge**.
@@ -276,7 +277,10 @@ prochain cas.**
   `2026-10-18T10:56:25Z+7920a40`), zip seul dans ce dossier ; anciens zips dans `build\CWS-PERIMES` (0.6.124 et 0.6.125
   renommés « PUBLIEE-ET-SERVIE ») ; **manifeste relu : seule la version change, aucune permission nouvelle, même liste
   de fichiers**. La 0.6.125 étant acceptée, **la 0.6.126 peut être téléversée tout de suite**.
-- **Web** : push de ce jour (voir l'état de prod pour le `build.json` relu) ; **OTA 2.9.101** (canal production relu).
+- **Web** : push `67cd78d..e5b47f2` (fait par Nico à 14:24, voir Incidents) ; `build.json` relu =
+  `2026-10-18T12:24:32Z+e5b47f2` ; entrée `/assets/index-D8IUnkVo.js` 200 avec `Origin` ; Vercel READY sur `e5b47f2`,
+  aucune erreur d'exécution sur 1 h ; `/app` et « À expédier » affichés sur le compte de Nico, console sans erreur.
+- **OTA 2.9.101** : build `2026-10-18T12:14:33Z+e5b47f2` envoyé à 14:25 ; canal production relu 2.9.100 → **2.9.101**.
 - Selftests : **350/350 avant → 358/358 après** ; `build:essai` vert ; eslint : aucune erreur nouvelle sauf 2
   `'chrome' is not defined` dans background.js (même classe que les 379 d'avant : l'extension n'a pas de bloc eslint).
 
@@ -293,6 +297,8 @@ prochain cas.**
   annonces en ligne à 12:44.
 - **Copie non empaquetée de Nico** : non mise à jour en 0.6.126 (copie du build refusée par l'outil de permission) ;
   elle reste en 0.6.124.
+- **Push refusé deux fois par le contrôle automatique de l'outil**, même après l'ordre de Nico. Nico l'a tapé lui-même
+  (`! git push origin main`, 14:24) ; web et OTA sont partis juste après.
 
 ## Choix pris sans Nico
 1. Relance unique des bordereaux de Louis **différée** à la 0.6.126 (impossible avant) et bornée au 26/10.
