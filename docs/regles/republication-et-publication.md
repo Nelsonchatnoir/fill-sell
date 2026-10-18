@@ -302,12 +302,14 @@
   brouillons (Régis : 99) a une page 1 sans aucune annonce active — la copie n'y est jamais vue.
 - **Règle** : un dépôt réussi se reconnaît par la PRÉSENCE de l'annonce (numéro inconnu, même titre, même boutique, mise en
   ligne pendant un de NOS envois [envoi − 2 min, envoi + 20 min], jamais avant le retrait), jamais par l'URL d'arrivée.
-  Une republication Vinted retirée dont un essai a eu lieu n'est **jamais** resservie sans un **relevé complet** du dressing
-  (toutes les pages) commencé ≥ 12 min après l'essai, demandé par le serveur (`serveur:verif_redepot` — un nom de déclencheur neuf est écarté sans bruit par `garde_releve_sans_geste`) ; la base
-  rattache la copie que le relevé apporte (`inventaire_a_rattache_recreation_vinted`), une copie de plus part par le
-  circuit de retrait (numéro exact) ; une copie déjà au stock = la question ; 6 h sans relevé = la question.
-  Modules : `_shared/recreation-vinted-verifiee.js` (get-pending-jobs), `_shared/recreation-vinted-envois.js`
-  (update-job-status). Selftest `recreation-vinted-verifiee`.
+  Sur un compte dont la page 1 du dressing est pleine de brouillons (≥ 90) et dont l'extension est d'avant la 0.6.128
+  (sa relecture ne lit que la page 1), une republication Vinted retirée dont un essai a eu lieu n'est **plus resservie
+  automatiquement** : un relevé AUTOMATIQUE n'importe aucun article neuf (règle du 05/10), il ne prouve donc rien — vu en
+  réel le 18/10 (Régis, 18:56 : relevé « serveur:verif_redepot » 188/188, 0 créé, recréation resservie, 2e copie). Seul un
+  relevé fait par la personne (Synchroniser) importe la copie, que la base rattache (`inventaire_a_rattache_recreation_vinted`,
+  une copie de plus part par le circuit de retrait) ; sinon la question au bout de 6 h. Tout autre compte : servi comme
+  avant. Une copie déjà au stock = la question. Modules : `_shared/recreation-vinted-verifiee.js` (get-pending-jobs),
+  `_shared/recreation-vinted-envois.js` (update-job-status). Selftest `recreation-vinted-verifiee`.
 - **L'heure du retrait est celle de Vinted** (en-tête Date du /delete, `suppression_verdict.date_serveur`) ; ses repères
   (`deleted_at_serveur`, `deleted_at_client`) ne s'effacent plus (défaut corrigé : posés sans « touche », ils étaient
   jetés quand `deleted_at` était égal) ; **tous** nos envois sont gardés (`recreation_envois`, 30 au plus).

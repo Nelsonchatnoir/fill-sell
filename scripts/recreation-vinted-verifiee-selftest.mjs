@@ -47,15 +47,19 @@ ok(recreationAVerifier(job({ ...pfLevis, recreation_tentee: undefined, recreatio
 const d1 = decisionVerificationRecreation(job(pfLevis), { releves: [], fiches: [], maintenant: T("13:25:00") });
 ok(d1?.action === "retenir" && d1.error === MESSAGE_ATTENTE, "moins de 12 min après l'essai : retenue, message vrai");
 const d2 = decisionVerificationRecreation(job(pfLevis), { releves: [], fiches: [], maintenant: T("13:31:00") });
-ok(d2?.action === "demander_releve", "12 min passées sans relevé : relevé du dressing demandé");
+ok(d2?.action === "retenir", "12 min passées sans relevé de la personne : toujours retenue (aucun relevé automatique demandé)");
 ok(d2.platform_fields.recreation_attente_releve?.depuis, "l'attente est datée");
+ok(decisionVerificationRecreation(job(pfLevis), { releves: [], fiches: [], maintenant: T("13:31:00"), pageUneAveugle: false }) === null,
+  "compte sans mur de brouillons (ou extension 0.6.128) : servie comme avant");
 
-const releveTot = { id: "r1", kind: "dressing", status: "done", started_at: "2026-10-18T13:25:00Z", items_vus: 104, total_entries: 104 };
-const releveIncomplet = { id: "r2", kind: "dressing", status: "done", started_at: "2026-10-18T13:40:00Z", items_vus: 96, total_entries: 104 };
-const releveBon = { id: "r3", kind: "dressing", status: "done", started_at: "2026-10-18T13:40:00Z", items_vus: 104, total_entries: 104 };
+const releveTot = { id: "r1", kind: "dressing", status: "done", declencheur: "bouton", started_at: "2026-10-18T13:25:00Z", items_vus: 104, total_entries: 104 };
+const releveIncomplet = { id: "r2", kind: "dressing", status: "done", declencheur: "bouton", started_at: "2026-10-18T13:40:00Z", items_vus: 96, total_entries: 104 };
+const releveBon = { id: "r3", kind: "dressing", status: "done", declencheur: "bouton_distant", started_at: "2026-10-18T13:40:00Z", items_vus: 104, total_entries: 104 };
+const releveAuto = { id: "r4", kind: "dressing", status: "done", declencheur: "serveur:verif_redepot", started_at: "2026-10-18T13:40:00Z", items_vus: 104, total_entries: 104 };
 ok(releveQualifiant([releveTot], T("13:18:45.900")) === null, "un relevé commencé trop tôt après l'essai ne compte pas");
 ok(releveQualifiant([releveIncomplet], T("13:18:45.900")) === null, "un relevé incomplet (96/104) ne compte pas");
-ok(releveQualifiant([releveBon], T("13:18:45.900"))?.id === "r3", "un relevé complet, commencé ≥ 12 min après, compte");
+ok(releveQualifiant([releveBon], T("13:18:45.900"))?.id === "r3", "un relevé complet de la personne, commencé ≥ 12 min après, compte");
+ok(releveQualifiant([releveAuto], T("13:18:45.900")) === null, "un relevé AUTOMATIQUE ne compte jamais (il n'importe aucun article neuf — Régis 18:56)");
 
 const d3 = decisionVerificationRecreation(job(pfLevis), { releves: [releveBon], fiches: [], maintenant: T("13:45:00") });
 ok(d3?.action === "servir" && d3.platform_fields.recreation_verifiee?.releve === "r3", "relevé complet sans copie : essai suivant autorisé, tracé");
@@ -93,8 +97,10 @@ ok(/if \(pfW\.deleted_at_serveur !== serveurDeja\) \{\s*pfW\.deleted_at_serveur 
   "update-job-status : les repères du retrait ne sont plus effacés (touche marqué)");
 ok(/heureVintedDuRetrait\(pfW\) \?\? heureVintedDuRetrait\(pfH\)/.test(ujs) && /pfW\.recreation_envois = envois;/.test(ujs),
   "update-job-status : heure Vinted d'abord, envois accumulés");
-ok(/recreationAVerifier\(j\)/.test(gpj) && /declencheur: "serveur:verif_redepot"/.test(gpj) && gpj.indexOf("REMISE EN LIGNE VINTED : JAMAIS UN ESSAI DE PLUS") < gpj.indexOf("JAMAIS UN DEUXIÈME DÉPÔT BEEBS"),
-  "get-pending-jobs : garde branchée avant le bloc Beebs, relevé demandé par le serveur");
+const blocGpj = gpj.slice(gpj.indexOf("REMISE EN LIGNE VINTED : JAMAIS UN ESSAI DE PLUS"), gpj.indexOf("JAMAIS UN DEUXIÈME DÉPÔT BEEBS"));
+ok(blocGpj.length > 0 && blocGpj.includes("recreationAVerifier(j)") && blocGpj.includes("pageUneAveugle = (nBrouillons ?? 0) >= BROUILLONS_PAGE_UNE")
+  && blocGpj.includes('versionAuMoins(version, "0.6.128")') && !blocGpj.includes("vinted_sync_runs\").insert"),
+  "get-pending-jobs : garde branchée (mur de brouillons, extension < 0.6.128), aucun relevé automatique demandé");
 ok(/create trigger inventaire_a_rattache_recreation_vinted\s+before insert on public\.inventaire/i.test(mig)
   && "inventaire_a_rattache_recreation_vinted" < "inventaire_ecarte_import_sync", "migration : le rattachement tire AVANT l'écart des imports automatiques");
 

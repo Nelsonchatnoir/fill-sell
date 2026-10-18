@@ -39,7 +39,10 @@
 - **Un dépôt réussi se reconnaît par la présence réelle de l'annonce** (numéro inconnu, même titre, même boutique, mise
   en ligne pendant un de NOS envois), jamais par l'URL d'arrivée.
 - **Côté serveur, servi au parc en 0.6.125 dès le déploiement** :
-  - `get-pending-jobs` : après une tentative, aucune nouvelle recréation sans un **relevé complet** du dressing (toutes
+  - `get-pending-jobs` (règle resserrée à 19:1x, après le 1er essai réel — voir § 1.6) : sur un compte dont la page 1 est
+    pleine de brouillons et dont l'extension est d'avant la 0.6.128, plus aucune recréation automatique après un essai ;
+    seul un relevé fait par la personne (qui importe) peut la débloquer, sinon la question à 6 h ; tout autre compte est
+    servi comme avant. (Version d'avant, remplacée : « aucune nouvelle recréation sans un **relevé complet** du dressing (toutes
     les pages) commencé ≥ 12 min après, demandé par le serveur (`serveur:verif_redepot`, la vérification avant redépôt que la base reconnaît) ; copie déjà au stock = la
     question ; 6 h sans relevé = la question honnête ;
   - **migration 20261018170000 (appliquée 17:03)** : quand ce relevé apporte la copie, la base la rattache à la fiche et
@@ -66,8 +69,19 @@
 - Le compteur compte **une fois par article** (exécutée ou en cours), jamais par essai ; un retrait n'est pas une
   republication. Régis : 49/50 = 2 publiées + 47 en attente ; les 11 essais et les 9 retraits n'ont rien consommé.
 
-### 1.6 Les 47
-- Retenues jusqu'au déploiement de la garde serveur, puis libérées par petit lot avec preuve (§ Statut final).
+### 1.6 Les 47 — lot 1 (3) libéré à 18:24, puis arrêté
+- **Larousse (ed7729dc)** : une-passe à 16:25:46 UTC, copie 10431938776 créée à 16:25:54, non reconnue par son extension
+  (page 1 = brouillons) → **retenue par la garde serveur** (« en cours de vérification »), sans nouvel essai. ✓
+- **Défaut de ma garde, trouvé en réel** : le relevé demandé par le serveur était d'abord écarté sans bruit (origine
+  `serveur:verif_recreation` inconnue de `garde_releve_sans_geste`) — corrigé (`serveur:verif_redepot`, get-pending-jobs
+  v263) ; puis le relevé automatique a tourné (18:56, 188/188) mais **n'importe aucun article neuf** (règle du 05/10) :
+  la garde a conclu « aucune copie » et resservi la recréation à 18:58 → **2e copie 10432668983 (16:59:50 UTC)**.
+  Arrêt immédiat des 3 jobs du lot 1 (19:04), puis réparation selon la décision de Nico (garder la 1re) : fiche et job
+  sur 10431938776, retrait de 10432668983 armé par son numéro (19:08). Règle resserrée (§ 1.2) et redéployée.
+- **Les 46 autres restent retenues** : avec son extension 0.6.125, aucune remise en ligne ne peut être prouvée sans
+  « Synchroniser » à chaque article (ses 99 brouillons aveuglent sa relecture). Elles partiront avec la **0.6.128**
+  (relecture qui saute les brouillons, prouvée sur son cas en selftest) — ou plus tôt si Nico accepte qu'un relevé
+  importateur soit demandé par le serveur pour ce cas (contraire à la règle du 05/10 : à décider).
 
 ## 2. Louis — une boutique = un compte, comptes reliés, transfert @evat
 

@@ -9,21 +9,28 @@
 // dressing. Même famille que les Petites Fioles (Leboncoin, 25/09) et
 // qu'Ornella (09/10, 2 copies).
 //
-// RÈGLE (servie par get-pending-jobs à TOUTES les versions d'extension) : une
-// republication Vinted « retirée, pas revenue » dont un essai a eu lieu
-// (retrait de la une-passe ou tentative de recréation) n'est plus servie tant
-// qu'un relevé COMPLET du dressing (toutes les pages), commencé au moins
-// ATTENTE_RELEVE_MIN après le dernier essai, n'a pas tourné :
-//   · le relevé importe la copie → la base la rattache à la fiche et clôt la
-//     republication (migration 20261018170000) : plus rien à servir ;
-//   · aucune copie au relevé → servie, UNE fois (trace recreation_verifiee) ;
-//   · une fiche déjà présente ressemble à notre copie (importée pendant un
-//     essai) → la question, jamais un essai de plus ;
-//   · pas de relevé au bout d'ATTENTE_RELEVE_MAX_H → la question, honnête.
+// RÈGLE (servie par get-pending-jobs à TOUTES les versions d'extension) :
+//   · une fiche déjà présente ressemble à notre copie (importée pendant un essai)
+//     → la question, jamais un essai de plus (tous les comptes) ;
+//   · (18/10 soir) le cas Régis seulement — page 1 du dressing PLEINE DE
+//     BROUILLONS (≥ BROUILLONS_PAGE_UNE) et extension d'avant la 0.6.128 (sa
+//     relecture ne lit que la page 1 : elle ne peut pas voir la copie) : une
+//     republication retirée dont un essai a eu lieu n'est plus resservie
+//     automatiquement. Un relevé AUTOMATIQUE n'importe aucun article neuf
+//     (règle de Nico du 05/10) : il ne prouve rien. Seul un relevé fait PAR LA
+//     PERSONNE (Synchroniser), complet, commencé ≥ ATTENTE_RELEVE_MIN après
+//     l'essai, l'importe — la base rattache alors la copie (migration
+//     20261018170000) ; s'il n'en apporte aucune, l'essai suivant part, une fois.
+//     Sans lui au bout d'ATTENTE_RELEVE_MAX_H → la question, honnête ;
+//   · tout autre compte : servi comme avant (la relecture de l'extension voit la
+//     copie en page 1 — 153 recréations sur 154 prouvées ainsi en 3 jours).
 // Pur (Deno + Node). Testé par scripts/recreation-vinted-verifiee-selftest.mjs.
 
 export const ATTENTE_RELEVE_MIN = 12;
 export const ATTENTE_RELEVE_MAX_H = 6;
+/** Page 1 du dressing propriétaire (96 annonces) pleine de brouillons : la relecture d'avant la 0.6.128 est aveugle. */
+export const BROUILLONS_PAGE_UNE = 90;
+const GESTE_RE = /^(bouton|bouton_distant|app)(:redemande)?$/;
 const AVANT_MS = 2 * 60_000;
 const APRES_MS = 20 * 60_000;
 
@@ -77,10 +84,11 @@ export function recreationAVerifier(job) {
   return { essai };
 }
 
-/** Un relevé complet du dressing, commencé assez tard après l'essai. */
+/** Un relevé complet du dressing FAIT PAR LA PERSONNE (il importe), commencé assez tard après l'essai. */
 export function releveQualifiant(releves, essai) {
   return (Array.isArray(releves) ? releves : []).find((r) =>
     r && r.status === "done" && (r.kind == null || r.kind === "dressing")
+    && GESTE_RE.test(String(r.declencheur ?? ""))
     && ms(r.started_at) >= essai + ATTENTE_RELEVE_MIN * 60_000
     && Number(r.total_entries) > 0 && Number(r.items_vus) >= Number(r.total_entries)) ?? null;
 }
@@ -106,16 +114,17 @@ export function copiesProbables(job, fiches) {
 }
 
 export const MESSAGE_ATTENTE =
-  "Ton annonce a été retirée de Vinted et sa remise en ligne est en cours de vérification : un essai précédent l'a " +
-  "peut-être déjà remise en ligne. On relit ton dressing avant tout nouvel essai, pour qu'elle ne parte jamais en double. " +
-  "Rien à faire de ton côté. Rien n'est perdu : titre, description, photos et champs sont conservés.";
+  "Ton annonce a sans doute déjà été remise en ligne sur Vinted, mais FillSell ne la voit pas encore : ton dressing " +
+  "commence par beaucoup de brouillons. Elle sera retrouvée à la prochaine lecture complète de ton dressing (« Synchroniser », " +
+  "ou toute seule avec la prochaine mise à jour de l'extension) — elle ne sera jamais remise en ligne une deuxième fois. " +
+  "Rien n'est perdu : titre, description, photos et champs sont conservés.";
 
 /**
  * @param {any} job  republication Vinted servie (pending, étape 'deleted')
- * @param {{ releves?: any[], fiches?: any[], maintenant?: number }} ctx
- * @returns {null | { action: 'servir'|'retenir'|'demander_releve'|'question', platform_fields: object, error: string|null, copies?: any[] }}
+ * @param {{ releves?: any[], fiches?: any[], maintenant?: number, pageUneAveugle?: boolean }} ctx
+ * @returns {null | { action: 'servir'|'retenir'|'question', platform_fields: object, error: string|null, copies?: any[] }}
  */
-export function decisionVerificationRecreation(job, { releves = [], fiches = [], maintenant = Date.now() } = {}) {
+export function decisionVerificationRecreation(job, { releves = [], fiches = [], maintenant = Date.now(), pageUneAveugle = true } = {}) {
   const v = recreationAVerifier(job);
   if (!v) return null;
   const pf0 = objet(job.platform_fields) ?? {};
@@ -133,6 +142,8 @@ export function decisionVerificationRecreation(job, { releves = [], fiches = [],
         "séparée. Rien n'a été recréé de plus. Vérifie-la sur Vinted, puis fusionne les deux fiches de cet article depuis l'app.",
     };
   }
+  // Relecture de l'extension fiable (pas de mur de brouillons, ou 0.6.128+) : servie comme avant.
+  if (!pageUneAveugle) return null;
   const fait = releveQualifiant(releves, v.essai);
   if (fait) {
     delete pf.recreation_attente_releve;
@@ -151,6 +162,5 @@ export function decisionVerificationRecreation(job, { releves = [], fiches = [],
         "est, il n'y a rien à faire ; sinon relance la republication d'un clic.",
     };
   }
-  const tot = maintenant >= v.essai + ATTENTE_RELEVE_MIN * 60_000;
-  return { action: tot ? "demander_releve" : "retenir", platform_fields: pf, error: MESSAGE_ATTENTE };
+  return { action: "retenir", platform_fields: pf, error: MESSAGE_ATTENTE };
 }

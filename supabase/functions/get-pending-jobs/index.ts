@@ -59,7 +59,7 @@ import {
   champsRetenueForfait, champsPreparerDeNouveau,
 } from "../_shared/lbc-forfait.js";
 import { impasseRecreationVinted, decisionImpasseRecreation } from "../_shared/recreation-impasse-vinted.js";
-import { recreationAVerifier, decisionVerificationRecreation, retraitLe } from "../_shared/recreation-vinted-verifiee.js";
+import { recreationAVerifier, decisionVerificationRecreation, retraitLe, BROUILLONS_PAGE_UNE } from "../_shared/recreation-vinted-verifiee.js";
 import { messageRetenueCreneau, messageRetenuePause, retraitEngage } from "../_shared/retenue-creneau.js";
 import { posteApresDefaut } from "../_shared/defaut-fillsell.js";
 import { jugerMurGeste, messagePauseVintedGeste, PAUSE_VINTED_GESTE_MS, connexionVintedAbsenteProuvee, murConnexionVintedProuve } from "../_shared/mur-geste.js";
@@ -5031,12 +5031,24 @@ serve(async (req) => {
               .limit(500),
           ]);
           const runs = (runsV ?? []) as Array<Record<string, unknown>>;
-          let releveDemande = runs.some((r) => r.status === "queued" || r.status === "running"
-            || (r.declencheur === "serveur:verif_redepot" && Date.now() - (Date.parse(String(r.queued_at ?? "")) || 0) < 30 * 60_000));
+          // (18/10 soir) Page 1 du dressing pleine de brouillons et extension d'avant la 0.6.128 : sa
+          // relecture (page 1 seule) ne peut pas voir la copie. Mesuré sur le dernier relevé (instantanés).
+          let pageUneAveugle = false;
+          if (!versionAuMoins(version, "0.6.128")) {
+            const { data: jourV } = await adminV.from("vinted_listing_snapshots").select("captured_on")
+              .eq("user_id", user.id).order("captured_on", { ascending: false }).limit(1);
+            const jour = (jourV ?? [])[0]?.captured_on;
+            if (jour) {
+              const { count: nBrouillons } = await adminV.from("vinted_listing_snapshots")
+                .select("id", { count: "exact", head: true })
+                .eq("user_id", user.id).eq("captured_on", jour).eq("status", "draft");
+              pageUneAveugle = (nBrouillons ?? 0) >= BROUILLONS_PAGE_UNE;
+            }
+          }
           for (const j of aVerifierV) {
             const idJ = String(j.id);
             const court = idJ.slice(0, 8);
-            const d = decisionVerificationRecreation(j, { releves: runs, fiches: (fichesV ?? []) as Array<Record<string, unknown>> });
+            const d = decisionVerificationRecreation(j, { releves: runs, fiches: (fichesV ?? []) as Array<Record<string, unknown>>, pageUneAveugle });
             if (!d) { retenusV.delete(idJ); continue; }
             if (d.action === "servir") {
               const { data: maj } = await userClient.from("cross_post_jobs")
@@ -5057,17 +5069,8 @@ serve(async (req) => {
               console.log(`[get-pending-jobs] remise en ligne Vinted ${court} : ${d.copies?.length ? `copie probable déjà en stock (${d.copies.map((c: Record<string, unknown>) => c.vinted_item_id).join(", ")})` : "aucun relevé depuis 6 h"} → question, aucun essai de plus`);
               continue;
             }
-            // (18/10 soir) Déclencheur « serveur:verif_redepot » : la vérification avant redépôt, déjà reconnue
-            // comme veille par la base (releve_est_veille) — un nom neuf était écarté SANS BRUIT par
-            // garde_releve_sans_geste (RETURN NULL), vu au premier essai réel (Régis, 18:38).
-            if (d.action === "demander_releve" && !releveDemande) {
-              const { error: qErr } = await userClient.from("vinted_sync_runs").insert({
-                user_id: user.id, kind: "dressing", platform: "vinted", status: "queued",
-                declencheur: "serveur:verif_redepot", queued_at: new Date().toISOString(),
-              });
-              releveDemande = true;
-              console.log(`[get-pending-jobs] remise en ligne Vinted ${court} : relevé complet du dressing demandé avant tout nouvel essai${qErr ? ` (refusé : ${qErr.message})` : ""}`);
-            }
+            // (18/10 soir) Aucun relevé automatique n'est demandé : il n'importe aucun article neuf (règle de
+            // Nico du 05/10), donc il ne peut pas voir la copie — vu au 1er essai réel chez Régis (18:56-18:58).
             const pfAvant = (j.platform_fields ?? {}) as Record<string, unknown>;
             if (j.error !== d.error || !pfAvant.recreation_attente_releve) {
               await userClient.from("cross_post_jobs")
