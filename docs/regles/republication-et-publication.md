@@ -257,3 +257,15 @@
 - **ÉTEINTE à la livraison (18/10 00:27)** : preuve réelle impossible cette nuit (la rédaction IA remplit déjà l'Univers de Mode ;
   0 question des champs retenus évitable depuis le correctif A10 du 11/10). Interrupteur fail-closed
   `profiles.beta_flags.memoire_categorie` puis `coin_config.memoire_categorie_ouverte` (`src/utils/memoireChamps.js`).
+
+## Règles (18/10 — chantier « zéro orange »)
+- **Pause anti-robot des LECTURES** (`_shared/pause-antirobot-vinted.js`, get-pending-jobs) : deux articles distincts
+  de SA boutique (garde « boutique_ok », jamais une session absente) refusés par l'anti-robot après le dernier succès
+  suffisent, même sonde du compte à 200, à mettre en pause les republications Vinted qui lisent leur annonce ; retraits,
+  publications et recréations continuent ; une sonde toutes les 45 min ; jamais « à toi » au bout de 6 h dans ce cas.
+- **Deux postes, deux boutiques** (`_shared/poste-extension.ts`) : la boutique Vinted est connue PAR POSTE (preuves de
+  dépôt, gardes, poll 0.6.126 `vinted_identite` / `sessions_poste`) ; avec ≥ 2 postes vivants et ≥ 2 boutiques, un job
+  Vinted va au poste ouvert sur la boutique de l'article ; le mur d'une plateforme est tenu par poste. La recréation
+  d'une republication Vinted relit la boutique AVANT le formulaire (0.6.126) : autre boutique = attente, rien rempli.
+- **Coupures techniques** : une seule signature (`CANAL_RE`, `_shared/etat-job.js`), lue sur le message ET
+  `error_technique.brut` ; une republication avant retrait coupée repart seule (« En pause »), jamais un bouton « Relancer ».

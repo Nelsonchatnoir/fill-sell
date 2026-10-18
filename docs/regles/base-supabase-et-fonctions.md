@@ -280,3 +280,13 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.nouvelle_table TO authenticated;
 - **Regroupement des aspects eBay** (`completerAspectsIAGroupe`) : ÉTEINT — banc du 18/10 : qualité en baisse (cas Manon).
   Rejouer le banc avant tout changement : fonction `ia-banc-deduction` (secret de cron, lecture seule), rapport
   `docs/enquetes/session-nuit-1810-memoire-ia/point5-banc.md`.
+
+## Règles (18/10 — dépense IA, déduction apprise)
+- **Plafond de la dépense IA codé en dur** (`_shared/budget-ia.ts`) : Anthropic, jour/mois, « moteur » 6/120 $,
+  « confort » 9/160 $, « essentiel » 14/185 $ ; au-delà, l'ancien chemin (question, arbre, saisie à la main), rien
+  débité. Compteur `ia_depense_jour` (déclencheur sur `usage_logs` quand `metadata.cost_usd`, et sur
+  `rapprochement_ia_verdicts`), lu par `ia_depense_etat()` (service_role). Toute nouvelle fonction IA y passe.
+- **Correspondances apprises** : `deduction_apprise` (reconstruite chaque nuit, cron `deduction-apprise-nuit`),
+  `deduction_bascule` par (plateforme, champ) : fantôme → actif (≥ 48 h, ≥ 15 cas, 100 %) → coupe (< 97 % ou refus
+  +15 points), cron `deduction-bascule-6h` ; l'app lit `deduction_apprise_pour` (session). Banc :
+  `node scripts/banc-deduction-apprise.mjs` (aucun appel IA).

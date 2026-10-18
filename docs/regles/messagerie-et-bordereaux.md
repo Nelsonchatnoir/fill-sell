@@ -209,3 +209,24 @@
   déjà traitée entre-temps = AUCUN geste, refus nommé (`commande_annulee`, `deja_expediee`) — seule une étiquette
   prête ou en préparation vaut « déjà fait » (0.6.123 ; la 0.6.122 rendait « déjà fait » pour tout statut Vinted ≥ 200,
   sans geste non plus). `selftest:messagerie-generation`.
+
+## Règles (18/10 — chantier « zéro orange + bordereaux », cause des échecs de Louis)
+- **Vinted nomme les types d'étiquette en toutes lettres** (`printable`, `digital`, `code` ; code du site relu le
+  18/10, `tO` / `backendCode`). Les chiffres 1/2/3 ne servent qu'à l'app (1 papier, 2 code, 3 QR) ; l'extension traduit
+  (`TYPES_ETIQUETTE_VINTED`). `label_type` part en toutes lettres seulement quand Vinted en propose PLUSIEURS pour le
+  dépôt (sinon nul, comme la page) ; un type inconnu de FillSell est gardé (`options_bordereau.types_vinted`) et la carte
+  dit « Commander sur Vinted » — jamais deviné. Cause du 18/10 : types jetés (`Number("digital")`), commande sans type,
+  Vinted 210 une seconde après.
+- **Capacités de l'extension** (`CAPACITES_BORDEREAU`, messagerie.js) : `generer`, `vinted_types_texte`,
+  `relance_vinted`. Le serveur ne donne une génération Vinted qu'à une extension « vinted_types_texte » ; non prise en
+  15 min → « echec / extension_a_mettre_a_jour », rien commandé. L'app compare `profiles.extension_build` à
+  `GENERATION_VINTED_BUILD_MIN` (vue.js) : avant, « Commander sur Vinted ».
+- **L'échec de la plateforme se dit** : `bordereau = 'indisponible'` (Vinted 210, Leboncoin échec d'étiquette) ferme
+  la génération « générée » sans copie (« echec / etiquette_echouee_chez_<plateforme> ») à chaque relevé et à chaque
+  prise (`bordereaux_generations_closes`) ; la suite ne cherche plus de fichier. Jamais « généré » avant que la
+  plateforme ait créé l'étiquette (texte « Demande faite sur … »).
+- **Relance** d'une étiquette échouée : seulement sur autorisation écrite en SQL (`bordereaux_relances_autorisees`,
+  aucun accès de l'app), UNE fois, avant une date limite, par une extension « relance_vinted » ; la base revérifie la
+  commande juste avant (sinon consommée sans relance) ; choix et phrase d'engagement de la demande d'origine.
+- **Fichier Vinted** : `pdf_label` d'abord, y compris pour un QR (la page fait de même) ; `digital_label` en recours
+  (sa réponse porte le nom du destinataire : seul un fichier en est lu).

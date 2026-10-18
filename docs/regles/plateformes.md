@@ -269,3 +269,12 @@ Rapport : `docs/enquetes/dix-points-1710/RAPPORT.md` (points 1, 4, 5, 7, 9).
   recherche) : « Autre » cherché à son tour ; Beebs : jamais l'IA pour une marque ; Depop : deux marques sous la même forme
   compacte → l'écriture exacte gagne, sinon « Other » (ambiguë).
 - Selftests : `marques-exactes` (62, dix marques du protocole), `depop-marque` (forme compacte), `champs-lbc-etat-marque`.
+
+## Règles (18/10 — eBay EAN, Leboncoin texte refusé)
+- **eBay, EAN exigé** (25002, paramètre « EAN ») : l'EAN de la fiche s'il est lisible (EAN-8/13 à clé juste, ISBN-13),
+  sinon **« Non applicable »** — le texte officiel d'eBay France pour un produit sans identifiant (developer.ebay.com,
+  product identifier text). « Ne s'applique pas » vaut pour le MPN seulement : eBay l'a refusé pour l'EAN le 18/10.
+  Une seule nouvelle publication (marque `ebay_api.ean_non_applicable.valeur`), puis la question EAN.
+- **Leboncoin, texte refusé** (« mention d'un site », « règles de contenu ») : la copie Leboncoin retire les mentions
+  de site (« instagram » ajouté le 18/10) ; un texte déjà refusé n'est jamais renvoyé (empreinte du texte servi) :
+  une reprise si le texte servi a changé, sinon la question avec les mots exacts de Leboncoin. Fiche et marque jamais touchées.

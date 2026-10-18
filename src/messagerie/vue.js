@@ -311,7 +311,7 @@ function raisonNonGenerable(c, fr) {
  * commande partait sans type et Vinted échouait (Louis, 18/10) — le serveur ne
  * lui donne plus de génération Vinted. Horodatage du BUILD_ID de la 0.6.126.
  */
-export const GENERATION_VINTED_BUILD_MIN = '2026-10-18T10:30:00Z';
+export const GENERATION_VINTED_BUILD_MIN = '2026-10-18T10:56:25Z';
 
 /** (18/10) L'extension de ce compte sait-elle commander l'étiquette Vinted ? true, false, ou null (inconnu). */
 export function extensionCommandeVinted(extensionBuild) {

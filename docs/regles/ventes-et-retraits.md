@@ -228,3 +228,11 @@ Rapport : `docs/enquetes/session-sans-nico-1810/lot4-ventes-lot-multi-exemplaire
   `li.quantity` → `quantite` ; (2) Leboncoin `bundle` : lire les annonces du lot dans le détail de la commande ; (3) relevé
   des ventes Beebs (commandes `o.products[]` → ventes) ; (4) eBay : `ebay_commande_appliquer` tient compte de `i.quantite`
   et une vente ailleurs révise la quantité eBay (−1) au lieu de retirer.
+
+## Règles (18/10 — ventes Beebs)
+- **Une commande lue sur la page des ventes de Beebs est une vente prouvée** (`commandes_beebs_noter`) : rattachée par le
+  numéro du produit SEULEMENT (deux jobs = doute, rien), preuve de la forme Depop (`ventes_prouvees_tick` → vente
+  « beebs », copies retirées) ; commande annulée = preuve levée. Interrupteur `coin_config.ventes_beebs_commandes`
+  (0 = fantôme : bilan `usage_logs ventes_beebs_commandes` seul). La 0.6.126 relit la page à la disparition d'une
+  annonce Beebs (30 min au plus) — **une disparition seule ne vaut jamais vente**.
+- Les 6 ventes Beebs déclarées et rangées « Ailleurs » (02 → 14/10) sont réparées en `beebs` (18/10, sans mail).
