@@ -217,11 +217,14 @@
   v121 (true), ebay-api-worker v90 → v91 (false), beebs-lien v14 → v15 (false), rapprochement-ia v9 → v10 (false),
   ia-banc-deduction v6 → v7 (false). Journaux depuis : 0 erreur, 0 réponse 5xx. Puis get-pending-jobs v263
   (`serveur:verif_redepot`), **v264** (19:15, garde Régis resserrée ; 23 appels en 200, 0 erreur) et **v265** (19:54,
-  poste ouvert sur la boutique d'un autre compte), verify_jwt true avant/après.
+  poste ouvert sur la boutique d'un autre compte), verify_jwt true avant/après. Puis (22:20, § 8) get-pending-jobs **v266**,
+  handler-watch **v121**, update-job-status **v145**, ebay-api-worker **v92**, generate-listing **v122** (verify_jwt
+  inchangés).
 - **Migrations** (inverses dans `supabase/rollbacks/`, essais dans `scripts/essais/`) : 20261018170000 (17:03),
   20261018200000, 20261018180000, 20261018190000 (18:23), 20261018210000 (18:2x — 180000, écrite avant 200000, avait
   effacé la condition des comptes reliés dans `armer_retrait_job_pour` ; relu : les deux correctifs y sont),
-  20261018220000 (18:52, Leboncoin partagé, essai 7/7), **20261018230000** (19:54, une vente Vinted un compte, essai 23/23).
+  20261018220000 (18:52, Leboncoin partagé, essai 7/7), **20261018230000** (19:54, une vente Vinted un compte, essai 23/23),
+  **20261018240000** (22:19, bilans « plateforme décochée », essai 8/8).
 - **Extension 0.6.128** : `build\CWS-0.6.128-A-TELEVERSER\fillsell-extension-0.6.128-492f753-cws.zip` (seul zip du dossier,
   BUILD_ID `2026-10-18T16:26:21Z+492f753`, 37 entrées, 556 Ko). **Manifeste relu : identique à la 0.6.127 hors version,
   aucune permission nouvelle, même liste de fichiers.** La 0.6.127 est rangée dans
