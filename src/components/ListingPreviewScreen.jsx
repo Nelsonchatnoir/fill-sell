@@ -119,6 +119,7 @@ import {
   champsBloquantsParPlateforme, plateformesBloqueesChamps as calculerPlateformesBloqueesChamps,
   descriptionVintedVide, calculerExclusions, motifAucunePlateforme, cleCategorieRequis,
   construireJobs, plateformesSansChemin, gardeAspectsEbay, aspectsEbayEncoreVides, questionsParPlateforme as calculerQuestionsParPlateforme,
+  dimensionsEbayGroupees,
 } from "../publication/moteur/regles";
 import {
   NO_BRAND_VALUE, SHARED_FIELD_KEYS, SHARED_PROPAGATION, EBAY_ASPECT_LABELS,
@@ -1251,6 +1252,10 @@ const MARQUE_GENERIQUE_RE = /(sans\s*marque|g[ée]n[ée]rique|unbranded|no\s*bra
  * @param {{marque?:string, famille?:string|null, plateformeJeu?:string|null}} ctx — marque telle qu'elle
  *   partira sur eBay ; plateformeJeu = « Plateforme » lue sur un jeu vidéo (02/10 soir)
  */
+// (18/10, zéro friction) Les aspects eBay à liste SUGGÉRÉE où l'option que le
+// texte nomme passe AVANT l'IA (banc scripts/bancs/zero-friction/banc-ia.mjs,
+// annonces eBay réelles) — les autres aspects libres restent sur l'IA seule.
+const TEXTE_AVANT_IA_EBAY = new Set(["Longueur de la robe", "Plateforme", "Style", "Type", "Matière de la couche extérieure"]);
 function defautAspectEbay(aspect, ctx = {}) {
   const fixe = EBAY_ASPECT_DEFAULTS[aspect?.name];
   if (fixe) return fixe;
@@ -7553,8 +7558,20 @@ export default function ListingPreviewScreen({
     // Longueur et Type sont obligatoires. Aucune question avant le débit, le
     // mur tombait chez l'extension. La catégorie déjà résolue sur la copie est
     // celle du job : c'est elle qui décide des questions.
+    // ── (18/10, zéro friction) LE RAYON QUE LE CLIC POSERA, PAS CELUI DE L'ICÔNE ──
+    // Depuis le 05/10, le pré-calcul (resoudrePublication, dès la génération)
+    // ne range plus son résultat dans la copie : `pf.ebayCategoryId` restait
+    // vide et l'encart retombait sur l'icône. Mesuré le 18/10 : 42 décorations
+    // murales interrogées sur « Longueur, Largeur, Hauteur » au nom de 79654
+    // (icône 🖼️) — 39 sont parties dans une AUTRE catégorie (166727, 41510,
+    // 36025…), qui n'exige aucune dimension : 3 questions inutiles par article.
+    // Le choix de la personne d'abord, puis la copie, puis le pré-calcul.
+    const rayonEbay = rayonsParPf?.ebay ?? null;
+    if (rayonEbay?.choisi && String(rayonEbay.id ?? "").trim()) return String(rayonEbay.id).trim();
     const resolue = String(pf.ebayCategoryId ?? "").trim();
     if (resolue) return resolue;
+    const prevue = String(rayonEbay?.id ?? "").trim();
+    if (prevue) return prevue;
     const icon = resolveArticleIcon({ initialListing, edited, pf, aiIcon: activeAiIcon });
     const direct = getEbayCategoryId(icon, pf.genre);
     if (direct) return direct;
@@ -7569,7 +7586,7 @@ export default function ListingPreviewScreen({
     // aura réellement.
     const secours = ebayGenreFallback();
     return secours ? (getEbayCategoryId(icon, secours) ?? null) : null;
-  }, [selected, edited, initialListing, activeAiIcon, ebayCategorieDuClic]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selected, edited, initialListing, activeAiIcon, ebayCategorieDuClic, rayonsParPf]); // eslint-disable-line react-hooks/exhaustive-deps
   // « Plateforme » d'un jeu vidéo, lue sur la machine nommée (02/10 soir,
   // point 6) — même texte et même icône que la catégorie ci-dessus ; posée
   // par défaut dans l'encart (modifiable), jamais envoyée à l'IA.
@@ -7726,7 +7743,14 @@ export default function ListingPreviewScreen({
       // select eBay ne satisfaisait jamais le bloc rouge (double-saisie, et
       // deux valeurs divergentes possibles au publish).
       const manquant = { name, state: "missing", value: "", sharedKey: src?.key, allowedValues, mode };
-      if (!src?.key && isEbayClosedList(allowedValues, mode)) {
+      // (18/10, zéro friction — banc de 571 VRAIES annonces eBay France, valeur
+      // choisie par le vendeur) Sur ces aspects à liste SUGGÉRÉE, l'option que
+      // le texte nomme est plus juste que l'IA : « Longueur de la robe » 7/8
+      // contre 0/2 (38 vides), « Plateforme » +1 juste −1 faux, « Matière de la
+      // couche extérieure » +1, « Style » et « Type » à égalité (un appel IA de
+      // moins). Les autres aspects libres (« Nom du jeu vidéo » : en recul)
+      // restent sur l'IA seule.
+      if (!src?.key && (isEbayClosedList(allowedValues, mode) || (TEXTE_AVANT_IA_EBAY.has(name) && allowedValues?.length))) {
         const ded = deduireOptionDuTexte({ platform: "ebay", key: name, label: name, allowedValues, textes: textesEbay });
         if (ded?.valeur) return { ...manquant, deduit: { valeur: ded.valeur, source: ded.source } };
         if (ded?.candidats?.length > 1) return { ...manquant, allowedValues: listeCandidatsDabord(allowedValues, ded.candidats), candidats: ded.candidats };
@@ -8488,6 +8512,9 @@ export default function ListingPreviewScreen({
     return null;
   };
 
+  // (18/10, zéro friction) Le texte du VENDEUR — la fiche d'abord, puis la copie :
+  // il tranche une tranche de taille Vinted (« 3-6 mois », childSizes.tailleEnfantSelonLeTexte).
+  const textesDuVendeurPour = (p) => [initialListing?.titre ?? "", initialListing?.description ?? "", edited[p]?.title ?? "", edited[p]?.description ?? ""];
   const genericRequiredStatus = useMemo(() => {
     const out = {};
     // Le chemin de catégorie de la copie, pour le vocabulaire des tailles
@@ -8611,7 +8638,7 @@ export default function ListingPreviewScreen({
             // (Marque, relevé tronqué à 200) : présence = ok, la plateforme
             // tranche au dépôt — le comportement d'hier. La carte
             // (champsDuRayon) applique exactement ce jugement.
-            const verdict = jugerValeurContreListe({ platform, key, value: src, allowedValues, cheminCategorie: cheminDe(platform) });
+            const verdict = jugerValeurContreListe({ platform, key, value: src, allowedValues, cheminCategorie: cheminDe(platform), textes: textesDuVendeurPour(platform) });
             if (!verdict.dans && target && allowedValues.length && allowedValues.length <= EBAY_CLOSED_LIST_MAX) {
               return {
                 key, label, state: "invalid", value: src, dedicatedTarget: target,
@@ -8654,7 +8681,7 @@ export default function ListingPreviewScreen({
           if (variante === "nouvelle" && allowedValues.length && allowedValues.length <= EBAY_CLOSED_LIST_MAX) {
             // Même règle sur le canal générique (une valeur tapée en « Autre
             // valeur… », ou héritée d'un ancien job) : jugée contre la liste.
-            const verdict = jugerValeurContreListe({ platform, key, value: generic, allowedValues, cheminCategorie: cheminDe(platform) });
+            const verdict = jugerValeurContreListe({ platform, key, value: generic, allowedValues, cheminCategorie: cheminDe(platform), textes: textesDuVendeurPour(platform) });
             if (!verdict.dans) {
               return {
                 key, label, state: "invalid", source: "generic", value: generic, dedicatedTarget: genericDedicatedTarget(platform, key),
@@ -9006,6 +9033,18 @@ export default function ListingPreviewScreen({
   const couleurEnAttente = couleurAutoEnAttente(besoinsCouleur, couleurTraites);
   const champBloquantVus = useRef({});      // "gp:key" → {platform, champ, categorie, complete?}
   const champBloquantRestants = useRef(new Set());
+  // (18/10, zéro friction) QUI a levé la question : une ligne « complete » ne
+  // disait pas si la personne avait répondu ou si le moteur (IA arrivée après,
+  // mémoire, rayon recalculé) avait posé la valeur. Les gestes de la personne
+  // dans le bloc de questions (BlocQuestions) et ses réponses notées
+  // (noterReponseQuestion) sont retenus ici, par clé de télémétrie.
+  const gestesQuestions = useRef(new Set());
+  const noterGesteQuestion = (cle) => { if (cle) gestesQuestions.current.add(String(cle)); };
+  const gesteSurQuestion = (k, vu) => {
+    if (gestesQuestions.current.has(k)) return true;
+    if (vu?.partage && gestesQuestions.current.has(`partage:${vu.partage}`)) return true;
+    return Boolean(vu?.dimensions?.some(d => gestesQuestions.current.has(`ebay:${d}`)));
+  };
   const doneRef = useRef(false);
   // (02/10, lot) Micro-appels d'extraction en vol : le pilote du lot attend
   // qu'ils aient répondu avant de compter ce qui reste à demander. (18/10,
@@ -9053,9 +9092,9 @@ export default function ListingPreviewScreen({
         actifs.add(k);
         if (!champBloquantVus.current[k]) {
           champBloquantVus.current[k] = {
-            platform: gp, champs: [a.label ?? a.key],
+            platform: gp, champs: [a.label ?? a.key], champ_cle: a.key,
             categorie: genericCategoryKeys?.[gp] ?? initialListing?.categorie ?? null,
-            inventaire_id: invId ?? null,
+            inventaire_id: invId ?? null, affiche_le: Date.now(),
           };
           logChampBloquant("affiche", champBloquantVus.current[k]);
         }
@@ -9065,17 +9104,26 @@ export default function ListingPreviewScreen({
     // avant tout job et ne laissaient AUCUNE ligne (XEWER, jeux vidéo, 29/09 →
     // 02/10). Un aspect manquant n'est compté qu'une fois l'extraction IA de la
     // catégorie terminée — un champ qu'elle va remplir n'est pas un blocage.
+    // (18/10, zéro friction) Deux dimensions eBay ou plus = UNE question
+    // « Dimensions » (moteur/regles.questionsAPoser) : une ligne, pas trois.
+    const dimsEbay = dimensionsEbayGroupees(ebayRequiredStatus);
     for (const a of (ebayRequiredStatus ?? []).filter(aspectBloquant)) {
       if (a.state === "missing" && ebayIaFiniePour !== ebayPreviewCategoryId) continue;
       if (partageEnQuestion("ebay", a.sharedKey)) continue;
       if (couleurRetenue({ platform: "ebay", key: a.name, sharedKey: a.sharedKey })) continue;
-      const k = `ebay:${a.name}`;
+      // La question « Dimensions » déjà ouverte garde ses dimensions jusqu'à la
+      // dernière (la personne en a rempli deux sur trois : toujours la même question).
+      const dimOuverte = champBloquantVus.current["ebay:Dimensions"];
+      const enDimensions = dimsEbay.includes(a) || Boolean(dimOuverte && !dimOuverte.complete && dimOuverte.dimensions?.includes(a.name));
+      const k = enDimensions ? "ebay:Dimensions" : `ebay:${a.name}`;
       if (memoireRetenue && !champBloquantVus.current[k]) continue;
       actifs.add(k);
       if (!champBloquantVus.current[k]) {
         // (10/10) L'article est nommé, comme pour les questions partagées : on
         // sait enfin QUEL article a buté, pas seulement sur quoi.
-        champBloquantVus.current[k] = { platform: "ebay", champs: [a.name], categorie: ebayPreviewCategoryId ?? null, inventaire_id: invId ?? null };
+        champBloquantVus.current[k] = enDimensions
+          ? { platform: "ebay", champs: ["Dimensions"], dimensions: dimsEbay.map(d => d.name), categorie: ebayPreviewCategoryId ?? null, inventaire_id: invId ?? null, affiche_le: Date.now() }
+          : { platform: "ebay", champs: [a.name], champ_cle: a.name, categorie: ebayPreviewCategoryId ?? null, inventaire_id: invId ?? null, affiche_le: Date.now() };
         logChampBloquant("affiche", champBloquantVus.current[k]);
       }
     }
@@ -9091,9 +9139,9 @@ export default function ListingPreviewScreen({
         actifs.add(k);
         if (!champBloquantVus.current[k]) {
           champBloquantVus.current[k] = {
-            platform: p, champs: [libellesPartages[f.key] ?? f.key], partage: f.key,
+            platform: p, champs: [libellesPartages[f.key] ?? f.key], partage: f.key, champ_cle: f.key,
             categorie: genericCategoryKeys?.[p] ?? initialListing?.categorie ?? null,
-            inventaire_id: invId ?? null,
+            inventaire_id: invId ?? null, affiche_le: Date.now(),
           };
           logChampBloquant("affiche", champBloquantVus.current[k]);
         }
@@ -9108,7 +9156,13 @@ export default function ListingPreviewScreen({
         // d'après (la lecture « elle l'a rempli 5 fois » en comptait 2 ainsi).
         const catApres = vu.platform === "ebay" ? (ebayPreviewCategoryId ?? null) : (genericCategoryKeys?.[vu.platform] ?? initialListing?.categorie ?? null);
         const rayonChange = vu.categorie != null && catApres != null && String(catApres) !== String(vu.categorie);
-        logChampBloquant(rayonChange ? "retiree" : "complete", rayonChange ? { ...vu, categorie_apres: catApres } : vu);
+        // (18/10, zéro friction) Qui l'a levée — la personne (un geste dans le
+        // bloc de questions) ou le moteur (IA arrivée après, mémoire, rayon) —
+        // et au bout de combien de secondes : seule une question levée par la
+        // personne est une question qu'elle a dû se poser.
+        const suite = { par: gesteSurQuestion(k, vu) ? "personne" : "moteur",
+          delai_s: vu.affiche_le ? Math.round((Date.now() - vu.affiche_le) / 1000) : null };
+        logChampBloquant(rayonChange ? "retiree" : "complete", rayonChange ? { ...vu, ...suite, categorie_apres: catApres } : { ...vu, ...suite });
       }
     }
     champBloquantRestants.current = actifs;
@@ -9266,10 +9320,18 @@ export default function ListingPreviewScreen({
             allowedValues: openVocab(a.dedicatedTarget)
               ? []
               : (a.allowedValues ?? []).slice(0, 60),
+            // (18/10, zéro friction) La clé et le canal du champ : la cascade des
+            // leviers IA (serveur) les note pour juger sa réponse contre l'annonce.
+            key: a.key, cible: a.dedicatedTarget ?? null,
           }));
           const corps = {
             resolve_aspects: true,
             aspects: details,
+            // (18/10, zéro friction) Ce qu'il faut à la cascade des leviers IA
+            // (generate-listing, ia_leviers_bascule) — un serveur d'avant l'ignore.
+            plateforme: gp, categorie: catKey, inventaire_id: invId ?? null,
+            feuille_dependante: gp === "leboncoin" && Boolean(lbcFeuilleDependante(catKey)),
+            photos: photosPourCouleur(urlsPhotos(processedPhotos?.length ? processedPhotos : photos)),
             item_data: {
               titre:       src.title || initialListing?.titre || "",
               marque:      src.platform_fields?.marque || initialListing?.marque || null,
@@ -9355,8 +9417,8 @@ export default function ListingPreviewScreen({
     const cheminVinted = ficheAttrs?.categorie_vinted?.chemin ?? edited.vinted?.platform_fields?.categoryPath ?? null;
     const objet = activeAiObjet ?? src.platform_fields?.categorie_objet_ia ?? null;
     const aspects = [
-      ...simples.map((a) => ({ name: a.label, allowedValues: a.allowedValues.slice(0, 200) })),
-      ...(paire ? [{ name: "Univers et produit", allowedValues: paire.options.slice(0, 200) }] : []),
+      ...simples.map((a) => ({ name: a.label, allowedValues: a.allowedValues.slice(0, 200), key: a.key, cible: a.dedicatedTarget ?? null })),
+      ...(paire ? [{ name: "Univers et produit", allowedValues: paire.options.slice(0, 200), key: "paire", cible: null }] : []),
     ];
     setIaGeneriqueEnVol((n) => n + 1);
     (async () => {
@@ -9365,6 +9427,10 @@ export default function ListingPreviewScreen({
         const corps = {
           resolve_aspects: true,
           aspects,
+          // (18/10, zéro friction) La cascade des leviers IA (serveur), comme la première passe.
+          plateforme: "leboncoin", categorie, inventaire_id: inventaireId ?? null,
+          feuille_dependante: Boolean(lbcFeuilleDependante(categorie)),
+          photos: photosPourCouleur(urlsPhotos(processedPhotos?.length ? processedPhotos : photos)),
           item_data: {
             titre: src.title || initialListing?.titre || "",
             description: src.description || initialListing?.description || null,
@@ -9610,6 +9676,7 @@ export default function ListingPreviewScreen({
   function noterReponseQuestion(gp, a, v) {
     const champ = a?.key ?? a?.name;
     if (!champ) return;
+    noterGesteQuestion(`${gp}:${champ}`);
     const k = `${gp}|${champ}`;
     const categorie = gp === "ebay" ? (ebayPreviewCategoryId ?? null) : (genericCategoryKeys?.[gp] ?? null);
     const valeur = reponseARetenir({ plateforme: gp, champ, allowedValues: a.allowedValues, valeur: v });
@@ -10105,7 +10172,7 @@ export default function ListingPreviewScreen({
       // l'écran (moteur/listes.tailleDuJob), sur la valeur du job. La saisie
       // de la personne reste dans `taille_saisie` (et sur la fiche).
       rows = rows.map(r => {
-        const t = tailleDuJob({ platform: r.platform, taille: r.platform_fields?.taille, lignes: genericRequiredStatus?.[r.platform] });
+        const t = tailleDuJob({ platform: r.platform, taille: r.platform_fields?.taille, lignes: genericRequiredStatus?.[r.platform], textes: textesDuVendeurPour(r.platform) });
         if (!t) return r;
         console.log(`[publish] ${r.platform} — taille « ${r.platform_fields.taille} » → « ${t} » (écriture de la grille)`);
         return { ...r, platform_fields: { ...r.platform_fields, taille: t, taille_saisie: r.platform_fields.taille } };
@@ -11264,8 +11331,10 @@ export default function ListingPreviewScreen({
         const sk = genericFieldToSharedKey(gp, a.key);
         return sk && missingSharedFields.includes(sk) ? sk : `${gp}:${a.key}`;
       })),
+    // (18/10, zéro friction) Deux dimensions eBay ou plus = UNE question « Dimensions ».
     ...(ebayRequiredStatus ?? []).filter(aspectBloquant).map(a =>
-      (a.sharedKey && missingSharedFields.includes(a.sharedKey)) ? a.sharedKey : `ebay:${a.name}`),
+      (a.sharedKey && missingSharedFields.includes(a.sharedKey)) ? a.sharedKey
+        : (dimensionsEbayGroupees(ebayRequiredStatus).includes(a) ? "ebay:Dimensions" : `ebay:${a.name}`)),
   ]);
   const nbQuestions = clesQuestions.size
     + (vintedGenreBlocked ? 1 : 0) + (beebsGenreBlocked ? 1 : 0)
@@ -11283,7 +11352,9 @@ export default function ListingPreviewScreen({
         && !(genericFieldToSharedKey(gp, a.key) && missingSharedFields.includes(genericFieldToSharedKey(gp, a.key)))).length;
       if (n) ajoute(gp, n);
     }
-    const nE = (ebayRequiredStatus ?? []).filter(a => aspectBloquant(a) && !(a.sharedKey && missingSharedFields.includes(a.sharedKey))).length;
+    const dimsGroupees = dimensionsEbayGroupees(ebayRequiredStatus);
+    const nE = (ebayRequiredStatus ?? []).filter(a => aspectBloquant(a) && !(a.sharedKey && missingSharedFields.includes(a.sharedKey))
+      && !dimsGroupees.includes(a)).length + (dimsGroupees.length ? 1 : 0);
     if (nE) ajoute("ebay", nE);
     if (vintedGenreBlocked || descriptionVideVinted) ajoute("vinted");
     if (beebsGenreBlocked) ajoute("beebs");
@@ -11443,7 +11514,7 @@ export default function ListingPreviewScreen({
     genericRequiredStatus, setPlatformAspect, setPlatformDedicatedField, EBAY_CLOSED_LIST_MAX,
     // (18/10 nuit, point 1) La mémoire « compte × catégorie » : ce qu'elle a
     // posé sur cet article (montré, modifiable) et la réponse de la personne.
-    posesMemoire, noterReponseQuestion,
+    posesMemoire, noterReponseQuestion, noterGesteQuestion,
     demanderPrixAchat: prixAchatARenseigner, prixAchatSaisi, setPrixAchatSaisi, prixAchatInconnu, setPrixAchatInconnu, prixAchatManquant,
     inventoryFull, stockCount, stockLimitCfg,
     lbcPhotoCap, lbcAdresseManquante, jumeaux, descriptionMentions, descriptionVideVinted,

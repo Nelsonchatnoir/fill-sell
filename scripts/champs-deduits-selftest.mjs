@@ -62,7 +62,8 @@ ok(decl > 0 && retenue > decl && LPS.indexOf('const [iaGeneriqueEnVol, setIaGene
 ok(/if \((?:iaGeneriqueRetenue|\(iaGeneriqueRetenue \|\| memoireRetenue\)) && !champBloquantVus\.current\[k\]\) continue;\n\s+actifs\.add\(k\);/.test(LPS), 'une IA générique en vol n\'ouvre pas de ligne « affiche » — et ne ferme jamais une ligne ouverte');
 ok(/missingSharedFieldsDetailed, couleurEnAttente, iaGeneriqueEnVol(?:, memoireCat)?\]\); \/\/ eslint-disable-line react-hooks\/exhaustive-deps/.test(LPS), 'la télémétrie se rejoue quand l\'IA a fini');
 const LST = lire('src/publication/moteur/listes.js');
-ok(/import \{ toPlatformChildSize \} from "\.\.\/\.\.\/utils\/childSizes\.js";/.test(LST) && /const enfant = toPlatformChildSize\(v, platform\);/.test(LST) && LST.indexOf('const enfant = toPlatformChildSize') < LST.indexOf('const t = tailleDansGrille(v, vals'), 'le moteur traduit AVANT le vocabulaire des tailles, et seulement vers une valeur de la grille');
+// (18/10, zéro friction) La tranche Vinted passe d'abord par le texte du vendeur (tailleEnfantSelonLeTexte).
+ok(/import \{ toPlatformChildSize, tailleEnfantSelonLeTexte \} from "\.\.\/\.\.\/utils\/childSizes\.js";/.test(LST) && /const enfant = toPlatformChildSize\(\(textes && tailleEnfantSelonLeTexte\(v, textes\)\) \|\| v, platform\);/.test(LST) && LST.indexOf('const enfant = toPlatformChildSize') < LST.indexOf('const t = tailleDansGrille(v, vals'), 'le moteur traduit AVANT le vocabulaire des tailles, et seulement vers une valeur de la grille');
 
 // 4
 console.log('4. La veille des champs obligatoires');

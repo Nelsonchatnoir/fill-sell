@@ -394,18 +394,44 @@ export function questionsAPoser({
     redEbayAspects = redEbayAspects.filter(x => !tailleE.includes(x));
   }
   const tailleBloque = Boolean(questionTaille?.lignes.some(({ a }) => aspectBloquant(a)));
-  const redTotal = sharedFieldsToRender.length + redGenericAspects.length + redEbayAspects.length + (questionTaille ? 1 : 0);
+  // ── LES DIMENSIONS : UNE QUESTION, PAS TROIS (18/10, « zéro friction ») ────
+  // 44 décorations murales eBay le 18/10 : « Longueur », « Largeur », « Hauteur »
+  // demandées l'une après l'autre (112 questions pour 42 articles) — et le texte,
+  // les photos, les autres annonces du même article n'en disaient rien (3 sur 46) :
+  // c'est une vraie question, mais UNE. Deux dimensions ou plus à demander pour
+  // eBay forment la question « Dimensions » (questionDimensions) : un champ par
+  // dimension, côte à côte, chacun écrit dans SON aspect eBay.
+  const dimsE = redEbayAspects.filter(a => estDimensionEbay(a.name));
+  const questionDimensions = dimsE.length >= 2 ? { lignes: dimsE } : null;
+  if (questionDimensions) redEbayAspects = redEbayAspects.filter(x => !dimsE.includes(x));
+  const dimensionsBloque = Boolean(questionDimensions?.lignes.some(aspectBloquant));
+  const redTotal = sharedFieldsToRender.length + redGenericAspects.length + redEbayAspects.length + (questionTaille ? 1 : 0)
+    + (questionDimensions ? 1 : 0);
   // Restants = ce qui BLOQUE encore (les champs déjà complétés restent affichés
   // par le sticky mais ne comptent plus).
   const redRestants = missingSharedFields.filter(k => sharedFieldCfg[k]).length
     + redGenericAspects.filter(({ a }) => aspectBloquant(a)).length
     + redEbayAspects.filter(aspectBloquant).length
-    + (tailleBloque ? 1 : 0);
+    + (tailleBloque ? 1 : 0)
+    + (dimensionsBloque ? 1 : 0);
   // Valeur catalogue UNIQUE (2026-07-19, cas Medik8) : confirmation explicite,
   // pleine largeur ; « Non » décoche la plateforme.
   const genSeule = ({ a }) => aspectBloquant(a)
     && Array.isArray(a.allowedValues) && a.allowedValues.length === 1 && Boolean(peutDecocher);
-  return { sharedFieldsToRender, redGenericAspects, redEbayAspects, redTotal, redRestants, genSeule, questionTaille };
+  return { sharedFieldsToRender, redGenericAspects, redEbayAspects, redTotal, redRestants, genSeule, questionTaille, questionDimensions };
+}
+
+// Les aspects eBay qui sont une DIMENSION de l'objet (nom exact de la liste
+// eBay France). « Longueur de la robe », « Longueur des manches » sont des
+// styles à liste, jamais des dimensions : nom EXACT seulement.
+const DIMENSIONS_EBAY = new Set(["longueur", "largeur", "hauteur", "profondeur", "épaisseur", "diamètre"]);
+export function estDimensionEbay(nom) {
+  return DIMENSIONS_EBAY.has(String(nom ?? "").normalize("NFC").trim().toLowerCase());
+}
+/** Les dimensions eBay encore à demander (≥ 2 = UNE question « Dimensions »), sinon []. */
+export function dimensionsEbayGroupees(ebayRequiredStatus) {
+  const d = (ebayRequiredStatus ?? []).filter(a => aspectBloquant(a) && estDimensionEbay(a.name));
+  return d.length >= 2 ? d : [];
 }
 
 /**
@@ -510,9 +536,10 @@ export function questionsParPlateforme({
       ajoute(gp, sk ? (libellePartage[sk] ?? a.label ?? a.key) : (a.label ?? a.key));
     }
   }
+  const dims = dimensionsEbayGroupees(ebayRequiredStatus);
   for (const a of (ebayRequiredStatus ?? []).filter(aspectBloquant)) {
     const sk = a.sharedKey && libellePartage[a.sharedKey] ? a.sharedKey : null;
-    ajoute("ebay", sk ? libellePartage[sk] : (a.label ?? a.name));
+    ajoute("ebay", sk ? libellePartage[sk] : (dims.includes(a) ? "Dimensions" : (a.label ?? a.name)));
   }
   if (vintedGenreBlocked) ajoute("vinted", libelleGenre);
   if (descriptionVideVinted) ajoute("vinted", libelleDescription);

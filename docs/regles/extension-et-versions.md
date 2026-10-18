@@ -50,3 +50,15 @@
   `Default/Secure Preferences`, `extensions.settings.pedhgegmgjkdcbdeinjnhdpemnpafpdp.path`
   (location 4 = non empaquetée) ; on copie le build DANS ce dossier, puis on
   relit `profiles.extension_build` après son « Recharger ».
+
+## 18/10 après-midi — le PC reste éveillé tant qu'il reste UN job (décision de Nico)
+- **Plus de plafond de 4 h.** L'extension garde le PC éveillé (`chrome.power.requestKeepAwake("system")`, jamais
+  l'écran) tant qu'il reste UN job en attente ou en cours pour CE poste ; elle relâche dès que la file est vide.
+  Filets : plus de session (relâche immédiate) ; **2 h sans un seul poll réussi** (`EVEIL_SANS_POLL_MS`, serveur
+  injoignable, 401) ; démarrage du service worker (épisode frais < 2 h : re-demandé). Un job en cours et une
+  publication lancée du popup demandent l'éveil ; l'épisode se rafraîchit entre deux jobs d'un long cycle.
+- **Le serveur compte toute la file de CE poste** (`get-pending-jobs` v261, `jobs_retenus_sync`, lu par toutes les
+  versions) : créneau lointain, limite du jour, pause anti-robot compris ; seuls les jobs d'un AUTRE poste (boutique
+  ouverte ailleurs, réservés par lui) ne tiennent pas celui-ci éveillé. Le plafond de 4 h ne disparaît qu'avec la
+  **0.6.127** (à téléverser APRÈS l'acceptation de la 0.6.126). Selftest `eveil-file`. Texte de `Legal.jsx` (permission
+  `power`) aligné.

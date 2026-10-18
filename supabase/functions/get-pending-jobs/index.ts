@@ -6891,6 +6891,9 @@ serve(async (req) => {
     let heldBoutiqueEtrangere = 0;
     // (18/10, lot 6) Jobs Vinted laissés au poste qui a leur boutique ouverte (jamais comptés « retenus »).
     let laissesAutrePosteN = 0;
+    // (18/10, zéro friction, point A) Les jobs d'un AUTRE poste (laissés à sa boutique, réservés par lui) :
+    // ils ne tiennent pas CE poste éveillé — c'est l'autre qui les fera.
+    const idsAutrePoste = new Set<string>();
     let heldBoutiqueLecture = 0;
     if (!includeProcessing && !includeNeedsUser) {
       const operations = out.filter(j => j.platform === "vinted" && ["publish", "delete", "republish"].includes(j.action));
@@ -7068,7 +7071,7 @@ serve(async (req) => {
         if (laissesAutrePoste.size) {
           const vers = [...new Set(laissesAutrePoste.values())].map(posteCourt).join(", ");
           console.log(`[get-pending-jobs] userId=${user.id} poste ${posteCourt(sessionId)} (boutique Vinted ${identitePoste}) : ${laissesAutrePoste.size} job(s) Vinted laissé(s) au poste qui a leur boutique ouverte (${vers}) — rien d'écrit, ils restent en file`);
-          for (const id of laissesAutrePoste.keys()) retenus.add(id);
+          for (const id of laissesAutrePoste.keys()) { retenus.add(id); idsAutrePoste.add(id); }
           laissesAutrePosteN = laissesAutrePoste.size;
         }
       }
@@ -11331,11 +11334,10 @@ serve(async (req) => {
     // n'a AUCUN autre lecteur (app, popup, serveur). Purement additif à la
     // réponse : la distribution `out` n'est pas touchée. Réparé pour tout le
     // parc SANS nouveau paquet CWS.
-    // Borné au travail IMMINENT (next_action_after nul ou ≤ +15 min) : on ne
-    // tient pas une machine éveillée pour des republications planifiées loin ;
-    // le plafond de 4 h côté extension reste le garde-fou absolu. `jobs` est la
-    // file pending déjà en mémoire, `out` son sous-ensemble distribué : aucun
-    // appel de plus.
+    // (18/10, point A) PLUS de borne « imminent » ni de plafond de 4 h (décision
+    // de Nico) : tout job pending que CE poste fera compte, voir heldBacklog plus
+    // bas. `jobs` est la file pending déjà en mémoire, `out` son sous-ensemble
+    // distribué : aucun appel de plus.
     // ══ RETRAIT eBay : LE NUMÉRO, JAMAIS LE TITRE (2026-10-01) ═══════════════
     // Le content script eBay se rabat sur le TITRE EXACT quand le numéro n'est
     // pas dans le Hub (autre compte dans Chrome, annonce déjà finie) : il
@@ -11556,6 +11558,7 @@ serve(async (req) => {
       });
       if (erreurReservation) return json({ error: "La réservation des jobs est indisponible. La file sera relue au prochain passage." }, 503);
       const idsPris = new Set(Array.isArray(pris) ? pris.map(String) : []);
+      for (const j of servis) if (!idsPris.has(String(j.id))) idsAutrePoste.add(String(j.id)); // réservés par un autre poste
       out = out.filter(j => idsPris.has(String(j.id)));
       // ── UNE TÂCHE SERVIE SANS JAMAIS DÉMARRER EST MISE DE CÔTÉ (03/10, F) ──
       // doriane-henri : deux tâches Vinted servies à chaque passage depuis le
@@ -11621,15 +11624,18 @@ serve(async (req) => {
 
     const _outIds = new Set(out.map((j) => String(j.id)));
     const _nowMs = Date.now();
+    // ── (18/10, zéro friction, point A — décision de Nico) ────────────────────
+    // « L'extension garde le PC éveillé tant qu'il reste UN job en attente ou en
+    // cours, sans plafond de 4 h ; elle ne relâche que quand la file est vide. »
+    // Compté désormais : TOUT job pending de ce compte que CE poste fera — une
+    // échéance lointaine (créneau, relance espacée), la limite du jour, une pause
+    // anti-robot (sa sonde passe toutes les 45 min : il faut un poste éveillé)
+    // comptent aussi. Seuls les jobs d'un AUTRE poste (boutique ouverte ailleurs,
+    // réservés par lui) ne tiennent pas celui-ci éveillé. `_nowMs` reste pour la trace.
+    void _nowMs;
     const heldBacklog = (jobs ?? []).filter((j) => {
       if (_outIds.has(String(j.id))) return false; // déjà distribué ce cycle
-      // En pause anti-robot du compte (25/09) : rien d'imminent — tenir la
-      // machine éveillée ne ferait que relire un mur.
-      if (idsAntirobot.has(String(j.id))) return false;
-      const naa = (j.platform_fields as Record<string, unknown> | null)?.["next_action_after"];
-      if (!naa) return true; // prêt maintenant (retenu par le compte-gouttes / une garde de ce cycle)
-      const t = Date.parse(String(naa));
-      return !Number.isFinite(t) || t <= _nowMs + 15 * 60_000; // échéance imminente
+      return !idsAutrePoste.has(String(j.id));
     }).length;
     const travailRetenu = heldSync + heldBacklog;
 

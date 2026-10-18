@@ -269,3 +269,28 @@
   d'une republication Vinted relit la boutique AVANT le formulaire (0.6.126) : autre boutique = attente, rien rempli.
 - **Coupures techniques** : une seule signature (`CANAL_RE`, `_shared/etat-job.js`), lue sur le message ET
   `error_technique.brut` ; une republication avant retrait coupée repart seule (« En pause »), jamais un bouton « Relancer ».
+
+## 18/10 après-midi — « zéro friction » : une question ne part que si l'information n'existe nulle part (rapport `docs/enquetes/zero-friction-1810/RAPPORT.md`)
+- **Mesure** : `champ_requis_bloquant` nomme le champ depuis le 10/10 (pas de « ? ») ; depuis le 18/10 chaque ligne porte
+  `champ_cle` et `affiche_le`, et « complete » / « retiree » disent **par qui** (`par` = personne : un geste dans le bloc de
+  questions ou une réponse notée ; moteur : IA arrivée après, mémoire, rayon) et **au bout de combien** (`delai_s`). Une
+  « vraie » question = levée par la personne, abandonnée ou partie sans la plateforme. Bilan :
+  `questions_publication_bilan(debut, fin)` (avant le 18/10 : levée ≥ 20 s après l'affichage = la personne).
+- **Taille enfant, tranche Vinted** (`childSizes.tailleEnfantSelonLeTexte`) : « 3-6 mois / 62 cm » (rangée par la table
+  sur sa borne haute) suit le TEXTE du vendeur quand le titre, puis la description, nomme UNE seule des deux bornes, seule
+  (« Pyjama 3 mois » → « 3 mois (54-60 cm) ») ; « 12-18 mois », « 3 à 6 mois », les deux bornes nommées : la table, comme
+  avant ; jamais une taille hors de la tranche. Rejeu des 7 j : 11 → 5 tailles Beebs différentes du choix de la personne
+  (les 5 restantes : titres « 12-18 mois », vraie ambiguïté — parc : 11 « 18 mois » / 7 « 12 mois »).
+- **Dimensions eBay, UNE question** (`regles.questionsAPoser` → `questionDimensions`, `estDimensionEbay` : Longueur,
+  Largeur, Hauteur, Profondeur, Épaisseur, Diamètre — noms exacts ; « Longueur de la robe » n'en est pas une) : deux
+  dimensions ou plus forment la carte « Dimensions » (un champ par dimension), une ligne de télémétrie, une question dans
+  « N questions ». Ce n'est pas devinable (39 des 42 décorations murales du 18/10 n'avaient aucune mesure dans le texte,
+  les photos ni les autres annonces) : la question reste, regroupée. Une mesure n'est jamais inventée (garde
+  `mesureLueDansLeContexte`).
+- **Leviers IA (banc `scripts/bancs/zero-friction/banc-ia.mjs`)** : l'existant (Haiku 4.5, texte) ne change pas ; une
+  CASCADE ne part que sur les champs qu'il laisse vides, champ par champ (`ia_leviers_bascule`, nés « fantome », bascule et
+  retour arrière automatiques — `docs/regles/base-supabase-et-fonctions.md`) : Leboncoin Produit / Support / Univers
+  (hors feuilles Maison & Jardin) → Haiku 5.5 texte, liste entière ; Beebs Âge → lecture des photos puis texte. Non
+  branchés (en recul au banc) : paires « Univers et produit », Genre des livres, photo directe, Sonnet. Le client envoie
+  `plateforme`, `categorie`, `inventaire_id`, `photos`, `feuille_dependante` et la clé de chaque champ ; un client d'avant
+  garde le chemin d'hier. Selftests `zero-friction`, `ia-leviers`.

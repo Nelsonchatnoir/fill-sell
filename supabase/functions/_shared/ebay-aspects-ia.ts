@@ -64,10 +64,32 @@ export function contexteEnTexte(c: ContexteArticle): string {
   ].filter(Boolean).join("\n");
 }
 
-function ligneDemande(a: AspectDemande): string {
+// ═══════════════════════════════════════════════════════════════════════════
+// LES LEVIERS DU CHANTIER « ZÉRO FRICTION » (18/10) — options, défaut INCHANGÉ
+// ═══════════════════════════════════════════════════════════════════════════
+// Sans option, resoudreAspectsIA pose EXACTEMENT la même question qu'avant
+// (Haiku 4.5, texte seul, liste fermée bornée à 120). Les options ne servent
+// qu'aux leviers mesurés sur le banc (scripts/bancs/zero-friction/) et branchés
+// champ par champ par la bascule (ia_leviers_bascule, generate-listing) :
+//   · modele        : "claude-haiku-5-5" / "claude-sonnet-5-5" (sans température,
+//                     réflexion coupée, effort bas : une classification) ;
+//   · images        : 1 à 2 photos de l'article (la valeur peut se LIRE dessus) ;
+//   · listeFermeeMax: la liste fermée entière (200) — Bricolage Leboncoin a 147
+//                     paires « Type › Produit » : les 27 dernières n'étaient
+//                     jamais proposées au modèle (bornées à 120).
+export const MODELE_ASPECTS_DEFAUT = "claude-haiku-4-5-20251001";
+// deno-lint-ignore no-explicit-any
+type SourceImageIA = any;
+export function corpsModele(modele: string): Record<string, unknown> {
+  if (/^claude-haiku-5-5$/.test(modele)) return { thinking: { type: "disabled" }, output_config: { effort: "low" } };
+  if (/^claude-sonnet-5-5$/.test(modele)) return { thinking: { type: "between_tools" }, output_config: { effort: "low" } };
+  return {};
+}
+
+function ligneDemande(a: AspectDemande, listeFermeeMax = LISTE_FERMEE_MAX): string {
   const liste = a.allowedValues ?? [];
   if (a.mode === "SELECTION_ONLY") {
-    return `- "${a.name}" — LISTE FERMÉE, réponds UNIQUEMENT par une de ces valeurs recopiée caractère pour caractère (apostrophes, accents, espaces compris), sinon null : ${liste.slice(0, LISTE_FERMEE_MAX).join(" | ")}`;
+    return `- "${a.name}" — LISTE FERMÉE, réponds UNIQUEMENT par une de ces valeurs recopiée caractère pour caractère (apostrophes, accents, espaces compris), sinon null : ${liste.slice(0, listeFermeeMax).join(" | ")}`;
   }
   if (a.name === "Marque") return `- "Marque" — texte libre : la marque telle qu'elle est écrite dans le contexte, sinon null (jamais une marque plausible)`;
   // (10/10, cas Manon) Seconde passe de la voie formulaire, UN aspect par appel :
@@ -100,7 +122,8 @@ export async function resoudreAspectsIA(
   demandes: AspectDemande[],
   contexte: ContexteArticle,
   // deno-lint-ignore no-explicit-any
-  opts: { apiKey: string; onUsage?: (data: unknown) => void; maxTokens?: number; admin?: any; fetchFn?: typeof fetch; forcerCache?: boolean },
+  opts: { apiKey: string; onUsage?: (data: unknown) => void; maxTokens?: number; admin?: any; fetchFn?: typeof fetch; forcerCache?: boolean;
+    modele?: string; images?: SourceImageIA[]; listeFermeeMax?: number },
 ): Promise<ResultatAspectsIA> {
   const out: Record<string, string> = {};
   const refuses: ResultatAspectsIA["refuses"] = [];
@@ -110,18 +133,29 @@ export async function resoudreAspectsIA(
   const ctx = contexteEnTexte(contexte);
   if (!aDemander.length || !ctx || !opts.apiKey) return { aspects: out, refuses, demandes: propres.length, appel_ia: false };
 
-  const lignes = aDemander.map(ligneDemande).join("\n");
+  const lignes = aDemander.map((a) => ligneDemande(a, opts.listeFermeeMax ?? LISTE_FERMEE_MAX)).join("\n");
+  const modele = opts.modele ?? MODELE_ASPECTS_DEFAUT;
+  const images = Array.isArray(opts.images) ? opts.images.slice(0, 2) : [];
+  // (18/10, zéro friction) Les photos jointes : une valeur peut aussi se LIRE
+  // dessus (objet, public, âge écrit sur la boîte) — jamais se deviner.
+  const avecPhotos = images.length
+    ? ` Les photos de l'article sont jointes : une valeur peut aussi se LIRE sur une photo (l'objet lui-même, une mention écrite, un âge indiqué sur la boîte) — jamais se deviner d'une impression.`
+    : "";
+  const question = `Aspects à renseigner :\n${lignes}\n\nContexte article :\n${ctx}`;
   let texte = "";
   try {
     const q = await questionClaude({
-        model: "claude-haiku-4-5-20251001",
+        model: modele,
         max_tokens: opts.maxTokens ?? 500,
+        ...corpsModele(modele),
         system:
           `Tu renseignes des caractéristiques produit eBay (« aspects ») pour une annonce d'occasion, à partir du contexte fourni. RÈGLE ABSOLUE : ne JAMAIS inventer — une valeur doit être lisible ou strictement déductible du contexte (titre, description, marque, attributs lus sur les photos), sinon null. ` +
           `Pour une LISTE FERMÉE, la réponse est une entrée de la liste recopiée à l'identique, ou null. Pour une liste suggérée, préfère une entrée de la liste quand elle correspond au contexte ; sinon un texte libre court, ou null. ` +
           `Cas particuliers : "Volume" au format eBay ("50 ml", jamais "50ml") ; dimensions (Hauteur/Largeur/Longueur/Dimensions) UNIQUEMENT si des mesures chiffrées figurent dans le contexte, avec l'unité ("80 cm") ; "Département" = le rayon (Femme/Homme/Fille/Garçon…) déduit du contexte ou du champ Rayon. ` +
-          `Retourne UNIQUEMENT du JSON valide : {"aspects":{"<nom exact de l'aspect>":"valeur ou null"}}`,
-        messages: [{ role: "user", content: `Aspects à renseigner :\n${lignes}\n\nContexte article :\n${ctx}` }],
+          `Retourne UNIQUEMENT du JSON valide : {"aspects":{"<nom exact de l'aspect>":"valeur ou null"}}` + avecPhotos,
+        messages: [{ role: "user", content: images.length
+          ? [...images.map((source) => ({ type: "image", source })), { type: "text", text: question }]
+          : question }],
       }, { apiKey: opts.apiKey, admin: opts.admin, fonction: "aspects_ia", interrupteur: "ia_cache_aspects", fetchFn: opts.fetchFn, forcer: opts.forcerCache });
     if (!q.ok) {
       console.error("[ebay-aspects-ia] Anthropic :", q.statut, q.erreur ?? "");
@@ -255,7 +289,8 @@ export async function completerAspectsIA(
   demandes: AspectDemande[],
   contexte: ContexteArticle,
   // deno-lint-ignore no-explicit-any
-  opts: { apiKey: string; onUsage?: (data: unknown) => void; maxTokens?: number; admin?: any; fetchFn?: typeof fetch; forcerCache?: boolean },
+  opts: { apiKey: string; onUsage?: (data: unknown) => void; maxTokens?: number; admin?: any; fetchFn?: typeof fetch; forcerCache?: boolean;
+    modele?: string; images?: SourceImageIA[]; listeFermeeMax?: number },
 ): Promise<ResultatCompletion> {
   const premiere = await resoudreAspectsIA(demandes, contexte, opts);
   const restants = demandes.filter((d) =>

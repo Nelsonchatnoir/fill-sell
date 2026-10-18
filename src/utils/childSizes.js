@@ -228,6 +228,37 @@ export function toPlatformChildSize(value, platform, opts = {}) {
   return parsed.entry[key] ?? null;
 }
 
+// ── LA TRANCHE VINTED, TRANCHÉE PAR LE TEXTE DU VENDEUR (18/10, « zéro friction ») ──
+// Vinted n'a que des tranches (« 3-6 mois / 62 cm ») et la table les range sur
+// leur borne haute (« 6 mois »). Rejeu des 7 jours au 18/10 : 11 tailles Beebs
+// sur 69 déduites ainsi n'étaient PAS celles que la personne a choisies —
+// « Pyjama 3 mois » sur une fiche « 3-6 mois / 62 cm » : la personne a pris
+// « 3 mois (54-60 cm) », comme son titre le disait (et « Pyjama 6 mois » sur la
+// même tranche : « 6 mois »). Le texte du vendeur fait foi : quand le titre (puis
+// la description) nomme UNE seule des deux bornes de la tranche, seule — pas
+// « 12-18 mois », pas « 3 à 6 mois » —, c'est elle. Les deux bornes nommées, ou
+// aucune : la table, comme avant. Jamais une taille hors de la tranche.
+const TRANCHE_VINTED_RE = /^(\d{1,2})-(\d{1,2}) mois\b/i;
+const MOIS_SEUL_RE = /(?<!\d\s?(?:-|–|\/|à|a|et|ou)\s?)(?<![\d,.])(\d{1,2})\s?mois(?!\s?(?:-|–|\/|à|a)\s?\d)/giu;
+export function tailleEnfantSelonLeTexte(value, textes = []) {
+  const m = String(value ?? "").trim().match(TRANCHE_VINTED_RE);
+  if (!m || !parseChildSize(value)) return null;
+  const bornes = new Set([Number(m[1]), Number(m[2])]);
+  for (const t of (Array.isArray(textes) ? textes : [textes])) {
+    const nommees = new Set();
+    for (const x of String(t ?? "").matchAll(MOIS_SEUL_RE)) {
+      const n = Number(x[1]);
+      if (bornes.has(n)) nommees.add(n);
+    }
+    if (nommees.size === 1) {
+      const n = [...nommees][0];
+      return MONTH_BY_VALUE.has(`${n} mois`) ? `${n} mois` : null;
+    }
+    if (nommees.size > 1) return null;
+  }
+  return null;
+}
+
 /**
  * Routage catégorie Leboncoin d'une taille enfant (relevé 2026-07-15) :
  *   "bebe" — grille de Famille > Vêtements bébé (Prématuré → 36 mois, +

@@ -131,10 +131,16 @@ console.log("\nF. LE MOTEUR DE BOUT EN BOUT (IA SIMULÉE) — LES 6 JOBS DU 11/1
     const r = await resoudreRayonDepop(c.ctx, iaQuiChoisit(c.ia));
     dit(`${c.n} → ${texteRayonDepop(c.ia)}`, r.id === c.ia, JSON.stringify({ id: r.id, motif: r.motif, detail: r.detail }));
   }
-  // Le lot mixte (« Enfant XL / S Homme ») : une QUESTION, sans même demander à l'IA.
-  let appele = false;
-  const rLot = await resoudreRayonDepop({ titre: "Lot de 2 T-shirts de sport Nike & Under Armour - Taille S (Enfant XL / S Homme)", description: "lot de 2 t-shirts", taille: "S", horsMode: false, origine: ["Hommes", "Vêtements", "Vêtements de sport et accessoires", "Hauts et t-shirts"] }, async () => { appele = true; return { choix: {} }; });
-  dit("Simon f441eebf (lot « Enfant XL / S Homme ») → QUESTION « enfant_et_adulte », l'IA n'est pas appelée", !rLot.id && rLot.motif === "enfant_et_adulte" && !appele && rLot.question?.allowed_values.length > 0, JSON.stringify({ motif: rLot.motif }));
+  // Le lot mixte (« Enfant XL / S Homme ») : (18/10, « zéro friction ») la catégorie d'ORIGINE
+  // (Vinted « Hommes › … », le choix du vendeur) tranche — le moteur cherche dans le rayon Homme seul.
+  let appele = false; let candidatsLot = [];
+  const lotCtx = { titre: "Lot de 2 T-shirts de sport Nike & Under Armour - Taille S (Enfant XL / S Homme)", description: "lot de 2 t-shirts", taille: "S", horsMode: false, origine: ["Hommes", "Vêtements", "Vêtements de sport et accessoires", "Hauts et t-shirts"] };
+  const rLot = await resoudreRayonDepop(lotCtx, async (corps) => { appele = true; candidatsLot = (corps?.candidats?.depop ?? []).map((c) => c.id); return { choix: { depop: { id: candidatsLot.find((id) => /t-?shirt/.test(id)) ?? candidatsLot[0] } } }; });
+  dit("Simon f441eebf (lot « Enfant XL / S Homme », origine Hommes) → rayon Homme, l'IA ne voit que le rayon Homme", appele && candidatsLot.length > 0 && candidatsLot.every((id) => id.startsWith("menswear/")) && String(rLot.id ?? "").startsWith("menswear/tops/"), JSON.stringify({ id: rLot.id, motif: rLot.motif }));
+  // Sans catégorie d'origine, le texte seul ne tranche pas : la QUESTION, sans même demander à l'IA.
+  appele = false;
+  const rLot2 = await resoudreRayonDepop({ ...lotCtx, origine: null }, async () => { appele = true; return { choix: {} }; });
+  dit("le même lot SANS catégorie d'origine → QUESTION « enfant_et_adulte », l'IA n'est pas appelée", !rLot2.id && rLot2.motif === "enfant_et_adulte" && !appele && rLot2.question?.allowed_values.length > 0, JSON.stringify({ motif: rLot2.motif }));
   dit("le short d'enfant classé « Hommes » sur Vinted n'est PAS mixte (l'adulte ne vient que de l'origine)", indicesAgeGenre({ titre: SIX[0].ctx.titre, description: SIX[0].ctx.description, origine: SIX[0].ctx.origine }).texteAdulte === false);
   // L'ancien rayon faux, s'il revenait de l'IA : jamais posé, une question.
   const r1 = await resoudreRayonDepop(SIX[0].ctx, iaQuiChoisit("kidswear/footwear/trainers"));

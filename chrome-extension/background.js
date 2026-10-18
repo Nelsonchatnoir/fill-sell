@@ -86,9 +86,12 @@ console.log(
 //     comme avant. Rien ici ne peut faire échouer un job.
 //  2. NIVEAU "system", JAMAIS "display". On empêche la machine de dormir, on
 //     n'allume pas l'écran de quelqu'un.
-//  3. BORNÉE, JAMAIS PERMANENTE. Demandée seulement s'il y a du travail dans la
-//     file, relâchée dès qu'elle est vide, avec trois filets (plafond absolu,
-//     démarrage du service worker, session perdue).
+//  3. BORNÉE PAR LA FILE, JAMAIS PERMANENTE. Demandée tant qu'il reste UN job
+//     en attente ou en cours pour ce poste, relâchée dès que la file est vide
+//     (18/10, décision de Nico : PLUS de plafond de 4 h — il relâchait la
+//     machine au milieu des gros lots : 58 relâches avec ≥ 20 jobs en file en
+//     7 jours). Filets : session perdue, 2 h sans un seul poll réussi (serveur
+//     injoignable, session morte), démarrage du service worker.
 //
 // ÉPISODE : un lot = un épisode, dont l'état vit dans chrome.storage
 // (STORAGE_KEYS.KEEP_AWAKE) et NON en mémoire. Raison mesurée : un service
@@ -96,11 +99,13 @@ console.log(
 // Un état en mémoire seule ferait donc croire à un nouvel épisode toutes les
 // deux minutes — et écrirait deux lignes de trace à chaque fois pendant qu'un
 // lot espacé attend. L'épisode persiste, la demande se ré-arme en silence.
-const EVEIL_PLAFOND_MS = 4 * 60 * 60 * 1000;
+// (18/10) Plus de plafond : le seul filet de durée est l'ABSENCE de poll réussi.
+// `maj` de l'épisode avance à chaque poll qui voit du travail (et entre deux
+// jobs d'un long cycle) ; 2 h sans mise à jour = plus personne ne tient la file.
+const EVEIL_SANS_POLL_MS = 2 * 60 * 60 * 1000;
 const EVEIL_KEY = FILLSELL_CONFIG.STORAGE_KEYS.KEEP_AWAKE;
 
 let eveilArme = false;          // CE service worker-ci a demandé et pas relâché
-let eveilPlafondAtteint = false; // plafond franchi : plus de demande jusqu'à file vide
 let eveilIndispoTrace = false;   // 'indisponible' : une fois par service worker, pas par poll
 let eveilTracesEnAttente = [];   // traces sans token (démarrage), vidées au poll
 
@@ -130,7 +135,6 @@ const eveilDureeS = (ep) =>
 // requestKeepAwake dans CE service worker, l'épisode persisté empêche de
 // re-tracer une demande déjà ouverte après un redémarrage.
 async function demanderEveil(jobsEnFile, accessToken, etiquette = "job(s) en file") {
-  if (eveilPlafondAtteint) return;
   if (!eveilApiDispo()) {
     tracerEveilIndisponible(jobsEnFile, accessToken);
     return;
@@ -173,24 +177,27 @@ async function relacherEveil(action, jobsEnFile, accessToken) {
 }
 
 // UN SEUL point de décision, appelé par le poll avec la file qu'il vient de
-// lire. Le plafond est constaté ICI, au passage du poll — pas par un timer :
-// aucun minuteur n'est introduit par ce lot.
+// lire (jobs servis + file retenue que le serveur compte pour CE poste :
+// créneaux, limite du jour, pause anti-robot compris — get-pending-jobs
+// `jobs_retenus_sync`). Aucun minuteur n'est introduit par ce lot.
+// (18/10, décision de Nico) Tant qu'il reste UN job : éveillé, sans plafond.
 async function arbitrerEveil(jobsEnFile, accessToken) {
-  const ep = await lireEpisodeEveil();
-  if (ep?.depuis && Date.now() - Date.parse(ep.depuis) > EVEIL_PLAFOND_MS) {
-    // Filet 1 — PLAFOND ABSOLU : au-delà, on relâche même si la file n'est pas
-    // vide. Une file qui ne se vide pas est un symptôme, pas une raison de
-    // garder la machine de quelqu'un éveillée indéfiniment.
-    eveilPlafondAtteint = true;
-    await relacherEveil("relache_plafond", jobsEnFile, accessToken);
-    return;
-  }
   if (jobsEnFile > 0) {
     await demanderEveil(jobsEnFile, accessToken);
     return;
   }
-  eveilPlafondAtteint = false; // file vide : le plafond se ré-arme pour le prochain lot
   await relacherEveil("relache", 0, accessToken);
+}
+
+// Filet de durée (18/10) — poll en échec (serveur injoignable, 401) : on ne
+// relâche pas au premier incident (la file est peut-être pleine), mais au bout
+// de 2 h sans un seul poll réussi, plus personne ne tient la file : on relâche.
+async function relacherEveilSiSansPoll(accessToken = null) {
+  const ep = await lireEpisodeEveil();
+  if (!ep && !eveilArme) return;
+  const t = Date.parse(ep?.maj ?? "");
+  if (Number.isFinite(t) && Date.now() - t < EVEIL_SANS_POLL_MS) return;
+  await relacherEveil("relache_sans_poll", 0, accessToken);
 }
 
 // Trace 'keep_awake' — même contrat que 'taille_non_mappee' : fire-and-forget,
@@ -266,12 +273,13 @@ function viderTracesEveilEnAttente(accessToken) {
 // (rafraîchi par un poll il y a moins de 10 min), on la RE-DEMANDE tout de
 // suite au lieu de la relâcher. Épisode périmé (machine revenue d'une longue
 // absence) : on repart propre comme avant, le prochain poll tranche.
-const EVEIL_EPISODE_FRAIS_MS = 10 * 60 * 1000;
+// (18/10) Frais = rafraîchi depuis moins de 2 h (le filet « sans poll ») : une
+// panne serveur de 20 min ponctuée de redémarrages du worker ne relâche plus.
+const EVEIL_EPISODE_FRAIS_MS = EVEIL_SANS_POLL_MS;
 eveilArme = false;
 (async () => {
   const ep = await lireEpisodeEveil();
-  const frais = ep?.maj && Date.now() - Date.parse(ep.maj) < EVEIL_EPISODE_FRAIS_MS
-    && Date.now() - Date.parse(ep.depuis ?? ep.maj) < EVEIL_PLAFOND_MS;
+  const frais = ep?.maj && Date.now() - Date.parse(ep.maj) < EVEIL_EPISODE_FRAIS_MS;
   if (frais && eveilApiDispo()) {
     try { chrome.power.requestKeepAwake("system"); eveilArme = true; } catch { /* jamais bloquant */ }
     return;
@@ -1691,6 +1699,8 @@ function publishSelected(jobIds) {
 async function publishSelectedUnlocked(jobIds) {
   const session = await getValidSession();
   if (!session) return { ok: false, reason: "no_session" };
+  // (18/10) Une publication lancée du popup est un travail en cours : éveil.
+  await demanderEveil(Array.isArray(jobIds) ? jobIds.length || 1 : 1, null, "publication lancée du popup").catch(() => {});
 
   let jobs;
   try {
@@ -3006,6 +3016,7 @@ async function pollAndProcessJobsUnlocked() {
     console.error("[background] get-pending-jobs:", e);
     if (e?.status === 401) {
       await invalidateRejectedSession(session).catch(() => {});
+      await relacherEveilSiSansPoll(null).catch(() => {});
       return;
     }
     // get-pending-jobs indisponible (5xx, réseau) : la file d'actions attendra
@@ -3017,6 +3028,7 @@ async function pollAndProcessJobsUnlocked() {
     await checkPublishedListings(session).catch((err) =>
       console.error("[background] checkPublishedListings (cycle sans file):", err)
     );
+    await relacherEveilSiSansPoll(session.access_token).catch(() => {});
     return;
   }
 
@@ -3051,8 +3063,8 @@ async function pollAndProcessJobsUnlocked() {
   // ⛔ BORNE : ce drapeau vit EN MÉMOIRE du service worker. S'il meurt (la
   //    panne même qu'on corrige), le worker suivant le lit à false et le poll
   //    relâche dans les 2 min. Une machine ne peut donc pas être tenue
-  //    éveillée par un run mort — en plus du plafond de 4 h et de la relâche
-  //    au démarrage, qui ne bougent pas.
+  //    éveillée par un run mort — en plus du filet « 2 h sans poll » et de
+  //    la relâche au démarrage (18/10 : plus de plafond de 4 h).
   const travailDuCycle = jobs.length
     + (commandeSyncEnAttente ? 1 : 0)
     + syncPrioritaireDuCycle
@@ -3166,6 +3178,10 @@ async function pollAndProcessJobsUnlocked() {
       break;
     }
     emitProgress({ jobId: job.id, platform: job.platform, phase: "processing" });
+    // (18/10) Un job EN COURS tient la machine éveillée, et l'épisode se
+    // rafraîchit entre deux jobs d'un long cycle (le filet « 2 h sans poll »
+    // ne relâche jamais au milieu du travail).
+    await demanderEveil(jobs.length - i, null).catch(() => {});
     const outcome = await processJob(job, session.access_token);
     if (outcome?.garderOnglet === true && job.platform === "leboncoin") lbcPaiementPrepare = true;
     // Même persistance des échecs que le flux popup (cf. recordRecentResult) :

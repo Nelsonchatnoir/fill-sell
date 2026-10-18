@@ -43,6 +43,8 @@ import { listeCouleurPropre, photosPourCouleurIA, resoudreCouleurIA, MODELE_COUL
 import { resoudreIsbnArticle, MODELE_ISBN } from "../_shared/isbn-ia.ts";
 // (18/10, lot 2) Le plafond de la dépense IA, codé en dur, coupe-circuit automatique.
 import { budgetIaAutorise } from "../_shared/budget-ia.ts";
+// (18/10, zéro friction) La cascade des leviers IA, champ par champ, après l'existant.
+import { appliquerLeviers } from "../_shared/ia-leviers-bascule.ts";
 import {
   VERSION_PROMPT,
   construireContexteArticle,
@@ -553,7 +555,34 @@ serve(async (req) => {
         const modeEbayExplicite = askAI.some((a: { mode?: unknown }) => typeof a.mode === "string" && a.mode);
         if (!modeEbayExplicite) {
           const ia = await resoudreAspectsIA(demandes, contexteIa, optsIa);
-          return json({ aspects: { ...out, ...ia.aspects }, refuses: ia.refuses });
+          // ── (18/10, zéro friction) LA CASCADE DES LEVIERS ────────────────────
+          // Sur les SEULS champs que l'existant vient de laisser vides (sinon une
+          // question part), le levier que le banc a gagné pour CE champ
+          // (_shared/ia-leviers-bascule.ts, table ia_leviers_bascule) : noté en
+          // « fantome », posé en « actif ». Un client d'avant (sans `plateforme`)
+          // garde exactement le chemin d'hier.
+          let poses: Record<string, string> = {};
+          if (typeof body.plateforme === "string" && body.plateforme) {
+            const invLev = Number(body.inventaire_id);
+            const cleDe = new Map((Array.isArray(body.aspects) ? body.aspects : [])
+              .filter((a: { name?: unknown }) => a && typeof a.name === "string")
+              .map((a: { name: string; key?: unknown; cible?: unknown }) => [a.name, { key: typeof a.key === "string" ? a.key : null, cible: typeof a.cible === "string" ? a.cible : null }]));
+            try {
+              const cascade = await appliquerLeviers({
+                admin: adminClient, userId: user.id, plateforme: String(body.plateforme),
+                categorie: typeof body.categorie === "string" ? body.categorie.slice(0, 200) : null,
+                inventaireId: Number.isFinite(invLev) && invLev > 0 ? String(invLev) : null,
+                feuilleDependante: body.feuille_dependante === true,
+                demandes: demandes.map((d: { name: string; mode: string; allowedValues: string[] }) => ({ ...d, ...(cleDe.get(d.name) ?? {}) })),
+                contexte: contexteIa, l0: { ...out, ...ia.aspects }, photos: body.photos,
+                apiKey: Deno.env.get("ANTHROPIC_API_KEY") ?? "", supabaseUrl,
+              });
+              poses = cascade.poses;
+            } catch (e) {
+              console.warn("[generate-listing] leviers IA :", (e as Error)?.message ?? e);
+            }
+          }
+          return json({ aspects: { ...out, ...ia.aspects, ...poses }, refuses: ia.refuses, ...(Object.keys(poses).length ? { leviers: Object.keys(poses) } : {}) });
         }
         const groupe = await cacheAllume(adminClient, "ia_aspects_groupes");
         const ia = groupe

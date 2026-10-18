@@ -236,3 +236,10 @@ Rapport : `docs/enquetes/session-sans-nico-1810/lot4-ventes-lot-multi-exemplaire
   (0 = fantôme : bilan `usage_logs ventes_beebs_commandes` seul). La 0.6.126 relit la page à la disparition d'une
   annonce Beebs (30 min au plus) — **une disparition seule ne vaut jamais vente**.
 - Les 6 ventes Beebs déclarées et rangées « Ailleurs » (02 → 14/10) sont réparées en `beebs` (18/10, sans mail).
+- **(18/10 après-midi, décision de Nico) Une vente DÉCLARÉE sur une carte Beebs est rangée « Beebs », jamais
+  « Ailleurs »** — tout le parc (migration `20261018150000`, `enregistrer_vente_atomique` réécrite depuis la prod :
+  `v_pf` seul change, `OR j.platform='beebs'`). Beebs ne donne aucune preuve lisible par l'extension ; la personne qui
+  confirme sur SA carte Beebs dit où l'article est parti. Leboncoin, eBay, Vinted, Depop sans preuve : « Ailleurs »,
+  comme avant. Retraits des autres copies, mails, push : inchangés (essai à blanc 7/7, 0 mail). Conséquence voulue :
+  une preuve « vendu » arrivée plus tard sur une autre copie montre la carte « Déjà enregistrée » au lieu de se fermer en
+  silence (même chose qu'une vente Beebs saisie depuis le Stock). Selftest `vente-declaree-beebs`.

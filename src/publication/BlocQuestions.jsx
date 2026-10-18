@@ -42,18 +42,26 @@ export default function BlocQuestions({ m }) {
   const toucherShared = (key) => {
     setStickyShared(prev => prev.has(key) ? prev : new Set([...prev, key]));
     m.noterReponseFiche?.(key); // sa réponse ira sur la fiche au publish
+    // (18/10, zéro friction) La télémétrie sait que c'est la personne qui a répondu.
+    m.noterGesteQuestion?.(`partage:${key}`);
   };
   // (03/10, cas Ornella) La réponse va sur les plateformes que la question
   // nomme, même quand leur copie a été retouchée à la main — sinon « Bonobo »
   // restait dans le champ et la copie Vinted sur « B » (moteur/reponsesPartagees).
   const repondre = (key, v) => (m.repondreChampPartage ?? m.setSharedField)(key, v);
   const [stickyGeneric, setStickyGeneric] = useState(() => ({}));
-  const toucherGeneric = (gp, key) => setStickyGeneric(prev => {
-    const cur = prev[gp] ?? new Set();
-    return cur.has(key) ? prev : { ...prev, [gp]: new Set([...cur, key]) };
-  });
+  const toucherGeneric = (gp, key) => {
+    m.noterGesteQuestion?.(`${gp}:${key}`);
+    setStickyGeneric(prev => {
+      const cur = prev[gp] ?? new Set();
+      return cur.has(key) ? prev : { ...prev, [gp]: new Set([...cur, key]) };
+    });
+  };
   const [stickyEbay, setStickyEbay] = useState(() => new Set());
-  const toucherEbay = (name) => setStickyEbay(prev => prev.has(name) ? prev : new Set([...prev, name]));
+  const toucherEbay = (name) => {
+    m.noterGesteQuestion?.(`ebay:${name}`);
+    setStickyEbay(prev => prev.has(name) ? prev : new Set([...prev, name]));
+  };
   // La description Vinted saisie ici reste sous les yeux (comme les autres
   // réponses) : elle ne disparaît plus au premier caractère tapé.
   const [descriptionTouchee, setDescriptionTouchee] = useState(false);
@@ -402,6 +410,40 @@ export default function BlocQuestions({ m }) {
             />
           </div>
         ))}
+
+        {/* Les dimensions eBay, UNE question (18/10, zéro friction) : un champ
+            par dimension, côte à côte, chacun écrit dans son aspect eBay. */}
+        {q.questionDimensions && (() => {
+          const lignes = q.questionDimensions.lignes;
+          const bloque = lignes.some(aspectBloquant);
+          return (
+            <div key="dimensions-ebay" className={`fsn-q${bloque ? " fsn-q--bloque" : ""}`} style={{ gridColumn: "1 / -1" }} data-question="dimensions">
+              <div className="fsn-row fsn-row--between"><div className="fsn-q-t">{en ? "Dimensions" : "Dimensions"}</div><Puce ton={bloque ? "geste" : "ok"}>eBay</Puce></div>
+              <div className="fsn-q-why">
+                {en
+                  ? `eBay requires them for this category, and nothing in your text or photos gives them. Measure once: ${lignes.map(a => (a.label ?? a.name).toLowerCase()).join(", ")} (e.g. “34 cm”).`
+                  : `eBay les exige pour cette catégorie, et ni ton texte ni tes photos ne les donnent. Mesure une fois : ${lignes.map(a => (a.label ?? a.name).toLowerCase()).join(", ")} (par ex. « 34 cm »).`}
+              </div>
+              <div className="fsn-row fsn-row--wrap" style={{ gap: 8 }}>
+                {lignes.map(a => (
+                  <div key={`d:${a.name}`} style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 120px", minWidth: 0 }}>
+                    <span className="fsn-q-why">{a.label ?? a.name}</span>
+                    <AspectValueInput
+                      value={a.state === "invalid" ? (a.suggested ?? a.value ?? "") : a.value}
+                      allowedValues={a.allowedValues}
+                      strict={a.mode === "SELECTION_ONLY"}
+                      closedMax={m.EBAY_CLOSED_LIST_MAX}
+                      onChange={v => { toucherEbay(a.name); m.noterReponseQuestion?.("ebay", a, v); m.setEbayAspect(a.name, v); }}
+                      T={TN}
+                      tailleTexte={16}
+                      idBase={`fsn-ebay-dim-${slug(a.name)}`}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
 
         {q.redEbayAspects.map(a => (
           <div key={`e:${a.name}`} className={`fsn-q${aspectBloquant(a) ? " fsn-q--bloque" : ""}`}>

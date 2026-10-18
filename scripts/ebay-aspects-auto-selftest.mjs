@@ -135,7 +135,7 @@ console.log("\n5. Le câblage dans ListingPreviewScreen");
     "« terminé » n'est plus posé à l'aveugle à la fin d'un appel");
   ok(/if \(ebayCategorieCourante\.current !== cat\) return;/.test(src), "une réponse revenue après un changement de catégorie ne pose rien");
   ok(/aspects_inventaire_id: invId \?\? null,\s*categorie_ebay: String\(cat\),/.test(src), "la demande nomme l'article et la catégorie (mesure serveur)");
-  ok(/champs: \[a\.name\], categorie: ebayPreviewCategoryId \?\? null, inventaire_id: invId \?\? null \}/.test(src), "champ_requis_bloquant eBay nomme l'article");
+  ok(/champs: \[a\.name\], champ_cle: a\.name, categorie: ebayPreviewCategoryId \?\? null, inventaire_id: invId \?\? null/.test(src), "champ_requis_bloquant eBay nomme l'article");
   ok(/if \(ebayAspectsLusPour !== ebayPreviewCategoryId\) return false;\s*if \(ebayRequiredPreview && ebayIaFiniePour !== ebayPreviewCategoryId\) return false;/.test(src),
     "le lot attend toujours la liste ET la fin de l'IA avant de compter ses questions");
 }

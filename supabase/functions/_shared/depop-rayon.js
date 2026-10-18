@@ -222,6 +222,14 @@ export function departementsDepop(ind, { horsMode = null } = {}) {
   if (horsMode == null) deps.push("everything-else");
   return deps;
 }
+/** (18/10) Le rayon que la catégorie d'ORIGINE nomme seule (Hommes / Femmes / Enfants), sinon null. */
+export function departementDeLOrigine(origine) {
+  const o = sansAccents(Array.isArray(origine) ? origine.join(" > ") : origine ?? "").trim();
+  if (/^(enfants?|bebes?|kids?)\b/.test(o)) return "kidswear";
+  if (/^hommes?\b/.test(o)) return "menswear";
+  if (/^femmes?\b/.test(o)) return "womenswear";
+  return null;
+}
 /** Les feuilles OFFICIELLES de ces départements, sous leurs libellés corrigés. */
 export function candidatsRayonDepop(departements) {
   const deps = new Set(departements);
@@ -309,14 +317,23 @@ export const MESSAGE_RAYON_DEPOP =
 export async function resoudreRayonDepop(ctx, demanderIA) {
   const indices = indicesAgeGenre(ctx);
   const famille = familleObjetDepop(ctx);
-  const departements = departementsDepop(indices, { horsMode: ctx.horsMode ?? null });
+  let departements = departementsDepop(indices, { horsMode: ctx.horsMode ?? null });
+  // L'article se dit, dans son propre texte, enfant ET adulte (un lot « Enfant
+  // XL / S Homme ») : aucun rayon unique n'est sûr par le texte.
+  // (18/10, « zéro friction ») … sauf si la catégorie d'ORIGINE (le choix du
+  // vendeur sur sa plateforme : Vinted « Hommes › Vêtements › … ») nomme UN seul
+  // rayon : c'est lui — « Enfant XL » n'y était qu'une équivalence de taille. La
+  // personne ne choisit que si l'origine manque ou ne tranche pas.
+  if (indices.texteEnfant && indices.texteAdulte) {
+    const dep = departementDeLOrigine(ctx.origine);
+    if (!dep) {
+      const base0 = { indices, famille, departements };
+      return { ...base0, question: questionRayonDepop(base0), motif: "enfant_et_adulte", detail: `l'article se dit à la fois enfant (${indices.enfant[0]}) et adulte (${[...indices.homme, ...indices.femme][0]})`, rejete: null };
+    }
+    departements = [dep];
+  }
   const candidats = candidatsRayonDepop(departements);
   const base = { indices, famille, departements };
-  // L'article se dit, dans son propre texte, enfant ET adulte (un lot « Enfant
-  // XL / S Homme ») : aucun rayon unique n'est sûr — la personne choisit.
-  if (indices.texteEnfant && indices.texteAdulte) {
-    return { ...base, question: questionRayonDepop(base), motif: "enfant_et_adulte", detail: `l'article se dit à la fois enfant (${indices.enfant[0]}) et adulte (${[...indices.homme, ...indices.femme][0]})`, rejete: null };
-  }
   const dire = (l) => (l.length ? l.join(", ") : "");
   const attributs = {
     description: String(ctx.description ?? "").replace(/\s+/g, " ").trim(),

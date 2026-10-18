@@ -44,7 +44,7 @@
 import { texteComparable } from "../../utils/texteComparable.js";
 import { normalizeVintedColors } from "../../utils/vintedColors.js";
 import { tailleDansGrille } from "../../../supabase/functions/_shared/tailles.js";
-import { toPlatformChildSize } from "../../utils/childSizes.js";
+import { toPlatformChildSize, tailleEnfantSelonLeTexte } from "../../utils/childSizes.js";
 import {
   optionDepuisTextes, champDeductibleDuTexte, estFourreTout, listeCandidatsDabord, textesDeLAnnonce,
 } from "../../../supabase/functions/_shared/option-du-texte.js";
@@ -221,7 +221,7 @@ const brancheFemmesOpla = (chemin) => Array.isArray(chemin)
  * `valeurListe` est l'écriture EXACTE de la liste — c'est elle qu'un job peut
  * porter sans que l'extension ait à chercher.
  */
-export function jugerValeurContreListe({ platform, key, value, allowedValues, cheminCategorie = null }) {
+export function jugerValeurContreListe({ platform, key, value, allowedValues, cheminCategorie = null, textes = null }) {
   const vals = (Array.isArray(allowedValues) ? allowedValues : []).map(v => String(v).trim()).filter(Boolean);
   const v = valeurPourListe(platform, key, value);
   if (!v) return { dans: false, valeurListe: null, suggested: null };
@@ -237,7 +237,9 @@ export function jugerValeurContreListe({ platform, key, value, allowedValues, ch
     // rapprochement par cm — et doit se trouver TELLE QUELLE dans la grille :
     // sinon on continue comme avant. 152 questions « Taille · Beebs » en 7 j,
     // 123 fiches qui portaient déjà la taille (audit du 17/10).
-    const enfant = toPlatformChildSize(v, platform);
+    // (18/10, zéro friction) Une tranche Vinted (« 3-6 mois ») dont le texte
+    // du vendeur nomme une seule borne : cette borne (childSizes).
+    const enfant = toPlatformChildSize((textes && tailleEnfantSelonLeTexte(v, textes)) || v, platform);
     if (enfant) {
       const ne = normAspectVal(enfant);
       const dansGrille = vals.find(a => normAspectVal(a) === ne);
@@ -274,13 +276,13 @@ export function jugerValeurContreListe({ platform, key, value, allowedValues, ch
  * déjà exacte, hors liste, pas de grille relevée, ou Opla — son serveur la
  * traduit au service du job). La fiche, elle, garde la saisie de la personne.
  */
-export function tailleDuJob({ platform, taille, lignes, cheminCategorie = null }) {
+export function tailleDuJob({ platform, taille, lignes, cheminCategorie = null, textes = null }) {
   const brut = String(taille ?? "").trim();
   if (!brut || platform === "opla") return null;
   const ligne = (Array.isArray(lignes) ? lignes : [])
     .find(a => estChampTaille(platform, a?.key) && Array.isArray(a.allowedValues) && a.allowedValues.length);
   if (!ligne) return null;
-  const v = jugerValeurContreListe({ platform, key: ligne.key, value: brut, allowedValues: ligne.allowedValues, cheminCategorie });
+  const v = jugerValeurContreListe({ platform, key: ligne.key, value: brut, allowedValues: ligne.allowedValues, cheminCategorie, textes });
   return v.dans && v.valeurListe && v.valeurListe !== brut ? v.valeurListe : null;
 }
 

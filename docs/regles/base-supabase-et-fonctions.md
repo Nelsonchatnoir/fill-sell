@@ -290,3 +290,12 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.nouvelle_table TO authenticated;
   `deduction_bascule` par (plateforme, champ) : fantôme → actif (≥ 48 h, ≥ 15 cas, 100 %) → coupe (< 97 % ou refus
   +15 points), cron `deduction-bascule-6h` ; l'app lit `deduction_apprise_pour` (session). Banc :
   `node scripts/banc-deduction-apprise.mjs` (aucun appel IA).
+- **Leviers IA, champ par champ** (18/10 après-midi, migration `20261018160000`) : `ia_leviers_bascule` (plateforme,
+  champ, levier L1/L2/L3/L4, état fantome/actif/coupe/eteint, `seuil_precision` = précision de l'existant au banc),
+  lue par `_shared/ia-leviers-bascule.ts` dans `generate-listing` (resolve_aspects générique) APRÈS l'existant, sur les
+  seuls champs restés vides ; niveau « moteur » du plafond IA. `ia_leviers_evaluer()` (cron `ia-leviers-6h`, `47 */6`) :
+  fantôme → actif (≥ 48 h, ≥ 15 cas jugés, précision ≥ seuil) ; actif → coupe (< 95 % gardés sur ≥ 10 en 72 h, ou refus
+  +15 points). Journaux `usage_logs` `ia_levier` (coût sur la 1re ligne d'un appel → `ia_depense_jour`) et
+  `ia_levier_bascule`. Bilan des questions : `questions_publication_bilan(debut, fin)` (affichées, levées par la
+  personne / le moteur, abandons). Banc : `node scripts/bancs/zero-friction/banc-ia.mjs` (fonction `ia-banc-deduction`,
+  modes `leviers` et `ebay_annonces`, secret de cron jamais écrit).

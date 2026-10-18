@@ -112,7 +112,9 @@ export async function questionClaude(
   });
   if (!res.ok) return { texte: "", data: null, depuisCache: false, ok: false, statut: res.status, erreur: (await res.text()).slice(0, 300) };
   const data = await res.json();
-  const texte = String(data?.content?.[0]?.text ?? "");
+  // (18/10, zéro friction) Le premier bloc TEXTE : un modèle 5.5 peut ouvrir sa réponse par un bloc de réflexion.
+  const blocs = Array.isArray(data?.content) ? data.content : [];
+  const texte = String(blocs.find((b: { type?: string }) => b?.type === "text")?.text ?? blocs[0]?.text ?? "");
   if (allume && cle && texte) await rangerCache(opts.admin, cle, opts.fonction, String(corps.model ?? ""), texte, data?.usage ?? null);
   return { texte, data, depuisCache: false, ok: true, statut: res.status };
 }

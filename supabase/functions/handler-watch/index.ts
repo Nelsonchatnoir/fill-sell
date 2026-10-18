@@ -2208,7 +2208,12 @@ serve(async (req) => {
       if (rayonDepopAJour(pf)) return false;
       // Une question « Rayon Depop » posée attend sa réponse (la réponse
       // remet le job en file, et get-pending-jobs / ce bloc la traduisent).
-      if (j.status === "needs_user" && pf.needs_user_source === "rayon_depop") return false;
+      // (18/10, « zéro friction ») … sauf une question « enfant ET adulte » posée
+      // avant que la catégorie d'origine ne tranche (_shared/depop-rayon.js) :
+      // rejugée UNE fois (depop_rayon_rejuge), puis elle attend sa réponse.
+      if (j.status === "needs_user" && pf.needs_user_source === "rayon_depop") {
+        return pf.depop_rayon?.motif === "enfant_et_adulte" && !pf.depop_rayon_rejuge && !reponseRayonDepop(pf);
+      }
       return true;
     }).slice(0, 10);
     const urlIA = `${Deno.env.get("SUPABASE_URL")}/functions/v1/resolve-categorie`;
@@ -2251,8 +2256,25 @@ serve(async (req) => {
       });
       // deno-lint-ignore no-explicit-any
       const rr = r as any;
+      const questionRejugee = j.status === "needs_user" && pf.needs_user_source === "rayon_depop";
+      if (questionRejugee && !rr.id) {
+        // Toujours pas de rayon sûr : la question reste telle quelle, rejugée une fois.
+        await supabase.from("cross_post_jobs").update({ platform_fields: { ...pf, depop_rayon_rejuge: { le: new Date().toISOString(), motif: rr.motif ?? null } } })
+          .eq("id", j.id).eq("status", "needs_user");
+        continue;
+      }
       if (rr.id) {
         const pfR = appliquerRayonDepop(pf, rr.id, { source: "ia", trace: traceRayonDepop(rr, { par: "handler-watch" }), par: "handler-watch" }) as Record<string, unknown> | null;
+        if (pfR && questionRejugee) {
+          // La question n'a plus d'objet : le rayon est trouvé, la publication repart.
+          for (const k of ["needs_user_source", "needsUserField", "needsUserFields", "needs_user_tick_le", "needs_user_actif_ms", "needs_user_vu_le", "needs_user_vu_erreur"]) delete pfR[k];
+          pfR.depop_rayon_rejuge = { le: new Date().toISOString(), id: rr.id };
+          if (j.error) pfR.erreurs_archivees = archiverErreur(pfR.erreurs_archivees, j.error, j.status, "handler-watch (rayon Depop : la catégorie d'origine tranche)");
+          const { data: rep } = await supabase.from("cross_post_jobs").update({ status: "pending", error: null, platform_fields: pfR })
+            .eq("id", j.id).eq("status", "needs_user").select("id");
+          if (rep?.length) { depopRayons++; console.log(`[handler-watch] depop ${String(j.id).slice(0, 8)} : question « Rayon Depop » levée → ${rr.id} (catégorie d'origine)`); }
+          continue;
+        }
         if (pfR) {
           // La trace garde le PREMIER rayon remplacé (celui d'avant le moteur), jamais écrasée.
           if (Array.isArray(pf.depopCategoryPath) && pf.depopCategoryPath.join("/") !== rr.id && !pf.depop_rayon_avant) {

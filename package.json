@@ -396,7 +396,12 @@
     "selftest:zero-orange-hors-ia": "node scripts/zero-orange-hors-ia-selftest.mjs",
     "selftest:ebay-ean-exige": "deno run --allow-read --allow-env --allow-net scripts/ebay-ean-exige-selftest.ts",
     "selftest:deduction-apprise": "node scripts/deduction-apprise-selftest.mjs",
-    "selftest:extension-0-6-126": "node scripts/extension-0-6-126-selftest.mjs"
+    "selftest:extension-0-6-126": "node scripts/extension-0-6-126-selftest.mjs",
+    "selftest:zero-friction": "node scripts/zero-friction-selftest.mjs",
+    "selftest:eveil-file": "node scripts/eveil-file-selftest.mjs",
+    "selftest:vente-declaree-beebs": "node scripts/vente-declaree-beebs-selftest.mjs",
+    "selftest:ia-leviers": "deno run --allow-read scripts/ia-leviers-selftest.ts",
+    "selftest:zero-friction-oranges": "deno run --allow-read scripts/zero-friction-oranges-selftest.ts"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
