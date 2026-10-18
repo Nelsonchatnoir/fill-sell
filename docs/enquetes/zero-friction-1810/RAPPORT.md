@@ -185,10 +185,21 @@
   dernière après tous les changements) ; `build:essai` vert ; eslint : aucune erreur nouvelle (7 d'avant dans
   ListingPreviewScreen) ; harnais du stepper (deux peaux), du bloc de questions et du lot : verts.
 
+## Servi
+
+- **Serveur** : servi et relu (fonctions, migrations, crons — § Livraison) ; les oranges tranchés sont repartis à 15:57.
+- **Web et OTA 2.9.102 : en attente.** Le push a été **refusé par l'outil** à 16:06 (premier refus, dit tout de suite à
+  Nico avec la commande), puis la construction de l'OTA (`npm run build`) refusée aussi. Tant que le web n'est pas servi :
+  la télémétrie « par / delai_s », la question « Dimensions », la catégorie eBay du pré-calcul, la règle du texte sur eBay,
+  la tranche Vinted et l'envoi du contexte de la cascade (donc les notes « fantôme ») ne tournent pas encore chez les gens ;
+  les règles serveur, elles, tournent. À relire après le push : `build.json`, entrée avec `Origin`, Vercel READY, canal
+  production 2.9.102.
+
 ## Incidents
 
 - Deux selftests rendus rouges par mes propres changements pendant la suite de référence (ancres sur le texte du code :
   `ebay-aspects-auto`, `champs-deduits`) — recalés sur la nouvelle écriture, rien en prod.
+- **Push refusé par l'outil** (16:06, premier refus, signalé aussitôt à Nico avec `! git push origin main`) et construction de l'OTA refusée aussi.
 - Une regex abîmée par le shell (antislash perdu) dans la fonction de banc : les « s » disparaissaient des descriptions
   eBay — vue au premier essai, corrigée avant le banc, fonction redéployée.
 - `sed -i` sous Git Bash avait converti deux fichiers en fins de ligne LF — remis en CRLF (git les normalise de toute façon).
@@ -215,6 +226,9 @@
 
 ## Ce qui reste à Nico
 
+- **Maintenant (refusés à l'outil)** : `! git push origin main`, puis l'OTA : `! npm run build` et
+  `! npx @capgo/cli bundle upload --channel production --bundle 2.9.102 --path dist`. Claude relit ensuite le web
+  (`build.json`, entrée avec `Origin`, Vercel) et le canal production.
 - Téléverser `build\CWS-0.6.127-A-TELEVERSER\fillsell-extension-0.6.127-e7d0714-cws.zip` **après** l'acceptation de la 0.6.126 (c'est déjà le zip), « Envoyer pour examen ».
 - Décider : titre Vinted « trop de symboles d'affilée » (proposition en un geste, ou reprise automatique unique) ; le correctif du formulaire PRO Leboncoin ne se prouve que sur un compte pro.
 - Rien d'autre : les leviers basculent seuls ; Claude relit vers le 20-25/10 (`ia_leviers_bascule.mesure`,
