@@ -13,6 +13,8 @@
 | 5. Leboncoin PRO poids | **NON CLOS** | correctif 0.6.128 prouvé sur maquette (26/26) ; preuve sur un vrai compte PRO pas faite (navigateur de la personne) |
 | 6. Depop sans identifiant | **CLOS** | thibault 81188384 : numéro retrouvé seul (lien + dépôt, jamais le titre), DELETE 204 à 19:18, page Depop en 410 |
 | 7. Relevés morts | **CLOS** (code) | RPC + écran « À régler », selftest ; vue dans l'app réelle à faire par Nico (aucune connexion à fillsell.app en automatisation) |
+| 8. L'accessoire n'est jamais l'objet (« House de couette ») | **CLOS** | règle des listes ET du mot de catégorie, 4 plateformes ; 0 changement sur 177830 lectures témoins, vérité des vendeurs inchangée (100 / 23), rejeu eBay identique (§ 8) |
+| 9. Bilans « plateforme décochée » | **CLOS** | migration 20261018240000 (essai 8/8, inverse prouvé) : abandon + colonne `plateformes_decochees` dans les deux bilans (§ 8) |
 
 ---
 
@@ -188,6 +190,23 @@
   24 h à cause d'une session fermée devient la **première ligne de « À régler »**, rouge, avec le seul bouton « Se
   reconnecter ». La veille ne compte plus deux fois une annonce (lesmillesetunepepite Leboncoin : 430 → 217).
 
+## 8. Compléments du 18/10 soir (feu vert de Nico)
+### 8.1 L'accessoire d'un objet n'est jamais l'objet
+- **Cas** : « House de couette 140x190 » → eBay Type « Couette » posé par la règle du texte ; même erreur, plus large, dans
+  le mot du titre qui choisit la catégorie : « Housse de coussin » → rayon Coussins (Vinted, Beebs, eBay), « Housse de
+  canapé » → canapé, « Housse pour ordinateur portable » → Ordinateurs portables.
+- **Règle** (corrigée, pas le mot) : `docs/regles/republication-et-publication.md` § « L'ACCESSOIRE D'UN OBJET ».
+  Après : « House de couette » → mot « housse de couette » → Vinted et Beebs « Linge de lit › Housses de couette », eBay
+  Type « Housse de couette », Sous-type « Housses de couette » ; Leboncoin « Housse coussin velours » → « Housse de
+  coussin » ; sans option « housse », la question.
+- **Preuve** : banc du parc (sans IA, lecture seule, code d'avant au commit f0d74a8 puis d'après) : 420 titres qui disent « housse / taie / house », 47479 lectures — 675 changent, sur 73 titres (56 mots de catégorie, 87 feuilles des 4 plateformes, 532 options de listes), toutes l'objet de l'accessoire retiré ou l'accessoire posé ; 177830 lectures de 2 000 titres témoins : 0 changement ; vérité des vendeurs (Leboncoin, Beebs, 612 cas) : 100 justes / 23 faux avant, 100 / 23 après ; rejeu eBay de la semaine identique (156 → 27). Le banc a d'abord trouvé des effets de bord (Thème « Noël » perdu, « Transport » écarté,
+  « Lot » posé à la place de la question, « draps housses ») : la règle a été resserrée jusqu'à 0 sur les témoins.
+### 8.2 Les bilans lisent « plateforme décochée »
+- Migration `20261018240000_bilans_plateforme_decochee` (lecture seule, droits inchangés : service_role) : la question
+  disparue parce que la plateforme a été décochée compte dans les abandons, avec la colonne `plateformes_decochees`
+  (`questions_publication_bilan`) et le champ `plateformes_decochees` (`champs_requis_veille` → ops-digest). Essai à
+  blanc 8/8, inverse prouvé.
+
 ## Statut final, livraison, ce qui reste à Nico
 
 ### Livraison (lue après chaque geste)
@@ -215,6 +234,5 @@
   l'annonce 10432288057 reste.
 - Téléverser `build\CWS-0.6.128-A-TELEVERSER\fillsell-extension-0.6.128-492f753-cws.zip` **après l'acceptation de la
   0.6.126** (la 0.6.127 n'est plus à téléverser), puis « Envoyer pour examen ».
-- À décider (expliqué à Nico le 18/10, rien changé sans son accord) : « House de couette » → « Couette » posé par la règle du texte eBay (valeur fausse) ; ajouter l'issue
-  `plateforme_decochee` aux bilans SQL (`questions_publication_bilan`, `champs_requis_veille`) ; l'éclaireur de
-  handler-watch relance encore sur un mur Leboncoin périmé (hors périmètre).
+- Fait le 18/10 soir sur feu vert de Nico : « House de couette » (§ 8.1) et « plateforme_decochee » (§ 8.2). Reste
+  hors périmètre : l'éclaireur de handler-watch relance encore sur un mur Leboncoin périmé.

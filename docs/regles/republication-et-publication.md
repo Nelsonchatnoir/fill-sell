@@ -321,3 +321,23 @@
   (pas-de-rouge, questions-tranchées règle 7). 0 titre accepté changé sur 70 555. Selftest `titre-symboles-vinted`.
 - **Quota gratuit** : une republication compte UNE fois par article (exécutée ou en cours), jamais par essai ; un retrait
   n'est pas une republication (`quota_republication_free_etat`).
+
+## 18/10 soir — L'ACCESSOIRE D'UN OBJET N'EST JAMAIS L'OBJET ; les bilans lisent « plateforme décochée » (feu vert de Nico)
+- **Règle** (tout le parc, les quatre plateformes) : « housse de… », « taie de… » (et la faute « house de… ») suivis d'un
+  objet nomment l'ACCESSOIRE, jamais l'objet (couette, coussin, canapé, oreiller, ordinateur…). Deux endroits, la même
+  règle : (1) l'option d'une liste fermée qui dit CE QU'EST l'article (Type, Sous-type, Produit, Catégorie, Univers —
+  `_shared/option-du-texte.js`) : l'option de l'objet ne vaut jamais ; seule une option qui nomme l'accessoire (Housse,
+  Housse de coussin, Taie d'oreiller, Étui…) répond, sinon la QUESTION — jamais une autre option lue à côté (« Lot »,
+  un personnage) ; (2) le mot du titre qui choisit la CATÉGORIE (`detectObjectKeywordDetail`, `src/utils/shared.js`) :
+  le mot de l'objet n'est jamais celui de l'article, un titre qui COMMENCE par l'accessoire (« Housse pour objectif
+  appareil photo », « Lot de 4 housses… ») ne nomme que lui ; une règle qui nomme l'accessoire (« housse de couette »,
+  « taie d'oreiller », « drap housse ») reste. Les mots qui nomment l'accessoire lui-même (« de protection », « de
+  transport », « étui ») se sautent jusqu'à l'objet ; un « pour … » juste après nomme un objet de plus ; sans « de »,
+  seulement quand le texte commence par l'accessoire ; « drap(s) housse(s) » EST l'article ; un objet nommé AVANT
+  l'accessoire (« Couvre-lit … avec taies ») reste l'article.
+- ⛔ Les autres champs (Thème, Couleur, Matière, « Adapté à »…) ne changent pas : pour un accessoire, l'objet y est souvent
+  la bonne réponse (« Housse pour iPad » → Adapté à : iPad ; « Housses de Noël pour coussins » → Thème : Noël).
+- **Preuve** : banc du parc (sans IA, lecture seule, code d'avant au commit f0d74a8 puis d'après) : 420 titres qui disent « housse / taie / house », 47479 lectures — 675 changent, sur 73 titres (56 mots de catégorie, 87 feuilles des 4 plateformes, 532 options de listes), toutes l'objet de l'accessoire retiré ou l'accessoire posé ; 177830 lectures de 2 000 titres témoins : 0 changement ; vérité des vendeurs (Leboncoin, Beebs, 612 cas) : 100 justes / 23 faux avant, 100 / 23 après ; rejeu eBay de la semaine identique (156 → 27). Banc `scripts/bancs/accessoire/banc-accessoire.mjs` ; selftest `accessoire-objet`.
+- **Bilans** (migration `20261018240000`, lecture seule) : une question disparue parce que la plateforme a été décochée
+  (`plateforme_decochee`, app 2.9.103) compte dans les ABANDONS de `questions_publication_bilan` et de
+  `champs_requis_veille`, avec sa colonne `plateformes_decochees`.

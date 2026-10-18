@@ -154,6 +154,16 @@ console.log("\nT. La plateforme décochée est une issue à part");
     && issueQuestionDisparue({ plateformeCochee: false, rayonChange: true }) === "plateforme_decochee");
   ok("rayon changé → retiree ; sinon complete", issueQuestionDisparue({ plateformeCochee: true, rayonChange: true }) === "retiree" && issueQuestionDisparue({}) === "complete");
   ok("la télémétrie l'écrit, avec « par » et le délai", /const issue = issueQuestionDisparue\(\{ plateformeCochee: selected\.has\(vu\.platform\), rayonChange \}\);\s*logChampBloquant\(issue, issue === "retiree" \? \{ \.\.\.vu, \.\.\.suite, categorie_apres: catApres \} : \{ \.\.\.vu, \.\.\.suite \}\);/.test(LPS));
+  // (18/10 soir, feu vert de Nico) Les deux bilans SQL la lisent : abandon, avec sa propre colonne (migration 20261018240000).
+  const M240 = lire("supabase/migrations/20261018240000_bilans_plateforme_decochee.sql");
+  ok("questions_publication_bilan : décochée = abandon + colonne plateformes_decochees",
+    /'abandonne', 'publie_sans_plateforme', 'bloque_au_clic', 'plateforme_decochee'\)/.test(M240) && /comptes bigint, plateformes_decochees bigint\)/.test(M240)
+    && /count\(\*\) FILTER \(WHERE s ->> 'issue' = 'plateforme_decochee'\)/.test(M240));
+  ok("champs_requis_veille : décochée = abandon + plateformes_decochees",
+    /issue IN \('abandonne', 'publie_sans_plateforme', 'plateforme_decochee'\)\) AS abandons/.test(M240) && /issue = 'plateforme_decochee'\) AS plateformes_decochees/.test(M240));
+  ok("lecture seule, droits reposés (service_role seulement)", /GRANT EXECUTE ON FUNCTION public\.questions_publication_bilan\(timestamptz, timestamptz\) TO service_role;/.test(M240)
+    && /REVOKE ALL ON FUNCTION public\.questions_publication_bilan\(timestamptz, timestamptz\) FROM PUBLIC, anon, authenticated;/.test(M240)
+    && fs.existsSync(path.join(R, "supabase/rollbacks/20261018240000_bilans_plateforme_decochee_INVERSE.sql")));
 }
 
 console.log(echecs ? `\n✗ ${echecs} échec(s)` : "\n✓ eBay ÷ 5 — tout est vert");

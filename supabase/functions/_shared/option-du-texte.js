@@ -121,19 +121,134 @@ function positions(mots, morceau) {
   return out;
 }
 
+// ── L'ACCESSOIRE D'UN OBJET N'EST JAMAIS L'OBJET (18/10 soir, Nico) ─────────
+// « House de couette 140x190 » (eBay, Type) : la règle lisait « couette » et
+// posait « Couette » — l'annonce vend une HOUSSE. RÈGLE, pour toute plateforme
+// et tout objet, sur un champ qui dit CE QU'EST l'article (Type, Sous-type,
+// Produit, Catégorie, Univers) : « housse de… », « taie de… » (et la faute
+// « house de… ») suivis d'un objet désignent l'accessoire. L'option qui nomme
+// cet objet (Couette, Coussin, Canapé, Oreiller…) ne vaut jamais ; quand le texte
+// en nommait une, seule une option qui nomme l'ACCESSOIRE (Housse, Housse de
+// coussin, Taie d'oreiller, Étui…) peut répondre — sinon c'est la question,
+// jamais une autre option lue à côté (« Lot », un personnage…).
+// L'objet = le premier vrai mot après « de / d' / du / des / pour » ; un mot qui
+// est lui-même l'accessoire (« de protection », « de transport », « étui ») se
+// saute jusqu'à l'objet et reste lisible. Ce qui suit l'objet (« en coton »,
+// « 140x190 ») se lit comme avant. Sans « de » (« Housse coussin velours »), le
+// mot qui suit est l'objet quand le texte COMMENCE par l'accessoire (après une
+// quantité : « Lot de 2 ») ; « drap(s) housse(s) » EST l'article ; un objet nommé
+// AVANT l'accessoire (« Couvre-lit… avec taies d'oreiller ») reste l'article.
+// ⛔ Les autres champs (Thème, Couleur, Matière, « Adapté à »…) ne changent pas :
+//    pour un accessoire, l'objet y est souvent la bonne réponse (« Housse pour
+//    iPad » → Adapté à : iPad ; « Housses de Noël pour coussins » → Thème : Noël).
+export const TETES_ACCESSOIRE = new Set(["housse", "housses", "taie", "taies"]);
+const FAUTES_ACCESSOIRE = { house: "housse", houses: "housses" };
+const LIAISONS_ACCESSOIRE = new Set(["de", "d", "du", "des", "pour"]);
+const MOTS_ACCESSOIRE = new Set(["protection", "rangement", "transport", "voyage", "rechange", "remplacement",
+  "etui", "etuis", "coque", "coques", "pochette", "pochettes", "sac", "sacs", "sacoche", "sacoches"]);
+
+/** Les mots, la faute « house de… » lue « housse de… ». */
+function motsAccessoire(mots) {
+  return mots.map((w, i) => (FAUTES_ACCESSOIRE[w] && LIAISONS_ACCESSOIRE.has(mots[i + 1]) ? FAUTES_ACCESSOIRE[w] : w));
+}
+
+// Où commence vraiment le texte, après « Lot de 2 », « Set de 3 », « 2 » (une quantité n'est pas un objet).
+function debutApresQuantite(mots) {
+  let k = 0;
+  if (["lot", "lots", "set"].includes(mots[k])) k++;
+  if (mots[k] === "de") k++;
+  if (/^[0-9]+$/.test(mots[k] ?? "")) k++;
+  return k;
+}
+// Le texte COMMENCE-t-il par l'accessoire (« Housse coussin… », « Lot de 2 housses… », « 2 taies… ») ?
+const teteEnTete = (mots, i) => i === debutApresQuantite(mots);
+
 /**
- * Les options d'une liste qu'un texte NOMME, correspondances contenues dans
- * une plus longue effacées. Rend [{ option, portees: [{debut, fin}] }].
+ * Les objets d'un accessoire : [{ tete, objets, accessoires }] — `objets` = les positions des mots de l'objet
+ * (à ne jamais lire comme l'article : le premier, et celui qu'un « pour » nomme juste après — « housse étui
+ * portefeuille pour smartphone »), `accessoires` = les positions des mots qui nomment l'accessoire.
+ * Sans « de » (« Housse coussin velours »), seulement quand le texte commence par l'accessoire ; « drap(s)
+ * housse(s) » EST l'article.
  */
-export function optionsNommees(texte, options) {
-  const mots = motsDe(texte);
-  if (!mots.length) return [];
+export function zonesObjetAccessoire(mots) {
+  const zones = [];
+  for (let i = 0; i < mots.length; i++) {
+    if (!TETES_ACCESSOIRE.has(mots[i]) || mots[i - 1] === "drap" || mots[i - 1] === "draps") continue;
+    const suivant = mots[i + 1];
+    const avecLiaison = LIAISONS_ACCESSOIRE.has(suivant);
+    if (!avecLiaison && !(teteEnTete(mots, i) && suivant && !MOTS_VIDES.has(suivant) && !/^[0-9]/.test(suivant))) continue;
+    const accessoires = [i];
+    let j = i + 1;
+    let objet = -1;
+    for (let pas = 0; pas < 3 && j < mots.length; pas++) {
+      while (j < mots.length && (LIAISONS_ACCESSOIRE.has(mots[j]) || MOTS_VIDES.has(mots[j]))) j++;
+      if (j >= mots.length) break;
+      if (!MOTS_ACCESSOIRE.has(mots[j])) { objet = j; break; }
+      accessoires.push(j);
+      j++;
+    }
+    if (objet <= i) continue;
+    const objets = [objet];
+    for (let k = objet + 1; k <= objet + 2 && k < mots.length - 1; k++) {
+      if (mots[k] === "pour") {
+        let o = k + 1;
+        while (o < mots.length && MOTS_VIDES.has(mots[o])) o++;
+        if (o < mots.length) objets.push(o);
+        break;
+      }
+    }
+    zones.push({ tete: i, objets, accessoires });
+  }
+  return zones;
+}
+
+// Une option qui nomme l'accessoire se lit aussi sans ses petits mots : « Housse de coussin » dans
+// « housse coussin velours ».
+function accessoireSansLiaison(mots, option, zones) {
+  const ws = motsDe(option).filter((w) => !MOTS_VIDES.has(w));
+  if (ws.length < 2 || !TETES_ACCESSOIRE.has(ws[0]) && !TETES_ACCESSOIRE.has(`${ws[0]}s`)) return null;
+  for (const z of zones) {
+    const suite = mots.slice(z.tete).filter((w) => !MOTS_VIDES.has(w)).slice(0, ws.length);
+    if (suite.length === ws.length && ws.every((w, k) => memeMot(w, suite[k]))) {
+      return { debut: z.tete, fin: z.tete + ws.length };
+    }
+  }
+  return null;
+}
+
+/**
+ * Les options nommées par un texte, et ce que l'accessoire y change (champ d'identité seulement).
+ * → { trouvees, ecartee, accessoires } : `ecartee` = une option nommait l'OBJET d'un accessoire qui ouvre le
+ *   texte (écartée) ; `accessoires` = les options qui nomment l'accessoire lui-même. Un objet nommé AVANT
+ *   l'accessoire (« Couvre-lit … avec taies d'oreiller ») reste l'article : rien n'est restreint.
+ */
+function lireOptions(texte, options, identite) {
+  const mots = identite ? motsAccessoire(motsDe(texte)) : motsDe(texte);
+  const vide = { trouvees: [], ecartee: false, accessoires: new Set() };
+  if (!mots.length) return vide;
+  const zones = identite ? zonesObjetAccessoire(mots) : [];
+  const surLObjet = (i) => zones.some((z) => z.objets.includes(i));
+  const surLAccessoire = (i) => zones.some((z) => z.accessoires.includes(i));
+  const premiereTete = zones.length ? Math.min(...zones.map((z) => z.tete)) : Infinity;
+  const debut = debutApresQuantite(mots);
+  let ecartee = false;
+  let objetAvant = false;
+  const accessoires = new Set();
   const trouvees = [];
   for (const option of options ?? []) {
     if (!String(option ?? "").trim() || estFourreTout(option)) continue;
     const portees = [];
     for (const m of morceaux(option)) {
-      for (const i of positions(mots, m)) portees.push({ debut: i, fin: i + m.length });
+      for (const i of positions(mots, m)) {
+        if (surLObjet(i)) { ecartee = true; continue; }
+        if (surLAccessoire(i)) accessoires.add(String(option));
+        else if (i >= debut && i < premiereTete) objetAvant = true;
+        portees.push({ debut: i, fin: i + m.length });
+      }
+    }
+    if (zones.length && !accessoires.has(String(option))) {
+      const p = accessoireSansLiaison(mots, option, zones);
+      if (p) { accessoires.add(String(option)); portees.push(p); }
     }
     if (portees.length) trouvees.push({ option: String(option), portees });
   }
@@ -142,7 +257,17 @@ export function optionsNommees(texte, options) {
   // pas « Plat ».
   const contenue = (p, autre) => autre.portees.some(
     (q) => q.fin - q.debut > p.fin - p.debut && q.debut <= p.debut && q.fin >= p.fin);
-  return trouvees.filter((a) => !a.portees.every((p) => trouvees.some((b) => b !== a && contenue(p, b))));
+  return { trouvees: trouvees.filter((a) => !a.portees.every((p) => trouvees.some((b) => b !== a && contenue(p, b)))),
+    ecartee: ecartee && !objetAvant, accessoires };
+}
+
+/**
+ * Les options d'une liste qu'un texte NOMME, correspondances contenues dans
+ * une plus longue effacées. Rend [{ option, portees: [{debut, fin}] }].
+ * `identite` : le champ dit ce qu'est l'article (la règle de l'accessoire s'applique).
+ */
+export function optionsNommees(texte, options, { identite = false } = {}) {
+  return lireOptions(texte, options, identite).trouvees;
 }
 
 /**
@@ -171,7 +296,15 @@ export function optionDepuisTextes({ options, textes, cle = "", label = "", iden
   let sourceAmbigue = null;
   for (const { source, texte } of textes ?? []) {
     if (!String(texte ?? "").trim()) continue;
-    const noms = [...new Set(optionsNommees(texte, liste).map((x) => x.option))];
+    const lu = lireOptions(texte, liste, champIdentite);
+    const noms = [...new Set(lu.trouvees.map((x) => x.option))];
+    // (18/10 soir) Le texte nommait l'OBJET d'un accessoire : seule une option qui nomme l'accessoire répond ;
+    // sinon la question (avec ce qui a été nommé à côté en tête), jamais une autre option lue à côté.
+    if (lu.ecartee && !candidats) {
+      const acc = noms.filter((o) => lu.accessoires.has(o));
+      if (acc.length === 1) return { valeur: acc[0], source, candidats: acc };
+      return { valeur: null, source, candidats: acc.length ? acc : noms };
+    }
     if (!noms.length) continue;
     if (!candidats) {
       if (champIdentite && source === "description") return { valeur: null, source, candidats: noms };

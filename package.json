@@ -1,7 +1,7 @@
 {
   "name": "fillsell",
   "private": true,
-  "version": "2.9.103",
+  "version": "2.9.104",
   "type": "module",
   "scripts": {
     "postinstall": "node -e \"if(process.env.VERCEL){console.log('Vercel: patch-package saute (patches natifs seulement, et le cache de build casse leur application)')}else{require('child_process').execSync('patch-package',{stdio:'inherit'})}\"",
@@ -208,6 +208,7 @@
     "selftest:publication-lot": "node --import ./scripts/loader-ext.mjs scripts/publication-lot-selftest.mjs",
     "selftest:acces-opla": "node scripts/acces-opla-selftest.mjs",
     "selftest:option-du-texte": "node --import ./scripts/loader-ext.mjs scripts/option-du-texte-selftest.mjs",
+    "selftest:accessoire-objet": "node --import ./scripts/loader-ext.mjs scripts/accessoire-objet-selftest.mjs",
     "selftest:rayon-par-defaut": "node --import ./scripts/loader-ext.mjs scripts/rayon-par-defaut-selftest.mjs",
     "selftest:rayon-refuse": "node --import ./scripts/loader-ext.mjs scripts/rayon-refuse-selftest.mjs",
     "selftest:rayon-refuse-ebay": "deno run scripts/rayon-refuse-ebay-selftest.ts",

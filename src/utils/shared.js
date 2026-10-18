@@ -1882,12 +1882,63 @@ export function detectObjectIconKeyword(titre, description){
 // matché sur la forme comparable (sans accents, minuscules), débarrassé d'un
 // éventuel caractère de contexte en tête (filet : une règle qui consommerait
 // son contexte gauche rendrait « robe » précédé d'un espace).
+// ── (18/10 soir, Nico) L'ACCESSOIRE D'UN OBJET N'EST JAMAIS L'OBJET ──────────
+// « Housse de coussin » partait au rayon des coussins, « Housse de canapé » à
+// celui des canapés, « House de couette » (faute) à celui des couettes — sur les
+// quatre plateformes, puisque le mot du titre choisit la feuille de chacune.
+// RÈGLE (la même que l'option du texte, _shared/option-du-texte.js) : « housse
+// de… », « taie de… » et la faute « house de… » suivis d'un objet nomment
+// l'ACCESSOIRE. Le mot de cet objet n'est jamais le mot de l'article ; une règle
+// qui nomme l'accessoire (« housse de couette », « taie d'oreiller ») le reste ;
+// sans elle, rien du titre : l'objet de l'IA, puis la question. Un mot qui nomme
+// l'accessoire lui-même (« de protection pour… », « de transport… », « étui »)
+// se saute jusqu'à l'objet ; un « pour … » juste après nomme un objet de plus
+// (« housse étui portefeuille pour smartphone ») ; sans « de » (« Housse coussin
+// velours »), le mot qui suit est l'objet ; « drap housse » EST l'article.
+// Un TITRE qui COMMENCE par l'accessoire (« Housse pour objectif appareil
+// photo », « Lot de 4 housses… ») ne nomme que lui : aucun mot-objet après la
+// tête n'y choisit le rayon (banc du 18/10 : « objectif » puis « appareil
+// photo » prenaient la place de la housse).
+// Un texte sans cette tournure suit exactement le chemin d'avant.
+const FAUTE_HOUSSE = /\bhouse(s?)(?=\s+(?:de|d['’]|du|des|pour)\b)/g;
+const MOTS_DE_L_ACCESSOIRE = "protection|rangement|transport|voyage|rechange|remplacement|etuis?|coques?|pochettes?|sacs?|sacoches?";
+const OBJET_ACCESSOIRE = new RegExp("(?<!\\bdraps?\\s)\\b(?:housses?|taies?)\\s*(?:de\\s+|d['’]\\s*|du\\s+|des\\s+|pour\\s+)?(?:(?:la|le|les|l['’]|un|une|mon|ma|mes|son|sa|ses)\\s*)?"
+  + "(?:(?:" + MOTS_DE_L_ACCESSOIRE + ")\\s+(?:(?:de|d['’]|du|des|pour)\\s*)?(?:(?:la|le|les|l['’])\\s*)?){0,2}([a-z0-9]+)(?:\\s+(?!pour\\b)[a-z0-9]+)?(?:\\s+pour\\s+(?:(?:la|le|les|l['’]|un|une|mon|ma|son|sa)\\s*)?([a-z0-9]+))?", "gd");
+const TITRE_ACCESSOIRE = /^[^a-z0-9]*(?:(?:lots?|set)\s+(?:de\s+)?)?(?:\d+\s+)?(?:housses?|taies?)\b/;
+// Une règle qui nomme elle-même l'accessoire (« taie d'oreiller », « housse de couette ») n'est jamais sautée.
+const MOT_ACCESSOIRE = /^(?:housses?|taies?)\b/;
+/** Les mots-objets d'un accessoire dans un texte comparable : [{ debut, fin }] (indices de caractères). Un texte
+ *  qui COMMENCE par l'accessoire (un titre) : tout ce qui suit la tête. */
+export function zonesObjetAccessoireTexte(t){
+  const x=String(t??'');
+  const tete=TITRE_ACCESSOIRE.exec(x);
+  if(tete) return [{ debut: tete.index+tete[0].length, fin: x.length }];
+  const z=[];
+  for(const m of x.matchAll(OBJET_ACCESSOIRE)){
+    for(const k of [1,2]) if(m.indices[k]) z.push({ debut: m.indices[k][0], fin: m.indices[k][1] });
+  }
+  return z;
+}
+const _reglesGlobales=new Map();
+function premiereHorsObjetAccessoire(re, t, zones){
+  if(!zones.length) return re.exec(t);
+  let g=_reglesGlobales.get(re);
+  if(!g){ g=new RegExp(re.source, re.flags.includes('g')?re.flags:re.flags+'g'); _reglesGlobales.set(re,g); }
+  for(const m of t.matchAll(g)){
+    const mot=m[0].replace(/^[^a-z0-9]+/i,'');
+    const debut=m.index+(m[0].length-mot.length);
+    if(MOT_ACCESSOIRE.test(mot) || !zones.some((z)=>debut>=z.debut && debut<z.fin)) return m;
+  }
+  return null;
+}
+
 export function detectObjectKeywordDetail(titre, description){
   // Dé-bruitage : accessoires inclus + négations de fragrance.
   const denoise=(s)=>String(s||'')
     .replace(INCLUDED_ACCESSORY_CLAUSE,' ')
     .replace(FRAGRANCE_NEGATION,' ')
-    .toLowerCase();
+    .toLowerCase()
+    .replace(FAUTE_HOUSSE,'housse$1');
   const motDe=(m)=>String(m?.[0]??'').replace(/^[^a-z0-9]+/i,'').trim()||null;
   // Passe 1 — le TITRE seul : c'est lui qui NOMME l'objet (même règle produit
   // que le ciblage par titre des pages de liste). Sans cette passe, un mot-clé
@@ -1897,11 +1948,13 @@ export function detectObjectKeywordDetail(titre, description){
   // priorité, pas la position du mot dans le texte).
   const regles=reglesComparables();
   const tTitre=SANS_ACCENTS(denoise(titre));
-  for(const [re,icon] of regles){ const m=re.exec(tTitre); if(m) return { icon, mot: motDe(m), passe: 1 }; }
+  const zTitre=zonesObjetAccessoireTexte(tTitre);
+  for(const [re,icon] of regles){ const m=premiereHorsObjetAccessoire(re,tTitre,zTitre); if(m) return { icon, mot: motDe(m), passe: 1 }; }
   // Passe 2 — titre + description (comportement historique, filet pour les
   // titres sans mot-objet : « Medik8 Crystal Retinal 6 » + desc « crème… »).
   const t=SANS_ACCENTS(denoise((titre||'')+' '+(description||'')));
-  for(const [re,icon] of regles){ const m=re.exec(t); if(m) return { icon, mot: motDe(m), passe: 2 }; }
+  const zT=zonesObjetAccessoireTexte(t);
+  for(const [re,icon] of regles){ const m=premiereHorsObjetAccessoire(re,t,zT); if(m) return { icon, mot: motDe(m), passe: 2 }; }
   return null;
 }
 
