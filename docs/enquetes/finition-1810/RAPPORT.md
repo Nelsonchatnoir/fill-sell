@@ -2,17 +2,17 @@
 
 ## Résumé (à lire en premier)
 
-| Point | Statut | En une ligne |
+| Point | Statut | Preuve |
 |---|---|---|
-| 1. Régis | voir § 1 | Cause **prouvée** : 99 brouillons + redirection /member ; défaut serveur des 7 min corrigé ; 2 annonces en ligne, une fois chacune |
-| 2. Louis | voir § 2 | Règle « une boutique = un compte » + comptes reliés (essai 21/21) ; transfert @evat prouvé à blanc (19/19, inverse 25/25) |
-| 3. eBay ÷ 5 | voir § 3 | 156 → **27** questions affichées sur la semaine rejouée (÷ 5,8), bancs sans IA |
-| 4. Titre Vinted « symboles » | voir § 4 | assagi avant le dépôt, 0 titre accepté changé sur 70 555 |
-| 5. Leboncoin PRO poids | voir § 5 | correctif dans la 0.6.128, prouvé sur maquette du formulaire PRO |
-| 6. Depop sans identifiant | voir § 6 | l'identifiant n'a jamais manqué : un slug avec « _ » était illisible |
-| 7. Relevés morts | voir § 7 | première ligne de « À régler », geste unique « Se reconnecter » |
-
-(Le tableau est complété en fin de session avec CLOS / NON CLOS et la preuve — § Statut final.)
+| 1. Régis — cause, règle, 2 annonces | **CLOS** | cause prouvée (99 brouillons en page 1 + redirection /member) ; 2 annonces en ligne une fois chacune (200), 9 copies en 404 ; défaut serveur des 7 min corrigé |
+| 1. Régis — les 47 | **NON CLOS** | lot 1 : Larousse en ligne une fois (10431938776 en 200, la 2e copie retirée par son numéro, 404 à 19:18) ; **46 retenues** jusqu'à la 0.6.128 (décision de Nico, § 1.6) |
+| 2. Louis — transfert, règle, LBC partagé | **CLOS** | transfert 19/19 ; 32 annonces LBC de louis-seller, 0 chez le compte principal ; louis-seller en Business |
+| 2. Louis — ventes « un compte, zéro doublon » | **NON CLOS** | 12 ventes Vinted de @evat en double (19:08) : règle corrigée et en prod (migration 20261018230000, essai 23/23, get-pending-jobs v265) ; **réparation écrite mais refusée par l'outil : feu vert de Nico attendu** (§ 2.4) |
+| 3. eBay ÷ 5 | **CLOS** | 156 → **27** questions sur la semaine rejouée (÷ 5,8), bancs sans IA |
+| 4. Titre Vinted « symboles » | **CLOS** | 0 titre accepté changé sur 70 555 ; 5d993767 publié en réel (10431945873, 200) |
+| 5. Leboncoin PRO poids | **NON CLOS** | correctif 0.6.128 prouvé sur maquette (26/26) ; preuve sur un vrai compte PRO pas faite (navigateur de la personne) |
+| 6. Depop sans identifiant | **CLOS** | thibault 81188384 : numéro retrouvé seul (lien + dépôt, jamais le titre), DELETE 204 à 19:18, page Depop en 410 |
+| 7. Relevés morts | **CLOS** (code) | RPC + écran « À régler », selftest ; vue dans l'app réelle à faire par Nico (aucune connexion à fillsell.app en automatisation) |
 
 ---
 
@@ -69,7 +69,7 @@
 - Le compteur compte **une fois par article** (exécutée ou en cours), jamais par essai ; un retrait n'est pas une
   republication. Régis : 49/50 = 2 publiées + 47 en attente ; les 11 essais et les 9 retraits n'ont rien consommé.
 
-### 1.6 Les 47 — lot 1 (3) libéré à 18:24, puis arrêté
+### 1.6 Les 47 — lot 1 (3) libéré à 18:24, puis arrêté (Larousse : une seule copie en ligne, prouvé à 19:18)
 - **Larousse (ed7729dc)** : une-passe à 16:25:46 UTC, copie 10431938776 créée à 16:25:54, non reconnue par son extension
   (page 1 = brouillons) → **retenue par la garde serveur** (« en cours de vérification »), sans nouvel essai. ✓
 - **Défaut de ma garde, trouvé en réel** : le relevé demandé par le serveur était d'abord écarté sans bruit (origine
@@ -77,7 +77,8 @@
   v263) ; puis le relevé automatique a tourné (18:56, 188/188) mais **n'importe aucun article neuf** (règle du 05/10) :
   la garde a conclu « aucune copie » et resservi la recréation à 18:58 → **2e copie 10432668983 (16:59:50 UTC)**.
   Arrêt immédiat des 3 jobs du lot 1 (19:04), puis réparation selon la décision de Nico (garder la 1re) : fiche et job
-  sur 10431938776, retrait de 10432668983 armé par son numéro (19:08). Règle resserrée (§ 1.2) et redéployée.
+  sur 10431938776, retrait de 10432668983 armé par son numéro (19:08), **exécuté par son extension** : page relue à 19:18,
+  10431938776 en 200, 10432668983 en 404. Règle resserrée (§ 1.2) et redéployée (get-pending-jobs v264, 19:15).
 - **Les 46 autres restent retenues** : avec son extension 0.6.125, aucune remise en ligne ne peut être prouvée sans
   « Synchroniser » à chaque article (ses 99 brouillons aveuglent sa relecture). Elles partiront avec la **0.6.128**
   (relecture qui saute les brouillons, prouvée sur son cas en selftest) — ou plus tôt si Nico accepte qu'un relevé
@@ -116,6 +117,32 @@
   retirées de louis@ (la copie de louis-seller est gardée : une vente, un compte) ; 195 fiches coupées en deux et reliées ;
   10 commandes et 9 conversations @evat passent à louis-seller ; 0 job, 0 notification créés.
 
+### 2.4 Après le transfert : deux postes sur louis@ (vu en réel à 19:2x)
+- **Ce qui est prouvé** : louis@ a DEUX postes — son PC (53269f05), ouvert sur @neyenonie, et sa VM (8632c049), ouverte
+  sur **@evat**, la boutique désormais de louis-seller (dépôt relu par users/current à 18:41) ; louis-seller a les deux
+  siens (44e23093, 74416e23), ouverts sur @evat. La boutique ouverte n'était connue que PAR COMPTE (sonde réécrite à tour
+  de rôle par chaque poste), et le routage par poste (lot 6) ne jouait qu'à deux boutiques confirmées — louis@ n'en a plus
+  qu'une depuis le transfert.
+- **Conséquences** : (1) la veille de la VM a enregistré sur louis@ 2 commandes de @evat — 23326812434 (9 articles,
+  18:37) et 23327856996 (3 articles, 19:02), articles « pas suivis », prouvés de @evat par leur page publique
+  (/member/371531) — que louis-seller a enregistrées aussi à 19:08:35 : **12 ventes en double**, sans aucun mail ni push
+  envoyé (push de louis-seller marqués « doublon ») ; (2) la VM a publié à 18:40 un article de @neyenonie (fiche PRO
+  « Rangement Blanc et Noir », 9 998 exemplaires) **sur @evat** (job 56e8788c, 10432288057).
+- **Règle (tout le parc ; rien ne change pour un compte dont aucun poste n'est ouvert sur la boutique d'un autre)** —
+  migration **20261018230000** (appliquée 19:54, essai 23/23, inverse prouvé) et get-pending-jobs **v265** (19:54) :
+  chaque poste a SA boutique, datée par SA sonde (0.6.125 comprise : déclencheur `profiles_identite_vinted_du_poste`) ;
+  une commande lue par un poste ouvert sur la boutique d'un autre compte ne s'enregistre pas (veille et relevé) ; entre
+  comptes reliés, jamais deux fois la même commande, une commande des articles du relié s'enregistre chez lui (son mail,
+  ses retraits), son article publié n'est jamais importé ; aucun job Vinted n'est servi à un poste ouvert sur la
+  boutique d'un autre compte (il reste en file pour le PC).
+- **Réparation** : `scripts/reparations/20261018_louis_ventes_vinted_doublons.sql` (retire les 12 de louis@, garde
+  celles de louis-seller ; sauvegardes `_backup_1810_louis_vdv_*` ; inverse écrit) — **l'écriture du script a été
+  refusée par l'outil : feu vert de Nico attendu**. L'annonce 10432288057 (article PRO sur @evat) reste en ligne, telle
+  quelle : sa vente s'enregistrera chez louis@ (règle ci-dessus) ; la déplacer est une décision de Nico.
+- **Leboncoin partagé** : 32 annonces publiées par louis-seller (18:28 → 19:08), toutes avec leur numéro, 0 suivie par le
+  compte principal, 0 écartée (aucun relevé LBC n'a tourné depuis) ; le premier relevé LBC de louis-seller (cette nuit,
+  ou « Synchroniser ») les rattachera — à relire : `annonces_plateforme` de 447d920c sur ces 32 numéros.
+
 ## 3. eBay ÷ 5
 - Rejeu reproductible `scripts/bancs/zero-friction/rejeu-ebay.mjs` (catégorie lue dans `categorie_journal`) :
   **156 affichées → 27** (vraies 139 → 27), central = pessimiste → **÷ 5,8**.
@@ -143,6 +170,8 @@
   la question (b1b9bb68).
 
 ## 6. Depop — retrait sans identifiant
+- **Prouvé en réel (19:18)** : retrait 81188384 de thibault — numéro retrouvé par get-pending-jobs (slug du lien,
+  `depop_product_id` du dépôt, « jamais par le titre »), DELETE HTTP 204, vérification 404 ; page publique en 410.
 - L'identifiant n'a jamais manqué : `thard_733-jean-bonobo-…` contient « _ », refusé par la règle de lecture des liens
   (serveur, SQL, extension). Corrigé partout ; un retrait sans identifiant le retrouve seul par son lien puis par son dépôt
   (slug + `depop_product_id`), jamais par le titre (migration 20261018180000, essai 8/8).
@@ -160,18 +189,27 @@
 - **Fonctions** (déployées depuis le dépôt commité, 18:2x, verify_jwt lus avant/après, inchangés) : update-job-status
   v143 → v144 (false), get-pending-jobs v261 → v262 (true), handler-watch v119 → v120 (false), generate-listing v120 →
   v121 (true), ebay-api-worker v90 → v91 (false), beebs-lien v14 → v15 (false), rapprochement-ia v9 → v10 (false),
-  ia-banc-deduction v6 → v7 (false). Journaux depuis : 0 erreur, 0 réponse 5xx.
+  ia-banc-deduction v6 → v7 (false). Journaux depuis : 0 erreur, 0 réponse 5xx. Puis get-pending-jobs v263
+  (`serveur:verif_redepot`), **v264** (19:15, garde Régis resserrée ; 23 appels en 200, 0 erreur) et **v265** (19:54,
+  poste ouvert sur la boutique d'un autre compte), verify_jwt true avant/après.
 - **Migrations** (inverses dans `supabase/rollbacks/`, essais dans `scripts/essais/`) : 20261018170000 (17:03),
   20261018200000, 20261018180000, 20261018190000 (18:23), 20261018210000 (18:2x — 180000, écrite avant 200000, avait
-  effacé la condition des comptes reliés dans `armer_retrait_job_pour` ; relu : les deux correctifs y sont).
+  effacé la condition des comptes reliés dans `armer_retrait_job_pour` ; relu : les deux correctifs y sont),
+  20261018220000 (18:52, Leboncoin partagé, essai 7/7), **20261018230000** (19:54, une vente Vinted un compte, essai 23/23).
 - **Extension 0.6.128** : `build\CWS-0.6.128-A-TELEVERSER\fillsell-extension-0.6.128-492f753-cws.zip` (seul zip du dossier,
   BUILD_ID `2026-10-18T16:26:21Z+492f753`, 37 entrées, 556 Ko). **Manifeste relu : identique à la 0.6.127 hors version,
   aucune permission nouvelle, même liste de fichiers.** La 0.6.127 est rangée dans
   `build\CWS-PERIMES\CWS-0.6.127-JAMAIS-TELEVERSEE-CONTENUE-DANS-0.6.128\` (la 0.6.128 la contient).
-- **Selftests** : 364 avant → **374/374** après (suite complète relancée avant le commit) ; `build:essai` vert ; eslint :
-  aucune erreur nouvelle.
+- **Selftests** : 364 avant → **374/374** après (suite complète relancée avant chaque commit, la dernière à 19:5x) ;
+  `build:essai` vert ; eslint : aucune erreur nouvelle.
 
 ### Ce qui reste à Nico
+- **Feu vert pour écrire et lancer `scripts/reparations/20261018_louis_ventes_vinted_doublons.sql`** (12 ventes en double
+  sur louis@, § 2.4) — refusé par l'outil au premier essai.
+- Les 46 de Régis : attendre la 0.6.128 (recommandé) ou accepter qu'un relevé importateur soit demandé par le serveur
+  pour son cas (contraire à la règle du 05/10).
+- L'annonce 10432288057 (article PRO de louis@ publié sur @evat par sa VM) : la laisser (sa vente s'enregistre chez
+  louis@) ou la retirer et la republier sur @neyenonie.
 - Téléverser `build\CWS-0.6.128-A-TELEVERSER\fillsell-extension-0.6.128-492f753-cws.zip` **après l'acceptation de la
   0.6.126** (la 0.6.127 n'est plus à téléverser), puis « Envoyer pour examen ».
 - À décider : « House de couette » → « Couette » posé par la règle du texte eBay (valeur fausse) ; ajouter l'issue

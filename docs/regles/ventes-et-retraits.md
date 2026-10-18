@@ -247,3 +247,11 @@ Rapport : `docs/enquetes/session-sans-nico-1810/lot4-ventes-lot-multi-exemplaire
 ## 18/10 soir — Comptes reliés : une vente, un compte, un mail (Louis)
 - Règles complètes : `docs/regles/rapprochement-et-releves.md` § « UNE BOUTIQUE = UN COMPTE ». Point A tient : jamais un
   retrait sans VENTE prouvée — la vente de la fiche jumelle d'un compte relié en est une.
+- **(18/10, 19:54) Une vente Vinted, un compte : la boutique du POSTE** (migration `20261018230000`, get-pending-jobs
+  v265). Un compte peut avoir plusieurs postes ouverts sur des boutiques différentes (Louis : PC sur @neyenonie, VM sur
+  @evat, boutique de son autre compte) ; la boutique lue PAR COMPTE (sonde réécrite à tour de rôle) ne suffit jamais.
+  Chaque poste a SA boutique, datée par SA sonde (`profiles_identite_vinted_du_poste`, `vinted_boutique_du_poste()`,
+  30 min) ; une commande lue par un poste ouvert sur la boutique d'un autre compte FillSell ne s'enregistre pas (veille
+  `commandes_vinted_noter` et relevé) ; entre comptes reliés, une commande n'est enregistrée qu'une fois, chez le compte
+  dont ce sont les articles (fiche ou dépôt), par SON circuit ; get-pending-jobs ne sert aucun job Vinted à ce poste.
+  Vu en réel : 12 ventes de @evat en double (louis@ 18:39/19:03, louis-seller 19:08), 0 mail. Essai 23/23.
