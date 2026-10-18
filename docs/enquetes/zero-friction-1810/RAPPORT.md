@@ -33,7 +33,7 @@
   la **0.6.127**. **B** (vente Beebs déclarée → « Beebs ») : en prod à 15:13, essai à blanc 7/7. **C** : Louis a pris ses
   bordereaux lui-même à 11:30 — la relance ne fera rien (trois verrous relus) ; aucun des 3 critères de la bêta n'est
   rempli (le n° 1 est réécrit) ; hu.anastasia : son Edge n'a pas repris depuis 10:13.
-- **Zip à téléverser APRÈS l'acceptation de la 0.6.126** : `build\CWS-0.6.127-A-TELEVERSER\…` (voir § Livraison).
+- **Zip à téléverser APRÈS l'acceptation de la 0.6.126** : `build\CWS-0.6.127-A-TELEVERSER\fillsell-extension-0.6.127-e7d0714-cws.zip` (seule la version change au manifeste).
 
 ---
 
@@ -166,7 +166,24 @@
 
 ## Livraison
 
-(complété en fin de passe)
+- **Migrations** (appliquées, `migration repair` fait, inverses dans `supabase/rollbacks/`) : `20261018150000` (15:13),
+  `20261018160000` (≈ 15:20). Essai à blanc de la première : `scripts/essais/20261018150000_essai.sql` (7/7, ROLLBACK).
+- **Fonctions** (verify_jwt lus avant / après, inchangés) : get-pending-jobs v260 → **v261** (15:23, `true`) ;
+  generate-listing v118 → v119 (15:23) → **v120** (16:04, même code que le commit) (`true`) ; handler-watch v118 → **v119**
+  (15:54, `false`) ; ia-banc-deduction v2 → **v6** (`false`, banc seulement). ebay-api-worker **v90** non redéployé (les
+  options ajoutées à `_shared/ebay-aspects-ia.ts` sont sans effet par défaut).
+- **Commits** : `6c7634a` (code, docs, selftests), `e7d0714` (EXTENSION_LAST_COMMIT = 2026-10-18T14:04:00Z), puis la version
+  2.9.102 de l'app.
+- **Extension 0.6.127** : `build\CWS-0.6.127-A-TELEVERSER\fillsell-extension-0.6.127-e7d0714-cws.zip` (BUILD_ID
+  `2026-10-18T14:04:22Z+e7d0714`, 37 entrées, 553 Ko) — seul zip de ce dossier. Le zip de la 0.6.126 est rangé dans
+  `build\CWS-PERIMES\CWS-0.6.126-EN-EXAMEN-AU-CWS\`. **Manifeste relu : seule la version change** (0.6.126 → 0.6.127),
+  aucune permission nouvelle, même liste de fichiers (41). **À téléverser SEULEMENT APRÈS l'acceptation de la 0.6.126.**
+  Après son acceptation à elle : `ALREADY_PUBLISHED` += 0.6.127 et, si Nico le veut, `EXTENSION_MIN_BUILD =
+  2026-10-18T14:04:22Z`.
+- **Web et OTA** : voir le § Servi (relu après le push).
+- **Selftests** : 358/358 avant (suite de référence du matin, 14d133d) → **363/363** après (deux suites complètes, la
+  dernière après tous les changements) ; `build:essai` vert ; eslint : aucune erreur nouvelle (7 d'avant dans
+  ListingPreviewScreen) ; harnais du stepper (deux peaux), du bloc de questions et du lot : verts.
 
 ## Incidents
 
@@ -198,6 +215,7 @@
 
 ## Ce qui reste à Nico
 
-- Téléverser la 0.6.127 **après** l'acceptation de la 0.6.126 (chemin au § Livraison), « Envoyer pour examen ».
+- Téléverser `build\CWS-0.6.127-A-TELEVERSER\fillsell-extension-0.6.127-e7d0714-cws.zip` **après** l'acceptation de la 0.6.126 (c'est déjà le zip), « Envoyer pour examen ».
+- Décider : titre Vinted « trop de symboles d'affilée » (proposition en un geste, ou reprise automatique unique) ; le correctif du formulaire PRO Leboncoin ne se prouve que sur un compte pro.
 - Rien d'autre : les leviers basculent seuls ; Claude relit vers le 20-25/10 (`ia_leviers_bascule.mesure`,
   `questions_publication_bilan(now()-interval '7 days')`).
