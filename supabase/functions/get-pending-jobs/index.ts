@@ -7056,6 +7056,15 @@ serve(async (req) => {
         const routage = !!sessionId && routageBoutiquesActif(postesRoutage, loginsDesBoutiques(profil?.vinted_sync_pin).size);
         const identitePoste = routage ? identiteVintedDuPoste(postesRoutage[String(sessionId)]) : null;
         const laissesAutrePoste = new Map<string, string>();
+        // (18/10 soir, Louis — une boutique = un compte) CE poste est ouvert (identité fraîche : sa sonde,
+        // son dépôt, sa garde) sur une boutique Vinted d'un AUTRE compte FillSell : aucun job Vinted de ce
+        // compte ne lui est servi, même à une seule boutique confirmée — rien d'écrit, ils restent en file
+        // pour le poste ouvert sur la bonne. Vu en réel : la VM de Louis, connectée à louis@ mais ouverte sur
+        // @evat (boutique de louis-seller), a publié à 18:40 un article de @neyenonie sur @evat ; l'identité
+        // lue était celle du COMPTE, réécrite à tour de rôle par ses deux postes.
+        const identiteCePoste = sessionId ? identiteVintedDuPoste(postesRoutage[String(sessionId)]) : null;
+        const ouvertSurAutreCompte = !!identiteCePoste && !loginsDesBoutiques(profil?.vinted_sync_pin).has(identiteCePoste)
+          && (await userClient.rpc("boutique_vinted_autre_compte", { p_user: user.id, p_boutique: identiteCePoste })).data === true;
         const fiable = !erreurProfil && !erreurArticles && !!profil;
         const historiquesOperations = new Map<string, PreuveHistoriqueVinted>();
         if (fiable) await Promise.all(operations.map(async (j) => {
@@ -7064,6 +7073,7 @@ serve(async (req) => {
           if (!origine) historiquesOperations.set(String(j.id), await historiqueListingProuve(j, profil?.vinted_sync_pin?.boutiques));
         }));
         for (const j of operations) {
+          if (ouvertSurAutreCompte) { laissesAutrePoste.set(String(j.id), "autre_compte"); continue; }
           let pf = (j.platform_fields ?? {}) as Record<string, unknown>;
           // ── (15/10 soir, Louis — Nico) UNE PUBLICATION NE BLOQUE PLUS SUR LA
           // BOUTIQUE (_shared/boutique-publication-vinted.js) : article lié →
@@ -7209,7 +7219,7 @@ serve(async (req) => {
         }
         if (laissesAutrePoste.size) {
           const vers = [...new Set(laissesAutrePoste.values())].map(posteCourt).join(", ");
-          console.log(`[get-pending-jobs] userId=${user.id} poste ${posteCourt(sessionId)} (boutique Vinted ${identitePoste}) : ${laissesAutrePoste.size} job(s) Vinted laissé(s) au poste qui a leur boutique ouverte (${vers}) — rien d'écrit, ils restent en file`);
+          console.log(`[get-pending-jobs] userId=${user.id} poste ${posteCourt(sessionId)} (boutique Vinted ${identitePoste ?? identiteCePoste}) : ${laissesAutrePoste.size} job(s) Vinted laissé(s) au poste qui a leur boutique ouverte (${ouvertSurAutreCompte ? "boutique d'un autre compte FillSell ouverte ici" : vers}) — rien d'écrit, ils restent en file`);
           for (const id of laissesAutrePoste.keys()) { retenus.add(id); idsAutrePoste.add(id); }
           laissesAutrePosteN = laissesAutrePoste.size;
         }

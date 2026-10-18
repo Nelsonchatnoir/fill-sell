@@ -121,4 +121,21 @@ cas("branchements : get-pending-jobs (routage, auto, murs, poll) et update-job-s
   assert.ok(/vinted_source: "garde"/.test(U) && /vinted_source: "depot"/.test(U));
 });
 
+cas("(18/10 soir) un poste ouvert sur la boutique d'un AUTRE compte ne reçoit aucun job Vinted, même à une boutique", () => {
+  const G = lire("supabase/functions/get-pending-jobs/index.ts");
+  assert.ok(/const identiteCePoste = sessionId \? identiteVintedDuPoste\(postesRoutage\[String\(sessionId\)\]\) : null;/.test(G), "identité de CE poste, sans condition de routage");
+  assert.ok(/const ouvertSurAutreCompte = !!identiteCePoste && !loginsDesBoutiques\(profil\?\.vinted_sync_pin\)\.has\(identiteCePoste\)\n\s+&& \(await userClient\.rpc\("boutique_vinted_autre_compte", \{ p_user: user\.id, p_boutique: identiteCePoste \}\)\)\.data === true;/.test(G),
+    "seulement une boutique du registre tenue par un autre compte (jamais une boutique simplement non confirmée)");
+  assert.ok(/for \(const j of operations\) \{\n\s+if \(ouvertSurAutreCompte\) \{ laissesAutrePoste\.set\(String\(j\.id\), "autre_compte"\); continue; \}/.test(G), "laissé en file, rien d'écrit");
+  const M = lire("supabase/migrations/20261018230000_vente_vinted_un_compte_poste.sql");
+  assert.ok(/create trigger profiles_identite_vinted_du_poste before update of extension_sessions on public\.profiles/.test(M), "la sonde de CE poste date sa boutique (0.6.125 comprise)");
+  assert.ok(/\(new\.extension_sessions -> 'sondees'\) \? 'vinted'/.test(M), "une écriture qui ne sonde pas Vinted ne compte jamais");
+  assert.ok(/IF public\.boutique_vinted_autre_compte\(v_user, public\.vinted_boutique_du_poste\(v_user\)\) THEN/.test(M), "veille : boutique d'un autre compte → rien");
+  assert.ok(/'compte_relie'/.test(M) && /vente_vinted_lot_eclater\(v_lie, p_ref, p_source\)/.test(M), "comptes reliés : jamais deux fois, la commande du relié chez lui");
+  // Le poste dont la boutique est la sienne garde son identité fraîche (30 min), lue comme avant.
+  const T = Date.parse("2026-10-18T18:00:00Z");
+  assert.equal(identiteVintedDuPoste({ vinted_user_id: "371531", vinted_le: new Date(T - 2 * 60_000).toISOString(), vinted_source: "sonde" }, T), "371531");
+  assert.equal(identiteVintedDuPoste({ vinted_user_id: "371531", vinted_le: new Date(T - 31 * 60_000).toISOString(), vinted_source: "sonde" }, T), null);
+});
+
 console.log(`postes-boutiques-selftest : ${n} cas verts`);
