@@ -46,6 +46,10 @@ import { autorisationOplaRequise, connexionOplaRequise, cookiesOplaTropVolumineu
 import { marqueIntrouvable, messagePause, SOURCE_INTROUVABLE } from "./introuvable-a-confirmer.js";
 import { lectureRefusBeebs, taillesCompatibles } from "./beebs-refus-formulaire.js";
 import { BUILD_COLIS_DANS_ENVOI, refusColisVinted, colisEnvoyeEtRefuse, messageColisAttendMiseAJour, messageColisRefuseMemeEnvoye, posteAvecEnvoiColis, messageColisNonAfficheParLaPage } from "./vinted-colis.js";
+// (18/10, lot 3) La signature d'une coupure technique : UNE source (etat-job.js),
+// partagée par ce module, handler-watch et l'écran.
+import { CANAL_RE } from "./etat-job.js";
+export { CANAL_RE };
 
 const NOM = {
   vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla", depop: "Depop",
@@ -103,6 +107,89 @@ export function refusChampVinted(texte) {
 }
 
 /** (05/10) Un retrait bloqué : l'article est vendu, l'annonce encore en ligne. */
+// ── (18/10, lot 3) LEBONCOIN REFUSE LE CONTENU DE L'ANNONCE ────────────────
+// Le refus de modération au dépôt (adsubmit 403, champ body/subject) est
+// DÉTERMINISTE : le même texte servi sera refusé de la même façon. Avant, il
+// tombait dans « motif inconnu » (jocabroc8, 3e3074ef, 18/10 : « une vidéo
+// disponible sur instagram » → cinq essais à l'identique, deux « Relancer »).
+// LA RÈGLE : jamais deux fois le même texte. Le texte SERVI (titre et
+// description nettoyés par get-pending-jobs, _shared/description-leboncoin.ts)
+// est pris en empreinte à chaque refus ; un texte DÉJÀ refusé → la question,
+// tout de suite, avec les mots exacts de Leboncoin. Une reprise seulement quand
+// le texte servi n'est plus le même (liste des mentions mise à jour, fiche
+// corrigée) — au plus 3. La fiche n'est jamais touchée, la marque jamais retirée
+// (le nettoyage ne la vise pas). Sans empreinte (appelant qui ne la calcule
+// pas) : la question, tout de suite.
+export const LBC_REFUS_CONTENU_RE = /Leboncoin refuse le dépôt\s*:/i;
+export const LBC_REFUS_REPRISES_MAX = 3;
+
+/** Les mots EXACTS de Leboncoin (« … » · « … ») et les champs nommés (body, subject). */
+export function motsRefusLeboncoin(texte) {
+  const t = String(texte ?? "");
+  const i = t.search(LBC_REFUS_CONTENU_RE);
+  if (i < 0) return { mots: [], champs: [] };
+  const fin = t.indexOf(" — ", i);
+  const segment = t.slice(i, fin > i ? fin : undefined);
+  const mots = [...segment.matchAll(/«\s*([^»]{1,600}?)\s*»/g)].map((m) => m[1].trim()).filter(Boolean).slice(0, 4);
+  const m = t.match(/\(champ ([a-z_, ]{1,80})\)/i);
+  const champs = [...new Set((m ? m[1] : "").split(/,\s*/).map((s) => s.trim().toLowerCase()).filter(Boolean))];
+  return { mots, champs };
+}
+
+/** L'empreinte d'un texte servi (FNV-1a 32 bits, hexadécimal) — jamais le texte lui-même. */
+export function empreinteTexteServi(titre, description) {
+  const s = `${String(titre ?? "")}\n${String(description ?? "")}`;
+  let h = 0x811c9dc5;
+  for (let k = 0; k < s.length; k++) { h ^= s.charCodeAt(k); h = Math.imul(h, 0x01000193) >>> 0; }
+  return h.toString(16).padStart(8, "0");
+}
+
+/**
+ * La décision pour un refus de contenu Leboncoin, pure.
+ * @param {{ action?: string, brut?: string, pf?: any, empreinte?: string|null, nettoyageModifie?: boolean }} arg
+ *   empreinte : celle du texte qui serait servi MAINTENANT ; nettoyageModifie : ce texte diffère du texte brut du job.
+ * @returns {{ verdict: "reprise"|"a_toi", statut: "pending"|"needs_user", motif: string, message: string, source?: string, champ?: any, dansMinutes?: number, pf: any }}
+ */
+export function decisionRefusContenuLeboncoin({ action = "publish", brut = "", pf = {}, empreinte = null, nettoyageModifie = false } = {}) {
+  const { mots, champs } = motsRefusLeboncoin(brut);
+  const prec = pf?.lbc_refus_contenu && typeof pf.lbc_refus_contenu === "object" ? pf.lbc_refus_contenu : null;
+  const essayees = Array.isArray(prec?.empreintes) ? prec.empreintes.map(String).slice(-5) : [];
+  const reprises = Number(prec?.reprises) || 0;
+  const le = new Date().toISOString();
+  const motsTexte = mots.length ? mots.map((x) => `« ${x} »`).join(" · ") : "un mot de l'annonce ne respecte pas ses règles";
+  // Le texte qui serait servi a-t-il déjà été refusé ? Premier refus : le texte
+  // servi à l'essai est celui d'aujourd'hui, sauf si le nettoyage le change
+  // (la liste des mentions a pu s'allonger depuis l'essai).
+  const dejaRefuse = !empreinte || essayees.includes(empreinte) || (!prec && !nettoyageModifie);
+  if (!dejaRefuse && reprises < LBC_REFUS_REPRISES_MAX) {
+    return {
+      verdict: "reprise", statut: "pending", motif: "lbc_texte_nettoye", dansMinutes: 1,
+      pf: { lbc_refus_contenu: { le, mots, champs, empreintes: [...essayees, empreinte].slice(-5), reprises: reprises + 1 } },
+      message:
+        `Leboncoin refusait le texte de cette annonce (${motsTexte}) : FillSell a retiré de la copie Leboncoin ce qu'il refuse ` +
+        "(ta fiche ne change pas) et republie, une seule fois avec ce texte.",
+    };
+  }
+  const pfMarque = { lbc_refus_contenu: { le, mots, champs, empreintes: empreinte && !essayees.includes(empreinte) ? [...essayees, empreinte].slice(-5) : essayees, reprises } };
+  // Seul le TITRE est visé : la personne en écrit un autre, servi tel quel (get-pending-jobs, titre_saisi).
+  if (champs.length && champs.every((c) => c === "subject")) {
+    return {
+      verdict: "a_toi", statut: "needs_user", motif: "lbc_titre_refuse", source: "champ_a_choisir",
+      champ: { field_key: "title", field_label: "Titre", input_type: "text", target: { root: null, key: "titre_saisi" }, platform: "leboncoin" },
+      pf: { ...pfMarque, titre_refuse: { motif: mots.join(" · ").slice(0, 300), le } },
+      message:
+        `Leboncoin refuse le titre de cette annonce : ${motsTexte}. Rien n'a été publié. ` +
+        `Écris un autre titre ci-dessous (bouton « ✋ Compléter ») : ${acte(action)} repart d'elle-même avec ce titre.`,
+    };
+  }
+  return {
+    verdict: "a_toi", statut: "needs_user", motif: "lbc_contenu_refuse", source: "relancer", pf: pfMarque,
+    message:
+      `Leboncoin refuse le texte de cette annonce : ${motsTexte}. Rien n'a été publié, et le même texte serait refusé de nouveau. ` +
+      "Corrige le titre ou la description dans la fiche de l'article, puis relance d'un clic ci-dessous.",
+  };
+}
+
 function risqueRetrait(action, nom) {
   return action === "delete"
     ? ` Ton article est vendu mais son annonce est encore en ligne sur ${nom} (risque de double vente).`
@@ -114,9 +201,9 @@ function risqueRetrait(action, nom) {
 // peut porter deux signatures (« Failed to fetch » DANS une republication mise
 // en pause), et c'est la plus précise qui doit parler.
 
-/** Rien n'a bougé chez la plateforme : le canal, l'onglet ou le réseau a lâché. */
-const CANAL_RE =
-  /Could not establish connection|Receiving end does not exist|The message port closed|message channel closed|A listener indicated an asynchronous response|No tab with id|Onglet de travail ferm|onglet navigué\/rechargé|pas de réponse du content script|sonde injoignable|onglet de travail Vinted\s*:|Timeout\s*:|Failed to fetch|NetworkError|Load failed|ERR_[A-Z_]+|L'opération n'a pas pu aboutir sur ton ordinateur|mise en veille par Chrome/i;
+/** Rien n'a bougé chez la plateforme : le canal, l'onglet ou le réseau a lâché.
+ *  (18/10, lot 3) CANAL_RE vit dans etat-job.js (importé en tête) : une seule
+ *  source pour ce module, handler-watch et l'écran. */
 
 /** Notre serveur ou celui d'en face a hoqueté : 5xx, 429, 408. */
 const SERVEUR_RE = /HTTP\s*(?:5\d\d|429|408)\b|\b(?:502|503|504|520|522|524)\b\s*$/i;
@@ -343,6 +430,17 @@ function classerEchecSansRegleRetrait(arg) {
           `${acte(action)} repart toute seule, l'état réel de l'annonce est revérifié avant tout geste.`,
       };
     }
+  }
+
+  // ── 0 quater. (18/10, lot 3) LEBONCOIN REFUSE LE CONTENU : jamais le même
+  //    texte deux fois. Avant la sonde « déconnecté » : un refus détaillé
+  //    d'adsubmit prouve que le dépôt a atteint Leboncoin.
+  if (platform === "leboncoin" && LBC_REFUS_CONTENU_RE.test(t)) {
+    return decisionRefusContenuLeboncoin({
+      action, brut: String(arg.brut ?? "") || t, pf,
+      empreinte: typeof arg.empreinteTexteServi === "string" ? arg.empreinteTexteServi : null,
+      nettoyageModifie: arg.nettoyageModifie === true,
+    });
   }
 
   // ── 0 ter. (15/10) VINTED REFUSE UN CHAMP NOMMÉ : la personne réécrit ──

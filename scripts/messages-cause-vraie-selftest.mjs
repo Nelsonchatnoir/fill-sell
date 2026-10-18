@@ -73,7 +73,9 @@ console.log('3. carhoa : une déconnexion n\'est jamais un anti-robot');
   const hw = lire('supabase/functions/handler-watch/index.ts');
   ok((hw.match(/preuvesConnexionVintedAbsente\(supabase,/g) ?? []).length === 2 && /MUR « ANTI-ROBOT » DÉJÀ POSÉ SUR UNE CONNEXION/.test(hw), 'chien de garde : la règle des 6 h ET la requalification des murs déjà posés');
   const gpj = lire('supabase/functions/get-pending-jobs/index.ts');
-  ok(/const msgPause = absenceAr\.prouvee \? PAUSE_CONNEXION_MSG : ANTIROBOT_COMPTE_MSG;/.test(gpj) && /murConnexionVintedProuve\(j, pf, absenceAr\.le, "get-pending-jobs"\)/.test(gpj),
+  // (18/10, lot 5) La pause des LECTURES de sa boutique (sonde à 200) a son propre message ; la pause du
+  // compte garde « Connexion Vinted requise » quand l'absence de connexion est prouvée.
+  ok(/const msgPause = lecturesSeules \? ANTIROBOT_LECTURES_MSG : absenceAr\.prouvee \? PAUSE_CONNEXION_MSG : ANTIROBOT_COMPTE_MSG;/.test(gpj) && /murConnexionVintedProuve\(j, pf, absenceAr\.le, "get-pending-jobs"\)/.test(gpj),
     'file des jobs : la pause du compte dit « Connexion Vinted requise » quand c\'est prouvé, et passe à la connexion au-delà de 6 h');
 }
 

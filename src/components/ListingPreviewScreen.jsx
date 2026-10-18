@@ -158,6 +158,9 @@ import { sansListesEmpruntees } from "../utils/catalogueListes.js";
 // eBay) se repose seule sur le prochain article du même rayon.
 import { valeurDeMemoire, reponseARetenir, lignesAEcrire, COMPTE_PRINCIPAL } from "../publication/moteur/memoireCategorie.js";
 import { chargerMemoire, memoireEnCache, abonnerMemoire, retenirReponses } from "../utils/memoireChamps.js";
+// (18/10, lot 2) Les correspondances APPRISES sur les annonces acceptées du parc :
+// en « fantôme » l'app note ce qu'elle aurait posé ; « actif », elle le pose.
+import { chargerApprises, propositionApprise, ligneATrancher, catalogueVintedDeLaFiche, categorieApprise, noterDeduction, PLATEFORMES_APPRISES } from "../publication/moteur/apprises.js";
 
 // Palette identique à LensTab.jsx et à la navbar (thème clair 2026).
 const T = {
@@ -5129,6 +5132,9 @@ export default function ListingPreviewScreen({
   }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
   const [posesMemoire, setPosesMemoire] = useState(() => ({}));
   const reponsesQuestionsRef = useRef({});
+  // (18/10, lot 2) Les correspondances apprises, par plateforme : { champ: { valeur, etat… } } ;
+  // null tant que la lecture n'a pas répondu (la télémétrie l'attend, comme la mémoire).
+  const [apprisesParPf, setApprisesParPf] = useState(null);
   const [sharedOverrides, setSharedOverrides] = useState(() => // { [platform]: Set<fieldKey> }
     draft?.sharedOverrides
       ? Object.fromEntries(Object.entries(draft.sharedOverrides).map(([k, v]) => [k, new Set(v)]))
@@ -7732,10 +7738,13 @@ export default function ListingPreviewScreen({
           textes: [edited.ebay?.title || initialListing?.titre || "", edited.ebay?.description || "", activeAiObjet ?? pf.categorie_objet_ia ?? ""],
         });
         if (mem?.valeur) return { ...manquant, deduit: { valeur: mem.valeur, source: "memoire", repondu_le: mem.repondu_le ?? null } };
+        // (18/10, lot 2) La correspondance APPRISE sur les annonces acceptées (champ allumé par la base).
+        const app = propositionApprise(manquant, apprisesParPf?.ebay);
+        if (app?.etat === "actif") return { ...manquant, deduit: { valeur: app.valeur, source: app.source } };
       }
       return manquant;
     });
-  }, [ebayRequiredPreview, edited, plateformesPubliables, activeAiObjet, memoireCat, ebayPreviewCategoryId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ebayRequiredPreview, edited, plateformesPubliables, activeAiObjet, memoireCat, ebayPreviewCategoryId, apprisesParPf]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Défauts DÉTERMINISTES (Phase 1, 2026-07-16) : dès que les obligatoires de
   // la catégorie sont connus, on pose les valeurs standard eBay SÛRES
@@ -8738,9 +8747,17 @@ export default function ListingPreviewScreen({
           categorie: genericCategoryKeys?.[platform] ?? null, ligne: a,
           textes: [edited[platform]?.title || initialListing?.titre || "", edited[platform]?.description || "", activeAiObjet ?? pf.categorie_objet_ia ?? ""],
         });
-        if (!r?.valeur) return a;
+        if (!r?.valeur) return avecApprise(a);
         return { ...a, suggested: r.valeur, blocking: false, deduit: { valeur: r.valeur, source: "memoire", repondu_le: r.repondu_le ?? null } };
       };
+      // (18/10, lot 2) Ni la fiche, ni le texte, ni la mémoire : la correspondance APPRISE sur les
+      // annonces acceptées du parc, si la base a allumé ce champ (« actif ») — dans LA liste.
+      function avecApprise(a) {
+        if (!ligneATrancher(a)) return a;
+        const app = propositionApprise(a, apprisesParPf?.[platform]);
+        if (app?.etat !== "actif") return a;
+        return { ...a, suggested: app.valeur, blocking: false, deduit: { valeur: app.valeur, source: app.source } };
+      }
       const enrichi = status.map((a) => {
         const aTrancher = a.state === "missing" || (a.state === "invalid" && !a.suggested)
           || (a.state === "ok" && estFourreTout(a.value));
@@ -8801,7 +8818,44 @@ export default function ListingPreviewScreen({
     // premier rendu après une photo ajoutée ou retirée au step Photos.
     // attributsBase (24/09) : la taille Opla se juge sur la fiche quand la
     // copie n'en porte pas — la fiche arrive après le premier calcul.
-  }, [genericAspectsCatalog, plateformesPubliables, edited, genericCategoryKeysSig, processedPhotos?.length, attributsBase, initialListing?.attributs, activeAiObjet, memoireCat]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [genericAspectsCatalog, plateformesPubliables, edited, genericCategoryKeysSig, processedPhotos?.length, attributsBase, initialListing?.attributs, activeAiObjet, memoireCat, apprisesParPf]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── (18/10, lot 2) LES CORRESPONDANCES APPRISES : lecture, fantôme, trace ──
+  // Une lecture par (plateforme, catégorie, catalogue Vinted de la fiche), partagée
+  // (moteur/apprises.js). Puis, pour chaque ligne encore à trancher : un champ
+  // « fantome » est NOTÉ (deduction_fantome) sans rien toucher — la base compare à
+  // la valeur acceptée en ligne et l'allume seule ; un champ « actif » posé est
+  // noté (deduction_apprise_posee) — la base le coupe seule s'il se trompe.
+  const catalogueVintedFiche = catalogueVintedDeLaFiche(initialListing);
+  useEffect(() => {
+    let vivant = true;
+    const cles = { ...(JSON.parse(genericCategoryKeysSig || "{}") ?? {}), ...(ebayPreviewCategoryId ? { ebay: ebayPreviewCategoryId } : {}) };
+    // plateformesPubliables est un Set (moteur/regles.js).
+    const aLire = PLATEFORMES_APPRISES.filter((p) => cles[p] && plateformesPubliables.has(p));
+    if (!aLire.length) { setApprisesParPf((prev) => (prev && !Object.keys(prev).length ? prev : {})); return undefined; }
+    Promise.all(aLire.map(async (p) => [p, await chargerApprises(supabase, { platform: p, categorie: cles[p], vintedCatalog: catalogueVintedFiche })]))
+      .then((paires) => { if (vivant) setApprisesParPf(Object.fromEntries(paires)); })
+      .catch(() => { if (vivant) setApprisesParPf({}); });
+    return () => { vivant = false; };
+  }, [genericCategoryKeysSig, ebayPreviewCategoryId, catalogueVintedFiche, [...plateformesPubliables].sort().join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!apprisesParPf || !userId || !invId) return;
+    const noter = (platform, ligne, categorie) => {
+      const champ = ligne.key ?? ligne.name;
+      if (String(ligne.deduit?.source ?? "").startsWith("apprise:")) {
+        noterDeduction(supabase, userId, { sorte: "posee", platform, champ, valeur: ligne.deduit.valeur, categorie, inventaireId: invId, source: ligne.deduit.source });
+        return;
+      }
+      if (!ligneATrancher(ligne)) return;
+      const app = propositionApprise(ligne, apprisesParPf[platform]);
+      if (app?.etat === "fantome") noterDeduction(supabase, userId, { sorte: "fantome", platform, champ, valeur: app.valeur, categorie, inventaireId: invId, source: app.source });
+    };
+    for (const [p, list] of Object.entries(genericRequiredStatus ?? {})) {
+      if (!PLATEFORMES_APPRISES.includes(p)) continue;
+      for (const ligne of list ?? []) noter(p, ligne, categorieApprise(p, genericCategoryKeys?.[p]));
+    }
+    for (const ligne of ebayRequiredStatus ?? []) noter("ebay", ligne, ebayPreviewCategoryId ?? "");
+  }, [apprisesParPf, genericRequiredStatus, ebayRequiredStatus, invId, userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── L'OPTION LUE DANS L'ANNONCE EST POSÉE (2026-09-24) ─────────────────────
   // Pose ce que genericRequiredStatus a déduit du titre / de l'objet IA / de
@@ -8988,7 +9042,8 @@ export default function ListingPreviewScreen({
     // (18/10 nuit, point 1) La mémoire « compte × catégorie » pas encore lue :
     // un champ qu'elle va remplir n'est pas une question — rien de NOUVEAU
     // n'est compté tant que la lecture n'a pas répondu (même règle que l'IA).
-    const memoireRetenue = memoireCat === null;
+    // (18/10, lot 2) Même règle pour les correspondances apprises pas encore lues.
+    const memoireRetenue = memoireCat === null || apprisesParPf === null;
     for (const [gp, list] of Object.entries(genericRequiredStatus ?? {})) {
       for (const a of list.filter(aspectBloquant)) {
         if (partageEnQuestion(gp, genericFieldToSharedKey(gp, a.key))) continue;

@@ -6,7 +6,12 @@
 // aucun n'est arrêté). Pas la 0.6.82 : les 26 postes en 0.6.81 n'ont pas
 // `requestUpdateCheck` et resteraient sans file jusqu'à ce que Chrome y pense.
 // Ancienne valeur : 2026-09-27T20:16:30Z (0.6.75).
-export const EXTENSION_MIN_BUILD = '2026-09-30T20:16:41Z';
+// (18/10, ordre de Nico) 0.6.124 (ced6cfd), ACCEPTÉE par le CWS et servie : 26 comptes
+// relevés en base le 18/10 à 11:34 (build 2026-10-17T18:16:49Z+ced6cfd). Un poste plus
+// ancien n'a plus de travail (sauf une recréation déjà commencée) et demande sa mise à
+// jour toutes les 20 min (requestUpdateCheck depuis la 0.6.82) : le Store lui sert la 0.6.124.
+// Ancienne valeur : 2026-09-30T20:16:41Z (0.6.81).
+export const EXTENSION_MIN_BUILD = '2026-10-17T18:16:49Z';
 
 export function posteExtensionCompatible(build) {
   const iso = String(build ?? '').match(/\b20\d{2}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z/)?.[0];

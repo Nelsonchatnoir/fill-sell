@@ -4,6 +4,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 // normalize-title, stats-analysis, lot-distribute) : compte les appels sur 24 h
 // glissantes dans usage_logs et laisse passer si le comptage échoue.
 import { appelAutorise, loggerAppelIA, coutHaikuUsd } from "../_shared/usage-guard.ts";
+// (18/10, lot 2) Le plafond de la dépense IA, codé en dur, coupe-circuit automatique.
+import { budgetIaAutorise } from "../_shared/budget-ia.ts";
 // Mode "annonce" (02/09 soir) : la rédaction par plateforme vit dans le module
 // PARTAGÉ avec generate-listing — même code, mêmes prompts, mêmes traces. Ce
 // fichier n'en possède aucune copie.
@@ -2174,6 +2176,20 @@ serve(async (req) => {
         `[lens-analysis][ALERTE] plafond global identify atteint : ${total}/${PLAFOND_IDENTIFY_GLOBAL} appels aujourd'hui (Europe/Paris) — identify court-circuité`
       );
       return new Response(JSON.stringify({ error: "identify_unavailable" }), {
+        status: 429, headers: { "Content-Type": "application/json", ...CORS },
+      });
+    }
+  }
+
+  // ── (18/10, lot 2) LE PLAFOND DE LA DÉPENSE IA, AVANT TOUT DÉBIT ─────────
+  // _shared/budget-ia.ts : identify = « confort », scan complet = « essentiel ».
+  // Au-delà : rien n'est débité ni appelé ; l'app retombe sur la saisie à la main
+  // (identify : même réponse que son plafond global, que le client sait traiter).
+  {
+    const budget = await budgetIaAutorise(adminClient, estIdentify ? "confort" : "essentiel", "lens-analysis");
+    if (!budget.ouvert) {
+      return new Response(JSON.stringify({ error: estIdentify ? "identify_unavailable" : "analyse_indisponible", budget: budget.motif,
+        message: "L'analyse automatique est indisponible pour le moment : remplis la fiche à la main, rien n'a été débité." }), {
         status: 429, headers: { "Content-Type": "application/json", ...CORS },
       });
     }

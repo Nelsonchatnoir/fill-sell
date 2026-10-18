@@ -2964,6 +2964,8 @@ async function pollAndProcessJobsUnlocked() {
       // attente, absent = build trop vieux pour le dire. Sert a MESURER qui est
       // bloque et depuis quand, jamais a decider.
       maj_en_attente: await lireMajEnAttente(),
+      // (18/10, lot 6) La boutique Vinted et les sessions de CE poste (deux postes sur un compte).
+      ...ceQueLePosteDitDeLui(),
     });
     jobs = rep.jobs;
     // (03/10, point 24) Poste sous le seuil de version : le serveur ne sert
@@ -12413,6 +12415,33 @@ function sessionPlateformeVivante(platform) {
   return { vue: true, http: d.sessions?.http?.[platform] ?? null, il_y_a_s: Math.round((Date.now() - d.at) / 1000) };
 }
 
+/**
+ * (18/10, lot 6) Ce que CE poste dit de lui au serveur à chaque poll : sa
+ * boutique Vinted ouverte (relevé de SA sonde, sinon l'identité du cycle déjà
+ * lue — jamais une lecture de plus) et ses sessions de plateforme, 15 min au
+ * plus. Le serveur ne sert alors un job Vinted qu'au poste ouvert sur la
+ * boutique de l'article quand deux postes vivants ont deux boutiques
+ * (get-pending-jobs, _shared/poste-extension.ts, patchPosteDuPoll). Inconnu =
+ * absent ou null, jamais « déconnecté ».
+ */
+function ceQueLePosteDitDeLui(maintenant = Date.now()) {
+  const out = {};
+  const d = dernierReleveSessions;
+  const frais = d && maintenant - d.at <= 15 * 60_000;
+  const viSonde = frais ? d.sessions?.vinted_identite : null;
+  if (viSonde?.user_id) {
+    out.vinted_identite = { user_id: String(viSonde.user_id), lu_le: new Date(d.at).toISOString() };
+  } else if (identiteVintedCache?.val?.user_id && maintenant - identiteVintedCache.at <= 15 * 60_000) {
+    out.vinted_identite = { user_id: String(identiteVintedCache.val.user_id), lu_le: new Date(identiteVintedCache.at).toISOString() };
+  }
+  if (frais) {
+    const s = d.sessions ?? {};
+    out.sessions_poste = { lu_le: new Date(d.at).toISOString() };
+    for (const p of ["vinted", "leboncoin", "beebs", "depop", "ebay"]) out.sessions_poste[p] = s[p] === true ? true : s[p] === false ? false : null;
+  }
+  return out;
+}
+
 /** Symétrique : la sonde a-t-elle vu cette plateforme DÉCONNECTÉE ? */
 function sessionPlateformeMorte(platform) {
   const d = dernierReleveSessions;
@@ -12669,6 +12698,36 @@ async function gardeBoutiqueDepotVintedDuJob(accessToken, job) {
     return gardeBoutiqueDepotVinted(job, lireBoutiquesPin(prof?.[0]?.vinted_sync_pin).boutiques);
   } catch (e) {
     console.warn(`[background] Job ${job.id} : boutiques du compte illisibles — garde de boutique au dépôt non posée (le serveur a vérifié au service) :`, String(e?.message ?? e));
+    return null;
+  }
+}
+
+// (18/10, lot 6 — T2, deux postes sur un compte : Louis) La boutique attendue
+// d'une RECRÉATION Vinted (annonce déjà retirée), ou "" (pure) : la boutique de
+// la fiche (vinted_account_id), à défaut celle que la garde a lue sur l'annonce.
+function boutiqueAttendueRecreationVinted(job) {
+  if (job?.platform !== "vinted" || job?.action !== "republish") return "";
+  const pf = job.platform_fields ?? {};
+  if (String(pf.republish_step ?? "") !== "deleted") return "";
+  const fiche = String(pf.vinted_account_id ?? "").trim();
+  if (/^\d{2,15}$/.test(fiche)) return fiche;
+  const lue = String(pf.gardes?.garde_boutique?.boutique_article ?? "").trim();
+  return /^\d{2,15}$/.test(lue) ? lue : "";
+}
+
+// La garde de la recréation (compte à PLUSIEURS boutiques seulement), ou null.
+async function gardeBoutiqueRecreationVintedDuJob(accessToken, job) {
+  const attendue = boutiqueAttendueRecreationVinted(job);
+  if (!attendue) return null;
+  try {
+    const sub = decodeJwtSub(accessToken);
+    const prof = await restRequest(`profiles?id=eq.${sub}&select=vinted_sync_pin`, accessToken);
+    const liste = (lireBoutiquesPin(prof?.[0]?.vinted_sync_pin).boutiques ?? []).filter((b) => String(b?.user_id ?? "").trim());
+    if (new Set(liste.map((b) => String(b.user_id).trim())).size < 2) return null;
+    const login = liste.find((b) => String(b.user_id).trim() === attendue)?.login ?? null;
+    return { attendue, login_attendu: login ? String(login) : null, multi: true };
+  } catch (e) {
+    console.warn(`[background] Job ${job.id} : boutiques du compte illisibles — garde de boutique à la recréation non posée :`, String(e?.message ?? e));
     return null;
   }
 }
@@ -20585,6 +20644,59 @@ function rpcMessagerie(nom, params, token) {
   });
 }
 
+// ── (18/10, lot 4) LES VENTES BEEBS LUES SUR LA PAGE DES VENTES ─────────────
+// Une commande qui figure sur la page des ventes de Beebs est une vente
+// PROUVÉE (règle de Nico) : commandes_beebs_noter la rattache par le numéro du
+// produit SEULEMENT (jamais un titre) et pose la preuve que ventes_prouvees_tick
+// sait enregistrer (vente « Beebs », copies retirées partout). Interrupteur
+// serveur coin_config.ventes_beebs_commandes (0 = fantôme : bilan seul, rien
+// écrit). Une simple disparition d'annonce ne vaut JAMAIS vente : elle
+// déclenche seulement cette lecture (au plus une fois par 30 min et par compte).
+// Lignes : la référence, le statut brut, la date, les numéros de produit —
+// aucun nom, aucune adresse.
+function lignesVentesBeebs(commandes) {
+  const out = [];
+  for (const c of Array.isArray(commandes) ? commandes : []) {
+    const o = c?.order ?? null;
+    const ref = String(o?.id ?? c?.id ?? "").trim();
+    if (!ref || !o) continue;
+    const produits = (Array.isArray(o.products) ? o.products : []).map((p) => String(p?.id ?? "").trim()).filter(Boolean).slice(0, 10);
+    out.push({ ref, statut: String(o.status ?? "").slice(0, 60), date: o.created_at ?? null, produits });
+    if (out.length >= 10) break;
+  }
+  return out;
+}
+async function noterVentesBeebs(token, cmd) {
+  if (!cmd?.ok) return null;
+  try {
+    const bilan = await rpcMessagerie("commandes_beebs_noter", {
+      p_rows: lignesVentesBeebs(cmd.commandes),
+      p_lecture: { illisibles: Number(cmd.illisibles) || 0, requetes: Number(cmd.requetes) || 0 },
+    }, token);
+    if (bilan && typeof bilan === "object") console.log(`[ventes][beebs] page des ventes : ${bilan.recues ?? 0} commande(s), ${bilan.prouvees_ou_auraient ?? 0} vente(s) prouvée(s) (${bilan.mode ?? "?"})`);
+    return bilan;
+  } catch (e) {
+    console.warn("[ventes][beebs] bilan non rendu :", String(e?.message ?? e));
+    return null;
+  }
+}
+const VENTES_BEEBS_LECTURE_KEY = "fillsell_ventes_beebs_lu_le";
+async function lireVentesBeebsSiDue(session) {
+  const token = session?.access_token;
+  const userId = token ? decodeJwtSub(token) : null;
+  const M = typeof FILLSELL_MESSAGERIE === "object" ? FILLSELL_MESSAGERIE : null;
+  if (!userId || !M?.LECTEURS?.beebs?.commandes) return;
+  try {
+    const s = await chrome.storage.local.get(VENTES_BEEBS_LECTURE_KEY);
+    const lu = s?.[VENTES_BEEBS_LECTURE_KEY] ?? {};
+    if (Date.now() - Number(lu[userId] ?? 0) < 30 * 60_000) return;
+    await chrome.storage.local.set({ [VENTES_BEEBS_LECTURE_KEY]: { ...lu, [userId]: Date.now() } });
+  } catch { return; }
+  const cmd = await executerDansOngletPlateforme("beebs", M.LECTEURS.beebs.commandes, [[], M.COMMANDES_DETAILS_MAX]);
+  if (!cmd?.ok) { console.warn(`[ventes][beebs] page des ventes illisible (${cmd?.motif ?? "?"}) — rien décidé`); return; }
+  await noterVentesBeebs(token, cmd);
+}
+
 /** Le drapeau bêta du compte, relu toutes les 30 min. Fail-closed. */
 async function messagerieBetaDuCompte(etat, token, userId) {
   const b = etat.beta;
@@ -20689,6 +20801,8 @@ async function releverMessagerieUnePlateforme(platform, token, e) {
       if (lignes.length) {
         bilanCommandes = await rpcMessagerie("commandes_enregistrer", { p_platform: platform, p_commandes: lignes.slice(0, 40) }, token);
       }
+      // (18/10, lot 4) Beebs : la même lecture prouve les ventes (commandes_beebs_noter).
+      if (platform === "beebs") await noterVentesBeebs(token, cmd);
       if (cmd.illisibles) console.warn(`[messagerie][${platform}] ${cmd.illisibles} commande(s) à la forme inconnue — rien écrit pour elles`);
     }
   }
@@ -20873,7 +20987,11 @@ async function traiterDemandeBordereauBeta(session) {
   // rend jamais une génération à une extension d'avant. Serveur d'avant la
   // migration 20261016220000 (sans ce paramètre) : l'appel d'avant, qui ne rend
   // que des récupérations.
-  const prise = await rpcMessagerie("bordereau_demande_a_traiter", { p_capacites: ["generer"] }, token)
+  // (18/10) Les capacités viennent de messagerie.js (CAPACITES_BORDEREAU) : le
+  // serveur ne donne une génération Vinted qu'à une extension qui envoie le
+  // type d'étiquette en toutes lettres, et une relance qu'à celle qui la sait.
+  const capacites = Array.isArray(M.CAPACITES_BORDEREAU) ? [...M.CAPACITES_BORDEREAU] : ["generer"];
+  const prise = await rpcMessagerie("bordereau_demande_a_traiter", { p_capacites: capacites }, token)
     .catch(() => rpcMessagerie("bordereau_demande_a_traiter", {}, token).catch(() => null));
   const d = prise?.demande;
   if (!d?.id) return;
@@ -20935,7 +21053,9 @@ async function genererBordereauBeta(d, token, etat) {
   const geste = M.GESTES_GENERATION?.[d.platform];
   if (!preparer || !geste) { await etape("echec", "plateforme_sans_generation"); return; }
   if (d.platform === "leboncoin") await assurerJetonLeboncoin().catch(() => null);
-  const ref = d.platform === "vinted" ? { transactionId: d.commande_ref } : d.platform === "leboncoin" ? { purchaseId: d.commande_ref } : { orderId: d.commande_ref };
+  // (18/10) Une relance (étiquette échouée chez Vinted) est marquée par le serveur.
+  const relance = d.platform === "vinted" && d.relance === true;
+  const ref = d.platform === "vinted" ? { transactionId: d.commande_ref, relance } : d.platform === "leboncoin" ? { purchaseId: d.commande_ref } : { orderId: d.commande_ref };
   const bloquer = async (motif) => {
     await bloquerMessagerie(d.platform, motif, token, (etat[d.platform] ??= {}));
     await ecrireEtatMessagerie(etat);
@@ -20945,7 +21065,7 @@ async function genererBordereauBeta(d, token, etat) {
   const prep = await executerDansOngletPlateforme(d.platform, preparer, [ref]);
   if (prep?.bot) { await etape("echec", prep.motif ?? "blocage"); await bloquer(prep.motif ?? "blocage"); return; }
   // 2. Décider (règles pures) : déjà fait → aucun geste ; refus → rien ne part.
-  const decision = M.decisionGeneration(d.platform, prep, d.choix ?? {}, { commande_ref: d.commande_ref });
+  const decision = M.decisionGeneration(d.platform, prep, d.choix ?? {}, { commande_ref: d.commande_ref, relance });
   let fait = null;
   if (decision.deja) {
     fait = "deja_fait";
@@ -21002,6 +21122,16 @@ async function recupererFichierGeneration(d, token, etat) {
     return;
   }
   const motif = String(r?.motif ?? "fichier_pas_encore_pret").slice(0, 120);
+  // (18/10) La plateforme dit que l'étiquette a ÉCHOUÉ (Vinted 210) : c'est un
+  // échec, dit tout de suite — jamais « généré, récupération du fichier… ».
+  // Serveur d'avant (transition refusée) : l'étape d'avant, que la base ferme.
+  if (motif === "etiquette_echouee_chez_vinted") {
+    const fin = await etape("echec", motif);
+    if (fin && fin.ok !== false) {
+      console.warn(`[bordereau][generer][${d.platform}] ${String(d.id).slice(0, 8)} : étiquette échouée chez la plateforme`);
+      return;
+    }
+  }
   await etape("generee", motif);
   if (r?.bot) {
     await bloquerMessagerie(d.platform, motif, token, (etat[d.platform] ??= {}));
@@ -21027,6 +21157,8 @@ async function lireVerifPrioritaires(session) {
 
 async function checkPublishedListings(session) {
   let jobs;
+  // (18/10, lot 4) Une annonce Beebs disparue pendant ce cycle → la page des ventes est relue à la fin.
+  let ventesBeebsALire = false;
   // (11/10) Sortie d'Opla : aucune annonce Opla n'est plus relue. Écartées DÈS
   // la lecture (jamais après) : jamais revérifiées, elles garderaient le plus
   // vieux last_checked_at et occuperaient la fenêtre des 60 au détriment des
@@ -21403,6 +21535,9 @@ async function checkPublishedListings(session) {
         // Côté serveur, le relevé du compte lève de lui-même une alerte qu'il
         // dément (alerte_lever_revues_plateformes, migration 20260927170000).
         if (state === "unavailable" && !pf.unavailable_pending_since) {
+          // (18/10, lot 4) Une annonce Beebs disparue : la page des ventes est relue
+          // (au plus une fois par 30 min) — la disparition seule ne prouve rien.
+          if (job.platform === "beebs") ventesBeebsALire = true;
           patch.platform_fields = { ...pf, unavailable_pending_since: new Date().toISOString() };
           console.log(`[background] ${job.platform} ${job.id} : plus en ligne (1re lecture) — AUCUN bandeau, confirmation exigée au prochain cycle`);
         } else {
@@ -21441,6 +21576,8 @@ async function checkPublishedListings(session) {
 
     if (i < dueOuverts.length - 1) await sleep(randInt(SALE_CHECK_PAUSE_MIN_MS, SALE_CHECK_PAUSE_MAX_MS));
   }
+  // (18/10, lot 4) Une annonce Beebs a disparu pendant ce cycle : la page des ventes tranche.
+  if (ventesBeebsALire) await lireVentesBeebsSiDue(session).catch((e) => console.warn("[ventes][beebs] lecture de la page des ventes :", String(e?.message ?? e)));
 }
 
 // ── Re-capture différée des listing_url manquants (2026-07-12) ─────────────────
@@ -26328,6 +26465,25 @@ async function processRepublishJob(job, accessToken) {
                  "rien n'est perdu, photos et fiche sont au chaud. Relance depuis l'app.",
         });
         return { status: "needsUser", error: "prix de recréation irrésoluble" };
+      }
+      // ── (18/10, lot 6 — T2) LA BOUTIQUE DE L'ANNONCE, AVANT LE FORMULAIRE ──
+      // Compte à plusieurs boutiques (deux postes, deux Vinted — Louis) : une
+      // recréation ne part QUE sur la boutique de l'annonce retirée. Une AUTRE
+      // boutique lisible ici (cycle, puis onglet de travail tel quel) → rien
+      // n'est rempli, le job attend sa boutique (l'annonce revient en ligne dès
+      // que la bonne boutique est ouverte, jamais sur une autre). Illisible → le
+      // chemin d'avant. Contrôle AVANT le formulaire : il ne contredit pas la
+      // règle « en recréation, aucune garde de champ ne refuse de soumettre ».
+      const gardeRecreation = await gardeBoutiqueRecreationVintedDuJob(accessToken, job);
+      if (gardeRecreation) {
+        const identCycle = await identiteVintedDuCycle({ forcer: true }).catch(() => null);
+        const ident = identCycle?.user_id ? { ...identCycle, source: "service_worker" } : await identiteVintedParOnglet();
+        if (ident?.user_id && String(ident.user_id) !== gardeRecreation.attendue) {
+          return await retenirPublicationPourBoutique(accessToken, job, gardeRecreation, {
+            verdict: "mauvaise_boutique", etape: "avant_recreation",
+            lue: String(ident.user_id), login_lu: ident.login ?? null, source: ident.source ?? null,
+          });
+        }
       }
       pf.processing_since = new Date().toISOString();
       await updateJobStatus(accessToken, job.id, "processing", { platform_fields: pf });

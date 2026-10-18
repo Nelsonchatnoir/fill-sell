@@ -726,7 +726,24 @@ const SOURCES_AUTOMATIQUES = Object.freeze({
 // Les motifs TECHNIQUES d'une republication mise en pause avant tout retrait :
 // la reprise sur preuve de handler-watch les relance seule — même liste
 // qu'au serveur (handler-watch, reprise sur preuve).
+// (18/10, lot 3) LA SIGNATURE UNIQUE D'UNE COUPURE TECHNIQUE (canal, onglet,
+// réseau) : rien n'a bougé chez la plateforme. Une seule source pour le serveur
+// (pas-de-rouge.js la réexporte, handler-watch l'importe) et l'écran.
+const CANAL_RE =
+  /Could not establish connection|Receiving end does not exist|The message port closed|message channel closed|A listener indicated an asynchronous response|No tab with id|Onglet de travail ferm|onglet navigué\/rechargé|pas de réponse du content script|le content script ne répond pas|sonde injoignable|onglet de travail Vinted\s*:|Timeout\s*:|Failed to fetch|NetworkError|Load failed|ERR_[A-Z_]+|L'opération n'a pas pu aboutir sur ton ordinateur|mise en veille par Chrome/i;
 const MOTIF_TECHNIQUE_RE = /protection anti-?robot|v[ée]rification anti-?robot|bot_shield|DataDome|Connexion (Vinted|Leboncoin|Beebs|eBay|Depop|Opla) requise|configuration non capt[ée]e|lecture de l'annonce (re|a [ée]t[ée] )?(fus[ée]e|bloqu[ée]e)|bloqu[ée] notre lecture/i;
+/** (18/10, lot 3) Un texte (message affiché OU brut de l'extension) qui ne dit qu'une coupure ou un mur technique. */
+function texteTechnique(texte) {
+  const t = String(texte ?? "");
+  if (!t) return false;
+  const reste = t.replace(MOTIF_TECHNIQUE_RE, "").replace(CANAL_RE, "");
+  return (MOTIF_TECHNIQUE_RE.test(t) || CANAL_RE.test(t)) && !MOTIF_PERSONNE_RE.test(reste);
+}
+/** Le brut technique d'un job (platform_fields.error_technique), s'il y en a un. */
+const brutTechnique = (pf) => {
+  const et = pf?.error_technique;
+  return typeof et === "string" ? et : String(et?.brut ?? "");
+};
 const MOTIF_PERSONNE_RE = /champ|Marque|taille|rayon|cat[ée]gorie|interdit|payant|Boostez|option gratuite|nom et (ton )?pr[ée]nom|configuration de vendeur|exige|passe la v[ée]rification|connecte-toi/i;
 
 const objet = (v) => (v && typeof v === "object" && !Array.isArray(v) ? v : {});
@@ -752,8 +769,9 @@ function attenteAutomatique(j) {
   if (j.action === "republish" && ["", "a_capturer", "captured"].includes(String(pf.republish_step ?? ""))
       && !pf.deleted_at && (src === "relancer" || src === "")) {
     if (pf.republish_etat_indetermine && typeof pf.republish_etat_indetermine === "object") return "technique";
-    const err = String(j.error ?? "");
-    if (MOTIF_TECHNIQUE_RE.test(err) && !MOTIF_PERSONNE_RE.test(err.replace(MOTIF_TECHNIQUE_RE, ""))) return "technique";
+    // (18/10, lot 3) Le message affiché OU le brut de l'extension : une coupure
+    // (onglet qui ne répond pas, réseau) repart seule, comme un mur technique.
+    if (texteTechnique(j.error) || texteTechnique(brutTechnique(pf))) return "technique";
   }
   return null;
 }
@@ -902,7 +920,7 @@ function sansEstimation(texte) {
 }
 const porteUneEstimation = (texte) => ESTIMATION_RE.test(String(texte ?? ""));
 
-return { ETATS, LIBELLES, libelleEtat, tonEtat, STATUTS_FINIS, SOURCES_AUTOMATIQUES, MOTIF_TECHNIQUE_RE, MOTIF_PERSONNE_RE, etapeRepublication, parNosServeurs, attendConnexion, attenteAutomatique, loginDe, boutiqueAttendue, boutiqueDuJob, jobFini, etatJob, sansEstimation, porteUneEstimation };
+return { ETATS, LIBELLES, libelleEtat, tonEtat, STATUTS_FINIS, SOURCES_AUTOMATIQUES, CANAL_RE, MOTIF_TECHNIQUE_RE, texteTechnique, brutTechnique, MOTIF_PERSONNE_RE, etapeRepublication, parNosServeurs, attendConnexion, attenteAutomatique, loginDe, boutiqueAttendue, boutiqueDuJob, jobFini, etatJob, sansEstimation, porteUneEstimation };
 })();
 globalThis.FILLSELL_ETAT_JOB = __M.etatJob;
 })();

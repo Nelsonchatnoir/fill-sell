@@ -41,6 +41,8 @@ import { resoudreAspectsIA, completerAspectsIA, completerAspectsIAGroupe } from 
 import { cacheAllume } from "../_shared/claude-cache.ts";
 import { listeCouleurPropre, photosPourCouleurIA, resoudreCouleurIA, MODELE_COULEUR } from "../_shared/couleur-ia.ts";
 import { resoudreIsbnArticle, MODELE_ISBN } from "../_shared/isbn-ia.ts";
+// (18/10, lot 2) Le plafond de la dépense IA, codé en dur, coupe-circuit automatique.
+import { budgetIaAutorise } from "../_shared/budget-ia.ts";
 import {
   VERSION_PROMPT,
   construireContexteArticle,
@@ -293,6 +295,24 @@ serve(async (req) => {
     for (const k of ["taille", "couleur", "matiere", "marque", "etat", "isbn"]) {
       const v = canonicalIn[k];
       if (typeof v === "string" && v.trim() && v.trim().toLowerCase() !== "null") canonicalProvided[k] = v.trim();
+    }
+
+    // ── (18/10, lot 2) LE PLAFOND DE LA DÉPENSE IA, AVANT TOUT APPEL ET TOUT DÉBIT ──
+    // _shared/budget-ia.ts : micro-appels de secours = « confort » (au-delà, la
+    // réponse « rien » que l'app sait déjà traiter : son défaut, le texte, la
+    // question) ; rédaction complète = « essentiel » (au-delà, rien n'est débité,
+    // la fiche s'écrit à la main).
+    {
+      const microAppel = body.resolve_genre === true || body.resolve_couleur === true || body.resolve_isbn === true || body.resolve_aspects === true;
+      const budgetIa = await budgetIaAutorise(adminClient, microAppel ? "confort" : "essentiel", "generate-listing");
+      if (!budgetIa.ouvert) {
+        if (body.resolve_genre === true) return json({ genre: null });
+        if (body.resolve_couleur === true) return json({ couleur: null, source: null, motif: "ia_indisponible" });
+        if (body.resolve_isbn === true) return json({ isbn: null, source: null, motif: "ia_indisponible" });
+        if (body.resolve_aspects === true) return json({ aspects: {} });
+        return json({ error: "generation_indisponible", budget: budgetIa.motif,
+          message: "La rédaction automatique est indisponible pour le moment : écris l'annonce à la main, rien n'a été débité." }, 429);
+      }
     }
 
     // ── Mode ciblé "resolve_genre" (2026-07-09) ───────────────────────────────

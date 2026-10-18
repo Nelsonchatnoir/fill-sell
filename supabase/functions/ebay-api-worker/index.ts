@@ -51,6 +51,7 @@ import { CLES_QUESTION_PLUS_EN_LIGNE, drapeauAvantLaFin, lireQuantiteEbay as lir
 import {
   aspectsCategorie, assemblerAspects, choisirCondition, conditionsCategorie, descripteursCondition, descriptionEbay, emplacementMarchand, enrichirDepuisAttributs, marquerAspectFerme,
   lireErreurEbay, lireRefus25129, motifReelEbay, MARKETPLACE, refusRetoursObligatoires, remplirAspects, skuPour, suggererCategories, titreEbay, urlAnnonce, urlsPhotos,
+  eanAEnvoyer, refusEanRequis, SOURCE_QUESTION_EAN, EAN_SANS_IDENTIFIANT_EBAY_FR, eanDejaEssayeOfficiel,
   type AspectCatalogue, type AttributsInventaire, type ErreurEbay, type PlatformFields,
 } from "../_shared/ebay-publication.ts";
 import { completerAspectsIA, valeurLueDansLeContexte } from "../_shared/ebay-aspects-ia.ts";
@@ -504,6 +505,9 @@ async function publier(
 
   // 4. createOrReplaceInventoryItem (PUT, idempotent sur le SKU).
   const sku = skuPour(job.inventaire_id);
+  // (18/10, lot 3) L'EAN, seulement après qu'eBay l'a exigé pour CE job : celui
+  // de la fiche s'il est lisible, sinon « Ne s'applique pas » (_shared/ebay-publication.ts).
+  const ean = eanAEnvoyer(pf as Record<string, unknown>);
   const item = {
     condition: condition.enumValue,
     ...(desc.descripteurs.length ? { conditionDescriptors: desc.descripteurs } : {}),
@@ -513,6 +517,7 @@ async function publier(
       description: descriptionEbay(job.description ?? "", job.title ?? ""),
       aspects,
       imageUrls: photosPublication,
+      ...(ean ? { ean: [ean.valeur] } : {}),
       // PAS de product.brand : eBay exige alors product.mpn (refus 25002
       // « BrandMPN manquante ou invalide », constaté au 1er publish du 06/09).
       // La marque est portée par l'aspect « Marque », qui suffit.
@@ -676,6 +681,31 @@ async function publier(
         { etape: "publish", quoi: "retours_obligatoires", http: pub.http, errorId: e.errorId, message: e.message, ...diagRefus(e, null) },
         { sku, offer_id: offerId, tentatives });
       return { job: job.id, issue: "needs_user", motif: "retours_obligatoires" };
+    }
+    // (18/10, lot 3 — sebimsn10) eBay exige un EAN (25002, paramètre « EAN ») :
+    // UNE nouvelle publication avec l'EAN de la fiche, sinon « Ne s'applique
+    // pas » (marque ean_non_applicable) ; refusé encore → la question EAN, jamais
+    // une boucle.
+    if (refusEanRequis(e)) {
+      const apiPf = ((pf.ebay_api as Record<string, unknown>) ?? {});
+      // (18/10) Une marque d'avant (« Ne s'applique pas », refusé par eBay) : UNE relance de plus, avec le texte officiel.
+      if (!apiPf.ean_non_applicable || !eanDejaEssayeOfficiel(pf as Record<string, unknown>)) {
+        await marquer(admin, job, { status: "pending", error: null },
+          { etape: "publish", quoi: "ean_requis_rejoue", http: pub.http, errorId: e.errorId, message: e.message, ...diagRefus(e, null) },
+          { sku, offer_id: offerId, tentatives, ean_non_applicable: { le: new Date().toISOString(), pose_par: "ebay-api-worker", valeur: EAN_SANS_IDENTIFIANT_EBAY_FR } });
+        return { job: job.id, issue: "ean_requis_rejoue", http: pub.http };
+      }
+      job.platform_fields = {
+        ...(job.platform_fields ?? {}),
+        needsUserField: { platform: "ebay", field_key: "EAN", field_label: "EAN (code-barres)", target: { root: "ebayAspects", key: "EAN" }, input_type: "text", source: SOURCE_QUESTION_EAN },
+        needsUserAttempts: (Number((job.platform_fields ?? {}).needsUserAttempts) || 0) + 1,
+      };
+      const msgEan = `eBay exige le code-barres (EAN) de cet article et a refusé « ${EAN_SANS_IDENTIFIANT_EBAY_FR} ». Saisis`
+        + " les chiffres sous le code-barres depuis la fiche de l'article (bouton « ✋ Compléter »), puis « Valider et relancer » : la publication repart d'elle-même.";
+      await marquer(admin, job, { status: "needs_user", error: msgEan },
+        { etape: "publish", quoi: "ean_exige", http: pub.http, errorId: e.errorId, message: e.message, ean_envoye: ean?.source ?? null, ...diagRefus(e, null) },
+        { sku, offer_id: offerId, tentatives });
+      return { job: job.id, issue: "needs_user", motif: "ean_exige" };
     }
     const refus = messageRefus("la publication", pub.http, e);
     await marquer(admin, job, { status: verdictHttp(pub.http, tentatives), error: refus.error }, { etape: "publish", http: pub.http, errorId: e.errorId, message: e.message, ...diagRefus(e, refus.motif) }, { sku, offer_id: offerId, tentatives });

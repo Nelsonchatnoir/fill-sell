@@ -98,6 +98,14 @@
   // bordereau_demande_a_traiter), et seulement si coin_config.
   // bordereaux_ouverts = 1. Rien d'autre n'appelle les chemins du bordereau.
   const BORDEREAU_DERNIERE_MARCHE_OUVERTE = true;
+  // Ce que cette extension sait faire, dit au serveur à chaque prise
+  // (bordereau_demande_a_traiter, p_capacites) : « generer » (16/10 nuit) ;
+  // (18/10) « vinted_types_texte » = elle envoie à Vinted le type d'étiquette
+  // en toutes lettres — le serveur ne donne plus une génération Vinted à une
+  // extension qui ne le dit pas (elle commanderait sans type : échec chez
+  // Vinted) ; « relance_vinted » = elle sait recommander UNE fois une étiquette
+  // échouée chez Vinted (210), sur une demande de relance du serveur.
+  const CAPACITES_BORDEREAU = Object.freeze(["generer", "vinted_types_texte", "relance_vinted"]);
   // Beebs : l'utilisateur « système » (messages de Beebs lui-même), relevé
   // dans le code du site (ADMIN_USER_ID).
   const BEEBS_ADMIN = "iwJIYrpj3cYueeS5JWCQCIKHbfx2";
@@ -178,27 +186,59 @@
   });
   const BEEBS_RMP = "5QAfJXcdv81jPJOE8H03ej";
 
-  // Vinted (code du site, 16/10 nuit) : types d'étiquette 1 = PDF à imprimer,
-  // 2 = code, 3 = QR (sans impression) ; dépôts « point » (relais) ou « home »
-  // (enlèvement à domicile, date à choisir). Le résumé des options relevées en
-  // LECTURE (GET shipments/<id>/label_options) — jamais un nom, jamais un
-  // numéro de téléphone : des types et des booléens.
+  // Vinted : dépôts « point » (relais) ou « home » (enlèvement à domicile, date
+  // à choisir). Le résumé des options relevées en LECTURE (GET shipments/<id>/
+  // label_options) — jamais un nom, jamais un numéro de téléphone : des types
+  // et des booléens.
+  // (18/10, cause des deux échecs de Louis) Vinted nomme les types d'étiquette
+  // en TOUTES LETTRES, dans label_options comme dans la commande (code du site
+  // relu le 18/10 : tO = {Printable:"printable", Code:"code", Digital:"digital"},
+  // la valeur choisie part telle quelle en label_type). Les chiffres 1/2/3 lus
+  // le 16/10 n'étaient que l'énumération des statistiques (tI). Lus comme des
+  // nombres, les types étaient TOUS jetés : la commande partait sans type alors
+  // que Vinted en proposait plusieurs, et Vinted échouait une seconde après
+  // (envoi 210). L'app garde ses chiffres (1 papier, 2 code, 3 QR) ; seule
+  // l'extension parle la langue de Vinted (TYPES_ETIQUETTE_VINTED).
+  const TYPES_ETIQUETTE_VINTED = Object.freeze({ 1: "printable", 2: "code", 3: "digital" });
+  /** Un type d'étiquette de Vinted (texte, ou chiffre d'avant) en chiffre de l'app (1, 2, 3), sinon null. */
+  function typeEtiquetteVinted(v) {
+    if (typeof v === "number") return [1, 2, 3].includes(v) ? v : null;
+    const t = String(v ?? "").trim().toLowerCase();
+    if (/^[123]$/.test(t)) return Number(t);
+    for (const [n, nom] of Object.entries(TYPES_ETIQUETTE_VINTED)) if (nom === t) return Number(n);
+    return null;
+  }
+  /** Les types BRUTS d'un dépôt (sans doublon, forme bornée) : ce que Vinted propose vraiment. */
+  function typesBrutsVinted(options) {
+    const vus = new Set();
+    for (const o of Array.isArray(options) ? options : []) {
+      for (const x of Array.isArray(o?.types) ? o.types : []) {
+        const t = String(x ?? "").trim().toLowerCase();
+        if (/^[a-z0-9_]{1,24}$/.test(t)) vus.add(typeEtiquetteVinted(t) != null ? TYPES_ETIQUETTE_VINTED[typeEtiquetteVinted(t)] : t);
+      }
+    }
+    return [...vus].sort().slice(0, 6);
+  }
   function optionsBordereauVinted(lo) {
     if (!lo || typeof lo !== "object") return null;
     const depots = (Array.isArray(lo.depots) ? lo.depots : []).map((d) => ({
       type: d?.type ?? null,
       options: (Array.isArray(d?.options) ? d.options : []).map((o) => ({
         type: o?.type ?? null,
-        types: (Array.isArray(o?.types) ? o.types : []).map(Number).filter((x) => [1, 2, 3].includes(x)),
+        types: Array.isArray(o?.types) ? o.types : [],
         date: o?.date === true, heure: o?.heure === true, reutilisable: o?.reutilisable === true,
       })),
     }));
     const pourPoint = depots.filter((d) => d.type !== "home");
-    const types = [...new Set((pourPoint.length ? pourPoint : depots).flatMap((d) => d.options.flatMap((o) => o.types)))].sort();
+    const bruts = typesBrutsVinted((pourPoint.length ? pourPoint : depots).flatMap((d) => d.options));
+    const types = [...new Set(bruts.map(typeEtiquetteVinted).filter((x) => x != null))].sort();
     const toutDomicile = depots.length > 0 && depots.every((d) => d.type === "home" || d.options.every((o) => o.date || o.heure));
     return {
       transporteur: typeof lo.transporteur === "string" ? lo.transporteur.slice(0, 60) : null,
       types_etiquette: types,
+      // (18/10) Ce que Vinted a écrit, tel quel (un type encore inconnu de
+      // FillSell s'y voit, et l'app n'en suppose plus aucun).
+      types_vinted: bruts,
       domicile_seul: toutDomicile,
       telephone_manquant: lo.telephone_requis === "mandatory" && lo.telephone_present !== true,
       generable: !toutDomicile && !(lo.telephone_requis === "mandatory" && lo.telephone_present !== true),
@@ -223,19 +263,21 @@
     const cible = point ?? depots[0] ?? null;
     const options = Array.isArray(cible?.options) ? cible.options : [];
     if (options.length && options.every((o) => o?.date === true || o?.heure === true)) return { refus: "date_a_choisir_sur_vinted" };
-    const types = [...new Set(options.flatMap((o) => (Array.isArray(o?.types) ? o.types : []).map(Number)))].filter((x) => [1, 2, 3].includes(x));
-    const choisi = Number(typeChoisi);
-    const aChoisi = typeChoisi != null && Number.isFinite(choisi);
+    // (18/10) Comme la page de Vinted : un choix seulement quand Vinted propose
+    // PLUSIEURS types pour ce dépôt (sa fenêtre « type d'étiquette »), et le
+    // type choisi part EN TOUTES LETTRES ; un seul type (ou aucun) : label_type
+    // nul, comme la page (Vinted connaît le seul type possible).
+    const bruts = typesBrutsVinted(options);
+    const choisi = typeEtiquetteVinted(typeChoisi);
+    const aChoisi = typeChoisi != null && choisi != null;
     let labelType = null;
     // (17/10) Un type choisi dans l'app que Vinted ne propose pas pour CETTE
     // commande (options pas encore relues au moment de l'appui) : rien n'est
     // commandé, l'app le dit et propose les bons choix — jamais un autre type.
-    if (aChoisi && types.length && !types.includes(choisi)) return { refus: "type_etiquette_indisponible" };
-    if (types.length > 1) {
+    if (aChoisi && bruts.length && !bruts.includes(TYPES_ETIQUETTE_VINTED[choisi])) return { refus: "type_etiquette_indisponible" };
+    if (bruts.length > 1) {
       if (!aChoisi) return { refus: "type_etiquette_a_choisir" };
-      labelType = choisi;
-    } else if (types.length === 1) {
-      labelType = types[0];
+      labelType = TYPES_ETIQUETTE_VINTED[choisi];
     }
     const reutilisable = depots.some((d) => (d?.options ?? []).some((o) => o?.reutilisable === true));
     const corps = { seller_address_id: adresse.id, drop_off_type: depots.length > 1 && point ? "point" : null, label_type: labelType };
@@ -519,7 +561,12 @@
     if (s === "created" || s === "reserved") return { etat: "a_confirmer", bordereau: "a_generer" };
     if (s === "available") {
       const pret = evenements.some((e) => /parcel-(label|qrcode)-generated/.test(String(e)));
-      return { etat: "a_expedier", bordereau: pret ? "pret" : "a_obtenir" };
+      // (18/10, lot 1.2) Une étiquette que Leboncoin n'a PAS pu émettre (événement
+      // d'échec du colis) : « indisponible » — la génération se ferme et l'app le
+      // dit, jamais « récupération du fichier… » en boucle. Forme à prouver à la
+      // première vraie commande (aucune vente Leboncoin en bêta au 18/10).
+      const echec = !pret && evenements.some((e) => /parcel-(label|qrcode)[-_a-z]*(fail|error|refus)/i.test(String(e)));
+      return { etat: "a_expedier", bordereau: pret ? "pret" : echec ? "indisponible" : "a_obtenir" };
     }
     if (s === "sent") return { etat: "expediee", bordereau: "sans_objet" };
     if (s === "received") return { etat: "livree", bordereau: "sans_objet" };
@@ -914,6 +961,15 @@
         credentials: "include", headers: { Accept: "application/json" }, cache: "no-store",
       }).catch(() => null);
       if (!rd) continue;
+      // (18/10, lot 6 — T5) Une commande SUIVIE (absente des commandes en cours
+      // de CE compte Vinted) qui répond 403/404 appartient à une AUTRE boutique
+      // (deux postes, deux Vinted sur un compte FillSell) : « pas ce compte »,
+      // on passe — jamais une pause des messages de tout le compte.
+      if (o.suivie && (rd.status === 403 || rd.status === 404)) {
+        const corps = await rd.text().catch(() => "");
+        if (!/datadome|captcha-delivery|geo\.captcha/i.test(corps.slice(0, 4000))) continue;
+        return { ok: false, http: rd.status, bot: true, motif: `http_${rd.status}`, requetes };
+      }
       if (rd.status === 403 || rd.status === 429) return { ok: false, http: rd.status, motif: `http_${rd.status}`, requetes };
       const td = await rd.text().catch(() => "");
       if (rd.status !== 200 || !td.trim().startsWith("{")) continue;
@@ -1451,12 +1507,19 @@
     const statut = Number(t.j?.transaction?.shipment?.status);
     const envoi = t.j?.transaction?.shipment?.id ?? p.shipmentId ?? null;
     if (![220, 230, 250].includes(statut)) {
-      return { ok: false, etape: "statut", motif: statut < 220 ? "bordereau_a_obtenir_sur_vinted" : "bordereau_sans_objet", statut, etapes };
+      // (18/10) 210 = Vinted n'a PAS émis l'étiquette : un échec, jamais « à
+      // obtenir » (l'app affichait « généré, récupération du fichier… » et la
+      // suite tournait 15 fois pour rien) ; 200 = Vinted la prépare encore.
+      const motif = statut === 210 ? "etiquette_echouee_chez_vinted" : statut === 200 ? "etiquette_en_preparation"
+        : statut < 220 ? "bordereau_a_obtenir_sur_vinted" : "bordereau_sans_objet";
+      return { ok: false, etape: "statut", motif, statut, etapes };
     }
     const options = envoi ? await lire(`/api/v2/shipments/${encodeURIComponent(envoi)}/label_options`) : { http: 0, j: null };
-    const derniere = p.numerique
-      ? `/api/v2/transactions/${encodeURIComponent(p.transactionId)}/shipment/digital_label`
-      : `/api/v2/transactions/${encodeURIComponent(p.transactionId)}/shipment/pdf_label`;
+    // (18/10, code du site) La page télécharge AUSSI l'étiquette numérique (QR)
+    // par pdf_label (« download_digital_label ») : pdf_label d'abord, toujours ;
+    // digital_label n'est qu'un recours (sa réponse porte le nom du destinataire :
+    // seul un fichier en est lu, jamais le reste).
+    const derniere = `/api/v2/transactions/${encodeURIComponent(p.transactionId)}/shipment/pdf_label`;
     if (p.derniereMarche !== true) {
       return { ok: false, etape: "derniere_marche", motif: "fermee", prepare: { url: derniere, options_http: options.http }, etapes };
     }
@@ -1464,16 +1527,12 @@
     const label = f.j?.file?.label ?? null;
     if (label) return { ok: true, base64: label, nom: f.j?.file?.filename ?? "bordereau.pdf", etapes };
     if (f.http === 403 || f.http === 429) return { ok: false, etape: "fichier", motif: `http_${f.http}`, bot: true, etapes };
-    // (16/10 soir) Pas de bordereau papier : certains transporteurs n'ont qu'un
-    // code (digital_label) — demandé UNE fois, jamais plus. Forme à prouver à
-    // la première vraie commande.
-    if (!p.numerique) {
-      const q = await lire(`/api/v2/transactions/${encodeURIComponent(p.transactionId)}/shipment/digital_label`);
-      const code = q.j?.file?.label ?? q.j?.digital_label?.label ?? null;
-      if (code) return { ok: true, base64: code, nom: q.j?.file?.filename ?? "bordereau-code.png", numerique: true, etapes };
-      return { ok: false, etape: "fichier", motif: `http_${f.http}_puis_${q.http}`, bot: q.http === 403 || q.http === 429, etapes };
-    }
-    return { ok: false, etape: "fichier", motif: `http_${f.http}`, etapes };
+    // (16/10 soir) Pas de fichier par pdf_label : le recours digital_label est
+    // demandé UNE fois, jamais plus. Forme à prouver à la première vraie commande.
+    const q = await lire(`/api/v2/transactions/${encodeURIComponent(p.transactionId)}/shipment/digital_label`);
+    const code = q.j?.file?.label ?? null;
+    if (code) return { ok: true, base64: code, nom: q.j?.file?.filename ?? "bordereau-code.png", numerique: true, etapes };
+    return { ok: false, etape: "fichier", motif: `http_${f.http}_puis_${q.http}`, bot: q.http === 403 || q.http === 429, etapes };
   }
 
   // Leboncoin (code du site + vente terminée de Nico, 16/10) : la vente doit
@@ -1619,7 +1678,10 @@
     if (!tr) return { ok: false, motif: `transaction_illisible_http_${t.http}`, etapes };
     const statut = Number(tr?.shipment?.status);
     const envoi = tr?.shipment?.id ?? null;
-    if (!Number.isFinite(statut) || statut >= 200) return { ok: true, statut, etapes };
+    // (18/10) Une RELANCE (étiquette échouée chez Vinted, 210) relit aussi les
+    // options : la page de Vinted repropose « Obtenir le bordereau » après un échec.
+    const relance = statut === 210 && p.relance === true;
+    if (!Number.isFinite(statut) || (statut >= 200 && !relance)) return { ok: true, statut, etapes };
     if (envoi == null) return { ok: false, motif: "envoi_inconnu", statut, etapes };
     await new Promise((ok) => setTimeout(ok, 900 + Math.random() * 900));
     const o = await lire(`/api/v2/shipments/${encodeURIComponent(envoi)}/label_options`);
@@ -1670,7 +1732,8 @@
     // (17/10, demande qui a pu attendre 24 h) Même lecture que decisionGeneration : seule une
     // étiquette prête ou en préparation est « déjà faite » ; annulée, expédiée, en échec = rien.
     if ([200, 220, 230, 250].includes(statut)) return { avant: true, deja: true, statut, etapes };
-    if (Number.isFinite(statut) && statut >= 200) {
+    // (18/10) Une relance ne part que sur une étiquette ÉCHOUÉE chez Vinted (210).
+    if (Number.isFinite(statut) && statut >= 200 && !(statut === 210 && p.relance === true)) {
       const motif = statut === 500 ? "commande_annulee" : statut === 210 ? "etiquette_echouee_chez_vinted" : statut >= 300 ? "deja_expediee" : `etat_${statut}`;
       return { avant: true, statut, motif, etapes };
     }
@@ -1892,12 +1955,14 @@
     if (platform === "vinted") {
       const s = Number(prep.statut);
       if ([200, 220, 230, 250].includes(s)) return { deja: true };
-      if (s === 210) return { refus: "etiquette_echouee_chez_vinted" };
+      // (18/10) 210 = étiquette échouée chez Vinted : seule une RELANCE (demande
+      // du serveur, marquée) recommande, UNE fois, avec le bon type.
+      if (s === 210 && commande?.relance !== true) return { refus: "etiquette_echouee_chez_vinted" };
       if (s === 500) return { refus: "commande_annulee" };
       if (Number.isFinite(s) && s >= 300) return { refus: "deja_expediee" };
       const c = corpsCommandeVinted(prep.options, prep.adresse, choix?.type_etiquette);
       if (c.refus) return { refus: c.refus };
-      return { args: { transactionId: commande.commande_ref, corps: c.corps } };
+      return { args: { transactionId: commande.commande_ref, corps: c.corps, ...(s === 210 ? { relance: true } : {}) } };
     }
     if (platform === "leboncoin") {
       const s = String(prep.statut ?? "");
@@ -1969,5 +2034,7 @@
     LBC_TYPES_ADRESSE, expediteurLeboncoin,
     optionsBordereauVinted, corpsCommandeVinted, issueGeste, decisionGeneration, issueGeneration, empreinteTexte,
     PREPARATIONS_GENERATION, GESTES_GENERATION,
+    // (18/10) Les types d'étiquette de Vinted en toutes lettres ; relance après un échec de Vinted.
+    TYPES_ETIQUETTE_VINTED, typeEtiquetteVinted, typesBrutsVinted, CAPACITES_BORDEREAU,
   });
 })(typeof globalThis !== "undefined" ? globalThis : self);

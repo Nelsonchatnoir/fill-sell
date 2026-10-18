@@ -23,9 +23,12 @@ console.log("\n1. LA RÈGLE : CELLE DU SERVEUR ET DU BANDEAU");
 const T = Date.parse("2026-10-02T23:30:00Z");
 const B0679 = "2026-09-28T21:44:46Z+52b214b · v0.6.79";   // le build RÉEL de geronimo0550
 const B0689 = "2026-10-02T21:10:00Z+1a49399 · v0.6.89";
-ok(EXTENSION_MIN_BUILD === "2026-09-30T20:16:41Z", "minimum du serveur relu (0.6.81)");
+const B06124 = "2026-10-17T18:16:49Z+ced6cfd · v0.6.124";
+// (18/10, ordre de Nico) Le minimum est la 0.6.124 (servie par le Store) : la 0.6.89 devient ancienne.
+ok(EXTENSION_MIN_BUILD === "2026-10-17T18:16:49Z", "minimum du serveur relu (0.6.124)");
 ok(extensionAMettreAJour({ build: B0679, lastSeenAt: "2026-10-02T23:49:00Z", maintenant: T }) === true, "0.6.79 vue ce soir : trop ancienne");
-ok(extensionAMettreAJour({ build: B0689, lastSeenAt: "2026-10-02T23:49:00Z", maintenant: T }) === false, "0.6.89 : à jour");
+ok(extensionAMettreAJour({ build: B0689, lastSeenAt: "2026-10-02T23:49:00Z", maintenant: T }) === true, "0.6.89 : trop ancienne depuis le 18/10");
+ok(extensionAMettreAJour({ build: B06124, lastSeenAt: "2026-10-02T23:49:00Z", maintenant: T }) === false, "0.6.124 : à jour");
 ok(extensionAMettreAJour({ build: B0679, lastSeenAt: "2026-08-01T10:00:00Z", maintenant: T }) === false, "vue il y a plus de 30 jours : c'est « ordinateur éteint », un autre message");
 ok(extensionAMettreAJour({ build: null, lastSeenAt: "2026-10-02T23:49:00Z", maintenant: T }) === false, "build inconnu : on n'affirme rien");
 

@@ -31,6 +31,22 @@ console.log("▸ liste fermée");
 check("« shein » n'est PAS dans la liste (accepté par Leboncoin, 148 articles en base)", !TERMES_SITES_LEBONCOIN.includes("shein"));
 check("« leboncoin » n'est PAS dans la liste", !TERMES_SITES_LEBONCOIN.some((t) => /leboncoin/.test(t)));
 check("« vinted » y est (prouvé : 403)", TERMES_SITES_LEBONCOIN.includes("vinted"));
+check("« instagram » y est (prouvé : 403 le 18/10, jocabroc8 3e3074ef)", TERMES_SITES_LEBONCOIN.includes("instagram"));
+check("« insta » seul n'y est PAS (« instant », « installé »)", !TERMES_SITES_LEBONCOIN.includes("insta"));
+
+console.log("▸ (18/10) la description de jocabroc8 : la phrase « vidéo disponible sur instagram » part, le reste reste");
+{
+  const joca = "Aucun défaut majeur évident n’a été constaté lors de l’examen visuel.\nLes photographies et une vidéo disponible sur instagram permettent d’apprécier les détails du décor. Merci de les examiner attentivement.";
+  const r = n(joca);
+  check("modifiée", r.modifiee);
+  egal("terme", JSON.stringify(r.termes), JSON.stringify(["instagram"]));
+  check("instagram absent", !/instagram/i.test(r.texte), r.texte);
+  check("la phrase d'avant reste", r.texte.includes("Aucun défaut majeur évident n’a été constaté lors de l’examen visuel."));
+  check("la phrase d'après reste", r.texte.includes("Merci de les examiner attentivement."));
+  check("« Instagram » en majuscule aussi", !/instagram/i.test(n("Pull bleu. Plus de photos sur Instagram. Taille M.").texte));
+  egal("« instant », « installé » intacts", n("Séchage instantané, installé hier.").texte, "Séchage instantané, installé hier.");
+  egal("idempotent", n(r.texte).texte, r.texte);
+}
 
 console.log("▸ la description de Nico (job 8fea6e80) : seul #VintedStyle part, les défauts restent");
 const nico = "Je vends un sweat Tommy Jeans bleu marine, taille M.\n\nCoupe classique, col rond, matière épaisse et confortable.\nPetit logo Tommy Jeans brodé sur la poitrine 🔴⚪🔵\nCouleur bleu marine profonde, facile à assortir.\n\nIdéal pour un look casual / streetwear, se porte aussi bien avec jean que jogging.\n\n✔ Marque : Tommy Jeans\n✔ Taille : M\n✔ Couleur : Bleu marine\n✔ État : Très bon \n⚠️ Attention léger petit accroc devant voir photos \n\nenvoi rapide 📦\n\n\n#TommyJeans\n#TommyHilfiger\n#SweatHomme\n#TailleM\n#Streetwear\n#CasualStyle\n#LookUrbain\n#VetementHomme\n#BleuMarine\n#ModeHomme\n#BasicPremium\n#VintedStyle";

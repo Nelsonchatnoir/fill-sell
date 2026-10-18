@@ -52,7 +52,9 @@ import BarreJobCarte from '../components/BarreJobCarte';
 import BarreProgression from '../components/BarreProgression';
 import { articleDeJob, pisteJob, etapesJob } from '../utils/barresJobs';
 // (16/10) Les six mots de l'état d'un job, les mêmes partout.
-import { LIBELLES } from '../../supabase/functions/_shared/etat-job.js';
+import { LIBELLES, attenteAutomatique } from '../../supabase/functions/_shared/etat-job.js';
+// (18/10, lot 3) La raison d'une attente automatique, dans les mots de la file des jobs.
+import { situationJob } from '../utils/fileDesJobs';
 // Photos : lecture des deux formes, écriture en objets { type, url } — le
 // normaliseur unique (incident lecarnetdemercury du 05/09, cf. utils/photos.js).
 import { urlsPhotos, entreesPhotos } from '../utils/photos';
@@ -7194,6 +7196,10 @@ const StockTab = memo(function StockTab({
       if (attendForfaitLbc(j, compteLbcPro)) continue;
       // (17/10) Même chose pour la configuration vendeur Depop : une seule carte.
       if (attendVendeurDepop(j)) continue;
+      // (18/10, lot 3) Une attente AUTOMATIQUE (relevé attendu, coupure technique,
+      // boutique à ouvrir, site eBay étranger, plateforme écartée…) n'attend
+      // aucun geste : « En pause », jamais dans « À régler » (_shared/etat-job.js).
+      if (j.status === 'needs_user' && attenteAutomatique(j)) continue;
       const cause = j.status === 'needs_user' ? 'completer'
         : j.status === 'failed' ? 'echec' : null;
       if (!cause) continue;
@@ -9119,7 +9125,10 @@ const StockTab = memo(function StockTab({
     // bouton « Autoriser Opla » pour un geste déjà fait.
     const oplaRepartSeule=j=>j.platform==="opla"&&j.platform_fields?.needs_user_source==="opla_acces"&&parcageDepasse(j,oplaAccesDetail);
     const enConfirmationJobs=needsUserTous.filter(j=>natureNeedsUser(j)==="en_cours"||oplaRepartSeule(j));
-    const needsUserJobs=needsUserTous.filter(j=>natureNeedsUser(j)!=="en_cours"&&!oplaRepartSeule(j));
+    // (18/10, lot 3) Une attente AUTOMATIQUE (etat-job.js, attenteAutomatique) repart
+    // seule : « En pause », gris — jamais orange, jamais compté « à régler ».
+    const enPauseAutoJobs=needsUserTous.filter(j=>natureNeedsUser(j)!=="en_cours"&&!oplaRepartSeule(j)&&attenteAutomatique(j));
+    const needsUserJobs=needsUserTous.filter(j=>natureNeedsUser(j)!=="en_cours"&&!oplaRepartSeule(j)&&!attenteAutomatique(j));
     // ── LE MUR NOMMÉ DE LA CARTE (2026-09-23) ─────────────────
     // Même règle que la pastille (voir l'IIFE de la photo) : quand
     // rien de plus urgent ne parle (republication, file, échec) et
@@ -9276,7 +9285,7 @@ const StockTab = memo(function StockTab({
     const favsPf=statsPf.some(x=>x.favoris!=null)?statsPf.reduce((t,x)=>t+(x.favoris??0),0):null;
     const vues=(item.vinted_view_count==null&&vuesPf==null)?null:(item.vinted_view_count??0)+(vuesPf??0);
     const favs=(item.vinted_favourite_count==null&&favsPf==null)?null:(item.vinted_favourite_count??0)+(favsPf??0);
-    return { invested, prixAnnonce, jobsAll, vintedMasquee, jobs, repubLatest, repubEligible, repubMaintenant, repubEligibleTout, attenteFiche, repubEtape, repubNote, repubOccupeSlot, repubOrpheline, hasPending, pendingJobs, pendingSurConnexion, hasPausedPending, latestByPlatform, failedJobs, needsUserTous, oplaRepartSeule, enConfirmationJobs, needsUserJobs, murDirect, succesConfirme, warnedJobs, sansWarn, lienEnCoursJobs, lienRembourseJobs, removalState, publishedActive, latestPubByPlatform, disparuDeVinted, vintedGeleParRepub, vintedOccupee, logosEnLigne, enLigne, nbEnLigne, toutEnLigne, aPublier, openEdit, photoUrl, statsPf, vuesPf, favsPf, vues, favs };
+    return { invested, prixAnnonce, jobsAll, vintedMasquee, jobs, repubLatest, repubEligible, repubMaintenant, repubEligibleTout, attenteFiche, repubEtape, repubNote, repubOccupeSlot, repubOrpheline, hasPending, pendingJobs, pendingSurConnexion, hasPausedPending, latestByPlatform, failedJobs, needsUserTous, oplaRepartSeule, enConfirmationJobs, enPauseAutoJobs, needsUserJobs, murDirect, succesConfirme, warnedJobs, sansWarn, lienEnCoursJobs, lienRembourseJobs, removalState, publishedActive, latestPubByPlatform, disparuDeVinted, vintedGeleParRepub, vintedOccupee, logosEnLigne, enLigne, nbEnLigne, toutEnLigne, aPublier, openEdit, photoUrl, statsPf, vuesPf, favsPf, vues, favs };
   };
 
   // ── LA PASTILLE D'UN ARTICLE — COURTE, SANS ÉMOJI (03/10) ─────────────────
@@ -9370,6 +9379,10 @@ const StockTab = memo(function StockTab({
         titre: toutOpla ? (fr ? "Opla est autorisée : cette annonce repart toute seule." : "Opla is allowed: this listing goes out on its own.") : texteEnCoursConfirmation(j, lang),
         onTap: null, horsLigne: false,
       };
+    }
+    if (d.enPauseAutoJobs?.length > 0) {
+      const j = d.enPauseAutoJobs[0];
+      return { ...pastilleCourte({ genre: 'pause' }, lang), titre: situationJob(j, { lang }).raison, onTap: () => setJobStatusItem(item), horsLigne: false };
     }
     if (d.disparuDeVinted && !d.enLigne) {
       return { ...pastilleCourte({ genre: 'hors_ligne', date: dateCourte(item.disparu_le, lang) }, lang), titre: fr ? "L'annonce Vinted n'a pas été retrouvée lors de la dernière synchronisation de ton dressing." : 'This Vinted listing was not found during the last wardrobe sync.', onTap: null, horsLigne: true };

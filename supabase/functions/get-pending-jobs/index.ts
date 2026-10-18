@@ -1,5 +1,7 @@
 import { recreationRetientFile } from "../_shared/file-republication.js";
 import { EXTENSION_MIN_BUILD, posteExtensionCompatible } from "../_shared/version-min-extension.js";
+// (18/10, lot 5 — hu.anastasia) La pause anti-robot quand Vinted refuse la LECTURE des annonces de sa boutique.
+import { ANTIROBOT_LECTURES_MSG, refusSurSaBoutique, retenuParPauseLectures, signalPauseLectures } from "../_shared/pause-antirobot-vinted.js";
 // (02/10) Le message d'un poste sous le seuil : simple, et vrai — la file
 // attend, rien n'est perdu, elle repart seule après la mise à jour.
 const MESSAGE_MISE_A_JOUR_EXTENSION =
@@ -14,6 +16,8 @@ import { ETATS_VINTED, langueVintedDuJob, paysDeLaLangue, PAYS_VINTED_EURO, type
 import { navigateurDeUA, paysDeEntete, vintedEtranger, paysAppareilDesReglages } from "../_shared/navigateur-poste.js";
 import { vintedIdsPourPublication } from "../_shared/vinted-ids-publication.ts";
 import { sessionIdDuJwt, identifiantPosteExtension, postesVivants, posteCourt, posteAvecAccesOpla, posteAvecAccesDepop, POSTE_TTL_MS, type Poste } from "../_shared/poste-extension.ts";
+// (18/10, lot 6) Deux postes, deux boutiques Vinted : chaque poste reçoit les jobs de SA boutique.
+import { identiteVintedDuPoste, routageBoutiquesActif, posteLaisseJobVinted, boutiqueAutoTenueParAutrePoste, murDuPosteTient, posteSeDitDeconnecte, patchPosteDuPoll } from "../_shared/poste-extension.ts";
 import { CLES_RELANCE_DEPOP } from "../_shared/acces-depop.js";
 import { MOTIF_VENDEUR_DEPOP, SOURCE_VENDEUR_DEPOP, MESSAGE_VENDEUR_DEPOP, attentesVendeurDepop, derniereObservationMur, estEclaireurFrais, champsRetenue } from "../_shared/vendeur-depop.js";
 import { rayonDepopAJour, reponseRayonDepop } from "../_shared/depop-rayon.js";
@@ -948,6 +952,8 @@ serve(async (req) => {
     const PLATEFORMES_POSTE_CLOUD = ["vinted", "leboncoin", "beebs"];
     // (25/09) Les postes vivants du compte, relus par la garde des relevés Opla.
     let postesDuCompte: Record<string, Poste> = {};
+    // (18/10, lot 6) CE poste tel qu'il est APRÈS ce poll (ce qu'il vient de dire compris).
+    let posteCourant: Poste | null = null;
     try {
       const admin = createClient(
         Deno.env.get("SUPABASE_URL")!,
@@ -999,6 +1005,9 @@ serve(async (req) => {
           if (navPoste) patchPoste.navigateur = navPoste;
           const paysPoste = paysDeEntete(req.headers.get("cf-ipcountry"));
           if (paysPoste) patchPoste.pays = paysPoste;
+          // (18/10, lot 6) Ce que le poste dit de lui (≥ 0.6.126) : sa boutique Vinted
+          // ouverte (vinted_identite) et ses sessions (sessions_poste). Absent : rien.
+          Object.assign(patchPoste, patchPosteDuPoll(body));
           const declare = posteAvecOpla || posteSansOpla;
           if (posteAvecOpla) patchPoste.opla_acces = true;
           else if (posteSansOpla) patchPoste.opla_acces = false;
@@ -1075,6 +1084,7 @@ serve(async (req) => {
           // postes qui pollent en parallèle ne se perdent plus leurs mises à jour.
           const { error: rpcErr } = await admin.rpc("noter_poste_extension", { p_user: user.id, p_session: sessionId, p_patch: patchPoste });
           if (rpcErr) console.warn(`[get-pending-jobs] userId=${user.id} noter_poste_extension :`, rpcErr.message);
+          posteCourant = { ...avant, ...patchPoste };
         } catch (e) { console.warn("[get-pending-jobs] postes :", (e as Error)?.message ?? e); }
       }
       // Version du manifest (2026-08-05) : rangée en MAX, pas en dernière vue —
@@ -4051,22 +4061,22 @@ serve(async (req) => {
     // publication réussie de ce poste) ne reçoit plus ses jobs tant qu'un
     // AUTRE poste vivant (vu il y a moins de 15 min) sans mur peut les prendre.
     // Seul poste du compte → rien ne change.
+    // (18/10, lot 6 — Louis, Leboncoin sur le PC seulement) Le mur ne tombe plus
+    // au bout de 2 h quand un autre poste vivant a réussi sur la plateforme
+    // depuis 7 jours (la VM re-butait toutes les 2 h) ; un poste ≥ 0.6.126 dont
+    // la sonde dit la plateforme déconnectée la laisse aussi à un autre poste
+    // vivant qui ne la dit pas déconnectée (_shared/poste-extension.ts).
     if (sessionId && out.length && Object.keys(postesDuCompte).length > 1) {
-      const emmure = (p: Record<string, unknown> | undefined, pf: string): boolean => {
-        if (!p) return false;
-        const mur = Date.parse(String(p[`mur_${pf}`] ?? ""));
-        if (!Number.isFinite(mur) || Date.now() - mur > 2 * 3600_000) return false;
-        const ok = Date.parse(String(p[`ok_${pf}`] ?? ""));
-        return !(Number.isFinite(ok) && ok > mur);
-      };
-      const moi = postesDuCompte[sessionId] as Record<string, unknown> | undefined;
+      const emmure = (p: Record<string, unknown> | undefined, pf: string, sid: string): boolean =>
+        murDuPosteTient({ moi: p, pf, postes: postesDuCompte, session: sid }) || posteSeDitDeconnecte(p, pf);
+      const moi = (posteCourant ?? postesDuCompte[sessionId]) as Record<string, unknown> | undefined;
       const laisses: string[] = [];
       for (const pf of ["vinted", "leboncoin", "beebs", "opla", "depop"]) {
-        if (!emmure(moi, pf) || !out.some((j) => j.platform === pf)) continue;
+        if (!emmure(moi, pf, sessionId) || !out.some((j) => j.platform === pf)) continue;
         const autre = Object.entries(postesDuCompte).find(([sid, p]) => {
           if (sid === sessionId) return false;
           const le = Date.parse(String((p as Record<string, unknown>).le ?? ""));
-          return Number.isFinite(le) && Date.now() - le < 15 * 60_000 && !emmure(p as Record<string, unknown>, pf);
+          return Number.isFinite(le) && Date.now() - le < 15 * 60_000 && !emmure(p as Record<string, unknown>, pf, sid);
         });
         if (autre) laisses.push(`${pf} → poste ${posteCourt(autre[0])}`);
       }
@@ -6879,6 +6889,8 @@ serve(async (req) => {
     //    jamais recréée. La boutique est une notion Vinted : une autre plateforme
     //    n'est jamais retenue par elle (aucun des deux contrôles ne la concerne).
     let heldBoutiqueEtrangere = 0;
+    // (18/10, lot 6) Jobs Vinted laissés au poste qui a leur boutique ouverte (jamais comptés « retenus »).
+    let laissesAutrePosteN = 0;
     let heldBoutiqueLecture = 0;
     if (!includeProcessing && !includeNeedsUser) {
       const operations = out.filter(j => j.platform === "vinted" && ["publish", "delete", "republish"].includes(j.action));
@@ -6892,6 +6904,16 @@ serve(async (req) => {
           : { data: [], error: null };
         const origines = new Map((articles ?? []).map(a => [String(a.id), String(a.vinted_account_id ?? "").trim()]));
         const identite = identiteBoutiqueFraiche(profil?.extension_sessions);
+        // (18/10, lot 6 — Louis : Vinted Pro sur le PC, perso sur une VM) Deux
+        // postes vivants et deux boutiques confirmées : la boutique ouverte est
+        // celle de CE poste quand elle est connue et fraîche ; un job d'une
+        // boutique tenue par un AUTRE poste vivant lui est laissé (il reste en
+        // file, servi là-bas). Un poste inconnu, un seul poste, une seule
+        // boutique : rien ne change (_shared/poste-extension.ts).
+        const postesRoutage: Record<string, Poste> = sessionId && posteCourant ? { ...postesDuCompte, [sessionId]: posteCourant } : postesDuCompte;
+        const routage = !!sessionId && routageBoutiquesActif(postesRoutage, loginsDesBoutiques(profil?.vinted_sync_pin).size);
+        const identitePoste = routage ? identiteVintedDuPoste(postesRoutage[String(sessionId)]) : null;
+        const laissesAutrePoste = new Map<string, string>();
         const fiable = !erreurProfil && !erreurArticles && !!profil;
         const historiquesOperations = new Map<string, PreuveHistoriqueVinted>();
         if (fiable) await Promise.all(operations.map(async (j) => {
@@ -6911,18 +6933,24 @@ serve(async (req) => {
           // Une boutique posée ICI (vinted_boutique_auto) se recalcule à chaque
           // service tant que la publication n'est pas partie ; une boutique
           // posée à la création du job (sans cette trace) ne bouge pas.
+          // (18/10, lot 6) Une boutique « auto » posée par un AUTRE poste vivant, toujours
+          // sur elle, ne se recalcule pas ici (sinon elle basculerait à chaque poll des deux machines).
+          const autoTenueAilleurs = routage && boutiqueAutoTenueParAutrePoste({ postes: postesRoutage, session: sessionId,
+            auto: pf.vinted_boutique_auto, boutiqueJob: pf.vinted_account_id });
           if (fiable && j.platform === "vinted" && j.action === "publish" && !String(origines.get(String(j.inventaire_id)) ?? "").trim()
-              && (!String(pf.vinted_account_id ?? "").trim() || pf.vinted_boutique_auto)) {
+              && (!String(pf.vinted_account_id ?? "").trim() || pf.vinted_boutique_auto) && !autoTenueAilleurs) {
             const auto = (pf.vinted_boutique_auto ?? null) as Record<string, unknown> | null;
             const choix = boutiquePublicationVinted({
               boutiqueChoisie: pf.vinted_boutique_choisie ?? null,
               boutiqueDefaut: ((profil?.platform_settings as Record<string, unknown> | null)?.vinted as Record<string, unknown> | undefined)?.boutique_defaut ?? null,
-              boutiqueSession: identite?.user_id ?? null,
+              // (18/10, lot 6) La boutique ouverte = celle de CE poste quand elle est connue (deux postes, deux boutiques).
+              boutiqueSession: identitePoste ?? identite?.user_id ?? null,
               boutiques: profil?.vinted_sync_pin?.boutiques,
             });
             if (choix.boutique && choix.boutique !== String(pf.vinted_account_id ?? "").trim()) {
               pf = { ...pf, vinted_account_id: choix.boutique,
-                vinted_boutique_auto: { source: choix.source, le: new Date().toISOString(), pose_par: "get-pending-jobs (boutique-publication-vinted)" } };
+                vinted_boutique_auto: { source: choix.source, le: new Date().toISOString(), pose_par: "get-pending-jobs (boutique-publication-vinted)",
+                  ...(choix.source === "session" && sessionId ? { poste: posteCourt(sessionId) } : {}) } };
               await userClient.from("cross_post_jobs").update({ platform_fields: pf }).eq("id", j.id).eq("status", "pending");
               j.platform_fields = pf;
             } else if (!choix.boutique && choix.motif === "session_inconnue" && auto?.source === "session") {
@@ -6934,6 +6962,12 @@ serve(async (req) => {
             }
           }
           const { origine, contradictoire } = origineBoutiqueProuvee(origines.get(String(j.inventaire_id)), pf.vinted_account_id);
+          // (18/10, lot 6) Sa boutique est ouverte sur un AUTRE poste vivant et pas sur celui-ci :
+          // il lui est laissé, sans écriture (il reste en file et part là-bas — réservation par poste).
+          if (routage && identitePoste && !contradictoire) {
+            const r = posteLaisseJobVinted({ postes: postesRoutage, session: sessionId, identiteMoi: identitePoste, boutiqueJob: origine });
+            if (r.laisser && r.autre) { laissesAutrePoste.set(String(j.id), r.autre); continue; }
+          }
           const historique = !origine ? (historiquesOperations.get(String(j.id)) ?? { prouve: false }) : { prouve: false };
           const motif = contradictoire ? "origine_contradictoire" : (verifierBoutiqueOperation({ action: j.action, platform: j.platform,
             boutiqueArticle: origine, boutiqueSession: identite?.user_id,
@@ -7031,8 +7065,14 @@ serve(async (req) => {
                 pose_par: publicationAilleurs ? POSE_PAR_PUBLICATION_BOUTIQUE : "get-pending-jobs (identité prouvée)" } }
           }).eq("id", j.id).eq("status", "pending");
         }
+        if (laissesAutrePoste.size) {
+          const vers = [...new Set(laissesAutrePoste.values())].map(posteCourt).join(", ");
+          console.log(`[get-pending-jobs] userId=${user.id} poste ${posteCourt(sessionId)} (boutique Vinted ${identitePoste}) : ${laissesAutrePoste.size} job(s) Vinted laissé(s) au poste qui a leur boutique ouverte (${vers}) — rien d'écrit, ils restent en file`);
+          for (const id of laissesAutrePoste.keys()) retenus.add(id);
+          laissesAutrePosteN = laissesAutrePoste.size;
+        }
       }
-      heldBoutiqueEtrangere = retenus.size;
+      heldBoutiqueEtrangere = retenus.size - laissesAutrePosteN;
       out = out.filter(j => !retenus.has(String(j.id)));
     }
 
@@ -10950,7 +10990,7 @@ serve(async (req) => {
         const pfAr = (j: { platform_fields: unknown }) =>
           (j.platform_fields && typeof j.platform_fields === "object") ? j.platform_fields as Record<string, unknown> : {};
         const fileVinted = (jobs ?? []).filter((j) => j.platform === "vinted");
-        type ObsAr = { id: string; article: string; at: number };
+        type ObsAr = { id: string; article: string; at: number; saBoutique: boolean };
         const obsAr: ObsAr[] = [];
         for (const j of fileVinted) {
           const pf = pfAr(j);
@@ -10960,7 +11000,7 @@ serve(async (req) => {
           const tBa = ba ? Date.parse(String(ba.derniere ?? ba.depuis ?? "")) : NaN;
           const at = Math.max(Number.isFinite(tCe) ? tCe : -Infinity, Number.isFinite(tBa) ? tBa : -Infinity);
           if (!Number.isFinite(at)) continue;
-          obsAr.push({ id: String(j.id), article: String(j.inventaire_id ?? j.listing_url ?? j.id), at });
+          obsAr.push({ id: String(j.id), article: String(j.inventaire_id ?? j.listing_url ?? j.id), at, saBoutique: refusSurSaBoutique(pf) });
         }
         const nbArticles = (l: ObsAr[]) => new Set(l.map((o) => o.article)).size;
         let enPause = false;
@@ -10969,7 +11009,12 @@ serve(async (req) => {
           const s = (profAr?.extension_sessions ?? null) as Record<string, unknown> | null;
           const vu403 = (x: unknown) => Boolean(x && typeof x === "object")
             && Number(((x as Record<string, unknown>)["http"] as Record<string, unknown> | undefined)?.["vinted"]) === 403;
-          if (s && s["vinted"] !== true && (vu403(s) || vu403(s["previous"]))) {
+          // (18/10, lot 5 — hu.anastasia) Sonde à 200 mais lectures de SA boutique
+          // refusées : la pause ne porte que sur les republications qui lisent
+          // leur annonce (_shared/pause-antirobot-vinted.js).
+          const sonde403 = Boolean(s && s["vinted"] !== true && (vu403(s) || vu403(s["previous"])));
+          const lecturesSeules = !sonde403 && nbArticles(obsAr.filter((o) => o.saBoutique)) >= 2;
+          if (sonde403 || lecturesSeules) {
             // Le DERNIER SUCCÈS Vinted du compte : un dépôt ou une republication
             // aboutis par l'extension, un retrait fait, une annonce relue.
             const [pubAr, delAr, capAr] = await Promise.all([
@@ -10992,11 +11037,11 @@ serve(async (req) => {
               ...((capAr.data ?? []) as Array<{ captured_at: string | null }>).map((r) => Date.parse(String(r.captured_at ?? ""))),
             ].filter((t) => Number.isFinite(t));
             const dernierSucces = temps.length ? Math.max(...temps) : -Infinity;
-            const apres = obsAr.filter((o) => o.at > dernierSucces);
-            if (nbArticles(apres) >= 2) {
+            const apres = obsAr.filter((o) => o.at > dernierSucces && (sonde403 || o.saBoutique));
+            if (lecturesSeules ? signalPauseLectures(obsAr, dernierSucces).pause : nbArticles(apres) >= 2) {
               enPause = true;
               let absenceAr: { prouvee: boolean; le: string | null } = { prouvee: false, le: null };
-              try {
+              if (sonde403) try {
                 const { data: runsAr } = await userClient.from("vinted_sync_runs")
                   .select("status, erreur, started_at, finished_at")
                   .eq("user_id", user.id).eq("kind", "dressing")
@@ -11004,20 +11049,24 @@ serve(async (req) => {
                   .order("started_at", { ascending: false }).limit(3);
                 absenceAr = connexionVintedAbsenteProuvee({ runs: (runsAr ?? []) as Array<Record<string, unknown>>, dernierSucces, sessions: s });
               } catch (_e) { /* illisible : la pause d'avant, telle quelle */ }
-              const msgPause = absenceAr.prouvee ? PAUSE_CONNEXION_MSG : ANTIROBOT_COMPTE_MSG;
+              const msgPause = lecturesSeules ? ANTIROBOT_LECTURES_MSG : absenceAr.prouvee ? PAUSE_CONNEXION_MSG : ANTIROBOT_COMPTE_MSG;
               const vintedOut = out.filter((j) => j.platform === "vinted");
-              const garder = new Set<string>(vintedOut
+              const recreations = new Set<string>(vintedOut
                 .filter((j) => j.action === "republish" && String(pfAr(j).republish_step ?? "") === "deleted")
                 .map((j) => String(j.id)));
+              const garder = new Set<string>(recreations);
+              // (18/10) Pause des LECTURES : tout ce qui ne lit pas son annonce passe (retraits, publications).
+              if (lecturesSeules) for (const j of vintedOut) if (!retenuParPauseLectures(j)) garder.add(String(j.id));
               const dernierRefus = Math.max(...apres.map((o) => o.at));
               let sondeAr: string | null = null;
-              if (!garder.size && Date.now() - dernierRefus >= 45 * 60_000) {
+              if (!recreations.size && Date.now() - dernierRefus >= 45 * 60_000) {
                 const du = (j: { platform_fields: unknown }) => {
                   const t = Date.parse(String(pfAr(j).next_action_after ?? ""));
                   return !Number.isFinite(t) || t <= Date.now();
                 };
                 const refusDe = new Map(obsAr.map((o) => [o.id, o.at]));
-                const dus = vintedOut.filter(du);
+                // (18/10) Pause des lectures : la sonde est une republication qui LIT (les autres passent déjà).
+                const dus = vintedOut.filter(du).filter((j) => !lecturesSeules || retenuParPauseLectures(j));
                 const jamais = dus.filter((j) => !refusDe.has(String(j.id)))
                   .sort((a, b) => (a.action === "delete" ? 0 : 1) - (b.action === "delete" ? 0 : 1));
                 const choisi = jamais[0] ?? dus.filter((j) => refusDe.has(String(j.id)))
@@ -11032,6 +11081,7 @@ serve(async (req) => {
               let ecritures = 0;
               for (const j of fileVinted) {
                 if (garder.has(String(j.id)) || ecritures >= 40) continue;
+                if (lecturesSeules && !retenuParPauseLectures(j)) continue;
                 const pf = pfAr(j);
                 if (pf.attente_antirobot_compte && j.error === msgPause) continue;
                 ecritures++;
@@ -11039,9 +11089,9 @@ serve(async (req) => {
                   ...pf,
                   // pose_le (2026-09-25) : le début de la pause POUR CE JOB — c'est
                   // de là que la levée compte le temps passé en pause.
-                  attente_antirobot_compte: { depuis: depuisAr, derniere_obs: new Date(dernierRefus).toISOString(), articles: nbArticles(apres), http: 403, pose_le: new Date().toISOString() },
+                  attente_antirobot_compte: { depuis: depuisAr, derniere_obs: new Date(dernierRefus).toISOString(), articles: nbArticles(apres), http: 403, pose_le: new Date().toISOString(), ...(lecturesSeules ? { perimetre: "lectures" } : {}) },
                 };
-                if (j.error && j.error !== ANTIROBOT_COMPTE_MSG && j.error !== PAUSE_CONNEXION_MSG) {
+                if (j.error && j.error !== ANTIROBOT_COMPTE_MSG && j.error !== PAUSE_CONNEXION_MSG && j.error !== ANTIROBOT_LECTURES_MSG) {
                   pfNeuf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error, "pending", "get-pending-jobs (pause anti-robot du compte)");
                 }
                 if (absenceAr.prouvee) pfNeuf.connexion_absente = { preuve: "cause403_session_absente", le: absenceAr.le };
@@ -11055,7 +11105,9 @@ serve(async (req) => {
               // à la personne (needs_user « verification_antirobot »). Le job
               // sonde, lui, continue de tester ; handler-watch relance les autres
               // quand la sonde de sessions revoit Vinted répondre.
-              if (Date.now() - Date.parse(depuisAr) > PAUSE_VINTED_GESTE_MS) {
+              // (18/10) Pas dans la pause des LECTURES : la sonde du compte voit Vinted vivant,
+              // handler-watch relancerait aussitôt (boucle) — la pause reste une pause.
+              if (!lecturesSeules && Date.now() - Date.parse(depuisAr) > PAUSE_VINTED_GESTE_MS) {
                 let n = 0;
                 for (const j of fileVinted) {
                   if (garder.has(String(j.id)) || n >= 40) continue;
@@ -11083,11 +11135,11 @@ serve(async (req) => {
                 if (n) console.log(`[get-pending-jobs] userId=${user.id} : pause anti-robot Vinted depuis ${depuisAr} (> 6 h) — ${n} job(s) passés à la personne (needs_user)`);
               }
               antirobotPause = {
-                retenus: idsAntirobot.size, sonde: sondeAr, articles: nbArticles(apres),
+                retenus: idsAntirobot.size, sonde: sondeAr, articles: nbArticles(apres), perimetre: lecturesSeules ? "lectures" : "compte",
                 depuis: depuisAr, dernier_refus: new Date(dernierRefus).toISOString(),
                 dernier_succes: Number.isFinite(dernierSucces) ? new Date(dernierSucces).toISOString() : null,
               };
-              console.log(`[get-pending-jobs] userId=${user.id} : anti-robot sur le compte Vinted (${nbArticles(apres)} annonces refusées depuis le dernier succès, sonde 403) — ${idsAntirobot.size} job(s) Vinted en pause${sondeAr ? `, sonde = job ${sondeAr.slice(0, 8)}` : ""}${garder.size && !sondeAr ? `, ${garder.size} recréation(s) servie(s)` : ""} ; aucune tentative consommée`);
+              console.log(`[get-pending-jobs] userId=${user.id} : anti-robot sur le compte Vinted (${nbArticles(apres)} annonces refusées depuis le dernier succès, ${lecturesSeules ? "lectures de sa boutique, sonde 200 : republications seules" : "sonde 403"}) — ${idsAntirobot.size} job(s) Vinted en pause${sondeAr ? `, sonde = job ${sondeAr.slice(0, 8)}` : ""}${garder.size && !sondeAr ? `, ${garder.size} recréation(s) servie(s)` : ""} ; aucune tentative consommée`);
             }
           }
         }
@@ -11113,7 +11165,7 @@ serve(async (req) => {
             pfNeuf.antirobot_pause_levee_le = new Date().toISOString();
             delete pfNeuf.attente_antirobot_compte; delete pfNeuf.connexion_absente;
             const { error: wErr } = await userClient.from("cross_post_jobs")
-              .update({ ...(j.error === ANTIROBOT_COMPTE_MSG || j.error === PAUSE_CONNEXION_MSG ? { error: null } : {}), platform_fields: pfAPersister(pfNeuf) })
+              .update({ ...(j.error === ANTIROBOT_COMPTE_MSG || j.error === PAUSE_CONNEXION_MSG || j.error === ANTIROBOT_LECTURES_MSG ? { error: null } : {}), platform_fields: pfAPersister(pfNeuf) })
               .eq("id", j.id as string).eq("status", "pending");
             if (wErr) console.warn(`[get-pending-jobs] pause anti-robot levée : marqueur non retiré sur ${String(j.id).slice(0, 8)} (${wErr.message})`);
           }
@@ -11705,6 +11757,7 @@ serve(async (req) => {
       // Retraits/republications Vinted retenus : l'article appartient a une autre
       // boutique que celle ouverte dans Chrome (incident du 22/09).
       boutique_etrangere_retenus: heldBoutiqueEtrangere,
+      ...(laissesAutrePosteN ? { laisses_autre_poste: laissesAutrePosteN } : {}),
       boutique_lecture_retenus: heldBoutiqueLecture,
       // Pré-vol de la catégorie de DESTINATION (2026-09-18) : republications
       // arrêtées AVANT toute suppression faute d'un requis prouvé, et ISBN

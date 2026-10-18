@@ -34,6 +34,8 @@ import { questionEnFrancais } from "../_shared/question-francais.js";
 // que l'app (stepper, modale « Compléter »).
 import { optionDepuisTextes, champDeductibleDuTexte, textesDeLAnnonce, listeCandidatsDabord } from "../_shared/option-du-texte.js";
 import { sessionIdDuJwt, identifiantPosteExtension, postesVivants, posteAvecAccesOpla, posteCourt, type Poste } from "../_shared/poste-extension.ts";
+// (18/10, lot 6) La boutique Vinted ouverte sur CE poste, lue par ses gardes ou prouvée après un dépôt.
+import { identiteVintedDesGardes } from "../_shared/poste-extension.ts";
 import { delaiAttenteSessionMin } from "../_shared/attente-session.js";
 // Une republication retirée ne s'arrête jamais avant sa recréation (25/09) —
 // module JS sans import, le même qu'exécute scripts/republication-hors-ligne-selftest.mjs.
@@ -938,6 +940,26 @@ serve(async (req) => {
       } catch (e) {
         console.error("[update-job-status] poste :", (e as Error)?.message ?? e);
       }
+    }
+    // ── (18/10, lot 6 — Louis : Vinted Pro sur le PC, perso sur une VM) LA
+    // BOUTIQUE VINTED OUVERTE SUR CE POSTE, APPRISE DE SES PROPRES GARDES ─────
+    // L'extension relit la boutique connectée dans SON onglet avant une
+    // opération (garde_boutique.boutique_connectee, garde_boutique_depot.
+    // boutique_lue). Notée sur le poste (≤ 15 min) : get-pending-jobs laisse
+    // alors les jobs d'une autre boutique au poste qui l'a ouverte
+    // (_shared/poste-extension.ts). Best-effort, jamais bloquant.
+    if (sessionIdPoste && pfIn) {
+      try {
+        const g = (pfIn.gardes && typeof pfIn.gardes === "object") ? pfIn.gardes as Record<string, unknown> : null;
+        const lue = identiteVintedDesGardes(g);
+        if (lue) {
+          const adminV = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+          await adminV.rpc("noter_poste_extension", {
+            p_user: user.id, p_session: sessionIdPoste,
+            p_patch: { le: new Date().toISOString(), vinted_user_id: lue.user_id, vinted_le: lue.le, vinted_source: "garde" },
+          });
+        }
+      } catch (e) { console.warn("[update-job-status] boutique du poste :", (e as Error)?.message ?? e); }
     }
     if (status === "failed" && typeof body.error === "string") {
       const mCapture = body.error.match(/^Capture incomplète \((.+?)\) — republication/s);
@@ -4385,6 +4407,8 @@ serve(async (req) => {
         .eq("id", jobId)
         .maybeSingle();
 
+      // (18/10, lot 6) La boutique Vinted ouverte sur CE poste, prouvée juste après le dépôt.
+      let identiteVintedPosteDepot: { user_id: string; le: string } | null = null;
       // La boutique qui vient de publier est connue par /users/current, relu
       // par l'extension APRES la confirmation du depot. On n'accepte que cette
       // preuve structuree, recente et concordante ; jamais un titre, jamais un
@@ -4407,6 +4431,10 @@ serve(async (req) => {
           inventaireVintedAEstampiller = jobRow.inventaire_id;
           boutiqueVintedProuvee = origine;
         }
+        // (18/10, lot 6) La boutique relue juste après le dépôt est celle ouverte sur CE poste.
+        if (preuve?.["source"] === "users/current_apres_depot" && preuveFraiche && /^\d{2,15}$/.test(preuveId)) {
+          identiteVintedPosteDepot = { user_id: preuveId, le: new Date(preuveLe).toISOString() };
+        }
       }
       // (27/09) Une publication réussie par ce poste lève son mur sur la
       // plateforme (cf. « le mur est noté sur le poste »). Best-effort.
@@ -4416,7 +4444,8 @@ serve(async (req) => {
           const maintenantO = new Date().toISOString();
           await adminO.rpc("noter_poste_extension", {
             p_user: user.id, p_session: sessionIdPoste,
-            p_patch: { le: maintenantO, [`ok_${jobRow.platform}`]: maintenantO },
+            p_patch: { le: maintenantO, [`ok_${jobRow.platform}`]: maintenantO,
+              ...(identiteVintedPosteDepot ? { vinted_user_id: identiteVintedPosteDepot.user_id, vinted_le: identiteVintedPosteDepot.le, vinted_source: "depot" } : {}) },
           });
         } catch (e) { console.warn("[update-job-status] publication du poste :", (e as Error)?.message ?? e); }
       }

@@ -32,6 +32,8 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { appelAutorise, loggerAppelIA, tokensDe } from "../_shared/usage-guard.ts";
 import { plafondResolveCategorie } from "../_shared/plafond-resolve-categorie.js";
+// (18/10, lot 2) Le plafond de la dépense IA, codé en dur, coupe-circuit automatique.
+import { budgetIaAutorise } from "../_shared/budget-ia.ts";
 // (18/10 nuit, point 5) La même question (empreinte exacte : modèle, consigne,
 // message — titre, attributs, candidates) reçoit la réponse déjà payée quand
 // coin_config ia_cache_categorie = 1 ; le TEXTE rendu passe par les mêmes
@@ -188,6 +190,11 @@ serve(async (req) => {
 
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!apiKey) return json({ error: "Missing API key" }, 500);
+  // (18/10, lot 2) Le plafond de la dépense IA, codé en dur (_shared/budget-ia.ts) :
+  // au-delà, l'ancien chemin — l'arbre, le texte, puis la question (« ia_indisponible »
+  // est déjà la réponse que l'app et le worker eBay savent traiter).
+  const budget = await budgetIaAutorise(admin, "confort", "resolve-categorie");
+  if (!budget.ouvert) return json({ choix: {}, valeurs: {}, motif: "ia_indisponible", budget: budget.motif });
 
   let corps: {
     titre?: string;

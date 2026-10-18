@@ -97,7 +97,8 @@ const iMem1 = LPS.indexOf('if (!ded) return avecMemoire(a);');
 ok(iFiche > 0 && iTexte > iFiche && iMem1 > iTexte && LPS.includes('return avecMemoire(a);\n      });'), 'écran Publier : la mémoire APRÈS la fiche (Univers) et le texte, jamais avant');
 ok(/source: "memoire"/.test(LPS) && LPS.includes('noterPoseMemoire(gp, a, d, genericCategoryKeys?.[gp] ?? null)'), 'la pose part par le même canal que l\'option lue dans le texte, tracée (option_du_texte, usage_logs memoire_categorie)');
 ok(LPS.includes('const mem = valeurDeMemoire({') && LPS.indexOf('const mem = valeurDeMemoire({') > LPS.indexOf('const ded = deduireOptionDuTexte({ platform: "ebay"'), 'eBay : après le texte (le genre de la copie garde la priorité dans les défauts)');
-ok(LPS.includes('const memoireRetenue = memoireCat === null;') && LPS.includes('if ((iaGeneriqueRetenue || memoireRetenue) && !champBloquantVus.current[k]) continue;'), 'télémétrie : rien de nouveau compté tant que la mémoire n\'est pas lue');
+// (18/10, lot 2) La même attente vaut pour les correspondances apprises pas encore lues.
+ok(LPS.includes('const memoireRetenue = memoireCat === null || apprisesParPf === null;') && LPS.includes('if ((iaGeneriqueRetenue || memoireRetenue) && !champBloquantVus.current[k]) continue;'), 'télémétrie : rien de nouveau compté tant que la mémoire n\'est pas lue');
 ok(LPS.includes('if (memoireCat === null) return false;'), 'le pilote du lot attend la mémoire avant de compter les questions');
 ok(LPS.includes('reponses: reponsesQuestionsRef.current,') && LPS.includes('envoyees: rowsEnvoyees.map(r => r.platform),') && LPS.includes('await retenirReponses(supabase, userId, lignesMem)'), 'au clic Publier : retenu pour les plateformes envoyées seulement');
 ok(LPS.includes('posesMemoire, noterReponseQuestion,') && LPS.includes('onReponseQuestion={noterReponseQuestion}'), 'moteur exposé aux nouveaux écrans, et à l\'ancien');

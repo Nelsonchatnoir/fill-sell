@@ -27,7 +27,7 @@ import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import { UI } from '../components/ui';
 import Icone from '../ecrans/Icone';
 import { demarrerRelecture } from '../utils/relectureBornee';
-import { sourcesVignette, suiviCommande, expedieesRecentes, actionCommande, commandesAExpedier, dateCourte, delaiEnvoi, etatDemandeBordereau, libelleEtatCommande, libelleTransporteur, libelleTypeEtiquette, montantTexte, nomPlateforme, pseudoAffiche, refusDemandeBordereau } from './vue';
+import { sourcesVignette, suiviCommande, expedieesRecentes, actionCommande, commandesAExpedier, dateCourte, delaiEnvoi, etatDemandeBordereau, extensionCommandeVinted, libelleEtatCommande, libelleTransporteur, libelleTypeEtiquette, montantTexte, nomPlateforme, pseudoAffiche, refusDemandeBordereau } from './vue';
 import { ouvrirLien } from './ouvrir';
 import { useReglagesMessagerie } from './useMessagerieBeta';
 import Couche from './Couche';
@@ -177,6 +177,8 @@ export function SectionAExpedier({ supabase, lang = 'fr', photosParInventaire = 
   const [confirmation, setConfirmation] = useState(null);
   const [apercu, setApercu] = useState(null);
   const [expediees, setExpediees] = useState([]);
+  // (18/10) L'extension de ce compte sait-elle commander l'étiquette Vinted (0.6.126) ? null = inconnu.
+  const [extensionVinted, setExtensionVinted] = useState(null);
   const vivant = useRef(true);
 
   const charger = useCallback(async () => {
@@ -196,6 +198,12 @@ export function SectionAExpedier({ supabase, lang = 'fr', photosParInventaire = 
         .gte('maj_le', new Date(Date.now() - 3 * 86400000).toISOString()).order('maj_le', { ascending: false }).limit(20);
       if (vivant.current) setExpediees(e.error ? [] : expedieesRecentes(e.data ?? []));
     } catch { if (vivant.current) setExpediees([]); }
+    // (18/10) Lecture annexe (une ligne) : sa panne laisse « inconnu », jamais un bouton en moins.
+    try {
+      const uid = (await supabase.auth.getSession())?.data?.session?.user?.id ?? null;
+      const p = uid ? await supabase.from('profiles').select('extension_build').eq('id', uid).maybeSingle() : null;
+      if (vivant.current) setExtensionVinted(p && !p.error ? extensionCommandeVinted(p.data?.extension_build) : null);
+    } catch { if (vivant.current) setExtensionVinted(null); }
     if (colonneAbsente(c.error)) c = await lireCommandes(COLONNES_BASE);
     if (colonneAbsente(d.error)) d = await lireDemandes(COLS_DEMANDES_BASE);
     if (!vivant.current) return undefined;
@@ -304,7 +312,7 @@ export function SectionAExpedier({ supabase, lang = 'fr', photosParInventaire = 
       )}
 
       {commandes.map((c, i) => {
-        const action = actionCommande(c, lang, reglages.generation);
+        const action = actionCommande(c, lang, reglages.generation, extensionVinted);
         const delai = delaiEnvoi(c, lang);
         const demande = demandes[c.id] ?? null;
         const copie = copies[c.id] ?? null;

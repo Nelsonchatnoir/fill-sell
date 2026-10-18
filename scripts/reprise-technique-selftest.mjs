@@ -30,8 +30,10 @@ const i0 = HW.indexOf('const MOTIF_TECHNIQUE_RE =');
 const i1 = HW.indexOf('const reprisesEtatParCompte');
 const code = HW.slice(i0, i1).replace(/\/\/ deno-lint-ignore[^\n]*\n/g, '').replace(/\(j: any\)/g, '(j)')
   .replace(/ as Record<string, unknown>( \| undefined)?/g, '').replace(/\(pf: Record<string, unknown>\)/g, '(pf)');
+// (18/10, lot 3) La signature unique des coupures (etat-job.js), importée par handler-watch.
+const { CANAL_RE } = await import(pathToFileURL(path.join(RACINE, 'supabase/functions/_shared/etat-job.js')).href);
 // eslint-disable-next-line no-new-func
-const { etatIndetermineAvantRetrait, bloqueLeDe } = new Function(`${code}; return { etatIndetermineAvantRetrait, bloqueLeDe };`)();
+const { etatIndetermineAvantRetrait, bloqueLeDe } = new Function('CANAL_RE', `${code}; return { etatIndetermineAvantRetrait, bloqueLeDe };`)(CANAL_RE);
 ok(i0 > 0 && i1 > i0, '0. le prédicat de reprise est trouvé dans handler-watch');
 
 // 1. Louis : republication Leboncoin, lecture bloquée par l'anti-robot
@@ -63,6 +65,15 @@ ok(i0 > 0 && i1 > i0, '0. le prédicat de reprise est trouvé dans handler-watch
   for (const [err, attendu, nom] of cas) ok(etatIndetermineAvantRetrait(j(err)) === attendu, `2. ${nom} : ${attendu ? 'reprise' : 'jamais reprise'}`);
   ok(etatIndetermineAvantRetrait({ ...j(cas[0][0]), platform_fields: { republish_step: 'captured', needs_user_source: 'champ_a_choisir' } }) === false,
     '2b. une autre source que « relancer » n\'est jamais reprise ici');
+  // (18/10, lot 3) seghirdeborah711 (16691e13, ab180fa0) : coupure pendant la republication,
+  // brut gardé dans error_technique, message affiché réécrit « Relance-la… ».
+  const brut = "Republication interrompue pendant la suppression (onglet de travail vinted : le content script ne répond pas, ni après rechargement puis onglet neuf). Relance depuis l'app : l'état réel de l'annonce sera re-vérifié avant tout geste.";
+  const affiche = "L'opération n'a pas pu aboutir sur ton ordinateur. Relance-la depuis la fiche de l'article quand tu veux.";
+  const coupe = { ...j(affiche), platform_fields: { republish_step: 'captured', needs_user_source: 'relancer', needs_user_vu_le: '2026-10-17T11:36:03Z', error_technique: { brut } } };
+  ok(etatIndetermineAvantRetrait(coupe) === true, '2c. coupure (onglet qui ne répond pas) : reprise sur preuve, plus de « Relancer »');
+  ok(etatIndetermineAvantRetrait({ ...coupe, error: 'Cette republication attend.' }) === true, '2d. le BRUT seul suffit (message réécrit sans signature)');
+  ok(etatIndetermineAvantRetrait({ ...coupe, platform_fields: { ...coupe.platform_fields, republish_step: 'deleted' } }) === false, '2e. jamais une recréation (deleted)');
+  ok(etatIndetermineAvantRetrait({ ...j('Timeout: choisis la taille dans la liste'), platform_fields: { republish_step: 'captured', needs_user_source: 'relancer' } }) === false, '2f. une coupure qui parle d\'un champ reste à la personne');
 }
 
 // 3. Republication déjà recréée

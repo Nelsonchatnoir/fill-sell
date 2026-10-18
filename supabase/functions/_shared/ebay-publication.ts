@@ -67,6 +67,61 @@ export function refusRetoursObligatoires(e: ErreurEbay): boolean {
   return (e.params ?? []).some((p) => String(p.value ?? "").trim() === "ReturnsAcceptedOption");
 }
 
+// ── (18/10, lot 3 — sebimsn10) eBAY EXIGE UN EAN ─────────────────────────────
+// Refus 25002 à la mise en ligne, relevé sur pièce (3 jobs du 18/10, catégories
+// 41510 « Tableau d'affichage » et 108161 « Leurres de surface ») :
+//   parameters = [0 « Le champ EAN n'a pas été renseigné. », 1 « … Ajoutez EAN à
+//   l'annonce et réessayez. », 2 « 1 », 3 « EAN »].
+// LA RÈGLE : l'EAN de la fiche s'il est LISIBLE (8 ou 13 chiffres, clé de
+// contrôle juste — un ISBN-13 EST un EAN-13), sinon « Ne s'applique pas » (la
+// valeur qu'eBay accepte déjà pour le MPN : 10 annonces publiées ainsi). Envoyé
+// SEULEMENT après qu'eBay l'a exigé pour ce job (marque ebay_api.ean_non_applicable) :
+// un identifiant produit peut faire rapprocher l'annonce du catalogue d'eBay,
+// on ne l'ajoute pas aux autres. UNE nouvelle publication ; un second refus EAN
+// = la question (le seul vrai geste : les chiffres sous le code-barres).
+// (18/10, preuve réelle) eBay a REFUSÉ « Ne s'applique pas » pour l'EAN (3 jobs de sebimsn10, 12:33-12:35) :
+// valable pour le MPN (texte libre), pas pour un identifiant produit. Le texte officiel d'eBay France pour un
+// produit sans identifiant est « Non applicable » (developer.ebay.com, « product identifier text », France ;
+// ProductDetails.ProductIdentifierUnavailableText de GeteBayDetails).
+export const EAN_SANS_IDENTIFIANT_EBAY_FR = "Non applicable";
+/** @deprecated (18/10) refusé par eBay pour l'EAN — gardé pour reconnaître les marques posées avant. */
+export const EAN_NE_S_APPLIQUE_PAS = "Ne s'applique pas";
+/** La marque d'une relance EAN : a-t-elle déjà essayé le texte officiel ? (sinon, une relance de plus est due) */
+export function eanDejaEssayeOfficiel(pf: Record<string, unknown>): boolean {
+  const api = (pf.ebay_api && typeof pf.ebay_api === "object") ? pf.ebay_api as Record<string, unknown> : {};
+  const m = (api.ean_non_applicable && typeof api.ean_non_applicable === "object") ? api.ean_non_applicable as Record<string, unknown> : null;
+  return Boolean(m) && m!.valeur === EAN_SANS_IDENTIFIANT_EBAY_FR;
+}
+export const SOURCE_QUESTION_EAN = "ebay_api_worker_ean";
+
+export function refusEanRequis(e: ErreurEbay): boolean {
+  if (Number(e.errorId) !== 25002) return false;
+  return (e.params ?? []).some((p) => String(p.value ?? "").trim().toUpperCase() === "EAN");
+}
+
+/** Un EAN lisible (EAN-8 ou EAN-13, clé de contrôle juste), sinon null. */
+export function eanValide(v: unknown): string | null {
+  const t = String(v ?? "").replace(/[\s-]/g, "");
+  if (!/^(\d{8}|\d{13})$/.test(t)) return null;
+  const chiffres = t.split("").map(Number);
+  const cle = chiffres.pop() as number;
+  // Poids 3 / 1 en partant de la droite (hors clé), pour EAN-8 comme EAN-13.
+  const somme = chiffres.reverse().reduce((s, c, i) => s + c * (i % 2 === 0 ? 3 : 1), 0);
+  return (10 - (somme % 10)) % 10 === cle ? t : null;
+}
+
+/** L'EAN à joindre au produit : null tant qu'eBay ne l'a pas exigé pour ce job. */
+export function eanAEnvoyer(pf: Record<string, unknown>): { valeur: string; source: "fiche" | "defaut" } | null {
+  const api = (pf.ebay_api && typeof pf.ebay_api === "object") ? pf.ebay_api as Record<string, unknown> : {};
+  if (!api.ean_non_applicable) return null;
+  const aspects = (pf.ebayAspects && typeof pf.ebayAspects === "object") ? pf.ebayAspects as Record<string, unknown> : {};
+  for (const v of [aspects["EAN"], pf.ean, pf.gtin, pf.isbn]) {
+    const e = eanValide(v);
+    if (e) return { valeur: e, source: "fiche" };
+  }
+  return { valeur: EAN_SANS_IDENTIFIANT_EBAY_FR, source: "defaut" };
+}
+
 /** L'aspect et la valeur d'un refus 25129 (« no longer support custom values
  *  for <aspect> »), lus SANS se fier à la position des paramètres.
  *  30/09, patrick.giry07 : eBay rend 0 = « Saisissez une valeur valide pour

@@ -388,7 +388,15 @@
     "selftest:claude-cache": "deno run --allow-read scripts/claude-cache-selftest.ts",
     "selftest:lien-vinted": "node scripts/lien-vinted-selftest.mjs",
     "selftest:imports-jamais-masques": "node scripts/imports-jamais-masques-selftest.mjs",
-    "gen:etat-job-extension": "node scripts/gen-etat-job-extension.mjs"
+    "gen:etat-job-extension": "node scripts/gen-etat-job-extension.mjs",
+    "selftest:pause-antirobot-lecture": "node scripts/pause-antirobot-lecture-selftest.mjs",
+    "selftest:ventes-beebs-commandes": "node scripts/ventes-beebs-commandes-selftest.mjs",
+    "selftest:postes-boutiques": "node scripts/postes-boutiques-selftest.mjs",
+    "selftest:budget-ia": "deno run --allow-read scripts/budget-ia-selftest.ts",
+    "selftest:zero-orange-hors-ia": "node scripts/zero-orange-hors-ia-selftest.mjs",
+    "selftest:ebay-ean-exige": "deno run --allow-read --allow-env --allow-net scripts/ebay-ean-exige-selftest.ts",
+    "selftest:deduction-apprise": "node scripts/deduction-apprise-selftest.mjs",
+    "selftest:extension-0-6-126": "node scripts/extension-0-6-126-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

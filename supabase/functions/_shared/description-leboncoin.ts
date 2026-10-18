@@ -50,6 +50,13 @@ export const TERMES_SITES_LEBONCOIN: readonly string[] = [
   "videdressing",        // l'ancien site ; en base, 74 hashtags « #videdressing »
   "depop",
   "wallapop",
+  // PROUVÉ le 18/10 : 403 « mention d'un site internet autre que leboncoin.fr »
+  // (champ body) sur « une vidéo disponible sur instagram », seul terme de site
+  // du texte (jocabroc8, job 3e3074ef) ; 11 fiches en stock sur 2 comptes le
+  // portent. Sous-chaîne sans risque (aucun mot courant ne la contient). Les
+  // autres réseaux (facebook, tiktok, snapchat, youtube…) ne sont PAS prouvés :
+  // « insta » seul n'entre pas (« instant », « installé »).
+  "instagram",
 ];
 
 // Adresse web : protocole, www., ou domaine.tld — leboncoin.fr exclu.

@@ -57,7 +57,14 @@ import { retraitBloqueParConnexion } from "../_shared/mur-geste.js";
 import { jugerRetraitVintedIntrouvable, numeroRetraitVinted } from "../_shared/retrait-introuvable.js";
 import { jugerRetraitBeebsParReleves, numeroRetraitBeebs } from "../_shared/beebs-preuve-retrait.js";
 import { etatReprisPourJob } from "../_shared/etat-repris.ts";
-import { reclasserAutreBoutique } from "../_shared/attente-autre-boutique.js";
+import { reclasserAutreBoutique, messageAttenteBoutique, POSE_PAR_ORIGINE_PROUVEE } from "../_shared/attente-autre-boutique.js";
+// (18/10, lot 3) Zéro orange hors IA : coupure technique (signature unique), refus
+// de contenu Leboncoin (jamais le même texte deux fois), EAN exigé par eBay.
+import { CANAL_RE } from "../_shared/etat-job.js";
+import { decisionRefusContenuLeboncoin, empreinteTexteServi } from "../_shared/pas-de-rouge.js";
+// (18/10) Le texte officiel d'eBay France pour un produit sans EAN (« Non applicable ») et la marque de relance.
+import { EAN_SANS_IDENTIFIANT_EBAY_FR, eanDejaEssayeOfficiel } from "../_shared/ebay-publication.ts";
+import { nettoyerDescriptionLeboncoin, nettoyerTitreLeboncoin } from "../_shared/description-leboncoin.ts";
 import { loginsDesBoutiques } from "../_shared/boutique-connectee.js";
 import { republicationFinie, champsRepublicationFinie } from "../_shared/republication-finie.js";
 import { trancherQuestions } from "../_shared/questions-tranchees.ts";
@@ -2831,7 +2838,9 @@ serve(async (req) => {
   //    seules plateformes en pause, du plus récent au plus ancien. Et plus jamais
   //    la fiche du job comme preuve : elle peut porter une AUTRE annonce
   //    (a6e773d4) — la trace se lit sur l'annonce exacte.
-  let introuvablesRepris = 0; let introuvablesClos = 0;
+  let introuvablesRepris = 0; let introuvablesClos = 0; let introuvablesBoutique = 0;
+  // (18/10, lot 3) Les boutiques confirmées d'un compte (lues une fois par passage).
+  const loginsBoutiquesI = new Map<string, Map<string, string | null>>();
   try {
     const { data: enPause } = await supabase.from("cross_post_jobs")
       .select("id, user_id, platform, status, error, inventaire_id, platform_listing_id, listing_url, created_at, platform_fields")
@@ -2937,12 +2946,159 @@ serve(async (req) => {
           pf.needs_user_source = SOURCE_INTROUVABLE_PERSISTANT;
           await supabase.from("cross_post_jobs").update({ error: messagePersistant(j.platform), platform_fields: pf })
             .eq("id", j.id).eq("status", "needs_user");
+        } else if (j.platform === "vinted" && boutique) {
+          // ── (18/10, lot 3) L'ANNONCE VIT SUR UNE AUTRE BOUTIQUE QUE CELLE DES RELEVÉS ──
+          // Ornella (9ce306a4) : 6 relevés depuis la lecture ratée, TOUS de sa
+          // boutique 257364012 — l'annonce est sur 472079. Aucun relevé ne
+          // pourra jamais trancher tant que Chrome reste sur l'autre boutique :
+          // ce n'est plus « introuvable », c'est l'attente de boutique qui existe
+          // déjà (_shared/attente-autre-boutique.js) — un geste nommé, levé seul
+          // par get-pending-jobs quand la sonde voit CETTE boutique. Preuve exigée :
+          // ≥ 2 relevés du dressing d'une autre boutique après la lecture ratée,
+          // aucun de la sienne, et la sienne confirmée sur le compte.
+          const premiereLecture = Date.parse(String(marque.premiere ?? marque.depuis ?? ""));
+          // deno-lint-ignore no-explicit-any
+          const apresLecture = runsPf.filter((r: any) => r.kind === "dressing" && r.vinted_user_id != null
+            && Date.parse(String(r.started_at ?? "")) > premiereLecture);
+          // deno-lint-ignore no-explicit-any
+          const siens = apresLecture.filter((r: any) => String(r.vinted_user_id) === boutique);
+          // deno-lint-ignore no-explicit-any
+          const autres = apresLecture.filter((r: any) => String(r.vinted_user_id) !== boutique);
+          if (Number.isFinite(premiereLecture) && !siens.length && autres.length >= 2) {
+            if (!loginsBoutiquesI.has(userId)) {
+              const { data: prof } = await supabase.from("profiles").select("vinted_sync_pin").eq("id", userId).maybeSingle();
+              loginsBoutiquesI.set(userId, loginsDesBoutiques((prof as { vinted_sync_pin?: unknown } | null)?.vinted_sync_pin));
+            }
+            const logins = loginsBoutiquesI.get(userId) ?? new Map<string, string | null>();
+            if (logins.has(boutique)) {
+              const login = logins.get(boutique) ?? null;
+              pf.needs_user_source = "boutique_etrangere";
+              pf.boutique_etrangere = {
+                motif: "boutique_etrangere", article: boutique, login_article: login,
+                session: String(autres[0].vinted_user_id), le: new Date().toISOString(),
+                pose_par: POSE_PAR_ORIGINE_PROUVEE, venu_de: "introuvable_a_confirmer", releves_autre_boutique: autres.length,
+              };
+              pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error, "needs_user", "handler-watch (introuvable : annonce d'une autre boutique, attente)");
+              const { data: maj } = await supabase.from("cross_post_jobs")
+                .update({ error: messageAttenteBoutique(login, "republish"), platform_fields: pf })
+                .eq("id", j.id).eq("status", "needs_user").select("id");
+              if (maj?.length) {
+                introuvablesBoutique++;
+                console.log(`[handler-watch] introuvable à confirmer ${String(j.id).slice(0, 8)} : annonce de la boutique ${boutique}, ${autres.length} relevé(s) d'une autre boutique → attente de boutique`);
+              }
+            }
+          }
         }
       }
     }
-    if (introuvablesRepris || introuvablesClos) console.log(`[handler-watch] introuvable à confirmer : ${introuvablesRepris} repris (relevé en ligne), ${introuvablesClos} clos (relevé sans l'annonce)`);
+    if (introuvablesRepris || introuvablesClos || introuvablesBoutique) console.log(`[handler-watch] introuvable à confirmer : ${introuvablesRepris} repris (relevé en ligne), ${introuvablesClos} clos (relevé sans l'annonce), ${introuvablesBoutique} en attente de leur boutique`);
   } catch (e) {
     console.error("[handler-watch] introuvable à confirmer :", (e as Error)?.message ?? e);
+  }
+
+  // ══ (18/10, lot 3) LEBONCOIN REFUSE LE CONTENU : JAMAIS LE MÊME TEXTE DEUX FOIS ══
+  // Le refus de modération au dépôt (adsubmit 403, « mention d'un site
+  // internet », « règles de contenu ») revient à l'extension, qui le réessaie à
+  // l'IDENTIQUE jusqu'à 5 fois (jocabroc8, 3e3074ef, 18/10 : « une vidéo
+  // disponible sur instagram »). Ici, le texte que get-pending-jobs servirait
+  // MAINTENANT (titre et description nettoyés, _shared/description-leboncoin.ts
+  // — jamais la fiche) est pris en empreinte : déjà refusé → la question, tout de
+  // suite, avec les mots exacts de Leboncoin ; changé (liste des mentions mise à
+  // jour, fiche corrigée) → UNE reprise (_shared/pas-de-rouge.js,
+  // decisionRefusContenuLeboncoin). Une recréation (étape 'deleted') garde son
+  // propre circuit. 40 par passage ; écriture conditionnée au statut lu.
+  let refusLbcRepris = 0; let refusLbcQuestions = 0;
+  try {
+    const { data: refusLbc } = await supabase.from("cross_post_jobs")
+      .select("id, user_id, action, status, error, title, description, platform_fields")
+      .eq("platform", "leboncoin").in("action", ["publish", "republish"]).in("status", ["pending", "needs_user", "failed"])
+      .ilike("error", "Leboncoin refuse le dépôt%")
+      .gte("created_at", new Date(Date.now() - 30 * 24 * 60 * 60_000).toISOString())
+      .order("created_at", { ascending: true }).limit(40);
+    // deno-lint-ignore no-explicit-any
+    for (const j of (refusLbc ?? []) as any[]) {
+      const pf = { ...(j.platform_fields ?? {}) } as Record<string, unknown>;
+      if (j.action === "republish" && String(pf.republish_step ?? "") === "deleted") continue;
+      if (j.status === "pending" && pf.processing_since) continue; // en vol chez l'extension
+      // Le texte SERVI, comme get-pending-jobs : le titre d'abord, puis la
+      // description avec le titre nettoyé pour contexte.
+      const titreBrut = typeof j.title === "string" ? j.title : "";
+      const t = nettoyerTitreLeboncoin(titreBrut);
+      const titreServi = t.modifie ? t.titre : titreBrut;
+      const descBrute = typeof j.description === "string" ? j.description : "";
+      const r = descBrute ? nettoyerDescriptionLeboncoin(descBrute, {
+        titre: titreServi,
+        marque: typeof pf.marque === "string" ? pf.marque : "",
+        etat: typeof pf.etat === "string" ? pf.etat : "",
+        taille: typeof pf.taille === "string" ? pf.taille : "",
+      }) : null;
+      const descServie = r && r.modifiee ? r.texte : descBrute;
+      const d = decisionRefusContenuLeboncoin({
+        action: j.action, brut: String(j.error ?? ""), pf,
+        empreinte: empreinteTexteServi(titreServi, descServie),
+        nettoyageModifie: titreServi !== titreBrut || descServie !== descBrute,
+      });
+      const pfN: Record<string, unknown> = { ...pf, ...(d.pf ?? {}) };
+      pfN.erreurs_archivees = archiverErreur(pfN.erreurs_archivees, j.error, j.status, "handler-watch (refus de contenu Leboncoin)");
+      pfN.pas_de_rouge = { at: new Date().toISOString(), motif: d.motif, verdict: d.verdict, par: "handler-watch" };
+      delete pfN.processing_since;
+      if (d.statut === "pending") {
+        pfN.next_action_after = new Date().toISOString();
+        delete pfN.needs_user_source;
+      } else {
+        delete pfN.next_action_after;
+        if (d.source) pfN.needs_user_source = d.source;
+        if (d.champ && !pfN.needsUserField) pfN.needsUserField = d.champ;
+      }
+      const { data: maj } = await supabase.from("cross_post_jobs")
+        .update({ status: d.statut, error: d.message, platform_fields: pfN })
+        .eq("id", j.id).eq("status", j.status).select("id");
+      if (maj?.length) {
+        if (d.statut === "pending") refusLbcRepris++; else refusLbcQuestions++;
+        console.log(`[handler-watch] refus de contenu Leboncoin ${String(j.id).slice(0, 8)} : ${d.motif} → ${d.statut}`);
+      }
+    }
+    if (refusLbcRepris || refusLbcQuestions) console.log(`[handler-watch] refus de contenu Leboncoin : ${refusLbcRepris} repris (texte servi changé), ${refusLbcQuestions} question(s) (texte déjà refusé)`);
+  } catch (e) {
+    console.error("[handler-watch] refus de contenu Leboncoin :", (e as Error)?.message ?? e);
+  }
+
+  // ══ (18/10, lot 3) eBAY EXIGE UN EAN : LA PUBLICATION REPART UNE FOIS, AVEC L'EAN ══
+  // Les publications par l'API déjà arrêtées sur le refus 25002 « Le champ EAN
+  // n'a pas été renseigné » (paramètre « EAN » — sebimsn10, 3 jobs du 18/10)
+  // reçoivent la marque que l'ebay-api-worker pose désormais lui-même au refus
+  // (ebay_api.ean_non_applicable) et repartent UNE fois : l'EAN de la fiche s'il
+  // est lisible, sinon « Ne s'applique pas ». Un second refus pose la question
+  // EAN (le worker) — jamais une boucle (la marque reste).
+  let eanRepris = 0;
+  try {
+    const { data: refusEan } = await supabase.from("cross_post_jobs")
+      .select("id, status, error, platform_fields")
+      .eq("platform", "ebay").eq("voie", "api").eq("status", "needs_user").in("action", ["publish", "republish"])
+      .eq("platform_fields->last_diagnostic->>errorId", "25002")
+      .gte("created_at", new Date(Date.now() - 30 * 24 * 60 * 60_000).toISOString())
+      .limit(40);
+    // deno-lint-ignore no-explicit-any
+    for (const j of (refusEan ?? []) as any[]) {
+      const pf = { ...(j.platform_fields ?? {}) } as Record<string, unknown>;
+      const diag = (pf.last_diagnostic ?? {}) as Record<string, unknown>;
+      if (String(diag.etape ?? "") !== "publish") continue;
+      if (!/"value"\s*:\s*"EAN"/i.test(String(diag.brut ?? ""))) continue;
+      const api = (pf.ebay_api && typeof pf.ebay_api === "object") ? pf.ebay_api as Record<string, unknown> : {};
+      // Déjà repartie avec le texte officiel : la question tient. Une marque d'avant (« Ne s'applique pas »,
+      // refusé par eBay le 18/10) : UNE relance de plus, avec « Non applicable ».
+      if (api.ean_non_applicable && eanDejaEssayeOfficiel(pf)) continue;
+      pf.ebay_api = { ...api, ean_non_applicable: { le: new Date().toISOString(), pose_par: "handler-watch (refus EAN relevé)", valeur: EAN_SANS_IDENTIFIANT_EBAY_FR } };
+      pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error, "needs_user", "handler-watch (eBay exige un EAN : publication relancée une fois avec l'EAN)");
+      for (const k of ["needs_user_source", "needs_user_actif_ms", "needs_user_tick_le", "needs_user_vu_le", "needs_user_vu_erreur", "next_action_after", "processing_since"]) delete pf[k];
+      const { data: maj } = await supabase.from("cross_post_jobs")
+        .update({ status: "pending", error: null, platform_fields: pf })
+        .eq("id", j.id).eq("status", "needs_user").select("id");
+      if (maj?.length) eanRepris++;
+    }
+    if (eanRepris) console.log(`[handler-watch] eBay EAN exigé : ${eanRepris} publication(s) relancée(s) une fois avec l'EAN (fiche, sinon « ${EAN_SANS_IDENTIFIANT_EBAY_FR} »)`);
+  } catch (e) {
+    console.error("[handler-watch] eBay EAN exigé :", (e as Error)?.message ?? e);
   }
 
   // ══ LA RECONNEXION FAIT REPARTIR LES JOBS, SANS QU'ON CLIQUE (2026-09-22) ══
@@ -3063,7 +3219,16 @@ serve(async (req) => {
       // « configuration non captée » : le formulaire n'a pas été lu (il sera
       // rechargé) — technique même s'il parle des champs du rayon.
       if (/configuration non capt[ée]e/i.test(err)) return true;
-      return MOTIF_TECHNIQUE_RE.test(err) && !MOTIF_PERSONNE_RE.test(err.replace(MOTIF_TECHNIQUE_RE, ""));
+      // (18/10, lot 3) Une COUPURE (onglet qui ne répond pas, canal, réseau —
+      // CANAL_RE, la signature unique d'etat-job.js) est technique elle aussi,
+      // lue sur le message affiché ET sur le brut de l'extension
+      // (error_technique.brut : l'affichage le réécrit « Relance-la… »). La
+      // reprise relit l'état réel de l'annonce avant tout geste.
+      const technique = (txt = "") => (MOTIF_TECHNIQUE_RE.test(txt) || CANAL_RE.test(txt))
+        && !MOTIF_PERSONNE_RE.test(txt.replace(MOTIF_TECHNIQUE_RE, "").replace(CANAL_RE, ""));
+      const et = pfj.error_technique;
+      const brutTech = typeof et === "string" ? et : String((et as Record<string, unknown> | undefined)?.brut ?? "");
+      return technique(err) || (brutTech !== "" && technique(brutTech));
     };
     // L'instant du blocage : le dernier connu (jamais une sonde d'avant).
     const bloqueLeDe = (pf: Record<string, unknown>) => {

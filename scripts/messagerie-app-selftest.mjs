@@ -35,7 +35,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { sourcesVignette, suiviCommande, expedieesRecentes, conversationNonLue, trierConversations, etatReponse, actionCommande, commandesAExpedier, libelleEtatCommande, nomPlateforme, lienCommande, lienConversation, murReleve, delaiEnvoi, etatZoneReponse, etatDemandeBordereau, refusDemandeBordereau, pseudoAffiche, libelleTransporteur, attendGeneration, phraseEngagement, libelleTypeEtiquette } from "../src/messagerie/vue.js";
+import { sourcesVignette, suiviCommande, expedieesRecentes, conversationNonLue, trierConversations, etatReponse, actionCommande, commandesAExpedier, libelleEtatCommande, nomPlateforme, lienCommande, lienConversation, murReleve, delaiEnvoi, etatZoneReponse, etatDemandeBordereau, refusDemandeBordereau, pseudoAffiche, libelleTransporteur, attendGeneration, phraseEngagement, libelleTypeEtiquette, extensionCommandeVinted, GENERATION_VINTED_BUILD_MIN } from "../src/messagerie/vue.js";
 import { conversationsEbay, commandesEbay, texteMessageEbay, etatCommandeEbay, suiviEbay } from "../supabase/functions/_shared/messagerie-ebay.js";
 
 const RACINE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -208,7 +208,11 @@ await cas("demandes de bordereau : chaque état dit quoi faire ; refus en clair"
   const gen = (statut, motif = null, extra = {}) => etatDemandeBordereau({ action: "generer", statut, motif, ...extra }, "fr", "vinted");
   assert.equal(gen("demandee").attente, true);
   assert.equal(gen("generee", "geste_fait").attente, true);
-  assert.ok(gen("generee", "geste_fait").texte.includes("récupération du fichier"));
+  // (18/10) Le geste est parti : la plateforme crée l'étiquette — jamais « généré » avant elle.
+  assert.ok(gen("generee", "geste_fait").texte.includes("FillSell récupère le fichier") && !gen("generee", "geste_fait").texte.includes("généré"));
+  // (18/10) Vinted a refusé (210) ; extension d'avant : la vraie raison et le seul geste, sur Vinted.
+  assert.ok(gen("echec", "etiquette_echouee_chez_vinted").texte.includes("Redemande-la sur Vinted"));
+  assert.ok(gen("echec", "extension_a_mettre_a_jour").texte.includes("rien n’a été commandé"));
   assert.equal(gen("generee", "fichier_pas_encore_pret", { essais_fichier: 15 }).attente, false);
   assert.ok(etatDemandeBordereau({ action: "generer", statut: "generee", motif: "fichier_sur_beebs" }, "fr", "beebs").texte.includes("FillSell le cherche à chaque passage"), "(17/10) le fichier Beebs : FillSell continue de le chercher");
   assert.ok(gen("incertaine").texte.includes("ne la refera jamais"));
@@ -468,10 +472,11 @@ await cas("(17/10, règle de Nico) TOUTES les cartes : aucune ne dit « c'est to
     // Ce que FillSell sait faire est un geste FillSell.
     if (["vinted", "leboncoin", "beebs"].includes(platform) && etat === "a_expedier" && bordereau === "pret") assert.equal(a.type, "bordereau");
     if (attendGeneration(c) && o?.generable !== false) assert.equal(a.type, "generer", JSON.stringify(c));
-    // Un lien n'existe que pour : eBay à expédier (achat), Depop à expédier, un « non générable » dit, Vinted « indisponible ».
+    // Un lien n'existe que pour : eBay à expédier (achat), Depop à expédier, un « non générable » dit, une étiquette
+    // que Vinted ou (18/10) Leboncoin n'a pas pu émettre (« indisponible ») — seule la plateforme peut la redemander.
     if (a.type === "lien") {
       const permis = (platform === "ebay" && etat === "a_expedier") || (platform === "depop" && etat === "a_expedier")
-        || (attendGeneration(c) && o?.generable === false) || (platform === "vinted" && bordereau === "indisponible" && etat === "a_expedier");
+        || (attendGeneration(c) && o?.generable === false) || (["vinted", "leboncoin"].includes(platform) && bordereau === "indisponible" && etat === "a_expedier");
       assert.ok(permis, `lien non permis : ${JSON.stringify(c)}`);
     }
   }
@@ -506,7 +511,23 @@ await cas("(17/10) les cartes : le geste FillSell en bouton ; la plateforme en l
   assert.ok(/function LienSecours\(/.test(section) && /data-lien-secours/.test(section), "le lien de dernier recours");
   assert.ok(/\{action\.type !== 'lien' && action\.url && <LienSecours /.test(section));
   assert.ok(!/<Bouton onClick=\{\(\) => ouvrirLien\(action\.url\)\} ariaLabel=\{fr \? `Voir sur/.test(section), "plus de bouton « Voir sur … » à côté du geste FillSell");
-  assert.ok(/actionCommande\(c, lang, reglages\.generation\)/.test(section));
+  assert.ok(/actionCommande\(c, lang, reglages\.generation, extensionVinted\)/.test(section));
+  // (18/10) L'extension sait-elle commander l'étiquette Vinted ? Lecture annexe : sa panne laisse « inconnu ».
+  assert.ok(/setExtensionVinted\(p && !p\.error \? extensionCommandeVinted\(p\.data\?\.extension_build\) : null\)/.test(section));
+  assert.equal(extensionCommandeVinted("2026-10-17T18:16:49Z+ced6cfd"), false, "0.6.124 : commanderait sans type");
+  assert.equal(extensionCommandeVinted("2026-10-17T23:03:01Z+9d11d42"), false, "0.6.125 non plus");
+  assert.equal(extensionCommandeVinted(`${GENERATION_VINTED_BUILD_MIN}+abc1234`), true);
+  assert.equal(extensionCommandeVinted(null), null);
+  const v = { platform: "vinted", etat: "a_expedier", bordereau: "a_obtenir", commande_ref: "1" };
+  const vieille = actionCommande(v, "fr", true, false);
+  assert.equal(vieille.type, "lien");
+  assert.ok(vieille.aide.includes("commande l’étiquette sur Vinted"));
+  assert.equal(actionCommande(v, "fr", true, true).type, "generer");
+  assert.equal(actionCommande(v, "fr", true, null).type, "generer", "inconnu : le bouton reste (la base tient la règle)");
+  assert.equal(actionCommande({ ...v, options_bordereau: { generable: true, types_etiquette: [3], types_vinted: ["digital", "locker_code"] } }, "fr", true, true).type, "lien", "type inconnu de FillSell : jamais deviné");
+  const echec = actionCommande({ platform: "vinted", etat: "a_expedier", bordereau: "indisponible", commande_ref: "2" }, "fr", true, true);
+  assert.equal(echec.libelle, "Redemander sur Vinted");
+  assert.ok(echec.aide.includes("Échec du bordereau d’envoi"));
   const hook = lire("src/messagerie/useMessagerieBeta.js");
   assert.ok(/useState\(\{ pret: false, envoiMode: 1, generation: null \}\)/.test(hook), "pas encore lus : null, jamais « fermé »");
   assert.ok(/generation: data\.generation === true \? true : data\.generation === false \? false : null/.test(hook));

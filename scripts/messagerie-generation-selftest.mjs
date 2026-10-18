@@ -95,20 +95,23 @@ await cas("Vinted et Beebs : le texte part tel quel (aucun trim, aucune réécri
 });
 
 // ── b. Générer : règles pures ───────────────────────────────────────────────
+// (18/10) Vinted écrit les types d'étiquette EN TOUTES LETTRES (code du site : tO) — les fixtures
+// d'avant portaient des chiffres 1/2/3, la forme fausse qui a fait échouer les commandes de Louis.
 const OPT = (x = {}) => ({ transporteur: "Mondial Relay", telephone_requis: "optional", telephone_present: false,
-  depots: [{ type: "point", options: [{ type: "x", types: [1, 3], date: false, heure: false, reutilisable: false }] }], ...x });
+  depots: [{ type: "point", options: [{ type: "x", types: ["printable", "digital"], date: false, heure: false, reutilisable: false }] }], ...x });
 
 await cas("Vinted : le corps de « commander l'étiquette » suit le site, et refuse ce que FillSell ne choisit pas", () => {
   assert.equal(M.corpsCommandeVinted(OPT(), null, 1).refus, "adresse_vinted_absente");
   assert.equal(M.corpsCommandeVinted(OPT(), { id: 5, complete: false }, 1).refus, "adresse_vinted_incomplete");
   assert.equal(M.corpsCommandeVinted(OPT({ telephone_requis: "mandatory", telephone_present: false }), { id: 5, complete: true }, 1).refus, "telephone_vinted_requis");
-  assert.equal(M.corpsCommandeVinted(OPT({ depots: [{ type: "home", options: [{ types: [1], date: true }] }] }), { id: 5, complete: true }, 1).refus, "enlevement_domicile_sur_vinted");
-  assert.equal(M.corpsCommandeVinted(OPT({ depots: [{ type: "point", options: [{ types: [1], date: true }] }] }), { id: 5, complete: true }, 1).refus, "date_a_choisir_sur_vinted");
+  assert.equal(M.corpsCommandeVinted(OPT({ depots: [{ type: "home", options: [{ types: ["printable"], date: true }] }] }), { id: 5, complete: true }, 1).refus, "enlevement_domicile_sur_vinted");
+  assert.equal(M.corpsCommandeVinted(OPT({ depots: [{ type: "point", options: [{ types: ["printable"], date: true }] }] }), { id: 5, complete: true }, 1).refus, "date_a_choisir_sur_vinted");
   assert.equal(M.corpsCommandeVinted(OPT(), { id: 5, complete: true }, null).refus, "type_etiquette_a_choisir", "deux types : la personne choisit dans l'app");
-  assert.deepEqual(M.corpsCommandeVinted(OPT(), { id: 5, complete: true }, 3).corps, { seller_address_id: 5, drop_off_type: null, label_type: 3 });
-  // Un seul type : celui-là ; point + domicile : « point » ; emballage réutilisable proposé : le sien.
-  assert.equal(M.corpsCommandeVinted(OPT({ depots: [{ type: "point", options: [{ types: [1] }] }] }), { id: 5, complete: true }).corps.label_type, 1);
-  const deux = M.corpsCommandeVinted(OPT({ depots: [{ type: "point", options: [{ types: [1], reutilisable: true }] }, { type: "home", options: [{ types: [1], date: true }] }] }), { id: 5, complete: true });
+  assert.deepEqual(M.corpsCommandeVinted(OPT(), { id: 5, complete: true }, 3).corps, { seller_address_id: 5, drop_off_type: null, label_type: "digital" }, "le type part EN TOUTES LETTRES");
+  assert.deepEqual(M.corpsCommandeVinted(OPT(), { id: 5, complete: true }, 1).corps, { seller_address_id: 5, drop_off_type: null, label_type: "printable" });
+  // Un seul type : label_type nul, comme la page de Vinted ; point + domicile : « point » ; emballage réutilisable proposé : le sien.
+  assert.equal(M.corpsCommandeVinted(OPT({ depots: [{ type: "point", options: [{ types: ["printable"] }] }] }), { id: 5, complete: true }).corps.label_type, null);
+  const deux = M.corpsCommandeVinted(OPT({ depots: [{ type: "point", options: [{ types: ["printable"], reutilisable: true }] }, { type: "home", options: [{ types: ["printable"], date: true }] }] }), { id: 5, complete: true });
   assert.equal(deux.corps.drop_off_type, "point");
   assert.equal(deux.corps.reusable_package_selected, false);
 });
@@ -120,7 +123,11 @@ await cas("décision : déjà fait chez la plateforme → AUCUN geste ; sinon re
   assert.equal(M.decisionGeneration("vinted", { ok: true, statut: 210 }, {}, cmdV).refus, "etiquette_echouee_chez_vinted");
   assert.equal(M.decisionGeneration("vinted", { ok: true, statut: 300 }, {}, cmdV).refus, "deja_expediee");
   const v = M.decisionGeneration("vinted", { ok: true, statut: 100, options: OPT(), adresse: { id: 7, complete: true } }, { type_etiquette: 1 }, cmdV);
-  assert.deepEqual(v.args, { transactionId: "T1", corps: { seller_address_id: 7, drop_off_type: null, label_type: 1 } });
+  assert.deepEqual(v.args, { transactionId: "T1", corps: { seller_address_id: 7, drop_off_type: null, label_type: "printable" } });
+  // (18/10) 210 : seule une RELANCE marquée recommande, avec le bon type, et le geste le sait.
+  const rel = M.decisionGeneration("vinted", { ok: true, statut: 210, options: OPT(), adresse: { id: 7, complete: true } }, { type_etiquette: 1 }, { ...cmdV, relance: true });
+  assert.deepEqual(rel.args, { transactionId: "T1", corps: { seller_address_id: 7, drop_off_type: null, label_type: "printable" }, relance: true });
+  assert.equal(M.decisionGeneration("vinted", { ok: true, statut: 210, options: OPT(), adresse: { id: 7, complete: true } }, { type_etiquette: 1 }, { ...cmdV, relance: false }).refus, "etiquette_echouee_chez_vinted");
   const cmdL = { commande_ref: "P1" };
   assert.deepEqual(M.decisionGeneration("leboncoin", { ok: true, statut: "available" }, {}, cmdL), { deja: true });
   // (17/10) Colissimo : générable depuis FillSell, l'adresse de l'expéditeur part avec le geste.
@@ -283,7 +290,7 @@ await cas("PRÉPARER reste en lecture (aucun POST/PUT hors renouvellement du jet
   const { f } = espion({
     "GET /transactions/T7": { corps: { transaction: { shipment: { id: 9, status: 100 } } } },
     "GET /label_options": { corps: { label_options: { carrier: { name: "Mondial Relay" }, sender: { phone_number: "+33600000000", phone_number_requirement: "mandatory" },
-      receiver: { name: "Prénom Nom" }, drop_offs: [{ type: "point", options: [{ type: "o", label_types: [1, 3] }] }] } } },
+      receiver: { name: "Prénom Nom" }, drop_offs: [{ type: "point", options: [{ type: "o", label_types: ["printable", "digital"] }] }] } } },
     "GET /shipping-estimation/external/shipping_address": { corps: { address: { id: 77, full_name: "Prénom Nom", line_1: "1 rue X", postal_code: "75001", is_complete: true } } },
   });
   globalThis.fetch = f;
@@ -315,14 +322,14 @@ await cas("relève Vinted : options d'étiquette lues UNE fois (connues = sauté
     "GET /my_orders": { corps: { my_orders: [{ transaction_id: 41, title: "Robe", price: { amount: "10", currency_code: "EUR" }, transaction_user_status: "in_progress" }] } },
     "GET /transactions/41": { corps: { transaction: { status: 230, shipment: { id: 99, status: 100 }, buyer: { login: "b" }, order: { item_ids: [5] } } } },
     "GET /label_options": { corps: { label_options: { carrier: { name: "Vinted Go" }, sender: { phone_number: "+33611111111", phone_number_requirement: "optional" },
-      drop_offs: [{ type: "point", options: [{ label_types: [1, 3] }] }] } } },
+      drop_offs: [{ type: "point", options: [{ label_types: ["printable", "digital"] }] }] } } },
   };
   let { f, appels } = espion(table);
   globalThis.fetch = f;
   let r = await M.LECTEURS.vinted.commandes([], 5, []);
   assert.equal(appels.filter((a) => a.url.includes("label_options")).length, 1);
   const lignes = M.normaliserCommandesVinted(r.commandes);
-  assert.deepEqual(lignes[0].options_bordereau, { transporteur: "Vinted Go", types_etiquette: [1, 3], domicile_seul: false, telephone_manquant: false, generable: true });
+  assert.deepEqual(lignes[0].options_bordereau, { transporteur: "Vinted Go", types_etiquette: [1, 3], types_vinted: ["digital", "printable"], domicile_seul: false, telephone_manquant: false, generable: true });
   assert.ok(!JSON.stringify(lignes).includes("+33611111111"));
   ({ f, appels } = espion(table));
   globalThis.fetch = f;
@@ -389,10 +396,10 @@ await cas("(17/10) expéditeur Leboncoin = l'adresse du COMPTE Leboncoin (pré-r
 });
 
 await cas("(17/10) Vinted : un type choisi que Vinted ne propose pas pour cette commande → rien n'est commandé (jamais un autre type)", () => {
-  const un = OPT({ depots: [{ type: "point", options: [{ types: [3] }] }] });
+  const un = OPT({ depots: [{ type: "point", options: [{ types: ["digital"] }] }] });
   assert.equal(M.corpsCommandeVinted(un, { id: 5, complete: true }, 1).refus, "type_etiquette_indisponible");
-  assert.equal(M.corpsCommandeVinted(un, { id: 5, complete: true }).corps.label_type, 3, "sans choix et un seul type : celui-là");
-  assert.equal(M.corpsCommandeVinted(un, { id: 5, complete: true }, 3).corps.label_type, 3);
+  assert.equal(M.corpsCommandeVinted(un, { id: 5, complete: true }).corps.label_type, null, "sans choix et un seul type : nul, comme la page");
+  assert.equal(M.corpsCommandeVinted(un, { id: 5, complete: true }, 3).corps.label_type, null);
   assert.equal(M.corpsCommandeVinted(OPT(), { id: 5, complete: true }, 2).refus, "type_etiquette_indisponible", "deux types proposés, un troisième demandé");
 });
 
@@ -450,8 +457,52 @@ await cas("(17/10) Beebs : une adresse de bordereau rendue par le geste est gard
   assert.equal(r.motif, "fichier_sur_beebs", "aucun bordereau dans la commande : dit, jamais deviné (le lien de suivi n'est pas pris)");
 });
 
+await cas("(18/10) cause des échecs de Louis : les types de Vinted EN TOUTES LETTRES ne sont plus jetés ; jamais une commande sans type quand Vinted en propose plusieurs ; 210 = échec dit", async () => {
+  // Ce que Vinted renvoie (code du site du 18/10 : tO = printable / digital / code).
+  const lo = { transporteur: "Vinted Go", telephone_requis: "optional", telephone_present: false,
+    depots: [{ type: "point", options: [{ type: "locker", types: ["digital", "printable"] }] }] };
+  const o = M.optionsBordereauVinted(lo);
+  assert.deepEqual(o.types_etiquette, [1, 3], "avant le 18/10 : [] (Number(\"digital\") jeté) → commande sans type → 210");
+  assert.deepEqual(o.types_vinted, ["digital", "printable"]);
+  assert.equal(M.corpsCommandeVinted(lo, { id: 5, complete: true }, 1).corps.label_type, "printable", "le choix de Louis (1) part en toutes lettres");
+  assert.equal(M.corpsCommandeVinted(lo, { id: 5, complete: true }, null).refus, "type_etiquette_a_choisir", "plusieurs types et aucun choix : RIEN ne part");
+  // Chiffres d'avant (forme lue le 16/10) : toujours compris ; type inconnu de FillSell : vu, jamais deviné.
+  assert.deepEqual(M.optionsBordereauVinted({ depots: [{ type: "point", options: [{ types: [1, 3] }] }] }).types_etiquette, [1, 3]);
+  const inconnu = M.optionsBordereauVinted({ depots: [{ type: "point", options: [{ types: ["digital", "locker_code"] }] }] });
+  assert.deepEqual(inconnu.types_vinted, ["digital", "locker_code"]);
+  assert.deepEqual(inconnu.types_etiquette, [3]);
+  assert.equal(M.corpsCommandeVinted({ depots: [{ type: "point", options: [{ types: ["digital", "locker_code"] }] }] }, { id: 5, complete: true }, 1).refus, "type_etiquette_indisponible");
+  assert.equal(M.typeEtiquetteVinted("printable"), 1);
+  assert.equal(M.typeEtiquetteVinted("code"), 2);
+  assert.equal(M.typeEtiquetteVinted("digital"), 3);
+  assert.equal(M.typeEtiquetteVinted("pdf"), null);
+  // Le fichier : 210 = « étiquette échouée chez Vinted » (plus jamais « à obtenir ») ; pdf_label d'abord, QR compris.
+  let { f, appels } = espion({ "GET /transactions/T9": { corps: { transaction: { shipment: { id: 3, status: 210 } } } } });
+  globalThis.fetch = f;
+  let r = await M.CHEMINS_BORDEREAU.vinted({ transactionId: "T9", derniereMarche: true, numerique: true });
+  assert.equal(r.motif, "etiquette_echouee_chez_vinted");
+  assert.ok(!appels.some((a) => /label/.test(a.url) && !/label_options/.test(a.url)), "aucun fichier demandé sur un échec");
+  ({ f, appels } = espion({ "GET /transactions/T9": { corps: { transaction: { shipment: { id: 3, status: 230 } } } },
+    "GET /label_options": { corps: { label_options: {} } },
+    "GET /shipment/pdf_label": { corps: { file: { label: "JVBERi0", filename: "qr.pdf" } } } }));
+  globalThis.fetch = f;
+  r = await M.CHEMINS_BORDEREAU.vinted({ transactionId: "T9", derniereMarche: true, numerique: true });
+  assert.equal(r.ok, true);
+  assert.ok(appels.some((a) => a.url.includes("/shipment/pdf_label")) && !appels.some((a) => a.url.includes("/digital_label")), "QR : pdf_label d'abord, comme la page");
+  // La relance n'est pas un geste libre : la préparation ne relit les options d'un 210 que pour une relance.
+  ({ f, appels } = espion({ "GET /transactions/T10": { corps: { transaction: { shipment: { id: 4, status: 210 } } } } }));
+  globalThis.fetch = f;
+  r = await M.PREPARATIONS_GENERATION.vinted({ transactionId: "T10" });
+  assert.equal(r.statut, 210);
+  assert.ok(!appels.some((a) => a.url.includes("label_options")), "210 sans relance : rien n'est relu");
+});
+
 await cas("background.js : capacité « generer » déclarée ; décision AVANT le geste ; le geste n'est appelé qu'à UN endroit", () => {
-  assert.ok(/rpcMessagerie\("bordereau_demande_a_traiter", \{ p_capacites: \["generer"\] \}, token\)/.test(BG));
+  // (18/10) Les capacités viennent de CAPACITES_BORDEREAU : « generer », « vinted_types_texte »
+  // (sans elle, le serveur ne donne plus de génération Vinted), « relance_vinted ».
+  assert.ok(/rpcMessagerie\("bordereau_demande_a_traiter", \{ p_capacites: capacites \}, token\)/.test(BG));
+  assert.ok(/const capacites = Array\.isArray\(M\.CAPACITES_BORDEREAU\)/.test(BG));
+  assert.deepEqual([...M.CAPACITES_BORDEREAU], ["generer", "vinted_types_texte", "relance_vinted"]);
   const i = BG.indexOf("async function genererBordereauBeta(");
   const corps = BG.slice(i, BG.indexOf("/** La suite d'une génération faite", i));
   const iDecision = corps.indexOf("M.decisionGeneration(");
@@ -485,6 +536,32 @@ await cas("migration 20261016220000 : une génération par commande, phrase d'en
   const prise = MIG.slice(MIG.indexOf("CREATE OR REPLACE FUNCTION public.messagerie_reponse_a_envoyer("), MIG.indexOf("-- ── 4."));
   assert.ok(/statut = 'echec', motif = 'trop_ancienne'[\s\S]{0,160}statut = 'en_attente' AND cree_le < now\(\) - interval '24 hours'/.test(prise), "non prise en 24 h : jamais envoyée en retard");
   assert.ok(fs.existsSync(path.join(RACINE, "supabase/rollbacks/20261016220000_messagerie_ouverte_bordereaux_generes.sql")), "inverse présent");
+});
+
+await cas("(18/10) migration 20261018100000 : l'échec de Vinted ferme la génération, une extension d'avant ne commande plus Vinted, relance autorisée en SQL seulement, inverse", () => {
+  const M2 = lire("supabase/migrations/20261018100000_bordereaux_echec_vinted_relance.sql");
+  const closes = M2.slice(M2.indexOf("CREATE OR REPLACE FUNCTION public.bordereaux_generations_closes("), M2.indexOf("-- 2. La prise"));
+  assert.ok(/statut = 'echec', motif = 'etiquette_echouee_chez_vinted'[\s\S]{0,400}pc\.bordereau = 'indisponible'/.test(closes), "210 → échec dit");
+  assert.ok(/d\.statut = 'generee' AND d\.copie_id IS NULL/.test(closes), "seules les générations sans copie");
+  const traiter = M2.slice(M2.indexOf("CREATE OR REPLACE FUNCTION public.bordereau_demande_a_traiter("), M2.indexOf("-- 3. L'étape"));
+  assert.ok(/PERFORM public\.bordereaux_generations_closes\(v_user\)/.test(traiter));
+  assert.ok(/\(d\.platform <> 'vinted' OR v_types_texte\)/.test(traiter), "Vinted : seulement une extension qui envoie le type en toutes lettres");
+  assert.ok(/motif = 'extension_a_mettre_a_jour'[\s\S]{0,200}cree_le < now\(\) - interval '15 minutes'/.test(traiter), "non prise en 15 min par une extension capable : dit, rien commandé");
+  assert.ok(/a\.consommee_le IS NULL AND a\.avant > now\(\)/.test(traiter) && /issue = 'relance_deposee'/.test(traiter), "relance : une fois, avant la date limite");
+  assert.ok(/v_pc\.etat = 'a_expedier' AND v_pc\.bordereau IN \('indisponible', 'a_obtenir'\)/.test(traiter), "commande prête, expédiée ou annulée : aucune relance");
+  assert.ok(/pc\.bordereau IS DISTINCT FROM 'indisponible'/.test(traiter), "la suite ne cherche plus de fichier après un échec");
+  assert.ok(/'relance', coalesce\(v_d\.relance, false\)/.test(traiter));
+  assert.ok(/REVOKE ALL ON public\.bordereaux_relances_autorisees FROM PUBLIC, anon, authenticated;/.test(M2), "autorisations : jamais l'app");
+  assert.ok(/REVOKE ALL ON FUNCTION public\.bordereaux_generations_closes\(uuid\) FROM PUBLIC, anon, authenticated;/.test(M2));
+  const etape = M2.slice(M2.indexOf("CREATE OR REPLACE FUNCTION public.bordereau_demande_etape("), M2.indexOf("-- 4. Le relevé"));
+  assert.ok(/v_d\.statut = 'generee' AND p_statut IN \('generee','prete','echec'\)/.test(etape));
+  assert.ok(/IF c_maj \+ c_nouvelles > 0 THEN PERFORM public\.bordereaux_generations_closes\(v_user\); END IF;/.test(M2), "relevé changé seulement : rien de réécrit sinon");
+  assert.ok(fs.existsSync(path.join(RACINE, "supabase/rollbacks/20261018100000_bordereaux_echec_vinted_relance.sql")), "inverse présent");
+  // L'app : la vraie raison et le seul geste ; plus jamais « généré » avant la plateforme.
+  const VUE = lire("src/messagerie/vue.js");
+  assert.ok(/etiquette_echouee_chez_vinted: fr \? 'Vinted a refusé d’émettre/.test(VUE));
+  assert.ok(/extension_a_mettre_a_jour: fr \?/.test(VUE));
+  assert.ok(!/Bordereau généré sur \$\{pf\} : récupération du fichier/.test(VUE), "« généré » n'est plus dit avant la plateforme");
 });
 
 console.log(`messagerie-generation-selftest : ${n} cas verts`);
