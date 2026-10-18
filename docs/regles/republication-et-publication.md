@@ -303,7 +303,7 @@
 - **Règle** : un dépôt réussi se reconnaît par la PRÉSENCE de l'annonce (numéro inconnu, même titre, même boutique, mise en
   ligne pendant un de NOS envois [envoi − 2 min, envoi + 20 min], jamais avant le retrait), jamais par l'URL d'arrivée.
   Une republication Vinted retirée dont un essai a eu lieu n'est **jamais** resservie sans un **relevé complet** du dressing
-  (toutes les pages) commencé ≥ 12 min après l'essai, demandé par le serveur (`serveur:verif_recreation`) ; la base
+  (toutes les pages) commencé ≥ 12 min après l'essai, demandé par le serveur (`serveur:verif_redepot` — un nom de déclencheur neuf est écarté sans bruit par `garde_releve_sans_geste`) ; la base
   rattache la copie que le relevé apporte (`inventaire_a_rattache_recreation_vinted`), une copie de plus part par le
   circuit de retrait (numéro exact) ; une copie déjà au stock = la question ; 6 h sans relevé = la question.
   Modules : `_shared/recreation-vinted-verifiee.js` (get-pending-jobs), `_shared/recreation-vinted-envois.js`

@@ -40,7 +40,7 @@
   en ligne pendant un de NOS envois), jamais par l'URL d'arrivée.
 - **Côté serveur, servi au parc en 0.6.125 dès le déploiement** :
   - `get-pending-jobs` : après une tentative, aucune nouvelle recréation sans un **relevé complet** du dressing (toutes
-    les pages) commencé ≥ 12 min après, demandé par le serveur (`serveur:verif_recreation`) ; copie déjà au stock = la
+    les pages) commencé ≥ 12 min après, demandé par le serveur (`serveur:verif_redepot`, la vérification avant redépôt que la base reconnaît) ; copie déjà au stock = la
     question ; 6 h sans relevé = la question honnête ;
   - **migration 20261018170000 (appliquée 17:03)** : quand ce relevé apporte la copie, la base la rattache à la fiche et
     clôt la republication ; une copie de plus part par le circuit de retrait, numéro exact (essai à blanc 11/11) ;
@@ -90,6 +90,12 @@
 - App : « Ce navigateur est connecté à la boutique Vinted @x, déjà suivie par un autre compte FillSell… » (orange, sans
   bouton « c'est bien ma boutique ? ») ; bilan « N annonces … déjà suivies par un autre compte ».
 
+### 2.2 bis Leboncoin partagé (complément de Nico, option B)
+- Les deux comptes publient sur le MÊME compte Leboncoin (louis-seller depuis 18:26 : 32 jobs). Règle : chaque compte
+  surveille ce qu'IL a publié, repéré par l'identifiant d'annonce ; le relevé de l'autre ne l'importe pas ; la vente
+  s'enregistre chez le compte qui a publié (migration 20261018220000, essai 7/7). Le transfert de 18:25 n'a supprimé que
+  les 323 jobs nés du relevé de 16:46 (sauvegarde relue : aucun dépôt réel de louis-seller touché).
+
 ### 2.3 Le transfert (essai à blanc 19/19 contrôles, inverse prouvé 25/25)
 - 224 fiches @evat passent à louis-seller avec leur historique ; ses 212 fiches nues du jour cèdent la place ;
   **164 fiches, 322 annonces et 55 ventes Leboncoin retirées de louis-seller, sans aucun job** ; 695 ventes @evat en double
@@ -133,4 +139,27 @@
   reconnecter ». La veille ne compte plus deux fois une annonce (lesmillesetunepepite Leboncoin : 430 → 217).
 
 ## Statut final, livraison, ce qui reste à Nico
-(complété en fin de session)
+
+### Livraison (lue après chaque geste)
+- **Commits** : 4c3c5a6 (code, docs, selftests, extension 0.6.128, app 2.9.103), 73f7a77 (EXTENSION_LAST_COMMIT =
+  2026-10-18T16:21:21Z, sans chrome-extension/), 492f753 (migration 20261018210000 + lot 1 de Régis), puis la doc finale.
+- **Fonctions** (déployées depuis le dépôt commité, 18:2x, verify_jwt lus avant/après, inchangés) : update-job-status
+  v143 → v144 (false), get-pending-jobs v261 → v262 (true), handler-watch v119 → v120 (false), generate-listing v120 →
+  v121 (true), ebay-api-worker v90 → v91 (false), beebs-lien v14 → v15 (false), rapprochement-ia v9 → v10 (false),
+  ia-banc-deduction v6 → v7 (false). Journaux depuis : 0 erreur, 0 réponse 5xx.
+- **Migrations** (inverses dans `supabase/rollbacks/`, essais dans `scripts/essais/`) : 20261018170000 (17:03),
+  20261018200000, 20261018180000, 20261018190000 (18:23), 20261018210000 (18:2x — 180000, écrite avant 200000, avait
+  effacé la condition des comptes reliés dans `armer_retrait_job_pour` ; relu : les deux correctifs y sont).
+- **Extension 0.6.128** : `build\CWS-0.6.128-A-TELEVERSER\fillsell-extension-0.6.128-492f753-cws.zip` (seul zip du dossier,
+  BUILD_ID `2026-10-18T16:26:21Z+492f753`, 37 entrées, 556 Ko). **Manifeste relu : identique à la 0.6.127 hors version,
+  aucune permission nouvelle, même liste de fichiers.** La 0.6.127 est rangée dans
+  `build\CWS-PERIMES\CWS-0.6.127-JAMAIS-TELEVERSEE-CONTENUE-DANS-0.6.128\` (la 0.6.128 la contient).
+- **Selftests** : 364 avant → **374/374** après (suite complète relancée avant le commit) ; `build:essai` vert ; eslint :
+  aucune erreur nouvelle.
+
+### Ce qui reste à Nico
+- Téléverser `build\CWS-0.6.128-A-TELEVERSER\fillsell-extension-0.6.128-492f753-cws.zip` **après l'acceptation de la
+  0.6.126** (la 0.6.127 n'est plus à téléverser), puis « Envoyer pour examen ».
+- À décider : « House de couette » → « Couette » posé par la règle du texte eBay (valeur fausse) ; ajouter l'issue
+  `plateforme_decochee` aux bilans SQL (`questions_publication_bilan`, `champs_requis_veille`) ; l'éclaireur de
+  handler-watch relance encore sur un mur Leboncoin périmé (hors périmètre).

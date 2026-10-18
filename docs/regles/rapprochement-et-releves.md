@@ -278,3 +278,7 @@ trois relevés et deux reprises lancés tout seuls, aucun Vinted abouti, un faux
 - **Relevés morts** : une boutique non surveillée depuis plus de 24 h à cause d'une session fermée (preuve = le run, pas
   la sonde) est la première ligne de « À régler » avec le seul geste « Se reconnecter » (RPC `surveillance_releves()`,
   migration `20261018190000`, selftest `surveillance-releves`). La veille ne compte plus deux fois une annonce.
+- **Leboncoin partagé entre deux comptes reliés** (décision de Nico, option B — Louis) : chaque compte surveille ce
+  qu'IL a publié. Une annonce appartient au compte dont un job l'a publiée (identifiant d'annonce) ; le relevé de
+  l'autre compte ne l'importe pas (`sync_import_ecartes` motif `compte_relie:<pf>`), une vente sur elle ne s'enregistre
+  que chez lui (un mail, retraits de SES copies). Sans job, la règle d'avant tient. Migration `20261018220000` (essai 7/7).

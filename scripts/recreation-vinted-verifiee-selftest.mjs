@@ -93,7 +93,7 @@ ok(/if \(pfW\.deleted_at_serveur !== serveurDeja\) \{\s*pfW\.deleted_at_serveur 
   "update-job-status : les repères du retrait ne sont plus effacés (touche marqué)");
 ok(/heureVintedDuRetrait\(pfW\) \?\? heureVintedDuRetrait\(pfH\)/.test(ujs) && /pfW\.recreation_envois = envois;/.test(ujs),
   "update-job-status : heure Vinted d'abord, envois accumulés");
-ok(/recreationAVerifier\(j\)/.test(gpj) && /declencheur: "serveur:verif_recreation"/.test(gpj) && gpj.indexOf("REMISE EN LIGNE VINTED : JAMAIS UN ESSAI DE PLUS") < gpj.indexOf("JAMAIS UN DEUXIÈME DÉPÔT BEEBS"),
+ok(/recreationAVerifier\(j\)/.test(gpj) && /declencheur: "serveur:verif_redepot"/.test(gpj) && gpj.indexOf("REMISE EN LIGNE VINTED : JAMAIS UN ESSAI DE PLUS") < gpj.indexOf("JAMAIS UN DEUXIÈME DÉPÔT BEEBS"),
   "get-pending-jobs : garde branchée avant le bloc Beebs, relevé demandé par le serveur");
 ok(/create trigger inventaire_a_rattache_recreation_vinted\s+before insert on public\.inventaire/i.test(mig)
   && "inventaire_a_rattache_recreation_vinted" < "inventaire_ecarte_import_sync", "migration : le rattachement tire AVANT l'écart des imports automatiques");

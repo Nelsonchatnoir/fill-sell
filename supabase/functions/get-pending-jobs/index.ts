@@ -5032,7 +5032,7 @@ serve(async (req) => {
           ]);
           const runs = (runsV ?? []) as Array<Record<string, unknown>>;
           let releveDemande = runs.some((r) => r.status === "queued" || r.status === "running"
-            || (r.declencheur === "serveur:verif_recreation" && Date.now() - (Date.parse(String(r.queued_at ?? "")) || 0) < 30 * 60_000));
+            || (r.declencheur === "serveur:verif_redepot" && Date.now() - (Date.parse(String(r.queued_at ?? "")) || 0) < 30 * 60_000));
           for (const j of aVerifierV) {
             const idJ = String(j.id);
             const court = idJ.slice(0, 8);
@@ -5057,10 +5057,13 @@ serve(async (req) => {
               console.log(`[get-pending-jobs] remise en ligne Vinted ${court} : ${d.copies?.length ? `copie probable déjà en stock (${d.copies.map((c: Record<string, unknown>) => c.vinted_item_id).join(", ")})` : "aucun relevé depuis 6 h"} → question, aucun essai de plus`);
               continue;
             }
+            // (18/10 soir) Déclencheur « serveur:verif_redepot » : la vérification avant redépôt, déjà reconnue
+            // comme veille par la base (releve_est_veille) — un nom neuf était écarté SANS BRUIT par
+            // garde_releve_sans_geste (RETURN NULL), vu au premier essai réel (Régis, 18:38).
             if (d.action === "demander_releve" && !releveDemande) {
               const { error: qErr } = await userClient.from("vinted_sync_runs").insert({
                 user_id: user.id, kind: "dressing", platform: "vinted", status: "queued",
-                declencheur: "serveur:verif_recreation", queued_at: new Date().toISOString(),
+                declencheur: "serveur:verif_redepot", queued_at: new Date().toISOString(),
               });
               releveDemande = true;
               console.log(`[get-pending-jobs] remise en ligne Vinted ${court} : relevé complet du dressing demandé avant tout nouvel essai${qErr ? ` (refusé : ${qErr.message})` : ""}`);
