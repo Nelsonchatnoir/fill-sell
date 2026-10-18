@@ -5,9 +5,9 @@
 | Point | Statut | Preuve |
 |---|---|---|
 | 1. Régis — cause, règle, 2 annonces | **CLOS** | cause prouvée (99 brouillons en page 1 + redirection /member) ; 2 annonces en ligne une fois chacune (200), 9 copies en 404 ; défaut serveur des 7 min corrigé |
-| 1. Régis — les 47 | **NON CLOS** | lot 1 : Larousse en ligne une fois (10431938776 en 200, la 2e copie retirée par son numéro, 404 à 19:18) ; **46 retenues** jusqu'à la 0.6.128 (décision de Nico, § 1.6) |
+| 1. Régis — les 47 | **NON CLOS** (décidé) | lot 1 : Larousse en ligne une fois (10431938776 en 200, la 2e copie retirée par son numéro, 404 à 19:18) ; **46 retenues jusqu'à la 0.6.128** — décision de Nico (18/10 soir) : aucun relevé déclenché par le serveur |
 | 2. Louis — transfert, règle, LBC partagé | **CLOS** | transfert 19/19 ; 32 annonces LBC de louis-seller, 0 chez le compte principal ; louis-seller en Business |
-| 2. Louis — ventes « un compte, zéro doublon » | **NON CLOS** | 12 ventes Vinted de @evat en double (19:08) : règle corrigée et en prod (migration 20261018230000, essai 23/23, get-pending-jobs v265) ; **réparation écrite mais refusée par l'outil : feu vert de Nico attendu** (§ 2.4) |
+| 2. Louis — ventes « un compte, zéro doublon » | **CLOS** | 12 ventes de @evat en double (19:08) : règle en prod (migration 20261018230000, essai 23/23, get-pending-jobs v265) ; réparation exécutée à 20:31:53 (feu vert de Nico) : 0 doublon, 12 ventes chez louis-seller, 0 chez louis@, 0 mail, 0 push (§ 2.4) |
 | 3. eBay ÷ 5 | **CLOS** | 156 → **27** questions sur la semaine rejouée (÷ 5,8), bancs sans IA |
 | 4. Titre Vinted « symboles » | **CLOS** | 0 titre accepté changé sur 70 555 ; 5d993767 publié en réel (10431945873, 200) |
 | 5. Leboncoin PRO poids | **NON CLOS** | correctif 0.6.128 prouvé sur maquette (26/26) ; preuve sur un vrai compte PRO pas faite (navigateur de la personne) |
@@ -135,10 +135,17 @@
   comptes reliés, jamais deux fois la même commande, une commande des articles du relié s'enregistre chez lui (son mail,
   ses retraits), son article publié n'est jamais importé ; aucun job Vinted n'est servi à un poste ouvert sur la
   boutique d'un autre compte (il reste en file pour le PC).
-- **Réparation** : `scripts/reparations/20261018_louis_ventes_vinted_doublons.sql` (retire les 12 de louis@, garde
-  celles de louis-seller ; sauvegardes `_backup_1810_louis_vdv_*` ; inverse écrit) — **l'écriture du script a été
-  refusée par l'outil : feu vert de Nico attendu**. L'annonce 10432288057 (article PRO sur @evat) reste en ligne, telle
-  quelle : sa vente s'enregistrera chez louis@ (règle ci-dessus) ; la déplacer est une décision de Nico.
+- **Réparation** (feu vert de Nico, 18/10 soir) : `scripts/reparations/20261018_louis_ventes_vinted_doublons.sql` —
+  essai à blanc (ROLLBACK, `scripts/essais/20261018_louis_ventes_vinted_doublons_essai.sql`) : 12 retirées, 12 gardées,
+  0 push, aucune trace gardée ; **exécutée à 20:31:53** : 12 ventes, 12 reçus, 12 questions retirés de louis@, 12 lignes
+  de commande en « compte_relie » (sauvegardes `_backup_1810_louis_vdv_*`, inverse
+  `20261018_louis_ventes_vinted_doublons_INVERSE.sql`). **Preuve relue** : 0 commande sur les deux comptes, 12 ventes chez
+  louis-seller, 0 chez louis@, 0 trace de suppression, 0 mail, 0 push nés de la réparation.
+- **La règle en réel** : la sonde date chaque poste de louis@ — PC 53269f05 = @neyenonie (19:57), VM 8632c049 = @evat
+  (20:25). À 20:31:40, une vraie commande de @evat (23331768469, 10 articles) s'est enregistrée chez louis-seller seul,
+  sur ses fiches (vente_par_annonce), UN mail (vente:2851) ; rien chez louis@.
+- L'annonce 10432288057 (article PRO de louis@ publié sur @evat) **reste en ligne telle quelle** (décision de Nico) : sa
+  vente s'enregistre chez louis@, qui l'a publiée.
 - **Leboncoin partagé** : 32 annonces publiées par louis-seller (18:28 → 19:08), toutes avec leur numéro, 0 suivie par le
   compte principal, 0 écartée (aucun relevé LBC n'a tourné depuis) ; le premier relevé LBC de louis-seller (cette nuit,
   ou « Synchroniser ») les rattachera — à relire : `annonces_plateforme` de 447d920c sur ces 32 numéros.
@@ -204,14 +211,10 @@
   `build:essai` vert ; eslint : aucune erreur nouvelle.
 
 ### Ce qui reste à Nico
-- **Feu vert pour écrire et lancer `scripts/reparations/20261018_louis_ventes_vinted_doublons.sql`** (12 ventes en double
-  sur louis@, § 2.4) — refusé par l'outil au premier essai.
-- Les 46 de Régis : attendre la 0.6.128 (recommandé) ou accepter qu'un relevé importateur soit demandé par le serveur
-  pour son cas (contraire à la règle du 05/10).
-- L'annonce 10432288057 (article PRO de louis@ publié sur @evat par sa VM) : la laisser (sa vente s'enregistre chez
-  louis@) ou la retirer et la republier sur @neyenonie.
+- Décidé le 18/10 soir : réparation des 12 doublons faite ; Régis attend la 0.6.128 (aucun relevé serveur) ;
+  l'annonce 10432288057 reste.
 - Téléverser `build\CWS-0.6.128-A-TELEVERSER\fillsell-extension-0.6.128-492f753-cws.zip` **après l'acceptation de la
   0.6.126** (la 0.6.127 n'est plus à téléverser), puis « Envoyer pour examen ».
-- À décider : « House de couette » → « Couette » posé par la règle du texte eBay (valeur fausse) ; ajouter l'issue
+- À décider (expliqué à Nico le 18/10, rien changé sans son accord) : « House de couette » → « Couette » posé par la règle du texte eBay (valeur fausse) ; ajouter l'issue
   `plateforme_decochee` aux bilans SQL (`questions_publication_bilan`, `champs_requis_veille`) ; l'éclaireur de
   handler-watch relance encore sur un mur Leboncoin périmé (hors périmètre).
