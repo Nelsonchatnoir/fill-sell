@@ -77,7 +77,9 @@ export default function ConfirmationBoutique({ lang = 'fr', boutique, suivies = 
     let r;
     try { r = await onAjouter?.(); } catch (e) { r = { ok: false, erreur: String(e?.message ?? e) }; }
     setEnCours(false);
-    if (!r?.ok) setErreur(T.erreur);
+    // (18/10, Louis) Un refus qui dit sa raison (boutique déjà suivie par un
+    // autre compte FillSell) la montre telle quelle, jamais « réessaie ».
+    if (!r?.ok) setErreur(typeof r?.texte === 'string' && r.texte ? r.texte : T.erreur);
   };
 
   return (

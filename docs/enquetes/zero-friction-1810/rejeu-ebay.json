@@ -1,0 +1,1074 @@
+{
+ "rejeu": "questions eBay de l'écran Publier, sans IA (eBay ÷ 5)",
+ "fait_le": "2026-10-18T15:45:13.743Z",
+ "semaine": {
+  "debut": "2026-10-11 15:00",
+  "fin": "2026-10-18 15:00",
+  "fuseau": "Europe/Paris"
+ },
+ "lecture": "vraies = levées par la personne ou abandonnées ; affichées = toutes les lignes qui s'afficheraient encore",
+ "resultat": {
+  "avant": {
+   "affichees": 156,
+   "vraies": 139,
+   "par_champ": {
+    "Dimensions": 105,
+    "Style": 5,
+    "Matière": 5,
+    "Longueur de la robe": 5,
+    "Plateforme": 3,
+    "Taille": 2,
+    "Capacité de stockage": 2,
+    "Type": 2,
+    "Taille de matelas compatible": 2,
+    "Modèle": 1,
+    "Batterie/pile incluse": 1,
+    "Tension": 1,
+    "Type de cuisinière compatible": 1,
+    "Taille d'écran": 1,
+    "Technologie d'affichage": 1,
+    "Résolution maximale": 1,
+    "Nom du jeu vidéo": 1
+   }
+  },
+  "rapport": {
+   "affichees": 41,
+   "vraies": 41,
+   "par_champ": {
+    "Dimensions": 7,
+    "Style": 5,
+    "Matière": 5,
+    "Longueur de la robe": 5,
+    "Plateforme": 3,
+    "Taille": 2,
+    "Capacité de stockage": 2,
+    "Type": 2,
+    "Taille de matelas compatible": 2,
+    "Modèle": 1,
+    "Batterie/pile incluse": 1,
+    "Tension": 1,
+    "Type de cuisinière compatible": 1,
+    "Taille d'écran": 1,
+    "Technologie d'affichage": 1,
+    "Résolution maximale": 1,
+    "Nom du jeu vidéo": 1
+   }
+  },
+  "aujourdhui_central": {
+   "affichees": 49,
+   "vraies": 40,
+   "par_champ": {
+    "Dimensions": 11,
+    "Style": 5,
+    "Matière": 5,
+    "Longueur de la robe": 5,
+    "Taille": 2,
+    "Capacité de stockage": 2,
+    "Taille de matelas compatible": 2,
+    "Plateforme": 1,
+    "Modèle": 1,
+    "Type": 1,
+    "Type de cuisinière compatible": 1,
+    "Taille d'écran": 1,
+    "Technologie d'affichage": 1,
+    "Résolution maximale": 1,
+    "Nom du jeu vidéo": 1
+   }
+  },
+  "aujourdhui_pessimiste": {
+   "affichees": 50,
+   "vraies": 41,
+   "par_champ": {
+    "Dimensions": 11,
+    "Style": 5,
+    "Matière": 5,
+    "Longueur de la robe": 5,
+    "Taille": 2,
+    "Plateforme": 2,
+    "Capacité de stockage": 2,
+    "Taille de matelas compatible": 2,
+    "Modèle": 1,
+    "Type": 1,
+    "Type de cuisinière compatible": 1,
+    "Taille d'écran": 1,
+    "Technologie d'affichage": 1,
+    "Résolution maximale": 1,
+    "Nom du jeu vidéo": 1
+   }
+  },
+  "apres_central": {
+   "affichees": 27,
+   "vraies": 27,
+   "par_champ": {
+    "Dimensions": 13,
+    "Style": 4,
+    "Matière": 4,
+    "Taille": 2,
+    "Capacité de stockage": 2,
+    "Modèle": 1,
+    "Longueur de la robe": 1
+   }
+  },
+  "apres_pessimiste": {
+   "affichees": 27,
+   "vraies": 27,
+   "par_champ": {
+    "Dimensions": 13,
+    "Style": 4,
+    "Matière": 4,
+    "Taille": 2,
+    "Capacité de stockage": 2,
+    "Modèle": 1,
+    "Longueur de la robe": 1
+   }
+  }
+ },
+ "restants": {
+  "aujourdhui_central": [
+   {
+    "champ": "Taille",
+    "champ_affiche": "Taille",
+    "cat_question": "260966",
+    "cat_rejeu": "260966",
+    "compte": "A1",
+    "inventaire_id": "1791726594359",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Plateforme",
+    "champ_affiche": "Plateforme",
+    "cat_question": "139973",
+    "cat_rejeu": "139973",
+    "compte": "A2",
+    "inventaire_id": "1791732154497",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Modèle",
+    "champ_affiche": "Modèle",
+    "cat_question": "9355",
+    "cat_rejeu": "9355",
+    "compte": "A3",
+    "inventaire_id": "1791448336413",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Capacité de stockage",
+    "champ_affiche": "Capacité de stockage",
+    "cat_question": "9355",
+    "cat_rejeu": "9355",
+    "compte": "A3",
+    "inventaire_id": "1791448336413",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Style",
+    "champ_affiche": "Style",
+    "cat_question": "55793",
+    "cat_rejeu": "62107",
+    "compte": "A3",
+    "inventaire_id": "1791448336405",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Taille",
+    "champ_affiche": "Taille",
+    "cat_question": "Mode",
+    "cat_rejeu": null,
+    "compte": "A4",
+    "inventaire_id": "1791972362114",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Style",
+    "champ_affiche": "Style",
+    "cat_question": "95672",
+    "cat_rejeu": "95672",
+    "compte": "A5",
+    "inventaire_id": "1791919593410023",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Matière",
+    "champ_affiche": "Matière",
+    "cat_question": "Mode",
+    "cat_rejeu": "63862",
+    "compte": "A6",
+    "inventaire_id": "1792064440336018",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Longueur de la robe",
+    "champ_affiche": "Longueur de la robe",
+    "cat_question": "63861",
+    "cat_rejeu": "63861",
+    "compte": "A6",
+    "inventaire_id": "1792064440336017",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Style",
+    "champ_affiche": "Style",
+    "cat_question": "63861",
+    "cat_rejeu": "63861",
+    "compte": "A6",
+    "inventaire_id": "1792064440336017",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Style",
+    "champ_affiche": "Style",
+    "cat_question": "11555",
+    "cat_rejeu": "11555",
+    "compte": "A6",
+    "inventaire_id": "1792064440336019",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Longueur de la robe",
+    "champ_affiche": "Longueur de la robe",
+    "cat_question": "63861",
+    "cat_rejeu": "63861",
+    "compte": "A6",
+    "inventaire_id": "1792064440336016",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Longueur de la robe",
+    "champ_affiche": "Longueur de la robe",
+    "cat_question": "63861",
+    "cat_rejeu": "63861",
+    "compte": "A6",
+    "inventaire_id": "1792064440336015",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Longueur de la robe",
+    "champ_affiche": "Longueur de la robe",
+    "cat_question": "63861",
+    "cat_rejeu": "63861",
+    "compte": "A6",
+    "inventaire_id": "1792064440336014",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Matière",
+    "champ_affiche": "Matière",
+    "cat_question": "Mode",
+    "cat_rejeu": "63862",
+    "compte": "A6",
+    "inventaire_id": "1792064440336011",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Longueur de la robe",
+    "champ_affiche": "Longueur de la robe",
+    "cat_question": "63861",
+    "cat_rejeu": "63861",
+    "compte": "A6",
+    "inventaire_id": "1792064440336004",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Matière",
+    "champ_affiche": "Matière",
+    "cat_question": "Autre",
+    "cat_rejeu": "155201",
+    "compte": "A6",
+    "inventaire_id": "1792064439929012",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Matière",
+    "champ_affiche": "Matière",
+    "cat_question": "Autre",
+    "cat_rejeu": null,
+    "compte": "A6",
+    "inventaire_id": "1792064439929011",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Style",
+    "champ_affiche": "Style",
+    "cat_question": "63863",
+    "cat_rejeu": "63863",
+    "compte": "A6",
+    "inventaire_id": "1792064439929009",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Type",
+    "champ_affiche": "Type",
+    "cat_question": "31388",
+    "cat_rejeu": "31388",
+    "compte": "A7",
+    "inventaire_id": "1792077671052",
+    "issue": "abandon",
+    "raison": "reste"
+   },
+   {
+    "champ": "Capacité de stockage",
+    "champ_affiche": "Capacité de stockage",
+    "cat_question": "9355",
+    "cat_rejeu": "9355",
+    "compte": "A8",
+    "inventaire_id": "1792149145477018",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Taille de matelas compatible",
+    "champ_affiche": "Taille de matelas compatible",
+    "cat_question": "175758",
+    "cat_rejeu": "175758",
+    "compte": "A9",
+    "inventaire_id": "1792240548919",
+    "issue": "abandon",
+    "raison": "reste"
+   },
+   {
+    "champ": "Dimensions",
+    "champ_affiche": "Longueur",
+    "cat_question": "79654",
+    "cat_rejeu": "79654",
+    "compte": "A9",
+    "inventaire_id": "1792240548915",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Matière",
+    "champ_affiche": "Matière",
+    "cat_question": "Maison",
+    "cat_rejeu": null,
+    "compte": "A9",
+    "inventaire_id": "1792240548906",
+    "issue": "abandon",
+    "raison": "reste"
+   },
+   {
+    "champ": "Dimensions",
+    "champ_affiche": "Longueur",
+    "cat_question": "79654",
+    "cat_rejeu": "79654",
+    "compte": "A9",
+    "inventaire_id": "1792240548911",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Taille de matelas compatible",
+    "champ_affiche": "Taille de matelas compatible",
+    "cat_question": "175758",
+    "cat_rejeu": "175758",
+    "compte": "A9",
+    "inventaire_id": "1792240548906",
+    "issue": "abandon",
+    "raison": "reste"
+   },
+   {
+    "champ": "Type de cuisinière compatible",
+    "champ_affiche": "Type de cuisinière compatible",
+    "cat_question": "98846",
+    "cat_rejeu": "98846",
+    "compte": "A9",
+    "inventaire_id": "1792240548875",
+    "issue": "abandon",
+    "raison": "reste"
+   },
+   {
+    "champ": "Dimensions",
+    "champ_affiche": "Largeur",
+    "cat_question": "79654",
+    "cat_rejeu": "79654",
+    "compte": "A9",
+    "inventaire_id": "1792240548883",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Dimensions",
+    "champ_affiche": "Longueur",
+    "cat_question": "79654",
+    "cat_rejeu": "79654",
+    "compte": "A9",
+    "inventaire_id": "1792239408365022",
+    "issue": "abandon",
+    "raison": "reste"
+   },
+   {
+    "champ": "Dimensions",
+    "champ_affiche": "Largeur",
+    "cat_question": "79654",
+    "cat_rejeu": "79654",
+    "compte": "A9",
+    "inventaire_id": "1792239408365021",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Dimensions",
+    "champ_affiche": "Hauteur",
+    "cat_question": "79654",
+    "cat_rejeu": "79654",
+    "compte": "A9",
+    "inventaire_id": "1792239408365015",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Dimensions",
+    "champ_affiche": "Largeur",
+    "cat_question": "79654",
+    "cat_rejeu": "79654",
+    "compte": "A9",
+    "inventaire_id": "1792239408365008",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Dimensions",
+    "champ_affiche": "Longueur",
+    "cat_question": "79654",
+    "cat_rejeu": "79654",
+    "compte": "A9",
+    "inventaire_id": "1792239407826019",
+    "issue": "abandon",
+    "raison": "reste"
+   },
+   {
+    "champ": "Taille d'écran",
+    "champ_affiche": "Taille d'écran",
+    "cat_question": "11071",
+    "cat_rejeu": "11071",
+    "compte": "A9",
+    "inventaire_id": "1792239407826009",
+    "issue": "abandon",
+    "raison": "reste"
+   },
+   {
+    "champ": "Technologie d'affichage",
+    "champ_affiche": "Technologie d'affichage",
+    "cat_question": "11071",
+    "cat_rejeu": "11071",
+    "compte": "A9",
+    "inventaire_id": "1792239407826009",
+    "issue": "abandon",
+    "raison": "reste"
+   },
+   {
+    "champ": "Résolution maximale",
+    "champ_affiche": "Résolution maximale",
+    "cat_question": "11071",
+    "cat_rejeu": "11071",
+    "compte": "A9",
+    "inventaire_id": "1792239407826009",
+    "issue": "abandon",
+    "raison": "reste"
+   },
+   {
+    "champ": "Dimensions",
+    "champ_affiche": "Hauteur",
+    "cat_question": "79654",
+    "cat_rejeu": "79654",
+    "compte": "A9",
+    "inventaire_id": "1792239407826006",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Dimensions",
+    "champ_affiche": "Largeur",
+    "cat_question": "79654",
+    "cat_rejeu": "79654",
+    "compte": "A9",
+    "inventaire_id": "1792239407826005",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Dimensions",
+    "champ_affiche": "Largeur",
+    "cat_question": "79654",
+    "cat_rejeu": "79654",
+    "compte": "A9",
+    "inventaire_id": "1792239407826000",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Nom du jeu vidéo",
+    "champ_affiche": "Nom du jeu vidéo",
+    "cat_question": "139973",
+    "cat_rejeu": "139973",
+    "compte": "A2",
+    "inventaire_id": "1792318034264",
+    "issue": "personne",
+    "raison": "reste"
+   }
+  ],
+  "apres_central": [
+   {
+    "champ": "Taille",
+    "champ_affiche": "Taille",
+    "cat_question": "260966",
+    "cat_rejeu": "260966",
+    "compte": "A1",
+    "inventaire_id": "1791726594359",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Modèle",
+    "champ_affiche": "Modèle",
+    "cat_question": "9355",
+    "cat_rejeu": "9355",
+    "compte": "A3",
+    "inventaire_id": "1791448336413",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Capacité de stockage",
+    "champ_affiche": "Capacité de stockage",
+    "cat_question": "9355",
+    "cat_rejeu": "9355",
+    "compte": "A3",
+    "inventaire_id": "1791448336413",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Taille",
+    "champ_affiche": "Taille",
+    "cat_question": "Mode",
+    "cat_rejeu": null,
+    "compte": "A4",
+    "inventaire_id": "1791972362114",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Style",
+    "champ_affiche": "Style",
+    "cat_question": "95672",
+    "cat_rejeu": "95672",
+    "compte": "A5",
+    "inventaire_id": "1791919593410023",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Matière",
+    "champ_affiche": "Matière",
+    "cat_question": "Mode",
+    "cat_rejeu": "63862",
+    "compte": "A6",
+    "inventaire_id": "1792064440336018",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Longueur de la robe",
+    "champ_affiche": "Longueur de la robe",
+    "cat_question": "63861",
+    "cat_rejeu": "63861",
+    "compte": "A6",
+    "inventaire_id": "1792064440336017",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Style",
+    "champ_affiche": "Style",
+    "cat_question": "63861",
+    "cat_rejeu": "63861",
+    "compte": "A6",
+    "inventaire_id": "1792064440336017",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Style",
+    "champ_affiche": "Style",
+    "cat_question": "11555",
+    "cat_rejeu": "11555",
+    "compte": "A6",
+    "inventaire_id": "1792064440336019",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Matière",
+    "champ_affiche": "Matière",
+    "cat_question": "Mode",
+    "cat_rejeu": "63862",
+    "compte": "A6",
+    "inventaire_id": "1792064440336011",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Matière",
+    "champ_affiche": "Matière",
+    "cat_question": "Autre",
+    "cat_rejeu": "155201",
+    "compte": "A6",
+    "inventaire_id": "1792064439929012",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Matière",
+    "champ_affiche": "Matière",
+    "cat_question": "Autre",
+    "cat_rejeu": null,
+    "compte": "A6",
+    "inventaire_id": "1792064439929011",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Style",
+    "champ_affiche": "Style",
+    "cat_question": "63863",
+    "cat_rejeu": "63863",
+    "compte": "A6",
+    "inventaire_id": "1792064439929009",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Capacité de stockage",
+    "champ_affiche": "Capacité de stockage",
+    "cat_question": "9355",
+    "cat_rejeu": "9355",
+    "compte": "A8",
+    "inventaire_id": "1792149145477018",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Dimensions",
+    "champ_affiche": "Taille de matelas compatible",
+    "cat_question": "175758",
+    "cat_rejeu": "79654",
+    "compte": "A9",
+    "inventaire_id": "1792240548919",
+    "issue": "abandon",
+    "raison": "L3c : l'icône de l'IA (🖼️) exige des dimensions — une question « Dimensions »"
+   },
+   {
+    "champ": "Dimensions",
+    "champ_affiche": "Longueur",
+    "cat_question": "79654",
+    "cat_rejeu": "79654",
+    "compte": "A9",
+    "inventaire_id": "1792240548915",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Dimensions",
+    "champ_affiche": "Matière",
+    "cat_question": "Maison",
+    "cat_rejeu": "79654",
+    "compte": "A9",
+    "inventaire_id": "1792240548906",
+    "issue": "abandon",
+    "raison": "L3c : l'icône de l'IA (🖼️) exige des dimensions — une question « Dimensions »"
+   },
+   {
+    "champ": "Dimensions",
+    "champ_affiche": "Longueur",
+    "cat_question": "79654",
+    "cat_rejeu": "79654",
+    "compte": "A9",
+    "inventaire_id": "1792240548911",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Dimensions",
+    "champ_affiche": "Type de cuisinière compatible",
+    "cat_question": "98846",
+    "cat_rejeu": "79654",
+    "compte": "A9",
+    "inventaire_id": "1792240548875",
+    "issue": "abandon",
+    "raison": "L3c : l'icône de l'IA (🖼️) exige des dimensions — une question « Dimensions »"
+   },
+   {
+    "champ": "Dimensions",
+    "champ_affiche": "Largeur",
+    "cat_question": "79654",
+    "cat_rejeu": "79654",
+    "compte": "A9",
+    "inventaire_id": "1792240548883",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Dimensions",
+    "champ_affiche": "Longueur",
+    "cat_question": "79654",
+    "cat_rejeu": "79654",
+    "compte": "A9",
+    "inventaire_id": "1792239408365022",
+    "issue": "abandon",
+    "raison": "reste"
+   },
+   {
+    "champ": "Dimensions",
+    "champ_affiche": "Largeur",
+    "cat_question": "79654",
+    "cat_rejeu": "79654",
+    "compte": "A9",
+    "inventaire_id": "1792239408365021",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Dimensions",
+    "champ_affiche": "Hauteur",
+    "cat_question": "79654",
+    "cat_rejeu": "79654",
+    "compte": "A9",
+    "inventaire_id": "1792239408365015",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Dimensions",
+    "champ_affiche": "Longueur",
+    "cat_question": "79654",
+    "cat_rejeu": "79654",
+    "compte": "A9",
+    "inventaire_id": "1792239407826019",
+    "issue": "abandon",
+    "raison": "reste"
+   },
+   {
+    "champ": "Dimensions",
+    "champ_affiche": "Hauteur",
+    "cat_question": "79654",
+    "cat_rejeu": "79654",
+    "compte": "A9",
+    "inventaire_id": "1792239407826006",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Dimensions",
+    "champ_affiche": "Largeur",
+    "cat_question": "79654",
+    "cat_rejeu": "79654",
+    "compte": "A9",
+    "inventaire_id": "1792239407826005",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Dimensions",
+    "champ_affiche": "Largeur",
+    "cat_question": "79654",
+    "cat_rejeu": "79654",
+    "compte": "A9",
+    "inventaire_id": "1792239407826000",
+    "issue": "personne",
+    "raison": "reste"
+   }
+  ],
+  "apres_pessimiste": [
+   {
+    "champ": "Taille",
+    "champ_affiche": "Taille",
+    "cat_question": "260966",
+    "cat_rejeu": "260966",
+    "compte": "A1",
+    "inventaire_id": "1791726594359",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Modèle",
+    "champ_affiche": "Modèle",
+    "cat_question": "9355",
+    "cat_rejeu": "9355",
+    "compte": "A3",
+    "inventaire_id": "1791448336413",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Capacité de stockage",
+    "champ_affiche": "Capacité de stockage",
+    "cat_question": "9355",
+    "cat_rejeu": "9355",
+    "compte": "A3",
+    "inventaire_id": "1791448336413",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Taille",
+    "champ_affiche": "Taille",
+    "cat_question": "Mode",
+    "cat_rejeu": null,
+    "compte": "A4",
+    "inventaire_id": "1791972362114",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Style",
+    "champ_affiche": "Style",
+    "cat_question": "95672",
+    "cat_rejeu": "95672",
+    "compte": "A5",
+    "inventaire_id": "1791919593410023",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Matière",
+    "champ_affiche": "Matière",
+    "cat_question": "Mode",
+    "cat_rejeu": "63862",
+    "compte": "A6",
+    "inventaire_id": "1792064440336018",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Longueur de la robe",
+    "champ_affiche": "Longueur de la robe",
+    "cat_question": "63861",
+    "cat_rejeu": "63861",
+    "compte": "A6",
+    "inventaire_id": "1792064440336017",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Style",
+    "champ_affiche": "Style",
+    "cat_question": "63861",
+    "cat_rejeu": "63861",
+    "compte": "A6",
+    "inventaire_id": "1792064440336017",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Style",
+    "champ_affiche": "Style",
+    "cat_question": "11555",
+    "cat_rejeu": "11555",
+    "compte": "A6",
+    "inventaire_id": "1792064440336019",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Matière",
+    "champ_affiche": "Matière",
+    "cat_question": "Mode",
+    "cat_rejeu": "63862",
+    "compte": "A6",
+    "inventaire_id": "1792064440336011",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Matière",
+    "champ_affiche": "Matière",
+    "cat_question": "Autre",
+    "cat_rejeu": "155201",
+    "compte": "A6",
+    "inventaire_id": "1792064439929012",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Matière",
+    "champ_affiche": "Matière",
+    "cat_question": "Autre",
+    "cat_rejeu": null,
+    "compte": "A6",
+    "inventaire_id": "1792064439929011",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Style",
+    "champ_affiche": "Style",
+    "cat_question": "63863",
+    "cat_rejeu": "63863",
+    "compte": "A6",
+    "inventaire_id": "1792064439929009",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Capacité de stockage",
+    "champ_affiche": "Capacité de stockage",
+    "cat_question": "9355",
+    "cat_rejeu": "9355",
+    "compte": "A8",
+    "inventaire_id": "1792149145477018",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Dimensions",
+    "champ_affiche": "Taille de matelas compatible",
+    "cat_question": "175758",
+    "cat_rejeu": "79654",
+    "compte": "A9",
+    "inventaire_id": "1792240548919",
+    "issue": "abandon",
+    "raison": "L3c : l'icône de l'IA (🖼️) exige des dimensions — une question « Dimensions »"
+   },
+   {
+    "champ": "Dimensions",
+    "champ_affiche": "Longueur",
+    "cat_question": "79654",
+    "cat_rejeu": "79654",
+    "compte": "A9",
+    "inventaire_id": "1792240548915",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Dimensions",
+    "champ_affiche": "Matière",
+    "cat_question": "Maison",
+    "cat_rejeu": "79654",
+    "compte": "A9",
+    "inventaire_id": "1792240548906",
+    "issue": "abandon",
+    "raison": "L3c : l'icône de l'IA (🖼️) exige des dimensions — une question « Dimensions »"
+   },
+   {
+    "champ": "Dimensions",
+    "champ_affiche": "Longueur",
+    "cat_question": "79654",
+    "cat_rejeu": "79654",
+    "compte": "A9",
+    "inventaire_id": "1792240548911",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Dimensions",
+    "champ_affiche": "Type de cuisinière compatible",
+    "cat_question": "98846",
+    "cat_rejeu": "79654",
+    "compte": "A9",
+    "inventaire_id": "1792240548875",
+    "issue": "abandon",
+    "raison": "L3c : l'icône de l'IA (🖼️) exige des dimensions — une question « Dimensions »"
+   },
+   {
+    "champ": "Dimensions",
+    "champ_affiche": "Largeur",
+    "cat_question": "79654",
+    "cat_rejeu": "79654",
+    "compte": "A9",
+    "inventaire_id": "1792240548883",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Dimensions",
+    "champ_affiche": "Longueur",
+    "cat_question": "79654",
+    "cat_rejeu": "79654",
+    "compte": "A9",
+    "inventaire_id": "1792239408365022",
+    "issue": "abandon",
+    "raison": "reste"
+   },
+   {
+    "champ": "Dimensions",
+    "champ_affiche": "Largeur",
+    "cat_question": "79654",
+    "cat_rejeu": "79654",
+    "compte": "A9",
+    "inventaire_id": "1792239408365021",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Dimensions",
+    "champ_affiche": "Hauteur",
+    "cat_question": "79654",
+    "cat_rejeu": "79654",
+    "compte": "A9",
+    "inventaire_id": "1792239408365015",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Dimensions",
+    "champ_affiche": "Longueur",
+    "cat_question": "79654",
+    "cat_rejeu": "79654",
+    "compte": "A9",
+    "inventaire_id": "1792239407826019",
+    "issue": "abandon",
+    "raison": "reste"
+   },
+   {
+    "champ": "Dimensions",
+    "champ_affiche": "Hauteur",
+    "cat_question": "79654",
+    "cat_rejeu": "79654",
+    "compte": "A9",
+    "inventaire_id": "1792239407826006",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Dimensions",
+    "champ_affiche": "Largeur",
+    "cat_question": "79654",
+    "cat_rejeu": "79654",
+    "compte": "A9",
+    "inventaire_id": "1792239407826005",
+    "issue": "personne",
+    "raison": "reste"
+   },
+   {
+    "champ": "Dimensions",
+    "champ_affiche": "Largeur",
+    "cat_question": "79654",
+    "cat_rejeu": "79654",
+    "compte": "A9",
+    "inventaire_id": "1792239407826000",
+    "issue": "personne",
+    "raison": "reste"
+   }
+  ]
+ }
+}

@@ -1,0 +1,27 @@
+{
+ "banc": "règles sans IA — Longueur de la robe, Plateforme (eBay ÷ 5)",
+ "fait_le": "2026-10-18T15:37:54.724Z",
+ "verite": "valeur choisie par un humain et acceptée en ligne (A : annonces eBay France ; B : annonces publiées par FillSell)",
+ "bilan": {
+  "A eBay · Longueur de la robe": {
+   "juste": 10,
+   "faux": 1,
+   "rien": 29
+  },
+  "A eBay · Plateforme": {
+   "juste": 22,
+   "faux": 0,
+   "rien": 16
+  },
+  "B FillSell · Plateforme": {
+   "juste": 32,
+   "faux": 0,
+   "rien": 6
+  },
+  "B FillSell · Longueur de la robe": {
+   "juste": 2,
+   "faux": 0,
+   "rien": 11
+  }
+ }
+}

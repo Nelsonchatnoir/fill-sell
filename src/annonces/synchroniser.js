@@ -24,6 +24,7 @@
 // ⛔ Le repli n'est pas un relevé automatique : c'est la suite du clic
 //    (déclencheur `bouton_distant`, un geste pour releve_est_geste).
 import { etatSession } from '../utils/sessionsPlateformes.js';
+import { estBoutiqueAutreCompte } from './boutiqueAutreCompte.js';
 
 export const LABEL_PF = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', ebay: 'eBay', opla: 'Opla', depop: 'Depop' };
 
@@ -42,9 +43,15 @@ export function decisionDemarrage({ depuisClicMs, runVu = false, questionBoutiqu
   return 'repli_file';
 }
 
-/** Le relevé Vinted s'est arrêté sur une boutique pas encore suivie. */
+/**
+ * Le relevé Vinted s'est arrêté sur une boutique pas encore suivie.
+ * (18/10, Louis) Jamais sur une boutique déjà suivie par un AUTRE compte
+ * FillSell ([boutique_autre_compte]) : « c'est bien ma boutique » y serait
+ * refusé — ce n'est pas une question (annonces/boutiqueAutreCompte.js).
+ */
 export function runPoseQuestionBoutique(run) {
-  return run?.status === 'failed' && String(run?.erreur ?? '').includes('[boutique_a_confirmer]');
+  const e = String(run?.erreur ?? '');
+  return run?.status === 'failed' && e.includes('[boutique_a_confirmer]') && !estBoutiqueAutreCompte(e);
 }
 
 /**

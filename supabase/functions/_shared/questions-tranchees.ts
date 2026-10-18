@@ -22,10 +22,15 @@
 //      (valeur déjà sur le job, « Type d'article neuf » déjà répondu par le compte,
 //      poids répondu « pour le lot ») est posé ; « Type d'article neuf » né d'un état
 //      neuf DÉDUIT alors que l'état choisi ne l'est pas tombe. Une passe par job.
+//   7. (18/10, décision de Nico — job 5d993767) Vinted « Le titre contient trop de
+//      symboles d'affilée » : la question « Titre » est tranchée par le titre sans
+//      ses symboles en trop (mots et marque gardés, _shared/titre-symboles-vinted.js),
+//      rangé comme une réponse (titre_saisi) — la publication repart. Une passe par job.
 // deno-lint-ignore-file no-explicit-any
 import { estQuestionEtat, etatDepuisSources, etatsDuJob } from "./etat-correspondance.js";
 import { reponseMarqueDepop, champsApresMarqueDepop, QUESTION_MARQUE_DEPOP } from "./marque-depop.js";
 import { archiverErreur } from "./erreurs-archivees.js";
+import { titreSymbolesATrancher } from "./titre-symboles-vinted.js";
 
 const TICKS = ["needs_user_tick_le", "needs_user_actif_ms", "needs_user_vu_le", "needs_user_vu_erreur"];
 const NOMS: Record<string, string> = { vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", ebay: "eBay", opla: "Opla", depop: "Depop" };
@@ -39,7 +44,8 @@ export async function trancherQuestions(supabase: any): Promise<Record<string, n
   const n = { boutique: 0, etat: 0, vendu: 0, orphelin: 0 };
   const maintenant = new Date().toISOString();
   const { data: jobs, error } = await supabase.from("cross_post_jobs")
-    .select("id, user_id, platform, action, status, inventaire_id, created_at, error, platform_fields")
+    // (18/10) `title` : la règle 7 (titre Vinted, symboles en trop) part du titre du job.
+    .select("id, user_id, platform, action, status, inventaire_id, created_at, error, title, platform_fields")
     .eq("status", "needs_user")
     .in("platform_fields->>needs_user_source", ["boutique_a_choisir", "champ_a_choisir", "article_vendu"])
     .order("created_at", { ascending: true })
@@ -279,6 +285,21 @@ export async function trancherQuestions(supabase: any): Promise<Record<string, n
       const { data } = await supabase.from("cross_post_jobs").update(maj).eq("id", j.id).eq("status", "needs_user").select("id");
       if (data?.length) (n as Record<string, number>).champs_lbc = ((n as Record<string, number>).champs_lbc ?? 0) + 1;
     }
+  }
+  // ── 7. (18/10, décision de Nico) Vinted « trop de symboles » : FillSell corrige seul ──
+  // Job 5d993767 : needs_user depuis le 15/10 sur « Le titre contient trop de
+  // symboles d'affilée ». Le titre strict (symboles en trop retirés, mots et
+  // marque gardés, emoji retirés comme l'extension le fait déjà) est rangé en
+  // titre_saisi — titre_refuse GARDÉ : get-pending-jobs l'écrit sur le job au
+  // service, comme une réponse de la personne. Jamais quand ce titre ne dit rien
+  // de plus que ce que Vinted a reçu ; une seule passe (titre_symboles_assagi) :
+  // un nouveau refus repose la question. Compare-and-swap sur needs_user.
+  for (const j of liste) {
+    const r = titreSymbolesATrancher(j, maintenant);
+    if (!r) continue;
+    const { data } = await supabase.from("cross_post_jobs").update({ status: "pending", error: null, platform_fields: r.platform_fields })
+      .eq("id", j.id).eq("status", "needs_user").select("id");
+    if (data?.length) (n as Record<string, number>).titre_symboles = ((n as Record<string, number>).titre_symboles ?? 0) + 1;
   }
   return n;
 }

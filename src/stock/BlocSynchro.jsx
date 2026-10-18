@@ -331,6 +331,17 @@ export default function BlocSynchro({
           bouton: { libelle: T.ctaChoisirBoutique, icone: RefreshCw, onTap: () => { setFeuille(false); r.lancer('vinted'); }, desactive: occupeLancer },
         };
       }
+      // (18/10, Louis) Vinted arrêté sur une boutique déjà suivie par un AUTRE
+      // compte FillSell : ni question, ni « Réessayer » (il serait refusé) —
+      // la phrase dit que rien n'a bougé et les deux seuls gestes.
+      if (t.p === 'vinted' && etatVinted?.fin?.boutiqueAutreCompte) {
+        return {
+          cle: 'vinted-autre-compte',
+          platform: 'vinted',
+          titre: T.titrePointBoutiqueAutreCompte,
+          texte: T.finBoutiqueAutreCompte(etatVinted.fin.boutiqueAutreCompte.login ?? null),
+        };
+      }
       const technique = t.p !== 'vinted' && arretTechniqueReleve(r.runs[t.p] ?? null);
       // (05/10) Plus jamais le texte brut du relevé à l'écran (codes HTTP,
       // pages, minutes) : la situation, dite en clair, et le geste.
@@ -338,7 +349,7 @@ export default function BlocSynchro({
         cle: t.p,
         platform: t.p,
         titre: technique ? T.titrePointTechnique(t.nom) : T.titrePointArret(t.nom),
-        texte: technique ? T.signalTechnique(t.nom) : [texteSituation(t.e.situation, t.nom, T), t.e.situation === 'pas_connecte' ? noteNav(t.nom) : null].filter(Boolean).join(' '),
+        texte: technique ? T.signalTechnique(t.nom) : [texteSituation(t.e.situation, t.nom, T, t.p !== 'vinted' ? (r.runs[t.p] ?? null) : null), t.e.situation === 'pas_connecte' ? noteNav(t.nom) : null].filter(Boolean).join(' '),
         bouton: reessayer(t),
       };
     }),

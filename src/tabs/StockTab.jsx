@@ -129,6 +129,10 @@ import { etatSession, PLATEFORMES_SESSION } from '../utils/sessionsPlateformes';
 // constante locale masque l'import dans tout le composant et le useMemo la lit
 // avant son initialisation (écran blanc du 18/10 20:18, ced6cfd, retour arrière).
 import { alertesCompte as alertesDeCompte, masquesARetirer, ligneAlertes, CLE_REGLAGE_ALERTES } from '../utils/alertesCompte';
+// (18/10) Boutique qui n'est plus surveillée (RPC surveillance_releves) et annonces
+// écartées parce qu'un autre compte FillSell les suit — noms sans homonyme local.
+import { ligneNonSurveillee, libelleReconnexion, ecarteesAutreCompte } from '../utils/alertesCompte';
+import { estBoutiqueAutreCompte, texteBoutiqueAutreCompte, loginDuRun, texteEcarteesAutreCompte, titreEcarteesAutreCompte } from '../annonces/boutiqueAutreCompte.js';
 import EcranVendeurPlateforme from '../stock/EcranVendeurPlateforme';
 import {
   actionPrincipale, libelleAction, ancienneteJours, estAncienne, pastilleCourte, dateCourte, nombreFr,
@@ -2911,7 +2915,10 @@ export function VintedDressingSync({ lang, user, isNative, extensionStatus, sour
   // relevé ne part pas sans réponse (le bouton le rappelle), et seuls ses
   // deux gestes relancent.
   const [rappelQuestionBoutique, setRappelQuestionBoutique] = useState(false);
-  const runPoseQuestionBoutique = (r) => r?.status === 'failed' && String(r?.erreur ?? '').includes('[boutique_a_confirmer]');
+  // (18/10, Louis) Une boutique déjà suivie par un AUTRE compte FillSell
+  // ([boutique_autre_compte]) ne pose jamais la question : « c'est bien ma
+  // boutique » y serait refusé (annonces/boutiqueAutreCompte.js).
+  const runPoseQuestionBoutique = (r) => r?.status === 'failed' && String(r?.erreur ?? '').includes('[boutique_a_confirmer]') && !estBoutiqueAutreCompte(r?.erreur);
   // ── LA QUESTION S'OUVRE AU MOMENT DU REFUS (06/10, nerema75 : 75 appuis) ──
   // Cette ligne est montée CACHÉE depuis le 20/09 (9acb19d) : la question
   // ci-dessus n'a plus jamais été vue, et depuis le 27/09 (e4c6454) chaque
@@ -3720,6 +3727,14 @@ export function VintedDressingSync({ lang, user, isNative, extensionStatus, sour
       // suit le marqueur et reste entier — c'est lui qu'on rend, jamais la
       // plomberie du compteur.
       const brut = String(run.erreur ?? '').replace(REPRISE_AUTO_RE, '').trim();
+      // ── (18/10, Louis) UNE BOUTIQUE = UN COMPTE : la boutique ouverte dans
+      // Chrome est déjà suivie par un AUTRE compte FillSell. Pas une question
+      // (« c'est bien ma boutique » serait refusé) : la phrase dit que rien n'a
+      // bougé et les deux seuls gestes. Testé AVANT [boutique_a_confirmer],
+      // que le serveur garde devant pour les vieilles extensions.
+      if (estBoutiqueAutreCompte(brut)) {
+        return { ton: 'orange', decision: null, texte: texteBoutiqueAutreCompte(loginDuRun(run), lang) };
+      }
       // ── Boutique à confirmer (multi-boutiques, 2026-09-03) : pas un échec,
       // une QUESTION — l'encart porte les deux réponses (boutons plus bas).
       if (brut.includes('[boutique_a_confirmer]')) {
@@ -3862,9 +3877,17 @@ export function VintedDressingSync({ lang, user, isNative, extensionStatus, sour
       r = await confirmerBoutiqueVinted(user.id, {
         vintedUserId: boutique.userId,
         login: boutique.login ?? null,
+        lang,
       });
     } catch (e) { r = { success: false, error: String(e?.message ?? e) }; }
     setConfirmBusy(false);
+    // (18/10, Louis) Refus du serveur : la boutique est déjà suivie par un
+    // AUTRE compte FillSell. Pas « réessaie » : la phrase dit les deux gestes.
+    if (!r?.success && r?.error === 'boutique_autre_compte') {
+      logConfirmationBoutique('erreur', boutique, { erreur: 'boutique_autre_compte' });
+      setMessage({ ton: 'orange', texte: r.texte });
+      return { ok: false, erreur: 'boutique_autre_compte', texte: r.texte };
+    }
     if (!r?.success) {
       logConfirmationBoutique('erreur', boutique, { erreur: String(r?.error ?? '').slice(0, 120) });
       setMessage({ ton: 'rouge', texte: fr
@@ -3999,7 +4022,10 @@ export function VintedDressingSync({ lang, user, isNative, extensionStatus, sour
   const finVinted = (enCours || envoi || enAttenteDistante || attenteOccupee || !run
     || run.status === 'done' || run.status === 'queued' || run.status === 'running')
     ? null
-    : { status: run.status, situation: situationFinReleve(run), items_vus: run.items_vus ?? null, total_entries: run.total_entries ?? null };
+    : { status: run.status, situation: situationFinReleve(run), items_vus: run.items_vus ?? null, total_entries: run.total_entries ?? null,
+      // (18/10, Louis) Boutique déjà suivie par un autre compte FillSell : le
+      // bloc dit SA phrase (pas « connecte-toi au bon compte »), sans bouton.
+      boutiqueAutreCompte: estBoutiqueAutreCompte(run.erreur) ? { login: loginDuRun(run) } : null };
   const etatVintedRemonte = useMemo(() => JSON.stringify({
     enCours: !!enCours || !!envoi || !!enAttenteDistante || !!attenteOccupee,
     // En file, rien ne tourne encore : l'écran dit « en attente de ton
@@ -6570,13 +6596,37 @@ const StockTab = memo(function StockTab({
   // moins de 72 h, lue dans les jobs déjà en mémoire, prouve la session).
   const [sessionsCompte, setSessionsCompte] = useState(null);
   const [reglageAlertes, setReglageAlertes] = useState(null);
+  // (18/10) La surveillance des relevés, PROUVÉE par les runs (RPC
+  // surveillance_releves, migration 20261018190000 — le compte de la session,
+  // jamais un autre) : boutique plus surveillée depuis > 24 h, annonces écartées
+  // « autre compte ». Lue dans la MÊME relecture bornée (10 min, onglet visible) ;
+  // une RPC absente (migration pas encore appliquée) n'est plus redemandée.
+  const [surveillanceReleves, setSurveillanceReleves] = useState(null);
   useEffect(() => {
     if (!user?.id) return undefined;
+    let rpcAbsente = false;
+    // Rend les lignes, ou `undefined` (rien de neuf : on garde ce qu'on a).
+    const lireSurveillance = async () => {
+      if (rpcAbsente) return undefined;
+      try {
+        const { data, error } = await supabase.rpc('surveillance_releves');
+        if (error) {
+          if (error.code === 'PGRST202' || error.code === '42883') rpcAbsente = true;
+          return undefined;
+        }
+        return Array.isArray(data) ? data : null;
+      } catch { return undefined; /* relu au prochain passage */ }
+    };
     const lire = async () => {
-      const { data, error } = await supabase.from('profiles').select('extension_sessions, platform_settings').eq('id', user.id).maybeSingle();
+      const [{ data, error }, surveillance] = await Promise.all([
+        supabase.from('profiles').select('extension_sessions, platform_settings').eq('id', user.id).maybeSingle(),
+        lireSurveillance(),
+      ]);
       if (error) return false;
       setSessionsCompte(data?.extension_sessions ?? null);
       setReglageAlertes(data?.platform_settings?.[CLE_REGLAGE_ALERTES] ?? null);
+      // Après le réglage : « plus aucune alerte » (desactivees) vaut dès la 1re lecture.
+      if (surveillance !== undefined) setSurveillanceReleves(surveillance);
       return true;
     };
     const relecture = demarrerRelecture(lire, { intervalleMs: 10 * 60_000 });
@@ -6594,10 +6644,15 @@ const StockTab = memo(function StockTab({
     for (const pf of PLATEFORMES_SESSION) out[pf] = etatSession(sessionsCompte, pf, publicationsOk[pf] ?? null);
     return out;
   }, [sessionsCompte, jobsByInventaire]);
-  const alertesDuCompte = useMemo(
-    () => alertesDeCompte({ etats: etatsCompte, jobs: Object.values(jobsByInventaire).flat(), reglage: reglageAlertes }),
-    [etatsCompte, jobsByInventaire, reglageAlertes],
+  const alertesToutesDuCompte = useMemo(
+    () => alertesDeCompte({ etats: etatsCompte, jobs: Object.values(jobsByInventaire).flat(), reglage: reglageAlertes, surveillance: surveillanceReleves }),
+    [etatsCompte, jobsByInventaire, reglageAlertes, surveillanceReleves],
   );
+  // (18/10) Une boutique qui n'est plus surveillée a SA ligne en tête de
+  // « À régler » (le geste dedans) ; le reste garde la ligne regroupée.
+  const nonSurveillees = useMemo(() => alertesToutesDuCompte.filter((a) => a.kind === 'non_surveillee'), [alertesToutesDuCompte]);
+  const alertesDuCompte = useMemo(() => alertesToutesDuCompte.filter((a) => a.kind !== 'non_surveillee'), [alertesToutesDuCompte]);
+  const ecarteesDuCompte = useMemo(() => ecarteesAutreCompte(surveillanceReleves), [surveillanceReleves]);
   // Le masque d'une plateforme tombe de lui-même quand la session revient.
   useEffect(() => {
     const revenues = masquesARetirer(reglageAlertes, etatsCompte);
@@ -8785,12 +8840,30 @@ const StockTab = memo(function StockTab({
   const nbPlusEnLigne = plusEnLigne?.n ?? 0;
   const nbAlertesCompte = alertesDuCompte.length ? 1 : 0; // (18/10) session perdue / compte restreint : une ligne
   const nbARegler = nbRetraitsBloques + nbIdentiteLbc + nbAttenteAction + nbForfaitLbc + nbVendeurDepop + questionsDejaVendu.length + nbAVerifier + nbSansPrix + brouillons.length + nbPlusEnLigne + nbAlertesCompte;
+  // (18/10) Une ligne PAR boutique qui n'est plus surveillée, comptée en plus
+  // (le compte ci-dessus et l'ordre des lignes d'avant ne bougent pas).
+  const nbNonSurveillees = nonSurveillees.length;
+  const nbAReglerTout = nbNonSurveillees + nbARegler;
   const ligneRetraits = retraitsAutres.total
     ? ligneAReglerRetraits(retraitsAutres, lang)
     : { titre: lang === 'fr' ? (nbRetraitsAutres > 1 ? 'Annonces encore en ligne à retirer' : 'Annonce encore en ligne à retirer') : (nbRetraitsAutres > 1 ? 'Listings still live to remove' : 'Listing still live to remove'),
       detail: lang === 'fr' ? 'Un article vendu dont la fiche a été supprimée : retire son annonce pour ne pas le vendre deux fois.' : 'A sold item whose card was deleted: remove its listing so it isn’t sold twice.' };
   const ouvrirModePrixAchat = () => { setGesteOuvert(null); setModePrixAchat(true); setModeBrouillons(false); setModeRepublish(false); setModeLot(false); setPaSel(new Set()); setPaOpenId(null); setPaErr(null); sauterAuxArticles(); };
   const ouvrirModeBrouillons = () => { setGesteOuvert(null); setModeBrouillons(true); setModePrixAchat(false); setModeRepublish(false); setModeLot(false); setShowAllStock(false); sauterAuxArticles(); };
+  // (18/10) TOUT EN TÊTE de « À régler » (avant les articles vendus encore en
+  // ligne) : une boutique qui n'est plus surveillée depuis plus de 24 h (session
+  // fermée, PROUVÉ par les relevés — RPC surveillance_releves). Une vente là-bas
+  // ne retirerait pas les autres annonces : rouge, une ligne par plateforme, et
+  // UN seul geste dedans — se reconnecter (le même bouton que partout : lien sur
+  // le web, demande à l'ordinateur sur mobile).
+  const lignesNonSurveillees = nonSurveillees.map((a) => ({
+    cle: `non_surveillee:${a.platform}`, groupe: 'non_surveillee', n: 1, ton: 'echec',
+    ...ligneNonSurveillee(a, lang),
+    action: (
+      <BoutonMeConnecter userId={user?.id} platform={a.platform} motif={a.motif} lang={lang}
+        variante="bouton" libelleImpose={libelleReconnexion(a, lang)} />
+    ),
+  }));
   const lignesARegler = [
     // En tête : le seul point où un acheteur peut payer un article déjà parti.
     // (12/10 soir, Nico) Un article vendu encore en ligne = UNE ligne : son
@@ -8875,11 +8948,16 @@ const StockTab = memo(function StockTab({
   // des annonces à remonter commence par là — son geste gratuit le plus visible.
   const ordreAFaire = offertGratuit.repub > 0 && (gesteRemonter?.n ?? 0) > 0 ? ['remonter', 'publier', 'aRegler'] : null;
   // (05/10) Un retrait bloqué passe avant tout : la tuile le dit, en peu de mots.
-  const gesteARegler = { n: nbARegler, onOuvrir: () => setGesteOuvert('a_regler'),
+  const gesteARegler = { n: nbAReglerTout, onOuvrir: () => setGesteOuvert('a_regler'),
     ...(nbRetraitsBloques > 0 ? {
       court: lang !== 'en' ? 'annonces à retirer' : 'listings to remove',
       long: () => (lang !== 'en' ? 'dont des annonces à retirer' : 'including listings to remove'),
       aria: (n) => (lang !== 'en' ? `À régler : ${n}, dont ${nbRetraitsBloques} annonce${nbRetraitsBloques > 1 ? 's' : ''} encore en ligne à retirer` : `To fix: ${n}, including ${nbRetraitsBloques} live listing${nbRetraitsBloques > 1 ? 's' : ''} to remove`),
+    } : nbNonSurveillees > 0 ? {
+      // (18/10) Sinon, une boutique qui n'est plus surveillée : la tuile le dit aussi.
+      court: lang !== 'en' ? (nbNonSurveillees > 1 ? 'boutiques non surveillées' : 'boutique non surveillée') : (nbNonSurveillees > 1 ? 'shops not watched' : 'shop not watched'),
+      long: () => (lang !== 'en' ? (nbNonSurveillees > 1 ? 'dont des boutiques qui ne sont plus surveillées' : 'dont une boutique qui n’est plus surveillée') : (nbNonSurveillees > 1 ? 'including shops no longer watched' : 'including a shop no longer watched')),
+      aria: (n) => (lang !== 'en' ? `À régler : ${n}, dont ${nbNonSurveillees} boutique${nbNonSurveillees > 1 ? 's' : ''} qui ne ${nbNonSurveillees > 1 ? 'sont' : 'est'} plus surveillée${nbNonSurveillees > 1 ? 's' : ''}` : `To fix: ${n}, including ${nbNonSurveillees} shop${nbNonSurveillees > 1 ? 's' : ''} no longer watched`),
     } : {}) };
   // « Fermer » l'ajout : jamais pendant une analyse en cours (le pli ne masque
   // jamais du contenu vivant — règle du 09/08) ; un résultat ou une erreur se
@@ -8903,6 +8981,15 @@ const StockTab = memo(function StockTab({
     if (extensionAutreCompte) {
       const t = texteExtensionAutreCompte(lang, user?.email ?? null);
       out.push({ cle: 'ext-autre-compte', icone: KeyRound, ton: 'regler', titre: t.titre, texte: t.texte });
+    }
+    // (18/10, Louis) Une boutique = un compte : des annonces du dernier relevé
+    // (Leboncoin, Beebs, Depop, eBay) sont déjà suivies par un AUTRE compte
+    // FillSell et ne sont pas importées ici (sync_import_ecartes, lu par la RPC
+    // surveillance_releves). Une information, dite là où le relevé se lit.
+    for (const e of ecarteesDuCompte) {
+      out.push({ cle: `ecartees-autre-compte-${e.platform}`, icone: Store, ton: 'info', compte: false,
+        titre: titreEcarteesAutreCompte(PLATFORM_LABELS[e.platform] || e.platform, e.n, lang),
+        texte: texteEcarteesAutreCompte(e.n, lang) });
     }
     if (isMobile && !stockVide) {
       if (extFraicheur.etat === 'session_expiree') {
@@ -11593,7 +11680,7 @@ const StockTab = memo(function StockTab({
         );
       })()}
       {gesteOuvert==='a_regler'&&(
-        <EcranARegler lang={lang} lignes={lignesARegler} onFermer={()=>setGesteOuvert(null)}
+        <EcranARegler lang={lang} lignes={[...lignesNonSurveillees, ...lignesARegler]} onFermer={()=>setGesteOuvert(null)}
           pied={plusEnLigne?.nMasquees>0?(
             // (12/10 soir) Les alertes « plus en ligne » masquées (« Masquer »,
             // 17/09) restent hors du compte, comme avant : on dit qu'elles
@@ -11631,7 +11718,7 @@ const StockTab = memo(function StockTab({
           onRelance={()=>rafraichirApresSync()} onFermer={()=>setGesteOuvert('a_regler')}/>
       )}
       {gesteOuvert==='compte_plateforme'&&(
-        <EcranAlertesCompte lang={lang} alertes={alertesDuCompte}
+        <EcranAlertesCompte lang={lang} alertes={alertesDuCompte} userId={user?.id}
           onMasque={(r)=>setReglageAlertes(r)} onFermer={()=>setGesteOuvert('a_regler')}/>
       )}
       {gesteOuvert==='lbc_forfait'&&(

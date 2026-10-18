@@ -50,6 +50,8 @@ import { BUILD_COLIS_DANS_ENVOI, refusColisVinted, colisEnvoyeEtRefuse, messageC
 // partagée par ce module, handler-watch et l'écran.
 import { CANAL_RE } from "./etat-job.js";
 export { CANAL_RE };
+// (18/10) Titre Vinted « trop de symboles d'affilée » : la reprise assagie (bloc 0 ter).
+import { repriseTitreSymbolesVinted } from "./titre-symboles-vinted.js";
 
 const NOM = {
   vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla", depop: "Depop",
@@ -446,7 +448,28 @@ function classerEchecSansRegleRetrait(arg) {
   // ── 0 ter. (15/10) VINTED REFUSE UN CHAMP NOMMÉ : la personne réécrit ──
   if (platform === "vinted" && (action === "publish" || action === "republish")) {
     const refus = refusChampVinted(t);
+    // (18/10, décision de Nico — job 5d993767) « Le titre contient trop de
+    // symboles d'affilée » : FillSell corrige SEUL, sans question. Les symboles
+    // en trop partent (titre strict, _shared/titre-symboles-vinted.js), les
+    // mots et la marque restent ; le titre est rangé comme une réponse de la
+    // personne (titre_saisi + titre_refuse : get-pending-jobs l'écrit sur le job
+    // au service suivant). UNE fois par job (titre_symboles_assagi), et
+    // seulement si ce titre dit autre chose que ce que Vinted a reçu ; sinon,
+    // ou au deuxième refus, la question « Titre » ci-dessous, comme avant.
     if (refus && refus.champ === "title") {
+      const assagi = arg.titreDejaAssagi ? null
+        : repriseTitreSymbolesVinted({ titre: arg.titre, pf, motifRefus: refus.texte });
+      if (assagi) {
+        const Acte = acte(action).replace(/^la /, "La ");
+        return {
+          verdict: "reprise", statut: "pending", motif: "vinted_titre_assagi", dansMinutes: 1,
+          pf: assagi.pf,
+          message:
+            `Vinted refusait le titre de cette annonce (« ${refus.texte} ») : FillSell a retiré les symboles en trop, ` +
+            `sans toucher aux mots ni à la marque — « ${assagi.apres} ». ${rienTouche(action, pf)} ` +
+            `${Acte} repart toute seule avec ce titre, rien à faire de ton côté.`,
+        };
+      }
       return {
         verdict: "a_toi", statut: "needs_user", motif: "vinted_titre_refuse", source: "champ_a_choisir",
         champ: { field_key: "title", field_label: "Titre", input_type: "text", target: { root: null, key: "titre_saisi" }, platform: "vinted" },

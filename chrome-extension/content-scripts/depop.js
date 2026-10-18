@@ -181,8 +181,11 @@ const depopUrlPublique = (slug) => `${DEPOP_SITE}/products/${encodeURIComponent(
 // Le slug vit dans l'URL (/products/<slug>/, /fr/products/<slug>/manage/) ; un
 // slug Depop porte toujours un tiret (« prefixe-mots-suffixe ») — ce qui écarte
 // /products/create/ et /products/edit/.
+// (18/10, 0.6.128) Le préfixe est le pseudo du vendeur, qui peut porter un « _ »
+// (thard_733-jean-bonobo-…) : 71 liens Depop sur 306 en base n'étaient pas lus.
+// Mesuré : aucun « _ » après le premier tiret.
 function depopSlugDepuisUrl(url) {
-  const m = String(url ?? "").match(/\/products\/([A-Za-z0-9]+-[A-Za-z0-9-]*[A-Za-z0-9])(?:[/?#]|$)/);
+  const m = String(url ?? "").match(/\/products\/([A-Za-z0-9_]+-[A-Za-z0-9-]*[A-Za-z0-9])(?:[/?#]|$)/);
   return m ? m[1] : null;
 }
 
@@ -774,7 +777,8 @@ async function listerMesArticles() {
   return { success: true, articles, complet: enVente.complet, boutique: { id: session.id, login: session.username }, ...(enVente.erreur ? { erreur: enVente.erreur } : {}) };
 }
 async function capturerArticle(slug) {
-  if (!/^[A-Za-z0-9]+-[A-Za-z0-9-]*[A-Za-z0-9]$/.test(String(slug ?? ""))) return { success: false, error: "identifiant Depop inattendu" };
+  // (18/10, 0.6.128) « _ » admis dans le pseudo (voir depopSlugDepuisUrl).
+  if (!/^[A-Za-z0-9_]+-[A-Za-z0-9-]*[A-Za-z0-9]$/.test(String(slug ?? ""))) return { success: false, error: "identifiant Depop inattendu" };
   const r = await depopJson(DEPOP_ENDPOINTS.produitParSlug(slug), { authentifie: false });
   if (!r.ok || !r.corps) return { success: false, error: `fiche Depop illisible (HTTP ${r.statut || r.erreurReseau})` };
   const a = r.corps;

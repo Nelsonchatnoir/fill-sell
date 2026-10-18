@@ -261,3 +261,20 @@ trois relevés et deux reprises lancés tout seuls, aucun Vinted abouti, un faux
   (`alertes_compte.desactivees`, actif par défaut). Lecture bornée (10 min, onglet visible, `demarrerRelecture`), jamais un
   `setInterval` ; le verdict de session est celui de `utils/sessionsPlateformes.etatSession` (le même que le reste de
   l'app). Aucun mail, aucun push. Selftest `alertes-compte` (21).
+
+## ⛔ 18/10 soir — UNE BOUTIQUE = UN COMPTE FILLSELL ; COMPTES RELIÉS (Louis, décisions de Nico)
+- Registre serveur `boutiques_plateforme` (platform, compte_ref → user_id ; rempli avec les boutiques Vinted d'un seul
+  pin ; une boutique déjà chez plusieurs comptes n'est pas attribuée d'office). Une boutique d'un autre compte : jamais
+  ajoutée au pin, jamais confirmée, aucun article importé (`[boutique_a_confirmer][boutique_autre_compte]`), aucune vente
+  enregistrée (`enregistrer_ventes_relevees` → motif `boutique_autre_compte`, 0 mail). Leboncoin/Beebs/Depop/eBay : une
+  annonce déjà suivie en ligne par un autre compte n'est pas importée (`sync_import_ecartes` motif `autre_compte:<pf>`) ;
+  un compte eBay relié à un seul compte FillSell (index unique).
+- **Comptes reliés** (`comptes_lies`, même personne, posé par décision de Nico) et **fiches jumelles**
+  (`fiches_liees_comptes`) : une fiche vendue rend sa jumelle vendue ; la vente prouvée de la jumelle vaut preuve
+  « Point A » pour armer les retraits de ses copies (`vente_prouvee_fiche_liee`) ; une vente annulée rend la jumelle
+  disponible et annule ses retraits en file. Entre comptes reliés : une commande déjà enregistrée sur l'autre compte ne
+  l'est jamais deux fois ; une vente Leboncoin/Depop/eBay dont l'annonce n'est suivie que par le compte relié lui
+  appartient ; une conversation ou une commande n'est copiée qu'une fois. Migration `20261018200000`, essai 21/21.
+- **Relevés morts** : une boutique non surveillée depuis plus de 24 h à cause d'une session fermée (preuve = le run, pas
+  la sonde) est la première ligne de « À régler » avec le seul geste « Se reconnecter » (RPC `surveillance_releves()`,
+  migration `20261018190000`, selftest `surveillance-releves`). La veille ne compte plus deux fois une annonce.

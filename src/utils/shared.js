@@ -1905,6 +1905,25 @@ export function detectObjectKeywordDetail(titre, description){
   return null;
 }
 
+// ── (18/10, eBay ÷ 5) UNE DÉCORATION MURALE NE PREND PAS L'ICÔNE DE SON MOTIF ──
+// « Décoration murale chambre », description « avec un lit, un miroir et un
+// lampadaire » : aucune règle ne nomme « décoration murale » au titre, la
+// passe 2 lisait « lit » dans la DESCRIPTION → 🛏️ → eBay « Lits, cadres,
+// sommiers » (175758) : « Taille de matelas compatible » demandée deux fois,
+// « Matériau » une fois. « Décoration murale cuisine » (« une cocotte, un
+// fouet ») → 🍳 → « Casseroles, marmites » : « Type de cuisinière compatible ».
+// Le mot de pièce du titre nomme la pièce, la description énumère ce que la
+// décoration REPRÉSENTE : son SUJET, pas l'objet — la même famille d'erreurs
+// que les 10 échecs mesurés de la passe 2 (19/09). Quand le TITRE nomme une
+// décoration murale, la passe 2 ne fixe donc pas l'icône (resolveArticleIconDetail,
+// voie 5) : l'icône de l'IA (🖼️ pour ces articles) ou le défaut de type décide.
+// ⛔ La passe 1 n'est jamais touchée : « Horloge murale », « Étagère murale »
+//    gardent l'icône que leur titre leur donne.
+const DECORATION_MURALE_TITRE = /\b(?:deco(?:ration)?s?|decors?|stickers?|autocollants?|triptyques?|tableaux?|panneaux?|plaques?\s+decoratives?)\s+mura(?:le|les|l|ux)\b/;
+export function titreNommeUneDecorationMurale(titre){
+  return DECORATION_MURALE_TITRE.test(SANS_ACCENTS(titre).toLowerCase());
+}
+
 export function detectObjectIcon(titre, description, type){
   // Mot-clé explicite d'abord (les 2 passes) — comportement historique intact.
   const kw = detectObjectIconKeyword(titre, description);

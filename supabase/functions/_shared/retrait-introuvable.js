@@ -44,9 +44,10 @@ export function releveComplet(r) {
 }
 
 /** Le numéro d'annonce d'un lien (même forme que _shared/annonce-lien.ts). */
+// (18/10) Depop : « _ » admis dans le pseudo du vendeur (thard_733-…, retrait 81188384).
 export function numeroDepuisLien(platform, url) {
   const u = String(url ?? "");
-  const re = { leboncoin: /\/(\d{6,})(?:[/?#]|$)/, beebs: /\/p\/(\d+)(?:[-/?#]|$)/, ebay: /\/itm\/(?:[^/?#]*\/)?(\d{9,})/, opla: /(art_[A-Za-z0-9_-]+)/, depop: /\/products\/([A-Za-z0-9]+-[A-Za-z0-9-]*[A-Za-z0-9])(?:[/?#]|$)/ }[platform];
+  const re = { leboncoin: /\/(\d{6,})(?:[/?#]|$)/, beebs: /\/p\/(\d+)(?:[-/?#]|$)/, ebay: /\/itm\/(?:[^/?#]*\/)?(\d{9,})/, opla: /(art_[A-Za-z0-9_-]+)/, depop: /\/products\/([A-Za-z0-9_]+-[A-Za-z0-9-]*[A-Za-z0-9])(?:[/?#]|$)/ }[platform];
   const m = re ? u.match(re) : null;
   return m ? m[1] : null;
 }

@@ -38,7 +38,10 @@ const CANONIQUE: Record<string, (id: string) => string | null> = {
   // été valide.
   opla: (id) => (/^art_[A-Za-z0-9_-]+$/.test(id) ? `https://www.opla.co/product/${id}` : null),
   // Depop (09/10, relevé réel) : /products/<slug>/ — le slug EST l'identifiant.
-  depop: (id) => (/^[A-Za-z0-9]+-[A-Za-z0-9-]*[A-Za-z0-9]$/.test(id) ? `https://www.depop.com/products/${id}/` : null),
+  // (18/10, retrait 81188384) Le préfixe est le pseudo du vendeur, qui peut
+  // porter un « _ » (thard_733-jean-bonobo-…) : 71 liens Depop sur 328 jobs
+  // n'étaient pas lus. Aucun « _ » après le premier tiret (relevé du 18/10).
+  depop: (id) => (/^[A-Za-z0-9_]+-[A-Za-z0-9-]*[A-Za-z0-9]$/.test(id) ? `https://www.depop.com/products/${id}/` : null),
 };
 
 /** L'identifiant lu DANS une URL — mêmes motifs que update-job-status. */
@@ -48,7 +51,8 @@ const MOTIFS: Record<string, RegExp> = {
   ebay: /\/itm\/[^?#]*?(\d{9,})/,
   beebs: /\/p\/(\d+)/,
   opla: /\/(?:product|article)\/(art_[^/?#]+)/,
-  depop: /\/products\/([A-Za-z0-9]+-[A-Za-z0-9-]*[A-Za-z0-9])(?:[/?#]|$)/,
+  // (18/10) « _ » admis dans le pseudo du vendeur (cf. CANONIQUE ci-dessus).
+  depop: /\/products\/([A-Za-z0-9_]+-[A-Za-z0-9-]*[A-Za-z0-9])(?:[/?#]|$)/,
 };
 
 export function idDepuisLien(platform: string, url: unknown): string | null {

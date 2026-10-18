@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const LEBONCOIN_BUILD = "2026-10-18-pro-valider-et-payer (compte PRO hors forfait : le dépôt est préparé jusqu'à l'écran « Valider et payer », l'onglet est laissé à la personne qui paie elle-même — motif lbc_valider_et_payer, jamais un clic sur le paiement ; particulier inchangé) · 2026-10-16-pro-et-photos-gratuites (catégorie : le panneau des racines est reconnu à ses racines — un compte PRO ne voit pas « Divers » ; photos : le nombre gratuit est lu sur le formulaire au dépôt, seules les premières partent, jamais une photo payante) · 2026-10-08-ping (0.6.103 : FILLSELL_PING, réponse synchrone « je suis là ») · 2026-10-05-transporteurs-exacts (transporteurs Leboncoin : fenêtre attendue au calme après le poids, chaque case relue à neuf et vérifiée, ensemble exact avant « Valider », relu après validation et juste avant le dépôt ; un écart qui persiste = rien ne part, needsUser nommé) · 2026-10-02-mur-connexion-depot (0.6.84 : mur de connexion de la page de dépôt reconnu — jeton luat absent, phrase « Connectez-vous ou créez un compte », boutons « Me connecter » lus sans layout ; compte connecté signalé au background) · 2026-09-24-retrait-pro-tiroir-gerer (0.6.66 : annonce PRO en fenetre etroite — panneau de gestion absent sous 971 px, le controle Supprimer est cherche dans le tiroir « Gerer ») · 2026-09-14-retrait-challenge-et-releve (0.6.36, chemin de SUPPRESSION seul : le détecteur d'interstitiel anti-robot est hissé au module et interrogé AVANT de conclure « contrôle Supprimer introuvable » — sur les deux chemins, page d'annonce ET « Mes annonces » ; le relevé des actions réellement rendues part en `diagnostic` (donc en platform_fields.last_diagnostic) au lieu de mourir dans `trace` ; « Mes annonces » dit en plus combien de cartes ont été rendues ; le mur de cookies est refusé par fsConsentRefuser, la détection de la 0.6.35, et non plus par dismissDidomi qui ne voyait rien) — précédent : 2026-09-14-consentement-vu-enfin (0.6.35 : le mur de cookies Leboncoin est DÉTECTÉ — la détection part du contrôle de refus « Continuer sans accepter » et non plus du conteneur #didomi-host, qui existe à 0×0 et n'a jamais rien rendu ; refus cliqué, disparition ATTENDUE, trois points de sortie qui ne disent plus « brouillon » ; aucune tentative consommée) — précédent : 2026-09-09-adsubmit-est-la-preuve (0.6.24 : plus aucun re-clic du Continuer final dès qu'un adsubmit est parti ; 2xx = dépôt accepté, id lu ; 403 details[] = texte exact de Leboncoin)";
+const LEBONCOIN_BUILD = "2026-10-18-pro-poids-du-colis (formulaire PRO : la sonde des critères attend 15 s, « Poids du colis » et le repli par libellé compris, et le dit quand rien n'est vu ; seconde passe jouée même sonde muette ; au verdict, une valeur connue du job posée si la liste la porte, jamais hors liste, un seul recliquage) · 2026-10-18-pro-valider-et-payer (compte PRO hors forfait : le dépôt est préparé jusqu'à l'écran « Valider et payer », l'onglet est laissé à la personne qui paie elle-même — motif lbc_valider_et_payer, jamais un clic sur le paiement ; particulier inchangé) · 2026-10-16-pro-et-photos-gratuites (catégorie : le panneau des racines est reconnu à ses racines — un compte PRO ne voit pas « Divers » ; photos : le nombre gratuit est lu sur le formulaire au dépôt, seules les premières partent, jamais une photo payante) · 2026-10-08-ping (0.6.103 : FILLSELL_PING, réponse synchrone « je suis là ») · 2026-10-05-transporteurs-exacts (transporteurs Leboncoin : fenêtre attendue au calme après le poids, chaque case relue à neuf et vérifiée, ensemble exact avant « Valider », relu après validation et juste avant le dépôt ; un écart qui persiste = rien ne part, needsUser nommé) · 2026-10-02-mur-connexion-depot (0.6.84 : mur de connexion de la page de dépôt reconnu — jeton luat absent, phrase « Connectez-vous ou créez un compte », boutons « Me connecter » lus sans layout ; compte connecté signalé au background) · 2026-09-24-retrait-pro-tiroir-gerer (0.6.66 : annonce PRO en fenetre etroite — panneau de gestion absent sous 971 px, le controle Supprimer est cherche dans le tiroir « Gerer ») · 2026-09-14-retrait-challenge-et-releve (0.6.36, chemin de SUPPRESSION seul : le détecteur d'interstitiel anti-robot est hissé au module et interrogé AVANT de conclure « contrôle Supprimer introuvable » — sur les deux chemins, page d'annonce ET « Mes annonces » ; le relevé des actions réellement rendues part en `diagnostic` (donc en platform_fields.last_diagnostic) au lieu de mourir dans `trace` ; « Mes annonces » dit en plus combien de cartes ont été rendues ; le mur de cookies est refusé par fsConsentRefuser, la détection de la 0.6.35, et non plus par dismissDidomi qui ne voyait rien) — précédent : 2026-09-14-consentement-vu-enfin (0.6.35 : le mur de cookies Leboncoin est DÉTECTÉ — la détection part du contrôle de refus « Continuer sans accepter » et non plus du conteneur #didomi-host, qui existe à 0×0 et n'a jamais rien rendu ; refus cliqué, disparition ATTENDUE, trois points de sortie qui ne disent plus « brouillon » ; aucune tentative consommée) — précédent : 2026-09-09-adsubmit-est-la-preuve (0.6.24 : plus aucun re-clic du Continuer final dès qu'un adsubmit est parti ; 2xx = dépôt accepté, id lu ; 403 details[] = texte exact de Leboncoin)";
 console.log(`[leboncoin.js] build ${LEBONCOIN_BUILD}`);
 
 // Content script Leboncoin — pilote le WIZARD de dépôt d'annonce.
@@ -2591,12 +2591,17 @@ async function fillListingForm(job) {
             }
           }
         }
+        // (18/10, 0.6.128) Les AUTRES clés bloquantes (« Poids du colis* » du
+        // formulaire PRO, job b1b9bb68) : la valeur du job (lbcAspects) est posée
+        // si — et seulement si — la liste relevée sur place la porte. Le même
+        // recliquage unique de « Continuer » que pour l'état (reposeEtatFaite).
+        if (!reposeEtatFaite) reposes += await reposerValeursConnuesLbc(bloqueurs, fields, warnings);
         if (reposes && !bloqueurs.length && !reposeEtatFaite) {
           const encore = findButtonByExactText("Continuer");
           if (encore) {
             reposeEtatFaite = true;
-            warnings.push("dépôt: Continuer re-cliqué une fois après la re-pose de l'état (plus aucun champ marqué invalide)");
-            console.log("[leboncoin] verdict : état re-posé, plus aucun bloqueur → Continuer re-cliqué (une fois)");
+            warnings.push("dépôt: Continuer re-cliqué une fois après la re-pose des valeurs connues (plus aucun champ marqué invalide)");
+            console.log("[leboncoin] verdict : valeurs connues re-posées, plus aucun bloqueur → Continuer re-cliqué (une fois)");
             realClick(encore);
             continue;
           }
@@ -2855,13 +2860,9 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
   // Sonde courte préalable (flux paginé) : la page photos dédiée n'a AUCUN
   // critère combobox — sans cette sonde, chaque fillCriterionSafe empilait son
   // timeout de 5 s pour rien (~25 s perdues par job Divers).
-  const hasCriteria = await waitFor(
-    () => document.querySelector('label[for="condition"], label[for$="_condition"], label[for$="_brand"], label[for$="_size"], label[for$="_univers"], label[for$="_universe"], label[for$="_material"], label[for$="_type"], label[for="clothing_st"], label[for="baby_age"]'),
-    4000
-  );
-  if (!hasCriteria) {
-    console.log("[leboncoin] Aucun critère combobox sur cette étape (flux paginé ou catégorie sans critères) — remplissages de critères sautés.");
-  }
+  // (18/10, 0.6.128) Formulaire PRO : 15 s, « Poids du colis » et le repli par
+  // libellé compris, avertissement si rien n'est vu (cf. sonderCriteresLbc).
+  const { hasCriteria, formulairePro } = await sonderCriteresLbc(job, warnings);
   // ── ÉTAT (réécrit 2026-09-17 soir, dossier MeMiniandMove) ─────────────────
   // Le critère s'appelle "condition" sur certaines catégories (relevé Montres
   // & Bijoux, et le formulaire PRO) mais "clothing_condition" sur le rayon
@@ -3066,7 +3067,10 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
       // dans la liste et que rien n'est pré-rempli, le repli Leboncoin
       // « Autre »/« Autres » est une réponse VALIDE (décision Nico 08/09).
       const repliProduit = /_product$|^decoration_type$/.test(forKey) ? ["Autre", "Autres"] : [];
-      await fillCriterionSafe(forKey, `label[for="${forKey}"]`, val, warnings, { skipIfPrefilled: true, composants: true, fallbackValues: repliProduit });
+      // (18/10, 0.6.128) Le libellé PRO en repli AUSSI ici : le contrôle vient
+      // d'être vu par son libellé (« Poids du colis ») — sans ce repli, le
+      // remplissage ne le retrouvait pas et rendait false sans un mot.
+      await fillCriterionSafe(forKey, `label[for="${forKey}"]`, val, warnings, { skipIfPrefilled: true, composants: true, fallbackValues: repliProduit, libelle: LBC_LIBELLES_PRO[forKey] ?? null });
     }
   }
 
@@ -3126,29 +3130,18 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
   // UNIQUE et bornée (6 s) pour tout le lot — le bloc pro se rend d'un coup.
   // Un contrôle toujours absent est alors NOMMÉ dans les warnings : plus
   // jamais un « champ non posé » silencieux.
-  if (hasCriteria) {
-    const tardifs = [];
-    if (!etatPose && etatCandidats.length && !VALEURS_NON_RECONNUES["état"]) {
-      tardifs.push({ nom: "état", selecteur: LBC_ETAT_LABEL_SELECTOR, valeur: etatCandidats,
-        options: { skipIfPrefilled: true, etatExact: true, libelle: LBC_ETAT_LIBELLE_RE } });
-    }
-    for (const [forKey, val] of clesAbsentesPremierePasse) {
-      tardifs.push({ nom: forKey, selecteur: `label[for="${forKey}"]`, valeur: val,
-        options: { skipIfPrefilled: true, composants: true, libelle: LBC_LIBELLES_PRO[forKey] ?? null } });
-    }
-    if (tardifs.length) {
-      const present = (t) => findCriterionInput(t.selecteur) ?? (t.options.libelle ? findCriterionInputByLabelText(t.options.libelle) : null);
-      await waitFor(() => tardifs.some((t) => present(t)), 6000);
-      for (const t of tardifs) {
-        const ok = await fillCriterionSafe(t.nom, t.selecteur, t.valeur, warnings, { ...t.options, attendreMs: 0 });
-        if (ok && t.nom === "état") etatPose = true;
-        if (!ok && !present(t)) {
-          const note = `${t.nom}: contrôle introuvable même en seconde passe (${t.selecteur}${t.options.libelle ? ` / libellé ${t.options.libelle}` : ""}) — valeur « ${Array.isArray(t.valeur) ? t.valeur[0] : t.valeur} » non posée`;
-          console.warn(`[leboncoin] ⚠️ ${note}`);
-          warnings.push(note);
-        }
-      }
-    }
+  // (18/10, 0.6.128) Aussi quand la sonde n'a RIEN vu sur un formulaire PRO
+  // (job b1b9bb68 : le poids du colis ne passait jamais) : sans sonde, toutes
+  // les entrées lbcAspects du job non servies par un bloc dédié y passent
+  // (entreesSecondePasseLbc) ; le corps est lbcSecondePasseCriteres.
+  if (hasCriteria || formulairePro) {
+    etatPose = await lbcSecondePasseCriteres({
+      etatPose, etatCandidats, warnings,
+      entrees: entreesSecondePasseLbc({
+        hasCriteria, clesAbsentes: clesAbsentesPremierePasse, lbcAspects: lbcAspectsJob,
+        servie: (k) => handledForKeys.test(k) && dedieAvaitValeur(k),
+      }),
+    });
   }
 
   // ── Énumération des critères AFFICHÉS (chantier 2026-07-16, 1.B) ───────────
@@ -3951,6 +3944,123 @@ function findCriterionInputByLabelText(re) {
     }
   }
   return null;
+}
+
+// ── LA SONDE DES CRITÈRES, FORMULAIRE PRO COMPRIS (18/10, 0.6.128) ──────────
+// Job b1b9bb68 (compte PRO) : la sonde attendait 4 s un label de critère
+// classique ; sur le formulaire PRO, État et « Poids du colis* » sont rendus
+// plus tard — rien vu, TOUT le remplissage des critères sautait (état, canal
+// générique lbcAspects, seconde passe), et le poids du colis, qui sur ce
+// formulaire (sans case livraison : poserLivraisonLbc en sort) ne passe QUE
+// par le canal générique, n'était jamais posé. Formulaire PRO
+// (platform_fields.compte_pro, ou [name="custom_ref"] que seul ce formulaire
+// porte, relu à chaque tour) : 15 s, label[for="estimated_parcel_weight"]
+// compris, et le repli par libellé (LBC_LIBELLES_PRO). Particulier : 4 s et le
+// sélecteur d'avant, plus « Poids du colis ». Rien vu → un avertissement.
+// Rend { hasCriteria (le nœud vu, ou null), formulairePro }.
+const LBC_SONDE_CRITERES_SELECTOR = 'label[for="condition"], label[for$="_condition"], label[for$="_brand"], label[for$="_size"], label[for$="_univers"], label[for$="_universe"], label[for$="_material"], label[for$="_type"], label[for="clothing_st"], label[for="baby_age"], label[for="estimated_parcel_weight"]';
+const LBC_SONDE_MS = 4000;
+const LBC_SONDE_PRO_MS = 15_000;
+function formulaireProLbc(job) {
+  return job?.platform_fields?.compte_pro === true || Boolean(document.querySelector('[name="custom_ref"]'));
+}
+async function sonderCriteresLbc(job, warnings) {
+  const t0 = Date.now();
+  for (;;) {
+    const pro = formulaireProLbc(job);
+    const vu = document.querySelector(LBC_SONDE_CRITERES_SELECTOR)
+      ?? (pro ? (findCriterionInputByLabelText(LBC_LIBELLES_PRO.estimated_parcel_weight) ?? findCriterionInputByLabelText(LBC_ETAT_LIBELLE_RE)) : null);
+    if (vu) return { hasCriteria: vu, formulairePro: pro };
+    const budget = pro ? LBC_SONDE_PRO_MS : LBC_SONDE_MS;
+    if (Date.now() - t0 >= budget) {
+      const note = pro
+        ? `critères : aucun critère vu en ${budget / 1000} s sur le formulaire PRO (État, Poids du colis…) — remplissage par la seconde passe avant le Continuer`
+        : `critères : aucun critère combobox vu en ${budget / 1000} s (flux paginé ou catégorie sans critères) — remplissages de critères sautés`;
+      console.log(`[leboncoin] ${note}`);
+      warnings.push(note);
+      return { hasCriteria: null, formulairePro: pro };
+    }
+    await sleep(120);
+  }
+}
+
+// Les entrées de la SECONDE PASSE (18/10, 0.6.128) : sonde positive → les clés
+// dont le contrôle manquait au premier passage (comme avant) ; sonde muette
+// (formulaire PRO rendu tard) → toutes les entrées lbcAspects du job, sauf
+// celles qu'un bloc dédié sert (`servie`). Pur.
+function entreesSecondePasseLbc({ hasCriteria, clesAbsentes, lbcAspects, servie }) {
+  if (hasCriteria) return Array.isArray(clesAbsentes) ? clesAbsentes : [];
+  return Object.entries(lbcAspects && typeof lbcAspects === "object" ? lbcAspects : {})
+    .map(([k, v]) => [k, String(v ?? "").trim()])
+    .filter(([k, v]) => v && !(typeof servie === "function" && servie(k)));
+}
+
+// ── SECONDE PASSE : LES CRITÈRES RENDUS TARD (corps du 2026-09-17 soir,
+// sorti tel quel de lbcRemplirJusquAApercu le 18/10 pour être joué seul par
+// scripts/lbc-pro-poids-selftest.mjs) — l'état s'il n'a pas été posé, puis
+// chaque entrée ; attente UNIQUE et bornée (6 s) ; un contrôle toujours absent
+// est NOMMÉ dans les warnings. Rend etatPose.
+async function lbcSecondePasseCriteres({ etatPose, etatCandidats, entrees, warnings }) {
+  const tardifs = [];
+  if (!etatPose && etatCandidats.length && !VALEURS_NON_RECONNUES["état"]) {
+    tardifs.push({ nom: "état", selecteur: LBC_ETAT_LABEL_SELECTOR, valeur: etatCandidats,
+      options: { skipIfPrefilled: true, etatExact: true, libelle: LBC_ETAT_LIBELLE_RE } });
+  }
+  for (const [forKey, val] of entrees) {
+    tardifs.push({ nom: forKey, selecteur: `label[for="${forKey}"]`, valeur: val,
+      options: { skipIfPrefilled: true, composants: true, libelle: LBC_LIBELLES_PRO[forKey] ?? null } });
+  }
+  if (tardifs.length) {
+    const present = (t) => findCriterionInput(t.selecteur) ?? (t.options.libelle ? findCriterionInputByLabelText(t.options.libelle) : null);
+    await waitFor(() => tardifs.some((t) => present(t)), 6000);
+    for (const t of tardifs) {
+      const ok = await fillCriterionSafe(t.nom, t.selecteur, t.valeur, warnings, { ...t.options, attendreMs: 0 });
+      if (ok && t.nom === "état") etatPose = true;
+      if (!ok && !present(t)) {
+        const note = `${t.nom}: contrôle introuvable même en seconde passe (${t.selecteur}${t.options.libelle ? ` / libellé ${t.options.libelle}` : ""}) — valeur « ${Array.isArray(t.valeur) ? t.valeur[0] : t.valeur} » non posée`;
+        console.warn(`[leboncoin] ⚠️ ${note}`);
+        warnings.push(note);
+      }
+    }
+  }
+  return etatPose;
+}
+
+// ── AU VERDICT : LES VALEURS CONNUES DU JOB, SI LA LISTE LES PORTE (18/10) ──
+// Une clé bloquante (marquée invalide par Leboncoin) autre que l'état, dont le
+// job porte la valeur dans lbcAspects : posée SI cette valeur figure dans la
+// liste relevée sur place (égalité normalizeFuzzy) — jamais une valeur hors de
+// la liste. Rend l'option exacte de la liste, ou null. Pur.
+function valeurConnueDansListeLbc(valeur, options) {
+  const v = normalizeFuzzy(String(valeur ?? ""));
+  if (!v || !Array.isArray(options)) return null;
+  return options.find((o) => normalizeFuzzy(String(o ?? "")) === v) ?? null;
+}
+// Pose ces valeurs (libellé PRO en repli) ; retire de `bloqueurs` celles qui
+// ont pris. Rend le nombre de valeurs posées. Le recliquage de « Continuer »
+// reste à l'appelant (une seule fois).
+async function reposerValeursConnuesLbc(bloqueurs, fields, warnings) {
+  const aspects = fields?.lbcAspects && typeof fields.lbcAspects === "object" ? fields.lbcAspects : {};
+  let n = 0;
+  for (let i = bloqueurs.length - 1; i >= 0; i--) {
+    const b = bloqueurs[i];
+    if (/(_condition$|^condition$)/.test(b.key) || !Array.isArray(b.options) || !b.options.length) continue;
+    const connue = String(aspects[b.key] ?? "").trim();
+    if (!connue) continue;
+    const cible = valeurConnueDansListeLbc(connue, b.options);
+    if (!cible) {
+      warnings.push(`${b.key}: la valeur du job « ${connue} » ne figure pas dans la liste [${b.options.slice(0, 30).join(", ")}] — jamais posée, question posée avec cette liste`);
+      continue;
+    }
+    const ok = await fillCriterionSafe(b.key, `label[for="${CSS.escape(b.key)}"]`, cible, warnings,
+      { libelle: LBC_LIBELLES_PRO[b.key] ?? null, attendreMs: 1500 });
+    if (ok) {
+      bloqueurs.splice(i, 1);
+      n++;
+      warnings.push(`${b.key}: « ${cible} » re-posé au verdict — le contrôle n'existait pas au moment du remplissage (formulaire pro)`);
+    }
+  }
+  return n;
 }
 
 // Relit la valeur du contrôle après une sélection : bornée (~1,2 s), pure

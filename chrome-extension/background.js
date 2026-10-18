@@ -3302,9 +3302,70 @@ function normaliserTitreCriard(title) {
   return t.toLowerCase().replace(/(^|[\s\-—/(«"'])(\p{L})/gu, (m, sep, c) => sep + c.toUpperCase());
 }
 
+// ── TITRE VINTED « TROP DE SYMBOLES D'AFFILÉE » (18/10, 0.6.128) ────────────
+// Décision de Nico : on corrige SEUL, sans question — les symboles en trop
+// partent avant le dépôt, les mots et la marque restent. MÊME RÈGLE que le
+// serveur (supabase/functions/_shared/titre-symboles-vinted.js,
+// assagirSymbolesVinted) : l'extension ne peut pas l'importer, elle est
+// recopiée ici, et le selftest titre-symboles-vinted-extension la tient.
+//   R1  « — » et « ― » → « - » ;
+//   R2  « … » et « ... » (ou plus) retirés (une espace s'ils collaient deux mots) ;
+//   R3  un « – » collé à un autre symbole (espaces ignorés) → « - » ;
+//   R4  dans une suite de 3 symboles ou plus (espaces ignorés) : guillemets et
+//       parenthèses gardés, le premier séparateur gardé, le reste retiré.
+// La marque (platform_fields.marque ou brand) est masquée avant, restituée
+// après : « C&A », « Levi's », « !!! » ne sont jamais touchés. Idempotent ;
+// une lettre, un chiffre (½ ⅓ ² compris) ou un accent n'est jamais touché.
+// Mesuré le 18/10 : 0 des 70 555 titres Vinted publiés ou vendus ne change ;
+// les refus réels (Hoodie « Gangs / Security », TEST FillSell —, trois...) oui.
+const VINTED_TITRE_GARDES = new Set(['"', "'", "«", "»", "“", "”", "‘", "’", "„", "‹", "›", "(", ")", "[", "]", "{", "}"]);
+function assagirSymbolesVinted(titre, { marque = null } = {}) {
+  let t = String(titre ?? "");
+  if (!t) return t;
+  const estSymbole = (c) => /[^\p{L}\p{N}\p{M}\s]/u.test(c);
+  // La marque, masquée par un jeton fait de lettres (donc jamais un symbole).
+  const masques = [];
+  const m = String(marque ?? "").trim();
+  if (m && /[^\p{L}\p{N}\p{M}\s]/u.test(m) && !/zfsmarque/i.test(t)) {
+    const re = new RegExp(m.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "giu");
+    t = t.replace(re, (x) => { masques.push(x); return `Zfsmarque${masques.length - 1}qZ`; });
+  }
+  // R1
+  t = t.replace(/[—―]/g, "-");
+  // R2 — une espace seulement si le retrait collerait deux mots.
+  t = t.replace(/…|\.{3,}/g, (x, i, s) => {
+    const avant = s.charAt(i - 1), apres = s.charAt(i + x.length);
+    return /[\p{L}\p{N}]/u.test(avant) && /[\p{L}\p{N}]/u.test(apres) ? " " : "";
+  });
+  // R3 + R4, suite par suite (une suite = tout ce qui n'est ni lettre ni chiffre).
+  t = t.replace(/[^\p{L}\p{N}\p{M}]+/gu, (suite) => {
+    const symboles = [...suite].filter(estSymbole);
+    if (symboles.length < 2) return suite;
+    let s = suite.replace(/–/g, "-"); // R3
+    if (symboles.length < 3) return s;
+    let separateurVu = false; // R4
+    return [...s].filter((c) => {
+      if (!estSymbole(c) || VINTED_TITRE_GARDES.has(c)) return true;
+      if (separateurVu) return false;
+      separateurVu = true;
+      return true;
+    }).join("");
+  });
+  t = t.replace(/\s{2,}/g, " ").trim();
+  return masques.length ? t.replace(/Zfsmarque(\d+)qZ/g, (x, i) => masques[Number(i)] ?? x) : t;
+}
+
 function sanitizeJob(job) {
   let title = stripEmoji(job.title);
   if (job.platform === "vinted") {
+    // (18/10, 0.6.128) Symboles en trop retirés AVANT le dépôt (publication ET
+    // recréation : construireJobRecreation passe aussi par ici).
+    const pfT = job.platform_fields ?? {};
+    const sage = assagirSymbolesVinted(title, { marque: pfT.marque ?? pfT.brand ?? null });
+    if (sage !== title) {
+      console.log(`[background] Titre Vinted assagi (symboles en trop retirés) : "${title}" → "${sage}"`);
+      title = sage;
+    }
     const calme = normaliserTitreCriard(title);
     if (calme !== title) {
       console.log(`[background] Titre en capitales normalisé pour Vinted : "${title}" → "${calme}"`);
@@ -11620,7 +11681,9 @@ async function sonderSessionDepop() {
 //   tout autre statut, toute erreur réseau → unknown (jamais un verdict).
 const DEPOP_STATUTS_LUS = Object.freeze({ STATUS_ONSALE: "active", STATUS_PURCHASED: "sold" });
 async function lireEtatDepop(url) {
-  const slug = String(url ?? "").match(/\/products\/([A-Za-z0-9]+-[A-Za-z0-9-]*[A-Za-z0-9])(?:[/?#]|$)/)?.[1] ?? null;
+  // (18/10, 0.6.128) « _ » admis dans le pseudo en tête du slug (thard_733-…) :
+  // sans lui, 71 annonces Depop sur 306 restaient « depop_id_introuvable ».
+  const slug = String(url ?? "").match(/\/products\/([A-Za-z0-9_]+-[A-Za-z0-9-]*[A-Za-z0-9])(?:[/?#]|$)/)?.[1] ?? null;
   if (!slug) return { state: "unknown", price: null, raison: "depop_id_introuvable" };
   const { tabId, motif } = await ongletDepopPret();
   if (tabId == null) {
@@ -18917,8 +18980,15 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
         ).catch(() => null);
         if (c?.[0]?.titre) titre = c[0].titre;
       }
+      // (18/10, 0.6.128) Même titre et même seuil que la recréation : le titre
+      // réécrit par la personne (titre_saisi) passe avant le titre capturé — le
+      // capturé a été refusé par Vinted, aucune copie ne peut le porter — et le
+      // seuil est la date de retrait la plus tôt (seuilRetraitRecreation).
+      const saisiR = titreSaisiRecreation(j.platform_fields);
+      if (saisiR) titre = saisiR;
+      const seuilR = seuilRetraitRecreation(j.platform_fields) ?? j.platform_fields?.deleted_at ?? null;
       if (titre && j.platform_fields?.deleted_at) {
-        reservesRepublish.push({ job_id: j.id, titre, deleted_at: j.platform_fields.deleted_at });
+        reservesRepublish.push({ job_id: j.id, titre, deleted_at: seuilR });
       }
     }
     if (reservesRepublish.length) {
@@ -22797,13 +22867,183 @@ function reconnaitreAnnonceRecreee(articles, { titre, deletedAt, idsConnus }) {
     // Comparaison à la SECONDE, inclusive (2026-09-11) : photo_ts et
     // deleted_at sont désormais tous deux à l'heure Vinted (en-tête Date de
     // la suppression, ou recalage serveur), la seconde est leur grain commun.
+    // (18/10, 0.6.128) Tolérance de 2 s sous le seuil : le seuil est désormais
+    // la date de retrait la plus TÔT connue (seuilRetraitRecreation), et deux
+    // horloges arrondies à la seconde peuvent encore différer d'une seconde.
+    // (18/10, 0.6.128) Un BROUILLON n'est jamais une copie en ligne (le
+    // dressing vu par sa propriétaire les liste aussi, statut 'draft').
+    if (a.statut === "draft") return false;
     const ts = Number(a.photo_ts);
-    return Number.isFinite(ts) && ts * 1000 >= Math.floor(seuil / 1000) * 1000;
+    return a.photo_ts != null && Number.isFinite(ts) && ts * 1000 >= Math.floor(seuil / 1000) * 1000 - RECREATION_SEUIL_TOLERANCE_MS;
   });
   if (candidats.length === 1) return { item: candidats[0], raison: null, candidats };
   if (!candidats.length) return { item: null, raison: "aucune annonce du dressing ne correspond", candidats };
   // (0.6.78, remis le 03/10) Les candidates sont rendues : la pause les garde.
   return { item: null, raison: `${candidats.length} annonces correspondent — abstention volontaire`, candidats };
+}
+
+// ── LE SEUIL DE LA COPIE : LA DATE DE RETRAIT LA PLUS TÔT (18/10, 0.6.128) ──
+// Régis (boutique 31995881), Short jean Levi's f33d2e5d : retrait à 13:11:38
+// (heure Vinted, suppression_verdict.date_serveur), copie née à 13:11:49 —
+// mais deleted_at = deleted_at_serveur = 13:18:45, daté 7 min TROP TARD par le
+// serveur. Comparée à ce seuil, la copie paraissait antérieure au retrait :
+// jamais reconnue, recréée — 7 copies (4 pour le bloc feuillet 8ab903a4).
+// Le seuil est donc la date la plus TÔT disponible, horloge Vinted d'abord :
+// min(date_serveur, deleted_at_client, deleted_at, deleted_at_serveur).
+// null = aucune date lisible (l'appelant garde son repli d'avant).
+const RECREATION_SEUIL_TOLERANCE_MS = 2000;
+function seuilRetraitRecreation(pf) {
+  const dates = [pf?.suppression_verdict?.date_serveur, pf?.deleted_at_client, pf?.deleted_at, pf?.deleted_at_serveur]
+    .map((d) => (typeof d === "string" && d.trim() ? Date.parse(d) : NaN))
+    .filter(Number.isFinite);
+  return dates.length ? new Date(Math.min(...dates)).toISOString() : null;
+}
+
+// ── L'ONGLET DE DÉPÔT RENVOYÉ AU PROFIL DU VENDEUR (18/10, 0.6.128) ─────────
+// Vinted, après un dépôt réussi, ne redirige plus vers /items/<id> mais vers
+// /member/<id du vendeur> (code du site : `let O="/"…; if("item"in A){… O=
+// tr(N.id) …} else "draft"in A&&(O=tr(N.id)…); navigateToPage(O)`) ; sur un
+// échec, la page reste sur le formulaire. Le content script meurt avant de
+// répondre (« A listener indicated an asynchronous response… »).
+// ⛔ Décision de Nico : un dépôt réussi se reconnaît à la PRÉSENCE RÉELLE de
+// l'annonce (son numéro retrouvé au dressing), JAMAIS à l'adresse d'arrivée.
+// Un onglet arrivé sur /member/<n> (n = la boutique du job, ou l'identité
+// connue) ne prouve rien et ne clôt rien : il interdit seulement de conclure à
+// un échec qui relancerait une recréation (Régis : 7 copies) — le job attend
+// alors le relevé (retenirDepotIncertain). Seul le numéro retrouvé le clôt.
+function idProfilVintedDepuisUrl(url) {
+  return String(url ?? "").match(/^https?:\/\/(?:[^/?#]*\.)?vinted\.[a-z.]+\/member\/(\d+)(?:[-/?#]|$)/i)?.[1] ?? null;
+}
+function identitesBoutiqueRecreation(pf, jobRecreation) {
+  const ids = new Set();
+  for (const v of [
+    pf?.vinted_account_id,
+    jobRecreation?.platform_fields?.vinted_account_id,
+    jobRecreation?.platform_fields?.republish_delete_then_submit?.vinted_account_id,
+    identiteVintedCache?.val?.user_id,
+  ]) {
+    const s = String(v ?? "").trim();
+    if (/^\d+$/.test(s)) ids.add(s);
+  }
+  return ids;
+}
+// onglet : { url, pendingUrl } (chrome.tabs.get) ; identites : Set ou tableau.
+// Rend { id, url } quand l'onglet est sur le profil d'une de ces boutiques.
+function depotPartiVersProfil(onglet, identites) {
+  const connues = identites instanceof Set ? identites : new Set((identites ?? []).map(String));
+  if (!onglet || !connues.size) return null;
+  for (const u of [onglet.url, onglet.pendingUrl]) {
+    const id = idProfilVintedDepuisUrl(u);
+    if (id && connues.has(id)) return { id, url: String(u).slice(0, 200) };
+  }
+  return null;
+}
+
+// ── LA COPIE SE CHERCHE PARMI LES ANNONCES EN LIGNE LES PLUS RÉCENTES, PAR-
+// DELÀ LES BROUILLONS (18/10, 0.6.128) ───────────────────────────────────────
+// La pré-vérification et la ceinture ne lisaient que la page 1 du dressing.
+// Prouvé en base le 18/10 : le dressing vu par sa PROPRIÉTAIRE liste les
+// BROUILLONS d'abord (is_draft → statut 'draft'), puis les annonces en ligne
+// de la plus récente à la plus ancienne. Régis a 99 brouillons : sa page 1 (96)
+// n'en contenait QUE — ses copies, en page 2, n'ont jamais été vues ; les
+// comptes sans brouillon (111savagenow, tessy.galy, xxewwer) voyaient la copie
+// en page 1. Donc, order=newest_first demandé en plus, et :
+//   · les brouillons sont IGNORÉS (jamais une copie en ligne) ;
+//   · une page qui ne porte que des brouillons → page suivante ;
+//   · la première page qui porte des annonces en ligne est lue, et la
+//     suivante seulement si TOUTES ses annonces en ligne sont postérieures au
+//     seuil − 10 min (la copie pourrait être plus loin) ; une annonce en ligne
+//     plus ancienne → arrêt (au-delà, tout est plus ancien encore) ;
+//   · 10 pages au plus. Pur : décide s'il faut lire la page suivante.
+const DRESSING_COPIE_PAGES_MAX = 10;
+const DRESSING_COPIE_MARGE_MS = 10 * 60_000;
+const estBrouillonDressing = (a) => a?.statut === "draft";
+function continuerLectureDressingCopie(lu, page, seuilMs) {
+  const arts = Array.isArray(lu?.articles) ? lu.articles : [];
+  if (!arts.length) return false;
+  const total = Number(lu?.pagination?.total_pages);
+  if (lu?.pagination?.total_pages != null && Number.isFinite(total) && page >= total) return false;
+  const enLigne = arts.filter((a) => !estBrouillonDressing(a));
+  if (!enLigne.length) return true;                 // que des brouillons : plus loin
+  if (!Number.isFinite(seuilMs)) return false;      // sans seuil, aucune reconnaissance possible
+  return enLigne.every((a) => a?.photo_ts == null || !Number.isFinite(Number(a.photo_ts))
+    || Number(a.photo_ts) * 1000 >= seuilMs - DRESSING_COPIE_MARGE_MS);
+}
+// Rend { success, articles (sans les brouillons), brouillons, pages, complet }
+// — complet = la lecture s'est arrêtée sur sa règle (annonce en ligne
+// ancienne, dernière page, page vide), pas sur une page illisible ni sur la
+// borne des 10 pages. Aucune page lue → { success: false }.
+async function lireDressingPourCopie(tabId, userId, seuilIso) {
+  const seuilMs = Date.parse(seuilIso ?? "");
+  const articles = [];
+  const vus = new Set();
+  let pages = 0;
+  let brouillons = 0;
+  for (let page = 1; page <= DRESSING_COPIE_PAGES_MAX; page++) {
+    if (page > 1) await sleep(900 + Math.floor(Math.random() * 600));
+    const lu = await sendMessageToTab(tabId, { type: "SYNC_DRESSING_PAGE", page, userId, order: "newest_first" }).catch(() => null);
+    if (!lu?.success) {
+      return pages
+        ? { success: true, articles, brouillons, pages, complet: false }
+        : { success: false, error: String(lu?.error ?? "le dressing n'a pas répondu") };
+    }
+    pages = page;
+    for (const a of lu.articles ?? []) {
+      const id = String(a?.vinted_item_id ?? "");
+      if (!id || vus.has(id)) continue;
+      vus.add(id);
+      if (estBrouillonDressing(a)) { brouillons++; continue; }
+      articles.push(a);
+    }
+    if (!continuerLectureDressingCopie(lu, page, seuilMs)) return { success: true, articles, brouillons, pages, complet: true };
+  }
+  // Borne des 10 pages atteinte alors que la règle voulait lire plus loin.
+  return { success: true, articles, brouillons, pages, complet: false };
+}
+// Les ids déjà suivis par l'inventaire, PARMI ceux qu'on vient de lire —
+// par lots de 100 (.in()), au lieu de tout l'inventaire du compte que
+// PostgREST coupait à 1 000 lignes sans erreur. Lot illisible = ids inconnus
+// (même repli qu'avant : le filet ne bloque jamais le travail).
+async function idsInventaireConnus(accessToken, ids) {
+  const connus = new Set();
+  const uniques = [...new Set((ids ?? []).map((x) => String(x ?? "")).filter((x) => /^\d+$/.test(x)))];
+  for (let i = 0; i < uniques.length; i += 100) {
+    const lot = uniques.slice(i, i + 100).map((x) => `"${x}"`).join(",");
+    const rows = await restRequest(
+      `inventaire?user_id=eq.${decodeJwtSub(accessToken)}&vinted_item_id=in.(${lot})&select=vinted_item_id`,
+      accessToken,
+    ).catch(() => []);
+    for (const r of rows ?? []) connus.add(String(r.vinted_item_id));
+  }
+  return connus;
+}
+// La ceinture et la pré-vérification, une seule lecture : rend { lu, seuil,
+// idsConnus, item, raison, candidats }. `idsEnPlus` : ids à vérifier aussi
+// dans l'inventaire (liens de recreation_doublon).
+async function chercherCopieRecreeeDansDressing(accessToken, tabId, { userId, titre, pf, idsEnPlus = [] }) {
+  const seuil = seuilRetraitRecreation(pf) ?? pf?.deleted_at ?? null;
+  const lu = await lireDressingPourCopie(tabId, userId, seuil);
+  if (!lu.success) return { lu, seuil, idsConnus: new Set(), item: null, raison: lu.error ?? "dressing illisible", candidats: [] };
+  const idsConnus = await idsInventaireConnus(accessToken, [...lu.articles.map((a) => a?.vinted_item_id), ...idsEnPlus]);
+  const r = reconnaitreAnnonceRecreee(lu.articles, { titre, deletedAt: seuil, idsConnus });
+  return { lu, seuil, idsConnus, ...r };
+}
+// ── ONGLET AU PROFIL, ANNONCE PAS RETROUVÉE : ON ATTEND, ON NE RECRÉE PAS ───
+// (18/10, 0.6.128) Ni un succès (seul le numéro retrouvé clôt), ni un échec.
+// Le job repart 'pending' à +15 min, SANS toucher recreation_retries : le
+// serveur (get-pending-jobs) le retient jusqu'à un relevé complet du dressing,
+// et la base rattache la copie. Rien de cette logique n'est refait ici.
+async function retenirDepotIncertain(accessToken, job, pf, motif = "redirection_profil_sans_copie_lue") {
+  pf.depot_incertain = { at: new Date().toISOString(), motif };
+  pf.next_action_after = new Date(Date.now() + 15 * 60_000).toISOString();
+  delete pf.needs_user_source;
+  await updateJobStatus(accessToken, job.id, "pending", {
+    platform_fields: pf,
+    error: "Vinted a affiché ton profil juste après l'envoi de ton annonce : FillSell vérifie au prochain relevé de ta boutique " +
+      "qu'elle est bien en ligne, et la rattache à ta fiche. Rien à faire, rien n'est redéposé entre-temps.",
+  });
+  console.warn(`[republish] job ${job.id} : onglet renvoyé au profil, aucune annonce retrouvée par son numéro — en attente du relevé (${motif}), aucune recréation relancée`);
+  return { status: "skipped", error: "onglet renvoyé au profil — présence de l'annonce à confirmer par le relevé, rien recréé" };
 }
 
 // Clôt un job republish en SUCCÈS sur une annonce déjà en ligne (reconnue par
@@ -22952,6 +23192,20 @@ async function couleursDePublicationOrigine(accessToken, job) {
   return null;
 }
 
+// (18/10, 0.6.128) Le titre RÉÉCRIT par la personne (question « Titre » après
+// un refus Vinted, pf.titre_saisi), coupé au dernier mot entier à 100 (même
+// règle que couperTitre, _shared/titre-du-job.js). "" = aucun titre saisi.
+// Lu par construireJobRecreation (il passe AVANT le titre capturé, sinon la
+// recréation resservait le titre refusé à l'identique) et par la réserve de
+// la sync (même titre que la copie).
+function titreSaisiRecreation(pf) {
+  const v = String(pf?.titre_saisi ?? "").replace(/\s+/g, " ").trim();
+  if (!v || v.length <= 100) return v;
+  const coupe = v.slice(0, 100);
+  const dernierEspace = coupe.lastIndexOf(" ");
+  return (dernierEspace > 60 ? coupe.slice(0, dernierEspace) : coupe).trimEnd();
+}
+
 function construireJobRecreation(job, pf, cap, prix) {
   // (15/10 soir, 0.6.114) La marque CHOISIE par la personne pour une
   // republication, quand elle diffère de la marque capturée : servie par le
@@ -22981,11 +23235,23 @@ function construireJobRecreation(job, pf, cap, prix) {
     ...(natifCap.size_id != null && Number.isFinite(Number(natifCap.size_id)) ? [Number(natifCap.size_id)] : []),
     ...(Array.isArray(attrTaille?.ids) ? attrTaille.ids.map(Number).filter(Number.isFinite) : []),
   ])];
+  // (18/10, 0.6.128) Le titre RÉÉCRIT par la personne (pf.titre_saisi) passe
+  // AVANT le titre capturé sur l'annonce. Corps IDENTIQUE à
+  // titreSaisiRecreation (module), recopié ici pour que cette fabrique reste
+  // autonome (des selftests l'exécutent seule) — le selftest
+  // titre-symboles-vinted-extension vérifie que les deux corps sont égaux.
+  const titreSaisi = (() => {
+    const v = String(pf?.titre_saisi ?? "").replace(/\s+/g, " ").trim();
+    if (!v || v.length <= 100) return v;
+    const coupe = v.slice(0, 100);
+    const dernierEspace = coupe.lastIndexOf(" ");
+    return (dernierEspace > 60 ? coupe.slice(0, dernierEspace) : coupe).trimEnd();
+  })();
   return sanitizeJob({
     id: job.id,
     platform: "vinted",
     action: "publish",
-    title: cap.payload?.titre ?? job.title ?? "",
+    title: titreSaisi || (cap.payload?.titre ?? job.title ?? ""),
     description: cap.payload?.description ?? "",
     price: prix,
     photo_option: "original",
@@ -23457,6 +23723,17 @@ async function conclureRecreationApresSoumission(accessToken, job, pf, jobRecrea
       );
       return { status: "published", listingUrl: `${VO.origineVinted()}/items/${idNum}` };
     }
+    // (18/10, 0.6.128) Onglet renvoyé sur /member/<boutique> (url OU
+    // pendingUrl) — là où Vinted envoie désormais après un dépôt réussi. Ce
+    // n'est PAS une preuve (décision de Nico : seul le numéro retrouvé au
+    // dressing clôt) : tracé, et plus jamais un échec qui relance une
+    // recréation (cf. depotPartiVersProfil). La copie se cherche ci-dessous ;
+    // à défaut, le job attend le relevé (retenirDepotIncertain).
+    const versProfil = depotPartiVersProfil(tNum, identitesBoutiqueRecreation(pf, jobRecreation));
+    if (versProfil) {
+      pf.depot_parti_vers_profil = { at: new Date().toISOString(), url: versProfil.url };
+      console.log(`[republish] job ${job.id} : onglet renvoyé sur /member/${versProfil.id} — aucune recréation ne sera relancée, l'annonce se cherche par son numéro`);
+    }
     const urlSonde = await vintedUploadSucceededForTitle(tabId, jobRecreation.title).catch(() => null);
     if (urlSonde) {
       const idSonde = urlSonde.match(/\/items\/(\d+)/)?.[1] ?? null;
@@ -23476,36 +23753,44 @@ async function conclureRecreationApresSoumission(accessToken, job, pf, jobRecrea
     // clôturait en needs_user avant que quiconque puisse vérifier. Deux
     // annonces recréées ont été perdues comme ça. On regarde donc
     // maintenant, pendant qu'on tient encore l'onglet.
+    // (18/10, 0.6.128) Lecture par chercherCopieRecreeeDansDressing : les
+    // annonces en ligne les plus récentes, par-delà les brouillons (10 pages au
+    // plus), seuil = retrait le plus TÔT connu. Seul le NUMÉRO retrouvé clôt.
+    // Après une redirection vers le profil, une seconde lecture 8 s plus tard
+    // (la liste de Vinted peut ne pas montrer encore la copie de la seconde).
     try {
       const ident2 = await sendMessageToTab(tabId, { type: "VINTED_CURRENT_USER" }).catch(() => null);
-      if (ident2?.userId) {
-        const page2 = await sendMessageToTab(tabId, {
-          type: "SYNC_DRESSING_PAGE", page: 1, userId: ident2.userId,
-        }).catch(() => null);
-        if (page2?.success) {
-          const connus2 = await restRequest(
-            `inventaire?user_id=eq.${decodeJwtSub(accessToken)}&vinted_item_id=not.is.null&select=vinted_item_id`,
-            accessToken,
-          ).catch(() => []);
-          const { item: trouve, raison: pourquoi } = reconnaitreAnnonceRecreee(page2.articles, {
-            titre: jobRecreation.title,
-            deletedAt: pf.deleted_at,
-            idsConnus: new Set((connus2 ?? []).map((r) => String(r.vinted_item_id))),
+      const userIdDressing = ident2?.userId ?? versProfil?.id ?? null;
+      if (userIdDressing) {
+        for (let essai = 0; essai < (versProfil ? 2 : 1); essai++) {
+          if (essai) await sleep(8000);
+          const r = await chercherCopieRecreeeDansDressing(accessToken, tabId, {
+            userId: userIdDressing, titre: jobRecreation.title, pf,
           });
-          if (trouve) {
+          if (r.item) {
             await cloreRepublishSurAnnonceExistante(
-              accessToken, job, pf, trouve.vinted_item_id,
-              trouve.url ?? `${VO.origineVinted()}/items/${trouve.vinted_item_id}`,
-              "recréation confirmée dans le dressing après coupure du canal",
+              accessToken, job, pf, r.item.vinted_item_id,
+              r.item.url ?? `${VO.origineVinted()}/items/${r.item.vinted_item_id}`,
+              versProfil
+                ? "recréation confirmée par son numéro, retrouvé au dressing (onglet renvoyé au profil par Vinted)"
+                : "recréation confirmée dans le dressing après coupure du canal",
             );
-            return { status: "published", listingUrl: trouve.url ?? null };
+            return { status: "published", listingUrl: r.item.url ?? null };
           }
-          console.log(`[republish] après coupure, rien de concluant dans le dressing (${pourquoi}) — échec assumé`);
+          if (!r.lu?.success) {
+            console.log(`[republish] après coupure, dressing illisible (${r.raison ?? "?"})`);
+            break;
+          }
+          console.log(`[republish] après coupure, rien de concluant dans le dressing (${r.raison}, ${r.lu.pages} page(s) lue(s), seuil ${r.seuil ?? "?"})${versProfil ? "" : " — échec assumé"}`);
+          if (/annonces correspondent/.test(String(r.raison ?? ""))) break;
         }
       }
     } catch (e) {
       console.warn("[republish] vérification du dressing après coupure impossible:", e?.message ?? e);
     }
+    // ⛔ (18/10, 0.6.128) Dépôt parti vers le profil, copie pas encore lue :
+    //    JAMAIS replanifierOuArreterRecreation (qui relancerait une recréation).
+    if (versProfil) return await retenirDepotIncertain(accessToken, job, pf);
   }
 
   if (result?.success && result.listingUrl) {
@@ -24601,7 +24886,8 @@ function idAnnonceDepuisUrl(platform, url) {
     ebay: /\/itm\/(?:[^/?#]*\/)?(\d{9,})/,
     opla: /(art_[A-Za-z0-9_-]+)/,
     // depop (09/10) : le slug (« prefixe-mots-suffixe »), qui vit dans l'URL.
-    depop: /\/products\/([A-Za-z0-9]+-[A-Za-z0-9-]*[A-Za-z0-9])(?:[/?#]|$)/,
+    // (18/10, 0.6.128) le préfixe (pseudo) peut porter un « _ ».
+    depop: /\/products\/([A-Za-z0-9_]+-[A-Za-z0-9-]*[A-Za-z0-9])(?:[/?#]|$)/,
   }[platform];
   const m = re ? u.match(re) : null;
   return m ? m[1] : null;
@@ -26135,6 +26421,22 @@ async function processRepublishJob(job, accessToken) {
         ? null
         : await etapeRepublishEnBase(accessToken, job.id);
       const aSupprime = result?.deleted === true || marqueDeletedAt != null || enBase?.step === "deleted";
+      // ── (18/10, 0.6.128) L'ONGLET SUR LE PROFIL : JAMAIS UNE CONCLUSION ─────
+      // Décision de Nico : un dépôt réussi se reconnaît à la PRÉSENCE RÉELLE de
+      // l'annonce (son numéro retrouvé au dressing), jamais à l'adresse
+      // d'arrivée. /member/<boutique> ne prouve ni le retrait ni le dépôt ; il
+      // interdit seulement de conclure à l'échec. Sans aucune marque de retrait
+      // (mémoire, base) et sans refus d'avant retrait du content script (qui,
+      // lui, n'a rien soumis), un onglet sur le profil de la boutique → le job
+      // attend le relevé (retenirDepotIncertain), au lieu du needs_user
+      // « annonce intacte » qui pouvait être faux. Avec une marque de retrait,
+      // conclureRecreationApresSoumission fait la même lecture.
+      const refusAvantRetrait = Boolean(result?.deleteFailed || result?.abandonneAvantRetrait || result?.listingRestriction
+        || result?.sellingRestriction || result?.marqueParIdNonProuvee || result?.colisNonPropose
+        || result?.unfilledRequired?.length || result?.needsUserField);
+      const versProfilUnePasse = (!aSupprime && result?.success !== true && !refusAvantRetrait)
+        ? depotPartiVersProfil(await chrome.tabs.get(tabId).catch(() => null), identitesBoutiqueRecreation(pf, jobRecreation))
+        : null;
 
       // VERDICT DE SUPPRESSION (2026-09-05) : quoi qu'il arrive, ce que l'API
       // de suppression a répondu est écrit dans platform_fields — la marque
@@ -26377,6 +26679,14 @@ async function processRepublishJob(job, accessToken) {
           await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg.slice(0, 590) });
           return { status: "needsUser", error: `pré-vol négatif : ${champs}` };
         }
+        // (18/10, 0.6.128) Onglet sur le profil de la boutique, aucune marque
+        // de retrait lue : on ne sait PAS — ni « intacte », ni un échec. Le job
+        // attend le relevé, sans tentative consommée (cf. versProfilUnePasse).
+        if (versProfilUnePasse) {
+          if (result?.diagnostic) pf.last_diagnostic = String(result.diagnostic).slice(0, 2000);
+          pf.depot_parti_vers_profil = { at: new Date().toISOString(), url: versProfilUnePasse.url, marque_de_retrait: false };
+          return await retenirDepotIncertain(accessToken, job, pf);
+        }
         // Transitoire (challenge DataDome, session, photos pas arrivées, canal
         // coupé avant la suppression) : needs_user honnête, annonce intacte —
         // l'étape reste 'captured', la relance rejouera le pré-vol en entier.
@@ -26615,24 +26925,25 @@ async function processRepublishJob(job, accessToken) {
           ? null
           : await sendMessageToTab(tabVerif, { type: "VINTED_CURRENT_USER" }).catch(() => null);
         if (ident?.userId) {
-          const page = await sendMessageToTab(tabVerif, {
-            type: "SYNC_DRESSING_PAGE", page: 1, userId: ident.userId,
-          }).catch(() => null);
+          // (18/10, 0.6.128) Les annonces EN LIGNE les plus récentes, par-delà
+          // les brouillons que le dressing de la propriétaire liste d'abord
+          // (lireDressingPourCopie, 10 pages au plus), seuil = retrait le plus
+          // TÔT connu (seuilRetraitRecreation) — au lieu de la page 1, au seuil
+          // deleted_at seul (Régis, 99 brouillons : 7 copies). Les ids connus
+          // sont lus PARMI ceux du dressing (idsInventaireConnus, par lots).
+          const liensDoublon = (Array.isArray(pf.recreation_doublon?.liens) ? pf.recreation_doublon.liens : [])
+            .map((l) => String(l).match(/(\d{6,})/)?.[1]).filter(Boolean);
+          const seuilRecreation = seuilRetraitRecreation(pf) ?? pf.deleted_at ?? null;
+          const page = await lireDressingPourCopie(tabVerif, ident.userId, seuilRecreation);
           if (page?.success) {
-            dressingLu = true;
-            const connus = await restRequest(
-              `inventaire?user_id=eq.${decodeJwtSub(accessToken)}&vinted_item_id=not.is.null&select=vinted_item_id`,
-              accessToken,
-            ).catch(() => []);
-            const idsConnus = new Set((connus ?? []).map((r) => String(r.vinted_item_id)));
+            const idsConnus = await idsInventaireConnus(accessToken, [...page.articles.map((a) => a?.vinted_item_id), ...liensDoublon]);
             // ── LA RECRÉATION D'AVANT A ÉTÉ IMPORTÉE EN FICHE SÉPARÉE ──────────
             // (0.6.78, 67d6749 — remis le 03/10.) T-shirt de Nico 221274a6 : les
             // annonces vues lors d'une pause « plusieurs annonces identiques »
             // sont maintenant CONNUES de l'inventaire (importées par un relevé),
             // donc exclues des candidates : sans cette garde, on en recréerait
             // une troisième. Rien n'est déposé ; les fiches se fusionnent.
-            const dejaImportees = (Array.isArray(pf.recreation_doublon?.liens) ? pf.recreation_doublon.liens : [])
-              .map((l) => String(l).match(/(\d{6,})/)?.[1]).filter((id) => id && idsConnus.has(id));
+            const dejaImportees = liensDoublon.filter((id) => idsConnus.has(id));
             if (dejaImportees.length) {
               const msg = "Ta nouvelle annonce est déjà en ligne sur Vinted, mais elle a été ajoutée à ton stock comme une "
                 + "fiche séparée. Fusionne les deux fiches de cet article depuis l'app. Rien n'a été redéposé.";
@@ -26643,14 +26954,21 @@ async function processRepublishJob(job, accessToken) {
             }
             const { item, raison, candidats } = reconnaitreAnnonceRecreee(page.articles, {
               titre: jobRecreation.title,
-              deletedAt: pf.deleted_at,
+              deletedAt: seuilRecreation,
               idsConnus,
             });
+            // Recréation déjà tentée et lecture interrompue avant sa règle
+            // d'arrêt (une page n'a pas répondu) : seule une copie trouvée, ou
+            // une abstention, vaut lecture — sinon dressing NON lu (garde
+            // anti-doublon plus bas : on repasse, on ne recrée pas).
+            dressingLu = page.complet === true || !dejaTentee || Boolean(item) || /annonces correspondent/.test(String(raison ?? ""));
+            if (!dressingLu) raisonNonLu = "dressing lu en partie (une page n'a pas répondu)";
             tracerGarde(pf, "prevol_recreation", {
               verdict: item ? "deja_recreee" : "a_recreer",
-              champs_verifies: ["dressing_page_1", "titre", "deleted_at"],
+              champs_verifies: [`dressing_recent_${page.pages}_page${page.pages > 1 ? "s" : ""}`, "titre", "seuil_retrait_le_plus_tot"],
               deja_tentee: dejaTentee === true,
               detail: item ? String(item.vinted_item_id) : (raison ?? null),
+              ...(seuilRecreation ? { seuil: seuilRecreation } : {}),
             });
             if (item) {
               await cloreRepublishSurAnnonceExistante(
@@ -26680,7 +26998,7 @@ async function processRepublishJob(job, accessToken) {
               console.warn(`[republish] job ${job.id} : recréation REFUSÉE — ${raison}`);
               return { status: "needsUser", error: msg };
             }
-            console.log(`[republish] pas de recréation à éviter (${raison}) — on recrée`);
+            if (dressingLu) console.log(`[republish] pas de recréation à éviter (${raison}, ${page.pages} page(s) récente(s) lue(s), seuil ${seuilRecreation ?? "?"}) — on recrée`);
           } else raisonNonLu = "le dressing n'a pas répondu";
         } else if (tabVerif != null) raisonNonLu = "identité Vinted illisible";
       } catch (e) {
@@ -26693,7 +27011,7 @@ async function processRepublishJob(job, accessToken) {
       //    menait tout droit au doublon, passage après passage.
       if (dejaTentee && !dressingLu) {
         tracerGarde(pf, "prevol_recreation", {
-          verdict: "report", champs_verifies: ["dressing_page_1"],
+          verdict: "report", champs_verifies: ["dressing_recent"],
           deja_tentee: true, detail: raisonNonLu,
         });
         pf.next_action_after = new Date(Date.now() + 5 * 60_000).toISOString();

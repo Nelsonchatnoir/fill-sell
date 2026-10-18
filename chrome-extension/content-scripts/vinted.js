@@ -583,7 +583,9 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage && !globalThis.__
       return true; // réponse asynchrone
     }
     if (msg?.type === "SYNC_DRESSING_PAGE") {
-      lirePageDressing(msg.page, msg.userId)
+      // (18/10, 0.6.128) `order` optionnel (newest_first pour chercher la copie
+      // d'une recréation) ; absent = la requête du relevé, inchangée.
+      lirePageDressing(msg.page, msg.userId, msg.order ? { order: msg.order } : undefined)
         .then((result) => sendResponse(result))
         .catch((err) => sendResponse({ success: false, error: String(err?.message ?? err) }));
       return true; // réponse asynchrone
@@ -1117,7 +1119,11 @@ function verdictBoutiqueAvantDepotVinted(garde, ident) {
 // 2 jours »), et l'historique de prix. Le seul repère disponible est le
 // timestamp de la 1re photo — c'est la date du dernier ENVOI DE PHOTO, d'où
 // le nom `listed_at_guess` côté base.
-async function lirePageDressing(page, userId) {
+// (18/10, 0.6.128) `order` optionnel (« newest_first » : la recherche de la
+// copie d'une recréation lit les plus récentes d'abord) ; seul un mot fait de
+// lettres et de « _ » part dans l'URL. Sans `order`, l'URL du relevé est
+// identique à la lettre (ordre par défaut de Vinted).
+async function lirePageDressing(page, userId, { order = null } = {}) {
   const t = (line) => console.log(`[vinted][sync] ${line}`);
   if (!userId) return { success: false, error: "user_id Vinted manquant" };
 
@@ -1127,7 +1133,8 @@ async function lirePageDressing(page, userId) {
     return { success: false, botShield: true, error: "CHALLENGE Vinted (bot-shield) — sync interrompue" };
   }
 
-  const url = `/api/v2/wardrobe/${encodeURIComponent(userId)}/items?page=${page}&per_page=96`;
+  const ordre = typeof order === "string" && /^[a-z_]{1,40}$/.test(order) ? order : null;
+  const url = `/api/v2/wardrobe/${encodeURIComponent(userId)}/items?page=${page}&per_page=96${ordre ? `&order=${ordre}` : ""}`;
   let resp;
   try {
     resp = await fetchBorne(url, { headers: entetesApiVinted(), credentials: "include" });

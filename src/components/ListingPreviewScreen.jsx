@@ -33,7 +33,7 @@ import { Loader } from "./ui";
 import BarreProgression from "./BarreProgression";
 import BoutonMeConnecter from "./BoutonMeConnecter";
 import { MOTIFS } from "../utils/connexionPlateformes";
-import { detectObjectIcon, detectObjectIconKeyword, detectObjectKeywordDetail, ALL_OBJECT_ICONS, PLATFORM_LOGIN_URLS, fraicheurExtension, estSupportNonLivre, uuidV4, lirePoidsGrammes } from "../utils/shared";
+import { detectObjectIcon, detectObjectIconKeyword, detectObjectKeywordDetail, ALL_OBJECT_ICONS, PLATFORM_LOGIN_URLS, fraicheurExtension, estSupportNonLivre, uuidV4, lirePoidsGrammes, titreNommeUneDecorationMurale } from "../utils/shared";
 import { getVintedCategoryPath, vintedGenreRequired } from "../utils/vintedCategories";
 import { getLbcCategoryPath, getLbcBabyEquipment, getLbcFreePhotoQuota } from "../utils/lbcCategories";
 import { lbcProduitsDependants, lbcListePlate, lbcFeuilleDependante, lbcPaireDepuisTextes } from "../utils/lbcMaisonJardin";
@@ -119,7 +119,7 @@ import {
   champsBloquantsParPlateforme, plateformesBloqueesChamps as calculerPlateformesBloqueesChamps,
   descriptionVintedVide, calculerExclusions, motifAucunePlateforme, cleCategorieRequis,
   construireJobs, plateformesSansChemin, gardeAspectsEbay, aspectsEbayEncoreVides, questionsParPlateforme as calculerQuestionsParPlateforme,
-  dimensionsEbayGroupees,
+  dimensionsEbayGroupees, issueQuestionDisparue,
 } from "../publication/moteur/regles";
 import {
   NO_BRAND_VALUE, SHARED_FIELD_KEYS, SHARED_PROPAGATION, EBAY_ASPECT_LABELS,
@@ -145,6 +145,12 @@ import {
 } from "../publication/moteur/listes";
 // (10/10, cas Manon) Ce que l'encart eBay remplit seul, et quand.
 import { aspectsADemanderIa, valeursAutoAReprendre } from "../publication/moteur/aspectsEbayAuto";
+// (18/10, eBay ÷ 5) La longueur de la robe lue dans le texte, la valeur connue
+// reposée, l'encart qui attend le pré-calcul et refuse l'icône démentie.
+import {
+  EBAY_LONGUEUR_ROBE, longueurDeLaRobeDuTexte, poseAutoAutorisee, cleValeurConnue,
+  ATTENTE_PRECALCUL_EBAY_MS, iconeEbayAdmise, precalculEbayNonConfirme,
+} from "../publication/moteur/aspectsEbayAuto";
 // (11/10, Nico) La couleur ne bloque jamais : posée seule, à la publication.
 import {
   avecPaletteVintedComplete, couleursExigeesVides, couleurConnue, listePourIa, posesCouleur,
@@ -675,10 +681,16 @@ function resolveArticleIconDetail({ initialListing, edited, pf, aiIcon = null, a
   // et le manga (#17). Durcir ça en « l'IA a nommé, nous ne connaissons pas,
   // donc on se tait » était la voie 3 : elle répare un cas de plus et fait
   // retomber la chapka en « Divers > Autres ». ÉCARTÉE par Nico le 19/09.
+  // ── VOIE 5 (18/10, eBay ÷ 5) : le titre nomme une DÉCORATION MURALE ───────
+  // « Décoration murale chambre » + description « avec un lit, un miroir… » →
+  // 🛏️ (Lits, cadres, sommiers chez eBay) ; « … cuisine » + « une cocotte » →
+  // 🍳 (Casseroles). Ce que la description énumère, la décoration le REPRÉSENTE :
+  // la passe 2 se tait (utils/shared.js, titreNommeUneDecorationMurale).
   const motCle = detectObjectKeywordDetail(frTitle, `${frDesc} ${marque}`);
   const passe2Ecartee = motCle?.passe === 2 && (
     estAnglaisAvere(frDesc) ||
-    (iconeDuMotIa != null && iconeDuMotIa !== motCle.icon)
+    (iconeDuMotIa != null && iconeDuMotIa !== motCle.icon) ||
+    titreNommeUneDecorationMurale(frTitle)
   );
   // ── UN THÈME N'EST PAS UN OBJET (12/10, Louis « Moules noel ») ────────────
   // « noël » dit POUR QUELLE FÊTE, jamais CE QUE C'EST : « Moules noel » (des
@@ -6499,6 +6511,17 @@ export default function ListingPreviewScreen({
   // aboutie, refusée ou injoignable. Ne change rien au parcours : le pilote du
   // lot s'en sert pour savoir quand lire les questions d'un article.
   const [resolutionFaitePour, setResolutionFaitePour] = useState(null);
+  // (18/10, eBay ÷ 5) L'encart eBay attend la réponse du pré-calcul avant de se
+  // monter sur la catégorie de l'ICÔNE (moteur/aspectsEbayAuto, iconeEbayAdmise).
+  // Filet : un pré-calcul muet plus de ATTENTE_PRECALCUL_EBAY_MS rend la main à
+  // l'icône, comme avant. Un seul minuteur par rédaction, aucune lecture de base.
+  const [attentePrecalculEbayPour, setAttentePrecalculEbayPour] = useState(null);
+  useEffect(() => {
+    if (!platformListings?.platforms) return undefined;
+    const pour = platformListings;
+    const minuteur = setTimeout(() => setAttentePrecalculEbayPour(pour), ATTENTE_PRECALCUL_EBAY_MS);
+    return () => clearTimeout(minuteur);
+  }, [platformListings]);
   // (05/10, point 6) L'objet n'a pas été reconnu (aucun mot) : la résolution
   // a rendu la question « rayon à choisir ». Dès qu'un rayon est choisi, sa
   // feuille nomme l'objet (activeAiObjet, qui vaut alors objetDuRayonChoisi :
@@ -6637,10 +6660,26 @@ export default function ListingPreviewScreen({
     setSharedFields(prev => ({ ...prev, [key]: value }));
     setEdited(prev => ecrireReponsePartagee({ edited: prev, overrides: sharedOverrides, key, value, cibles }).edited);
   }
+  // ── (18/10, eBay ÷ 5) CE QUE LE MOTEUR CONNAÎT, ET CE QUE LA PERSONNE A TOUCHÉ ──
+  // Une valeur que le moteur connaît (défaut, option du texte, réponse de l'IA
+  // pour CETTE catégorie) ne redevient jamais une question : si le champ se
+  // vide sans geste de la personne, elle est reposée (moteur/aspectsEbayAuto,
+  // poseAutoAutorisee). `ebayTouchesPersonne` : les aspects eBay que la
+  // personne a écrits ou vidés (encart, bloc de questions, poses de la mémoire
+  // retouchées) — ceux-là ne sont jamais recouverts. `ebayValeursConnues` :
+  // « catégorie|aspect » → la réponse de l'IA (aucun nouvel appel : on garde
+  // celle qu'on a). `ebayReposes` : le plafond de reposes par champ.
+  const ebayTouchesPersonne = useRef(new Set());
+  const ebayValeursConnues = useRef(new Map());
+  const ebayReposes = useRef(new Map());
+  const ebayToucheParPersonne = (a) => Boolean(a?.name) && (ebayTouchesPersonne.current.has(a.name)
+    || (a.sharedKey ? ebayTouchesPersonne.current.has(`partage:${a.sharedKey}`) : false));
   // Fallback UI générique (Phase 3, 2026-07-16) : saisie manuelle d'un
   // aspect obligatoire eBay sans source — écrit dans pf.ebayAspects de la
   // copie eBay (même canal que resolve_aspects ; garde + ebay.js le lisent).
   function setEbayAspect(name, value) {
+    // (18/10, eBay ÷ 5) Un geste de la personne : ce champ n'est plus au moteur.
+    if (name) ebayTouchesPersonne.current.add(String(name));
     setEdited(prev => prev.ebay ? {
       ...prev,
       ebay: {
@@ -7570,8 +7609,22 @@ export default function ListingPreviewScreen({
     if (rayonEbay?.choisi && String(rayonEbay.id ?? "").trim()) return String(rayonEbay.id).trim();
     const resolue = String(pf.ebayCategoryId ?? "").trim();
     if (resolue) return resolue;
+    // (18/10, eBay ÷ 5) L'ICÔNE DÉMENTIE PAR LE PRÉ-CALCUL NE POSE PAS SES
+    // QUESTIONS. « Tele de lion » (une tête de lion décorative) : icône 📺 →
+    // 11071 Télévisions ; la vérification a répondu « aucune » deux fois
+    // (categorie_source « icone_non_confirmee »). Par l'API, le serveur choisit
+    // parmi les suggestions d'eBay et remplit les aspects de SA catégorie :
+    // « Résolution maximale », « Taille d'écran », « Technologie d'affichage »
+    // n'avaient rien à demander. Voie extension : inchangé (ebay.js part sur
+    // l'identifiant du job).
+    if (precalculEbayNonConfirme({ pfEbay: resolutionAffichee?.pfParPlateforme?.ebay, voieApi: ebayVoieApiReelle, choisi: Boolean(rayonEbay?.choisi) })) return null;
     const prevue = String(rayonEbay?.id ?? "").trim();
     if (prevue) return prevue;
+    // (18/10, eBay ÷ 5) PAS D'ICÔNE AVANT LA RÉPONSE DU PRÉ-CALCUL : ses
+    // questions disparaissaient quelques secondes plus tard (serviteurs de
+    // cheminée interrogés 22 s sur la « Batterie » d'une perceuse sans fil).
+    if (!iconeEbayAdmise({ preCalculAttendu: Boolean(platformListings?.platforms), preCalculFini: resolutionFaitePour === platformListings,
+      attenteEcoulee: attentePrecalculEbayPour === platformListings })) return null;
     const icon = resolveArticleIcon({ initialListing, edited, pf, aiIcon: activeAiIcon });
     const direct = getEbayCategoryId(icon, pf.genre);
     if (direct) return direct;
@@ -7586,7 +7639,7 @@ export default function ListingPreviewScreen({
     // aura réellement.
     const secours = ebayGenreFallback();
     return secours ? (getEbayCategoryId(icon, secours) ?? null) : null;
-  }, [selected, edited, initialListing, activeAiIcon, ebayCategorieDuClic, rayonsParPf]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selected, edited, initialListing, resolutionAffichee, ebayVoieApiReelle, platformListings, resolutionFaitePour, attentePrecalculEbayPour, activeAiIcon, ebayCategorieDuClic, rayonsParPf]); // eslint-disable-line react-hooks/exhaustive-deps
   // « Plateforme » d'un jeu vidéo, lue sur la machine nommée (02/10 soir,
   // point 6) — même texte et même icône que la catégorie ci-dessus ; posée
   // par défaut dans l'encart (modifiable), jamais envoyée à l'IA.
@@ -7695,6 +7748,13 @@ export default function ListingPreviewScreen({
       description: edited.ebay?.description || "",
       platformFields: { categorie_objet_ia: activeAiObjet ?? pf.categorie_objet_ia ?? null, categorie_verification: pf.categorie_verification ?? null },
     });
+    // (18/10, eBay ÷ 5) Le contexte des défauts sûrs — LE MÊME que l'effet des
+    // défauts et l'exclusion de l'IA (marque telle qu'elle partira, famille
+    // Lens, machine du jeu vidéo).
+    const ctxDefautEbay = {
+      marque: String(pf.marque ?? pf.ebayAspects?.["Marque"] ?? "").trim(),
+      famille: initialListing?.famille ?? null, plateformeJeu: plateformeJeuEbay,
+    };
     return ebayRequiredPreview.map(({ name, allowedValues, mode }) => {
       const src = sources.find(s => s.labels.includes(name));
       const srcVal = src ? String(src.get() ?? "").trim() : "";
@@ -7743,6 +7803,14 @@ export default function ListingPreviewScreen({
       // select eBay ne satisfaisait jamais le bloc rouge (double-saisie, et
       // deux valeurs divergentes possibles au publish).
       const manquant = { name, state: "missing", value: "", sharedKey: src?.key, allowedValues, mode };
+      // (18/10, eBay ÷ 5) LE DÉFAUT SÛR EST UNE VALEUR CONNUE, PAS UNE POSE
+      // UNIQUE. « Plateforme » d'un jeu (PS3, Xbox 360, Switch), « Modèle » d'un
+      // objet sans marque, MPN : le statut le porte désormais (`deduit`), si
+      // bien qu'un champ vidé sans geste de la personne est reposé par l'effet
+      // des défauts — au lieu de devenir une question (3 « Plateforme » de la
+      // semaine du 11/10 : exclues de l'IA pour leur défaut, puis affichées).
+      const defaut = defautAspectEbay({ name, mode, allowedValues }, ctxDefautEbay);
+      if (defaut) return { ...manquant, deduit: { valeur: defaut, source: "defaut" } };
       // (18/10, zéro friction — banc de 571 VRAIES annonces eBay France, valeur
       // choisie par le vendeur) Sur ces aspects à liste SUGGÉRÉE, l'option que
       // le texte nomme est plus juste que l'IA : « Longueur de la robe » 7/8
@@ -7754,6 +7822,20 @@ export default function ListingPreviewScreen({
         const ded = deduireOptionDuTexte({ platform: "ebay", key: name, label: name, allowedValues, textes: textesEbay });
         if (ded?.valeur) return { ...manquant, deduit: { valeur: ded.valeur, source: ded.source } };
         if (ded?.candidats?.length > 1) return { ...manquant, allowedValues: listeCandidatsDabord(allowedValues, ded.candidats), candidats: ded.candidats };
+        // (18/10, eBay ÷ 5) « Longueur de la robe » : la liste eBay ne porte que
+        // « Au genou / Midi / Asymétrique » — « Robe longue », « Robe mi jambe »
+        // n'y trouvaient rien. Le texte du VENDEUR (titre, description, sa
+        // feuille Vinted) tranche longue → « Longue », mi-longue → « Midi » ;
+        // jamais « courte » (moteur/aspectsEbayAuto, longueurDeLaRobeDuTexte).
+        if (name === EBAY_LONGUEUR_ROBE) {
+          const fr = textesFrDeLaPublication({ initialListing, edited });
+          const cheminV = initialListing?.attributs?.categorie_vinted?.chemin;
+          const lr = longueurDeLaRobeDuTexte({ allowedValues, mode, textes: [
+            { source: "titre", texte: fr.titre }, { source: "description", texte: fr.description },
+            { source: "categorie_vinted", texte: Array.isArray(cheminV) && cheminV.length ? String(cheminV[cheminV.length - 1]) : "" },
+          ] });
+          if (lr?.valeur) return { ...manquant, deduit: { valeur: lr.valeur, source: `longueur_${lr.source}` } };
+        }
         // (18/10 nuit, point 1) La dernière réponse de la personne pour cette
         // catégorie eBay (Département seulement) — APRÈS le texte ; le genre de
         // la copie garde la priorité dans l'effet des défauts ci-dessous.
@@ -7766,9 +7848,16 @@ export default function ListingPreviewScreen({
         const app = propositionApprise(manquant, apprisesParPf?.ebay);
         if (app?.etat === "actif") return { ...manquant, deduit: { valeur: app.valeur, source: app.source } };
       }
+      // (18/10, eBay ÷ 5) LA RÉPONSE DE L'IA DÉJÀ REÇUE POUR CETTE CATÉGORIE :
+      // « Nom du jeu vidéo » (Harvest Life), « Type » (Boîtier reflex
+      // argentique), « Style » (À sangle) étaient rendus 1 à 70 s AVANT que la
+      // question s'affiche — la valeur s'était perdue, l'IA n'est jamais
+      // redemandée. On repose celle qu'on a (aucun nouvel appel).
+      const connue = ebayValeursConnues.current.get(cleValeurConnue(ebayPreviewCategoryId, name));
+      if (connue) return { ...manquant, deduit: { valeur: connue, source: "ia_connue" } };
       return manquant;
     });
-  }, [ebayRequiredPreview, edited, plateformesPubliables, activeAiObjet, memoireCat, ebayPreviewCategoryId, apprisesParPf]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ebayRequiredPreview, edited, plateformesPubliables, activeAiObjet, memoireCat, ebayPreviewCategoryId, apprisesParPf, plateformeJeuEbay, initialListing]);
 
   // Défauts DÉTERMINISTES (Phase 1, 2026-07-16) : dès que les obligatoires de
   // la catégorie sont connus, on pose les valeurs standard eBay SÛRES
@@ -7854,12 +7943,27 @@ export default function ListingPreviewScreen({
       aspectDefaultsPoses.current = new Set();
     }
     const toSet = {};
+    // (18/10, eBay ÷ 5) « Une pose, jamais deux » protégeait la personne qui
+    // vide un champ exprès — et laissait en question une valeur que le moteur
+    // avait posée puis perdue (6 questions de la semaine du 11/10). Désormais :
+    // première pose comme avant ; une REPOSE seulement si la personne n'a pas
+    // touché ce champ (ebayTouchesPersonne), au plus REPOSES_MAX fois par champ
+    // et par catégorie (moteur/aspectsEbayAuto, poseAutoAutorisee).
+    const peutPoser = (a) => poseAutoAutorisee({
+      dejaPosee: aspectDefaultsPoses.current.has(a.name), touche: ebayToucheParPersonne(a),
+      reposes: ebayReposes.current.get(cleValeurConnue(ebayPreviewCategoryId, a.name)) ?? 0,
+    });
+    const noterPose = (a) => {
+      const k = cleValeurConnue(ebayPreviewCategoryId, a.name);
+      if (aspectDefaultsPoses.current.has(a.name)) ebayReposes.current.set(k, (ebayReposes.current.get(k) ?? 0) + 1);
+      aspectDefaultsPoses.current.add(a.name);
+    };
     for (const a of ebayRequiredStatus) {
       const def = defautAspectEbay(a, { marque: marqueEbay, famille: initialListing?.famille ?? null, plateformeJeu: plateformeJeuEbay });
       if (def && a.state === "missing" && !String(pfAspects[a.name] ?? "").trim()
-          && !aspectDefaultsPoses.current.has(a.name)) {
+          && peutPoser(a)) {
         toSet[a.name] = def;
-        aspectDefaultsPoses.current.add(a.name);
+        noterPose(a);
       }
       // Département ← genre de la copie eBay (2026-07-19, montre Casio) :
       // déterministe comme les défauts ci-dessus, mais dérivé d'une DONNÉE du
@@ -7868,21 +7972,23 @@ export default function ListingPreviewScreen({
       // « Adulte »…). Genre absent ou aucun candidat → reste "missing" :
       // resolve_aspects puis saisie manuelle, comme Type/Style.
       if (a.name === "Département" && a.state === "missing" && !String(pfAspects[a.name] ?? "").trim()
-          && !aspectDefaultsPoses.current.has(a.name)) {
+          && peutPoser(a)) {
         // genreCle = genre effectif (copie eBay, sinon repli copies sœurs) —
         // cf. son calcul plus haut, aligné sur ebayPreviewCategoryId.
         const candidats = EBAY_DEPARTMENT_BY_GENRE[genreCle] ?? [];
         const libelle = candidats.find(c =>
           (a.allowedValues ?? []).some(v => normAspectVal(v) === normAspectVal(c)));
-        if (libelle) { toSet[a.name] = libelle; aspectDefaultsPoses.current.add(a.name); }
+        if (libelle) { toSet[a.name] = libelle; noterPose(a); }
       }
       // L'option que l'annonce nomme (2026-09-24) — APRÈS les défauts sûrs et
-      // le Département, qui gardent la priorité. Une pose, jamais deux.
+      // le Département, qui gardent la priorité. (18/10, eBay ÷ 5) Reposée si
+      // elle s'est perdue sans geste de la personne (peutPoser).
       if (a.deduit?.valeur && a.state === "missing" && !(a.name in toSet)
-          && !String(pfAspects[a.name] ?? "").trim() && !aspectDefaultsPoses.current.has(a.name)) {
+          && !String(pfAspects[a.name] ?? "").trim() && peutPoser(a)) {
         toSet[a.name] = a.deduit.valeur;
-        aspectDefaultsPoses.current.add(a.name);
-        if (a.deduit.source === "memoire") noterPoseMemoire("ebay", a, a.deduit, ebayPreviewCategoryId ?? null);
+        const repose = aspectDefaultsPoses.current.has(a.name);
+        noterPose(a);
+        if (a.deduit.source === "memoire" && !repose) noterPoseMemoire("ebay", a, a.deduit, ebayPreviewCategoryId ?? null);
       }
     }
     if (!Object.keys(toSet).length) return;
@@ -8055,6 +8161,11 @@ export default function ListingPreviewScreen({
         const clean = Object.fromEntries(Object.entries(values).filter(([k, v]) =>
           aDemander.includes(k) && typeof v === "string" && v.trim() && v.trim().toLowerCase() !== "null"));
         if (!Object.keys(clean).length) return;
+        // (18/10, eBay ÷ 5) La réponse est GARDÉE pour sa catégorie, posée ou
+        // non : si le champ se vide plus tard sans geste de la personne, ou si
+        // l'encart revient sur cette catégorie, elle se repose sans nouvel appel
+        // (ebayRequiredStatus, source « ia_connue »).
+        for (const [k, v] of Object.entries(clean)) ebayValeursConnues.current.set(cleValeurConnue(cat, k), String(v).trim());
         // Une réponse revenue APRÈS un changement de catégorie ne vaut que pour
         // l'ancienne : elle ne pose rien (la nouvelle a sa propre demande).
         if (ebayCategorieCourante.current !== cat) return;
@@ -9039,7 +9150,15 @@ export default function ListingPreviewScreen({
   // dans le bloc de questions (BlocQuestions) et ses réponses notées
   // (noterReponseQuestion) sont retenus ici, par clé de télémétrie.
   const gestesQuestions = useRef(new Set());
-  const noterGesteQuestion = (cle) => { if (cle) gestesQuestions.current.add(String(cle)); };
+  const noterGesteQuestion = (cle) => {
+    if (!cle) return;
+    gestesQuestions.current.add(String(cle));
+    // (18/10, eBay ÷ 5) Un geste sur une question eBay (ou partagée) : le
+    // moteur ne repose plus jamais sa valeur sur ce champ (ebayToucheParPersonne).
+    const c = String(cle);
+    if (c.startsWith("ebay:")) ebayTouchesPersonne.current.add(c.slice(5));
+    else if (c.startsWith("partage:")) ebayTouchesPersonne.current.add(c);
+  };
   const gesteSurQuestion = (k, vu) => {
     if (gestesQuestions.current.has(k)) return true;
     if (vu?.partage && gestesQuestions.current.has(`partage:${vu.partage}`)) return true;
@@ -9117,6 +9236,10 @@ export default function ListingPreviewScreen({
       const enDimensions = dimsEbay.includes(a) || Boolean(dimOuverte && !dimOuverte.complete && dimOuverte.dimensions?.includes(a.name));
       const k = enDimensions ? "ebay:Dimensions" : `ebay:${a.name}`;
       if (memoireRetenue && !champBloquantVus.current[k]) continue;
+      // (18/10, eBay ÷ 5) Une valeur que l'effet des défauts (re)pose à ce rendu
+      // — défaut sûr, option du texte, réponse de l'IA gardée — n'est pas une
+      // question nouvelle (sauf si la personne a vidé ce champ elle-même).
+      if (a.state === "missing" && a.deduit?.valeur && !ebayToucheParPersonne(a) && !champBloquantVus.current[k]) continue;
       actifs.add(k);
       if (!champBloquantVus.current[k]) {
         // (10/10) L'article est nommé, comme pour les questions partagées : on
@@ -9162,7 +9285,12 @@ export default function ListingPreviewScreen({
         // personne est une question qu'elle a dû se poser.
         const suite = { par: gesteSurQuestion(k, vu) ? "personne" : "moteur",
           delai_s: vu.affiche_le ? Math.round((Date.now() - vu.affiche_le) / 1000) : null };
-        logChampBloquant(rayonChange ? "retiree" : "complete", rayonChange ? { ...vu, ...suite, categorie_apres: catApres } : { ...vu, ...suite });
+        // (18/10, eBay ÷ 5) La plateforme DÉCOCHÉE n'a pas « complété » la
+        // question : elle l'a abandonnée (33 des 41 questions eBay restantes de
+        // la semaine du 11/10 ont fini sans annonce eBay). Issue à part,
+        // `plateforme_decochee` (moteur/regles, issueQuestionDisparue).
+        const issue = issueQuestionDisparue({ plateformeCochee: selected.has(vu.platform), rayonChange });
+        logChampBloquant(issue, issue === "retiree" ? { ...vu, ...suite, categorie_apres: catApres } : { ...vu, ...suite });
       }
     }
     champBloquantRestants.current = actifs;
@@ -10386,7 +10514,17 @@ export default function ListingPreviewScreen({
           ? tpl("stepPublishEbayValueNotAllowed", { name: v.name, value: v.val, sample: v.sample }) + ` ${t("stepPublishEbayAxisHint")}`
           : tpl("stepPublishEbayValueNotAllowedPick", { name: v.name, value: v.val, count: v.count }));
         const guardMessages = [];
-        if (verdict.missingEmpty.length) {
+        // (18/10, eBay ÷ 5) Catégorie de l'ICÔNE démentie par la vérification,
+        // voie API, sans choix de la personne : le serveur choisit parmi les
+        // suggestions d'eBay et remplit les aspects de SA catégorie (règle n° 2
+        // d'ebay-api-worker) — un aspect vide de l'icône n'arrête pas le clic,
+        // comme l'encart ne l'a pas demandé (precalculEbayNonConfirme). S'il
+        // manque vraiment dans la catégorie retenue, le serveur le dira.
+        const iconeDementie = precalculEbayNonConfirme({ pfEbay: pfE, voieApi: ebayVoieApiReelle, choisi: Boolean(edited.ebay?.rayon_choisi?.chemin?.length) });
+        if (iconeDementie && verdict.missingEmpty.length) {
+          console.warn(`[publish] eBay — catégorie de l'icône non confirmée (${pfE.ebayCategoryId ?? "?"}), voie API : ${verdict.missingEmpty.join(", ")} laissés au serveur, qui choisit la catégorie parmi les suggestions d'eBay`);
+        }
+        if (verdict.missingEmpty.length && !iconeDementie) {
           // (15/10) La question est posée ICI (bloc des questions de l'écran) ;
           // la publication repart seule à la réponse, sauf si elle a déjà été
           // relancée une fois pour ces mêmes champs.
@@ -10401,7 +10539,7 @@ export default function ListingPreviewScreen({
           // Trace « bloque_au_clic », comme Leboncoin (02/10 soir, point 6).
           logChampBloquant("bloque_au_clic", {
             platform: "ebay",
-            champs: [...verdict.missingEmpty, ...verdict.invalides.map(v => v.name)],
+            champs: [...(iconeDementie ? [] : verdict.missingEmpty), ...verdict.invalides.map(v => v.name)],
             categorie: catJob || null,
             ...(catJob && String(ebayPreviewCategoryId ?? "") !== catJob ? { categorie_encart: ebayPreviewCategoryId ?? null } : {}),
           });
@@ -10410,7 +10548,7 @@ export default function ListingPreviewScreen({
           // catégorie que le job, il se REMONTE sur celle du job : les champs
           // manquants y apparaissent (déduits quand on peut, sinon demandés une
           // fois), et le message le dit. Rien n'est décompté.
-          if (catJob && verdict.missingEmpty.length && String(ebayPreviewCategoryId ?? "") !== catJob) {
+          if (catJob && verdict.missingEmpty.length && !iconeDementie && String(ebayPreviewCategoryId ?? "") !== catJob) {
             setEbayCategorieDuClic(catJob);
             guardMessages.push(lang === "en"
               ? "The eBay box above now shows these fields — answer there, then publish again. Nothing was counted."
@@ -10923,6 +11061,11 @@ export default function ListingPreviewScreen({
   const refusSansQuestion = Boolean(resolutionAffichee?.refus)
     && plateformesAvecRayonChoisi(edited).length === 0
     && Object.keys(rayonsAChoisir).length === 0;
+  // (18/10, eBay ÷ 5) L'encart eBay attend le pré-calcul (iconeEbayAdmise) :
+  // tant qu'il n'a pas répondu (ni le filet de 20 s), le bouton attend aussi.
+  const ebayAttendLePrecalcul = selected.has("ebay") && plateformesPubliables.has("ebay") && Boolean(edited.ebay)
+    && !ebayPreviewCategoryId && Boolean(platformListings?.platforms)
+    && resolutionFaitePour !== platformListings && attentePrecalculEbayPour !== platformListings;
   const requiredBlocking =
     (ebayRequiredStatus ?? []).some(aspectBloquant) ||
     missingSharedFields.length > 0 ||
@@ -10934,6 +11077,10 @@ export default function ListingPreviewScreen({
     portDepopManquant ||
     // (11/10) Leboncoin cochée sans poids (ni copie ni fiche) : on le demande avant l'envoi.
     poidsLbcManquant ||
+    // (18/10, eBay ÷ 5) eBay cochée, son rayon pas encore pré-calculé : l'encart
+    // attend la réponse (plus de questions sur l'icône), le clic aussi — jamais
+    // un départ sur une catégorie que personne ne connaît encore (filet : 20 s).
+    ebayAttendLePrecalcul ||
     // (25/09) Un rayon À CHOISIR (refusé, aucun rayon sûr à sa place) : la
     // plateforme attend la réponse, comme pour un champ obligatoire — on la
     // choisit, ou on décoche la plateforme. (05/10) Aussi quand AUCUN mot
@@ -11024,6 +11171,7 @@ export default function ListingPreviewScreen({
     if (portDepopManquant) m.push(lang === "en" ? "Depop shipping price to fill in" : "Frais de port Depop à indiquer");
     if (poidsLbcManquant) m.push(lang === "en" ? "Leboncoin parcel weight to fill in (or let Leboncoin estimate)" : "Poids du colis Leboncoin à indiquer (ou laisser Leboncoin estimer)");
     if (refusSansQuestion) m.push(String(resolutionAffichee?.refus?.message ?? (lang === "en" ? "Category to pick" : "Rayon à choisir")));
+    if (ebayAttendLePrecalcul) m.push(lang === "en" ? "eBay category being checked…" : "Rayon eBay en cours de vérification…");
     // ── RIEN DE COCHÉ : ON LE DIT, ET ON DIT QUOI COCHER (2026-09-22) ───────
     // 🚨 LE DÉFAUT, mail de Romain du 22/09 à 13h48 (« Donc je ne sais pas ce
     //    que je dois compléter »), capture à l'appui. Son article Funko Star

@@ -434,6 +434,20 @@ export function dimensionsEbayGroupees(ebayRequiredStatus) {
   return d.length >= 2 ? d : [];
 }
 
+// ── (18/10, eBay ÷ 5) POURQUOI UNE QUESTION A DISPARU ───────────────────────
+// Une question qui disparaît parce que la personne a DÉCOCHÉ sa plateforme
+// n'a été levée ni par elle ni par le moteur : elle l'a fait renoncer. Avant,
+// elle s'écrivait « complete » (par = moteur, aucun geste dans le bloc) — et
+// 33 des 41 questions eBay restantes de la semaine du 11/10 au 18/10 ont fini
+// sans annonce eBay. Le bilan les lira comme des abandons.
+//   plateforme_decochee → la plateforme n'est plus cochée ;
+//   retiree             → le rayon a changé (12/10, Morgane) ;
+//   complete            → sinon (par = personne / moteur, à côté).
+export function issueQuestionDisparue({ plateformeCochee = true, rayonChange = false } = {}) {
+  if (!plateformeCochee) return "plateforme_decochee";
+  return rayonChange ? "retiree" : "complete";
+}
+
 /**
  * La question « Taille » commune à plusieurs plateformes (02/10, point 11).
  * `lignes` : [{ gp, a }] — a = la ligne d'aspect (value, allowedValues…).

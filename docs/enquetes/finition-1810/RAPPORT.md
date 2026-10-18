@@ -1,0 +1,136 @@
+# Chantier « finition » — 18/10/2026 (16:35 → soir, heure de Paris)
+
+## Résumé (à lire en premier)
+
+| Point | Statut | En une ligne |
+|---|---|---|
+| 1. Régis | voir § 1 | Cause **prouvée** : 99 brouillons + redirection /member ; défaut serveur des 7 min corrigé ; 2 annonces en ligne, une fois chacune |
+| 2. Louis | voir § 2 | Règle « une boutique = un compte » + comptes reliés (essai 21/21) ; transfert @evat prouvé à blanc (19/19, inverse 25/25) |
+| 3. eBay ÷ 5 | voir § 3 | 156 → **27** questions affichées sur la semaine rejouée (÷ 5,8), bancs sans IA |
+| 4. Titre Vinted « symboles » | voir § 4 | assagi avant le dépôt, 0 titre accepté changé sur 70 555 |
+| 5. Leboncoin PRO poids | voir § 5 | correctif dans la 0.6.128, prouvé sur maquette du formulaire PRO |
+| 6. Depop sans identifiant | voir § 6 | l'identifiant n'a jamais manqué : un slug avec « _ » était illisible |
+| 7. Relevés morts | voir § 7 | première ligne de « À régler », geste unique « Se reconnecter » |
+
+(Le tableau est complété en fin de session avec CLOS / NON CLOS et la preuve — § Statut final.)
+
+---
+
+## 1. Régis (juchsregis@gmail.com, boutique Vinted asgarde67 = 31995881)
+
+### 1.1 Pourquoi lui seul (prouvé)
+- **La coupure touche tout le parc, sans se voir.** Sur 3 jours, chez tessy.galy, 111savagenow et xxewwer (les comptes
+  qui republiaient sans souci), **153 républications réussies sur 154 ont eu un « canal coupé » pendant le job**, dont 113
+  avec l'onglet sur `/member/<id>`, et les 153 ont été prouvées par la relecture du dressing (« recréation confirmée dans
+  le dressing après coupure du canal »). Le code du site Vinted (relu le 18/10) envoie bien la page sur `/member/<vendeur>`
+  après un dépôt réussi (`O = tr(N.id) … navigateToPage(O)`) et la laisse sur le formulaire en cas d'échec.
+- **Ce qui diffère chez Régis : 99 brouillons.** Le dressing vu par son PROPRIÉTAIRE liste les brouillons d'abord. Relevé
+  de 15:05 : page 1 = **96 annonces, toutes `draft`** ; les annonces actives commencent en page 2. Les trois comptes
+  témoins ont **0 brouillon**. Or la relecture de l'extension (pré-vérification et ceinture) ne lisait que la page 1 :
+  chez Régis, elle ne pouvait voir aucune copie.
+- **Défaut serveur aggravant (tout le parc, corrigé)** : dans `update-job-status`, quand l'extension réécrivait le job avec
+  un `deleted_at` déjà égal, `deleted_at_serveur` et `deleted_at_client` étaient posés sans marquer la modification, donc
+  **effacés**. L'écriture suivante se croyait la première et datait le retrait de l'heure du serveur (short : 13:11:38 →
+  13:18:45 ; bloc-feuillet : 14:13:46 → 14:20:44).
+- **Pas une restriction** : les pages /listing-restriction et /selling-restriction sont détectées au chargement du
+  formulaire (avant tout retrait) ; chez Régis, les 11 dépôts ont tous abouti.
+
+### 1.2 Le correctif (pour tous, sans toucher aux données des autres)
+- **Un dépôt réussi se reconnaît par la présence réelle de l'annonce** (numéro inconnu, même titre, même boutique, mise
+  en ligne pendant un de NOS envois), jamais par l'URL d'arrivée.
+- **Côté serveur, servi au parc en 0.6.125 dès le déploiement** :
+  - `get-pending-jobs` : après une tentative, aucune nouvelle recréation sans un **relevé complet** du dressing (toutes
+    les pages) commencé ≥ 12 min après, demandé par le serveur (`serveur:verif_recreation`) ; copie déjà au stock = la
+    question ; 6 h sans relevé = la question honnête ;
+  - **migration 20261018170000 (appliquée 17:03)** : quand ce relevé apporte la copie, la base la rattache à la fiche et
+    clôt la republication ; une copie de plus part par le circuit de retrait, numéro exact (essai à blanc 11/11) ;
+  - `update-job-status` : heure Vinted du retrait d'abord, repères jamais effacés, tous nos envois gardés.
+- **Extension 0.6.128** : lecture du dressing qui saute les brouillons (jusqu'à 10 pages), seuil = heure Vinted du retrait ;
+  `/member` ne conclut jamais à l'échec (`depot_incertain`, sans retentative). Rejeu du cas Régis : publié sur la copie au
+  lieu d'un nouvel essai (selftest `recreation-vinted-0-6-128`, 63/63).
+
+### 1.3 Ses 2 annonces (décision de Nico : garder la 1re copie)
+- Réparation `scripts/reparations/20261018_regis_doublons_recreation.sql` (16:57, essai à blanc, sauvegarde, inverse) :
+  fiches rattachées à 10427468367 (short) et 10428851595 (bloc-feuillet), jobs publiés ; **9 retraits** par numéro exact,
+  exécutés par son extension de 16:58 à 17:02.
+- **Page relue** : une seule annonce de chaque article en ligne (200), les 9 copies retirées en 404.
+
+### 1.4 Le défaut des 7 min ailleurs (lecture seule, rien réparé)
+- 60 retraits sur 8 032 (30 jours, 20 comptes) datés plus d'une minute trop tard ; 7 républications d'autres comptes ont
+  eu plusieurs tentatives. **D'après le stock relevé, une seule garde une copie en double en ligne** :
+  ornellaracano 0f8c3f6b (« Pull orange maille côtelée… ») — 10309363918 en plus de 10310269763. Les 6 autres
+  (remialbertholl 81bf5d44, nadegemarcelin78 edd1e8c1 et 483049ef, ornellaracano b92e0880, lohanobert59 21a71cc8,
+  2hyk6vg842 2d37ee4a) : aucune copie en double au stock.
+
+### 1.5 Quota gratuit (50 républications)
+- Le compteur compte **une fois par article** (exécutée ou en cours), jamais par essai ; un retrait n'est pas une
+  republication. Régis : 49/50 = 2 publiées + 47 en attente ; les 11 essais et les 9 retraits n'ont rien consommé.
+
+### 1.6 Les 47
+- Retenues jusqu'au déploiement de la garde serveur, puis libérées par petit lot avec preuve (§ Statut final).
+
+## 2. Louis — une boutique = un compte, comptes reliés, transfert @evat
+
+### 2.1 Décisions de Nico (18/10)
+- @evat (371531) = PERSO → louis-seller ; @neyenonie (247512093, Vinted PRO) + Leboncoin + Beebs PRO + eBay @plt-crea
+  → louis@ (option B ; @neyenonie établie au compte principal par le registre : un seul pin).
+- Fiches @evat qui ont aussi une copie Leboncoin/Beebs : **coupées en deux**, comptes **reliés** (une vente prouvée d'un
+  côté retire les copies de l'autre). Bêta messages ouverte sur louis-seller. On ne dit rien à Louis : c'est l'app qui
+  rend vrai le message de 17:15.
+
+### 2.2 La règle (migration 20261018200000, essai à blanc 21/21)
+- Registre `boutiques_plateforme` : une boutique Vinted d'un autre compte n'entre jamais au pin, n'est jamais confirmée,
+  aucun article importé (`[boutique_a_confirmer][boutique_autre_compte]`), aucune vente enregistrée (0 mail).
+- Leboncoin/Beebs/Depop/eBay : une annonce suivie en ligne par un autre compte n'est pas importée ; un compte eBay relié
+  à un seul compte FillSell.
+- Comptes reliés : une fiche vendue rend sa jumelle vendue, ses copies sont retirées (Point A : la vente de la jumelle
+  vaut preuve) ; une vente annulée la rend disponible et annule ses retraits en file ; une commande déjà enregistrée sur
+  l'autre compte ne l'est jamais deux fois ; une vente LBC dont l'annonce n'est suivie que par le compte relié lui
+  appartient ; une conversation / une commande n'est copiée qu'une fois.
+- App : « Ce navigateur est connecté à la boutique Vinted @x, déjà suivie par un autre compte FillSell… » (orange, sans
+  bouton « c'est bien ma boutique ? ») ; bilan « N annonces … déjà suivies par un autre compte ».
+
+### 2.3 Le transfert (essai à blanc 19/19 contrôles, inverse prouvé 25/25)
+- 224 fiches @evat passent à louis-seller avec leur historique ; ses 212 fiches nues du jour cèdent la place ;
+  **164 fiches, 322 annonces et 55 ventes Leboncoin retirées de louis-seller, sans aucun job** ; 695 ventes @evat en double
+  retirées de louis@ (la copie de louis-seller est gardée : une vente, un compte) ; 195 fiches coupées en deux et reliées ;
+  10 commandes et 9 conversations @evat passent à louis-seller ; 0 job, 0 notification créés.
+
+## 3. eBay ÷ 5
+- Rejeu reproductible `scripts/bancs/zero-friction/rejeu-ebay.mjs` (catégorie lue dans `categorie_journal`) :
+  **156 affichées → 27** (vraies 139 → 27), central = pessimiste → **÷ 5,8**.
+- Leviers sans IA : « Longueur de la robe » n'est plus traitée comme une mesure + règle du texte (banc 12/13) ; une valeur
+  connue (défaut sûr, réponse IA déjà reçue) est reposée si la personne n'a pas touché le champ (plateforme 54/54) ; aucune
+  question avant le pré-calcul de catégorie ; une décoration murale ne prend plus l'icône de son motif ; issue
+  `plateforme_decochee` distincte.
+- Restent 27 : dimensions réelles de décorations murales (13), style/matière absents du texte (8), tailles hors grille (2),
+  objets inconnus (3), robe sans texte (1). À décider : « House de couette » → « Couette » posé par la règle du texte.
+
+## 4. Titre Vinted « trop de symboles »
+- `_shared/titre-symboles-vinted.js` + même règle dans l'extension 0.6.128 : « — » → « - », « … » retirés, « – » collé à un
+  symbole → « - », suite ≥ 3 symboles réduite, marque masquée. Mesure : **0 titre accepté changé sur 70 555**.
+- Servi par get-pending-jobs (publication et republication) ; un refus « symboles » repart une fois en mode strict
+  (pas-de-rouge, règle 7 de questions-tranchées). Le job 5d993767 repartira seul au passage de handler-watch.
+
+## 5. Leboncoin PRO — poids du colis
+- Cause : la sonde des critères attendait 4 s ; le formulaire PRO les rend plus tard et n'a pas la case livraison →
+  remplissage sauté, verdict qui ne reposait que l'état. Correctif 0.6.128 : sonde 15 s sur le PRO, seconde passe sans
+  sonde, verdict qui repose toute valeur du job présente dans la liste (jamais hors liste). Trouvé en plus : le canal
+  générique cherchait le champ par `label[for]` seul.
+- **Preuve sur un vrai compte PRO du parc : pas faite** — elle demande de piloter le navigateur de la personne. Preuve sur
+  maquette du formulaire PRO (le vrai `leboncoin.js` en vm, critères à 9 s et 17 s) : poids posé, « Valider et payer »
+  jamais cliqué (selftest `lbc-pro-poids` 26/26). Serveur : un mur « paiement » d'un passage précédent ne déclasse plus
+  la question (b1b9bb68).
+
+## 6. Depop — retrait sans identifiant
+- L'identifiant n'a jamais manqué : `thard_733-jean-bonobo-…` contient « _ », refusé par la règle de lecture des liens
+  (serveur, SQL, extension). Corrigé partout ; un retrait sans identifiant le retrouve seul par son lien puis par son dépôt
+  (slug + `depop_product_id`), jamais par le titre (migration 20261018180000, essai 8/8).
+
+## 7. Relevés morts
+- RPC `surveillance_releves()` (migration 20261018190000, essai vert, 15 ms) : une boutique non surveillée depuis plus de
+  24 h à cause d'une session fermée devient la **première ligne de « À régler »**, rouge, avec le seul bouton « Se
+  reconnecter ». La veille ne compte plus deux fois une annonce (lesmillesetunepepite Leboncoin : 430 → 217).
+
+## Statut final, livraison, ce qui reste à Nico
+(complété en fin de session)

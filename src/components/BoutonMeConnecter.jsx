@@ -140,10 +140,13 @@ function phraseMur(lang, platform, motif) {
  * @param {boolean} compact  (05/10) pour une carte de 165 px : sans logo (la ligne au-dessus
  *   nomme la plateforme), 12,5 px, une seule ligne, toute la largeur — la variante
  *   « bouton » débordait de la carte vendue à 360 et 390 px (relu au harnais).
+ * @param {string|null} libelleImpose  (18/10) le texte du bouton quand l'appelant le dit
+ *   (« Se reconnecter » d'une boutique qui n'est plus surveillée) ; le geste, lui, ne
+ *   change pas — même lien sur le web, même demande à l'ordinateur sur mobile.
  */
 export default function BoutonMeConnecter({
   userId, platform, motif = MOTIFS.CONNEXION, lang = 'fr',
-  variante = 'ligne', onOuverte, style, compact = false,
+  variante = 'ligne', onOuverte, style, compact = false, libelleImpose = null,
 }) {
   const t = T[lang === 'en' ? 'en' : 'fr'];
   const { etat: etatDemande, demander, reinitialiser: reinitialiserDemande } = useDemandeConnexion({ userId });
@@ -256,7 +259,7 @@ export default function BoutonMeConnecter({
       onClick={() => { if (onOuverte) setTimeout(onOuverte, 1500); }}
       style={habit(false)}
     >
-      {dedans(libelle(t, platform, motif))}
+      {dedans(libelleImpose || libelle(t, platform, motif))}
     </a>
   ) : (
     <button
@@ -268,7 +271,7 @@ export default function BoutonMeConnecter({
     >
       {dedans(enVol ? t.enCours
         : etat === 'muette' || etat === 'refusee' || etat === 'trop_vieille' || etat === 'absente' ? t.reessayer
-        : libelle(t, platform, motif))}
+        : (libelleImpose || libelle(t, platform, motif)))}
     </button>
   );
 

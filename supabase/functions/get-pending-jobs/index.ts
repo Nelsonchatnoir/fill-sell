@@ -59,6 +59,7 @@ import {
   champsRetenueForfait, champsPreparerDeNouveau,
 } from "../_shared/lbc-forfait.js";
 import { impasseRecreationVinted, decisionImpasseRecreation } from "../_shared/recreation-impasse-vinted.js";
+import { recreationAVerifier, decisionVerificationRecreation, retraitLe } from "../_shared/recreation-vinted-verifiee.js";
 import { messageRetenueCreneau, messageRetenuePause, retraitEngage } from "../_shared/retenue-creneau.js";
 import { posteApresDefaut } from "../_shared/defaut-fillsell.js";
 import { jugerMurGeste, messagePauseVintedGeste, PAUSE_VINTED_GESTE_MS, connexionVintedAbsenteProuvee, murConnexionVintedProuve } from "../_shared/mur-geste.js";
@@ -77,6 +78,8 @@ import { formatBeebsExplicite, formatBeebsDuChoix } from "../_shared/beebs-forma
 import { AGE_ANGLAIS_RE, NOMBRE_NU_RE, ORDRE_EXACT_D_ABORD, TAILLE_PREFIXEE_RE, grilleDuDernierEchecTaille, normaliserTaille, tailleAServir, tailleAServirPublication } from "../_shared/vinted-taille-republication.ts";
 // Nommer une annonce par son IDENTIFIANT quand son lien manque (21/09).
 import { lienDepuisId, idDepuisLien } from "../_shared/annonce-lien.ts";
+// (18/10) Un retrait Depop retrouve son slug et son numéro (lien, puis dépôt prouvé).
+import { identifiantRetraitDepop, retraitDepopSansIdentifiant } from "../_shared/depop-identifiant-retrait.js";
 
 /** Taille d'article en NOMBRE NU (« 36 », « 42 ») : le seul périmètre de la
  *  conversion nombre → lettre à la publication. Une forme préfixée (« EU 36 »)
@@ -151,6 +154,8 @@ function cheminLbcDepuisUrl(url: unknown): string[] | null {
 import { nettoyerDescriptionLeboncoin, nettoyerTitreLeboncoin } from "../_shared/description-leboncoin.ts";
 import { completerDescriptionBeebs, BEEBS_DESCRIPTION_MIN } from "../_shared/description-beebs.ts";
 import { tempererMajuscules } from "../_shared/titre-majuscules.ts";
+// (18/10) Titre Vinted « trop de symboles d'affilée » : symboles en trop retirés au service.
+import { assagirSymbolesVinted, retirerEmojiVinted } from "../_shared/titre-symboles-vinted.js";
 // Règles du catalogue Beebs (2026-09-11) : le MÊME fichier que l'app
 // (src/utils/platformCompat.js) — module JS sans import, chargé tel quel.
 import { verdictBeebsInterdit, messageBeebsInterdit } from "../_shared/beebs-interdits.js";
@@ -5000,6 +5005,83 @@ serve(async (req) => {
       console.warn(`[get-pending-jobs] vérification avant redépôt : ${String((e as Error)?.message ?? e)} — ${suspectsRedepot.size} job(s) suspect(s) retenu(s) ce cycle`);
     }
 
+    // ══ REMISE EN LIGNE VINTED : JAMAIS UN ESSAI DE PLUS SANS RELIRE LE DRESSING ══
+    // (18/10, Régis — 7 copies du short, 4 du bloc-feuillet ; Ornella 09/10.)
+    // Règle et jugement : _shared/recreation-vinted-verifiee.js. Une
+    // republication Vinted retirée dont un essai a eu lieu n'est resservie
+    // qu'après un relevé COMPLET du dressing commencé ≥ 12 min après l'essai :
+    // la base rattache la copie que le relevé apporte (migration
+    // 20261018170000), sinon l'essai suivant part, une fois. ⛔ Sert tous les
+    // builds. ⛔ Fermé en cas de doute : une erreur retient les jobs ce cycle.
+    {
+      const aVerifierV = (out as unknown as Array<Record<string, unknown>>).filter((j) => recreationAVerifier(j));
+      if (aVerifierV.length) {
+        const retenusV = new Set<string>(aVerifierV.map((j) => String(j.id)));
+        try {
+          const adminV = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+          const retraits = aVerifierV.map((j) => retraitLe(j.platform_fields)).filter(Number.isFinite) as number[];
+          const plusTot = retraits.length ? Math.min(...retraits) : Date.now() - 24 * 3600_000;
+          const [{ data: runsV }, { data: fichesV }] = await Promise.all([
+            adminV.from("vinted_sync_runs").select("id, kind, status, started_at, queued_at, items_vus, total_entries, declencheur")
+              .eq("user_id", user.id).eq("platform", "vinted").eq("kind", "dressing")
+              .order("started_at", { ascending: false, nullsFirst: true }).limit(15),
+            adminV.from("inventaire").select("id, titre, vinted_item_id, listed_at_guess, vinted_account_id")
+              .eq("user_id", user.id).not("vinted_item_id", "is", null)
+              .gte("listed_at_guess", new Date(plusTot - 5 * 60_000).toISOString())
+              .limit(500),
+          ]);
+          const runs = (runsV ?? []) as Array<Record<string, unknown>>;
+          let releveDemande = runs.some((r) => r.status === "queued" || r.status === "running"
+            || (r.declencheur === "serveur:verif_recreation" && Date.now() - (Date.parse(String(r.queued_at ?? "")) || 0) < 30 * 60_000));
+          for (const j of aVerifierV) {
+            const idJ = String(j.id);
+            const court = idJ.slice(0, 8);
+            const d = decisionVerificationRecreation(j, { releves: runs, fiches: (fichesV ?? []) as Array<Record<string, unknown>> });
+            if (!d) { retenusV.delete(idJ); continue; }
+            if (d.action === "servir") {
+              const { data: maj } = await userClient.from("cross_post_jobs")
+                .update({ platform_fields: d.platform_fields, error: null })
+                .eq("id", idJ).eq("status", "pending").select("id");
+              if ((maj ?? []).length) {
+                j.platform_fields = d.platform_fields;
+                j.error = null;
+                retenusV.delete(idJ);
+                console.log(`[get-pending-jobs] remise en ligne Vinted ${court} : relevé complet du dressing après l'essai, aucune copie née de nos envois → essai suivant autorisé (une fois)`);
+              }
+              continue;
+            }
+            if (d.action === "question") {
+              await userClient.from("cross_post_jobs")
+                .update({ status: "needs_user", error: d.error, platform_fields: d.platform_fields })
+                .eq("id", idJ).eq("status", "pending");
+              console.log(`[get-pending-jobs] remise en ligne Vinted ${court} : ${d.copies?.length ? `copie probable déjà en stock (${d.copies.map((c: Record<string, unknown>) => c.vinted_item_id).join(", ")})` : "aucun relevé depuis 6 h"} → question, aucun essai de plus`);
+              continue;
+            }
+            if (d.action === "demander_releve" && !releveDemande) {
+              const { error: qErr } = await userClient.from("vinted_sync_runs").insert({
+                user_id: user.id, kind: "dressing", platform: "vinted", status: "queued",
+                declencheur: "serveur:verif_recreation", queued_at: new Date().toISOString(),
+              });
+              releveDemande = true;
+              console.log(`[get-pending-jobs] remise en ligne Vinted ${court} : relevé complet du dressing demandé avant tout nouvel essai${qErr ? ` (refusé : ${qErr.message})` : ""}`);
+            }
+            const pfAvant = (j.platform_fields ?? {}) as Record<string, unknown>;
+            if (j.error !== d.error || !pfAvant.recreation_attente_releve) {
+              await userClient.from("cross_post_jobs")
+                .update({ error: d.error, platform_fields: d.platform_fields })
+                .eq("id", idJ).eq("status", "pending");
+            }
+          }
+        } catch (e) {
+          console.warn(`[get-pending-jobs] remise en ligne Vinted : vérification impossible (${String((e as Error)?.message ?? e)}) — ${retenusV.size} job(s) retenu(s) ce cycle`);
+        }
+        if (retenusV.size) {
+          out = out.filter((j) => !retenusV.has(String(j.id)));
+          console.log(`[get-pending-jobs] userId=${user.id} : ${retenusV.size} remise(s) en ligne Vinted retenue(s) — dressing relu avant tout nouvel essai`);
+        }
+      }
+    }
+
     // ══ JAMAIS UN DEUXIÈME DÉPÔT BEEBS À L'AVEUGLE (15/10 soir, Ciddjy) ═══════
     // (_shared/depot-sans-numero.js) Même règle que la remise en ligne
     // ci-dessus, pour les PUBLICATIONS Beebs : un essai qui a pu envoyer le
@@ -6416,6 +6498,57 @@ serve(async (req) => {
             }
           }
         } catch (_e) { /* cloisonnement best-effort : jamais un point de panne */ }
+      }
+    }
+
+    // ══ (18/10, retrait 81188384) DEPOP : UN RETRAIT RETROUVE SON IDENTIFIANT ══
+    // « Retrait Depop impossible : aucun identifiant d'annonce sur ce job », 16
+    // essais en 30 h, l'annonce en ligne alors que l'article est vendu sur Vinted.
+    // L'identifiant était là : le slug dans le lien du retrait (lecture qui
+    // refusait le « _ » du pseudo, corrigée), le numéro sur son dépôt
+    // (depop_product_id). Avant tout autre bloc de retrait : le slug (lien du
+    // retrait), puis le slug et le numéro du dépôt qui l'a armé (arme_par.depot :
+    // même compte, même fiche, même plateforme, MÊME annonce) — règle et preuve
+    // dans _shared/depop-identifiant-retrait.js. Écrit seulement si ça change,
+    // compare-and-swap sur pending, trace `identifiant_retrouve` ; jamais le titre.
+    // Best-effort : une lecture ratée → servi comme avant.
+    if (!includeProcessing && !includeNeedsUser) {
+      try {
+        const retraitsDepop = (out as unknown as Array<Record<string, unknown>>).filter((j) => retraitDepopSansIdentifiant(j));
+        for (const d of retraitsDepop) {
+          const pfD = ((d.platform_fields as Record<string, unknown> | null) ?? {});
+          const depotId = String(((pfD["arme_par"] ?? {}) as Record<string, unknown>)["depot"] ?? "");
+          let depot: Record<string, unknown> | null = null;
+          if (/^[0-9a-f-]{36}$/i.test(depotId)) {
+            const { data: dep } = await userClient.from("cross_post_jobs")
+              .select("id, platform, action, inventaire_id, listing_url, platform_listing_id, platform_fields")
+              .eq("id", depotId).eq("user_id", user.id).eq("platform", "depop").maybeSingle();
+            depot = (dep ?? null) as Record<string, unknown> | null;
+          }
+          const r = identifiantRetraitDepop(d, depot);
+          if (!r) continue;
+          const pfN: Record<string, unknown> = { ...pfD, identifiant_retrouve: r.trace };
+          if (r.depop_product_id != null) pfN["depop_product_id"] = r.depop_product_id;
+          const erreurAvant = typeof d.error === "string" && /aucun identifiant d'annonce/i.test(d.error) ? d.error : null;
+          if (erreurAvant) pfN["erreurs_archivees"] = archiverErreur(pfN["erreurs_archivees"], erreurAvant, "pending", "get-pending-jobs (identifiant Depop retrouvé)");
+          const { data: maj, error: uErr } = await userClient.from("cross_post_jobs")
+            .update({
+              ...(r.platform_listing_id ? { platform_listing_id: r.platform_listing_id } : {}),
+              ...(erreurAvant ? { error: null } : {}),
+              platform_fields: pfAPersister(pfN),
+            })
+            .eq("id", String(d.id)).eq("status", "pending").select("id");
+          if (uErr || !(maj ?? []).length) {
+            console.warn(`[get-pending-jobs] retrait depop ${String(d.id).slice(0, 8)} : identifiant retrouvé mais non écrit (${uErr?.message ?? "sorti de pending"}) — servi tel quel`);
+            continue;
+          }
+          if (r.platform_listing_id) d.platform_listing_id = r.platform_listing_id;
+          if (erreurAvant) d.error = null;
+          d.platform_fields = pfN;
+          console.log(`[get-pending-jobs] retrait depop ${String(d.id).slice(0, 8)} : identifiant retrouvé — slug ${r.platform_listing_id ?? "(déjà là)"}, numéro ${r.depop_product_id ?? "(déjà là)"} — servi`);
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] identifiants des retraits Depop : ${String((e as Error)?.message ?? e)} — servis tels quels`);
       }
     }
 
@@ -9857,19 +9990,42 @@ serve(async (req) => {
     // Idempotent (un titre déjà tempéré ressort identique), best-effort (une
     // exception laisse les titres tels quels). `title_servi_tempere` dit à
     // l'extension ce qui est parti — informatif, ignoré par qui ne le lit pas.
+    //
+    // ── (18/10, décision de Nico) ET LES SYMBOLES EN TROP, POUR TOUT BUILD ──
+    // Vinted refuse aussi en 400 « Le titre contient trop de symboles
+    // d'affilée » (job 5d993767, « "Gangs / Security" – Motif… »). La règle
+    // (_shared/titre-symboles-vinted.js, même copie dans l'extension 0.6.128)
+    // est appliquée ici en mode PRÉVENTIF au titre SERVI — job en base non
+    // modifié — pour les publications ET les républications. Mesuré le 18/10 :
+    // elle ne change aucun des 70 555 titres Vinted publiés ou vendus (au-delà
+    // des emoji, que l'extension retire déjà : ceux-là ne sont pas comptés ici).
+    // Une republication recrée l'annonce avec le titre CAPTURÉ (ou titre_saisi
+    // pour l'extension 0.6.128) : le titre servi n'y est qu'un repère, d'où
+    // l'intérêt de le garder aligné. Les majuscules, elles, restent publish
+    // seulement : 576 titres acceptés par Vinted ont un mot en capitales de
+    // 5 lettres ou plus — les tempérer au service d'une republication ne
+    // changerait rien au dépôt et désalignerait le repère.
     let titresTemperes = 0;
     try {
       for (const j of out as unknown as Array<Record<string, unknown>>) {
-        if (j.platform !== "vinted" || j.action !== "publish" || typeof j.title !== "string") continue;
+        if (j.platform !== "vinted" || (j.action !== "publish" && j.action !== "republish") || typeof j.title !== "string") continue;
         const pfJ = (j.platform_fields ?? {}) as Record<string, unknown>;
-        const tempere = tempererMajuscules(j.title, typeof pfJ["marque"] === "string" ? (pfJ["marque"] as string) : null);
-        if (tempere === j.title) continue;
-        console.log(`[get-pending-jobs] titre Vinted ${String(j.id).slice(0, 8)} tempéré (majuscules) : « ${j.title} » → « ${tempere} »`);
-        j.title_servi_tempere = { avant: j.title, apres: tempere, motif: "majuscules" };
-        j.title = tempere;
+        const marqueJ = typeof pfJ["marque"] === "string" ? (pfJ["marque"] as string) : null;
+        const motifs: string[] = [];
+        // Les majuscules (publish seulement), puis les symboles : les deux règles
+        // ne touchent jamais les mêmes caractères (casse des lettres / symboles).
+        let servi = j.action === "publish" ? tempererMajuscules(j.title, marqueJ) : j.title;
+        if (servi !== j.title) motifs.push("majuscules");
+        const sage = assagirSymbolesVinted(servi, { marque: marqueJ });
+        if (sage !== retirerEmojiVinted(servi)) { servi = sage; motifs.push("symboles"); }
+        if (!motifs.length || servi === j.title) continue;
+        const motif = motifs.join("+");
+        console.log(`[get-pending-jobs] titre Vinted ${String(j.id).slice(0, 8)} tempéré (${motif}) : « ${j.title} » → « ${servi} »`);
+        j.title_servi_tempere = { avant: j.title, apres: servi, motif };
+        j.title = servi;
         titresTemperes++;
       }
-      if (titresTemperes) console.log(`[get-pending-jobs] user=${user.id} titres Vinted tempérés (majuscules) : ${titresTemperes}`);
+      if (titresTemperes) console.log(`[get-pending-jobs] user=${user.id} titres Vinted tempérés (majuscules, symboles) : ${titresTemperes}`);
     } catch (e) {
       console.warn(`[get-pending-jobs] tempérage des titres Vinted : ${String((e as Error)?.message ?? e)} — titres servis tels quels`);
     }

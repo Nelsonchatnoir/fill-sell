@@ -8,13 +8,16 @@
 //
 //   const passe2Ecartee = motCle?.passe === 2 && (
 //     estAnglaisAvere(frDesc) ||
-//     (iconeDuMotIa != null && iconeDuMotIa !== motCle.icon)
+//     (iconeDuMotIa != null && iconeDuMotIa !== motCle.icon) ||
+//     titreNommeUneDecorationMurale(frTitle)
 //   );
+// (18/10, eBay ÷ 5) Voie 5 : un titre qui nomme une décoration murale — la
+// description énumère ce qu'elle REPRÉSENTE (« un lit », « une cocotte »).
 //
 // CORPUS : les fiches créées par l'app du 20/08 au 19/09/2026 dont l'icône est
 // posée par la passe 2 (31 sur 754), plus des cas de passe 1 qui doivent
 // rester intouchés.
-import { detectObjectKeywordDetail, detectObjectIconKeyword } from "../src/utils/shared.js";
+import { detectObjectKeywordDetail, detectObjectIconKeyword, titreNommeUneDecorationMurale } from "../src/utils/shared.js";
 import { estAnglaisAvere } from "../supabase/functions/_shared/langue.js";
 
 function decision({ titre, description = "", marque = "", objetIa = "" }) {
@@ -22,7 +25,8 @@ function decision({ titre, description = "", marque = "", objetIa = "" }) {
   const iconeDuMotIa = objetIa ? detectObjectIconKeyword(objetIa, "") : null;
   const passe2Ecartee = motCle?.passe === 2 && (
     estAnglaisAvere(description) ||
-    (iconeDuMotIa != null && iconeDuMotIa !== motCle.icon)
+    (iconeDuMotIa != null && iconeDuMotIa !== motCle.icon) ||
+    titreNommeUneDecorationMurale(titre)
   );
   if (motCle && !passe2Ecartee) {
     return { source: motCle.passe === 1 ? "mot_cle" : "mot_cle_description", icon: motCle.icon };
@@ -95,6 +99,21 @@ const CAS = [
     description: "Dessous de plat en bambou avec 6 emplacements pour verres ou couverts. Produit neuf, jamais utilisé.",
     attendu: "mot_cle_description", icone: "🍽️" },
 
+  // ── VOIE 5 (18/10, eBay ÷ 5) : le titre nomme une DÉCORATION MURALE ───────
+  // Cas réels du 18/10 (lot de décorations murales) : la description énumère
+  // le motif, pas l'objet.
+  { nom: "« Décoration murale chambre » → jamais 🛏️ par « un lit » de la description",
+    titre: "Décoration murale chambre", marque: "Sans marque", objetIa: "décoration murale",
+    description: "Décoration murale noire « CHAMBRE » avec un lit, un miroir et un lampadaire. Un modèle moderne et élégant pour habiller une porte ou le mur d’une chambre.",
+    attendu: "passe2_ecartee" },
+  { nom: "« Décoration murale cuisine » → jamais 🍳 par « une cocotte »",
+    titre: "Décoration murale cuisine", objetIa: "décoration murale",
+    description: "Décoration murale « CUISINE » au design moderne, composée d’une cocotte, d’un fouet et d’une branche végétale.",
+    attendu: "passe2_ecartee" },
+  { nom: "« Horloge murale » : la passe 1 n'est pas touchée",
+    titre: "Horloge murale bois vintage", description: "Horloge murale à pile, fonctionne.",
+    attendu: "mot_cle" },
+
   // ── CE QUE LA GARDE NE RÉPARE PAS, ET C'EST ASSUMÉ ───────────────────────
   // Le mot de l'IA est inconnu de nos règles : aucune contradiction prouvable,
   // la description garde la main et se trompe. Mesuré, écrit, pas masqué.
@@ -120,4 +139,4 @@ for (const c of CAS) {
 }
 
 if (ko) { console.error(`\n${ko} échec(s).`); process.exit(1); }
-console.log(`✓ passe 2 : ${CAS.length} cas réels conformes — passe 1 intacte, 3 cassés réparés, 5 sauvetages conservés.`);
+console.log(`✓ passe 2 : ${CAS.length} cas réels conformes — passe 1 intacte, 5 cassés réparés, 5 sauvetages conservés.`);

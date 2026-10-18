@@ -27,7 +27,8 @@ const MOTIFS_LIEN = {
   ebay: /\/itm\/[^?#]*?(\d{9,})/,
   beebs: /\/p\/(\d+)/,
   opla: /\/(?:product|article)\/(art_[^/?#]+)/,
-  depop: /\/products\/([A-Za-z0-9]+-[A-Za-z0-9-]*[A-Za-z0-9])(?:[/?#]|$)/,
+  // (18/10) « _ » admis dans le pseudo du vendeur (thard_733-…, retrait 81188384).
+  depop: /\/products\/([A-Za-z0-9_]+-[A-Za-z0-9-]*[A-Za-z0-9])(?:[/?#]|$)/,
 };
 export function idDuLien(platform, url) {
   const re = MOTIFS_LIEN[platform];

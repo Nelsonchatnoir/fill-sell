@@ -107,7 +107,17 @@ function ligneDemande(a: AspectDemande, listeFermeeMax = LISTE_FERMEE_MAX): stri
 
 // (25/09) Les aspects qui portent une MESURE : une valeur n'y vaut que si ses
 // nombres se lisent dans le contexte (cf. resoudreAspectsIA).
-export const ASPECT_MESURE_RE = /^(hauteur|largeur|longueur|profondeur|diam[eè]tre|[ée]paisseur|dimensions?|volume|contenance|tour de )/i;
+// (18/10, eBay ÷ 5) Sur le NOM EXACT, plus sur son début — même règle que
+// estDimensionEbay (src/publication/moteur/regles.js) : « Longueur de la
+// robe », « Longueur des manches », « Hauteur du talon », « Largeur de
+// ceinture » sont des STYLES à liste de mots (Au genou / Midi, Plat, Skinny…),
+// jamais des mesures. Le préfixe jetait la réponse de l'IA sur « Longueur de la
+// robe » (« mesure absente du contexte ») : 19 refus en 30 jours, 9 articles,
+// 4 comptes, autant de questions. Restent des mesures : les dimensions nues
+// (avec un qualificatif entre parenthèses : « Hauteur (intérieur) »,
+// « Dimensions (cm) »), Volume, Contenance, et les tours de taille, poitrine,
+// hanches.
+export const ASPECT_MESURE_RE = /^(?:hauteur|largeur|longueur|profondeur|diam[eè]tre|[ée]paisseur|dimensions?|volume|contenance|tour de (?:taille|poitrine|hanches?|cou|t[êe]te))(?:\s*\([^)]*\))?$/i;
 export function mesureLueDansLeContexte(valeur: string, contexteTexte: string): boolean {
   const nombres = String(valeur ?? "").match(/\d+(?:[.,]\d+)?/g) ?? [];
   if (!nombres.length) return false; // une mesure sans nombre n'est pas une mesure lue

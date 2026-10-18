@@ -243,3 +243,7 @@ Rapport : `docs/enquetes/session-sans-nico-1810/lot4-ventes-lot-multi-exemplaire
   comme avant. Retraits des autres copies, mails, push : inchangés (essai à blanc 7/7, 0 mail). Conséquence voulue :
   une preuve « vendu » arrivée plus tard sur une autre copie montre la carte « Déjà enregistrée » au lieu de se fermer en
   silence (même chose qu'une vente Beebs saisie depuis le Stock). Selftest `vente-declaree-beebs`.
+
+## 18/10 soir — Comptes reliés : une vente, un compte, un mail (Louis)
+- Règles complètes : `docs/regles/rapprochement-et-releves.md` § « UNE BOUTIQUE = UN COMPTE ». Point A tient : jamais un
+  retrait sans VENTE prouvée — la vente de la fiche jumelle d'un compte relié en est une.

@@ -40,6 +40,7 @@ import { delaiAttenteSessionMin } from "../_shared/attente-session.js";
 // Une republication retirée ne s'arrête jamais avant sa recréation (25/09) —
 // module JS sans import, le même qu'exécute scripts/republication-hors-ligne-selftest.mjs.
 import { decisionRecreationHorsLigne } from "../_shared/republication-hors-ligne.js";
+import { heureVintedDuRetrait, fusionnerEnvois, memesEnvois } from "../_shared/recreation-vinted-envois.js";
 import { MOTIFS_LBC_PAIEMENT, MARQUEURS_QUESTION_PASSEE } from "../_shared/lbc-forfait.js";
 import { pageCompteVintedBloque, messageCompteVintedBloque, retraitCompteBloqueEnReprise, SOURCE_COMPTE_VINTED_BLOQUE } from "../_shared/vinted-compte-bloque.js";
 import { BUILD_COLIS_DEMANDE } from "../_shared/vinted-colis.js";
@@ -133,7 +134,10 @@ const LISTING_ID_PATTERNS: Record<string, RegExp> = {
   opla: /\/(?:product|article)\/(art_[^/?#]+)/,
   // Depop (09/10, relevé réel) : /products/<slug>/ — le slug EST l'identifiant
   // (unique, et c'est lui que le veilleur relit : products/by-slug/<slug>/).
-  depop: /\/products\/([A-Za-z0-9]+-[A-Za-z0-9-]*[A-Za-z0-9])(?:[/?#]|$)/,
+  // (18/10, retrait 81188384) Le préfixe est le pseudo du vendeur, qui peut
+  // porter un « _ » (thard_733-jean-bonobo-…) : 34 dépôts publiés étaient
+  // restés sans platform_listing_id, et leurs retraits « sans identifiant ».
+  depop: /\/products\/([A-Za-z0-9_]+-[A-Za-z0-9-]*[A-Za-z0-9])(?:[/?#]|$)/,
 };
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -3857,8 +3861,10 @@ serve(async (req) => {
     }
     if (!pfDefautFillsell && (statutEffectif === "failed" || oplaMurCookies || oplaCategorieAPoser || tailleHorsGrilleAPoser || restrictionVintedAPoser)) {
       try {
+        // (18/10) `title` : un refus Vinted « trop de symboles » se reprend avec le
+        // titre assagi (_shared/titre-symboles-vinted.js), calculé sur le titre du job.
         const { data: jPdr } = await userClient
-          .from("cross_post_jobs").select("platform, action, platform_fields").eq("id", jobId).maybeSingle();
+          .from("cross_post_jobs").select("platform, action, title, platform_fields").eq("id", jobId).maybeSingle();
         const pfBase = (pfIn ?? (jPdr?.platform_fields ?? {})) as Record<string, unknown>;
         const essais = Math.max(
           Number(pfBase["needsUserAttempts"] ?? 0) || 0,
@@ -3894,6 +3900,11 @@ serve(async (req) => {
           // (06/10) le build qui rapporte l'échec : un poste qui porte déjà un
           // correctif ne se fait jamais promettre « la nouvelle version ».
           build: String(body.handler_build ?? ""),
+          // (18/10) Titre du job et passe « symboles » déjà faite (marqueur lu sur
+          // les deux sources : le poste peut renvoyer un platform_fields sans lui).
+          titre: typeof jPdr?.title === "string" ? jPdr.title : "",
+          titreDejaAssagi: Boolean(pfBase["titre_symboles_assagi"]
+            || ((jPdr?.platform_fields ?? {}) as Record<string, unknown>)["titre_symboles_assagi"]),
         });
         const pfS = { ...pfBase };
         if (erreurTechniqueBrute == null && typeof body.error === "string" && body.error) {
@@ -4251,7 +4262,10 @@ serve(async (req) => {
     if (patch.platform_fields && typeof patch.platform_fields === "object") {
       const pfW = { ...(patch.platform_fields as Record<string, unknown>) };
       let touche = false;
-      if (typeof pfW.deleted_at === "string" && pfW.deleted_at) {
+      // (18/10, Régis) Une écriture « étape retirée » relit aussi la base quand
+      // elle a perdu deleted_at : les repères du retrait ne s'effacent plus.
+      const etapeRetireeW = String(pfW.republish_step ?? "") === "deleted";
+      if ((typeof pfW.deleted_at === "string" && pfW.deleted_at) || etapeRetireeW) {
         try {
           const { data: jrowH } = await userClient
             .from("cross_post_jobs")
@@ -4260,16 +4274,55 @@ serve(async (req) => {
             .maybeSingle();
           if (jrowH?.action === "republish") {
             const pfH = (jrowH.platform_fields ?? {}) as Record<string, unknown>;
-            const serveurDeja = typeof pfH.deleted_at_serveur === "string" && pfH.deleted_at_serveur
+            // ── LES REPÈRES DU RETRAIT NE SE PERDENT PLUS (18/10, Régis) ────────
+            // Entre 13:11:52 et 13:18:45 une écriture a effacé deleted_at_serveur ;
+            // la suivante a été « la première » et le serveur a daté le retrait de
+            // son heure, 7 min trop tard. Une écriture à l'étape 'deleted' sans
+            // deleted_at reprend ceux de la base ; le verdict de suppression aussi.
+            if (!(typeof pfW.deleted_at === "string" && pfW.deleted_at)) {
+              const repere = typeof pfH.deleted_at_serveur === "string" && pfH.deleted_at_serveur
+                ? pfH.deleted_at_serveur : (typeof pfH.deleted_at === "string" ? pfH.deleted_at : "");
+              if (repere) { pfW.deleted_at = repere; touche = true; }
+              if (pfW.deleted_at_client == null && pfH.deleted_at_client != null) pfW.deleted_at_client = pfH.deleted_at_client;
+            }
+            if (pfW.suppression_verdict == null && pfH.suppression_verdict != null) {
+              pfW.suppression_verdict = pfH.suppression_verdict;
+              touche = true;
+            }
+            // L'heure VINTED du retrait (en-tête Date de sa réponse au /delete)
+            // fait foi sur Vinted : elle est le seuil auquel une copie se compare.
+            const heureVinted = jrowH.platform === "vinted" ? heureVintedDuRetrait(pfW) ?? heureVintedDuRetrait(pfH) : null;
+            let serveurDeja = typeof pfH.deleted_at_serveur === "string" && pfH.deleted_at_serveur
               ? pfH.deleted_at_serveur : null;
-            if (serveurDeja) {
+            if (serveurDeja && heureVinted != null && heureVinted < Date.parse(serveurDeja) - 1_000) {
+              console.warn(`[update-job-status] userId=${user.id} job=${jobId} — retrait daté ${serveurDeja} en base, ${new Date(heureVinted).toISOString()} chez Vinted : l'heure Vinted fait foi`);
+              serveurDeja = new Date(heureVinted).toISOString();
+              touche = true;
+            }
+            if (!(typeof pfW.deleted_at === "string" && pfW.deleted_at)) {
+              // étape 'deleted' sans aucun repère, ni écrit ni en base : rien à recaler.
+            } else if (serveurDeja) {
               if (pfW.deleted_at !== serveurDeja) {
                 pfW.deleted_at = serveurDeja;
                 touche = true;
               }
-              pfW.deleted_at_serveur = serveurDeja;
-              if (pfW.deleted_at_client == null && pfH.deleted_at_client != null) pfW.deleted_at_client = pfH.deleted_at_client;
-              if (pfW.horloge_client_ecart_s == null && pfH.horloge_client_ecart_s != null) pfW.horloge_client_ecart_s = pfH.horloge_client_ecart_s;
+              // ⛔ (18/10, cause du décalage de Régis et d'Ornella) Ces clés étaient
+              // posées sur pfW SANS marquer « touche » : quand deleted_at était
+              // déjà égal, pfW était jeté et l'écriture de l'extension (qui ne
+              // les porte pas) les EFFAÇAIT de la base. L'écriture suivante se
+              // croyait la première et datait le retrait de now() serveur.
+              if (pfW.deleted_at_serveur !== serveurDeja) {
+                pfW.deleted_at_serveur = serveurDeja;
+                touche = true;
+              }
+              if (pfW.deleted_at_client == null && pfH.deleted_at_client != null) {
+                pfW.deleted_at_client = pfH.deleted_at_client;
+                touche = true;
+              }
+              if (pfW.horloge_client_ecart_s == null && pfH.horloge_client_ecart_s != null) {
+                pfW.horloge_client_ecart_s = pfH.horloge_client_ecart_s;
+                touche = true;
+              }
             } else {
               const nowMs = Date.now();
               const brutClient = String(pfW.deleted_at_client ?? pfW.deleted_at);
@@ -4281,7 +4334,10 @@ serve(async (req) => {
               const vintedMs = Date.parse(String(pfW.deleted_at));
               const clientDejaVinted = pfW.deleted_at_client != null && Number.isFinite(vintedMs)
                 && vintedMs <= nowMs + 2_000 && nowMs - vintedMs < 10 * 60_000;
-              const serveurIso = clientDejaVinted ? new Date(vintedMs).toISOString() : new Date(nowMs).toISOString();
+              // (18/10) L'en-tête Date de Vinted, quand il est là, passe avant tout :
+              // même reçu 7 min plus tard, il dit l'heure exacte du retrait.
+              const serveurIso = heureVinted != null ? new Date(heureVinted).toISOString()
+                : clientDejaVinted ? new Date(vintedMs).toISOString() : new Date(nowMs).toISOString();
               pfW.deleted_at = serveurIso;
               pfW.deleted_at_serveur = serveurIso;
               pfW.deleted_at_client = brutClient;
@@ -4306,8 +4362,19 @@ serve(async (req) => {
               if (ecartS != null && Math.abs(ecartS) > 10) {
                 console.warn(
                   `[update-job-status] userId=${user.id} job=${jobId} — horloge du client à ${ecartS > 0 ? "+" : ""}${ecartS} s ` +
-                  `du serveur : deleted_at recalé sur ${serveurIso}${clientDejaVinted ? " (heure Vinted du client)" : " (now() serveur)"}`,
+                  `du serveur : deleted_at recalé sur ${serveurIso}${heureVinted != null || clientDejaVinted ? " (heure Vinted)" : " (now() serveur)"}`,
                 );
+              }
+            }
+            // ── NOS ENVOIS, TOUS GARDÉS (18/10, Régis) ──────────────────────────
+            // recreation_tentee ne garde que la dernière tentative ; la base
+            // (migration 20261018170000) et get-pending-jobs ont besoin de TOUTES
+            // pour dire quelles annonces sont nées de nos envois.
+            if (jrowH.platform === "vinted") {
+              const envois = fusionnerEnvois(pfH, pfW);
+              if (envois.length && !memesEnvois(envois, pfW.recreation_envois)) {
+                pfW.recreation_envois = envois;
+                touche = true;
               }
             }
           }
@@ -4664,10 +4731,23 @@ serve(async (req) => {
     // Un mur de PAIEMENT n'est jamais une question de champ : les marqueurs de
     // question tombent, le motif est posé (« relancer »), la cause reste
     // last_diagnostic.quoi (_shared/lbc-forfait.js).
+    // (18/10, job b1b9bb68 — Leboncoin pro) Le mur ne vaut que s'il a été VU
+    // pendant CET essai. Le diagnostic « lbc_options_payant_seulement » du 14/10
+    // était resté sur le job : l'essai du 18/10 (processing_since 12:13) a posé
+    // la question « Poids du colis* », et ce bloc l'a déclassée en « relancer »
+    // sur ce diagnostic périmé — le champ demandé n'était plus proposé. Un
+    // diagnostic antérieur à la prise en charge (5 s de marge d'horloge) ne
+    // déclasse plus rien ; sans date lisible des deux côtés, la règle d'avant.
     if (statutEffectif === "needs_user" && patch.platform_fields && typeof patch.platform_fields === "object") {
       const pfMur = patch.platform_fields as Record<string, unknown>;
       const diagMur = pfMur["last_diagnostic"] as Record<string, unknown> | undefined;
-      if (MOTIFS_LBC_PAIEMENT.includes(String(diagMur?.["quoi"] ?? ""))) {
+      const debutEssaiMur = Date.parse(String(pfMur["processing_since"] ?? pfDuJob?.["processing_since"] ?? ""));
+      const murVuLe = Date.parse(String(diagMur?.["at"] ?? ""));
+      const murPerime = Number.isFinite(debutEssaiMur) && Number.isFinite(murVuLe) && murVuLe < debutEssaiMur - 5000;
+      if (murPerime && MOTIFS_LBC_PAIEMENT.includes(String(diagMur?.["quoi"] ?? ""))) {
+        console.log(`[update-job-status] userId=${user.id} job=${jobId} — mur « Valider et payer » PÉRIMÉ (vu le ${String(diagMur?.["at"])}, essai du ${new Date(debutEssaiMur).toISOString()}) : la question reste`);
+      }
+      if (!murPerime && MOTIFS_LBC_PAIEMENT.includes(String(diagMur?.["quoi"] ?? ""))) {
         const pfN = { ...pfMur };
         for (const k of MARQUEURS_QUESTION_PASSEE) delete pfN[k];
         pfN["needs_user_source"] = "relancer";

@@ -278,3 +278,12 @@ Rapport : `docs/enquetes/dix-points-1710/RAPPORT.md` (points 1, 4, 5, 7, 9).
 - **Leboncoin, texte refusé** (« mention d'un site », « règles de contenu ») : la copie Leboncoin retire les mentions
   de site (« instagram » ajouté le 18/10) ; un texte déjà refusé n'est jamais renvoyé (empreinte du texte servi) :
   une reprise si le texte servi a changé, sinon la question avec les mots exacts de Leboncoin. Fiche et marque jamais touchées.
+
+## 18/10 soir — Depop, Leboncoin PRO (chantier « finition »)
+- **Depop** : un slug contient « _ » (33 sur 37 chez thibault.andrieux) — toutes les lectures `/products/<slug>` prennent
+  `[A-Za-z0-9_]` (serveur, SQL `identifiant_annonce_depuis_lien` / `annonce_id_depuis_url`, extension 0.6.128). Un
+  retrait sans identifiant le retrouve seul : slug de son lien, puis slug et `depop_product_id` de son dépôt
+  (`arme_par.depot`, même compte, même fiche) — jamais le titre (`_shared/depop-identifiant-retrait.js`).
+- **Leboncoin PRO** : le formulaire PRO n'a pas la case livraison ; ses critères (poids du colis) arrivent tard — la sonde
+  attend 15 s, la seconde passe tourne sans elle, et le verdict repose toute valeur du job présente dans la liste
+  (extension 0.6.128). Un mur « paiement » vu lors d'un passage PRÉCÉDENT ne déclasse plus la question (update-job-status).

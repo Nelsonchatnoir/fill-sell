@@ -294,3 +294,28 @@
   branchés (en recul au banc) : paires « Univers et produit », Genre des livres, photo directe, Sonnet. Le client envoie
   `plateforme`, `categorie`, `inventaire_id`, `photos`, `feuille_dependante` et la clé de chaque champ ; un client d'avant
   garde le chemin d'hier. Selftests `zero-friction`, `ia-leviers`.
+
+## 18/10 soir — « finition » : une remise en ligne Vinted se prouve par l'annonce, jamais par l'adresse (Régis ; rapport `docs/enquetes/finition-1810/RAPPORT.md`)
+- **Vinted, depuis au moins le 12/10, renvoie vers `/member/<vendeur>` après un dépôt réussi** (plus vers /items/<numéro>) :
+  le content script meurt avant de répondre (« canal coupé ») sur ≈ 100 % des recréations du parc ; elles sont prouvées par
+  la relecture du dressing. **Le dressing vu par son propriétaire liste les BROUILLONS d'abord** : un compte à ≥ 96
+  brouillons (Régis : 99) a une page 1 sans aucune annonce active — la copie n'y est jamais vue.
+- **Règle** : un dépôt réussi se reconnaît par la PRÉSENCE de l'annonce (numéro inconnu, même titre, même boutique, mise en
+  ligne pendant un de NOS envois [envoi − 2 min, envoi + 20 min], jamais avant le retrait), jamais par l'URL d'arrivée.
+  Une republication Vinted retirée dont un essai a eu lieu n'est **jamais** resservie sans un **relevé complet** du dressing
+  (toutes les pages) commencé ≥ 12 min après l'essai, demandé par le serveur (`serveur:verif_recreation`) ; la base
+  rattache la copie que le relevé apporte (`inventaire_a_rattache_recreation_vinted`), une copie de plus part par le
+  circuit de retrait (numéro exact) ; une copie déjà au stock = la question ; 6 h sans relevé = la question.
+  Modules : `_shared/recreation-vinted-verifiee.js` (get-pending-jobs), `_shared/recreation-vinted-envois.js`
+  (update-job-status). Selftest `recreation-vinted-verifiee`.
+- **L'heure du retrait est celle de Vinted** (en-tête Date du /delete, `suppression_verdict.date_serveur`) ; ses repères
+  (`deleted_at_serveur`, `deleted_at_client`) ne s'effacent plus (défaut corrigé : posés sans « touche », ils étaient
+  jetés quand `deleted_at` était égal) ; **tous** nos envois sont gardés (`recreation_envois`, 30 au plus).
+- Extension 0.6.128 : la reconnaissance saute les brouillons et lit jusqu'à la première page qui contient des actives ;
+  `/member/<id>` ne conclut jamais à l'échec (`depot_incertain`, sans retentative comptée).
+- **Titre Vinted « trop de symboles »** (décision de Nico : on corrige seul) : `_shared/titre-symboles-vinted.js` —
+  « — » → « - », « … »/« ... » retirés, « – » collé à un symbole → « - », suite ≥ 3 symboles réduite ; marque masquée ;
+  servi par get-pending-jobs (publication et republication), un refus « symboles » repart une fois en mode strict
+  (pas-de-rouge, questions-tranchées règle 7). 0 titre accepté changé sur 70 555. Selftest `titre-symboles-vinted`.
+- **Quota gratuit** : une republication compte UNE fois par article (exécutée ou en cours), jamais par essai ; un retrait
+  n'est pas une republication (`quota_republication_free_etat`).

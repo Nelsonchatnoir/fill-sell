@@ -10,6 +10,7 @@
 import { supabase } from '../lib/supabase';
 import { FILTRE_SANS_VEILLE } from './declencheursReleve.js';
 import { boutiqueConnecteeVinted } from '../../supabase/functions/_shared/boutique-connectee.js';
+import { estBoutiqueAutreCompte, texteBoutiqueAutreCompte } from '../annonces/boutiqueAutreCompte.js';
 
 // Délai avant de conclure « pas d'extension ». Le content script répond au ping
 // dans la foulée ; 1,5 s couvre une injection tardive sans faire clignoter le
@@ -456,7 +457,11 @@ export async function lireBoutiquesVinted(userId) {
 // + .select() : un update bloqué par la RLS échoue en silence sans lui
 // (leçon profiles du 2026-07-06). `a_confirmer` est levé par la confirmation :
 // l'utilisateur vient précisément de trancher.
-export async function confirmerBoutiqueVinted(userId, { vintedUserId, login }) {
+// (18/10, Louis) Une boutique déjà suivie par un AUTRE compte FillSell : le
+// pin la refuse ([boutique_autre_compte], migration 20261018200000). Le refus
+// est rendu tel quel (`error: 'boutique_autre_compte'`) avec LA phrase
+// (annonces/boutiqueAutreCompte.js), jamais « réessaie dans un instant ».
+export async function confirmerBoutiqueVinted(userId, { vintedUserId, login, lang = 'fr' }) {
   if (!userId || !String(vintedUserId ?? '').trim()) {
     return { success: false, error: 'boutique_inconnue' };
   }
@@ -478,6 +483,9 @@ export async function confirmerBoutiqueVinted(userId, { vintedUserId, login }) {
     .update({ vinted_sync_pin: { v: 2, a_confirmer: false, boutiques } })
     .eq('id', userId)
     .select('id');
+  if (eMaj && estBoutiqueAutreCompte(`${eMaj.message ?? ''} ${eMaj.details ?? ''}`)) {
+    return { success: false, error: 'boutique_autre_compte', texte: texteBoutiqueAutreCompte(login, lang) };
+  }
   if (eMaj) return { success: false, error: eMaj.message };
   if (!maj?.length) return { success: false, error: 'écriture refusée (RLS)' };
   return { success: true, boutiques };

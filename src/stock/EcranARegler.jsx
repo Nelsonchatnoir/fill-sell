@@ -13,12 +13,16 @@
 //    (son titre, la plateforme, le geste ; le tap ouvre sa fiche), les annonces
 //    « plus en ligne — vendue ? » une ligne qui ouvre leurs questions. Même
 //    ligne, mêmes polices, mêmes couleurs : jamais un bloc coloré.
-import { ChevronRight, CircleAlert, BadgeEuro, Tag, PenLine, AlertTriangle, UserRound, Store, EyeOff, Wallet, LogIn } from 'lucide-react';
+// (18/10) Une ligne peut porter son GESTE (`action`, un élément : le bouton
+//    « Se reconnecter » d'une boutique qui n'est plus surveillée) : elle n'ouvre
+//    alors aucun écran — le texte dit le risque, le bouton est le seul geste.
+//    Même ligne, mêmes polices ; pas de chevron, pas de nombre.
+import { ChevronRight, CircleAlert, BadgeEuro, Tag, PenLine, AlertTriangle, UserRound, Store, EyeOff, Wallet, LogIn, Unplug } from 'lucide-react';
 import EcranPlein from './EcranPlein';
 import { S } from './jetons';
 import { nombreFr } from './regles';
 
-const ICONES = { retraits: AlertTriangle, lbc_identite: UserRound, vendeur_plateforme: Wallet, compte_plateforme: LogIn, attente: CircleAlert, ventes: BadgeEuro, prix: Tag, brouillons: PenLine, plus_en_ligne: EyeOff };
+const ICONES = { non_surveillee: Unplug, retraits: AlertTriangle, lbc_identite: UserRound, vendeur_plateforme: Wallet, compte_plateforme: LogIn, attente: CircleAlert, ventes: BadgeEuro, prix: Tag, brouillons: PenLine, plus_en_ligne: EyeOff };
 // (05/10) Une annonce vendue encore en ligne (retrait bloqué par une
 // connexion) : rouge — un risque de double vente, pas une information à
 // compléter. (12/10 soir) Une ligne peut dire son ton elle-même (`ton`) :
@@ -30,7 +34,11 @@ export default function EcranARegler({ lang = 'fr', lignes = [], onFermer, actif
   const total = lignes.reduce((t, l) => t + (l.n || 0), 0);
   // La phrase dit ce qu'il y a VRAIMENT, rien de plus.
   const present = (...cles) => lignes.some((l) => cles.includes(l.groupe ?? l.cle) && l.n > 0);
+  const nbNonSurveillees = lignes.filter((l) => (l.groupe ?? l.cle) === 'non_surveillee' && l.n > 0).length;
   const parts = [
+    nbNonSurveillees > 0 && (fr
+      ? (nbNonSurveillees > 1 ? 'des boutiques qui ne sont plus surveillées' : 'une boutique qui n’est plus surveillée')
+      : (nbNonSurveillees > 1 ? 'shops that are no longer watched' : 'a shop that is no longer watched')),
     present('vendus', 'retraits') && (fr ? 'des annonces encore en ligne à retirer' : 'live listings to remove'),
     present('lbc_identite') && (fr ? 'ton compte Leboncoin à compléter' : 'your Leboncoin account to complete'),
     present('vendeur_plateforme') && (fr ? 'ta configuration de vendeur à terminer' : 'your seller setup to finish'),
@@ -61,8 +69,30 @@ export default function EcranARegler({ lang = 'fr', lignes = [], onFermer, actif
           {lignes.filter((l) => l.n > 0).map((l) => {
             // Une ligne d'ARTICLE (vendu, encore en ligne) : son titre, sa
             // plateforme et le geste — pas de nombre (c'est UN article).
-            const I = l.icone ?? (l.groupe === 'vendus' ? (l.ton === 'regler' ? Store : AlertTriangle) : (ICONES[l.cle] ?? CircleAlert));
+            const I = l.icone ?? (l.groupe === 'vendus' ? (l.ton === 'regler' ? Store : AlertTriangle) : (ICONES[l.cle] ?? ICONES[l.groupe] ?? CircleAlert));
             const rouge = l.ton ? l.ton === 'echec' : ROUGES.has(l.cle);
+            const pastille = (
+              <span style={{ width: 40, height: 40, borderRadius: 12, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: rouge ? S.rougeFond : S.ambreFond, color: rouge ? S.rouge : S.ambreEncre }}>
+                <I size={20} strokeWidth={2} aria-hidden="true" />
+              </span>
+            );
+            // (18/10) Une ligne qui porte son geste : un bloc (pas un bouton —
+            // jamais un bouton dans un bouton), le texte puis le geste.
+            if (l.action) {
+              return (
+                <div key={l.cle} role="group" aria-label={l.titre} data-ligne={l.groupe ?? l.cle}
+                  style={{ display: 'flex', alignItems: 'flex-start', gap: 12, width: '100%', minHeight: 64, padding: '12px 16px', boxSizing: 'border-box', boxShadow: `inset 0 -1px 0 ${S.borderSoft}`, color: S.ink }}>
+                  {pastille}
+                  <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <span>
+                      <span style={{ display: 'block', fontSize: 15, lineHeight: '20px', fontWeight: 700, overflowWrap: 'anywhere' }}>{l.titre}</span>
+                      {l.detail && <span style={{ display: 'block', fontSize: 12, lineHeight: '16px', fontWeight: 500, color: S.ink2, marginTop: 2, overflowWrap: 'anywhere' }}>{l.detail}</span>}
+                    </span>
+                    {l.action}
+                  </span>
+                </div>
+              );
+            }
             return (
               <button key={l.cle} type="button" className="sk-btn sk-presse" onClick={l.onOuvrir} data-ligne={l.groupe ?? l.cle}
                 style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', minHeight: 64, padding: '8px 16px', boxSizing: 'border-box', border: 'none', background: 'transparent', boxShadow: `inset 0 -1px 0 ${S.borderSoft}`, textAlign: 'left', color: S.ink }}>

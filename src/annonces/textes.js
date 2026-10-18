@@ -110,6 +110,12 @@ const FR = {
   finBoutiqueAConfirmer: (b) => (b
     ? `Ton ordinateur est connecté à la boutique @${b}, que FillSell ne suit pas encore. Rien n'a été importé.`
     : "Ton ordinateur est connecté à une boutique Vinted que FillSell ne suit pas encore. Rien n'a été importé."),
+  // (18/10, Louis) Une boutique = un compte : celle-ci est déjà suivie par un
+  // AUTRE compte FillSell. Pas une question — les deux seuls gestes possibles.
+  finBoutiqueAutreCompte: (b) => `Ce navigateur est connecté ${b ? `à la boutique Vinted @${b}` : 'à une boutique Vinted'}, déjà suivie par un autre compte FillSell. Rien n'a été importé et rien n'a changé sur Vinted. Une boutique se suit sur un seul compte : ouvre ici la boutique de ce compte, ou écris-nous pour la transférer avec son historique.`,
+  titrePointBoutiqueAutreCompte: 'Vinted : boutique suivie par un autre compte',
+  ecarteesAutreCompte: (n) => `${n} annonce${n > 1 ? 's' : ''} de ce compte ${n > 1 ? 'sont' : 'est'} déjà suivie${n > 1 ? 's' : ''} par un autre compte FillSell : ${n > 1 ? 'elles ne sont pas importées' : 'elle n’est pas importée'} ici.`,
+  titreEcarteesAutreCompte: (nom, n) => `${nom} : ${n} annonce${n > 1 ? 's' : ''} suivie${n > 1 ? 's' : ''} par un autre compte`,
   titrePointBoutique: 'Vinted : boutique à confirmer',
   ctaChoisirBoutique: 'Choisir ma boutique',
   titrePointVinted: 'Vinted',
@@ -284,6 +290,10 @@ const EN = {
   finBoutiqueAConfirmer: (b) => (b
     ? `Your computer is signed in to the shop @${b}, which FillSell doesn't follow yet. Nothing was imported.`
     : "Your computer is signed in to a Vinted shop FillSell doesn't follow yet. Nothing was imported."),
+  finBoutiqueAutreCompte: (b) => `This browser is signed in to ${b ? `the Vinted shop @${b}` : 'a Vinted shop'}, already followed by another FillSell account. Nothing was imported and nothing changed on Vinted. A shop is followed on one account only: open this account's shop here, or write to us to transfer it with its history.`,
+  titrePointBoutiqueAutreCompte: 'Vinted: shop followed by another account',
+  ecarteesAutreCompte: (n) => `${n} listing${n > 1 ? 's' : ''} of this account ${n > 1 ? 'are' : 'is'} already followed by another FillSell account: ${n > 1 ? 'they are' : 'it is'} not imported here.`,
+  titreEcarteesAutreCompte: (nom, n) => `${nom}: ${n} listing${n > 1 ? 's' : ''} followed by another account`,
   titrePointBoutique: 'Vinted: shop to confirm',
   ctaChoisirBoutique: 'Choose my shop',
   titrePointVinted: 'Vinted',

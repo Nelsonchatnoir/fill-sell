@@ -12,13 +12,17 @@ const MUR_OPLA = /acc[èe]s opla non accord/i;
 // pages, minutes) reste en base pour nous, jamais à l'écran.
 //   pas_connecte  la personne n'est pas connectée à la plateforme sur son
 //                 ordinateur → « Connecte-toi à X sur ton ordinateur… »
-//   autre_compte  Chrome est sur une autre boutique que celle suivie
+//   autre_compte  Chrome est sur une autre boutique que celle suivie — ou
+//                 (18/10, Louis) sur une boutique déjà suivie par un AUTRE
+//                 compte FillSell ([boutique_autre_compte] : sa phrase à elle,
+//                 le pseudo vu par le run, cf. annonces/boutiqueAutreCompte.js)
 //   anti_robot    la plateforme a bloqué la lecture un moment
 //   arret         la lecture s'est arrêtée avant la fin (chien de garde)
 //   pas_prise     l'ordinateur n'a jamais pris la demande (Chrome fermé)
 //   echec         tout le reste
 const RE_PAS_CONNECTE = /\[pas_connecte\]|aucune session vinted|session_absente|session vinted.{0,40}401|refusé la lecture du compte|page de connexion/i;
-const RE_AUTRE_COMPTE = /\[boutique_a_confirmer\]|\[hors-compte-ebay\]/i;
+const RE_BOUTIQUE_AUTRE_COMPTE = /\[boutique_autre_compte\]/i;
+const RE_AUTRE_COMPTE = /\[boutique_a_confirmer\]|\[boutique_autre_compte\]|\[hors-compte-ebay\]/i;
 const RE_ANTI_ROBOT = /\[anti_robot\]|anti-robot|\[retry403\]/i;
 const RE_ARRET = /\[watchdog\]/i;
 const RE_PAS_PRISE = /jamais réclamée|sans extension disponible/i;
@@ -34,8 +38,13 @@ export function situationFinReleve(run) {
 }
 
 // La phrase d'une situation, pour une plateforme nommée. T = textesAnnonces(lang).
-export function texteSituation(situation, nom, T) {
+// `run` (facultatif) : le run lu, pour la boutique d'un autre compte FillSell.
+export function texteSituation(situation, nom, T, run = null) {
   if (situation === 'pas_connecte') return T.signalNonConnecte(nom);
+  if (situation === 'autre_compte' && RE_BOUTIQUE_AUTRE_COMPTE.test(String(run?.erreur ?? '')) && T.finBoutiqueAutreCompte) {
+    const login = typeof run?.vinted_login === 'string' ? run.vinted_login.trim().replace(/^@/, '') : '';
+    return T.finBoutiqueAutreCompte(login || null);
+  }
   if (situation === 'autre_compte') return T.finAutreCompte(nom);
   if (situation === 'anti_robot') return T.finAntiRobot(nom);
   if (situation === 'arret') return T.finArret(nom);
@@ -45,5 +54,5 @@ export function texteSituation(situation, nom, T) {
 
 export function texteFinReleve(run, nom, T) {
   if (/acc[èe]s opla non accord/i.test(String(run?.erreur ?? ''))) return T.signalOpla;
-  return texteSituation(situationFinReleve(run), nom, T);
+  return texteSituation(situationFinReleve(run), nom, T, run);
 }

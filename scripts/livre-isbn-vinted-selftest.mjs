@@ -54,7 +54,10 @@ verifier(/body: \{ resolve_isbn: true, photos: photosIa/.test(lps) && /const tex
 verifier(/if \(String\(pf\.isbn \?\? ""\)\.trim\(\) \|\| String\(pf\.vintedAspects\?\.isbn \?\? ""\)\.trim\(\)\) return prev;/.test(lps), 'jamais par-dessus une saisie');
 const rp = lire('src/utils/resolutionPublication.js');
 verifier(/pf\.isbn_absent = true;\s*\n\s*delete pf\.isbn;/.test(rp), '« Ce livre n’a pas d’ISBN » devient isbn_absent : jamais tapé chez Vinted');
-verifier(/logChampBloquant\(rayonChange \? "retiree" : "complete"/.test(lps), 'mesure : une question retirée par un changement de rayon n’est plus comptée « complétée »');
+// (18/10, eBay ÷ 5) L'issue se décide dans moteur/regles (issueQuestionDisparue) : « retiree » quand le rayon
+// change, « plateforme_decochee » quand la plateforme est décochée, « complete » sinon.
+verifier(/const issue = issueQuestionDisparue\(\{ plateformeCochee: selected\.has\(vu\.platform\), rayonChange \}\);\s*logChampBloquant\(issue,/.test(lps)
+  && /return rayonChange \? "retiree" : "complete";/.test(lire('src/publication/moteur/regles.js')), 'mesure : une question retirée par un changement de rayon n’est plus comptée « complétée »');
 const bq = lire('src/publication/BlocQuestions.jsx');
 verifier(/allowedValues=\{gp === "vinted" && a\.key === "isbn" \? \[\] : a\.allowedValues\}/.test(bq) && /onClick=\{\(\) => ecrire\(ISBN_ABSENT\)\}/.test(bq), 'stepper et lot : l’ISBN se tape (jamais derrière « Autre valeur… »), « Ce livre n’a pas d’ISBN » en un tap');
 const st = lire('src/tabs/StockTab.jsx');

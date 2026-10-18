@@ -1,7 +1,7 @@
 {
   "name": "fillsell",
   "private": true,
-  "version": "2.9.102",
+  "version": "2.9.103",
   "type": "module",
   "scripts": {
     "postinstall": "node -e \"if(process.env.VERCEL){console.log('Vercel: patch-package saute (patches natifs seulement, et le cache de build casse leur application)')}else{require('child_process').execSync('patch-package',{stdio:'inherit'})}\"",
@@ -401,7 +401,18 @@
     "selftest:eveil-file": "node scripts/eveil-file-selftest.mjs",
     "selftest:vente-declaree-beebs": "node scripts/vente-declaree-beebs-selftest.mjs",
     "selftest:ia-leviers": "deno run --allow-read scripts/ia-leviers-selftest.ts",
-    "selftest:zero-friction-oranges": "deno run --allow-read scripts/zero-friction-oranges-selftest.ts"
+    "selftest:zero-friction-oranges": "deno run --allow-read scripts/zero-friction-oranges-selftest.ts",
+    "selftest:recreation-vinted-verifiee": "node scripts/recreation-vinted-verifiee-selftest.mjs",
+    "selftest:titre-symboles-vinted": "node scripts/titre-symboles-vinted-selftest.mjs",
+    "selftest:depop-slug-souligne-serveur": "node scripts/depop-slug-souligne-serveur-selftest.mjs",
+    "selftest:lbc-mur-paiement-perime": "node scripts/lbc-mur-paiement-perime-selftest.mjs",
+    "selftest:surveillance-releves": "node scripts/surveillance-releves-selftest.mjs",
+    "selftest:boutique-autre-compte-app": "node scripts/boutique-autre-compte-app-selftest.mjs",
+    "selftest:ebay-questions-cinq": "node scripts/ebay-questions-cinq-selftest.mjs",
+    "selftest:recreation-vinted-0-6-128": "node scripts/recreation-vinted-0-6-128-selftest.mjs",
+    "selftest:titre-symboles-vinted-extension": "node scripts/titre-symboles-vinted-extension-selftest.mjs",
+    "selftest:lbc-pro-poids": "node scripts/lbc-pro-poids-selftest.mjs",
+    "selftest:depop-slug-souligne": "node scripts/depop-slug-souligne-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
