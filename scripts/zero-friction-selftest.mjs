@@ -43,7 +43,8 @@ console.log("\n1. La tranche Vinted, tranchée par le texte du vendeur");
   ok("sans texte : la table, comme avant (6 mois (60-66 cm))", jugerValeurContreListe({ platform: "beebs", key: "Taille", value: "3-6 mois / 62 cm", allowedValues: BEEBS }).valeurListe === "6 mois (60-66 cm)");
   ok("le job part écrit comme la grille, selon le texte", tailleDuJob({ platform: "beebs", taille: "3-6 mois / 62 cm", lignes: [{ key: "Taille", allowedValues: BEEBS }], textes: ["Pyjama 3 mois"] }) === "3 mois (54-60 cm)");
   const LPS = lire("src/components/ListingPreviewScreen.jsx");
-  ok("l'écran passe le texte du vendeur (fiche d'abord) aux trois jugements", (LPS.match(/textes: textesDuVendeurPour\(/g) ?? []).length === 3
+  // (19/10) Quatre : la ligne « missing » d'une taille lit aussi le texte (tailles-titre-selftest).
+  ok("l'écran passe le texte du vendeur (fiche d'abord) aux quatre jugements", (LPS.match(/textes: textesDuVendeurPour\(/g) ?? []).length === 4
     && /const textesDuVendeurPour = \(p\) => \[initialListing\?\.titre \?\? "", initialListing\?\.description \?\? "", edited\[p\]\?\.title \?\? "", edited\[p\]\?\.description \?\? ""\];/.test(LPS));
 }
 console.log("\n2. Les dimensions eBay : UNE question");

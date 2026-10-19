@@ -137,6 +137,9 @@ export default function CarteRayon({
   // La carte pose alors la QUESTION, liste ouverte, candidats en tête.
   // Absent (tous les autres cas) : la carte est exactement celle d'avant.
   question = null,
+  // (19/10) Les textes du vendeur (fiche, copie) : la taille qu'ils disent
+  // (« W30 » + « FR40 ») — le même jugement que le moteur. Absent : inchangé.
+  textes = null,
 }) {
   const T = MOTS[lang === 'en' ? 'en' : 'fr'];
   const questionOuverte = Boolean(question) && !rayon?.chemin?.length;
@@ -179,12 +182,14 @@ export default function CarteRayon({
     return () => { vivant = false; };
   }, [platform, cle, supabase]);
 
+  // `textes` lus PAR VALEUR : le tableau est reconstruit à chaque rendu.
+  const textesCle = Array.isArray(textes) ? JSON.stringify(textes) : '';
   const { questions, connus, defauts, limites } = useMemo(
     () => classerChamps(
       [...(catalogue ?? []), ...lignesDepuisConfigLocale(configLocale)],
-      champs ?? {}, platform, { regle, cheminCategorie: rayon?.chemin ?? null }
+      champs ?? {}, platform, { regle, cheminCategorie: rayon?.chemin ?? null, textes: textesCle ? JSON.parse(textesCle) : null }
     ),
-    [catalogue, champs, platform, configLocale, regle, rayon]
+    [catalogue, champs, platform, configLocale, regle, rayon, textesCle]
   );
 
   // ── UNE QUESTION OÙ L'ON ÉCRIT NE DISPARAÎT PAS SOUS LES DOIGTS (25/09) ──

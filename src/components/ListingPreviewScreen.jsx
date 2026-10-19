@@ -141,7 +141,7 @@ import {
   normAspectVal, nearestAllowedValue, jugerValeurContreListe, horsListeBloque, vintedExigeUneMarque, estChampMarque,
   vintedExigeUneCouleur, vintedExigeUnIsbn, ISBN_ABSENT, valeurUneLettre, rayonNeufSeulement, messageRayonNeuf,
   deduireOptionDuTexte, estFourreTout, listeCandidatsDabord, textesDeLAnnonce,
-  tailleDuJob, tailleDansListeEbay,
+  tailleDuJob, tailleDansListeEbay, tailleDeduiteDuTexte, estChampTaille,
 } from "../publication/moteur/listes";
 // (10/10, cas Manon) Ce que l'encart eBay remplit seul, et quand.
 import { aspectsADemanderIa, valeursAutoAReprendre } from "../publication/moteur/aspectsEbayAuto";
@@ -2965,6 +2965,7 @@ export function StepGeneration({ generating, generateError, platformListings, pr
                     suggestions={suggestionsParPf[p] ?? []}
                     question={questionsRayonParPf[p] ?? null}
                     champs={e.platform_fields ?? {}}
+                    textes={[ficheTexte?.titre ?? "", ficheTexte?.description ?? "", e.title ?? "", e.description ?? ""]}
                     configLocale={platformFieldsConfig[p] ?? []}
                     supabase={supabase}
                     onChoisirRayon={(choix) => onChoisirRayon?.(p, choix)}
@@ -7755,6 +7756,9 @@ export default function ListingPreviewScreen({
       marque: String(pf.marque ?? pf.ebayAspects?.["Marque"] ?? "").trim(),
       famille: initialListing?.famille ?? null, plateformeJeu: plateformeJeuEbay,
     };
+    // (19/10) Le texte du VENDEUR pour la taille (fiche, puis copie eBay) —
+    // les mêmes textes que textesDuVendeurPour, déclaré plus bas.
+    const textesVendeurEbay = [initialListing?.titre ?? "", initialListing?.description ?? "", edited.ebay?.title ?? "", edited.ebay?.description ?? ""];
     return ebayRequiredPreview.map(({ name, allowedValues, mode }) => {
       const src = sources.find(s => s.labels.includes(name));
       const srcVal = src ? String(src.get() ?? "").trim() : "";
@@ -7778,7 +7782,8 @@ export default function ListingPreviewScreen({
             // rapprochement par mots sur un nombre (« W34 | FR 44 » → « 44 »).
             // Marque (17/10, Nico) : jamais rapprochée d'une voisine (estChampMarque) ;
             // hors d'une liste qui fait foi, la personne choisit.
-            suggested: src.key === "taille" ? tailleDansListeEbay(sendVal, allowedValues)
+            // (19/10) Avec le texte du vendeur : W → FR, FR écrit, âge en mois.
+            suggested: src.key === "taille" ? tailleDansListeEbay(sendVal, allowedValues, { textes: textesVendeurEbay, champ: name, chemin: pf.ebayCategoryPath ?? null })
               : estChampMarque("ebay", name) ? null : nearestAllowedValue(sendVal, allowedValues),
             // `blocking` (2026-07-29, doctrine « liste = suggestion ») : seule
             // une liste QUI FAIT FOI grise le CTA. eBay SELECTION_ONLY = eBay
@@ -7811,6 +7816,13 @@ export default function ListingPreviewScreen({
       // semaine du 11/10 : exclues de l'IA pour leur défaut, puis affichées).
       const defaut = defautAspectEbay({ name, mode, allowedValues }, ctxDefautEbay);
       if (defaut) return { ...manquant, deduit: { valeur: defaut, source: "defaut" } };
+      // (19/10, DeadRoz) Une copie sans taille dont le titre ou la description
+      // la dit (« FR40 », « W30 », « 24M ») : l'option de la liste, une seule,
+      // jamais en cas de doute (moteur/listes.tailleDansListeEbay).
+      if (src?.key === "taille" && allowedValues?.length) {
+        const t = tailleDansListeEbay("", allowedValues, { textes: textesVendeurEbay, champ: name, chemin: pf.ebayCategoryPath ?? null });
+        if (t) return { ...manquant, deduit: { valeur: t, source: "taille_du_texte" } };
+      }
       // (18/10, zéro friction — banc de 571 VRAIES annonces eBay France, valeur
       // choisie par le vendeur) Sur ces aspects à liste SUGGÉRÉE, l'option que
       // le texte nomme est plus juste que l'IA : « Longueur de la robe » 7/8
@@ -7866,6 +7878,11 @@ export default function ListingPreviewScreen({
   // chips passent ✓ tout de suite ; la valeur reste écrasable dans le fallback
   // UI. Jamais d'écrasement d'une source existante. Une pose par catégorie.
   const aspectDefaultsFor = useRef(null);
+  // (19/10) Les plateformes dont la taille dite par le texte vient d'être
+  // posée (eBay ici, Vinted / Leboncoin / Beebs par l'option lue dans
+  // l'annonce), tant que leur copie ne la montre pas encore : la question
+  // partagée « Taille » de ce rendu-là n'est pas une question (télémétrie).
+  const tailleDuTexteEnVol = useRef(new Set());
   // Aspects déjà posés pour la passe courante (2026-09-02) : la pose se fait à
   // la PREMIÈRE apparition de chaque aspect — jamais deux fois (on ne recouvre
   // pas un champ que l'utilisateur a vidé exprès).
@@ -7986,6 +8003,8 @@ export default function ListingPreviewScreen({
       if (a.deduit?.valeur && a.state === "missing" && !(a.name in toSet)
           && !String(pfAspects[a.name] ?? "").trim() && peutPoser(a)) {
         toSet[a.name] = a.deduit.valeur;
+        // (19/10) La taille dite par le texte : sa question partagée de ce rendu n'en est pas une.
+        if (a.deduit.source === "taille_du_texte") tailleDuTexteEnVol.current.add("ebay");
         const repose = aspectDefaultsPoses.current.has(a.name);
         noterPose(a);
         if (a.deduit.source === "memoire" && !repose) noterPoseMemoire("ebay", a, a.deduit, ebayPreviewCategoryId ?? null);
@@ -8804,6 +8823,17 @@ export default function ListingPreviewScreen({
           }
           return { key, label, state: "ok", source: "generic", value: generic, allowedValues, dedicatedTarget: genericDedicatedTarget(platform, key) };
         }
+        // (19/10, DeadRoz) Une TAILLE exigée que la copie ne porte pas, mais que
+        // le titre ou la description dit (« FR40 », « W30 », « 24M ») : l'option
+        // de la grille, une seule, jamais en cas de doute. Déduite (`deduit`,
+        // jamais bloquante), elle est POSÉE sur la copie de CETTE plateforme par
+        // l'effet de l'option lue dans l'annonce — le geste de la personne qui
+        // la choisirait dans cette ligne (setPlatformDedicatedField).
+        if (variante === "nouvelle" && estChampTaille(platform, key) && allowedValues.length) {
+          const t = tailleDeduiteDuTexte({ platform, key, value: "", allowedValues, cheminCategorie: cheminDe(platform), textes: textesDuVendeurPour(platform) });
+          if (t) return { key, label, state: "missing", value: "", allowedValues, inputType: r.input_type, dedicatedTarget: genericDedicatedTarget(platform, key),
+                          suggested: t.valeur, blocking: false, deduit: { valeur: t.valeur, source: "taille_du_texte" }, deduite: t };
+        }
         if (GENERIC_PREFILLED[platform]?.includes(key)) {
           return {
             key, label, state: "prefilled", allowedValues, inputType: r.input_type,
@@ -9016,7 +9046,13 @@ export default function ListingPreviewScreen({
         optionsDuTexteEcrites.current.add(cle);
         for (const [k, v] of Object.entries(d.paire ?? {})) setPlatformAspect(gp, k, v);
         const versDedie = a.dedicatedTarget && !canalGeneriquePose(gp, a.key) && !SHARED_FIELD_KEYS.includes(a.dedicatedTarget);
-        if (versDedie) setPlatformDedicatedField(gp, a.dedicatedTarget, d.valeur);
+        // (19/10) La taille dite par le texte : la taille de CETTE copie (lien
+        // partagé coupé pour elle seule), là où l'extension la lit.
+        if (d.source === "taille_du_texte" && a.dedicatedTarget === "taille") {
+          tailleDuTexteEnVol.current.add(gp);
+          setPlatformDedicatedField(gp, "taille", d.valeur);
+        }
+        else if (versDedie) setPlatformDedicatedField(gp, a.dedicatedTarget, d.valeur);
         else setPlatformAspect(gp, a.key, d.valeur);
         noterOptionDuTexte(gp, a.key, {
           valeur: d.valeur, source: d.source, avant: a.value ? String(a.value) : null,
@@ -9255,9 +9291,17 @@ export default function ListingPreviewScreen({
     // six minutes sans laisser une ligne. Une ligne par plateforme nommée,
     // avec l'article — la même feature, le même cycle affiche/complete/abandonne.
     const libellesPartages = { taille: t("fieldSizeLabel"), couleur: t("fieldColorLabel"), matiere: t("fieldMaterialLabel"), marque: t("fieldBrandLabel") };
+    // (19/10) Une taille dite par le texte, posée à ce rendu sur la copie, n'est
+    // pas une question ; dès que la copie la porte, la plateforme sort du lot
+    // (vidée ensuite par la personne : la question est tracée comme avant).
+    for (const p of [...tailleDuTexteEnVol.current]) {
+      const pfp = edited[p]?.platform_fields ?? {};
+      if (String(pfp.taille || pfp.ebayAspects?.Taille || "").trim()) tailleDuTexteEnVol.current.delete(p);
+    }
     for (const f of missingSharedFieldsDetailed) {
       if (couleurRetenue({ partage: f.key })) continue;
       for (const p of f.platforms ?? []) {
+        if (f.key === "taille" && tailleDuTexteEnVol.current.has(p)) continue;
         const k = `${p}:partage:${f.key}`;
         actifs.add(k);
         if (!champBloquantVus.current[k]) {
@@ -10299,11 +10343,17 @@ export default function ListingPreviewScreen({
       // et un nombre nu ne se pose jamais par contenance. Même jugement que
       // l'écran (moteur/listes.tailleDuJob), sur la valeur du job. La saisie
       // de la personne reste dans `taille_saisie` (et sur la fiche).
+      // (19/10) Le rayon de la copie aussi (une pointure n'est jamais déduite du
+      // texte), et une copie SANS taille reçoit celle que son texte dit —
+      // marquée `taille_du_texte` (aucune saisie de la personne à garder).
       rows = rows.map(r => {
-        const t = tailleDuJob({ platform: r.platform, taille: r.platform_fields?.taille, lignes: genericRequiredStatus?.[r.platform], textes: textesDuVendeurPour(r.platform) });
+        const cleRayon = genericCategoryKeys?.[r.platform];
+        const t = tailleDuJob({ platform: r.platform, taille: r.platform_fields?.taille, lignes: genericRequiredStatus?.[r.platform], textes: textesDuVendeurPour(r.platform),
+          cheminCategorie: typeof cleRayon === "string" ? cleRayon.split(" > ") : null });
         if (!t) return r;
-        console.log(`[publish] ${r.platform} — taille « ${r.platform_fields.taille} » → « ${t} » (écriture de la grille)`);
-        return { ...r, platform_fields: { ...r.platform_fields, taille: t, taille_saisie: r.platform_fields.taille } };
+        const saisie = String(r.platform_fields?.taille ?? "").trim();
+        console.log(`[publish] ${r.platform} — taille « ${saisie} » → « ${t} » (${saisie ? "écriture de la grille" : "dite par le texte du vendeur"})`);
+        return { ...r, platform_fields: { ...r.platform_fields, taille: t, ...(saisie ? { taille_saisie: r.platform_fields.taille } : { taille_du_texte: true }) } };
       });
       // (18/10, lot 3) L'âge Beebs que la fiche porte déjà (relevé de l'annonce
       // Beebs du même article) part sur la copie Beebs qui n'en a pas — la même

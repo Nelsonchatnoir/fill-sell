@@ -44,6 +44,7 @@
 import { texteComparable } from "../../utils/texteComparable.js";
 import { normalizeVintedColors } from "../../utils/vintedColors.js";
 import { tailleDansGrille } from "../../../supabase/functions/_shared/tailles.js";
+import { tailleDuTexte } from "../../../supabase/functions/_shared/taille-du-texte.js";
 import { toPlatformChildSize, tailleEnfantSelonLeTexte } from "../../utils/childSizes.js";
 import {
   optionDepuisTextes, champDeductibleDuTexte, estFourreTout, listeCandidatsDabord, textesDeLAnnonce,
@@ -253,6 +254,13 @@ export function jugerValeurContreListe({ platform, key, value, allowedValues, ch
     const nv2 = normAspectVal(v);
     const parComposant = vals.filter(a => a.split(/\s*[-–—|/·•]\s*/).some(c => normAspectVal(c) === nv2));
     if (parComposant.length === 1) return { dans: true, valeurListe: parComposant[0], suggested: null };
+    // (19/10, DeadRoz) Rien de ce qui précède n'a trouvé : la taille que la
+    // copie et le texte du vendeur disent ENSEMBLE (« W30 » + « … FR40 … » →
+    // « 40 » chez Beebs homme ; « 24M » → « 24 mois (86-94 cm) »), une seule
+    // option de la grille, jamais en cas de doute (tailleDeduiteDuTexte).
+    // Seulement quand l'appelant donne les textes : sans eux, rien ne change.
+    const deduite = textes ? tailleDeduiteDuTexte({ platform, key, value: v, allowedValues: vals, cheminCategorie, textes }) : null;
+    if (deduite) return { dans: true, valeurListe: deduite.valeur, suggested: null, deduite };
     // ⛔ PAS DE RAPPROCHEMENT PAR MOTS SUR UNE TAILLE. Le rapprochement par
     //    jetons lit « 44.5 » comme « 44 » + « 5 » et proposerait « 44 » sur une
     //    grille d'entiers — c'est exactement la conversion interdite (règle
@@ -278,12 +286,40 @@ export function jugerValeurContreListe({ platform, key, value, allowedValues, ch
  */
 export function tailleDuJob({ platform, taille, lignes, cheminCategorie = null, textes = null }) {
   const brut = String(taille ?? "").trim();
-  if (!brut || platform === "opla") return null;
+  if (platform === "opla") return null;
+  if (!brut && !textes) return null;
   const ligne = (Array.isArray(lignes) ? lignes : [])
     .find(a => estChampTaille(platform, a?.key) && Array.isArray(a.allowedValues) && a.allowedValues.length);
   if (!ligne) return null;
+  // (19/10) Une copie SANS taille dont le texte du vendeur la dit : celle-là,
+  // écrite comme la grille (la même déduction que l'écran, ligne « missing »).
+  if (!brut) return tailleDeduiteDuTexte({ platform, key: ligne.key, value: "", allowedValues: ligne.allowedValues, cheminCategorie, textes })?.valeur ?? null;
   const v = jugerValeurContreListe({ platform, key: ligne.key, value: brut, allowedValues: ligne.allowedValues, cheminCategorie, textes });
   return v.dans && v.valeurListe && v.valeurListe !== brut ? v.valeurListe : null;
+}
+
+/**
+ * LA TAILLE ÉCRITE DANS LE TITRE OU LA DESCRIPTION (19/10, DeadRoz — règle de
+ * Nico) : _shared/taille-du-texte.js lit ce que la copie et les textes du
+ * vendeur disent (FR écrit, puis W → FR par la table publiée par Vinted, puis
+ * l'âge en mois « 24M ») ; l'option est placée par LE jugement de cet écran
+ * (childSizes, vocabulaire des tailles), sans texte — donc sans récursion.
+ * Rend { valeur, motif, regle } ou null : rien d'écrit, doute (deux tailles,
+ * fourchette, W hors table, copie et texte en désaccord), une valeur de la
+ * copie qu'on ne sait pas lire, une pointure, ou aucune option de la grille.
+ * ⛔ Jamais appelée sur une valeur que la grille porte déjà : l'appelant ne
+ *    vient ici qu'après tous les autres jugements.
+ */
+export function tailleDeduiteDuTexte({ platform, key, value = "", allowedValues, cheminCategorie = null, textes = [] }) {
+  if (!estChampTaille(platform, key) || platform === "opla") return null;
+  const vals = (Array.isArray(allowedValues) ? allowedValues : []).map(x => String(x).trim()).filter(Boolean);
+  if (!vals.length) return null;
+  const placer = (c) => {
+    const j = jugerValeurContreListe({ platform, key, value: c, allowedValues: vals, cheminCategorie });
+    return j.dans ? j.valeurListe : null;
+  };
+  const r = tailleDuTexte({ valeur: value, textes: Array.isArray(textes) ? textes : [textes], grille: vals, placer, champ: key, chemin: cheminCategorie });
+  return r?.valeur ? r : null;
 }
 
 /**
@@ -293,12 +329,20 @@ export function tailleDuJob({ platform, taille, lignes, cheminCategorie = null, 
  * (« Unique ») — jamais sur un nombre : il lisait « 44.5 » comme « 44 », et
  * « 34 » d'un « W34 » comme le 34 français.
  */
-export function tailleDansListeEbay(valeur, liste) {
+export function tailleDansListeEbay(valeur, liste, { textes = null, champ = "Taille", chemin = null } = {}) {
   const v = String(valeur ?? "").trim();
   const vals = Array.isArray(liste) ? liste : [];
-  if (!v || !vals.length) return null;
-  const t = tailleDansGrille(v, vals);
+  if (!vals.length || (!v && !textes)) return null;
+  const t = v ? tailleDansGrille(v, vals) : null;
   if (t) return t.valeur;
+  // (19/10) Avec les textes du vendeur : la taille qu'ils disent avec la copie
+  // (taille-du-texte.js), placée par le vocabulaire des tailles — avant le
+  // rapprochement par mots, qui ne joue jamais sur un nombre.
+  if (textes) {
+    const d = tailleDuTexte({ valeur: v, textes, grille: vals, placer: (c) => tailleDansGrille(c, vals)?.valeur ?? null, champ, chemin });
+    if (d?.valeur) return d.valeur;
+  }
+  if (!v) return null;
   return /\d/.test(v) ? null : nearestAllowedValue(v, vals);
 }
 

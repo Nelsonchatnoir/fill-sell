@@ -341,3 +341,22 @@
 - **Bilans** (migration `20261018240000`, lecture seule) : une question disparue parce que la plateforme a été décochée
   (`plateforme_decochee`, app 2.9.103) compte dans les ABANDONS de `questions_publication_bilan` et de
   `champs_requis_veille`, avec sa colonne `plateformes_decochees`.
+
+## 19/10 — LA TAILLE ÉCRITE DANS LE TITRE OU LA DESCRIPTION (DeadRoz, Ornella ; règle de Nico)
+- **Règle** (tout le parc, Beebs, Vinted, Leboncoin, eBay ; aucun appel IA) : `_shared/taille-du-texte.js`. Quand la
+  taille de la copie ne passe pas la grille (ou qu'elle est vide), la taille que la copie ET le texte du vendeur (titre,
+  description ; fiche puis copie) disent, dans cet ordre : FR écrit (« FR50 », « W36 L34 (46) ») ; à défaut le W converti
+  par la table que Vinted publie (`FR_PAR_TOUR_DE_TAILLE`, W hors table jamais deviné) ; l'âge en mois (« 24M »,
+  « 18 mois »). Posée = UNE option exacte de la grille du rayon, placée par le jugement de l'écran (childSizes, tailles.js).
+- ⛔ **La question reste** : copie et texte en désaccord, deux tailles, fourchette, W hors table, adulte + mois, âge hors
+  étiquette, aucune option. ⛔ **Jamais** : une valeur que la grille porte déjà, une copie illisible (« EU 38 »), un nombre
+  nu (« taille 38 »), EU/UK/US, les années, « 1M », une durée (« porté 3 mois »), une pointure (champ ou rayon chaussures).
+- **Branchements** : `moteur/listes.js` (`jugerValeurContreListe` en dernier recours avec textes, `tailleDuJob` — copie vide
+  avec textes —, `tailleDansListeEbay`, `tailleDeduiteDuTexte`) ; écran : ligne « missing » d'une taille = option déduite
+  (`deduit.source = taille_du_texte`, jamais bloquante) posée sur la copie de la plateforme (`setPlatformDedicatedField`,
+  trace `option_du_texte`) ; carte du rayon (`classerChamps` avec `textes`) ; handler-watch (`reponseTailleAuto(job,
+  tailleFiche, textes)`, R5 après R0 → R4). Sans textes, chaque fonction rend exactement ce qu'elle rendait.
+- **Preuve** : rejeu 7 j `scripts/bancs/tailles-titre/rejeu-tailles.mjs` (205 → 96 questions ; valeur connue 66 → 21 ;
+  0 différente d'une réponse humaine) ; 90 j d'annonces publiées : 1 015 tailles qui passaient → 0 changée ; banc du
+  moteur réel `scripts/apercu/capture-moteur-taille-titre.mjs`. Selftest `tailles-titre`. Rapport :
+  `docs/enquetes/tailles-titre-1910/RAPPORT.md`.

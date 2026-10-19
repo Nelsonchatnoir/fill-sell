@@ -12,8 +12,13 @@
 // ⛔ Jamais la fiche : seule la copie de la plateforme reçoit la valeur.
 // ⛔ Jamais une question qui n'est pas une taille (« Format du colis »,
 //    package_size, marque…), jamais sans grille, jamais deux fois.
-// Pur (Deno + Node), un seul import relatif.
+// (19/10, Ornella « Pull Kiabi 24M ») R0 → R4 sans réponse : la taille que la
+// copie et les textes du vendeur disent ENSEMBLE (_shared/taille-du-texte.js :
+// FR écrit, W → FR, âge en mois « 24M » → « 24 mois (86-94 cm) ») — une seule
+// option de la grille, jamais en cas de doute, jamais une pointure.
+// Pur (Deno + Node), imports relatifs.
 import { tailleDeService, brancheDeTaille } from "./taille-de-service.js";
+import { tailleDuTexte } from "./taille-du-texte.js";
 
 const CLES_TAILLE = /^(taille|size|oplasizechoice|depoptaille|pointure|shoe_size|clothing_st)$/i;
 
@@ -31,8 +36,9 @@ export function estQuestionTaille(f) {
  * La réponse que la règle donne à la question de taille de ce job, ou null.
  * @param {{status?:string, platform?:string, platform_fields?:object}} job
  * @param {string|null} tailleFiche — inventaire.attributs.taille.v (repli)
+ * @param {unknown[]|null} textes — titre et description (job, fiche) ; absent : R0 → R4 seules
  */
-export function reponseTailleAuto(job, tailleFiche = null) {
+export function reponseTailleAuto(job, tailleFiche = null, textes = null) {
   if (!job || job.status !== "needs_user") return null;
   const pf = job.platform_fields && typeof job.platform_fields === "object" ? job.platform_fields : {};
   if (pf.taille_convertie_serveur) return null; // une fois
@@ -42,12 +48,18 @@ export function reponseTailleAuto(job, tailleFiche = null) {
   const vintedA = pf.vintedAspects && typeof pf.vintedAspects === "object" ? pf.vintedAspects : {};
   const brut = [pf.taille, ebay.Taille, ebay.Pointure, vintedA.size, tailleFiche]
     .map((v) => String(v ?? "").trim()).find(Boolean) ?? "";
-  if (!brut) return null;
+  if (!brut && !textes) return null;
   const branche = brancheDeTaille(
     pf.categoryPath ?? [], pf.oplaCategoryPath ?? [], pf.beebsCategoryPath ?? [], pf.lbcCategoryPath ?? [],
     pf.ebayCategoryPath ?? [], String(ebay["Département"] ?? ""), String(pf.genre ?? ""),
   );
-  const r = tailleDeService(brut, f.allowed_values, { branche });
+  let r = brut ? tailleDeService(brut, f.allowed_values, { branche }) : null;
+  if (!r && textes) {
+    const chemin = [pf.categoryPath, pf.oplaCategoryPath, pf.beebsCategoryPath, pf.lbcCategoryPath, pf.ebayCategoryPath]
+      .find((c) => Array.isArray(c) && c.length) ?? null;
+    const d = tailleDuTexte({ valeur: brut, textes, grille: f.allowed_values, champ: `${f.field_key ?? ""} ${f.field_label ?? ""}`, chemin });
+    if (d?.valeur) r = { valeur: d.valeur, motif: d.motif, regle: "R5" };
+  }
   if (!r) return null;
   const cible = f.target && typeof f.target === "object" && f.target.key
     ? { root: f.target.root ?? null, key: String(f.target.key) }

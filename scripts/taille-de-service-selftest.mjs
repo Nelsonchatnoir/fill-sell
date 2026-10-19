@@ -99,7 +99,8 @@ ok(reponseTailleAuto({ ...ebayJob, platform_fields: { ...ebayJob.platform_fields
 
 console.log("\n6. LES BRANCHEMENTS (code livré)");
 const hw = lire("supabase/functions/handler-watch/index.ts");
-ok(/reponseTailleAuto\(j as never, art\?\.taille \?\? null\)/.test(hw) && /\.eq\("status", "needs_user"\)\s*\.select\("id"\);\s*if \(\(maj \?\? \[\]\)\.length\) \{\s*taillesTranchees\+\+/.test(hw), "handler-watch : réponse puis compare-and-swap sur needs_user");
+// (19/10) L'appel porte désormais les textes du vendeur (tailles-titre-selftest).
+ok(/reponseTailleAuto\(j as never, art\?\.taille \?\? null, textes\)/.test(hw) && /\.eq\("status", "needs_user"\)\s*\.select\("id"\);\s*if \(\(maj \?\? \[\]\)\.length\) \{\s*taillesTranchees\+\+/.test(hw), "handler-watch : réponse puis compare-and-swap sur needs_user");
 ok(/art\.statut !== "stock"/.test(hw.slice(hw.indexOf("taillesTranchees = 0"))), "handler-watch : article encore en stock seulement");
 const ebp = lire("supabase/functions/_shared/ebay-publication.ts");
 ok(/tailleSansPrefixeEuFr\(a\.name, brut, a\.allowedValues\) \?\? tailleServieEbay\(/.test(ebp), "eBay API : après le recalage d'avant, sur liste fermée seulement");

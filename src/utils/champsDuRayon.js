@@ -32,7 +32,7 @@
 // (chantier du 24/09) Le jugement « valeur hors liste » est celui du moteur
 // de publication, et de lui seul : la carte ne peut plus dire « À COMPLÉTER »
 // là où l'écran Confirmer dit « Prête » (cas Primark, Beebs).
-import { jugerValeurContreListe, horsListeBloque, rayonNeufSeulement, valeurUneLettre } from '../publication/moteur/listes.js';
+import { jugerValeurContreListe, horsListeBloque, rayonNeufSeulement, valeurUneLettre, tailleDeduiteDuTexte } from '../publication/moteur/listes.js';
 
 // ── DU CHAMP DE LA PLATEFORME À CELUI QU'ON CONNAÎT ───────────────────────
 // Le catalogue parle la langue de la plateforme (`clothing_st`, `condition`,
@@ -208,7 +208,7 @@ export function texteSimple(s) {
 
 /** Le tri : ce qu'on sait, ce qu'il faut demander, et ce qu'on laisse
  *  tranquille. Une seule passe, une seule règle. */
-export function classerChamps(lignes, pf, platform, { regle = 'classique', cheminCategorie = null } = {}) {
+export function classerChamps(lignes, pf, platform, { regle = 'classique', cheminCategorie = null, textes = null } = {}) {
   const connus = [];
   const questions = [];
   const defauts = [];
@@ -299,13 +299,20 @@ export function classerChamps(lignes, pf, platform, { regle = 'classique', chemi
       continue;
     }
     if (horsGrille && regle === 'nouvelle') {
-      const verdict = jugerValeurContreListe({ platform, key: l.field_key, value: valeur, allowedValues: l.allowed_values, cheminCategorie });
+      // (19/10) Les textes du vendeur, comme le moteur : « W30 » + « FR40 » → « 40 ».
+      const verdict = jugerValeurContreListe({ platform, key: l.field_key, value: valeur, allowedValues: l.allowed_values, cheminCategorie, textes });
       horsGrille = !verdict.dans && horsListeBloque({
         regle, platform, key: l.field_key, inputType: l.input_type, allowedValues: l.allowed_values, suggested: verdict.suggested,
       });
     }
     if (horsGrille) { questions.push({ ...entree, horsGrille: true }); continue; }
     if (valeur) { connus.push(entree); continue; }
+    // (19/10) Une taille exigée absente de la copie, que le texte du vendeur
+    // dit : connue, comme pour le moteur (même déduction, même grille).
+    if (regle === 'nouvelle' && textes && entree.requis && grille) {
+      const deduite = tailleDeduiteDuTexte({ platform, key: l.field_key, value: '', allowedValues: l.allowed_values, cheminCategorie, textes });
+      if (deduite) { connus.push({ ...entree, valeur: deduite.valeur, deduite }); continue; }
+    }
     // Le bruit : jamais une question. Un défaut prudent s'il en existe un
     // d'honnête, sinon rien — dans les deux cas la publication part.
     const bruit = estDuBruit(entree.libelle);
