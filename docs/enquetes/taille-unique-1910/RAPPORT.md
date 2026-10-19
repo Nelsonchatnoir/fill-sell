@@ -83,8 +83,12 @@ textes compris. Données (requêtes locales, `*.sql` étant ignoré par `.gitign
 
 ## Livraison
 
-Voir `docs/agents/etat-2026-10-01.md` § 19/10 soir : commit, handler-watch (seule fonction qui importe la règle), OTA
-de l'app, web par le push. **Extension non touchée** : elle n'importe pas la règle, il n'y a rien à livrer.
+- Commit bd7832c.
+- handler-watch v122 → **v123** à 22:30:53, `--no-verify-jwt`, `verify_jwt` false avant et après. C'est la seule fonction
+  qui importe la règle.
+- OTA **2.9.106** (build `2026-10-19T20:31:13Z+bd7832c`), canal production relu ; web par le push.
+- **Extension non touchée** : elle n'importe pas la règle, il n'y a rien à livrer.
+- Détail : `docs/agents/etat-2026-10-01.md` § 19/10 soir.
 
 ## Choix pris sans Nico
 
