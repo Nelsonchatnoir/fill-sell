@@ -9,7 +9,7 @@
 // est capturé ici — rien ne sort de la machine, aucun compte, aucune session.
 //
 //     node scripts/apercu/capture-moteur-taille-titre.mjs
-//     (ou : vite, puis /scripts/apercu/moteur-taille-titre.html?cas=deadroz|vide|conflit|ornella)
+//     (ou : vite, puis /scripts/apercu/moteur-taille-titre.html?cas=deadroz|vide|conflit|ornella|unique_vide|unique_tu|unique_sans_option|unique_doute)
 import { createRoot } from 'react-dom/client';
 import ListingPreviewScreen from '../../src/components/ListingPreviewScreen.jsx';
 
@@ -17,6 +17,7 @@ const CAS = new URLSearchParams(location.search).get('cas') || 'deadroz';
 
 // Grilles RELEVÉES (platform_category_aspects, 19/10).
 const GRILLE_HOMME = ["32", "34", "36", "38", "40", "42", "44", "46", "48", "50", "52", "54", "56", "58", "60", "62", "64", "XS", "S", "M", "L", "XL", "XXL", "XXXL", "4XL", "5XL", "6XL", "7XL", "8XL"];
+const GRILLE_FEMME = ["XXXS / 30", "XXS / 32", "XS / 34", "S / 36", "M / 38", "L / 40", "XL / 42", "XXL / 44", "XXXL / 46", "4XL / 48", "5XL / 50", "6XL / 52", "7XL / 54", "8XL / 56", "9XL / 58", "Taille unique", "Autre"];
 const GRILLE_BEBE = ["Prématuré (- de 45 cm)", "Naissance - 0 mois (45-50 cm)", "1 mois (50-54 cm)", "3 mois (54-60 cm)", "6 mois (60-66 cm)", "9 mois (67-74 cm)", "12 mois (74-80 cm)", "18 mois (80-86 cm)", "24 mois (86-94 cm)", "3 ans (94-102 cm)", "4 ans (102-108 cm)"];
 const ARTICLES = {
   // DeadRoz, 19/10 12:19 : la fiche « W30 » (synchro Vinted), le titre dit FR40.
@@ -27,6 +28,14 @@ const ARTICLES = {
   conflit: { titre: "Jean levis Denizen 299 loose fit bleu marine W42 FR52 homme coupe droite J319", taille: "W32", genre: "Homme", grille: GRILLE_HOMME, icone: "👖" },
   // Ornella : « 24M » sur la grille bébé de Beebs.
   ornella: { titre: "Pull Kiabi 24M gris clair motifs", taille: "24M", genre: "Bébé", grille: GRILLE_BEBE, icone: "🧶" },
+  // (19/10 soir, taille unique) Copie VIDE, le titre dit « Taille unique » : l'option de la grille femme.
+  unique_vide: { titre: "Pull oversize maille beige Taille unique femme très bon état", taille: "", genre: "Femme", grille: GRILLE_FEMME, icone: "🧶" },
+  // Sébastien : « T.U » (écriture que tailles.js ne lisait pas) → « Taille unique ».
+  unique_tu: { titre: "Gilet poncho style bohème noir et blanc - Lely Wood - T.U", taille: "T.U", genre: "Femme", grille: GRILLE_FEMME, icone: "🧶" },
+  // Sébastien, djellaba : « Unique » face à une grille SANS taille unique (ici pantalons homme — le banc ne range pas « djellaba ») → la question reste.
+  unique_sans_option: { titre: "Pantalon sarouel homme brodé marron coton", taille: "Unique", genre: "Homme", grille: GRILLE_HOMME, icone: "👖" },
+  // Deux tailles dites : « Taille unique / L » → doute, la question reste.
+  unique_doute: { titre: "Pull fluide à liens - Taille unique / L", taille: "", genre: "Femme", grille: GRILLE_FEMME, icone: "🧶" },
 };
 const A = ARTICLES[CAS] ?? ARTICLES.deadroz;
 const DESCRIPTION = `${A.titre}. Très bon état.`;

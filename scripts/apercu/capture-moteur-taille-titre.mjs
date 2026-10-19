@@ -60,6 +60,11 @@ const ATTENDU = {
   vide: { question: false, job: '46', saisie: null, trace: true },
   conflit: { question: true },
   ornella: { question: false, job: '24 mois (86-94 cm)', saisie: '24M' },
+  // (19/10 soir) La taille unique : l'option exacte de la grille, ou la question.
+  unique_vide: { question: false, job: 'Taille unique', saisie: null, trace: true },
+  unique_tu: { question: false, job: 'Taille unique', saisie: 'T.U' },
+  unique_sans_option: { question: true },
+  unique_doute: { question: true },
 };
 
 try {

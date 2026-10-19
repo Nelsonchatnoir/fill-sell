@@ -22,8 +22,9 @@
 //   · la valeur de la fiche n'est JAMAIS remplacée par le texte : l'appelant
 //     ne vient ici que quand elle ne passe pas la grille, et le texte doit
 //     dire la MÊME taille qu'elle (fiche « W29 », titre « FR46 » : doute) ;
-//     une valeur de fiche qu'on ne sait pas lire (« EU 38 », « Taille
-//     unique ») n'est jamais recouverte ;
+//     une valeur de fiche qu'on ne sait pas lire (« EU 38 ») n'est jamais
+//     recouverte ; une « Taille unique » ne devient que l'option de taille
+//     unique de la grille (19/10 soir, tailleUniqueDuVendeur), jamais un FR ;
 //   · le doute ne se tranche pas : deux tailles différentes dans le texte,
 //     une fourchette (« FR 40/42 », « 12-18 mois »), un W hors table, du FR
 //     et des mois à la fois → null, la question reste posée ;
@@ -35,8 +36,10 @@
 //    (un mètre), jamais un mois « porté 3 mois ».
 // ⛔ La fiche n'est jamais réécrite : seule la valeur servie à la plateforme.
 //
+// (19/10 soir, Sébastien) LA TAILLE UNIQUE — voir tailleUniqueDuVendeur.
+//
 // ES module pur (Deno + Node + Vite), imports relatifs sans dépendance.
-import { tailleDansGrille } from "./tailles.js";
+import { tailleDansGrille, memeTaille } from "./tailles.js";
 import { FR_PAR_TOUR_DE_TAILLE } from "./taille-de-service.js";
 
 // Les âges en mois d'une étiquette enfant (childSizes : Naissance, 1 … 36 mois).
@@ -178,6 +181,121 @@ export function estChampChaussures(champ, chemin) {
   return CHAUSSURES.test(String(champ ?? "")) || CHAUSSURES.test(c);
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// LA TAILLE UNIQUE (19/10 soir, demande de Nico)
+// ══════════════════════════════════════════════════════════════════════════
+// CE QUI L'A PROVOQUÉ : Sébastien (Pro), 19/10 — eBay refuse « Unique » pour la
+// « Taille » d'une djellaba rangée en « Costumes » (job 12854dbb, 20:36). La
+// grille eBay de CE rayon (48 options : lettres, 40 … 68, UK, US) n'a AUCUNE
+// taille unique : la question était juste, et elle le reste. Le même soir,
+// quatre « Taille unique » (robes, ponchos) face à la grille eBay qui l'écrit.
+// tailles.js traduisait déjà « Unique » ↔ « Taille unique » quand la copie le
+// dit avec un mot qu'il connaît ; il manquait deux choses :
+//   · les écritures du vendeur qu'il ne lit pas : « T.U », « T. unique »,
+//     « Taille unique (TU) », « TU / One size », « One size fits all », « OSFA » ;
+//   · la copie VIDE dont le titre ou la description dit « taille unique ».
+// LA RÈGLE : une taille unique écrite par le vendeur devient L'option de taille
+// unique de la grille de la plateforme et du rayon, écrite comme elle l'écrit
+// (« Taille unique », « Taille Unique », « Universel », « One size »,
+// « TAILLE_UNIQUE ») — une seule.
+// LES GARDE-FOUS :
+//   · aucune option de taille unique dans la grille → null : la question reste
+//     (jamais « 48 », « M » ou une lettre à la place) ;
+//   · une copie qui porte une AUTRE taille n'est jamais recouverte : le texte
+//     ne remplit que la copie vide (la règle d'avant joue, à l'identique) ;
+//   · une autre taille dite à côté (« taille 38 », « T36 », « FR40 », « W30 »,
+//     « 24M », « Taille unique / L ») ou une négation (« pas taille unique »)
+//     → doute ; deux options uniques différentes dans la grille → doute ;
+//   · jamais le mot « unique » seul (« pièce unique »), jamais « universel »
+//     dans un texte (« adaptateur universel »), jamais « TU » suivi d'une
+//     majuscule ou après un mot en capitales (« TU Delft », « SI TU AS ») ;
+//   · jamais une pointure (garde des chaussures, plus haut).
+
+// Les écritures d'une taille unique qui ne sont pas dans le dictionnaire de
+// tailles.js (UNIQUES), une fois pliées : points et deux-points → espace.
+const UNIQUES_EN_PLUS = new Set([
+  "t u", "t unique", "t universelle", "t universel", "unique size", "one size fits all",
+  "one size fits most", "osfa", "free size", "freesize", "taille unique tu",
+]);
+const plierUnique = (v) => nfc(v).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase()
+  .replace(/[_.:]+/g, " ").replace(/[-–—]+/g, " ").replace(/\s+/g, " ").trim();
+const morceauUnique = (m) => memeTaille(m, "Taille unique") || UNIQUES_EN_PLUS.has(plierUnique(m));
+
+/** Une valeur (copie, option de grille) dit-elle « taille unique » ? */
+export function estTailleUniqueEcrite(valeur) {
+  const v = nfc(valeur).trim();
+  if (!v) return false;
+  if (morceauUnique(v)) return true;
+  // « Taille unique (TU) », « TU / One size » : tous les morceaux le disent.
+  const morceaux = v.split(/[/|()·•,+]+|\s[-–—]\s/).map((m) => m.trim()).filter(Boolean);
+  return morceaux.length > 1 && morceaux.every(morceauUnique);
+}
+
+// Dans un texte : « taille unique », « taille universelle », « T.U », « T. unique »,
+// « one size », « OSFA », et « TU » en capitales, isolé (voir tuEstUneTaille).
+const RE_UNIQUE_TEXTE = /(?<![\p{L}\p{N}])(?:taille[\s-]?(?:unique|universelle)|t\s?[.:]\s?u(?:nique)?\.?|one[\s-]?size(?!\s+(?:up|down|bigger|smaller|larger))|osfa)(?![\p{L}\p{N}])/giu;
+const RE_TU = /(?<![\p{L}\p{N}])TU(?![\p{L}\p{N}])/gu;
+const tuEstUneTaille = (t, i) => !/^\s*\p{Lu}/u.test(t.slice(i + 2, i + 6))
+  && !/(?:^|[^\p{L}])\p{Lu}{2,}\s+$/u.test(t.slice(Math.max(0, i - 25), i));
+// « pas de taille unique », « n'est pas en taille unique » — pas « jamais porté, taille unique ».
+const NEGATION_AVANT = /(?:^|[^\p{L}])(?:pas|non)\s+(?:(?:de|d'|d’|en|une|un|la|du)\s*)?$/iu;
+// Une autre taille écrite : « taille 38 », « taille M », « T36 », « T : 36 », « size L » — pas « la taille
+// s'adapte », ni une mesure (« tour de taille 80 cm »).
+const RE_AUTRE_TAILLE = /(?<![\p{L}\p{N}])(?:taille|size|t)\s?[:.]?\s?(?!unique|universelle|u\b|tu\b)(\d{1,3}|x{0,4}s|s|m|l|x{1,4}l|\dxl)(?![\p{L}\p{N}'’])(?!\s?(?:cm|mm)\b)/giu;
+const TOUR_DE_AVANT = /tour\s+de\s+$/iu;
+// « Taille unique / L », « TU - M » : une seconde taille collée à la première.
+const RE_UNIQUE_PUIS_TAILLE = /^\s?[/-]\s?(?:\d{2}|x{0,4}s|s|m|l|x{1,4}l|\dxl)(?![\p{L}\p{N}])/iu;
+
+// Ce que les textes disent d'une taille unique : { mot } | { doute } | null.
+function uniqueDansLeTexte(textes) {
+  let mot = null;
+  for (const brut of (Array.isArray(textes) ? textes : [textes])) {
+    const t = nfc(brut);
+    if (!t.trim()) continue;
+    const trouves = [...t.matchAll(RE_UNIQUE_TEXTE)].map((m) => ({ i: m.index, s: m[0] }))
+      .concat([...t.matchAll(RE_TU)].filter((m) => tuEstUneTaille(t, m.index)).map((m) => ({ i: m.index, s: m[0] })));
+    for (const { i, s } of trouves) {
+      if (NEGATION_AVANT.test(t.slice(Math.max(0, i - 30), i))) return { doute: `négation devant « ${s.trim()} »` };
+      if (RE_UNIQUE_PUIS_TAILLE.test(t.slice(i + s.length, i + s.length + 8))) return { doute: `« ${t.slice(i, i + s.length + 6).trim()} » : deux tailles` };
+      mot ??= s.trim();
+    }
+  }
+  return mot ? { mot } : null;
+}
+
+/**
+ * LA TAILLE UNIQUE DU VENDEUR, sur la grille : { valeur, motif, regle:"unique" }
+ * | { doute } | null (la grille n'en a pas : la question reste) — ou undefined
+ * quand ni la copie ni le texte ne disent « taille unique » (la règle d'avant
+ * joue alors, inchangée).
+ * @param {{ valeur?: unknown, textes?: unknown[]|unknown, opts: string[] }} p
+ */
+export function tailleUniqueDuVendeur({ valeur = "", textes = [], opts }) {
+  const v = nfc(valeur).trim();
+  const copie = Boolean(v) && estTailleUniqueEcrite(v);
+  if (v && !copie) return undefined;                 // une autre taille sur la copie : jamais recouverte
+  const lu = v ? null : uniqueDansLeTexte(textes);   // copie vide : le texte
+  if (!copie && !lu) return undefined;
+  if (lu?.doute) return { doute: lu.doute };
+  const texte = signalDuTexte(textes);
+  if (texte) return { doute: texte.doute ?? `une taille unique et une autre taille (${texte.fr ? `FR ${texte.fr}` : `${texte.mois} mois`})` };
+  for (const brut of (Array.isArray(textes) ? textes : [textes])) {
+    const t = nfc(brut);
+    for (const m of t.matchAll(RE_AUTRE_TAILLE)) {
+      if (TOUR_DE_AVANT.test(t.slice(Math.max(0, m.index - 10), m.index))) continue;
+      return { doute: `une taille unique et « ${m[0].trim()} »` };
+    }
+  }
+  const uniques = [...new Set((Array.isArray(opts) ? opts : []).filter(estTailleUniqueEcrite))];
+  if (!uniques.length) return null;
+  if (uniques.length > 1) return { doute: `plusieurs options de taille unique (${uniques.join(", ")})` };
+  return {
+    valeur: uniques[0],
+    motif: `${copie ? `« ${v} » (copie)` : `« ${lu.mot} » lu dans le texte`} = « ${uniques[0]} » de la grille`,
+    regle: "unique",
+  };
+}
+
 /**
  * LA fonction : la taille que la fiche et les textes du vendeur disent, écrite
  * comme la grille l'écrit — ou null (rien d'écrit, ou doute : la question reste).
@@ -187,12 +305,16 @@ export function estChampChaussures(champ, chemin) {
  *   son jugement, childSizes compris) ; par défaut tailles.js + parenthèses ;
  *   `champ`, `chemin` : la clé ou le libellé du champ, le rayon (une pointure,
  *   un rayon de chaussures : jamais).
- * @returns {{ valeur:string, motif:string, regle:"fr"|"w"|"mois" } | { doute:string } | null}
+ * @returns {{ valeur:string, motif:string, regle:"fr"|"w"|"mois"|"unique" } | { doute:string } | null}
  */
 export function tailleDuTexte({ valeur = "", textes = [], grille, placer = null, champ = null, chemin = null }) {
   if (estChampChaussures(champ, chemin)) return null;
   const opts = (Array.isArray(grille) ? grille : []).map((o) => String(typeof o === "string" ? o : (o?.code ?? o?.title ?? "")).trim()).filter(Boolean);
   if (!opts.length) return null;
+  // (19/10 soir) La taille unique d'abord : la copie ou le texte qui la disent
+  // ne passent jamais par la lecture FR / W / mois ci-dessous.
+  const unique = tailleUniqueDuVendeur({ valeur, textes, opts });
+  if (unique !== undefined) return unique;
   const poser = placer ?? ((v) => placerServeur(v, opts));
   const fiche = lireValeur(valeur);
   if (fiche?.illisible) return null;            // la fiche dit autre chose : jamais recouverte

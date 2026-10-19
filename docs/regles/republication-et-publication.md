@@ -360,3 +360,18 @@
   0 différente d'une réponse humaine) ; 90 j d'annonces publiées : 1 015 tailles qui passaient → 0 changée ; banc du
   moteur réel `scripts/apercu/capture-moteur-taille-titre.mjs`. Selftest `tailles-titre`. Rapport :
   `docs/enquetes/tailles-titre-1910/RAPPORT.md`.
+
+## 19/10 soir — LA TAILLE UNIQUE (Sébastien ; règle de Nico)
+- **Règle** (toutes plateformes, aucun appel IA) : `tailleUniqueDuVendeur` dans `_shared/taille-du-texte.js`, en tête de
+  `tailleDuTexte` (mêmes branchements : écran, eBay, job, carte du rayon, handler-watch R5). Une taille unique écrite par
+  le vendeur (« Unique », « TU », « T.U », « T. unique », « Taille unique (TU) », « One size », « OSFA » sur la copie ;
+  copie VIDE : « taille unique », « taille universelle », « T.U », « one size », « TU » isolé en capitales dans le
+  texte) → L'option de taille unique de la grille du rayon, écrite comme elle (« Taille unique », « Universel »,
+  « One size », « TAILLE_UNIQUE »), une seule. Dictionnaire : `memeTaille` de `tailles.js` (non recopié).
+- ⛔ **La question reste** : grille sans taille unique (eBay « Costumes » : la djellaba de Sébastien), autre taille dite à
+  côté (« taille 38 », « T:36 », FR/W/mois, « Taille unique / L »), négation, deux options uniques. ⛔ **Jamais** : une
+  copie qui porte une autre taille, « unique » seul (« pièce unique »), « universel » dans un texte, « TU » suivi d'une
+  majuscule ou après un mot en capitales, une pointure.
+- **Preuve** : rejeu symétrique `scripts/bancs/taille-unique/rejeu-taille-unique.mjs` (écran 7 j 99 → 99, serveur 7 j
+  0 écart, 90 j publiées 0 changée) ; banc du moteur réel 8/8 ; selftest `taille-unique`. Rapport :
+  `docs/enquetes/taille-unique-1910/RAPPORT.md`.
