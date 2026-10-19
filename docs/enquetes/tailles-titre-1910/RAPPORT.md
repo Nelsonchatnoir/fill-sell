@@ -18,7 +18,7 @@
   taille de la fiche à l'instant de la question est connue : **66 → 21**. DeadRoz seul : **50 → 4**. Sur les 109 levées :
   **82 = la réponse de la personne, 0 différente**, 27 sans réponse de sa part à comparer.
 - **Zéro régression** : 1 015 tailles d'annonces publiées en 90 jours qui passaient la grille → **0 changée** ; 0 taille
-  de job écrite autrement ; 225 tailles eBay → 0 changée. Selftests : voir § Preuves.
+  de job écrite autrement ; 225 tailles eBay → 0 changée. Selftests : 376 joués, 375 verts (seul rouge d'avant).
 - **Extension non touchée** (aucun zip). Serveur : handler-watch. App : web + OTA (voir § Livraison).
 
 ## Ce qui est déduit
@@ -91,6 +91,9 @@ vendeur. « La réponse de la personne » = la taille du job parti ensuite, quan
   la question reste, Beebs ne part pas sans réponse ; Ornella « 24M » → « 24 mois (86-94 cm) ». Ce banc a trouvé un trou
   avant la livraison : la copie vide gardait la question PARTAGÉE « Taille » — corrigé (la taille déduite est posée sur
   la copie de la plateforme, comme le geste de la personne).
+- **Suite complète des selftests** (jouée par lots, la mémoire de la machine ayant coupé une suite d'un seul tenant) :
+  **376 / 376 joués, chacun une fois ; 375 verts** ; seul rouge `messages-cause-vraie`, déjà rouge au commit d'avant
+  (8dab9ed, relu dans un worktree propre), sans rapport avec les tailles. Nouveau : `selftest:tailles-titre` (68 contrôles).
 - **Montage des deux peaux du stepper** (`capture-stepper-moteur.mjs`) : vert. `build:essai` : vert. eslint : aucune
   erreur nouvelle (les 7 de ListingPreviewScreen et les 4 de CarteRayon existaient au commit d'avant, relus).
 - **Faux positifs, lecture de 6 000 fiches réelles** (60 j, textes avec un FR / W / mois) : les « FR » lus sont des tailles
@@ -100,7 +103,10 @@ vendeur. « La réponse de la personne » = la taille du job parti ensuite, quan
 
 ## Livraison
 
-Voir `docs/agents/etat-2026-10-01.md` § 19/10 (versions lues avant / après).
+- Commit 558c29e ; handler-watch v121 → **v122** (`--no-verify-jwt`, `verify_jwt` false avant et après) ; OTA **2.9.105**
+  (canal production relu) ; web par le push. Détail : `docs/agents/etat-2026-10-01.md` § 19/10.
+- **Le job d'Ornella repart et passe** : handler-watch v122 a tranché « 24M » → « 24 mois (86-94 cm) » à 18:27:08 (R5),
+  son extension l'a pris à 18:28:33, **publié sur Beebs à 18:35:22** (annonce 34198542), sans avertissement de taille.
 
 ## Choix pris sans Nico
 
