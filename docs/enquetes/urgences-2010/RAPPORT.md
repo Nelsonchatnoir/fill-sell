@@ -91,3 +91,45 @@ unité, aucun job, rien republié. Le 55e (jumelle pas en ligne) reste en échec
 
 **Doublons en ligne (rien supprimé)** : `doublons-leboncoin-louis-2010.csv` — 40 lignes : annonce de louis-seller,
 annonce de louis@, même article (fiches jumelles), toutes deux vues en ligne par les relevés du 20/10 22:19 et 22:41.
+
+## Mise en prod (21/10 soir, feu vert nommé de Nico)
+
+- **Migrations** : `20261020200000` (22:36:45), `20261020210000` (22:37:12), `20261020220000` (22:37:43), dans cet ordre,
+  `migration repair` posé ; corps relus en prod après application : identiques aux fichiers (les cinq fonctions réécrites
+  avaient été relues identiques à la lecture du 20/10 juste avant). Droits relus : anon sans EXECUTE.
+- **R1 Sébastien** (22:39:09) : **19** dépôts Beebs « pas encore visibles » — les 13 du 20/10 et 6 du 21/10 (07:17 → 09:02),
+  eux aussi jamais vus ; 0 vente, 0 retrait, 0 push ; 0 alerte Beebs restante. Jugés à 72 h s'ils n'apparaissent pas.
+- **R2 Louis** (22:39:44) : **102** échecs reclassés « déjà en ligne via ton compte relié » (les 54 du 20/10 + 48 que l'ancienne
+  règle a jugés le 21/10, même lot, jumelle en ligne) ; 0 job créé, 0 unité, réservations intactes ; 2 échecs sans jumelle
+  en ligne restent en échec.
+- **R3 parc** (22:41:15) : **39** alertes récentes jamais vues (35 le 20/10), 8 comptes — Beebs 31, eBay 4, Leboncoin 4 ;
+  0 vente, 0 retrait, 0 push. Les 75 de plus de 14 jours laissées (décision de Nico).
+- **R4 doublons Louis** (22:46:07) : **32 copies de louis-seller en retrait**, l'annonce de louis@ gardée — liste complète :
+  `retraits-doublons-louis-seller-2110.csv` (sauvegarde `_backup_2110_louis_seller_doublons`). Contrôles par copie, dans les
+  deux comptes : fiches en stock, aucune vente, aucun signal, aucune commande, aucune offre, aucune conversation, aucun
+  retrait ouvert, aucune republication en vol chez louis@, annonce gardée = la dernière publiée → **0 copie bloquée**.
+  À 22:55 : 13 supprimées par l'extension de louis-seller (« confirmation reçue »), 19 en file.
+  Des 40 du 20/10, **8 ne sont plus des doublons et restent en ligne** (3291650596, 3291650743, 3291652737, 3291652837,
+  3291652915, 3291653010, 3291654092, 3291681533) : la republication automatique de louis@ (une toutes les 21 min) les avait
+  recréées le 20/10, et ces originales recréées ont disparu le 21/10 (10:15, 14:27) — la copie de louis-seller est la SEULE
+  annonce en ligne de ces articles. 14 autres originales avaient été recréées sous un nouveau numéro, encore en ligne :
+  leur copie est dans les 32.
+- **generate-listing** v122 → **v123** (22:48:38, `verify_jwt` true avant et après) : la fiche fournie doit être à
+  l'utilisateur du jeton, AVANT tout débit (« Item not found » sinon), et la lecture du texte filtre aussi `user_id`.
+  Relevé avant : 0 génération pour la fiche d'un autre compte depuis le 18/10 ; aucun fichier modifié de l'app dans le
+  paquet de la fonction (graphe des imports).
+- **App 2.9.107** (OTA, build `2026-10-21T20:50:30Z+75f55f8`, canal relu) : copies jumelles et « Beebs vérifie ton annonce ».
+
+**Vérifié en prod après coup (22:52)** : 0 question « plus en ligne » posée depuis 22:37 sur un dépôt jamais vu ; 58
+marqueurs (réparations) ; 57 captures d'annonces passées par le déclencheur photos sous session sans erreur ; 0 nouveau
+dépôt Leboncoin sur une fiche jumelle ; journaux Postgres : aucun refus 42501 ni avertissement des nouvelles gardes ou
+déclencheurs. Un 500 de `enregistrer_ventes_relevees` existait déjà à 22:22 (avant les migrations ; Postgres : « permission
+denied for table profiles ») : hors de ce lot.
+
+## Ce qui reste
+- Les 19 retraits Louis encore en file (extension de louis-seller) — relire `_backup_2110_louis_seller_doublons`.
+- Le déclencheur « jamais vue » n'a pas encore servi sur le trafic réel (la veille relit toutes les 2 h) : relire les
+  `pas_encore_visible` sans `par`. Les 19 de Sébastien et les 39 du parc seront jugés à la grâce (72 h Beebs).
+- Beebs : un dépôt en vérification que le relevé ne lit pas (flux RSC en désaccord) serait jugé en échec à 72 h — message
+  « vérifie sur Beebs avant de republier ».
+- Les 8 articles de Louis portés par la seule copie de louis-seller : à laisser, ou à republier chez louis@ (décision).
