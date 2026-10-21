@@ -148,12 +148,18 @@ export function phraseEtat(platform, etat, lang = "fr") {
  * avec le geste qui débloque — jamais « retire » ni « décoche » pour une
  * attente.
  */
-export function messageRefusPublication(platforms, { publiees = new Set(), enFile = new Set(), attentes = {}, lang = "fr" } = {}) {
+export function messageRefusPublication(platforms, { publiees = new Set(), enFile = new Set(), attentes = {}, compteRelie = new Set(), lang = "fr" } = {}) {
   const en = lang === "en";
   const lignes = [];
   for (const p of platforms) {
     const nom = NOMS[p] ?? p;
     const a = attentes[p];
+    // (20/10, Louis) La fiche JUMELLE d'un compte relié y est déjà, dans la même boutique : republier ferait le
+    // doublon (spend_coins_and_publish, compte_relie). Rien à retirer d'ici : l'annonce est au compte relié.
+    if (compteRelie.has(p)) {
+      lignes.push(en ? `${nom}: already online for this item through your linked FillSell account — nothing to redo.` : `${nom} : déjà en ligne pour cet article via ton compte FillSell relié — rien à refaire.`);
+      continue;
+    }
     // (09/10 soir, Louis) Plus de refus « fiche jumelle en ligne » : l'annonce
     // d'une AUTRE fiche ne bloque jamais celle-ci (migration 20261009233000).
     // L'ancien texte renvoyait à une question « Est-ce le même article ? »

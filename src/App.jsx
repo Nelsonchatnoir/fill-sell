@@ -24,6 +24,7 @@ import { poserSourceSurProfil } from './utils/acquisition';
 import { logRetrait, logSuppressionArticle, CHEMINS_RETRAIT } from './utils/journalRetraits';
 import { erreurAvecRaison } from './utils/raisonRefus';
 import { pixelInscription } from './utils/metaPixel';
+import { indexCopiesJumelles, avecCopiesJumelles } from './utils/copiesJumelles';
 import { useNavigate, useSearchParams } from "react-router-dom";
 const isNative = Capacitor.isNativePlatform();
 const platform = Capacitor.getPlatform();
@@ -3294,7 +3295,7 @@ export default function App({ loginOnly = false }){
     // dernier affichage, jamais une liste à moitié lue.
     const enEntier=(construire)=>lireToutesPagesRecentsDabord(construire)
       .then(data=>({data,error:null}),error=>({data:null,error}));
-    const [v,i,p]=await Promise.all([
+    const [v,i,p,jum]=await Promise.all([
       // ⚠️ Tiebreaker `id` OBLIGATOIRE derrière created_at (06/08) : la sync
       // du dressing insère par tranches de 8 → jusqu'à 8 lignes partagent le
       // MÊME created_at à la milliseconde (mesuré en prod : groupes de 4 à 8).
@@ -3341,12 +3342,17 @@ export default function App({ loginOnly = false }){
       // colonnes, même filtre — cf. utils/lireToutesPages.js.
       enEntier(()=>supabase.from('inventaire').select('*').eq('user_id',uid).is('fusionne_dans',null)),
       supabase.from('profiles').select('is_premium,is_pro,is_business,is_comped,is_founder,apple_original_transaction_id,google_purchase_token,subscription_cancel_at_period_end,subscription_period_end,currency,username,platform_settings,extension_last_seen_at,extension_build,onboarded_at,ebay_voie_api').eq('id',uid).maybeSingle(),
+      // (20/10, Louis) Les copies des fiches JUMELLES d'un compte relié sur une boutique partagée
+      // (utils/copiesJumelles.js). Best-effort : une erreur rend une liste vide, jamais un écran cassé ;
+      // vide pour tout compte sans fiche jumelle.
+      supabase.rpc('copies_fiches_jumelles').then((r)=>r,()=>({data:null,error:true})),
     ]);
     if(!v.error) setSales((v.data||[]).map(mapSale));
     if(!i.error){
       const lignes=i.data||[];
       const estAVerifier=(r)=>r.statut==='stock'&&r.a_verifier!=null;
-      setItems(lignes.filter(r=>!estAVerifier(r)).map(mapItem));
+      const jumelles=indexCopiesJumelles(jum?.error?null:jum?.data);
+      setItems(lignes.filter(r=>!estAVerifier(r)).map(mapItem).map(it=>avecCopiesJumelles(it,jumelles)));
       setItemsAVerifier(lignes.filter(estAVerifier).map(mapItem));
     }
     // Les fusions vivantes, pour offrir « défaire » sur l'article gardé.

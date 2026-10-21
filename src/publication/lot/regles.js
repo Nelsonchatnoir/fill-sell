@@ -9,6 +9,7 @@
 // Aucune ne lit le réseau, aucune n'écrit.
 import { computeRemovalInfo, plateformesReserveesParRepublication, estArretUtilisateur, vintedPresenceArticle } from "../../utils/publicationState.js";
 import { attentesParPlateforme } from "../../utils/etatsPublication.js";
+import { plateformesJumelles } from "../../utils/copiesJumelles.js";
 import { PALIERS as PALIERS_COMPTE, palierDesDrapeaux } from "../../utils/palier.js";
 import { poidsLbcManquantPour } from "../../utils/choixPoidsLeboncoin.js";
 // La liste de l'unité (utils/stockFiltres.js, PLATEFORMES_JAMAIS_PRECOCHEES),
@@ -54,6 +55,9 @@ export function plateformesOccupees(item, jobs = []) {
     const v = vintedPresenceArticle(item, liste);
     if (v?.occupee) occ.add("vinted");
     if (item.disparu_le) occ.delete("vinted");
+    // (20/10, Louis) La fiche JUMELLE d'un compte relié y est déjà, dans la même boutique : occupée
+    // (spend_coins_and_publish la refuserait, already_published + compte_relie).
+    for (const p of plateformesJumelles(item)) occ.add(p);
   }
   return occ;
 }

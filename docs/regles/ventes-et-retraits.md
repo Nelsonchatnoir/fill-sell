@@ -255,3 +255,14 @@ Rapport : `docs/enquetes/session-sans-nico-1810/lot4-ventes-lot-multi-exemplaire
   `commandes_vinted_noter` et relevé) ; entre comptes reliés, une commande n'est enregistrée qu'une fois, chez le compte
   dont ce sont les articles (fiche ou dépôt), par SON circuit ; get-pending-jobs ne sert aucun job Vinted à ce poste.
   Vu en réel : 12 ventes de @evat en double (louis@ 18:39/19:03, louis-seller 19:08), 0 mail. Essai 23/23.
+
+## ⛔ 20/10 soir — Un dépôt JAMAIS VU EN LIGNE n'est jamais « Plus en ligne — Vendue ? » (Sébastien ; rapport `docs/enquetes/urgences-2010/RAPPORT.md` § 1)
+- Vu en ligne = la veille l'a lu en ligne (`vu_en_ligne_le`) OU un relevé du compte l'a vu « en ligne » / « vendue »
+  (`job_jamais_vu_en_ligne()`). Jamais vu : un drapeau « plus en ligne » neuf est remplacé par
+  `platform_fields.pas_encore_visible` (déclencheur `cross_post_jobs_vue_ou_pas_encore_visible`, tout écrivain) —
+  l'app dit « Beebs vérifie ton annonce ». Jamais une question, jamais une vente, jamais un retrait.
+- Toujours invisible après la grâce (72 h Beebs, 4 h ailleurs) et absent de deux relevés complets : ÉCHEC DE PUBLICATION
+  (`trancher_publications_sans_lien`, dépôts avec ou sans lien, 14 derniers jours), publication rendue — ou clos sans
+  rouge si l'article est en ligne ailleurs (même fiche, ou fiche jumelle d'un compte relié).
+- Hors règle : une annonce vue en ligne puis disparue (la question d'avant), une preuve « sold », Vinted (sa preuve est
+  le dressing), une recréation (republish, circuit « introuvable à confirmer »). Migration `20261020220000`.

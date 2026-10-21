@@ -282,3 +282,11 @@ trois relevés et deux reprises lancés tout seuls, aucun Vinted abouti, un faux
   qu'IL a publié. Une annonce appartient au compte dont un job l'a publiée (identifiant d'annonce) ; le relevé de
   l'autre compte ne l'importe pas (`sync_import_ecartes` motif `compte_relie:<pf>`), une vente sur elle ne s'enregistre
   que chez lui (un mail, retraits de SES copies). Sans job, la règle d'avant tient. Migration `20261018220000` (essai 7/7).
+- **La fiche jumelle occupe la plateforme d'une boutique PARTAGÉE** (20/10 soir, Louis ; rapport
+  `docs/enquetes/urgences-2010/RAPPORT.md` § 3) : boutique partagée = un relevé a déjà écarté une annonce du compte
+  relié sur cette plateforme (`compte_relie:<pf>`), jamais Vinted. La jumelle y est en ligne ou en file → la fiche est
+  « déjà en ligne » sur cette plateforme pour les deux comptes : `spend_coins_and_publish` refuse (`already_published`
+  + `compte_relie`, avant tout débit), aucune relance (déclencheur), l'app la montre occupée (`copies_fiches_jumelles()` :
+  logo atténué, ni lot, ni stepper, ni « Pas encore ») ; un dépôt refusé pour ce doublon est clos sans rouge. L'annonce
+  reste celle du compte qui l'a publiée (option B inchangée). « Rattachement par identifiant 0 » dans le message d'un
+  relevé est un compteur à 0 en dur depuis le 07/10 : le rattachement réel est dans `rapprochement`. Migration `20261020210000`.

@@ -1,7 +1,7 @@
 {
   "name": "fillsell",
   "private": true,
-  "version": "2.9.106",
+  "version": "2.9.107",
   "type": "module",
   "scripts": {
     "postinstall": "node -e \"if(process.env.VERCEL){console.log('Vercel: patch-package saute (patches natifs seulement, et le cache de build casse leur application)')}else{require('child_process').execSync('patch-package',{stdio:'inherit'})}\"",
@@ -250,6 +250,7 @@
     "selftest:taille-de-service": "node scripts/taille-de-service-selftest.mjs",
     "selftest:tailles-titre": "node scripts/tailles-titre-selftest.mjs",
     "selftest:taille-unique": "node scripts/taille-unique-selftest.mjs",
+    "selftest:urgences-2010": "node scripts/urgences-2010-selftest.mjs",
     "selftest:lbc-identite-carte": "node scripts/lbc-identite-carte-selftest.mjs",
     "selftest:recreation-impasse-vinted": "node scripts/recreation-impasse-vinted-selftest.mjs",
     "selftest:retraits-motifs-vrais": "node scripts/retraits-motifs-vrais-selftest.mjs",

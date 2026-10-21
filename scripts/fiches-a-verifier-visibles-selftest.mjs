@@ -19,7 +19,8 @@ const sec = lire('src/stock/SectionAVerifier.jsx');
 const st = lire('src/tabs/StockTab.jsx');
 const app = lire('src/App.jsx');
 ok(/<SectionAVerifier lang=\{lang\} items=\{itemsAVerifier\} onOuvrir=\{aVerifier\.ouvrir\}\/>/.test(st), 'la section est montée dans le Stock avec les fiches « à vérifier »');
-ok(/setItems\(lignes\.filter\(r=>!estAVerifier\(r\)\)\.map\(mapItem\)\);/.test(app), 'elles restent HORS de `items` : aucun total, aucun lot, aucune publication');
+// (20/10) + les copies des fiches jumelles d'un compte relié (utils/copiesJumelles.js) : le filtre ne change pas.
+ok(/setItems\(lignes\.filter\(r=>!estAVerifier\(r\)\)\.map\(mapItem\)(\.map\(it=>avecCopiesJumelles\(it,jumelles\)\))?\);/.test(app), 'elles restent HORS de `items` : aucun total, aucun lot, aucune publication');
 ok(/!modeBrouillons&&!modePrixAchat&&!modeRepublish&&!modeLot&&!modeModif&&itemsAVerifier\.length>0/.test(st), 'jamais dans un mode de sélection (lot, remontée, prix d\'achat, modification)');
 ok(/'À vérifier' : 'To check'/.test(sec) && /onClick=\{\(\) => actif && onOuvrir\(it\.id\)\}/.test(sec), 'badge « À vérifier » ; un tap ouvre SA question');
 const bloc = lire('src/stock/BlocSynchro.jsx');

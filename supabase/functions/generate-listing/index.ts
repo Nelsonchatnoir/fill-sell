@@ -698,6 +698,21 @@ serve(async (req) => {
       return json({ error: "Missing required fields: inventaire_id or item_data, photos, platforms" }, 400);
     }
 
+    // ── (21/10, sécurité — docs/enquetes/urgences-2010/RAPPORT.md § 2) LA FICHE EST À L'UTILISATEUR DU JETON ──
+    // Le client service_role lisait la fiche `inventaire_id` du corps sans filtre : un compte connecté pouvait faire
+    // rédiger (et lire) le titre et la description d'une fiche d'un AUTRE compte, et écrire sa fiche de publication
+    // (enregistrerFiche, upsert sur inventaire_id) — y compris avec item_data, qui saute la lecture. Une fiche
+    // fournie doit appartenir à user.id, AVANT tout débit ; sinon « Item not found », comme une fiche absente.
+    // Relevé avant le correctif : 0 génération pour la fiche d'un autre compte depuis le 18/10 (les 158 d'avant sont
+    // celles de louis@ sur des fiches passées à louis-seller au transfert du 18/10).
+    if (inventaire_id != null && inventaire_id !== "") {
+      const { data: aLui, error: errLui } = await adminClient
+        .from("inventaire").select("id")
+        .eq("id", inventaire_id).eq("user_id", user.id)
+        .maybeSingle();
+      if (errLui || !aLui) return json({ error: "Item not found" }, 404);
+    }
+
     // ── Génération PAYANTE : price_generate unités (6 depuis la grille du
     // 2026-08-08), débitées ICI, avant tout appel LLM ────────────────────────
     // (2026-08-05, remplace le plafond 15/60 par 24 h ET l'ancien pré-check
@@ -828,6 +843,8 @@ serve(async (req) => {
         // lequel le texte de Louis THONET est passé.
         .select("id, titre, marque, description, type, statut, prix_vente, attributs, origine")
         .eq("id", inventaire_id)
+        // (21/10) Jamais la fiche d'un autre compte (contrôle d'appartenance plus haut, gardé ici aussi).
+        .eq("user_id", user.id)
         .single();
       if (itemErr || !data) {
         // Rien n'a été généré : l'unité du clic est rendue.

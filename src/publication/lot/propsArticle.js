@@ -8,6 +8,7 @@
 // fiche (18/09). Les commentaires d'origine voyagent avec le code.
 import { computeRemovalInfo, plateformesReserveesParRepublication } from "../../utils/publicationState.js";
 import { urlsPhotos } from "../../utils/photos.js";
+import { plateformesJumelles } from "../../utils/copiesJumelles.js";
 import { isRetouchedPhotoEntry } from "../../components/ListingPreviewScreen.jsx";
 
 /**
@@ -27,6 +28,9 @@ export function propsStepperArticle(item, jobs, { prixVinted = null } = {}) {
     // l'article est disparu : l'annonce n'existe plus, publier n'est donc pas
     // un doublon mais son seul retour en ligne.
     plateformesLiberees: item?.disparu_le ? ["vinted"] : [],
+    // (20/10, Louis) Occupées par la fiche JUMELLE d'un compte relié (même boutique) : verrouillées avec
+    // leur phrase (utils/copiesJumelles.js). Vide pour tout compte sans fiche jumelle.
+    plateformesCompteRelie: plateformesJumelles(item),
     // Deux formats coexistent en base : objets {type,url} (flux photos
     // retouchées) et STRINGS nues (URLs CDN Vinted écrites par la sync du
     // dressing) — urlsPhotos lit les deux, le stepper reçoit des URLs.

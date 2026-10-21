@@ -67,6 +67,7 @@ import { attenteBoutiqueLevable } from '../../supabase/functions/_shared/attente
 import { rayonFourreToutARevoir, reResoudreRayonFourreTout, messageRayonNonTrouve, photosApresRayonRetrouve } from '../utils/rayonFourreToutRelance';
 import { abandonPossible, messageAbandon, champsApresAbandon } from '../utils/abandonPlateforme';
 import { computeRemovalInfo, vintedMasqueeMalgreJobs, vintedPresenceArticle, republishAnnulable, estArretUtilisateur, estGeleLivres, MARQUEUR_ARRET_UTILISATEUR } from '../utils/publicationState';
+import { plateformesJumelles } from '../utils/copiesJumelles';
 // Republication multiplateforme (2026-09-17) : éligibilité par plateforme,
 // appel RPC générique, refus en mots — utils/republication.js, source unique.
 import { plateformesRepubliables, republierArticle, messageRefusRepublication, republishAReprendre, LABEL_PLATEFORME as LABEL_PF, LABEL_COURT as LABEL_PF_COURT } from '../utils/republication';
@@ -9334,6 +9335,10 @@ const StockTab = memo(function StockTab({
     const logosEnLigne=vintedOccupee
       ?(publishedActive.includes("vinted")?publishedActive:[...publishedActive,"vinted"])
       :publishedActive.filter(p=>p!=="vinted");
+    // (20/10, Louis) La fiche JUMELLE d'un compte relié est en ligne sur la boutique partagée (copies_jumelles) :
+    // logo atténué, jamais à « Publier » ici, aucun job de ce compte — l'annonce appartient au compte relié.
+    // Vide pour tout compte sans fiche jumelle : la carte ne change pas.
+    const logosJumelles=plateformesJumelles(item).filter(p=>!logosEnLigne.includes(p));
     // ── vinted_status PRIME sur les jobs (2026-08-28, complément
     // Nico) : masquée/brouillon malgré un job 'published' (44 cas
     // au relevé) ⇒ la pastille verte ne compte plus Vinted, le
@@ -9350,7 +9355,7 @@ const StockTab = memo(function StockTab({
     // ouverte) : pilote le 3e état du bouton (n/N = plus rien à
     // publier). Une annonce sur une plateforme refermée reste dans
     // les pastilles (logosEnLigne) mais ne compte pas ici.
-    const nbEnLigne=logosEnLigne.filter(p=>plateformesCompte.includes(p)).length;
+    const nbEnLigne=[...logosEnLigne,...logosJumelles].filter(p=>plateformesCompte.includes(p)).length;
     const toutEnLigne=nbEnLigne>=plateformesCompte.length;
     // Plateformes où l'article n'est PAS en ligne (2026-09-01,
     // audit onboarding) : portées par le bouton « Publier » en
@@ -9359,7 +9364,7 @@ const StockTab = memo(function StockTab({
     // Même source que la pastille et le compteur (logosEnLigne) :
     // le stepper n'ouvrira que ces plateformes-là, le bouton
     // montre exactement ce qu'il fera.
-    const aPublier=plateformesCompte.filter(p=>!logosEnLigne.includes(p));
+    const aPublier=plateformesCompte.filter(p=>!logosEnLigne.includes(p)&&!logosJumelles.includes(p));
     // _table:'inventaire' — cible d'écriture explicite de la modale
     // d'édition (les ids ventes/inventaire se chevauchent).
     const openEdit=()=>setEditItem({...item,_table:'inventaire',frais:(item.statut==='vendu'?item.sellingFees:item.purchaseCosts)??0,sell:item.sell??""});
@@ -9372,7 +9377,7 @@ const StockTab = memo(function StockTab({
     const favsPf=statsPf.some(x=>x.favoris!=null)?statsPf.reduce((t,x)=>t+(x.favoris??0),0):null;
     const vues=(item.vinted_view_count==null&&vuesPf==null)?null:(item.vinted_view_count??0)+(vuesPf??0);
     const favs=(item.vinted_favourite_count==null&&favsPf==null)?null:(item.vinted_favourite_count??0)+(favsPf??0);
-    return { invested, prixAnnonce, jobsAll, vintedMasquee, jobs, repubLatest, repubEligible, repubMaintenant, repubEligibleTout, attenteFiche, repubEtape, repubNote, repubOccupeSlot, repubOrpheline, hasPending, pendingJobs, pendingSurConnexion, hasPausedPending, latestByPlatform, failedJobs, needsUserTous, oplaRepartSeule, enConfirmationJobs, enPauseAutoJobs, needsUserJobs, murDirect, succesConfirme, warnedJobs, sansWarn, lienEnCoursJobs, lienRembourseJobs, removalState, publishedActive, latestPubByPlatform, disparuDeVinted, vintedGeleParRepub, vintedOccupee, logosEnLigne, enLigne, nbEnLigne, toutEnLigne, aPublier, openEdit, photoUrl, statsPf, vuesPf, favsPf, vues, favs };
+    return { invested, prixAnnonce, jobsAll, vintedMasquee, jobs, repubLatest, repubEligible, repubMaintenant, repubEligibleTout, attenteFiche, repubEtape, repubNote, repubOccupeSlot, repubOrpheline, hasPending, pendingJobs, pendingSurConnexion, hasPausedPending, latestByPlatform, failedJobs, needsUserTous, oplaRepartSeule, enConfirmationJobs, enPauseAutoJobs, needsUserJobs, murDirect, succesConfirme, warnedJobs, sansWarn, lienEnCoursJobs, lienRembourseJobs, removalState, publishedActive, latestPubByPlatform, disparuDeVinted, vintedGeleParRepub, vintedOccupee, logosEnLigne, logosJumelles, enLigne, nbEnLigne, toutEnLigne, aPublier, openEdit, photoUrl, statsPf, vuesPf, favsPf, vues, favs };
   };
 
   // ── LA PASTILLE D'UN ARTICLE — COURTE, SANS ÉMOJI (03/10) ─────────────────
@@ -9674,9 +9679,19 @@ const StockTab = memo(function StockTab({
     }
     if (d.enLigne && jours != null) infos.push({ cle: 'age', ton: 'neutre', texte: jours === 0 ? (fr ? "En ligne depuis aujourd'hui" : 'Live since today') : (fr ? `En ligne depuis ${jours} j` : `Live for ${jours} d`) });
     for (const p of d.logosEnLigne) {
-      if ((p === "beebs" || p === "leboncoin") && !!d.latestPubByPlatform?.[p] && !d.latestPubByPlatform[p].listing_url) {
+      // (20/10) Pas encore vue en ligne (marqueur pas_encore_visible, migration 20261020220000) : même phrase
+      // que le dépôt sans lien — jamais « plus en ligne », jamais « vendue ? ».
+      if (!['beebs', 'leboncoin'].includes(p) && d.latestPubByPlatform?.[p]?.platform_fields?.pas_encore_visible) {
+        const nom = PLATFORM_LABELS[p] || p;
+        infos.push({ cle: `moderation-${p}`, ton: 'neutre', texte: fr ? `Pas encore visible sur ${nom} : FillSell attend de la voir en ligne, rien n'est vendu.` : `Not visible on ${nom} yet: FillSell is waiting to see it online, nothing is sold.` });
+      }
+      if ((p === "beebs" || p === "leboncoin") && enVerificationPlateforme(d.latestPubByPlatform?.[p])) {
         infos.push({ cle: `moderation-${p}`, ton: 'neutre', texte: p === 'beebs' ? (fr ? "Beebs vérifie ton annonce avant de la mettre en ligne." : 'Beebs is reviewing your listing before putting it online.') : (fr ? "Leboncoin vérifie ton annonce : ne la republie pas, tu créerais un doublon." : "Leboncoin is reviewing your listing: don't repost it, you'd create a duplicate.") });
       }
+    }
+    for (const p of d.logosJumelles ?? []) {
+      const nom = PLATFORM_LABELS[p] || p;
+      infos.push({ cle: `compte-relie-${p}`, ton: 'neutre', texte: fr ? `En ligne sur ${nom} via ton compte FillSell relié — rien à publier ici.` : `Live on ${nom} through your linked FillSell account — nothing to publish here.` });
     }
     const etatArt = indexEtat.get(String(item.id));
     for (const [k, p] of (etatArt ? pastillesEtat(etatArt, lang) : []).entries()) {
@@ -9760,15 +9775,20 @@ const StockTab = memo(function StockTab({
     if (d.invested !== null) return { prix: null, detail: `${lang === 'fr' ? 'investi' : 'invested'} ${fmt(d.invested)}` };
     return { prix: null, detail: null };
   };
+  // Beebs / Leboncoin « vérifie ton annonce » : dépôt sans lien (d'avant), ou — 20/10 — dépôt jamais vu en ligne
+  // (marqueur pas_encore_visible posé à la place de « plus en ligne », migration 20261020220000).
+  const enVerificationPlateforme = (job) => !!job && (!job.listing_url || !!job.platform_fields?.pas_encore_visible);
   const etatsLogos = (d) => {
     const etats = {};
     for (const p of d.logosEnLigne) {
       const gele = d.vintedGeleParRepub && p === 'vinted';
       const masque = d.vintedMasquee && p === 'vinted';
       const retrait = d.removalState[p] === 'removing';
-      const moderation = (p === 'beebs' || p === 'leboncoin') && !!d.latestPubByPlatform?.[p] && !d.latestPubByPlatform[p].listing_url;
+      const moderation = (p === 'beebs' || p === 'leboncoin') && enVerificationPlateforme(d.latestPubByPlatform?.[p]);
       etats[p] = { attenue: gele || masque || retrait, desature: moderation };
     }
+    // (20/10, Louis) Copie de la fiche jumelle (compte relié) : atténuée — elle existe, pas chez ce compte.
+    for (const p of d.logosJumelles ?? []) etats[p] = { attenue: true, desature: false };
     return etats;
   };
   // Le mode « Modifier en lot » : la liste affichée (filtres et tri compris),
@@ -9788,7 +9808,7 @@ const StockTab = memo(function StockTab({
     const prix = prixAffiche(item, d);
     const commun = {
       id: item.id, lang, photo: d.photoUrl, titre: item.title, prix: prix.prix, prixDetail: prix.detail,
-      pastille, logos: { liste: d.logosEnLigne, etats: etatsLogos(d) }, horsLigne: pastille.horsLigne,
+      pastille, logos: { liste: d.logosJumelles?.length ? [...d.logosEnLigne, ...d.logosJumelles] : d.logosEnLigne, etats: etatsLogos(d) }, horsLigne: pastille.horsLigne,
       selection: selectionArticle(item), onMenu: () => setMenuArticleId(item.id),
     };
     if (enListe) return <LigneArticle key={item.id} {...commun} />;

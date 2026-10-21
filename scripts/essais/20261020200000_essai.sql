@@ -1,0 +1,357 @@
+-- Essai à blanc de 20261020200000 (20/10 soir, sécurité) : ROLLBACK.
+-- npx supabase db query --linked -f scripts/essais/20261020200000_essai.sql
+-- Sous une session (claims authenticated) : autre compte / fiche d'un autre → 42501 ; soi-même → passe.
+-- service_role et sans jeton (cron, SQL) : inchangés. Le déclencheur des captures ne casse jamais l'écriture.
+begin;
+create temp table _r (essai text, ok boolean, detail text);
+-- 20/10 soir — SÉCURITÉ : contrôle d'identité dans trois fonctions SECURITY DEFINER
+-- (rapport : docs/enquetes/urgences-2010/RAPPORT.md, point 2).
+--
+-- L'accès anon a été retiré à 18:31 (20261020183150_securite_2010_revoke_anon_fonctions_ecriture).
+-- Restait : un utilisateur connecté (authenticated) pouvait appeler ces fonctions pour
+-- n'importe quel compte / n'importe quelle fiche. Désormais, sous une session, l'utilisateur
+-- et la fiche doivent être ceux de auth.uid() ; sinon erreur 42501.
+-- Rien ne change pour service_role (generate-listing, lens-analysis : seuls appelants des deux
+-- spend_coins_*, via le client admin) ni pour les appels sans jeton (cron
+-- rattrapage_photos_ebay_tick, scripts de réparation).
+--
+-- Corps réécrits depuis pg_get_functiondef en prod le 20/10 (≈ 22:00), garde ajoutée seule.
+-- Droits inchangés (CREATE OR REPLACE les garde) ; relus en fin de fichier par l'essai.
+-- Inverse : supabase/rollbacks/20261020200000_securite_2010_controle_identite_INVERSE.sql
+
+CREATE OR REPLACE FUNCTION public.spend_coins_for_generate(p_user_id uuid, p_inventaire_id bigint DEFAULT NULL::bigint)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_price     integer;
+  v_wallet    coin_wallets%ROWTYPE;
+  v_total     integer;
+  v_from_inc  integer;
+  v_from_pur  integer;
+  v_tier      text;
+  v_quota     integer;
+  v_cycle     timestamptz;
+  v_consommes integer;
+  v_regen     boolean := false;
+BEGIN
+
+  -- (20/10, sécurité) Appelée sous une session (authenticated, ou tout rôle porté
+  -- par un jeton autre que service_role) : l'utilisateur et la fiche doivent être
+  -- ceux de auth.uid(). service_role (fonctions edge) et les appels sans jeton
+  -- (cron, SQL d'administration) : inchangés.
+  IF auth.role() IS NOT NULL AND auth.role() <> 'service_role' THEN
+    IF auth.uid() IS NULL OR p_user_id IS DISTINCT FROM auth.uid() THEN
+      RAISE EXCEPTION 'utilisateur non autorisé' USING ERRCODE = '42501';
+    END IF;
+    IF p_inventaire_id IS NOT NULL
+       AND NOT EXISTS (SELECT 1 FROM inventaire i WHERE i.id = p_inventaire_id AND i.user_id = auth.uid()) THEN
+      RAISE EXCEPTION 'fiche non autorisée' USING ERRCODE = '42501';
+    END IF;
+  END IF;
+  SELECT CASE
+           WHEN p.is_business = true THEN 'business'
+           WHEN p.is_pro = true THEN 'pro'
+           WHEN p.is_premium = true OR p.is_comped = true THEN 'premium'
+           ELSE 'free'
+         END INTO v_tier
+  FROM profiles p WHERE p.id = p_user_id;
+  v_tier := COALESCE(v_tier, 'free');
+
+  -- QUOTA D'ANNONCES (bascule 02/09) — AVANT tout le reste. Régénération du
+  -- même article sous 24 h : passe sans compter.
+  IF p_inventaire_id IS NOT NULL THEN
+    SELECT EXISTS (
+      SELECT 1 FROM usage_logs u
+      WHERE u.user_id = p_user_id AND u.feature = 'generate_listing'
+        AND u.metadata->>'inventaire_id' = p_inventaire_id::text
+        AND u.created_at >= now() - interval '24 hours'
+    ) INTO v_regen;
+  END IF;
+
+  IF NOT v_regen THEN
+    -- (11/10) Le réglage du compte prime sur le quota du palier.
+    v_quota := quota_annonces_compte(p_user_id, v_tier);
+    IF v_quota IS NOT NULL AND v_quota > 0 THEN
+      v_cycle := debut_cycle_quotas(p_user_id);
+      v_consommes := quota_annonces_consommees(p_user_id, v_cycle);
+      IF v_consommes >= v_quota THEN
+        RETURN jsonb_build_object('allowed', false, 'reason', 'quota_annonces_atteint',
+                                  'plafond', v_quota, 'consommes', v_consommes);
+      END IF;
+    END IF;
+  END IF;
+
+  SELECT value INTO v_price FROM coin_config WHERE key = 'price_generate';
+  IF v_price IS NULL THEN
+    RETURN jsonb_build_object('allowed', false, 'reason', 'price_not_configured');
+  END IF;
+
+  IF v_price = 0 THEN
+    RETURN jsonb_build_object('allowed', true, 'price', 0, 'regen', v_regen);
+  END IF;
+
+  INSERT INTO coin_wallets (user_id) VALUES (p_user_id) ON CONFLICT (user_id) DO NOTHING;
+  SELECT * INTO v_wallet FROM coin_wallets WHERE user_id = p_user_id FOR UPDATE;
+
+  IF v_wallet.next_grant_at IS NULL OR v_wallet.next_grant_at <= now() THEN
+    PERFORM upgrade_monthly_grant(p_user_id, v_tier, null, 'lazy');
+    SELECT * INTO v_wallet FROM coin_wallets WHERE user_id = p_user_id FOR UPDATE;
+  END IF;
+
+  v_total := v_wallet.included_balance + v_wallet.purchased_balance;
+  IF v_total < v_price THEN
+    RETURN jsonb_build_object(
+      'allowed', false, 'reason', 'insufficient_coins',
+      'price', v_price, 'balance', v_total
+    );
+  END IF;
+
+  v_from_inc := LEAST(v_wallet.included_balance, v_price);
+  v_from_pur := v_price - v_from_inc;
+
+  UPDATE coin_wallets SET
+    included_balance  = included_balance  - v_from_inc,
+    purchased_balance = purchased_balance - v_from_pur,
+    updated_at        = now()
+  WHERE user_id = p_user_id;
+
+  INSERT INTO coin_ledger (user_id, delta, included_after, purchased_after, kind, metadata)
+  VALUES (
+    p_user_id, -v_price,
+    v_wallet.included_balance - v_from_inc,
+    v_wallet.purchased_balance - v_from_pur,
+    'spend_generate',
+    NULL
+  );
+
+  RETURN jsonb_build_object(
+    'allowed', true, 'price', v_price,
+    'included_after',  v_wallet.included_balance - v_from_inc,
+    'purchased_after', v_wallet.purchased_balance - v_from_pur
+  );
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.spend_coins_for_lens(p_user_id uuid, p_unifie boolean DEFAULT false)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_price     integer;
+  v_wallet    coin_wallets%ROWTYPE;
+  v_total     integer;
+  v_from_inc  integer;
+  v_from_pur  integer;
+  v_tier      text;
+  v_quota     integer;
+  v_consommes integer;
+BEGIN
+
+  -- (20/10, sécurité) Appelée sous une session (authenticated, ou tout rôle porté
+  -- par un jeton autre que service_role) : l'utilisateur doivent être
+  -- ceux de auth.uid(). service_role (fonctions edge) et les appels sans jeton
+  -- (cron, SQL d'administration) : inchangés.
+  IF auth.role() IS NOT NULL AND auth.role() <> 'service_role' THEN
+    IF auth.uid() IS NULL OR p_user_id IS DISTINCT FROM auth.uid() THEN
+      RAISE EXCEPTION 'utilisateur non autorisé' USING ERRCODE = '42501';
+    END IF;
+  END IF;
+  SELECT CASE
+           WHEN p.is_business = true THEN 'business'
+           WHEN p.is_pro = true THEN 'pro'
+           WHEN p.is_premium = true OR p.is_comped = true THEN 'premium'
+           ELSE 'free'
+         END INTO v_tier
+  FROM profiles p WHERE p.id = p_user_id;
+  v_tier := COALESCE(v_tier, 'free');
+
+  -- ── COMPTEUR FUSIONNÉ (02/09 soir) — avant tout appel IA ─────────────────
+  -- (11/10) Le réglage du compte prime sur le quota du palier.
+  v_quota := quota_annonces_compte(p_user_id, v_tier);
+  IF v_quota IS NOT NULL AND v_quota > 0 THEN
+    v_consommes := quota_annonces_consommees(p_user_id, debut_cycle_quotas(p_user_id));
+    IF v_consommes >= v_quota THEN
+      RETURN jsonb_build_object('allowed', false, 'reason', 'quota_annonces_atteint',
+                                'plafond', v_quota, 'consommes', v_consommes);
+    END IF;
+  END IF;
+
+  SELECT value INTO v_price FROM coin_config WHERE key = 'price_lens_overflow';
+  IF v_price IS NULL THEN
+    RETURN jsonb_build_object('allowed', false, 'reason', 'price_not_configured');
+  END IF;
+
+  -- Prix nul : ni wallet ni ledger — la ligne usage_logs 'lens' reste posée.
+  -- unifie:true = ce scan sera porté par sa ligne generate_listing.
+  IF v_price = 0 THEN
+    INSERT INTO usage_logs (user_id, feature, metadata)
+    VALUES (p_user_id, 'lens',
+      jsonb_build_object('coins', 0, 'model', 'per_scan')
+      || CASE WHEN p_unifie THEN jsonb_build_object('unifie', true) ELSE '{}'::jsonb END);
+    RETURN jsonb_build_object('allowed', true, 'price', 0);
+  END IF;
+
+  INSERT INTO coin_wallets (user_id) VALUES (p_user_id) ON CONFLICT (user_id) DO NOTHING;
+  SELECT * INTO v_wallet FROM coin_wallets WHERE user_id = p_user_id FOR UPDATE;
+
+  IF v_wallet.next_grant_at IS NULL OR v_wallet.next_grant_at <= now() THEN
+    PERFORM upgrade_monthly_grant(p_user_id, v_tier, null, 'lazy');
+    SELECT * INTO v_wallet FROM coin_wallets WHERE user_id = p_user_id FOR UPDATE;
+  END IF;
+
+  v_total := v_wallet.included_balance + v_wallet.purchased_balance;
+  IF v_total < v_price THEN
+    RETURN jsonb_build_object(
+      'allowed', false, 'reason', 'insufficient_coins',
+      'price', v_price, 'balance', v_total
+    );
+  END IF;
+
+  v_from_inc := LEAST(v_wallet.included_balance, v_price);
+  v_from_pur := v_price - v_from_inc;
+
+  UPDATE coin_wallets SET
+    included_balance  = included_balance  - v_from_inc,
+    purchased_balance = purchased_balance - v_from_pur,
+    updated_at        = now()
+  WHERE user_id = p_user_id;
+
+  INSERT INTO coin_ledger (user_id, delta, included_after, purchased_after, kind, metadata)
+  VALUES (
+    p_user_id, -v_price,
+    v_wallet.included_balance - v_from_inc,
+    v_wallet.purchased_balance - v_from_pur,
+    'spend_lens',
+    jsonb_build_object('model', 'per_scan')
+  );
+
+  INSERT INTO usage_logs (user_id, feature, metadata)
+  VALUES (p_user_id, 'lens', jsonb_build_object('coins', v_price, 'model', 'per_scan'));
+
+  RETURN jsonb_build_object(
+    'allowed', true, 'price', v_price,
+    'included_after',  v_wallet.included_balance - v_from_inc,
+    'purchased_after', v_wallet.purchased_balance - v_from_pur
+  );
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.fiche_completer_photos_capture(p_inventaire bigint, p_vignette text, p_capture jsonb)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_photos jsonb;
+  n integer;
+BEGIN
+
+  -- (20/10, sécurité) Appelée sous une session (authenticated, ou tout rôle porté
+  -- par un jeton autre que service_role) — y compris par le déclencheur
+  -- annonce_capture_complete_fiche lors d'une écriture de l'extension : la fiche
+  -- doit appartenir à auth.uid(). service_role, cron et SQL d'administration :
+  -- inchangés. Le déclencheur attrape l'exception (WARNING) : l'écriture de
+  -- l'annonce n'est jamais refusée pour autant.
+  IF auth.role() IS NOT NULL AND auth.role() <> 'service_role' THEN
+    IF auth.uid() IS NULL
+       OR NOT EXISTS (SELECT 1 FROM inventaire i WHERE i.id = p_inventaire AND i.user_id = auth.uid()) THEN
+      RAISE EXCEPTION 'fiche non autorisée' USING ERRCODE = '42501';
+    END IF;
+  END IF;
+  IF p_inventaire IS NULL OR jsonb_typeof(p_capture -> 'photos') IS DISTINCT FROM 'array' THEN RETURN false; END IF;
+  SELECT COALESCE(jsonb_agg(p ORDER BY o), '[]'::jsonb) INTO v_photos
+    FROM jsonb_array_elements(p_capture -> 'photos') WITH ORDINALITY AS t(p, o)
+   WHERE jsonb_typeof(p) = 'string' AND (p #>> '{}') ~ '^https?://';
+  IF jsonb_array_length(v_photos) < 2 THEN RETURN false; END IF;
+  UPDATE inventaire i SET
+    photos = v_photos,
+    photos_a_rapatrier = true
+   WHERE i.id = p_inventaire
+     AND i.fusionne_dans IS NULL
+     AND jsonb_array_length(COALESCE(i.photos, '[]'::jsonb)) <= 1
+     AND (i.photos -> 0 IS NULL
+          OR (i.photos ->> 0) = p_vignette
+          OR (i.photos ->> 0) LIKE '%/rapatrie-fiche/' || p_inventaire::text || '/%');
+  GET DIAGNOSTICS n = ROW_COUNT;
+  RETURN n > 0;
+END;
+$function$;
+
+
+do $$
+declare
+  seb uuid := '48dd94f7-3105-49a7-af54-24d9c479a980';
+  ls uuid := '447d920c-976a-4d8f-aff4-a2998050358c';
+  f_seb bigint; f_ls bigint; r jsonb; b boolean;
+begin
+  select id into f_seb from inventaire where user_id = seb and fusionne_dans is null order by id desc limit 1;
+  select id into f_ls from inventaire where user_id = ls and fusionne_dans is null order by id desc limit 1;
+
+  -- 1. Session de Sébastien (authenticated)
+  perform set_config('request.jwt.claims', json_build_object('sub', seb, 'role', 'authenticated')::text, true);
+  begin r := spend_coins_for_generate(ls, null); insert into _r values ('A01 generate autre compte refusé', false, r::text);
+  exception when sqlstate '42501' then insert into _r values ('A01 generate autre compte refusé', true, sqlerrm); end;
+  begin r := spend_coins_for_generate(seb, f_ls); insert into _r values ('A02 generate fiche d''un autre refusé', false, r::text);
+  exception when sqlstate '42501' then insert into _r values ('A02 generate fiche d''un autre refusé', true, sqlerrm); end;
+  begin r := spend_coins_for_generate(seb, f_seb); insert into _r values ('A03 generate soi + sa fiche passe', r ? 'allowed', r::text);
+  exception when others then insert into _r values ('A03 generate soi + sa fiche passe', false, sqlerrm); end;
+  begin r := spend_coins_for_generate(seb, null); insert into _r values ('A04 generate soi sans fiche passe', r ? 'allowed', r::text);
+  exception when others then insert into _r values ('A04 generate soi sans fiche passe', false, sqlerrm); end;
+  begin r := spend_coins_for_lens(ls, false); insert into _r values ('A05 lens autre compte refusé', false, r::text);
+  exception when sqlstate '42501' then insert into _r values ('A05 lens autre compte refusé', true, sqlerrm); end;
+  begin r := spend_coins_for_lens(seb, true); insert into _r values ('A06 lens soi passe', r ? 'allowed', r::text);
+  exception when others then insert into _r values ('A06 lens soi passe', false, sqlerrm); end;
+  begin b := fiche_completer_photos_capture(f_ls, null, '{"photos":["https://x/1.jpg","https://x/2.jpg"]}'); insert into _r values ('A07 photos fiche d''un autre refusé', false, b::text);
+  exception when sqlstate '42501' then insert into _r values ('A07 photos fiche d''un autre refusé', true, sqlerrm); end;
+  begin b := fiche_completer_photos_capture(f_seb, 'zz-pas-la-vignette', '{"photos":["https://x/1.jpg","https://x/2.jpg"]}'); insert into _r values ('A08 photos sa fiche passe (sans erreur)', b is not null, coalesce(b::text,'null'));
+  exception when others then insert into _r values ('A08 photos sa fiche passe (sans erreur)', false, sqlerrm); end;
+
+  -- 2. Jeton sans sub (authenticated, uid nul) ; claims anon
+  perform set_config('request.jwt.claims', json_build_object('role', 'authenticated')::text, true);
+  begin r := spend_coins_for_generate(seb, null); insert into _r values ('A09 authenticated sans uid refusé', false, r::text);
+  exception when sqlstate '42501' then insert into _r values ('A09 authenticated sans uid refusé', true, sqlerrm); end;
+  perform set_config('request.jwt.claims', json_build_object('role', 'anon')::text, true);
+  begin r := spend_coins_for_lens(seb, false); insert into _r values ('A10 claims anon refusé', false, r::text);
+  exception when sqlstate '42501' then insert into _r values ('A10 claims anon refusé', true, sqlerrm); end;
+
+  -- 3. service_role (fonctions edge) : n'importe quel compte, inchangé
+  perform set_config('request.jwt.claims', json_build_object('role', 'service_role')::text, true);
+  begin r := spend_coins_for_generate(ls, f_ls); insert into _r values ('A11 service_role generate passe', r ? 'allowed', r::text);
+  exception when others then insert into _r values ('A11 service_role generate passe', false, sqlerrm); end;
+  begin r := spend_coins_for_lens(ls, false); insert into _r values ('A12 service_role lens passe', r ? 'allowed', r::text);
+  exception when others then insert into _r values ('A12 service_role lens passe', false, sqlerrm); end;
+  begin b := fiche_completer_photos_capture(f_ls, 'zz', '{"photos":["https://x/1.jpg","https://x/2.jpg"]}'); insert into _r values ('A13 service_role photos passe', b is not null, b::text);
+  exception when others then insert into _r values ('A13 service_role photos passe', false, sqlerrm); end;
+
+  -- 4. Sans jeton (cron, SQL d'administration) : inchangé
+  perform set_config('request.jwt.claims', '', true);
+  begin r := spend_coins_for_generate(seb, f_ls); insert into _r values ('A14 sans jeton passe', r ? 'allowed', r::text);
+  exception when others then insert into _r values ('A14 sans jeton passe', false, sqlerrm); end;
+
+  -- 5. Le déclencheur annonce_capture_complete_fiche sous la session du propriétaire : l'écriture passe
+  perform set_config('request.jwt.claims', json_build_object('sub', seb, 'role', 'authenticated')::text, true);
+  begin
+    update annonces_plateforme set capture = coalesce(capture, '{}'::jsonb)
+     where id = (select id from annonces_plateforme where user_id = seb and inventaire_id is not null limit 1);
+    insert into _r values ('A15 écriture d''annonce sous session passe', true, 'ok');
+  exception when others then insert into _r values ('A15 écriture d''annonce sous session passe', false, sqlerrm); end;
+  perform set_config('request.jwt.claims', '', true);
+end $$;
+
+insert into _r select 'A16 droits : anon sans EXECUTE', not has_function_privilege('anon', 'public.spend_coins_for_generate(uuid,bigint)', 'execute')
+   and not has_function_privilege('anon', 'public.spend_coins_for_lens(uuid,boolean)', 'execute')
+   and not has_function_privilege('anon', 'public.fiche_completer_photos_capture(bigint,text,jsonb)', 'execute'), '';
+insert into _r select 'A17 droits : authenticated et service_role gardent EXECUTE', has_function_privilege('authenticated', 'public.spend_coins_for_generate(uuid,bigint)', 'execute')
+   and has_function_privilege('service_role', 'public.spend_coins_for_lens(uuid,boolean)', 'execute')
+   and has_function_privilege('service_role', 'public.fiche_completer_photos_capture(bigint,text,jsonb)', 'execute'), '';
+insert into _r select 'A18 SECURITY DEFINER et search_path gardés', bool_and(p.prosecdef and p.proconfig is not null), string_agg(p.proname, ',')
+  from pg_proc p where p.pronamespace = 'public'::regnamespace and p.proname in ('spend_coins_for_generate','spend_coins_for_lens','fiche_completer_photos_capture');
+
+select essai, ok, left(detail, 140) detail from _r order by essai;
+rollback;

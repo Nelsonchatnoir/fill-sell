@@ -38,6 +38,7 @@
 import { computeRemovalInfo, vintedPresenceArticle } from './publicationState';
 import { natureNeedsUser, republicationAnnonceDisparue } from './shared';
 import { libellesChampsDemandes } from './etatsPublication';
+import { plateformesJumelles } from './copiesJumelles';
 
 // Les plateformes que le stock sait TRAITER — c'est une liste de DONNÉES : elle
 // décide quels jobs entrent dans l'état d'un article (indexEtatStock) et quels
@@ -233,6 +234,9 @@ export function etatPlateformes(jobs, lang = 'fr', item = null) {
     occupees = occupees.filter((p) => p !== 'vinted');
     if (visible) enLigne.push('vinted');
     if (occupee) occupees.push('vinted');
+    // (20/10, Louis) La fiche JUMELLE d'un compte relié occupe la plateforme (même boutique) : « Pas encore »
+    // ne la propose pas — l'annonce existe, chez le compte relié.
+    for (const p of plateformesJumelles(item)) if (!occupees.includes(p)) occupees.push(p);
   }
   const aCompleter = new Map();
   const enEchec = new Map();

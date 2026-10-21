@@ -249,6 +249,14 @@ JAMAIS la valeur : il appelle `public.cron_secret()`.
 
 
 <!-- ex-CLAUDE.md L954-960 : Supabase migrations (GRANT sur toute nouvelle table) -->
+## ⛔ SECURITY DEFINER : l'identité se vérifie DANS la fonction (20/10 soir)
+Une fonction SECURITY DEFINER qui reçoit un `p_user` / une fiche ne lui fait jamais confiance sous une session :
+`IF auth.role() IS NOT NULL AND auth.role() <> 'service_role' THEN` l'utilisateur (et la fiche) doivent être ceux de
+`auth.uid()`, sinon `RAISE … USING ERRCODE = '42501'`. service_role (fonctions edge) et les appels sans jeton (cron,
+SQL) restent libres. Retirer `anon` ne suffit pas : `authenticated` agissait pour n'importe quel compte
+(`spend_coins_for_generate`, `spend_coins_for_lens`, `fiche_completer_photos_capture` — migration `20261020200000`).
+Un déclencheur qui appelle une telle fonction attrape son exception : l'écriture d'origine ne casse jamais.
+
 ## Supabase migrations
 
 Toute nouvelle table dans le schéma public nécessite :

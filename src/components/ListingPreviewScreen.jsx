@@ -4485,6 +4485,9 @@ export default function ListingPreviewScreen({
   // 'vinted' comme publiée. Ne vaut que parce que disparu_le est fiable
   // (marquage sauté sur run repris ou relevé incomplet, cf. syncDressing).
   plateformesLiberees = [],
+  // (20/10, Louis) Plateformes occupées par la fiche JUMELLE d'un compte relié, dans la même boutique
+  // (utils/copiesJumelles.js) : verrouillées comme une publication en ligne, avec leur propre phrase.
+  plateformesCompteRelie = [],
   // Appelé après l'insert réussi des jobs (invId, [plateformes]) : permet au
   // Stock de patcher jobsByInventaire immédiatement (« En cours… » sans
   // attendre le poll de 20 s) — même principe que le retrait par logo et le
@@ -5232,9 +5235,14 @@ export default function ListingPreviewScreen({
   const attentesKey = Object.keys(fetchedAttentes).filter(p => fetchedAttentes[p]?.bloque).sort().join(",");
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const attenteSet = useMemo(() => new Set(Object.keys(fetchedAttentes).filter(p => fetchedAttentes[p]?.bloque)), [attentesKey]);
+  // (20/10, Louis) Déjà en ligne via la fiche JUMELLE d'un compte relié (même boutique) — le RPC la refuse aussi
+  // (already_published + compte_relie). Vide pour tout compte sans fiche jumelle.
+  const compteRelieKey = (plateformesCompteRelie ?? []).slice().sort().join(",");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const compteRelieSet = useMemo(() => new Set(plateformesCompteRelie ?? []), [compteRelieKey]);
   // Union bloquante : tout ce qui interdit un nouveau job publish sur la ligne.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const lockedSet = useMemo(() => new Set([...publishedSet, ...queuedSet, ...attenteSet]), [alreadyPublishedKey, queuedKey, attentesKey]);
+  const lockedSet = useMemo(() => new Set([...publishedSet, ...queuedSet, ...attenteSet, ...compteRelieSet]), [alreadyPublishedKey, queuedKey, attentesKey, compteRelieKey]);
   // ── POURQUOI CETTE PLATEFORME EST ÉTEINTE (2026-09-20, passe 2) ──────────
   // Deux raisons, deux phrases, et rien d'autre — on ne dit que ce qu'on SAIT.
   //   · `publishedSet` : l'annonce est déjà en ligne, ce lot ne peut pas la
@@ -5252,9 +5260,10 @@ export default function ListingPreviewScreen({
       : (lang === "en" ? "already online for this item" : "déjà en ligne pour cet article");
     for (const p of queuedSet) if (!m[p]) m[p] = lang === "en" ? "a publication is already under way" : "une publication est déjà en cours";
     for (const p of attenteSet) if (!m[p]) m[p] = phraseEtat(p, fetchedAttentes[p], lang);
+    for (const p of compteRelieSet) if (!m[p]) m[p] = lang === "en" ? "already online through your linked FillSell account" : "déjà en ligne via ton compte FillSell relié";
     return m;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [alreadyPublishedKey, queuedKey, attentesKey, lang, fetchedDoute]);
+  }, [alreadyPublishedKey, queuedKey, attentesKey, compteRelieKey, lang, fetchedDoute]);
 
   // ── Compte eBay pas paramétré → eBay grisé (07/09/2026, demande Joséphine) ─
   // « Utilisable » = exactement ce que le trigger cross_post_jobs_voie_ebay
@@ -10643,6 +10652,8 @@ export default function ListingPreviewScreen({
       }
       let rowsEnvoyees = rows;
       let refuseesServeur = [];
+      // (20/10, Louis) Celles que le serveur a refusées pour la fiche jumelle d'un compte relié (compte_relie).
+      let compteRelieServeur = [...compteRelieSet];
       let pubRes = null;
       let pubErr = null;
       for (let tentative = 0; ; tentative++) {
@@ -10653,6 +10664,7 @@ export default function ListingPreviewScreen({
         pubRes = reponse.data;
         pubErr = reponse.error;
         if (pubErr) break;
+        if (pubRes?.allowed === false && Array.isArray(pubRes.compte_relie)) compteRelieServeur = [...new Set([...compteRelieServeur, ...pubRes.compte_relie])];
         if (variante === "nouvelle" && tentative === 0 && pubRes?.allowed === false && pubRes.reason === "already_published") {
           const refusees = (Array.isArray(pubRes.platforms) ? pubRes.platforms : []).filter(p => PLATFORM_LABELS[p]);
           const restantes = rowsEnvoyees.filter(r => !refusees.includes(r.platform));
@@ -10713,7 +10725,7 @@ export default function ListingPreviewScreen({
           const refusees = (Array.isArray(pubRes.platforms) ? pubRes.platforms : []).filter(p => PLATFORM_LABELS[p]);
           setSelected(prev => new Set([...prev].filter(p => !refusees.includes(p))));
           throw new Error(messageRefusPublication(refusees, {
-            publiees: publishedSet, enFile: queuedSet, attentes: fetchedAttentes, lang,
+            publiees: publishedSet, enFile: queuedSet, attentes: fetchedAttentes, compteRelie: new Set(compteRelieServeur), lang,
           }));
         }
         // Filet générique (2026-08-04) : un refus futur du RPC qui porte un
@@ -10948,7 +10960,7 @@ export default function ListingPreviewScreen({
           ...exclusRun,
           ...refuseesServeur.map(p => ({
             platform: p, motif: "refusee_serveur",
-            texte: messageRefusPublication([p], { publiees: publishedSet, enFile: queuedSet, attentes: fetchedAttentes, lang }),
+            texte: messageRefusPublication([p], { publiees: publishedSet, enFile: queuedSet, attentes: fetchedAttentes, compteRelie: new Set(compteRelieServeur), lang }),
           })),
         ]);
         setFournee({ inventaireId: currentInvId ?? null, plateformes: rowsEnvoyees.map(r => r.platform), depuis: new Date().toISOString() });
