@@ -1,7 +1,7 @@
 import { memo, useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { questionOplaFinale } from '../../supabase/functions/_shared/opla-questions.js';
 // (02/10) Sortie d'Opla : une publication/republication Opla ne se relance plus.
-import { estPublicationOpla, MESSAGE_OPLA_INDISPONIBLE } from '../../supabase/functions/_shared/opla-sortie.js';
+import { estPublicationOpla, MESSAGE_OPLA_INDISPONIBLE, sortieOplaActive } from '../../supabase/functions/_shared/opla-sortie.js';
 import { createPortal } from 'react-dom';
 // RefreshCw / ChevronDown / ChevronUp retirés le 2026-09-04 avec RepubBlocActif
 // et RepubTerminees, leurs seuls lecteurs. ⚠️ eslint ne les signalait pas :
@@ -1668,13 +1668,26 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
       if (!sansValeur && job.inventaire_id != null && !questionMarque) {
         const attributs = {};
         const maintenant = new Date().toISOString();
+        // (22/10, Louis, DeadRoz, josephinecerni, patrick.giry) LA RÉPONSE À UNE PLATEFORME NE RÉÉCRIT JAMAIS LA
+        // FICHE : elle est écrite dans la grille de CETTE plateforme (« 10 ans (128-140 cm) », « Autre »…) et le
+        // rang « manuel » écrasait la taille de la fiche — « 8 ans » devenu « Autre », « S » devenu « 14 ans », W31
+        // devenu « S » (34 fiches en 30 jours, au moins 12 avec une perte). Comme l'écran Publier : une case
+        // VIDE de la fiche se remplit, une valeur déjà là ne bouge pas, « Autre » ne s'écrit jamais. Fiche
+        // illisible : rien n'est écrit (le job, lui, est reparti avec la réponse).
+        const ficheLue = await supabase.from("inventaire").select("attributs").eq("id", job.inventaire_id).maybeSingle()
+          .then(({ data, error }) => (error ? null : (data?.attributs ?? {})), () => null);
+        const dejaSurFiche = (k) => {
+          const a = ficheLue?.[k];
+          return String((a && typeof a === "object" ? a.v : a) ?? "").trim() !== "";
+        };
         const poser = (cle, valeur) => {
           const brut = String(valeur ?? "").trim();
           const k = cleFicheDepuisChamp(job.platform, cle);
           // L'état d'une page Vinted étrangère (« Very good ») entre sur la
           // fiche sous son libellé français, celui de la fiche (03/10, point E).
           const val = k === "etat" && job.platform === "vinted" ? libelleEtatVinted(brut, "fr") : brut;
-          if (k && val) attributs[k] = { v: val, source: "manuel", at: maintenant };
+          if (!k || !val || ficheLue == null || dejaSurFiche(k) || /^(?:autres?|other)$/i.test(val)) return;
+          attributs[k] = { v: val, source: "manuel", at: maintenant };
         };
         if (target) poser(target.key, v);
         for (const c of champsSup) poser((c.target && c.target.key) ? c.target.key : c.field_key, valeurAvecUnite(String(valeursSup[c.field_key] ?? "").trim(), uniteSup(c)));
@@ -8407,6 +8420,12 @@ const StockTab = memo(function StockTab({
   const [removeBusy, setRemoveBusy] = useState(null);
   async function armRemoveJob(item, platform) {
     if (removeBusy) return null;
+    // (22/10, XEWER — Opla : plus rien) FillSell ne touche plus Opla : aucun retrait Opla ne naît.
+    if (platform === 'opla' && sortieOplaActive(Date.now())) {
+      return lang === 'fr'
+        ? 'FillSell ne gère plus Opla : retire cette annonce toi-même sur Opla.'
+        : 'FillSell no longer handles Opla: remove this listing yourself on Opla.';
+    }
     // Le delete cible le job publish 'published' LE PLUS RÉCENT de la
     // plateforme — son listing_url et rien d'autre (leçon listing_url croisée).
     let pub = null;
@@ -9511,15 +9530,18 @@ const StockTab = memo(function StockTab({
   // La personne a retiré elle-même son annonce sur Opla : on le note sur les
   // retraits Opla CLOS de cette fiche (platform_fields seul, statut inchangé :
   // la garde Opla ne se déclenche pas), la ligne disparaît. Rien d'autre.
+  // (22/10) Depuis la règle « Opla : plus rien », l'information vit sur la COPIE Opla elle-même
+  // (platform_fields.opla_a_retirer, posé une fois par le serveur) : « C'est fait » la marque aussi.
   const marquerJobsOplaFaits = async (jobs) => {
     if (!user?.id) return;
     const le = new Date().toISOString();
-    const cibles = (jobs ?? []).filter((j) => j && j.action === 'delete' && j.platform === 'opla' && j.status === 'cancelled' && !j.platform_fields?.opla_retire_par_la_personne);
+    const cibles = (jobs ?? []).filter((j) => j && j.platform === 'opla' && !j.platform_fields?.opla_retire_par_la_personne
+      && ((j.action === 'delete' && j.status === 'cancelled') || (j.status === 'published' && j.platform_fields?.opla_a_retirer)));
     const faits = new Map();
     for (const j of cibles) {
       const pf = { ...(j.platform_fields ?? {}), opla_retire_par_la_personne: { le } };
       const { data, error } = await supabase.from('cross_post_jobs').update({ platform_fields: pf })
-        .eq('id', j.id).eq('user_id', user.id).eq('status', 'cancelled').select('id');
+        .eq('id', j.id).eq('user_id', user.id).eq('status', j.status).select('id');
       if (!error && data?.length) faits.set(j.id, pf);
     }
     if (faits.size) {
@@ -9527,7 +9549,7 @@ const StockTab = memo(function StockTab({
       track('opla_retrait_fait', { n: faits.size });
     }
   };
-  // Tous les retraits Opla clos de la fiche (les doublons d'armement compris).
+  // Tous les retraits Opla clos de la fiche (les doublons d'armement compris), et sa copie Opla.
   const marquerRetireeSurOpla = (inventaireId) => marquerJobsOplaFaits(jobsByInventaire[inventaireId] ?? []);
   const gestesArticle = (item, d, pastille) => {
     const fr = lang === 'fr';

@@ -17008,6 +17008,10 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
     // un upsert avec une colonne inconnue est refusé EN ENTIER.
     const dateLue = annonces.some((a) => a.publiee_le);
     const datePossible = dateLue && await restRequest("annonces_plateforme?select=publiee_le&limit=1", token).then(() => true).catch(() => false);
+    // (22/10) La transaction Leboncoin de CHAQUE annonce — seulement si le relevé l'a lue pour TOUTES (lecture par
+    // l'API ; jamais « aucune » inventée par une autre lecture) et si la base a la colonne (même règle que ci-dessus).
+    const transactionLue = platform === "leboncoin" && annonces.length > 0 && annonces.every((a) => typeof a.transaction === "string");
+    const transactionPossible = transactionLue && await restRequest("annonces_plateforme?select=transaction_plateforme&limit=1", token).then(() => true).catch(() => false);
     // ⚠️ Number(null) vaut 0 : un prix ILLISIBLE doit rester NULL (bande
     //    incertaine), jamais devenir 0 € — même règle pour vues / favoris.
     const nombreOuNull = (v) => (v == null || v === "" ? null : (Number.isFinite(Number(v)) ? Number(v) : null));
@@ -17017,6 +17021,7 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
       photo_url: a.photo_url ?? null,
       ...(statsPossibles ? { vues: nombreOuNull(a.vues), favoris: nombreOuNull(a.favoris) } : {}),
       ...(datePossible ? { publiee_le: a.publiee_le ?? null } : {}),
+      ...(transactionPossible ? { transaction_plateforme: a.transaction, transaction_lue_le: maintenant() } : {}),
       statut_plateforme: ["en_ligne", "en_verification", "desactivee", "vendue"].includes(a.statut) ? a.statut : "inconnu",
       run_id: run.id, vu_le: maintenant(), disparu_le: null, updated_at: maintenant(),
     }));
@@ -17457,6 +17462,16 @@ async function releverLeboncoinParApi() {
       // et les critères (marque, taille, état…). Même lecture que
       // capturerFicheEnPage (__NEXT_DATA__ → ad), mêmes clés.
       const propre = (v) => String(v ?? "").replace(/[\s  ]+/g, " ").trim();
+      // (22/10, Sébastien) LA TRANSACTION DE CHAQUE ANNONCE : attributs.transaction_status (« pending » = achat en
+      // cours, paiement sécurisé fait ; « sold » = vendu ; absent = aucune). Leboncoin garde status « active »
+      // pendant l'achat : seul cet attribut dit la vente. La base en fait une vente prouvée (migration
+      // 20261022110000) — avant, il ne survivait que dans un échantillon de captures que personne ne lisait.
+      const transactionDe = (a) => {
+        const attrs = Array.isArray(a?.attributes) ? a.attributes : [];
+        const t = attrs.find((x) => String(x?.key ?? "") === "transaction_status");
+        const v = String(t?.value ?? "").trim().toLowerCase();
+        return v ? v.slice(0, 40) : "aucune";
+      };
       const captureDe = (a) => {
         const grandes = Array.isArray(a?.images?.urls_large) && a.images.urls_large.length ? a.images.urls_large : (a?.images?.urls ?? []);
         const photos = (Array.isArray(grandes) ? grandes : []).map(String).filter((u) => /^https?:/.test(u));
@@ -17509,6 +17524,7 @@ async function releverLeboncoinParApi() {
           publiee_le: dateParis(a?.first_publication_date),
           source_releve: "api_dashboard",
           capture_liste: captureDe(a),
+          transaction: transactionDe(a),
         });
       }
       if (!ads.length) break;
@@ -20619,6 +20635,10 @@ async function veillerCommandes(session) {
       return Number.isFinite(t) && maintenant - t < VEILLE_COMMANDES_FENETRE_MS && !commandeAnnulee(platform, c.statut);
     });
     compterMesureVeille(etat, platform, "neuves", aSuivre.length);
+    // (22/10, Sébastien) Leboncoin : une commande neuve = un achat en cours. Le relevé de « Mes annonces » lit la
+    // transaction de CHAQUE annonce (numéro exact) et la base en fait la vente : on le demande pour la fin de ce
+    // cycle (une demande par cycle, comme le veilleur) — sans attendre le relevé du jour.
+    if (platform === "leboncoin" && aSuivre.length) demanderRelevePourRattachement("leboncoin");
     if (aSuivre.length) {
       const ids = await jobsARelirePourCommandes(platform, aSuivre, token, etat).catch((err) => {
         console.warn(`[veille-commandes][${platform}] désignation impossible :`, String(err?.message ?? err));

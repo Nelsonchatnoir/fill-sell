@@ -437,6 +437,28 @@ function depopResoudreMarque(pf, referentiel) {
 // — « EU 42 » → « EUR 42 », « 12 ans » → « 12 years », « Taille unique » →
 // « One size » — jamais une conversion. « Other » ne se choisit jamais seul.
 // Hors grille → question avec les tailles de la grille.
+// (22/10, Sébastien, Louis) Deux écritures de la MÊME taille que la règle commune ne reconnaissait pas — une
+// seule option exacte, sinon la question reste (jamais une voisine) :
+//   · grille 104 (pointures enfant, EUR) : « 33 », « EUR 33 », « pointure 33 » = « 33 (adult) » ; « 25 » = « 25 » ;
+//   · grilles EUR paires de femme (IT : 9 hauts, 81 robes, 40 manteaux — que des tailles 32…62 paires, aucun
+//     pouce) : « EU 38 » / « EUR 38 » = « 38 ». Jamais sur une grille qui mêle pouces et EU (62, 24, 56) : W31,
+//     W38 ont reçu deux lectures humaines opposées, la question reste.
+const DEPOP_GRILLES_EUR_PAIRES = new Set([9, 81, 40]);
+function depopTailleEquivalente(brute, idGrille, libelles) {
+  const id = Number(idGrille);
+  if (id === 104) {
+    const m = /^(?:eur?|pointure|p\.?)?\s*(\d{2})$/i.exec(brute);
+    if (!m) return null;
+    const cand = libelles.filter((l) => l === m[1] || l === `${m[1]} (adult)`);
+    return cand.length === 1 ? { valeur: cand[0] } : null;
+  }
+  if (DEPOP_GRILLES_EUR_PAIRES.has(id)) {
+    const m = /^eur?\s*(\d{2})$/i.exec(brute);
+    if (m && libelles.filter((l) => l === m[1]).length === 1) return { valeur: m[1] };
+  }
+  return null;
+}
+
 function depopResoudreTaille(pf, chemin, region, grilles) {
   const e = grilles.feuilles.get(chemin.join("/"));
   if (!e) return { refus: "feuille_inconnue" };
@@ -450,7 +472,8 @@ function depopResoudreTaille(pf, chemin, region, grilles) {
   if (!brute) return question();
   const exacte = libelles.indexOf(brute);
   const tv = globalThis.taillesVocabulaire;
-  const trouvee = exacte >= 0 ? { valeur: brute } : (tv?.tailleDansGrille ? tv.tailleDansGrille(brute, libelles) : null);
+  const trouvee = exacte >= 0 ? { valeur: brute } : ((tv?.tailleDansGrille ? tv.tailleDansGrille(brute, libelles) : null)
+    ?? depopTailleEquivalente(brute, idGrille, libelles));
   if (!trouvee) return question();
   const s = grille.sizes[libelles.indexOf(trouvee.valeur)];
   if (!s) return question();

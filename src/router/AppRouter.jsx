@@ -57,6 +57,33 @@ function cibleConfirmation() {
   } catch { return null; }
 }
 
+// (22/10, Sébastien) La session se lit sans limite de temps : sur un réseau qui
+// cale (rafraîchissement du jeton sans réponse), RequireAuth et
+// RedirectIfLoggedIn rendaient null — un écran vide, sans fin. Pendant 10 s,
+// rien ne change (le canvas couvre l'attente) ; ensuite, une phrase et
+// « Recharger la page ». La lecture continue : si elle répond, on enchaîne.
+function AttenteSession() {
+  const [longue, setLongue] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setLongue(true), 10_000);
+    return () => clearTimeout(t);
+  }, []);
+  if (!longue) return null;
+  let fr = true;
+  try { fr = (localStorage.getItem('fs_lang') || ((navigator.language || 'fr').startsWith('fr') ? 'fr' : 'en')) !== 'en'; } catch { /* fr */ }
+  return (
+    <div role="status" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', gap: 14, alignItems: 'center', justifyContent: 'center', padding: '0 16px', textAlign: 'center' }}>
+      <p style={{ margin: 0, fontSize: 14, lineHeight: 1.45, color: '#10201B', maxWidth: 320 }}>
+        {fr ? 'La connexion à FillSell prend plus de temps que prévu (réseau lent ou coupé).' : 'Connecting to FillSell is taking longer than expected (slow or lost network).'}
+      </p>
+      <button type="button" onClick={() => window.location.reload()}
+        style={{ padding: '10px 16px', borderRadius: 12, fontSize: 14, fontWeight: 600, cursor: 'pointer', border: '1px solid #2F9E90', background: '#2F9E90', color: '#fff', fontFamily: 'inherit' }}>
+        {fr ? 'Recharger la page' : 'Reload the page'}
+      </button>
+    </div>
+  );
+}
+
 // Bloque /login et / si déjà connecté
 function RedirectIfLoggedIn({ children }) {
   const [user, setUser] = useState(undefined);
@@ -68,7 +95,7 @@ function RedirectIfLoggedIn({ children }) {
     });
   }, [versConfirmation]);
   if (versConfirmation) return <Navigate to={versConfirmation} replace />;
-  if (user === undefined) return null;
+  if (user === undefined) return <AttenteSession />;
   if (user) return <Navigate to="/app" replace />;
   return children;
 }
@@ -127,7 +154,7 @@ function RequireAuth({ children }) {
   useEffect(() => {
     if (user === null) rememberPostLoginTarget(location.pathname, location.search);
   }, [user, location.pathname, location.search]);
-  if (user === undefined) return null;
+  if (user === undefined) return <AttenteSession />;
   if (!user) return <Navigate to="/" replace state={{ from: location }} />;
   return children;
 }

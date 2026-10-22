@@ -21,7 +21,7 @@ import { identiteVintedDuPoste, routageBoutiquesActif, posteLaisseJobVinted, bou
 import { CLES_RELANCE_DEPOP } from "../_shared/acces-depop.js";
 import { MOTIF_VENDEUR_DEPOP, SOURCE_VENDEUR_DEPOP, MESSAGE_VENDEUR_DEPOP, attentesVendeurDepop, derniereObservationMur, estEclaireurFrais, champsRetenue } from "../_shared/vendeur-depop.js";
 import { rayonDepopAJour, reponseRayonDepop } from "../_shared/depop-rayon.js";
-import { appliquerRayonDepop } from "../../../src/utils/depopPublication.js";
+import { appliquerRayonDepop, tailleDepop } from "../../../src/utils/depopPublication.js";
 import { cheminDeLaReponse, pfApresRayon, CLE_REPONSE_RAYON } from "../_shared/rayon-refuse-moteur.js";
 import { preuveAccesOpla } from "../_shared/preuve-opla.ts";
 // (25/09) Ce que Vinted exige quel que soit le catalogue — la MÊME règle que le
@@ -4035,6 +4035,48 @@ serve(async (req) => {
       }
     }
 
+    // ── (22/10, Johan) LA TAILLE DEPOP DE LA FICHE, QUAND LA COPIE N'EN A PAS ────────────────────────────────
+    // Une copie Depop créée avant que la grille de son rayon soit connue part SANS taille (pantalon de ski de Johan,
+    // 21/10 : copie du 14:49, fiche « M » depuis 14:57, question Depop à 17:11 — la même réponse demandée trois fois,
+    // Beebs, Vinted, Depop). Beebs comble déjà ce vide depuis la fiche ; Depop non. Même règle : une PUBLICATION
+    // neuve (jamais une republication, qui remet l'annonce telle qu'elle est), copie VIDE (ni depopTaille ni
+    // taille), la taille de la fiche traduite comme à l'écran (tailleDepop : tailles enfant, pointures enfant) ;
+    // le connecteur la cherche ensuite dans la grille EXACTE de la feuille et DEMANDE si elle n'y est pas — jamais
+    // une voisine. Rien d'écrit si la fiche n'a pas de taille.
+    if (!includeProcessing && !includeNeedsUser) {
+      const sansTailleDepop = out.filter((j) => j.platform === "depop" && j.action === "publish" && j.inventaire_id != null
+        && !String(((j.platform_fields as Record<string, unknown> | null) ?? {})["depopTaille"] ?? "").trim()
+        && !String(((j.platform_fields as Record<string, unknown> | null) ?? {})["taille"] ?? "").trim());
+      if (sansTailleDepop.length) {
+        try {
+          const { data: invsD } = await lireParLots((lot) => userClient.from("inventaire").select("id, attributs").in("id", lot),
+            [...new Set(sansTailleDepop.map((j) => Number(j.inventaire_id)))]);
+          const tailleDe = new Map<number, string>();
+          for (const i of (invsD ?? []) as Array<Record<string, unknown>>) {
+            const t = ((i.attributs ?? {}) as Record<string, unknown>)["taille"];
+            const v = (t && typeof t === "object") ? String((t as Record<string, unknown>)["v"] ?? "").trim() : String(t ?? "").trim();
+            if (v && !/^(?:autres?|other)$/i.test(v)) tailleDe.set(Number(i.id), v);
+          }
+          for (const j of sansTailleDepop) {
+            const vf = tailleDe.get(Number(j.inventaire_id));
+            if (!vf) continue;
+            const pfD = { ...((j.platform_fields as Record<string, unknown> | null) ?? {}) };
+            const traduite = tailleDepop(vf, pfD["depopCategoryPath"]);
+            if (!traduite) continue;
+            pfD["depopTaille"] = traduite;
+            pfD["taille_depop_de_la_fiche"] = { fiche: vf, depop: traduite, le: new Date().toISOString(), pose_par: "get-pending-jobs (copie vide)" };
+            const { error: eD } = await userClient.from("cross_post_jobs").update({ platform_fields: pfD })
+              .eq("id", j.id as string).eq("status", "pending");
+            if (eD) { console.warn(`[get-pending-jobs] taille Depop : job ${String(j.id).slice(0, 8)} non écrit (${eD.message})`); continue; }
+            (j as Record<string, unknown>).platform_fields = pfD;
+            console.log(`[get-pending-jobs] job ${String(j.id).slice(0, 8)} (depop) : taille de la fiche « ${vf} » → « ${traduite} » (copie vide)`);
+          }
+        } catch (e) {
+          console.warn(`[get-pending-jobs] taille Depop de la fiche : ${String((e as Error)?.message ?? e)} — rien de modifié`);
+        }
+      }
+    }
+
     // ── LA REPUBLICATION OPLA SE JUGE SUR L'ANNONCE (2026-09-27, doriane-henri)
     // Un poste plus ancien que la 0.6.74 juge la republication sur la fiche
     // IMPORTÉE : sans marque (ou refusée « exige une taille »), le pré-vol la
@@ -6735,6 +6777,29 @@ serve(async (req) => {
                 && Boolean(((p.platform_fields as Record<string, unknown> | null) ?? {})["listing_url_abandon"]));
               depotEncoreSurveille = liste.some((p) =>
                 p.status === "published" && !String(p.listing_url ?? "").trim() && !String(p.platform_listing_id ?? "").trim());
+            }
+            // (22/10, point 2) 1 bis. LE RAPPROCHEMENT DU MÊME COMPTE : ni le retrait ni son dépôt ne portent de
+            // numéro, mais un relevé de CE compte a relié une annonce VIVANTE à CE dépôt exact
+            // (annonces_plateforme.job_id — le lien posé par le moteur, une preuve). Une seule, sinon rien. Jamais la
+            // fiche, le titre, le prix ni la photo (règle du 11/09 : l'identifiant décide ; la preuve survit à
+            // inventaire_id = NULL). RLS : les annonces de la personne seules.
+            if (!url && !idsCandidats.length) {
+              const vivantes = (q: Array<{ listing_id: string | null }> | null) =>
+                [...new Set((q ?? []).map((a) => String(a.listing_id ?? "").trim()).filter(Boolean))];
+              let trouvees: string[] = [];
+              if (/^[0-9a-f-]{36}$/i.test(depotProuve)) {
+                const { data: parDepot } = await userClient.from("annonces_plateforme")
+                  .select("listing_id").eq("platform", d.platform).eq("job_id", depotProuve)
+                  .is("disparu_le", null).is("retiree_le", null).in("statut_plateforme", ["en_ligne", "en_verification"]).limit(3);
+                trouvees = vivantes(parDepot as Array<{ listing_id: string | null }> | null);
+                if (trouvees.length === 1) provenance = "rapprochement_du_depot";
+              }
+              if (trouvees.length === 1) {
+                idsCandidats.push(trouvees[0]);
+                console.log(`[get-pending-jobs] retrait ${d.platform} ${String(d.id).slice(0, 8)} : numéro retrouvé par le relevé du compte (${provenance} : ${trouvees[0]})`);
+              } else if (trouvees.length > 1) {
+                console.log(`[get-pending-jobs] retrait ${d.platform} ${String(d.id).slice(0, 8)} : ${trouvees.length} annonces vivantes reliées — doute, rien n'est choisi`);
+              }
             }
             // 2. et 3. l'IDENTIFIANT — le lien n'en est qu'une écriture.
             if (!url && idsCandidats.length) {

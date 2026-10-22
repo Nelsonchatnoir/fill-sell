@@ -237,8 +237,11 @@ const POINTURES_ENFANT = Object.freeze({
   27: 12, 28: 13, 29: 14, 30: 15, 31: 16, 32: 17, 33: 18, 34: 20, 35: 21, 36: 22,
   37: 23, 38: 24, 39: 25, 40: 26,
 });
+// (22/10, Louis : « 33 » de la fiche → question, réponse « 33 (adult) ») Une pointure nue, « EUR 33 » ou
+// « pointure 33 » est la MÊME pointure que « EU 33 » : la grille 104 est en EUR. Âge, lettre, demi-pointure,
+// hors 16…40 : null, la question reste.
 export function depopPointureEnfant(valeur) {
-  const m = /^eu\s*(\d{2})(?:[.,](5))?$/i.exec(String(valeur ?? "").trim());
+  const m = /^(?:eur?|pointure|p\.?)?\s*(\d{2})(?:[.,](5))?$/i.exec(String(valeur ?? "").trim());
   if (!m || m[2]) return null;
   const n = Number(m[1]);
   const id = POINTURES_ENFANT[n];

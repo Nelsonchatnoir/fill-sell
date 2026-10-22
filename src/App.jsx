@@ -24,6 +24,8 @@ import { poserSourceSurProfil } from './utils/acquisition';
 import { logRetrait, logSuppressionArticle, CHEMINS_RETRAIT } from './utils/journalRetraits';
 import { erreurAvecRaison } from './utils/raisonRefus';
 import { pixelInscription } from './utils/metaPixel';
+import { fileUnique, auPlus, uneFoisPar, noterEtape } from './utils/chargementBorne';
+import EcranChargementLong from './components/EcranChargementLong';
 import { indexCopiesJumelles, avecCopiesJumelles } from './utils/copiesJumelles';
 import { useNavigate, useSearchParams } from "react-router-dom";
 const isNative = Capacitor.isNativePlatform();
@@ -1926,6 +1928,10 @@ export default function App({ loginOnly = false }){
   const [sales,setSales]=useState([]);
   const [loading,setLoading]=useState(true);
   const [appLoading,setAppLoading]=useState(true);
+  // (22/10, Sébastien) Le PREMIER chargement a échoué (lecture sans réponse, erreur) : l'écran de
+  // chargement le dit et se reprend seul — jamais un stock vide présenté comme vrai.
+  const [chargementEchoue,setChargementEchoue]=useState(false);
+  const donneesLuesRef=useRef(false);
   const [iTitle,setITitle]=useState("");
   const [iBuy,setIBuy]=useState("");
   // « Je ne sais pas » sur le prix d'achat (2026-09-19, dossier Louis THONET).
@@ -2588,6 +2594,9 @@ export default function App({ loginOnly = false }){
         const typing=Boolean(el&&(el.tagName==='INPUT'||el.tagName==='TEXTAREA'||el.tagName==='SELECT'||el.isContentEditable));
         const dialogOpen=Boolean(document.querySelector('[role="dialog"]'));
         if(stepperOpen||typing||dialogOpen){setNewVersionAvailable(true);return;}
+        // (22/10) UNE fois par build distant et par onglet : si le CDN servait encore l'ancienne page,
+        // on ne rechargerait pas toutes les 5 min sans fin — le bandeau « Recharger » prend le relais.
+        if(!uneFoisPar('fs_recharge_build',remote)){setNewVersionAvailable(true);return;}
         window.location.reload();
       }catch{/* offline/CDN indisponible : silencieux, on retentera */}
     };
@@ -3277,7 +3286,21 @@ export default function App({ loginOnly = false }){
   // silencieux (2026-07-13) : les rafraîchissements d'ARRIÈRE-PLAN (retour de
   // visibilité, poll sentinelle) ne doivent pas faire clignoter le spinner —
   // les données se remplacent en place, sans état de chargement visible.
-  async function fetchAll(uid,{silencieux=false}={}){
+  // (22/10, Sébastien) UN SEUL fetchAll EN VOL (utils/chargementBorne.js, fileUnique) : retour d'onglet,
+  // jeton rafraîchi, sentinelle et gestes en lançaient jusqu'à 6 en parallèle — chacun relisant tout
+  // l'inventaire — ce qui étouffait un lien déjà lent. Un appel pendant un passage attend sa fin puis
+  // UN passage neuf part pour tous : chaque `await fetchAll()` lit des données lues APRÈS son appel.
+  const fetchAllCorpsRef=useRef(null);
+  const fetchAllFileRef=useRef(null);
+  if(!fetchAllFileRef.current){
+    fetchAllFileRef.current=fileUnique((uid,opts)=>fetchAllCorpsRef.current(uid,opts),{
+      liberationMs:60_000,
+      fusionner:(a,b)=>[b[0]??a[0],{silencieux:Boolean(a[1]?.silencieux)&&Boolean(b[1]?.silencieux)}],
+    });
+  }
+  function fetchAll(uid,opts){return fetchAllFileRef.current(uid,opts);}
+  fetchAllCorpsRef.current=fetchAllCorps;
+  async function fetchAllCorps(uid,{silencieux=false}={}){
     // GARDE (2026-07-13) : sans uid, chaque requête ci-dessous part en
     // `user_id=eq.undefined` et revient en 400 — une dizaine d'erreurs, un
     // refetch entièrement raté, et des états (bandeaux, stock, profil) qui
@@ -3290,6 +3313,7 @@ export default function App({ loginOnly = false }){
       return;
     }
     if(!silencieux) setLoading(true);
+    noterEtape('lectures');
     // Lecture COMPLÈTE par pages (11/10, Rémi) : rend {data,error} comme une
     // requête seule — une page en erreur annule le tout et l'écran garde son
     // dernier affichage, jamais une liste à moitié lue.
@@ -3345,8 +3369,20 @@ export default function App({ loginOnly = false }){
       // (20/10, Louis) Les copies des fiches JUMELLES d'un compte relié sur une boutique partagée
       // (utils/copiesJumelles.js). Best-effort : une erreur rend une liste vide, jamais un écran cassé ;
       // vide pour tout compte sans fiche jumelle.
-      supabase.rpc('copies_fiches_jumelles').then((r)=>r,()=>({data:null,error:true})),
+      // (22/10) Une RPC n'est pas bornée par le client (utils/chargementBorne.js) : au plus 30 s ici.
+      auPlus(supabase.rpc('copies_fiches_jumelles').then((r)=>r,()=>({data:null,error:true})),30_000,{data:null,error:true}),
     ]);
+    // (22/10, Sébastien) Premier chargement sans stock ni ventes (lecture sans réponse au bout de 30 s, erreur) :
+    // l'écran de chargement le dit et réessaie seul (EcranChargementLong). Un rafraîchissement raté
+    // après un premier chargement réussi garde l'affichage d'avant, comme toujours.
+    if((v.error||i.error)&&!donneesLuesRef.current){
+      noterEtape('echec_premier_chargement');
+      console.warn('[fetchAll] premier chargement sans données :',v.error?.message||i.error?.message||p.error?.message);
+      setChargementEchoue(true);
+      setLoading(false);
+      return;
+    }
+    if(!v.error&&!i.error){donneesLuesRef.current=true;setChargementEchoue(false);}
     if(!v.error) setSales((v.data||[]).map(mapSale));
     if(!i.error){
       const lignes=i.data||[];
@@ -3506,7 +3542,7 @@ export default function App({ loginOnly = false }){
         // user_metadata — on le PERSISTE dans profiles à la première entrée pour
         // ne plus jamais dépendre de la réponse du provider, et on ne demande
         // alors RIEN. getSession = lecture locale, pas d'appel réseau.
-        const{data:{session:authSession}}=await supabase.auth.getSession();
+        const{data:{session:authSession}}=await auPlus(supabase.auth.getSession(),10_000,{data:{session:null}});
         const meta=authSession?.user?.user_metadata||{};
         const providerName=String(meta.full_name||meta.name||'').trim().slice(0,30);
         if(providerName){
@@ -3595,6 +3631,7 @@ export default function App({ loginOnly = false }){
     // plus lues ni affichées : bandeau supprimé le 2026-08-15, cf. plus haut.)
     setLoading(false);
     setAppLoading(false);
+    noterEtape('pret');
     const voiceCount=await checkAndResetDaily(supabase,uid,'voice_count_today','voice_count_date');
     setVoiceUsedToday(voiceCount);
     // ── Bascule quotas (02/09) : l'état des compteurs par geste ─────────────
@@ -3700,7 +3737,7 @@ export default function App({ loginOnly = false }){
         // (06/10) Le jeton du téléphone, à la connexion et à chaque ouverture —
         // seulement si la personne a déjà dit oui (jamais de demande ici).
         if(event==='SIGNED_IN'||event==='INITIAL_SESSION') initialiserPush({versionApp:VERSION_APP}).catch(()=>{});
-      }else{dejaConnecteRef.current=false;setSales([]);setItems([]);setItemsAVerifier([]);setLoading(false);setAppLoading(false);}
+      }else{dejaConnecteRef.current=false;donneesLuesRef.current=false;setSales([]);setItems([]);setItemsAVerifier([]);setLoading(false);setAppLoading(false);}
     });
     return()=>{ mounted=false; subscription.unsubscribe(); coinRecoveryHandle?.remove?.(); };
   },[]);
@@ -4561,14 +4598,15 @@ export default function App({ loginOnly = false }){
     // faire un lien (ou le lire dans le relevé du compte pour Leboncoin, dont
     // l'URL porte un segment de catégorie qu'on ne fabrique jamais). Le
     // ciblage par titre reste INTERDIT sur toutes les plateformes.
-    const rows=group.map(j=>({
+    // (22/10, XEWER) Opla quittée : jamais de retrait Opla (l'information est posée sur la copie par le serveur).
+    const rows=group.filter(j=>!(oplaFermee&&j.platform==='opla')).map(j=>({
       user_id:user.id,inventaire_id:j.inventaire_id,platform:j.platform,
       action:'delete',status:'pending',photo_option:'original',
       title:j.title,listing_url:j.listing_url,
       platform_listing_id:j.platform_listing_id??null,
       platform_fields:j.listing_url?{}:{removal_url_missing:true},
     }));
-    const{data:armes,error}=await supabase.from('cross_post_jobs').insert(rows).select('id,platform');
+    const{data:armes,error}=rows.length?await supabase.from('cross_post_jobs').insert(rows).select('id,platform'):{data:[],error:null};
     if(error){console.error('[armRemovals] insert:',error.message);return;}
     // Journal d'audit (13/09) : APRÈS l'insert, sur les lignes RÉELLEMENT
     // écrites. Cf. src/utils/journalRetraits.js — un retrait sans trace en base
@@ -5441,6 +5479,9 @@ export default function App({ loginOnly = false }){
         }
       }catch{/* illisible : on ne conclut rien, comportement d'avant */}
     }
+    // (22/10, XEWER — Opla : plus rien) Jamais de retrait Opla : FillSell ne touche plus Opla ; le serveur
+    // pose l'information « retire-la toi-même sur Opla » UNE fois sur la copie (opla_copie_a_retirer_noter).
+    if(oplaFermee) p.online=p.online.filter(pub=>pub.platform!=='opla');
     if(p.online.length){
       const rows=p.online.map(pub=>({
         user_id:user.id,inventaire_id:item.id,platform:pub.platform,
@@ -7104,6 +7145,10 @@ export default function App({ loginOnly = false }){
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:UI.canvas,flexDirection:"column",gap:20}}>
       <img src="/icon_1024x1024.png" alt="FillSell" style={{width:64,height:64,borderRadius:16,objectFit:"cover",boxShadow:"0 8px 24px rgba(16,32,27,0.12)"}}/>
       <Loader size={32} thickness={3}/>
+      {/* (22/10, Sébastien) Le chargement a une fin : au-delà de 15 s, une phrase, « Réessayer » et
+          « Recharger » ; reprise seule (nouvelle version, nouvel essai, un rechargement par onglet). */}
+      <EcranChargementLong echec={chargementEchoue} buildCourant={APP_BUILD_ID} natif={isNative}
+        reessayer={user?.id?()=>fetchAll(user.id):null}/>
     </div>
   );
 

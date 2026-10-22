@@ -242,7 +242,9 @@ console.log("\n── 7. (06/10) Vinted : session absente, session illisible, «
   const ecranO = readFileSync(new URL("../src/stock/EcranRetraitsBloques.jsx", import.meta.url), "utf8");
   ok("l'écran des retraits porte « C'est fait » pour Opla", /g\.mur === 'opla_sortie' && onOplaFait/.test(ecranO));
   const stock = readFileSync(new URL("../src/tabs/StockTab.jsx", import.meta.url), "utf8");
-  ok("la fiche porte « C'est fait : retirée d'Opla » (statut inchangé)", /cle: 'opla-fait'/.test(stock) && /\.eq\('status', 'cancelled'\)\.select\('id'\)/.test(stock));
+  ok("la fiche porte « C'est fait : retirée d'Opla » (statut inchangé)", /cle: 'opla-fait'/.test(stock) && /\.eq\('status', j\.status\)\.select\('id'\)/.test(stock)
+    // (22/10) la copie Opla marquée par le serveur (opla_a_retirer) l'est aussi ; seul platform_fields change
+    && /\(j\.status === 'published' && j\.platform_fields\?\.opla_a_retirer\)/.test(stock));
 }
 
 console.log(echecs ? `\n${echecs} échec(s)` : "\nTout est vert.");

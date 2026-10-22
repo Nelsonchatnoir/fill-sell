@@ -143,13 +143,47 @@ export function retraitBloqueParOrdinateur(job, extensionVueLe, maintenant = Dat
 // Mur 'opla_sortie' : la personne doit retirer l'annonce elle-même sur Opla,
 // puis toucher « C'est fait » (platform_fields.opla_retire_par_la_personne,
 // posé sur les retraits clos de cette fiche ; le statut ne change pas).
+// (22/10, XEWER — OPLA : PLUS RIEN) Plus aucun retrait Opla ne naît (migration 20261022100000) : l'information
+// est posée UNE fois par le serveur sur la COPIE Opla (job de publication « published »,
+// platform_fields.opla_a_retirer). Une copie ainsi marquée vaut la même ligne que l'ancien retrait clos — une
+// seule par annonce, même quand la fiche a été supprimée (cleAnnonce : le lien, plus le numéro du job).
 const MESSAGE_OPLA_SORTIE_RE = /Opla n'est plus pris en charge par FillSell|peut-être encore en ligne sur Opla/i;
+export function copieOplaARetirer(job) {
+  if (!job || job.platform !== 'opla' || job.status !== 'published' || !['publish', 'republish'].includes(job.action ?? 'publish')) return false;
+  const pf = job.platform_fields && typeof job.platform_fields === 'object' ? job.platform_fields : {};
+  return !!pf.opla_a_retirer && !pf.opla_retire_par_la_personne;
+}
 export function retraitOplaQuittee(job) {
+  if (copieOplaARetirer(job)) return true;
   if (!job || job.action !== 'delete' || job.platform !== 'opla' || job.status !== 'cancelled') return false;
   const pf = job.platform_fields && typeof job.platform_fields === 'object' ? job.platform_fields : {};
   if (pf.opla_retire_par_la_personne) return false;
   return !!pf.opla_sortie || MESSAGE_OPLA_SORTIE_RE.test(String(job.error ?? ''));
 }
+
+// ── (22/10, DeadRoz, XEWER, Tech-t) JAMAIS DE RETRAIT EN ATTENTE SANS FIN ─────
+// Des retraits d'articles VENDUS restaient « pending » des jours (DeadRoz : 2 retraits Beebs depuis le 14/10, l'un
+// en vérification chez Beebs, l'autre « l'essai n'a pas abouti » 23 fois ; XEWER : 2 Beebs en modération) sans
+// AUCUNE ligne dans « À régler » : aucun mur nommé, donc rien à l'écran. Au-delà de 24 h, le retrait d'un article
+// vendu qui n'a pas abouti devient une ligne qui dit exactement quoi faire (FillSell continue d'essayer : la règle
+// du 04/10 — jamais d'arrêt sur un raté technique — tient). Un mur plus précis (connexion, boutique, ordinateur,
+// compte bloqué, Opla) passe toujours avant.
+export const RETRAIT_EN_RETARD_MS = 24 * 3600 * 1000;
+const BEEBS_VERIFICATION_RE = /Beebs (?:vérifie|l'examine|examine)|en vérification|pas encore visible sur Beebs/i;
+/** Beebs garde l'annonce en vérification / modération (elle n'est pas achetable). */
+export function retraitBeebsEnVerification(job) {
+  if (!job || job.platform !== 'beebs') return false;
+  const pf = job.platform_fields && typeof job.platform_fields === 'object' ? job.platform_fields : {};
+  return !!pf.retrait_en_attente_verification || !!pf.beebs_en_moderation || BEEBS_VERIFICATION_RE.test(String(job.error ?? ''));
+}
+/** Ce retrait d'article vendu attend-il depuis plus de 24 h sans aboutir ? */
+export function retraitEnRetard(job, fiche, maintenant = Date.now()) {
+  if (!job || job.action !== 'delete' || !['pending', 'processing', 'needs_user'].includes(job.status)) return false;
+  const ne = ts(job.created_at);
+  if (!ne || maintenant - ne < RETRAIT_EN_RETARD_MS) return false;
+  return retraitApresVente(job, fiche);
+}
+const joursDepuis = (v, maintenant = Date.now()) => Math.max(1, Math.floor((maintenant - ts(v)) / (24 * 3600 * 1000)));
 
 /** Un retrait d'article VENDU : la fiche le dit, ou le serveur l'a armé après une vente. */
 export function retraitApresVente(job, fiche) {
@@ -158,9 +192,12 @@ export function retraitApresVente(job, fiche) {
   return !!(ap && typeof ap === 'object' && /armer_retrait_job/.test(String(ap.pose_par ?? '')));
 }
 
-/** L'annonce visée par un retrait : article (ou le job lui-même), plateforme, lien. */
+/** L'annonce visée par un retrait : article (ou, fiche supprimée, son lien — sinon le job lui-même), plateforme, lien. */
 function cleAnnonce(job) {
-  const article = job.inventaire_id != null ? `a:${job.inventaire_id}` : `j:${job.id}`;
+  // (22/10, XEWER) Fiche supprimée : plusieurs retraits de la MÊME annonce (même lien) font UNE ligne, plus une
+  // par job (9 lignes pour 3 annonces Opla chez XEWER le 22/10).
+  const lien = String(job.listing_url ?? '').trim();
+  const article = job.inventaire_id != null ? `a:${job.inventaire_id}` : (lien ? 'sans-fiche' : `j:${job.id}`);
   return `${article}|${job.platform ?? ''}|${job.listing_url ?? ''}`;
 }
 
@@ -188,6 +225,16 @@ export function retraitsBloquesParConnexion({ jobs = [], fiches = null, maintena
     const vu = derniers.get(c);
     if (!vu || ts(j.created_at) > ts(vu.created_at)) derniers.set(c, j);
   }
+  // 1 bis. (22/10) Une copie Opla marquée par le serveur, sans retrait de la même annonce : sa ligne — seulement
+  // si l'article est vendu ou si sa fiche n'existe plus (un article revenu au stock n'a rien à retirer).
+  for (const j of jobs ?? []) {
+    if (!copieOplaARetirer(j)) continue;
+    const c = cleAnnonce(j);
+    if (derniers.has(c)) continue;
+    const fiche = lireFiche(fiches, j.inventaire_id);
+    if (fiche && fiche.statut !== 'vendu') continue;
+    derniers.set(c, j);
+  }
   // 2. Ceux qui attendent une reconnexion, groupés par plateforme.
   const groupes = new Map();
   const parArticle = new Map();
@@ -195,17 +242,19 @@ export function retraitsBloquesParConnexion({ jobs = [], fiches = null, maintena
     // Ordre : le mur le plus précis d'abord. `extensionVueLe === undefined`
     // (appelant d'avant le 12/10) : le mur « ordinateur » n'est pas jugé.
     const boutique = retraitBloqueParBoutique(j);
+    const fiche = lireFiche(fiches, j.inventaire_id);
     const mur = retraitOplaQuittee(j) ? 'opla_sortie'
       : retraitBloqueParCompteVinted(j) ? 'compte_bloque'
       : retraitBloqueParConnexion(j, maintenant) ? 'connexion'
         : boutique ? 'boutique'
           : (extensionVueLe !== undefined && retraitBloqueParOrdinateur(j, extensionVueLe, maintenant)) ? 'ordinateur'
-            : null;
+            : retraitEnRetard(j, fiche, maintenant) ? 'en_retard'
+              : null;
     if (!mur) continue;
-    const fiche = lireFiche(fiches, j.inventaire_id);
     const titre = String(fiche?.title ?? fiche?.titre ?? j.title ?? '').trim() || null;
     const login = boutique ? (boutique.login || (boutique.boutique != null ? loginsBoutiques?.[String(boutique.boutique)] ?? null : null)) : null;
-    const ligne = { job: j, titre, inventaireId: j.inventaire_id ?? null, vendu: retraitApresVente(j, fiche), fiche, mur, ...(boutique ? { boutique: login ? `@${String(login).replace(/^@/, '')}` : null } : {}) };
+    const ligne = { job: j, titre, inventaireId: j.inventaire_id ?? null, vendu: retraitApresVente(j, fiche), fiche, mur, ...(boutique ? { boutique: login ? `@${String(login).replace(/^@/, '')}` : null } : {}),
+      ...(mur === 'en_retard' ? { jours: joursDepuis(j.created_at, maintenant), verificationBeebs: retraitBeebsEnVerification(j) } : {}) };
     const cle = `${j.platform}|${mur}${mur === 'boutique' ? `|${ligne.boutique ?? ''}` : ''}`;
     if (!groupes.has(cle)) groupes.set(cle, []);
     groupes.get(cle).push(ligne);
@@ -274,6 +323,25 @@ export function texteRetraitsBloques(groupe, lang = 'fr') {
       ? `${quoiOp} : FillSell ne gère plus Opla, retire-${plus ? 'les' : 'la'} toi-même sur Opla, puis touche « C'est fait » — risque de double vente.`
       : `${quoiOp}: FillSell no longer handles Opla, remove ${plus ? 'them' : 'it'} yourself on Opla, then tap "Done" — risk of selling twice.`;
   }
+  // (22/10) En retard : la phrase dit le geste ; FillSell continue d'essayer.
+  if (groupe.mur === 'en_retard') {
+    const jours = Math.max(...groupe.lignes.map((l) => Number(l.jours) || 1));
+    const depuis = fr ? `depuis ${jours} jour${jours > 1 ? 's' : ''}` : `for ${jours} day${jours > 1 ? 's' : ''}`;
+    // Vu le 22/10 dans « Mes annonces › En cours de vérification » : la carte n'a AUCUN geste (ni Supprimer, ni
+    // Modifier) et la page publique répond 404 (test du 03/10) — Beebs ne laisse supprimer une annonce qu'une fois en
+    // ligne. Elle n'est pas achetable pendant ce temps : la phrase le dit, sans geste impossible.
+    if (groupe.lignes.every((l) => l.verificationBeebs)) {
+      return fr
+        ? `${n} article${plus ? 's' : ''} vendu${plus ? 's' : ''} : Beebs garde ${plus ? 'leurs annonces' : 'son annonce'} en vérification ${depuis}. Pendant la vérification, ${plus ? 'elles ne sont' : 'elle n’est'} pas achetable${plus ? 's' : ''} et Beebs ne permet pas de ${plus ? 'les' : 'la'} supprimer : FillSell ${plus ? 'les' : 'la'} retirera dès que Beebs ${plus ? 'les' : 'la'} met en ligne. Pour ${plus ? 'les' : 'la'} faire disparaître avant, demande-le au support Beebs.`
+        : `${n} sold item${plus ? 's' : ''}: Beebs has kept ${plus ? 'their listings' : 'its listing'} under review ${depuis}. While under review ${plus ? 'they cannot' : 'it cannot'} be bought and Beebs does not allow deleting ${plus ? 'them' : 'it'}: FillSell will remove ${plus ? 'them' : 'it'} as soon as Beebs puts ${plus ? 'them' : 'it'} online. To have ${plus ? 'them' : 'it'} removed sooner, ask Beebs support.`;
+    }
+    const quoiR = nVendus === n
+      ? (fr ? `${n} article${plus ? 's' : ''} vendu${plus ? 's' : ''} encore en ligne sur ${nom}` : `${n} sold item${plus ? 's' : ''} still live on ${nom}`)
+      : (fr ? `${n} annonce${plus ? 's' : ''} à retirer encore en ligne sur ${nom}` : `${n} listing${plus ? 's' : ''} to remove still live on ${nom}`);
+    return fr
+      ? `${quoiR} : le retrait n'a pas abouti ${depuis}. Retire-${plus ? 'les' : 'la'} toi-même sur ${nom} — risque de double vente. FillSell continue d'essayer et s'arrête dès que l'annonce n'y est plus.`
+      : `${quoiR}: the removal has not gone through ${depuis}. Remove ${plus ? 'them' : 'it'} yourself on ${nom} — risk of selling twice. FillSell keeps trying and stops as soon as the listing is gone.`;
+  }
   if (groupe.mur === 'compte_bloque') {
     const risqueCb = nVendus > 0 ? (fr ? ' — risque de double vente' : ' — risk of selling twice') : '';
     return fr
@@ -316,6 +384,11 @@ export function ligneCarteRetraitBloque(platform, lang = 'fr', mur = 'connexion'
     return lang === 'en'
       ? 'Maybe still live on Opla — FillSell no longer handles Opla: remove it yourself on Opla (risk of selling twice)'
       : 'Peut-être encore en ligne sur Opla — FillSell ne gère plus Opla : retire-la toi-même sur Opla (risque de double vente)';
+  }
+  if (mur === 'en_retard') {
+    return lang === 'en'
+      ? `Removal from ${nom} not done for over a day — remove it yourself on ${nom} (risk of selling twice)`
+      : `Retrait ${nom} en échec depuis plus d'un jour — retire-la toi-même sur ${nom} (risque de double vente)`;
   }
   if (mur === 'compte_bloque') {
     return lang === 'en'
@@ -376,6 +449,8 @@ export function ligneARegler(bloques, lang = 'fr') {
   const cx = [...new Set(groupesDe('connexion').map((g) => g.nom))];
   if (cx.length) gestes.push(fr ? `reconnecte-toi à ${lister(cx)}` : `sign back in to ${lister(cx)}`);
   const cb = [...new Set(groupesDe('compte_bloque').map((g) => g.nom))];
+  // (22/10) Retrait en retard : le geste à la main, sur la plateforme.
+  const rt = [...new Set(groupesDe('en_retard').map((g) => g.nom))];
   const majuscule = (s) => s.charAt(0).toUpperCase() + s.slice(1);
   const phrase = gestes.length
     ? (fr
@@ -387,12 +462,15 @@ export function ligneARegler(bloques, lang = 'fr') {
   const suiteOp = op
     ? (fr ? `${phrase || cb.length ? ' ; ' : ''}Opla : FillSell ne la gère plus, retire toi-même sur Opla ce qui y est encore, puis « C'est fait »` : `${phrase || cb.length ? '; ' : ''}Opla: FillSell no longer handles it, remove yourself on Opla what is still there, then "Done"`)
     : '';
+  const suiteRt = rt.length
+    ? (fr ? `${phrase || cb.length || op ? ' ; ' : ''}${lister(rt)} : le retrait n'a pas abouti depuis plus d'un jour, retire-${n > 1 ? 'les' : 'la'} toi-même (FillSell continue d'essayer)` : `${phrase || cb.length || op ? '; ' : ''}${lister(rt)}: the removal has not gone through for over a day, remove ${n > 1 ? 'them' : 'it'} yourself (FillSell keeps trying)`)
+    : '';
   const suiteCb = cb.length
     ? (fr ? `${phrase ? ' ; ' : ''}« compte bloqué » sur ${lister(cb)} : retire-les depuis l'appli` : `${phrase ? '; ' : ''}"account blocked" on ${lister(cb)}: remove them from the app`)
     : '';
   // (12/10 soir) Le risque n'est dit que pour un mur qui n'est pas « boutique ».
   const risqueMele = (bloques?.parPlateforme ?? []).some((g) => (g.mur ?? 'connexion') !== 'boutique');
-  return { titre, detail: `${majuscule(`${phrase}${suiteCb}${suiteOp}`.replace(/^ ?; /, ''))}${risqueMele ? (fr ? ' — risque de double vente.' : ' — risk of selling twice.') : '.'}` };
+  return { titre, detail: `${majuscule(`${phrase}${suiteCb}${suiteOp}${suiteRt}`.replace(/^ ?; /, ''))}${risqueMele ? (fr ? ' — risque de double vente.' : ' — risk of selling twice.') : '.'}` };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -437,6 +515,10 @@ function gesteVenduEnLigne(g, lang = 'fr') {
       return fr
         ? `FillSell ne gère plus Opla : retire-${la} toi-même sur Opla, puis touche « C'est fait » dans la fiche`
         : `FillSell no longer handles Opla: remove ${la} yourself on Opla, then tap "Done" on the item`;
+    case 'en_retard':
+      return fr
+        ? `le retrait n'a pas abouti depuis plus d'un jour : retire-${la} toi-même sur ${noms} (FillSell continue d'essayer)`
+        : `the removal has not gone through for over a day: remove ${la} yourself on ${noms} (FillSell keeps trying)`;
     case 'a_retirer':
       return fr
         ? `${plus ? 'elles attendent' : 'elle attend'} ton accord : touche « Retirer » dans la fiche, FillSell ${la} retire depuis ton ordinateur`

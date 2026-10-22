@@ -251,6 +251,7 @@
     "selftest:tailles-titre": "node scripts/tailles-titre-selftest.mjs",
     "selftest:taille-unique": "node scripts/taille-unique-selftest.mjs",
     "selftest:urgences-2010": "node scripts/urgences-2010-selftest.mjs",
+    "selftest:cinq-points-2210": "node scripts/cinq-points-2210-selftest.mjs",
     "selftest:lbc-identite-carte": "node scripts/lbc-identite-carte-selftest.mjs",
     "selftest:recreation-impasse-vinted": "node scripts/recreation-impasse-vinted-selftest.mjs",
     "selftest:retraits-motifs-vrais": "node scripts/retraits-motifs-vrais-selftest.mjs",
