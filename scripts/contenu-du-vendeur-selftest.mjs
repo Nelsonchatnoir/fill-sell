@@ -200,6 +200,53 @@ console.log("D. LES CHEMINS PORTENT LA RÈGLE (lecture du code)");
   ok(/rpc\/lecture_origine_faite/.test(lecteur), "extension : une lecture faite clôt la demande (jamais une attente sans fin)");
 }
 
+console.log("E. (22/10 nuit, décisions de Nico) L'ÉTAT JAMAIS DÉGRADÉ EN REPUBLICATION ; VINTED : LA CAPTURE CORRIGÉE PAR LA FICHE");
+{
+  // Une republication recopie un ancien dépôt : un état plus bas que la fiche remonte, même lu avant la copie.
+  const f = { ...ficheLue("releve_leboncoin"), attributs: { etat: { v: "Neuf sans étiquette", at: "2026-09-01T10:00:00.000Z" }, description_source: { v: "releve_leboncoin", at: "2026-09-01T10:00:00.000Z" } } };
+  const rep = { ...copieDuMoteur("leboncoin", "republish", "releve_leboncoin"), description: DESCRIPTION_VENDEUR, platform_fields: { etat: "Très bon état" } };
+  const imp = contenuAImposer(rep, f, { contenuLe: "2026-10-01T10:00:00.000Z", descriptionLueLe: "2026-09-01T10:00:00.000Z", etatLuLe: "2026-09-01T10:00:00.000Z" });
+  ok(imp.etat === "Neuf sans étiquette", "republication d'un état dégradé (lu avant la copie) : l'état de la fiche", JSON.stringify(imp));
+  const pub = contenuAImposer({ ...rep, action: "publish" }, f, { contenuLe: "2026-10-01T10:00:00.000Z", etatLuLe: "2026-09-01T10:00:00.000Z" });
+  ok(pub.etat === undefined, "publication rédigée après la lecture (vue par la personne) : son état n'est pas touché", JSON.stringify(pub));
+  const haut = contenuAImposer({ ...rep, platform_fields: { etat: "Neuf avec étiquette" } }, f, { contenuLe: "2026-10-01T10:00:00.000Z" });
+  ok(haut.etat === undefined, "état de copie plus HAUT que la fiche : jamais touché (louis-seller, décision de Nico)", JSON.stringify(haut));
+  // Leboncoin : le critère du formulaire (lbcAspects.condition) part AVANT platform_fields.etat — c'est lui qui compte
+  // (vu le 22/10 nuit sur Louis : état imposé « Neuf », critère « Très bon état » repris de l'ancienne annonce).
+  const lbc = contenuAImposer({ ...rep, platform_fields: { etat: "Neuf sans étiquette", lbcAspects: { condition: "Très bon état", toy_type: "Jeux de société" } } }, f,
+    { contenuLe: "2026-10-01T10:00:00.000Z" });
+  ok(lbc.etat === "Neuf sans étiquette", "Leboncoin : critère « Très bon état » sous un état « Neuf » → l'état de la fiche est imposé", JSON.stringify(lbc));
+  const lbcOk = contenuAImposer({ ...rep, platform_fields: { etat: "Neuf sans étiquette", lbcAspects: { condition: "État neuf" } } }, f, { contenuLe: "2026-10-01T10:00:00.000Z" });
+  ok(lbcOk.etat === undefined, "Leboncoin : critère « État neuf » (grille sans étiquette) = la fiche → rien à imposer", JSON.stringify(lbcOk));
+  const gpj = lire("supabase/functions/get-pending-jobs/index.ts");
+  ok(/if \(\/\(_condition\$\|\^condition\$\)\/\.test\(cle\)\s*&& \(\(pf\["contenu_du_vendeur"\]/.test(gpj),
+    "get-pending-jobs : l'état de l'ancienne annonce n'est jamais reposé sur une copie qui a reçu l'état du vendeur");
+}
+{
+  const { correctionCaptureVinted } = await import("../supabase/functions/_shared/capture-corrigee.js");
+  const ficheArt = { origine: null, titre: "Huile sur toile style post impressionisme - P.Vicent - 1977", description: "", attributs: { etat: { v: "Bon état" } } };
+  const c1 = correctionCaptureVinted(ficheArt, { categoryPath: ["Loisirs créatifs", "Peinture", "Toiles et panneaux"], catalog_id_depot: 5267, etat: "Bon état" }, { catalog_id: 5267, status_id: 3 });
+  ok(c1?.libelles.catalog_id_depot === 3847 && c1.libelles.categoryPath.at(-1) === "Peintures" && c1.raisons.join() === "categorie_oeuvre",
+    "paugues : une œuvre rangée en « Toiles et panneaux » repart dans « Peintures » (3847)", JSON.stringify(c1));
+  ok(c1?.libelles.etat === "Bon état" && c1.natif.status_id === 3, "… sans rien toucher d'autre (état, ids)");
+  const c2 = correctionCaptureVinted(ficheArt, { categoryPath: ["Maison", "Décoration", "Décorations murales", "Peintures"], catalog_id_depot: 3847, etat: "Bon état" }, { catalog_id: 3847 });
+  ok(c2 === null, "déjà dans « Peintures » : rien à corriger");
+  ok(correctionCaptureVinted({ ...ficheArt, origine: "vinted_sync" }, { catalog_id_depot: 5267, etat: "Bon état" }, {}) === null,
+    "annonce NÉE sur Vinted (vinted_sync) : celle du vendeur, jamais corrigée");
+  const ficheEtat = { origine: "releve_leboncoin", titre: "Magnifique Pichet Vintage en Céramique Vernissée", description: "", attributs: { etat: { v: "Bon état" } } };
+  const c3 = correctionCaptureVinted(ficheEtat, { categoryPath: ["Maison", "Cuisine"], etat: "Bon état" }, { status_id: 3 }, "Très bon état");
+  ok(c3?.libelles.etat === "Très bon état" && c3.natif.status_id === 2 && c3.raisons.join() === "etat_de_la_fiche",
+    "jocabroc8 : « Bon état » en ligne, « Très bon état » sur la fiche AVANT la capture (qui l'a réécrite) → « Très bon état » (2)", JSON.stringify(c3));
+  ok(correctionCaptureVinted({ ...ficheEtat, attributs: { etat: { v: "Bon état" } } }, { etat: "Très bon état" }, { status_id: 2 }) === null,
+    "état en ligne plus haut que la fiche : jamais redescendu");
+  const gpj = lire("supabase/functions/get-pending-jobs/index.ts");
+  const bloc = gpj.slice(gpj.indexOf("VINTED : LA CAPTURE CORRIGÉE PAR LA FICHE"), gpj.indexOf("UNE REPUBLICATION RECRÉÉE EST FINIE"));
+  ok(/String\(pfN\.republish_step \?\? "a_capturer"\) === "a_capturer"/.test(bloc) && /etat_fiche_avant_capture: \{ v,/.test(bloc),
+    "get-pending-jobs : l'état de la fiche est noté AVANT la capture");
+  ok(/pfC\.republish_step === "captured"/.test(bloc) && /!retraitEngage\(j\)/.test(bloc) && /\.from\("vinted_republish_captures"\)\s*\.update\(/.test(bloc),
+    "get-pending-jobs : la capture est corrigée à l'étape « captured », AVANT tout retrait (le pré-vol remplit avec elle)");
+}
+
 console.log("");
 if (echecs) { console.error(`✗ ${echecs} échec(s) sur ${n} contrôles`); process.exit(1); }
 console.log(`✓ contenu du vendeur : ${n} contrôles — titre, description, état, photos partent tels quels (5 plateformes × 5 imports × publication, lot, republication)`);

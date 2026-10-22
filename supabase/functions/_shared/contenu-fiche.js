@@ -167,11 +167,20 @@ export function contenuAImposer(job, fiche, temps = {}) {
     out.raisons.push("description");
   }
 
-  // ÉTAT — jamais dégradé : l'état du vendeur, lu après la copie, au-dessus de celui de la copie.
+  // ÉTAT — jamais dégradé : l'état du vendeur, au-dessus de celui de la copie, quand il a été lu après la copie — ou,
+  // pour une REPUBLICATION (elle recopie un ancien dépôt, sans nouveau regard de la personne), toujours (décision de
+  // Nico, 22/10 nuit : « l'état de la fiche n'est jamais dégradé »). Un état de copie plus HAUT n'est jamais touché.
   const etatFiche = String(fiche?.attributs?.etat?.v ?? "").trim();
   const tf = tierEtat(etatFiche);
-  const tj = tierEtat(job?.platform_fields?.etat);
-  if (tf && apres(temps.etatLuLe) && (!tj || RANG_ETAT[tj] < RANG_ETAT[tf])) {
+  // Leboncoin : l'état qui part est le critère du formulaire (lbcAspects.condition), posé AVANT platform_fields.etat
+  // par l'extension (etatCandidatsLeboncoin) — c'est lui qu'on compare (vu le 22/10 nuit : « Très bon état » repris
+  // de l'ancienne annonce alors que l'état imposé était « Neuf »).
+  const etatCopie = String(job?.platform ?? "") === "leboncoin"
+    ? (String(job?.platform_fields?.lbcAspects?.condition ?? "").trim() || job?.platform_fields?.etat)
+    : job?.platform_fields?.etat;
+  const tj = tierEtat(etatCopie);
+  const republication = String(job?.action ?? "") === "republish";
+  if (tf && (apres(temps.etatLuLe) || republication) && (!tj || RANG_ETAT[tj] < RANG_ETAT[tf])) {
     // Depop : la copie porte l'état dans le vocabulaire Vinted (le content script le traduit en code Depop).
     const e = etatPourPlateforme(etatFiche, pf === "depop" ? "vinted" : pf);
     if (e?.valeur && !e.meilleur) {

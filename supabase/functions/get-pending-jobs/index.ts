@@ -2,6 +2,7 @@ import { recreationRetientFile } from "../_shared/file-republication.js";
 import { estFileEnPause, jobRetenuParPause, syncDemandeeParLaPersonne, SYNC_DEVANT_FILE_MS, passeAvantLaSynchro } from "../_shared/file-pause.js";
 import { lectureOrigineEnAttente, contenuAImposer, messageLectureOrigine } from "../_shared/contenu-fiche.js";
 import { conformerTexte } from "../../../src/utils/texteConforme.js";
+import { correctionCaptureVinted } from "../_shared/capture-corrigee.js";
 import { EXTENSION_MIN_BUILD, posteExtensionCompatible } from "../_shared/version-min-extension.js";
 // (18/10, lot 5 — hu.anastasia) La pause anti-robot quand Vinted refuse la LECTURE des annonces de sa boutique.
 import { ANTIROBOT_LECTURES_MSG, refusSurSaBoutique, retenuParPauseLectures, signalPauseLectures } from "../_shared/pause-antirobot-vinted.js";
@@ -2590,6 +2591,75 @@ serve(async (req) => {
       }
     }
 
+    // ══ VINTED : LA CAPTURE CORRIGÉE PAR LA FICHE AVANT LA RECRÉATION (22/10 nuit, décisions de Nico) ══
+    // (_shared/capture-corrigee.js) Une republication Vinted recrée l'annonce depuis sa capture. Pour une annonce que
+    // FillSell a déposée (jamais une annonce née sur Vinted) : une œuvre d'art rangée hors du rayon des œuvres repart
+    // dans « Peintures » / « Affiches et reproductions », un état plus bas que celui de la fiche repart avec celui de la
+    // fiche. La capture est corrigée AVANT le passage qui retire puis recrée (étape 'captured' : le pré-vol remplit le
+    // formulaire avec elle pendant que l'annonce est encore en ligne — un formulaire incomplet s'arrête sans rien
+    // retirer). Une fois par capture, tracé sur le job (capture_corrigee_par_la_fiche). Illisible → comme avant.
+    if (!includeProcessing && !includeNeedsUser && out.length) {
+      // Avant la capture : l'état de la fiche est noté sur le job — la capture va le réécrire avec celui de
+      // l'annonce en ligne (capture_vers_inventaire_attributs), c'est celui d'avant qui fait foi.
+      const aNoter = out.filter((j) => {
+        const pfN = (j.platform_fields ?? {}) as Record<string, unknown>;
+        return j.platform === "vinted" && String(j.action) === "republish" && String(pfN.republish_step ?? "a_capturer") === "a_capturer"
+          && !pfN.etat_fiche_avant_capture && j.inventaire_id != null;
+      }).slice(0, 10);
+      if (aNoter.length) {
+        try {
+          const adminN = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+          const { data: fichesN } = await adminN.from("inventaire").select("id, origine, attributs")
+            .eq("user_id", user.id).in("id", aNoter.map((j) => Number(j.inventaire_id)));
+          const parId = new Map(((fichesN ?? []) as Array<Record<string, unknown>>).map((f) => [String(f.id), f]));
+          for (const j of aNoter) {
+            const f = parId.get(String(j.inventaire_id));
+            const v = String(((f?.attributs as Record<string, { v?: unknown }> | null)?.etat?.v) ?? "").trim();
+            if (!f || String(f.origine ?? "") === "vinted_sync" || !v) continue;
+            const pfN = { ...((j.platform_fields ?? {}) as Record<string, unknown>), etat_fiche_avant_capture: { v, le: new Date().toISOString() } };
+            j.platform_fields = pfN;
+            await adminN.from("cross_post_jobs").update({ platform_fields: pfAPersister(pfN) }).eq("id", String(j.id)).eq("status", "pending");
+          }
+        } catch (_e) { /* jamais un point de panne : la capture partira comme avant */ }
+      }
+      const aCorriger = out.filter((j) => {
+        const pfC = (j.platform_fields ?? {}) as Record<string, unknown>;
+        return j.platform === "vinted" && String(j.action) === "republish" && pfC.republish_step === "captured"
+          && pfC.capture_id != null && !retraitEngage(j) && !pfC.capture_corrigee_par_la_fiche && j.inventaire_id != null;
+      }).slice(0, 10);
+      if (aCorriger.length) {
+        try {
+          const adminK = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+          for (const j of aCorriger) {
+            const pfC = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
+            const [{ data: fiche }, { data: cap }] = await Promise.all([
+              adminK.from("inventaire").select("id, origine, titre, description, attributs")
+                .eq("id", Number(j.inventaire_id)).eq("user_id", user.id).maybeSingle(),
+              adminK.from("vinted_republish_captures").select("id, libelles, payload")
+                .eq("id", Number(pfC.capture_id)).eq("inventaire_id", Number(j.inventaire_id)).maybeSingle(),
+            ]);
+            if (!fiche || !cap) continue;
+            const payloadC = ((cap as { payload?: unknown }).payload ?? {}) as Record<string, unknown>;
+            const avantV = (pfC.etat_fiche_avant_capture as { v?: unknown } | undefined)?.v;
+            const avantCapture: string | null = avantV == null ? null : String(avantV);
+            const corr = correctionCaptureVinted(fiche, (cap as { libelles?: unknown }).libelles, payloadC.natif, avantCapture) as
+              { libelles: Record<string, unknown>; natif: Record<string, unknown>; raisons: string[]; avant: Record<string, unknown> } | null;
+            if (!corr) continue;
+            const { error: errCap } = await adminK.from("vinted_republish_captures")
+              .update({ libelles: corr.libelles, payload: { ...payloadC, natif: corr.natif } })
+              .eq("id", Number(pfC.capture_id));
+            if (errCap) { console.warn(`[get-pending-jobs] job ${String(j.id).slice(0, 8)} : capture non corrigée — ${errCap.message}`); continue; }
+            pfC.capture_corrigee_par_la_fiche = { le: new Date().toISOString(), raisons: corr.raisons, avant: corr.avant, pose_par: "get-pending-jobs (22/10 nuit)" };
+            j.platform_fields = pfC;
+            await adminK.from("cross_post_jobs").update({ platform_fields: pfAPersister(pfC) }).eq("id", String(j.id)).eq("status", "pending");
+            console.log(`[get-pending-jobs] job ${String(j.id).slice(0, 8)} (vinted republish) : capture corrigée par la fiche — ${corr.raisons.join(", ")} (catégorie ${JSON.stringify(corr.libelles.categoryPath ?? null)}, état « ${String(corr.libelles.etat ?? "")} »)`);
+          }
+        } catch (e) {
+          console.warn(`[get-pending-jobs] capture corrigée : ${String((e as Error)?.message ?? e)} — file servie telle quelle`);
+        }
+      }
+    }
+
     // ══ UNE REPUBLICATION RECRÉÉE EST FINIE (15/10, P3 — Ornella 9a7b9499) ══
     // Le legging d'Ornella a été recréé le 12/10 (annonce 10352378300, en
     // ligne), mais l'horloge de son ordinateur retardait de 27 min : les dates
@@ -4858,6 +4928,10 @@ serve(async (req) => {
               const valeur = String(b?.["value_label"] ?? "").trim();
               if (!cle || !libelle || !valeur) continue;
               if (String(aspects[cle] ?? "").trim()) continue;          // déjà posé : on n'écrase pas
+              // (22/10 nuit) L'état du VENDEUR a été imposé à cette copie (contenu_du_vendeur) : l'état de l'ancienne
+              // annonce n'est jamais reposé — la correspondance exacte se fait plus bas sur l'état de la fiche.
+              if (/(_condition$|^condition$)/.test(cle)
+                && ((pf["contenu_du_vendeur"] as { raisons?: unknown } | undefined)?.raisons as unknown[] | undefined)?.includes?.("etat")) continue;
               aspects[cle] = valeur;
               posesAsp.push(`${libelle} ← « ${valeur} »`);
             }

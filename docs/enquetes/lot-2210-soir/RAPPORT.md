@@ -242,3 +242,57 @@ sont republiées** ; les autres comptes se corrigent à leur prochaine republica
 7. **1f, les 3 sujets annexes** : *Recommandé* : les traiter au prochain lot avec leur rejeu 30 j.
 8. **Opla** : 14 annonces Opla de louis@ avec un état « comme neuf » au lieu de « neuf » — Opla est quittée : rien à faire,
    à retirer par Louis s'il le souhaite.
+
+## 22/10 nuit — décisions de Nico, faites
+
+**Push et site.** Poussé à 22:14:08 (`412ad2b..e085fed`, puis le commit de cette nuit). Site relu : `build.json` =
+`2026-10-22T20:14:37Z+e085fed` ; `/app-shell.html` 200, son entrée `/assets/index-B26LRSpV.js` 200 (680 Ko) lue avec
+`Origin`, `/login` 200 et sur la même entrée.
+
+**1. États dégradés des comptes payants.** Correction de mon rapport : 54 états dégradés au TOTAL, dont **45** sur des
+comptes payants (les 9 autres sont des comptes gratuits : on n'y touche pas). Sur les 45, **12 republiés** (22:24:25,
+`scripts/reparations/20261022_nuit_etats_degrades_et_oeuvres.sql`, sauvegarde `_backup_2210_nuit_republications`) par le
+geste de l'app : Beebs josephinecerni 34090428, sebimsn10 34184212, xxewwer 34043155 ; Depop nicolas.svobodny (robe) ;
+Leboncoin jocabroc8 3292537287, josephinecerni 3275470510, ornellaracano 3272017443, sebastien64310 3292703560, sebimsn10
+3290232698, tessy.galy 3278090358 ; Vinted jocabroc8 10125580653, sebastien64310 10445026469. Gardes vérifiées pour
+chacune (fiche au stock, aucun doublon en file, aucun retrait, aucune alerte, aucune transaction Leboncoin) ; plafonds,
+quotas et créneaux : ceux du compte (prix 0, inclus). Non republiés, et pourquoi : Opla 14 (quittée), eBay 6 (l'app ne
+republie pas eBay ; 2 ont une alerte « plus en ligne »), Louis 6 (déjà en cours), 4 sans numéro d'annonce, 1 alerte
+Leboncoin (jocabroc8 3276766127), 1 qui n'est plus dégradé (nicolas.svobodny 3277214299), 1 Depop déjà en file.
+**La règle, pour tous** (get-pending-jobs v270 → v271) : en REPUBLICATION, un état plus bas que celui de la fiche remonte
+toujours à l'état de la fiche (un état plus haut n'est jamais touché) ; sur Leboncoin c'est le critère du formulaire
+(`lbcAspects.condition`) qui compte, et l'état de l'ancienne annonce n'est plus jamais reposé sur une copie qui a reçu
+celui du vendeur ; sur Vinted, la capture est corrigée avant le retrait (`_shared/capture-corrigee.js` : l'état de la
+fiche noté AVANT la capture, qui le réécrit). Déjà vu partir : **ornellaracano « Robe Maje paillettes » recréée 3293368542, lue sur la page Leboncoin
+publique : « Neuf avec étiquette » (avant : « Neuf »), 9 photos, son texte** ; josephinecerni (Leboncoin, Beebs) et xxewwer
+(Beebs) en remise en ligne avec l'état imposé ; Nico (Depop, annonce test) : présignature photo refusée par Depop (réseau),
+nouvel essai automatique 1/5. Les comptes dont l'ordinateur est éteint (jocabroc8 depuis
+17:03, sebimsn10 depuis le 19/10, tessy.galy, sebastien64310) partiront à son retour.
+
+**2. Louis.** Vérifié sur les pages Leboncoin publiques : les 4 annonces Green Horde recréées portent SON texte
+(« 🎯 Organisez vos figurines… »), 3 photos (le maximum gratuit de Leboncoin dans « Jeux & Jouets » ; le job en porte 4).
+**Noir 3293342330 : « État neuf ». Orange 3293344712, Rouge 3293347642, Blanc 3293350594 : « Très bon état »** — cause
+trouvée : get-pending-jobs reposait le critère « État » de l'ANCIENNE annonce (relevé) après que l'état du vendeur avait
+été imposé. Corrigé (v271, selftest). Ces 3-là se corrigeront à leur prochaine republication : la règle « une
+republication par annonce et par jour » (refus `cadence_24h` relu) l'interdit avant le 23/10 vers 21:30.
+Bleu, Gris, Rose : retenus par la respiration de son compte (54 republications, reprise 23:43) ; leur copie porte déjà
+l'état de la fiche (« Neuf sans étiquette », critère ancien retiré, 22:30:48), le texte (226 car.) et les 4 photos.
+**À vérifier au prochain check : les 3 pages Leboncoin de Bleu, Gris, Rose (« État neuf »).** Les états « Très bon » de
+louis-seller et les 4 « Rangement … 12 pots » : non touchés. **L'annonce Beebs sans numéro (« Maison de poupées
+miniatures - le café ») n'existe pas sur Beebs** : 4 relevés COMPLETS de louis-seller depuis son dépôt (21/10 22:44,
+22/10 04:53, 11:45, 18:28 ; 262 annonces vivantes, toutes rattachées) ne la portent pas, et la page « en vérification »
+juste après le dépôt n'avait qu'une carte (la supérette 34206427). Rien à rattacher : la règle du 20/10 la classe
+« publication non aboutie » à 72 h (23/10 vers 23:39) ; la fiche reste au stock.
+
+**3. paugues.** Ses 2 œuvres republiées (22:24:25) : « Huile sur toile style post impressionisme - P.Vicent - 1977 »
+(Vinted 10450175638, « Toiles et panneaux ») et « Huile sur panneau de bois - Style école française du XIX° » (Vinted
+10474010355, « Encadrements »). La republication Vinted recrée depuis la capture : la capture est corrigée vers
+« Peintures » (3847) AVANT le retrait ; un formulaire incomplet s'arrête sans rien retirer (pré-vol). Son ordinateur est
+éteint depuis 18:53 : **à vérifier au prochain check — les 2 annonces en « Peintures » sur Vinted.**
+
+**Selftests** : suite complète rejouée après les changements de la nuit — **383 jouée, 382 verts**, seul rouge
+`messages-cause-vraie` (d'avant) ; `contenu-du-vendeur` passe à 253 contrôles (état en republication, critère Leboncoin,
+capture Vinted corrigée).
+
+**Mails** : `email_logs` relu avant et après chaque geste — rien de parti par ce lot (les 3 mails du soir sont deux ventes
+Vinted réelles, xxewwer 21:52 et tiblancdeshaut 22:10, et un « extension_link »).

@@ -399,3 +399,12 @@
   min) : servie devant la file, seuls retraits et republications retirées partent avec elle ; l'extension ≥ 0.6.130
   s'arrête entre deux tâches et relance un poll. **Garde absolue** : aucun relevé de la plateforme entre le retrait et la
   recréation d'une republication (déclencheur `garde_releve_pendant_republication`, get-pending-jobs).
+- (22/10 nuit) **En republication, l'état de la fiche ne descend jamais** (`contenuAImposer`) : un état de copie plus BAS
+  que celui de la fiche remonte, quelle que soit la date de lecture ; plus haut, jamais touché. Leboncoin : l'état qui part
+  est `lbcAspects.condition` (posé avant `platform_fields.etat`) — c'est lui qu'on compare, et get-pending-jobs ne repose
+  plus le critère « État » de l'ancienne annonce sur une copie marquée `contenu_du_vendeur` (raison `etat`).
+- (22/10 nuit) **Vinted : la capture corrigée par la fiche** (`_shared/capture-corrigee.js`), seulement pour une annonce
+  déposée par FillSell (jamais `vinted_sync`) : œuvre d'art hors du rayon des œuvres → « Peintures » / « Affiches et
+  reproductions » ; état plus bas que la fiche → état de la fiche (`etat_fiche_avant_capture` noté à l'étape
+  `a_capturer`, car la capture réécrit l'état de la fiche). Corrigée à l'étape `captured`, avant tout retrait.
+- (22/10 nuit) Une annonce ne se republie pas deux fois en 24 h (`cadence_24h`) : une correction ratée attend la suivante.
