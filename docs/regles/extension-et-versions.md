@@ -62,3 +62,8 @@
   ouverte ailleurs, réservés par lui) ne tiennent pas celui-ci éveillé. Le plafond de 4 h ne disparaît qu'avec la
   **0.6.127** (à téléverser APRÈS l'acceptation de la 0.6.126). Selftest `eveil-file`. Texte de `Legal.jsx` (permission
   `power`) aligné.
+- **0.6.130** (22/10 soir, à téléverser) : contient toute la 0.6.129. ⛔ Le verrou de flux (`withJobFlowLock`) n'est PAS
+  réentrant : une fonction appelée DANS le poll n'appelle jamais une fonction qui le reprend (`fetchVintedItemDetail`) —
+  utiliser la version « sous verrou » (`lireDetailVintedSousVerrou`), sinon toute la file se fige. Le dossier
+  `FillSell-Extension-Nico` ne se recharge pas seul : y copier un build sans que Nico recharge laisse un état mélangé —
+  ne pas le faire.

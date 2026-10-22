@@ -297,3 +297,8 @@ Rapport : `docs/enquetes/dix-points-1710/RAPPORT.md` (points 1, 4, 5, 7, 9).
 - Depop : pointure enfant nue (« 33 », « EUR 33 ») = « EU 33 » (grille 104) ; « EU n » = « n » sur les grilles EUR paires
   9 / 81 / 40 (jamais la 62 : W ambigu, question). get-pending-jobs pose la taille de la FICHE sur une copie Depop VIDE
   (publication seulement), traduite par `tailleDepop` ; le connecteur demande hors grille.
+- (22/10 soir) **Une œuvre d'art n'est jamais un cosmétique** (`src/utils/oeuvreDArt.js`, miroir exact dans l'extension,
+  selftest `oeuvre-d-art`) : type Maison, icône 🖼️, jamais refusée par Leboncoin ; Vinted : Peintures (3847) ou Affiches
+  et reproductions (3849). Ne prend que le « Beauté » / l'icône de soin (jamais au-dessus d'un autre type).
+- (22/10 soir) **Le rayon (genre) Beebs / Vinted à choisir est une question avec ses boutons** (`moteur/genreAChoisir.js`) :
+  seuls les rayons qui résolvent une vraie catégorie ; posé seul quand c'est sûr, et dit ; tracé `genre_rayon`.

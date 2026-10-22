@@ -380,3 +380,22 @@
 - « ✋ Compléter » (StockTab `NeedsUserModal`) ne remplit qu'une case VIDE de la fiche et n'écrit jamais « Autre » —
   comme l'écran Publier. Avant : la réponse dans la grille d'UNE plateforme écrasait la taille de la fiche au rang
   « manuel » (34 fiches en 30 j). Johan (21/10) : les questions venaient de fiches Lens SANS taille — rien à traduire.
+
+## 22/10 soir — le contenu du vendeur part tel quel ; pause de la file ; synchro devant la file (rapport `docs/enquetes/lot-2210-soir/RAPPORT.md`)
+- **Fiche importée pas encore lue = pas de départ** (`_shared/contenu-fiche.js`, `lectureOrigineEnAttente`, même règle au
+  Stock, au lot et dans get-pending-jobs) : Vinted attend la description (détail lu par l'extension ≥ 0.6.130 ou l'app
+  sur l'ordinateur) ; Leboncoin / Beebs / Depop attendent la capture de l'annonce d'origine (relevé de veille
+  `serveur:lecture_origine`) ; eBay jamais (API). Jamais une attente sans fin : lecture faite (`lectures_origine_demandees.
+  faite_le`), annonce Vinted disparue, annonce d'origine disparue ou déjà lue → on part. Phrase : « En cours de lecture
+  de ton annonce d'origine… », jamais une erreur.
+- **Au départ** (get-pending-jobs, `contenuAImposer`) : une copie rédigée AVANT la lecture du vendeur, ou avant la règle du
+  21/09 (`REGLE_TEXTE_VENDEUR_LE`), reçoit son texte (conformé), son état (jamais dégradé ; Depop en vocabulaire Vinted)
+  et toutes ses photos (chez nous seulement, sinon `photos_a_rapatrier`) ; la copie en base est corrigée
+  (`contenu_du_vendeur`). Jamais au-dessus d'un choix (copie rédigée après la lecture, photos retouchées). Une
+  republication VINTED n'est jamais retenue ni touchée (recréée depuis l'annonce en ligne). Selftest PERMANENT
+  `contenu-du-vendeur`.
+- **Pause** (`file_pause_basculer`, `platform_settings.file_pause`) : rien de ce qui n'a pas commencé ne part ; un retrait
+  n'est JAMAIS en pause ; une republication retirée va au bout. **Synchro de la personne** (déclencheur bouton / app, < 10
+  min) : servie devant la file, seuls retraits et republications retirées partent avec elle ; l'extension ≥ 0.6.130
+  s'arrête entre deux tâches et relance un poll. **Garde absolue** : aucun relevé de la plateforme entre le retrait et la
+  recréation d'une republication (déclencheur `garde_releve_pendant_republication`, get-pending-jobs).

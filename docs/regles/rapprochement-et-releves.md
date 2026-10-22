@@ -290,3 +290,15 @@ trois relevés et deux reprises lancés tout seuls, aucun Vinted abouti, un faux
   logo atténué, ni lot, ni stepper, ni « Pas encore ») ; un dépôt refusé pour ce doublon est clos sans rouge. L'annonce
   reste celle du compte qui l'a publiée (option B inchangée). « Rattachement par identifiant 0 » dans le message d'un
   relevé est un compteur à 0 en dur depuis le 07/10 : le rattachement réel est dans `rapprochement`. Migration `20261020210000`.
+
+## 22/10 soir — boutique partagée, alertes tenues (rapport `docs/enquetes/lot-2210-soir/RAPPORT.md` § 3 et 5)
+- Un relevé qui voit l'annonce du COMPTE RELIÉ dans la boutique commune rafraîchit la présence (vu, en ligne) chez le
+  compte qui l'a publiée — jamais une vente, un prix, un titre (`annonces_plateforme_un_compte`).
+- Une nouvelle alerte « plus en ligne » est tenue (`cross_post_jobs_zz_alerte_tenue`) : article en republication →
+  écartée ; remplacé par sa propre republication → clos sans question ; jumelle du compte relié en ligne → close
+  « remplacée par l'annonce de ton compte relié » (constat) ou à confirmer (veille) ; déjà démentie par un relevé → à
+  confirmer. Une vente prouvée (`sold`) passe toujours. `constater_absences_releve` ignore un article en republication ;
+  `inventaire.disparu_le` n'est jamais posé pendant une republication Vinted.
+- Leboncoin (extension 0.6.130) : un 410 d'une annonce publiée il y a moins de 2 h (modération) = « inconnu », jamais
+  mémorisé ; `/ad/<id>` se lit `/vi/<id>.htm`. Beebs : un retrait clos sans preuve puis revu en ligne est réarmé
+  (`retraits_beebs_rearmer_revus`, 3 fois au plus).

@@ -138,6 +138,17 @@ for (const { origine } of ORIGINES) {
 ok(contenuAImposer(copieDuMoteur("leboncoin", "publish", "x"), { id: 2, origine: null, description: "Brouillon", attributs: {} },
   { contenuLe: AVANT_LECTURE, descriptionLueLe: LECTURE }).raisons.length === 0, "fiche du Lens (texte rédigé par nous) : rien d'imposé");
 
+// (22/10 soir) Une copie rédigée AVANT la règle du 21/09 (le moteur réécrivait le texte du vendeur même quand la
+// fiche le portait) : chaque republication la recopiait — elle reçoit le texte du vendeur, lu avant ou après.
+{
+  const f = ficheLue("releve_beebs");
+  const vieille = { ...copieDuMoteur("leboncoin", "republish", "releve_beebs"), created_at: "2026-10-18T13:00:00.000Z" };
+  const imp = contenuAImposer(vieille, f, { contenuLe: "2026-09-19T16:00:00.000Z", descriptionLueLe: "2026-09-18T10:00:00.000Z" });
+  ok(imp.description === DESCRIPTION_VENDEUR, "republication d'un dépôt du 19/09 (avant la règle du 21/09) : le texte du vendeur, même lu avant", JSON.stringify(imp.raisons));
+  const recente = contenuAImposer(vieille, f, { contenuLe: "2026-10-01T16:00:00.000Z", descriptionLueLe: "2026-09-18T10:00:00.000Z" });
+  ok(recente.description === undefined, "dépôt du 01/10 rédigé APRÈS la lecture (la règle en place) : sa copie n'est pas touchée", JSON.stringify(recente.raisons));
+}
+
 console.log("C. JAMAIS AU-DESSUS D'UN CHOIX DE LA PERSONNE, NI D'UNE ADAPTATION");
 {
   const f = ficheLue("releve_beebs");

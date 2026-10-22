@@ -31,6 +31,9 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import { tierEtat, RANG_ETAT, etatPourPlateforme } from "./etat-plateformes.js";
 
+/** La règle « le texte du vendeur fait foi » (generate-listing, 21/09) : une copie rédigée avant n'est jamais un choix. */
+export const REGLE_TEXTE_VENDEUR_LE = "2026-09-22T00:00:00+02:00";
+
 /** Les plateformes dont un import peut naître (Opla : sortie le 10/10, plus aucun import). */
 export const PLATEFORMES_IMPORT = Object.freeze(["vinted", "leboncoin", "beebs", "ebay", "depop"]);
 
@@ -154,9 +157,12 @@ export function contenuAImposer(job, fiche, temps = {}) {
   const apres = (iso) => { const t = Date.parse(String(iso ?? "")); return Number.isFinite(t) && t > t0; };
   const pf = String(job.platform ?? "");
 
-  // DESCRIPTION — lue chez le vendeur APRÈS que la copie a été rédigée, et absente de la copie.
+  // DESCRIPTION — absente de la copie, et lue chez le vendeur APRÈS que la copie a été rédigée — ou copie rédigée
+  // AVANT la règle « le texte du vendeur fait foi » (21/09) : le moteur réécrivait alors le texte du vendeur même
+  // quand la fiche le portait, et chaque republication recopie ce dépôt (Louis, « Black Plague », 22/10).
   const fd = String(fiche.description ?? "").trim();
-  if (texteSuffisant(fd) && apres(temps.descriptionLueLe) && !copieReprendLeTexte(job.description, fd)) {
+  const avantRegle = t0 < Date.parse(REGLE_TEXTE_VENDEUR_LE);
+  if (texteSuffisant(fd) && (apres(temps.descriptionLueLe) || avantRegle) && !copieReprendLeTexte(job.description, fd)) {
     out.description = fd;
     out.raisons.push("description");
   }
