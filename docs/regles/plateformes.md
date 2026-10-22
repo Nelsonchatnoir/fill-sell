@@ -287,3 +287,13 @@ Rapport : `docs/enquetes/dix-points-1710/RAPPORT.md` (points 1, 4, 5, 7, 9).
 - **Leboncoin PRO** : le formulaire PRO n'a pas la case livraison ; ses critères (poids du colis) arrivent tard — la sonde
   attend 15 s, la seconde passe tourne sans elle, et le verdict repose toute valeur du job présente dans la liste
   (extension 0.6.128). Un mur « paiement » vu lors d'un passage PRÉCÉDENT ne déclasse plus la question (update-job-status).
+
+## ⛔ 22/10 — Opla : plus rien ; Depop : deux écritures de la même taille (rapport `docs/enquetes/cinq-points-2210/RAPPORT.md` § 3-4)
+- Aucun job Opla ne naît plus : `armer_retrait_job_pour`, le filet de suppression et l'app n'arment plus de retrait Opla,
+  `garde_opla_sortie_jobs` n'écrit pas un retrait Opla inséré (ancienne app) ; l'information « retire-la toi-même sur
+  Opla » est posée UNE fois sur la copie (`platform_fields.opla_a_retirer`, `opla_copie_a_retirer_noter`) ; « C'est fait »
+  la marque. Le moteur de rapprochement ne lit, n'importe ni ne rattache plus aucune annonce Opla orpheline.
+  Migration `20261022100000` ; tout est borné par `opla_sortie_passee()`.
+- Depop : pointure enfant nue (« 33 », « EUR 33 ») = « EU 33 » (grille 104) ; « EU n » = « n » sur les grilles EUR paires
+  9 / 81 / 40 (jamais la 62 : W ambigu, question). get-pending-jobs pose la taille de la FICHE sur une copie Depop VIDE
+  (publication seulement), traduite par `tailleDepop` ; le connecteur demande hors grille.

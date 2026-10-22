@@ -160,3 +160,11 @@ préparation, du 09/10 22:13 au 10/10). Le build la REFUSE désormais
 (`src/components/BarriereErreur.jsx`) : l'article qui casse est mis de côté
 avec une phrase, les autres continuent — jamais tout l'écran.
 
+
+## ⛔ 22/10 — le chargement de l'app a une fin (Sébastien ; rapport `docs/enquetes/cinq-points-2210/RAPPORT.md` § 5)
+- Toute lecture PostgREST (GET/HEAD `/rest/v1/`) est bornée à 30 s CORPS COMPRIS (`src/utils/chargementBorne.js`,
+  `global.fetch` du client) ; écritures, RPC, auth, storage, fonctions : intactes. Un seul `fetchAll` en vol
+  (`fileUnique`). Premier chargement sans stock/ventes : écran de reprise (`EcranChargementLong`), jamais un stock vide.
+- Au-delà de 15 s sur le logo : phrase + « Réessayer » + « Recharger » ; version en ligne → un rechargement ; un
+  rechargement par onglet et par build à 45 s (`fs_recharge_chargement`) ; nouvelle version : une fois par build distant
+  (`fs_recharge_build`). Le 22/10, la cause était le RÉSEAU de la personne (QUIC cassé), pas le déploiement.

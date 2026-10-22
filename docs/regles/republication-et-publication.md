@@ -375,3 +375,8 @@
 - **Preuve** : rejeu symétrique `scripts/bancs/taille-unique/rejeu-taille-unique.mjs` (écran 7 j 99 → 99, serveur 7 j
   0 écart, 90 j publiées 0 changée) ; banc du moteur réel 8/8 ; selftest `taille-unique`. Rapport :
   `docs/enquetes/taille-unique-1910/RAPPORT.md`.
+
+## 22/10 — la réponse à une plateforme ne réécrit jamais la fiche (Louis, DeadRoz ; rapport `docs/enquetes/cinq-points-2210/RAPPORT.md` § 4)
+- « ✋ Compléter » (StockTab `NeedsUserModal`) ne remplit qu'une case VIDE de la fiche et n'écrit jamais « Autre » —
+  comme l'écran Publier. Avant : la réponse dans la grille d'UNE plateforme écrasait la taille de la fiche au rang
+  « manuel » (34 fiches en 30 j). Johan (21/10) : les questions venaient de fiches Lens SANS taille — rien à traduire.

@@ -266,3 +266,21 @@ Rapport : `docs/enquetes/session-sans-nico-1810/lot4-ventes-lot-multi-exemplaire
   rouge si l'article est en ligne ailleurs (même fiche, ou fiche jumelle d'un compte relié).
 - Hors règle : une annonce vue en ligne puis disparue (la question d'avant), une preuve « sold », Vinted (sa preuve est
   le dressing), une recréation (republish, circuit « introuvable à confirmer »). Migration `20261020220000`.
+
+## ⛔ 22/10 — Leboncoin : « Achat en cours » = vente ; un retrait en retard se dit (rapport `docs/enquetes/cinq-points-2210/RAPPORT.md` § 1-2)
+- La transaction lue par le relevé Leboncoin (`transaction_status` : `pending` « Achat en cours », `sold` « Vendu » ;
+  colonne `annonces_plateforme.transaction_plateforme`, extension ≥ 0.6.129, sinon la capture) est la PREUVE de vente
+  sur le numéro EXACT : `leboncoin_transaction_noter` pose `sale_signal`/`sale_evidence` (source `transaction_leboncoin`,
+  sans `unavailable_since`) sur LE job publié de ce compte ; `ventes_prouvees_tick` enregistre la vente « Leboncoin » ;
+  retraits ailleurs ; jamais l'annonce Leboncoin retirée ; fiche déjà vendue, plusieurs exemplaires, deux jobs = rien.
+  Seule une TRANSITION agit (déclencheur `annonces_plateforme_transaction_leboncoin`). Migration `20261022110000`.
+- Achat annulé = lu `pending` puis EN LIGNE sans transaction : `vente_transaction_annulee_leboncoin` (vente née de la
+  preuve seulement — jamais une saisie ; fiche au stock ; retraits en file arrêtés ; copies retirées → `remises_en_vente`).
+  `sold` → sans transaction : rien n'est conclu. Interrupteur `coin_config.ventes_leboncoin_transaction`.
+- Note de vente : « Vendu » (transaction terminée) = aucune note ni mail (`push_trg_job`) ; « Achat en cours » : règle
+  du 06/10. Un rattrapage classe AUSSI les notes en attente des fiches touchées (une note du 21/10 est partie le 22/10).
+- Retrait d'un article vendu en attente depuis plus de 24 h sans mur nommé : ligne « À régler » `en_retard`
+  (`src/utils/retraitsBloques.js`), FillSell continue d'essayer. Beebs : une annonce « en cours de vérification » n'a
+  AUCUN geste dans « Mes annonces » (vu le 22/10) et sa page est en 404 — ni supprimable ni achetable.
+- Numéro de retrait manquant : get-pending-jobs (v267) le lit sur l'annonce que le relevé du compte a liée au DÉPÔT
+  exact (`annonces_plateforme.job_id`), une seule vivante — jamais la fiche, le titre, le prix (règle du 11/09).
