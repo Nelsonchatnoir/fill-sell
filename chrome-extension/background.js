@@ -540,9 +540,95 @@ function lbcCategorieHorsBeaute(job) {
   return !(n[0] === "divers" && (n.length === 1 || n[1] === "autres"));
 }
 
+// ── (22/10 soir, 0.6.130, point 2 — paugues) UNE ŒUVRE D'ART N'EST JAMAIS UN COSMÉTIQUE ─────────────────────
+// MIROIR EXACT de src/utils/oeuvreDArt.js (bloc « const B … » jusqu'à la fin de oeuvreDArt) : le selftest
+// `oeuvre-d-art` échoue s'ils divergent. Lu par lbcProduitInterdit : une peinture, une estampe, une gravure ne
+// sont jamais refusées comme « cosmétique » (« Huile post impressionniste biblique sur carton »).
+const oeuvreDArtExtension = (() => {
+// <<< OEUVRE_D_ART_DEBUT
+const B = "(?<![\\p{L}\\p{N}])";   // borne gauche Unicode
+const E = "(?![\\p{L}\\p{N}])";    // borne droite Unicode
+
+// Les SUPPORTS d'une œuvre.
+const SUPPORT = "(?:toiles?|carton(?:s|\\s+fort|\\s+entoil[ée])?|panneaux?|bois|papier|isorel|lin|cuivre|masonite|soie|velin|vélin)";
+// Les TECHNIQUES picturales (et le dessin).
+const TECHNIQUE = "(?:huiles?|acryliques?|gouaches?|aquarelles?|pastels?|fusains?|sanguines?|encres?(?:\\s+de\\s+chine)?|lavis|techniques?\\s+mixtes?|crayons?\\s+(?:gras|de\\s+couleur|graphite)|mines?\\s+de\\s+plomb|graphite)";
+// Les signes de l'œuvre (qui font d'une « peinture » / d'un « tableau » une œuvre).
+const SIGNE = "(?:sign[ée]e?s?|peintres?|artistes?|œuvres?|oeuvres?|encadr[ée]e?s?|num[ée]rot[ée]e?s?|impressionnis\\w*|expressionnis\\w*|post[\\s-]?impressionnis\\w*|cubis\\w*|fauvis\\w*|surr[ée]alis\\w*|abstraite?s?|figurati\\w*|na[ïi]f|na[ïi]ve|paysages?|portraits?|natures?\\s+mortes?|sc[èe]nes?\\s+de|[ée]cole\\s+(?:fran[çc]aise|flamande|hollandaise|italienne|de)|xx[e°]?(?:\\s*si[èe]cle)?|xix[e°]?(?:\\s*si[èe]cle)?|xviii[e°]?|si[èe]cle|d[ée]dicac[ée]e?)";
+
+// Estampes et techniques d'impression (une estampe se nomme d'un mot sans ambiguïté).
+const ESTAMPE_RE = new RegExp(B + "(?:lithographies?|lithos?|gravures?|eaux?[\\s-]fortes?|s[ée]rigraphies?|estampes?|linogravures?|xylographies?|aquatintes?|pointes?[\\s-]s[èe]ches?|[ée]preuves?\\s+d['’]artiste|burins?\\s+originaux)" + E, "iu");
+// Peintures et dessins : une technique SUR un support (même séparés de quelques mots :
+// « Huile post impressionniste biblique sur carton »).
+const TECHNIQUE_SUR_SUPPORT_RE = new RegExp(B + TECHNIQUE + E + "[^.\\n]{0,60}?" + B + "sur\\s+" + SUPPORT + E, "iu");
+// « Peinture à l'huile », « toile peinte », « aquarelle originale »…
+const TECHNIQUE_NOMMEE_RE = new RegExp(
+  B + "(?:peintures?\\s+(?:à\\s+l['’]\\s*)?(?:huile|acrylique|gouache|aquarelle)|toiles?\\s+(?:peintes?|huile)|(?:aquarelles?|gouaches?|pastels?|fusains?|sanguines?)\\s+(?:originale?s?|originaux|sign[ée]e?s?|encadr[ée]e?s?|sur\\s+papier)|dessins?\\s+(?:originaux|original|à\\s+l['’]encre|au\\s+fusain|au\\s+crayon|encadr[ée]s?|sign[ée]s?))" + E,
+  "iu");
+// « Peinture » / « tableau » / « toile » / « pastel » / « fusain » / « dessin » + un SIGNE de l'œuvre dans le texte.
+const MOT_OEUVRE_RE = new RegExp(B + "(?:peintures?|tableaux?|toiles?|pastels?|fusains?|dessins?|croquis|esquisses?)" + E, "iu");
+const SIGNE_RE = new RegExp(B + SIGNE + E, "iu");
+// « Huile » seule n'est jamais une œuvre (bidon, burette, olive, soin) : seulement avec un signe FORT de la peinture
+// (« Portrait ecclésiastique … huile du XIX° », « huile signée ») et sans mot d'huile utilitaire ou de soin.
+const HUILE_RE = new RegExp(B + "huiles?" + E, "iu");
+const SIGNE_FORT_RE = new RegExp(B + "(?:sign[ée]e?s?|peintres?|artistes?|portraits?|paysages?|natures?\\s+mortes?|marines?\\s+(?:voiliers?|bateaux?|port)|xx[e°]?|xix[e°]?|xviii[e°]?|si[èe]cle|[ée]cole\\s+(?:fran[çc]aise|flamande|hollandaise|italienne)|impressionnis\\w*)" + E, "iu");
+const HUILE_UTILITAIRE_RE = new RegExp(B + "(?:bidons?|burettes?|moteurs?|olives?|essentielles?|massages?|visages?|corps|cheveux|barbe|lampes?|friture|cuisine|s[èe]che|d[ée]maquillante|argan|coco|ricin|vidange|graissage|pompes?|bio)" + E, "iu");
+
+// « Œuvre d'art », « œuvre originale », « œuvre signée »…
+const OEUVRE_RE = new RegExp(B + "(?:œuvres?|oeuvres?)\\s+(?:d['’]art|originale?s?|sign[ée]e?s?|unique|de\\s+l['’]artiste|peinte?s?)" + E, "iu");
+// Ce qui n'est PAS une œuvre même avec ces mots : fournitures et bricolage.
+const PAS_UNE_OEUVRE_RE = new RegExp(
+  B + "(?:pots?\\s+de\\s+peinture|rouleaux?(?:\\s+[àa])?\\s+peinture|peintures?\\s+(?:murales?\\s+(?:blanche|mate|satin)|glyc[ée]ro|pour\\s+(?:mur|meuble|bois|métal|metal|plafond|carrelage|sol|tissu|voiture|maquette)|en\\s+(?:pot|bombe|spray)|de\\s+carrosserie)|tableaux?\\s+(?:de\\s+bord|[ée]lectriques?|blancs?|velleda|magn[ée]tiques?|noirs?|p[ée]riodiques?|de\\s+commande)|toiles?\\s+(?:de\\s+tente|cir[ée]es?|de\\s+jute|de\\s+store|de\\s+parasol|de\\s+trampoline|de\\s+peintre\\s+vierges?|vierges?)|set\\s+de\\s+peinture|kit\\s+de\\s+peinture|bo[îi]te\\s+de\\s+(?:peinture|pastels?|crayons?|gouache|aquarelle)|palette\\s+de\\s+(?:maquillage|fards?|ombres?)|crayons?\\s+(?:yeux|l[èe]vres?|sourcils?|khôl|kajal)|tubes?\\s+de\\s+(?:peinture|gouache|aquarelle|acrylique))" + E,
+  "iu");
+
+// Un texte qui COMMENCE par une technique (« Pastel buste de femme - Pierre Almès - 1924 », « Fusain de François
+// Renoyer ») la nomme comme l'objet : œuvre dès qu'elle est attribuée (« de/d' » + un nom propre), datée (une
+// année), ou qu'un signe de l'œuvre suit. « Pull pastel », « Fusain du Japon » (arbuste) ne commencent pas ainsi
+// ou ne sont ni attribués ni datés.
+const TECHNIQUE_EN_TETE_RE = /^[\s"'«“(]*(pastels?|fusains?|sanguines?|aquarelles?|dessins?|croquis|esquisses?|lavis)(?![\p{L}\p{N}])/iu;
+const ATTRIBUTION_RE = /(?<![\p{L}\p{N}])(?:de|d['’]|par)\s*(\p{Lu}[\p{L}'’-]+)/u;
+const ANNEE_RE = /(?<!\d)(?:1[5-9]\d\d|20[0-2]\d)(?!\d)/;
+
+/**
+ * L'article est-il une œuvre d'art ? (titre, description, objet lu par le Lens…)
+ * @param {...string} textes
+ * @returns {null | {famille: 'peinture' | 'estampe', preuve: string}}
+ */
+function oeuvreDArt(...textes) {
+  const t = textes.map((x) => String(x ?? "")).filter(Boolean).join(" \n ");
+  if (!t.trim()) return null;
+  if (PAS_UNE_OEUVRE_RE.test(t) && !ESTAMPE_RE.test(t) && !TECHNIQUE_SUR_SUPPORT_RE.test(t)) return null;
+  let m;
+  if ((m = t.match(ESTAMPE_RE))) return { famille: "estampe", preuve: m[0] };
+  if ((m = t.match(TECHNIQUE_SUR_SUPPORT_RE))) return { famille: "peinture", preuve: m[0] };
+  if ((m = t.match(TECHNIQUE_NOMMEE_RE))) return { famille: "peinture", preuve: m[0] };
+  if ((m = t.match(OEUVRE_RE))) return { famille: "peinture", preuve: m[0] };
+  const mot = t.match(MOT_OEUVRE_RE);
+  const signe = t.match(SIGNE_RE);
+  if (mot && signe) return { famille: "peinture", preuve: `${mot[0]} … ${signe[0]}` };
+  const huile = t.match(HUILE_RE);
+  const fort = t.match(SIGNE_FORT_RE);
+  if (huile && fort && !HUILE_UTILITAIRE_RE.test(t)) return { famille: "peinture", preuve: `${huile[0]} … ${fort[0]}` };
+  for (const x of textes) {
+    const s = String(x ?? "");
+    const tete = s.match(TECHNIQUE_EN_TETE_RE);
+    if (!tete) continue;
+    const suite = s.slice(tete.index + tete[0].length);
+    if (ATTRIBUTION_RE.test(suite) || ANNEE_RE.test(suite) || SIGNE_RE.test(suite)) {
+      return { famille: "peinture", preuve: tete[1] };
+    }
+  }
+  return null;
+}
+// >>> OEUVRE_D_ART_FIN
+  return oeuvreDArt;
+})();
+
 function lbcProduitInterdit(job) {
   if (job.platform !== "leboncoin") return false;
   if (lbcCategorieHorsBeaute(job)) return false;
+  // (22/10 soir, 0.6.130) Une œuvre d'art n'est jamais un cosmétique, quels que soient les mots du titre.
+  if (oeuvreDArtExtension(job.title, job.description)) return false;
   const titre = String(job.title ?? "");
   if (LBC_NON_CONSOMMABLE.test(titre)) return false;
   return LBC_COSMETIQUE_CONSOMMABLE.test(titre);
@@ -1502,6 +1588,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   // le site suit sa progression dans `vinted_sync_runs` (il la lit déjà pour la
   // barre de progression), pas par la réponse de ce message.
   if (msg?.type === "SYNC_DRESSING") {
+    // (22/10 soir, 0.6.130, point 5) Demandée par la personne : la file en cours s'arrête entre deux tâches
+    // terminées pour la laisser passer (la synchro elle-même attend son tour sous le verrou de flux).
+    if (msg.declencheur !== "cron") syncDemandeeLocale = Date.now();
     syncDressingVinted({ declencheur: msg.declencheur === "cron" ? "cron" : "bouton" })
       .catch((e) => console.error("[sync-dressing]", e?.message ?? e));
     sendResponse({ ok: true, demarre: true });
@@ -2380,6 +2469,73 @@ function withJobFlowLock(label, fn) {
 // Variable de module et non valeur de retour : pollAndProcessJobsUnlocked a
 // une dizaine de sorties anticipées, toutes devraient la propager.
 let commandeSyncEnAttente = null;
+// ── (22/10 soir, 0.6.130 — points 5, 6 et 8) LA FILE ENTRE DEUX TÂCHES ─────────────────────────────────────
+// syncDemandeeLocale : horodatage du dernier clic « Synchroniser » relayé par l'app de CETTE machine.
+// repollApresCycle : la boucle s'est arrêtée pour une synchro → un poll repart dès le verrou rendu.
+// fileEnPauseServeur : la pause lue au dernier poll (pour le popup).
+let syncDemandeeLocale = 0;
+let repollApresCycle = false;
+let fileEnPauseServeur = null;
+let vintedPauseAntirobotServeur = false;
+let etatFileLu = { le: 0, pause: false, synchro: false };
+/** Une republication dont le retrait est engagé (annonce retirée ou retrait envoyé) : elle va au bout. */
+function retraitEngageJob(job) {
+  const pf = job?.platform_fields ?? {};
+  return pf.republish_step === "deleted" || Boolean(pf.deleted_at) || Boolean(pf.republish_suppression_envoyee);
+}
+/** La pause et la synchro demandée, relues au plus toutes les 20 s (RPC file_etat_poste). Illisible → rien ne change. */
+async function etatFileEntreDeuxTaches(token) {
+  const local = syncDemandeeLocale && Date.now() - syncDemandeeLocale < 10 * 60_000;
+  if (Date.now() - etatFileLu.le < 20_000) return { pause: etatFileLu.pause, synchro: etatFileLu.synchro || local };
+  try {
+    const r = await restRequest("rpc/file_etat_poste", token, { method: "POST", body: "{}" });
+    etatFileLu = { le: Date.now(), pause: r?.pause === true, synchro: r?.synchro_demandee === true };
+  } catch {
+    etatFileLu = { le: Date.now(), pause: false, synchro: false };
+  }
+  if (local) syncDemandeeLocale = 0;   // un clic local ne coupe la file qu'une fois
+  return { pause: etatFileLu.pause, synchro: etatFileLu.synchro || local };
+}
+// ── (22/10 soir, 0.6.130, point 8) LIRE L'ANNONCE D'ORIGINE AVANT QU'UNE PUBLICATION NE PARTE ──────────────
+// Le serveur retient une publication tant que la fiche importée n'a pas le texte du vendeur (jamais rédigé par
+// l'IA à sa place). Vinted : la description se lit au DÉTAIL de l'annonce, par cette extension (un appel par
+// article, espacé comme les dépôts). La fiche ne reçoit que ce qui lui MANQUE (jamais un texte écrasé).
+let derniereLectureOrigine = 0;
+async function lireAnnoncesOrigineEnAttente(session) {
+  const token = session?.access_token;
+  if (!token) return;
+  if (vintedPauseAntirobotServeur) return;   // Vinted demande une vérification anti-robot : aucune lecture de fond
+  const liste = await restRequest("rpc/lectures_origine_en_attente", token, { method: "POST", body: "{}" }).catch(() => []);
+  const vinted = (Array.isArray(liste) ? liste : []).filter((l) => l?.plateforme === "vinted" && /^\d+$/.test(String(l?.vinted_item_id ?? "")));
+  let n = 0;
+  for (const l of vinted) {
+    if (n >= 3) break;
+    const attente = derniereLectureOrigine + 8000 + Math.floor(Math.random() * 12000) - Date.now();
+    if (attente > 0) await sleep(attente);
+    n++;
+    derniereLectureOrigine = Date.now();
+    // Dans le poll : le verrou de flux est DÉJÀ tenu (jamais fetchVintedItemDetail ici — interblocage).
+    const r = await lireDetailVintedSousVerrou(String(l.vinted_item_id)).catch(() => null);
+    if (!r?.success) { console.log(`[origine] détail Vinted ${l.vinted_item_id} illisible cette fois — relu au cycle suivant`); continue; }
+    const at = new Date().toISOString();
+    const attributs = { ...attributsDepuisDetail(r.natif, at, r.libelles?.catalog_id_depot) };
+    const description = String(r.description ?? "").trim();
+    if (description) attributs.description_source = { v: "vinted", source: "vinted_detail", at };
+    if (Object.keys(attributs).length) {
+      await restRequest(`inventaire?id=eq.${Number(l.inventaire_id)}`, token, { method: "PATCH", body: JSON.stringify({ attributs }) }).catch(() => {});
+    }
+    if (description) {
+      await restRequest(`inventaire?id=eq.${Number(l.inventaire_id)}&or=(description.is.null,description.eq.)`, token, {
+        method: "PATCH", body: JSON.stringify({ description }),
+      }).catch(() => {});
+    }
+    // Lue = close, avec ou sans texte : une annonce d'origine sans description n'en a pas — l'attente s'arrête
+    // (jamais une attente sans fin) et le moteur complète ce qui est vide CHEZ LE VENDEUR.
+    await restRequest("rpc/lecture_origine_faite", token, { method: "POST", body: JSON.stringify({ p_fiche: Number(l.inventaire_id) }) }).catch(() => {});
+    console.log(`[origine] fiche ${l.inventaire_id} : annonce Vinted d'origine ${l.vinted_item_id} lue${description ? " — la publication partira avec SON texte" : " (sans description chez le vendeur)"}`);
+  }
+}
+
 // Nombre de jobs que le serveur a retenus POUR laisser passer la sync de ce
 // cycle (get-pending-jobs, champ sync_prioritaire). 0 = file honnêtement vide.
 let syncPrioritaireDuCycle = 0;
@@ -2445,6 +2601,12 @@ function pollAndProcessJobs() {
           console.error("[releve]", e?.message ?? e));
       }
     };
+    // (22/10 soir, 0.6.130, point 5) La boucle s'est arrêtée pour une synchro demandée : un poll repart tout de
+    // suite — c'est lui qui emporte la demande (le serveur la sert devant la file, garde absolue comprise).
+    if (repollApresCycle) {
+      repollApresCycle = false;
+      setTimeout(() => { pollAndProcessJobs(); }, 1500);
+    }
     if (!cmd) { lancerRelevesAnnonces(); return; }
     traiterCommandeSyncDistante(cmd).catch((e) =>
       console.error("[sync-dressing][distant]", e?.message ?? e)).finally(lancerRelevesAnnonces);
@@ -2988,6 +3150,10 @@ async function pollAndProcessJobsUnlocked() {
       chrome.storage.local.remove("fillsell_maj_requise").catch(() => {});
     }
     commandeSyncEnAttente = rep.sync_command ?? null;
+    // (22/10 soir, 0.6.130, point 6) La file en pause (geste de la personne dans l'app) : dit dans le popup.
+    fileEnPauseServeur = rep.file_en_pause === true ? { le: Date.now(), retenus: Number(rep.jobs_retenus_pause) || 0 } : null;
+    chrome.storage.local.set({ fillsell_file_pause: fileEnPauseServeur }).catch(() => {});
+    vintedPauseAntirobotServeur = rep.vinted_pause_antirobot === true;
     // Relevés multiplateforme (2026-09-17) : [{ id, platform }] — servis aux
     // extensions ≥ 0.6.42 seulement, traités après le poll (verrou rendu).
     commandesAnnoncesEnAttente = Array.isArray(rep.sync_commands_annonces) ? rep.sync_commands_annonces : [];
@@ -3152,6 +3318,8 @@ async function pollAndProcessJobsUnlocked() {
   // dès qu'un dépôt attend le paiement de la personne, les autres publications
   // Leboncoin du cycle restent en file (le serveur les sert une par une ensuite).
   let lbcPaiementPrepare = false;
+  // (22/10 soir, 0.6.130, point 5) Une synchro demandée pendant ce cycle : les publications restantes attendent.
+  let synchroPasseDevant = false;
   // Séquentiel : un onglet de publication à la fois, avec une pause entre
   // chaque job (FILLSELL_CONFIG.JOB_DELAY_MS) pour ne pas enchaîner les
   // onglets trop vite.
@@ -3176,6 +3344,32 @@ async function pollAndProcessJobsUnlocked() {
       majPlanifiee = true;
       console.warn(`[background] mise à jour en attente : ${jobs.length - i} job(s) laissé(s) en file pour la nouvelle version.`);
       break;
+    }
+    // ── (22/10 soir, 0.6.130 — points 5 et 6, Louis) ENTRE DEUX TÂCHES TERMINÉES ─────────────────────────────
+    // Avant chaque tâche après la première : la personne a-t-elle mis sa file en PAUSE, ou demandé une
+    // SYNCHRO ? (une lecture serveur, au plus toutes les 20 s, et le bouton local de cette machine).
+    //  · pause → plus aucune publication ni republication ne démarre ; les retraits (vente ou geste) et une
+    //    republication dont l'annonce est déjà retirée vont au bout — jamais une tâche coupée au milieu ;
+    //  · synchro → plus aucune publication ne démarre dans ce cycle ; les retraits et les republications déjà
+    //    retirées finissent, puis un poll repart tout de suite : le serveur sert la synchro devant la file (sauf
+    //    si une republication est entre le retrait et la recréation : elle passe d'abord, garde absolue). Les
+    //    tâches non prises restent en file, réservées à CE poste : rien perdu, rien en double.
+    if (i > 0 && !etapeDeleted) {
+      const engagee = job.action === "republish" && retraitEngageJob(job);
+      const publication = (job.action === "publish" || job.action === "republish") && !engagee;
+      if (publication) {
+        const etatFile = synchroPasseDevant ? { pause: false, synchro: true } : await etatFileEntreDeuxTaches(session.access_token);
+        if (etatFile.pause) {
+          console.log(`[background] Job ${job.id} : file EN PAUSE (geste de la personne) — laissé en file, il partira à la reprise`);
+          continue;
+        }
+        if (etatFile.synchro) {
+          if (!synchroPasseDevant) console.warn(`[background] synchro demandée par la personne : les publications de ce cycle restent en file, la synchro passe entre deux tâches`);
+          synchroPasseDevant = true;
+          repollApresCycle = true;
+          continue;
+        }
+      }
     }
     emitProgress({ jobId: job.id, platform: job.platform, phase: "processing" });
     // (18/10) Un job EN COURS tient la machine éveillée, et l'épisode se
@@ -3210,6 +3404,10 @@ async function pollAndProcessJobsUnlocked() {
   // Re-capture différée des listing_url manquants (2026-07-12) : LBC/Beebs
   // n'affichent l'annonce dans "Mes annonces" qu'après modération/indexation —
   // l'aller-retour fait dans la foulée du dépôt peut revenir bredouille.
+  // (22/10 soir, 0.6.130, point 8) Les annonces d'origine à LIRE avant qu'une publication ne parte (détail Vinted :
+  // la description du vendeur). Bornées, espacées, jamais pendant une pause anti-robot Vinted.
+  await lireAnnoncesOrigineEnAttente(session).catch((e) =>
+    console.warn("[origine] lectures d'origine :", String(e?.message ?? e)));
   await recoverMissingListingUrls(session).catch((e) =>
     console.error("[background] recoverMissingListingUrls:", e)
   );
@@ -10413,7 +10611,9 @@ function vintedListedPrice(html, adId) {
 function extractListingId(url, platform) {
   const patterns = {
     vinted: /\/items\/(\d+)/,
-    leboncoin: /\/ad\/[^/]+\/(\d+)/,
+    // (22/10 soir, 0.6.130) « /vi/<id>.htm » aussi : la forme que l'extension lit pour un lien enregistré sans
+    // catégorie (« /ad/<id> » rend 404 chez Leboncoin — fausse alerte « plus en ligne » chez jocabroc8).
+    leboncoin: /\/(?:ad\/[^/]+\/|vi\/)(\d+)/,
     ebay: /\/itm\/[^?#]*?(\d{9,})/,
     // ⚠️ Format d'URL produit Beebs toujours NON OBSERVÉ : on suppose un long
     // nombre dans le chemin. À confirmer dès la première URL réelle capturée.
@@ -10737,6 +10937,20 @@ async function lbcUrlsMortes() {
   }
 }
 
+// (22/10 soir, 0.6.130) La fenêtre de modération d'une annonce neuve : un 410 n'y prouve rien.
+const LBC_MODERATION_MS = 2 * 3600_000;
+/** Un relevé a revu l'annonce en ligne APRÈS sa mémoire « morte » : la mémoire ment, elle est oubliée. */
+async function oublierLbcMorteSiRevue(url, revueMs) {
+  try {
+    const connues = await lbcUrlsMortes();
+    const vu = connues[String(url)];
+    if (!Number.isFinite(vu) || vu >= revueMs) return;
+    delete connues[String(url)];
+    await chrome.storage.local.set({ [LBC_DEAD_KEY]: connues });
+    console.log(`[background] leboncoin : ${url} mémorisée morte mais revue EN LIGNE par un relevé ensuite — mémoire oubliée, relecture`);
+  } catch { /* mémoire de confort : jamais bloquant */ }
+}
+
 async function lbcUrlDejaMorte(url) {
   const connues = await lbcUrlsMortes();
   const vu = connues[String(url)];
@@ -11004,12 +11218,26 @@ async function leverDisjoncteurLecture(platform) {
   } catch { /* rien */ }
 }
 
-async function checkListingState(url, platform, { routine = false } = {}) {
+async function checkListingState(url, platform, { routine = false, publieLe = null, revueLe = null } = {}) {
   if (platform === "opla") return lireEtatOpla(url);
   if (platform === "depop") return lireEtatDepop(url);
   if (platform === "vinted") return checkVintedUnanime(url);
   if (platform !== "leboncoin") return lireEtatAnnonce(url, platform);
 
+  // ── (22/10 soir, 0.6.130 — Louis, XEWER) LA MÉMOIRE D'UNE ANNONCE « MORTE » N'EST PLUS ÉTERNELLE ──
+  // Une annonce NEUVE est servie « Cette annonce est désactivée » (410) le temps de sa modération (« compter une
+  // demi-heure ») : une seule lecture dans cette fenêtre la mémorisait morte 30 jours, et chaque passage de la
+  // veille reposait « Plus en ligne — Vendue ? » sur une annonce EN LIGNE — levée par le relevé, reposée par la
+  // veille (Rondin, Jeu des acrobates : vus en ligne le 22/10 au soir). Désormais : (1) un lien sans catégorie
+  // (« /ad/<id> », 404 chez Leboncoin) est lu sous « /vi/<id>.htm » ; (2) une mémoire PLUS ANCIENNE qu'un relevé
+  // qui a revu l'annonce en ligne est oubliée ; (3) un 410 sur une annonce publiée depuis moins de 2 h n'est ni
+  // mémorisé ni conclu (modération en cours) : « inconnu », le passage suivant relit.
+  const lienSansCategorie = String(url ?? "").match(/^https?:\/\/www\.leboncoin\.fr\/ad\/(\d+)\/?$/);
+  if (lienSansCategorie) url = `https://www.leboncoin.fr/vi/${lienSansCategorie[1]}.htm`;
+  const revueMs = Date.parse(String(revueLe ?? ""));
+  if (Number.isFinite(revueMs)) await oublierLbcMorteSiRevue(url, revueMs);
+  const publieMs = Date.parse(String(publieLe ?? ""));
+  const enModeration = Number.isFinite(publieMs) && Date.now() - publieMs < LBC_MODERATION_MS;
   if (await lbcUrlDejaMorte(url)) {
     console.log(`[background] leboncoin : ${url} déjà observée MORTE (410/404) — état définitif "unavailable", aucune relecture`);
     return { state: "unavailable", price: null };
@@ -11031,6 +11259,10 @@ async function checkListingState(url, platform, { routine = false } = {}) {
       return res;
     }
     if (res.state === "unavailable") {
+      if (enModeration) {
+        console.log(`[background] leboncoin : 410/404 au tir ${tir}/${LBC_CHECK_TIRS} sur une annonce publiée il y a moins de 2 h — modération en cours, rien de conclu ni de mémorisé`);
+        return { state: "unknown", price: null, raison: "moderation_recente", http: res.http };
+      }
       console.log(`[background] leboncoin : annonce MORTE constatée au tir ${tir}/${LBC_CHECK_TIRS} — verdict définitif (mémorisé)`);
       await memoriserLbcMorte(url);
       return res;
@@ -14427,20 +14659,24 @@ function jourParis(d = new Date()) {
 async function fetchVintedItemDetail(vintedItemId) {
   const id = String(vintedItemId ?? "").trim();
   if (!id) return { success: false, error: "id d'article Vinted manquant" };
-  return await withJobFlowLock("fetch-vinted-item", async () => {
-    let tabId;
-    try {
-      // La page exacte porte le vendeur de CETTE annonce. La capture réseau
-      // seule sait lire les champs, mais elle ne prouve pas la boutique ; la
-      // republication a besoin des deux avant d'autoriser le retrait.
-      tabId = await getOrCreateWorkTab("vinted", `${VO.origineVinted()}/items/${encodeURIComponent(id)}`);
-    } catch (e) {
-      return { success: false, error: `onglet de travail Vinted : ${String(e?.message ?? e)}` };
-    }
-    const res = await sendMessageToTab(tabId, { type: "VINTED_ITEM_DETAIL", vintedItemId: id })
-      .catch((e) => ({ success: false, error: `sonde injoignable : ${String(e?.message ?? e)}` }));
-    return res ?? { success: false, error: "réponse vide du content script" };
-  });
+  return await withJobFlowLock("fetch-vinted-item", () => lireDetailVintedSousVerrou(id));
+}
+// (22/10 soir, 0.6.130) Le corps, SANS prendre le verrou : pour un appelant qui le TIENT déjà (la lecture des
+// annonces d'origine tourne dans le poll). ⛔ Le verrou n'est pas réentrant : appeler fetchVintedItemDetail
+// depuis le poll attendrait la fin du poll, qui l'attend — la file entière se figerait.
+async function lireDetailVintedSousVerrou(id) {
+  let tabId;
+  try {
+    // La page exacte porte le vendeur de CETTE annonce. La capture réseau
+    // seule sait lire les champs, mais elle ne prouve pas la boutique ; la
+    // republication a besoin des deux avant d'autoriser le retrait.
+    tabId = await getOrCreateWorkTab("vinted", `${VO.origineVinted()}/items/${encodeURIComponent(id)}`);
+  } catch (e) {
+    return { success: false, error: `onglet de travail Vinted : ${String(e?.message ?? e)}` };
+  }
+  const res = await sendMessageToTab(tabId, { type: "VINTED_ITEM_DETAIL", vintedItemId: id })
+    .catch((e) => ({ success: false, error: `sonde injoignable : ${String(e?.message ?? e)}` }));
+  return res ?? { success: false, error: "réponse vide du content script" };
 }
 
 // ── Sonde d'état d'UNE annonce Vinted (2026-08-10) ───────────────────────────
@@ -21368,7 +21604,10 @@ async function checkPublishedListings(session) {
   for (let i = 0; i < dueOuverts.length; i++) {
     const job = dueOuverts[i];
     if (coupees.has(job.platform)) continue;
-    let { state, price, en_verification: enVerification, exact: lectureExacte, raison: raisonLecture } = await checkListingState(job.listing_url, job.platform, { routine: true });
+    let { state, price, en_verification: enVerification, exact: lectureExacte, raison: raisonLecture } = await checkListingState(job.listing_url, job.platform, {
+      routine: true, publieLe: job.published_at ?? job.created_at ?? null,
+      revueLe: job.platform_fields?.revue_en_ligne_par_releve?.at ?? null,
+    });
     if (state === "unknown" && String(raisonLecture ?? "").startsWith("bot_shield") && job.platform === "leboncoin") {
       coupees.add(job.platform);
       await armerDisjoncteurLecture(job.platform);

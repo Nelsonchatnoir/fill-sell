@@ -34,11 +34,17 @@ ok(i1 > 0 && /if \(syncCommand && syncCommandFrais\) plateformesRelevees\.add\("
   "le relevé du dressing ne retient que Vinted, et seulement frais");
 ok(/for \(const c of syncCommandsAnnonces\) if \(relevesFrais\.has\(c\.id\)\) plateformesRelevees\.add\(c\.platform\);/.test(bloc1),
   "un relevé d'annonces ne retient que sa plateforme, et seulement frais");
-ok(/out = out\.filter\(\(j\) => horsLigne\(j\) \|\| !plateformesRelevees\.has\(String\(j\.platform\)\)\);/.test(bloc1),
+// (22/10 soir, point 5 — décision de Nico) Une synchro DEMANDÉE PAR LA PERSONNE il y a moins de 10 min passe devant
+// toute la file de publications (retraits et republications retirées partent quand même) ; sinon, la règle du 11/10
+// reste entière : un relevé ne retient que SA plateforme.
+ok(/: out\.filter\(\(j\) => horsLigne\(j\) \|\| !plateformesRelevees\.has\(String\(j\.platform\)\)\);/.test(bloc1)
+  && /out = personneDevant\s*\? out\.filter\(\(j\) => horsLigne\(j\) \|\| passeAvantLaSynchro\(j\)\)/.test(bloc1),
   "les jobs des AUTRES plateformes partent dans ce cycle ; une annonce hors ligne ('deleted') jamais retenue");
+ok(/if \(ageCmd < SYNC_DEVANT_FILE_MS && syncDemandeeParLaPersonne\(/.test(gpj),
+  "seule une demande de la personne de moins de 10 min passe devant toute la file (jamais une file gelée)");
 ok(!/out = out\.filter\(horsLigne\);/.test(gpj), "plus aucune retenue de TOUS les jobs derrière un relevé");
-ok(/syncCommandFrais = Date\.now\(\) - Date\.parse\(String\(\(cmds\[0\] as \{ queued_at\?: unknown \}\)\.queued_at \?\? ""\)\) < 30 \* 60_000;/.test(gpj)
-  && /\.select\("id, queued_at"\)\s*\.eq\("kind", "dressing"\)/.test(gpj), "le relevé du dressing ne retient plus jusqu'à 6 h : 30 min au plus");
+ok(/const ageCmd = Date\.now\(\) - Date\.parse\(String\(\(cmds\[0\] as \{ queued_at\?: unknown \}\)\.queued_at \?\? ""\)\);\s*syncCommandFrais = ageCmd < 30 \* 60_000;/.test(gpj)
+  && /\.select\("id, queued_at(?:, declencheur)?"\)\s*\.eq\("kind", "dressing"\)/.test(gpj), "le relevé du dressing ne retient plus jusqu'à 6 h : 30 min au plus");
 // Le cas rejoué, en logique : relevé Beebs frais, 215 republications Vinted.
 const held = (jobs, plats) => jobs.filter((j) => !(j.action === "republish" && j.step === "deleted") && plats.has(j.platform));
 const file = Array.from({ length: 215 }, (_, k) => ({ id: k, platform: "vinted", action: "republish", step: "a_capturer" }));

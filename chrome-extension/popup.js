@@ -351,6 +351,11 @@ async function load() {
       const mr = await chrome.storage.local.get("fillsell_maj_requise");
       state.majRequise = mr?.fillsell_maj_requise ?? null;
     } catch { state.majRequise = null; }
+    // (22/10 soir, 0.6.130, point 6) La file mise en pause par la personne dans l'app (posé au poll).
+    try {
+      const fp = await chrome.storage.local.get("fillsell_file_pause");
+      state.filePause = fp?.fillsell_file_pause ?? null;
+    } catch { state.filePause = null; }
     // Maintien en éveil en cours (2026-09-04) — lecture SEULE d'un marqueur
     // écrit par le background.
     try {
@@ -1442,9 +1447,13 @@ function renderFooter() {
     pending.every((j) => estKo(j.platform)) ||
     (pending.every((j) => j.action === "republish") && (bp?.retenus ?? 0) >= pending.length)
   );
-  els.queueLabel.textContent = `${n} en file${enPause ? " · en pause" : ""}`;
+  // (22/10 soir, 0.6.130) La pause demandée dans l'app : dite en clair (les retraits, eux, continuent).
+  const pauseDemandee = Boolean(state.filePause);
+  els.queueLabel.textContent = pauseDemandee
+    ? `${n} en file · en pause (reprends-la dans l'app ; les retraits continuent)`
+    : `${n} en file${enPause ? " · en pause" : ""}`;
   els.queue.classList.toggle("zero", n === 0);
-  els.queue.classList.toggle("pause", n > 0 && enPause);
+  els.queue.classList.toggle("pause", n > 0 && (enPause || pauseDemandee));
 }
 
 function renderDiag() {

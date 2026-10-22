@@ -22,6 +22,7 @@ import { VINTED_COLORS } from "../utils/vintedColors";
 import { Carte, Puce } from "./composants";
 import { NOM } from "./texte";
 import { posesMemoireVisibles } from "./moteur/memoireCategorie";
+import { phraseGenreAChoisir, phraseGenreDeduit } from "./moteur/genreAChoisir";
 
 // L'objet de jetons attendu par AspectValueInput : des variables, jamais des
 // couleurs en dur.
@@ -117,12 +118,17 @@ export default function BlocQuestions({ m }) {
   const demandePrixAchat = m.demanderPrixAchat;
   const descriptionVide = m.descriptionVideVinted;
   const montrerDescription = descriptionVide || (descriptionTouchee && m.selected?.has("vinted"));
-  const total = q.redTotal + (demandePrixAchat ? 1 : 0) + (montrerDescription ? 1 : 0);
+  // (22/10 soir, point 4 — Louis) Le rayon (genre) à choisir est une VRAIE
+  // question : comptée, et posée avec ses rayons valides. Avant, l'encart
+  // pouvait dire « Tout est complété » au-dessus d'un Publier grisé.
+  const genresBloques = ["vinted", "beebs"].filter(p => m[`${p}GenreBlocked`]);
+  const genresPoses = Object.entries(m.genresDeduits ?? {}).filter(([p]) => m.selected?.has?.(p) ?? true);
+  const total = q.redTotal + (demandePrixAchat ? 1 : 0) + (montrerDescription ? 1 : 0) + genresBloques.length;
   // (18/10 nuit, point 1) Ce que la mémoire « compte × catégorie » a posé sur
   // cet article : visible, et modifiable — jamais une valeur posée en silence.
   const poses = posesMemoireVisibles(m);
-  if (!total && !poses.length && !m.vintedGenreBlocked && !m.beebsGenreBlocked) return null;
-  const restants = q.redRestants + (m.prixAchatManquant ? 1 : 0) + (descriptionVide ? 1 : 0);
+  if (!total && !poses.length && !genresPoses.length) return null;
+  const restants = q.redRestants + (m.prixAchatManquant ? 1 : 0) + (descriptionVide ? 1 : 0) + genresBloques.length;
 
   const origine = (texte) => texte ? <span className="qui"> · {texte}</span> : null;
 
@@ -390,6 +396,48 @@ export default function BlocQuestions({ m }) {
           );
         })}
 
+        {genresBloques.map((p) => {
+          const choix = m.genreAChoisir?.[p] ?? null;
+          return (
+            <div key={`genre:${p}`} className="fsn-q fsn-q--bloque" style={{ gridColumn: "1 / -1" }} data-question={`genre-${p}`}>
+              <div className="fsn-row fsn-row--between"><div className="fsn-q-t">{en ? "Section" : "Rayon"}</div><Puce ton="geste">{NOM(p)}</Puce></div>
+              <div className="fsn-q-why">
+                {choix ? phraseGenreAChoisir({ ...choix, nomPlateforme: NOM(p), lang: m.lang }) : t(p === "vinted" ? "vintedGenreRequired" : "beebsGenreRequired")}
+              </div>
+              {choix?.valides?.length > 0 && m.choisirGenre && (
+                <div className="fsn-row fsn-row--wrap">
+                  {choix.valides.map(g => (
+                    <button key={g} type="button" className="fsn-choice" onClick={() => m.choisirGenre(p, g)}>{g}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {genresPoses.map(([p, d]) => {
+          const valeur = d.change ?? d.valeur;
+          return (
+            <div key={`genre-pose:${p}`} className="fsn-q" style={{ gridColumn: "1 / -1" }} data-genre-deduit={p}>
+              <div className="fsn-row fsn-row--between"><div className="fsn-q-t">{en ? "Section" : "Rayon"}</div><Puce ton="ok">{NOM(p)}</Puce></div>
+              <div className="fsn-q-why">
+                {d.change
+                  ? (en ? `Your answer: “${d.change}”.` : `Ta réponse : « ${d.change} ».`)
+                  : phraseGenreDeduit(d, NOM(p), m.lang)}
+              </div>
+              {(d.valides ?? []).length > 1 && m.choisirGenre && (
+                <div className="fsn-row fsn-row--wrap">
+                  {d.valides.map(g => (
+                    <button key={g} type="button" className={`fsn-choice${g === valeur ? " fsn-choice--on" : ""}`} onClick={() => m.choisirGenre(p, g)}>
+                      {g === valeur ? "✓ " : ""}{g}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+
         {poses.map(({ k, pose, valeur }) => (
           <div key={`mem:${k}`} className="fsn-q" data-memoire={k}>
             <div className="fsn-row fsn-row--between"><div className="fsn-q-t">{pose.label}</div><Puce ton="ok">{NOM(pose.plateforme)}</Puce></div>
@@ -473,8 +521,6 @@ export default function BlocQuestions({ m }) {
         ))}
       </div>
 
-      {m.vintedGenreBlocked && <div className="fsn-card-p">{t("vintedGenreRequired")}</div>}
-      {m.beebsGenreBlocked && <div className="fsn-card-p">{t("beebsGenreRequired")}</div>}
     </Carte>
   );
 }

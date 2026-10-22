@@ -69,6 +69,7 @@ import { depopGenreRequired, horsModeDepop } from "./depopCategories.js";
 import { resoudreRayonDepop, traceRayonDepop, SOURCE_RAYON_DEPOP } from "../../supabase/functions/_shared/depop-rayon.js";
 // (18/10 nuit, point 5) Une question de catégorie identique, en vol ou de moins de 10 min, n'est payée qu'une fois.
 import { invoquerResolveCategorie } from "./questionCategorie.js";
+import { oeuvreDArt, rayonVintedOeuvre } from "./oeuvreDArt.js";
 
 // ── L'EMPREINTE — À QUELLES CONDITIONS UN PRÉ-CALCUL RESTE VALABLE ────────
 // Elle couvre TOUT ce que la résolution lit : les copies, leurs champs, les
@@ -982,12 +983,24 @@ export async function resoudrePublication({
     // Elle PRIME sur l'arbitrage par le mot : « Xbox » ou « PS5 » dans un
     // titre ne dit pas si l'objet est un jeu ou la machine — c'est
     // exactement ce que cette règle tranche, et le mot ne le sait pas.
+    // ══ (22/10 soir, point 2 — paugues) UNE ŒUVRE VA AU RAYON DES ŒUVRES (Vinted) ══
+    // Ses peintures du jour partaient en « Encadrements » (cadres photo), en « Toiles et panneaux » ou en
+    // « Pastels » (fournitures de loisirs créatifs). Une œuvre reconnue (icône 🖼️ ET src/utils/oeuvreDArt.js) va
+    // dans Maison › Décoration › Décorations murales › « Peintures » (3847, la feuille relevée sur son annonce en
+    // ligne) ; une estampe, gravure, lithographie dans « Affiches et reproductions » (3849). Prime sur le mot,
+    // comme la famille jeu vidéo : « pastel » ou « toile » ne disent pas si c'est la fourniture ou l'œuvre.
+    const oeuvre = platform === "vinted" && iconeArticle === "🖼️"
+      ? oeuvreDArt(frTitrePublication, frDescriptionPublication) : null;
+    const feuilleOeuvre = oeuvre ? rayonVintedOeuvre(oeuvre.famille) : null;
     const parMot = feuilleJeuVideo
       ? { chemin: feuilleJeuVideo.chemin, id: feuilleJeuVideo.id ?? null, regle: `jeux_video_${jeuVideo.famille}` }
-      : (categorieParMotParPf[platform] ?? null);
+      : feuilleOeuvre
+        ? { chemin: feuilleOeuvre.chemin, id: String(feuilleOeuvre.id), regle: `oeuvre_${oeuvre.famille}` }
+        : (categorieParMotParPf[platform] ?? null);
     if (parMot) {
       pf.categorie_source = parMot.regle?.startsWith("jeux_video")
         ? "famille_jeu_video"
+        : parMot.regle?.startsWith("oeuvre_") ? "oeuvre_d_art"
         : parMot.choisiParIa ? "ia_parmi_candidats" : (motCategorieSource === "ia" ? "mot_objet_arbre" : "mot_cle_arbre");
       pf.categorie_par_mot = {
         mot: motCategorie, mot_source: motCategorieSource, chemin: parMot.chemin, id: parMot.id ?? null,

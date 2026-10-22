@@ -2,6 +2,7 @@
 // Used by tab components and App.jsx
 
 import { etatsVintedLisibles } from './etatsVinted.js';
+import { oeuvreDArt, estOeuvreDArt } from './oeuvreDArt.js';
 // (16/10) Le filet « aucune estimation de temps » (_shared/etat-job.js).
 import { sansEstimation } from '../../supabase/functions/_shared/etat-job.js';
 
@@ -1157,6 +1158,18 @@ export function parseLocDesc(desc) {
 }
 
 export function detectType(titre,marque){
+  // (22/10 soir, point 2 — paugues) UNE ŒUVRE D'ART N'EST JAMAIS « BEAUTÉ » : « André Thomas - Huile post
+  // impressionniste biblique sur carton » partait en Beauté sur le seul mot « Huile ». Quand la règle de base
+  // dit « Beauté » et que le titre nomme une œuvre (src/utils/oeuvreDArt.js), c'est
+  // de la décoration — Maison, comme « tableau|cadre » plus bas. ⛔ Jamais au-dessus d'un autre type : rejoué sur
+  // 48 832 fiches du 30 j, l'œuvre en premier volait des T-shirts « sérigraphie », des sacs « toile monogramme »
+  // et des livres d'art.
+  const base = detectTypeBase(titre, marque);
+  if (base === 'Beauté' && estOeuvreDArt(titre)) return 'Maison';
+  return base;
+}
+
+function detectTypeBase(titre,marque){
   const t=((titre||'')+' '+(marque||'')).toLowerCase();
   // ⚠️ CATÉGORIE "Luxe" SUPPRIMÉE le 2026-07-17. L'ancien 1er test renvoyait
   // 'Luxe' dès qu'une marque « premium » figurait dans le texte — MAIS la liste
@@ -1932,7 +1945,24 @@ function premiereHorsObjetAccessoire(re, t, zones){
   return null;
 }
 
+// (22/10 soir, point 2 — paugues) Les icônes de la beauté : une œuvre d'art n'y tombe jamais.
+const ICONES_BEAUTE_OBJET = new Set(['🌸', '💄', '💅', '🧴']);
+
 export function detectObjectKeywordDetail(titre, description){
+  // (22/10 soir, point 2 — paugues) UNE ŒUVRE D'ART N'EST JAMAIS UN SOIN : « Huile post impressionniste biblique
+  // sur carton » partait en 🧴 sur le mot « Huile ». Quand les règles disent beauté (ou rien) et que le titre ou la
+  // description nomme une œuvre (src/utils/oeuvreDArt.js), l'icône est 🖼️ — rendue comme une décision du titre
+  // quand le titre suffit. ⛔ Jamais au-dessus d'une autre icône (rejeu sur 48 832 fiches : T-shirts
+  // « sérigraphie », sacs « toile monogramme », médailles « gravure personnalisée » gardent la leur).
+  const base = detectObjectKeywordDetailBase(titre, description);
+  if (!base || ICONES_BEAUTE_OBJET.has(base.icon)) {
+    const art = oeuvreDArt(titre, description);
+    if (art) return { icon: '🖼️', mot: art.preuve, passe: oeuvreDArt(titre) ? 1 : 2, oeuvre: art.famille };
+  }
+  return base;
+}
+
+function detectObjectKeywordDetailBase(titre, description){
   // Dé-bruitage : accessoires inclus + négations de fragrance.
   const denoise=(s)=>String(s||'')
     .replace(INCLUDED_ACCESSORY_CLAUSE,' ')

@@ -37,11 +37,13 @@ import { boutiqueConnecteeVinted } from "../../supabase/functions/_shared/boutiq
 import { extensionAMettreAJour } from "../utils/extensionAJour";
 import ChoixBoutiqueFile, { boutiquePrevue } from "./ChoixBoutiqueFile";
 import { useBoutiqueVintedParDefaut } from "../utils/boutiqueVintedParDefaut";
+import { useEtatFile } from "../stock/etatFile";
+import { messageFileEnPause } from "../../supabase/functions/_shared/file-pause.js";
 
 const T = {
   ink: "#10201B", mute: "#5C6560", faint: "#8A8578",
   card: "#FFFFFF", paper: "#F7F5EF", lineSoft: "#EFECE3",
-  tealDeep: "#1B6E62", amberInk: "#8A6100",
+  tealDeep: "#1B6E62", amberInk: "#8A6100", amberFill: "#FFF6E3", amberLine: "#EED9A6",
 };
 
 const COLONNES_JOB = "id, inventaire_id, platform, status, action, created_at, published_at, platform_fields, error, title, voie, listing_url";
@@ -122,6 +124,7 @@ function useRetenuesRepublication({ supabase, actif }) {
 const ICONES = {
   rythme: Clock, limite_jour: Clock, creneau: Clock, essai: Clock, auto_en_pause: Clock,
   retenue_serveur: ShieldCheck, releve: ShieldCheck, technique: ShieldCheck,
+  file_en_pause: Pause, lecture_origine: Clock,
   boutique: Pause, boutiques_a_ouvrir: Pause, plateforme: Pause, gel: Pause, ecartee: Pause, ebay_etranger: Pause,
   ordinateur: Monitor, ordinateur_session: Monitor, mise_a_jour: Monitor,
   geste: Hand, connexion: Hand, opla: Hand, depop: Hand, pas_partie: Hand,
@@ -167,9 +170,13 @@ export default function FileDesJobs({
   lang = "fr", supabase = null, userId = null,
   jobs = null, fiches = null, contexte = null,
   renderGeste = null, texteErreur = null, formaterPrix = null,
-  pied = null, onFermer,
+  pied = null, onFermer, etatFile = null,
 }) {
   const fr = lang !== "en";
+  // (22/10 soir, point 6 — Louis) LA PAUSE DE LA FILE : l'état vient du Stock (ou se lit ici quand la feuille
+  // s'ouvre ailleurs). Elle ne coupe jamais une tâche commencée ; les retraits après une vente continuent.
+  const etatFileLu = useEtatFile({ supabase, userId, actif: !etatFile });
+  const file_ = etatFile ?? etatFileLu;
   const autonome = useLectureAutonome({ supabase, userId, actif: jobs == null });
   const listeJobs = jobs ?? autonome?.jobs ?? null;
   const lesFiches = fiches ?? autonome?.fiches ?? new Map();
@@ -190,6 +197,7 @@ export default function FileDesJobs({
 
   const ctx = useMemo(() => ({
     lang, maintenant,
+    filePause: contexte?.filePause ?? (file_.pause === true),
     extension: contexte?.extension ?? autonome?.extension ?? null,
     plateformesEnPause: contexte?.plateformesEnPause ?? autonome?.plateformesEnPause ?? new Set(),
     plafond: retenues?.plafond ?? contexte?.plafond ?? null,
@@ -198,7 +206,7 @@ export default function FileDesJobs({
     boutiques: contexte?.boutiques ?? autonome?.boutiques ?? null,
     extensionAMettreAJour: contexte?.extensionAMettreAJour ?? autonome?.majExtension ?? false,
     texteErreur,
-  }), [lang, maintenant, contexte, autonome, retenues, texteErreur, opla.verdict]);
+  }), [lang, maintenant, contexte, autonome, retenues, texteErreur, opla.verdict, file_.pause]);
 
   const file = useMemo(() => (listeJobs ? lireFile(listeJobs, ctx) : null), [listeJobs, ctx]);
   const ficheDe = (j) => lesFiches.get?.(String(j?.inventaire_id)) ?? null;
@@ -225,6 +233,19 @@ export default function FileDesJobs({
       onFermer={onFermer}
       pied={pied}
     >
+      <div role="status" style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 12, background: file_.pause ? T.amberFill : T.paper, border: `1px solid ${file_.pause ? T.amberLine : T.lineSoft}` }}>
+        <Pause size={16} strokeWidth={2.2} style={{ flexShrink: 0, color: file_.pause ? T.amberInk : T.mute }} aria-hidden="true" />
+        <div style={{ flex: 1, minWidth: 0, fontSize: 12.5, lineHeight: 1.45, color: file_.pause ? T.amberInk : T.mute, fontWeight: file_.pause ? 700 : 500 }}>
+          {file_.pause
+            ? messageFileEnPause(file_.en_pause, lang)
+            : (fr ? "Besoin d'une pause ? La tâche en cours va au bout, puis plus rien ne part. Les retraits après une vente continuent." : "Need a break? The current task finishes, then nothing else starts. Removals after a sale keep going.")}
+        </div>
+        <button type="button" disabled={file_.envoi}
+          onClick={() => { file_.basculer?.(!file_.pause); }}
+          style={{ flexShrink: 0, border: "none", borderRadius: 999, padding: "8px 14px", cursor: file_.envoi ? "default" : "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 700, color: "#fff", background: file_.pause ? "linear-gradient(120deg,#2F9E90,#1B6E62)" : T.amberInk, opacity: file_.envoi ? 0.6 : 1 }}>
+          {file_.pause ? (fr ? "Reprendre" : "Resume") : (fr ? "Mettre en pause" : "Pause")}
+        </button>
+      </div>
       {file && file.total === 0 && (
         <div style={{ padding: "18px 6px 10px", textAlign: "center", fontSize: 13, lineHeight: 1.5, color: T.mute }}>
           {fr

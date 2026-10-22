@@ -32,7 +32,10 @@ const tmps = [];
 function copieImportable(rel, nomTmp) {
   const src = fs.readFileSync(join(ROOT, rel), "utf8")
     .replace(/from "\.\/vintedCatalogMode"/g, 'from "./.vintedCatalogMode.selftest.tmp.mjs"')
-    .replace(/from "\.\/lbcCategories"/g, 'from "./.lbcCategories.selftest.tmp.mjs"');
+    .replace(/from "\.\/lbcCategories"/g, 'from "./.lbcCategories.selftest.tmp.mjs"')
+    // (22/10 soir) lbcCategories lit src/utils/oeuvreDArt.js : la copie temporaire vit dans scripts/, on pointe
+    // l'original (module sans dépendance, importable tel quel).
+    .replace(/from "\.\/oeuvreDArt\.js"/g, `from "${pathToFileURL(join(ROOT, "src", "utils", "oeuvreDArt.js")).href}"`);
   const p = join(ROOT, "scripts", nomTmp);
   fs.writeFileSync(p, src);
   tmps.push(p);

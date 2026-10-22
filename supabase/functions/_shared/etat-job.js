@@ -216,6 +216,15 @@ export function etatJob(j, ctx = {}) {
 
   // ── pending : ce qui le RETIENT, sinon la file ──
   if (st === "pending") {
+    // (22/10 soir, point 6) La file mise en pause par la personne : publications et republications pas encore
+    // commencées attendent la reprise (un retrait n'est jamais en pause ; une republication retirée est plus haut).
+    if (ctx.filePause && (j.action === "publish" || j.action === "republish")
+        && !(pf.deleted_at || pf.republish_suppression_envoyee)) return { etat: ETATS.EN_PAUSE, motif: "file_en_pause" };
+    // (22/10 soir, point 8) Fiche importée : la publication attend la lecture de l'annonce d'origine (texte, photos,
+    // état du vendeur) — elle avance, ce n'est jamais une erreur.
+    if (pf.attente_lecture_origine && typeof pf.attente_lecture_origine === "object") {
+      return { etat: ETATS.EN_FILE, motif: "lecture_origine", detail: { plateforme: String(pf.attente_lecture_origine.plateforme ?? "") } };
+    }
     if (ctx.extensionAMettreAJour && !parNosServeurs(j)) return { etat: ETATS.EN_PAUSE, motif: "mise_a_jour" };
     if (estGeleLivres(j)) return { etat: ETATS.EN_PAUSE, motif: "gel" };
     const retenue = retenueServeurDuJob(j);

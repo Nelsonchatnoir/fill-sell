@@ -54,6 +54,10 @@ import { agirEbay } from "../../utils/ebayCompte";
 import { businessOfferVisible } from "../../config/businessOffer";
 import { COIN_CONFIG_FALLBACK } from "../../components/ConversionModal";
 import { completerTexteDuVendeur, aCompleter as texteACompleter, RYTHME_LECTURE_VINTED_MS, RYTHME_LECTURE_EBAY_MS } from "../texteDuVendeur";
+// (22/10 soir, point 8 — Louis) Une fiche importée ne se prépare pas avant la lecture de son annonce d'origine.
+import { attenteLectureOrigine, demanderLectureOrigine, messageLectureOrigine } from "../lectureOrigine";
+import { plateformeOrigine } from "../../../supabase/functions/_shared/contenu-fiche.js";
+import { demarrerRelecture } from "../../utils/relectureBornee";
 import { propsStepperArticle } from "./propsArticle";
 import {
   PLATEFORMES_LOT, PLATEFORMES_LOT_DEFAUT, PREPARATIONS_SIMULTANEES, REPOS_AVANT_LECTURE_MS,
@@ -85,8 +89,8 @@ const ecrireChoixMemorise = (v) => { try { localStorage.setItem(CLE_CHOIX, JSON.
 const PHASES_MOTEUR = new Set(["montage", "redaction", "verification"]);
 const PHASES_EN_PREPARATION = new Set(["lecture", ...PHASES_MOTEUR]);
 const LIBELLE_PHASE = {
-  fr: { attente: "En attente", lecture: "Ta description…", montage: "Lecture…", redaction: "Rédaction…", verification: "Vérification…", pret: "Prêt", questions: "À toi de jouer", quota: "Reste au stock", rien: "Ne part pas", erreur: "Pas préparé", retire: "Retiré du lot", envoi: "Envoi…", envoye: "En file", refuse: "À toi de jouer" },
-  en: { attente: "Waiting", lecture: "Your description…", montage: "Reading…", redaction: "Writing…", verification: "Checking…", pret: "Ready", questions: "Your move", quota: "Stays in stock", rien: "Not going", erreur: "Not prepared", retire: "Removed", envoi: "Sending…", envoye: "Queued", refuse: "Your move" },
+  fr: { origine: "Lecture de ton annonce d'origine", attente: "En attente", lecture: "Ta description…", montage: "Lecture…", redaction: "Rédaction…", verification: "Vérification…", pret: "Prêt", questions: "À toi de jouer", quota: "Reste au stock", rien: "Ne part pas", erreur: "Pas préparé", retire: "Retiré du lot", envoi: "Envoi…", envoye: "En file", refuse: "À toi de jouer" },
+  en: { origine: "Reading your original listing", attente: "Waiting", lecture: "Your description…", montage: "Reading…", redaction: "Writing…", verification: "Checking…", pret: "Ready", questions: "Your move", quota: "Stays in stock", rien: "Not going", erreur: "Not prepared", retire: "Removed", envoi: "Sending…", envoye: "Queued", refuse: "Your move" },
 };
 const NOM_PALIER = { premium: "Premium", pro: "Pro", business: "Business" };
 // Un abonnement se change là où il a été pris : payé ailleurs qu'ici, on dit
@@ -521,13 +525,25 @@ function EcranDuLot({
           },
         });
       } catch { r = null; }
+      // (22/10 soir, point 8) L'annonce d'origine pas encore lue : l'article ne se prépare pas — le moteur
+      // remplirait ses cases vides à la place du vendeur. La lecture est demandée ; il repart tout seul
+      // dès qu'elle est faite (relecture plus bas). Jamais une erreur.
+      let attenteOrigine = null;
+      if (plateformeOrigine(d.item)) {
+        try { attenteOrigine = await attenteLectureOrigine(supabase, userId, d.item?.id ?? suivant); } catch { attenteOrigine = null; }
+        if (attenteOrigine) demanderLectureOrigine(supabase, d.item?.id ?? suivant);
+      }
       for (const pf of r?.lectures ?? []) derniereLecture.current[pf] = Date.now();
       if (r?.item) setComplets((prev) => ({ ...prev, [suivant]: r.item }));
       setLectures((prev) => ({ ...prev, [suivant]: { source: r?.source ?? null, note: r?.note ?? null } }));
       lusRef.current.add(suivant);
       lecteurOccupe.current = false;
       // Retiré du lot pendant la lecture : il le reste.
-      setEtats((prev) => (prev[suivant]?.phase === "lecture" ? { ...prev, [suivant]: { ...prev[suivant], phase: "attente", lecture: null } } : prev));
+      setEtats((prev) => (prev[suivant]?.phase === "lecture"
+        ? { ...prev, [suivant]: attenteOrigine
+          ? { ...prev[suivant], phase: "origine", lecture: null, raison: messageLectureOrigine(attenteOrigine, en ? "en" : "fr") }
+          : { ...prev[suivant], phase: "attente", lecture: null } }
+        : prev));
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lot, etats]);
@@ -702,6 +718,34 @@ function EcranDuLot({
 
   // ── L'ENVOI : une RPC par article, l'un après l'autre ────────────────────
   const [envoi, setEnvoi] = useState(null); // { fait, total }
+
+  // ── (22/10 soir, point 8) L'ARTICLE QUI ATTEND SON ANNONCE D'ORIGINE REPART TOUT SEUL ──
+  // Relecture bornée (60 s, onglet visible) des seuls articles en phase « origine » : lue → il revient
+  // « En attente », sa description est reprise comme les autres, puis il se prépare. Jamais après l'envoi.
+  const idsOrigine = lot ? lot.ids.filter((id) => etats[id]?.phase === "origine").join("|") : "";
+  useEffect(() => {
+    if (!idsOrigine || envoi) return undefined;
+    const ids = idsOrigine.split("|");
+    const r = demarrerRelecture(async () => {
+      const lus = [];
+      for (const id of ids) {
+        const d = donnees.find((x) => x.id === id);
+        const a = await attenteLectureOrigine(supabase, userId, d?.item?.id ?? id);
+        if (!a) lus.push(id);
+      }
+      if (lus.length) {
+        for (const id of lus) lusRef.current.delete(id);
+        setEtats((prev) => {
+          const n = { ...prev };
+          for (const id of lus) if (n[id]?.phase === "origine") n[id] = { ...n[id], phase: "attente", raison: null };
+          return n;
+        });
+      }
+      return true;
+    }, { intervalleMs: 60_000, maxMs: 15 * 60_000, immediat: false });
+    return () => r.arreter();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idsOrigine, envoi]);
   const attendre = (pred, ms) => new Promise((resolve) => {
     const fin = Date.now() + ms;
     const boucle = () => { if (pred() || Date.now() > fin) resolve(pred()); else setTimeout(boucle, 150); };

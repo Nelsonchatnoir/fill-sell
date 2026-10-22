@@ -94,6 +94,7 @@ const TEXTE = {
     limite_jour: "En pause (limite du jour atteinte) : la file repart à minuit (heure de Paris), celle-ci à son tour", // estimation-ok: règle du plafond (minuit, heure de Paris) — Nico, 17/10
     creneau: "En pause (créneau de republication) : elle repart toute seule au prochain créneau",
     auto_en_pause: "Republication automatique en pause : elle repartira quand tu la relanceras. Ton annonce est intacte",
+    file_en_pause: "Ta file est en pause : elle partira quand tu la reprendras",
     essai: "En pause : nouvel essai automatique, rien à faire",
     plateforme: (p) => `En pause : ${p} est en pause de notre côté — reprise automatique`,
     boutique: (login) => (login
@@ -128,6 +129,7 @@ const TEXTE = {
     limite_jour: "Paused (daily limit reached): the queue resumes at midnight (Paris time), this one in turn", // estimation-ok: règle du plafond — Nico, 17/10
     creneau: "Paused (repost time slot): it resumes on its own at the next slot",
     auto_en_pause: "Automatic reposting is paused: it resumes when you restart it. Your listing is untouched",
+    file_en_pause: "Your queue is paused: it goes out when you resume it",
     essai: "Paused: automatic retry, nothing to do",
     plateforme: (p) => `Paused: ${p} is paused on our side — resumes automatically`,
     boutique: (login) => (login
@@ -190,6 +192,14 @@ export function situationJob(j, ctx = {}) {
       break;
     }
     case "serveurs": raison = v.etat === ETATS.EN_COURS ? T.en_cours_serveurs : T.serveurs; break;
+    // (22/10 soir, point 8) La plateforme d'ORIGINE (celle où le vendeur a écrit son annonce), pas celle du dépôt.
+    case "lecture_origine": {
+      const origine = nomPlateforme(v.detail?.plateforme) || (lang === "en" ? "original" : "d'origine");
+      raison = lang === "en"
+        ? `Reading your original ${origine} listing (text, photos, condition): it goes out with YOUR content as soon as the FillSell extension on your computer has read it`
+        : `En cours de lecture de ton annonce d'origine ${origine} (texte, photos, état) : elle partira avec TON contenu dès que l'extension FillSell de ton ordinateur l'aura lue`;
+      break;
+    }
     case "ordinateur": raison = v.etat === ETATS.EN_COURS ? T.en_cours_ordinateur : T.ordinateur; break;
     default: {
       const t = T[v.motif];

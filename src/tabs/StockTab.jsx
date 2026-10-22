@@ -48,6 +48,9 @@ import { FeuilleAttente } from '../components/FeuilleActivite';
 // Chantier clarté (01/10) : UNE barre de progression pour toute l'app, et la
 // file complète des jobs au tap sur n'importe quelle barre de job.
 import FileDesJobs from '../components/FileDesJobs';
+import { useEtatFile } from '../stock/etatFile';
+import { useAchatsAnnules, achatsAnnulesAMontrer, lireMasquesAchatsAnnules, masquerAchatAnnule, texteAchatAnnule } from '../stock/achatsAnnules';
+import { messageFileEnPause } from '../../supabase/functions/_shared/file-pause.js';
 import BarreJobCarte from '../components/BarreJobCarte';
 import BarreProgression from '../components/BarreProgression';
 import { articleDeJob, pisteJob, etapesJob } from '../utils/barresJobs';
@@ -179,6 +182,9 @@ import { prixAchatConnu, prixAchatNum } from '../utils/comptabilite';
 import { estChampEtatVinted, libelleEtatVinted, nomChampEtat } from '../utils/etatsVinted.js';
 import { searchMatch } from '../utils/recherche';
 import { completerTexteDuVendeur, aCompleter as aCompleterTexteVendeur, DELAI_DETAIL_VINTED_MS } from '../publication/texteDuVendeur';
+// (22/10 soir, point 8 — Louis) Une fiche importée ne part pas avant la lecture de son annonce d'origine.
+import { attenteLectureOrigine, demanderLectureOrigine, useLecturesOrigine, phraseLecturesOrigine, messageLectureOrigine } from '../publication/lectureOrigine';
+import { plateformeOrigine } from '../../supabase/functions/_shared/contenu-fiche.js';
 import { uniteDuChamp, valeurAvecUnite, nombreSansUnite } from '../utils/champsDimension';
 import { ChampPortDepop } from '../components/PortDepop';
 import { lirePortSaisi } from '../utils/fraisPortDepop';
@@ -5929,6 +5935,9 @@ const StockTab = memo(function StockTab({
   // s'ouvre quand même (photos + titre déjà là) avec une note douce, jamais un
   // écran vide sans explication.
   const [extDetailOk, setExtDetailOk] = useState(false);
+  // (22/10 soir, point 8) Ce qui attend la lecture de son annonce d'origine (dit dans le Stock) ; sur cet
+  // ordinateur, si l'extension sait lire un détail Vinted, les lectures Vinted se font ici, une à la fois.
+  const lecturesOrigine = useLecturesOrigine({ supabase, userId: user?.id, extensionVinted: extDetailOk });
   useEffect(() => {
     const stop = ecouterPresenceExtension((version) => {
       setExtDetailOk(versionAuMoins(version, DETAIL_VERSION_MIN));
@@ -5968,18 +5977,36 @@ const StockTab = memo(function StockTab({
     //    dressing sans catégorie relit son détail même s'il a sa description.
     // Rien à compléter : ouverture directe — on n'attend JAMAIS un canal qui
     // n'existe pas.
-    if (!aCompleterTexteVendeur(item)) { ouvrirStepper(item); return; }
+    // ── (22/10 soir, point 8 — Louis, Zombicide) L'ANNONCE D'ORIGINE D'ABORD ─────
+    // Une fiche IMPORTÉE (Vinted, Leboncoin, Beebs, Depop) dont l'annonce
+    // d'origine n'est pas encore lue ne s'ouvre pas : le moteur remplirait ses
+    // cases vides (texte rédigé, état par défaut, une photo) à la place du
+    // vendeur. La lecture est demandée, la personne lit « En cours de lecture
+    // de ton annonce d'origine » — jamais une erreur.
+    const importee = Boolean(plateformeOrigine(item));
+    if (!aCompleterTexteVendeur(item) && !importee) { ouvrirStepper(item); return; }
     if (detailFetchId) return; // une récupération à la fois — jamais de lot
     setDetailFetchId(item.id);
     let r = null;
-    try {
-      r = await completerTexteDuVendeur(item, {
-        supabase, userId: user.id, extensionVinted: extDetailOk,
-        lireEbay: (id) => agirEbay('lire_description', { inventaire_id: id }),
-        delaiDetailMs: DELAI_DETAIL_VINTED_MS,
-      });
-    } catch { r = null; }
+    if (aCompleterTexteVendeur(item)) {
+      try {
+        r = await completerTexteDuVendeur(item, {
+          supabase, userId: user.id, extensionVinted: extDetailOk,
+          lireEbay: (id) => agirEbay('lire_description', { inventaire_id: id }),
+          delaiDetailMs: DELAI_DETAIL_VINTED_MS,
+        });
+      } catch { r = null; }
+    }
+    let attenteOrigine = null;
+    if (importee) {
+      try { attenteOrigine = await attenteLectureOrigine(supabase, user.id, item.id); } catch { attenteOrigine = null; }
+    }
     setDetailFetchId(null);
+    if (attenteOrigine) {
+      demanderLectureOrigine(supabase, item.id);
+      montrerNoteDetail(messageLectureOrigine(attenteOrigine, lang === 'fr' ? 'fr' : 'en'));
+      return;
+    }
     if (r?.note === 'vinted_sans_extension') {
       montrerNoteDetail(lang === 'fr'
         ? "La description Vinted sera récupérée quand l'extension sera à jour — tu peux la compléter à la main en attendant."
@@ -7306,6 +7333,11 @@ const StockTab = memo(function StockTab({
   // Les deux feuilles du haut de page. Affichage seul : elles n'écrivent rien,
   // elles rouvrent les portes qui existent déjà.
   const [fileOuverte, setFileOuverte] = useState(false);
+  // (22/10 soir, points 5 et 6 — Louis) La file en pause (geste de la personne) et la synchro qui attend une
+  // remise en ligne ; (point 1c) les achats annulés. Lectures bornées (utils/relectureBornee.js).
+  const etatFileDuCompte = useEtatFile({ supabase, userId: user?.id });
+  const achatsAnnulesLus = useAchatsAnnules({ supabase, userId: user?.id });
+  const [achatsAnnulesMasques, setAchatsAnnulesMasques] = useState(() => lireMasquesAchatsAnnules());
   const [attenteOuverte, setAttenteOuverte] = useState(false);
   // Filtre posé par les chips du bandeau : 'relancer' | 'arretees' | null.
   const [repubFiltre, setRepubFiltre] = useState(null);
@@ -8379,6 +8411,8 @@ const StockTab = memo(function StockTab({
   // serveur), les pseudos et l'origine de chaque article — chaque ligne dit sa
   // boutique, et un job retenu dit laquelle ouvrir.
   const ctxBarres = { lang, extension: extFraicheur, plateformesEnPause: pausedSet, plafond: repubPlafondEtat, oplaAAutoriser: oplaVerdictRepub === 'a_autoriser', texteErreur: (j) => humanizeJobError(j, lang),
+    // (22/10 soir, point 6) La file mise en pause par la personne : les publications pas encore parties le disent.
+    filePause: etatFileDuCompte.pause === true,
     boutiques: (boutiquesVinted?.length ?? 0) >= 1 ? { connectee: boutiqueConnectee, liste: boutiquesVinted, origines: originesBoutique } : null,
     // (03/10, point 25) Poste trop ancien : la file attend la mise à jour (même règle que le bandeau).
     extensionAMettreAJour: extensionStatus?.outdated === true };
@@ -9029,6 +9063,32 @@ const StockTab = memo(function StockTab({
           titre: fr ? 'Extension à mettre à jour' : 'Extension needs updating',
           texte: fr ? "Une version plus récente existe. Installe la dernière version depuis le Chrome Web Store (page Extension dans les réglages)." : "A newer version exists. Install the latest version from the Chrome Web Store (Extension page in settings)." });
       }
+    }
+    // (22/10 soir, point 6) LA FILE EN PAUSE SE VOIT : une ligne, et « Reprendre ». Les retraits continuent.
+    if (etatFileDuCompte.pause) {
+      out.push({ cle: 'file-pause', icone: PauseCircle, ton: 'info', compte: false,
+        titre: fr ? 'Ta file est en pause' : 'Your queue is paused',
+        texte: messageFileEnPause(etatFileDuCompte.en_pause, lang),
+        bouton: { libelle: fr ? 'Reprendre' : 'Resume', icone: RotateCcw, desactive: etatFileDuCompte.envoi,
+          onTap: () => { etatFileDuCompte.basculer(false); } } });
+    }
+    // (22/10 soir, point 5) Une synchro demandée attend la remise en ligne d'une annonce en republication.
+    for (const s of etatFileDuCompte.synchro_attend_republication) {
+      const nomS = PLATFORM_LABELS[s.platform] || s.platform;
+      out.push({ cle: `synchro-attend-${s.platform}`, icone: Clock, ton: 'info', compte: false,
+        titre: fr ? `Ta synchro ${nomS} attend une remise en ligne` : `Your ${nomS} sync waits for a listing to go back online`,
+        texte: fr ? `Une de tes annonces ${nomS} est en cours de republication (retirée, pas encore recréée). La synchro part juste après : elle ne la croira jamais disparue ni vendue.`
+          : `One of your ${nomS} listings is being reposted (removed, not yet recreated). The sync starts right after: it will never take it for gone or sold.` });
+    }
+    // (22/10 soir, point 8) Des articles attendent la lecture de leur annonce d'origine : dit, jamais une erreur.
+    const lo = phraseLecturesOrigine(lecturesOrigine, lang);
+    if (lo) out.push({ cle: 'lecture-origine', icone: Clock, ton: 'info', compte: false, titre: lo.titre, texte: lo.texte });
+    // (22/10 soir, point 1c) Un achat annulé se voit : l'article est revenu, ses annonces repartent. Aucun mail.
+    for (const a of achatsAnnulesAMontrer(achatsAnnulesLus, achatsAnnulesMasques)) {
+      const ta = texteAchatAnnule(a, lang);
+      out.push({ cle: `achat-annule-${a.id}`, icone: Undo2, ton: 'info', compte: false, titre: ta.titre, texte: ta.texte,
+        bouton: { libelle: fr ? 'Vu' : 'Got it', icone: Check,
+          onTap: () => { masquerAchatAnnule(a.id); setAchatsAnnulesMasques(lireMasquesAchatsAnnules()); } } });
     }
     if (repubMaintenance) {
       out.push({ cle: 'maintenance', icone: Wrench, ton: 'info', compte: false,
@@ -11963,6 +12023,7 @@ const StockTab = memo(function StockTab({
           fiches={fichesToutes}
           contexte={ctxBarres}
           texteErreur={ctxBarres.texteErreur}
+          etatFile={etatFileDuCompte}
           formaterPrix={(n)=>fmt(n)}
           renderGeste={(job)=>{
             const fermer=()=>setFileOuverte(false);

@@ -1,3 +1,4 @@
+import { estOeuvreDArt } from "./oeuvreDArt.js";
 // Mapping icône objet (detectObjectIcon) → catégorie Leboncoin [racine, feuille].
 //
 // Arbre PLAT (2 niveaux, 13 racines, ~89 feuilles) relevé par navigation réelle
@@ -328,6 +329,9 @@ const NON_CONSOMMABLE_TITRE = new RegExp([
  */
 export function estCosmetiqueInterditeLbc(icon, article) {
   if (!ICONES_COSMETIQUES.has(icon)) return false;
+  // (22/10 soir, point 2 — paugues) Une ŒUVRE D'ART n'est jamais un cosmétique, quels que soient les mots du
+  // titre (« huile »), le type stocké (« Beauté », écrit avant la règle) ou l'icône : titre ET description lus.
+  if (estOeuvreDArt(article?.titre, article?.description, article?.attributs?.objet?.v)) return false;
   // Le TITRE, et lui seul : c'est lui qui NOMME l'objet (même doctrine que la
   // passe 1 de detectObjectIconKeyword). La description d'un vêtement dit
   // « crème » pour une couleur, celle d'un parfum dit « boîte d'origine » —

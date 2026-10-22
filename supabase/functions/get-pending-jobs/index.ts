@@ -1,4 +1,7 @@
 import { recreationRetientFile } from "../_shared/file-republication.js";
+import { estFileEnPause, jobRetenuParPause, syncDemandeeParLaPersonne, SYNC_DEVANT_FILE_MS, passeAvantLaSynchro } from "../_shared/file-pause.js";
+import { lectureOrigineEnAttente, contenuAImposer, messageLectureOrigine } from "../_shared/contenu-fiche.js";
+import { conformerTexte } from "../../../src/utils/texteConforme.js";
 import { EXTENSION_MIN_BUILD, posteExtensionCompatible } from "../_shared/version-min-extension.js";
 // (18/10, lot 5 — hu.anastasia) La pause anti-robot quand Vinted refuse la LECTURE des annonces de sa boutique.
 import { ANTIROBOT_LECTURES_MSG, refusSurSaBoutique, retenuParPauseLectures, signalPauseLectures } from "../_shared/pause-antirobot-vinted.js";
@@ -1879,6 +1882,28 @@ serve(async (req) => {
     // (11/10) L'âge de la demande de relevé du dressing : elle ne retient les
     // jobs Vinted que FRAÎCHE (30 min), comme les relevés d'annonces.
     let syncCommandFrais = false;
+    // (22/10 soir, point 5) Les demandes de la PERSONNE (« Synchroniser ») de moins de 10 min : SERVIES, elles passent
+    // devant TOUTE la file de publications (plus bas, « LA SYNC PASSE DEVANT LA FILE »).
+    const cmdsDeLaPersonne = new Set<string>();
+    // ══ (22/10 soir, point 5) GARDE ABSOLUE : AUCUN RELEVÉ PENDANT UNE REPUBLICATION RETIRÉE ══════════════
+    // Une republication entre le retrait de l'ancienne annonce et l'essai de recréation : le relevé de SA
+    // plateforme n'est pas servi — la demande reste en file et part au poll qui suit la remise en ligne. Même
+    // règle en base pour toutes les versions (déclencheur garde_releve_pendant_republication : une prise ou un
+    // relevé lancé par l'extension est refusé). Lecture impossible → comme avant.
+    const releveAttendRepublication = new Map<string, string>();
+    const fenetreRepublication = async (pf: string): Promise<string | null> => {
+      if (releveAttendRepublication.has(pf)) return releveAttendRepublication.get(pf) || null;
+      try {
+        const adminF = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        const { data } = await adminF.rpc("republication_entre_retrait_et_recreation", { p_user: user.id, p_platform: pf });
+        const id = typeof data === "string" && data ? data : "";
+        releveAttendRepublication.set(pf, id);
+        return id || null;
+      } catch (_e) {
+        releveAttendRepublication.set(pf, "");
+        return null;
+      }
+    };
     if (versionAuMoins(version, SYNC_VERSION_MIN) && !includeProcessing) {
       try {
         // Marque en 'expired' les demandes trop vieilles AVANT de lire. Sans
@@ -1892,17 +1917,22 @@ serve(async (req) => {
         const ttl = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
         const { data: cmds } = await userClient
           .from("vinted_sync_runs")
-          .select("id, queued_at")
+          .select("id, queued_at, declencheur")
           .eq("kind", "dressing")
           .eq("status", "queued")
           .gte("queued_at", ttl)
           .order("queued_at", { ascending: true })
           .limit(1);
+        const repVinted = cmds?.length ? await fenetreRepublication("vinted") : null;
         if (cmds?.length && compteEnPauseAr) {
           console.log(`[get-pending-jobs] userId=${user.id} : relevé Vinted ${String(cmds[0].id).slice(0, 8)} RETENU — compte en pause anti-robot, il partira à la levée`);
+        } else if (cmds?.length && repVinted) {
+          console.log(`[get-pending-jobs] userId=${user.id} : relevé Vinted ${String(cmds[0].id).slice(0, 8)} RETENU — republication ${repVinted.slice(0, 8)} entre le retrait et la recréation, il partira à la remise en ligne`);
         } else if (cmds?.length) {
           syncCommand = { id: cmds[0].id as string };
-          syncCommandFrais = Date.now() - Date.parse(String((cmds[0] as { queued_at?: unknown }).queued_at ?? "")) < 30 * 60_000;
+          const ageCmd = Date.now() - Date.parse(String((cmds[0] as { queued_at?: unknown }).queued_at ?? ""));
+          syncCommandFrais = ageCmd < 30 * 60_000;
+          if (ageCmd < SYNC_DEVANT_FILE_MS && syncDemandeeParLaPersonne((cmds[0] as { declencheur?: unknown }).declencheur)) cmdsDeLaPersonne.add(String(cmds[0].id));
         }
       } catch (_e) { /* la file de sync ne doit JAMAIS bloquer la distribution des jobs */ }
     }
@@ -2024,16 +2054,27 @@ serve(async (req) => {
         const ttl = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
         const { data: cmds } = await userClient
           .from("vinted_sync_runs")
-          .select("id, platform, queued_at")
+          .select("id, platform, queued_at, declencheur")
           .eq("kind", "annonces")
           .eq("status", "queued")
           .gte("queued_at", ttl)
           .order("queued_at", { ascending: true })
           .limit(4);
-        const lues = (cmds ?? []) as Array<{ id: unknown; platform: unknown; queued_at: unknown }>;
+        const lues: Array<{ id: unknown; platform: unknown; queued_at: unknown; declencheur?: unknown }> = [];
+        for (const c of ((cmds ?? []) as Array<{ id: unknown; platform: unknown; queued_at: unknown; declencheur?: unknown }>)) {
+          // (22/10 soir, point 5) Garde absolue : jamais pendant une republication retirée de SA plateforme.
+          const rep = await fenetreRepublication(String(c.platform));
+          if (rep) {
+            console.log(`[get-pending-jobs] userId=${user.id} : relevé ${String(c.platform)} ${String(c.id).slice(0, 8)} RETENU — republication ${rep.slice(0, 8)} entre le retrait et la recréation, il partira à la remise en ligne`);
+            continue;
+          }
+          lues.push(c);
+        }
         syncCommandsAnnonces = lues.map((c) => ({ id: String(c.id), platform: String(c.platform) }));
         for (const c of lues) {
-          if (Date.now() - Date.parse(String(c.queued_at ?? "")) < 30 * 60_000) relevesFrais.add(String(c.id));
+          const ageCmd = Date.now() - Date.parse(String(c.queued_at ?? ""));
+          if (ageCmd < 30 * 60_000) relevesFrais.add(String(c.id));
+          if (ageCmd < SYNC_DEVANT_FILE_MS && syncDemandeeParLaPersonne(c.declencheur)) cmdsDeLaPersonne.add(String(c.id));
         }
       } catch (_e) { /* idem */ }
     }
@@ -2406,6 +2447,148 @@ serve(async (req) => {
 
     let out = (jobs ?? []).filter((j) => !paused.has(j.platform));
     const heldBack = (jobs?.length ?? 0) - out.length;
+
+    // ══ LA FILE EN PAUSE (22/10 soir, point 6 — idée de Louis, validée par Nico) ══
+    // La personne met SA file en pause depuis l'app (platform_settings.file_pause, RPC file_pause_basculer) :
+    // ce qui n'a pas commencé reste 'pending', dans son ordre — rien perdu, rien en double, la reprise repart
+    // de là. ⛔ JAMAIS EN PAUSE (_shared/file-pause.js) : un retrait (vente ou geste), une republication dont
+    // le retrait est engagé (elle va jusqu'à la remise en ligne). Le popup (lecture) voit la file entière.
+    // Les jobs en pause ne tiennent pas le PC éveillé (heldBacklog). Illisible → comme avant.
+    let filePause = false;
+    const idsEnPause = new Set<string>();
+    if (!includeProcessing && !includeNeedsUser) {
+      try {
+        const { data: profPause } = await userClient.from("profiles").select("platform_settings").eq("id", user.id).maybeSingle();
+        filePause = estFileEnPause((profPause as { platform_settings?: unknown } | null)?.platform_settings ?? null);
+      } catch (_e) { /* jamais un point de panne : file servie comme avant */ }
+      if (filePause && out.length) {
+        for (const j of out) if (jobRetenuParPause(j)) idsEnPause.add(String(j.id));
+        if (idsEnPause.size) {
+          out = out.filter((j) => !idsEnPause.has(String(j.id)));
+          console.log(`[get-pending-jobs] userId=${user.id} : file EN PAUSE (geste de la personne) → ${idsEnPause.size} publication(s)/republication(s) gardée(s) en file ; retraits et republications engagées servis`);
+        }
+      }
+    }
+
+    // ══ LE CONTENU DU VENDEUR PART TEL QUEL (22/10 soir, point 8 — Louis, Zombicide) ══
+    // (_shared/contenu-fiche.js) 1. Une fiche IMPORTÉE dont l'annonce d'origine n'est pas encore LUE ne part
+    //    pas : sa copie aurait été remplie par le moteur faute de texte. Elle attend la lecture — « en cours de
+    //    lecture de ton annonce d'origine », jamais une erreur — et la lecture est demandée (relevé de veille,
+    //    ou l'extension pour un détail Vinted). 2. Une copie produite AVANT que le vendeur soit lu (publication
+    //    faite trop tôt, republication qui recopie ce dépôt) part avec SON texte, SON état (jamais dégradé) et
+    //    SES photos — et la copie en base est corrigée, la republication suivante recopie le bon contenu.
+    //    ⛔ Une republication dont le retrait est engagé n'attend jamais (son annonce est hors ligne). Une
+    //    republication Vinted recrée l'annonce EN LIGNE telle quelle (capture) : hors de la règle 2.
+    let heldLectureOrigine = 0;
+    if (!includeProcessing && !includeNeedsUser && out.length) {
+      try {
+        // ⛔ Une republication VINTED recrée l'annonce depuis l'annonce EN LIGNE elle-même (capture au retrait) :
+        //    elle ne lit jamais la fiche, rien à attendre ni à imposer (931 republications Vinted de fiches du
+        //    dressing sans description en file le 22/10 au soir : jamais retenues, jamais lues ici).
+        const candidats = out.filter((j) => j.inventaire_id != null
+          && ["publish", "republish"].includes(String(j.action ?? "publish"))
+          && !(String(j.action) === "republish" && j.platform === "vinted")
+          && !(String(j.action) === "republish" && retraitEngage(j)));
+        if (candidats.length) {
+          const adminC = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+          const idsFiches = [...new Set(candidats.map((j) => Number(j.inventaire_id)))].slice(0, 200);
+          const [{ data: fichesC }, { data: originesC }] = await Promise.all([
+            adminC.rpc("fiches_contenu_vendeur", { p_user: user.id, p_ids: idsFiches }),
+            adminC.rpc("jobs_contenu_origine", { p_user: user.id, p_jobs: candidats.map((j) => String(j.id)) }),
+          ]);
+          const ficheDe = new Map(((fichesC ?? []) as Array<Record<string, unknown>>).map((f) => [String(f.id), f]));
+          const contenuLe = new Map(((originesC ?? []) as Array<Record<string, unknown>>).map((o) => [String(o.job_id), String(o.contenu_le ?? "")]));
+          const retenus = new Set<string>();
+          const relevesADemander = new Set<string>();
+          const aRapatrier = new Set<number>();
+          for (const j of candidats) {
+            const f = ficheDe.get(String(j.inventaire_id));
+            if (!f) continue;
+            const pfJ = { ...((j.platform_fields as Record<string, unknown> | null) ?? {}) };
+            const attente = lectureOrigineEnAttente(f, (f.annonces as unknown[]) ?? [],
+              { descriptionLueLe: f.description_lue_le, origineLueLe: f.origine_lue_le });
+            if (attente) {
+              retenus.add(String(j.id));
+              if (attente.plateforme !== "vinted") relevesADemander.add(String(attente.plateforme));
+              const deja = pfJ.attente_lecture_origine as Record<string, unknown> | undefined;
+              if (!deja || String(deja.plateforme ?? "") !== String(attente.plateforme)) {
+                const pfA = { ...pfJ, attente_lecture_origine: { depuis: new Date().toISOString(), plateforme: attente.plateforme, manque: attente.manque, pose_par: "get-pending-jobs" } };
+                await adminC.from("cross_post_jobs").update({ platform_fields: pfAPersister(pfA), error: messageLectureOrigine(attente) })
+                  .eq("id", String(j.id)).eq("status", "pending");
+              }
+              continue;
+            }
+            // Lue : la marque d'attente s'efface (la copie part ce cycle).
+            if (pfJ.attente_lecture_origine) {
+              delete pfJ.attente_lecture_origine;
+              j.platform_fields = pfJ;
+              await adminC.from("cross_post_jobs").update({ platform_fields: pfAPersister(pfJ), error: null })
+                .eq("id", String(j.id)).eq("status", "pending");
+            }
+            const imp = contenuAImposer(j, f, {
+              contenuLe: contenuLe.get(String(j.id)) || String(j.created_at ?? ""),
+              descriptionLueLe: f.description_lue_le, etatLuLe: f.etat_lu_le, photosLuesLe: f.photos_lues_le,
+            }) as { description?: string; etat?: string; photos?: string[]; raisons: string[]; photos_a_rapatrier?: boolean };
+            if (imp.photos_a_rapatrier) {
+              aRapatrier.add(Number(f.id));
+              retenus.add(String(j.id));
+              continue;
+            }
+            if (!imp.raisons.length) continue;
+            const majJ: Record<string, unknown> = {};
+            const pfI = { ...((j.platform_fields as Record<string, unknown> | null) ?? {}) };
+            if (imp.description) {
+              const conf = conformerTexte(String(j.platform), { titre: "", description: imp.description });
+              j.description = conf.description;
+              majJ.description = conf.description;
+            }
+            if (imp.etat) {
+              pfI.etat = imp.etat;
+              // Leboncoin : la correspondance exacte sur la grille se refait plus bas sur CET état.
+              if (pfI.lbcAspects && typeof pfI.lbcAspects === "object") {
+                const asp = { ...(pfI.lbcAspects as Record<string, unknown>) };
+                delete asp.condition;
+                pfI.lbcAspects = asp;
+              }
+              delete pfI.lbc_etat_precis;
+            }
+            if (imp.photos) {
+              j.photos = imp.photos.map((u: string) => ({ url: u, type: "original" }));
+              majJ.photos = j.photos;
+            }
+            pfI.contenu_du_vendeur = { le: new Date().toISOString(), raisons: imp.raisons, pose_par: "get-pending-jobs (22/10, point 8)" };
+            j.platform_fields = pfI;
+            majJ.platform_fields = pfAPersister(pfI);
+            await adminC.from("cross_post_jobs").update(majJ).eq("id", String(j.id)).eq("status", "pending");
+            console.log(`[get-pending-jobs] job ${String(j.id).slice(0, 8)} (${j.platform} ${j.action}) : contenu du vendeur imposé — ${imp.raisons.join(", ")} (lu après la copie)`);
+          }
+          if (retenus.size) {
+            out = out.filter((j) => !retenus.has(String(j.id)));
+            heldLectureOrigine = retenus.size;
+            console.log(`[get-pending-jobs] userId=${user.id} : ${retenus.size} publication(s) en attente de la lecture de l'annonce d'origine (ou du rapatriement de ses photos)`);
+          }
+          if (aRapatrier.size) {
+            await adminC.from("inventaire").update({ photos_a_rapatrier: true }).in("id", [...aRapatrier]).eq("user_id", user.id);
+          }
+          for (const p of relevesADemander) {
+            const { data: enCours } = await adminC.from("vinted_sync_runs").select("id")
+              .eq("user_id", user.id).eq("kind", "annonces").eq("platform", p).in("status", ["queued", "running"]).limit(1);
+            if ((enCours ?? []).length) continue;
+            const { data: recents } = await adminC.from("vinted_sync_runs").select("id")
+              .eq("user_id", user.id).eq("kind", "annonces").eq("platform", p).eq("declencheur", "serveur:lecture_origine")
+              .gte("queued_at", new Date(Date.now() - 15 * 60_000).toISOString()).limit(1);
+            if ((recents ?? []).length) continue;
+            const { error: errLect } = await adminC.from("vinted_sync_runs").insert({
+              user_id: user.id, kind: "annonces", platform: p, status: "queued",
+              declencheur: "serveur:lecture_origine", queued_at: new Date().toISOString(),
+            });
+            console.log(`[get-pending-jobs] userId=${user.id} : lecture d'origine ${p} demandée (relevé de veille)${errLect ? ` — non posée : ${errLect.message}` : ""}`);
+          }
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] contenu du vendeur : ${String((e as Error)?.message ?? e)} — file servie telle quelle`);
+      }
+    }
 
     // ══ UNE REPUBLICATION RECRÉÉE EST FINIE (15/10, P3 — Ornella 9a7b9499) ══
     // Le legging d'Ornella a été recréé le 12/10 (annonce 10352378300, en
@@ -5954,11 +6137,23 @@ serve(async (req) => {
       const horsLigne = (j: { action: string; platform_fields: unknown }) => j.action === "republish"
         && String(((j.platform_fields ?? {}) as Record<string, unknown>).republish_step ?? "") === "deleted";
       const avantSync = out.length;
-      out = out.filter((j) => horsLigne(j) || !plateformesRelevees.has(String(j.platform)));
+      // ══ (22/10 soir, point 5 — promis à Louis le 19/10) LA SYNCHRO DE LA PERSONNE PASSE DEVANT TOUTE LA FILE ══
+      // Une demande « Synchroniser » de la personne, servie ce poll et posée il y a moins de 10 min : ce cycle ne
+      // porte que ce qui ne peut pas attendre (retraits, republications dont l'annonce est déjà retirée) — le relevé
+      // part juste après, ENTRE DEUX TÂCHES TERMINÉES (l'extension ne coupe jamais une tâche), puis la file reprend
+      // au poll suivant, dans son ordre : rien perdu, rien en double. Au-delà de 10 min (demande jamais prise), on
+      // revient à la règle du 11/10 : seule SA plateforme attend.
+      const personneDevant = (syncCommand && cmdsDeLaPersonne.has(String(syncCommand.id)))
+        || syncCommandsAnnonces.some((c) => cmdsDeLaPersonne.has(String(c.id)));
+      out = personneDevant
+        ? out.filter((j) => horsLigne(j) || passeAvantLaSynchro(j))
+        : out.filter((j) => horsLigne(j) || !plateformesRelevees.has(String(j.platform)));
       heldSync = avantSync - out.length;
       console.log(
         `[get-pending-jobs] userId=${user.id} : demande de sync ${syncCommand?.id ?? syncCommandsAnnonces.map((c) => c.platform).join("+")} servie ` +
-        `→ ${heldSync} job(s) ${[...plateformesRelevees].join("+")} retenu(s) en pending pour ce cycle (la sync passe devant SA plateforme ; les autres partent)`,
+        (personneDevant
+          ? `→ demandée par la personne : ${heldSync} publication(s)/republication(s) retenue(s) pour ce cycle (la synchro passe devant toute la file ; retraits et republications retirées partent)`
+          : `→ ${heldSync} job(s) ${[...plateformesRelevees].join("+")} retenu(s) en pending pour ce cycle (la sync passe devant SA plateforme ; les autres partent)`),
       );
     }
 
@@ -11872,6 +12067,9 @@ serve(async (req) => {
     void _nowMs;
     const heldBacklog = (jobs ?? []).filter((j) => {
       if (_outIds.has(String(j.id))) return false; // déjà distribué ce cycle
+      // (22/10 soir, point 6) Une file EN PAUSE ne tient pas le PC éveillé : seuls les retraits et les
+      // republications engagées (servis malgré la pause) comptent.
+      if (idsEnPause.has(String(j.id))) return false;
       return !idsAutrePoste.has(String(j.id));
     }).length;
     const travailRetenu = heldSync + heldBacklog;
@@ -12047,6 +12245,14 @@ serve(async (req) => {
       // du dressing, ni relevé des ventes, ni veilleur. La sonde de session
       // continue : c'est elle qui lève la pause.
       vinted_pause_antirobot: Boolean(antirobotPause) || compteEnPauseAr,
+      // (22/10 soir, point 6) La file est-elle en pause (geste de la personne) ? L'extension ≥ 0.6.130 le relit
+      // aussi ENTRE DEUX TÂCHES et le dit dans son popup ; les plus anciennes ne reçoivent simplement rien.
+      file_en_pause: filePause,
+      jobs_retenus_pause: idsEnPause.size,
+      // (22/10 soir, point 5) Relevés retenus parce qu'une republication est entre le retrait et la recréation.
+      releves_attente_republication: [...releveAttendRepublication.entries()].filter(([, id]) => id).map(([pf]) => pf),
+      // (22/10 soir, point 8) Publications en attente de la lecture de l'annonce d'origine.
+      jobs_retenus_lecture_origine: heldLectureOrigine,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);

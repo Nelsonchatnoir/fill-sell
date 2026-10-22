@@ -49,6 +49,7 @@ import { mentionsAutrePlateforme, messageMentions } from "../utils/descriptionMe
 import { normalizeVintedTitle } from "../utils/vintedTitle";
 import { getEbayCategoryId } from "../utils/ebayCategories";
 import { getBeebsCategoryPath, beebsGenreRequired } from "../utils/beebsCategories";
+import { rayonsGenreValides, genreSur, phraseGenreAChoisir } from "../publication/moteur/genreAChoisir";
 import { getPlatformSupport, depopInterdit } from "../utils/platformCompat";
 // Règles du catalogue Beebs (2026-09-11) : le MÊME fichier que le filet serveur
 // (get-pending-jobs) — verdict sur source certaine, motif écrit sous la case.
@@ -3326,7 +3327,23 @@ export function AspectValueInput({ value, allowedValues, strict = false, closedM
   );
 }
 
-function StepPublish({ selected, setSelected, userId = null, platformSessions = null, platformListings, publishError, lang, demanderPrixAchat = false, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, beebsGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, onReponseQuestion = null, pausedPlatforms = [], pausedReasons = {}, plateformesVerrouillees = [], motifsVerrouillage = {}, lbcPhotoCap = null, lbcAdresseManquante = null, ebayVoieApiReelle = false, descriptionMentions = null, descriptionVideVinted = false, onOuvrirCopie = null, jumeauxEnLigne = [], oplaVerdict = null, attentes = {}, onCompleter = null, douteEnLigne = {}, onRepondreDisparue = null }) {
+// (22/10 soir, point 4) Les rayons qui existent pour cet article, en boutons :
+// la question du rayon a enfin son champ dans l'ancien écran Publier aussi.
+function BoutonsRayon({ choix, onChoisir }) {
+  if (!choix?.valides?.length || !onChoisir) return null;
+  return (
+    <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginTop:10 }}>
+      {choix.valides.map(g => (
+        <button key={g} type="button" onClick={() => onChoisir(g)}
+          style={{ border:"1px solid #F59E0B", background:"#FFFFFF", color:"#92400E", borderRadius:999, padding:"8px 14px", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+          {g}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function StepPublish({ selected, setSelected, userId = null, platformSessions = null, platformListings, publishError, lang, demanderPrixAchat = false, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, beebsGenreBlocked = false, genreAChoisir = null, onChoisirGenre = null, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, onReponseQuestion = null, pausedPlatforms = [], pausedReasons = {}, plateformesVerrouillees = [], motifsVerrouillage = {}, lbcPhotoCap = null, lbcAdresseManquante = null, ebayVoieApiReelle = false, descriptionMentions = null, descriptionVideVinted = false, onOuvrirCopie = null, jumeauxEnLigne = [], oplaVerdict = null, attentes = {}, onCompleter = null, douteEnLigne = {}, onRepondreDisparue = null }) {
   const { t, tpl } = useTranslation(lang);
   const chips = [...selected].filter(p => platformListings?.platforms?.[p]);
   // Voie API eBay (07/09/2026, prouvée sur le job d9463010) : le relevé de
@@ -3749,7 +3766,8 @@ function StepPublish({ selected, setSelected, userId = null, platformSessions = 
           extension avec « Catégorie vinted non résolue ». */}
       {vintedGenreBlocked && (
         <div style={{ padding:"12px 14px", background:"#FFFBEB", border:"1px solid #FDE68A", borderRadius:14, marginBottom:12, fontSize:13, color:"#92400E" }}>
-          {t("vintedGenreRequired")}
+          {genreAChoisir?.vinted ? phraseGenreAChoisir({ ...genreAChoisir.vinted, nomPlateforme: "Vinted", lang }) : t("vintedGenreRequired")}
+          <BoutonsRayon choix={genreAChoisir?.vinted} onChoisir={onChoisirGenre ? (v) => onChoisirGenre("vinted", v) : null} />
         </div>
       )}
 
@@ -3759,7 +3777,8 @@ function StepPublish({ selected, setSelected, userId = null, platformSessions = 
           message qui accusait le genre à tort. */}
       {beebsGenreBlocked && (
         <div style={{ padding:"12px 14px", background:"#FFFBEB", border:"1px solid #FDE68A", borderRadius:14, marginBottom:12, fontSize:13, color:"#92400E" }}>
-          {t("beebsGenreRequired")}
+          {genreAChoisir?.beebs ? phraseGenreAChoisir({ ...genreAChoisir.beebs, nomPlateforme: "Beebs", lang }) : t("beebsGenreRequired")}
+          <BoutonsRayon choix={genreAChoisir?.beebs} onChoisir={onChoisirGenre ? (v) => onChoisirGenre("beebs", v) : null} />
         </div>
       )}
 
@@ -7563,6 +7582,37 @@ export default function ListingPreviewScreen({
     return !getBeebsCategoryPath(icon, g);
   }, [selected, edited, initialListing, activeAiIcon]);
 
+  // ── (22/10 soir, point 4 — Louis) LE RAYON À CHOISIR A SON CHAMP ─────────
+  // « Lunettes enfants Stitch » : genre « Enfant » sur la copie Beebs, une
+  // question comptée, Publier grisé… et aucun champ — seulement une phrase.
+  // Désormais : les SEULS rayons qui existent pour cet article (ceux qui
+  // résolvent une catégorie réelle), et le rayon posé par le moteur quand il
+  // est sûr (moteur/genreAChoisir.js : un seul rayon possible, ou le texte de
+  // la FICHE qui nomme un genre, ou « Enfant » avec un seul rayon enfant).
+  // Le rayon posé se voit et se change (genresDeduits) — jamais en silence.
+  const genreAChoisir = useMemo(() => {
+    const out = {};
+    const texteFiche = [initialListing?.titre, initialListing?.description].filter(Boolean).join("\n");
+    for (const [p, bloque, chemin] of [["vinted", vintedGenreBlocked, getVintedCategoryPath], ["beebs", beebsGenreBlocked, getBeebsCategoryPath]]) {
+      if (!bloque) continue;
+      const pf = edited[p]?.platform_fields ?? {};
+      const icon = resolveArticleIcon({ initialListing, edited, pf, aiIcon: activeAiIcon });
+      const valides = rayonsGenreValides(p, icon, chemin);
+      out[p] = { actuel: pf.genre ?? "", valides, deduit: genreSur({ actuel: pf.genre ?? "", valides, texte: texteFiche }) };
+    }
+    return out;
+  }, [vintedGenreBlocked, beebsGenreBlocked, edited, initialListing, activeAiIcon]);
+  const genresDeduitsPoses = useRef(new Set());
+  const [genresDeduits, setGenresDeduits] = useState({});
+  useEffect(() => {
+    for (const [p, g] of Object.entries(genreAChoisir)) {
+      if (!g.deduit || genresDeduitsPoses.current.has(p)) continue;
+      genresDeduitsPoses.current.add(p); // une fois : un rayon que la personne change n'est jamais reposé
+      setPlatformDedicatedField(p, "genre", g.deduit.valeur);
+      setGenresDeduits(prev => ({ ...prev, [p]: { ...g.deduit, avant: g.actuel, valides: g.valides } }));
+    }
+  }, [genreAChoisir]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Aspects obligatoires eBay AVANT publication (B1, 2026-07-16) ──────────
   // Cas réel déclencheur : « Longueur de la robe » (obligatoire sur Robes,
   // AUCUNE source app) n'apparaissait qu'APRÈS le clic Publier, via l'échec
@@ -9195,6 +9245,13 @@ export default function ListingPreviewScreen({
   // dans le bloc de questions (BlocQuestions) et ses réponses notées
   // (noterReponseQuestion) sont retenus ici, par clé de télémétrie.
   const gestesQuestions = useRef(new Set());
+  // (22/10 soir, point 4) Le rayon choisi par la personne : écrit sur la copie
+  // par son champ dédié, et compté comme SA réponse (télémétrie « personne »).
+  const choisirGenre = (p, v) => {
+    noterGesteQuestion(`${p}:genre_rayon`);
+    setPlatformDedicatedField(p, "genre", v);
+    setGenresDeduits(prev => (prev[p] ? { ...prev, [p]: { ...prev[p], change: v } } : prev));
+  };
   const noterGesteQuestion = (cle) => {
     if (!cle) return;
     gestesQuestions.current.add(String(cle));
@@ -9323,6 +9380,22 @@ export default function ListingPreviewScreen({
         }
       }
     }
+    // (22/10 soir, point 4) Le rayon (genre) à choisir n'était jamais tracé :
+    // la question de Louis (« Lunettes enfants Stitch », Beebs) n'a laissé
+    // aucune ligne. Une ligne par plateforme, même cycle affiche/complete.
+    for (const [p, g] of Object.entries(genreAChoisir)) {
+      if (g.deduit) continue; // le moteur le pose à ce rendu : pas une question
+      const k = `${p}:genre_rayon`;
+      actifs.add(k);
+      if (!champBloquantVus.current[k]) {
+        champBloquantVus.current[k] = {
+          platform: p, champs: [t("fieldGenderLabel")], champ_cle: "genre", genre_actuel: g.actuel || null,
+          rayons_valides: g.valides, categorie: genericCategoryKeys?.[p] ?? initialListing?.categorie ?? null,
+          inventaire_id: invId ?? null, affiche_le: Date.now(),
+        };
+        logChampBloquant("affiche", champBloquantVus.current[k]);
+      }
+    }
     for (const k of champBloquantRestants.current) {
       const vu = champBloquantVus.current[k];
       if (!actifs.has(k) && vu && !vu.complete) {
@@ -9347,7 +9420,7 @@ export default function ListingPreviewScreen({
       }
     }
     champBloquantRestants.current = actifs;
-  }, [step, publishing, genericRequiredStatus, ebayRequiredStatus, ebayIaFiniePour, ebayPreviewCategoryId, missingSharedFieldsDetailed, couleurEnAttente, iaGeneriqueEnVol, memoireCat]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [step, publishing, genericRequiredStatus, ebayRequiredStatus, ebayIaFiniePour, ebayPreviewCategoryId, missingSharedFieldsDetailed, couleurEnAttente, iaGeneriqueEnVol, memoireCat, genreAChoisir]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { doneRef.current = done; }, [done]);
   useEffect(() => () => {
     if (doneRef.current) return;
@@ -11721,6 +11794,8 @@ export default function ListingPreviewScreen({
     // Les questions et le geste
     redSharedFields, redSharedFieldPlatforms, sharedFields, setSharedField, repondreChampPartage, sharedChildAxes, missingSharedFieldsDetailed, noterReponseFiche, noterReponseFicheValeur,
     vintedGenreBlocked, beebsGenreBlocked, ebayRequiredStatus, setEbayAspect, setEbaySharedField,
+    // (22/10 soir, point 4) Le rayon à choisir : ses rayons valides, celui que le moteur a posé, le geste.
+    genreAChoisir, genresDeduits, choisirGenre,
     genericRequiredStatus, setPlatformAspect, setPlatformDedicatedField, EBAY_CLOSED_LIST_MAX,
     // (18/10 nuit, point 1) La mémoire « compte × catégorie » : ce qu'elle a
     // posé sur cet article (montré, modifiable) et la réponse de la personne.
@@ -12120,6 +12195,8 @@ export default function ListingPreviewScreen({
             sharedChildAxes={sharedChildAxes}
             vintedGenreBlocked={vintedGenreBlocked}
             beebsGenreBlocked={beebsGenreBlocked}
+            genreAChoisir={genreAChoisir}
+            onChoisirGenre={choisirGenre}
             ebayRequiredStatus={ebayRequiredStatus}
             onEbayAspectChange={setEbayAspect}
             onEbaySharedFieldChange={setEbaySharedField}

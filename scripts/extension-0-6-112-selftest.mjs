@@ -48,9 +48,10 @@ ok(/pf\.needs_user_source = "session_vinted";/.test(blocC) && /Connexion Vinted 
 ok(/delete pf\.blocage_antirobot; delete pf\.attente_antirobot_compte;/.test(blocC) && !/anti-?robot/i.test(blocC.slice(blocC.indexOf('const msgCo'), blocC.indexOf('await updateJobStatus'))), 'aucun mot « anti-robot » dans le message, marqueurs anti-robot retirés');
 
 console.log('G. Vérifications de routine Leboncoin');
-ok(/async function checkListingState\(url, platform, \{ routine = false \} = \{\}\)/.test(bg), 'checkListingState sait s\'il est appelé en routine');
+// (22/10 soir, 0.6.130, point 3) La routine porte aussi la date de dépôt et de revue (modération Leboncoin).
+ok(/async function checkListingState\(url, platform, \{ routine = false(?:, publieLe = null, revueLe = null)? \} = \{\}\)/.test(bg), 'checkListingState sait s\'il est appelé en routine');
 ok(/if \(routine && res\.state === "active"\) break;/.test(bg) && /if \(routine && String\(res\.raison \?\? ""\)\.startsWith\("bot_shield"\)\) break;/.test(bg), 'routine : un « en ligne » prouvé suffit ; au premier anti-robot, on n\'insiste pas');
-const appelsRoutine = (bg.match(/checkListingState\([^)]*\{ routine: true \}\)/g) ?? []).length;
+const appelsRoutine = (bg.match(/checkListingState\([^)]*\{\s*routine: true[^)]*\}\)/g) ?? []).length;
 const appelsTotal = (bg.match(/await checkListingState\(/g) ?? []).length;
 ok(appelsRoutine === 1 && appelsTotal >= 8, `UN seul appel en routine (boucle de détection) ; les ${appelsTotal - 1} autres (retraits, republications) gardent les trois tirs`);
 ok(/const dueOuverts = due\.filter\(\(j\) => !\(disjoncteurs\[j\.platform\]\?\.jusqua > Date\.now\(\)\)\);/.test(bg) && /await armerDisjoncteurLecture\(job\.platform\);/.test(bg),
