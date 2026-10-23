@@ -313,3 +313,22 @@ Rapport : `docs/enquetes/dix-points-1710/RAPPORT.md` (points 1, 4, 5, 7, 9).
 - Le relevé API lit d'abord le détail des annonces dont une publication attend (60 par relevé, 150 sur une demande de
   lecture d'origine, suite redemandée tant qu'il en reste) ; le rapatriement sert d'abord les fiches dont une tâche
   attend (handler-watch, 48 photos par passage).
+
+## 24/10 — eBay, Depop (rapport `docs/enquetes/lot-2410/RAPPORT.md`)
+- **Vêtement traditionnel → « Vêtements traditionnels, du monde »** (eBay 155240 et ses feuilles par région, relevées
+  sur ebay.fr le 23/10 : 155253 Moyen-Orient, 155241 Afrique, 155242 Asie orientale, 155246 Asie du Sud, 155252
+  Amérique latine, 163145 Europe) — `src/utils/vetementTraditionnel.js`, branché dans `resolutionPublication.js` pour
+  eBay seul. Mots sûrs (djellaba, qamis, takchita, abaya, boubou, sari, hanbok, yukata, dirndl…) ; mots que la mode
+  emprunte (caftan, kimono, kurta, poncho, kilt, pagne) seulement avec leur origine collée ; jamais un kimono d'art
+  martial, jamais un objet (poupée, figurine, tissu) ; deux régions = rien. Rejeu 30 j : 1 changement (la djellaba de
+  Sébastien), 4 vêtements bien rangés, 0 robe « caftan » de mode basculée.
+- **Une annonce eBay arrêtée sur eBay n'est pas un refus** : si la veille a lu sa fin (`fin_ebay.fin`, aucune vente),
+  la publication est close « arrêtée sur eBay le … — pas par FillSell », sans rouge (`trancher_publications_sans_lien`,
+  migration `20261024140000`). Cas : jocabroc8, deux annonces que le vendeur a arrêtées 2 et 17 min après leur mise en
+  ligne (« car elle comportait une erreur », pages eBay relues le 23/10).
+- **Un dépôt sans lien dont l'article est en ligne ailleurs** (même fiche, ou compte FillSell relié) n'est jamais
+  « Publication non confirmée » : clos sans rouge, comme dans `trancher_publications_sans_lien`
+  (`fail_publish_without_listing_url` + `article_en_ligne_ailleurs`, migration `20261024140000`).
+- **Depop : la présignature d'une photo se réessaie** (extension ≥ 0.6.132, `depopEnvoyerPhoto`) : un « Failed to
+  fetch » (refus CORS intermittent, ≈ 5 % des photos) est repris 3 fois (1, 2,5 et 5 s) ; la création de l'annonce
+  n'est jamais rejouée. Johan (tiblancdeshaut) : sa publication passera avec la 0.6.132.

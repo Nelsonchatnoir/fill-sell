@@ -388,9 +388,14 @@ export { vintedExigeUneMarque, vintedExigeUneCouleur, vintedExigeUnIsbn, ISBN_AB
 // rayon plutôt que de répondre « neuf » pour un objet porté.
 // Vrai seulement quand la liste relevée de l'État ne porte QUE des « Neuf… »
 // et que la valeur de l'article n'en fait pas partie.
+// (24/10, point 1, sujet du 22/10) BEEBS AUSSI : 7 rayons Beebs relevés n'offrent que « Neuf, avec étiquette » /
+// « Neuf, sans étiquette » (Maquillage, Parfums, Crème corps, Brassards et bouées, Biscuits et gâteaux, Biberons,
+// Poussettes citadines). Louis, 22/10 : un article d'occasion rangé en « Biscuits et gâteaux ». Même règle, même geste :
+// la carte dit de changer de rayon, jamais « choisis Neuf ».
 const ESTNEUF_RE = /^neuf\b/;
+const CHAMP_ETAT = { vinted: "condition", beebs: "État" };
 export function rayonNeufSeulement({ platform, key, value, allowedValues }) {
-  if (platform !== "vinted" || key !== "condition") return false;
+  if (!CHAMP_ETAT[platform] || key !== CHAMP_ETAT[platform]) return false;
   const vals = (Array.isArray(allowedValues) ? allowedValues : []).map(v => String(v).trim()).filter(Boolean);
   // (25/09) Un « \b » était écrit comme un CARACTÈRE retour arrière (U+0008)
   // dans cette regex : elle ne reconnaissait JAMAIS « Neuf avec étiquette », et
@@ -405,8 +410,54 @@ export function rayonNeufSeulement({ platform, key, value, allowedValues }) {
 }
 
 /** La phrase de la carte du rayon : changer de rayon, jamais « choisis Neuf ». */
-export function messageRayonNeuf({ valeur }, lang = "fr") {
+export function messageRayonNeuf({ valeur, platform = "vinted" }, lang = "fr") {
+  const nom = platform === "beebs" ? "Beebs" : "Vinted";
   return lang === "en"
-    ? `This Vinted category only accepts new items, and this item is “${valeur}”. Pick another category with “Change” if the item fits one; otherwise Vinted won't take it second-hand, and it will go to your other platforms.`
-    : `Ce rayon Vinted n'accepte que des articles neufs, et ton article est « ${valeur} ». Choisis un autre rayon avec « Changer » si l'objet y a sa place ; sinon Vinted ne le prendra pas d'occasion, et il partira sur tes autres plateformes.`;
+    ? `This ${nom} category only accepts new items, and this item is “${valeur}”. Pick another category with “Change” if the item fits one; otherwise ${nom} won't take it second-hand, and it will go to your other platforms.`
+    : `Ce rayon ${nom} n'accepte que des articles neufs, et ton article est « ${valeur} ». Choisis un autre rayon avec « Changer » si l'objet y a sa place ; sinon ${nom} ne le prendra pas d'occasion, et il partira sur tes autres plateformes.`;
+}
+
+// ── (24/10, point 1, sujet du 22/10) RAYON ADULTE, TAILLE ENFANT (ET L'INVERSE) ──────────────────────────────────
+// Louis, 22/10 : « Short Okaïdi 10 ans » rangé en rayon Beebs FEMME — la grille proposée était celle d'une femme
+// (« XS / 34 »), et une réponse au hasard est partie. Une taille d'âge (« 10 ans », « 24 mois », « 12Y ») dans un
+// rayon adulte, ou un tour de taille (« W33 », « 33/34 ») dans un rayon enfant : la question n'est pas la taille,
+// c'est le RAYON — la carte le dit, comme pour « neuf seulement », et ne propose jamais la grille de l'autre public.
+// Jamais deviné : seulement un rayon dont le chemin nomme son public, et une taille qui nomme le sien.
+const PUBLIC_ENFANT_RE = /(?<![\p{L}\p{N}])(?:enfants?|filles?|gar[cç]ons?|b[ée]b[ée]s?|kids?|juniors?|girls?|boys?|pu[ée]riculture)(?![\p{L}\p{N}])/iu;
+const PUBLIC_ADULTE_RE = /(?<![\p{L}\p{N}])(?:femmes?|hommes?|women|men|adultes?)(?![\p{L}\p{N}])/iu;
+/** Le public d'un rayon, lu sur son chemin : 'enfant' | 'adulte' | null. */
+export function publicDuRayon(chemin) {
+  const c = Array.isArray(chemin) ? chemin.join(" > ") : String(chemin ?? "");
+  if (PUBLIC_ENFANT_RE.test(c)) return "enfant";
+  if (PUBLIC_ADULTE_RE.test(c)) return "adulte";
+  return null;
+}
+/** Le public qu'une taille nomme : 'enfant' (un âge), 'adulte' (un tour de taille), sinon null. */
+export function publicDeLaTaille(valeur) {
+  const v = String(valeur ?? "").trim().toLowerCase();
+  if (!v) return null;
+  const morceaux = v.split(/\s*[|/·•()]\s*|\s+[-–—]\s+/).map((x) => x.trim()).filter(Boolean);
+  if (morceaux.some((x) => /^\d{1,2}\s?(?:mois|ans?|years?)$/.test(x) || /^\d{1,2}[my]$/.test(x))) return "enfant";
+  if (/^w\s?\d{2}(?:\s?(?:\/|x)?\s?l\s?\d{2})?$/.test(v) || /^\d{2}\s?w(?:\s?(?:\/|x)?\s?\d{2}\s?l)?$/.test(v)
+      || morceaux.some((x) => /^w\s?\d{2}$/.test(x))) return "adulte";
+  return null;
+}
+/** Le rayon et la taille nomment-ils deux publics différents ? → { rayon, article } ou null. */
+export function rayonPublicIncoherent({ platform, chemin, valeur }) {
+  if (platform !== "beebs" && platform !== "vinted") return null;
+  const rayon = publicDuRayon(chemin);
+  const article = publicDeLaTaille(valeur);
+  return rayon && article && rayon !== article ? { rayon, article } : null;
+}
+/** La phrase de la carte : changer de rayon (ou corriger la taille), jamais une taille de l'autre public. */
+export function messageRayonPublic({ valeur, platform = "beebs", rayon, article }, lang = "fr") {
+  const nom = platform === "beebs" ? "Beebs" : "Vinted";
+  if (lang === "en") {
+    return rayon === "adulte"
+      ? `This ${nom} category is for adults, and the item's size is “${valeur}” (a child's size). Pick a children's category with “Change”; if the item is for adults, correct its size.`
+      : `This ${nom} category is for children, and the item's size is “${valeur}” (an adult size). Pick an adult category with “Change”; if the item is for a child, correct its size.`;
+  }
+  return rayon === "adulte"
+    ? `Ce rayon ${nom} est un rayon adulte, et la taille de ton article est « ${valeur} » (une taille enfant). Choisis un rayon enfant avec « Changer » ; si l'article est pour adulte, corrige sa taille.`
+    : `Ce rayon ${nom} est un rayon enfant, et la taille de ton article est « ${valeur} » (une taille adulte). Choisis un rayon adulte avec « Changer » ; si l'article est pour enfant, corrige sa taille.`;
 }

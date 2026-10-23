@@ -384,7 +384,7 @@ export function questionsAPoser({
   // forment UNE question (questionTaille) : une seule réponse quand une valeur
   // vaut dans toutes leurs grilles, sinon un choix par grille — dans la même
   // question, la grille de chacune sous les yeux.
-  const tailleG = redGenericAspects.filter(({ gp, a }) => genericFieldToSharedKey(gp, a.key) === "taille" && !a.neufSeulement);
+  const tailleG = redGenericAspects.filter(({ gp, a }) => genericFieldToSharedKey(gp, a.key) === "taille" && !a.neufSeulement && !a.rayonEnCause);
   const tailleE = redEbayAspects.filter(a => a.sharedKey === "taille");
   const questionTaille = tailleG.length + tailleE.length >= 2
     ? composerQuestionTaille([...tailleG, ...tailleE.map(a => ({ gp: "ebay", a }))])

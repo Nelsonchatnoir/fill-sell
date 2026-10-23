@@ -443,3 +443,22 @@
   contexte (vélo, ski, roller, chantier / moto, intégral / bluetooth, gaming…) ; UNE famille signalée donne son icône ;
   aucune, ou audio et protection ensemble : la règle d'avant. Rejeu : 572 fiches « casque », 16 changent (toutes des
   casques de protection ou de moto), 0 casque audio ne bascule.
+
+## 24/10 — tailles des jeans, âge, rayon Beebs, relance après un dépôt mort (rapport `docs/enquetes/lot-2410/RAPPORT.md`)
+- **Tour de taille d'un jean (W/L)** lu partout où il est écrit : fiche, titre, description (« 33/34 », « W33 L34 »,
+  « W33 », « 33 US », « taille 33 »), jamais un prix, une dimension en cm, une année ou une pointure
+  (`_shared/taille-du-texte.js`, `lireTourDeTaille`). Il se TRADUIT dans la grille de chaque plateforme (Vinted : table
+  W → FR de `_shared/taille-de-service.js` ; Beebs, Leboncoin : la taille FR ; eBay : la valeur W de la liste ; Depop :
+  le W lui-même sur les grilles « bottoms » 62 et 24, plafonds 40 et 34) — jamais une approximation lâche
+  (`findMatchingOption` refuse un « 34 » pour un W34 tant que la grille n'est pas une grille de W). Certain = aucune
+  question ; deux tailles différentes lues = la question reste.
+- **Âge en années** (« 8 ans », « 10-12 ans ») lu dans le texte pour un article enfant ; jamais une durée (« porté 2
+  ans », « garantie 3 ans ») ni un âge d'adulte.
+- **Rayon Beebs « neuf seulement » ou enfant / adulte** : un état d'occasion sur un rayon neuf, ou une taille d'adulte
+  sur un rayon enfant (et l'inverse), est dit sur la ligne du rayon (`rayonPublicIncoherent`, `messageRayonNeuf` avec
+  la plateforme), jamais caché derrière une question de taille.
+- **Une relance ne repart jamais avec l'annonce morte du dépôt d'avant** (`src/utils/relanceDepotMort.js`) : quand le
+  dépôt précédent est PROUVÉ jamais en ligne (`platform_fields.depot_jamais_en_ligne`), « Relancer » efface son numéro,
+  son lien et ses traces (lbc_depot, signaux de disparition…), archivés sous `relance_apres_depot_mort` ; « Relancer
+  par copie » n'hérite plus de ces traces (`RELANCE_COPIE_CLES_RETIREES`). Sans cette preuve, rien ne change. Cas :
+  Raiponce de louis-seller (relancée le 23/10, redéposée sous 3293872836, le job gardait 3290885485).

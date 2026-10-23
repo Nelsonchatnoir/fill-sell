@@ -27,6 +27,7 @@ import {
   depopEtat, depopCouleurs, DEPOP_TAILLE_ENFANT, depopPointureEnfant, depopMarqueAbsente, DEPOP_ETAT_PAR_PALIER,
 } from "./depopAttributs.js";
 import { couperAuMot } from "./texteConforme.js";
+import { lireTourDeTaille } from "../../supabase/functions/_shared/taille-de-service.js";
 // (11/10) Les libellés corrigés et la trace du moteur de rayon (module partagé avec le serveur).
 import { libellesRayonDepop, VERSION_RAYON_DEPOP, SOURCE_RAYON_DEPOP, CLE_QUESTION_RAYON_DEPOP } from "../../supabase/functions/_shared/depop-rayon.js";
 
@@ -96,6 +97,20 @@ export function tailleDepop(taille, chemin) {
     // part telle quelle et le connecteur DEMANDE (jamais une voisine).
     const k = groupe === "footwear" ? depopPointureEnfant(t) : DEPOP_TAILLE_ENFANT[t];
     return k?.libelle ?? t;
+  }
+  // (24/10, point 1 — le W sur la grille Depop 62, sujet du 22/10) UN BAS ÉCRIT EN TOUR DE TAILLE. La grille
+  // Depop des bas pour un compte en euros (IT : 62 homme, 24 femme) porte les TOURS DE TAILLE en pouces, sans
+  // guillemet — « 24 » … « 40 » (homme), « 24 » … « 34 » (femme), créés dans l'ordre, juste après les lettres,
+  // exactement comme les « 24" » … « 40" » de la grille britannique 58 — puis des tailles EU paires ajoutées plus
+  // tard (42 … 56 homme, 36 … 48 femme). Un W de cette plage est donc le MÊME nombre, dans le MÊME système :
+  // « W33 », « 33/34 », « W33 L34 », « W33 | FR 42 » → « 33 ». Une traduction, jamais une conversion. Au-delà
+  // (W42 homme, W36 femme…), le nombre existe aussi comme taille EU : on ne tranche pas, le connecteur demande.
+  if (groupe === "bottoms" && (dep === "menswear" || dep === "womenswear")) {
+    const max = dep === "menswear" ? 40 : 34;
+    // Les morceaux d'une étiquette composite (« W33 | FR 42 ») — jamais coupée sur « / » (« 33/34 » est UN tour).
+    const morceaux = [t, ...t.split(/\s*[|·•]\s*|\s+[-–—]\s+/)].map((x) => x.trim()).filter(Boolean);
+    const ws = [...new Set(morceaux.map((x) => lireTourDeTaille(x)?.w).filter((w) => Number.isFinite(w)))];
+    if (ws.length === 1 && ws[0] >= 24 && ws[0] <= max) return String(ws[0]);
   }
   // Adultes : la valeur de la fiche ; le connecteur la traduit dans la grille
   // EXACTE de la feuille (règle actuelle de _shared/tailles.js : « EU 42 » →

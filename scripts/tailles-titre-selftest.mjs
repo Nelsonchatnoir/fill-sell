@@ -112,7 +112,10 @@ ok("R0 → R4 d'abord, inchangées (patrick giry « W28 L32 » → R1 « 38 »)"
 ok("Pointure : jamais (« 9M » d'une botte)", Q.reponseTailleAuto(job("9M", ["38", "39", "40"], ["Mode", "Femme", "Chaussures (femme)"], "Pointure"), null, ["Western Boot taille 9M"]) === null);
 ok("copie sans taille + titre « Pyjama 18 mois » → « 18 mois (80-86 cm) »", Q.reponseTailleAuto(job("", BEEBS_BEBE), null, ["Pyjama 18 mois"])?.valeur === "18 mois (80-86 cm)");
 ok("une fois seulement (taille_convertie_serveur)", Q.reponseTailleAuto({ ...job("24M", BEEBS_BEBE), platform_fields: { ...job("24M", BEEBS_BEBE).platform_fields, taille_convertie_serveur: { de: "x" } } }, null, ["24M"]) === null);
-ok("la table W → FR est celle de taille-de-service (une seule source)", lire("supabase/functions/_shared/taille-du-texte.js").includes('import { FR_PAR_TOUR_DE_TAILLE } from "./taille-de-service.js"') && S.FR_PAR_TOUR_DE_TAILLE[30] === 40);
+// (24/10) La même source, et aussi la lecture du tour de taille (lireTourDeTaille) : une seule table, une seule lecture.
+ok("la table W → FR est celle de taille-de-service (une seule source)",
+  /import \{ FR_PAR_TOUR_DE_TAILLE(?:, lireTourDeTaille)? \} from "\.\/taille-de-service\.js"/.test(lire("supabase/functions/_shared/taille-du-texte.js"))
+  && !/const FR_PAR_TOUR_DE_TAILLE/.test(lire("supabase/functions/_shared/taille-du-texte.js")) && S.FR_PAR_TOUR_DE_TAILLE[30] === 40);
 
 console.log("\n8. Les branchements");
 const ecran = lire("src/components/ListingPreviewScreen.jsx");

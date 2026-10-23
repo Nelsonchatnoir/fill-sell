@@ -257,12 +257,26 @@ SQL) restent libres. Retirer `anon` ne suffit pas : `authenticated` agissait pou
 (`spend_coins_for_generate`, `spend_coins_for_lens`, `fiche_completer_photos_capture` — migration `20261020200000`).
 Un déclencheur qui appelle une telle fonction attrape son exception : l'écriture d'origine ne casse jamais.
 
-## Supabase migrations
+## Supabase migrations — droits EXPLICITES (régime du 30/10, posé le 24/10)
 
-Toute nouvelle table dans le schéma public nécessite :
+Depuis le 24/10 (migration `20261024110000`, en avance sur Supabase qui l'impose à tous le 30/10/2026), une table
+créée dans `public` ne reçoit AUCUN droit d'office : ni anon, ni authenticated, ni service_role. En base :
+- le déclencheur d'événement `fillsell_table_nait_protegee` active la RLS de toute nouvelle table de `public` ; une
+  sauvegarde (`est_table_de_sauvegarde` : `_…`, `sauvegarde…`, `…backup…`, `…_AAAAMMJJ`) n'a aucun droit client ;
+  une table réelle reçoit les droits de `service_role` (table et séquences) pour que les fonctions edge marchent ;
+- aucune nouvelle fonction n'est exécutable par anon par défaut ; une fonction SECURITY DEFINER de lecture ne
+  s'ouvre à authenticated que si l'app ou une fonction l'appelle sous la session (et elle contrôle `auth.uid()`).
+
+Toute migration qui crée une table l'ÉCRIT (selftest `tables-droits-explicites`) :
 ```sql
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.nouvelle_table TO authenticated;
+ALTER TABLE public.nouvelle_table ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.nouvelle_table TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.nouvelle_table TO authenticated;   -- seulement si l'app la lit
+-- ou, pour une table que seul le serveur lit : « -- droits : serveur seulement (nouvelle_table) »
 ```
+Une sauvegarde de script de réparation : `ALTER TABLE … ENABLE ROW LEVEL SECURITY; REVOKE ALL ON TABLE … FROM anon,
+authenticated;` (le déclencheur le fait aussi). Inverse du régime : `supabase/rollbacks/20261024110000_*_INVERSE.sql`
+(remet les droits sauvegardés dans `_backup_2410_securite_droits`).
 
 
 <!-- ex-CLAUDE.md L1009-1013 : Queries Supabase analytics -->
@@ -307,3 +321,10 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.nouvelle_table TO authenticated;
   `ia_levier_bascule`. Bilan des questions : `questions_publication_bilan(debut, fin)` (affichées, levées par la
   personne / le moteur, abandons). Banc : `node scripts/bancs/zero-friction/banc-ia.mjs` (fonction `ia-banc-deduction`,
   modes `leviers` et `ebay_annonces`, secret de cron jamais écrit).
+
+## 24/10 — une suppression de compte libère ses boutiques (migration `20261024100000`)
+- `boutiques_plateforme.user_id`, `comptes_lies.user_a/user_b`, `fiches_liees_comptes.user_a/user_b` → `auth.users(id)`
+  ON DELETE CASCADE : quel que soit le chemin de suppression (delete-account, tableau de bord), la réservation d'une
+  boutique Vinted / Leboncoin / Beebs / eBay / Depop et les liens entre comptes partent avec le compte ; une boutique
+  ne reste jamais « prise » par un compte qui n'existe plus. 7 réservations orphelines libérées le 23/10 (sauvegarde
+  `_backup_2410_boutiques_orphelines`, inverse `supabase/rollbacks/20261024100000_*_INVERSE.sql`).

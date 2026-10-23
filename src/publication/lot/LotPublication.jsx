@@ -926,7 +926,7 @@ function EcranDuLot({
       const m = moteursRef.current.get(id);
       for (const [gp, liste] of Object.entries(m?.genericRequiredStatus ?? {})) {
         for (const a of liste ?? []) {
-          if ((a.state === "missing" || a.state === "invalid") && Array.isArray(a.allowedValues) && a.allowedValues.length && !a.neufSeulement) {
+          if ((a.state === "missing" || a.state === "invalid") && Array.isArray(a.allowedValues) && a.allowedValues.length && !a.neufSeulement && !a.rayonEnCause) {
             entrees.push({ id, gp, key: a.key, label: a.label ?? a.key, allowedValues: a.allowedValues, a });
           }
         }

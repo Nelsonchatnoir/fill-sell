@@ -70,6 +70,7 @@ import { resoudreRayonDepop, traceRayonDepop, SOURCE_RAYON_DEPOP } from "../../s
 // (18/10 nuit, point 5) Une question de catégorie identique, en vol ou de moins de 10 min, n'est payée qu'une fois.
 import { invoquerResolveCategorie } from "./questionCategorie.js";
 import { oeuvreDArt, rayonVintedOeuvre } from "./oeuvreDArt.js";
+import { vetementTraditionnel } from "./vetementTraditionnel.js";
 
 // ── L'EMPREINTE — À QUELLES CONDITIONS UN PRÉ-CALCUL RESTE VALABLE ────────
 // Elle couvre TOUT ce que la résolution lit : les copies, leurs champs, les
@@ -992,15 +993,25 @@ export async function resoudrePublication({
     const oeuvre = platform === "vinted" && iconeArticle === "🖼️"
       ? oeuvreDArt(frTitrePublication, frDescriptionPublication) : null;
     const feuilleOeuvre = oeuvre ? rayonVintedOeuvre(oeuvre.famille) : null;
+    // ══ (24/10, point 7 — Sébastien) UN VÊTEMENT TRADITIONNEL VA AU RAYON eBay DES VÊTEMENTS TRADITIONNELS ══
+    // La djellaba partait en « Homme : vêtements › Costumes » (3001). src/utils/vetementTraditionnel.js : un mot qui
+    // ne désigne qu'un vêtement traditionnel (ou un mot emprunté par la mode AVEC son origine), garde de l'icône de
+    // vêtement, jamais un kimono d'art martial — la feuille de sa région (155253 Asie du Sud-Ouest/Moyen-Orient pour
+    // la djellaba, comme eBay le suggère). Prime sur le mot, comme les familles jeu vidéo et œuvre.
+    const traditionnel = platform === "ebay"
+      ? vetementTraditionnel(iconeArticle, frTitrePublication, frDescriptionPublication) : null;
     const parMot = feuilleJeuVideo
       ? { chemin: feuilleJeuVideo.chemin, id: feuilleJeuVideo.id ?? null, regle: `jeux_video_${jeuVideo.famille}` }
       : feuilleOeuvre
         ? { chemin: feuilleOeuvre.chemin, id: String(feuilleOeuvre.id), regle: `oeuvre_${oeuvre.famille}` }
-        : (categorieParMotParPf[platform] ?? null);
+        : traditionnel
+          ? { chemin: traditionnel.chemin, id: traditionnel.id, regle: `vetement_traditionnel_${traditionnel.region}` }
+          : (categorieParMotParPf[platform] ?? null);
     if (parMot) {
       pf.categorie_source = parMot.regle?.startsWith("jeux_video")
         ? "famille_jeu_video"
         : parMot.regle?.startsWith("oeuvre_") ? "oeuvre_d_art"
+        : parMot.regle?.startsWith("vetement_traditionnel_") ? "vetement_traditionnel"
         : parMot.choisiParIa ? "ia_parmi_candidats" : (motCategorieSource === "ia" ? "mot_objet_arbre" : "mot_cle_arbre");
       pf.categorie_par_mot = {
         mot: motCategorie, mot_source: motCategorieSource, chemin: parMot.chemin, id: parMot.id ?? null,

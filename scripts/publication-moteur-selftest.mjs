@@ -473,7 +473,13 @@ console.log("\n[RN] Rayon Vinted « neuf seulement » (25/09) — jamais « Neuf
   ok("liste à cinq états (rayon ordinaire) → jamais neuf seulement", rn("Bon état", cinqEtats) === false);
   ok("état inconnu → rien (la question classique se pose)", rn("", neufSeul) === false && rn(null, neufSeul) === false);
   ok("liste vide → rien (un relevé absent n'invente rien)", rn("Bon état", []) === false && rn("Bon état", null) === false);
-  ok("autre plateforme / autre champ → jamais", rn("Bon état", neufSeul, "beebs", "État") === false && rn("Bon état", neufSeul, "vinted", "size") === false);
+  // (24/10, point 1 — sujet du 22/10, décidé par Nico) Beebs aussi : son champ « État » d'un rayon qui n'offre
+  // que « Neuf, avec / sans étiquette » (7 rayons relevés). Les autres plateformes et les autres champs : jamais.
+  const neufBeebs = ["Neuf, avec étiquette", "Neuf, sans étiquette"];
+  ok("Beebs « État » d'un rayon neuf seulement → la carte le dit (24/10)", rn("Bon état", neufBeebs, "beebs", "État") === true && rn("Neuf, sans étiquette", neufBeebs, "beebs", "État") === false);
+  ok("autre plateforme / autre champ → jamais", rn("Bon état", neufSeul, "leboncoin", "condition") === false && rn("Bon état", neufSeul, "vinted", "size") === false
+    && rn("Bon état", neufBeebs, "beebs", "Taille") === false);
+  ok("le message nomme la plateforme (Beebs / Vinted)", /Ce rayon Beebs/.test(L.messageRayonNeuf({ valeur: "Bon état", platform: "beebs" })) && /Ce rayon Vinted/.test(L.messageRayonNeuf({ valeur: "Bon état" })));
   ok("le message dit de changer de rayon, jamais de choisir « Neuf »", /Changer/.test(L.messageRayonNeuf({ valeur: "Bon état" })) && !/choisis\s+«\s*Neuf/i.test(L.messageRayonNeuf({ valeur: "Bon état" })));
   // La CARTE du rayon : plus de question « État » à côté (sa seule réponse
   // serait « Neuf ») — une limite, avec le message.

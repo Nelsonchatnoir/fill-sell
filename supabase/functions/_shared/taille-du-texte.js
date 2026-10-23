@@ -30,17 +30,33 @@
 //     et des mois à la fois → null, la question reste posée ;
 //   · la valeur rendue est une option EXACTE de la grille de la plateforme et
 //     du rayon (placer), et une seule : deux options possibles = doute.
-// ⛔ Jamais « taille 38 » nu, « T38 », « EU 38 », « UK », « US » : le pays d'un
-//    nombre nu n'est pas sûr (pour Vinted femme, FR 40 = EU 38).
-// ⛔ Jamais les années (« 2 ans » : garantie, âge d'usage…), jamais « 1M »
-//    (un mètre), jamais un mois « porté 3 mois ».
+// ⛔ Jamais « taille 38 » nu, « T38 », « EU 38 », « UK » : le pays d'un nombre
+//    nu n'est pas sûr (pour Vinted femme, FR 40 = EU 38). « US » seulement d'un
+//    BAS, de 23 à 54 : le tour de taille (24/10, plus bas).
+// ⛔ Jamais les années hors d'un rayon ENFANT (« 2 ans » : garantie, âge
+//    d'usage…), jamais une durée (24/10, plus bas) ; jamais « 1M » (un mètre),
+//    jamais un mois « porté 3 mois ».
 // ⛔ La fiche n'est jamais réécrite : seule la valeur servie à la plateforme.
 //
 // (19/10 soir, Sébastien) LA TAILLE UNIQUE — voir tailleUniqueDuVendeur.
 //
+// (24/10, point 1 — Johan, Pro, « Jean Levi's 501 bleu délavé taille 33/34 ») LE JEAN ÉCRIT EN W/L.
+// Les vendeurs écrivent le tour de taille sans « W » : « 33/34 », « 33x34 », « 33 US », « 33W 32L ». Dans un BAS
+// (rayon ou texte : jean, pantalon, short, chino…) et seulement là, ces écritures sont un tour de taille :
+//   · « a/b » ou « axb » avec a de 23 à 54 et b de 26 à 38 (la longueur, qui ne choisit jamais rien) ;
+//     « 32/34 » peut AUSSI être la fourchette française 32-34 (a pair, b = a + 2) : doute, sauf si le texte écrit
+//     lui-même « W32 » ;
+//   · « US 33 » / « 33 US » de 23 à 54 (en dessous, c'est une taille US femme : jamais lue) ; « 33W ».
+// Puis W → FR par LA table publiée par Vinted, comme pour « W33 ». Hors d'un bas : jamais (« 33/34 » d'une
+// pointure enfant, d'une date, d'un lot).
+// (24/10, point 1, sujet du 22/10) L'ÂGE EN ANNÉES, DANS UN RAYON ENFANT SEULEMENT : « 8 ans », « taille 10 ans »
+// (2 à 16 ans) → l'option « 8 ans » de la grille. Jamais une durée (« porté 2 ans », « garantie 2 ans », « il y a
+// 3 ans », « 2 ans d'utilisation »), jamais une tranche (« 3-4 ans », « 6/8 ans ») : doute ; jamais hors d'un rayon
+// enfant (un adulte « porté 3 ans »). Les mois et les années ne se convertissent jamais entre eux.
+//
 // ES module pur (Deno + Node + Vite), imports relatifs sans dépendance.
 import { tailleDansGrille, memeTaille } from "./tailles.js";
-import { FR_PAR_TOUR_DE_TAILLE } from "./taille-de-service.js";
+import { FR_PAR_TOUR_DE_TAILLE, lireTourDeTaille } from "./taille-de-service.js";
 
 // Les âges en mois d'une étiquette enfant (childSizes : Naissance, 1 … 36 mois).
 const MOIS_ETIQUETTE = new Set([1, 3, 6, 9, 12, 18, 24, 36]);
@@ -63,17 +79,86 @@ const RE_MOIS = /(?<![\p{L}\p{N}.,])(\d{1,2})\s?mois\b/giu;
 // « porté 3 mois », « acheté il y a 6 mois », « garantie 24 mois » : une durée.
 const DUREE_AVANT = /(?:port[ée]e?s?|utilis[ée]e?s?|achet[ée]e?s?|servi|mis|mise|depuis|pendant|durant|il y a|garanti[e]?|garantie de|seulement|dès|à partir de|a partir de|après|apres|moins de|plus de|environ|que)\s+(?:\p{L}+\s+)?$/iu;
 
+// (24/10) Le BAS : un rayon ou un texte de jean, pantalon, short… — seul il donne
+// un sens de tour de taille à « 33/34 », « 33x34 », « 33 US », « 33W ».
+const BAS_RE = /(?<![\p{L}\p{N}])(?:jeans?|pantalons?|chinos?|denims?|shorts?|bermudas?|cargos?|joggings?|leggings?|trousers|pants|bottoms)(?![\p{L}\p{N}])/iu;
+const CHAUSSURES_OU_CHAUSSETTES = /pointure|chaussure|chaussette|basket|sneaker|botte|bottine|boots?\b|sandale|escarpin/iu;
+/** Un rayon (ou, à défaut, un texte du vendeur) de BAS : jean, pantalon, short… — jamais une chaussure. */
+export function contexteBas(chemin, textes) {
+  const c = Array.isArray(chemin) ? chemin.join(" > ") : String(chemin ?? "");
+  if (CHAUSSURES_OU_CHAUSSETTES.test(c)) return false;
+  if (BAS_RE.test(c)) return true;
+  const t = (Array.isArray(textes) ? textes : [textes]).map((x) => nfc(x)).join(" \n ");
+  return BAS_RE.test(t) && !CHAUSSURES_OU_CHAUSSETTES.test(t);
+}
+// (24/10) Le rayon ENFANT (le chemin seul : un texte d'adulte peut dire « porté 3 ans »).
+const ENFANT_RE = /(?<![\p{L}\p{N}])(?:enfants?|filles?|gar[cç]ons?|b[ée]b[ée]s?|kids?|juniors?|girls?|boys?|pu[ée]riculture)(?![\p{L}\p{N}])/iu;
+/** Le rayon de l'article est-il un rayon enfant ? (chemin de catégorie seulement) */
+export function contexteEnfant(chemin) {
+  const c = Array.isArray(chemin) ? chemin.join(" > ") : String(chemin ?? "");
+  return ENFANT_RE.test(c);
+}
+
+// « 33/34 », « 33 / 34 », « 33x34 », « 33 x 34 » (jamais collé à une lettre : « W33/L34 » est lu par RE_W).
+const RE_PAIRE_WL = /(?<![\p{L}\p{N}.,/])(\d{2})\s?[/x×]\s?(\d{2})(?![\p{L}\p{N}.,/]|\s?(?:cm|mm|€|eur|euros?|kg|g)(?![\p{L}]))/giu;
+// « US 33 », « taille US 33 », « 33 US » (jamais « US 8 » : une taille US femme).
+const RE_US = /(?<![\p{L}\p{N}])(?:us\s?(\d{2})|(\d{2})\s?us)(?![\p{L}\p{N}])/giu;
+// « 33W », « 33 W 32 L ».
+const RE_W_APRES = /(?<![\p{L}\p{N}.,])(\d{2})\s?w(?![\p{L}\p{N}])/giu;
+// L'âge en années : « 8 ans », « 10ans », « 1 an » (lu, jamais placé hors des étiquettes 2 à 16 ans).
+const RE_ANS = /(?<![\p{L}\p{N}.,])(\d{1,2})\s?ans?(?![\p{L}\p{N}])/giu;
+const RE_ANS_TRANCHE = /(?<![\p{L}\p{N}.,])(\d{1,2})\s?(?:-|–|\/|à|a|et|ou)\s?(\d{1,2})\s?ans?(?![\p{L}\p{N}])/giu;
+// « 2 ans de garantie », « 3 ans d'utilisation » : une durée.
+const DUREE_APRES = /^\s?(?:de\s+(?:garantie|vie|plus)|d['’]\s?(?:utilisation|usage|âge|age)|et\s+demi|plus\s+tard|apr[eè]s)/iu;
+const ANS_MIN = 2, ANS_MAX = 16;
+const L_MIN = 26, L_MAX = 38;
+
 /**
  * Ce que les textes du vendeur disent de la taille.
  * @param {unknown[]|unknown} textes — titre, description (fiche, copie)
- * @returns {{ fr:number[], w:number[], wHorsTable:number[], mois:number[], doute:string|null }}
+ * @param {{ bas?: boolean, enfant?: boolean }} [contexte] — (24/10) un bas : « 33/34 », « 33 US », « 33W » sont des
+ *   tours de taille ; un rayon enfant : « 8 ans » est un âge. Sans contexte : la lecture d'avant, à l'identique.
+ * @returns {{ fr:number[], w:number[], wHorsTable:number[], mois:number[], ans:number[], doute:string|null }}
  */
-export function lireTaillesDuTexte(textes) {
-  const fr = new Set(), w = new Set(), wHors = new Set(), mois = new Set();
+export function lireTaillesDuTexte(textes, contexte = {}) {
+  const fr = new Set(), w = new Set(), wHors = new Set(), mois = new Set(), ans = new Set();
+  const wAmbigus = new Map();   // « 32/34 » : W32 L34 ou fourchette FR 32-34
   let doute = null;
   for (const brut of (Array.isArray(textes) ? textes : [textes])) {
     const t = nfc(brut);
     if (!t.trim()) continue;
+    if (contexte?.bas) {
+      for (const m of t.matchAll(RE_PAIRE_WL)) {
+        const a = Number(m[1]), b = Number(m[2]);
+        if (a < W_MIN || a > W_MAX || b < L_MIN || b > L_MAX) continue;
+        if (/^\d{2}\s?\//.test(m[0]) && a % 2 === 0 && b === a + 2) { wAmbigus.set(a, m[0].trim()); continue; }
+        if (FR_PAR_TOUR_DE_TAILLE[a] != null) w.add(a); else wHors.add(a);
+      }
+      for (const m of t.matchAll(RE_US)) {
+        const n = Number(m[1] ?? m[2]);
+        if (n < W_MIN || n > W_MAX) continue;
+        if (FR_PAR_TOUR_DE_TAILLE[n] != null) w.add(n); else wHors.add(n);
+      }
+      for (const m of t.matchAll(RE_W_APRES)) {
+        const n = Number(m[1]);
+        if (n < W_MIN || n > W_MAX) continue;
+        if (FR_PAR_TOUR_DE_TAILLE[n] != null) w.add(n); else wHors.add(n);
+      }
+    }
+    if (contexte?.enfant) {
+      const tranchesAns = [];
+      for (const m of t.matchAll(RE_ANS_TRANCHE)) {
+        tranchesAns.push([m.index, m.index + m[0].length]);
+        doute ??= `tranche d'âge « ${m[0].trim()} »`;
+      }
+      for (const m of t.matchAll(RE_ANS)) {
+        if (tranchesAns.some(([x, y]) => m.index >= x && m.index < y)) continue;
+        if (DUREE_AVANT.test(t.slice(Math.max(0, m.index - 30), m.index))) continue;
+        if (DUREE_APRES.test(t.slice(m.index + m[0].length, m.index + m[0].length + 20))) continue;
+        const n = Number(m[1]);
+        if (n >= ANS_MIN && n <= ANS_MAX) ans.add(n);
+      }
+    }
     for (const m of t.matchAll(RE_FR)) {
       const n = Number(m[1]);
       if (n < FR_MIN || n > FR_MAX) continue;
@@ -112,12 +197,14 @@ export function lireTaillesDuTexte(textes) {
       if (MOIS_COMPACTS.has(n)) noterMois(m, MOIS_COMPACTS);
     }
   }
-  return { fr: [...fr], w: [...w], wHorsTable: [...wHors], mois: [...mois], doute };
+  // « 32/34 » ne se lit W32 que si le texte écrit lui-même « W32 » ; sinon c'est peut-être la fourchette FR 32-34.
+  for (const [a, ecrit] of wAmbigus) if (!w.has(a)) doute ??= `« ${ecrit} » : W${a} L${a + 2} ou fourchette ${a}-${a + 2}`;
+  return { fr: [...fr], w: [...w], wHorsTable: [...wHors], mois: [...mois], ans: [...ans], doute };
 }
 
 // Le signal d'UNE valeur (la taille de la fiche, ou de la copie) :
 //   { fr, w } | { mois } | { doute } | { illisible: true } | null (vide).
-function lireValeur(valeur) {
+function lireValeur(valeur, contexte = {}) {
   const v = nfc(valeur).trim();
   if (!v) return null;
   const s = v.toLowerCase().replace(/\s+/g, " ");
@@ -127,19 +214,44 @@ function lireValeur(valeur) {
     const fr = FR_PAR_TOUR_DE_TAILLE[w];
     return fr != null ? { fr, w: [w] } : { doute: `W${w} absent de la table publiée par Vinted` };
   }
+  // (24/10) « 33/34 », « 33x34 » sur la copie d'un BAS : le tour de taille (lireTourDeTaille, la même lecture que
+  // le serveur) ; « 32/34 » peut être la fourchette FR : doute. « 33 US » : W33.
+  if (contexte?.bas) {
+    const tour = /^\d{2}\s?[/x×]\s?\d{2}$/.test(s) ? lireTourDeTaille(s.replace("×", "x")) : null;
+    if (tour?.ambigu) return { doute: `« ${v} » : tour de taille ou fourchette française` };
+    if (tour?.w) {
+      const fr = FR_PAR_TOUR_DE_TAILLE[tour.w];
+      return fr != null ? { fr, w: [tour.w] } : { doute: `W${tour.w} absent de la table publiée par Vinted` };
+    }
+    m = /^(?:us\s?(\d{2})|(\d{2})\s?us)$/.exec(s);
+    if (m) {
+      const w = Number(m[1] ?? m[2]);
+      if (w >= W_MIN && w <= W_MAX) {
+        const fr = FR_PAR_TOUR_DE_TAILLE[w];
+        return fr != null ? { fr, w: [w] } : { doute: `W${w} absent de la table publiée par Vinted` };
+      }
+    }
+  }
   m = /^fr\s?(\d{2})$/.exec(s);
   if (m) return { fr: Number(m[1]), w: [] };
   m = /^(\d{1,2})\s?(?:m|mois)$/.exec(s);
   if (m && MOIS_ETIQUETTE.has(Number(m[1])) && !(s.endsWith("m") && Number(m[1]) === 1)) return { mois: Number(m[1]) };
+  // (24/10) « 8 ans » sur la copie d'un article de rayon enfant.
+  m = /^(\d{1,2})\s?ans?$/.exec(s);
+  if (m && contexte?.enfant && Number(m[1]) >= ANS_MIN && Number(m[1]) <= ANS_MAX) return { ans: Number(m[1]) };
   return { illisible: true };
 }
 
 // Le signal du TEXTE, cohérent ou en doute.
-function signalDuTexte(textes) {
-  const l = lireTaillesDuTexte(textes);
+function signalDuTexte(textes, contexte = {}) {
+  const l = lireTaillesDuTexte(textes, contexte);
   if (l.doute) return { doute: l.doute };
   const adulte = l.fr.length || l.w.length || l.wHorsTable.length;
   if (adulte && l.mois.length) return { doute: "une taille adulte et un âge en mois" };
+  if (adulte && l.ans.length) return { doute: "une taille adulte et un âge en années" };
+  if (l.ans.length && l.mois.length) return { doute: "un âge en mois et un âge en années" };
+  if (l.ans.length > 1) return { doute: `plusieurs âges (${l.ans.map((n) => `${n} ans`).join(", ")})` };
+  if (l.ans.length === 1) return { ans: l.ans[0] };
   if (l.mois.length > 1) return { doute: `plusieurs âges (${l.mois.map((n) => `${n} mois`).join(", ")})` };
   if (l.mois.length === 1) return { mois: l.mois[0] };
   if (l.fr.length > 1) return { doute: `plusieurs tailles FR (${l.fr.join(", ")})` };
@@ -163,7 +275,8 @@ function signalDuTexte(textes) {
 function placerServeur(valeur, grille) {
   const r = tailleDansGrille(valeur, grille);
   if (r) return r.valeur;
-  const age = /^(\d{1,2}) mois$/.exec(valeur);
+  // (24/10) « 8 ans » comme « 24 mois » : l'âge suivi de sa stature (Beebs « 8 ans (122-128 cm) »).
+  const age = /^(\d{1,2}) (?:mois|ans?)$/.exec(valeur);
   if (!age) return null;
   const hors = (Array.isArray(grille) ? grille : []).map((o) => String(o ?? "").trim()).filter((o) => {
     const p = /^(.*?)\s*\([^()]*\)\s*$/.exec(o);
@@ -316,15 +429,19 @@ export function tailleDuTexte({ valeur = "", textes = [], grille, placer = null,
   const unique = tailleUniqueDuVendeur({ valeur, textes, opts });
   if (unique !== undefined) return unique;
   const poser = placer ?? ((v) => placerServeur(v, opts));
-  const fiche = lireValeur(valeur);
+  // (24/10) Le contexte du rayon et du texte : un bas (« 33/34 » = W33), un rayon enfant (« 8 ans »).
+  const contexte = { bas: contexteBas(chemin, textes), enfant: contexteEnfant(chemin) };
+  const fiche = lireValeur(valeur, contexte);
   if (fiche?.illisible) return null;            // la fiche dit autre chose : jamais recouverte
   if (fiche?.doute) return { doute: fiche.doute };
-  const texte = signalDuTexte(textes);
+  const texte = signalDuTexte(textes, contexte);
   if (texte?.doute) return { doute: texte.doute };
   const sig = fiche ?? texte;
   if (!sig) return null;
   if (fiche && texte) {
-    const meme = ("mois" in fiche) ? texte.mois === fiche.mois : (texte.fr != null && texte.fr === fiche.fr);
+    const meme = ("mois" in fiche) ? texte.mois === fiche.mois
+      : ("ans" in fiche) ? texte.ans === fiche.ans
+      : (texte.fr != null && texte.fr === fiche.fr);
     if (!meme) return { doute: `la fiche dit « ${nfc(valeur).trim()} », le texte une autre taille` };
   }
   let candidats, regle, motif;
@@ -332,6 +449,10 @@ export function tailleDuTexte({ valeur = "", textes = [], grille, placer = null,
     candidats = [`${sig.mois} mois`];
     regle = "mois";
     motif = `${sig.mois} mois`;
+  } else if ("ans" in sig) {
+    candidats = [`${sig.ans} ans`];
+    regle = "ans";
+    motif = `${sig.ans} ans (rayon enfant)`;
   } else {
     const ws = [...new Set([...(fiche?.w ?? []), ...(texte?.w ?? [])])];
     candidats = [`FR ${sig.fr}`, String(sig.fr), ...ws.map((x) => `W${x}`)];

@@ -491,7 +491,9 @@ export default function CarteRayon({
       {(limites ?? []).map((l) => (
         <div key={`limite-${l.cle}`} style={{ ...st.bloc, background: '#FFFBEB', borderColor: '#F59E0B' }}>
           <div style={{ fontSize: 12.5, color: '#92400E', lineHeight: 1.45 }}>
-            {messageRayonNeuf({ valeur: l.valeur }, lang === 'en' ? 'en' : 'fr')}
+            {l.motif === 'rayon_public'
+              ? (lang === 'en' ? l.messageEn : l.message)
+              : messageRayonNeuf({ valeur: l.valeur, platform: l.platform }, lang === 'en' ? 'en' : 'fr')}
           </div>
         </div>
       ))}

@@ -71,3 +71,28 @@ export function retraitBloqueParSessionEbay(job) {
   if (job.status === "pending") return !!pf.attente_session;
   return false;
 }
+
+// ── (24/10, point 5 — Thierry) LE RETRAIT N'ATTEND JAMAIS L'ORDINATEUR ─────
+// « Marc Aurèle, Sesterce » vendu sur Vinted le 23/10 à 16:40 ; son annonce eBay
+// 168782813446 est restée EN LIGNE toute la soirée — risque de double vente —
+// parce que le retrait attendait l'extension, dont le poste s'était tu (pris à
+// 16:55, « Timeout : pas de réponse du content script » à 17:10, rendu par le
+// chien de garde « poste muet depuis 46 min », ordinateur éteint après 17:16).
+// Le compte est RELIÉ par l'API (jeton valide) : le serveur pouvait le faire.
+// LA RÈGLE : un retrait eBay d'un compte relié, encore en file (pending) 15 min
+// après sa création, ou rendu par le chien de garde parce que son poste s'est
+// tu, passe par l'API Trading — avec les mêmes gardes (GetItem avant : même
+// numéro, même vendeur, active ; GetItem après = la preuve). Jamais un retrait
+// en cours chez l'extension (processing) : la bascule ne vise que pending, et
+// l'écriture exige le même statut et la voie extension (aucun double geste).
+export const RETRAIT_ATTENTE_POSTE_MS = 15 * 60_000;
+/** Un retrait que l'ordinateur n'a pas fait à temps (poste muet, ou 15 min en file). */
+export function retraitAttendLePoste(job, maintenantMs = Date.now()) {
+  const pf = (job?.platform_fields && typeof job.platform_fields === "object") ? job.platform_fields : {};
+  if (job?.platform !== "ebay" || job?.action !== "delete" || job?.status !== "pending") return false;
+  const rp = pf.reprise_processing && typeof pf.reprise_processing === "object" ? pf.reprise_processing : null;
+  const it = pf.interruption && typeof pf.interruption === "object" ? pf.interruption : null;
+  if (rp?.motif === "poste_muet" || it?.poste === "muet") return true;
+  const cree = Date.parse(String(job?.created_at ?? ""));
+  return Number.isFinite(cree) && maintenantMs - cree >= RETRAIT_ATTENTE_POSTE_MS;
+}

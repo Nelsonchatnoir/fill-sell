@@ -3,7 +3,7 @@
 // ebay-api-worker). Cas réel du 15/10 : Amega Gaming (compte relié
 // « vintora16 »), annonce 178450879276 (import du relevé), article vendu sur
 // Vinted le 14/10, retrait bloqué « Connexion eBay requise ».
-import { lireItemTrading, verdictAvantRetraitTrading, preuveApresRetraitTrading, retraitBloqueParSessionEbay } from "../supabase/functions/_shared/ebay-retrait-trading.js";
+import { lireItemTrading, verdictAvantRetraitTrading, preuveApresRetraitTrading, retraitBloqueParSessionEbay, retraitAttendLePoste, RETRAIT_ATTENTE_POSTE_MS } from "../supabase/functions/_shared/ebay-retrait-trading.js";
 import fs from "node:fs";
 
 let ko = 0;
@@ -45,11 +45,25 @@ ok(!retraitBloqueParSessionEbay({ ...amega, status: "pending", platform_fields: 
 ok(!retraitBloqueParSessionEbay({ ...amega, platform: "leboncoin" }), "eBay seulement");
 ok(!retraitBloqueParSessionEbay({ ...amega, action: "publish" }), "retraits seulement");
 
+console.log("\n4 bis. LE RETRAIT N'ATTEND JAMAIS L'ORDINATEUR (24/10, Thierry)");
+const t0 = Date.parse("2026-10-23T17:00:00+02:00");
+const thierry = { platform: "ebay", action: "delete", status: "pending", created_at: "2026-10-23T14:40:40.389671+00:00",
+  platform_fields: { reprise_processing: { le: "2026-10-23T16:03:01.440Z", par: "handler-watch", motif: "poste_muet", age_min: 46 } } };
+ok(retraitAttendLePoste(thierry, t0), "Thierry d5075013 : rendu « poste muet » par le chien de garde → voie API");
+ok(retraitAttendLePoste({ ...thierry, platform_fields: {} }, Date.parse("2026-10-23T16:56:00+02:00")), "15 min en file sans être fait → voie API");
+ok(!retraitAttendLePoste({ ...thierry, platform_fields: {} }, Date.parse("2026-10-23T16:50:00+02:00")), "10 min en file : l'extension a encore la main");
+ok(!retraitAttendLePoste({ ...thierry, status: "processing" }, t0), "jamais un retrait en cours chez l'extension (processing)");
+ok(!retraitAttendLePoste({ ...thierry, platform: "vinted" }, t0) && !retraitAttendLePoste({ ...thierry, action: "republish" }, t0), "eBay et retraits seulement");
+ok(retraitAttendLePoste({ ...thierry, platform_fields: { interruption: { poste: "muet" } } }, Date.parse("2026-10-23T16:42:00+02:00")), "interruption « poste muet » → voie API sans attendre");
+ok(RETRAIT_ATTENTE_POSTE_MS === 15 * 60_000, "délai : 15 min");
+
 console.log("\n5. LE WORKER L'APPLIQUE");
 const w = fs.readFileSync(new URL("../supabase/functions/ebay-api-worker/index.ts", import.meta.url), "utf8");
 ok(/if \(!precedent && \/\^\\d\{9,\}\$\/\.test\(idAnnonce\)\) return await retirerParTrading/.test(w), "retirer() : sans publication de notre API → Trading");
 ok(/\.update\(\{ voie: "api", status: "pending", error: null, platform_fields: pf \}\)/.test(w) && /\.eq\("voie", "extension"\)\.select\("id"\)/.test(w), "reroutage voie extension → api (CAS)");
 ok(/await lire\(\)/.test(w) && /preuveApresRetraitTrading/.test(w), "GetItem relu avant ET après le geste");
+ok(/if \(!parSession && !retraitAttendLePoste\(j\)\) continue;/.test(w) && /platform_fields, created_at"\)/.test(w),
+  "reroutage : session absente OU ordinateur qui n'a pas fait le retrait à temps (created_at lu)");
 
 console.log(ko ? `\n${ko} ÉCHEC(S)` : "\nTOUT VERT");
 process.exit(ko ? 1 : 0);

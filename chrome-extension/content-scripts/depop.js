@@ -517,13 +517,48 @@ async function depopPreparerImage(blob) {
   if (!jpeg) throw new Error("conversion JPEG impossible");
   return { jpeg, largeur, hauteur };
 }
+// ── (24/10, point 2 — Johan) UNE PHOTO NE COÛTE JAMAIS LA PUBLICATION ────────
+// « présignature refusée pour la photo 1 (HTTP Failed to fetch) » : la demande
+// d'emplacement photo (POST /pictures/) n'a reçu AUCUNE réponse — la pré-requête
+// CORS de webapi.depop.com échoue au hasard (mesuré le 09/10 : 3 sur 19, en
+// 20-40 ms ; en prod du 10 au 23/10 : 190 échecs pour 3 661 photos montées, 4,9 %
+// par photo, donc une publication de 8 photos sur trois perdait un passage
+// entier, et Johan en a enchaîné quatre). Ces trois gestes ne créent RIEN de
+// visible chez Depop : un emplacement photo vide (jamais rattaché à une
+// annonce), un PUT sur la même URL signée, une validation des mêmes numéros.
+// Ils sont donc REPRIS sur place quand le réseau n'a rien rendu (jamais sur
+// une réponse : 401, 4xx, 5xx se lisent), 1 s, 2,5 s puis 5 s. La création
+// de l'annonce (POST /listing/products/) n'est JAMAIS reprise ici.
+const DEPOP_REPRISES_PHOTO_MS = Object.freeze([1000, 2500, 5000]);
+async function depopJsonPhoto(chemin, options, quoi) {
+  let r = await depopJson(chemin, options);
+  for (let i = 0; i < DEPOP_REPRISES_PHOTO_MS.length && r.statut === 0 && r.erreurReseau; i++) {
+    depopTracer(`${quoi} : réseau muet (${r.erreurReseau}), nouvel essai ${i + 1}/${DEPOP_REPRISES_PHOTO_MS.length}`);
+    await depopAttendre(DEPOP_REPRISES_PHOTO_MS[i]);
+    r = await depopJson(chemin, options);
+  }
+  return r;
+}
+async function depopEnvoyerPhoto(urlSignee, jpeg, indice) {
+  let derniere = null;
+  for (let i = 0; i <= DEPOP_REPRISES_PHOTO_MS.length; i++) {
+    if (i > 0) await depopAttendre(DEPOP_REPRISES_PHOTO_MS[i - 1]);
+    try { return await fetch(urlSignee, { method: "PUT", body: jpeg, headers: { "Content-Type": "image/jpeg" } }); }
+    catch (e) {
+      derniere = e;
+      depopTracer(`photo ${indice + 1} : envoi sans réponse (${String(e?.message ?? e).slice(0, 80)}), essai ${i + 1}`);
+    }
+  }
+  throw new Error(`envoi de la photo ${indice + 1} sans réponse du réseau (${String(derniere?.message ?? derniere).slice(0, 80)})`);
+}
 async function depopMonterPhoto(url, indice) {
   const source = await depopLirePhoto(url, indice);
   const { jpeg, largeur, hauteur } = await depopPreparerImage(await source.blob());
-  const p = await depopJson(DEPOP_ENDPOINTS.photo, { methode: "POST", corps: { type: "product", extension: "jpg", dimensions: { width: largeur, height: hauteur } } });
+  const p = await depopJsonPhoto(DEPOP_ENDPOINTS.photo,
+    { methode: "POST", corps: { type: "product", extension: "jpg", dimensions: { width: largeur, height: hauteur } } }, `photo ${indice + 1} : présignature`);
   if (p.statut === 401) { const err = new Error(DEPOP_MSG_SESSION); err.sessionDepop = true; throw err; }
   if (!p.ok || !p.corps?.url || !p.corps?.id) throw new Error(`présignature refusée pour la photo ${indice + 1} (HTTP ${p.statut || p.erreurReseau})`);
-  const envoi = await fetch(p.corps.url, { method: "PUT", body: jpeg, headers: { "Content-Type": "image/jpeg" } });
+  const envoi = await depopEnvoyerPhoto(p.corps.url, jpeg, indice);
   if (!envoi.ok) throw new Error(`envoi de la photo ${indice + 1} refusé (HTTP ${envoi.status})`);
   depopTracer(`photo ${indice + 1} : ${largeur}×${hauteur}, id ${p.corps.id}`);
   return p.corps.id;
@@ -533,7 +568,7 @@ async function depopMonterPhoto(url, indice) {
 async function depopValiderPhotos(ids) {
   for (let essai = 0; essai < 15; essai++) {
     await depopAttendre(essai === 0 ? 800 : 1500);
-    const v = await depopJson(DEPOP_ENDPOINTS.photoValider, { methode: "POST", corps: { picture_ids: ids } });
+    const v = await depopJsonPhoto(DEPOP_ENDPOINTS.photoValider, { methode: "POST", corps: { picture_ids: ids } }, "validation des photos");
     if (v.statut === 401) { const err = new Error(DEPOP_MSG_SESSION); err.sessionDepop = true; throw err; }
     if (v.ok && v.corps?.status === "complete") {
       const valides = new Set((v.corps.valid_picture_ids ?? []).map(Number));

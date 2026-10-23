@@ -306,7 +306,7 @@ export default function BlocQuestions({ m }) {
           // (25/09) Rayon Vinted « neuf seulement » face à un article d'occasion :
           // aucune valeur à choisir (la seule serait « Neuf », un mensonge) —
           // le message dit de changer de rayon, ou de laisser Vinted de côté.
-          if (a.neufSeulement) return (
+          if (a.neufSeulement || a.rayonEnCause) return (
             <div key={`g:${gp}:${a.key}`} className="fsn-q fsn-q--bloque" style={{ gridColumn: "1 / -1" }}>
               <div className="fsn-row fsn-row--between"><div className="fsn-q-t">{a.label}</div><Puce ton="geste">{NOM(gp)}</Puce></div>
               <div className="fsn-q-why">{a.message}</div>

@@ -284,3 +284,20 @@ Rapport : `docs/enquetes/session-sans-nico-1810/lot4-ventes-lot-multi-exemplaire
   AUCUN geste dans « Mes annonces » (vu le 22/10) et sa page est en 404 — ni supprimable ni achetable.
 - Numéro de retrait manquant : get-pending-jobs (v267) le lit sur l'annonce que le relevé du compte a liée au DÉPÔT
   exact (`annonces_plateforme.job_id`), une seule vivante — jamais la fiche, le titre, le prix (règle du 11/09).
+
+## 24/10 — Beebs, retrait eBay, rattrapage Leboncoin (rapport `docs/enquetes/lot-2410/RAPPORT.md`)
+- **Les ventes Beebs se lisent dans les OBJETS commande** de la page « Ventes » (extension ≥ 0.6.132,
+  `commandesDuFluxRsc`) : la carte d'une commande (OrderCard, composant client appelé par le serveur) reçoit
+  `{ order: { id, status, created_at, products[] }, isSale }` et fabrique son lien dans le navigateur — le flux n'a
+  AUCUN lien de commande (59 lectures fantômes, 0 commande vue). Renvois « $7b » et « $7b:props:… » suivis ; un achat
+  (isSale false) n'est jamais une vente ; les liens restent lus en second. Le serveur accepte un numéro de commande
+  dès 1 caractère (migration `20261024130000`) ; le rattachement reste le numéro de PRODUIT exact. Interrupteur
+  `ventes_beebs_commandes` toujours à 0 : il ne s'allume qu'après des bilans fantômes de la 0.6.132 qui lisent de
+  vraies commandes, sans fausse vente (décision de Nico).
+- **Retrait eBay d'un compte relié par l'API** : s'il attend l'extension depuis 15 min, ou si le poste est muet, l'API
+  le fait (`retraitAttendLePoste`, ebay-api-worker v93) — preuve GetItem avant/après comme toujours. Thierry, 23/10 :
+  168782813446 terminée à 21:38.
+- **Rattrapage « Achat en cours » Leboncoin** (`scripts/reparations/20261022_leboncoin_achats_en_cours_existants.sql`) :
+  rejoué le 23/10 à 22:54 (0.6.131 servie) — 4 ventes (fiches importées le jour même depuis des annonces déjà
+  « Vendu » / « Achat en cours »), 0 mail. La règle n'agit qu'à une TRANSITION : une fiche créée APRÈS la lecture
+  (import) ou une lecture de plus de 72 h attend ce script ou une décision de Nico (rapport, décisions).

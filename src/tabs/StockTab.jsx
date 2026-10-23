@@ -206,6 +206,7 @@ import {
 import { decisionDemarrage, decisionQuestionBoutique, attentesDeConnexion, jobAttendConnexion, texteConnecteToi } from '../annonces/synchroniser.js';
 import { lirePrixAnnoncesVinted } from '../utils/prixAnnoncesVinted.js';
 import { parLots } from '../utils/parLots.js';
+import { relanceSansDepotMort, TRACES_DEPOT_MORT } from '../utils/relanceDepotMort.js';
 import CeQueFillSellFait, { BandeauStockVide } from '../ecrans/vides/StockVide.jsx';
 
 // ── UN SEUL JEU D'ICÔNES (03/10/2026, refonte du Stock) ────────────────────
@@ -618,6 +619,9 @@ const RELANCE_COPIE_CLES_RETIREES = [
   // délais (dépôts muets, filet 30 jours) comptent depuis SA création.
   'attente_antirobot_compte', 'antirobot_pause_cumul_ms', 'antirobot_pause_levee_le',
   'blocage_antirobot', 'capture_echec', 'pending_muet_clos_le', 'pending_muet_jours',
+  // (24/10, point 6) Le dépôt du job SOURCE (son numéro « certain » lbc_depot, le constat de son refus, ses
+  // signaux de disparition) : hérité, il faisait refuser le numéro du redépôt par cross_post_jobs_lien_jamais_croise.
+  ...TRACES_DEPOT_MORT,
 ];
 
 // ── Design 2026 (Lens / navbar) — liste des articles en stock ──
@@ -8087,6 +8091,9 @@ const StockTab = memo(function StockTab({
       // Le motif de l'arrêt est archivé avant d'être effacé (2026-09-12) —
       // `error` repasse à null pour l'affichage, comme avant.
       pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, job.error, job.status, 'relance_manuelle');
+      // (24/10, point 6 — Raiponce de louis-seller) Un dépôt PROUVÉ jamais mis en ligne ne repart pas avec son
+      // numéro, son lien ni ses traces : le redépôt doit porter SON numéro (src/utils/relanceDepotMort.js).
+      const sansDepotMort = relanceSansDepotMort(job, pf);
       // CAS sur le statut : on relance depuis l'état LU (failed, cancelled ou
       // needs_user depuis le 31/08) — si le job a bougé entre-temps (régénéré,
       // reparti), 0 ligne et on le dit. Le garde-fou d'origine était écrit
@@ -8097,7 +8104,7 @@ const StockTab = memo(function StockTab({
       // silencieuse ressemble à un succès.
       const { data, error } = await supabase
         .from('cross_post_jobs')
-        .update({ status: 'pending', error: null, platform_fields: pf, ...(photosRelance ? { photos: photosRelance } : {}) })
+        .update({ status: 'pending', error: null, ...sansDepotMort.colonnes, platform_fields: sansDepotMort.pf, ...(photosRelance ? { photos: photosRelance } : {}) })
         .eq('id', job.id)
         .eq('status', job.status)
         .select('id');
@@ -8114,7 +8121,7 @@ const StockTab = memo(function StockTab({
       setJobsByInventaire(prev => {
         const next = {};
         for (const [inv, list] of Object.entries(prev)) {
-          next[inv] = list.map(j => j.id === job.id ? { ...j, status: 'pending', error: null, platform_fields: pf } : j);
+          next[inv] = list.map(j => j.id === job.id ? { ...j, status: 'pending', error: null, ...sansDepotMort.colonnes, platform_fields: sansDepotMort.pf } : j);
         }
         return next;
       });

@@ -55,6 +55,7 @@ import { getPlatformSupport, depopInterdit } from "../utils/platformCompat";
 // (get-pending-jobs) — verdict sur source certaine, motif écrit sous la case.
 import { verdictBeebsInterdit, messageBeebsInterdit } from "../../supabase/functions/_shared/beebs-interdits.js";
 import { messageDepopInterdit } from "../../supabase/functions/_shared/depop-interdits.js";
+import { lireTourDeTaille } from "../../supabase/functions/_shared/taille-de-service.js";
 import { computeRemovalInfo, plateformesEnDoute, phraseDouteEnLigne } from "../utils/publicationState";
 import { chercherJumeauxEnLigne } from "../utils/jumeauxEnLigne";
 import { demarrerDictee, dicteeDisponible, ajouterDictee } from "../utils/dictee";
@@ -145,7 +146,7 @@ import {
   normAspectVal, nearestAllowedValue, jugerValeurContreListe, horsListeBloque, vintedExigeUneMarque, estChampMarque,
   vintedExigeUneCouleur, vintedExigeUnIsbn, ISBN_ABSENT, valeurUneLettre, rayonNeufSeulement, messageRayonNeuf,
   deduireOptionDuTexte, estFourreTout, listeCandidatsDabord, textesDeLAnnonce,
-  tailleDuJob, tailleDansListeEbay, tailleDeduiteDuTexte, estChampTaille,
+  tailleDuJob, tailleDansListeEbay, tailleDeduiteDuTexte, estChampTaille, rayonPublicIncoherent, messageRayonPublic,
 } from "../publication/moteur/listes";
 // (10/10, cas Manon) Ce que l'encart eBay remplit seul, et quand.
 import { aspectsADemanderIa, valeursAutoAReprendre } from "../publication/moteur/aspectsEbayAuto";
@@ -1130,6 +1131,11 @@ function findMatchingOption(raw, options, { sizeField = false } = {}) {
   const mapped = FR_TO_EBAY_CONDITION[n];
   if (mapped && options.some(o => o.value === mapped)) return mapped;
   if (sizeField && PURE_NUMBER_RE.test(n)) return "";
+  // (24/10, point 1 — Johan) Un TOUR DE TAILLE (« 33/34 », « 33 x 34 », « W33 L34 ») ou une fourchette
+  // (« 34/36 ») ne se rapproche JAMAIS par mots : le « 34 » de la LONGUEUR devenait l'option « 34 » (un FR 34,
+  // une taille femme XS) sur toutes les copies du jean Levi's 501 de Johan (23/10, Leboncoin et Depop partis avec
+  // « 34 »). Même garde que tailles.js (2 bis). La valeur brute reste : le jugement des grilles la traduit.
+  if (sizeField && lireTourDeTaille(raw)) return "";
   const candidates = options.filter(o => {
     const v = texteComparable(o.value);
     if (v.length <= 1) return false;
@@ -8797,8 +8803,20 @@ export default function ListingPreviewScreen({
             return {
               key, label: lang === "en" ? "Category" : "Rayon", state: "invalid", value: src, allowedValues: [],
               neufSeulement: true, blocking: true,
-              message: messageRayonNeuf({ valeur: src }, lang === "en" ? "en" : "fr"),
+              message: messageRayonNeuf({ valeur: src, platform }, lang === "en" ? "en" : "fr"),
             };
+          }
+          // (24/10, point 1) Rayon adulte et taille enfant (ou l'inverse) : la question est le RAYON, jamais
+          // une taille choisie dans la grille de l'autre public (Louis, « Short 10 ans » en rayon femme).
+          if (variante === "nouvelle" && estChampTaille(platform, key)) {
+            const inc = rayonPublicIncoherent({ platform, chemin: cheminDe(platform), valeur: src });
+            if (inc) {
+              return {
+                key, label: lang === "en" ? "Category" : "Rayon", state: "invalid", value: src, allowedValues: [],
+                rayonEnCause: true, blocking: true,
+                message: messageRayonPublic({ valeur: src, platform, ...inc }, lang === "en" ? "en" : "fr"),
+              };
+            }
           }
           // Valeur DÉDIÉE validée contre la liste fermée du catalogue quand
           // on en a une (2026-07-19, cas réel Medik8 : Vinted Beauté n'accepte

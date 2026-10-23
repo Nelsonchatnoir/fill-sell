@@ -1316,10 +1316,70 @@
     return { ok: true, details, requetes };
   }
 
-  // Beebs : les ventes. La page « Ventes » (flux RSC) porte les liens des
-  // commandes ; la page d'une commande porte l'objet commande passé à la page
-  // (status, products, buyer, seller…). Aucune vente sur aucun compte le 16/10 :
-  // un objet introuvable n'écrit RIEN (motif rendu).
+  // Beebs : les ventes. La page d'une commande porte l'objet commande passé à la
+  // page (status, products, buyer, seller…). Aucune vente sur aucun compte le
+  // 16/10 : un objet introuvable n'écrit RIEN (motif rendu).
+  // (24/10, point 3 — 58 lectures fantômes, 0 commande vue, dont la vraie vente
+  // de Johan du 21/10) La page « Ventes » ne porte AUCUN lien de commande : ses
+  // cartes sont un composant client (OrderCard, code du site relu le 23/10) qui
+  // reçoit l'objet commande { id, status, created_at, products[], amount,
+  // computed_buyer_payin } et construit `/account/orders/${id}` DANS le
+  // navigateur. On lit donc ces objets dans le flux RSC (une ligne = un JSON ;
+  // une référence « $7b » vers une autre ligne est suivie). Les liens restent lus
+  // en second (si Beebs les rendait un jour côté serveur). Une commande dont les
+  // produits n'ont pas de numéro est relue sur sa page (comme avant).
+  function lignesFluxRsc(texte) {
+    const lignes = new Map();
+    for (const ligne of String(texte ?? "").split("\n")) {
+      const i = ligne.indexOf(":");
+      if (i <= 0) continue;
+      const cle = ligne.slice(0, i);
+      const reste = ligne.slice(i + 1);
+      if (!/^[0-9a-f]{1,8}$/i.test(cle) || !/^[[{]/.test(reste)) continue;
+      try { lignes.set(cle.toLowerCase(), JSON.parse(reste)); } catch { /* ligne d'une autre forme */ }
+    }
+    return lignes;
+  }
+  // « $7b » = la ligne 7b ; « $7b:props:order » = un chemin dans la ligne 7b (un objet que le flux reprend
+  // ailleurs ; un élément s'écrit ["$", type, clé, props], relu sur beebs.app le 23/10 :
+  // "localeCookie":"$42:props:localeCookie"). Toute autre valeur (« $L5a », « $D2026-… », « $undefined »,
+  // un texte) est rendue telle quelle.
+  function resolveurFluxRsc(lignes) {
+    const ELEMENT = { type: 1, key: 2, props: 3 };
+    return (v) => {
+      if (typeof v !== "string") return v;
+      const m = /^\$([0-9a-f]{1,8})((?::[A-Za-z0-9_$-]+)*)$/i.exec(v);
+      if (!m) return v;
+      let x = lignes.get(m[1].toLowerCase());
+      for (const seg of m[2].split(":").slice(1)) {
+        if (x == null || typeof x !== "object") return undefined;
+        x = Array.isArray(x) && x[0] === "$" && seg in ELEMENT ? x[ELEMENT[seg]] : x[seg];
+      }
+      return x;
+    };
+  }
+  function commandesDuFluxRsc(texte) {
+    const lignes = lignesFluxRsc(texte);
+    const resoudre = resolveurFluxRsc(lignes);
+    const trouvees = new Map();
+    const estCommande = (o) => o && typeof o === "object" && !Array.isArray(o) && o.id != null && typeof o.status === "string"
+      && Array.isArray(resoudre(o.products)) && ("created_at" in o || "amount" in o || "computed_buyer_payin" in o);
+    const marcher = (v, profondeur) => {
+      v = resoudre(v);
+      if (!v || typeof v !== "object" || profondeur > 60) return;
+      if (!Array.isArray(v)) {
+        // Les props d'une carte : { order, isSale } — seule une VENTE compte (jamais un achat).
+        const o = resoudre(v.order);
+        if (estCommande(o) && v.isSale !== false) {
+          const id = String(o.id).trim();
+          if (/^[A-Za-z0-9_-]{1,80}$/.test(id) && !trouvees.has(id)) trouvees.set(id, { ...o, products: resoudre(o.products).map(resoudre) });
+        }
+      }
+      for (const x of Object.values(v)) marcher(x, profondeur + 1);
+    };
+    for (const v of lignes.values()) marcher(v, 0);
+    return trouvees;
+  }
   async function lecteurCommandesBeebs(suivies, detailsMax) {
     let requetes = 1;
     const r = await fetch("/fr/account/orders/list/seller", { credentials: "include", headers: { RSC: "1", Accept: "*/*" }, cache: "no-store" }).catch(() => null);
@@ -1327,13 +1387,30 @@
     if (r.status === 403 || r.status === 429) return { ok: false, http: r.status, bot: true, motif: `http_${r.status}`, requetes };
     if (r.status !== 200) return { ok: false, http: r.status, motif: `http_${r.status}`, requetes };
     const t = await r.text().catch(() => "");
-    const ids = [];
+    const parListe = commandesDuFluxRsc(t);
+    const ids = [...parListe.keys()];
     // Un numéro de commande porte au moins un chiffre (jamais « list », « history »…).
     for (const m of t.matchAll(/\/account\/orders\/(?!list\b|history\b|buyer\b|seller\b)((?=[A-Za-z_-]*\d)[A-Za-z0-9_-]{6,80})/g)) if (!ids.includes(m[1])) ids.push(m[1]);
     for (const s of suivies ?? []) if (!ids.includes(String(s))) ids.push(String(s));
     const commandes = [];
     let illisibles = 0;
+    // Une commande de la liste dont chaque produit porte son numéro est déjà complète : pas de relecture.
+    const complete = (o) => Array.isArray(o?.products) && o.products.length > 0 && o.products.every((p) => p && (p.id ?? p.product_id) != null);
     for (const id of ids.slice(0, detailsMax)) {
+      const deLaListe = parListe.get(id);
+      if (deLaListe && complete(deLaListe)) {
+        const o = deLaListe;
+        commandes.push({ id, order: {
+          id: o.id ?? id, status: o.status, status_updated_at: o.status_updated_at ?? o.updated_at ?? null,
+          created_at: o.created_at ?? null, carrier_id: o.carrier_id ?? null, carrier_name: o.carrier?.name ?? o.carrier_name ?? null,
+          total_price: o.total_price ?? o.totalPrice ?? o.total ?? o.price ?? o.amount ?? o.computed_buyer_payin ?? null,
+          buyer: o.buyer ? { first_name: o.buyer.first_name ?? o.buyer.firstName ?? null, last_name: o.buyer.last_name ?? o.buyer.lastName ?? null } : null,
+          shipping: o.shipping ? { tracking_number: o.shipping.tracking_number ?? null, parcel_id: o.shipping.parcel_id ?? null } : null,
+          products: o.products.slice(0, 10).map((p) => ({ id: p?.id ?? p?.product_id ?? null, title: p?.title ?? p?.name ?? null,
+            price: p?.price ?? null, image: p?.image ?? (Array.isArray(p?.images) ? p.images[0] : null) ?? p?.thumbnail ?? null })),
+        } });
+        continue;
+      }
       await new Promise((ok) => setTimeout(ok, 1200 + Math.random() * 1400));
       requetes++;
       const rd = await fetch(`/fr/account/orders/${encodeURIComponent(id)}`, { credentials: "include", headers: { RSC: "1", Accept: "*/*" }, cache: "no-store" }).catch(() => null);
@@ -1342,20 +1419,17 @@
       if (rd.status !== 200) continue;
       const td = await rd.text().catch(() => "");
       let trouve = null;
+      // (24/10) Les références « $7b » du flux sont suivies (products, buyer…).
+      const lignesD = lignesFluxRsc(td);
+      const resoudreD = resolveurFluxRsc(lignesD);
       const marcher = (v, profondeur) => {
+        v = resoudreD(v);
         if (trouve || !v || typeof v !== "object" || profondeur > 60) return;
-        if (!Array.isArray(v) && typeof v.status === "string" && Array.isArray(v.products) && (v.buyer || v.seller)
-            && String(v.id ?? id) === String(id)) { trouve = v; return; }
+        if (!Array.isArray(v) && typeof v.status === "string" && Array.isArray(resoudreD(v.products)) && (v.buyer || v.seller)
+            && String(v.id ?? id) === String(id)) { trouve = { ...v, products: resoudreD(v.products).map(resoudreD), buyer: resoudreD(v.buyer) }; return; }
         for (const x of Object.values(v)) marcher(x, profondeur + 1);
       };
-      for (const ligne of td.split("\n")) {
-        const i = ligne.indexOf(":");
-        if (i < 0) continue;
-        const reste = ligne.slice(i + 1);
-        if (!/^[[{]/.test(reste)) continue;
-        try { marcher(JSON.parse(reste), 0); } catch { /* ligne d'une autre forme */ }
-        if (trouve) break;
-      }
+      for (const v of lignesD.values()) { marcher(v, 0); if (trouve) break; }
       if (!trouve) { illisibles++; continue; }
       const o = trouve;
       // Seuls les champs du contrat sortent de la page (jamais d'adresse, de téléphone).

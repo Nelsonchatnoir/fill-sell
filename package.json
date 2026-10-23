@@ -422,7 +422,13 @@
     "selftest:recreation-vinted-0-6-128": "node scripts/recreation-vinted-0-6-128-selftest.mjs",
     "selftest:titre-symboles-vinted-extension": "node scripts/titre-symboles-vinted-extension-selftest.mjs",
     "selftest:lbc-pro-poids": "node scripts/lbc-pro-poids-selftest.mjs",
-    "selftest:depop-slug-souligne": "node scripts/depop-slug-souligne-selftest.mjs"
+    "selftest:depop-slug-souligne": "node scripts/depop-slug-souligne-selftest.mjs",
+    "selftest:tables-droits-explicites": "node scripts/tables-droits-explicites-selftest.mjs",
+    "selftest:depop-photos-reprise": "node scripts/depop-photos-reprise-selftest.mjs",
+    "selftest:lot-2410-tailles": "node scripts/lot-2410-tailles-selftest.mjs",
+    "selftest:vetement-traditionnel-ebay": "node scripts/vetement-traditionnel-ebay-selftest.mjs",
+    "selftest:beebs-commandes-flux-rsc": "node scripts/beebs-commandes-flux-rsc-selftest.mjs",
+    "selftest:refus-plateformes-vraie-cause": "node scripts/refus-plateformes-vraie-cause-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

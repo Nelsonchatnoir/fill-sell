@@ -39,11 +39,25 @@ const BRUT_HASSAN = "Vinted a refusé la publication : Le titre contient trop de
 
 console.log('2. Kossiwa : la phrase suit l\'action ; la restriction vaut pour le compte');
 {
-  const pfK = { last_diagnostic: { signal: 'selling_restriction', titre: "Compte restreint jusqu'au 18/10/2026", corps: '' } };
+  // (24/10) La restriction de Kossiwa (« jusqu'au 18/10/2026 ») était écrite en dur : passé le 18/10,
+  // classerEchec la jugeait — à juste titre — terminée (compte_restreint_echu), et ce contrôle virait
+  // au rouge sans qu'aucune ligne de code n'ait changé. La date est désormais toujours à venir (J+5,
+  // heure de Paris), et la restriction échue a son propre contrôle juste après.
+  const jjmmaaaa = (decalageJours) => {
+    const d = new Date(Date.now() + decalageJours * 86_400_000);
+    const p = Object.fromEntries(new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit', year: 'numeric' })
+      .formatToParts(d).map((x) => [x.type, x.value]));
+    return `${p.day}/${p.month}/${p.year}`;
+  };
+  const pfK = { last_diagnostic: { signal: 'selling_restriction', titre: `Compte restreint jusqu'au ${jjmmaaaa(5)}`, corps: '' } };
   const k = P.classerEchec({ platform: 'vinted', action: 'publish', brut: 'RESTRICTION VINTED (/selling-restriction)', essais: 5, pf: pfK, reprises: 0 });
   ok(k.motif === 'compte_restreint' && k.message.includes('Rien n\'a été publié.') && !k.message.includes('intacte'), 'publication sur compte restreint : « rien n\'a été publié », jamais « ton annonce est intacte »');
   const kr = P.classerEchec({ platform: 'vinted', action: 'republish', brut: 'RESTRICTION VINTED', essais: 5, pf: pfK, reprises: 0 });
   ok(kr.message.includes('ton annonce est intacte'), 'republication avant retrait : « ton annonce est intacte » reste vrai');
+  const pfEchue = { last_diagnostic: { signal: 'selling_restriction', titre: `Compte restreint jusqu'au ${jjmmaaaa(-2)}`, corps: '' } };
+  const ke = P.classerEchec({ platform: 'vinted', action: 'publish', brut: 'RESTRICTION VINTED (/selling-restriction)', essais: 5, pf: pfEchue, reprises: 0 });
+  ok(ke.motif === 'compte_restreint_echu' && ke.statut === 'pending' && ke.message.includes('repart toute seule') && !ke.message.includes('intacte'),
+    'restriction échue : la publication repart seule (jamais « intacte », jamais une attente sans fin)');
   const i1 = P.classerEchec({ platform: 'beebs', action: 'publish', brut: 'jamais vu', essais: 1, pf: {}, reprises: 0 });
   ok(i1.message.includes('Rien n\'a été publié.') && !i1.message.includes('touchée'), 'motif inconnu sur une publication : « rien n\'a été publié »');
   ok(M.messageConnexionRequise('beebs', { publication: true }).includes('Rien n\'a été publié'), 'mur « Connexion Beebs requise » d\'une publication : plus « Ton annonce est intacte »');

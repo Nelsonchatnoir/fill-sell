@@ -32,7 +32,7 @@
 // (chantier du 24/09) Le jugement « valeur hors liste » est celui du moteur
 // de publication, et de lui seul : la carte ne peut plus dire « À COMPLÉTER »
 // là où l'écran Confirmer dit « Prête » (cas Primark, Beebs).
-import { jugerValeurContreListe, horsListeBloque, rayonNeufSeulement, valeurUneLettre, tailleDeduiteDuTexte } from '../publication/moteur/listes.js';
+import { jugerValeurContreListe, horsListeBloque, rayonNeufSeulement, valeurUneLettre, tailleDeduiteDuTexte, estChampTaille, rayonPublicIncoherent, messageRayonPublic } from '../publication/moteur/listes.js';
 
 // ── DU CHAMP DE LA PLATEFORME À CELUI QU'ON CONNAÎT ───────────────────────
 // Le catalogue parle la langue de la plateforme (`clothing_st`, `condition`,
@@ -295,8 +295,18 @@ export function classerChamps(lignes, pf, platform, { regle = 'classique', chemi
     // question, c'est le rayon — ou Vinted ne part pas, message à l'appui.
     // (La détection était morte jusqu'au 25/09 : regex cassée dans listes.js.)
     if (rayonNeufSeulement({ platform, key: l.field_key, value: valeur, allowedValues: l.allowed_values })) {
-      limites.push({ ...entree, motif: 'rayon_neuf' });
+      limites.push({ ...entree, motif: 'rayon_neuf', platform });
       continue;
+    }
+    // (24/10, point 1) Rayon adulte et taille enfant (ou l'inverse) : la carte dit de changer de rayon, jamais une
+    // taille de la grille de l'autre public (Louis, « Short 10 ans » en rayon femme, 22/10).
+    if (estChampTaille(platform, l.field_key) && valeur) {
+      const inc = rayonPublicIncoherent({ platform, chemin: cheminCategorie, valeur });
+      if (inc) {
+        limites.push({ ...entree, motif: 'rayon_public', platform, message: messageRayonPublic({ valeur, platform, ...inc }, 'fr'),
+          messageEn: messageRayonPublic({ valeur, platform, ...inc }, 'en') });
+        continue;
+      }
     }
     if (horsGrille && regle === 'nouvelle') {
       // (19/10) Les textes du vendeur, comme le moteur : « W30 » + « FR40 » → « 40 ».
