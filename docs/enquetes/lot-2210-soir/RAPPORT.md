@@ -296,3 +296,202 @@ capture Vinted corrigée).
 
 **Mails** : `email_logs` relu avant et après chaque geste — rien de parti par ce lot (les 3 mails du soir sont deux ventes
 Vinted réelles, xxewwer 21:52 et tiblancdeshaut 22:10, et un « extension_link »).
+
+## 23/10 — lot de 4 points : photos eBay (Thierry), fausse alerte eBay (Sébastien), Beebs « introuvable » (Louis), questions trop tôt (louis-seller)
+
+**À téléverser** : `build/CWS-0.6.131-A-TELEVERSER/fillsell-extension-0.6.131-4098342-cws.zip` (extension 0.6.131, contient TOUTE la 0.6.130 ; la 0.6.130 est rangée dans
+`build/CWS-PERIMES/`). Envoyer pour examen.
+
+**Selftests** : départ (11:25) **383 joués, 382 verts** — seul rouge `messages-cause-vraie`, déjà rouge avant le lot.
+Fin de lot (13:10-13:18) : **384 joués, 383 verts**, seul rouge `messages-cause-vraie`. **Rien n'a régressé.**
+Deux fois, un rouge nouveau est apparu en cours de route et a été corrigé avant d'aller plus loin :
+- 12:27 : `gpj-file-longue-et-pause`. Une lecture du journal se faisait en un seul `.in()` au lieu de lots. Corrigé :
+  get-pending-jobs v275, rejoué vert.
+- 13:09 : `champs-deduits`, `memoire-categorie` et `surveillance-releves`. Ces selftests lisent le code mot pour mot.
+  J'ai étendu leurs motifs aux nouvelles formes : la garde qu'ils vérifient reste exigée, avec une raison de plus.
+Nouveau selftest `lot-2310`. `contenu-du-vendeur` passe de 253 à 292 contrôles, `alertes-compte` de 22 à 36.
+`build:essai` vert.
+
+**Mails** : `email_logs` est passé de 10 185 (11:25) à 10 195 (13:21) : 10 mails. Aucun ne vient de ce lot. Ce sont des ventes réelles
+(Thierry ×3, tiblancdeshaut ×3), la réponse support de Nico, une inscription (bienvenue + lien d'extension).
+
+### Urgence de 11:44 — Thierry publiait 117 annonces Vinted à une photo de 140 px
+**Constaté sur Vinted** (navigateur) : 10494438305, 10494411483 et 10494388040 montrent chacune 3 vignettes. Ce sont
+3 recadrages de la MÊME face, en 140×135 px. Le revers manque.
+
+**Fait** :
+- **Retenue en base.** Migration 20261023110000 : une publication retenue ne démarre plus, même déjà servie à une
+  extension qui la tient en mémoire, et rien n'y est écrit. 65, puis 80 publications retenues (11:52 → 12:09), sans
+  erreur.
+- **Preuve que la retenue tient** : démarrages refusés (409) à 11:52:26, 11:52:43 et 11:53:01, sans aucun « failed »
+  écrit.
+- **Lecture.** Le détail eBay de ses 506 fiches est lu (3 lectures de 96 entre 11:55 et 12:05). Les fiches sont
+  complétées en pleine taille.
+- **Départ.** Les publications repartent seules avec toutes leurs photos. Vérifié sur les 27 servies à 12:18 :
+  54 photos de 500 à 770 px.
+- **Republication de ses 37 annonces déjà en ligne** (feu vert de 12:05) :
+  - 35 republiées par le geste « Republier » de l'app, prix 0, **hors quota** (migration 20261023120000 ; compte de son
+    quota : 0) ;
+  - 2 non republiées : elles étaient déjà en pleine taille (613 / 646 px et 500 px).
+  - 1 annonce (10494422743) s'est **vendue** sur Vinted à 12:19. C'est une vraie vente : retrait eBay armé par le
+    circuit. Sa republication s'est arrêtée seule avant tout retrait ; je l'ai close sans message (12:20).
+  - **État à 13:24** : les republications suivent la cadence normale de sa file. Son extension finit d'abord les publications du cycle servi à 12:52 ; ensuite, à chaque passage, 1 capture et 1 retrait-recréation. La première est capturée, et sa capture est corrigée par la fiche (12:52:01, 17302) : Faustine la Jeune, Sesterce, 10494275321. La capture porte maintenant 2 photos de 592 et 618 px, l'avers puis le revers, vues une à une, au lieu des 3 recadrages de 140 px. **À vérifier au prochain check : 3 annonces recréées sur Vinted** (photos pleine taille, avers et revers).
+
+### Point 1 — import eBay : une seule photo
+**Causes** (vérifiées en base, il y en a cinq, empilées) :
+1. La liste eBay (GetMyeBaySelling) ne porte qu'une vignette de 140 px. Le détail (toutes les photos) se lisait à
+   60 annonces par relevé. Thierry a importé 507 annonces d'un coup : 447 fiches sont nées avec la seule vignette.
+2. La complétion d'une fiche comparait sa photo à l'adresse de la vignette. Dès que la publication l'avait recopiée
+   chez nous (`rehosted/<fiche>/`, format `{url}`), plus rien ne la complétait.
+3. La garde du départ croyait eBay « lu en entier ». Aucune fiche eBay n'attendait ses photos.
+4. Le détail par l'API Trading rend les photos en 400 px (`$_1.JPG`). L'original existe sous la même clé d'image
+   (`s-l1600`) : mesuré 509×512 px au lieu de 400×393.
+5. La page eBay lue par l'extension (ld+json) ne donne que 5 photos, et elle passait devant le détail API. Résultat :
+   228 fiches de 16 comptes bloquées à 5 photos sur 6 à 24.
+
+**Correctifs (pour tout le parc)** :
+- **Migration 20261023100000.** La vignette est reconnue sous toutes ses formes : copie rehosted ou rapatriée, même
+  image eBay à une autre taille. Les photos sont posées dans l'ordre, sans doublon, et tracées au journal. Les fiches
+  eBay demandent leur lecture.
+- **Migration 20261023130000.** La lecture la plus riche l'emporte. Les photos eBay sont prises en pleine taille. Une
+  fiche qui porte encore ce que la base lui a mis reçoit une lecture plus riche quand elle arrive.
+- **Retenue.** `lectureOrigineEnAttente` retient eBay comme Leboncoin, Beebs et Depop, jusqu'au détail lu. Le message
+  est « en cours de lecture, rien à faire ». La retenue joue aussi au démarrage (migration 20261023110000).
+- **Copie servie avant ses photos.** Au départ, et à la recréation Vinted, elle reçoit celles de la fiche : vignette,
+  400 px ou photo manquante sont remplacées.
+- **Lectures et rapatriement accélérés.** ebay-releve-api v7 lit d'abord les fiches qui attendent, jusqu'à 150 détails
+  par demande. handler-watch v124 rapatrie 48 photos par passage, en commençant par les fiches dont une tâche attend.
+- **Autres imports vérifiés dans le code** : ils prenaient déjà tout, dans l'ordre et en grand format.
+  - Vinted : `full_size_url` de toutes les photos du dressing ;
+  - Leboncoin : `urls_large` ;
+  - Beebs : images ld+json ;
+  - Depop : `pictures` au format P0.
+
+**Données modifiées** (toutes sauvegardées, inverses en commentaire dans les scripts) :
+- **Thierry** :
+  - 506 fiches toutes lues : 499 ont toutes leurs photos, 7 n'en ont qu'une parce que leur annonce n'en a qu'une ;
+  - 353 fiches repassées en photos originales (`_backup_2310_photos_pleine_taille`) ;
+  - 17 fiches complétées (`_backup_2310_photos_origine`).
+- **ferreirasab** : 8 fiches Leboncoin complétées (+30 photos). L'ancienne règle les complétait déjà.
+- **Parc, fiches bloquées à 5 photos** : 228 fiches de 16 comptes complétées (+1 288 photos, `_backup_2310_photos_plafond5`).
+  - payants d'abord : jocabroc8 83, lohanobert59 5, xxewwer 1 ;
+  - gratuits : lesforcesdelaudela 86, ericsaint-georges 15, nacirirachid62 9, grisette11 9, nino57270 6,
+    pereiramaia138 5, misscat801 3, et 6 comptes à 1.
+
+**Audit du parc** (fiches importées depuis le 18/09) — il reste 9 fiches que je n'ai pas touchées :
+- choix possible de la personne : jocabroc8 10/17 (ses propres photos) ;
+- famouus-x3 Leboncoin 2/3 ;
+- louis@ Beebs 3/5 (article vendu) ;
+- jocabroc8 eBay 20/23 (20 = le maximum de l'app) ;
+- jocabroc8 eBay 5/16 et 5/20, Leboncoin 5/9 et 5/15 ; nino57270 eBay 3/5.
+
+**Annonces déjà publiées ailleurs avec une photo manquante** (pour décision, rien republié) :
+- jocabroc8 : Leboncoin 8 annonces (70 photos), Vinted 2 (11 photos) ;
+- louis@ : Leboncoin 4. Probablement la limite gratuite de Leboncoin (3 photos en Jeux & Jouets).
+- xxewwer : Leboncoin 1 (7 photos) ;
+- nino57270 : Leboncoin 2.
+
+### Point 2 — « Connecte-toi à eBay » chez Sébastien
+**Cause** : la ligne lit seulement la sonde ebay.fr de Chrome. L'extension visite une page eBay toutes les heures, et
+le Chrome de Sébastien n'est pas connecté à ebay.fr : elle écrit `ebay:false`.
+- Or son compte est relié par l'API : publication, retraits, relevé et messages passent tous par l'API.
+- La reconnexion (OAuth) n'écrit jamais dans cette sonde : l'alerte ne pouvait pas tomber.
+- Les Réglages disaient en même temps « eBay connecté ».
+
+**Correctif (app 2.9.110, web)** : `src/utils/alertesCompte.js`.
+- Un compte eBay relié par l'API n'est jamais jugé sur Chrome. Son seul vrai problème possible est le lien lui-même :
+  « Reconnecte ton compte eBay », qui disparaît dès que le lien est rétabli.
+- Une plateforme écartée (« je ne vends pas sur X ») ou jamais utilisée (aucune tâche, aucune fiche) n'affiche plus
+  d'alerte.
+
+**Preuve** : rejeu de l'ancienne et de la nouvelle règle sur les données réelles de 174 comptes. On passe de 26 alertes
+à 5.
+- Disparues : 6 comptes eBay reliés par l'API — sebastien64310, ornellaracano, nicolas.menar, annehelene.reve,
+  romain.guerin85, damienmazies.
+- Disparues aussi : 4 plateformes écartées et 14 jamais utilisées.
+- Restent : 2 vraies pertes de session (romain.guerin85 Leboncoin, seghirdeborah711 eBay).
+- Apparaissent : 3 liens API vraiment cassés, sur des comptes qui vendent sur eBay (malena.patarin85, sistre28,
+  alexiszuvich).
+- 21 autres comptes reliés portent la même valeur de sonde, mais elle est trop vieille : chez eux l'alerte se serait
+  rallumée au prochain passage de Chrome. Elle ne se rallumera plus.
+
+La sienne disparaît à l'ouverture de l'app à jour (OTA 2.9.110, web).
+
+### Point 3 — Louis : 8 Beebs « introuvable à confirmer »
+**Cause** : la lecture de la nuit était juste.
+- Ces 8 annonces ont quitté la boutique Beebs de louis@ le 18/10, pendant le transfert des fiches @evat. Les articles
+  sont en vente chez louis-seller sous de nouveaux numéros, vus en ligne le 23/10 à 09:26.
+- Le défaut est une boucle : la republication automatique reprenait chaque nuit le dépôt mort de la fiche, sans voir
+  qu'il était signalé « plus en ligne » ni que sa republication précédente avait été close « disparue ».
+- Bilan de la boucle : 2 pauses le 20/10, 8 le 21/10, 8 le 23/10, et les vraies republications privées de leurs
+  créneaux.
+- Même chose sur Leboncoin : 2 comptes.
+- Le 403 de 04:50 se disait en plus « Leboncoin a bloqué notre lecture » sur une annonce Beebs.
+
+**Correctifs** :
+- **Migration 20261023140000** : une annonce dont l'absence est établie sur son identifiant exact, et qu'aucun relevé
+  n'a revue depuis, ne repart plus en republication automatique. Un relevé qui la revoit la remet en jeu. La question
+  « vendue ? » du dépôt reste la seule : on ne manque jamais une vraie vente.
+- **Extension 0.6.131** : une lecture incomplète (403) avant tout retrait ne pose plus jamais de question. Elle
+  réessaie toutes les heures, puis la republication est close sans bruit après 24 h, annonce intacte. La plateforme
+  est nommée.
+
+**Rejeu (règle de republication automatique)** :
+- Écartées : jocabroc8 Leboncoin 78 (dépôts disparus, confirmés par 2 relevés complets), recrutementgroupezk704
+  Leboncoin 9, josephinecerni Beebs 2, et les 8 de Louis.
+- Les autres annonces candidates ne bougent pas.
+
+**Données** : les 8 pauses de Louis et 2 de recrutementgroupezk704 sont closes sans message à 12:51 (sauvegarde
+`_backup_2310_introuvables_clos`). Rien n'a été retiré, ses 14 questions « vendue ? » sont intactes.
+
+### Point 4 — des questions avant que le moteur ait fini
+**Cause** :
+- Les deux questions de louis-seller venaient du lot. Le lot ne montre ses questions qu'au repos du moteur : elles
+  n'ont très probablement jamais été à l'écran.
+- La ligne « affiche » est écrite par la télémétrie, qui comptait avant le repos.
+- Dans le stepper unitaire, la même séquence montre bien la question pendant 2 à 4 s.
+- Ampleur depuis le 18/10 : 91 lignes Leboncoin, dont 49 levées par le moteur en 5 s ou moins.
+- Le casque : la règle audio prend « casque » tout seul. Les casques de protection exigeaient un mot collé
+  (« casque vélo »), jamais « casque de ski » ni « casque enfant Oxelo ».
+
+**Correctifs (app 2.9.110)** :
+- **Repos du moteur.** Une question n'existe, à l'écran comme au journal, qu'au repos du moteur : 1,2 s, le délai du
+  lot, et 45 s au plus. Avant, « Confirmer » affiche « On complète les derniers champs… ».
+- **Casque.** `familleDuCasque` lit d'abord la marque, un tour de tête en cm et le contexte ; une seule famille donne
+  son icône, sinon la règle d'avant s'applique.
+
+**Rejeu** : 572 fiches disent « casque », dont 69 décidées par le mot nu.
+- 16 changent, toutes des casques de protection ou de moto : Oxelo, B'Twin ×4, Quechua ×2, Wed'ze, Wanabee,
+  chantier, boxe, Bullit, Scorpion ×3, moto.
+- 0 casque audio ne bascule.
+- Hors du mot « casque », rien ne peut changer, par construction.
+- Sur 30 jours, les publications concernées sont les 5 marquées « publiée ≤ 30 j ».
+
+### Données modifiées (sauvegarde avant, inverse prêt)
+| Quand | Script | Changement |
+|---|---|---|
+| 11:40 | (sauvegarde) | `_backup_2310_photos_origine` : 3 219 fiches ≤ 1 photo, 89 comptes |
+| 11:52 → 12:09 | `20261023_retenue_photos_ebay.sql` | 80 publications de Thierry retenues (`_backup_2310_retenues_photos`) |
+| 11:56 | `20261023_photos_origine_fiches_lues.sql` | 25 fiches complétées (Thierry 17, ferreirasab 8) |
+| 12:03 / 12:17 | `20261023_thierry_vinted_photos_republier(_2).sql` | 35 republications Vinted, hors quota |
+| 12:14 / 12:15 | `20261023_thierry_photos_pleine_taille.sql` | 353 fiches de Thierry en photos originales |
+| 12:20 | `20261023_thierry_republication_vendue_close.sql` | 1 republication close (annonce vendue) |
+| 12:37 | `20261023_parc_photos_plafond_5.sql` | 228 fiches, 16 comptes (+1 288 photos) |
+| 12:51 | `20261023_introuvables_planifies_clos.sql` | 10 pauses closes (Louis 8, recrutementgroupezk704 2) |
+
+### Ce que Nico doit décider (avec ma recommandation)
+1. **Téléverser la 0.6.131.**
+   *Recommandé* : oui, aujourd'hui. Elle porte le refus de démarrage silencieux et la lecture incomplète sans
+   question. La base retient déjà tout sans elle.
+2. **Les annonces déjà publiées ailleurs avec une photo manquante** (jocabroc8 Leboncoin 8 / Vinted 2, xxewwer 1,
+   nino57270 2).
+   *Recommandé* : les republier par le circuit, hors quota. Celles de Louis (Leboncoin 4) : non, c'est la limite
+   gratuite de Leboncoin.
+3. **Les 9 fiches laissées** (photos choisies, plafonds de l'app).
+   *Recommandé* : ne rien faire.
+4. **Louis, ses 14 questions « vendue ? »** sur ses anciennes annonces Beebs. Les articles sont en vente chez
+   louis-seller.
+   *Recommandé* : lui demander s'il les a retirées lui-même, puis répondre « retirée » pour lui. Je n'y ai pas touché :
+   une vraie vente Beebs ne se voit pas autrement.
+5. **Casque, étendre la table des marques** (Oxbow, etc.).
+   *Recommandé* : au fil des cas, la règle ne devine jamais.
