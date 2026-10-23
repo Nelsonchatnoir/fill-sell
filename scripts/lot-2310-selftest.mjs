@@ -78,6 +78,41 @@ console.log("3. LES ANNONCES MORTES NE REPARTENT PLUS EN REPUBLICATION AUTOMATIQ
   ok(/annonce_introuvable: fr \?/.test(rp), "l'app dit pourquoi elle est sautée (jamais un code brut)");
 }
 
+console.log("3b. « REMPLACÉE PAR LE COMPTE RELIÉ » ENTRE BOUTIQUES DISTINCTES (base, décision de Nico 23/10 soir)");
+{
+  const m = lire("supabase/migrations/20261023150000_remplacee_par_compte_relie_boutiques_distinctes.sql");
+  const preuve = (m.match(/CREATE OR REPLACE FUNCTION public\.remplacee_par_compte_relie\(p_job uuid\)[\s\S]*?\n\$function\$;/) ?? [""])[0];
+  ok(preuve.length > 0, "la preuve est une seule fonction (remplacee_par_compte_relie)");
+  ok(/FROM public\.fiches_liees_comptes l/.test(preuve) && /public\.comptes_sont_lies\(j\.user_id, t\.compte\)/.test(preuve)
+     && !/titre|title/i.test(preuve.replace(/--[^\n]*/g, "")),
+    "rattachement par la fiche liée de comptes reliés, JAMAIS par un titre (aucun titre lu)");
+  ok(/c\.status = 'published'/.test(preuve) && /a\.listing_id = public\.annonce_id_de_job\(c\.platform_listing_id, c\.listing_url\)/.test(preuve)
+     && /a\.statut_plateforme = 'en_ligne' AND a\.disparu_le IS NULL/.test(preuve) && /a\.vu_le >= now\(\) - interval '48 hours'/.test(preuve),
+    "l'article est en ligne chez le compte relié : déposé par FillSell, vu par un relevé de moins de 48 h");
+  ok(/least\(coalesce\(c\.published_at, c\.created_at\), a\.created_at\) > v_vue/.test(preuve) && /coalesce\(j\.vu_en_ligne_le, '-infinity'::timestamptz\)/.test(preuve),
+    "apparue APRÈS la dernière fois que l'ancienne a été vue en ligne (jamais deux annonces du même article en même temps)");
+  ok(/s\.started_at > v_depuis/.test(preuve) && /items_vus >= s\.total_entries/.test(preuve) && /NOT LIKE '\[incomplet\]%'/.test(preuve)
+     && /a\.vu_le >= v_depuis/.test(preuve), "absence de l'ancienne prouvée par un relevé COMPLET après la question, jamais revue depuis");
+  ok(/coalesce\(j\.platform_fields ->> 'sale_signal', 'unavailable'\) <> 'unavailable'/.test(preuve) && /\? 'sale_evidence'/.test(preuve)
+     && /FROM public\.push_ventes p/.test(preuve) && /FROM public\.ventes_operations o/.test(preuve) && /a\.statut_plateforme = 'vendue'/.test(preuve)
+     && (preuve.match(/coalesce\(i\.quantite, 1\) = 1/g) ?? []).length === 2 && /republication_engagee/.test(preuve),
+    "aucune trace de vente (preuve, vente relevée, à confirmer ou enregistrée), une seule unité de chaque côté, aucune republication engagée");
+  ok(/NOT public\.boutique_partagee_compte_relie\(j\.user_id, t\.compte, j\.platform\)/.test(preuve) && /coalesce\(j\.platform, 'vinted'\) = 'vinted'/.test(preuve),
+    "boutiques DISTINCTES seulement (la boutique partagée garde sa règle), jamais Vinted");
+  const geste = (m.match(/CREATE OR REPLACE FUNCTION public\.questions_remplacees_par_compte_relie[\s\S]*?\n\$function\$;/) ?? [""])[0];
+  ok(/status = 'cancelled'/.test(geste) && /copie_remplacee_par_compte_relie/.test(geste) && !/action = 'delete'|INSERT INTO/i.test(geste)
+     && /Ce n''est pas une vente — rien à refaire\./.test(geste),
+    "le geste : dépôt mort clos, annonce remplaçante nommée — aucun retrait, aucune vente, aucune insertion");
+  ok(/IF NOT EXISTS \(SELECT 1 FROM public\.comptes_lies cl WHERE cl\.user_a = p_user OR cl\.user_b = p_user\) THEN RETURN 0;/.test(geste) && /LIMIT 200/.test(geste),
+    "un compte sans compte relié sort à la première ligne ; lot borné");
+  ok(/REVOKE ALL ON FUNCTION public\.remplacee_par_compte_relie\(uuid\) FROM PUBLIC, anon, authenticated;/.test(m)
+     && /REVOKE ALL ON FUNCTION public\.questions_remplacees_par_compte_relie\(uuid, text\) FROM PUBLIC, anon, authenticated;/.test(m),
+    "jamais appelable depuis l'app (réservé au serveur)");
+  ok(/n := questions_remplacees_par_compte_relie\(NEW\.user_id, NEW\.platform\);/.test(m) && /CREATE OR REPLACE FUNCTION public\.releve_clos_leve_alertes_disparues\(\)/.test(m),
+    "branchée à la fin de chaque relevé d'annonces (hors Vinted)");
+  ok(fs.existsSync(new URL("../supabase/rollbacks/20261023150000_remplacee_par_compte_relie_boutiques_distinctes_INVERSE.sql", import.meta.url)), "inverse prêt");
+}
+
 console.log("4a. LES QUESTIONS ATTENDENT LE REPOS DU MOTEUR (écran et journal)");
 {
   const lps = lire("src/components/ListingPreviewScreen.jsx");

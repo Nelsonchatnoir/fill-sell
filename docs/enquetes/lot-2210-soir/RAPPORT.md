@@ -590,3 +590,58 @@ Ici, il y a deux boutiques, et l'article est revenu en vente après la question.
    est relié aujourd'hui : Louis.
    *Recommandé* : oui. Sinon, le prochain article qu'il déplace d'une boutique à l'autre reposera la question.
 2. Toujours de ton côté : téléverser la 0.6.131.
+
+## 23/10 soir (2) — « remplacée par le compte relié » étendue aux boutiques distinctes (décision de Nico)
+
+**Tête** :
+- Push : les 5 commits du jour sont sur main (4309aac..c046f56, 19:30). Le site les sert : `build.json` relu à 19:31,
+  `2026-10-23T17:30:57Z+c046f56`.
+- Selftests : 384 joués avant (19:30 → 19:37), 383 verts.
+- Selftests après : 384 joués, 383 verts. La suite d'un seul bloc a été arrêtée à 19:50 faute de mémoire sur le poste ;
+  elle a été rejouée en 4 tranches de 96, de 20:19 à 20:27.
+- Seul rouge, avant comme après : `messages-cause-vraie`, déjà là → **zéro régression**.
+- 0 mail.
+
+**La règle** (migration `20261023150000`, appliquée à 19:44, corps relus en prod et identiques au fichier, inverse
+prêt). Entre deux comptes reliés qui ont chacun leur boutique, une question « vendue ? » (hors Vinted) se ferme
+seulement si **tout** est prouvé :
+1. Le rattachement passe par la fiche liée, **jamais par le titre** : aucun titre n'est lu.
+2. L'article est **vu en ligne chez le compte relié** sur la même plateforme : l'annonce y a été déposée par FillSell,
+   et un relevé de moins de 48 h l'a vue.
+3. Cette annonce est apparue **après** la dernière fois que l'ancienne a été vue en ligne. Jamais deux annonces du
+   même article en même temps : sinon la disparition peut être une vente sur l'ancienne boutique.
+4. L'ancienne annonce manque à un relevé **complet** de son compte, fait après la question, et n'a jamais été revue
+   depuis.
+5. Aucune trace de vente : ni preuve, ni vente relevée, à confirmer ou enregistrée. Une seule unité de chaque côté.
+   Aucune republication engagée.
+
+Dans tous les autres cas, la vraie question reste posée.
+
+Quand la règle tranche, le dépôt mort est clos et l'annonce qui le remplace est nommée. Aucun retrait, aucune vente,
+aucun mail. La règle joue à la fin de chaque relevé d'annonces, pour le compte relevé et ses comptes reliés. Une
+boutique partagée garde sa règle d'avant.
+
+**Essai à blanc sur les vraies données** : les 16 questions de Louis, recréées telles qu'avant 18:28, dans une
+transaction annulée. 25 essais sur 25 :
+- les 16 sont fermées par la fin d'un relevé de louis-seller (le déclencheur réel), et chacune nomme l'annonce
+  attendue ;
+- la question reste posée dans chacun de ces cas :
+  - les deux annonces étaient en ligne en même temps ;
+  - aucun relevé complet n'a encore eu lieu après la question ;
+  - il y a une preuve ou une trace de vente ;
+  - l'ancienne annonce a été revue en ligne, ou relevée « vendue » ;
+  - le relevé qui voit l'article date de plus de 48 h ;
+  - l'annonce du compte relié est elle-même sous alerte, ou n'a pas été déposée par FillSell ;
+  - il n'y a pas de fiche liée, ou les comptes ne sont pas reliés ;
+  - la boutique est partagée, la fiche a 2 unités, ou c'est Vinted ;
+- les 15 questions Leboncoin de Louis (boutique partagée) sont intactes ;
+- aucun retrait, aucune vente, aucun mail ;
+- rejouée une seconde fois, la règle ne change rien ;
+- coût : 1,7 ms pour 50 comptes sans compte relié, 126 ms pour trancher 16 questions.
+
+**En prod après la migration** : 15 questions sont ouvertes sur des comptes reliés, aucune ne serait tranchée (ce sont
+les Leboncoin de Louis, boutique partagée). Aucune n'a été fermée depuis 19:44.
+
+**Extension** : le zip à téléverser a été envoyé dans la conversation,
+`build/CWS-0.6.131-A-TELEVERSER/fillsell-extension-0.6.131-4098342-cws.zip`. Rien n'a changé dans l'extension depuis
+8a030ae.

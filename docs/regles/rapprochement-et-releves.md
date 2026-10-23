@@ -307,3 +307,18 @@ trois relevés et deux reprises lancés tout seuls, aucun Vinted abouti, un faux
 - Leboncoin (extension 0.6.130) : un 410 d'une annonce publiée il y a moins de 2 h (modération) = « inconnu », jamais
   mémorisé ; `/ad/<id>` se lit `/vi/<id>.htm`. Beebs : un retrait clos sans preuve puis revu en ligne est réarmé
   (`retraits_beebs_rearmer_revus`, 3 fois au plus).
+
+## 23/10 soir — « remplacée par le compte relié » entre boutiques DISTINCTES (décision de Nico ; rapport `docs/enquetes/lot-2210-soir/RAPPORT.md` § « 23/10 soir (2) »)
+- Deux comptes reliés qui ont chacun leur boutique (Louis : louis@ et louis-seller sur Beebs). Une question
+  « vendue ? » (hors Vinted) se ferme, remplacée et pas vendue, seulement si tout est prouvé :
+  - la fiche liée (`fiches_liees_comptes`, comptes reliés), jamais un titre ;
+  - son annonce sur la même plateforme est déposée par FillSell et vue en ligne par un relevé de moins de 48 h ;
+  - elle est apparue après la dernière fois que l'ancienne a été vue en ligne : jamais deux annonces en même temps ;
+  - l'ancienne manque à un relevé complet de son compte fait après la question, et n'a jamais été revue depuis ;
+  - aucune trace de vente, une seule unité de chaque côté, aucune republication engagée.
+- Sinon, la vraie question reste posée. La boutique partagée garde sa règle (branche 3 de l'alerte tenue).
+- Le dépôt mort est clos et l'annonce qui le remplace est nommée (`copie_remplacee_par_compte_relie`,
+  règle `boutiques_distinctes_2310`). Aucun retrait, aucune vente, aucun mail.
+- Quand : à la fin de chaque relevé d'annonces, pour le compte relevé et ses comptes reliés
+  (`releve_clos_leve_alertes_disparues` → `questions_remplacees_par_compte_relie` → `remplacee_par_compte_relie`).
+- Migration `20261023150000`.
