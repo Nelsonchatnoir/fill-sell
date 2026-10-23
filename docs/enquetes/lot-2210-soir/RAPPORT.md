@@ -495,3 +495,14 @@ La sienne disparaît à l'ouverture de l'app à jour (OTA 2.9.110, web).
    une vraie vente Beebs ne se voit pas autrement.
 5. **Casque, étendre la table des marques** (Oxbow, etc.).
    *Recommandé* : au fil des cas, la règle ne devine jamais.
+
+**Vérifié sur Vinted (18:02, navigateur)** — 10 des 35 republications de Thierry sont recréées (13:52 → 17:12), chacune
+avec les 2 photos de la fiche. Trois relues sur leur page publique : avers PUIS revers, en pleine taille (au lieu de 3
+recadrages d'une face en 140 px) :
+- 10496021103, Zeugitane Carthage Shekel : 603×583 puis 668×718 ;
+- 10495924187, Faustine la Jeune Sesterce : 592×573 puis 610×618 ;
+- 10496058809, Maximin Hercule Follis : 741×716 puis 688×686.
+
+Vinted ajoute de lui-même un recadrage en 3e vignette. Les 10 anciennes annonces sont closes par le circuit
+(« supprimée puis recréée… pas une vente »). 2 ventes réelles pendant l'opération : leurs republications se sont
+closes seules, rien retiré. Les 25 autres republications suivent la cadence de sa file. Quota : 0 décompté.
