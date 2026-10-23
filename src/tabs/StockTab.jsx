@@ -133,6 +133,7 @@ import { etatSession, PLATEFORMES_SESSION } from '../utils/sessionsPlateformes';
 // constante locale masque l'import dans tout le composant et le useMemo la lit
 // avant son initialisation (écran blanc du 18/10 20:18, ced6cfd, retour arrière).
 import { alertesCompte as alertesDeCompte, masquesARetirer, ligneAlertes, CLE_REGLAGE_ALERTES } from '../utils/alertesCompte';
+import { etatEbayApi, plateformesUtilisees } from '../utils/alertesCompte';
 // (18/10) Boutique qui n'est plus surveillée (RPC surveillance_releves) et annonces
 // écartées parce qu'un autre compte FillSell les suit — noms sans homonyme local.
 import { ligneNonSurveillee, libelleReconnexion, ecarteesAutreCompte } from '../utils/alertesCompte';
@@ -6637,6 +6638,8 @@ const StockTab = memo(function StockTab({
   // moins de 72 h, lue dans les jobs déjà en mémoire, prouve la session).
   const [sessionsCompte, setSessionsCompte] = useState(null);
   const [reglageAlertes, setReglageAlertes] = useState(null);
+  // (23/10, point 2) « Je ne vends pas sur X » (platform_settings.plateformes_ecartees) : aucune alerte de connexion.
+  const [ecarteesCompte, setEcarteesCompte] = useState(null);
   // (18/10) La surveillance des relevés, PROUVÉE par les runs (RPC
   // surveillance_releves, migration 20261018190000 — le compte de la session,
   // jamais un autre) : boutique plus surveillée depuis > 24 h, annonces écartées
@@ -6666,6 +6669,7 @@ const StockTab = memo(function StockTab({
       if (error) return false;
       setSessionsCompte(data?.extension_sessions ?? null);
       setReglageAlertes(data?.platform_settings?.[CLE_REGLAGE_ALERTES] ?? null);
+      setEcarteesCompte(Array.isArray(data?.platform_settings?.plateformes_ecartees) ? data.platform_settings.plateformes_ecartees : null);
       // Après le réglage : « plus aucune alerte » (desactivees) vaut dès la 1re lecture.
       if (surveillance !== undefined) setSurveillanceReleves(surveillance);
       return true;
@@ -6685,9 +6689,15 @@ const StockTab = memo(function StockTab({
     for (const pf of PLATEFORMES_SESSION) out[pf] = etatSession(sessionsCompte, pf, publicationsOk[pf] ?? null);
     return out;
   }, [sessionsCompte, jobsByInventaire]);
+  // (23/10, point 2 — Sébastien) eBay relié par l'API : la sonde ebay.fr de Chrome ne prouve rien (tout passe par l'API) ;
+  // une plateforme écartée, ou sur laquelle FillSell ne travaille pas pour ce compte, ne dit jamais « connecte-toi ».
+  const ebayApiCompte = useMemo(() => etatEbayApi(ebayCompte), [ebayCompte]);
+  // ⛔ PAS « plateformesDuCompte » : c'est un import (utils/stockFiltres) appelé plus bas — l'ombre = écran blanc.
+  const plateformesUtiliseesCompte = useMemo(() => plateformesUtilisees(Object.values(jobsByInventaire).flat(), items), [jobsByInventaire, items]);
   const alertesToutesDuCompte = useMemo(
-    () => alertesDeCompte({ etats: etatsCompte, jobs: Object.values(jobsByInventaire).flat(), reglage: reglageAlertes, surveillance: surveillanceReleves }),
-    [etatsCompte, jobsByInventaire, reglageAlertes, surveillanceReleves],
+    () => alertesDeCompte({ etats: etatsCompte, jobs: Object.values(jobsByInventaire).flat(), reglage: reglageAlertes, surveillance: surveillanceReleves,
+      ebayApi: ebayApiCompte, ecartees: ecarteesCompte, utilisees: plateformesUtiliseesCompte }),
+    [etatsCompte, jobsByInventaire, reglageAlertes, surveillanceReleves, ebayApiCompte, ecarteesCompte, plateformesUtiliseesCompte],
   );
   // (18/10) Une boutique qui n'est plus surveillée a SA ligne en tête de
   // « À régler » (le geste dedans) ; le reste garde la ligne regroupée.
@@ -6696,12 +6706,12 @@ const StockTab = memo(function StockTab({
   const ecarteesDuCompte = useMemo(() => ecarteesAutreCompte(surveillanceReleves), [surveillanceReleves]);
   // Le masque d'une plateforme tombe de lui-même quand la session revient.
   useEffect(() => {
-    const revenues = masquesARetirer(reglageAlertes, etatsCompte);
+    const revenues = masquesARetirer(reglageAlertes, etatsCompte, ebayApiCompte);
     if (!revenues.length) return;
     fusionnerReglages([CLE_REGLAGE_ALERTES, 'masquees'], null, revenues)
       .then(({ data }) => { if (data) setReglageAlertes(data?.[CLE_REGLAGE_ALERTES] ?? null); })
       .catch(() => { /* relu au prochain passage */ });
-  }, [reglageAlertes, etatsCompte]);
+  }, [reglageAlertes, etatsCompte, ebayApiCompte]);
   const attenteBoutique = useMemo(() => {
     if (!boutiqueConnectee?.userId) return null;
     const jobs = Object.values(jobsByInventaire).flat();

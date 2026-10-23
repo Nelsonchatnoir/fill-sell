@@ -59,9 +59,10 @@ const retenue = LPS.indexOf('const iaGeneriqueRetenue = iaGeneriqueEnVol > 0;');
 ok(decl > 0 && retenue > decl && LPS.indexOf('const [iaGeneriqueEnVol, setIaGeneriqueEnVol]', decl + 10) === -1, 'iaGeneriqueEnVol déclaré UNE fois, avant la télémétrie qui le lit');
 // (18/10 nuit) La même garde porte aussi l'attente de la mémoire « compte × catégorie » (memoireRetenue) :
 // l'IA en vol retient toujours une ligne NOUVELLE, jamais une ligne déjà ouverte.
-ok(/if \((?:iaGeneriqueRetenue|\(iaGeneriqueRetenue \|\| memoireRetenue\)) && !champBloquantVus\.current\[k\]\) continue;\n\s+actifs\.add\(k\);/.test(LPS), 'une IA générique en vol n\'ouvre pas de ligne « affiche » — et ne ferme jamais une ligne ouverte');
+// (23/10, point 4) … et l'attente du repos du moteur (moteurRetenu) s'y ajoute : même garde, une raison de plus.
+ok(/if \((?:iaGeneriqueRetenue|\(iaGeneriqueRetenue \|\| memoireRetenue(?: \|\| moteurRetenu)?\)) && !champBloquantVus\.current\[k\]\) continue;\r?\n\s+actifs\.add\(k\);/.test(LPS), 'une IA générique en vol n\'ouvre pas de ligne « affiche » — et ne ferme jamais une ligne ouverte');
 // (22/10 soir, point 4) La question du rayon (genreAChoisir) s'ajoute aux dépendances : la règle reste la même.
-ok(/missingSharedFieldsDetailed, couleurEnAttente, iaGeneriqueEnVol(?:, memoireCat)?(?:, genreAChoisir)?\]\); \/\/ eslint-disable-line react-hooks\/exhaustive-deps/.test(LPS), 'la télémétrie se rejoue quand l\'IA a fini');
+ok(/missingSharedFieldsDetailed, couleurEnAttente, iaGeneriqueEnVol(?:, memoireCat)?(?:, genreAChoisir)?(?:, questionsAuRepos, resolutionFaitePour, catalogueLuPour, genericCategoryKeysSig)?\]\); \/\/ eslint-disable-line react-hooks\/exhaustive-deps/.test(LPS), 'la télémétrie se rejoue quand l\'IA a fini');
 const LST = lire('src/publication/moteur/listes.js');
 // (18/10, zéro friction) La tranche Vinted passe d'abord par le texte du vendeur (tailleEnfantSelonLeTexte).
 ok(/import \{ toPlatformChildSize, tailleEnfantSelonLeTexte \} from "\.\.\/\.\.\/utils\/childSizes\.js";/.test(LST) && /const enfant = toPlatformChildSize\(\(textes && tailleEnfantSelonLeTexte\(v, textes\)\) \|\| v, platform\);/.test(LST) && LST.indexOf('const enfant = toPlatformChildSize') < LST.indexOf('const t = tailleDansGrille(v, vals'), 'le moteur traduit AVANT le vocabulaire des tailles, et seulement vers une valeur de la grille');

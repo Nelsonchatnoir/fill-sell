@@ -9,11 +9,13 @@
 //      « Encadrements »… — paugues) repart dans « Peintures » (3847) ou « Affiches et reproductions » (3849) ;
 //   2. un ÉTAT plus bas que celui de la fiche (« Bon état » en ligne, « Très bon état » sur la fiche) repart avec
 //      l'état de la fiche — l'état du vendeur n'est jamais dégradé (point 8).
-// Rien d'autre n'est touché (titre, texte, prix, photos, taille, marque : ceux de l'annonce en ligne).
+// Rien d'autre n'est touché (titre, texte, prix, photos, taille, marque : ceux de l'annonce en ligne) — sauf (23/10,
+// Thierry) les photos d'origine que le dépôt n'a pas eues : photosDeLaFicheALaRecreation, plus bas.
 // Pur : lu par get-pending-jobs (Deno) et par les selftests (Node).
 import { oeuvreDArt, rayonVintedOeuvre } from "../../../src/utils/oeuvreDArt.js";
 import { tierEtat, RANG_ETAT, etatPourPlateforme } from "./etat-plateformes.js";
 import { idEtatVinted } from "../../../src/utils/etatsVinted.js";
+import { photosEnUrls, photoChezNous } from "./contenu-fiche.js";
 
 const FEUILLES_OEUVRES = new Set([3847, 3849]);
 
@@ -59,4 +61,41 @@ export function correctionCaptureVinted(fiche, libelles, natif, etatAvantCapture
     }
   }
   return raisons.length ? { libelles: lib, natif: nat, raisons, avant } : null;
+}
+
+/**
+ * (23/10, point 1 — Thierry, pièces de monnaie eBay) 3. LES PHOTOS D'ORIGINE QUE LE DÉPÔT N'A PAS EUES.
+ * Une annonce Vinted partie AVANT que toutes les photos de son annonce d'origine soient lues (dépôt à la seule
+ * vignette de 140 px, la fiche a reçu l'avers ET le revers ensuite) repart, à sa recréation, avec TOUTES les photos
+ * de la fiche, dans l'ordre — hébergées chez nous (sinon on attend leur rapatriement : rien n'est retiré entre-temps).
+ * ⛔ Seulement pour une fiche née d'un relevé (eBay, Leboncoin, Beebs, Depop) : jamais une annonce née sur Vinted.
+ * ⛔ Jamais au-dessus d'un choix de la personne : copie retouchée (photo_option ≠ original), photos lues AVANT le
+ *    dépôt (elle les avait sous les yeux), dépôt qui portait déjà autant de photos que la fiche.
+ *
+ * Aussi (feu vert de Nico, 23/10 12:05 : « en pleine taille ») quand la BASE a remis sur la fiche les photos de
+ * l'annonce d'origine APRÈS le dépôt (`photosRemplaceesLe` : complétion, photos eBay reprises en pleine taille) et
+ * qu'elles diffèrent de celles du dépôt (vignette de 140 px, version de 400 px) — jamais moins de photos.
+ *
+ * @param fiche         {origine, photos}
+ * @param depot         le dépôt Vinted de l'annonce : {photos, photo_option, created_at}
+ * @param {string | null} photosLuesLe  ISO — quand la fiche a reçu ses photos d'origine (fiches_contenu_vendeur.photos_lues_le)
+ * @param {string | null} [photosRemplaceesLe] ISO — quand la base les a remises sur la fiche (journal, photos_origine_completees)
+ * @returns null (rien à faire) | {photos: string[]} | {attendre: true} (photos pas encore chez nous)
+ */
+export function photosDeLaFicheALaRecreation(fiche, depot, photosLuesLe, photosRemplaceesLe = null) {
+  if (!fiche || !depot) return null;
+  if (!/^releve_[a-z]+$/.test(String(fiche.origine ?? ""))) return null;
+  if (String(depot.photo_option ?? "original") !== "original") return null;
+  const fp = photosEnUrls(fiche.photos);
+  const dp = photosEnUrls(depot.photos);
+  if (fp.length < 2 || fp.length < dp.length) return null;
+  const t0 = Date.parse(String(depot.created_at ?? ""));
+  const t1 = Date.parse(String(photosLuesLe ?? ""));
+  const t2 = Date.parse(String(photosRemplaceesLe ?? ""));
+  if (!Number.isFinite(t0)) return null;
+  const plus = fp.length > dp.length && Number.isFinite(t1) && t1 > t0;
+  const remplacees = Number.isFinite(t2) && t2 > t0 && fp.join("\n") !== dp.join("\n");
+  if (!plus && !remplacees) return null;
+  if (!fp.every(photoChezNous)) return { attendre: true };
+  return { photos: fp };
 }

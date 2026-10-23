@@ -18,6 +18,23 @@ import { completerTexteDuVendeur, RYTHME_LECTURE_VINTED_MS } from "./texteDuVend
 
 export { messageLectureOrigine };
 
+/**
+ * Une ligne annonces_plateforme lue par l'app → la forme que lit la règle (la même que fiches_contenu_vendeur côté
+ * serveur) : `detail_le` (eBay : le détail lu par l'API) et `photos_origine` (combien de photos l'annonce porte).
+ */
+export function versLigneOrigine(a) {
+  const n = (x) => (Array.isArray(x) ? x.length : null);
+  const nCap = n(a?.photos_capture);
+  const nIdx = a?.platform === "ebay" ? n(a?.photos_index) : null;
+  return {
+    platform: a?.platform ?? null,
+    capture_le: a?.capture_le ?? null,
+    disparu_le: a?.disparu_le ?? null,
+    detail_le: a?.platform === "ebay" ? (a?.donnees_index_le ?? null) : null,
+    photos_origine: nCap == null && nIdx == null ? null : Math.max(nCap ?? 0, nIdx ?? 0),
+  };
+}
+
 /** La fiche attend-elle la lecture de son annonce d'origine ? Relu en base. null = rien à attendre (ou illisible). */
 export async function attenteLectureOrigine(supabase, userId, inventaireId) {
   if (!supabase || !userId || inventaireId == null) return null;
@@ -26,13 +43,15 @@ export async function attenteLectureOrigine(supabase, userId, inventaireId) {
     .eq("id", inventaireId).eq("user_id", userId).maybeSingle();
   if (error || !f || !plateformeOrigine(f)) return null;
   const [annonces, demande] = await Promise.all([
-    supabase.from("annonces_plateforme").select("platform, capture_le, disparu_le")
+    // (23/10) eBay : le DÉTAIL lu par l'API (donnees_index_le) vaut lecture ; et combien de photos l'annonce porte.
+    supabase.from("annonces_plateforme")
+      .select("platform, capture_le, disparu_le, donnees_index_le, photos_capture:capture->photos, photos_index:donnees_index->photos")
       .eq("inventaire_id", inventaireId).eq("user_id", userId).limit(20),
     supabase.from("lectures_origine_demandees").select("faite_le")
       .eq("inventaire_id", inventaireId).eq("user_id", userId).maybeSingle(),
   ]);
   if (annonces.error) return null;   // illisible : le serveur retient au départ, rien n'est perdu
-  return lectureOrigineEnAttente(f, annonces.data ?? [], {
+  return lectureOrigineEnAttente(f, (annonces.data ?? []).map(versLigneOrigine), {
     descriptionLueLe: f?.attributs?.description_source?.at ?? null,
     origineLueLe: demande?.data?.faite_le ?? null,
   });
@@ -112,7 +131,7 @@ export function phraseLecturesOrigine(liste, lang = "fr") {
       ? (n === 1 ? "1 item: reading its original listing" : `${n} items: reading their original listing`)
       : (n === 1 ? "1 article : lecture de son annonce d'origine" : `${n} articles : lecture de leur annonce d'origine`),
     texte: en
-      ? "They will go out with YOUR text, YOUR photos and YOUR condition as soon as the FillSell extension on your computer has read the original listing. Nothing to do."
-      : "Ils partiront avec TON texte, TES photos et TON état dès que l'extension FillSell de ton ordinateur aura lu l'annonce d'origine. Rien à faire.",
+      ? "They will go out with YOUR text, ALL YOUR photos and YOUR condition as soon as the original listing has been read (FillSell does it: on its own for eBay, through the extension on your computer for the others). Nothing to do."
+      : "Ils partiront avec TON texte, TOUTES TES photos et TON état dès que l'annonce d'origine aura été lue (FillSell s'en charge : tout seul pour eBay, par l'extension de ton ordinateur pour les autres). Rien à faire.",
   };
 }

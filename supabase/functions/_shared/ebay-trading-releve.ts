@@ -13,6 +13,7 @@
 // par le runtime) : chaque bloc <Item> est isolé avant d'y lire ses champs.
 // ⛔ Aucune donnée d'acheteur n'est lue.
 import { hotes, type EbayEnv } from "./ebay-oauth.ts";
+import { photosEbayPleineTaille } from "./ebay-photos.js";
 
 const SITE_FR = "71";
 const NIVEAU = "1193";
@@ -190,7 +191,9 @@ export async function lireArticleTrading(env: EbayEnv, token: string, itemId: st
   if (marque && SANS_MARQUE_RE.test(marque)) marque = null;
   const pkg = valeur(it, "ShippingPackageDetails") ?? "";
   const poids = grammes(valeur(pkg, "WeightMajor"), attribut(pkg, "WeightMajor", "unit"), valeur(pkg, "WeightMinor"), attribut(pkg, "WeightMinor", "unit"));
-  const photos = blocs(valeur(it, "PictureDetails") ?? "", "PictureURL").map((u) => decoderXml(u).trim()).filter((u) => /^https?:/.test(u));
+  // (23/10, Thierry) GetItem rend ses photos en 400 px ($_1.JPG) : prises en PLEINE TAILLE (même clé d'image,
+  // s-l1600 — l'original), dans l'ordre, sans doublon (_shared/ebay-photos.js).
+  const photos = photosEbayPleineTaille(blocs(valeur(it, "PictureDetails") ?? "", "PictureURL").map((u) => decoderXml(u).trim()).filter((u) => /^https?:/.test(u)));
   const cat = valeur(valeur(it, "PrimaryCategory") ?? "", "CategoryName");
   const prix = Number(valeur(valeur(it, "SellingStatus") ?? "", "CurrentPrice") ?? NaN);
   const desc = valeur(it, "Description");

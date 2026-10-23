@@ -78,12 +78,30 @@ export function texteDuVendeurSurFiche(fiche) {
 }
 
 /**
+ * L'annonce d'origine a-t-elle été LUE ? Sa page capturée — et, pour eBay, son DÉTAIL lu par l'API (GetItem au
+ * relevé du compte relié, Browse au complément) : `detail_le` (fiches_contenu_vendeur, 23/10).
+ */
+export const origineLue = (a) => Boolean(a?.capture_le || (a?.platform === "ebay" && a?.detail_le));
+
+/** La photo est-elle celle de la plateforme (son adresse) ou la copie qu'en a faite FillSell pour CETTE fiche ? */
+export function photoVenueDeLaPlateforme(u, ficheId) {
+  const s = String(u ?? "");
+  if (!s) return false;
+  if (!photoChezNous(s)) return true;
+  return ficheId != null && new RegExp(`/(rapatrie-fiche|rehosted)/${String(ficheId).replace(/\D/g, "")}/`).test(s);
+}
+
+/** Combien de temps, au plus, une fiche lue attend encore les photos que son annonce porte (jamais sans fin). */
+export const ATTENTE_PHOTOS_APRES_LECTURE_MS = 24 * 3600_000;
+
+/**
  * Faut-il attendre la lecture de l'annonce d'origine avant toute publication ?
  *
- * @param fiche     {origine, description, photos, attributs}
- * @param annonces  lignes annonces_plateforme de la fiche : [{platform, capture_le, disparu_le}]
- * @param lu        {descriptionLueLe, origineLueLe} — une lecture DÉJÀ faite (détail Vinted lu, description reprise) :
- *                  ce qui manque encore n'existe pas chez le vendeur, on n'attend plus (jamais une attente sans fin)
+ * @param fiche     {id, origine, description, photos, attributs}
+ * @param annonces  lignes annonces_plateforme de la fiche : [{platform, capture_le, detail_le, photos_origine, disparu_le}]
+ * @param lu        {descriptionLueLe, origineLueLe, maintenant} — une lecture DÉJÀ faite (détail Vinted lu, description
+ *                  reprise) : ce qui manque encore n'existe pas chez le vendeur, on n'attend plus (jamais une attente
+ *                  sans fin). `maintenant` (ms) : pour les essais.
  * @returns null (rien à attendre) | {plateforme, manque: Array<'description'|'etat'|'photos'>}
  *
  * Par plateforme d'origine :
@@ -92,16 +110,23 @@ export function texteDuVendeurSurFiche(fiche) {
  *  · Leboncoin, Beebs, Depop — la liste ne porte que titre et vignette ; tant que l'annonce d'origine n'a
  *    JAMAIS été lue (capture), ce qui manque (texte, état, photos) existe peut-être chez le vendeur : on
  *    attend. Une fois lue, ce qui manque encore n'existe pas chez lui : l'IA peut compléter ;
- *  · eBay — le relevé par l'API lit l'annonce entière : rien à attendre.
+ *  · eBay — (23/10, Thierry) la LISTE du relevé ne porte que titre, prix et une vignette de 140 px ; le DÉTAIL
+ *    (toutes les photos, le texte, l'état) se lit par lots (60 par relevé, 25 par passage du complément). Tant
+ *    qu'il n'est pas lu, on attend, comme pour Leboncoin. (Avant : « l'API lit l'annonce entière » — faux : 447
+ *    fiches de pièces de monnaie sont nées avec la seule vignette et sont parties sur Vinted avec elle.)
+ *  · Toutes : une annonce LUE qui porte plus de photos que la fiche, dont la seule photo est encore celle de la
+ *    plateforme (ou sa copie chez nous), attend que la fiche les reçoive (la base les reporte à la lecture, le
+ *    rapatriement les copie) — 24 h au plus après la lecture. Une photo choisie par la personne n'attend jamais.
  */
 export function lectureOrigineEnAttente(fiche, annonces = [], lu = {}) {
   const pf = plateformeOrigine(fiche);
-  if (!pf || pf === "ebay") return null;
+  if (!pf) return null;
+  const photos = photosEnUrls(fiche?.photos);
   const manque = [];
   if (!texteSuffisant(fiche?.description)) manque.push("description");
   if (pf !== "vinted") {
     if (!String(fiche?.attributs?.etat?.v ?? "").trim()) manque.push("etat");
-    if (photosEnUrls(fiche?.photos).length <= 1) manque.push("photos");
+    if (photos.length <= 1) manque.push("photos");
   }
   if (!manque.length) return null;
   if (pf === "vinted") {
@@ -112,14 +137,30 @@ export function lectureOrigineEnAttente(fiche, annonces = [], lu = {}) {
   }
   const lignes = (Array.isArray(annonces) ? annonces : []).filter((a) => a?.platform === pf && !a?.disparu_le);
   if (!lignes.length) return null;                       // l'annonce d'origine n'est plus en ligne : rien à lire
-  if (lignes.some((a) => a?.capture_le)) return null;    // déjà lue : ce qui manque n'existe pas chez le vendeur
-  return { plateforme: pf, manque };
+  const lues = lignes.filter(origineLue);
+  if (!lues.length) return { plateforme: pf, manque };   // jamais lue : ce qui manque existe peut-être chez le vendeur
+  // Déjà lue : ce qui manque n'existe pas chez le vendeur — sauf des photos que l'annonce porte et que la fiche n'a
+  // pas encore reçues.
+  const nOrigine = Math.max(0, ...lues.map((a) => Number(a?.photos_origine) || 0));
+  if (photos.length <= 1 && nOrigine > photos.length
+      && (photos.length === 0 || photoVenueDeLaPlateforme(photos[0], fiche?.id))) {
+    const luLe = Math.max(0, ...lues.map((a) => Math.max(Date.parse(String(a?.detail_le ?? "")) || 0, Date.parse(String(a?.capture_le ?? "")) || 0)));
+    const maintenant = Number.isFinite(lu?.maintenant) ? lu.maintenant : Date.now();
+    if (maintenant - luLe < ATTENTE_PHOTOS_APRES_LECTURE_MS) return { plateforme: pf, manque: ["photos"] };
+  }
+  return null;
 }
 
 const NOMS = { vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", ebay: "eBay", depop: "Depop", opla: "Opla" };
 /** La phrase montrée pendant l'attente — jamais une erreur. */
 export function messageLectureOrigine(attente, lang = "fr") {
   const nom = NOMS[attente?.plateforme] ?? attente?.plateforme ?? "";
+  // (23/10) eBay se lit par l'API, sans l'ordinateur : rien à faire.
+  if (attente?.plateforme === "ebay") {
+    return lang === "en"
+      ? "Reading your original eBay listing (all its photos, text, condition): FillSell reads it on its own and it goes out with YOUR content. Nothing to do."
+      : "En cours de lecture de ton annonce d'origine eBay (toutes ses photos, texte, état) : FillSell la lit tout seul et elle partira avec TON contenu. Rien à faire.";
+  }
   return lang === "en"
     ? `Reading your original ${nom} listing (text, photos, condition): it goes out with YOUR content as soon as the FillSell extension on your computer has read it.`
     : `En cours de lecture de ton annonce d'origine ${nom} (texte, photos, état) : elle partira avec TON contenu dès que l'extension FillSell de ton ordinateur l'aura lue.`;
@@ -144,9 +185,10 @@ export function copieReprendLeTexte(copie, texte) {
  *
  * @param job    {platform, title, description, photos, photo_option, platform_fields, created_at}
  * @param fiche  {origine, titre, description, photos, attributs}
- * @param temps  {contenuLe, descriptionLueLe, etatLuLe, photosLuesLe} — ISO. `contenuLe` : quand le contenu
- *               de la copie a été produit (le premier dépôt de la fiche sur la plateforme, que les
- *               republications recopient).
+ * @param temps  {contenuLe, descriptionLueLe, etatLuLe, photosLuesLe, photosRemplaceesLe} — ISO. `contenuLe` : quand
+ *               le contenu de la copie a été produit (le premier dépôt de la fiche sur la plateforme, que les
+ *               republications recopient). `photosRemplaceesLe` : quand la base a remis sur la fiche les photos de
+ *               l'annonce d'origine (journal, motif photos_origine_completees).
  * @returns {{description?: string, etat?: string, photos?: string[], raisons: string[], photos_a_rapatrier?: boolean}}
  */
 export function contenuAImposer(job, fiche, temps = {}) {
@@ -192,10 +234,14 @@ export function contenuAImposer(job, fiche, temps = {}) {
   // PHOTOS — toutes celles de la fiche, dans l'ordre, quand la copie en a moins (copie « originale »
   // seulement : une copie retouchée est un choix de la personne). Hébergées chez nous seulement :
   // sinon on attend leur rapatriement (handler-watch), on n'envoie pas une adresse de CDN.
+  // (23/10, Thierry) Et quand la BASE a remis sur la fiche les photos de l'annonce d'origine APRÈS la copie
+  // (`photosRemplaceesLe` : inventaire_journal, motif photos_origine_completees — complétion, ou photos eBay reprises
+  // en pleine taille) : la copie portait une vignette ou une version réduite, elle part avec celles de la fiche.
   const fp = photosEnUrls(fiche.photos);
   const jp = photosEnUrls(job.photos);
   const originale = String(job.photo_option ?? "original") === "original";
-  if (originale && fp.length > jp.length && apres(temps.photosLuesLe)) {
+  const remplacees = apres(temps.photosRemplaceesLe) && fp.length >= jp.length && fp.join("\n") !== jp.join("\n");
+  if (originale && (fp.length > jp.length || remplacees) && apres(temps.photosLuesLe)) {
     if (fp.every(photoChezNous)) {
       out.photos = fp;
       out.raisons.push("photos");

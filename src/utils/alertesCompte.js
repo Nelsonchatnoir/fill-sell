@@ -39,6 +39,18 @@
 //     (desactivees) l'éteint comme le reste ;
 //   · elle remplace l'alerte « connexion » de la même plateforme (une seule
 //     ligne pour une seule cause).
+//
+// ── (23/10, point 2 — Sébastien) « CONNECTE-TOI À X » SEULEMENT SI FILLSELL NE PEUT VRAIMENT PLUS Y TRAVAILLER ──
+// Sébastien (Business) voyait « Connecte-toi à eBay — FillSell ne voit plus ce compte » alors que son compte eBay est
+// relié par l'API (reconnecté à 08:00, relevés 153/153) : la règle lisait la sonde ebay.fr de Chrome, qui ne prouve
+// rien pour un compte relié (publication, retraits, relevé, messages : tout passe par l'API), et la reconnexion
+// (OAuth) ne pouvait pas l'effacer. 6 comptes la voyaient le 23/10 à midi, 21 autres au prochain passage de leur Chrome.
+//   · eBay relié par l'API (paramètre ebayApi, etatEbayApi) : la sonde de Chrome ne déclenche JAMAIS d'alerte ; le seul mur
+//     d'un tel compte est le lien lui-même (révoqué, renouvellement expiré) → kind 'relier_api' (« Reconnecte ton
+//     compte eBay »), qui tombe d'elle-même quand le lien est rétabli ;
+//   · une plateforme écartée par la personne (« je ne vends pas sur X », platform_settings.plateformes_ecartees) ou
+//     sur laquelle FillSell n'a jamais travaillé pour elle (aucune tâche) : aucune alerte — il n'y a pas de compte
+//     que FillSell « ne voit plus ».
 // Pur, testé par scripts/alertes-compte-selftest.mjs et
 // scripts/surveillance-releves-selftest.mjs.
 import { restrictionVinted } from '../../supabase/functions/_shared/pas-de-rouge.js';
@@ -113,6 +125,7 @@ export function ligneNonSurveillee(a, lang = 'fr') {
 /** Le libellé du geste unique. */
 export function libelleReconnexion(a, lang = 'fr') {
   if (a?.motif === MOTIF_AUTORISER_DEPOP) return null; // « Autoriser Depop » : le libellé du bouton lui-même
+  if (a?.kind === 'relier_api') return lang === 'en' ? 'Link eBay again' : 'Relier eBay'; // (23/10) le lien officiel, pas Chrome
   return lang === 'en' ? 'Sign in again' : 'Se reconnecter';
 }
 
@@ -130,6 +143,35 @@ export function restrictionDuCompte(jobs, maintenant = Date.now()) {
 }
 
 /**
+ * (23/10) Le lien eBay par l'API, lu dans le prop ebayCompte de l'app ({ voieApi, lu, etat: etatPublic }).
+ * @returns {'relie'|'a_relier'|'inconnu'|null} null = pas relié par l'API : la sonde de Chrome compte, comme avant.
+ */
+export function etatEbayApi(ebayCompte) {
+  if (!ebayCompte || ebayCompte.voieApi !== true) return null;
+  if (!ebayCompte.lu) return 'inconnu';
+  if (ebayCompte.etat?.connecte === true) return 'relie';
+  if (ebayCompte.etat?.a_reconnecter === true) return 'a_relier';
+  return 'inconnu';
+}
+
+/**
+ * (23/10) Les plateformes sur lesquelles FillSell travaille pour ce compte : une tâche sur la plateforme, ou une fiche
+ * qui en vient (import, dressing Vinted, plateforme de la fiche). Lu par StockTab sur ce qu'il a déjà en mémoire.
+ */
+export function plateformesUtilisees(jobs, items) {
+  const out = new Set();
+  for (const j of Array.isArray(jobs) ? jobs : []) if (j?.platform) out.add(String(j.platform).toLowerCase());
+  for (const it of Array.isArray(items) ? items : []) {
+    const o = String(it?.origine ?? '');
+    if (o === 'vinted_sync' || it?.vinted_item_id) out.add('vinted');
+    const m = o.match(/^releve_([a-z]+)$/);
+    if (m) out.add(m[1]);
+    if (it?.plateforme) out.add(String(it.plateforme).toLowerCase());
+  }
+  return [...out];
+}
+
+/**
  * Les alertes à montrer.
  * @param {{ etats: object|null, jobs: any[], reglage: object|null, maintenant?: number, surveillance?: any[]|null }} arg
  *   etats        : { [pf]: 'ok'|'ko'|null } (utils/sessionsPlateformes.etatSession)
@@ -138,7 +180,7 @@ export function restrictionDuCompte(jobs, maintenant = Date.now()) {
  * @returns {Array<{ platform: string, kind: 'non_surveillee'|'connexion'|'restriction', jusquau?: string|null, fin?: number|null }>}
  *   les 'non_surveillee' d'abord (une par plateforme).
  */
-export function alertesCompte({ etats, jobs, reglage, maintenant = Date.now(), surveillance = null }) {
+export function alertesCompte({ etats, jobs, reglage, maintenant = Date.now(), surveillance = null, ebayApi = null, ecartees = null, utilisees = null }) {
   const r = reglage && typeof reglage === 'object' ? reglage : {};
   if (r.desactivees === true) return [];
   const masquees = r.masquees && typeof r.masquees === 'object' ? r.masquees : {};
@@ -146,12 +188,21 @@ export function alertesCompte({ etats, jobs, reglage, maintenant = Date.now(), s
   // place de l'alerte « connexion » de sa plateforme ; aucun masque ne la cache.
   const out = boutiquesNonSurveillees(surveillance, maintenant);
   const nonSurveillees = new Set(out.map((a) => a.platform));
+  // (23/10) Écartée par la personne, ou jamais utilisée avec FillSell : aucun compte que FillSell « ne voit plus ».
+  const exclues = new Set(Array.isArray(ecartees) ? ecartees.map((x) => String(x)) : []);
+  // utilisees null (non fourni) : pas de filtre, comme avant ; sinon une plateforme sans rien dessus ne dit rien.
+  const actives = Array.isArray(utilisees) ? new Set(utilisees.map((x) => String(x))) : null;
   for (const pf of PLATEFORMES_ALERTE) {
     if (etats?.[pf] !== 'ko') continue;
     if (masquees[pf] === true) continue;
     if (nonSurveillees.has(pf)) continue;
+    if (exclues.has(pf) || (actives && !actives.has(pf))) continue;
+    // (23/10) eBay relié par l'API : la sonde ebay.fr de Chrome ne prouve rien (tout passe par l'API).
+    if (pf === 'ebay' && ebayApi !== null) continue;
     out.push({ platform: pf, kind: 'connexion' });
   }
+  // (23/10) Le vrai mur d'un compte eBay relié : le lien lui-même. Jamais masquable (sans lui, aucun retrait eBay).
+  if (ebayApi === 'a_relier' && !exclues.has('ebay') && !nonSurveillees.has('ebay') && (!actives || actives.has('ebay'))) out.push({ platform: 'ebay', kind: 'relier_api' });
   const restriction = restrictionDuCompte(jobs, maintenant);
   if (restriction) {
     const masque = ms(masquees.vinted_restriction);
@@ -162,10 +213,10 @@ export function alertesCompte({ etats, jobs, reglage, maintenant = Date.now(), s
   return out;
 }
 
-/** Les masques à retirer : une plateforme masquée dont la session est revenue ('ok'). */
-export function masquesARetirer(reglage, etats) {
+/** Les masques à retirer : une plateforme masquée dont la session est revenue ('ok') — eBay : son lien API rétabli (23/10). */
+export function masquesARetirer(reglage, etats, ebayApi = null) {
   const masquees = reglage && typeof reglage === 'object' && reglage.masquees && typeof reglage.masquees === 'object' ? reglage.masquees : {};
-  return PLATEFORMES_ALERTE.filter((pf) => masquees[pf] === true && etats?.[pf] === 'ok');
+  return PLATEFORMES_ALERTE.filter((pf) => masquees[pf] === true && (etats?.[pf] === 'ok' || (pf === 'ebay' && ebayApi === 'relie')));
 }
 
 const liste = (noms, lang) => {
@@ -178,7 +229,13 @@ export function ligneAlertes(alertes, lang = 'fr') {
   const fr = lang !== 'en';
   const connexions = alertes.filter((a) => a.kind === 'connexion').map((a) => NOMS[a.platform] ?? a.platform);
   const restriction = alertes.find((a) => a.kind === 'restriction');
+  const relierEbay = alertes.some((a) => a.kind === 'relier_api');
   const parts = [];
+  if (relierEbay) {
+    parts.push(fr
+      ? 'eBay : le lien officiel avec FillSell est à refaire — sans lui, rien ne se publie, ne se retire ni ne se relève sur eBay'
+      : 'eBay: the official link with FillSell must be redone — without it, nothing is listed, removed or read on eBay');
+  }
   if (connexions.length) {
     parts.push(fr
       ? `${liste(connexions, lang)} : connecte-toi sur ton ordinateur, FillSell ne voit plus ${connexions.length > 1 ? 'ces comptes' : 'ce compte'}`
@@ -188,6 +245,9 @@ export function ligneAlertes(alertes, lang = 'fr') {
     parts.push(fr
       ? `Vinted a restreint ton compte${restriction.jusquau ? ` jusqu'au ${restriction.jusquau}` : ''} : rien ne part sur Vinted d'ici là`
       : `Vinted restricted your account${restriction.jusquau ? ` until ${restriction.jusquau}` : ''}: nothing goes out on Vinted until then`);
+  }
+  if (relierEbay && !connexions.length && !restriction) {
+    return { titre: fr ? 'Reconnecte ton compte eBay' : 'Reconnect your eBay account', detail: parts.join(' · ') };
   }
   const titre = connexions.length && restriction
     ? (fr ? 'Connexion et compte restreint' : 'Sign-in and restricted account')

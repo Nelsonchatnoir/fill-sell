@@ -374,6 +374,7 @@
     "selftest:contenu-du-vendeur": "node --import ./scripts/loader-ext.mjs scripts/contenu-du-vendeur-selftest.mjs",
     "selftest:genre-a-choisir": "node --import ./scripts/loader-ext.mjs scripts/genre-a-choisir-selftest.mjs",
     "selftest:lot-2210-soir": "node --import ./scripts/loader-ext.mjs scripts/lot-2210-soir-selftest.mjs",
+    "selftest:lot-2310": "node --import ./scripts/loader-ext.mjs scripts/lot-2310-selftest.mjs",
     "selftest:oeuvre-d-art": "node --import ./scripts/loader-ext.mjs scripts/oeuvre-d-art-selftest.mjs",
     "selftest:aucune-estimation": "node scripts/aucune-estimation-selftest.mjs",
     "selftest:beebs-flux-mes-annonces": "node scripts/beebs-flux-mes-annonces-selftest.mjs",

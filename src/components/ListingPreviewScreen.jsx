@@ -113,6 +113,9 @@ import { avecFormatChoisi } from "../utils/leboncoinColis";
 // scripts/publication-moteur-selftest.mjs). Les tables de champs partagés ont
 // déménagé de la même façon (champsPartages.js).
 import StepperNouveau from "../publication/StepperNouveau";
+// (23/10, point 4) Le délai de repos du moteur avant les questions : celui du lot (une seule règle).
+import { REPOS_AVANT_LECTURE_MS } from "../publication/lot/regles";
+const FILET_QUESTIONS_MS = 45_000;
 import { categorieFermee } from "../publication/plateformes";
 import { lireProchaineRemiseAZero } from "../reglages/quotas";
 import {
@@ -9271,6 +9274,12 @@ export default function ListingPreviewScreen({
   // qu'ils aient répondu avant de compter ce qui reste à demander. (18/10,
   // lot 3) Déclaré ICI, avant la télémétrie qui le lit dans ses dépendances.
   const [iaGeneriqueEnVol, setIaGeneriqueEnVol] = useState(0);
+  // (23/10, point 4 — louis-seller) LES QUESTIONS ATTENDENT LE REPOS DU MOTEUR. À l'arrivée sur « Confirmer », aucune
+  // question n'existe — ni à l'écran, ni au journal — tant que le moteur n'a pas fini (rédaction, rayon résolu,
+  // catalogue des champs, IA, mémoire, couleur, eBay, jumeaux : preparationAuRepos, la règle du lot) depuis 1,2 s, et
+  // 45 s au plus (filet). Avant : « Produit » montré 2 s puis rempli par le moteur (Playmobil), « Univers » 4 s avant le
+  // changement de rayon (casque). Déclaré ICI : la télémétrie, juste dessous, le lit dans ses dépendances (TDZ).
+  const [questionsAuRepos, setQuestionsAuRepos] = useState(false);
   useEffect(() => {
     if (step !== 3) return;
     // (03/10, Ornella 19:50:25) Pendant le clic Publier, les copies bougent
@@ -9304,12 +9313,15 @@ export default function ListingPreviewScreen({
     // n'est compté tant que la lecture n'a pas répondu (même règle que l'IA).
     // (18/10, lot 2) Même règle pour les correspondances apprises pas encore lues.
     const memoireRetenue = memoireCat === null || apprisesParPf === null;
+    // (23/10, point 4) Rien de NOUVEAU n'est compté avant le repos du moteur, ni pendant qu'il change de rayon ou relit
+    // le catalogue des champs de la catégorie courante (une ligne déjà comptée reste active : jamais un faux « complete »).
+    const moteurRetenu = !questionsAuRepos || resolutionFaitePour !== platformListings || catalogueLuPour !== genericCategoryKeysSig;
     for (const [gp, list] of Object.entries(genericRequiredStatus ?? {})) {
       for (const a of list.filter(aspectBloquant)) {
         if (partageEnQuestion(gp, genericFieldToSharedKey(gp, a.key))) continue;
         if (couleurRetenue({ platform: gp, key: a.key })) continue;
         const k = `${gp}:${a.key}`;
-        if ((iaGeneriqueRetenue || memoireRetenue) && !champBloquantVus.current[k]) continue;
+        if ((iaGeneriqueRetenue || memoireRetenue || moteurRetenu) && !champBloquantVus.current[k]) continue;
         actifs.add(k);
         if (!champBloquantVus.current[k]) {
           champBloquantVus.current[k] = {
@@ -9337,7 +9349,7 @@ export default function ListingPreviewScreen({
       const dimOuverte = champBloquantVus.current["ebay:Dimensions"];
       const enDimensions = dimsEbay.includes(a) || Boolean(dimOuverte && !dimOuverte.complete && dimOuverte.dimensions?.includes(a.name));
       const k = enDimensions ? "ebay:Dimensions" : `ebay:${a.name}`;
-      if (memoireRetenue && !champBloquantVus.current[k]) continue;
+      if ((memoireRetenue || moteurRetenu) && !champBloquantVus.current[k]) continue;
       // (18/10, eBay ÷ 5) Une valeur que l'effet des défauts (re)pose à ce rendu
       // — défaut sûr, option du texte, réponse de l'IA gardée — n'est pas une
       // question nouvelle (sauf si la personne a vidé ce champ elle-même).
@@ -9369,6 +9381,7 @@ export default function ListingPreviewScreen({
       for (const p of f.platforms ?? []) {
         if (f.key === "taille" && tailleDuTexteEnVol.current.has(p)) continue;
         const k = `${p}:partage:${f.key}`;
+        if (moteurRetenu && !champBloquantVus.current[k]) continue;   // (23/10, point 4)
         actifs.add(k);
         if (!champBloquantVus.current[k]) {
           champBloquantVus.current[k] = {
@@ -9386,6 +9399,7 @@ export default function ListingPreviewScreen({
     for (const [p, g] of Object.entries(genreAChoisir)) {
       if (g.deduit) continue; // le moteur le pose à ce rendu : pas une question
       const k = `${p}:genre_rayon`;
+      if (moteurRetenu && !champBloquantVus.current[k]) continue;   // (23/10, point 4)
       actifs.add(k);
       if (!champBloquantVus.current[k]) {
         champBloquantVus.current[k] = {
@@ -9420,7 +9434,7 @@ export default function ListingPreviewScreen({
       }
     }
     champBloquantRestants.current = actifs;
-  }, [step, publishing, genericRequiredStatus, ebayRequiredStatus, ebayIaFiniePour, ebayPreviewCategoryId, missingSharedFieldsDetailed, couleurEnAttente, iaGeneriqueEnVol, memoireCat, genreAChoisir]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [step, publishing, genericRequiredStatus, ebayRequiredStatus, ebayIaFiniePour, ebayPreviewCategoryId, missingSharedFieldsDetailed, couleurEnAttente, iaGeneriqueEnVol, memoireCat, genreAChoisir, questionsAuRepos, resolutionFaitePour, catalogueLuPour, genericCategoryKeysSig]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { doneRef.current = done; }, [done]);
   useEffect(() => () => {
     if (doneRef.current) return;
@@ -11708,6 +11722,18 @@ export default function ListingPreviewScreen({
     }
     return true;
   })();
+  // (23/10, point 4) Les questions au repos du moteur (état déclaré avant la télémétrie) : vraies après 1,2 s de repos
+  // (REPOS_AVANT_LECTURE_MS, le délai du lot), ou 45 s après l'arrivée sur « Confirmer » (filet) ; une fois montrées,
+  // elles restent — jamais un clignotement sous les doigts de la personne. Remises à zéro en quittant l'étape.
+  const arriveeConfirmerRef = useRef(null);
+  useEffect(() => {
+    if (step !== 3) { arriveeConfirmerRef.current = null; if (questionsAuRepos) setQuestionsAuRepos(false); return undefined; }
+    if (questionsAuRepos) return undefined;
+    if (arriveeConfirmerRef.current == null) arriveeConfirmerRef.current = Date.now();
+    const filetDans = Math.max(0, FILET_QUESTIONS_MS - (Date.now() - arriveeConfirmerRef.current));
+    const t = setTimeout(() => setQuestionsAuRepos(true), preparationAuRepos ? Math.min(REPOS_AVANT_LECTURE_MS, filetDans) : filetDans);
+    return () => clearTimeout(t);
+  }, [step, preparationAuRepos, questionsAuRepos]);
   const extensionVueLe = (() => {
     const a = Date.parse(extensionLastSeenAt ?? "");
     const b = Date.parse(extSeenRelu ?? "");
@@ -11804,6 +11830,8 @@ export default function ListingPreviewScreen({
     inventoryFull, stockCount, stockLimitCfg,
     lbcPhotoCap, lbcAdresseManquante, jumeaux, descriptionMentions, descriptionVideVinted,
     exclusionsPrevues, plateformesRetirables, questionsParPlateforme,
+    // (23/10, point 4) Faux tant que le moteur n'est pas au repos : « Confirmer » ne montre encore aucune question.
+    questionsAuRepos,
     // (25/09) Le rayon à choisir, posé sur « Confirmer » avec ses candidats.
     rayonsAChoisir, suggestionsParPf, choisirRayon,
     // (09/10 soir) L'article est d'une catégorie que Depop interdit (le lot le

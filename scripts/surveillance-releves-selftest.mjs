@@ -93,7 +93,7 @@ console.log('\n4. Le câblage');
   ok(/supabase\.rpc\('surveillance_releves'\)/.test(bloc) && /const relecture = demarrerRelecture\(lire, \{ intervalleMs: 10 \* 60_000 \}\);/.test(bloc) && !/setInterval/.test(bloc),
     'la RPC est lue dans la relecture BORNÉE existante (10 min, onglet visible), jamais un setInterval');
   ok(/error\.code === 'PGRST202'/.test(bloc) && /if \(rpcAbsente\) return undefined;/.test(bloc), 'RPC absente (migration pas appliquée) : plus redemandée, rien ne casse');
-  ok(/surveillance: surveillanceReleves \}\)/.test(bloc) && /a\.kind === 'non_surveillee'\)/.test(bloc) && /a\.kind !== 'non_surveillee'\)/.test(bloc), 'une seule règle (alertesCompte), séparée en lignes propres et ligne regroupée');
+  ok(/surveillance: surveillanceReleves(?: \}\)|,)/.test(bloc) && /a\.kind === 'non_surveillee'\)/.test(bloc) && /a\.kind !== 'non_surveillee'\)/.test(bloc), 'une seule règle (alertesCompte), séparée en lignes propres et ligne regroupée');
   ok(/const lignesNonSurveillees = nonSurveillees\.map\(\(a\) => \(\{\n\s+cle: `non_surveillee:\$\{a\.platform\}`, groupe: 'non_surveillee', n: 1, ton: 'echec',/.test(ST), 'une ligne PAR plateforme, rouge');
   ok(/<BoutonMeConnecter userId=\{user\?\.id\} platform=\{a\.platform\} motif=\{a\.motif\} lang=\{lang\}\n\s+variante="bouton" libelleImpose=\{libelleReconnexion\(a, lang\)\} \/>/.test(ST), 'UN geste dedans : BoutonMeConnecter, motif de la ligne, « Se reconnecter »');
   ok(/<EcranARegler lang=\{lang\} lignes=\{\[\.\.\.lignesNonSurveillees, \.\.\.lignesARegler\]\}/.test(ST), 'EN TÊTE de « À régler », avant les articles vendus encore en ligne');
@@ -104,7 +104,7 @@ console.log('\n4. Le câblage');
   ok(/une boutique qui n’est plus surveillée/.test(EA) && /a shop that is no longer watched/.test(EA), 'EcranARegler : la phrase d\'en-tête le dit, FR et EN');
   const EC = lire('src/stock/EcranAlertesCompte.jsx');
   ok(!/ADRESSE_CONNEXION/.test(EC) && /<BoutonMeConnecter userId=\{userId\} platform=\{a\.platform\}/.test(EC) && /libelleImpose=\{libelleReconnexion\(a, lang\)\}/.test(EC), 'écran des alertes : le même geste, plus d\'adresse d\'accueil ouverte à la main');
-  ok(/\{!nonSurveillee && \(/.test(EC), 'écran des alertes : pas de « Masquer » sur un risque');
+  ok(/\{!nonSurveillee(?: && !relierApi)? && \(/.test(EC), 'écran des alertes : pas de « Masquer » sur un risque');
   ok(/<EcranAlertesCompte lang=\{lang\} alertes=\{alertesDuCompte\} userId=\{user\?\.id\}/.test(ST), 'écran des alertes : reçoit le compte (demande à l\'ordinateur sur mobile)');
   const BM = lire('src/components/BoutonMeConnecter.jsx');
   ok(/compact = false, libelleImpose = null,/.test(BM) && (BM.match(/libelleImpose \|\| libelle\(t, platform, motif\)/g) ?? []).length === 2, 'BoutonMeConnecter : le libellé imposé, sur le lien (web) comme sur le bouton (mobile) ; le geste ne change pas');

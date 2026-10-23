@@ -222,6 +222,8 @@ function texteMotifSaut(motif, fr) {
     republish_en_cours:  fr ? 'Une republication était déjà en cours pour cette annonce.' : 'A repost was already under way for this listing.',
     article_sans_photo:  fr ? 'Sans photo : la republication ne peut pas aboutir.' : 'No photo: the repost cannot go through.',
     invalid_item:        fr ? 'Identifiant Vinted illisible.' : 'Unreadable Vinted id.',
+    // (23/10, point 3) Absence établie sur l'identifiant exact : elle repart dès qu'un relevé la revoit en ligne.
+    annonce_introuvable: fr ? 'Plus vue en ligne sur la plateforme : elle ne repart pas tant qu’un relevé ne la revoit pas.' : 'No longer seen online on the platform: it won’t go out until a sync sees it again.',
   };
   return M[motif] ?? (fr ? `Sautée (${motif}).` : `Skipped (${motif}).`);
 }

@@ -18,7 +18,7 @@
 import fs from "node:fs";
 import {
   PLATEFORMES_IMPORT, plateformeOrigine, lectureOrigineEnAttente, messageLectureOrigine, contenuAImposer,
-  texteDuVendeurSurFiche, copieReprendLeTexte,
+  texteDuVendeurSurFiche, copieReprendLeTexte, origineLue,
 } from "../supabase/functions/_shared/contenu-fiche.js";
 import { tierEtat, RANG_ETAT, etatPourPlateforme } from "../supabase/functions/_shared/etat-plateformes.js";
 
@@ -75,9 +75,8 @@ ok(PLATEFORMES_IMPORT.join(",") === "vinted,leboncoin,beebs,ebay,depop", "les ci
 for (const { origine, plateforme } of ORIGINES) {
   ok(plateformeOrigine({ origine }) === plateforme, `${origine} → plateforme d'origine ${plateforme}`);
   const a = lectureOrigineEnAttente(ficheVide(origine), [annonceOrigine(plateforme, false)]);
-  if (plateforme === "ebay") {
-    ok(a === null, `${origine} : l'API eBay lit l'annonce entière → aucune attente`, JSON.stringify(a));
-  } else {
+  // (23/10, Thierry) eBay n'est plus « lu en entier » par la liste : son détail se lit par lots — on attend comme ailleurs.
+  {
     ok(a?.plateforme === plateforme && a.manque.includes("description"), `${origine} : annonce d'origine pas encore lue → on ATTEND (description)`, JSON.stringify(a));
     if (plateforme !== "vinted") ok(a?.manque.includes("etat") && a.manque.includes("photos"), `${origine} : l'état et les photos aussi`, JSON.stringify(a));
     const msg = messageLectureOrigine(a);
@@ -90,10 +89,47 @@ for (const { origine, plateforme } of ORIGINES) {
   if (plateforme === "vinted") {
     ok(lectureOrigineEnAttente(ficheVide(origine), [], { origineLueLe: LECTURE }) === null, "vinted_sync : détail déjà lu, sans description chez le vendeur → on n'attend plus");
     ok(lectureOrigineEnAttente({ ...ficheVide(origine), disparu_le: LECTURE }, []) === null, "vinted_sync : annonce disparue du dressing → rien à lire, on n'attend pas");
-  } else if (plateforme !== "ebay") {
+  } else {
     ok(lectureOrigineEnAttente(ficheVide(origine), [annonceOrigine(plateforme, true)]) === null, `${origine} : annonce lue mais vide chez le vendeur → l'IA peut compléter (on n'attend plus)`);
     ok(lectureOrigineEnAttente(ficheVide(origine), [{ ...annonceOrigine(plateforme, false), disparu_le: LECTURE }]) === null, `${origine} : annonce d'origine disparue → rien à lire`);
   }
+}
+// (23/10, point 1 — Thierry, pièces de monnaie eBay : avers ET revers) TOUTES les photos d'origine avant de partir.
+{
+  const VIGNETTE = "https://i.ebayimg.com/images/g/QVgAAeSwd4xqonZY/s-l140.jpg";
+  const STOCK = (p) => `https://tojihnuawsoohlolangc.supabase.co/storage/v1/object/public/listing-photos/c2175e91/${p}`;
+  const fiche = { id: 1792745533806, origine: "releve_ebay", titre: "Monnaie romaine, Constantin 1er, follis",
+    description: "", photos: [VIGNETTE], attributs: {} };
+  const maintenant = Date.parse("2026-10-23T10:00:00.000Z");
+  const jamaisLue = { platform: "ebay", capture_le: null, detail_le: null, photos_origine: null, disparu_le: null };
+  const lue = (n, le = "2026-10-23T09:30:00.000Z") => ({ ...jamaisLue, detail_le: le, photos_origine: n });
+  const a1 = lectureOrigineEnAttente(fiche, [jamaisLue], { maintenant });
+  ok(a1?.plateforme === "ebay" && a1.manque.includes("photos"), "eBay : détail jamais lu (liste seule, vignette 140 px) → on ATTEND", JSON.stringify(a1));
+  const m1 = messageLectureOrigine(a1);
+  ok(/En cours de lecture de ton annonce d'origine eBay/.test(m1) && /Rien à faire/.test(m1) && !/erreur|échec|ordinateur/i.test(m1),
+    "eBay : « en cours de lecture », rien à faire (lu par l'API, sans l'ordinateur), jamais une erreur", m1);
+  ok(!/error|fail|computer/i.test(messageLectureOrigine(a1, "en")), "eBay : la phrase anglaise non plus");
+  const a2 = lectureOrigineEnAttente(fiche, [lue(2)], { maintenant });
+  ok(a2?.manque?.length === 1 && a2.manque[0] === "photos", "eBay : détail lu (2 photos), la fiche n'a encore que la vignette → on attend ses photos", JSON.stringify(a2));
+  ok(lectureOrigineEnAttente({ ...fiche, photos: [STOCK("rehosted/1792745533806/1792747072642_0.jpg")] }, [lue(2)], { maintenant })?.manque?.[0] === "photos",
+    "eBay : la vignette recopiée chez nous pour CETTE fiche (rehosted/<fiche>/) attend aussi");
+  ok(lectureOrigineEnAttente({ ...fiche, photos: [STOCK("rapatrie-fiche/1792745533806/1_0.jpg")] }, [lue(2)], { maintenant })?.manque?.[0] === "photos",
+    "eBay : la vignette rapatriée (rapatrie-fiche/<fiche>/) attend aussi");
+  ok(lectureOrigineEnAttente({ ...fiche, photos: [VIGNETTE, "https://i.ebayimg.com/images/g/NwkAAeSwAvhqonZd/s-l1600.jpg"] }, [lue(2)], { maintenant }) === null,
+    "eBay : la fiche a reçu ses 2 photos → elle part");
+  ok(lectureOrigineEnAttente(fiche, [lue(1)], { maintenant }) === null, "eBay : l'annonce n'a qu'une photo → rien à attendre");
+  ok(lectureOrigineEnAttente({ ...fiche, photos: [STOCK("enhanced/1792746017692_0.png")] }, [lue(2)], { maintenant }) === null,
+    "⛔ une photo retouchée (choix de la personne) n'attend jamais");
+  ok(lectureOrigineEnAttente({ ...fiche, photos: [STOCK("1792746017692_photo.jpg")] }, [lue(2)], { maintenant }) === null,
+    "⛔ une photo ajoutée par la personne n'attend jamais");
+  ok(lectureOrigineEnAttente(fiche, [lue(2, "2026-10-22T09:00:00.000Z")], { maintenant }) === null,
+    "jamais une attente sans fin : 24 h après la lecture, la fiche part (le circuit a eu sa journée pour la compléter)");
+  ok(lectureOrigineEnAttente({ ...fiche, origine: "releve_beebs" }, [{ platform: "beebs", capture_le: "2026-10-23T09:30:00.000Z", photos_origine: 4, disparu_le: null }], { maintenant })?.manque?.[0] === "photos",
+    "la même règle pour Beebs (et Leboncoin, Depop) : page lue avec 4 photos, fiche à la vignette → on attend ses photos");
+  ok(lectureOrigineEnAttente({ ...fiche, origine: "releve_leboncoin" }, [{ platform: "leboncoin", capture_le: null, disparu_le: null }, { platform: "ebay", detail_le: "2026-10-23T09:30:00.000Z", photos_origine: 2 }], { maintenant })?.plateforme === "leboncoin",
+    "le détail eBay d'une AUTRE annonce ne vaut pas lecture d'une fiche née sur Leboncoin");
+  ok(origineLue({ platform: "ebay", detail_le: "x" }) && !origineLue({ platform: "beebs", detail_le: "x" }) && origineLue({ platform: "beebs", capture_le: "x" }),
+    "origineLue : la page capturée partout, le détail par l'API pour eBay seulement");
 }
 ok(lectureOrigineEnAttente({ origine: null, description: "", photos: [] }, []) === null, "fiche écrite dans FillSell (Lens, saisie) : jamais d'attente");
 ok(lectureOrigineEnAttente({ origine: "releve_opla", description: "" }, [{ platform: "opla" }]) === null, "Opla (quittée le 10/10) : plus aucun import");
@@ -245,6 +281,55 @@ console.log("E. (22/10 nuit, décisions de Nico) L'ÉTAT JAMAIS DÉGRADÉ EN REP
     "get-pending-jobs : l'état de la fiche est noté AVANT la capture");
   ok(/pfC\.republish_step === "captured"/.test(bloc) && /!retraitEngage\(j\)/.test(bloc) && /\.from\("vinted_republish_captures"\)\s*\.update\(/.test(bloc),
     "get-pending-jobs : la capture est corrigée à l'étape « captured », AVANT tout retrait (le pré-vol remplit avec elle)");
+  // (23/10, point 1 — Thierry) Les photos d'origine que le dépôt n'a pas eues repartent à la recréation.
+  const { photosDeLaFicheALaRecreation } = await import("../supabase/functions/_shared/capture-corrigee.js");
+  const NOUS = (p) => `https://tojihnuawsoohlolangc.supabase.co/storage/v1/object/public/listing-photos/c2175e91/rapatrie-fiche/1792745534007/${p}`;
+  const ficheP = { origine: "releve_ebay", photos: [NOUS("1_0.jpg"), NOUS("1_1.jpg")] };
+  const depot1 = { photos: [{ url: NOUS("../rehosted/0.jpg"), type: "original" }], photo_option: "original", created_at: "2026-10-23T09:23:00.000Z" };
+  const p1 = photosDeLaFicheALaRecreation(ficheP, depot1, "2026-10-23T09:55:00.000Z");
+  ok(JSON.stringify(p1?.photos) === JSON.stringify(ficheP.photos), "Thierry : dépôt Vinted à 1 photo, la fiche a reçu avers ET revers ensuite → la recréation part avec les 2, dans l'ordre", JSON.stringify(p1));
+  ok(photosDeLaFicheALaRecreation({ ...ficheP, photos: ["https://i.ebayimg.com/images/g/QVgAAeSwd4xqonZY/s-l1600.jpg", NOUS("1_1.jpg")] }, depot1, "2026-10-23T09:55:00.000Z")?.attendre === true,
+    "photos de la fiche pas encore chez nous → on attend leur rapatriement (rien n'est retiré)");
+  ok(photosDeLaFicheALaRecreation(ficheP, depot1, "2026-10-23T09:00:00.000Z") === null, "⛔ photos lues AVANT le dépôt : la personne les avait sous les yeux, jamais touchées");
+  ok(photosDeLaFicheALaRecreation(ficheP, { ...depot1, photos: [NOUS("a.jpg"), NOUS("b.jpg")] }, "2026-10-23T09:55:00.000Z") === null, "dépôt qui portait déjà autant de photos : rien");
+  ok(photosDeLaFicheALaRecreation(ficheP, { ...depot1, photo_option: "enhanced" }, "2026-10-23T09:55:00.000Z") === null, "⛔ copie retouchée (photo_option) : choix de la personne");
+  ok(photosDeLaFicheALaRecreation({ ...ficheP, origine: "vinted_sync" }, depot1, "2026-10-23T09:55:00.000Z") === null, "⛔ annonce née sur Vinted : jamais");
+  ok(photosDeLaFicheALaRecreation({ ...ficheP, origine: null }, depot1, "2026-10-23T09:55:00.000Z") === null, "fiche écrite dans FillSell : hors règle");
+  ok(/photosDeLaFicheALaRecreation\(fiche, depot, luesLe, /.test(bloc) && /majCap\.photos_urls = photosFiche/.test(bloc) && /retenuesPhotos\.add/.test(bloc),
+    "get-pending-jobs : les photos de la fiche remplacent celles de la capture à l'étape « captured », la recréation attend leur rapatriement");
+  // (23/10, feu vert de Nico 12:05 : « en pleine taille ») Dépôt à 2 photos en 400 px, la fiche les a reçues en pleine taille APRÈS.
+  const depot400 = { photos: [NOUS("../rehosted/400_0.jpg"), NOUS("../rehosted/400_1.jpg")], photo_option: "original", created_at: "2026-10-23T09:23:00.000Z" };
+  const p2 = photosDeLaFicheALaRecreation(ficheP, depot400, "2026-10-23T08:50:00.000Z", "2026-10-23T10:12:00.000Z");
+  ok(JSON.stringify(p2?.photos) === JSON.stringify(ficheP.photos), "dépôt à 2 photos de 400 px, la fiche les a reçues en pleine taille ensuite → la recréation part avec celles de la fiche", JSON.stringify(p2));
+  ok(photosDeLaFicheALaRecreation(ficheP, depot400, "2026-10-23T08:50:00.000Z", "2026-10-23T09:00:00.000Z") === null,
+    "⛔ photos remises sur la fiche AVANT le dépôt : celles que la personne a vues, jamais touchées");
+  ok(photosDeLaFicheALaRecreation(ficheP, { ...depot400, photos: [...depot400.photos, NOUS("x.jpg")] }, null, "2026-10-23T10:12:00.000Z") === null,
+    "⛔ jamais moins de photos que le dépôt");
+  ok(photosDeLaFicheALaRecreation(ficheP, { ...depot400, photos: ficheP.photos }, null, "2026-10-23T10:12:00.000Z") === null, "déjà les mêmes photos : rien");
+  // Au départ (contenuAImposer) : même règle pour une copie en file.
+  const copie400 = { platform: "vinted", action: "publish", created_at: "2026-10-23T09:23:00.000Z", photo_option: "original",
+    description: "x", photos: depot400.photos.map((url) => ({ url, type: "original" })), platform_fields: {} };
+  const ficheV = { ...ficheP, titre: "Monnaie", description: "", attributs: {} };
+  const i1 = contenuAImposer(copie400, ficheV, { contenuLe: copie400.created_at, photosLuesLe: "2026-10-23T10:12:00.000Z", photosRemplaceesLe: "2026-10-23T10:12:00.000Z" });
+  ok(JSON.stringify(i1.photos) === JSON.stringify(ficheP.photos) && i1.raisons.includes("photos"), "au départ : copie à 400 px, la fiche a reçu ses photos en pleine taille après → toutes celles de la fiche", JSON.stringify(i1));
+  const i2 = contenuAImposer(copie400, { ...ficheV, photos: ["https://i.ebayimg.com/images/g/QVgAAeSwd4xqonZY/s-l1600.jpg", NOUS("b.jpg")] },
+    { contenuLe: copie400.created_at, photosLuesLe: "2026-10-23T10:12:00.000Z", photosRemplaceesLe: "2026-10-23T10:12:00.000Z" });
+  ok(i2.photos_a_rapatrier === true && !i2.photos, "… photos encore sur le CDN : on attend le rapatriement, rien ne part", JSON.stringify(i2));
+  const i3 = contenuAImposer(copie400, ficheV, { contenuLe: copie400.created_at, photosLuesLe: "2026-10-23T10:12:00.000Z", photosRemplaceesLe: null });
+  ok(!i3.photos && !i3.photos_a_rapatrier, "⛔ sans photos remises par la base (même nombre, autres adresses) : rien n'est imposé", JSON.stringify(i3));
+  // Les photos eBay en pleine taille (_shared/ebay-photos.js)
+  const { cleImageEbay, photoEbayPleineTaille, photosEbayPleineTaille } = await import("../supabase/functions/_shared/ebay-photos.js");
+  ok(cleImageEbay("https://i.ebayimg.com/00/s/NTEyWDUwOQ==/z/Jk8AAeSwJDpq2a78/$_1.JPG?set_id=8800005007") === "Jk8AAeSwJDpq2a78"
+     && cleImageEbay("https://i.ebayimg.com/images/g/Jk8AAeSwJDpq2a78/s-l140.jpg") === "Jk8AAeSwJDpq2a78", "eBay : la même clé sous les trois tailles");
+  ok(photoEbayPleineTaille("https://i.ebayimg.com/00/s/NTEyWDUwOQ==/z/Jk8AAeSwJDpq2a78/$_1.JPG?set_id=8800005007") === "https://i.ebayimg.com/images/g/Jk8AAeSwJDpq2a78/s-l1600.jpg",
+    "eBay : la photo de 400 px (GetItem) devient l'original (s-l1600)");
+  ok(photoEbayPleineTaille(NOUS("a.jpg")) === NOUS("a.jpg"), "une photo qui n'est pas eBay reste telle quelle");
+  const lot = photosEbayPleineTaille(["https://i.ebayimg.com/00/s/A/z/AAAAAAAAAA/$_1.JPG", "https://i.ebayimg.com/00/s/B/z/BBBBBBBBBB/$_1.JPG", "https://i.ebayimg.com/images/g/AAAAAAAAAA/s-l500.jpg"]);
+  ok(lot.length === 2 && lot[0].includes("/AAAAAAAAAA/s-l1600") && lot[1].includes("/BBBBBBBBBB/s-l1600"), "eBay : dans l'ordre (avers puis revers), sans doublon", JSON.stringify(lot));
+  const trading = lire("supabase/functions/_shared/ebay-trading-releve.ts");
+  const completer = lire("supabase/functions/releve-completer/index.ts");
+  ok(/const photos = photosEbayPleineTaille\(blocs\(valeur\(it, "PictureDetails"\)/.test(trading) && /const photos = photosEbayPleineTaille\(\[b\.image/.test(completer),
+    "les deux lectures du détail eBay (GetItem, Browse) prennent les photos en pleine taille");
 }
 
 console.log("");

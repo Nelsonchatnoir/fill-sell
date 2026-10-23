@@ -87,11 +87,14 @@ export default function EcranConfirmer({ m }) {
     );
   }
 
+  // (23/10, point 4 — louis-seller) Le moteur n'a pas encore fini (arrivée sur « Confirmer ») : aucune question n'est
+  // montrée — celles qu'il résout seul ne doivent jamais apparaître. Elles arrivent d'elles-mêmes, au repos du moteur.
+  const enPreparation = m.questionsAuRepos === false;
   return (
     <>
       <div>
         <p className="fsn-eyebrow">{en ? "Step 3 of 3" : "Étape 3 sur 3"}</p>
-        <h1 className="fsn-h" style={{ marginTop: 4 }}>{verdict.rienNePart ? (en ? "Before publishing" : "Avant de publier") : m.nbQuestions > 0 ? (m.nbQuestions === 1 ? (en ? "One question, then publish" : "Une question, puis on publie") : (en ? `${m.nbQuestions} questions, then publish` : `${m.nbQuestions} questions, puis on publie`)) : (en ? "Confirm the publication" : "Confirme la publication")}</h1>
+        <h1 className="fsn-h" style={{ marginTop: 4 }}>{enPreparation ? (en ? "Confirm the publication" : "Confirme la publication") : verdict.rienNePart ? (en ? "Before publishing" : "Avant de publier") : m.nbQuestions > 0 ? (m.nbQuestions === 1 ? (en ? "One question, then publish" : "Une question, puis on publie") : (en ? `${m.nbQuestions} questions, then publish` : `${m.nbQuestions} questions, puis on publie`)) : (en ? "Confirm the publication" : "Confirme la publication")}</h1>
       </div>
 
       <CarteArticle
@@ -107,13 +110,15 @@ export default function EcranConfirmer({ m }) {
       {m.publishError && <Carte gravite="refus" titre={en ? "Not published" : "Pas publié"}><div className="fsn-card-p">{m.publishError}</div></Carte>}
 
       {/* ── LE VERDICT, UNE FOIS (02/10) : ce que le clic ferait maintenant ── */}
-      {verdict && (
+      {verdict && !enPreparation && (
         <Carte gravite={verdict.gravite} titre={verdict.titre}>
           {verdict.lignes.map((l, i) => <div key={i} className="fsn-card-p">{l}</div>)}
         </Carte>
       )}
 
-      <BlocQuestions m={m} />
+      {enPreparation
+        ? <Carte gravite="flat"><div className="fsn-card-p">{en ? "Filling in the last fields…" : "On complète les derniers champs…"}</div></Carte>
+        : <BlocQuestions m={m} />}
 
       {/* ── LES FRAIS DE PORT DEPOP (09/10 soir) : visibles ici, sans ouvrir
           la carte Depop — pré-remplis avec le prix par défaut, modifiables

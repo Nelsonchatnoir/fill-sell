@@ -2,7 +2,7 @@ import { recreationRetientFile } from "../_shared/file-republication.js";
 import { estFileEnPause, jobRetenuParPause, syncDemandeeParLaPersonne, SYNC_DEVANT_FILE_MS, passeAvantLaSynchro } from "../_shared/file-pause.js";
 import { lectureOrigineEnAttente, contenuAImposer, messageLectureOrigine } from "../_shared/contenu-fiche.js";
 import { conformerTexte } from "../../../src/utils/texteConforme.js";
-import { correctionCaptureVinted } from "../_shared/capture-corrigee.js";
+import { correctionCaptureVinted, photosDeLaFicheALaRecreation } from "../_shared/capture-corrigee.js";
 import { EXTENSION_MIN_BUILD, posteExtensionCompatible } from "../_shared/version-min-extension.js";
 // (18/10, lot 5 — hu.anastasia) La pause anti-robot quand Vinted refuse la LECTURE des annonces de sa boutique.
 import { ANTIROBOT_LECTURES_MSG, refusSurSaBoutique, retenuParPauseLectures, signalPauseLectures } from "../_shared/pause-antirobot-vinted.js";
@@ -2498,6 +2498,16 @@ serve(async (req) => {
             adminC.rpc("jobs_contenu_origine", { p_user: user.id, p_jobs: candidats.map((j) => String(j.id)) }),
           ]);
           const ficheDe = new Map(((fichesC ?? []) as Array<Record<string, unknown>>).map((f) => [String(f.id), f]));
+          // (23/10, Thierry) Quand la base a remis sur chaque fiche les photos de son annonce d'origine (complétion,
+          // photos eBay reprises en pleine taille) : une copie produite AVANT part avec celles de la fiche.
+          const { data: remplC } = await lireParLots((lot) => adminC.from("inventaire_journal").select("inventaire_id, created_at")
+            .in("inventaire_id", lot).eq("champ", "photos").eq("motif", "photos_origine_completees").limit(1000), idsFiches);
+          const photosRemplaceesLe = new Map<string, string>();
+          for (const r of (remplC ?? []) as Array<{ inventaire_id: number; created_at: string }>) {
+            const k = String(r.inventaire_id);
+            const avant = photosRemplaceesLe.get(k);
+            if (!avant || Date.parse(String(r.created_at)) > Date.parse(avant)) photosRemplaceesLe.set(k, String(r.created_at));
+          }
           const contenuLe = new Map(((originesC ?? []) as Array<Record<string, unknown>>).map((o) => [String(o.job_id), String(o.contenu_le ?? "")]));
           const retenus = new Set<string>();
           const relevesADemander = new Set<string>();
@@ -2529,6 +2539,7 @@ serve(async (req) => {
             const imp = contenuAImposer(j, f, {
               contenuLe: contenuLe.get(String(j.id)) || String(j.created_at ?? ""),
               descriptionLueLe: f.description_lue_le, etatLuLe: f.etat_lu_le, photosLuesLe: f.photos_lues_le,
+              photosRemplaceesLe: photosRemplaceesLe.get(String(f.id)) ?? null,
             }) as { description?: string; etat?: string; photos?: string[]; raisons: string[]; photos_a_rapatrier?: boolean };
             if (imp.photos_a_rapatrier) {
               aRapatrier.add(Number(f.id));
@@ -2628,12 +2639,15 @@ serve(async (req) => {
           && pfC.capture_id != null && !retraitEngage(j) && !pfC.capture_corrigee_par_la_fiche && j.inventaire_id != null;
       }).slice(0, 10);
       if (aCorriger.length) {
+        // (23/10, point 1 — Thierry) Une recréation dont les photos de la fiche ne sont pas encore chez nous attend
+        // (rapatriement demandé) : l'annonce reste en ligne, rien n'est retiré ce cycle.
+        const retenuesPhotos = new Set<string>();
         try {
           const adminK = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
           for (const j of aCorriger) {
             const pfC = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
             const [{ data: fiche }, { data: cap }] = await Promise.all([
-              adminK.from("inventaire").select("id, origine, titre, description, attributs")
+              adminK.from("inventaire").select("id, origine, titre, description, attributs, photos")
                 .eq("id", Number(j.inventaire_id)).eq("user_id", user.id).maybeSingle(),
               adminK.from("vinted_republish_captures").select("id, libelles, payload")
                 .eq("id", Number(pfC.capture_id)).eq("inventaire_id", Number(j.inventaire_id)).maybeSingle(),
@@ -2644,19 +2658,47 @@ serve(async (req) => {
             const avantCapture: string | null = avantV == null ? null : String(avantV);
             const corr = correctionCaptureVinted(fiche, (cap as { libelles?: unknown }).libelles, payloadC.natif, avantCapture) as
               { libelles: Record<string, unknown>; natif: Record<string, unknown>; raisons: string[]; avant: Record<string, unknown> } | null;
-            if (!corr) continue;
-            const { error: errCap } = await adminK.from("vinted_republish_captures")
-              .update({ libelles: corr.libelles, payload: { ...payloadC, natif: corr.natif } })
-              .eq("id", Number(pfC.capture_id));
+            // (23/10) 3. Les photos d'origine que le dépôt n'a pas eues (_shared/capture-corrigee.js) : le dépôt Vinted de
+            // CETTE annonce, et quand la fiche a reçu ses photos d'origine.
+            let photosFiche: string[] | null = null;
+            if (/^releve_[a-z]+$/.test(String((fiche as { origine?: unknown }).origine ?? "")) && /^\d+$/.test(String(pfC.vinted_item_id ?? ""))) {
+              const [{ data: depot }, { data: fcv }, { data: rempl }] = await Promise.all([
+                adminK.from("cross_post_jobs").select("photos, photo_option, created_at")
+                  .eq("user_id", user.id).eq("inventaire_id", Number(j.inventaire_id)).eq("platform", "vinted")
+                  .eq("action", "publish").eq("status", "published").eq("platform_listing_id", String(pfC.vinted_item_id))
+                  .order("created_at", { ascending: true }).limit(1).maybeSingle(),
+                adminK.rpc("fiches_contenu_vendeur", { p_user: user.id, p_ids: [Number(j.inventaire_id)] }),
+                adminK.from("inventaire_journal").select("created_at").eq("inventaire_id", Number(j.inventaire_id))
+                  .eq("champ", "photos").eq("motif", "photos_origine_completees").order("created_at", { ascending: false }).limit(1).maybeSingle(),
+              ]);
+              const luesBrut = ((fcv ?? []) as Array<Record<string, unknown>>)[0]?.photos_lues_le;
+              const luesLe: string | null = luesBrut == null ? null : String(luesBrut);
+              const ph = photosDeLaFicheALaRecreation(fiche, depot, luesLe, (rempl as { created_at?: string } | null)?.created_at ?? null) as { photos?: string[]; attendre?: boolean } | null;
+              if (ph?.attendre) {
+                retenuesPhotos.add(String(j.id));
+                await adminK.from("inventaire").update({ photos_a_rapatrier: true }).eq("id", Number(j.inventaire_id)).eq("user_id", user.id);
+                console.log(`[get-pending-jobs] job ${String(j.id).slice(0, 8)} (vinted republish) : les photos d'origine de la fiche sont en rapatriement — recréation retenue, annonce en ligne intacte`);
+                continue;
+              }
+              if (ph?.photos?.length) photosFiche = ph.photos;
+            }
+            if (!corr && !photosFiche) continue;
+            const majCap: Record<string, unknown> = {};
+            if (corr) { majCap.libelles = corr.libelles; majCap.payload = { ...payloadC, natif: corr.natif }; }
+            if (photosFiche) majCap.photos_urls = photosFiche;
+            const { error: errCap } = await adminK.from("vinted_republish_captures").update(majCap).eq("id", Number(pfC.capture_id));
             if (errCap) { console.warn(`[get-pending-jobs] job ${String(j.id).slice(0, 8)} : capture non corrigée — ${errCap.message}`); continue; }
-            pfC.capture_corrigee_par_la_fiche = { le: new Date().toISOString(), raisons: corr.raisons, avant: corr.avant, pose_par: "get-pending-jobs (22/10 nuit)" };
+            const raisons = [...(corr?.raisons ?? []), ...(photosFiche ? ["photos_de_la_fiche"] : [])];
+            pfC.capture_corrigee_par_la_fiche = { le: new Date().toISOString(), raisons, avant: corr?.avant ?? null,
+              ...(photosFiche ? { photos: photosFiche.length } : {}), pose_par: photosFiche ? "get-pending-jobs (23/10)" : "get-pending-jobs (22/10 nuit)" };
             j.platform_fields = pfC;
             await adminK.from("cross_post_jobs").update({ platform_fields: pfAPersister(pfC) }).eq("id", String(j.id)).eq("status", "pending");
-            console.log(`[get-pending-jobs] job ${String(j.id).slice(0, 8)} (vinted republish) : capture corrigée par la fiche — ${corr.raisons.join(", ")} (catégorie ${JSON.stringify(corr.libelles.categoryPath ?? null)}, état « ${String(corr.libelles.etat ?? "")} »)`);
+            console.log(`[get-pending-jobs] job ${String(j.id).slice(0, 8)} (vinted republish) : capture corrigée par la fiche — ${raisons.join(", ")}${corr ? ` (catégorie ${JSON.stringify(corr.libelles.categoryPath ?? null)}, état « ${String(corr.libelles.etat ?? "")} »)` : ""}${photosFiche ? ` (${photosFiche.length} photos de la fiche)` : ""}`);
           }
         } catch (e) {
           console.warn(`[get-pending-jobs] capture corrigée : ${String((e as Error)?.message ?? e)} — file servie telle quelle`);
         }
+        if (retenuesPhotos.size) out = out.filter((j) => !retenuesPhotos.has(String(j.id)));
       }
     }
 

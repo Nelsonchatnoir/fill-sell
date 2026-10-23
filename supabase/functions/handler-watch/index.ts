@@ -5221,7 +5221,9 @@ serve(async (req) => {
   //      une fiche existante n'est pas réécrite pour entrer dans la file) et
   //      pour les photos qui ont résisté à l'étage 1.
   // Les deux partagent UN budget : la file est servie d'abord.
-  const PHOTOS_FICHES_MAX = 24;
+  // (23/10, Thierry — 800 photos eBay remises en pleine taille d'un coup) 48 photos par cycle (24 avant) : le
+  // passage durait 12 à 16 s pour 24 photos, l'essentiel en attente réseau (aucun calcul en base).
+  const PHOTOS_FICHES_MAX = 48;
   const FILE_FICHES_MAX = 60;
   let photosFichesRapatriees = 0;
   let fichesPhotosMaj = 0;
@@ -5281,12 +5283,28 @@ serve(async (req) => {
     // toujours et mangerait le budget de tous les cycles suivants — la file
     // affamerait ce qu'elle est censée servir. Ce qui a échoué retombe sur le
     // filet du 2., qui repasse sans se lasser.
-    const { data: file, error: fileErr } = await supabase
+    // (23/10, Thierry) D'ABORD les fiches dont une tâche attend en file (publication retenue jusqu'à ses photos,
+    // republication qui recrée avec elles) : ce sont elles que la personne attend. Puis le reste, dans l'ordre.
+    const { data: fileIds, error: fileErr } = await supabase
       .from("inventaire")
-      .select("id, user_id, photos")
+      .select("id")
       .eq("photos_a_rapatrier", true)
       .order("id", { ascending: true })
-      .limit(FILE_FICHES_MAX);
+      .limit(1000);
+    const idsFile = ((fileIds ?? []) as Array<{ id: number }>).map((x) => x.id);
+    const attendues = new Set<number>();
+    for (let i = 0; i < idsFile.length && attendues.size < FILE_FICHES_MAX; i += 200) {
+      const { data: jobsAtt } = await supabase.from("cross_post_jobs").select("inventaire_id")
+        .in("inventaire_id", idsFile.slice(i, i + 200)).eq("status", "pending").limit(1000);
+      for (const j of (jobsAtt ?? []) as Array<{ inventaire_id: number | null }>) if (j.inventaire_id != null) attendues.add(Number(j.inventaire_id));
+    }
+    const ordre = [...idsFile.filter((x) => attendues.has(Number(x))), ...idsFile.filter((x) => !attendues.has(Number(x)))].slice(0, FILE_FICHES_MAX);
+    const { data: fileLignes } = ordre.length
+      ? await supabase.from("inventaire").select("id, user_id, photos").in("id", ordre).eq("photos_a_rapatrier", true)
+      : { data: [] };
+    const rang = new Map(ordre.map((x, i) => [Number(x), i]));
+    const file = ((fileLignes ?? []) as Array<{ id: number; user_id: string; photos: unknown }>)
+      .sort((x, y) => (rang.get(Number(x.id)) ?? 0) - (rang.get(Number(y.id)) ?? 0));
     if (fileErr) {
       // Colonne absente (migration pas encore appliquée) : on le dit une fois
       // par cycle et le filet fait le travail, comme avant.

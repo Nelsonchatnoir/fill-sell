@@ -1948,6 +1948,37 @@ function premiereHorsObjetAccessoire(re, t, zones){
 // (22/10 soir, point 2 — paugues) Les icônes de la beauté : une œuvre d'art n'y tombe jamais.
 const ICONES_BEAUTE_OBJET = new Set(['🌸', '💄', '💅', '🧴']);
 
+// ── (23/10, point 4 — louis-seller) « CASQUE » SEUL NE DIT PAS QUEL CASQUE ─────────────────────────────────────
+// « Casque enfant Oxelo Decathlon - Taille 55-58 cm » partait en 🎧 (Électronique > Photo, audio & vidéo) : la règle
+// audio prend le mot « casque » nu, et les règles des casques de protection exigent un qualificatif COLLÉ au mot
+// (« casque vélo », jamais « casque de ski », « casque enfant Oxelo »). Quand le mot qui décide est « casque » tout
+// seul, on lit d'abord ce qui le qualifie — la marque, une taille de tête en cm, le contexte — du plus sûr au moins
+// sûr ; UNE seule famille signalée donne son icône (⛑️ protection : vélo, ski, roller, chantier… ; 🪖 moto) ; aucune
+// famille, ou des signaux contradictoires (audio ET protection), gardent la règle d'avant — jamais une devinette.
+// Rejeu : scripts/lot-2310-selftest.mjs (les titres « casque » du parc ; aucun casque audio ne bascule).
+const CASQUE_NU_RE = /^casques?$/i;
+const CASQUE_MARQUES = {
+  protection: /\b(?:oxelo|decathlon|b'?\s?twin|rockrider|quechua|wed'?\s?ze|van\s?rysel|riverside|giro|uvex|abus|poc|kask|lazer|cairn|salomon|rossignol|wanabee|hornit|nutcase|melon|thousand|globber|micro\s?mobility|kiddimoto|bell\s+(?:sports|spark|sixer)|met\s+(?:helmets|crackerjack|genie))\b/i,
+  moto: /\b(?:scorpion|shark|bullitt?|ls2|shoei|hjc|arai|agv|nolan|caberg|schuberth|airoh|x-?lite|astone|mt\s?helmets|givi|dexter|bering)\b/i,
+  audio: /\b(?:sony|bose|jbl|sennheiser|beats|jabra|skullcandy|frends|marshall|audio-?technica|akg|steelseries|logitech|razer|hyper\s?x|corsair|turtle\s?beach|airpods?|plantronics|urbanears|philips|panasonic|pioneer|denon|bang\s?&?\s?olufsen|b&o|beyerdynamic|shure|grado|koss|soundcore|anker|apple|samsung|xiaomi|huawei|pico|oculus|meta\s?quest)\b/i,
+};
+const CASQUE_TOUR_DE_TETE_RE = /\b(?:4[4-9]|5\d|6[0-4])\s*(?:(?:-|–|à|\/|a)\s*(?:4[4-9]|5\d|6[0-4]))?\s*cm\b/i;
+const CASQUE_CONTEXTE = {
+  protection: /\b(?:protection|v[ée]lo|cycli(?:sme|ste)|vtt|bmx|trottinette|roller|rollers|skate|skateboard|ski|snow(?:board)?|[ée]quitation|cheval|escalade|chantier|s[ée]curit[ée]|en\s?1078|en\s?1077|boxe|hockey|patin(?:age|s)?|kayak|draisienne)\b/i,
+  moto: /\b(?:moto|motocross|cross|scooter|int[ée]gral|jet|modulable|mx|enduro|quad)\b/i,
+  audio: /\b(?:bluetooth|sans\s?fil|filaire|micro(?:phone)?|gam(?:ing|er)|usb|jack|audio|hi-?fi|st[ée]r[ée]o|r[ée]duction\s+de\s+bruit|anc|dj|[ée]couteurs?|son\s+surround|ps[45]|xbox|switch|pc\s+gamer|vr|r[ée]alit[ée]\s+virtuelle)\b/i,
+};
+/** La famille d'un casque d'après ce qui le qualifie, ou null (aucun signal, ou des signaux contradictoires). */
+export function familleDuCasque(titre, description) {
+  const t = `${String(titre ?? '')} ${String(description ?? '')}`;
+  const f = { protection: false, moto: false, audio: false };
+  for (const k of Object.keys(f)) if (CASQUE_MARQUES[k].test(t) || CASQUE_CONTEXTE[k].test(t)) f[k] = true;
+  if (CASQUE_TOUR_DE_TETE_RE.test(t)) f.protection = f.protection || !f.moto;
+  if (f.audio) return null;                       // un signal audio : la règle d'avant (🎧) garde la main
+  if (f.moto) return 'moto';                      // moto prime sur « protection » (un casque de moto protège aussi)
+  return f.protection ? 'protection' : null;
+}
+
 export function detectObjectKeywordDetail(titre, description){
   // (22/10 soir, point 2 — paugues) UNE ŒUVRE D'ART N'EST JAMAIS UN SOIN : « Huile post impressionniste biblique
   // sur carton » partait en 🧴 sur le mot « Huile ». Quand les règles disent beauté (ou rien) et que le titre ou la
@@ -1958,6 +1989,12 @@ export function detectObjectKeywordDetail(titre, description){
   if (!base || ICONES_BEAUTE_OBJET.has(base.icon)) {
     const art = oeuvreDArt(titre, description);
     if (art) return { icon: '🖼️', mot: art.preuve, passe: oeuvreDArt(titre) ? 1 : 2, oeuvre: art.famille };
+  }
+  // (23/10, point 4) « casque » nu → la famille que disent la marque, la taille, le contexte (familleDuCasque).
+  if (base?.icon === '🎧' && CASQUE_NU_RE.test(String(base.mot ?? '').trim())) {
+    const famille = familleDuCasque(titre, description);
+    if (famille === 'moto') return { ...base, icon: '🪖', casque: 'moto' };
+    if (famille === 'protection') return { ...base, icon: '⛑️', casque: 'protection' };
   }
   return base;
 }

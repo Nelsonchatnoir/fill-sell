@@ -50,15 +50,17 @@ export default function EcranAlertesCompte({ lang = 'fr', alertes = [], userId =
       </div>
       {alertes.map((a) => {
         const nonSurveillee = a.kind === 'non_surveillee';
-        const cle = a.kind === 'restriction' ? 'vinted_restriction' : nonSurveillee ? `non_surveillee:${a.platform}` : a.platform;
+        // (23/10) eBay relié par l'API dont le lien est à refaire : un risque (aucun retrait eBay sans lui), jamais masqué.
+        const relierApi = a.kind === 'relier_api';
+        const cle = a.kind === 'restriction' ? 'vinted_restriction' : nonSurveillee ? `non_surveillee:${a.platform}` : relierApi ? 'relier_api:ebay' : a.platform;
         const nom = NOMS_PLATEFORME[a.platform] ?? a.platform;
         const ligneNS = nonSurveillee ? ligneNonSurveillee(a, lang) : null;
         return (
           <div key={cle} style={{ marginTop: 12, borderRadius: 16, background: '#FFFFFF', boxShadow: `inset 0 0 0 1px ${S.border}`, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-              <span style={{ width: 40, height: 40, borderRadius: 12, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: nonSurveillee ? S.rougeFond : S.ambreFond, color: nonSurveillee ? S.rouge : S.ambreEncre }}>
+              <span style={{ width: 40, height: 40, borderRadius: 12, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: nonSurveillee || relierApi ? S.rougeFond : S.ambreFond, color: nonSurveillee || relierApi ? S.rouge : S.ambreEncre }}>
                 {a.kind === 'restriction' ? <ShieldAlert size={20} strokeWidth={2} aria-hidden="true" />
-                  : nonSurveillee ? <Unplug size={20} strokeWidth={2} aria-hidden="true" />
+                  : nonSurveillee || relierApi ? <Unplug size={20} strokeWidth={2} aria-hidden="true" />
                   : <LogIn size={20} strokeWidth={2} aria-hidden="true" />}
               </span>
               <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -67,12 +69,14 @@ export default function EcranAlertesCompte({ lang = 'fr', alertes = [], userId =
                   {a.kind === 'restriction'
                     ? (fr ? `Vinted a restreint ton compte${a.jusquau ? ` jusqu'au ${a.jusquau}` : ''}` : `Vinted restricted your account${a.jusquau ? ` until ${a.jusquau}` : ''}`)
                     : nonSurveillee ? ligneNS.titre
+                    : relierApi ? (fr ? 'eBay : le lien officiel avec FillSell est à refaire' : 'eBay: the official link with FillSell must be redone')
                     : (fr ? `${nom} : tu n’es plus connecté sur ton ordinateur` : `${nom}: you are no longer signed in on your computer`)}
                 </span>
                 <span style={{ fontSize: 13, lineHeight: '20px', fontWeight: 500, color: S.ink2 }}>
                   {a.kind === 'restriction'
                     ? (fr ? 'Aucune publication ni republication Vinted ne part d’ici là ; les retraits d’articles vendus continuent. Ça repart tout seul à la date indiquée.' : 'No Vinted publication or republication goes out until then; removals of sold items continue. It resumes on its own on that date.')
                     : nonSurveillee ? ligneNS.detail
+                    : relierApi ? (fr ? 'Sans lui, FillSell ne publie, ne retire ni ne relève rien sur eBay. Relie de nouveau ton compte : tout repart tout seul.' : 'Without it, FillSell neither lists, removes nor reads anything on eBay. Link your account again: everything resumes on its own.')
                     : (fr ? `Connecte-toi à ${nom} dans le Chrome où l’extension est installée. FillSell reprend tout seul, rien d’autre à faire.` : `Sign in to ${nom} in the Chrome where the extension is installed. FillSell resumes on its own, nothing else to do.`)}
                 </span>
               </span>
@@ -82,7 +86,7 @@ export default function EcranAlertesCompte({ lang = 'fr', alertes = [], userId =
                 <BoutonMeConnecter userId={userId} platform={a.platform} motif={a.motif ?? undefined} lang={lang}
                   variante="bouton" libelleImpose={libelleReconnexion(a, lang)} />
               )}
-              {!nonSurveillee && (
+              {!nonSurveillee && !relierApi && (
                 <button type="button" onClick={() => masquer(a)} disabled={enCours === cle}
                   style={{ minHeight: 44, borderRadius: 12, padding: '0 16px', border: 'none', background: '#FFFFFF', boxShadow: `inset 0 0 0 1px ${S.border}`, color: S.ink, fontSize: 14, fontWeight: 600, cursor: enCours === cle ? 'default' : 'pointer' }}>
                   {enCours === cle ? (fr ? 'Un instant…' : 'One moment…') : (fr ? 'Masquer' : 'Hide')}

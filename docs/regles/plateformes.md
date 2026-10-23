@@ -302,3 +302,14 @@ Rapport : `docs/enquetes/dix-points-1710/RAPPORT.md` (points 1, 4, 5, 7, 9).
   et reproductions (3849). Ne prend que le « Beauté » / l'icône de soin (jamais au-dessus d'un autre type).
 - (22/10 soir) **Le rayon (genre) Beebs / Vinted à choisir est une question avec ses boutons** (`moteur/genreAChoisir.js`) :
   seuls les rayons qui résolvent une vraie catégorie ; posé seul quand c'est sûr, et dit ; tracé `genre_rayon`.
+
+## 23/10 — eBay : toutes les photos, en pleine taille (Thierry ; rapport `docs/enquetes/lot-2210-soir/RAPPORT.md` § « 23/10 »)
+- Une même photo eBay existe en 140 px (vignette de la liste), 400 px (GetItem, `$_1.JPG`) et en ORIGINAL
+  (`i.ebayimg.com/images/g/<clé>/s-l1600.jpg`, ce que rend Browse) : `_shared/ebay-photos.js` prend toujours l'original,
+  dans l'ordre de l'annonce, sans doublon (lectures GetItem et Browse, complétion des fiches en base : `ebay_cle_image`).
+- La page eBay lue par l'extension (ld+json) ne donne que 5 photos : la lecture la plus riche l'emporte
+  (`annonce_capture_complete_fiche`), et une fiche qui porte encore ce que la base lui a mis reçoit la lecture plus riche
+  (`fiche_completer_photos_capture`, mode `lecture_plus_riche`, migration 20261023130000).
+- Le relevé API lit d'abord le détail des annonces dont une publication attend (60 par relevé, 150 sur une demande de
+  lecture d'origine, suite redemandée tant qu'il en reste) ; le rapatriement sert d'abord les fiches dont une tâche
+  attend (handler-watch, 48 photos par passage).

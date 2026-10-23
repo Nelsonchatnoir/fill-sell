@@ -408,3 +408,38 @@
   reproductions » ; état plus bas que la fiche → état de la fiche (`etat_fiche_avant_capture` noté à l'étape
   `a_capturer`, car la capture réécrit l'état de la fiche). Corrigée à l'étape `captured`, avant tout retrait.
 - (22/10 nuit) Une annonce ne se republie pas deux fois en 24 h (`cadence_24h`) : une correction ratée attend la suivante.
+
+## 23/10 — toutes les photos d'origine, en pleine taille ; retenue au départ ET au démarrage ; hors quota ; annonce morte jamais republiée ; questions au repos du moteur (rapport `docs/enquetes/lot-2210-soir/RAPPORT.md` § « 23/10 »)
+- **Une fiche importée ne part jamais avant TOUTES les photos de son annonce d'origine** (`lectureOrigineEnAttente`,
+  `_shared/contenu-fiche.js`) : eBay attend comme Leboncoin / Beebs / Depop — la LISTE eBay (relevé API ou Hub) ne porte
+  qu'une vignette de 140 px ; le DÉTAIL (GetItem, Browse, page capturée) vaut lecture (`detail_le`). Lue, une annonce qui
+  porte plus de photos que la fiche (restée à la vignette ou à sa copie chez nous) attend encore ses photos, 24 h au plus.
+  La phrase : « En cours de lecture de ton annonce d'origine eBay… Rien à faire » — jamais une erreur.
+- **Retenue au démarrage** (`controler_job_extension`, migration 20261023110000) : une publication marquée
+  `attente_lecture_origine` ne démarre pas, même déjà servie à une extension qui la tient en mémoire (≤ 0.6.129 ne relit
+  pas la file entre deux tâches), et rien de ce poste n'y écrit (ni failed, ni needs_user, ni pending) ; un résultat réel
+  (published) passe toujours. L'extension ≥ 0.6.131 lit ce refus (409) comme « laissé en file », sans rien écrire.
+- **Au départ, la copie reçoit les photos de la fiche** quand la base les a remises sur la fiche APRÈS la copie
+  (`photosRemplaceesLe` = journal `photos_origine_completees`), même nombre ou plus : vignette, version réduite → toutes
+  les photos de la fiche, dans l'ordre, rapatriées chez nous d'abord. Vinted : à la recréation, `photosDeLaFicheALaRecreation`
+  remplace les photos de la capture (étape `captured`, avant tout retrait ; photos pas encore chez nous → l'annonce reste
+  en ligne, la recréation attend).
+- **Hors quota** (migration 20261023120000) : une republication que FillSell fait pour réparer SA faute porte
+  `platform_fields.hors_quota` (script de réparation seulement) et n'entre dans aucun compte de quota (plafond mensuel,
+  quota gratuit, affichage, places). Les 35 republications de Thierry du 23/10 : prix 0, hors quota.
+- **Une annonce dont l'absence est établie ne repart pas en republication automatique** (`republish_planifiee_candidats`,
+  hors Vinted, migration 20261023140000, motif `annonce_introuvable`) : dépôt signalé « plus en ligne » (sale_signal
+  `unavailable`) ou republication close « disparue » sur CET identifiant, et aucun relevé ne l'a revue depuis. Un relevé
+  qui la revoit lève la garde. La question « vendue ? » du dépôt reste la seule (jamais une double vente manquée).
+  L'extension ≥ 0.6.131 : une lecture incomplète (403) avant tout retrait ne pose JAMAIS de question — nouvel essai toutes
+  les heures, close sans bruit après 24 h (annonce intacte) ; la plateforme est nommée.
+- **Les questions attendent le repos du moteur** (stepper, `ListingPreviewScreen` + `EcranConfirmer`) : à l'arrivée sur
+  « Confirmer », aucune question — ni à l'écran, ni au journal (`champ_requis_bloquant` « affiche ») — tant que le moteur
+  n'est pas au repos (preparationAuRepos, la règle du lot) depuis 1,2 s (`REPOS_AVANT_LECTURE_MS`), 45 s au plus ; une
+  fois montrées, elles restent. Au journal, rien de NOUVEAU non plus pendant un changement de rayon ou la relecture du
+  catalogue des champs.
+- **« Casque » seul ne dit pas quel casque** (`familleDuCasque`, `src/utils/shared.js`) : la marque (Oxelo, Decathlon,
+  B'Twin, Quechua, Wed'ze… → ⛑️ ; Scorpion, Shark, Bullit… → 🪖 ; Sony, Bose, JBL… → 🎧), un tour de tête en cm (44-64), le
+  contexte (vélo, ski, roller, chantier / moto, intégral / bluetooth, gaming…) ; UNE famille signalée donne son icône ;
+  aucune, ou audio et protection ensemble : la règle d'avant. Rejeu : 572 fiches « casque », 16 changent (toutes des
+  casques de protection ou de moto), 0 casque audio ne bascule.

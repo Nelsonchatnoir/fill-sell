@@ -73,5 +73,36 @@ ok(/import \{ SegmentedPills, Toggle \} from '\.\.\/components\/ui';/.test(SP) &
 const TX = lire('src/reglages/textes.js');
 ok((TX.match(/sAlertesCompte:/g) ?? []).length === 2 && (TX.match(/alertesCompteNote:/g) ?? []).length === 2, '3i. textes FR et EN');
 
+// 4 (23/10, point 2 — Sébastien) « Connecte-toi à X » seulement si FillSell ne peut VRAIMENT plus y travailler
+{
+  const etats = { vinted: 'ok', ebay: 'ko' };
+  const jobsEbay = [{ platform: 'ebay', status: 'published' }];
+  const a1 = A.alertesCompte({ etats, jobs: jobsEbay, reglage: null, maintenant: t0, ebayApi: 'relie', utilisees: ['ebay', 'vinted'] });
+  ok(a1.length === 0, '4a. eBay relié par l\'API et sain : la sonde ebay.fr de Chrome (false) ne déclenche AUCUNE alerte');
+  ok(A.alertesCompte({ etats, jobs: jobsEbay, reglage: null, maintenant: t0, ebayApi: 'inconnu', utilisees: ['ebay'] }).length === 0,
+    '4b. lien API pas encore lu : rien (jamais une alerte sur un doute)');
+  const a3 = A.alertesCompte({ etats: { ebay: 'ok' }, jobs: jobsEbay, reglage: { masquees: { ebay: true } }, maintenant: t0, ebayApi: 'a_relier', utilisees: ['ebay'] });
+  ok(a3.length === 1 && a3[0].kind === 'relier_api' && a3[0].platform === 'ebay', '4c. lien API à refaire : « Reconnecte ton compte eBay », même si l\'ancien masque eBay est posé (un risque ne se masque pas)');
+  const l = A.ligneAlertes(a3, 'fr');
+  ok(l.titre === 'Reconnecte ton compte eBay' && /lien officiel avec FillSell est à refaire/.test(l.detail) && !/ordinateur/.test(l.detail), `4d. sa ligne ne parle jamais de l'ordinateur (« ${l.titre} — ${l.detail} »)`);
+  ok(A.libelleReconnexion(a3[0], 'fr') === 'Relier eBay', '4e. le geste : relier eBay (la voie officielle)');
+  ok(A.alertesCompte({ etats, jobs: jobsEbay, reglage: null, maintenant: t0, ebayApi: null, utilisees: ['ebay'] }).map((a) => a.platform + ':' + a.kind).join(',') === 'ebay:connexion',
+    '4f. eBay SANS lien API, vraiment utilisé : la sonde compte, comme avant');
+  ok(A.alertesCompte({ etats, jobs: [], reglage: null, maintenant: t0, utilisees: ['vinted'] }).length === 0, '4g. eBay jamais utilisé avec FillSell (aucune tâche, aucune fiche) : rien à « ne plus voir »');
+  ok(A.alertesCompte({ etats, jobs: jobsEbay, reglage: null, maintenant: t0, ecartees: ['ebay'], utilisees: ['ebay'] }).length === 0, '4h. « Je ne vends pas sur eBay » : jamais d\'alerte eBay');
+  ok(A.masquesARetirer({ masquees: { ebay: true } }, { ebay: 'ko' }, 'relie').join(',') === 'ebay' && A.masquesARetirer({ masquees: { ebay: true } }, { ebay: 'ko' }, null).length === 0,
+    '4i. le masque eBay tombe quand le lien API est sain (la prochaine perte du lien se dira)');
+  ok(A.etatEbayApi({ voieApi: true, lu: true, etat: { connecte: true } }) === 'relie' && A.etatEbayApi({ voieApi: true, lu: true, etat: { a_reconnecter: true } }) === 'a_relier'
+     && A.etatEbayApi({ voieApi: true, lu: false }) === 'inconnu' && A.etatEbayApi({ voieApi: false }) === null && A.etatEbayApi(null) === null, '4j. etatEbayApi : relié, à relier, inconnu, pas de voie API');
+  const u = A.plateformesUtilisees([{ platform: 'beebs' }], [{ origine: 'vinted_sync' }, { origine: 'releve_ebay' }, { plateforme: 'Leboncoin' }]);
+  ok(['beebs', 'vinted', 'ebay', 'leboncoin'].every((p) => u.includes(p)) && !u.includes('depop'), `4k. plateformes utilisées : tâches et fiches (${u.join(', ')})`);
+  ok(/etatEbayApi\(ebayCompte\)/.test(ST) && /plateformesUtilisees\(Object\.values\(jobsByInventaire\)\.flat\(\), items\)/.test(ST)
+     && /ebayApi: ebayApiCompte, ecartees: ecarteesCompte, utilisees: plateformesUtiliseesCompte/.test(ST) && /masquesARetirer\(reglageAlertes, etatsCompte, ebayApiCompte\)/.test(ST)
+     && /plateformes_ecartees/.test(ST), '4l. StockTab : le lien API, les plateformes écartées et utilisées entrent dans la règle');
+  ok(!/const plateformesDuCompte\s*=/.test(ST) && /plateformesDuCompte\(plateformesOuvertes\)/.test(ST),
+    '4n. ⛔ aucune variable n\'ombre l\'import plateformesDuCompte (utils/stockFiltres) — l\'ombre = écran blanc');
+  ok(/relierApi = a\.kind === 'relier_api'/.test(EC) && /!nonSurveillee && !relierApi && \(/.test(EC), '4m. l\'écran : sa carte, sans « Masquer »');
+}
+
 console.log(`\n${total - echecs}/${total} contrôles verts`);
 process.exit(echecs ? 1 : 0);

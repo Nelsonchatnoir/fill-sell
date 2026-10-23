@@ -3894,7 +3894,20 @@ async function processJob(rawJob, accessToken) {
     // pour que les écritures suivantes ne remettent pas en base une échéance
     // passée — elle retarderait une relance manuelle après un needs_user.
     delete job.platform_fields.next_action_after;
-    await updateJobStatus(accessToken, job.id, "processing", { platform_fields: job.platform_fields });
+    // (23/10, 0.6.131 — Thierry) LA BASE PEUT REFUSER LE DÉMARRAGE (409) : publication retenue au départ (lecture de
+    // l'annonce d'origine, ses photos), réservée à un autre poste, plus à exécuter. Ce n'est PAS un échec : rien n'a été
+    // fait, rien ne s'écrit (ni « failed », ni message), le job reste en file tel quel et partira quand la base le
+    // servira. Avant, ce refus tombait dans le catch général et tentait d'écrire un échec (refusé par la base, mais
+    // affiché « Échec » dans le panneau de l'extension).
+    try {
+      await updateJobStatus(accessToken, job.id, "processing", { platform_fields: job.platform_fields });
+    } catch (e) {
+      if (e?.status === 409) {
+        console.log(`[background] Job ${job.id} : démarrage refusé par la base (${String(e?.message ?? e).slice(0, 160)}) — laissé en file, rien d'écrit`);
+        return { status: "skipped", error: String(e?.message ?? e).slice(0, 200) };
+      }
+      throw e;
+    }
 
     // Onglet de travail UNIQUE, réutilisé de job en job — jamais un onglet
     // neuf par job (voir getOrCreateWorkTab : DataDome a suspendu la session
@@ -11295,9 +11308,10 @@ async function checkListingState(url, platform, { routine = false, publieLe = nu
 // Le motif de l'indécision, en français, pour le seul message utilisateur qui
 // en a besoin (suppression non aboutie). Un motif NOMMÉ, jamais trois causes
 // possibles énumérées côte à côte : c'est exactement ce qu'on ne veut plus.
-function causeLectureImpossible(raison) {
+function causeLectureImpossible(raison, platform = null) {
   const r = String(raison ?? "");
-  if (r.startsWith("bot_shield")) return "Leboncoin a bloqué notre lecture par une vérification anti-robot";
+  // (23/10, 0.6.131 — Louis) La plateforme NOMMÉE : un 403 Beebs se disait « Leboncoin a bloqué notre lecture ».
+  if (r.startsWith("bot_shield")) return `${platform ? (LABEL_PLATEFORME[platform] ?? platform) : "La plateforme"} a bloqué notre lecture par une vérification anti-robot`;
   if (r.startsWith("http_")) return `la plateforme a répondu ${r.replace("http_", "HTTP ")}`;
   if (r === "lecture_impossible") return "la page de l'annonce n'a pas pu être chargée";
   // ── Opla : motifs du veilleur (lot B, 2026-09-16) ───────────────────────
@@ -25346,6 +25360,9 @@ async function processRepublishJobPlateforme(job, accessToken) {
     // un poste plus ancien) : on reprend à l'étape du retrait, qui PROUVE
     // l'absence (Beebs : « Mes annonces », ou page 404 + hors vérification +
     // hors index) avant de redéposer — jamais un redépôt sur un doute.
+    // (23/10, 0.6.131 — Louis) Un verdict tranché efface l'indécision des lectures précédentes (403 du début de nuit) :
+    // sinon la marque restait sur le job et la « reprise après reconnexion » du serveur le relançait pour rien.
+    if (state === "unavailable" || state === "sold") delete pf.republish_etat_indetermine;
     if ((state === "unavailable" || state === "sold") && suppressionDejaEnvoyee(job, pf)) {
       pf.republish_step = "captured";
       pf.republish_reprise_apres_suppression = { at: new Date().toISOString(), state: String(state) };
@@ -25374,10 +25391,27 @@ async function processRepublishJobPlateforme(job, accessToken) {
         console.log(`[republish] job ${job.id} : état ${label} illisible (${n}/${REPUBLISH_PF_ETAT_ESSAIS_MAX}) — nouvel essai dans 15 min, aucune tentative consommée`);
         return { status: "skipped", error: `état de l'annonce ${label} illisible (${n}/${REPUBLISH_PF_ETAT_ESSAIS_MAX})` };
       }
-      const msg = `Republication en pause AVANT tout retrait : l'état de ton annonce ${label} n'a pas pu être vérifié (${causeLectureImpossible(raison)}). ` +
-        "Ton annonce est intacte. Relance la republication depuis la fiche de l'article, " + VO.navigateurCourt() + " ouvert.";
-      await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
-      return { status: "needsUser", error: msg };
+      // (23/10, 0.6.131 — Louis) UNE LECTURE INCOMPLÈTE NE POSE JAMAIS DE QUESTION. Au-delà des essais rapprochés, la
+      // republication — rien n'est retiré — réessaie seule, toutes les heures ; jamais « Relance la republication »
+      // pour un 403 technique (cb9c1a6e, 23/10 04:50 : « Leboncoin a bloqué notre lecture » sur une annonce Beebs).
+      // Une vraie disparition se lit autrement (404 / 410, page sans l'annonce) et suit sa propre voie.
+      pf.republish_etat_indetermine = {
+        n, depuis: pf.republish_etat_indetermine?.depuis ?? new Date().toISOString(),
+        dernier: new Date().toISOString(), raison: raison ? String(raison).slice(0, 80) : null,
+      };
+      // Borné : une annonce illisible depuis plus de 24 h n'est pas republiée cette fois-ci — la republication se clôt
+      // sans bruit (l'annonce, intacte, reste en ligne ; la prochaine republication automatique la retentera).
+      if (Date.now() - Date.parse(pf.republish_etat_indetermine.depuis) > 24 * 3600_000) {
+        pf.republication_abandonnee = { le: new Date().toISOString(), motif: "lecture_impossible_24h", note: "annonce intacte, rien retiré" };
+        delete pf.next_action_after;
+        await updateJobStatus(accessToken, job.id, "cancelled", { platform_fields: pf, error: null });
+        console.log(`[republish] job ${job.id} : état ${label} illisible depuis plus de 24 h — republication close sans bruit, annonce intacte`);
+        return { status: "skipped", error: `état de l'annonce ${label} illisible depuis plus de 24 h — close, annonce intacte` };
+      }
+      pf.next_action_after = new Date(Date.now() + 60 * 60_000).toISOString();
+      await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: null });
+      console.log(`[republish] job ${job.id} : état ${label} toujours illisible (${n}) — ${causeLectureImpossible(raison, job.platform)} ; nouvel essai dans 1 h, rien n'est retiré, aucune question`);
+      return { status: "skipped", error: `état de l'annonce ${label} illisible (${n}) — nouvel essai dans 1 h` };
     }
     delete pf.republish_etat_indetermine;
     // ── LES CHAMPS SE LISENT SUR L'ANNONCE ELLE-MÊME, AVANT TOUT RETRAIT (03/10)
@@ -25767,7 +25801,7 @@ async function processRepublishJobPlateforme(job, accessToken) {
           ? `Suppression déjà envoyée à ${label}, pas encore confirmée (${motif}) : vérification au prochain passage, puis remise en ligne.`
           : state === "active"
             ? `Retrait ${label} non abouti (${motif}). Ton annonce est TOUJOURS en ligne (vérifié), rien n'a été touché.`
-            : `Retrait ${label} non abouti (${motif}). L'état de l'annonce n'a pas pu être vérifié : ${causeLectureImpossible(raison)}.`;
+            : `Retrait ${label} non abouti (${motif}). L'état de l'annonce n'a pas pu être vérifié : ${causeLectureImpossible(raison, job.platform)}.`;
         await rearmRetrait(msg);
         return { status: "retry", error: msg };
       }
@@ -28064,7 +28098,7 @@ async function processDeleteJob(job, accessToken) {
             ? `Suppression ${job.platform} non aboutie (${result.error}). L'annonce est TOUJOURS en ligne ` +
               "(vérifié). Nouvelle tentative au prochain passage ; sinon la retirer à la main sur la plateforme."
             : `Suppression ${job.platform} non aboutie (${result.error}). L'état de l'annonce n'a PAS pu être ` +
-              `vérifié : ${causeLectureImpossible(raison)} — elle est peut-être encore en ligne. Nouvelle ` +
+              `vérifié : ${causeLectureImpossible(raison, job.platform)} — elle est peut-être encore en ligne. Nouvelle ` +
               "tentative au prochain passage ; sinon vérifier à la main sur la plateforme.";
         await rearmBounded(accessToken, job, msg);
         return { status: "needsUser", error: msg };

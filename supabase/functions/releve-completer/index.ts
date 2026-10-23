@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { hotes, lireEnvEbay, type EbayEnv } from "../_shared/ebay-oauth.ts";
 import { obtenirJetonApplicatif } from "../_shared/ebay-app-token.ts";
+import { photosEbayPleineTaille } from "../_shared/ebay-photos.js";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // releve-completer — CE QUE L'ANNONCE AFFICHE, LU SANS OUVRIR SA PAGE (04/10)
@@ -181,8 +182,9 @@ function normaliserBrowse(b: Record<string, any>): Record<string, unknown> {
   };
   let marque = asp("Marque", "Brand") ?? (b.brand ? String(b.brand) : null);
   if (marque && SANS_MARQUE_RE.test(marque)) marque = null;
-  const photos = [b.image?.imageUrl, ...((b.additionalImages ?? []) as Array<{ imageUrl?: string }>).map((i) => i?.imageUrl)]
-    .filter((u) => typeof u === "string" && /^https?:/.test(u));
+  // (23/10) En pleine taille, dans l'ordre, sans doublon (_shared/ebay-photos.js) — Browse rend déjà s-l1600 : inchangé.
+  const photos = photosEbayPleineTaille([b.image?.imageUrl, ...((b.additionalImages ?? []) as Array<{ imageUrl?: string }>).map((i) => i?.imageUrl)]
+    .filter((u): u is string => typeof u === "string" && /^https?:/.test(u)));
   const prix = Number(b.price?.value);
   const d: Record<string, unknown> = {
     source: "ebay_browse",

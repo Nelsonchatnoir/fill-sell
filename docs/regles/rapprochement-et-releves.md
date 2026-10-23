@@ -252,6 +252,11 @@ trois relevés et deux reprises lancés tout seuls, aucun Vinted abouti, un faux
   le 11/09 (dormant, rien relancé) ; un refus d'appui n'écrit aucun run et une session fermée fait échouer le cron chaque
   jour en silence : c'est ce que la veille rend visible. Le relevé reste un GESTE (règle du 05/10) : rien n'est relancé
   d'office.
+- (23/10, Sébastien) « Connecte-toi à X » seulement si FillSell ne peut VRAIMENT plus y travailler : eBay relié par l'API
+  n'est jamais jugé sur la sonde ebay.fr de Chrome (`ebayApi`, `etatEbayApi`) — son seul mur est le lien lui-même
+  (`relier_api`, « Reconnecte ton compte eBay », jamais masquable) ; une plateforme écartée (« je ne vends pas sur X ») ou
+  sans aucune tâche ni fiche (`plateformesUtilisees`) ne lance aucune alerte. Rejeu du 23/10 sur 174 comptes : 26 alertes
+  → 5 (6 eBay reliés par l'API, 4 écartées, 14 jamais utilisées ; 3 liens API cassés de comptes qui vendent sur eBay).
 - Session perdue ou compte restreint = UNE ligne dans « À régler » (`compte_plateforme` ; règle `src/utils/alertesCompte.js`,
   écran `src/stock/EcranAlertesCompte.jsx`) : plateformes regroupées (« Connecte-toi à Vinted et Leboncoin »), restriction
   Vinted lue dans le diagnostic d'un job vivant (« Compte restreint jusqu'au JJ/MM »), jamais sur `null` (session jamais

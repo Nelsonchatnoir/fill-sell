@@ -44,6 +44,8 @@ const RUNS_PAR_PASSAGE = 2;
 const QUOTIDIENS_PAR_PASSAGE = 3;
 const QUOTIDIEN_H = 20;
 const DETAILS_PAR_RUN = 60;
+// (23/10) Une demande de lecture d'origine (publications retenues au départ) : plus large, le budget reste la borne.
+const DETAILS_PAR_RUN_LECTURE_ORIGINE = 150;
 const DETAIL_FRAICHEUR_J = 7;
 const BUDGET_MS = 95_000;
 const BUILD = "serveur:ebay-api · ebay-releve-api";
@@ -192,18 +194,36 @@ async function releverUnCompte(admin: SupabaseClient, env: EbayEnv, r: Run, comp
   }
 
   // ── 4. Le détail de ce qui n'a jamais été lu (ou il y a plus de 7 jours) ─
+  // (23/10, Thierry — 507 annonces importées d'un coup, 447 fiches à la seule vignette de 140 px) D'ABORD les
+  // annonces dont une publication ATTEND la lecture (retenue au départ, platform_fields.attente_lecture_origine) :
+  // ce sont elles que la personne attend. Une demande de lecture d'origine lit plus large (le budget du passage
+  // reste la borne), et tant qu'une fiche retenue n'est pas lue, une nouvelle demande est posée (au passage
+  // suivant du cron) — seulement si ce passage a lu quelque chose (jamais une boucle à vide).
   let details = 0, detailsEchecs = 0;
   let premierEchec: string | null = null;
+  let retenuesNonLues = 0;
   if (lignes.length) {
     const { data: connues } = await admin.from("annonces_plateforme")
-      .select("listing_id, donnees_index_le")
+      .select("listing_id, donnees_index_le, inventaire_id")
       .eq("user_id", r.user_id).eq("platform", "ebay")
       .in("listing_id", lignes.map((l) => l.listing_id).slice(0, 1000));
+    const { data: jobsRetenus } = await admin.from("cross_post_jobs")
+      .select("inventaire_id")
+      .eq("user_id", r.user_id).eq("status", "pending")
+      .not("platform_fields->attente_lecture_origine", "is", null)
+      .limit(1000);
+    const fichesRetenues = new Set(((jobsRetenus ?? []) as Array<{ inventaire_id: number | null }>)
+      .map((j) => j.inventaire_id).filter((x) => x != null).map(String));
+    const retenue = (c: { inventaire_id: number | null }) => c.inventaire_id != null && fichesRetenues.has(String(c.inventaire_id));
     const vieux = Date.now() - DETAIL_FRAICHEUR_J * 86400_000;
-    const aLire = ((connues ?? []) as Array<{ listing_id: string; donnees_index_le: string | null }>)
+    const parLot = String(r.declencheur ?? "") === "serveur:lecture_origine" ? DETAILS_PAR_RUN_LECTURE_ORIGINE : DETAILS_PAR_RUN;
+    const aLire = ((connues ?? []) as Array<{ listing_id: string; donnees_index_le: string | null; inventaire_id: number | null }>)
       .filter((c) => !c.donnees_index_le || Date.parse(c.donnees_index_le) < vieux)
-      .sort((a, b) => (a.donnees_index_le ? 1 : 0) - (b.donnees_index_le ? 1 : 0) || Number(b.listing_id) - Number(a.listing_id))
-      .slice(0, DETAILS_PAR_RUN);
+      .sort((a, b) => Number(retenue(b)) - Number(retenue(a))
+        || (a.donnees_index_le ? 1 : 0) - (b.donnees_index_le ? 1 : 0) || Number(b.listing_id) - Number(a.listing_id))
+      .slice(0, parLot);
+    retenuesNonLues = ((connues ?? []) as Array<{ donnees_index_le: string | null; inventaire_id: number | null }>)
+      .filter((c) => retenue(c) && !c.donnees_index_le).length;
     for (const c of aLire) {
       if (Date.now() - debut > BUDGET_MS - 25_000) break;
       const d = await lireArticleTrading(env, token, c.listing_id);
@@ -212,7 +232,7 @@ async function releverUnCompte(admin: SupabaseClient, env: EbayEnv, r: Run, comp
       const { error } = await admin.from("annonces_plateforme")
         .update({ donnees_index: d.donnees, donnees_index_le: maintenant() })
         .eq("user_id", r.user_id).eq("platform", "ebay").eq("listing_id", c.listing_id);
-      if (error) detailsEchecs++; else details++;
+      if (error) detailsEchecs++; else { details++; if (retenue(c)) retenuesNonLues--; }
     }
   }
 
@@ -265,6 +285,15 @@ async function releverUnCompte(admin: SupabaseClient, env: EbayEnv, r: Run, comp
     const { data: rr2 } = await admin.rpc("rapprocher_releve", { p_run_id: r.id });
     totaux.disparues += Number((rr2 as Record<string, unknown> | null)?.disparues ?? 0);
     complet = Boolean((rr2 as Record<string, unknown> | null)?.complet ?? complet);
+  }
+  // (23/10) Des fiches retenues restent à lire, et ce passage a avancé : la suite au passage suivant du cron (posée
+  // une fois ce relevé clos — un seul relevé actif par compte).
+  if (retenuesNonLues > 0 && details > 0) {
+    const { error: errSuite } = await admin.from("vinted_sync_runs").insert({
+      user_id: r.user_id, kind: "annonces", platform: "ebay", status: "queued",
+      declencheur: "serveur:lecture_origine", queued_at: maintenant(),
+    });
+    console.log(`[ebay-releve-api] ${r.user_id.slice(0, 8)} : ${retenuesNonLues} fiche(s) retenue(s) encore à lire — suite demandée${errSuite ? ` (non posée : ${errSuite.message})` : ""}`);
   }
   console.log(`[ebay-releve-api] ${r.user_id.slice(0, 8)} « ${compte} » : ${lignes.length} en ligne, ${details} détail(s), ${JSON.stringify(totaux)}`);
   return { run: r.id, compte, lues: lignes.length, total: lecture.total, complet, details, detailsEchecs, ...totaux, ventes };
