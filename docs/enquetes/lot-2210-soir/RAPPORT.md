@@ -506,3 +506,87 @@ recadrages d'une face en 140 px) :
 Vinted ajoute de lui-même un recadrage en 3e vignette. Les 10 anciennes annonces sont closes par le circuit
 (« supprimée puis recréée… pas une vente »). 2 ventes réelles pendant l'opération : leurs republications se sont
 closes seules, rien retiré. Les 25 autres republications suivent la cadence de sa file. Quota : 0 décompté.
+
+## 23/10 soir — décisions de Nico (1 et 2 ; 3 : rien à faire)
+
+**Tête** :
+- Aucune ligne de code touchée : données seulement, par `scripts/reparations/` (sauvegarde, inverse en tête).
+- Selftests avant : 384 joués, 383 verts (18:07 → 18:16).
+- Selftests après : 384 joués, 383 verts (18:30 → 18:37).
+- Seul rouge : `messages-cause-vraie`, d'avant → **zéro régression**.
+- `email_logs` : 10 215 à 18:15. Le seul mail depuis (18:25, `extension_link`, un autre compte) est sans rapport.
+- 0 message, 0 alerte chez jocabroc8 et chez Louis.
+
+### Décision 1 — les annonces en ligne à qui il manquait des photos
+**Republiées à 18:15:54** par le circuit de l'app (« Republier » en tant que le compte, `spend_coins_and_republish`).
+Gratuites, marquées `hors_quota` (0 décompté). Ce sont les 7 de jocabroc8 qui gagnent des photos :
+- Leboncoin :
+  - 3278102982 : 5 → 20 ;
+  - 3278109059 : 5 → 11 ;
+  - 3279059780 : 5 → 12 ;
+  - 3278109961 : 5 → 15 ;
+  - 3291557956 : 5 → 12 ;
+- Vinted :
+  - 10172888526 : 5 → 9 ;
+  - 10438871696 : 5 → 12.
+
+**Départ vérifié avant** (règle de départ de get-pending-jobs v275, rejouée sur les vraies données) : chaque fiche vient
+d'eBay, toutes ses photos sont chez nous et ont été lues après le dépôt. Leboncoin part donc avec les photos de la fiche.
+Sur Vinted, la capture est corrigée par la fiche (9 et 12 photos).
+
+**Vérifié sur la plateforme (18:30, navigateur)** :
+- Leboncoin 3278102982 → **3293867563** : « Voir les 20 photos », publiée à 18:29. L'ancienne : « Annonce introuvable ».
+- Vinted 10172888526 → **10499778952** : 9 photos (5 vignettes et « + 4 »). L'ancienne est introuvable.
+
+Les 5 autres suivent la cadence du compte : une à la fois, et la suivante attend que la précédente soit revenue en ligne.
+
+**Laissées, rien à gagner** :
+- jocabroc8 Leboncoin :
+  - 3292079853 : 20 photos, le maximum de l'app ;
+  - 3278764402 : fiche à 5 photos, comme l'annonce (décision 3) ;
+  - 3279067385 : 10 photos à lui.
+- nino57270 :
+  - 3291893782 : Leboncoin n'accepte que 3 photos gratuites, elle en a déjà 3 ;
+  - 3290695149 : fiche à 3 photos, comme l'annonce.
+- xxewwer 3293844895 : déjà 12 sur 12.
+
+Aucune annonce perdue ni doublée. Sauvegarde : `_backup_2310_soir_republications`.
+
+### Décision 2 — Louis, ses questions « vendue ? » Beebs
+**16 questions ouvertes, et non 14** : les 14 dépôts des 8 fiches de ce matin, plus 34181926 et 34182096, qui sont le même
+cas.
+
+**Constat (relevés)** :
+- louis@ et louis-seller@ sont deux comptes reliés, et chacun a **sa propre boutique Beebs**.
+- Les 16 annonces ont quitté la boutique de louis@ dans la soirée du 18/10 : 113 annonces au relevé de 10:28, 97 à
+  celui de 23:35. Elles manquent à chaque relevé complet depuis, jusqu'au 23/10 à 17:15 (107 sur 107).
+- Chaque article est en vente sur la boutique de louis-seller. On le retrouve par sa fiche jumelle (lien posé par le
+  transfert du 18/10), jamais par le titre. Il y a été publié après la disparition, entre le 19/10 à 13:22 et le 20/10
+  à 13:37, et le relevé du 23/10 à 14:08 le voit en ligne.
+- Les deux fiches sont au stock (quantité 1), sans preuve de vente ni retrait ouvert.
+
+**Tranché : les 16 sont closes à 18:28, aucune laissée ouverte** :
+- Chaque dépôt mort est clos et sa question levée. La marque `copie_remplacee_par_compte_relie` nomme l'annonce qui le
+  remplace. C'est l'issue de la règle « boutique partagée ».
+- Rien d'autre ne bouge :
+  - aucune vente, aucune fiche, aucun retrait, aucun mouvement de pièces ;
+  - les 10 annonces de louis-seller sont intactes (publiées, sans alerte) ;
+  - 0 mail, 0 message.
+- Script `20261023_soir_louis_questions_beebs.sql`, sauvegarde `_backup_2310_soir_louis_questions`.
+
+**Pourquoi la règle ne l'a pas fait seule** : `cross_post_jobs_alerte_tenue` (22/10) ne ferme une alerte « remplacée par
+le compte relié » que si :
+- la boutique est partagée par les deux comptes ;
+- et seulement au moment où l'alerte naît.
+
+Ici, il y a deux boutiques, et l'article est revenu en vente après la question.
+
+### Ce que Nico doit décider (avec ma recommandation)
+1. **Étendre la règle « remplacée par le compte relié »** :
+   - à deux comptes reliés qui ont chacun leur boutique ;
+   - et la rejouer quand la jumelle passe en ligne après la question.
+
+   Il faut pour cela une migration de `cross_post_jobs_alerte_tenue` et un passage au relevé. Un seul couple de comptes
+   est relié aujourd'hui : Louis.
+   *Recommandé* : oui. Sinon, le prochain article qu'il déplace d'une boutique à l'autre reposera la question.
+2. Toujours de ton côté : téléverser la 0.6.131.
