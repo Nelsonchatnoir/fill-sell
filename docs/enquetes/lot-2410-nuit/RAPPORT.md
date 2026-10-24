@@ -121,8 +121,8 @@ payante, zéro régression. Heure de Paris partout.
   qu'elle soit écrite ; application refusée par le mode auto de Claude Code (« Production Deploy ») ; lignes à taper données à Nico à 23:11. Puis
   (23:21) Nico pointe le bouton « Republier » de Vinted (transaction annulée) : l'extension ne sait pas l'actionner — la
   règle visée devient « Remettre en vente » sur Vinted = l'extension appuie sur « Republier » (prochain lot : geste 0.6.142,
-  job serveur, vrai test) ; 235900 NON appliquée, gardée en secours. Le job Vinted de FillSell est annulé dans les deux
-  choix proposés à Nico (`20261024_short_remise_vinted_par_republier.sql`, pour ne jamais doubler le « Republier »).
+  job serveur, vrai test) ; 235900 NON appliquée, gardée en secours. Choix de Nico : « 2 » — le short attend le test du
+  futur geste ; le job Vinted de FillSell est ANNULÉ à 23:35:34 (`20261024_short_remise_vinted_par_republier.sql`, 0 mail).
   Réparation du job prête : `20261024_short_remise_vinted_categorie.sql` (la même aide + les gestes de « Relancer »).
 - **La carte dans « À régler »** (Nico, 22:20) : plus de bandeau ; une ligne « Vente annulée — Remettre en vente ? »
   comptée dans le badge « À régler ». **Remis en ligne directement sur la plateforme** avant l'appui → la proposition se

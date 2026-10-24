@@ -1,9 +1,10 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- RÉPARATION 24/10 nuit — le short de Nico (fiche 1785871917724004) : Nico remet l'annonce Vinted en ligne par le bouton
--- « Republier » de Vinted (transaction annulée, même annonce, même contenu). Le job de remise Vinted de FillSell
+-- RÉPARATION 24/10 nuit — le short de Nico (fiche 1785871917724004) : la remise Vinted d'une vente ANNULÉE se fera par le
+-- bouton « Republier » de Vinted (même annonce, même contenu ; geste d'extension du prochain lot, le short en est le cas
+-- de test — choix 2 de Nico, 24/10 23:3x : il ne touche pas au bouton d'ici là). Le job de remise Vinted de FillSell
 -- (6c02755d, jamais publié, « needs_user » depuis 22:59 : catégorie absente) est donc ANNULÉ — sinon doublon. Même geste que
 -- « Oublier » de l'app (StockTab, oublierPublication) : statut « cancelled », motif écrit, erreur archivée, aucune
--- reprise. Rien n'est retiré chez Vinted (le job n'a jamais rien publié). Choix de Nico (option 1, 24/10 23:2x).
+-- reprise. Rien n'est retiré chez Vinted (le job n'a jamais rien publié).
 -- Sauvegarde : _backup_2410_short_remise_republier. Inverse : 20261024_short_remise_vinted_par_republier_INVERSE.sql.
 -- Aucun mail.
 BEGIN;
@@ -19,10 +20,10 @@ DECLARE n integer;
 BEGIN
   UPDATE public.cross_post_jobs c
      SET status = 'cancelled',
-         error = 'Annulée — l''annonce Vinted a été remise en ligne par le bouton « Republier » de Vinted (même annonce). Rien n''a été publié par FillSell.',
+         error = 'Annulée — sur Vinted, la remise en vente se fera par le bouton « Republier » de Vinted (même annonce). Rien n''a été publié par FillSell.',
          platform_fields = (c.platform_fields - 'next_action_after' - 'processing_since')
            || jsonb_build_object('remise_par_republier_vinted', jsonb_build_object('le', now(),
-                'par', 'Claude — 24/10 nuit, choix de Nico (bouton « Republier » de Vinted)',
+                'par', 'Claude — 24/10 nuit, choix 2 de Nico (remise par le bouton « Republier » de Vinted, geste à venir)',
                 'pose_par', 'scripts/reparations/20261024_short_remise_vinted_par_republier.sql',
                 'depuis_statut', c.status, 'erreur_archivee', c.error, 'error_technique_archivee', c.platform_fields->'error_technique'))
    WHERE c.id = '6c02755d-bf19-48be-9cc2-285a02d6e565' AND c.status IN ('needs_user', 'pending', 'failed') AND c.listing_url IS NULL
