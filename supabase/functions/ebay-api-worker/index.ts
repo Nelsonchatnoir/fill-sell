@@ -57,7 +57,7 @@ import {
 import { completerAspectsIA, valeurLueDansLeContexte } from "../_shared/ebay-aspects-ia.ts";
 import { valeurDeListeCorrespondante } from "../_shared/texte-comparable.ts";
 import { appelTrading } from "../_shared/ebay-trading-releve.ts";
-import { lireItemTrading, verdictAvantRetraitTrading, preuveApresRetraitTrading, retraitBloqueParSessionEbay, retraitAttendLePoste } from "../_shared/ebay-retrait-trading.js";
+import { lireItemTrading, verdictAvantRetraitTrading, preuveApresRetraitTrading, retraitBloqueParSessionEbay, retraitAttendLePoste, sourcesACloreApresRetraitTrading, clotureSourceRetiree } from "../_shared/ebay-retrait-trading.js";
 
 const HANDLER_BUILD = "ebay-api-worker 3-lens";
 const LOT_MAX = 10;
@@ -1968,6 +1968,7 @@ async function retirerParTrading(admin: SupabaseClient, env: EbayEnv, token: str
   if (avant.geste === "deja_terminee") {
     await marquer(admin, job, { status: "deleted", error: null, platform_listing_id: itemId },
       { etape: "retire", quoi: "annonce_deja_terminee_sans_vente", source: "trading_getitem", annonce: itemId }, { listing_id: itemId, withdrawn_at: new Date().toISOString(), voie_retrait: "trading" });
+    await cloreSourcesRetireesTrading(admin, job, itemId);
     return { job: job.id, issue: "deleted", motif: "deja_terminee", listing_id: itemId };
   }
   let reponse: { http: number; xml: string } | null = null;
@@ -1983,12 +1984,45 @@ async function retirerParTrading(admin: SupabaseClient, env: EbayEnv, token: str
       { etape: "retire", source: "trading", appel: avant.appel, http: reponse?.http ?? null, statut_ebay: apres.statut, fin_ebay: apres.fin ?? null, annonce: itemId },
       { listing_id: itemId, withdrawn_at: fin, voie_retrait: "trading" });
     console.log(`[ebay-api-worker] retrait ${String(job.id).slice(0, 8)} : annonce ${itemId} terminée par ${avant.appel} (relue ${apres.statut})`);
+    await cloreSourcesRetireesTrading(admin, job, itemId);
     return { job: job.id, issue: "deleted", listing_id: itemId, source: "trading" };
   }
   const erreur = reponse ? lireItemTrading(reponse.xml).erreurs[0] ?? null : null;
   await marquer(admin, job, { status: "pending", error: "Retrait eBay reporté : eBay n'a pas confirmé la fin de l'annonce. FillSell réessaie ; rien d'autre n'a été touché." },
     { etape: "trading_fin", quoi: "fin_non_prouvee", appel: avant.appel, http: reponse?.http ?? null, erreur, relecture: apres.motif ?? null, annonce: itemId });
   return { job: job.id, issue: "pending", motif: "fin_non_prouvee", annonce: itemId };
+}
+
+// (24/10 nuit, jocabroc8) Après un retrait Trading PROUVÉ, la publication
+// d'origine est close comme après un retrait par l'extension
+// (cancelPublishAfterDelete) : sinon la veille relit l'annonce terminée et pose
+// « Plus en ligne — Vendue ? » sur un article en stock. Numéro exact, fiche du
+// retrait (_shared/ebay-retrait-trading.js) ; écriture conditionnée au statut
+// « published ». Jamais bloquant : le retrait est fait.
+async function cloreSourcesRetireesTrading(admin: SupabaseClient, job: Job, itemId: string): Promise<number> {
+  try {
+    if (!/^\d{9,}$/.test(itemId)) return 0;
+    let q = admin.from("cross_post_jobs")
+      .select("id, user_id, inventaire_id, platform, action, status, listing_url, platform_listing_id, platform_fields")
+      .eq("user_id", job.user_id).eq("platform", "ebay").eq("status", "published")
+      .in("action", ["publish", "republish"]).neq("id", job.id);
+    q = job.inventaire_id != null
+      ? q.eq("inventaire_id", job.inventaire_id)
+      : q.or(`platform_listing_id.eq.${itemId},listing_url.like.*/itm/${itemId}*`);
+    const { data, error } = await q.limit(50);
+    if (error) { console.warn(`[ebay-api-worker] retrait ${String(job.id).slice(0, 8)} : publication d'origine non relue — ${error.message}`); return 0; }
+    let closes = 0;
+    for (const s of sourcesACloreApresRetraitTrading(data ?? [], job, itemId)) {
+      const patch = clotureSourceRetiree(s.platform_fields, { le: new Date().toISOString(), retraitId: job.id, itemId });
+      const { data: maj } = await admin.from("cross_post_jobs").update(patch).eq("id", s.id).eq("status", "published").select("id");
+      if (maj?.length) closes++;
+    }
+    if (closes) console.log(`[ebay-api-worker] retrait ${String(job.id).slice(0, 8)} : ${closes} publication(s) de l'annonce ${itemId} close(s) — retrait volontaire, aucune question « vendue ? »`);
+    return closes;
+  } catch (e) {
+    console.warn(`[ebay-api-worker] retrait ${String(job.id).slice(0, 8)} : clôture de la publication d'origine — ${String((e as Error)?.message ?? e).slice(0, 160)}`);
+    return 0;
+  }
 }
 
 // Les retraits d'un compte RELIÉ arrêtés faute de session eBay dans Chrome

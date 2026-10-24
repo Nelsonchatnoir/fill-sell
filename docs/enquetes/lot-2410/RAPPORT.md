@@ -212,3 +212,54 @@ https://supabase.com/dashboard/project/tojihnuawsoohlolangc/auth/providers?provi
    mail pour une vente de plus de 24 h. À écrire sur ton feu vert.
 8. **Quotas d'une annonce eBay arrêtée par le vendeur** : la publication est rendue (comme avant, rien changé). À
    trancher : doit-elle compter ?
+
+## 24/10 nuit — décision 4 de Nico : l'estampe en double de jocabroc8
+
+**Décision (00:40).** Garder l'annonce eBay la plus ancienne et retirer l'autre tout de suite, par le circuit normal de
+l'app. Aucun message chez le vendeur, aucune vente en cours touchée.
+
+**La plus ancienne.**
+- 407302931655 (40 €) : publiée par l'API FillSell le 20/10 à 07:40:10. Elle est gardée.
+- 407302958488 (50 USD, environ 44,58 €) : son numéro est postérieur et ses photos eBay sont celles de la première
+  (copiées). Importée par le relevé, rattachée à la main le 21/10. Elle est retirée.
+- Pages eBay relues à 00:50 : les deux en ligne, même vendeur (JocaBroc), 0 vendu.
+- En base : 0 vente et 0 commande sur les deux fiches.
+
+**Défaut de règle trouvé avant d'agir.** Le PC de jocabroc8 est muet depuis 21:03 : c'est donc l'API Trading qui fait
+le retrait. Or elle laissait la publication d'origine « published » sur une annonce terminée, et la veille eBay posait
+ensuite « Plus en ligne — Vendue ? » : une fausse question au vendeur.
+**Correctif (tout le parc).** Après la preuve, la publication est close « retirée — pas une vente », comme après un
+retrait par l'extension.
+- Le numéro doit être exact et la fiche celle du retrait ; une annonce qu'eBay dit vendue n'est jamais close ainsi.
+- `ebay-api-worker` v93 → **v94** (00:47, `verify_jwt` false avant et après).
+- Selftest `ebay-retrait-trading` : 14 contrôles de plus.
+- Le défaut a laissé sa trace sur 13939a70 et 559613dd : fiches vendue et supprimée, rien à réparer.
+
+**Geste (00:54).** Script `scripts/reparations/20261024_jocabroc8_estampe_retrait_ebay.sql`, passé d'abord à blanc.
+- Sauvegardes protégées : `_backup_2410_jocabroc8_estampe_jobs` et `_annonces`. Inverse : `…_INVERSE.sql`.
+- Un job de retrait, **26a0bf3c** : la ligne exacte du retrait ciblé de l'app (chemin d'audit `intervention_support`).
+
+**Résultat (relu en base le 24/10 à 09:24).**
+- 01:10:06 : le poste du vendeur étant muet, l'API reprend le retrait.
+- 01:10:08 : eBay termine 407302958488 (EndFixedPriceItem, HTTP 200, statut « Ended »). Le job 26a0bf3c est « deleted ».
+- 01:10:09 : la publication b55aefd3 passe « cancelled » (« retirée — pas une vente », `removed_by_user`,
+  `retiree_par_trading`). C'est le premier cas réel de la v94 : aucune question « vendue ? ».
+- L'annonce relevée 9d6878eb est datée « retirée » à 01:10. 407302931655 (job e4954f7d) est toujours publiée.
+
+**Données modifiées (liste exacte).**
+- Job 26a0bf3c créé (le retrait).
+- `usage_logs` : 1 ligne `retrait_annonces`.
+- Job 20587777 : la phrase écrite le 23/10, « en ligne sous l'annonce 407302958488 », nomme maintenant 407302931655.
+- Au retrait, par le circuit :
+  - la publication b55aefd3 passe « cancelled » (« retirée — pas une vente ») ;
+  - l'annonce relevée 9d6878eb est datée « retirée » (déclencheur `cross_post_jobs_retrait_ferme_annonce`).
+- Rien d'autre.
+
+**Mails.** 0 mail et 0 push causés par ce geste. `email_logs` relu avant et après : 41 mails pour jocabroc8 (le
+dernier, à 23:25, est une vraie vente eBay d'une assiette, sans lien avec l'estampe). Depuis 00:40, un seul mail sur
+tout le parc : un « welcome » (inscription) à 00:41. Relu le 24/10 à 09:24 : 42 mails ; le nouveau, à 06:39, est le
+mail d'une vraie vente eBay d'un autre article (peinture « nature morte », 80 €, 407277705492).
+
+**Reste du point 4 (rien n'est touché sans toi).**
+- Les deux fiches de l'estampe restent ; la 1791040801501 n'a plus d'annonce vivante.
+- Le tableau « paysage lierre pilier » a deux fiches, avec une annonce Vinted chacune en base.

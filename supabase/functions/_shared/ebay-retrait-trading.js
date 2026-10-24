@@ -96,3 +96,53 @@ export function retraitAttendLePoste(job, maintenantMs = Date.now()) {
   const cree = Date.parse(String(job?.created_at ?? ""));
   return Number.isFinite(cree) && maintenantMs - cree >= RETRAIT_ATTENTE_POSTE_MS;
 }
+
+// ── (24/10 nuit, jocabroc8) L'ANNONCE RETIRÉE SORT DE LA VEILLE ─────────────
+// Un retrait fait par l'API Trading laissait la publication d'origine
+// « published » sur une annonce terminée : la veille eBay la relisait
+// « terminée sans vente » et posait « Plus en ligne — Vendue ? » (13939a70 et
+// 559613dd en portent la trace ; sur un article en stock, c'est une fausse
+// question à la personne). L'extension (cancelPublishAfterDelete) et le retrait
+// d'offre de notre API (annulerSourceEbayRetiree) closent déjà la publication :
+// la voie Trading fait pareil, après la preuve seulement, sur le numéro EXACT de
+// l'annonce (colonne ou lien /itm/<numéro>, jamais deux numéros contraires),
+// sur la fiche du retrait quand elle est connue, jamais sur un titre. Une
+// annonce qu'eBay a dite vendue (sale_signal « sold ») n'est jamais close ici.
+export const MSG_SOURCE_RETIREE = "Annonce retirée par le vendeur (retrait ciblé depuis l'app) — pas une vente";
+
+/** Le numéro eBay d'un job, ou "" quand la colonne et le lien se contredisent. */
+function numeroEbay(j) {
+  const lien = String(j?.listing_url ?? "").trim().match(/\/itm\/(?:[^/?#]*\/)?(\d{9,})(?:[/?#]|$)/i)?.[1] ?? "";
+  const col = String(j?.platform_listing_id ?? "").trim();
+  if (lien && col && lien !== col) return "";
+  return lien || col;
+}
+
+/** Les publications à clore après un retrait Trading prouvé : la même annonce, exactement. */
+export function sourcesACloreApresRetraitTrading(publications, retrait, itemId) {
+  const cible = String(itemId ?? "").trim();
+  if (!/^\d{9,}$/.test(cible) || !retrait?.user_id) return [];
+  return (publications ?? []).filter((p) => {
+    if (!p || p.platform !== "ebay" || p.status !== "published") return false;
+    if (!["publish", "republish"].includes(String(p.action ?? "publish"))) return false;
+    if (String(p.id) === String(retrait.id) || String(p.user_id) !== String(retrait.user_id)) return false;
+    if (retrait.inventaire_id != null && String(p.inventaire_id) !== String(retrait.inventaire_id)) return false;
+    const pf = (p.platform_fields && typeof p.platform_fields === "object") ? p.platform_fields : {};
+    if (pf.sale_signal === "sold") return false;
+    return numeroEbay(p) === cible;
+  });
+}
+
+/** La clôture d'une publication retirée (même sens que « Non, je l'ai retirée ») : jamais une vente. */
+export function clotureSourceRetiree(platformFields, { le, retraitId, itemId }) {
+  const pf = { ...((platformFields && typeof platformFields === "object") ? platformFields : {}) };
+  // La trace d'une lecture hors ligne d'avant le retrait est archivée, pas détruite.
+  if (pf.unavailable_pending_since) {
+    pf.unavailable_pending_at_delete = pf.unavailable_pending_since;
+    pf.unavailable_pending_archived_at = le;
+  }
+  for (const k of ["unavailable_since", "unavailable_pending_since", "sale_signal", "detected_price", "fin_ebay"]) delete pf[k];
+  pf.removed_by_user = true;
+  pf.retiree_par_trading = { le, retrait: retraitId, annonce: String(itemId) };
+  return { status: "cancelled", error: MSG_SOURCE_RETIREE, platform_fields: pf };
+}

@@ -297,6 +297,15 @@ Rapport : `docs/enquetes/session-sans-nico-1810/lot4-ventes-lot-multi-exemplaire
 - **Retrait eBay d'un compte relié par l'API** : s'il attend l'extension depuis 15 min, ou si le poste est muet, l'API
   le fait (`retraitAttendLePoste`, ebay-api-worker v93) — preuve GetItem avant/après comme toujours. Thierry, 23/10 :
   168782813446 terminée à 21:38.
+- ⛔ **(24/10 nuit) Un retrait fait par l'API Trading close la publication d'origine**, comme l'extension
+  (`cancelPublishAfterDelete`) et le retrait d'offre de notre API (`annulerSourceEbayRetiree`) : `cancelled`
+  « Annonce retirée par le vendeur (retrait ciblé depuis l'app) — pas une vente », `removed_by_user`, questions
+  « Plus en ligne » levées (la lecture hors ligne d'avant est archivée). Avant, la publication restait `published` sur
+  une annonce terminée et la veille eBay posait « Plus en ligne — Vendue ? » (13939a70 et 559613dd en portent la
+  trace) : sur un article en stock, une fausse question à la personne. Après la preuve seulement (« déjà terminée » ou
+  fin relue), sur le numéro EXACT (colonne ou lien, jamais deux numéros contraires), sur la fiche du retrait, jamais un
+  titre ; une annonce qu'eBay dit vendue n'est jamais close ainsi (`_shared/ebay-retrait-trading.js`,
+  ebay-api-worker v94, selftest `ebay-retrait-trading`). Premier cas : l'estampe en double de jocabroc8 (décision 4).
 - **Rattrapage « Achat en cours » Leboncoin** (`scripts/reparations/20261022_leboncoin_achats_en_cours_existants.sql`) :
   rejoué le 23/10 à 22:54 (0.6.131 servie) — 4 ventes (fiches importées le jour même depuis des annonces déjà
   « Vendu » / « Achat en cours »), 0 mail. La règle n'agit qu'à une TRANSITION : une fiche créée APRÈS la lecture
