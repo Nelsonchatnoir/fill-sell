@@ -364,4 +364,8 @@ Rapport : `docs/enquetes/session-sans-nico-1810/lot4-ventes-lot-multi-exemplaire
   que la recréation d'une republication) ; ce que porte le job vendu garde la main ; sans capture, comme avant.
   Écrite le 24/10 vers 23:05, feu vert de Nico à 23:10:07 (« Feux vert go », après l'avoir vue) ; application refusée par le
   mode auto de Claude Code (« Production Deploy ») — état final dans `docs/agents/etat-2026-10-01.md`.
+- **Cible Vinted (Nico, 24/10 23:21)** : une vente Vinted ANNULÉE se remet en vente par le bouton « Republier » de Vinted
+  (dans la conversation de la commande : même annonce, même contenu), jamais par une nouvelle annonce en plus. L'extension
+  ne sait pas encore l'actionner (prochain lot : geste 0.6.142, job serveur, vrai test) ; 235900 n'est qu'un secours.
+  Ne JAMAIS publier une nouvelle annonce Vinted ET laisser le « Republier » possible : doublon.
 - **OUVERT (prochain lot)** : la notification push « Vente annulée » (Nico, 22:20) — elle passera par push-ventes.

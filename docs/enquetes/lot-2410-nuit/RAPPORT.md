@@ -118,7 +118,11 @@ payante, zéro régression. Heure de Paris partout.
   Vinted » → `20261024235900` écrite (aide `remise_en_vente_champs_capture` : catégorie, état, taille, marque, couleurs de
   la dernière capture quand le job vendu n'a pas de catégorie ; essai 13/13 dont les 5 de 235800 ; inverse vérifié), feu
   vert de Nico à 23:10:07 (« Feux vert go ») après l'avoir vue — son « Feux vert » de 23:04:37 était arrivé AVANT
-  qu'elle soit écrite ; application refusée par le mode auto de Claude Code (« Production Deploy ») : en attente de Nico (lignes à taper données à 23:11).
+  qu'elle soit écrite ; application refusée par le mode auto de Claude Code (« Production Deploy ») ; lignes à taper données à Nico à 23:11. Puis
+  (23:21) Nico pointe le bouton « Republier » de Vinted (transaction annulée) : l'extension ne sait pas l'actionner — la
+  règle visée devient « Remettre en vente » sur Vinted = l'extension appuie sur « Republier » (prochain lot : geste 0.6.142,
+  job serveur, vrai test) ; 235900 NON appliquée, gardée en secours. Le job Vinted de FillSell est annulé dans les deux
+  choix proposés à Nico (`20261024_short_remise_vinted_par_republier.sql`, pour ne jamais doubler le « Republier »).
   Réparation du job prête : `20261024_short_remise_vinted_categorie.sql` (la même aide + les gestes de « Relancer »).
 - **La carte dans « À régler »** (Nico, 22:20) : plus de bandeau ; une ligne « Vente annulée — Remettre en vente ? »
   comptée dans le badge « À régler ». **Remis en ligne directement sur la plateforme** avant l'appui → la proposition se
@@ -145,10 +149,12 @@ payante, zéro régression. Heure de Paris partout.
   revenu de Vinted au relevé de 22:03:13 — même texte, même conversation (le short, ornella-vend). La réponse d'Ornella
   (21:46:24) était en base à 21:51:13 : délai normal du relevé (10 min ± 90 s). Vrai trou d'AFFICHAGE : une conversation
   ouverte ne se relisait qu'après un envoi → relecture bornée (conversation 30 s, liste 60 s, 15 min, onglet visible).
-- **Livraison** : extension 0.6.141 → ``build\CWS-0.6.141-A-TELEVERSER\` (nom exact : état de prod)` (la 0.6.140, jamais envoyée, part dans `build\CWS-PERIMES\`) ; poste de
-  Nico mis à jour. OTA 2.9.113 sur le canal production (compatibilité native vérifiée avant l'envoi : aucun changement
-  natif). Selftests : 406/406 verts (23:16:36), lot-2410-soir 82 contrôles.
+- **Livraison** : extension 0.6.141 → `build\CWS-0.6.141-A-TELEVERSER\fillsell-extension-0.6.141-a07091c-cws.zip`
+  (BUILD_ID 2026-10-24T21:18:48Z+a07091c ; la 0.6.140, jamais servie par le CWS, part dans `build\CWS-PERIMES\`) ;
+  poste de Nico en 0.6.141 (même build que le zip, vu à 23:22:20). OTA 2.9.113 SERVIE sur le canal production (envoyée à
+  23:20:11, build 2026-10-24T21:19:30Z+a07091c ; compatibilité native vérifiée juste avant : 9 paquets identiques).
+  Selftests : 406/406 verts (23:16:36), lot-2410-soir 82 contrôles.
 - **Restent ouverts (hors de ce terminal)** : seghirdeborah711 et vincent.armengol après la mise à jour CWS de leur poste
   (relancer leurs jobs Vinted) ; l'annonce Leboncoin 3294614836 de louis au prochain relevé complet (modération) ; la
-  `20261024235900` et la réparation du short si elles ne sont pas encore passées ; la notification push « Vente annulée » ; les
+  le geste « Republier » de Vinted pour une vente annulée (0.6.142) ; la notification push « Vente annulée » ; les
   binaires 2.9.x des stores, plus tard ; deux brouillons de test sur l'eBay de Nico à effacer à la main.
