@@ -258,4 +258,26 @@ export function plausibiliteDuChemin(plateforme, chemin, familleObjet) {
   return { ok, familleObjet: familleObjet ?? null, familleChemin };
 }
 
+// ── BEEBS : LA FAMILLE LENS FILTRE LES CANDIDATES DU MOT — JAMAIS PLUS (25/10 nuit) ──
+// sebbastien1, job 17715aee (19/10) : « Décoration black bass gravé fait à la main » — fiche Lens
+// famille « maison_deco », objet « Décoration poisson gravé bois » ; le mot retenu (« poisson bois
+// gravé ») a laissé l'IA choisir « Jeux, jouets et loisirs > Jeux d'éveil > Jouets en bois », où Beebs
+// exige l'âge de l'ENFANT : question sans réponse juste depuis le 19/10, alors que « Maison > Décoration
+// > Décorations murales » (aucun âge) porte 9 sculptures de ce compte. familleDeLObjet ne lit que des
+// sources certaines (la famille Lens n'en est pas une) : aucun filtre ne jouait.
+// Mesuré sur 30 j : 39 dépôts Beebs de fiches « maison_deco » → 38 en « Maison », 1 en « Jeux, jouets
+// et loisirs » (celui-ci). Table FERMÉE (comme RAYONS_EBAY_PAR_FAMILLE, ebay-api-worker, 23/09) :
+// seules les familles Lens de la maison ; BEEBS seulement (eBay range l'art en « Art, antiquités »,
+// famille loisirs). Sert UNIQUEMENT à filtrer les feuilles candidates du mot (resoudreParMot,
+// candidatsParMot) — jamais au contrôle final « hors_famille », jamais contre un rayon choisi par la
+// personne. Rejeu : « poisson bois gravé » n'a que 2 feuilles Beebs (« Jouets en bois », « Jeux de
+// construction en bois ») ; filtrées, le chemin de l'icône 🖼️ (Maison > Décoration > …), sa vérification
+// et la descente de l'arbre décident — comme pour une famille certaine. Jamais un repli sur les jouets.
+const FAMILLE_LENS_MAISON = new Set(["maison_deco", "mobilier", "electromenager", "jardin", "bricolage"]);
+export function familleFiltreDesCandidates(plateforme, fiche) {
+  if (plateforme !== "beebs") return null;
+  const v = String(fiche?.famille ?? fiche?.attributs?.famille?.v ?? "").trim();
+  return FAMILLE_LENS_MAISON.has(v) ? "maison" : null;
+}
+
 export const _internes = { RACINES, COMPATIBLES, SOURCES_ICONE_AUTORITE };

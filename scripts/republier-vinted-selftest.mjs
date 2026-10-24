@@ -212,4 +212,11 @@ await cas("la base : remise Vinted d'une vente annulée = job « Republier », j
   assert.ok(m.includes("|| v_rep)"));
 });
 
+await cas("(audit N8) un diagnostic objet part tel quel en base, plus jamais « [object Object] »", () => {
+  assert.ok(BG.includes('function diagnosticPourBase(d) {'));
+  assert.ok(!/last_diagnostic(?::| =) String\(result\.diagnostic\)/.test(BG), "aucun String(objet) écrit dans last_diagnostic");
+  const f = new Function(`${fonction(BG.replace("function diagnosticPourBase(d) {", "async function diagnosticPourBase(d) {"), "diagnosticPourBase")}; return diagnosticPourBase;`)();
+  return Promise.all([f({ etape: "photos" }), f("texte")]).then(([o, t]) => { assert.deepEqual(o, { etape: "photos" }); assert.equal(t, "texte"); });
+});
+
 console.log(`\n✓ republier-vinted : ${n} contrôles`);

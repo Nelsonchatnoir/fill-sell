@@ -483,6 +483,11 @@ const VentesTab = memo(function VentesTab({
   const [impDone,setImpDone]=useState({});       // item.id -> true (optimiste : la ligne ventes existe)
   const [impErr,setImpErr]=useState(null);       // {id,message} — id null = barre de lot
   const [impBusy,setImpBusy]=useState(false);
+  // (25/10 nuit, audit N7) UNE vente par geste : un double appui sur « Enregistrer » d'une ligne écrivait deux
+  // ventes (chaouidz 274893/274894 à 70 ms le 24/10 ; doriane-henri 71 lignes en trop le 28/09). Le verrou est
+  // un ref (lu au clic, sans attendre le rendu) ; l'état grise le bouton.
+  const impLignesEnCours=useRef(new Set());
+  const [impLigneBusy,setImpLigneBusy]=useState(()=>new Set());
   const [paLotImp,setPaLotImp]=useState("");
   const [dateLotImp,setDateLotImp]=useState("");
   // ── Volume (2026-08-11) ───────────────────────────────────────────────────
@@ -616,6 +621,19 @@ const VentesTab = memo(function VentesTab({
 
   const majDraft=(id,champ,val)=>setImpDrafts(p=>({...p,[id]:{...(p[id]??{}),[champ]:val}}));
 
+  // (25/10 nuit, audit N7) Les articles qui ont DÉJÀ une ligne de vente (Set d'inventaire_id) — null si illisible.
+  async function ventesExistantes(ids){
+    if(!ids.length) return new Set();
+    const vus=new Set();
+    for(let i=0;i<ids.length;i+=200){
+      const {data,error}=await supabase.from('ventes').select('inventaire_id')
+        .eq('user_id',user?.id).in('inventaire_id',ids.slice(i,i+200));
+      if(error) return null;
+      for(const r of data||[]) vus.add(String(r.inventaire_id));
+    }
+    return vus;
+  }
+
   // Écrit LA ligne ventes (le geste humain) + reporte le prix d'achat (ou la
   // décision « je ne sais plus ») sur l'article d'inventaire, comme partout.
   async function enregistrerVenteImportee(item,{pvBrut,paBrut,paInconnu,dateStr,dateInconnue}){
@@ -633,8 +651,13 @@ const VentesTab = memo(function VentesTab({
     const ligne={user_id:user?.id,titre:item.title,prix_achat:pa,prix_vente:pv,benefice:margin,
       date:dateVente,plateforme:'vinted',marque:item.marque||null,type:item.type||null,
       description:item.description||null,quantite:item.quantite||1,inventaire_id:item.id,statut:'vendu'};
-    const {error}=await supabase.from('ventes').insert([ligne]);
-    if(error){setImpErr({id:item.id,message:error.message});return false;}
+    // Un article à un seul exemplaire qui a déjà sa vente n'en reçoit jamais une deuxième (reprise, double appui).
+    const deja=(item.quantite||1)<=1?await ventesExistantes([item.id]):new Set();
+    if(deja===null){setImpErr({id:item.id,message:fr?"Relecture des ventes impossible — réessaie":"Could not re-read sales — try again"});return false;}
+    if(!deja.has(String(item.id))){
+      const {error}=await supabase.from('ventes').insert([ligne]);
+      if(error){setImpErr({id:item.id,message:error.message});return false;}
+    }
     if(pa!=null){
       await supabase.from('inventaire').update({prix_achat:pa,prix_achat_inconnu:false}).eq('id',item.id).eq('user_id',user?.id);
     }else if(paInconnu){
@@ -646,13 +669,21 @@ const VentesTab = memo(function VentesTab({
     return true;
   }
 
-  function enregistrerLigneImportee(item){
-    const d=impDrafts[item.id]??{};
-    return enregistrerVenteImportee(item,{
-      pvBrut:d.pv??propositions[item.vinted_item_id]??'',
-      paBrut:d.pa??'',paInconnu:d.paInconnu===true,
-      dateStr:d.date??'',dateInconnue:d.dateInconnue===true,
-    });
+  async function enregistrerLigneImportee(item){
+    if(impLignesEnCours.current.has(item.id)||impDone[item.id]) return false;
+    impLignesEnCours.current.add(item.id);
+    setImpLigneBusy(p=>new Set(p).add(item.id));
+    try{
+      const d=impDrafts[item.id]??{};
+      return await enregistrerVenteImportee(item,{
+        pvBrut:d.pv??propositions[item.vinted_item_id]??'',
+        paBrut:d.pa??'',paInconnu:d.paInconnu===true,
+        dateStr:d.date??'',dateInconnue:d.dateInconnue===true,
+      });
+    }finally{
+      impLignesEnCours.current.delete(item.id);
+      setImpLigneBusy(p=>{const n=new Set(p);n.delete(item.id);return n;});
+    }
   }
 
   // Lot : les valeurs de la barre servent de REPLI aux lignes sélectionnées qui
@@ -748,13 +779,21 @@ const VentesTab = memo(function VentesTab({
     setImpProgress({fait:0,total:valides.length});
     let fait=0,arret=null;
     for(let i=0;i<valides.length;i+=LOT_INSERT){
-      const paquet=valides.slice(i,i+LOT_INSERT);
-      const {data,error}=await supabase.from('ventes')
-        .insert(paquet.map(p=>p.ligne)).select('inventaire_id');
+      const paquetBrut=valides.slice(i,i+LOT_INSERT);
+      // (25/10 nuit, audit N7) Une reprise après un envoi au sort inconnu (délai, réseau) RÉÉCRIVAIT les ventes déjà
+      // passées : af37fa49, 64 ventes en double le 28/09 sur 24 articles uniques. Avant d'écrire, on relit : un
+      // article à un seul exemplaire qui a déjà sa vente n'en reçoit pas une deuxième (il est marqué fait).
+      const dejaVendus=await ventesExistantes(paquetBrut.filter(p=>(p.item.quantite||1)<=1).map(p=>p.item.id));
+      if(dejaVendus===null){arret=fr?"relecture des ventes impossible":"could not re-read sales";break;}
+      const paquet=paquetBrut.filter(p=>!dejaVendus.has(String(p.item.id)));
+      const sautes=paquetBrut.filter(p=>dejaVendus.has(String(p.item.id)));
+      const {data,error}=paquet.length
+        ?await supabase.from('ventes').insert(paquet.map(p=>p.ligne)).select('inventaire_id')
+        :{data:[],error:null};
       if(error){arret=error.message;break;}
-      // Ce que la base a réellement accepté — pas ce qu'on lui a demandé.
-      const inseres=new Set((data||[]).map(r=>String(r.inventaire_id)));
-      const retenus=paquet.filter(p=>inseres.has(String(p.item.id)));
+      // Ce que la base a réellement accepté — pas ce qu'on lui a demandé (et ce qui y était déjà).
+      const inseres=new Set([...(data||[]).map(r=>String(r.inventaire_id)),...sautes.map(p=>String(p.item.id))]);
+      const retenus=paquetBrut.filter(p=>inseres.has(String(p.item.id)));
 
       // Report sur l'inventaire, GROUPÉ : un update par valeur d'achat distincte
       // (en pratique une seule, celle de la barre) + un pour les « je ne sais
@@ -1395,8 +1434,9 @@ const VentesTab = memo(function VentesTab({
                             onChange={e=>majDraft(item.id,'date',e.target.value)}
                             aria-label={fr?"Date de vente":"Sale date"}/>}
                     </div>
-                    <button className="pa-ok" style={{padding:"6px 11px"}} onClick={()=>enregistrerLigneImportee(item)}>
-                      {fr?"Enregistrer":"Record"}
+                    <button className="pa-ok" style={{padding:"6px 11px"}} disabled={impLigneBusy.has(item.id)||impBusy}
+                      onClick={()=>enregistrerLigneImportee(item)}>
+                      {impLigneBusy.has(item.id)?"…":(fr?"Enregistrer":"Record")}
                     </button>
                   </div>
                   <div className="pa-line" style={{marginTop:2}}>

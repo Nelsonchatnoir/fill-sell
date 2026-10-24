@@ -3504,15 +3504,23 @@ serve(async (req) => {
               "(vendue, retirée ou supprimée). FillSell n'a rien supprimé et la republication s'arrête là. " +
               "Si tu l'as vendue, marque-la vendue dans ton stock.";
             raisonRequalif = "404 indéterminé arbitré par la sonde publique : annonce réellement disparue";
-          } else {
+          } else if (publiqueVivante === true) {
             pfArb["needs_user_source"] = "connexion";
             messageEffectif =
               "Connexion Vinted requise : ton annonce est toujours en ligne, mais le navigateur n'est plus " +
               "connecté à la boutique qui la porte — Vinted nous répond « introuvable ». Rien n'a été touché. " +
               "Clique sur « Me connecter » ci-dessous : dès que tu es reconnecté, on reprend la republication tout seuls.";
-            raisonRequalif = publiqueVivante === true
-              ? "404 indéterminé arbitré par la sonde publique : annonce en ligne, mur de connexion"
-              : "404 indéterminé, sonde publique non concluante : mur de connexion (aucune affirmation sur l'annonce)";
+            raisonRequalif = "404 indéterminé arbitré par la sonde publique : annonce en ligne, mur de connexion";
+          } else {
+            // (25/10 nuit, audit N2 — 7e480fce, annonce supprimée) Sonde publique NON mesurée (les serveurs se font
+            // souvent refuser par l'anti-robot de Vinted) : on n'affirme RIEN — ni « toujours en ligne », ni
+            // « connexion requise » (un mur inventé : la personne se reconnecte pour rien, le job reboucle). C'est la
+            // pause « introuvable à confirmer » : rien retiré, le prochain relevé du dressing tranche (handler-watch,
+            // _shared/introuvable-a-confirmer.js).
+            Object.assign(pfArb, marqueIntrouvable(pfIn, { platform: "vinted", lecture: "item_upload_404_sonde_publique_non_mesuree" }));
+            pfArb["needs_user_source"] = SOURCE_INTROUVABLE;
+            messageEffectif = messagePause("vinted");
+            raisonRequalif = "404 indéterminé, sonde publique non concluante : introuvable à confirmer par le relevé (aucune affirmation sur l'annonce)";
           }
           pfBoutiqueArbitree = pfArb;
           console.log(`[update-job-status] userId=${user.id} job=${jobId} — ${raisonRequalif} (boutiques=${boutiques.length}, annonce=${idAnnonce || "?"}, publique=${publiqueVivante})`);

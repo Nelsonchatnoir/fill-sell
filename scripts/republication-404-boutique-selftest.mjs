@@ -166,4 +166,15 @@ const iComparaison = prj.indexOf("if (identCourante?.user_id && identCourante.us
 assert.ok(iGarde > 0 && iComparaison > iGarde && iCapture > iComparaison);
 ok("garde de capture : un job qui attend déjà sa boutique relit l'onglet AVANT de recapturer");
 
+// ── 5. (25/10 nuit, audit N2 — 7e480fce) Sonde publique non mesurée : jamais « toujours en ligne », jamais un mur ──
+const ujs = fs.readFileSync(new URL("../supabase/functions/update-job-status/index.ts", import.meta.url), "utf8");
+const iArb = ujs.indexOf('} else if (publiqueVivante === true) {');
+const iNul = ujs.indexOf('lecture: "item_upload_404_sonde_publique_non_mesuree"');
+assert.ok(iArb > 0 && iNul > iArb, "le mur de connexion n'est posé que sur une annonce VUE en ligne (200 public)");
+const brancheNulle = ujs.slice(ujs.indexOf("} else {", iArb + 10), iNul + 400);
+assert.match(brancheNulle, /pfArb\["needs_user_source"\] = SOURCE_INTROUVABLE;/);
+assert.match(brancheNulle, /messageEffectif = messagePause\("vinted"\);/);
+assert.doesNotMatch(brancheNulle.split(/\r?\n/).filter((l) => !/^\s*\/\//.test(l)).join("\n"), /toujours en ligne|Connexion Vinted requise/);
+ok("sonde publique non mesurée → pause « introuvable à confirmer » (le relevé tranche), aucune affirmation");
+
 console.log(`\n✓ republication-404-boutique : ${n} contrôles verts`);

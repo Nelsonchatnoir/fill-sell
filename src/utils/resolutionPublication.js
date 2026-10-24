@@ -53,7 +53,7 @@ import { resoudreParMot, candidatsParMot, niveauSousChemin, estFeuilleDeLArbre }
 import { maisonDesLivres, feuillesDuNoeud, sortDeLaMaison } from "./motObjetOuSujet";
 import { jeuVideoDeLArticle, cheminJeuVideo, classementAgeEcrit, classementPourPlateforme, plateformeEbayDuJeu,
          VINTED_CHAMP_PLATEFORME, VINTED_CHAMP_CLASSEMENT, EBAY_ASPECT_CLASSEMENT, EBAY_ASPECT_PLATEFORME } from "./jeuxVideo";
-import { familleDeLObjet, plausibiliteDuChemin } from "./familleCategorie";
+import { familleDeLObjet, plausibiliteDuChemin, familleFiltreDesCandidates } from "./familleCategorie";
 // (10/10) eBay : un vêtement de mode ne part pas en sport sans que le texte le dise.
 import { vetoBrancheSpecialisee } from "./brancheSpecialiseeEbay";
 import { getEbayCategoryPath, getEbayCategoryId, ebayGenreRequired } from "./ebayCategories";
@@ -694,7 +694,12 @@ export async function resoudrePublication({
       //    part dans le formulaire, il ne se déduit pas d'un autre site.
       const genrePf = pfE.genre || pfE.univers || genrePourCategorie(platform) || origineCat?.genre || "";
       try {
-        const r = await resoudreParMot(motCategorie, platform, { genre: genrePf, famille: familleObjet });
+        // (25/10 nuit) Beebs : la famille Lens « maison » écarte aussi les feuilles d'une famille
+        // incompatible (familleFiltreDesCandidates). Rien de compatible pour le mot → comme pour une
+        // famille certaine : le chemin de l'icône, sa vérification, la descente de l'arbre, sinon la
+        // question du rayon — jamais un rayon de jouets repris faute de mieux.
+        const familleFiltreMot = familleObjet ?? familleFiltreDesCandidates(platform, initialListing);
+        const r = await resoudreParMot(motCategorie, platform, { genre: genrePf, famille: familleFiltreMot });
         // ── LE MOT DÉCRIT-IL L'OBJET, OU SON SUJET ? (2026-09-20) ─────────
         // « La Méthode Delavier de MUSCULATION pour la Femme » — un LIVRE —
         // est parti sur Opla en « Sport > Fitness > Musculation » : le mot
@@ -783,12 +788,13 @@ export async function resoudrePublication({
     await Promise.all(aRatisser.map(async (platform) => {
       const pfE = edited[platform]?.platform_fields ?? {};
       try {
+        // (25/10 nuit) Même filtre qu'à l'étape 2 (famille Lens « maison » sur Beebs).
         const liste = await candidatsParMot(motCategorie, platform, {
           // Même cascade qu'à l'étape 2 : le genre de l'origine ne parle
           // qu'après la fiche, et ne sert qu'au filtrage des candidates.
           genre: pfE.genre || pfE.univers || genrePourCategorie(platform) || origineCat?.genre || "",
           titre: edited[platform]?.title || initialListing?.titre || "",
-          famille: familleObjet,
+          famille: familleObjet ?? familleFiltreDesCandidates(platform, initialListing),
         });
         let retenues = liste.map(c => ({ chemin: c.chemin, id: c.id }));
         // ── LA BONNE RÉPONSE DOIT ÊTRE DANS LA LISTE (2026-09-20) ────────

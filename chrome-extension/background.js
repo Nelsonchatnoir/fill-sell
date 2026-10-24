@@ -2470,6 +2470,12 @@ function gardeAntiBoucleNeedsUser(jobId, safe) {
   return { status: "failed", safe: { ...safe, error: humain + observabilite, platform_fields: pf } };
 }
 
+// (25/10 nuit, audit N8) Un diagnostic OBJET part tel quel (jsonb) : « String(objet) » écrivait « [object Object] »
+// (18 republications Vinted en 7 jours, 0.6.131) — la seule trace d'un échec était perdue.
+function diagnosticPourBase(d) {
+  return typeof d === "object" && d !== null ? d : String(d).slice(0, 2000);
+}
+
 function updateJobStatus(accessToken, jobId, status, extra = {}) {
   let safe = { ...extra };
   // Garde anti-boucle : n'intercepte QUE les passages en needs_user porteurs
@@ -4430,7 +4436,7 @@ async function processJob(rawJob, accessToken) {
       const maintenantR = new Date().toISOString();
       pfR.colis_formulaire_rate = { depuis: precR?.depuis ?? maintenantR, derniere: maintenantR, n: nR };
       pfR.next_action_after = new Date(Date.now() + delaiR * 60_000).toISOString();
-      if (result?.diagnostic) pfR.last_diagnostic = String(result.diagnostic).slice(0, 2000);
+      if (result?.diagnostic) pfR.last_diagnostic = diagnosticPourBase(result.diagnostic);
       delete pfR.processing_since;
       delete pfR.needs_user_source;
       await updateJobStatus(accessToken, job.id, "pending", {
@@ -24059,7 +24065,7 @@ async function replanifierOuArreterRecreation(accessToken, job, pf, result) {
   if (result?.sellingRestriction) {
     return await replanifierRestrictionVenteVinted(accessToken, job, pf, result, true);
   }
-  if (result?.diagnostic) pf.last_diagnostic = String(result.diagnostic).slice(0, 2000);
+  if (result?.diagnostic) pf.last_diagnostic = diagnosticPourBase(result.diagnostic);
   if (result?.serverRequired?.length) pf.server_required_fields = result.serverRequired;
   // ── FORMAT DE COLIS REFUSÉ À LA RECRÉATION (0.6.84) ─────────────────────
   // Le format était connu et envoyé directement (ou rien à envoyer) : Vinted
@@ -24602,7 +24608,11 @@ async function enrichirCibleBeebs(job, accessToken) {
   }
   if (directs.invalide || directs.ids.size > 1) {
     console.warn(`[retrait][beebs] job ${job.id} : identifiants directs absents ou contradictoires — abstention`);
-    return { ...job, platform_listing_id: null, listing_url: null };
+    // (25/10 nuit, Glowik 6d95f4eb) L'abstention reste ; sa CAUSE est dite : le lien du job et sa copie de
+    // republication désignent deux annonces (copie du 30/09 restée sur 33946058 après la recréation du 06/10 en
+    // 34119130). Ce n'est pas « pas encore rattaché par le relevé » — attendre ne change rien, cinq essais non plus.
+    return { ...job, platform_listing_id: null, listing_url: null,
+      cibleBeebsAbstention: { motif: directs.invalide ? "identifiant_illisible" : "lien_et_copie_contradictoires", ids: [...directs.ids] } };
   }
   if (directs.ids.size === 1) {
     const [idDirect] = [...directs.ids];
@@ -24666,6 +24676,18 @@ async function executerRetraitViaHandler(job, accessToken) {
     const idExact = String(job.platform_listing_id ?? "").trim()
       || (String(job.listing_url ?? "").match(/\/fr\/p\/(\d+)(?:[-/?#]|$)/)?.[1] ?? "");
     if (!/^\d+$/.test(idExact)) {
+      const abst = job.cibleBeebsAbstention ?? null;
+      if (abst?.motif === "lien_et_copie_contradictoires") {
+        return {
+          tabId: null,
+          result: {
+            success: false,
+            needsUser: true,
+            error: `Retrait Beebs retenu : ce job désigne deux annonces différentes (${abst.ids.join(" et ")}) — FillSell ne retire jamais sans savoir laquelle est en ligne. Rien n'a été touché.`,
+            trace: [`abstention : ${abst.motif} (${abst.ids.join(", ")})`],
+          },
+        };
+      }
       return {
         tabId: null,
         result: {
@@ -24738,7 +24760,7 @@ async function executerRetraitViaHandler(job, accessToken) {
   if (result?.diagnostic) {
     job.platform_fields = {
       ...(job.platform_fields ?? {}),
-      last_diagnostic: String(result.diagnostic).slice(0, 2000),
+      last_diagnostic: diagnosticPourBase(result.diagnostic),
     };
   }
 
@@ -26222,7 +26244,7 @@ async function processOplaRepublishJob(job, accessToken) {
     const result = await sendMessageToTab(tabId, { type: "REPUBLISH_LISTING", job });
 
     if (result?.diagnostic) {
-      job.platform_fields = { ...(job.platform_fields ?? {}), last_diagnostic: String(result.diagnostic).slice(0, 2000) };
+      job.platform_fields = { ...(job.platform_fields ?? {}), last_diagnostic: diagnosticPourBase(result.diagnostic) };
     }
     if (result?.success) {
       const extras = completionExtras(job, result);
@@ -27074,7 +27096,7 @@ async function processRepublishJob(job, accessToken) {
           const maintenantM = new Date().toISOString();
           pf.pause_marque_par_id = { depuis: precM?.depuis ?? maintenantM, derniere: maintenantM, n: nM };
           pf.next_action_after = new Date(Date.now() + (nM <= 1 ? 60 : nM === 2 ? 180 : 360) * 60_000).toISOString();
-          if (result?.diagnostic) pf.last_diagnostic = String(result.diagnostic).slice(0, 2000);
+          if (result?.diagnostic) pf.last_diagnostic = diagnosticPourBase(result.diagnostic);
           for (const k of ["needs_user_source", "needsUserField", "champs_a_completer", "needsUserBoucle"]) delete pf[k];
           await updateJobStatus(accessToken, job.id, "pending", {
             platform_fields: pf,
@@ -27106,7 +27128,7 @@ async function processRepublishJob(job, accessToken) {
           const maintenant = new Date().toISOString();
           pf.pause_colis = { depuis: prec?.depuis ?? maintenant, derniere: maintenant, n, ...(nRate ? { n_formulaire_rate: nRate } : {}) };
           pf.next_action_after = new Date(Date.now() + delaiMin * 60_000).toISOString();
-          if (result?.diagnostic) pf.last_diagnostic = String(result.diagnostic).slice(0, 2000);
+          if (result?.diagnostic) pf.last_diagnostic = diagnosticPourBase(result.diagnostic);
           delete pf.needs_user_source;
           const dans = delaiMin < 60 ? `${delaiMin} min` : `${Math.round(delaiMin / 60)} h`;
           await updateJobStatus(accessToken, job.id, "pending", {
@@ -27231,7 +27253,7 @@ async function processRepublishJob(job, accessToken) {
             ? result.unfilledRequired.map((c) => String(c))
             : [String(result?.needsUserField?.field_label ?? "champ obligatoire")];
           pf.needs_user_source = "prevol_negatif";
-          if (result?.diagnostic) pf.last_diagnostic = String(result.diagnostic).slice(0, 2000);
+          if (result?.diagnostic) pf.last_diagnostic = diagnosticPourBase(result.diagnostic);
           const f = result?.needsUserField;
           if (f?.field_key && f?.field_label) {
             pf.needsUserField = {
@@ -27287,14 +27309,14 @@ async function processRepublishJob(job, accessToken) {
         // de retrait lue : on ne sait PAS — ni « intacte », ni un échec. Le job
         // attend le relevé, sans tentative consommée (cf. versProfilUnePasse).
         if (versProfilUnePasse) {
-          if (result?.diagnostic) pf.last_diagnostic = String(result.diagnostic).slice(0, 2000);
+          if (result?.diagnostic) pf.last_diagnostic = diagnosticPourBase(result.diagnostic);
           pf.depot_parti_vers_profil = { at: new Date().toISOString(), url: versProfilUnePasse.url, marque_de_retrait: false };
           return await retenirDepotIncertain(accessToken, job, pf);
         }
         // Transitoire (challenge DataDome, session, photos pas arrivées, canal
         // coupé avant la suppression) : needs_user honnête, annonce intacte —
         // l'étape reste 'captured', la relance rejouera le pré-vol en entier.
-        if (result?.diagnostic) pf.last_diagnostic = String(result.diagnostic).slice(0, 2000);
+        if (result?.diagnostic) pf.last_diagnostic = diagnosticPourBase(result.diagnostic);
         // Formulation (2026-09-11, audit des messages) : « ton annonce est
         // intacte » n'est affirmé que si la base a pu être relue (étape non
         // 'deleted') ; base illisible → « nous n'avons pas pu vérifier ». Et
@@ -28310,7 +28332,7 @@ async function processRepublierVintedJob(job, accessToken) {
     if (n + 1 >= REPUBLIER_ATTENTES_MAX) {
       return question(pf0, "lecture_impossible", `FillSell n'arrive pas à lire la conversation de cette commande sur Vinted (${lecture?.motif ?? "sans réponse"}) : rien n'a été publié. Ouvre Vinted dans ${VO.navigateurCourt()}, puis relance.`, champs);
     }
-    return plusTard(pf0, "lecture_impossible", "FillSell relit la conversation de la commande sur Vinted avant de remettre l'article en vente : nouvel essai dans quelques minutes.", champs);
+    return plusTard(pf0, "lecture_impossible", "FillSell relit la conversation de la commande sur Vinted avant de remettre l'article en vente : elle sera relue automatiquement, rien à faire de ton côté.", champs);
   }
   const tr = lecture.conversation?.transaction ?? {};
   const avant = {
@@ -28380,7 +28402,7 @@ async function processRepublierVintedJob(job, accessToken) {
     await updateJobStatus(accessToken, job.id, "processing", { platform_fields: pfEnvoi });
   } catch (e) {
     console.warn(`[background] Job ${job.id} : envoi non noté (${String(e?.message ?? e)}) — « Republier » NON envoyé`);
-    return plusTard(pf0, "note_impossible", "FillSell n'a pas pu noter l'envoi avant de toucher Vinted : rien n'a été envoyé, nouvel essai dans quelques minutes.", { avant });
+    return plusTard(pf0, "note_impossible", "FillSell n'a pas pu noter l'envoi avant de toucher Vinted : rien n'a été envoyé ; ce sera refait automatiquement.", { avant });
   }
   const post = await executerDansOngletPlateforme("vinted", M.posterRepublierVinted, [{ transactionId }]);
   const reponse = {
@@ -28393,7 +28415,7 @@ async function processRepublierVintedJob(job, accessToken) {
     // Rien n'est parti (jeton absent, onglet figé) : l'envoi n'a pas eu lieu, il peut être refait.
     const pfRien = trace(pf0, { avant, reponse, envoi_non_parti_le: new Date().toISOString() });
     delete pfRien.republier.envoye_le;
-    return plusTard(pfRien, "envoi_non_parti", "FillSell n'a pas pu envoyer « Republier » à Vinted (page pas prête) : rien n'est parti, nouvel essai dans quelques minutes.");
+    return plusTard(pfRien, "envoi_non_parti", "FillSell n'a pas pu envoyer « Republier » à Vinted (page pas prête) : rien n'est parti ; ce sera refait automatiquement.");
   }
   const pfApres = trace(pfEnvoi, { reponse });
   const okHttp = Number(post.http) >= 200 && Number(post.http) < 300 && (post.code == null || Number(post.code) === 0);

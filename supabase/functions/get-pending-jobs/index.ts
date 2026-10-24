@@ -209,7 +209,7 @@ import { poidsColisDeLAnnonceLbc } from "../_shared/lbc-poids-annonce.js";
 import { frereHorsLigne, retenueLevee, plateformesRetenuesPar, MESSAGE_EN_FILE } from "../_shared/retenue-hors-ligne.js";
 import { localisationLbcATaper } from "../_shared/lbc-localisation.js";
 import { candidatesDepuisRetrait, depotPeutEtrePartiDepuis, jugerCandidates, urlsPhotos } from "../_shared/recreation-deja-partie.js";
-import { depotPublicationPeutEtrePartiDepuis, candidatesDuDepot, rattacherParPhotos, urlsAnnonce } from "../_shared/depot-sans-numero.js";
+import { depotPublicationPeutEtrePartiDepuis, candidatesDuDepot, urlsAnnonce, jugerCycleDepots } from "../_shared/depot-sans-numero.js";
 import { corrigerFeuilleLbc } from "../_shared/lbc-feuille-corrigee.js";
 import { BUILD_COLIS_DANS_ENVOI, VERSION_COLIS_DANS_ENVOI, RETENUE_COLIS_ANCIEN_POSTE, envoiColisProuve, messageColisAttendMiseAJour, colisVintedRetenuAuService } from "../_shared/vinted-colis.js";
 import { BUILD_VINTED_MARQUE_PAR_ID, BUILD_VINTED_MARQUE_CHAINE, envoiMarqueProuve, enPauseMarqueParId, marqueAIdentifiantCapturee } from "../_shared/vinted-marque-par-id.js";
@@ -5512,6 +5512,68 @@ serve(async (req) => {
       }
     }
 
+    // ══ (25/10 nuit, Glowik 6d95f4eb) UNE REPUBLICATION BEEBS DONT LE LIEN ET LA COPIE DÉSIGNENT DEUX ANNONCES ══
+    // Le 06/10, la republication 6d95f4eb a remplacé 33946058 par 34119130 (ligne de relevé créée par CE job à 14:38:14,
+    // l'ancienne datée disparue au même instant). Relancée le 19/10 à l'étape `a_capturer` (relancer_republish ne touche
+    // pas la copie), elle portait son lien exact (34119130) ET une copie du 30/09 (republish_snapshot 33946058) :
+    // l'extension (enrichirCibleBeebs, depuis la 0.6.80) voit deux identifiants, s'abstient — à raison — et dit « pas
+    // encore rattaché par le relevé » (faux) ; cinq essais identiques, puis « relance ». Règle (même doctrine que
+    // annonce_partagee_reprendre pour Beebs/Leboncoin/Depop) : la copie suit l'annonce que le job a lui-même mise en
+    // ligne quand le relevé le PROUVE (ligne du numéro du job portée par ce job, en ligne ; ancienne datée disparue ou
+    // retirée) → copie réalignée (trace `realignee`), retour à `a_capturer` (l'annonce est relue avant tout retrait).
+    // Sans cette preuve → arrêt avant tout retrait, message vrai, jamais cinq essais à l'aveugle.
+    if (!includeProcessing && !includeNeedsUser) {
+      try {
+        const pfR = (j: Record<string, unknown>) => ((j.platform_fields && typeof j.platform_fields === "object") ? j.platform_fields : {}) as Record<string, unknown>;
+        const idJob = (j: Record<string, unknown>) => String(j.platform_listing_id ?? "").trim() || (idDepuisLien("beebs", j.listing_url) ?? "");
+        const idCopie = (j: Record<string, unknown>) => String(((pfR(j).republish_snapshot ?? {}) as Record<string, unknown>).platform_listing_id ?? "").trim();
+        const contradictoires = (out as unknown as Array<Record<string, unknown>>).filter((j) => j.action === "republish" && j.platform === "beebs"
+          && j.status === "pending" && ["a_capturer", "captured"].includes(String(pfR(j).republish_step ?? "a_capturer")) && !pfR(j).deleted_at
+          && /^\d+$/.test(idJob(j)) && /^\d+$/.test(idCopie(j)) && idJob(j) !== idCopie(j));
+        if (contradictoires.length) {
+          const numeros = [...new Set(contradictoires.flatMap((j) => [idJob(j), idCopie(j)]))];
+          const { data: lignesR, error: rErr } = await userClient.from("annonces_plateforme")
+            .select("listing_id, job_id, disparu_le, retiree_le, statut_plateforme")
+            .eq("user_id", user.id).eq("platform", "beebs").in("listing_id", numeros.slice(0, 200));
+          if (rErr) throw new Error(`relevé illisible (${rErr.message})`);
+          const parNumero = new Map<string, Array<Record<string, unknown>>>();
+          for (const l of (lignesR ?? []) as Array<Record<string, unknown>>) parNumero.set(String(l.listing_id), [...(parNumero.get(String(l.listing_id)) ?? []), l]);
+          const arretes = new Set<string>();
+          for (const j of contradictoires) {
+            const pf = { ...pfR(j) };
+            const snap = { ...((pf.republish_snapshot ?? {}) as Record<string, unknown>) };
+            const nJob = idJob(j), nCopie = idCopie(j);
+            const vivanteDuJob = (parNumero.get(nJob) ?? []).some((l) => String(l.job_id ?? "") === String(j.id) && !l.disparu_le && !l.retiree_le);
+            const ancienneMorte = (parNumero.get(nCopie) ?? []).length > 0 && (parNumero.get(nCopie) ?? []).every((l) => l.disparu_le || l.retiree_le);
+            const le = new Date().toISOString();
+            if (vivanteDuJob && ancienneMorte) {
+              for (const k of ["champs_lus_sur_l_annonce", "champs_repris_de_l_annonce", "republish_etat_reel", "capture_id"]) delete pf[k];
+              pf.republish_step = "a_capturer";
+              pf.republish_snapshot = { ...snap, platform_listing_id: nJob, listing_url: lienDepuisId("beebs", nJob) ?? j.listing_url,
+                realignee: { le, avant: nCopie, avant_url: snap.listing_url ?? null, preuve: "ligne de relevé du numéro portée par ce job, en ligne ; ancienne annonce datée disparue", pose_par: "get-pending-jobs" } };
+              const { data: maj } = await userClient.from("cross_post_jobs").update({ platform_fields: pfAPersister(pf) })
+                .eq("id", String(j.id)).eq("status", "pending").select("id");
+              if ((maj ?? []).length) {
+                j.platform_fields = pf;
+                console.log(`[get-pending-jobs] republication Beebs ${String(j.id).slice(0, 8)} : copie réalignée ${nCopie} → ${nJob} (annonce mise en ligne par ce job), relue avant tout retrait`);
+              }
+              continue;
+            }
+            arretes.add(String(j.id));
+            await userClient.from("cross_post_jobs").update({
+              status: "needs_user",
+              platform_fields: pfAPersister({ ...pf, needs_user_source: "lien_copie_contradictoires", lien_copie_contradictoires: { le, lien: nJob, copie: nCopie, preuve_lien: vivanteDuJob, ancienne_morte: ancienneMorte } }),
+              error: `Republication arrêtée avant tout retrait : ce job désigne l'annonce Beebs ${nJob} et sa copie l'annonce ${nCopie}, `
+                + "et le relevé ne dit pas encore laquelle est la tienne en ligne. FillSell ne retire jamais sans le savoir : rien n'a été retiré, ton annonce est intacte.",
+            }).eq("id", String(j.id)).eq("status", "pending");
+          }
+          if (arretes.size) out = out.filter((j) => !arretes.has(String(j.id)));
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] republication Beebs lien/copie : ${String((e as Error)?.message ?? e)} — servi tel quel (l'extension s'abstient seule)`);
+      }
+    }
+
     // ══ JAMAIS UN DEUXIÈME DÉPÔT BEEBS À L'AVEUGLE (15/10 soir, Ciddjy) ═══════
     // (_shared/depot-sans-numero.js) Même règle que la remise en ligne
     // ci-dessus, pour les PUBLICATIONS Beebs : un essai qui a pu envoyer le
@@ -5545,6 +5607,9 @@ serve(async (req) => {
           return r.status === "done" && !err.startsWith("[incomplet]") && (Number(r.items_vus ?? 0) > 0 || err.startsWith("[vide]"));
         };
         let lignesB: Array<Record<string, unknown>> | null = null;
+        const aJuger: Array<{ j: Record<string, unknown>; idJ: string; pf: Record<string, unknown>;
+          susp: { at: string; raison: string }; fait: Record<string, unknown>;
+          depot: { id: string; photos: unknown; published_at: string; created_at: string } }> = [];
         for (const j of (out as unknown as Array<Record<string, unknown>>).filter((x) => suspectsDepotBeebs.has(String(x.id)))) {
           const idJ = String(j.id);
           const pf = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
@@ -5578,43 +5643,62 @@ serve(async (req) => {
             }
             continue;
           }
+          aJuger.push({ j, idJ, pf, susp, fait, depot: { id: idJ, photos: j.photos, published_at: susp.at, created_at: susp.at } });
+        }
+        // ══ (25/10 nuit, Ciddjy 20/10 16:47) LE CYCLE SE TRANCHE EN ENTIER ══════
+        // Le 20/10 à 16:47:04, NEUF dépôts Ciddjy coupés étaient jugés ici, un par
+        // un, contre un relevé lu UNE fois (lignesB) : les 4 annonces apparues
+        // étaient celles de 4 d'entre eux (photos à 0 bit, rattachées dans la même
+        // seconde), mais la ligne en mémoire n'était jamais mise à jour après un
+        // rattachement — les 4 autres dépôts, jugés avant ou entre eux, voyaient
+        // encore ces 4 annonces (photos « autre » partout → « non concluant ») et
+        // recevaient la question, avec en lien les annonces d'AUTRES fiches.
+        // Rejeu (scratchpad agents/beebs/c_cycle.mjs) : code d'avant → les mêmes 4
+        // questions ; cycle entier → 4 rattachements puis « aucune candidate » ×5.
+        // Désormais : 1) les photos de notre copie désignent, pour TOUS les dépôts
+        // du cycle ensemble (appariement mutuel de rattacherParPhotos) ; 2) ces
+        // rattachements s'écrivent d'abord, la ligne suit en mémoire ; 3) les
+        // autres dépôts sont jugés contre les candidates qui restent : une annonce
+        // prouvée à un autre dépôt du cycle n'est plus candidate. Rien d'autre ne
+        // change (aucune → redépôt autorisé ; doute → la question).
+        if (aJuger.length) {
           // Le relevé du compte, et le plancher des numéros : les annonces vues
           // AVANT l'essai, et nos dépôts numérotés confirmés avant lui.
-          if (!lignesB) {
-            lignesB = [];
-            for (let page = 0; page < 6; page++) {
-              const { data: lot } = await adminD.from("annonces_plateforme")
-                .select("id, listing_id, url, statut_plateforme, photo_url, capture, created_at, job_id, inventaire_id, disparu_le, retiree_le")
-                .eq("user_id", user.id).eq("platform", "beebs").order("listing_id", { ascending: true }).range(page * 1000, page * 1000 + 999);
-              lignesB.push(...((lot ?? []) as Array<Record<string, unknown>>));
-              if ((lot ?? []).length < 1000) break;
-            }
-            const { data: numerotes } = await adminD.from("cross_post_jobs").select("platform_listing_id, published_at")
-              .eq("user_id", user.id).eq("platform", "beebs").not("platform_listing_id", "is", null).not("published_at", "is", null)
-              .order("published_at", { ascending: false }).limit(200);
-            for (const n of (numerotes ?? []) as Array<Record<string, unknown>>) {
-              if (/^\d+$/.test(String(n.platform_listing_id ?? ""))) lignesB.push({ listing_id: String(n.platform_listing_id), created_at: n.published_at, job_id: "plancher", inventaire_id: -1 });
-            }
+          lignesB = [];
+          for (let page = 0; page < 6; page++) {
+            const { data: lot } = await adminD.from("annonces_plateforme")
+              .select("id, listing_id, url, statut_plateforme, photo_url, capture, created_at, job_id, inventaire_id, disparu_le, retiree_le")
+              .eq("user_id", user.id).eq("platform", "beebs").order("listing_id", { ascending: true }).range(page * 1000, page * 1000 + 999);
+            lignesB.push(...((lot ?? []) as Array<Record<string, unknown>>));
+            if ((lot ?? []).length < 1000) break;
           }
-          const depot = { id: idJ, photos: j.photos, published_at: susp.at, created_at: susp.at };
-          const cands = candidatesDuDepot(depot, lignesB);
-          if (!cands.length) {
-            const pfN: Record<string, unknown> = { ...pf, depot_verifie: { apres: susp.at, le: new Date().toISOString(), releve: String(fait.id), verdict: "aucune" } };
-            delete pfN["depot_attente_releve_depuis"];
-            const { data: maj } = await userClient.from("cross_post_jobs").update({ platform_fields: pfN })
-              .eq("id", idJ).eq("status", "pending").select("id");
-            if ((maj ?? []).length) {
-              j.platform_fields = pfN;
-              retenus.delete(idJ);
-              console.log(`[get-pending-jobs] dépôt Beebs ${idJ.slice(0, 8)} : relevé ${String(fait.id).slice(0, 8)} postérieur à l'essai, aucune annonce apparue → redépôt autorisé`);
-            }
-            continue;
+          const { data: numerotes } = await adminD.from("cross_post_jobs").select("platform_listing_id, published_at")
+            .eq("user_id", user.id).eq("platform", "beebs").not("platform_listing_id", "is", null).not("published_at", "is", null)
+            .order("published_at", { ascending: false }).limit(200);
+          for (const n of (numerotes ?? []) as Array<Record<string, unknown>>) {
+            if (/^\d+$/.test(String(n.platform_listing_id ?? ""))) lignesB.push({ listing_id: String(n.platform_listing_id), created_at: n.published_at, job_id: "plancher", inventaire_id: -1 });
           }
-          const urls = [...new Set([...urlsPhotos(j.photos), ...cands.flatMap((a) => urlsAnnonce(a))])];
-          const { data: empB } = await adminD.from("photo_empreintes").select("url, dhash, phash, variantes").in("url", urls.slice(0, 200));
-          const empParUrlB = new Map(((empB ?? []) as Array<Record<string, unknown>>).map((e) => [String(e.url), e]));
-          const choix = rattacherParPhotos({ depots: [depot], lignes: lignesB, empreinte: (u: string) => empParUrlB.get(u) }).get(idJ);
-          if (choix) {
+          const lignes = lignesB;
+          // Les empreintes de toutes les copies et de toutes les candidates du cycle (lots de 200, PostgREST).
+          const urlsCycle = new Set<string>();
+          for (const x of aJuger) {
+            for (const u of urlsPhotos(x.j.photos)) urlsCycle.add(u);
+            for (const a of candidatesDuDepot(x.depot, lignes)) for (const u of urlsAnnonce(a)) urlsCycle.add(u);
+          }
+          const toutesUrls = [...urlsCycle];
+          const empParUrlB = new Map<string, Record<string, unknown>>();
+          for (let i = 0; i < toutesUrls.length; i += 200) {
+            const { data: empB } = await adminD.from("photo_empreintes").select("url, dhash, phash, variantes").in("url", toutesUrls.slice(i, i + 200));
+            for (const e of (empB ?? []) as Array<Record<string, unknown>>) empParUrlB.set(String(e.url), e);
+          }
+          // 1) Les photos désignent, pour tout le cycle à la fois (mutuel).
+          const cycle = jugerCycleDepots({ depots: aJuger.map((x) => x.depot), lignes, empreinte: (u: string) => empParUrlB.get(u) });
+          const choixCycle = cycle.rattaches;
+          const prises = cycle.prises;
+          // 2) Les rattachements d'abord ; la ligne suit en mémoire.
+          for (const x of aJuger.filter((y) => choixCycle.has(y.idJ))) {
+            const { j, idJ, pf, susp, fait } = x;
+            const choix = choixCycle.get(idJ)!;
             const url = choix.statut === "en_ligne" ? lienDepuisId("beebs", choix.listing_id) : null;
             const pfN: Record<string, unknown> = { ...pf, depot_verifie: { apres: susp.at, le: new Date().toISOString(), releve: String(fait.id), verdict: "certaine" },
               lien_par_photos: { at: new Date().toISOString(), listing_id: choix.listing_id, preuve: choix.preuve, photos: choix.photos, statut: choix.statut } };
@@ -5623,22 +5707,43 @@ serve(async (req) => {
               status: "published", error: null, published_at: susp.at, platform_listing_id: choix.listing_id, ...(url ? { listing_url: url } : {}), platform_fields: pfN,
             }).eq("id", idJ).eq("status", "pending").select("id");
             if ((maj ?? []).length) {
-              const ligne = lignesB.find((a) => String(a.listing_id) === choix.listing_id && a.id);
-              if (ligne) await adminD.from("annonces_plateforme").update({ job_id: idJ, inventaire_id: j.inventaire_id ?? null, source_rapprochement: "job", updated_at: new Date().toISOString() })
-                .eq("id", String(ligne.id)).is("job_id", null).is("inventaire_id", null);
+              const ligne = lignes.find((a) => String(a.listing_id) === choix.listing_id && a.id);
+              if (ligne) {
+                await adminD.from("annonces_plateforme").update({ job_id: idJ, inventaire_id: j.inventaire_id ?? null, source_rapprochement: "job", updated_at: new Date().toISOString() })
+                  .eq("id", String(ligne.id)).is("job_id", null).is("inventaire_id", null);
+                ligne.job_id = idJ;
+                ligne.inventaire_id = j.inventaire_id ?? null;
+              }
               console.log(`[get-pending-jobs] dépôt Beebs ${idJ.slice(0, 8)} : annonce ${choix.listing_id} déjà partie (${choix.preuve}) → RATTACHÉE, aucun redépôt`);
             }
-            continue;
           }
-          const liens = cands.map((a) => String(a.url ?? "") || lienDepuisId("beebs", String(a.listing_id)) || String(a.listing_id)).slice(0, 3);
-          const pfN: Record<string, unknown> = { ...pf, needs_user_source: "depot_deja_parti", depot_deja_parti: { le: new Date().toISOString(), verdict: "incertaine", liens, releve: String(fait.id), essai: susp } };
-          delete pfN["depot_attente_releve_depuis"];
-          await userClient.from("cross_post_jobs").update({
-            status: "needs_user", platform_fields: pfN,
-            error: `Une annonce Beebs apparue depuis le dernier essai pourrait être cet article : ${liens.join(" ; ")}. `
-              + "On ne redépose pas, pour ne jamais la mettre en double (ni son numéro ni ses photos ne prouvent que c'est ce dépôt). "
-              + "Regarde-la sur Beebs : si c'est lui, il n'y a rien à faire ; sinon relance d'un clic.",
-          }).eq("id", idJ).eq("status", "pending");
+          // 3) Les autres, contre les candidates qui restent.
+          for (const x of aJuger.filter((y) => !choixCycle.has(y.idJ))) {
+            const { j, idJ, pf, susp, fait } = x;
+            const cands = (cycle.question.get(idJ) ?? []) as Array<Record<string, unknown>>;
+            if (!cands.length) {
+              const pfN: Record<string, unknown> = { ...pf, depot_verifie: { apres: susp.at, le: new Date().toISOString(), releve: String(fait.id), verdict: "aucune",
+                ...(prises.size ? { annonces_d_autres_depots: [...prises] } : {}) } };
+              delete pfN["depot_attente_releve_depuis"];
+              const { data: maj } = await userClient.from("cross_post_jobs").update({ platform_fields: pfN })
+                .eq("id", idJ).eq("status", "pending").select("id");
+              if ((maj ?? []).length) {
+                j.platform_fields = pfN;
+                retenus.delete(idJ);
+                console.log(`[get-pending-jobs] dépôt Beebs ${idJ.slice(0, 8)} : relevé ${String(fait.id).slice(0, 8)} postérieur à l'essai, aucune annonce apparue qui ne soit pas celle d'un autre dépôt → redépôt autorisé`);
+              }
+              continue;
+            }
+            const liens = cands.map((a) => String(a.url ?? "") || lienDepuisId("beebs", String(a.listing_id)) || String(a.listing_id)).slice(0, 3);
+            const pfN: Record<string, unknown> = { ...pf, needs_user_source: "depot_deja_parti", depot_deja_parti: { le: new Date().toISOString(), verdict: "incertaine", liens, releve: String(fait.id), essai: susp } };
+            delete pfN["depot_attente_releve_depuis"];
+            await userClient.from("cross_post_jobs").update({
+              status: "needs_user", platform_fields: pfN,
+              error: `Une annonce Beebs apparue depuis le dernier essai pourrait être cet article : ${liens.join(" ; ")}. `
+                + "On ne redépose pas, pour ne jamais la mettre en double (ni son numéro ni ses photos ne prouvent que c'est ce dépôt). "
+                + "Regarde-la sur Beebs : si c'est lui, il n'y a rien à faire ; sinon relance d'un clic.",
+            }).eq("id", idJ).eq("status", "pending");
+          }
         }
       } catch (e) {
         console.warn(`[get-pending-jobs] vérification avant redépôt Beebs : ${String((e as Error)?.message ?? e)} — ${suspectsDepotBeebs.size} dépôt(s) retenu(s) ce cycle`);

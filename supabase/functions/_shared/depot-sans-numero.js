@@ -73,6 +73,39 @@ export function rattacherParPhotos({ depots, lignes, empreinte, platform = "beeb
   return choix;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// LE CYCLE SE TRANCHE EN ENTIER (25/10 nuit — Ciddjy, cycle du 20/10 16:47:04)
+// ═══════════════════════════════════════════════════════════════════════════
+// get-pending-jobs jugeait les dépôts suspects d'un compte UN PAR UN contre un
+// relevé lu une fois : neuf pyjamas, quatre annonces apparues — celles de
+// quatre de ces dépôts (photos à 0 bit) ; les quatre autres, jugés avant ou
+// entre eux, voyaient encore ces annonces (« autre » partout → non concluant)
+// et recevaient la question, avec en lien les annonces d'AUTRES fiches.
+// Désormais : les photos désignent pour TOUS les dépôts du cycle ensemble
+// (appariement mutuel), puis chaque autre dépôt est jugé contre les candidates
+// qui restent — une annonce prouvée à un autre dépôt n'est plus candidate.
+// Rien d'autre ne change : aucune candidate → redépôt autorisé ; doute → la
+// question. Pur (Deno + Node).
+/**
+ * @param {{ depots: any[], lignes: any[], empreinte: (url: string) => any, platform?: string }} arg
+ * @returns {{ rattaches: Map<string, any>, aucune: string[], question: Map<string, any[]>, prises: Set<string> }}
+ */
+export function jugerCycleDepots({ depots, lignes, empreinte, platform = "beebs" }) {
+  const liste = Array.isArray(depots) ? depots : [];
+  const rattaches = rattacherParPhotos({ depots: liste, lignes, empreinte, platform });
+  const prises = new Set([...rattaches.values()].map((c) => String(c.listing_id)));
+  const aucune = [];
+  const question = new Map();
+  for (const d of liste) {
+    const id = String(d?.id ?? "");
+    if (!id || rattaches.has(id)) continue;
+    const cands = candidatesDuDepot(d, lignes, platform).filter((a) => !prises.has(String(a.listing_id)));
+    if (cands.length) question.set(id, cands);
+    else aucune.push(id);
+  }
+  return { rattaches, aucune, question, prises };
+}
+
 /** Toutes les annonces candidates d'un lot de dépôts (pour lire leurs empreintes en une fois). */
 export function candidatesDesDepots(depots, lignes, platform = "beebs") {
   const vues = new Map();
