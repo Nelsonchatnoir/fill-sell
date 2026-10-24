@@ -1391,7 +1391,8 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // des syncs (0.6.34), jobs de publication/republication/suppression, partage
 // d'onglet, marquage des disparitions.
 // MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
-export const EXTENSION_LAST_COMMIT = '2026-10-24T14:23:44Z'; // 0.6.134 (24/10 soir, ae36f35 — UTC VRAI lu par EPOCH, %ct 1792851824 ; posée dans un commit qui ne touche PAS chrome-extension/) : lot « zéro blocage » + un poste non empaqueté se recharge seul quand une copie neuve est posée dans son dossier.
+export const EXTENSION_LAST_COMMIT = '2026-10-24T14:51:06Z'; // 0.6.135 (24/10 soir, a6560a0 — UTC VRAI lu par EPOCH, %ct 1792853466 ; posée dans un commit qui ne touche PAS chrome-extension/) : le bordereau Vinted se lit en octets (cause de « http_200_puis_200 »).
+// (avant) 2026-10-24T14:23:44Z = 0.6.134 (24/10 soir, ae36f35 — UTC VRAI lu par EPOCH, %ct 1792851824 ; posée dans un commit qui ne touche PAS chrome-extension/) : lot « zéro blocage » + un poste non empaqueté se recharge seul quand une copie neuve est posée dans son dossier.
 // (avant : '2026-10-24T13:58:27Z'; // 0.6.134 (24/10 soir, 56d8efb — UTC VRAI lu par EPOCH, %ct 1792850307 ; posée dans un commit qui ne touche PAS chrome-extension/) : lot « zéro blocage » — marque Vinted jamai …)
 // (avant : '2026-10-24T09:54:09Z'; // 0.6.133 (24/10 midi, a761b86 — UTC VRAI lu par EPOCH, %ct 1792835649 ; posée dans un commit qui ne touche PAS chrome-extension/) : retrait Beebs prouvé aussi par la fiche produit du numéro exact qui dit SoldOut (Beebs passe « Vendu » …)
 // (avant : '2026-10-23T21:09:12Z'; // 0.6.132 (24/10, f081a28 — UTC VRAI lu par EPOCH, %ct 1792789752 ; posée dans un commit qui ne touche PAS chrome-extension/) : lot du 24/10 — Depop : la présignature et l'env …)
