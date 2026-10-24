@@ -50,7 +50,7 @@ function monter(src, scenario) {
   const constantes = src.match(/const PLATEFORMES_SCRIPT_DU_MANIFESTE\s*=\s*new Set\(\[[^\]]*\]\)/)?.[0];
   const patience = src.match(/const PATIENCE_INJECTION_MS\s*=\s*[\d_]+/)?.[0];
   const fabrique = new Function('env', `
-    const { sendMessageToTabOnce, sleep, relancerOngletMuet, getOrCreateWorkTabBrut, SYNC_PING_TIMEOUT_MS, console } = env;
+    const { sendMessageToTabOnce, sleep, relancerOngletMuet, getOrCreateWorkTabBrut, SYNC_PING_TIMEOUT_MS, console, restaurerFenetrePourOngletMuet } = env;
     ${constantes}; ${patience};
     ${corps}
     return { getOrCreateWorkTab, contentScriptRepondSurOnglet };`);
@@ -64,6 +64,8 @@ function monter(src, scenario) {
       appels.ping++;
       return scenario.ping(tabId, msg, appels.ping);
     },
+    // (24/10 soir) La fenêtre de travail rendue visible (dernier geste) : absente par défaut, sauf scénario dédié.
+    restaurerFenetrePourOngletMuet: async () => { appels.visible = (appels.visible ?? 0) + 1; return scenario.fenetreVisible === true; },
     relancerOngletMuet: async (platform, tabId, url, ping) => {
       appels.relance++;
       if (!scenario.relanceOk) return { ok: false, tabId, geste: 'rechargement puis onglet neuf' };

@@ -1866,6 +1866,8 @@ async function publishSelectedUnlocked(jobIds) {
     } catch (e) {
       outcome = { status: "failed", error: String(e?.message ?? e) };
     }
+    // (24/10 soir) Une fenêtre de travail rendue visible pour un onglet muet se re-minimise dès le job fini.
+    await reminimiserFenetreSiRestauree().catch(() => {});
     outcome = outcome || { status: "unknown" };
     emitProgress({
       jobId: job.id,
@@ -3399,6 +3401,8 @@ async function pollAndProcessJobsUnlocked() {
     // ne relâche jamais au milieu du travail).
     await demanderEveil(jobs.length - i, null).catch(() => {});
     const outcome = await processJob(job, session.access_token);
+    // (24/10 soir) Une fenêtre de travail rendue visible pour un onglet muet se re-minimise dès le job fini.
+    await reminimiserFenetreSiRestauree().catch(() => {});
     if (outcome?.garderOnglet === true && job.platform === "leboncoin") lbcPaiementPrepare = true;
     // Même persistance des échecs que le flux popup (cf. recordRecentResult) :
     // un job échoué en poll de fond doit aussi s'afficher « Échec » au popup.
@@ -7046,6 +7050,9 @@ async function releverEtatFenetreTravail(platform) {
         tab_url: urlDiagnostic(tab?.url),
         tab_status: tab?.status ?? null,
         tab_discarded: tab?.discarded ?? null,
+        // (24/10 soir, seghirdeborah711) Gelé par Chrome (économie d'énergie / mémoire, Chrome ≥ 132) : un onglet gelé
+        // ne répond à rien tant qu'il reste caché — la preuve qui manquait aux « content script muet » répétés.
+        tab_frozen: typeof tab?.frozen === "boolean" ? tab.frozen : null,
         fill_step: etape?.etape ?? null,
         fill_step_at: etape?.at ?? null,
       };
@@ -7141,7 +7148,56 @@ async function getOrCreateWorkTab(platform, url) {
     console.warn(`[onglet][${platform}] content script joignable après ${relance.geste} (onglet ${relance.tabId}) — on continue`);
     return relance.tabId;
   }
+  // ── (24/10 soir, seghirdeborah711) UN ONGLET GELÉ NE BLOQUE JAMAIS UNE PUBLICATION ──────────────────────────────
+  // Sa veste (571cafdc) a attendu 3 h 50 : « le content script ne répond pas, ni après rechargement puis onglet neuf »,
+  // puis des traitements figés 16 à 19 min — toujours dans la fenêtre de travail MINIMISÉE, onglet inactif, page
+  // restée « loading ». Une page que Chrome gèle (économie d'énergie, mémoire) ne répond à rien tant qu'elle reste
+  // cachée : recharger ou rouvrir dans la même fenêtre minimisée ne peut rien. Dernier geste, pour CE job seulement :
+  // la fenêtre de travail redevient visible, SANS le focus ; elle se re-minimise juste après le job
+  // (reminimiserFenetreSiRestauree). Rien n'a encore été envoyé à la page : aucun doublon possible.
+  if (await restaurerFenetrePourOngletMuet(relance.tabId)) {
+    await sleep(3_000);
+    if (await contentScriptRepondSurOnglet(platform, relance.tabId)) {
+      console.warn(`[onglet][${platform}] content script joignable une fois la fenêtre de travail visible (onglet ${relance.tabId}) — on continue`);
+      return relance.tabId;
+    }
+    const visible = await relancerOngletMuet(platform, relance.tabId, url, (id) => contentScriptRepondSurOnglet(platform, id));
+    if (visible.ok) {
+      console.warn(`[onglet][${platform}] content script joignable après ${visible.geste}, fenêtre visible (onglet ${visible.tabId}) — on continue`);
+      return visible.tabId;
+    }
+    throw new Error(`onglet de travail ${platform} : le content script ne répond pas, ni après ${relance.geste}, ni fenêtre de travail visible`);
+  }
   throw new Error(`onglet de travail ${platform} : le content script ne répond pas, ni après ${relance.geste}`);
+}
+
+// La fenêtre de travail rendue visible pour UN onglet muet (fenêtre minimisée, ou onglet gelé par Chrome) : jamais le
+// focus, jamais au-delà du job (re-minimisée par reminimiserFenetreSiRestauree, après chaque job). Rend true si un
+// geste a été fait.
+const FENETRE_RESTAUREE_KEY = "fillsell_fenetre_restauree_onglet_muet";
+async function restaurerFenetrePourOngletMuet(tabId) {
+  try {
+    const tab = await chrome.tabs.get(tabId).catch(() => null);
+    if (!tab) return false;
+    const win = await chrome.windows.get(tab.windowId).catch(() => null);
+    if (!win || (win.state !== "minimized" && tab.frozen !== true)) return false;
+    await chrome.storage.session.set({ [FENETRE_RESTAUREE_KEY]: { windowId: win.id, le: Date.now(), gele: tab.frozen === true, etat: win.state } }).catch(() => {});
+    await chrome.windows.update(win.id, { state: "normal", focused: false }).catch(() => {});
+    await journaliserEvenementFenetre("fenetre_rendue_visible_onglet_muet", {
+      window_id: win.id, etat_avant: win.state, onglet_gele: typeof tab.frozen === "boolean" ? tab.frozen : null,
+    }).catch(() => {});
+    console.warn(`[onglet] onglet ${tabId} muet dans une fenêtre ${win.state}${tab.frozen ? " (gelé par Chrome)" : ""} — fenêtre de travail rendue visible, sans focus, le temps du job`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function reminimiserFenetreSiRestauree() {
+  const s = await chrome.storage.session.get(FENETRE_RESTAUREE_KEY).catch(() => ({}));
+  const r = s?.[FENETRE_RESTAUREE_KEY];
+  if (!r?.windowId) return;
+  await chrome.storage.session.remove(FENETRE_RESTAUREE_KEY).catch(() => {});
+  await chrome.windows.update(r.windowId, { state: "minimized", focused: false }).catch(() => {});
 }
 
 async function getOrCreateWorkTabBrut(platform, url) {
@@ -26987,6 +27043,16 @@ async function processRepublishJob(job, accessToken) {
               + "Ton annonce est toujours en ligne, rien n'a été retiré.";
             await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msgAttente });
             return { status: "needsUser", error: msgAttente };
+          }
+          // ── (24/10 soir, vincent.armengol) UN REFUS DE SUPPRESSION « CONNEXION REQUISE » N'ATTEND JAMAIS UNE RELANCE À LA MAIN ──
+          // 4 republications « en pause » depuis 14:09, « Relance depuis l'app quand tu veux », alors que le compte en
+          // publiait 172 dans la foulée : l'API de suppression avait répondu par un mur (refus passager de Vinted), lu
+          // « Connexion Vinted requise ». Annonce relue en ligne, rien soumis : ce mur est ARBITRÉ comme partout ailleurs
+          // (traiterMurDeConnexion) — session bonne → nouvel essai espacé (refus passager, 3 par heure) ; sinon attente de
+          // session (pending), reprise seule dès que la connexion est prouvée. Jamais needs_user pour un mur.
+          if (state === "active" && !murBoutique && motifSessionMorte("vinted", result?.error)) {
+            await traiterMurDeConnexion(accessToken, { ...job, platform_fields: pf }, result, result.error);
+            return { status: "needsUser", error: result?.error };
           }
           // Formulation (2026-09-11) : « intacte » seulement si l'état réel
           // vient d'être relevé « active » ; sinon on dit qu'on n'a pas pu

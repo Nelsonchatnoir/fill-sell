@@ -53,6 +53,8 @@
     "selftest:bordereau-impression": "node scripts/bordereau-impression-selftest.mjs",
     "selftest:bordereau-fichier-octets": "node scripts/bordereau-fichier-octets-selftest.mjs",
     "selftest:commandes-chaque-tour": "node scripts/commandes-chaque-tour-selftest.mjs",
+    "selftest:mur-suppression-arbitre": "node scripts/mur-suppression-arbitre-selftest.mjs",
+    "selftest:onglet-gele": "node scripts/onglet-gele-selftest.mjs",
     "selftest:depart-compte": "node --import ./scripts/loader-ext.mjs scripts/depart-compte-selftest.mjs",
     "selftest:lbc-jeton-releve": "node --import ./scripts/loader-ext.mjs scripts/lbc-jeton-releve-selftest.mjs",
     "selftest:encart-cloud-bientot": "node --import ./scripts/loader-ext.mjs scripts/encart-cloud-bientot-selftest.mjs",
