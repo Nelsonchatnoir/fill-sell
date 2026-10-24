@@ -63,6 +63,9 @@ CREATE INDEX IF NOT EXISTS push_annulations_a_traiter ON public.push_annulations
 ALTER TABLE public.push_annulations ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS push_annulations_lecture ON public.push_annulations;
 CREATE POLICY push_annulations_lecture ON public.push_annulations FOR SELECT USING (user_id = auth.uid());
+-- droits : serveur seulement — push_annulations : l'app ne la lit pas (tout passe par les fonctions SECURITY DEFINER de push-ventes) ; aucun droit anon/authenticated, service_role en lecture (régime du 30/10)
+REVOKE ALL ON TABLE public.push_annulations FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON TABLE public.push_annulations TO service_role;
 
 -- 2. Les propositions encore ouvertes, lues vite (6 lignes sur 1 389 le 25/10).
 CREATE INDEX IF NOT EXISTS remises_en_vente_proposees ON public.remises_en_vente (user_id) WHERE statut = 'proposee';
