@@ -466,7 +466,13 @@ function fetchEspion(reponses) {
     appels.push({ url: String(url), method: init.method ?? "GET" });
     const u = String(url); const cle = Object.keys(reponses).find((k) => u.endsWith(k)) ?? Object.keys(reponses).filter((k) => u.includes(k)).sort((a, b) => b.length - a.length)[0];
     const corps = cle ? reponses[cle] : {};
-    return { status: 200, ok: true, json: async () => corps, text: async () => JSON.stringify(corps), arrayBuffer: async () => new Uint8Array([37, 80, 68, 70]).buffer };
+    // (24/10) Un corps RÉALISTE : un JSON rend ses octets de JSON (type application/json) ; un fichier brut
+    // ({ __octets: [...], type }) rend ses octets tels quels — la lecture du bordereau se fait en octets.
+    const brut = corps && Array.isArray(corps.__octets);
+    const octets = brut ? new Uint8Array(corps.__octets) : new TextEncoder().encode(JSON.stringify(corps));
+    const type = brut ? (corps.type ?? "application/pdf") : "application/json";
+    return { status: 200, ok: true, headers: { get: (h) => (String(h).toLowerCase() === "content-type" ? type : null) },
+      json: async () => corps, text: async () => JSON.stringify(corps), arrayBuffer: async () => octets.buffer };
   };
   return { f, appels };
 }

@@ -51,7 +51,12 @@ function espion(table) {
     if (rep === "reseau") throw new TypeError("Failed to fetch");
     const corps = rep.corps ?? {};
     const texte = typeof corps === "string" ? corps : JSON.stringify(corps);
-    return { status: rep.status ?? 200, ok: (rep.status ?? 200) < 300, url: u, json: async () => corps, text: async () => texte, arrayBuffer: async () => new Uint8Array([37, 80, 68, 70]).buffer };
+    // (24/10) Un corps RÉALISTE : JSON → ses octets de JSON ; fichier brut ({ __octets, type }) → ses octets.
+    const brut = corps && typeof corps === "object" && Array.isArray(corps.__octets);
+    const octets = brut ? new Uint8Array(corps.__octets) : new TextEncoder().encode(texte);
+    const type = brut ? (corps.type ?? "application/pdf") : (typeof corps === "string" ? "text/html" : "application/json");
+    return { status: rep.status ?? 200, ok: (rep.status ?? 200) < 300, url: u, headers: { get: (h) => (String(h).toLowerCase() === "content-type" ? type : null) },
+      json: async () => corps, text: async () => texte, arrayBuffer: async () => octets.buffer };
   };
   return { f, appels };
 }

@@ -51,6 +51,7 @@
     "selftest:messagerie-app": "node scripts/messagerie-app-selftest.mjs",
     "selftest:messagerie-generation": "node scripts/messagerie-generation-selftest.mjs",
     "selftest:bordereau-impression": "node scripts/bordereau-impression-selftest.mjs",
+    "selftest:bordereau-fichier-octets": "node scripts/bordereau-fichier-octets-selftest.mjs",
     "selftest:depart-compte": "node --import ./scripts/loader-ext.mjs scripts/depart-compte-selftest.mjs",
     "selftest:lbc-jeton-releve": "node --import ./scripts/loader-ext.mjs scripts/lbc-jeton-releve-selftest.mjs",
     "selftest:encart-cloud-bientot": "node --import ./scripts/loader-ext.mjs scripts/encart-cloud-bientot-selftest.mjs",

@@ -1597,16 +1597,67 @@
     if (p.derniereMarche !== true) {
       return { ok: false, etape: "derniere_marche", motif: "fermee", prepare: { url: derniere, options_http: options.http }, etapes };
     }
-    const f = await lire(derniere);
-    const label = f.j?.file?.label ?? null;
-    if (label) return { ok: true, base64: label, nom: f.j?.file?.filename ?? "bordereau.pdf", etapes };
-    if (f.http === 403 || f.http === 429) return { ok: false, etape: "fichier", motif: `http_${f.http}`, bot: true, etapes };
+    // ── (24/10, test réel du bordereau — Nico) LE FICHIER SE LIT EN OCTETS, JAMAIS D'APRÈS UNE FORME SUPPOSÉE ──
+    // 8 demandes, 0 fichier : la lecture n'acceptait que {file:{label (base64)}} (lu dans le code du site, jamais vu
+    // en réponse réelle) ; `r.json()` sur un PDF rendait null → « http_200_puis_200 », 36 passages. Désormais un PDF,
+    // PNG ou JPEG BRUT est pris tel quel ; un JSON donne son base64 (file.label, label, file.content, file.data) ou son
+    // lien (label_url, file.url, url — suivi UNE fois : domaine Vinted avec la session, ailleurs sans) ; un échec dit
+    // la FORME vue (route, http, type, taille, clés — jamais une valeur), écrite à la suite du motif.
+    const versBase64 = (o) => { let s = ""; for (let i = 0; i < o.length; i += 0x8000) s += String.fromCharCode.apply(null, Array.from(o.subarray(i, i + 0x8000))); return btoa(s); };
+    const estFichier = (o) => o.length >= 4 && ((o[0] === 0x25 && o[1] === 0x50 && o[2] === 0x44 && o[3] === 0x46)
+      || (o[0] === 0x89 && o[1] === 0x50 && o[2] === 0x4e && o[3] === 0x47) || (o[0] === 0xff && o[1] === 0xd8 && o[2] === 0xff));
+    const formes = [];
+    const lireFichier = async (chemin, externe = false) => {
+      etapes.push(`GET ${externe ? "(lien hors de la page)" : String(chemin).split("?")[0]}`);
+      const init = { credentials: externe ? "omit" : "include", headers: { Accept: "application/pdf, image/*, application/json" }, cache: "no-store" };
+      let r = await fetch(chemin, init).catch(() => null);
+      if (r && r.status === 401 && !renouvele && !externe) {
+        renouvele = true;
+        if (await renouveler()) r = await fetch(chemin, init).catch(() => null);
+      }
+      const route = externe ? "lien" : String(chemin).replace(/^.*\/shipment\//, "").replace(/\d+/g, "#").slice(0, 40);
+      if (!r) { formes.push(`${route}:0`); return { http: 0 }; }
+      const type = String(r.headers?.get?.("content-type") ?? "").split(";")[0].trim().toLowerCase();
+      let o = new Uint8Array(0);
+      try { o = new Uint8Array(await r.arrayBuffer()); } catch { /* corps illisible */ }
+      if (r.status >= 200 && r.status < 300 && estFichier(o)) {
+        formes.push(`${route}:${r.status} fichier ${o.length}o`);
+        return { http: r.status, base64: versBase64(o), type };
+      }
+      let j = null;
+      if (o.length && (type.includes("json") || o[0] === 0x7b)) { try { j = JSON.parse(new TextDecoder().decode(o)); } catch { j = null; } }
+      if (j && typeof j === "object") {
+        const b64 = [j?.file?.label, j?.label, j?.file?.content, j?.file?.data, j?.data?.label]
+          .find((v) => typeof v === "string" && v.trim().length >= 4);
+        const lien = [j?.label_url, j?.file?.url, j?.file?.label_url, j?.url, j?.data?.label_url]
+          .find((v) => typeof v === "string" && /^https:\/\//i.test(v));
+        const cles = [...Object.keys(j).slice(0, 8), ...(j.file && typeof j.file === "object" ? Object.keys(j.file).slice(0, 6).map((k) => `file.${k}`) : [])];
+        formes.push(`${route}:${r.status} json{${cles.join(",")}}`);
+        if (b64) return { http: r.status, base64: b64.trim(), nom: j?.file?.filename ?? null };
+        if (lien) return { http: r.status, lien };
+        return { http: r.status };
+      }
+      const html = /^\s*</.test(new TextDecoder().decode(o.subarray(0, 64)));
+      formes.push(`${route}:${r.status} ${html ? "html" : (type || "?")} ${o.length}o${r.redirected ? " redirige" : ""}`);
+      return { http: r.status };
+    };
+    // La session ne part qu'à la MÊME adresse que la page (un CDN ou un tiers : sans, un lien signé n'en a pas besoin).
+    const suivreLien = async (res) => {
+      if (!res?.lien || res.base64) return res;
+      const ici = typeof location === "object" && location?.origin ? location.origin : "https://www.vinted.fr";
+      let memeOrigine = false;
+      try { memeOrigine = new URL(res.lien).origin === ici; } catch { return res; }
+      const s = await lireFichier(res.lien, !memeOrigine);
+      return { ...s, http: res.http };
+    };
+    const f = await suivreLien(await lireFichier(derniere));
+    if (f.base64) return { ok: true, base64: f.base64, nom: f.nom ?? "bordereau.pdf", etapes, formes };
+    if (f.http === 403 || f.http === 429) return { ok: false, etape: "fichier", motif: `http_${f.http}`, bot: true, etapes, formes };
     // (16/10 soir) Pas de fichier par pdf_label : le recours digital_label est
     // demandé UNE fois, jamais plus. Forme à prouver à la première vraie commande.
-    const q = await lire(`/api/v2/transactions/${encodeURIComponent(p.transactionId)}/shipment/digital_label`);
-    const code = q.j?.file?.label ?? null;
-    if (code) return { ok: true, base64: code, nom: q.j?.file?.filename ?? "bordereau-code.png", numerique: true, etapes };
-    return { ok: false, etape: "fichier", motif: `http_${f.http}_puis_${q.http}`, bot: q.http === 403 || q.http === 429, etapes };
+    const q = await suivreLien(await lireFichier(`/api/v2/transactions/${encodeURIComponent(p.transactionId)}/shipment/digital_label`));
+    if (q.base64) return { ok: true, base64: q.base64, nom: q.nom ?? "bordereau-code.png", numerique: true, etapes, formes };
+    return { ok: false, etape: "fichier", motif: `http_${f.http}_puis_${q.http} · ${formes.join(" | ")}`.slice(0, 120), bot: q.http === 403 || q.http === 429, etapes, formes };
   }
 
   // Leboncoin (code du site + vente terminée de Nico, 16/10) : la vente doit
