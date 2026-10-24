@@ -18,6 +18,7 @@ import Icone, { IconeCategorie } from '../ecrans/Icone';
 import EncartPremium from '../ecrans/EncartPremium';
 import VentesVide from '../ecrans/vides/VentesVide';
 import { NomPlateforme } from '../ecrans/pleins/communs';
+import { lireToutesPages } from '../utils/lireToutesPages';
 import { ENCRE2, DISCRET, PECHE_ENCRE, libellePct } from '../ecrans/pleins/jetons';
 import {
   plateformeVente, plateformesPresentes, venteDeLaPlateforme, grouperParMois, margeMoyenne,
@@ -625,12 +626,14 @@ const VentesTab = memo(function VentesTab({
   async function ventesExistantes(ids){
     if(!ids.length) return new Set();
     const vus=new Set();
-    for(let i=0;i<ids.length;i+=200){
-      const {data,error}=await supabase.from('ventes').select('inventaire_id')
-        .eq('user_id',user?.id).in('inventaire_id',ids.slice(i,i+200));
-      if(error) return null;
-      for(const r of data||[]) vus.add(String(r.inventaire_id));
-    }
+    try{
+      for(let i=0;i<ids.length;i+=200){
+        const lot=ids.slice(i,i+200);
+        const lignes=await lireToutesPages(()=>supabase.from('ventes').select('id,inventaire_id')
+          .eq('user_id',user?.id).in('inventaire_id',lot));
+        for(const r of lignes) vus.add(String(r.inventaire_id));
+      }
+    }catch{ return null; }
     return vus;
   }
 
