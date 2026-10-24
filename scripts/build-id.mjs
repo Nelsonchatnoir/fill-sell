@@ -1391,7 +1391,8 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // des syncs (0.6.34), jobs de publication/republication/suppression, partage
 // d'onglet, marquage des disparitions.
 // MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
-export const EXTENSION_LAST_COMMIT = '2026-10-24T18:55:36Z'; // 0.6.140 (24/10 nuit, 99fe598 — UTC VRAI lu par EPOCH, %ct 1792868136 ; posée dans un commit qui ne touche PAS chrome-extension/) : état eBay choisi parmi ceux du rayon, commandes Vinted relevées hors bêta (bordereaux Vinted à tous).
+export const EXTENSION_LAST_COMMIT = '2026-10-24T21:17:13Z'; // 0.6.141 (24/10 nuit, 5958b37 — UTC VRAI lu par EPOCH, %ct 1792876633 ; posée dans un commit qui ne touche PAS chrome-extension/) : un pré-rempli précis de Leboncoin n'est jamais écrasé par une valeur de l'IA (fillCriterionSafe, origineIa).
+// (avant) 2026-10-24T18:55:36Z = 0.6.140 (24/10 nuit, 99fe598 — UTC VRAI lu par EPOCH, %ct 1792868136 ; posée dans un commit qui ne touche PAS chrome-extension/) : état eBay choisi parmi ceux du rayon, commandes Vinted relevées hors bêta (bordereaux Vinted à tous).
 // (avant) 2026-10-24T17:21:07Z = 0.6.139 (24/10 soir, 9aa6715 — UTC VRAI lu par EPOCH, %ct 1792862467 ; posée dans un commit qui ne touche PAS chrome-extension/) : mur à la suppression arbitré, onglet gelé jamais bloquant.
 // (avant) 2026-10-24T16:31:26Z = 0.6.138 (24/10 soir, 80b728b — UTC VRAI lu par EPOCH, %ct 1792859486 ; posée dans un commit qui ne touche PAS chrome-extension/) : chaque commande en cours a son tour de détail, un état connu n'est jamais effacé.
 // (avant) 2026-10-24T16:17:23Z = 0.6.137 (24/10 soir, 772133e — UTC VRAI lu par EPOCH, %ct 1792858643 ; posée dans un commit qui ne touche PAS chrome-extension/) : l'étiquette Vinted (lien S3 présigné) lue par la fonction bordereau-fichier.
