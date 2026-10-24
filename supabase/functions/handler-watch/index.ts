@@ -69,7 +69,9 @@ import { loginsDesBoutiques } from "../_shared/boutique-connectee.js";
 import { republicationFinie, champsRepublicationFinie } from "../_shared/republication-finie.js";
 import { trancherQuestions } from "../_shared/questions-tranchees.ts";
 import { depotMuetDepuis } from "../_shared/depot-muet.js";
-import { candidatesDepuisRetrait, jugerCandidates, urlsPhotos, patchRattachementRecreation } from "../_shared/recreation-deja-partie.js";
+import { urlsPhotos } from "../_shared/recreation-deja-partie.js";
+import { estDepotCoupe, reperesDuJob, candidatesDepotCoupe, urlsCandidate, decisionDepotCoupe, appariementMutuel, patchRelanceDepotCoupe, patchRattachementDepotCoupe } from "../_shared/depot-coupe-tranche.js";
+import { lienDepuisId } from "../_shared/annonce-lien.ts";
 import { titreNommeAnnonce, decisionAlignementTitre, CONTRADICTION_IDENTITE_RE } from "../_shared/titre-aligne.js";
 import { urlsAnnonce } from "../_shared/depot-sans-numero.js";
 
@@ -2574,63 +2576,123 @@ serve(async (req) => {
     console.error("[handler-watch] titres alignés :", (e as Error)?.message ?? e);
   }
 
-  // ══ UNE REMISE EN LIGNE « PEUT-ÊTRE DÉJÀ PARTIE » SE TRANCHE PAR LES PHOTOS (15/10 soir) ══
-  // (_shared/recreation-deja-partie.js, jugerCandidates) camille.ferren 5b6c8cc9 :
-  // question posée à 12:45 sur l'annonce 3288747290, apparue pendant la remise
-  // en ligne avec EXACTEMENT les photos de notre copie. get-pending-jobs ne
-  // juge que les jobs en file ; une question déjà posée reste jugée ici dès
-  // que les empreintes existent : identité certaine → rattachée (published),
-  // sans redépôt ; sinon la question reste. Borné : 20 jobs, aucun redépôt.
-  let dejaPartiesRattachees = 0;
+  // ══ UN DÉPÔT OU UNE REMISE EN LIGNE COUPÉS SE TRANCHENT AU RELEVÉ (25/10 nuit, Nico) ══
+  // (_shared/depot-coupe-tranche.js) Remplace la passe du 15/10 soir (camille.ferren 5b6c8cc9, rattachement par
+  // les photos seulement). Une question « peut-être déjà partie » (remise en ligne Leboncoin/Beebs :
+  // recreation_deja_partie ; dépôt Beebs : depot_deja_parti) est relue après chaque relevé :
+  //   · annonce apparue depuis l'essai, encore relevée, désignée par l'identifiant ou les photos de NOTRE copie
+  //     → rattachée (published), aucun redépôt ;
+  //   · photos sans empreinte → calculées (empreintes-urls), rejugé au passage suivant ;
+  //   · plus aucune annonce en ligne (deux relevés complets sans elle) ou aucune apparue → le job repart UNE fois ;
+  //   · une annonce encore en ligne qu'aucune preuve ne désigne → la question reste.
+  // louis (21/10, 3292326913 et 3292489182 vues deux fois puis jamais plus) attendait depuis 4 jours.
+  // Borné : 15 jobs tirés au hasard par passage, 2 appels d'empreintes, aucune ligne inchangée réécrite.
+  let coupesRattachees = 0, coupesRelancees = 0, coupesEmpreintes = 0;
   try {
-    const { data: enDoute } = await supabase.from("cross_post_jobs")
+    const { data: enDouteBrut } = await supabase.from("cross_post_jobs")
       .select("id, user_id, platform, action, status, title, error, inventaire_id, photos, created_at, platform_fields")
-      .eq("action", "republish").eq("status", "needs_user")
-      .eq("platform_fields->>needs_user_source", "recreation_deja_partie")
-      .order("created_at", { ascending: true }).limit(20);
+      .eq("status", "needs_user").in("platform", ["leboncoin", "beebs"])
+      .in("platform_fields->>needs_user_source", ["recreation_deja_partie", "depot_deja_parti"])
+      .order("created_at", { ascending: true }).limit(200);
     // deno-lint-ignore no-explicit-any
-    for (const j of (enDoute ?? []) as any[]) {
-      const pf = (j.platform_fields ?? {}) as Record<string, unknown>;
-      if (pf.republish_step !== "deleted" || !pf.deleted_at) continue;
-      const ancienId = String(pf.old_platform_listing_id ?? "").trim()
-        || (String(pf.old_listing_url ?? "").match(/(\d{6,})(?:[/?#]|$)/)?.[1] ?? "");
-      const { data: lignes } = await supabase.from("annonces_plateforme")
-        .select("listing_id, url, titre, prix, photo_url, capture, statut_plateforme, job_id, inventaire_id, created_at, disparu_le")
-        .eq("user_id", j.user_id).eq("platform", j.platform).gte("created_at", String(pf.deleted_at)).limit(50);
-      const candidates = candidatesDepuisRetrait({ jobId: j.id, ancienId, deletedAt: pf.deleted_at, lignes: lignes ?? [], inventaireId: j.inventaire_id ?? null });
-      if (!candidates.length) continue;
-      const urlsCopie = urlsPhotos(j.photos);
+    const enDoute = ((enDouteBrut ?? []) as any[]).filter((j) => estDepotCoupe(j))
+      .map((j) => ({ j, r: Math.random() })).sort((a, b) => a.r - b.r).slice(0, 15).map((x) => x.j);
+    // deno-lint-ignore no-explicit-any
+    const groupes = new Map<string, any[]>();
+    for (const j of enDoute) groupes.set(`${j.user_id}|${j.platform}`, [...(groupes.get(`${j.user_id}|${j.platform}`) ?? []), j]);
+    const urlEmpreintes = `${Deno.env.get("SUPABASE_URL")}/functions/v1/empreintes-urls`;
+    const secretEmpreintes = Deno.env.get("CRON_SECRET") ?? "";
+    let appelsEmpreintes = 0;
+    for (const [cle, jobs] of groupes) {
+      const [uid, plateforme] = cle.split("|");
+      const debuts = jobs.map((j) => reperesDuJob(j).depuis).filter(Number.isFinite) as number[];
+      if (!debuts.length) continue;
+      // Les lignes du compte depuis le plus ancien retrait / essai (et 3 jours avant pour le plancher des numéros Beebs).
+      const depuisLignes = new Date(Math.min(...debuts) - 3 * 86_400_000).toISOString();
+      const [{ data: runsC }, { data: lignesC }] = await Promise.all([
+        supabase.from("vinted_sync_runs")
+          .select("id, status, started_at, finished_at, items_vus, total_entries, erreur, kind")
+          .eq("user_id", uid).eq("kind", "annonces").eq("platform", plateforme)
+          .order("started_at", { ascending: false, nullsFirst: false }).limit(15),
+        supabase.from("annonces_plateforme")
+          .select("user_id, listing_id, url, statut_plateforme, photo_url, capture, job_id, inventaire_id, created_at, vu_le, disparu_le, retiree_le")
+          .eq("user_id", uid).eq("platform", plateforme).gte("created_at", depuisLignes)
+          .order("created_at", { ascending: true }).limit(1000),
+      ]);
       // deno-lint-ignore no-explicit-any
-      const urlsParCandidate = new Map<string, string[]>(candidates.map((c: any) => [String(c.listing_id),
-        [...new Set([...urlsPhotos(c.capture?.photos, 4), ...urlsPhotos([c.photo_url], 1)])]]));
-      const toutes = [...new Set([...urlsCopie, ...[...urlsParCandidate.values()].flat()])];
-      if (!urlsCopie.length || !toutes.length) continue;
-      const { data: emp } = await supabase.from("photo_empreintes").select("url, dhash, phash, variantes").in("url", toutes.slice(0, 200));
+      let lignes = (lignesC ?? []) as any[];
+      // Boutique partagée : la dernière vue d'une candidate se lit aussi sous les autres comptes.
+      const idsCand = [...new Set(jobs.flatMap((j) => candidatesDepotCoupe(j, lignes).map((c: Record<string, unknown>) => String(c.listing_id))))];
+      if (idsCand.length) {
+        const { data: autres } = await supabase.from("annonces_plateforme")
+          .select("user_id, listing_id, vu_le, disparu_le").eq("platform", plateforme).in("listing_id", idsCand.slice(0, 200)).neq("user_id", uid);
+        // deno-lint-ignore no-explicit-any
+        lignes = [...lignes, ...((autres ?? []) as any[])];
+      }
+      // Les empreintes : notre copie et les candidates du compte.
+      const urls = [...new Set(jobs.flatMap((j) => [...urlsPhotos(j.photos), ...candidatesDepotCoupe(j, lignes).flatMap((c) => urlsCandidate(c))]))];
+      const { data: empC } = urls.length
+        ? await supabase.from("photo_empreintes").select("url, dhash, phash, variantes").in("url", urls.slice(0, 200))
+        : { data: [] };
       // deno-lint-ignore no-explicit-any
-      const parUrl = new Map(((emp ?? []) as any[]).map((e) => [String(e.url), e]));
-      const juge = jugerCandidates({
-        candidates, listingIdProuve: String(pf.new_platform_listing_id ?? "") || null,
-        empreintesCopie: urlsCopie.map((u) => parUrl.get(u)).filter(Boolean),
-        empreintesParCandidate: new Map([...urlsParCandidate].map(([id, us]) => [id, us.map((u) => parUrl.get(u)).filter(Boolean)])),
+      const parUrl = new Map(((empC ?? []) as any[]).map((e) => [String(e.url), e]));
       // deno-lint-ignore no-explicit-any
-      }) as any;
-      if (juge.verdict !== "certaine") continue;
-      const patch = patchRattachementRecreation(pf, juge.retenue, {
-        trace: { le: new Date().toISOString(), verdict: "certaine", candidates: candidates.map((c: Record<string, unknown>) => String(c.listing_id)) },
-        preuve: juge.preuve, photos: juge.photos ?? null, posePar: "handler-watch (remise en ligne déjà partie, tranchée par les photos)",
-      });
-      // deno-lint-ignore no-explicit-any
-      const pfP = patch.platform_fields as any;
-      if (j.error) pfP.erreurs_archivees = archiverErreur(pfP.erreurs_archivees, j.error, j.status, "handler-watch (annonce déjà partie : identité prouvée)");
-      const { data: maj } = await supabase.from("cross_post_jobs").update(patch).eq("id", j.id).eq("status", "needs_user").select("id");
-      if (maj?.length) {
-        dejaPartiesRattachees++;
-        console.log(`[handler-watch] republication ${String(j.id).slice(0, 8)} (${j.platform}) : annonce ${String(juge.retenue?.listing_id)} déjà partie, ${juge.preuve} → rattachée (published), aucun redépôt`);
+      const decisions = new Map<string, any>();
+      for (const j of jobs) decisions.set(String(j.id), decisionDepotCoupe({ job: j, lignes, runs: runsC ?? [], empreinte: (u: string) => parUrl.get(u) }));
+      for (const [id, d] of appariementMutuel(decisions)) {
+        const j = jobs.find((x) => String(x.id) === id);
+        if (!j) continue;
+        const court = id.slice(0, 8);
+        if (d.decision === "empreintes") {
+          if (appelsEmpreintes >= 2 || !secretEmpreintes) continue;
+          appelsEmpreintes++;
+          try {
+            const rep = await fetch(urlEmpreintes, { method: "POST", headers: { "content-type": "application/json", "x-cron-secret": secretEmpreintes }, body: JSON.stringify({ urls: d.urls }) });
+            const corps = await rep.json().catch(() => null);
+            coupesEmpreintes += Number(corps?.calculees) || 0;
+            console.log(`[handler-watch] dépôt coupé ${court} (${plateforme}) : ${d.urls.length} photo(s) à empreinter → ${rep.status} ${JSON.stringify(corps ?? {}).slice(0, 160)} — rejugé au passage suivant`);
+          } catch (e) {
+            console.warn(`[handler-watch] dépôt coupé ${court} : empreintes non calculées (${(e as Error)?.message ?? e})`);
+          }
+          continue;
+        }
+        if (d.decision === "rattacher") {
+          const patch = patchRattachementDepotCoupe(j, d, { lienDepuisId, posePar: "handler-watch" });
+          // deno-lint-ignore no-explicit-any
+          const pfP = patch.platform_fields as any;
+          if (j.error) pfP.erreurs_archivees = archiverErreur(pfP.erreurs_archivees, j.error, j.status, `handler-watch (dépôt coupé : annonce ${d.annonce?.listing_id} déjà partie, ${d.preuve})`);
+          const { data: maj } = await supabase.from("cross_post_jobs").update(patch).eq("id", j.id).eq("status", "needs_user").select("id");
+          if (maj?.length) {
+            coupesRattachees++;
+            if (j.action === "publish") {
+              await supabase.from("annonces_plateforme").update({ job_id: j.id, inventaire_id: j.inventaire_id ?? null, source_rapprochement: "job", updated_at: new Date().toISOString() })
+                .eq("user_id", uid).eq("platform", plateforme).eq("listing_id", String(d.annonce?.listing_id)).is("job_id", null).is("inventaire_id", null);
+            }
+            console.log(`[handler-watch] dépôt coupé ${court} (${plateforme} ${j.action}) : annonce ${d.annonce?.listing_id} déjà partie (${d.preuve}) → RATTACHÉE (published), aucun redépôt`);
+          }
+          continue;
+        }
+        if (d.decision === "relancer") {
+          const patch = patchRelanceDepotCoupe(j, d, { posePar: "handler-watch" });
+          // deno-lint-ignore no-explicit-any
+          const pfP = patch.platform_fields as any;
+          if (j.error) pfP.erreurs_archivees = archiverErreur(pfP.erreurs_archivees, j.error, j.status, `handler-watch (dépôt coupé tranché au relevé : ${d.raison})`);
+          const { data: maj } = await supabase.from("cross_post_jobs").update(patch).eq("id", j.id).eq("status", "needs_user").select("id");
+          if (maj?.length) {
+            coupesRelancees++;
+            await supabase.from("usage_logs").insert({ user_id: uid, feature: "depot_coupe_tranche",
+              metadata: { job_id: j.id, platform: plateforme, action: j.action, decision: "relancer", raison: d.raison, releve: d.releve, absentes: d.absentes } });
+            console.log(`[handler-watch] dépôt coupé ${court} (${plateforme} ${j.action}) : ${d.raison} → RELANCÉ une fois (relevé ${String(d.releve).slice(0, 8)})`);
+          }
+          continue;
+        }
       }
     }
-    if (dejaPartiesRattachees) console.log(`[handler-watch] ${dejaPartiesRattachees} remise(s) en ligne déjà partie(s) rattachée(s) par preuve`);
+    if (coupesRattachees || coupesRelancees || coupesEmpreintes) {
+      console.log(`[handler-watch] dépôts coupés : ${coupesRattachees} rattaché(s), ${coupesRelancees} relancé(s), ${coupesEmpreintes} empreinte(s) calculée(s)`);
+    }
   } catch (e) {
-    console.error("[handler-watch] remises en ligne déjà parties :", (e as Error)?.message ?? e);
+    console.error("[handler-watch] dépôts coupés :", (e as Error)?.message ?? e);
   }
 
   // ══ UNE REMISE EN LIGNE BLOQUÉE REPART SEULE DÈS QUE LA CAUSE EST LEVÉE (15/10 soir) ══
