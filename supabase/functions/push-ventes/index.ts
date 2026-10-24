@@ -1,8 +1,10 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import {
-  type Appareil, APNS_HOTES, type BilanNote, type ConfigApns, envoyerApns, envoyerFcm, envoyerNote, lireConfigFcm,
-  prixVenteConnu, resumerPourLaBase,
+  type Appareil, APNS_HOTES, type BilanNote, type ConfigApns, type ConfigFcm, envoyerApns, envoyerFcm, envoyerNote,
+  lireConfigFcm, prixVenteConnu, resumerPourLaBase,
 } from "../_shared/push-envoi.ts";
+// (25/10, point 3 de Nico) « Vente annulée — <titre> : remettre en vente ? » : le texte, pur (selftest push-annulation).
+import { langueNotif, messageAnnulation } from "../_shared/push-annulation.js";
 import { envoyerEmail } from "../_shared/desinscription.ts";
 import { langue, mailVentes } from "../_shared/emails-fillsell.ts";
 // (24/10, lot « zéro blocage », A9) Les ventes d'un même passage partent dans UN mail.
@@ -169,6 +171,62 @@ async function envoyerMailVentesGroupe(
 // Notifications de SERVICE uniquement (règles Apple/Google) : ce canal ne
 // porte que des ventes, jamais de marketing.
 
+// ═══════════════════════════════════════════════════════════════════════════
+// (25/10, point 3 de Nico) « VENTE ANNULÉE — <titre> : REMETTRE EN VENTE ? »
+// ═══════════════════════════════════════════════════════════════════════════
+// Source : les propositions de remise en vente nées d'une vente annulée (remises_en_vente « proposee », dépôt vendu
+// marqué « vente_annulee_remise » — Vinted : vente_commande_annulee_vinted ; Leboncoin :
+// vente_transaction_annulee_leboncoin). LA BASE DÉCIDE (push_annulations_a_envoyer, migration 20261025040000) :
+//   · UNE note par annulation (table push_annulations, clé unique user_id + cle — la commande, sinon la vente) ;
+//   · seulement une annulation NEUVE : après l'armement (coin_config.push_annulations_depuis ; 0 = coupé), de moins
+//     de 24 h, et après 6 min de calme (un passage de remises_en_vente_tick ferme d'abord « déjà en vente » ce que le
+//     vendeur a remis en ligne lui-même) ;
+//   · jamais une proposition déjà acceptée, close, ni un article plus en stock (« ignoree », motif plus_proposee) ;
+//   · sans téléphone enregistré : « sans_appareil », rien ne part (le réglage « Notifications de ventes » d'un
+//     appareil = sa ligne appareils_push : couper l'oublie côté serveur).
+// Ici : le texte (_shared/push-annulation.js, langue du profil), l'envoi APNs/FCM (le même envoyerNote que les
+// ventes), le verdict (push_annulations_resultat : à réessayer 3 fois au plus, jetons morts oubliés comme pour une
+// vente). ⛔ AUCUN MAIL sur ce chemin. Traitées APRÈS les ventes : une panne ici ne retient jamais une vente.
+// Base d'avant la migration (fonction absente) : rien, aucune erreur.
+type NoteAnnulation = {
+  id: number; user_id: string; appareils: Appareil[]; lang?: string | null; plateforme?: string | null;
+  titre?: string | null; inventaire_id?: number | null; vente_id?: number | null; nb_articles?: number | null;
+};
+type BilanAnnulations = { notes: number; envoyees: number; a_reessayer: number; echecs: number; appareils_oublies: number; erreur?: string };
+
+const fonctionAbsente = (e: { code?: string } | null | undefined) => e?.code === "PGRST202" || e?.code === "42883";
+
+async function pousserAnnulations(
+  // deno-lint-ignore no-explicit-any
+  admin: any, cfgApns: ConfigApns | null, cfgFcm: ConfigFcm | null,
+): Promise<BilanAnnulations> {
+  const bilan: BilanAnnulations = { notes: 0, envoyees: 0, a_reessayer: 0, echecs: 0, appareils_oublies: 0 };
+  const { data, error } = await admin.rpc("push_annulations_a_envoyer", { p_limite: 20 });
+  if (error) {
+    if (!fonctionAbsente(error)) bilan.erreur = `annulations: ${String(error.message ?? "").slice(0, 120)}`;
+    return bilan;
+  }
+  const notes = (data?.notes ?? []) as NoteAnnulation[];
+  if (!notes.length) return bilan;
+  bilan.notes = notes.length;
+  const bilans: BilanNote[] = await Promise.all(notes.map((n) => {
+    const lang = langueNotif(n.lang);
+    return envoyerNote(fetch, cfgApns, cfgFcm, { id: n.id, appareils: n.appareils ?? [] }, lang, Date.now(), messageAnnulation(n, lang))
+      .catch((e) => ({ id: n.id, statut: "a_reessayer" as const, motif: `exception: ${String(e?.message ?? e).slice(0, 80)}`, resultat: [] }));
+  }));
+  const resume = resumerPourLaBase(bilans, notes.flatMap((n) => n.appareils ?? []));
+  const { data: fini, error: e2 } = await admin.rpc("push_annulations_resultat", { p: resume });
+  if (e2) bilan.erreur = `annulations resultat: ${String(e2.message ?? "").slice(0, 120)}`;
+  bilan.appareils_oublies = Number(fini?.appareils_oublies ?? 0);
+  for (const b of bilans) {
+    if (b.statut === "envoyee") bilan.envoyees++;
+    else if (b.statut === "a_reessayer") bilan.a_reessayer++;
+    else bilan.echecs++;
+  }
+  console.log(`[push-ventes] annulations ${JSON.stringify(bilans.map((b) => ({ id: b.id, push: b.statut })))}`);
+  return bilan;
+}
+
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { "Content-Type": "application/json" } });
 const dormir = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -235,10 +293,29 @@ Deno.serve(async (req) => {
   }
 
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+
+  // (25/10) SIMULATION « vente annulée » : ce qui partirait, à qui, avec quel texte — RIEN n'est envoyé, RIEN n'est
+  // écrit (push_annulations_apercu ne fait que lire ; aucun jeton dans la réponse, seulement le nombre d'appareils).
+  //   corps : { "simulation": "annulations", "user": "<uuid>" }   (user absent : tous les comptes)
+  if (corps?.simulation === "annulations") {
+    const user = typeof corps?.user === "string" && /^[0-9a-f-]{36}$/i.test(corps.user) ? corps.user : null;
+    const { data, error } = await admin.rpc("push_annulations_apercu", { p_user: user });
+    if (error) return json({ ok: false, erreur: String(error.message ?? "").slice(0, 200) }, fonctionAbsente(error) ? 404 : 500);
+    const candidates = (data?.candidates ?? []) as Array<Record<string, unknown>>;
+    return json({
+      ok: true, simulation: true, arme: data?.arme === true, depuis: data?.depuis ?? null,
+      apns_configure: cfgApns != null, fcm_configure: cfgFcm != null,
+      notifications: candidates.map((c) => ({
+        ...c, message: messageAnnulation({ ...c, id: "simulation" } as never, langueNotif(c.lang)),
+      })),
+    });
+  }
+
   const fin = Date.now() + 55_000;
   const rapport = {
     tours: 0, notes: 0, envoyees: 0, a_reessayer: 0, echecs: 0, appareils_oublies: 0,
-    mails_envoyes: 0, mails_deja: 0, mails_a_reessayer: 0, mails_sans_adresse: 0, erreurs: [] as string[],
+    mails_envoyes: 0, mails_deja: 0, mails_a_reessayer: 0, mails_sans_adresse: 0,
+    annulations: null as BilanAnnulations | null, erreurs: [] as string[],
   };
 
   // Une preuve illisible arrête l'appel après ce tour : la reprise attend le
@@ -410,6 +487,17 @@ Deno.serve(async (req) => {
       id: n.id, push: bilans.find((b) => b.id === n.id)?.statut ?? null, mail: mails.get(n.id)?.statut ?? null,
     })))}`);
     if (finirApres) break;
+  }
+
+  // (25/10) Les annulations, APRÈS les ventes (jamais elles ne retardent une vente ni son mail), s'il reste du temps ;
+  // sinon le passage suivant (cron push-annulations-1min) les prend.
+  if (Date.now() < fin - 8_000) {
+    try {
+      rapport.annulations = await pousserAnnulations(admin, cfgApns, cfgFcm);
+      if (rapport.annulations.erreur) rapport.erreurs.push(rapport.annulations.erreur);
+    } catch (e) {
+      rapport.erreurs.push(`annulations : ${String((e as Error)?.message ?? e).slice(0, 120)}`);
+    }
   }
   return json({ ok: rapport.erreurs.length === 0, ...rapport });
 });

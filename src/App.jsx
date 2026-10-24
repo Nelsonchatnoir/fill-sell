@@ -2653,10 +2653,22 @@ export default function App({ loginOnly = false }){
   // Rien du tout sans le module natif (pushDisponible, dans le hook).
   const propositionPush=usePropositionPush({userId:user?.id,actif:!loading&&!showOnboardingFlow&&!loginOnly&&!listingStepperOpen&&!editItem,aVente:sales.length>0,versionApp:VERSION_APP});
   // L'appui sur une notification ouvre l'article (sa fiche), sinon les ventes.
+  // (25/10) « Vente annulée » (type vente_annulee) : le Stock, sur l'écran « Ventes annulées » de « À régler » (la carte
+  // et son bouton) — jamais la fiche : une publication ordinaire de là doublerait le « Republier » de Vinted.
   const [ouverturePush,setOuverturePush]=useState(null);
+  const [gesteStockDemande,setGesteStockDemande]=useState(null);
+  const gesteStockDemandeVu=useCallback(()=>setGesteStockDemande(null),[]);
   useEffect(()=>{ surOuverturePush((d)=>setOuverturePush({...d})); return()=>surOuverturePush(null); },[]);
   useEffect(()=>{
     if(!ouverturePush||!user) return;
+    if(ouverturePush.type==='vente_annulee'){
+      setTab(1);try{localStorage.setItem('tab','1');}catch{/* stockage indisponible */}
+      setGesteStockDemande({geste:'ventes_annulees'});
+      setOuverturePush(null);
+      // Les propositions relues UNE fois (l'annulation a pu arriver app ouverte) — jamais en boucle.
+      supabase.rpc('ventes_annulees_a_remettre').then(({data,error})=>{if(!error&&Array.isArray(data))setVentesAnnulees(data);}).catch(()=>{});
+      return;
+    }
     const id=Number(ouverturePush.inventaire_id);
     const it=Number.isFinite(id)&&id>0?items.find(i=>Number(i.id)===id):null;
     if(it){
@@ -8717,6 +8729,7 @@ export default function App({ loginOnly = false }){
             quotas={quotas}
             items={items} itemsAVerifier={itemsAVerifier} user={user} voiceUsedToday={voiceUsedToday}
             ventesAnnulees={ventesAnnulees} venteAnnuleeEnCours={venteAnnuleeEnCours} onRemettreVenteAnnulee={remettreApresAnnulation}
+            gesteDemande={gesteStockDemande} onGesteDemandeVu={gesteStockDemandeVu}
             extensionStatus={{ lastSeenAt: extensionLastSeenAt, build: extensionBuild, outdated: extensionOutdated }}
             extensionNeverSeen={extensionNeverSeen}
             ebayCompte={ebayCompte}

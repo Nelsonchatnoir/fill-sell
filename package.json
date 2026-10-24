@@ -452,6 +452,9 @@
     "selftest:cause-blocage": "node scripts/cause-blocage-selftest.mjs",
     "selftest:copie-republication-depop": "node scripts/copie-republication-depop-selftest.mjs",
     "selftest:ventes-un-mail": "node scripts/ventes-un-mail-selftest.mjs",
+    "selftest:push-annulation-app": "node scripts/push-annulation-app-selftest.mjs",
+    "selftest:push-annulation": "node scripts/push-annulation-selftest.mjs",
+    "push:essai-annulation": "node scripts/push/essai-notification-annulation.mjs",
     "selftest:titres-recevables": "node scripts/titres-recevables-selftest.mjs"
   },
   "dependencies": {

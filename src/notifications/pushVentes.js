@@ -77,8 +77,10 @@ export function surOuverturePush(fn) {
   surOuvrir = fn;
   if (fn && ouvertureEnAttente) { const d = ouvertureEnAttente; ouvertureEnAttente = null; fn(d); }
 }
+// (25/10) « Vente annulée — Remettre en vente ? » (type vente_annulee) : l'appui mène à l'écran « Ventes annulées ».
+const TYPES_OUVERTS = new Set(['vente', 'vente_annulee']);
 function ouvrir(donnees) {
-  if (!donnees || donnees.type !== 'vente') return;
+  if (!donnees || !TYPES_OUVERTS.has(donnees.type)) return;
   if (surOuvrir) surOuvrir(donnees); else ouvertureEnAttente = donnees;
 }
 

@@ -5763,6 +5763,8 @@ const StockTab = memo(function StockTab({
   itemsAVerifier = [],
   // (24/10 nuit, Nico) Les ventes annulées à remettre en vente : une ligne de « À régler » et son écran.
   ventesAnnulees = [], venteAnnuleeEnCours = null, onRemettreVenteAnnulee = null,
+  // (25/10) L'appui sur la notification « Vente annulée » (App.jsx) : { geste: 'ventes_annulees' }, rendu par onGesteDemandeVu.
+  gesteDemande = null, onGesteDemandeVu = null,
   // Compte eBay vu par App.jsx : { voieApi, etat, lu, voieApiReelle, rafraichir }.
   // voieApiReelle = la VOIE (miroir du trigger cross_post_jobs_voie_ebay), la
   // SEULE chose sur laquelle se règlent les textes qui parlent d'extension.
@@ -7390,6 +7392,14 @@ const StockTab = memo(function StockTab({
   // pré-cochée sur les articles filtrés et ne vise que X.
   const [publierContexte, setPublierContexte] = useState(null);
   const [gesteOuvert, setGesteOuvert] = useState(null);
+  // (25/10) Une demande venue de dehors (appui sur la notification « Vente annulée ») ouvre SON écran, une fois : elle
+  // est prise au rendu (pas d'effet qui écrit l'état), puis rendue à App, qui l'efface (un retour au Stock ne la rejoue pas).
+  const [demandePrise, setDemandePrise] = useState(null);
+  if (gesteDemande && gesteDemande !== demandePrise) {
+    setDemandePrise(gesteDemande);
+    setGesteOuvert(gesteDemande.geste ?? null);
+  }
+  useEffect(() => { if (gesteDemande) onGesteDemandeVu?.(); }, [gesteDemande, onGesteDemandeVu]);
   const [feuilleAjout, setFeuilleAjout] = useState(false);
   const [feuilleTri, setFeuilleTri] = useState(false);
   const [resumeSynchro, setResumeSynchro] = useState(false);

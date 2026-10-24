@@ -292,8 +292,10 @@ export async function envoyerNote(
   f: Fetch, cfgApns: ConfigApns | null, cfgFcm: ConfigFcm | null,
   note: { id: number | string; appareils: Appareil[] } & Parameters<typeof messageVente>[0],
   lang = "fr", maintenantMs = Date.now(),
+  // (25/10) Un message déjà fait (« Vente annulée », _shared/push-annulation.js). Absent : la vente, à l'identique.
+  message?: Message,
 ): Promise<BilanNote> {
-  const m = messageVente(note, lang);
+  const m = message ?? messageVente(note, lang);
   const res = await Promise.all((note.appareils ?? []).map(async (a) => {
     let r: ResultatAppareil;
     try {
