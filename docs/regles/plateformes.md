@@ -362,3 +362,14 @@ Rapport : `docs/enquetes/dix-points-1710/RAPPORT.md` (points 1, 4, 5, 7, 9).
   (`sansMarqueDeLaFiche`, aux trois arrivées de l'écran Publier) ; plus de « Autre » + « Marque : <éditeur> » pour un
   accessoire non officiel. Non tranché : `toy_type` de l'IA posé par-dessus le pré-rempli précis de Leboncoin.
 - Preuves : `selftest:lot-2410-soir` § 1, 2, 5 ; `selftest:jeux-video` (corpus +5).
+
+## 24/10 nuit (clôture) — Leboncoin : le pré-rempli précis de Leboncoin bat l'IA ; « Switch & Go » en Jeux & Jouets
+- **Une valeur devinée par l'IA n'écrase jamais un pré-rempli précis de Leboncoin** (décision 3 de Nico, insert Zombicide
+  de louis : « Jeux de société » remplacé par « Loisirs créatifs ») : l'app marque chaque valeur d'une passe IA
+  (`platform_fields.lbcAspectsOrigine[clé] = « ia »`, « dedie:lbcProduit » pour le champ dédié ; toute autre écriture
+  efface la marque, src/utils/origineLbc.js) ; l'extension 0.6.141 (`fillCriterionSafe`, `origineIa`) garde alors le
+  pré-rempli de Leboncoin. La valeur du vendeur (texte, réponse, annonce d'origine rejouée) garde la main ; marque : règle
+  à part. Une valeur précise jamais pré-remplie part comme avant.
+- **« Switch & Go » (VTech) → Leboncoin « Loisirs > Jeux & Jouets »** (même règle que eBay, icône 🦸).
+- **Beebs Bijoux (femme) : « Taille » est OBLIGATOIRE** (relevé DOM 11/10) → la question reste (décision 5 de Nico).
+

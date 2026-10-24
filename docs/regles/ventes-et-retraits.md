@@ -342,3 +342,26 @@ Rapport : `docs/enquetes/session-sans-nico-1810/lot4-ventes-lot-multi-exemplaire
   faite (gain estimé : 3 mails sur 47 ; elle retarderait tous les mails).
 - Constaté le 24/10 : la règle du 06/10 « preuve récente » laisse des ventes Vinted SANS mail (alice.fournival : 9 sur
   10) — à trancher par Nico.
+
+## 24/10 nuit — l'annulation d'une commande Vinted se voit en minutes, plus en heures (rapport `docs/enquetes/lot-2410-nuit/RAPPORT.md` § « Clôture »)
+- Le relevé des commandes (10 min) qui voit une commande Vinted « annulee » retire la vente qu'elle portait
+  (déclencheur `plateforme_commandes_vente_annulee_vinted`, migration 20261024235700) — même fonction que le relevé
+  quotidien des ventes (vente_commande_annulee_vinted), qui ne refait rien ensuite (idempotent). La remise en vente est
+  PROPOSÉE (carte « Vente annulée — Remettre en vente ? », 20261024234000), jamais automatique. 0 mail.
+- **La carte vit dans « À régler »** (Nico, 24/10 22:20) : une ligne « Vente annulée — Remettre en vente ? » par vente
+  proposée, comptée dans le badge « À régler » (`StockTab`, `nbVentesAnnulees`) ; plus de bandeau en tête de l'app.
+- **Contenu de la remise** (20261024235800, appliquée le 24/10 à 22:54:14) : le job de remise garde le contenu du job
+  vendu ; ce qui lui manque (titre, description, prix, photos) vient de la FICHE. Jamais une publication sans titre, sans
+  prix ou sans photo (avant : le short de Nico, job 6c02755d, copié d'une republication du 26/09).
+- **Remis en ligne directement sur la plateforme AVANT l'appui** (par le vendeur ou par la plateforme) : la proposition se
+  ferme « déjà en vente » (`motif = deja_en_vente`), rien n'est republié. Preuves acceptées : l'annonce vendue revue ACTIVE
+  par un relevé postérieur à l'annulation, une autre annonce en ligne de cette fiche (`annonces_plateforme`), une autre
+  annonce Vinted active de la fiche. Jamais le titre.
+- **Remise Vinted d'un article jamais publié depuis l'app** (importé du dressing puis republié par capture : aucun de ses
+  jobs ne porte `categoryPath`, l'extension refusait « categoryPath absent », rien n'était publié — le short de Nico, job
+  6c02755d) : `remise_en_vente_champs_capture` (migration 20261024235900) reprend catégorie, état, taille, marque, couleurs
+  (isbn, matière) de la DERNIÈRE capture de l'annonce de cette fiche (`vinted_republish_captures.libelles`, même lecture
+  que la recréation d'une republication) ; ce que porte le job vendu garde la main ; sans capture, comme avant.
+  Écrite le 24/10 vers 23:05, feu vert de Nico à 23:10:07 (« Feux vert go », après l'avoir vue) ; application refusée par le
+  mode auto de Claude Code (« Production Deploy ») — état final dans `docs/agents/etat-2026-10-01.md`.
+- **OUVERT (prochain lot)** : la notification push « Vente annulée » (Nico, 22:20) — elle passera par push-ventes.

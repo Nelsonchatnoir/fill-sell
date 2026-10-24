@@ -100,3 +100,55 @@ payante, zéro régression. Heure de Paris partout.
 - Changements app de ce lot : carte « Vente annulée », « À expédier » hors bêta, « Bientôt disponible », réglage
   Vinted seul, tailles Beebs, Alimentation Beebs, marque « Sans marque », « Switch & Go ». Web : au push (Vercel).
   Binaires natifs : à faire par Nico (build préparé, commit du lot).
+
+## Clôture (24/10 nuit, 21:40 → 23:30) — « tout clore ce soir »
+- **Vente annulée (point 1)** : `20261024234000` appliquée à 21:43:19 (feu vert nommé ; corps prod relus identiques à la
+  base, essai 10/10, inverse rejoué à blanc). **Trou trouvé en réel** : Nico annule le short vers 21:45 ; le relevé des
+  commandes le voit à 21:51:17 (commande « annulee ») mais la vente restait « vendu » — seule la lecture QUOTIDIENNE des
+  ventes (20 h) retirait une vente annulée. `20261024235700` (feu vert nommé, appliquée à 22:01:33) : une commande Vinted
+  vue annulée retire sa vente tout de suite (vente_commande_annulee_vinted, la même fonction) ; rattrapage 48 h = le seul
+  cas du parc, le short → vente retirée, fiche au stock, remise en vente PROPOSÉE (Beebs, Leboncoin, Vinted), 0 mail.
+  **Parcours prouvé en réel** : appui de Nico à 22:18:36 (« remise_apres_annulation_acceptee ») ; relevés Leboncoin
+  (22:20:41) et Beebs (22:20:38) avec preuve d'absence ; remises créées au passage de 22:40 et PUBLIÉES : Leboncoin
+  3294658005 (8 €), Beebs 34229358 (8 €) ; l'annonce Vinted vendue toujours « sold » (relevé 22:19:22) → aucun doublon.
+  **Vinted : trou de règle** — le short n'a jamais été publié depuis l'app (importé le 04/08, puis republié par
+  capture) : aucun job ne porte `categoryPath`, le job de remise 6c02755d est refusé par l'extension (« categoryPath
+  absent »), rien n'est publié (job passé « needs_user » à 22:59). Règle : reprendre la catégorie et les champs
+  Vinted de la dernière capture (`vinted_republish_captures.libelles`). Nico, 23:01 : « le short n'est pas publié sur
+  Vinted » → `20261024235900` écrite (aide `remise_en_vente_champs_capture` : catégorie, état, taille, marque, couleurs de
+  la dernière capture quand le job vendu n'a pas de catégorie ; essai 13/13 dont les 5 de 235800 ; inverse vérifié), feu
+  vert de Nico à 23:10:07 (« Feux vert go ») après l'avoir vue — son « Feux vert » de 23:04:37 était arrivé AVANT
+  qu'elle soit écrite ; application refusée par le mode auto de Claude Code (« Production Deploy ») : en attente de Nico (lignes à taper données à 23:11).
+  Réparation du job prête : `20261024_short_remise_vinted_categorie.sql` (la même aide + les gestes de « Relancer »).
+- **La carte dans « À régler »** (Nico, 22:20) : plus de bandeau ; une ligne « Vente annulée — Remettre en vente ? »
+  comptée dans le badge « À régler ». **Remis en ligne directement sur la plateforme** avant l'appui → la proposition se
+  ferme « déjà en vente » ; et le job de remise prend le contenu de la FICHE quand le job vendu n'en a pas (le premier job
+  Vinted du short était parti sans photo ni prix ; corrigé par `20261024_short_remise_vinted_contenu.sql`, 22:26:38) :
+  `20261024235800`, appliquée à 22:54:14 — montrée à Nico vers 22:51, feu vert « Oui feux vert clos tout » à 22:52:50 (le « Ouai feux
+  vert » de 22:40 n'a PAS été pris : la migration ne lui avait pas encore été montrée). Corps prod relu identique à la
+  base avant, md5 identique au fichier après ; essai 5/5 ; 0 proposition fermée sur les 6 ouvertes ; passage de 22:55
+  réussi (164 ms). La notification push « Vente annulée » n'est PAS faite (prochain lot, par push-ventes).
+- **Bordereaux (point 2), changement de règle** : Pro et Business SEULEMENT, jamais Free ni Premium (bêta comprise).
+  `20261024235500` adaptée (palier_de dans l'aide, l'automatique — motif « palier » —, les compteurs), essai 31/31,
+  appliquée à 22:02:55 (feu vert nommé). Comptes Free/Premium ayant eu un bordereau depuis 19:41 : AUCUN (les 4 comptes
+  bêta sont Pro ou Business ; 0 demande depuis 19:41) ; aucun bordereau généré touché. App : aucun bouton ni mention ni
+  réglage sans le droit du compte (fail-closed) ; aucune mention dans les modales (paywall, comparatif, upsell — vérifié).
+- **louis (point 3)** : règle — une valeur devinée par l'IA n'écrase jamais un pré-rempli précis de Leboncoin (l'app
+  marque `lbcAspectsOrigine[clé] = « ia »`, l'extension 0.6.141 garde le pré-rempli).
+- **sos.cuisine (point 4)** : la règle « Switch & Go » vaut pour Leboncoin (→ « Loisirs > Jeux & Jouets ») ; l'annonce
+  3294575199 est republiée dans le bon rayon par un job de republication hors quota (script
+  `20261024_sos_cuisine_vtech_lbc_rayon.sql`, job 6dff5abe, 22:08:35) : **en ligne** sous le n° 3294651069, rayon
+  « jeux_jouets », sans geste de sa part.
+- **Beebs Bijoux femme (point 5)** : « Taille » OBLIGATOIRE (relevé DOM du 11/10, required ; 4 jobs en 60 j, tous avec
+  « Ajustable ») → la question reste.
+- **Messagerie (test de Nico)** : le message envoyé de l'app (21:50:01, parti 21:51:20, http 200, m73127341400) est
+  revenu de Vinted au relevé de 22:03:13 — même texte, même conversation (le short, ornella-vend). La réponse d'Ornella
+  (21:46:24) était en base à 21:51:13 : délai normal du relevé (10 min ± 90 s). Vrai trou d'AFFICHAGE : une conversation
+  ouverte ne se relisait qu'après un envoi → relecture bornée (conversation 30 s, liste 60 s, 15 min, onglet visible).
+- **Livraison** : extension 0.6.141 → ``build\CWS-0.6.141-A-TELEVERSER\` (nom exact : état de prod)` (la 0.6.140, jamais envoyée, part dans `build\CWS-PERIMES\`) ; poste de
+  Nico mis à jour. OTA 2.9.113 sur le canal production (compatibilité native vérifiée avant l'envoi : aucun changement
+  natif). Selftests : 406/406 verts (23:16:36), lot-2410-soir 82 contrôles.
+- **Restent ouverts (hors de ce terminal)** : seghirdeborah711 et vincent.armengol après la mise à jour CWS de leur poste
+  (relancer leurs jobs Vinted) ; l'annonce Leboncoin 3294614836 de louis au prochain relevé complet (modération) ; la
+  `20261024235900` et la réparation du short si elles ne sont pas encore passées ; la notification push « Vente annulée » ; les
+  binaires 2.9.x des stores, plus tard ; deux brouillons de test sur l'eBay de Nico à effacer à la main.

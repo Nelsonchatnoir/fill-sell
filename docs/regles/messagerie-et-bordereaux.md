@@ -276,3 +276,18 @@
   hors Vinted. Jamais une étiquette payante.
 - Preuves : `selftest:messagerie-app` (règle « bientot », barre et espace hors bêta), `selftest:lot-2410-soir` § 6,
   `selftest:vente-annulee-carte` ; essais à blanc 20261024234000 (10/10) et 20261024235500 (19/19).
+
+## Règles (24/10 nuit, clôture — décisions de Nico ; rapport `docs/enquetes/lot-2410-nuit/RAPPORT.md` § « Clôture »)
+- **Bordereaux : paliers Pro et Business SEULEMENT, jamais Free ni Premium — bêta comprise** (migration 20261024235500,
+  appliquée le 24/10 à 22:02:55). `bordereaux_ouverts_pour` vérifie le palier (`palier_de`) ; l'automatique rend
+  « palier » ; les compteurs ne donnent « bordereaux_vinted » et la génération qu'à un compte Pro/Business. App : aucun
+  bouton, aucune mention, aucun réglage de bordereau sans ce droit (fail-closed tant qu'il n'est pas lu) ; jamais dans
+  les modales (paywall, comparatif des paliers, upsell). Un bordereau déjà généré n'est jamais effacé par la règle.
+- **Une commande Vinted vue ANNULÉE par le relevé des commandes retire sa vente tout de suite** (20261024235700, 22:01:33)
+  : vente_commande_annulee_vinted (fiche au stock, retraits arrêtés, remise en vente PROPOSÉE), la vente reconnue par son
+  numéro de commande ou les lignes d'une commande éclatée, jamais le titre ; idempotent. Avant : jusqu'à 20 h (lecture
+  quotidienne des ventes).
+- **Messagerie : une conversation ouverte (30 s) et la liste (60 s) se relisent seules**, bornées (15 min, onglet
+  visible, utils/relectureBornee.js) : un message reçu apparaît sans rouvrir l'écran. Le relevé du poste reste à
+  10 min ± 90 s.
+
