@@ -1,8 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { retraitEngage } from "../_shared/retenue-creneau.js";
 import {
-  decisionIntrouvable, identifiantAnnonceJob, messageDisparueConfirmee, messagePersistant,
-  SOURCE_INTROUVABLE, SOURCE_INTROUVABLE_PERSISTANT, REPRISES_PAR_COMPTE_ET_PASSAGE,
+  decisionIntrouvable, identifiantAnnonceJob, messageDisparueConfirmee, messagePersistant, messageVendueLue,
+  SOURCE_INTROUVABLE, SOURCE_INTROUVABLE_PERSISTANT, REPRISES_PAR_COMPTE_ET_PASSAGE, FENETRE_TRACE_MS,
 } from "../_shared/introuvable-a-confirmer.js";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
@@ -2923,7 +2923,7 @@ serve(async (req) => {
   //    seules plateformes en pause, du plus récent au plus ancien. Et plus jamais
   //    la fiche du job comme preuve : elle peut porter une AUTRE annonce
   //    (a6e773d4) — la trace se lit sur l'annonce exacte.
-  let introuvablesRepris = 0; let introuvablesClos = 0; let introuvablesBoutique = 0;
+  let introuvablesRepris = 0; let introuvablesClos = 0; let introuvablesBoutique = 0; let introuvablesRelevesDemandes = 0;
   // (18/10, lot 3) Les boutiques confirmées d'un compte (lues une fois par passage).
   const loginsBoutiquesI = new Map<string, Map<string, string | null>>();
   try {
@@ -2939,13 +2939,15 @@ serve(async (req) => {
       const l = parCompteI.get(String(j.user_id)) ?? []; l.push(j); parCompteI.set(String(j.user_id), l);
     }
     for (const [userId, jobs] of parCompteI) {
-      // L'absence se compte depuis la PREMIÈRE lecture ratée : la fenêtre part de
-      // là (un jour de marge pour retrouver le relevé qui a vu l'annonce).
+      // (25/10, point 1b) L'absence se compte depuis la DERNIÈRE VUE de l'annonce : relevés et traces
+      // sont lus sur FENETRE_TRACE_MS (14 j) avant la première lecture ratée — LA MÊME borne pour les
+      // deux, pour qu'aucun relevé compté ne soit antérieur à une vue non lue. (Avant : un jour ; les
+      // relevés sans elle d'avant la veille de la lecture étaient ignorés — jocabroc8 961f0a27.)
       // deno-lint-ignore no-explicit-any
       const debutFenetre = Math.min(...jobs.map((j: any) => {
         const m = ((j.platform_fields ?? {}).introuvable_a_confirmer ?? {}) as Record<string, unknown>;
         return Date.parse(String(m.premiere ?? m.depuis ?? "")) || Date.now();
-      })) - 86_400_000;
+      })) - FENETRE_TRACE_MS;
       // deno-lint-ignore no-explicit-any
       const plateformes = [...new Set(jobs.map((j: any) => String(j.platform)))];
       const { data: runs, error: eRuns } = await supabase.from("vinted_sync_runs")
@@ -2978,7 +2980,8 @@ serve(async (req) => {
         const [rSnaps, rPorteuses] = await Promise.all([
           supabase.from("vinted_listing_snapshots").select("vinted_item_id, captured_at, status")
             .eq("user_id", userId).in("vinted_item_id", itemsV)
-            .gte("captured_on", new Date(debutFenetre).toISOString().slice(0, 10)).limit(2000),
+            .gte("captured_on", new Date(debutFenetre).toISOString().slice(0, 10))
+            .order("captured_at", { ascending: false }).limit(2000),
           supabase.from("inventaire").select("vinted_item_id, last_synced_at, vinted_status")
             .eq("user_id", userId).in("vinted_item_id", itemsV).limit(400),
         ]);
@@ -2991,6 +2994,8 @@ serve(async (req) => {
       // Une lecture ratée n'est jamais une absence : le compte attend le passage suivant.
       if (!tracesLisibles) { console.warn(`[handler-watch] introuvable à confirmer : relevés ou traces illisibles pour ${userId.slice(0, 8)} — rien de jugé ce passage`); continue; }
       let reprisesCompte = 0;
+      // (25/10) Les relevés que la règle attend, par plateforme (Vinted : la boutique de l'annonce).
+      const relevesAttendus = new Map<string, string | null>();
       for (const j of jobs) {
         const pf = { ...(j.platform_fields ?? {}) } as Record<string, unknown>;
         const fiche = ficheDe.get(String(j.inventaire_id)) ?? null;
@@ -3015,6 +3020,10 @@ serve(async (req) => {
         // deno-lint-ignore no-explicit-any
         const runsPf = ((runs ?? []) as any[]).filter((r) => r.platform === j.platform);
         const d = decisionIntrouvable({ job: j, fiche, vu, annonce, runs: runsPf, boutique });
+        if (d.decision === "attendre" && (d as { releve_attendu?: boolean }).releve_attendu
+            && (j.platform !== "vinted" || boutique) && !relevesAttendus.has(String(j.platform))) {
+          relevesAttendus.set(String(j.platform), j.platform === "vinted" ? boutique : null);
+        }
         const marque = (pf.introuvable_a_confirmer ?? {}) as Record<string, unknown>;
         if (d.decision === "reprendre") {
           if (reprisesCompte >= REPRISES_PAR_COMPTE_ET_PASSAGE) continue; // le reste au passage suivant
@@ -3028,7 +3037,7 @@ serve(async (req) => {
         } else if (d.decision === "confirmer") {
           pf.annonce_disparue = { at: new Date().toISOString(), motif: d.raison, pose_par: "handler-watch (introuvable confirmé par un relevé)" };
           delete pf.needs_user_source;
-          const { data: maj } = await supabase.from("cross_post_jobs").update({ status: "cancelled", error: messageDisparueConfirmee(j.platform), platform_fields: pf })
+          const { data: maj } = await supabase.from("cross_post_jobs").update({ status: "cancelled", error: (d as { vendue?: boolean }).vendue ? messageVendueLue(j.platform) : messageDisparueConfirmee(j.platform), platform_fields: pf })
             .eq("id", j.id).eq("status", "needs_user").select("id");
           if (maj?.length) introuvablesClos++;
         } else if (d.decision === "persistant") {
@@ -3079,8 +3088,47 @@ serve(async (req) => {
           }
         }
       }
+      // ── (25/10, point 1b) LE RELEVÉ QU'ON ATTEND, ON LE DEMANDE ──────────────────
+      // « FillSell attend le prochain relevé » : il ne venait que d'un geste, du veilleur ou du
+      // cron (un par 20 h, Chrome ouvert) — nino f33c3f24 : aucun relevé Leboncoin de 13:02 à
+      // minuit, poste allumé jusqu'à 21:03. Même borne que les retraits Vinted introuvables : au
+      // plus UNE demande toutes les 6 h par compte et plateforme (aucun relevé de la plateforme
+      // commencé ou demandé depuis 6 h, aucun en file ou en cours), seulement à un poste EN LIGNE
+      // (vu depuis moins de 10 min : la demande est prise tout de suite, jamais 6 h en file) ;
+      // Vinted : seulement si la boutique ouverte dans Chrome est celle de l'annonce (sinon
+      // l'attente de boutique ci-dessus). get-pending-jobs sert la demande
+      // (≥ 0.6.42) et la retient pendant une pause anti-robot ou une republication retirée.
+      // ⛔ Le déclencheur doit figurer dans releve_est_veille() (migration) : sinon
+      //    garde_releve_sans_geste l'avale EN SILENCE (RETURN NULL, aucune erreur) — d'où le .select("id").
+      if (relevesAttendus.size) {
+        try {
+          const { data: prof } = await supabase.from("profiles").select("extension_last_seen_at, extension_sessions").eq("id", userId).maybeSingle();
+          const posteVuMs = Date.parse(String((prof as { extension_last_seen_at?: unknown } | null)?.extension_last_seen_at ?? ""));
+          // deno-lint-ignore no-explicit-any
+          const boutiqueOuverte = String(((prof as any)?.extension_sessions ?? {})?.vinted_identite?.user_id ?? "");
+          const seuil = new Date(Date.now() - 6 * 3600_000).toISOString();
+          if (Number.isFinite(posteVuMs) && Date.now() - posteVuMs < 10 * 60_000) {
+            for (const [plateforme, boutiqueAttendue] of relevesAttendus) {
+              if (plateforme === "vinted" && (!boutiqueAttendue || boutiqueOuverte !== boutiqueAttendue)) continue;
+              const kind = plateforme === "vinted" ? "dressing" : "annonces";
+              const { data: recents, error: eRec } = await supabase.from("vinted_sync_runs").select("id")
+                .eq("user_id", userId).eq("kind", kind).eq("platform", plateforme)
+                .or(`started_at.gt.${seuil},queued_at.gt.${seuil},status.in.(queued,running,claimed)`).limit(1);
+              if (eRec || recents?.length) continue;
+              const { data: pose, error: qErr } = await supabase.from("vinted_sync_runs").insert({
+                user_id: userId, kind, platform: plateforme, status: "queued",
+                declencheur: "serveur:introuvable_a_confirmer", queued_at: new Date().toISOString(),
+              }).select("id");
+              if (!qErr && pose?.length) introuvablesRelevesDemandes++;
+              else console.log(`[handler-watch] introuvable à confirmer : relevé ${plateforme} demandé pour ${userId.slice(0, 8)} refusé (${qErr?.message ?? "garde de la base"})`);
+            }
+          }
+        } catch (e) {
+          console.warn(`[handler-watch] introuvable à confirmer : demande de relevé ${userId.slice(0, 8)} :`, (e as Error)?.message ?? e);
+        }
+      }
     }
-    if (introuvablesRepris || introuvablesClos || introuvablesBoutique) console.log(`[handler-watch] introuvable à confirmer : ${introuvablesRepris} repris (relevé en ligne), ${introuvablesClos} clos (relevé sans l'annonce), ${introuvablesBoutique} en attente de leur boutique`);
+    if (introuvablesRepris || introuvablesClos || introuvablesBoutique || introuvablesRelevesDemandes) console.log(`[handler-watch] introuvable à confirmer : ${introuvablesRepris} repris (relevé en ligne), ${introuvablesClos} clos (relevé sans l'annonce), ${introuvablesBoutique} en attente de leur boutique, ${introuvablesRelevesDemandes} relevé(s) demandé(s)`);
   } catch (e) {
     console.error("[handler-watch] introuvable à confirmer :", (e as Error)?.message ?? e);
   }

@@ -42,6 +42,27 @@
 //    retraits, _shared/retrait-introuvable.js), NON VIDE, et — Vinted — de la
 //    boutique de l'annonce ; il en faut DEUX, commencés après la PREMIÈRE
 //    lecture ratée (ou le dernier démenti) et après la dernière trace.
+//
+// (25/10, point 1b de Nico) « ON ATTEND LE PROCHAIN RELEVÉ » NE TRANCHAIT JAMAIS — prouvé en base le
+// 25/10 vers 00:10 (rejeu exact de handler-watch : les 8 pauses du parc rendent toutes « attendre ») :
+//  · l'absence ne se comptait que sur des relevés commencés APRÈS la lecture ratée : les relevés
+//    complets de sa boutique faits entre sa DERNIÈRE VUE et la lecture étaient jetés. Marta 133c921a :
+//    vue à 12:40, absente de 4 relevés complets avant la lecture (14:49) et d'un après — un seul compté ;
+//    jocabroc8 961f0a27 : absente du dressing depuis le 07/10 ; nino b4bef8cf : disparue le 21/10 (deux
+//    relevés, `absence_releves`), absente du relevé de 13:02 fait après la lecture de 11:28 — « on
+//    attend le suivant » ; et handler-watch ne lisait relevés et traces que depuis la veille de la lecture ;
+//  · la page lue « Article vendu » (republish_etat_reel) ne tranchait qu'au classement (pas-de-rouge A4,
+//    déployé le 24/10 à 18:46) : une pause posée avant (louis b56582b6, 17:04) n'en sortait plus ;
+//  · personne ne demandait le relevé attendu : il ne venait que d'un geste, du veilleur ou du cron
+//    (au plus un par 20 h, Chrome ouvert).
+// DONC :
+//  · l'absence se compte depuis la DERNIÈRE VUE de l'annonce (jamais avant le dernier démenti) : DEUX
+//    relevés complets de sa boutique sans elle, dont AU MOINS UN commencé après la première lecture ratée
+//    — c'est « le prochain relevé » qui tranche, jamais la lecture seule ni un `disparu_le` d'avant elle
+//    (la mémoire « annonce morte » des extensions < 0.6.134 rend « unavailable » sans lire une annonce
+//    revenue en ligne : le relevé d'après la lecture la revoit, et elle repart). Sans trace : comme avant ;
+//  · la page lue « vendue » à la lecture de CETTE pause → close (vendue), comme pas-de-rouge ;
+//  · handler-watch lit relevés et traces sur FENETRE_TRACE_MS avant la première lecture (même borne).
 // Pur (Node + Deno) : scripts/introuvable-a-confirmer-selftest.mjs.
 
 import { releveComplet as releveCompletRetrait } from './retrait-introuvable.js';
@@ -50,6 +71,12 @@ export const SOURCE_INTROUVABLE = 'introuvable_a_confirmer';
 export const SOURCE_INTROUVABLE_PERSISTANT = 'introuvable_persistant';
 export const MAX_REPRISES_INTROUVABLE = 3;
 export const REPRISES_PAR_COMPTE_ET_PASSAGE = 3;
+// (25/10) Relevés et traces lus par handler-watch sur 14 jours avant la première lecture ratée : la
+// dernière vue de l'annonce et les relevés faits depuis (une borne de lecture, jamais une preuve).
+export const FENETRE_TRACE_MS = 14 * 86_400_000;
+// Une lecture « vendue » appartient à cette pause si elle suit la première lecture ratée (marge : la
+// page est lue juste avant que l'échec ne soit classé).
+const MARGE_LECTURE_MS = 10 * 60_000;
 
 const NOMS = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', depop: 'Depop', opla: 'Opla', ebay: 'eBay' };
 const nomDe = (p) => NOMS[p] ?? String(p ?? '');
@@ -71,6 +98,12 @@ export function messageDisparueConfirmee(platform) {
   const nom = nomDe(platform);
   return `Cette annonce n'est plus en ligne sur ${nom} (vendue, retirée ou supprimée depuis sa dernière lecture). ` +
     "FillSell n'a rien retiré. Si tu l'as vendue, marque-la vendue ; sinon remets-la en ligne, puis synchronise.";
+}
+
+// (25/10) La page lue « Article vendu » : le message de pas-de-rouge (A4), mot pour mot.
+export function messageVendueLue(platform) {
+  return `Republication annulée : ton annonce ${nomDe(platform)} est vendue (la page affiche « Article vendu »). ` +
+    "Rien n'a été retiré ; la vente est suivie à part, comme les autres.";
 }
 
 export function messagePersistant(platform) {
@@ -166,7 +199,7 @@ function boutiqueDeLaVue(runs, vuLe) {
 //             vinted_user_id) ;
 //  boutique : Vinted — la boutique de l'annonce ; à défaut, celle du job
 //             (vinted_account_id), de la fiche, puis du relevé qui l'a vue.
-// Rend { decision: 'reprendre' | 'confirmer' | 'attendre' | 'persistant', raison }.
+// Rend { decision: 'reprendre' | 'confirmer' | 'attendre' | 'persistant', raison, vendue?, releve_attendu? }.
 /**
  * @param {{ job: any, fiche?: any, vu?: any, annonce?: any, runs?: any[], boutique?: string | null }} arg
  */
@@ -178,6 +211,14 @@ export function decisionIntrouvable({ job, fiche = null, vu = null, annonce = nu
   if (fiche?.statut === 'vendu') return { decision: 'confirmer', raison: 'fiche vendue' };
   const platform = String(job?.platform ?? '');
   if (!identifiantAnnonceJob(job)) return { decision: 'attendre', raison: "identifiant exact de l'annonce inconnu" };
+  const premiere = t(marque?.premiere);
+  const premiereLecture = Number.isFinite(premiere) ? premiere : depuis;
+  // (25/10) La page lue « vendue » à la lecture de CETTE pause (republish_etat_reel, posé par l'extension) :
+  // la republication n'a plus d'objet — la preuve de pas-de-rouge (A4), pour les pauses posées avant elle.
+  const etatLu = pf.republish_etat_reel ?? null;
+  if (String(etatLu?.state ?? '') === 'sold' && t(etatLu?.at) >= premiereLecture - MARGE_LECTURE_MS) {
+    return { decision: 'confirmer', raison: 'page lue « vendue » à la lecture', vendue: true };
+  }
   // (24/10, lot « zéro blocage », A4) Le relevé dit VENDUE (transaction lue) → confirmée ; il a posé
   // `disparu_le` → l'annonce n'est plus en ligne, même si son statut est resté « en_ligne » (nino, Ornella).
   if (annonce && String(annonce.transaction_plateforme ?? '') === 'sold' && t(annonce.transaction_lue_le) > depuis) {
@@ -197,10 +238,12 @@ export function decisionIntrouvable({ job, fiche = null, vu = null, annonce = nu
     if (fermee) return { decision: 'confirmer', raison: `relevée « ${st} » après la lecture` };
     return { decision: 'attendre', raison: `relevée « ${st || 'inconnu'} »` };
   }
-  // L'absence se compte depuis la PREMIÈRE lecture ratée (ou le dernier démenti),
-  // sur des relevés commencés après la dernière trace de l'annonce.
-  const premiere = t(marque?.premiere);
-  const depuisAbsence = Math.max(Number.isFinite(premiere) ? premiere : depuis, t(marque?.dementi_le) || 0);
+  // (25/10) L'absence se compte depuis la DERNIÈRE VUE de l'annonce (jamais avant le dernier démenti) :
+  // un relevé complet de sa boutique, commencé après elle, ne la contenait pas — qu'il soit d'avant ou
+  // d'après la lecture ratée. Il en faut deux, dont au moins un commencé après la PREMIÈRE lecture ratée
+  // (ou le dernier démenti) : « le prochain relevé » tranche. Sans trace connue : deux relevés après la lecture.
+  const dementi = t(marque?.dementi_le) || 0;
+  const depuisAbsence = Math.max(premiereLecture, dementi);
   const laBoutique = platform === 'vinted'
     ? (String(boutique ?? '').trim() || String(pf.vinted_account_id ?? '').trim()
       || String(fiche?.vinted_account_id ?? '').trim() || boutiqueDeLaVue(runs, vuLe))
@@ -208,14 +251,18 @@ export function decisionIntrouvable({ job, fiche = null, vu = null, annonce = nu
   if (platform === 'vinted' && !laBoutique) {
     return { decision: 'attendre', raison: "boutique de l'annonce inconnue : aucun relevé ne peut prouver son absence" };
   }
-  const sansElle = (runs ?? []).filter((r) => t(r?.started_at) > depuisAbsence
-    && (!Number.isFinite(vuLe) || vuLe < t(r.started_at) - 60_000)
+  const borne = Number.isFinite(vuLe) ? Math.max(vuLe + 60_000, dementi) : depuisAbsence;
+  const sansElle = (runs ?? []).filter((r) => t(r?.started_at) > borne
     && releveComplet(r, { platform, boutique: laBoutique }));
-  if (sansElle.length >= RELEVES_POUR_DISPARITION) {
-    return { decision: 'confirmer', raison: `absente de ${sansElle.length} relevés complets faits après la lecture` };
+  const apresLecture = sansElle.filter((r) => t(r.started_at) > depuisAbsence).length;
+  if (sansElle.length >= RELEVES_POUR_DISPARITION && apresLecture >= 1) {
+    return { decision: 'confirmer', raison: `absente de ${sansElle.length} relevés complets depuis sa dernière vue, dont ${apresLecture} après la lecture` };
   }
+  // `releve_attendu` : seul un relevé de plus peut trancher (handler-watch peut le demander).
   return {
-    decision: 'attendre',
-    raison: sansElle.length ? "absente d'un relevé complet : on attend le suivant" : 'aucun relevé complet après la lecture',
+    decision: 'attendre', releve_attendu: true,
+    raison: !apresLecture
+      ? (sansElle.length ? `absente de ${sansElle.length} relevé(s) complet(s) depuis sa dernière vue : le prochain relevé tranche` : 'aucun relevé complet après la lecture')
+      : "absente d'un relevé complet : on attend le suivant",
   };
 }

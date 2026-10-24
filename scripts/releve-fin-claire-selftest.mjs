@@ -35,7 +35,9 @@ ok('extension : les gestes importent', !!geste && GESTES.every((d) => geste.test
 ok('extension : veille et coupés n\'importent pas', !!geste && [...DECLENCHEURS_VEILLE, ...COUPES.filter(Boolean)].every((d) => !geste.test(d)));
 const mig = lire('supabase/migrations/20261005200000_releves_sur_geste.sql');
 ok('base : même expression de geste', mig.includes("'^(bouton|bouton_distant|app)(:redemande)?$'"));
-ok('base : même liste de veille', DECLENCHEURS_VEILLE.every((d) => mig.includes(`'${d}'`)));
+// (25/10, point 1b) La liste de veille se lit sur la DERNIÈRE définition de releve_est_veille().
+const migVeille = lire('supabase/migrations/20261025030000_releve_introuvable_a_confirmer.sql');
+ok('base : même liste de veille', DECLENCHEURS_VEILLE.every((d) => migVeille.includes(`'${d}'`)));
 ok('filtre PostgREST : déclencheur absent gardé, veille écartée', FILTRE_SANS_VEILLE.startsWith('declencheur.is.null,declencheur.not.in.(') && DECLENCHEURS_VEILLE.every((d) => FILTRE_SANS_VEILLE.includes(`"${d}"`)));
 ok('extension : interrupteur des reprises automatiques éteint', bg.includes('const REPRISE_AUTOMATIQUE_RELEVE = false;'));
 const hw = lire('supabase/functions/handler-watch/index.ts');

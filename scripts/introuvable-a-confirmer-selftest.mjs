@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   decisionIntrouvable as d, marqueIntrouvable, messagePause, messageDisparueConfirmee, MAX_REPRISES_INTROUVABLE,
-  identifiantAnnonceJob, releveComplet, RELEVES_POUR_DISPARITION,
+  identifiantAnnonceJob, releveComplet, RELEVES_POUR_DISPARITION, messageVendueLue, FENETRE_TRACE_MS,
 } from '../supabase/functions/_shared/introuvable-a-confirmer.js';
 import { classerEchec } from '../supabase/functions/_shared/pas-de-rouge.js';
 
@@ -175,6 +175,72 @@ ok(/if \(source === SOURCE_INTROUVABLE \|\| source === SOURCE_INTROUVABLE_PERSIS
   ok(/IF precedent\.id IS NULL THEN RETURN jsonb_build_object\('disparues',0,'motif','second_releve_attendu'\)/.test(corps)
     && /releve_preuve_absence\(s\.id\)/.test(corps) && /NOT releve_preuve_absence\(p_run\)/.test(corps),
     'disparu_le n’est posé qu’avec DEUX relevés probants (constater_absences_releve)');
+}
+
+// (25/10, point 1b de Nico) « ON ATTEND LE PROCHAIN RELEVÉ » TRANCHE — les pauses du 24/10, rejouées
+// (fixtures relevées en prod le 25/10 vers 00:10 ; rejeu exact de handler-watch : toutes « attendre » avant).
+{
+  const jobLbc = (premiere, depuis, extra = {}, n = 1) => ({ platform: 'leboncoin', platform_listing_id: '3292104989',
+    platform_fields: { introuvable_a_confirmer: { depuis, premiere, n, reprises: n - 1, plateforme: 'leboncoin', lecture: 'etat_unavailable' }, ...extra } });
+  // nino b4bef8cf : 3292104989 disparue le 21/10 (deux relevés complets, absence_releves), relue « unavailable » le 24/10 à 11:28.
+  const nino = jobLbc('2026-10-24T09:28:01.648Z', '2026-10-24T09:28:01.648Z');
+  const annNino = { vu_le: '2026-10-20T17:41:25Z', statut_plateforme: 'en_ligne', disparu_le: '2026-10-21T09:04:37Z' };
+  const rl = (debut) => ({ platform: 'leboncoin', kind: 'annonces', status: 'done', started_at: debut,
+    finished_at: new Date(Date.parse(debut) + 6_000).toISOString(), items_vus: 31, total_entries: 28, erreur: '[défilement] [adresse] 1 page(s), 28 en ligne lues sur 28 annoncées', vinted_user_id: null });
+  const avantNino = [rl('2026-10-21T08:50:00Z'), rl('2026-10-21T09:04:30Z'), rl('2026-10-24T09:01:40Z'), rl('2026-10-24T09:01:46Z')];
+  const sansApres = d({ job: nino, annonce: annNino, runs: avantNino });
+  ok(sansApres.decision === 'attendre' && sansApres.releve_attendu === true,
+    'disparu_le et relevés d’AVANT la lecture seulement : le prochain relevé tranche (mémoire « annonce morte » < 0.6.134 : jamais clos sans lui)', sansApres);
+  const dn = d({ job: nino, annonce: annNino, runs: [...avantNino, rl('2026-10-24T11:02:30Z')] });
+  ok(dn.decision === 'confirmer', 'nino b4bef8cf : absente depuis le 21/10, et du relevé de 13:02 fait après la lecture → close', dn);
+  ok(d({ job: nino, annonce: { ...annNino, vu_le: '2026-10-24T11:02:30Z' }, runs: [...avantNino, rl('2026-10-24T11:02:30Z')] }).decision === 'reprendre',
+    'revue en ligne après disparu_le et après la lecture → reprise (jamais disparue)');
+  // louis b56582b6 : la page lue « Article vendu » à la lecture (17:04), pause posée avant le déploiement d'A4 (18:46).
+  const louis = jobLbc('2026-10-24T14:24:16.375Z', '2026-10-24T15:04:13.459Z', { republish_etat_reel: { at: '2026-10-24T15:04:11.645Z', state: 'sold' } }, 2);
+  const dl = d({ job: louis, annonce: { vu_le: '2026-10-24T15:00:37Z', statut_plateforme: 'en_ligne', transaction_plateforme: 'sold', transaction_lue_le: '2026-10-24T10:10:55Z' } });
+  ok(dl.decision === 'confirmer' && dl.vendue === true, 'louis b56582b6 : page lue « vendue » à la lecture de cette pause → close « vendue »', dl);
+  ok(d({ job: jobLbc('2026-10-24T14:24:16Z', '2026-10-24T15:04:13Z', { republish_etat_reel: { at: '2026-10-20T08:00:00Z', state: 'sold' } }) }).decision === 'attendre',
+    'une lecture « vendue » d’AVANT cette pause ne tranche pas');
+  ok(/est vendue \(la page affiche « Article vendu »\)/.test(messageVendueLue('leboncoin')), 'message « vendue » : celui de pas-de-rouge (A4)');
+  // Marta 133c921a (Vinted) : vue à 12:40, absente de 4 relevés complets de SA boutique avant la lecture (14:49), puis d'un après.
+  const B = '158898598';
+  const marta = { platform: 'vinted', listing_url: 'https://www.vinted.fr/items/10505625698', platform_fields: { vinted_item_id: '10505625698', vinted_account_id: B,
+    introuvable_a_confirmer: { depuis: '2026-10-24T12:49:39.075Z', premiere: '2026-10-24T12:49:39.075Z', n: 1, reprises: 0, plateforme: 'vinted', lecture: 'item_upload_404' } } };
+  const rM = (debut) => releve(debut, { vinted_user_id: B, items_vus: 41, total_entries: 41 });
+  const avant = [rM('2026-10-24T11:34:00Z'), rM('2026-10-24T11:49:36Z'), rM('2026-10-24T12:09:40Z'), rM('2026-10-24T12:33:40Z')];
+  const vuM = { vu_le: '2026-10-24T10:40:06.918Z', statut: 'active' };
+  const seuls = d({ job: marta, vu: vuM, runs: avant });
+  ok(seuls.decision === 'attendre' && seuls.releve_attendu === true && /le prochain relevé tranche/.test(seuls.raison),
+    'absente de relevés faits AVANT la lecture seulement → le prochain relevé tranche (jamais clos sans lui)', seuls);
+  ok(d({ job: marta, vu: vuM, runs: [...avant, rM('2026-10-24T12:59:33Z')] }).decision === 'confirmer',
+    'Marta 133c921a : + un relevé de sa boutique après la lecture, toujours sans elle → close');
+  ok(d({ job: marta, vu: { vu_le: '2026-10-24T12:59:40Z', statut: 'active' }, runs: [...avant, rM('2026-10-24T12:59:33Z')] }).decision === 'reprendre',
+    'le relevé d’après la lecture la voit → reprise');
+  ok(d({ job: marta, vu: { vu_le: '2026-10-24T12:33:45Z', statut: 'active' }, runs: [...avant, rM('2026-10-24T12:59:33Z')] }).decision === 'attendre',
+    'DeadRoz : vue par le DERNIER relevé avant la lecture → un seul relevé sans elle, on attend le suivant');
+  ok(d({ job: marta, vu: vuM, runs: [avant[0], { ...rM('2026-10-24T12:59:33Z'), vinted_user_id: '999' }] }).decision === 'attendre',
+    'le relevé d’une autre boutique ne fait jamais le relevé d’après la lecture');
+  ok(d({ job: marta, vu: null, runs: [...avant, rM('2026-10-24T12:59:33Z')] }).decision === 'attendre',
+    'sans trace connue : deux relevés après la lecture, comme avant');
+  ok(d({ job: marta, vu: vuM, runs: [...avant, rM('2026-10-24T12:59:33Z')].map((r) => ({ ...r, items_vus: 30 })) }).decision === 'attendre',
+    'des relevés incomplets (lus < annoncés) ne comptent jamais');
+  // Câblage du volet A (handler-watch).
+  ok(FENETRE_TRACE_MS >= 7 * 86_400_000, 'la fenêtre couvre la dernière vue (au moins 7 jours)');
+  ok(/\)\) - FENETRE_TRACE_MS;/.test(zone), 'handler-watch : relevés ET traces lus depuis FENETRE_TRACE_MS avant la première lecture (même borne)');
+  ok(/\.order\("captured_at", \{ ascending: false \}\)\.limit\(2000\)/.test(zone), 'handler-watch : traces Vinted les plus récentes d’abord (la dernière vue jamais coupée)');
+  ok(/vendue \? messageVendueLue\(j\.platform\) : messageDisparueConfirmee\(j\.platform\)/.test(zone), 'handler-watch : « vendue » lue → le message de pas-de-rouge');
+}
+
+// (25/10, point 1b, volet B) Le relevé attendu est DEMANDÉ — borné, et jamais avalé en silence par la garde.
+{
+  ok(/declencheur: "serveur:introuvable_a_confirmer"/.test(zone) && /6 \* 3600_000/.test(zone) && /posteVuMs < 10 \* 60_000/.test(zone),
+    'handler-watch : le relevé attendu est demandé (une fois par 6 h, poste en ligne : vu depuis moins de 10 min)');
+  ok(/boutiqueOuverte !== boutiqueAttendue/.test(zone), 'handler-watch : Vinted — seulement si la boutique ouverte est celle de l’annonce');
+  ok(/\}\)\.select\("id"\);/.test(zone) && /pose\?\.length/.test(zone), 'handler-watch : la pose est vérifiée (garde_releve_sans_geste avale sans erreur)');
+  const mig = readFileSync(new URL('../supabase/migrations/20261025030000_releve_introuvable_a_confirmer.sql', import.meta.url), 'utf8');
+  ok(/'serveur:introuvable_a_confirmer'/.test(mig) && /FUNCTION public\.releve_est_veille/.test(mig), 'migration : le déclencheur entre dans releve_est_veille()');
+  const app = readFileSync(new URL('../src/utils/declencheursReleve.js', import.meta.url), 'utf8');
+  ok(/'serveur:introuvable_a_confirmer'/.test(app), 'app : le relevé du serveur n’est jamais montré comme une synchronisation de la personne');
 }
 
 console.log(`✓ selftest:introuvable-a-confirmer — ${n} assertions`);

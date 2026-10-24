@@ -17,6 +17,8 @@ export const DECLENCHEURS_VEILLE = [
   'serveur:retrait_sans_numero',
   'serveur:verif_redepot',
   'serveur:quotidien_api',
+  // (25/10, point 1b) le relevé qu'attend une pause « introuvable à confirmer », demandé par handler-watch
+  'serveur:introuvable_a_confirmer',
 ];
 
 export function estReleveDeVeille(declencheur) {
