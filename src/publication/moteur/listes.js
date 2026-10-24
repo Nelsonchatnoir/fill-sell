@@ -164,6 +164,46 @@ export function estChampTaille(platform, key) {
   return false;
 }
 
+// ── (25/10, point 5 de Nico) UNE POINTURE « EU N » EST LA POINTURE « N » ─────────────────────────────────────────────
+// Cas : Marta MELE, « Scarpe da nike Runallday » (fiche « 37.5 »), Leboncoin › Mode › Chaussures, 24/10 : la copie
+// portait « EU 37.5 » — l'écriture des pointures de l'app (sélecteur sizeShoeOptions, convention « EU N » de
+// generate-listing) — et la grille « Pointure » de Leboncoin écrit « 37,5 ». Depuis le point G (39b8ee5, 28/09 :
+// normAspectVal ne rogne plus « EU », « EU 42 garde son pays »), « EU 37.5 » était jugé HORS LISTE → question
+// « Pointure » sur une valeur que le dépôt sait poser : leboncoin.js et beebs.js retirent « EU » avant de poser la
+// pointure, vinted.js (0.6.101) et le serveur (optionNuPourEu) font de même sur les grilles de chaussures.
+// 11 affichages, 10 abandons, Leboncoin décoché au départ ; le même soir (90ace0e4) un « EU 31 » a reçu « 16 » à
+// la question et est parti ainsi sur Leboncoin et Beebs.
+// RÈGLE : sur un champ de POINTURE (Leboncoin shoe_size, Beebs Pointure, Vinted size d'un rayon Chaussures),
+// « EU N » / « EUR N » est l'option « N » nue de la grille — une seule, et seulement quand la grille n'écrit pas
+// elle-même « EU N » (l'exact fait foi). La pointure européenne n'a qu'une échelle : c'est une ORTHOGRAPHE, jamais une
+// conversion. ⛔ Jamais UK / US / IT / DE ; jamais une demi-pointure arrondie (« EU 38.5 » ne devient jamais « 38 ») ;
+// jamais une taille de VÊTEMENT (« EU 38 » d'une robe garde son pays — point G, inchangé).
+export function estChampPointure(platform, key, cheminCategorie = null) {
+  const k = String(key ?? "");
+  if (platform === "leboncoin") return k === "shoe_size";
+  if (platform === "beebs") return k === "Pointure";
+  if (platform === "vinted") {
+    return k === "size" && Array.isArray(cheminCategorie)
+      && cheminCategorie.some((c) => /\bchaussures\b/.test(texteComparable(c)));
+  }
+  return false;
+}
+const POINTURE_EU_RE = /^eur?\s*(\d{1,2}(?:\.5)?)$/;
+const pointureNue = (forme) => {
+  const m = /^(\d{1,2}(?:\.5)?)$/.exec(forme);
+  return m ? String(Number(m[1])) : null;
+};
+/** L'option « N » nue d'une grille de pointures pour « EU N », sinon null (forme EXACTE de la grille). */
+export function pointureNuePourEu(valeur, allowedValues) {
+  const m = POINTURE_EU_RE.exec(normAspectVal(valeur));
+  if (!m) return null;
+  const n = String(Number(m[1]));
+  const vals = (Array.isArray(allowedValues) ? allowedValues : []).map((x) => String(x ?? "").trim()).filter(Boolean);
+  if (vals.some((a) => { const x = POINTURE_EU_RE.exec(normAspectVal(a)); return Boolean(x) && String(Number(x[1])) === n; })) return null;
+  const nues = vals.filter((a) => pointureNue(normAspectVal(a)) === n);
+  return nues.length === 1 ? nues[0] : null;
+}
+
 // ── (24/10 soir, décision 5 de Nico — pyjama d'alizeed48) LES HOMONYMES « TAILLE » DE BEEBS ──────────────────────
 // Certains rayons Beebs affichent DEUX champs « Taille » : le catalogue les relève « Taille [attributes.women_bras] »
 // (Pyjamas femme : une liste de soutiens-gorge 75A…115L ET les lettres XXS…9XL) ou « Taille [attributes.size_men_shirt] »
@@ -273,6 +313,11 @@ export function jugerValeurContreListe({ platform, key, value, allowedValues, ch
     }
     const t = tailleDansGrille(v, vals, { tableFemme: platform === "opla" && brancheFemmesOpla(cheminCategorie) });
     if (t) return { dans: true, valeurListe: t.valeur, suggested: null };
+    // (25/10, point 5) Une pointure « EU N » est l'option « N » d'une grille de pointures nue (estChampPointure).
+    if (estChampPointure(platform, key, cheminCategorie)) {
+      const nue = pointureNuePourEu(v, vals);
+      if (nue) return { dans: true, valeurListe: nue, suggested: null };
+    }
     // L'étiquette de la grille est composite avec un tiret (« 34 - XS » chez
     // Leboncoin) : un de ses composants EST la valeur, exactement — c'est le
     // « match composants-exacts » de leboncoin.js, et une seule candidate.
@@ -475,7 +520,7 @@ export function rayonPublicIncoherent({ platform, chemin, valeur }) {
   return rayon && article && rayon !== article ? { rayon, article } : null;
 }
 /** La phrase de la carte : changer de rayon (ou corriger la taille), jamais une taille de l'autre public. */
-export function messageRayonPublic({ valeur, platform = "beebs", rayon, article }, lang = "fr") {
+export function messageRayonPublic({ valeur, platform = "beebs", rayon }, lang = "fr") {
   const nom = platform === "beebs" ? "Beebs" : "Vinted";
   if (lang === "en") {
     return rayon === "adulte"

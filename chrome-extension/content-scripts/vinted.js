@@ -3391,6 +3391,11 @@ async function remplirFormulaireVinted(job) {
   const etape = async (libelle, fn) => {
     // (05/10) Durée de l'étape relevée dans remplissage_mesures.
     const debutEtape = maintenantMs();
+    // (25/10 nuit) L'étape COMMENCÉE, relayée au background (FILLSELL_FILL_STEP, même
+    // mécanique que leboncoin.js / ebay.js : fire-and-forget, jamais d'await ni de
+    // throw) : elle survit à la mort de la page et nomme l'étape d'une coupure
+    // (canal_coupe_diag.etape_remplissage — jocabroc bfe46249, 21/10).
+    try { chrome.runtime?.sendMessage?.({ type: "FILLSELL_FILL_STEP", step: `vinted:${libelle}` })?.catch?.(() => {}); } catch { /* relevé seulement */ }
     try {
       return await fn();
     } catch (e) {
@@ -3432,6 +3437,9 @@ async function remplirFormulaireVinted(job) {
   // refait jamais : un jeton périmé à cet instant, et la section n'apparaît
   // pas. Rayon connu d'avance (républication, ids) : le jeton est vérifié — et
   // renouvelé sur un 401 — juste avant. Jamais bloquant.
+  // (25/10 nuit) Jalon dédié : la coupure de jocabroc (21/10) tombe entre la fin de la
+  // description et le choix du rayon — c'est-à-dire ici ou au premier clic du rayon.
+  try { chrome.runtime?.sendMessage?.({ type: "FILLSELL_FILL_STEP", step: "vinted:jeton_avant_rayon" })?.catch?.(() => {}); } catch { /* relevé seulement */ }
   const referentielAvantRayon = await jetonApiVintedFrais(job).catch(() => null);
   try {
     categorieSuggestionRetenue = null;

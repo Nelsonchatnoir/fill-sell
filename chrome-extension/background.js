@@ -26684,6 +26684,10 @@ async function processRepublishJob(job, accessToken) {
     }
     delete pf.retenue_hors_ligne; // (11/10) plus retenu : la marque part avec l'écriture suivante
 
+    // (25/10 nuit) Le remplissage a-t-il été ENVOYÉ à la page ? Tant que non, rien
+    // n'a pu être retiré : le catch final ne dit plus « pendant la suppression »
+    // (Deborah 83206086, 24/10 : l'onglet de dépôt ne répondait pas, rien n'était parti).
+    let remplissageEnvoye = false;
     try {
       // ── Borne de fraîcheur À L'EXÉCUTION (point 3 validé, 2026-08-05) ────
       // C'est ICI que la péremption compte : un job qui a dormi (Chrome
@@ -26993,21 +26997,31 @@ async function processRepublishJob(job, accessToken) {
       let result;
       remplissagesUnePasseAttendus.add(job.id);
       try {
+        remplissageEnvoye = true;
         result = await envoyerFillListing(tabId, jobRecreation);
       } catch (e) {
         result = { success: false, error: `canal coupé pendant la republication : ${String(e?.message ?? e)}` };
         // (0.6.84) Ce que l'onglet était devenu au moment de la coupure : c'est
         // ce qui nommera la cause des coupures à répétition (lesforcesdelaudela,
         // 4 jobs sur 4 coupés ~10 s après le début, 02/10).
+        // (25/10 nuit) + l'ÉTAPE du remplissage (FILLSELL_FILL_STEP, envoyé par
+        // vinted.js au début de chaque étape) et l'adresse en cours de chargement :
+        // jocabroc bfe46249 (21/10) coupé 4 fois au même instant, page de dépôt
+        // rechargée (/items/new#fillsell-worker, « loading »), sans qu'on sache à
+        // quelle étape — la fin de la description, déduite des seules durées.
         try {
           const tCc = await chrome.tabs.get(tabId).catch(() => null);
+          const etapeCc = etapeRemplissageParOnglet.get(tabId) ?? null;
           pf.canal_coupe_diag = {
             le: new Date().toISOString(),
             url: String(tCc?.url ?? "").slice(0, 200) || null,
+            url_en_chargement: String(tCc?.pendingUrl ?? "").slice(0, 200) || null,
             status: tCc?.status ?? null,
             discarded: tCc?.discarded ?? null,
             onglet_disparu: !tCc,
             erreur: String(e?.message ?? e).slice(0, 200),
+            etape_remplissage: etapeCc?.etape ?? null,
+            etape_remplissage_le: etapeCc?.at ?? null,
           };
         } catch { /* diagnostic seulement */ }
       } finally {
@@ -27369,6 +27383,22 @@ async function processRepublishJob(job, accessToken) {
       });
       return await conclureRecreationApresSoumission(accessToken, job, pf, jobRecreation, tabId, result);
     } catch (e) {
+      // (25/10 nuit) Rien n'a été ENVOYÉ à la page (onglet de dépôt muet, sonde non posée,
+      // capture illisible…) : rien n'a pu être retiré. Même règle que l'accident de
+      // parcours plus haut (B6, 24/10) — en file, espacé, jamais un geste ; et plus jamais
+      // « pendant la suppression » (Deborah 83206086, 24/10 : faux, et c'est ce texte qui
+      // a fait craindre une annonce perdue).
+      if (!remplissageEnvoye) {
+        const n = (Number(pf.reprise_avant_retrait?.n) || 0) + 1;
+        pf.reprise_avant_retrait = { n, le: new Date().toISOString(), motif: String(e?.message ?? e).slice(0, 200), url: null };
+        pf.next_action_after = new Date(Date.now() + ([5, 20, 60][n - 1] ?? 180) * 60_000).toISOString();
+        await updateJobStatus(accessToken, job.id, "pending", {
+          platform_fields: pf,
+          error: "Republication en pause avant toute suppression : ton annonce est toujours en ligne sur Vinted. " +
+            `L'onglet de dépôt n'a pas répondu sur ton ordinateur (${phraseClose(motifLisible(String(e?.message ?? e), 120))}) : nouvel essai tout seul, rien à faire.`,
+        }).catch(() => {});
+        return { status: "pending", error: String(e?.message ?? e) };
+      }
       // Doute (canal coupé pendant la suppression ?) → needs_user, jamais un
       // silence : l'étape en base dit encore 'captured', la reprise re-sondera
       // l'état réel de l'annonce avant d'agir.

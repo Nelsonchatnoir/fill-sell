@@ -61,6 +61,7 @@ import { reclasserAutreBoutique, messageAttenteBoutique, POSE_PAR_ORIGINE_PROUVE
 // (18/10, lot 3) Zéro orange hors IA : coupure technique (signature unique), refus
 // de contenu Leboncoin (jamais le même texte deux fois), EAN exigé par eBay.
 import { CANAL_RE } from "../_shared/etat-job.js";
+import { accidentAvantRetrait, prochaineRepriseAvantRetrait, MESSAGE_ACCIDENT_AVANT_RETRAIT, CLES_ATTENTE_A_RETIRER } from "../_shared/accident-avant-retrait.js";
 import { decisionRefusContenuLeboncoin, empreinteTexteServi } from "../_shared/pas-de-rouge.js";
 // (18/10) Le texte officiel d'eBay France pour un produit sans EAN (« Non applicable ») et la marque de relance.
 import { EAN_SANS_IDENTIFIANT_EBAY_FR, eanDejaEssayeOfficiel } from "../_shared/ebay-publication.ts";
@@ -4202,6 +4203,62 @@ serve(async (req) => {
     console.error("[handler-watch] reprise des republications en attente de session:", (e as Error)?.message ?? e);
   }
 
+  // ══ (25/10 nuit) LES ACCIDENTS AVANT RETRAIT DÉJÀ ARRÊTÉS REPARTENT, ESPACÉS (règle B6) ══
+  // (_shared/accident-avant-retrait.js) Une republication Vinted arrêtée AVANT tout retrait
+  // par une simple coupure (onglet de dépôt muet, canal coupé, même coupure répétée) n'est
+  // jamais un geste. update-job-status le règle désormais à l'écriture ; cette passe reprend
+  // les arrêts DÉJÀ en base, que plus rien ne relançait :
+  //   · reprise après reconnexion plafonnée à 3 sur le même mur — brûlées en 25 min pendant
+  //     que le poste décrochait (Deborah 83206086, 24/10 18:09 UTC) — puis « En pause » à vie ;
+  //   · sortie de boucle « ferme Chrome et Relancer » sautée par get-pending-jobs et par le
+  //     réveil par capture (jocabroc bfe46249, needs_user depuis le 21/10).
+  // Remise en file espacée (5, 20, 60 min puis 3 h ; reprise_avant_retrait, lu par la
+  // sentinelle au-delà de 3), jamais au-delà de captured, jamais un article qui n'est plus
+  // en stock. Borné : 100 jobs lus, une lecture groupée des fiches, aucune ligne inchangée
+  // réécrite (filtre status = needs_user à l'écriture).
+  let accidentsRepris = 0;
+  try {
+    const { data: arretes } = await supabase
+      .from("cross_post_jobs")
+      .select("id, user_id, platform, action, status, error, inventaire_id, platform_fields")
+      .eq("status", "needs_user").eq("action", "republish").eq("platform", "vinted")
+      .in("platform_fields->>republish_step", ["a_capturer", "captured"])
+      .limit(100);
+    // deno-lint-ignore no-explicit-any
+    const accidents = ((arretes ?? []) as any[]).filter((j) => accidentAvantRetrait(j));
+    const idsFiches = [...new Set(accidents.map((j) => j.inventaire_id).filter((x) => x != null).map(String))];
+    const enStock = new Set<string>();
+    for (let i = 0; i < idsFiches.length; i += 100) {
+      const { data: fiches } = await supabase.from("inventaire")
+        .select("id, statut, disparu_le, fusionne_dans").in("id", idsFiches.slice(i, i + 100));
+      // deno-lint-ignore no-explicit-any
+      for (const f of (fiches ?? []) as any[]) {
+        if (f.statut === "stock" && !f.disparu_le && !f.fusionne_dans) enStock.add(String(f.id));
+      }
+    }
+    for (const j of accidents) {
+      if (j.inventaire_id == null || !enStock.has(String(j.inventaire_id))) continue;
+      const pf = { ...(j.platform_fields ?? {}) } as Record<string, unknown>;
+      const reprise = prochaineRepriseAvantRetrait(pf, {
+        motif: String((pf.error_technique as Record<string, unknown> | undefined)?.brut ?? j.error ?? ""),
+        posePar: "handler-watch (accident avant retrait déjà arrêté)",
+      });
+      for (const k of CLES_ATTENTE_A_RETIRER) delete pf[k];
+      pf.reprise_avant_retrait = reprise.reprise_avant_retrait;
+      pf.next_action_after = reprise.next_action_after;
+      pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error, j.status, "handler-watch (accident avant retrait : remis en file, B6)");
+      const { data: maj } = await supabase.from("cross_post_jobs")
+        .update({ status: "pending", error: MESSAGE_ACCIDENT_AVANT_RETRAIT, platform_fields: pf })
+        .eq("id", j.id).eq("status", "needs_user").select("id");
+      if (maj?.length) {
+        accidentsRepris++;
+        console.log(`[handler-watch] job ${j.id} (vinted/republish) : accident avant retrait → en file, reprise ${reprise.reprise_avant_retrait.n} (B6)`);
+      }
+    }
+  } catch (e) {
+    console.error("[handler-watch] accidents avant retrait :", (e as Error)?.message ?? e);
+  }
+
   // ── UNE CAPTURE FRAÎCHE ET VALIDE RÉVEILLE LE JOB (2026-09-20, passe 3) ──
   // 🚨 LE GASPILLAGE, mesuré le 20/09 : 12 republications Vinted sont figées
   //    en `needs_user` à l'étape `captured` sur 6 comptes — et 21 captures
@@ -5487,7 +5544,7 @@ serve(async (req) => {
   }
 
   if (alerts.length === 0) {
-    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_sortie_clos: oplaSortieClos, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, attentes_session_levees: attentesLevees, releves_repris: relevesRepris, dressings_repris: dressingsRepris, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil, tailles_reveil: taillesReveil, reprises_port: reprisesPort, retraits_connexion_dits: retraitsConnexionDits, relances_apres_maj: relancesApresMaj, tailles_tranchees: taillesTranchees, identite_lbc_eclaireurs: identiteLbcEclaireurs, identite_lbc_reprises: identiteLbcReprises, republications_finies: republicationsFinies, reprises_mises_de_cote: reprisesMisesDeCote, questions_tranchees: questionsTranchees }), {
+    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_sortie_clos: oplaSortieClos, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, attentes_session_levees: attentesLevees, releves_repris: relevesRepris, dressings_repris: dressingsRepris, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil, tailles_reveil: taillesReveil, reprises_port: reprisesPort, retraits_connexion_dits: retraitsConnexionDits, relances_apres_maj: relancesApresMaj, tailles_tranchees: taillesTranchees, identite_lbc_eclaireurs: identiteLbcEclaireurs, identite_lbc_reprises: identiteLbcReprises, republications_finies: republicationsFinies, reprises_mises_de_cote: reprisesMisesDeCote, questions_tranchees: questionsTranchees, accidents_avant_retrait_repris: accidentsRepris }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -5542,7 +5599,7 @@ serve(async (req) => {
   }
 
   if (toEmail.length === 0) {
-    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_sortie_clos: oplaSortieClos, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, attentes_session_levees: attentesLevees, releves_repris: relevesRepris, dressings_repris: dressingsRepris, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil, tailles_reveil: taillesReveil, reprises_port: reprisesPort, retraits_connexion_dits: retraitsConnexionDits, relances_apres_maj: relancesApresMaj, tailles_tranchees: taillesTranchees, identite_lbc_eclaireurs: identiteLbcEclaireurs, identite_lbc_reprises: identiteLbcReprises, republications_finies: republicationsFinies, reprises_mises_de_cote: reprisesMisesDeCote, questions_tranchees: questionsTranchees }), {
+    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_sortie_clos: oplaSortieClos, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, attentes_session_levees: attentesLevees, releves_repris: relevesRepris, dressings_repris: dressingsRepris, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil, tailles_reveil: taillesReveil, reprises_port: reprisesPort, retraits_connexion_dits: retraitsConnexionDits, relances_apres_maj: relancesApresMaj, tailles_tranchees: taillesTranchees, identite_lbc_eclaireurs: identiteLbcEclaireurs, identite_lbc_reprises: identiteLbcReprises, republications_finies: republicationsFinies, reprises_mises_de_cote: reprisesMisesDeCote, questions_tranchees: questionsTranchees, accidents_avant_retrait_repris: accidentsRepris }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -5596,7 +5653,7 @@ serve(async (req) => {
     console.error("[handler-watch] RESEND_API_KEY manquant — incident détecté mais non notifié");
   }
 
-  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_sortie_clos: oplaSortieClos, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, attentes_session_levees: attentesLevees, releves_repris: relevesRepris, dressings_repris: dressingsRepris, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil, tailles_reveil: taillesReveil, reprises_port: reprisesPort, retraits_connexion_dits: retraitsConnexionDits, relances_apres_maj: relancesApresMaj, tailles_tranchees: taillesTranchees, identite_lbc_eclaireurs: identiteLbcEclaireurs, identite_lbc_reprises: identiteLbcReprises, republications_finies: republicationsFinies, reprises_mises_de_cote: reprisesMisesDeCote, questions_tranchees: questionsTranchees }), {
+  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_sortie_clos: oplaSortieClos, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, attentes_session_levees: attentesLevees, releves_repris: relevesRepris, dressings_repris: dressingsRepris, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil, tailles_reveil: taillesReveil, reprises_port: reprisesPort, retraits_connexion_dits: retraitsConnexionDits, relances_apres_maj: relancesApresMaj, tailles_tranchees: taillesTranchees, identite_lbc_eclaireurs: identiteLbcEclaireurs, identite_lbc_reprises: identiteLbcReprises, republications_finies: republicationsFinies, reprises_mises_de_cote: reprisesMisesDeCote, questions_tranchees: questionsTranchees, accidents_avant_retrait_repris: accidentsRepris }), {
     headers: { "Content-Type": "application/json" },
   });
 });

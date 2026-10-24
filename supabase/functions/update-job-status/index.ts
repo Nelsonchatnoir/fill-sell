@@ -5,6 +5,7 @@ import { valeurFigureDansListeServie } from "../_shared/vinted-grille-servie.ts"
 // Archive des erreurs remplacées (2026-09-12) : même fichier que l'app et
 // handler-watch — module JS sans import, chargé tel quel par Deno.
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
+import { accidentAvantRetrait, coupureSeule, prochaineRepriseAvantRetrait, MESSAGE_ACCIDENT_AVANT_RETRAIT, MARQUES_RETRAIT_OU_DEPOT, CLES_ATTENTE_A_RETIRER } from "../_shared/accident-avant-retrait.js";
 // Les phrases lues par la personne vivent dans leur fichier, pas au milieu de
 // la logique qui les déclenche (même convention que src/*/textes.js).
 import {
@@ -1658,12 +1659,23 @@ serve(async (req) => {
               "fais la vérification que Vinted demande, puis appuie sur « Relancer ».";
             raisonRequalif = "canal coupé sur vinted.fr/users/verification → geste (vérification du compte Vinted), needs_user";
           } else if (deja + 1 >= seuilBoucle) {
+            // ── (25/10 nuit) LA SORTIE DE BOUCLE N'EST PLUS UN GESTE (règle B6 du 24/10) ──
+            // Avant : needs_user « ferme Chrome et appuie sur Relancer », que plus rien ne
+            // relançait (get-pending-jobs et handler-watch sautent boucle_technique) — faux
+            // (jocabroc bfe46249, 21/10 : six autres annonces passaient sur le même Chrome)
+            // et sans issue (Relancer rejouait le même remplissage). Désormais : la trace
+            // boucle_technique reste (ops-digest, rouge), le job reste EN FILE, espacé
+            // (5, 20, 60 min puis 3 h, compteur reprise_avant_retrait que la sentinelle lit),
+            // avant tout retrait — l'étape captured est vérifiée en base ET dans le body.
             const { next_action_after: _naoX, ...pfSansX } = pfBody;
+            const reprise = prochaineRepriseAvantRetrait(pfBase, {
+              motif: body.error, posePar: "update-job-status (même coupure répétée avant retrait)",
+              url: String(((pfBody.canal_coupe_diag ?? {}) as Record<string, unknown>)["url"] ?? ""),
+            });
             pfCanalCoupe = {
               ...pfSansX,
               needsUserAttempts: Number(pfBase.needsUserAttempts ?? 0) || 0,
               canal_coupe_rejoue: deja + 1,
-              needs_user_source: "relancer",
               boucle_technique: {
                 le: new Date().toISOString(),
                 essais: deja + 1,
@@ -1672,20 +1684,13 @@ serve(async (req) => {
                 motif: body.error.slice(0, 300),
                 depuis: (pfBase.boucle_technique as Record<string, unknown> | undefined)?.["depuis"] ?? new Date().toISOString(),
               },
+              reprise_avant_retrait: reprise.reprise_avant_retrait,
+              next_action_after: reprise.next_action_after,
             };
-            statutEffectif = "needs_user";
-            // (04/10, diagnostic Ciddjy) Le script n'est pas muet : il est LENT —
-            // remplissages de 200 à 300 s sur son ordinateur (70 s ailleurs), la
-            // borne de 5 min tombe avant la fin. On le dit tel quel.
-            messageEffectif = canalCoupeParTimeout
-              ? `Sur ton ordinateur, le remplissage du formulaire Vinted dépasse 5 minutes et s'arrête avant la fin (${deja + 1} essais de suite) : ` +
-                "la republication n'a pas pu se faire. Ton annonce est toujours en ligne, rien n'a été retiré. " +
-                "Relance-la quand ton ordinateur est branché et peu chargé (Chrome ouvert, pas en mode économie d'énergie). " +
-                "On est prévenus et on cherche à l'accélérer de notre côté."
-              : `La republication s'interrompt chaque fois au même moment sur ton ordinateur (${deja + 1} essais de suite, l'onglet Vinted se ferme) : ` +
-                "ton annonce est intacte, rien n'a été retiré. Ferme complètement Chrome puis rouvre-le, et appuie sur « Relancer ». " +
-                "Si ça bloque encore, écris-nous : c'est de notre côté, on regarde.";
-            raisonRequalif = `${canalCoupeParTimeout ? "onglet muet" : "canal coupé"} ${deja + 1} fois de suite à l'étape captured → sortie de boucle (needs_user relancer, boucle_technique)`;
+            delete pfCanalCoupe.needs_user_source;
+            statutEffectif = "pending";
+            messageEffectif = MESSAGE_ACCIDENT_AVANT_RETRAIT;
+            raisonRequalif = `${canalCoupeParTimeout ? "onglet muet" : "canal coupé"} ${deja + 1} fois de suite à l'étape captured → file espacée (B6, reprise ${reprise.reprise_avant_retrait.n} dans ${reprise.delaiMin} min, boucle_technique tracée)` // estimation-ok: journal interne;
           } else {
             const reprise = deja + 1;
             const delaiReprise = canalCoupeParTimeout
@@ -1733,6 +1738,56 @@ serve(async (req) => {
       } catch (e) {
         // Filet de confort : jamais il n'empêche d'écrire le statut de l'extension.
         console.error("[update-job-status] reprise canal coupé:", (e as Error)?.message ?? e);
+        pfCanalCoupe = null;
+      }
+    }
+
+    // ══ (25/10 nuit) UN ACCIDENT AVANT TOUT RETRAIT, MÊME SANS « CANAL COUPÉ » (règle B6) ══
+    // (_shared/accident-avant-retrait.js) Le bloc ci-dessus ne lit que le préfixe « canal
+    // coupé pendant la republication ». Le catch final de l'étape captured de l'extension
+    // (≤ 0.6.141) écrit « Republication interrompue pendant la suppression (onglet de travail
+    // vinted : le content script ne répond pas…) » quand l'onglet de dépôt ne répond pas
+    // AVANT tout envoi à la page — rien n'est retiré. Il finissait en « Relance-la depuis la
+    // fiche » (G1), repris trois fois au plus par handler-watch, puis bloqué à vie sous
+    // « En pause » (Deborah 83206086, 24/10). Ici : même vérification que le bloc ci-dessus
+    // (étape a_capturer/captured ET aucune trace de retrait, dans le body ET en base), puis
+    // file espacée B6 ; pfCanalCoupe porte le résultat (toutes les gardes « !pfCanalCoupe »
+    // et l'affichage G1 s'effacent devant lui).
+    if (statutEffectif === "needs_user" && !pfCanalCoupe && typeof body.error === "string" && coupureSeule(body.error)) {
+      try {
+        const { data: jrowA } = await userClient
+          .from("cross_post_jobs")
+          .select("action, platform, platform_fields")
+          .eq("id", jobId)
+          .maybeSingle();
+        const pfBaseA = (jrowA?.platform_fields ?? {}) as Record<string, unknown>;
+        const pfBodyA = ((body.platform_fields && typeof body.platform_fields === "object")
+          ? body.platform_fields : pfBaseA) as Record<string, unknown>;
+        const verdictA = accidentAvantRetrait({
+          platform: String(jrowA?.platform ?? ""), action: String(jrowA?.action ?? ""), status: "needs_user",
+          error: body.error, platform_fields: pfBodyA,
+        });
+        const baseSaine = ["a_capturer", "captured"].includes(String(pfBaseA.republish_step ?? ""))
+          && !MARQUES_RETRAIT_OU_DEPOT.some((k) => pfBaseA[k] != null && pfBaseA[k] !== false);
+        if (verdictA && baseSaine) {
+          const reprise = prochaineRepriseAvantRetrait(pfBaseA, {
+            motif: body.error, posePar: "update-job-status (accident avant retrait)",
+            url: String((((pfBodyA.work_window_state ?? {}) as Record<string, unknown>)["at_end"] as Record<string, unknown> | undefined)?.["tab_url"] ?? ""),
+          });
+          const pfA: Record<string, unknown> = { ...pfBodyA };
+          for (const k of CLES_ATTENTE_A_RETIRER) delete pfA[k];
+          pfA.needsUserAttempts = Number(pfBaseA.needsUserAttempts ?? 0) || 0;
+          pfA.reprise_avant_retrait = reprise.reprise_avant_retrait;
+          pfA.next_action_after = reprise.next_action_after;
+          pfA.error_technique = { at: new Date().toISOString(), brut: body.error.slice(0, 600), pose_par: "update-job-status (accident avant retrait)" };
+          pfCanalCoupe = pfA;
+          statutEffectif = "pending";
+          messageEffectif = MESSAGE_ACCIDENT_AVANT_RETRAIT;
+          raisonRequalif = `accident avant retrait (${verdictA.signature}) → file espacée B6, reprise ${reprise.reprise_avant_retrait.n} dans ${reprise.delaiMin} min` // estimation-ok: journal interne;
+        }
+      } catch (e) {
+        // Filet de confort : jamais il n'empêche d'écrire le statut de l'extension.
+        console.error("[update-job-status] accident avant retrait :", (e as Error)?.message ?? e);
         pfCanalCoupe = null;
       }
     }
