@@ -52,6 +52,8 @@ import { CANAL_RE } from "./etat-job.js";
 export { CANAL_RE };
 // (18/10) Titre Vinted « trop de symboles d'affilée » : la reprise assagie (bloc 0 ter).
 import { repriseTitreSymbolesVinted } from "./titre-symboles-vinted.js";
+// (25/10, décision de Nico) Titre « trop de lettres majuscules » : la casse normale, une reprise (bloc 0 ter).
+import { repriseTitreMajuscules } from "./casse-titre.js";
 
 const NOM = {
   vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla", depop: "Depop",
@@ -467,6 +469,26 @@ function classerEchecSansRegleRetrait(arg) {
           message:
             `Vinted refusait le titre de cette annonce (« ${refus.texte} ») : FillSell a retiré les symboles en trop, ` +
             `sans toucher aux mots ni à la marque — « ${assagi.apres} ». ${rienTouche(action, pf)} ` +
+            `${Acte} repart toute seule avec ce titre, rien à faire de ton côté.`,
+        };
+      }
+      // (25/10, décision de Nico — job fde2a207) « Le titre contient trop de lettres majuscules » :
+      // FillSell remet la casse normale SEUL (_shared/casse-titre.js) — mots en capitales en casse normale,
+      // marque, sigles et références conservés, rien d'autre ne change. Rangé comme une réponse (titre_saisi
+      // + titre_refuse : get-pending-jobs l'écrit sur le job, l'ancien titre archivé). UNE fois par job
+      // (titre_casse_corrigee) ; rien à corriger, ou un deuxième refus → la question « Titre », comme avant.
+      const recase = arg.titreDejaRecase ? null : repriseTitreMajuscules({
+        titre: arg.titre, action, plateforme: platform, pf, motifRefus: refus.texte,
+        reference: typeof arg.description === "string" ? arg.description : null,
+      });
+      if (recase) {
+        const Acte = acte(action).replace(/^la /, "La ");
+        return {
+          verdict: "reprise", statut: "pending", motif: "vinted_titre_recase", dansMinutes: 1,
+          pf: recase.pf,
+          message:
+            `Vinted refusait le titre de cette annonce (« ${refus.texte} ») : FillSell a remis en casse normale les mots ` +
+            `écrits en capitales, sans toucher aux mots ni à la marque — « ${recase.apres} ». ${rienTouche(action, pf)} ` +
             `${Acte} repart toute seule avec ce titre, rien à faire de ton côté.`,
         };
       }

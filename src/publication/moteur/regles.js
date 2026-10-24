@@ -18,6 +18,8 @@
 
 import { natureAttente } from "../../utils/etatsPublication.js";
 import { titreVide, couperTitre, titrePourJob } from "../../../supabase/functions/_shared/titre-du-job.js";
+// (25/10, décision de Nico) La limite exacte de Vinted (7 capitales à la suite) : MÊME règle que le serveur.
+import { casseTitre, depasseSeuilMajuscules } from "../../../supabase/functions/_shared/casse-titre.js";
 import { tailleDansGrille, diagnosticTaille, candidatsTaille } from "../../../supabase/functions/_shared/tailles.js";
 import { departementEbayPour } from "./departementEbay.js";
 
@@ -131,6 +133,14 @@ export function cleCategorieRequis({ cheminResolu = null, cheminIcone = null }) 
   return chemin.join(" > ");
 }
 
+// ── (25/10, décision de Nico) LE TITRE VINTED SOUS LA LIMITE EXACTE ─────────
+// Vinted refuse 7 capitales à la suite (espaces et ponctuation ignorés) : seul un titre qui l'atteint
+// change, et seulement sa casse — même règle que le serveur (_shared/casse-titre.js).
+function titreVintedSousLaLimite(titre, pf, description) {
+  if (!depasseSeuilMajuscules(titre, "vinted")) return titre;
+  return casseTitre(titre, { marques: [pf?.marque].filter((m) => typeof m === "string" && m.trim()), plateforme: "vinted", reference: description ?? null });
+}
+
 // ── LES LIGNES DE JOBS (handlePublish, `rows`) ──────────────────────────────
 // Une ligne par plateforme, dans l'ordre reçu. Photos du JOB, par plateforme :
 // identiques partout SAUF plafonnement Leboncoin (quota gratuit par feuille).
@@ -197,8 +207,10 @@ export function construireJobs({
       photo_option:    photoOption,
       // Vinted refuse un titre trop capitalisé (400 serveur, 2026-08-15) :
       // normalisation à l'ENVOI. Les autres plateformes partent telles quelles.
+      // (25/10) Puis la limite EXACTE de Vinted (7 capitales à la suite, _shared/casse-titre.js) : seul un
+      // titre que Vinted refuserait change, et seulement sa casse (marque, sigles, références gardés).
       title:           platform === "vinted"
-        ? normalizeVintedTitle(titre)
+        ? titreVintedSousLaLimite(normalizeVintedTitle(titre), pf, edited[platform]?.description)
         : titre,
       description:     edited[platform]?.description ?? "",
       price:           edited[platform]?.price ?? price,

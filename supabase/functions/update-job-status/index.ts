@@ -3968,6 +3968,9 @@ serve(async (req) => {
           titre: typeof jPdr?.title === "string" ? jPdr.title : "",
           titreDejaAssagi: Boolean(pfBase["titre_symboles_assagi"]
             || ((jPdr?.platform_fields ?? {}) as Record<string, unknown>)["titre_symboles_assagi"]),
+          // (25/10) Passe « casse normale » déjà faite (même double lecture), _shared/casse-titre.js.
+          titreDejaRecase: Boolean(pfBase["titre_casse_corrigee"]
+            || ((jPdr?.platform_fields ?? {}) as Record<string, unknown>)["titre_casse_corrigee"]),
         });
         const pfS = { ...pfBase };
         if (erreurTechniqueBrute == null && typeof body.error === "string" && body.error) {

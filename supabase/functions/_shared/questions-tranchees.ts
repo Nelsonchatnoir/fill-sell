@@ -26,11 +26,15 @@
 //      symboles d'affilée » : la question « Titre » est tranchée par le titre sans
 //      ses symboles en trop (mots et marque gardés, _shared/titre-symboles-vinted.js),
 //      rangé comme une réponse (titre_saisi) — la publication repart. Une passe par job.
+//   8. (25/10, décision de Nico — job fde2a207) « Le titre contient trop de lettres majuscules » : la
+//      question « Titre » est tranchée par le titre en casse normale (marque, sigles, références gardés,
+//      _shared/casse-titre.js), rangé comme une réponse (titre_saisi) — la publication repart. Une passe par job.
 // deno-lint-ignore-file no-explicit-any
 import { estQuestionEtat, etatDepuisSources, etatsDuJob } from "./etat-correspondance.js";
 import { reponseMarqueDepop, champsApresMarqueDepop, QUESTION_MARQUE_DEPOP } from "./marque-depop.js";
 import { archiverErreur } from "./erreurs-archivees.js";
 import { titreSymbolesATrancher } from "./titre-symboles-vinted.js";
+import { titreMajusculesATrancher } from "./casse-titre.js";
 
 const TICKS = ["needs_user_tick_le", "needs_user_actif_ms", "needs_user_vu_le", "needs_user_vu_erreur"];
 const NOMS: Record<string, string> = { vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", ebay: "eBay", opla: "Opla", depop: "Depop" };
@@ -300,6 +304,20 @@ export async function trancherQuestions(supabase: any): Promise<Record<string, n
     const { data } = await supabase.from("cross_post_jobs").update({ status: "pending", error: null, platform_fields: r.platform_fields })
       .eq("id", j.id).eq("status", "needs_user").select("id");
     if (data?.length) (n as Record<string, number>).titre_symboles = ((n as Record<string, number>).titre_symboles ?? 0) + 1;
+  }
+  // ── 8. (25/10, décision de Nico) « trop de lettres majuscules » : FillSell remet la casse normale ──
+  // Job fde2a207 (Thierry) : needs_user depuis le 23/10 sur « Le titre contient trop de lettres
+  // majuscules ». Le titre en casse normale (mots en capitales seulement ; marque, sigles, références et
+  // chiffres romains gardés ; sous la limite de Vinted, 7 capitales à la suite) est rangé en titre_saisi —
+  // titre_refuse GARDÉ : get-pending-jobs l'écrit sur le job au service et archive l'ancien
+  // (titre_refuse_remplace). Une seule passe (titre_casse_corrigee) : un nouveau refus repose la question.
+  // Compare-and-swap sur needs_user.
+  for (const j of liste) {
+    const r = titreMajusculesATrancher(j, maintenant);
+    if (!r) continue;
+    const { data } = await supabase.from("cross_post_jobs").update({ status: "pending", error: null, platform_fields: r.platform_fields })
+      .eq("id", j.id).eq("status", "needs_user").select("id");
+    if (data?.length) (n as Record<string, number>).titre_majuscules = ((n as Record<string, number>).titre_majuscules ?? 0) + 1;
   }
   return n;
 }

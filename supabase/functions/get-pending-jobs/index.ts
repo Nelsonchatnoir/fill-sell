@@ -163,6 +163,8 @@ import { completerDescriptionBeebs, BEEBS_DESCRIPTION_MIN } from "../_shared/des
 import { tempererMajuscules } from "../_shared/titre-majuscules.ts";
 // (18/10) Titre Vinted « trop de symboles d'affilée » : symboles en trop retirés au service.
 import { assagirSymbolesVinted, retirerEmojiVinted } from "../_shared/titre-symboles-vinted.js";
+// (25/10, décision de Nico) Titre Vinted à 7 capitales d'affilée : la casse normale au service.
+import { casseTitre, depasseSeuilMajuscules, marquesDuJob } from "../_shared/casse-titre.js";
 // Règles du catalogue Beebs (2026-09-11) : le MÊME fichier que l'app
 // (src/utils/platformCompat.js) — module JS sans import, chargé tel quel.
 import { verdictBeebsInterdit, messageBeebsInterdit } from "../_shared/beebs-interdits.js";
@@ -10610,6 +10612,27 @@ serve(async (req) => {
         if (servi !== j.title) motifs.push("majuscules");
         const sage = assagirSymbolesVinted(servi, { marque: marqueJ });
         if (sage !== retirerEmojiVinted(servi)) { servi = sage; motifs.push("symboles"); }
+        // ── (25/10, décision de Nico) LA LIMITE EXACTE DE VINTED : 7 CAPITALES À LA SUITE ──
+        // Les règles à la part de capitales (30 / 35 / 60 %) laissaient passer « Maximin II DAIA, Follis »
+        // (29,5 %, job fde2a207, refusé). Mesuré le 25/10 : aucun des 104 048 titres acceptés n'atteint 7 —
+        // seul un titre que Vinted refuserait change, et seulement sa casse (_shared/casse-titre.js).
+        // Publication : le titre servi. Republication : le titre de la recréation (titre_saisi, lu par
+        // l'extension ≥ 0.6.128 avant le titre capturé), si la personne n'en a pas déjà écrit un.
+        if (j.action === "publish" && depasseSeuilMajuscules(servi, "vinted")) {
+          const c = casseTitre(servi, { marques: marquesDuJob(pfJ), plateforme: "vinted", reference: typeof j.description === "string" ? j.description : null });
+          if (c !== servi) { servi = c; motifs.push("majuscules_suite"); }
+        } else if (j.action === "republish" && !pfJ["titre_saisi"]) {
+          const snap = (pfJ["republish_snapshot"] ?? {}) as Record<string, unknown>;
+          const capture = typeof snap["titre"] === "string" ? (snap["titre"] as string) : "";
+          if (capture && depasseSeuilMajuscules(capture, "vinted")) {
+            const c = casseTitre(capture, { marques: marquesDuJob(pfJ), plateforme: "vinted", reference: typeof snap["description"] === "string" ? (snap["description"] as string) : null });
+            if (c !== capture) {
+              j.platform_fields = { ...pfJ, titre_saisi: c, titre_casse_corrigee: { le: new Date().toISOString(), avant: capture.slice(0, 200), apres: c, par: "get-pending-jobs (service, limite Vinted)" } };
+              console.log(`[get-pending-jobs] republication Vinted ${String(j.id).slice(0, 8)} : titre capturé à 7 capitales d'affilée → « ${c} » (titre_saisi)`);
+              titresTemperes++;
+            }
+          }
+        }
         if (!motifs.length || servi === j.title) continue;
         const motif = motifs.join("+");
         console.log(`[get-pending-jobs] titre Vinted ${String(j.id).slice(0, 8)} tempéré (${motif}) : « ${j.title} » → « ${servi} »`);

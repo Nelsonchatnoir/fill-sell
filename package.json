@@ -431,6 +431,7 @@
     "selftest:zero-friction-oranges": "deno run --allow-read scripts/zero-friction-oranges-selftest.ts",
     "selftest:recreation-vinted-verifiee": "node scripts/recreation-vinted-verifiee-selftest.mjs",
     "selftest:titre-symboles-vinted": "node scripts/titre-symboles-vinted-selftest.mjs",
+    "selftest:casse-titre": "node scripts/casse-titre-selftest.mjs",
     "selftest:depop-slug-souligne-serveur": "node scripts/depop-slug-souligne-serveur-selftest.mjs",
     "selftest:lbc-mur-paiement-perime": "node scripts/lbc-mur-paiement-perime-selftest.mjs",
     "selftest:surveillance-releves": "node scripts/surveillance-releves-selftest.mjs",
