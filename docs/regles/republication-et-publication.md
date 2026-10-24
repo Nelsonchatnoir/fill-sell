@@ -492,3 +492,38 @@
   vaut 0 : toujours un `CASE`).
 - Textes : plus aucune phrase « limite du jour », « repart à minuit », « N par jour (toutes plateformes) » ; les
   phrases de la pause restent. Selftest `plus-de-plafond-par-jour`.
+
+## ⛔ 24/10 soir — « ZÉRO BLOCAGE » : ce qui se déduit se remplit, ce qu'une plateforme refuse n'entre pas en file (décision de Nico ; rapport `docs/enquetes/zero-blocage-2410/RAPPORT.md`)
+- **Seules exceptions** : se connecter, finir son compte vendeur, compte restreint (et les gardes voulues : doublon
+  possible, vente à confirmer). Tout le reste est de notre fait et se classe à part
+  (`_shared/cause-blocage.js` : utilisateur / garde / plateforme / nous ; un abandon après un échec de notre fait est un
+  ÉCHEC) — section rouge d'ops-digest, mesure `scripts/zero-blocage-mesure.mjs`.
+- **B1 / B2 eBay (écran)** : le Département se recalcule pour la catégorie QUI PART (genre, ou Département posé pour
+  une autre catégorie — table unique `moteur/departementEbay.js`) ; une liste fermée à UNE valeur se pose d'office
+  (jamais marque, modèle, stockage, ni une taille écrite) ; MPN inconnu = « Ne s'applique pas » ; une valeur refusée
+  remonte l'encart sur la catégorie du job. **B8** : jamais « Tout est complété » sous « Pas publié ».
+- **B3 / pays** : un état Vinted se lit par son identifiant (15 langues) ; une liste d'états étrangère se lit en
+  français (`utils/catalogueListes.etatsVintedEnFrancais`) ; couleurs des pages IT/ES/DE/NL/PT traduites
+  (`utils/vintedColors.js`) ; « COULEUR INTROUVABLE » → une reprise, couleur recalculée depuis la fiche. Le catalogue
+  partagé ne s'écrit jamais dans la langue d'une page étrangère (migration `20261024220000`, à valider).
+- **B4 titres** : jamais un titre vide, fait de symboles, générique ou égal au nom d'une plateforme
+  (`titre-du-job.titreRecevable` : le titre de la fiche le remplace ; l'app refuse la réponse) ; le refus « symboles »
+  se lit dans toutes les langues de Vinted ; un mot sans aucune lettre latine (han, kana, hangul, arabe, hébreu, thaï)
+  part quand 3 mots latins restent (serveur `retirerMotsNonLatins` = extension). Cyrillique et grec intacts.
+- **B5 Depop** : la copie d'une republication se complète avant le départ (`_shared/copie-republication-depop.js`) :
+  dépôt FillSell de la même annonce (lien, numéro, produit Depop — jamais un job de SUIVI du relevé) → annonce en ligne
+  relevée → fiche ; jamais par-dessus une valeur de la copie ; un rayon seulement s'il désigne une feuille ; l'état suit
+  la fiche. **Vinted** : « Espace de stockage » et « Simlockage » repris de la capture (extension 0.6.134).
+- **B6 (inchangé)** : rien n'est retiré sans recréation prouvée possible. Un accident avant retrait (formulaire pas
+  rendu, sélecteur, canal) n'est jamais un geste : file espacée 5 / 20 / 60 min puis 3 h ; une recapture incomplète
+  pour une erreur passagère se refait seule ; l'upload d'une photo se réessaie (republish-capture-photos).
+- **B7** : une republication (auto OU demandée) d'un article que la plateforme refuse est close tant que rien n'est
+  retiré (Depop : électrique, etc.) ; l'app ne la propose plus (`repubEtatPlateforme` → `interdit`).
+- **Marque Vinted (remplace la règle du 17/10)** : une marque introuvable ne bloque jamais — identifiant seulement si
+  l'envoi direct est prouvé, sinon la même marque sous une autre écriture (une seule), sinon « Sans marque » quand le
+  rayon le propose ; jamais une marque inventée. La pause « marque » n'est jamais permanente (gpj : marque du catalogue
+  relâchée, au plus toutes les 6 h ; sinon vers un poste ≥ `BUILD_VINTED_MARQUE_CHAINE`).
+- **Leboncoin** : la mémoire « annonce morte » de l'extension tombe dès qu'un relevé a revu l'annonce, sur TOUS les
+  chemins (0.6.134) ; une lecture « vendue » n'est jamais « introuvable » (republication close) ; un relevé qui pose
+  `disparu_le` ou lit la vente tranche.
+- **Colis Vinted** : une correction de rayon ne change jamais de famille de grille (`capture-corrigee.js`).

@@ -332,3 +332,13 @@ Rapport : `docs/enquetes/session-sans-nico-1810/lot4-ventes-lot-multi-exemplaire
 - Le bilan Beebs (`usage_logs` « ventes_beebs_commandes ») garde le détail de chaque commande (numéro, statut, classe,
   date ; par produit : verdict, job, fiche, titre) et l'extension du compte, en fantôme comme en écrit (migration
   `20261024160000`). L'interrupteur reste à 0 jusqu'au feu vert de Nico sur la liste.
+
+## 24/10 soir — les ventes proches tiennent dans UN mail (lot « zéro blocage », A9 ; rapport `docs/enquetes/zero-blocage-2410/RAPPORT.md`)
+- Les notes d'un même compte décidées dans le même passage de `push-ventes` partent dans UN mail (« N articles
+  vendus ») ; deux au plus (enregistrées / à confirmer). Chaque vente garde sa réservation `vente:<id>` (index unique
+  `email_logs_vente_unique`) : jamais deux mails pour une vente, jamais une vente sans mail (rien de parti → tout
+  relâché ; tête déjà servie → les autres repartent entre elles). Une vente seule part comme avant, sans retard.
+  `_shared/ventes-un-mail.js`, selftest `ventes-un-mail`. Une attente de regroupement entre passages (R2) n'est pas
+  faite (gain estimé : 3 mails sur 47 ; elle retarderait tous les mails).
+- Constaté le 24/10 : la règle du 06/10 « preuve récente » laisse des ventes Vinted SANS mail (alice.fournival : 9 sur
+  10) — à trancher par Nico.
