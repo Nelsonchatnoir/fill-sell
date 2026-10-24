@@ -309,6 +309,12 @@ export function gardeAspectsEbay({ pfE, ebayRequiredFull, outils }) {
     if (allowed.length === 1 && listeFaitFoi("ebay", aspect.mode)) return String(allowed[0]);
     return null;
   };
+  // (24/10, B1) Le numéro de pièce fabricant inconnu = « Ne s'applique pas », la valeur standard d'eBay — la même
+  // règle que la voie serveur (_shared/ebay-publication.ts, défaut déterministe) : 13 refus au clic en 7 jours
+  // (nino57270, sebimsn10, mataich67) pour une valeur qu'aucune personne ne connaît sur un article d'occasion.
+  const NE_S_APPLIQUE_PAS = "Ne s'applique pas";
+  const mpnInconnu = (aspect) => aspect.name === "Numéro de pièce fabricant"
+    && (!listeFaitFoi("ebay", aspect.mode) || (aspect.allowedValues ?? []).some((v) => normFuzzy(v) === normFuzzy(NE_S_APPLIQUE_PAS)));
   const poser = (aspect, known, v) => {
     if (known?.set) known.set(v);
     else pfE.ebayAspects = { ...(pfE.ebayAspects ?? {}), [aspect.name]: v };
@@ -319,7 +325,7 @@ export function gardeAspectsEbay({ pfE, ebayRequiredFull, outils }) {
     const genericVal = String(pfE.ebayAspects?.[aspect.name] ?? "").trim();
     const val = known ? String(known.value() ?? "").trim() || genericVal : genericVal;
     if (!val) {
-      const d = deduireDeLaCategorie(aspect, known, "");
+      const d = deduireDeLaCategorie(aspect, known, "") ?? (mpnInconnu(aspect) ? NE_S_APPLIQUE_PAS : null);
       if (d) { poser(aspect, known, d); rapproches.push({ name: aspect.name, val: "", nearest: d, regle: "deduit_de_la_categorie" }); continue; }
       missingEmpty.push(aspect.name); continue;
     }

@@ -1,0 +1,446 @@
+{
+ "banc": "zéro blocage — tout le catalogue",
+ "fait_le": "2026-10-24T13:53:45.036Z",
+ "couples_rayon_champ": 2495,
+ "par_plateforme": {
+  "vinted": {
+   "auto": 354,
+   "deduit": 8,
+   "refus": 9,
+   "choix": 5,
+   "question": 0,
+   "total": 376
+  },
+  "leboncoin": {
+   "auto": 8,
+   "deduit": 41,
+   "refus": 0,
+   "choix": 1,
+   "question": 0,
+   "total": 50
+  },
+  "beebs": {
+   "auto": 841,
+   "deduit": 27,
+   "refus": 0,
+   "choix": 0,
+   "question": 0,
+   "total": 868
+  },
+  "ebay": {
+   "auto": 800,
+   "deduit": 377,
+   "refus": 0,
+   "choix": 20,
+   "question": 0,
+   "total": 1197
+  },
+  "depop": {
+   "auto": 4,
+   "deduit": 0,
+   "refus": 0,
+   "choix": 0,
+   "question": 0,
+   "total": 4
+  }
+ },
+ "questions_restantes": {},
+ "vrais_choix": {
+  "ebay · Hauteur": {
+   "n": 8,
+   "raison": "mesure de l'objet : jamais inventée (lue dans le texte si elle y est)"
+  },
+  "ebay · Largeur": {
+   "n": 7,
+   "raison": "mesure de l'objet : jamais inventée (lue dans le texte si elle y est)"
+  },
+  "ebay · Longueur": {
+   "n": 5,
+   "raison": "mesure de l'objet : jamais inventée (lue dans le texte si elle y est)"
+  },
+  "vinted · isbn": {
+   "n": 3,
+   "raison": "ISBN illisible sur l'annonce et les photos : seul le livre le dit (« Ce livre n'a pas d'ISBN » proposé)"
+  },
+  "vinted · computer_storage_capacity": {
+   "n": 1,
+   "raison": "caractéristique technique que seul l'objet dit (si le titre ne la porte pas)"
+  },
+  "vinted · computer_ram": {
+   "n": 1,
+   "raison": "caractéristique technique que seul l'objet dit (si le titre ne la porte pas)"
+  },
+  "leboncoin · diy_weight": {
+   "n": 1,
+   "raison": "poids que seul l'objet dit (si la fiche ne le porte pas)"
+  }
+ },
+ "refus_plateforme": {
+  "vinted · condition": {
+   "n": 9,
+   "raison": "rayon « neuf seulement » : un article d'occasion n'y entre pas (écarté avant la file)"
+  }
+ },
+ "deduits": {
+  "ebay · Type": {
+   "n": 200,
+   "raison": "IA dans la liste eBay de la catégorie (ebay_aspects_ia), sinon question"
+  },
+  "ebay · Style": {
+   "n": 73,
+   "raison": "IA dans la liste eBay de la catégorie (ebay_aspects_ia), sinon question"
+  },
+  "beebs · Âge": {
+   "n": 20,
+   "raison": "âge de la fiche, du texte, ou des photos (levier IA)"
+  },
+  "ebay · Pointure EU": {
+   "n": 15,
+   "raison": "IA dans la liste eBay de la catégorie (ebay_aspects_ia), sinon question"
+  },
+  "ebay · Matériau": {
+   "n": 13,
+   "raison": "IA dans la liste eBay de la catégorie (ebay_aspects_ia), sinon question"
+  },
+  "ebay · Matière de la couche extérieure": {
+   "n": 10,
+   "raison": "IA dans la liste eBay de la catégorie (ebay_aspects_ia), sinon question"
+  },
+  "ebay · Matière doublure externe": {
+   "n": 9,
+   "raison": "IA dans la liste eBay de la catégorie (ebay_aspects_ia), sinon question"
+  },
+  "ebay · Couleur de la monture": {
+   "n": 5,
+   "raison": "IA dans la liste eBay de la catégorie (ebay_aspects_ia), sinon question"
+  },
+  "ebay · Volume": {
+   "n": 4,
+   "raison": "IA dans la liste eBay de la catégorie (ebay_aspects_ia), sinon question"
+  },
+  "ebay · Nom de parfum": {
+   "n": 4,
+   "raison": "IA dans la liste eBay de la catégorie (ebay_aspects_ia), sinon question"
+  },
+  "beebs · Fermeture": {
+   "n": 3,
+   "raison": "lu dans le texte, sinon IA dans la liste"
+  },
+  "ebay · Taille d'écran": {
+   "n": 3,
+   "raison": "IA dans la liste eBay de la catégorie (ebay_aspects_ia), sinon question"
+  },
+  "ebay · Connectivité": {
+   "n": 3,
+   "raison": "IA dans la liste eBay de la catégorie (ebay_aspects_ia), sinon question"
+  },
+  "ebay · Dimensions": {
+   "n": 3,
+   "raison": "IA dans la liste eBay de la catégorie (ebay_aspects_ia), sinon question"
+  },
+  "ebay · Installation": {
+   "n": 3,
+   "raison": "IA dans la liste eBay de la catégorie (ebay_aspects_ia), sinon question"
+  },
+  "ebay · Longueur de la robe": {
+   "n": 3,
+   "raison": "IA dans la liste eBay de la catégorie (ebay_aspects_ia), sinon question"
+  },
+  "vinted · internal_memory_capacity": {
+   "n": 2,
+   "raison": "capture de l'annonce (republication) ou stockage lu dans le titre"
+  },
+  "leboncoin · clothing_type": {
+   "n": 2,
+   "raison": "Univers ← genre de la fiche, sinon IA dans la liste (lbc_champs_ia)"
+  },
+  "beebs · Console": {
+   "n": 2,
+   "raison": "lu dans le texte, sinon IA dans la liste"
+  },
+  "vinted · model": {
+   "n": 2,
+   "raison": "modèle lu dans le titre ou par Lens, parmi la liste de Vinted"
+  },
+  "beebs · Alimentation": {
+   "n": 2,
+   "raison": "lu dans le texte, sinon IA dans la liste"
+  },
+  "vinted · video_game_platform": {
+   "n": 2,
+   "raison": "console lue dans le titre (jeuxVideo.familleJeuVideo)"
+  },
+  "ebay · Source d'alimentation": {
+   "n": 2,
+   "raison": "IA dans la liste eBay de la catégorie (ebay_aspects_ia), sinon question"
+  },
+  "ebay · Jeu": {
+   "n": 2,
+   "raison": "IA dans la liste eBay de la catégorie (ebay_aspects_ia), sinon question"
+  },
+  "leboncoin · image_sound_universe": {
+   "n": 1,
+   "raison": "Univers ← genre de la fiche, sinon IA dans la liste (lbc_champs_ia)"
+  },
+  "leboncoin · computer_type": {
+   "n": 1,
+   "raison": "lu dans le texte, sinon IA dans la liste exacte (lbc_champs_ia, leviers)"
+  },
+  "leboncoin · phone_product": {
+   "n": 1,
+   "raison": "lu dans le texte, sinon IA dans la liste exacte (lbc_champs_ia, leviers)"
+  },
+  "leboncoin · music_type": {
+   "n": 1,
+   "raison": "lu dans le texte, sinon IA dans la liste exacte (lbc_champs_ia, leviers)"
+  },
+  "leboncoin · diy_product": {
+   "n": 1,
+   "raison": "lu dans le texte, sinon IA dans la liste exacte (lbc_champs_ia, leviers)"
+  },
+  "leboncoin · baby_equipment_universe": {
+   "n": 1,
+   "raison": "Univers ← genre de la fiche, sinon IA dans la liste (lbc_champs_ia)"
+  },
+  "leboncoin · baby_equipment_type": {
+   "n": 1,
+   "raison": "lu dans le texte, sinon IA dans la liste exacte (lbc_champs_ia, leviers)"
+  },
+  "leboncoin · shoe_type": {
+   "n": 1,
+   "raison": "Univers ← genre de la fiche, sinon IA dans la liste (lbc_champs_ia)"
+  },
+  "vinted · skirt_length": {
+   "n": 1,
+   "raison": "longueur lue dans le titre / la description"
+  },
+  "leboncoin · linens_type": {
+   "n": 1,
+   "raison": "lu dans le texte, sinon IA dans la liste exacte (lbc_champs_ia, leviers)"
+  },
+  "leboncoin · computer_accessories_product": {
+   "n": 1,
+   "raison": "lu dans le texte, sinon IA dans la liste exacte (lbc_champs_ia, leviers)"
+  },
+  "leboncoin · dvd_movies_format": {
+   "n": 1,
+   "raison": "lu dans le texte, sinon IA dans la liste exacte (lbc_champs_ia, leviers)"
+  },
+  "leboncoin · gardening_type": {
+   "n": 1,
+   "raison": "lu dans le texte, sinon IA dans la liste exacte (lbc_champs_ia, leviers)"
+  },
+  "leboncoin · smart_devices_accessories_product": {
+   "n": 1,
+   "raison": "lu dans le texte, sinon IA dans la liste exacte (lbc_champs_ia, leviers)"
+  },
+  "leboncoin · creative_activities_product": {
+   "n": 1,
+   "raison": "lu dans le texte, sinon IA dans la liste exacte (lbc_champs_ia, leviers)"
+  },
+  "leboncoin · image_sound_product": {
+   "n": 1,
+   "raison": "lu dans le texte, sinon IA dans la liste exacte (lbc_champs_ia, leviers)"
+  },
+  "vinted · video_game_ratings": {
+   "n": 1,
+   "raison": "PEGI lu dans le texte, sinon question (« Non précisé » existe : à décider)"
+  },
+  "leboncoin · antique_product": {
+   "n": 1,
+   "raison": "lu dans le texte, sinon IA dans la liste exacte (lbc_champs_ia, leviers)"
+  },
+  "leboncoin · table_art_type": {
+   "n": 1,
+   "raison": "lu dans le texte, sinon IA dans la liste exacte (lbc_champs_ia, leviers)"
+  },
+  "leboncoin · baby_clothing_category": {
+   "n": 1,
+   "raison": "lu dans le texte, sinon IA dans la liste exacte (lbc_champs_ia, leviers)"
+  },
+  "leboncoin · house_and_garden_type": {
+   "n": 1,
+   "raison": "lu dans le texte, sinon IA dans la liste exacte (lbc_champs_ia, leviers)"
+  },
+  "leboncoin · furniture_category": {
+   "n": 1,
+   "raison": "lu dans le texte, sinon IA dans la liste exacte (lbc_champs_ia, leviers)"
+  },
+  "leboncoin · decoration_type": {
+   "n": 1,
+   "raison": "lu dans le texte, sinon IA dans la liste exacte (lbc_champs_ia, leviers)"
+  },
+  "leboncoin · home_office_stationery_school_supplies_product": {
+   "n": 1,
+   "raison": "lu dans le texte, sinon IA dans la liste exacte (lbc_champs_ia, leviers)"
+  },
+  "leboncoin · wines_gastronomy_universe": {
+   "n": 1,
+   "raison": "Univers ← genre de la fiche, sinon IA dans la liste (lbc_champs_ia)"
+  },
+  "leboncoin · furniture_type": {
+   "n": 1,
+   "raison": "lu dans le texte, sinon IA dans la liste exacte (lbc_champs_ia, leviers)"
+  },
+  "leboncoin · children_room_furniture_universe": {
+   "n": 1,
+   "raison": "Univers ← genre de la fiche, sinon IA dans la liste (lbc_champs_ia)"
+  },
+  "leboncoin · children_room_furniture_product": {
+   "n": 1,
+   "raison": "lu dans le texte, sinon IA dans la liste exacte (lbc_champs_ia, leviers)"
+  },
+  "leboncoin · table_art_product": {
+   "n": 1,
+   "raison": "lu dans le texte, sinon IA dans la liste exacte (lbc_champs_ia, leviers)"
+  },
+  "leboncoin · cd_music_format": {
+   "n": 1,
+   "raison": "lu dans le texte, sinon IA dans la liste exacte (lbc_champs_ia, leviers)"
+  },
+  "leboncoin · diy_type": {
+   "n": 1,
+   "raison": "lu dans le texte, sinon IA dans la liste exacte (lbc_champs_ia, leviers)"
+  },
+  "leboncoin · bicycle_equipment_product": {
+   "n": 1,
+   "raison": "lu dans le texte, sinon IA dans la liste exacte (lbc_champs_ia, leviers)"
+  },
+  "leboncoin · leisure_collection_product": {
+   "n": 1,
+   "raison": "lu dans le texte, sinon IA dans la liste exacte (lbc_champs_ia, leviers)"
+  },
+  "leboncoin · home_appliance_product": {
+   "n": 1,
+   "raison": "lu dans le texte, sinon IA dans la liste exacte (lbc_champs_ia, leviers)"
+  },
+  "leboncoin · gardening_product": {
+   "n": 1,
+   "raison": "lu dans le texte, sinon IA dans la liste exacte (lbc_champs_ia, leviers)"
+  },
+  "leboncoin · sports_hobbies_universe": {
+   "n": 1,
+   "raison": "Univers ← genre de la fiche, sinon IA dans la liste (lbc_champs_ia)"
+  },
+  "leboncoin · leisure_book_genre": {
+   "n": 1,
+   "raison": "lu dans le texte, sinon IA dans la liste exacte (lbc_champs_ia, leviers)"
+  },
+  "leboncoin · tablet_readers_product": {
+   "n": 1,
+   "raison": "lu dans le texte, sinon IA dans la liste exacte (lbc_champs_ia, leviers)"
+  },
+  "leboncoin · linens_product": {
+   "n": 1,
+   "raison": "lu dans le texte, sinon IA dans la liste exacte (lbc_champs_ia, leviers)"
+  },
+  "leboncoin · home_appliance_type": {
+   "n": 1,
+   "raison": "lu dans le texte, sinon IA dans la liste exacte (lbc_champs_ia, leviers)"
+  },
+  "leboncoin · toy_type": {
+   "n": 1,
+   "raison": "lu dans le texte, sinon IA dans la liste exacte (lbc_champs_ia, leviers)"
+  },
+  "ebay · Processeur": {
+   "n": 1,
+   "raison": "IA dans la liste eBay de la catégorie (ebay_aspects_ia), sinon question"
+  },
+  "ebay · Technologie d'affichage": {
+   "n": 1,
+   "raison": "IA dans la liste eBay de la catégorie (ebay_aspects_ia), sinon question"
+  },
+  "ebay · Résolution maximale": {
+   "n": 1,
+   "raison": "IA dans la liste eBay de la catégorie (ebay_aspects_ia), sinon question"
+  },
+  "ebay · Teinte": {
+   "n": 1,
+   "raison": "IA dans la liste eBay de la catégorie (ebay_aspects_ia), sinon question"
+  },
+  "ebay · Type de cuisinière compatible": {
+   "n": 1,
+   "raison": "IA dans la liste eBay de la catégorie (ebay_aspects_ia), sinon question"
+  },
+  "ebay · Capacité de charge": {
+   "n": 1,
+   "raison": "IA dans la liste eBay de la catégorie (ebay_aspects_ia), sinon question"
+  },
+  "ebay · Matière extérieure": {
+   "n": 1,
+   "raison": "IA dans la liste eBay de la catégorie (ebay_aspects_ia), sinon question"
+  },
+  "ebay · Couleur extérieure": {
+   "n": 1,
+   "raison": "IA dans la liste eBay de la catégorie (ebay_aspects_ia), sinon question"
+  },
+  "ebay · Connectivité Internet": {
+   "n": 1,
+   "raison": "IA dans la liste eBay de la catégorie (ebay_aspects_ia), sinon question"
+  },
+  "ebay · Taille de matelas compatible": {
+   "n": 1,
+   "raison": "IA dans la liste eBay de la catégorie (ebay_aspects_ia), sinon question"
+  },
+  "ebay · Système d'exploitation compatible": {
+   "n": 1,
+   "raison": "IA dans la liste eBay de la catégorie (ebay_aspects_ia), sinon question"
+  },
+  "ebay · Taille du boîtier": {
+   "n": 1,
+   "raison": "IA dans la liste eBay de la catégorie (ebay_aspects_ia), sinon question"
+  },
+  "ebay · Matériau du bracelet": {
+   "n": 1,
+   "raison": "IA dans la liste eBay de la catégorie (ebay_aspects_ia), sinon question"
+  },
+  "ebay · Batterie/pile incluse": {
+   "n": 1,
+   "raison": "IA dans la liste eBay de la catégorie (ebay_aspects_ia), sinon question"
+  },
+  "ebay · Tension": {
+   "n": 1,
+   "raison": "IA dans la liste eBay de la catégorie (ebay_aspects_ia), sinon question"
+  },
+  "ebay · Plateforme": {
+   "n": 1,
+   "raison": "IA dans la liste eBay de la catégorie (ebay_aspects_ia), sinon question"
+  },
+  "ebay · Nom du jeu vidéo": {
+   "n": 1,
+   "raison": "IA dans la liste eBay de la catégorie (ebay_aspects_ia), sinon question"
+  },
+  "ebay · Articles inclus": {
+   "n": 1,
+   "raison": "IA dans la liste eBay de la catégorie (ebay_aspects_ia), sinon question"
+  },
+  "ebay · Inclus dans le lot": {
+   "n": 1,
+   "raison": "IA dans la liste eBay de la catégorie (ebay_aspects_ia), sinon question"
+  },
+  "ebay · Nombre d'articles par lot": {
+   "n": 1,
+   "raison": "IA dans la liste eBay de la catégorie (ebay_aspects_ia), sinon question"
+  },
+  "ebay · Franchise": {
+   "n": 1,
+   "raison": "IA dans la liste eBay de la catégorie (ebay_aspects_ia), sinon question"
+  },
+  "ebay · Format du film": {
+   "n": 1,
+   "raison": "IA dans la liste eBay de la catégorie (ebay_aspects_ia), sinon question"
+  },
+  "ebay · Produit": {
+   "n": 1,
+   "raison": "IA dans la liste eBay de la catégorie (ebay_aspects_ia), sinon question"
+  },
+  "ebay · Nom de publication": {
+   "n": 1,
+   "raison": "IA dans la liste eBay de la catégorie (ebay_aspects_ia), sinon question"
+  },
+  "ebay · Marque compatible": {
+   "n": 1,
+   "raison": "IA dans la liste eBay de la catégorie (ebay_aspects_ia), sinon question"
+  }
+ }
+}

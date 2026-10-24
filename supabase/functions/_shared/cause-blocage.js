@@ -63,6 +63,8 @@ const PAR_TEXTE = Object.freeze([
   [/tu as indiqu[ée] ne pas vendre/i, ORIGINE.UTILISATEUR, "plateforme_desactivee"],
   [/Arr[êe]t[ée] [àa] ta demande|Stopped at your request|abandonn[ée]? .* pour cet article/i, ORIGINE.UTILISATEUR, "arret_demande"],
   [/aucune option gratuite|Valider et payer|pr[êe]te sur Leboncoin/i, ORIGINE.UTILISATEUR, "paiement_plateforme"],
+  [/eBay ne le laisse pas encore vendre|eBay a retir[ée] l.acc[èe]s de FillSell/i, ORIGINE.UTILISATEUR, "compte_a_finir"],
+  [/Vinted affiche .{0,60} sur ton ordinateur|En attente de ta boutique Vinted/i, ORIGINE.UTILISATEUR, "connexion"],
   [/n.a pas accept[ée] l.adresse d.envoi|Pas de retour.* exige que tu acceptes les retours/i, ORIGINE.UTILISATEUR, "reglage_du_compte"],
   // ── garde voulue (doute → question) ──
   [/pourrait (correspondre|[êe]tre cet article)|On ne red[ée]pose pas, pour ne jamais la mettre en double/i, ORIGINE.GARDE, "doublon_possible"],
@@ -86,7 +88,15 @@ const PAR_TEXTE = Object.freeze([
   [/jamais vue en ligne|jamais r[ée]ussi [àa] r[ée]cup[ée]rer son lien|jamais eu son num[ée]ro/i, ORIGINE.NOUS, "depot_non_confirme"],
   [/\[selectors\]|n.a r[ée]solu|s[ée]lecteur/i, ORIGINE.NOUS, "selecteur_casse"],
   [/cat[ée]gorie .* (r[ée]solue|ranger)|rayon/i, ORIGINE.NOUS, "categorie"],
-  [/n.a pas abouti|On ne sait pas encore pourquoi|apr[èe]s plusieurs essais/i, ORIGINE.NOUS, "echec_inexplique"],
+  [/n.est pas dans la liste des marques de Depop/i, ORIGINE.NOUS, "marque_inconnue"],
+  [/Cat[ée]gorie eBay [àa] confirmer|CategoryPath absent|article non mapp[ée]/i, ORIGINE.NOUS, "categorie"],
+  [/l.[ée]tat de ton annonce .{0,20} n.a pas pu [êe]tre v[ée]rifi[ée]|sur la page de vente Leboncoin/i, ORIGINE.NOUS, "lecture_annonce_echouee"],
+  [/Sur quelle de tes boutiques Vinted publier/i, ORIGINE.NOUS, "boutique_a_choisir"],
+  [/n.accepte que ses propres valeurs|eBay a refus[ée] la publication/i, ORIGINE.NOUS, "valeur_refusee"],
+  [/doit [êe]tre renseign[ée]|Depop exige le genre|Leboncoin demande :/i, ORIGINE.NOUS, "champ_demande"],
+  [/capture datait de plus de .{0,10} et la nouvelle capture a [ée]chou[ée]/i, ORIGINE.NOUS, "capture_incomplete"],
+  [/exige le code-barres|\bEAN\b/, ORIGINE.NOUS, "ean"],
+  [/n.a pas abouti|On ne sait pas encore pourquoi|apr[èe]s plusieurs essais|n.a pas pu aboutir sur ton ordinateur/i, ORIGINE.NOUS, "echec_inexplique"],
   [/n.arrive pas [àa] d[ée]marrer/i, ORIGINE.NOUS, "demarrage_impossible"],
 ]);
 

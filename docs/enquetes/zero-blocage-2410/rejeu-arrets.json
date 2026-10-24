@@ -1,0 +1,374 @@
+{
+ "rejeu": "zéro blocage — arrêts de notre fait",
+ "depuis": "2026-09-18",
+ "fait_le": "2026-10-24T13:56:25.105Z",
+ "jobs": 1208,
+ "arrets_nous": 654,
+ "bilan": {
+  "corriges_par_ce_lot": 126,
+  "corriges_avant": 12,
+  "simules": 55,
+  "partiels": 198,
+  "vrais_choix": 14,
+  "restent": 249
+ },
+ "simulations": {
+  "titres": {
+   "rejoues": 6,
+   "passent": 3,
+   "restent": [
+    {
+     "id": "2cc6c116",
+     "motif": "Vinted refuse le titre de cette annonce : « Il titolo contiene troppi simboli co"
+    },
+    {
+     "id": "1b224874",
+     "motif": "Vinted refuse le titre de cette annonce : « Le titre contient trop de symboles d"
+    },
+    {
+     "id": "5d993767",
+     "motif": "Vinted refuse le titre de cette annonce : « Le titre contient trop de symboles d"
+    }
+   ]
+  },
+  "depop": {
+   "rejoues": 31,
+   "complets": 29,
+   "port_seul": 2,
+   "restent": []
+  }
+ },
+ "par_cause": [
+  {
+   "cause": "champ_demande",
+   "n": 195,
+   "abandonnes": 6,
+   "comptes": 32,
+   "dernier": "2026-10-24T10:23",
+   "statut": "partiel",
+   "regle": "champs déduits (18/10) + stockage/simlock repris de la capture (A5) ; tailles Depop, poids Leboncoin PRO : à finir",
+   "exemples": [
+    "6e56beb5",
+    "55a82f7f",
+    "2803b844",
+    "7ce28e82"
+   ]
+  },
+  {
+   "cause": "demarrage_impossible",
+   "n": 76,
+   "abandonnes": 0,
+   "comptes": 5,
+   "dernier": "2026-10-15T13:33",
+   "statut": "reste",
+   "regle": "publication qui ne démarre pas sur le poste — à instruire",
+   "exemples": [
+    "3d6daa8b",
+    "3a7e904f",
+    "f3760bf0",
+    "4192eaeb"
+   ]
+  },
+  {
+   "cause": "echec_inexplique",
+   "n": 57,
+   "abandonnes": 15,
+   "comptes": 24,
+   "dernier": "2026-10-24T13:08",
+   "statut": "reste",
+   "regle": "échec sans motif lisible — à instruire (la sentinelle les liste)",
+   "exemples": [
+    "f86ecce8",
+    "adf0454e",
+    "22d83963",
+    "4f2b718a"
+   ]
+  },
+  {
+   "cause": "lecture_annonce_echouee",
+   "n": 53,
+   "abandonnes": 0,
+   "comptes": 10,
+   "dernier": "2026-10-24T11:03",
+   "statut": "corrige",
+   "regle": "mémoire « annonce morte » oubliée sur tous les chemins (A4, extension 0.6.134) ; vendue ≠ introuvable",
+   "exemples": [
+    "f33c3f24",
+    "fa5c6f20",
+    "cb9c1a6e",
+    "a02a4540"
+   ]
+  },
+  {
+   "cause": "autre",
+   "n": 49,
+   "abandonnes": 5,
+   "comptes": 26,
+   "dernier": "2026-10-24T07:38",
+   "statut": "reste",
+   "regle": "non classé — à instruire",
+   "exemples": [
+    "d9a769e3",
+    "01483b86",
+    "775186a3",
+    "9de4f193"
+   ]
+  },
+  {
+   "cause": "categorie",
+   "n": 47,
+   "abandonnes": 10,
+   "comptes": 21,
+   "dernier": "2026-10-24T11:36",
+   "statut": "reste",
+   "regle": "rayon eBay vérifié / moteur Depop / Leboncoin (lots 11-18/10)",
+   "exemples": [
+    "78bbd3ca",
+    "ebcbe089",
+    "91eeb9ba",
+    "3c55ea7a"
+   ]
+  },
+  {
+   "cause": "capture_depop_frais_de_port",
+   "n": 31,
+   "abandonnes": 0,
+   "comptes": 1,
+   "dernier": "2026-10-24 05:47",
+   "statut": "simule",
+   "regle": "port du dépôt FillSell, sinon prix par défaut (A2) — sans eux, une question au vendeur (son prix d'envoi)",
+   "exemples": [
+    "2d418273",
+    "b2164a8c",
+    "3eaade60",
+    "5af73ceb"
+   ]
+  },
+  {
+   "cause": "marque_inconnue",
+   "n": 30,
+   "abandonnes": 2,
+   "comptes": 10,
+   "dernier": "2026-10-24T10:59",
+   "statut": "corrige",
+   "regle": "marque introuvable → même marque autrement écrite, sinon « Sans marque » (A3, extension 0.6.134 ; Depop : liste)",
+   "exemples": [
+    "adf0454e",
+    "6d972e50",
+    "22d83963",
+    "909facac"
+   ]
+  },
+  {
+   "cause": "valeur_refusee",
+   "n": 19,
+   "abandonnes": 2,
+   "comptes": 11,
+   "dernier": "2026-10-24T10:20",
+   "statut": "corrige",
+   "regle": "valeur refusée → recalculée pour la catégorie qui part : Département, liste à une valeur, MPN (A6)",
+   "exemples": [
+    "c65b3e36",
+    "12854dbb",
+    "8d831cf5",
+    "1ff48d68"
+   ]
+  },
+  {
+   "cause": "capture_depop_incomplete",
+   "n": 18,
+   "abandonnes": 0,
+   "comptes": 1,
+   "dernier": "2026-10-23 07:11",
+   "statut": "simule",
+   "regle": "copie Depop complétée avant le départ (A2, _shared/copie-republication-depop.js)",
+   "exemples": [
+    "e62aa536",
+    "772e13cb",
+    "d724a67d",
+    "3341c98d"
+   ]
+  },
+  {
+   "cause": "depot_non_confirme",
+   "n": 18,
+   "abandonnes": 0,
+   "comptes": 5,
+   "dernier": "2026-10-19 22:02",
+   "statut": "reste",
+   "regle": "dépôt jamais vu en ligne : plateforme ou dépôt muet — à instruire cas par cas",
+   "exemples": [
+    "8bfc0b4f",
+    "580e6522",
+    "54b26927",
+    "3b0346fa"
+   ]
+  },
+  {
+   "cause": "introuvable_a_confirmer",
+   "n": 13,
+   "abandonnes": 0,
+   "comptes": 7,
+   "dernier": "2026-10-24 12:44",
+   "statut": "corrige",
+   "regle": "idem A4 ; relevé disparu/vendu tranché (handler-watch)",
+   "exemples": [
+    "133c921a",
+    "d674dbde",
+    "f33c3f24",
+    "b4bef8cf"
+   ]
+  },
+  {
+   "cause": "boutique_a_choisir",
+   "n": 12,
+   "abandonnes": 0,
+   "comptes": 2,
+   "dernier": "2026-10-14T16:26",
+   "statut": "corrige_avant",
+   "regle": "boutique Vinted tranchée par l'app (15/10 soir)",
+   "exemples": [
+    "e7005981",
+    "73aa1119",
+    "2ae760b8",
+    "97ed2c58"
+   ]
+  },
+  {
+   "cause": "isbn",
+   "n": 11,
+   "abandonnes": 4,
+   "comptes": 9,
+   "dernier": "2026-10-24T07:48",
+   "statut": "choix",
+   "regle": "ISBN illisible : seul le livre le dit (« Ce livre n'a pas d'ISBN » proposé)",
+   "exemples": [
+    "34f17de2",
+    "d9a769e3",
+    "578a6eb0",
+    "2d947636"
+   ]
+  },
+  {
+   "cause": "titre_refuse",
+   "n": 6,
+   "abandonnes": 1,
+   "comptes": 5,
+   "dernier": "2026-10-24T09:24",
+   "statut": "simule",
+   "regle": "titre nettoyé avant l'envoi : symboles toutes langues, mots sans lettre latine, titre générique (B4)",
+   "exemples": [
+    "2cc6c116",
+    "34f17de2",
+    "fde2a207",
+    "1b224874"
+   ]
+  },
+  {
+   "cause": "capture_incomplete",
+   "n": 5,
+   "abandonnes": 0,
+   "comptes": 4,
+   "dernier": "2026-10-21T11:00",
+   "statut": "corrige",
+   "regle": "erreur passagère réessayée (upload 4 essais, recapture en file espacée) — A5",
+   "exemples": [
+    "a017da53",
+    "c3011929",
+    "a15c16e5",
+    "3332734a"
+   ]
+  },
+  {
+   "cause": "format_colis_refuse",
+   "n": 3,
+   "abandonnes": 0,
+   "comptes": 2,
+   "dernier": "2026-10-22 20:24",
+   "statut": "partiel",
+   "regle": "correction de rayon jamais vers une autre famille de grille (A5) — une grille changée par Vinted reste une question",
+   "exemples": [
+    "110c27ae",
+    "5ad5bbb1",
+    "c28e2c60"
+   ]
+  },
+  {
+   "cause": "ean",
+   "n": 3,
+   "abandonnes": 0,
+   "comptes": 1,
+   "dernier": "2026-10-18T10:42",
+   "statut": "choix",
+   "regle": "code-barres : seul l'emballage le dit",
+   "exemples": [
+    "5998c177",
+    "26094bed",
+    "efe6afcb"
+   ]
+  },
+  {
+   "cause": "article_refuse_entre_en_file",
+   "n": 2,
+   "abandonnes": 0,
+   "comptes": 1,
+   "dernier": "2026-10-21 14:21",
+   "statut": "corrige",
+   "regle": "article refusé par la plateforme écarté avant la file, republication close (B7)",
+   "exemples": [
+    "05c348ef",
+    "5d7b895b"
+   ]
+  },
+  {
+   "cause": "introuvable_persistant",
+   "n": 2,
+   "abandonnes": 0,
+   "comptes": 2,
+   "dernier": "2026-10-18 19:57",
+   "statut": "corrige",
+   "regle": "idem A4",
+   "exemples": [
+    "e104cacb",
+    "30e507a4"
+   ]
+  },
+  {
+   "cause": "site_ebay_non_pris_en_charge",
+   "n": 2,
+   "abandonnes": 0,
+   "comptes": 1,
+   "dernier": "2026-10-10 20:21",
+   "statut": "reste",
+   "regle": "compte eBay d'un autre pays : FillSell ne publie que sur ebay.fr",
+   "exemples": [
+    "347f9e44",
+    "1177a0b3"
+   ]
+  },
+  {
+   "cause": "interruption_repetee",
+   "n": 1,
+   "abandonnes": 0,
+   "comptes": 1,
+   "dernier": "2026-10-21 06:17",
+   "statut": "corrige",
+   "regle": "accident avant retrait = file espacée + sentinelle (A5) — cause du rechargement non prouvée",
+   "exemples": [
+    "bfe46249"
+   ]
+  },
+  {
+   "cause": "selecteur_casse",
+   "n": 1,
+   "abandonnes": 0,
+   "comptes": 1,
+   "dernier": "2026-10-15 10:42",
+   "statut": "corrige",
+   "regle": "accident avant retrait = file espacée, jamais un geste (A5, extension 0.6.134)",
+   "exemples": [
+    "3730ef49"
+   ]
+  }
+ ]
+}
