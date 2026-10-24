@@ -3293,8 +3293,17 @@ serve(async (req) => {
     // motif est TECHNIQUE (lecture refusée par l'anti-robot, session à rouvrir,
     // formulaire non capté) — jamais un champ, une marque, un rayon, un mur
     // payant, une configuration de compte : ceux-là attendent la personne.
-    const MOTIF_TECHNIQUE_RE = /protection anti-?robot|v[ée]rification anti-?robot|bot_shield|DataDome|Connexion (Vinted|Leboncoin|Beebs|eBay|Depop|Opla) requise|configuration non capt[ée]e/i;
-    const MOTIF_PERSONNE_RE = /champ|Marque|taille|rayon|cat[ée]gorie|interdit|payant|Boostez|option gratuite|nom et (ton )?pr[ée]nom|configuration de vendeur|exige/i;
+    // (25/10 nuit) + un SÉLECTEUR de l'extension non résolu (« [selectors] vinted/publish.photo_input
+    // (criticité red) : aucun des 1 maillon(s) n'a résolu ») : c'est notre accident de parcours, jamais un geste
+    // (règle du 24/10 « zéro blocage », A5 — la 0.6.134 le reprend elle-même ; ici pour les postes d'avant).
+    const MOTIF_TECHNIQUE_RE = /protection anti-?robot|v[ée]rification anti-?robot|bot_shield|DataDome|Connexion (Vinted|Leboncoin|Beebs|eBay|Depop|Opla) requise|configuration non capt[ée]e|\[selectors\] [a-z]+\/[\w.]+ \(criticit[ée] [a-z]+\) : aucun des \d+ maillon\(s\) n'a r[ée]solu/i;
+    const MOTIF_PERSONNE_RE = /\bchamp\b|Marque|taille|rayon|cat[ée]gorie|interdit|payant|Boostez|option gratuite|nom et (ton )?pr[ée]nom|configuration de vendeur|exige/i;
+    // (25/10 nuit, patrick.giry07 3730ef49) La branche « transitoire » de l'une-passe des extensions ≤ 0.6.133
+    // (« … toujours en ligne sur Vinted. Motif : … Rien à corriger sur l'annonce ») ne touche PAS
+    // needs_user_source : une source « prevol_negatif » HÉRITÉE d'un arrêt précédent (question levée, puis job
+    // re-pendu par le réveil par capture) y traîne et fermait la reprise. Sous CETTE signature, la source
+    // héritée ne vaut pas question (le message dit lui-même « rien à corriger »).
+    const TRANSITOIRE_AVANT_RETRAIT_RE = /^Republication en pause avant toute suppression : ton annonce est toujours en ligne sur (Vinted|Leboncoin|Beebs|Depop)\. Motif :/;
     // deno-lint-ignore no-explicit-any
     const etatIndetermineAvantRetrait = (j: any) => {
       if (j.action !== "republish" || j.status !== "needs_user") return false;
@@ -3302,8 +3311,10 @@ serve(async (req) => {
       if (!["", "a_capturer", "captured"].includes(String(pfj.republish_step ?? ""))) return false;
       const ind = pfj.republish_etat_indetermine as Record<string, unknown> | undefined;
       if (ind && typeof ind === "object" && Number.isFinite(Date.parse(String(ind.dernier ?? ind.depuis ?? "")))) return true;
-      if (String(pfj.needs_user_source ?? "") !== "relancer") return false;
       const err = String(j.error ?? "");
+      const sourceNu = String(pfj.needs_user_source ?? "");
+      const transitoire = TRANSITOIRE_AVANT_RETRAIT_RE.test(err);
+      if (sourceNu !== "relancer" && !(transitoire && (sourceNu === "" || sourceNu === "prevol_negatif"))) return false;
       // « configuration non captée » : le formulaire n'a pas été lu (il sera
       // rechargé) — technique même s'il parle des champs du rayon.
       if (/configuration non capt[ée]e/i.test(err)) return true;
@@ -3398,6 +3409,10 @@ serve(async (req) => {
           // lecture referait aussitôt la pause (n déjà au maximum).
           pf.republish_etat_indetermine_leve = { le: new Date().toISOString(), sonde: new Date(vu).toISOString(), avant: ind };
           delete pf.republish_etat_indetermine;
+          // (25/10 nuit) Arrêt TECHNIQUE avant retrait : aucune question n'est en cours. Une question héritée
+          // (patrick.giry07 : « Marque » d'un arrêt précédent) ne doit ni s'afficher ni être comptée comme
+          // « redemandée » par la garde anti-boucle de l'extension au prochain arrêt.
+          delete pf.needsUserField; delete pf.needsUserFields; delete pf.champs_a_completer;
         }
         delete pf.needs_user_source; delete pf.needs_user_actif_ms; delete pf.needs_user_tick_le;
         delete pf.needs_user_vu_le; delete pf.needs_user_vu_erreur; delete pf.needsUserAttempts;
@@ -4222,7 +4237,7 @@ serve(async (req) => {
   try {
     const { data: figes } = await supabase
       .from("cross_post_jobs")
-      .select("id, user_id, inventaire_id, created_at, platform_fields")
+      .select("id, user_id, inventaire_id, created_at, error, platform_fields")
       .eq("status", "needs_user")
       .eq("action", "republish")
       .eq("platform", "vinted")
@@ -4268,8 +4283,15 @@ serve(async (req) => {
         .update({
           status: "pending",
           error: null,
+          // (25/10 nuit, patrick.giry07 3730ef49) La question de l'arrêt réveillé est CLOSE : son motif part en
+          // archive (il était perdu : error ← null sans trace) et ses marqueurs tombent — sinon un arrêt suivant
+          // d'une autre nature (sélecteur, canal) héritait d'une source « prevol_negatif » et d'une question
+          // périmée. La mémoire anti-boucle (needsUserBoucle) reste : une question qui revient se compte.
           platform_fields: {
-            ...pf,
+            ...Object.fromEntries(Object.entries(pf).filter(([k]) =>
+              !["needs_user_source", "needsUserField", "needsUserFields", "champs_a_completer",
+                "needs_user_tick_le", "needs_user_actif_ms", "needs_user_vu_le", "needs_user_vu_erreur"].includes(k))),
+            erreurs_archivees: archiverErreur(pf.erreurs_archivees, j.error, "needs_user", "handler-watch (réveil par capture fraîche)"),
             capture_id: String(c.id),
             reveille_par_capture: String(c.id),
             reveille_par_capture_le: new Date(now).toISOString(),

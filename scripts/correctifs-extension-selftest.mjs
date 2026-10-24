@@ -41,6 +41,48 @@ console.log("\n1. Les 5 republications des Petites Fioles sont reconnues");
   ok(correctifPourJob(sansDiag)?.cle === "lbc_retrait_pro_tiroir", "reconnu par l'erreur technique seule (brut du retrait)");
 }
 
+console.log("\n1 bis. (25/10 nuit) thibault dca41766 — « Espace de stockage » redemandé sans liste");
+{
+  const thibault = (surcharge = {}) => ({
+    id: "dca41766-e05d-4c37-8f0b-7c02d85c2dde", platform: "vinted", action: "republish", status: "needs_user",
+    handler_build: "2026-10-18T16:26:21Z+492f753 · v0.6.128",
+    error: "Republication en pause AVANT toute suppression — ton annonce est intacte sur Vinted. Vinted exige des champs encore vides pour cette catégorie : Espace de stockage. Compléter ces champs dans l'app (copie Vinted), puis relancer la publication. Le choix se fait dans l'app : fiche de l'article, bouton « ✋ Compléter ».",
+    platform_fields: {
+      republish_step: "captured", needs_user_source: "prevol_negatif", champs_a_completer: ["Espace de stockage"],
+      needsUserField: { field_key: "internal_memory_capacity", field_label: "Espace de stockage", input_type: "dropdown", platform: "vinted", target: { key: "internal_memory_capacity", root: "vintedAspects" } },
+      boucle_needs_user: { field_key: "internal_memory_capacity", cible: "vintedAspects.internal_memory_capacity", motif: "trop_de_tours", blocages: 5, valeur: null },
+      error_technique: { brut: "« Espace de stockage » : ce champ a été redemandé 5 fois malgré tes réponses. — Observabilité: boucle needs_user (trop_de_tours) sur la cible vintedAspects.internal_memory_capacity, 5 blocage(s), valeur null, plateforme vinted, job dca41766." },
+    },
+    ...surcharge,
+  });
+  const c = correctifPourJob(thibault());
+  ok(c?.cle === "vinted_stockage_simlock_capture", `reconnu : ${c?.cle}`);
+  ok(posteAJour("2026-10-24T21:18:48Z+a07091c", c) && !posteAJour("2026-10-23T11:19:48Z+4098342", c), "0.6.141 porte le correctif, 0.6.131 non");
+  ok(correctifPourJob(thibault({ handler_build: "2026-10-24T21:18:48Z+a07091c · v0.6.141" })) === null, "un arrêt SUR la 0.6.134+ n'est jamais réarmé");
+  ok(correctifPourJob(thibault({ platform_fields: { ...thibault().platform_fields, republish_step: "deleted" } })) === null, "jamais après un retrait");
+  ok(correctifPourJob(thibault({ error: "Vinted exige des champs encore vides pour cette catégorie : Taille.", platform_fields: { republish_step: "captured", champs_a_completer: ["Taille"], needsUserField: { field_key: "size", target: { key: "size", root: "vintedAspects" } } } })) === null,
+    "un autre champ (Taille) n'est pas ce correctif");
+}
+
+console.log("\n1 ter. (25/10 nuit) patrick 3730ef49 — « Paris 2024 », déjà réarmé par la 0.6.123");
+{
+  const patrick = (pfPlus = {}) => ({
+    id: "3730ef49-d394-4cdf-beaf-367c557a530c", platform: "vinted", action: "republish", status: "needs_user",
+    handler_build: "2026-10-18T16:26:21Z+492f753 · v0.6.128",
+    error: "Republication en pause AVANT toute suppression — ton annonce est intacte sur Vinted. Vinted ne connaît pas la marque « Paris 2024 » et ne permet plus d'en créer une nouvelle.",
+    platform_fields: { republish_step: "captured", republish_snapshot: { brand_id: 305315, marque: "Paris 2024" },
+      correctif_leve: { cle: "vinted_marque_par_identifiant", le: "2026-10-21T06:51:28.628Z" }, ...pfPlus },
+  });
+  const c = correctifPourJob(patrick());
+  ok(c?.cle === "vinted_marque_chaine_de_repli", "reconnu : " + c?.cle);
+  ok(posteAJour("2026-10-24T21:18:48Z+a07091c", c) && !posteAJour("2026-10-18T16:26:21Z+492f753", c), "0.6.141 porte la chaîne, 0.6.128 non");
+  ok(correctifPourJob({ ...patrick({ correctif_leve: null }), handler_build: "2026-10-15T19:36:02Z+18cc681 · v0.6.114" })?.cle === "vinted_marque_par_identifiant",
+    "arrêt d'avant la 0.6.123, jamais réarmé : l'entrée 0.6.123 d'abord (inchangé)");
+  ok(correctifPourJob({ ...patrick(), handler_build: "2026-10-24T21:18:48Z+a07091c · v0.6.141" }) === null, "un arrêt SUR la 0.6.134+ n'est jamais réarmé");
+  ok(correctifPourJob(patrick({ correctif_leve: { cle: "vinted_marque_chaine_de_repli" } })) === null, "un seul réarmement par correctif");
+  ok(correctifPourJob(patrick({ republish_snapshot: { brand_id: 1 } })) === null, "sans marque à identifiant : la question reste");
+}
+
 console.log("\n2. Le poste qui polle porte-t-il le correctif ?");
 {
   const c = CORRECTIFS_EXTENSION.find(c => c.platform === 'leboncoin');

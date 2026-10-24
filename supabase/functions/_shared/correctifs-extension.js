@@ -27,7 +27,7 @@
 //   · le BUILD_ID fait foi (préfixe horodaté), jamais le numéro de version.
 // ES module, deux imports relatifs eux-mêmes sans import (Deno + Node).
 import { lectureRefusBeebs } from "./beebs-refus-formulaire.js";
-import { BUILD_VINTED_MARQUE_PAR_ID, marqueAIdentifiantCapturee } from "./vinted-marque-par-id.js";
+import { BUILD_VINTED_MARQUE_PAR_ID, BUILD_VINTED_MARQUE_CHAINE, marqueAIdentifiantCapturee } from "./vinted-marque-par-id.js";
 
 /** Le préfixe horodaté d'un BUILD_ID (« 2026-09-24T14:34:46Z+aa459a7 · v0.6.66 ») en ms, NaN sinon. */
 export function buildMsDe(build) {
@@ -92,6 +92,16 @@ export const BUILD_EBAY_SAISIE_LIBRE = "2026-10-03T11:30:00Z";
 // BUILD_ID de la 0.6.123 (zip build/CWS-0.6.123-A-TELEVERSER/, 2026-10-17T13:13:01Z+250dc2f),
 // posé au paquet le 17/10 (« 2099 » avant, valeur jamais atteinte).
 export const BUILD_DEPOP_MARQUE = "2026-10-17T13:13:01Z";
+
+// ── « ESPACE DE STOCKAGE » / « SIMLOCKAGE » REPRIS DE LA CAPTURE (24/10, lot « zéro blocage », A5) ──
+// thibault dca41766 (« Samsung player start 2 ») : la capture porte internal_memory_capacity [1292] et
+// sim_lock [1313], les extensions ≤ 0.6.133 ne les reposent pas (codes « dédiés », exclus de la résolution
+// des caractéristiques capturées) → pré-vol négatif « Vinted exige des champs encore vides … Espace de
+// stockage », question SANS liste (« valeurs indisponibles » → « Relancer » sans valeur) → 6 arrêts identiques.
+// La 0.6.134 les reprend de la capture (vinted.js, resoudreAttributsCaptures sur les deux codes dédiés). Sans
+// entrée ici, le job ne repartait JAMAIS seul après la mise à jour du poste (règle du 06/10 : toute extension
+// qui corrige un arrêt y ajoute son entrée). BUILD_ID de la 0.6.134 = BUILD_VINTED_MARQUE_CHAINE.
+export const BUILD_VINTED_STOCKAGE_CAPTURE = "2026-10-24T13:58:51Z";
 
 export const CORRECTIFS_EXTENSION = [
   {
@@ -200,6 +210,43 @@ export const CORRECTIFS_EXTENSION = [
       "taille_grille_refus", "taille_grille_reprise", "taille_grille_reprise_derniere",
       "server_required_fields", "recreation_retries", "recreation_tentee",
     ],
+  },
+  {
+    // Rien n'a été retiré : arrêt AVANT le retrait (étape captured). Le job repart UNE fois, re-capturé
+    // (a_capturer), servi au seul poste ≥ 0.6.134 (build_min_requis). La boucle « redemandé N fois » d'un
+    // build d'avant (error_technique.brut) est reconnue aussi.
+    cle: "vinted_stockage_simlock_capture",
+    platform: "vinted",
+    actions: ["republish"],
+    signature: /Vinted exige des champs encore vides pour cette catégorie : [^.]*(Espace de stockage|Simlockage)|sur la cible vintedAspects\.(internal_memory_capacity|sim_lock)\b/,
+    buildMin: BUILD_VINTED_STOCKAGE_CAPTURE,
+    version: "0.6.134",
+    motif: "« Espace de stockage » et « Simlockage » repris de la capture de l'annonce d'origine",
+    condition: (job) => {
+      const pf = (job?.platform_fields && typeof job.platform_fields === "object") ? job.platform_fields : {};
+      if (pf.republish_step === "deleted" || pf.deleted_at) return false; // jamais après un retrait (sa règle à elle)
+      const cible = String(pf.needsUserField?.target?.key ?? pf.needsUserField?.field_key ?? pf.boucle_needs_user?.field_key ?? "");
+      const champs = Array.isArray(pf.champs_a_completer) ? pf.champs_a_completer.map(String) : [];
+      return ["internal_memory_capacity", "sim_lock"].includes(cible)
+        || champs.some((c) => /^(Espace de stockage|Simlockage)$/.test(c));
+    },
+    clesARetirer: ["needsUserField", "needsUserFields", "champs_a_completer", "boucle_needs_user"],
+  },
+  {
+    // (25/10 nuit, patrick.giry07 3730ef49 « Paris 2024 », id 305315) Le réarmement 0.6.123 ci-dessus a déjà servi
+    // (correctif_leve) : la 0.6.128 a reposé la question (aucune preuve d'envoi par identifiant au parc : 0 trace
+    // marque_pose_envoi en 30 j) et la réponse de la personne ne remplace jamais la marque capturée (règle du 17/10).
+    // La 0.6.134 porte la chaîne de repli de Nico (24/10) : même marque autrement écrite, sinon « Sans marque » —
+    // le job repart UNE fois vers un poste qui la porte. Même signature, même condition que l'entrée 0.6.123.
+    cle: "vinted_marque_chaine_de_repli",
+    platform: "vinted",
+    actions: ["republish"],
+    signature: /Vinted ne connaît pas la marque|Le champ Marque n'a pas pu être (renseigné|posé)|Vinted exige « Marque »|"field":"brand"/,
+    buildMin: BUILD_VINTED_MARQUE_CHAINE,
+    version: "0.6.134",
+    motif: "marque hors du menu de Vinted : même marque autrement écrite, sinon « Sans marque » (règle de Nico, 24/10)",
+    condition: (job) => marqueAIdentifiantCapturee(job?.platform_fields) != null,
+    clesARetirer: ["needsUserField", "needsUserFields", "champs_a_completer", "boucle_needs_user"],
   },
 ];
 

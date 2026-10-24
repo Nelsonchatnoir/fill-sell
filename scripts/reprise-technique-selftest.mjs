@@ -74,6 +74,22 @@ ok(i0 > 0 && i1 > i0, '0. le prédicat de reprise est trouvé dans handler-watch
   ok(etatIndetermineAvantRetrait({ ...coupe, error: 'Cette republication attend.' }) === true, '2d. le BRUT seul suffit (message réécrit sans signature)');
   ok(etatIndetermineAvantRetrait({ ...coupe, platform_fields: { ...coupe.platform_fields, republish_step: 'deleted' } }) === false, '2e. jamais une recréation (deleted)');
   ok(etatIndetermineAvantRetrait({ ...j('Timeout: choisis la taille dans la liste'), platform_fields: { republish_step: 'captured', needs_user_source: 'relancer' } }) === false, '2f. une coupure qui parle d\'un champ reste à la personne');
+  // (25/10 nuit) patrick.giry07 3730ef49 : sélecteur photo non résolu AVANT retrait, source « prevol_negatif » héritée.
+  const selecteur = "Republication en pause avant toute suppression : ton annonce est toujours en ligne sur Vinted. Motif : [selectors] vinted/publish.photo_input (criticité red) : aucun des 1 maillon(s) n'a résolu. Rien à corriger sur l'annonce — relance depuis l'app quand tu veux.";
+  const patrick = { action: 'republish', status: 'needs_user', platform: 'vinted', error: selecteur,
+    platform_fields: { republish_step: 'captured', needs_user_source: 'prevol_negatif', needs_user_vu_le: '2026-10-21T07:06:01.904Z',
+      needsUserField: { field_key: 'brand', field_label: 'Marque', raison: 'marque_hors_catalogue', target: { key: 'marque', root: null } }, champs_a_completer: ['Marque'] } };
+  ok(etatIndetermineAvantRetrait(patrick) === true, '2g. patrick 3730ef49 : sélecteur non résolu avant retrait, source héritée → reprise sur preuve');
+  ok(etatIndetermineAvantRetrait({ ...patrick, platform_fields: { ...patrick.platform_fields, needs_user_source: 'relancer' } }) === true, '2h. même arrêt, source « relancer » → reprise');
+  ok(etatIndetermineAvantRetrait({ ...patrick, platform_fields: { ...patrick.platform_fields, needs_user_source: 'champ_a_choisir' } }) === false, '2i. une vraie question (champ_a_choisir) n\'est jamais reprise');
+  ok(etatIndetermineAvantRetrait({ ...patrick, platform_fields: { ...patrick.platform_fields, republish_step: 'deleted' } }) === false, '2j. jamais après le retrait');
+  ok(etatIndetermineAvantRetrait({ ...patrick, error: "Republication en pause AVANT toute suppression — ton annonce est intacte sur Vinted. Vinted exige des champs encore vides pour cette catégorie : Espace de stockage." }) === false,
+    '2k. un pré-vol négatif (champ exigé) reste à la personne, même source');
+  ok(etatIndetermineAvantRetrait({ ...patrick, error: selecteur.replace('photo_input', 'field_input').replace('Rien à corriger', 'Marque : rien à corriger') }) === false,
+    '2l. un sélecteur qui parle d\'un champ (Marque) reste à la personne');
+  ok(/delete pf\.needsUserField; delete pf\.needsUserFields; delete pf\.champs_a_completer;/.test(HW), '2m. la reprise retire la question héritée');
+  ok(/"handler-watch \(réveil par capture fraîche\)"/.test(HW) && /\.select\("id, user_id, inventaire_id, created_at, error, platform_fields"\)/.test(HW),
+    '2n. le réveil par capture archive le motif et ferme la question réveillée');
 }
 
 // 3. Republication déjà recréée

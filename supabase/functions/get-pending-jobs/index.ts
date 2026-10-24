@@ -7881,7 +7881,7 @@ serve(async (req) => {
             if (inconnues.length) {
               const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
               const liste = inconnues.join(",");
-              const isoBuild = String(BUILD_ISBN_CAPTURE_TEL_QUEL).match(/^d{4}-d{2}-d{2}Td{2}:d{2}:d{2}Z/)?.[0];
+              const isoBuild = String(BUILD_ISBN_CAPTURE_TEL_QUEL).match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z/)?.[0];
               let requete = admin.from("cross_post_jobs")
                 .select("platform, action, status, handler_build, platform_fields->republish_step, platform_fields->isbn_capture_tel_quel, isbn_copie:platform_fields->republish_snapshot->>isbn, isbn_reponse:platform_fields->vintedAspects->>isbn")
                 .eq("platform", "vinted").eq("action", "republish").eq("status", "published")

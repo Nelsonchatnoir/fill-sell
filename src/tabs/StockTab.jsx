@@ -1269,7 +1269,10 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
     const pf = job.platform_fields ?? {};
     // ⚠️ MÊME ORDRE que categoryKeyOf (background.js:4061) : une clé calculée
     // différemment ne retrouverait tout simplement jamais la ligne écrite.
-    const chemin = pf.categoryPath ?? pf.beebsCategoryPath ?? pf.lbcCategoryPath ?? null;
+    // (25/10 nuit, thibault dca41766) Une REPUBLICATION Vinted ne porte jamais categoryPath au niveau du job
+    // (mesuré le 10/09, background.js) : son rayon est celui de la copie (republish_snapshot.categoryPath). Sans
+    // lui, la liste n'était jamais cherchée → « valeurs indisponibles » → « Relancer » sans valeur, en boucle.
+    const chemin = pf.categoryPath ?? pf.republish_snapshot?.categoryPath ?? pf.beebsCategoryPath ?? pf.lbcCategoryPath ?? null;
     // ── OPLA : la clé est un CODE, pas un chemin de libellés (2026-09-16) ────
     // Les quatre autres clés sont des chemins joints par " > " — fragiles par
     // nature : la plateforme renomme un niveau et la ligne ne se retrouve plus.
