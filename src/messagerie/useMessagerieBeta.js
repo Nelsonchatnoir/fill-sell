@@ -10,7 +10,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { demarrerRelecture } from '../utils/relectureBornee';
 
-const VIDE = Object.freeze({ beta: false, pret: false, nonLus: 0, conversationsNonLues: 0, parArticle: {}, aExpedier: 0 });
+// (24/10 soir, décision 2 de Nico) `bordereaux` : l'écran « À expédier » et les bordereaux VINTED, ouverts à tous les
+// comptes dont le poste sait relever les commandes Vinted (messagerie_compteurs.bordereaux_vinted) ; la messagerie
+// elle-même (`beta`) reste à la bêta.
+const VIDE = Object.freeze({ beta: false, bordereaux: false, pret: false, nonLus: 0, conversationsNonLues: 0, parArticle: {}, aExpedier: 0 });
 
 export function useMessagerieBeta(supabase, userId) {
   const [etat, setEtat] = useState(VIDE);
@@ -22,13 +25,13 @@ export function useMessagerieBeta(supabase, userId) {
     const lire = async () => {
       const { data, error } = await supabase.rpc('messagerie_compteurs');
       if (!vivant) return undefined;
-      if (error || !data || data.beta !== true) {
+      if (error || !data || (data.beta !== true && data.bordereaux_vinted !== true)) {
         setEtat({ ...VIDE, pret: true, user: userId });
         relecture.current?.arreter();
         return error ? false : undefined;
       }
       setEtat({
-        user: userId, beta: true, pret: true,
+        user: userId, beta: data.beta === true, bordereaux: data.beta === true || data.bordereaux_vinted === true, pret: true,
         nonLus: Number(data.non_lus) || 0,
         conversationsNonLues: Number(data.conversations_non_lues) || 0,
         parArticle: data.par_article && typeof data.par_article === 'object' ? data.par_article : {},
@@ -63,7 +66,7 @@ export function useReglagesMessagerie(supabase) {
     let vivant = true;
     supabase.rpc('messagerie_compteurs').then(({ data, error }) => {
       if (!vivant) return;
-      if (error || !data || data.beta !== true) { setReglages({ pret: true, envoiMode: 1, generation: null }); return; }
+      if (error || !data || (data.beta !== true && data.bordereaux_vinted !== true)) { setReglages({ pret: true, envoiMode: 1, generation: null }); return; }
       const mode = Number(data.envoi_mode);
       setReglages({ pret: true, envoiMode: Number.isFinite(mode) ? mode : 1, generation: data.generation === true ? true : data.generation === false ? false : null });
     }).catch(() => { if (vivant) setReglages({ pret: true, envoiMode: 1, generation: null }); });

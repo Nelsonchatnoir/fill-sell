@@ -144,8 +144,9 @@ console.log("4. La réponse « marque hors catalogue » vaut pour l'ARTICLE (att
 console.log("5. Le câblage :");
 {
   const lps = lire("src/components/ListingPreviewScreen.jsx");
-  ok(/const comblerMarqueFiche = \(copies\) => comblerPoidsFiche\(sansMarqueDOffice\(\n\s*appliquerMarqueVintedArticle\(comblerMarquesVides\(copies, marqueDeLaFiche\(initialListing\)\)\.edited, initialListing\?\.attributs\)\.edited,\n\s*\{ fiche: initialListing, notesLens: initialListing\?\.notes \?\? null \},\n\s*\)\.edited\);/.test(lps),
-    "comblerMarqueFiche : marque de la fiche, puis réponse de l'article, puis « Sans marque » d'office");
+  // (24/10 nuit, décision 3 de Nico) D'abord le « Sans marque » déclaré par la fiche (sansMarqueDeLaFiche).
+  ok(/const comblerMarqueFiche = \(copies\) => comblerPoidsFiche\(sansMarqueDOffice\(\n\s*appliquerMarqueVintedArticle\(comblerMarquesVides\(sansMarqueDeLaFiche\(copies, initialListing\)\.edited, marqueDeLaFiche\(initialListing\)\)\.edited, initialListing\?\.attributs\)\.edited,\n\s*\{ fiche: initialListing, notesLens: initialListing\?\.notes \?\? null \},\n\s*\)\.edited\);/.test(lps),
+    "comblerMarqueFiche : « Sans marque » de la fiche, marque de la fiche, puis réponse de l'article, puis « Sans marque » d'office");
   ok(/useState\(\(\) => comblerMarqueFiche\(draft\?\.edited \?\? \{\}\)\)/.test(lps)
     && /setEdited\(comblerMarqueFiche\(f\.edited\)\)/.test(lps)
     && /Object\.assign\(initialEdited, comblerMarqueFiche\(initialEdited\)\)/.test(lps), "aux trois arrivées (brouillon, fiche rouverte, rédaction) — jamais pendant une frappe");

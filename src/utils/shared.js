@@ -1183,7 +1183,7 @@ function detectTypeBase(titre,marque){
   // Mobilité AVANT High-Tech : « trottinette Xiaomi » (Xiaomi = marque téléphone
   // ET trottinette) partait en High-Tech → 📱 Téléphones. L'objet prime sur la marque.
   if(/\btrottinette\b|hoverboard|gyroroue|monoroue|overboard/i.test(t)) return 'Sport';
-  if(/iphone|samsung|huawei|xiaomi|oneplus|pixel|macbook|laptop|ordinateur|\bpc\b|computer|tablette|ipad|téléphone|smartphone|airpods|écouteur|casque(?!.{0,8}(?:moto|v[ée]lo|scooter|ski|chantier))|enceinte|jbl|bose|sony|beats|playstation|ps4|ps5|xbox|nintendo|switch|console|jeu.?video|manette|clavier|souris|écran|moniteur|imprimante|disque|ssd|\bram\b|processeur|gopro|appareil.?photo|camera|objectif|drone|fitbit|garmin|apple.?watch|smartwatch|montre.?connect|(?<!meuble.{0,6})tv|télévision|projecteur|home.?cinema|ampli|chargeur|cable|adaptateur|batterie.?externe|airpod|earbud|tws|true.?wireless|powerbank|hub|dock|station|chargeur.?sans.?fil|disque.?dur|clé.?usb|carte.?sd|carte.?graphique|carte.?m[èe]re|\bgpu\b|geforce|radeon|webcam|ring.?light|green.?screen|smart.?tv|android.?tv|chromecast|firestick|apple.?tv|box.?internet|routeur|répéteur.?wifi|alarme|camera.?surveillance|sonnette|imprimante.?3d|scanner|tablette.?graphique/i.test(t)) return 'High-Tech';
+  if(/iphone|samsung|huawei|xiaomi|oneplus|pixel|macbook|laptop|ordinateur|\bpc\b|computer|tablette|ipad|téléphone|smartphone|airpods|écouteur|casque(?!.{0,8}(?:moto|v[ée]lo|scooter|ski|chantier))|enceinte|jbl|bose|sony|beats|playstation|ps4|ps5|xbox|nintendo|switch(?!\s*(?:&|and|et|n)\s*go\b)|console|jeu.?video|manette|clavier|souris|écran|moniteur|imprimante|disque|ssd|\bram\b|processeur|gopro|appareil.?photo|camera|objectif|drone|fitbit|garmin|apple.?watch|smartwatch|montre.?connect|(?<!meuble.{0,6})tv|télévision|projecteur|home.?cinema|ampli|chargeur|cable|adaptateur|batterie.?externe|airpod|earbud|tws|true.?wireless|powerbank|hub|dock|station|chargeur.?sans.?fil|disque.?dur|clé.?usb|carte.?sd|carte.?graphique|carte.?m[èe]re|\bgpu\b|geforce|radeon|webcam|ring.?light|green.?screen|smart.?tv|android.?tv|chromecast|firestick|apple.?tv|box.?internet|routeur|répéteur.?wifi|alarme|camera.?surveillance|sonnette|imprimante.?3d|scanner|tablette.?graphique/i.test(t)) return 'High-Tech';
   if(/perceuse|visseuse|meuleuse|ponceuse|\bscies?\b|scie.?(?:circulaire|sauteuse|cloche)|\bforet\b|tournevis|\bmarteau\b(?!.{0,6}piqueur)|interrupteur|disjoncteur|prise.?électrique|tableau.?électrique|fusible|\bmakita\b|\bdewalt\b|\bryobi\b|\bfacom\b|\bstanley.?(?!cup)|\bpinces?\b|mastic|enduit|joint.?(?:silicone|plomberie)|silicone.?(?:sanitaire|joint)|carrelage|lame.?parquet|papier.?peint|rouleau.?peinture|niveau.?(?:laser|bulle)|mètre.?ruban|cheville.?(?:plastique|béton|mur)|clé.?(?:plate|allen|mixte|dynamométrique)|boulons?(?!\s*éblouir)|\bétau\b|établi|serre.?joint/i.test(t)) return 'Bricolage';
   if(/tondeuse(?!.{0,12}(?:cheveux|barbe|chien|animal))|débroussailleuse|taille.?haie|souffleur.?(?:feuilles|jardin)|tronçonneuse|sécateur|élagueuse|scarificateur|arrosoir|tuyau.?arrosage|asperseur|pompe.?jardin|\bbêche\b|\brateau\b|\bfourche\b(?!.{0,8}moto)|\bbinette\b|brouette|compost|\bterreau\b|engrais|graines?(?:\s+de\s+jardin)?|jardinage|\bhusqvarna\b|\bstihl\b(?!.{0,8}moto)/i.test(t)) return 'Jardin';
   if(/canapé|sofa|\btable\b|chaise|bureau|armoire|commode|\blit\b|matelas|étagère|bibliothèque|meuble|lampe|luminaire|miroir|tableau|cadre|tapis|rideau|coussin|plaid|couette|(?<![\p{L}\p{N}])draps?(?![\p{L}\p{N}])|serviette|vase|bougie|déco|cuisine|assiette|\bbol\b|verre|tasse|cafetière|machine.?café|grille.?pain|mixeur|robot|poêle|casserole|ustensile|réfrigérateur|micro.?onde|pouf|banquette|ottomane|tabouret|\bbar\b|console|desserte|vaisselier|bahut|buffet|vitrine|applique|suspension|guirlande|led|ampoule|parure|jeté|store|voilage|portant|cintre|organisateur|boite|panier|corbeille|plante|\bpot\b/iu.test(t)) return 'Maison';
@@ -1266,7 +1266,10 @@ const OBJECT_ICON_RULES = [
   // marques de vêtement) : l'objet prime sur les habits du personnage. On ne met
   // PAS les noms de licences nus (naruto, one piece…) — un « hoodie Naruto » ou
   // un « maillot one-piece » doit rester un vêtement.
-  [/figurines?|\bfunko\b|nendoroid|\bamiibo\b|\bbandai\b|banpresto|kotobukiya|good[sx]?.?smile|mc.?farlane|s\.?h\.?\s?figuarts|pop.?!?\s?vinyl/i, '🦸'],
+  // (24/10, sos.cuisine) La gamme VTech « Switch & Go » (dinosaures-robots transformables) est un JOUET de
+  // cette famille : sans cette règle, ses titres tombaient sur la console (« switch »), puis, la console écartée,
+  // sur ⚽ / 🏠 (« robot ») / 🚗 (« voiture ») — mesuré sur les 4 fiches du parc.
+  [/figurines?|\bfunko\b|nendoroid|\bamiibo\b|\bbandai\b|banpresto|kotobukiya|good[sx]?.?smile|mc.?farlane|s\.?h\.?\s?figuarts|pop.?!?\s?vinyl|switch\s*(?:&|and|et|n)\s*go\b/i, '🦸'],
   [/basket[sx]?.?ball|ballon.?(?:de.?)?basket|panier[sx]?.?de.?basket/i, '🏀'],  // ballon de basket : "basket" seul → 👟 (bug)
   [/casque.?(?:moto|scooter|cross|intégral|jet)/i, '🪖'],
   // Vêtements de SPORT AVANT les règles d'ÉQUIPEMENT sport (⛑️/🤿/🎿/⚽) : un
@@ -1504,8 +1507,10 @@ const OBJECT_ICON_RULES = [
   // « femme enceinte » (grossesse/allaitement) n'est pas un haut-parleur ;
   // console d'entrée = meuble, console de mixage = audio ; switch réseau =
   // équipement informatique, pas une Nintendo (audit 2026-07-19).
+  // (24/10, sos.cuisine) « Switch & Go » / « switch and go » est une GAMME DE JOUETS VTech (dinosaures
+  // transformables), pas la console : 4 fiches du parc partaient en Jeux vidéo sur eBay et Leboncoin.
   [/(?<!femmes?\s)enceinte|haut[sx]?.?parleur|speaker|barre[sx]?.?de.?son|soundbar/i, '🔊'],
-  [/console(?!s?\s*(?:de\s*mixage|d['’]entrée|murale|extensible))|playstation|\bps[2-5]\b|xbox|nintendo|switch(?!\s*(?:réseau|ethernet|rj45|tp.?link|netgear|poe|gigabit|\d+\s*ports))|game[sx]?.?boy|manette|jeu[sx]?.?vidéo/i, '🎮'],
+  [/console(?!s?\s*(?:de\s*mixage|d['’]entrée|murale|extensible))|playstation|\bps[2-5]\b|xbox|nintendo|switch(?!\s*(?:réseau|ethernet|rj45|tp.?link|netgear|poe|gigabit|\d+\s*ports|(?:&|and|et|n)\s*go\b))|game[sx]?.?boy|manette|jeu[sx]?.?vidéo/i, '🎮'],
   // télé(?![a-zà-ÿ]) et non télé\b : \b est ASCII-only en JS, donc "télé"
   // suivi d'une lettre matchait quand même ("télécommande" → Téléviseurs).
   [/meuble.?(?:tv|t[ée]l[ée]|hi.?fi)/i, '🛋️'],  // meuble TV = mobilier, pas un téléviseur

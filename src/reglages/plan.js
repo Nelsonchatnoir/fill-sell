@@ -138,8 +138,8 @@ export const GROUPES = [
         visible: (c) => Boolean(c.depopOuverte),
       },
       {
-        // (24/10 soir, décision 1 de Nico) Le bordereau demandé TOUT SEUL dès une vente Vinted, Leboncoin ou Beebs :
-        // son format, choisi une fois. Comptes de la bêta des bordereaux seulement (même drapeau que la messagerie).
+        // (24/10 soir, décisions 1 et 2 de Nico) Le bordereau demandé TOUT SEUL dès une vente Vinted : son format, choisi
+        // une fois. Tous les comptes aux bordereaux Vinted ouverts (messagerie_compteurs.bordereaux_vinted) et la bêta.
         // Pas de valeur à droite : la lire ici coûterait une requête au chargement du hub.
         id: 'bordereaux',
         icone: Truck,

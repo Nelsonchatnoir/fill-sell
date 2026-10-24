@@ -248,9 +248,10 @@ function Conversation({ supabase, conv, lang, sources, onRetour, onVue, envoiMod
  * ecran : { onglet: 'messages'|'expedier', article, conversation, n }.
  * onAller(v) ouvre une conversation (une entrée d'historique) ; onRetour() = ←.
  */
-export default function EspaceMessagerie({ supabase, lang = 'fr', ecran, onAller, onRetour, photosParInventaire = null, onChange }) {
+// (24/10 soir) `messages` faux : compte hors bêta aux bordereaux Vinted ouverts — l'écran « À expédier » seul.
+export default function EspaceMessagerie({ supabase, lang = 'fr', ecran, onAller, onRetour, photosParInventaire = null, onChange, messages = true }) {
   const fr = lang !== 'en';
-  const onglet = ecran?.onglet === 'expedier' ? 'expedier' : 'messages';
+  const onglet = ecran?.onglet === 'expedier' || !messages ? 'expedier' : 'messages';
   const [conversations, setConversations] = useState(null);
   const [releves, setReleves] = useState([]);
   const [article, setArticle] = useState(ecran?.article ?? null);
@@ -350,11 +351,11 @@ export default function EspaceMessagerie({ supabase, lang = 'fr', ecran, onAller
           <ArrowLeft size={24} strokeWidth={2.2} color={UI.ink} aria-hidden="true" />
         </button>
         <h1 style={{ margin: 0, fontSize: 26, fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1.15, flex: 1, minWidth: 0 }}>{titre}</h1>
-        <span style={{ fontSize: 11, fontWeight: 700, color: '#8A6100', background: '#FFF6E3', border: '1px solid #EED9A6', borderRadius: 999, padding: '1px 8px', flex: 'none' }}>{fr ? 'bêta' : 'beta'}</span>
+        {messages && <span style={{ fontSize: 11, fontWeight: 700, color: '#8A6100', background: '#FFF6E3', border: '1px solid #EED9A6', borderRadius: 999, padding: '1px 8px', flex: 'none' }}>{fr ? 'bêta' : 'beta'}</span>}
       </div>
       {onglet === 'expedier' ? (
         <>
-          <p style={{ margin: '-4px 4px 0', fontSize: 13, color: ENCRE2, lineHeight: 1.45 }}>{fr ? 'Toutes tes commandes en cours : Vinted, Leboncoin, Beebs, Depop et eBay.' : 'All your ongoing orders: Vinted, Leboncoin, Beebs, Depop and eBay.'}</p>
+          <p style={{ margin: '-4px 4px 0', fontSize: 13, color: ENCRE2, lineHeight: 1.45 }}>{messages ? (fr ? 'Toutes tes commandes en cours : Vinted, Leboncoin, Beebs, Depop et eBay.' : 'All your ongoing orders: Vinted, Leboncoin, Beebs, Depop and eBay.') : (fr ? 'Tes commandes Vinted en cours : FillSell prépare le bordereau tout seul. Leboncoin, Beebs, Depop et eBay : bientôt disponible.' : 'Your ongoing Vinted orders: FillSell prepares the label on its own. Leboncoin, Beebs, Depop and eBay: coming soon.')}</p>
           <SectionAExpedier supabase={supabase} lang={lang} photosParInventaire={photosParInventaire} dansPage />
         </>
       ) : (

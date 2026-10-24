@@ -49,6 +49,7 @@ import { toPlatformChildSize, tailleEnfantSelonLeTexte } from "../../utils/child
 import {
   optionDepuisTextes, champDeductibleDuTexte, estFourreTout, listeCandidatsDabord, textesDeLAnnonce,
 } from "../../../supabase/functions/_shared/option-du-texte.js";
+import { alimentationBeebs, estChampAlimentationBeebs } from "../../../supabase/functions/_shared/alimentation-beebs.js";
 
 export { estFourreTout, listeCandidatsDabord, textesDeLAnnonce };
 
@@ -62,8 +63,11 @@ export { estFourreTout, listeCandidatsDabord, textesDeLAnnonce };
  * jamais d'un texte (taille, marque, état, colis) ou que la liste n'est pas
  * une vraie liste (vide, ou relevé coupé à 200).
  */
-export function deduireOptionDuTexte({ platform, key, label = "", allowedValues, textes }) {
+export function deduireOptionDuTexte({ platform, key, label = "", allowedValues, textes, cheminCategorie = null }) {
   if (estChampTaille(platform, key) || champARecherche(platform, key)) return null;
+  // (24/10 soir, décision 4 de Nico) « Alimentation » Beebs : la règle dédiée (le moteur générique ne lit pas « sans »,
+  // mot vide, et prenait « Ma première batterie » pour une batterie) — _shared/alimentation-beebs.js.
+  if (estChampAlimentationBeebs(platform, key)) return alimentationBeebs({ options: allowedValues, textes, cheminCategorie });
   if (!champDeductibleDuTexte(key, label)) return null;
   const vals = (Array.isArray(allowedValues) ? allowedValues : []).map(v => String(v).trim()).filter(Boolean);
   if (!vals.length || (platform !== "ebay" && vals.length >= PLAFOND_RELEVE)) return null;
@@ -158,6 +162,27 @@ export function estChampTaille(platform, key) {
   if (platform === "leboncoin") return /_size$/.test(k) || k === "clothing_st" || k === "baby_age";
   if (platform === "opla") return k === "size";
   return false;
+}
+
+// ── (24/10 soir, décision 5 de Nico — pyjama d'alizeed48) LES HOMONYMES « TAILLE » DE BEEBS ──────────────────────
+// Certains rayons Beebs affichent DEUX champs « Taille » : le catalogue les relève « Taille [attributes.women_bras] »
+// (Pyjamas femme : une liste de soutiens-gorge 75A…115L ET les lettres XXS…9XL) ou « Taille [attributes.size_men_shirt] »
+// (Chemises homme : XS…8XL et les cols en cm). L'app ne reliait à la taille de la fiche que la clé NUE : sur ces
+// homonymes, « S / 36 / 8 » restait sans traduction et la question « Taille » tombait — sur une liste de bonnets.
+// RÈGLE : la taille connue de la fiche se TRADUIT dans la liste de l'homonyme par le même jugement que la clé nue
+// (jugerValeurContreListe sur « Taille ») ; jamais une conversion (« 40 » ne devient pas un col de 40 cm, « 38 » pas
+// un 85B) : rien de sûr → null, la question reste. Une clé POSITIONNELLE (« Taille [#2] », ancien relevé tronqué du même
+// champ) n'est ni une question ni une cible : l'extension et le serveur ne l'écrivent jamais (beebs.js, beebs-valeurs).
+export const clePositionnelleBeebs = (k) => /\[#\d+\]\s*$/.test(String(k ?? ""));
+export function tailleHomonymeBeebs({ key, taille, allowedValues, cheminCategorie = null, textes = null }) {
+  const k = String(key ?? "");
+  if (!/\[[^\]]+\]\s*$/.test(k) || clePositionnelleBeebs(k)) return null;
+  const nu = k.replace(/\s*\[[^\]]*\]\s*$/, "").trim();
+  if (!estChampTaille("beebs", nu)) return null;
+  const vals = (Array.isArray(allowedValues) ? allowedValues : []).map((v) => String(v).trim()).filter(Boolean);
+  if (!vals.length || !String(taille ?? "").trim()) return null;
+  const v = jugerValeurContreListe({ platform: "beebs", key: nu, value: taille, allowedValues: vals, cheminCategorie, textes });
+  return v.dans && vals.includes(v.valeurListe) ? v.valeurListe : null;
 }
 
 // ── Forme comparable d'une valeur d'aspect (déménagée de ListingPreviewScreen,

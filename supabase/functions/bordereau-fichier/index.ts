@@ -15,7 +15,8 @@ import { hoteFichierAutorise, genreDuFichier, FICHIER_MAX_OCTETS } from "../_sha
 // ⛔ Un hôte seulement (liste fermée, _shared/bordereau-fichier.js), https, aucune redirection suivie, 5 Mo au plus,
 //    PDF / PNG / JPEG reconnus à leurs octets. Rien n'est gardé ici ; le lien n'est JAMAIS écrit ni journalisé
 //    (il donne accès au bordereau, qui porte le nom de l'acheteur).
-// ⛔ Comptes de la bêta des bordereaux seulement (messagerie_beta), comme le reste du chemin.
+// ⛔ Comptes aux bordereaux Vinted ouverts (24/10 soir, décision 2 de Nico : tous les comptes — bordereaux_ouverts_pour,
+//    migration 20261024235500 ; base d'avant cette migration : la bêta, messagerie_beta), comme le reste du chemin.
 // Déploiement : verify_jwt = true (défaut) — appelée par l'extension avec la session du vendeur ; la clé anon seule
 // est refusée (auth.getUser).
 // ═══════════════════════════════════════════════════════════
@@ -39,8 +40,9 @@ serve(async (req) => {
   const { data: qui, error: errQui } = await admin.auth.getUser(jeton);
   const user = qui?.user ?? null;
   if (errQui || !user?.id) return rendre({ ok: false, motif: "session_refusee" }, 401);
-  const { data: beta, error: errBeta } = await admin.rpc("messagerie_beta", { p_user: user.id });
-  if (errBeta || beta !== true) return rendre({ ok: false, motif: "hors_beta" }, 403);
+  let { data: ouvert, error: errOuvert } = await admin.rpc("bordereaux_ouverts_pour", { p_user: user.id, p_platform: "vinted" });
+  if (errOuvert) ({ data: ouvert, error: errOuvert } = await admin.rpc("messagerie_beta", { p_user: user.id }));
+  if (errOuvert || ouvert !== true) return rendre({ ok: false, motif: "hors_beta" }, 403);
 
   let lien = "";
   try { lien = String((await req.json())?.lien ?? ""); } catch { return rendre({ ok: false, motif: "corps_illisible" }, 400); }

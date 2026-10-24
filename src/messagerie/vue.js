@@ -228,6 +228,8 @@ export function lienConversation(c) {
 
 /** Les plateformes dont FillSell récupère le bordereau au clic (chemin codé jusqu'au fichier). */
 export const PLATEFORMES_BORDEREAU = Object.freeze(['vinted', 'leboncoin', 'beebs']);
+/** (24/10 soir, décision 2 de Nico) Celles dont le bordereau est OUVERT (tous les comptes) : Vinted seulement. */
+export const PLATEFORMES_BORDEREAU_OUVERTES = Object.freeze(['vinted']);
 
 /**
  * (16/10 nuit) La commande attend le geste qui crée le bordereau : Vinted
@@ -329,6 +331,13 @@ export function actionCommande(c, lang = 'fr', generation = null, extensionVinte
   const url = lienCommande(c);
   const lien = (libelle, aide, ton = 'neutre') => ({ type: 'lien', libelle, aide, url, ton });
   const attente = (aide) => ({ type: 'attente', libelle: fr ? `Voir sur ${pf}` : `See on ${pf}`, aide, url, ton: 'neutre' });
+  // (24/10 soir, décision 2 de Nico) Le bordereau depuis FillSell : VINTED seulement, pour tous les comptes. Leboncoin,
+  // Beebs, Depop, eBay : un message court et clair, jamais un bouton qui échoue (la base répond « bientot » à toute
+  // demande hors Vinted) ; le lien discret vers la plateforme reste.
+  if (c?.platform && !PLATEFORMES_BORDEREAU_OUVERTES.includes(c.platform) && ['a_confirmer', 'a_expedier'].includes(c?.etat)) {
+    return { type: 'bientot', libelle: fr ? 'Bientôt disponible' : 'Coming soon', url, ton: 'neutre',
+      aide: fr ? `Bordereau ${pf} depuis FillSell : bientôt disponible.` : `${pf} labels from FillSell: coming soon.` };
+  }
   if (PLATEFORMES_BORDEREAU.includes(c?.platform) && c?.etat === 'a_expedier' && c?.bordereau === 'pret') {
     return { type: 'bordereau', libelle: fr ? 'Récupérer le bordereau' : 'Fetch the label', ton: 'ok', url,
       aide: fr ? `Bordereau prêt sur ${pf} : FillSell le récupère par ton ordinateur et l’affiche ici, gardé 5 jours.` : `Label ready on ${pf}: FillSell fetches it through your computer and shows it here, kept 5 days.` };

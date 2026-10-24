@@ -467,11 +467,82 @@ const PLATFORM_HANDLERS = {
       const params = new URLSearchParams({ mode: "AddItem" });
       params.set("categoryId", String(fields.ebayCategoryId));
       if (job.title) params.set("title", String(job.title).slice(0, 80));
-      params.set("condition", /neuf/i.test(fields.etat ?? "") ? "1000" : "3000");
+      // (24/10) L'état choisi parmi ceux que le rayon accepte (poserConditionEbay), sinon la famille.
+      params.set("condition", conditionEbayDeLUrl(fields));
       return `https://www.ebay.fr/sl/list?${params}`;
     },
   },
 };
+
+// ── L'ÉTAT eBAY EST TOUJOURS REMPLI DANS LE BROUILLON (24/10, décision de Nico — sos.cuisine) ──────────────────
+// L'URL de dépôt posait l'état d'une famille : 1000 (neuf) ou 3000 (occasion), quel que soit le rayon. Or 3000
+// n'existe pas partout : les rayons Livres et Jeux vidéo n'offrent que 1000/2750/4000/5000/6000. eBay ignorait
+// alors l'état de l'URL, le brouillon partait SANS « État » et la soumission était refusée (« éléments manquants
+// dans le brouillon : État » — 8 jobs, 3 rayons, depuis le 16/10). Mesuré le 24/10 sur un brouillon de Nico,
+// catégorie 139973 : condition=3000 → « — », condition=5000 → « Bon état » (l'URL accepte tout conditionId
+// valide du rayon).
+// RÈGLE : avant d'ouvrir le formulaire, le poste demande au serveur les états que le rayon accepte (lus chez
+// eBay, fetch-ebay-aspects { conditions_category }) et choisit dedans :
+//   · l'état de la famille d'avant s'il est accepté — RIEN ne change là où l'URL marchait déjà ;
+//   · sinon le plus fidèle à l'état de la fiche, du plus proche au repli (même table que la voie API,
+//     _shared/ebay-publication.ts PREFERENCES_ETAT) ;
+//   · serveur muet ou aucune correspondance → l'état de la famille, comme avant (jamais pire).
+// La trace du choix part sur le job (platform_fields.ebay_condition_choix) ; elle ne vaut que pour SA catégorie.
+const EBAY_PREFERENCES_ETAT = [
+  [/neuf avec/i, ["1000"]],
+  [/neuf sans/i, ["1500", "1000"]],
+  [/neuf/i, ["1000", "1500"]],
+  [/tr[eè]s bon/i, ["3000", "2990", "4000", "2750"]],
+  [/^bon/i, ["3010", "5000", "3000", "4000"]],
+  [/satisf|correct|us[ée]/i, ["6000", "3010", "5000", "3000"]],
+];
+function conditionEbayDeFamille(etat) {
+  return /neuf/i.test(String(etat ?? "")) ? "1000" : "3000";
+}
+function conditionEbayParmi(etat, conditions) {
+  if (!Array.isArray(conditions) || !conditions.length) return null;
+  const ids = new Set(conditions.map((c) => String(c?.id ?? "")));
+  const famille = conditionEbayDeFamille(etat);
+  if (ids.has(famille)) return { id: famille, regle: "famille" };
+  const e = String(etat ?? "").trim();
+  let candidats = ["3000", "4000", "5000", "2990", "3010"];
+  for (const [re, liste] of EBAY_PREFERENCES_ETAT) { if (re.test(e)) { candidats = liste; break; } }
+  for (const id of candidats) { if (ids.has(id)) return { id, regle: "etat_du_rayon" }; }
+  return null;
+}
+function conditionEbayDeLUrl(fields) {
+  const c = fields?.ebay_condition_choix;
+  if (c && /^\d{3,5}$/.test(String(c.choisi ?? "")) && String(c.categorie ?? "") === String(fields?.ebayCategoryId ?? "")) {
+    return String(c.choisi);
+  }
+  return conditionEbayDeFamille(fields?.etat);
+}
+const ebayConditionsParCategorie = new Map();
+async function poserConditionEbay(job, accessToken) {
+  const fields = job.platform_fields ?? (job.platform_fields = {});
+  const cat = String(fields.ebayCategoryId ?? "").trim();
+  if (!/^\d{1,12}$/.test(cat)) return;
+  let liste = ebayConditionsParCategorie.get(cat) ?? null;
+  if (!liste) {
+    try {
+      const r = await Promise.race([
+        callEdgeFunction("fetch-ebay-aspects", accessToken, { conditions_category: cat }),
+        new Promise((_, rejeter) => setTimeout(() => rejeter(new Error("délai de 10 s dépassé")), 10000)),
+      ]);
+      liste = Array.isArray(r?.conditions) && r.conditions.length ? r.conditions : null;
+      if (liste) ebayConditionsParCategorie.set(cat, liste);
+    } catch (e) {
+      console.warn(`[background] eBay : états du rayon ${cat} illisibles (${String(e?.message ?? e).slice(0, 120)}) — état de la famille`);
+    }
+  }
+  const choix = conditionEbayParmi(fields.etat, liste);
+  fields.ebay_condition_choix = {
+    at: new Date().toISOString(), categorie: cat, etat: fields.etat ?? null,
+    autorises: liste ? liste.map((c) => String(c.id)) : null,
+    choisi: choix?.id ?? conditionEbayDeFamille(fields.etat),
+    regle: choix?.regle ?? (liste ? "aucune_correspondance" : "serveur_muet"),
+  };
+}
 
 // ── Pré-check : un job non mappé n'ouvre AUCUN onglet ──────────────────────────
 // Bug du 2026-07-09 : processJob naviguait l'onglet de travail AVANT d'envoyer
@@ -3953,6 +4024,8 @@ async function processJob(rawJob, accessToken) {
     // quand les tests accumulaient un onglet Vinted par requête).
     // newListingUrl peut être une fonction (eBay : URL par job, construite
     // avec le categoryId du mapping) ou une chaîne fixe (Vinted, LBC).
+    // (24/10) eBay : l'état de l'URL est choisi parmi ceux que le rayon accepte — jamais un brouillon sans état.
+    if (job.platform === "ebay") await poserConditionEbay(job, accessToken);
     const listingUrl = typeof handler.newListingUrl === "function"
       ? handler.newListingUrl(job)
       : handler.newListingUrl;
@@ -21165,6 +21238,44 @@ async function messagerieBetaDuCompte(etat, token, userId) {
   return val;
 }
 
+// (24/10 soir, décision 2 de Nico) FIN DE LA BÊTA POUR LES BORDEREAUX VINTED : ouverts à TOUS les comptes, manuels et
+// automatiques. Hors bêta, le poste relève les COMMANDES Vinted seules — jamais les messages, jamais une autre
+// plateforme (Leboncoin, Beebs, Depop, eBay : « Bientôt disponible ») — et prend les demandes de bordereau Vinted.
+// Le serveur dit oui (bordereaux_ouverts_pour, puis messagerie_releve_autorise → « commandes_seules ») ; relu toutes
+// les 30 min, fail-closed : serveur d'avant la migration 20261024235500, illisible = fermé.
+async function bordereauxVintedDuCompte(etat, token, userId) {
+  const b = etat.bvinted;
+  if (b && b.user === userId && Date.now() - Number(b.le) < MESSAGERIE_DROITS_MS) return b.val === true;
+  let val = false;
+  try { val = (await rpcMessagerie("bordereaux_ouverts_pour", { p_platform: "vinted" }, token)) === true; } catch { val = false; }
+  etat.bvinted = { user: userId, val, le: Date.now() };
+  return val;
+}
+
+/** Hors bêta : le relevé des commandes Vinted seules (même cadence, même pause au premier signe de blocage). */
+async function releverCommandesVintedHorsBeta(token, etat) {
+  const M = FILLSELL_MESSAGERIE;
+  const platform = "vinted";
+  const e = (etat[platform] ??= {});
+  const maintenant = Date.now();
+  if (e.coupee && maintenant < Number(e.coupee.jusqu)) return;
+  if (Number.isFinite(Number(e.prochain)) && maintenant < Number(e.prochain)) return;
+  e.prochain = maintenant + M.CADENCE_MS + Math.round(Math.random() * M.ALEA_MS);
+  let aut = null;
+  try { aut = await rpcMessagerie("messagerie_releve_autorise", { p_platform: platform }, token); } catch { aut = null; }
+  // Le serveur doit dire « commandes seules » : sans ce mot, rien n'est lu (jamais les messages hors bêta).
+  if (!aut?.autorise || aut?.commandes_seules !== true) { e.dernierMotif = aut?.motif ?? "autorisation_illisible"; return; }
+  const debut = Date.now();
+  const r = await releverMessagerieUnePlateforme(platform, token, e, { commandesSeules: true })
+    .catch((err) => ({ motif: `exception: ${String(err?.message ?? err).slice(0, 120)}` }));
+  e.dernierLe = new Date().toISOString();
+  e.dernierMotif = r?.bloque ?? r?.refuse ?? r?.motif ?? null;
+  if (r?.bloque) { await bloquerMessagerie(platform, r.bloque, token, e); return; }
+  const bc = r?.bilanCommandes ?? {};
+  console.log(`[commandes][vinted] ${r?.ok ? "relevé" : `rien (${e.dernierMotif})`} — ${r?.requetes ?? 0} requête(s), ` +
+    `${Date.now() - debut} ms ; commandes +${bc.nouvelles ?? 0} ~${bc.maj ?? 0}`);
+}
+
 /** Pause au premier signe de blocage : serveur (6 h / 24 h) et poste. */
 async function bloquerMessagerie(platform, motif, token, e) {
   let jusqu = Date.now() + 6 * 3600 * 1000;
@@ -21185,26 +21296,28 @@ async function noterEchecReleveMessagerie(platform, motif, token) {
   }, token).catch(() => {});
 }
 
-/** Un passage pour UNE plateforme. Ne lève pas : rend un bilan. */
-async function releverMessagerieUnePlateforme(platform, token, e) {
+/** Un passage pour UNE plateforme. Ne lève pas : rend un bilan.
+ *  (24/10 soir) `commandesSeules` : compte hors bêta aux bordereaux Vinted ouverts — les étapes 1 et 2 (messagerie)
+ *  n'existent pas : aucune requête de conversation, l'étape 3 (commandes) seule. */
+async function releverMessagerieUnePlateforme(platform, token, e, { commandesSeules = false } = {}) {
   const M = FILLSELL_MESSAGERIE;
   const L = M.LECTEURS[platform];
   let requetes = 0;
   if (platform === "leboncoin") await assurerJetonLeboncoin().catch(() => null);
 
   // 1. La liste des conversations (une page).
-  const liste = await executerDansOngletPlateforme(platform, L.liste, platform === "vinted" ? [20] : []);
+  const liste = commandesSeules ? null : await executerDansOngletPlateforme(platform, L.liste, platform === "vinted" ? [20] : []);
   requetes += Number(liste?.requetes) || 0;
-  const bloc1 = M.signeBlocage(liste);
+  const bloc1 = commandesSeules ? null : M.signeBlocage(liste);
   if (bloc1) return { bloque: bloc1, requetes };
   // (0.6.119) Un MUR de la liste (Beebs : téléphone non vérifié ; session
   // absente) n'est pas un blocage : les messages sont sautés, les commandes
   // sont lues quand même, et le motif est noté en base pour que l'app le dise.
-  const motifListe = liste?.ok ? null : (liste?.motif ?? "liste_illisible");
+  const motifListe = commandesSeules ? null : (liste?.ok ? null : (liste?.motif ?? "liste_illisible"));
   if (motifListe && !liste?.mur) return { motif: motifListe, requetes };
   let bilan = null;
   let refs = [];
-  if (!motifListe) {
+  if (!motifListe && !commandesSeules) {
   // 2. Le détail des conversations nouvelles ou changées (5 au plus). Une
   // règle de lecture changée fait relire les fils déjà lus, au même rythme.
   const { memo, regle, oubliee } = M.memoireDetails(e, platform);
@@ -21355,7 +21468,14 @@ async function releverMessagerieBeta(session) {
   const etat = await lireEtatMessagerie();
   if (etat.user && etat.user !== userId) { for (const k of Object.keys(etat)) delete etat[k]; }
   etat.user = userId;
-  if (!(await messagerieBetaDuCompte(etat, token, userId))) { await ecrireEtatMessagerie(etat); return; }
+  if (!(await messagerieBetaDuCompte(etat, token, userId))) {
+    // (24/10 soir, décision 2 de Nico) Hors bêta : les commandes Vinted seules, si les bordereaux Vinted sont ouverts.
+    if (await bordereauxVintedDuCompte(etat, token, userId)) {
+      await releverCommandesVintedHorsBeta(token, etat).catch((err) => console.warn("[commandes][vinted]", String(err?.message ?? err)));
+    }
+    await ecrireEtatMessagerie(etat);
+    return;
+  }
 
   const maintenant = Date.now();
   for (const platform of M.PLATEFORMES_EXTENSION) {
@@ -21493,7 +21613,10 @@ async function traiterDemandeBordereauBeta(session) {
   const etat = await lireEtatMessagerie();
   if (etat.user && etat.user !== userId) return; // la relève du même poll a remis l'état à ce compte
   const b = etat.beta;
-  if (!(b && b.user === userId && b.val === true)) return; // drapeau relu par la relève (30 min), fail-closed
+  // Drapeaux relus par la relève (30 min), fail-closed. (24/10 soir) La bêta, OU les bordereaux Vinted ouverts à tous :
+  // le serveur ne sert alors que des demandes Vinted (bordereau_demande_a_traiter, migration 20261024235500).
+  const bv = etat.bvinted;
+  if (!(b && b.user === userId && b.val === true) && !(bv && bv.user === userId && bv.val === true)) return;
   // (16/10 nuit) Cette extension sait GÉNÉRER : elle le dit au serveur, qui ne
   // rend jamais une génération à une extension d'avant. Serveur d'avant la
   // migration 20261016220000 (sans ce paramètre) : l'appel d'avant, qui ne rend

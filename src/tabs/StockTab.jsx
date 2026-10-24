@@ -1463,6 +1463,7 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
     ? deduireOptionDuTexte({
         platform: job.platform, key: f.field_key, label: f.field_label, allowedValues: allowedBrut,
         textes: textesDeLAnnonce({ titre: job.title, platformFields: job.platform_fields }),
+        cheminCategorie: job.platform_fields?.beebsCategoryPath ?? null,
       })
     : null;
   const allowed = deduction?.candidats?.length

@@ -8464,7 +8464,7 @@ export default function App({ loginOnly = false }){
         </div>
       )}
 
-      <div ref={scrollRef} className={messagerie.beta&&espaceMessagerie?"wrap page-pad fs-espace-beta-ouvert":"wrap page-pad"} style={{padding:"18px 14px 16px",background:"var(--bg)",flex:"1",overflowY:"auto",WebkitOverflowScrolling:"touch",minHeight:0}}>
+      <div ref={scrollRef} className={(messagerie.beta||messagerie.bordereaux)&&espaceMessagerie?"wrap page-pad fs-espace-beta-ouvert":"wrap page-pad"} style={{padding:"18px 14px 16px",background:"var(--bg)",flex:"1",overflowY:"auto",WebkitOverflowScrolling:"touch",minHeight:0}}>
 
         {/* (11/10, Louis) Ventes détectées à confirmer — avec ou sans téléphone.
             En tête de la zone des bandeaux (Stock compris) ; le lien du mail
@@ -8677,14 +8677,15 @@ export default function App({ loginOnly = false }){
         {/* (16/10) Bêta messages + bordereaux : compte bêta seulement.
             (17/10) Les entrées vivent sur le Stock seul ; l'écran ouvert est une
             PAGE qui remplace le contenu de l'onglet (fs-espace-beta-ouvert). */}
-        {messagerie.beta&&tab===1&&!espaceMessagerie&&(
-          <BarreMessagerie lang={lang} nonLus={messagerie.nonLus} aExpedier={messagerie.aExpedier}
+        {/* (24/10 soir, décision 2 de Nico) Bordereaux Vinted ouverts à tous : « À expédier » aussi hors bêta (messages : bêta). */}
+        {(messagerie.beta||messagerie.bordereaux)&&tab===1&&!espaceMessagerie&&(
+          <BarreMessagerie lang={lang} nonLus={messagerie.nonLus} aExpedier={messagerie.aExpedier} messages={messagerie.beta}
             onMessages={()=>setEspaceMessagerie({onglet:'messages',article:null})}
             onExpedier={()=>setEspaceMessagerie({onglet:'expedier',article:null})}/>
         )}
-        {messagerie.beta&&espaceMessagerie&&(
+        {(messagerie.beta||messagerie.bordereaux)&&espaceMessagerie&&(
           <SuspenseMessagerie fallback={<div className="fs-espace-beta"/>}>
-            <EspaceMessagerie supabase={supabase} lang={lang} ecran={espaceMessagerie}
+            <EspaceMessagerie supabase={supabase} lang={lang} ecran={espaceMessagerie} messages={messagerie.beta}
               onAller={setEspaceMessagerie} onRetour={ecranMessagerie.retour}
               photosParInventaire={photosParInventaire}
               onChange={messagerie.relire}/>
@@ -8855,7 +8856,7 @@ export default function App({ loginOnly = false }){
             vendusAEnregistrer={vendusAEnregistrer}
             photosParInventaire={photosParInventaire}
             onSaleUpdated={()=>{if(user?.id)fetchAll(user.id,{silencieux:true});}}
-            messagerieBeta={messagerie.beta}
+            messagerieBeta={messagerie.beta||messagerie.bordereaux}
           />
         )}
         {/* StatsTab toujours monté — état local préservé entre les onglets */}
@@ -9535,7 +9536,7 @@ export default function App({ loginOnly = false }){
           reset={{step:resetStep,lancer:handleReset,annuler:()=>setResetStep(0)}}
           suppression={{step:deleteStep,setStep:setDeleteStep,enCours:deleteLoading,lancer:handleDeleteAccount}}
           deconnexion={()=>{handleLogout();setShowSettings(false);}}
-          messagerieBeta={messagerie.beta===true}
+          messagerieBeta={messagerie.beta===true||messagerie.bordereaux===true}
         />
       )}
 

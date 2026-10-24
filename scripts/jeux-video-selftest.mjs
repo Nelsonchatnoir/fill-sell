@@ -151,6 +151,13 @@ const CORPUS = [
   ["Bluray casino royal pack ps3", null],
   ["Braségali Holo 042/182 - Rivalités Destinées EV10 - DRI FR", null],
   ["Robe fleurie taille M", null],
+  // (24/10, sos.cuisine) La gamme de jouets VTech « Switch & Go » n'est pas la console — les 4 fiches du parc.
+  ["VTech Switch & Go Dinos Rotor le Vélociraptor dinosaure transformable", null],
+  ["Super T-Rex SOS 3 en 1 VTech Switch & Go Dinos Robot dinosaures interactive", null],
+  ["vtech switch and go dinos rotor avion dinosaure interactif lumiere son", null],
+  ["Vtech switch and go transformers voiture T-Rex parlant", null],
+  // … et un jeu Switch reste un jeu.
+  ["Mario Kart 8 Deluxe Switch", "jeu"],
 ];
 
 console.log(`2. Corpus : ${CORPUS.length} titres réels`);

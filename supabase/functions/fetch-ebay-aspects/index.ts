@@ -31,6 +31,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import categoryIdsFile from "./category-ids.json" with { type: "json" };
 import {
+  EBAY_HOSTS,
   EbayEnv,
   fetchItemAspects,
   getAppToken,
@@ -44,6 +45,9 @@ const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, content-type, apikey",
 };
+
+// Les états acceptés par catégorie (chemin conditions_category), gardés le temps de l'instance.
+const cacheConditions = new Map<string, Array<{ id: string; libelle: string }>>();
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
@@ -121,7 +125,12 @@ Deno.serve(async (req) => {
       typeof bodyEarly.refetch_category === "string" || typeof bodyEarly.refetch_category === "number"
         ? String(bodyEarly.refetch_category).trim()
         : "";
-    if (!isAdmin && !refetchId) {
+    // (24/10, Nico — sos.cuisine) { conditions_category: "<id>" } : les ÉTATS que la catégorie accepte.
+    const conditionsId =
+      typeof bodyEarly.conditions_category === "string" || typeof bodyEarly.conditions_category === "number"
+        ? String(bodyEarly.conditions_category).trim()
+        : "";
+    if (!isAdmin && !refetchId && !conditionsId) {
       return json({ error: "Réservé au service_role (fournir la SERVICE_ROLE_KEY en Bearer)" }, 403);
     }
 
@@ -142,6 +151,40 @@ Deno.serve(async (req) => {
       return json({ error: `EBAY_ENV invalide : "${envRaw}" (attendu sandbox|production)` }, 500);
     }
     const env = envRaw as EbayEnv;
+
+    // ── LES ÉTATS QU'UN RAYON ACCEPTE (24/10, Nico : « l'état est connu sur la fiche : il doit toujours être
+    // rempli dans le brouillon eBay ») ─────────────────────────────────────────────────────────────────────
+    // L'extension posait l'état dans l'URL de dépôt : 1000 (neuf) ou 3000 (occasion), partout. Les rayons
+    // Livres et Jeux vidéo n'ont pas 3000 (1000/2750/4000/5000/6000) : eBay ignorait l'état, le brouillon partait
+    // sans « État » et la soumission était refusée (mesuré le 24/10 sur un brouillon de Nico, catégorie 139973 :
+    // condition=3000 → « — », condition=5000 → « Bon état »). L'extension demande ici, avant d'ouvrir le
+    // formulaire, la liste des conditionId de la catégorie, LUE CHEZ eBAY (Metadata get_item_condition_policies,
+    // jeton applicatif), et choisit dedans. LECTURE SEULE : rien n'est écrit ; un id numérique par appel ;
+    // mémoire de l'instance. eBay muet → { conditions: null } en 200 : l'extension garde sa règle d'avant.
+    if (conditionsId) {
+      if (!/^\d{1,12}$/.test(conditionsId)) {
+        return json({ error: `conditions_category invalide : "${conditionsId}" (id numérique attendu)` }, 400);
+      }
+      const enCache = cacheConditions.get(conditionsId);
+      if (enCache) return json({ category_id: conditionsId, conditions: enCache, cache: true });
+      const token = await getAppToken({ env, clientId, clientSecret });
+      const r = await fetch(
+        `${EBAY_HOSTS[env]}/sell/metadata/v1/marketplace/EBAY_FR/get_item_condition_policies?filter=categoryIds:%7B${conditionsId}%7D`,
+        { headers: { Authorization: `Bearer ${token}`, Accept: "application/json", "Accept-Language": "fr-FR" } },
+      );
+      const texte = await r.text();
+      if (!r.ok) {
+        console.warn(`[fetch-ebay-aspects] conditions ${conditionsId} → Metadata ${r.status} : ${texte.slice(0, 200)}`);
+        return json({ category_id: conditionsId, conditions: null, erreur: `Metadata ${r.status}` });
+      }
+      let lu: { itemConditionPolicies?: Array<{ itemConditions?: Array<{ conditionId?: unknown; conditionDescription?: unknown }> }> } | null = null;
+      try { lu = JSON.parse(texte); } catch { lu = null; }
+      const conditions = (lu?.itemConditionPolicies?.[0]?.itemConditions ?? [])
+        .map((c) => ({ id: String(c.conditionId ?? ""), libelle: String(c.conditionDescription ?? "") }))
+        .filter((c) => /^\d{3,5}$/.test(c.id));
+      if (conditions.length) cacheConditions.set(conditionsId, conditions);
+      return json({ category_id: conditionsId, conditions: conditions.length ? conditions : null });
+    }
 
     // ── Exécution du chemin utilisateur (refetch d'UNE catégorie) ───────────
     if (!isAdmin) {

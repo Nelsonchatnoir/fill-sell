@@ -137,7 +137,7 @@ import {
 // réponse « marque hors catalogue » rangée sur la fiche vaut pour l'article.
 import {
   marqueDeLaFiche, marqueUtilisable, comblerMarquesVides, ciblesDeLaReponse, ecrireReponsePartagee,
-  sansMarqueDOffice, appliquerMarqueVintedArticle,
+  sansMarqueDOffice, appliquerMarqueVintedArticle, sansMarqueDeLaFiche,
 } from "../publication/moteur/reponsesPartagees.js";
 // (chantier du 24/09) normAspectVal et nearestAllowedValue ont déménagé dans le
 // moteur, à l'identique : la carte (champsDuRayon) et la publication en masse
@@ -147,6 +147,7 @@ import {
   vintedExigeUneCouleur, vintedExigeUnIsbn, ISBN_ABSENT, valeurUneLettre, rayonNeufSeulement, messageRayonNeuf,
   deduireOptionDuTexte, estFourreTout, listeCandidatsDabord, textesDeLAnnonce,
   tailleDuJob, tailleDansListeEbay, tailleDeduiteDuTexte, estChampTaille, rayonPublicIncoherent, messageRayonPublic,
+  clePositionnelleBeebs, tailleHomonymeBeebs,
 } from "../publication/moteur/listes";
 // (10/10, cas Manon) Ce que l'encart eBay remplit seul, et quand.
 import { aspectsADemanderIa, valeursAutoAReprendre } from "../publication/moteur/aspectsEbayAuto";
@@ -5055,8 +5056,10 @@ export default function ListingPreviewScreen({
   //     partielle d'étiquette dans les notes de Lens) → « Sans marque » sur
   //     chaque copie, sans question — la valeur exacte du bouton. Rien sur la
   //     fiche. Une marque présente hors catalogue garde sa question.
+  // (24/10 soir, décision 3 de Nico) D'abord : « Sans marque » déclaré par la fiche n'est jamais remplacé par une marque
+  // de l'IA (sansMarqueDeLaFiche — l'insert Zombicide de louis, refusé par la modération Leboncoin).
   const comblerMarqueFiche = (copies) => comblerPoidsFiche(sansMarqueDOffice(
-    appliquerMarqueVintedArticle(comblerMarquesVides(copies, marqueDeLaFiche(initialListing)).edited, initialListing?.attributs).edited,
+    appliquerMarqueVintedArticle(comblerMarquesVides(sansMarqueDeLaFiche(copies, initialListing).edited, marqueDeLaFiche(initialListing)).edited, initialListing?.attributs).edited,
     { fiche: initialListing, notesLens: initialListing?.notes ?? null },
   ).edited);
   const [edited, setEdited]                           = useState(() => comblerMarqueFiche(draft?.edited ?? {}));
@@ -8366,6 +8369,9 @@ export default function ListingPreviewScreen({
             .eq("category_key", key)
             .eq("required", true);
           let rows = data ?? [];
+          // (24/10 soir, décision 5 de Nico) Beebs : une clé POSITIONNELLE (« Taille [#2] », ancien relevé tronqué d'un
+          // homonyme) n'est jamais une question — l'extension et le serveur ne l'écrivent pas (listes.js).
+          if (platform === "beebs") rows = rows.filter((r) => !clePositionnelleBeebs(r.field_key));
           // ── OPLA : LE RÉFÉRENTIEL EN TITRES (chantier du 24/09) ────────────
           // Ses listes sont des objets { code, title } (relevé de son API) ;
           // l'écran parle en titres (« 12 ans »), le serveur retraduit en code
@@ -8909,6 +8915,14 @@ export default function ListingPreviewScreen({
         // jamais bloquante), elle est POSÉE sur la copie de CETTE plateforme par
         // l'effet de l'option lue dans l'annonce — le geste de la personne qui
         // la choisirait dans cette ligne (setPlatformDedicatedField).
+        // (24/10 soir, décision 5 de Nico — pyjama d'alizeed48) Un HOMONYME Beebs de « Taille » (« Taille
+        // [attributes.women_bras] ») : la taille connue de la fiche, traduite dans SA liste (« S / 36 / 8 » → « S ») —
+        // déduite, jamais bloquante, posée par l'effet de l'option lue dans l'annonce. Rien de sûr : la question reste.
+        if (platform === "beebs" && allowedValues.length) {
+          const th = tailleHomonymeBeebs({ key, taille: pf.taille || initialListing?.taille, allowedValues, cheminCategorie: cheminDe(platform), textes: textesDuVendeurPour(platform) });
+          if (th) return { key, label, state: "missing", value: "", allowedValues, inputType: r.input_type, dedicatedTarget: null,
+                           suggested: th, blocking: false, deduit: { valeur: th, source: "taille_de_la_fiche" } };
+        }
         if (variante === "nouvelle" && estChampTaille(platform, key) && allowedValues.length) {
           const t = tailleDeduiteDuTexte({ platform, key, value: "", allowedValues, cheminCategorie: cheminDe(platform), textes: textesDuVendeurPour(platform) });
           if (t) return { key, label, state: "missing", value: "", allowedValues, inputType: r.input_type, dedicatedTarget: genericDedicatedTarget(platform, key),
@@ -9030,7 +9044,8 @@ export default function ListingPreviewScreen({
             return { ...a, suggested: u.valeur, blocking: false, deduit: { valeur: u.valeur, source: `fiche:${u.source}` } };
           }
         }
-        let ded = deduireOptionDuTexte({ platform, key: a.key, label: a.label, allowedValues: a.allowedValues, textes });
+        let ded = deduireOptionDuTexte({ platform, key: a.key, label: a.label, allowedValues: a.allowedValues, textes,
+          cheminCategorie: typeof genericCategoryKeys?.[platform] === "string" ? genericCategoryKeys[platform].split(" > ") : null });
         if (!ded) return avecMemoire(a);
         let paire = null;
         // Maison & Jardin : le Produit introuvable sous l'Univers courant, ou
@@ -9548,7 +9563,11 @@ export default function ListingPreviewScreen({
         // champ reste à choisir par la personne. Jamais de présélection.
         if (!a.dedicatedTarget && /^(taille|pointure)\b/i.test(String(a.label ?? a.key ?? ""))) {
           const t = String(KNOWN_BY_TARGET.taille ?? "").trim();
-          const exacte = t ? (a.allowedValues ?? []).find(v => normAspectVal(v) === normAspectVal(t)) : null;
+          // (24/10 soir, décision 5 de Nico) Beebs : la taille TRADUITE dans la liste de l'homonyme (« S / 36 / 8 » → « S »),
+          // même règle que la ligne « missing » (tailleHomonymeBeebs) ; ailleurs l'égalité exacte, comme avant.
+          const exacte = gp === "beebs"
+            ? tailleHomonymeBeebs({ key: a.key, taille: t, allowedValues: a.allowedValues ?? [] })
+            : (t ? (a.allowedValues ?? []).find(v => normAspectVal(v) === normAspectVal(t)) : null);
           if (exacte) setPlatformAspect(gp, a.key, String(exacte));
           continue;
         }

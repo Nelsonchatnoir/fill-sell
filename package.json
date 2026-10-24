@@ -56,6 +56,7 @@
     "selftest:mur-suppression-arbitre": "node scripts/mur-suppression-arbitre-selftest.mjs",
     "selftest:onglet-gele": "node scripts/onglet-gele-selftest.mjs",
     "selftest:vente-annulee-carte": "node scripts/vente-annulee-carte-selftest.mjs",
+    "selftest:lot-2410-soir": "node --import ./scripts/loader-ext.mjs scripts/lot-2410-soir-selftest.mjs",
     "selftest:depart-compte": "node --import ./scripts/loader-ext.mjs scripts/depart-compte-selftest.mjs",
     "selftest:lbc-jeton-releve": "node --import ./scripts/loader-ext.mjs scripts/lbc-jeton-releve-selftest.mjs",
     "selftest:encart-cloud-bientot": "node --import ./scripts/loader-ext.mjs scripts/encart-cloud-bientot-selftest.mjs",

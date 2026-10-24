@@ -71,7 +71,10 @@ const DOMAINE = /\b(consoles?|playstation|ps\s?[1-5]|psp|ps\s?vita|psvita|xbox|n
 // le 20/09 (un vendeur en fait commerce : 9 « Cadre Trophée Platine PS5 »).
 // Ils gardent le comportement d'aujourd'hui — on ne les améliore pas ici, on
 // se contente de ne pas les déplacer.
-const HORS_OBJET_PARTOUT = /\bcadre\s+(trophee|deco|manette|nintendo|playstation|switch|gameboy)\b|\btrophee\s+platine\b|\bamiibos?\b|\bboite\s+vide\b|\bboitier\s+vide\b/;
+// (24/10, sos.cuisine) « Switch & Go » / « switch and go » : la gamme de JOUETS VTech (dinosaures
+// transformables), jamais la console — « VTech Switch & Go Dinos Rotor » partait en « Jeux » eBay
+// (« Plateforme : Nintendo Switch ») et en « Jeux vidéo » Leboncoin.
+const HORS_OBJET_PARTOUT = /\bcadre\s+(trophee|deco|manette|nintendo|playstation|switch|gameboy)\b|\btrophee\s+platine\b|\bamiibos?\b|\bboite\s+vide\b|\bboitier\s+vide\b|\bswitch\s*(?:&|and|et|n)\s*go\b/;
 const TETE = "^\\s*(?:lot\\s+(?:de\\s+)?\\d+\\s+|set\\s+de\\s+\\d+\\s+|lot\\s+|\\d+\\s+)?";
 const HORS_OBJET_TETE = new RegExp(`${TETE}(cadres?|magnets?|aimants?|breloques?|bijoux?|pendentifs?|porte.?cles?|badges?|pin'?s|epingles?|broches?|stickers?|autocollants?|tee.?shirts?|t.?shirts?|maillots?|sweats?|mugs?|tasses?|posters?|affiches?|figurines?|funko|peluches?|lampes?|veilleuses?|coussins?|plaids?|puzzles?|deguisements?|costumes?|magazines?|blu.?ray|bluray|dvd|vinyles?|carte\\s+a\\s+collectionner|cartes?\\s+pokemon)\\b`);
 

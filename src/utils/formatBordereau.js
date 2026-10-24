@@ -1,8 +1,9 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // BORDEREAU AUTOMATIQUE — LE FORMAT DU COMPTE (24/10/2026 soir, décision 1 de Nico)
 // ═══════════════════════════════════════════════════════════════════════════
-// Dès qu'une vente arrive sur Vinted, Leboncoin ou Beebs (étiquette payée par l'acheteur), FillSell demande le
-// bordereau tout seul (migration 20261024235000) et le garde ici. Le FORMAT est un réglage choisi une fois :
+// Dès qu'une vente arrive sur Vinted (étiquette payée par l'acheteur ; 24/10 soir, décision 2 de Nico : Vinted
+// seulement, tous les comptes — migrations 20261024235000 et 20261024235500), FillSell demande le bordereau tout seul
+// et le garde ici. Le FORMAT est un réglage choisi une fois :
 // « pdf » (étiquette à imprimer, par défaut) ou « code » (code à montrer au point relais). Il vit dans
 // profiles.platform_settings.bordereaux.format, écrit par platform_settings_fusionner SEULEMENT (jamais l'objet
 // entier, 02/10). Une lecture au premier besoin, puis la mémoire (aucune relecture en boucle, 04/10).

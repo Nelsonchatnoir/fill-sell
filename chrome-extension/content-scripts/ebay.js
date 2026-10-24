@@ -962,7 +962,11 @@ async function fillListingForm(job) {
   // passera par l'UI dans un lot ultérieur si besoin.
   etape("etat");
   const condLabel = document.querySelector("#summary-condition-field-value")?.textContent?.trim();
-  if (fields.etat && condLabel && !sameConditionFamily(fields.etat, condLabel)) {
+  // (24/10) « — » : eBay a ignoré l'état de l'URL (absent du rayon) — le brouillon n'a pas d'état. Le background
+  // choisit désormais l'état parmi ceux du rayon ; ce constat dit seulement qu'il n'a pas pu (serveur muet).
+  if (fields.etat && condLabel && /^[—–-]$/.test(condLabel)) {
+    warnings.push(`état: le brouillon n'a pas d'état (« ${fields.etat} » demandé, rayon ${fields.ebayCategoryId ?? "?"}, choix ${fields.ebay_condition_choix?.choisi ?? "famille"} / ${fields.ebay_condition_choix?.regle ?? "—"})`);
+  } else if (fields.etat && condLabel && !sameConditionFamily(fields.etat, condLabel)) {
     warnings.push(`état: "${fields.etat}" → état eBay "${condLabel}" (défaut URL, granularité non ajustée)`);
   }
 

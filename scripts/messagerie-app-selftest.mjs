@@ -52,12 +52,14 @@ const HOOK = lire("src/messagerie/useMessagerieBeta.js");
 const FICHIERS_UI = ["src/messagerie/EspaceMessagerie.jsx", "src/messagerie/SectionAExpedier.jsx", "src/messagerie/BarreMessagerie.jsx", "src/messagerie/vue.js", "src/messagerie/useMessagerieBeta.js", "src/messagerie/ouvrir.js", "src/messagerie/empreinte.js", "src/messagerie/useEcranMessagerie.js", "src/messagerie/Vignette.jsx", "src/messagerie/Couche.jsx"];
 
 // ── a. Rien pour le parc ─────────────────────────────────────────────────────
-await cas("App : la barre et l'espace ne se rendent que pour un compte bêta", () => {
-  assert.ok(/\{messagerie\.beta&&tab===1&&!espaceMessagerie&&\(\s*<BarreMessagerie/.test(APP), "barre sous messagerie.beta, sur le Stock seul (17/10)");
-  assert.ok(/className=\{messagerie\.beta&&espaceMessagerie\?"wrap page-pad fs-espace-beta-ouvert":"wrap page-pad"\}/.test(APP), "la classe de page n'est posée que pour un compte bêta qui a ouvert l'écran");
-  assert.ok(/\{messagerie\.beta&&espaceMessagerie&&\(/.test(APP), "espace sous messagerie.beta");
+// (24/10 soir, décision 2 de Nico) Bordereaux Vinted ouverts à tous : la barre et l'espace se rendent aussi pour un compte
+// aux bordereaux Vinted ouverts (messagerie.bordereaux) — « À expédier » seul ; la messagerie reste à la bêta.
+await cas("App : la barre et l'espace ne se rendent que pour un compte bêta ou aux bordereaux Vinted ouverts", () => {
+  assert.ok(/\{\(messagerie\.beta\|\|messagerie\.bordereaux\)&&tab===1&&!espaceMessagerie&&\(\s*<BarreMessagerie[^>]*messages=\{messagerie\.beta\}/.test(APP), "barre sous bêta ou bordereaux, sur le Stock seul (17/10) ; « Messages » pour la bêta seule");
+  assert.ok(/className=\{\(messagerie\.beta\|\|messagerie\.bordereaux\)&&espaceMessagerie\?"wrap page-pad fs-espace-beta-ouvert":"wrap page-pad"\}/.test(APP), "la classe de page n'est posée que pour un compte qui a ouvert l'écran");
+  assert.ok(/\{\(messagerie\.beta\|\|messagerie\.bordereaux\)&&espaceMessagerie&&\(/.test(APP) && /<EspaceMessagerie [^>]*messages=\{messagerie\.beta\}/.test(APP), "espace : « À expédier » seul hors bêta");
   assert.ok(/messagerie=\{messagerie\.beta\?\{parArticle:messagerie\.parArticle,ouvrir:\(id\)=>setEspaceMessagerie\(\{onglet:'messages',article:id\}\)\}:null\}/.test(APP), "Stock : null hors bêta");
-  assert.ok(/messagerieBeta=\{messagerie\.beta\}/.test(APP), "Ventes : booléen bêta");
+  assert.ok(/messagerieBeta=\{messagerie\.beta\|\|messagerie\.bordereaux\}/.test(APP), "Ventes : « À expédier » pour la bêta et les bordereaux Vinted ouverts");
   assert.ok(/lazyMessagerie\(\(\) => import\('\.\/messagerie\/EspaceMessagerie'\)\)/.test(APP), "espace chargé à la demande");
 });
 
@@ -70,23 +72,33 @@ await cas("Stock et Ventes : indicateur et section derrière le drapeau", () => 
 });
 
 await cas("le drapeau : une lecture hors bêta puis la relecture s'arrête ; jamais de setInterval", () => {
-  assert.ok(/data\.beta !== true\) \{\s*setEtat\(\{ \.\.\.VIDE, pret: true, user: userId \}\);\s*relecture\.current\?\.arreter\(\);/.test(HOOK));
+  assert.ok(/\(data\.beta !== true && data\.bordereaux_vinted !== true\)\) \{\s*setEtat\(\{ \.\.\.VIDE, pret: true, user: userId \}\);\s*relecture\.current\?\.arreter\(\);/.test(HOOK));
   assert.ok(/demarrerRelecture\(lire, \{ intervalleMs: 120_000/.test(HOOK));
   for (const f of FICHIERS_UI) assert.ok(!/setInterval\s*\(/.test(lire(f)), f);
 });
 
 // ── b. Le bouton « Bordereau » et les gestes qui engagent ────────────────────
-await cas("« Récupérer » ACTIF bordereau prêt (Vinted, Leboncoin, Beebs) ; « Générer » dans FillSell dès que la commande attend le geste ; (17/10) la plateforme seulement en dernier recours", () => {
-  const actifs = [
-    { platform: "vinted", etat: "a_expedier", bordereau: "pret", commande_ref: "9001", conversation_ref: "501" },
+await cas("« Récupérer » ACTIF bordereau prêt (Vinted) ; « Générer » dans FillSell dès que la commande attend le geste ; (17/10) la plateforme seulement en dernier recours ; (24/10 soir, décision 2 de Nico) hors Vinted : « Bientôt disponible », jamais un bouton", () => {
+  assert.equal(actionCommande({ platform: "vinted", etat: "a_expedier", bordereau: "pret", commande_ref: "9001", conversation_ref: "501" }).type, "bordereau");
+  // (24/10 soir) Leboncoin, Beebs, Depop, eBay : un message court, aucun bouton — quel que soit l'état du bordereau.
+  const fermees = [
     { platform: "leboncoin", etat: "a_expedier", bordereau: "pret", commande_ref: "777" },
     { platform: "beebs", etat: "a_expedier", bordereau: "pret", commande_ref: "ord-1" },
-  ];
-  for (const c of actifs) assert.equal(actionCommande(c).type, "bordereau", JSON.stringify(c));
-  const aGenerer = [
-    { platform: "vinted", etat: "a_expedier", bordereau: "a_obtenir", conversation_ref: "501", options_bordereau: { generable: true, types_etiquette: [1, 3] } },
     { platform: "leboncoin", etat: "a_confirmer", bordereau: "a_generer", commande_ref: "777", options_bordereau: { generable: true, type_envoi: "shop2shop" } },
     { platform: "beebs", etat: "a_confirmer", bordereau: "a_generer", commande_ref: "ord-1", options_bordereau: { generable: true } },
+    { platform: "leboncoin", etat: "a_confirmer", bordereau: "a_generer", commande_ref: "8", options_bordereau: { generable: true, type_envoi: "colissimo", adresse_requise: true } },
+    { platform: "leboncoin", etat: "a_expedier", bordereau: "a_obtenir", commande_ref: "777" },
+    { platform: "beebs", etat: "a_expedier", bordereau: "a_obtenir", commande_ref: "o" },
+    { platform: "ebay", etat: "a_expedier", bordereau: "a_obtenir", commande_ref: "12-345" },
+    { platform: "depop", etat: "a_expedier", bordereau: "sans_objet", commande_ref: "77" },
+  ];
+  for (const c of fermees) for (const gen of [null, true, false]) {
+    const a = actionCommande(c, "fr", gen);
+    assert.equal(a.type, "bientot", JSON.stringify(c));
+    assert.ok(/bientôt disponible/.test(a.aide) && a.aide.length < 80 && a.url.startsWith("https://"), a.aide);
+  }
+  const aGenerer = [
+    { platform: "vinted", etat: "a_expedier", bordereau: "a_obtenir", conversation_ref: "501", options_bordereau: { generable: true, types_etiquette: [1, 3] } },
   ];
   for (const c of aGenerer) {
     assert.equal(attendGeneration(c), true);
@@ -106,13 +118,8 @@ await cas("« Récupérer » ACTIF bordereau prêt (Vinted, Leboncoin, Beebs) ; 
   assert.equal(sansOptions.type, "generer");
   assert.deepEqual(sansOptions.types, [1, 3]);
   assert.equal(sansOptions.typesSupposes, true);
-  // (17/10) Leboncoin Colissimo / courrier suivi : dans FillSell, avec l'adresse de l'expéditeur.
-  for (const t of ["colissimo", "courrier_suivi"]) {
-    const a = actionCommande({ platform: "leboncoin", etat: "a_confirmer", bordereau: "a_generer", commande_ref: "8", options_bordereau: { generable: true, type_envoi: t, adresse_requise: true } }, "fr", true);
-    assert.equal(a.type, "generer", t); assert.equal(a.adresse, true, t);
-    assert.equal(a.phrase, phraseEngagement("leboncoin", "fr", "adresse"));
-    assert.ok(a.phrase.includes("adresse de ton compte Leboncoin") && a.phrase.length <= 400);
-  }
+  // (17/10) Leboncoin Colissimo / courrier suivi : la phrase d'engagement reste écrite (le jour où Leboncoin rouvrira).
+  assert.ok(phraseEngagement("leboncoin", "fr", "adresse").includes("adresse de ton compte Leboncoin"));
   assert.ok(phraseEngagement("beebs").includes("débite l’acheteur"), "Beebs : accepter = débiter l'acheteur (dit en une phrase)");
   assert.ok(phraseEngagement("vinted").includes("engage"));
   assert.ok(phraseEngagement("leboncoin").includes("valide la vente"));
@@ -121,8 +128,6 @@ await cas("« Récupérer » ACTIF bordereau prêt (Vinted, Leboncoin, Beebs) ; 
   // Ce que FillSell ne fait PAS (et dit pourquoi) : le seul cas d'un lien.
   const nonGenerables = [
     [{ platform: "vinted", etat: "a_expedier", bordereau: "a_obtenir", options_bordereau: { generable: false, domicile_seul: true } }, "enlèvement à domicile"],
-    [{ platform: "leboncoin", etat: "a_confirmer", bordereau: "a_generer", commande_ref: "8", options_bordereau: { generable: false, type_envoi: "custom_shipping" } }, "rien à générer"],
-    [{ platform: "beebs", etat: "a_confirmer", bordereau: "a_generer", commande_ref: "o", options_bordereau: { generable: false } }, "Remise en main propre"],
   ];
   for (const [c, attendu] of nonGenerables) {
     const a = actionCommande(c, "fr", true);
@@ -131,8 +136,6 @@ await cas("« Récupérer » ACTIF bordereau prêt (Vinted, Leboncoin, Beebs) ; 
   }
   const liens = [
     { platform: "vinted", etat: "a_expedier", bordereau: "indisponible" },
-    { platform: "ebay", etat: "a_expedier", bordereau: "a_obtenir", commande_ref: "12-345" },
-    { platform: "depop", etat: "a_expedier", bordereau: "sans_objet", commande_ref: "77" },
   ];
   for (const c of liens) {
     const a = actionCommande(c, "fr", true);
@@ -142,8 +145,6 @@ await cas("« Récupérer » ACTIF bordereau prêt (Vinted, Leboncoin, Beebs) ; 
   }
   // (17/10) Ce qui se prépare chez la plateforme : FillSell le guette, rien à faire, aucun bouton qui renvoie.
   const attentes = [
-    { platform: "leboncoin", etat: "a_expedier", bordereau: "a_obtenir", commande_ref: "777" },
-    { platform: "beebs", etat: "a_expedier", bordereau: "a_obtenir", commande_ref: "o" },
     { platform: "vinted", etat: "inconnu", bordereau: "inconnu" },
   ];
   for (const c of attentes) {
@@ -151,10 +152,9 @@ await cas("« Récupérer » ACTIF bordereau prêt (Vinted, Leboncoin, Beebs) ; 
     assert.equal(a.type, "attente", JSON.stringify(c));
     assert.ok(/^https:\/\//.test(a.url) && a.aide.length > 10);
   }
-  assert.equal(actionCommande(liens[1], "fr", true).libelle, "Acheter l’étiquette sur eBay", "eBay : le lien ne sert qu'à l'achat");
-  assert.ok(actionCommande(liens[1], "fr", true).aide.includes("seul geste à faire sur eBay"));
-  assert.ok(actionCommande(liens[1], "fr", true).aide.includes("n’en rachète pas une seconde"));
-  assert.ok(actionCommande(liens[2], "fr", true).aide.includes("pas de bordereau"));
+  // (24/10 soir) eBay et Depop : jamais une étiquette payante, jamais un bouton — « Bientôt disponible ».
+  assert.equal(actionCommande(fermees[7], "fr", true).libelle, "Bientôt disponible");
+  assert.equal(actionCommande(fermees[8], "fr", true).libelle, "Bientôt disponible");
 });
 
 await cas("liens des plateformes (relevés le 16/10) ; l'app ne crée une demande QUE dans le geste de clic", () => {
@@ -469,8 +469,9 @@ await cas("(17/10, règle de Nico) TOUTES les cartes : aucune ne dit « c'est to
     const a = actionCommande(c, "fr", gen);
     vus++;
     assert.ok(!/c’est toi qui le fais|C’est toi qui le fais/.test(a.aide ?? ""), `« c'est toi qui le fais » : ${JSON.stringify(c)}`);
-    // Ce que FillSell sait faire est un geste FillSell.
-    if (["vinted", "leboncoin", "beebs"].includes(platform) && etat === "a_expedier" && bordereau === "pret") assert.equal(a.type, "bordereau");
+    // Ce que FillSell sait faire est un geste FillSell — (24/10 soir) sur Vinted seulement ; ailleurs « Bientôt disponible ».
+    if (platform !== "vinted" && ["a_confirmer", "a_expedier"].includes(etat)) { assert.equal(a.type, "bientot", JSON.stringify(c)); continue; }
+    if (platform === "vinted" && etat === "a_expedier" && bordereau === "pret") assert.equal(a.type, "bordereau");
     if (attendGeneration(c) && o?.generable !== false) assert.equal(a.type, "generer", JSON.stringify(c));
     // Un lien n'existe que pour : eBay à expédier (achat), Depop à expédier, un « non générable » dit, une étiquette
     // que Vinted ou (18/10) Leboncoin n'a pas pu émettre (« indisponible ») — seule la plateforme peut la redemander.

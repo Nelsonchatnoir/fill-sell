@@ -52,7 +52,7 @@
 // (appliquerMarqueVintedArticle). Même contrat côté serveur (get-pending-jobs).
 import { SHARED_PROPAGATION, NO_BRAND_VALUE } from "./champsPartages.js";
 import { valeurUneLettre } from "../../../supabase/functions/_shared/vinted-exigences.js";
-import { marqueComparable } from "../../../supabase/functions/_shared/marque-absente.js";
+import { marqueComparable, estSansMarque } from "../../../supabase/functions/_shared/marque-absente.js";
 
 /** Une marque utilisable : au moins deux caractères (une lettre n'est pas une réponse). */
 export function marqueUtilisable(v) {
@@ -207,6 +207,42 @@ function fichePorteUneMarque(fiche) {
   if (texteNonVide(a && typeof a === "object" ? a.v : a)) return true;
   const mv = fiche.attributs?.marque_vinted;
   return Boolean(mv && typeof mv === "object" && (texteNonVide(mv.de) || texteNonVide(mv.v)));
+}
+
+/**
+ * (24/10 soir, décision 3 de Nico — refus de modération Leboncoin, insert Zombicide de louis) « SANS MARQUE » DÉCLARÉ
+ * PAR LE VENDEUR N'EST JAMAIS REMPLACÉ PAR UNE MARQUE DE L'IA. La fiche disait « Sans marque » (relevé de SON annonce
+ * Beebs) ; la rédaction a lu « Zombicide » dans le titre (le jeu dont l'objet est un accessoire, « jeu non inclus ») et
+ * la copie Leboncoin l'a déclaré comme marque — « Autre » + « Marque : Zombicide » dans la description : un accessoire
+ * non officiel présenté sous la marque d'un éditeur, ce que la modération refuse. Une copie qui porte une marque ne
+ * cédait jamais à la fiche (comblerMarquesVides) ; pour « Sans marque » explicite, la fiche gagne, sur chaque copie,
+ * aux mêmes trois arrivées (après la rédaction, jamais pendant une frappe).
+ * Rend `{ edited, posees }` — `edited` est l'objet d'entrée quand rien ne change.
+ */
+export function sansMarqueDeLaFiche(edited, fiche, plateformes = SHARED_PROPAGATION.marque) {
+  if (!edited || typeof edited !== "object" || !fiche || typeof fiche !== "object") return { edited, posees: [] };
+  const attr = fiche.attributs?.marque;
+  const declaree = texteNonVide(fiche.marque) || texteNonVide(attr && typeof attr === "object" ? attr.v : attr);
+  if (!declaree || !estSansMarque(declaree)) return { edited, posees: [] };
+  const posees = [];
+  let next = edited;
+  for (const p of plateformes) {
+    const copie = edited[p];
+    if (!copie) continue;
+    const pf = copie.platform_fields ?? {};
+    const portees = [pf.marque, p === "vinted" ? pf.vintedAspects?.brand : null, p === "ebay" ? pf.ebayAspects?.Marque : null,
+      p === "beebs" ? pf.beebsAspects?.Marque : null, p === "depop" ? pf.depopMarque : null].map(texteNonVide).filter(Boolean);
+    if (!portees.some((m) => !estSansMarque(m))) continue;
+    const nouveau = { ...pf, marque: NO_BRAND_VALUE };
+    if (p === "vinted" && texteNonVide(pf.vintedAspects?.brand) && !estSansMarque(pf.vintedAspects.brand)) nouveau.vintedAspects = { ...pf.vintedAspects, brand: NO_BRAND_VALUE };
+    if (p === "ebay" && texteNonVide(pf.ebayAspects?.Marque) && !estSansMarque(pf.ebayAspects.Marque)) nouveau.ebayAspects = { ...pf.ebayAspects, Marque: NO_BRAND_VALUE };
+    if (p === "beebs" && texteNonVide(pf.beebsAspects?.Marque) && !estSansMarque(pf.beebsAspects.Marque)) nouveau.beebsAspects = { ...pf.beebsAspects, Marque: NO_BRAND_VALUE };
+    if (p === "depop" && texteNonVide(pf.depopMarque) && !estSansMarque(pf.depopMarque)) nouveau.depopMarque = NO_BRAND_VALUE;
+    if (next === edited) next = { ...edited };
+    next[p] = { ...copie, platform_fields: nouveau };
+    posees.push(p);
+  }
+  return { edited: next, posees };
 }
 
 /**
