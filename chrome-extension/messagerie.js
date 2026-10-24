@@ -1644,9 +1644,9 @@
     // La session ne part qu'à la MÊME adresse que la page (un CDN ou un tiers : sans, un lien signé n'en a pas besoin).
     const suivreLien = async (res) => {
       if (!res?.lien || res.base64) return res;
-      const ici = typeof location === "object" && location?.origin ? location.origin : "https://www.vinted.fr";
+      const ici = typeof location === "object" ? location?.origin ?? null : null;
       let memeOrigine = false;
-      try { memeOrigine = new URL(res.lien).origin === ici; } catch { return res; }
+      try { memeOrigine = ici != null && new URL(res.lien).origin === ici; } catch { return res; }
       const s = await lireFichier(res.lien, !memeOrigine);
       return { ...s, http: res.http };
     };
