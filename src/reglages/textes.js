@@ -163,6 +163,8 @@ const FR = {
   transporteurs: 'Mes transporteurs',
   transporteursValeurEbay: 'eBay',
   portDepop: 'Frais de port Depop',
+  bordereauAuto: 'Bordereau automatique',
+  bordereauFormatEnregistre: '✅ Format du bordereau enregistré !',
   portDepopEnregistre: '✅ Prix de livraison Depop enregistré !',
   portDepopRetire: 'Prix par défaut retiré',
 
@@ -371,6 +373,8 @@ const EN = {
   transporteurs: 'My shipping methods',
   transporteursValeurEbay: 'eBay',
   portDepop: 'Depop shipping price',
+  bordereauAuto: 'Automatic label',
+  bordereauFormatEnregistre: '✅ Label format saved!',
   portDepopEnregistre: '✅ Depop shipping price saved!',
   portDepopRetire: 'Default price removed',
 

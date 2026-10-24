@@ -542,4 +542,21 @@ await cas("aucun émoji, jamais « pépites »", () => {
   }
 });
 
+// (24/10 soir, décision 1 de Nico) Le bordereau AUTOMATIQUE dès la vente : un état simple et court tant qu'il se
+// prépare (jamais un paragraphe) ; un échec dit son motif réel et le bouton manuel revient.
+await cas("bordereau automatique : « Bordereau en préparation », court ; échec = motif réel ; double vente dite", () => {
+  for (const d of [{ action: 'generer', statut: 'demandee', choix: { auto: true } }, { action: 'generer', statut: 'en_cours', choix: { auto: true } },
+    { action: 'generer', statut: 'generee', essais_fichier: 3, choix: { auto: true } }, { action: 'recuperer', statut: 'demandee', choix: { auto: true } }]) {
+    const e = etatDemandeBordereau(d, 'fr', 'vinted');
+    assert.equal(e.texte, 'Bordereau en préparation', JSON.stringify(d));
+    assert.equal(e.attente, true);
+  }
+  assert.equal(etatDemandeBordereau({ action: 'generer', statut: 'demandee', choix: { auto: true } }, 'en', 'vinted').texte, 'Label being prepared');
+  // Sans « auto », rien ne change (demande du vendeur) ; un échec automatique dit le vrai motif.
+  assert.ok(etatDemandeBordereau({ action: 'generer', statut: 'demandee' }, 'fr', 'vinted').texte.startsWith('Génération demandée.'));
+  assert.ok(etatDemandeBordereau({ action: 'generer', statut: 'echec', motif: 'commande_annulee', choix: { auto: true } }, 'fr', 'vinted').texte.includes('annulée sur Vinted'));
+  assert.ok(etatDemandeBordereau({ action: 'generer', statut: 'echec', motif: 'deux_commandes_meme_fiche', choix: { auto: true } }, 'fr', 'vinted').texte.startsWith('Deux commandes en cours pour le même article'));
+  // 15 essais sans fichier : plus « en préparation », la vraie situation est dite.
+  assert.ok(etatDemandeBordereau({ action: 'generer', statut: 'generee', essais_fichier: 15, choix: { auto: true } }, 'fr', 'vinted').texte.includes('15 essais'));
+});
 console.log(`messagerie-app-selftest : ${n} cas verts`);

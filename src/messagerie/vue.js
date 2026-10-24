@@ -421,6 +421,8 @@ function motifGenerationEnClair(motif, pf, fr) {
     commande_annulee: fr ? `La commande a été annulée sur ${pf} : rien n’a été fait.` : `The order was cancelled on ${pf}: nothing was done.`,
     deja_expediee: fr ? `La commande est déjà expédiée sur ${pf} : rien n’a été fait.` : `The order is already shipped on ${pf}: nothing was done.`,
     plateforme_en_pause: fr ? `${pf} a freiné nos lectures : pause de sécurité, rien n’a été fait. Réessaie plus tard ici.` : `${pf} slowed our reads down: safety pause, nothing was done. Try again later here.`,
+    // (24/10 soir, bordereau automatique) Deux commandes en cours pour le même article : rien n'est demandé seul.
+    deux_commandes_meme_fiche: fr ? 'Deux commandes en cours pour le même article : FillSell n’a rien demandé tout seul. Choisis celle que tu honores, puis génère le bordereau ici.' : 'Two orders in progress for the same item: FillSell requested nothing on its own. Pick the one you fulfil, then generate the label here.',
   };
   if (table[m]) return table[m];
   // (18/10, lot 1.2) Une étiquette que la plateforme n'a pas pu émettre (Leboncoin…) : la vraie raison, le geste.
@@ -437,6 +439,14 @@ export function etatDemandeBordereau(d, lang = 'fr', platform = null) {
   const attendOrdi = fr ? 'En attente de ton ordinateur (Chrome ouvert, extension active), 24 h au plus : rien n’est fait avant. Passé 24 h, rien n’est fait et le bouton revient ici.' : 'Waiting for your computer (Chrome open, extension on), 24 h at most: nothing is done before. After 24 h, nothing is done and the button comes back here.';
   // Garde-fou du geste : l'extension relit la commande juste avant (decisionGeneration).
   const relitAvant = fr ? `Juste avant, il relit la commande sur ${pf} : annulée ou déjà traitée entre-temps, rien n’est fait.` : `Right before, it reads the order again on ${pf}: cancelled or already handled in the meantime, nothing is done.`;
+  // (24/10 soir, décision 1 de Nico) Bordereau AUTOMATIQUE dès la vente (choix.auto, migration 20261024235000) :
+  // un état simple et court tant qu'il se prépare — jamais un paragraphe. Un échec dit son motif réel, et le bouton
+  // manuel revient (la demande close ne retient plus rien).
+  const preparation = { ton: 'neutre', attente: true, texte: fr ? 'Bordereau en préparation' : 'Label being prepared' };
+  if (d?.choix?.auto === true && (d.statut === 'demandee' || d.statut === 'en_cours'
+    || (d.action === 'generer' && d.statut === 'generee' && d.motif !== 'fichier_sur_beebs' && Number(d.essais_fichier) < 15))) {
+    return preparation;
+  }
   if (d?.action === 'generer') {
     switch (d.statut) {
       case 'demandee': return { ton: 'neutre', attente: true, texte: fr ? `Génération demandée. ${attendOrdi} ${relitAvant}` : `Generation requested. ${attendOrdi} ${relitAvant}` };

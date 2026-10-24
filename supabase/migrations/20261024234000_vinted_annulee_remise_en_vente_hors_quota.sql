@@ -20,7 +20,7 @@
 -- Application (feu vert NOMMÉ de Nico seulement) :
 --   npx supabase db query --linked -f supabase/migrations/20261024234000_vinted_annulee_remise_en_vente_hors_quota.sql
 --   npx supabase migration repair --linked --status applied 20261024234000
--- Essai à blanc (ROLLBACK) : scripts/essais/20261024234000_essai.sql — Inverse : supabase/rollbacks/20261024234000_vinted_annulee_remise_en_vente_hors_quota_INVERSE.sql
+-- Essai à blanc (ROLLBACK) : scripts/essais/20261024234000_essai.sql — Inverse : supabase/rollbacks/20261024234000_vinted_annulee_remise_en_vente_hors_quota.sql
 -- ═══════════════════════════════════════════════════════════════════════════
 -- ═══ CORPS DE LA MIGRATION
 BEGIN;
@@ -443,6 +443,8 @@ BEGIN
   RETURN jsonb_build_object('place', true, 'palier', v_palier);
 END;
 $function$;
+
+REVOKE ALL ON FUNCTION public.vente_commande_annulee_vinted(bigint, text, text, timestamptz) FROM PUBLIC, anon, authenticated;
 
 COMMIT;
 -- ═══ FIN DU CORPS DE LA MIGRATION ═══════════════════════════════════════════

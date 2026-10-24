@@ -153,4 +153,28 @@ const zoneReveil = iReveil > 0 ? hw.slice(Math.max(0, iReveil - 6000), iReveil) 
 ok(/if \(source === SOURCE_INTROUVABLE \|\| source === SOURCE_INTROUVABLE_PERSISTANT\) continue;/.test(zoneReveil),
   'handler-watch : le réveil par capture saute les pauses « introuvable » (leur règle seule décide)');
 
+// (24/10 soir, condition de Nico au déploiement d'update-job-status / handler-watch) Une annonce HORS Vinted n'est
+// déclarée disparue qu'après DEUX relevés complets qui concordent, jamais sur une seule lecture : `disparu_le` n'est
+// posé que par constater_absences_releve (deux relevés probants distincts, releve_preuve_absence) ; un statut lu une
+// fois, ou un seul relevé complet sans elle, n'est jamais une disparition.
+{
+  const LBC = job('leboncoin');
+  const rl = (debut) => ({ ...releve(debut), platform: 'leboncoin', kind: 'annonces', vinted_user_id: null });
+  const enLigne = { vu_le: '2026-10-15T09:00:00Z', statut_plateforme: 'en_ligne', disparu_le: null };
+  ok(d({ job: LBC, annonce: enLigne }).decision === 'attendre', 'hors Vinted : la lecture ratée seule ne déclare rien');
+  const unSeul = d({ job: LBC, annonce: enLigne, runs: [rl('2026-10-16T17:36:45Z')] });
+  ok(unSeul.decision === 'attendre' && /on attend le suivant/.test(unSeul.raison), 'hors Vinted : absente d’UN relevé complet → on attend le second', unSeul);
+  ok(d({ job: LBC, annonce: enLigne, runs: [rl('2026-10-16T17:36:45Z'), rl('2026-10-17T18:00:00Z')] }).decision === 'confirmer',
+    'hors Vinted : absente de DEUX relevés complets → disparue');
+  // `disparu_le` (posé par deux relevés) après une trace vue APRÈS la lecture : disparue ; vue de nouveau ensuite : pas disparue.
+  const vueApres = { vu_le: '2026-10-16T09:00:00Z', statut_plateforme: 'en_ligne', disparu_le: '2026-10-17T18:01:00Z' };
+  ok(d({ job: LBC, annonce: vueApres }).decision === 'confirmer', 'hors Vinted : disparu_le (deux relevés) → disparue');
+  ok(d({ job: LBC, annonce: { ...vueApres, vu_le: '2026-10-18T09:00:00Z' } }).decision === 'reprendre', 'revue en ligne après disparu_le → jamais disparue');
+  const fn = readFileSync(new URL('../supabase/migrations/20261022200000_file_synchro_boutique_partagee.sql', import.meta.url), 'utf8');
+  const corps = fn.slice(fn.indexOf('CREATE OR REPLACE FUNCTION public.constater_absences_releve'));
+  ok(/IF precedent\.id IS NULL THEN RETURN jsonb_build_object\('disparues',0,'motif','second_releve_attendu'\)/.test(corps)
+    && /releve_preuve_absence\(s\.id\)/.test(corps) && /NOT releve_preuve_absence\(p_run\)/.test(corps),
+    'disparu_le n’est posé qu’avec DEUX relevés probants (constater_absences_releve)');
+}
+
 console.log(`✓ selftest:introuvable-a-confirmer — ${n} assertions`);

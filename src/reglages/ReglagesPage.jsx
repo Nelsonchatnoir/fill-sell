@@ -45,6 +45,7 @@ import SousPagePlateformes from './SousPagePlateformes';
 import SousPageExpedition from './SousPageExpedition';
 import SousPageTransporteurs from './SousPageTransporteurs';
 import SousPagePortDepop from './SousPagePortDepop';
+import SousPageBordereaux from './SousPageBordereaux';
 import { usePortDepopParDefaut, formaterPort } from '../utils/fraisPortDepop';
 import SousPagePreferences from './SousPagePreferences';
 import SousPageCompte from './SousPageCompte';
@@ -65,6 +66,7 @@ const SOUS_PAGES = {
   expedition:    { titre: (T) => T.adresseRemise,  Composant: SousPageExpedition },
   transporteurs: { titre: (T) => T.transporteurs,  Composant: SousPageTransporteurs },
   'port-depop':  { titre: (T) => T.portDepop,      Composant: SousPagePortDepop },
+  bordereaux:    { titre: (T) => T.bordereauAuto,  Composant: SousPageBordereaux },
   preferences:   { titre: (T) => T.gPreferences,   Composant: SousPagePreferences },
   compte:        { titre: (T) => T.gCompte,        Composant: SousPageCompte },
   'catalogue-quarantaine': { titre: (T) => T.champsPlateformes, Composant: SousPageCatalogueQuarantaine },
@@ -91,6 +93,8 @@ export default function ReglagesPage({
   // au montage — la page est montée à neuf à chaque ouverture des Réglages.
   ecranInitial = null,
   resiliation, restauration, reset, suppression, deconnexion,
+  // (24/10 soir) Compte de la bêta des bordereaux (même drapeau que la messagerie) : la ligne « Bordereau automatique ».
+  messagerieBeta = false,
 }) {
   const T = txt(lang);
   const [pile, setPile] = useState([]);
@@ -236,6 +240,8 @@ export default function ReglagesPage({
     oplaOuverte: (plateformesOuvertes ?? []).includes('opla'),
     // (09/10 soir) Depop ouverte pour ce compte : la ligne « Frais de port Depop ».
     depopOuverte: (plateformesOuvertes ?? []).includes('depop'),
+    // (24/10 soir) La ligne « Bordereau automatique » (format PDF / code), bêta des bordereaux seulement.
+    bordereauxBeta: messagerieBeta === true,
     portDepop: {
       valeur: portDepop.valeur, lue: portDepop.lue,
       texte: portDepop.valeur != null ? (lang === 'en' ? `€${formaterPort(portDepop.valeur, 'en')}` : `${formaterPort(portDepop.valeur, 'fr')} €`) : null,

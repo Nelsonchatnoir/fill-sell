@@ -9509,6 +9509,7 @@ export default function App({ loginOnly = false }){
           reset={{step:resetStep,lancer:handleReset,annuler:()=>setResetStep(0)}}
           suppression={{step:deleteStep,setStep:setDeleteStep,enCours:deleteLoading,lancer:handleDeleteAccount}}
           deconnexion={()=>{handleLogout();setShowSettings(false);}}
+          messagerieBeta={messagerie.beta===true}
         />
       )}
 
