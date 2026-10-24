@@ -61,7 +61,7 @@ const extraire = (nom) => {
   const f = bj.indexOf("\n}\n", d);
   return bj.slice(d, f + 2);
 };
-const src = [extraire("preuveAbsenceMesAnnonces"), extraire("preuveRetraitDepuis"), extraire("confirmerRetraitParMesAnnonces")].join("\n");
+const src = [extraire("produitVenduSurBeebs"), extraire("preuveAbsenceMesAnnonces"), extraire("preuveRetraitDepuis"), extraire("confirmerRetraitParMesAnnonces")].join("\n");
 // (04/10) La page de l'annonce et l'index, simulés : par défaut ILLISIBLES
 // (aucune réponse), donc jamais une preuve par accident.
 const fabrique = (lectures, { pageAnnonce = { http: null, produit: false }, index = null } = {}) => {
@@ -91,6 +91,17 @@ ok(c1.success === true && c1.preuveRetrait?.source === "mes_annonces" && c1.preu
 const c2 = await fabrique([L([], [...nico, "34097677"], 10)]).confirmerRetraitParMesAnnonces("34097677", t);
 ok(c2.success === false && c2.reprise === true && c2.suppressionEnvoyee === true && /vérification au prochain passage/.test(c2.error),
   "toujours listée après 2 min : jamais « supprimé », vérification au passage suivant");
+// (24/10, 0.6.133) Encore listée, mais la fiche produit du numéro EXACT dit SoldOut : vendue sur Beebs, plus achetable.
+const listee = L([], [...nico, "34097677"], 10);
+const vsb1 = await fabrique([listee], { pageAnnonce: { http: 200, produit: true, sku: "34097677", disponibilite: "SoldOut" } }).confirmerRetraitParMesAnnonces("34097677", t);
+ok(vsb1.success === true && vsb1.preuveRetrait?.source === "page_produit" && vsb1.preuveRetrait.vendue === true && vsb1.preuveRetrait.numero === "34097677"
+  && preuveRetraitBeebsValide({ preuve_retrait: vsb1.preuveRetrait }), "listée mais SoldOut (sku exact) → succès AVEC la preuve « page_produit », acceptée par le serveur", JSON.stringify(vsb1));
+const vsb2 = await fabrique([listee], { pageAnnonce: { http: 200, produit: true, sku: "34097677", disponibilite: "InStock" } }).preuveAbsenceMesAnnonces("34097677", t);
+ok(vsb2.verdict === "presente", "listée et InStock (page encore en cache) : présente, rien n'est conclu");
+const vsb3 = await fabrique([listee], { pageAnnonce: { http: 200, produit: true, sku: "34000001", disponibilite: "SoldOut" } }).preuveAbsenceMesAnnonces("34097677", t);
+ok(vsb3.verdict === "presente", "SoldOut d'un AUTRE produit de la page : jamais une preuve");
+const vsb4 = await fabrique([listee], { pageAnnonce: { http: 404, produit: false, sku: "34097677", disponibilite: "SoldOut" } }).preuveAbsenceMesAnnonces("34097677", t);
+ok(vsb4.verdict === "presente", "page sans réponse 200 : jamais une preuve");
 
 console.log("\n3 bis. UN GROS COMPTE : « EN LIGNE » TRONQUÉE À 60 (04/10, Joséphine, ~190 annonces)");
 {
@@ -132,5 +143,27 @@ ok(/verdictClotureRetraitBeebs\(pfBp, body\.handler_build\)/.test(ujs) && /retra
 const hw = lire("supabase/functions/handler-watch/index.ts");
 ok(/jugerRetraitBeebsParReleves\(j, \{ releves: rRel\.data \?\? \[\], annonces: rAnn\.data \?\? \[\] \}\)/.test(hw), "handler-watch : les relevés tranchent les retraits marqués");
 
+console.log("\n4. (24/10, 0.6.133) VENDUE SUR BEEBS : LA FICHE PRODUIT DU NUMÉRO EXACT DIT « SoldOut »");
+// Retraits « Suppression envoyée… encore dans Mes annonces » depuis le 14/10 (DeadRoz 34083968, Joséphine 34116769) :
+// Beebs passe « Vendu » l'annonce supprimée avec le motif « Vendu via une autre plateforme » et la garde dans
+// « Mes annonces ». Pages relues le 24/10 : ld+json Product sku = le numéro, availability SoldOut.
+const vendue = { source: "page_produit", vendue: true, numero: "34083968", disponibilite: "SoldOut", moment: "apres_confirmation" };
+ok(preuveRetraitBeebsValide({ preuve_retrait: vendue }), "fiche produit SoldOut du numéro exact : preuve valide");
+ok(!preuveRetraitBeebsValide({ preuve_retrait: { ...vendue, disponibilite: "InStock" } }), "InStock (page en cache) : jamais une preuve");
+ok(!preuveRetraitBeebsValide({ preuve_retrait: { ...vendue, vendue: false } }), "vendue non dite : pas une preuve");
+ok(!preuveRetraitBeebsValide({ preuve_retrait: { ...vendue, numero: "" } }), "sans numéro : pas une preuve");
+ok(!preuveRetraitBeebsValide({ preuve_retrait: { ...vendue, source: "page_publique" } }), "une autre source : pas une preuve");
+ok(verdictClotureRetraitBeebs({ preuve_retrait: vendue }, "2026-10-24T12:00:00Z+abc1234 · v0.6.133") === "ok", "0.6.133 avec la fiche SoldOut : clos");
+const bjs = lire("chrome-extension/content-scripts/beebs.js");
+const fn = bjs.slice(bjs.indexOf("async function produitVenduSurBeebs("), bjs.indexOf("async function produitVenduSurBeebs(") + 600);
+ok(/page\.http === 200 && page\.sku === String\(idCible\) && page\.disponibilite === "SoldOut"/.test(fn), "extension : page 200, sku EXACT, SoldOut — les trois");
+ok(/String\(x\?\.sku \?\? x\?\.productID \?\? ""\) === String\(id\)/.test(bjs), "extension : la fiche Product de CE numéro, jamais un autre produit de la page");
+const pAbs = bjs.slice(bjs.indexOf("async function preuveAbsenceMesAnnonces("), bjs.indexOf("function preuveRetraitDepuis("));
+ok(pAbs.indexOf("produitVenduSurBeebs(idCible)") > 0 && pAbs.indexOf("produitVenduSurBeebs(idCible)") < pAbs.indexOf('return { verdict: "presente", lecture };'),
+  "extension : encore dans « Mes annonces » → la fiche produit est relue avant de conclure « présente »");
+const del = bjs.slice(bjs.indexOf("async function deleteListing("), bjs.indexOf("// ── CHEMIN 1 (nominal depuis le 11/09)"));
+ok(/const dejaVendue = await produitVenduSurBeebs\(idCible\);/.test(del) && /aucun clic/.test(del), "extension : déjà vendue → aucun nouveau clic, retrait fait avec sa preuve");
+ok(/source: "page_produit", vendue: true, numero: String\(idCible\)/.test(bjs), "extension : la preuve « page_produit » porte le numéro");
+
 if (ko) { console.error(`\n✗ ${ko} échec(s)`); process.exit(1); }
-console.log("\n✓ retrait Beebs : jamais clos sans la liste du propriétaire relue");
+console.log("\n✓ retrait Beebs : jamais clos sans la liste du propriétaire relue, ou la fiche produit qui dit vendue");

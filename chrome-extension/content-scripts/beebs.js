@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const BEEBS_BUILD = "2026-10-18-marque-exacte (la marque de la fiche part telle quelle : égalité tolérante sur casse, espaces, ponctuation, accents ; jamais une marque voisine ni un choix de l'IA ; hors liste → « Autre » et la marque écrite une fois dans la description) · 2026-10-17-mur-nomme (relevé : « Mes annonces » lue par fetch — la vérification anti-robot de Beebs, servie sous la même adresse, et le renvoi vers la connexion se nomment : motif + mur) · 2026-10-08-preuve-relue (0.6.104 : BEEBS_PREUVE_RETRAIT, la preuve d'une suppression envoyée relue sans geste ; l'heure d'envoi remonte au background) · 2026-10-08-ping (0.6.103 : FILLSELL_PING, réponse synchrone « je suis là ») ·2026-10-04-format-colis-explicite (0.6.95 : un format de colis EXPLICITE — réponse de la personne, format relu sur l annonce par son identifiant, poids de la fiche — passe devant le pré-remplissage de Beebs ; les formats du formulaire sont appris par le serveur) · 2026-09-29-prevol-republication-complet (0.6.80 : le vrai formulaire, catégorie et champs dynamiques compris, doit être entièrement remplissable avant tout retrait ; aucun upload ni clic pendant ce pré-vol ; identifiant durable obligatoire) · 2026-09-24-compte-vu-sur-la-page (0.6.66 : un compte Beebs connecte vu sur n importe quelle page beebs.app leve l attente de session, desormais espacee 1 h/3 h/6 h) · 2026-09-22-page-de-depot-refaite (0.6.55 : Beebs a refait sa page de depot entre 13h26 et 15h24 le 22/09 — plus aucune classe ne nomme un role. Photos: input[type=file] ANONYME (#input-pictures mort, cause du blocage total). Champs: label.group/field-label + bouton frere a aria-haspopup. Panneaux: popovers RADIX portalises sur body, designes par aria-controls — plus aucune heuristique de panneau unique. Options: button.group/popover-item. Anciennes classes gardees en dernier maillon. Depot verifie de bout en bout sur la page du jour.)";
+const BEEBS_BUILD = "2026-10-24-vendue-sur-beebs (0.6.133 : un retrait est prouvé aussi quand la fiche produit du numéro exact dit SoldOut — Beebs passe « Vendu » une annonce supprimée avec le motif « Vendu via une autre plateforme » et la garde dans « Mes annonces » ; une annonce déjà vendue n’est jamais re-supprimée) · 2026-10-18-marque-exacte (la marque de la fiche part telle quelle : égalité tolérante sur casse, espaces, ponctuation, accents ; jamais une marque voisine ni un choix de l'IA ; hors liste → « Autre » et la marque écrite une fois dans la description) · 2026-10-17-mur-nomme (relevé : « Mes annonces » lue par fetch — la vérification anti-robot de Beebs, servie sous la même adresse, et le renvoi vers la connexion se nomment : motif + mur) · 2026-10-08-preuve-relue (0.6.104 : BEEBS_PREUVE_RETRAIT, la preuve d'une suppression envoyée relue sans geste ; l'heure d'envoi remonte au background) · 2026-10-08-ping (0.6.103 : FILLSELL_PING, réponse synchrone « je suis là ») ·2026-10-04-format-colis-explicite (0.6.95 : un format de colis EXPLICITE — réponse de la personne, format relu sur l annonce par son identifiant, poids de la fiche — passe devant le pré-remplissage de Beebs ; les formats du formulaire sont appris par le serveur) · 2026-09-29-prevol-republication-complet (0.6.80 : le vrai formulaire, catégorie et champs dynamiques compris, doit être entièrement remplissable avant tout retrait ; aucun upload ni clic pendant ce pré-vol ; identifiant durable obligatoire) · 2026-09-24-compte-vu-sur-la-page (0.6.66 : un compte Beebs connecte vu sur n importe quelle page beebs.app leve l attente de session, desormais espacee 1 h/3 h/6 h) · 2026-09-22-page-de-depot-refaite (0.6.55 : Beebs a refait sa page de depot entre 13h26 et 15h24 le 22/09 — plus aucune classe ne nomme un role. Photos: input[type=file] ANONYME (#input-pictures mort, cause du blocage total). Champs: label.group/field-label + bouton frere a aria-haspopup. Panneaux: popovers RADIX portalises sur body, designes par aria-controls — plus aucune heuristique de panneau unique. Options: button.group/popover-item. Anciennes classes gardees en dernier maillon. Depot verifie de bout en bout sur la page du jour.)";
 console.log(`[beebs.js] build ${BEEBS_BUILD}`);
 
 // Content script Beebs — remplit le formulaire de dépôt d'annonce.
@@ -590,7 +590,9 @@ async function lireIdsMesAnnoncesBeebs() {
 }
 
 // La page d'UNE annonce, lue en même origine (session de la personne) :
-// { http, produit } — produit = une fiche Product dans le ld+json.
+// { http, produit, sku, disponibilite } — produit = une fiche Product dans le
+// ld+json ; sku et disponibilite = ceux de la fiche Product de CE numéro
+// (« SoldOut », « InStock »…), jamais ceux d'un autre produit de la page.
 async function pageAnnonceBeebs(id) {
   const ctrl = new AbortController();
   const garde = setTimeout(() => ctrl.abort(), BEEBS_LECTURE_DELAI_MS);
@@ -598,16 +600,42 @@ async function pageAnnonceBeebs(id) {
     const r = await fetch(`/fr/p/${id}`, { credentials: "include", cache: "no-store", headers: { Accept: "text/html" }, signal: ctrl.signal });
     const html = await r.text();
     const doc = new DOMParser().parseFromString(html, "text/html");
-    const produit = Array.from(doc.querySelectorAll("script[type='application/ld+json']"))
+    const fiches = Array.from(doc.querySelectorAll("script[type='application/ld+json']"))
       .map((s) => { try { return JSON.parse(s.textContent); } catch { return null; } })
       .filter(Boolean).flatMap((x) => (Array.isArray(x) ? x : [x]))
-      .some((x) => x && /Product/i.test(String(x["@type"])));
-    return { http: r.status, produit };
+      .filter((x) => x && /Product/i.test(String(x["@type"])));
+    return { http: r.status, produit: fiches.length > 0, ...ficheProduitBeebs(fiches, id) };
   } catch {
-    return { http: null, produit: false };
+    return { http: null, produit: false, sku: null, disponibilite: null };
   } finally {
     clearTimeout(garde);
   }
+}
+
+// La fiche Product du numéro EXACT et sa disponibilité schema.org (dernier segment : « SoldOut », « InStock »).
+function ficheProduitBeebs(fiches, id) {
+  const fiche = (fiches ?? []).find((x) => String(x?.sku ?? x?.productID ?? "") === String(id)) ?? null;
+  const offre = fiche ? (Array.isArray(fiche.offers) ? fiche.offers[0] : fiche.offers) : null;
+  const disponibilite = String(offre?.availability ?? "").trim().split("/").pop() || null;
+  return { sku: fiche ? String(fiche.sku ?? fiche.productID) : null, disponibilite: fiche ? disponibilite : null };
+}
+
+// ── UNE ANNONCE QUE BEEBS DIT VENDUE N'EST PLUS EN VENTE (24/10, 0.6.133) ────
+// Nos retraits choisissent le motif « Vendu via une autre plateforme » (règle
+// du 11/09) : Beebs ne supprime pas l'annonce, il la passe « Vendu » — plus
+// achetable (page publique : badge « Vendu », aucun « Ajouter au panier » ;
+// ld+json : availability SoldOut) — et elle RESTE dans « Mes annonces ». La
+// preuve d'absence n'arrivait donc jamais : « Suppression envoyée… encore dans
+// Mes annonces » à chaque passage, 4 essais et plus (DeadRoz 34083968 depuis le
+// 14/10, Joséphine 34116769 depuis le 22/10 ; pages relues le 24/10 : SoldOut).
+// La preuve : la fiche Product de CE numéro (sku exact) dit SoldOut. Une page
+// encore en cache qui dit InStock ne prouve rien (nouvel essai) ; jamais un
+// autre produit de la page, jamais le titre.
+async function produitVenduSurBeebs(idCible) {
+  const page = await pageAnnonceBeebs(idCible);
+  return page.http === 200 && page.sku === String(idCible) && page.disponibilite === "SoldOut"
+    ? { page_http: 200, sku: page.sku, disponibilite: page.disponibilite, lu_le: new Date().toISOString() }
+    : null;
 }
 
 // L'index public porte-t-il encore l'annonce ? true / false / null (illisible).
@@ -634,6 +662,12 @@ async function preuveAbsenceMesAnnonces(idCible, t) {
   const pages = lecture.pages ?? [];
   const resume = pages.map((p) => `${p.page}:${p.ok ? `${p.n}${p.annoncees != null ? `/${p.annoncees}` : ""}` : `illisible (${p.motif ?? "?"})`}`).join(", ");
   if (lecture.ids.includes(String(idCible))) {
+    // (24/10, 0.6.133) Encore dans « Mes annonces », mais VENDUE sur Beebs : plus en vente — le retrait est fait.
+    const vendue = await produitVenduSurBeebs(idCible);
+    if (vendue) {
+      t(`preuve : ${idCible} encore dans « Mes annonces » (${resume}), mais VENDUE sur Beebs (fiche produit ${vendue.sku} : ${vendue.disponibilite}) — plus achetable`);
+      return { verdict: "absente", lecture: { ...lecture, vendue } };
+    }
     t(`preuve propriétaire : ${idCible} ENCORE dans « Mes annonces » (${resume})`);
     return { verdict: "presente", lecture };
   }
@@ -681,6 +715,14 @@ async function preuveAbsenceMesAnnonces(idCible, t) {
 }
 
 function preuveRetraitDepuis(lecture, idCible, moment) {
+  // (24/10, 0.6.133) Vendue sur Beebs : la fiche produit du numéro exact, pas la liste.
+  if (lecture?.vendue) {
+    return {
+      source: "page_produit", vendue: true, numero: String(idCible), moment, disponibilite: lecture.vendue.disponibilite,
+      lu_le: lecture.vendue.lu_le ?? new Date().toISOString(),
+      pages: (lecture?.pages ?? []).map((p) => ({ page: p.page, n: p.n ?? null, annoncees: p.annoncees ?? null })),
+    };
+  }
   return {
     source: "mes_annonces", absente: true, numero: String(idCible), moment, lu_le: lecture?.lu_le ?? new Date().toISOString(),
     pages: (lecture?.pages ?? []).map((p) => ({ page: p.page, n: p.n ?? null, annoncees: p.annoncees ?? null })),
@@ -807,6 +849,14 @@ async function deleteListing(job) {
     return { success: false, error: `Page inattendue pour une suppression Beebs : ${location.href}`, trace };
   }
   await humanPause(1000, 2200);
+
+  // (24/10, 0.6.133) Déjà VENDUE sur Beebs (un essai précédent l'a passée « Vendu ») : plus en vente — aucun
+  // nouveau clic sur « Supprimer l'annonce », le retrait est fait, avec sa preuve.
+  const dejaVendue = await produitVenduSurBeebs(idCible);
+  if (dejaVendue) {
+    t(`annonce ${idCible} déjà VENDUE sur Beebs (fiche produit : ${dejaVendue.disponibilite}) — plus achetable, aucun clic`);
+    return { success: true, dejaRetiree: true, preuveRetrait: preuveRetraitDepuis({ vendue: dejaVendue, pages: [] }, idCible, "deja_vendue"), trace };
+  }
 
   // ── CHEMIN 1 (nominal depuis le 11/09) : LA PAGE DE L'ANNONCE ─────────────
   // Relevé (Joe0410, 189 annonces) : « Mes annonces » ne rend que sa première

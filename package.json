@@ -372,6 +372,8 @@
     "selftest:ebay-retrait-trading": "node scripts/ebay-retrait-trading-selftest.mjs",
     "selftest:ebay-rayon-traditionnel": "node scripts/ebay-rayon-traditionnel-selftest.mjs",
     "selftest:lbc-rattrapage-lecture-fraiche": "node scripts/lbc-rattrapage-lecture-fraiche-selftest.mjs",
+    "selftest:beebs-bilan-detail-commandes": "node scripts/beebs-bilan-detail-commandes-selftest.mjs",
+    "selftest:remise-en-ligne-reconstruite": "node scripts/remise-en-ligne-reconstruite-selftest.mjs",
     "selftest:lbc-feuille-corrigee": "node scripts/lbc-feuille-corrigee-selftest.mjs",
     "selftest:etat-job": "node --import ./scripts/loader-ext.mjs scripts/etat-job-selftest.mjs",
     "selftest:contenu-du-vendeur": "node --import ./scripts/loader-ext.mjs scripts/contenu-du-vendeur-selftest.mjs",

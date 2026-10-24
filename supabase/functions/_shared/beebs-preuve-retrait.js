@@ -32,10 +32,19 @@ const buildMs = (hb) => {
 };
 const ms = (v) => { const t = Date.parse(String(v ?? "")); return Number.isFinite(t) ? t : NaN; };
 
-/** La preuve écrite par l'extension : la liste du propriétaire, relue, sans l'annonce. */
+/**
+ * La preuve écrite par l'extension :
+ *   · la liste du propriétaire, relue, sans l'annonce (source « mes_annonces ») ;
+ *   · (24/10, extension 0.6.133) la fiche produit du numéro EXACT qui dit VENDUE (source « page_produit »,
+ *     disponibilité schema.org « SoldOut ») : nos retraits choisissent « Vendu via une autre plateforme », Beebs passe
+ *     alors l'annonce « Vendu » — plus achetable — et la garde dans « Mes annonces » ; la preuve d'absence n'arrivait
+ *     jamais (retraits « en retard » depuis le 14/10, annonces pourtant « Vendu » sur Beebs).
+ */
 export function preuveRetraitBeebsValide(pf) {
   const p = pf && typeof pf === "object" ? pf.preuve_retrait : null;
-  return !!p && typeof p === "object" && p.source === "mes_annonces" && p.absente === true && /^\d{6,}$/.test(String(p.numero ?? ""));
+  if (!p || typeof p !== "object" || !/^\d{6,}$/.test(String(p.numero ?? ""))) return false;
+  if (p.source === "mes_annonces" && p.absente === true) return true;
+  return p.source === "page_produit" && p.vendue === true && p.disponibilite === "SoldOut";
 }
 
 /**
