@@ -21181,15 +21181,20 @@ async function releverMessagerieUnePlateforme(platform, token, e) {
   let bilanCommandes = null;
   if (L.commandes) {
     const suivies = await restRequest(
-      `plateforme_commandes?platform=eq.${platform}&etat=in.(a_confirmer,a_expedier,expediee,inconnu)&select=commande_ref&order=maj_le.desc&limit=20`,
+      `plateforme_commandes?platform=eq.${platform}&etat=in.(a_confirmer,a_expedier,expediee,inconnu)&select=commande_ref,etat&order=maj_le.desc&limit=20`,
       token).catch(() => []);
     // (16/10 nuit) Vinted : les options d'étiquette d'une commande ne sont relues
     // qu'une fois toutes les 6 h (mémoire du poste).
     const optionsLues = platform === "vinted" && e.optionsLues && typeof e.optionsLues === "object" ? e.optionsLues : {};
     const optionsConnues = Object.entries(optionsLues).filter(([, le]) => Date.now() - Number(le) < 6 * 3600 * 1000).map(([k]) => k);
+    // (24/10 soir, décision 3 de Nico) CHAQUE commande en cours a son tour de détail (5 par passage) : la tentative la
+    // plus ancienne d'abord (mémoire du poste, commandesLues ; jamais tentée = première, à égalité celles dont l'état est
+    // inconnu en base) — avant, toujours les 5 premières, et les suivantes restaient « inconnu » (bouton Bordereau absent).
+    const lues = e.commandesLues && typeof e.commandesLues === "object" ? e.commandesLues : {};
+    const priorite = { lues, inconnues: (Array.isArray(suivies) ? suivies : []).filter((s) => s?.etat === "inconnu").map((s) => String(s.commande_ref)) };
+    const refsSuivies = (Array.isArray(suivies) ? suivies : []).map((s) => String(s.commande_ref));
     const cmd = await executerDansOngletPlateforme(platform, L.commandes,
-      [(Array.isArray(suivies) ? suivies : []).map((s) => String(s.commande_ref)), M.COMMANDES_DETAILS_MAX,
-        ...(platform === "vinted" ? [optionsConnues] : [])]);
+      platform === "vinted" ? [refsSuivies, M.COMMANDES_DETAILS_MAX, optionsConnues, priorite] : [refsSuivies, M.COMMANDES_DETAILS_MAX, priorite]);
     requetes += Number(cmd?.requetes) || 0;
     const bloc3 = M.signeBlocage(cmd);
     if (bloc3) return { bloque: bloc3, requetes, bilan };
@@ -21199,7 +21204,30 @@ async function releverMessagerieUnePlateforme(platform, token, e) {
       e.optionsLues = memo;
     }
     if (cmd?.ok) {
-      const lignes = M.NORMALISEURS_COMMANDES[platform](cmd.commandes);
+      let lignes = M.NORMALISEURS_COMMANDES[platform](cmd.commandes);
+      // (24/10 soir) Une commande non détaillée à ce passage n'écrase jamais l'état connu en base (relu juste avant).
+      if (typeof M.lignesSansEcraserUnEtatConnu === "function") {
+        const aVerifier = lignes.filter((l) => l?.etat === "inconnu" && /^[A-Za-z0-9_-]{1,80}$/.test(String(l.ref))).map((l) => String(l.ref)).slice(0, 40);
+        if (aVerifier.length) {
+          const enBase = await restRequest(
+            `plateforme_commandes?platform=eq.${platform}&commande_ref=in.(${aVerifier.map(encodeURIComponent).join(",")})&select=commande_ref,etat`,
+            token).catch(() => null);
+          if (Array.isArray(enBase)) {
+            lignes = M.lignesSansEcraserUnEtatConnu(lignes, Object.fromEntries(enBase.map((x) => [String(x.commande_ref), x.etat])));
+          } else {
+            // Base illisible : rien d'inconnu n'est envoyé pour une commande déjà suivie (jamais un état effacé).
+            const suiviesSet = new Set(refsSuivies);
+            lignes = lignes.filter((l) => !(l?.etat === "inconnu" && suiviesSet.has(String(l.ref))));
+          }
+        }
+      }
+      if (typeof M.refsDetaillees === "function") {
+        const maintenant = Date.now();
+        const memo = { ...lues };
+        for (const ref of (Array.isArray(cmd.tentes) ? cmd.tentes : M.refsDetaillees(platform, cmd.commandes))) memo[String(ref)] = maintenant;
+        const cles = Object.keys(memo).sort((a, b) => Number(memo[b]) - Number(memo[a]));
+        e.commandesLues = Object.fromEntries(cles.slice(0, 200).map((k) => [k, memo[k]]));
+      }
       if (lignes.length) {
         bilanCommandes = await rpcMessagerie("commandes_enregistrer", { p_platform: platform, p_commandes: lignes.slice(0, 40) }, token);
       }

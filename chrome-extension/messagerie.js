@@ -849,6 +849,26 @@
     depop: normaliserCommandesDepop, beebs: normaliserCommandesBeebs,
   });
 
+  /**
+   * (24/10 soir, décision 3 de Nico) Une commande en cours NON détaillée à ce passage (état « inconnu ») n'écrase
+   * jamais l'état connu en base : sa ligne n'est pas envoyée (le bouton Bordereau disparaissait). Une commande neuve
+   * (absente de la base) part ; son état vient à son tour de détail. `connus` : {réf: état en base}.
+   */
+  function lignesSansEcraserUnEtatConnu(lignes, connus) {
+    const c = connus && typeof connus === "object" ? connus : {};
+    return (lignes ?? []).filter((l) => !(l?.etat === "inconnu" && c[String(l?.ref)] && c[String(l?.ref)] !== "inconnu"));
+  }
+  /** Les commandes DÉTAILLÉES à ce passage (leur tour est passé) : Vinted et Leboncoin « detail » ; Beebs, toutes. */
+  function refsDetaillees(platform, commandes) {
+    const out = [];
+    for (const c of commandes ?? []) {
+      const ref = platform === "vinted" ? c?.transaction_id : platform === "leboncoin" ? c?.purchase_id
+        : platform === "beebs" ? (c?.order?.id ?? c?.id) : null;
+      if (ref != null && (platform === "beebs" || c?.detail)) out.push(String(ref));
+    }
+    return out;
+  }
+
   // ═════════════════════════════════════════════════════════════════════════
   // 5. LECTEURS DE PAGE — AUTONOMES. Ne rien y référencer d'extérieur.
   // ═════════════════════════════════════════════════════════════════════════
@@ -933,7 +953,13 @@
   // que la page lit en ouvrant « obtenir le bordereau ») — sauf celles que le
   // poste connaît déjà (optionsConnues). Ne sortent que des types et des
   // booléens : ni nom, ni numéro de téléphone.
-  async function lecteurCommandesVinted(suivies, detailsMax, optionsConnues) {
+  // (24/10 soir, décision 3 de Nico) `priorite` {inconnues: [réf. dont l'état est inconnu en base], lues: {réf: date
+  // de la dernière tentative de détail sur ce poste}} : chaque commande en cours a son tour (5 par passage), la
+  // tentative la plus ancienne d'abord (jamais tentée = première ; à égalité, les inconnues d'abord) ; une commande
+  // qu'on ne peut pas détailler (autre boutique) passe derrière au lieu de garder sa place. Avant : toujours les 5
+  // premières de la liste, et les suivantes restaient « inconnu » (56 commandes le 24/10, bouton Bordereau absent).
+  // Rend `tentes` : les commandes dont c'était le tour.
+  async function lecteurCommandesVinted(suivies, detailsMax, optionsConnues, priorite) {
     const renouveler = async () => { try { const x = await fetch("/web/api/auth/refresh", { method: "POST", credentials: "include", headers: { Accept: "application/json" } }); return x.ok; } catch { return false; } };
     let requetes = 1;
     const lireListe = () => fetch("/api/v2/my_orders?type=sold&status=in_progress&page=1&per_page=20", {
@@ -954,7 +980,12 @@
     })).filter((o) => o.transaction_id != null);
     const vus = new Set(enCours.map((o) => String(o.transaction_id)));
     const aLire = [...enCours, ...(suivies ?? []).filter((ref) => !vus.has(String(ref))).map((ref) => ({ transaction_id: ref, suivie: true }))];
-    for (const o of aLire.slice(0, detailsMax)) {
+    const inconnues = new Set((priorite?.inconnues ?? []).map(String));
+    const lues = priorite?.lues && typeof priorite.lues === "object" ? priorite.lues : {};
+    const tour = (ref) => [Number(lues[String(ref)]) || 0, inconnues.has(String(ref)) ? 0 : 1];
+    const aDetailler = aLire.map((o, i) => ({ o, i, t: tour(o.transaction_id) }))
+      .sort((a, b) => (a.t[0] - b.t[0]) || (a.t[1] - b.t[1]) || (a.i - b.i)).slice(0, detailsMax).map((x) => x.o);
+    for (const o of aDetailler) {
       await new Promise((ok) => setTimeout(ok, 1200 + Math.random() * 1400));
       requetes++;
       const rd = await fetch(`/api/v2/transactions/${encodeURIComponent(o.transaction_id)}`, {
@@ -1017,7 +1048,7 @@
         }
       }
     }
-    return { ok: true, http: 200, commandes: aLire.filter((o) => !o.suivie || o.detail), requetes };
+    return { ok: true, http: 200, commandes: aLire.filter((o) => !o.suivie || o.detail), requetes, tentes: aDetailler.map((o) => String(o.transaction_id)) };
   }
 
   // Leboncoin : la liste (1 page, 50 conversations), jeton de la page.
@@ -1070,7 +1101,7 @@
 
   // Leboncoin : la première page des ventes ; détail (machine d'états) des
   // ventes en cours et de celles qu'on suit encore.
-  async function lecteurCommandesLeboncoin(suivies, detailsMax) {
+  async function lecteurCommandesLeboncoin(suivies, detailsMax, priorite) {
     const tok = localStorage.getItem("luat");
     if (!tok) return { ok: false, motif: "jeton_absent", requetes: 0 };
     const H = { authorization: `Bearer ${tok}`, accept: "application/json" };
@@ -1090,7 +1121,13 @@
       title: x?.item?.title ?? null, thumbnail: x?.item?.thumbnail_url ?? null, price: x?.price ?? null,
       user_name: x?.user_name ?? null,
     })).filter((c) => c.purchase_id != null && (c.step === "in_progress" || suiviesSet.has(String(c.purchase_id))));
-    for (const c of commandes.slice(0, detailsMax)) {
+    // (24/10 soir) Chaque commande en cours a son tour (même règle que Vinted, `priorite`).
+    const inconnues = new Set((priorite?.inconnues ?? []).map(String));
+    const lues = priorite?.lues && typeof priorite.lues === "object" ? priorite.lues : {};
+    const tour = (ref) => [Number(lues[String(ref)]) || 0, inconnues.has(String(ref)) ? 0 : 1];
+    const aDetailler = commandes.map((c, i) => ({ c, i, t: tour(c.purchase_id) }))
+      .sort((a, b) => (a.t[0] - b.t[0]) || (a.t[1] - b.t[1]) || (a.i - b.i)).slice(0, detailsMax).map((x) => x.c);
+    for (const c of aDetailler) {
       await new Promise((ok) => setTimeout(ok, 1300 + Math.random() * 1500));
       requetes++;
       const rd = await fetch(`https://api.leboncoin.fr/api/consumergoods/purchase/v2/purchases/${encodeURIComponent(c.purchase_id)}`, { headers: H }).catch(() => null);
@@ -1108,7 +1145,7 @@
         shipping_type: d?.metadata?.parcelShippingType ?? null,
       };
     }
-    return { ok: true, http: 200, commandes, requetes };
+    return { ok: true, http: 200, commandes, requetes, tentes: aDetailler.map((c) => String(c.purchase_id)) };
   }
 
   // Depop : la liste (24), jeton du cookie access_token envoyé en Bearer —
@@ -1380,7 +1417,7 @@
     for (const v of lignes.values()) marcher(v, 0);
     return trouvees;
   }
-  async function lecteurCommandesBeebs(suivies, detailsMax) {
+  async function lecteurCommandesBeebs(suivies, detailsMax, priorite) {
     let requetes = 1;
     const r = await fetch("/fr/account/orders/list/seller", { credentials: "include", headers: { RSC: "1", Accept: "*/*" }, cache: "no-store" }).catch(() => null);
     if (!r) return { ok: false, motif: "reseau", requetes };
@@ -1396,7 +1433,13 @@
     let illisibles = 0;
     // Une commande de la liste dont chaque produit porte son numéro est déjà complète : pas de relecture.
     const complete = (o) => Array.isArray(o?.products) && o.products.length > 0 && o.products.every((p) => p && (p.id ?? p.product_id) != null);
-    for (const id of ids.slice(0, detailsMax)) {
+    // (24/10 soir) Chaque commande a son tour (même règle que Vinted, `priorite`).
+    const inconnues = new Set((priorite?.inconnues ?? []).map(String));
+    const lues = priorite?.lues && typeof priorite.lues === "object" ? priorite.lues : {};
+    const tour = (ref) => [Number(lues[String(ref)]) || 0, inconnues.has(String(ref)) ? 0 : 1];
+    const aLireBeebs = ids.map((id, i) => ({ id, i, t: tour(id) }))
+      .sort((a, b) => (a.t[0] - b.t[0]) || (a.t[1] - b.t[1]) || (a.i - b.i)).slice(0, detailsMax).map((x) => x.id);
+    for (const id of aLireBeebs) {
       const deLaListe = parListe.get(id);
       if (deLaListe && complete(deLaListe)) {
         const o = deLaListe;
@@ -1443,7 +1486,7 @@
           price: p?.price ?? null, image: p?.image ?? (Array.isArray(p?.images) ? p.images[0] : null) ?? p?.thumbnail ?? null })),
       } });
     }
-    return { ok: true, http: 200, commandes, requetes, illisibles };
+    return { ok: true, http: 200, commandes, requetes, illisibles, tentes: aLireBeebs.map(String) };
   }
 
   const LECTEURS = Object.freeze({
@@ -2160,7 +2203,7 @@
     normaliserLeboncoin, normaliserMessageLeboncoin, etatCommandeLeboncoin, normaliserCommandesLeboncoin,
     normaliserDepop, etatCommandeDepop, normaliserCommandesDepop,
     BEEBS_ADMIN, dateBeebsListe, normaliserBeebs, etatCommandeBeebs, normaliserCommandesBeebs,
-    NORMALISEURS, NORMALISEURS_COMMANDES,
+    NORMALISEURS, NORMALISEURS_COMMANDES, lignesSansEcraserUnEtatConnu, refsDetaillees,
     LECTEURS, ENVOYEURS, CHEMINS_BORDEREAU,
     // (16/10 nuit) Générer le bordereau.
     LBC_TYPES_GENERABLES, typeEnvoiLeboncoin, BEEBS_TRANSPORTEURS, BEEBS_RMP,
