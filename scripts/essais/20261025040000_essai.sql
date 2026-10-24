@@ -66,6 +66,8 @@ CREATE POLICY push_annulations_lecture ON public.push_annulations FOR SELECT USI
 -- droits : serveur seulement — push_annulations : l'app ne la lit pas (tout passe par les fonctions SECURITY DEFINER de push-ventes) ; aucun droit anon/authenticated, service_role en lecture (régime du 30/10)
 REVOKE ALL ON TABLE public.push_annulations FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON TABLE public.push_annulations TO service_role;
+-- (fillsell_table_nait_protegee donne aussi INSERT, UPDATE, DELETE à service_role : retirés, seules les fonctions écrivent.)
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON TABLE public.push_annulations FROM service_role;
 
 -- 2. Les propositions encore ouvertes, lues vite (6 lignes sur 1 389 le 25/10).
 CREATE INDEX IF NOT EXISTS remises_en_vente_proposees ON public.remises_en_vente (user_id) WHERE statut = 'proposee';
