@@ -134,6 +134,17 @@ const MARGE_CAPTURE_MS = 6 * 3600 * 1000;
  * L'écrasement est impossible même si cette fonction était rappelée : le
  * trigger profiles_acquisition_immuable verrouille les colonnes dès la
  * première pose.
+ *
+ * ⛔ (25/10) TOUJOURS ZÉRO : 0 profil sur 3 229, 0 sur les 570 inscrits des
+ * 30 derniers jours. Troisième cause, celle-là à chaque session : depuis le
+ * 06/07 (migration 20260706400000), `authenticated` n'a le droit d'UPDATE que
+ * sur 13 colonnes de profiles, et acquisition_* n'en est pas. L'UPDATE direct
+ * recevait 42501 → HTTP 403 de PostgREST, rendu dans `error` sans être levé,
+ * donc jamais vu. L'origine se pose désormais par la RPC SECURITY DEFINER
+ * `poser_origine_inscription` (migration 20261025013000), qui refait côté
+ * serveur les mêmes gardes (compte < 30 j, capture antérieure au compte,
+ * une seule pose) et garde l'origine à la suppression du compte
+ * (origines_comptes_supprimes, anonyme).
  */
 export async function poserSourceSurProfil(supabase, userId, { createdAt = null } = {}) {
   try {
@@ -146,18 +157,16 @@ export async function poserSourceSurProfil(supabase, userId, { createdAt = null 
       const capte = Date.parse(String(acq.at ?? ''));
       if (Number.isFinite(capte) && capte > cree + MARGE_CAPTURE_MS) return;
     }
-    await supabase
-      .from('profiles')
-      .update({
-        acquisition_source: acq.source ?? null,
-        acquisition_medium: acq.medium ?? null,
-        acquisition_campaign: acq.campaign ?? null,
-        acquisition_content: acq.content ?? null,
-        acquisition_fbclid: acq.fbclid ?? null,
-        acquisition_referrer: acq.referrer ?? null,
-        acquisition_captured_at: acq.at ?? new Date().toISOString(),
-      })
-      .eq('id', userId);
+    const { error } = await supabase.rpc('poser_origine_inscription', {
+      p_source: acq.source ?? null,
+      p_medium: acq.medium ?? null,
+      p_campaign: acq.campaign ?? null,
+      p_content: acq.content ?? null,
+      p_fbclid: acq.fbclid ?? null,
+      p_referrer: acq.referrer ?? null,
+      p_captee_le: acq.at ?? null,
+    });
+    if (error) console.warn('[acquisition] source non enregistrée :', error.message ?? error.code ?? error);
   } catch (e) {
     console.warn('[acquisition] source non enregistrée :', e?.message ?? e);
   }
