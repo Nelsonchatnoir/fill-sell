@@ -1077,8 +1077,30 @@ async function scheduleAlarm() {
   });
 }
 
+// ── (24/10) POSTE DE DÉVELOPPEMENT : UNE COPIE NEUVE DANS LE DOSSIER RECHARGE L'EXTENSION SEULE ──
+// Une extension NON EMPAQUETÉE (installType « development », le poste de Nico) relit ses fichiers sur le disque :
+// le manifest servi par chrome.runtime.getURL est celui du dossier, celui de getManifest() celui chargé en mémoire.
+// Quand une copie neuve y est posée (version différente), la mise à jour suit LE MÊME chemin sûr que celle du Web
+// Store (appliquerMajSiSansRisque : jamais pendant un job, une republication engagée ou un relevé). Sans effet sur
+// une extension installée depuis le Web Store (installType « normal »). Une lecture ratée ne recharge jamais rien.
+async function verifierCopieNonEmpaquetee() {
+  try {
+    const moi = await chrome.management.getSelf();
+    if (moi?.installType !== "development") return;
+    const r = await fetch(`${chrome.runtime.getURL("manifest.json")}?t=${Date.now()}`, { cache: "no-store" });
+    if (!r.ok) return;
+    const surLeDisque = String((await r.json())?.version ?? "").trim();
+    const enMemoire = String(chrome.runtime.getManifest().version ?? "").trim();
+    if (!surLeDisque || surLeDisque === enMemoire) return;
+    console.log(`[background] copie neuve dans le dossier de l'extension : ${enMemoire} → ${surLeDisque} — rechargement au premier moment sûr`);
+    await chrome.storage.session.set({ [MAJ_ATTENTE_KEY]: surLeDisque });
+    await appliquerMajSiSansRisque("copie_non_empaquetee");
+  } catch { /* jamais un rechargement sur un doute */ }
+}
+
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === ALARM_NAME) {
+    verifierCopieNonEmpaquetee();
     pollAndProcessJobs();
     // Rattrapage des runs de sync tués pendant que Chrome dormait (le chien de
     // garde des 32 min vit côté serveur : aucune alarme locale n'a pu être
