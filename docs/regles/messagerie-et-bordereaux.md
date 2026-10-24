@@ -230,3 +230,25 @@
   commande juste avant (sinon consommée sans relance) ; choix et phrase d'engagement de la demande d'origine.
 - **Fichier Vinted** : `pdf_label` d'abord, y compris pour un QR (la page fait de même) ; `digital_label` en recours
   (sa réponse porte le nom du destinataire : seul un fichier en est lu).
+
+## Règles (24/10 soir — test réel du bordereau Vinted, vente de Nico à Ornella ; extension 0.6.136)
+- **Le fichier d'une étiquette Vinted se lit EN OCTETS, jamais d'après une forme supposée** (`cheminBordereauVinted`,
+  messagerie.js) : un PDF / PNG / JPEG brut (signatures `%PDF`, PNG, JPEG) est pris tel quel ; un JSON donne son base64
+  (`file.label`, `label`, `file.content`, `file.data`, `data.label`) ou son lien (`label_url`, `file.url`,
+  `file.label_url`, `url`, `data.label_url`), suivi UNE fois — la session ne part qu'à la même adresse que la page (un
+  CDN, un tiers : sans, un lien signé n'en a pas besoin) ; jamais le jeton d'un lien dans la trace. Le type de la copie
+  suit ses octets (`typeFichierBordereau`, background.js).
+- **Cause des 8 demandes sans fichier** (Louis, Ornella ; « http_200_puis_200 », 36 passages) : jusqu'à la 0.6.134, seule
+  la forme `{file:{label}}` était acceptée — lue dans le code du site, jamais vue en réponse réelle ; `r.json()` sur un
+  PDF rendait null, les deux routes répondaient 200 et rien n'était gardé.
+- **Un échec dit la forme vue** : le motif garde son début (`http_<pdf_label>_puis_<digital_label>`) et ajoute
+  « · route:http forme » (`fichier No`, `json{clés}`, `html`, type, taille, `redirige`) — jamais une valeur (ni nom, ni
+  code, ni adresse) ; 120 caractères au plus. Les deux routes une fois chacune, comme avant.
+- **Poste non empaqueté (Nico)** : une copie neuve posée dans son dossier (`C:\Users\nicol\FillSell-Extension-Nico`,
+  version du manifest différente) recharge l'extension seule au premier moment sûr (0.6.134,
+  `verifierCopieNonEmpaquetee` ; même chemin que la mise à jour du Web Store) ; trace `usage_logs` `maj_extension`
+  « rechargement:copie_non_empaquetee ». Copier le manifest EN DERNIER. Prouvé le 24/10 : copie à 16:52:27, rechargé à
+  16:55:18 (0.6.134 → 0.6.135, 0 job en vol).
+- Preuves : `selftest:bordereau-fichier-octets` (PDF brut, ancienne forme JSON, lien même adresse / CDN / tiers, échec
+  tracé sans valeur, dernière marche fermée) ; faux réseaux réalistes dans `selftest:messagerie` et
+  `selftest:messagerie-generation`.
