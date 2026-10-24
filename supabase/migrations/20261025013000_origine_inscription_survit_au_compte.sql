@@ -1,7 +1,9 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- L'ORIGINE D'UNE INSCRIPTION EST CAPTÉE, ET ELLE SURVIT AU COMPTE (25/10, point 6 de Nico) — PROPOSITION
+-- L'ORIGINE D'UNE INSCRIPTION EST CAPTÉE, ET ELLE SURVIT AU COMPTE (25/10, point 6 de Nico) — APPLIQUÉE
 -- ═══════════════════════════════════════════════════════════════════════════
--- ⛔ PROPOSÉE, NON APPLIQUÉE. Feu vert explicite de Nico exigé, puis :
+-- APPLIQUÉE le 25/10 à 01:30:41 (Paris) — mission de nuit de Nico : « migrations autorisées cette nuit si essai à
+-- blanc + selftests verts + preuve en prod ». Essai 19/19 relancé à 01:29 ; preuve relue (archive RLS fermée,
+-- déclencheur actif, RPC authenticated oui / anon non, 3 230 profils intacts). Appliquée par :
 --    npx supabase db query --linked -f supabase/migrations/20261025013000_origine_inscription_survit_au_compte.sql
 --    npx supabase migration repair --linked --status applied 20261025013000
 --

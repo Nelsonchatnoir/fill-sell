@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- INVERSE de 20261025013000_origine_inscription_survit_au_compte.sql (PROPOSITION, 25/10)
+-- INVERSE de 20261025013000_origine_inscription_survit_au_compte.sql (la migration est APPLIQUÉE le 25/10 à 01:30 ; cet inverse NE l'est PAS)
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Place prévue : supabase/rollbacks/20261025013000_origine_inscription_survit_au_compte_INVERSE.sql
 -- Puis : npx supabase migration repair --linked --status reverted 20261025013000

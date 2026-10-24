@@ -1,4 +1,4 @@
--- INVERSE de 20261025020000_journal_stores_appels_et_echeances.sql — PROPOSITION, NON APPLIQUÉE.
+-- INVERSE de 20261025020000_journal_stores_appels_et_echeances.sql — la migration est APPLIQUÉE (25/10 01:32), cet inverse NE l'est PAS.
 -- ⚠ Les fonctions edge déployées avec la migration doivent d'abord revenir à leur version d'avant (sinon le repli
 --   « forme du 12/10 » de journaliserNotificationStore prend le relais : aucune ligne perdue, compléments dans detail).
 -- Les lignes « illisible » (connu NULL) sont gardées : connu passe à false pour elles, avec la trace dans detail.

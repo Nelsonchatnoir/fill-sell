@@ -1,7 +1,9 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- REVENUS (25/10, point 4 de Nico) : CHAQUE APPEL DE STORE JOURNALISÉ, L'ÉCHÉANCE À CHAQUE NOTIFICATION
 -- ═══════════════════════════════════════════════════════════════════════════
--- PROPOSITION — NON APPLIQUÉE. Numéro de version à relire avant d'appliquer (ls supabase/migrations, migration list).
+-- APPLIQUÉE le 25/10 à 01:32:26 (Paris) — mission de nuit de Nico (essai à blanc + selftests + preuve) : essai
+-- 9/9 (scripts/essais/20261025020000_essai.sql), preuve relue (30 colonnes, connu NULL accepté, droits postgres +
+-- service_role seuls, 15 lignes inchangées). Version relue unique avant application.
 -- Constats en prod (lecture seule, 25/10 00:09 Paris) :
 --   · stores_notifications_journal : 15 lignes Apple (11/10 21:43 → 24/10 20:14), 0 ligne Google. Journaux des
 --     fonctions : 0 appel de Google à google-play-webhook du 05/10 03:26 au 25/10 00:30 (le dernier : v27, avant
