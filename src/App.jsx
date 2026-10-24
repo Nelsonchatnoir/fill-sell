@@ -172,6 +172,7 @@ import { trierParVente } from './utils/triVendus';
 // (11/10, Louis) Ventes détectées à confirmer, avec ou sans téléphone : la
 // décision « remettre en vente ou non » ne dépend plus de la notification.
 import VentesADecider, { ANCRE_VENTES_A_CONFIRMER } from './components/VentesADecider';
+import VentesAnnulees from './components/VentesAnnulees';
 import RevueAutresPlateformes from './components/RevueAutresPlateformes';
 import { lireFusionsActives, defaireFusion } from './utils/fusionArticles';
 import { apresNouvellesPhotos } from './utils/parcoursLens';
@@ -2130,6 +2131,9 @@ export default function App({ loginOnly = false }){
   const [ventesADeciderLues,setVentesADeciderLues]=useState(false);
   const [lienVentesVoulu,setLienVentesVoulu]=useState(false);
   const [venteDecideeEnCours,setVenteDecideeEnCours]=useState(null);
+  // (24/10 soir) « Vente annulée — Remettre en vente ? » : propositions lues avec le reste (rpc ventes_annulees_a_remettre).
+  const [ventesAnnulees,setVentesAnnulees]=useState([]);
+  const [venteAnnuleeEnCours,setVenteAnnuleeEnCours]=useState(null);
   // ── ALERTES « PLUS EN LIGNE » MASQUABLES (2026-09-17, demande d'une PRO) ──
   // Deux masques, RÉVERSIBLES, qui ne touchent QUE l'affichage :
   //   · par alerte : platform_fields.alerte_masquee_pour = l'épisode
@@ -3611,6 +3615,9 @@ export default function App({ loginOnly = false }){
     // jamais un écran cassé). Lue avec le reste, jamais en boucle.
     supabase.rpc('ventes_a_decider').then(({data,error})=>{setVentesADecider(!error&&Array.isArray(data)?data:[]);setVentesADeciderLues(true);})
       .catch(()=>{setVentesADecider([]);setVentesADeciderLues(true);});
+    // (24/10 soir) Ventes annulées à remettre en vente (best-effort, jamais un écran cassé).
+    supabase.rpc('ventes_annulees_a_remettre').then(({data,error})=>setVentesAnnulees(!error&&Array.isArray(data)?data:[]))
+      .catch(()=>setVentesAnnulees([]));
     // (12/10 soir, Nico) Plus de lecture des retraits en file ici : le bandeau
     // « Vendu, encore en ligne » (A6) n'existe plus — ces retraits vivent dans
     // « À régler » du Stock, qui les lit déjà (aucune requête de plus).
@@ -4742,6 +4749,24 @@ export default function App({ loginOnly = false }){
   // remettre_en_vente : false = la remise de CETTE vente naît close
   // (motif choix_personne). Une vente décidée quitte la liste pour de bon :
   // son reçu l'en exclut côté base.
+  // (24/10 soir, décision de Nico) UN appui remet l'article en vente sur Vinted et partout où il avait été retiré à cause
+  // de la vente annulée, hors quota ; la base attend un relevé (déjà remis en ligne par le vendeur → rattaché, rien de republié).
+  async function remettreApresAnnulation(v){
+    if(v?.inventaire_id==null||venteAnnuleeEnCours!=null)return;
+    setVenteAnnuleeEnCours(v.inventaire_id);
+    try{
+      const{data,error}=await supabase.rpc('remettre_en_vente_apres_annulation',{p_inventaire:v.inventaire_id});
+      if(error||data?.ok!==true)throw new Error(error?.message??data?.motif??'refus');
+      setVentesAnnulees(prev=>prev.map(x=>x.inventaire_id===v.inventaire_id?{...x,etat:'en_cours'}:x));
+      logTunnel('ventes_annulees',{action:'remise_acceptee',plateformes:(data?.plateformes??[]).join(',')});
+    }catch(e){
+      console.error('[remettreApresAnnulation]',e?.message??e);
+      setToast({visible:true,message:t('genericError')});
+      setTimeout(()=>setToast({visible:false,message:""}),3000);
+    }finally{
+      setVenteAnnuleeEnCours(null);
+    }
+  }
   async function deciderVenteDetectee(v,remettre,prixSaisiParLaPersonne){
     if(!v?.job_id||venteEnVolRef.current)return;
     const prix=prixSaisiParLaPersonne??(Number(v.prix)>0?Number(v.prix):null);
@@ -8461,6 +8486,7 @@ export default function App({ loginOnly = false }){
                 « À régler ». */}
         <VentesADecider lang={lang} devise={currency==='EUR'?'€':currency}
           ventes={ventesADecider} enCours={venteDecideeEnCours} onDecider={deciderVenteDetectee} />
+        <VentesAnnulees lang={lang} ventes={ventesAnnulees} enCours={venteAnnuleeEnCours} onRemettre={remettreApresAnnulation} />
 
         {/* ── Disparus du dressing : UN bandeau de synthèse (2026-08-24) ──
             Jamais un bandeau par article : la sync marque disparu_le en bloc

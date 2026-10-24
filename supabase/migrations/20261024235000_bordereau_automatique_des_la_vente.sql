@@ -3,10 +3,10 @@
 -- (24/10 soir, décision 1 de Nico, après la preuve sur le short) « Dès qu'une vente est détectée, l'extension demande
 -- le bordereau, le récupère et l'enregistre. Quand le vendeur ouvre la commande, le PDF s'affiche instantanément. »
 -- LA RÈGLE (comptes de la bêta des bordereaux, interrupteur coin_config.bordereaux_auto) :
---   · une commande NEUVE (vue après l'ouverture : coin_config.bordereaux_auto_depuis — jamais l'arriéré) de Vinted,
---     Leboncoin ou Beebs, dont l'étiquette est payée par l'acheteur, reçoit UNE demande automatique : « générer »
---     (Vinted : étiquette à commander ; Leboncoin : disponibilité à confirmer ; Beebs : commande à accepter) ou
---     « récupérer » (étiquette déjà prête chez la plateforme). JAMAIS eBay ni Depop (étiquette payante ou absente).
+--   · (24/10 soir, décision 2 de Nico) VINTED SEULEMENT pour l'instant : une commande Vinted NEUVE (vue après
+--     l'ouverture : coin_config.bordereaux_auto_depuis — jamais l'arriéré), étiquette payée par l'acheteur, reçoit
+--     UNE demande automatique : « générer » (étiquette à commander) ou « récupérer » (étiquette déjà prête).
+--     Leboncoin, Beebs, Depop, eBay : jamais (« Bientôt disponible » dans l'app) ; jamais une étiquette payante.
 --   · le format est le réglage du compte (platform_settings.bordereaux.format : « pdf » par défaut, ou « code ») ;
 --   · l'extension relit la commande sur la plateforme juste avant le geste (decisionGeneration) : annulée ou déjà
 --     traitée, rien n'est fait — inchangé ;
@@ -53,12 +53,12 @@ BEGIN
   v_depuis := to_timestamp(coalesce((SELECT k.value FROM coin_config k WHERE k.key = 'bordereaux_auto_depuis'), 0));
   -- Seulement les ventes vues APRÈS l'ouverture, et récentes : jamais l'arriéré d'un compte.
   IF c.cree_le < v_depuis OR c.cree_le < now() - interval '7 days' THEN RETURN 'avant_ouverture'; END IF;
-  -- Étiquette payée par l'acheteur seulement : jamais eBay (payante), ni Depop (pas de bordereau en France).
-  IF c.platform NOT IN ('vinted', 'leboncoin', 'beebs') THEN RETURN 'plateforme'; END IF;
+  -- (24/10 soir, décision 2 de Nico) Vinted seulement : étiquette payée par l'acheteur. Leboncoin, Beebs : bientôt ;
+  -- jamais eBay (étiquette payante), ni Depop (pas de bordereau en France).
+  IF c.platform <> 'vinted' THEN RETURN 'plateforme'; END IF;
   IF NOT public.messagerie_beta(c.user_id) THEN RETURN 'hors_beta'; END IF;
 
-  IF (c.platform = 'vinted' AND c.etat = 'a_expedier' AND c.bordereau = 'a_obtenir')
-     OR (c.platform IN ('leboncoin', 'beebs') AND c.etat = 'a_confirmer' AND c.bordereau = 'a_generer') THEN
+  IF c.etat = 'a_expedier' AND c.bordereau = 'a_obtenir' THEN
     v_action := 'generer';
   ELSIF c.etat = 'a_expedier' AND c.bordereau = 'pret' THEN
     v_action := 'recuperer';

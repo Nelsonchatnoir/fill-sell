@@ -1,22 +1,21 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- 20261024234000_vinted_annulee_remise_en_vente_hors_quota
--- (24/10 soir, décision 2 de Nico) « Remise en vente Vinted après une annulation : oui, automatique, pour tous les
--- comptes. Si Vinted réactive l'annonce d'origine : FillSell la rattache à la fiche, sans republier (jamais de doublon).
--- Si non : FillSell la remet en vente tout seul, hors quota. »
--- Ce que fait Vinted (établi sur la base, 24/10) : 30 commandes annulées sur 30 depuis le 16/10 — l'annonce d'origine
--- reste « vendue » à TOUS les relevés suivants (jusqu'à 7 jours après), jamais revue active ; Vinted ne la remet pas en
--- ligne. Le cas « revue active » garde la règle du 17/10 : le job redevient « publié » (rattaché, rien de republié).
--- Trois fonctions réécrites depuis la définition LUE EN PROD le 24/10 (pg_get_functiondef) :
---   · vente_commande_annulee_vinted (md5 77f6c11baba521ae2942622fe4948013 → 244fbdf7304deb284544176de88a7e55) : annonce fermée + fiche d'un exemplaire
---     revenue au stock → le job vendu est marqué vente_annulee_remise et une ligne remises_en_vente (Vinted) part ;
---     message dit « FillSell le remet en vente sur Vinted » ; plusieurs exemplaires : inchangé ;
---   · remises_en_vente_tick (md5 4381a934e7b2d75a71a2701821b43b8e → 10e154607ce1df9880c39053bd272734) : une remise après une vente annulée saute la
---     vérification du quota (remise_en_vente_place) et sa publication porte hors_quota ; toutes les autres gardes
---     restent (déjà en vente, annonce vendue encore en ligne, fiche absente ou vendue, poste absent, pause, payant) ;
---   · remise_en_vente_place (md5 abfe442025ba75898cf1d8f95ca4439d → 1d13b601c6fc881d032d6b891e8edd3e) : ces remises ne comptent pas dans le quota du mois.
--- ⚠️ Conséquence à savoir : les copies Leboncoin / Beebs / eBay / Depop remises après une vente annulée (règle du 18/10)
--- deviennent hors quota elles aussi (même marque vente_annulee_remise).
--- Les commandes annulées AVANT cette migration ne sont pas reprises (décision de Nico à part).
+-- 20261024234000_vinted_annulee_remise_en_vente_hors_quota — RÉÉCRITE le 24/10 soir (point 1 de Nico : « PAS d'automatique »)
+-- Après une vente ANNULÉE (Vinted : commande annulée ; Leboncoin : achat annulé), la fiche revient au stock (inchangé)
+-- et la remise en vente est PROPOSÉE, jamais automatique : un vendeur annule parfois parce que l'article n'est plus
+-- disponible, et il peut le remettre en ligne lui-même pendant que FillSell le republie (doublon).
+--   · remises_en_vente : statut « proposee » (+ accepte_le) — l'annonce Vinted restée fermée (Vinted ne la remet jamais
+--     en ligne : 30 commandes annulées sur 30 depuis le 16/10) et chaque copie retirée à cause de cette vente ;
+--   · l'app montre « Vente annulée — Remettre en vente ? », un seul bouton (ventes_annulees_a_remettre) ;
+--   · l'appui (remettre_en_vente_apres_annulation) remet en vente sur Vinted ET partout où l'article avait été retiré à
+--     cause de cette vente, HORS QUOTA, et demande les relevés ;
+--   · avant de republier, un relevé complet fait après l'annulation (au plus tôt 15 min avant l'appui) : si le vendeur
+--     l'a remis en ligne lui-même, l'annonce est rattachée (relevé) et « déjà en vente » écarte la remise — jamais de
+--     doublon (remises_en_vente_tick, releve_apres_annulation).
+-- Fonctions réécrites depuis la définition LUE EN PROD le 24/10 (pg_get_functiondef) :
+--   vente_commande_annulee_vinted 77f6c11baba521ae2942622fe4948013 → 4aa3ec5aab435d09edd17c5034ab521b ; vente_transaction_annulee_leboncoin
+--   375084a5b29eaed70c06d083546ac113 → 7cc61907eca888a2f558efc3883d332a ; remises_en_vente_tick 4381a934e7b2d75a71a2701821b43b8e → b2b04568e2d81deb055f186e2ecc9d9e ;
+--   remise_en_vente_place abfe442025ba75898cf1d8f95ca4439d → 1d13b601c6fc881d032d6b891e8edd3e. Nouvelles : releve_apres_annulation,
+--   remettre_en_vente_apres_annulation, ventes_annulees_a_remettre.
 -- Application (feu vert NOMMÉ de Nico seulement) :
 --   npx supabase db query --linked -f supabase/migrations/20261024234000_vinted_annulee_remise_en_vente_hors_quota.sql
 --   npx supabase migration repair --linked --status applied 20261024234000
@@ -24,6 +23,104 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- ═══ CORPS DE LA MIGRATION
 BEGIN;
+
+ALTER TABLE public.remises_en_vente ADD COLUMN IF NOT EXISTS accepte_le timestamptz;
+ALTER TABLE public.remises_en_vente DROP CONSTRAINT IF EXISTS remises_en_vente_statut_check;
+ALTER TABLE public.remises_en_vente ADD CONSTRAINT remises_en_vente_statut_check
+  CHECK (statut = ANY (ARRAY['a_faire'::text, 'faite'::text, 'abandonnee'::text, 'proposee'::text]));
+
+-- Le relevé qui prouve, après une annulation, que le vendeur n'a pas déjà remis l'article en ligne lui-même :
+-- 'vu' (relevé complet fait depuis p_depuis), 'attendu', ou 'sans_releve' (ce compte n'a aucun relevé de cette
+-- plateforme depuis 30 jours : les gardes d'avant s'appliquent seules).
+CREATE OR REPLACE FUNCTION public.releve_apres_annulation(p_user uuid, p_platform text, p_depuis timestamptz)
+ RETURNS text
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_kind text := CASE WHEN p_platform = 'vinted' THEN 'dressing' ELSE 'annonces' END;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM vinted_sync_runs s WHERE s.user_id = p_user AND s.platform = p_platform AND s.kind = v_kind
+                    AND s.status = 'done' AND s.finished_at > now() - interval '30 days') THEN
+    RETURN 'sans_releve';
+  END IF;
+  IF EXISTS (SELECT 1 FROM vinted_sync_runs s WHERE s.user_id = p_user AND s.platform = p_platform AND s.kind = v_kind
+                AND s.status = 'done' AND s.finished_at > p_depuis
+                AND (CASE WHEN v_kind = 'annonces' THEN public.releve_preuve_absence(s.id)
+                          ELSE COALESCE(s.items_vus, 0) > 0 AND COALESCE(s.erreur, '') NOT LIKE '[incomplet]%'
+                               AND (s.total_entries IS NULL OR s.items_vus >= s.total_entries) END)) THEN
+    RETURN 'vu';
+  END IF;
+  RETURN 'attendu';
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.releve_apres_annulation(uuid, text, timestamptz) FROM PUBLIC, anon, authenticated;
+
+-- L'APPUI : « Remettre en vente » sur la carte « Vente annulée ». Remet en vente, d'un geste, l'article sur toutes les
+-- plateformes proposées (Vinted et les copies retirées à cause de cette vente), hors quota ; demande les relevés qui
+-- prouvent qu'il n'est pas déjà remis en ligne (sinon : rattaché, rien de republié).
+CREATE OR REPLACE FUNCTION public.remettre_en_vente_apres_annulation(p_inventaire bigint)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_user uuid := auth.uid();
+  i inventaire%ROWTYPE;
+  v_pf text[];
+  p text;
+BEGIN
+  IF v_user IS NULL THEN RAISE EXCEPTION 'session requise'; END IF;
+  SELECT * INTO i FROM inventaire WHERE id = p_inventaire AND user_id = v_user;
+  IF i.id IS NULL THEN RETURN jsonb_build_object('ok', false, 'motif', 'fiche_inconnue'); END IF;
+  IF i.fusionne_dans IS NOT NULL OR i.statut IS DISTINCT FROM 'stock' OR COALESCE(i.quantite, 1) <= 0 THEN
+    RETURN jsonb_build_object('ok', false, 'motif', 'plus_en_stock');
+  END IF;
+  WITH m AS (
+    UPDATE remises_en_vente r SET statut = 'a_faire', accepte_le = now(), prochain_essai = now(), motif = NULL, traite_le = NULL
+     WHERE r.user_id = v_user AND r.inventaire_id = p_inventaire AND r.statut = 'proposee'
+     RETURNING r.platform)
+  SELECT array_agg(DISTINCT platform) INTO v_pf FROM m;
+  IF v_pf IS NULL THEN RETURN jsonb_build_object('ok', false, 'motif', 'rien_a_remettre'); END IF;
+  INSERT INTO usage_logs (user_id, feature, metadata)
+  VALUES (v_user, 'remise_apres_annulation_acceptee', jsonb_build_object('inventaire_id', p_inventaire::text, 'plateformes', to_jsonb(v_pf)));
+  FOREACH p IN ARRAY v_pf LOOP
+    BEGIN
+      IF p = 'vinted' THEN PERFORM public.demander_sync_dressing(); ELSE PERFORM public.demander_sync_plateforme(p); END IF;
+    EXCEPTION WHEN OTHERS THEN NULL; -- un relevé refusé ne retient pas la remise : la garde du relevé attend, 3 jours au plus
+    END;
+  END LOOP;
+  RETURN jsonb_build_object('ok', true, 'plateformes', to_jsonb(v_pf));
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.remettre_en_vente_apres_annulation(bigint) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.remettre_en_vente_apres_annulation(bigint) TO authenticated;
+
+-- LA CARTE : les fiches du compte dont une vente annulée propose (ou fait) une remise en vente.
+CREATE OR REPLACE FUNCTION public.ventes_annulees_a_remettre()
+ RETURNS TABLE(inventaire_id bigint, titre text, photo text, plateformes text[], etat text, motif text, le timestamptz)
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT r.inventaire_id, max(i.titre), max(CASE WHEN jsonb_typeof(i.photos) = 'array' THEN i.photos ->> 0 END),
+         array_agg(DISTINCT r.platform ORDER BY r.platform),
+         CASE WHEN bool_or(r.statut = 'proposee') THEN 'proposee'
+              WHEN bool_or(r.statut = 'a_faire') THEN 'en_cours'
+              WHEN bool_or(r.statut = 'abandonnee' AND r.motif = 'deja_en_vente') THEN 'deja_en_vente'
+              WHEN bool_and(r.statut = 'faite') THEN 'faite' ELSE 'abandonnee' END,
+         max(r.motif), max(COALESCE(r.traite_le, r.accepte_le, r.cree_le))
+    FROM remises_en_vente r
+    JOIN cross_post_jobs j ON j.id = r.job_vendu AND COALESCE(j.platform_fields, '{}'::jsonb) ? 'vente_annulee_remise'
+    JOIN inventaire i ON i.id = r.inventaire_id AND i.user_id = r.user_id
+   WHERE r.user_id = auth.uid()
+     AND (r.statut IN ('proposee', 'a_faire') OR COALESCE(r.traite_le, r.cree_le) > now() - interval '24 hours')
+   GROUP BY r.inventaire_id
+$function$;
+REVOKE ALL ON FUNCTION public.ventes_annulees_a_remettre() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.ventes_annulees_a_remettre() TO authenticated;
 
 CREATE OR REPLACE FUNCTION public.vente_commande_annulee_vinted(p_vente bigint, p_statut text, p_commande text, p_commande_le timestamp with time zone DEFAULT NULL::timestamp with time zone)
  RETURNS jsonb
@@ -37,7 +134,7 @@ DECLARE
   v_rendue text := NULL; v_hist bigint; v_ms bigint; v_snap record; v_job text := NULL; v_q integer;
   v_vs text := NULL; v_recus jsonb := NULL;   -- (17/10) l'annonce de la fiche ; les reçus gardés dans la trace
   v_copie record; v_copies integer := 0;      -- (18/10) les copies retirées à cause de cette vente
-  v_remise_vinted boolean := false;           -- (24/10) l'annonce Vinted fermée, remise en vente par FillSell
+  v_propose_vinted boolean := false;          -- (24/10) l'annonce Vinted fermée : remise en vente PROPOSÉE
 BEGIN
   SELECT * INTO v FROM ventes WHERE id = p_vente;
   IF NOT FOUND THEN RETURN jsonb_build_object('action', 'introuvable'); END IF;
@@ -126,10 +223,13 @@ BEGIN
           UPDATE cross_post_jobs SET platform_fields = coalesce(platform_fields, '{}'::jsonb)
                  || jsonb_build_object('vente_annulee_remise', jsonb_build_object('vente', v.id, 'commande', p_commande, 'statut', p_statut, 'le', now()))
            WHERE id = v_copie.depot;
-          INSERT INTO remises_en_vente (user_id, inventaire_id, platform, job_vendu, prochain_essai)
-          VALUES (v.user_id, i.id, v_copie.platform, v_copie.depot, now() + interval '2 minutes')
+          -- (24/10 soir, décision de Nico) PROPOSÉE, jamais automatique : le vendeur a pu annuler parce que l'article
+          -- n'est plus disponible, ou le remettre en ligne lui-même. La carte « Vente annulée — Remettre en vente ? »
+          -- (remettre_en_vente_apres_annulation) la fait partir d'un appui.
+          INSERT INTO remises_en_vente (user_id, inventaire_id, platform, job_vendu, prochain_essai, statut)
+          VALUES (v.user_id, i.id, v_copie.platform, v_copie.depot, now(), 'proposee')
           ON CONFLICT (job_vendu) DO UPDATE
-            SET statut = 'a_faire', motif = NULL, prochain_essai = now() + interval '2 minutes', traite_le = NULL
+            SET statut = 'proposee', motif = NULL, prochain_essai = now(), traite_le = NULL, accepte_le = NULL
             WHERE remises_en_vente.statut <> 'faite';
           v_copies := v_copies + 1;
         END LOOP;
@@ -187,13 +287,12 @@ BEGIN
        WHERE id = j.id AND status = 'sold';
       v_job := 'en_ligne';
     ELSE
-      -- (24/10 soir, décision 2 de Nico) Vinted NE remet PAS l'annonce d'origine en ligne après une commande annulée
-      -- (30 commandes annulées sur 30 depuis le 16/10 : l'annonce reste « vendue » à tous les relevés suivants). La fiche
-      -- revenue au stock repart donc en vente TOUTE SEULE, hors quota, par la file remises_en_vente (ses gardes : déjà
-      -- en vente, annonce revue en ligne, poste absent, plateforme en pause). Fiche d'un exemplaire seulement.
+      -- (24/10 soir, décision de Nico) Vinted NE remet PAS l'annonce d'origine en ligne (30 commandes annulées sur 30
+      -- depuis le 16/10). Rien d'automatique : la remise en vente est PROPOSÉE (carte « Vente annulée — Remettre en
+      -- vente ? »), pour une fiche d'un exemplaire revenue au stock ; plusieurs exemplaires : inchangé.
       UPDATE cross_post_jobs SET status = 'cancelled',
              error = CASE WHEN v_rendue = 'fiche'
-                          THEN 'Commande Vinted annulée : l''article est revenu dans ton stock, FillSell le remet en vente sur Vinted.'
+                          THEN 'Commande Vinted annulée : l''article est revenu dans ton stock. Remets-le en vente d''un appui dans FillSell (carte « Vente annulée »).'
                           ELSE 'Commande Vinted annulée : l''article est revenu dans ton stock. L''annonce Vinted reste fermée : remets-le en vente quand tu veux.' END,
              platform_fields = coalesce(platform_fields, '{}'::jsonb)
                || jsonb_build_object('vente_annulee', jsonb_build_object('le', now(), 'commande', p_commande, 'statut', p_statut,
@@ -204,18 +303,136 @@ BEGIN
                        ELSE '{}'::jsonb END
        WHERE id = j.id AND status = 'sold';
       IF FOUND AND v_rendue = 'fiche' AND v.inventaire_id IS NOT NULL THEN
-        INSERT INTO remises_en_vente (user_id, inventaire_id, platform, job_vendu, prochain_essai)
-        VALUES (v.user_id, v.inventaire_id, 'vinted', j.id, now() + interval '2 minutes')
+        INSERT INTO remises_en_vente (user_id, inventaire_id, platform, job_vendu, prochain_essai, statut)
+        VALUES (v.user_id, v.inventaire_id, 'vinted', j.id, now(), 'proposee')
         ON CONFLICT (job_vendu) DO UPDATE
-          SET statut = 'a_faire', motif = NULL, prochain_essai = now() + interval '2 minutes', traite_le = NULL
+          SET statut = 'proposee', motif = NULL, prochain_essai = now(), traite_le = NULL, accepte_le = NULL
           WHERE remises_en_vente.statut <> 'faite';
-        v_remise_vinted := true;
+        v_propose_vinted := true;
       END IF;
       v_job := 'close';
     END IF;
   END IF;
   RETURN jsonb_build_object('action', 'retiree', 'fiche', v_rendue, 'copie_effacee', v_hist, 'job', v_job, 'vinted_status', v_vs,
-                            'copies_remises', v_copies, 'remise_vinted', v_remise_vinted);
+                            'copies_proposees', v_copies, 'remise_vinted_proposee', v_propose_vinted);
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.vente_commande_annulee_vinted(bigint, text, text, timestamptz) FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.vente_transaction_annulee_leboncoin(p_vente bigint, p_motif text DEFAULT 'transaction_annulee'::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v ventes%ROWTYPE; i inventaire%ROWTYPE; j cross_post_jobs%ROWTYPE;
+  v_rendue text := NULL; v_recus jsonb := NULL; v_q integer;
+  v_copie record; v_copies integer := 0; v_arretes integer := 0; v_en_cours integer := 0;
+BEGIN
+  SELECT * INTO v FROM ventes WHERE id = p_vente;
+  IF NOT FOUND THEN RETURN jsonb_build_object('action', 'introuvable'); END IF;
+  IF v.plateforme_code IS DISTINCT FROM 'leboncoin' OR v.annonce_id IS NULL THEN RETURN jsonb_build_object('action', 'hors_sujet'); END IF;
+  -- Mêmes interrupteur et liste d'attente que les commandes annulées (09/10, 17/10).
+  IF coalesce((SELECT value FROM coin_config WHERE key = 'ventes_annulees_retrait_pause'), 0) = 1 THEN
+    RETURN jsonb_build_object('action', 'en_pause');
+  END IF;
+  IF EXISTS (SELECT 1 FROM ventes_annulees_attente_go g WHERE g.vente_id = v.id AND g.decision IS NULL) THEN
+    RETURN jsonb_build_object('action', 'en_attente_go');
+  END IF;
+  -- La preuve : l'annonce FillSell close « vendue » sur CE numéro PAR la transaction Leboncoin.
+  SELECT * INTO j FROM cross_post_jobs c
+   WHERE c.user_id = v.user_id AND c.platform = 'leboncoin' AND c.status = 'sold'
+     AND c.action IN ('publish', 'republish') AND btrim(coalesce(c.platform_listing_id, '')) = v.annonce_id
+     AND c.platform_fields #>> '{sale_evidence,source}' = 'transaction_leboncoin'
+   ORDER BY c.sold_at DESC NULLS LAST LIMIT 1;
+  -- Une vente SAISIE (ou née d'un autre chemin) n'est jamais retirée : signalée une fois.
+  IF j.id IS NULL OR NOT EXISTS (SELECT 1 FROM ventes_operations o WHERE o.user_id = v.user_id
+                                   AND o.cle = 'annonce:leboncoin:' || v.annonce_id AND o.resultat -> 'ventes_ids' @> to_jsonb(ARRAY[v.id])) THEN
+    IF NOT EXISTS (SELECT 1 FROM usage_logs u WHERE u.user_id = v.user_id AND u.feature = 'vente_leboncoin_transaction'
+                    AND u.metadata ->> 'vente' = v.id::text AND u.metadata ->> 'issue' = 'annulation_vente_saisie_signalee') THEN
+      INSERT INTO usage_logs (user_id, feature, metadata) VALUES (v.user_id, 'vente_leboncoin_transaction',
+        jsonb_build_object('vente', v.id::text, 'annonce', v.annonce_id, 'titre', v.titre, 'prix_vente', v.prix_vente,
+          'issue', 'annulation_vente_saisie_signalee'));
+    END IF;
+    RETURN jsonb_build_object('action', 'signalee');
+  END IF;
+  IF v.inventaire_id IS NOT NULL THEN
+    PERFORM pg_advisory_xact_lock(hashtextextended(v.user_id::text || ':' || v.inventaire_id::text, 0));
+  END IF;
+  INSERT INTO ventes_supprimees (user_id, plateforme_code, commande_ref, annonce_id, titre, prix_vente, vendu_le, vente_id, supprimee_le, source, motif)
+  VALUES (v.user_id, 'leboncoin', v.commande_ref, v.annonce_id, v.titre, v.prix_vente, v.vendu_le, v.id, now(),
+          'releve_leboncoin', left(coalesce(p_motif, 'transaction_annulee'), 60));
+  SELECT jsonb_agg(to_jsonb(o)) INTO v_recus FROM ventes_operations o
+   WHERE o.user_id = v.user_id AND o.cle = 'annonce:leboncoin:' || v.annonce_id;
+  INSERT INTO usage_logs (user_id, feature, metadata) VALUES (v.user_id, 'vente_retiree',
+    jsonb_build_object('vente', to_jsonb(v), 'source', 'releve_leboncoin', 'motif', coalesce(p_motif, 'transaction_annulee'), 'recus', v_recus));
+  DELETE FROM ventes WHERE id = v.id;
+  DELETE FROM ventes_operations o WHERE o.user_id = v.user_id AND o.cle = 'annonce:leboncoin:' || v.annonce_id;
+
+  v_q := greatest(coalesce(v.quantite, 1), 1);
+  IF v.inventaire_id IS NOT NULL THEN
+    SELECT * INTO i FROM inventaire WHERE id = v.inventaire_id AND user_id = v.user_id FOR UPDATE;
+    IF i.id IS NOT NULL AND i.fusionne_dans IS NULL AND i.statut = 'vendu'
+       AND NOT EXISTS (SELECT 1 FROM ventes x WHERE x.user_id = v.user_id AND x.inventaire_id = i.id) THEN
+      UPDATE remises_en_vente SET statut = 'abandonnee', motif = 'transaction_annulee', traite_le = now()
+       WHERE user_id = v.user_id AND inventaire_id = i.id AND statut = 'a_faire';
+      UPDATE inventaire SET statut = 'stock', quantite = v_q WHERE id = i.id AND statut = 'vendu';
+      v_rendue := 'fiche';
+      -- Les retraits armés par CETTE vente (même instant, ± 2 min) :
+      --   · encore en file (pending / needs_user) → arrêtés : l'annonce est restée en ligne, rien à remettre ;
+      --   · déjà faits (deleted), dépôt clos → remise en vente par la file remises_en_vente (ses gardes) ;
+      --   · en cours chez l'extension (processing) → comptés, la remise suivra au prochain achat annulé lu.
+      FOR v_copie IN
+        SELECT d.id AS retrait, d.status, d.platform, p.id AS depot, p.status AS depot_statut
+          FROM cross_post_jobs d
+          LEFT JOIN cross_post_jobs p ON p.id = nullif(d.platform_fields #>> '{arme_par,depot}', '')::uuid
+         WHERE d.user_id = v.user_id AND d.inventaire_id = i.id AND d.action = 'delete'
+           AND d.platform <> 'leboncoin'
+           AND d.platform_fields #>> '{arme_par,chemin}' IN ('vente_article_serveur', 'vente_copie_prouvee')
+           AND abs(extract(epoch FROM (nullif(d.platform_fields #>> '{arme_par,le}', '')::timestamptz - v.created_at))) <= 120
+         ORDER BY d.platform
+      LOOP
+        IF v_copie.status IN ('pending', 'needs_user') THEN
+          UPDATE cross_post_jobs SET status = 'cancelled',
+                 error = 'Achat Leboncoin annulé : l''article est revenu dans ton stock, cette annonce reste en ligne.',
+                 platform_fields = coalesce(platform_fields, '{}'::jsonb)
+                   || jsonb_build_object('vente_annulee', jsonb_build_object('le', now(), 'vente', v.id, 'source', 'transaction_leboncoin'))
+           WHERE id = v_copie.retrait AND status IN ('pending', 'needs_user');
+          IF FOUND THEN v_arretes := v_arretes + 1; END IF;
+        ELSIF v_copie.status = 'deleted' AND v_copie.depot IS NOT NULL AND v_copie.depot_statut = 'cancelled' THEN
+          UPDATE cross_post_jobs SET platform_fields = coalesce(platform_fields, '{}'::jsonb)
+                 || jsonb_build_object('vente_annulee_remise', jsonb_build_object('vente', v.id, 'source', 'transaction_leboncoin', 'le', now()))
+           WHERE id = v_copie.depot;
+          -- (24/10 soir, décision de Nico) PROPOSÉE, jamais automatique : le vendeur a pu annuler parce que l'article
+          -- n'est plus disponible, ou le remettre en ligne lui-même. La carte « Vente annulée — Remettre en vente ? »
+          -- (remettre_en_vente_apres_annulation) la fait partir d'un appui.
+          INSERT INTO remises_en_vente (user_id, inventaire_id, platform, job_vendu, prochain_essai, statut)
+          VALUES (v.user_id, i.id, v_copie.platform, v_copie.depot, now(), 'proposee')
+          ON CONFLICT (job_vendu) DO UPDATE
+            SET statut = 'proposee', motif = NULL, prochain_essai = now(), traite_le = NULL, accepte_le = NULL
+            WHERE remises_en_vente.statut <> 'faite';
+          v_copies := v_copies + 1;
+        ELSIF v_copie.status = 'processing' THEN
+          v_en_cours := v_en_cours + 1;
+        END IF;
+      END LOOP;
+      INSERT INTO inventaire_journal (user_id, inventaire_id, champ, avant, apres, source, motif, detail) VALUES
+        (v.user_id, i.id, 'statut', i.statut, 'stock', 'releve_leboncoin', 'transaction_annulee',
+         jsonb_build_object('vente', v.id, 'annonce', v.annonce_id, 'retraits_arretes', v_arretes, 'copies_remises', v_copies,
+                            'retraits_en_cours', v_en_cours));
+    END IF;
+  END IF;
+  -- L'annonce Leboncoin a été relue EN LIGNE sans transaction : son job redevient « publié ».
+  UPDATE cross_post_jobs SET status = 'published', sold_at = NULL,
+         platform_fields = (coalesce(platform_fields, '{}'::jsonb)
+           - ARRAY['sale_signal', 'unavailable_since', 'unavailable_pending_since', 'detected_price', 'vente_operation_cle'])
+           || jsonb_build_object('vente_annulee', jsonb_build_object('le', now(), 'vente', v.id, 'annonce', 'en_ligne',
+                                 'source', 'transaction_leboncoin', 'preuve', platform_fields -> 'sale_evidence'))
+   WHERE id = j.id AND status = 'sold';
+  RETURN jsonb_build_object('action', 'retiree', 'fiche', v_rendue, 'job', j.id, 'retraits_arretes', v_arretes,
+                            'copies_remises', v_copies, 'retraits_en_cours', v_en_cours);
 END;
 $function$;
 
@@ -273,6 +490,16 @@ BEGIN
       v_motif := 'fiche_absente';
     ELSIF i.statut = 'vendu' OR COALESCE(i.quantite, 1) <= 0 THEN
       v_motif := 'plus_de_stock';
+    -- (24/10 soir, décision de Nico) Après une vente ANNULÉE, jamais de doublon : le vendeur a pu remettre l'article en
+    -- ligne lui-même. La remise attend un relevé COMPLET de la plateforme fait après l'annulation et au plus tôt
+    -- 15 min avant l'appui (demandé par l'appui) ; ce relevé rattache l'annonce remise en ligne, et « déjà en vente »
+    -- l'écarte plus bas. Un compte sans aucun relevé de cette plateforme garde les gardes d'avant. 3 jours au plus.
+    ELSIF v_annul AND public.releve_apres_annulation(r.user_id, r.platform,
+            GREATEST(COALESCE(NULLIF(j.platform_fields #>> '{vente_annulee_remise,le}', '')::timestamptz, r.cree_le),
+                     COALESCE(r.accepte_le, r.cree_le) - interval '15 minutes')) = 'attendu' THEN
+      v_motif := 'releve_attendu';
+      v_report := CASE WHEN COALESCE(r.accepte_le, r.cree_le) < now() - interval '3 days' THEN NULL
+                       ELSE now() + interval '20 minutes' END;
     ELSIF r.platform NOT IN ('vinted', 'beebs', 'opla', 'leboncoin', 'ebay', 'depop') THEN
       v_motif := 'plateforme_non_geree';
     ELSIF r.platform IN ('leboncoin', 'ebay')
@@ -344,8 +571,7 @@ BEGIN
         v_motif := 'poste_absent'; v_report := now() + interval '6 hours';
       END IF;
     END IF;
-    -- (24/10 soir, décision 2 de Nico) Une annonce retirée à cause d'une vente ANNULÉE revient HORS QUOTA : ce n'est pas
-    -- une publication voulue, c'est l'état d'avant la vente (Vinted : l'annonce d'origine reste fermée).
+    -- (24/10 soir) Une remise après une vente ANNULÉE est hors quota : c'est l'état d'avant la vente, pas une publication voulue.
     IF v_motif IS NULL AND NOT v_annul THEN
       v_place := remise_en_vente_place(r.user_id);
       IF (v_place->>'place') IS DISTINCT FROM 'true' THEN
@@ -443,8 +669,6 @@ BEGIN
   RETURN jsonb_build_object('place', true, 'palier', v_palier);
 END;
 $function$;
-
-REVOKE ALL ON FUNCTION public.vente_commande_annulee_vinted(bigint, text, text, timestamptz) FROM PUBLIC, anon, authenticated;
 
 COMMIT;
 -- ═══ FIN DU CORPS DE LA MIGRATION ═══════════════════════════════════════════

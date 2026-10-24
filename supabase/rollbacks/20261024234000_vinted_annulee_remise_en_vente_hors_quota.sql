@@ -1,7 +1,14 @@
--- INVERSE de 20261024234000_vinted_annulee_remise_en_vente_hors_quota : les trois fonctions telles que lues en prod le 24/10
--- (vente_commande_annulee_vinted 77f6c11baba521ae2942622fe4948013, remises_en_vente_tick 4381a934e7b2d75a71a2701821b43b8e, remise_en_vente_place abfe442025ba75898cf1d8f95ca4439d).
--- Les remises déjà créées restent (lignes remises_en_vente, marque vente_annulee_remise) : les clore à la main si besoin.
+-- INVERSE de 20261024234000_vinted_annulee_remise_en_vente_hors_quota (réécrite le 24/10 soir) : les quatre fonctions telles que lues en prod le 24/10, les trois
+-- nouvelles retirées. Les propositions « proposee » encore en attente sont closes (abandonnee / motif inverse) avant de
+-- remettre la contrainte d'avant ; la colonne accepte_le reste (inerte).
 BEGIN;
+
+UPDATE public.remises_en_vente SET statut = 'abandonnee', motif = 'inverse_20261024234000', traite_le = now() WHERE statut = 'proposee';
+ALTER TABLE public.remises_en_vente DROP CONSTRAINT IF EXISTS remises_en_vente_statut_check;
+ALTER TABLE public.remises_en_vente ADD CONSTRAINT remises_en_vente_statut_check
+  CHECK (statut = ANY (ARRAY['a_faire'::text, 'faite'::text, 'abandonnee'::text]));
+DROP FUNCTION IF EXISTS public.ventes_annulees_a_remettre();
+DROP FUNCTION IF EXISTS public.remettre_en_vente_apres_annulation(bigint);
 
 CREATE OR REPLACE FUNCTION public.vente_commande_annulee_vinted(p_vente bigint, p_statut text, p_commande text, p_commande_le timestamp with time zone DEFAULT NULL::timestamp with time zone)
  RETURNS jsonb
@@ -175,6 +182,119 @@ BEGIN
   END IF;
   RETURN jsonb_build_object('action', 'retiree', 'fiche', v_rendue, 'copie_effacee', v_hist, 'job', v_job, 'vinted_status', v_vs,
                             'copies_remises', v_copies);
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.vente_transaction_annulee_leboncoin(p_vente bigint, p_motif text DEFAULT 'transaction_annulee'::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v ventes%ROWTYPE; i inventaire%ROWTYPE; j cross_post_jobs%ROWTYPE;
+  v_rendue text := NULL; v_recus jsonb := NULL; v_q integer;
+  v_copie record; v_copies integer := 0; v_arretes integer := 0; v_en_cours integer := 0;
+BEGIN
+  SELECT * INTO v FROM ventes WHERE id = p_vente;
+  IF NOT FOUND THEN RETURN jsonb_build_object('action', 'introuvable'); END IF;
+  IF v.plateforme_code IS DISTINCT FROM 'leboncoin' OR v.annonce_id IS NULL THEN RETURN jsonb_build_object('action', 'hors_sujet'); END IF;
+  -- Mêmes interrupteur et liste d'attente que les commandes annulées (09/10, 17/10).
+  IF coalesce((SELECT value FROM coin_config WHERE key = 'ventes_annulees_retrait_pause'), 0) = 1 THEN
+    RETURN jsonb_build_object('action', 'en_pause');
+  END IF;
+  IF EXISTS (SELECT 1 FROM ventes_annulees_attente_go g WHERE g.vente_id = v.id AND g.decision IS NULL) THEN
+    RETURN jsonb_build_object('action', 'en_attente_go');
+  END IF;
+  -- La preuve : l'annonce FillSell close « vendue » sur CE numéro PAR la transaction Leboncoin.
+  SELECT * INTO j FROM cross_post_jobs c
+   WHERE c.user_id = v.user_id AND c.platform = 'leboncoin' AND c.status = 'sold'
+     AND c.action IN ('publish', 'republish') AND btrim(coalesce(c.platform_listing_id, '')) = v.annonce_id
+     AND c.platform_fields #>> '{sale_evidence,source}' = 'transaction_leboncoin'
+   ORDER BY c.sold_at DESC NULLS LAST LIMIT 1;
+  -- Une vente SAISIE (ou née d'un autre chemin) n'est jamais retirée : signalée une fois.
+  IF j.id IS NULL OR NOT EXISTS (SELECT 1 FROM ventes_operations o WHERE o.user_id = v.user_id
+                                   AND o.cle = 'annonce:leboncoin:' || v.annonce_id AND o.resultat -> 'ventes_ids' @> to_jsonb(ARRAY[v.id])) THEN
+    IF NOT EXISTS (SELECT 1 FROM usage_logs u WHERE u.user_id = v.user_id AND u.feature = 'vente_leboncoin_transaction'
+                    AND u.metadata ->> 'vente' = v.id::text AND u.metadata ->> 'issue' = 'annulation_vente_saisie_signalee') THEN
+      INSERT INTO usage_logs (user_id, feature, metadata) VALUES (v.user_id, 'vente_leboncoin_transaction',
+        jsonb_build_object('vente', v.id::text, 'annonce', v.annonce_id, 'titre', v.titre, 'prix_vente', v.prix_vente,
+          'issue', 'annulation_vente_saisie_signalee'));
+    END IF;
+    RETURN jsonb_build_object('action', 'signalee');
+  END IF;
+  IF v.inventaire_id IS NOT NULL THEN
+    PERFORM pg_advisory_xact_lock(hashtextextended(v.user_id::text || ':' || v.inventaire_id::text, 0));
+  END IF;
+  INSERT INTO ventes_supprimees (user_id, plateforme_code, commande_ref, annonce_id, titre, prix_vente, vendu_le, vente_id, supprimee_le, source, motif)
+  VALUES (v.user_id, 'leboncoin', v.commande_ref, v.annonce_id, v.titre, v.prix_vente, v.vendu_le, v.id, now(),
+          'releve_leboncoin', left(coalesce(p_motif, 'transaction_annulee'), 60));
+  SELECT jsonb_agg(to_jsonb(o)) INTO v_recus FROM ventes_operations o
+   WHERE o.user_id = v.user_id AND o.cle = 'annonce:leboncoin:' || v.annonce_id;
+  INSERT INTO usage_logs (user_id, feature, metadata) VALUES (v.user_id, 'vente_retiree',
+    jsonb_build_object('vente', to_jsonb(v), 'source', 'releve_leboncoin', 'motif', coalesce(p_motif, 'transaction_annulee'), 'recus', v_recus));
+  DELETE FROM ventes WHERE id = v.id;
+  DELETE FROM ventes_operations o WHERE o.user_id = v.user_id AND o.cle = 'annonce:leboncoin:' || v.annonce_id;
+
+  v_q := greatest(coalesce(v.quantite, 1), 1);
+  IF v.inventaire_id IS NOT NULL THEN
+    SELECT * INTO i FROM inventaire WHERE id = v.inventaire_id AND user_id = v.user_id FOR UPDATE;
+    IF i.id IS NOT NULL AND i.fusionne_dans IS NULL AND i.statut = 'vendu'
+       AND NOT EXISTS (SELECT 1 FROM ventes x WHERE x.user_id = v.user_id AND x.inventaire_id = i.id) THEN
+      UPDATE remises_en_vente SET statut = 'abandonnee', motif = 'transaction_annulee', traite_le = now()
+       WHERE user_id = v.user_id AND inventaire_id = i.id AND statut = 'a_faire';
+      UPDATE inventaire SET statut = 'stock', quantite = v_q WHERE id = i.id AND statut = 'vendu';
+      v_rendue := 'fiche';
+      -- Les retraits armés par CETTE vente (même instant, ± 2 min) :
+      --   · encore en file (pending / needs_user) → arrêtés : l'annonce est restée en ligne, rien à remettre ;
+      --   · déjà faits (deleted), dépôt clos → remise en vente par la file remises_en_vente (ses gardes) ;
+      --   · en cours chez l'extension (processing) → comptés, la remise suivra au prochain achat annulé lu.
+      FOR v_copie IN
+        SELECT d.id AS retrait, d.status, d.platform, p.id AS depot, p.status AS depot_statut
+          FROM cross_post_jobs d
+          LEFT JOIN cross_post_jobs p ON p.id = nullif(d.platform_fields #>> '{arme_par,depot}', '')::uuid
+         WHERE d.user_id = v.user_id AND d.inventaire_id = i.id AND d.action = 'delete'
+           AND d.platform <> 'leboncoin'
+           AND d.platform_fields #>> '{arme_par,chemin}' IN ('vente_article_serveur', 'vente_copie_prouvee')
+           AND abs(extract(epoch FROM (nullif(d.platform_fields #>> '{arme_par,le}', '')::timestamptz - v.created_at))) <= 120
+         ORDER BY d.platform
+      LOOP
+        IF v_copie.status IN ('pending', 'needs_user') THEN
+          UPDATE cross_post_jobs SET status = 'cancelled',
+                 error = 'Achat Leboncoin annulé : l''article est revenu dans ton stock, cette annonce reste en ligne.',
+                 platform_fields = coalesce(platform_fields, '{}'::jsonb)
+                   || jsonb_build_object('vente_annulee', jsonb_build_object('le', now(), 'vente', v.id, 'source', 'transaction_leboncoin'))
+           WHERE id = v_copie.retrait AND status IN ('pending', 'needs_user');
+          IF FOUND THEN v_arretes := v_arretes + 1; END IF;
+        ELSIF v_copie.status = 'deleted' AND v_copie.depot IS NOT NULL AND v_copie.depot_statut = 'cancelled' THEN
+          UPDATE cross_post_jobs SET platform_fields = coalesce(platform_fields, '{}'::jsonb)
+                 || jsonb_build_object('vente_annulee_remise', jsonb_build_object('vente', v.id, 'source', 'transaction_leboncoin', 'le', now()))
+           WHERE id = v_copie.depot;
+          INSERT INTO remises_en_vente (user_id, inventaire_id, platform, job_vendu, prochain_essai)
+          VALUES (v.user_id, i.id, v_copie.platform, v_copie.depot, now() + interval '2 minutes')
+          ON CONFLICT (job_vendu) DO UPDATE
+            SET statut = 'a_faire', motif = NULL, prochain_essai = now() + interval '2 minutes', traite_le = NULL
+            WHERE remises_en_vente.statut <> 'faite';
+          v_copies := v_copies + 1;
+        ELSIF v_copie.status = 'processing' THEN
+          v_en_cours := v_en_cours + 1;
+        END IF;
+      END LOOP;
+      INSERT INTO inventaire_journal (user_id, inventaire_id, champ, avant, apres, source, motif, detail) VALUES
+        (v.user_id, i.id, 'statut', i.statut, 'stock', 'releve_leboncoin', 'transaction_annulee',
+         jsonb_build_object('vente', v.id, 'annonce', v.annonce_id, 'retraits_arretes', v_arretes, 'copies_remises', v_copies,
+                            'retraits_en_cours', v_en_cours));
+    END IF;
+  END IF;
+  -- L'annonce Leboncoin a été relue EN LIGNE sans transaction : son job redevient « publié ».
+  UPDATE cross_post_jobs SET status = 'published', sold_at = NULL,
+         platform_fields = (coalesce(platform_fields, '{}'::jsonb)
+           - ARRAY['sale_signal', 'unavailable_since', 'unavailable_pending_since', 'detected_price', 'vente_operation_cle'])
+           || jsonb_build_object('vente_annulee', jsonb_build_object('le', now(), 'vente', v.id, 'annonce', 'en_ligne',
+                                 'source', 'transaction_leboncoin', 'preuve', platform_fields -> 'sale_evidence'))
+   WHERE id = j.id AND status = 'sold';
+  RETURN jsonb_build_object('action', 'retiree', 'fiche', v_rendue, 'job', j.id, 'retraits_arretes', v_arretes,
+                            'copies_remises', v_copies, 'retraits_en_cours', v_en_cours);
 END;
 $function$;
 
@@ -396,5 +516,7 @@ BEGIN
   RETURN jsonb_build_object('place', true, 'palier', v_palier);
 END;
 $function$;
+
+DROP FUNCTION IF EXISTS public.releve_apres_annulation(uuid, text, timestamptz);
 
 COMMIT;

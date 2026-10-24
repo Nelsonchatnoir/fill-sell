@@ -1,4 +1,4 @@
--- Essai à blanc de 20261024235000_bordereau_automatique_des_la_vente (24/10 soir) : ROLLBACK, rien n'est gardé.
+-- Essai à blanc de 20261024235000_bordereau_automatique_des_la_vente (24/10 soir, Vinted seulement) : ROLLBACK.
 --   npx supabase db query --linked -f scripts/essais/20261024235000_essai.sql
 -- Commandes FICTIVES du compte de Nico, créées et effacées dans la transaction.
 begin;
@@ -31,12 +31,12 @@ BEGIN
   v_depuis := to_timestamp(coalesce((SELECT k.value FROM coin_config k WHERE k.key = 'bordereaux_auto_depuis'), 0));
   -- Seulement les ventes vues APRÈS l'ouverture, et récentes : jamais l'arriéré d'un compte.
   IF c.cree_le < v_depuis OR c.cree_le < now() - interval '7 days' THEN RETURN 'avant_ouverture'; END IF;
-  -- Étiquette payée par l'acheteur seulement : jamais eBay (payante), ni Depop (pas de bordereau en France).
-  IF c.platform NOT IN ('vinted', 'leboncoin', 'beebs') THEN RETURN 'plateforme'; END IF;
+  -- (24/10 soir, décision 2 de Nico) Vinted seulement : étiquette payée par l'acheteur. Leboncoin, Beebs : bientôt ;
+  -- jamais eBay (étiquette payante), ni Depop (pas de bordereau en France).
+  IF c.platform <> 'vinted' THEN RETURN 'plateforme'; END IF;
   IF NOT public.messagerie_beta(c.user_id) THEN RETURN 'hors_beta'; END IF;
 
-  IF (c.platform = 'vinted' AND c.etat = 'a_expedier' AND c.bordereau = 'a_obtenir')
-     OR (c.platform IN ('leboncoin', 'beebs') AND c.etat = 'a_confirmer' AND c.bordereau = 'a_generer') THEN
+  IF c.etat = 'a_expedier' AND c.bordereau = 'a_obtenir' THEN
     v_action := 'generer';
   ELSIF c.etat = 'a_expedier' AND c.bordereau = 'pret' THEN
     v_action := 'recuperer';
@@ -138,15 +138,14 @@ insert into _r select 'a) Vinted neuve → générer, PDF, auto', count(*) = 1 a
   from bordereaux_demandes d join plateforme_commandes c on c.id = d.commande_id where c.commande_ref = 'ESSAI-A';
 -- b) Deuxième commande en cours pour la MÊME fiche → rien d'automatique, close « deux_commandes_meme_fiche ».
 insert into plateforme_commandes (user_id, platform, commande_ref, etat, bordereau, inventaire_id, titre)
-values ('f44b5917-bccc-4431-ba41-f40571a2ed18', 'leboncoin', 'ESSAI-B', 'a_confirmer', 'a_generer', 1790864707143000, 'essai b');
+values ('f44b5917-bccc-4431-ba41-f40571a2ed18', 'vinted', 'ESSAI-B', 'a_expedier', 'a_obtenir', 1790864707143000, 'essai b');
 insert into _r select 'b) double vente : aucune demande vivante, motif dit', count(*) = 1 and bool_and(d.statut = 'echec' and d.motif = 'deux_commandes_meme_fiche'),
   string_agg(d.statut || ' ' || coalesce(d.motif, '-'), ' ; ')
   from bordereaux_demandes d join plateforme_commandes c on c.id = d.commande_id where c.commande_ref = 'ESSAI-B';
--- c) Leboncoin seule → « générer » (confirmer la disponibilité), sans type.
+-- c) Leboncoin : jamais d'automatique pour l'instant (décision 2 de Nico : Vinted seulement).
 insert into plateforme_commandes (user_id, platform, commande_ref, etat, bordereau, inventaire_id, titre)
 values ('f44b5917-bccc-4431-ba41-f40571a2ed18', 'leboncoin', 'ESSAI-C', 'a_confirmer', 'a_generer', 1790624552110000, 'essai c');
-insert into _r select 'c) Leboncoin → générer, sans type', count(*) = 1 and bool_and(d.action = 'generer' and not (d.choix ? 'type_etiquette')),
-  string_agg(d.choix::text, ' ; ')
+insert into _r select 'c) Leboncoin : aucune demande (Vinted seulement)', count(*) = 0, count(*)::text
   from bordereaux_demandes d join plateforme_commandes c on c.id = d.commande_id where c.commande_ref = 'ESSAI-C';
 -- d) eBay : jamais (étiquette payante).
 insert into plateforme_commandes (user_id, platform, commande_ref, etat, bordereau, titre)
