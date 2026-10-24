@@ -462,3 +462,17 @@
   son lien et ses traces (lbc_depot, signaux de disparition…), archivés sous `relance_apres_depot_mort` ; « Relancer
   par copie » n'hérite plus de ces traces (`RELANCE_COPIE_CLES_RETIREES`). Sans cette preuve, rien ne change. Cas :
   Raiponce de louis-seller (relancée le 23/10, redéposée sous 3293872836, le job gardait 3290885485).
+
+## ⛔ 24/10 matin — une republication ne repart jamais avec un tour de taille lu comme taille française (décision 1 de Nico ; rapport `docs/enquetes/lot-2410/RAPPORT.md` § « 24/10 matin »)
+- Une republication recopie la taille de l'ancienne copie (`spend_coins_and_republish`) ; celles d'avant le 23/10
+  portaient le W ou la longueur d'un jean comme taille française (« W34 L34 (44) » → « 34 », un XS ; la grille Beebs
+  homme a « 34 »). `get-pending-jobs` (v277), Beebs et Leboncoin, publication et republication : pour un bas au W
+  CERTAIN (réponse de la personne « W34 | FR 44 » d'abord, sinon un seul W au titre ou à la description), un nombre
+  nu égal au W ou à la longueur est servi en taille française du W (table publiée par Vinted), avec sa trace
+  `taille_corrigee_par_le_w`. Tout le reste passe inchangé (autre nombre = choix de la personne, lettre, deux W,
+  « 32/34 », W hors table). La fiche et la base ne sont jamais réécrites. `_shared/taille-corrigee-par-le-w.js`,
+  selftest `taille-corrigee-par-le-w`.
+- Leboncoin homme : grille en lettres seulement et aucune table homme publiée (règle du 28/09) — la taille reste au
+  choix de la personne ; jamais « 34 ».
+- Avant de republier pour une taille : la relire EN LIGNE (24/10 : les « 4 tailles 34 » n'étaient que dans les
+  copies ; en ligne, une seule annonce sans taille méritait une republication).

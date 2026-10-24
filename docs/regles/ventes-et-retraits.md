@@ -310,3 +310,13 @@ Rapport : `docs/enquetes/session-sans-nico-1810/lot4-ventes-lot-multi-exemplaire
   rejoué le 23/10 à 22:54 (0.6.131 servie) — 4 ventes (fiches importées le jour même depuis des annonces déjà
   « Vendu » / « Achat en cours »), 0 mail. La règle n'agit qu'à une TRANSITION : une fiche créée APRÈS la lecture
   (import) ou une lecture de plus de 72 h attend ce script ou une décision de Nico (rapport, décisions).
+
+## ⛔ 24/10 matin — Leboncoin : la lecture fraîche d'une vente non enregistrée (décision 7 de Nico ; rapport `docs/enquetes/lot-2410/RAPPORT.md` § « 24/10 matin »)
+- La règle « Achat en cours / Vendu » joue aussi quand un relevé RELIT le même état (lecture < 1 h, plus récente que
+  la précédente, annonce vue en ligne dans les 24 h) et que le job Leboncoin publié de CE numéro, exactement, porte
+  une fiche au stock sans preuve de vente : une fiche importée après la lecture, ou une lecture ancienne reprise par
+  une extension récente, n'attend plus de script. Jamais sinon (aucune trace inutile).
+- La preuve porte `sale_evidence.rattrapage` (`lecture_fraiche_2410`, première lecture de cet état = la plus ancienne
+  trace de la règle pour cette annonce). **Aucune note — ni mail ni notification — pour une vente de plus de 24 h ou
+  d'âge inconnu** (`push_trg_job`) ; « Vendu » : jamais de note (règle du 22/10).
+- Migration `20261024150000` ; selftest `lbc-rattrapage-lecture-fraiche` ; essai `scripts/essais/20261024150000_essai.sql`.

@@ -322,3 +322,18 @@ trois relevés et deux reprises lancés tout seuls, aucun Vinted abouti, un faux
 - Quand : à la fin de chaque relevé d'annonces, pour le compte relevé et ses comptes reliés
   (`releve_clos_leve_alertes_disparues` → `questions_remplacees_par_compte_relie` → `remplacee_par_compte_relie`).
 - Migration `20261023150000`.
+
+## 24/10 matin — remise en ligne par le vendeur : fiches en double (jocabroc8 ; rapport `docs/enquetes/lot-2410/RAPPORT.md` § « 24/10 matin »)
+- ⛔ **La règle « remise en ligne Vinted » du 08/10 n'a jamais été branchée** (migration 20261008160000 jamais
+  appliquée, interrupteurs absents) : chaque remise en ligne faite par le vendeur (suppression puis recréation) fait
+  une fiche neuve ; l'annonce morte garde « vendue ? » ; les annonces vivantes d'un même objet se répartissent sur
+  plusieurs fiches (risque de vente double). Le fichier du 08/10 réécrit `rapprochement_v3_lire`,
+  `rapprochement_v3_appliquer` et `enregistrer_vente_atomique` à leur état du 08/10 : **jamais l'appliquer tel quel** —
+  reconstruire sur les corps EN PROD, essai à blanc, mesure du parc, feu vert nommé de Nico.
+- Même chose sur Leboncoin (l'estampe de jocabroc8 : trois fiches pour trois dépôts successifs du vendeur).
+- `vinted_remise_en_ligne` / `vinted_retraits_successifs` exigent l'ancienne annonce « closed » : une annonce SUPPRIMÉE
+  par le vendeur reste « active » + `disparu_le` — l'échange d'identité Vinted de `inventaire_fusionner_pour` ne joue
+  pas. Pour fusionner à la main, la fiche GARDÉE est celle qui porte l'identité Vinted vivante.
+- Une fusion décidée par Nico avec preuve photo se trace `utilisateur:photo_go_nico_<JJMM>` (30/09, 09/10, 24/10) ; les
+  annonces mortes sont closes avant : « Annonce remplacée par ta remise en ligne (nouvelle annonce …) — ce n'est pas
+  une vente » (`scripts/reparations/20261024_jocabroc8_fiches_en_double.sql`).

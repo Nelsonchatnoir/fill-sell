@@ -47,6 +47,7 @@ import { idAnnonceEbay, preuveIntentionRetraitRepublicationEbayMemorisee, preuve
 // Module PUR (aucun import, aucune API navigateur) : le rétro-test doit
 // appliquer EXACTEMENT la règle mot-objet de l'app, pas une approximation.
 import { detectObjectIconKeyword } from "../../../src/utils/shared.js";
+import { rayonTraditionnelImpose } from "../_shared/ebay-rayon-traditionnel.js";
 import { CLES_QUESTION_PLUS_EN_LIGNE, drapeauAvantLaFin, lireQuantiteEbay as lireQuantiteEbayPur, verdictAnnonceEbay } from "../_shared/ebay-etat-annonce.js";
 import {
   aspectsCategorie, assemblerAspects, choisirCondition, conditionsCategorie, descripteursCondition, descriptionEbay, emplacementMarchand, enrichirDepuisAttributs, marquerAspectFerme,
@@ -893,10 +894,18 @@ async function scannerLensSiNecessaire(admin: SupabaseClient, job: Job, pf: Plat
 // règle « famille souveraine pour les LIVRES seulement » de l'app
 // (resolveArticleIcon, cas Delavier), portée au serveur.
 const LIVRES_RE = /^livres/i;
+// (24/10, décision 6 de Nico) Un vêtement traditionnel ne part jamais en « Costumes » : la règle de l'app, jouée ici
+// avant toute suggestion d'eBay, pour toute résolution de rayon (_shared/ebay-rayon-traditionnel.js).
 async function resoudreCategorie(env: EbayEnv, token: string, job: Pick<Job, "title">, pf: PlatformFields, famille: string | null = null): Promise<Categorie> {
   const mappee = String(pf.ebayCategoryId ?? "").trim();
   const cheminMappe = Array.isArray(pf.ebayCategoryPath) ? (pf.ebayCategoryPath as string[]) : [];
   const titre = String(job.title ?? "").trim();
+  const traditionnel = rayonTraditionnelImpose(titre, pf as Record<string, unknown>);
+  if (traditionnel) {
+    console.log(`[ebay-api-worker] rayon : ${traditionnel.detail} → ${traditionnel.id} (au lieu de ${mappee || "rien"})`);
+    return { id: traditionnel.id, chemin: traditionnel.chemin, source: "vetement_traditionnel", detail: traditionnel.detail,
+      suggestions: { titre_interroge: titre, n: 0, racine_top: null, meme_racine_que_top: 0, mapping_dans_liste: false, liste: [] } };
+  }
   const suggestions = await suggererCategories(env, token, titre);
   const top = suggestions[0];
   const racineTop0 = top ? String(top.chemin[0] ?? "") : null;

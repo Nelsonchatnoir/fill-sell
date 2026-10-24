@@ -332,3 +332,18 @@ Rapport : `docs/enquetes/dix-points-1710/RAPPORT.md` (points 1, 4, 5, 7, 9).
 - **Depop : la présignature d'une photo se réessaie** (extension ≥ 0.6.132, `depopEnvoyerPhoto`) : un « Failed to
   fetch » (refus CORS intermittent, ≈ 5 % des photos) est repris 3 fois (1, 2,5 et 5 s) ; la création de l'annonce
   n'est jamais rejouée. Johan (tiblancdeshaut) : sa publication passera avec la 0.6.132.
+
+## 24/10 matin — eBay vêtement traditionnel au serveur ; Leboncoin pro (rapport `docs/enquetes/lot-2410/RAPPORT.md` § « 24/10 matin »)
+- ⛔ **Un vêtement traditionnel ne part jamais en « Costumes »**, quel que soit le chemin (copie d'avant le 23/10,
+  relance, remise en vente, catalogue Vinted, suggestion d'eBay) : `ebay-api-worker` (v95) joue la règle de l'app en
+  tête de `resoudreCategorie`, avant toute suggestion d'eBay ; jamais sur un rayon choisi par la personne
+  (`choix_humain`) ni sur un rayon déjà dans la branche 155240 (`_shared/ebay-rayon-traditionnel.js`, selftest
+  `ebay-rayon-traditionnel`).
+- **Corriger le rayon d'une annonce eBay en ligne** : eBay est hors republication (17/09) ; le circuit est le
+  rangement par la règle d'aujourd'hui (`reviser_annonce`, mode `rayon_regle`, décision de Nico du 11/10) : lecture
+  à blanc, sauvegarde `_backup_DDMM_ebay_*` (droit SELECT à service_role), écriture gardée par l'empreinte, relecture.
+  Appel par la base : `net.http_post` avec `public.cron_secret()` (jamais écrit). Une table créée juste avant l'appel :
+  `NOTIFY pgrst, 'reload schema'` d'abord, sinon « sauvegarde absente » (cache de l'API).
+- **Leboncoin pro** : un dépôt sur un compte pro sans le circuit pro (extension < 0.6.123 : pas de `compte_pro`)
+  n'est jamais mis en ligne par Leboncoin — recrutementgroupezk704, 14/10 : 5/5 avec la 0.6.110, puis 150 déposés et
+  0 refusé avec la 0.6.128. Le motif exact d'un refus de modération n'existe que dans le mail de Leboncoin au vendeur.

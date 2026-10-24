@@ -53,6 +53,7 @@ import { servirRetraitsEbayParNumero } from "../_shared/retrait-ebay-par-numero.
 import { decisionAdresseRepublicationLbc, rueDesReglagesMemeCommune, texteRefuseCommune, textesErreurJob } from "../_shared/lbc-voie-des-reglages.js";
 import { tailleBeebsDeLaFiche } from "../_shared/beebs-taille-de-la-fiche.js";
 import { tourDeTailleEnFrancais, brancheDeTaille } from "../_shared/taille-de-service.js";
+import { tailleCorrigeeParLeW } from "../_shared/taille-corrigee-par-le-w.js";
 import { ageBeebsDuReleve } from "../_shared/beebs-age-releve.js";
 import { attenteSessionEncoreEspacee } from "../_shared/attente-session.js";
 import { pausePageDepotLbc, decisionPausePageDepotLbc } from "../_shared/lbc-pause-page-depot.js";
@@ -12150,6 +12151,41 @@ serve(async (req) => {
           if (deCote.size) out = out.filter((j) => !deCote.has(String(j.id)));
         } catch (e) {
           console.warn(`[get-pending-jobs] tâches sans démarrage : ${String((e as Error)?.message ?? e)} — file servie telle quelle`);
+        }
+      }
+    }
+    // ══ UN TOUR DE TAILLE N'EST JAMAIS REPOSTÉ COMME UNE TAILLE FRANÇAISE (24/10, décision 1 de Nico) ══
+    // Une republication recopie la taille de l'ancienne copie ; celles d'avant le 23/10 portaient le W ou la
+    // longueur d'un jean en taille française (« W34 L34 (44) » → « 34 », un XS ; la grille Beebs homme a « 34 »).
+    // Pour un bas dont la fiche donne un W certain (réponse de la personne d'abord, sinon un seul W au titre ou à
+    // la description), ce nombre est servi en taille française du W (_shared/taille-corrigee-par-le-w.js).
+    // Copie servie seulement, jamais la fiche ni la base ; tout le reste passe inchangé.
+    {
+      const nombreNu = (v: unknown) => /^(?:fr\s*)?\d{2}$/i.test(String(v ?? "").trim());
+      const candidatsW = out.filter((j) => ["beebs", "leboncoin"].includes(String(j.platform))
+        && ["publish", "republish"].includes(String(j.action ?? "publish"))
+        && j.inventaire_id != null && nombreNu(((j.platform_fields ?? {}) as Record<string, unknown>).taille));
+      if (candidatsW.length) {
+        try {
+          const { data: invsW } = await lireParLots((lot) => userClient.from("inventaire")
+            .select("id, titre, description, attributs").in("id", lot), [...new Set(candidatsW.map((j) => Number(j.inventaire_id)))]);
+          const ficheW = new Map(((invsW ?? []) as Array<Record<string, unknown>>).map((i) => [Number(i.id), i]));
+          for (const j of candidatsW) {
+            const pfW = (j.platform_fields ?? {}) as Record<string, unknown>;
+            const inv = ficheW.get(Number(j.inventaire_id));
+            if (!inv) continue;
+            const chemin = j.platform === "beebs" ? pfW.beebsCategoryPath : pfW.lbcCategoryPath;
+            const corr = tailleCorrigeeParLeW({
+              tailleCopie: pfW.taille,
+              ficheTaille: ((inv.attributs ?? {}) as Record<string, unknown>).taille ?? null,
+              textes: [inv.titre, inv.description, j.title, j.description],
+              chemin: Array.isArray(chemin) ? (chemin as unknown[]).map(String) : null,
+            });
+            if (!corr) continue;
+            j.platform_fields = { ...pfW, taille: corr.valeur, taille_corrigee_par_le_w: { de: String(pfW.taille), vers: corr.valeur, motif: corr.motif, w: corr.w, source: corr.source, pose_par: "get-pending-jobs" } };
+          }
+        } catch (e) {
+          console.warn(`[get-pending-jobs] taille par le W : ${String((e as Error)?.message ?? e)} — copies servies telles quelles`);
         }
       }
     }
