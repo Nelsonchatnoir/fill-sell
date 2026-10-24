@@ -21334,9 +21334,34 @@ async function obtenirBordereauBeta(commande, token) {
     : commande.platform === "beebs"
       ? [{ orderId: commande.commande_ref, derniereMarche, fichierConnu: commande.fichierConnu ?? null }]
       : [{ purchaseId: commande.commande_ref, derniereMarche }];
-  const r = await executerDansOngletPlateforme(commande.platform, chemin, args);
+  let r = await executerDansOngletPlateforme(commande.platform, chemin, args);
+  if (!r?.ok && r?.lienFichier) r = await fichierParLeServeur(r, token);
   if (!r?.ok || !r?.base64) return r;
   return deposerCopieBordereau(commande, r, token);
+}
+
+// (24/10 soir, test réel du bordereau Vinted — Nico) Le fichier d'une étiquette Vinted est un lien S3 PRÉSIGNÉ
+// (digital_label.image_url) que ni la page ni l'extension ne peuvent lire (S3 n'autorise pas vinted.fr : CORS, et
+// l'extension n'a — volontairement — aucune permission pour cet hôte). Le serveur le lit (fonction bordereau-fichier,
+// avec la session du vendeur, hôte en liste fermée) et rend les octets ; la copie se dépose ensuite comme d'habitude.
+// ⛔ Le lien n'est JAMAIS écrit (motif, trace, journal) : il ouvre le bordereau, qui porte le nom de l'acheteur.
+async function fichierParLeServeur(r, token) {
+  const { lienFichier, ...reste } = r;
+  const dire = (quoi) => ({ ...reste, motif: `${String(reste.motif ?? "").slice(0, 84)} · serveur ${quoi}`.slice(0, 120) });
+  try {
+    const res = await fetch(`${FILLSELL_CONFIG.SUPABASE_URL}/functions/v1/bordereau-fichier`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, apikey: FILLSELL_CONFIG.SUPABASE_ANON_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ lien: lienFichier }),
+    });
+    const j = await res.json().catch(() => null);
+    if (res.ok && j?.ok === true && typeof j.base64 === "string" && j.base64.length >= 8) {
+      return { ...reste, ok: true, base64: j.base64, nom: j.type === "application/pdf" ? "bordereau.pdf" : "bordereau-code.png", par_le_serveur: true };
+    }
+    return dire(String(j?.motif ?? `http_${res.status}`).slice(0, 30));
+  } catch {
+    return dire("injoignable");
+  }
 }
 
 // La copie (5 jours au plus, effacée par bordereaux-purge) : dossier du compte

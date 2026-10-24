@@ -1629,9 +1629,14 @@
       if (j && typeof j === "object") {
         const b64 = [j?.file?.label, j?.label, j?.file?.content, j?.file?.data, j?.data?.label]
           .find((v) => typeof v === "string" && v.trim().length >= 4);
-        const lien = [j?.label_url, j?.file?.url, j?.file?.label_url, j?.url, j?.data?.label_url]
+        // (24/10 soir, réponse RÉELLE de la commande de Nico) digital_label rend {digital_label:{image_url (lien S3
+        // présigné du PDF), code, carrier{icon_url}, items[{image_url (photo de l'article !)}], label_icon, …}, code:0} ;
+        // pdf_label rend {code:0}. Seuls des chemins NOMMÉS sont lus : jamais une photo d'article ni une icône.
+        const lien = [j?.digital_label?.image_url, j?.digital_label?.label_url, j?.digital_label?.pdf_url,
+          j?.label_url, j?.file?.url, j?.file?.label_url, j?.url, j?.data?.label_url]
           .find((v) => typeof v === "string" && /^https:\/\//i.test(v));
-        const cles = [...Object.keys(j).slice(0, 8), ...(j.file && typeof j.file === "object" ? Object.keys(j.file).slice(0, 6).map((k) => `file.${k}`) : [])];
+        const sous = (k) => (j[k] && typeof j[k] === "object" && !Array.isArray(j[k]) ? Object.keys(j[k]).slice(0, 6).map((c) => `${k}.${c}`) : []);
+        const cles = [...Object.keys(j).slice(0, 8), ...sous("file"), ...sous("digital_label")];
         formes.push(`${route}:${r.status} json{${cles.join(",")}}`);
         if (b64) return { http: r.status, base64: b64.trim(), nom: j?.file?.filename ?? null };
         if (lien) return { http: r.status, lien };
@@ -1642,13 +1647,15 @@
       return { http: r.status };
     };
     // La session ne part qu'à la MÊME adresse que la page (un CDN ou un tiers : sans, un lien signé n'en a pas besoin).
+    // (24/10 soir) Un lien HORS de la page que le navigateur ne peut pas lire (S3 de Vinted : CORS) est rendu au
+    // background (`lienFichier`), qui le fait lire par le serveur (fonction bordereau-fichier) — jamais écrit.
     const suivreLien = async (res) => {
       if (!res?.lien || res.base64) return res;
       const ici = typeof location === "object" ? location?.origin ?? null : null;
       let memeOrigine = false;
       try { memeOrigine = ici != null && new URL(res.lien).origin === ici; } catch { return res; }
       const s = await lireFichier(res.lien, !memeOrigine);
-      return { ...s, http: res.http };
+      return { ...s, http: res.http, ...(s.base64 || memeOrigine ? {} : { lienHorsPage: res.lien }) };
     };
     const f = await suivreLien(await lireFichier(derniere));
     if (f.base64) return { ok: true, base64: f.base64, nom: f.nom ?? "bordereau.pdf", etapes, formes };
@@ -1657,7 +1664,9 @@
     // demandé UNE fois, jamais plus. Forme à prouver à la première vraie commande.
     const q = await suivreLien(await lireFichier(`/api/v2/transactions/${encodeURIComponent(p.transactionId)}/shipment/digital_label`));
     if (q.base64) return { ok: true, base64: q.base64, nom: q.nom ?? "bordereau-code.png", numerique: true, etapes, formes };
-    return { ok: false, etape: "fichier", motif: `http_${f.http}_puis_${q.http} · ${formes.join(" | ")}`.slice(0, 120), bot: q.http === 403 || q.http === 429, etapes, formes };
+    const lienFichier = f.lienHorsPage ?? q.lienHorsPage ?? null;
+    return { ok: false, etape: "fichier", motif: `http_${f.http}_puis_${q.http} · ${formes.join(" | ")}`.slice(0, 120), bot: q.http === 403 || q.http === 429, etapes, formes,
+      ...(lienFichier ? { lienFichier } : {}) };
   }
 
   // Leboncoin (code du site + vente terminée de Nico, 16/10) : la vente doit
