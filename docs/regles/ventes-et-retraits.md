@@ -320,3 +320,15 @@ Rapport : `docs/enquetes/session-sans-nico-1810/lot4-ventes-lot-multi-exemplaire
   trace de la règle pour cette annonce). **Aucune note — ni mail ni notification — pour une vente de plus de 24 h ou
   d'âge inconnu** (`push_trg_job`) ; « Vendu » : jamais de note (règle du 22/10).
 - Migration `20261024150000` ; selftest `lbc-rattrapage-lecture-fraiche` ; essai `scripts/essais/20261024150000_essai.sql`.
+
+## ⛔ 24/10 midi — un retrait Beebs « Vendu » est fait ; bilan Beebs détaillé (rapport `docs/enquetes/lot-2410/RAPPORT.md` § « 24/10 midi »)
+- Nos retraits Beebs choisissent « Vendu via une autre plateforme » (règle du 11/09) : Beebs passe l'annonce
+  « Vendu » (plus achetable) et la GARDE dans « Mes annonces ». La preuve d'absence n'arrivait jamais : « Suppression
+  envoyée… encore dans Mes annonces » à chaque passage, retraits « en retard » sans risque réel. Désormais (extension
+  0.6.133, `update-job-status` v146) : la fiche produit du numéro EXACT (ld+json Product, sku = le numéro) qui dit
+  `SoldOut` prouve le retrait (`preuve_retrait.source = 'page_produit'`) ; une annonce déjà vendue n'est jamais
+  re-supprimée. InStock, une page en cache, un autre produit de la page, une réponse ≠ 200 : jamais une preuve.
+- Les serveurs de Supabase ne lisent pas Beebs (403 anti-robot) : une preuve Beebs vient toujours d'un navigateur.
+- Le bilan Beebs (`usage_logs` « ventes_beebs_commandes ») garde le détail de chaque commande (numéro, statut, classe,
+  date ; par produit : verdict, job, fiche, titre) et l'extension du compte, en fantôme comme en écrit (migration
+  `20261024160000`). L'interrupteur reste à 0 jusqu'au feu vert de Nico sur la liste.

@@ -1,7 +1,8 @@
 -- INVERSE de 20261024170000 : les interrupteurs coupés puis retirés, les quatre corps tels qu'ils étaient EN PROD le
 -- 24/10, les trois fonctions nouvelles supprimées. Les fusions déjà faites se défont à part (inventaire_defusionner_pour,
--- par = 'utilisateur:photo_rapprochement_v3_remise'), les jobs Vinted clos se rouvrent par
--- scripts/reparations/20261024_remises_en_ligne_INVERSE.sql.
+-- par = 'utilisateur:photo_rapprochement_v3_remise'), les jobs Vinted clos se rouvrent et les questions closes
+-- « caduque » se rouvrent, compte par compte, par scripts/reparations/20261008_remises_en_ligne_vinted_INVERSE.sql
+-- (__USER__, __DEPUIS__ = début du rattrapage, 2026-10-24T09:53:45Z).
 BEGIN;
 SET LOCAL statement_timeout = '60s';
 INSERT INTO public.coin_config_journal (key, avant, apres, par)

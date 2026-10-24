@@ -337,3 +337,29 @@ trois relevés et deux reprises lancés tout seuls, aucun Vinted abouti, un faux
 - Une fusion décidée par Nico avec preuve photo se trace `utilisateur:photo_go_nico_<JJMM>` (30/09, 09/10, 24/10) ; les
   annonces mortes sont closes avant : « Annonce remplacée par ta remise en ligne (nouvelle annonce …) — ce n'est pas
   une vente » (`scripts/reparations/20261024_jocabroc8_fiches_en_double.sql`).
+
+## ⛔ 24/10 midi — la remise en ligne Vinted est BRANCHÉE (feu vert 1 de Nico ; rapport `docs/enquetes/lot-2410/RAPPORT.md` § « 24/10 midi »)
+- Migration `20261024170000` : la règle du 08/10 reportée sur les corps EN PROD du 24/10 (garde md5, chaque ligne des
+  trois fonctions centrales conservée — selftest `remise-en-ligne-reconstruite`). Le fichier `20261008160000` ne doit
+  JAMAIS être appliqué (sa garde md5 l'arrêterait de toute façon).
+- Gardes : même compte, même boutique Vinted, jamais deux annonces en ligne ensemble, ancienne absente d'un relevé
+  complet et jamais vue vendue, décisions de la personne définitives ; quantité / tâche en cours / fiche touchée /
+  deux exemplaires → la question ; **vente en cours** (commande, preuve de vente en attente, achat en cours Leboncoin)
+  → rien (ni fusion, ni question).
+- Interrupteurs armés le 24/10 à 11:53 : la passe normale juge les remises en ligne NOUVELLES ; la garde de vente
+  refuse une vente Vinted sans preuve sur une annonce remplacée.
+- Rattrapage du stock existant : SEULEMENT les fusions certaines (`scripts/reparations/20261024_remises_en_ligne_rattrapage.mjs`,
+  sauvegarde du compte avant) ; les cas douteux du stock (903 au 24/10) ne sont pas posés en masse. Un compte par
+  appel, par petits lots au premier plan (le 24/10, un lot de 26 a été arrêté par le système, mémoire du poste).
+- **La boutique doit être celle DU COMPTE** (`20261024180000`) : une boutique inscrite à un autre compte FillSell
+  (registre du 18/10, `boutique_vinted_autre_compte`, la fonction même de la garde de la base) → ni fusion, ni question
+  (`boutiques_differentes`). La base refusait déjà la fusion, mais une question pouvait être posée sur une boutique qui
+  n'est pas la sienne.
+- **Défaire un ÉCHANGE Vinted** (`20261024190000`, `inventaire_defusionner_pour`) : la fiche gardée lâche aussi son
+  annonce avant que chacune reprenne la sienne. Sinon la garde du 08/10 (`inventaire_vinted_suit_annonce_en_ligne`,
+  une fiche ne recule jamais sur une annonce plus ancienne) la retient et l'index unique bloque : du 08/10 au 24/10,
+  692 des 696 échanges ne pouvaient plus se défaire, ni par « Défaire la fusion » ni par script. Toute
+  réparation de masse : **essayer son inverse à blanc AVANT de l'appliquer**.
+- L'inverse d'un compte (`20261008_remises_en_ligne_vinted_INVERSE.sql`) défait les fusions, rouvre les jobs Vinted
+  clos et les questions que ces fusions ont closes « caduque » (lues dans `_backup_0810_remise_doublons`).
+  Selftest `remise-en-ligne-boutique-et-defusion`.

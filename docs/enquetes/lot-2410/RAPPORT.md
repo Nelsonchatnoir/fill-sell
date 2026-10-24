@@ -391,3 +391,123 @@ de tes annonces si besoin. Merci ! »
 - Suite complète relancée en 3 tranches avant le commit (10:40 → 10:48) : **393/393 verts** (390 + 3 nouveaux :
   `taille-corrigee-par-le-w`, `ebay-rayon-traditionnel`, `lbc-rattrapage-lecture-fraiche`). Commit + push, un seul.
 - **L'extension n'a pas changé** dans ce lot : pas de nouveau zip. La 0.6.132 reste celle à téléverser.
+
+## 24/10 midi — feux verts de Nico (remise en ligne Vinted, bilan Beebs) et clôture (retraits, dépôts Beebs, files)
+
+Heures de Paris. Tout vérifié et retesté par l'agent ; Nico n'a rien à faire, sauf téléverser la 0.6.133.
+**0 mail, 0 notification** causés (relus avant et après chaque geste).
+
+### Feu vert 1 — remise en ligne Vinted : fait
+- **Reconstruite sur la prod, jamais le fichier du 08/10** (migration `20261024170000`, appliquée à 11:38:49) : les
+  trois fonctions centrales (`rapprochement_v3_lire`, `rapprochement_v3_appliquer`, `enregistrer_vente_atomique`)
+  gardent CHAQUE ligne de leur corps en prod (garde md5), le delta du 08/10 est posé par ancres. Gardes de la base :
+  même compte, même boutique Vinted, jamais deux annonces en ligne ensemble, l'ancienne absente d'un relevé complet et
+  jamais vue vendue ; **ajout du 24/10 : une vente en cours** (commande, preuve de vente en attente, achat en cours
+  Leboncoin) sur l'une ou l'autre fiche → rien n'est fait. Selftest `remise-en-ligne-reconstruite` (20).
+- **Essai à blanc** (transaction annulée) sur une vraie décision du moteur (« Lot 2 livres reliés … Hades et
+  Persephone », photos identiques, titres 0,88) : fusion par le circuit de l'app, la fiche ancienne garde ses copies et
+  reprend l'annonce Vinted vivante, le job de l'annonce morte est clos « remplacée, pas une vente » ; 0 mail, 0
+  notification, 0 vente, 0 tâche créée.
+- **Mesure du parc** (le moteur réel, lecture seule) : 106 comptes candidats (4 387 fiches Vinted mortes en stock),
+  21 782 fiches en ligne jugées, **51 comptes touchés** : **26 comptes à fusions CERTAINES (672 chaînes + 222
+  maillons = 894 fiches mortes rattachées)** ; **903 cas douteux NON appliqués** (aucune question posée en masse :
+  ils restent tels quels). Les décisions des autres règles sont identiques avec et sans la règle, sur les 106 comptes.
+- **Interrupteurs armés à 11:53:32** (journalisés) : chaque NOUVELLE remise en ligne est jugée par la passe normale ;
+  une vente Vinted sans preuve sur une annonce remplacée est refusée (elle se déclare depuis la fiche en ligne).
+- **Rattrapage** (fusions certaines seulement, sauvegarde de chaque compte avant : `_backup_0810_remise_*`) : voir
+  « Résultat du rattrapage » ci-dessous. Inverse d'un compte : `scripts/reparations/20261008_remises_en_ligne_vinted_INVERSE.sql`
+  (fusions défaites une à une par le circuit de l'app, jobs rouverts, questions closes rouvertes ; essayé à blanc) ;
+  inverse de la règle : `supabase/rollbacks/20261024170000_…_INVERSE.sql`.
+
+### Résultat du rattrapage : arrêté à 11 comptes sur 26 ; deux défauts trouvés, règles corrigées
+- **Arrêté par le système vers 12:01** (mémoire du poste basse), **pas relancé** : 11 comptes faits sur 26. Un compte
+  s'applique d'un bloc, aucun n'est resté à moitié (le 11e, 7e1a0836, a reçu ses 9 fusions prévues juste avant l'arrêt).
+- Fait : **710 fiches mortes rattachées** (495 remises en ligne + 215 maillons) par le circuit de l'app ; **537 jobs
+  Vinted morts clos** « remplacée, pas une vente » ; **255 questions ouvertes devenues sans objet** closes « caduque »
+  (une de leurs fiches absorbée) ; **4 questions posées** (doute à l'écriture : deux exemplaires, fiche touchée — 3 chez
+  53efea05, 1 chez 0a24c951, close depuis) ; 15 paires sautées (déjà tranchées par la personne), 2 maillons sautés.
+  Sauvegarde de chaque compte avant (`_backup_0810_remise_*` : 10 453 fiches, 6 229 jobs). **0 mail, 0 push, 0 vente,
+  0 fusion défaite**, relus à 12:1x sur les 11 comptes. Échantillon de 10 fusions relu : titres identiques, même compte,
+  même boutique.
+- **Reste : 15 comptes**, environ 139 fusions certaines + 1 maillon (mesure de 11:19), à relancer sur le go de Nico, par
+  petits lots au premier plan (liste `scripts/reparations/20261024_remises_en_ligne_reste.txt`, simulation d'abord). D'ici
+  là rien ne change pour eux : la passe normale ne juge que les NOUVELLES remises en ligne, et la garde de vente (vente
+  Vinted sans preuve sur une annonce remplacée → refusée) vaut déjà pour tous.
+- **Défaut 1 (0a24c951) : la boutique d'un autre compte.** Ses fiches viennent de la boutique 137708392, inscrite au
+  registre du 18/10 au nom de 53efea05 (comptes non reliés). Ses 19 fusions certaines ont été **refusées par la base**
+  (garde « une boutique = un compte » : rien n'a changé), mais une question a été posée sur une boutique qui n'est pas
+  la sienne. **Règle corrigée pour tous** (migration `20261024180000`, appliquée à 12:18) : une boutique inscrite à un
+  autre compte → ni fusion, ni question. Essai annulé sur tout le parc (664 paires des questions ouvertes) : seules
+  changent les paires de 0a24c951 et de 844e41a1 (boutique 16040413 inscrite à 8a2eba68), toujours vers « rien » ; les 3
+  questions du propriétaire 53efea05 sont inchangées. La question posée est close « caduque » (script
+  `20261024_question_boutique_autre_compte.sql`, 12:20:15, sauvegarde + inverse). Parc : 3 comptes ont des fiches d'une
+  boutique inscrite ailleurs (0a24c951, 844e41a1, 2189c4d8).
+- **Défaut 2 (trouvé en essayant l'inverse) : défaire une fusion « remise en ligne » échouait, dans l'app aussi.**
+  « Défaire la fusion » butait sur l'index unique des annonces Vinted : la garde du 08/10 (une fiche ne recule jamais
+  sur une annonce plus ancienne) laissait l'annonce récente sur la fiche gardée. **696 fusions avec échange en base, 692
+  dans ce cas, aucune jamais défaite** (dont 201 d'avant le 24/10). **Règle corrigée** (migration `20261024190000`,
+  appliquée à 12:26, `inventaire_defusionner_pour`) : la fiche gardée lâche aussi son annonce avant l'échange retour.
+  Une ligne ajoutée, corps prod repris (garde md5), droits inchangés. Essai annulé : l'inverse complet sur 63b80b36
+  (3 fusions défaites, chaque fiche reprend son annonce, 3 jobs rouverts, 1 question rouverte) et une fusion d'avant
+  le 24/10 par la voie du bouton de l'app (ok) ; 0 job, mail, push ni vente créés.
+- L'inverse d'un compte rouvre désormais aussi les questions que ces fusions ont closes « caduque » (lues dans la
+  sauvegarde du compte). Selftest `remise-en-ligne-boutique-et-defusion` (18).
+
+### Feu vert 2 — détail des commandes Beebs en fantôme : fait
+- Migration `20261024160000` (11:11:48, essai à blanc d'abord) : le bilan garde, pour chaque commande lue, son numéro,
+  son statut, sa classe, sa date et, par produit, le verdict de la règle, le job, la fiche et le titre ; plus
+  l'extension du compte. Mêmes compteurs, mêmes gardes ; **l'interrupteur `ventes_beebs_commandes` reste à 0**.
+  Selftest `beebs-bilan-detail-commandes` (31).
+- **La liste demandée** : vide aujourd'hui — la 0.6.132 n'a jamais été installée (aucun poste ne la sert), et la
+  0.6.133 la remplace. Dès qu'une extension ≥ 0.6.132 lira de vraies commandes, la liste se lit commande par commande.
+
+### Clôture 1 — retraits en retard (URGENT) : cause trouvée et règle corrigée
+- **Beebs** (josephinecerni 34116769 ; recrutementgroupezk704 34083968) : nos retraits choisissent « Vendu via une
+  autre plateforme » ; Beebs ne supprime pas l'annonce, il la passe « Vendu » et la garde dans « Mes annonces ». Notre
+  preuve exigeait son absence de « Mes annonces » : jamais acquise, retrait refait à chaque passage. **Aucune double
+  vente possible** : pages publiques relues à 11:2x, badge « Vendu », aucun bouton d'achat, ld+json SoldOut (témoin :
+  l'annonce de Johan, InStock).
+  - Règle : extension **0.6.133** — la fiche produit du numéro EXACT qui dit SoldOut prouve le retrait, et une annonce
+    déjà vendue n'est jamais re-supprimée ; `update-job-status` v145 → **v146** (11:35, `verify_jwt` false avant et
+    après) accepte cette preuve. Les serveurs de Supabase ne peuvent pas lire Beebs (403 anti-robot) : la preuve vient
+    de l'extension.
+  - Les 2 retraits clos à 11:35:35 sur cette preuve (publication d'origine close comme le fait l'extension), sauvegarde
+    et inverse. Le 3e de recrutementgroupezk704 (Beebs 34083555) reste en file : l'annonce est encore « en
+    vérification » chez Beebs depuis le 14/10 (aucune page publique) ; s'il la met en ligne, le retrait la retire.
+- **eBay, lohanobert59** : son compte n'est PAS relié à l'API eBay (aucun compte relié) : l'API ne peut pas retirer
+  cette annonce ; seul son PC le peut, éteint depuis le 22/10 21:18. Rien à corriger.
+- **Vinted, choupette06** : PC éteint depuis le 21/10 22:05. Rien à corriger.
+- **antikcollections** : le Vinted du 23/10 est fait ; un retrait eBay du jour (10:55) est fait aussi.
+- **« À régler »** : vérifié avec la règle de l'app (`retraitsBloquesParConnexion`) sur les vrais jobs — chaque retrait
+  en retard y est (lohanobert59, choupette06, josephinecerni, recrutementgroupezk704).
+
+### Clôture 2 — dépôts Beebs « jamais mis en ligne » : refus de Beebs, rien relancé
+- Notre dépôt a réussi : Beebs a créé chaque produit (numéro prouvé dans « En cours de vérification » juste après le
+  clic, deux lectures). Puis l'annonce a quitté la vérification sans jamais être mise en ligne : aux deux relevés
+  complets suivants, l'onglet « En vérification » était lu et vide, l'annonce absente des annonces en ligne.
+- Aucune différence de notre côté entre refusés et acceptés : même catégorie, photos d'origine, descriptions longues,
+  prix ordinaires. xxewwer : 10 de ses 13 jeux vidéo jamais en ligne (3 en ligne) ; louis-seller : 2 sur 280.
+  C'est la vérification de Beebs ; son motif n'est visible que dans le compte Beebs du vendeur.
+- **Rien relancé** : rien n'est réparé chez nous, un redépôt identique serait refusé de même. Risque latent noté (pas
+  en cause ici) : le relevé ne compte une carte « en vérification » que si elle porte une photo.
+
+### Clôture 3 — files de republication : pas figées, elles repartent seules
+- **linda.sidhoum** (624 en file depuis le 13/10) : elle avance au plafond Premium de **50 par jour, quand son PC
+  tourne** (50, 46, 50, 26, 4, 29 les jours allumés ; 59 sur les 7 derniers jours). Le message « prouver que l'annonce
+  appartient à ta boutique » ne touche que **2 tâches**, d'une capture du 16/10 sans lecture de la page exacte : elles
+  repassent en fin de file et seront refaites ; sa dernière capture (23/10) porte la preuve (boutique 657403,
+  linda092). La garde de boutique (protège un retrait sur une autre boutique) reste telle quelle. Cadence intouchable.
+- **hu.anastasia** (164 depuis le 07/10) : PC éteint depuis le 21/10 10:45, jeton Vinted expiré, lectures de sa
+  boutique refusées par l'anti-robot (pause levée). Sa file repart dès que son PC et Vinted sont ouverts.
+
+### Extension
+- **À téléverser au Chrome Web Store** (seule dans son dossier) :
+  **`C:\Users\nicol\fill-and-sell\build\CWS-0.6.133-A-TELEVERSER\fillsell-extension-0.6.133-de7a311-cws.zip`**
+  (BUILD_ID `2026-10-24T09:54:32Z+de7a311`, 37 fichiers, les mêmes que la 0.6.132 ; contient toute la 0.6.132, jamais
+  téléversée). L'ancien dossier est rangé dans `build\CWS-PERIMES\CWS-0.6.132-JAMAIS-TELEVERSEE-remplacee-par-0.6.133\`.
+
+### Selftests
+- Suite complète en 3 tranches (11:42 → 11:50) : **395/395 verts** (nouveaux : `beebs-bilan-detail-commandes`,
+  `remise-en-ligne-reconstruite` ; complétés : `beebs-retrait-preuve`, `beebs-flux-mes-annonces`).
+- Après les deux règles du rattrapage, suite complète en 4 tranches (12:28 → 12:36) : **396/396 verts** (nouveau :
+  `remise-en-ligne-boutique-et-defusion`).
