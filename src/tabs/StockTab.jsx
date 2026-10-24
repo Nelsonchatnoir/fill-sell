@@ -125,6 +125,7 @@ import EcranSelection from '../stock/EcranSelection';
 import EcranARegler from '../stock/EcranARegler';
 import EcranRetraitsBloques from '../stock/EcranRetraitsBloques';
 import EcranPlein from '../stock/EcranPlein';
+import VentesAnnulees from '../components/VentesAnnulees';
 import EcranIdentiteLbc from '../stock/EcranIdentiteLbc';
 import EcranForfaitLbc from '../stock/EcranForfaitLbc';
 import EcranAlertesCompte from '../stock/EcranAlertesCompte';
@@ -5757,6 +5758,8 @@ const StockTab = memo(function StockTab({
   // (07/10) Les articles « à vérifier » (hors du stock affiché) : BlocSynchro
   // les montre dans « Annonces à vérifier », avec leur question.
   itemsAVerifier = [],
+  // (24/10 nuit, Nico) Les ventes annulées à remettre en vente : une ligne de « À régler » et son écran.
+  ventesAnnulees = [], venteAnnuleeEnCours = null, onRemettreVenteAnnulee = null,
   // Compte eBay vu par App.jsx : { voieApi, etat, lu, voieApiReelle, rafraichir }.
   // voieApiReelle = la VOIE (miroir du trigger cross_post_jobs_voie_ebay), la
   // SEULE chose sur laquelle se règlent les textes qui parlent d'extension.
@@ -8900,7 +8903,9 @@ const StockTab = memo(function StockTab({
   // jadis des bandeaux sur tous les onglets) : comptées comme elles s'affichent.
   const nbPlusEnLigne = plusEnLigne?.n ?? 0;
   const nbAlertesCompte = alertesDuCompte.length ? 1 : 0; // (18/10) session perdue / compte restreint : une ligne
-  const nbARegler = nbRetraitsBloques + nbIdentiteLbc + nbAttenteAction + nbForfaitLbc + nbVendeurDepop + questionsDejaVendu.length + nbAVerifier + nbSansPrix + brouillons.length + nbPlusEnLigne + nbAlertesCompte;
+  // (24/10 nuit, Nico) « Vente annulée — Remettre en vente ? » : dans « À régler », comptée tant qu'un appui est attendu.
+  const nbVentesAnnulees = (Array.isArray(ventesAnnulees) ? ventesAnnulees : []).filter((v) => v?.etat === 'proposee').length;
+  const nbARegler = nbRetraitsBloques + nbIdentiteLbc + nbAttenteAction + nbForfaitLbc + nbVendeurDepop + questionsDejaVendu.length + nbAVerifier + nbSansPrix + brouillons.length + nbPlusEnLigne + nbAlertesCompte + nbVentesAnnulees;
   // (18/10) Une ligne PAR boutique qui n'est plus surveillée, comptée en plus
   // (le compte ci-dessus et l'ordre des lignes d'avant ne bougent pas).
   const nbNonSurveillees = nonSurveillees.length;
@@ -8940,6 +8945,11 @@ const StockTab = memo(function StockTab({
     // « Me connecter ».
     { cle: 'retraits', n: nbRetraitsAutres, titre: ligneRetraits.titre, detail: ligneRetraits.detail,
       onOuvrir: () => setGesteOuvert('retraits') },
+    // (24/10 nuit, Nico) Une vente annulée : l'article est revenu au stock, un appui le remet en vente partout.
+    { cle: 'ventes_annulees', n: nbVentesAnnulees,
+      titre: lang === 'fr' ? (nbVentesAnnulees > 1 ? 'Ventes annulées — Remettre en vente ?' : 'Vente annulée — Remettre en vente ?') : (nbVentesAnnulees > 1 ? 'Sales cancelled — list again?' : 'Sale cancelled — list again?'),
+      detail: lang === 'fr' ? 'L’article est revenu dans ton stock. Un appui le remet en vente partout où il était, sans doublon.' : 'The item is back in your stock. One tap lists it again wherever it was, without duplicates.',
+      onOuvrir: () => setGesteOuvert('ventes_annulees') },
     { cle: 'lbc_identite', n: nbIdentiteLbc, titre: lang === 'fr' ? 'Leboncoin : ton nom et ton prénom' : 'Leboncoin: your first and last name',
       detail: lang === 'fr'
         ? `${identiteLbc.length} annonce${identiteLbc.length > 1 ? 's' : ''} Leboncoin en attente : complète ton compte une fois, elles partent toutes seules.`
@@ -11788,6 +11798,11 @@ const StockTab = memo(function StockTab({
         <EcranIdentiteLbc lang={lang} attentes={identiteLbc}
           titreDe={(j)=>fichesToutes.get(String(j.inventaire_id))?.titre ?? j.title}
           onRelance={()=>rafraichirApresSync()} onFermer={()=>setGesteOuvert('a_regler')}/>
+      )}
+      {gesteOuvert==='ventes_annulees'&&(
+        <EcranPlein lang={lang} titre={lang === 'fr' ? 'Ventes annulées' : 'Cancelled sales'} onFermer={()=>setGesteOuvert('a_regler')}>
+          <VentesAnnulees lang={lang} ventes={ventesAnnulees} enCours={venteAnnuleeEnCours} onRemettre={onRemettreVenteAnnulee}/>
+        </EcranPlein>
       )}
       {gesteOuvert==='compte_plateforme'&&(
         <EcranAlertesCompte lang={lang} alertes={alertesDuCompte} userId={user?.id}

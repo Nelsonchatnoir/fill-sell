@@ -4,9 +4,16 @@
 -- la bêta pour Vinted). Leboncoin, Beebs, Depop et eBay restent fermés : dans l'app, un message court et clair
 -- (« Bientôt disponible »), jamais un bouton qui échoue. Bordereau automatique : uniquement Vinted pour l'instant.
 -- Jamais d'étiquette payante générée. »
+-- (24/10 nuit, CHANGEMENT DE RÈGLE de Nico) « Uniquement pour les paliers Pro et Business, jamais Free ni Premium »
+-- — manuel et automatique ; pour Free et Premium : aucun bouton, aucune mention, aucune incitation (ni dans les
+-- modales). Cette migration porte aussi la révision des fonctions de 20261024233000 / 20261024235000 déjà appliquées
+-- (commandes_enregistrer, bordereau_auto_pour_commande) : le palier y est vérifié. Mesuré le 24/10 à 21:45 : les 4
+-- comptes bêta sont Pro ou Business, aucune demande de bordereau depuis 19:41 — aucun compte Free ou Premium n'en a eu ;
+-- aucun bordereau déjà généré n'est touché.
 -- CE QUI CHANGE :
---   · public.bordereaux_ouverts_pour(compte, plateforme) : LE seul endroit qui le dit. Vinted : tous les comptes
---     (coin_config.bordereaux_vinted_tous = 1 ; 0 = retour à la bêta seule, sans migration) ; toute autre
+--   · public.bordereaux_ouverts_pour(compte, plateforme) : LE seul endroit qui le dit. Vinted : paliers Pro et Business
+--     (palier_de), tous si coin_config.bordereaux_vinted_tous = 1 (0 = retour à la bêta Pro/Business seule, sans
+--     migration) ; toute autre
 --     plateforme : fermée pour tous (aucune commande Leboncoin, Beebs, Depop ni eBay n'a jamais été relevée, mesuré
 --     le 24/10 : les 4 comptes bêta n'ont que des commandes Vinted) ;
 --   · messagerie_releve_autorise : hors bêta, le relevé des COMMANDES Vinted seules, jamais les messages
@@ -42,7 +49,9 @@ AS $function$
     WHEN coalesce(p_user, auth.uid()) IS NULL THEN false
     -- Leboncoin, Beebs, Depop, eBay : fermés pour tous (« Bientôt disponible »).
     WHEN lower(coalesce(p_platform, '')) <> 'vinted' THEN false
-    -- Vinted : tous les comptes (interrupteur coin_config.bordereaux_vinted_tous), sinon la bêta comme avant.
+    -- (24/10 nuit, décision de Nico) Paliers Pro et Business SEULEMENT — jamais Free ni Premium, bêta comprise.
+    WHEN public.palier_de(coalesce(p_user, auth.uid())) NOT IN ('pro', 'business') THEN false
+    -- Vinted : tous les comptes Pro / Business (interrupteur coin_config.bordereaux_vinted_tous), sinon la bêta.
     WHEN coalesce((SELECT k.value FROM coin_config k WHERE k.key = 'bordereaux_vinted_tous'), 0) = 1 THEN true
     ELSE public.messagerie_beta(coalesce(p_user, auth.uid()))
   END;
@@ -229,7 +238,7 @@ DECLARE
   v_id uuid;
 BEGIN
   IF v_user IS NULL THEN RAISE EXCEPTION 'session requise'; END IF;
-  -- (24/10 soir, décision 2 de Nico) Fin de la bêta des bordereaux VINTED : ouverts à tous les comptes.
+  -- (24/10 soir, décision 2 de Nico) Fin de la bêta des bordereaux VINTED : ouverts aux paliers Pro et Business.
   IF NOT public.messagerie_beta(v_user) AND NOT public.bordereaux_ouverts_pour(v_user, 'vinted') THEN
     RETURN jsonb_build_object('refuse', 'beta');
   END IF;
@@ -238,10 +247,10 @@ BEGIN
 
   SELECT * INTO v_cmd FROM plateforme_commandes WHERE id = p_commande AND user_id = v_user;
   IF v_cmd.id IS NULL THEN RAISE EXCEPTION 'commande inconnue'; END IF;
-  -- (24/10 soir, décision 2 de Nico) Vinted seulement ; Leboncoin, Beebs, Depop, eBay : « Bientôt disponible »
-  -- (pour tous les comptes, bêta comprise : jamais un bouton qui échoue ; jamais une étiquette payante).
+  -- (24/10 soir, décision 2 de Nico) Vinted seulement, paliers Pro et Business (jamais Free ni Premium, bêta comprise) ;
+  -- Leboncoin, Beebs, Depop, eBay : « Bientôt disponible » (jamais un bouton qui échoue ; jamais une étiquette payante).
   IF NOT public.bordereaux_ouverts_pour(v_user, v_cmd.platform) THEN
-    RETURN jsonb_build_object('refuse', 'bientot');
+    RETURN jsonb_build_object('refuse', CASE WHEN v_cmd.platform = 'vinted' THEN 'palier' ELSE 'bientot' END);
   END IF;
 
   -- Une copie encore valable : on la rend, rien ne repart chez la plateforme.
@@ -300,7 +309,7 @@ DECLARE
   v_engagement text := btrim(coalesce(p_engagement, ''));
 BEGIN
   IF v_user IS NULL THEN RAISE EXCEPTION 'session requise'; END IF;
-  -- (24/10 soir, décision 2 de Nico) Fin de la bêta des bordereaux VINTED : ouverts à tous les comptes.
+  -- (24/10 soir, décision 2 de Nico) Fin de la bêta des bordereaux VINTED : ouverts aux paliers Pro et Business.
   IF NOT public.messagerie_beta(v_user) AND NOT public.bordereaux_ouverts_pour(v_user, 'vinted') THEN
     RETURN jsonb_build_object('refuse', 'beta');
   END IF;
@@ -311,10 +320,10 @@ BEGIN
 
   SELECT * INTO v_cmd FROM plateforme_commandes WHERE id = p_commande AND user_id = v_user;
   IF v_cmd.id IS NULL THEN RAISE EXCEPTION 'commande inconnue'; END IF;
-  -- (24/10 soir, décision 2 de Nico) Vinted seulement ; Leboncoin, Beebs, Depop, eBay : « Bientôt disponible »
-  -- (pour tous les comptes, bêta comprise : jamais un bouton qui échoue ; jamais une étiquette payante).
+  -- (24/10 soir, décision 2 de Nico) Vinted seulement, paliers Pro et Business (jamais Free ni Premium, bêta comprise) ;
+  -- Leboncoin, Beebs, Depop, eBay : « Bientôt disponible » (jamais un bouton qui échoue ; jamais une étiquette payante).
   IF NOT public.bordereaux_ouverts_pour(v_user, v_cmd.platform) THEN
-    RETURN jsonb_build_object('refuse', 'bientot');
+    RETURN jsonb_build_object('refuse', CASE WHEN v_cmd.platform = 'vinted' THEN 'palier' ELSE 'bientot' END);
   END IF;
 
   -- Une copie valable : rien à générer.
@@ -559,7 +568,9 @@ BEGIN
   -- (24/10 soir, décision 2 de Nico) Vinted seulement : étiquette payée par l'acheteur. Leboncoin, Beebs : bientôt ;
   -- jamais eBay (étiquette payante), ni Depop (pas de bordereau en France).
   IF c.platform <> 'vinted' THEN RETURN 'plateforme'; END IF;
-  -- (24/10 soir, décision 2 de Nico) Tous les comptes : manuels ET automatiques (fin de la bêta pour Vinted).
+  -- (24/10 nuit, décision de Nico) Paliers Pro et Business SEULEMENT, bêta comprise — jamais Free ni Premium ;
+  -- manuels ET automatiques (fin de la bêta pour Vinted).
+  IF public.palier_de(c.user_id) NOT IN ('pro', 'business') THEN RETURN 'palier'; END IF;
   IF NOT public.bordereaux_ouverts_pour(c.user_id, c.platform) THEN RETURN 'hors_beta'; END IF;
 
   IF c.etat = 'a_expedier' AND c.bordereau = 'a_obtenir' THEN
@@ -634,9 +645,10 @@ AS $function$
        AND mc.non_lus > 0 AND NOT mc.systeme
        AND (mc.vu_dans_app_le IS NULL OR mc.vu_dans_app_le < coalesce(mc.dernier_message_le, mc.cree_le))
   ), d AS (
-    -- (24/10 soir, décision 2 de Nico) Bordereaux VINTED ouverts à tous les comptes : l'écran « À expédier » existe
-    -- pour un compte hors bêta dès que son poste sait relever les commandes Vinted (extension 0.6.140 ou plus) —
-    -- jamais un écran vide promis à un poste qui ne le remplira pas.
+    -- (24/10 soir, décision 2 de Nico) Bordereaux VINTED ouverts aux paliers Pro et Business : l'écran « À expédier »
+    -- existe pour un tel compte hors bêta dès que son poste sait relever les commandes Vinted (extension 0.6.140 ou
+    -- plus) — jamais un écran vide promis à un poste qui ne le remplira pas. Free et Premium : rien (bêta comprise :
+    -- « bordereaux_vinted » faux, l'app ne montre aucun bouton ni aucune mention de bordereau).
     SELECT public.messagerie_beta(auth.uid()) AS beta,
            public.bordereaux_ouverts_pour(auth.uid(), 'vinted') AND (
              public.messagerie_beta(auth.uid())
@@ -654,10 +666,11 @@ AS $function$
     'a_expedier', (SELECT count(*) FROM plateforme_commandes pc
                     WHERE pc.user_id = auth.uid() AND pc.etat IN ('a_confirmer','a_expedier')),
     -- (16/10 nuit) Ce que l'écran doit dire : envoi ouvert, liste blanche ou
-    -- fermé ; génération des bordereaux ouverte ou non. Comptes bêta, et (24/10) comptes aux bordereaux Vinted ouverts.
+    -- fermé ; génération des bordereaux ouverte ou non. Comptes bêta (envoi) ; (24/10) comptes aux bordereaux Vinted
+    -- ouverts (génération) — Free et Premium : null.
     'envoi_mode', CASE WHEN d.beta
                        THEN coalesce((SELECT k.value FROM coin_config k WHERE k.key = 'messagerie_envoi_mode'), 1) END,
-    'generation', CASE WHEN d.beta OR d.bordereaux
+    'generation', CASE WHEN d.bordereaux
                        THEN coalesce((SELECT k.value FROM coin_config k WHERE k.key = 'bordereaux_generation_ouverte'), 0) = 1
                         AND coalesce((SELECT k.value FROM coin_config k WHERE k.key = 'bordereaux_ouverts'), 0) = 1 END)
   FROM d;

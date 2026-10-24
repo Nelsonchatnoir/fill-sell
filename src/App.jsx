@@ -172,7 +172,6 @@ import { trierParVente } from './utils/triVendus';
 // (11/10, Louis) Ventes détectées à confirmer, avec ou sans téléphone : la
 // décision « remettre en vente ou non » ne dépend plus de la notification.
 import VentesADecider, { ANCRE_VENTES_A_CONFIRMER } from './components/VentesADecider';
-import VentesAnnulees from './components/VentesAnnulees';
 import RevueAutresPlateformes from './components/RevueAutresPlateformes';
 import { lireFusionsActives, defaireFusion } from './utils/fusionArticles';
 import { apresNouvellesPhotos } from './utils/parcoursLens';
@@ -8486,7 +8485,7 @@ export default function App({ loginOnly = false }){
                 « À régler ». */}
         <VentesADecider lang={lang} devise={currency==='EUR'?'€':currency}
           ventes={ventesADecider} enCours={venteDecideeEnCours} onDecider={deciderVenteDetectee} />
-        <VentesAnnulees lang={lang} ventes={ventesAnnulees} enCours={venteAnnuleeEnCours} onRemettre={remettreApresAnnulation} />
+        {/* (24/10 nuit, Nico) La carte « Vente annulée — Remettre en vente ? » vit dans « À régler » du Stock (StockTab). */}
 
         {/* ── Disparus du dressing : UN bandeau de synthèse (2026-08-24) ──
             Jamais un bandeau par article : la sync marque disparu_le en bloc
@@ -8717,6 +8716,7 @@ export default function App({ loginOnly = false }){
             ouvrirReglagesRepublication={()=>{setReglagesEcran('republication');setShowSettings(true);}}
             quotas={quotas}
             items={items} itemsAVerifier={itemsAVerifier} user={user} voiceUsedToday={voiceUsedToday}
+            ventesAnnulees={ventesAnnulees} venteAnnuleeEnCours={venteAnnuleeEnCours} onRemettreVenteAnnulee={remettreApresAnnulation}
             extensionStatus={{ lastSeenAt: extensionLastSeenAt, build: extensionBuild, outdated: extensionOutdated }}
             extensionNeverSeen={extensionNeverSeen}
             ebayCompte={ebayCompte}
@@ -9536,7 +9536,7 @@ export default function App({ loginOnly = false }){
           reset={{step:resetStep,lancer:handleReset,annuler:()=>setResetStep(0)}}
           suppression={{step:deleteStep,setStep:setDeleteStep,enCours:deleteLoading,lancer:handleDeleteAccount}}
           deconnexion={()=>{handleLogout();setShowSettings(false);}}
-          messagerieBeta={messagerie.beta===true||messagerie.bordereaux===true}
+          messagerieBeta={messagerie.bordereaux===true}
         />
       )}
 

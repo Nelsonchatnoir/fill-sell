@@ -58,7 +58,7 @@ ok(/^\s+const alertesCompte = \(\(\) => \{/m.test(ST) && /useMemo\(\n\s+\(\) => 
 ok(/const relecture = demarrerRelecture\(lire, \{ intervalleMs: 10 \* 60_000 \}\);/.test(ST) && /select\('extension_sessions, platform_settings'\)/.test(ST) && !/setInterval\(lire/.test(ST.slice(ST.indexOf('ALERTES DE COMPTE : SESSION PERDUE'), ST.indexOf('const attenteBoutique = useMemo'))),
   '3b. lecture BORNÉE (10 min, onglet visible), jamais un setInterval');
 ok(/for \(const pf of PLATEFORMES_SESSION\) out\[pf\] = etatSession\(sessionsCompte, pf, publicationsOk\[pf\] \?\? null\);/.test(ST), '3c. le verdict de session est celui de utils/sessionsPlateformes, publications lues en mémoire');
-ok(/const nbAlertesCompte = alertesDuCompte\.length \? 1 : 0;/.test(ST) && /\+ nbPlusEnLigne \+ nbAlertesCompte;/.test(ST) && /\{ cle: 'compte_plateforme', n: nbAlertesCompte,/.test(ST)
+ok(/const nbAlertesCompte = alertesDuCompte\.length \? 1 : 0;/.test(ST) && /\+ nbPlusEnLigne \+ nbAlertesCompte(?: \+ nbVentesAnnulees)?;/.test(ST) && /\{ cle: 'compte_plateforme', n: nbAlertesCompte,/.test(ST)
   && /\.\.\.\(alertesDuCompte\.length \? ligneAlertes\(alertesDuCompte, lang\) : \{ titre: '', detail: '' \}\),/.test(ST), '3d. UNE ligne dans « À régler », comptée une fois');
 ok(/fusionnerReglages\(\[CLE_REGLAGE_ALERTES, 'masquees'\], null, revenues\)/.test(ST) && /\{gesteOuvert==='compte_plateforme'&&\(/.test(ST) && /<EcranAlertesCompte lang=\{lang\} alertes=\{alertesDuCompte\}/.test(ST),
   '3e. le masque tombe au retour de la session (fusionner, suppression seule) ; l\'écran est monté');

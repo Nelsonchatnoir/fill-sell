@@ -26,7 +26,10 @@ ok(/v\.etat === 'proposee' && \(/.test(carte), "le bouton n'existe que tant que 
 const app = lire("src/App.jsx");
 ok(/supabase\.rpc\('ventes_annulees_a_remettre'\)/.test(app) && /supabase\.rpc\('remettre_en_vente_apres_annulation',\{p_inventaire:v\.inventaire_id\}\)/.test(app),
   "l'app lit les propositions et l'appui passe par la base (aucun autre circuit)");
-ok(/<VentesAnnulees lang=\{lang\} ventes=\{ventesAnnulees\}/.test(app), "la carte est montée dans le Stock, à côté des ventes à confirmer");
+// (24/10 nuit, Nico) La carte vit dans « À régler » du Stock : une ligne comptée, son écran.
+const stock = lire("src/tabs/StockTab.jsx");
+ok(/<VentesAnnulees lang=\{lang\} ventes=\{ventesAnnulees\}/.test(stock) && stock.includes("cle: 'ventes_annulees', n: nbVentesAnnulees")
+  && stock.includes("+ nbAlertesCompte + nbVentesAnnulees;") && !/<VentesAnnulees /.test(app), "la carte est dans « À régler » (ligne comptée et écran), plus sur la page");
 
 // La base : rien d'automatique, l'appui seul fait partir la remise, hors quota, après un relevé.
 const mig = lire("supabase/migrations/20261024234000_vinted_annulee_remise_en_vente_hors_quota.sql");

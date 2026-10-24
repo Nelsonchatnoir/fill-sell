@@ -312,7 +312,7 @@ export function SectionAExpedier({ supabase, lang = 'fr', photosParInventaire = 
       )}
 
       {commandes.map((c, i) => {
-        const action = actionCommande(c, lang, reglages.generation, extensionVinted);
+        const action = actionCommande(c, lang, reglages.generation, extensionVinted, reglages.bordereaux === true);
         const delai = delaiEnvoi(c, lang);
         const demande = demandes[c.id] ?? null;
         const copie = copies[c.id] ?? null;

@@ -14,6 +14,9 @@ import { detectObjectIconKeyword, detectType } from "../src/utils/shared.js";
 import { familleJeuVideo, jeuVideoDeLArticle } from "../src/utils/jeuxVideo.js";
 import { tailleHomonymeBeebs, clePositionnelleBeebs, tailleDuJob, deduireOptionDuTexte, textesDeLAnnonce } from "../src/publication/moteur/listes.js";
 import { sansMarqueDeLaFiche } from "../src/publication/moteur/reponsesPartagees.js";
+import { bordereauxDuCompte } from "../src/messagerie/useMessagerieBeta.js";
+import { origineLbcApres } from "../src/utils/origineLbc.js";
+import { getLbcCategoryPath } from "../src/utils/lbcCategories.js";
 
 let n = 0;
 const ok = (c, m) => { assert.ok(c, m); n++; console.log(`  ✓ ${m}`); };
@@ -157,7 +160,12 @@ const MIG = lire("supabase/migrations/20261024235500_bordereaux_vinted_tous_les_
 ok(/CREATE OR REPLACE FUNCTION public\.bordereaux_ouverts_pour\(p_user uuid DEFAULT NULL::uuid, p_platform text DEFAULT 'vinted'::text\)/.test(MIG)
   && /WHEN lower\(coalesce\(p_platform, ''\)\) <> 'vinted' THEN false/.test(MIG) && /'bordereaux_vinted_tous'/.test(MIG),
   "migration : UNE aide dit qui a les bordereaux — Vinted pour tous (interrupteur), toute autre plateforme fermée");
-ok((MIG.match(/RETURN jsonb_build_object\('refuse', 'bientot'\);/g) ?? []).length === 2, "récupérer / générer hors Vinted : « bientot » (jamais un bouton qui échoue)");
+ok((MIG.match(/RETURN jsonb_build_object\('refuse', CASE WHEN v_cmd\.platform = 'vinted' THEN 'palier' ELSE 'bientot' END\);/g) ?? []).length === 2,
+  "récupérer / générer : hors Vinted « bientot », Vinted hors Pro/Business « palier » (jamais un bouton qui échoue)");
+// (24/10 nuit, changement de règle de Nico) Paliers Pro et Business SEULEMENT — jamais Free ni Premium, bêta comprise.
+ok(MIG.includes("WHEN public.palier_de(coalesce(p_user, auth.uid())) NOT IN ('pro', 'business') THEN false")
+  && MIG.includes("IF public.palier_de(c.user_id) NOT IN ('pro', 'business') THEN RETURN 'palier'; END IF;")
+  && MIG.includes("'generation', CASE WHEN d.bordereaux"), "migration : le palier Pro/Business, dans l'aide, l'automatique et les compteurs");
 ok(/RETURN jsonb_build_object\('autorise', true, 'commandes_seules', v_commandes_seules\);/.test(MIG), "hors bêta : le relevé des commandes Vinted SEULES");
 const INV = lire("supabase/rollbacks/20261024235500_bordereaux_vinted_tous_les_comptes_INVERSE.sql");
 ok(/DROP FUNCTION IF EXISTS public\.bordereaux_ouverts_pour\(uuid, text\);/.test(INV) && /DELETE FROM public\.coin_config WHERE key = 'bordereaux_vinted_tous';/.test(INV), "inverse prêt");
@@ -172,5 +180,68 @@ ok(HOOK.includes("data.bordereaux_vinted !== true") && lire("src/App.jsx").inclu
 const FIC = lire("supabase/functions/bordereau-fichier/index.ts");
 ok(FIC.includes('admin.rpc("bordereaux_ouverts_pour", { p_user: user.id, p_platform: "vinted" })') && FIC.includes('admin.rpc("messagerie_beta", { p_user: user.id })'),
   "bordereau-fichier : les bordereaux Vinted ouverts, et la bêta tant que la base n'a pas la migration");
+ok(bordereauxDuCompte({ beta: true, bordereaux_vinted: false }) === false && bordereauxDuCompte({ beta: false, bordereaux_vinted: true }) === true
+  && bordereauxDuCompte({ beta: true }) === true && bordereauxDuCompte(null) === false,
+  "app : les bordereaux suivent le serveur (Pro/Business) ; bêta Free → rien ; serveur d'avant → la bêta");
+ok(lire("src/messagerie/SectionAExpedier.jsx").includes("actionCommande(c, lang, reglages.generation, extensionVinted, reglages.bordereaux === true)")
+  && lire("src/App.jsx").includes("messagerieBeta={messagerie.bordereaux===true}"),
+  "app : aucun geste ni réglage de bordereau sans le droit du compte (fail-closed)");
+
+// ── 7. Leboncoin : une valeur de l'IA n'écrase jamais un pré-rempli précis (louis, « Jeux de société ») ────────────
+ok(JSON.stringify(origineLbcApres(undefined, "toy_type", "ia")) === '{"toy_type":"ia"}', "une passe IA marque la clé « ia »");
+ok(origineLbcApres({ toy_type: "ia" }, "toy_type", null) === undefined && JSON.stringify(origineLbcApres({ toy_type: "ia", a: "ia" }, "toy_type", null)) === '{"a":"ia"}',
+  "toute autre écriture (la personne, le texte, la mémoire) efface la marque");
+const LBCJS = lire("chrome-extension/content-scripts/leboncoin.js");
+ok(LBCJS.includes('if (prefilled && origineIa && !estValeurGenerique(prefilled) && !REJOUE_ANNONCE_D_ORIGINE && fieldName !== "marque") {')
+  && LBCJS.includes('origineIa: origineLbc[forKey] === "ia" });') && LBCJS.includes('origineLbc["dedie:lbcProduit"] === "ia"'),
+  "extension : le pré-rempli précis de Leboncoin est gardé face à une valeur de l'IA (canal générique et Produit)");
+ok((LPS.match(/setPlatformAspect\((?:gp|"leboncoin"), (?:a\.key|cle), (?:exacte|val), "ia"\)/g) ?? []).length === 3 && LPS.includes('marquerOrigineDedieLbc(a.dedicatedTarget, "ia")'),
+  "app : les trois écritures IA de Leboncoin sont marquées « ia »");
+
+// ── 8. Leboncoin : « Switch & Go » part en Jeux & Jouets (sos.cuisine) ────────────────────────────────────────────
+ok(JSON.stringify(getLbcCategoryPath(detectObjectIconKeyword(VTECH[0], desc))) === '["Loisirs","Jeux & Jouets"]', "la fiche VTech → Leboncoin « Loisirs > Jeux & Jouets »");
+
+// ── 9. L'annulation d'une commande Vinted, vue par le relevé des commandes (le short de Nico) ─────────────────────
+const MIG7 = lire("supabase/migrations/20261024235700_vinted_annulation_vue_par_le_releve_des_commandes.sql");
+ok(MIG7.includes("AFTER INSERT OR UPDATE OF etat ON public.plateforme_commandes") && MIG7.includes("FOR EACH ROW WHEN (NEW.etat = 'annulee' AND NEW.platform = 'vinted')")
+  && MIG7.includes("public.vente_commande_annulee_vinted(v_vente, 'annulee', p_commande, p_commande_le)") && MIG7.includes("pc.maj_le > now() - interval '48 hours'"),
+  "migration : commande Vinted vue annulée → vente retirée tout de suite (même fonction), rattrapage borné à 48 h");
+ok(!/titre/i.test(MIG7.split("CORPS DE LA MIGRATION")[1].replace(/--[^\n]*/g, "")), "jamais le titre pour reconnaître la vente");
+
+// ── 9 bis. La remise après annulation : contenu de la fiche ; remise en ligne directe détectée avant l'appui ─────
+const MIG8 = lire("supabase/migrations/20261024235800_remise_en_vente_contenu_de_la_fiche.sql");
+ok(MIG8.includes("coalesce(nullif(btrim(j.title), ''), i.titre), coalesce(nullif(btrim(j.description), ''), i.description),")
+  && MIG8.includes("coalesce(j.price, i.prix_vente),") && MIG8.includes("WHEN jsonb_typeof(i.photos) = 'array' THEN i.photos ELSE j.photos END,"),
+  "la remise prend titre, description, prix et photos de la FICHE quand le job source n'en a pas");
+ok(MIG8.includes("UPDATE remises_en_vente rv SET statut = 'abandonnee', motif = 'deja_en_vente', traite_le = now()")
+  && MIG8.includes("WHERE rv.statut = 'proposee'") && !/\btitre\b[^,\n]*=/.test(MIG8.split("UPDATE remises_en_vente rv")[1].split("FOR r IN")[0]),
+  "avant l'appui : remis en ligne directement sur la plateforme → « déjà en vente » (jamais par le titre)");
+const INV8 = lire("supabase/rollbacks/20261024235800_remise_en_vente_contenu_de_la_fiche_INVERSE.sql");
+ok(INV8.includes("CREATE OR REPLACE FUNCTION public.remises_en_vente_tick") && !INV8.includes("UPDATE remises_en_vente rv"), "inverse : le corps de prod d'avant");
+
+// ── 9 ter. La remise Vinted d'un article jamais publié depuis l'app : la catégorie de la dernière capture ─────────
+const MIG9 = lire("supabase/migrations/20261024235900_remise_vinted_categorie_de_la_capture.sql");
+const AIDE9 = MIG9.split("CREATE OR REPLACE FUNCTION public.remise_en_vente_champs_capture")[1]?.split("$function$;")[0] ?? "";
+ok(AIDE9.includes("WHEN p_platform IS DISTINCT FROM 'vinted' THEN '{}'::jsonb")
+  && AIDE9.includes("WHEN jsonb_typeof(p_pf->'categoryPath') = 'array' AND jsonb_array_length(p_pf->'categoryPath') > 0 THEN '{}'::jsonb")
+  && AIDE9.includes("FROM vinted_republish_captures c") && AIDE9.includes("WHERE c.user_id = p_user AND c.inventaire_id = p_inventaire")
+  && AIDE9.includes("ORDER BY c.captured_at DESC"),
+  "Vinted seulement, job vendu SANS catégorie : les champs de la dernière capture de CETTE fiche (jamais le titre)");
+ok(!/\btitre\b/i.test(AIDE9.replace(/--[^\n]*/g, "")), "l'aide ne lit jamais un titre");
+ok(MIG9.includes("REVOKE ALL ON FUNCTION public.remise_en_vente_champs_capture(uuid, bigint, text, jsonb) FROM PUBLIC, anon, authenticated;"),
+  "aide fermée aux clients");
+ok(MIG9.includes("public.remise_en_vente_champs_capture(r.user_id, r.inventaire_id, r.platform, j.platform_fields)\n                || remise_en_vente_champs(j.platform_fields) || jsonb_build_object('remise_en_vente',"),
+  "le job vendu garde la main (ses champs passent APRÈS ceux de la capture)");
+const INV9 = lire("supabase/rollbacks/20261024235900_remise_vinted_categorie_de_la_capture_INVERSE.sql");
+ok(INV9.includes("CREATE OR REPLACE FUNCTION public.remises_en_vente_tick") && !INV9.includes("remise_en_vente_champs_capture(r.user_id")
+  && INV9.includes("DROP FUNCTION IF EXISTS public.remise_en_vente_champs_capture(uuid, bigint, text, jsonb);"),
+  "inverse : le corps de prod d'avant, l'aide retirée");
+
+// ── 10. Messagerie : une conversation ouverte montre seule un message reçu ─────────────────────────────────────
+const ESP = lire("src/messagerie/EspaceMessagerie.jsx");
+ok(ESP.includes("demarrerRelecture(charger, { intervalleMs: 30_000, maxMs: 5 * 60_000, immediat: false })")
+  && ESP.includes("demarrerRelecture(charger, { intervalleMs: 60_000, maxMs: 5 * 60_000, immediat: false })")
+  && (ESP.match(/setTimeout\(\(\) => rel\.arreter\(\), 15 \* 60_000\)/g) ?? []).length === 2 && !/setInterval\s*\(/.test(ESP),
+  "conversation (30 s) et liste (60 s) relues seules, bornées à 15 min, jamais de setInterval");
 
 console.log(`lot-2410-soir-selftest : ${n} contrôles verts`);

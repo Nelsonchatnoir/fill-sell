@@ -142,6 +142,15 @@ function Conversation({ supabase, conv, lang, sources, onRetour, onVue, envoiMod
     return () => { clearTimeout(fin); rel.arreter(); };
   }, [attente, charger]);
 
+  // (24/10 nuit, Nico — conversation du short avec Ornella) Un message REÇU arrive par le relevé du poste (toutes les
+  // 10 min) : une conversation restée ouverte ne le montrait qu'à sa réouverture. Elle se relit seule, bornée (30 s,
+  // onglet visible seulement — utils/relectureBornee.js —, 15 min au plus).
+  useEffect(() => {
+    const rel = demarrerRelecture(charger, { intervalleMs: 30_000, maxMs: 5 * 60_000, immediat: false });
+    const fin = setTimeout(() => rel.arreter(), 15 * 60_000);
+    return () => { clearTimeout(fin); rel.arreter(); };
+  }, [charger]);
+
   useEffect(() => { finRef.current?.scrollIntoView?.({ block: 'end' }); }, [messages, reponses]);
 
   const zone = etatZoneReponse(conv, blanche, lang, envoiMode);
@@ -278,6 +287,14 @@ export default function EspaceMessagerie({ supabase, lang = 'fr', ecran, onAller
       if (vivant) await charger();
     })();
     return () => { vivant = false; };
+  }, [onglet, idConversation, charger]);
+  // (24/10 nuit) La liste ouverte se relit seule aussi (60 s, onglet visible, 15 min au plus) : un message reçu y
+  // remonte sans quitter l'écran.
+  useEffect(() => {
+    if (onglet !== 'messages' || idConversation != null) return undefined;
+    const rel = demarrerRelecture(charger, { intervalleMs: 60_000, maxMs: 5 * 60_000, immediat: false });
+    const fin = setTimeout(() => rel.arreter(), 15 * 60_000);
+    return () => { clearTimeout(fin); rel.arreter(); };
   }, [onglet, idConversation, charger]);
   // Ouverte directement sur une conversation (retour avant du navigateur) : la liste est lue une fois.
   useEffect(() => {

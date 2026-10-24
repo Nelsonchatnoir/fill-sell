@@ -175,6 +175,7 @@ import { chargerMemoire, memoireEnCache, abonnerMemoire, retenirReponses } from 
 // (18/10, lot 2) Les correspondances APPRISES sur les annonces acceptées du parc :
 // en « fantôme » l'app note ce qu'elle aurait posé ; « actif », elle le pose.
 import { chargerApprises, propositionApprise, ligneATrancher, catalogueVintedDeLaFiche, categorieApprise, noterDeduction, PLATEFORMES_APPRISES } from "../publication/moteur/apprises.js";
+import { origineLbcApres } from "../utils/origineLbc.js";
 
 // Palette identique à LensTab.jsx et à la navbar (thème clair 2026).
 const T = {
@@ -8125,6 +8126,8 @@ export default function ListingPreviewScreen({
       } else {
         pf[pfKey] = value;
       }
+      // (24/10 nuit) Leboncoin : une écriture du champ dédié efface sa marque « ia » (posée ensuite par l'IA seule).
+      if (gp === "leboncoin" && pf.lbcAspectsOrigine && typeof pf.lbcAspectsOrigine === "object") pf.lbcAspectsOrigine = origineLbcApres(pf.lbcAspectsOrigine, `dedie:${pfKey}`, null);
       return { ...prev, [gp]: { ...prev[gp], platform_fields: pf } };
     });
     noteSharedOverride(gp, pfKey); // clés hors SHARED_FIELD_KEYS (etat, format_colis…) : no-op
@@ -9685,8 +9688,9 @@ export default function ListingPreviewScreen({
             // chemin : setPlatformDedicatedField y poserait une trace d'édition
             // manuelle que les écritures IA ne doivent pas laisser.
             const versDedie = a.dedicatedTarget && !canalGeneriquePose(gp, a.key) && !SHARED_FIELD_KEYS.includes(a.dedicatedTarget);
-            if (versDedie) setPlatformDedicatedField(gp, a.dedicatedTarget, exacte);
-            else setPlatformAspect(gp, a.key, exacte);
+            // (24/10 nuit) Une valeur de l'IA : marquée « ia » (Leboncoin ne la laisse jamais écraser son pré-rempli précis).
+            if (versDedie) { setPlatformDedicatedField(gp, a.dedicatedTarget, exacte); if (gp === "leboncoin") marquerOrigineDedieLbc(a.dedicatedTarget, "ia"); }
+            else setPlatformAspect(gp, a.key, exacte, "ia");
           }
         } catch { /* micro-appel de secours : jamais bloquant */ }
         finally { texteEnVolPar.current.delete(gp); setIaGeneriqueEnVol(n => Math.max(0, n - 1)); }
@@ -9762,8 +9766,8 @@ export default function ListingPreviewScreen({
           const exacte = reponseDansLaListe(valeurs[a.label], a.allowedValues);
           if (!exacte) continue;
           const versDedie = a.dedicatedTarget && !canalGeneriquePose("leboncoin", a.key) && !SHARED_FIELD_KEYS.includes(a.dedicatedTarget);
-          if (versDedie) setPlatformDedicatedField("leboncoin", a.dedicatedTarget, exacte);
-          else setPlatformAspect("leboncoin", a.key, exacte);
+          if (versDedie) { setPlatformDedicatedField("leboncoin", a.dedicatedTarget, exacte); marquerOrigineDedieLbc(a.dedicatedTarget, "ia"); }
+          else setPlatformAspect("leboncoin", a.key, exacte, "ia");
           posees[a.label] = exacte;
         }
         if (paire) {
@@ -9774,8 +9778,8 @@ export default function ListingPreviewScreen({
             for (const [cle, val] of [[x.typeKey, x.type], [x.produitKey, x.produit]]) {
               const ligne = list.find((l) => l.key === cle);
               const versDedie = ligne?.dedicatedTarget && !canalGeneriquePose("leboncoin", cle) && !SHARED_FIELD_KEYS.includes(ligne.dedicatedTarget);
-              if (versDedie) setPlatformDedicatedField("leboncoin", ligne.dedicatedTarget, val);
-              else setPlatformAspect("leboncoin", cle, val);
+              if (versDedie) { setPlatformDedicatedField("leboncoin", ligne.dedicatedTarget, val); marquerOrigineDedieLbc(ligne.dedicatedTarget, "ia"); }
+              else setPlatformAspect("leboncoin", cle, val, "ia");
             }
             posees["Univers et produit"] = `${x.type} › ${x.produit}`;
           }
@@ -9997,7 +10001,10 @@ export default function ListingPreviewScreen({
   // Saisie manuelle d'un requis Vinted/LBC/Beebs — écrit dans le canal
   // générique de la copie plateforme (pf.vintedAspects / lbcAspects /
   // beebsAspects), consommé tel quel par le content script.
-  function setPlatformAspect(platform, key, value) {
+  // (24/10 nuit, décision 3 de Nico) `origine` « ia » : la valeur vient d'une passe IA — Leboncoin la garde dans
+  // platform_fields.lbcAspectsOrigine, et l'extension (0.6.141) n'écrase jamais avec elle un pré-rempli précis de
+  // Leboncoin. Toute autre écriture (la personne, le texte du vendeur, la mémoire) efface la marque : sa valeur fait foi.
+  function setPlatformAspect(platform, key, value, origine = null) {
     const pfKey = GENERIC_ASPECTS_PF_KEY[platform];
     if (!pfKey) return;
     setEdited(prev => prev[platform] ? {
@@ -10007,8 +10014,18 @@ export default function ListingPreviewScreen({
         platform_fields: {
           ...prev[platform].platform_fields,
           [pfKey]: { ...(prev[platform].platform_fields?.[pfKey] ?? {}), [key]: value },
+          ...(platform === "leboncoin" ? { lbcAspectsOrigine: origineLbcApres(prev[platform].platform_fields?.lbcAspectsOrigine, key, origine) } : {}),
         },
       },
+    } : prev);
+  }
+  // La marque « ia » d'un champ Leboncoin écrit par le canal DÉDIÉ (Produit → lbcProduit) : posée après l'écriture IA,
+  // effacée par toute autre écriture du champ dédié (setPlatformDedicatedField).
+  function marquerOrigineDedieLbc(pfKey, origine) {
+    setEdited(prev => prev.leboncoin ? {
+      ...prev,
+      leboncoin: { ...prev.leboncoin, platform_fields: { ...prev.leboncoin.platform_fields,
+        lbcAspectsOrigine: origineLbcApres(prev.leboncoin.platform_fields?.lbcAspectsOrigine, `dedie:${pfKey}`, origine) } },
     } : prev);
   }
 

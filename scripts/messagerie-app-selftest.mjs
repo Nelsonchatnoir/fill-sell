@@ -512,7 +512,10 @@ await cas("(17/10) les cartes : le geste FillSell en bouton ; la plateforme en l
   assert.ok(/function LienSecours\(/.test(section) && /data-lien-secours/.test(section), "le lien de dernier recours");
   assert.ok(/\{action\.type !== 'lien' && action\.url && <LienSecours /.test(section));
   assert.ok(!/<Bouton onClick=\{\(\) => ouvrirLien\(action\.url\)\} ariaLabel=\{fr \? `Voir sur/.test(section), "plus de bouton « Voir sur … » à côté du geste FillSell");
-  assert.ok(/actionCommande\(c, lang, reglages\.generation, extensionVinted\)/.test(section));
+  // (24/10 nuit, Nico) Bordereaux : Pro et Business seulement — l'écran passe le droit du compte (fail-closed).
+  assert.ok(/actionCommande\(c, lang, reglages\.generation, extensionVinted, reglages\.bordereaux === true\)/.test(section));
+  const sansDroit = actionCommande({ platform: "vinted", etat: "a_expedier", bordereau: "pret", commande_ref: "9" }, "fr", true, true, false);
+  assert.ok(sansDroit.type === "attente" && !/bordereau|étiquette|bientôt/i.test(`${sansDroit.aide} ${sansDroit.libelle}`), "Free / Premium : aucun bouton, aucune mention");
   // (18/10) L'extension sait-elle commander l'étiquette Vinted ? Lecture annexe : sa panne laisse « inconnu ».
   assert.ok(/setExtensionVinted\(p && !p\.error \? extensionCommandeVinted\(p\.data\?\.extension_build\) : null\)/.test(section));
   assert.equal(extensionCommandeVinted("2026-10-17T18:16:49Z+ced6cfd"), false, "0.6.124 : commanderait sans type");
@@ -530,7 +533,8 @@ await cas("(17/10) les cartes : le geste FillSell en bouton ; la plateforme en l
   assert.equal(echec.libelle, "Redemander sur Vinted");
   assert.ok(echec.aide.includes("Échec du bordereau d’envoi"));
   const hook = lire("src/messagerie/useMessagerieBeta.js");
-  assert.ok(/useState\(\{ pret: false, envoiMode: 1, generation: null \}\)/.test(hook), "pas encore lus : null, jamais « fermé »");
+  // (24/10 nuit) `bordereaux` : null tant que non lu — aucun geste de bordereau avant la réponse du serveur (fail-closed).
+  assert.ok(/useState\(\{ pret: false, envoiMode: 1, generation: null, bordereaux: null \}\)/.test(hook), "pas encore lus : null, jamais « fermé »");
   assert.ok(/generation: data\.generation === true \? true : data\.generation === false \? false : null/.test(hook));
 });
 

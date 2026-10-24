@@ -2897,6 +2897,9 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
   // _type, et le second n'était JAMAIS posé (dette signalée le 07/09).
   const lbcAspectsJob = fields.lbcAspects && typeof fields.lbcAspects === "object" ? fields.lbcAspects : {};
   const valeurAspect = (k) => String(lbcAspectsJob[k] ?? "").trim();
+  // (24/10 nuit) D'où vient chaque valeur (« ia » = devinée par l'IA de l'app) : un pré-rempli précis de Leboncoin
+  // n'est jamais écrasé par une valeur de l'IA (fillCriterionSafe, origineIa).
+  const origineLbc = fields.lbcAspectsOrigine && typeof fields.lbcAspectsOrigine === "object" ? fields.lbcAspectsOrigine : {};
   // Clés du canal générique dont le contrôle n'existait pas encore au premier
   // passage (2026-09-17 soir) — rejouées en seconde passe, avant le Continuer.
   const clesAbsentesPremierePasse = [];
@@ -2926,7 +2929,8 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
       );
     } else if (produitLabel) {
       cleEcriteParProduit = clePremierType;
-      const ok = await fillCriterionSafe("produit", PRODUIT_LABEL_SELECTOR, fields.lbcProduit, warnings, { skipIfPrefilled: true });
+      const ok = await fillCriterionSafe("produit", PRODUIT_LABEL_SELECTOR, fields.lbcProduit, warnings, { skipIfPrefilled: true,
+        origineIa: origineLbc[clePremierType] === "ia" || origineLbc["dedie:lbcProduit"] === "ia" });
       if (!ok) unfilledRequired.push("produit");
     } else {
       const note = `produit: critère introuvable sur cette catégorie — valeur "${fields.lbcProduit}" non appliquée`;
@@ -3070,7 +3074,8 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
       // (18/10, 0.6.128) Le libellé PRO en repli AUSSI ici : le contrôle vient
       // d'être vu par son libellé (« Poids du colis ») — sans ce repli, le
       // remplissage ne le retrouvait pas et rendait false sans un mot.
-      await fillCriterionSafe(forKey, `label[for="${forKey}"]`, val, warnings, { skipIfPrefilled: true, composants: true, fallbackValues: repliProduit, libelle: LBC_LIBELLES_PRO[forKey] ?? null });
+      await fillCriterionSafe(forKey, `label[for="${forKey}"]`, val, warnings, { skipIfPrefilled: true, composants: true, fallbackValues: repliProduit, libelle: LBC_LIBELLES_PRO[forKey] ?? null,
+        origineIa: origineLbc[forKey] === "ia" });
     }
   }
 
@@ -4288,7 +4293,7 @@ function prefilledMatchesTarget(prefilled, rawValue) {
 // sans marque se trouve moins bien : c'est de la vente perdue, tous les jours.
 // `composants` : rapprochement par composants EXACTS (« 38 - M » ⊂
 // « M / 38 / 10 », « Marine » ∈ « Marine / Turquoise »), cf. findOptionCascade.
-async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, { skipIfPrefilled = false, sizeField = false, fallbackValues = [], rechercheParFrappe = false, composants = false, libelle = null, attendreMs = 0, etatExact = false } = {}) {
+async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, { skipIfPrefilled = false, sizeField = false, fallbackValues = [], rechercheParFrappe = false, composants = false, libelle = null, attendreMs = 0, etatExact = false, origineIa = false } = {}) {
   try {
     // `etatExact` (2026-09-17 soir) : rawValue est une LISTE de candidats (du
     // plus sûr au moins sûr) et la sélection se fait par correspondance
@@ -4335,6 +4340,17 @@ async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, {
     // faisait disparaître le Produit « Autre » — seule option de l'Univers
     // « Autre » — et la recréation, annonce déjà retirée, butait sur une
     // question. On rejoue l'annonce à l'identique, comme sa localisation.
+    // ── (24/10 nuit, décision 3 de Nico — insert Zombicide de louis) UNE VALEUR DEVINÉE PAR L'IA N'ÉCRASE JAMAIS UN
+    // PRÉ-REMPLI PRÉCIS DE LEBONCOIN. Leboncoin avait déduit « Jeux de société » du titre ; l'IA de l'app avait posé
+    // « Loisirs créatifs » (platform_fields.lbcAspectsOrigine[clé] = « ia », posé par l'app à ses passes IA). Une valeur
+    // du vendeur (son texte, sa réponse, l'annonce d'origine rejouée) garde la main ; celle de l'IA s'efface devant la
+    // valeur précise de Leboncoin. Marque : règle à part (marquePreRemplieNonCitee). Pré-rempli générique : on pose.
+    if (prefilled && origineIa && !estValeurGenerique(prefilled) && !REJOUE_ANNONCE_D_ORIGINE && fieldName !== "marque") {
+      const note = `${fieldName}: pré-rempli LBC "${prefilled}" CONSERVÉ — notre valeur "${rawValue}" venait de l'IA, jamais mieux qu'une valeur précise posée par Leboncoin`;
+      console.log(`[leboncoin] ${note}`);
+      warnings.push(note);
+      return true;
+    }
     if (prefilled && estValeurGenerique(rawValue) && !estValeurGenerique(prefilled) && !REJOUE_ANNONCE_D_ORIGINE && !marquePreRemplieNonCitee) {
       const note = `${fieldName}: pré-rempli LBC "${prefilled}" CONSERVÉ — notre valeur "${rawValue}" est un repli générique, jamais mieux qu'une valeur précise posée par Leboncoin`;
       console.log(`[leboncoin] ${note}`);

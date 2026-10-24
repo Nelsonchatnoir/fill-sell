@@ -15,6 +15,12 @@ import { demarrerRelecture } from '../utils/relectureBornee';
 // elle-même (`beta`) reste à la bêta.
 const VIDE = Object.freeze({ beta: false, bordereaux: false, pret: false, nonLus: 0, conversationsNonLues: 0, parArticle: {}, aExpedier: 0 });
 
+/** (24/10 nuit, Nico) Les bordereaux du compte : « bordereaux_vinted » du serveur (Pro et Business) ; clé absente
+ *  (serveur d'avant 20261024235500) : la bêta, comme avant. Free et Premium : faux — aucun bouton, aucune mention. */
+export function bordereauxDuCompte(data) {
+  return typeof data?.bordereaux_vinted === 'boolean' ? data.bordereaux_vinted : data?.beta === true;
+}
+
 export function useMessagerieBeta(supabase, userId) {
   const [etat, setEtat] = useState(VIDE);
   const relecture = useRef(null);
@@ -31,7 +37,9 @@ export function useMessagerieBeta(supabase, userId) {
         return error ? false : undefined;
       }
       setEtat({
-        user: userId, beta: data.beta === true, bordereaux: data.beta === true || data.bordereaux_vinted === true, pret: true,
+        // (24/10 nuit, Nico) Bordereaux : paliers Pro et Business seulement (serveur : « bordereaux_vinted ») ; serveur
+        // d'avant 20261024235500 (clé absente) : la bêta, comme avant.
+        user: userId, beta: data.beta === true, bordereaux: bordereauxDuCompte(data), pret: true,
         nonLus: Number(data.non_lus) || 0,
         conversationsNonLues: Number(data.conversations_non_lues) || 0,
         parArticle: data.par_article && typeof data.par_article === 'object' ? data.par_article : {},
@@ -60,16 +68,17 @@ export function useMessagerieBeta(supabase, userId) {
  * refuse si c'est fermé : rien ne part) et ne renvoie jamais vers la plateforme.
  */
 export function useReglagesMessagerie(supabase) {
-  const [reglages, setReglages] = useState({ pret: false, envoiMode: 1, generation: null });
+  const [reglages, setReglages] = useState({ pret: false, envoiMode: 1, generation: null, bordereaux: null });
   useEffect(() => {
     if (!supabase) return undefined;
     let vivant = true;
     supabase.rpc('messagerie_compteurs').then(({ data, error }) => {
       if (!vivant) return;
-      if (error || !data || (data.beta !== true && data.bordereaux_vinted !== true)) { setReglages({ pret: true, envoiMode: 1, generation: null }); return; }
+      if (error || !data || (data.beta !== true && data.bordereaux_vinted !== true)) { setReglages({ pret: true, envoiMode: 1, generation: null, bordereaux: false }); return; }
       const mode = Number(data.envoi_mode);
-      setReglages({ pret: true, envoiMode: Number.isFinite(mode) ? mode : 1, generation: data.generation === true ? true : data.generation === false ? false : null });
-    }).catch(() => { if (vivant) setReglages({ pret: true, envoiMode: 1, generation: null }); });
+      setReglages({ pret: true, envoiMode: Number.isFinite(mode) ? mode : 1, generation: data.generation === true ? true : data.generation === false ? false : null,
+        bordereaux: bordereauxDuCompte(data) });
+    }).catch(() => { if (vivant) setReglages({ pret: true, envoiMode: 1, generation: null, bordereaux: false }); });
     return () => { vivant = false; };
   }, [supabase]);
   return reglages;

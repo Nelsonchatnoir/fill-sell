@@ -325,12 +325,15 @@ export function extensionCommandeVinted(extensionBuild) {
 /** (18/10) Les noms de types d'étiquette que FillSell connaît (Vinted les écrit en toutes lettres). */
 const TYPES_VINTED_CONNUS = Object.freeze(['printable', 'code', 'digital']);
 
-export function actionCommande(c, lang = 'fr', generation = null, extensionVinted = null) {
+export function actionCommande(c, lang = 'fr', generation = null, extensionVinted = null, bordereaux = true) {
   const fr = lang !== 'en';
   const pf = nomPlateforme(c?.platform);
   const url = lienCommande(c);
   const lien = (libelle, aide, ton = 'neutre') => ({ type: 'lien', libelle, aide, url, ton });
   const attente = (aide) => ({ type: 'attente', libelle: fr ? `Voir sur ${pf}` : `See on ${pf}`, aide, url, ton: 'neutre' });
+  // (24/10 nuit, Nico) Les bordereaux : paliers Pro et Business seulement. Free et Premium (bêta comprise) : la commande
+  // est suivie, sans aucun bouton ni aucune mention de bordereau.
+  if (bordereaux === false) return attente(fr ? `FillSell suit cette commande ${pf}.` : `FillSell is tracking this ${pf} order.`);
   // (24/10 soir, décision 2 de Nico) Le bordereau depuis FillSell : VINTED seulement, pour tous les comptes. Leboncoin,
   // Beebs, Depop, eBay : un message court et clair, jamais un bouton qui échoue (la base répond « bientot » à toute
   // demande hors Vinted) ; le lien discret vers la plateforme reste.
