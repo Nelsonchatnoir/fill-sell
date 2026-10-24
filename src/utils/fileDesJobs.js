@@ -13,7 +13,7 @@
 //   · en_cours — l'ordinateur (ou nos serveurs) y travaille maintenant ; une
 //     republication hors ligne en attente de sa remise en ligne en fait partie ;
 //   · en_file  — partira à son tour, DANS L'ORDRE RÉEL de départ ;
-//   · en_pause — retenu (rythme ou limite du jour, créneau, nouvel essai espacé,
+//   · en_pause — retenu (rythme de republication, créneau, nouvel essai espacé,
 //     « ton annonce est intacte », plateforme en pause de notre côté, ordinateur
 //     éteint, mise à jour de l'extension) ;
 //   · a_toi    — attend la personne (question, connexion, autorisation).
@@ -77,11 +77,9 @@ export function comparerDepart(a, b) {
   return tsDe(a.created_at) - tsDe(b.created_at);
 }
 
-// Les phrases, par motif. Jamais une heure, jamais une durée.
-// (17/10, Nico) Seule exception : la limite du jour dit « minuit (heure de
-// Paris) » — c'est la règle du plafond (le compteur du serveur repart au jour
-// de Paris), pas une estimation. Chaque job repart À SON TOUR : jamais
-// « celle-ci repart à minuit » (la 600e d'une file partira bien plus tard).
+// Les phrases, par motif. Jamais une heure, jamais une durée. Chaque job repart
+// À SON TOUR. (24/10, décision de Nico) Plus de limite par jour : « limite_jour »
+// n'arrive plus du serveur ; s'il arrivait encore, il dit la même pause.
 const TEXTE = {
   fr: {
     tour: "En file : elle partira à son tour",
@@ -91,7 +89,7 @@ const TEXTE = {
     retenue_serveur: "En pause, ton annonce est intacte : elle repart toute seule",
     gel: "En pause : elle repart toute seule",
     rythme: "En pause (rythme de republication) : elle repart toute seule",
-    limite_jour: "En pause (limite du jour atteinte) : la file repart à minuit (heure de Paris), celle-ci à son tour", // estimation-ok: règle du plafond (minuit, heure de Paris) — Nico, 17/10
+    limite_jour: "En pause (rythme de republication) : elle repart toute seule",
     creneau: "En pause (créneau de republication) : elle repart toute seule au prochain créneau",
     auto_en_pause: "Republication automatique en pause : elle repartira quand tu la relanceras. Ton annonce est intacte",
     file_en_pause: "Ta file est en pause : elle partira quand tu la reprendras",
@@ -126,7 +124,7 @@ const TEXTE = {
     retenue_serveur: "Paused, your listing is untouched: it resumes on its own",
     gel: "Paused: it resumes on its own",
     rythme: "Paused (repost pacing): it resumes on its own",
-    limite_jour: "Paused (daily limit reached): the queue resumes at midnight (Paris time), this one in turn", // estimation-ok: règle du plafond — Nico, 17/10
+    limite_jour: "Paused (repost pacing): it resumes on its own",
     creneau: "Paused (repost time slot): it resumes on its own at the next slot",
     auto_en_pause: "Automatic reposting is paused: it resumes when you restart it. Your listing is untouched",
     file_en_pause: "Your queue is paused: it goes out when you resume it",

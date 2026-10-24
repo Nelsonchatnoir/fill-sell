@@ -363,3 +363,7 @@ trois relevés et deux reprises lancés tout seuls, aucun Vinted abouti, un faux
 - L'inverse d'un compte (`20261008_remises_en_ligne_vinted_INVERSE.sql`) défait les fusions, rouvre les jobs Vinted
   clos et les questions que ces fusions ont closes « caduque » (lues dans `_backup_0810_remise_doublons`).
   Selftest `remise-en-ligne-boutique-et-defusion`.
+- Rattrapage du stock TERMINÉ le 24/10 (26 comptes). Le lanceur n'envoie que les fusions acceptées TELLES QUELLES
+  (motif NULL : aucune question créée à l'écriture) et sans aucune trace de vente sur leurs fiches (vente, note de
+  vente, commande, job vendu ou signal `sold`, achat en cours Leboncoin ; `unavailable` n'est pas une vente). Une
+  boutique Vinted non confirmée sur le compte : la base refuse la fusion (`[boutique_a_confirmer]`), rien ne change.

@@ -1,7 +1,7 @@
 {
   "name": "fillsell",
   "private": true,
-  "version": "2.9.111",
+  "version": "2.9.112",
   "type": "module",
   "scripts": {
     "postinstall": "node -e \"if(process.env.VERCEL){console.log('Vercel: patch-package saute (patches natifs seulement, et le cache de build casse leur application)')}else{require('child_process').execSync('patch-package',{stdio:'inherit'})}\"",
@@ -310,7 +310,7 @@
     "selftest:colis-vinted-retenu": "node scripts/colis-vinted-retenu-selftest.mjs",
     "selftest:pret-sans-rayon": "node --import ./scripts/loader-ext.mjs scripts/pret-sans-rayon-selftest.mjs",
     "selftest:colis-vinted-retenu-service": "node scripts/colis-vinted-retenu-service-selftest.mjs",
-    "selftest:republication-plafond-message": "node scripts/republication-plafond-message-selftest.mjs",
+    "selftest:plus-de-plafond-par-jour": "node scripts/plus-de-plafond-par-jour-selftest.mjs",
     "selftest:retraits-bloques-connexion": "node --import ./scripts/loader-ext.mjs scripts/retraits-bloques-connexion-selftest.mjs",
     "selftest:cloud-ecrans": "node --import ./scripts/loader-ext.mjs scripts/cloud-ecrans-selftest.mjs",
     "selftest:legal-langue": "node scripts/legal-langue-selftest.mjs",

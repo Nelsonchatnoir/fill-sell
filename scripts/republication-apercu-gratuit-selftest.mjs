@@ -40,7 +40,7 @@ try {
 
   const pfEtat = (palier, autorise) => ({
     platform: 'vinted', palier, autorise, ouverte: true, configure: false, actif: false, reglage: null,
-    plafond_palier: 170, annonces_en_ligne: 12, attendu: null, borne: 'eligibles',
+    annonces_en_ligne: 12, attendu: null, borne: 'eligibles',
     fenetre: { dans_creneau: false, prochain_debut: '2026-10-16T06:00:00Z', prochain_fin: '2026-10-16T08:00:00Z' },
   });
   const ext = { lastSeenAt: new Date().toISOString() };
@@ -79,7 +79,7 @@ try {
   verifier(!/Voir l’offre Pro/.test(texte(inconnu)), 'lecture en cours : aucun bandeau d’offre');
 
   // La liste des plateformes, gratuit.
-  const etatMulti = { palier: 'free', autorise: false, plafond_palier: 170, interrupteur_global: 1, actives: 0, plateformes: [pfEtat('free', false)] };
+  const etatMulti = { palier: 'free', autorise: false, interrupteur_global: 1, actives: 0, plateformes: [pfEtat('free', false)] };
   const liste = texte(renderToStaticMarkup(React.createElement(RP.RepublicationPlanifieePlateformes, {
     lang: 'fr', etatMulti, parPlateforme: { vinted: pfEtat('free', false) }, sessions: {}, interrupteur: 1, extensionStatus: ext, busy: false, erreur: null,
     palierApp: 'gratuit', lecture: 'ok', onOffres: () => {},

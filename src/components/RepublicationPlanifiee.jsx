@@ -127,7 +127,12 @@ const PRESETS = {
 };
 const AGE_MIN = 7;      // plancher anti-ban (09/08), jamais rebaissé
 const AGE_MAX = 365;
-const PLAFOND_ILLIMITE = 10000; // au-delà : Business, « sans maximum »
+// (24/10, décision de Nico) Plus de plafond par jour du palier : le nombre par jour est un choix FACULTATIF de la
+// personne (null = sans limite). Borne de saisie seulement, jamais un maximum de forfait.
+const NOMBRE_JOUR_MAX = 1000;
+const NOMBRE_JOUR_DEPART = 20;
+// Un nombre choisi lisible, sinon null (sans limite).
+const nombreChoisi = (v) => (v == null || v === '' || !Number.isFinite(Number(v)) ? null : Math.max(1, Math.round(Number(v))));
 
 // ── Formats ──────────────────────────────────────────────────────────────────
 // '08:00' → « 8h » / « 8h30 » (fr) · « 8:00 » (en). Jamais « Invalid ».
@@ -229,10 +234,11 @@ function texteMotifSaut(motif, fr) {
 }
 function texteMotifCompte(motif, fr) {
   const M = {
-    plafond_jour:            fr ? 'Plafond du jour atteint.' : 'Daily cap reached.',
-    plafond_auto_atteint:    fr ? 'Plafond du jour atteint.' : 'Daily cap reached.',
-    plafond_boutique:        fr ? 'Plafond du jour de cette boutique atteint.' : 'This shop’s daily cap reached.',
-    plafond_boutique_atteint: fr ? 'Plafond du jour de cette boutique atteint.' : 'This shop’s daily cap reached.',
+    // (24/10) Les nombres par jour sont ceux que la personne a CHOISIS ; plafond_auto_atteint vaut aussi le quota du mois.
+    plafond_jour:            fr ? 'Le nombre que tu as choisi pour aujourd’hui est atteint.' : 'The number you chose for today is reached.',
+    plafond_auto_atteint:    fr ? 'Le nombre que tu as choisi, ou ton quota du mois, est atteint.' : 'The number you chose, or your monthly quota, is reached.',
+    plafond_boutique:        fr ? 'Le nombre que tu as choisi pour cette boutique est atteint.' : 'The number you chose for this shop is reached.',
+    plafond_boutique_atteint: fr ? 'Le nombre que tu as choisi pour cette boutique est atteint.' : 'The number you chose for this shop is reached.',
     extension_required:      fr ? 'Aucune extension Chrome connue pour ce compte.' : 'No Chrome extension known for this account.',
     extension_stale:         fr ? 'Ton extension ne s’était pas manifestée depuis plus d’une semaine.' : 'Your extension had not checked in for over a week.',
     extension_trop_ancienne: fr ? 'Version de l’extension trop ancienne.' : 'Extension version too old.',
@@ -245,8 +251,9 @@ function texteMotifCompte(motif, fr) {
     parques_autre_boutique:  fr ? 'Des republications attendent une autre boutique (elles repartiront seules à la connexion).' : 'Some reposts are waiting for another shop (they resume on their own when you sign in).',
     prevues_atteintes:       fr ? 'Tout ce qui était prévu est parti.' : 'Everything planned went out.',
     // 18/09 : multiplateforme.
-    plafond_compte:          fr ? 'Plafond du jour de ton forfait atteint, toutes plateformes confondues.' : 'Your plan’s daily cap reached, all platforms together.',
-    plafond_compte_atteint:  fr ? 'Plafond du jour de ton forfait atteint, toutes plateformes confondues.' : 'Your plan’s daily cap reached, all platforms together.',
+    // (24/10) Ancienne règle du forfait, supprimée : ne se lit plus que dans l'historique.
+    plafond_compte:          fr ? 'Arrêt du jour, selon une ancienne règle supprimée depuis.' : 'Stopped for the day under a former rule, since removed.',
+    plafond_compte_atteint:  fr ? 'Arrêt du jour, selon une ancienne règle supprimée depuis.' : 'Stopped for the day under a former rule, since removed.',
     echecs_consecutifs:      fr ? 'Deux retraits de suite ont échoué : on s’est arrêté pour aujourd’hui.' : 'Two removals failed in a row: stopped for today.',
     plateforme_fermee:       fr ? 'Cette plateforme n’est pas ouverte à la republication automatique.' : 'This platform is not open to automatic reposting.',
     module_inactif:          fr ? 'Le module n’est pas actif sur cette plateforme.' : 'The module is not on for this platform.',
@@ -296,8 +303,8 @@ function texteManque(manque, pf, fr) {
   if (manque === 'sans_effet') {
     return {
       court: fr ? 'Ne ferait pas remonter' : 'Would not bump',
-      long: fr ? `Sur ${nom}, la place d'une annonce dans le fil dépend de sa date de CRÉATION. Notre republication modifie l'annonce sur place : elle ne change pas cette date, donc elle ne la fait pas remonter. Tant qu'un vrai retrait puis redépôt n'est pas livré et vérifié, l'activer consommerait ton plafond du jour sans rien changer — on préfère te le dire.`
-               : `On ${nom}, a listing's place in the feed depends on its CREATION date. Our repost edits the listing in place: it does not change that date, so it does not bump it. Until a real remove-then-repost is shipped and verified, turning this on would use up your daily cap for nothing — we would rather tell you.`,
+      long: fr ? `Sur ${nom}, la place d'une annonce dans le fil dépend de sa date de CRÉATION. Notre republication modifie l'annonce sur place : elle ne change pas cette date, donc elle ne la fait pas remonter. Tant qu'un vrai retrait puis redépôt n'est pas livré et vérifié, l'activer consommerait tes republications sans rien changer — on préfère te le dire.`
+               : `On ${nom}, a listing's place in the feed depends on its CREATION date. Our repost edits the listing in place: it does not change that date, so it does not bump it. Until a real remove-then-repost is shipped and verified, turning this on would use up your reposts for nothing — we would rather tell you.`,
     };
   }
   if (manque === 'fermee') {
@@ -635,7 +642,7 @@ function EcranPlein({ titre, sousTitre, onClose, droite = null, children, pied =
 // 0. LA LISTE DES PLATEFORMES — l'écran d'entrée du module (2026-09-18)
 // ═══════════════════════════════════════════════════════════════════════════
 // Le module est multiplateforme : Vinted, Leboncoin, Beebs, Opla ont CHACUNE
-// leur créneau, leurs jours, leur plafond, son ancienneté et son ordre. Un seul
+// leur créneau, leurs jours, leur nombre par jour, son ancienneté et son ordre. Un seul
 // écran de réglages ne pouvait plus les porter — et quatre onglets auraient
 // caché trois états sur quatre.
 //
@@ -652,9 +659,9 @@ function EcranPlein({ titre, sousTitre, onClose, droite = null, children, pied =
 // exactement celles-là, pas les autres. Chaque plateforme garde son propre
 // interrupteur, dans son écran.
 //
-// LE NOMBRE TOTAL est borné par l'ENVELOPPE DE COMPTE (le plafond du palier
-// vaut pour les quatre réunies) et vaut « — » dès qu'une plateforme rend un
-// nombre inconnu. Jamais une somme optimiste.
+// LE NOMBRE TOTAL est la somme des plateformes (24/10 : plus d'enveloppe de
+// compte) et vaut « — » dès qu'une plateforme rend un nombre inconnu. Jamais
+// une somme optimiste.
 function LignePlateforme({ pf, etat, session, fr, enService, extensionStatus, onOuvrir, lecture = 'ok' }) {
   const nom = NOMS[pf] ?? pf;
   const configure = etat?.configure === true;
@@ -677,7 +684,7 @@ function LignePlateforme({ pf, etat, session, fr, enService, extensionStatus, on
   // jamais un « — » muet qu'on prend pour des réglages perdus.
   const valeur = s.inconnu ? (lecture === 'echec' ? (fr ? 'illisible' : 'unreadable') : (fr ? 'lecture…' : 'reading…'))
     : actif
-      ? `${fmtCreneau(s.de, s.a, fr)} · ${s.r?.plafond_jour ?? '—'}${fr ? '/j' : '/d'}`
+      ? `${fmtCreneau(s.de, s.a, fr)}${nombreChoisi(s.r?.plafond_jour) != null ? ` · ${nombreChoisi(s.r.plafond_jour)}${fr ? '/j' : '/d'}` : ''}`
       : configure ? (fr ? 'En pause' : 'Paused') : (fr ? 'Non réglée' : 'Not set');
 
   // La ligne du dessous : l'état, en une phrase courte, la plus utile.
@@ -733,7 +740,6 @@ export function RepublicationPlanifieePlateformes({
   const palierNom = droit.nomPalier;
   const autorise = droit.autorise === true;
   const refuse = droit.refuse;
-  const enveloppe = etatMulti?.enveloppe ?? null;
   // (02/10) Les plateformes montrées : une plateforme fermée côté serveur
   // (Opla après la sortie du 10/10) n'a plus de ligne ; (10/10) une plateforme
   // que l'app ne propose pas à ce compte (Depop sans extension ≥ 0.6.106) non
@@ -751,8 +757,8 @@ export function RepublicationPlanifieePlateformes({
   const faits = Number(vinted?.faits_mois);
   const quotaConnu = Number.isFinite(quota) && quota > 0 && Number.isFinite(faits);
 
-  // Le TOTAL : la somme des nombres par plateforme, bornée par l'enveloppe du
-  // compte. Une plateforme dont le nombre est inconnu rend le total inconnu —
+  // Le TOTAL : la somme des nombres par plateforme (24/10 : plus d'enveloppe de
+  // compte). Une plateforme dont le nombre est inconnu rend le total inconnu —
   // « — » plutôt qu'une promesse.
   const total = useMemo(() => {
     let somme = 0; let connu = false;
@@ -764,9 +770,8 @@ export function RepublicationPlanifieePlateformes({
       somme += n.n; connu = true;
     }
     if (!connu) return 0;
-    const reste = Number(enveloppe?.restants_compte);
-    return Number.isFinite(reste) ? Math.min(somme, reste) : somme;
-  }, [parPlateforme, pfsVisibles, enService, extensionStatus, enveloppe]);
+    return somme;
+  }, [parPlateforme, pfsVisibles, enService, extensionStatus]);
 
   // Une seule plateforme est-elle DANS son créneau en ce moment ?
   const enCours = pfsVisibles.some((pf) => parPlateforme?.[pf]?.fenetre?.dans_creneau === true
@@ -826,17 +831,6 @@ export function RepublicationPlanifieePlateformes({
             ) : (
               <Cellule label={fr ? 'Ce mois' : 'This month'} valeur={Number.isFinite(faits) ? nf(faits, fr) : '—'} sous={fr ? 'sans maximum' : 'no maximum'} />
             )}
-          </div>
-        )}
-
-        {/* L'enveloppe : le plafond du palier vaut pour les QUATRE réunies. */}
-        {autorise && Number.isFinite(Number(enveloppe?.restants_compte)) && (
-          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '12px 18px', borderTop: `1px solid ${P.border}`, background: P.paper }}>
-            <span style={{ width: 6, height: 6, borderRadius: 99, flexShrink: 0, marginTop: 6, background: P.teal }} />
-            <span style={{ fontWeight: 500, fontSize: 12.5, lineHeight: 1.45, color: P.mute2 }}>
-              {fr ? `Ton forfait ${palierNom} autorise ${nf(Number(enveloppe.plafond_compte), fr)} republications par jour, toutes plateformes réunies — il en reste ${nf(Number(enveloppe.restants_compte), fr)} aujourd'hui. Elles passent une par une : ton ordinateur n'en fait qu'une à la fois.`
-                  : `Your ${palierNom} plan allows ${nf(Number(enveloppe.plafond_compte), fr)} reposts a day across all platforms — ${nf(Number(enveloppe.restants_compte), fr)} left today. They go one at a time: your computer handles a single one at once.`}
-            </span>
           </div>
         )}
 
@@ -1057,12 +1051,10 @@ export function RepublicationPlanifieeReglages({ lang, platform = 'vinted', sess
   // quand même — mais rien ne partira, et l'écran le dit.
   const pf = etat?.platform ?? platform;
   const nomPf = NOMS[pf] ?? pf;
-  const plafondPalier = Number(etat?.plafond_palier) || 0;
-  const illimite = plafondPalier >= PLAFOND_ILLIMITE;
   const palierNom = droitRepublication(etat, { palierApp, lecture }).nomPalier;
   // Réglages de l'ancien moteur (republish_auto) : repris comme point de départ
   // quand le module n'a pas encore de réglage — même cadence qu'avant, pas les
-  // défauts serveur (30 j / plafond du palier). Le serveur borne.
+  // défauts serveur (30 j / sans nombre par jour). Le serveur borne.
   const legacy = etat?.legacy && typeof etat.legacy === 'object' ? etat.legacy : null;
 
   // Brouillon local (réponse immédiate au doigt), ré-aligné sur l'état serveur
@@ -1071,7 +1063,7 @@ export function RepublicationPlanifieeReglages({ lang, platform = 'vinted', sess
   // celui qu'un compte a réglé avant de passer Pro part à l'activation.
   const depart = () => ({
     creneau: s.creneau, de: s.de, a: s.a, jours: s.jours,
-    plafond_jour: Number(r?.plafond_jour) || Number(legacy?.plafond_jour) || plafondPalier || 1,
+    plafond_jour: r ? nombreChoisi(r.plafond_jour) : nombreChoisi(legacy?.plafond_jour),
     age_jours: Number(r?.age_jours) || Number(legacy?.age_jours) || 30, ordre: r?.ordre ?? 'anciennes',
     plafond_boutique: r?.plafond_boutique ?? {},
     ...(!r ? (lireBrouillonApercu(pf) ?? {}) : {}),
@@ -1224,9 +1216,9 @@ export function RepublicationPlanifieeReglages({ lang, platform = 'vinted', sess
         )}
 
         <div style={{ padding: '2px 18px 6px', display: 'flex', flexDirection: 'column' }}>
-          {/* Boutiques (multi) — même créneau pour toutes, plafond par boutique. */}
+          {/* Boutiques (multi) — même créneau pour toutes, nombre par jour par boutique (s'il y en a un). */}
           {multi && (
-            <Section titre={fr ? 'Boutiques Vinted' : 'Vinted shops'} sousTitre={fr ? 'Même créneau pour toutes · plafond du jour par boutique' : 'Same slot for all · daily cap per shop'}>
+            <Section titre={fr ? 'Boutiques Vinted' : 'Vinted shops'} sousTitre={fr ? 'Même créneau pour toutes · nombre par jour par boutique' : 'Same slot for all · number per day per shop'}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {/* (11/10, Louis) La boutique réellement ouverte, et quand on l'a lue. */}
                 <div style={{ fontWeight: 600, fontSize: 12.5, color: connectee != null ? P.teal : P.mute2 }}>
@@ -1243,7 +1235,7 @@ export function RepublicationPlanifieeReglages({ lang, platform = 'vinted', sess
                   const nom = b.login ? `@${b.login}` : `#${id}`;
                   const estConnectee = connectee != null && String(connectee) === id;
                   const eligB = Number(parBoutique[id]);
-                  const capB = Number(brouillon.plafond_boutique?.[id]) || brouillon.plafond_jour;
+                  const capB = nombreChoisi(brouillon.plafond_boutique?.[id]) ?? brouillon.plafond_jour;
                   // Une boutique qui a de quoi republier et qu'on n'a pas vue
                   // depuis 3 jours, ce n'est pas un détail : c'est Chrome qui
                   // n'est jamais sur son compte au bon moment. On le DIT.
@@ -1274,9 +1266,12 @@ export function RepublicationPlanifieeReglages({ lang, platform = 'vinted', sess
                           </div>
                         )}
                       </div>
-                      <Stepper valeur={capB} min={1} max={brouillon.plafond_jour} pas={5} disabled={fige} label={fr ? `Plafond ${nom}` : `Cap ${nom}`}
-                        suffixe={fr ? '/jour' : '/day'}
-                        onChange={(v) => appliquer({ plafond_boutique: { ...(brouillon.plafond_boutique ?? {}), [id]: v } })} />
+                      {/* (24/10) Sans nombre pour la plateforme, une boutique n'en a pas non plus : « sans limite ». */}
+                      {brouillon.plafond_jour == null
+                        ? <span style={{ fontWeight: 600, fontSize: 12.5, color: P.mute }}>{fr ? 'Sans limite' : 'No limit'}</span>
+                        : <Stepper valeur={capB} min={1} max={brouillon.plafond_jour} pas={5} disabled={fige} label={fr ? `Nombre ${nom}` : `Number ${nom}`}
+                            suffixe={fr ? '/jour' : '/day'}
+                            onChange={(v) => appliquer({ plafond_boutique: { ...(brouillon.plafond_boutique ?? {}), [id]: v } })} />}
                     </div>
                   );
                 })}
@@ -1336,37 +1331,32 @@ export function RepublicationPlanifieeReglages({ lang, platform = 'vinted', sess
             </div>
           </Section>
 
-          {/* Rythme : plafond + ancienneté */}
+          {/* Rythme : nombre par jour (CHOISI, facultatif) + ancienneté. (24/10, décision de Nico) Plus de
+              plafond par jour du palier : aucun maximum de forfait, « sans limite » quand rien n'est choisi. */}
           <div style={{ padding: '16px 0', borderBottom: `1px solid ${P.border}`, display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(230px,1fr))', gap: '16px 28px' }}>
             <div>
-              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>{multi ? (fr ? 'Plafond par jour, toutes boutiques' : 'Daily cap, all shops') : (fr ? 'Plafond par jour' : 'Daily cap')}</div>
-              <Stepper valeur={brouillon.plafond_jour} min={1} max={illimite ? 1000 : Math.max(1, plafondPalier)} pas={5} disabled={fige} label={fr ? 'Plafond par jour' : 'Daily cap'}
-                onChange={(v) => appliquer({ plafond_jour: v })} />
-              <div style={{ fontWeight: 500, fontSize: 12.5, lineHeight: 1.45, color: P.mute2, marginTop: 8 }}>
-                {illimite
-                  ? (fr ? `Jusqu'à ${brouillon.plafond_jour} par jour. Le palier ${palierNom} n'a pas de maximum.` : `Up to ${brouillon.plafond_jour} a day. The ${palierNom} plan has no maximum.`)
-                  : brouillon.plafond_jour >= plafondPalier
-                    ? (fr ? `${plafondPalier} par jour, le maximum du palier ${palierNom}.` : `${plafondPalier} a day, the ${palierNom} plan maximum.`)
-                    : (fr ? `Jusqu'à ${brouillon.plafond_jour} par jour. Le palier ${palierNom} permet jusqu'à ${plafondPalier}.` : `Up to ${brouillon.plafond_jour} a day. The ${palierNom} plan allows up to ${plafondPalier}.`)}
-                {' '}{fr ? 'Ce qui part réellement dépend aussi des annonces éligibles et de la durée du créneau.' : 'What actually goes out also depends on eligible listings and slot length.'}
-              </div>
-              {/* L'ENVELOPPE (18/09) : le plafond du palier est celui du
-                  COMPTE, pas de la plateforme. Quatre plateformes s'y
-                  partagent la journée — et il n'y a qu'un Chrome pour les
-                  quatre. Le dire ici, à l'endroit où l'on règle le chiffre. */}
-              {Number.isFinite(Number(etat?.aujourdhui?.restants_compte)) && (
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 8, fontWeight: 500, fontSize: 12.5, lineHeight: 1.45, color: P.mute2 }}>
-                  <span style={{ width: 6, height: 6, borderRadius: 99, background: P.teal, flexShrink: 0, marginTop: 6 }} />
-                  <span>
-                    {/* (15/10) Aperçu d'un gratuit : c'est ce que le plan Pro autorise, pas « ton forfait ». */}
-                    {apercu
-                      ? (fr ? `Ce plafond est celui de ${nomPf}. Toutes plateformes confondues, le plan Pro autorise ${nf(plafondPalier, fr)} republications par jour.`
-                        : `This cap is for ${nomPf}. Across all platforms the Pro plan allows ${nf(plafondPalier, fr)} reposts a day.`)
-                      : fr ? `Ce plafond est celui de ${nomPf}. Toutes plateformes confondues, ton forfait autorise ${nf(plafondPalier, fr)} republications par jour — il en reste ${nf(Number(etat.aujourdhui.restants_compte), fr)} aujourd'hui.`
-                        : `This cap is for ${nomPf}. Across all platforms your plan allows ${nf(plafondPalier, fr)} reposts a day — ${nf(Number(etat.aujourdhui.restants_compte), fr)} left today.`}
-                  </span>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>{multi ? (fr ? 'Nombre par jour, toutes boutiques' : 'Number per day, all shops') : (fr ? 'Nombre par jour' : 'Number per day')}</div>
+              {brouillon.plafond_jour == null ? (
+                <button type="button" className="rp-btn" disabled={fige} onClick={() => appliquer({ plafond_jour: NOMBRE_JOUR_DEPART })}
+                  style={{ height: 44, padding: '0 16px', borderRadius: 14, border: `1px solid ${P.border}`, background: P.paper, color: P.teal, fontWeight: 600, fontSize: 13 }}>
+                  {fr ? 'Sans limite · choisir un nombre' : 'No limit · choose a number'}
+                </button>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <Stepper valeur={brouillon.plafond_jour} min={1} max={NOMBRE_JOUR_MAX} pas={5} disabled={fige} label={fr ? 'Nombre par jour' : 'Number per day'}
+                    onChange={(v) => appliquer({ plafond_jour: v })} />
+                  <button type="button" className="rp-btn" disabled={fige} onClick={() => appliquer({ plafond_jour: null })}
+                    style={{ background: 'transparent', border: 'none', color: P.teal, fontWeight: 600, fontSize: 12.5, padding: 0 }}>
+                    {fr ? 'Sans limite' : 'No limit'}
+                  </button>
                 </div>
               )}
+              <div style={{ fontWeight: 500, fontSize: 12.5, lineHeight: 1.45, color: P.mute2, marginTop: 8 }}>
+                {brouillon.plafond_jour == null
+                  ? (fr ? 'Aucun nombre choisi : autant que le créneau le permet.' : 'No number chosen: as many as the slot allows.')
+                  : (fr ? `Jusqu'à ${brouillon.plafond_jour} par jour, le nombre que tu as choisi.` : `Up to ${brouillon.plafond_jour} a day, the number you chose.`)}
+                {' '}{fr ? 'Ce qui part réellement dépend aussi des annonces éligibles et de la durée du créneau.' : 'What actually goes out also depends on eligible listings and slot length.'}
+              </div>
             </div>
             <div>
               <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>{fr ? 'En ligne depuis plus de' : 'Live for more than'}</div>

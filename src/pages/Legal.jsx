@@ -394,8 +394,9 @@ export default function Legal() {
                 (CGU 3.9 + CGV article 3 : plateformes tierces, mandat de
                 l'utilisateur, évolution de la liste, garantie), puis le 05/10
                 (CGU 3.4 : 50 republications PAR MOIS en Free), puis le 16/10
-                (8.2 et 8.5 : messagerie, commandes et bordereaux, bêta). */}
-            {en ? 'Last updated: October 16, 2026' : 'Dernière mise à jour : 16 octobre 2026'}
+                (8.2 et 8.5 : messagerie, commandes et bordereaux, bêta), puis le
+                24/10 (CGV 3.4 : clause du maximum par jour de chaque plan retirée, décision de Nico). */}
+            {en ? 'Last updated: October 24, 2026' : 'Dernière mise à jour : 24 octobre 2026'}
           </p>
         </div>
 
@@ -463,11 +464,10 @@ export default function Legal() {
           {/* CGV bascule quotas (02/09) : chiffres EXACTS de la grille (les
               mêmes clés coin_config que l'app — à mettre à jour ICI si la
               grille bouge), réarmement au CYCLE d'abonnement, rythme espacé
-              de l'auto MOTIVÉ (protection anti-restriction) et maximum
-              quotidien PAR PLAN renvoyé à l'app (15/10 : le « 45 par jour
-              quel que soit le plan » était faux — Pro 170, Business sans
-              maximum pratique, clés republish_plafond_jour_<palier>), et
-              distinction tarif web / tarif boutiques (ils peuvent différer). */}
+              de l'auto MOTIVÉ (protection anti-restriction) — (24/10, décision
+              de Nico) la clause du maximum par jour de chaque plan est
+              retirée — et distinction tarif web / tarif boutiques (ils
+              peuvent différer). */}
           {en ? (
             <p className="legal-p"><span className="legal-strong">3.4 Premium, Pro and Business Subscriptions</span><br />
               Paid plans are offered with no commitment. Each plan includes volumes of actions per subscription cycle. An AI-generated listing may be created from a photo (Lens analysis) or from an inventory item: both count against the same single listings volume. As of October 5, 2026, these volumes are:<br />
@@ -476,7 +476,7 @@ export default function Legal() {
               — <span className="legal-strong">Pro</span>: 120 AI-generated listings, 5,000 repostings (with optional automatic reposting) and 20 AI photo touch-ups per cycle;<br />
               — <span className="legal-strong">Business</span>: 300 AI-generated listings, unlimited repostings (with automatic reposting) and 50 AI photo touch-ups per cycle.<br />
               Publishing listings to the supported platforms is included in all plans and not counted. Volumes reset at each <span className="legal-strong">subscription cycle</span> (the monthly anniversary of the subscription; on the Free plan, the monthly anniversary of sign-up), not on calendar months. Counters are visible in the app; volumes may change over time, and the applicable volumes are those displayed in the app at the time of use.<br /><br />
-              <span className="legal-strong">Automatic reposting</span> (Pro and Business) runs one listing at a time, at a spaced-out pace, on the days and in the time slots chosen by the user, within a <span className="legal-strong">daily maximum specific to each plan</span>, shown in the app at the time of use. The spaced-out pace is a safety measure designed to protect users' accounts on the platforms against restrictions they may impose on high-frequency activity. Reposting effects are described in Article 4 of the Terms of Sale below.<br /><br />
+              <span className="legal-strong">Automatic reposting</span> (Pro and Business) runs one listing at a time, at a spaced-out pace, on the days and in the time slots chosen by the user. The spaced-out pace is a safety measure designed to protect users' accounts on the platforms against restrictions they may impose on high-frequency activity. Reposting effects are described in Article 4 of the Terms of Sale below.<br /><br />
               <span className="legal-strong">Prices:</span> the price in effect is the one displayed at the time of purchase, on the web (payment securely processed by <span className="legal-strong">Stripe</span>) or in the app stores. Web prices and app-store prices (Apple App Store, Google Play) may differ for the same plan.<br /><br />
               <span className="legal-strong">On iOS/Android:</span> payment is managed by the relevant store (In-App Purchase). The subscription automatically renews unless cancelled at least 24 hours before the end of the current period. You can manage or cancel your subscription in your store account settings.
             </p>
@@ -488,7 +488,7 @@ export default function Legal() {
               — <span className="legal-strong">Pro</span> : 120 annonces générées par IA, 5 000 republications (avec republication automatique en option) et 20 retouches photo par IA par cycle ;<br />
               — <span className="legal-strong">Business</span> : 300 annonces générées par IA, republications illimitées (avec republication automatique) et 50 retouches photo par IA par cycle.<br />
               La publication des annonces sur les plateformes prises en charge est incluse dans tous les plans et n'est pas décomptée. Les volumes se réarment à chaque <span className="legal-strong">cycle d'abonnement</span> (date anniversaire mensuelle de la souscription ; pour le plan Free, date anniversaire mensuelle de l'inscription), et non au mois calendaire. Les compteurs sont visibles dans l'application ; les volumes peuvent évoluer, et ceux applicables sont ceux affichés dans l'application au moment de l'utilisation.<br /><br />
-              <span className="legal-strong">La republication automatique</span> (Pro et Business) part une annonce à la fois, à un rythme espacé, les jours et dans les créneaux choisis par l'utilisateur, dans la limite d'un <span className="legal-strong">maximum quotidien propre à chaque plan</span>, affiché dans l'application au moment de l'utilisation. Le rythme espacé est une mesure de sécurité destinée à protéger les comptes des utilisateurs sur les plateformes contre les restrictions qu'elles peuvent imposer en cas d'activité à haute fréquence. Les effets de la republication sont décrits à l'article 4 des CGV ci-dessous.<br /><br />
+              <span className="legal-strong">La republication automatique</span> (Pro et Business) part une annonce à la fois, à un rythme espacé, les jours et dans les créneaux choisis par l'utilisateur. Le rythme espacé est une mesure de sécurité destinée à protéger les comptes des utilisateurs sur les plateformes contre les restrictions qu'elles peuvent imposer en cas d'activité à haute fréquence. Les effets de la republication sont décrits à l'article 4 des CGV ci-dessous.<br /><br />
               <span className="legal-strong">Prix :</span> le prix applicable est celui affiché au moment de l'achat, sur le web (paiement traité de manière sécurisée par <span className="legal-strong">Stripe</span>) ou dans les boutiques d'applications. Les prix web et les prix des boutiques (App Store Apple, Google Play) peuvent différer pour un même plan.<br /><br />
               <span className="legal-strong">Sur iOS/Android :</span> le paiement est géré par la boutique concernée (In-App Purchase). L'abonnement se renouvelle automatiquement sauf résiliation au moins 24h avant la fin de la période en cours. Vous pouvez gérer ou annuler votre abonnement dans les réglages de votre compte de la boutique.
             </p>

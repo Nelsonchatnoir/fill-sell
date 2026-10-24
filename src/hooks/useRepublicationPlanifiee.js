@@ -72,15 +72,16 @@ export function extensionRefuse(extensionStatus) {
 }
 
 // ── LE NOMBRE — honnête ou rien (décision Nico 12/09). ──────────────────────
-// `attendu` (serveur) = min(plafond de la plateforme, enveloppe de compte,
-// éligibles, capacité PARTAGÉE du créneau) — la capacité est partagée parce
+// `attendu` (serveur) = min(nombre par jour choisi pour la plateforme, s'il y en
+// a un, éligibles, capacité PARTAGÉE du créneau ; 24/10 : plus d'enveloppe de
+// compte) — la capacité est partagée parce
 // qu'il n'y a qu'UN Chrome pour quatre files. L'app n'ajoute que des bornes à
 // la BAISSE : quota mensuel restant (le RPC refuse au-delà), extension jamais
 // vue / muette 7 j (le RPC refuse aussi), interrupteur global à 0 (branche
 // inerte). Une borne inconnue → n = null, affiché « — », jamais un chiffre
 // optimiste.
 // Rend null si le module est inactif ; sinon { n, borne } avec borne ∈
-// 'plafond' | 'plafond_compte' | 'creneau' | 'eligibles' | 'plateforme_fermee'
+// 'plafond' | 'creneau' | 'eligibles' | 'plateforme_fermee'
 // (serveur) | 'mois' | 'extension' | 'hors_service' | 'inconnu' (app).
 export function nombreAttendu(etat, { enService, extensionStatus } = {}) {
   if (!etat?.actif) return null;

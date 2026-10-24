@@ -27,7 +27,6 @@ import BarreProgression from "./BarreProgression";
 import GalleryPhoto, { premierePhoto } from "./GalleryPhoto";
 import PlatformLogo from "./platform-logos/PlatformLogo";
 import { lireFile, phraseCompteurs, libelleAction, libelleEtat } from "../utils/fileDesJobs";
-import { phraseLimiteAtteinte } from "../utils/plafondRepublication";
 import { pisteJob, articleDeJob } from "../utils/barresJobs";
 import { fraicheurExtension } from "../utils/shared";
 import { useOplaAcces } from "../utils/oplaAcces";
@@ -210,12 +209,8 @@ export default function FileDesJobs({
 
   const file = useMemo(() => (listeJobs ? lireFile(listeJobs, ctx) : null), [listeJobs, ctx]);
   const ficheDe = (j) => lesFiches.get?.(String(j?.inventaire_id)) ?? null;
-  // (17/10, Nico) Limite du jour atteinte : UNE phrase en tête de la file (minuit,
-  // heure de Paris, et la durée de toute la file), au lieu de « N en pause » muet.
-  const limiteDuJour = useMemo(() => {
-    const enFileRepub = (listeJobs ?? []).filter((j) => j.action === "republish" && (j.status === "pending" || j.status === "processing")).length;
-    return phraseLimiteAtteinte({ etat: ctx.plafond, enFile: enFileRepub, lang });
-  }, [listeJobs, ctx.plafond, lang]);
+  // (24/10, décision de Nico) Plus de limite de republication par jour : plus de phrase « limite du jour » en tête
+  // de la file. La pause de respiration se dit sur chaque job (_shared/etat-job.js, motif « rythme »).
 
   // (16/10) Les quatre groupes portent les mots de l'état unique (_shared/etat-job.js).
   const sections = file ? [
@@ -251,12 +246,6 @@ export default function FileDesJobs({
           {fr
             ? "Rien en cours ni en file. Ce qui est publié, republié ou retiré n'apparaît plus ici."
             : "Nothing in progress or queued. What is listed, reposted or removed no longer shows here."}
-        </div>
-      )}
-      {limiteDuJour && (
-        <div role="status" style={{ display: "flex", alignItems: "flex-start", gap: 6, padding: "10px 12px", borderRadius: 12, background: T.paper, border: `1px solid ${T.lineSoft}`, fontSize: 12.5, lineHeight: 1.5, color: T.mute }}>
-          <Clock size={14} strokeWidth={2.2} style={{ flexShrink: 0, marginTop: 2 }} aria-hidden="true" />
-          <span>{limiteDuJour}</span>
         </div>
       )}
       {sections.map((s) => (

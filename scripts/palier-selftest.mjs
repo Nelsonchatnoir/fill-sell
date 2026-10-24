@@ -196,7 +196,7 @@ try {
   const reglage = (jours) => ({ a: '22:00', de: '19:00', actif: true, creneau: 'soir', fuseau: 'Europe/Paris', jours, ordre: 'anciennes', age_jours: 7, plafond_jour: 100000, plafond_boutique: {} });
   const pfEtat = (platform, palier, autorise, r) => ({
     platform, palier, autorise, ouverte: true, configure: r != null, actif: r?.actif === true, reglage: r,
-    plafond_palier: palier === 'business' ? 100000 : 50, annonces_en_ligne: 12, attendu: 3, borne: 'eligibles',
+    annonces_en_ligne: 12, attendu: 3, borne: 'eligibles',
     fenetre: { dans_creneau: false, prochain_debut: '2026-10-04T17:00:00Z', prochain_fin: '2026-10-04T20:00:00Z' },
   });
   const etatMulti = (palier, autorise, avecReglages) => {
@@ -206,8 +206,9 @@ try {
       pfEtat('beebs', palier, autorise, avecReglages ? reglage([2, 6]) : null),
       pfEtat('opla', palier, autorise, avecReglages ? reglage([3, 7]) : null),
     ];
-    return { palier, autorise, plafond_palier: pfs[0].plafond_palier, interrupteur_global: 1, actives: pfs.filter((p) => p.actif).length,
-      enveloppe: { plafond_compte: pfs[0].plafond_palier, crees_compte: 0, restants_compte: pfs[0].plafond_palier }, plateformes: pfs };
+    // (24/10) Forme serveur sans plafond par jour : plus de plafond_palier ni d'enveloppe bornée.
+    return { palier, autorise, interrupteur_global: 1, actives: pfs.filter((p) => p.actif).length,
+      enveloppe: { crees_compte: 0 }, plateformes: pfs };
   };
   const parPf = (m) => Object.fromEntries(['vinted', 'leboncoin', 'beebs', 'opla'].map((pf) => [pf, m?.plateformes?.find((p) => p.platform === pf) ?? null]));
   const ext = { lastSeenAt: new Date().toISOString() };

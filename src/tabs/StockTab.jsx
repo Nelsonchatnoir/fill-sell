@@ -35,7 +35,6 @@ import { palierDesDrapeaux, aAuMoins } from '../utils/palier';
 import { etatAttenteBoutique, lignesAttenteBoutique, phraseRassurance, messageFicheAttenteBoutique } from '../utils/attenteBoutique';
 import { phraseMiseAJourExtension } from '../utils/extensionAJour';
 import { retenueServeurDuJob, phraseRetenueServeur } from '../utils/retenueServeur';
-import { partageRepublicationsDuJour, phraseLimiteAtteinte, ecoulementFile } from '../utils/plafondRepublication';
 import { retraitsBloquesParConnexion, ligneCarteRetraitBloque, ligneARegler as ligneAReglerRetraits, articlesVendusEncoreEnLigne, detailArticleVenduEnLigne, retraitsHorsArticlesVendus, retraitsEnAttenteParArticle } from '../utils/retraitsBloques';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import OplaAutorisationModal from '../components/OplaAutorisationModal';
@@ -4490,8 +4489,8 @@ const texteErreurRepublishAuto = (code, fr) => {
     ? "Une annonce n'a pas pu être republiée après 3 essais : elle a été mise de côté pour 24 h et la file est passée à la suivante. Ton annonce est toujours en ligne, rien n'a été supprimé."
     : 'One listing failed to repost after 3 attempts: it was set aside for 24 h and the queue moved on. Your listing is still online, nothing was deleted.',
   plafond_auto_atteint: fr
-    ? "Le plafond que tu as fixé pour aujourd'hui est atteint. La republication automatique reprendra demain."
-    : 'Your daily cap for today has been reached. Automatic reposting will resume tomorrow.',
+    ? "La republication automatique s'arrête pour le moment : le nombre que tu as choisi, ou ton quota du mois, est atteint. Elle reprendra toute seule."
+    : 'Automatic reposting stops for now: the number you chose, or your monthly quota, has been reached. It will resume on its own.',
   extension_trop_ancienne: fr
     ? "La republication automatique est en pause : ta version de l'extension Chrome n'est pas acceptée. Chrome la met à jour tout seul, la reprise est automatique."
     : 'Automatic reposting is paused: your Chrome extension version is not accepted. Chrome updates it on its own, and reposting resumes automatically.',
@@ -4693,7 +4692,7 @@ function RepublishAutoBlock({ lang, user, isPro, openUpgradeModal }) {
          'Tu choisis l\'ancienneté et le nombre par jour ; tu coupes quand tu veux']
       : ['They go back to the top of Vinted results, hands off',
          'At a human pace, a few a day — never a burst',
-         'You set the age and the daily cap; turn it off whenever'];
+         'You set the age and the number per day; turn it off whenever'];
     return (
       <div style={{ background: 'linear-gradient(150deg,#10201B,#1B3A32)', borderRadius: 14, padding: 16, display: 'flex', flexDirection: 'column', gap: 10, boxShadow: '0 10px 24px -16px rgba(16,32,27,.7)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -4798,7 +4797,7 @@ function RepublishAutoBlock({ lang, user, isPro, openUpgradeModal }) {
           au chargement du profil, puis après chaque écriture. */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#5C6560', fontWeight: 600 }}>
-          {fr ? 'Plafond par jour :' : 'Daily cap:'}
+          {fr ? 'Nombre par jour :' : 'Per day:'}
           <input key={`plafond-${plafond}`} type="number" min={1} max={50} defaultValue={plafond} disabled={busy}
             onBlur={e => { const v = bornerPlafond(e.target.value); e.target.value = String(v); if (v !== plafond) ecrire({ plafond_jour: v }); }}
             style={{ width: 64, padding: '7px 9px', borderRadius: 9, border: '1px solid #E7E3D8', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }} />
@@ -5189,24 +5188,18 @@ function etapeRepublication(job, fr, reprise = null, attente = null, item = null
   // étape 'deleted'. Sont donc exclus l'étape 'deleted' (jamais retenue, pause
   // comprise — l'annonce est hors ligne) et les 'processing' (déjà pris en
   // main par l'extension, ils vont au bout).
-  // DEUX motifs, deux phrases : la PAUSE de respiration (rafale trop longue,
-  // reprise le jour même) et le PLAFOND du palier (filet, reprise le
-  // lendemain). Ni l'un ni l'autre n'est un échec ni une limite d'abonnement :
-  // une protection du compte Vinted qui se lève seule. Le vocabulaire le dit,
-  // la couleur aussi (bleu neutre), et `enFile` garde la pastille discrète —
-  // aucune barre ne tourne sur un travail à l'arrêt.
+  // UN motif, UNE phrase : la PAUSE de respiration (rafale trop longue, reprise
+  // le jour même). (24/10, décision de Nico) Plus de plafond par jour. Ce n'est
+  // ni un échec ni une limite d'abonnement : une protection du compte Vinted
+  // qui se lève seule. Le vocabulaire le dit, la couleur aussi (bleu neutre),
+  // et `enFile` garde la pastille discrète — aucune barre ne tourne sur un
+  // travail à l'arrêt.
   if (reprise && st === 'pending' && step !== 'deleted') return {
     cle: 'plafond_jour', court: reprise.court, ...bleu, enFile: true,
-    titre: reprise.motif === 'pause'
-      ? (fr ? `Republications en pause — reprise ${reprise.quand}` : `Reposts paused — resuming ${reprise.quand}`)
-      : (fr ? `Republication étalée — reprend ${reprise.quand}` : `Repost paced — resumes ${reprise.quand}`),
-    detail: reprise.motif === 'pause'
-      ? (fr
-        ? `Tes annonces viennent d'enchaîner une longue série. FillSell laisse souffler ton compte Vinted avant de reprendre : celle-ci repart toute seule ${reprise.quand}, rien à faire de ton côté. ${phraseRienRetire(item, fr, LABEL_PF[job.platform] ?? 'Vinted')}`
-        : `Your listings just ran a long streak. FillSell lets your Vinted account breathe before resuming: this one restarts on its own ${reprise.quand}, nothing to do on your side. ${phraseRienRetire(item, fr, LABEL_PF[job.platform] ?? 'Vinted')}`)
-      : (fr
-        ? `FillSell étale tes republications sur plusieurs jours pour protéger ton compte Vinted. Celle-ci repart toute seule ${reprise.quand}, rien à faire de ton côté. ${phraseRienRetire(item, fr, LABEL_PF[job.platform] ?? 'Vinted')}`
-        : `FillSell spreads your reposts over several days to protect your Vinted account. This one resumes on its own ${reprise.quand}, nothing to do on your side. ${phraseRienRetire(item, fr, LABEL_PF[job.platform] ?? 'Vinted')}`),
+    titre: fr ? `Republications en pause — reprise ${reprise.quand}` : `Reposts paused — resuming ${reprise.quand}`,
+    detail: fr
+      ? `Tes annonces viennent d'enchaîner une longue série. FillSell laisse souffler ton compte Vinted avant de reprendre : celle-ci repart toute seule ${reprise.quand}, rien à faire de ton côté. ${phraseRienRetire(item, fr, LABEL_PF[job.platform] ?? 'Vinted')}`
+      : `Your listings just ran a long streak. FillSell lets your Vinted account breathe before resuming: this one restarts on its own ${reprise.quand}, nothing to do on your side. ${phraseRienRetire(item, fr, LABEL_PF[job.platform] ?? 'Vinted')}`,
   };
 
   if (step === 'deleted') return {
@@ -5256,12 +5249,11 @@ function heureParis(iso) {
 }
 
 // ── Retenue de republication : mise en mots de la REPRISE ──────────────────
-// (2026-09-04) Deux freins serveur, jamais confondus, tous deux calculés par
-// get-pending-jobs et jamais ici :
-//   · motif 'pause'   — la file souffle après une trop longue rafale ; la
+// (2026-09-04) UN frein serveur, calculé par get-pending-jobs et jamais ici :
+//   · motif 'pause' — la file souffle après une trop longue rafale ; la
 //     reprise tombe le plus souvent LE JOUR MÊME, dans quelques heures.
-//   · motif 'plafond' — filet journalier du palier ; la reprise est le
-//     prochain minuit de Paris.
+// (24/10, décision de Nico) Le plafond journalier du palier (motif 'plafond',
+// reprise à minuit) est supprimé.
 // C'est le SERVEUR qui DATE la reprise (champ `reprise`) : ici on la formate,
 // jamais on ne la déduit — une seconde définition finirait par mentir un jour
 // de bascule d'heure. Le jour, en revanche, se LIT sur l'instant reçu : on ne
@@ -5292,10 +5284,6 @@ function repriseRepub(iso, fr, motif = null) {
                   : (fr ? `à ${heure}` : `at ${heure}`),
   };
 }
-// Marge d'approche du plafond : le décompte n'apparaît QUE dans les derniers
-// articles avant la coupure (règle du 04/09) — jamais en permanence, jamais
-// comme un compteur de consommation.
-const REPUB_PLAFOND_PROCHE = 5;
 
 // Les articles VENDUS ne s'affichent pas dans Stock IA : ils ont l'onglet
 // Ventes (décision portée par b13fde1). Constante nommée plutôt qu'un `false`
@@ -5492,7 +5480,7 @@ export function RepublishProgressSheet({ lang, job, onClose, onSaisieRelance, re
 
 // Grille 2026-08-08 : la republication coûte price_republish pour TOUT LE
 // MONDE — l'ancienne prop `gratuit` (Premium/Pro) est morte avec la gratuité.
-function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiquesVinted = [], boutiqueConnectee = null, multiOuverte = false, choixInitial = null, oplaAcces = null, oplaVerdict = null, userId = null, plafond = null, dejaEnFile = 0, repubMois = null }) {
+function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiquesVinted = [], boutiqueConnectee = null, multiOuverte = false, choixInitial = null, oplaAcces = null, oplaVerdict = null, userId = null, repubMois = null }) {
   const fr = lang !== 'en';
   const solo = items.length === 1;
   // ── PLATEFORMES (2026-09-17, republication multiplateforme) ───────────────
@@ -5547,11 +5535,7 @@ function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiqu
   // Bascule quotas (02/09) : prixUnitaire null = republication non facturée →
   // aucun coût affiché (fragment vide), le libellé reste « Republier … ».
   const cout = prixUnitaire != null ? <>{nbEnvois * prixUnitaire}</> : null;
-  // ── LA LIMITE DU JOUR, DITE AVANT LE CLIC (05/10, point 11, Nico) ──────────
-  // Rien n'est bloqué : tout se crée, le serveur étale. On dit seulement
-  // combien partent aujourd'hui et que le reste suivra seul
-  // (utils/plafondRepublication). État serveur inconnu → rien.
-  const partageDuJour = partageRepublicationsDuJour({ nbEnvois, etat: plafond, dejaEnFile, lang });
+  // (24/10, décision de Nico) Plus de limite par jour : plus de phrase « combien partent aujourd'hui » avant le clic.
   const confirmer = () => {
     if (!nbEnvois) return;
     // Le choix de plateformes remonte avec les cibles : StockTab le mémorise
@@ -5720,13 +5704,8 @@ function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiqu
               : `On ${nomsSel.filter((p) => p === 'leboncoin' || p === 'beebs').map((p) => PLATFORM_LABELS[p] ?? p).join(' and ')}, the listing is rebuilt from the copy stored here. Anything you edited by hand on the site will be lost — bring it back into the app before republishing.`}
           </div>
         )}
-        {partageDuJour && (
-          <div role="status" style={{ background: '#FFF6E3', border: '1px solid #EED9A6', borderRadius: 12, padding: '10px 12px', fontSize: 12, color: '#8A6100', lineHeight: 1.55, marginBottom: 12 }}>
-            <IconeTexte icone={Hourglass} taille={12} style={{ marginRight: 4 }} />{partageDuJour.texte}
-          </div>
-        )}
-        {/* (15/10, P17, Chiara) Gratuit : le MOIS, dit avant le clic — la feuille
-            ne parlait que de la limite du jour. Le refus du serveur reste le filet. */}
+        {/* (15/10, P17, Chiara) Gratuit : le MOIS, dit avant le clic. Le refus du
+            serveur reste le filet. */}
         {repubMois && Number.isFinite(repubMois.restantes) && nbEnvois > 0 && (
           <div role="status" style={{ background: '#F0FDFB', border: '1px solid rgba(13,148,136,0.18)', borderRadius: 12, padding: '10px 12px', fontSize: 12, color: '#1B6E62', lineHeight: 1.55, marginBottom: 12 }}>
             {nbEnvois <= repubMois.restantes
@@ -6936,7 +6915,7 @@ const StockTab = memo(function StockTab({
   // stampe jamais extension_last_seen_at, il ne doit pas faire passer une
   // extension éteinte pour vivante). null (panne, pas d'état) → PAS de
   // bandeau : jamais un bandeau sur une erreur ni préventif.
-  const [repubPlafondEtat, setRepubPlafondEtat] = useState(null); // {limite,faits,retenue,jour}|null
+  const [repubPlafondEtat, setRepubPlafondEtat] = useState(null); // {retenue,motif:'pause'|null,reprise,sequence,faits}|null
   // ── Annonces en attente d'une action : LE NOMBRE VIENT DU SERVEUR ─────────
   // (2026-09-04) Même appel, même cadence — get-pending-jobs le calcule une
   // fois et le popup de l'extension lit EXACTEMENT le même. Fini les deux
@@ -6956,18 +6935,18 @@ const StockTab = memo(function StockTab({
       } catch { if (!annule) setRepubPlafondEtat(null); }
     };
     lire();
-    // Rafraîchi toutes les 2 min onglet visible : la retenue se lève à
-    // minuit Paris, pas besoin de plus fin.
+    // Rafraîchi toutes les 2 min onglet visible : la pause se lève seule,
+    // pas besoin de plus fin.
     const t = setInterval(() => { if (document.visibilityState === 'visible') lire(); }, 120000);
     return () => { annule = true; clearInterval(t); };
   }, [republishActif]);
   // Mention de reprise portée par les CARTES : posée SEULEMENT sous retenue
   // serveur active — jamais préventive, jamais sur un état null (panne de
-  // lecture). Recalculée à chaque relecture de l'état (2 min) : passé minuit,
+  // lecture). Recalculée à chaque relecture de l'état (2 min) : la pause levée,
   // repriseRepub rend null et les cartes reprennent leurs libellés d'étape.
   const repubPlafondReprise = useMemo(
     () => (repubPlafondEtat?.retenue
-      ? repriseRepub(repubPlafondEtat.reprise, lang !== 'en', repubPlafondEtat.motif ?? 'plafond')
+      ? repriseRepub(repubPlafondEtat.reprise, lang !== 'en', repubPlafondEtat.motif ?? 'pause')
       : null),
     [repubPlafondEtat, lang],
   );
@@ -9969,13 +9948,7 @@ const StockTab = memo(function StockTab({
               // plus visible de l'écran.
               // (15/10 soir, Nico) Plus aucune estimation (« ~15-21 min ») : ça fait fuir.
               const estimation=null;
-              // (17/10, Nico) La limite du jour ATTEINTE se dit ici, sur la carte la plus
-              // vue : la barre passe en pause et la phrase dit minuit et la durée de toute
-              // la file (utils/plafondRepublication). Une republication déjà retirée va au
-              // bout (le serveur ne la retient pas) : jamais la phrase pour elle.
-              const limiteAtteinte=repubPlafondEtat?.retenue===true&&repubPlafondEtat.motif==='plafond'
-                &&activite.actif.action==='republish'&&activite.actif.status==='pending'&&repubStepDe(activite.actif)!=='deleted';
-              const phraseLimite=limiteAtteinte?phraseLimiteAtteinte({etat:repubPlafondEtat,enFile:repubJobsVivants.length,lang}):null;
+              // (24/10, décision de Nico) Plus de limite par jour : la carte n'a plus de phrase de limite.
               // (01/10) La barre du lot : « N sur M » réel, puis un glissement
               // doux vers le suivant pendant que l'actif travaille — jamais au
               // delà. Ordinateur muet : elle s'immobilise (le compteur dit le
@@ -10024,11 +9997,8 @@ const StockTab = memo(function StockTab({
                   <div style={{marginTop:11}}>
                     <BarreProgression seulePiste lang={lang}
                       fraction={activite.faites/activite.total} pas={1/activite.total} dureePas={dureeUnJob}
-                      etat={activite.hbMuet||phraseLimite?'pause':'en_cours'}/>
+                      etat={activite.hbMuet?'pause':'en_cours'}/>
                   </div>
-                  {phraseLimite&&(
-                    <div role="status" style={{fontSize:12,lineHeight:1.5,marginTop:8,color:"#5C6560"}}>{phraseLimite}</div>
-                  )}
                 </button>
               );
             })()}
@@ -11417,65 +11387,37 @@ const StockTab = memo(function StockTab({
                   </div>
                 )}
                 {/* ── RETENUE SERVEUR : UNE ligne, en tête de LISTE (04/09) ────
-                    Le frein technique (appliqué par get-pending-jobs) n'était
-                    plus dit nulle part depuis la bascule du 02/09 : un compte
-                    qui s'arrête net à 04:18 avec 82 annonces en file et son
-                    extension vivante croit que c'est cassé.
-                    DEUX motifs, deux phrases, jamais mélangées : la PAUSE de
-                    respiration (rafale trop longue, reprise le jour même) et
-                    le PLAFOND journalier du palier (reprise le lendemain).
-                    Ce qui est dit ici : le compte du jour, le plafond du
-                    palier, l'heure de reprise — tout vient du SERVEUR
+                    Le frein technique (appliqué par get-pending-jobs) se dit
+                    ici : un compte qui s'arrête net avec des annonces en file
+                    et son extension vivante croit que c'est cassé.
+                    (24/10, décision de Nico) UN motif : la PAUSE de respiration
+                    (rafale trop longue, reprise le jour même). Plus de plafond
+                    par jour, plus de « minuit ». Tout vient du SERVEUR
                     (repubPlafondEtat), rien n'est recalculé ni écrit en dur.
-                    ⚠️ CE N'EST PAS UN QUOTA D'ABONNEMENT. Le plafond
-                    journalier est une protection anti-restriction Vinted,
-                    temporaire, qui repart seule : texte secondaire, aucune
-                    couleur d'alerte, aucun appel à l'achat, aucun bouton. Les
-                    limites commerciales (quota_republication_*, gratuit
-                    compris) ont leur propre chemin — la modale
-                    de conversion — et ne doivent jamais se ressembler.
-                    Affichée SEULEMENT quand la coupure est atteinte ou
-                    imminente (REPUB_PLAFOND_PROCHE) ET qu'il reste des
+                    ⚠️ CE N'EST PAS UN QUOTA D'ABONNEMENT : protection du compte
+                    Vinted, temporaire, qui repart seule — texte secondaire,
+                    aucune couleur d'alerte, aucun appel à l'achat, aucun
+                    bouton. Les limites commerciales (quota_republication_*)
+                    ont leur propre chemin, la modale de conversion.
+                    Affichée SEULEMENT pendant la pause ET quand il reste des
                     republications en attente : rien en permanence, rien de
                     préventif, rien sur une panne de lecture (état null). */}
                 {(()=>{
                   if(modePrixAchat||modeRepublish)return null;
                   const p=repubPlafondEtat;
-                  if(!republishActif||!p)return null;
+                  if(!republishActif||!p||!p.retenue||p.motif!=='pause')return null;
                   // (17/10, Nico) TOUTE la file (toutes plateformes, lot ou republication
-                  // automatique), plus seulement le dernier lot : c'est elle que la
-                  // limite retient.
+                  // automatique), plus seulement le dernier lot.
                   const restantes=repubJobsVivants.length;
                   if(restantes<=0)return null;
-                  const reste=Number.isFinite(p.limite)&&Number.isFinite(p.faits)?p.limite-p.faits:null;
-                  const proche=!p.retenue&&reste!==null&&reste>0&&reste<=REPUB_PLAFOND_PROCHE;
-                  if(!p.retenue&&!proche)return null;
                   // Même convention de langue que la pastille de carte
                   // (etapeRepublication) : les deux disent la même heure.
                   const fr=lang!=='en';
-                  const motif=p.retenue?(p.motif??'plafond'):null;
-                  const r=repriseRepub(p.reprise,fr,motif);
+                  const r=repriseRepub(p.reprise,fr,'pause');
                   if(!r)return null; // état vieilli : rien plutôt qu'une reprise fausse
-                  let texte;
-                  if(motif==='plafond'){
-                    // La carte du haut le dit déjà quand elle porte une republication en file.
-                    const carteLeDit=activite&&activite.actif.action==='republish'&&activite.actif.status==='pending'&&repubStepDe(activite.actif)!=='deleted';
-                    if(carteLeDit)return null;
-                    texte=phraseLimiteAtteinte({etat:p,enFile:restantes,lang});
-                  }else if(motif==='pause'){
-                    texte=fr
-                      ?`${p.sequence||p.faits} republications d'affilée — les ${restantes} suivantes reprennent ${r.quand}. FillSell laisse souffler ton compte Vinted entre deux séries, tu n'as rien à faire.`
-                      :`${p.sequence||p.faits} reposts in a row — the next ${restantes} resume ${r.quand}. FillSell lets your Vinted account breathe between streaks, nothing to do on your side.`;
-                  }else{
-                    const e=ecoulementFile({etat:p,enFile:restantes});
-                    const duree=e&&e.joursSuivants>1
-                      ?(fr?` Pour les ${restantes} en file, ça prendra environ ${e.jours} jours.`:` For the ${restantes} queued, it will take about ${e.jours} days.`) // estimation-ok: calcul sur la limite du palier — Nico, 17/10
-                      :'';
-                    texte=fr
-                      ?`${p.faits} republications sur ${p.limite} aujourd'hui (toutes plateformes) — au-delà, la suite repart à minuit (heure de Paris), ${p.limite} par jour.${duree}` // estimation-ok: règle du plafond (minuit, heure de Paris) — Nico, 17/10
-                      :`${p.faits} of ${p.limite} reposts today (all platforms) — beyond that, the rest resumes at midnight (Paris time), ${p.limite} a day.${duree}`; // estimation-ok: règle du plafond — Nico, 17/10
-                  }
-                  if(!texte)return null;
+                  const texte=fr
+                    ?`${p.sequence||p.faits} republications d'affilée — les ${restantes} suivantes reprennent ${r.quand}. FillSell laisse souffler ton compte Vinted entre deux séries, tu n'as rien à faire.`
+                    :`${p.sequence||p.faits} reposts in a row — the next ${restantes} resume ${r.quand}. FillSell lets your Vinted account breathe between streaks, nothing to do on your side.`;
                   return(
                     <div role="status" style={{fontSize:12,lineHeight:1.5,color:"#5C6560",margin:"2px 2px 4px"}}>{texte}</div>
                   );
@@ -11948,8 +11890,6 @@ const StockTab = memo(function StockTab({
           choixInitial={choixPlateformesRepub}
           oplaAcces={oplaAccesRepub}
           oplaVerdict={oplaVerdictRepub}
-          plafond={repubPlafondEtat}
-          dejaEnFile={repubJobsVivants.length}
           repubMois={offertGratuit.repub!=null?{restantes:offertGratuit.repub,remise:offertGratuit.remise}:null}
           onClose={()=>setRepubSheet(null)}
           onConfirm={(cibles,choix)=>{

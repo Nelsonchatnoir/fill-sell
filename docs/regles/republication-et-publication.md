@@ -75,8 +75,8 @@
   fiches modifiables en lot — les annonces en ligne ne suivent pas.
 
 <!-- ex-CLAUDE.md L366-367 : 04/10 — cadence (plafond Premium, coin_config journalisé) -->
-- **Cadence (04/10)** : plafond Premium **50**/jour ; tout changement de
-  `coin_config` est daté et journalisé (`coin_config_journal`).
+- **Cadence (04/10)** : ~~plafond Premium **50**/jour~~ — ⛔ **plus aucun plafond par jour depuis le 24/10** (décision
+  de Nico, section en fin de fichier) ; tout changement de `coin_config` est daté et journalisé (`coin_config_journal`).
 
 <!-- ex-CLAUDE.md L384-395 : 03/10 nuit — marque, annonce de test, republication -->
 - **Marque (03/10 nuit)** : une réponse partagée atteint TOUTE plateforme qu'elle
@@ -178,6 +178,8 @@
   pourcentage animé de `BarreProgression` (glisse sur des durées médianes) — maquette « étapes sans % » proposée.
 
 ## 17/10 — LA LIMITE DU JOUR SE DIT EN ENTIER (mission de Nico ; rapport `docs/enquetes/dix-points-1710/RAPPORT.md` § 3)
+> ⛔ CADUQUE depuis le 24/10 : la limite du jour n'existe plus (section « 24/10 après-midi » en fin de fichier). Ce
+> qui suit est l'historique ; la trace `retenue_republication` ne porte plus que le motif « pause ».
 - **Exception écrite à la règle du 16/10 « aucun temps estimé »** (décision de Nico, 17/10) : la limite du jour dit
   qu'elle est atteinte, que la file **repart à minuit (heure de Paris)** — c'est la règle du plafond, le compteur du
   serveur repart au jour de Paris — et **combien de temps il faut pour écouler la file** (« ça prendra environ N
@@ -476,3 +478,17 @@
   choix de la personne ; jamais « 34 ».
 - Avant de republier pour une taille : la relire EN LIGNE (24/10 : les « 4 tailles 34 » n'étaient que dans les
   copies ; en ligne, une seule annonce sans taille méritait une republication).
+
+## ⛔ 24/10 après-midi — PLUS DE PLAFOND DE REPUBLICATION PAR JOUR (décision de Nico ; rapport `docs/enquetes/lot-2410/RAPPORT.md` § « 24/10 après-midi »)
+- Aucun plafond par jour, pour aucun palier, nulle part : base (`republish_plafond_palier` supprimée, migration
+  `20261024200000`), distribution (`get-pending-jobs` v278), configuration (clés `republish_plafond_jour*` retirées,
+  `20261024210000`). Ne JAMAIS réintroduire un plafond journalier sans décision de Nico ; une « valeur énorme » en
+  configuration n'est pas une suppression.
+- Seul frein de distribution : la **pause de 2 h après 50 republications d'affilée** (`republish_pause_apres`,
+  `republish_pause_duree_min`, séquence lue sur les republications réussies). Les quotas du mois, les espacements par
+  plateforme et le disjoncteur d'échecs ne bougent pas.
+- Republication planifiée : le nombre par jour d'une plateforme (et d'une boutique Vinted) est un choix FACULTATIF de
+  la personne — NULL = sans limite, aucun maximum de palier ; un NULL ne doit jamais devenir 0 (`GREATEST(0, NULL)`
+  vaut 0 : toujours un `CASE`).
+- Textes : plus aucune phrase « limite du jour », « repart à minuit », « N par jour (toutes plateformes) » ; les
+  phrases de la pause restent. Selftest `plus-de-plafond-par-jour`.

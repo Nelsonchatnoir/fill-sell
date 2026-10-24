@@ -13,6 +13,8 @@
 // de l'app, les jobs Vinted clos rouverts.
 //   node scripts/reparations/20261024_remises_en_ligne_rattrapage.mjs --liste <fichier d'uuid> [--appliquer]
 // Sans --appliquer : simulation (rien n'est écrit). Une ligne de bilan par compte sur la sortie.
+// (24/10 après-midi) Ne partent que les fusions acceptées telles quelles par la base (aucune question créée) et sans
+// aucune trace de vente sur leurs fiches (voir trier) ; le reste est compté « laissees », jamais touché.
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -60,17 +62,49 @@ function empreintesDe(donnees) {
   return emp;
 }
 
+// (24/10 après-midi, go de Nico pour les 15 comptes restants) Seules partent les fusions que la base accepte TELLES
+// QUELLES : motif NULL de rapprochement_v3_remise_possible (donc aucune question créée à l'écriture — les cas
+// douteux restent tels quels) et AUCUNE trace de vente sur l'une des fiches, maillons compris (vente, note de vente,
+// commande, job vendu ou signal « sold », achat en cours Leboncoin) : « 0 vente touchée ». Le signal « unavailable »
+// (annonce partie) n'est PAS une vente : c'est l'état normal de l'annonce retirée d'une remise en ligne. Lecture seule.
+function trier(user, certaines) {
+  if (!certaines.length) return [];
+  const brut = JSON.stringify(certaines.map((d) => ({ garde: d.garde, absorbe: d.absorbe, chaine: d.chaine ?? [] }))).replace(/'/g, "''");
+  return q(`WITH d AS (SELECT (o - 1)::int AS i, e AS d FROM jsonb_array_elements('${brut}'::jsonb) WITH ORDINALITY t(e, o)),
+  f AS (SELECT d.i, s.x::bigint AS fiche FROM d, LATERAL (SELECT d.d ->> 'garde' UNION ALL SELECT d.d ->> 'absorbe'
+          UNION ALL SELECT jsonb_array_elements_text(COALESCE(d.d -> 'chaine', '[]'::jsonb))) s(x))
+SELECT d.i, public.rapprochement_v3_remise_possible('${user}'::uuid, (d.d ->> 'garde')::bigint, (d.d ->> 'absorbe')::bigint) AS motif,
+  EXISTS (SELECT 1 FROM f WHERE f.i = d.i AND (
+       EXISTS (SELECT 1 FROM public.ventes v WHERE v.inventaire_id = f.fiche)
+    OR EXISTS (SELECT 1 FROM public.push_ventes p WHERE p.inventaire_id = f.fiche)
+    OR EXISTS (SELECT 1 FROM public.plateforme_commandes c WHERE c.inventaire_id = f.fiche)
+    OR EXISTS (SELECT 1 FROM public.cross_post_jobs j WHERE j.user_id = '${user}'::uuid AND j.inventaire_id = f.fiche
+                 AND (j.status = 'sold' OR j.platform_fields ->> 'sale_signal' = 'sold'))
+    OR EXISTS (SELECT 1 FROM public.annonces_plateforme a WHERE a.inventaire_id = f.fiche AND a.platform = 'leboncoin'
+                 AND public.leboncoin_transaction_lue(a.transaction_plateforme, a.capture) IN ('pending', 'sold')))) AS trace_vente
+FROM d ORDER BY d.i;`);
+}
+
 const users = fs.readFileSync(LISTE, 'utf8').split(/\s+/).filter((u) => /^[0-9a-f-]{36}$/.test(u));
-const tot = { comptes: 0, certaines: 0, douteuses_laissees: 0, faits: {}, sautes: {}, erreurs: 0 };
+const tot = { comptes: 0, certaines: 0, applicables: 0, laissees: {}, douteuses_laissees: 0, faits: {}, sautes: {}, erreurs: 0 };
 for (const user of users) {
   const t0 = Date.now();
   try {
     const donnees = lire(user);
     const emp = empreintesDe(donnees);
     const r = passe({ ...donnees, remise_en_ligne_actif: true }, emp, { mode: 'normal', remises: 'toutes' });
-    const certaines = r.decisions.filter((d) => d.type === 'remise_en_ligne');
+    const toutes = r.decisions.filter((d) => d.type === 'remise_en_ligne');
     const douteuses = r.decisions.filter((d) => d.type === 'remise_en_ligne_a_verifier').length;
-    tot.comptes++; tot.certaines += certaines.length; tot.douteuses_laissees += douteuses;
+    const tri = new Map(trier(user, toutes).map((t) => [Number(t.i), t]));
+    const laissees = {};
+    const certaines = toutes.filter((d, i) => {
+      const t = tri.get(i);
+      const motif = !t ? 'tri_absent' : t.trace_vente ? 'trace_de_vente' : t.motif;
+      if (motif) laissees[motif] = (laissees[motif] ?? 0) + 1;
+      return !motif;
+    });
+    tot.comptes++; tot.certaines += toutes.length; tot.applicables += certaines.length; tot.douteuses_laissees += douteuses;
+    for (const [k, v] of Object.entries(laissees)) tot.laissees[k] = (tot.laissees[k] ?? 0) + v;
     let faits = {}, sautes = {}, erreurs = [];
     if (APPLIQUER && certaines.length) {
       q(fs.readFileSync(path.join(RACINE, 'scripts', 'reparations', '20261008_remises_en_ligne_vinted_sauvegarde.sql'), 'utf8').replace(/__USER__/g, user));
@@ -86,7 +120,7 @@ for (const user of users) {
       for (const [k, v] of Object.entries(sautes)) tot.sautes[k] = (tot.sautes[k] ?? 0) + v;
       tot.erreurs += erreurs.length;
     }
-    console.log(`${user} certaines=${certaines.length} douteuses_laissees=${douteuses}${APPLIQUER ? ` faits=${JSON.stringify(faits)} sautes=${JSON.stringify(sautes)} erreurs=${erreurs.length}` : ''} ${Date.now() - t0}ms`);
+    console.log(`${user} certaines=${toutes.length} applicables=${certaines.length} laissees=${JSON.stringify(laissees)} douteuses_laissees=${douteuses}${APPLIQUER ? ` faits=${JSON.stringify(faits)} sautes=${JSON.stringify(sautes)} erreurs=${erreurs.length}${erreurs.length ? ` ${JSON.stringify(erreurs.slice(0, 3).map((e) => e.erreur ?? e))}` : ''}` : ''} ${Date.now() - t0}ms`);
   } catch (e) {
     tot.erreurs++;
     console.log(`${user} ERREUR ${String(e?.message ?? e).split('\n')[0].slice(0, 200)}`);

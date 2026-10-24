@@ -5,6 +5,8 @@
 // une annonce à la fois, rythme espacé, jours et créneaux choisis, maximum
 // quotidien PROPRE À CHAQUE PLAN, affiché dans l'app — aucun chiffre qui se
 // périme, aucune nouvelle promesse chiffrée sur l'accueil.
+// (24/10, décision de Nico) PLUS AUCUN maximum quotidien : la clause « maximum
+// quotidien propre à chaque plan » est retirée des CGV (FR + EN).
 // Lieux servis vérifiés le 15/10 : /legal (src/pages/Legal.jsx, FR + EN),
 // l'ancienne page d'accueil de l'app (src/pages/LandingPage.jsx, FAQ affichée
 // ET JSON-LD FAQPage construit depuis elle). Le site statique (site/) et les
@@ -41,8 +43,10 @@ ok(fautifs.length === 0, `aucun texte servi ne promet 45 par jour (${fichiers.le
 
 console.log('2. Le texte exact, aux deux endroits, dans les deux langues');
 const legal = lire('src/pages/Legal.jsx');
-ok(/maximum quotidien propre à chaque plan<\/span>, affiché dans l'application au moment de l'utilisation/.test(legal), 'Legal FR : maximum quotidien propre à chaque plan, affiché dans l’app');
-ok(/daily maximum specific to each plan<\/span>, shown in the app at the time of use/.test(legal), 'Legal EN : daily maximum specific to each plan, shown in the app');
+// (24/10, décision de Nico) Plus aucun maximum quotidien : la clause est retirée des CGV, FR et EN.
+const servi = legal.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*|\{\/\*)/.test(l)).join('\n');
+ok(/les jours et dans les créneaux choisis par l'utilisateur\. Le rythme espacé/.test(legal) && !/maximum quotidien/.test(servi), 'Legal FR : jours et créneaux choisis, plus aucun maximum quotidien (24/10)');
+ok(/on the days and in the time slots chosen by the user\. The spaced-out pace/.test(legal) && !/daily maximum/i.test(servi), 'Legal EN : days and time slots chosen, no daily maximum anymore (24/10)');
 ok(/protéger les comptes des utilisateurs sur les plateformes/.test(legal) && !/comptes Vinted des utilisateurs/.test(legal), 'Legal : la protection vaut pour toutes les plateformes, plus « les comptes Vinted » seuls');
 const landing = lire('src/pages/LandingPage.jsx');
 const fr = "FillSell agit au rythme d'une personne : des gestes espacés, une annonce à la fois, et la republication automatique ne part que les jours et dans les créneaux que tu choisis.";

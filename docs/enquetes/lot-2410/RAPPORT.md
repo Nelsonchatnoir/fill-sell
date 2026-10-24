@@ -511,3 +511,72 @@ Heures de Paris. Tout vérifié et retesté par l'agent ; Nico n'a rien à faire
   `remise-en-ligne-reconstruite` ; complétés : `beebs-retrait-preuve`, `beebs-flux-mes-annonces`).
 - Après les deux règles du rattrapage, suite complète en 4 tranches (12:28 → 12:36) : **396/396 verts** (nouveau :
   `remise-en-ligne-boutique-et-defusion`).
+
+## 24/10 après-midi — réponses de Nico (rattrapage des 15 comptes, dépôts Beebs écartés, plafonds par jour)
+
+Heures de Paris. Nico valide les deux migrations du midi (`20261024180000` boutique d'un autre compte,
+`20261024190000` « Défaire la fusion ») : gardées. Nico téléverse la 0.6.133.
+
+### Remise en ligne Vinted, les 15 comptes restants : fait
+- Lanceur durci avant de partir (`scripts/reparations/20261024_remises_en_ligne_rattrapage.mjs`) : ne partent que les
+  fusions que la base accepte TELLES QUELLES (motif NULL de `rapprochement_v3_remise_possible` : aucune question créée
+  à l'écriture) et sans AUCUNE trace de vente sur leurs fiches, maillons compris (vente, note de vente, commande, job
+  vendu ou signal « sold », achat en cours Leboncoin). Le signal « unavailable » (annonce partie) n'est pas une vente.
+- Simulation d'abord (5 lots de 3 comptes) : 139 fusions certaines, **129 applicables**, 10 laissées (7 paires déjà
+  tranchées par la personne, 2 fiches touchées à la main, 1 tâche en cours) ; les 43 cas douteux du moteur ne sont pas
+  touchés. Les 11 comptes du midi ne sont pas dans la liste.
+- Application par lots de 3 (13:36:54 → 13:41:37), sauvegarde de chaque compte avant (`_backup_0810_remise_*`, 3 383
+  fiches) : **65 fiches mortes rattachées** (64 remises en ligne + 1 maillon) sur 10 comptes, **41 jobs Vinted morts
+  clos** « remplacée, pas une vente », 52 questions devenues sans objet closes. **0 question posée, 0 mail, 0 push,
+  0 vente, aucune vente en cours touchée** (relus après chaque lot ; 1 seul mail dans le créneau, une vente d'un compte
+  hors lot).
+- **65 fusions refusées par la base, rien n'a changé** : 4225c547 (11) et 001107c2 (54). Leur boutique Vinted n'est
+  pas confirmée sur leur compte FillSell (garde `[boutique_a_confirmer]` de `inventaire_ecarte_import_sync`). Elles
+  se feront si ces comptes confirment leur boutique (« Actualiser mon dressing ») et sur une nouvelle passe décidée
+  par Nico.
+
+### Les 8 dépôts Beebs écartés (louis-seller 2, xxewwer 6) : motif exact introuvable, pas de notre fait
+- **Beebs ne donne aucun motif.** L'annonce quitte « En cours de vérification » sans message ni notification (déjà vu
+  sur le compte de Nico le 11/07). La page publique du produit n'existe plus (lue : 34198239 ne mène plus à aucune
+  fiche ; témoin accepté 34211007 en ligne, InStock). La messagerie relevée de louis-seller ne contient aucun message
+  de Beebs ; xxewwer n'a pas la messagerie. Le centre d'aide de Beebs ne dit pas comment un refus est annoncé. Seul le
+  vendeur peut demander le motif au support Beebs.
+- **Rien de notre côté ne les distingue des annonces acceptées des mêmes vendeurs** : même catégorie (« Jeux vidéo »
+  pour les 13 jeux, la bonne rubrique pour les vêtements), mêmes champs posés de la même façon (âge, état, marque), mêmes
+  photos — de vraies photos de l'objet, prises par le vendeur (relues : Minecraft refusé et Tomb Raider accepté, même
+  fond, même cadrage ; le maillot Ariel à plat). Aucun doublon : ni dépôt Beebs antérieur, ni annonce Beebs sur le
+  compte relié de Louis.
+- Détail : louis-seller T-shirt Kiabi 10 ans (34200634), maillot de bain Ariel 8 ans (34200711) ; xxewwer LEGO La
+  Grande Aventure (34198239), Sonic & All-Stars Racing (34198263), Call of Duty Black Ops Declassified (34198310),
+  Assassin's Creed Chronicles (34198358), Minecraft PS Vita (34198393), MX vs ATV Supercross Encore (34201692). Un
+  9e depuis ce matin : Polly Pocket de louis-seller (34206489), même constat. Les règles publiées de Beebs excluent
+  le « multimédia pour adulte » : Call of Duty (PEGI 18) peut tomber sous cette règle, que nous ne pouvons pas lire
+  sur l'objet ; les autres sont des jeux PEGI 3 à 16 ou des vêtements d'enfant, autorisés.
+- **Rien corrigé, rien relancé** : aucune faute prouvée chez nous.
+
+### Plus de plafond de republication par jour (décision de Nico) : fait
+- **Retiré du code, pour tous les paliers** (pas une valeur énorme en configuration) :
+  - base, migration `20261024200000` (essai annulé d'abord, appliquée à 14:00:37) : `republish_plafond_palier`
+    SUPPRIMÉE ; `remise_en_vente_place` sans « plafond_du_jour » ; `spend_coins_and_republish` sans « enveloppe de
+    compte » ni borne de 50 par jour (ancienne voie Vinted) ; `republish_planifiee_reglage` / `_regler` / `_etat` /
+    `_etat_multi` / `_sweep` sans plafond du palier. Les huit corps repris de la prod (garde md5), inverse prêt ;
+  - distribution : `get-pending-jobs` v277 → **v278** (14:01:48, `verify_jwt` true avant et après) — la retenue ne
+    lit plus que la pause ; une trace « plafond » encore posée se lève ; 55 appels relus ensuite, tous en 200 ;
+  - configuration, migration `20261024210000` (14:12:53) : les clés `republish_plafond_jour`, `_premium`, `_pro`,
+    `_business` sortent de `coin_config` (journalisé, valeurs 170 / 50 / 170 / 100 000 gardées dans l'inverse).
+- **Gardé tel quel** : la pause de 2 h après 50 republications (`republish_pause_apres` 50,
+  `republish_pause_duree_min` 120, relus) ; les quotas du mois (free 50, premium 1 500, pro 5 000, business sans
+  limite) ; les espacements par plateforme ; le disjoncteur d'échecs (2).
+- **Textes** : plus aucune phrase de limite du jour dans l'app — Stock (carte du haut, tête de liste, pastilles,
+  feuille Republier), « Ta file », module de republication planifiée, CGV (clause du maximum quotidien par plan
+  retirée, FR + EN, date au 24/10). Les phrases de la pause restent mot pour mot. L'extension, les mails et le site
+  n'en avaient aucune (vérifié) : **extension inchangée**, pas de nouveau zip.
+- **Republication planifiée (Pro)** : le « nombre par jour » d'une plateforme reste celui que la personne a choisi —
+  il n'a plus de maximum de palier, et « Sans limite » devient possible (rien de choisi = autant que le créneau le
+  permet). Les 41 réglages existants sont relus à l'identique (aucun interrupteur, aucun nombre changé).
+- **Files freinées** : linda.sidhoum (Premium, 624 en file) n'est plus retenue au jour ; sa file repart dès que son
+  PC est allumé, par séries de 50 puis 2 h de pause. Son extension n'a pas été vue depuis le 23/10 12:27 : à vérifier au
+  prochain allumage.
+- Selftest `plus-de-plafond-par-jour` (34) remplace `republication-plafond-message` ; mis à jour :
+  `textes-republication-exacts`, `file-des-jobs`, `palier`, `republication-apercu-gratuit`. Suite complète en 4
+  tranches (14:15 → 14:22) : **396/396 verts**. App : `build:essai` vert ; OTA 2.9.112 (voir l'état de prod).
