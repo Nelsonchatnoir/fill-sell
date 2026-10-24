@@ -47,7 +47,7 @@ export async function verifierJetonPubSub(
 ): Promise<VerificationPubSub> {
   const refus = (raison: string, email: string | null = null): VerificationPubSub => ({ ok: false, verification: `oidc_refuse:${raison}`, email });
   try {
-    const m = /^Bearer\s+([A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+)$/i.exec((authorization ?? "").trim());
+    const m = /^Bearer\s+([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/i.exec((authorization ?? "").trim());
     if (!authorization) return { ok: false, verification: "oidc_absent", email: null };
     if (!m) return refus("illisible");
     const [h, c, s] = m[1].split(".");
@@ -67,7 +67,7 @@ export async function verifierJetonPubSub(
       "jwk", { kty: "RSA", n: jwk.n, e: jwk.e, alg: "RS256", ext: true },
       { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"],
     );
-    const signee = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", cle, octets(s) as BufferSource, new TextEncoder().encode(`${h}.${c}`));
+    const signee = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", cle, octets(s) as Uint8Array<ArrayBuffer>, new TextEncoder().encode(`${h}.${c}`));
     if (!signee) return refus("signature", email);
     const maintenant = Math.floor(Date.now() / 1000);
     if (!EMETTEURS.includes(String(charge.iss ?? ""))) return refus("emetteur", email);

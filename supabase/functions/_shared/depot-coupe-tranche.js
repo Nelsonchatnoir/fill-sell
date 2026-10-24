@@ -132,7 +132,6 @@ export function presenceCandidate(c, lignes, probants) {
 
 /** Les annonces qui peuvent être ce dépôt (sans juger leur présence). */
 export function candidatesDepotCoupe(job, lignes) {
-  const pf = job?.platform_fields ?? {};
   const rep = reperesDuJob(job);
   if (!Number.isFinite(rep.depuis)) return [];
   const ancien = idNum(rep.ancienId);
