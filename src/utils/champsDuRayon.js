@@ -33,6 +33,7 @@
 // de publication, et de lui seul : la carte ne peut plus dire « À COMPLÉTER »
 // là où l'écran Confirmer dit « Prête » (cas Primark, Beebs).
 import { jugerValeurContreListe, horsListeBloque, rayonNeufSeulement, valeurUneLettre, tailleDeduiteDuTexte, estChampTaille, rayonPublicIncoherent, messageRayonPublic } from '../publication/moteur/listes.js';
+import { etatsVintedEnFrancais } from './catalogueListes.js';
 
 // ── DU CHAMP DE LA PLATEFORME À CELUI QU'ON CONNAÎT ───────────────────────
 // Le catalogue parle la langue de la plateforme (`clothing_st`, `condition`,
@@ -358,8 +359,10 @@ export async function lireChampsDuRayon(supabase, platform, categoryKey) {
     if (error) return [];
     // Opla range ses listes en objets { code, title } : la carte parle en
     // titres (chantier du 24/09 — le serveur retraduit en code au départ).
-    return (data ?? []).map((l) => (Array.isArray(l.allowed_values)
+    // (24/10, A7) Une liste d'états Vinted relevée sur une page d'une autre langue se lit en français
+    // (par l'identifiant de l'état, utils/catalogueListes) : jamais jugée telle quelle.
+    return etatsVintedEnFrancais(platform, (data ?? []).map((l) => (Array.isArray(l.allowed_values)
       ? { ...l, allowed_values: l.allowed_values.map((v) => (v && typeof v === 'object') ? String(v.title ?? v.code ?? '').trim() : String(v).trim()).filter(Boolean) }
-      : l));
+      : l)));
   } catch { return []; }
 }

@@ -45,6 +45,24 @@ export const CLE_TITRE_SAISI = "titre_saisi";
 /** Un titre absent, vide ou fait d'espaces. */
 export const titreVide = (t) => !String(t ?? "").trim();
 
+// ── (24/10, lot « zéro blocage », B4) JAMAIS UN TITRE GÉNÉRIQUE OU ÉGAL AU NOM D'UNE PLATEFORME ──
+// mele.marta, 24/10 : à la question « Titre » (Vinted avait refusé son titre japonais), elle a tapé
+// « Vinted » ; le serveur l'a écrit sur le job (il ne regardait que le vide) et l'annonce 10508178148
+// est en ligne sous le titre « Vinted ». Règle de Nico : un titre vide, générique ou égal au nom d'une
+// plateforme ne part JAMAIS — on reprend celui de la fiche. Seul le titre ENTIER compte : « Robe Vinted
+// rose » ou « Robe » passent tels quels.
+const TITRES_NON_RECEVABLES = new Set([
+  "vinted", "ebay", "leboncoin", "le bon coin", "lbc", "beebs", "depop", "opla", "fillsell", "fill sell", "fill and sell",
+  "titre", "title", "titolo", "titulo", "annonce", "article", "produit", "objet", "item", "sans titre", "untitled", "no title",
+]);
+/** Le titre peut-il partir ? Non s'il est vide, fait de symboles seulement, ou générique (nom d'une plateforme…). */
+export function titreRecevable(t) {
+  const v = String(t ?? "").replace(/\s+/g, " ").trim();
+  if (!v || !/[\p{L}\p{N}]/u.test(v)) return false;
+  const cle = v.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^\p{L}\p{N} ]+/gu, " ").replace(/\s+/g, " ").trim();
+  return !TITRES_NON_RECEVABLES.has(cle);
+}
+
 /** Coupe au dernier mot entier (même corps que couperAuMot / clampToWord). */
 export function couperTitre(titre, platform) {
   const v = String(titre ?? "").replace(/\s+/g, " ").trim();
@@ -63,8 +81,9 @@ export function couperTitre(titre, platform) {
  *   `null` = aucun titre connu : la question « Titre » doit être posée.
  */
 export function titrePourJob({ platform, titreJob = "", titreSaisi = "", titreFiche = "" }) {
-  if (!titreVide(titreJob)) return { titre: String(titreJob), source: "job" };
-  if (!titreVide(titreSaisi)) return { titre: couperTitre(titreSaisi, platform), source: "saisi" };
-  if (!titreVide(titreFiche)) return { titre: couperTitre(titreFiche, platform), source: "fiche" };
+  if (titreRecevable(titreJob)) return { titre: String(titreJob), source: "job" };
+  // (24/10, B4) Un titre générique (« Vinted ») vaut un titre vide : la réponse, sinon la fiche.
+  if (titreRecevable(titreSaisi)) return { titre: couperTitre(titreSaisi, platform), source: "saisi" };
+  if (titreRecevable(titreFiche)) return { titre: couperTitre(titreFiche, platform), source: "fiche" };
   return null;
 }

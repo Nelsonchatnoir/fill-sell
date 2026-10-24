@@ -4,6 +4,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { retenueServeurDuJob } from "../../../src/utils/retenueServeur.js";
 // Ventes prouvées (08/10) : les règles de la veille, les mêmes que veille-cpu.
 import { anomaliesVentesProuvees, lignesVentesProuvees } from "../_shared/ventes-prouvees.js";
+// (24/10, lot « zéro blocage », C3) La sentinelle des arrêts de NOTRE fait.
+import { sentinelleArrets } from "../_shared/cause-blocage.js";
 
 // ops-digest — digest quotidien des anomalies cross_post_jobs, envoyé à
 // support@fillsell.app UNIQUEMENT s'il y a au moins une ligne (silence = sain).
@@ -911,7 +913,34 @@ serve(async (req) => {
   }
   const ventesArriere = Number(ventesVeille?.anterieures ?? 0) || 0;
 
+  // 14. (24/10, lot « zéro blocage », C3 — Nico) LA SENTINELLE : chaque arrêt d'une publication, d'une
+  // republication ou d'un retrait qui vient de NOUS (pas une connexion, un compte à finir, une restriction de
+  // la plateforme, une plateforme désactivée ni une garde voulue) est classé à part, avec sa cause exacte
+  // (_shared/cause-blocage.js). Un job arrêté chez nous puis abandonné par la personne compte comme un ÉCHEC.
+  // Lecture bornée : jobs créés depuis 30 jours, champs utiles seulement.
+  let sentinelle: ReturnType<typeof sentinelleArrets> = [];
+  try {
+    const iso30d = new Date(now - 30 * 86_400_000).toISOString();
+    const { data: rowsS, error: eS } = await supabase.from("cross_post_jobs")
+      .select("id, user_id, platform, action, status, error, created_at, needs_user_source:platform_fields->needs_user_source, abandon_utilisateur:platform_fields->abandon_utilisateur, erreurs_archivees:platform_fields->erreurs_archivees, reprise_avant_retrait:platform_fields->reprise_avant_retrait")
+      .in("status", ["needs_user", "failed", "cancelled", "pending"])
+      .gte("created_at", iso30d)
+      .order("created_at", { ascending: false })
+      .limit(3000);
+    if (eS) throw eS;
+    const jobsS = ((rowsS ?? []) as Array<Record<string, unknown>>).map((r) => ({
+      id: r.id, user_id: r.user_id, platform: r.platform, action: r.action, status: r.status, error: r.error, created_at: r.created_at,
+      platform_fields: { needs_user_source: r.needs_user_source, abandon_utilisateur: r.abandon_utilisateur, erreurs_archivees: r.erreurs_archivees, reprise_avant_retrait: r.reprise_avant_retrait },
+    }));
+    sentinelle = sentinelleArrets(jobsS, { depuis: iso24h });
+  } catch (e) {
+    console.warn("[ops-digest] sentinelle illisible :", String((e as Error)?.message ?? e));
+  }
+  const sentinelleNouveaux = sentinelle.reduce((s, g) => s + g.nouveaux, 0);
+  const sentinelleEnCours = sentinelle.reduce((s, g) => s + g.en_cours, 0);
+
   const counts = {
+    arrets_de_notre_fait: sentinelle.length,
     ventes_prouvees: ventesAnomalies.length + (ventesArriere > 0 ? 1 : 0),
     cpu_au_dessus_70: cpuMinutesAuDessus > 0 ? 1 : 0,
     pauses_releves: pausesActives.length,
@@ -1071,6 +1100,20 @@ serve(async (req) => {
     </p>
     <ul style="margin:0;padding:0 0 0 18px;">
       ${retenuesServeur.map((a) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#92400E;">${esc(a)}</li>`).join("")}
+    </ul>`
+  }
+    ${
+    sentinelle.length === 0 ? "" : `
+    <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#B91C1C;">
+      🔴 Arrêts de NOTRE fait — ${sentinelleNouveaux} nouveau${sentinelleNouveaux > 1 ? "x" : ""} (24 h), ${sentinelleEnCours} en cours
+    </h2>
+    <p style="margin:0 0 8px;font-size:12px;font-family:sans-serif;color:#6B7280;">
+      Ni connexion, ni compte à finir, ni restriction de la plateforme, ni plateforme désactivée, ni garde voulue :
+      un champ, une valeur, un titre, une capture, une lecture ou un contrôle avant retrait. Objectif : zéro.
+      Un abandon après un échec chez nous compte comme un échec.
+    </p>
+    <ul style="margin:0;padding:0 0 0 18px;">
+      ${sentinelle.slice(0, 40).map((g) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#374151;"><strong>${esc(g.cause)}</strong> — ${esc(g.platform)} ${esc(g.action)} : ${g.nouveaux} nouveau(x), ${g.en_cours} en cours${g.abandonnes ? `, ${g.abandonnes} abandonné(s) après l'échec` : ""} — ${g.comptes} compte(s) — ex. ${esc(g.exemples.join(", "))}</li>`).join("")}
     </ul>`
   }
     ${section("Jobs en échec (24 h)", (failed ?? []) as Job[])}

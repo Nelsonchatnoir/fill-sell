@@ -36,6 +36,13 @@
 // retrait (envoiMarqueProuve) : ce build ne l'ouvre pas à lui seul.
 export const BUILD_VINTED_MARQUE_PAR_ID = "2026-10-17T13:13:01Z";
 
+// (24/10, lot « zéro blocage », A3) Le premier build d'extension qui porte la CHAÎNE DE REPLI de la marque
+// (attente du champ après le clic, garde qui compare la marque posée, ligne « Utiliser X comme marque » dans
+// toutes les langues de Vinted, « Sans marque » quand le rayon l'accepte) : une republication en pause
+// « marque » n'est relâchée vers une marque HORS catalogue que pour un poste à ce build ou plus récent.
+// Horodatage borne basse du build 0.6.134 (posé au paquet le 24/10).
+export const BUILD_VINTED_MARQUE_CHAINE = "2026-10-24T15:00:00Z";
+
 /** L'identifiant de la marque de l'annonce d'origine (republish_snapshot.brand_id > 1), ou null. */
 export function marqueAIdentifiantCapturee(pf) {
   const snap = pf && typeof pf === "object" && pf.republish_snapshot && typeof pf.republish_snapshot === "object"

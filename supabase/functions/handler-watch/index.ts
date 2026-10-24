@@ -2932,22 +2932,26 @@ serve(async (req) => {
         const pf = { ...(j.platform_fields ?? {}) } as Record<string, unknown>;
         const fiche = ficheDe.get(String(j.inventaire_id)) ?? null;
         let vu: { vu_le: unknown; statut: unknown } | null = null;
+        // (24/10, lot « zéro blocage », A4) Autres plateformes : la ligne du relevé ENTIÈRE (disparu_le,
+        // transaction lue) — une annonce que le relevé dit disparue ou vendue n'est jamais « en ligne ».
+        // deno-lint-ignore no-explicit-any
+        let annonce: any = null;
         if (j.platform === "vinted") {
           vu = traceV.get(String(identifiantAnnonceJob(j) ?? "")) ?? null;
         } else {
           const ident = String(j.platform_listing_id ?? "").trim();
-          let q = supabase.from("annonces_plateforme").select("vu_le, statut_plateforme").eq("user_id", userId).eq("platform", j.platform);
+          let q = supabase.from("annonces_plateforme").select("vu_le, statut_plateforme, disparu_le, transaction_plateforme, transaction_lue_le").eq("user_id", userId).eq("platform", j.platform);
           q = ident ? q.eq("listing_id", ident) : (j.listing_url ? q.eq("url", j.listing_url) : q.eq("job_id", j.id));
           const { data: a, error: eA } = await q.limit(1).maybeSingle();
           if (eA) continue; // illisible : jamais une absence
-          vu = a ? { vu_le: a.vu_le, statut: a.statut_plateforme } : null;
+          annonce = a ?? null;
         }
         const boutique = j.platform === "vinted"
           ? (String(pf.vinted_account_id ?? "").trim() || String(fiche?.vinted_account_id ?? "").trim() || null)
           : null;
         // deno-lint-ignore no-explicit-any
         const runsPf = ((runs ?? []) as any[]).filter((r) => r.platform === j.platform);
-        const d = decisionIntrouvable({ job: j, fiche, vu, runs: runsPf, boutique });
+        const d = decisionIntrouvable({ job: j, fiche, vu, annonce, runs: runsPf, boutique });
         const marque = (pf.introuvable_a_confirmer ?? {}) as Record<string, unknown>;
         if (d.decision === "reprendre") {
           if (reprisesCompte >= REPRISES_PAR_COMPTE_ET_PASSAGE) continue; // le reste au passage suivant

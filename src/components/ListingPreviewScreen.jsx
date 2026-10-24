@@ -164,11 +164,12 @@ import {
 import { VINTED_COLORS } from "../utils/vintedColors";
 import { optionDepuisTextes } from "../../supabase/functions/_shared/option-du-texte.js";
 import { extensionAMettreAJour } from "../utils/extensionAJour";
-import { sansListesEmpruntees } from "../utils/catalogueListes.js";
+import { sansListesEmpruntees, etatsVintedEnFrancais } from "../utils/catalogueListes.js";
 // (18/10 nuit, point 1) La mémoire « compte × catégorie » : la réponse donnée
 // par la personne à un champ du RAYON (Univers-public Leboncoin, Département
 // eBay) se repose seule sur le prochain article du même rayon.
 import { valeurDeMemoire, reponseARetenir, lignesAEcrire, COMPTE_PRINCIPAL } from "../publication/moteur/memoireCategorie.js";
+import { EBAY_DEPARTMENT_BY_GENRE } from "../publication/moteur/departementEbay.js";
 import { chargerMemoire, memoireEnCache, abonnerMemoire, retenirReponses } from "../utils/memoireChamps.js";
 // (18/10, lot 2) Les correspondances APPRISES sur les annonces acceptées du parc :
 // en « fantôme » l'app note ce qu'elle aurait posé ; « actif », elle le pose.
@@ -1315,15 +1316,8 @@ function defautAspectEbay(aspect, ctx = {}) {
 // « Adulte unisexe », « Unisexe », « Enfant », « Adulte ») : candidats du
 // plus spécifique au plus général, seul un candidat PRÉSENT dans la liste de
 // la catégorie est retenu — jamais de valeur inventée.
-const EBAY_DEPARTMENT_BY_GENRE = {
-  "Femme":  ["Femme", "Adulte unisexe", "Unisexe", "Adulte"],
-  "Homme":  ["Homme", "Adulte unisexe", "Unisexe", "Adulte"],
-  "Fille":  ["Fille", "Enfant unisexe", "Enfant", "Unisexe"],
-  "Garçon": ["Garçon", "Enfant unisexe", "Enfant", "Unisexe"],
-  "Bébé":   ["Bébé et tout-petit (unisexe)", "Bébé", "Enfant unisexe", "Enfant"],
-  "Enfant": ["Enfant unisexe", "Enfant", "Adolescents", "Unisexe"],
-  "Mixte":  ["Adulte unisexe", "Unisexe", "Adulte"],
-};
+// (24/10) La table vit dans moteur/departementEbay.js (importée en tête) : la
+// garde du clic la lit aussi — une seule table.
 
 // Canal générique de saisie manuelle des requis par plateforme (chantier
 // champs obligatoires, 2026-07-16) — pendant du pf.ebayAspects : la clé du
@@ -3931,7 +3925,10 @@ function StepPublish({ selected, setSelected, userId = null, platformSessions = 
             <span style={{ fontSize:13, color: redRestants > 0 ? "#B91C1C" : "#047857", fontWeight:700 }}>
               {redRestants > 0
                 ? t("stepPublishSharedMissingTitle")
-                : (lang === "en" ? "Everything is filled in — you can publish" : "Tout est complété — tu peux publier")}
+                // (24/10, B8) Jamais « Tout est complété » sous un refus du clic : l'écran dit une seule vérité.
+                : publishError
+                  ? (lang === "en" ? "Nothing left to fill in here — the message above says what blocked" : "Rien à compléter ici — le message au-dessus dit ce qui a bloqué")
+                  : (lang === "en" ? "Everything is filled in — you can publish" : "Tout est complété — tu peux publier")}
             </span>
             {redRestants > 0 ? (
               <span style={{ flexShrink:0, fontSize:11.5, fontWeight:700, color:"#B91C1C", background:"#FEE2E2", border:"1px solid #FECACA", borderRadius:999, padding:"2px 9px", whiteSpace:"nowrap" }}>
@@ -8514,6 +8511,9 @@ export default function ListingPreviewScreen({
           // (03/10, point 9) Une liste copiée d'un champ « Type/Produit » sur un
           // champ « Poids/Quantité » n'est jamais proposée (utils/catalogueListes).
           rows = sansListesEmpruntees(rows);
+          // (24/10, A7) Une liste d'états Vinted relevée sur une page d'une autre langue (« Condizioni ») se lit
+          // en français, par l'identifiant de l'état (utils/catalogueListes) : jamais comparée telle quelle.
+          rows = etatsVintedEnFrancais(platform, rows);
           return [platform, rows];
         }));
         if (!alive) return;
@@ -10712,7 +10712,10 @@ export default function ListingPreviewScreen({
           // catégorie que le job, il se REMONTE sur celle du job : les champs
           // manquants y apparaissent (déduits quand on peut, sinon demandés une
           // fois), et le message le dit. Rien n'est décompté.
-          if (catJob && verdict.missingEmpty.length && !iconeDementie && String(ebayPreviewCategoryId ?? "") !== catJob) {
+          // (24/10, lot « zéro blocage », A6) Une valeur REFUSÉE par la liste de la
+          // catégorie du job remonte l'encart comme un champ vide : la personne voit
+          // la liste qui part, jamais « Tout est complété » sous un « Pas publié ».
+          if (catJob && (verdict.missingEmpty.length || verdict.invalides.length) && !iconeDementie && String(ebayPreviewCategoryId ?? "") !== catJob) {
             setEbayCategorieDuClic(catJob);
             guardMessages.push(lang === "en"
               ? "The eBay box above now shows these fields — answer there, then publish again. Nothing was counted."

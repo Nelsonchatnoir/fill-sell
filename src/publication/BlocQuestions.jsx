@@ -138,7 +138,11 @@ export default function BlocQuestions({ m }) {
         <div className="fsn-card-t">
           {restants > 0
             ? (restants === 1 ? (en ? "One question before publishing" : "Une question avant de publier") : (en ? `${restants} questions before publishing` : `${restants} questions avant de publier`))
-            : (en ? "Everything is filled in — you can publish" : "Tout est complété — tu peux publier")}
+            // (24/10, lot « zéro blocage », B8) Jamais « Tout est complété » sous « Pas publié » :
+            // l'écran dit une seule vérité (Ornella, 24/10 13:49).
+            : m.publishError
+              ? (en ? "Nothing left to fill in here — the message above says what blocked" : "Rien à compléter ici — le message au-dessus dit ce qui a bloqué")
+              : (en ? "Everything is filled in — you can publish" : "Tout est complété — tu peux publier")}
         </div>
         <Puce ton={restants > 0 ? "geste" : "ok"}>{restants > 0 ? (en ? `${restants} to fill in` : `${restants} à compléter`) : "✓"}</Puce>
       </div>

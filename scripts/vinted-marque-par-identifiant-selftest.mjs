@@ -160,13 +160,15 @@ const texteComparable = new Function(`${extraireFonctionJs(vt, "texteComparable"
   const noms = ["document", "SANS_MARQUE_RE", "marqueAbsenceComparable", "selectVintedNoBrand", "closeAnyOpenDropdown", "openDropdown",
     "waitForElement", "typeHuman", "attendreChoixMarque", "humanPause", "confirmDropdownIfNeeded", "marquesDuCatalogueVinted",
     "suggestionsMarqueProches", "texteComparable", "armerMarquePourPost"];
+  // (24/10, lot « zéro blocage », A3 — Nico) « Une marque introuvable ne bloque jamais : marque la plus proche
+  // prouvée, ou « Sans marque » quand la catégorie l'accepte. » Le harnais NOTE la pose de « Sans marque ».
   const harnais = ({ brandValue = "", choix = { type: "aucune", suggestions: [] } } = {}) => {
-    const armements = []; const attentes = [];
+    const armements = []; const attentes = []; const sansMarque = [];
     const valeurs = [
-      { querySelector: () => ({ value: brandValue }) },
+      { querySelector: () => ({ value: brandValue }), querySelectorAll: () => [] },
       { test: (v) => /^sans marque$/i.test(String(v ?? "").trim()) },
       (v) => String(v ?? "").toLowerCase().trim(),
-      async () => { throw new Error("« Sans marque » jamais posé ici"); },
+      async () => { sansMarque.push(true); },
       async () => {}, async () => {}, async () => ({}), async () => {},
       async (m, t, id) => { attentes.push({ m, t, id }); return choix; },
       async () => {}, async () => {}, async () => [],
@@ -174,19 +176,26 @@ const texteComparable = new Function(`${extraireFonctionJs(vt, "texteComparable"
       (id, titre) => armements.push({ id, titre }),
     ];
     const fn = new Function(...noms, `${SEL}; return selectVintedBrand;`)(...valeurs);
-    return { fn, armements, attentes };
+    return { fn, armements, attentes, sansMarque };
   };
   const journal = console.warn; console.warn = () => {};
   try {
     let h = harnais(); let w = [];
-    let r = await h.fn("Paris 2024", w, { marqueId: 305315, marqueCapturee: "Paris 2024" });
-    ok(r?.poseeParId === true && r.marqueId === 305315 && !r.needsUser, "« Paris 2024 » absente du menu (30 s) → posée par son identifiant, AUCUNE question");
+    let r = await h.fn("Paris 2024", w, { marqueId: 305315, marqueCapturee: "Paris 2024", injectionProuvee: true });
+    ok(r?.poseeParId === true && r.marqueId === 305315 && !r.needsUser, "« Paris 2024 » absente du menu (30 s), envoi direct PROUVÉ → posée par son identifiant, AUCUNE question");
     ok(h.armements.length === 1 && h.armements[0].id === 305315 && h.armements[0].titre === "Paris 2024" && h.attentes[0]?.t === 30000 && h.attentes[0]?.id === 305315,
       "l'identifiant CAPTURÉ est armé, après 30 s d'attente de sa ligne");
     ok(w.some((x) => /posée par son identifiant/.test(String(x))), "le chemin pris est dit (avertissement)");
+    h = harnais(); w = [];
+    r = await h.fn("Paris 2024", w, { marqueId: 305315, marqueCapturee: "Paris 2024" });
+    ok(r?.resolution === "sans_marque" && !r.needsUser && h.armements.length === 0 && h.sansMarque.length === 1 && w.some((x) => /Sans marque/.test(String(x))),
+      "(24/10) envoi direct NON prouvé, ni ligne ni écriture équivalente → « Sans marque » que le rayon accepte, aucune question, dit dans les avertissements");
     h = harnais({ choix: { type: "inconnue", suggestions: [] } });
     r = await h.fn("pago", [], { marqueId: 352029, marqueCapturee: "pago" });
-    ok(r?.poseeParId === true && h.armements[0]?.id === 352029, "« pago » : seule la ligne « Sans marque » proposée → par son identifiant, jamais « Sans marque »");
+    ok(r?.resolution === "sans_marque" && h.armements.length === 0 && h.sansMarque.length === 1, "(24/10) « pago » : seule la ligne « Sans marque » proposée → « Sans marque », jamais une pause sans fin");
+    h = harnais({ choix: { type: "aucune", suggestions: ["Okaidi", "Okaidi Kids"] } });
+    r = await h.fn("Okaïdi", [], { marqueId: null });
+    ok(r?.resolution !== "sans_marque" || h.sansMarque.length === 1, "(24/10) une écriture équivalente unique est cherchée avant « Sans marque » (jamais une voisine)");
     h = harnais({ choix: { type: "catalogue", el: { click() {} } } });
     r = await h.fn("Paris 2024", [], { marqueId: 305315, marqueCapturee: "Paris 2024" });
     ok(r?.poseeParId === true && h.armements.length === 1, "ligne cliquée mais #brand resté vide → par son identifiant");
@@ -198,14 +207,14 @@ const texteComparable = new Function(`${extraireFonctionJs(vt, "texteComparable"
     ok(r?.needsUser === true && h.armements.length === 0, "#brand porte une AUTRE marque → rien d'armé (jamais deux marques), la règle d'avant");
     h = harnais();
     r = await h.fn("Nike", [], { marqueId: 305315, marqueCapturee: "Paris 2024" });
-    ok(r?.needsUser === true && h.armements.length === 0 && /en 30 s \(id 305315 attendu\)/.test(r.diagnostic), "l'identifiant ne vaut que pour LA marque capturée — et le diagnostic dit la vraie attente (30 s)");
+    ok(r?.resolution === "sans_marque" && h.armements.length === 0 && h.attentes[0]?.t === 30000, "l'identifiant ne vaut que pour LA marque capturée (jamais armé pour « Nike ») ; (24/10) « Sans marque », aucune question");
     h = harnais();
     r = await h.fn("Zorglubia", [], { marqueId: null });
-    ok(r?.needsUser === true && r.needsUserField?.raison === "marque_hors_catalogue" && h.armements.length === 0 && /en 10 s ;/.test(r.diagnostic),
-      "publication neuve (aucun identifiant) : la question du 03/10, inchangée");
+    ok(r?.resolution === "sans_marque" && !r?.needsUser && h.armements.length === 0 && h.attentes[0]?.t === 10000,
+      "(24/10) publication neuve (aucun identifiant), marque inconnue de Vinted : « Sans marque », plus la question du 03/10");
     h = harnais();
     r = await h.fn("Paris 2024", [], { marqueId: 305315 });
-    ok(r?.needsUser === true && h.armements.length === 0, "identifiant sans marque capturée (appel ancien) : jamais armé");
+    ok(r?.resolution === "sans_marque" && h.armements.length === 0, "identifiant sans marque capturée (appel ancien) : jamais armé");
   } finally { console.warn = journal; }
 }
 {
@@ -302,10 +311,14 @@ console.log("\n6. SERVEUR : PREUVE DU PARC, RÉARMEMENT, L'ANNONCE GAGNE, « EN 
     "poste à jour : une marque retenue ne remplace jamais la marque à identifiant de l'annonce");
 }
 ok(/appliquerMarqueRetenue\(j, retenues as Record<string, unknown>, new Date\(\), \{ annonceParIdentifiant: posteMarqueParId \}\)/.test(gpj), "get-pending-jobs : marque retenue sans effet pour un poste à jour");
-ok(/import \{ BUILD_VINTED_MARQUE_PAR_ID, envoiMarqueProuve, enPauseMarqueParId, marqueAIdentifiantCapturee \} from "\.\.\/_shared\/vinted-marque-par-id\.js";/.test(gpj), "get-pending-jobs lit la règle partagée");
+ok(/import \{ BUILD_VINTED_MARQUE_PAR_ID, BUILD_VINTED_MARQUE_CHAINE, envoiMarqueProuve, enPauseMarqueParId, marqueAIdentifiantCapturee \} from "\.\.\/_shared\/vinted-marque-par-id\.js";/.test(gpj), "get-pending-jobs lit la règle partagée");
 ok(/const posteAJourMarque = buildMsDe\(buildDuPoll\) >= buildMsDe\(BUILD_VINTED_MARQUE_PAR_ID\);/.test(gpj)
   && /if \(posteAJourMarque\) \{[\s\S]{0,300}marqueProuvee = await envoiMarqueProuveParc\(admin\);/.test(gpj), "la preuve n'est lue que pour un poste qui porte le correctif");
-ok(/if \(enPauseMarqueParId\(j\) && !\(posteAJourMarque && marqueProuvee\)\) \{ retenusMarque\.add/.test(gpj), "une pause n'est resservie qu'avec la preuve, à un poste à jour");
+ok(/if \(!relaches\.has\(String\(j\.id\)\) && enPauseMarqueParId\(j\) && !\(posteAJourMarque && marqueProuvee\)\) \{ retenusMarque\.add/.test(gpj), "une pause n'est resservie qu'avec la preuve, à un poste à jour — ou relâchée (24/10)");
+// (24/10, lot « zéro blocage », A3) Une pause « marque » n'est jamais permanente.
+ok(/const raison = id && duCatalogue\.has\(id\) \? "marque_du_catalogue" : \(posteChaine \? "chaine_de_repli" : null\);/.test(gpj)
+  && /Date\.now\(\) - t < 6 \* 3_600_000/.test(gpj) && /\.eq\("action", "republish"\)\.eq\("status", "published"\)/.test(gpj),
+  "(24/10) pause relâchée : marque du catalogue (reprise avec succès par le parc, 30 j) ou poste à la chaîne de repli ; au plus toutes les 6 h");
 ok(/if \(marqueProuvee\) j\.platform_fields = \{ \.\.\.pfM, marque_injection_prouvee: true \};/.test(gpj), "marque_injection_prouvee servi seulement sur preuve");
 ok(/else if \("marque_injection_prouvee" in pfM\) \{\s*const \{ marque_injection_prouvee: _perime, \.\.\.reste \} = pfM;\s*j\.platform_fields = reste;/.test(gpj),
   "un drapeau resté en base (preuve révoquée) est retiré de la copie servie");

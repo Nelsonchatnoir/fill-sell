@@ -19,6 +19,7 @@
 import { natureAttente } from "../../utils/etatsPublication.js";
 import { titreVide, couperTitre, titrePourJob } from "../../../supabase/functions/_shared/titre-du-job.js";
 import { tailleDansGrille, diagnosticTaille, candidatsTaille } from "../../../supabase/functions/_shared/tailles.js";
+import { departementEbayPour } from "./departementEbay.js";
 
 // ── Un aspect BLOQUE-t-il la publication ? ───────────────────────────────────
 // Règle unique (2026-07-29) partagée par la garde du CTA, la liste des motifs
@@ -283,16 +284,55 @@ export function gardeAspectsEbay({ pfE, ebayRequiredFull, outils }) {
   const invalides = [];
   const rapproches = [];
   const horsListe = [];
+  // ── (24/10, lot « zéro blocage », A6) LE CHAMP SE RECALCULE POUR LA CATÉGORIE QUI PART ──
+  // Ornella, manteau fille 24 mois : l'encart avait posé « Fille » pour la
+  // catégorie 51580 ; au clic, l'arbitrage a rangé l'article en 155201 dont la
+  // SEULE valeur de Département est « Enfant unisexe » → quatre refus « eBay
+  // n'accepte pas Fille », eBay décoché. Règle de Nico (B1, B2, B3) : un champ qui
+  // se déduit se remplit tout seul, pour la catégorie qui part.
+  //   · Département ← le genre de la copie (ou le Département posé pour une autre
+  //     catégorie), traduit dans la liste de CETTE catégorie (table unique,
+  //     moteur/departementEbay.js) ;
+  //   · une liste qui FAIT FOI (SELECTION_ONLY) à UNE SEULE valeur → cette valeur.
+  // Jamais pour ce qui dit l'objet lui-même (marque, modèle, stockage : aucune
+  // voisine imposée, règles du 15 et du 17/10).
+  const deduireDeLaCategorie = (aspect, known, val) => {
+    const allowed = Array.isArray(aspect.allowedValues) ? aspect.allowedValues : [];
+    if (!allowed.length || known?.sansRapprochement) return null;
+    // Une taille écrite ne se remplace jamais par la seule taille de la liste
+    // (« M » n'est pas « Taille unique ») : le vocabulaire des tailles tranche, sinon la question.
+    if (val && known?.labels?.includes("Taille")) return null;
+    if (aspect.name === "Département") {
+      const d = departementEbayPour(pfE.genre, allowed) ?? departementEbayPour(val, allowed);
+      if (d) return d;
+    }
+    if (allowed.length === 1 && listeFaitFoi("ebay", aspect.mode)) return String(allowed[0]);
+    return null;
+  };
+  const poser = (aspect, known, v) => {
+    if (known?.set) known.set(v);
+    else pfE.ebayAspects = { ...(pfE.ebayAspects ?? {}), [aspect.name]: v };
+  };
   for (const aspect of ebayRequiredFull ?? []) {
     const known = knownAspects.find(k => k.labels.includes(aspect.name));
     // Canal générique : pf.ebayAspects porte les obligatoires sans champ dédié.
     const genericVal = String(pfE.ebayAspects?.[aspect.name] ?? "").trim();
     const val = known ? String(known.value() ?? "").trim() || genericVal : genericVal;
-    if (!val) { missingEmpty.push(aspect.name); continue; }
+    if (!val) {
+      const d = deduireDeLaCategorie(aspect, known, "");
+      if (d) { poser(aspect, known, d); rapproches.push({ name: aspect.name, val: "", nearest: d, regle: "deduit_de_la_categorie" }); continue; }
+      missingEmpty.push(aspect.name); continue;
+    }
     const allowed = Array.isArray(aspect.allowedValues) ? aspect.allowedValues : [];
     if (!allowed.length) continue;
     if (allowed.some(v => normFuzzy(v) === normFuzzy(val))) continue;
     const faitFoi = listeFaitFoi("ebay", aspect.mode);
+    // Département posé pour une autre catégorie : relu comme un genre, AVANT tout
+    // rapprochement par les mots (« Fille » n'a aucun mot commun avec « Enfant unisexe »).
+    if (aspect.name === "Département" && faitFoi) {
+      const d = deduireDeLaCategorie(aspect, known, val);
+      if (d) { poser(aspect, known, d); rapproches.push({ name: aspect.name, val, nearest: d, regle: "deduit_de_la_categorie" }); continue; }
+    }
     // Taille (02/10, point 11) : le vocabulaire des tailles (« W34 | FR 44 » →
     // « 44 », « XXL » → « 2XL »), jamais un rapprochement par mots sur un
     // nombre — il lisait « 44.5 » comme « 44 ».
@@ -310,6 +350,10 @@ export function gardeAspectsEbay({ pfE, ebayRequiredFull, outils }) {
       horsListe.push({ name: aspect.name, val, count: allowed.length, mode: aspect.mode ?? "?" });
       continue;
     }
+    // Liste fermée à UNE seule valeur : c'est la seule qu'eBay accepte pour cette
+    // catégorie — posée, jamais refusée (sauf ce qui dit l'objet, cf. plus haut).
+    const seule = deduireDeLaCategorie(aspect, known, val);
+    if (seule) { poser(aspect, known, seule); rapproches.push({ name: aspect.name, val, nearest: seule, regle: "deduit_de_la_categorie" }); continue; }
     const ageLike = /\b(mois|ans)\b/i.test(val);
     const preferred = allowed.filter(v => /\b(mois|ans)\b/i.test(v));
     invalides.push({

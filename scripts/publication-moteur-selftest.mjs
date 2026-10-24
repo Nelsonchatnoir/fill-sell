@@ -186,12 +186,32 @@ console.log("\n[10] gardeAspectsEbay — manquant, rapprochement, suggestion, re
     { name: "Longueur", allowedValues: ["Mini"], mode: "SELECTION_ONLY" },
   ];
   const v = R.gardeAspectsEbay({ pfE, ebayRequiredFull: req, outils: { nearestAllowedValue: nearest, listeFaitFoi } });
-  ok("Tous les requis vides sont demandés", eq(v.missingEmpty, ["Marque", "Longueur"]), v.missingEmpty.join(","));
+  // (24/10, lot « zéro blocage », B1) une liste FERMÉE à une seule valeur se pose d'office ;
+  // la marque vide reste demandée (jamais inventée).
+  ok("Tous les requis vides sans source sont demandés — la liste fermée à UNE valeur est posée", eq(v.missingEmpty, ["Marque"]), v.missingEmpty.join(","));
   ok("Taille « EU 42 » jugée sur « 42 » → acceptée telle quelle", !v.invalides.some(x => x.name === "Taille") && !v.rapproches.some(x => x.name === "Taille"));
   ok("Couleur « Black » hors liste FREE_TEXT → avertissement, pas un refus", v.horsListe.some(x => x.name === "Couleur") && !v.invalides.some(x => x.name === "Couleur"));
   ok("Matière « Unique » rapprochée en « Taille unique », valeur du job corrigée", v.rapproches.some(x => x.name === "Matière" && x.nearest === "Taille unique") && pfE.matiere === "Taille unique");
   ok("Type par le canal générique, présent dans la liste → rien à dire", !v.invalides.some(x => x.name === "Type") && !v.missingEmpty.includes("Type"));
-  ok("Longueur sans source → demandée avant publication", v.missingEmpty.includes("Longueur"));
+  ok("Longueur, liste fermée à une seule valeur (« Mini ») → posée d'office, plus demandée", !v.missingEmpty.includes("Longueur") && pfE.ebayAspects.Longueur === "Mini", JSON.stringify(pfE.ebayAspects));
+  const vL = R.gardeAspectsEbay({ pfE: { ebayAspects: {} }, ebayRequiredFull: [{ name: "Longueur", allowedValues: ["Mini", "Midi"], mode: "SELECTION_ONLY" }], outils: { nearestAllowedValue: nearest, listeFaitFoi } });
+  ok("Longueur sans source, deux valeurs possibles → demandée avant publication (jamais devinée)", eq(vL.missingEmpty, ["Longueur"]), vL.missingEmpty.join(","));
+  // Ornella (24/10 13:49) : « Fille » posé pour 51580, l'article part en 155201 dont la seule valeur est « Enfant unisexe ».
+  const pfO = { genre: "Fille", ebayAspects: { "Département": "Fille" } };
+  const vO = R.gardeAspectsEbay({ pfE: pfO, ebayRequiredFull: [{ name: "Département", allowedValues: ["Enfant unisexe"], mode: "SELECTION_ONLY" }], outils: { nearestAllowedValue: () => null, listeFaitFoi } });
+  ok("Ornella : Département recalculé pour la catégorie qui part (« Fille » → « Enfant unisexe »), aucun refus", vO.invalides.length === 0 && pfO.ebayAspects["Département"] === "Enfant unisexe", JSON.stringify({ vO, pfO }));
+  const pfO2 = { genre: "Fille", ebayAspects: {} };
+  const vO2 = R.gardeAspectsEbay({ pfE: pfO2, ebayRequiredFull: [{ name: "Département", allowedValues: ["Fille", "Enfant unisexe"], mode: "SELECTION_ONLY" }], outils: { nearestAllowedValue: () => null, listeFaitFoi } });
+  ok("Département vide → déduit du genre dans la liste de la catégorie (51580 : « Fille »)", vO2.missingEmpty.length === 0 && pfO2.ebayAspects["Département"] === "Fille", JSON.stringify(pfO2));
+  const pfO3 = { genre: "", ebayAspects: { "Département": "Fille" } };
+  const vO3 = R.gardeAspectsEbay({ pfE: pfO3, ebayRequiredFull: [{ name: "Département", allowedValues: ["Homme", "Femme"], mode: "SELECTION_ONLY" }], outils: { nearestAllowedValue: () => null, listeFaitFoi } });
+  ok("Département sans correspondance (fille dans un rayon adulte) → refus, jamais un autre public imposé", vO3.invalides.length === 1 && pfO3.ebayAspects["Département"] === "Fille", JSON.stringify(vO3));
+  const pfT = { taille: "M", ebayAspects: {} };
+  const vT = R.gardeAspectsEbay({ pfE: pfT, ebayRequiredFull: [{ name: "Taille", allowedValues: ["Taille unique"], mode: "SELECTION_ONLY" }], outils: { nearestAllowedValue: () => null, listeFaitFoi } });
+  ok("une taille écrite (« M ») n'est jamais remplacée par la seule taille de la liste", vT.invalides.length === 1 && pfT.taille === "M", JSON.stringify(vT));
+  const pfM = { marque: "Inconnue", ebayAspects: {} };
+  const vM = R.gardeAspectsEbay({ pfE: pfM, ebayRequiredFull: [{ name: "Marque", allowedValues: ["Zara"], mode: "SELECTION_ONLY" }], outils: { nearestAllowedValue: () => null, listeFaitFoi } });
+  ok("la marque n'est jamais remplacée par la seule marque de la liste", vM.invalides.length === 1 && pfM.marque === "Inconnue", JSON.stringify(vM));
   const pf2 = { taille: "24 mois", ebayAspects: {} };
   const v2 = R.gardeAspectsEbay({ pfE: pf2, ebayRequiredFull: [{ name: "Taille", allowedValues: ["2 ans", "3 ans", "XS", "S"], mode: "SELECTION_ONLY" }], outils: { nearestAllowedValue: () => null, listeFaitFoi } });
   ok("SELECTION_ONLY sans rapprochement → refus, cas âge avec les valeurs mois/ans en exemple", v2.invalides.length === 1 && v2.invalides[0].ageLike === true && v2.invalides[0].sample === "2 ans, 3 ans", JSON.stringify(v2.invalides));

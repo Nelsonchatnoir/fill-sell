@@ -5,6 +5,8 @@ import {
 } from "../_shared/push-envoi.ts";
 import { envoyerEmail } from "../_shared/desinscription.ts";
 import { langue, mailVentes } from "../_shared/emails-fillsell.ts";
+// (24/10, lot « zéro blocage », A9) Les ventes d'un même passage partent dans UN mail.
+import { groupesDeMail } from "../_shared/ventes-un-mail.js";
 import { margeUnitaire, prixAchatNum } from "../../../src/utils/comptabilite.js";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -58,7 +60,7 @@ async function ligneDuMail(
 
 async function envoyerMailVente(
   // deno-lint-ignore no-explicit-any
-  admin: any, n: NoteServie,
+  admin: any, n: NoteServie, groupe: NoteServie[] = [n],
 ): Promise<VerdictMail> {
   const adresse = String(n.email ?? "").trim();
   if (!adresse) return { statut: "sans_adresse" };
@@ -67,7 +69,15 @@ async function envoyerMailVente(
   // 20261017120000). Une note sans articles — toute autre vente, ou une base
   // d'avant la migration (champ absent) — reste UN article, comme avant.
   const articles: ArticleNote[] = Array.isArray(n.articles) && n.articles.length ? n.articles : [n];
-  const ventes = await Promise.all(articles.map((a) => ligneDuMail(admin, a, String(n.plateforme ?? ""))));
+  const ventesTete = await Promise.all(articles.map((a) => ligneDuMail(admin, a, String(n.plateforme ?? ""))));
+  // (24/10, A9) Les autres ventes du même passage s'ajoutent au MÊME mail, chacune avec sa plateforme
+  // (leurs clés `vente:<id>` sont déjà réservées par envoyerMailVentesGroupe).
+  const autres = groupe.filter((m) => m.id !== n.id);
+  const ventesAutres = (await Promise.all(autres.map((m) => {
+    const arts: ArticleNote[] = Array.isArray(m.articles) && m.articles.length ? m.articles : [m];
+    return Promise.all(arts.map((a) => ligneDuMail(admin, a, String(m.plateforme ?? ""))));
+  }))).flat();
+  const ventes = [...ventesTete, ...ventesAutres];
   const { sujet, html } = mailVentes({
     ventes,
     retraitsACliquer: 0,
@@ -84,6 +94,56 @@ async function envoyerMailVente(
   if (r.motif === "deja_envoye") return { statut: "deja_envoye" };
   // Resend refusé, clé absente, réservation illisible : on réessaie (3 fois au plus, base).
   return { statut: "a_reessayer", motif: String(r.motif ?? "inconnu").slice(0, 120) };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// (24/10, lot « zéro blocage », A9 — Nico) LES VENTES PROCHES TIENNENT DANS UN SEUL MAIL
+// ═══════════════════════════════════════════════════════════════════════════
+// Les notes d'un même compte décidées dans le même passage (_shared/ventes-un-mail.js) partent dans UN mail.
+// Jamais deux mails pour une même vente : chaque note AUTRE que la tête réserve d'abord SA clé `vente:<id>`
+// (même index unique qu'un mail seul ; 23505 = déjà servie → elle sort du groupe) ; la tête est réservée par
+// envoyerEmail, comme un mail seul. Jamais une vente sans mail : rien de parti → toutes les réservations
+// relâchées, chaque note est réessayée comme avant ; tête déjà servie (passage précédent mort après l'envoi)
+// → les autres repartent entre elles, sous une nouvelle tête.
+async function envoyerMailVentesGroupe(
+  // deno-lint-ignore no-explicit-any
+  admin: any, membres: NoteServie[],
+): Promise<Map<number, VerdictMail>> {
+  const out = new Map<number, VerdictMail>();
+  let file = [...membres].sort((a, b) => Number(a.id) - Number(b.id));
+  // deno-lint-ignore no-explicit-any
+  const relacher = async (ns: NoteServie[]) => {
+    for (const n of ns) await admin.from("email_logs").delete().eq("user_id", n.user_id).eq("email_type", `vente:${n.id}`);
+  };
+  while (file.length) {
+    const [tete, ...autres] = file;
+    if (!autres.length) { out.set(tete.id, await envoyerMailVente(admin, tete)); break; }
+    const adresse = String(tete.email ?? "").trim();
+    if (!adresse) { for (const n of file) out.set(n.id, { statut: "sans_adresse" }); break; }
+    const reservees: NoteServie[] = [];
+    for (const n of autres) {
+      const { error } = await admin.from("email_logs").insert({ user_id: n.user_id, email_type: `vente:${n.id}`, email: adresse.toLowerCase() });
+      if (!error) reservees.push(n);
+      else if ((error as { code?: string }).code === "23505") out.set(n.id, { statut: "deja_envoye" });
+      else out.set(n.id, { statut: "a_reessayer", motif: `reservation: ${String(error.message ?? "").slice(0, 80)}` });
+    }
+    const groupe = [tete, ...reservees];
+    const v = await envoyerMailVente(admin, tete, groupe);
+    if (v.statut === "envoye") {
+      for (const n of groupe) out.set(n.id, { statut: "envoye", ...(n.id === tete.id ? {} : { motif: `dans le mail vente:${tete.id}` }) });
+      break;
+    }
+    if (v.statut === "deja_envoye" && reservees.length) {
+      out.set(tete.id, v);
+      await relacher(reservees);
+      file = reservees;
+      continue;
+    }
+    await relacher(reservees);
+    for (const n of groupe) out.set(n.id, v);
+    break;
+  }
+  return out;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -306,14 +366,23 @@ Deno.serve(async (req) => {
         id: n.id, statut: "a_reessayer" as const, motif: `exception: ${String(e?.message ?? e).slice(0, 80)}`, resultat: [],
       }))
     ));
-    // Le mail, pour toute note qui le demande — chacune isolée : un mail en
-    // échec ne retient ni le push ni les autres ventes.
+    // Le mail, pour toute note qui le demande. (24/10, A9) Les notes d'un même compte décidées dans ce
+    // passage partent dans UN mail (envoyerMailVentesGroupe) ; un groupe en échec ne retient ni le push ni
+    // les autres comptes. Une note seule part exactement comme avant.
     const mails = new Map<number, VerdictMail>();
-    await Promise.all(notes.filter((n) => n.mail === true).map(async (n) => {
-      const v = await envoyerMailVente(admin, n).catch((e) => ({
+    await Promise.all(groupesDeMail(notes.filter((n) => n.mail === true)).map(async (membres) => {
+      if (membres.length === 1) {
+        const n = membres[0];
+        const v = await envoyerMailVente(admin, n).catch((e) => ({
+          statut: "a_reessayer" as const, motif: `exception: ${String(e?.message ?? e).slice(0, 80)}`,
+        }));
+        mails.set(n.id, v);
+        return;
+      }
+      const verdicts = await envoyerMailVentesGroupe(admin, membres).catch((e) => new Map<number, VerdictMail>(membres.map((n) => [n.id, {
         statut: "a_reessayer" as const, motif: `exception: ${String(e?.message ?? e).slice(0, 80)}`,
-      }));
-      mails.set(n.id, v);
+      }])));
+      for (const [id, v] of verdicts) mails.set(id, v);
     }));
     const appareils = aPousser.flatMap((n) => n.appareils ?? []);
     const resume = resumerPourLaBase(bilans, appareils) as ReturnType<typeof resumerPourLaBase> & { notes: Array<Record<string, unknown>> };

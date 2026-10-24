@@ -3824,6 +3824,8 @@ async function remplirFormulaireVinted(job) {
     const questionMarque = await selectVintedBrand(fields.marque, warnings, {
       marqueId: fields.marque_id,
       marqueCapturee: fields.marque_capturee ?? null,
+      // (24/10, lot « zéro blocage », A3) L'envoi direct par identifiant ne sert que s'il est prouvé.
+      injectionProuvee: fields.marque_injection_prouvee === true,
     });
     if (questionMarque?.poseeParId) marqueParId = { id: questionMarque.marqueId, titre: String(fields.marque) };
     if (questionMarque?.needsUser) {
@@ -3873,6 +3875,21 @@ async function remplirFormulaireVinted(job) {
         },
         discoveredRequired: (await computeVintedRequiredState().catch(() => ({ discovered: [] }))).discovered,
       };
+    }
+  }
+  // (24/10, lot « zéro blocage », A5) RECRÉATION : les champs DÉDIÉS « Espace de stockage » et « Simlockage »
+  // reprennent la valeur CAPTURÉE de l'annonce d'origine. Ils sont dans handledCodes, donc exclus de la
+  // résolution générique plus bas : sans ceci, « Espace de stockage » était redemandé à chaque republication
+  // (thibault, dca41766 : 5 fois, la capture portait internal_memory_capacity) et « Simlockage » posé « Non »
+  // d'office. Une réponse de la personne (pont vintedAspects → champ dédié, plus haut) prime toujours.
+  if (Array.isArray(job.platform_fields?.itemAttributesCaptures) && (!fields.stockage || fields.simlock == null)) {
+    const dedies = job.platform_fields.itemAttributesCaptures
+      .filter((a) => ["internal_memory_capacity", "sim_lock"].includes(String(a?.code ?? "")));
+    if (dedies.length) {
+      const dejaDedies = new Set([...(fields.stockage ? ["internal_memory_capacity"] : []), ...(fields.simlock != null ? ["sim_lock"] : [])]);
+      const { resolus } = await resoudreAttributsCaptures(dedies, dejaDedies);
+      if (resolus.internal_memory_capacity && !fields.stockage) fields.stockage = resolus.internal_memory_capacity;
+      if (resolus.sim_lock && fields.simlock == null) fields.simlock = resolus.sim_lock;
     }
   }
   // Espace de stockage : liste fermée (20 options relevées, 256 Mo → 4 To),
@@ -4583,7 +4600,13 @@ async function remplirFormulaireVinted(job) {
   // AVANT tout retrait, annonce intacte, rien soumis — jamais une question.
   if (onePass?.item_id && !recreation && marqueParId) {
     const brandPage = String(document.querySelector('#brand, [data-testid="brand-select-dropdown-input"]')?.value ?? "").trim();
-    if (brandPage || job.platform_fields?.marque_injection_prouvee !== true) {
+    // (24/10, lot « zéro blocage », A3) #brand porte EXACTEMENT la marque voulue : le menu a réussi, avec
+    // retard (onglet en arrière-plan) — la pose par identifiant est désarmée, le retrait suit son cours.
+    if (brandPage && texteComparable(brandPage) === texteComparable(marqueParId.titre)) {
+      armerMarquePourPost(null);
+      warnings.push(`marque : « ${brandPage} » posée par le menu (commit tardif) — envoi par identifiant désarmé`);
+      marqueParId = null;
+    } else if (brandPage || job.platform_fields?.marque_injection_prouvee !== true) {
       return {
         success: false,
         marqueParIdNonProuvee: true,
@@ -6622,7 +6645,7 @@ async function selectVintedNoBrand(trigger) {
 // (17/10) `marqueCapturee` : le libellé de la marque de l'annonce d'origine
 // (republication, construireJobRecreation). L'identifiant `marqueId` ne peut
 // partir dans le corps du dépôt que pour CETTE marque — jamais pour une autre.
-async function selectVintedBrand(marque, warnings, { marqueId = null, marqueCapturee = null } = {}) {
+async function selectVintedBrand(marque, warnings, { marqueId = null, marqueCapturee = null, injectionProuvee = false } = {}) {
   const trigger = '#brand, [data-testid="brand-select-dropdown-input"]';
   // « Sans marque » demandé par l'app : chemin natif direct — inutile de
   // chercher au catalogue (pas d'aria-label sur #empty-brand) et la création
@@ -6732,7 +6755,62 @@ async function selectVintedBrand(marque, warnings, { marqueId = null, marqueCapt
   // d'écrasement). Vaut aussi quand la ligne a été cliquée mais que #brand est
   // resté vide. Si #brand porte une AUTRE valeur, on ne touche à rien : la
   // question ou l'arrêt ci-dessous, comme avant — jamais une autre marque.
+  // (24/10, lot « zéro blocage », A3) Une ligne CLIQUÉE commite #brand avec retard quand l'onglet est en
+  // arrière-plan (horloge retardée jusqu'à 53 s) : 5 des 12 pauses « marque » du 16 au 24/10 avaient la
+  // bonne marque dans #brand au moment du retrait. On attend le champ (8 s, toutes les 250 ms) avant de
+  // conclure que le menu ne la propose pas.
+  if (choix?.el && !String(document.querySelector(trigger)?.value ?? "").trim()) {
+    const finAttente = Date.now() + 8000;
+    while (Date.now() < finAttente && !String(document.querySelector(trigger)?.value ?? "").trim()) await new Promise((r) => setTimeout(r, 250));
+  }
   const surLaPage = String(document.querySelector(trigger)?.value ?? "").trim();
+  // ── (24/10, lot « zéro blocage », A3 — Nico) UNE MARQUE INTROUVABLE NE BLOQUE JAMAIS ──
+  // « Marque la plus proche PROUVÉE, ou « Sans marque » quand la catégorie l'accepte ; jamais une marque
+  // inventée. » (Remplace la règle du 17/10 « jamais Sans marque à la place d'une vraie marque », et la
+  // question du 03/10.) Quand aucune ligne n'a été posée :
+  //   1. l'identifiant de l'annonce d'origine, seulement si l'envoi direct est PROUVÉ (inchangé) ;
+  //   2. la même marque sous une autre écriture (une seule suggestion du menu dont la clé est égale :
+  //      casse, accents, « & » / « and », espaces) — jamais une voisine ;
+  //   3. la ligne native « Sans marque » (#empty-brand) : le rayon l'accepte puisque Vinted la propose.
+  // Tracé dans les avertissements (marque_resolution), rien n'est demandé.
+  if (!surLaPage && !choix?.el && (choix?.type === "inconnue" || choix?.type === "aucune" || idDeLAnnonce)) {
+    if (idDeLAnnonce && injectionProuvee) {
+      await closeAnyOpenDropdown();
+      armerMarquePourPost(idDeLAnnonce, demandee);
+      warnings.push(`marque : « ${demandee} » (id ${idDeLAnnonce}) posée par son identifiant (envoi direct prouvé)`);
+      return { poseeParId: true, marqueId: idDeLAnnonce };
+    }
+    const cleMarqueChaine = (s) => texteComparable(String(s ?? "")).replace(/\band\b|\bet\b|\+/g, "&").replace(/[^a-z0-9&]+/g, "");
+    const cible = cleMarqueChaine(demandee);
+    const memes = [...new Set((choix?.suggestions ?? []).filter((s) => cible && cleMarqueChaine(s) === cible))];
+    if (memes.length === 1) {
+      const ligne = Array.from(document.querySelectorAll('[role="radio"], [role="button"]'))
+        .find((el) => /^(?:suggested-)?brand-\d/.test(el.id || "") && String(el.getAttribute("aria-label") || el.textContent || "").trim() === memes[0]);
+      if (ligne) {
+        ligne.click();
+        await humanPause();
+        await confirmDropdownIfNeeded();
+        const finA = Date.now() + 8000;
+        while (Date.now() < finA && !String(document.querySelector(trigger)?.value ?? "").trim()) await new Promise((r) => setTimeout(r, 250));
+        if (String(document.querySelector(trigger)?.value ?? "").trim()) {
+          warnings.push(`marque : « ${demandee} » posée sous l'écriture du catalogue Vinted « ${memes[0]} » (même marque)`);
+          return { resolution: "meme_marque", marque: memes[0] };
+        }
+      }
+    }
+    await closeAnyOpenDropdown();
+    if (document.querySelector(trigger)) {
+      try {
+        await selectVintedNoBrand(trigger);
+        const note = `marque : « ${demandee} » introuvable dans le menu de Vinted (ni ligne, ni création, ni écriture équivalente) — « Sans marque », que ce rayon accepte (règle de Nico, 24/10)`;
+        console.warn(`[vinted] ${note}`);
+        warnings.push(note);
+        return { resolution: "sans_marque" };
+      } catch (e) {
+        console.warn(`[vinted] « Sans marque » impossible à poser (${e?.message ?? e}) — chemin d'avant`);
+      }
+    }
+  }
   if (idDeLAnnonce && !surLaPage) {
     await closeAnyOpenDropdown();
     armerMarquePourPost(idDeLAnnonce, demandee);
@@ -6853,7 +6931,12 @@ async function attendreChoixMarque(marque, timeoutMs = 10000, marqueId = null) {
     if (exacte) return { type: "catalogue", el: exacte };
     let libre = null;
     try { libre = S.resolveSelector("vinted", "publish.custom_brand_option", { reportFailure: false }).el; } catch { libre = null; }
-    const nommee = libre ? texteComparable(libre.textContent).match(/^utiliser\s+"?(.+?)"?\s+comme marque$/) : null;
+    // (24/10, lot « zéro blocage », A3) La ligne « Utiliser "X" comme marque » se lit dans TOUTES les
+    // langues de Vinted (page italienne de mele.marta : jamais reconnue) : le nom entre guillemets suffit.
+    const nommee = libre
+      ? (texteComparable(libre.textContent).match(/^utiliser\s+"?(.+?)"?\s+comme marque$/)
+        ?? String(libre.textContent ?? "").match(/["“«„]\s*(.+?)\s*["”»“]/))
+      : null;
     if (nommee && texteComparable(nommee[1]) === cible) {
       if (libreVueLe == null) libreVueLe = Date.now();
       if (Date.now() - libreVueLe >= 1500) return { type: "libre", el: libre };

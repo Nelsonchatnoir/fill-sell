@@ -16,6 +16,7 @@ import { oeuvreDArt, rayonVintedOeuvre } from "../../../src/utils/oeuvreDArt.js"
 import { tierEtat, RANG_ETAT, etatPourPlateforme } from "./etat-plateformes.js";
 import { idEtatVinted } from "../../../src/utils/etatsVinted.js";
 import { photosEnUrls, photoChezNous } from "./contenu-fiche.js";
+import { grilleColisVinted } from "../../../src/utils/vintedColis.js";
 
 const FEUILLES_OEUVRES = new Set([3847, 3849]);
 
@@ -34,6 +35,7 @@ export function correctionCaptureVinted(fiche, libelles, natif, etatAvantCapture
   const nat = { ...(natif && typeof natif === "object" ? natif : {}) };
   const avant = { categoryPath: lib.categoryPath ?? null, catalog_id_depot: lib.catalog_id_depot ?? null, etat: lib.etat ?? null, status_id: nat.status_id ?? null };
   const raisons = [];
+  const ecartees = [];
 
   // 1. L'œuvre au rayon des œuvres.
   const oeuvre = oeuvreDArt(fiche.titre, fiche.description);
@@ -41,9 +43,19 @@ export function correctionCaptureVinted(fiche, libelles, natif, etatAvantCapture
     const cat = Number(lib.catalog_id_depot ?? nat.catalog_id);
     if (!FEUILLES_OEUVRES.has(cat)) {
       const f = rayonVintedOeuvre(oeuvre.famille);
-      lib.categoryPath = [...f.chemin];
-      lib.catalog_id_depot = f.id;
-      raisons.push("categorie_oeuvre");
+      // (24/10, lot « zéro blocage », A5) Une correction de rayon ne change JAMAIS de famille de grille de
+      // colis : paugues, 22/10 — deux tableaux en « Grand » (grille Petit/Moyen/Grand) déplacés en
+      // « Peintures » (grille au poids) → pré-vol refusé « format non proposé ». Le format capturé absent de
+      // la grille du rayon des œuvres : l'annonce garde son rayon (tracé, jamais un format choisi pour elle).
+      const colis = Number(nat.package_size_id);
+      const grille = grilleColisVinted(f.chemin);
+      if (Number.isInteger(colis) && colis > 0 && Array.isArray(grille) && grille.length && !grille.some((g) => Number(g.id) === colis)) {
+        ecartees.push({ raison: "colis_hors_grille", rayon: f.id, colis });
+      } else {
+        lib.categoryPath = [...f.chemin];
+        lib.catalog_id_depot = f.id;
+        raisons.push("categorie_oeuvre");
+      }
     }
   }
 
@@ -60,7 +72,7 @@ export function correctionCaptureVinted(fiche, libelles, natif, etatAvantCapture
       raisons.push("etat_de_la_fiche");
     }
   }
-  return raisons.length ? { libelles: lib, natif: nat, raisons, avant } : null;
+  return raisons.length ? { libelles: lib, natif: nat, raisons, avant, ...(ecartees.length ? { ecartees } : {}) } : null;
 }
 
 /**

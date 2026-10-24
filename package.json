@@ -434,7 +434,11 @@
     "selftest:lot-2410-tailles": "node scripts/lot-2410-tailles-selftest.mjs",
     "selftest:vetement-traditionnel-ebay": "node scripts/vetement-traditionnel-ebay-selftest.mjs",
     "selftest:beebs-commandes-flux-rsc": "node scripts/beebs-commandes-flux-rsc-selftest.mjs",
-    "selftest:refus-plateformes-vraie-cause": "node scripts/refus-plateformes-vraie-cause-selftest.mjs"
+    "selftest:refus-plateformes-vraie-cause": "node scripts/refus-plateformes-vraie-cause-selftest.mjs",
+    "selftest:cause-blocage": "node scripts/cause-blocage-selftest.mjs",
+    "selftest:copie-republication-depop": "node scripts/copie-republication-depop-selftest.mjs",
+    "selftest:ventes-un-mail": "node scripts/ventes-un-mail-selftest.mjs",
+    "selftest:titres-recevables": "node scripts/titres-recevables-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

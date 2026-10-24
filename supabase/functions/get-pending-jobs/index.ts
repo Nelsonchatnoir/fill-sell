@@ -43,12 +43,14 @@ import { VINTED_COLORS } from "../../../src/utils/vintedColors.js";
 import { CORRECTIFS_EXTENSION, correctifPourJob, buildMsDe, BUILD_ISBN_CAPTURE_TEL_QUEL, BUILD_OPLA_REPUBLICATION_SUR_ANNONCE } from "../_shared/correctifs-extension.js";
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
 import { portDepopParDefaut, decisionPortDepop, QUESTION_PORT_DEPOP, MESSAGE_PORT_DEPOP_REPUBLICATION } from "../_shared/port-depop.js";
+// (24/10, lot « zéro blocage », A2) La copie d'une republication Depop se complète avant le départ.
+import { completerCopieDepop, champsManquantsCopieDepop, slugDepop } from "../_shared/copie-republication-depop.js";
 import { verdictDepopInterdit, messageDepopInterdit } from "../_shared/depop-interdits.js";
 import { detectObjectIcon } from "../../../src/utils/shared.js";
 // (02/10) Sortie d'Opla : plus aucune publication ni republication Opla ; la
 // synchronisation continue pour les seuls comptes déjà reliés.
 import { oplaACloreJob, clotureOpla, oplaRelie, MESSAGE_OPLA_INDISPONIBLE, OPLA_SORTIE, sortieOplaActive } from "../_shared/opla-sortie.js";
-import { titrePourJob, titreVide, couperTitre, CLE_TITRE_SAISI } from "../_shared/titre-du-job.js";
+import { titrePourJob, titreVide, titreRecevable, couperTitre, CLE_TITRE_SAISI } from "../_shared/titre-du-job.js";
 import { servirRetraitsEbayParNumero } from "../_shared/retrait-ebay-par-numero.js";
 import { decisionAdresseRepublicationLbc, rueDesReglagesMemeCommune, texteRefuseCommune, textesErreurJob } from "../_shared/lbc-voie-des-reglages.js";
 import { tailleBeebsDeLaFiche } from "../_shared/beebs-taille-de-la-fiche.js";
@@ -210,7 +212,7 @@ import { candidatesDepuisRetrait, depotPeutEtrePartiDepuis, jugerCandidates, url
 import { depotPublicationPeutEtrePartiDepuis, candidatesDuDepot, rattacherParPhotos, urlsAnnonce } from "../_shared/depot-sans-numero.js";
 import { corrigerFeuilleLbc } from "../_shared/lbc-feuille-corrigee.js";
 import { BUILD_COLIS_DANS_ENVOI, VERSION_COLIS_DANS_ENVOI, RETENUE_COLIS_ANCIEN_POSTE, envoiColisProuve, messageColisAttendMiseAJour, colisVintedRetenuAuService } from "../_shared/vinted-colis.js";
-import { BUILD_VINTED_MARQUE_PAR_ID, envoiMarqueProuve, enPauseMarqueParId, marqueAIdentifiantCapturee } from "../_shared/vinted-marque-par-id.js";
+import { BUILD_VINTED_MARQUE_PAR_ID, BUILD_VINTED_MARQUE_CHAINE, envoiMarqueProuve, enPauseMarqueParId, marqueAIdentifiantCapturee } from "../_shared/vinted-marque-par-id.js";
 import { tacheAMettreDeCote, messageTacheSansDemarrage, SOURCE_TACHE_SANS_DEMARRAGE } from "../_shared/tache-sans-demarrage.js";
 import { attenteBoutiqueLevable, POSE_PAR_PUBLICATION_BOUTIQUE, messageAttenteBoutique } from "../_shared/attente-autre-boutique.js";
 import { OPLA_PRIX_MAX, prixOplaTropHaut, messagePrixOplaTropHaut } from "../_shared/opla-prix.js";
@@ -3574,9 +3576,64 @@ serve(async (req) => {
             console.warn(`[get-pending-jobs] marque par identifiant : ${String((e as Error)?.message ?? e)} — rien de prouvé`);
           }
         }
+        // ── (24/10, lot « zéro blocage », A3) UNE PAUSE « MARQUE » N'EST JAMAIS PERMANENTE ──
+        // La preuve d'envoi direct (marque_pose_envoi) n'a jamais été posée nulle part : 12 republications
+        // retenues pour toujours (5 comptes). 7 portaient une marque du CATALOGUE (Primark, Orchestra,
+        // Okaïdi…) que le menu propose — l'arrêt venait d'une lecture du champ trop tôt, onglet en arrière-
+        // plan. LA RÈGLE : une pause se relâche (au plus une fois toutes les 6 h, rien n'est retiré tant que
+        // la marque n'est pas posée — garde de l'extension inchangée) :
+        //   · marque du catalogue : son identifiant a été repris avec succès par une republication du parc
+        //     (30 jours) → resservie à tout poste ;
+        //   · sinon : resservie au poste qui porte la chaîne de repli (ligne libre dans toutes les langues,
+        //     « Sans marque » quand le rayon l'accepte — BUILD_VINTED_MARQUE_CHAINE), jamais aux autres.
+        const enPause = republiablesMarque.filter((j) => enPauseMarqueParId(j) && !(posteAJourMarque && marqueProuvee));
+        const relaches = new Map<string, string>();
+        if (enPause.length) {
+          try {
+            const posteChaine = buildMsDe(buildDuPoll) >= buildMsDe(BUILD_VINTED_MARQUE_CHAINE);
+            const idMarque = (j: Record<string, unknown>) => {
+              const s = ((j.platform_fields ?? {}) as Record<string, unknown>).republish_snapshot as Record<string, unknown> | undefined;
+              const id = Number(s?.brand_id);
+              return Number.isFinite(id) && id > 1 ? String(id) : null;
+            };
+            const aRelire = enPause.filter((j) => {
+              const pr = ((j.platform_fields ?? {}) as Record<string, unknown>).pause_marque_relachee as { le?: string } | undefined;
+              const t = Date.parse(String(pr?.le ?? ""));
+              return !(Number.isFinite(t) && Date.now() - t < 6 * 3_600_000);
+            });
+            const ids = [...new Set(aRelire.map((j) => idMarque(j as unknown as Record<string, unknown>)).filter(Boolean))] as string[];
+            const duCatalogue = new Set<string>();
+            if (ids.length) {
+              const adminM = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+              const { data: vus } = await adminM.from("cross_post_jobs")
+                .select("b:platform_fields->republish_snapshot->>brand_id")
+                .eq("platform", "vinted").eq("action", "republish").eq("status", "published")
+                .gte("published_at", new Date(Date.now() - 30 * 86_400_000).toISOString())
+                .in("platform_fields->republish_snapshot->>brand_id", ids.slice(0, 50))
+                .limit(200);
+              for (const v of (vus ?? []) as Array<{ b: string | null }>) if (v.b) duCatalogue.add(String(v.b));
+            }
+            for (const j of aRelire) {
+              const id = idMarque(j as unknown as Record<string, unknown>);
+              const raison = id && duCatalogue.has(id) ? "marque_du_catalogue" : (posteChaine ? "chaine_de_repli" : null);
+              if (!raison) continue;
+              const pfR = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
+              const pause = pfR.pause_marque_par_id;
+              delete pfR.pause_marque_par_id;
+              delete pfR.next_action_after;
+              pfR.pause_marque_relachee = { le: new Date().toISOString(), raison, pause };
+              const { data: ecrit } = await userClient.from("cross_post_jobs").update({ platform_fields: pfAPersister(pfR) })
+                .eq("id", String(j.id)).eq("status", "pending").select("id");
+              if ((ecrit ?? []).length) { j.platform_fields = pfR; relaches.set(String(j.id), raison); }
+            }
+          } catch (e) {
+            console.warn(`[get-pending-jobs] pause marque : ${String((e as Error)?.message ?? e)} — pauses gardées`);
+          }
+          if (relaches.size) console.log(`[get-pending-jobs] userId=${user.id} : ${relaches.size} republication(s) Vinted en pause « marque » relâchée(s) — ${[...relaches.entries()].map(([id, r]) => `${id.slice(0, 8)} ${r}`).join(", ")}`);
+        }
         const retenusMarque = new Set<string>();
         for (const j of republiablesMarque) {
-          if (enPauseMarqueParId(j) && !(posteAJourMarque && marqueProuvee)) { retenusMarque.add(String(j.id)); continue; }
+          if (!relaches.has(String(j.id)) && enPauseMarqueParId(j) && !(posteAJourMarque && marqueProuvee)) { retenusMarque.add(String(j.id)); continue; }
           const pfM = (j.platform_fields ?? {}) as Record<string, unknown>;
           if (marqueProuvee) j.platform_fields = { ...pfM, marque_injection_prouvee: true };
           // Le drapeau n'est jamais une donnée : l'extension réécrit la copie
@@ -3605,7 +3662,9 @@ serve(async (req) => {
       for (const j of (out as unknown as Array<Record<string, unknown>>)) {
         if (j.action !== "publish" && j.action !== "republish") continue;
         const pf = (j.platform_fields && typeof j.platform_fields === "object") ? (j.platform_fields as Record<string, unknown>) : {};
-        if (!pf.titre_refuse || titreVide(pf[CLE_TITRE_SAISI])) continue;
+        // (24/10, B4) Une réponse générique (« Vinted », mele.marta 24/10) ne remplace jamais le titre : le
+        // bloc suivant reprend celui de la fiche (titrePourJob, titreRecevable).
+        if (!pf.titre_refuse || titreVide(pf[CLE_TITRE_SAISI]) || !titreRecevable(pf[CLE_TITRE_SAISI])) continue;
         const nouveau = couperTitre(pf[CLE_TITRE_SAISI], String(j.platform));
         if (!nouveau || nouveau === String(j.title ?? "")) continue;
         const ancien = String(j.title ?? "");
@@ -3642,8 +3701,10 @@ serve(async (req) => {
     try {
       // Depop (09/10) : une annonce Depop n'a PAS de titre (description seule,
       // relevé du formulaire) — jamais de question « Titre » pour elle.
+      // (24/10, lot « zéro blocage », B4) Un titre GÉNÉRIQUE ou égal au nom d'une plateforme (« Vinted »)
+      // est traité comme un titre vide : celui de la fiche le remplace (titreRecevable, _shared/titre-du-job.js).
       const sansTitre = (out as unknown as Array<Record<string, unknown>>)
-        .filter((j) => (j.action === "publish" || j.action === "republish") && titreVide(j.title))
+        .filter((j) => (j.action === "publish" || j.action === "republish") && !titreRecevable(j.title))
         .filter((j) => j.platform !== "depop");
       if (sansTitre.length) {
         const NOM_PF: Record<string, string> = { vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", ebay: "eBay", opla: "Opla", depop: "Depop" };
@@ -3672,11 +3733,21 @@ serve(async (req) => {
             titreFiche: j.inventaire_id != null ? (titreParArticle.get(String(j.inventaire_id)) ?? "") : "",
           });
           if (r) {
+            const titreAvant = String(j.title ?? "");
             j.title = r.titre;
             j.title_complete = { source: r.source };
-            const { error: tErr } = await userClient.from("cross_post_jobs")
-              .update({ title: r.titre })
-              .eq("id", j.id as string).eq("status", "pending").or("title.is.null,title.eq.");
+            // Titre générique (non vide) : la republication recrée l'annonce avec pf.titre_saisi (background.js,
+            // construireJobRecreation) — il porte aussi le titre de la fiche, sinon le titre capturé repartirait.
+            const generique = !titreVide(titreAvant);
+            const majTitre: Record<string, unknown> = { title: r.titre };
+            if (generique) {
+              const pfG: Record<string, unknown> = { ...pf, titre_generique_remplace: { le: new Date().toISOString(), ancien: titreAvant.slice(0, 200), source: r.source } };
+              if (j.action === "republish") pfG[CLE_TITRE_SAISI] = r.titre;
+              j.platform_fields = pfG;
+              majTitre.platform_fields = pfAPersister(pfG);
+            }
+            const qTitre = userClient.from("cross_post_jobs").update(majTitre).eq("id", j.id as string).eq("status", "pending");
+            const { error: tErr } = await (generique ? qTitre.eq("title", titreAvant) : qTitre.or("title.is.null,title.eq."));
             console.log(`[get-pending-jobs] ${j.platform} ${String(j.id).slice(0, 8)} : titre VIDE → « ${r.titre} » (${r.source === "saisi" ? "réponse à la question Titre" : "titre de la fiche"})${tErr ? ` — servi, non écrit sur le job (${tErr.message})` : ""}`);
             continue;
           }
@@ -4068,12 +4139,17 @@ serve(async (req) => {
             if (!verdict) continue;
             const pfI = ((j.platform_fields as Record<string, unknown> | null) ?? {});
             const depopInterdit = { ...verdict, depuis: new Date().toISOString(), source: "get-pending-jobs" };
-            const autoIntacte = j.action === "republish" && pfI["republish_source"] === "auto" && !retraitEngage(j);
+            // (24/10, lot « zéro blocage », B7) Une republication — automatique OU demandée — d'un article que Depop
+            // refuse n'attend plus en pause : tant que rien n'est retiré, elle est CLOSE (unité rendue, annonce
+            // intacte), avec la phrase de la règle. Une publication garde sa ligne (needs_user) : l'app grise déjà
+            // la case Depop (platformCompat.js), ce filet ne sert qu'aux anciennes apps.
+            const autoIntacte = j.action === "republish" && !retraitEngage(j);
+            const parLaPersonne = pfI["republish_source"] !== "auto";
             const { data: maj } = autoIntacte
               ? await userClient.from("cross_post_jobs")
                 .update({
                   status: "cancelled",
-                  error: `Republication automatique Depop non lancée : ${messageDepopInterdit(verdict, "fr")} Ton annonce Depop est intacte, rien n'a été retiré.`,
+                  error: `Republication${parLaPersonne ? "" : " automatique"} Depop non lancée : ${messageDepopInterdit(verdict, "fr")} Ton annonce Depop est intacte, rien n'a été retiré.`,
                   platform_fields: { ...pfI, depop_interdit: depopInterdit },
                 })
                 .eq("id", j.id).eq("status", "pending").select("id")
@@ -4197,6 +4273,68 @@ serve(async (req) => {
       } catch (e) {
         console.warn(`[get-pending-jobs] rayon Depop : ${String((e as Error)?.message ?? e)} — aucune publication Depop servie à ce passage`);
         out = out.filter((j) => !(j.platform === "depop" && j.action === "publish"));
+      }
+    }
+
+    // ── (24/10, lot « zéro blocage », A2) LA COPIE D'UNE REPUBLICATION DEPOP SE COMPLÈTE AVANT LE DÉPART ──
+    // (_shared/copie-republication-depop.js) Thibault, 24/10 : 29 republications Depop en pause « la description,
+    // le rayon et l'état manquent » ou « indique les frais de port », parce que leur copie recopiait le job de
+    // SUIVI du relevé (vide) au lieu du dépôt FillSell du même lien. Avant de servir une republication Depop
+    // dont rien n'est retiré, la copie reçoit ce qui lui manque : dépôt FillSell de la même annonce (même lien,
+    // même numéro ou même produit Depop), puis l'annonce en ligne relevée, puis la fiche — jamais par-dessus une
+    // valeur de la copie (une réponse de la personne reste la sienne). Le pré-vol de l'extension reste le filet :
+    // ce qui reste inconnu l'arrête AVANT tout retrait. Trois lectures au plus, bornées aux jobs servis.
+    if (!includeProcessing && !includeNeedsUser
+        && out.some((j) => j.platform === "depop" && j.action === "republish" && !retraitEngage(j) && champsManquantsCopieDepop(j).length)) {
+      try {
+        const aCompleter = out.filter((j) => j.platform === "depop" && j.action === "republish" && !retraitEngage(j)
+          && j.inventaire_id != null && champsManquantsCopieDepop(j).length);
+        const ids = [...new Set(aCompleter.map((j) => j.inventaire_id))].slice(0, 200);
+        const slugs = [...new Set(aCompleter.map((j) => slugDepop((j as { platform_listing_id?: string | null }).platform_listing_id)
+          || slugDepop((j as { listing_url?: string | null }).listing_url)).filter(Boolean))].slice(0, 200);
+        const [{ data: depots }, { data: captures }, { data: fiches }] = await Promise.all([
+          lireParLots((lot) => userClient.from("cross_post_jobs")
+            .select("id, user_id, inventaire_id, platform, action, status, description, platform_listing_id, listing_url, published_at, created_at, platform_fields")
+            .eq("user_id", user.id).eq("platform", "depop").eq("action", "publish").in("inventaire_id", lot), ids),
+          slugs.length
+            ? lireParLots((lot) => userClient.from("annonces_plateforme").select("listing_id, capture")
+              .eq("user_id", user.id).eq("platform", "depop").in("listing_id", lot), slugs)
+            : Promise.resolve({ data: [] }),
+          lireParLots((lot) => userClient.from("inventaire").select("id, description, attributs").in("id", lot), ids),
+        ]);
+        const captureDe = new Map<string, Record<string, unknown>>();
+        for (const a of (captures ?? []) as Record<string, unknown>[]) {
+          if (a.capture && typeof a.capture === "object") captureDe.set(String(a.listing_id).toLowerCase(), a.capture as Record<string, unknown>);
+        }
+        const ficheDe = new Map<string, Record<string, unknown>>();
+        for (const f of (fiches ?? []) as Record<string, unknown>[]) {
+          const attr = (f.attributs && typeof f.attributs === "object" ? f.attributs : {}) as Record<string, unknown>;
+          ficheDe.set(String(f.id), { description: f.description ?? null, etat: attr.etat ?? null });
+        }
+        const maintenant = new Date().toISOString();
+        for (const j of aCompleter) {
+          const jj = j as Record<string, unknown>;
+          const slug = slugDepop(jj.platform_listing_id as string) || slugDepop(jj.listing_url as string);
+          const r = completerCopieDepop({
+            job: jj,
+            depots: ((depots ?? []) as Record<string, unknown>[]).filter((d) => String(d.inventaire_id) === String(j.inventaire_id)),
+            capture: slug ? (captureDe.get(slug) ?? null) : null,
+            fiche: ficheDe.get(String(j.inventaire_id)) ?? null,
+            le: maintenant,
+          });
+          if (!r) continue;
+          const maj: Record<string, unknown> = { platform_fields: r.platform_fields };
+          if (r.description) maj.description = r.description;
+          const { data: ecrit } = await userClient.from("cross_post_jobs").update(maj)
+            .eq("id", String(j.id)).eq("status", "pending").select("id");
+          if ((ecrit ?? []).length) {
+            (j as { platform_fields: unknown }).platform_fields = r.platform_fields;
+            if (r.description) (j as { description?: unknown }).description = r.description;
+            console.log(`[get-pending-jobs] job ${String(j.id).slice(0, 8)} (depop republish) : copie complétée avant le départ (${Object.entries(r.sources).map(([k, v]) => `${k} ← ${v}`).join(", ")})${r.manquants.length ? ` — reste au pré-vol : ${r.manquants.join(", ")}` : ""}`);
+          }
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] copie Depop : ${String((e as Error)?.message ?? e)} — rien de modifié, le pré-vol de l'extension tranche avant tout retrait`);
       }
     }
 

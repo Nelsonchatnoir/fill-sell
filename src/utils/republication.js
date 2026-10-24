@@ -20,6 +20,9 @@ import { computeRemovalInfo, vintedMasqueeMalgreJobs, estGeleLivres } from './pu
 import { republierArticleVinted } from './vintedSync';
 import { PLATEFORMES_STOCK, plateformesDuCompte } from './stockFiltres';
 import { messagePlafondRepublicationGratuit } from './jourRemise';
+// (24/10, lot « zéro blocage », B7) Un article que Depop refuse n'entre jamais en file de republication.
+import { depopInterdit } from './platformCompat.js';
+import { detectObjectIcon } from './shared.js';
 
 // Dérivée de la table unique du stock (utils/stockFiltres) : tout sauf eBay —
 // eBay reste HORS republication (garde-fou du 17/09), rien d'autre n'est exclu.
@@ -39,10 +42,21 @@ export function dernierRepublish(jobsAll, platform) {
   return last;
 }
 
+// (24/10, lot « zéro blocage », B7) Depop refuse-t-il cet article ? Un verdict déjà posé par le serveur sur un
+// job Depop de la fiche (depop_interdit, get-pending-jobs), ou la même table que la case grisée de l'écran Publier
+// (platformCompat.depopInterdit). Deux téléphones de Thibault (24/10) entraient en file pour y rester en pause.
+export function depopRefuseLArticle(item, jobsAll) {
+  if ((jobsAll ?? []).some((j) => j?.platform === 'depop' && j?.platform_fields?.depop_interdit)) return true;
+  if (!item) return false;
+  const icone = detectObjectIcon(String(item.titre ?? ''), String(item.description ?? ''), item.type ?? null);
+  return Boolean(depopInterdit(icone, item));
+}
+
 // État de republication d'un article sur UNE plateforme :
-//   'ok' | 'vivant' | 'cadence' | 'gelee' | 'ineligible'
+//   'ok' | 'vivant' | 'cadence' | 'gelee' | 'ineligible' | 'interdit' (24/10 : la plateforme refuse l'article)
 export function repubEtatPlateforme(item, jobsAll, platform) {
   const jobs = jobsAll ?? [];
+  if (platform === 'depop' && depopRefuseLArticle(item, jobs)) return 'interdit';
   if (platform === 'vinted') {
     if (!(item?.vinted_item_id && !item?.disparu_le && item?.statut !== 'vendu'
       && !vintedMasqueeMalgreJobs(item, jobs))) return 'ineligible';

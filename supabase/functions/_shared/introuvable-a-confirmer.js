@@ -178,11 +178,17 @@ export function decisionIntrouvable({ job, fiche = null, vu = null, annonce = nu
   if (fiche?.statut === 'vendu') return { decision: 'confirmer', raison: 'fiche vendue' };
   const platform = String(job?.platform ?? '');
   if (!identifiantAnnonceJob(job)) return { decision: 'attendre', raison: "identifiant exact de l'annonce inconnu" };
-  const trace = vu ?? (annonce ? { vu_le: annonce.vu_le, statut: annonce.statut_plateforme } : null);
+  // (24/10, lot « zéro blocage », A4) Le relevé dit VENDUE (transaction lue) → confirmée ; il a posé
+  // `disparu_le` → l'annonce n'est plus en ligne, même si son statut est resté « en_ligne » (nino, Ornella).
+  if (annonce && String(annonce.transaction_plateforme ?? '') === 'sold' && t(annonce.transaction_lue_le) > depuis) {
+    return { decision: 'confirmer', raison: 'relevée vendue après la lecture' };
+  }
+  const disparue = annonce && Number.isFinite(t(annonce.disparu_le)) && !(t(annonce.vu_le) > t(annonce.disparu_le));
+  const trace = vu ?? (annonce ? { vu_le: annonce.vu_le, statut: disparue ? 'disparue' : annonce.statut_plateforme } : null);
   const vuLe = t(trace?.vu_le);
   const st = String(trace?.statut ?? '');
   const enLigne = platform === 'vinted' ? st === 'active' : st === 'en_ligne';
-  const fermee = platform === 'vinted' ? ['sold', 'closed', 'hidden', 'draft'].includes(st) : ['vendue', 'desactivee'].includes(st);
+  const fermee = platform === 'vinted' ? ['sold', 'closed', 'hidden', 'draft'].includes(st) : ['vendue', 'desactivee', 'disparue'].includes(st);
   if (Number.isFinite(vuLe) && vuLe > depuis) {
     if (enLigne) {
       if ((Number(marque?.reprises) || 0) >= MAX_REPRISES_INTROUVABLE) return { decision: 'persistant', raison: 'relevée en ligne, mais lecture refusée après 3 reprises' };

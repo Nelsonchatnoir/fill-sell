@@ -76,7 +76,7 @@ serve(async (req) => {
 
     const ts = Date.now();
     const photos: string[] = [];
-    const echecs: Array<{ url: string; raison: string }> = [];
+    const echecs: Array<{ url: string; raison: string; transitoire?: boolean }> = [];
 
     // Séquentiel, volontairement : ≤ 20 fetchs vers le CDN, pas de rafale.
     for (let i = 0; i < urls.length; i++) {
@@ -125,11 +125,20 @@ serve(async (req) => {
         const ext = contentType === "image/png" ? "png" : contentType === "image/webp" ? "webp" : "jpg";
         // ts dans le chemin : deux captures du même article ne s'écrasent pas.
         const path = `${user.id}/republish/${vintedItemId}/${ts}_${i}.${ext}`;
-        const { error: upErr } = await adminClient.storage
-          .from(BUCKET)
-          .upload(path, bytes, { contentType, upsert: true });
+        // (24/10, lot « zéro blocage », A5) Une erreur PASSAGÈRE du stockage (« Too many connections issued
+        // to the database », christophe.lanoux30 le 20/10 : republication mise en pause « capture incomplète »)
+        // se réessaie ici, trois fois (0,5 / 1,5 / 4 s) — jamais un geste demandé à la personne. Le motif
+        // d'un échec final dit s'il était passager (`transitoire`), pour que l'appelant réessaie plus tard.
+        let upErr: { message: string } | null = null;
+        for (const pauseMs of [0, 500, 1500, 4000]) {
+          if (pauseMs) await new Promise((r) => setTimeout(r, pauseMs));
+          const { error } = await adminClient.storage.from(BUCKET).upload(path, bytes, { contentType, upsert: true });
+          upErr = error ? { message: String(error.message ?? error) } : null;
+          if (!upErr || !/too many connections|timeout|timed out|ECONNRESET|503|502|504|temporar|rate limit/i.test(upErr.message)) break;
+        }
         if (upErr) {
-          echecs.push({ url: brut, raison: `upload : ${upErr.message}` });
+          const transitoire = /too many connections|timeout|timed out|ECONNRESET|503|502|504|temporar|rate limit/i.test(upErr.message);
+          echecs.push({ url: brut, raison: `upload : ${upErr.message}`, ...(transitoire ? { transitoire: true } : {}) });
           continue;
         }
         photos.push(adminClient.storage.from(BUCKET).getPublicUrl(path).data.publicUrl);

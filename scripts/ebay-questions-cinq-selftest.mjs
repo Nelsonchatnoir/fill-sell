@@ -134,7 +134,7 @@ console.log("\nL3a / L3b. La catégorie de l'encart : attendre le pré-calcul, r
   ok("un seul minuteur par rédaction, sans lecture de base", /const minuteur = setTimeout\(\(\) => setAttentePrecalculEbayPour\(pour\), ATTENTE_PRECALCUL_EBAY_MS\);\s*return \(\) => clearTimeout\(minuteur\);/.test(LPS) && !/setInterval\(\(\) => setAttentePrecalculEbayPour/.test(LPS));
   ok("le clic ne refuse pas sur les aspects de l'icône démentie (et n'y remonte pas l'encart)",
     /const iconeDementie = precalculEbayNonConfirme\(\{ pfEbay: pfE, voieApi: ebayVoieApiReelle, choisi: Boolean\(edited\.ebay\?\.rayon_choisi\?\.chemin\?\.length\) \}\);/.test(LPS)
-    && /if \(verdict\.missingEmpty\.length && !iconeDementie\) \{/.test(LPS) && /verdict\.missingEmpty\.length && !iconeDementie && String\(ebayPreviewCategoryId/.test(LPS));
+    && /if \(verdict\.missingEmpty\.length && !iconeDementie\) \{/.test(LPS) && /\(verdict\.missingEmpty\.length \|\| verdict\.invalides\.length\) && !iconeDementie && String\(ebayPreviewCategoryId/.test(LPS));
 }
 
 console.log("\nL3c. Une décoration murale ne prend pas l'icône de son motif");

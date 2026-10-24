@@ -3517,8 +3517,21 @@ function normaliserTitreCriard(title) {
 // Mesuré le 18/10 : 0 des 70 555 titres Vinted publiés ou vendus ne change ;
 // les refus réels (Hoodie « Gangs / Security », TEST FillSell —, trois...) oui.
 const VINTED_TITRE_GARDES = new Set(['"', "'", "«", "»", "“", "”", "‘", "’", "„", "‹", "›", "(", ")", "[", "]", "{", "}"]);
+// R5 (24/10, lot « zéro blocage ») : un mot écrit SANS aucune lettre latine (han, kana, hangul, arabe,
+// hébreu, thaï) part s'il reste au moins 3 mots latins — Vinted les compte comme des symboles (refus
+// « troppi simboli consecutivi », mele.marta 24/10). Même règle que le serveur (retirerMotsNonLatins).
+function retirerMotsNonLatinsVinted(titre) {
+  const t = String(titre ?? "");
+  const mots = t.split(/\s+/).filter(Boolean);
+  const nonLatin = (m) => /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{Script=Arabic}\p{Script=Hebrew}\p{Script=Thai}]/u.test(m)
+    && !/[\p{Script=Latin}\p{N}]/u.test(m);
+  if (!mots.some(nonLatin)) return t;
+  const restent = mots.filter((m) => !nonLatin(m));
+  if (restent.filter((m) => /\p{Script=Latin}/u.test(m)).length < 3) return t;
+  return restent.join(" ");
+}
 function assagirSymbolesVinted(titre, { marque = null } = {}) {
-  let t = String(titre ?? "");
+  let t = retirerMotsNonLatinsVinted(String(titre ?? ""));
   if (!t) return t;
   const estSymbole = (c) => /[^\p{L}\p{N}\p{M}\s]/u.test(c);
   // La marque, masquée par un jeton fait de lettres (donc jamais un symbole).
@@ -11231,6 +11244,17 @@ async function leverDisjoncteurLecture(platform) {
   } catch { /* rien */ }
 }
 
+// (24/10, lot « zéro blocage », A4) LA MÉMOIRE « ANNONCE MORTE » TOMBE PARTOUT, PAS SEULEMENT DANS LA VEILLE.
+// La règle du 22/10 (oublier une mémoire plus ancienne qu'un relevé qui a revu l'annonce en ligne) n'était
+// branchée que sur le veilleur : avant une republication, un retrait ou une preuve de retrait, la lecture
+// rendait « unavailable » SANS lire (xxewwer, nino57270 : 9 republications Leboncoin en pause alors que les
+// relevés voyaient les annonces). Le repère : le plus récent des démentis connus sur le job.
+function derniereRevueEnLigne(pf) {
+  const p = pf && typeof pf === "object" ? pf : {};
+  const t = [p.revue_en_ligne_par_releve?.at, p.introuvable_a_confirmer?.dementi_le, p.annonce_vue_en_ligne_le]
+    .map((v) => Date.parse(String(v ?? ""))).filter(Number.isFinite);
+  return t.length ? new Date(Math.max(...t)).toISOString() : null;
+}
 async function checkListingState(url, platform, { routine = false, publieLe = null, revueLe = null } = {}) {
   if (platform === "opla") return lireEtatOpla(url);
   if (platform === "depop") return lireEtatDepop(url);
@@ -25347,7 +25371,7 @@ async function processRepublishJobPlateforme(job, accessToken) {
       await updateJobStatus(accessToken, job.id, "failed", { platform_fields: pf, error: msg });
       return { status: "failed", error: msg };
     }
-    const { state, raison } = await checkListingState(job.listing_url, job.platform)
+    const { state, raison } = await checkListingState(job.listing_url, job.platform, { revueLe: derniereRevueEnLigne(job.platform_fields) })
       .catch(() => ({ state: "unknown", raison: "lecture_impossible" }));
     pf.republish_etat_reel = { at: new Date().toISOString(), state: String(state), ...(raison ? { raison: String(raison).slice(0, 80) } : {}) };
     // ── NOTRE SUPPRESSION ÉTAIT DÉJÀ PARTIE (05/10, Joséphine) ─────────────────
@@ -25720,7 +25744,7 @@ async function processRepublishJobPlateforme(job, accessToken) {
       if (/message channel closed|Receiving end does not exist/i.test(msg)) {
         // Canal coupé PAR la navigation du retrait : l'état réel tranche
         // (sauf Beebs, 03/10 : la page publique ne prouve rien, on reprend).
-        const { state } = await checkListingState(job.listing_url, job.platform).catch(() => ({ state: "unknown" }));
+        const { state } = await checkListingState(job.listing_url, job.platform, { revueLe: derniereRevueEnLigne(job.platform_fields) }).catch(() => ({ state: "unknown" }));
         if ((state === "unavailable" || state === "sold") && job.platform !== "beebs") {
           result = { success: true, trace: ["canal coupé par la navigation du retrait — annonce absente : retrait confirmé par l'état réel"], confirmeParEtat: true };
         } else {
@@ -25753,7 +25777,7 @@ async function processRepublishJobPlateforme(job, accessToken) {
     let retire = result?.success === true;
     let confirmePar = result?.confirmeParEtat ? "etat_annonce" : (result?.preuveRetrait ? "mes_annonces" : "handler");
     if (!retire && result && !result.dryRun) {
-      const { state, raison } = await checkListingState(job.listing_url, job.platform)
+      const { state, raison } = await checkListingState(job.listing_url, job.platform, { revueLe: derniereRevueEnLigne(job.platform_fields) })
         .catch(() => ({ state: "unknown", raison: "lecture_impossible" }));
       // (03/10) Beebs : la page publique ne prouve jamais un retrait (une
       // annonce en vérification y est en 404) — seule « Mes annonces » tranche.
@@ -26563,6 +26587,21 @@ async function processRepublishJob(job, accessToken) {
           await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
           return { status: "needsUser", error: `recapture en échec : ${recap.error}` };
         }
+        // (24/10, lot « zéro blocage », A5) Une recapture incomplète SEULEMENT à cause d'une erreur passagère
+        // du stockage (« Too many connections », délai dépassé…) n'est jamais un geste demandé : la
+        // republication reste en file, intacte, et la recapture se refait plus tard (10, 30 puis 60 min).
+        const manquantsRecap = recap.champs_manquants ?? [];
+        const passagerRecap = (m) => /^photo(s_rehebergees)? .*(too many connections|timeout|timed out|ECONNRESET|50[234]|temporar|rate limit|failed to fetch|network)/i.test(String(m));
+        if (recap.verdict !== "valide" && manquantsRecap.length && manquantsRecap.every(passagerRecap)) {
+          const n = (Number(pf.recapture_passagere?.n) || 0) + 1;
+          pf.recapture_passagere = { n, le: new Date().toISOString(), motif: String(manquantsRecap[0]).slice(0, 160) };
+          pf.next_action_after = new Date(Date.now() + [10, 30, 60][Math.min(n, 3) - 1] * 60_000).toISOString();
+          await updateJobStatus(accessToken, job.id, "pending", {
+            platform_fields: pf,
+            error: "Republication en file : la copie de ton annonce n'a pas pu être enregistrée (erreur passagère de nos serveurs). Nouvel essai tout seul ; ton annonce est intacte, rien n'a été retiré.",
+          });
+          return { status: "pending", error: `recapture passagère (${n}) : ${manquantsRecap[0]}` };
+        }
         if (recap.verdict !== "valide") {
           const detail = (recap.champs_manquants ?? []).slice(0, 3).join(" ; ") || "champs manquants";
           // Mêmes marqueurs structurés que l'étape a_capturer : l'app propose
@@ -26991,11 +27030,24 @@ async function processRepublishJob(job, accessToken) {
         // accident de parcours (canal, session, photos) — le serveur
         // (update-job-status v37) relance d'ailleurs seul les canaux coupés.
         const baseRelue = Boolean(enBase && !enBase.illisible);
+        // (24/10, lot « zéro blocage », A5) Un accident de parcours AVANT tout retrait (formulaire pas rendu,
+        // sélecteur photo non résolu, canal coupé — patrick.giry07 3730ef49) n'est jamais un geste demandé :
+        // l'annonce est intacte (base relue), la republication reste en file et se rejoue seule, espacée
+        // (5, 20, 60 min, puis toutes les 3 h). La sentinelle (ops-digest) signale une série qui dure.
+        if (baseRelue) {
+          const n = (Number(pf.reprise_avant_retrait?.n) || 0) + 1;
+          pf.reprise_avant_retrait = { n, le: new Date().toISOString(), motif: String(result?.error ?? "inconnu").slice(0, 200), url: String(result?.url ?? "").slice(0, 200) || null };
+          pf.next_action_after = new Date(Date.now() + ([5, 20, 60][n - 1] ?? 180) * 60_000).toISOString();
+          await updateJobStatus(accessToken, job.id, "pending", {
+            platform_fields: pf,
+            error: "Republication en pause avant toute suppression : ton annonce est toujours en ligne sur Vinted. " +
+              `Un accident de parcours sur ton ordinateur (${phraseClose(motifLisible(result?.error ?? "inconnu", 120))}) : nouvel essai tout seul, rien à faire.`,
+          });
+          return { status: "pending", error: result?.error };
+        }
         await updateJobStatus(accessToken, job.id, "needs_user", {
           platform_fields: pf,
-          error: baseRelue
-            ? `Republication en pause avant toute suppression : ton annonce est toujours en ligne sur Vinted. Motif : ${phraseClose(motifLisible(result?.error ?? "inconnu", 200))} Rien à corriger sur l'annonce — relance depuis l'app quand tu veux.`
-            : `Republication interrompue : nous n'avons pas pu vérifier l'état de ton annonce sur Vinted. Motif : ${phraseClose(motifLisible(result?.error ?? "inconnu", 200))} Relance depuis l'app : l'état réel sera re-vérifié avant tout geste.`,
+          error: `Republication interrompue : nous n'avons pas pu vérifier l'état de ton annonce sur Vinted. Motif : ${phraseClose(motifLisible(result?.error ?? "inconnu", 200))} Relance depuis l'app : l'état réel sera re-vérifié avant tout geste.`,
         });
         return { status: "needsUser", error: result?.error };
       }
@@ -28048,7 +28100,7 @@ async function processDeleteJob(job, accessToken) {
         await updateJobStatus(accessToken, job.id, "needs_user", { error: result.error, platform_fields: pfB });
         return { status: "needsUser", error: result.error };
       }
-      const lecture = await checkListingState(job.listing_url, job.platform)
+      const lecture = await checkListingState(job.listing_url, job.platform, { revueLe: derniereRevueEnLigne(job.platform_fields) })
         .catch(() => ({ state: "unknown", raison: "lecture_impossible" }));
       const { state, raison } = lecture;
       // ⛔ (03/10) BEEBS : LA PAGE PUBLIQUE NE CLÔT JAMAIS UN RETRAIT. Une annonce
@@ -28261,7 +28313,7 @@ async function processDeleteJob(job, accessToken) {
       // (et conclure « annonce introuvable » au tour suivant, en boucle).
       // On demande donc à la PLATEFORME, pas au canal : si l'annonce n'est plus
       // en ligne, la suppression a réussi.
-      const lectureCanal = await checkListingState(job.listing_url, job.platform).catch(() => ({ state: "unknown" }));
+      const lectureCanal = await checkListingState(job.listing_url, job.platform, { revueLe: derniereRevueEnLigne(job.platform_fields) }).catch(() => ({ state: "unknown" }));
       const { state } = lectureCanal;
       // (03/10) Beebs : jamais sur la page publique (cf. plus haut) — reprise, le
       // passage suivant relit « Mes annonces ».

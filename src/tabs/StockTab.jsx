@@ -65,6 +65,8 @@ import { sortirDuBrouillon, manquesDeLaFiche } from '../utils/brouillon';
 // que update-job-status et handler-watch — le motif de l'arrêt précédent ne
 // disparaît plus quand on relance (platform_fields.erreurs_archivees).
 import { archiverErreur } from '../../supabase/functions/_shared/erreurs-archivees.js';
+// (24/10, lot « zéro blocage », B4) Une réponse « Titre » générique (« Vinted ») ne part jamais.
+import { titreRecevable } from '../../supabase/functions/_shared/titre-du-job.js';
 import { attenteBoutiqueLevable } from '../../supabase/functions/_shared/attente-autre-boutique.js';
 import { rayonFourreToutARevoir, reResoudreRayonFourreTout, messageRayonNonTrouve, photosApresRayonRetrouve } from '../utils/rayonFourreToutRelance';
 import { abandonPossible, messageAbandon, champsApresAbandon } from '../utils/abandonPlateforme';
@@ -1532,6 +1534,14 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
     // Une dimension eBay part avec son unité (« 30 » → « 30 cm »).
     const v = valeurAvecUnite(String(valeur ?? (value || valeurProposee || "")).trim(), uniteF);
     if (f && !v && !sansValeur) return;
+    // (24/10, B4) Un titre générique ou égal au nom d'une plateforme (« Vinted », « Titre ») ne décrit pas
+    // l'article : il n'est jamais écrit (mele.marta, 24/10 — annonce en ligne sous le titre « Vinted »).
+    if (f && !sansValeur && (f.target?.key === 'titre_saisi' || f.field_key === 'title') && !titreRecevable(v)) {
+      setErrMsg(lang === 'fr'
+        ? "Ce titre ne décrit pas l'article (un nom de plateforme, « Titre »…) : écris ce qu'est l'objet, par exemple « Manga Gundam EXA tomes 1 à 5 »."
+        : "This title doesn't describe the item (a platform name, “Title”…): write what the item is.");
+      return;
+    }
     if (descriptionManquante) return;
     if (!sansValeur && champsSupManquants) return;
     setSaving(true); setErrMsg(null);

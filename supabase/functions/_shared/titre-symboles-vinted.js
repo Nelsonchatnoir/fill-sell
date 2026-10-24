@@ -52,8 +52,29 @@
 
 import { archiverErreur } from "./erreurs-archivees.js";
 
-/** Le motif Vinted visé (pf.titre_refuse.motif, texte du refus). */
-export const MOTIF_SYMBOLES_RE = /symboles/i;
+/** Le motif Vinted visé (pf.titre_refuse.motif, texte du refus) — dans TOUTES les langues de Vinted
+ *  (24/10, lot « zéro blocage », A7 : mele.marta, page italienne, « troppi simboli consecutivi » n'était
+ *  pas reconnu → question « Titre » au lieu de la reprise automatique). */
+export const MOTIF_SYMBOLES_RE = /s[iyíý]mbol|symbool|σύμβολ/i;
+
+// ── R5 (24/10, lot « zéro blocage », A7) LES MOTS ÉCRITS SANS AUCUNE LETTRE LATINE ─────────────────
+// mele.marta, 24/10 : « Kadokawa Gundam EXA VS Set Manga Volumi 1-5 Giapponese ときた洸一 千葉智宏 »
+// refusé DEUX fois (« troppi simboli consecutivi ») : Vinted compte ces caractères comme des symboles.
+// Le même compte a publié « … PS2 機動戦士ガンダムSeed … » (mot collé à des lettres latines) : accepté.
+// Le cyrillique et le grec sont acceptés (Vinted les sert). LA RÈGLE : un mot fait SEULEMENT d'écritures
+// d'Asie ou du Moyen-Orient (han, kana, hangul, arabe, hébreu, thaï) part, à condition qu'il reste au
+// moins 3 mots écrits en lettres latines — le sens est porté par eux (jamais un titre vidé).
+const ECRITURE_NON_LATINE_RE = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{Script=Arabic}\p{Script=Hebrew}\p{Script=Thai}]/u;
+const LATIN_OU_CHIFFRE_RE = /[\p{Script=Latin}\p{N}]/u;
+export function retirerMotsNonLatins(titre) {
+  const t = String(titre ?? "");
+  const mots = t.split(/\s+/).filter(Boolean);
+  const nonLatin = (m) => ECRITURE_NON_LATINE_RE.test(m) && !LATIN_OU_CHIFFRE_RE.test(m);
+  if (!mots.some(nonLatin)) return t;
+  const restent = mots.filter((m) => !nonLatin(m));
+  if (restent.filter((m) => /\p{Script=Latin}/u.test(m)).length < 3) return t;
+  return restent.join(" ");
+}
 
 /** Clé de platform_fields où la question « Titre » range la réponse (titre-du-job.js). */
 const CLE_TITRE_SAISI = "titre_saisi";
@@ -79,8 +100,8 @@ export function retirerEmojiVinted(titre) {
 export function assagirSymbolesVinted(titre, { marque = null, strict = false } = {}) {
   const original = String(titre ?? "");
   if (!original) return original;
-  // R0 — les emoji.
-  let t = original.replace(EMOJI_RE, "");
+  // R0 — les emoji. R5 — les mots sans aucune lettre latine (han, kana, hangul…), si 3 mots latins restent.
+  let t = retirerMotsNonLatins(original.replace(EMOJI_RE, ""));
   const emojiRetires = t !== original;
   // La marque, masquée par un jeton fait de lettres (donc jamais un symbole).
   const masques = [];

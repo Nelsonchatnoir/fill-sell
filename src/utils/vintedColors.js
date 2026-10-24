@@ -145,6 +145,40 @@ const VINTED_COLOR_VARIANTS = {
   "multi-colour": "Multicolore", "multi-color": "Multicolore", "multi color": "Multicolore", "multi colour": "Multicolore",
   "multicouleur": "Multicolore", "various": "Multicolore",
   "clear": "Transparence", "translucide": "Transparence",
+  // ── LES PAGES VINTED DES AUTRES PAYS (24/10, lot « zéro blocage », A7) ──────────────────────────────
+  // La synchro range sur la fiche le libellé que la page AFFICHE (mele.marta, page italienne : « Rosa »).
+  // Inconnu ici, il retombait sur « Multicolore » (le filet), puis « COULEUR INTROUVABLE » sur la page
+  // italienne qui propose « Multi ». Chaque libellé de la palette dans les langues de la zone euro servies
+  // aux comptes du parc (italien, espagnol, allemand, néerlandais, portugais) : un synonyme EXACT, jamais
+  // « au plus proche ». « Rosa » (deux cases chez Vinted Italie) → « Rose ».
+  "nero": "Noir", "negro": "Noir", "schwarz": "Noir", "zwart": "Noir", "preto": "Noir",
+  "grigio": "Gris", "grau": "Gris", "grijs": "Gris", "cinzento": "Gris", "cinza": "Gris",
+  "bianco": "Blanc", "blanco": "Blanc", "weiss": "Blanc", "weiß": "Blanc", "wit": "Blanc", "branco": "Blanc",
+  "panna": "Crème", "crema": "Crème", "creme": "Crème", "cremefarben": "Crème",
+  "albicocca": "Abricot", "albaricoque": "Abricot", "aprikose": "Abricot", "abrikoos": "Abricot", "damasco": "Abricot",
+  "arancione": "Orange", "naranja": "Orange", "oranje": "Orange", "laranja": "Orange",
+  "corallo": "Corail", "koralle": "Corail", "koraal": "Corail",
+  "rosso": "Rouge", "rojo": "Rouge", "rot": "Rouge", "rood": "Rouge", "vermelho": "Rouge",
+  "bordo": "Bordeaux", "bordó": "Bordeaux", "burdeos": "Bordeaux", "weinrot": "Bordeaux",
+  "fucsia": "Fuchsia",
+  "rosa": "Rose", "roze": "Rose", "rosado": "Rose",
+  "viola": "Violet", "morado": "Violet", "violeta": "Violet", "paars": "Violet", "roxo": "Violet",
+  "lilla": "Lila",
+  "azzurro": "Bleu clair", "celeste": "Bleu clair", "hellblau": "Bleu clair", "lichtblauw": "Bleu clair", "azul claro": "Bleu clair",
+  "blu": "Bleu", "azul": "Bleu", "blau": "Bleu", "blauw": "Bleu",
+  "blu navy": "Marine", "blu scuro": "Marine", "blu notte": "Marine", "azul marino": "Marine", "dunkelblau": "Marine", "marineblau": "Marine", "donkerblauw": "Marine", "azul-marinho": "Marine",
+  "turchese": "Turquoise", "turquesa": "Turquoise", "türkis": "Turquoise", "turkoois": "Turquoise",
+  "menta": "Menthe", "munt": "Menthe",
+  "verde": "Vert", "grün": "Vert", "grun": "Vert", "groen": "Vert",
+  "verde scuro": "Vert foncé", "verde oscuro": "Vert foncé", "dunkelgrün": "Vert foncé", "donkergroen": "Vert foncé", "verde escuro": "Vert foncé",
+  "cachi": "Kaki", "caqui": "Kaki", 
+  "marrone": "Marron", "marrón": "Marron", "braun": "Marron", "bruin": "Marron", "castanho": "Marron",
+  "senape": "Moutarde", "mostaza": "Moutarde", "senf": "Moutarde", "mosterd": "Moutarde", "mostarda": "Moutarde",
+  "giallo": "Jaune", "amarillo": "Jaune", "gelb": "Jaune", "geel": "Jaune", "amarelo": "Jaune",
+  "argento": "Argenté", "plateado": "Argenté", "plata": "Argenté", "silber": "Argenté", "zilver": "Argenté", "prateado": "Argenté",
+  "oro": "Doré", "dorado": "Doré", "goud": "Doré", "dourado": "Doré",
+  "mehrfarbig": "Multicolore", "bunt": "Multicolore", "veelkleurig": "Multicolore", "multicolorido": "Multicolore",
+  "trasparente": "Transparence", "durchsichtig": "Transparence", "doorzichtig": "Transparence",
 };
 
 // Les variantes cherchées comme MOTS dans un segment que la palette n'a pas

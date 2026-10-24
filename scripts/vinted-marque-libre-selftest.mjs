@@ -17,12 +17,25 @@ assert.doesNotMatch(corps, /brand_fallback_no_brand/, "plus aucun repli « Sans 
 const iSans = corps.indexOf("if (SANS_MARQUE_RE.test(marque))");
 const iFinSans = corps.indexOf("const demandee =");
 assert.ok(iSans > 0 && iFinSans > iSans, "« Sans marque » demandé garde son chemin natif");
-assert.doesNotMatch(corps.slice(iFinSans), /selectVintedNoBrand\(/, "une vraie marque n'est JAMAIS remplacée par « Sans marque »");
+// (24/10, lot « zéro blocage », A3 — Nico) « Une marque introuvable ne bloque jamais : marque la plus proche prouvée, ou
+// « Sans marque » quand la catégorie l'accepte. Jamais une marque inventée. » Remplace la règle du 03/10 ci-dessus :
+// « Sans marque » n'est posé qu'en DERNIER recours — aucune ligne cliquée, #brand vide, ni identifiant prouvé, ni
+// écriture équivalente unique —, jamais par-dessus une marque déjà sur la page.
+{
+  const apres = corps.slice(iFinSans);
+  const iChaine = apres.indexOf('if (!surLaPage && !choix?.el && (choix?.type === "inconnue" || choix?.type === "aucune" || idDeLAnnonce)) {');
+  const iSansMarque = apres.indexOf("await selectVintedNoBrand(trigger);");
+  assert.ok(iChaine > 0 && iSansMarque > iChaine && (apres.match(/selectVintedNoBrand\(/g) ?? []).length === 1,
+    "« Sans marque » pour une vraie marque : un seul appel, au bout de la chaîne de repli (24/10)");
+  const chaine = apres.slice(iChaine, iSansMarque);
+  assert.ok(chaine.includes("if (idDeLAnnonce && injectionProuvee) {") && chaine.includes("if (memes.length === 1) {"),
+    "avant « Sans marque » : l'identifiant prouvé, puis la même marque sous une autre écriture (unique)");
+}
 assert.ok(corps.includes("texteComparable(posee) === texteComparable(demandee)"), "la relecture compare #brand à LA marque demandée");
 assert.ok(corps.includes("if (choix?.el) {"), "on ne clique que sur une ligne trouvée");
 assert.match(corps, /needsUser: true,[\s\S]{0,400}Vinted ne connaît pas la marque/, "marque inconnue de Vinted → une question, pas un choix");
 assert.ok(corps.includes(`allowed_values: proposees, target: { key: "marque" }`), "la réponse s'écrit dans la marque de la copie");
-assert.match(src, /const questionMarque = await selectVintedBrand\(fields\.marque, warnings, \{\s*marqueId: fields\.marque_id,\s*marqueCapturee: fields\.marque_capturee \?\? null,\s*\}\);\s*if \(questionMarque\?\.poseeParId\) marqueParId = [^\n]+\n\s*if \(questionMarque\?\.needsUser\)/, "la question remonte jusqu'au résultat du dépôt (et l'id de la marque d'origine voyage, 06/10 ; la marque capturée et la pose par identifiant, 17/10)");
+assert.match(src, /const questionMarque = await selectVintedBrand\(fields\.marque, warnings, \{\s*marqueId: fields\.marque_id,\s*marqueCapturee: fields\.marque_capturee \?\? null,\s*\/\/[^\n]*\n\s*injectionProuvee: fields\.marque_injection_prouvee === true,\s*\}\);\s*if \(questionMarque\?\.poseeParId\) marqueParId = [^\n]+\n\s*if \(questionMarque\?\.needsUser\)/, "la question remonte jusqu'au résultat du dépôt (et l'id de la marque d'origine voyage, 06/10 ; la marque capturée et la pose par identifiant, 17/10)");
 assert.doesNotMatch(corps, /nearest|approch|includes\(cible\)|startsWith\(cible\)/i, "aucun rapprochement");
 
 // ── 2. Le comportement : la vraie fonction sur un faux panneau ─────────────

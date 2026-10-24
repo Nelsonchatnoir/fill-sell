@@ -691,6 +691,17 @@ function classerEchecSansRegleRetrait(arg) {
   // jamais un verdict : pause, rien retiré, confirmée ou démentie par un relevé
   // (_shared/introuvable-a-confirmer.js, handler-watch). Le message d'avant ne
   // part plus que sur preuve.
+  // (24/10, lot « zéro blocage », A4) Une annonce que la page dit VENDUE (« Article vendu ») n'est jamais
+  // « introuvable » : la republication n'a plus d'objet (louis, fa5c6f20 : relevé du 24/10 12:10
+  // « sold », dépôt marqué vendu depuis le 16/10) — elle est close, rien retiré ; la vente suit son
+  // propre circuit (relevés, ventes prouvées), jamais celui-ci.
+  if (action === "republish" && String(pf?.republish_etat_reel?.state ?? "") === "sold") {
+    return {
+      verdict: "info", statut: "cancelled", motif: "annonce_vendue",
+      message: `Republication annulée : ton annonce ${nom} est vendue (la page affiche « Article vendu »). ` +
+        "Rien n'a été retiré ; la vente est suivie à part, comme les autres.",
+    };
+  }
   if (action === "republish" && DISPARUE_RE.test(t) && /plus en ligne|n'existe plus/i.test(t)) {
     return {
       verdict: "attente", statut: "needs_user", motif: "introuvable_a_confirmer", source: SOURCE_INTROUVABLE,
@@ -699,6 +710,25 @@ function classerEchecSansRegleRetrait(arg) {
     };
   }
 
+  // (24/10, lot « zéro blocage », A7) « COULEUR INTROUVABLE » : la couleur posée n'existe pas sous ce nom
+  // dans la palette de la page (mele.marta, page italienne : la fiche disait « Rosa », la copie était tombée
+  // sur « Multicolore » faute de traduction, la page ne propose que « Multi »). Jamais « on ne sait pas » :
+  // une reprise, UNE fois, avec la couleur recalculée depuis la copie et la fiche (traduite dans la palette).
+  if (platform === "vinted" && /COULEUR INTROUVABLE/i.test(t) && !pf?.couleur_retraduite) {
+    const repli = String(pf?.couleur_sans_question?.source ?? "") === "repli";
+    return {
+      verdict: "reprise", statut: "pending", motif: "vinted_couleur_retraduite", dansMinutes: 1,
+      pf: {
+        colors: [],
+        couleur_sans_question: null,
+        ...(repli && String(pf?.couleur ?? "").trim() === "Multicolore" ? { couleur: "" } : {}),
+        couleur_retraduite: { le: new Date().toISOString(), avant: Array.isArray(pf?.colors) ? pf.colors.slice(0, 2) : null },
+      },
+      message: `La couleur de cette annonce n'existait pas sous ce nom dans la palette ${nom} de ta boutique : ` +
+        `FillSell la reprend depuis ta fiche, traduite dans la palette. ${rienTouche(action, pf)} ` +
+        `${acte(action).replace(/^la /, "La ")} repart toute seule, rien à faire de ton côté.`,
+    };
+  }
   // ── 4. UN CHOIX DANS UNE LISTE ────────────────────────────────────────────
   // La plateforme refuse une valeur et nous connaissons celles qu'elle accepte.
   // Le message ne nomme NI la grille, NI le code interne : il donne le choix.

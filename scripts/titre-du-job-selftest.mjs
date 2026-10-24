@@ -59,7 +59,9 @@ console.log("\n3. LE CÂBLAGE DANS get-pending-jobs");
     ok(i > filet, `le filet tourne AVANT : ${nom}`, `filet ${filet}, bloc ${i}`);
   }
   const bloc = src.slice(filet, src.indexOf("UNE REPUBLICATION REJOUÉE REPART"));
-  ok(/\.eq\("status", "pending"\)\.or\("title\.is\.null,title\.eq\."\)/.test(bloc), "l'écriture du titre ne vise qu'un job encore pending ET encore sans titre");
+  ok(/const qTitre = userClient\.from\("cross_post_jobs"\)\.update\(majTitre\)\.eq\("id", j\.id as string\)\.eq\("status", "pending"\);/.test(bloc)
+    && /generique \? qTitre\.eq\("title", titreAvant\) : qTitre\.or\("title\.is\.null,title\.eq\."\)/.test(bloc),
+    "l'écriture du titre ne vise qu'un job encore pending ET encore sans titre (ou encore au même titre générique, 24/10 B4)");
   ok(/includeProcessing \|\| includeNeedsUser\) continue/.test(bloc), "pas de question depuis le popup");
   ok(/aRetenir\.add\(String\(j\.id\)\);\s*\}\s*if \(aRetenir\.size\)/.test(bloc), "une question non écrite retient quand même le job");
   ok(/j\.action === "publish" \|\| j\.action === "republish"/.test(bloc), "publications et republications ; jamais les retraits");

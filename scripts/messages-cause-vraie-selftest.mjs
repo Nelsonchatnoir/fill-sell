@@ -32,7 +32,7 @@ const BRUT_HASSAN = "Vinted a refusé la publication : Le titre contient trop de
   ok(!/on ne sait pas/i.test(o.message), 'plus jamais « on ne sait pas encore pourquoi »');
   ok(o.champ?.field_key === 'title' && o.champ?.target?.key === 'titre_saisi' && o.pf?.titre_refuse?.motif, 'la question « Titre » (✋ Compléter) et le marqueur du titre refusé');
   const gpj = lire('supabase/functions/get-pending-jobs/index.ts');
-  ok(/if \(!pf\.titre_refuse \|\| titreVide\(pf\[CLE_TITRE_SAISI\]\)\) continue;/.test(gpj) && /j\.title = nouveau;/.test(gpj), 'serveur : la réponse REMPLACE le titre refusé du job (jamais resservi tel quel)');
+  ok(/if \(!pf\.titre_refuse \|\| titreVide\(pf\[CLE_TITRE_SAISI\]\) \|\| !titreRecevable\(pf\[CLE_TITRE_SAISI\]\)\) continue;/.test(gpj) && /j\.title = nouveau;/.test(gpj), 'serveur : la réponse REMPLACE le titre refusé du job (jamais resservi tel quel) — sauf une réponse générique (24/10, B4)');
   const r = P.classerEchec({ platform: 'vinted', action: 'republish', brut: BRUT_HASSAN.replace('la publication', 'la republication'), essais: 1, pf: { republish_step: 'deleted' }, reprises: 0 });
   ok(r.message.includes('déjà retirée, sera remise en ligne'), 'republication dont l\'annonce est retirée : on ne dit pas « intacte »');
 }

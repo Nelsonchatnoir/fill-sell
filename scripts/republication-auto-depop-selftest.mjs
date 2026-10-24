@@ -74,12 +74,13 @@ dit("get-pending-jobs : plus de liste des créneaux écrite en dur", !gpj.includ
 dit("get-pending-jobs : toutes les fenêtres rendues par le serveur sont lues", gpj.includes("for (const [pf, f] of Object.entries(m)) poser(pf, f ?? null);"));
 dit("get-pending-jobs : la retenue de créneau vaut pour toute plateforme rendue", /const f = fenetres\[String\(\(j as \{ platform\?: string \}\)\.platform \?\? ""\)\];/.test(gpj));
 const filet = gpj.slice(gpj.indexOf("LES CATÉGORIES QUE DEPOP INTERDIT"), gpj.indexOf("LES FRAIS DE PORT PAR DÉFAUT"));
-dit("interdit + republication AUTOMATIQUE intacte → close (cancelled), aucune question", /const autoIntacte = j\.action === "republish" && pfI\["republish_source"\] === "auto" && !retraitEngage\(j\);/.test(filet)
+// (24/10, lot « zéro blocage », B7) automatique OU demandée : une republication intacte d'un article refusé est close.
+dit("interdit + republication (automatique ou demandée) intacte → close (cancelled), aucune question", /const autoIntacte = j\.action === "republish" && !retraitEngage\(j\);/.test(filet)
   && /autoIntacte\s*\?\s*await userClient\.from\("cross_post_jobs"\)\s*\.update\(\{\s*status: "cancelled",/.test(filet));
-dit("… avec la phrase de la règle et « annonce intacte »", filet.includes("Republication automatique Depop non lancée : ${messageDepopInterdit(verdict, \"fr\")} Ton annonce Depop est intacte, rien n'a été retiré."));
+dit("… avec la phrase de la règle et « annonce intacte »", filet.includes("Republication${parLaPersonne ? \"\" : \" automatique\"} Depop non lancée : ${messageDepopInterdit(verdict, \"fr\")} Ton annonce Depop est intacte, rien n'a été retiré."));
 dit("… et le verdict posé sur le job (lu par les candidats)", (filet.match(/depop_interdit: depopInterdit/g) ?? []).length === 2);
 dit("… jamais hors de pending", (filet.match(/\.eq\("id", j\.id\)\.eq\("status", "pending"\)/g) ?? []).length === 2);
-dit("manuelle, ou retrait déjà engagé : la question d'avant (needs_user)", /:\s*await userClient\.from\("cross_post_jobs"\)\s*\.update\(\{\s*status: "needs_user",/.test(filet));
+dit("publication (ancienne app), ou retrait déjà engagé : la ligne d'avant (needs_user)", /:\s*await userClient\.from\("cross_post_jobs"\)\s*\.update\(\{\s*status: "needs_user",/.test(filet));
 dit("le filet passe AVANT la retenue de créneau (une auto hors créneau est jugée aussi)", gpj.indexOf("LES CATÉGORIES QUE DEPOP INTERDIT") < gpj.indexOf("let heldCreneau = 0;"));
 
 // ── 3. La base ───────────────────────────────────────────────────────────────
