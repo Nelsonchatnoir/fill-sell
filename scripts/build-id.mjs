@@ -1391,7 +1391,8 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // des syncs (0.6.34), jobs de publication/republication/suppression, partage
 // d'onglet, marquage des disparitions.
 // MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
-export const EXTENSION_LAST_COMMIT = '2026-10-24T16:17:23Z'; // 0.6.137 (24/10 soir, 772133e — UTC VRAI lu par EPOCH, %ct 1792858643 ; posée dans un commit qui ne touche PAS chrome-extension/) : l'étiquette Vinted (lien S3 présigné) lue par la fonction bordereau-fichier.
+export const EXTENSION_LAST_COMMIT = '2026-10-24T16:31:26Z'; // 0.6.138 (24/10 soir, 80b728b — UTC VRAI lu par EPOCH, %ct 1792859486 ; posée dans un commit qui ne touche PAS chrome-extension/) : chaque commande en cours a son tour de détail, un état connu n'est jamais effacé.
+// (avant) 2026-10-24T16:17:23Z = 0.6.137 (24/10 soir, 772133e — UTC VRAI lu par EPOCH, %ct 1792858643 ; posée dans un commit qui ne touche PAS chrome-extension/) : l'étiquette Vinted (lien S3 présigné) lue par la fonction bordereau-fichier.
 // (avant) 2026-10-24T15:03:17Z = 0.6.136 (24/10 soir, b31dd0b — UTC VRAI lu par EPOCH, %ct 1792854197 ; posée dans un commit qui ne touche PAS chrome-extension/) : bordereau Vinted lu en octets, sans adresse Vinted écrite dans le code (la 0.6.135 n'a jamais été téléversée).
 // (avant) 2026-10-24T14:51:06Z = 0.6.135 (24/10 soir, a6560a0 — UTC VRAI lu par EPOCH, %ct 1792853466 ; posée dans un commit qui ne touche PAS chrome-extension/) : le bordereau Vinted se lit en octets (cause de « http_200_puis_200 »).
 // (avant) 2026-10-24T14:23:44Z = 0.6.134 (24/10 soir, ae36f35 — UTC VRAI lu par EPOCH, %ct 1792851824 ; posée dans un commit qui ne touche PAS chrome-extension/) : lot « zéro blocage » + un poste non empaqueté se recharge seul quand une copie neuve est posée dans son dossier.
