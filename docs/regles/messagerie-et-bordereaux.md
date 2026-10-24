@@ -252,3 +252,27 @@
 - Preuves : `selftest:bordereau-fichier-octets` (PDF brut, ancienne forme JSON, lien même adresse / CDN / tiers, échec
   tracé sans valeur, dernière marche fermée) ; faux réseaux réalistes dans `selftest:messagerie` et
   `selftest:messagerie-generation`.
+
+## Règles (24/10 nuit — décisions 1 et 2 de Nico ; rapport `docs/enquetes/lot-2410-nuit/RAPPORT.md`)
+- **Bordereau automatique dès la vente : VINTED SEULEMENT** (migration 20261024235000, appliquée le 24/10 à 19:42:22) :
+  une commande Vinted vue APRÈS `coin_config.bordereaux_auto_depuis` (jamais l'arriéré) reçoit UNE demande — « générer »
+  (étiquette à commander) ou « récupérer » (prête) —, au format du compte (`platform_settings.bordereaux.format`, pdf par
+  défaut ; « code » → QR). Jamais après une demande du vendeur ni un échec (le bouton reste, motif réel) ; jamais avec une
+  copie vivante ; 20 par jour ; double vente de la même fiche → rien d'automatique (« deux_commandes_meme_fiche ») ;
+  vente annulée → la copie est close. Interrupteur : `coin_config.bordereaux_auto`.
+- **Un état de commande connu n'est jamais effacé par « inconnu »** (migration 20261024233000, 19:41:10).
+- **Vente annulée : JAMAIS de remise en vente automatique** (migration 20261024234000, écrite, feu vert attendu) : fiche
+  au stock ; carte « Vente annulée — Remettre en vente ? », un bouton ; l'appui remet en vente sur Vinted et partout où
+  l'article avait été retiré à cause de cette vente, hors quota ; un relevé fait APRÈS l'appui passe avant : annonce
+  remise en ligne par le vendeur → rattachée, rien de republié.
+- **Bordereaux VINTED ouverts à TOUS les comptes** (migration 20261024235500, écrite, feu vert attendu) :
+  `bordereaux_ouverts_pour(compte, plateforme)` est LE seul endroit qui le dit (Vinted : `coin_config.bordereaux_vinted_tous`
+  = 1, sinon la bêta ; toute autre plateforme : fermée pour tous). Hors bêta, le poste (extension 0.6.140) relève les
+  COMMANDES Vinted seules — jamais les messages (le serveur répond « commandes_seules ») — et prend les demandes Vinted.
+  L'écran « À expédier » existe pour un compte hors bêta dès que son poste a la 0.6.140 (`messagerie_compteurs`
+  « bordereaux_vinted ») ; la messagerie reste à la bêta.
+- **Leboncoin, Beebs, Depop, eBay : « Bientôt disponible »** pour tous les comptes, bêta comprise : un message court
+  (« Bordereau X depuis FillSell : bientôt disponible. »), jamais un bouton ; la base répond « bientot » à toute demande
+  hors Vinted. Jamais une étiquette payante.
+- Preuves : `selftest:messagerie-app` (règle « bientot », barre et espace hors bêta), `selftest:lot-2410-soir` § 6,
+  `selftest:vente-annulee-carte` ; essais à blanc 20261024234000 (10/10) et 20261024235500 (19/19).

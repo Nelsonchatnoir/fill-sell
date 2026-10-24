@@ -527,3 +527,17 @@
   chemins (0.6.134) ; une lecture « vendue » n'est jamais « introuvable » (republication close) ; un relevé qui pose
   `disparu_le` ou lit la vente tranche.
 - **Colis Vinted** : une correction de rayon ne change jamais de famille de grille (`capture-corrigee.js`).
+
+## 24/10 nuit — Beebs : les homonymes « Taille » ; « Alimentation » se déduit (décisions 4 et 5 de Nico ; rapport `docs/enquetes/lot-2410-nuit/RAPPORT.md`)
+- **Un homonyme « Taille » reçoit la taille de la fiche, TRADUITE dans sa liste** (pyjama d'alizeed48 :
+  « Taille [attributes.women_bras] » = bonnets 75A…115L ET lettres XXS…9XL) : `tailleHomonymeBeebs` (listes.js), même
+  jugement que la clé nue — « S / 36 / 8 » → « S », « M / 38 / 10 » → « M » ; jamais une conversion (« 40 » n'est pas un
+  col de 40 cm, « 38 » pas un 85B) : rien de sûr → la question. Une clé positionnelle (« Taille [#2] ») n'est jamais une
+  question (ni l'extension ni le serveur ne l'écrivent).
+- **« Alimentation » se déduit ; la question seulement au vrai doute** (`_shared/alimentation-beebs.js`, branchée dans
+  `deduireOptionDuTexte`) : ce que le texte dit (« 3 piles AAA », « piles non fournies » → Avec pile ; « batterie
+  rechargeable » → Avec batterie ; « secteur » → Filaire ; « fonctionne sans pile » → Sans) ; rien de dit sur un rayon de
+  jeux électroniques → « Avec pile » ; véhicules télécommandés (pile ou batterie), Montessori, « sans piles » seul, deux
+  alimentations dites → la question (les deux en tête). Jamais par-dessus une réponse.
+- Restent à trancher (Nico) : Bijoux femme (liste des bagues sans « Taille unique ») ; tailles EU femme sur une liste FR.
+- Preuves : `selftest:lot-2410-soir` § 3 et 4.

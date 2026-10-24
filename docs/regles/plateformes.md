@@ -347,3 +347,18 @@ Rapport : `docs/enquetes/dix-points-1710/RAPPORT.md` (points 1, 4, 5, 7, 9).
 - **Leboncoin pro** : un dépôt sur un compte pro sans le circuit pro (extension < 0.6.123 : pas de `compte_pro`)
   n'est jamais mis en ligne par Leboncoin — recrutementgroupezk704, 14/10 : 5/5 avec la 0.6.110, puis 150 déposés et
   0 refusé avec la 0.6.128. Le motif exact d'un refus de modération n'existe que dans le mail de Leboncoin au vendeur.
+
+## 24/10 nuit — eBay : l'état du rayon ; Leboncoin : le « Sans marque » du vendeur (rapport `docs/enquetes/lot-2410-nuit/RAPPORT.md`)
+- **L'état est TOUJOURS rempli dans le brouillon eBay** (décision 4 de Nico) : l'URL de dépôt (chemin Chrome) ne pose
+  plus 3000 partout — les rayons Livres et Jeux vidéo n'ont pas 3000 (1000/2750/4000/5000/6000, lu chez eBay) et eBay
+  ignorait l'état (« — », mesuré sur un brouillon de Nico). Le poste (0.6.140, `poserConditionEbay`) demande au serveur les
+  états du rayon (`fetch-ebay-aspects` v18, `{ conditions_category }`, Metadata eBay, lecture seule) et choisit dedans :
+  l'état de la famille d'avant s'il est accepté (rien ne change là où ça marchait), sinon le plus fidèle (même table que
+  la voie API, `PREFERENCES_ETAT`) ; serveur muet → la famille d'avant. Trace : `platform_fields.ebay_condition_choix`.
+- **« Switch & Go » (VTech) n'est jamais la console** : jouet 🦸 (shared.js, jeuxVideo.js) — la fiche de sos.cuisine
+  partait en « Jeux » eBay avec « Plateforme : Nintendo Switch ».
+- **Leboncoin — « Sans marque » déclaré par le vendeur n'est jamais remplacé par une marque de l'IA** (décision 3 de
+  Nico, insert Zombicide de louis refusé par la modération) : la fiche « Sans marque » gagne sur chaque copie
+  (`sansMarqueDeLaFiche`, aux trois arrivées de l'écran Publier) ; plus de « Autre » + « Marque : <éditeur> » pour un
+  accessoire non officiel. Non tranché : `toy_type` de l'IA posé par-dessus le pré-rempli précis de Leboncoin.
+- Preuves : `selftest:lot-2410-soir` § 1, 2, 5 ; `selftest:jeux-video` (corpus +5).
