@@ -114,13 +114,13 @@ export async function journaliserNotificationStore(
   ligne: Record<string, unknown>,
 ): Promise<void> {
   try {
-    const r = await auPlus<ReponseJournal>(admin.from("stores_notifications_journal").insert(ligne), DELAI_JOURNAL_MS);
+    const r = (await auPlus(admin.from("stores_notifications_journal").insert(ligne), DELAI_JOURNAL_MS)) as ReponseJournal | "delai";
     if (r === "delai") console.error("[payment-notify] journal des notifications : pas de réponse en 2 s, le paiement continue sans attendre —", JSON.stringify(ligne));
     else if (r?.error && (r.error.code === "PGRST204" || r.error.code === "23502")) {
       // (25/10) Colonne inconnue (migration 20261025020000 pas encore passée) ou connu NULL refusé : la ligne
       // repart dans la forme du 12/10, les compléments rangés dans `detail` — jamais une ligne perdue pour ça.
       const ancienne = ligneDu1210(ligne);
-      const r2 = await auPlus<ReponseJournal>(admin.from("stores_notifications_journal").insert(ancienne), DELAI_JOURNAL_MS);
+      const r2 = (await auPlus(admin.from("stores_notifications_journal").insert(ancienne), DELAI_JOURNAL_MS)) as ReponseJournal | "delai";
       console.error("[payment-notify] journal des notifications : forme du 12/10 (", r.error.code, ")", r2 === "delai" ? "— pas de réponse en 2 s" : r2?.error ? `— ${r2.error.message}` : "— écrite");
     } else if (r?.error) console.error("[payment-notify] journal des notifications :", r.error.message, "—", JSON.stringify(ligne));
   } catch (e) {
@@ -151,7 +151,7 @@ export async function completerJournalStore(
 ): Promise<void> {
   if (!appelId || !maj || Object.keys(maj).length === 0) return;
   try {
-    const r = await auPlus<ReponseJournal>(admin.from("stores_notifications_journal").update(maj).eq("appel_id", appelId), DELAI_ISSUE_MS);
+    const r = (await auPlus(admin.from("stores_notifications_journal").update(maj).eq("appel_id", appelId), DELAI_ISSUE_MS)) as ReponseJournal | "delai";
     if (r === "delai") console.error("[payment-notify] journal (issue de l'appel) : pas de réponse en 1 s —", appelId);
     else if (r?.error) console.error("[payment-notify] journal (issue de l'appel) :", r.error.message, "—", appelId);
   } catch (e) {
