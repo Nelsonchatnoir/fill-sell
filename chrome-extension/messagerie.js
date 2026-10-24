@@ -1934,6 +1934,157 @@
     };
   }
 
+  // ═════════════════════════════════════════════════════════════════════════
+  // « REPUBLIER » UNE VENTE VINTED ANNULÉE (0.6.142, 25/10 nuit — décision de Nico du 24/10 23:21)
+  // ═════════════════════════════════════════════════════════════════════════
+  // Une vente Vinted annulée se remet en vente par le bouton « Republier » de la conversation de la commande — jamais
+  // par une nouvelle annonce en plus. Relevé sur la vraie page (conversation du short de Nico, 25/10 00:1x, sans
+  // clic) : le bouton (data-testid « conversation-actions-reupload-item ») appelle
+  //   POST /api/v2/transactions/<transaction>/reupload   (sans corps, client API du site ; succès = code 0)
+  // et la conversation dit quand il est possible : un message « action_message » (« Expédition annulée. ») porte
+  // actions: [{ action: "reupload", title: "Republier" }]. Vinted remet l'article en ligne sous un NOUVEAU numéro
+  // avec les MÊMES photos (même adresse sur son CDN : relevé chez Ornella, pull 10284273677 → 10422167390, 18/10).
+  // D'où la preuve d'identité : un article plus récent que l'annonce annulée, qui porte une de SES photos.
+  // Lecture d'abord, UN SEUL envoi (le background note l'envoi en base AVANT), relecture ensuite.
+
+  /** Les jetons de photo Vinted (le dossier du fichier sur le CDN : « 05_010e8_y9hk… »), quelle que soit la taille. */
+  function jetonsPhotoVinted(urls) {
+    const out = new Set();
+    for (const u of Array.isArray(urls) ? urls : [urls]) {
+      let chemin = "";
+      try { chemin = new URL(String(u ?? "")).pathname; } catch { chemin = ""; }
+      for (const seg of chemin.split("/")) if (/^\d{2}_[0-9a-z]{5}_[A-Za-z0-9-]{8,}$/.test(seg)) out.add(seg);
+    }
+    return out;
+  }
+
+  /**
+   * L'annonce née du « Republier » parmi les articles du dressing (lus du plus récent au plus ancien) : un numéro plus
+   * grand que l'annonce annulée, au moins une photo de l'annonce annulée, pas vendu. Pur.
+   * @returns {{ decision: "unique"|"aucune"|"plusieurs", article?: any, articles?: any[] }}
+   */
+  function annonceRepublieeVinted({ itemAnnule, jetonsAnnule, articles }) {
+    const annule = /^\d+$/.test(String(itemAnnule ?? "")) ? BigInt(String(itemAnnule)) : null;
+    const jetons = jetonsAnnule instanceof Set ? jetonsAnnule : new Set(jetonsAnnule ?? []);
+    if (annule == null || !jetons.size) return { decision: "aucune" };
+    const nouveaux = (Array.isArray(articles) ? articles : []).filter((a) => {
+      const id = /^\d+$/.test(String(a?.id ?? "")) ? BigInt(String(a.id)) : null;
+      if (id == null || id <= annule) return false;
+      if (a?.vendu === true) return false;
+      const js = jetonsPhotoVinted(a?.photos ?? []);
+      return [...js].some((x) => jetons.has(x));
+    });
+    if (nouveaux.length === 1) return { decision: "unique", article: nouveaux[0] };
+    if (nouveaux.length > 1) return { decision: "plusieurs", articles: nouveaux };
+    return { decision: "aucune" };
+  }
+
+  // PAGE (autonome) : tout ce qu'il faut savoir AVANT le geste, et APRÈS lui. Lecture seule.
+  //   p = { transactionId, conversationId?, itemId }
+  async function lireRepublierVinted(p) {
+    const etapes = [];
+    const renouveler = async () => { try { const x = await fetch("/web/api/auth/refresh", { method: "POST", credentials: "include", headers: { Accept: "application/json" } }); return x.ok; } catch { return false; } };
+    const anon = (document.cookie.split("; ").find((x) => x.indexOf("anon_id=") === 0) || "").split("=").slice(1).join("=") || null;
+    const lire = async (chemin) => {
+      const go = () => fetch(chemin, { credentials: "include", cache: "no-store", headers: { Accept: "application/json", ...(anon ? { "X-Anon-Id": anon } : {}) } }).catch(() => null);
+      let r = await go();
+      if (r && r.status === 401 && (await renouveler())) r = await go();
+      const t = r ? await r.text().catch(() => "") : "";
+      let j = null; try { j = JSON.parse(t); } catch { j = null; }
+      etapes.push(`GET ${chemin.replace(/\d{6,}/g, "<n>")} → ${r?.status ?? 0}`);
+      return { http: r?.status ?? 0, j, bot: /datadome|captcha-delivery|geo\.captcha/i.test(t.slice(0, 4000)) };
+    };
+    const urlsDe = (ph) => {
+      const out = [];
+      const pousse = (u) => { if (typeof u === "string" && /^https:\/\//.test(u)) out.push(u); };
+      for (const x of Array.isArray(ph) ? ph : [ph]) {
+        if (!x || typeof x !== "object") continue;
+        pousse(x.url); pousse(x.full_size_url);
+        for (const th of Array.isArray(x.thumbnails) ? x.thumbnails : []) pousse(th?.url);
+      }
+      return out;
+    };
+    const moi = await lire("/api/v2/users/current");
+    if (moi.http !== 200 || !moi.j?.user?.id) return { ok: false, motif: moi.http === 401 ? "session" : `users_current_${moi.http}`, bot: moi.bot, etapes };
+    const idMoi = String(moi.j.user.id);
+    let conversationId = String(p?.conversationId ?? "").trim();
+    let tr = null;
+    if (!conversationId) {
+      const t = await lire(`/api/v2/transactions/${encodeURIComponent(p.transactionId)}`);
+      if (t.http !== 200) return { ok: false, motif: `transaction_${t.http}`, bot: t.bot, etapes, moi: { id: idMoi, login: moi.j.user.login ?? null } };
+      const tj = t.j?.transaction ?? {};
+      conversationId = String(tj.user_msg_thread_id ?? tj.order?.user_msg_thread_id ?? tj.conversation_id ?? tj.msg_thread_id ?? "").trim();
+      if (!conversationId) return { ok: false, motif: "conversation_inconnue", etapes, moi: { id: idMoi, login: moi.j.user.login ?? null } };
+    }
+    const c = await lire(`/api/v2/conversations/${encodeURIComponent(conversationId)}`);
+    if (c.http !== 200 || !c.j?.conversation) return { ok: false, motif: `conversation_${c.http}`, bot: c.bot, etapes, moi: { id: idMoi, login: moi.j.user.login ?? null } };
+    const conv = c.j.conversation;
+    tr = conv.transaction ?? {};
+    const messages = Array.isArray(conv.messages) ? conv.messages : [];
+    const actions = [];
+    for (const m of messages) {
+      if (m?.entity_type !== "action_message") continue;
+      for (const a of Array.isArray(m?.entity?.actions) ? m.entity.actions : []) actions.push({ action: String(a?.action ?? ""), titre: String(a?.title ?? "").slice(0, 40) });
+    }
+    const derniers = messages.slice(-4).map((m) => ({ type: String(m?.entity_type ?? ""), titre: String(m?.entity?.title ?? "").slice(0, 80) }));
+    // Le dressing, du plus récent au plus ancien (page 1) : l'annonce née du geste y est en tête.
+    const w = await lire(`/api/v2/wardrobe/${encodeURIComponent(idMoi)}/items?order=newest_first&per_page=20&page=1`);
+    const items = Array.isArray(w.j?.items) ? w.j.items : [];
+    const articles = items.map((it) => ({
+      id: String(it?.id ?? ""), titre: String(it?.title ?? "").slice(0, 120),
+      vendu: Boolean(it?.is_closed) || String(it?.item_closing_action ?? "") === "sold" || Boolean(it?.is_sold),
+      brouillon: Boolean(it?.is_draft), cache: Boolean(it?.is_hidden), reserve: Boolean(it?.is_reserved),
+      photos: urlsDe(it?.photos).slice(0, 12),
+    }));
+    return {
+      ok: true, etapes, lu_le: new Date().toISOString(),
+      moi: { id: idMoi, login: moi.j.user.login ?? null },
+      conversation: {
+        id: String(conv.id ?? conversationId),
+        transaction: {
+          id: String(tr.id ?? ""), statut: tr.status ?? null, item_id: String(tr.item_id ?? ""),
+          item_ids: (Array.isArray(tr.item_ids) ? tr.item_ids : []).map(String), vendeur: String(tr.seller_id ?? ""),
+          cote: String(tr.current_user_side ?? ""), item_ferme: tr.item_is_closed === true, envoi: tr.shipment_status ?? null,
+          photos: urlsDe(tr.item_photo).slice(0, 12),
+        },
+        actions, derniers,
+      },
+      dressing: { http: w.http, articles },
+    };
+  }
+
+  // PAGE (autonome) : LE geste, UNE fois. Un 401 est refusé avant tout traitement : une seconde, après
+  // renouvellement du jeton (comme la réponse dans une conversation). Rien d'autre n'est jamais renvoyé.
+  //   p = { transactionId }
+  async function posterRepublierVinted(p) {
+    const csrf = (() => { for (const s of document.querySelectorAll("script")) { const m = (s.textContent || "").match(/\\?"csrf[_-]?token\\?"\s*:\s*\\?"([^"\\]+)\\?"/i); if (m) return m[1]; } return null; })();
+    const anon = (document.cookie.split("; ").find((x) => x.indexOf("anon_id=") === 0) || "").split("=").slice(1).join("=") || null;
+    if (!csrf) return { envoye: false, motif: "csrf_absent" };
+    const renouveler = async () => { try { const x = await fetch("/web/api/auth/refresh", { method: "POST", credentials: "include", headers: { Accept: "application/json" } }); return x.ok; } catch { return false; } };
+    const poster = () => fetch(`/api/v2/transactions/${encodeURIComponent(p.transactionId)}/reupload`, {
+      method: "POST", credentials: "include", cache: "no-store",
+      headers: { Accept: "application/json", "Content-Type": "application/json", "X-CSRF-Token": csrf, ...(anon ? { "X-Anon-Id": anon } : {}) },
+    }).catch(() => null);
+    const envoye_le = new Date().toISOString();
+    let r = await poster();
+    let renouvele = false;
+    if (r && r.status === 401 && (await renouveler())) { renouvele = true; r = await poster(); }
+    if (!r) return { envoye: true, envoye_le, http: 0, motif: "reseau" };
+    const t = await r.text().catch(() => "");
+    let j = null; try { j = JSON.parse(t); } catch { j = null; }
+    const idRendu = j && typeof j === "object"
+      ? String(j.item?.id ?? j.item_id ?? j.new_item_id ?? j.reuploaded_item_id ?? j.transaction?.reuploaded_item_id ?? "").trim() : "";
+    return {
+      envoye: true, envoye_le, renouvele, http: r.status, date_serveur: r.headers.get("date") ?? null,
+      code: j && typeof j === "object" && j.code != null ? j.code : null,
+      erreur: j && Array.isArray(j.errors) && j.errors[0] ? String(j.errors[0].value ?? j.errors[0].message ?? "").slice(0, 200) : (j?.message ? String(j.message).slice(0, 200) : null),
+      cles: j && typeof j === "object" ? Object.keys(j).slice(0, 20) : [],
+      item_id: /^\d+$/.test(idRendu) ? idRendu : null,
+      corps: t.replace(/\s+/g, " ").slice(0, 400),
+      bot: /datadome|captcha-delivery|geo\.captcha/i.test(t.slice(0, 4000)),
+    };
+  }
+
   // Leboncoin (code du site, 16/10 nuit) : GET purchase/v2/purchases/<id>
   // (machine d'états, type d'envoi), puis POST purchase/v1/purchases/<id>/
   // action/validate-availability, sans corps (envois en point relais : le
@@ -2213,5 +2364,7 @@
     PREPARATIONS_GENERATION, GESTES_GENERATION,
     // (18/10) Les types d'étiquette de Vinted en toutes lettres ; relance après un échec de Vinted.
     TYPES_ETIQUETTE_VINTED, typeEtiquetteVinted, typesBrutsVinted, CAPACITES_BORDEREAU,
+    // (25/10, 0.6.142) « Republier » une vente Vinted annulée.
+    jetonsPhotoVinted, annonceRepublieeVinted, lireRepublierVinted, posterRepublierVinted,
   });
 })(typeof globalThis !== "undefined" ? globalThis : self);

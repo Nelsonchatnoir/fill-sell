@@ -2373,6 +2373,29 @@ serve(async (req) => {
     let out = (jobs ?? []).filter((j) => !paused.has(j.platform));
     const heldBack = (jobs?.length ?? 0) - out.length;
 
+    // ══ « REPUBLIER » VINTED : SEULEMENT À UN POSTE QUI SAIT LE FAIRE (25/10 nuit, extension 0.6.142) ══
+    // Une vente Vinted ANNULÉE se remet en vente par le bouton « Republier » de Vinted (remises_en_vente_tick,
+    // migration 20261025010000 : job « publish » marqué platform_fields.remise_par_republier). Ce job est mis de côté
+    // AVANT tout traitement des publications (catégorie, champs, marque, photos…) : aucun ne le concerne. Il n'est
+    // rendu qu'à un poste qui déclare « vinted_republier_v1 » — TOUS LES MODES : une extension plus ancienne le
+    // prendrait pour une publication et déposerait une nouvelle annonce (doublon). Ailleurs, il attend, en le disant.
+    const estRepublierVinted = (j: Record<string, unknown>) =>
+      j.platform === "vinted" && !!((j.platform_fields ?? {}) as Record<string, unknown>).remise_par_republier;
+    const posteRepublier = capacites.includes("vinted_republier_v1");
+    const republierVinted = (out as unknown as Array<Record<string, unknown>>).filter(estRepublierVinted);
+    if (republierVinted.length) {
+      out = out.filter((j) => !estRepublierVinted(j as unknown as Record<string, unknown>));
+      if (!posteRepublier && !includeProcessing && !includeNeedsUser) {
+        const attente = "En attente de la mise à jour de l'extension FillSell (0.6.142) : la remise en vente sur Vinted passera par le bouton « Republier » de Vinted, sans nouvelle annonce. Rien à faire de ton côté.";
+        for (const j of republierVinted) {
+          if (j.status !== "pending" || j.error === attente) continue;
+          await userClient.from("cross_post_jobs").update({ error: attente })
+            .eq("id", String(j.id)).eq("status", "pending").select("id");
+        }
+        console.log(`[get-pending-jobs] userId=${user.id} : ${republierVinted.length} remise(s) Vinted par « Republier » retenue(s) — poste sans « vinted_republier_v1 »`);
+      }
+    }
+
     // ══ LA FILE EN PAUSE (22/10 soir, point 6 — idée de Louis, validée par Nico) ══
     // La personne met SA file en pause depuis l'app (platform_settings.file_pause, RPC file_pause_basculer) :
     // ce qui n'a pas commencé reste 'pending', dans son ordre — rien perdu, rien en double, la reprise repart
@@ -8449,6 +8472,15 @@ serve(async (req) => {
       } catch (_e) {
         // Jamais un point de panne : la distribution part telle quelle.
       }
+    }
+
+    // ══ « REPUBLIER » VINTED (25/10 nuit) : rendu ici, intact, au seul poste qui sait le faire ══
+    // (mis de côté avant tout traitement des publications, voir plus haut). La file en pause le retient comme une
+    // publication.
+    if (republierVinted.length && posteRepublier) {
+      const rendus = republierVinted.filter((j) => !(filePause && jobRetenuParPause(j as never)));
+      out = [...out, ...(rendus as unknown as typeof out)];
+      if (rendus.length) console.log(`[get-pending-jobs] userId=${user.id} : ${rendus.length} remise(s) Vinted par « Republier » servie(s) (poste « vinted_republier_v1 »)`);
     }
 
     console.log(

@@ -375,6 +375,7 @@
     "selftest:recreation-cause-levee": "node scripts/recreation-cause-levee-selftest.mjs",
     "selftest:depot-sans-numero": "node scripts/depot-sans-numero-selftest.mjs",
     "selftest:depot-coupe-tranche": "node scripts/depot-coupe-tranche-selftest.mjs",
+    "selftest:republier-vinted": "node scripts/republier-vinted-selftest.mjs",
     "selftest:titre-aligne": "node scripts/titre-aligne-selftest.mjs",
     "selftest:ebay-retrait-trading": "node scripts/ebay-retrait-trading-selftest.mjs",
     "selftest:ebay-rayon-traditionnel": "node scripts/ebay-rayon-traditionnel-selftest.mjs",

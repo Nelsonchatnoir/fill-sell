@@ -2783,7 +2783,9 @@ async function recoverStaleProcessingJobs(session) {
     // Jobs delete exclus : re-supprimer une annonce déjà supprimée est
     // inoffensif (« introuvable » géré), et « published » y serait un
     // contresens.
-    if (job.action !== "delete") {
+    // (25/10, 0.6.142) Un « Republier » Vinted aussi : son annonce se prouve par le numéro et les photos (la reprise
+    // relit la conversation et le dressing), jamais par un titre.
+    if (job.action !== "delete" && !pf.remise_par_republier) {
       // ── Point de reprise (2026-09-17, keepalive) : AVANT le filet plateforme,
       // demander à l'onglet ce qu'il sait de CE job. Derrière le drapeau
       // serveur. Sans certitude → le filet ci-dessous, jamais un renvoi.
@@ -3902,6 +3904,10 @@ async function processJob(rawJob, accessToken) {
     reportPlatformSessions(accessToken, { plateformes: [job.platform], motif: `avant job ${job.platform}` })
       .catch((e) => console.warn("[background] sonde avant job (non bloquante) :", String(e?.message ?? e)));
   }
+
+  // (25/10, 0.6.142) Une vente Vinted ANNULÉE se remet en vente par le bouton « Republier » de Vinted : jamais le
+  // formulaire de dépôt, jamais une nouvelle annonce en plus (processRepublierVintedJob).
+  if (job.platform === "vinted" && job.platform_fields?.remise_par_republier) return processRepublierVintedJob(job, accessToken);
 
   if (job.action === "delete") return processDeleteJob(job, accessToken);
 
@@ -11711,7 +11717,9 @@ async function capacitesDeclarees() {
   // (11/10, point 4) « prevol_recreation_v1 » : une republication Leboncoin ou
   // Depop fait tourner le VRAI formulaire de recréation AVANT tout retrait
   // (prevolRecreationAvantRetrait) — le serveur sait que ce poste l'a.
-  const caps = ["taille_par_id", "preuves_retraits_point1_v1", "champs_annonce_republication_v1", "prevol_recreation_v1"];
+  // (25/10, 0.6.142) « vinted_republier_v1 » : une vente Vinted ANNULÉE se remet en vente par le bouton
+  // « Republier » de Vinted (processRepublierVintedJob) — le serveur ne sert ces remises qu'à un poste qui le dit.
+  const caps = ["taille_par_id", "preuves_retraits_point1_v1", "champs_annonce_republication_v1", "prevol_recreation_v1", "vinted_republier_v1"];
   caps.push((await oplaAccesAccorde()) ? "opla_acces" : "sans_opla");
   // depop (09/10) : le serveur ne sert un job Depop qu'au poste qui déclare
   // « depop_acces » (une extension qui ne connaît pas Depop ne déclare rien).
@@ -28232,6 +28240,184 @@ async function beebsAbsenteParModeration(job, accessToken) {
     console.warn(`[background] Job ${job.id} : visibilité Beebs illisible (${String(e?.message ?? e)}) — verdict « déjà retirée » gardé`);
     return false;
   }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// « REPUBLIER » UNE VENTE VINTED ANNULÉE (0.6.142, 25/10 nuit — décision de Nico du 24/10 23:21)
+// ══════════════════════════════════════════════════════════════════════════
+// Le job (action « publish », platform_fields.remise_par_republier = { transaction_id, conversation_id, item_id })
+// est créé par la base à l'appui sur « Remettre en vente » (remises_en_vente_tick). Ce qu'il fait, dans l'onglet de
+// travail Vinted, par l'API du site (messagerie.js) :
+//   1. LIRE : le compte ouvert, la conversation de CETTE commande (transaction, annonce annulée, côté vendeur, action
+//      « reupload » proposée), le dressing (page 1, du plus récent) ;
+//   2. déjà remise en ligne (plus de « Republier », une annonce plus récente porte une photo de l'annonce annulée) →
+//      rattachée, rien envoyé — que ce soit notre geste d'avant ou celui du vendeur ;
+//   3. sinon, l'envoi est NOTÉ en base, puis UN SEUL POST /api/v2/transactions/<n>/reupload ; jamais un second
+//      (envoi noté et bouton encore là → la question) ;
+//   4. relire : l'annonce née du geste (numéro rendu par Vinted, ou la seule plus récente aux mêmes photos) →
+//      « published » sur son lien ; pas encore visible → nouvel essai de LECTURE dans 5 min (jamais d'envoi).
+// Refus de Vinted, doute, lot, boutique d'une autre vente → needs_user nommé (republier_vinted), rien de publié.
+const REPUBLIER_ATTENTE_MS = 5 * 60_000;
+const REPUBLIER_ATTENTES_MAX = 6;
+
+async function processRepublierVintedJob(job, accessToken) {
+  const M = FILLSELL_MESSAGERIE;
+  const pf0 = { ...(job.platform_fields ?? {}) };
+  const rp = pf0.remise_par_republier ?? {};
+  const transactionId = String(rp.transaction_id ?? "").trim();
+  const itemId = String(rp.item_id ?? "").trim();
+  const conversationId = String(rp.conversation_id ?? "").trim() || null;
+  console.log(`[background] Job ${job.id} → vinted (REPUBLIER, transaction ${transactionId || "?"}, annonce annulée ${itemId || "?"})`);
+  const trace = (pf, champs) => ({ ...pf, republier: { ...(pf.republier ?? {}), ...champs, le: new Date().toISOString() } });
+  const question = async (pfBase, motif, message, champs = {}) => {
+    const pf = trace(pfBase, { motif, ...champs });
+    pf.needs_user_source = "republier_vinted";
+    delete pf.processing_since;
+    delete pf.next_action_after;
+    await updateJobStatus(accessToken, job.id, "needs_user", { error: message, platform_fields: pf });
+    await recordRecentResult(job, "needs_user", message).catch(() => {});
+    return { status: "needs_user", error: message };
+  };
+  const plusTard = async (pfBase, motif, message, champs = {}, delaiMs = REPUBLIER_ATTENTE_MS) => {
+    const attentes = (Number(pfBase.republier?.attentes) || 0) + 1;
+    const pf = trace(pfBase, { motif, attentes, ...champs });
+    delete pf.processing_since;
+    pf.next_action_after = new Date(Date.now() + delaiMs).toISOString();
+    await updateJobStatus(accessToken, job.id, "pending", { error: message, platform_fields: pf });
+    return { status: "skipped", error: message };
+  };
+  if (!/^\d+$/.test(transactionId) || !/^\d+$/.test(itemId)) {
+    return question(pf0, "donnees_absentes", "La remise en vente par « Republier » de Vinted n'a pas le numéro de la commande annulée : rien n'a été publié. Remets l'article en vente depuis la conversation de la commande sur Vinted.");
+  }
+  if (!M?.lireRepublierVinted || !M?.posterRepublierVinted) {
+    return { status: "skipped", error: "module messagerie absent — job laissé en file" };
+  }
+  // Démarrage : la base peut le refuser (409) — rien n'est fait, le job reste en file.
+  pf0.processing_since = new Date().toISOString();
+  delete pf0.next_action_after;
+  try {
+    await updateJobStatus(accessToken, job.id, "processing", { platform_fields: pf0 });
+  } catch (e) {
+    if (e?.status === 409) return { status: "skipped", error: String(e?.message ?? e).slice(0, 200) };
+    throw e;
+  }
+
+  const lire = () => executerDansOngletPlateforme("vinted", M.lireRepublierVinted, [{ transactionId, conversationId, itemId }]);
+  const lecture = await lire();
+  if (!lecture?.ok) {
+    const n = Number(pf0.republier?.attentes) || 0;
+    const champs = { lecture: { motif: lecture?.motif ?? "sans_resultat", bot: Boolean(lecture?.bot), etapes: lecture?.etapes ?? [] } };
+    if (n + 1 >= REPUBLIER_ATTENTES_MAX) {
+      return question(pf0, "lecture_impossible", `FillSell n'arrive pas à lire la conversation de cette commande sur Vinted (${lecture?.motif ?? "sans réponse"}) : rien n'a été publié. Ouvre Vinted dans ${VO.navigateurCourt()}, puis relance.`, champs);
+    }
+    return plusTard(pf0, "lecture_impossible", "FillSell relit la conversation de la commande sur Vinted avant de remettre l'article en vente : nouvel essai dans quelques minutes.", champs);
+  }
+  const tr = lecture.conversation?.transaction ?? {};
+  const avant = {
+    lu_le: lecture.lu_le, compte: lecture.moi?.id ?? null, conversation: lecture.conversation?.id ?? null,
+    actions: (lecture.conversation?.actions ?? []).map((a) => a.action), statut: tr.statut ?? null, envoi: tr.envoi ?? null,
+  };
+  // La boutique : celle qui a vendu, et rien d'autre.
+  if (tr.vendeur && String(lecture.moi?.id ?? "") !== String(tr.vendeur)) {
+    return plusTard(pf0, "autre_boutique", `Cette vente est sur une autre de tes boutiques Vinted que celle ouverte dans ${VO.navigateurCourt()} : ouvre la boutique qui a vendu l'article, la remise en vente repartira toute seule. Rien n'a été publié.`, { avant }, 30 * 60_000);
+  }
+  const itemIds = Array.isArray(tr.item_ids) ? tr.item_ids.map(String) : [];
+  if (String(tr.id ?? "") !== transactionId || !(itemIds.includes(itemId) || String(tr.item_id ?? "") === itemId) || tr.cote !== "seller") {
+    return question(pf0, "transaction_non_conforme", "La conversation lue sur Vinted ne correspond pas à cette vente annulée (commande, annonce ou côté vendeur) : rien n'a été envoyé ni publié.", { avant });
+  }
+  if (itemIds.length > 1) {
+    return question(pf0, "lot", "Cette commande annulée portait plusieurs articles : « Republier » de Vinted les remettrait tous ensemble. Rien n'a été envoyé : remets-les en vente depuis la conversation sur Vinted.", { avant });
+  }
+  const jetons = M.jetonsPhotoVinted([...(tr.photos ?? []), ...(Array.isArray(rp.photos_annonce) ? rp.photos_annonce : [])]);
+  const peutRepublier = (lecture.conversation?.actions ?? []).some((a) => a.action === "reupload");
+  const deja = M.annonceRepublieeVinted({ itemAnnule: itemId, jetonsAnnule: jetons, articles: lecture.dressing?.articles ?? [] });
+  const origine = VO.origineVinted();
+  const rattacher = async (pfBase, article, source, champs = {}) => {
+    // Un brouillon n'est pas « en vente » : on le dit, rien n'est publié de plus.
+    if (article.brouillon === true) {
+      return question(pfBase, "brouillon", `Vinted a recréé l'annonce de cet article comme BROUILLON (n° ${article.id}) : publie-la depuis tes brouillons Vinted. FillSell n'a rien publié de plus.`, { ...champs, nouvel_item: { id: String(article.id), source, brouillon: true } });
+    }
+    const url = `${origine}/items/${article.id}`;
+    const compte = String(lecture.moi?.id ?? "");
+    const pf = trace(pfBase, { ...champs, nouvel_item: { id: String(article.id), titre: article.titre ?? null, source }, rattache_le: new Date().toISOString() });
+    pf.vinted_item_id = String(article.id);
+    if (!pf.vinted_account_id && compte) pf.vinted_account_id = compte;
+    if (compte) pf.vinted_account_proof = { user_id: compte, login: lecture.moi?.login ?? null, source: "users/current_apres_depot", lu_le: lecture.lu_le };
+    delete pf.processing_since;
+    delete pf.next_action_after;
+    delete pf.needs_user_source;
+    await updateJobStatus(accessToken, job.id, "published", { error: null, listing_url: url, platform_fields: pf });
+    await recordRecentResult(job, "published").catch(() => {});
+    console.log(`[background] Job ${job.id} : « Republier » Vinted → annonce ${article.id} rattachée (${source})`);
+    return { status: "published", listingUrl: url };
+  };
+
+  if (!peutRepublier) {
+    if (deja.decision === "unique") {
+      return rattacher(pf0, deja.article, pf0.republier?.envoye_le ? "notre_geste_relu" : "geste_du_vendeur", { avant });
+    }
+    if (deja.decision === "plusieurs") {
+      return question(pf0, "plusieurs_annonces", `Plusieurs annonces Vinted récentes portent les photos de l'article (${deja.articles.map((a) => a.id).join(", ")}) : FillSell ne choisit pas au hasard. Rien n'a été publié.`, { avant });
+    }
+    if (pf0.republier?.envoye_le) {
+      if ((Number(pf0.republier?.attentes) || 0) + 1 >= REPUBLIER_ATTENTES_MAX) {
+        return question(pf0, "annonce_introuvable_apres_geste", "Vinted a accepté « Republier », mais la nouvelle annonce n'apparaît pas dans ton dressing : FillSell ne publie rien de plus. Regarde tes annonces sur Vinted.", { avant });
+      }
+      return plusTard(pf0, "annonce_attendue", "Vinted a remis l'article en vente : FillSell attend de voir la nouvelle annonce pour la rattacher. Rien à faire de ton côté.", { avant });
+    }
+    return question(pf0, "republier_indisponible", "Vinted ne propose plus « Republier » pour cette vente, et aucune annonce remise en ligne n'est visible dans ton dressing. Rien n'a été publié.", { avant });
+  }
+  if (pf0.republier?.envoye_le) {
+    return question(pf0, "envoye_sans_effet", "« Republier » a déjà été envoyé à Vinted pour cette vente sans effet visible : FillSell ne l'envoie jamais une seconde fois (doublon). Regarde la conversation de la commande sur Vinted.", { avant });
+  }
+  if (deja.decision !== "aucune") {
+    return question(pf0, "annonce_deja_presente", "Une annonce récente de ton dressing porte déjà les photos de cet article alors que Vinted propose encore « Republier » : FillSell n'envoie rien, pour ne jamais le mettre en double.", { avant });
+  }
+
+  // L'envoi est NOTÉ avant d'être fait : une reprise ne le renverra jamais.
+  const pfEnvoi = trace(pf0, { avant, envoye_le: new Date().toISOString() });
+  try {
+    await updateJobStatus(accessToken, job.id, "processing", { platform_fields: pfEnvoi });
+  } catch (e) {
+    console.warn(`[background] Job ${job.id} : envoi non noté (${String(e?.message ?? e)}) — « Republier » NON envoyé`);
+    return plusTard(pf0, "note_impossible", "FillSell n'a pas pu noter l'envoi avant de toucher Vinted : rien n'a été envoyé, nouvel essai dans quelques minutes.", { avant });
+  }
+  const post = await executerDansOngletPlateforme("vinted", M.posterRepublierVinted, [{ transactionId }]);
+  const reponse = {
+    envoye: Boolean(post?.envoye), http: post?.http ?? null, code: post?.code ?? null, erreur: post?.erreur ?? null,
+    cles: post?.cles ?? [], item_id: post?.item_id ?? null, corps: post?.corps ?? null, date_serveur: post?.date_serveur ?? null,
+    renouvele: Boolean(post?.renouvele), motif: post?.motif ?? null, bot: Boolean(post?.bot),
+  };
+  console.log(`[background] Job ${job.id} : POST reupload → ${JSON.stringify(reponse).slice(0, 400)}`);
+  if (!post?.envoye) {
+    // Rien n'est parti (jeton absent, onglet figé) : l'envoi n'a pas eu lieu, il peut être refait.
+    const pfRien = trace(pf0, { avant, reponse, envoi_non_parti_le: new Date().toISOString() });
+    delete pfRien.republier.envoye_le;
+    return plusTard(pfRien, "envoi_non_parti", "FillSell n'a pas pu envoyer « Republier » à Vinted (page pas prête) : rien n'est parti, nouvel essai dans quelques minutes.");
+  }
+  const pfApres = trace(pfEnvoi, { reponse });
+  const okHttp = Number(post.http) >= 200 && Number(post.http) < 300 && (post.code == null || Number(post.code) === 0);
+  if (!okHttp) {
+    return question(pfApres, "refus_vinted", `Vinted a refusé « Republier »${post.erreur ? ` : « ${post.erreur} »` : ` (HTTP ${post.http ?? 0})`}. Rien n'a été publié par FillSell.`);
+  }
+  // L'annonce née du geste : le numéro rendu par Vinted, sinon la seule plus récente aux mêmes photos.
+  let article = post.item_id ? { id: String(post.item_id), titre: null, source: "reponse_vinted" } : null;
+  let relu = null;
+  for (const attente of [2500, 6000]) {
+    if (article) break;
+    await sleep(attente);
+    relu = await lire();
+    if (!relu?.ok) continue;
+    const d = M.annonceRepublieeVinted({ itemAnnule: itemId, jetonsAnnule: jetons, articles: relu.dressing?.articles ?? [] });
+    if (d.decision === "unique") article = { ...d.article, source: "dressing_memes_photos" };
+    if (d.decision === "plusieurs") {
+      return question(trace(pfApres, { apres: { actions: (relu.conversation?.actions ?? []).map((a) => a.action) } }), "plusieurs_annonces",
+        `« Republier » est parti, et plusieurs annonces récentes portent les photos de l'article (${d.articles.map((a) => a.id).join(", ")}) : FillSell ne choisit pas au hasard.`);
+    }
+  }
+  const apres = relu?.ok ? { lu_le: relu.lu_le, actions: (relu.conversation?.actions ?? []).map((a) => a.action) } : null;
+  if (article) return rattacher(pfApres, article, article.source, apres ? { apres } : {});
+  return plusTard(trace(pfApres, apres ? { apres } : {}), "annonce_attendue", "Vinted a remis l'article en vente : FillSell attend de voir la nouvelle annonce pour la rattacher. Rien à faire de ton côté.");
 }
 
 async function processDeleteJob(job, accessToken) {

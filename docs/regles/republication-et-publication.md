@@ -541,3 +541,21 @@
   alimentations dites → la question (les deux en tête). Jamais par-dessus une réponse.
 - Restent à trancher (Nico) : Bijoux femme (liste des bagues sans « Taille unique ») ; tailles EU femme sur une liste FR.
 - Preuves : `selftest:lot-2410-soir` § 3 et 4.
+
+## ⛔ 25/10 nuit — un dépôt ou une remise en ligne COUPÉS se tranchent au relevé (règle de Nico ; rapport `docs/enquetes/nuit-2510/RAPPORT.md` § 1a)
+- « Rattacher si l'annonce existe, relancer une fois si elle n'existe pas, jamais des jours en « à confirmer » » :
+  `_shared/depot-coupe-tranche.js`, appliqué par handler-watch (v127) à chaque passage, sur les questions
+  `recreation_deja_partie` (remise en ligne Leboncoin/Beebs) et `depot_deja_parti` (dépôt Beebs). Vinted a sa règle
+  (`recreation-vinted-verifiee.js`).
+- **Encore en ligne** (relevée depuis l'essai) et désignée par l'identifiant conservé ou par les photos de NOTRE copie
+  (seule, `trancherParPhotos`) → rattachée (`published`), aucun redépôt. Photos sans empreinte (candidates jamais
+  empreintées : cause du 21/10) → `empreintes-urls` les calcule (2 appels/passage), rejugé au passage suivant.
+- **Plus en ligne** — absente de DEUX relevés complets du compte commencés après sa dernière vue (lue sur TOUTES les lignes
+  du numéro : boutique partagée louis / louis-seller), ou datée disparue — **ou aucune annonce apparue** (relevé complet
+  commencé ≥ 1 h après l'essai) → le job repart UNE fois (`relance_depot_coupe`, vérification datée
+  `recreation_verifiee` / `depot_verifie` : get-pending-jobs ne repose pas la question pour le même essai ; un NOUVEL essai
+  coupé est revérifié). Trace `usage_logs` `depot_coupe_tranche`.
+- **Doute réel** (une annonce encore en ligne qu'aucune preuve ne désigne, ou deux dépôts pour une annonce : appariement
+  mutuel) → la question reste. Déjà relancé une fois par la règle → plus rien d'automatique. Jamais titre, prix ou date.
+- Preuves : `selftest:depot-coupe-tranche` (fixture relevée en prod : louis, 21/10) ; premier passage réel le 25/10 à
+  00:27 : 6 relances (louis ×2, Ciddjy ×4), conformes à l'essai à blanc.
