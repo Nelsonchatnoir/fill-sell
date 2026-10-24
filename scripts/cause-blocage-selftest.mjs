@@ -114,4 +114,19 @@ cas("8. ops-digest lit la sentinelle et l'affiche en rouge (le digest part dès 
   assert.ok(/arrets_de_notre_fait: sentinelle\.length,/.test(od), "compté dans le total (silence = sain)");
 });
 
+cas("9. (25/10 nuit, audit N1) les vraies causes que la sentinelle rangeait mal", () => {
+  assert.deepEqual(causeDuTexte({ texte: "Vinted ne répond plus à FillSell sur ton ordinateur : ouvre vinted.fr…", source: "verification_antirobot", platform: "vinted" }),
+    { origine: ORIGINE.UTILISATEUR, cause: "compte_restreint" }, "vérification anti-robot sur le compte : la personne");
+  assert.deepEqual(causeDuTexte({ texte: "Cette annonce appartient à une autre boutique Vinted que celle ouverte dans Chrome.", source: "boutique_etrangere", platform: "vinted" }),
+    { origine: ORIGINE.UTILISATEUR, cause: "connexion" }, "autre boutique ouverte : la personne");
+  assert.equal(causeDuTexte({ texte: "Vinted a restreint ton compte jusqu'au 05/11.", platform: "vinted" }).cause, "compte_restreint");
+  assert.equal(causeDuTexte({ texte: "La republication s'interrompt au même moment sur ton ordinateur (3 essais).", platform: "vinted" }).cause, "interruption_repetee");
+  assert.equal(causeDuTexte({ texte: "Arrêtée à ta demande.", platform: "vinted" }).cause, "arret_demande", "le féminin d'arretLot.js");
+  const arrete = { status: "cancelled", error: "Arrêtée à ta demande.", platform: "vinted", action: "republish",
+    platform_fields: { erreurs_archivees: [{ statut: "needs_user", erreur: "Vinted ne connaît pas la marque « pago »", le: "2026-10-20T10:00:00Z" }] } };
+  assert.ok(blocagesDuJob(arrete).every((b) => b.abandonne), "arrêtée à sa demande APRÈS un arrêt de notre fait = un échec, jamais une annulation");
+  const marque = { ...arrete, error: "Cette publication a été arrêtée.", platform_fields: { ...arrete.platform_fields, arret_utilisateur: { le: "2026-10-21T08:00:00Z" } } };
+  assert.ok(blocagesDuJob(marque).every((b) => b.abandonne), "la marque arret_utilisateur compte aussi");
+});
+
 console.log(`cause-blocage-selftest : ${n} cas verts`);

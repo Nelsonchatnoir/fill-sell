@@ -42,6 +42,11 @@ const PAR_SOURCE = Object.freeze({
   ebay_compte_a_finir: [ORIGINE.UTILISATEUR, "compte_a_finir"],
   ebay_compte_vendeur_inactif: [ORIGINE.UTILISATEUR, "compte_a_finir"],
   compte_vinted_bloque: [ORIGINE.UTILISATEUR, "compte_restreint"],
+  // (25/10 nuit, audit N1) Deux sources posées par le code que la sentinelle rangeait en « nous/autre » : la
+  // vérification anti-robot sur le compte (la personne seule peut la passer) et l'annonce d'une autre boutique
+  // que celle ouverte dans le navigateur (la personne ouvre la bonne boutique).
+  verification_antirobot: [ORIGINE.UTILISATEUR, "compte_restreint"],
+  boutique_etrangere: [ORIGINE.UTILISATEUR, "connexion"],
   plateforme_ecartee: [ORIGINE.UTILISATEUR, "plateforme_desactivee"],
   recreation_deja_partie: [ORIGINE.GARDE, "doublon_possible"],
   depot_deja_parti: [ORIGINE.GARDE, "doublon_possible"],
@@ -59,9 +64,9 @@ const PAR_TEXTE = Object.freeze([
   // ── utilisateur ──
   [/Connexion (Vinted|Leboncoin|Beebs|eBay|Depop|Opla) requise|reconnecte-toi|en attente de ta connexion|Connecte ton compte eBay|connecte-toi (sur vinted|[àa] eBay sur ton ordinateur)|attend que Vinted soit rouvert|attend ton autorisation|reconnexion de s[ée]curit[ée]/i, ORIGINE.UTILISATEUR, "connexion"],
   [/configuration de vendeur|compte eBay n.est pas encore pr[êe]t|mise [àa] niveau de ton compte vendeur|ton nom et (ton )?pr[ée]nom/i, ORIGINE.UTILISATEUR, "compte_a_finir"],
-  [/compte (Vinted|Leboncoin|Beebs|eBay|Depop) (est )?(restreint|suspendu|bloqu[ée])|bloque tes actions|v[ée]rification anti-robot sur ton compte/i, ORIGINE.UTILISATEUR, "compte_restreint"],
+  [/compte (Vinted|Leboncoin|Beebs|eBay|Depop) (est )?(restreint|suspendu|bloqu[ée])|bloque tes actions|v[ée]rification anti-robot sur ton compte|(Vinted|Leboncoin|Beebs|eBay|Depop) a restreint ton compte/i, ORIGINE.UTILISATEUR, "compte_restreint"],
   [/tu as indiqu[ée] ne pas vendre/i, ORIGINE.UTILISATEUR, "plateforme_desactivee"],
-  [/Arr[êe]t[ée] [àa] ta demande|Stopped at your request|abandonn[ée]? .* pour cet article/i, ORIGINE.UTILISATEUR, "arret_demande"],
+  [/Arr[êe]t[ée]e? [àa] ta demande|Stopped at your request|abandonn[ée]? .* pour cet article/i, ORIGINE.UTILISATEUR, "arret_demande"],
   [/aucune option gratuite|Valider et payer|pr[êe]te sur Leboncoin/i, ORIGINE.UTILISATEUR, "paiement_plateforme"],
   [/eBay ne le laisse pas encore vendre|eBay a retir[ée] l.acc[èe]s de FillSell/i, ORIGINE.UTILISATEUR, "compte_a_finir"],
   [/Vinted affiche .{0,60} sur ton ordinateur|En attente de ta boutique Vinted/i, ORIGINE.UTILISATEUR, "connexion"],
@@ -82,7 +87,7 @@ const PAR_TEXTE = Object.freeze([
   [/refuse le titre|titolo|simboli|trop de lettres majuscules|titre (vide|refus[ée])/i, ORIGINE.NOUS, "titre_refuse"],
   [/ISBN/i, ORIGINE.NOUS, "isbn"],
   [/capture .* incompl[èe]te|photo non re-h[ée]berg[ée]e/i, ORIGINE.NOUS, "capture_incomplete"],
-  [/s.interrompt chaque fois au m[êe]me moment/i, ORIGINE.NOUS, "interruption_repetee"],
+  [/s.interrompt (chaque fois )?au m[êe]me moment/i, ORIGINE.NOUS, "interruption_repetee"],
   [/prouver que (l.annonce|cette annonce) t.appartient|n.arrivons pas encore [àa] prouver/i, ORIGINE.NOUS, "appartenance_non_prouvee"],
   [/n.a pas rendu cette annonce [àa] la derni[èe]re lecture|refuse de rendre cette annonce/i, ORIGINE.NOUS, "lecture_annonce_echouee"],
   [/jamais vue en ligne|jamais r[ée]ussi [àa] r[ée]cup[ée]rer son lien|jamais eu son num[ée]ro/i, ORIGINE.NOUS, "depot_non_confirme"],
@@ -140,8 +145,10 @@ const STATUTS_ARRET = new Set(["needs_user", "failed"]);
 export function blocagesDuJob(job) {
   const pf = job?.platform_fields && typeof job.platform_fields === "object" ? job.platform_fields : {};
   const out = [];
-  const abandonne = job?.status === "cancelled" && (pf.abandon_utilisateur != null
-    || /Arr[êe]t[ée] [àa] ta demande|Stopped at your request/i.test(String(job?.error ?? "")));
+  // (25/10 nuit, audit N1) « Arrêtée à ta demande » (féminin, arretLot.js) et la marque arret_utilisateur
+  // comptent aussi : 12 échecs de notre fait devenaient invisibles.
+  const abandonne = job?.status === "cancelled" && (pf.abandon_utilisateur != null || pf.arret_utilisateur != null
+    || /Arr[êe]t[ée]e? [àa] ta demande|Stopped at your request/i.test(String(job?.error ?? "")));
   const archives = Array.isArray(pf.erreurs_archivees) ? pf.erreurs_archivees : [];
   for (const e of archives) {
     if (!e || !STATUTS_ARRET.has(String(e.statut ?? ""))) continue;
