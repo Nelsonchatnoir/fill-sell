@@ -140,6 +140,17 @@ serve(async (req) => {
     if (activeSub?.original_transaction_id) {
       update.apple_original_transaction_id = activeSub.original_transaction_id;
     }
+    // (25/10, point 4 « Revenus ») L'échéance et le renouvellement auto, lus dans le reçu qu'Apple vient de
+    // valider (latest_receipt_info + pending_renewal_info) : même colonne, même format ISO que les webhooks.
+    if (activeSub?.expires_date_ms) {
+      const fin = new Date(parseInt(activeSub.expires_date_ms)).toISOString();
+      if (!Number.isNaN(Date.parse(fin))) update.subscription_period_end = fin;
+      const renouv = (appleData.pending_renewal_info ?? [])
+        .find((r: any) => r?.original_transaction_id === activeSub.original_transaction_id);
+      if (renouv?.auto_renew_status === "0" || renouv?.auto_renew_status === "1") {
+        update.subscription_cancel_at_period_end = renouv.auto_renew_status === "0";
+      }
+    }
 
     // ── L'OPTION CLOUD dans le même reçu (04/10) : restauration / validation ──
     // Groupe « FillSell Cloud », à part du palier. La transaction la plus

@@ -4,7 +4,7 @@ import * as x509 from "https://esm.sh/@peculiar/x509@1.9.0";
 import { notifierPaiement, alerterPaiementNonCredite, signalerNotificationStoreInconnue, journaliserNotificationStore } from "../_shared/payment-notify.ts";
 import { lectureCloudApple, ecritureCloudStore } from "../_shared/cloud-option.js";
 import { profilCloudPourStore } from "../_shared/cloud-essai-store.ts";
-import { decisionApple, ligneJournal } from "../_shared/notifications-stores.js";
+import { decisionApple, ligneJournal, finPeriodeAEcrire, isoOuNull } from "../_shared/notifications-stores.js";
 
 // (12/10, A8) Lecture SANS vérification d'un JWS déjà reçu — pour le JOURNAL
 // seulement (produit, compte, transaction) : aucune décision n'en dépend, la
@@ -149,6 +149,11 @@ serve(async (req) => {
     const signedPayload = body?.signedPayload as string | undefined;
 
     if (!signedPayload) {
+      // (25/10, Revenus) Un appel refusé laisse sa ligne (connu = null : aucune décision n'a été lue).
+      await journaliserNotificationStore(supabaseAdmin, ligneJournal({
+        canal: "apple", type: "illisible", decision: null, detail: { erreur: "signedPayload absent" },
+        complements: { verification: "jws_absent", http_status: 400, motif: "rejet:Missing signedPayload" },
+      }));
       return new Response(JSON.stringify({ error: "Missing signedPayload" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
@@ -162,6 +167,10 @@ serve(async (req) => {
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error("[apple-iap-webhook] Rejected — outer JWS invalid:", msg);
+      await journaliserNotificationStore(supabaseAdmin, ligneJournal({
+        canal: "apple", type: "illisible", decision: null, detail: { erreur: msg.slice(0, 200) },
+        complements: { verification: "jws_refuse", http_status: 403, motif: "rejet:Signature verification failed" },
+      }));
       return new Response(JSON.stringify({ error: "Signature verification failed" }), {
         status: 403,
         headers: { "Content-Type": "application/json" },
@@ -191,10 +200,21 @@ serve(async (req) => {
       const produitJ = (txJ.productId ?? txJ.autoRenewProductId ?? null) as string | null;
       const userJ = (txJ.appAccountToken ?? null) as string | null;
       const origJ = (txJ.originalTransactionId ?? null) as string | null;
+      // (25/10, Revenus) L'échéance et le renouvellement auto À CHAQUE notification (historique typé :
+      // fin_periode = expiresDate de la transaction, sinon renewalDate ; renouvellement_auto = autoRenewStatus).
+      const renJ = lireSansVerifier(signedRenewalInfo) ?? {};
       await journaliserNotificationStore(supabaseAdmin, ligneJournal({
         canal: "apple", type: notificationType, sousType: notificationSubtype, decision: decisionNotif,
         produit: produitJ, userId: userJ, transaction: (txJ.transactionId ?? null) as string | null, transactionOriginale: origJ,
-        detail: { notificationUUID: notification.notificationUUID ?? null, environnement: (data?.environment ?? null) },
+        detail: { notificationUUID: notification.notificationUUID ?? null, environnement: (data?.environment ?? null), revocation: isoOuNull(txJ.revocationDate) },
+        complements: {
+          message_id: (notification.notificationUUID ?? null) as string | null,
+          publie_le: isoOuNull(notification.signedDate),
+          fin_periode: isoOuNull(signedTransactionInfo ? txJ.expiresDate : null) ?? isoOuNull(renJ.renewalDate),
+          renouvellement_auto: renJ.autoRenewStatus === 1 ? true : renJ.autoRenewStatus === 0 ? false : null,
+          environnement: (data?.environment ?? null) as string | null,
+          verification: "jws_ok",
+        },
       }));
       if (!decisionNotif.connu) {
         await signalerNotificationStoreInconnue({ canal: "apple", type: notificationType, sous_type: notificationSubtype, produit: produitJ, user_id: userJ, ref: origJ });
@@ -286,6 +306,12 @@ serve(async (req) => {
           });
         }
         const upd: Record<string, unknown> = { is_premium: true, subscription_cancel_at_period_end: false };
+        // (25/10, Revenus) La reprise porte l'échéance (renewalDate), jamais en arrière.
+        if (typeof renewal.renewalDate === "number") {
+          const { data: profFin } = await supabaseAdmin.from("profiles").select("subscription_period_end").eq("id", renewalToken).maybeSingle();
+          const fin = finPeriodeAEcrire(renewal.renewalDate, profFin?.subscription_period_end ?? null);
+          if (fin) upd.subscription_period_end = fin;
+        }
         if (renewalOriginalTxId) upd.apple_original_transaction_id = renewalOriginalTxId;
         if (renewalProductId === "app.fillsell.premium.sub") upd.is_founder = true;
         if (PRO_PRODUCT_IDS.includes(renewalProductId)) upd.is_pro = true;
@@ -550,6 +576,29 @@ serve(async (req) => {
     // ON (achat, renouvellement, réactivation) → annulation levée, sans quoi
     // un compte réactivé resterait marqué annulé pour toujours (miroir Google).
     if (isPremium) update.subscription_cancel_at_period_end = false;
+    // ── (25/10, point 4 « Revenus ») L'ÉCHÉANCE À CHAQUE NOTIFICATION « ON » ──
+    // Avant : seule la résiliation écrivait subscription_period_end — 8 des 11
+    // abonnés Apple actifs sans date au 25/10, alors que expiresDate est dans la
+    // transaction VÉRIFIÉE plus haut (et passée à upgrade_monthly_grant). Même
+    // format que Google (ISO, colonne TEXT) ; jamais en arrière (finPeriodeAEcrire :
+    // une notification rejouée en retard n'efface pas une échéance plus récente).
+    // Le renouvellement auto (signedRenewalInfo VÉRIFIÉ) fait foi s'il est lu : un
+    // achat dont la personne a déjà coupé le renouvellement reste « résilié ».
+    if (isPremium) {
+      if (typeof tx.expiresDate === "number") {
+        const { data: profFin } = await supabaseAdmin.from("profiles").select("subscription_period_end").eq("id", appAccountToken).maybeSingle();
+        const fin = finPeriodeAEcrire(tx.expiresDate, profFin?.subscription_period_end ?? null);
+        if (fin) update.subscription_period_end = fin;
+      }
+      if (signedRenewalInfo) {
+        try {
+          const renouv = await verifyAndDecodeJWS(signedRenewalInfo);
+          if (renouv.autoRenewStatus === 0) update.subscription_cancel_at_period_end = true;
+        } catch {
+          console.warn("[apple-iap-webhook] signedRenewalInfo illisible — annulation levée par défaut (comme avant)");
+        }
+      }
+    }
     if (originalTransactionId) update.apple_original_transaction_id = originalTransactionId;
     if (isPremium && productId === "app.fillsell.premium.sub") update.is_founder = true;
     // Pro : le flag suit l'état de l'abonnement (ON → true, OFF → false)

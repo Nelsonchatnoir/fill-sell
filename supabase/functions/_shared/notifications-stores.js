@@ -97,15 +97,86 @@ export function decisionGoogle(notificationType) {
 
 /**
  * La ligne du journal (stores_notifications_journal), sans données inutiles.
- * @param {{ canal: string, type: unknown, sousType?: string|null, decision: { effet: string|null, connu: boolean }, produit?: string|null, userId?: string|null, transaction?: string|null, transactionOriginale?: string|null, effetApplique?: string|null, detail?: unknown }} p
+ * (25/10, Revenus) `decision` absente (appel illisible ou refusé AVANT toute décision) → connu = null : ni
+ * « connue », ni « inconnue à décider » ; `complements` = les colonnes de la migration 20261025020000
+ * (appel_id, message_id, publie_le, fin_periode, renouvellement_auto, jeton_empreinte, verification…).
+ * @param {{ canal: string, type: unknown, sousType?: string|null, decision?: { effet: string|null, connu: boolean }|null, produit?: string|null, userId?: string|null, transaction?: string|null, transactionOriginale?: string|null, effetApplique?: string|null, detail?: unknown, complements?: Record<string, unknown>|null }} p
  */
-export function ligneJournal({ canal, type, sousType = null, decision, produit = null, userId = null, transaction = null, transactionOriginale = null, effetApplique = null, detail = null }) {
+export function ligneJournal({ canal, type, sousType = null, decision, produit = null, userId = null, transaction = null, transactionOriginale = null, effetApplique = null, detail = null, complements = null }) {
   return {
     canal, type: String(type ?? ""), sous_type: sousType == null ? null : String(sousType),
-    effet: decision?.effet ?? null, connu: !!decision?.connu,
-    produit, user_id: userId && /^[0-9a-f-]{36}$/i.test(String(userId)) ? userId : null,
+    effet: decision?.effet ?? null, connu: decision == null ? null : !!decision.connu,
+    produit, user_id: uuidOuNull(userId),
     transaction_id: transaction ? String(transaction) : null,
     transaction_originale: transactionOriginale ? String(transactionOriginale) : null,
     effet_applique: effetApplique, detail,
+    ...(complements && typeof complements === "object" ? complements : {}),
   };
+}
+
+/** Un identifiant de compte FillSell (uuid) ou null — jamais une valeur venue d'ailleurs. */
+export function uuidOuNull(v) {
+  return v && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(v)) ? String(v) : null;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// (25/10, point 4 « Revenus » de Nico) L'ÉCHÉANCE DES ABONNÉS, CHAQUE APPEL GOOGLE JOURNALISÉ
+// ═══════════════════════════════════════════════════════════════════════════
+// Relevé du 25/10 00:09 : 8 des 11 abonnés Apple actifs sans subscription_period_end (seule la résiliation
+// l'écrivait) ; 0 ligne Google au journal depuis sa naissance (11/10 21:43) — et la ligne n'était écrite
+// qu'APRÈS décodage : un appel sans `message.data` ou illisible ne laissait aucune trace.
+
+/** Une date (ms epoch, nombre en texte, ISO) → ISO, ou null si illisible. */
+export function isoOuNull(v) {
+  if (v == null || v === "") return null;
+  const t = typeof v === "number" ? v : /^\d{10,}$/.test(String(v)) ? Number(v) : Date.parse(String(v));
+  return Number.isFinite(t) && t > 0 ? new Date(t).toISOString() : null;
+}
+
+/**
+ * La fin de période à écrire dans profiles.subscription_period_end — JAMAIS EN ARRIÈRE.
+ * nouvelle : expiresDate Apple (ms) / expiryTime Google (ISO) ; actuelle : le texte en base (ISO des stores,
+ * « jj/mm/aaaa » de cancel-subscription, ou null). Écrit si la nouvelle est lisible ET (l'actuelle est
+ * illisible ou absente, OU la nouvelle est plus tardive, OU l'actuelle est déjà passée) ; sinon null (garder).
+ * Une notification rejouée en retard (Apple réessaie jusqu'à 3 jours) n'efface donc jamais une échéance plus récente.
+ */
+export function finPeriodeAEcrire(nouvelle, actuelle, maintenant = Date.now()) {
+  const n = isoOuNull(nouvelle);
+  if (!n) return null;
+  const a = actuelle == null ? NaN : Date.parse(String(actuelle));
+  if (!Number.isFinite(a) || Date.parse(n) > a || a < maintenant) return n;
+  return null;
+}
+
+/** L'enveloppe d'un push Pub/Sub : { message: { data, messageId, publishTime, attributes }, subscription }. */
+export function lireEnveloppePubSub(body) {
+  const m = body && typeof body === "object" && body.message && typeof body.message === "object" ? body.message : null;
+  const court = (v, n) => (v == null ? null : String(v).slice(0, n));
+  return {
+    dataB64: typeof m?.data === "string" && m.data.length > 0 ? m.data : null,
+    messageId: court(m?.messageId ?? m?.message_id, 100),
+    publieLe: isoOuNull(m?.publishTime ?? m?.publish_time),
+    abonnement: court(typeof body?.subscription === "string" ? body.subscription : null, 300),
+    attributs: m?.attributes && typeof m.attributes === "object" ? m.attributes : null,
+  };
+}
+
+/** Empreinte d'un purchaseToken (sha256 hex) : rapprochable en SQL, jamais le jeton lui-même au journal.
+ *  SQL : encode(sha256(convert_to(google_purchase_token, 'UTF8')), 'hex'). */
+export async function empreinteJeton(jeton) {
+  if (typeof jeton !== "string" || !jeton) return null;
+  const h = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(jeton));
+  return Array.from(new Uint8Array(h), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** L'issue d'un appel, lue sur la réponse rendue au store (aucune décision n'en dépend). */
+export function issueDeLaReponse(status, texte) {
+  let corps = null;
+  try { corps = JSON.parse(texte); } catch { corps = null; }
+  const raison = (v) => String(v ?? "").slice(0, 200);
+  let motif = "traite";
+  if (status >= 500) motif = `erreur:${raison(corps?.error ?? texte)}`;
+  else if (status >= 400) motif = `rejet:${raison(corps?.error ?? texte)}`;
+  else if (corps && corps.skipped) motif = `ignore:${raison(corps.skipped)}`;
+  return { http_status: status, motif, termine_le: new Date().toISOString() };
 }

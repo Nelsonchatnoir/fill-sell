@@ -104,6 +104,9 @@ export async function signalerNotificationStoreInconnue(n: {
   if (r === "delai") console.error("[payment-notify] signalement d'une notification inconnue : pas de réponse en 2 s, le paiement continue —", JSON.stringify(n));
 }
 
+// Ce que rend une écriture PostgREST dans le journal (le client est typé « any » ici).
+type ReponseJournal = { error?: { code?: string; message?: string } | null } | null | undefined;
+
 /** (12/10, A8) Une ligne du journal des notifications — best-effort, borné, jamais bloquant. */
 export async function journaliserNotificationStore(
   // deno-lint-ignore no-explicit-any
@@ -111,11 +114,48 @@ export async function journaliserNotificationStore(
   ligne: Record<string, unknown>,
 ): Promise<void> {
   try {
-    const r = await auPlus(admin.from("stores_notifications_journal").insert(ligne), DELAI_JOURNAL_MS);
+    const r = await auPlus<ReponseJournal>(admin.from("stores_notifications_journal").insert(ligne), DELAI_JOURNAL_MS);
     if (r === "delai") console.error("[payment-notify] journal des notifications : pas de réponse en 2 s, le paiement continue sans attendre —", JSON.stringify(ligne));
-    else if (r?.error) console.error("[payment-notify] journal des notifications :", r.error.message, "—", JSON.stringify(ligne));
+    else if (r?.error && (r.error.code === "PGRST204" || r.error.code === "23502")) {
+      // (25/10) Colonne inconnue (migration 20261025020000 pas encore passée) ou connu NULL refusé : la ligne
+      // repart dans la forme du 12/10, les compléments rangés dans `detail` — jamais une ligne perdue pour ça.
+      const ancienne = ligneDu1210(ligne);
+      const r2 = await auPlus<ReponseJournal>(admin.from("stores_notifications_journal").insert(ancienne), DELAI_JOURNAL_MS);
+      console.error("[payment-notify] journal des notifications : forme du 12/10 (", r.error.code, ")", r2 === "delai" ? "— pas de réponse en 2 s" : r2?.error ? `— ${r2.error.message}` : "— écrite");
+    } else if (r?.error) console.error("[payment-notify] journal des notifications :", r.error.message, "—", JSON.stringify(ligne));
   } catch (e) {
     console.error("[payment-notify] journal des notifications impossible :", (e as Error)?.message, "—", JSON.stringify(ligne));
+  }
+}
+
+const COLONNES_1210 = ["canal", "type", "sous_type", "effet", "connu", "effet_applique", "produit", "user_id", "transaction_id", "transaction_originale", "detail"];
+function ligneDu1210(ligne: Record<string, unknown>): Record<string, unknown> {
+  const base: Record<string, unknown> = {}, complements: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(ligne)) (COLONNES_1210.includes(k) ? base : complements)[k] = v;
+  base.connu = base.connu ?? false;
+  const detail = base.detail && typeof base.detail === "object" ? base.detail as Record<string, unknown> : {};
+  base.detail = { ...detail, complements };
+  return base;
+}
+
+/** (25/10) Complète la ligne d'UN appel à sa sortie (issue, code HTTP, compte, échéance lue chez le store) —
+ *  par appel_id ; best-effort, borné à 1 s (une mise à jour indexée d'une ligne : journal 2 s + alerte 2 s +
+ *  issue 1 s restent sous les 6 s du banc « bloque » et sous l'échéance d'acquittement Pub/Sub), jamais
+ *  bloquant ; 0 ligne touchée si l'insertion avait échoué. */
+const DELAI_ISSUE_MS = 1000;
+export async function completerJournalStore(
+  // deno-lint-ignore no-explicit-any
+  admin: { from: (t: string) => any },
+  appelId: string,
+  maj: Record<string, unknown>,
+): Promise<void> {
+  if (!appelId || !maj || Object.keys(maj).length === 0) return;
+  try {
+    const r = await auPlus<ReponseJournal>(admin.from("stores_notifications_journal").update(maj).eq("appel_id", appelId), DELAI_ISSUE_MS);
+    if (r === "delai") console.error("[payment-notify] journal (issue de l'appel) : pas de réponse en 1 s —", appelId);
+    else if (r?.error) console.error("[payment-notify] journal (issue de l'appel) :", r.error.message, "—", appelId);
+  } catch (e) {
+    console.error("[payment-notify] journal (issue de l'appel) impossible :", (e as Error)?.message, "—", appelId);
   }
 }
 

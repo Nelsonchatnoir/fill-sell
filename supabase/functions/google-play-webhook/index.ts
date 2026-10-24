@@ -1,14 +1,31 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
-import { notifierPaiement, alerterPaiementNonCredite, signalerNotificationStoreInconnue, journaliserNotificationStore } from "../_shared/payment-notify.ts";
-import { decisionGoogle, ligneJournal } from "../_shared/notifications-stores.js";
+import { notifierPaiement, alerterPaiementNonCredite, signalerNotificationStoreInconnue, journaliserNotificationStore, completerJournalStore } from "../_shared/payment-notify.ts";
+import { decisionGoogle, ligneJournal, lireEnveloppePubSub, empreinteJeton, isoOuNull, issueDeLaReponse, uuidOuNull } from "../_shared/notifications-stores.js";
 import { lectureCloudGoogle, ecritureCloudStore, PRODUIT_CLOUD_GOOGLE } from "../_shared/cloud-option.js";
 import { profilCloudPourStore } from "../_shared/cloud-essai-store.ts";
+import { verifierJetonPubSub } from "../_shared/pubsub-oidc.ts";
 
 const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_URL")!,
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 );
+
+// ── (25/10, point 4 « Revenus ») QUI APPELLE ? ────────────────────────────────
+// verify_jwt = false (Pub/Sub n'a pas de session Supabase) : la garde est ICI, et il n'y en avait aucune.
+// « observer » (défaut) : le jeton OIDC joint par Pub/Sub est vérifié, son verdict journalisé, RIEN n'est
+// refusé — le jour où Nico active l'authentification sur l'abonnement push, on lit des lignes « oidc_ok »
+// avant d'exiger. « exiger » (GOOGLE_PUBSUB_AUTH=exiger) : un appel sans jeton Google valide du compte de
+// service attendu → 401, journalisé avec son motif, rien d'appliqué, aucune alerte (Pub/Sub, lui, réessaie).
+const MODE_AUTH = Deno.env.get("GOOGLE_PUBSUB_AUTH") === "exiger" ? "exiger" : "observer";
+const AUDIENCE_PUBSUB = Deno.env.get("GOOGLE_PUBSUB_AUDIENCE") ?? `${Deno.env.get("SUPABASE_URL")}/functions/v1/google-play-webhook`;
+const COMPTE_PUBSUB = Deno.env.get("GOOGLE_PUBSUB_SA_EMAIL") ?? null;
+
+type Contexte = { appelId: string; maj: Record<string, unknown> };
+const json = (status: number, corps: Record<string, unknown>) =>
+  new Response(JSON.stringify(corps), { status, headers: { "Content-Type": "application/json" } });
+// (25/10) Les journaux de la fonction ne portent plus de jeton d'achat en clair (la base garde son empreinte).
+const sansJeton = (v: unknown) => JSON.stringify(v, (k, x) => (/purchasetoken/i.test(k) && typeof x === "string" ? "‹jeton›" : x));
 
 const FOUNDER_PRODUCT_ID = "app.fillsell.premium.sub";
 const PRO_PRODUCT_ID = "app.fillsell.pro.sub";
@@ -79,19 +96,58 @@ async function getGoogleAccessToken(): Promise<string> {
 
 serve(async (req) => {
   if (req.method !== "POST") return new Response("Method Not Allowed", { status: 405 });
+  // ── (25/10, Revenus) UN APPEL = UNE LIGNE AU JOURNAL, QUOI QU'IL ARRIVE ──────
+  // Avant : la ligne n'était écrite qu'APRÈS décodage — un appel sans `message.data` (200) ou illisible (500)
+  // ne laissait aucune trace, et l'issue (effet_applique) restait vide. Maintenant la ligne naît avant tout
+  // décodage ; l'issue — code HTTP, motif (traite / ignore:<raison> / rejet / erreur), compte, échéance et
+  // état lus chez Google — la complète à la sortie, par appel_id. Deux écritures bornées (2 s, puis 1 s), avalées.
+  const ctx: Contexte = { appelId: crypto.randomUUID(), maj: {} };
+  const res = await traiter(req, ctx);
+  let texte = "";
+  try { texte = await res.clone().text(); } catch { texte = ""; }
+  await completerJournalStore(supabaseAdmin, ctx.appelId, { ...ctx.maj, ...issueDeLaReponse(res.status, texte) });
+  return res;
+});
 
+async function traiter(req: Request, ctx: Contexte): Promise<Response> {
   try {
-    const body = await req.json();
+    const brut = await req.text();
+    // deno-lint-ignore no-explicit-any
+    let body: any = null, corpsLisible = true;
+    try { body = JSON.parse(brut); } catch { corpsLisible = false; }
+    const enveloppe = lireEnveloppePubSub(body);
+    const verif = await verifierJetonPubSub(req.headers.get("authorization"), { audience: AUDIENCE_PUBSUB, email: COMPTE_PUBSUB });
 
     // Google envoie le message Pub/Sub encodé en base64
-    const dataB64 = body?.message?.data as string | undefined;
-    if (!dataB64) {
-      return new Response(JSON.stringify({ ok: true, skipped: "no message data" }), {
-        status: 200, headers: { "Content-Type": "application/json" },
-      });
+    // deno-lint-ignore no-explicit-any
+    let notification: any = null;
+    let illisible: string | null = !corpsLisible ? "corps_illisible" : !enveloppe.dataB64 ? "sans_donnees" : null;
+    if (!illisible) {
+      try { notification = JSON.parse(atob(enveloppe.dataB64!)); }
+      catch (e) { illisible = `donnees_illisibles: ${(e as Error)?.message ?? e}`.slice(0, 200); }
+      if (!illisible && notification == null) illisible = "donnees_vides"; // (avant : TypeError → 500, idem)
+    }
+    const jeton = (notification?.subscriptionNotification?.purchaseToken ?? notification?.oneTimeProductNotification?.purchaseToken
+      ?? notification?.voidedPurchaseNotification?.purchaseToken ?? null) as string | null;
+    const typeBrut = notification?.subscriptionNotification?.notificationType ?? notification?.oneTimeProductNotification?.notificationType;
+    const complements: Record<string, unknown> = {
+      appel_id: ctx.appelId, message_id: enveloppe.messageId, publie_le: enveloppe.publieLe, abonnement_pubsub: enveloppe.abonnement,
+      package_name: typeof notification?.packageName === "string" ? notification.packageName.slice(0, 100) : null,
+      evenement_le: isoOuNull(notification?.eventTimeMillis),
+      type_store: typeBrut == null || !Number.isFinite(Number(typeBrut)) ? null : Number(typeBrut),
+      jeton_empreinte: await empreinteJeton(jeton), test: !!notification?.testNotification, verification: verif.verification,
+    };
+
+    if (illisible) {
+      await journaliserNotificationStore(supabaseAdmin, ligneJournal({
+        canal: "google", type: "illisible", decision: null, detail: { erreur: illisible, attributs: enveloppe.attributs }, complements,
+      }));
+      if (MODE_AUTH === "exiger" && !verif.ok) return json(401, { error: "unauthorized" });
+      // Comportements d'avant, inchangés : sans `message.data` → 200 (rien à rejouer) ; illisible → 500.
+      if (illisible === "sans_donnees") return json(200, { ok: true, skipped: "no message data" });
+      return json(500, { error: illisible });
     }
 
-    const notification = JSON.parse(atob(dataB64));
     const { packageName, subscriptionNotification } = notification;
 
     // ── (12/10, A8) CHAQUE NOTIFICATION EST ENREGISTRÉE ; UNE INCONNUE EST SIGNALÉE ──
@@ -114,8 +170,12 @@ serve(async (req) => {
       await journaliserNotificationStore(supabaseAdmin, ligneJournal({
         canal: "google", type: typeJ, sousType: sousTypeJ, decision: decisionJ, produit: produitJ,
         transaction: (notification.voidedPurchaseNotification?.orderId ?? null) as string | null,
-        detail: { eventTimeMillis: notification.eventTimeMillis ?? null },
+        detail: { eventTimeMillis: notification.eventTimeMillis ?? null, attributs: enveloppe.attributs },
+        complements,
       }));
+      // (25/10) Jeton refusé en mode « exiger » : la ligne est écrite ci-dessus, rien d'appliqué, aucune
+      // alerte (un « inconnu » forgé ne déclenche plus de mail à support@).
+      if (MODE_AUTH === "exiger" && !verif.ok) return json(401, { error: "unauthorized" });
       if (!decisionJ.connu) {
         await signalerNotificationStoreInconnue({ canal: "google", type: typeJ, sous_type: sousTypeJ, produit: produitJ, ref: (notification.voidedPurchaseNotification?.orderId ?? null) as string | null });
       }
@@ -137,14 +197,14 @@ serve(async (req) => {
       const otpToken = otp.purchaseToken as string | undefined;
       const sku = otp.sku as string | undefined;
       if (!sku || COIN_PRODUCTS[sku] == null) {
-        console.warn("[google-play-webhook] oneTimeProduct inconnu — skipped —", JSON.stringify(otp));
+        console.warn("[google-play-webhook] oneTimeProduct inconnu — skipped —", sansJeton(otp));
         return new Response(JSON.stringify({ ok: true, skipped: "unknown_one_time_product" }), {
           status: 200, headers: { "Content-Type": "application/json" },
         });
       }
       // notificationType : 1 = ONE_TIME_PRODUCT_PURCHASED, 2 = CANCELED
       if (otp.notificationType !== 1 || !otpToken) {
-        console.warn("[google-play-webhook] oneTimeProduct non crédité — skipped —", JSON.stringify(otp));
+        console.warn("[google-play-webhook] oneTimeProduct non crédité — skipped —", sansJeton(otp));
         return new Response(JSON.stringify({ ok: true, skipped: `one_time_type_${otp.notificationType}` }), {
           status: 200, headers: { "Content-Type": "application/json" },
         });
@@ -160,6 +220,9 @@ serve(async (req) => {
         });
       }
       const purchase = await apiRes.json();
+      // (25/10) Au journal de cet appel : la commande et l'environnement (achat de testeur ou réel).
+      ctx.maj.transaction_id = (purchase?.orderId as string | undefined) ?? null;
+      ctx.maj.environnement = purchase?.purchaseType === 0 ? "test" : "production";
       // purchaseState 0 = purchased (1 = cancelled, 2 = pending). Un PENDING
       // confirmé plus tard revient comme nouvelle notification PURCHASED.
       if (purchase.purchaseState !== 0) {
@@ -170,9 +233,10 @@ serve(async (req) => {
       }
       const coinUserId = (purchase?.obfuscatedExternalAccountId
         ?? purchase?.externalAccountIdentifiers?.obfuscatedExternalAccountId) as string | undefined;
+      ctx.maj.user_id = uuidOuNull(coinUserId);
       if (!coinUserId) {
         // Payload complet : seule trace permettant un crédit manuel a posteriori.
-        console.error("[google-play-webhook] oneTimeProduct sans obfuscatedExternalAccountId —", JSON.stringify(purchase));
+        console.error("[google-play-webhook] oneTimeProduct sans obfuscatedExternalAccountId —", sansJeton(purchase));
         await alerterPaiementNonCredite({
           canal: "google", type: "pack", produit: sku,
           ref: (purchase?.orderId as string) ?? otpToken, rpc: null,
@@ -200,7 +264,7 @@ serve(async (req) => {
         p_metadata: { productId: sku, platform: "android", source: "google-play-webhook" },
       });
       if (rpcErr) {
-        console.error("[google-play-webhook] credit_purchased_coins:", rpcErr.message, "—", JSON.stringify(otp));
+        console.error("[google-play-webhook] credit_purchased_coins:", rpcErr.message, "—", sansJeton(otp));
         await alerterPaiementNonCredite({
           canal: "google", type: "pack", user_id: coinUserId, produit: sku,
           ref, rpc: null, erreur: rpcErr.message,
@@ -210,6 +274,7 @@ serve(async (req) => {
         });
       }
       console.log(`[google-play-webhook] oneTimeProduct crédité → userId=${coinUserId} sku=${sku} ref=${ref} →`, JSON.stringify(credit));
+      ctx.maj.effet_applique = (credit as { credited?: boolean })?.credited === true ? "pack" : "pack_deja_credite";
       // Google rejoue jusqu'au 200 : mail seulement si une ligne a été créée.
       if ((credit as { credited?: boolean })?.credited === true) {
         await notifierPaiement({
@@ -225,7 +290,7 @@ serve(async (req) => {
     const sub = subscriptionNotification;
     if (!sub) {
       // Payload loggé : ne plus jamais jeter une notification en aveugle.
-      console.log("[google-play-webhook] not a subscription event — skipped —", JSON.stringify(notification));
+      console.log("[google-play-webhook] not a subscription event — skipped —", sansJeton(notification));
       return new Response(JSON.stringify({ ok: true, skipped: "not a subscription event" }), {
         status: 200, headers: { "Content-Type": "application/json" },
       });
@@ -285,6 +350,19 @@ serve(async (req) => {
     const purchase = await apiRes.json();
     // obfuscatedExternalAccountId = user.id Supabase passé via appAccountToken dans purchasePremium
     const userId = purchase?.externalAccountIdentifiers?.obfuscatedExternalAccountId as string | undefined;
+    // (25/10, Revenus) Ce que Google dit de l'abonnement, au journal de cet appel — l'échéance (expiryTime)
+    // et le renouvellement auto de la ligne du produit notifié, l'état, la commande, le compte.
+    {
+      // deno-lint-ignore no-explicit-any
+      const lignes = (purchase?.lineItems ?? []) as Array<Record<string, any>>;
+      const ligneJ = lignes.find((l) => l?.productId === subscriptionId) ?? lignes[0];
+      ctx.maj.user_id = uuidOuNull(userId);
+      ctx.maj.transaction_id = (purchase?.latestOrderId as string | undefined) ?? null;
+      ctx.maj.etat_store = (purchase?.subscriptionState as string | undefined) ?? null;
+      ctx.maj.fin_periode = isoOuNull(ligneJ?.expiryTime);
+      ctx.maj.renouvellement_auto = typeof ligneJ?.autoRenewingPlan?.autoRenewEnabled === "boolean" ? ligneJ.autoRenewingPlan.autoRenewEnabled : null;
+      ctx.maj.environnement = purchase?.testPurchase ? "test" : "production";
+    }
 
     if (!userId) {
       // ── Encaissement non rattachable (2026-08-05) ────────────────────────
@@ -305,7 +383,7 @@ serve(async (req) => {
       // cause : ce serait rejouer un échec déterministe.
       console.error(
         "[google-play-webhook] abonnement sans obfuscatedExternalAccountId —",
-        JSON.stringify({ notificationType, subscriptionId, purchase }),
+        sansJeton({ notificationType, subscriptionId, purchase }),
       );
       await alerterPaiementNonCredite({
         canal: "google", type: "abonnement", produit: subscriptionId,
@@ -351,6 +429,7 @@ serve(async (req) => {
         });
       }
       console.log(`[google-play-webhook] Cloud type=${notificationType} ${sens}${lectureCloud.essai ? " (essai)" : ""} → userId=${userId}`, JSON.stringify(update));
+      ctx.maj.effet_applique = `cloud_${sens}`;
       return new Response(JSON.stringify({ ok: true, cloud: true, sens }), {
         status: 200, headers: { "Content-Type": "application/json" },
       });
@@ -383,6 +462,7 @@ serve(async (req) => {
         });
       }
       console.log(`[google-play-webhook] type=3 CANCELED → userId=${userId} accès conservé jusqu'à ${finPeriode ?? "(expiryTime absent)"}`);
+      ctx.maj.effet_applique = "annulation";
       return new Response(JSON.stringify({ ok: true, cancel_at_period_end: true }), {
         status: 200, headers: { "Content-Type": "application/json" },
       });
@@ -436,6 +516,7 @@ serve(async (req) => {
         status: 500, headers: { "Content-Type": "application/json" },
       });
     }
+    ctx.maj.effet_applique = isPremium ? "on" : "off";
 
     // Pièces incluses au 1er achat et à chaque renouvellement.
     // Cycle par utilisateur (2026-07-28) : expiryTime — déjà présent dans la
@@ -481,4 +562,4 @@ serve(async (req) => {
       status: 500, headers: { "Content-Type": "application/json" },
     });
   }
-});
+}

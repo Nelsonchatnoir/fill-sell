@@ -379,6 +379,7 @@
     "selftest:depot-cycle-entier": "node scripts/depot-cycle-entier-selftest.mjs",
     "selftest:republier-vinted": "node scripts/republier-vinted-selftest.mjs",
     "selftest:accident-avant-retrait": "node scripts/accident-avant-retrait-selftest.mjs",
+    "selftest:revenus-stores": "node scripts/revenus-stores-selftest.mjs",
     "selftest:titre-aligne": "node scripts/titre-aligne-selftest.mjs",
     "selftest:ebay-retrait-trading": "node scripts/ebay-retrait-trading-selftest.mjs",
     "selftest:ebay-rayon-traditionnel": "node scripts/ebay-rayon-traditionnel-selftest.mjs",
