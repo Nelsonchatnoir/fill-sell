@@ -243,4 +243,43 @@ ok(/if \(source === SOURCE_INTROUVABLE \|\| source === SOURCE_INTROUVABLE_PERSIS
   ok(/'serveur:introuvable_a_confirmer'/.test(app), 'app : le relevé du serveur n’est jamais montré comme une synchronisation de la personne');
 }
 
+// (26/10 nuit, point 8) Les notes de PÉRIMÈTRE ne retirent pas un relevé complet de SA boutique (Vinted) ; sans trace,
+// la création par FillSell est la dernière vue (Vinted, Beebs) — jamais une pause sans issue.
+{
+  const WOOD = '258669486';
+  const LECTURE_LOHAN = '2026-10-25T10:54:17Z'; // 11:54 Paris
+  const lohan = { platform: 'vinted', listing_url: 'https://www.vinted.fr/items/10412430838',
+    platform_fields: { vinted_item_id: '10412430838', vinted_account_id: WOOD, ...marqueIntrouvable({}, { platform: 'vinted', lecture: 'item_upload_404', at: LECTURE_LOHAN }) } };
+  const rW = (debut, note) => releve(debut, { vinted_user_id: WOOD, items_vus: 30, total_entries: 30, erreur: note });
+  const NOTE_CC = "[note] disparitions non marquées — changement de compte Vinted (@lo160 → @woodenbridge) : sync normale, aucune disparition marquée | [note] cadence cron : 1 sync 'cron' refusée(s) depuis ce run";
+  ok(releveComplet(rW('2026-10-25T10:16:33Z', NOTE_CC), { platform: 'vinted', boutique: WOOD }), 'Lohan : un relevé complet noté « changement de compte » prouve (sa boutique)');
+  ok(releveComplet(rW('2026-10-25T10:16:33Z', '[note] disparitions non marquées — aucun run terminé en référence (première sync) : rien à marquer ce run'), { platform: 'vinted', boutique: WOOD }), 'premier relevé (aucune référence) : complet');
+  ok(!releveComplet(rW('2026-10-25T10:16:33Z', NOTE_CC), { platform: 'vinted', boutique: '999' }), 'noté « changement de compte » mais d’une AUTRE boutique : jamais');
+  ok(!releveComplet(rW('2026-10-25T10:16:33Z', '[note] disparitions non marquées — effondrement suspect : 30 disparition(s) à marquer sur 31 connu(s), plafond 10 — aucun marquage'), { platform: 'vinted', boutique: WOOD }), 'effondrement suspect : toujours écarté');
+  ok(!releveComplet(rW('2026-10-25T10:16:33Z', "[note] disparitions non marquées — dressing sans recoupement avec l'inventaire (31 connu(s), 0 vu(s)) — mauvais compte Vinted possible, aucun marquage"), { platform: 'vinted', boutique: WOOD }), 'sans recoupement (mauvais compte possible) : toujours écarté');
+  ok(!releveComplet(rW('2026-10-25T10:16:33Z', NOTE_CC + ' | [note] disparitions non marquées — run repris à la page 2'), { platform: 'vinted', boutique: WOOD }), 'une note de périmètre ET une d’incomplétude : écarté');
+  ok(!releveComplet(rW('2026-10-25T10:16:33Z', "[note] disparitions non marquées — vu 29 article(s) pour 30 annoncé(s) par Vinted : relevé incomplet"), { platform: 'vinted', boutique: WOOD }), 'relevé incomplet noté : écarté');
+  ok(!releveComplet(lbc('2026-10-25T10:16:33Z', { erreur: '[note] disparitions non marquées — changement de compte' }), { platform: 'leboncoin' }), 'autres plateformes : toute note écarte, comme avant');
+  // Sans trace : la création par FillSell (17/10 15:37 Paris) est la dernière vue.
+  const CREE = '2026-10-17T13:37:11.600Z';
+  const avant = [rW('2026-10-25T10:16:33Z', NOTE_CC)];
+  ok(d({ job: lohan, runs: avant }).decision === 'attendre', 'Lohan sans la création : 11:16 (avant la lecture) ne compte pas');
+  const unSeul = d({ job: lohan, runs: avant, creeLe: CREE });
+  ok(unSeul.decision === 'attendre' && unSeul.releve_attendu === true && /le prochain relevé tranche/.test(unSeul.raison), 'Lohan avec la création : 11:16 compte, le prochain relevé de sa boutique tranche', unSeul);
+  ok(d({ job: lohan, runs: [...avant, rW('2026-10-26T08:00:00Z', NOTE_CC)], creeLe: CREE }).decision === 'confirmer', '… et ce relevé, sans elle, la clôt (jamais une pause sans fin)');
+  ok(d({ job: lohan, vu: { vu_le: '2026-10-26T07:59:00Z', statut: 'active' }, runs: [...avant, rW('2026-10-26T08:00:00Z', NOTE_CC)], creeLe: CREE }).decision === 'reprendre', 'revue en ligne après la lecture → reprise, création ou pas');
+  // Sébastien, Beebs 34232713 : dépôt FillSell 13:47:39, relevé complet 16:38 sans elle, lecture 18:20:56, relevé 19:22.
+  const seb = { platform: 'beebs', platform_listing_id: '34232713', platform_fields: marqueIntrouvable({}, { platform: 'beebs', lecture: 'page_unavailable', at: '2026-10-25T17:20:56Z' }) };
+  const rB = (debut) => ({ platform: 'beebs', kind: 'annonces', status: 'done', started_at: debut, finished_at: new Date(Date.parse(debut) + 90_000).toISOString(), items_vus: 97, total_entries: 97, erreur: null, vinted_user_id: null });
+  ok(d({ job: seb, runs: [rB('2026-10-25T15:38:00Z')] }).decision === 'attendre', 'Sébastien sans la création : rien ne compte avant la lecture');
+  ok(d({ job: seb, runs: [rB('2026-10-25T15:38:00Z'), rB('2026-10-25T18:22:11Z')], creeLe: '2026-10-25T12:47:39.575Z' }).decision === 'confirmer', 'Sébastien avec la création : 16:38 + 19:22 sans elle → close, plus d’attente sans fin');
+  ok(d({ job: seb, runs: [rB('2026-10-25T15:38:00Z')], creeLe: '2026-10-25T12:47:39.575Z' }).decision === 'attendre', '… mais jamais sur un seul relevé, ni sans relevé après la lecture');
+  ok(d({ job: job('leboncoin'), runs: [lbc('2026-10-15T15:00:00Z'), lbc('2026-10-16T15:00:00Z')], creeLe: '2026-10-14T10:00:00Z' }).decision === 'confirmer'
+    && d({ job: job('leboncoin'), runs: [lbc('2026-10-15T10:00:00Z')], creeLe: '2026-10-14T10:00:00Z' }).decision === 'attendre',
+    'Leboncoin : la création ne sert pas de dernière vue (règle d’avant)');
+  // Câblage (handler-watch).
+  ok(/\.eq\("status", "published"\)\.in\("platform_listing_id", numerosI\)/.test(zone) && /decisionIntrouvable\(\{ job: j, fiche, vu, annonce, runs: runsPf, boutique, creeLe \}\)/.test(zone),
+    'handler-watch : la création par FillSell (job publié, même numéro) est passée à la décision');
+}
+
 console.log(`✓ selftest:introuvable-a-confirmer — ${n} assertions`);

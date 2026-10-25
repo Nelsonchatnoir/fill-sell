@@ -3332,6 +3332,24 @@ serve(async (req) => {
         for (const f of (rPorteuses.data ?? []) as any[]) garderTrace(f.vinted_item_id, f.last_synced_at, f.vinted_status);
         if (rSnaps.error || rPorteuses.error) tracesLisibles = false;
       }
+      // (26/10 nuit, point 8) L'heure à laquelle FillSell a PUBLIÉ chaque annonce en pause (job publié, même numéro) :
+      // sans trace de relevé, c'est sa dernière vue (_shared/introuvable-a-confirmer.js, creeLe). Une lecture bornée.
+      // deno-lint-ignore no-explicit-any
+      const numerosI = ([...new Set(jobs.map((j: any) => String(identifiantAnnonceJob(j) ?? "")).filter((x: string) => /^\d+$/.test(x)))] as string[]).slice(0, 200);
+      const creeLeDe = new Map<string, string>();
+      if (numerosI.length) {
+        const { data: crees, error: eCrees } = await supabase.from("cross_post_jobs")
+          .select("platform, platform_listing_id, published_at")
+          .eq("user_id", userId).eq("status", "published").in("platform_listing_id", numerosI)
+          .not("published_at", "is", null).limit(400);
+        if (eCrees) tracesLisibles = false;
+        // deno-lint-ignore no-explicit-any
+        for (const c of (crees ?? []) as any[]) {
+          const k = String(c.platform) + ":" + String(c.platform_listing_id);
+          const avant = creeLeDe.get(k);
+          if (!avant || Date.parse(String(c.published_at)) < Date.parse(avant)) creeLeDe.set(k, String(c.published_at));
+        }
+      }
       // Une lecture ratée n'est jamais une absence : le compte attend le passage suivant.
       if (!tracesLisibles) { console.warn(`[handler-watch] introuvable à confirmer : relevés ou traces illisibles pour ${userId.slice(0, 8)} — rien de jugé ce passage`); continue; }
       let reprisesCompte = 0;
@@ -3360,7 +3378,8 @@ serve(async (req) => {
           : null;
         // deno-lint-ignore no-explicit-any
         const runsPf = ((runs ?? []) as any[]).filter((r) => r.platform === j.platform);
-        const d = decisionIntrouvable({ job: j, fiche, vu, annonce, runs: runsPf, boutique });
+        const creeLe = creeLeDe.get(String(j.platform) + ":" + String(identifiantAnnonceJob(j) ?? "")) ?? null;
+        const d = decisionIntrouvable({ job: j, fiche, vu, annonce, runs: runsPf, boutique, creeLe });
         if (d.decision === "attendre" && (d as { releve_attendu?: boolean }).releve_attendu
             && (j.platform !== "vinted" || boutique) && !relevesAttendus.has(String(j.platform))) {
           relevesAttendus.set(String(j.platform), j.platform === "vinted" ? boutique : null);

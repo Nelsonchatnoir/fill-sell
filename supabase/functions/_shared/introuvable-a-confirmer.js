@@ -165,11 +165,29 @@ export function identifiantAnnonceJob(job) {
  * @param {any} r
  * @param {{ platform?: string | null, boutique?: string | null }} [opts]
  */
+// (26/10 nuit, point 8 — Lohan, c0b2d27f) Une note « disparitions non marquées » ne dit pas toujours que le relevé
+// est incomplet. Ses motifs de PÉRIMÈTRE (changement de compte Vinted, premier relevé sans référence, relevé de
+// référence d'un autre compte, compte du dernier relevé inconnu) disent seulement que l'extension n'a pas marqué de
+// disparitions EN COMPARANT à un relevé précédent : le relevé lui-même, complet et de LA boutique de l'annonce
+// (contrôle vinted_user_id ci-dessous, inchangé), prouve son absence. Chez Lohan, chaque relevé de @woodenbridge
+// suivait un relevé de @lo160 : toujours noté « changement de compte », jamais compté — la pause n'avait pas d'issue.
+// Les motifs d'incomplétude ou d'identité (run repris, relevé incomplet, effondrement, sans recoupement) l'écartent
+// toujours, et toute note sur les autres plateformes aussi (comme avant).
+export const NOTE_PERIMETRE_VINTED_RE = /^(changement de compte Vinted|aucun run terminé en référence|run d'un autre compte|compte du dernier run inconnu)/;
+function noteInutilisable(erreur, platform) {
+  const e = String(erreur ?? '');
+  if (/n'a pas rendu sa liste/i.test(e)) return true;
+  if (!/disparitions non marquées/i.test(e)) return false;
+  const motifs = [...e.matchAll(/disparitions non marquées — ([^|]*)/gi)].map((m) => m[1].trim());
+  if (platform !== 'vinted' || !motifs.length) return true;
+  return motifs.some((motif) => !NOTE_PERIMETRE_VINTED_RE.test(motif));
+}
+
 export function releveComplet(r, { platform = null, boutique = null } = {}) {
   if (!releveCompletRetrait(r)) return false;
   if (!((Number(r?.items_vus) || 0) > 0)) return false;
   if (!Number.isFinite(t(r?.finished_at))) return false;
-  if (/disparitions non marquées|n'a pas rendu sa liste/i.test(String(r?.erreur ?? ''))) return false;
+  if (noteInutilisable(r?.erreur, platform)) return false;
   if (platform === 'vinted') {
     if (r?.kind != null && r.kind !== 'dressing') return false;
     if (!boutique || r?.vinted_user_id == null || String(r.vinted_user_id) !== String(boutique)) return false;
@@ -200,10 +218,12 @@ function boutiqueDeLaVue(runs, vuLe) {
 //  boutique : Vinted — la boutique de l'annonce ; à défaut, celle du job
 //             (vinted_account_id), de la fiche, puis du relevé qui l'a vue.
 // Rend { decision: 'reprendre' | 'confirmer' | 'attendre' | 'persistant', raison, vendue?, releve_attendu? }.
+//  creeLe   : (26/10 nuit, point 8) l'heure à laquelle FillSell a PUBLIÉ cette annonce (job publié, même numéro) —
+//             elle existait alors : sans trace plus récente, c'est sa dernière vue (Vinted, Beebs).
 /**
- * @param {{ job: any, fiche?: any, vu?: any, annonce?: any, runs?: any[], boutique?: string | null }} arg
+ * @param {{ job: any, fiche?: any, vu?: any, annonce?: any, runs?: any[], boutique?: string | null, creeLe?: string | null }} arg
  */
-export function decisionIntrouvable({ job, fiche = null, vu = null, annonce = null, runs = [], boutique = null }) {
+export function decisionIntrouvable({ job, fiche = null, vu = null, annonce = null, runs = [], boutique = null, creeLe = null }) {
   const pf = job?.platform_fields ?? {};
   const marque = pf.introuvable_a_confirmer ?? null;
   const depuis = t(marque?.depuis);
@@ -251,7 +271,16 @@ export function decisionIntrouvable({ job, fiche = null, vu = null, annonce = nu
   if (platform === 'vinted' && !laBoutique) {
     return { decision: 'attendre', raison: "boutique de l'annonce inconnue : aucun relevé ne peut prouver son absence" };
   }
-  const borne = Number.isFinite(vuLe) ? Math.max(vuLe + 60_000, dementi) : depuisAbsence;
+  // (26/10 nuit, point 8 — Lohan, Sébastien 9da0fca5) Sans trace de relevé, la DERNIÈRE VUE de l'annonce est sa
+  // création par FillSell (son dépôt publié, même numéro) : elle existait à cette heure-là, et les relevés complets de
+  // sa boutique faits depuis comptent pour son absence — toujours deux, dont un après la lecture ratée. Avant : sans
+  // trace, seuls les relevés d'APRÈS la lecture comptaient (Beebs 34232713 : absente du relevé complet de 16:38, lu
+  // à 18:20 — « on attend » sans fin). Vinted et Beebs seulement (leurs relevés lisent toute la boutique, annonces en
+  // vérification comprises) ; jamais au-dessus d'une trace plus récente.
+  const cree = platform === 'vinted' || platform === 'beebs' ? t(creeLe) : NaN;
+  const vues = [vuLe, cree].filter(Number.isFinite);
+  const derniereVue = vues.length ? Math.max(...vues) : NaN;
+  const borne = Number.isFinite(derniereVue) ? Math.max(derniereVue + 60_000, dementi) : depuisAbsence;
   const sansElle = (runs ?? []).filter((r) => t(r?.started_at) > borne
     && releveComplet(r, { platform, boutique: laBoutique }));
   const apresLecture = sansElle.filter((r) => t(r.started_at) > depuisAbsence).length;

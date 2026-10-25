@@ -83,3 +83,39 @@ Prompt de nuit de Nico (25/10, 22:00). Ce fichier se remplit point par point ; l
 - ⚠️ chaouidz sur Beebs : à la republication, l'extension relit l'annonce et pose d'abord la taille AFFICHÉE (« 16 »).
   La correction est tracée (`correction_tracee`) ; elle passe devant la valeur affichée avec la nouvelle extension.
 - Les 26 autres livres de louis-seller : non touchés. Aucune annonce en ligne modifiée, aucun job relancé, aucun mail.
+
+## 2. Republication : confirmation perdue, fausse alerte, reprise en tête
+- **2a — nerema75, 259e97c8 (Vinted)** : retrait ET envoi de la nouvelle annonce à 19:44 (une-passe, 0.6.141) ; le
+  worker de l'extension qui attendait la confirmation a disparu entre 19:44:17 et 19:45:21 (PROUVÉ par les journaux ;
+  POURQUOI Chrome l'a arrêté : non prouvé, compatible avec l'arrêt d'un service worker MV3 pendant la pause du
+  remplissage). L'annonce était en ligne (relue à 20:27, publiée, aucun doublon). 6 cas de cette signature en 14 jours,
+  tous confirmés après 15 à 51 min. Correctif serveur (allumer le port de remplissage pour la une-passe Vinted) : NON
+  FAIT — il ajoute ~260 sessions de remplissage par jour au keepalive : **décision de Nico**. Filet côté extension :
+  voir la 0.6.146.
+- **2b — l'alerte « hors ligne sans recréation »** : elle ne regardait que l'âge du retrait (> 30 min) — 11 alertes
+  Vinted sur 15 en 14 jours tombaient sur une copie déjà en ligne, et la personne lisait « ton ordinateur s'est arrêté
+  juste après le retrait », faux. Corrigé à la règle (`_shared/alerte-orpheline.js`, handler-watch) : rien renvoyé
+  depuis le retrait → l'alerte, comme avant (la vraie orpheline de Sébastien reste) ; un envoi parti → pas d'alerte
+  tant qu'aucune relecture POSTÉRIEURE n'a dit « pas de copie » (puis 30 min sans renvoi) ; envoi jamais vérifié en
+  6 h → l'alerte « remise en ligne non vérifiée » (jamais une attente sans fin). Le mail au support dit le motif. À la
+  personne : « Reprise après interruption : le retrait et l'envoi de ta nouvelle annonce sont partis à 19:44, puis ton
+  ordinateur ou Chrome s'est arrêté avant la confirmation… FillSell vérifie qu'elle est bien en ligne, avant tout
+  nouvel envoi ». Selftest neuf `alerte-orpheline` (16 contrôles, les cas réels du 25/10).
+- **2c — Sébastien, 1ab00947 (Beebs)** : retrait 18:30, PC éteint à 18:34 pendant l'attente de 2 à 5 min avant le
+  redépôt. À la réouverture, le redépôt part EN TÊTE de file (règle déjà en place, vérifiée) — rien changé.
+
+## 8. « Annonce introuvable » alors qu'elle n'est pas prouvée absente — la pause a maintenant une issue
+- **Lohan, c0b2d27f (Vinted, @woodenbridge)** : PROUVÉ — chaque relevé de @woodenbridge suivait un relevé de @lo160 ;
+  l'extension le notait « changement de compte », et toute note « disparitions non marquées » écartait le relevé :
+  jamais « complet », la pause n'avait pas d'issue. Corrigé (`_shared/introuvable-a-confirmer.js`) : sur Vinted, les
+  notes de PÉRIMÈTRE (changement de compte, premier relevé, référence d'un autre compte, compte inconnu) n'écartent
+  plus un relevé complet de LA boutique de l'annonce ; les notes d'incomplétude (run repris, relevé incomplet,
+  effondrement, sans recoupement) l'écartent toujours.
+- **Sébastien, 9da0fca5 (Beebs 34232713)** : PROUVÉ pas en ligne (absente du relevé complet de 16:38, aucune réponse de
+  l'index Beebs) ; refusée ou retirée : non prouvé. Défaut : sans trace de relevé, seuls les relevés d'APRÈS la
+  lecture ratée comptaient. Corrigé : la publication par FillSell de CE numéro sert de dernière vue (Vinted, Beebs) ;
+  il faut toujours deux relevés complets sans elle, dont un après la lecture. Pour ces deux pauses : le prochain relevé
+  de la bonne boutique tranche (handler-watch le demande déjà, poste en ligne).
+- Une annonce revue en ligne repart toujours d'elle-même ; rien n'est jamais retiré par cette règle. Non fait : une
+  borne d'horloge de 72 h sans démenti (aujourd'hui : 72 h d'extension ouverte, puis un message) — décision de Nico.
+- Selftest `introuvable-a-confirmer` : 100 contrôles (18 neufs, les deux cas réels).
