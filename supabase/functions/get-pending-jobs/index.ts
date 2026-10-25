@@ -64,6 +64,8 @@ import { decisionAdresseRepublicationLbc, rueDesReglagesMemeCommune, texteRefuse
 import { adresseLbcHorsFrance, lbcACloreHorsFrance, lbcServiMalgreHorsFrance, clotureLbcHorsFrance } from "../_shared/lbc-adresse-france.js";
 import { plateformesEcartees, jobRetenuPlateformeEcartee } from "../_shared/plateformes-ecartees.js";
 import { tailleBeebsDeLaFiche } from "../_shared/beebs-taille-de-la-fiche.js";
+// (26/10 nuit, point 3) Le rayon Beebs que l'index public dit d'une annonce (paires observées, univoques).
+import { rayonBeebsDeLIndex } from "../_shared/beebs-rayon-de-l-index.js";
 import { tourDeTailleEnFrancais, brancheDeTaille } from "../_shared/taille-de-service.js";
 import { tailleCorrigeeParLeW } from "../_shared/taille-corrigee-par-le-w.js";
 import { ageBeebsDuReleve } from "../_shared/beebs-age-releve.js";
@@ -6115,11 +6117,33 @@ serve(async (req) => {
       if (beebsACombler.length) {
         const ids = [...new Set(beebsACombler.map((j) => Number(j.inventaire_id)))];
         const { data: annonces } = await lireParLots((lot) => userClient
-          .from("annonces_plateforme").select("inventaire_id, listing_id, capture, vu_le")
+          .from("annonces_plateforme").select("inventaire_id, listing_id, capture, vu_le, donnees_index")
           .eq("platform", "beebs").in("inventaire_id", lot)
           .order("vu_le", { ascending: false }), ids, 200);
         const cheminDe = new Map<number, string[]>();
         const captureDeB = new Map<number, Record<string, unknown>>();
+        // ── (26/10 nuit, point 3 — boncoin59300) LE RAYON QUE L'INDEX PUBLIC DE BEEBS DIT DE L'ANNONCE ───────────────
+        // Sa doudoune (annonce 12003122, rattachée par le relevé — ce n'est pas un dépôt FillSell) n'avait aucun chemin
+        // capturé : la copie partait sans rayon, le pré-vol l'arrêtait et posait une question à ~600 rayons. L'index
+        // public lu par le relevé portait pourtant son rayon (donnees_index.categorie_id 5f73MnZ3kyhs0kWunLMcYd), et sur
+        // nos relevés cet identifiant n'a qu'UN chemin (« Mode > Homme > … > Manteaux (homme) »). Table des paires
+        // observées : _shared/beebs-rayon-de-l-index.js (identifiants univoques, feuilles de l'arbre). Seulement quand
+        // la capture n'a pas de chemin ; jamais par-dessus un rayon posé.
+        const cheminParAnnonce = new Map<string, string[]>();
+        const cheminsDeLIndex = new Set<string>();
+        const cheminDeLAnnonce = (a: Record<string, unknown>): string[] | null => {
+          const cap = a.capture;
+          const capture = String((cap as { categorie?: unknown } | null ?? {})?.categorie ?? "").trim();
+          const brut = capture || String(rayonBeebsDeLIndex(((a.donnees_index ?? {}) as Record<string, unknown>)["categorie_id"]) ?? "");
+          const ch = brut ? brut.split(">").map((s) => s.trim()).filter(Boolean) : [];
+          if (ch.length >= 2 && !capture) cheminsDeLIndex.add(ch.join(" > "));
+          return ch.length >= 2 ? ch : null;
+        };
+        for (const a of (annonces ?? []) as Record<string, unknown>[]) {
+          const lid = String(a.listing_id ?? "").trim();
+          const ch = cheminDeLAnnonce(a);
+          if (lid && ch && !cheminParAnnonce.has(lid)) cheminParAnnonce.set(lid, ch);
+        }
         // ── L'ANNONCE MÊME, PAS LA PLUS RÉCENTE DE L'ARTICLE (03/10) ────────
         // Deux annonces Beebs d'un même article sont deux exemplaires (Louis
         // duplique) : une republication reprend les champs de SON annonce —
@@ -6136,11 +6160,11 @@ serve(async (req) => {
           if (cheminDe.has(inv) || captureDeB.has(inv)) continue;
           const cap = (a as { capture?: unknown }).capture;
           if (cap && typeof cap === "object") captureDeB.set(inv, cap as Record<string, unknown>);
-          const brut = String((cap as { categorie?: unknown } | null ?? {})?.categorie ?? "").trim();
           // ⚠️ AU MOINS DEUX NIVEAUX. « Mode » seul n'est pas une feuille : le
           //    poser ferait échouer selectCategory plus loin, en silence.
-          const chemin = brut ? brut.split(">").map((s) => s.trim()).filter(Boolean) : [];
-          if (chemin.length >= 2) cheminDe.set(inv, chemin);
+          // (26/10 nuit, point 3) Le chemin capturé, sinon celui que l'index public dit (cheminDeLAnnonce).
+          const chemin = cheminDeLAnnonce(a as Record<string, unknown>);
+          if (chemin) cheminDe.set(inv, chemin);
         }
         // ── ET PAS SEULEMENT LA CATÉGORIE (2026-09-20, suite du même job) ────
         // La catégorie posée, Beebs a réclamé Taille, Marque et État — et le
@@ -6193,14 +6217,18 @@ serve(async (req) => {
         let posesBeebs = 0;
         for (const j of beebsACombler) {
           const pf = { ...pfB(j) };
+          // (26/10 nuit, point 3) Le rayon de SON annonce d'abord (deux annonces d'un article = deux exemplaires).
+          const snapR = (pf["republish_snapshot"] && typeof pf["republish_snapshot"] === "object") ? pf["republish_snapshot"] as Record<string, unknown> : {};
+          const numeroR = String((j as { platform_listing_id?: unknown }).platform_listing_id ?? snapR["platform_listing_id"] ?? "").trim();
           const chemin = Array.isArray(pf["beebsCategoryPath"]) && (pf["beebsCategoryPath"] as unknown[]).length >= 2
             ? (pf["beebsCategoryPath"] as unknown[]).map(String)
-            : cheminDe.get(Number(j.inventaire_id));
+            : ((numeroR && cheminParAnnonce.get(numeroR)) || cheminDe.get(Number(j.inventaire_id)));
           if (!chemin) continue;
           const repris: Record<string, string> = {};
           if (!Array.isArray(pf["beebsCategoryPath"])) {
             pf["beebsCategoryPath"] = chemin;
-            repris["beebsCategoryPath"] = chemin.join(" > ");
+            repris["beebsCategoryPath"] = chemin.join(" > ")
+              + (cheminsDeLIndex.has(chemin.join(" > ")) ? " (index public Beebs : categorie_id de l'annonce, paire univoque)" : "");
           }
           const snapB = (pf["republish_snapshot"] && typeof pf["republish_snapshot"] === "object") ? pf["republish_snapshot"] as Record<string, unknown> : {};
           const numeroB = String((j as { platform_listing_id?: unknown }).platform_listing_id ?? snapB["platform_listing_id"] ?? "").trim();

@@ -18,7 +18,8 @@ assert.equal(ageBeebsDuReleve(null), null);
 const gpj = fs.readFileSync(new URL("../supabase/functions/get-pending-jobs/index.ts", import.meta.url), "utf8");
 assert.match(gpj, /import \{ ageBeebsDuReleve \} from "\.\.\/_shared\/beebs-age-releve\.js";/);
 assert.match(gpj, /j\.action === "republish" && !String\(pfB\(j\)\["age"\] \?\? ""\)\.trim\(\)/, "une republication sans âge passe par la reprise");
-assert.match(gpj, /select\("inventaire_id, listing_id, capture, vu_le"\)/, "le relevé est lu avec son numéro d'annonce");
+// (26/10 nuit, point 3) + donnees_index : le rayon que l'index public dit de l'annonce quand la capture n'en a pas.
+assert.match(gpj, /select\("inventaire_id, listing_id, capture, vu_le(, donnees_index)?"\)/, "le relevé est lu avec son numéro d'annonce");
 assert.match(gpj, /captureParAnnonce\.get\(numeroB\)/, "la capture de l'annonce MÊME (deux exemplaires = deux annonces)");
 assert.match(gpj, /const ageCap = ageBeebsDuReleve\(cap\);[\s\S]{0,200}pf\["age"\] = ageCap;/, "l'âge relevé est posé");
 const iReprise = gpj.indexOf("const ageCap = ageBeebsDuReleve(cap);");
@@ -36,7 +37,8 @@ assert.ok(gpj.includes(`["beebs", "leboncoin", "ebay", "opla"].includes(String(j
 // 2ter. (03/10 nuit, nivake03) La TAILLE affichée par l'annonce l'emporte
 // sur la copie (« Ajustable » affichée, « L » copiée, grille en mm).
 assert.ok(gpj.includes(`|| (j.action === "republish" && String(pfB(j)["taille"] ?? "").trim() !== "")`), "une republication avec taille passe par la confrontation");
-assert.match(gpj, /if \(tCap && tJob && tCap\.toLowerCase\(\) !== tJob\.toLowerCase\(\)\) \{\s*pf\["taille"\] = tCap;/, "la taille de l'annonce remplace celle de la copie");
+// (26/10 nuit, point 12) … sauf une correction TRACÉE de la copie, tant que l'annonce affiche l'ancienne valeur.
+assert.match(gpj, /if \(tCap && tJob && tCap\.toLowerCase\(\) !== tJob\.toLowerCase\(\)( && !correctionTientIci)?\) \{\s*pf\["taille"\] = tCap;/, "la taille de l'annonce remplace celle de la copie");
 assert.ok(gpj.includes(`pf["taille_reprise_de_l_annonce"] = { avant: tJob, apres: tCap`), "avec sa trace avant/après");
 
 // 2quater. Et les champs AFFICHÉS se relisent sur la page avant tout retrait
