@@ -1,0 +1,226 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   MAQUETTES — LA PUBLICATION EN LOT, ÉTAPE 2 (25/10/2026, nuit)
+   ═══════════════════════════════════════════════════════════════════════════
+   Page NON LISTÉE (/demo/lot), réservée au compte de Nico : trois propositions
+   à valider avant de coder la refonte. Jetons = ceux du stepper (stepper.css,
+   .fsn) recopiés tels quels : l'identité ne change pas, seuls l'agencement, la
+   hiérarchie et les finitions changent. Cibles tactiles ≥ 44 px, champs à
+   16 px (pas de zoom iOS), contraste AA. */
+.ml {
+  --ml-canvas: #EDEAE0; --ml-paper: #F6F5F1; --ml-card: #FFFFFF; --ml-chip: #F2F0E9;
+  --ml-ink: #10201B; --ml-ink2: #3A4742; --ml-mute: #5C6560; --ml-mute2: #8A8578;
+  --ml-border: #E7E3D8; --ml-border-soft: #EFECE3;
+  --ml-teal: #2F9E90; --ml-teal-deep: #1B6E62; --ml-teal-fond: #EFF4F2; --ml-teal-bord: #D6E2DE;
+  --ml-amber: #E0A53C; --ml-amber-fond: #FFF6E3; --ml-amber-bord: #EED9A6; --ml-amber-ink: #8A6100;
+  --ml-btn: linear-gradient(120deg, #2F9E90, #1B6E62);
+  --ml-shadow: 0 1px 4px rgba(16, 32, 27, .05);
+  --ml-r: 16px; --ml-r-s: 12px;
+  --ml-largeur: 640px;
+  color-scheme: light;
+  min-height: 100dvh; display: flex; flex-direction: column;
+  background: var(--ml-canvas); color: var(--ml-ink);
+  font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 14px; line-height: 1.45; -webkit-font-smoothing: antialiased;
+}
+.ml *, .ml *::before, .ml *::after { box-sizing: border-box; }
+:where(.ml) button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; padding: 0; }
+.ml button:focus-visible, .ml input:focus-visible, .ml textarea:focus-visible { outline: 2px solid var(--ml-teal); outline-offset: 2px; }
+.ml h1, .ml h2, .ml h3, .ml p { margin: 0; }
+.ml .num { font-variant-numeric: tabular-nums; }
+
+/* ── Le sélecteur de proposition (hors maquette) ─────────────────────────── */
+.ml-switch { position: sticky; top: 0; z-index: 20; background: var(--ml-ink); color: #F6F5F1; padding: calc(env(safe-area-inset-top, 0px) + 8px) 16px 10px; }
+.ml-switch-in { max-width: var(--ml-largeur); margin: 0 auto; display: flex; flex-direction: column; gap: 8px; }
+.ml-seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; background: rgba(246, 245, 241, .1); border-radius: 999px; padding: 4px; }
+.ml-seg button { min-height: 40px; border-radius: 999px; font-size: 13.5px; font-weight: 600; color: rgba(246, 245, 241, .78); padding: 0 6px; white-space: nowrap; }
+.ml-seg button[aria-selected="true"] { background: #F6F5F1; color: var(--ml-ink); }
+.ml-switch-p { font-size: 12.5px; line-height: 1.45; color: rgba(246, 245, 241, .82); text-wrap: pretty; }
+.ml-switch-p b { color: #F6F5F1; }
+
+/* ── L'écran (la maquette) ───────────────────────────────────────────────── */
+.ml-ecran { flex: 1; display: flex; flex-direction: column; width: 100%; max-width: var(--ml-largeur); margin: 0 auto; min-height: 0; }
+.ml-top { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 6px 16px 0; }
+.ml-back { width: 44px; height: 44px; border-radius: 50%; background: var(--ml-card); border: 1px solid var(--ml-border); display: grid; place-items: center; flex: none; color: var(--ml-ink); }
+.ml-back svg, .ml-chevron svg { display: block; }
+.ml-top-t { flex: 1; min-width: 0; font-size: 16px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ml-top-n { font-size: 13px; font-weight: 700; color: var(--ml-mute); }
+.ml-quit { min-height: 44px; padding: 0 14px; border-radius: 999px; background: var(--ml-chip); color: var(--ml-ink2); font-size: 13.5px; font-weight: 600; }
+.ml-prog { display: flex; gap: 6px; padding: 8px 16px 0; }
+.ml-prog span { flex: 1; height: 4px; border-radius: 999px; background: var(--ml-border); }
+.ml-prog span.on { background: var(--ml-teal); }
+.ml-corps { flex: 1; padding: 14px 16px 24px; display: flex; flex-direction: column; gap: 14px; }
+
+/* Le bilan : trois nombres, puis une case par article (prête / à revoir). */
+.ml-bilan { background: var(--ml-card); border: 1px solid var(--ml-border); border-radius: var(--ml-r); box-shadow: var(--ml-shadow); padding: 14px 14px 12px; display: flex; flex-direction: column; gap: 12px; }
+.ml-nombres { display: grid; grid-template-columns: repeat(3, 1fr); }
+.ml-nombre { display: flex; flex-direction: column; gap: 2px; padding-left: 12px; border-left: 1px solid var(--ml-border-soft); }
+.ml-nombre:first-child { padding-left: 0; border-left: none; }
+.ml-nombre b { font-size: 28px; line-height: 1; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ml-nombre small { font-size: 13px; color: var(--ml-mute); font-weight: 500; }
+.ml-nombre--ok b { color: var(--ml-teal-deep); }
+.ml-nombre--revoir b { color: var(--ml-amber-ink); }
+.ml-nombre--zero b { color: var(--ml-mute2); }
+.ml-cases { display: grid; grid-template-columns: repeat(16, 1fr); gap: 3px; }
+.ml-case { height: 10px; border-radius: 3px; background: var(--ml-teal); transition: background-color .2s ease-out; }
+.ml-case--revoir { background: var(--ml-amber); }
+.ml-case--hors { background: var(--ml-border); }
+
+/* Les titres de section : une phrase, pas d'étiquette en capitales. */
+.ml-section { display: flex; flex-direction: column; gap: 8px; }
+.ml-section-t { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 2px 2px 0; }
+.ml-section-t h2 { font-size: 15px; font-weight: 700; }
+.ml-section-t span { font-size: 13px; color: var(--ml-mute); font-variant-numeric: tabular-nums; }
+
+/* Les textes écrits par FillSell : UN geste pour tous. */
+.ml-textes { display: flex; align-items: center; gap: 12px; background: var(--ml-paper); border: 1px solid var(--ml-border); border-radius: var(--ml-r); padding: 12px 12px 12px 14px; }
+.ml-textes-t { flex: 1; min-width: 0; }
+.ml-textes-t b { display: block; font-size: 14.5px; font-weight: 700; }
+.ml-textes-t small { display: block; font-size: 13px; color: var(--ml-mute); margin-top: 1px; text-wrap: pretty; }
+.ml-textes--fait { background: var(--ml-teal-fond); border-color: var(--ml-teal-bord); }
+.ml-textes--fait b { color: var(--ml-teal-deep); }
+
+/* Boutons */
+.ml-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 16px; border-radius: 999px; font-size: 14.5px; font-weight: 700; white-space: nowrap; flex: none; }
+.ml-btn--plein { background: var(--ml-btn); color: #fff; box-shadow: 0 8px 20px rgba(31, 110, 98, .24); }
+.ml-btn--bord { background: var(--ml-card); color: var(--ml-teal-deep); border: 1.5px solid var(--ml-teal); }
+.ml-btn--doux { background: var(--ml-chip); color: var(--ml-ink2); font-weight: 600; }
+.ml-btn--large { width: 100%; min-height: 54px; font-size: 16px; }
+.ml-btn:disabled { background: #D9E1DD; color: #3A4742; box-shadow: none; cursor: not-allowed; }
+.ml-lien { min-height: 44px; display: inline-flex; align-items: center; font-size: 14px; font-weight: 600; color: var(--ml-mute); text-decoration: underline; text-underline-offset: 3px; }
+
+/* La vignette */
+.ml-vig { width: 48px; height: 48px; border-radius: 12px; overflow: hidden; flex: none; background: var(--ml-chip); border: 1px solid var(--ml-border); display: grid; place-items: center; }
+.ml-vig img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ml-vig--p { width: 40px; height: 40px; border-radius: 10px; }
+
+/* ── Proposition A : un article, ses questions dessous ───────────────────── */
+.ml-carte { background: var(--ml-card); border: 1px solid var(--ml-border); border-radius: var(--ml-r); box-shadow: var(--ml-shadow); overflow: hidden; }
+.ml-art { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 12px 10px 12px; text-align: left; min-height: 72px; }
+.ml-art-t { flex: 1; min-width: 0; }
+.ml-art-t b { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 15px; font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; }
+.ml-art-t small { display: flex; align-items: center; gap: 6px; margin-top: 3px; font-size: 13px; color: var(--ml-mute); }
+.ml-chevron { color: var(--ml-mute2); flex: none; }
+.ml-q { border-top: 1px solid var(--ml-border-soft); padding: 10px 0 12px; display: flex; flex-direction: column; gap: 8px; }
+.ml-q-t { display: flex; align-items: center; gap: 8px; padding: 0 12px; font-size: 13.5px; font-weight: 600; color: var(--ml-ink2); }
+.ml-q-t em { font-style: normal; font-weight: 500; color: var(--ml-mute); }
+.ml-q-note { padding: 0 12px; font-size: 13px; color: var(--ml-mute); text-wrap: pretty; }
+.ml-q--fait .ml-q-t { color: var(--ml-teal-deep); }
+
+/* Les puces : une ligne qui défile, réponse en un geste. */
+.ml-puces { display: flex; gap: 8px; overflow-x: auto; padding: 0 12px 2px; scroll-snap-type: x proximity; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.ml-puces::-webkit-scrollbar { display: none; }
+.ml-puces--wrap { flex-wrap: wrap; overflow: visible; }
+.ml-puce { scroll-snap-align: start; flex: none; min-height: 44px; padding: 0 15px; border-radius: 999px; border: 1px solid var(--ml-border); background: var(--ml-card); font-size: 14.5px; font-weight: 600; color: var(--ml-ink); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+.ml-puce--on { border-color: var(--ml-teal); background: var(--ml-teal-fond); color: var(--ml-teal-deep); }
+.ml-puce--plus { color: var(--ml-teal-deep); border-style: dashed; border-color: var(--ml-teal-bord); }
+.ml-puce--pas { color: var(--ml-mute); background: var(--ml-paper); }
+.ml-puce--conseil { border-color: var(--ml-teal); color: var(--ml-teal-deep); }
+.ml-recherche { margin: 0 12px; display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 0 12px; border-radius: var(--ml-r-s); border: 1px solid var(--ml-border); background: var(--ml-card); }
+.ml-recherche input { flex: 1; min-width: 0; border: none; outline: none; background: transparent; font: inherit; font-size: 16px; color: var(--ml-ink); }
+.ml-recherche span { color: var(--ml-mute); }
+.ml-resultats { display: flex; flex-direction: column; margin: 0 12px; border: 1px solid var(--ml-border); border-radius: var(--ml-r-s); overflow: hidden; }
+.ml-resultats button { min-height: 46px; padding: 0 12px; text-align: left; font-size: 15px; border-top: 1px solid var(--ml-border-soft); background: var(--ml-card); display: flex; align-items: center; justify-content: space-between; }
+.ml-resultats button:first-child { border-top: none; }
+.ml-resultats button small { color: var(--ml-mute); font-size: 12.5px; }
+
+/* La réponse posée : une ligne verte, modifiable. */
+.ml-pose { display: flex; align-items: center; gap: 8px; padding: 0 12px; font-size: 14px; color: var(--ml-teal-deep); font-weight: 600; }
+.ml-pose button { margin-left: auto; min-height: 44px; font-size: 13.5px; font-weight: 600; color: var(--ml-mute); text-decoration: underline; text-underline-offset: 3px; }
+
+/* ── Les prêts : une liste repliée ───────────────────────────────────────── */
+.ml-prets { background: var(--ml-card); border: 1px solid var(--ml-border); border-radius: var(--ml-r); overflow: hidden; }
+.ml-prets-tete { width: 100%; display: flex; align-items: center; gap: 10px; min-height: 56px; padding: 0 14px; text-align: left; }
+.ml-prets-tete b { flex: 1; font-size: 15px; }
+.ml-prets-tete span { font-size: 13.5px; font-weight: 600; color: var(--ml-teal-deep); }
+.ml-vigs { display: flex; }
+.ml-vigs .ml-vig { width: 28px; height: 28px; border-radius: 8px; margin-left: -8px; border: 2px solid var(--ml-card); }
+.ml-vigs .ml-vig:first-child { margin-left: 0; }
+.ml-ligne { width: 100%; display: flex; align-items: center; gap: 10px; min-height: 56px; padding: 6px 14px; border-top: 1px solid var(--ml-border-soft); text-align: left; }
+.ml-ligne-t { flex: 1; min-width: 0; }
+.ml-ligne-t b { display: block; font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ml-ligne-t small { display: block; font-size: 12.5px; color: var(--ml-mute); }
+.ml-logos { display: inline-flex; gap: 3px; align-items: center; flex: none; }
+.ml-prix { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; flex: none; }
+
+/* ── Proposition B : regroupé par question ───────────────────────────────── */
+.ml-groupe { background: var(--ml-card); border: 1px solid var(--ml-border); border-radius: var(--ml-r); box-shadow: var(--ml-shadow); overflow: hidden; }
+.ml-groupe-tete { display: flex; align-items: center; gap: 10px; padding: 12px 12px 10px; }
+.ml-groupe-tete h3 { flex: 1; font-size: 16px; font-weight: 700; }
+.ml-groupe-tete span { font-size: 13px; color: var(--ml-mute); }
+.ml-groupe-tous { padding: 0 0 12px; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--ml-border-soft); }
+.ml-groupe-tous p { padding: 0 12px; font-size: 13px; color: var(--ml-mute); }
+.ml-gl { border-top: 1px solid var(--ml-border-soft); padding: 10px 0 12px; display: flex; flex-direction: column; gap: 8px; }
+.ml-gl:first-of-type { border-top: none; }
+.ml-gl-art { display: flex; align-items: center; gap: 10px; padding: 0 12px; text-align: left; width: 100%; min-height: 44px; }
+.ml-gl-art b { flex: 1; min-width: 0; font-size: 14.5px; font-weight: 600; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* ── Proposition C : une question à la fois ──────────────────────────────── */
+.ml-focus { background: var(--ml-card); border: 1px solid var(--ml-border); border-radius: 20px; box-shadow: 0 10px 30px rgba(16, 32, 27, .08); overflow: hidden; }
+.ml-focus-photo { display: block; width: 100%; height: 136px; background: var(--ml-chip); overflow: hidden; }
+.ml-focus-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ml-focus-corps { padding: 14px 14px 12px; display: flex; flex-direction: column; gap: 12px; }
+.ml-focus-art { display: flex; flex-direction: column; justify-content: center; gap: 2px; text-align: left; min-height: 44px; }
+.ml-focus-art b { font-size: 16px; font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; }
+.ml-focus-art small { font-size: 13px; color: var(--ml-mute); display: flex; gap: 6px; align-items: center; }
+.ml-focus-q { font-size: 19px; font-weight: 700; line-height: 1.25; text-wrap: balance; display: flex; gap: 8px; align-items: center; }
+.ml-focus .ml-puces { padding: 0; }
+.ml-focus .ml-recherche, .ml-focus .ml-resultats { margin: 0; }
+.ml-focus-pied { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--ml-border-soft); padding: 4px 14px; }
+.ml-points { display: flex; align-items: center; justify-content: center; gap: 6px; }
+.ml-point { width: 8px; height: 8px; border-radius: 50%; background: var(--ml-border); }
+.ml-point--on { background: var(--ml-amber); }
+.ml-point--fait { background: var(--ml-teal); }
+.ml-compte { text-align: center; font-size: 13px; color: var(--ml-mute); }
+.ml-fini { text-align: center; padding: 22px 16px; display: flex; flex-direction: column; gap: 6px; align-items: center; }
+.ml-fini-rond { width: 56px; height: 56px; border-radius: 50%; background: var(--ml-teal-fond); border: 2px solid var(--ml-teal); color: var(--ml-teal-deep); display: grid; place-items: center; font-size: 24px; }
+
+/* ── Le pied : l'envoi des prêts, toujours là ────────────────────────────── */
+.ml-pied { position: sticky; bottom: 0; z-index: 5; background: var(--ml-canvas); border-top: 1px solid var(--ml-border); box-shadow: 0 -6px 16px rgba(16, 32, 27, .05); padding: 10px 16px calc(env(safe-area-inset-bottom, 0px) + 12px); display: flex; flex-direction: column; gap: 6px; }
+.ml-pied p { font-size: 13px; color: var(--ml-mute); text-align: center; }
+
+/* ── La feuille de l'article ─────────────────────────────────────────────── */
+.ml-voile { position: fixed; inset: 0; z-index: 40; background: rgba(16, 32, 27, .45); animation: ml-fondu .2s ease-out; }
+.ml-feuille { position: fixed; left: 0; right: 0; bottom: 0; z-index: 41; max-width: var(--ml-largeur); margin: 0 auto; max-height: 88dvh; display: flex; flex-direction: column; background: var(--ml-canvas); border-radius: 22px 22px 0 0; box-shadow: 0 -10px 30px rgba(16, 32, 27, .18); animation: ml-monte .2s ease-out; }
+.ml-feuille-poignee { align-self: center; width: 40px; height: 5px; border-radius: 999px; background: var(--ml-border); margin: 8px 0 2px; flex: none; }
+.ml-feuille-tete { display: flex; align-items: flex-start; gap: 12px; padding: 8px 16px 12px; flex: none; }
+.ml-feuille-tete .ml-vig { width: 64px; height: 64px; border-radius: 14px; }
+.ml-feuille-tete b { display: block; font-size: 17px; font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; }
+.ml-feuille-tete small { display: block; margin-top: 3px; font-size: 14px; color: var(--ml-mute); font-weight: 600; }
+.ml-fermer { width: 44px; height: 44px; border-radius: 50%; background: var(--ml-chip); flex: none; display: grid; place-items: center; font-size: 18px; margin-left: auto; }
+.ml-feuille-corps { overflow-y: auto; padding: 0 16px 12px; display: flex; flex-direction: column; gap: 12px; -webkit-overflow-scrolling: touch; }
+.ml-feuille-corps > * { flex: none; }
+.ml-bloc { background: var(--ml-card); border: 1px solid var(--ml-border); border-radius: var(--ml-r); overflow: hidden; }
+.ml-bloc-t { display: flex; align-items: center; gap: 8px; padding: 12px 12px 6px; }
+.ml-bloc-t h3 { flex: 1; font-size: 14.5px; font-weight: 700; }
+.ml-etiquette { font-size: 12px; font-weight: 700; border-radius: 999px; padding: 3px 9px; background: var(--ml-chip); color: var(--ml-ink2); white-space: nowrap; }
+.ml-etiquette--ok { background: var(--ml-teal-fond); color: var(--ml-teal-deep); }
+.ml-etiquette--revoir { background: var(--ml-amber-fond); color: var(--ml-amber-ink); }
+.ml-texte { padding: 0 12px 12px; display: flex; flex-direction: column; gap: 6px; }
+.ml-texte b { font-size: 15px; font-weight: 700; line-height: 1.35; overflow-wrap: anywhere; }
+.ml-texte p { font-size: 14px; color: var(--ml-ink2); line-height: 1.5; white-space: pre-line; text-wrap: pretty; }
+.ml-texte p.court { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.ml-texte-gestes { display: flex; gap: 8px; flex-wrap: wrap; padding: 0 12px 12px; }
+.ml-pf { border-top: 1px solid var(--ml-border-soft); padding: 10px 0; display: flex; flex-direction: column; gap: 8px; }
+.ml-pf:first-of-type { border-top: none; }
+.ml-pf-l { display: flex; align-items: center; gap: 10px; padding: 0 12px; min-height: 36px; }
+.ml-pf-l b { flex: 1; font-size: 14.5px; font-weight: 700; }
+.ml-pf-pose { padding: 0 12px 0 46px; font-size: 13px; color: var(--ml-mute); text-wrap: pretty; }
+.ml-pf-pose strong { color: var(--ml-ink); font-weight: 600; }
+.ml-pf-q { display: flex; flex-direction: column; gap: 8px; }
+.ml-pf-q-t { padding: 0 12px 0 48px; font-size: 13px; font-weight: 600; color: var(--ml-ink2); }
+.ml-pf-q .ml-puces, .ml-pf-q .ml-q-note, .ml-pf-q .ml-pose { padding-left: 48px; }
+.ml-pf-q .ml-recherche, .ml-pf-q .ml-resultats { margin-left: 48px; }
+.ml-pf-pas { padding: 0 12px 0 46px; }
+.ml-feuille-pied { flex: none; display: flex; gap: 8px; padding: 10px 16px calc(env(safe-area-inset-bottom, 0px) + 12px); border-top: 1px solid var(--ml-border); background: var(--ml-canvas); }
+.ml-feuille-pied .ml-btn { flex: 1; }
+
+.ml-attente { flex: 1; display: grid; place-items: center; padding: 40px 16px; color: var(--ml-mute); text-align: center; }
+.ml-note-maquette { font-size: 12.5px; color: var(--ml-mute); text-align: center; padding: 4px 8px 0; text-wrap: pretty; }
+
+@keyframes ml-monte { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes ml-fondu { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .ml-feuille, .ml-voile { animation: none; } .ml-case { transition: none; } }
+@media (min-width: 700px) {
+  .ml-feuille { bottom: 24px; border-radius: 22px; max-height: calc(100dvh - 48px); }
+  .ml-corps { padding-top: 18px; }
+}

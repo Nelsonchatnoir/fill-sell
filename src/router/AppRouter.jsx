@@ -34,6 +34,8 @@ const ExtensionPage = lazy(() => import("../pages/ExtensionPage"));
 const EbayRetour = lazy(() => import("../pages/EbayRetour"));
 const Desinscription = lazy(() => import("../pages/Desinscription"));
 const DemoBarreProgression = lazy(() => import("../pages/DemoBarreProgression"));
+// (25/10 nuit) Les maquettes de l'étape 2 du lot : réservées au compte de Nico (la page renvoie tout autre compte sur l'accueil).
+const MaquettesLot = lazy(() => import("../pages/MaquettesLot"));
 
 // ── Un jeton d'authentification n'atterrit JAMAIS sur la landing (16/09) ─────
 // Le lien de confirmation d'inscription part avec redirect_to = SITE_URL, donc
@@ -217,6 +219,10 @@ export default function AppRouter() {
             liée de nulle part, noindex, aucune donnée lue. Sert à faire
             valider le composant avant de remplacer les barres de l'app. */}
         <Route path="/demo/barre-progression" element={<DemoBarreProgression />} />
+        {/* Maquettes de la refonte de l'étape 2 du lot (25/10) : NON LISTÉE,
+            noindex, lisible avec le seul compte de Nico (la page le vérifie
+            elle-même et lit ses articles avec sa session). */}
+        <Route path="/demo/lot" element={<MaquettesLot />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       </Suspense>
