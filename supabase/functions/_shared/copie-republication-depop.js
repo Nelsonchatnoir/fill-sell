@@ -69,8 +69,13 @@ export function champsManquantsCopieDepop(job) {
   if (!(Array.isArray(pf.depopCategoryPath) && pf.depopCategoryPath.length === 3 && IDS_FEUILLES.has(pf.depopCategoryPath.join("/")))) m.push("rayon");
   if (vide(pf.depopEtat)) m.push("etat");
   if (pf.depopPort == null || String(pf.depopPort).trim() === "") m.push("port");
+  // (26/10 nuit, point 10 — la doudoune enfant de Thibault) Un article ENFANT exige « Pour » (depopGenre : male,
+  // female, unisex — depop.js le demande au pré-vol sinon). Il manquait au compte : la copie, complète par ailleurs,
+  // ne cherchait jamais le genre que le dépôt FillSell portait (« male »).
+  if (Array.isArray(pf.depopCategoryPath) && pf.depopCategoryPath[0] === "kidswear" && !GENRES_DEPOP.has(String(pf.depopGenre ?? "").trim())) m.push("genre");
   return m;
 }
+const GENRES_DEPOP = new Set(["male", "female", "unisex"]);
 
 /** Le dépôt FillSell est-il bien CETTE annonce ? Lien, numéro ou produit Depop identiques — jamais le titre. */
 export function depotDeLAnnonce(depot, job, capture = null) {
@@ -148,6 +153,8 @@ export function etatDepopPourLaCopie({ depot = null, fiche = null, capture = nul
 const CLES_DU_DEPOT = Object.freeze([
   "depopCategoryPath", "depopCategoryId", "depopCategoryLibelles", "depopEtat", "depopPort",
   "depopMarque", "depopTaille", "depopCouleurs", "marque", "taille", "genre", "couleur",
+  // (26/10 nuit, point 10) « Pour » d'un article enfant, tel que le dépôt FillSell l'a envoyé à Depop.
+  "depopGenre",
 ]);
 
 /**

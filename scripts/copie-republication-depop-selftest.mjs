@@ -96,6 +96,22 @@ cas("6. rien à compléter → null ; une beauté entamée n'est jamais montée 
   assert.equal(M.completerCopieDepop({ job: { ...E62, action: "publish" } }), null, "une publication n'est pas touchée ici");
 });
 
+cas("6 bis. (26/10 nuit, point 10) un article ENFANT sans « Pour » : le genre du dépôt FillSell de la même annonce (Thibault, doudoune « male »)", () => {
+  const job = { ...E62, id: "18d5cbb1", inventaire_id: 1792064439929012, platform_listing_id: "thibault-doudoune-enfant-1", listing_url: "https://www.depop.com/products/thibault-doudoune-enfant-1/",
+    description: "Doudoune enfant", platform_fields: { depopCategoryPath: ["kidswear", "coats-jackets", "gilets"], depopEtat: "used_good", depopPort: 4.15 } };
+  assert.deepEqual(M.champsManquantsCopieDepop(job), ["genre"], "le genre d'un article enfant manque — la copie n'était pas « complète »");
+  const depot = { ...D387, id: "99741713", inventaire_id: 1792064439929012, listing_url: job.listing_url,
+    platform_fields: { depopCategoryPath: ["kidswear", "coats-jackets", "gilets"], depopGenre: "male", depopEtat: "used_good", depopPort: 4.15 } };
+  const r = M.completerCopieDepop({ job, depots: [depot] });
+  assert.equal(r.platform_fields.depopGenre, "male", "« Pour » repris du dépôt FillSell");
+  assert.equal(r.sources.depopGenre, "depot_fillsell");
+  assert.deepEqual(r.manquants, [], "plus rien ne manque au pré-vol");
+  const sansDepot = M.completerCopieDepop({ job, depots: [] });
+  assert.ok(sansDepot === null || !sansDepot.platform_fields.depopGenre, "sans source, rien n'est inventé (la question reste au pré-vol)");
+  const adulte = { ...job, platform_fields: { ...job.platform_fields, depopCategoryPath: ["menswear", "coats-jackets", "gilets"] } };
+  assert.deepEqual(M.champsManquantsCopieDepop(adulte), [], "un article homme ou femme n'a pas de « Pour » à chercher");
+});
+
 cas("7. get-pending-jobs complète la copie AVANT le port et avant de servir, jamais une fois le retrait engagé", () => {
   const gpj = lire("supabase/functions/get-pending-jobs/index.ts");
   assert.ok(gpj.includes('import { completerCopieDepop, champsManquantsCopieDepop, slugDepop } from "../_shared/copie-republication-depop.js";'));
