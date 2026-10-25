@@ -66,6 +66,8 @@ import { plateformesEcartees, jobRetenuPlateformeEcartee } from "../_shared/plat
 import { tailleBeebsDeLaFiche } from "../_shared/beebs-taille-de-la-fiche.js";
 // (26/10 nuit, point 3) Le rayon Beebs que l'index public dit d'une annonce (paires observées, univoques).
 import { rayonBeebsDeLIndex } from "../_shared/beebs-rayon-de-l-index.js";
+// (26/10 nuit, point 12) Une correction tracée de la copie passe devant la valeur que l'annonce affiche encore.
+import { correctionTient } from "../_shared/correction-tracee.js";
 import { tourDeTailleEnFrancais, brancheDeTaille } from "../_shared/taille-de-service.js";
 import { tailleCorrigeeParLeW } from "../_shared/taille-corrigee-par-le-w.js";
 import { ageBeebsDuReleve } from "../_shared/beebs-age-releve.js";
@@ -6263,7 +6265,12 @@ serve(async (req) => {
           if (j.action === "republish") {
             const tCap = String(cap["taille"] ?? "").trim();
             const tJob = String(pf["taille"] ?? "").trim();
-            if (tCap && tJob && tCap.toLowerCase() !== tJob.toLowerCase()) {
+            // (26/10 nuit, point 12 — chaouidz, pointure « 16 » au lieu de 31) Une CORRECTION TRACÉE de la copie
+            // (scripts/reparations, pf.correction_tracee) passe devant la valeur que l'annonce affiche encore — tant que
+            // l'annonce affiche l'ANCIENNE valeur (si la personne l'a changée depuis sur Beebs, l'annonce l'emporte).
+            const correctionTientIci = correctionTient(pf, "taille", tCap);
+            // (rien à réécrire : la copie porte déjà la bonne valeur — « aucune ligne inchangée réécrite »)
+            if (tCap && tJob && tCap.toLowerCase() !== tJob.toLowerCase() && !correctionTientIci) {
               pf["taille"] = tCap;
               pf["taille_reprise_de_l_annonce"] = { avant: tJob, apres: tCap, source: "annonce Beebs en ligne (relevé)", le: new Date().toISOString(), pose_par: "get-pending-jobs" };
               repris["taille"] = `${tCap} (affichée sur l'annonce ; la copie disait ${tJob})`;
