@@ -783,31 +783,53 @@ serve(async (req) => {
   const lectureFondAlertes: string[] = [];
   let lectureFondResume = "";
   try {
-    const { data: lf, error: eLf } = await supabase
-      .from("usage_logs")
-      .select("user_id, metadata")
-      .eq("feature", "lecture_fond")
-      .gte("created_at", iso24h)
-      .limit(20000);
-    if (eLf) throw new Error(eLf.message);
-    const lignes = (lf ?? []) as Array<{ user_id: string | null; metadata: Record<string, unknown> | null }>;
+    // (25/10 soir) Lu PAR PAGES : avec les comptes payants ouverts (lecture_fond_mode = 2), le journal dépasse 1 000
+    // lignes par jour, et PostgREST coupe le reste SANS erreur (règle du dépôt) — des refus auraient pu passer inaperçus.
+    // Et PAR PLATEFORME : Vinted (0.6.144) et Beebs (0.6.145) n'ont ni le même rythme, ni le même interrupteur.
+    const lignes: Array<{ user_id: string | null; metadata: Record<string, unknown> | null }> = [];
+    for (let page = 0; page < 40; page++) {
+      const { data: lf, error: eLf } = await supabase
+        .from("usage_logs")
+        .select("user_id, metadata")
+        .eq("feature", "lecture_fond")
+        .gte("created_at", iso24h)
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true })
+        .range(page * 1000, page * 1000 + 999);
+      if (eLf) throw new Error(eLf.message);
+      lignes.push(...((lf ?? []) as typeof lignes));
+      if (!lf || lf.length < 1000) break;
+    }
     if (lignes.length) {
-      const parResultat = new Map<string, number>();
-      const refusParCompte = new Map<string, number>();
+      const parPlateforme = new Map<string, typeof lignes>();
       for (const l of lignes) {
-        const r = String(l.metadata?.resultat ?? "?");
-        parResultat.set(r, (parResultat.get(r) ?? 0) + 1);
-        if (r === "antirobot") refusParCompte.set(String(l.user_id ?? "?"), (refusParCompte.get(String(l.user_id ?? "?")) ?? 0) + 1);
+        const pf = String(l.metadata?.plateforme ?? "vinted");
+        if (!parPlateforme.has(pf)) parPlateforme.set(pf, []);
+        parPlateforme.get(pf)!.push(l);
       }
-      const comptes = new Set(lignes.map((l) => l.user_id)).size;
-      lectureFondResume = `${lignes.length} page${lignes.length > 1 ? "s" : ""} lue${lignes.length > 1 ? "s" : ""} en 24 h sur ${comptes} compte${comptes > 1 ? "s" : ""} — ${[...parResultat].map(([k, v]) => `${k} ×${v}`).join(", ")}`;
-      if (refusParCompte.size) {
-        const total = [...refusParCompte.values()].reduce((a, b) => a + b, 0);
-        lectureFondAlertes.push(`Lecture de fond : ${total} refus de Vinted (anti-robot) en 24 h sur ${refusParCompte.size} compte${refusParCompte.size > 1 ? "s" : ""} (${[...refusParCompte].map(([u, n]) => `${u.slice(0, 8)} ×${n}`).join(", ")}). Chaque compte est coupé 6 h tout seul ; si les refus se répètent, couper tout le monde (coin_config.lecture_fond_mode = 0).`);
+      const resumes: string[] = [];
+      for (const [pf, ls] of parPlateforme) {
+        const nom = pf === "beebs" ? "Beebs" : "Vinted";
+        const parResultat = new Map<string, number>();
+        const refusParCompte = new Map<string, number>();
+        for (const l of ls) {
+          const r = String(l.metadata?.resultat ?? "?");
+          parResultat.set(r, (parResultat.get(r) ?? 0) + 1);
+          if (r === "antirobot") refusParCompte.set(String(l.user_id ?? "?"), (refusParCompte.get(String(l.user_id ?? "?")) ?? 0) + 1);
+        }
+        const comptes = new Set(ls.map((l) => l.user_id)).size;
+        resumes.push(`${nom} : ${ls.length} page${ls.length > 1 ? "s" : ""} lue${ls.length > 1 ? "s" : ""} en 24 h sur ${comptes} compte${comptes > 1 ? "s" : ""} — ${[...parResultat].map(([k, v]) => `${k} ×${v}`).join(", ")}`);
+        if (refusParCompte.size) {
+          const total = [...refusParCompte.values()].reduce((a, b) => a + b, 0);
+          const cle = pf === "beebs" ? "lecture_fond_mode_beebs" : "lecture_fond_mode";
+          const coupe = pf === "beebs" ? "12 h" : "6 h";
+          lectureFondAlertes.push(`Lecture de fond ${nom} : ${total} refus de ${nom} (anti-robot) en 24 h sur ${refusParCompte.size} compte${refusParCompte.size > 1 ? "s" : ""} (${[...refusParCompte].map(([u, n]) => `${u.slice(0, 8)} ×${n}`).join(", ")}). Chaque compte est coupé ${coupe} tout seul ; si les refus se répètent, couper tout le monde (coin_config.${cle} = 0).`);
+        }
       }
+      lectureFondResume = resumes.join(" · ");
     }
   } catch (e) {
-    lectureFondAlertes.push(`Journal de la lecture de fond illisible (${String((e as Error)?.message ?? e)}) — refus de Vinted non vérifiables aujourd'hui.`);
+    lectureFondAlertes.push(`Journal de la lecture de fond illisible (${String((e as Error)?.message ?? e)}) — refus non vérifiables aujourd'hui.`);
   }
 
   // ── (25/10, Jocabroc — Nico : « Je dois pouvoir le voir dans mes checks avant qu'un client écrive ») ──────────────
@@ -1212,7 +1234,7 @@ serve(async (req) => {
     ${
     lectureFondAlertes.length === 0 && !lectureFondResume ? "" : `
     <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:${lectureFondAlertes.length ? "#B91C1C" : "#374151"};">
-      ${lectureFondAlertes.length ? "🔴" : "•"} Lecture de fond des textes (pages publiques Vinted)
+      ${lectureFondAlertes.length ? "🔴" : "•"} Lecture de fond (pages publiques Vinted, pages Beebs)
     </h2>
     <ul style="margin:0;padding:0 0 0 18px;">
       ${lectureFondResume ? `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#374151;">${esc(lectureFondResume)}</li>` : ""}

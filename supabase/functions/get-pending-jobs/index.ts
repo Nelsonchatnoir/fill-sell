@@ -232,7 +232,8 @@ import { attenteBoutiqueLevable, POSE_PAR_PUBLICATION_BOUTIQUE, messageAttenteBo
 import { OPLA_PRIX_MAX, prixOplaTropHaut, messagePrixOplaTropHaut } from "../_shared/opla-prix.js";
 import { retenirRetraitVerificationLongue } from "../_shared/beebs-retrait-verification-longue.js";
 // (25/10) Le texte du vendeur lu en arrière-plan, dès l'import (page publique Vinted, extension ≥ 0.6.144).
-import { LECTURE_FOND_VERSION_MIN, LECTURE_FOND_RYTHME, modeLectureFond, regleLectureFond, listeLectureFond, aLireEnFond, debutJourParis } from "../_shared/lecture-fond.js";
+import { LECTURE_FOND_VERSION_MIN, LECTURE_FOND_RYTHME, modeLectureFond, regleLectureFond, listeLectureFond, aLireEnFond, debutJourParis,
+  LECTURE_FOND_BEEBS_VERSION_MIN, LECTURE_FOND_BEEBS_MODE_DEFAUT, LECTURE_FOND_BEEBS_RYTHME, listeLectureFondBeebs, aLireEnFondBeebs } from "../_shared/lecture-fond.js";
 import { palierDuProfil, aAuMoins } from "../_shared/palier.js";
 
 // ── Format de colis Vinted : deux lectures du PARC, gardées 10 min par instance
@@ -13042,12 +13043,15 @@ serve(async (req) => {
         const [cfgLf, profLf, refusLf, luesLf] = await Promise.all([
           userClient.from("coin_config").select("value").eq("key", "lecture_fond_mode").maybeSingle(),
           userClient.from("profiles").select("is_premium, is_pro, is_business, is_comped").eq("id", user.id).maybeSingle(),
+          // (25/10 soir) Les traces Vinted seulement (sans plateforme = Vinted, 0.6.144) : un refus ou une lecture Beebs
+          // (0.6.145) ne coupe pas la lecture Vinted et ne mange pas son plafond du jour.
           userClient.from("usage_logs").select("created_at").eq("user_id", user.id).eq("feature", "lecture_fond")
-            .eq("metadata->>resultat", "antirobot")
+            .eq("metadata->>resultat", "antirobot").or("metadata->>plateforme.is.null,metadata->>plateforme.eq.vinted")
             .gte("created_at", new Date(maintenantLf - LECTURE_FOND_RYTHME.pause_refus_h * 3_600_000).toISOString())
             .order("created_at", { ascending: false }).limit(1),
           userClient.from("usage_logs").select("id", { count: "exact", head: true }).eq("user_id", user.id)
-            .eq("feature", "lecture_fond").gte("created_at", debutJourParis(maintenantLf)),
+            .eq("feature", "lecture_fond").or("metadata->>plateforme.is.null,metadata->>plateforme.eq.vinted")
+            .gte("created_at", debutJourParis(maintenantLf)),
         ]);
         const regleLf = regleLectureFond({
           userId: user.id, mode: modeLectureFond(cfgLf.data?.value), versionOk: true,
@@ -13085,10 +13089,80 @@ serve(async (req) => {
       } catch (_e) { lectureFond = null; /* jamais un point de panne */ }
     }
 
+    // ══ (25/10 soir, 0.6.145) BEEBS EN ARRIÈRE-PLAN : LES PHOTOS (et le texte, l'état) LUS SUR LA PAGE DE L'ANNONCE ══════
+    // (_shared/lecture-fond.js § Beebs) L'index Beebs n'a qu'une photo : l'extension (≥ 0.6.145) lit la page de l'annonce
+    // par une requête de même origine depuis l'onglet www.beebs.app, à son rythme (2 par poll, 30 à 60 s d'écart, 120 par
+    // jour), coupée 12 h au premier refus de Beebs (sa trace usage_logs « lecture_fond », plateforme « beebs »), et
+    // pendant une attente anti-robot d'un job Beebs du compte. coin_config.lecture_fond_mode_beebs (absent = 1 : le poste
+    // pilote, en mesure). Lectures bornées : 200 annonces, deux lectures de fiches par identifiants. Illisible → rien servi.
+    let lectureFondBeebs: Record<string, unknown> | null = null;
+    if (!includeProcessing && !includeNeedsUser && versionAuMoins(version, LECTURE_FOND_BEEBS_VERSION_MIN)) {
+      try {
+        const maintenantLb = Date.now();
+        const [cfgLb, profLb, refusLb, luesLb, pauseLb] = await Promise.all([
+          userClient.from("coin_config").select("value").eq("key", "lecture_fond_mode_beebs").maybeSingle(),
+          userClient.from("profiles").select("is_premium, is_pro, is_business, is_comped").eq("id", user.id).maybeSingle(),
+          userClient.from("usage_logs").select("created_at").eq("user_id", user.id).eq("feature", "lecture_fond")
+            .eq("metadata->>plateforme", "beebs").eq("metadata->>resultat", "antirobot")
+            .gte("created_at", new Date(maintenantLb - LECTURE_FOND_BEEBS_RYTHME.pause_refus_h * 3_600_000).toISOString())
+            .order("created_at", { ascending: false }).limit(1),
+          userClient.from("usage_logs").select("id", { count: "exact", head: true }).eq("user_id", user.id)
+            .eq("feature", "lecture_fond").eq("metadata->>plateforme", "beebs").gte("created_at", debutJourParis(maintenantLb)),
+          userClient.from("cross_post_jobs").select("id").eq("user_id", user.id).eq("platform", "beebs").eq("status", "pending")
+            .not("platform_fields->attente_antirobot_compte", "is", null).limit(1),
+        ]);
+        const regleLb = regleLectureFond({
+          userId: user.id, mode: modeLectureFond(cfgLb.data?.value, LECTURE_FOND_BEEBS_MODE_DEFAUT), versionOk: true,
+          payant: aAuMoins(palierDuProfil(profLb.data ?? null), "premium"),
+          pauseAntirobot: (pauseLb.data ?? []).length > 0,
+          luesAujourdhui: luesLb.count ?? 0,
+          dernierRefusMs: refusLb.data?.[0]?.created_at ? Date.parse(String(refusLb.data[0].created_at)) : null,
+          maintenant: maintenantLb, rythme: LECTURE_FOND_BEEBS_RYTHME,
+        });
+        if (regleLb.actif) {
+          // Les annonces Beebs VIVANTES du compte rattachées à une fiche (200 au plus, les plus récentes d'abord) ; la 2e
+          // photo de la capture suffit à savoir si elle en a plusieurs (jamais tout le tableau).
+          const { data: annLb } = await userClient.from("annonces_plateforme")
+            .select("listing_id, url, titre, prix, photo_url, inventaire_id, created_at, capture_le, capture_photo2:capture->photos->1")
+            .eq("user_id", user.id).eq("platform", "beebs").is("disparu_le", null).not("inventaire_id", "is", null)
+            .order("created_at", { ascending: false }).limit(200);
+          const annonces = (annLb ?? []) as unknown as Record<string, unknown>[];
+          const ids = [...new Set(annonces.map((a) => Number(a.inventaire_id)).filter(Number.isFinite))];
+          const lueParFiche = new Map<number, unknown>();   // fiche au stock, non fusionnée → sa dernière lecture de fond
+          const manquantes = new Set<number>();              // … à qui il manque une photo, le texte ou l'état
+          if (ids.length) {
+            // Par lots (règle du dépôt : jamais un `.in()` de masse d'un seul tenant), même si 200 au plus tiennent en un.
+            const [auStock, aCompleter] = await Promise.all([
+              lireParLots((lot) => userClient.from("inventaire").select("id, lue:attributs->page_beebs_lue").eq("user_id", user.id)
+                .in("id", lot).eq("statut", "stock").is("fusionne_dans", null), ids),
+              lireParLots((lot) => userClient.from("inventaire").select("id").eq("user_id", user.id).in("id", lot)
+                .eq("statut", "stock").is("fusionne_dans", null)
+                .or("photos->1.is.null,description.is.null,description.eq.,attributs->etat->>v.is.null,attributs->etat->>v.eq."), ids),
+            ]);
+            for (const f of (auStock.data ?? []) as Record<string, unknown>[]) lueParFiche.set(Number(f.id), f.lue ?? null);
+            for (const f of (aCompleter.data ?? []) as Record<string, unknown>[]) manquantes.add(Number(f.id));
+          }
+          const annoncesLb = annonces.map((a) => {
+            const id = Number(a.inventaire_id);
+            return { ...a, capture_photos: a.capture_photo2 != null ? 2 : (a.capture_le ? 1 : null),
+              fiche_au_stock: lueParFiche.has(id), fiche_manque: manquantes.has(id), page_beebs_lue: lueParFiche.get(id) ?? null };
+          });
+          const listeLb = listeLectureFondBeebs(annoncesLb, regleLb, maintenantLb);
+          const aLireLb = annoncesLb.filter((a) => aLireEnFondBeebs(a, maintenantLb)).length;
+          lectureFondBeebs = { ...regleLb, plateforme: "beebs", liste: listeLb, a_lire: aLireLb };
+          if (listeLb.length) console.log(`[get-pending-jobs] userId=${user.id} : lecture de fond Beebs (${regleLb.mode}) — ${listeLb.length} page(s) servie(s), ${aLireLb} annonce(s) à lire (200 au plus comptées)`);
+        } else {
+          lectureFondBeebs = { ...regleLb, plateforme: "beebs" };
+        }
+      } catch (_e) { lectureFondBeebs = null; /* jamais un point de panne */ }
+    }
+
     return json({
       jobs: out,
       // (25/10) Le rattrapage des textes en arrière-plan (null : rien de servi à ce poll).
       lecture_fond: lectureFond,
+      // (25/10 soir, 0.6.145) Beebs en arrière-plan : les photos lues sur la page de l'annonce (null : rien de servi).
+      lecture_fond_beebs: lectureFondBeebs,
       // (02/10) Poste sous le seuil servi de ses seules recréations à 'deleted'.
       ...(posteSousMinimum ? {
         extension_update_required: true, extension_min_build: EXTENSION_MIN_BUILD,

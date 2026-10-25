@@ -30,38 +30,39 @@ export const LECTURE_FOND_RYTHME = Object.freeze({ par_cycle: 3, ecart_s: Object
 const JOUR_MS = 86_400_000;
 
 /** coin_config.lecture_fond_mode → 0..3 ; absent ou illisible → le mode par défaut. */
-export function modeLectureFond(valeur) {
-  if (valeur === null || valeur === undefined || valeur === "") return LECTURE_FOND_MODE_DEFAUT;
+export function modeLectureFond(valeur, defaut = LECTURE_FOND_MODE_DEFAUT) {
+  if (valeur === null || valeur === undefined || valeur === "") return defaut;
   const n = Number(valeur);
-  return Number.isInteger(n) && n >= 0 && n <= 3 ? n : LECTURE_FOND_MODE_DEFAUT;
+  return Number.isInteger(n) && n >= 0 && n <= 3 ? n : defaut;
 }
 
 /**
  * Ce compte lit-il en arrière-plan à ce poll ? (pur)
  * @param {{userId?: string, mode?: number, payant?: boolean, versionOk?: boolean, pauseAntirobot?: boolean,
- *   luesAujourdhui?: number, dernierRefusMs?: number|null, maintenant?: number}} [p]
+ *   luesAujourdhui?: number, dernierRefusMs?: number|null, maintenant?: number,
+ *   rythme?: {par_cycle: number, ecart_s: readonly number[], par_jour: number, pause_refus_h: number}}} [p]
  * @returns {{actif:false, raison:string} | {actif:true, mode:'mesure'|'rattrapage', par_cycle:number, ecart_s:number[], par_jour:number}}
  */
 export function regleLectureFond({
   userId, mode, payant = false, versionOk = false, pauseAntirobot = false,
-  luesAujourdhui = 0, dernierRefusMs = null, maintenant = Date.now(),
+  luesAujourdhui = 0, dernierRefusMs = null, maintenant = Date.now(), rythme = LECTURE_FOND_RYTHME,
 } = {}) {
   const pilote = LECTURE_FOND_PILOTES.includes(String(userId ?? ""));
   const non = (raison) => ({ actif: false, raison });
   if (!versionOk) return non("extension_trop_ancienne");
   if (mode === 0) return non("coupe");
   if (pauseAntirobot) return non("pause_antirobot");
-  if (Number.isFinite(dernierRefusMs) && maintenant - dernierRefusMs < LECTURE_FOND_RYTHME.pause_refus_h * 3_600_000) return non("refus_recent");
+  if (Number.isFinite(dernierRefusMs) && maintenant - dernierRefusMs < rythme.pause_refus_h * 3_600_000) return non("refus_recent");
   if (mode === 1 && !pilote) return non("pas_encore_ouvert");
   if (mode === 2 && !payant && !pilote) return non("pas_encore_ouvert");
-  const reste = LECTURE_FOND_RYTHME.par_jour - (Number(luesAujourdhui) || 0);
+  const reste = rythme.par_jour - (Number(luesAujourdhui) || 0);
   if (reste <= 0) return non("plafond_du_jour");
   return {
     actif: true,
     mode: mode === 1 ? "mesure" : "rattrapage",
-    par_cycle: Math.min(LECTURE_FOND_RYTHME.par_cycle, reste),
-    ecart_s: [...LECTURE_FOND_RYTHME.ecart_s],
-    par_jour: LECTURE_FOND_RYTHME.par_jour,
+    par_cycle: Math.min(rythme.par_cycle, reste),
+    ecart_s: [...rythme.ecart_s],
+    par_jour: rythme.par_jour,
   };
 }
 
@@ -124,4 +125,85 @@ export function debutJourParis(maintenant = Date.now()) {
   const p = Object.fromEntries(fmt.formatToParts(d).map((x) => [x.type, x.value]));
   const ecoule = (Number(p.hour) * 60 + Number(p.minute)) * 60_000 + d.getUTCSeconds() * 1000 + d.getUTCMilliseconds();
   return new Date(maintenant - ecoule).toISOString();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// (25/10 soir — Nico : « Ensuite Beebs (0.6.145 après 48 h de pilote sur mon poste) ») BEEBS EN ARRIÈRE-PLAN
+// ═══════════════════════════════════════════════════════════════════════════
+// L'index Beebs lu par le serveur (releve-completer) porte texte, marque, état, âge, couleur, matière, taille et rayon,
+// mais UNE seule photo : les autres ne sont que sur la page de l'annonce. Le relevé en lit 20 à 27 par passage (≈ un
+// relevé par jour et par compte) : 390 fiches Beebs restaient à une photo le 25/10 (docs/enquetes/import-publier-ailleurs-2510/
+// LECTURE-FOND-AUTRES-PLATEFORMES.md). Ici la page de l'annonce est lue par une requête de MÊME ORIGINE depuis l'onglet
+// www.beebs.app (lireHtmlMemeOrigine, ~1 s, l'onglet ne navigue jamais vers l'annonce), à un rythme plus lent que Vinted :
+// Beebs est plus nerveux (DataDome sur 3,2 % des relevés « Mes annonces », mesuré sur 7 jours) → 2 pages par poll, 30 à
+// 60 s d'écart, 120 par jour et par compte ; le premier 403 / 429 / page de vérification coupe le compte 12 h (serveur
+// ET extension), sans aucun repli qui naviguerait.
+// Ouverture : coin_config.lecture_fond_mode_beebs (absent = 1 : le poste pilote, en MESURE — même chemin, même rythme,
+// rien d'écrit sauf ses vraies fiches à lire ; 2 payants ; 3 tous ; 0 coupé). Critères du pilote avant toute ouverture
+// (≥ 48 h, décision de Nico) : ≥ 200 lectures, 0 refus, médiane < 3 s, échecs hors anti-robot < 5 %.
+export const LECTURE_FOND_BEEBS_VERSION_MIN = "0.6.145";
+export const LECTURE_FOND_BEEBS_MODE_DEFAUT = 1;
+export const LECTURE_FOND_BEEBS_RYTHME = Object.freeze({ par_cycle: 2, ecart_s: Object.freeze([30, 60]), par_jour: 120, pause_refus_h: 12 });
+const ORIGINE_BEEBS = /^https:\/\/www\.beebs\.app\/[^\s]+$/;
+
+/** La dernière lecture de fond Beebs posée sur la fiche (attributs.page_beebs_lue). */
+function derniereLectureBeebs(a) {
+  const l = a?.page_beebs_lue ?? null;
+  if (!l || typeof l !== "object") return null;
+  const t = Date.parse(String(l.at ?? l.v ?? ""));
+  return Number.isFinite(t) ? { t, echec: Boolean(l.echec) } : null;
+}
+
+/**
+ * Cette annonce Beebs a-t-elle besoin de sa page ? (pur) — annonce vivante d'une fiche au stock non fusionnée à qui il
+ * MANQUE quelque chose (une photo ou moins, pas de texte ou pas d'état : `fiche_manque`, posé par la requête du serveur) ;
+ * pas déjà capturée avec plusieurs photos ; pas relue depuis 30 jours (7 jours après un échec).
+ * @param {{listing_id?: string, url?: string, capture_le?: string|null, capture_photos?: number|null,
+ *   fiche_au_stock?: boolean, fiche_manque?: boolean, page_beebs_lue?: unknown}} a
+ */
+export function aLireEnFondBeebs(a, maintenant = Date.now()) {
+  if (!a || !/^\d+$/.test(String(a.listing_id ?? "")) || !ORIGINE_BEEBS.test(String(a.url ?? ""))) return false;
+  if (a.fiche_au_stock !== true || a.fiche_manque !== true) return false;
+  const l = derniereLectureBeebs(a);
+  if (l && maintenant - l.t < (l.echec ? 7 : 30) * JOUR_MS) return false;
+  // Déjà capturée avec plusieurs photos : la fiche se complète par les déclencheurs, rien à relire.
+  if (a.capture_le && Number(a.capture_photos) > 1) return false;
+  return true;
+}
+
+/**
+ * La liste Beebs servie à ce poll (pur). `mesure` (poste pilote) : ses vraies annonces à lire d'abord (écrites), puis une
+ * rotation sur toutes ses annonces vivantes (rien d'écrit) ; `rattrapage` : les annonces à lire, les plus récentes d'abord.
+ * Chaque ligne : { plateforme:'beebs', listing_id, url, inventaire_id, titre, prix, vignette, ecrire? }.
+ */
+export function listeLectureFondBeebs(annonces, regle, maintenant = Date.now()) {
+  if (!regle?.actif) return [];
+  const toutes = (Array.isArray(annonces) ? annonces : [])
+    .filter((a) => /^\d+$/.test(String(a?.listing_id ?? "")) && ORIGINE_BEEBS.test(String(a?.url ?? "")) && a?.inventaire_id != null);
+  const n = Math.max(0, Number(regle.par_cycle) || 0);
+  const ligne = (a, ecrire) => ({
+    plateforme: "beebs", listing_id: String(a.listing_id), url: String(a.url), inventaire_id: String(a.inventaire_id),
+    titre: a.titre ?? null, prix: a.prix ?? null, vignette: a.photo_url ?? null, ...(ecrire === undefined ? {} : { ecrire }),
+  });
+  const parRecence = (x, y) => String(y.created_at ?? "").localeCompare(String(x.created_at ?? ""));
+  const aLire = toutes.filter((a) => aLireEnFondBeebs(a, maintenant)).sort(parRecence);
+  if (regle.mode === "mesure") {
+    const pris = aLire.slice(0, n);
+    const deja = new Set(pris.map((a) => String(a.listing_id)));
+    const out = pris.map((a) => ligne(a, true));
+    const reste = toutes.filter((a) => !deja.has(String(a.listing_id)) && a?.fiche_au_stock === true);
+    if (reste.length) {
+      const depart = Math.floor(maintenant / 120_000) * n % reste.length;   // rotation, un tour par poll
+      for (let i = 0; out.length < n && i < reste.length; i++) out.push(ligne(reste[(depart + i) % reste.length], false));
+    }
+    return out;
+  }
+  return aLire.slice(0, n).map((a) => ligne(a));
+}
+
+/** Un résultat de lecture Beebs est-il un refus anti-robot ? (pur) — tout 403, 429 ou page de vérification. */
+export function refusAntirobotBeebs(motif, http = null) {
+  const h = Number(http);
+  if (h === 403 || h === 429) return true;
+  return /^HTTP (403|429)\b/.test(String(motif ?? "")) || /anti-?robot|captcha|datadome/i.test(String(motif ?? ""));
 }

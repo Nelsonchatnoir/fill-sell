@@ -80,6 +80,18 @@ qui tiennent dans le rythme partagé (≈ 3 + 3), ou séparer les créneaux des 
 ## 6. Le créneau de Jocabroc ce soir — mesure
 (à compléter après 22:00)
 
+## 8. Beebs en arrière-plan (0.6.145) — écrit, pilote sur le poste de Nico
+- Serveur (`_shared/lecture-fond.js` § Beebs, `get-pending-jobs` → `lecture_fond_beebs`) : servi aux seuls postes ≥ 0.6.145 ;
+  interrupteur `coin_config.lecture_fond_mode_beebs` ABSENT = 1 (le poste de Nico seul, en mesure) ; 2 pages par poll, 30 à
+  60 s d'écart, 120 par jour, coupure 12 h au premier refus ; lectures bornées (200 annonces, la 2e photo seulement).
+- Extension 0.6.145 (`lireFondBeebs`) : requête de même origine depuis l'onglet www.beebs.app, jamais de navigation vers
+  l'annonce, jamais pendant un relevé ; 403 / 429 / vérification = « antirobot » → arrêt 12 h tout de suite.
+- Refus et plafond comptés par plateforme (un refus Beebs ne coupe pas Vinted) ; ops-digest lit le journal par pages
+  (avec les payants ouverts, il dépassait 1 000 lignes par jour : PostgREST en coupait le reste sans erreur).
+- Leboncoin : la liste « Mes annonces » porte déjà tout (texte, photos, critères) — aucune page à lire ; le seul manque
+  (relevé qui n'écrit que 400 captures sur 816) est une règle d'écriture, pas une lecture : à faire, CPU mesuré d'abord.
+  Depop : 0 fiche incomplète jamais lue (mesuré le 25/10) — rien à lire.
+
 ## 7. Selftests
 - Avant (18:10 → 18:20, arbre au commit fceb2d5 + migrations renommées) : 433/434 ; le rouge,
   `tables-droits-explicites`, venait de la table `codes_postaux_fr` (droits non écrits dans le fichier) — corrigé.

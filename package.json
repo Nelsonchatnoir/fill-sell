@@ -474,6 +474,7 @@
     "selftest:lecture-origine-devant": "node scripts/lecture-origine-devant-selftest.mjs",
     "selftest:lecture-page-publique": "node scripts/lecture-page-publique-selftest.mjs",
     "selftest:lecture-fond": "node --import ./scripts/loader-ext.mjs scripts/lecture-fond-selftest.mjs",
+    "selftest:lecture-fond-beebs": "node scripts/lecture-fond-beebs-selftest.mjs",
     "selftest:action-app-ratee": "node --import ./scripts/loader-ext.mjs scripts/action-app-ratee-selftest.mjs",
     "selftest:releve-completer-inchange": "node scripts/releve-completer-inchange-selftest.mjs"
   },

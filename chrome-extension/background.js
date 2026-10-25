@@ -2932,6 +2932,153 @@ async function lireFondVinted(session) {
   }
 }
 
+// ── (25/10 soir, 0.6.145) BEEBS EN ARRIÈRE-PLAN : la page de l'annonce, lue sans naviguer ──────────────────────────
+// L'index Beebs n'a qu'UNE photo ; les autres ne sont que sur la page de l'annonce. Le SERVEUR choisit (get-pending-jobs
+// → lecture_fond_beebs : comptes ouverts, annonces à lire, plafonds — _shared/lecture-fond.js § Beebs) ; ici on lit, à
+// son rythme : `par_cycle` pages au plus par poll (2), espacées de `ecart_s` (30 à 60 s), JAMAIS pendant un relevé du
+// poste. Lecture : une requête de MÊME ORIGINE depuis l'onglet www.beebs.app (lireHtmlMemeOrigine, ~1 s) — l'onglet ne
+// navigue JAMAIS vers l'annonce (aucun repli par la page ouverte, contrairement au relevé) ; un onglet absent ou
+// déchargé est réveillé sur l'ACCUEIL de Beebs, comme le relevé. Le premier refus de Beebs (403, 429, page de
+// vérification) arrête tout pour 12 h, ici et au serveur, et se trace (plateforme « beebs »).
+// Mode « mesure » (poste pilote) : le même chemin et le même rythme, rien n'est écrit — sauf ses vraies annonces à lire
+// (`ecrire: true`). Écriture : la même que le relevé (capture de l'annonce, puis la fiche complétée sans rien écraser,
+// reporterCaptureSurArticle), plus la marque `page_beebs_lue` sur la fiche (jamais relue avant 30 jours, 7 après un échec).
+const LECTURE_FOND_BEEBS_PAUSE_KEY = "fs_lecture_fond_pause_jusqua_beebs";
+let lectureFondBeebsServie = null;
+const lecturesFondBeebsDuCycle = new Set();
+let derniereLectureBeebs = 0;
+async function lectureFondBeebsEnPause() {
+  try {
+    const s = await chrome.storage.local.get(LECTURE_FOND_BEEBS_PAUSE_KEY);
+    return Number(s?.[LECTURE_FOND_BEEBS_PAUSE_KEY] ?? 0) > Date.now();
+  } catch { return false; }
+}
+async function poserPauseLectureFondBeebs(heures = 12) {
+  try { await chrome.storage.local.set({ [LECTURE_FOND_BEEBS_PAUSE_KEY]: Date.now() + heures * 3600_000 }); } catch { /* mémoire indisponible */ }
+}
+
+/** Le motif d'une lecture Beebs ratée, rangé (pur) : un refus de Beebs est TOUJOURS « antirobot ». */
+function motifLectureBeebs(motifBrut) {
+  const m = String(motifBrut ?? "");
+  const http = Number((m.match(/^HTTP (\d{3})\b/) ?? [])[1]) || null;
+  if (http === 403 || http === 429 || /anti-?robot|captcha|datadome/i.test(m)) return { motif: "antirobot", http };
+  if (http === 404 || http === 410) return { motif: "introuvable", http };
+  if (/^page rendue/i.test(m) || /sans données d'annonce/i.test(m)) return { motif: "page_sans_annonce", http };
+  if (/pas de réponse|timeout|aborted/i.test(m)) return { motif: "delai", http };
+  return { motif: m ? m.slice(0, 40) : "illisible", http };
+}
+
+/** La page d'UNE annonce Beebs, lue sans naviguer, SOUS le verrou de flux (l'appelant le tient). */
+async function lirePageBeebsSansNaviguer(l) {
+  const t0 = Date.now();
+  let tabId = await workTabForFetch("beebs").catch(() => null);
+  let tab = tabId != null ? await chrome.tabs.get(tabId).catch(() => null) : null;
+  if (!tab || tab.discarded || !/^https:\/\/www\.beebs\.app\//.test(String(tab.url ?? ""))) {
+    // Absent ou déchargé : réveillé sur l'accueil (le geste d'un visiteur), comme le relevé — jamais sur l'annonce.
+    tabId = await getOrCreateWorkTab("beebs", "https://www.beebs.app/").catch(() => null);
+    tab = tabId != null ? await chrome.tabs.get(tabId).catch(() => null) : null;
+    if (!tab || !/^https:\/\/www\.beebs\.app\//.test(String(tab.url ?? ""))) return { ok: false, motif: "onglet_indisponible", ms: Date.now() - t0 };
+  }
+  const [lu] = await avecDelai(chrome.scripting.executeScript({ target: { tabId }, func: lireHtmlMemeOrigine, args: [l.url, String(l.listing_id)] }), 30_000, "lecture de la page Beebs").catch((e) => [{ result: { ok: false, motif: String(e?.message ?? e) } }]);
+  const res = lu?.result ?? null;
+  if (!res) return { ok: false, motif: "sans_resultat", ms: Date.now() - t0 };
+  if (!res.ok || !res.html) return { ok: false, ...motifLectureBeebs(res.motif), ms: Date.now() - t0 };
+  const [cap] = await avecDelai(chrome.scripting.executeScript({ target: { tabId }, func: capturerFicheEnPage, args: ["beebs", res.html] }), 20_000, "capture de la page Beebs").catch(() => [null]);
+  const c = cap?.result ?? null;
+  if (!c || (!c.photos?.length && !c.description)) return { ok: false, motif: "page_sans_annonce", ms: Date.now() - t0 };
+  return { ok: true, capture: { ...c, lecture: "meme_origine", via: "lecture_fond" }, photos: c.photos?.length ?? 0, ms: Date.now() - t0 };
+}
+
+/** La capture posée comme le fait le relevé (capture de l'annonce, puis la fiche complétée sans rien écraser). */
+async function ecrireCaptureBeebsDeFond(token, userId, l, capture) {
+  const at = new Date().toISOString();
+  const lid = encodeURIComponent(String(l.listing_id));
+  const avant = await restRequest(`annonces_plateforme?user_id=eq.${userId}&platform=eq.beebs&listing_id=eq.${lid}&select=capture`, token)
+    .then((r) => (Array.isArray(r) ? r[0]?.capture ?? null : null)).catch(() => null);
+  // `ligne` : le titre et le prix de la liste, connus du serveur (annonces_plateforme) — c'est ce qui évite au relevé
+  // suivant de la croire « périmée » et de la relire.
+  const ligne = ligneDeListe({ titre: l.titre, prix: l.prix });
+  const maj = await restRequest(`annonces_plateforme?user_id=eq.${userId}&platform=eq.beebs&listing_id=eq.${lid}&select=inventaire_id`, token, {
+    method: "PATCH", headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ capture: { ...capture, ligne, at }, capture_le: at, updated_at: at }),
+  }).catch(() => null);
+  const invId = Array.isArray(maj) ? maj[0]?.inventaire_id ?? null : null;
+  let complete = false;
+  if (invId) {
+    const r = await reporterCaptureSurArticle(invId, capture, "beebs", { token, userId, vignette: l.vignette ?? null, avant, prixListe: ligne.prix, titreListe: ligne.titre }).catch(() => null);
+    complete = Boolean(r?.ecrit);
+  }
+  return { invId, complete };
+}
+
+async function marquerLectureBeebs(token, inventaireId, echec = null) {
+  const id = Number(inventaireId);
+  if (!token || !Number.isFinite(id)) return;
+  const at = new Date().toISOString();
+  await restRequest(`inventaire?id=eq.${id}`, token, {
+    method: "PATCH", body: JSON.stringify({ attributs: { page_beebs_lue: { v: at, source: "beebs_page", at, ...(echec ? { echec } : {}) } } }),
+  }).catch(() => {});
+}
+
+async function tracerLectureFondBeebs(token, l, lu, origine) {
+  const userId = decodeJwtSub(token);
+  if (!userId) return;
+  await restRequest("usage_logs", token, {
+    method: "POST",
+    body: JSON.stringify([{ user_id: userId, feature: "lecture_fond", metadata: {
+      plateforme: "beebs",
+      resultat: lu?.ok ? "ok" : String(lu?.motif ?? "inconnu").slice(0, 40),
+      http: lu?.http ?? null, ms: lu?.ms ?? null, origine: String(origine ?? "fond").slice(0, 20),
+      inventaire_id: String(l?.inventaire_id ?? ""), listing_id: String(l?.listing_id ?? ""),
+      photos: Number.isFinite(lu?.photos) ? lu.photos : null, description: Boolean(lu?.capture?.description), etat: Boolean(lu?.capture?.etat),
+      build: FILLSELL_BUILD_ID, at: new Date().toISOString(),
+    } }]),
+  }).catch(() => {});
+}
+
+async function lireFondBeebs(session) {
+  const token = session?.access_token;
+  const regle = lectureFondBeebsServie;
+  if (!token || !regle || regle.actif !== true) return;
+  if (releveEnCours) return;                       // jamais pendant un relevé du poste (même onglet de travail)
+  if (await lectureFondBeebsEnPause()) return;
+  const userId = decodeJwtSub(token);
+  if (!userId) return;
+  const liste = (Array.isArray(regle.liste) ? regle.liste : [])
+    .filter((l) => /^\d+$/.test(String(l?.listing_id ?? "")) && /^https:\/\/www\.beebs\.app\//.test(String(l?.url ?? ""))
+      && !lecturesFondBeebsDuCycle.has(String(l.listing_id)));
+  const parCycle = Math.max(0, Math.min(Number(regle.par_cycle) || 0, 3));
+  const eMin = Math.max(20, Number(regle.ecart_s?.[0]) || 30);
+  const eMax = Math.max(eMin, Number(regle.ecart_s?.[1]) || 60);
+  let n = 0;
+  for (const l of liste) {
+    if (n >= parCycle) break;
+    const attente = derniereLectureBeebs + (eMin + Math.random() * (eMax - eMin)) * 1000 - Date.now();
+    if (attente > 0) await sleep(attente);
+    if (releveEnCours) return;
+    n++;
+    derniereLectureBeebs = Date.now();
+    lecturesFondBeebsDuCycle.add(String(l.listing_id));
+    const r = await lirePageBeebsSansNaviguer(l).catch((e) => ({ ok: false, motif: "exception", detail: String(e?.message ?? e) }));
+    await tracerLectureFondBeebs(token, l, r, regle.mode === "mesure" ? "mesure" : "fond");
+    if (r?.motif === "antirobot") {
+      console.warn(`[lecture-fond][beebs] annonce ${l.listing_id} : refus de Beebs (${r.http ?? "vérification"}) — arrêt 12 h`);
+      await poserPauseLectureFondBeebs(12);
+      return;
+    }
+    // Mesure du rythme : rien n'est écrit — sauf les vraies annonces à lire du poste pilote (`ecrire: true`).
+    if (regle.mode === "mesure" && l.ecrire !== true) continue;
+    if (r?.ok) {
+      const { complete } = await ecrireCaptureBeebsDeFond(token, userId, l, r.capture);
+      await marquerLectureBeebs(token, l.inventaire_id);
+      console.log(`[lecture-fond][beebs] annonce ${l.listing_id} (fiche ${l.inventaire_id}) : ${r.photos} photo(s)${complete ? ", fiche complétée" : ""}`);
+    } else if (r?.motif === "introuvable" || r?.motif === "page_sans_annonce") {
+      // Une annonce qui n'existe plus (ou une page sans elle) n'est pas relue à chaque cycle : la marque dit pourquoi.
+      await marquerLectureBeebs(token, l.inventaire_id, r.motif);
+    }
+  }
+}
+
 // Nombre de jobs que le serveur a retenus POUR laisser passer la sync de ce
 // cycle (get-pending-jobs, champ sync_prioritaire). 0 = file honnêtement vide.
 let syncPrioritaireDuCycle = 0;
@@ -3465,6 +3612,7 @@ async function pollAndProcessJobsUnlocked() {
   majPlanifiee = false;
   // (25/10, 0.6.144) Les fiches lues CE cycle (lecture d'origine ou rattrapage) : jamais deux fois la même.
   lecturesFondDuCycle.clear();
+  lecturesFondBeebsDuCycle.clear();
   const session = await getValidSession();
   if (!session) {
     console.log("[background] Pas de session valide, poll ignoré");
@@ -3559,6 +3707,8 @@ async function pollAndProcessJobsUnlocked() {
     // (25/10, 0.6.144) Le rattrapage des textes en arrière-plan : ce que le serveur ouvre à CE compte (liste, rythme,
     // plafonds). Absent (serveur plus ancien, compte pas encore ouvert) : aucune lecture de fond.
     lectureFondServie = rep.lecture_fond && typeof rep.lecture_fond === "object" ? rep.lecture_fond : null;
+    // (25/10 soir, 0.6.145) Beebs en arrière-plan : ce que le serveur ouvre à CE compte (liste, rythme, plafonds).
+    lectureFondBeebsServie = rep.lecture_fond_beebs && typeof rep.lecture_fond_beebs === "object" ? rep.lecture_fond_beebs : null;
     // Relevés multiplateforme (2026-09-17) : [{ id, platform }] — servis aux
     // extensions ≥ 0.6.42 seulement, traités après le poll (verrou rendu).
     commandesAnnoncesEnAttente = Array.isArray(rep.sync_commands_annonces) ? rep.sync_commands_annonces : [];
@@ -3827,6 +3977,9 @@ async function pollAndProcessJobsUnlocked() {
   // (25/10, 0.6.144) Puis le rattrapage : les fiches importées sans texte, couleur ni rayon, lues avant tout clic.
   await lireFondVinted(session).catch((e) =>
     console.warn("[lecture-fond] rattrapage :", String(e?.message ?? e)));
+  // (25/10 soir, 0.6.145) Puis Beebs : les photos (et le texte, l'état) lus sur la page de l'annonce, sans naviguer.
+  await lireFondBeebs(session).catch((e) =>
+    console.warn("[lecture-fond][beebs] rattrapage :", String(e?.message ?? e)));
   await recoverMissingListingUrls(session).catch((e) =>
     console.error("[background] recoverMissingListingUrls:", e)
   );

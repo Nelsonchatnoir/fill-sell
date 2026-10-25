@@ -684,3 +684,20 @@
 - ⛔ **Cadence intouchée** : rythme du COMPTE toutes plateformes (18/09), un job par compte et par passage, intervalle =
   durée / prévues, plafonds, quotas. Le **rythme par plateforme** (étape 6 : `AND j.platform = v_pf`) attend la décision de
   Nico : sans lui, deux plateformes du même créneau ne font pas 6 + 5 (la plus lente ne passe jamais).
+
+## 25/10 soir — lecture de fond : payants ouverts (Vinted) ; Beebs en arrière-plan (0.6.145, pilote 48 h sur le poste de Nico)
+- **Vinted** : `coin_config.lecture_fond_mode = 2` depuis le 25/10 18:23:21 (feu vert de Nico, journalisé) — servi aux seuls
+  postes ≥ 0.6.144 : chaque compte payant commence quand son Chrome reçoit la 0.6.144 du Web Store.
+- **Beebs** (`_shared/lecture-fond.js` § Beebs, `get-pending-jobs` → `lecture_fond_beebs`, extension ≥ 0.6.145
+  `lireFondBeebs`) : la page de l'annonce lue par une requête de MÊME ORIGINE depuis l'onglet www.beebs.app (l'onglet ne
+  navigue jamais vers l'annonce ; absent ou déchargé, il est réveillé sur l'accueil), pour les fiches au stock à une photo
+  (ou sans texte, sans état) dont l'annonce n'a jamais été capturée avec plusieurs photos. Rythme : 2 pages par poll,
+  30 à 60 s d'écart, 120 par jour et par compte ; jamais pendant un relevé du poste ; le premier 403 / 429 / page de
+  vérification coupe le compte 12 h (extension et serveur). Écriture = celle du relevé (capture, puis la fiche complétée
+  sans rien écraser) + `attributs.page_beebs_lue` (relue au plus tôt à 30 jours, 7 après un échec).
+- Interrupteur : `coin_config.lecture_fond_mode_beebs` (absent = 1 : le poste pilote en MESURE, rien d'écrit sauf ses vraies
+  fiches à lire ; 2 payants ; 3 tous ; 0 coupé). Ouverture après le pilote (≥ 48 h, ≥ 200 lectures, 0 refus, médiane < 3 s,
+  échecs hors anti-robot < 5 %) : décision de Nico, avec le zip 0.6.145.
+- Les refus et le plafond du jour se comptent PAR plateforme (`metadata.plateforme` ; sans plateforme = Vinted) : un refus
+  Beebs ne coupe pas Vinted. ops-digest lit le journal par pages (> 1 000 lignes par jour avec les payants) et par plateforme.
+- Selftest `lecture-fond-beebs` (44 contrôles : règle, liste, motif de l'extension exécuté, branchements).
