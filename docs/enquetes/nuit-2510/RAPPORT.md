@@ -96,7 +96,7 @@ aucun push ne peut partir aujourd'hui, ventes comprises.
 **Classement** (`scripts/zero-blocage-mesure.mjs --libelle nuit-2510 --depuis 2026-10-18`, résultat
 `docs/enquetes/zero-blocage-2410/mesure-nuit-2510.json`, après le correctif N1) : 324 jobs arrêtés depuis le 18/10 —
 188 arrêts de notre fait, 139 gestes de la personne, 28 plateformes, 7 gardes. En cours sur les comptes actifs : 23 de notre
-fait (dont 10 « marque hors menu » qui attendent la 0.6.134 de leur poste), 69 de la personne, 12 plateforme.
+fait (dont 10 « marque hors menu » en file, que la règle A3 relâche dès que leur poste porte la chaîne de repli ≥ 0.6.134 — la 0.6.141, servie par le Chrome Web Store depuis 00:28, les fera repartir seules ; et 3 « format de colis » : Vinted ne propose plus que des poids pour ces rayons, et « on ne le choisit jamais à ta place » — décision), 69 de la personne, 12 plateforme.
 
 **Corrigé cette nuit (cause racine)** : N1 classement de la sentinelle (12 échecs invisibles : « Arrêtée à ta demande »,
 `arret_utilisateur`, anti-robot et autre boutique = la personne) ; N2 sonde publique non mesurée prise pour « en ligne »
@@ -155,6 +155,6 @@ pour une adresse italienne) ; N11 Beebs XEWER : 27 dépôts sur 29 jamais vus en
 - **Migrations appliquées** : `20261025010000` (00:47), `20261025030000` (01:28), `20261025013000` (01:30),
   `20261025020000` (01:32). **Écrite, non appliquée** : `20261025040000` (push). `20261024235900` reste non appliquée.
 - **Extension 0.6.142** : `build\CWS-0.6.142-A-TELEVERSER\fillsell-extension-0.6.142-355cbd0-cws.zip`
-  (BUILD_ID 2026-10-24T23:42:26Z+355cbd0) ; la 0.6.141 (en examen) est rangée dans `build\CWS-PERIMES\`. Poste de Nico :
+  (BUILD_ID 2026-10-24T23:42:26Z+355cbd0) ; la 0.6.141, ACCEPTÉE et servie par le Chrome Web Store depuis 00:28 (9 comptes à 02:04), est rangée dans `build\CWS-PERIMES\`. Poste de Nico :
   ce build exact (relu 01:50).
 - **OTA 2.9.114 préparée, NON envoyée** (voir l'état de prod).
