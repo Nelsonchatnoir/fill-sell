@@ -30,7 +30,7 @@ d'AUTRES fiches du même lot, chacune rattachée à son propre dépôt publié ;
 (essai annulé vert) ; passage réel de 00:27 : les 6 jobs repartis une fois (louis c7526556, 88db7e2e ; Ciddjy 1819ed99,
 23ef4d54, 5871f48a, 39b1a35e). 0 mail.
 
-**Résultat (25/10, 01:56)** : louis c7526556 et 88db7e2e **publiées** (recreated) ; Ciddjy ×4 en file (poste éteint
+**Résultat (25/10, 01:56)** : louis c7526556 et 88db7e2e **publiées** à 00:29 et 00:33 (une seule annonce vivante par fiche) ; Ciddjy ×4 en file (poste éteint
 depuis le 24/10 11:39 : partent à son retour, servies une fois).
 
 ## 1b. « FillSell attend le prochain relevé » : tranché, et le relevé est demandé
@@ -64,7 +64,7 @@ est en ligne sur la bonne boutique). Rien n'a été retiré ni publié par ces d
 | sebbastien1 17715aee | rayon Beebs « Jouets en bois » tiré du mot « poisson bois gravé » sans la famille Lens (maison_deco) | `familleFiltreDesCandidates` (Beebs) : une famille maison filtre les feuilles, jamais un repli jouets | réparé (rayon « Décorations murales », script, 01:08:50) ; en file, poste éteint depuis le 19/10 |
 | Fleur de Lotus c64e5596 | eBay voie clic : les photos n'arrivent jamais dans le brouillon (jamais vérifié) ; compte eBay PAS vendeur (onboarding pour ses 3 autres jobs) | non codé cette nuit (R1 vérifier la réception des photos, R2 refus nommé lu, R3 mur « inscription vendeur » étendu au compte) | NON relancé (relancer échouerait : compte non vendeur) — décision |
 | Glowik 6d95f4eb | lien (34119130, mis en ligne par CE job) et copie (33946058) contradictoires → abstention ×5 | get-pending-jobs : copie réalignée quand le relevé le prouve, sinon arrêt avant retrait au vrai message ; extension : l'abstention dit sa cause | relancé UNE fois (script, 01:36:43, preuve relue au geste) ; poste éteint depuis le 24/10 20:12 |
-| Jocabroc bfe46249 « Porte-savon » | accident AVANT retrait (page de dépôt rechargée ≈ 30 s après le remplissage), pris pour un geste « ferme Chrome » | `_shared/accident-avant-retrait.js` (règle A5 du 24/10, côté serveur) | **republié** (remis en file 01:36 par handler-watch, poste allumé) |
+| Jocabroc bfe46249 « Porte-savon » | accident AVANT retrait (page de dépôt rechargée ≈ 30 s après le remplissage), pris pour un geste « ferme Chrome » | `_shared/accident-avant-retrait.js` (règle A5 du 24/10, côté serveur) | **republié à 01:45** (remis en file 01:36 par handler-watch ; ancienne annonce 10297959284 retirée, nouvelle 10518493506 seule en ligne) |
 | Deborah 83206086 « Lot de 10 pin's » | annonce JAMAIS retirée (étape captured, fiche active) : onglet muet 42 min ; « interrompue pendant la suppression » était faux | même règle | remis en file 01:36 ; poste éteint depuis le 24/10 22:52 |
 
 ## 1d. Titre « trop de majuscules » (décision de Nico)
@@ -105,11 +105,16 @@ N7 vente écrite deux fois (verrou + relecture, VentesTab) ; N8 diagnostic « [o
 pointure « EU N » (Marta) ; Beebs cycle/copie/rayon.
 
 **Restent (notre fait, non codés cette nuit — prochain lot)** : N3 canal coupé APRÈS recréation (update-job-status rend
-« Relance-la » ; la reprise sans geste ne prend que « captured ») ; N4 Depop « EU 34 », « W38 », « M » non traduits
-(24 jobs, 5 comptes, 4 abandons) et genre enfant demandé (7) ; N5 eBay Taille : l'IA pose un mot du titre hors gabarit ;
+« Relance-la » ; la reprise sans geste ne prend que « captured » — 0 job concerné le 25/10 à 02:05) ; N4 Depop « EU 34 », « W38 », « M » non traduits
+(24 jobs, 5 comptes, 4 abandons ; touche la règle du 28/09, voir décisions) et genre enfant demandé (7) ; N5 eBay Taille : l'IA pose un mot du titre hors gabarit ;
 N6 eBay voie clic : retours non remplis → brouillon refusé (lemonde-glad ×3) ; N9 couleur Vinted sans couleur_auto, feuille
 « …à l'unité » absente, mention « instagram » refusée par Leboncoin ; N10 jobs hors périmètre en file (eBay UK, Leboncoin
 pour une adresse italienne) ; N11 Beebs XEWER : 27 dépôts sur 29 jamais vus en ligne (modération ou dépôt muet ?).
+Signaux de blocage (`usage_logs`, 7 j) : `champ_requis_bloquant` 1 095 sur 28 comptes (affiché 537, complété 360, retiré
+93, abandonné 61, bloqué au clic 36) — en tête : Beebs Taille 158 (dont 104 « Pantalons homme > Autre » pour un compte),
+Beebs Âge 94 (« Livres > Autres livres » 66), eBay Longueur/Largeur/Hauteur (catégorie 79654, 13 abandons), Leboncoin
+`shoe_size` 32 (10 abandons : la pointure « EU N », corrigée cette nuit) ; `abandon_plateforme` 15, tous après une
+question ; relevés de ventes en erreur : Leboncoin `jeton_absent` 119 (52 comptes), Vinted http_400 39 / 401 25.
 États faux relevés : 8 Beebs « publiés » sans lien ni numéro ; 9138772c (Vincent A.) retirée, deux envois non confirmés ;
 931a27d7 (Ines) fiche vendue sans ligne de vente ; sebbastien1 : 27 publications « restreint jusqu'au 23/10 » (poste muet).
 
@@ -152,9 +157,45 @@ pour une adresse italienne) ; N11 Beebs XEWER : 27 dépôts sur 29 jamais vus en
 - **Déployé** (version et `verify_jwt` relus avant et après) : handler-watch v127 → v129 (false), update-job-status v148
   (false), get-pending-jobs v280 → v281 (true), ops-digest v39 (false), google-play-webhook v30 (false),
   validate-apple-receipt v33 (true). Non déployés : apple-iap-webhook (esm.sh), push-ventes (attend la décision push).
+  Après déploiement (00:00 → 02:20, journaux des fonctions) : 0 erreur, 0 réponse non-2xx ; durées moyennes (p95)
+  inchangées — get-pending-jobs 2,0 s (4,0) contre 2,2 s (4,2), handler-watch 6,7 s (8,8) contre 7,1 s (9,1),
+  update-job-status 0,49 s (0,66) contre 0,47 s (0,64). Web a9ef815 servi à 02:05 (entrée et App en 200, avec et sans
+  `Origin`) ; 5 ventes enregistrées après 02:00, aucune en double ; 0 mail depuis 01:20.
 - **Migrations appliquées** : `20261025010000` (00:47), `20261025030000` (01:28), `20261025013000` (01:30),
   `20261025020000` (01:32). **Écrite, non appliquée** : `20261025040000` (push). `20261024235900` reste non appliquée.
 - **Extension 0.6.142** : `build\CWS-0.6.142-A-TELEVERSER\fillsell-extension-0.6.142-355cbd0-cws.zip`
   (BUILD_ID 2026-10-24T23:42:26Z+355cbd0) ; la 0.6.141, ACCEPTÉE et servie par le Chrome Web Store depuis 00:28 (9 comptes à 02:04), est rangée dans `build\CWS-PERIMES\`. Poste de Nico :
   ce build exact (relu 01:50).
 - **OTA 2.9.114 préparée, NON envoyée** (voir l'état de prod).
+
+## Ce qui attend le feu vert de Nico, et les décisions
+
+**Feux verts** :
+1. **Zip 0.6.142** à téléverser : `build\CWS-0.6.142-A-TELEVERSER\fillsell-extension-0.6.142-355cbd0-cws.zip`
+   (583 249 octets, sha256 `9ef60f898ae3c62d008ba4b1842c200d8637c66de4f768f1f2ec1f37d822c1c7`). La 0.6.141 a
+   été ACCEPTÉE cette nuit (mises à jour Chrome dès 00:28) : plus aucun examen en cours, téléversable tout de suite.
+2. **OTA 2.9.114** : `dist/` prêt (build 2026-10-25T00:03:06Z+a9ef815) ; envoi : `npx @capgo/cli bundle upload --channel
+   production --bundle 2.9.114 --path dist`, puis relire le canal. Le web tourne déjà ce code (a9ef815, 02:05).
+3. **Test « Republier » sur le short** : l'annonce Vinted 10144115529 est à 1 € (relevés du 22 au 24/10) — le geste la
+   remet en ligne à 1 €, sous la règle des 999 €. Ses remises sont toutes « faites » : il faudra créer le job de test
+   ensemble (script), poste allumé, une seule fois — ou décider d'abord du prix.
+4. **apple-iap-webhook** dès qu'esm.sh reconstruit `@peculiar/x509@1.9.0` (contrôle : `curl -H "User-Agent: Deno/2.1.4"
+   https://esm.sh/@peculiar/x509@1.9.0` → 200), puis le rattrapage des 8 dates Apple (script prêt).
+5. **Suppression des 64 ventes en double** (af37fa49, 28/09) : `scripts/reparations/20261025_ventes_en_double.sql`
+   (sauvegarde + inverse, essai vert) — refusée au mode auto, à lancer par toi.
+
+**Décisions** :
+- ISBN « 0000000000 » (10 zéros) : faire la preuve sur ton compte (un livre à 999 €) ou le tenir pour « 0000000000000 »
+  — 30 republications retenues (Rég 1, Vincent A. 29).
+- Marta : Leboncoin avec une adresse italienne (37 jobs en file, 0 publié) — refuser Leboncoin avant la file ? Et
+  l'Adidas 90ace0e4 partie en pointure 16 (Leboncoin 3294638238, Beebs 34229052) : réparer par le circuit ?
+- Format de colis Vinted : Vinted ne propose plus que des poids (5/10/20/30 kg) pour certains rayons, la copie porte
+  « Petit/Moyen/Grand » (et l'inverse) — 3 republications attendent un choix ; une correspondance automatique ?
+- Tailles Depop « EU 36 » face à une grille qui écrit « 36 » : la règle du 28/09 (point G) les tient pour différentes sur
+  un vêtement (tour de taille « W36 ») — l'autoriser quand la grille Depop se déclare EUR ? (N4)
+- Push : armer `20261025040000` + push-ventes v14 suppose un appareil et les secrets APNs/FCM (aucun aujourd'hui).
+- Google Pub/Sub : activer l'authentification de l'abonnement push, puis `GOOGLE_PUBSUB_AUTH=exiger`.
+- Serveur Hetzner de test fillsell-cloud-1 (≈ 0,66 €/j, aucun client) : le garder ou le supprimer.
+- Comptes supprimés : 15 abonnements eBay « actif » et 4 458 `ventes_supprimees` gardés — règle de conservation.
+- `EXTENSION_MIN_BUILD` (bandeau « mets à jour ton extension ») : le poser sur la 0.6.141 maintenant, ou attendre la 0.6.142.
+- Ornella : ouvrir sa boutique @ornella-vend une fois dans Chrome (10 republications l'attendent) — la prévenir ?
