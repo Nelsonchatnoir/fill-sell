@@ -16894,7 +16894,28 @@ function capturerFicheEnPage(plateforme, html = null) {
     out.description = ld?.description ? texteDeHtml(ld.description) : null;
     out.marque = ld?.brand?.name ?? (typeof ld?.brand === "string" ? ld.brand : null) ?? ligneLibellee(["Marque"]);
     out.couleur = ld?.color ?? ligneLibellee(["Couleur"]);
-    out.taille = ligneLibellee(["Taille"]); out.etat = ligneLibellee(["État", "Etat"]); out.matiere = ligneLibellee(["Matière", "Matiere"]);
+    // (25/10, chaouidz 32089448) Une chaussure affiche « Pointure », pas « Taille » : lue aussi.
+    out.taille = ligneLibellee(["Taille", "Pointure"]); out.etat = ligneLibellee(["État", "Etat"]); out.matiere = ligneLibellee(["Matière", "Matiere"]);
+    // ── (25/10, chaouidz) TOUT CE QUE LA FICHE AFFICHE EN « LIBELLÉ / VALEUR » ──
+    // Sa republication, rayon enfin posé, s'est arrêtée sur « Fermeture » (« aucune valeur certaine ») alors que
+    // l'annonce en ligne l'écrit : « Fermeture — À enfiler » (relevé le 25/10). Comme pour Leboncoin (« on prend
+    // tout ce que la page donne », 19/09) : chaque ligne libellé / valeur de la fiche est gardée telle quelle ;
+    // reprendreChampsDeLAnnonce n'en comble que les attributs Beebs VIDES de la copie, et le connecteur ne pose
+    // une valeur que si le formulaire la propose (sinon la question reste).
+    {
+      const paires = {};
+      for (const f of feuilles()) {
+        const libelle = propre(f.textContent);
+        if (!libelle || libelle.length > 40 || /[:€]|\d{3,}/.test(libelle) || BRUIT_INTERFACE_RE.test(libelle)) continue;
+        const parent = f.parentElement;
+        const feuillesDuParent = Array.from(parent?.querySelectorAll("*") ?? []).filter((x) => !x.children.length);
+        if (feuillesDuParent.length !== 2 || feuillesDuParent[0] !== f) continue;
+        const valeur = propre(feuillesDuParent[1].textContent);
+        if (!valeur || valeur.length > 80 || paires[libelle] !== undefined) continue;
+        paires[libelle] = valeur;
+      }
+      out.attributs_affiches = Object.keys(paires).length ? paires : null;
+    }
     // L'ÂGE (03/10, Louis) : la ligne « Âge » de la fiche (« 16 ans et + »).
     // Une republication le reprend tel quel au lieu de le redemander
     // (get-pending-jobs, _shared/beebs-age-releve.js).
@@ -25669,6 +25690,27 @@ async function reprendreChampsDeLAnnonce(job, pf) {
         chemin: pf.beebsCategoryPath, source: "fil d'Ariane (ld+json) de l'annonce en ligne",
         le: new Date().toISOString(), pose_par: "extension (fiche en ligne, avant retrait)",
       };
+    }
+  }
+  // ── (25/10, chaouidz) LES ATTRIBUTS BEEBS AFFICHÉS PAR L'ANNONCE, QUAND LA COPIE NE LES A PAS ──
+  // « Fermeture — À enfiler » sur 32089448, absent de la copie (venue d'un relevé) : repris tel quel dans
+  // beebsAspects, VIDE seulement (jamais par-dessus une valeur de la copie ou une réponse) ; les lignes déjà
+  // lues par leur propre champ (marque, couleur, taille, état, matière, âge) n'y vont pas. Le connecteur ne pose
+  // qu'une valeur que le formulaire propose ; le pré-vol reste juge, AVANT tout retrait.
+  if (job.platform === "beebs" && cap.attributs_affiches && typeof cap.attributs_affiches === "object") {
+    const dejaLus = new Set(["Marque", "Couleur", "Taille", "Pointure", "État", "Etat", "Matière", "Matiere", "Âge", "Age", "Vendu par", "Ajouté", "Ajoutée"]);
+    const aspects = { ...(pf.beebsAspects && typeof pf.beebsAspects === "object" ? pf.beebsAspects : {}) };
+    const reprisAspects = {};
+    for (const [libelle, valeur] of Object.entries(cap.attributs_affiches)) {
+      if (dejaLus.has(libelle) || String(aspects[libelle] ?? "").trim()) continue;
+      aspects[libelle] = valeur;
+      reprisAspects[libelle] = valeur;
+    }
+    if (Object.keys(reprisAspects).length) {
+      pf.beebsAspects = aspects;
+      repris.beebsAspects = Object.entries(reprisAspects).map(([k, v]) => `${k} : ${v}`).join(" ; ");
+      pf.attributs_repris_de_l_annonce = { attributs: reprisAspects, le: new Date().toISOString(), pose_par: "extension (fiche en ligne, avant retrait)" };
+      lus.attributs_affiches = cap.attributs_affiches;
     }
   }
   if (!Object.keys(lus).length) return null;

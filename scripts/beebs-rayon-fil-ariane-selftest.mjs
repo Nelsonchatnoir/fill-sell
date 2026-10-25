@@ -154,5 +154,45 @@ ok(!lu.some((f) => f.chemin[1] === 'Garçon') && lu.some((f) => f.chemin[1] === 
 ok(/genresPossibles: plan\.plateforme !== "vinted" \? genresDuRayonVinted\(fiche\?\.vinted_catalog_id\) : null/.test(hw)
   && /select\("titre, description, type, attributs, vinted_catalog_id"\)/.test(hw), 'handler-watch lit le rayon Vinted de la fiche (Beebs, Leboncoin seulement)');
 
+// ── 5. (25/10, chaouidz) LES ATTRIBUTS AFFICHÉS : « Fermeture — À enfiler » ──────────────────────────────────────
+console.log('\n5. les lignes « libellé / valeur » de la fiche comblent les attributs Beebs VIDES de la copie');
+{
+  // Un DOM minimal : <div><span>Libellé</span><span>Valeur</span></div> × n, sous body.
+  const el = (texte, enfants = []) => {
+    const e = { _t: texte, children: enfants, parentElement: null };
+    Object.defineProperty(e, 'textContent', { get: () => (e.children.length ? e.children.map((c) => c.textContent).join('') : e._t) });
+    e.querySelectorAll = (sel) => (sel === '*' ? tous(e) : []);
+    for (const c of enfants) c.parentElement = e;
+    return e;
+  };
+  const tous = (e) => e.children.flatMap((c) => [c, ...tous(c)]);
+  const lignes = [['Marque', 'Nike'], ['Pointure', '18'], ['Couleur', 'Noir'], ['État', 'Neuf, avec étiquette'], ['Fermeture', 'À enfiler']]
+    .map(([l, v]) => el('', [el(l), el(v)]));
+  const vendeur = el('', [el('Vendu par'), el('Khalti F.'), el('100 %')]);   // trois feuilles : jamais une paire
+  const body = el('', [...lignes, vendeur]);
+  const docAttr = {
+    ...documentFactice([PRODUIT, FIL]),
+    querySelectorAll(sel) {
+      if (sel === 'body *') return tous(body);
+      return documentFactice([PRODUIT, FIL]).querySelectorAll(sel);
+    },
+  };
+  const c5 = capturer(docAttr);
+  ok(c5.taille === '18', 'la « Pointure » d’une chaussure est lue comme sa taille', String(c5.taille));
+  ok(c5.attributs_affiches?.Fermeture === 'À enfiler' && c5.attributs_affiches?.Pointure === '18', 'attributs_affiches : Fermeture « À enfiler », Pointure « 18 »', JSON.stringify(c5.attributs_affiches));
+  ok(!('Vendu par' in (c5.attributs_affiches ?? {})), 'une ligne de plus de deux feuilles (vendeur) n’est jamais une paire');
+  const pf5 = { etat: 'Neuf, avec étiquette', beebsCategoryPath: ['Mode', 'Garçon', 'Chaussures (garçon)', 'Baskets (garçon)'] };
+  await fabrique({ ...capReelle, attributs_affiches: c5.attributs_affiches })(jobB, pf5);
+  ok(pf5.beebsAspects?.Fermeture === 'À enfiler', '8a608034 : beebsAspects.Fermeture = « À enfiler » (lu sur l’annonce)', JSON.stringify(pf5.beebsAspects));
+  ok(!('Marque' in (pf5.beebsAspects ?? {})) && !('Pointure' in (pf5.beebsAspects ?? {})) && !('État' in (pf5.beebsAspects ?? {})), 'les lignes lues par leur propre champ (marque, taille, état…) n’y vont pas');
+  ok(pf5.attributs_repris_de_l_annonce?.attributs?.Fermeture === 'À enfiler', 'tracé (attributs_repris_de_l_annonce)');
+  const pf6 = { beebsCategoryPath: ['Mode'], beebsAspects: { Fermeture: 'À scratch' } };
+  await fabrique({ ...capReelle, attributs_affiches: c5.attributs_affiches })(jobB, pf6);
+  ok(pf6.beebsAspects.Fermeture === 'À scratch', 'une valeur déjà posée (copie ou réponse) n’est JAMAIS écrasée');
+  const pf7 = {};
+  await fabrique({ ...capReelle, attributs_affiches: c5.attributs_affiches })({ ...jobB, platform: 'leboncoin' }, pf7);
+  ok(!('beebsAspects' in pf7), 'Leboncoin : jamais un attribut Beebs');
+}
+
 console.log(`\n${ko ? `✗ ${ko} échec(s)` : '✓ tout est vert'} — ${n} contrôles`);
 process.exit(ko ? 1 : 0);
