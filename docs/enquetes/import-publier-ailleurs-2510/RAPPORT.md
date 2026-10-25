@@ -189,3 +189,10 @@ est ouverte (elle interroge le serveur jusqu'à 15:04). Son extension travaille 
 les plateformes à 16:25 : Vinted « Page not found », Leboncoin « Cette annonce est désactivée », eBay terminée, Depop
 introuvable. Beebs : le retrait attend que Beebs sorte l'annonce de son examen (garde de 7 jours : « pas encore visible
 sur Beebs, FillSell la retirera dès qu'elle apparaît »).
+
+## 10. Livré
+
+- Extension **0.6.144** : `build\CWS-0.6.144-A-TELEVERSER\fillsell-extension-0.6.144-7b08e45-cws.zip` (à téléverser par Nico).
+- **OTA 2.9.116** servie à 16:30 ; web au push.
+- Fonctions : get-pending-jobs v286, update-job-status v150, handler-watch v131, ebay-api-worker v98, ops-digest v41,
+  releve-completer v4.
