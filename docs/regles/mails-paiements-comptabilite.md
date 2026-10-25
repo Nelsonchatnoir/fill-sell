@@ -185,3 +185,9 @@ marge de 100 % sur du vent, indétectable ensuite.
   `scripts/reparations/20261025_fin_periode_apple_rattrapage.sql` (sauvegarde + inverse), à lancer APRÈS le déploiement
   d'apple-iap-webhook. Aucune fonction SQL ne lit `subscription_period_end` (relu le 25/10) : la date ne retire jamais
   un abonnement à elle seule.
+
+## 25/10 matin — apple-iap-webhook v39 déployé, échéances Apple rattrapées
+- apple-iap-webhook **v39** (verify_jwt false avant et après ; import npm de `@peculiar/x509`, voir
+  `base-supabase-et-fonctions.md` § 25/10 matin) : la date de fin s'écrit à chaque notification vérifiée.
+- `20261025_fin_periode_apple_rattrapage.sql` lancé à 08:54:23 (essai à blanc d'abord) : 8 abonnés Apple datés (27/10 →
+  24/11), sauvegarde `_backup_2510_fin_periode_apple`, inverse prêt. 0 mail.

@@ -30,9 +30,28 @@
 // « 1111111111111 »). Une valeur jamais prouvée reste retenue — visible — et
 // se prouve sur le banc d'essai (profiles.beta_flags.banc_isbn_capture).
 //
+// ═══ (25/10, décision de Nico) LA VALEUR D'ORIGINE PART TELLE QUELLE ═══════
+// « La republication reprend l'ISBN de l'annonce d'origine TEL QUEL et part ;
+// les 30 republications retenues doivent passer » — Rég (6f1b1f70 « Moby
+// Dick », retenue depuis le 18/10) et Vincent A. (29 livres) : capture
+// « 0000000000 » (10 zéros), valeur que Vinted a acceptée à la création des 30
+// annonces d'origine mais jamais recréée, donc jamais « prouvée » : la preuve
+// valeur par valeur ne pouvait jamais venir. Elle n'est plus exigée
+// (valeurProuveeParJob reste pour lire les faits, get-pending-jobs ne la lit
+// plus). La règle ne regarde plus que ce que le POSTE sait remettre dans le
+// corps du dépôt (posteRemetIsbnCapture) :
+//   · 13 chiffres : la sonde l'arme depuis BUILD_ISBN_CAPTURE_TEL_QUEL (0.6.70) ;
+//   · 10 caractères (9 chiffres + chiffre ou X) : depuis BUILD_ISBN_10_TEL_QUEL
+//     (0.6.143) — avant, la sonde restait désarmée et le POST partait avec ce
+//     que la page sérialise : "isbn": null APRÈS le retrait ;
+//   · toute autre forme : jamais (l'extension s'arrête avant tout retrait).
+// Un disjoncteur reste, par compte : une valeur que Vinted a REFUSÉE sur ce
+// compte (valeurIsbnRefuseeParJob) retient les autres republications qui la
+// portent — annonce intacte.
+//
 // ES module, imports relatifs seulement (Deno + Node).
 import { normalizeIsbn } from "./isbn.js";
-import { buildMsDe, BUILD_ISBN_CAPTURE_TEL_QUEL } from "./correctifs-extension.js";
+import { buildMsDe, BUILD_ISBN_CAPTURE_TEL_QUEL, BUILD_ISBN_10_TEL_QUEL } from "./correctifs-extension.js";
 
 // ── LES PREUVES DÉJÀ FAITES NE SE RELISENT PLUS (2026-10-02, carhoa) ─────────
 // Le 01/10 à 22:28, get-pending-jobs lève les 6 retenues de Carole (valeur
@@ -89,4 +108,90 @@ export function valeursProuvees(jobs, buildMin = BUILD_ISBN_CAPTURE_TEL_QUEL) {
     if (v) out.add(v);
   }
   return out;
+}
+
+// ── (25/10) CE QUE LE POSTE SAIT REMETTRE ────────────────────────────────────
+
+/** La forme d'une valeur capturée que la sonde du dépôt sait poser : "13", "10" ou null. */
+export function formeIsbnCapture(brut) {
+  const s = valeurIsbnCapturee(brut);
+  if (/^\d{13}$/.test(s)) return "13";
+  if (/^\d{9}[\dX]$/.test(s)) return "10";
+  return null;
+}
+
+/**
+ * Le poste de ce build remet-il CETTE valeur capturée telle quelle dans le corps
+ * du dépôt ? 13 chiffres : ≥ BUILD_ISBN_CAPTURE_TEL_QUEL ; 10 caractères :
+ * ≥ BUILD_ISBN_10_TEL_QUEL ; autre forme, ou build illisible : non.
+ * (Un ISBN valide n'en a pas besoin : il part normalisé en 13 chiffres, sur tout build.)
+ */
+export function posteRemetIsbnCapture(brut, build) {
+  const forme = formeIsbnCapture(brut);
+  const b = buildMsDe(build);
+  if (!forme || !Number.isFinite(b)) return false;
+  return b >= buildMsDe(forme === "13" ? BUILD_ISBN_CAPTURE_TEL_QUEL : BUILD_ISBN_10_TEL_QUEL);
+}
+
+// Un refus de Vinted sur le champ « isbn » : la réponse relevée dans le
+// diagnostic (`"field":"isbn"`, guillemets échappés compris quand le diagnostic
+// est un objet), ou les requis du refus (server_required_fields).
+const REFUS_ISBN_RE = /\\?"field\\?"\s*:\s*\\?"isbn\\?"/;
+
+/**
+ * Le disjoncteur : la valeur non standard que Vinted a REFUSÉE dans ce job, ou null.
+ * Ne compte que ce qui dit quelque chose de la valeur :
+ *   · une republication Vinted non publiée (refusée puis recréée = passée) ;
+ *   · sans réponse de la personne (sinon c'est sa réponse qui est partie) ;
+ *   · traitée par un poste qui remettait CETTE valeur (posteRemetIsbnCapture) —
+ *     le refus d'un poste qui ne pouvait pas l'envoyer ("isbn": null) ne dit
+ *     rien d'elle.
+ * @param {{platform?:string, action?:string, status?:string, handler_build?:string|null, platform_fields?:Record<string, unknown>|null}} job
+ */
+export function valeurIsbnRefuseeParJob(job) {
+  if (!job || job.platform !== "vinted" || job.action !== "republish" || job.status === "published") return null;
+  const pf = (job.platform_fields && typeof job.platform_fields === "object") ? job.platform_fields : {};
+  const requis = Array.isArray(pf.server_required_fields)
+    && pf.server_required_fields.some((f) => String(f?.key ?? "").trim().toLowerCase() === "isbn");
+  const diag = typeof pf.last_diagnostic === "string" ? pf.last_diagnostic : JSON.stringify(pf.last_diagnostic ?? "");
+  if (!requis && !REFUS_ISBN_RE.test(diag)) return null;
+  const va = (pf.vintedAspects && typeof pf.vintedAspects === "object") ? pf.vintedAspects : {};
+  if (String(va.isbn ?? "").trim()) return null;
+  const snap = (pf.republish_snapshot && typeof pf.republish_snapshot === "object") ? pf.republish_snapshot : {};
+  if (!estIsbnCaptureNonStandard(snap.isbn)) return null;
+  const v = valeurIsbnCapturee(snap.isbn);
+  return posteRemetIsbnCapture(v, job.handler_build) ? v : null;
+}
+
+/** Les valeurs refusées par Vinted sur un compte (Set). */
+export function valeursIsbnRefusees(jobs) {
+  const out = new Set();
+  for (const j of jobs ?? []) {
+    const v = valeurIsbnRefuseeParJob(j);
+    if (v) out.add(v);
+  }
+  return out;
+}
+
+// Ce que la retenue dit (retenue_serveur.message), selon ce qu'elle attend.
+// ⛔ Jamais « mets à jour ton extension » (décision de Nico) : la mise à jour se
+// fait toute seule, il n'y a rien à faire.
+export const MESSAGE_ISBN_MISE_A_JOUR =
+  "En file : cette republication part dès que ton extension FillSell se sera mise à jour toute seule — rien à faire. " +
+  "Ton annonce est intacte sur Vinted, rien n'a été retiré.";
+export const MESSAGE_ISBN_A_VERIFIER =
+  "En attente : cette republication attend une vérification de notre côté avant de toucher à quoi que ce soit. " +
+  "Ton annonce est intacte sur Vinted, rien n'a été retiré.";
+
+/**
+ * Pourquoi la retenue tient, pour ce poste et ce compte :
+ * "mise_a_jour_extension" (forme remise par un build plus récent que le poste),
+ * "refus_vinted_du_compte" (disjoncteur), "forme_non_remise" (ni 10 ni 13 caractères), ou null (elle part).
+ */
+export function attenteIsbnCapture(brut, build, refusDuCompte) {
+  const v = valeurIsbnCapturee(brut);
+  if (!formeIsbnCapture(v)) return "forme_non_remise";
+  if (!posteRemetIsbnCapture(v, build)) return "mise_a_jour_extension";
+  if (refusDuCompte instanceof Set && refusDuCompte.has(v)) return "refus_vinted_du_compte";
+  return null;
 }

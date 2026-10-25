@@ -10,7 +10,7 @@
 // début pour couvrir même une exécution qui échouerait en cours de route.
 globalThis.__fillsellVintedCharge = true;
 
-const VINTED_BUILD = "2026-10-24-zero-blocage (0.6.134 : une marque introuvable ne bloque jamais — attente du champ après le clic, garde qui compare la marque posée, ligne « Utiliser X comme marque » dans toutes les langues, même marque autrement écrite, puis « Sans marque » ; « Espace de stockage » et « Simlockage » repris de la capture) · 2026-10-09-vinted-etranger (0.6.106 : la page nomme SON domaine — vinted.fr inchangé, vinted.it… chez un vendeur étranger qui l'a autorisé — et le navigateur réel ; référentiel colis du domaine de la page) · 2026-10-08-onglet-muet-relance (0.6.103 : FILLSELL_PING accepté ; un onglet chargé mais muet est rechargé puis remplacé par le background avant tout envoi, jamais constaté) · 2026-10-05-colis-choix-cadenceur (0.6.97 : format de colis = le choix de la personne, relu après le clic et juste avant le dépôt, sinon le pré-coché de Vinted, sinon une question — plus jamais « Petit » d'office ; absence de marque selon la liste fermée du serveur et suggestions triées comme l'app ; pauses humaines à échéances qui rattrapent le retard des réveils sur Mac, attentes et battement sur le Worker, remplissage_mesures dans le résultat) · 2026-10-02-colis-demande (0.6.85 : format de colis inconnu ou non offert → demandé avant tout retrait, jamais choisi à la place de la personne) · 2026-10-02-colis-feu-vert-vendeur (0.6.84 : format de colis posé dans l'envoi quand le formulaire l'oublie, retrait refusé tant qu'il n'est pas en main ; feu vert de l'arrière-plan avant tout retrait une-passe ; vendeur lu en écartant le compte connecté ; compte bloqué nommé) · 2026-09-29-preuve-boutique-delete (0.6.80 : vendeur de la page exacte et session relus avant chaque DELETE ; inconnue et boutique différente restent deux verdicts distincts ; boutique du dépôt estampillée après succès) · 2026-09-28-rayon-deplace-page-annonce (0.6.79 : un rayon du formulaire d édition absent de l arbre du compte — Vinted remanie ses catégories compte par compte, Casio 5570 — est relu sur la page de l annonce, vérifié feuille de l arbre et fil d Ariane ; sinon capture incomplète comme avant) · 2026-09-25-zone-euro (0.6.69 : sur une page Vinted NON française — compte italien, espagnol… servi sur vinted.fr dans sa langue — catégorie, état et couleurs posés par IDENTIFIANT Vinted, jamais par libellé ; page française inchangée) · 2026-09-24-rayon-neuf-seulement (0.6.66 : un rayon Vinted qui n accepte que du neuf face a un article porte demande le RAYON, jamais clos ni ecarte ; releve d options sans avertissement) · 2026-09-17-taille-candidats-onglets (0.6.42 : « W32 L34 » → W32, toutes les formes dans TOUS les onglets, diagnostic dans last_diagnostic) · 2026-09-14-ping-et-ecouteur-unique (0.6.34 : VINTED_PING répond « je suis là » — c'est le seul verdict fiable de « l'onglet est prêt », l'événement de chargement se manque ; drapeau __fillsellVintedCharge posé en première instruction et écouteur enregistré UNE SEULE FOIS, pour qu'une réinjection ne double jamais les handlers ni ne redéclare les const) — précédent : 2026-09-09-envoi-journalise-et-taille-lettree (l'ENVOI de la création est journalisé avant la réponse ; 42 → XL sur une grille purement lettrée)";
+const VINTED_BUILD = "2026-10-25-isbn-titre-colis (0.6.143 : ISBN de 10 caractères remis tel quel et armé pour le POST, erreur avant tout retrait sinon ; titre relu dans le champ et rendu ; format de colis retiré par Vinted du même rayon → le plus petit qui suffit, sinon le plus grand ; id 8 nommé selon sa famille) · 2026-10-24-zero-blocage (0.6.134 : une marque introuvable ne bloque jamais — attente du champ après le clic, garde qui compare la marque posée, ligne « Utiliser X comme marque » dans toutes les langues, même marque autrement écrite, puis « Sans marque » ; « Espace de stockage » et « Simlockage » repris de la capture) · 2026-10-09-vinted-etranger (0.6.106 : la page nomme SON domaine — vinted.fr inchangé, vinted.it… chez un vendeur étranger qui l'a autorisé — et le navigateur réel ; référentiel colis du domaine de la page) · 2026-10-08-onglet-muet-relance (0.6.103 : FILLSELL_PING accepté ; un onglet chargé mais muet est rechargé puis remplacé par le background avant tout envoi, jamais constaté) · 2026-10-05-colis-choix-cadenceur (0.6.97 : format de colis = le choix de la personne, relu après le clic et juste avant le dépôt, sinon le pré-coché de Vinted, sinon une question — plus jamais « Petit » d'office ; absence de marque selon la liste fermée du serveur et suggestions triées comme l'app ; pauses humaines à échéances qui rattrapent le retard des réveils sur Mac, attentes et battement sur le Worker, remplissage_mesures dans le résultat) · 2026-10-02-colis-demande (0.6.85 : format de colis inconnu ou non offert → demandé avant tout retrait, jamais choisi à la place de la personne) · 2026-10-02-colis-feu-vert-vendeur (0.6.84 : format de colis posé dans l'envoi quand le formulaire l'oublie, retrait refusé tant qu'il n'est pas en main ; feu vert de l'arrière-plan avant tout retrait une-passe ; vendeur lu en écartant le compte connecté ; compte bloqué nommé) · 2026-09-29-preuve-boutique-delete (0.6.80 : vendeur de la page exacte et session relus avant chaque DELETE ; inconnue et boutique différente restent deux verdicts distincts ; boutique du dépôt estampillée après succès) · 2026-09-28-rayon-deplace-page-annonce (0.6.79 : un rayon du formulaire d édition absent de l arbre du compte — Vinted remanie ses catégories compte par compte, Casio 5570 — est relu sur la page de l annonce, vérifié feuille de l arbre et fil d Ariane ; sinon capture incomplète comme avant) · 2026-09-25-zone-euro (0.6.69 : sur une page Vinted NON française — compte italien, espagnol… servi sur vinted.fr dans sa langue — catégorie, état et couleurs posés par IDENTIFIANT Vinted, jamais par libellé ; page française inchangée) · 2026-09-24-rayon-neuf-seulement (0.6.66 : un rayon Vinted qui n accepte que du neuf face a un article porte demande le RAYON, jamais clos ni ecarte ; releve d options sans avertissement) · 2026-09-17-taille-candidats-onglets (0.6.42 : « W32 L34 » → W32, toutes les formes dans TOUS les onglets, diagnostic dans last_diagnostic) · 2026-09-14-ping-et-ecouteur-unique (0.6.34 : VINTED_PING répond « je suis là » — c'est le seul verdict fiable de « l'onglet est prêt », l'événement de chargement se manque ; drapeau __fillsellVintedCharge posé en première instruction et écouteur enregistré UNE SEULE FOIS, pour qu'une réinjection ne double jamais les handlers ni ne redéclare les const) — précédent : 2026-09-09-envoi-journalise-et-taille-lettree (l'ENVOI de la création est journalisé avant la réponse ; 42 → XL sur une grille purement lettrée)";
 console.log(`[vinted.js] build ${VINTED_BUILD}`);
 
 // Content script Vinted — remplit le formulaire de dépôt d'annonce.
@@ -170,6 +170,24 @@ const VINTED_PACKAGE_SIZES_PAR_ID = {
   8: "5 kg", 9: "10 kg", 10: "20 kg",
   11: "5 kg", 12: "10 kg", 13: "20 kg", 14: "30 kg",
 };
+// ── (25/10) L'ID 8 CHANGE DE NOM SELON SA FAMILLE (Romain c28e2c60, « Bottes hautes ») ──
+// Le même id 8 (HEAVY_SMALL au référentiel de Vinted) s'affiche « Lourd (2 kg et +) » à côté de Petit /
+// Moyen / Grand (relevé « Cendriers » ; le dépôt de Romain du 08/10, où Vinted l'avait pré-coché) et
+// « 5 kg » dans la famille au poids 8 / 9 / 10 (« Vases », relevé du 16/08). La capture nommait donc « 5 kg »
+// une paire de bottes. La table garde « 5 kg » ; libelleColisVinted nomme l'id 8 d'après sa famille : la
+// grille qu'on a sous les yeux (un id 1, 2 ou 3 à côté de lui), sinon le rayon (Femmes / Hommes : jamais de
+// poids). Miroir EXACT de src/utils/vintedColis.js (scripts/vinted-colis-selftest.mjs le vérifie).
+const VINTED_COLIS_8_FAMILLE_PMG = "Lourd (2 kg et +)";
+function libelleColisVinted(id, { grille = null, chemin = null } = {}) {
+  const n = Number(id);
+  const libelle = VINTED_PACKAGE_SIZES_PAR_ID[n] ?? null;
+  if (n !== 8) return libelle;
+  const ids = (Array.isArray(grille) ? grille : []).map((g) => Number(g?.id ?? g)).filter((x) => Number.isInteger(x) && x > 0);
+  if (ids.some((x) => x >= 1 && x <= 3)) return VINTED_COLIS_8_FAMILLE_PMG;
+  if (ids.some((x) => x === 9 || x === 10)) return libelle;
+  const racine = String((Array.isArray(chemin) ? chemin[0] : "") ?? "").trim();
+  return racine === "Femmes" || racine === "Hommes" ? VINTED_COLIS_8_FAMILLE_PMG : libelle;
+}
 
 // Sélecteur d'input pour un code d'attribut Vinted. Les champs « historiques »
 // ont des testids spécifiques (relevés en réel) ; tout nouveau champ dynamique
@@ -1978,7 +1996,8 @@ async function capturerAnnonceVinted(vintedItemId) {
   // que le prochain relevé DOM complète la table.
   const packageId = natif?.package_size_id ?? null;
   if (packageId != null) {
-    const libelle = VINTED_PACKAGE_SIZES_PAR_ID[Number(packageId)];
+    // (25/10) L'id 8 nommé d'après sa famille (« Lourd (2 kg et +) » en Mode, « 5 kg » au poids).
+    const libelle = libelleColisVinted(Number(packageId), { chemin: libelles.categoryPath ?? null });
     if (libelle) {
       libelles.colis = libelle;
     } else {
@@ -2950,7 +2969,13 @@ function jalonRemplissage(nom, debut = null) {
   m.dernier = t;
 }
 function noterColisBilan(bilan) {
-  if (mesuresRemplissageEnCours) mesuresRemplissageEnCours.colisBilan = bilan ?? null;
+  const m = mesuresRemplissageEnCours;
+  if (!m) return;
+  // (25/10) Le format remplacé avant le retrait (règle B) voyage avec chaque bilan de CE remplissage.
+  m.colisBilan = bilan ? { ...bilan, ...(m.colisTranche ? { tranche_par_fillsell: m.colisTranche } : {}) } : null;
+}
+function noterColisTranche(trace) {
+  if (mesuresRemplissageEnCours) mesuresRemplissageEnCours.colisTranche = trace ?? null;
 }
 function terminerMesuresRemplissage() {
   const m = mesuresRemplissageEnCours;
@@ -3344,6 +3369,8 @@ async function remplirFormulaireVinted(job) {
   // (2026-09-27) ISBN capturé non standard remis tel quel : rendu dans le
   // résultat, le background en fait la preuve (isbn_capture_tel_quel).
   let isbnCaptureTelQuel = null;
+  // (25/10) Le titre relu dans le champ après la frappe (cf. étape « Titre »).
+  let titrePose = null;
   // Relevés d'options du run PRÉCÉDENT purgés : chaque remplissage repart
   // d'une page (et souvent d'une catégorie) différente.
   optionsRelevees.clear();
@@ -3418,7 +3445,15 @@ async function remplirFormulaireVinted(job) {
     ? await etape("Photos", () => uploadPhotos(job.photos))
     : null;
   if (job.title) {
-    await etape("Titre", () => fillTextField('#title, [data-testid="title--input"]', job.title));
+    // (25/10) Le titre RELU dans le champ après la frappe : c'est lui que Vinted
+    // enregistre (un champ d'une ligne supprime un saut de ligne sans espace —
+    // Vincent A., « …lycanthrope\nPar… » né « …lycanthropePar… »). Rendu dans le
+    // résultat (titre_pose) : le background compare la copie à ce titre-là.
+    const lu = await etape("Titre", async () => {
+      await fillTextField('#title, [data-testid="title--input"]', job.title);
+      return document.querySelector('#title, [data-testid="title--input"]')?.value ?? null;
+    });
+    if (typeof lu === "string" && lu.trim()) titrePose = lu;
   }
   if (job.description) {
     await etape("Description", () => fillTextField('#description, [data-testid="description--input"]', job.description));
@@ -3611,6 +3646,18 @@ async function remplirFormulaireVinted(job) {
         warnings.push(note);
         diagnosticsRecreation.push(`ISBN → champ absent après ${Math.round(ISBN_ATTENTE_MS / 1000)} s`);
         return;
+      }
+      // ── (25/10, 0.6.143) UNE-PASSE : LA VALEUR D'ORIGINE DOIT POUVOIR PARTIR ─
+      // Vinted demande l'ISBN dans ce rayon (le champ est là) et la valeur de
+      // l'annonce d'origine part telle quelle : la sonde du dépôt ne sait la
+      // poser que sur 13 chiffres ou 10 caractères (9 chiffres + chiffre ou X).
+      // Toute autre forme (« 00 », 12 chiffres…) partirait "isbn": null APRÈS le
+      // retrait : on s'arrête ICI, avant tout retrait — rien retiré, rien soumis.
+      if (telQuel && onePass?.item_id && !recreation && !/^(?:\d{13}|\d{9}[\dX])$/i.test(valeur)) {
+        throw new Error(
+          `ISBN « ${valeur} » de l'annonce d'origine (${valeur.length} caractères) : ni 13 chiffres ni 10 caractères, ` +
+          "il ne peut pas être remis tel quel dans le dépôt. Rien n'a été retiré, rien n'a été soumis."
+        );
       }
       const relire = () => readCommittedValue(el).replace(/[\s-]/g, "");
       // Trace de pose TOUJOURS consignée (2026-08-30, 12 refus nadegemarcelin78
@@ -4292,9 +4339,34 @@ async function remplirFormulaireVinted(job) {
       warnings.push(`format de colis : « ${wantedPackage ?? wantedPackageId} » cliqué deux fois sans être retenu — relu et reposé avant le dépôt`);
     }
   }
+  // ══ (25/10, Nico — Romain c28e2c60) LE FORMAT QUE VINTED A RETIRÉ DE CE RAYON SE REMPLACE SEUL ══
+  // « Corrige pour que ces republications passent sans rien demander. » Une-passe (l'annonce d'origine est
+  // encore en ligne) : le format CAPTURÉ n'est plus dans la grille du rayon de l'annonce (l'id 8 a quitté
+  // « Bottes hautes » le 15/10) → le plus petit format offert dont la capacité suffit, sinon le plus grand
+  // (formatColisParCapacite, miroir de _shared/vinted-colis-tranche.js — la règle 9 du serveur pour les
+  // postes plus anciens) ; plus de question. ⛔ Jamais pour un choix de la personne (colis_choisi : la
+  // question revient), jamais quand FillSell a changé le rayon de la capture (rayon_capture_corrige : le
+  // serveur la fait relire dans son rayon). Tracé dans colis_bilan.tranche_par_fillsell ; une pose non
+  // retenue laisse la question d'avant.
+  let colisTranche = null;
+  if (onePass?.item_id && !recreation && colisFormatNonOffert && colisChoix?.source === "annonce_origine"
+      && fields.rayon_capture_corrige !== true) {
+    const grilleT = lireGrilleColisFormulaire();
+    const vouluT = idColisConnu(wantedPackageId, wantedPackage);
+    const choixT = formatColisParCapacite(vouluT, grilleT);
+    if (choixT && (await selectPackageSize(choixT.libelle, choixT.id)) === "pose") {
+      colisFormatNonOffert = false;
+      colisTranche = {
+        origine: { id: vouluT, libelle: wantedPackage ?? null }, grille: grilleT.map((g) => `${g.id}|${g.libelle}`),
+        choix: { id: choixT.id, libelle: choixT.libelle }, regle: choixT.regle, le: new Date().toISOString(),
+      };
+      noterColisTranche(colisTranche);
+      warnings.push(`format de colis : « ${wantedPackage ?? vouluT} » n'est plus proposé par Vinted pour ce rayon — « ${choixT.libelle} » posé (${choixT.regle === "plus_petit_suffisant" ? "le plus petit qui suffit" : "le plus grand proposé"})`);
+    }
+  }
   // (0.6.84) Le format CONNU part dans le corps du POST si la page ne l'y a pas
   // mis — montres (97) : la section n'est plus rendue, le serveur l'exige.
-  const colisIdPourPost = colisVoulu ? idColisConnu(wantedPackageId, wantedPackage) : null;
+  const colisIdPourPost = colisVoulu ? (colisTranche?.choix?.id ?? idColisConnu(wantedPackageId, wantedPackage)) : null;
   armerColisPourPost(colisIdPourPost);
   // Bilan provisoire (une question ou un arrêt avant le dépôt le rend aussi) ;
   // la relecture juste avant le dépôt le remplace.
@@ -4767,7 +4839,8 @@ async function remplirFormulaireVinted(job) {
     }
     if (radiosColis.length) {
       try {
-        await selectPackageSize(wantedPackage, wantedPackageId);
+        // (25/10) Format remplacé avant le retrait (règle B) : c'est LUI qui se repose en dernier.
+        await selectPackageSize(colisTranche?.choix?.libelle ?? wantedPackage, colisTranche?.choix?.id ?? wantedPackageId);
         colisRepose = true;
         warnings.push(colisSectionAbsente
           ? `format de colis : section apparue après les attributs — « ${wantedPackage ?? wantedPackageId} » reposé avant le dépôt`
@@ -4807,7 +4880,8 @@ async function remplirFormulaireVinted(job) {
   {
     const publicationNeuve = !recreation && !onePass;
     let grilleDepot = lireGrilleColisFormulaire();
-    const cibleDepot = colisVoulu ? colisDansGrille(grilleDepot, wantedPackageId, wantedPackage) : null;
+    const cibleDepot = colisVoulu
+      ? colisDansGrille(grilleDepot, colisTranche?.choix?.id ?? wantedPackageId, colisTranche?.choix?.libelle ?? wantedPackage) : null;
     if (cibleDepot && grilleDepot.find((g) => g.coche)?.id !== cibleDepot.id) {
       try {
         await selectPackageSize(cibleDepot.libelle || wantedPackage, cibleDepot.id);
@@ -5127,8 +5201,11 @@ async function remplirFormulaireVinted(job) {
   // dans platform_fields.last_diagnostic (requêtable en SQL). Sans ça, une
   // recréation « réussie » masquerait le sélecteur cassé qui l'a fait boiter.
   function annexeRecreation() {
-    if (!diagnosticsRecreation.length) return {};
-    return { diagnostic: diagnosticsRecreation.join(" || ").slice(0, 2000) };
+    return {
+      ...(diagnosticsRecreation.length ? { diagnostic: diagnosticsRecreation.join(" || ").slice(0, 2000) } : {}),
+      // (25/10) Le titre tel que le champ l'a gardé (relu après la frappe).
+      ...(typeof titrePose === "string" ? { titre_pose: titrePose.slice(0, 200) } : {}),
+    };
   }
 }
 
@@ -8815,6 +8892,28 @@ function colisDansGrille(grille, id, libelle) {
   }
   const l = texteComparable(libelle ?? "");
   return l ? (grille.find((g) => texteComparable(g.libelle) === l) ?? null) : null;
+}
+// (25/10, Nico — Romain c28e2c60) Le format qui remplace celui que Vinted a retiré d'un rayon : le plus
+// petit offert dont la capacité est au moins celle d'origine, sinon le plus grand offert. L'ordre est celui
+// du référentiel de Vinted (relevé du 25/10) : SMALL < MEDIUM < LARGE < HEAVY_SMALL = BULKY_SMALL <
+// HEAVY_MEDIUM = BULKY_MEDIUM < HEAVY_LARGE = BULKY_LARGE < BULKY_X_LARGE. null = rien à trancher (format
+// offert, inconnu, grille vide ou portant un id de rang inconnu : la question reste). Miroir EXACT de
+// _shared/vinted-colis-tranche.js (même table, même règle — scripts/vinted-colis-tranche-selftest.mjs).
+const RANG_COLIS_VINTED = { 1: 1, 2: 2, 3: 3, 8: 4, 11: 4, 9: 5, 12: 5, 10: 6, 13: 6, 14: 7 };
+function formatColisParCapacite(voulu, grille) {
+  const v = Number(voulu);
+  const r0 = RANG_COLIS_VINTED[v];
+  if (!r0) return null;
+  const offerts = (Array.isArray(grille) ? grille : [])
+    .map((g) => ({ id: Number(g?.id), libelle: String(g?.libelle ?? "").replace(/\s+/g, " ").trim() }))
+    .filter((g) => Number.isInteger(g.id) && g.id > 0 && g.libelle);
+  if (!offerts.length || offerts.some((g) => !RANG_COLIS_VINTED[g.id])) return null;
+  if (offerts.some((g) => g.id === v)) return null;
+  const parRang = (a, b) => RANG_COLIS_VINTED[a.id] - RANG_COLIS_VINTED[b.id] || a.id - b.id;
+  const suffisant = offerts.filter((g) => RANG_COLIS_VINTED[g.id] >= r0).sort(parRang)[0];
+  if (suffisant) return { id: suffisant.id, libelle: suffisant.libelle, regle: "plus_petit_suffisant" };
+  const plusGrand = [...offerts].sort(parRang).at(-1);
+  return { id: plusGrand.id, libelle: plusGrand.libelle, regle: "plus_grand_offert" };
 }
 // La QUESTION « Format du colis » (05/10) — sur le modèle de la question des
 // républications (0.6.85) : liste FERMÉE des formats que CE formulaire

@@ -84,8 +84,10 @@ export function repubEtatPlateforme(item, jobsAll, platform) {
 // `plateformesOuvertes` (App.jsx) : Opla n'entre que si elle est ouverte pour
 // CE compte — même condition que la carte, le stepper et les chips
 // (plateformesDuCompte), jamais une liste à part.
-export function plateformesRepubliables(item, jobsAll, { multiOuverte = false, plateformesOuvertes = [] } = {}) {
-  const compte = plateformesDuCompte(plateformesOuvertes);
+// (25/10) `plateformesFermees` : Leboncoin d'une adresse de remise hors de
+// France n'est plus republié (même liste que la publication).
+export function plateformesRepubliables(item, jobsAll, { multiOuverte = false, plateformesOuvertes = [], plateformesFermees = [] } = {}) {
+  const compte = plateformesDuCompte(plateformesOuvertes, plateformesFermees);
   const liste = (multiOuverte ? PLATEFORMES_REPUBLIABLES : ['vinted']).filter((p) => compte.includes(p));
   return liste.filter((p) => repubEtatPlateforme(item, jobsAll, p) === 'ok');
 }

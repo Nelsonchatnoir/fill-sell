@@ -19,6 +19,7 @@ import { lireCapaciteSyncCompte, demanderSyncDressingServeur, lireDernierRunDres
 import { lireSyncMultiOuverte, demanderRelevePlateforme, lireDerniersRunsReleve } from '../utils/syncPlateformes';
 import { murConnexionReleve } from '../annonces/etatReleve';
 import { useEnvoiLienExtension } from '../hooks/useEnvoiLienExtension';
+import { plateformesFermeesHorsFrance } from '../../supabase/functions/_shared/lbc-adresse-france.js';
 
 // ⚠️ CES DEUX CLÉS NE CHANGENT PAS DE NOM NI DE SENS. Elles sont lues
 // ailleurs (App.jsx remonte le parcours quand l'attente est encore posée) :
@@ -128,6 +129,9 @@ export function useContexteEntree({ lang, user, demanderPseudo }) {
   // d'annonces du dernier relevé Vinted RÉUSSI, ou null.
   const [murs, setMurs] = useState([]);
   const [releveVinted, setReleveVinted] = useState(null);
+  // (25/10, décision de Nico) Les plateformes FERMÉES à ce compte par son adresse de remise (Leboncoin hors de
+  // France, _shared/lbc-adresse-france.js), lues dans la MÊME lecture du profil que la préférence. Rien de lu = rien.
+  const [plateformesFermees, setPlateformesFermees] = useState([]);
   // Deux faits distincts : la personne a DEMANDÉ le relevé (état 'en_file',
   // relu de ENTREE_RELEVE_KEY au montage) ; les appels sont PARTIS (ce ref).
   // Les confondre, c'est soit perdre l'intention, soit la rejouer.
@@ -164,6 +168,8 @@ export function useContexteEntree({ lang, user, demanderPseudo }) {
     supabase.from('profiles').select('platform_settings').eq('id', userId).maybeSingle()
       .then(({ data }) => {
         if (annule) return;
+        const fermees = plateformesFermeesHorsFrance(data?.platform_settings?.leboncoin);
+        if (fermees.length) setPlateformesFermees(fermees);
         const dejaCoche = data?.platform_settings?.[CLE_PREFERENCE];
         if (!Array.isArray(dejaCoche) || !dejaCoche.length) return;
         if (choixRef.current.plateformes.length || choixRef.current.debute) return;
@@ -312,5 +318,6 @@ export function useContexteEntree({ lang, user, demanderPseudo }) {
     murs, releveVinted,
     ebayRelie, setEbayRelie,
     journaliser, jetonRef,
+    plateformesFermees,
   };
 }

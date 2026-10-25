@@ -390,3 +390,29 @@ Rapport : `docs/enquetes/dix-points-1710/RAPPORT.md` (points 1, 4, 5, 7, 9).
 - eBay voie clic (Fleur de Lotus, 22-23/10), NON codé : l'extension ne vérifie pas qu'eBay a reçu les photos avant de
   cliquer ; un refus de brouillon qui nomme l'élément manquant tombe en « motif inconnu » ; le mur « inscription vendeur »
   n'est pas étendu aux autres jobs du compte. À traiter (R1-R3 du rapport).
+
+## 25/10 matin — Leboncoin réservé à la France, eBay hors France clos, Depop « EU N », Beebs, eBay (rapport `docs/enquetes/matin-2510/RAPPORT.md`)
+- **Leboncoin seulement pour une adresse en France (décision de Nico, Marta / Rapallo)** : le code postal de l'adresse
+  de remise doit être dans la base officielle (`_shared/codes-postaux-fr.js`, 6 310 codes, `npm run gen:codes-postaux-fr`
+  le régénère) ; hors base → Leboncoin n'est plus proposé (app : `plateformesDuCompte(ouvertes, fermees)`, stepper,
+  lot, Stock, Réglages, Lens, entrée), ni servi ni tenté (get-pending-jobs clôt ses publications/republications en
+  `cancelled` + marque `lbc_hors_france`, message vrai, jamais `arret_utilisateur`) ; suivi de lot : état neutre
+  « réservé à la France ». Sans adresse : rien ne change. Leboncoin SEUL (Beebs inchangé).
+- **eBay hors d'eBay France** : ebay-api-worker clôt (message du site) au lieu d'une pause éternelle ; l'app grise eBay.
+  **Plateforme écartée par la personne** : ses publications ne sont plus servies (laissées telles quelles).
+- **Depop « EU N »** (OBSERVÉ le 25/10 : le filtre de recherche déclare « EUR » chaque grille de la région IT ; menu
+  des bas femme = 24…34 tours de taille puis 36…48 paires) : « EU N » = « N » aussi sur les grilles 32, 98 et 24 (hors
+  24…34) — connecteur seul (`depopTailleEquivalente`), après l'exacte et le moteur commun : le point G du 28/09 reste
+  entier ailleurs ; 56 et 62 inchangées (question).
+- **Beebs** : la republication reprend le rayon affiché par l'annonce (fil d'Ariane ld+json) quand la copie n'en a pas
+  (chaouidz : « Mode › Garçon › Chaussures (garçon) › Baskets (garçon) », observé) ; message vrai « rayon absent de la
+  copie » ; retrait : page 404 sans fiche + absente de « en vérification » lue en entier, deux constats à ≥ 6 h →
+  absence prouvée malgré l'index (boncoin59300 : page 404 observée) ; retrait d'une annonce en vérification > 72 h
+  (DeadRoz, aucun geste possible chez Beebs — observé sur le compte de Nico) : message daté vrai, servi toutes les 12 h ;
+  refus de la vérification Beebs prouvé à 7 jours (`_shared/beebs-sortie-verification.js`, 18 annonces mises en ligne
+  48 à 126 h après leur sortie de vérification : jamais avant).
+- **eBay** : la Taille est une liste FERMÉE pour l'IA (24 valeurs fausses en 30 j) ; un refus de brouillon qui nomme
+  « retours » → question au niveau du compte, « Photos » → 2 reprises puis arrêt nommé ; compte non vendeur → les autres
+  dépôts voie clic du compte attendent (un seul éclaireur). Photos (OBSERVÉ le 25/10 sur un brouillon de test du compte
+  de Nico : le geste de l'extension marche, la preuve de réception est le compteur « N/25 » et la vignette
+  i.ebayimg.com) : mesure en mode « observer » dans la 0.6.143 (interrupteur `coin_config.ebay_photos_recues_bloquant`).

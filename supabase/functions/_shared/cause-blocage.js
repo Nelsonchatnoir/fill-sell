@@ -48,6 +48,9 @@ const PAR_SOURCE = Object.freeze({
   verification_antirobot: [ORIGINE.UTILISATEUR, "compte_restreint"],
   boutique_etrangere: [ORIGINE.UTILISATEUR, "connexion"],
   plateforme_ecartee: [ORIGINE.UTILISATEUR, "plateforme_desactivee"],
+  // (25/10, N6) eBay refuse le brouillon sans conditions de retour et le compte n'en a pas : la personne
+  // choisit, une fois, pour le compte (_shared/ebay-brouillon-refus.js) — une politique de son compte.
+  ebay_retours_a_choisir: [ORIGINE.UTILISATEUR, "reglage_du_compte"],
   recreation_deja_partie: [ORIGINE.GARDE, "doublon_possible"],
   depot_deja_parti: [ORIGINE.GARDE, "doublon_possible"],
   article_vendu: [ORIGINE.GARDE, "vente_a_confirmer"],
@@ -63,7 +66,7 @@ const PAR_SOURCE = Object.freeze({
 const PAR_TEXTE = Object.freeze([
   // ── utilisateur ──
   [/Connexion (Vinted|Leboncoin|Beebs|eBay|Depop|Opla) requise|reconnecte-toi|en attente de ta connexion|Connecte ton compte eBay|connecte-toi (sur vinted|[àa] eBay sur ton ordinateur)|attend que Vinted soit rouvert|attend ton autorisation|reconnexion de s[ée]curit[ée]/i, ORIGINE.UTILISATEUR, "connexion"],
-  [/configuration de vendeur|compte eBay n.est pas encore pr[êe]t|mise [àa] niveau de ton compte vendeur|ton nom et (ton )?pr[ée]nom/i, ORIGINE.UTILISATEUR, "compte_a_finir"],
+  [/configuration de vendeur|compte eBay n.est pas encore pr[êe]t|mise [àa] niveau de ton compte vendeur|ton nom et (ton )?pr[ée]nom|compte eBay doit d.abord [êe]tre ouvert [àa] la vente/i, ORIGINE.UTILISATEUR, "compte_a_finir"],
   [/compte (Vinted|Leboncoin|Beebs|eBay|Depop) (est )?(restreint|suspendu|bloqu[ée])|bloque tes actions|v[ée]rification anti-robot sur ton compte|(Vinted|Leboncoin|Beebs|eBay|Depop) a restreint ton compte/i, ORIGINE.UTILISATEUR, "compte_restreint"],
   [/tu as indiqu[ée] ne pas vendre/i, ORIGINE.UTILISATEUR, "plateforme_desactivee"],
   [/Arr[êe]t[ée]e? [àa] ta demande|Stopped at your request|abandonn[ée]? .* pour cet article/i, ORIGINE.UTILISATEUR, "arret_demande"],
@@ -71,6 +74,8 @@ const PAR_TEXTE = Object.freeze([
   [/eBay ne le laisse pas encore vendre|eBay a retir[ée] l.acc[èe]s de FillSell/i, ORIGINE.UTILISATEUR, "compte_a_finir"],
   [/Vinted affiche .{0,60} sur ton ordinateur|En attente de ta boutique Vinted/i, ORIGINE.UTILISATEUR, "connexion"],
   [/n.a pas accept[ée] l.adresse d.envoi|Pas de retour.* exige que tu acceptes les retours/i, ORIGINE.UTILISATEUR, "reglage_du_compte"],
+  // (25/10, N6) Le refus du brouillon qui nomme les retours, et la question qu'il pose : un réglage du compte.
+  [/manquants dans le brouillon\s*:[^.]*\bretours?\b|eBay refuse de mettre cet article en vente sans conditions de retour/i, ORIGINE.UTILISATEUR, "reglage_du_compte"],
   // ── garde voulue (doute → question) ──
   [/pourrait (correspondre|[êe]tre cet article)|On ne red[ée]pose pas, pour ne jamais la mettre en double/i, ORIGINE.GARDE, "doublon_possible"],
   [/signal[ée] vendu|Vendue \?/i, ORIGINE.GARDE, "vente_a_confirmer"],
@@ -83,6 +88,13 @@ const PAR_TEXTE = Object.freeze([
   [/n.est plus propos[ée]e par le menu/i, ORIGINE.NOUS, "marque_hors_menu"],
   [/ne conna[îi]t pas la marque|Marque n.a pas pu [êe]tre renseign[ée]|marque .* introuvable/i, ORIGINE.NOUS, "marque_inconnue"],
   [/format du colis/i, ORIGINE.NOUS, "format_colis_refuse"],
+  // (25/10, audit N9) Trois causes que la sentinelle rangeait en « autre » : la republication Vinted sans
+  // couleur (6ff45122, 775186a3), la sous-catégorie que Vinted demande (cartes « …à l'unité », 328c17f2,
+  // 9de4f193 — et la question du moteur qui la pose), la mention d'un site refusée par Leboncoin (3e3074ef,
+  // « instagram »). Toutes de notre fait : couleur posée sans question, moteur de rayon, copie nettoyée.
+  [/exige une couleur [àa] la cr[ée]ation|aucune couleur n.a pu [êe]tre d[ée]duite/i, ORIGINE.NOUS, "couleur_absente"],
+  [/cat[ée]gorie plus pr[ée]cise|ne propose pas « [^»]+ » [àa] cet endroit de son catalogue|Le catalogue Vinted a chang[ée] autour de|n.accepte plus la cat[ée]gorie de cette annonce/i, ORIGINE.NOUS, "sous_categorie_a_choisir"],
+  [/mention d.un site internet|site internet autre que leboncoin|ne respectent pas nos r[èe]gles de contenu/i, ORIGINE.NOUS, "texte_refuse_mention_site"],
   [/exige des champs encore vides|exige une taille|champs? (obligatoire|requis)|demande .* pour ton compte, et ce champ/i, ORIGINE.NOUS, "champ_demande"],
   [/refuse le titre|titolo|simboli|trop de lettres majuscules|titre (vide|refus[ée])/i, ORIGINE.NOUS, "titre_refuse"],
   [/ISBN/i, ORIGINE.NOUS, "isbn"],
@@ -101,6 +113,11 @@ const PAR_TEXTE = Object.freeze([
   [/doit [êe]tre renseign[ée]|Depop exige le genre|Leboncoin demande :/i, ORIGINE.NOUS, "champ_demande"],
   [/capture datait de plus de .{0,10} et la nouvelle capture a [ée]chou[ée]/i, ORIGINE.NOUS, "capture_incomplete"],
   [/exige le code-barres|\bEAN\b/, ORIGINE.NOUS, "ean"],
+  // (25/10, R2) eBay n'a reçu aucune photo (refus « Photos » du brouillon, ou le compte des photos reçues de
+  // l'extension) : notre fait — avant « n'a pas abouti », qui le rangeait en « inexpliqué ».
+  [/manquants dans le brouillon\s*:\s*(?:[^.]*,\s*)?Photos\b|eBay n.a (pas )?re[çc]u (aucune photo|les photos)|Photos non re[çc]ues par eBay/i, ORIGINE.NOUS, "photos_non_recues"],
+  // (25/10, N6) Le choix de retours est fait, l'extension du poste ne sait pas encore le poser : notre fait.
+  [/choix de retours eBay est bien enregistr[ée]/i, ORIGINE.NOUS, "retours_non_poses"],
   [/n.a pas abouti|On ne sait pas encore pourquoi|apr[èe]s plusieurs essais|n.a pas pu aboutir sur ton ordinateur/i, ORIGINE.NOUS, "echec_inexplique"],
   [/n.arrive pas [àa] d[ée]marrer/i, ORIGINE.NOUS, "demarrage_impossible"],
 ]);
@@ -150,16 +167,23 @@ export function blocagesDuJob(job) {
   const abandonne = job?.status === "cancelled" && (pf.abandon_utilisateur != null || pf.arret_utilisateur != null
     || /Arr[êe]t[ée]e? [àa] ta demande|Stopped at your request/i.test(String(job?.error ?? "")));
   const archives = Array.isArray(pf.erreurs_archivees) ? pf.erreurs_archivees : [];
+  // (25/10, audit N9 — 3e3074ef, « instagram » refusé par Leboncoin) Un arrêt AFFICHÉ sous le message générique
+  // (« n'a pas abouti… », requalification d'affichage) garde sa vraie cause dans error_technique.brut : quand
+  // elle en nomme une de notre fait, c'est elle qui compte — jamais « inexpliqué » quand la cause est écrite.
+  const brut = String(pf.error_technique?.brut ?? "");
+  const causeBrute = brut ? causeDuTexte({ texte: brut, source: null, platform: job?.platform }) : null;
+  const preciser = (c) => (c.cause === "echec_inexplique" && causeBrute?.origine === ORIGINE.NOUS
+    && !["echec_inexplique", "autre"].includes(causeBrute.cause) ? causeBrute : c);
   for (const e of archives) {
     if (!e || !STATUTS_ARRET.has(String(e.statut ?? ""))) continue;
     const texte = String(e.erreur ?? "");
     // L'arrêt archivé ne garde pas sa source : seul le texte parle.
-    const c = causeDuTexte({ texte, source: null, platform: job?.platform });
+    const c = preciser(causeDuTexte({ texte, source: null, platform: job?.platform }));
     out.push({ ...c, statut: String(e.statut), le: e.le ?? null, texte, courant: false, abandonne });
   }
   if (STATUTS_ARRET.has(String(job?.status ?? ""))) {
     const texte = String(job?.error ?? "");
-    const c = causeDuTexte({ texte, source: pf.needs_user_source ?? null, platform: job?.platform });
+    const c = preciser(causeDuTexte({ texte, source: pf.needs_user_source ?? null, platform: job?.platform }));
     out.push({ ...c, statut: String(job.status), le: null, texte, courant: true, abandonne: false });
   }
   return out;
@@ -169,7 +193,9 @@ export function blocagesDuJob(job) {
 export const blocagesDeNotreFait = (job) => blocagesDuJob(job).filter((b) => b.origine === ORIGINE.NOUS);
 
 // Retenues EN FILE (statut pending) qui sont des arrêts de notre fait, même sans needs_user.
-const RETENUES_EN_FILE = new Set(["marque_hors_menu"]);
+// (25/10, R2 et N6) L'arrêt « photos non reçues » et les retours choisis mais non posés attendent en file
+// (pending, defaut_fillsell : un poste plus récent) : des arrêts de notre fait, comptés comme tels.
+const RETENUES_EN_FILE = new Set(["marque_hors_menu", "photos_non_recues", "retours_non_poses"]);
 
 /**
  * LA SENTINELLE (ops-digest) : les arrêts de notre fait, regroupés par cause × plateforme × action.

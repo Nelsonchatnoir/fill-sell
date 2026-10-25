@@ -83,14 +83,20 @@ export function descriptionVintedVide(liste, edited) {
 //     autres partent).
 // Rend aussi la liste NOMMÉE des exclues : c'est ce que l'ancien stepper ne
 // disait jamais (« exclusions silencieuses », audit du 23/09, section 4.4).
-export function calculerExclusions({ selected, platformSupport, platformListings, plateformesSansAdresse = [], champsManquantsParPf = {} }) {
+// (25/10, décision de Nico — Marta, Rapallo) Un cinquième filtre, AVANT les
+// quatre : Leboncoin d'une adresse de remise HORS DE FRANCE (relue au clic,
+// _shared/lbc-adresse-france.js), motif « hors_france ». Elle ne partira
+// jamais : ni adresse, ni champ, ni rayon ne lui sont demandés.
+export function calculerExclusions({ selected, platformSupport, platformListings, plateformesSansAdresse = [], champsManquantsParPf = {}, plateformesHorsFrance = [] }) {
   const sel = [...(selected ?? [])];
-  const sansAdresse = [...(plateformesSansAdresse ?? [])];
-  const interdites = sel.filter(p => platformSupport?.[p] === "prohibited");
-  const sansAnnonce = sel.filter(p => !platformListings?.platforms?.[p]);
-  const champManquant = Object.keys(champsManquantsParPf ?? {});
+  const horsFrance = sel.filter(p => (plateformesHorsFrance ?? []).includes(p));
+  const sansAdresse = [...(plateformesSansAdresse ?? [])].filter(p => !horsFrance.includes(p));
+  const interdites = sel.filter(p => platformSupport?.[p] === "prohibited" && !horsFrance.includes(p));
+  const sansAnnonce = sel.filter(p => !platformListings?.platforms?.[p] && !horsFrance.includes(p));
+  const champManquant = Object.keys(champsManquantsParPf ?? {}).filter(p => !horsFrance.includes(p));
   const aPublier = sel.filter(
-    p => !sansAdresse.includes(p)
+    p => !horsFrance.includes(p)
+      && !sansAdresse.includes(p)
       && !interdites.includes(p)
       && !sansAnnonce.includes(p)
       && !champManquant.includes(p)
@@ -98,7 +104,8 @@ export function calculerExclusions({ selected, platformSupport, platformListings
   const exclues = [];
   for (const p of sel) {
     if (aPublier.includes(p)) continue;
-    const motif = sansAdresse.includes(p) ? "sans_adresse"
+    const motif = horsFrance.includes(p) ? "hors_france"
+      : sansAdresse.includes(p) ? "sans_adresse"
       : interdites.includes(p) ? "interdite"
       : sansAnnonce.includes(p) ? "sans_annonce"
       : "champ_manquant";
@@ -106,16 +113,18 @@ export function calculerExclusions({ selected, platformSupport, platformListings
       ? { platform: p, motif, champs: champsManquantsParPf[p] ?? [] }
       : { platform: p, motif });
   }
-  return { aPublier, interdites, sansAnnonce, sansAdresse, champManquant, exclues };
+  return { aPublier, interdites, sansAnnonce, sansAdresse, champManquant, horsFrance, exclues };
 }
 
 // Quand plus RIEN ne reste : le motif à dire, dans l'ordre exact de l'ancien
 // code (interdites → champ manquant → sans annonce → sans adresse).
+// (25/10) Seul Leboncoin hors de France restait : « hors_france », la phrase vraie.
 export function motifAucunePlateforme(exclusions) {
   if (exclusions.aPublier.length) return null;
   if (exclusions.interdites.length) return "interdites";
   if (exclusions.champManquant.length) return "champ_manquant";
   if (exclusions.sansAnnonce.length && !exclusions.sansAdresse.length) return "sans_annonce";
+  if ((exclusions.horsFrance ?? []).length && !exclusions.sansAdresse.length) return "hors_france";
   return "sans_adresse";
 }
 

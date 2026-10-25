@@ -50,7 +50,12 @@ import {
   MOTIF_VENDEUR_DEPOP, SOURCE_VENDEUR_DEPOP, MESSAGE_VENDEUR_DEPOP, attentesVendeurDepop, controleVendeurPasse,
   champsReprise as champsRepriseVendeurDepop,
 } from "../_shared/vendeur-depop.js";
-import { verdictClotureRetraitBeebs, MESSAGE_RETRAIT_BEEBS_EN_VERIFICATION } from "../_shared/beebs-preuve-retrait.js";
+// (25/10, N6, R2, R3) eBay par l'extension : le manquant nommé au refus du brouillon (retours, photos),
+// les retours choisis pour le compte, et le compte enfin ouvert à la vente qui relâche les tâches en attente.
+import { classeRefusBrouillonEbay, retoursChoisisDuCompte } from "../_shared/ebay-brouillon-refus.js";
+import { SOURCE_VENDEUR_EBAY, attentesVendeurEbay, champsRepriseVendeurEbay } from "../_shared/vendeur-ebay.js";
+import { verdictClotureRetraitBeebs, MESSAGE_RETRAIT_BEEBS_EN_VERIFICATION, constats404Beebs, attente404Beebs, messageRetraitBeebs404 } from "../_shared/beebs-preuve-retrait.js";
+import { debutVerificationBeebs, verificationLongue, signatureAnnonceBeebs, messageRetraitBeebsVerificationLongue } from "../_shared/beebs-retrait-verification-longue.js";
 import {
   controlerNumeroBeebsEnBase,
   restaurerPublicationBeebsConfirmee,
@@ -1918,7 +1923,7 @@ serve(async (req) => {
         if (jrow?.action === "delete" && jrow.platform === "beebs" && idBeebs) {
           const { data: ligne } = await userClient
             .from("annonces_plateforme")
-            .select("statut_plateforme, vu_le")
+            .select("statut_plateforme, vu_le, created_at, disparu_le, retiree_le")
             .eq("platform", "beebs")
             .eq("listing_id", idBeebs)
             .order("vu_le", { ascending: false })
@@ -1936,6 +1941,13 @@ serve(async (req) => {
               needs_user_tick_le: _nt, needs_user_actif_ms: _na, needs_user_vu_le: _nv, needs_user_vu_erreur: _ne,
               ...pfSans
             } = pfBody;
+            // (25/10, DeadRoz) Depuis quand Beebs la garde en vérification (dépôt FillSell jamais vu en ligne, ou
+            // première ligne du relevé) — au-delà de 72 h, message daté et service espacé (get-pending-jobs).
+            const { data: depotV } = await userClient.from("cross_post_jobs")
+              .select("published_at, created_at, vu_en_ligne_le").eq("platform", "beebs").in("action", ["publish", "republish"])
+              .eq("platform_listing_id", idBeebs).order("created_at", { ascending: true }).limit(1).maybeSingle();
+            const depuisV = debutVerificationBeebs({ ligne: ligne as Record<string, unknown> | null, depot: depotV as Record<string, unknown> | null });
+            const longueV = verificationLongue(depuisV);
             pfRetraitVerif = {
               ...pfSans,
               needsUserAttempts: Number(pfBase.needsUserAttempts ?? 0) || 0,
@@ -1947,19 +1959,72 @@ serve(async (req) => {
                 signal: "annonces_plateforme.statut_plateforme = en_verification (Beebs)",
                 releve_le: (ligne as { vu_le?: unknown } | null)?.vu_le ?? null,
                 pose_par: "update-job-status (retrait Beebs pendant la vérification = attente)",
+                ...(depuisV ? { en_verification_depuis: depuisV } : {}),
+                ...(longueV ? { longue: true, signature: signatureAnnonceBeebs(ligne) } : {}),
               },
             };
             statutEffectif = "pending";
-            messageEffectif =
+            messageEffectif = longueV && depuisV ? messageRetraitBeebsVerificationLongue(depuisV) :
               "Beebs vérifie encore cette annonce : elle n'est pas encore visible, et Beebs ne permet pas de la retirer " +
               "tant que la vérification dure. Le retrait est retenté tout seul et part dès qu'elle se termine — " +
               "rien à faire de ton côté.";
-            raisonRequalif = `retrait Beebs impossible, annonce en vérification — attente ${RETRAIT_VERIF_MIN} min, aucune tentative consommée`;
+            raisonRequalif = `retrait Beebs impossible, annonce en vérification${longueV ? " depuis plus de 72 h (servi seulement si le relevé bouge, sinon toutes les 12 h)" : ""} — attente ${RETRAIT_VERIF_MIN} min, aucune tentative consommée`;
           }
         }
       } catch (e) {
         console.error("[update-job-status] retrait Beebs en vérification:", (e as Error)?.message ?? e);
         pfRetraitVerif = null;
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // RETRAIT BEEBS : PAGE 404 CONSTATÉE = ATTENTE DU SECOND CONSTAT, PAS UN ESSAI
+    // (25/10, boncoin59300 — retrait d87c8614, annonce 33747519)
+    // ══════════════════════════════════════════════════════════════════════
+    // _shared/beebs-preuve-retrait.js. L'extension note un CONSTAT quand la page
+    // de l'annonce rend 404 sans fiche et que « en vérification » (lue en entier)
+    // ne la porte pas, alors que l'index public la porte encore ; deux constats
+    // à 6 h d'écart au moins prouvent le retrait. Entre les deux, ce n'est ni un
+    // essai raté ni « elle reste en vente » (pas-de-rouge le disait : faux, rien
+    // n'est achetable) : pending, needsUserAttempts de la base, prochain essai à
+    // 6 h du premier constat, message vrai et daté. ⛔ Seulement un retrait Beebs
+    // dont le poste a rendu des constats ET dont CET essai a lu la page 404 (texte
+    // de l'extension, MESSAGE_CONSTAT_404_BEEBS) : une session fermée, un canal
+    // coupé ou une lecture ratée gardent leur propre chemin, constats ou pas.
+    const CONSTAT_404_BEEBS_RE = /^Beebs ne montre plus cette annonce : sa page est introuvable \(404\)/;
+    if (!pfRetraitVerif && !pfCanalCoupe && (statutEffectif === "pending" || statutEffectif === "failed" || statutEffectif === "needs_user")
+        && typeof body.error === "string" && CONSTAT_404_BEEBS_RE.test(body.error)
+        && body.platform_fields && typeof body.platform_fields === "object") {
+      const constats404 = constats404Beebs(body.platform_fields as Record<string, unknown>);
+      if (constats404.length) {
+        try {
+          const { data: jrow404 } = await userClient.from("cross_post_jobs")
+            .select("action, platform, platform_fields").eq("id", jobId).maybeSingle();
+          if (jrow404?.action === "delete" && jrow404.platform === "beebs") {
+            const pfBase404 = (jrow404.platform_fields ?? {}) as Record<string, unknown>;
+            const {
+              needs_user_source: _nus4, pas_de_rouge: _pdr4, blocage_antirobot: _ba4,
+              needs_user_tick_le: _nt4, needs_user_actif_ms: _na4, needs_user_vu_le: _nv4, needs_user_vu_erreur: _ne4,
+              ...pfSans404
+            } = body.platform_fields as Record<string, unknown>;
+            const attente = attente404Beebs(constats404);
+            pfRetraitVerif = {
+              ...pfSans404,
+              needsUserAttempts: Number(pfBase404.needsUserAttempts ?? 0) || 0,
+              next_action_after: attente.prochain,
+              retrait_attente_second_constat: {
+                premier: attente.premier, constats: constats404.length, prochain: attente.prochain, derniere: new Date().toISOString(),
+                pose_par: "update-job-status (page 404 constatée = attente du second constat, pas un essai)",
+              },
+            };
+            statutEffectif = "pending";
+            messageEffectif = messageRetraitBeebs404(constats404);
+            raisonRequalif = `retrait Beebs : page 404 constatée (${constats404.length}) — attente du second constat jusqu'à ${attente.prochain}, aucune tentative consommée`;
+          }
+        } catch (e) {
+          console.error("[update-job-status] retrait Beebs page 404 :", (e as Error)?.message ?? e);
+          pfRetraitVerif = null;
+        }
       }
     }
 
@@ -3102,9 +3167,28 @@ serve(async (req) => {
         // texte précis, G5 n'attrape que ce que personne n'a su nommer.
         let clair: string | null = null;
         if (G1_RE.test(brut)) {
-          clair = statutEffectif === "pending"
-            ? "L'opération a été interrompue sur ton ordinateur. Elle reprend toute seule, rien à faire de ton côté."
-            : "L'opération n'a pas pu aboutir sur ton ordinateur. Relance-la depuis la fiche de l'article quand tu veux.";
+          if (statutEffectif === "pending") {
+            clair = "L'opération a été interrompue sur ton ordinateur. Elle reprend toute seule, rien à faire de ton côté.";
+          } else {
+            // ── (25/10, N3) JAMAIS « RELANCE-LA » APRÈS UN RETRAIT (Vincent A., job 9138772c) ──
+            // Une republication dont l'annonce a été RETIRÉE (étape 'deleted', ou trace de retrait ou
+            // d'envoi — MARQUES_RETRAIT_OU_DEPOT —, en base OU dans l'écriture) : sa remise en ligne a pu
+            // aboutir sans que l'ordinateur le voie (dépôt d'issue inconnue : deux annonces en ligne le
+            // 24/10). On dit l'état et que FillSell vérifie avant tout nouvel envoi — aucun geste demandé.
+            // Le début du texte ne change pas : etat-job (CANAL_RE) et cause-blocage le reconnaissent.
+            const { data: jG1 } = await userClient
+              .from("cross_post_jobs").select("action, platform_fields").eq("id", jobId).maybeSingle();
+            const retiree = (pfX: unknown) => {
+              const p = (pfX && typeof pfX === "object") ? pfX as Record<string, unknown> : {};
+              return String(p["republish_step"] ?? "") === "deleted"
+                || MARQUES_RETRAIT_OU_DEPOT.some((k) => p[k] != null && p[k] !== false);
+            };
+            clair = jG1?.action === "republish" && (retiree(jG1.platform_fields) || retiree(body.platform_fields))
+              ? "L'opération n'a pas pu aboutir sur ton ordinateur : ton annonce a été retirée et sa remise en ligne n'est pas " +
+                "encore confirmée. Rien n'est perdu (titre, description, photos et champs sont sauvegardés) ; FillSell vérifie " +
+                "qu'elle n'est pas déjà en ligne avant tout nouvel envoi — jamais deux annonces."
+              : "L'opération n'a pas pu aboutir sur ton ordinateur. Relance-la depuis la fiche de l'article quand tu veux.";
+          }
         } else if (G4A_RE.test(brut)) {
           // ⛔ « Régénère son annonce depuis l'app » N'A AUCUN SENS POUR UNE
           // REPUBLICATION (2026-09-19). Une republication porte sur une
@@ -3876,6 +3960,14 @@ serve(async (req) => {
     // datée : le classement attend la date, quel que soit le statut posé.
     const restrictionVintedAPoser = (statutEffectif === "needs_user" || statutEffectif === "failed")
       && Boolean(restrictionVinted(pfIn ?? {}));
+    // (25/10, N6 et R2 — _shared/ebay-brouillon-refus.js) eBay refuse le brouillon et NOMME ce qui manque
+    // (retours, photos), ou l'extension a compté zéro photo reçue : inutile d'attendre les cinq essais espacés
+    // de l'extension, chacun refait le même refus (lemonde-glad : quatre refus identiques le 20/10). Le
+    // classement parle dès la première remontée. Jamais par-dessus le mur « compte pas encore vendeur » ni la
+    // connexion eBay, nommés plus haut.
+    const ebayRefusNommeAPoser = (statutEffectif === "pending" || statutEffectif === "failed" || statutEffectif === "needs_user")
+      && !pfEbayVendeurInactif && !pfEbayConnexionRequise
+      && classeRefusBrouillonEbay({ brut: typeof body.error === "string" ? body.error : "", pf: (pfIn ?? {}) as Record<string, unknown> }) != null;
     // ══ UNE EXCEPTION DE NOTRE CODE EST UN DÉFAUT DE CHEZ NOUS (02/10 soir, point 3) ══
     // (_shared/defaut-fillsell.js) Jamais « illisible », jamais « plateforme » :
     // le job porte defaut_fillsell {build} et attend un poste plus récent
@@ -3922,7 +4014,7 @@ serve(async (req) => {
         }
       }
     }
-    if (!pfDefautFillsell && (statutEffectif === "failed" || oplaMurCookies || oplaCategorieAPoser || tailleHorsGrilleAPoser || restrictionVintedAPoser)) {
+    if (!pfDefautFillsell && (statutEffectif === "failed" || oplaMurCookies || oplaCategorieAPoser || tailleHorsGrilleAPoser || restrictionVintedAPoser || ebayRefusNommeAPoser)) {
       try {
         // (18/10) `title` : un refus Vinted « trop de symboles » se reprend avec le
         // titre assagi (_shared/titre-symboles-vinted.js), calculé sur le titre du job.
@@ -3941,11 +4033,15 @@ serve(async (req) => {
         // disait 200. Le texte de l'erreur n'est qu'un indice ; la sonde est
         // une MESURE. Lecture tolérante : illisible → arbitrage d'avant.
         let sessionsSondees: Record<string, unknown> | null = null;
+        // (25/10, N6) Les retours eBay choisis pour le compte (platform_settings.ebay.retours_voie_clic) :
+        // une question déjà répondue n'est jamais reposée.
+        let retoursEbayChoix: string | null = null;
         try {
           const { data: prof } = await userClient
-            .from("profiles").select("extension_sessions").eq("id", user.id).maybeSingle();
+            .from("profiles").select(ebayRefusNommeAPoser ? "extension_sessions, platform_settings" : "extension_sessions").eq("id", user.id).maybeSingle();
           const s = (prof as { extension_sessions?: unknown } | null)?.extension_sessions;
           if (s && typeof s === "object") sessionsSondees = s as Record<string, unknown>;
+          if (ebayRefusNommeAPoser) retoursEbayChoix = retoursChoisisDuCompte((prof as { platform_settings?: unknown } | null)?.platform_settings ?? null);
         } catch (_e) { /* la sonde est un renfort, jamais un prérequis */ }
         // Reprises déjà faites par pas-de-rouge sur ce job : les suivantes
         // s'espacent (45 min, 3 h, 6 h) au lieu de tourner toutes les 8 min.
@@ -3971,6 +4067,8 @@ serve(async (req) => {
           // (25/10) Passe « casse normale » déjà faite (même double lecture), _shared/casse-titre.js.
           titreDejaRecase: Boolean(pfBase["titre_casse_corrigee"]
             || ((jPdr?.platform_fields ?? {}) as Record<string, unknown>)["titre_casse_corrigee"]),
+          // (25/10, N6) Le choix de retours eBay du compte (null : la question part).
+          retoursEbayChoix,
         });
         const pfS = { ...pfBase };
         if (erreurTechniqueBrute == null && typeof body.error === "string" && body.error) {
@@ -4005,6 +4103,41 @@ serve(async (req) => {
         //    tombe, le statut d'origine part tel quel (comportement d'avant).
         console.error("[update-job-status] pas-de-rouge :", (e as Error)?.message ?? e);
         pfPasDeRouge = null;
+      }
+    }
+
+    // ══ (25/10, audit N9) LA QUESTION « SOUS-CATÉGORIE » ATTEND LE MOTEUR AVANT DE PARTIR ══
+    // (_shared/rayon-moteur-attendu.js) Cartes Pokémon du compte 40e1122e (328c17f2, 9de4f193, 20-21/10) :
+    // « Cartes à collectionner » devenu niveau intermédiaire, la feuille « … à l'unité » dans l'arbre relevé —
+    // le moteur (_shared/rayon-refuse-moteur.js) l'aurait choisie, mais handler-watch ne lit que les questions
+    // déjà posées et la personne avait répondu avant. Ici, au point de passage de toutes les extensions : une
+    // question « categoryLevelChoice » d'un job Vinted (publication, ou republication à l'étape captured) que
+    // le moteur sait juger ne part pas — le job reste en file (pending, +6 min, aucun poste ne le reprend
+    // avant), la question mise de côté ; handler-watch tranche ou la laisse partir. Pause déjà prise → la
+    // question part. Une pause par job. Illisible → la question part, comme avant.
+    let pfRayonMoteurAttendu: Record<string, unknown> | null = null;
+    if (statutEffectif === "needs_user" && !pfPasDeRouge && !pfDefautFillsell && !pfGrilleReprise && !pfGrilleRefus && !pfRepareEtat
+        && pfIn && typeof pfIn === "object"
+        && String(((pfIn["needsUserField"] ?? {}) as Record<string, unknown>)["field_key"] ?? "") === "categoryLevelChoice") {
+      try {
+        const { data: jRm } = await userClient.from("cross_post_jobs").select("platform, action, platform_fields").eq("id", jobId).maybeSingle();
+        const d = pauseRayonMoteur({
+          platform: String(jRm?.platform ?? ""), action: String(jRm?.action ?? ""),
+          pfIn: pfIn as Record<string, unknown>, pfEnBase: (jRm?.platform_fields ?? null) as Record<string, unknown> | null,
+          message: typeof body.error === "string" ? body.error : null, maintenant: new Date(),
+        }) as { pause: boolean; pf: Record<string, unknown>; message?: string; jusqu_a?: string } | null;
+        if (d?.pause) {
+          statutEffectif = "pending";
+          messageEffectif = d.message ?? null;
+          raisonRequalif = `question « sous-catégorie » mise de côté pour le moteur (jusqu'à ${d.jusqu_a})`;
+          pfRayonMoteurAttendu = d.pf;
+          console.log(`[update-job-status] userId=${user.id} job=${jobId} — ${raisonRequalif} → pending`);
+        } else if (d) {
+          pfRayonMoteurAttendu = d.pf; // la pause a déjà eu lieu : la question part, la pause est close
+        }
+      } catch (e) {
+        console.error("[update-job-status] question sous-catégorie (pause moteur) :", (e as Error)?.message ?? e);
+        pfRayonMoteurAttendu = null;
       }
     }
 
@@ -4126,6 +4259,8 @@ serve(async (req) => {
     // reprises épuisées, needs_user avec le vrai motif et plus aucun champ.
     if (pfGrilleReprise) patch.platform_fields = pfGrilleReprise;
     if (pfGrilleRefus) patch.platform_fields = pfGrilleRefus;
+    // (25/10, audit N9) Question « sous-catégorie » mise de côté pour le moteur (pending, +6 min), ou pause close.
+    if (pfRayonMoteurAttendu) patch.platform_fields = pfRayonMoteurAttendu;
     // Dépôt Leboncoin accepté (écran /options) : platform_fields SANS la
     // reprise programmée, AVEC la trace du relevé.
     if (pfDepotOptions) patch.platform_fields = pfDepotOptions;
@@ -4912,6 +5047,36 @@ serve(async (req) => {
       }
     }
 
+    // ── eBay : UNE PUBLICATION FAITE LÈVE LE MUR « COMPTE PAS ENCORE OUVERT À LA VENTE » (25/10, R3) ──
+    // (_shared/vendeur-ebay.js) Une publication eBay qui aboutit prouve que le compte vend :
+    // chaque tâche eBay du compte qui attendait ce geste (mur vu, ou publication retenue
+    // par get-pending-jobs) repart, espacée de 45 s, compare-and-swap sur needs_user.
+    // Best-effort : jamais un point de panne.
+    if (statutEffectif === "published") {
+      try {
+        const { data: jE } = await userClient.from("cross_post_jobs").select("platform, action").eq("id", jobId).maybeSingle();
+        if (jE?.platform === "ebay" && ["publish", "republish"].includes(String(jE.action))) {
+          const { data: mursE } = await userClient.from("cross_post_jobs")
+            .select("id, platform, action, status, voie, created_at, error, platform_fields")
+            .eq("user_id", user.id).eq("platform", "ebay").eq("status", "needs_user").neq("id", jobId)
+            .eq("platform_fields->>needs_user_source", SOURCE_VENDEUR_EBAY)
+            .limit(200);
+          const maintenantE = Date.now();
+          let k = 0;
+          for (const m of attentesVendeurEbay((mursE ?? []) as never[]) as Array<Record<string, unknown>>) {
+            const pfR = champsRepriseVendeurEbay(m.platform_fields as Record<string, unknown>, k, maintenantE, "update-job-status (publication eBay faite)") as Record<string, unknown>;
+            pfR.erreurs_archivees = archiverErreur(pfR.erreurs_archivees, (m.error as string | null) ?? null, "needs_user", "update-job-status (compte eBay ouvert à la vente)");
+            const { data: majE } = await userClient.from("cross_post_jobs").update({ status: "pending", error: null, platform_fields: pfR })
+              .eq("id", String(m.id)).eq("status", "needs_user").select("id");
+            if ((majE ?? []).length) k++;
+          }
+          if (k) console.log(`[update-job-status] userId=${user.id} job=${jobId} : publication eBay faite — ${k} tâche(s) eBay « compte pas encore ouvert à la vente » relâchée(s), espacées de 45 s`);
+        }
+      } catch (e) {
+        console.warn("[update-job-status] reprise après l'ouverture du compte eBay à la vente :", (e as Error)?.message ?? e);
+      }
+    }
+
     if (inventaireVintedAEstampiller != null && boutiqueVintedProuvee) {
       const { error: stampErr } = await userClient
         .from("inventaire")
@@ -4981,3 +5146,4 @@ serve(async (req) => {
 import { EXTENSION_MIN_BUILD, posteExtensionCompatible } from "../_shared/version-min-extension.js";
 import { questionOplaFinale } from "../_shared/opla-questions.js";
 import { defautFillsell, messageDefautFillsell } from "../_shared/defaut-fillsell.js";
+import { pauseRayonMoteur } from "../_shared/rayon-moteur-attendu.js";

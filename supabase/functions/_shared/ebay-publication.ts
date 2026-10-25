@@ -15,7 +15,10 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { appelEbay, type EbayEnv } from "./ebay-oauth.ts";
 import { valeurDeListeCorrespondante } from "./texte-comparable.ts";
-import { resoudreAspectsIA, type AspectDemande, type ContexteArticle } from "./ebay-aspects-ia.ts";
+import { resoudreAspectsIA, estAspectDeTaille, tailleRetenueDansLaListe, tailleSansPrefixeEuFr, type AspectDemande, type ContexteArticle } from "./ebay-aspects-ia.ts";
+// (25/10, N5) tailleSansPrefixeEuFr vit désormais dans ebay-aspects-ia.ts (même corps) : la réponse de l'IA
+// sur une taille passe par la même lecture. Réexportée ici pour ses appelants d'avant.
+export { tailleSansPrefixeEuFr };
 import { estSansMarque } from "./marque-absente.js";
 import { tailleDeService, brancheDeTaille } from "./taille-de-service.js";
 
@@ -591,20 +594,8 @@ const CHAMP_PAR_ASPECT: Record<string, string> = {
   ...Object.fromEntries(ALIAS_MATIERE.map((n) => [n, "matiere"])),
 };
 // ── TAILLE « EU 42 » / « FR 42 » : LE PRÉFIXE QUE LA LISTE eBay N'ÉCRIT PAS
-// (2026-10-01, tessy.galy d07f4c9e, robe D&G, catégorie 63861) ─────────────
-// La liste eBay.fr relevée écrit les tailles françaises SANS préfixe (« 32 » …
-// « 62 ») et les autres pays AVEC (« IT 42 », « UK 10 », « US 8 ») : « EU 42 »
-// a été refusée (25129), alors que « 42 » y est. Seuls EU et FR se retirent :
-// c'est l'écriture nue de la liste. UK/US/IT ne se retirent JAMAIS (« UK 10 »
-// sans préfixe deviendrait le 10 français : une autre taille) — ils passent
-// déjà tels quels quand la liste les porte. Appelée seulement quand la valeur
-// ne correspond PAS telle quelle : une taille acceptée aujourd'hui ne change pas.
-const PREFIXE_EU_FR_RE = /^(?:EU|FR) ?(\d{1,3}(?:[.,]\d)?)$/i;
-export function tailleSansPrefixeEuFr(nomAspect: string, brut: string, liste: string[]): string | null {
-  if (!/taille|pointure/i.test(nomAspect)) return null;
-  const m = PREFIXE_EU_FR_RE.exec(String(brut ?? "").replace(/\s+/g, " ").trim());
-  return m ? valeurDeListeCorrespondante(m[1], liste) : null;
-}
+// (2026-10-01, tessy.galy d07f4c9e) — tailleSansPrefixeEuFr, déplacée le 25/10
+// dans ebay-aspects-ia.ts avec son explication (importée et réexportée plus haut).
 // ── (06/10 soir) LA TAILLE QUE LA LISTE eBay N'ÉCRIT PAS AUTREMENT ────────
 // patrick giry, jean « W28 L32 », catégorie 11554 : la liste fermée porte « 38 »
 // (Femme) — refus 25129 puis question. _shared/taille-de-service.js, APRÈS le
@@ -618,7 +609,59 @@ export function tailleServieEbay(nomAspect: string, brut: string, liste: string[
     Array.isArray(pf.ebayCategoryPath) ? pf.ebayCategoryPath : []);
   return tailleDeService(brut, liste, { branche })?.valeur ?? null;
 }
-export function assemblerAspects(pf: PlatformFields, catalogue: AspectCatalogue[]): { aspects: Record<string, string[]>; manquants: string[]; recalages: string[]; sources: Record<string, SourceAspect> } {
+// ── (25/10, N5) LA TAILLE eBAY : LA PERSONNE, LA FICHE, PUIS LA LISTE — JAMAIS UN MOT DU TITRE ──
+// Jobs 98f71143, 1ff48d68, 8d831cf5, c65b3e36, 12854dbb : ebayAspects.Taille portait la réponse de l'IA
+// (« Classic Fit », « Col rond », « Jupe courte », « Veste de ski »), lue AVANT pf.taille et envoyée telle
+// quelle en texte libre (Taxonomy dit FREE_TEXT) — refus 25129, puis question ; trois fois, la fiche portait
+// déjà la bonne taille. Pour un aspect de taille (estAspectDeTaille, nom exact), DANS CET ORDRE :
+//   1. la réponse de la personne (clé ebayAspects.<aspect> de needsUserResolved, comme ebay.js) : la règle
+//      d'aujourd'hui, à l'identique ;
+//   2. la taille de la fiche (pf.taille), passée par la règle des tailles sur la liste, QUEL QUE SOIT LE MODE ;
+//   3. une autre valeur du job (IA, app) : retenue seulement si la liste l'écrit ou que la règle des tailles
+//      l'y place, « Taille unique » seulement si la fiche ou son texte le disent (tailleRetenueDansLaListe) ;
+//   4. sinon : la taille de la fiche hors liste garde la règle d'aujourd'hui (texte libre : envoyée telle
+//      quelle — « EU 39 » passe, rejeu du 01/10 ; liste fermée : manquant), et sans elle, manquant — la
+//      question part, avec la liste, AVANT tout appel eBay.
+// Préfixe EU/FR (règle du 01/10) sur liste fermée seulement pour la fiche et la personne (inchangé) ; une
+// valeur de l'IA, elle, n'est jamais qu'une entrée de la liste.
+function tailleAssemblee(
+  a: AspectCatalogue, pf: PlatformFields, ebayAspects: Record<string, unknown>, fiche: string, textes: unknown[],
+): { valeur: string; deQui: "personne" | "fiche" | "autre"; brut: string } | null {
+  const liste = a.allowedValues;
+  const ferme = a.mode === "SELECTION_ONLY";
+  const regleDuJour = (brut: string): string | null => liste.length
+    ? (valeurDeListeCorrespondante(brut, liste)
+      ?? (ferme ? (tailleSansPrefixeEuFr(a.name, brut, liste) ?? tailleServieEbay(a.name, brut, liste, pf, ebayAspects)) : null))
+    : null;
+  const resolus = (pf.needsUserResolved && typeof pf.needsUserResolved === "object") ? pf.needsUserResolved as Record<string, unknown> : {};
+  const duJob = String(ebayAspects[a.name] ?? "").trim();
+  // 1. La personne.
+  if (duJob && Object.prototype.hasOwnProperty.call(resolus, `ebayAspects.${a.name}`)) {
+    const r = regleDuJour(duJob);
+    if (r) return { valeur: r, deQui: "personne", brut: duJob };
+    return ferme ? null : { valeur: duJob, deQui: "personne", brut: duJob };
+  }
+  // 2. La fiche, quel que soit le mode.
+  if (fiche) {
+    const r = liste.length
+      ? (valeurDeListeCorrespondante(fiche, liste)
+        ?? (ferme ? tailleSansPrefixeEuFr(a.name, fiche, liste) : null)
+        ?? tailleServieEbay(a.name, fiche, liste, pf, ebayAspects))
+      : null;
+    if (r) return { valeur: r, deQui: "fiche", brut: fiche };
+  }
+  // 3. Une autre valeur du job : la liste seulement.
+  if (duJob) {
+    const branche = brancheDeTaille(String(ebayAspects["Département"] ?? ""), String(pf.genre ?? ""),
+      Array.isArray(pf.ebayCategoryPath) ? pf.ebayCategoryPath : []);
+    const t = tailleRetenueDansLaListe(a.name, duJob, liste, { taille: fiche, textes, branche });
+    if ("valeur" in t) return { valeur: t.valeur, deQui: "autre", brut: duJob };
+  }
+  // 4. La fiche hors liste : la règle d'aujourd'hui ; sinon, la question.
+  if (fiche && !ferme) return { valeur: fiche, deQui: "fiche", brut: fiche };
+  return null;
+}
+export function assemblerAspects(pf: PlatformFields, catalogue: AspectCatalogue[], textes: unknown[] = []): { aspects: Record<string, string[]>; manquants: string[]; recalages: string[]; sources: Record<string, SourceAspect> } {
   const aspects: Record<string, string[]> = {};
   const manquants: string[] = [];
   const recalages: string[] = [];
@@ -650,6 +693,18 @@ export function assemblerAspects(pf: PlatformFields, catalogue: AspectCatalogue[
     // catégorie Livres a été posée par erreur, l'aspect n'est ni envoyé ni
     // compté manquant (jamais de « mur ISBN » sur un média).
     if (a.name === "ISBN" && pf.support_non_livre === true) continue;
+    // (25/10, N5) Une taille : la personne, la fiche, puis la liste (tailleAssemblee).
+    if (estAspectDeTaille(a.name)) {
+      const t = tailleAssemblee(a, pf, ebayAspects as Record<string, unknown>, String(standard[a.name] ?? "").trim(), textes);
+      if (!t) { if (a.required) manquants.push(a.name); continue; }
+      const origine = attributsSources[CHAMP_PAR_ASPECT[a.name] ?? ""];
+      const source: SourceAspect = t.deQui === "fiche"
+        ? (origine === "lens" ? "lens" : origine === "attributs" ? "attributs" : "standard")
+        : (sourcesIA[a.name] === "ia" ? "ia" : "job");
+      if (t.valeur !== t.brut) recalages.push(`${a.name}: « ${t.brut} » → « ${t.valeur} »`);
+      aspects[a.name] = [t.valeur]; sources[a.name] = source;
+      continue;
+    }
     let brut = String(ebayAspects[a.name] ?? "").trim();
     let source: SourceAspect = sourcesIA[a.name] === "ia" ? "ia" : "job";
     if (!brut && a.name === "Département") {
@@ -704,7 +759,9 @@ export interface RemplissageAspects {
   ia: { demandes: string[]; obtenus: Record<string, string>; refuses: Array<{ name: string; valeur: string; motif: string }>; appel: boolean } | null;
 }
 export async function remplirAspects(pf: PlatformFields, catalogue: AspectCatalogue[], contexte: ContexteArticle, apiKey: string, onUsage?: (d: unknown) => void): Promise<RemplissageAspects> {
-  const premier = assemblerAspects(pf, catalogue);
+  // (25/10, N5) Les textes de l'article : seuls juges, avec la fiche, d'une « Taille unique ».
+  const textes = [contexte.titre, contexte.description];
+  const premier = assemblerAspects(pf, catalogue, textes);
   if (!premier.manquants.length) return { ...premier, ia: null };
   const demandes: AspectDemande[] = premier.manquants
     .map((nom) => catalogue.find((c) => c.name === nom))
@@ -716,16 +773,18 @@ export async function remplirAspects(pf: PlatformFields, catalogue: AspectCatalo
     ebayAspects: { ...((pf.ebayAspects && typeof pf.ebayAspects === "object") ? pf.ebayAspects : {}), ...ia.aspects },
     ebayAspectsSources: Object.fromEntries(Object.keys(ia.aspects).map((k) => [k, "ia"])),
   };
-  let second = assemblerAspects(pf2, catalogue);
+  let second = assemblerAspects(pf2, catalogue, textes);
   let obtenus = { ...ia.aspects };
   let refuses = [...ia.refuses];
   const demandesNoms = demandes.map((d) => d.name);
   // 2e passe : un aspect FREE_TEXT requis encore vide (ex. « Style » d'un
   // sweat, dont la liste eBay ne propose que des styles de pull) — eBay
   // accepte le texte libre, on demande le terme exact du contexte, sans liste.
+  // (25/10, N5) Jamais une taille : eBay refuse sa valeur libre (25129), et « le
+  // terme exact du contexte » y posait un mot du titre (« Veste de ski »).
   const libres = second.manquants
     .map((nom) => catalogue.find((c) => c.name === nom))
-    .filter((c): c is AspectCatalogue => c !== undefined && c.mode !== "SELECTION_ONLY" && c.name !== "Marque")
+    .filter((c): c is AspectCatalogue => c !== undefined && c.mode !== "SELECTION_ONLY" && c.name !== "Marque" && !estAspectDeTaille(c.name))
     .map((c) => ({ name: c.name, mode: c.mode, allowedValues: c.allowedValues, libre: true }));
   if (libres.length) {
     const ia2 = await resoudreAspectsIA(libres, contexte, { apiKey, onUsage });
@@ -735,7 +794,7 @@ export async function remplirAspects(pf: PlatformFields, catalogue: AspectCatalo
         ebayAspects: { ...((pf2.ebayAspects && typeof pf2.ebayAspects === "object") ? pf2.ebayAspects : {}), ...ia2.aspects },
         ebayAspectsSources: { ...((pf2.ebayAspectsSources as Record<string, string>) ?? {}), ...Object.fromEntries(Object.keys(ia2.aspects).map((k) => [k, "ia"])) },
       };
-      second = assemblerAspects(pf3, catalogue);
+      second = assemblerAspects(pf3, catalogue, textes);
       obtenus = { ...obtenus, ...ia2.aspects };
     }
     refuses = [...refuses, ...ia2.refuses];

@@ -93,7 +93,8 @@ function Vue({ plateforme, nom, lang, onFermer }) {
 /**
  * @param {{ userId: string, lang?: string, onFermer: () => void }} p
  */
-export default function MeConnecterCloud({ userId, lang = 'fr', onFermer }) {
+// (25/10) `plateformesFermees` (App.jsx) : Leboncoin d'une adresse de remise hors de France n'a pas de ligne.
+export default function MeConnecterCloud({ userId, lang = 'fr', onFermer, plateformesFermees = [] }) {
   const T = textesConnexion(lang);
   const [etats, setEtats] = useState(null);   // null = lecture ; 'echec' ; objet
   const [ouverte, setOuverte] = useState(null);
@@ -129,7 +130,7 @@ export default function MeConnecterCloud({ userId, lang = 'fr', onFermer }) {
         {etats === 'echec' && <p style={{ color: C.amberInk, fontSize: 14 }}>{T.lectureEchec}</p>}
         {etats && etats !== 'echec' && (
           <div style={{ display: 'grid', gap: 10 }}>
-            {CLOUD_PLATEFORMES_CONNEXION.map((p) => (
+            {CLOUD_PLATEFORMES_CONNEXION.filter((p) => !plateformesFermees.includes(p.id)).map((p) => (
               <Ligne key={p.id} nom={p.nom} connecte={etats?.[p.id]?.connecte === true} T={T} onClick={() => setOuverte(p)} />
             ))}
             {ebay && (

@@ -12,6 +12,9 @@ import { attentesParPlateforme } from "../../utils/etatsPublication.js";
 import { plateformesJumelles } from "../../utils/copiesJumelles.js";
 import { PALIERS as PALIERS_COMPTE, palierDesDrapeaux } from "../../utils/palier.js";
 import { poidsLbcManquantPour } from "../../utils/choixPoidsLeboncoin.js";
+// (25/10) Les clôtures « pas pour ce compte » : état neutre au suivi (jamais « à toi de jouer », jamais rouge).
+import { estClotureLbcHorsFrance } from "../../../supabase/functions/_shared/lbc-adresse-france.js";
+import { estClotureEbayHorsFrance } from "../../../supabase/functions/_shared/ebay-hors-france.js";
 // La liste de l'unité (utils/stockFiltres.js, PLATEFORMES_JAMAIS_PRECOCHEES),
 // recopiée : stockFiltres importe sans extension, ce module reste lisible par
 // node seul (selftest:publication-lot) — selftest:depop-file-jamais-silencieuse
@@ -308,7 +311,10 @@ const FINIS_EN_LIGNE = new Set(["published", "sold", "dry_run_completed"]);
  * Classe les jobs d'un lot en groupes, pour l'écran de suivi :
  *   geste (needs_user) · en_cours (processing) · file (pending) ·
  *   en_ligne (published/sold) · pas_parties (failed/cancelled hors arrêt) ·
- *   arretees (arrêt demandé par la personne — dit, jamais compté en échec).
+ *   arretees (arrêt demandé par la personne — dit, jamais compté en échec) ·
+ *   hors_france (25/10 : close parce que la plateforme n'est pas possible pour
+ *   ce compte — Leboncoin d'une adresse hors de France, eBay inscrit hors
+ *   d'eBay France ; neutre, jamais « à toi de jouer », jamais « à ta demande »).
  * Par ARTICLE (une ligne par article, ses plateformes en pastilles), dans
  * l'ordre : ce qui demande un geste d'abord.
  */
@@ -321,7 +327,7 @@ export function suiviDuLot(jobs = []) {
     parArticle.get(k).push(j);
   }
   const lignes = [];
-  const compte = { geste: 0, en_cours: 0, file: 0, en_ligne: 0, pas_parties: 0, retirees: 0, arretees: 0 };
+  const compte = { geste: 0, en_cours: 0, file: 0, en_ligne: 0, pas_parties: 0, retirees: 0, hors_france: 0, arretees: 0 };
   let annonces = 0, annoncesEnLigne = 0, annoncesRetirees = 0;
   for (const [inventaireId, liste] of parArticle) {
     // Une plateforme = son job le plus récent dans le lot.
@@ -340,7 +346,7 @@ export function suiviDuLot(jobs = []) {
     compte[groupe]++;
     lignes.push({ inventaireId, groupe, pastilles });
   }
-  const ordre = ["geste", "en_cours", "file", "pas_parties", "en_ligne", "retirees", "arretees"];
+  const ordre = ["geste", "en_cours", "file", "pas_parties", "en_ligne", "retirees", "hors_france", "arretees"];
   lignes.sort((a, b) => ordre.indexOf(a.groupe) - ordre.indexOf(b.groupe));
   const enVol = compte.en_cours + compte.file;
   return { lignes, compte, articles: lignes.length, annonces, annoncesEnLigne, annoncesRetirees, fini: enVol === 0 };
@@ -350,6 +356,10 @@ export function suiviDuLot(jobs = []) {
 export function etatJobLot(j) {
   if (!j) return "file";
   if (estArretUtilisateur(j)) return "arretee";
+  // (25/10) Close parce que la plateforme n'est pas possible pour ce compte (Leboncoin d'une adresse de remise hors
+  // de France, eBay inscrit hors d'eBay France) : rien n'est parti et rien n'est à faire — NEUTRE, jamais « à toi de
+  // jouer · pas parties » (le cancelled sans arret_utilisateur y tombait), jamais « arrêtée à ta demande ».
+  if (estClotureLbcHorsFrance(j) || estClotureEbayHorsFrance(j)) return "hors_france";
   if (FINIS_EN_LIGNE.has(j.status)) return "en_ligne";
   if (j.status === "needs_user") return "geste";
   if (j.status === "processing") return "en_cours";
@@ -368,6 +378,7 @@ export function groupeArticle(etats) {
   if (etats.includes("pas_partie")) return "pas_parties";
   if (etats.includes("en_ligne")) return "en_ligne";
   if (etats.includes("retiree")) return "retirees";
+  if (etats.includes("hors_france")) return "hors_france";
   return "arretees";
 }
 

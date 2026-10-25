@@ -129,4 +129,58 @@ cas("9. (25/10 nuit, audit N1) les vraies causes que la sentinelle rangeait mal"
   assert.ok(blocagesDuJob(marque).every((b) => b.abandonne), "la marque arret_utilisateur compte aussi");
 });
 
+cas("10. (25/10, audit N9) couleur de republication, sous-catégorie, mention d'un site : des causes nommées, de notre fait", () => {
+  // Les textes réels, recopiés tels quels (erreurs archivées des jobs 6ff45122, 9de4f193, 3e3074ef).
+  const couleur = "Republication en pause AVANT toute suppression — ton annonce est intacte sur Vinted. Vinted exige une couleur à la création et ton annonce d'origine n'en porte pas — aucune couleur n'a pu être déduite (app, titre). Renseigne la couleur depuis l'app (carte de l'article), puis relance la republication. Rien n'a été supprimé, ton annonce est intacte. Le choix se fait dans l'app : fiche de l'article, bouton « ✋ Compléter ».";
+  est(causeDuTexte({ texte: couleur, source: null, platform: "vinted" }), ORIGINE.NOUS, "couleur_absente");
+  est(causeDuTexte({ texte: couleur, source: "prevol_negatif", platform: "vinted" }), ORIGINE.NOUS, "couleur_absente");
+  const sousCat = "Republication en pause AVANT toute suppression — ton annonce est intacte sur Vinted. Le catalogue Vinted demande une sous-catégorie plus précise sous « Cartes à collectionner ». Choisis-la parmi celles que Vinted propose — ton annonce partira ensuite toute seule. Relevé sur ton annonce — Catégorie Vinted : Loisirs et collections › Cartes à collectionner. Le choix se fait dans l'app : fiche de l'article, bouton « ✋ Compléter ».";
+  est(causeDuTexte({ texte: sousCat, source: null, platform: "vinted" }), ORIGINE.NOUS, "sous_categorie_a_choisir");
+  est(causeDuTexte({ texte: "Vinted ne propose pas « Figurines » à cet endroit de son catalogue. Choisis la bonne catégorie parmi celles que Vinted propose", source: "prevol_negatif" }), ORIGINE.NOUS, "sous_categorie_a_choisir");
+  est(causeDuTexte({ texte: "Republication en pause AVANT toute suppression — ton annonce est intacte sur Vinted. Vinted n'accepte plus la catégorie de cette annonce, et FillSell n'a pas pu choisir seul la bonne sous-catégorie de « Enfants › Jeux et jouets ».", source: "champ_a_choisir" }),
+    ORIGINE.NOUS, "sous_categorie_a_choisir");
+  const insta = "Leboncoin refuse le dépôt : « Nous vous invitons à supprimer toute mention d'un site internet autre que leboncoin.fr dans le titre et/ou le texte de votre annonce. » · « Merci de modifier votre titre ou description. En effet, vous avez utilisé des mots qui ne respectent pas nos règles de contenu. » — corrige l'annonce dans FillSell, puis relance la publication.";
+  est(causeDuTexte({ texte: insta, source: null, platform: "leboncoin" }), ORIGINE.NOUS, "texte_refuse_mention_site");
+  const job = { platform: "leboncoin", action: "publish", status: "cancelled", error: "Arrêté à ta demande — tu as abandonné Leboncoin pour cet article.",
+    platform_fields: { abandon_utilisateur: {}, erreurs_archivees: [{ le: "2026-10-18T08:01:55Z", statut: "processing", erreur: insta }, { le: "2026-10-18T08:26:02Z", statut: "needs_user", erreur: insta }] } };
+  const b = blocagesDeNotreFait(job);
+  assert.equal(b.length, 1, "seul l'arrêt (needs_user) compte, pas la reprise (processing)");
+  assert.equal(b[0].cause, "texte_refuse_mention_site");
+  assert.ok(b[0].abandonne, "abandonné après notre refus : un échec, jamais une annulation");
+  // 3e3074ef tel qu'en base : les arrêts AFFICHÉS sous le message générique, le refus « instagram » dans error_technique.brut.
+  const generique = "La publication n'a pas abouti après plusieurs essais automatiques. Rien n'a été publié. Tu peux la relancer d'un clic ci-dessous ; si ça bloque encore, écris-nous, on regarde avec toi.";
+  const reel = { platform: "leboncoin", action: "publish", status: "cancelled", error: "Arrêté à ta demande — tu as abandonné Leboncoin pour cet article.",
+    platform_fields: { abandon_utilisateur: {}, error_technique: { brut: insta, pose_par: "update-job-status (requalification affichage G1/G4)" },
+      erreurs_archivees: [{ le: "2026-10-18T06:10:01Z", statut: "processing", erreur: insta }, { le: "2026-10-18T08:26:02Z", statut: "needs_user", erreur: generique },
+        { le: "2026-10-18T11:06:10Z", statut: "needs_user", erreur: generique }] } };
+  assert.deepEqual(blocagesDeNotreFait(reel).map((x) => x.cause), ["texte_refuse_mention_site", "texte_refuse_mention_site"],
+    "message générique affiché, cause écrite dans error_technique.brut : elle est nommée (plus « inexpliqué »)");
+  assert.deepEqual(blocagesDeNotreFait({ ...reel, platform_fields: { ...reel.platform_fields, error_technique: { brut: "Erreur inconnue" } } }).map((x) => x.cause),
+    ["echec_inexplique", "echec_inexplique"], "un brut qui ne dit rien de plus : « inexpliqué » reste");
+  // Le format du colis garde sa cause (la règle 9 le tranche désormais), la pause « sous-catégorie » n'est pas un arrêt.
+  est(causeDuTexte({ texte: "Le format du colis de ton annonce d'origine (« Grand ») n'est pas proposé par Vinted pour ce rayon", source: "prevol_negatif" }), ORIGINE.NOUS, "format_colis_refuse");
+  assert.deepEqual(blocagesDuJob({ platform: "vinted", action: "republish", status: "pending",
+    error: "Republication en pause AVANT toute suppression — ton annonce est intacte sur Vinted. Vinted demande une catégorie plus précise : FillSell la choisit d'après ta fiche, rien à faire.",
+    platform_fields: { rayon_moteur_attendu: { le: "2026-10-25T10:00:00Z" } } }), [], "la question mise de côté pour le moteur (pending) n'est pas un arrêt");
+});
+
+const R = await import(pathToFileURL(path.join(RACINE, "supabase/functions/_shared/ebay-brouillon-refus.js")).href);
+const V = await import(pathToFileURL(path.join(RACINE, "supabase/functions/_shared/vendeur-ebay.js")).href);
+cas("11. (25/10, N6, R2, R3) eBay par l'extension : les retours du compte, les photos non reçues, le compte pas ouvert à la vente", () => {
+  // Textes réels : lemonde-glad 080e9d39 (20/10) et Fleur de Lotus c64e5596 (23/10), avant le 25/10 rangés « nous/autre ».
+  const refus = (x) => "Publication eBay bloquée : le clic « Mettre en vente » n'a produit aucune requête, et la soumission directe du brouillon a été REFUSÉE par eBay — éléments manquants dans le brouillon : " + x + ". Aucune annonce n'a été créée.";
+  est(causeDuTexte({ texte: refus("Conditions des retours nationaux"), source: "relancer", platform: "ebay" }), ORIGINE.UTILISATEUR, "reglage_du_compte");
+  est(causeDuTexte({ texte: R.messageRetoursAChoisir("publish"), source: R.SOURCE_RETOURS_EBAY, platform: "ebay" }), ORIGINE.UTILISATEUR, "reglage_du_compte");
+  est(causeDuTexte({ texte: R.messageRetoursNonPoses("publish"), source: null, platform: "ebay" }), ORIGINE.NOUS, "retours_non_poses");
+  est(causeDuTexte({ texte: refus("Photos"), source: "relancer", platform: "ebay" }), ORIGINE.NOUS, "photos_non_recues");
+  est(causeDuTexte({ texte: R.messagePhotosArret("publish"), source: null, platform: "ebay" }), ORIGINE.NOUS, "photos_non_recues");
+  est(causeDuTexte({ texte: `${R.ANCRE_PHOTOS_NON_RECUES} : 0 sur 4 après 20 s.`, source: null, platform: "ebay" }), ORIGINE.NOUS, "photos_non_recues");
+  est(causeDuTexte({ texte: V.MESSAGE_VENDEUR_EBAY, source: V.SOURCE_VENDEUR_EBAY, platform: "ebay" }), ORIGINE.UTILISATEUR, "compte_a_finir");
+  est(causeDuTexte({ texte: V.MESSAGE_VENDEUR_EBAY, source: null, platform: "ebay" }), ORIGINE.UTILISATEUR, "compte_a_finir");
+  // L'arrêt « photos » parqué en file (pending, defaut_fillsell) compte comme un arrêt de notre fait.
+  const parque = { id: "c64e5596", user_id: "u", platform: "ebay", action: "publish", status: "pending", error: R.messagePhotosArret("publish"), platform_fields: {} };
+  const s = sentinelleArrets([parque]);
+  assert.equal(s.find((g) => g.cause === "photos_non_recues")?.en_cours, 1, "parqué en file = un arrêt en cours, de notre fait");
+});
+
 console.log(`cause-blocage-selftest : ${n} cas verts`);

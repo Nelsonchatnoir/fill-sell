@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import {
   BUILD_BEEBS_PREUVE_RETRAIT, preuveRetraitBeebsValide, verdictClotureRetraitBeebs,
   jugerRetraitBeebsParReleves, numeroRetraitBeebs, MESSAGE_RETRAIT_BEEBS_EN_VERIFICATION,
+  REGLE_DEUX_CONSTATS_404, deuxConstats404Prouvent, constats404Beebs, attente404Beebs, messageRetraitBeebs404,
 } from "../supabase/functions/_shared/beebs-preuve-retrait.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -61,7 +62,8 @@ const extraire = (nom) => {
   const f = bj.indexOf("\n}\n", d);
   return bj.slice(d, f + 2);
 };
-const src = [extraire("produitVenduSurBeebs"), extraire("preuveAbsenceMesAnnonces"), extraire("preuveRetraitDepuis"), extraire("confirmerRetraitParMesAnnonces")].join("\n");
+// (25/10) + jugerConstats404Beebs : preuveAbsenceMesAnnonces juge les constats « page 404 » d'un retrait.
+const src = [extraire("produitVenduSurBeebs"), extraire("jugerConstats404Beebs"), extraire("preuveAbsenceMesAnnonces"), extraire("preuveRetraitDepuis"), extraire("confirmerRetraitParMesAnnonces")].join("\n");
 // (04/10) La page de l'annonce et l'index, simulés : par défaut ILLISIBLES
 // (aucune réponse), donc jamais une preuve par accident.
 const fabrique = (lectures, { pageAnnonce = { http: null, produit: false }, index = null } = {}) => {
@@ -113,8 +115,11 @@ console.log("\n3 bis. UN GROS COMPTE : « EN LIGNE » TRONQUÉE À 60 (04/10, Jo
   const c = await fabrique([jo], { pageAnnonce: { http: 404, produit: false }, index: false }).confirmerRetraitParMesAnnonces("34055112", t);
   ok(c.success === true && c.preuveRetrait?.source === "mes_annonces" && c.preuveRetrait.annonce?.page_http === 404,
     "retrait ou republication confirmés : la preuve porte la page de l'annonce", JSON.stringify(c.preuveRetrait));
+  // (25/10) Sans contexte de retrait (republication, preuve relue) : la règle du 04/10 seule — l'index qui la
+  // porte encore bloque. Pour un RETRAIT, la même lecture devient un CONSTAT (section 3 ter) : deux constats à
+  // 6 h d'écart prouvent le retrait même si l'index la porte encore (boncoin59300, 33747519).
   const idx = await fabrique([jo], { pageAnnonce: { http: 404, produit: false }, index: true }).preuveAbsenceMesAnnonces("33909468", t);
-  ok(idx.verdict === "illisible", "page 404 mais l'index la porte encore (cache) : rien n'est conclu");
+  ok(idx.verdict === "illisible" && !("constats404" in (idx.lecture ?? {})), "page 404 mais l'index la porte encore (cache), hors retrait : rien n'est conclu, aucun constat");
   const enVente = await fabrique([jo], { pageAnnonce: { http: 200, produit: true }, index: true }).preuveAbsenceMesAnnonces("33917715", t);
   ok(enVente.verdict === "presente", "page 200 avec fiche produit : ENCORE en vente → présente, jamais retirée");
   const verif = await fabrique([L(["33909468"], soixante, 190)], { pageAnnonce: { http: 404, produit: false }, index: false }).preuveAbsenceMesAnnonces("33909468", t);
@@ -126,11 +131,94 @@ console.log("\n3 bis. UN GROS COMPTE : « EN LIGNE » TRONQUÉE À 60 (04/10, Jo
   ok(pageRatee.verdict === "illisible", "page de l'annonce illisible : rien n'est conclu");
 }
 
+console.log("\n3 ter. (25/10) UN RETRAIT : DEUX CONSTATS « PAGE 404 » À 6 H D'ÉCART PROUVENT, MÊME SI L'INDEX LA PORTE ENCORE");
+// boncoin59300, retrait d87c8614 (annonce 33747519) : compte de 1 103+ annonces, « en ligne » rend 60 annonces,
+// « en vérification » lue en entier ne la porte pas, page « 404 - Oups, page perdue ! » sans fiche ni bouton (25/10
+// au matin), index public qui la porte encore (relevé 25/10 00:37) : 20 essais jamais conclus. L'index est en retard.
+{
+  const soixante = Array.from({ length: 60 }, (_, k) => String(34100000 + k));
+  const bc = L([], soixante, 1103);
+  const p404 = { pageAnnonce: { http: 404, produit: false }, index: true };
+  const il = (h) => new Date(Date.now() - h * 3600_000).toISOString();
+  const c0 = { le: il(7), page_http: 404, produit: false, en_verification: "complete", en_ligne: "60/1103", index: "la_porte_encore" };
+  const r1 = await fabrique([bc], p404).preuveAbsenceMesAnnonces("33747519", t, { constats404: [] });
+  ok(r1.verdict === "illisible" && r1.lecture?.constats404?.length === 1 && r1.lecture.constats404[0].page_http === 404
+    && r1.lecture.constats404[0].en_verification === "complete" && r1.lecture.constats404[0].index === "la_porte_encore",
+    "premier constat : rien n'est conclu, le constat est rendu (404, hors vérification, index qui la porte)", JSON.stringify(r1.lecture?.constats404));
+  const r2 = await fabrique([bc], p404).preuveAbsenceMesAnnonces("33747519", t, { constats404: [{ ...c0, le: il(2) }] });
+  ok(r2.verdict === "illisible" && r2.lecture?.constats404?.length === 2, "second constat 2 h après le premier : pas encore (6 h au moins)");
+  const r3 = await fabrique([bc], p404).preuveAbsenceMesAnnonces("33747519", t, { constats404: [c0] });
+  ok(r3.verdict === "absente" && r3.lecture?.preuve_annonce?.regle === REGLE_DEUX_CONSTATS_404 && r3.lecture.preuve_annonce.constats_404.length === 2
+    && r3.lecture.preuve_annonce.page_http === 404 && r3.lecture.preuve_annonce.en_verification === "complete",
+    "second constat 7 h après le premier : RETIRÉE, avec la preuve (les deux dates)", JSON.stringify(r3.lecture?.preuve_annonce));
+  const fn = new Function("lireIdsMesAnnoncesBeebs", "sleep", "pageAnnonceBeebs", "presenceIndexBeebs", `${src}; return preuveRetraitDepuis;`)(null, null, null, null);
+  const preuve404 = fn(r3.lecture, "33747519", "deja_absente");
+  ok(preuve404.source === "mes_annonces" && preuve404.absente === true && preuve404.annonce?.regle === REGLE_DEUX_CONSTATS_404
+    && preuveRetraitBeebsValide({ preuve_retrait: preuve404 }) && verdictClotureRetraitBeebs({ preuve_retrait: preuve404 }, "2026-10-25T12:00:00Z+abc1234 · v0.6.143") === "ok",
+    "la preuve écrite (« déjà retirée de Beebs ») est acceptée par le serveur, qui la revérifie", JSON.stringify(preuve404.annonce));
+  ok(!preuveRetraitBeebsValide({ preuve_retrait: { ...preuve404, annonce: { ...preuve404.annonce, constats_404: [il(1)] } } })
+    && !preuveRetraitBeebsValide({ preuve_retrait: { ...preuve404, annonce: { ...preuve404.annonce, constats_404: [il(3), il(1)] } } })
+    && verdictClotureRetraitBeebs({ preuve_retrait: { ...preuve404, annonce: { ...preuve404.annonce, constats_404: [il(3), il(1)] } } }, "2026-10-25T12:00:00Z+abc1234 · v0.6.143") === "refuser",
+    "un seul constat, ou deux à moins de 6 h : jamais crus sur parole (refusé → vérification)");
+  const enVente = await fabrique([bc], { pageAnnonce: { http: 200, produit: true }, index: true }).preuveAbsenceMesAnnonces("33747519", t, { constats404: [c0] });
+  ok(enVente.verdict === "presente" && Array.isArray(enVente.lecture?.constats404) && enVente.lecture.constats404.length === 0,
+    "la page se relit 200 avec fiche : présente, les constats repartent de zéro");
+  const verif = await fabrique([L(["33747519"], soixante, 1103)], p404).preuveAbsenceMesAnnonces("33747519", t, { constats404: [c0] });
+  ok(verif.verdict === "presente" && verif.lecture?.constats404?.length === 0, "revenue « en vérification » : présente, constats remis à zéro (jamais une preuve)");
+  const sansVerif = await fabrique([{ ok: false, ids: soixante, pages: [{ page: "en_verification", ok: false, ids: [], n: 0, motif: "x" }, page("en_ligne", soixante, 1103)] }], p404)
+    .preuveAbsenceMesAnnonces("33747519", t, { constats404: [c0] });
+  ok(sansVerif.verdict === "illisible" && !("constats404" in (sansVerif.lecture ?? {})), "« en vérification » illisible : aucun constat (c'est elle qui sépare un 404 d'une vérification)");
+  const ancienFaux = await fabrique([bc], p404).preuveAbsenceMesAnnonces("33747519", t, { constats404: [{ ...c0, en_verification: "illisible" }, { le: "pas une date" }] });
+  ok(ancienFaux.verdict === "illisible" && ancienFaux.lecture?.constats404?.length === 1, "un « constat » mal formé n'est jamais compté");
+  const beaucoup = Array.from({ length: 9 }, (_, k) => ({ ...c0, le: il(5 - k * 0.5) }));
+  const garde = await fabrique([bc], p404).preuveAbsenceMesAnnonces("33747519", t, { constats404: [c0, ...beaucoup] });
+  ok(garde.verdict === "absente" && (garde.lecture?.constats404 ?? []).length <= 6 && garde.lecture.constats404[0].le === c0.le,
+    "onze constats : le PREMIER est toujours gardé (il date l'écart), la liste reste courte (6)");
+
+  // Le câblage : retrait seulement, constats rendus, gardés par le background, attente datée côté serveur.
+  const dlb = bj.slice(bj.indexOf("async function deleteListing(job)"), bj.indexOf("// ⚠️⚠️ AUCUNE MESURE DE LAYOUT DANS CE FICHIER"));
+  ok(/const ctxPreuve = job\?\.action === "delete"/.test(dlb) && (dlb.match(/beebs404Constats: preuve\.lecture\.constats404/g) ?? []).length === 1
+    && (dlb.match(/\.\.\.constatsDe\(preuve\)/g) ?? []).length === 3, "deleteListing : constats du job pour un RETRAIT seulement, rendus au background à chaque reprise");
+  ok(/MESSAGE_CONSTAT_404_BEEBS/.test(dlb) && /Beebs ne montre plus cette annonce/.test(bj) && !/reste en vente/.test(bj.slice(bj.indexOf("const MESSAGE_CONSTAT_404_BEEBS"), bj.indexOf("const MESSAGE_CONSTAT_404_BEEBS") + 500)),
+    "le message d'un constat est vrai (introuvable, hors vérification, index en retard) — jamais « encore en vente »");
+  const bgr = lire("chrome-extension/background.js");
+  const rep = bgr.slice(bgr.indexOf("} else if (result && !result.success && result.reprise) {"), bgr.indexOf("} else if (result && !result.success && result.reprise) {") + 1600);
+  ok(/Array\.isArray\(result\.beebs404Constats\)/.test(rep) && /pfC\.beebs_404_constats = result\.beebs404Constats/.test(rep)
+    && rep.indexOf("job.platform_fields = pfC;") < rep.indexOf("await rearmBounded(accessToken, job"), "background : les constats sont posés sur le job AVANT rearmBounded (la trace survit à la reprise)");
+  const uj = lire("supabase/functions/update-job-status/index.ts");
+  const b404 = uj.slice(uj.indexOf("RETRAIT BEEBS : PAGE 404 CONSTATÉE"), uj.indexOf("RETRAIT BEEBS : PAGE 404 CONSTATÉE") + 4000);
+  ok(/constats404Beebs\(body\.platform_fields/.test(b404) && /jrow404\?\.action === "delete" && jrow404\.platform === "beebs"/.test(b404)
+    && /needsUserAttempts: Number\(pfBase404\.needsUserAttempts \?\? 0\) \|\| 0/.test(b404) && /next_action_after: attente\.prochain/.test(b404)
+    && /statutEffectif = "pending";/.test(b404) && /messageEffectif = messageRetraitBeebs404\(constats404\);/.test(b404),
+    "update-job-status : attente du second constat = pending, aucun essai consommé, prochain essai à 6 h du premier, message vrai");
+  ok(uj.indexOf("RETRAIT BEEBS : PAGE 404 CONSTATÉE") > uj.indexOf("const RETRAIT_VERIF_BEEBS_RE") && /if \(!pfRetraitVerif && !pfCanalCoupe/.test(b404),
+    "… après la règle « en vérification » (qui garde la main), jamais par-dessus un canal coupé");
+  // Le LIEN texte de l'extension ↔ règle du serveur (même garde que retrait-beebs-verification) : seul un essai qui a
+  // lu la page 404 arme l'attente — une session fermée ou une lecture ratée, constats sur le job ou pas, gardent leur chemin.
+  const reSrc = b404.match(/const CONSTAT_404_BEEBS_RE = \/(.+)\/;/)?.[1] ?? null;
+  const texteExt = (bj.match(/const MESSAGE_CONSTAT_404_BEEBS =\s*((?:"[^"]*"\s*\+?\s*)+);/)?.[1] ?? "").split(/"\s*\+\s*"/).join("").replace(/^"|"$/g, "");
+  const re404 = reSrc ? new RegExp(reSrc) : null;
+  ok(Boolean(re404 && texteExt && re404.test(texteExt) && re404.test(`${texteExt}. Nouvel essai automatique (tentative 2/5), rien à faire.`)
+    && /typeof body\.error === "string" && CONSTAT_404_BEEBS_RE\.test\(body\.error\)/.test(b404)
+    && !re404.test("Page de l'annonce sans bouton « Supprimer l'annonce », et « Mes annonces » illisible en entier — rien n'a été touché, nouvel essai")),
+    "le texte de l'extension arme la règle (ré-armé compris) ; « Mes annonces » illisible ne l'arme jamais", texteExt.slice(0, 80));
+  const cs = constats404Beebs({ beebs_404_constats: [{ ...c0, le: il(1) }, c0, { le: il(2) }] });
+  ok(cs.length === 2 && cs[0].le === c0.le, "serveur : constats valides, du plus ancien au plus récent");
+  const att = attente404Beebs([c0]);
+  ok(Date.parse(att.prochain) >= Date.now() + 30 * 60_000 - 1000 && attente404Beebs([{ ...c0, le: il(1) }]).prochain > il(-4.9),
+    "prochain essai : 6 h (et 2 min) après le premier constat, jamais avant 30 min");
+  const m = messageRetraitBeebs404([c0]);
+  ok(/introuvable depuis le \d{2}\/\d{2} à \d{2}h\d{2}/.test(m) && /n'est plus achetable/.test(m) && /index public/.test(m) && /rien à faire/.test(m) && !/en vente/.test(m),
+    "message daté et vrai : introuvable depuis…, plus achetable, l'index en retard, rien à faire", m);
+  ok(deuxConstats404Prouvent([il(7), il(0)]) && !deuxConstats404Prouvent([il(5), il(0)]) && !deuxConstats404Prouvent([il(9)]), "deux dates à 6 h ou plus : preuve ; sinon non");
+}
+
 console.log("\n4. LES CHEMINS DE CLÔTURE");
 const dl = bj.slice(bj.indexOf("async function deleteListing(job)"), bj.indexOf("// ⚠️⚠️ AUCUNE MESURE DE LAYOUT DANS CE FICHIER"));
 ok((dl.match(/await confirmerRetraitParMesAnnonces\(idCible, t\)/g) ?? []).length === 2, "les deux chemins (page de l'annonce, carte) relisent « Mes annonces » après la confirmation");
 ok(!/return \{ success: true \}/.test(dl) && !/return \{ success: true, trace \}/.test(dl), "aucun succès sans preuve dans deleteListing");
-ok((dl.match(/await preuveAbsenceMesAnnonces\(idCible, t\)/g) ?? []).length === 2, "page sans bouton / carte introuvable : la liste complète tranche");
+// (25/10) Les deux appels portent le contexte du retrait (ses constats « page 404 ») : ctxPreuve.
+ok((dl.match(/await preuveAbsenceMesAnnonces\(idCible, t, ctxPreuve\)/g) ?? []).length === 2, "page sans bouton / carte introuvable : la liste complète tranche");
 const bg = lire("chrome-extension/background.js");
 ok((bg.match(/\(state === "unavailable" \|\| state === "sold"\) && job\.platform !== "beebs"/g) ?? []).length >= 4,
   "la page publique ne clôt plus un retrait Beebs (retrait, canal coupé, republication ×2)");
@@ -159,7 +247,8 @@ const fn = bjs.slice(bjs.indexOf("async function produitVenduSurBeebs("), bjs.in
 ok(/page\.http === 200 && page\.sku === String\(idCible\) && page\.disponibilite === "SoldOut"/.test(fn), "extension : page 200, sku EXACT, SoldOut — les trois");
 ok(/String\(x\?\.sku \?\? x\?\.productID \?\? ""\) === String\(id\)/.test(bjs), "extension : la fiche Product de CE numéro, jamais un autre produit de la page");
 const pAbs = bjs.slice(bjs.indexOf("async function preuveAbsenceMesAnnonces("), bjs.indexOf("function preuveRetraitDepuis("));
-ok(pAbs.indexOf("produitVenduSurBeebs(idCible)") > 0 && pAbs.indexOf("produitVenduSurBeebs(idCible)") < pAbs.indexOf('return { verdict: "presente", lecture };'),
+// (25/10) « présente » rend aussi les constats remis à zéro (lecture: { ...lecture, ...constatsRemis }).
+ok(pAbs.indexOf("produitVenduSurBeebs(idCible)") > 0 && pAbs.indexOf("produitVenduSurBeebs(idCible)") < pAbs.indexOf('return { verdict: "presente", lecture: { ...lecture, ...constatsRemis } };'),
   "extension : encore dans « Mes annonces » → la fiche produit est relue avant de conclure « présente »");
 const del = bjs.slice(bjs.indexOf("async function deleteListing("), bjs.indexOf("// ── CHEMIN 1 (nominal depuis le 11/09)"));
 ok(/const dejaVendue = await produitVenduSurBeebs\(idCible\);/.test(del) && /aucun clic/.test(del), "extension : déjà vendue → aucun nouveau clic, retrait fait avec sa preuve");

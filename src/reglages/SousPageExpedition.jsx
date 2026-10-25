@@ -17,8 +17,14 @@
 //     proposée, la saisie reste forçable ; introuvable → avertie, « enregistrer
 //     quand même ». Service en panne → enregistrement direct, pas d'alarme à
 //     tort.
+//   · (25/10, décision de Nico) AVANT la BAN : un code postal absent de la base
+//     officielle française (_shared/lbc-adresse-france.js) est averti —
+//     Leboncoin n'accepte que les adresses en France, FillSell n'y publiera pas
+//     pour ce compte — et reste « enregistrer quand même » (Beebs, eBay… ne
+//     changent pas). Enregistrée, la phrase reste sous le formulaire.
 import { useState } from 'react';
 import { fusionnerReglages } from '../utils/reglagesPlateformes';
+import { adresseLbcHorsFrance } from '../../supabase/functions/_shared/lbc-adresse-france.js';
 import { R } from './theme';
 import { Groupe, Carte, Champ, Bouton, Note } from './ReglagesUI';
 
@@ -52,6 +58,14 @@ export default function SousPageExpedition({ c, T }) {
   const verifierPuisEnregistrer = async () => {
     setEnCours(true);
     const r = rue.trim(); const p = cp.trim(); const v = ville.trim();
+    // (25/10, décision de Nico — Marta, « 16035 RAPALLO ») Un code postal absent de la base officielle française :
+    // l'avertissement AVANT la BAN (base française, elle proposerait n'importe quoi) — Leboncoin ne sera ni proposé
+    // ni tenté avec cette adresse. Il ne bloque rien : « enregistrer quand même » (Beebs, eBay… ne changent pas).
+    if (adresseLbcHorsFrance({ rue: r, code_postal: p, ville: v }).horsFrance) {
+      setBan({ kind: 'hors_france' });
+      setEnCours(false);
+      return;
+    }
     const saisie = [r, p, v].filter(Boolean).join(' ');
     let feature = null; let banIndisponible = false;
     try {
@@ -129,6 +143,15 @@ export default function SousPageExpedition({ c, T }) {
           </div>
         )}
 
+        {ban?.kind === 'hors_france' && (
+          <div style={{ background: `${R.amber}18`, border: `1px solid ${R.amber}66`, borderRadius: 12, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ fontSize: 13, color: R.ink, lineHeight: 1.5 }}>{T.adresseHorsFrance}</div>
+            <Bouton ton="creux" onClick={async () => { setEnCours(true); await enregistrer(rue.trim(), cp.trim(), ville.trim()); setEnCours(false); }} enCours={enCours} style={{ alignSelf: 'flex-start' }}>
+              {T.enregistrerQuandMeme}
+            </Bouton>
+          </div>
+        )}
+
         {ban?.kind === 'introuvable' && (
           <div style={{ background: `${R.amber}18`, border: `1px solid ${R.amber}66`, borderRadius: 12, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ fontSize: 13, color: R.ink, lineHeight: 1.5 }}>{T.adresseInconnue}</div>
@@ -144,6 +167,8 @@ export default function SousPageExpedition({ c, T }) {
           </Bouton>
         )}
       </Carte>
+      {/* (25/10) L'adresse ENREGISTRÉE est hors de France : la phrase de Nico, tant qu'elle l'est. */}
+      {!ban && c.lbcHorsFrance && <Note>{T.lbcHorsFrance}</Note>}
       <Note>{T.adresseNote}</Note>
     </Groupe>
   );

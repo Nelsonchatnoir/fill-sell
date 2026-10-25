@@ -40,8 +40,9 @@ const VERSIONS_ATTENDUES = {
   "@jsquash/webp": "1.4.0",
 };
 
-/** Tout ce qui ressemble à une importation distante versionnable. */
-const IMPORT_DISTANT = /https:\/\/(?:esm\.sh|deno\.land\/x|cdn\.skypack\.dev|unpkg\.com)\/([^"'\s?]+)/g;
+/** Tout ce qui ressemble à une importation distante versionnable. (25/10) Les spécificateurs `npm:` aussi :
+ *  apple-iap-webhook prend @peculiar/x509 au registre npm depuis qu'esm.sh ne le construit plus. */
+const IMPORT_DISTANT = /(?:https:\/\/(?:esm\.sh|deno\.land\/x|cdn\.skypack\.dev|unpkg\.com)\/|["']npm:)([^"'\s?]+)/g;
 
 function fichiersTs(dir) {
   const out = [];

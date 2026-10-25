@@ -49,6 +49,7 @@ import { urlPhoto, urlsPhotos } from "../../utils/photos";
 import { lireVeritePlateformes, sessionsDepuisVerite } from "../../utils/veritePlateformes";
 import { ebayCompteUtilisable } from "../../utils/ebayCompte";
 import { resumeEbay } from "../../utils/ebayParcours";
+import { ebaySiteHorsFrance, texteEbayHorsFrance } from "../../../supabase/functions/_shared/ebay-hors-france.js";
 import { lireProchaineRemiseAZero } from "../../reglages/quotas";
 import { agirEbay } from "../../utils/ebayCompte";
 import { businessOfferVisible } from "../../config/businessOffer";
@@ -165,12 +166,16 @@ function Vignette({ item, taille = null }) {
   );
 }
 
+// (25/10) Aucune plateforme fermée : UNE référence, jamais un tableau neuf à chaque rendu (le moteur est mémoïsé).
+const AUCUNE_FERMEE = Object.freeze([]);
 // Le moteur d'UN article, monté sans rien afficher. Mémoïsé : l'écran du lot
 // se redessine souvent, le moteur seulement quand SES entrées changent.
 const HoteMoteur = memo(function HoteMoteur({
   item, jobs, prixVinted, surMoteur, marque, onJobsQueued,
   userId, supabase, lang, ebayCompte, plateformesVisibles, plateformesOuvertes, oplaMotifGrise, oplaExtensionMin,
   isPremium, isPro, isBusiness, extensionNeverSeen, extensionLastSeenAt,
+  // (25/10) Leboncoin d'une adresse de remise hors de France : jamais au moteur du lot (App.jsx → StockTab).
+  plateformesFermees = AUCUNE_FERMEE,
 }) {
   const entrees = useMemo(() => propsStepperArticle(item, jobs, { prixVinted }), [item, jobs, prixVinted]);
   const pilote = useMemo(() => ({ surMoteur, marqueJobs: marque }), [surMoteur, marque]);
@@ -185,6 +190,7 @@ const HoteMoteur = memo(function HoteMoteur({
       ebayCompte={ebayCompte}
       plateformesVisibles={plateformesVisibles}
       plateformesOuvertes={plateformesOuvertes}
+      plateformesFermees={plateformesFermees}
       oplaMotifGrise={oplaMotifGrise}
       oplaExtensionMin={oplaExtensionMin}
       {...entrees}
@@ -325,7 +331,10 @@ function EcranDuLot({
   // Depop cochée le dit, avec LE bouton — ses annonces attendront le geste.
   // Profil pas encore lu, ou illisible : rien n'est dit (jamais un faux mur).
   const depopAAutoriser = profil && profil.extension_postes !== undefined && !etatAccesDepop(profil.extension_postes).avecAcces;
-  const ebayBloque = Boolean(ctx.ebayCompte?.voieApi) && Boolean(ctx.ebayCompte?.lu) && ebayCompteUtilisable(ctx.ebayCompte?.etat) === false;
+  // (25/10, audit N10) Un compte eBay inscrit hors d'eBay France : eBay grisé, la phrase vraie, jamais « relance-la »
+  // (_shared/ebay-hors-france.js ; site lu par ebay-account, null = jamais lu → rien de grisé).
+  const ebayEtranger = Boolean(ctx.ebayCompte?.voieApi) && Boolean(ctx.ebayCompte?.lu) && ebaySiteHorsFrance(ctx.ebayCompte?.etat?.ebay_site).horsFrance;
+  const ebayBloque = ebayEtranger || (Boolean(ctx.ebayCompte?.voieApi) && Boolean(ctx.ebayCompte?.lu) && ebayCompteUtilisable(ctx.ebayCompte?.etat) === false);
   const ebayParServeur = Boolean(ctx.ebayCompte?.voieApiReelle);
   // Venu d'un filtre « Pas encore sur X » : X seule, cochée d'office ; sinon
   // le dernier choix, sinon tout ce qui peut partir.
@@ -1058,6 +1067,7 @@ function EcranDuLot({
                 onJobsQueued={onJobsQueued}
                 userId={userId} supabase={supabase} lang={lang}
                 ebayCompte={ctx.ebayCompte} plateformesVisibles={ctx.plateformesVisibles} plateformesOuvertes={ctx.plateformesOuvertes}
+                plateformesFermees={ctx.plateformesFermees ?? AUCUNE_FERMEE}
                 oplaMotifGrise={ctx.oplaMotifGrise} oplaExtensionMin={ctx.oplaExtensionMin}
                 isPremium={ctx.isPremium} isPro={ctx.isPro} isBusiness={ctx.isBusiness}
                 extensionNeverSeen={ctx.extensionNeverSeen} extensionLastSeenAt={ctx.extensionLastSeenAt}
@@ -1219,7 +1229,9 @@ export function EcranPlateformes({
             let sousTexte;
             if (r.possibles === 0) sousTexte = en ? "Already there for all of them" : "Déjà en ligne pour tous";
             else if (pause) sousTexte = pause || (en ? "Paused on our side for now" : "En pause de notre côté pour l'instant");
-            else if (eb) sousTexte = resumeEbay(ebayEtat, en ? "en" : "fr").phrase; // (17/10) la règle unique : plafond eBay à zéro ou étape qui reste, nommés
+            else if (eb) sousTexte = ebaySiteHorsFrance(ebayEtat?.ebay_site).horsFrance
+              ? texteEbayHorsFrance(ebayEtat.ebay_site, en ? "en" : "fr") // (25/10) compte inscrit hors d'eBay France
+              : resumeEbay(ebayEtat, en ? "en" : "fr").phrase; // (17/10) la règle unique : plafond eBay à zéro ou étape qui reste, nommés
             else {
               const a = en ? `${r.possibles} item${r.possibles > 1 ? "s" : ""}` : `${r.possibles} article${r.possibles > 1 ? "s" : ""}`;
               const d = r.dejaLa ? (en ? ` · ${r.dejaLa} already there` : ` · ${r.dejaLa} y ${r.dejaLa > 1 ? "sont" : "est"} déjà`) : "";

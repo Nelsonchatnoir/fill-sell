@@ -43,8 +43,64 @@ const ms = (v) => { const t = Date.parse(String(v ?? "")); return Number.isFinit
 export function preuveRetraitBeebsValide(pf) {
   const p = pf && typeof pf === "object" ? pf.preuve_retrait : null;
   if (!p || typeof p !== "object" || !/^\d{6,}$/.test(String(p.numero ?? ""))) return false;
-  if (p.source === "mes_annonces" && p.absente === true) return true;
+  // (25/10) Une preuve par l'annonce elle-même « deux constats 404 » se vérifie ici aussi : deux constats au
+  // moins, le dernier 6 h au moins après le premier (jamais crue sur parole).
+  if (p.source === "mes_annonces" && p.absente === true) {
+    return p.annonce?.regle === REGLE_DEUX_CONSTATS_404 ? deuxConstats404Prouvent(p.annonce?.constats_404) : true;
+  }
   return p.source === "page_produit" && p.vendue === true && p.disponibilite === "SoldOut";
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// (25/10, boncoin59300) UNE PAGE 404 CONSTATÉE DEUX FOIS À 6 H D'ÉCART PROUVE LE RETRAIT
+// ═══════════════════════════════════════════════════════════════════════════
+// Retrait d87c8614 (annonce 33747519, compte de 1 103+ annonces) : « en ligne » ne rend que 60 annonces, « en
+// vérification » lue en entier ne la porte pas, sa page rend « 404 - Oups, page perdue ! » sans fiche ni bouton
+// (relevé le 25/10 au matin) — mais l'index public la porte encore (relevé du 25/10 00:37) : 20 essais depuis le
+// 24/10 21:45, jamais conclus, et le message disait « elle reste en vente sur Beebs » (faux : rien d'achetable).
+// LA RÈGLE (extension, beebs.js jugerConstats404Beebs ; retrait seulement) : page 404 sans fiche + absente de
+// « en vérification » lue en entier = un CONSTAT, gardé sur le job (platform_fields.beebs_404_constats) ; deux
+// constats espacés d'au moins 6 h PROUVENT l'absence, même si l'index la porte encore (il est en retard : il ne
+// voit ni les ventes ni les retraits). Ici : la preuve se revérifie, et l'attente du second constat est une
+// ATTENTE (pas un essai), avec un message vrai et daté.
+export const REGLE_DEUX_CONSTATS_404 = "deux_constats_404";
+export const BEEBS_404_ECART_MIN_MS = 6 * 3600_000;
+
+/** Les dates (ISO) de deux constats ou plus, dont le dernier à 6 h au moins du premier ? */
+export function deuxConstats404Prouvent(dates) {
+  const t = (Array.isArray(dates) ? dates : []).map(ms).filter(Number.isFinite).sort((a, b) => a - b);
+  return t.length >= 2 && t[t.length - 1] - t[0] >= BEEBS_404_ECART_MIN_MS;
+}
+
+/** Les constats « page 404 » valides d'un job (platform_fields.beebs_404_constats), du plus ancien au plus récent. */
+export function constats404Beebs(pf) {
+  const brut = pf && typeof pf === "object" ? pf.beebs_404_constats : null;
+  return (Array.isArray(brut) ? brut : [])
+    .filter((c) => c && c.page_http === 404 && c.produit === false && c.en_verification === "complete" && Number.isFinite(ms(c.le)))
+    .sort((a, b) => ms(a.le) - ms(b.le));
+}
+
+/** L'attente du second constat : { premier, prochain } (ISO) — au plus tôt 6 h (et 2 min) après le premier, jamais dans moins de 30 min. */
+export function attente404Beebs(constats, maintenant = Date.now()) {
+  const premier = ms(constats?.[0]?.le);
+  const p = Number.isFinite(premier) ? premier : maintenant;
+  const prochain = Math.max(maintenant + 30 * 60_000, p + BEEBS_404_ECART_MIN_MS + 2 * 60_000);
+  return { premier: new Date(p).toISOString(), prochain: new Date(prochain).toISOString() };
+}
+
+const quandFr = (t) => {
+  const d = new Date(t);
+  return `le ${d.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "2-digit", month: "2-digit" })} à `
+    + d.toLocaleTimeString("fr-FR", { timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit" }).replace(":", "h");
+};
+
+/** Le message vrai d'un retrait dont la page est un 404 constaté, en attente du second constat. */
+export function messageRetraitBeebs404(constats, maintenant = Date.now()) {
+  const { premier, prochain } = attente404Beebs(constats, maintenant);
+  const n = Array.isArray(constats) ? constats.length : 0;
+  return `Beebs ne montre plus cette annonce : sa page est introuvable depuis ${quandFr(premier)} (404, constaté ${n > 1 ? `${n} fois` : "une fois"}) `
+    + "et elle n'est pas dans tes annonces en vérification — elle n'est plus achetable ; seul l'index public de Beebs, en retard, la porte encore. "
+    + `FillSell la relit à partir du ${quandFr(prochain).replace(/^le /, "")} et clôt alors le retrait — rien à faire.`;
 }
 
 /**

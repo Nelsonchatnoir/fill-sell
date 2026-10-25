@@ -69,6 +69,9 @@ import { televerserPhotos } from "../utils/photosUpload";
 import EbayCompteSection from "./EbayCompteSection";
 import { ebayCompteUtilisable, motifEbayInutilisable, repartirParVoie } from "../utils/ebayCompte";
 import { resumeEbay } from "../utils/ebayParcours";
+// (25/10) eBay inscrit hors d'eBay France grisé (audit N10) ; Leboncoin relu au clic pour une adresse hors de France.
+import { ebaySiteHorsFrance, texteEbayHorsFrance } from "../../supabase/functions/_shared/ebay-hors-france.js";
+import { adresseLbcHorsFrance, messageLbcHorsFrance } from "../../supabase/functions/_shared/lbc-adresse-france.js";
 import {
   CHILD_MONTH_SIZES, CHILD_YEAR_SIZES, CHILD_SHOE_EU_MIN, CHILD_SHOE_EU_MAX,
   childAxesForGenre,
@@ -376,6 +379,8 @@ const messagePause = (tpl, pausedReasons, p, platformLabel) =>
 // Repli : si l'état n'a pas été lu, on garde la phrase générique d'avant —
 // on ne nomme jamais une étape qu'on n'a pas relevée.
 const messageCompteEbay = (motif, lang, etat = null) => {
+  // (25/10, audit N10) Compte inscrit hors d'eBay France : la phrase vraie AVANT toute étape « à finir ».
+  if (motif === "hors_france") return texteEbayHorsFrance(etat?.ebay_site, lang === "en" ? "en" : "fr");
   if (etat) {
     const r = resumeEbay(etat, lang === "en" ? "en" : "fr");
     if (r.phrase && !r.pret) return r.phrase;
@@ -1685,6 +1690,8 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
   // serveur + borne de build, App.jsx) : la case devient cliquable. Motif de
   // la case grisée sinon ('fermee' | 'extension') et borne affichée.
   plateformesOuvertes = [], oplaMotifGrise = 'fermee', oplaExtensionMin = null,
+  // (25/10) Fermées à ce compte (Leboncoin d'une adresse de remise hors de France) : aucune case, aucune phrase.
+  plateformesFermees = [],
   // Autorisation Opla du COMPTE, lue au serveur (utils/oplaAcces, 24/09) :
   // 'autorise' · 'a_autoriser' · 'inconnu' · null (pas encore lue). La modale
   // au clic ne se pose que sur un refus CONNU ('a_autoriser').
@@ -2091,7 +2098,7 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
 
       <Eyebrow>{t("stepPhotosPlatformsLabel")}</Eyebrow>
       <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginTop:2 }}>
-        {[...PLATFORMS_DEFAULT, ...plateformesAVenir].map(p => {
+        {[...PLATFORMS_DEFAULT, ...plateformesAVenir].filter(p => !plateformesFermees.includes(p)).map(p => {
           const isOn = selected.has(p);
           // Compat catégorie × plateforme (src/utils/platformCompat.js,
           // dérivée des 4 mappings) : une plateforme qui ne peut pas vendre
@@ -2240,7 +2247,7 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
           ouverte n'a rien à justifier, et afficher « pas encore prise en
           charge » sous une plateforme cochable serait un diagnostic à
           l'écran — jamais. */}
-      {PLATFORMS_DEFAULT.filter(p => categorieFermee(platformSupport?.[p])).map(p => (
+      {PLATFORMS_DEFAULT.filter(p => categorieFermee(platformSupport?.[p]) && !plateformesFermees.includes(p)).map(p => (
         <p key={p} style={{ margin:"8px 0 0", fontSize:12, color:T.mute2, fontWeight:600, lineHeight:1.4 }}>
           {motifSupport ? motifSupport(p, platformSupport[p]) : supportMessage(t, platformSupport[p], PLATFORM_LABELS[p])}
         </p>
@@ -2249,7 +2256,7 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
           celle écrite en base (message_fr/message_en) — ton neutre, pas une
           erreur. Pas répétée si la case est déjà grisée pour un motif déjà
           affiché (catégorie non supportée, déjà en ligne, en cours). */}
-      {PLATFORMS_DEFAULT.filter(p => pausedPlatforms.includes(p) && !categorieFermee(platformSupport?.[p]) && !publishedSet?.has(p) && !queuedSet?.has(p)).map(p => (
+      {PLATFORMS_DEFAULT.filter(p => pausedPlatforms.includes(p) && !plateformesFermees.includes(p) && !categorieFermee(platformSupport?.[p]) && !publishedSet?.has(p) && !queuedSet?.has(p)).map(p => (
         <p key={`pause-${p}`} style={{ margin:"8px 0 0", fontSize:12, color:T.mute2, fontWeight:600, lineHeight:1.4 }}>
           {messagePause(tpl, pausedReasons, p, PLATFORM_LABELS[p])}
         </p>
@@ -2263,7 +2270,8 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
           <p style={{ margin:0, flex:"1 1 200px", minWidth:0, fontSize:12, color:T.mute2, fontWeight:600, lineHeight:1.4 }}>
             {messageCompteEbay(ebayMotif, lang, ebayEtatCompte)}
           </p>
-          {onParametrerEbay && (
+          {/* (25/10) Compte eBay hors de France : rien à paramétrer chez nous, aucun bouton. */}
+          {onParametrerEbay && ebayMotif !== "hors_france" && (
             <button
               type="button"
               onClick={onParametrerEbay}
@@ -4455,6 +4463,8 @@ function readStepperDraft(invKey) {
 // partagé (src/utils/stockLimit.js) pour le premier rendu — le composant lit
 // la config en direct (stockLimitCfg) dès qu'elle répond.
 const FREE_STOCK_LIMIT = FREE_STOCK_LIMIT_FALLBACK;
+// (25/10) Aucune plateforme fermée : une seule référence (dépendance stable des mémos).
+const AUCUNE_PLATEFORME_FERMEE = Object.freeze([]);
 
 export default function ListingPreviewScreen({
   // profiles.plateformes_visibles, lu par App.jsx. AFFICHAGE SEULEMENT.
@@ -4462,6 +4472,10 @@ export default function ListingPreviewScreen({
   // Opla OUVERTE pour ce compte (interrupteur serveur + borne de build,
   // App.jsx) : la case devient cliquable et la copie Opla se dérive.
   plateformesOuvertes = [], oplaMotifGrise = 'fermee', oplaExtensionMin = null,
+  // (25/10, décision de Nico — Marta, Rapallo) Plateformes FERMÉES à ce compte (App.jsx, depuis le profil) :
+  // Leboncoin pour une adresse de remise hors de France (_shared/lbc-adresse-france.js). Ni case, ni présélection,
+  // ni copie du scan ; et la publication relit l'adresse au clic (dernière garde, avant tout débit).
+  plateformesFermees = AUCUNE_PLATEFORME_FERMEE,
   inventaireId, userId, initialPhotos: initialPhotosProp = [], initialListing: initialListingProp = null, supabase, lang, onClose,
   // « Compléter » un dépôt en attente d'un champ depuis l'écran Publier
   // (2026-09-23) : l'hôte ferme le stepper et ouvre le mini-éditeur du job.
@@ -4559,6 +4573,12 @@ export default function ListingPreviewScreen({
   const { t, tpl } = useTranslation(lang);
   const stepLabels = [t("stepLabelUpload"), t("stepLabelPhotos"), t("stepLabelGeneration"), t("stepLabelPublish")];
   const platformFieldsConfig = getPlatformFieldsConfig(t);
+  // (25/10) Les quatre plateformes du stepper MOINS celles fermées à ce compte (Leboncoin d'une adresse hors de
+  // France) : la case, la présélection, les copies du scan et de la fiche la lisent. PLATFORMS_DEFAULT ne bouge pas.
+  const plateformesDuStepper = useMemo(
+    () => PLATFORMS_DEFAULT.filter((p) => !plateformesFermees.includes(p)),
+    [plateformesFermees],
+  );
 
   // Brouillon sessionStorage lu UNE fois au mount (ref : stable même si les
   // props bougent ensuite). null = ouverture fraîche, sinon on reprend là où
@@ -5103,7 +5123,7 @@ export default function ListingPreviewScreen({
     if (annonceScanAppliqueeRef.current) return;
     annonceScanAppliqueeRef.current = true;
     if (draft || !annoncesDuScan?.platforms) return;
-    const dispo = PLATFORMS_DEFAULT.filter(p => annoncesDuScan.platforms[p]);
+    const dispo = plateformesDuStepper.filter(p => annoncesDuScan.platforms[p]);
     if (!dispo.length) return;
     // lens_unifie : marque l'origine — handleNext (step 1) ne jette que cette
     // hydratation-là si une retouche est finalement choisie.
@@ -5316,8 +5336,12 @@ export default function ListingPreviewScreen({
   const ebayEtatCompte = ebayCompte?.etat ?? null;
   const ebayEtatLu = Boolean(ebayCompte?.lu);
   // Tri-état : true = grisé, false = cochable, jamais grisé tant qu'on ne sait pas.
-  const ebayBloque = Boolean(ebayCompte?.voieApi) && ebayEtatLu && ebayCompteUtilisable(ebayEtatCompte) === false;
-  const ebayMotif = ebayBloque ? motifEbayInutilisable(ebayEtatCompte) : null;
+  // (25/10, audit N10) Un compte eBay inscrit HORS d'eBay France (site lu par ebay-account) est grisé lui aussi,
+  // motif « hors_france » : FillSell n'y publie pas, et la publication serait close (_shared/ebay-hors-france.js).
+  // Aucun bouton « Paramétrer eBay » : il n'y a rien à finir chez nous.
+  const ebayHorsFrance = Boolean(ebayCompte?.voieApi) && ebayEtatLu && ebaySiteHorsFrance(ebayEtatCompte?.ebay_site).horsFrance;
+  const ebayBloque = ebayHorsFrance || (Boolean(ebayCompte?.voieApi) && ebayEtatLu && ebayCompteUtilisable(ebayEtatCompte) === false);
+  const ebayMotif = ebayHorsFrance ? "hors_france" : ebayBloque ? motifEbayInutilisable(ebayEtatCompte) : null;
   // ── LA VOIE RÉELLE d'eBay pour CE compte (07/09/2026) ─────────────────────
   // Tout ce qui parle d'extension à l'écran se règle là-dessus, JAMAIS sur le
   // drapeau seul : un compte basculé dont la checklist est rouge repart en
@@ -5346,6 +5370,8 @@ export default function ListingPreviewScreen({
       // (02/10, sortie d'Opla) Un brouillon d'avant peut encore porter une
       // plateforme qui n'est plus proposée (Opla) : on ne la recoche jamais.
       .filter(p => PLATFORMS_DEFAULT.includes(p) || plateformesOuvertes.includes(p))
+      // (25/10) Ni une plateforme fermée à ce compte (Leboncoin d'une adresse hors de France), brouillon compris.
+      .filter(p => !plateformesFermees.includes(p))
       .filter(p => !lockedSet.has(p)),
   ));
   const [publishing, setPublishing]     = useState(false);
@@ -5585,6 +5611,12 @@ export default function ListingPreviewScreen({
     if (!ebayBloque) return;
     setSelected(prev => (prev.has("ebay") ? new Set([...prev].filter(p => p !== "ebay")) : prev));
   }, [ebayBloque]);
+  // (25/10) Même filet pour une plateforme FERMÉE à ce compte (Leboncoin d'une adresse de remise hors de France) :
+  // elle n'a pas de case, elle ne reste jamais cochée derrière (fiche reprise, copie appliquée, adresse lue après).
+  useEffect(() => {
+    if (!plateformesFermees.length) return;
+    setSelected(prev => ([...prev].some(p => plateformesFermees.includes(p)) ? new Set([...prev].filter(p => !plateformesFermees.includes(p))) : prev));
+  }, [plateformesFermees, selected]);
 
   // Modale de conversion (solde d'unités insuffisant pour publier)
   const [quotaModal, setQuotaModal] = useState({
@@ -5681,7 +5713,9 @@ export default function ListingPreviewScreen({
     const gen = f.platformListings;
     const parPlateforme = gen?.platforms;
     if (!parPlateforme || typeof parPlateforme !== "object") return false;
-    const dispo = PLATFORMS_DEFAULT.filter(p => parPlateforme[p]);
+    // (25/10) Sans une plateforme fermée à ce compte (Leboncoin d'une adresse hors de France) : sa copie reste dans
+    // la fiche, elle n'est ni cochée ni proposée.
+    const dispo = plateformesDuStepper.filter(p => parPlateforme[p]);
     if (!dispo.length) return false;
 
     // ⚠️ LES PHOTOS DE L'HÔTE PRIMENT SUR CELLES DE LA FICHE. L'hôte (Stock ou
@@ -5740,7 +5774,7 @@ export default function ListingPreviewScreen({
     //    On ne coche RIEN de neuf : `f.selected` reste la seule source, et une
     //    plateforme n'y figure que parce qu'elle l'a cochée elle-même.
     const aUneCopie = (p) => Boolean(parPlateforme[p] || f.edited?.[p]);
-    const sel = (Array.isArray(f.selected) ? f.selected : dispo).filter(p => aUneCopie(p) && !lockedSet.has(p));
+    const sel = (Array.isArray(f.selected) ? f.selected : dispo).filter(p => aUneCopie(p) && !lockedSet.has(p) && !plateformesFermees.includes(p));
     const selectionFinale = sel.length ? sel : dispo.filter(p => !lockedSet.has(p));
     setSelected(new Set(selectionFinale));
     // On rouvre là où il en était, jamais avant l'étape des annonces : le
@@ -7201,8 +7235,14 @@ export default function ListingPreviewScreen({
   async function lireAdresseRemiseLbc() {
     const { data: prof, error } = await supabase.from("profiles")
       .select("platform_settings").eq("id", userId).maybeSingle();
-    if (error) return { lue: false, valeur: null };
-    return { lue: true, valeur: prof?.platform_settings?.leboncoin?.adresse || null };
+    if (error) return { lue: false, valeur: null, horsFrance: false };
+    // (25/10) La même lecture dit aussi si l'adresse est HORS DE FRANCE (_shared/lbc-adresse-france.js) : Leboncoin
+    // sort alors au clic, avant tout débit — même si l'écran datait d'avant le changement d'adresse.
+    return {
+      lue: true,
+      valeur: prof?.platform_settings?.leboncoin?.adresse || null,
+      horsFrance: adresseLbcHorsFrance(prof?.platform_settings?.leboncoin).horsFrance,
+    };
   }
 
   // Chargement à l'arrivée sur l'écran Publier, et seulement si une plateforme
@@ -10191,12 +10231,16 @@ export default function ListingPreviewScreen({
       let lbcAddress = null;
       let plateformesSansAdresse = [];
       const besoinAdresse = [...selected].filter(p => PLATEFORMES_ADRESSE_LBC.includes(p));
+      // (25/10, décision de Nico) Leboncoin d'une adresse de remise HORS DE FRANCE ne part jamais : fermée par l'hôte
+      // (plateformesFermees), ou relue ici au clic. Sortie AVANT le débit, motif « hors_france », la phrase vraie.
+      let plateformesHorsFrance = selected.has("leboncoin") && plateformesFermees.includes("leboncoin") ? ["leboncoin"] : [];
       if (besoinAdresse.length) {
         const lu = await lireAdresseRemiseLbc();
         if (lu.lue) {
           setAdresseLbc({ chargee: true, valeur: lu.valeur });
           lbcAddress = lu.valeur;
           if (!lbcAddress) plateformesSansAdresse = besoinAdresse;
+          if (lu.horsFrance && selected.has("leboncoin")) plateformesHorsFrance = ["leboncoin"];
         } else if (adresseLbc.chargee) {
           lbcAddress = adresseLbc.valeur;
         }
@@ -10245,7 +10289,7 @@ export default function ListingPreviewScreen({
       // le nouveau stepper la dit sur l'écran de suivi, plus jamais en silence.
       const exclusions = calculerExclusions({
         selected, platformSupport, platformListings,
-        plateformesSansAdresse, champsManquantsParPf,
+        plateformesSansAdresse, champsManquantsParPf, plateformesHorsFrance,
       });
       const { interdites: plateformesInterdites, aPublier: plateformesAPublier } = exclusions;
       // Ce qu'on dira à la fin (nouveau stepper) : les exclues autres que « champ
@@ -10287,6 +10331,8 @@ export default function ListingPreviewScreen({
             ? "No listing was generated for the selected platforms. Go back to the previous step and generate them again."
             : "Aucune annonce n'a été générée pour les plateformes cochées. Reviens à l'étape précédente et relance la génération.");
         }
+        // (25/10) Seul Leboncoin restait, et l'adresse de remise est hors de France : la phrase vraie, rien de débité.
+        if (motifAucune === "hors_france") throw new Error(messageLbcHorsFrance(lang));
         // Seules des plateformes sans adresse étaient cochées.
         throw new Error(lang === "en"
           ? "Add your pickup address in Settings → “Leboncoin pickup address” before publishing on Leboncoin or Beebs."
@@ -11849,7 +11895,8 @@ export default function ListingPreviewScreen({
     photoAnalysis, analyzing, analysisError, handleAnalyzePhotos,
     texteDuVendeur: Boolean(texteDuVendeurFiche()),
     // Les plateformes et leurs états
-    plateformesAffichees: [...PLATFORMS_DEFAULT, ...plateformesAVenirVisibles],
+    // (25/10) Sans les plateformes fermées à ce compte (Leboncoin d'une adresse de remise hors de France).
+    plateformesAffichees: [...plateformesDuStepper, ...plateformesAVenirVisibles],
     plateformesAVenir: plateformesAVenirVisibles, plateformesOuvertes, oplaMotifGrise, oplaExtensionMin, oplaVerdict, oplaAccesDetail,
     motifAVenir: (p) => oplaMotifGrise === "extension"
       ? (lang === "en"
@@ -11865,7 +11912,9 @@ export default function ListingPreviewScreen({
     phraseEtat: (p, a) => phraseEtat(p, a, lang),
     pausedPlatforms, pausedReasons, motifPause: (p) => messagePause(tpl, pausedReasons, p, PLATFORM_LABELS[p]),
     ebayBloque, motifEbay: messageCompteEbay(ebayMotif, lang, ebayEtatCompte),
-    boutonEbay: (ebayEtatCompte ? resumeEbay(ebayEtatCompte, lang === "en" ? "en" : "fr").bouton : null) ?? (lang === "en" ? "Set up eBay" : "Paramétrer eBay"),
+    // (25/10) Compte eBay hors de France : aucun bouton (null), rien à paramétrer chez nous.
+    boutonEbay: ebayMotif === "hors_france" ? null
+      : (ebayEtatCompte ? resumeEbay(ebayEtatCompte, lang === "en" ? "en" : "fr").bouton : null) ?? (lang === "en" ? "Set up eBay" : "Paramétrer eBay"),
     ebayVoieApi: Boolean(ebayCompte?.voieApi), ebayVoieApiReelle, ouvrirPanneauEbay: () => setEbayPanneauOuvert(true),
     platformSessions, voiesDuLot, extFraicheurPublier, extensionVueLe, extensionBlocked,
     extensionAMettreAJour: extensionAMettreAJour({ build: extBuildRelu, lastSeenAt: extensionVueLe }),
@@ -12168,6 +12217,7 @@ export default function ListingPreviewScreen({
             motifSupport={motifSupport}
             plateformesAVenir={PLATFORMS_A_VENIR.filter(p => plateformesVisibles.includes(p))}
             plateformesOuvertes={plateformesOuvertes}
+            plateformesFermees={plateformesFermees}
             oplaMotifGrise={oplaMotifGrise}
             oplaExtensionMin={oplaExtensionMin}
             oplaVerdict={oplaVerdict}

@@ -290,6 +290,73 @@ console.log("\n── 10. Faux « déconnecté » : une session Opla prouvée bo
   ok(h.motif === "connexion", "page Opla 401 sans preuve : « Me connecter », comme avant");
 }
 
+console.log("\n── 11. eBay : le manquant que nomme le refus du brouillon (25/10, N6 et R2) ──");
+{
+  // Textes RÉELS : lemonde-glad 080e9d39 (20/10, error_technique.brut) et Fleur de Lotus c64e5596 (23/10).
+  const refus = (x) => "Publication eBay bloquée : le clic « Mettre en vente » n'a produit aucune requête, et la soumission directe du brouillon a été REFUSÉE par eBay — éléments manquants dans le brouillon : " + x + ". Aucune annonce n'a été créée. Le brouillon est conservé dans « Vendre > Brouillons » sur ebay.fr : tu peux le compléter et le publier à la main, puis marquer l'article publié dans l'app. Nouvel essai automatique (tentative 1/5), rien à faire.";
+  const apiRetours = { ebay_api_publish: { http: 200, itemId: null, manquants: ["Conditions des retours nationaux"], textes_global_message: ["Les informations sont incomplètes ou non valides. Veuillez corriger les erreurs et réessayer", "Conditions des retours nationaux"] } };
+  const R = await import("../supabase/functions/_shared/ebay-brouillon-refus.js");
+  // N6 — les retours : UNE question pour le compte, les deux options de l'écran Compte eBay, jamais une reprise.
+  const q = classerEchec({ platform: "ebay", action: "publish", brut: refus("Conditions des retours nationaux"), essais: 1, reprises: 0, pf: apiRetours });
+  ok(q.verdict === "a_toi" && q.statut === "needs_user" && q.motif === "ebay_retours_a_choisir" && q.source === "ebay_retours_a_choisir" && !q.dansMinutes,
+    `lemonde-glad : « Conditions des retours nationaux » → la question, sans reprise (${q.motif}/${q.statut})`);
+  ok(q.champ?.input_type === "selection_only" && q.champ?.options_completes === true && q.champ?.target?.root === null && q.champ?.target?.key === "ebay_retours_choix"
+    && JSON.stringify(q.champ?.allowed_values) === JSON.stringify(R.OPTIONS_RETOURS_EBAY.map((o) => o.libelle)),
+    "la liste fermée des deux options, rangée à la racine (ebay_retours_choix)");
+  const ecs = readFileSync(new URL("../src/components/EbayCompteSection.jsx", import.meta.url), "utf8");
+  const lib = (cle) => (new RegExp(`${cle}: '((?:[^'\\\\]|\\\\.)*)'`).exec(ecs)?.[1] ?? "").replace(/\\'/g, "'");
+  ok(lib("retoursAcceptes") === R.OPTIONS_RETOURS_EBAY[0].libelle && lib("retoursRefuses") === R.OPTIONS_RETOURS_EBAY[1].libelle,
+    "les libellés sont ceux de l'écran Compte eBay, mot pour mot (retoursAcceptes, retoursRefuses)");
+  ok(/ne les choisit jamais à ta place/.test(q.message) && /ci-dessous/.test(q.message) && /toutes tes annonces eBay/.test(q.message) && !VOCAB_RE.test(q.message),
+    "le message : FillSell ne choisit jamais, le geste ci-dessous, pour toutes les annonces — sans jargon");
+  const qBrut = classerEchec({ platform: "ebay", action: "publish", brut: refus("Conditions des retours nationaux"), essais: 5, reprises: 2, pf: {} });
+  ok(qBrut.motif === "ebay_retours_a_choisir", "le texte seul suffit (sans ebay_api_publish) — même à essais épuisés");
+  const dejaChoisi = classerEchec({ platform: "ebay", action: "publish", brut: refus("Conditions des retours nationaux"), essais: 1, pf: apiRetours, retoursEbayChoix: "acceptes_30", build: "2026-10-18T16:26:21Z+492f753 · v0.6.128" });
+  ok(dejaChoisi.verdict === "reprise" && dejaChoisi.statut === "pending" && dejaChoisi.motif === "ebay_retours_non_poses"
+    && dejaChoisi.pf?.defaut_fillsell?.build === "2026-10-18T16:26:21Z+492f753 · v0.6.128" && !dejaChoisi.source,
+    "choix déjà fait pour le compte → jamais reposée : notre fait, attend un poste plus récent (defaut_fillsell)");
+  const repondu = classerEchec({ platform: "ebay", action: "publish", brut: refus("Conditions des retours nationaux"), essais: 1,
+    pf: { ...apiRetours, ebay_retours_choix: R.OPTIONS_RETOURS_EBAY[1].libelle, needsUserResolved: { ebay_retours_choix: R.OPTIONS_RETOURS_EBAY[1].libelle } } });
+  ok(repondu.motif === "ebay_retours_non_poses", "la réponse posée sur CE job vaut choix (needsUserResolved)");
+  const apiVoie = classerEchec({ platform: "ebay", action: "delete", brut: refus("Conditions des retours nationaux"), essais: 1, pf: apiRetours });
+  ok(apiVoie.motif !== "ebay_retours_a_choisir", "un retrait n'a pas de brouillon : jamais concerné");
+  // R2 — les photos : deux reprises bornées, puis un arrêt nommé, vrai, sans « relance-la ».
+  const pfPhotos = { ebay_api_publish: { http: 200, itemId: null, manquants: ["Photos"] } };
+  const b0 = "2026-10-18T16:26:21Z+492f753 · v0.6.128";
+  const p1 = classerEchec({ platform: "ebay", action: "publish", brut: refus("Photos"), essais: 1, reprises: 0, pf: pfPhotos, build: b0 });
+  ok(p1.verdict === "reprise" && p1.motif === "ebay_photos_non_recues" && p1.dansMinutes === 15 && p1.pf?.ebay_photos_non_recues?.n === 1,
+    `Fleur de Lotus : « Photos » → reprise 1 sur 2 (${p1.motif}, ${p1.dansMinutes} min)`);
+  const p2 = classerEchec({ platform: "ebay", action: "publish", brut: refus("Photos"), essais: 1, reprises: 1, pf: { ...pfPhotos, ebay_photos_non_recues: p1.pf.ebay_photos_non_recues }, build: b0 });
+  ok(p2.verdict === "reprise" && p2.pf?.ebay_photos_non_recues?.n === 2 && p2.dansMinutes >= 45, "reprise 2 sur 2, espacée");
+  const p3 = classerEchec({ platform: "ebay", action: "publish", brut: refus("Photos"), essais: 1, reprises: 2, pf: { ...pfPhotos, ebay_photos_non_recues: p2.pf.ebay_photos_non_recues }, build: b0 });
+  ok(p3.motif === "ebay_photos_non_recues_arret" && p3.statut === "pending" && p3.pf?.defaut_fillsell?.ou === "ebay_photos_non_recues" && p3.pf?.defaut_fillsell?.build === b0,
+    "troisième refus « Photos » : l'arrêt — la tâche attend un poste plus récent (defaut_fillsell, jamais servie au même build)");
+  ok(!/relance/i.test(p3.message) && /défaut de FillSell/.test(p3.message) && /rien n'a été publié/.test(p3.message) && !VOCAB_RE.test(p3.message),
+    "l'arrêt est nommé et vrai (notre défaut, rien publié), sans « relance-la »");
+  const pNeuf = classerEchec({ platform: "ebay", action: "publish", brut: refus("Photos"), essais: 1, reprises: 3, pf: { ...pfPhotos, ebay_photos_non_recues: { n: 3, build: b0, arret: true } }, build: "2026-11-02T10:00:00Z+abc1234 · v0.6.150" });
+  ok(pNeuf.motif === "ebay_photos_non_recues" && pNeuf.pf?.ebay_photos_non_recues?.n === 1, "un poste plus récent repart de zéro (il porte peut-être le correctif)");
+  const pExt = classerEchec({ platform: "ebay", action: "publish", brut: `${R.ANCRE_PHOTOS_NON_RECUES} : 0 sur 4 après 20 s, aucun clic fait.`, essais: 0, pf: {}, build: b0 });
+  ok(pExt.motif === "ebay_photos_non_recues", "le code de l'extension (photos comptées AVANT le clic) suit la même règle");
+  const autre = classerEchec({ platform: "ebay", action: "publish", brut: refus("Marque"), essais: 1, reprises: 0, pf: { ebay_api_publish: { manquants: ["Marque"] } } });
+  ok(autre.motif === "inconnu_reprise", "un autre manquant garde la suite d'avant (motif inconnu, reprise)");
+  ok([q, dejaChoisi, p1, p2, p3].every((s) => ["reprise", "a_toi", "info"].includes(s.verdict) && s.statut !== "failed"), "toujours trois sorties, jamais « failed »");
+  // Les branchements : le classement parle dès la PREMIÈRE remontée (pending), la question se range pour le compte.
+  const UJS = readFileSync(new URL("../supabase/functions/update-job-status/index.ts", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  ok(/const ebayRefusNommeAPoser = \(statutEffectif === "pending" \|\| statutEffectif === "failed" \|\| statutEffectif === "needs_user"\)\s*&& !pfEbayVendeurInactif && !pfEbayConnexionRequise/.test(UJS)
+    && /restrictionVintedAPoser \|\| ebayRefusNommeAPoser\)\) \{/.test(UJS) && /retoursEbayChoix,\n\s*\}\);/.test(UJS),
+    "update-job-status : classé dès la première remontée (jamais par-dessus le mur vendeur ni la connexion), avec le choix du compte");
+  const GPJ = readFileSync(new URL("../supabase/functions/get-pending-jobs/index.ts", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  ok(/rpc\("platform_settings_fusionner", \{\s*p_chemin: \["ebay", "retours_voie_clic"\],/.test(GPJ)
+    && /eq\("platform_fields->>needs_user_source", SOURCE_RETOURS_EBAY\)\.limit\(1\);[\s\S]{0,300}out = out\.filter\(\(j\) => !estDepotEbayExtension\(j as never\)\);/.test(GPJ)
+    && /ebay_retours: choixR/.test(GPJ),
+    "get-pending-jobs : la réponse rangée pour le compte (platform_settings_fusionner), les autres dépôts retenus tant que la question attend, le choix servi");
+  ok(R.classeRefusBrouillonEbay({ brut: refus("Prix de départ, Photos"), pf: { ebay_api_publish: { manquants: ["Prix de départ", "Photos"] } } }) === null,
+    "« Prix de départ » (brouillon resté en Enchères) garde sa règle à elle : rien n'est classé ici");
+  ok(R.manquantsDuBrouillonEbay({ brut: refus("Photos, Conditions des retours nationaux") }).join("|") === "Photos|Conditions des retours nationaux"
+    && R.classeRefusBrouillonEbay({ brut: refus("Photos, Conditions des retours nationaux") }) === "retours",
+    "deux manquants : les retours d'abord (un geste de la personne)");
+}
+
 console.log(ko === 0 ? "\n✅ PAS DE ROUGE : tout est vert.\n" : `\n❌ ${ko} contrôle(s) en échec.\n`);
 process.exit(ko === 0 ? 0 : 1);
 import { oplaChemin } from '../supabase/functions/_shared/opla-catalogue.ts';

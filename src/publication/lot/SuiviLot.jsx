@@ -17,9 +17,11 @@ import { humanizeJobError } from "../../utils/shared";
 import { suiviDuLot, depotArretable } from "./regles";
 import { arreterDepots, reArreter } from "./arretLot";
 
+// (25/10) hors_france : close parce que la plateforme n'est pas possible pour ce compte (Leboncoin d'une adresse
+// hors de France, eBay inscrit hors d'eBay France) — neutre, rien à faire, jamais « à ta demande » (regles.etatJobLot).
 const GROUPES = {
-  fr: { geste: "À toi de jouer", en_cours: "En cours", file: "En file", pas_parties: "À toi de jouer · pas parties", en_ligne: "Fait · en ligne", retirees: "Retirées depuis", arretees: "Arrêtées à ta demande" },
-  en: { geste: "Your move", en_cours: "In progress", file: "Queued", pas_parties: "Your move · not sent", en_ligne: "Done · live", retirees: "Removed since", arretees: "Stopped by you" },
+  fr: { geste: "À toi de jouer", en_cours: "En cours", file: "En file", pas_parties: "À toi de jouer · pas parties", en_ligne: "Fait · en ligne", retirees: "Retirées depuis", hors_france: "Non publiées · réservé à la France", arretees: "Arrêtées à ta demande" },
+  en: { geste: "Your move", en_cours: "In progress", file: "Queued", pas_parties: "Your move · not sent", en_ligne: "Done · live", retirees: "Removed since", hors_france: "Not published · France only", arretees: "Stopped by you" },
 };
 // « Leboncoin : Leboncoin demande… » : le message d'un job nomme souvent déjà sa
 // plateforme — on ne la répète pas. Seule la première phrase s'affiche ici (le
@@ -30,8 +32,8 @@ function avecPlateforme(platform, texte) {
   return t.toLowerCase().startsWith(String(nom).toLowerCase()) ? t : `${nom} : ${t}`;
 }
 const ETAT_PASTILLE = {
-  fr: { en_ligne: "fait", en_cours: "en cours", file: "en file", geste: "à toi de jouer", pas_partie: "à toi de jouer", retiree: "retirée depuis", arretee: "arrêtée" },
-  en: { en_ligne: "done", en_cours: "in progress", file: "queued", geste: "your move", pas_partie: "your move", retiree: "removed since", arretee: "stopped" },
+  fr: { en_ligne: "fait", en_cours: "en cours", file: "en file", geste: "à toi de jouer", pas_partie: "à toi de jouer", retiree: "retirée depuis", hors_france: "réservé à la France", arretee: "arrêtée" },
+  en: { en_ligne: "done", en_cours: "in progress", file: "queued", geste: "your move", pas_partie: "your move", retiree: "removed since", hors_france: "France only", arretee: "stopped" },
 };
 
 /**
@@ -141,7 +143,8 @@ export default function SuiviLot({ lang, lot, jobs, articles, renderGeste, userI
         const arretables = l.pastilles.map((p) => p.job).filter(depotArretable);
         const gestes = l.pastilles.filter((p) => p.etat === "geste");
         // (03/10, point 15) Jamais le brut : la porte commune de traduction (humanizeJobError).
-        const raisons = l.pastilles.filter((p) => p.etat === "pas_partie" && p.job?.error).map((p) => avecPlateforme(p.platform, humanizeJobError(p.job, lang)));
+        // (25/10) Une clôture « réservé à la France » dit aussi pourquoi, en une ligne (ton neutre, aucun bouton).
+        const raisons = l.pastilles.filter((p) => (p.etat === "pas_partie" || p.etat === "hors_france") && p.job?.error).map((p) => avecPlateforme(p.platform, humanizeJobError(p.job, lang)));
         return (
           <div key={l.inventaireId}>
             {titreGroupe && <div className="fsl-groupe-t">{titreGroupe} · {suivi.compte[l.groupe]}</div>}

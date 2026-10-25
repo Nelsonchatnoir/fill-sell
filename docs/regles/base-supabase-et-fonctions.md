@@ -349,3 +349,18 @@ authenticated;` (le déclencheur le fait aussi). Inverse du régime : `supabase/
   version en prod reste intacte. Ne pas changer l'import d'une fonction de paiement pour contourner : vérifier
   `curl -s -o /dev/null -w "%{http_code}" -H "User-Agent: Deno/2.1.4" https://esm.sh/<paquet>@<version>` (200 attendu),
   puis redéployer. Cas du 25/10 : apple-iap-webhook (`@peculiar/x509@1.9.0`), trois essais de 01:35 à 01:50.
+
+## 25/10 matin — un import `npm:` épinglé quand esm.sh ne construit plus (apple-iap-webhook v39)
+- esm.sh n'a jamais reconstruit `@peculiar/x509@1.9.0` (« no space left on device » puis 408 « waiting to be built »,
+  25/10 01:35 → 08:45) : apple-iap-webhook était indéployable. La même bibliothèque, la même version, se prend au
+  registre npm : `import * as x509 from "npm:@peculiar/x509@1.9.0"`. La règle ci-dessus (« ne pas changer l'import
+  pour contourner ») devient : on peut, SI un banc local prouve le même comportement (empreinte de la racine Apple G3,
+  chaîne WWDR G6 → G3, inverse refusé) ET si la preuve en prod suit (notification de TEST d'Apple : `SUCCESS`).
+- ⛔ Prise au registre npm dans le runtime edge (pas de `self`), la bibliothèque ne trouve pas seule la cryptographie :
+  `x509.cryptoProvider.set(crypto)` juste après l'import, sinon « Cannot get Crypto by name 'default' » et TOUTE
+  signature est refusée (v38, 08:51:08 → 08:52:44 : une notification de TEST refusée, aucune réelle). Reproduit en
+  local par `delete globalThis.self` avant l'import.
+- `selftest:imports-epingles` lit aussi les spécificateurs `npm:` (version complète exigée).
+- Preuve : `apple-notification-history` {"test_notification":"envoyer"} (net.http_post, x-cron-secret par
+  `public.cron_secret()`), puis {"test_notification":"<jeton>"} → `sendAttempts: SUCCESS` ; ligne `TEST`, `jws_ok`,
+  `Production` au journal des stores.

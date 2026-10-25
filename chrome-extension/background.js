@@ -2602,6 +2602,30 @@ async function etatFileEntreDeuxTaches(token) {
 // l'IA à sa place). Vinted : la description se lit au DÉTAIL de l'annonce, par cette extension (un appel par
 // article, espacé comme les dépôts). La fiche ne reçoit que ce qui lui MANQUE (jamais un texte écrasé).
 let derniereLectureOrigine = 0;
+const lecturesOrigineRateesTracees = new Map();   // annonce → dernière trace (ms), mémoire seule
+async function tracerLectureOrigineRatee(token, l, motif) {
+  const cle = String(l?.vinted_item_id ?? "");
+  const avant = lecturesOrigineRateesTracees.get(cle) ?? 0;
+  if (Date.now() - avant < 3600_000) return;
+  lecturesOrigineRateesTracees.set(cle, Date.now());
+  const userId = decodeJwtSub(token);
+  if (!userId) return;
+  await restRequest("usage_logs", token, {
+    method: "POST",
+    body: JSON.stringify([{ user_id: userId, feature: "lecture_origine_echec", metadata: {
+      inventaire_id: String(l?.inventaire_id ?? ""), vinted_item_id: cle, motif: String(motif ?? "").slice(0, 160),
+      build: FILLSELL_BUILD_ID, at: new Date().toISOString(),
+    } }]),
+  });
+}
+// (25/10, 0.6.143 — Louis) Une lecture DEMANDÉE il y a moins de 15 min (la personne attend devant son lot ou son
+// stepper) se fait AVANT la boucle des tâches du cycle, pas après : le serveur (get-pending-jobs) retient d'ailleurs
+// ce cycle-là tout ce qui peut attendre, pour toutes les versions ≥ 0.6.130. Rien d'autre ne change.
+async function lectureOrigineDemandeeRecente(token) {
+  const liste = await restRequest("rpc/lectures_origine_en_attente", token, { method: "POST", body: "{}" }).catch(() => []);
+  return (Array.isArray(liste) ? liste : []).some((l) => l?.plateforme === "vinted"
+    && Date.now() - (Date.parse(String(l?.depuis ?? "")) || 0) < 15 * 60_000);
+}
 async function lireAnnoncesOrigineEnAttente(session) {
   const token = session?.access_token;
   if (!token) return;
@@ -2616,8 +2640,15 @@ async function lireAnnoncesOrigineEnAttente(session) {
     n++;
     derniereLectureOrigine = Date.now();
     // Dans le poll : le verrou de flux est DÉJÀ tenu (jamais fetchVintedItemDetail ici — interblocage).
-    const r = await lireDetailVintedSousVerrou(String(l.vinted_item_id)).catch(() => null);
-    if (!r?.success) { console.log(`[origine] détail Vinted ${l.vinted_item_id} illisible cette fois — relu au cycle suivant`); continue; }
+    const r = await lireDetailVintedSousVerrou(String(l.vinted_item_id)).catch((e) => ({ success: false, error: String(e?.message ?? e) }));
+    if (!r?.success) {
+      console.log(`[origine] détail Vinted ${l.vinted_item_id} illisible cette fois — relu au cycle suivant`);
+      // (25/10, 0.6.143 — Louis : 5 lectures demandées à 10:29, jamais faites, aucune trace nulle part) Une lecture
+      // ratée DIT pourquoi, une fois par annonce et par heure (usage_logs « lecture_origine_echec ») : la cause se lit
+      // en base au lieu de se deviner. Jamais bloquant.
+      tracerLectureOrigineRatee(token, l, r?.error ?? r?.code ?? "réponse vide").catch(() => {});
+      continue;
+    }
     const at = new Date().toISOString();
     const attributs = { ...attributsDepuisDetail(r.natif, at, r.libelles?.catalog_id_depot) };
     const description = String(r.description ?? "").trim();
@@ -3049,7 +3080,9 @@ async function vintedUploadSucceededForTitle(tabId, title) {
     // Marqueur pré-troncature : comparaison EXACTE de titre à titre, au lieu
     // d'un « includes » sur un extrait de 250 caractères où le titre pouvait
     // ne pas tenir. Cf. vintedUploadSucceeded pour le pourquoi.
-    if (c?.succesVinted?.id && norm(c.succesVinted.titre) === wanted) {
+    // (25/10) Par memeTitre : le titre enregistré par Vinted a pu perdre un saut
+    // de ligne sans espace (Vincent A., « …lycanthropePar… »).
+    if (c?.succesVinted?.id && memeTitre(title, c.succesVinted.titre)) {
       return `${VO.origineVinted()}/items/${c.succesVinted.id}`;
     }
     const body = String(c?.reponse ?? "");
@@ -3303,6 +3336,14 @@ async function pollAndProcessJobsUnlocked() {
 
   console.log(`[background] ${jobs.length} job(s) pending`);
 
+  // (25/10, 0.6.143 — Louis) La lecture d'origine que la personne attend passe AVANT les tâches du cycle.
+  let lectureOrigineDevant = false;
+  if (!vintedPauseAntirobotServeur && await lectureOrigineDemandeeRecente(session.access_token).catch(() => false)) {
+    lectureOrigineDevant = true;
+    await lireAnnoncesOrigineEnAttente(session).catch((e) =>
+      console.warn("[origine] lectures d'origine (devant la file) :", String(e?.message ?? e)));
+  }
+
   // ── Maintien en éveil : LE point de décision (2026-09-04) ────────────────
   // Ici, et nulle part ailleurs — on vient de lire la file, c'est le seul
   // moment où on sait s'il reste du travail. Au moins un job → on demande ;
@@ -3511,7 +3552,8 @@ async function pollAndProcessJobsUnlocked() {
   // l'aller-retour fait dans la foulée du dépôt peut revenir bredouille.
   // (22/10 soir, 0.6.130, point 8) Les annonces d'origine à LIRE avant qu'une publication ne parte (détail Vinted :
   // la description du vendeur). Bornées, espacées, jamais pendant une pause anti-robot Vinted.
-  await lireAnnoncesOrigineEnAttente(session).catch((e) =>
+  // (25/10) Déjà faites devant la file ce cycle : pas une seconde série.
+  if (!lectureOrigineDevant) await lireAnnoncesOrigineEnAttente(session).catch((e) =>
     console.warn("[origine] lectures d'origine :", String(e?.message ?? e)));
   await recoverMissingListingUrls(session).catch((e) =>
     console.error("[background] recoverMissingListingUrls:", e)
@@ -3674,6 +3716,15 @@ function assagirSymbolesVinted(titre, { marque = null } = {}) {
 function sanitizeJob(job) {
   let title = stripEmoji(job.title);
   if (job.platform === "vinted") {
+    // (25/10) Un saut de ligne devient une espace AVANT le dépôt (publication ET
+    // recréation) : le champ Titre de Vinted le supprime sans rien mettre à la
+    // place (« …lycanthrope\nPar… » né « …lycanthropePar… », Vincent A.). Le titre
+    // tapé et le titre comparé à la copie sont alors le même.
+    if (titreAUnSautDeLigne(title)) {
+      const uneLigne = titreSansSautDeLigne(title);
+      console.log(`[background] Titre Vinted sur une ligne (saut de ligne → espace) : ${JSON.stringify(title)} → "${uneLigne}"`);
+      title = uneLigne;
+    }
     // (18/10, 0.6.128) Symboles en trop retirés AVANT le dépôt (publication ET
     // recréation : construireJobRecreation passe aussi par ici).
     const pfT = job.platform_fields ?? {};
@@ -4368,6 +4419,14 @@ async function processJob(rawJob, accessToken) {
         ebay_format_trace: result.formatTrace,
       };
     }
+    // (25/10, R1) Les photos REÇUES par eBay (compteur « N/25 », vignettes i.ebayimg.com) :
+    // même copie mémoire, sur toutes les issues — c'est la mesure du mode « observer ».
+    if (job.platform === "ebay" && result?.photosTrace && typeof result.photosTrace === "object") {
+      job.platform_fields = {
+        ...(job.platform_fields ?? {}),
+        ebay_photos_recues: result.photosTrace,
+      };
+    }
 
     // Warnings PERSISTÉS (2026-08-08) : platform_fields.warnings =
     // [{code, message, at}] — même mécanique de copie mémoire que
@@ -4707,7 +4766,11 @@ async function processJob(rawJob, accessToken) {
           // /lstng?draftId=… sert #csrf-data dans le HTML serveur, aucune
           // hydratation requise pour lire le jeton et poster.
           let direct = { unavailable: "draftId inconnu (aucune capture n'en portait)" };
-          if (draftId) {
+          // (25/10, R1) Jamais le brouillon soumis après « photos non reçues » (ebay_photos_non_recues) :
+          // eBay le refuserait (« Photos »), et le serveur a sa règle (deux reprises, puis l'arrêt nommé).
+          const photosNonRecues = job.platform_fields?.ebay_photos_recues?.code === "ebay_photos_non_recues";
+          if (photosNonRecues) direct = { unavailable: "photos non reçues par eBay (ebay_photos_non_recues) : brouillon non soumis" };
+          if (draftId && !photosNonRecues) {
             try {
               await neutralizeBeforeUnload(tabId);
               const draftUrl = `https://www.ebay.fr/lstng?draftId=${draftId}&mode=AddItem`;
@@ -4788,6 +4851,11 @@ async function processJob(rawJob, accessToken) {
             const msg = msgEbayPublishRefuse(champs);
             await rearmBounded(accessToken, job, msg);
             return { status: "needsUser", error: msg };
+          } else if (photosNonRecues) {
+            // (25/10, R1) Rien n'a été soumis : le motif part tel quel, le serveur le classe.
+            const msgPhotos = "Photos non reçues par eBay : le brouillon n'a pas été soumis. Rien n'a été publié.";
+            await rearmBounded(accessToken, job, msgPhotos);
+            return { status: "needsUser", error: msgPhotos };
           } else {
             return await reprendreSurOngletNeuf(
               accessToken, job, tabId,
@@ -8877,10 +8945,15 @@ async function installNetworkProbe(tabId, platform) {
           if (!a?.isbn) return null;
           return (Date.now() - (a.armeeA ?? 0)) < ISBN_ARME_TTL_MS ? a.isbn : null;
         };
+        // (25/10, 0.6.143) Arme aussi un ISBN de 10 caractères (9 chiffres + chiffre ou X),
+        // posé TEL QUEL (X en majuscule) : « 0000000000 », la valeur des annonces d'origine de
+        // Rég et de Vincent A. — acceptée par Vinted à leur création. Jusqu'ici la sonde
+        // restait désarmée sur 10 caractères et le POST partait avec ce que la page sérialise
+        // ("isbn": null) APRÈS le retrait. Toujours jamais par-dessus une valeur de la page.
         window.addEventListener("message", (e) => {
           if (e.source !== window || !e.data?.__fillsellArmeIsbn) return;
-          const v = String(e.data.isbn ?? "").replace(/[\s-]/g, "");
-          window.__fsIsbnAPoser = /^\d{13}$/.test(v) ? { isbn: v, armeeA: Date.now() } : null;
+          const v = String(e.data.isbn ?? "").replace(/[\s-]/g, "").toUpperCase();
+          window.__fsIsbnAPoser = /^(?:\d{13}|\d{9}[\dX])$/.test(v) ? { isbn: v, armeeA: Date.now() } : null;
         });
         let dernierePoseIsbn = null;
         // Rend le corps corrigé, ou null s'il n'y a rien à faire.
@@ -16843,6 +16916,27 @@ function capturerFicheEnPage(plateforme, html = null) {
     }
     const fil = Array.from(doc.querySelectorAll("nav a, [class*='breadcrumb' i] a")).map((a) => propre(a.textContent)).filter((t) => t && !/^accueil$/i.test(t));
     out.categorie = fil.length ? fil.join(" > ") : null;
+    // ── (25/10, chaouidz) LE RAYON QUE L'ANNONCE AFFICHE : SON FIL D'ARIANE ld+json ──
+    // Page publique de 32089448 (« basket Nike noir et blanche taille 18 »), relevée
+    // le 25/10 : BreadcrumbList « Accueil › Mode › Garçon › Chaussures (garçon) ›
+    // Baskets (garçon) » — le chemin exact de l'arbre Beebs. Sa republication s'est
+    // arrêtée sur « le rayon Beebs manque » (copie venue d'un relevé, aucune capture)
+    // alors que la page le donnait. Lu ICI, à part de `categorie` (lien de menu, relevé) :
+    // au moins deux niveaux, sans « Accueil » ni le nom de l'annonce ; jamais le titre.
+    {
+      const objetsLd = Array.from(doc.querySelectorAll("script[type='application/ld+json']"))
+        .map((s) => { try { return JSON.parse(s.textContent); } catch { return null; } })
+        .filter(Boolean).flatMap((x) => (Array.isArray(x) ? x : [x]))
+        .flatMap((x) => (x && Array.isArray(x["@graph"]) ? x["@graph"] : [x]));
+      const filLd = objetsLd.find((x) => x && /BreadcrumbList/i.test(String(x["@type"])) && Array.isArray(x.itemListElement)) ?? null;
+      const nomAnnonce = propre(ld?.name ?? "").toLowerCase();
+      const niveaux = (filLd?.itemListElement ?? [])
+        .map((e, i) => ({ pos: Number(e?.position ?? i + 1), nom: propre(e?.name ?? e?.item?.name ?? "") }))
+        .sort((a, b) => a.pos - b.pos)
+        .map((e) => e.nom)
+        .filter((n) => n && !/^accueil$/i.test(n) && n.toLowerCase() !== nomAnnonce);
+      out.rayon_fil = niveaux.length >= 2 ? niveaux : null;
+    }
     if (!out.photos.length) {
       const vues = new Set();
       for (const img of doc.querySelectorAll("img")) {
@@ -23391,6 +23485,36 @@ function resoudrePrixRepublication(pf, payload) {
   return null;
 }
 
+// ── LE TITRE D'UNE COPIE VINTED (25/10, Vincent A. job 9138772c) ─────────────
+// COPIE EXACTE de supabase/functions/_shared/titre-copie-vinted.js (récit et
+// règles là-bas) : le champ Titre de Vinted supprime un saut de ligne sans le
+// remplacer — « Champavert, le lycanthrope\nPar Pétrus Borel » est né
+// « …lycanthropePar… », jamais reconnu, redéposé : deux annonces en ligne.
+// Mêmes fonctions, même texte : le selftest titre-copie-vinted les compare.
+function titreSansSautDeLigne(t) {
+  return String(t ?? "").replace(/\s*[\r\n]+\s*/g, " ").trim();
+}
+
+function titreAUnSautDeLigne(t) {
+  return /[\r\n]/.test(String(t ?? ""));
+}
+
+function titreNormCopie(t) {
+  return String(t ?? "").normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+}
+
+function titreCompactCopie(t) {
+  return String(t ?? "").normalize("NFKD").replace(/\p{M}+/gu, "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+}
+
+function memeTitre(a, b) {
+  const na = titreNormCopie(a);
+  if (!na) return false;
+  if (na === titreNormCopie(b)) return true;
+  const ca = titreCompactCopie(a);
+  return ca.length >= 12 && ca === titreCompactCopie(b);
+}
+
 // ── RECONNAISSANCE D'UNE ANNONCE RECRÉÉE (2026-08-05) ────────────────────────
 // UNE SEULE fonction, appelée des DEUX côtés — la recréation (avant de recréer,
 // pour ne pas doubler ce qui existe déjà) et la sync (avant de créer une ligne
@@ -23419,16 +23543,16 @@ function resoudrePrixRepublication(pf, payload) {
 // légitime, pas un échec : mieux vaut laisser l'utilisateur trancher qu'un
 // rattachement au hasard, irréversible côté inventaire.
 function reconnaitreAnnonceRecreee(articles, { titre, deletedAt, idsConnus }) {
-  const norm = (s) => String(s ?? "").toLowerCase().normalize("NFKC")
-    .replace(/[^\p{L}\p{N}]+/gu, " ").trim();
-  const cible = norm(titre);
+  // (25/10) Titre comparé par memeTitre (même règle que le serveur) : une copie
+  // dont le saut de ligne a été supprimé par le champ de Vinted reste la copie.
+  const cible = titreNormCopie(titre);
   if (!cible) return { item: null, raison: "titre de référence vide" };
   const seuil = Date.parse(deletedAt ?? "");
   if (!Number.isFinite(seuil)) return { item: null, raison: "date de suppression illisible" };
   const connus = idsConnus instanceof Set ? idsConnus : new Set(idsConnus ?? []);
   const candidats = (articles ?? []).filter((a) => {
     if (!a?.vinted_item_id || connus.has(String(a.vinted_item_id))) return false;
-    if (norm(a.titre) !== cible) return false;
+    if (!memeTitre(titre, a.titre)) return false;
     // Comparaison à la SECONDE, inclusive (2026-09-11) : photo_ts et
     // deleted_at sont désormais tous deux à l'heure Vinted (en-tête Date de
     // la suppression, ou recalage serveur), la seconde est leur grain commun.
@@ -23602,10 +23726,14 @@ async function retenirDepotIncertain(accessToken, job, pf, motif = "redirection_
   pf.depot_incertain = { at: new Date().toISOString(), motif };
   pf.next_action_after = new Date(Date.now() + 15 * 60_000).toISOString();
   delete pf.needs_user_source;
+  // (25/10) Le message dit ce qui se passe vraiment : « rien n'est redéposé
+  // entre-temps » était faux — resservi au bout de 15 min, redéposé (Vincent A.,
+  // 9138772c, deux annonces). Le serveur retient désormais ce job, toutes
+  // versions, jusqu'à la preuve (_shared/recreation-vinted-verifiee.js).
   await updateJobStatus(accessToken, job.id, "pending", {
     platform_fields: pf,
-    error: "Vinted a affiché ton profil juste après l'envoi de ton annonce : FillSell vérifie au prochain relevé de ta boutique " +
-      "qu'elle est bien en ligne, et la rattache à ta fiche. Rien à faire, rien n'est redéposé entre-temps.",
+    error: "Vinted a affiché ton profil juste après l'envoi de ton annonce : FillSell vérifie que ta nouvelle annonce est bien " +
+      "en ligne avant tout nouvel envoi. Rien à faire de ton côté.",
   });
   console.warn(`[republish] job ${job.id} : onglet renvoyé au profil, aucune annonce retrouvée par son numéro — en attente du relevé (${motif}), aucune recréation relancée`);
   return { status: "skipped", error: "onglet renvoyé au profil — présence de l'annonce à confirmer par le relevé, rien recréé" };
@@ -23952,6 +24080,12 @@ function construireJobRecreation(job, pf, cap, prix) {
       // Autorisation serveur (pays ouvert, get-pending-jobs) — sans elle,
       // vinted_ids reste lettre morte côté vinted.js.
       ...(pf.vinted_ids_actifs === true ? { vinted_ids_actifs: true } : {}),
+      // (25/10, paugues 110c27ae / 5ad5bbb1) Rayon de la capture changé par FillSell (œuvre d'art,
+      // _shared/capture-corrigee.js) : la une-passe ne remplace jamais son format de colis (vinted.js,
+      // règle B) — le serveur fait relire l'annonce dans SON rayon (questions tranchées, règle 9 A ;
+      // capture_corrigee_annulee : la capture d'aujourd'hui est celle de l'annonce, dans son rayon).
+      ...((Array.isArray(pf.capture_corrigee_par_la_fiche?.raisons) && pf.capture_corrigee_par_la_fiche.raisons.includes("categorie_oeuvre")
+        && !pf.capture_corrigee_annulee) ? { rayon_capture_corrige: true } : {}),
     },
   });
 }
@@ -24248,6 +24382,11 @@ async function conclureRecreationApresSoumission(accessToken, job, pf, jobRecrea
   // (200 ou 400) part avec le job, dans tous les cas (cf. preuveColisEnvoi).
   const colisEnvoi = await preuveColisEnvoi(tabId).catch(() => null);
   if (colisEnvoi) pf.colis_pose_envoi = colisEnvoi;
+  // (25/10) Le titre tel que le champ l'a gardé (vinted.js, titre_pose) quand le
+  // résultat est revenu, sinon le titre tapé : c'est à lui que la copie se compare
+  // (memeTitre). Gardé sur le job quand il diffère (serveur : copiesProbables).
+  const titreCopie = (typeof result?.titre_pose === "string" && result.titre_pose.trim()) ? result.titre_pose : jobRecreation.title;
+  if (titreCopie !== jobRecreation.title) pf.titre_pose = String(titreCopie).slice(0, 200);
   // (17/10) Même chose pour la marque de l'annonce d'origine posée par son
   // identifiant (cf. preuveMarqueEnvoi) : 200 ou 400, la preuve part avec le job.
   const marqueEnvoi = await preuveMarqueEnvoi(tabId).catch(() => null);
@@ -24299,7 +24438,7 @@ async function conclureRecreationApresSoumission(accessToken, job, pf, jobRecrea
       pf.depot_parti_vers_profil = { at: new Date().toISOString(), url: versProfil.url };
       console.log(`[republish] job ${job.id} : onglet renvoyé sur /member/${versProfil.id} — aucune recréation ne sera relancée, l'annonce se cherche par son numéro`);
     }
-    const urlSonde = await vintedUploadSucceededForTitle(tabId, jobRecreation.title).catch(() => null);
+    const urlSonde = await vintedUploadSucceededForTitle(tabId, titreCopie).catch(() => null);
     if (urlSonde) {
       const idSonde = urlSonde.match(/\/items\/(\d+)/)?.[1] ?? null;
       if (idSonde) {
@@ -24330,7 +24469,7 @@ async function conclureRecreationApresSoumission(accessToken, job, pf, jobRecrea
         for (let essai = 0; essai < (versProfil ? 2 : 1); essai++) {
           if (essai) await sleep(8000);
           const r = await chercherCopieRecreeeDansDressing(accessToken, tabId, {
-            userId: userIdDressing, titre: jobRecreation.title, pf,
+            userId: userIdDressing, titre: titreCopie, pf,
           });
           if (r.item) {
             await cloreRepublishSurAnnonceExistante(
@@ -25512,6 +25651,26 @@ async function reprendreChampsDeLAnnonce(job, pf) {
     pf[cle] = lus[cle];
     repris[cle] = lus[cle];
   }
+  // ── (25/10, chaouidz) LE RAYON BEEBS DE L'ANNONCE, QUAND LA COPIE N'EN A PAS ──
+  // Republication 8a608034 (annonce 32089448) : copie venue d'un relevé, sans
+  // rayon ni capture ; la fiche lue ici à 02:10 portait le fil d'Ariane, jamais
+  // repris (« categorie » n'est pas un champ de la copie) → pré-vol bloqué, puis
+  // une question à 579 feuilles. Même règle que le service des jobs (rayon du
+  // relevé, get-pending-jobs) : on ne comble que le VIDE, d'un chemin d'au moins
+  // deux niveaux (capturerFicheEnPage, `rayon_fil`). Le pré-vol de la copie et le
+  // pré-vol complet (le vrai formulaire, catégorie comprise) restent les juges,
+  // AVANT tout retrait.
+  if (job.platform === "beebs" && Array.isArray(cap.rayon_fil) && cap.rayon_fil.length >= 2) {
+    lus.rayon = cap.rayon_fil.map(String).join(" > ");
+    if (!(Array.isArray(pf.beebsCategoryPath) && pf.beebsCategoryPath.length)) {
+      pf.beebsCategoryPath = cap.rayon_fil.map(String);
+      repris.beebsCategoryPath = lus.rayon;
+      pf.rayon_repris_de_l_annonce = {
+        chemin: pf.beebsCategoryPath, source: "fil d'Ariane (ld+json) de l'annonce en ligne",
+        le: new Date().toISOString(), pose_par: "extension (fiche en ligne, avant retrait)",
+      };
+    }
+  }
   if (!Object.keys(lus).length) return null;
   pf.champs_lus_sur_l_annonce = { le: new Date().toISOString(), lus, repris, source: cap.source ?? null, pose_par: "extension (fiche en ligne, avant retrait)" };
   return Object.keys(repris).length ? repris : null;
@@ -25772,6 +25931,19 @@ async function processRepublishJobPlateforme(job, accessToken) {
     // lbcCategoryPath et beebsCategoryPath). Ces deux-là n'ont donc jamais eu
     // le défaut de chronologie de Vinted — vérifié le 23/09, et aucun des deux
     // n'avait encore tourné une seule fois sur la 0.6.58.
+    // (25/10, chaouidz) Une copie Beebs SANS rayon à cette étape (passée par
+    // « a_capturer » sur un poste d'avant cette règle, comme 8a608034) : l'annonce
+    // est encore en ligne — son fil d'Ariane se relit AVANT le pré-vol, qui reste
+    // le juge (il lit job.platform_fields : la copie lue y est reportée).
+    if (job.platform === "beebs" && !(Array.isArray(pf.beebsCategoryPath) && pf.beebsCategoryPath.length)) {
+      try {
+        const repris = await reprendreChampsDeLAnnonce(job, pf);
+        if (repris) console.log(`[republish] job ${job.id} : repris de l'annonce ${label} en ligne avant le pré-vol — ${Object.entries(repris).map(([k, v]) => `${k} « ${v} »`).join(", ")}`);
+        if (Array.isArray(pf.beebsCategoryPath) && pf.beebsCategoryPath.length) job.platform_fields = pf;
+      } catch (e) {
+        console.warn(`[republish] job ${job.id} : fil d'Ariane de l'annonce ${label} illisible (${String(e?.message ?? e).slice(0, 120)}) — le pré-vol tranche, rien n'est retiré`);
+      }
+    }
     {
       const refus = await appliquerPrevolCopie({ accessToken, job, pf, etape: "avant_retrait" });
       if (refus) return refus;
@@ -28788,6 +28960,16 @@ async function processDeleteJob(job, accessToken) {
       // dialogue absent, mauvaise annonce affichée) : rien n'a été touché sur
       // la plateforme, le retrait attend et se reprend — jamais un failed sec,
       // jamais une confirmation au hasard (Beebs, 2026-09-11).
+      // (25/10, boncoin59300) Les constats « page 404 » d'un retrait Beebs (beebs.js,
+      // jugerConstats404Beebs) restent sur le job à chaque reprise — c'est le second,
+      // au moins 6 h après le premier, qui prouve. Mutation de la copie mémoire, relue
+      // par rearmBounded (même règle que la trace ci-dessous) ; [] = repartis de zéro.
+      if (job.platform === "beebs" && Array.isArray(result.beebs404Constats)) {
+        const pfC = { ...(job.platform_fields ?? {}) };
+        if (result.beebs404Constats.length) pfC.beebs_404_constats = result.beebs404Constats.slice(-6);
+        else delete pfC.beebs_404_constats;
+        job.platform_fields = pfC;
+      }
       await rearmBounded(accessToken, job, String(result.error ?? "retrait non confirmé, à reprendre"));
       return { status: "retry", error: result.error };
     } else {

@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const BEEBS_BUILD = "2026-10-24-vendue-sur-beebs (0.6.133 : un retrait est prouvé aussi quand la fiche produit du numéro exact dit SoldOut — Beebs passe « Vendu » une annonce supprimée avec le motif « Vendu via une autre plateforme » et la garde dans « Mes annonces » ; une annonce déjà vendue n’est jamais re-supprimée) · 2026-10-18-marque-exacte (la marque de la fiche part telle quelle : égalité tolérante sur casse, espaces, ponctuation, accents ; jamais une marque voisine ni un choix de l'IA ; hors liste → « Autre » et la marque écrite une fois dans la description) · 2026-10-17-mur-nomme (relevé : « Mes annonces » lue par fetch — la vérification anti-robot de Beebs, servie sous la même adresse, et le renvoi vers la connexion se nomment : motif + mur) · 2026-10-08-preuve-relue (0.6.104 : BEEBS_PREUVE_RETRAIT, la preuve d'une suppression envoyée relue sans geste ; l'heure d'envoi remonte au background) · 2026-10-08-ping (0.6.103 : FILLSELL_PING, réponse synchrone « je suis là ») ·2026-10-04-format-colis-explicite (0.6.95 : un format de colis EXPLICITE — réponse de la personne, format relu sur l annonce par son identifiant, poids de la fiche — passe devant le pré-remplissage de Beebs ; les formats du formulaire sont appris par le serveur) · 2026-09-29-prevol-republication-complet (0.6.80 : le vrai formulaire, catégorie et champs dynamiques compris, doit être entièrement remplissable avant tout retrait ; aucun upload ni clic pendant ce pré-vol ; identifiant durable obligatoire) · 2026-09-24-compte-vu-sur-la-page (0.6.66 : un compte Beebs connecte vu sur n importe quelle page beebs.app leve l attente de session, desormais espacee 1 h/3 h/6 h) · 2026-09-22-page-de-depot-refaite (0.6.55 : Beebs a refait sa page de depot entre 13h26 et 15h24 le 22/09 — plus aucune classe ne nomme un role. Photos: input[type=file] ANONYME (#input-pictures mort, cause du blocage total). Champs: label.group/field-label + bouton frere a aria-haspopup. Panneaux: popovers RADIX portalises sur body, designes par aria-controls — plus aucune heuristique de panneau unique. Options: button.group/popover-item. Anciennes classes gardees en dernier maillon. Depot verifie de bout en bout sur la page du jour.)";
+const BEEBS_BUILD = "2026-10-25-404-deux-constats (retrait : une page 404 sans fiche, absente de « en vérification » lue en entier, constatée deux fois à 6 h d’écart au moins, prouve le retrait même si l’index public la porte encore — constats rendus au background, gardés sur le job) · 2026-10-24-vendue-sur-beebs (0.6.133 : un retrait est prouvé aussi quand la fiche produit du numéro exact dit SoldOut — Beebs passe « Vendu » une annonce supprimée avec le motif « Vendu via une autre plateforme » et la garde dans « Mes annonces » ; une annonce déjà vendue n’est jamais re-supprimée) · 2026-10-18-marque-exacte (la marque de la fiche part telle quelle : égalité tolérante sur casse, espaces, ponctuation, accents ; jamais une marque voisine ni un choix de l'IA ; hors liste → « Autre » et la marque écrite une fois dans la description) · 2026-10-17-mur-nomme (relevé : « Mes annonces » lue par fetch — la vérification anti-robot de Beebs, servie sous la même adresse, et le renvoi vers la connexion se nomment : motif + mur) · 2026-10-08-preuve-relue (0.6.104 : BEEBS_PREUVE_RETRAIT, la preuve d'une suppression envoyée relue sans geste ; l'heure d'envoi remonte au background) · 2026-10-08-ping (0.6.103 : FILLSELL_PING, réponse synchrone « je suis là ») ·2026-10-04-format-colis-explicite (0.6.95 : un format de colis EXPLICITE — réponse de la personne, format relu sur l annonce par son identifiant, poids de la fiche — passe devant le pré-remplissage de Beebs ; les formats du formulaire sont appris par le serveur) · 2026-09-29-prevol-republication-complet (0.6.80 : le vrai formulaire, catégorie et champs dynamiques compris, doit être entièrement remplissable avant tout retrait ; aucun upload ni clic pendant ce pré-vol ; identifiant durable obligatoire) · 2026-09-24-compte-vu-sur-la-page (0.6.66 : un compte Beebs connecte vu sur n importe quelle page beebs.app leve l attente de session, desormais espacee 1 h/3 h/6 h) · 2026-09-22-page-de-depot-refaite (0.6.55 : Beebs a refait sa page de depot entre 13h26 et 15h24 le 22/09 — plus aucune classe ne nomme un role. Photos: input[type=file] ANONYME (#input-pictures mort, cause du blocage total). Champs: label.group/field-label + bouton frere a aria-haspopup. Panneaux: popovers RADIX portalises sur body, designes par aria-controls — plus aucune heuristique de panneau unique. Options: button.group/popover-item. Anciennes classes gardees en dernier maillon. Depot verifie de bout en bout sur la page du jour.)";
 console.log(`[beebs.js] build ${BEEBS_BUILD}`);
 
 // Content script Beebs — remplit le formulaire de dépôt d'annonce.
@@ -648,6 +648,38 @@ async function presenceIndexBeebs(id) {
   }
 }
 
+// ── (25/10, boncoin59300) UNE PAGE 404 CONSTATÉE DEUX FOIS À 6 H D'ÉCART PROUVE LE RETRAIT ──
+// Retrait d87c8614 (annonce 33747519, compte de 1 103+ annonces) : « en ligne » ne
+// rend que 60 annonces, « en vérification » lue en entier ne la porte pas, sa page
+// rend « 404 - Oups, page perdue ! » sans fiche produit ni bouton (relevé le 25/10
+// au matin) — mais l'index public la porte encore (relevé du 25/10 00:37), et la
+// règle du 04/10 exigeait les trois : 20 essais depuis le 24/10 21:45, jamais
+// conclus. L'index est en retard : il ne voit ni les ventes ni les retraits.
+// LA RÈGLE (RETRAIT seulement, décision technique du 25/10) : page 404 sans fiche +
+// absente de « en vérification » lue en entier = un CONSTAT ; deux constats espacés
+// d'au moins 6 h PROUVENT l'absence, même si l'index la porte encore. Les constats
+// voyagent avec le job (platform_fields.beebs_404_constats) et repartent de zéro
+// dès que l'annonce se relit présente (page 200 avec fiche, ou listée).
+// Pur : `precedents` (les constats du job), `constat` (celui de cet essai). Le plus
+// ancien est toujours gardé (c'est lui qui date l'écart), plus les 5 derniers.
+function jugerConstats404Beebs(precedents, constat) {
+  const ECART_MIN_MS = 6 * 3600_000;
+  const date = (c) => Date.parse(String(c?.le ?? ""));
+  const valides = (Array.isArray(precedents) ? precedents : [])
+    .filter((c) => c && c.page_http === 404 && c.produit === false && c.en_verification === "complete" && Number.isFinite(date(c)));
+  const tous = [...valides, constat].sort((a, b) => date(a) - date(b));
+  const constats = tous.length > 6 ? [tous[0], ...tous.slice(-5)] : tous;
+  const premier = date(constats[0]);
+  const dernier = date(constats[constats.length - 1]);
+  return { constats, prouve: constats.length >= 2 && dernier - premier >= ECART_MIN_MS, premier: new Date(premier).toISOString() };
+}
+// Le message d'un retrait dont la page est un 404 constaté, preuve à venir : vrai
+// (le serveur le date, _shared/beebs-preuve-retrait.js). Jamais « encore en vente ».
+const MESSAGE_CONSTAT_404_BEEBS =
+  "Beebs ne montre plus cette annonce : sa page est introuvable (404) et elle n'est pas dans tes annonces en vérification — " +
+  "seul l'index public de Beebs, en retard, la porte encore. Constat noté : le retrait se clôt au second constat, au moins 6 h après le premier. " +
+  "Rien n'a été touché, nouvel essai";
+
 // ── UN RETRAIT BEEBS NE SE CLÔT QUE SUR LA LISTE DU PROPRIÉTAIRE (03/10) ─────
 // Bouilloire de Nico (34097677, 03/10 10:12) : premier essai sur une page sans
 // bouton propriétaire, second essai qui confirme, puis « supprimé » sans que
@@ -657,10 +689,16 @@ async function presenceIndexBeebs(id) {
 // lus en entier par lireIdsMesAnnoncesBeebs (flux de la page, tout le compte,
 // compteur de Beebs). Une liste partielle ne prouve pas l'absence.
 // Rend { verdict: 'absente' | 'presente' | 'illisible', lecture }.
-async function preuveAbsenceMesAnnonces(idCible, t) {
+// (25/10) `ctx.constats404` : les constats « page 404 » déjà notés sur CE retrait
+// (jugerConstats404Beebs) — absent (republication, preuve relue) = règle du 04/10
+// seule. Avec lui, `lecture.constats404` rend la liste à garder sur le job ([] =
+// l'annonce s'est relue présente : on repart de zéro).
+async function preuveAbsenceMesAnnonces(idCible, t, ctx = {}) {
   const lecture = await lireIdsMesAnnoncesBeebs();
   const pages = lecture.pages ?? [];
   const resume = pages.map((p) => `${p.page}:${p.ok ? `${p.n}${p.annoncees != null ? `/${p.annoncees}` : ""}` : `illisible (${p.motif ?? "?"})`}`).join(", ");
+  const avecConstats = Array.isArray(ctx?.constats404);
+  const constatsRemis = avecConstats ? { constats404: [] } : {};
   if (lecture.ids.includes(String(idCible))) {
     // (24/10, 0.6.133) Encore dans « Mes annonces », mais VENDUE sur Beebs : plus en vente — le retrait est fait.
     const vendue = await produitVenduSurBeebs(idCible);
@@ -669,7 +707,7 @@ async function preuveAbsenceMesAnnonces(idCible, t) {
       return { verdict: "absente", lecture: { ...lecture, vendue } };
     }
     t(`preuve propriétaire : ${idCible} ENCORE dans « Mes annonces » (${resume})`);
-    return { verdict: "presente", lecture };
+    return { verdict: "presente", lecture: { ...lecture, ...constatsRemis } };
   }
   const complete = lecture.ok && pages.every((p) => p.ok && !(p.annoncees != null && p.n < p.annoncees));
   if (!complete) {
@@ -702,9 +740,27 @@ async function preuveAbsenceMesAnnonces(idCible, t) {
       if (page.http === 404 && !page.produit && index === false) {
         return { verdict: "absente", lecture: { ...lecture, preuve_annonce: { page_http: 404, produit: false, index: "absente", en_verification: "complete", en_ligne: `${enLigne.n}/${enLigne.annoncees}` } } };
       }
+      // (25/10, boncoin59300) L'index la porte encore (ou se tait) : la page 404 sans
+      // fiche, hors vérification, est un CONSTAT — deux constats à 6 h d'écart au moins
+      // prouvent le retrait (jugerConstats404Beebs). Retrait seulement (ctx.constats404).
+      if (page.http === 404 && !page.produit && avecConstats) {
+        const constat = {
+          le: new Date().toISOString(), page_http: 404, produit: false, en_verification: "complete",
+          en_ligne: `${enLigne.n}/${enLigne.annoncees}`, index: index === null ? "non_lu" : index ? "la_porte_encore" : "absente",
+        };
+        const juge = jugerConstats404Beebs(ctx.constats404, constat);
+        if (juge.prouve) {
+          t(`preuve propriétaire : page 404 sans fiche, hors vérification, constatée ${juge.constats.length} fois depuis le ${juge.premier} (6 h et plus) — retirée, même si l'index public la porte encore (il est en retard)`);
+          return { verdict: "absente", lecture: { ...lecture, constats404: juge.constats, preuve_annonce: {
+            page_http: 404, produit: false, index: constat.index, en_verification: "complete", en_ligne: constat.en_ligne,
+            regle: "deux_constats_404", constats_404: juge.constats.map((c) => c.le) } } };
+        }
+        t(`preuve propriétaire : constat 404 n° ${juge.constats.length} noté (premier le ${juge.premier}) — la preuve attend un constat au moins 6 h après le premier`);
+        return { verdict: "illisible", lecture: { ...lecture, constats404: juge.constats } };
+      }
       if (page.http === 200 && page.produit) {
         t(`preuve propriétaire : ${idCible} ENCORE en vente (page 200, fiche produit) — rien n'est conclu`);
-        return { verdict: "presente", lecture };
+        return { verdict: "presente", lecture: { ...lecture, ...constatsRemis } };
       }
     }
     t(`preuve propriétaire : lecture incomplète (${resume}) — rien n'est conclu`);
@@ -857,6 +913,14 @@ async function deleteListing(job) {
     t(`annonce ${idCible} déjà VENDUE sur Beebs (fiche produit : ${dejaVendue.disponibilite}) — plus achetable, aucun clic`);
     return { success: true, dejaRetiree: true, preuveRetrait: preuveRetraitDepuis({ vendue: dejaVendue, pages: [] }, idCible, "deja_vendue"), trace };
   }
+  // (25/10, boncoin59300) Les constats « page 404 » d'un RETRAIT (jamais d'une
+  // republication) voyagent avec le job : lus ici, rendus au background à chaque
+  // essai (beebs404Constats), qui les garde sur le job (jugerConstats404Beebs).
+  const ctxPreuve = job?.action === "delete"
+    ? { constats404: Array.isArray(job?.platform_fields?.beebs_404_constats) ? job.platform_fields.beebs_404_constats : [] }
+    : {};
+  const constatsDe = (preuve) => (Array.isArray(preuve?.lecture?.constats404) ? { beebs404Constats: preuve.lecture.constats404 } : {});
+  const constatNote = (preuve) => (preuve?.lecture?.constats404 ?? []).length > 0;
 
   // ── CHEMIN 1 (nominal depuis le 11/09) : LA PAGE DE L'ANNONCE ─────────────
   // Relevé (Joe0410, 189 annonces) : « Mes annonces » ne rend que sa première
@@ -883,7 +947,7 @@ async function deleteListing(job) {
     if (!btn) {
       t("bouton propriétaire « Supprimer l'annonce » ABSENT de la page (annonce déjà retirée, autre compte connecté ou page non rendue) — on relit « Mes annonces »");
       // (03/10) Jamais de conclusion sur cette page : la liste du propriétaire tranche.
-      const preuve = await preuveAbsenceMesAnnonces(idCible, t);
+      const preuve = await preuveAbsenceMesAnnonces(idCible, t, ctxPreuve);
       if (preuve.verdict === "absente") {
         return { success: true, dejaRetiree: true, preuveRetrait: preuveRetraitDepuis(preuve.lecture, idCible, "deja_absente"), trace };
       }
@@ -891,13 +955,14 @@ async function deleteListing(job) {
         return {
           success: false, reprise: true,
           error: "L'annonce est toujours dans « Mes annonces » mais sa page n'a pas montré le bouton de suppression (page pas encore rendue) — rien n'a été touché, nouvel essai",
-          trace,
+          ...constatsDe(preuve), trace,
         };
       }
       return {
         success: false, pageAnnonceSansControle: true, reprise: true,
-        error: "Page de l'annonce sans bouton « Supprimer l'annonce », et « Mes annonces » illisible en entier — rien n'a été touché, nouvel essai",
-        trace,
+        error: constatNote(preuve) ? MESSAGE_CONSTAT_404_BEEBS
+          : "Page de l'annonce sans bouton « Supprimer l'annonce », et « Mes annonces » illisible en entier — rien n'a été touché, nouvel essai",
+        ...constatsDe(preuve), trace,
       };
     }
     t("contrôle localisé : « Supprimer l'annonce » de la page de l'annonce (identifiant vérifié dans l'URL)");
@@ -942,7 +1007,7 @@ async function deleteListing(job) {
     if (DELETE_DRY_RUN) return { success: true, dryRun: true, found: false, trace };
     // (03/10) La page rendue ne montre que la première page : seule la lecture
     // complète des deux onglets dit si l'annonce est vraiment partie.
-    const preuve = await preuveAbsenceMesAnnonces(idCible, t);
+    const preuve = await preuveAbsenceMesAnnonces(idCible, t, ctxPreuve);
     if (preuve.verdict === "absente") {
       return { success: true, dejaRetiree: true, preuveRetrait: preuveRetraitDepuis(preuve.lecture, idCible, "deja_absente"), trace };
     }
@@ -950,8 +1015,9 @@ async function deleteListing(job) {
       success: false, reprise: true,
       error: preuve.verdict === "presente"
         ? `L'annonce Beebs ${idCible} est toujours dans « Mes annonces », mais sa carte n'est pas sur la page affichée — rien n'a été touché, nouvel essai`
+        : constatNote(preuve) ? MESSAGE_CONSTAT_404_BEEBS
         : `Annonce introuvable sur la page « Mes annonces » affichée, et la liste complète n'a pas pu être relue — rien n'a été touché, nouvel essai`,
-      trace,
+      ...constatsDe(preuve), trace,
     };
   }
 

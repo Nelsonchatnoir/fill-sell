@@ -267,6 +267,23 @@ console.log("E. (22/10 nuit, décisions de Nico) L'ÉTAT JAMAIS DÉGRADÉ EN REP
   ok(c1?.libelles.etat === "Bon état" && c1.natif.status_id === 3, "… sans rien toucher d'autre (état, ids)");
   const c2 = correctionCaptureVinted(ficheArt, { categoryPath: ["Maison", "Décoration", "Décorations murales", "Peintures"], catalog_id_depot: 3847, etat: "Bon état" }, { catalog_id: 3847 });
   ok(c2 === null, "déjà dans « Peintures » : rien à corriger");
+  // (25/10, A5 strict — paugues 110c27ae / 5ad5bbb1) La capture ne change de rayon QUE si la grille de colis du
+  // rayon d'arrivée est connue ET offre le format capturé (package_size_id) ; sinon l'annonce garde son rayon.
+  const toile = { categoryPath: ["Loisirs et collections", "Loisirs créatifs", "Peinture", "Toiles et panneaux"], catalog_id_depot: 5267, etat: "Bon état" };
+  ok(correctionCaptureVinted(ficheArt, toile, { catalog_id: 5267, status_id: 3, package_size_id: 3 }, "Bon état") === null,
+    "A5 : « Grand » (3) face à la grille au poids de « Peintures » (11-14) → l'annonce garde « Toiles et panneaux » (110c27ae)");
+  const ficheArt2 = { origine: null, titre: "Huile sur panneau de bois - Style école française du XIX°", description: "", attributs: { etat: { v: "Très bon état" } } };
+  const encadr = { categoryPath: ["Maison", "Décoration", "Encadrements"], etat: "Très bon état" };
+  ok(correctionCaptureVinted(ficheArt2, encadr, { catalog_id: 1937, status_id: 2, package_size_id: 2 }, "Très bon état") === null,
+    "A5 : « Moyen » (2) → l'annonce garde « Encadrements » (5ad5bbb1)");
+  const c4 = correctionCaptureVinted(ficheArt, toile, { catalog_id: 5267, status_id: 3, package_size_id: 12 }, "Bon état");
+  ok(c4?.libelles.catalog_id_depot === 3847 && c4.raisons.join() === "categorie_oeuvre",
+    "A5 : format capturé OFFERT par la grille du rayon des œuvres (12, 10 kg) → déplacée", JSON.stringify(c4));
+  const inconnue = correctionCaptureVinted(ficheArt, toile, { catalog_id: 5267, status_id: 3, package_size_id: 12 }, "Bon état", { grilleDuRayon: () => null });
+  ok(inconnue === null, "A5 strict : grille du rayon d'arrivée INCONNUE → jamais déplacée (elle passait avant le 25/10)");
+  const inconnueEtat = correctionCaptureVinted(ficheArt, { ...toile, etat: "Satisfaisant" }, { catalog_id: 5267, status_id: 4, package_size_id: 3 }, "Bon état", { grilleDuRayon: () => [] });
+  ok(inconnueEtat?.raisons.join() === "etat_de_la_fiche" && inconnueEtat.libelles.catalog_id_depot === 5267 && inconnueEtat.libelles.categoryPath.at(-1) === "Toiles et panneaux",
+    "A5 strict : rayon gardé, l'état du vendeur se corrige quand même (les deux règles sont indépendantes)", JSON.stringify(inconnueEtat));
   ok(correctionCaptureVinted({ ...ficheArt, origine: "vinted_sync" }, { catalog_id_depot: 5267, etat: "Bon état" }, {}) === null,
     "annonce NÉE sur Vinted (vinted_sync) : celle du vendeur, jamais corrigée");
   const ficheEtat = { origine: "releve_leboncoin", titre: "Magnifique Pichet Vintage en Céramique Vernissée", description: "", attributs: { etat: { v: "Bon état" } } };

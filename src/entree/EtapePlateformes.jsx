@@ -77,7 +77,8 @@ export default function EtapePlateformes({ c, T, onSuivant }) {
       <Texte style={{ marginBottom: 18 }}>{T.pfTexte}</Texte>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-        {PLATEFORMES.map((p, k) => {
+        {/* (25/10) Sans Leboncoin pour une adresse de remise hors de France (c.plateformesFermees). */}
+        {PLATEFORMES.filter((p) => !(c.plateformesFermees ?? []).includes(p.id)).map((p, k) => {
           const actif = !debute && plateformes.includes(p.id);
           return (
             <button

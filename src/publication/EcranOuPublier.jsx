@@ -121,7 +121,8 @@ export default function EcranOuPublier({ m }) {
     }
     else if (compteAbsent) {
       etat = m.motifEbay; ton = "geste";
-      geste = <button type="button" className="fsn-btn fsn-btn--secondary fsn-btn--sm" onClick={m.ouvrirPanneauEbay}>{m.boutonEbay}</button>;
+      // (25/10) boutonEbay null = compte eBay hors de France : la phrase seule, rien à paramétrer chez nous.
+      geste = m.boutonEbay ? <button type="button" className="fsn-btn fsn-btn--secondary fsn-btn--sm" onClick={m.ouvrirPanneauEbay}>{m.boutonEbay}</button> : null;
     }
     else if (fermeeCategorie) { etat = m.motifSupport(p, support); ton = "mute"; }
     else if (enPause) { etat = m.motifPause(p); ton = "geste"; }

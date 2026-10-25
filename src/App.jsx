@@ -186,6 +186,8 @@ import PropositionNotifications from './notifications/PropositionNotifications';
 import { usePropositionPush } from './notifications/usePropositionPush';
 import { useSortieOpla } from './hooks/useSortieOpla';
 import { etatBascule } from './utils/basculeOplaDepop.js';
+// (25/10, décision de Nico) Leboncoin réservé aux adresses de remise en France.
+import { plateformesFermeesHorsFrance } from '../supabase/functions/_shared/lbc-adresse-france.js';
 import { useDemandeAvis } from './hooks/useDemandeAvis';
 import { palierDuProfil, droitsDuPalier, palierLePlusHaut } from './utils/palier';
 import { lireToutesPagesRecentsDabord } from './utils/lireToutesPages';
@@ -2622,6 +2624,15 @@ export default function App({ loginOnly = false }){
   const [settingsLbcRue,setSettingsLbcRue]=useState('');
   const [settingsLbcCp,setSettingsLbcCp]=useState('');
   const [settingsLbcVille,setSettingsLbcVille]=useState('');
+  // ── LEBONCOIN, RÉSERVÉ AUX ADRESSES EN FRANCE (25/10, décision de Nico — Marta, Rapallo) ──
+  // Les plateformes FERMÉES à ce compte, calculées depuis le profil déjà lu (l'adresse ci-dessus) : un code
+  // postal absent de la base officielle française ferme Leboncoin (_shared/lbc-adresse-france.js). Elles sortent
+  // de tout ce qui se propose (utils/stockFiltres.plateformesDuCompte) ; pas d'adresse = rien de fermé. Ici,
+  // APRÈS les états qu'il lit (TDZ).
+  const plateformesFermees=useMemo(
+    ()=>plateformesFermeesHorsFrance({rue:settingsLbcRue,code_postal:settingsLbcCp,ville:settingsLbcVille}),
+    [settingsLbcRue,settingsLbcCp,settingsLbcVille],
+  );
   const [showBugReport,setShowBugReport]=useState(false);
   const [bugMessage,setBugMessage]=useState("");
   const [bugSending,setBugSending]=useState(false);
@@ -7858,7 +7869,8 @@ export default function App({ loginOnly = false }){
         // plateformes par défaut du stepper (PLATFORMS_DEFAULT) — une
         // plateforme décochée ensuite laisse juste son annonce inutilisée.
         mode:'annonce',
-        platforms:['vinted','leboncoin','beebs','ebay'],
+        // (25/10) Sans Leboncoin pour une adresse de remise hors de France (plateformesFermees) : rien n'y partira.
+        platforms:['vinted','leboncoin','beebs','ebay'].filter(p=>!plateformesFermees.includes(p)),
         // « Je sais qu'une ligne inventaire va être créée au débit, et je ne
         // t'en ferai pas une seconde au publish » (2026-09-15). Le serveur ne
         // crée RIEN sans ce drapeau : l'app native garde l'ancien client
@@ -8735,6 +8747,7 @@ export default function App({ loginOnly = false }){
             ebayCompte={ebayCompte}
             plateformesVisibles={plateformesVisiblesEffectives}
             plateformesOuvertes={plateformesOuvertes}
+            plateformesFermees={plateformesFermees}
             oplaMotifGrise={oplaMotifGrise}
             oplaExtensionMin={oplaConfig.min}
             oplaRelie={sortieOpla.relie===true}
@@ -8824,6 +8837,7 @@ export default function App({ loginOnly = false }){
             ebayCompte={ebayCompte}
             plateformesVisibles={plateformesVisiblesEffectives}
             plateformesOuvertes={plateformesOuvertes}
+            plateformesFermees={plateformesFermees}
             oplaMotifGrise={oplaMotifGrise}
             oplaExtensionMin={oplaConfig.min}
             iapLoading={iapLoading}
@@ -9534,6 +9548,7 @@ export default function App({ loginOnly = false }){
           adresseLbc={{rue:settingsLbcRue,cp:settingsLbcCp,ville:settingsLbcVille}}
           setAdresseLbc={({rue,cp,ville})=>{setSettingsLbcRue(rue);setSettingsLbcCp(cp);setSettingsLbcVille(ville);}}
           plateformesOuvertes={plateformesOuvertes}
+          plateformesFermees={plateformesFermees}
           oplaRelie={sortieOpla.relie===true}
           onToast={(message)=>{setToast({visible:true,message});setTimeout(()=>setToast({visible:false,message:''}),3000);}}
           ouvrirOffres={(origine)=>openUpgradeModal(null,origine??'reglages')}
@@ -9597,7 +9612,7 @@ export default function App({ loginOnly = false }){
       {/* « Me connecter » : un bouton par plateforme, la SEULE page de connexion,
           au format du téléphone (05/10). Témoin ou drapeau levé seulement. */}
       {meConnecterOuvert&&user&&cloudConnexionVisible(user.id)&&(
-        <MeConnecterCloud userId={user.id} lang={lang} onFermer={()=>setMeConnecterOuvert(false)}/>
+        <MeConnecterCloud userId={user.id} lang={lang} onFermer={()=>setMeConnecterOuvert(false)} plateformesFermees={plateformesFermees}/>
       )}
 
       {/* ── PREMIUM WELCOME MODAL (post-IAP purchase) ── */}

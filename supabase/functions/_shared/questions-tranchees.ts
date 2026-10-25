@@ -29,12 +29,17 @@
 //   8. (25/10, décision de Nico — job fde2a207) « Le titre contient trop de lettres majuscules » : la
 //      question « Titre » est tranchée par le titre en casse normale (marque, sigles, références gardés,
 //      _shared/casse-titre.js), rangé comme une réponse (titre_saisi) — la publication repart. Une passe par job.
+//   9. (25/10, Nico — paugues 110c27ae / 5ad5bbb1, Romain c28e2c60) Vinted « Format du colis » d'une
+//      republication (pré-vol, étape captured, rien retiré) : rayon changé par FillSell (œuvre d'art) → la
+//      capture repart de l'annonce en ligne, dans son rayon ; format retiré par Vinted du même rayon → le plus
+//      petit format offert qui suffit, sinon le plus grand (_shared/vinted-colis-tranche.js). Une passe par job.
 // deno-lint-ignore-file no-explicit-any
 import { estQuestionEtat, etatDepuisSources, etatsDuJob } from "./etat-correspondance.js";
 import { reponseMarqueDepop, champsApresMarqueDepop, QUESTION_MARQUE_DEPOP } from "./marque-depop.js";
 import { archiverErreur } from "./erreurs-archivees.js";
 import { titreSymbolesATrancher } from "./titre-symboles-vinted.js";
 import { titreMajusculesATrancher } from "./casse-titre.js";
+import { colisRepublicationATrancher } from "./vinted-colis-tranche.js";
 
 const TICKS = ["needs_user_tick_le", "needs_user_actif_ms", "needs_user_vu_le", "needs_user_vu_erreur"];
 const NOMS: Record<string, string> = { vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", ebay: "eBay", opla: "Opla", depop: "Depop" };
@@ -51,7 +56,9 @@ export async function trancherQuestions(supabase: any): Promise<Record<string, n
     // (18/10) `title` : la règle 7 (titre Vinted, symboles en trop) part du titre du job.
     .select("id, user_id, platform, action, status, inventaire_id, created_at, error, title, platform_fields")
     .eq("status", "needs_user")
-    .in("platform_fields->>needs_user_source", ["boutique_a_choisir", "champ_a_choisir", "article_vendu"])
+    // (25/10) `prevol_negatif` : la règle 9 (format du colis d'une republication Vinted) — les autres règles
+    // ne lisent que leurs propres sources.
+    .in("platform_fields->>needs_user_source", ["boutique_a_choisir", "champ_a_choisir", "article_vendu", "prevol_negatif"])
     .order("created_at", { ascending: true })
     .limit(400);
   if (error) throw new Error(error.message);
@@ -318,6 +325,26 @@ export async function trancherQuestions(supabase: any): Promise<Record<string, n
     const { data } = await supabase.from("cross_post_jobs").update({ status: "pending", error: null, platform_fields: r.platform_fields })
       .eq("id", j.id).eq("status", "needs_user").select("id");
     if (data?.length) (n as Record<string, number>).titre_majuscules = ((n as Record<string, number>).titre_majuscules ?? 0) + 1;
+  }
+  // ── 9. (25/10, Nico) Vinted « Format du colis » d'une republication : FillSell tranche ──
+  // « Corrige pour que ces republications passent sans rien demander. » (_shared/vinted-colis-tranche.js)
+  //   A. paugues 110c27ae / 5ad5bbb1 : la correction « œuvre d'art » du 22/10 avait déplacé leurs captures
+  //      vers « Peintures » (grille au poids) — notre faute. Retour à `a_capturer` (capture, copie et question
+  //      retirées) : l'annonce, toujours en ligne, est relue dans SON rayon ; capture_corrigee_par_la_fiche
+  //      reste sur le job (get-pending-jobs ne la corrige plus jamais) ;
+  //   B. Romain c28e2c60 : Vinted a retiré l'id 8 de la grille de « Bottes hautes » le 15/10 → le plus petit
+  //      format offert qui suffit, sinon le plus grand (8 face à Petit/Moyen/Grand → « Grand »), posé comme une
+  //      réponse (colis_choisi, needsUserResolved), tracé (colis_tranche_par_fillsell).
+  // Étape captured seulement (rien n'est retiré), une passe par job, compare-and-swap sur needs_user.
+  for (const j of liste) {
+    const r = colisRepublicationATrancher(j, maintenant) as { branche: string; platform_fields: Record<string, unknown> } | null;
+    if (!r) continue;
+    const { data } = await supabase.from("cross_post_jobs").update({ status: "pending", error: null, platform_fields: r.platform_fields })
+      .eq("id", j.id).eq("status", "needs_user").eq("platform_fields->>republish_step", "captured").select("id");
+    if (data?.length) {
+      const cle = r.branche === "A" ? "colis_recapture" : "colis_tranche";
+      (n as Record<string, number>)[cle] = ((n as Record<string, number>)[cle] ?? 0) + 1;
+    }
   }
   return n;
 }

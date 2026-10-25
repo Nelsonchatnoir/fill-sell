@@ -23,6 +23,9 @@ import { valeurDeListeCorrespondante } from "./texte-comparable.ts";
 // (18/10 nuit, point 5) La question passe par le cache quand il est allumé
 // (coin_config ia_cache_aspects) — même texte rendu, mêmes contrôles ici.
 import { questionClaude } from "./claude-cache.ts";
+// (25/10, N5) La taille : la règle des tailles et la taille unique du vendeur.
+import { tailleDeService, brancheDeTaille } from "./taille-de-service.js";
+import { tailleUniqueDuVendeur, estTailleUniqueEcrite } from "./taille-du-texte.js";
 
 // libre : true = 2e passe de la voie API (remplirAspects) ; "titre" = 2e passe
 // de la voie formulaire (completerAspectsIA) : un aspect par appel, le mot
@@ -47,6 +50,78 @@ export const ASPECT_DEFAULTS: Record<string, string> = {
 const LISTE_COURTE_MAX = 60;   // FREE_TEXT : au-delà, on ne propose plus la liste
 const LISTE_FERMEE_MAX = 120;  // SELECTION_ONLY : borne de sécurité du prompt
 const VALEUR_MAX = 65;         // limite eBay d'une valeur d'aspect
+
+// ═══════════════════════════════════════════════════════════════════════════
+// UNE TAILLE EST UNE LISTE FERMÉE POUR L'IA (25/10, N5)
+// ═══════════════════════════════════════════════════════════════════════════
+// CE QUI L'A PROVOQUÉ : 24 « Taille » fausses en 30 jours (usage_logs
+// ebay_aspects_ia, du 11/10 au 24/10), toutes posées par la SECONDE passe (« le
+// mot RECOPIÉ du titre ») : « Classic Fit », « Col rond », « Jupe courte »,
+// « Veste de ski », « Parka », « Gants de ski enfant »… Un mot du titre, jamais
+// une taille — et la seule garde (valeurLueDansLeContexte) les laissait passer :
+// ils SONT dans le titre. Taxonomy déclare « Taille » en texte libre, mais eBay
+// refuse le hors-liste (refus 25129 → question : jobs 98f71143, 1ff48d68,
+// 8d831cf5, c65b3e36, 12854dbb — trois fois la fiche portait déjà la bonne
+// taille) ; et quand il l'accepte, l'annonce est fausse (820227542038, job
+// 9f678d8b : Taille « Gants de ski enfant », fiche M).
+// LA RÈGLE, pour un aspect de taille (nom EXACT : « Taille », « Pointure »,
+// « Pointure EU/UK/US/AU » — jamais « Type de taille », « Tour de taille »,
+// « Taille d'écran ») :
+//   · il ne passe JAMAIS par une seconde passe (completerAspectsIA, la question
+//     groupée, remplirAspects d'ebay-publication.ts) ;
+//   · il est demandé comme une LISTE FERMÉE, et seulement avec sa liste (sans
+//     liste, rien ne permet de juger la réponse : il n'est pas demandé) ;
+//   · une réponse n'est retenue que si la liste l'écrit (valeurDeListeCorrespondante,
+//     le préfixe EU/FR que la liste n'écrit pas) ou que la règle des tailles l'y
+//     place (tailleDeService) ; sinon elle est refusée, motif tracé, et la
+//     question part, avec la liste ;
+//   · « Taille unique » seulement si la fiche ou son texte le disent
+//     (tailleUniqueDuVendeur) — jamais l'option « par défaut » d'une liste.
+export const ASPECT_TAILLE_RE = /^(?:Taille|Pointure(?: EU| UK| US| AU)?)$/;
+export function estAspectDeTaille(nom: unknown): boolean {
+  return ASPECT_TAILLE_RE.test(String(nom ?? ""));
+}
+// ── TAILLE « EU 42 » / « FR 42 » : LE PRÉFIXE QUE LA LISTE eBay N'ÉCRIT PAS
+// (2026-10-01, tessy.galy d07f4c9e, robe D&G, catégorie 63861) ─────────────
+// La liste eBay.fr relevée écrit les tailles françaises SANS préfixe (« 32 » …
+// « 62 ») et les autres pays AVEC (« IT 42 », « UK 10 », « US 8 ») : « EU 42 »
+// a été refusée (25129), alors que « 42 » y est. Seuls EU et FR se retirent :
+// c'est l'écriture nue de la liste. UK/US/IT ne se retirent JAMAIS (« UK 10 »
+// sans préfixe deviendrait le 10 français : une autre taille) — ils passent
+// déjà tels quels quand la liste les porte. Appelée seulement quand la valeur
+// ne correspond PAS telle quelle : une taille acceptée aujourd'hui ne change pas.
+// (25/10, N5) Déplacée ici depuis ebay-publication.ts (qui la réexporte, même
+// corps) : la réponse de l'IA sur une taille passe par la même lecture.
+const PREFIXE_EU_FR_RE = /^(?:EU|FR) ?(\d{1,3}(?:[.,]\d)?)$/i;
+export function tailleSansPrefixeEuFr(nomAspect: string, brut: string, liste: string[]): string | null {
+  if (!/taille|pointure/i.test(nomAspect)) return null;
+  const m = PREFIXE_EU_FR_RE.exec(String(brut ?? "").replace(/\s+/g, " ").trim());
+  return m ? valeurDeListeCorrespondante(m[1], liste) : null;
+}
+/**
+ * (25/10, N5) Une valeur de taille qui n'est NI la réponse de la personne NI la
+ * taille de la fiche (réponse de l'IA, aspect posé par l'app) : l'entrée de la
+ * liste eBay qu'elle désigne, ou le motif du refus. `fiche` : la taille de la
+ * fiche et ses textes (titre, description) — seuls juges d'une « Taille unique » —
+ * et la branche (femme / homme / enfant) de la règle des tailles.
+ */
+export function tailleRetenueDansLaListe(
+  nomAspect: string, valeur: unknown, liste: string[],
+  fiche: { taille?: unknown; textes?: unknown[]; branche?: string | null } = {},
+): { valeur: string } | { refus: string } {
+  const s = String(valeur ?? "").trim();
+  if (!s) return { refus: "réponse vide" };
+  if (!liste.length) return { refus: "taille sans liste eBay" };
+  const entree = valeurDeListeCorrespondante(s, liste)
+    ?? tailleSansPrefixeEuFr(nomAspect, s, liste)
+    ?? (tailleDeService(s, liste, { branche: fiche.branche ?? null })?.valeur ?? null);
+  if (!entree) return { refus: "taille hors de la liste eBay" };
+  if (estTailleUniqueEcrite(entree)) {
+    const u = tailleUniqueDuVendeur({ valeur: String(fiche.taille ?? ""), textes: (fiche.textes ?? []).map((t) => String(t ?? "")), opts: liste });
+    if (!u || !("valeur" in u) || u.valeur !== entree) return { refus: "« Taille unique » que la fiche ne dit pas" };
+  }
+  return { valeur: entree };
+}
 
 export function contexteEnTexte(c: ContexteArticle): string {
   return [
@@ -88,6 +163,11 @@ export function corpsModele(modele: string): Record<string, unknown> {
 
 function ligneDemande(a: AspectDemande, listeFermeeMax = LISTE_FERMEE_MAX): string {
   const liste = a.allowedValues ?? [];
+  // (25/10, N5) Une taille : la liste fermée, quel que soit le mode Taxonomy, et
+  // jamais un autre mot du titre (« Classic Fit », « Col rond », « Parka »).
+  if (estAspectDeTaille(a.name)) {
+    return `- "${a.name}" — LISTE FERMÉE (une TAILLE), réponds UNIQUEMENT par une de ces valeurs recopiée caractère pour caractère, et seulement si la taille de l'article est écrite dans le contexte ; jamais un autre mot du titre (coupe, col, modèle, type d'article : « Classic Fit », « Col rond », « Parka » ne sont pas des tailles), sinon null : ${liste.slice(0, listeFermeeMax).join(" | ")}`;
+  }
   if (a.mode === "SELECTION_ONLY") {
     return `- "${a.name}" — LISTE FERMÉE, réponds UNIQUEMENT par une de ces valeurs recopiée caractère pour caractère (apostrophes, accents, espaces compris), sinon null : ${liste.slice(0, listeFermeeMax).join(" | ")}`;
   }
@@ -139,7 +219,8 @@ export async function resoudreAspectsIA(
   const refuses: ResultatAspectsIA["refuses"] = [];
   const propres = demandes.filter((d) => d && typeof d.name === "string" && d.name.trim()).slice(0, 14);
   for (const d of propres) if (ASPECT_DEFAULTS[d.name]) out[d.name] = ASPECT_DEFAULTS[d.name];
-  const aDemander = propres.filter((d) => !ASPECT_DEFAULTS[d.name]);
+  // (25/10, N5) Une taille sans sa liste n'est pas demandée : rien ne jugerait la réponse.
+  const aDemander = propres.filter((d) => !ASPECT_DEFAULTS[d.name] && !(estAspectDeTaille(d.name) && !(d.allowedValues ?? []).length));
   const ctx = contexteEnTexte(contexte);
   if (!aDemander.length || !ctx || !opts.apiKey) return { aspects: out, refuses, demandes: propres.length, appel_ia: false };
 
@@ -185,11 +266,19 @@ export async function resoudreAspectsIA(
   try { brut = (JSON.parse(m[0])?.aspects ?? {}) as Record<string, unknown>; } catch { brut = {}; }
 
   const parNom = new Map(aDemander.map((d) => [d.name, d]));
+  const branche = brancheDeTaille(String(contexte.genre ?? ""), typeof brut["Département"] === "string" ? brut["Département"] : "");
   for (const [nom, v] of Object.entries(brut)) {
     const d = parNom.get(nom);
     if (!d) continue; // jamais une clé non demandée
     const s = typeof v === "string" ? v.trim().slice(0, VALEUR_MAX) : "";
     if (!s || s.toLowerCase() === "null") continue;
+    // (25/10, N5) Une taille : l'entrée de la liste eBay, sinon refusée (tailleRetenueDansLaListe).
+    if (estAspectDeTaille(nom)) {
+      const t = tailleRetenueDansLaListe(nom, s, d.allowedValues ?? [], { taille: contexte.taille, textes: [contexte.titre, contexte.description], branche });
+      if ("valeur" in t) out[nom] = t.valeur;
+      else refuses.push({ name: nom, valeur: s, motif: t.refus });
+      continue;
+    }
     // ── UNE MESURE NE S'INVENTE PAS : LA GARDE, PAS SEULEMENT LA CONSIGNE ──
     // (25/09, audit du check de nuit) Voie API eBay, job 97807314 : Hauteur
     // « 9" », Largeur « 20 cm », Longueur « 15 cm » posées par l'IA — les
@@ -244,6 +333,9 @@ export async function resoudreAspectsIA(
 //      question part, avec la liste.
 //    · JAMAIS sur un SELECTION_ONLY (liste imposée par eBay), jamais la
 //      Marque (référentiel, doctrine des marques fantômes).
+//    · (25/10, N5) JAMAIS sur une taille (estAspectDeTaille) : « le mot recopié
+//      du titre » y a posé « Classic Fit », « Col rond », « Parka » — une taille
+//      est une liste fermée (première passe seule, entrée de la liste).
 
 // Petits mots qui ne portent rien : une valeur ne se juge pas sur eux.
 const MOTS_VIDES_LECTURE = new Set([
@@ -304,7 +396,7 @@ export async function completerAspectsIA(
 ): Promise<ResultatCompletion> {
   const premiere = await resoudreAspectsIA(demandes, contexte, opts);
   const restants = demandes.filter((d) =>
-    d && typeof d.name === "string" && d.mode === "FREE_TEXT" && d.name !== "Marque"
+    d && typeof d.name === "string" && d.mode === "FREE_TEXT" && d.name !== "Marque" && !estAspectDeTaille(d.name)
     && !ASPECT_DEFAULTS[d.name] && !String(premiere.aspects[d.name] ?? "").trim());
   if (!restants.length || !premiere.appel_ia) return { ...premiere, seconde_passe: [] };
   // Un appel PAR aspect, en parallèle (même durée qu'un seul appel).
@@ -348,7 +440,8 @@ export async function completerAspectsIA(
 // que la comparaison ancien / nouveau sur de vrais articles n'est pas faite.
 function ligneDemandeGroupee(a: AspectDemande): string {
   const liste = a.allowedValues ?? [];
-  if (a.mode === "SELECTION_ONLY" || a.name === "Marque") return ligneDemande(a);
+  // (25/10, N5) Une taille : la liste fermée, jamais « le mot recopié du titre ».
+  if (a.mode === "SELECTION_ONLY" || a.name === "Marque" || estAspectDeTaille(a.name)) return ligneDemande(a);
   const recopie = `sinon le mot ou groupe de mots (1 à 4 mots) RECOPIÉ du titre ou de la description qui dit ce « ${a.name} » de l'article (ex. pour un Style : « Polaire », « 1/4 zip », « Col roulé » ; pour un Type : « Pull polaire », « Sweat », « Robe longue ») — un mot déjà utilisé pour un autre aspect peut resservir ; null seulement si le texte ne dit rien qui s'en approche`;
   if (liste.length && liste.length <= LISTE_COURTE_MAX) {
     return `- "${a.name}" — valeurs eBay suggérées (préfère l'une d'elles, recopiée caractère pour caractère, quand elle correspond au contexte) : ${liste.join(" | ")} ; ${recopie}`;
@@ -366,7 +459,8 @@ export async function completerAspectsIAGroupe(
   const refuses: ResultatAspectsIA["refuses"] = [];
   const propres = demandes.filter((d) => d && typeof d.name === "string" && d.name.trim()).slice(0, 14);
   for (const d of propres) if (ASPECT_DEFAULTS[d.name]) out[d.name] = ASPECT_DEFAULTS[d.name];
-  const aDemander = propres.filter((d) => !ASPECT_DEFAULTS[d.name]);
+  // (25/10, N5) Une taille sans sa liste n'est pas demandée (même règle que resoudreAspectsIA).
+  const aDemander = propres.filter((d) => !ASPECT_DEFAULTS[d.name] && !(estAspectDeTaille(d.name) && !(d.allowedValues ?? []).length));
   const ctx = contexteEnTexte(contexte);
   if (!aDemander.length || !ctx || !opts.apiKey) return { aspects: out, refuses, demandes: propres.length, appel_ia: false, seconde_passe: [] };
   const lignes = aDemander.map(ligneDemandeGroupee).join("\n");
@@ -399,11 +493,19 @@ export async function completerAspectsIAGroupe(
   try { brutIa = (JSON.parse(m[0])?.aspects ?? {}) as Record<string, unknown>; } catch { brutIa = {}; }
   const parNom = new Map(aDemander.map((d) => [d.name, d]));
   const horsListeLus: string[] = [];
+  const branche = brancheDeTaille(String(contexte.genre ?? ""), typeof brutIa["Département"] === "string" ? brutIa["Département"] : "");
   for (const [nom, v] of Object.entries(brutIa)) {
     const d = parNom.get(nom);
     if (!d) continue;
     const val = typeof v === "string" ? v.trim().slice(0, VALEUR_MAX) : "";
     if (!val || val.toLowerCase() === "null") continue;
+    // (25/10, N5) Une taille : l'entrée de la liste eBay, jamais « lue dans le texte ».
+    if (estAspectDeTaille(nom)) {
+      const t = tailleRetenueDansLaListe(nom, val, d.allowedValues ?? [], { taille: contexte.taille, textes: [contexte.titre, contexte.description], branche });
+      if ("valeur" in t) out[nom] = t.valeur;
+      else refuses.push({ name: nom, valeur: val, motif: t.refus });
+      continue;
+    }
     if (ASPECT_MESURE_RE.test(nom) && !mesureLueDansLeContexte(val, ctx)) {
       refuses.push({ name: nom, valeur: val, motif: "mesure absente du contexte" });
       continue;

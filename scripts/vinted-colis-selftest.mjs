@@ -7,6 +7,7 @@
 import fs from "node:fs";
 import {
   COLIS_VINTED, grilleColisVinted, colisVintedRetenu, colisVintedPourJob, colisVintedDeLaFiche, rayonModeVinted,
+  COLIS_VINTED_8_FAMILLE_PMG, libelleColisVinted,
 } from "../src/utils/vintedColis.js";
 
 let echecs = 0;
@@ -18,6 +19,24 @@ const src = fs.readFileSync(new URL("../chrome-extension/content-scripts/vinted.
 const bloc = src.match(/const VINTED_PACKAGE_SIZES_PAR_ID = \{([\s\S]*?)\};/)?.[1] ?? "";
 const tableExt = Object.fromEntries([...bloc.matchAll(/(\d+):\s*"([^"]+)"/g)].map((m) => [Number(m[1]), m[2]]));
 ok("table id → libellé identique à vinted.js", JSON.stringify(tableExt) === JSON.stringify(COLIS_VINTED));
+// (25/10, Romain c28e2c60) L'id 8 nommé d'après sa famille — même constante, même règle des deux côtés.
+const constExt = src.match(/const VINTED_COLIS_8_FAMILLE_PMG = "([^"]+)";/)?.[1];
+ok("libellé de l'id 8 en famille Petit/Moyen/Grand identique à vinted.js (« Lourd (2 kg et +) »)",
+  constExt === COLIS_VINTED_8_FAMILLE_PMG && COLIS_VINTED_8_FAMILLE_PMG === "Lourd (2 kg et +)");
+const { extraireFonctionJs } = await import("./lib/extraire-fonction-js.mjs");
+const corpsLib = extraireFonctionJs(src, "libelleColisVinted");
+const libelleExt = new Function(`const VINTED_PACKAGE_SIZES_PAR_ID = ${JSON.stringify(tableExt)}; const VINTED_COLIS_8_FAMILLE_PMG = ${JSON.stringify(constExt)};
+  ${corpsLib}; return libelleColisVinted;`)();
+const casLib = [
+  [8, { chemin: ["Femmes", "Chaussures", "Bottes", "Bottes hautes"] }, "Lourd (2 kg et +)"],
+  [8, { grille: [1, 2, 3, 8] }, "Lourd (2 kg et +)"],
+  [8, { grille: [{ id: 8 }, { id: 9 }, { id: 10 }] }, "5 kg"],
+  [8, { chemin: ["Maison", "Arts de la table", "Vaisselle", "Assiettes"] }, "5 kg"],
+  [8, {}, "5 kg"], [11, { chemin: ["Femmes"] }, "5 kg"], [3, { grille: [8, 9, 10] }, "Grand"], [7, {}, null],
+];
+ok("libelleColisVinted : même réponse dans vinted.js et dans l'app (Mode, grille PMG+8, grille au poids, rayon inconnu)",
+  casLib.every(([id, o, attendu]) => libelleColisVinted(id, o) === attendu && libelleExt(id, o) === attendu));
+ok("la capture nomme l'id 8 d'après sa famille", /const libelle = libelleColisVinted\(Number\(packageId\), \{ chemin: libelles\.categoryPath \?\? null \}\);/.test(src));
 
 // 2. Grilles relevées.
 const PAN = ["Maison", "Décoration", "Rangement et organisation", "Paniers de rangement"];

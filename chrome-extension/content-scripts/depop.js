@@ -443,7 +443,19 @@ function depopResoudreMarque(pf, referentiel) {
 //   · grilles EUR paires de femme (IT : 9 hauts, 81 robes, 40 manteaux — que des tailles 32…62 paires, aucun
 //     pouce) : « EU 38 » / « EUR 38 » = « 38 ». Jamais sur une grille qui mêle pouces et EU (62, 24, 56) : W31,
 //     W38 ont reçu deux lectures humaines opposées, la question reste.
-const DEPOP_GRILLES_EUR_PAIRES = new Set([9, 81, 40]);
+// (25/10, décision de Nico « tailles EU N », OBSERVÉ le matin sur le vrai formulaire Depop du compte de Nico et dans
+// le filtre de recherche du site, GET …/search/filters/size/ : chaque grille de la région IT y est déclarée « EUR »,
+// composite « 24.12-EUR » = 44) Trois grilles de plus portent des nombres EU nus : 32 lingerie (36…48 paires), 98
+// manteaux et costumes homme (46…56 paires) et 24 bas femme — menu lu : One size, XS…XXL, 24…34 (TOURS DE TAILLE,
+// un par un), puis 36…48 paires (EU). Sur la 24, « EU N » = « N » seulement HORS de la plage des tours de taille
+// (bornes de tailleDepop) : « EU 44 » → « 44 » (Pantalons, 00dca55c), « EU 42 » → « 42 » (Jupes, 2818876e) — les
+// réponses données par la personne —, jamais « EU 30 ». « N » nu passait déjà par l'exacte : les deux formes donnent
+// la même option. La règle du 28/09 (point G : « EU 42 garde son pays ») reste entière dans le moteur commun et pour
+// les autres plateformes : cette traduction ne vit que dans le connecteur Depop, sur une grille qui se déclare EUR,
+// et ne joue qu'APRÈS l'exacte et tailleDansGrille (une taille déjà trouvée ne change jamais : rejeu de 945 jobs et
+// 49 317 fiches, 0 changement hors de ces « EU N »). 62 et 56 (pouces et EU mêlés sur toute la plage) : inchangées.
+const DEPOP_GRILLES_EUR_PAIRES = new Set([9, 81, 40, 32, 98, 24]);
+const DEPOP_PLAGE_TOUR_DE_TAILLE = { 24: [24, 34] };
 function depopTailleEquivalente(brute, idGrille, libelles) {
   const id = Number(idGrille);
   if (id === 104) {
@@ -454,7 +466,9 @@ function depopTailleEquivalente(brute, idGrille, libelles) {
   }
   if (DEPOP_GRILLES_EUR_PAIRES.has(id)) {
     const m = /^eur?\s*(\d{2})$/i.exec(brute);
-    if (m && libelles.filter((l) => l === m[1]).length === 1) return { valeur: m[1] };
+    const w = DEPOP_PLAGE_TOUR_DE_TAILLE[id];
+    const dansW = Boolean(m && w && Number(m[1]) >= w[0] && Number(m[1]) <= w[1]);
+    if (m && !dansW && libelles.filter((l) => l === m[1]).length === 1) return { valeur: m[1] };
   }
   return null;
 }

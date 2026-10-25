@@ -594,3 +594,36 @@
   invisibles avant). « s'interrompt au même moment » est reconnu avec ou sans « chaque fois ».
 - Mesure de référence du 25/10 (18 → 25/10, 324 jobs) : 188 arrêts de notre fait, 139 de la personne, 28 plateforme,
   7 gardes (`docs/enquetes/zero-blocage-2410/mesure-nuit-2510.json`).
+
+## 25/10 matin — ISBN tel quel, titres sur une ligne, dépôt incertain, colis, couleur, lecture d'origine (rapport `docs/enquetes/matin-2510/RAPPORT.md`)
+- **ISBN (décision de Nico : « l'ISBN de l'annonce d'origine TEL QUEL, et ça part »)** : plus de preuve valeur par
+  valeur. `posteRemetIsbnCapture(v, build)` (`_shared/isbn-capture-preuve.js`) : 13 chiffres → poste ≥ 0.6.70 ;
+  10 caractères (« 0000000000 » compris) → poste ≥ `BUILD_ISBN_10_TEL_QUEL` (0.6.143 : la sonde du POST arme enfin 10
+  caractères — sans elle, « isbn »: null pouvait partir APRÈS le retrait) ; autre forme → retenue. Disjoncteur par
+  compte (un refus Vinted sur « isbn » de CE compte retient la valeur). Poste trop ancien → retenue muette (« part dès
+  que ton extension se sera mise à jour toute seule »), jamais un bandeau. Les 30 retenues (Rég, Vincent A.) partent
+  seules au premier poll d'un poste en 0.6.143.
+- **Un titre Vinted servi n'a jamais de saut de ligne** (Vincent A. 9138772c : « lycanthrope⏎Par » tapé « lycanthropePar »,
+  copie non reconnue, redéposée → 2 annonces) : get-pending-jobs sert `job.title` et `titre_saisi` sur une ligne ; la
+  copie se reconnaît par `memeTitre` (`_shared/titre-copie-vinted.js`, copie exacte dans l'extension : forme normalisée,
+  ou forme compacte ≥ 12 caractères) ; à l'étape `deleted`, un `depot_incertain` après le dernier envoi RETIENT la
+  republication (toutes versions) jusqu'à la preuve (copie rattachée, ou relevé complet de la personne sans copie) ;
+  6 h sans preuve → la question `recreation_deja_partie`. Jamais un second envoi sans preuve d'absence. Doublon réel
+  réparé par la règle du 18/10 (garder la 1re copie, retirer l'autre par le circuit) : `20261025_vincent_champavert_doublon.sql`.
+- **Colis Vinted** (OBSERVÉ le 25/10 sur le formulaire et `shipping-estimation/…/catalogs/<id>/package_sizes` : 211 Bottes
+  hautes, 5267 Toiles et panneaux, 1937 Encadrements = Petit/Moyen/Grand ; 3847 Peintures = 5/10/20/30 kg) : le menu
+  dépend du RAYON. A5 strict (`_shared/capture-corrigee.js`) : la correction « œuvre d'art » ne change plus le rayon
+  si la grille d'arrivée est inconnue ou n'offre pas le format capturé. Règle 9 de `_shared/questions-tranchees.ts`
+  (`_shared/vinted-colis-tranche.js`) : rayon changé par FillSell → recapture dans son rayon (paugues ×2) ; format retiré
+  par Vinted du même rayon (id 8 « Lourd (2 kg et +) » disparu des grilles Petit/Moyen/Grand le 15/10) → le plus petit
+  format offert de capacité suffisante, sinon le plus grand (Romain : « Grand », le recommandé de Vinted) ; aucune
+  question. L'id 8 se nomme selon sa famille (« Lourd (2 kg et +) » / « 5 kg »).
+- **Couleur d'une republication Vinted** sans couleur : fiche, sinon dépôt d'origine, sinon mot du titre, sinon
+  « Multicolore » (règle couleur_auto du 11/10 étendue), jamais par-dessus une couleur de la capture.
+- **Sous-catégorie à choisir** (« …à l'unité ») : pause `rayon_moteur_attendu` (+6 min) pour que le moteur tranche
+  avant que la question parte.
+- **La lecture de l'annonce d'origine passe devant la file** (Louis, lot de 5 bloqué 10:29 → 10:50) : get-pending-jobs
+  retient ce qui peut attendre tant qu'une lecture Vinted demandée depuis < 15 min n'est pas faite (≥ 0.6.130, hors
+  pause anti-robot) ; l'extension 0.6.143 lit AVANT ses tâches et trace une lecture ratée (`usage_logs`
+  « lecture_origine_echec »). Selftest `lecture-origine-devant`. Ses 5 textes ont été posés depuis ses pages Vinted
+  publiques (`20261025_louis_seller_textes_vinted.sql`).

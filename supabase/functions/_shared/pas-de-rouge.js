@@ -54,6 +54,11 @@ export { CANAL_RE };
 import { repriseTitreSymbolesVinted } from "./titre-symboles-vinted.js";
 // (25/10, décision de Nico) Titre « trop de lettres majuscules » : la casse normale, une reprise (bloc 0 ter).
 import { repriseTitreMajuscules } from "./casse-titre.js";
+// (25/10, N6 et R2) eBay voie clic : le manquant qu'eBay nomme au refus du brouillon (retours, photos).
+import {
+  classeRefusBrouillonEbay, SOURCE_RETOURS_EBAY, CHAMP_RETOURS_EBAY, MOTIF_PHOTOS_EBAY, REPRISES_PHOTOS_MAX,
+  retoursChoisisDuJob, messageRetoursAChoisir, messageRetoursNonPoses, messagePhotosReprise, messagePhotosArret, defautFillsellEbay,
+} from "./ebay-brouillon-refus.js";
 
 const NOM = {
   vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla", depop: "Depop",
@@ -833,6 +838,54 @@ function classerEchecSansRegleRetrait(arg) {
   const reprise = (motif, message, dansMinutes) => ({
     verdict: "reprise", statut: "pending", motif, message, dansMinutes: espacer(dansMinutes),
   });
+
+  // ── (25/10, N6 et R2) eBay : LE MANQUANT QU'eBAY NOMME AU REFUS DU BROUILLON ──
+  // (_shared/ebay-brouillon-refus.js) Lu AVANT le motif inconnu : le texte de
+  // l'arrêt (« éléments manquants dans le brouillon : X ») ou
+  // ebay_api_publish.manquants. Retours → une question pour le COMPTE, jamais
+  // une reprise à l'identique (lemonde-glad, quatre refus identiques le 20/10) ;
+  // FillSell ne choisit jamais. Photos → notre fait : deux reprises, puis un
+  // arrêt nommé qui attend un poste plus récent (Fleur de Lotus, 11 refus
+  // « Photos » sur 11) — jamais « relance-la ».
+  if (platform === "ebay" && action !== "delete") {
+    const classe = classeRefusBrouillonEbay({ brut: `${String(arg.brut ?? "")}\n${String(arg.reecrit ?? "")}`, pf });
+    if (classe === "retours") {
+      const choix = arg.retoursEbayChoix ?? retoursChoisisDuJob(pf);
+      if (!choix) {
+        return {
+          verdict: "a_toi", statut: "needs_user", motif: SOURCE_RETOURS_EBAY, source: SOURCE_RETOURS_EBAY,
+          champ: { ...CHAMP_RETOURS_EBAY, allowed_values: [...CHAMP_RETOURS_EBAY.allowed_values], target: { ...CHAMP_RETOURS_EBAY.target } },
+          message: messageRetoursAChoisir(action),
+        };
+      }
+      // Le choix est fait et eBay refuse ENCORE pour les retours : l'extension de
+      // ce poste ne sait pas le poser. Notre fait : elle attend un poste plus récent.
+      return {
+        verdict: "reprise", statut: "pending", motif: "ebay_retours_non_poses", dansMinutes: 60,
+        pf: { defaut_fillsell: defautFillsellEbay(pf, { ou: "ebay_retours_non_poses", signature: "eBay : conditions de retour choisies, non posées sur le formulaire", build: arg.build }) },
+        message: messageRetoursNonPoses(action),
+      };
+    }
+    if (classe === "photos") {
+      const prec = pf.ebay_photos_non_recues && typeof pf.ebay_photos_non_recues === "object" ? pf.ebay_photos_non_recues : {};
+      const build = typeof arg.build === "string" ? arg.build.slice(0, 80) : "";
+      // Un poste plus récent repart de zéro : il porte peut-être le correctif.
+      const memeBuild = !prec.build || !build || String(prec.build) === build;
+      const n = (memeBuild ? (Number(prec.n) || 0) : 0) + 1;
+      const trace = { n, le: new Date().toISOString(), build: build || null };
+      if (n <= REPRISES_PHOTOS_MAX) {
+        return { ...reprise(MOTIF_PHOTOS_EBAY, messagePhotosReprise(n, action), n === 1 ? 15 : 45), pf: { ebay_photos_non_recues: trace } };
+      }
+      return {
+        verdict: "reprise", statut: "pending", motif: `${MOTIF_PHOTOS_EBAY}_arret`, dansMinutes: 60,
+        pf: {
+          ebay_photos_non_recues: { ...trace, arret: true },
+          defaut_fillsell: defautFillsellEbay(pf, { ou: MOTIF_PHOTOS_EBAY, signature: "eBay : aucune photo reçue (refus « Photos »)", build: arg.build }),
+        },
+        message: messagePhotosArret(action),
+      };
+    }
+  }
 
   // ── BEEBS N'ENREGISTRE PAS L'ANNONCE : 3 REFUS SUR LA MÊME CATÉGORIE = INFO,
   //    JOB CLOS (2026-09-27, GO Nico — xxewwer af4ea3d3) ─────────────────────

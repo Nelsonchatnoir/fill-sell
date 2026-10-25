@@ -25,9 +25,10 @@
 //     correctif (`build_min_requis`) : un autre profil Chrome resté en 0.6.63
 //     ne le brûle pas ;
 //   · le BUILD_ID fait foi (préfixe horodaté), jamais le numéro de version.
-// ES module, deux imports relatifs eux-mêmes sans import (Deno + Node).
+// ES module, trois imports relatifs eux-mêmes sans import (Deno + Node).
 import { lectureRefusBeebs } from "./beebs-refus-formulaire.js";
 import { BUILD_VINTED_MARQUE_PAR_ID, BUILD_VINTED_MARQUE_CHAINE, marqueAIdentifiantCapturee } from "./vinted-marque-par-id.js";
+import { normalizeIsbn } from "./isbn.js";
 
 /** Le préfixe horodaté d'un BUILD_ID (« 2026-09-24T14:34:46Z+aa459a7 · v0.6.66 ») en ms, NaN sinon. */
 export function buildMsDe(build) {
@@ -41,10 +42,23 @@ export function buildMsDe(build) {
 // compris. Avant lui, toute valeur que normalizeIsbn refuse était écartée et la
 // recréation partait avec "isbn": null (400). Tant qu'un poste est plus ancien
 // que lui, get-pending-jobs ne lui sert AUCUNE republication Vinted à l'étape
-// qui supprime quand sa capture porte un tel ISBN — et, même à jour, pas avant
-// qu'une première recréation l'ait prouvé (marqueur isbn_capture_tel_quel, ou
-// les faits d'une recréation publiée — _shared/isbn-capture-preuve.js, 01/10).
+// qui supprime quand sa capture porte un tel ISBN de 13 chiffres
+// (_shared/isbn-capture-preuve.js, posteRemetIsbnCapture). (25/10, décision de
+// Nico) Plus de preuve valeur par valeur : la valeur d'origine part telle quelle.
 export const BUILD_ISBN_CAPTURE_TEL_QUEL = "2026-09-27T09:42:56Z"; // BUILD_ID de la 0.6.70 (61cbced), zip build/CWS-0.6.70-A-TELEVERSER
+
+// ── L'ISBN CAPTURÉ DE 10 CARACTÈRES REMIS TEL QUEL (25/10, Rég 6f1b1f70, Vincent A. ×29) ──
+// Les 30 annonces d'origine portent « 0000000000 » (10 zéros), accepté par Vinted
+// à leur création. Jusqu'à la 0.6.142, la sonde du corps du dépôt n'armait que
+// 13 chiffres : avec 10 caractères elle restait désarmée, et le POST portait ce
+// que la page sérialise — la page vide l'ISBN (relevé du 14-15/09 : « isbn POSÉ
+// dans le corps par la sonde (0000000000000) — la page l'avait laissé vide ») →
+// "isbn": null APRÈS le retrait, annonce perdue (cas du 27/09). Le premier
+// paquet qui arme la sonde sur 10 caractères (0.6.143) porte cette valeur ;
+// avant elle, aucune republication à ISBN capturé de 10 caractères n'est
+// servie à l'étape qui retire. posée au BUILD_ID du paquet 0.6.143 (le premier
+// qui arme la sonde sur 10 caractères) — « 2099 » d'ici là, valeur jamais atteinte.
+export const BUILD_ISBN_10_TEL_QUEL = "2099-01-01T00:00:00Z";
 
 // ── LA REPUBLICATION OPLA JUGÉE SUR L'ANNONCE (2026-09-27, doriane-henri) ───
 // BUILD_ID du premier build (0.6.74, e1dbc59) qui reprend la marque et la
@@ -161,6 +175,31 @@ export const CORRECTIFS_EXTENSION = [
     buildMin: "2026-09-24T14:34:46Z", // BUILD_ID de la 0.6.66 (aa459a7) — commit du correctif f3891c7
     version: "0.6.66",
     motif: "retrait Leboncoin pro : fiche sans panneau de gestion en fenêtre étroite (tiroir « Gérer » ouvert depuis la 0.6.66)",
+  },
+  {
+    // (25/10) Même défaut, valeur de 10 caractères (« 0000000000 », Rég et
+    // Vincent A.) : jusqu'à la 0.6.142 la sonde n'armait que 13 chiffres, la
+    // recréation partait avec "isbn": null. Le build qui arme la sonde sur 10
+    // caractères relance la recréation, une fois. Placée AVANT l'entrée des
+    // 13 chiffres : un échec d'avant la 0.6.70 sur une valeur de 10 caractères
+    // n'est relancé que par un poste qui sait la remettre.
+    cle: "vinted_isbn_10_tel_quel",
+    platform: "vinted",
+    actions: ["republish"],
+    signature: /"isbn":null[\s\S]*Merci d'entrer un numéro ISBN valide|Merci d'entrer un numéro ISBN valide[\s\S]*"isbn":null/,
+    buildMin: BUILD_ISBN_10_TEL_QUEL,
+    version: "0.6.143",
+    motif: "ISBN capturé de 10 caractères (« 0000000000 ») remis tel quel à la recréation",
+    // La copie porte une valeur de 10 caractères qui n'est pas un ISBN-10
+    // valide (un ISBN-10 valide part converti en 13 chiffres, sur tout build),
+    // et personne n'a répondu autre chose.
+    condition: (job) => {
+      const pf = job?.platform_fields ?? {};
+      const snap = pf.republish_snapshot;
+      const v = String((snap && typeof snap === "object" ? snap.isbn : "") ?? "").replace(/[\s-]/g, "").toUpperCase();
+      return /^\d{9}[\dX]$/.test(v) && !normalizeIsbn(v).ok && !String(pf.vintedAspects?.isbn ?? "").trim();
+    },
+    clesARetirer: ["needsUserField", "needsUserFields", "server_required_fields", "recreation_retries", "recreation_tentee"],
   },
   {
     // (2026-09-27, carhoa « Livre sur la tentation des gobelins », job

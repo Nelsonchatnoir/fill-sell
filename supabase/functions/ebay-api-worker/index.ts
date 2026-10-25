@@ -42,7 +42,9 @@ import { cheminsRefusesParLApp, cleChemin, mappingRefuseParLApp, suggestionsSans
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
 import { tailleDansGrille } from "../_shared/tailles.js";
 import { etatCompteEbayApi, messageEbayCompteAFinir, MESSAGE_EBAY_RETOURS_OBLIGATOIRES, SOURCE_EBAY_COMPTE_A_FINIR, type EtapeEbayAFinir } from "../_shared/ebay-voie.ts";
-import { messageSiteEtranger, siteDuCompteEbay, siteEbayEtranger, SOURCE_EBAY_SITE_ETRANGER } from "../_shared/ebay-site.ts";
+import { siteDuCompteEbay, siteEbayEtranger } from "../_shared/ebay-site.ts";
+// (25/10, audit N10) Un compte eBay inscrit hors d'eBay France : la publication est close, jamais en pause.
+import { clotureEbayHorsFrance } from "../_shared/ebay-hors-france.js";
 import { idAnnonceEbay, preuveIntentionRetraitRepublicationEbayMemorisee, preuveRetraitRepublicationEbayMemorisee, verifierOffreRetraitEbay, verifierSourceRetraitEbay, type SourceRetraitEbay } from "../_shared/ebay-retrait-identite.ts";
 // Module PUR (aucun import, aucune API navigateur) : le rétro-test doit
 // appliquer EXACTEMENT la règle mot-objet de l'app, pas une approximation.
@@ -55,7 +57,7 @@ import {
   eanAEnvoyer, refusEanRequis, SOURCE_QUESTION_EAN, EAN_SANS_IDENTIFIANT_EBAY_FR, eanDejaEssayeOfficiel,
   type AspectCatalogue, type AttributsInventaire, type ErreurEbay, type PlatformFields,
 } from "../_shared/ebay-publication.ts";
-import { completerAspectsIA, valeurLueDansLeContexte } from "../_shared/ebay-aspects-ia.ts";
+import { completerAspectsIA, estAspectDeTaille, valeurLueDansLeContexte } from "../_shared/ebay-aspects-ia.ts";
 import { valeurDeListeCorrespondante } from "../_shared/texte-comparable.ts";
 import { appelTrading } from "../_shared/ebay-trading-releve.ts";
 import { lireItemTrading, verdictAvantRetraitTrading, preuveApresRetraitTrading, retraitBloqueParSessionEbay, retraitAttendLePoste, sourcesACloreApresRetraitTrading, clotureSourceRetiree } from "../_shared/ebay-retrait-trading.js";
@@ -466,7 +468,10 @@ async function publier(
     // saisie libre possible. Le message reste ≤ 300 car. (humanizeJobError).
     const premier = manquants[0];
     const catAspect = cat.aspects.find((a) => a.name === premier);
-    const ferme = catAspect?.mode === "SELECTION_ONLY";
+    // (25/10, N5) Une taille est une liste FERMÉE même quand Taxonomy la dit libre (eBay refuse le
+    // hors-liste, 25129) : la question impose la liste quand elle est entière (≤ 200 valeurs servies).
+    const nbListe = (catAspect?.allowedValues ?? []).filter(Boolean).length;
+    const ferme = catAspect?.mode === "SELECTION_ONLY" || (estAspectDeTaille(premier) && nbListe > 0 && nbListe <= 200);
     const valeurs = (catAspect?.allowedValues ?? []).filter(Boolean).map(String).slice(0, 200);
     const needsUserField: Record<string, unknown> = {
       platform: "ebay",
@@ -3056,7 +3061,7 @@ async function reviserRayonParLaRegle(admin: SupabaseClient, env: EbayEnv, body:
   if (aRemplir.length) {
     // La règle du dépôt d'abord (choix du job, champs de la fiche, genre → Département)…
     const pfAsp = { ...pf, ebayAspects: { ...((pf.ebayAspects ?? {}) as Record<string, unknown>) } } as PlatformFields;
-    const premier = assemblerAspects(pfAsp, aRemplir);
+    const premier = assemblerAspects(pfAsp, aRemplir, [titre, description]);
     const valeurs: Record<string, { valeur: string; source: string }> = {};
     for (const a of aRemplir) {
       const v = premier.aspects[a.name]?.[0];
@@ -3074,6 +3079,14 @@ async function reviserRayonParLaRegle(admin: SupabaseClient, env: EbayEnv, body:
     for (const a of aRemplir) {
       const v = valeurs[a.name];
       if (!v) { refuses.push({ name: a.name, valeur: null, motif: "aucune valeur" }); continue; }
+      // (25/10, N5) Une taille est une liste fermée : l'entrée de la liste, jamais « lue dans le texte »
+      // (« Classic Fit », « Col rond » se lisent dans le titre — ce ne sont pas des tailles). Seule la
+      // taille de la fiche ou de la personne, hors liste en texte libre, garde le contrôle d'avant.
+      if (estAspectDeTaille(a.name) && a.allowedValues.length) {
+        const entree = valeurDeListeCorrespondante(v.valeur, a.allowedValues);
+        if (entree) { aspectsApres[a.name] = [entree]; ajoutes[a.name] = { valeur: entree, source: v.source }; continue; }
+        if (v.source === "ia" || a.mode === "SELECTION_ONLY") { refuses.push({ name: a.name, valeur: v.valeur, motif: "taille hors de la liste eBay" }); continue; }
+      }
       if (a.mode === "SELECTION_ONLY" && a.allowedValues.length) {
         const entree = valeurDeListeCorrespondante(v.valeur, a.allowedValues);
         if (!entree) { refuses.push({ name: a.name, valeur: v.valeur, motif: "hors de la liste fermée" }); continue; }
@@ -3299,10 +3312,45 @@ async function reviserAnnonce(admin: SupabaseClient, env: EbayEnv, body: Record<
     const t = tailleFiche && grille.length ? tailleDansGrille(tailleFiche, grille) : null;
     if (String(pf.taille ?? "") !== attendu) return { ok: false, motif: "taille_actuelle_differente", sur_le_job: pf.taille ?? null, attendu };
     if (!t) return { ok: false, motif: "taille_non_traduisible", fiche: tailleFiche };
+    // ── (25/10, N5) LA TAILLE EN LIGNE N'EST PAS TOUJOURS CELLE DU JOB ──────────
+    // 820227542038 (job 9f678d8b) : en ligne « Gants de ski enfant » (réponse de
+    // l'IA, ebayAspects), quand le job et la fiche disent « M ». `aspect_en_ligne`
+    // = la Taille EN LIGNE attendue : l'annonce est relue en entier (en vente, la
+    // nôtre, invendue, cette Taille-là), la sauvegarde complète est rendue à
+    // blanc, et l'écriture exige sa table et son empreinte (même garde que le
+    // rayon, reviserRayonParLaRegle) ; l'inverse est `restaurer` (l'article et
+    // l'offre sauvegardés, réécrits tels quels).
+    const enLigne = typeof body.aspect_en_ligne === "string" ? body.aspect_en_ligne : null;
     // `essai_sans_changement` : la même taille est réécrite et relue — une
     // révision sans effet, pour prouver l'aller-retour sur une vraie annonce.
-    if (t.valeur === attendu && body.essai_sans_changement !== true) return { ok: true, motif: "deja_juste", taille: t.valeur };
-    changements.push({ quoi: "Taille", de: attendu, vers: t.valeur, fiche: tailleFiche, regle: t.motif, ...(t.valeur === attendu ? { essai_sans_changement: true } : {}) });
+    if (t.valeur === (enLigne ?? attendu) && body.essai_sans_changement !== true) return { ok: true, motif: "deja_juste", taille: t.valeur };
+    if (enLigne != null) {
+      const lu = await lireAnnonceEntiere(env, token, offerId, sku, listingId);
+      if (!lu.ok) return { ok: false, motif: lu.motif, detail: lu.detail ?? null };
+      const { data: compteEbay } = await admin.from("ebay_accounts").select("ebay_user_id").eq("user_id", job.user_id).maybeSingle();
+      const pseudo = String((compteEbay as { ebay_user_id?: string } | null)?.ebay_user_id ?? "");
+      const q = lu.browse.quantite as QuantiteEbay;
+      const laisser = (motif: string, extra: Record<string, unknown> = {}) => ({ ok: false, laissee: true, motif, annonce: listingId, etat: lu.etat, ...extra });
+      if (!pseudo || String(lu.browse.vendeur ?? "").toLowerCase() !== pseudo.toLowerCase()) return laisser("vendeur_different", { vendeur: lu.browse.vendeur });
+      if (lu.etat.verdict !== "vivante" || lu.browse.fin != null) return laisser("annonce_pas_en_vente");
+      if (lu.offre.status !== "PUBLISHED" || lu.offre.listing?.listingStatus !== "ACTIVE" || String(lu.offre.listing?.listingId ?? "") !== listingId) return laisser("offre_pas_publiee");
+      if (!q.exacte || (q.vendus ?? 0) !== 0 || !((q.disponible ?? 0) >= 1) || Number(lu.offre.listing?.soldQuantity ?? 0) !== 0) return laisser("vente_ou_quantite_inattendue");
+      const tailleLue = ((lu.article.product?.aspects ?? {}) as Record<string, unknown>)["Taille"];
+      if (!Array.isArray(tailleLue) || tailleLue.length !== 1 || String(tailleLue[0]) !== enLigne) return laisser("taille_en_ligne_differente", { en_ligne: tailleLue ?? null, attendu: enLigne });
+      const inconnusOffre = Object.keys(lu.offre).filter((k) => !CLES_OFFRE_ECRITES.includes(k) && !CLES_OFFRE_LUES.includes(k));
+      const inconnusArticle = Object.keys(lu.article).filter((k) => !CLES_ARTICLE_ECRITES.includes(k) && !CLES_ARTICLE_LUES.includes(k));
+      if (inconnusOffre.length || inconnusArticle.length) return laisser("champ_non_reecrivable", { offre: inconnusOffre, article: inconnusArticle });
+      const empreinte = await empreinteDe({ offre: lu.offre, article: lu.article });
+      if (dryRun) {
+        changements.push({ quoi: "Taille", de: enLigne, vers: t.valeur, fiche: tailleFiche, regle: t.motif });
+        return { ok: true, dry_run: true, job: job.id, annonce: listingId, changements, sauvegarde: { offer_id: offerId, sku, offre: lu.offre, article: lu.article, browse: lu.browse, empreinte } };
+      }
+      const table = String(body.table_sauvegarde ?? "");
+      if (!TABLE_SAUVEGARDE_RE.test(table) || String(body.empreinte_attendue ?? "") !== empreinte) return laisser("annonce_a_bouge_ou_sauvegarde_absente", { empreinte });
+      const { data: sv } = await admin.from(table).select("empreinte").eq("listing_id", listingId).maybeSingle();
+      if (String((sv as { empreinte?: string } | null)?.empreinte ?? "") !== empreinte) return laisser("sauvegarde_absente", { table });
+    }
+    changements.push({ quoi: "Taille", de: enLigne ?? attendu, vers: t.valeur, fiche: tailleFiche, regle: t.motif, ...(t.valeur === (enLigne ?? attendu) ? { essai_sans_changement: true } : {}) });
   }
   // ── Le rayon d'un livre : la maison des livres, parmi les suggestions d'eBay.
   if (body.rayon_livre === true) {
@@ -3673,12 +3721,18 @@ Deno.serve(async (req) => {
       // sur un autre site (GetUser <Site>) est retenu AVANT tout appel, même
       // inachevé — lui dire « finis ta configuration » l'enverrait la faire sur
       // ebay.fr. Site illisible : rien n'est décidé ici (comme avant).
+      // (25/10, audit de nuit N10) CLOSE, plus jamais EN PAUSE : la pause « ebay_site_etranger » n'était levée par
+      // rien (1177a0b3, 347f9e44 UK ; c4d745bc, 027b3d8c Belgique — arrêtées au bout de deux semaines avec
+      // « Relance-la depuis la fiche », une relance qui ne pouvait pas aboutir). La publication est close (cancelled)
+      // avec un message vrai, erreur archivée, hors quota (_shared/ebay-hors-france.js) ; l'app grise eBay pour ce
+      // compte. Rien n'est envoyé à eBay.
       if (job.action === "publish" || job.action === "republish") {
         const s = await siteDuCompteEbay(admin, env, job.user_id);
         if (s.site && siteEbayEtranger(s.site)) {
-          job.platform_fields = { ...(job.platform_fields ?? {}), needs_user_source: SOURCE_EBAY_SITE_ETRANGER };
-          await marquer(admin, job, { status: "needs_user", error: messageSiteEtranger(s.site, s.pseudo) }, { etape: "compte", quoi: "site_ebay_etranger", site: s.site });
-          resultats.push({ job: job.id, issue: "needs_user", motif: "site_ebay_etranger" });
+          const cl = clotureEbayHorsFrance(job, { par: "ebay-api-worker", site: s.site, archiver: archiverErreur });
+          job.platform_fields = cl.platform_fields;
+          await marquer(admin, job, { status: cl.status, error: cl.error }, { etape: "compte", quoi: "site_ebay_etranger", site: s.site });
+          resultats.push({ job: job.id, issue: "cancelled", motif: "site_ebay_etranger" });
           continue;
         }
       }

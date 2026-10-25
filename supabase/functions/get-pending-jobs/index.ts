@@ -24,6 +24,12 @@ import { sessionIdDuJwt, identifiantPosteExtension, postesVivants, posteCourt, p
 import { identiteVintedDuPoste, routageBoutiquesActif, posteLaisseJobVinted, boutiqueAutoTenueParAutrePoste, murDuPosteTient, posteSeDitDeconnecte, patchPosteDuPoll } from "../_shared/poste-extension.ts";
 import { CLES_RELANCE_DEPOP } from "../_shared/acces-depop.js";
 import { MOTIF_VENDEUR_DEPOP, SOURCE_VENDEUR_DEPOP, MESSAGE_VENDEUR_DEPOP, attentesVendeurDepop, derniereObservationMur, estEclaireurFrais, champsRetenue } from "../_shared/vendeur-depop.js";
+// (25/10, R3 et N6) eBay par l'extension : le compte pas encore ouvert à la vente, les conditions de retour du compte.
+import {
+  MESSAGE_VENDEUR_EBAY, FENETRE_MUR_EBAY_MS, RETENUES_PAR_PASSAGE as RETENUES_VENDEUR_EBAY, estDepotEbayExtension, dernierMurVendeurEbay,
+  attentesVendeurEbay, decisionVendeurEbay, champsRetenueVendeurEbay, champsEclaireurVendeurEbay, champsRepriseVendeurEbay,
+} from "../_shared/vendeur-ebay.js";
+import { SOURCE_RETOURS_EBAY, OPTIONS_RETOURS_EBAY, retoursChoisisDuCompte, retoursChoisisDuJob } from "../_shared/ebay-brouillon-refus.js";
 import { rayonDepopAJour, reponseRayonDepop } from "../_shared/depop-rayon.js";
 import { appliquerRayonDepop, tailleDepop } from "../../../src/utils/depopPublication.js";
 import { cheminDeLaReponse, pfApresRayon, CLE_REPONSE_RAYON } from "../_shared/rayon-refuse-moteur.js";
@@ -33,7 +39,7 @@ import { preuveAccesOpla } from "../_shared/preuve-opla.ts";
 // de données sans import, comme leboncoinFeuilles.js plus bas).
 import { vintedExigeUneCouleur, vintedExigeUneMarque, vintedExigeUnIsbn, ISBN_ABSENT, valeurUneLettre } from "../_shared/vinted-exigences.js";
 import { traduireAbsenceMarqueJob, appliquerMarqueRetenue, SANS_MARQUE, marqueComparable as marqueComparableM } from "../_shared/marque-absente.js";
-import { couleursVintedSansQuestion, marqueVintedSansQuestion } from "../_shared/vinted-couleur-marque-filet.js";
+import { couleursVintedSansQuestion, marqueVintedSansQuestion, couleurRepublicationAPoser, couleurRepublicationSansQuestion } from "../_shared/vinted-couleur-marque-filet.js";
 import { ecarterFormatDevine, formatChoisi, livraisonLbcAuService } from "../_shared/livraison-poids.js";
 import { decisionPoidsLbc, poidsManquantCompteExige } from "../_shared/poids-leboncoin.js";
 import { classementAgeEcrit, familleJeuVideo, ageBeebsDuClassement, ageBeebsJeuVideoLu } from "../../../src/utils/jeuxVideo.js";
@@ -53,6 +59,10 @@ import { oplaACloreJob, clotureOpla, oplaRelie, MESSAGE_OPLA_INDISPONIBLE, OPLA_
 import { titrePourJob, titreVide, titreRecevable, couperTitre, CLE_TITRE_SAISI } from "../_shared/titre-du-job.js";
 import { servirRetraitsEbayParNumero } from "../_shared/retrait-ebay-par-numero.js";
 import { decisionAdresseRepublicationLbc, rueDesReglagesMemeCommune, texteRefuseCommune, textesErreurJob } from "../_shared/lbc-voie-des-reglages.js";
+// (25/10, décision de Nico — Marta, Rapallo) Leboncoin réservé aux adresses en France ; (audit N10) rien d'une
+// plateforme écartée par la personne n'est servi.
+import { adresseLbcHorsFrance, lbcACloreHorsFrance, lbcServiMalgreHorsFrance, clotureLbcHorsFrance } from "../_shared/lbc-adresse-france.js";
+import { plateformesEcartees, jobRetenuPlateformeEcartee } from "../_shared/plateformes-ecartees.js";
 import { tailleBeebsDeLaFiche } from "../_shared/beebs-taille-de-la-fiche.js";
 import { tourDeTailleEnFrancais, brancheDeTaille } from "../_shared/taille-de-service.js";
 import { tailleCorrigeeParLeW } from "../_shared/taille-corrigee-par-le-w.js";
@@ -165,6 +175,8 @@ import { tempererMajuscules } from "../_shared/titre-majuscules.ts";
 import { assagirSymbolesVinted, retirerEmojiVinted } from "../_shared/titre-symboles-vinted.js";
 // (25/10, décision de Nico) Titre Vinted à 7 capitales d'affilée : la casse normale au service.
 import { casseTitre, depasseSeuilMajuscules, marquesDuJob } from "../_shared/casse-titre.js";
+// (25/10, N3 — Vincent A. 9138772c) Titre Vinted servi sur une ligne : le saut de ligne devient une espace.
+import { titreSansSautDeLigne, titreAUnSautDeLigne } from "../_shared/titre-copie-vinted.js";
 // Règles du catalogue Beebs (2026-09-11) : le MÊME fichier que l'app
 // (src/utils/platformCompat.js) — module JS sans import, chargé tel quel.
 import { verdictBeebsInterdit, messageBeebsInterdit } from "../_shared/beebs-interdits.js";
@@ -174,16 +186,11 @@ import { republicationFinie, champsRepublicationFinie } from "../_shared/republi
 // ISBN : même table de vérité que le content script (normalisation, filtre du
 // remplissage « 13 zéros », lecture dans le texte libre). Module JS sans import.
 import { normalizeIsbn, resoudreIsbn } from "../_shared/isbn.js";
-// La preuve qu'un ISBN capturé non standard repasse chez Vinted, lue sur les
-// faits (2026-10-01, carhoa) — module JS, le même que son autotest.
-import { estIsbnCaptureNonStandard, valeurIsbnCapturee, valeursProuvees, PREUVES_ISBN_ETABLIES } from "../_shared/isbn-capture-preuve.js";
+// L'ISBN capturé non standard (2026-10-01, carhoa) : (25/10, décision de Nico)
+// il part tel quel dès que le poste sait le remettre — plus de preuve valeur
+// par valeur (module JS, le même que son autotest).
+import { estIsbnCaptureNonStandard, valeurIsbnCapturee, posteRemetIsbnCapture, attenteIsbnCapture, valeursIsbnRefusees, MESSAGE_ISBN_MISE_A_JOUR, MESSAGE_ISBN_A_VERIFIER } from "../_shared/isbn-capture-preuve.js";
 import { RETENUE_ISBN_CAPTURE, RETENUE_BOUTIQUE_INCONNUE, RETENUE_EXTENSION_A_JOUR, RETENUE_ANNONCE_PARTAGEE, retenueServeurDe, poserRetenueServeur, leverRetenueServeur } from "../../../src/utils/retenueServeur.js";
-// Valeurs d'ISBN capturé non standard déjà prouvées chez Vinted : une preuve
-// ne se perd pas, on ne la relit pas en base à chaque poll de l'isolat.
-// (02/10) Amorcé par les preuves ÉTABLIES (isbn-capture-preuve.js) : un isolat
-// vit quelques secondes, et une relecture en base qui échoue ne doit plus
-// jamais défaire une preuve déjà faite (carhoa, 01/10 22:31).
-const PREUVES_ISBN_CAPTURE = new Set<string>(Object.keys(PREUVES_ISBN_ETABLIES));
 import {
   type AspectRow,
   BEEBS_CHAMPS_DEDIES,
@@ -218,6 +225,7 @@ import { BUILD_VINTED_MARQUE_PAR_ID, BUILD_VINTED_MARQUE_CHAINE, envoiMarqueProu
 import { tacheAMettreDeCote, messageTacheSansDemarrage, SOURCE_TACHE_SANS_DEMARRAGE } from "../_shared/tache-sans-demarrage.js";
 import { attenteBoutiqueLevable, POSE_PAR_PUBLICATION_BOUTIQUE, messageAttenteBoutique } from "../_shared/attente-autre-boutique.js";
 import { OPLA_PRIX_MAX, prixOplaTropHaut, messagePrixOplaTropHaut } from "../_shared/opla-prix.js";
+import { retenirRetraitVerificationLongue } from "../_shared/beebs-retrait-verification-longue.js";
 
 // ── Format de colis Vinted : deux lectures du PARC, gardées 10 min par instance
 // (02/10, _shared/vinted-colis.js). Un rayon où un refus « faute de format »
@@ -2375,6 +2383,83 @@ serve(async (req) => {
     let out = (jobs ?? []).filter((j) => !paused.has(j.platform));
     const heldBack = (jobs?.length ?? 0) - out.length;
 
+    // ══ LEBONCOIN, RÉSERVÉ AUX ADRESSES EN FRANCE — ET RIEN D'UNE PLATEFORME ÉCARTÉE (25/10) ══
+    // (Décision de Nico, cas Marta : « Via CANALE 24 C 16035 RAPALLO ».) Leboncoin n'accepte que les adresses en
+    // France : 0 dépôt sur 52 depuis le 24/10 11:44, chacun refusé par l'autocomplete, et son poste réessayait jusqu'à
+    // l'échec « … écris-nous ». Règle (_shared/lbc-adresse-france.js) : code postal de l'adresse de remise absent de la
+    // base officielle française = hors de France. Ses publications et republications Leboncoin ne sont JAMAIS servies ;
+    // celles qui attendent ou ont échoué (pending, needs_user, failed) sont closes ici, tout de suite (modèle de la
+    // sortie d'Opla) : cancelled, message vrai, marque lbc_hors_france, erreur archivée, hors quota — 0 mail, 0 push.
+    // ⛔ Jamais un job en cours (processing), un retrait, ni une republication dont le retrait a commencé : ils vont
+    //    au bout. Profil illisible → file servie comme avant.
+    // (Audit N10, job 75344bf6) « Je ne vends pas sur X » (plateformes_ecartees) : aucune publication ni republication
+    // de X n'est servie au poll de fond — laissées EN L'ÉTAT (jamais closes), et elles ne tiennent pas le PC éveillé.
+    // Le popup (lecture pour l'affichage) les voit toujours, avec leur pause.
+    // UNE lecture du profil (deux clés), et seulement si la file porte une publication ou une republication.
+    const idsHorsService = new Set<string>();
+    let heldPlateformeEcartee = 0;
+    let closLbcHorsFrance = 0;
+    // La même règle, rejouée en DERNIÈRE porte juste avant la réponse (un job remis en file plus bas — question
+    // tranchée, remise « Republier » — n'y échappe pas). null = rien à garder.
+    let gardeHorsService: ((j: Record<string, unknown>) => boolean) | null = null;
+    const pollDeFond = !includeProcessing && !includeNeedsUser;
+    const pubOuRepub = (j: { action?: unknown }) => ["publish", "republish"].includes(String(j.action ?? "publish"));
+    if (out.some(pubOuRepub)) {
+      let psHf: { ecartees?: unknown; lbc?: unknown } | null = null;
+      try {
+        const { data: profHf, error: errHf } = await userClient.from("profiles")
+          .select("ecartees:platform_settings->plateformes_ecartees, lbc:platform_settings->leboncoin")
+          .eq("id", user.id).maybeSingle();
+        if (!errHf && profHf) psHf = profHf as { ecartees?: unknown; lbc?: unknown };
+      } catch (_e) { /* profil illisible : file servie comme avant */ }
+      if (psHf) {
+        const ecartees = pollDeFond ? plateformesEcartees(psHf.ecartees) : new Set<string>();
+        for (const j of out) if (jobRetenuPlateformeEcartee(j, ecartees)) idsHorsService.add(String(j.id));
+        heldPlateformeEcartee = idsHorsService.size;
+        if (heldPlateformeEcartee) {
+          console.log(`[get-pending-jobs] userId=${user.id} : ${heldPlateformeEcartee} publication(s)/republication(s) d'une plateforme écartée par la personne (${[...ecartees].join(", ")}) → non servie(s), laissée(s) en l'état`);
+        }
+        const verdictLbc = adresseLbcHorsFrance(psHf.lbc);
+        if (ecartees.size || verdictLbc.horsFrance) {
+          gardeHorsService = (j) => jobRetenuPlateformeEcartee(j, ecartees) || (verdictLbc.horsFrance && !lbcServiMalgreHorsFrance(j));
+        }
+        if (verdictLbc.horsFrance) {
+          const aClore = out.filter((j) => lbcACloreHorsFrance(j));
+          let nonServisLbc = 0;
+          for (const j of out) {
+            if (lbcServiMalgreHorsFrance(j)) continue;
+            idsHorsService.add(String(j.id));
+            nonServisLbc++;
+          }
+          try {
+            const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+            // Ce que la file du poll de fond ne montre pas (needs_user, failed) : lu ici, borné.
+            if (pollDeFond) {
+              const { data: restes } = await admin.from("cross_post_jobs")
+                .select("id, platform, action, status, error, platform_fields, listing_url, platform_listing_id")
+                .eq("user_id", user.id).eq("platform", "leboncoin").in("action", ["publish", "republish"])
+                .in("status", ["needs_user", "failed"]).order("created_at", { ascending: true }).limit(100);
+              for (const r of (restes ?? []) as Array<Record<string, unknown>>) {
+                if (lbcACloreHorsFrance(r)) aClore.push(r as unknown as typeof aClore[number]);
+              }
+            }
+            for (const j of aClore) {
+              const cl = clotureLbcHorsFrance(j as unknown as Record<string, unknown>, { par: "get-pending-jobs", code: verdictLbc.code, archiver: archiverErreur });
+              const { data: maj } = await admin.from("cross_post_jobs").update(cl)
+                .eq("id", String(j.id)).eq("status", String(j.status)).select("id");
+              closLbcHorsFrance += (maj ?? []).length;
+            }
+          } catch (e) {
+            console.warn(`[get-pending-jobs] Leboncoin hors de France : clôture différée au prochain poll — ${String((e as Error)?.message ?? e)}`);
+          }
+          if (nonServisLbc || closLbcHorsFrance) {
+            console.log(`[get-pending-jobs] userId=${user.id} : adresse de remise hors de France (code postal ${verdictLbc.code}) → ${nonServisLbc} job(s) Leboncoin non servi(s), ${closLbcHorsFrance} clos (rien n'a été publié)`);
+          }
+        }
+        if (idsHorsService.size) out = out.filter((j) => !idsHorsService.has(String(j.id)));
+      }
+    }
+
     // ══ « REPUBLIER » VINTED : SEULEMENT À UN POSTE QUI SAIT LE FAIRE (25/10 nuit, extension 0.6.142) ══
     // Une vente Vinted ANNULÉE se remet en vente par le bouton « Republier » de Vinted (remises_en_vente_tick,
     // migration 20261025010000 : job « publish » marqué platform_fields.remise_par_republier). Ce job est mis de côté
@@ -2946,6 +3031,48 @@ serve(async (req) => {
       }
       heldBeebsSansIdentifiant = aRetenir.size;
       if (aRetenir.size) out = out.filter((j) => !aRetenir.has(String(j.id)));
+    }
+
+    // ══ (25/10, DeadRoz) UN RETRAIT BEEBS QU'UNE VÉRIFICATION DE PLUS DE 72 H RETIENT ══
+    // (_shared/beebs-retrait-verification-longue.js) Retrait 53cff028 (annonce
+    // 34083555, en vérification depuis son dépôt du 30/09) : 153 essais, un par
+    // heure, chacun ouvre sa page (404) — Beebs n'offre aucun geste pendant la
+    // vérification. Marqué « longue » par update-job-status, il n'est servi que si
+    // la ligne du relevé de CETTE annonce a bougé depuis le dernier essai (statut,
+    // disparition, retrait), sinon une fois toutes les 12 h. Rien n'est écrit ici :
+    // le job reste en file, intact.
+    let heldBeebsVerificationLongue = 0;
+    if (!includeProcessing && !includeNeedsUser) {
+      const pfL = (j: { platform_fields: unknown }) => ((j.platform_fields ?? {}) as Record<string, unknown>);
+      const longs = out.filter((j) => j.platform === "beebs" && j.action === "delete"
+        && ((pfL(j)["retrait_en_attente_verification"] ?? {}) as Record<string, unknown>)["longue"] === true);
+      if (longs.length) {
+        try {
+          const numeroL = (j: unknown) => String((j as { platform_listing_id?: unknown }).platform_listing_id ?? "").trim()
+            || (String((j as { listing_url?: unknown }).listing_url ?? "").match(/\/p\/(\d{6,})/)?.[1] ?? "");
+          const numeros = [...new Set(longs.map(numeroL).filter((x) => /^\d{6,}$/.test(x)))];
+          const { data: lignesL } = numeros.length
+            ? await userClient.from("annonces_plateforme").select("listing_id, statut_plateforme, disparu_le, retiree_le, vu_le")
+              .eq("platform", "beebs").in("listing_id", numeros).order("vu_le", { ascending: false })
+            : { data: [] as Array<Record<string, unknown>> };
+          const ligneDe = new Map<string, Record<string, unknown>>();
+          for (const l of (lignesL ?? []) as Array<Record<string, unknown>>) {
+            const id = String(l.listing_id ?? "");
+            if (id && !ligneDe.has(id)) ligneDe.set(id, l);
+          }
+          const aRetenirL = new Set<string>();
+          for (const j of longs) {
+            if (retenirRetraitVerificationLongue(j, ligneDe.get(numeroL(j)) ?? null)) aRetenirL.add(String(j.id));
+          }
+          heldBeebsVerificationLongue = aRetenirL.size;
+          if (aRetenirL.size) {
+            out = out.filter((j) => !aRetenirL.has(String(j.id)));
+            console.log(`[get-pending-jobs] userId=${user.id} : ${aRetenirL.size} retrait(s) Beebs en vérification depuis plus de 72 h retenu(s) — relevé inchangé, nouvel essai toutes les 12 h`);
+          }
+        } catch (e) {
+          console.warn(`[get-pending-jobs] retraits Beebs en vérification longue : ${String((e as Error)?.message ?? e)} — servis tels quels`);
+        }
+      }
     }
 
     // ══ UN ARTICLE VENDU N'EST JAMAIS PUBLIÉ NI REPUBLIÉ (2026-09-25) ═══════
@@ -4128,6 +4255,167 @@ serve(async (req) => {
       } catch (e) {
         console.warn(`[get-pending-jobs] configuration vendeur Depop : ${String((e as Error)?.message ?? e)} — file servie telle quelle`);
       }
+    }
+
+    // ── eBay (EXTENSION) : LE COMPTE N'EST PAS ENCORE OUVERT À LA VENTE (25/10, R3) ──
+    // (_shared/vendeur-ebay.js) Fleur de Lotus, 22-23/10 : trois publications eBay
+    // finies sur l'inscription vendeur d'eBay, chacune après un formulaire entier.
+    // Tant que le mur tient (vu depuis moins de 30 j, aucune publication eBay
+    // depuis), UN éclaireur part (relancé par la personne, sinon le plus ancien au
+    // barème) ; les autres dépôts eBay de l'extension passent en attente du même
+    // geste (needs_user ebay_compte_vendeur_inactif, message vrai), compare-and-swap
+    // sur pending, au plus 40 par passage. Une publication eBay faite depuis le mur
+    // relâche les tâches en attente (espacées de 45 s). Retraits jamais retenus.
+    // Poll d'exécution seul ; illisible → file servie telle quelle.
+    if (!includeProcessing && !includeNeedsUser && out.some((j) => estDepotEbayExtension(j as never))) {
+      try {
+        const depuisE = new Date(Date.now() - FENETRE_MUR_EBAY_MS).toISOString();
+        const { data: compteE, error: eCompteE } = await userClient.from("cross_post_jobs")
+          .select("id, platform, action, status, voie, created_at, published_at, handler_build, error, platform_fields")
+          .eq("user_id", user.id).eq("platform", "ebay")
+          .or(`platform_fields->compte_vendeur_inactif->>derniere.gte."${depuisE}",platform_fields->compte_vendeur_inactif->>retenue_le.gte."${depuisE}",platform_fields->vendeur_ebay->>eclaireur_le.gte."${depuisE}"`)
+          .limit(200);
+        if (eCompteE) throw new Error(eCompteE.message);
+        const jobsE = (compteE ?? []) as Array<Record<string, unknown>>;
+        const murE = dernierMurVendeurEbay(jobsE as never[]);
+        if (Number.isFinite(murE)) {
+          const { data: pubE, error: ePubE } = await userClient.from("cross_post_jobs")
+            .select("id, platform, action, status, handler_build, published_at")
+            .eq("user_id", user.id).eq("platform", "ebay").in("status", ["published", "sold"]).in("action", ["publish", "republish"])
+            .or("handler_build.is.null,handler_build.neq.releve-annonces")
+            .gt("published_at", new Date(murE).toISOString()).limit(1);
+          if (ePubE) throw new Error(ePubE.message);
+          const maintenantE = Date.now();
+          if ((pubE ?? []).length) {
+            // Le compte vend : les tâches qui attendaient ce geste repartent.
+            let k = 0;
+            for (const m of (attentesVendeurEbay(jobsE as never[]) as Array<Record<string, unknown>>).slice(0, RETENUES_VENDEUR_EBAY)) {
+              const pfR = champsRepriseVendeurEbay((m.platform_fields ?? {}) as Record<string, unknown>, k, maintenantE, "get-pending-jobs (le compte eBay vend)") as Record<string, unknown>;
+              pfR.erreurs_archivees = archiverErreur(pfR.erreurs_archivees, (m.error as string | null) ?? null, "needs_user", "get-pending-jobs (compte eBay ouvert à la vente)");
+              const { data: majR } = await userClient.from("cross_post_jobs").update({ status: "pending", error: null, platform_fields: pfAPersister(pfR) })
+                .eq("id", String(m.id)).eq("status", "needs_user").select("id");
+              if ((majR ?? []).length) k++;
+            }
+            if (k) console.log(`[get-pending-jobs] userId=${user.id} : le compte eBay vend (publication après le mur) — ${k} tâche(s) eBay relâchée(s), espacées de 45 s`);
+          } else {
+            const d = decisionVendeurEbay(out.filter((j) => estDepotEbayExtension(j as never)) as never[], jobsE as never[], maintenantE);
+            const servi = d.servir as Record<string, unknown> | null;
+            if (servi && d.eclaireurAuto) {
+              const pfS = champsEclaireurVendeurEbay((servi.platform_fields ?? {}) as Record<string, unknown>, new Date(maintenantE).toISOString()) as Record<string, unknown>;
+              await userClient.from("cross_post_jobs").update({ platform_fields: pfAPersister(pfS) }).eq("id", String(servi.id)).eq("status", "pending");
+              servi.platform_fields = pfS;
+            }
+            const retenusE = d.retenir as Array<Record<string, unknown>>;
+            let posesE = 0;
+            for (const j of retenusE) {
+              if (posesE >= RETENUES_VENDEUR_EBAY) break;
+              const pfV = champsRetenueVendeurEbay((j.platform_fields ?? {}) as Record<string, unknown>, new Date(maintenantE).toISOString()) as Record<string, unknown>;
+              const erreurV = (j as { error?: string | null }).error ?? null;
+              if (erreurV && erreurV !== MESSAGE_VENDEUR_EBAY) {
+                pfV.erreurs_archivees = archiverErreur(pfV.erreurs_archivees, erreurV, "pending", "get-pending-jobs (compte eBay pas encore ouvert à la vente)");
+              }
+              const { data: majV } = await userClient.from("cross_post_jobs")
+                .update({ status: "needs_user", error: MESSAGE_VENDEUR_EBAY, platform_fields: pfAPersister(pfV) })
+                .eq("id", String(j.id)).eq("status", "pending").select("id");
+              posesE += (majV ?? []).length;
+            }
+            if (retenusE.length) {
+              const idsE = new Set(retenusE.map((j) => String(j.id)));
+              out = out.filter((j) => !idsE.has(String(j.id)));
+              console.log(`[get-pending-jobs] userId=${user.id} : compte eBay pas encore ouvert à la vente — ${retenusE.length} dépôt(s) eBay retenu(s), ${posesE} passé(s) en attente du geste${servi ? `, éclaireur ${String(servi.id).slice(0, 8)} servi${d.eclaireurAuto ? " (barème)" : " (relancé)"}` : ""}`);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] compte eBay pas encore ouvert à la vente : ${String((e as Error)?.message ?? e)} — file servie telle quelle`);
+      }
+    }
+
+    // ── eBay (EXTENSION) : LES CONDITIONS DE RETOUR, UNE QUESTION POUR LE COMPTE (25/10, N6) ──
+    // (_shared/ebay-brouillon-refus.js) lemonde-glad, 20/10 : eBay refuse le
+    // brouillon sans « Conditions des retours nationaux », quatre essais
+    // identiques. La question part UNE fois (pas-de-rouge) ; ici :
+    //   1. la réponse de la personne (« ✋ Compléter » : ebay_retours_choix et sa
+    //      trace needsUserResolved) se range POUR LE COMPTE (platform_settings.ebay
+    //      .retours_voie_clic, RPC platform_settings_fusionner) ;
+    //   2. tant qu'une question attend et qu'aucun choix n'est rangé, les AUTRES
+    //      dépôts eBay de l'extension restent en file, intacts (pending, pas servis) ;
+    //   3. le choix rangé part avec chaque dépôt eBay de l'extension
+    //      (platform_fields.ebay_retours, le code de l'option) ;
+    //   4. un poste dont le build a déjà prouvé qu'il ne sait pas le poser (une
+    //      tâche parquée « retours non posés » par ce build ou un plus récent) ne
+    //      reçoit pas les autres : chacune buterait sur le même refus.
+    // FillSell ne choisit jamais à la place de la personne. Poll d'exécution seul ;
+    // illisible → file servie telle quelle.
+    if (!includeProcessing && !includeNeedsUser && out.some((j) => estDepotEbayExtension(j as never))) {
+      try {
+        const depotsR = out.filter((j) => estDepotEbayExtension(j as never)) as Array<Record<string, unknown>>;
+        const { data: profR, error: eProfR } = await userClient.from("profiles").select("platform_settings").eq("id", user.id).maybeSingle();
+        if (eProfR) throw new Error(eProfR.message);
+        let choixR = retoursChoisisDuCompte((profR as { platform_settings?: unknown } | null)?.platform_settings ?? null);
+        const reponduR = depotsR.map((j) => ({ j, code: retoursChoisisDuJob(j.platform_fields as never) })).find((x) => x.code);
+        if (reponduR && reponduR.code !== choixR) {
+          const libelleR = OPTIONS_RETOURS_EBAY.find((o) => o.code === reponduR.code)?.libelle ?? null;
+          const { error: eRang } = await userClient.rpc("platform_settings_fusionner", {
+            p_chemin: ["ebay", "retours_voie_clic"],
+            p_patch: { choix: reponduR.code, libelle: libelleR, le: new Date().toISOString(), job_id: String(reponduR.j.id), pose_par: "get-pending-jobs (réponse de la personne)" },
+            p_supprimer: [],
+          });
+          if (eRang) console.warn(`[get-pending-jobs] retours eBay du compte : rien d'enregistré (${eRang.message}) — la réponse reste sur son job`);
+          else {
+            choixR = reponduR.code;
+            console.log(`[get-pending-jobs] userId=${user.id} : retours eBay du compte enregistrés (« ${libelleR} », réponse sur ${String(reponduR.j.id).slice(0, 8)})`);
+          }
+        }
+        if (!choixR) {
+          const { data: qR, error: eQR } = await userClient.from("cross_post_jobs").select("id")
+            .eq("user_id", user.id).eq("platform", "ebay").eq("status", "needs_user")
+            .eq("platform_fields->>needs_user_source", SOURCE_RETOURS_EBAY).limit(1);
+          if (eQR) throw new Error(eQR.message);
+          if ((qR ?? []).length) {
+            out = out.filter((j) => !estDepotEbayExtension(j as never));
+            console.log(`[get-pending-jobs] userId=${user.id} : question « retours eBay » en attente (${String(qR![0].id).slice(0, 8)}) — ${depotsR.length} dépôt(s) eBay laissé(s) en file, intacts`);
+          }
+        } else {
+          for (const j of depotsR) {
+            const pfJ = (j.platform_fields ?? {}) as Record<string, unknown>;
+            if (pfJ.ebay_retours !== choixR) j.platform_fields = { ...pfJ, ebay_retours: choixR };
+          }
+          const { data: parquesR, error: eParqR } = await userClient.from("cross_post_jobs").select("id, platform_fields")
+            .eq("user_id", user.id).eq("platform", "ebay").in("status", ["pending", "needs_user"])
+            .eq("platform_fields->defaut_fillsell->>ou", "ebay_retours_non_poses").limit(20);
+          if (eParqR) throw new Error(eParqR.message);
+          const bPoll = buildMsDe(buildDuPoll);
+          const posteSansRetours = ((parquesR ?? []) as Array<Record<string, unknown>>).some((p) => {
+            const b = buildMsDe(((p.platform_fields ?? {}) as Record<string, Record<string, unknown>>).defaut_fillsell?.build);
+            return Number.isFinite(b) && (!Number.isFinite(bPoll) || b >= bPoll);
+          });
+          if (posteSansRetours) {
+            out = out.filter((j) => !estDepotEbayExtension(j as never));
+            console.log(`[get-pending-jobs] userId=${user.id} : retours eBay choisis mais ce poste (« ${buildDuPoll.slice(0, 40) || "build inconnu"} ») ne sait pas les poser — ${depotsR.length} dépôt(s) eBay laissé(s) en file pour un poste plus récent`);
+          }
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] retours eBay du compte : ${String((e as Error)?.message ?? e)} — file servie telle quelle`);
+      }
+    }
+
+    // ── eBay (EXTENSION) : L'INTERRUPTEUR « PHOTOS REÇUES » (25/10, R1) ──────
+    // content-scripts/ebay.js compte les photos que eBay a REÇUES (compteur
+    // « N/25 », vignettes i.ebayimg.com) et le trace (ebay_photos_recues). Par
+    // défaut il OBSERVE ; coin_config `ebay_photos_recues_bloquant` = 1 → chaque
+    // dépôt eBay servi porte ebay_photos_mode = "bloquer" : moins de photos reçues
+    // que remises au moment du clic → arrêt AVANT tout clic (ebay_photos_non_recues).
+    // 0, absente ou illisible → rien n'est posé (observer). Copie servie seulement.
+    if (!includeProcessing && !includeNeedsUser && out.some((j) => estDepotEbayExtension(j as never))) {
+      try {
+        const { data: cfgPhotos } = await userClient.from("coin_config").select("value").eq("key", "ebay_photos_recues_bloquant").maybeSingle();
+        if (Number((cfgPhotos as Record<string, unknown> | null)?.value) === 1) {
+          for (const j of out.filter((x) => estDepotEbayExtension(x as never))) {
+            j.platform_fields = { ...((j.platform_fields ?? {}) as Record<string, unknown>), ebay_photos_mode: "bloquer" };
+          }
+        }
+      } catch (_e) { /* filet best-effort : jamais un point de panne (observer) */ }
     }
 
     // ── DEPOP : LES CATÉGORIES QUE DEPOP INTERDIT (09/10 soir, Nico) ────────
@@ -5439,6 +5727,10 @@ serve(async (req) => {
     // la base rattache la copie que le relevé apporte (migration
     // 20261018170000), sinon l'essai suivant part, une fois. ⛔ Sert tous les
     // builds. ⛔ Fermé en cas de doute : une erreur retient les jobs ce cycle.
+    // (25/10, Vincent A. 9138772c — deux annonces) Un `depot_incertain` posé après
+    // le dernier envoi retient la republication sur TOUT compte, quelle que soit
+    // l'extension : jamais un second envoi sans preuve d'absence (relevé complet de
+    // la personne sans copie) ; 6 h sans preuve → la question recreation_deja_partie.
     {
       const aVerifierV = (out as unknown as Array<Record<string, unknown>>).filter((j) => recreationAVerifier(j));
       if (aVerifierV.length) {
@@ -6461,6 +6753,33 @@ serve(async (req) => {
           ? `→ demandée par la personne : ${heldSync} publication(s)/republication(s) retenue(s) pour ce cycle (la synchro passe devant toute la file ; retraits et republications retirées partent)`
           : `→ ${heldSync} job(s) ${[...plateformesRelevees].join("+")} retenu(s) en pending pour ce cycle (la sync passe devant SA plateforme ; les autres partent)`),
       );
+    }
+
+    // ══ (25/10, Louis — « Je suis complètement bloqué ») LA LECTURE DE L'ANNONCE D'ORIGINE PASSE DEVANT LA FILE ══
+    // louis-seller, lot « Publier 5 articles » arrêté sur « Lecture de ton annonce d'origine » depuis 10:29 : les fiches
+    // du dressing naissent sans description, la lecture est demandée (lectures_origine_demandees) et l'extension
+    // (≥ 0.6.130, lireAnnoncesOrigineEnAttente) ne la fait qu'APRÈS la boucle des tâches du cycle — une file chargée la
+    // repoussait d'autant, pendant que la personne regardait son écran. Règle, comme la synchro de la personne
+    // (22/10 soir, point 5) : une lecture d'origine Vinted DEMANDÉE il y a moins de 15 min et pas encore faite (au plus
+    // 3 essais) passe devant toute la file — ce cycle ne porte que ce qui ne peut pas attendre (retraits, republications
+    // dont l'annonce est déjà retirée, passeAvantLaSynchro) ; l'extension lit juste après sa boucle (3 par cycle,
+    // espacées), puis la file reprend dans son ordre. Jamais pendant une pause anti-robot Vinted (rien ne serait lu),
+    // jamais vers une extension qui ne sait pas lire (< 0.6.130). Illisible → la file part comme avant.
+    let heldLecturesOrigine = 0;
+    if (!includeProcessing && !includeNeedsUser && out.length && !compteEnPauseAr && versionAuMoins(version, "0.6.130")) {
+      try {
+        const { data: lecturesDemandees } = await userClient.from("lectures_origine_demandees").select("inventaire_id")
+          .eq("user_id", user.id).eq("plateforme", "vinted").is("faite_le", null).lt("essais", 3)
+          .gte("demandee_le", new Date(Date.now() - 15 * 60_000).toISOString()).limit(1);
+        if ((lecturesDemandees ?? []).length) {
+          const avantLecture = out.length;
+          out = out.filter((j) => passeAvantLaSynchro(j));
+          heldLecturesOrigine = avantLecture - out.length;
+          if (heldLecturesOrigine) {
+            console.log(`[get-pending-jobs] userId=${user.id} : lecture d'annonce d'origine demandée par la personne → ${heldLecturesOrigine} publication(s)/republication(s) retenue(s) pour ce cycle (la lecture passe devant ; retraits et republications retirées partent)`);
+          }
+        }
+      } catch (_e) { /* la lecture devant la file n'empêche jamais de servir la file */ }
     }
 
     // ── RETENUE D'EXÉCUTION des republications (2026-08-29, refonte 04/09) ──
@@ -7956,9 +8275,24 @@ serve(async (req) => {
     //     dur, relecture bornée aux republications publiées depuis le build qui
     //     sait remettre la capture, et une lecture en échec retient le job CE
     //     passage seulement, sans rien écrire ni rien conclure.
+    // ── (25/10, décision de Nico) LA VALEUR D'ORIGINE PART TELLE QUELLE — PLUS DE PREUVE VALEUR PAR VALEUR ──
+    // Rég (6f1b1f70 « Moby Dick », retenue depuis le 18/10) et Vincent A. (29 livres) : capture
+    // « 0000000000 » (10 zéros), acceptée par Vinted à la création des 30 annonces d'origine, jamais
+    // recréée — donc jamais « prouvée » : retenue sans fin. Et le défaut qui la rendait dangereuse : la
+    // sonde du corps du dépôt n'armait que 13 chiffres (≤ 0.6.142) ; désarmée, le POST portait ce que la
+    // page sérialise ("isbn": null) APRÈS le retrait. Désormais (_shared/isbn-capture-preuve.js) :
+    //   · la republication part dès que le POSTE remet la valeur capturée telle quelle
+    //     (posteRemetIsbnCapture : 13 chiffres ≥ 0.6.70, 10 caractères ≥ BUILD_ISBN_10_TEL_QUEL) ;
+    //   · disjoncteur, par compte : une valeur que Vinted a refusée sur CE compte (refus « isbn » d'une
+    //     republication non publiée, envoyée par un poste qui remettait cette valeur) retient les autres,
+    //     annonce intacte ; une lecture en échec retient CE passage, sans rien écrire ni conclure ;
+    //   · poste trop ancien : retenue, message neutre et vrai (retenue_serveur.message) — ⛔ jamais
+    //     « mets à jour ton extension » (décision de Nico) ; elle se lève seule au premier poll d'un poste
+    //     à jour, sans réparation de données ;
+    //   · plus de relecture des preuves sur tout cross_post_jobs, plus de banc d'essai.
     let heldIsbnCapture = 0;
     let isbnCaptureLeves = 0;
-    let preuveIsbnIllisible = "";
+    let refusIsbnIllisible = "";
     if (!includeProcessing && !includeNeedsUser) try {
       const pfDe = (j: { platform_fields: unknown }) => ((j.platform_fields as Record<string, unknown> | null) ?? {});
       const aVoir = out.filter((j) => j.platform === "vinted" && j.action === "republish"
@@ -7978,59 +8312,53 @@ serve(async (req) => {
         const valeurDe = (j: { platform_fields: unknown }) => isbnParCapture.get(Number(pfDe(j)["capture_id"]));
         const exposes = aVoir.filter((j) => estIsbnCaptureNonStandard(valeurDe(j)));
         if (exposes.length) {
-          const posteCorrige = buildMsDe(buildDuPoll) >= buildMsDe(BUILD_ISBN_CAPTURE_TEL_QUEL);
-          let prouvees = new Set<string>();
-          let banc = false;
-          if (posteCorrige) {
-            const aProuver = [...new Set(exposes.map((j) => valeurIsbnCapturee(valeurDe(j))))];
-            prouvees = new Set(aProuver.filter((v) => PREUVES_ISBN_CAPTURE.has(v)));
-            const inconnues = aProuver.filter((v) => !prouvees.has(v) && /^[0-9A-Z]{1,20}$/.test(v));
-            if (inconnues.length) {
-              const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-              const liste = inconnues.join(",");
-              const isoBuild = String(BUILD_ISBN_CAPTURE_TEL_QUEL).match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z/)?.[0];
-              let requete = admin.from("cross_post_jobs")
-                .select("platform, action, status, handler_build, platform_fields->republish_step, platform_fields->isbn_capture_tel_quel, isbn_copie:platform_fields->republish_snapshot->>isbn, isbn_reponse:platform_fields->vintedAspects->>isbn")
-                .eq("platform", "vinted").eq("action", "republish").eq("status", "published")
-                .or(`platform_fields->republish_snapshot->>isbn.in.(${liste}),platform_fields->isbn_capture_tel_quel->>valeur.in.(${liste})`);
-              // Une recréation qui prouve vient d'un build ≥ BUILD_ISBN_CAPTURE_TEL_QUEL :
-              // elle a été publiée après lui. Moitié moins de lignes à lire.
-              if (isoBuild) requete = requete.gte("published_at", isoBuild);
-              const { data: preuves, error: erreurPreuves } = await requete.limit(50);
-              if (erreurPreuves) preuveIsbnIllisible = String(erreurPreuves.code ?? erreurPreuves.message ?? "erreur").slice(0, 60);
-              const faits = ((preuves ?? []) as Array<Record<string, unknown>>).map((p) => ({
-                platform: String(p.platform), action: String(p.action), status: String(p.status),
-                handler_build: (p.handler_build as string | null) ?? null,
-                platform_fields: {
-                  republish_step: p.republish_step, isbn_capture_tel_quel: p.isbn_capture_tel_quel,
-                  republish_snapshot: { isbn: p.isbn_copie }, vintedAspects: { isbn: p.isbn_reponse },
-                },
+          // Le disjoncteur n'est lu que si le poste remet au moins une des valeurs exposées (sinon tout
+          // est retenu de toute façon) : les republications Vinted de CE compte qui ont reçu un refus sur
+          // « isbn » — deux lectures bornées au compte (index user_id), jamais tout cross_post_jobs.
+          let refusDuCompte = new Set<string>();
+          if (exposes.some((j) => posteRemetIsbnCapture(valeurDe(j), buildDuPoll))) {
+            const champsRefus = "status, handler_build, platform_fields->last_diagnostic, platform_fields->server_required_fields, " +
+              "isbn_copie:platform_fields->republish_snapshot->>isbn, isbn_reponse:platform_fields->vintedAspects->>isbn";
+            const refusDe = () => userClient.from("cross_post_jobs").select(champsRefus)
+              .eq("user_id", user.id).eq("platform", "vinted").eq("action", "republish").neq("status", "published");
+            const [parDiag, parRequis] = await Promise.all([
+              // Guillemets échappés compris (diagnostic objet) : valeurIsbnRefuseeParJob tranche ensuite.
+              refusDe().ilike("platform_fields->>last_diagnostic", '%"field%"isbn%').limit(100),
+              refusDe().contains("platform_fields->server_required_fields", '[{"key":"isbn"}]').limit(100),
+            ]);
+            const erreurRefus = parDiag.error ?? parRequis.error;
+            if (erreurRefus) {
+              refusIsbnIllisible = String(erreurRefus.code ?? erreurRefus.message ?? "erreur").slice(0, 60);
+            } else {
+              refusDuCompte = valeursIsbnRefusees([...(parDiag.data ?? []), ...(parRequis.data ?? [])].map((r) => {
+                const p = r as unknown as Record<string, unknown>;
+                return {
+                  platform: "vinted", action: "republish", status: String(p.status ?? ""),
+                  handler_build: (p.handler_build as string | null) ?? null,
+                  platform_fields: {
+                    last_diagnostic: p.last_diagnostic, server_required_fields: p.server_required_fields,
+                    republish_snapshot: { isbn: p.isbn_copie }, vintedAspects: { isbn: p.isbn_reponse },
+                  },
+                };
               }));
-              for (const v of valeursProuvees(faits)) {
-                PREUVES_ISBN_CAPTURE.add(v); // une preuve ne se perd pas : gardée tant que l'isolat vit
-                prouvees.add(v);
-              }
-            }
-            if (exposes.some((j) => !prouvees.has(valeurIsbnCapturee(valeurDe(j))))) {
-              const { data: prof } = await userClient.from("profiles").select("beta_flags").eq("id", user.id).maybeSingle();
-              banc = ((prof?.beta_flags ?? {}) as Record<string, unknown>)["banc_isbn_capture"] === true;
             }
           }
           const retenus = new Set<string>();
+          const parAttente: Record<string, number> = {};
           const maintenant = new Date().toISOString();
           for (const j of exposes) {
             const pf = pfDe(j);
             const v = valeurIsbnCapturee(valeurDe(j));
-            const passe = posteCorrige && (prouvees.has(v) || banc);
-            // Preuve illisible CE passage : le job n'est pas servi (l'étape
-            // 'captured' retire l'annonce), mais rien n'est écrit — ni retenue,
-            // ni motif « jamais prouvée ». Le passage suivant relit.
-            if (!passe && posteCorrige && preuveIsbnIllisible) { retenus.add(String(j.id)); continue; }
-            if (passe) {
+            // null = elle part ; sinon ce qu'elle attend (poste à jour, refus du compte, forme non remise).
+            const attente = attenteIsbnCapture(v, buildDuPoll, refusDuCompte);
+            // Refus du compte illisibles CE passage : le job n'est pas servi (l'étape 'captured' retire
+            // l'annonce), mais rien n'est écrit ni conclu. Le passage suivant relit.
+            if (!attente && refusIsbnIllisible) { retenus.add(String(j.id)); continue; }
+            if (!attente) {
               // Retenue levée : le marqueur part AVANT de servir, sinon l'app
               // dirait « en attente » d'un job qui file (article par article).
               const pfLeve = retenueServeurDe(pf)?.motif === RETENUE_ISBN_CAPTURE
-                ? leverRetenueServeur(pf, maintenant, prouvees.has(v) ? "preuve" : "banc_isbn_capture") : null;
+                ? leverRetenueServeur(pf, maintenant, "poste_remet_la_valeur") : null;
               if (pfLeve) {
                 const { data: maj } = await userClient.from("cross_post_jobs")
                   .update({ platform_fields: pfLeve }).eq("id", String(j.id)).eq("status", "pending").select("id");
@@ -8041,9 +8369,17 @@ serve(async (req) => {
               continue;
             }
             retenus.add(String(j.id));
-            const pfPose = poserRetenueServeur(pf, RETENUE_ISBN_CAPTURE, maintenant, {
-              isbn_capture: v, attente: posteCorrige ? "preuve_recreation" : "correctif_extension",
-            });
+            parAttente[attente] = (parAttente[attente] ?? 0) + 1;
+            const detail = {
+              isbn_capture: v, attente,
+              message: attente === "mise_a_jour_extension" ? MESSAGE_ISBN_MISE_A_JOUR : MESSAGE_ISBN_A_VERIFIER,
+            };
+            // Datée une fois ; réécrite seulement quand ce qu'elle attend change (la phrase reste vraie).
+            const actuelle = (pf["retenue_serveur"] && typeof pf["retenue_serveur"] === "object")
+              ? pf["retenue_serveur"] as Record<string, unknown> : null;
+            const pfPose = poserRetenueServeur(pf, RETENUE_ISBN_CAPTURE, maintenant, detail)
+              ?? (actuelle && actuelle["motif"] === RETENUE_ISBN_CAPTURE && actuelle["attente"] !== attente
+                ? { ...pf, retenue_serveur: { ...actuelle, ...detail } } : null);
             if (pfPose) {
               await userClient.from("cross_post_jobs")
                 .update({ platform_fields: pfPose }).eq("id", String(j.id)).eq("status", "pending");
@@ -8052,10 +8388,10 @@ serve(async (req) => {
           if (retenus.size) {
             out = out.filter((j) => !retenus.has(String(j.id)));
             heldIsbnCapture = retenus.size;
-            console.log(`[get-pending-jobs] userId=${user.id} : ${retenus.size} republication(s) Vinted NON servie(s) à l'étape 'captured' — ISBN capturé non standard (${preuveIsbnIllisible ? `preuve illisible ce passage (${preuveIsbnIllisible}) — rien écrit, relue au prochain passage` : posteCorrige ? "valeur jamais prouvée chez Vinted" : "poste sans le correctif"}), ANNONCE INTACTE, retenue visible`);
+            console.log(`[get-pending-jobs] userId=${user.id} : ${retenus.size} republication(s) Vinted NON servie(s) à l'étape 'captured' — ISBN capturé non standard (${refusIsbnIllisible ? `refus du compte illisibles ce passage (${refusIsbnIllisible}) — rien écrit, relus au prochain passage` : Object.entries(parAttente).map(([a, n]) => `${a} ×${n}`).join(", ")}), ANNONCE INTACTE, retenue visible`);
           }
           if (isbnCaptureLeves) {
-            console.log(`[get-pending-jobs] userId=${user.id} : ${isbnCaptureLeves} retenue(s) ISBN levée(s) — valeur prouvée chez Vinted (${[...prouvees].join(", ")})${banc ? " ou banc d'essai" : ""}`);
+            console.log(`[get-pending-jobs] userId=${user.id} : ${isbnCaptureLeves} retenue(s) ISBN levée(s) — le poste (${buildDuPoll.slice(0, 40)}) remet la valeur d'origine telle quelle`);
           }
         }
       }
@@ -8203,8 +8539,11 @@ serve(async (req) => {
         (pf.republish_snapshot && typeof pf.republish_snapshot === "object")
           ? (pf.republish_snapshot as Record<string, unknown>)
           : (copiesDepuisCapture.get(String(pf.capture_id)) ?? null);
-      // Le poste remet-il tel quel un ISBN capturé non standard ?
-      const posteIsbnTelQuel = buildMsDe(buildDuPoll) >= buildMsDe(BUILD_ISBN_CAPTURE_TEL_QUEL);
+      // Le poste remet-il tel quel CET ISBN capturé non standard ? (25/10) Selon sa
+      // forme (posteRemetIsbnCapture) : 13 chiffres ≥ 0.6.70, 10 caractères ≥
+      // BUILD_ISBN_10_TEL_QUEL — sinon, si la garde ISBN ci-dessus a sauté (catch),
+      // 10 zéros partiraient vers un poste qui les perd.
+      const posteIsbnTelQuel = (isbn: unknown) => posteRemetIsbnCapture(isbn, buildDuPoll);
       // Clé de catégorie = le chemin capturé, tel qu'il est écrit dans
       // platform_category_aspects (« A > B > C »). Pas de chemin = pas de
       // catégorie de destination connue = on ne juge rien (doute = servi).
@@ -8239,7 +8578,7 @@ serve(async (req) => {
             // (2026-09-27) La valeur de l'annonce d'origine n'est jamais
             // remplacée par une déduction : valide, elle part telle quelle ;
             // non standard, elle part telle quelle sur un poste corrigé.
-            if (String(snap?.isbn ?? "").trim() && (normalizeIsbn(snap?.isbn).ok || posteIsbnTelQuel)) continue;
+            if (String(snap?.isbn ?? "").trim() && (normalizeIsbn(snap?.isbn).ok || posteIsbnTelQuel(snap?.isbn))) continue;
             const trouve = resoudreIsbn({
               reponse: va.isbn,
               capture: snap?.isbn,
@@ -8347,7 +8686,7 @@ serve(async (req) => {
                 // la PRÉSENCE de la valeur d'origine suffit : c'est elle qui
                 // repart (« 0000000000000 » compris, accepté par Vinted).
                 return normalizeIsbn(va.isbn).ok || normalizeIsbn(snap?.isbn).ok
-                  || (posteIsbnTelQuel && texte(snap?.isbn));
+                  || (texte(snap?.isbn) && posteIsbnTelQuel(snap?.isbn));
               }
               if (texte(va[champ])) return true;                                     // 1. réponse / déduction
               if (codesParCapture.get(Number(pf.capture_id))?.has(champ.toLowerCase())) return true; // 2. attributs capturés
@@ -9220,6 +9559,73 @@ serve(async (req) => {
         }
       }
     } catch (_e) { /* le dépannage ne doit jamais empêcher de servir la file */ }
+
+    // ══ (25/10, audit N9) LA COULEUR D'UNE REPUBLICATION VINTED QUI N'EN PORTE PAS NE SE DEMANDE PLUS ══
+    // Jobs 6ff45122 / 775186a3 (compte 40e1122e, « Nerf élite », 20-21/10) : l'annonce en ligne n'avait aucune
+    // couleur, Vinted en exige une à la création → question « Couleur » avant tout retrait. La règle couleur_auto
+    // du 11/10 ne servait que la publication. Ici, à l'étape captured / deleted, SANS IA
+    // (_shared/vinted-couleur-marque-filet.js) : la couleur de la fiche (source du vendeur), sinon celle du dépôt
+    // d'origine, sinon un mot du titre, sinon « Multicolore » — posée dans vintedAspects.color, le canal que
+    // vinted.js lit. ⛔ Jamais quand l'annonce capturée porte une couleur (vinted.js l'écraserait), jamais
+    // par-dessus une couleur déjà là (réponse de la personne comprise) ; une couleur posée ici qu'une capture
+    // plus récente contredit est retirée. Servi, pas persisté : l'extension renvoie le pf au statut suivant.
+    // Lectures seulement pour les republications sans couleur (fiches, dépôts : par lots). Best-effort.
+    if (!includeProcessing && !includeNeedsUser) {
+      try {
+        const decisionsC = new Map<string, { action: string; chemin?: string[]; titre?: string }>();
+        for (const j of out) {
+          if (j.platform !== "vinted" || j.action !== "republish" || j.inventaire_id == null) continue;
+          const pfC = (j.platform_fields as Record<string, unknown> | null) ?? {};
+          if (!["captured", "deleted"].includes(String(pfC["republish_step"] ?? ""))) continue;
+          const d = couleurRepublicationAPoser(pfC) as { action: string; chemin?: string[]; titre?: string } | null;
+          if (d) decisionsC.set(String(j.id), d);
+        }
+        const idsC = [...new Set(out.filter((j) => decisionsC.get(String(j.id))?.action === "poser").map((j) => Number(j.inventaire_id)))];
+        const attrsC = new Map<number, Record<string, unknown> | null>();
+        const depotC = new Map<number, string[]>();
+        if (idsC.length) {
+          const [{ data: fichesC }, { data: depotsC }] = await Promise.all([
+            lireParLots((lot) => userClient.from("inventaire").select("id, attributs").in("id", lot), idsC),
+            lireParLots((lot) => userClient.from("cross_post_jobs").select("inventaire_id, created_at, colors:platform_fields->colors")
+              .in("inventaire_id", lot).eq("platform", "vinted").eq("action", "publish").order("created_at", { ascending: false }).limit(1000), idsC),
+          ]);
+          for (const f of (fichesC ?? []) as Array<{ id: number; attributs: unknown }>) {
+            attrsC.set(Number(f.id), f.attributs && typeof f.attributs === "object" ? f.attributs as Record<string, unknown> : null);
+          }
+          // Le dépôt d'origine : la publication Vinted la plus récente du même article qui porte des couleurs.
+          for (const d of (depotsC ?? []) as Array<{ inventaire_id: number; colors: unknown }>) {
+            const cols = Array.isArray(d.colors) ? (d.colors as unknown[]).map((c) => String(c ?? "").trim()).filter(Boolean) : [];
+            if (cols.length && !depotC.has(Number(d.inventaire_id))) depotC.set(Number(d.inventaire_id), cols.slice(0, 2));
+          }
+        }
+        for (const j of out) {
+          const d = decisionsC.get(String(j.id));
+          if (!d) continue;
+          const pfC = { ...((j.platform_fields as Record<string, unknown> | null) ?? {}) };
+          const va = { ...((pfC["vintedAspects"] && typeof pfC["vintedAspects"] === "object" ? pfC["vintedAspects"] : {}) as Record<string, unknown>) };
+          if (d.action === "retirer") {
+            delete va["color"];
+            pfC["vintedAspects"] = va;
+            pfC["couleur_republication_sans_question"] = { ...((pfC["couleur_republication_sans_question"] ?? {}) as Record<string, unknown>),
+              retiree_le: new Date().toISOString(), motif_retrait: "la capture de l'annonce porte une couleur" };
+            j.platform_fields = pfC;
+            console.log(`[get-pending-jobs] republication Vinted ${String(j.id).slice(0, 8)} : la capture porte une couleur — celle posée par FillSell est retirée`);
+            continue;
+          }
+          const c = couleurRepublicationSansQuestion({
+            attrs: attrsC.get(Number(j.inventaire_id)) ?? null, couleursDepot: depotC.get(Number(j.inventaire_id)) ?? null,
+            titre: d.titre || String(j.title ?? ""),
+          }) as { couleur: string; source: string; de: string | null };
+          pfC["vintedAspects"] = { ...va, color: c.couleur };
+          pfC["couleur_republication_sans_question"] = { couleur: c.couleur, source: c.source, de: c.de,
+            capture_id: String(pfC["capture_id"] ?? ""), le: new Date().toISOString(), pose_par: "get-pending-jobs (_shared/vinted-couleur-marque-filet.js)" };
+          j.platform_fields = pfC;
+          console.log(`[get-pending-jobs] republication Vinted ${String(j.id).slice(0, 8)} : annonce sans couleur — « ${c.couleur} » (${c.source}${c.de ? `, de « ${c.de} »` : ""}), aucune question`);
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] couleur de republication Vinted : ${String((e as Error)?.message ?? e)} — servies telles quelles`);
+      }
+    }
 
     // ── TAILLE VINTED À LA **PUBLICATION** : NOMBRE → LETTRE (2026-09-15) ────
     // La republication ci-dessus servait déjà le libellé de la grille ; la
@@ -10643,6 +11049,52 @@ serve(async (req) => {
       if (titresTemperes) console.log(`[get-pending-jobs] user=${user.id} titres Vinted tempérés (majuscules, symboles) : ${titresTemperes}`);
     } catch (e) {
       console.warn(`[get-pending-jobs] tempérage des titres Vinted : ${String((e as Error)?.message ?? e)} — titres servis tels quels`);
+    }
+
+    // ── (25/10, N3) UN TITRE VINTED SERVI N'A JAMAIS DE SAUT DE LIGNE (Vincent A., job 9138772c) ──
+    // « Champavert, le lycanthrope\nPar Pétrus Borel » : le champ Titre de Vinted tient sur une ligne et
+    // SUPPRIME le saut sans espace — l'annonce est née « …lycanthropePar… », que les comparateurs de copie
+    // (ponctuation → espace : « …lycanthrope par… ») n'ont pas reconnue ; dépôt d'issue inconnue resservi,
+    // redéposé : DEUX annonces en ligne. 83 fiches Vinted en stock (11 comptes) ont un titre « mot\nmot ».
+    // Règle, pour TOUTES les versions d'extension (_shared/titre-copie-vinted.js) : tout titre servi pour
+    // un dépôt Vinted a ses sauts de ligne remplacés par une espace — le titre TAPÉ et le titre COMPARÉ à
+    // la copie deviennent le même, et la base (recreation_vinted_titre_norm : saut → espace) le reconnaît :
+    //   · job.title : la publication le tape et le compare tel que servi ;
+    //   · la recréation d'une republication (une-passe 'captured' et reprise 'deleted') : l'extension
+    //     ≥ 0.6.128 tape ET compare titre_saisi d'abord (construireJobRecreation, titreSaisiRecreation),
+    //     sinon le titre CAPTURÉ — qu'elle relit elle-même en base (vinted_republish_captures), donc hors
+    //     de portée du service : le seul levier serveur est titre_saisi, servi quand la copie (ou la
+    //     réponse de la personne) porte un saut de ligne (trace titre_sans_saut_de_ligne). Une extension
+    //     < 0.6.128 tape le titre capturé tel quel : aucun levier serveur (aucun poste actif ne l'est, 25/10).
+    // Rien n'est écrit en base ici ; une écriture de l'extension peut y ranger ce titre_saisi : c'est le même
+    // titre, à une espace près. Placé APRÈS la casse (qui pose titre_saisi depuis la copie) : il la voit.
+    try {
+      let titresUneLigne = 0;
+      for (const j of out as unknown as Array<Record<string, unknown>>) {
+        if (j.platform !== "vinted" || (j.action !== "publish" && j.action !== "republish")) continue;
+        if (typeof j.title === "string" && titreAUnSautDeLigne(j.title)) {
+          j.title = titreSansSautDeLigne(j.title);
+          titresUneLigne++;
+        }
+        if (j.action !== "republish") continue;
+        const pfJ = (j.platform_fields ?? {}) as Record<string, unknown>;
+        const saisi = typeof pfJ["titre_saisi"] === "string" ? (pfJ["titre_saisi"] as string) : "";
+        const snap = (pfJ["republish_snapshot"] && typeof pfJ["republish_snapshot"] === "object")
+          ? (pfJ["republish_snapshot"] as Record<string, unknown>) : {};
+        const capture = typeof snap["titre"] === "string" ? (snap["titre"] as string) : "";
+        const source = saisi.trim() ? saisi : capture;
+        if (!titreAUnSautDeLigne(source)) continue;
+        const apres = titreSansSautDeLigne(source);
+        if (!apres) continue;
+        j.platform_fields = {
+          ...pfJ, titre_saisi: apres,
+          titre_sans_saut_de_ligne: { le: new Date().toISOString(), avant: source.slice(0, 200), apres, source: saisi.trim() ? "titre_saisi" : "copie", par: "get-pending-jobs (service)" },
+        };
+        titresUneLigne++;
+      }
+      if (titresUneLigne) console.log(`[get-pending-jobs] user=${user.id} titres Vinted servis sur une ligne (saut de ligne → espace) : ${titresUneLigne}`);
+    } catch (e) {
+      console.warn(`[get-pending-jobs] titres Vinted sur une ligne : ${String((e as Error)?.message ?? e)} — titres servis tels quels`);
     }
 
     // ── « UNIVERS » ET « PRODUIT » LEBONCOIN : À NOUS DE LES POSER (2026-09-11) ──
@@ -12428,6 +12880,19 @@ serve(async (req) => {
       j.platform_fields = { ...pfT, taille: enFr.valeur, taille_servie: { de: String(pfT.taille), vers: enFr.valeur, motif: enFr.motif, pose_par: "get-pending-jobs" } };
     }
 
+    // (25/10) La dernière porte (voir « LEBONCOIN, RÉSERVÉ AUX ADRESSES EN FRANCE » plus haut) : rien d'une plateforme
+    // écartée, ni Leboncoin d'une adresse hors de France, ne part — même remis en file après la première garde.
+    if (gardeHorsService) {
+      const garde = gardeHorsService;
+      const avant = out.length;
+      out = out.filter((j) => {
+        if (!garde(j as unknown as Record<string, unknown>)) return true;
+        idsHorsService.add(String(j.id));
+        return false;
+      });
+      if (out.length !== avant) console.log(`[get-pending-jobs] userId=${user.id} : ${avant - out.length} job(s) retenu(s) à la dernière porte (plateforme écartée ou Leboncoin hors de France)`);
+    }
+
     const _outIds = new Set(out.map((j) => String(j.id)));
     const _nowMs = Date.now();
     // ── (18/10, zéro friction, point A — décision de Nico) ────────────────────
@@ -12444,6 +12909,9 @@ serve(async (req) => {
       // (22/10 soir, point 6) Une file EN PAUSE ne tient pas le PC éveillé : seuls les retraits et les
       // republications engagées (servis malgré la pause) comptent.
       if (idsEnPause.has(String(j.id))) return false;
+      // (25/10) Ni une plateforme écartée par la personne, ni Leboncoin d'une adresse hors de France : jamais servis,
+      // ils ne tiennent pas le PC éveillé.
+      if (idsHorsService.has(String(j.id))) return false;
       return !idsAutrePoste.has(String(j.id));
     }).length;
     const travailRetenu = heldSync + heldBacklog;
@@ -12567,6 +13035,8 @@ serve(async (req) => {
       // depop_interdits (09/10 soir) : dépôts Depop d'une catégorie interdite par Depop.
       depop_interdits: heldDepopInterdit,
       beebs_sans_identifiant_retenus: heldBeebsSansIdentifiant,
+      // (25/10, DeadRoz) retraits Beebs en vérification depuis plus de 72 h, relevé inchangé : servis toutes les 12 h.
+      beebs_verification_longue_retenus: heldBeebsVerificationLongue,
       retraits_point1_retenus: heldPreuvesRetraitsPoint1,
       retraits_point1_motif: heldPreuvesRetraitsPoint1 ? MOTIF_ATTENTE_PREUVES_POINT1 : null,
       // Retraits/republications Vinted retenus : l'article appartient a une autre
@@ -12627,6 +13097,12 @@ serve(async (req) => {
       releves_attente_republication: [...releveAttendRepublication.entries()].filter(([, id]) => id).map(([pf]) => pf),
       // (22/10 soir, point 8) Publications en attente de la lecture de l'annonce d'origine.
       jobs_retenus_lecture_origine: heldLectureOrigine,
+      // (25/10, Louis) Tâches retenues ce cycle pour que la lecture d'origine demandée par la personne passe devant.
+      lectures_origine_devant: heldLecturesOrigine,
+      // (25/10) Publications/republications d'une plateforme écartée, laissées en l'état ; jobs Leboncoin clos parce que
+      // l'adresse de remise est hors de France.
+      jobs_plateforme_ecartee: heldPlateformeEcartee,
+      lbc_hors_france_clos: closLbcHorsFrance,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);

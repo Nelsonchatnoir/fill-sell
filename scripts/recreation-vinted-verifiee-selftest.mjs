@@ -8,7 +8,7 @@
 import { readFileSync } from "node:fs";
 import {
   decisionVerificationRecreation, recreationAVerifier, copiesProbables, releveQualifiant, titreNorm, retraitLe, envoisDe,
-  ATTENTE_RELEVE_MIN, MESSAGE_ATTENTE,
+  ATTENTE_RELEVE_MIN, MESSAGE_ATTENTE, MESSAGE_DEPOT_INCERTAIN, depotIncertainApresEnvoi, messageQuestionDepotIncertain,
 } from "../supabase/functions/_shared/recreation-vinted-verifiee.js";
 import { heureVintedDuRetrait, fusionnerEnvois, memesEnvois } from "../supabase/functions/_shared/recreation-vinted-envois.js";
 
@@ -84,6 +84,57 @@ console.log("Six heures sans relevé");
 const d5 = decisionVerificationRecreation(job({ ...pfLevis, recreation_attente_releve: { depuis: "2026-10-18T07:00:00Z" } }),
   { releves: [], fiches: [], maintenant: T("13:45:00") });
 ok(d5?.action === "question" && /à l'aveugle/.test(d5.error), "au-delà de 6 h sans relevé : la question honnête");
+
+// ── (25/10) Vincent A., job 9138772c : retrait 18:52:54, envoi 18:53:11 (Paris), onglet renvoyé sur
+// /member, copie « Champavert, le lycanthropePar Pétrus Borel » non reconnue → depot_incertain ; resservi
+// 15 min plus tard (compte sans mur de brouillons, extension 0.6.131), second envoi à 19:46:01 → deux annonces.
+console.log("(25/10) Dépôt d'issue inconnue : jamais un second envoi sans preuve d'absence (Vincent A., 9138772c)");
+const V = (h) => Date.parse(`2026-10-24T${h}Z`);
+const TITRE_NL = "Champavert, le lycanthrope\nPar Pétrus Borel";
+const pfChamp = {
+  republish_step: "deleted", vinted_item_id: "3532781567", vinted_account_id: "21011125",
+  suppression_verdict: { conclusion: "supprimee", date_serveur: "2026-10-24T16:52:54.000Z" },
+  deleted_at: "2026-10-24T16:52:54.000Z", deleted_at_serveur: "2026-10-24T16:52:54.000Z", deleted_at_client: "2026-10-24T16:52:59.341Z",
+  recreation_envois: ["2026-10-24T16:52:54.000Z", "2026-10-24T16:53:11.557Z"],
+  depot_parti_vers_profil: { at: "2026-10-24T16:53:12.100Z", url: "https://www.vinted.fr/member/21011125" },
+  depot_incertain: { at: "2026-10-24T16:53:20.000Z", motif: "redirection_profil_sans_copie_lue" },
+  republish_snapshot: { titre: TITRE_NL },
+};
+const jobV = (pf, extra = {}) => ({ id: "9138772c", platform: "vinted", action: "republish", status: "pending",
+  inventaire_id: 1792328734917999, title: TITRE_NL, platform_fields: pf, ...extra });
+const copieChamp = { id: 1792842213155002, vinted_item_id: "10514173498", titre: "Champavert, le lycanthropePar Pétrus Borel",
+  listed_at_guess: "2026-10-24T16:53:11Z", vinted_account_id: "21011125" };
+const releveGeste = (h) => ({ id: "rv", kind: "dressing", status: "done", declencheur: "bouton", started_at: `2026-10-24T${h}Z`, items_vus: 312, total_entries: 312 });
+const releveAutoV = { ...releveGeste("17:30:00"), id: "ra", declencheur: "serveur:quotidien" };
+ok(depotIncertainApresEnvoi(pfChamp, V("16:53:11.557"))?.motif === "redirection_profil_sans_copie_lue", "le dépôt incertain suit le dernier envoi");
+const v1 = decisionVerificationRecreation(jobV(pfChamp), { releves: [], fiches: [], maintenant: V("17:08:30"), pageUneAveugle: false });
+ok(v1?.action === "retenir" && v1.error === MESSAGE_DEPOT_INCERTAIN && v1.platform_fields.recreation_attente_releve?.motif === "depot_incertain",
+  "15 min après, compte SANS mur de brouillons (0.6.131) : RETENUE — c'est là que partait le second envoi", JSON.stringify(v1));
+ok(/vérifie que ta nouvelle annonce est bien en ligne avant tout nouvel envoi/.test(MESSAGE_DEPOT_INCERTAIN) && !/relance/i.test(MESSAGE_DEPOT_INCERTAIN), "message vrai, sans geste demandé");
+const v2 = decisionVerificationRecreation(jobV(v1.platform_fields), { releves: [releveAutoV], fiches: [], maintenant: V("19:46:00"), pageUneAveugle: false });
+ok(v2?.action === "retenir", "à 20:46 Paris, relevé AUTOMATIQUE seulement : toujours retenue (il n'importe aucune annonce neuve)");
+const v3 = decisionVerificationRecreation(jobV(v1.platform_fields), { releves: [releveGeste("17:20:00")], fiches: [copieChamp], maintenant: V("17:40:00"), pageUneAveugle: false });
+ok(v3?.action === "question" && /10514173498/.test(v3.error), "relevé de la personne qui importe la copie « …lycanthropePar… » : reconnue (memeTitre), la question — rien de redéposé");
+const v4 = decisionVerificationRecreation(jobV(v1.platform_fields), { releves: [releveGeste("17:20:00")], fiches: [], maintenant: V("17:40:00"), pageUneAveugle: false });
+ok(v4?.action === "servir" && v4.platform_fields.recreation_verifiee?.apres === "depot_incertain", "relevé COMPLET de la personne, ≥ 12 min après l'envoi, sans copie : preuve d'absence, l'essai suivant part (une fois)");
+ok(decisionVerificationRecreation(jobV(v1.platform_fields), { releves: [{ ...releveGeste("17:20:00"), items_vus: 200 }], fiches: [], maintenant: V("17:40:00"), pageUneAveugle: false })?.action === "retenir",
+  "relevé incomplet : pas une preuve");
+const v5 = decisionVerificationRecreation(jobV({ ...v1.platform_fields, recreation_attente_releve: { depuis: "2026-10-24T17:08:30.000Z", essai: "2026-10-24T16:53:11.557Z", motif: "depot_incertain" } }),
+  { releves: [], fiches: [], maintenant: V("23:10:00"), pageUneAveugle: false });
+ok(v5?.action === "question" && v5.platform_fields.needs_user_source === "recreation_deja_partie" && /le 24\/10 18:53/.test(v5.error) && /affiché ton profil/.test(v5.error),
+  "6 h sans preuve : la question recreation_deja_partie, heure de l'envoi à Paris, motif vrai", v5?.error);
+ok(/Ton annonce a été envoyée à Vinted le 24\/10 18:53/.test(messageQuestionDepotIncertain(V("16:53:11.557"))), "heure de Paris (UTC+2 le 24/10)");
+ok(!/affiché ton profil/.test(messageQuestionDepotIncertain(V("16:53:11.557"), "autre")), "autre motif : on ne parle pas du profil");
+ok(decisionVerificationRecreation(jobV({ ...pfChamp, depot_incertain: { at: "2026-10-24T16:40:00Z", motif: "redirection_profil_sans_copie_lue" } }),
+  { releves: [], fiches: [], maintenant: V("17:08:30"), pageUneAveugle: false }) === null, "un dépôt incertain d'un envoi PRÉCÉDENT ne retient pas : servie comme avant");
+ok(depotIncertainApresEnvoi({ ...pfChamp, depot_incertain: { at: "2026-10-24T16:51:30Z" } }, V("16:53:11.557")) !== null, "horloge du poste en retard de 2 min : toujours vu");
+ok(decisionVerificationRecreation(jobV({ ...pfChamp, derniere_relance_manuelle: "2026-10-24T23:30:00Z" }), { releves: [], fiches: [], maintenant: V("23:31:00"), pageUneAveugle: false }) === null,
+  "la personne a relancé APRÈS le dépôt incertain : elle a tranché, servie comme avant (l'extension relit le dressing avant tout dépôt)");
+ok(recreationAVerifier(jobV(pfChamp, { status: "published" })) === null, "copie rattachée (le job quitte 'deleted') : plus rien à retenir");
+ok(titreNorm(TITRE_NL) !== titreNorm(copieChamp.titre) && copiesProbables(jobV(pfChamp), [copieChamp]).length === 1,
+  "la normalisation seule ne reconnaissait pas la copie ; memeTitre, si");
+ok(copiesProbables(jobV({ ...pfChamp, titre_saisi: "Champavert lycanthrope (Borel)" }), [{ ...copieChamp, titre: "Champavert lycanthrope (Borel)" }]).length === 1,
+  "la copie tapée avec le titre de la recréation (titre_saisi) est reconnue aussi");
 
 console.log("Normalisation du titre (identique à la base)");
 ok(titreNorm("Short jean Levi’s  levi-Strauss 24x32") === titreNorm("short jean levi s levi strauss 24x32"), "ponctuation et casse ignorées");

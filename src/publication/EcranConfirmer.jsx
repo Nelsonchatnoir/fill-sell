@@ -29,9 +29,10 @@ import CarteRayon from "../components/CarteRayon";
 import { CartePortDepop } from "../components/PortDepop";
 import { CartePoidsLeboncoin } from "../components/PoidsLeboncoin";
 
+// (25/10) hors_france : Leboncoin d'une adresse de remise hors de France (moteur/regles.calculerExclusions).
 const LIBELLE_MOTIF = {
-  fr: { sans_adresse: "adresse de remise manquante", interdite: "produit refusé par la plateforme", sans_annonce: "aucune annonce rédigée", champ_manquant: "attend une réponse" },
-  en: { sans_adresse: "pickup address missing", interdite: "product refused by the platform", sans_annonce: "no listing written", champ_manquant: "waiting for an answer" },
+  fr: { sans_adresse: "adresse de remise manquante", interdite: "produit refusé par la plateforme", sans_annonce: "aucune annonce rédigée", champ_manquant: "attend une réponse", hors_france: "réservé aux adresses en France" },
+  en: { sans_adresse: "pickup address missing", interdite: "product refused by the platform", sans_annonce: "no listing written", champ_manquant: "waiting for an answer", hors_france: "France-only addresses" },
 };
 
 export default function EcranConfirmer({ m }) {

@@ -19,7 +19,12 @@
 //      casse ignorés ; « pull » n'est pas « pullover » ;
 //   7. generate-listing n'appelle la seconde passe QUE pour l'encart eBay
 //      (mode explicite) — le canal générique Vinted/Leboncoin/Beebs garde la
-//      seule première passe.
+//      seule première passe ;
+//   8. (25/10, N5) une TAILLE est une liste fermée : jamais de seconde passe,
+//      les 24 « Taille » fausses de 30 jours (« Classic Fit », « Col rond »,
+//      « Veste de ski »…) refusées sur la liste réelle de leur catégorie, la
+//      question groupée et remplirAspects aussi ; « Taille unique » seulement
+//      quand la fiche le dit.
 //
 //   deno run --allow-read scripts/ebay-aspects-seconde-passe-selftest.ts
 import {
@@ -164,6 +169,98 @@ console.log("\n7. generate-listing : la seconde passe pour l'encart eBay seuleme
   ok(/if \(!modeEbayExplicite\) \{\s*const ia = await resoudreAspectsIA\(/.test(bloc), "sans mode explicite : première passe seule, comme avant");
   ok(/await completerAspectsIA\(demandes, contexteIa, optsIa\)/.test(bloc), "avec mode explicite : completerAspectsIA");
   ok(/feature: "ebay_aspects_ia"/.test(bloc), "mesure journalisée (usage_logs ebay_aspects_ia)");
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 8. (25/10, N5) UNE TAILLE EST UNE LISTE FERMÉE — LES 24 « TAILLE » FAUSSES DE 30 JOURS
+// ═══════════════════════════════════════════════════════════════════════════
+// usage_logs ebay_aspects_ia du 11/10 au 24/10 : 24 « Taille » posées par la seconde passe, toutes hors de la
+// liste eBay de leur catégorie (listes RÉELLES : scripts/fixtures/ebay-tailles-listes-2026-10-25.json). Titre :
+// celui de l'article dans l'inventaire (relu le 25/10) ; absent, le mot de l'IA lui-même (le pire cas : il
+// se « lit » dans le texte).
+console.log("\n8. (25/10, N5) Une taille : liste fermée, jamais de seconde passe — les 24 valeurs fausses");
+{
+  const { estAspectDeTaille, tailleRetenueDansLaListe, completerAspectsIAGroupe } = await import("../supabase/functions/_shared/ebay-aspects-ia.ts");
+  const LISTES = JSON.parse(await Deno.readTextFile(new URL("./fixtures/ebay-tailles-listes-2026-10-25.json", import.meta.url))).categories as Record<string, { mode: string; valeurs: string[] }>;
+  const CORPUS: Array<[string, string | null, string]> = [
+    ["57885", "Gants de ski enfant noir", "Gants de ski enfant"],
+    ["63866", "Cardigan blanc tricot fin manches longues", "Cardigan blanc tricot fin manches longues"],
+    ["63863", "Jean noir large femme coupe droite", "Jean noir large coupe droite"],
+    ["57988", "Veste coupe-vent Tommy Hillfiger bleu marine blanc rouge homme", "Veste de sport"],
+    ["57989", null, "Relaxed fit"],
+    ["53159", "Chemise rose à rayures blanches", "Manches longues, coupe ajustée"],
+    ["11484", "Pull col V noir", "col V"],
+    ["63866", "Pull", "Pull col rond manches longues"],
+    ["63866", "Pull", "Pull col rond manches longues"],
+    ["11484", "Pull motif géométrique gris bleu - taille petit : voir mesures sur photo", "Pull"],
+    ["11484", "Pull col rond bleu marine", "Col rond"],
+    ["63866", "Pull sans manches col roulé gris clair avec boutons", "Pull sans manches col roulé"],
+    ["11484", "Pull col V coton beige", "Pull col V"],
+    ["185101", "Polo Ralph Lauren Classic Fit bleu ciel manches courtes", "Classic Fit"],
+    ["11484", "Pull Weird Fish bleu turquoise tricot gaufré col rond", "Col rond"],
+    ["63864", "Jupe & Other Stories velours bordeaux boutons Paris Atelier", "Jupe courte"],
+    ["185079", "Veste de ski Dare2B Morgane noir et vert", "Veste de ski"],
+    ["57988", null, "Coupe-vent"],
+    ["185702", "Veste Adidas Originals 3 Stripes noire avec bandes latérales", "Veste de survêtement"],
+    ["63866", null, "Pull vintage en lin"],
+    ["57988", "Parka noire homme", "Parka"],
+    ["185708", "Ensemble football Buriram United rose et noir", "Ensemble football"],
+    ["57988", "Veste de ski O'Neill Firewall blanc et rouge", "Veste de ski"],
+    ["53159", "Chemise Sandro blanche manches longues", "Manches longues"],
+  ];
+  ok(CORPUS.length === 24 && CORPUS.every(([c]) => LISTES[c]?.valeurs?.length > 0), "24 valeurs, chacune avec la liste réelle de sa catégorie");
+  const taille = (c: string) => ({ name: "Taille", mode: LISTES[c].mode, allowedValues: LISTES[c].valeurs });
+  let secondesAppels = 0, posees = 0, refuseesPremiere = 0;
+  for (const [c, titre, mot] of CORPUS) {
+    const ctx = { titre: titre ?? mot };
+    // a) la première passe ne trouve rien : AUCUNE seconde passe (avant le 25/10 : le mot était posé).
+    rejouer([{ Taille: null }, { Taille: mot }]);
+    const r = await completerAspectsIA([taille(c)], ctx, OPTS);
+    if (appels.length !== 1) secondesAppels++;
+    if (r.aspects.Taille) posees++;
+    // b) la première passe rend le mot : refusé, motif tracé.
+    rejouer([{ Taille: mot }]);
+    const r1 = await resoudreAspectsIA([taille(c)], ctx, OPTS);
+    if (!r1.aspects.Taille && r1.refuses.some((x) => x.name === "Taille" && x.motif === "taille hors de la liste eBay")) refuseesPremiere++;
+  }
+  ok(secondesAppels === 0, "aucune seconde passe sur une taille (24/24)", `${secondesAppels} seconde(s) passe(s)`);
+  ok(posees === 0, "aucune des 24 valeurs n'est posée", `${posees} posée(s)`);
+  ok(refuseesPremiere === 24, "rendues par la première passe : 24 refusées, motif « taille hors de la liste eBay »", `${refuseesPremiere}/24`);
+  // c) la question groupée (interrupteur ia_aspects_groupes) : même verdict.
+  let groupeesPosees = 0;
+  for (const [c, titre, mot] of CORPUS) {
+    rejouer([{ Taille: mot }]);
+    const g = await completerAspectsIAGroupe([taille(c)], { titre: titre ?? mot }, OPTS);
+    if (g.aspects.Taille || g.seconde_passe.includes("Taille")) groupeesPosees++;
+  }
+  ok(groupeesPosees === 0, "question groupée : aucune des 24 posée", `${groupeesPosees} posée(s)`);
+  // d) ce qui reste juste : une entrée de la liste, la règle des tailles, la taille unique écrite.
+  const L11484 = LISTES["11484"].valeurs;
+  rejouer([{ Taille: "M" }]);
+  ok((await completerAspectsIA([taille("11484")], { titre: "Pull col rond bleu marine taille M" }, OPTS)).aspects.Taille === "M", "« M » (dans la liste) : posé");
+  rejouer([{ Taille: "XXL" }]);
+  ok((await resoudreAspectsIA([taille("11484")], { titre: "Pull XXL" }, OPTS)).aspects.Taille === "2XL", "« XXL » → « 2XL » (règle des tailles)");
+  rejouer([{ Taille: "Taille unique" }]);
+  const tu = await resoudreAspectsIA([taille("57885")], { titre: "Gants de ski enfant noir" }, OPTS);
+  ok(!tu.aspects.Taille && tu.refuses.some((x) => /Taille unique/.test(x.motif)), "« Taille unique » que la fiche ne dit pas : refusée", JSON.stringify(tu));
+  rejouer([{ Taille: "Taille unique" }]);
+  ok((await resoudreAspectsIA([taille("57885")], { titre: "Bonnet noir taille unique" }, OPTS)).aspects.Taille === "Taille unique", "« Taille unique » que le titre dit : posée");
+  ok("valeur" in tailleRetenueDansLaListe("Taille", "Taille unique", L11484, { taille: "Unique" }), "« Taille unique » quand la fiche dit « Unique » : retenue");
+  ok(!("valeur" in tailleRetenueDansLaListe("Taille", "Taille unique", L11484, { taille: "M" })), "« Taille unique » quand la fiche dit « M » : refusée");
+  ok((tailleRetenueDansLaListe("Taille", "EU 42", LISTES["63861"].valeurs) as { valeur?: string }).valeur === "42", "« EU 42 » → « 42 » (préfixe que la liste n'écrit pas, règle du 01/10)");
+  // e) la consigne : liste fermée, jamais sans sa liste.
+  rejouer([{}]);
+  await resoudreAspectsIA([taille("185101")], { titre: "Polo Ralph Lauren Classic Fit" }, OPTS);
+  ok(/"Taille" — LISTE FERMÉE \(une TAILLE\)/.test(appels[0] ?? "") && /« Classic Fit », « Col rond », « Parka » ne sont pas des tailles/.test(appels[0] ?? ""), "la question dit : liste fermée, une taille, jamais un autre mot du titre", appels[0]);
+  rejouer([{ Taille: "M" }]);
+  const sansListe = await resoudreAspectsIA([{ name: "Taille", mode: "FREE_TEXT", allowedValues: [] }], { titre: "Pull taille M" }, OPTS);
+  ok(appels.length === 0 && !sansListe.aspects.Taille, "une taille sans sa liste n'est pas demandée (rien ne jugerait la réponse)");
+  // f) le nom EXACT : « Type de taille », « Tour de taille », « Taille d'écran » ne sont pas des tailles.
+  ok(["Taille", "Pointure", "Pointure EU", "Pointure UK", "Pointure US", "Pointure AU"].every(estAspectDeTaille), "Taille, Pointure, Pointure EU/UK/US/AU : des tailles");
+  ok(!["Type de taille", "Tour de taille", "Taille d'écran", "Taille (cm)", "Taille du chien", "taille", "Pointure FR"].some(estAspectDeTaille), "Type de taille, Tour de taille, Taille d'écran… : jamais");
+  rejouer([{ Style: null }, { Style: "Polaire" }]);
+  ok((await completerAspectsIA([{ name: "Style", mode: "FREE_TEXT", allowedValues: STYLE_63862 }], POLAIRE, OPTS)).aspects.Style === "Polaire", "un aspect qui n'est pas une taille garde sa seconde passe (cas Manon)");
+  // La voie API (assemblerAspects, remplirAspects) : scripts/ebay-refus-25129-selftest.ts (réseau et env simulés).
 }
 
 console.log(echecs ? `\n✗ ${echecs} échec(s)` : "\n✓ seconde passe eBay : tout est vert");

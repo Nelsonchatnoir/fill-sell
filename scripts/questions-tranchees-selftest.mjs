@@ -123,5 +123,70 @@ ok(/\["lbcPoidsGrammes", "estimated_parcel_weight"\]\.includes\(f\?\.field_key\)
 ok(/in\("status", \["needs_user", "pending"\]\)/.test(stock) && /poidsAutres\[a\.id\]/.test(stock), "… pour les annonces du lot en question ET en file, modifiable article par article");
 ok(/poids_exige/.test(qt) && /platform_settings_fusionner/.test(qt), "handler-watch note le compte sur preuve (« Poids du colis* » exigé)");
 
+// ── E. (25/10, Nico) Format du colis d'une republication Vinted : règle 9 ─────
+// Les trois jobs du 25/10 au matin, dans leur forme réelle (needs_user, prevol_negatif, étape captured).
+console.log("E. Format du colis d'une republication Vinted (règle 9)");
+const K = await charger("supabase/functions/_shared/vinted-colis-tranche.js");
+const questionColis = (offerts) => ({ field_key: "package_size_id", field_label: "Format du colis", platform: "vinted", input_type: "radio",
+  options_completes: true, allowed_values: offerts, target: { root: "colis_choisi", key: "libelle" } });
+const jobColis = (pf) => ({ id: "x", platform: "vinted", action: "republish", status: "needs_user",
+  error: "Republication en pause AVANT toute suppression — ton annonce est intacte sur Vinted. Le format du colis de ton annonce d'origine n'est pas proposé…",
+  platform_fields: { needs_user_source: "prevol_negatif", republish_step: "captured", champs_a_completer: ["Format du colis"],
+    needs_user_tick_le: "2026-10-25T07:33:01Z", needs_user_actif_ms: 5759294, needs_user_vu_le: "2026-10-23T10:42:01Z", needs_user_vu_erreur: "…", ...pf } });
+const paugues = jobColis({
+  capture_id: "17297", vinted_item_id: "10450175638",
+  capture_corrigee_par_la_fiche: { raisons: ["categorie_oeuvre"], avant: { categoryPath: ["Loisirs et collections", "Loisirs créatifs", "Peinture", "Toiles et panneaux"] } },
+  colis_bilan: { grille: ["11|5 kg", "12|10 kg", "13|20 kg", "14|30 kg"], id: 11, libelle: "5 kg", source: "defaut_vinted", voulu: { id: 3, libelle: "Grand" } },
+  needsUserField: questionColis(["5 kg", "10 kg", "20 kg", "30 kg"]), needsUserBoucle: { "colis_choisi.libelle": { n: 2, valeur: null } },
+  republish_snapshot: { capture_id: "17297", catalog_id: 5267, categoryPath: ["Maison", "Décoration", "Décorations murales", "Peintures"], colis: "Grand", package_size_id: 3 },
+  republish_copie_servie: { capture_id: 17297, etape: "captured" },
+});
+const a = K.colisRepublicationATrancher(paugues, "2026-10-25T10:00:00.000Z");
+const pa = a?.platform_fields ?? {};
+ok(a?.branche === "A" && pa.republish_step === "a_capturer", "A. paugues 110c27ae : rayon changé par FillSell (œuvre d'art) → retour à « a_capturer »");
+ok(!("capture_id" in pa) && !("republish_snapshot" in pa) && !("republish_copie_servie" in pa), "… capture, copie servie et copie retirées : l'annonce en ligne est relue");
+ok(!pa.needsUserField && !pa.needs_user_source && !pa.champs_a_completer && !pa.needs_user_tick_le && !("needsUserBoucle" in pa), "… la question, ses compteurs et sa mémoire anti-boucle retirés");
+ok(Boolean(pa.capture_corrigee_par_la_fiche) && pa.capture_corrigee_annulee?.capture_id === "17297" && pa.capture_corrigee_annulee?.rayon_annonce?.at(-1) === "Toiles et panneaux",
+  "… le drapeau qui empêche une nouvelle correction est GARDÉ ; trace capture_corrigee_annulee (rayon de l'annonce, ancienne capture)");
+ok(!pa.colis_choisi && !pa.needsUserResolved, "… aucun format choisi à la place de la personne (l'annonce garde le sien)");
+ok(K.colisRepublicationATrancher({ ...paugues, platform_fields: { ...pa, needs_user_source: "prevol_negatif", needsUserField: paugues.platform_fields.needsUserField, republish_step: "captured" } }) === null,
+  "… une seule passe par job (la capture déplacée n'est jamais tranchée)");
+// Après A : la NOUVELLE capture est celle de l'annonce, dans « Toiles et panneaux » (Petit/Moyen/Grand).
+const recapture = (bilan, offerts) => ({ ...paugues, platform_fields: { ...pa, needs_user_source: "prevol_negatif", republish_step: "captured", capture_id: "17999",
+  colis_bilan: bilan, needsUserField: questionColis(offerts),
+  republish_snapshot: { capture_id: "17999", catalog_id: 5267, categoryPath: ["Loisirs et collections", "Loisirs créatifs", "Peinture", "Toiles et panneaux"], colis: "Grand", package_size_id: 3 } } });
+ok(K.colisRepublicationATrancher(recapture({ grille: ["1|Petit", "2|Moyen", "3|Grand"], voulu: { id: 3, libelle: "Grand" } }, ["Petit", "Moyen", "Grand"])) === null,
+  "… recapturée dans son rayon : « Grand » est offert, rien à trancher (la republication part)");
+ok(K.colisRepublicationATrancher(recapture({ grille: ["1|Petit", "2|Moyen"], voulu: { id: 3, libelle: "Grand" } }, ["Petit", "Moyen"]))?.branche === "B",
+  "… recapturée, et Vinted a retiré « Grand » de SON rayon : la règle B joue (jamais A deux fois)");
+const romain = jobColis({
+  capture_id: "16439", vinted_item_id: "10365747734",
+  colis_bilan: { grille: ["1|Petit", "2|Moyen", "3|Grand"], id: 3, libelle: "Grand", source: "defaut_vinted", voulu: { id: 8, libelle: "5 kg" } },
+  needsUserField: questionColis(["Petit", "Moyen", "Grand"]), needsUserBoucle: { "colis_choisi.libelle": { n: 2, valeur: null } },
+  republish_snapshot: { capture_id: "16439", catalog_id: 211, categoryPath: ["Femmes", "Chaussures", "Bottes", "Bottes hautes"], colis: "5 kg", package_size_id: 8 },
+});
+const b = K.colisRepublicationATrancher(romain, "2026-10-25T10:00:00.000Z");
+const pb = b?.platform_fields ?? {};
+ok(b?.branche === "B" && pb.colis_choisi?.libelle === "Grand" && pb.needsUserResolved?.["colis_choisi.libelle"] === "Grand",
+  "B. Romain c28e2c60 : id 8 retiré de « Bottes hautes » → « Grand », posé comme une réponse (colis_choisi, needsUserResolved)");
+ok(pb.republish_step === "captured" && pb.capture_id === "16439" && !pb.needsUserField && !pb.needs_user_source,
+  "… même étape, même capture ; la question fermée, rien n'est retiré par cette règle");
+ok(pb.colis_tranche_par_fillsell?.origine?.id === 8 && pb.colis_tranche_par_fillsell?.choix?.id === 3 && pb.colis_tranche_par_fillsell?.grille?.join() === "1|Petit,2|Moyen,3|Grand"
+  && pb.colis_tranche_par_fillsell?.regle === "plus_grand_offert", "… trace colis_tranche_par_fillsell : format d'origine, grille du jour, choix");
+ok(K.colisRepublicationATrancher({ ...romain, platform_fields: { ...pb, needs_user_source: "prevol_negatif", needsUserField: romain.platform_fields.needsUserField } }) === null, "… une seule passe par job");
+ok(K.formatColisParCapacite(3, [{ id: 11, libelle: "5 kg" }, { id: 12, libelle: "10 kg" }]).id === 11, "capacité : « Grand » face au poids → le plus petit qui suffit (5 kg)");
+ok(K.formatColisParCapacite(13, [{ id: 8, libelle: "5 kg" }, { id: 9, libelle: "10 kg" }, { id: 10, libelle: "20 kg" }]).id === 10, "capacité : 20 kg (13) face à 8/9/10 → 20 kg (10)");
+ok(K.formatColisParCapacite(14, [{ id: 8, libelle: "5 kg" }, { id: 9, libelle: "10 kg" }]).regle === "plus_grand_offert", "capacité : rien d'assez grand → le plus grand offert");
+ok(K.formatColisParCapacite(8, [{ id: 1, libelle: "Petit" }, { id: 7, libelle: "Inconnu" }]) === null, "un id de rang inconnu dans la grille → la question reste");
+const sansVoulu = { ...romain, platform_fields: { ...romain.platform_fields, colis_bilan: { ...romain.platform_fields.colis_bilan, voulu: undefined }, republish_snapshot: { ...romain.platform_fields.republish_snapshot, package_size_id: null } } };
+ok(K.colisRepublicationATrancher(sansVoulu) === null, "format d'origine inconnu → la question reste (rien de deviné)");
+ok(K.colisRepublicationATrancher({ ...romain, platform_fields: { ...romain.platform_fields, republish_step: "deleted", deleted_at: "2026-10-25T09:00:00Z" } }) === null, "étape « deleted » : jamais par cette règle");
+ok(K.colisRepublicationATrancher({ ...romain, action: "publish" }) === null && K.colisRepublicationATrancher({ ...romain, platform: "leboncoin" }) === null, "publication, autre plateforme : jamais");
+ok(K.colisRepublicationATrancher({ ...romain, platform_fields: { ...romain.platform_fields, colis_bilan: { ...romain.platform_fields.colis_bilan, grille: ["1|Petit", "2|Moyen", "3|Grand", "8|Lourd (2 kg et +)"] } } }) === null,
+  "format d'origine OFFERT par la grille : la question a une autre cause, rien n'est tranché");
+ok(/"prevol_negatif"\]\)/.test(qt) && /colisRepublicationATrancher\(j, maintenant\)/.test(qt)
+  && /\.eq\("id", j\.id\)\.eq\("status", "needs_user"\)\.eq\("platform_fields->>republish_step", "captured"\)/.test(qt),
+  "questions-tranchees : la source prevol_negatif est lue, la règle 9 écrit en compare-and-swap (needs_user, étape captured)");
+
 console.log(ko ? `\n${ko} échec(s)` : "\nTout est vert.");
 process.exit(ko ? 1 : 0);

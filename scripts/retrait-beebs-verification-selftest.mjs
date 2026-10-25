@@ -40,7 +40,9 @@ ok(Boolean(re && !re.test("Page de l'annonce sans bouton « Supprimer l'annonce 
   "jamais sur « Mes annonces » illisible (aucune preuve que l'annonce y est)");
 
 console.log("3. LA PREUVE EST LE RELEVÉ, JAMAIS LE TEXTE SEUL");
-const bloc = ujs.slice(ujs.indexOf("const RETRAIT_VERIF_BEEBS_RE"), ujs.indexOf("const RETRAIT_VERIF_BEEBS_RE") + 4000);
+// (25/10, DeadRoz) Le bloc porte aussi la vérification de plus de 72 h (message daté, service espacé —
+// scripts/retrait-beebs-verification-longue-selftest.mjs) : fenêtre élargie, mêmes contrôles.
+const bloc = ujs.slice(ujs.indexOf("const RETRAIT_VERIF_BEEBS_RE"), ujs.indexOf("const RETRAIT_VERIF_BEEBS_RE") + 6000);
 ok(/\.from\("annonces_plateforme"\)/.test(bloc) && /=== "en_verification"/.test(bloc), "seul le relevé « en_verification » du même numéro arme l'attente");
 ok(/jrow\?\.action === "delete" && jrow\.platform === "beebs"/.test(bloc), "seulement un retrait Beebs");
 ok(/needsUserAttempts: Number\(pfBase\.needsUserAttempts \?\? 0\) \|\| 0/.test(bloc), "aucune tentative consommée (compteur de la base)");

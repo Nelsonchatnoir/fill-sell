@@ -2,6 +2,9 @@ import { memo, useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { questionOplaFinale } from '../../supabase/functions/_shared/opla-questions.js';
 // (02/10) Sortie d'Opla : une publication/republication Opla ne se relance plus.
 import { estPublicationOpla, MESSAGE_OPLA_INDISPONIBLE, sortieOplaActive } from '../../supabase/functions/_shared/opla-sortie.js';
+// (25/10) Leboncoin d'une adresse hors de France, eBay inscrit hors d'eBay France : jamais relancés, ni alerte.
+import { estClotureLbcHorsFrance, estPublicationLbc, messageLbcHorsFrance } from '../../supabase/functions/_shared/lbc-adresse-france.js';
+import { estClotureEbayHorsFrance, ebaySiteHorsFrance, texteEbayHorsFrance } from '../../supabase/functions/_shared/ebay-hors-france.js';
 import { createPortal } from 'react-dom';
 // RefreshCw / ChevronDown / ChevronUp retirés le 2026-09-04 avec RepubBlocActif
 // et RepubTerminees, leurs seuls lecteurs. ⚠️ eslint ne les signalait pas :
@@ -529,6 +532,9 @@ const RELANCE_MANUELLE_COOLDOWN_MS = 10 * 60 * 1000;
 // payé et laisserait deux jobs vivants sur la même plateforme.
 function relanceManuelleInfo(job, jobsArticle) {
   if (!['failed', 'cancelled', 'needs_user'].includes(job?.status)) return null;
+  // (25/10) Close parce que la plateforme n'est pas possible pour ce compte (Leboncoin d'une adresse hors de France,
+  // eBay inscrit hors d'eBay France) : aucune relance ne pourrait aboutir — aucun bouton, nulle part.
+  if (estClotureLbcHorsFrance(job) || estClotureEbayHorsFrance(job)) return null;
   // needs_user EN COURS chez la plateforme (2026-09-10) : la requête est
   // partie, une relance ferait le doublon — aucun bouton, nulle part.
   if (natureNeedsUser(job) === 'en_cours') return null;
@@ -5775,6 +5781,9 @@ const StockTab = memo(function StockTab({
   // calculé par App.jsx) : plateformes réellement SÉLECTIONNABLES, motif de
   // la case grisée, borne affichée. Transmis au stepper tels quels.
   plateformesOuvertes = [], oplaMotifGrise = 'fermee', oplaExtensionMin = null,
+  // (25/10, décision de Nico) Fermées à CE compte (App.jsx) : Leboncoin d'une adresse de remise hors de France
+  // (_shared/lbc-adresse-france.js). Ni proposée, ni relancée, ni alerte ; une annonce vivante se voit toujours.
+  plateformesFermees = [],
   // (02/10) Dressing Opla déjà synchronisé (useSortieOpla) : seul cas où Opla
   // garde sa ligne dans le bloc de relevé. Jamais proposée à la publication.
   oplaRelie = false,
@@ -6407,7 +6416,7 @@ const StockTab = memo(function StockTab({
         prixActuel: prixAnnonces[it.vinted_item_id] ?? (Number(it.sell) || null),
         // Les plateformes republiables MAINTENANT pour cet article (Vinted
         // seul tant que l'interrupteur serveur est à 0).
-        plateformes: plateformesRepubliables(it, jobsByInventaire[it.id] || [], { multiOuverte, plateformesOuvertes }),
+        plateformes: plateformesRepubliables(it, jobsByInventaire[it.id] || [], { multiOuverte, plateformesOuvertes, plateformesFermees }),
       })),
     });
   }
@@ -6641,7 +6650,8 @@ const StockTab = memo(function StockTab({
   const [sessionsCompte, setSessionsCompte] = useState(null);
   const [reglageAlertes, setReglageAlertes] = useState(null);
   // (23/10, point 2) « Je ne vends pas sur X » (platform_settings.plateformes_ecartees) : aucune alerte de connexion.
-  const [ecarteesCompte, setEcarteesCompte] = useState(null);
+  // (25/10) La liste LUE ; celle de la règle (ecarteesCompte, plus bas) y ajoute les plateformes fermées à ce compte.
+  const [ecarteesLues, setEcarteesCompte] = useState(null);
   // (18/10) La surveillance des relevés, PROUVÉE par les runs (RPC
   // surveillance_releves, migration 20261018190000 — le compte de la session,
   // jamais un autre) : boutique plus surveillée depuis > 24 h, annonces écartées
@@ -6696,6 +6706,12 @@ const StockTab = memo(function StockTab({
   const ebayApiCompte = useMemo(() => etatEbayApi(ebayCompte), [ebayCompte]);
   // ⛔ PAS « plateformesDuCompte » : c'est un import (utils/stockFiltres) appelé plus bas — l'ombre = écran blanc.
   const plateformesUtiliseesCompte = useMemo(() => plateformesUtilisees(Object.values(jobsByInventaire).flat(), items), [jobsByInventaire, items]);
+  // (25/10) Une plateforme FERMÉE à ce compte (Leboncoin d'une adresse de remise hors de France, App.jsx) ne dit
+  // jamais « connecte-toi » : elle compte comme écartée pour les alertes.
+  const ecarteesCompte = useMemo(
+    () => (plateformesFermees.length ? [...(ecarteesLues ?? []), ...plateformesFermees] : ecarteesLues),
+    [ecarteesLues, plateformesFermees],
+  );
   const alertesToutesDuCompte = useMemo(
     () => alertesDeCompte({ etats: etatsCompte, jobs: Object.values(jobsByInventaire).flat(), reglage: reglageAlertes, surveillance: surveillanceReleves,
       ebayApi: ebayApiCompte, ecartees: ecarteesCompte, utilisees: plateformesUtiliseesCompte }),
@@ -6783,7 +6799,7 @@ const StockTab = memo(function StockTab({
   // serveur est ouvert — la MÊME expression que la feuille et le bouton
   // (utils/republication.plateformesRepubliables).
   const repubSelectionnable = (i) => repubEtat(i) === 'ok'
-    || (multiOuverte && plateformesRepubliables(i, jobsByInventaire[i.id] || [], { multiOuverte: true, plateformesOuvertes }).some((p) => p !== 'vinted'));
+    || (multiOuverte && plateformesRepubliables(i, jobsByInventaire[i.id] || [], { multiOuverte: true, plateformesOuvertes, plateformesFermees }).some((p) => p !== 'vinted'));
   // Lit la liste COMPLÈTE (déclarée avant la lecture des brouillons) : sans
   // conséquence, un brouillon n'a par définition aucun job et repubEtat le rend
   // donc toujours 'ineligible' — il ne peut pas entrer dans un lot.
@@ -7151,9 +7167,12 @@ const StockTab = memo(function StockTab({
   // ── (06/10 soir) LEBONCOIN DEMANDE NOM ET PRÉNOM : UNE CARTE PAR COMPTE ──
   // Motif EXACT (_shared/lbc-identite.js) : ces tâches sortent des lignes par
   // article et deviennent UNE ligne de « À régler » (EcranIdentiteLbc).
+  // (25/10) Leboncoin fermé à ce compte (adresse de remise hors de France) : aucune carte Leboncoin à régler —
+  // ses dépôts sont clos par le serveur, rien n'y repartira.
+  const lbcFermee = plateformesFermees.includes('leboncoin');
   const identiteLbc = useMemo(
-    () => attentesIdentiteLbc(tousLesJobs).filter((j) => fichesToutes.has(String(j.inventaire_id))),
-    [tousLesJobs, fichesToutes],
+    () => (lbcFermee ? [] : attentesIdentiteLbc(tousLesJobs).filter((j) => fichesToutes.has(String(j.inventaire_id)))),
+    [tousLesJobs, fichesToutes, lbcFermee],
   );
   // ── (17/10) LEBONCOIN N'OFFRE PLUS QUE « VALIDER ET PAYER » À UN COMPTE PRO :
   //    UNE CARTE PAR COMPTE ── (_shared/lbc-forfait.js) Motif EXACT + compte
@@ -7165,8 +7184,8 @@ const StockTab = memo(function StockTab({
     [tousLesJobs],
   );
   const forfaitLbc = useMemo(
-    () => attentesForfaitLbc(tousLesJobs, compteLbcPro).filter((j) => fichesToutes.has(String(j.inventaire_id))),
-    [tousLesJobs, compteLbcPro, fichesToutes],
+    () => (lbcFermee ? [] : attentesForfaitLbc(tousLesJobs, compteLbcPro).filter((j) => fichesToutes.has(String(j.inventaire_id)))),
+    [tousLesJobs, compteLbcPro, fichesToutes, lbcFermee],
   );
   // ── (17/10) DEPOP DEMANDE LA CONFIGURATION DE VENDEUR : UNE CARTE PAR COMPTE ──
   // (_shared/vendeur-depop.js) Mur vu par l'extension ou publication retenue
@@ -7549,7 +7568,11 @@ const StockTab = memo(function StockTab({
   // ⛔ Jamais PLATEFORMES_STOCK directement : `pasEncore.opla` vaut TOUT le
   // stock d'un compte qui n'a pas Opla, et le chip promettrait une publication
   // qui n'existe pas pour lui.
-  const plateformesCompte = useMemo(() => plateformesDuCompte(plateformesOuvertes), [plateformesOuvertes]);
+  // (25/10) Sans les plateformes fermées à ce compte (Leboncoin d'une adresse hors de France, App.jsx).
+  const plateformesCompte = useMemo(
+    () => plateformesDuCompte(plateformesOuvertes).filter((p) => !plateformesFermees.includes(p)),
+    [plateformesOuvertes, plateformesFermees],
+  );
 
   // Quand un filtre OU un tri est actif, on repart de la liste COMPLÈTE
   // (stockFiltre) et on recoupe ici : filtrer ou trier APRÈS le slice de
@@ -7904,6 +7927,19 @@ const StockTab = memo(function StockTab({
       setAbandonBusy(false);
     }
   }
+  // ── (25/10) RIEN NE REPART VERS UNE PLATEFORME IMPOSSIBLE POUR CE COMPTE ──
+  // Leboncoin d'une adresse de remise hors de France (plateformesFermees, App.jsx) et eBay inscrit hors d'eBay
+  // France (site lu par ebay-account) : le serveur la refermerait aussitôt. La phrase vraie, rien d'autre — jamais
+  // « relance-la » (même règle que la sortie d'Opla ci-dessous).
+  function refusRelanceHorsFrance(job) {
+    if (estClotureLbcHorsFrance(job) || (plateformesFermees.includes('leboncoin') && estPublicationLbc(job))) return messageLbcHorsFrance(lang);
+    const siteEbay = ebayCompte?.voieApi && ebayCompte?.lu ? ebaySiteHorsFrance(ebayCompte?.etat?.ebay_site) : null;
+    const publicationEbay = job?.platform === 'ebay' && ['publish', 'republish'].includes(job?.action ?? 'publish');
+    if (estClotureEbayHorsFrance(job) || (publicationEbay && siteEbay?.horsFrance)) {
+      return texteEbayHorsFrance(siteEbay?.site ?? job?.platform_fields?.ebay_hors_france?.preuve, lang);
+    }
+    return null;
+  }
   // ── REPUBLIER UNE PUBLICATION JAMAIS CONFIRMÉE (2026-09-23 soir) ──────────
   // Le MÊME job repart en 'pending' — zéro débit, exactement comme la relance
   // d'un échec (relancerJobEchoue) : le contenu est déjà là. Les traces du
@@ -7915,6 +7951,7 @@ const StockTab = memo(function StockTab({
   async function republierSansConfirmation(job) {
     if (relanceBusy || !user?.id) return;
     if (estPublicationOpla(job) && !plateformesOuvertes.includes('opla')) { setRelanceMsg(lang === 'en' ? 'Opla is no longer available in FillSell.' : MESSAGE_OPLA_INDISPONIBLE); return; }
+    { const refus = refusRelanceHorsFrance(job); if (refus) { setRelanceMsg(refus); return; } }
     if (job?.status !== 'published' || job?.listing_url) {
       setRelanceMsg(lang === 'en' ? 'This listing already changed state — close and check its status.'
                                   : "Cette publication a déjà changé d'état — ferme et regarde son statut.");
@@ -8035,6 +8072,8 @@ const StockTab = memo(function StockTab({
     // (02/10, sortie d'Opla) Après la bascule (Opla plus « ouverte »), ni « relancer », ni « relancer par copie » : le
     // serveur la refermerait aussitôt. La phrase vraie, rien d'autre.
     if (estPublicationOpla(job) && !plateformesOuvertes.includes('opla')) { setRelanceMsg(lang === 'en' ? 'Opla is no longer available in FillSell.' : MESSAGE_OPLA_INDISPONIBLE); return; }
+    // (25/10) Ni Leboncoin d'une adresse hors de France, ni eBay inscrit hors d'eBay France (copie comprise).
+    { const refus = refusRelanceHorsFrance(job); if (refus) { setRelanceMsg(refus); return; } }
     setRelanceBusy(true); setRelanceMsg(null);
     try {
       if (mode === 'copie') {
@@ -9217,7 +9256,7 @@ const StockTab = memo(function StockTab({
     // ── Multiplateforme (2026-09-17) : les plateformes republiables
     // MAINTENANT (Vinted comprise) — une seule expression, celle de
     // la feuille et du lot. Le bouton existe dès qu'il y en a une.
-    const repubMaintenant=republishActif?plateformesRepubliables(item,jobsAll,{multiOuverte,plateformesOuvertes}):[];
+    const repubMaintenant=republishActif?plateformesRepubliables(item,jobsAll,{multiOuverte,plateformesOuvertes,plateformesFermees}):[];
     const repubEligibleTout=repubEligible||repubMaintenant.length>0;
     // Vocabulaire d'étape partagé pastille ↔ feuille (une seule
     // source : etapeRepublication). null = rien à afficher.
@@ -10083,7 +10122,7 @@ const StockTab = memo(function StockTab({
           {syncMultiOuverte ? (
             <BlocSynchro
               lang={lang} user={user} isNative={isNative} items={items} itemsAVerifier={itemsAVerifier} ouvert={syncMultiOuverte}
-              plateformes={plateformesDeReleve(plateformesOuvertes,oplaRelie)}
+              plateformes={plateformesDeReleve(plateformesOuvertes,oplaRelie).filter(p=>!plateformesFermees.includes(p))}
               extensionStatus={extensionStatus}
               onRattache={()=>{rafraichirApresSync();relireDoublons();}}
               lancerVinted={()=>{ try { lancerVintedRef.current?.(); } catch { /* la ligne Vinted dit le refus */ } }}
@@ -12280,7 +12319,7 @@ const StockTab = memo(function StockTab({
           onOublier={oublierPublication}
           onRepublier={republierSansConfirmation}
           onRemove={armRemoveJob}
-          plateformes={plateformesDeLArticle(jobsByInventaire[removeModalItem.id]||[],plateformesOuvertes)}
+          plateformes={plateformesDeLArticle(jobsByInventaire[removeModalItem.id]||[],plateformesOuvertes,plateformesFermees)}
           ctxBarres={ctxBarres}
           onOuvrirFile={()=>{setRemoveModalItem(null);setFileOuverte(true);}}
         />
@@ -12331,6 +12370,7 @@ const StockTab = memo(function StockTab({
           ebayCompte={ebayCompte}
           plateformesVisibles={plateformesVisibles}
           plateformesOuvertes={plateformesOuvertes}
+          plateformesFermees={plateformesFermees}
           oplaMotifGrise={oplaMotifGrise}
           oplaExtensionMin={oplaExtensionMin}
           // Les entrées « article » du moteur (déjà en ligne, Vinted libéré si
@@ -12383,7 +12423,7 @@ const StockTab = memo(function StockTab({
           // Chrome (identite-boutique.js) — l'écran le dit, nommément.
           boutiqueVinted={boutiquesVinted.length>=2&&boutiqueConnectee?.userId?(boutiqueConnectee.nom??(boutiqueConnectee.login?`@${boutiqueConnectee.login}`:null)):null}
           ctx={{
-            userId:user.id, supabase, lang, ebayCompte, plateformesVisibles, plateformesOuvertes,
+            userId:user.id, supabase, lang, ebayCompte, plateformesVisibles, plateformesOuvertes, plateformesFermees,
             oplaMotifGrise, oplaExtensionMin, isPremium, isPro, isBusiness,
             extensionNeverSeen, extensionLastSeenAt:extLastSeenBest, plateformesCompte:plateformesLotCompte,
           }}

@@ -207,6 +207,13 @@ console.log('\n4. Tailles vers Depop, fiche jamais écrasée (Johan, Louis)');
   const eq = new Function(`${src}; return depopTailleEquivalente;`)();
   verifier(eq('EU 38', 9, ['32', '34', '36', '38', '40']).valeur === '38' && eq('EUR 40', 81, ['38', '40']).valeur === '40', 'connecteur Depop : « EU 38 » = « 38 » sur les grilles EUR paires (9, 81, 40)');
   verifier(eq('33', 104, ['32', '33 (adult)']).valeur === '33 (adult)' && eq('W31', 62, ['31', '40']) === null && eq('EU 38', 62, ['38']) === null && eq('38', 9, ['38']) === null, 'jamais sur la grille 62 (W / EU mêlés : question) ; « 38 » nu inchangé');
+  // (25/10) Grilles 24 (bas femme), 32 (lingerie), 98 (manteaux et costumes homme) : déclarées « EUR » par Depop (filtre de
+  // recherche, observé). Sur la 24, la plage 24…34 est celle des TOURS DE TAILLE : jamais « EU 30 » → « 30 ».
+  const g24 = ['One size', 'XS', 'S', 'M', 'L', 'XL', 'XXL', '24', '25', '26', '27', '28', '29', '30', '31', '32', '33', '34', '36', '38', '40', '42', '44', '46', '48', 'Other'];
+  verifier(eq('EU 44', 24, g24)?.valeur === '44' && eq('EU 42', 24, g24)?.valeur === '42' && eq('EUR 36', 24, g24)?.valeur === '36', 'grille 24 : « EU 44 » = « 44 », « EU 42 » = « 42 » (00dca55c, 2818876e : les réponses données)');
+  verifier(eq('EU 30', 24, g24) === null && eq('EU 34', 24, g24) === null && eq('EU 24', 24, g24) === null && eq('W30', 24, g24) === null, 'grille 24 : jamais dans la plage des tours de taille (24…34) — la question reste');
+  verifier(eq('EU 40', 32, ['36', '38', '40', '1A', '2B'])?.valeur === '40' && eq('EUR 50', 98, ['46', '48', '50', '52'])?.valeur === '50', 'grilles 32 et 98 : « EU N » = « N »');
+  verifier(eq('EU 40', 56, ['38', '39', '40', '41']) === null && eq('EU 44', 62, g24) === null && eq('EU 37', 24, g24) === null && eq('M', 24, g24) === null, 'inchangées : grilles 56 et 62 (question), une taille absente de la grille, une lettre');
   const st = lire('src/tabs/StockTab.jsx');
   verifier(/if \(!k \|\| !val \|\| ficheLue == null \|\| dejaSurFiche\(k\) \|\| \/\^\(\?:autres\?\|other\)\$\/i\.test\(val\)\) return;/.test(st), '« Compléter » remplit une case VIDE de la fiche, ne réécrit jamais une valeur, jamais « Autre »');
   const gpj = lire('supabase/functions/get-pending-jobs/index.ts');

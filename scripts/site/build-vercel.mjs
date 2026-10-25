@@ -10,7 +10,7 @@
 //
 // Nommée « build:vercel » et non « build:web » (revue de la fondation, app
 // § 7) : la procédure des binaires parle de « build web, cap sync » pour
-// `npm run build` (scripts/binaires-2.9.62.mjs) ; un agent qui aurait lancé
+// `npm run build` (scripts/binaires.mjs) ; un agent qui aurait lancé
 // build:web pour le natif aurait buté sur la garde de dist/ sans comprendre.
 // Ce script ne sert QUE Vercel : en local, `npm run site:apercu`.
 import { spawnSync } from 'node:child_process';

@@ -194,7 +194,9 @@ await cas("processJob envoie la remise « Republier » au geste, avant retraits 
   assert.ok(i > 0 && i < BG.indexOf('if (job.action === "delete") return processDeleteJob(job, accessToken);'));
   assert.ok(BG.includes('"prevol_recreation_v1", "vinted_republier_v1"]'));
   assert.ok(BG.includes('if (job.action !== "delete" && !pf.remise_par_republier) {'), "la reprise d'un job figé ne le rattache jamais par son titre");
-  assert.equal(JSON.parse(lire("chrome-extension/manifest.json")).version, "0.6.142");
+  // (25/10) Le geste existe depuis la 0.6.142 : toute version suivante le porte (0.6.143 : lot du 25/10 matin).
+  const [a, b, c] = JSON.parse(lire("chrome-extension/manifest.json")).version.split(".").map(Number);
+  assert.ok(a > 0 || b > 6 || (b === 6 && c >= 142), "manifest ≥ 0.6.142");
 });
 await cas("get-pending-jobs : mis de côté avant les publications, rendu au seul poste « vinted_republier_v1 »", () => {
   const gpj = lire("supabase/functions/get-pending-jobs/index.ts");

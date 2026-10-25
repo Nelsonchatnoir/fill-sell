@@ -80,6 +80,9 @@ export default function ReglagesPage({
   currency, saveCurrency, devises,
   adresseLbc, setAdresseLbc,
   plateformesOuvertes,
+  // (25/10, décision de Nico) Fermées à ce compte (App.jsx, depuis l'adresse) : Leboncoin d'une adresse de remise
+  // hors de France. Sa ligne de « Mes plateformes » reste et dit pourquoi ; la republication ne la propose plus.
+  plateformesFermees = [],
   // (02/10) Dressing Opla synchronisé : Opla garde sa ligne (session,
   // autorisation) pour que la synchronisation continue. Sinon, plus d'Opla.
   oplaRelie = false,
@@ -115,7 +118,12 @@ export default function ReglagesPage({
   // (10/10) Les plateformes que l'app PROPOSE à ce compte (même réponse que la
   // publication) : la republication automatique Depop n'a de ligne que là où
   // Depop est ouverte (extension ≥ 0.6.106, utils/basculeOplaDepop.js).
-  const plateformesCompte = useMemo(() => plateformesDuCompte(plateformesOuvertes ?? []), [plateformesOuvertes]);
+  // (25/10) Sans Leboncoin pour une adresse de remise hors de France (plateformesFermees). `plateformesSession`,
+  // elle, la garde : sa ligne dit « réservé aux adresses en France ».
+  const plateformesCompte = useMemo(
+    () => plateformesDuCompte(plateformesOuvertes ?? []).filter((p) => !(plateformesFermees ?? []).includes(p)),
+    [plateformesOuvertes, plateformesFermees],
+  );
   const sessionsLocales = useSessionsPlateformes({ userId: user?.id, plateformes: plateformesSession });
   // La vérité serveur (2026-09-23) : c'est elle que l'écran Plateformes et le
   // compteur du hub affichent. Le calcul local reste le repli.
@@ -235,6 +243,8 @@ export default function ReglagesPage({
       resume: [adresseLbc?.cp, adresseLbc?.ville].filter(Boolean).join(' ').trim(),
     },
     setAdresseLbc,
+    // (25/10) Adresse de remise hors de France : Leboncoin n'est ni proposé ni tenté (Mes plateformes le dit).
+    lbcHorsFrance: (plateformesFermees ?? []).includes('leboncoin'),
     sessions, plateformesSession, verite,
     // (02/10) Opla encore proposée à la publication (avant la sortie du 10/10).
     oplaOuverte: (plateformesOuvertes ?? []).includes('opla'),

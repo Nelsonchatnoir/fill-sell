@@ -131,6 +131,8 @@ function PlatformMarquee({ plateformes = LENS_PLATFORMS }) {
 export function LensScanHome({
   lang, currency, isPremium, isNative, isPro,
   plateformesOuvertes = [],
+  // (25/10) Leboncoin d'une adresse hors de France : absent du bandeau (App.jsx).
+  plateformesFermees = [],
   lensPhotos, setLensPhotos, setLensResult, setLensAdded,
   lensDesc, setLensDesc, lensMicActive, lensMicLoading, toggleLensMic,
   lensPlaceholderFade, lensPlaceholderIdx,
@@ -374,7 +376,7 @@ export function LensScanHome({
           <p style={{ textAlign:'center', fontSize:11, fontWeight:500, textTransform:'uppercase', letterSpacing:'0.14em', marginBottom:12, color:'#A6A192' }}>
             {t('lensMarqueeCaption')}
           </p>
-          <PlatformMarquee plateformes={[...LENS_PLATFORMS, ...plateformesOuvertes.filter((p) => !LENS_PLATFORMS.includes(p))]} />
+          <PlatformMarquee plateformes={[...LENS_PLATFORMS, ...plateformesOuvertes.filter((p) => !LENS_PLATFORMS.includes(p))].filter((p) => !plateformesFermees.includes(p))} />
         </div>
       </div>
 
@@ -682,6 +684,8 @@ const LensTab = memo(function LensTab({
   // Opla ouverte (interrupteur serveur + borne de build, App.jsx) : au stepper
   // et au bandeau, même condition (2026-09-17 soir).
   plateformesOuvertes = [], oplaMotifGrise = 'fermee', oplaExtensionMin = null,
+  // (25/10) Fermées à ce compte (Leboncoin d'une adresse hors de France, App.jsx) : ni au stepper, ni au bandeau.
+  plateformesFermees = [],
   extensionNeverSeen = null,
   // Battement serveur de l'extension — relayé au stepper pour la ligne
   // « ordinateur éteint » au-dessus du CTA Publier (2026-08-13).
@@ -894,6 +898,7 @@ const LensTab = memo(function LensTab({
           ebayCompte={ebayCompte}
           plateformesVisibles={plateformesVisibles}
           plateformesOuvertes={plateformesOuvertes}
+          plateformesFermees={plateformesFermees}
           oplaMotifGrise={oplaMotifGrise}
           oplaExtensionMin={oplaExtensionMin}
           // Lens unifié (02/09 soir) : le scan payé (mode "annonce") rapporte
@@ -943,6 +948,7 @@ const LensTab = memo(function LensTab({
           finScan={finScan} onFinScan={()=>setFinScanVue(true)}
           lang={lang} currency={currency} isPremium={isPremium} isNative={isNative} isPro={isPro}
           plateformesOuvertes={plateformesOuvertes}
+          plateformesFermees={plateformesFermees}
           lensPhotos={lensPhotos} setLensPhotos={setLensPhotos} setLensResult={setLensResult} setLensAdded={setLensAdded}
           lensDesc={lensDesc} setLensDesc={setLensDesc} lensMicActive={lensMicActive} lensMicLoading={lensMicLoading} toggleLensMic={toggleLensMic}
           lensPlaceholderFade={lensPlaceholderFade} lensPlaceholderIdx={lensPlaceholderIdx}

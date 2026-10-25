@@ -60,6 +60,22 @@ export const COLIS_VINTED = {
   8: "5 kg", 9: "10 kg", 10: "20 kg",
   11: "5 kg", 12: "10 kg", 13: "20 kg", 14: "30 kg",
 };
+// ── (25/10) L'ID 8 CHANGE DE NOM SELON SA FAMILLE (Romain c28e2c60, « Bottes hautes ») ──
+// Miroir EXACT de vinted.js (libelleColisVinted, VINTED_COLIS_8_FAMILLE_PMG) : l'id 8 (HEAVY_SMALL) s'affiche
+// « Lourd (2 kg et +) » à côté de Petit / Moyen / Grand, « 5 kg » dans la famille au poids 8 / 9 / 10. La
+// famille se lit sur la grille qu'on a sous les yeux, sinon sur le rayon (Femmes / Hommes : jamais de poids).
+export const COLIS_VINTED_8_FAMILLE_PMG = "Lourd (2 kg et +)";
+/** Le libellé d'un format d'après sa famille. `grille` : ids ou [{ id }] ; `chemin` : le rayon. */
+export function libelleColisVinted(id, { grille = null, chemin = null } = {}) {
+  const n = Number(id);
+  const libelle = COLIS_VINTED[n] ?? null;
+  if (n !== 8) return libelle;
+  const ids = (Array.isArray(grille) ? grille : []).map((g) => Number(g?.id ?? g)).filter((x) => Number.isInteger(x) && x > 0);
+  if (ids.some((x) => x >= 1 && x <= 3)) return COLIS_VINTED_8_FAMILLE_PMG;
+  if (ids.some((x) => x === 9 || x === 10)) return libelle;
+  const racine = String((Array.isArray(chemin) ? chemin[0] : "") ?? "").trim();
+  return racine === "Femmes" || racine === "Hommes" ? COLIS_VINTED_8_FAMILLE_PMG : libelle;
+}
 const GRILLES = { PMG: [1, 2, 3], KG3: [8, 9, 10], KG4: [11, 12, 13, 14] };
 const RACINES_PMG = new Set(["Femmes", "Hommes"]);
 

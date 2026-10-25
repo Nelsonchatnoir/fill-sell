@@ -67,3 +67,11 @@
   utiliser la version « sous verrou » (`lireDetailVintedSousVerrou`), sinon toute la file se fige. Le dossier
   `FillSell-Extension-Nico` ne se recharge pas seul : y copier un build sans que Nico recharge laisse un état mélangé —
   ne pas le faire.
+
+## ⛔ 25/10 matin — AUCUN bandeau « mets à jour ton extension » (décision de Nico)
+- `EXTENSION_MIN_BUILD` (scripts/build-id.mjs, `_shared/version-min-extension.js`) ne bouge PLUS : ni pour la 0.6.141,
+  ni pour la 0.6.142, ni pour la 0.6.143. Le printout de `package:extension` qui propose de le poser après une
+  acceptation ne s'applique pas. Les correctifs arrivent par la mise à jour automatique du Chrome Web Store (et
+  `requestUpdateCheck` toutes les 2 h) ; un arrêt qu'une version corrige repart seul (`_shared/relance-apres-maj.js`) ;
+  une règle qui exige une version (ex. ISBN « 0000000000 ») RETIENT le job en silence avec un message neutre
+  (« part dès que ton extension se sera mise à jour toute seule — rien à faire »), jamais un bandeau ni « mets à jour ».

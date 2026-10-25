@@ -97,6 +97,22 @@ export default function SousPagePlateformes({ c, T }) {
         <Carte>
           {liste.map((pf) => {
             const nom = NOMS[pf] ?? pf;
+            // (25/10, décision de Nico — Marta, Rapallo) Leboncoin d'une adresse de remise hors de France : ni session
+            // à ouvrir, ni « je ne vends pas » — la ligne dit pourquoi, et où changer l'adresse.
+            if (pf === 'leboncoin' && c.lbcHorsFrance) {
+              return (
+                <div key={pf} style={{ borderBottom: `1px solid ${R.ligneDouce}` }}>
+                  <div className="rg-ligne" style={{ borderBottom: 'none', opacity: 0.55 }}>
+                    <PlatformLogo platform={pf} size={26} />
+                    <span style={{ flex: 1, minWidth: 0, fontSize: 15, fontWeight: 500, color: R.ink }}>{nom}</span>
+                    <Pastille ton="inconnu">{T.lbcHorsFrancePastille}</Pastille>
+                  </div>
+                  <div style={{ padding: '0 16px 14px' }}>
+                    <span style={{ fontSize: 13, color: R.texteSecondaire }}>{T.lbcHorsFrance}</span>
+                  </div>
+                </div>
+              );
+            }
             const v = verite?.plateformes?.[pf] ?? depuisAncienEtat(etats?.[pf] ?? null);
             const etat = pf === 'opla' ? etatOplaAffiche(v.etat, verdictOpla) : v.etat;
             // Opla sans AUCUNE preuve d'accès, et pas écartée : le bouton reste.

@@ -2,7 +2,7 @@
 // à l'injection — permet de vérifier, à chaque test, quelle version du code
 // tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à chaque modification de
 // ce fichier.
-const EBAY_BUILD = "2026-10-08-ping (0.6.103 : FILLSELL_PING, réponse synchrone « je suis là ») · 2026-10-02-fin-annonce-par-numero (0.6.84 : le dialogue de fin d'annonce n'exige plus le titre — identité par le numéro de la ligne, refus s'il nomme une autre annonce ; plus de repli par titre) — précédent : 2026-09-09-taille-chiffree-voisines (0.6.24 : une taille chiffrée absente de la liste eBay, « 25 », n'est plus renvoyée vers 3XS…6XL — le message nomme les tailles chiffrées acceptées et ses voisines) — précédent : 2026-09-04-taille-vocabulaire-ebay (la taille est traduite contre la liste RELEVEE sur le formulaire";
+const EBAY_BUILD = "2026-10-25-photos-recues (0.6.143 : le champ photo d eBay choisi sans ambiguïté, photos reçues comptées au compteur N/25 et aux vignettes i.ebayimg.com, mode observer) · 2026-10-08-ping (0.6.103 : FILLSELL_PING, réponse synchrone « je suis là ») · 2026-10-02-fin-annonce-par-numero (0.6.84 : le dialogue de fin d'annonce n'exige plus le titre — identité par le numéro de la ligne, refus s'il nomme une autre annonce ; plus de repli par titre) — précédent : 2026-09-09-taille-chiffree-voisines (0.6.24 : une taille chiffrée absente de la liste eBay, « 25 », n'est plus renvoyée vers 3XS…6XL — le message nomme les tailles chiffrées acceptées et ses voisines) — précédent : 2026-09-04-taille-vocabulaire-ebay (la taille est traduite contre la liste RELEVEE sur le formulaire";
 console.log(`[ebay.js] build ${EBAY_BUILD}`);
 
 // Content script eBay — remplit le formulaire "Terminer votre annonce".
@@ -636,6 +636,9 @@ async function fillListingForm(job) {
   // Trace structurée de la bascule de format (2026-08-31) : rendue au
   // background sur les issues principales → platform_fields.ebay_format_trace.
   let formatTrace = null;
+  // (25/10, R1) Les photos reçues par eBay → platform_fields.ebay_photos_recues (même mécanique).
+  let photosTrace = null;
+  let suiviPhotos = null;
   // Trace des specifics réellement posés — ou trouvés déjà remplis — pendant
   // ce run (2026-07-11). Sert UNIQUEMENT au constat unfilledRequired du
   // DRY_RUN : fillSpecificSafe ne dit pas QUEL label du groupe a matché, donc
@@ -840,8 +843,11 @@ async function fillListingForm(job) {
 
   if (job.photos?.length) {
     etape("photos");
-    const photoNote = await uploadPhotos(job.photos);
-    if (photoNote) warnings.push(photoNote);
+    // (25/10, R1) Les photos REÇUES par eBay (compteur « N/25 », vignettes i.ebayimg.com), relues avant le clic.
+    const photos = await uploadPhotos(job.photos, fields);
+    photosTrace = photos.trace;
+    suiviPhotos = photos.suivi;
+    if (photos.note) warnings.push(photos.note);
     await fieldSettle();
   }
 
@@ -1047,7 +1053,7 @@ async function fillListingForm(job) {
       console.warn(`[ebay] ⚠️ ${note}`);
       warnings.push(note);
     }
-    return { success: true, dryRun: true, warnings, unfilledRequired, formatTrace };
+    return { success: true, dryRun: true, warnings, unfilledRequired, formatTrace, photosTrace };
   }
 
   // ── Publication LIVE ────────────────────────────────────────────────────────
@@ -1241,6 +1247,7 @@ async function fillListingForm(job) {
         warnings,
         unfilledRequired,
         formatTrace,
+        photosTrace,
       };
     }
   }
@@ -1275,7 +1282,38 @@ async function fillListingForm(job) {
       warnings,
       unfilledRequired,
       formatTrace,
+      photosTrace,
     };
+  }
+
+  // ── (25/10, R1) Garde pré-submit PHOTOS : ce qu'eBay a REÇU, relu juste avant le clic ──
+  // Observer (par défaut) : la mesure part dans la trace, rien n'est bloqué. Bloquer
+  // (platform_fields.ebay_photos_mode = "bloquer", servi par le serveur) : moins de
+  // photos reçues que remises → arrêt AVANT tout clic, code ebay_photos_non_recues.
+  if (suiviPhotos) {
+    const r = photosRecuesEbay(suiviPhotos);
+    photosTrace = {
+      ...(photosTrace ?? {}),
+      recues_avant_clic: r.recues, compteur_avant_clic: r.compteur, vignettes_avant_clic: r.vignettes,
+      delai_avant_clic_ms: Date.now() - suiviPhotos.t0,
+      ...(r.recues < suiviPhotos.remises ? { bloquerait: true } : {}),
+    };
+    if (r.recues < suiviPhotos.remises && suiviPhotos.mode === "bloquer") {
+      photosTrace.code = MOTIF_PHOTOS_NON_RECUES;
+      const detail = `${r.recues} sur ${suiviPhotos.remises} après ${Math.round((Date.now() - suiviPhotos.t0) / 1000)} s ` +
+        `(compteur ${r.compteur ?? "illisible"}, ${r.vignettes} vignette(s), champ ${suiviPhotos.champ})`;
+      console.warn(`[ebay] ${ANCRE_PHOTOS_NON_RECUES} : ${detail} — aucun clic, rien soumis`);
+      return {
+        success: false,
+        needsUser: true,
+        error: `${ANCRE_PHOTOS_NON_RECUES} : ${detail}. Aucun clic fait, rien n'a été soumis ni publié.`,
+        warnings,
+        unfilledRequired,
+        formatTrace,
+        photosTrace,
+        diagnostic: { quoi: MOTIF_PHOTOS_NON_RECUES, detail, at: new Date().toISOString() },
+      };
+    }
   }
 
   // Le clic "Mettre en vente avec les frais affichés" est un engagement de
@@ -1407,7 +1445,7 @@ async function fillListingForm(job) {
   // description » vécu en LIVE réel, et seul le background survit à une
   // éventuelle redirection), puis captureListingUrl. On répond tout de suite.
   await sleep(3000);
-  return { success: true, listingUrl: null, warnings, unfilledRequired, formatTrace };
+  return { success: true, listingUrl: null, warnings, unfilledRequired, formatTrace, photosTrace };
 }
 
 // ── État : comparaison de famille (neuf vs occasion) ────────────────────────
@@ -2909,51 +2947,136 @@ async function urlToFile(url, index) {
   return new File([blob], `photo_${index}.${ext}`, { type: blob.type });
 }
 
-async function uploadPhotos(photos) {
-  const input = await waitFor(
-    () => document.querySelector('input#fehelix-uploader, input[type="file"]'),
-    8000
-  );
-  if (!input) throw new Error("input photos (#fehelix-uploader) introuvable");
+// ══════════════════════════════════════════════════════════════════════════
+// (25/10, R1) LES PHOTOS REÇUES PAR eBAY — PAS SEULEMENT REMISES À LA PAGE
+// ══════════════════════════════════════════════════════════════════════════
+// Fleur de Lotus (22-23/10, 0.6.128, fenêtre minimisée) : 11 refus du brouillon
+// sur 11 nomment « Photos » — eBay n'avait reçu aucune image. Le seul contrôle
+// (2026-07-26) comptait les prévisualisations blob:/data:, éphémères sur eBay :
+// 79 publications par l'extension en 30 jours, TOUTES « 0 détectée(s) »,
+// réussites comprises — il ne voyait rien. Et le champ était le PREMIER
+// input[type=file] du DOM, quel qu'il soit.
+// Relevé sur le vrai formulaire (compte de Nico, 25/10, brouillon
+// 5432798485410, /lstng?draftId=…&mode=AddItem, catégorie 11554) :
+//   · UN seul champ fichier : input#fehelix-uploader, accept
+//     « image/*,image/heic,image/heif,video/mp4,video/quicktime », multiple,
+//     invisible ; le geste fetch → File → DataTransfer → input.files → change
+//     MARCHE : la page téléverse elle-même (POST …/ws/eBayISAPI.dll?EpsBasic
+//     → 200, vignettes i.ebayimg.com …$_12/$_26/$_57, PUT
+//     /lstng/api/listing_draft/<id>/skip_validation → 204) ; input.files
+//     repasse à 0 ;
+//   · une photo REÇUE = le compteur texte « N/25 » (une feuille, de « 0/25 » à
+//     « 1/25 » 3 à 5 s après le change) et une vignette
+//     <img src="https://i.ebayimg.com/00/s/…/z/<id>/$_26.PNG?set_id=…"> dans la
+//     grille ; les blob:/data: ne sont que transitoires.
+// LA RÈGLE : le champ est #fehelix-uploader, sinon le champ fichier dont
+// `accept` vise les images — jamais un champ vidéo seul (tracé) ; après la
+// remise, on attend (20 s au plus, relu toutes les 500 ms) que le compteur
+// « N/25 » OU les vignettes i.ebayimg.com (une par image, quelle que soit sa
+// taille) atteignent le nombre de photos remises, et on relit juste avant le
+// clic « Mettre en vente ». Trace { remises, recues, compteur, vignettes,
+// delai_ms, champ, mode } → platform_fields.ebay_photos_recues (background).
+// Mode « observer » (par défaut) : on mesure, on trace, on ne bloque pas.
+// Mode « bloquer » (servi par le serveur, platform_fields.ebay_photos_mode,
+// interrupteur coin_config ebay_photos_recues_bloquant) : moins de photos
+// reçues que remises au moment du clic → arrêt AVANT tout clic, code
+// ebay_photos_non_recues ; le serveur fait deux reprises puis un arrêt nommé
+// (_shared/ebay-brouillon-refus.js), et le background ne soumet jamais le
+// brouillon après ce code.
+const MOTIF_PHOTOS_NON_RECUES = "ebay_photos_non_recues";
+const ANCRE_PHOTOS_NON_RECUES = "Photos non reçues par eBay"; // = _shared/ebay-brouillon-refus.js
+const PHOTOS_RECUES_BUDGET_MS = 20_000;
+const COMPTEUR_PHOTOS_RE = /^\s*(\d{1,2})\s*\/\s*(\d{1,2})\s*$/;
+
+/** Le champ fichier des PHOTOS : #fehelix-uploader, sinon celui qui accepte des images. */
+function champPhotosEbay() {
+  const parId = document.getElementById("fehelix-uploader");
+  if (parId && String(parId.tagName).toUpperCase() === "INPUT" && String(parId.type).toLowerCase() === "file") {
+    return { input: parId, champ: "#fehelix-uploader" };
+  }
+  const images = [...document.querySelectorAll('input[type="file"]')]
+    .filter((i) => /\bimage\//i.test(String(i.accept ?? "")));
+  if (images.length) return { input: images[0], champ: `input[type=file] accept « ${String(images[0].accept).slice(0, 80)} »` };
+  return null;
+}
+
+/** Le compteur « N/25 » (une feuille de texte) dans la zone, ou null. */
+function compteurPhotosEbay(zone) {
+  for (const el of zone.querySelectorAll("span, div, p, label")) {
+    if (el.children.length) continue;
+    const m = COMPTEUR_PHOTOS_RE.exec(String(el.textContent ?? ""));
+    if (m && Number(m[2]) >= 12 && Number(m[2]) <= 50) return Number(m[1]);
+  }
+  return null;
+}
+
+/** Les images reçues par eBay dans la zone : un identifiant par image (…/z/<id>/$_26 et ses autres tailles). */
+function vignettesEbay(zone) {
+  const ids = new Set();
+  for (const img of zone.querySelectorAll('img[src*="i.ebayimg.com"]')) {
+    const src = String(img.currentSrc || img.src || img.getAttribute?.("src") || "");
+    const m = /\/z\/([^/]+)\//.exec(src);
+    ids.add(m ? m[1] : src.split("?")[0]);
+  }
+  return ids;
+}
+
+/** La zone des photos : le premier ancêtre du champ qui porte le compteur, sinon la page. */
+function zonePhotosEbay(input) {
+  let n = input?.parentElement ?? null;
+  for (let i = 0; n && i < 12; i++, n = n.parentElement) {
+    if (compteurPhotosEbay(n) != null) return n;
+  }
+  return document.body;
+}
+
+/** Ce que eBay a reçu depuis la remise : { compteur, vignettes, recues }. */
+function photosRecuesEbay(suivi) {
+  const zone = suivi.zone?.isConnected === false ? document.body : (suivi.zone ?? document.body);
+  const compteur = compteurPhotosEbay(zone);
+  let vignettes = 0;
+  for (const id of vignettesEbay(zone)) if (!suivi.avant.vignettes.has(id)) vignettes++;
+  const parCompteur = compteur == null ? 0 : compteur - (suivi.avant.compteur ?? 0);
+  return { compteur, vignettes, recues: Math.max(0, parCompteur, vignettes) };
+}
+
+/** Attend (borné) que eBay ait reçu toutes les photos remises ; rend la trace. */
+async function attendrePhotosRecuesEbay(suivi, budgetMs = PHOTOS_RECUES_BUDGET_MS) {
+  let r = photosRecuesEbay(suivi);
+  while (r.recues < suivi.remises && Date.now() - suivi.t0 < budgetMs) {
+    await sleep(500);
+    r = photosRecuesEbay(suivi);
+  }
+  return {
+    remises: suivi.remises, recues: r.recues, compteur: r.compteur, vignettes: r.vignettes,
+    delai_ms: Date.now() - suivi.t0, champ: suivi.champ, mode: suivi.mode, at: new Date().toISOString(),
+  };
+}
+
+async function uploadPhotos(photos, fields = {}) {
+  const trouve = await waitFor(() => champPhotosEbay(), 8000);
+  if (!trouve) throw new Error("input photos (#fehelix-uploader) introuvable");
+  const { input, champ } = trouve;
   const files = await Promise.all(photos.map((p, i) => urlToFile(p.url, i)));
   const dataTransfer = new DataTransfer();
   files.forEach((f) => dataTransfer.items.add(f));
-  const vignettesAvant = photoPreviewCount();
+  const zone = zonePhotosEbay(input);
+  const suivi = {
+    zone, champ, remises: files.length, t0: 0,
+    avant: { compteur: compteurPhotosEbay(zone), vignettes: vignettesEbay(zone) },
+    mode: fields?.ebay_photos_mode === "bloquer" ? "bloquer" : "observer",
+  };
   input.files = dataTransfer.files;
   await humanPause(); // temps de "sélection des fichiers" avant le dépôt
   input.dispatchEvent(new Event("change", { bubbles: true }));
-  const signal = await waitPhotosUploaded(files.length, vignettesAvant, 1500 * files.length, "ebay");
-  return signal.note; // null si le signal est confirmé — sinon note à remonter dans les warnings du job
-}
-
-// ── Signal de fin d'upload photos (2026-07-26, SELECTOR_AUDIT §7.1) ──────────
-// Même contrat que les 4 plateformes (copie locale : les content scripts sont
-// autonomes, pas de module partagé — cf. OBSERVATORY.md ADR-03). AVANT :
-// sleep(1500 × n) aveugle. MAINTENANT : sortie anticipée dès que n
-// prévisualisations blob:/data: sont apparues (mécanisme navigateur,
-// URL.createObjectURL) ; sinon durée historique inchangée + log + note dans
-// les warnings du job. JAMAIS bloquant : en l'absence de signal le
-// comportement est exactement celui d'avant. Lecture par attribut src
-// uniquement — aucune mesure de layout.
-function photoPreviewCount() {
-  return document.querySelectorAll('img[src^="blob:"], img[src^="data:"]').length;
-}
-async function waitPhotosUploaded(attendues, avant, budgetMs, tag) {
-  const t0 = Date.now();
-  while (Date.now() - t0 < budgetMs) {
-    const vues = photoPreviewCount() - avant;
-    if (vues >= attendues) {
-      console.log(`[${tag}] photos: ${vues}/${attendues} prévisualisation(s) blob:/data: en ${Date.now() - t0} ms — signal confirmé`);
-      return { confirmed: true, seen: vues, note: null };
-    }
-    await sleep(250);
-  }
-  const vues = photoPreviewCount() - avant;
-  const note =
-    `photos: signal non confirmé, ${attendues} attendue(s), ${Math.max(0, vues)} détectée(s) ` +
-    `(budget historique ${budgetMs} ms épuisé — flux poursuivi comme avant)`;
-  console.warn(`[${tag}] ${note}`);
-  return { confirmed: false, seen: vues, note };
+  suivi.t0 = Date.now();
+  const trace = await attendrePhotosRecuesEbay(suivi);
+  const note = trace.recues >= trace.remises ? null
+    : `photos: ${trace.recues}/${trace.remises} reçue(s) par eBay en ${Math.round(trace.delai_ms / 1000)} s ` +
+      `(compteur ${trace.compteur ?? "illisible"}, ${trace.vignettes} vignette(s), champ ${champ}) — mode ${suivi.mode}`;
+  if (note) console.warn(`[ebay] ${note}`);
+  else console.log(`[ebay] photos: ${trace.recues}/${trace.remises} reçue(s) par eBay en ${trace.delai_ms} ms (champ ${champ})`);
+  return { note, trace, suivi };
 }
 
 console.log(`[ebay] prêt — build ${EBAY_BUILD} | BUILD_ID __FILLSELL_BUILD_ID__ | DRY_RUN=${DRY_RUN} | DELETE_DRY_RUN=${DELETE_DRY_RUN}`);

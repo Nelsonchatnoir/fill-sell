@@ -6,7 +6,8 @@
 // une annonce que FillSell a lui-même déposée (jamais une annonce née sur Vinted, `vinted_sync`, dont le vendeur a
 // choisi les champs) :
 //   1. une ŒUVRE D'ART reconnue (src/utils/oeuvreDArt.js) rangée hors du rayon des œuvres (« Toiles et panneaux »,
-//      « Encadrements »… — paugues) repart dans « Peintures » (3847) ou « Affiches et reproductions » (3849) ;
+//      « Encadrements »… — paugues) repart dans « Peintures » (3847) ou « Affiches et reproductions » (3849) —
+//      jamais quand ce rayon n'offre pas le format de colis capturé, ou que sa grille est inconnue (A5, 24-25/10) ;
 //   2. un ÉTAT plus bas que celui de la fiche (« Bon état » en ligne, « Très bon état » sur la fiche) repart avec
 //      l'état de la fiche — l'état du vendeur n'est jamais dégradé (point 8).
 // Rien d'autre n'est touché (titre, texte, prix, photos, taille, marque : ceux de l'annonce en ligne) — sauf (23/10,
@@ -27,9 +28,11 @@ const FEUILLES_OEUVRES = new Set([3847, 3849]);
  * @param {string | null} [etatAvantCapture]  l'état de la fiche relevé AVANT la capture (job.platform_fields.etat_fiche_avant_capture) :
  *                  la capture réécrit l'état de la fiche (capture_vers_inventaire_attributs) avec celui de l'annonce —
  *                  c'est celui d'avant qui fait foi
+ * @param {{ grilleDuRayon?: (chemin: string[]) => Array<{id: number}> | null }} [o]  la grille de colis d'un rayon
+ *                  (par défaut grilleColisVinted ; injectée par les selftests pour un rayon à grille inconnue)
  * @returns null (rien à corriger) | {libelles, natif, raisons: string[], avant: object}
  */
-export function correctionCaptureVinted(fiche, libelles, natif, etatAvantCapture = null) {
+export function correctionCaptureVinted(fiche, libelles, natif, etatAvantCapture = null, { grilleDuRayon = grilleColisVinted } = {}) {
   if (!fiche || String(fiche.origine ?? "") === "vinted_sync") return null;   // annonce née sur Vinted : celle du vendeur
   const lib = { ...(libelles && typeof libelles === "object" ? libelles : {}) };
   const nat = { ...(natif && typeof natif === "object" ? natif : {}) };
@@ -47,9 +50,16 @@ export function correctionCaptureVinted(fiche, libelles, natif, etatAvantCapture
       // colis : paugues, 22/10 — deux tableaux en « Grand » (grille Petit/Moyen/Grand) déplacés en
       // « Peintures » (grille au poids) → pré-vol refusé « format non proposé ». Le format capturé absent de
       // la grille du rayon des œuvres : l'annonce garde son rayon (tracé, jamais un format choisi pour elle).
+      // (25/10, A5 strict — paugues 110c27ae / 5ad5bbb1) La grille INCONNUE du rayon d'arrivée passait :
+      // rien ne prouvait alors que le format capturé y était offert. Désormais la capture ne change de rayon
+      // QUE si la grille du rayon d'arrivée est connue ET porte le format capturé (format inconnu de la
+      // capture : rien à garder, la grille connue suffit). Sinon l'annonce garde son rayon, tracé.
       const colis = Number(nat.package_size_id);
-      const grille = grilleColisVinted(f.chemin);
-      if (Number.isInteger(colis) && colis > 0 && Array.isArray(grille) && grille.length && !grille.some((g) => Number(g.id) === colis)) {
+      const grille = grilleDuRayon(f.chemin);
+      const formatConnu = Number.isInteger(colis) && colis > 0;
+      if (!Array.isArray(grille) || !grille.length) {
+        ecartees.push({ raison: "colis_grille_inconnue", rayon: f.id, ...(formatConnu ? { colis } : {}) });
+      } else if (formatConnu && !grille.some((g) => Number(g.id) === colis)) {
         ecartees.push({ raison: "colis_hors_grille", rayon: f.id, colis });
       } else {
         lib.categoryPath = [...f.chemin];

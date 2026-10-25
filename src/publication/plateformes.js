@@ -122,12 +122,15 @@ const MOTIF_VERDICT = {
     interdite: "la plateforme refuse ce produit",
     sans_annonce: "aucune annonce rédigée pour elle",
     champ_manquant: "elle attend une réponse",
+    // (25/10) Leboncoin d'une adresse de remise hors de France.
+    hors_france: "réservé aux adresses en France — ton adresse de remise est hors de France (Réglages › Expédition)",
   },
   en: {
     sans_adresse: "pickup address missing — open Settings ⚙️ → “Leboncoin pickup address”, then come back and publish",
     interdite: "the platform refuses this product",
     sans_annonce: "no listing written for it",
     champ_manquant: "it is waiting for an answer",
+    hors_france: "France-only addresses — your pickup address is outside France (Settings › Shipping)",
   },
 };
 

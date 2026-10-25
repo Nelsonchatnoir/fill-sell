@@ -101,6 +101,8 @@ const FONCTIONS = [
   "fetchBorne", "lireReferentielVinted", "resoudreCheminCatalogue", "racineDuCatalogue",
   "catalogueDeLaPagePublique", "resoudreTaille", "attributVintedIds", "resoudreCouleurs",
   "lireDetailArticle", "capturerAnnonceVinted",
+  // (25/10) La capture nomme l'id de colis d'après sa famille (libelleColisVinted).
+  "libelleColisVinted",
 ];
 function charger(src, fetch) {
   const corps = FONCTIONS.map((n) => {
@@ -112,6 +114,7 @@ function charger(src, fetch) {
   vm.runInContext(`
     const _refCache = {}; const FETCH_BORNE_MS = 30000;
     const VINTED_PACKAGE_SIZES_PAR_ID = { 1: "Petit", 2: "Moyen", 3: "Grand" };
+    const VINTED_COLIS_8_FAMILLE_PMG = "Lourd (2 kg et +)";
     const VINTED_SANS_MARQUE = "Sans marque"; const VINTED_BRAND_ID_SANS_MARQUE = 1;
     function estPageBotShieldVinted() { return false; }
     ${corps}

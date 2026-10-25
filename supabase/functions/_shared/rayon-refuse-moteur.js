@@ -128,13 +128,34 @@ function genreDuChemin(chemin) {
   return null;
 }
 
+// ── (25/10, chaouidz) LES GENRES POSSIBLES D'APRÈS LE RAYON VINTED DE LA FICHE ─
+// Un REPLI, quand la fiche ne dit pas le genre (genreLu nul) — le moteur ne
+// tourne de toute façon que si le rayon manque, donc si le fil d'Ariane de
+// l'annonce d'origine n'a pas été lu (c'est lui qui fait foi : « Mode › Garçon ›
+// Chaussures (garçon) › Baskets (garçon) » sur la page de 32089448). Il ÉLAGUE,
+// il ne choisit jamais : Vinted range les tailles bébé DANS « Vêtements pour
+// garçons » (catalog 1653 « … › Chaussures › Chaussures bébé » pour cette même
+// basket, rangée « Baskets (garçon) » chez Beebs) — donc garçon ET bébé, jamais
+// bébé seul. Hors des vêtements genrés (jeux, puériculture, santé et grossesse…),
+// aucun élagage : null.
+export function genresDuRayonVinted(catalogId) {
+  const id = Number(catalogId);
+  if (!Number.isFinite(id) || id <= 0) return null;
+  const chemin = cheminVintedDe(id).map(norm);
+  if (chemin[0] === "femmes") return ["femme"];
+  if (chemin[0] === "hommes") return ["homme"];
+  if (chemin[0] === "enfants" && chemin[1] === "vêtements pour garçons") return ["garcon", "bebe"];
+  if (chemin[0] === "enfants" && chemin[1] === "vêtements pour filles") return ["fille", "bebe"];
+  return null;
+}
+
 /**
  * Les FEUILLES candidates (chemins complets) d'un rayon refusé.
  * Vinted : sous le rayon d'origine seulement. Beebs, Leboncoin : sous le rayon
  * d'origine s'il est connu, sinon l'arbre entier — élagué au genre lu.
  */
-/** @param {{ plateforme?: string, base?: string[], genre?: string|null, titre?: string, enfantsVivants?: string[]|null, exclure?: string[]|null }} [p] */
-export function feuillesCandidates({ plateforme = "", base = [], genre = null, titre = "", enfantsVivants = null, exclure = null } = {}) {
+/** @param {{ plateforme?: string, base?: string[], genre?: string|null, titre?: string, enfantsVivants?: string[]|null, exclure?: string[]|null, genresPossibles?: string[]|null }} [p] */
+export function feuillesCandidates({ plateforme = "", base = [], genre = null, titre = "", enfantsVivants = null, exclure = null, genresPossibles = null } = {}) {
   const b = Array.isArray(base) ? base.map((s) => String(s ?? "").trim()).filter(Boolean) : [];
   let feuilles = [];
   if (plateforme === "vinted") {
@@ -166,6 +187,12 @@ export function feuillesCandidates({ plateforme = "", base = [], genre = null, t
   if (g) {
     const gardees = feuilles.filter((f) => { const gf = genreDuChemin(f.chemin); return !gf || gf === g; });
     if (gardees.length) feuilles = gardees;
+  } else if (plateforme !== "vinted" && Array.isArray(genresPossibles) && genresPossibles.length) {
+    // (25/10) Repli : les genres possibles d'après le rayon Vinted de la fiche
+    // (genresDuRayonVinted) — une feuille sans genre reste, comme au-dessus.
+    const possibles = new Set(genresPossibles);
+    const gardees = feuilles.filter((f) => { const gf = genreDuChemin(f.chemin); return !gf || possibles.has(gf); });
+    if (gardees.length) feuilles = gardees;
   }
   return feuilles;
 }
@@ -183,8 +210,8 @@ export function libelleFeuille(chemin, base) {
  * `appelerIA(corps)` : POST resolve-categorie (secret cron), rend son JSON.
  */
 export async function resoudreRayonRefuse(entree, appelerIA) {
-  const { plateforme, base, titre, description, objet, marque, genre, taille, user_id, enfantsVivants, exclure } = entree;
-  const feuilles = feuillesCandidates({ plateforme, base, genre, titre, enfantsVivants, exclure });
+  const { plateforme, base, titre, description, objet, marque, genre, taille, user_id, enfantsVivants, exclure, genresPossibles } = entree;
+  const feuilles = feuillesCandidates({ plateforme, base, genre, titre, enfantsVivants, exclure, genresPossibles });
   if (!feuilles.length) return { doute: true, motif: "aucune_feuille", feuilles };
   if (feuilles.length === 1) return { chemin: feuilles[0].chemin, id: feuilles[0].id, source: "seule_feuille", feuilles };
   if (feuilles.length > 600) return { doute: true, motif: "trop_de_feuilles", feuilles };
@@ -218,8 +245,8 @@ export async function resoudreRayonRefuse(entree, appelerIA) {
 }
 
 /** La question de dernier recours : des FEUILLES, une réponse suffit. */
-/** @param {{ plateforme?: string, base?: string[], feuilles?: Array<{ chemin: string[], id: string|null }>, cleChamp?: string }} [p] */
-export function questionRayonRefuse({ plateforme = "", base = [], feuilles = [], cleChamp = CLE_REPONSE_RAYON } = {}) {
+/** @param {{ plateforme?: string, base?: string[], feuilles?: Array<{ chemin: string[], id: string|null }>, cleChamp?: string, raison?: string }} [p] */
+export function questionRayonRefuse({ plateforme = "", base = [], feuilles = [], cleChamp = CLE_REPONSE_RAYON, raison = RAISON_RAYON_REFUSE } = {}) {
   const libelles = { vinted: "Catégorie Vinted", beebs: "Rayon Beebs", leboncoin: "Catégorie Leboncoin" };
   return {
     platform: plateforme,
@@ -233,7 +260,7 @@ export function questionRayonRefuse({ plateforme = "", base = [], feuilles = [],
     allowed_values: feuilles.slice(0, 600).map((f) => libelleFeuille(f.chemin, base)),
     target: { root: null, key: cleChamp },
     rayon_base: Array.isArray(base) ? base : [],
-    raison: "rayon_refuse_par_la_plateforme",
+    raison: raison === RAISON_RAYON_ABSENT ? RAISON_RAYON_ABSENT : RAISON_RAYON_REFUSE,
   };
 }
 
@@ -257,6 +284,14 @@ export function cheminDeLaReponse({ plateforme = "", base = [], reponse = "" } =
 // traduit en chemin complet avant de servir le job (cheminDeLaReponse).
 export const CLE_REPONSE_RAYON = "rayonChoisi";
 const CHAMP_RAYON = { vinted: "categoryPath", beebs: "beebsCategoryPath", leboncoin: "lbcCategoryPath" };
+// ── (25/10, chaouidz) UN RAYON ABSENT N'EST PAS UN RAYON REFUSÉ ─────────────
+// « basket Nike noir et blanche taille 18 » (republication Beebs 8a608034,
+// annonce 32089448) : Beebs n'avait RIEN refusé — la copie (relevé, aucune
+// capture) n'avait pas de rayon, et le message disait « Beebs n'accepte plus la
+// catégorie de cette annonce ». La raison de la question et son message disent
+// désormais lequel des deux cas c'est.
+export const RAISON_RAYON_REFUSE = "rayon_refuse_par_la_plateforme";
+export const RAISON_RAYON_ABSENT = "rayon_absent_de_la_copie";
 
 /** Le chemin le plus profond de `chemin` qui existe dans l'arbre Vinted. */
 function prefixeVintedConnu(chemin) {
@@ -271,6 +306,9 @@ function prefixeVintedConnu(chemin) {
  *     de l'extension — le rayon d'origine s'arrête sur un niveau intermédiaire ;
  *   · Beebs (republication) : « le rayon Beebs manque dans la copie » ;
  *   · Leboncoin (republication) : rayon absent, ou refusé au pré-vol complet.
+ * (25/10) `raison` dit lequel des deux cas c'est : RAISON_RAYON_ABSENT (la copie
+ * n'a pas de rayon — Beebs toujours, Leboncoin sans rayon) ou
+ * RAISON_RAYON_REFUSE (la plateforme refuse celui qu'elle porte).
  */
 export function rayonRefuseDuJob(job) {
   const pf = (job?.platform_fields && typeof job.platform_fields === "object") ? job.platform_fields : {};
@@ -281,20 +319,21 @@ export function rayonRefuseDuJob(job) {
     const brut = job.action === "republish" ? snap.categoryPath : pf.categoryPath;
     const base = prefixeVintedConnu(brut);
     if (!base.length) return null;
-    return { plateforme: "vinted", base, enfantsVivants: Array.isArray(nf.allowed_values) ? nf.allowed_values : null };
+    return { plateforme: "vinted", base, raison: RAISON_RAYON_REFUSE, enfantsVivants: Array.isArray(nf.allowed_values) ? nf.allowed_values : null };
   }
   if (job?.platform === "beebs" && job.action === "republish" && job.status === "needs_user") {
     const manquants = Array.isArray(pf.republish_prevol_manquants) ? pf.republish_prevol_manquants : [];
     if (!manquants.includes("le rayon Beebs")) return null;
     if (Array.isArray(pf.beebsCategoryPath) && pf.beebsCategoryPath.length) return null;
-    return { plateforme: "beebs", base: [] };
+    return { plateforme: "beebs", base: [], raison: RAISON_RAYON_ABSENT };
   }
   if (job?.platform === "leboncoin" && job.action === "republish" && ["pending", "needs_user"].includes(job.status)) {
     const detail = String(pf.republish_prevol_formulaire?.detail ?? "");
     const sansRayon = !(Array.isArray(pf.lbcCategoryPath) && pf.lbcCategoryPath.length);
     const refuse = /Catégorie\s*:/.test(detail) && pf.republish_prevol_formulaire?.verdict !== "ok";
     if (!sansRayon && !refuse) return null;
-    return { plateforme: "leboncoin", base: [], ...(refuse && !sansRayon ? { exclure: pf.lbcCategoryPath } : {}) };
+    return { plateforme: "leboncoin", base: [], raison: sansRayon ? RAISON_RAYON_ABSENT : RAISON_RAYON_REFUSE,
+      ...(refuse && !sansRayon ? { exclure: pf.lbcCategoryPath } : {}) };
   }
   return null;
 }
@@ -329,8 +368,15 @@ export function pfApresRayon(job, choix, { plateforme = "", base = [], source = 
 }
 
 /** Le message du job quand le moteur n'a pas pu trancher (dernier recours). */
-export function messageRayonAChoisir(plateforme, base) {
+export function messageRayonAChoisir(plateforme, base, raison = RAISON_RAYON_REFUSE) {
   const nom = { vinted: "Vinted", beebs: "Beebs", leboncoin: "Leboncoin" }[plateforme] ?? plateforme;
+  // (25/10, chaouidz) Rayon ABSENT de la copie : la plateforme n'a rien refusé — le dire.
+  if (raison === RAISON_RAYON_ABSENT) {
+    const quoi = { beebs: "le rayon Beebs", leboncoin: "la catégorie Leboncoin" }[plateforme] ?? `la catégorie ${nom}`;
+    const le = { beebs: "le", leboncoin: "la" }[plateforme] ?? "la";
+    return `Republication en pause AVANT toute suppression — ton annonce est intacte sur ${nom}. FillSell n'a pas retrouvé ${quoi} de cette annonce `
+      + `(sa copie n'en porte pas) et n'a pas pu ${le} choisir seul. Choisis-${le} dans l'app (fiche de l'article, bouton « ✋ Compléter ») : la republication repartira toute seule.`;
+  }
   const ou = Array.isArray(base) && base.length ? ` de « ${base.join(" › ")} »` : "";
   return `Republication en pause AVANT toute suppression — ton annonce est intacte sur ${nom}. ${nom} n'accepte plus la catégorie de cette annonce, `
     + `et FillSell n'a pas pu choisir seul la bonne sous-catégorie${ou}. Choisis-la dans l'app (fiche de l'article, bouton « ✋ Compléter ») : la republication repartira toute seule.`;

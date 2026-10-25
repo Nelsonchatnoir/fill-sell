@@ -1,10 +1,17 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
-import * as x509 from "https://esm.sh/@peculiar/x509@1.9.0";
+// (25/10) Même bibliothèque, même version, prise au registre npm : esm.sh ne la construisait plus (« no space left on
+// device » puis 408 « waiting to be built », 25/10 01:35 → 08:45), ce qui rendait le webhook indéployable. Banc local
+// avant déploiement : empreinte de la racine Apple G3 = la constante, chaîne WWDR G6 → G3 vérifiée, inverse refusé.
+import * as x509 from "npm:@peculiar/x509@1.9.0";
 import { notifierPaiement, alerterPaiementNonCredite, signalerNotificationStoreInconnue, journaliserNotificationStore } from "../_shared/payment-notify.ts";
 import { lectureCloudApple, ecritureCloudStore } from "../_shared/cloud-option.js";
 import { profilCloudPourStore } from "../_shared/cloud-essai-store.ts";
 import { decisionApple, ligneJournal, finPeriodeAEcrire, isoOuNull } from "../_shared/notifications-stores.js";
+
+// (25/10) Prise au registre npm, la bibliothèque ne trouve pas seule la cryptographie du runtime edge (pas de `self`) :
+// la v38 a refusé la notification de TEST d'Apple (« Cannot get Crypto by name 'default' », 08:51:33). On la lui donne.
+x509.cryptoProvider.set(crypto);
 
 // (12/10, A8) Lecture SANS vérification d'un JWS déjà reçu — pour le JOURNAL
 // seulement (produit, compte, transaction) : aucune décision n'en dépend, la

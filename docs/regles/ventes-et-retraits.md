@@ -66,7 +66,7 @@
   appliquée (mig 20261006140000 + 150000, cron 34 `push-ventes-1min`),
   `push-ventes` v10 et `check-listing-status` v37 (`false`) ; le push reste
   inerte sans téléphone (la note, elle, porte aussi le MAIL de vente). Clés et binaires : `npm run
-  binaires:2.9.62` (fichiers dans Téléchargements, `docs/push/CLES-NICO.md`) ;
+  binaires` (version de package.json depuis le 25/10 ; fichiers dans Téléchargements, `docs/push/CLES-NICO.md`) ;
   ⛔ jamais d'AAB sans `google-services.json`. Tout appel natif passe par
   `pushDisponible()` (binaires < 2.9.62 : rien). État : fin de
   `etat-2026-10-01.md` (« 06/10 après-midi »).
@@ -399,5 +399,6 @@ Rapport : `docs/enquetes/session-sans-nico-1810/lot4-ventes-lot-multi-exemplaire
 - VentesTab : verrou par ligne et relecture avant écriture (ligne et lot, par pages `lireToutesPages`) — un double appui
   ou une reprise après un envoi au sort inconnu écrivait la vente deux fois (af37fa49 : 64 lignes en double le 28/09 ;
   chaouidz 274893/274894 à 70 ms d'écart le 24/10).
-- Réparation des 64 lignes PRÊTE (`scripts/reparations/20261025_ventes_en_double.sql` + inverse, essai à blanc vert), NON
-  appliquée (refus du mode auto « Unverifiable Deletion Scope ») : à lancer par Nico.
+- Réparation des 64 lignes LANCÉE le 25/10 à 08:55:46 (ordre de Nico, après un essai à blanc : 64 lignes, 24 articles,
+  416,64 € comptés en trop, compte af37fa49 ; les 24 lignes gardées relues ; sauvegarde `_backup_2510_ventes_doublons`,
+  inverse `20261025_ventes_en_double_INVERSE.sql` ; 0 mail lié).

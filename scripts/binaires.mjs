@@ -1,7 +1,7 @@
 // ════════════════════════════════════════════════════════════════════════════
-// BINAIRES 2.9.62 — notifications de ventes : UNE commande, tout est vérifié
+// BINAIRES (version de package.json) — notifications : UNE commande, tout est vérifié
 // ════════════════════════════════════════════════════════════════════════════
-//   npm run binaires:2.9.62
+//   npm run binaires        (renommé le 25/10 : la version est celle de package.json, alignée par le commit de version)
 //
 // À lancer quand les fichiers des blocs A et B de docs/push/CLES-NICO.md sont
 // dans C:\Users\nicol\Downloads :
@@ -20,7 +20,7 @@
 //        Pour en imposer une : --cle-apns=C:\chemin\AuthKey_XXXXXXXXXX.p8)
 //
 // Ce que fait le script, et il s'ARRÊTE au premier défaut en disant lequel :
-//   A. le dépôt : sur main, propre, poussé, versions 2.9.62 / vc33 alignées ;
+//   A. le dépôt : sur main, propre, poussé, versions package.json / Android vc33 / iOS alignées ;
 //   B. les trois fichiers : lisibles, du BON projet (app.fillsell.app, même
 //      projet Firebase pour les deux JSON), clés privées importables ;
 //   C. les secrets Supabase : APNS_KEY_ID, APNS_PRIVATE_KEY, APNS_TEAM_ID,
@@ -29,7 +29,7 @@
 //      les vraies clés sur un jeton factice (rien n'est envoyé à personne) —
 //      Apple doit répondre « BadDeviceToken » et Google « jeton invalide »,
 //      ce qu'ils ne font QUE si la clé est acceptée ;
-//   E. l'AAB 2.9.62 (versionCode 33) : build web, cap sync, Gradle, puis
+//   E. l'AAB (versionCode 33) : build web, cap sync, Gradle, puis
 //      contrôle du paquet (Firebase embarqué, module de notifications,
 //      permission, version, bundle web du commit, signature = même clé
 //      d'envoi que les AAB précédents) ; un APK d'essai à côté ;
@@ -52,7 +52,9 @@ import { fileURLToPath } from 'node:url';
 
 const RACINE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const TELECHARGEMENTS = 'C:\\Users\\nicol\\Downloads';
-const VERSION = '2.9.62';
+// (25/10) La version des binaires est celle de package.json (2.9.62 jamais fabriquée) : le commit de version aligne
+// android/app/build.gradle (versionName) et codemagic.yaml (agvtool) ; l'étape A refuse tout écart.
+const VERSION = JSON.parse(readFileSync(path.join(RACINE, 'package.json'), 'utf8')).version;
 const VERSION_CODE = 33;
 const PAQUET = 'app.fillsell.app';
 const EQUIPE_APPLE = 'BQ379Y93X3';
@@ -350,7 +352,7 @@ if (!sansIos) {
     }
     if (statut !== 'finished') {
       stop(`build iOS « ${statut} » : ${url}`,
-        'cause la plus probable : Push Notifications pas coché sur app.fillsell.app, ou profil « FillSell AppStore » pas régénéré (bloc B, étapes 1-2). Corriger puis relancer : npm run binaires:2.9.62 -- --sans-android');
+        'cause la plus probable : Push Notifications pas coché sur app.fillsell.app, ou profil « FillSell AppStore » pas régénéré (bloc B, étapes 1-2). Corriger puis relancer : npm run binaires -- --sans-android');
     }
     ios = `build Codemagic fini et envoyé à TestFlight (${url}) — reste : App Store Connect › + Version ${VERSION} › build › Envoyer pour examen`;
     ok(ios);

@@ -40,7 +40,7 @@ import { decisionRecreationBloquee, messageRecreationBloquee, messageRecreationR
 import { photosPourCouleurIA } from "../_shared/couleur-ia.ts";
 import { resoudreIsbnArticle } from "../_shared/isbn-ia.ts";
 import { ISBN_ABSENT } from "../_shared/vinted-exigences.js";
-import { rayonRefuseDuJob, resoudreRayonRefuse, feuillesCandidates, pfApresRayon, questionRayonRefuse, messageRayonAChoisir, CLE_REPONSE_RAYON, ESSAIS_RAYON_MAX } from "../_shared/rayon-refuse-moteur.js";
+import { rayonRefuseDuJob, resoudreRayonRefuse, feuillesCandidates, pfApresRayon, questionRayonRefuse, messageRayonAChoisir, genresDuRayonVinted, CLE_REPONSE_RAYON, ESSAIS_RAYON_MAX } from "../_shared/rayon-refuse-moteur.js";
 import { horsModeDepop } from "../../../src/utils/depopCategories.js";
 import { detectObjectIcon } from "../../../src/utils/shared.js";
 import { postesVivants, posteAvecAccesOpla, posteSansAccesOpla } from "../_shared/poste-extension.ts";
@@ -56,6 +56,8 @@ import { PAUSE_VINTED_GESTE_MS, messagePauseVintedGeste, connexionVintedAbsenteP
 import { retraitBloqueParConnexion } from "../_shared/mur-geste.js";
 import { jugerRetraitVintedIntrouvable, numeroRetraitVinted } from "../_shared/retrait-introuvable.js";
 import { jugerRetraitBeebsParReleves, numeroRetraitBeebs } from "../_shared/beebs-preuve-retrait.js";
+import { lecturesDesDepotsBeebs, jugerSortieVerificationBeebs, messageRefusVerificationBeebs, pfApresSortieVerification, pfApresRefusVerification,
+  PRIX_EXAMEN_INVISIBLE_BEEBS, SORTIE_VERIFICATION_REFUS_MS, SORTIE_VERIFICATION_FENETRE_MS } from "../_shared/beebs-sortie-verification.js";
 import { etatReprisPourJob } from "../_shared/etat-repris.ts";
 import { reclasserAutreBoutique, messageAttenteBoutique, POSE_PAR_ORIGINE_PROUVEE } from "../_shared/attente-autre-boutique.js";
 // (18/10, lot 3) Zéro orange hors IA : coupure technique (signature unique), refus
@@ -69,6 +71,7 @@ import { nettoyerDescriptionLeboncoin, nettoyerTitreLeboncoin } from "../_shared
 import { loginsDesBoutiques } from "../_shared/boutique-connectee.js";
 import { republicationFinie, champsRepublicationFinie } from "../_shared/republication-finie.js";
 import { trancherQuestions } from "../_shared/questions-tranchees.ts";
+import { jobDeLaPauseRayon, pfQuestionApresPause, entreeMoteurDuJob } from "../_shared/rayon-moteur-attendu.js";
 import { depotMuetDepuis } from "../_shared/depot-muet.js";
 import { urlsPhotos } from "../_shared/recreation-deja-partie.js";
 import { estDepotCoupe, reperesDuJob, candidatesDepotCoupe, urlsCandidate, decisionDepotCoupe, appariementMutuel, patchRelanceDepotCoupe, patchRattachementDepotCoupe } from "../_shared/depot-coupe-tranche.js";
@@ -1707,6 +1710,98 @@ serve(async (req) => {
     }
   }
 
+  // ══ BEEBS : UN DÉPÔT SORTI DE LA VÉRIFICATION SANS ÊTRE MIS EN LIGNE (25/10, XEWER) ══
+  // (_shared/beebs-sortie-verification.js) XEWER : 74 dépôts depuis le 01/10, 8 vus
+  // en ligne ; les autres sortent de « en vérification » en quelques minutes sans
+  // jamais paraître en ligne, et restent « publiés » (11 sans lien, que la fonction
+  // SQL saute ; 6a38d0b6, republication, depuis le 09/10). Mesuré le 25/10 : sortir
+  // de la vérification n'est PAS un refus à coup sûr (18 dépôts ainsi sortis sont
+  // devenus en ligne 48 à 126 h plus tard). Deux temps, sans migration :
+  //   · SORTIE constatée → marqueur pas_encore_visible (l'app : « Beebs vérifie ton
+  //     annonce », logo désaturé ; effacé dès qu'elle est vue en ligne) — seulement
+  //     sur un dépôt qui a son lien (sans lien, l'app le dit déjà ; et une écriture
+  //     de platform_fields lui poserait un lien par cross_post_jobs_lien_numero_beebs) ;
+  //   · REFUS prouvé 7 jours après la dernière vue (lecture qui voit TOUT « en ligne »,
+  //     sans elle) → « failed » avec son message vrai, publication rendue
+  //     (refund_publish_unconfirmed, idempotent ; la republication l'est par son
+  //     déclencheur), jamais relancé à l'identique.
+  // Toutes les 15 min (fenêtre de 3 min), 120 dépôts et 10 comptes au plus par passage ;
+  // les sorties déjà marquées depuis moins de 7 jours ne sont pas relues.
+  if (new Date().getUTCMinutes() % 15 >= 9 && new Date().getUTCMinutes() % 15 < 12) {
+    try {
+      const il7j = new Date(Date.now() - SORTIE_VERIFICATION_REFUS_MS).toISOString();
+      const { data: deposSV } = await supabase.from("cross_post_jobs")
+        .select("id, user_id, platform, action, status, price, created_at, published_at, vu_en_ligne_le, platform_listing_id, listing_url, error, platform_fields")
+        .eq("platform", "beebs").in("action", ["publish", "republish"]).eq("status", "published")
+        .is("vu_en_ligne_le", null).not("platform_listing_id", "is", null).lt("price", PRIX_EXAMEN_INVISIBLE_BEEBS)
+        .gte("created_at", new Date(Date.now() - SORTIE_VERIFICATION_FENETRE_MS).toISOString())
+        .lte("published_at", new Date(Date.now() - 30 * 60_000).toISOString())
+        .not("platform_fields->preuve_identifiant_beebs", "is", null)
+        .is("platform_fields->refus_verification_beebs", null)
+        .or(`platform_fields->pas_encore_visible->>sortie_constatee_le.is.null,platform_fields->pas_encore_visible->>sortie_constatee_le.lt."${il7j}"`)
+        .order("published_at", { ascending: true }).limit(120);
+      const parCompteSV = new Map<string, Array<Record<string, unknown>>>();
+      for (const j of (deposSV ?? []) as Array<Record<string, unknown>>) {
+        const u = String(j.user_id);
+        if (!parCompteSV.has(u) && parCompteSV.size >= 10) continue;
+        if (!parCompteSV.has(u)) parCompteSV.set(u, []);
+        parCompteSV.get(u)!.push(j);
+      }
+      let sortiesSV = 0, refusSV = 0;
+      for (const [uid, jobsU] of parCompteSV) {
+        const numeros = [...new Set(jobsU.map((j) => String(j.platform_listing_id ?? "").trim()).filter((x) => /^\d{6,}$/.test(x)))];
+        const [rPreuves, rRel, rLig] = await Promise.all([
+          supabase.from("cross_post_jobs").select("id, preuve:platform_fields->preuve_identifiant_beebs")
+            .eq("user_id", uid).eq("platform", "beebs").in("action", ["publish", "republish"])
+            .gte("created_at", new Date(Date.now() - SORTIE_VERIFICATION_FENETRE_MS - 86_400_000).toISOString())
+            .not("platform_fields->preuve_identifiant_beebs", "is", null).order("created_at", { ascending: false }).limit(200),
+          supabase.from("vinted_sync_runs").select("status, started_at, finished_at, items_vus, total_entries, erreur")
+            .eq("user_id", uid).eq("platform", "beebs").eq("kind", "annonces")
+            .gte("started_at", new Date(Date.now() - SORTIE_VERIFICATION_FENETRE_MS - 86_400_000).toISOString())
+            .order("started_at", { ascending: false }).limit(80),
+          supabase.from("annonces_plateforme").select("listing_id, statut_plateforme, vu_le, run_id")
+            .eq("user_id", uid).eq("platform", "beebs").in("listing_id", numeros).limit(500),
+        ]);
+        if (rPreuves.error || rRel.error || rLig.error) continue;
+        const lectures = lecturesDesDepotsBeebs((rPreuves.data ?? []) as Array<Record<string, unknown>>);
+        for (const j of jobsU) {
+          const v = jugerSortieVerificationBeebs(j, { lectures, releves: rRel.data ?? [], lignes: rLig.data ?? [] });
+          if (!v) continue;
+          const pfJ = ((j.platform_fields ?? {}) as Record<string, unknown>);
+          if (v.verdict === "sortie") {
+            // Sans lien : l'app dit déjà « Beebs vérifie » ; rien n'est réécrit (et aucun lien n'est posé par ricochet).
+            if (!String(j.listing_url ?? "").trim()) continue;
+            const pevSV = (pfJ.pas_encore_visible && typeof pfJ.pas_encore_visible === "object") ? pfJ.pas_encore_visible as Record<string, unknown> : null;
+            if (pevSV?.sortie_constatee_le === v.sortie_constatee_le) continue; // déjà dit : aucune ligne inchangée réécrite
+            const { data: maj } = await supabase.from("cross_post_jobs").update({ platform_fields: pfApresSortieVerification(j, v) })
+              .eq("id", j.id as string).eq("status", "published").is("vu_en_ligne_le", null).select("id");
+            sortiesSV += (maj ?? []).length;
+            continue;
+          }
+          const pfR = pfApresRefusVerification(j, v, { par: "handler-watch" });
+          if (j.error) pfR.erreurs_archivees = archiverErreur(pfR.erreurs_archivees, j.error as string, "published", "handler-watch (refus de la vérification Beebs prouvé)");
+          const { data: majR } = await supabase.from("cross_post_jobs")
+            .update({ status: "failed", error: messageRefusVerificationBeebs(j, v), platform_fields: pfR })
+            .eq("id", j.id as string).eq("status", "published").is("vu_en_ligne_le", null).select("id");
+          if (!(majR ?? []).length) continue;
+          refusSV++;
+          // La publication est rendue (idempotent : ref refund_publish_unconfirmed:<job>) ; la republication l'est par
+          // son déclencheur (republish_refund_on_terminal).
+          if (j.action === "publish") {
+            const { data: ref, error: refErr } = await supabase.rpc("refund_publish_unconfirmed", { p_job: j.id });
+            if (refErr) console.warn(`[handler-watch] refus Beebs ${String(j.id).slice(0, 8)} : publication non rendue — ${refErr.message}`);
+            else console.log(`[handler-watch] refus Beebs ${String(j.id).slice(0, 8)} : publication rendue ${JSON.stringify(ref)}`);
+          }
+          const vR = v as Record<string, unknown>;
+          console.log(`[handler-watch] refus Beebs ${String(j.id).slice(0, 8)} (${j.action}, n° ${v.numero}) : sorti de la vérification le ${v.sortie_constatee_le}, jamais en ligne 7 jours après (${vR.confirmee_par} ${vR.confirmee_le}) → « failed », message vrai`);
+        }
+      }
+      if (sortiesSV || refusSV) console.log(`[handler-watch] Beebs, sorties de vérification : ${sortiesSV} marquée(s) « pas encore visible », ${refusSV} refus prouvé(s)`);
+    } catch (e) {
+      console.error("[handler-watch] sorties de vérification Beebs :", (e as Error)?.message ?? e);
+    }
+  }
+
   // ══ SORTIE D'OPLA : LES PUBLICATIONS EN ATTENTE SE CLOSENT (02/10) ═══════
   // Décision de Nico (_shared/opla-sortie.js) : plus aucune publication ni
   // republication Opla. Ce filet, toutes les 3 min sur tout le parc, clôt les
@@ -2344,7 +2439,7 @@ serve(async (req) => {
         .ilike("platform_fields->republish_prevol_formulaire->>detail", "%Catégorie:%").gte("created_at", depuis30j).limit(20),
     ]);
     // deno-lint-ignore no-explicit-any
-    type PlanRayon = { plateforme: string; base: string[]; enfantsVivants?: string[] | null; exclure?: string[] | null };
+    type PlanRayon = { plateforme: string; base: string[]; raison?: string; enfantsVivants?: string[] | null; exclure?: string[] | null };
     // deno-lint-ignore no-explicit-any
     const candidats = ([...(vintedQ.data ?? []), ...(beebsQ.data ?? []), ...(lbcQ.data ?? [])] as any[])
       .map((j) => ({ j, plan: rayonRefuseDuJob(j) as PlanRayon | null }))
@@ -2377,7 +2472,7 @@ serve(async (req) => {
       } else {
         let fiche: Record<string, unknown> | null = null;
         if (j.inventaire_id != null) {
-          const { data: f } = await supabase.from("inventaire").select("titre, description, type, attributs").eq("id", j.inventaire_id).maybeSingle();
+          const { data: f } = await supabase.from("inventaire").select("titre, description, type, attributs, vinted_catalog_id").eq("id", j.inventaire_id).maybeSingle();
           fiche = (f as Record<string, unknown> | null) ?? null;
         }
         const attrs = ((fiche?.attributs ?? {}) as Record<string, unknown>);
@@ -2391,6 +2486,9 @@ serve(async (req) => {
           marque: String(pf.marque ?? valeur(attrs.marque) ?? snap.marque ?? ""),
           genre: String(pf.genre ?? valeur(attrs.genre) ?? ""),
           taille: String(pf.taille ?? valeur(attrs.taille) ?? snap.taille ?? ""),
+          // (25/10, chaouidz) Repli quand la fiche ne dit pas le genre : les genres que son rayon Vinted
+          // permet (« Vêtements pour garçons » → garçon ET bébé, jamais bébé seul) — élague, ne choisit pas.
+          genresPossibles: plan.plateforme !== "vinted" ? genresDuRayonVinted(fiche?.vinted_catalog_id) : null,
           user_id: String(j.user_id),
         }, async (corps: Record<string, unknown>) => {
           const rep = await fetch(urlIA, { method: "POST", headers: { "content-type": "application/json", "x-cron-secret": secretIA }, body: JSON.stringify(corps) });
@@ -2437,11 +2535,13 @@ serve(async (req) => {
       const pfQ: Record<string, unknown> = { ...pf, rayon_moteur: { plateforme: plan.plateforme, base: plan.base, essais, doute: true, motif: String(r?.motif ?? "doute"), le: new Date().toISOString() } };
       let message = j.error as string | null;
       if (feuilles.length) {
-        pfQ.needsUserField = questionRayonRefuse({ plateforme: plan.plateforme, base: plan.base, feuilles, cleChamp: CLE_REPONSE_RAYON });
+        // (25/10, chaouidz) La raison dit si le rayon est ABSENT de la copie ou REFUSÉ par la plateforme :
+        // « Beebs n'accepte plus la catégorie » était faux pour une copie sans rayon.
+        pfQ.needsUserField = questionRayonRefuse({ plateforme: plan.plateforme, base: plan.base, feuilles, cleChamp: CLE_REPONSE_RAYON, raison: plan.raison });
         pfQ.champs_a_completer = [String((pfQ.needsUserField as Record<string, unknown>).field_label)];
         pfQ.needs_user_source = "champ_a_choisir";
         delete pfQ.categoryLevelChoice;
-        message = messageRayonAChoisir(plan.plateforme, plan.base);
+        message = messageRayonAChoisir(plan.plateforme, plan.base, plan.raison);
         if (j.error && j.error !== message) pfQ.erreurs_archivees = archiverErreur(pfQ.erreurs_archivees, j.error, j.status, "handler-watch (rayon à choisir, dernier recours)");
       }
       const { data: majQ } = await supabase.from("cross_post_jobs")
@@ -2454,6 +2554,104 @@ serve(async (req) => {
     if (rayonsPoses || rayonsQuestions) console.log(`[handler-watch] rayons refusés : ${rayonsPoses} posé(s) par le moteur, ${rayonsQuestions} question(s) de dernier recours`);
   } catch (e) {
     console.error("[handler-watch] rayon refusé :", (e as Error)?.message ?? e);
+  }
+
+  // ══ (25/10, audit N9) LA QUESTION « SOUS-CATÉGORIE » MISE DE CÔTÉ ATTEND CE BALAYAGE ══
+  // (_shared/rayon-moteur-attendu.js) Cartes Pokémon du compte 40e1122e (328c17f2, 9de4f193, 20-21/10) : la
+  // feuille « Cartes à collectionner à l'unité » était dans l'arbre relevé, mais le moteur ne lisait que les
+  // questions déjà posées et la personne avait répondu avant lui. update-job-status met désormais la
+  // question de côté (pending, +6 min, rayon_moteur_attendu) ; ici : une feuille sûre → posée là où
+  // l'extension la lit (capture d'une republication, copie d'une publication), le job repart aussitôt, à la
+  // même étape (le pré-vol refait son contrôle avant tout retrait) ; le doute → la question part (feuilles du
+  // moteur, sinon celle de l'extension) ; IA injoignable → nouvel essai au passage suivant, la question part
+  // à l'échéance. Borné : 8 pauses par passage, compare-and-swap sur pending + pause encore ouverte.
+  let rayonsPauseTranches = 0, rayonsPauseQuestions = 0;
+  try {
+    const { data: pausesR } = await supabase.from("cross_post_jobs")
+      .select("id, user_id, platform, action, status, error, title, description, inventaire_id, platform_fields")
+      .eq("platform", "vinted").eq("status", "pending").in("action", ["publish", "republish"])
+      .not("platform_fields->rayon_moteur_attendu", "is", null)
+      .is("platform_fields->rayon_moteur_attendu->>issue", null)
+      .gte("created_at", new Date(Date.now() - 30 * 86400_000).toISOString())
+      .order("created_at", { ascending: true }).limit(8);
+    const urlIAp = `${Deno.env.get("SUPABASE_URL")}/functions/v1/resolve-categorie`;
+    const secretIAp = Deno.env.get("CRON_SECRET") ?? "";
+    // deno-lint-ignore no-explicit-any
+    for (const j of (pausesR ?? []) as any[]) {
+      const p = jobDeLaPauseRayon(j, Date.now()) as { jq: any; att: Record<string, unknown>; echue: boolean } | null;
+      if (!p) {
+        // La pause n'est plus la sienne (le job a vécu depuis : autre échéance, autre étape) : elle se ferme,
+        // rien d'autre ne change — elle ne retient jamais la place des suivantes.
+        await supabase.from("cross_post_jobs").update({ platform_fields: { ...(j.platform_fields ?? {}),
+          rayon_moteur_attendu: { ...((j.platform_fields ?? {}).rayon_moteur_attendu ?? {}), issue: "sans_objet", ferme_le: new Date().toISOString() } } })
+          .eq("id", j.id).eq("status", "pending").is("platform_fields->rayon_moteur_attendu->>issue", null);
+        continue;
+      }
+      const { jq, att, echue } = p;
+      const plan = rayonRefuseDuJob(jq) as { plateforme: string; base: string[]; raison?: string; enfantsVivants?: string[] | null; exclure?: string[] | null } | null;
+      let r: Record<string, unknown> | null = null;
+      if (plan) {
+        let fiche: Record<string, unknown> | null = null;
+        if (j.inventaire_id != null) {
+          const { data: f } = await supabase.from("inventaire").select("titre, description, attributs").eq("id", j.inventaire_id).maybeSingle();
+          fiche = (f as Record<string, unknown> | null) ?? null;
+        }
+        r = await resoudreRayonRefuse(entreeMoteurDuJob(jq, plan, fiche), async (corps: Record<string, unknown>) => {
+          const rep = await fetch(urlIAp, { method: "POST", headers: { "content-type": "application/json", "x-cron-secret": secretIAp }, body: JSON.stringify(corps) });
+          if (!rep.ok) throw new Error(`resolve-categorie HTTP ${rep.status}`);
+          return await rep.json();
+        }) as Record<string, unknown>;
+      }
+      // deno-lint-ignore no-explicit-any
+      const casPause = (q: any) => q.eq("id", j.id).eq("status", "pending").is("platform_fields->rayon_moteur_attendu->>issue", null);
+      if (plan && r?.chemin) {
+        const choix = { chemin: r.chemin as string[], id: (r.id as string | null) ?? null, source: String(r.source ?? "ia") };
+        if (j.action === "republish") {
+          const capId = Number(jq.platform_fields?.capture_id);
+          if (!Number.isFinite(capId)) continue;
+          const { data: cap } = await supabase.from("vinted_republish_captures").select("id, libelles").eq("id", capId).eq("user_id", j.user_id).maybeSingle();
+          if (!cap) continue;
+          const lib = ((cap as { libelles?: Record<string, unknown> }).libelles ?? {}) as Record<string, unknown>;
+          const { error: cErr } = await supabase.from("vinted_republish_captures").update({
+            libelles: { ...lib, categoryPath: choix.chemin, ...(choix.id ? { catalog_id_depot: Number(choix.id) } : {}),
+              rayon_refuse_par_vinted: lib.rayon_refuse_par_vinted ?? lib.categoryPath ?? null },
+          }).eq("id", capId).eq("user_id", j.user_id);
+          if (cErr) { console.warn(`[handler-watch] pause rayon ${String(j.id).slice(0, 8)} : capture ${capId} non mise à jour — ${cErr.message}`); continue; }
+        }
+        const pfR = pfApresRayon(jq, choix, { plateforme: plan.plateforme, base: plan.base, source: choix.source, par: "handler-watch (question mise de côté)" }) as Record<string, unknown>;
+        pfR.rayon_moteur_attendu = { ...att, issue: "choisi", tranche_le: new Date().toISOString() };
+        const { data: maj } = await casPause(supabase.from("cross_post_jobs").update({ status: "pending", error: null, platform_fields: pfR })).select("id");
+        if (maj?.length) {
+          rayonsPauseTranches++;
+          console.log(`[handler-watch] pause rayon ${String(j.id).slice(0, 8)} (vinted ${j.action}) : « ${plan.base.join(" › ")} » → « ${choix.chemin.join(" › ")} » (${choix.source}) — aucune question, le pré-vol refait son contrôle avant tout retrait`);
+        }
+        continue;
+      }
+      if (plan && r?.iaIndisponible && !echue) {
+        // Nouvel essai au passage suivant, avant l'échéance (la pause reste ouverte).
+        await casPause(supabase.from("cross_post_jobs").update({ platform_fields: { ...j.platform_fields,
+          rayon_moteur_attendu: { ...att, essais_ia: (Number(att.essais_ia) || 0) + 1, dernier_essai_le: new Date().toISOString() } } }));
+        continue;
+      }
+      // La question part : les feuilles du moteur (une réponse suffit), sinon celle de l'extension telle quelle.
+      const feuilles = (r?.feuilles as Array<{ chemin: string[]; id: string | null }> | undefined) ?? [];
+      const question = plan && feuilles.length
+        ? questionRayonRefuse({ plateforme: plan.plateforme, base: plan.base, feuilles, cleChamp: CLE_REPONSE_RAYON, raison: plan.raison }) : null;
+      const doute = plan ? { plateforme: plan.plateforme, base: plan.base, doute: true, motif: String(r?.motif ?? "doute"), le: new Date().toISOString(),
+        // Un vrai doute ne se rejuge pas ; une IA injoignable se réessaie (balayage des questions posées).
+        essais: r?.iaIndisponible ? (Number(att.essais_ia) || 0) + 1 : ESSAIS_RAYON_MAX } : null;
+      const { pf: pfQ, message } = pfQuestionApresPause(j, att, {
+        question, rayonMoteur: doute, message: question && plan ? messageRayonAChoisir(plan.plateforme, plan.base, plan.raison) : null,
+      }) as { pf: Record<string, unknown>; message: string | null };
+      const { data: majQ } = await casPause(supabase.from("cross_post_jobs").update({ status: "needs_user", error: message, platform_fields: pfQ })).select("id");
+      if (majQ?.length) {
+        rayonsPauseQuestions++;
+        console.log(`[handler-watch] pause rayon ${String(j.id).slice(0, 8)} (vinted ${j.action}) : aucun choix sûr (${String(r?.motif ?? (plan ? "doute" : "hors moteur"))}${echue ? ", échéance passée" : ""}) → la question part${question ? `, ${feuilles.length} feuille(s)` : " (celle de l'extension)"}`);
+      }
+    }
+    if (rayonsPauseTranches || rayonsPauseQuestions) console.log(`[handler-watch] questions « sous-catégorie » mises de côté : ${rayonsPauseTranches} tranchée(s) par le moteur, ${rayonsPauseQuestions} partie(s) à la personne`);
+  } catch (e) {
+    console.error("[handler-watch] question sous-catégorie mise de côté :", (e as Error)?.message ?? e);
   }
 
   // ══ UNE ANNONCE RETIRÉE QUI NE REVIENT PAS NE GÈLE PLUS LES AUTRES (12/10, A5) ══

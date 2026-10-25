@@ -100,8 +100,8 @@ export const PLATEFORMES_SUIVIES_SEULEMENT = ['opla'];
 
 /** Les plateformes dont le bloc de relevé s'occupe : celles du compte, plus
  *  Opla si le dressing Opla de ce compte est synchronisé (useSortieOpla). */
-export function plateformesDeReleve(plateformesOuvertes = [], oplaRelie = false) {
-  const base = plateformesDuCompte(plateformesOuvertes);
+export function plateformesDeReleve(plateformesOuvertes = [], oplaRelie = false, plateformesFermees = []) {
+  const base = plateformesDuCompte(plateformesOuvertes, plateformesFermees);
   return oplaRelie === true ? [...base, ...PLATEFORMES_SUIVIES_SEULEMENT.filter((p) => !base.includes(p))] : base;
 }
 
@@ -120,12 +120,21 @@ export function plateformesDeReleve(plateformesOuvertes = [], oplaRelie = false)
 //    se voit et se retire toujours (modale de retrait).
 // Ordre = celui de PLATEFORMES_STOCK. Les listes des autres modules (stepper,
 // Lens, republication, relevé) sont DÉRIVÉES des trois constantes ci-dessus.
-export function plateformesDuCompte(plateformesOuvertes = []) {
-  return [...PLATEFORMES_STOCK_OUVERTES, ...PLATEFORMES_STOCK_A_VENIR.filter((p) => plateformesOuvertes.includes(p))];
+// (25/10, décision de Nico — Marta, Rapallo) `plateformesFermees` : celles que
+// le COMPTE ne peut pas viser, calculées par App.jsx depuis le profil déjà lu —
+// aujourd'hui Leboncoin pour une adresse de remise hors de France
+// (_shared/lbc-adresse-france.js, plateformesFermeesHorsFrance). Elles sortent
+// de TOUT ce qui se propose (cases, chips, logos, « En ligne (n/N) »,
+// republication, relevé) ; plateformesDeLArticle les rend encore là où
+// l'article porte une annonce vivante (elle se voit et se retire toujours).
+export function plateformesDuCompte(plateformesOuvertes = [], plateformesFermees = []) {
+  const fermees = Array.isArray(plateformesFermees) ? plateformesFermees : [];
+  return [...PLATEFORMES_STOCK_OUVERTES, ...PLATEFORMES_STOCK_A_VENIR.filter((p) => plateformesOuvertes.includes(p))]
+    .filter((p) => !fermees.includes(p));
 }
 const STATUTS_VIVANTS = new Set(['published', 'pending', 'processing', 'needs_user']);
-export function plateformesDeLArticle(jobsAll, plateformesOuvertes = []) {
-  const base = plateformesDuCompte(plateformesOuvertes);
+export function plateformesDeLArticle(jobsAll, plateformesOuvertes = [], plateformesFermees = []) {
+  const base = plateformesDuCompte(plateformesOuvertes, plateformesFermees);
   const portees = new Set();
   for (const j of jobsAll ?? []) {
     if (!j || j.action === 'delete' || !STATUTS_VIVANTS.has(j.status)) continue;

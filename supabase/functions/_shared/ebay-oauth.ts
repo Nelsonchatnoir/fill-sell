@@ -227,6 +227,8 @@ export interface CompteEbay {
   fulfillment_policy_id: string | null;
   payment_policy_id: string | null;
   return_policy_id: string | null;
+  // (09/10) Site d'inscription du compte (GetUser <Site>), noté par _shared/ebay-site.ts ; null = jamais lu.
+  ebay_site?: string | null;
 }
 
 export async function lireCompte(admin: SupabaseClient, userId: string): Promise<{ compte: CompteEbay | null; erreur: string | null }> {
@@ -240,7 +242,7 @@ export function etatPublic(compte: CompteEbay | null) {
   if (!compte) {
     return {
       connecte: false, a_reconnecter: false, motif_reconnexion: null, ebay_user_id: null, connected_at: null,
-      scopes_manquants: [...SCOPES_DEMANDES], seller_state: null, seller_state_at: null, politiques: null,
+      scopes_manquants: [...SCOPES_DEMANDES], seller_state: null, seller_state_at: null, politiques: null, ebay_site: null,
     };
   }
   const refreshMort = compte.refresh_token_expires_at ? Date.parse(compte.refresh_token_expires_at) < Date.now() : false;
@@ -260,6 +262,9 @@ export function etatPublic(compte: CompteEbay | null) {
       payment: compte.payment_policy_id,
       return: compte.return_policy_id,
     },
+    // (25/10, audit N10) Le site d'inscription (« UK », « Italy »…) : l'app grise eBay pour un compte inscrit hors
+    // d'eBay France (_shared/ebay-hors-france.js). null = jamais lu → rien n'est grisé.
+    ebay_site: compte.ebay_site ?? null,
   };
 }
 
