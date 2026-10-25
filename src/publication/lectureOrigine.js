@@ -130,8 +130,10 @@ export function phraseLecturesOrigine(liste, lang = "fr") {
     titre: en
       ? (n === 1 ? "1 item: reading its original listing" : `${n} items: reading their original listing`)
       : (n === 1 ? "1 article : lecture de son annonce d'origine" : `${n} articles : lecture de leur annonce d'origine`),
+    // (25/10) Jamais « ils partiront » : une lecture demandée par le stepper ou le lot n'a pas de job derrière elle —
+    // l'article est PRÊT à publier avec ton contenu, il ne part pas tout seul (audit du 25/10).
     texte: en
-      ? "They will go out with YOUR text, ALL YOUR photos and YOUR condition as soon as the original listing has been read (FillSell does it: on its own for eBay, through the extension on your computer for the others). Nothing to do."
-      : "Ils partiront avec TON texte, TOUTES TES photos et TON état dès que l'annonce d'origine aura été lue (FillSell s'en charge : tout seul pour eBay, par l'extension de ton ordinateur pour les autres). Rien à faire.",
+      ? "FillSell is reading their original listing on its own (on its own for eBay, through the extension on your computer for the others): they'll be ready to publish with YOUR text, ALL YOUR photos and YOUR condition. Nothing to do."
+      : "FillSell lit leur annonce d'origine tout seul (seul pour eBay, par l'extension de ton ordinateur pour les autres) : ils seront prêts à publier avec TON texte, TOUTES TES photos et TON état. Rien à faire.",
   };
 }

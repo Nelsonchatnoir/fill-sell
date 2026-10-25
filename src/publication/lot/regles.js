@@ -15,6 +15,10 @@ import { poidsLbcManquantPour } from "../../utils/choixPoidsLeboncoin.js";
 // (25/10) Les clôtures « pas pour ce compte » : état neutre au suivi (jamais « à toi de jouer », jamais rouge).
 import { estClotureLbcHorsFrance } from "../../../supabase/functions/_shared/lbc-adresse-france.js";
 import { estClotureEbayHorsFrance } from "../../../supabase/functions/_shared/ebay-hors-france.js";
+// (25/10, balayage des erreurs visibles, règle 3) Le suivi lit l'état UNIQUE d'un job (etatJob, attenteAutomatique)
+// et la nature d'un needs_user (« en cours de confirmation » : la carte le dit gris, le lot aussi).
+import { etatJob, ETATS, attenteAutomatique } from "../../../supabase/functions/_shared/etat-job.js";
+import { natureNeedsUser } from "../../utils/shared.js";
 // La liste de l'unité (utils/stockFiltres.js, PLATEFORMES_JAMAIS_PRECOCHEES),
 // recopiée : stockFiltres importe sans extension, ce module reste lisible par
 // node seul (selftest:publication-lot) — selftest:depop-file-jamais-silencieuse
@@ -336,7 +340,11 @@ export function suiviDuLot(jobs = []) {
       const cur = parPf.get(j.platform);
       if (!cur || String(j.created_at ?? "") > String(cur.created_at ?? "")) parPf.set(j.platform, j);
     }
-    const pastilles = [...parPf.values()].map((j) => ({ platform: j.platform, etat: etatJobLot(j), job: j }));
+    // (25/10) Une plateforme close par NOS règles sans rien à dire au lot (veilleur de 72 h, plateforme écartée,
+    // eBay d'un autre site) n'est pas une annonce du lot ; un article dont tout a été clos ainsi n'a pas de ligne.
+    const pastilles = [...parPf.values()].map((j) => ({ platform: j.platform, etat: etatJobLot(j), job: j }))
+      .filter((p) => p.etat !== "hors_suivi");
+    if (!pastilles.length) continue;
     for (const p of pastilles) {
       annonces++;
       if (p.etat === "en_ligne") annoncesEnLigne++;
@@ -352,22 +360,122 @@ export function suiviDuLot(jobs = []) {
   return { lignes, compte, articles: lignes.length, annonces, annoncesEnLigne, annoncesRetirees, fini: enVol === 0 };
 }
 
+// ── (25/10) CE QUE NOS RÈGLES ONT CLOS — balayage des erreurs visibles, règle 3 ──
+// Le veilleur de 72 h de handler-watch (« … attendait une réponse depuis plusieurs jours : nous l'avons arrêtée »,
+// la même signature que le serveur, _shared/pas-de-rouge.js VEILLE_RE) et l'abandon d'une plateforme tombaient
+// en « À toi de jouer · pas parties » (cas B7) : un choix déjà fait, ou une clôture de notre fait.
+const VEILLE_RE = /attendait une réponse depuis plusieurs jours/i;
+// L'abandon (utils/abandonPlateforme.messageAbandon) et l'arrêt d'un dépôt du lot (MESSAGE_ARRET_DEPOT) disent
+// eux-mêmes « à ta demande ».
+const ARRET_DEMANDE_RE = /^(Arr[êe]t[ée]e? [àa] ta demande|Stopped at your request)/i;
+
+/** (25/10) Arrêtée par la PERSONNE : l'arrêt demandé (lot, carte) et l'abandon d'une plateforme pour cet article —
+ *  le seul « à ta demande » vrai. */
+export function arreteeParLaPersonne(j) {
+  if (!j) return false;
+  if (estArretUtilisateur(j)) return true;
+  if (j.status !== "cancelled") return false;
+  return Boolean(j.platform_fields?.abandon_utilisateur) || ARRET_DEMANDE_RE.test(String(j.error ?? ""));
+}
+
+/**
+ * (25/10) Une publication du lot CLOSE PAR NOS RÈGLES, sans geste possible ni rien à faire :
+ *   · Leboncoin d'une adresse de remise hors de France, eBay inscrit hors d'eBay France (clôtures du 25/10) ;
+ *   · le veilleur de 72 h (handler-watch) ;
+ *   · une attente automatique qui ne partira pas d'elle-même : plateforme écartée par la personne (« je ne vends
+ *     pas sur X »), compte eBay d'un autre site.
+ * Jamais un échec réel (failed : refus, dépôt jamais vu en ligne — « pas parties », à trancher par Nico), jamais
+ * un arrêt demandé par la personne (« arrêtées à ta demande »).
+ */
+export function clotureDeNosRegles(j) {
+  if (!j || String(j.action ?? "publish") !== "publish") return false;
+  if (estClotureLbcHorsFrance(j) || estClotureEbayHorsFrance(j)) return true;
+  if (j.status === "cancelled" && !arreteeParLaPersonne(j) && VEILLE_RE.test(String(j.error ?? ""))) return true;
+  if (j.status === "needs_user") {
+    const a = attenteAutomatique(j);
+    return a === "ecartee" || a === "ebay_etranger";
+  }
+  return false;
+}
+
 /** L'état d'UNE annonce du lot, dans le vocabulaire du suivi. */
 export function etatJobLot(j) {
   if (!j) return "file";
-  if (estArretUtilisateur(j)) return "arretee";
+  // (25/10) + l'abandon d'une plateforme (« Arrêté à ta demande — tu as abandonné X ») : un choix déjà fait.
+  if (arreteeParLaPersonne(j)) return "arretee";
   // (25/10) Close parce que la plateforme n'est pas possible pour ce compte (Leboncoin d'une adresse de remise hors
   // de France, eBay inscrit hors d'eBay France) : rien n'est parti et rien n'est à faire — NEUTRE, jamais « à toi de
   // jouer · pas parties » (le cancelled sans arret_utilisateur y tombait), jamais « arrêtée à ta demande ».
   if (estClotureLbcHorsFrance(j) || estClotureEbayHorsFrance(j)) return "hors_france";
+  // (25/10) Les autres clôtures de nos règles (veilleur, plateforme écartée, eBay d'un autre site) : hors du suivi.
+  if (clotureDeNosRegles(j)) return "hors_suivi";
   if (FINIS_EN_LIGNE.has(j.status)) return "en_ligne";
-  if (j.status === "needs_user") return "geste";
-  if (j.status === "processing") return "en_cours";
-  if (j.status === "pending") return "file";
+  // (25/10) Un job vivant : l'état UNIQUE (etatJob) tranche, comme la file et la carte. Une attente automatique
+  // (« En pause », ça repart seul) n'est jamais un « geste » ; un dépôt « en cours de confirmation » chez la
+  // plateforme non plus (la carte le dit gris) ; une connexion attendue, si (« À toi de jouer »).
+  if (j.status === "needs_user" || j.status === "processing" || j.status === "pending") {
+    if (natureNeedsUser(j) === "en_cours") return "en_cours";
+    const e = etatJob(j).etat;
+    if (e === ETATS.A_TOI) return "geste";
+    if (e === ETATS.EN_COURS) return "en_cours";
+    return "file"; // en file, ou en pause : ça repart seul
+  }
   // Publiée PUIS retirée (retrait demandé, vente ailleurs) : le dépôt a réussi,
   // ce n'est jamais un « pas partie ».
   if (j.published_at || String(j.listing_url ?? "").trim()) return "retiree";
-  return "pas_partie"; // failed, cancelled (hors arrêt demandé)
+  return "pas_partie"; // failed, cancelled (hors arrêt demandé et hors clôtures de nos règles)
+}
+
+/**
+ * (25/10) Les jobs d'un lot que l'APP suit (ligne du Stock, écran de suivi) : sans les plateformes dont le DERNIER
+ * job a été clos par nos règles (clotureDeNosRegles) — Leboncoin d'une adresse hors de France compris (Nico, 25/10 :
+ * « Leboncoin disparaît de tous les choix… Les lignes déjà annulées ne doivent plus lui apparaître comme des
+ * erreurs »). Le dernier job d'une plateforme fait foi : un vieil échec n'est jamais ressuscité par la clôture qui
+ * l'a suivi. suiviDuLot, appelé seul, garde le groupe neutre « réservé à la France » (preuve : lbc-adresse-france).
+ */
+export function jobsDuSuivi(jobs = []) {
+  const dernier = new Map();
+  for (const j of jobs ?? []) {
+    if (!j || String(j.action ?? "publish") !== "publish") continue;
+    const k = `${j.inventaire_id ?? ""}|${j.platform}`;
+    const cur = dernier.get(k);
+    if (!cur || String(j.created_at ?? "") > String(cur.created_at ?? "")) dernier.set(k, j);
+  }
+  const closes = new Set([...dernier].filter(([, j]) => clotureDeNosRegles(j)).map(([k]) => k));
+  if (!closes.size) return [...(jobs ?? [])];
+  return (jobs ?? []).filter((j) => !closes.has(`${j?.inventaire_id ?? ""}|${j?.platform}`));
+}
+
+/**
+ * (25/10) Le lot le plus récent (identifiant posé sur ses jobs) que suit la ligne du haut du Stock, ou null — la
+ * règle de StockTab (lotRecent), ici pour être prouvée. Tant qu'il avance, ou qu'il a fini depuis moins de 6 h, ou
+ * qu'un article y attend un geste (7 jours au plus). Un lot fait SEULEMENT de clôtures de nos règles n'existe plus
+ * pour cette ligne (Marta, 25/10 : « 0 annonce en ligne sur 38 », tout clos « réservé à la France »).
+ * `jobsParArticle` = { inventaire_id: [jobs] } (la forme lue par le Stock).
+ */
+export function lotLePlusRecent(jobsParArticle, maintenant = Date.now()) {
+  const parLot = new Map();
+  for (const list of Object.values(jobsParArticle ?? {})) {
+    for (const j of list ?? []) {
+      const id = idLotDeJob(j);
+      if (!id || j.action !== "publish" || !j.platform_fields?.lot_publication) continue;
+      if (!parLot.has(id)) parLot.set(id, { id, le: j.platform_fields.lot_publication.le ?? j.created_at, jobs: [] });
+      parLot.get(id).jobs.push(j);
+    }
+  }
+  let recent = null;
+  for (const l of parLot.values()) {
+    const suivis = jobsDuSuivi(l.jobs);
+    if (!suivis.length) continue;
+    if (!recent || String(l.le) > String(recent.le)) recent = { ...l, jobs: suivis };
+  }
+  if (!recent) return null;
+  const suivi = suiviDuLot(recent.jobs);
+  if (!suivi.articles) return null;
+  const ilYa = maintenant - Date.parse(recent.le ?? 0);
+  if (suivi.fini && !(ilYa < 6 * 3600 * 1000) && !suivi.compte.geste) return null;
+  if (ilYa > 7 * 86400 * 1000) return null;
+  return { ...recent, suivi };
 }
 
 /** Le groupe d'un article, à partir des états de ses annonces. */

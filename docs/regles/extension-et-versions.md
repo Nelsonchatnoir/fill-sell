@@ -75,3 +75,19 @@
   `requestUpdateCheck` toutes les 2 h) ; un arrêt qu'une version corrige repart seul (`_shared/relance-apres-maj.js`) ;
   une règle qui exige une version (ex. ISBN « 0000000000 ») RETIENT le job en silence avec un message neutre
   (« part dès que ton extension se sera mise à jour toute seule — rien à faire »), jamais un bandeau ni « mets à jour ».
+
+## ⛔ 25/10 après-midi — 0.6.144 : une RPC rend sa réponse ; le pont survit aux mises à jour (rapport `docs/enquetes/import-publier-ailleurs-2510/RAPPORT.md`)
+- `restRequest` : tout `rpc/…` rend sa réponse (corps vide → null), quel que soit `Prefer`. De la 0.6.130 à la 0.6.143, la
+  réponse de toute RPC appelée sans `return=representation` était JETÉE : `lectures_origine_en_attente` (le lecteur de
+  secours n'a jamais rien lu), `file_etat_poste` (pause et synchro entre deux tâches jamais vues),
+  `noter_formats_colis_beebs` (compte rendu 0). ⛔ Un selftest qui vérifie la présence d'un appel ne prouve rien : il faut
+  EXÉCUTER le code (`scripts/lecture-page-publique-selftest.mjs` extrait les fonctions de background.js et les joue).
+- Chrome ne réinjecte pas un script de contenu dans un onglet déjà ouvert quand l'extension se met à jour :
+  `reinjecterPontFillsell` (onInstalled install/update) réinjecte `content-scripts/fillsell-auth.js` dans les onglets
+  fillsell.app ouverts ; le script ne se lance pas deux fois dans le même monde isolé (`__fillsellPontActif`) ; une copie
+  coupée de son extension se tait, ne se déclare plus présente et poste `__fillsellPontMort`. Prouvé sur le poste de
+  Nico le 25/10 (onglet ouvert à 13:45, mise à jour à 14:12, réponse en 1 ms sans recharger l'onglet).
+- Les versions ≤ 0.6.143 restent sans réinjection : leur pont meurt à chaque mise à jour jusqu'au rechargement de
+  l'onglet — la page (OTA) le constate en 1,5 s et propose « Recharger la page ».
+- Le poste de Nico a tourné le 25/10 sur des builds `-dirty` (pilote de la lecture de fond) ; le serveur ne lit que
+  l'horodatage du BUILD_ID (`posteExtensionCompatible`), le suffixe est sans effet.

@@ -6,6 +6,20 @@
 // stocke dans chrome.storage.local.
 
 (() => {
+  // ── (25/10, 0.6.144 — Louis) LE PONT SURVIT À UNE MISE À JOUR DE L'EXTENSION ──────────────────────────────
+  // Chrome ne réinjecte PAS ce script dans un onglet fillsell.app déjà ouvert quand l'extension se met à jour :
+  // l'ancien script reste, coupé de l'extension (« Extension context invalidated »), et avalait chaque commande
+  // en silence. louis-seller, 25/10 : extension mise à jour à 01:58:40, onglet FillSell resté ouvert, puis 20+
+  // lectures de détail demandées par son lot entre 10:29 et 10:50 — aucune réponse, 25 s d'attente chacune.
+  // Reproduit sur le poste de Nico le 25/10 (13:38 réponse en 4,3 s ; rechargement de l'extension à 13:43:50 ;
+  // 13:45 même onglet : ni présence ni réponse en 30 s ; onglet rechargé : réponse en 3,2 s). Désormais :
+  //   · le background réinjecte ce script dans les onglets ouverts à chaque installation ou mise à jour ;
+  //   · une copie déjà active dans ce monde isolé ne se lance pas deux fois ;
+  //   · une copie coupée de son extension le DIT à la page (__fillsellPontMort) et se tait, au lieu d'avaler.
+  if (globalThis.__fillsellPontActif) return;
+  globalThis.__fillsellPontActif = true;
+  const pontVivant = () => { try { return Boolean(chrome.runtime?.id); } catch { return false; } };
+
   const POLL_MS = 2000;
   const MAX_POLLS = 150; // ~5 min : laisse le temps à l'utilisateur de se connecter (estimation-ok: réglage interne)
 
@@ -73,11 +87,20 @@
     // catalogue des marques Vinted. Lecture seule ; la réponse repart vers la
     // page avec le terme cherché.
     "CHERCHER_MARQUE",
+    // (25/10, 0.6.144) La PAGE PUBLIQUE d'une annonce Vinted (texte, couleur, rayon) : une page vue, comme un
+    // visiteur — jamais le formulaire d'édition, et lisible quel que soit le compte Vinted ouvert dans Chrome.
+    "FETCH_VINTED_PUBLIC",
   ]);
-  window.addEventListener("message", (e) => {
+  const surCommande = (e) => {
     if (e.source !== window) return;
     const cmd = e.data?.__fillsellCmd;
     if (!cmd || !COMMANDES.has(cmd)) return;
+    if (!pontVivant()) {
+      // Coupé de l'extension (mise à jour, rechargement) : la page l'apprend tout de suite, et ce script se tait.
+      window.removeEventListener("message", surCommande);
+      window.postMessage({ __fillsellPontMort: { cmd, vintedItemId: String(e.data?.vintedItemId ?? "") } }, window.location.origin);
+      return;
+    }
     try {
       if (cmd === "AUTORISER_OPLA") {
         chrome.runtime.sendMessage({ type: cmd }, (rep) => {
@@ -126,9 +149,10 @@
       // réponse du background repart vers la page — contrairement à
       // SYNC_DRESSING, qui rend compte par la base. CAPTURE (É1 republication,
       // 2026-08-05) : lecture seule, à l'unité, sur action humaine.
-      if (cmd === "FETCH_VINTED_ITEM" || cmd === "CAPTURE_VINTED_ITEM") {
+      if (cmd === "FETCH_VINTED_ITEM" || cmd === "CAPTURE_VINTED_ITEM" || cmd === "FETCH_VINTED_PUBLIC") {
         const vintedItemId = String(e.data?.vintedItemId ?? "");
-        const cleReponse = cmd === "CAPTURE_VINTED_ITEM" ? "__fillsellItemCapture" : "__fillsellItemDetail";
+        const cleReponse = cmd === "CAPTURE_VINTED_ITEM" ? "__fillsellItemCapture"
+          : cmd === "FETCH_VINTED_PUBLIC" ? "__fillsellAnnoncePublique" : "__fillsellItemDetail";
         chrome.runtime.sendMessage({ type: cmd, vintedItemId }, (rep) => {
           void chrome.runtime.lastError;
           window.postMessage({
@@ -143,12 +167,17 @@
       });
       console.log(`[fillsell-auth] commande relayée : ${cmd}`);
     } catch { /* extension rechargée : sans conséquence */ }
-  });
+  };
+  window.addEventListener("message", surCommande);
 
   // Signal de présence : le site grise son bouton de sync tant qu'il n'a pas vu
   // l'extension. Le heartbeat serveur (profiles.extension_last_seen_at) ne se
   // rafraîchit qu'au poll (2 min) — trop lent pour un bouton qu'on regarde.
-  const annoncer = () => window.postMessage({ __fillsellExt: true, version: chrome.runtime?.getManifest?.().version ?? null }, window.location.origin);
+  // (25/10, 0.6.144) Une copie coupée de son extension ne se déclare plus présente : la page ne compte pas sur elle.
+  const annoncer = () => {
+    if (!pontVivant()) return;
+    try { window.postMessage({ __fillsellExt: true, version: chrome.runtime?.getManifest?.().version ?? null }, window.location.origin); } catch { /* coupée */ }
+  };
   annoncer();
   window.addEventListener("message", (e) => {
     if (e.source === window && e.data?.__fillsellPing) annoncer();

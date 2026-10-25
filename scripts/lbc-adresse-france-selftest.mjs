@@ -173,10 +173,13 @@ console.log("\n[4] L'app : rien ne propose Leboncoin à ces comptes");
     && /estClotureLbcHorsFrance\(job\) \|\| estClotureEbayHorsFrance\(job\)\) return null;/.test(stock)
     && /\[\.\.\.\(ecarteesLues \?\? \[\]\), \.\.\.plateformesFermees\]/.test(stock) && /ecartees: ecarteesCompte/.test(stock));
   const reglages = lire("src/reglages/ReglagesPage.jsx");
-  ok("Réglages : la republication ne propose plus Leboncoin, la ligne « Mes plateformes » le dit",
+  // (25/10 après-midi, Nico : « Leboncoin DISPARAÎT de tous les choix … réglages, partout ») plus de ligne grisée :
+  // « Mes plateformes » ne porte plus Leboncoin (plateformesSession sans les fermées), et la garde n'affiche rien.
+  ok("Réglages : la republication ne propose plus Leboncoin, « Mes plateformes » ne le montre plus",
     /plateformesDuCompte\(plateformesOuvertes \?\? \[\]\)\.filter\(\(p\) => !\(plateformesFermees \?\? \[\]\)\.includes\(p\)\)/.test(reglages)
     && /lbcHorsFrance: \(plateformesFermees \?\? \[\]\)\.includes\('leboncoin'\)/.test(reglages)
-    && /pf === 'leboncoin' && c\.lbcHorsFrance/.test(lire("src/reglages/SousPagePlateformes.jsx")));
+    && /plateformesDeReleve\(plateformesOuvertes, oplaRelie\)\.filter\(\(p\) => !\(plateformesFermees \?\? \[\]\)\.includes\(p\)\)/.test(reglages)
+    && /if \(pf === 'leboncoin' && c\.lbcHorsFrance\) return null;/.test(lire("src/reglages/SousPagePlateformes.jsx")));
 }
 
 console.log("\n[5] eBay hors de France, plateformes écartées");

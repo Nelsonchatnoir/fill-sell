@@ -627,3 +627,40 @@
   pause anti-robot) ; l'extension 0.6.143 lit AVANT ses tâches et trace une lecture ratée (`usage_logs`
   « lecture_origine_echec »). Selftest `lecture-origine-devant`. Ses 5 textes ont été posés depuis ses pages Vinted
   publiques (`20261025_louis_seller_textes_vinted.sql`).
+
+## ⛔ 25/10 après-midi — importer son Vinted puis publier ailleurs : le texte lu AVANT le clic, jamais un écran qui retient (rapport `docs/enquetes/import-publier-ailleurs-2510/RAPPORT.md`, audit `AUDIT-PARCOURS.md`)
+- **Cause de Louis (prouvée, reproduite)** : onglet fillsell.app ouvert pendant une mise à jour de l'extension → pont mort
+  (les commandes avalées) ; et le lecteur de secours de l'extension ne lisait rien (`restRequest` jetait la réponse de
+  toute RPC). La retenue « la lecture passe devant » ne vise plus que les extensions ≥ 0.6.144 (`LECTURE_FOND_VERSION_MIN`).
+- **La source** : la PAGE PUBLIQUE de l'annonce (JSON-LD Product + fil d'Ariane, feuille = rayon), une page vue depuis
+  l'onglet de travail. ⛔ Jamais le formulaire d'édition (`item_upload`) en boucle. Lisible quel que soit le compte Vinted
+  ouvert. Une annonce vendue n'a PAS de JSON-LD Product (« page_sans_annonce », jamais un refus).
+- **⛔ MÉTHODE (décision de Nico, 25/10) : la fiche est COMPLÈTE dès l'import**, pour qu'au clic « Publier » il n'y ait
+  aucune attente — la liste d'abord (stock visible tout de suite), puis l'extension lit chaque annonce en arrière-plan,
+  à la suite, et complète la fiche ; priorité aux comptes payants et actifs, puis aux fiches les plus récentes ;
+  rattrapage des fiches déjà importées ; rythme sûr, mesuré avant d'ouvrir. Toutes les plateformes importées (Depop,
+  Beebs, Leboncoin, eBay) suivent la même méthode, plateforme par plateforme après mesure.
+- **Le rattrapage en arrière-plan** : `get-pending-jobs` → `lecture_fond` (`_shared/lecture-fond.js`) ; l'extension lit à la
+  fin de ses polls (3 pages au plus — 2 avant le 25/10 16:07 —, 20 à 45 s d'écart, 300 par jour) et n'écrit que ce qui MANQUE (description si vide,
+  `vinted_catalog_id` si nul, attributs fusionnés par la base, marque `page_publique_lue`). Ouverture :
+  `coin_config.lecture_fond_mode` (absent = 1 pilotes en mesure — leurs vraies fiches à lire sont écrites ; 2 payants ;
+  3 tous ; 0 coupé). Le premier refus de Vinted coupe le compte 6 h ; `ops-digest` les compte.
+- **Le pont** : la page sonde la présence en 1,5 s avant toute lecture ; un pont mort se dit (« Recharge cette page »,
+  lot gardé) ; l'extension ≥ 0.6.144 réinjecte son script dans les onglets ouverts à chaque mise à jour.
+- **Jamais retenu sans issue** : au stepper (« Publier » à l'unité), une fiche pas encore lue ouvre en DERNIER RECOURS
+  l'écran `AttenteLectureOrigine` : lecture tout de suite, relecture toutes les 6 s (5 min au plus), stepper ouvert dès
+  que c'est lu, « Fermer » laisse la lecture continuer (avant : une bulle de 7 s puis rien — Jocabroc, 25/10). ⛔ Jamais
+  « Écrire ma description » pendant une attente (décision de Nico) : seulement quand l'annonce d'origine n'a VRAIMENT
+  aucun texte (note `sans_description` — le stepper s'ouvre, texte rédigé à relire). Dans le lot, passé 60 s, la seule
+  issue est « Retirer du lot » ; une lecture faite au
+  stepper ou au lot ferme sa demande ; les phrases ne promettent plus un départ quand aucun job n'existe
+  (`messageLectureOrigine(…, "preparation")`).
+- Selftests : `lecture-page-publique` (code de l'extension EXÉCUTÉ, plus seulement des motifs), `lecture-fond`.
+
+## ⛔ 25/10 fin d'après-midi — aucune action ratée invisible (Jocabroc ; rapport § 6)
+- Chaque action ratée de l'app (web et mobile) écrit `usage_logs.action_app_ratee` (`src/utils/actionRatee.js` : action,
+  motif, build, plateforme) : publication en attente/refusée, rédaction ratée, republication retenue/refusée, contact,
+  exceptions non rattrapées (5 par onglet) ; bornée (même motif : 2 min ; 40/h) ; sans session, gardée et envoyée à la
+  session suivante. `ops-digest` : « actions app en échec » et « comptes actifs dont les actions app s'arrêtent net ».
+- « Contacter le support » ouvre le formulaire de l'app (un `mailto:` ne fait rien sur un PC sans messagerie).
+- ⛔ La republication (capture, retrait, recréation, réveil) reste telle quelle (décision de Nico, 25/10).

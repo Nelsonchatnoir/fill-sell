@@ -53,3 +53,9 @@
   background: rgba(255,255,255,.94); border: 1.5px solid #CFC9BA; display: grid; place-items: center;
   color: #fff; font-weight: 800; font-size: 15px; line-height: 1; box-shadow: 0 1px 3px rgba(16,32,27,.22); pointer-events: none; }
 .stock-v2 .lot-case.on { background: #2F9E90; border-color: #2F9E90; }
+
+/* (25/10 — Louis) L'attente d'une annonce d'origine : ce qui se passe, depuis quand, et ses issues. */
+.fsl-origine { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.fsl-origine .fsn-btn-row { flex-wrap: wrap; gap: 6px; }
+.fsl-origine-ecrire { display: flex; flex-direction: column; gap: 6px; }
+.fsl-origine-ecrire .fsn-textarea { min-height: 90px; }

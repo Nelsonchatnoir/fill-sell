@@ -55,7 +55,11 @@ import { OPLA_PRIX_MAX, prixOplaTropHaut, messagePrixOplaTropHaut } from "../_sh
 import { PAUSE_VINTED_GESTE_MS, messagePauseVintedGeste, connexionVintedAbsenteProuvee, murConnexionVintedProuve } from "../_shared/mur-geste.js";
 import { retraitBloqueParConnexion } from "../_shared/mur-geste.js";
 import { jugerRetraitVintedIntrouvable, numeroRetraitVinted } from "../_shared/retrait-introuvable.js";
-import { jugerRetraitBeebsParReleves, numeroRetraitBeebs } from "../_shared/beebs-preuve-retrait.js";
+import { jugerRetraitBeebsParReleves, numeroRetraitBeebs, constats404Beebs, deuxConstats404Prouvent } from "../_shared/beebs-preuve-retrait.js";
+// (25/10, règle de Nico) Un retrait sur une annonce déjà absente se clôt seul : `deleted` + deja_absente.
+import { numeroAnnonceDuJob, jugerRetraitDejaAbsent, champsRetraitDejaAbsent, copiesAClore, clotureCopie } from "../_shared/retrait-deja-absent.js";
+// (25/10, Thibault 44d125ac) Une attente close ne laisse aucun marqueur : la liste UNIQUE.
+import { champsAttenteClose } from "../_shared/etat-terminal.js";
 import { lecturesDesDepotsBeebs, jugerSortieVerificationBeebs, messageRefusVerificationBeebs, pfApresSortieVerification, pfApresRefusVerification,
   PRIX_EXAMEN_INVISIBLE_BEEBS, SORTIE_VERIFICATION_REFUS_MS, SORTIE_VERIFICATION_FENETRE_MS } from "../_shared/beebs-sortie-verification.js";
 import { etatReprisPourJob } from "../_shared/etat-repris.ts";
@@ -1484,7 +1488,7 @@ serve(async (req) => {
   if (new Date().getUTCMinutes() % 15 < 3) {
     try {
       const { data: retraitsV } = await supabase.from("cross_post_jobs")
-        .select("id, user_id, platform, action, status, created_at, error, listing_url, platform_listing_id, platform_fields")
+        .select("id, user_id, inventaire_id, platform, action, status, created_at, error, listing_url, platform_listing_id, platform_fields")
         .eq("platform", "vinted").eq("action", "delete").in("status", ["pending", "needs_user", "failed"])
         .lt("created_at", new Date(Date.now() - 2 * 3600_000).toISOString())
         .gte("created_at", new Date(Date.now() - 30 * 86_400_000).toISOString())
@@ -1523,13 +1527,16 @@ serve(async (req) => {
           if (!v) continue;
           const pfJ = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
           if (v.verdict === "deja_retire") {
-            pfJ.erreurs_archivees = archiverErreur(pfJ.erreurs_archivees, j.error as string, String(j.status), "handler-watch (retrait Vinted introuvable : deux relevés complets du dressing)");
-            pfJ.retrait_conclu = { le: new Date().toISOString(), par: "deux_releves_complets_dressing", releves: v.releves, numero: v.numero, boutiques: v.boutiques };
-            for (const k of ["needs_user_source", "next_action_after", "verification_boutique_vinted"]) delete pfJ[k];
-            const { data: maj } = await supabase.from("cross_post_jobs")
-              .update({ status: "cancelled", error: v.message, platform_fields: pfJ })
-              .eq("id", j.id as string).in("status", ["pending", "needs_user", "failed"]).select("id");
-            closV += (maj ?? []).length;
+            // (25/10, règle de Nico) Déjà absente = retrait FAIT : `deleted` + deja_absente, sans message ni erreur
+            // (l'erreur d'avant archivée), la copie publiée close comme après un retrait. Plus `cancelled` +
+            // « Rien à retirer » (« Arrêtée » dans l'app) — sur un « Oui » à « Déjà vendu ? », `cancelled` défaisait
+            // la fusion de la personne (déclencheur deja_vendu_retrait_echoue_defait).
+            const fait = await ecrireRetraitDejaAbsent(supabase, j, {
+              numero: v.numero, vente: null, delete_confirmed_by: "releves", motif: "deux_releves_complets",
+              preuve: { source: "releves_complets", releves: v.releves ?? [], boutiques: v.boutiques ?? [], derniere_vue: derniereVue.get(numero) ?? null },
+            }, "handler-watch (retrait Vinted introuvable : deux relevés complets du dressing)",
+              { retrait_conclu: { le: new Date().toISOString(), par: "deux_releves_complets_dressing", releves: v.releves, numero: v.numero, boutiques: v.boutiques } });
+            if (fait) closV++;
             continue;
           }
           // Boutique prouvée par le relevé qui a vu l'annonce, absente du job : rendue au job.
@@ -1571,6 +1578,129 @@ serve(async (req) => {
       }
     } catch (e) {
       console.error("[handler-watch] retraits Vinted introuvables :", (e as Error)?.message ?? e);
+    }
+  }
+
+  // ══ (25/10, règle de Nico) UN RETRAIT SUR UNE ANNONCE DÉJÀ ABSENTE SE CLÔT SEUL — TOUT LE PARC ══════════
+  // « Si l'annonce est déjà absente (404, retirée, vendue), le retrait est considéré comme fait et se clôt seul,
+  // sans erreur ni message à l'utilisateur. Sur toutes les plateformes. » Mesuré le 25/10 : 9 retraits ouverts
+  // sur une annonce que les relevés ont vue partir (lot du 26/09 armé sur des copies déjà hors ligne, postes
+  // muets depuis septembre) — la règle des deux relevés de get-pending-jobs ne prend que needs_user / failed et
+  // ne tourne qu'au poll du compte. Ici : pending compris, poste muet compris, avec ce que le SERVEUR sait
+  // (_shared/retrait-deja-absent.js, jugerRetraitDejaAbsent) — par NUMÉRO, jamais par titre :
+  //   · Vinted : instantané « sold » du relevé ; deux relevés complets du dressing de SA boutique sans elle ;
+  //   · Leboncoin, eBay, Depop : vue par un relevé, puis absente des deux derniers relevés complets ;
+  //   · Beebs : JAMAIS sur le relevé (index en retard, vérification invisible) — deux constats « page 404 » de
+  //     l'extension à 6 h d'écart au moins, et la garde de modération (vue en ligne, ou dépôt de plus de 72 h).
+  // Issue : `deleted` + deja_absente, l'erreur d'avant archivée, la copie publiée close (« pas une vente », sauf
+  // vente prouvée). Un passage sur cinq (~15 min), 300 retraits lus au plus, 12 comptes par passage en tournant,
+  // une écriture par retrait qui change, aucune ligne inchangée réécrite.
+  if (new Date().getUTCMinutes() % 15 >= 3 && new Date().getUTCMinutes() % 15 < 6) {
+    try {
+      const RETRAITS_ABSENTS_LUS = 300;
+      const COMPTES_PAR_PASSAGE = 12;
+      const { data: ouverts } = await supabase.from("cross_post_jobs")
+        .select("id, user_id, inventaire_id, platform, action, status, created_at, error, listing_url, platform_listing_id, platform_fields")
+        .eq("action", "delete").in("status", ["pending", "needs_user", "failed"])
+        .in("platform", ["vinted", "leboncoin", "ebay", "depop", "beebs"])
+        .lt("created_at", new Date(now - 60 * 60_000).toISOString())
+        .gte("created_at", new Date(now - 90 * 86_400_000).toISOString())
+        .order("created_at", { ascending: true }).limit(RETRAITS_ABSENTS_LUS);
+      const parCompteA = new Map<string, Array<Record<string, unknown>>>();
+      for (const j of (ouverts ?? []) as Array<Record<string, unknown>>) {
+        if (!numeroAnnonceDuJob(j)) continue;
+        // Beebs : seulement un retrait qui porte déjà deux constats « page 404 » à 6 h d'écart (rien d'autre ne prouve).
+        if (j.platform === "beebs" && !deuxConstats404Prouvent(constats404Beebs((j.platform_fields ?? {}) as Record<string, unknown>).map((c) => String(c.le)))) continue;
+        const u = String(j.user_id);
+        if (!parCompteA.has(u)) parCompteA.set(u, []);
+        parCompteA.get(u)!.push(j);
+      }
+      const comptesA = [...parCompteA.keys()].sort();
+      const depart = comptesA.length ? (Math.floor(now / 900_000) * COMPTES_PAR_PASSAGE) % comptesA.length : 0;
+      const tour = [...comptesA.slice(depart), ...comptesA.slice(0, depart)].slice(0, COMPTES_PAR_PASSAGE);
+      let closA = 0;
+      const parPlateformeA: Record<string, number> = {};
+      for (const uid of tour) {
+        const jobsU = parCompteA.get(uid)!;
+        const plats = new Set(jobsU.map((j) => String(j.platform)));
+        const numerosDe = (p: string) => [...new Set(jobsU.filter((j) => j.platform === p).map((j) => numeroAnnonceDuJob(j)).filter(Boolean))];
+        const releves = new Map<string, Array<Record<string, unknown>>>();
+        const lignes = new Map<string, Array<Record<string, unknown>>>();
+        const derniereVueV = new Map<string, string>();
+        const snapV = new Map<string, Record<string, unknown>>();
+        const depotsB = new Map<string, Array<Record<string, unknown>>>();
+        const enLigneB = new Set<string>();
+        // Les plateformes dont TOUTES les lectures ont abouti : une lecture ratée ne conclut jamais rien.
+        const lues = new Set<string>();
+        for (const p of plats) {
+          const numeros = numerosDe(p);
+          if (!numeros.length) continue;
+          if (p === "vinted") {
+            const [rR, rS] = await Promise.all([
+              supabase.from("vinted_sync_runs")
+                .select("kind, status, started_at, finished_at, updated_at, items_vus, total_entries, erreur, vinted_user_id, vinted_login")
+                .eq("user_id", uid).eq("kind", "dressing").gte("started_at", new Date(now - 120 * 86_400_000).toISOString())
+                .order("started_at", { ascending: false }).limit(80),
+              supabase.from("vinted_listing_snapshots").select("vinted_item_id, status, captured_at")
+                .eq("user_id", uid).in("vinted_item_id", numeros).order("captured_at", { ascending: false }).limit(2000),
+            ]);
+            if (rR.error || rS.error) continue;
+            releves.set(p, rR.data ?? []);
+            lues.add(p);
+            for (const s of (rS.data ?? []) as Array<Record<string, unknown>>) {
+              const n = String(s.vinted_item_id);
+              if (!derniereVueV.has(n)) { derniereVueV.set(n, String(s.captured_at)); snapV.set(n, s); }
+            }
+          } else if (p === "beebs") {
+            const [rD, rA] = await Promise.all([
+              supabase.from("cross_post_jobs").select("platform_listing_id, published_at, vu_en_ligne_le")
+                .eq("user_id", uid).eq("platform", "beebs").in("action", ["publish", "republish"]).in("platform_listing_id", numeros)
+                .order("published_at", { ascending: false }).limit(200),
+              supabase.from("annonces_plateforme").select("listing_id")
+                .eq("user_id", uid).eq("platform", "beebs").in("listing_id", numeros).eq("statut_plateforme", "en_ligne").not("vu_le", "is", null).limit(500),
+            ]);
+            if (rD.error || rA.error) continue;
+            lues.add(p);
+            for (const d of (rD.data ?? []) as Array<Record<string, unknown>>) {
+              const n = String(d.platform_listing_id ?? "").trim();
+              if (!depotsB.has(n)) depotsB.set(n, []);
+              depotsB.get(n)!.push(d);
+            }
+            for (const a of (rA.data ?? []) as Array<Record<string, unknown>>) enLigneB.add(String(a.listing_id ?? "").trim());
+          } else {
+            const [rR, rA] = await Promise.all([
+              supabase.from("vinted_sync_runs").select("status, started_at, items_vus, total_entries, erreur")
+                .eq("user_id", uid).eq("platform", p).eq("kind", "annonces").gte("started_at", new Date(now - 120 * 86_400_000).toISOString())
+                .order("started_at", { ascending: false }).limit(30),
+              supabase.from("annonces_plateforme").select("listing_id, url, job_id, inventaire_id, vu_le, disparu_le, retiree_le, statut_plateforme, created_at")
+                .eq("user_id", uid).eq("platform", p).in("listing_id", numeros).limit(1000),
+            ]);
+            if (rR.error || rA.error) continue;
+            releves.set(p, rR.data ?? []);
+            lignes.set(p, rA.data ?? []);
+            lues.add(p);
+          }
+        }
+        for (const j of jobsU) {
+          const p = String(j.platform);
+          const numero = numeroAnnonceDuJob(j);
+          if (!lues.has(p)) continue;
+          const v = jugerRetraitDejaAbsent(j, {
+            releves: releves.get(p) ?? [], annonces: lignes.get(p) ?? [],
+            snapshot: snapV.get(numero) ?? null, derniereVue: derniereVueV.get(numero) ?? null,
+            depotsBeebs: p === "beebs" ? (depotsB.get(numero) ?? []) : null, vueEnLigneBeebs: enLigneB.has(numero), maintenant: now,
+          });
+          if (!v) continue;
+          if (await ecrireRetraitDejaAbsent(supabase, j, v, `handler-watch (retrait sur une annonce déjà absente : ${v.motif})`)) {
+            closA++;
+            parPlateformeA[p] = (parPlateformeA[p] ?? 0) + 1;
+            console.log(`[handler-watch] [retrait-deja-absent] job ${j.id} (${p}, annonce ${numero}, user ${uid}) : ${v.motif} → deleted${v.vente ? " (vendue sur la plateforme)" : ""}`);
+          }
+        }
+      }
+      if (closA) console.log(`[handler-watch] retraits sur une annonce déjà absente : ${closA} clos (${Object.entries(parPlateformeA).map(([k, n]) => `${k} ${n}`).join(", ")}) sur ${tour.length} compte(s) relu(s)`);
+    } catch (e) {
+      console.error("[handler-watch] retraits déjà absents :", (e as Error)?.message ?? e);
     }
   }
 
@@ -4569,6 +4699,8 @@ serve(async (req) => {
       if (!a || a.statut !== "stock" || a.disparu_le || a.fusionne_dans) continue;
       // La capture la plus fraîche POSTÉRIEURE au gel, et seulement si elle
       // est valide et complète.
+      // (25/10, décision de Nico : « pour la republication on ne touche à rien ») le moment du réveil reste celui
+      // d'avant (capture postérieure à la CRÉATION de la tâche) ; seuls les marqueurs d'attente tombent au réveil.
       const { data: caps } = await supabase
         .from("vinted_republish_captures")
         .select("id, verdict, champs_manquants, captured_at")
@@ -4590,11 +4722,13 @@ serve(async (req) => {
           // archive (il était perdu : error ← null sans trace) et ses marqueurs tombent — sinon un arrêt suivant
           // d'une autre nature (sélecteur, canal) héritait d'une source « prevol_negatif » et d'une question
           // périmée. La mémoire anti-boucle (needsUserBoucle) reste : une question qui revient se compte.
+          // (25/10, Thibault 44d125ac) Par la liste UNIQUE (_shared/etat-terminal.js) : error_technique et
+          // needs_user_sans_motif tombaient pas — ils restaient jusque sur la tâche publiée. Le brut est archivé.
           platform_fields: {
-            ...Object.fromEntries(Object.entries(pf).filter(([k]) =>
-              !["needs_user_source", "needsUserField", "needsUserFields", "champs_a_completer",
-                "needs_user_tick_le", "needs_user_actif_ms", "needs_user_vu_le", "needs_user_vu_erreur"].includes(k))),
-            erreurs_archivees: archiverErreur(pf.erreurs_archivees, j.error, "needs_user", "handler-watch (réveil par capture fraîche)"),
+            ...champsAttenteClose({
+              ...pf,
+              erreurs_archivees: archiverErreur(pf.erreurs_archivees, j.error, "needs_user", "handler-watch (réveil par capture fraîche)"),
+            }, { par: "handler-watch (réveil par capture fraîche)" }).pf,
             capture_id: String(c.id),
             reveille_par_capture: String(c.id),
             reveille_par_capture_le: new Date(now).toISOString(),
@@ -5948,4 +6082,47 @@ function murConnexionVintedProuveArchive(j: any, pf: Record<string, unknown>, pr
   const { pf: pfC, message } = murConnexionVintedProuve(j, pf, preuveLe, "handler-watch");
   pfC.erreurs_archivees = archiverErreur(pfC.erreurs_archivees, j.error ?? null, String(j.status ?? "pending"), motifArchive);
   return { pf: pfC, message };
+}
+
+// ── (25/10, règle de Nico) UN RETRAIT SUR UNE ANNONCE DÉJÀ ABSENTE : FAIT, SANS MESSAGE ─────────────────────
+// (_shared/retrait-deja-absent.js) Le retrait passe `deleted` (compare-and-swap sur son statut lu : un retrait que
+// l'extension vient de prendre n'est jamais écrasé), error NULL, deja_absente + retrait_par, l'erreur d'avant
+// archivée, l'attente close. Puis la copie publiée de la MÊME annonce (numéro exact, fiche du retrait) est close
+// comme l'extension le fait après tout retrait (cancelPublishAfterDelete) : sinon la veille la relit « plus en
+// ligne » et pose « Vendue ? » sur un article déjà réglé. Jamais une copie dont la vente est prouvée sur cette
+// plateforme (sale_signal sold) : la vente garde son circuit. Jamais bloquant pour la copie.
+// deno-lint-ignore no-explicit-any
+async function ecrireRetraitDejaAbsent(supabase: any, j: Record<string, unknown>, verdict: any, par: string, extra: Record<string, unknown> = {}): Promise<boolean> {
+  const pf = {
+    ...champsRetraitDejaAbsent(j.platform_fields, {
+      verdict, platform: String(j.platform ?? ""), erreur: (j.error as string | null) ?? null, statut: String(j.status ?? ""), par,
+    }),
+    ...extra,
+  };
+  const { data: maj, error } = await supabase.from("cross_post_jobs")
+    .update({ status: "deleted", error: null, platform_fields: pf })
+    .eq("id", String(j.id)).eq("action", "delete").eq("status", String(j.status)).select("id");
+  if (error) { console.warn(`[handler-watch] retrait ${String(j.id).slice(0, 8)} déjà absent : écriture refusée — ${error.message}`); return false; }
+  if (!(maj ?? []).length) return false;
+  try {
+    const numero = String(verdict?.numero ?? "");
+    let q = supabase.from("cross_post_jobs")
+      .select("id, user_id, inventaire_id, platform, action, status, listing_url, platform_listing_id, platform_fields")
+      .eq("user_id", String(j.user_id)).eq("platform", String(j.platform)).eq("status", "published")
+      .in("action", ["publish", "republish"]).neq("id", String(j.id));
+    q = j.inventaire_id != null
+      ? q.eq("inventaire_id", j.inventaire_id as number)
+      : q.or(`platform_listing_id.eq.${numero},listing_url.like.*${numero}*`);
+    const { data: pubs } = await q.limit(50);
+    let closes = 0;
+    for (const s of copiesAClore(pubs ?? [], j, numero)) {
+      const patch = clotureCopie((s as Record<string, unknown>).platform_fields, { le: new Date().toISOString(), retraitId: String(j.id), numero });
+      const { data: m } = await supabase.from("cross_post_jobs").update(patch).eq("id", String((s as Record<string, unknown>).id)).eq("status", "published").select("id");
+      closes += (m ?? []).length;
+    }
+    if (closes) console.log(`[handler-watch] retrait ${String(j.id).slice(0, 8)} déjà absent : ${closes} copie(s) publiée(s) de l'annonce ${numero} close(s) — pas une vente`);
+  } catch (e) {
+    console.warn(`[handler-watch] retrait ${String(j.id).slice(0, 8)} déjà absent : copie non close — ${String((e as Error)?.message ?? e).slice(0, 160)}`);
+  }
+  return true;
 }

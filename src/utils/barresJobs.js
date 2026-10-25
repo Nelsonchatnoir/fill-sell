@@ -183,6 +183,13 @@ export function pisteJob(job, ctx = {}) {
     ? ({ a_capturer: "releve", captured: "attente", deleted: "remise" }[step] ?? null)
     : "action";
   if (job?.status === "needs_user") {
+    // (25/10, balayage des erreurs visibles, règle 3) Une attente AUTOMATIQUE (etat-job.js, attenteAutomatique :
+    // relevé attendu, coupure technique, plateforme écartée…) est « En pause » — la file la range là, la barre le
+    // dit aussi. Elle disait « À toi de jouer » en ambre sur tout needs_user.
+    const s = situationJob(job, { ...ctx, lang, maintenant });
+    if (s.groupe === "en_pause") {
+      return { ...base, etape: horsLigne ? "remise" : step === "captured" ? "attente" : "file", etat: "pause", phrasePause: s.raison };
+    }
     return { ...base, etape: etapeAtteinte, etat: "echec", ton: horsLigne ? "erreur" : "action", phraseEchec: erreur(job) ?? (horsLigne ? T.horsLigneArret(nom) : T.geste) };
   }
   if (job?.status === "failed") {

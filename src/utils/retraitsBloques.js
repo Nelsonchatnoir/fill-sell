@@ -248,13 +248,16 @@ export function retraitsBloquesParConnexion({ jobs = [], fiches = null, maintena
       : retraitBloqueParConnexion(j, maintenant) ? 'connexion'
         : boutique ? 'boutique'
           : (extensionVueLe !== undefined && retraitBloqueParOrdinateur(j, extensionVueLe, maintenant)) ? 'ordinateur'
-            : retraitEnRetard(j, fiche, maintenant) ? 'en_retard'
+            // (25/10, Nico : « L'utilisateur ne doit voir AUCUNE erreur qui vient de nous ou qui est déjà réglée »)
+            // Une annonce Beebs encore en vérification n'est ni achetable ni supprimable (vu le 22/10) : aucun retrait
+            // « en échec », aucun risque de double vente — un mur à part, dit en ambre, jamais en rouge.
+            : retraitEnRetard(j, fiche, maintenant) ? (retraitBeebsEnVerification(j) ? 'verification_beebs' : 'en_retard')
               : null;
     if (!mur) continue;
     const titre = String(fiche?.title ?? fiche?.titre ?? j.title ?? '').trim() || null;
     const login = boutique ? (boutique.login || (boutique.boutique != null ? loginsBoutiques?.[String(boutique.boutique)] ?? null : null)) : null;
     const ligne = { job: j, titre, inventaireId: j.inventaire_id ?? null, vendu: retraitApresVente(j, fiche), fiche, mur, ...(boutique ? { boutique: login ? `@${String(login).replace(/^@/, '')}` : null } : {}),
-      ...(mur === 'en_retard' ? { jours: joursDepuis(j.created_at, maintenant), verificationBeebs: retraitBeebsEnVerification(j) } : {}) };
+      ...(mur === 'en_retard' || mur === 'verification_beebs' ? { jours: joursDepuis(j.created_at, maintenant), verificationBeebs: mur === 'verification_beebs' } : {}) };
     const cle = `${j.platform}|${mur}${mur === 'boutique' ? `|${ligne.boutique ?? ''}` : ''}`;
     if (!groupes.has(cle)) groupes.set(cle, []);
     groupes.get(cle).push(ligne);
@@ -324,13 +327,13 @@ export function texteRetraitsBloques(groupe, lang = 'fr') {
       : `${quoiOp}: FillSell no longer handles Opla, remove ${plus ? 'them' : 'it'} yourself on Opla, then tap "Done" — risk of selling twice.`;
   }
   // (22/10) En retard : la phrase dit le geste ; FillSell continue d'essayer.
-  if (groupe.mur === 'en_retard') {
+  if (groupe.mur === 'en_retard' || groupe.mur === 'verification_beebs') {
     const jours = Math.max(...groupe.lignes.map((l) => Number(l.jours) || 1));
     const depuis = fr ? `depuis ${jours} jour${jours > 1 ? 's' : ''}` : `for ${jours} day${jours > 1 ? 's' : ''}`;
     // Vu le 22/10 dans « Mes annonces › En cours de vérification » : la carte n'a AUCUN geste (ni Supprimer, ni
     // Modifier) et la page publique répond 404 (test du 03/10) — Beebs ne laisse supprimer une annonce qu'une fois en
     // ligne. Elle n'est pas achetable pendant ce temps : la phrase le dit, sans geste impossible.
-    if (groupe.lignes.every((l) => l.verificationBeebs)) {
+    if (groupe.mur === 'verification_beebs' || groupe.lignes.every((l) => l.verificationBeebs)) {
       return fr
         ? `${n} article${plus ? 's' : ''} vendu${plus ? 's' : ''} : Beebs garde ${plus ? 'leurs annonces' : 'son annonce'} en vérification ${depuis}. Pendant la vérification, ${plus ? 'elles ne sont' : 'elle n’est'} pas achetable${plus ? 's' : ''} et Beebs ne permet pas de ${plus ? 'les' : 'la'} supprimer : FillSell ${plus ? 'les' : 'la'} retirera dès que Beebs ${plus ? 'les' : 'la'} met en ligne. Pour ${plus ? 'les' : 'la'} faire disparaître avant, demande-le au support Beebs.`
         : `${n} sold item${plus ? 's' : ''}: Beebs has kept ${plus ? 'their listings' : 'its listing'} under review ${depuis}. While under review ${plus ? 'they cannot' : 'it cannot'} be bought and Beebs does not allow deleting ${plus ? 'them' : 'it'}: FillSell will remove ${plus ? 'them' : 'it'} as soon as Beebs puts ${plus ? 'them' : 'it'} online. To have ${plus ? 'them' : 'it'} removed sooner, ask Beebs support.`;
@@ -385,6 +388,11 @@ export function ligneCarteRetraitBloque(platform, lang = 'fr', mur = 'connexion'
       ? 'Maybe still live on Opla — FillSell no longer handles Opla: remove it yourself on Opla (risk of selling twice)'
       : 'Peut-être encore en ligne sur Opla — FillSell ne gère plus Opla : retire-la toi-même sur Opla (risque de double vente)';
   }
+  if (mur === 'verification_beebs') {
+    return lang === 'en'
+      ? `${nom} is still reviewing this listing — it cannot be bought; FillSell removes it as soon as ${nom} puts it online`
+      : `${nom} vérifie encore cette annonce — elle n'est pas achetable ; FillSell la retire dès que ${nom} la met en ligne`;
+  }
   if (mur === 'en_retard') {
     return lang === 'en'
       ? `Removal from ${nom} not done for over a day — remove it yourself on ${nom} (risk of selling twice)`
@@ -422,6 +430,15 @@ export function ligneARegler(bloques, lang = 'fr') {
         : (fr
           ? `Ouvre ${boutiques.length === 1 ? `ta boutique ${boutiques[0]}` : (g0?.boutique ? `tes boutiques ${boutiques.join(', ')}` : 'la boutique Vinted qui les porte')} dans Chrome pour que FillSell ${n > 1 ? 'les' : 'la'} retire.`
           : `Open ${boutiques.length === 1 ? `your shop ${boutiques[0]}` : (g0?.boutique ? `your shops ${boutiques.join(', ')}` : 'the Vinted shop that holds them')} in Chrome so FillSell can remove ${n > 1 ? 'them' : 'it'}.`),
+    };
+  }
+  // (25/10) Rien que des annonces Beebs en vérification : ni « en ligne », ni « risque de double vente » — pas achetables.
+  if (murs.size === 1 && murs.has('verification_beebs')) {
+    return {
+      titre: fr ? (n > 1 ? 'Annonces Beebs en vérification' : 'Annonce Beebs en vérification') : (n > 1 ? 'Beebs listings under review' : 'Beebs listing under review'),
+      detail: fr
+        ? `Beebs ${n > 1 ? 'les' : 'la'} vérifie encore : ${n > 1 ? 'elles ne sont pas achetables' : 'elle n’est pas achetable'}, et FillSell ${n > 1 ? 'les' : 'la'} retire dès que Beebs ${n > 1 ? 'les' : 'la'} met en ligne. Rien à faire.`
+        : `Beebs is still reviewing ${n > 1 ? 'them' : 'it'}: ${n > 1 ? 'they cannot' : 'it cannot'} be bought, and FillSell removes ${n > 1 ? 'them' : 'it'} as soon as Beebs puts ${n > 1 ? 'them' : 'it'} online. Nothing to do.`,
     };
   }
   const titre = fr ? (n > 1 ? 'Annonces encore en ligne à retirer' : 'Annonce encore en ligne à retirer') : (n > 1 ? 'Listings still live to remove' : 'Listing still live to remove');
@@ -468,9 +485,14 @@ export function ligneARegler(bloques, lang = 'fr') {
   const suiteCb = cb.length
     ? (fr ? `${phrase ? ' ; ' : ''}« compte bloqué » sur ${lister(cb)} : retire-les depuis l'appli` : `${phrase ? '; ' : ''}"account blocked" on ${lister(cb)}: remove them from the app`)
     : '';
-  // (12/10 soir) Le risque n'est dit que pour un mur qui n'est pas « boutique ».
-  const risqueMele = (bloques?.parPlateforme ?? []).some((g) => (g.mur ?? 'connexion') !== 'boutique');
-  return { titre, detail: `${majuscule(`${phrase}${suiteCb}${suiteOp}${suiteRt}`.replace(/^ ?; /, ''))}${risqueMele ? (fr ? ' — risque de double vente.' : ' — risk of selling twice.') : '.'}` };
+  // (25/10) Beebs en vérification : dit tel quel, sans geste ni risque (pas achetable).
+  const vb = groupesDe('verification_beebs').length > 0;
+  const suiteVb = vb
+    ? (fr ? `${phrase || cb.length || op || rt.length ? ' ; ' : ''}Beebs : encore en vérification, pas achetable, FillSell la retire dès sa mise en ligne` : `${phrase || cb.length || op || rt.length ? '; ' : ''}Beebs: still under review, cannot be bought, FillSell removes it as soon as it is online`)
+    : '';
+  // (12/10 soir) Le risque n'est dit que pour un mur qui n'est pas « boutique » (ni une vérification Beebs).
+  const risqueMele = (bloques?.parPlateforme ?? []).some((g) => !['boutique', 'verification_beebs'].includes(g.mur ?? 'connexion'));
+  return { titre, detail: `${majuscule(`${phrase}${suiteCb}${suiteOp}${suiteRt}${suiteVb}`.replace(/^ ?; /, ''))}${risqueMele ? (fr ? ' — risque de double vente.' : ' — risk of selling twice.') : '.'}` };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -515,6 +537,10 @@ function gesteVenduEnLigne(g, lang = 'fr') {
       return fr
         ? `FillSell ne gère plus Opla : retire-${la} toi-même sur Opla, puis touche « C'est fait » dans la fiche`
         : `FillSell no longer handles Opla: remove ${la} yourself on Opla, then tap "Done" on the item`;
+    case 'verification_beebs':
+      return fr
+        ? `${noms} garde ${plus ? 'ces annonces' : 'cette annonce'} en vérification : ${plus ? 'elles ne sont pas achetables' : 'elle n’est pas achetable'}, et FillSell ${la} retire dès que ${noms} ${la} met en ligne — rien à faire`
+        : `${noms} is keeping ${plus ? 'these listings' : 'this listing'} under review: ${plus ? 'they cannot' : 'it cannot'} be bought, and FillSell removes ${la} as soon as ${noms} puts ${la} online — nothing to do`;
     case 'en_retard':
       return fr
         ? `le retrait n'a pas abouti depuis plus d'un jour : retire-${la} toi-même sur ${noms} (FillSell continue d'essayer)`
@@ -603,7 +629,8 @@ export function articlesVendusEncoreEnLigne({ retraits = null, pendingRemovals =
     .map((a) => ({
       ...a,
       plateformes: a.plateformes.sort((x, y) => rang(x.platform) - rang(y.platform)),
-      ton: a.plateformes.every((p) => p.mur === 'boutique' || p.mur === 'a_retirer') ? 'regler' : 'echec',
+      // (25/10) Une annonce Beebs en vérification n'est pas une alarme : pas achetable, rien à faire.
+      ton: a.plateformes.every((p) => ['boutique', 'a_retirer', 'verification_beebs'].includes(p.mur)) ? 'regler' : 'echec',
     }))
     .sort((x, y) => y.recent - x.recent);
 }
@@ -617,6 +644,11 @@ export function detailArticleVenduEnLigne(article, lang = 'fr') {
   const majuscule = (s) => s.charAt(0).toUpperCase() + s.slice(1);
   // (15/10) Opla quittée : FillSell ne la lit plus — « peut-être », jamais une certitude.
   const peutEtre = pfs.every((p) => p.mur === 'opla_sortie');
+  // (25/10) Rien que des vérifications Beebs : l'annonce n'est PAS en ligne (page 404, pas achetable) — dit tel quel.
+  if (pfs.every((p) => p.mur === 'verification_beebs')) {
+    const g = { mur: 'verification_beebs', boutique: null, noms };
+    return `${fr ? 'Vendu.' : 'Sold.'} ${majuscule(gesteVenduEnLigne(g, lang))}.`;
+  }
   const tete = fr ? `Vendu, ${peutEtre ? 'peut-être ' : ''}encore en ligne sur ${listerNoms(noms, lang)}.` : `Sold, ${peutEtre ? 'maybe ' : ''}still live on ${listerNoms(noms, lang)}.`;
   // Un geste par mur (et par boutique), jamais le même geste répété.
   const groupes = new Map();
@@ -634,7 +666,7 @@ export function detailArticleVenduEnLigne(article, lang = 'fr') {
       ? gesteVenduEnLigne(g, lang)
       : `${listerNoms(g.noms, lang)}${fr ? ' : ' : ': '}${gesteVenduEnLigne(g, lang)}`)).join(fr ? ' ; ' : '; ');
   // Le risque n'est dit que hors « boutique » (12/10 soir, Nico).
-  const risque = pfs.some((p) => p.mur !== 'boutique');
+  const risque = pfs.some((p) => p.mur !== 'boutique' && p.mur !== 'verification_beebs');
   return `${tete} ${gestes}${risque ? (fr ? ' — risque de double vente.' : ' — risk of selling twice.') : '.'}`;
 }
 

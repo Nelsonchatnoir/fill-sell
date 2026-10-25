@@ -152,9 +152,19 @@ export function lectureOrigineEnAttente(fiche, annonces = [], lu = {}) {
 }
 
 const NOMS = { vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", ebay: "eBay", depop: "Depop", opla: "Opla" };
-/** La phrase montrée pendant l'attente — jamais une erreur. */
-export function messageLectureOrigine(attente, lang = "fr") {
+/**
+ * La phrase montrée pendant l'attente — jamais une erreur.
+ * (25/10) `contexte` : « job » (défaut — get-pending-jobs, un job EXISTE et partira) ou « preparation » (le stepper et
+ * le lot, AVANT tout job : rien ne « partira » tout seul, l'article se prépare dès qu'il est lu — l'audit du 25/10 a
+ * relevé que la phrase promettait un départ qui n'avait pas lieu).
+ */
+export function messageLectureOrigine(attente, lang = "fr", contexte = "job") {
   const nom = NOMS[attente?.plateforme] ?? attente?.plateforme ?? "";
+  if (contexte === "preparation") {
+    return lang === "en"
+      ? `Reading your original ${nom} listing (text, photos, condition) so it goes out with YOUR content: FillSell keeps trying on its own, and the item gets prepared as soon as it is read.`
+      : `Lecture de ton annonce d'origine ${nom} (texte, photos, état) pour qu'elle parte avec TON contenu : FillSell réessaie tout seul, et l'article se prépare dès qu'elle est lue.`;
+  }
   // (23/10) eBay se lit par l'API, sans l'ordinateur : rien à faire.
   if (attente?.plateforme === "ebay") {
     return lang === "en"

@@ -55,6 +55,10 @@ import {
 import { classeRefusBrouillonEbay, retoursChoisisDuCompte } from "../_shared/ebay-brouillon-refus.js";
 import { SOURCE_VENDEUR_EBAY, attentesVendeurEbay, champsRepriseVendeurEbay } from "../_shared/vendeur-ebay.js";
 import { verdictClotureRetraitBeebs, MESSAGE_RETRAIT_BEEBS_EN_VERIFICATION, constats404Beebs, attente404Beebs, messageRetraitBeebs404 } from "../_shared/beebs-preuve-retrait.js";
+// (25/10, règle de Nico) Un retrait sur une annonce déjà absente est un retrait fait : étiquette lue sur les champs.
+import { etiquetteRetraitDejaAbsent, etiquetteRetraitParTrace, dejaAbsente, numeroAnnonceDuJob, constat404DeCetEssai } from "../_shared/retrait-deja-absent.js";
+// (25/10, Thibault 44d125ac) Une tâche finie n'attend plus personne : la liste UNIQUE des marqueurs d'attente.
+import { champsAttenteClose } from "../_shared/etat-terminal.js";
 import { debutVerificationBeebs, verificationLongue, signatureAnnonceBeebs, messageRetraitBeebsVerificationLongue } from "../_shared/beebs-retrait-verification-longue.js";
 import {
   controlerNumeroBeebsEnBase,
@@ -579,7 +583,7 @@ serve(async (req) => {
     if (status === "deleted") {
       const { data: cur } = await userClient
         .from("cross_post_jobs")
-        .select("id, action")
+        .select("id, action, platform, listing_url, platform_listing_id")
         .eq("id", jobId)
         .maybeSingle();
       if (!cur) return json({ error: "Job introuvable" }, 404);
@@ -609,7 +613,19 @@ serve(async (req) => {
       const pfIn0 = (body.platform_fields && typeof body.platform_fields === "object"
         ? body.platform_fields : null) as Record<string, unknown> | null;
       const trace = JSON.stringify(pfIn0?.delete_trace ?? "");
-      if (/NON envoy|NON DÉTERMIN/i.test(trace)) {
+      // ══ (25/10, règle de Nico) « DÉJÀ ABSENTE » SE LIT SUR LES CHAMPS, PAS SUR LE TEXTE ══════════════
+      // Mesuré sur 45 jours : 400 retraits « déjà absente » étiquetés « retirée par FillSell » (Beebs 181,
+      // Leboncoin 129, eBay 107, Depop 3…) — seul Vinted passait par le texte ci-dessous. Les champs d'abord
+      // (_shared/retrait-deja-absent.js : deja_absente, delete_confirmed_by + delete_preuve, preuve_retrait),
+      // un drapeau unique posé pour toutes les versions ; la trace ne raconte plus que les anciens postes.
+      const numeroRetrait = numeroAnnonceDuJob(cur as Record<string, unknown>);
+      const etiquetteChamps = pfIn0 ? etiquetteRetraitDejaAbsent(pfIn0, { platform: String(cur.platform ?? ""), numero: numeroRetrait || null }) : null;
+      if (etiquetteChamps && pfIn0) {
+        pfIn0.deja_absente = etiquetteChamps.deja_absente;
+        pfIn0.retrait_par = etiquetteChamps.retrait_par;
+        if (etiquetteChamps.delete_confirmed_by && !pfIn0.delete_confirmed_by) pfIn0.delete_confirmed_by = etiquetteChamps.delete_confirmed_by;
+        console.log(`[update-job-status] userId=${user.id} job=${jobId} — 'deleted' : annonce déjà absente (retrait_par=${etiquetteChamps.retrait_par}, preuve=${String((etiquetteChamps.deja_absente as Record<string, unknown>)?.preuve && ((etiquetteChamps.deja_absente as Record<string, Record<string, unknown>>).preuve.source))})`);
+      } else if (/NON envoy|NON DÉTERMIN/i.test(trace)) {
         // ══ ET LA PREUVE EST ÉCRITE (2026-09-25, jocabroc) ══════════════════
         // Deux retraits Vinted clos à 19:17 « NON DÉTERMINÉ » : l'extension
         // avait bien lu la page (checkVintedUnanime, 3 lectures d'accord),
@@ -655,9 +671,24 @@ serve(async (req) => {
         }
         pfOut.delete_preuve = preuve;
         pfOut.retrait_par = String(preuve.etat ?? "") === "sold" ? "vendue_sur_la_plateforme" : "annonce_deja_hors_ligne";
+        // (25/10) Le même drapeau que les postes récents : un seul endroit à lire, partout.
+        pfOut.deja_absente = dejaAbsente({
+          plateforme: String(cur.platform ?? ""), numero: numeroRetrait || null,
+          preuve: { ...preuve, source: String(preuve.source ?? "etat_annonce") },
+          vente: String(preuve.etat ?? "") === "sold" ? true : null,
+          posePar: "update-job-status (trace « NON envoyée » d'un ancien poste)",
+        });
         console.log(`[update-job-status] userId=${user.id} job=${jobId} — 'deleted' SANS requête envoyée : annonce déjà hors ligne (retrait_par=${pfOut.retrait_par}, preuve=${String(preuve.source)})`);
       } else if (pfIn0) {
-        (body.platform_fields as Record<string, unknown>).retrait_par = "fillsell";
+        // Les anciens postes Depop (≤ 0.6.143) ne posaient pas le drapeau : leur trace le dit (« aucun DELETE »).
+        const parTrace = etiquetteRetraitParTrace(pfIn0.delete_trace, { platform: String(cur.platform ?? ""), numero: numeroRetrait || null });
+        if (parTrace) {
+          pfIn0.deja_absente = parTrace.deja_absente;
+          pfIn0.retrait_par = parTrace.retrait_par;
+          if (!pfIn0.delete_confirmed_by) pfIn0.delete_confirmed_by = parTrace.delete_confirmed_by;
+        } else {
+          (body.platform_fields as Record<string, unknown>).retrait_par = "fillsell";
+        }
       }
     }
 
@@ -1991,9 +2022,15 @@ serve(async (req) => {
     // dont le poste a rendu des constats ET dont CET essai a lu la page 404 (texte
     // de l'extension, MESSAGE_CONSTAT_404_BEEBS) : une session fermée, un canal
     // coupé ou une lecture ratée gardent leur propre chemin, constats ou pas.
+    // (25/10, règle de Nico) ARMÉE SUR LES CHAMPS : le dernier constat de beebs_404_constats est daté de CET
+    // essai (après sa prise en charge, processing_since). Le texte n'est plus qu'un repli : le background le
+    // réécrivait en route (« Suppression beebs non aboutie (…) — elle est peut-être encore en ligne »), et la
+    // règle ne s'armait jamais (0 / 377 retraits Beebs avec un constat gardé).
     const CONSTAT_404_BEEBS_RE = /^Beebs ne montre plus cette annonce : sa page est introuvable \(404\)/;
+    const constat404DuCorps = body.platform_fields && typeof body.platform_fields === "object"
+      && constat404DeCetEssai(body.platform_fields as Record<string, unknown>);
     if (!pfRetraitVerif && !pfCanalCoupe && (statutEffectif === "pending" || statutEffectif === "failed" || statutEffectif === "needs_user")
-        && typeof body.error === "string" && CONSTAT_404_BEEBS_RE.test(body.error)
+        && (constat404DuCorps || (typeof body.error === "string" && CONSTAT_404_BEEBS_RE.test(body.error)))
         && body.platform_fields && typeof body.platform_fields === "object") {
       const constats404 = constats404Beebs(body.platform_fields as Record<string, unknown>);
       if (constats404.length) {
@@ -4919,6 +4956,33 @@ serve(async (req) => {
         if (change) patch.platform_fields = { ...pfE, erreurs_archivees: archive };
       } catch (e) {
         console.error("[update-job-status] archive d'erreur:", (e as Error)?.message ?? e);
+      }
+    }
+
+    // ══ (25/10, Thibault 44d125ac) UNE TÂCHE FINIE N'ATTEND PLUS PERSONNE ══════════════════════════════
+    // Republication Vinted « Short » publiée le 25/10 à 11:03 avec les marqueurs d'une pause du 24/10
+    // (needs_user_source, needs_user_sans_motif, error_technique, compteurs) : cette fonction ne retirait que
+    // `error` à l'entrée en published — 342 tâches publiées sur 7 jours portaient un tel résidu, et des décisions
+    // lisent error_technique.brut sans regarder le statut. À toute entrée en published / deleted, les marqueurs
+    // de l'attente tombent par la liste UNIQUE (_shared/etat-terminal.js), le brut et le message archivés (jamais
+    // perdus). Sans platform_fields dans le corps : ceux de la base, relus ; rien à retirer → rien de réécrit.
+    if (statutEffectif === "published" || statutEffectif === "deleted") {
+      try {
+        let pfT = (patch.platform_fields && typeof patch.platform_fields === "object")
+          ? patch.platform_fields as Record<string, unknown> : null;
+        if (!pfT) {
+          const { data: jT } = await userClient.from("cross_post_jobs").select("platform_fields").eq("id", jobId).maybeSingle();
+          pfT = (jT?.platform_fields && typeof jT.platform_fields === "object") ? jT.platform_fields as Record<string, unknown> : null;
+        }
+        if (pfT) {
+          const close = champsAttenteClose(pfT, { par: `update-job-status → ${statutEffectif}` });
+          if (close.change) {
+            patch.platform_fields = close.pf;
+            console.log(`[update-job-status] userId=${user.id} job=${jobId} — ${statutEffectif} : attente close (${close.retirees.join(", ")})`);
+          }
+        }
+      } catch (e) {
+        console.error("[update-job-status] attente close à la fin de la tâche :", (e as Error)?.message ?? e);
       }
     }
 

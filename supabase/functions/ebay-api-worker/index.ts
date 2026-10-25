@@ -40,6 +40,9 @@ import { estSupportNonLivre } from "../_shared/support-non-livre.ts";
 import { titrePourJob, titreVide, CLE_TITRE_SAISI } from "../_shared/titre-du-job.js";
 import { cheminsRefusesParLApp, cleChemin, mappingRefuseParLApp, suggestionsSansRefus } from "../_shared/rayon-refuse-ebay.ts";
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
+// (25/10) Une tâche finie n'attend plus personne ; un retrait sur une annonce déjà absente est un retrait fait.
+import { champsAttenteClose } from "../_shared/etat-terminal.js";
+import { dejaAbsente, RETRAIT_PAR_HORS_LIGNE, RETRAIT_PAR_VENDUE } from "../_shared/retrait-deja-absent.js";
 import { tailleDansGrille } from "../_shared/tailles.js";
 import { etatCompteEbayApi, messageEbayCompteAFinir, MESSAGE_EBAY_RETOURS_OBLIGATOIRES, SOURCE_EBAY_COMPTE_A_FINIR, type EtapeEbayAFinir } from "../_shared/ebay-voie.ts";
 import { siteDuCompteEbay, siteEbayEtranger } from "../_shared/ebay-site.ts";
@@ -138,9 +141,12 @@ async function rerouterPublicationsVersApi(admin: SupabaseClient): Promise<Recor
 }
 
 async function marquer(admin: SupabaseClient, job: Job, patch: Record<string, unknown>, diagnostic: Record<string, unknown>, ebayApi?: Record<string, unknown>) {
-  const pf = { ...(job.platform_fields ?? {}) };
+  let pf: Record<string, unknown> = { ...(job.platform_fields ?? {}) };
   if (patch.status && patch.status !== "processing") delete pf.processing_since;
   if (patch.status === "published") delete pf.needsUserField;
+  // (25/10, Thibault 44d125ac) Une tâche finie n'attend plus personne : les marqueurs d'une attente passée tombent
+  // (liste UNIQUE, _shared/etat-terminal.js), le brut technique archivé — même règle qu'update-job-status.
+  if (patch.status === "published" || patch.status === "deleted") pf = champsAttenteClose(pf, { par: `ebay-api-worker → ${patch.status}` }).pf;
   pf.last_diagnostic = { voie: "api", at: new Date().toISOString(), ...diagnostic };
   if (ebayApi) pf.ebay_api = { ...((pf.ebay_api as Record<string, unknown>) ?? {}), ...ebayApi };
   const { error } = await admin.from("cross_post_jobs").update({ ...patch, platform_fields: pf, handler_build: HANDLER_BUILD }).eq("id", job.id);
@@ -1942,6 +1948,19 @@ async function lireEtatHorsLigneAvantSuite(env: EbayEnv, listingId: string): Pro
   }
 }
 
+// ── (25/10, règle de Nico) UN RETRAIT SUR UNE ANNONCE DÉJÀ ABSENTE EST UN RETRAIT FAIT ──────────────────
+// Le drapeau unique (_shared/retrait-deja-absent.js) posé sur la copie mémoire du job, écrit par marquer() avec
+// le statut `deleted` : deja_absente { preuve, vente }, retrait_par, delete_confirmed_by. vente : true (eBay dit
+// vendue), false (terminée sans vente), null (eBay ne dit pas laquelle).
+function poserDejaAbsenteEbay(job: Job, itemId: string, preuve: Record<string, unknown>, vente: boolean | null) {
+  job.platform_fields = {
+    ...(job.platform_fields ?? {}),
+    deja_absente: dejaAbsente({ plateforme: "ebay", numero: itemId, preuve, vente, posePar: "ebay-api-worker" }),
+    retrait_par: vente === true ? RETRAIT_PAR_VENDUE : RETRAIT_PAR_HORS_LIGNE,
+    delete_confirmed_by: "api_ebay",
+  };
+}
+
 // ── RETRAIT PAR L'API TRADING (15/10 soir, point 3, Amega Gaming) ───────────
 // (_shared/ebay-retrait-trading.js) Une annonce que NOTRE API n'a pas créée
 // (déposée par l'extension, importée par le relevé) d'un compte RELIÉ : GetItem
@@ -1957,7 +1976,8 @@ async function retirerParTrading(admin: SupabaseClient, env: EbayEnv, token: str
       return r.http === 200 ? lireItemTrading(r.xml) : null;
     } catch { return null; }
   };
-  const avant = verdictAvantRetraitTrading({ itemId, compteEbay: relie, lecture: await lire() });
+  const lectureAvant = await lire();
+  const avant = verdictAvantRetraitTrading({ itemId, compteEbay: relie, lecture: lectureAvant });
   if (avant.geste === "illisible") {
     await marquer(admin, job, { status: "pending", error: "Retrait eBay reporté : l'annonce n'a pas pu être relue chez eBay. Aucune annonce n'a été touchée." },
       { etape: "trading_getitem", quoi: "illisible", motif: avant.motif ?? null, annonce: itemId });
@@ -1974,10 +1994,17 @@ async function retirerParTrading(admin: SupabaseClient, env: EbayEnv, token: str
       { etape: "trading_getitem", quoi: "annonce_autre_compte_ebay", motif: avant.motif ?? null, annonce: itemId });
     return { job: job.id, issue: "needs_user", motif: "annonce_autre_compte_ebay", annonce: itemId };
   }
+  // (25/10, règle de Nico) Déjà vendue ou déjà terminée : l'annonce n'est plus en vente, le retrait est FAIT —
+  // `deleted`, sans message (« Retrait eBay annulé » se lisait « Arrêtée », et `cancelled` défaisait la fusion d'un
+  // « Oui » à « Déjà vendu ? »). La vente eBay, elle, suit son circuit (commandes, ventes à décider).
+  if (avant.geste === "deja_vendue" || avant.geste === "deja_terminee") {
+    poserDejaAbsenteEbay(job, itemId, { source: "trading_getitem", statut_ebay: lectureAvant?.statut ?? null, vendus: lectureAvant?.vendus ?? null, fin_ebay: lectureAvant?.fin ?? null },
+      avant.geste === "deja_vendue");
+  }
   if (avant.geste === "deja_vendue") {
-    await marquer(admin, job, { status: "cancelled", error: "Retrait eBay annulé : eBay confirme que cette annonce a aussi été vendue sur eBay. Aucune autre annonce n'a été touchée." },
-      { etape: "trading_getitem", quoi: "annonce_deja_vendue", annonce: itemId });
-    return { job: job.id, issue: "cancelled", motif: "annonce_deja_vendue", annonce: itemId };
+    await marquer(admin, job, { status: "deleted", error: null, platform_listing_id: itemId },
+      { etape: "retire", quoi: "annonce_deja_vendue", source: "trading_getitem", annonce: itemId }, { listing_id: itemId, withdrawn_at: new Date().toISOString(), voie_retrait: "trading" });
+    return { job: job.id, issue: "deleted", motif: "annonce_deja_vendue", annonce: itemId };
   }
   if (avant.geste === "deja_terminee") {
     await marquer(admin, job, { status: "deleted", error: null, platform_listing_id: itemId },
@@ -2125,6 +2152,32 @@ async function retirer(admin: SupabaseClient, env: EbayEnv, token: string, job: 
   // C'est la dernière preuve, relue immédiatement avant le geste destructif :
   // offre, SKU et listing doivent tous désigner la même publication.
   const controleOffre = await relireOffreExacte(env, token, preuve, { accepterDejaRetiree: true });
+  // ── (25/10, E1) UNE OFFRE SUPPRIMÉE (404) : ON RELIT L'ANNONCE AVANT DE CONCLURE ─────────────────────
+  // 65e5fe71, 677e8877 : offre supprimée chez eBay → « identité de l'offre illisible », needs_user — alors que
+  // l'annonce était terminée. L'annonce elle-même est relue (Trading GetItem, jeton du vendeur, numéro exact,
+  // même vendeur que le compte relié) : plus active → retrait FAIT ; active ou illisible → comme avant.
+  if (!controleOffre.ok && controleOffre.motif === "offre_api_illisible" && controleOffre.lecture.http === 404) {
+    try {
+      const { data: compte } = await admin.from("ebay_accounts").select("ebay_user_id, revoked_at").eq("user_id", job.user_id).maybeSingle();
+      const relie = compte && !compte.revoked_at ? String(compte.ebay_user_id ?? "") : "";
+      const r = await appelTrading(env, token, "GetItem", `<ItemID>${preuve.cible}</ItemID><DetailLevel>ReturnAll</DetailLevel>`);
+      const lu = r.http === 200 ? lireItemTrading(r.xml) : null;
+      const v = verdictAvantRetraitTrading({ itemId: preuve.cible, compteEbay: relie, lecture: lu });
+      if (v.geste === "deja_vendue" || v.geste === "deja_terminee") {
+        const vendue = v.geste === "deja_vendue";
+        poserDejaAbsenteEbay(job, preuve.cible, { source: "offre_404_puis_getitem", statut_ebay: lu?.statut ?? null, vendus: lu?.vendus ?? null, fin_ebay: lu?.fin ?? null }, vendue);
+        const withdrawnAt = new Date().toISOString();
+        await marquer(admin, job, { status: "deleted", error: null, platform_listing_id: preuve.cible },
+          { etape: "retire", quoi: vendue ? "offre_supprimee_annonce_vendue" : "offre_supprimee_annonce_terminee", source_job_id: preuve.source_job_id, statut_ebay: lu?.statut ?? null },
+          { sku: preuve.sku, offer_id: preuve.offer_id, listing_id: preuve.cible, withdrawn_at: withdrawnAt });
+        // Terminée sans vente : la publication d'origine est close comme après un retrait ; vendue : sa vente suit son circuit.
+        if (!vendue) await annulerSourceEbayRetiree(admin, precedent, withdrawnAt).catch((e) => console.warn(`[ebay-api-worker] retrait ${String(job.id).slice(0, 8)} : source non close — ${String((e as Error)?.message ?? e).slice(0, 120)}`));
+        return { job: job.id, issue: "deleted", motif: vendue ? "offre_supprimee_annonce_vendue" : "offre_supprimee_annonce_terminee", listing_id: preuve.cible };
+      }
+    } catch (e) {
+      console.warn(`[ebay-api-worker] retrait ${String(job.id).slice(0, 8)} : offre 404, annonce non relue — ${String((e as Error)?.message ?? e).slice(0, 160)}`);
+    }
+  }
   if (!controleOffre.ok && controleOffre.motif === "offre_api_illisible") {
     const e = lireErreurEbay(controleOffre.lecture.json, controleOffre.lecture.texte);
     const status = verdictHttp(controleOffre.lecture.http, Number((job.platform_fields ?? {}).attempt_count ?? 0));
@@ -2144,11 +2197,26 @@ async function retirer(admin: SupabaseClient, env: EbayEnv, token: string, job: 
 
   if (controleOffre.verdict.deja_retiree) {
     const etat = await lireEtatHorsLigneAvantSuite(env, preuve.cible);
+    // (25/10, règle de Nico — E2) Vendue sur eBay : l'annonce n'est plus en vente, le retrait est FAIT (`deleted`,
+    // sans message) ; la vente suit son circuit (commandes eBay), jamais celui du retrait. La publication d'origine
+    // n'est PAS close ici : elle porte la vente.
     if (etat.verdict === "vendue") {
-      await marquer(admin, job, { status: "cancelled", error: "Retrait eBay annulé : eBay confirme que cette annonce a été vendue. Aucune autre annonce n'a été touchée." },
+      poserDejaAbsenteEbay(job, preuve.cible, { source: "offre_hors_ligne_annonce_vendue", fin_ebay: etat.fin ?? null, vendus: etat.vendus ?? null }, true);
+      await marquer(admin, job, { status: "deleted", error: null, platform_listing_id: preuve.cible },
         { etape: "controle_offre", quoi: "annonce_deja_vendue", source_job_id: preuve.source_job_id, fin: etat.fin, vendus: etat.vendus },
-        { offer_id: preuve.offer_id, sku: preuve.sku, listing_id: preuve.cible });
-      return { job: job.id, issue: "cancelled", motif: "annonce_deja_vendue", listing_id: preuve.cible };
+        { offer_id: preuve.offer_id, sku: preuve.sku, listing_id: preuve.cible, withdrawn_at: new Date().toISOString() });
+      return { job: job.id, issue: "deleted", motif: "annonce_deja_vendue", listing_id: preuve.cible };
+    }
+    // (25/10, E3) Offre hors ligne ET annonce introuvable publiquement (Browse 404 : terminée, retirée ou vendue —
+    // eBay ne dit pas laquelle) : plus rien d'achetable, le retrait est fait, vente inconnue. Jamais sur une annonce
+    // que Browse voit vivante, ni sur un quota / une panne d'eBay (relu au passage suivant, comme avant).
+    if (etat.verdict === "indetermine" && !etat.limite && etat.motif === "http_404") {
+      poserDejaAbsenteEbay(job, preuve.cible, { source: "offre_hors_ligne_annonce_introuvable", browse: "http_404" }, null);
+      const withdrawnAt = new Date().toISOString();
+      await marquer(admin, job, { status: "deleted", error: null, platform_listing_id: preuve.cible },
+        { etape: "retire", quoi: "offre_hors_ligne_annonce_introuvable", source_job_id: preuve.source_job_id },
+        { sku: preuve.sku, offer_id: preuve.offer_id, listing_id: preuve.cible, withdrawn_at: withdrawnAt });
+      return { job: job.id, issue: "deleted", motif: "offre_hors_ligne_annonce_introuvable", listing_id: preuve.cible };
     }
     if (etat.verdict !== "terminee_sans_vente" && etat.verdict !== "enchere_sans_acheteur") {
       await marquer(admin, job, { status: "pending", error: "Retrait eBay reporté : l'offre est hors ligne, mais FillSell ne peut pas encore prouver qu'elle n'a pas été vendue. Aucun autre geste n'est lancé." },
@@ -2157,6 +2225,7 @@ async function retirer(admin: SupabaseClient, env: EbayEnv, token: string, job: 
       return { job: job.id, issue: "pending", motif: "offre_hors_ligne_indeterminee", listing_id: preuve.cible };
     }
     const withdrawnAt = new Date().toISOString();
+    poserDejaAbsenteEbay(job, preuve.cible, { source: "offre_hors_ligne_annonce_terminee", fin_ebay: etat.fin ?? null }, false);
     await marquer(admin, job, { status: "deleted", error: null, platform_listing_id: preuve.cible },
       { etape: "retire", quoi: "offre_deja_hors_ligne_sans_vente", source_job_id: preuve.source_job_id, fin: etat.fin },
       { sku: preuve.sku, offer_id: preuve.offer_id, listing_id: preuve.cible, withdrawn_at: withdrawnAt });
@@ -3733,6 +3802,36 @@ Deno.serve(async (req) => {
           job.platform_fields = cl.platform_fields;
           await marquer(admin, job, { status: cl.status, error: cl.error }, { etape: "compte", quoi: "site_ebay_etranger", site: s.site });
           resultats.push({ job: job.id, issue: "cancelled", motif: "site_ebay_etranger" });
+          continue;
+        }
+      }
+      // ── (25/10, balayage des erreurs, B4 — 260e0730 de 309d0787) UN ARTICLE VENDU N'EST JAMAIS PUBLIÉ PAR L'API ──
+      // La règle de get-pending-jobs pour l'extension (« UN ARTICLE VENDU N'EST JAMAIS PUBLIÉ NI REPUBLIÉ ») manquait ici :
+      // une remise en vente eBay créée le 24/10 sur un stock lu avant la 2e vente (« restant 1 ») attendait la fin de la
+      // configuration du compte — prête, elle aurait remis en vente un article vendu deux fois. Statut « vendu » ou
+      // quantité ≤ 0 → rien n'est envoyé à eBay : une REMISE EN VENTE (créée par FillSell) est close « article vendu » ;
+      // une publication de la personne est RETENUE (needs_user « article vendu ») — si la vente n'a pas eu lieu, elle la
+      // corrige et relance. La republication ne change pas (décision de Nico du 25/10 : on n'y touche pas).
+      if (job.action === "publish" && job.inventaire_id != null) {
+        const { data: ficheV } = await admin.from("inventaire").select("statut, quantite")
+          .eq("id", job.inventaire_id).eq("user_id", job.user_id).maybeSingle();
+        const fv = ficheV as { statut?: string | null; quantite?: number | null } | null;
+        if (fv && (fv.statut === "vendu" || (fv.quantite != null && Number(fv.quantite) <= 0))) {
+          const remise = Boolean((job.platform_fields ?? {} as Record<string, unknown>).remise_en_vente);
+          const marque = { le: new Date().toISOString(), statut: fv.statut ?? null, quantite: fv.quantite ?? null, pose_par: "ebay-api-worker" };
+          if (remise) {
+            job.platform_fields = { ...champsAttenteClose({ ...(job.platform_fields ?? {}),
+              erreurs_archivees: archiverErreur((job.platform_fields ?? {} as Record<string, unknown>).erreurs_archivees, String((brut as { error?: string | null }).error ?? ""), job.status, "ebay-api-worker (remise en vente d'un article vendu)") },
+              { par: "ebay-api-worker (article vendu)" }).pf, article_vendu: marque, hors_quota: true };
+            await marquer(admin, job, { status: "cancelled", error: "Arrêtée : l'article est vendu (stock à 0) — la remise en vente n'a plus d'objet. Rien n'a été publié." },
+              { etape: "fiche", quoi: "article_vendu_remise_close" });
+          } else {
+            job.platform_fields = { ...(job.platform_fields ?? {}), needs_user_source: "article_vendu", article_vendu: marque };
+            await marquer(admin, job, { status: "needs_user", error: "Cet article est marqué vendu" + (fv.statut !== "vendu" ? " (quantité 0)" : "") +
+              " : on ne le publie pas, pour ne jamais le vendre deux fois. Si la vente n'a pas eu lieu, corrige-la dans l'app (supprime la vente ou remets une quantité), puis relance." },
+              { etape: "fiche", quoi: "article_vendu" });
+          }
+          resultats.push({ job: job.id, issue: remise ? "cancelled" : "needs_user", motif: "article_vendu" });
           continue;
         }
       }

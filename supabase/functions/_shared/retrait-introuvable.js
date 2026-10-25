@@ -146,13 +146,17 @@ function premieresVues(platform, lignes) {
  *   annonces_plateforme du compte et de la plateforme (listing_id, url,
  *   job_id, inventaire_id, vu_le, disparu_le, retiree_le).
  * @returns {null | { verdict: 'deja_retire'|'attente'|'non_reliee', numero: string|null, releves: string[], message: string, nonReliees?: string[], neesApresDepot?: string[], numeroteesAvantDepot?: string[] }}
+ *   (25/10) `depuisDerniereVue` (retrait PAR NUMÉRO seulement) : les deux derniers relevés complets comptent même
+ *   commencés avant la demande — l'absence vaut depuis la dernière vue de l'annonce, que le contrôle « vue » ci-dessous
+ *   impose déjà. Réservé au balayage des retraits sur une annonce que le relevé a vue partir
+ *   (_shared/retrait-deja-absent.js) ; par défaut, la règle du 02/10 à l'identique.
  */
-export function jugerRetraitIntrouvable(retrait, { releves = [], annonces = [], depotId = null, depotLe = null, maintenant = Date.now() } = {}) {
+export function jugerRetraitIntrouvable(retrait, { releves = [], annonces = [], depotId = null, depotLe = null, maintenant = Date.now(), depuisDerniereVue = false } = {}) {
   if (!retrait || retrait.action !== "delete" || !PLATEFORMES_RELEVE.has(retrait.platform)) return null;
   const P = retrait.platform;
   const nom = NOM[P] ?? P;
-  const cree = ms(retrait.created_at);
   const numero = String(retrait.platform_listing_id ?? "").trim() || numeroDepuisLien(P, retrait.listing_url);
+  const cree = depuisDerniereVue && numero ? NaN : ms(retrait.created_at);
   const tournes = (Array.isArray(releves) ? releves : [])
     .filter((r) => r && !STATUTS_JAMAIS_TOURNES.has(String(r.status ?? "")) && Number.isFinite(ms(r.started_at)))
     .sort((a, b) => ms(b.started_at) - ms(a.started_at));
@@ -293,8 +297,12 @@ export function numeroRetraitVinted(retrait) {
  *   derniereVue : captured_at le plus récent de l'annonce dans
  *   vinted_listing_snapshots (null si jamais vue).
  * @returns {null | { verdict: 'deja_retire'|'attente', numero: string, boutique: string|null, login: string|null, boutiques: string[], releves: string[], message?: string, raison?: string }}
+ *   (25/10) `depuisDerniereVue` : une annonce VUE par un relevé complet (derniereVue) ne demande plus deux relevés
+ *   commencés après la demande — ceux d'après sa dernière vue suffisent (le dressing montre tout : vendues,
+ *   masquées, brouillons). Jamais vue : la règle du 03/10 à l'identique (après la demande). Balayage des retraits
+ *   déjà absents seulement (_shared/retrait-deja-absent.js).
  */
-export function jugerRetraitVintedIntrouvable(retrait, { releves = [], derniereVue = null } = {}) {
+export function jugerRetraitVintedIntrouvable(retrait, { releves = [], derniereVue = null, depuisDerniereVue = false } = {}) {
   if (!retrait || retrait.action !== "delete" || retrait.platform !== "vinted") return null;
   const numero = numeroRetraitVinted(retrait);
   if (!numero) return null;
@@ -317,7 +325,7 @@ export function jugerRetraitVintedIntrouvable(retrait, { releves = [], derniereV
   const boutique = boutiques.length === 1 ? boutiques[0] : null;
   const login = boutique ? loginDe(boutique) : null;
   if (!boutiques.length) return { verdict: "attente", numero, boutique: null, login: null, boutiques: [], releves: [], raison: "boutique_inconnue" };
-  const cree = ms(retrait.created_at);
+  const cree = depuisDerniereVue && Number.isFinite(tVue) ? NaN : ms(retrait.created_at);
   let dates = [];
   for (const b of boutiques) {
     const deux = complets.filter((r) => String(r.vinted_user_id) === b).slice(0, 2);

@@ -217,8 +217,16 @@ console.log("D. LES CHEMINS PORTENT LA RÈGLE (lecture du code)");
   ok(/jobs_contenu_origine/.test(bloc) && /contenuLe\.get\(String\(j\.id\)\)/.test(bloc), "get-pending-jobs : le contenu d'une republication date de son dépôt d'origine");
   const stock = lire("src/tabs/StockTab.jsx");
   const pad = stock.slice(stock.indexOf("const publierAvecDetail = async"), stock.indexOf("ouvrirStepper(r?.item ?? item);"));
-  ok(/attenteLectureOrigine\(supabase, user\.id, item\.id\)/.test(pad) && /demanderLectureOrigine\(supabase, item\.id\)/.test(pad) && /messageLectureOrigine\(/.test(pad),
-    "Stock (Publier à l'unité) : la fiche importée pas encore lue ne s'ouvre pas, la lecture est demandée, la phrase est dite");
+  // (25/10, Jocabroc ; méthode de Nico) La règle tient (rien ne s'ouvre avec un texte rédigé à la place du vendeur),
+  // mais plus jamais une impasse : en dernier recours, un écran lit tout de suite, relit seul, ouvre le stepper dès
+  // que c'est lu, n'écrit jamais à la place du vendeur (le stepper le dit si l'annonce n'a aucun texte), prévient le serveur.
+  const attenteEcran = lire("src/publication/AttenteLectureOrigine.jsx");
+  ok(/attenteLectureOrigine\(supabase, user\.id, item\.id\)/.test(pad) && /demanderLectureOrigine\(supabase, item\.id\)/.test(pad)
+      && /setAttenteStepper\(\{ item: r\?\.item \?\? item, attente: attenteOrigine \}\)/.test(pad) && /signalerActionRatee\(\{ action: 'publier', motif: 'lecture_origine_en_attente'/.test(pad)
+      && /messageLectureOrigine\(attente \?\? \{ plateforme: "vinted" \}, en \? "en" : "fr", "preparation"\)/.test(attenteEcran)
+      && /demarrerRelecture\(/.test(attenteEcran) && /immediat: true/.test(attenteEcran) && /await pret\(\)/.test(attenteEcran) && !/Write my description/.test(attenteEcran)
+      && /onPret=\{\(relu, info\) => \{/.test(stock) && /info\?\.note === 'sans_description'/.test(stock),
+    "Stock (Publier à l'unité) : la fiche importée pas encore lue ne s'ouvre pas avec un texte rédigé — l'écran lit tout de suite, relit seul, ouvre le stepper dès que c'est lu, n'écrit jamais à la place du vendeur, prévient le serveur");
   const lot = lire("src/publication/lot/LotPublication.jsx");
   ok(/attenteLectureOrigine\(supabase, userId,/.test(lot) && /phase: "origine"/.test(lot) && /messageLectureOrigine\(attenteOrigine/.test(lot),
     "Lot : l'article importé pas encore lu ne se prépare pas, il attend « origine » avec sa phrase");
@@ -230,9 +238,15 @@ console.log("D. LES CHEMINS PORTENT LA RÈGLE (lecture du code)");
     "generate-listing : description ET titre gardés (jamais réécrits par l'IA)");
   const bg = lire("chrome-extension/background.js");
   const lecteur = bg.slice(bg.indexOf("async function lireAnnoncesOrigineEnAttente"), bg.indexOf("// Nombre de jobs que le serveur a retenus"));
-  ok(lecteur.length > 500 && !/fetchVintedItemDetail\(/.test(lecteur) && /lireDetailVintedSousVerrou\(/.test(lecteur),
+  // (25/10, 0.6.144) La lecture d'origine lit la PAGE PUBLIQUE (lirePagePubliqueVintedSousVerrou) et écrit par
+  // ecrireLecturePagePublique : mêmes invariants — jamais la lecture qui reprend le verrou, jamais un texte écrasé.
+  const sousVerrou = bg.slice(bg.indexOf("async function lirePagePubliqueVintedSousVerrou"), bg.indexOf("async function ecrireLecturePagePublique"));
+  ok(lecteur.length > 500 && !/fetchVintedItemDetail\(/.test(lecteur) && /lirePagePubliqueVintedSousVerrou\(/.test(lecteur)
+      && sousVerrou.length > 200 && !/withJobFlowLock\(/.test(sousVerrou),
     "extension : la lecture d'origine (dans le poll, verrou tenu) n'appelle jamais la lecture qui reprend le verrou (interblocage)");
-  ok(/or=\(description\.is\.null,description\.eq\.\)/.test(lecteur), "extension : la description n'est écrite que sur une fiche VIDE (jamais un texte écrasé)");
+  const ecrire = bg.slice(bg.indexOf("async function ecrireLecturePagePublique"), bg.indexOf("const LECTURE_FOND_PAUSE_KEY"));
+  ok(/or=\(description\.is\.null,description\.eq\.\)/.test(ecrire) && /ecrireLecturePagePublique\(token, l, r\)/.test(lecteur),
+    "extension : la description n'est écrite que sur une fiche VIDE (jamais un texte écrasé)");
   ok(/rpc\/lecture_origine_faite/.test(lecteur), "extension : une lecture faite clôt la demande (jamais une attente sans fin)");
 }
 

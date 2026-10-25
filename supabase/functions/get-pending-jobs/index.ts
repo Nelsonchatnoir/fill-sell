@@ -86,6 +86,11 @@ import { restrictionVinted, messageRestrictionVinted } from "../_shared/pas-de-r
 const CACHE_EXIGES_VINTED = new Map<string, { codes: Set<string>; at: number }>();
 import { aspectsDeLaCapture, completerAspects, exigencesCouvertes, CHAMPS_VINTED_CANAUX_DEDIES, libelleChampVinted } from "../_shared/vinted-attributs-capture.js";
 import { PLATEFORMES_RELEVE, RETRAIT_SANS_NUMERO_GESTE_MS, RETRAIT_SANS_NUMERO_RELEVE_MS, jugerRetraitIntrouvable, messageRetraitSansNumeroAToi } from "../_shared/retrait-introuvable.js";
+// (25/10, règle de Nico) Un retrait sur une annonce déjà absente est un retrait FAIT (`deleted`, drapeau deja_absente),
+// jamais « arrêté » (`cancelled` défait aussi le « Oui » d'une fusion — déclencheur deja_vendu_retrait_echoue_defait).
+// Beebs : jamais par le relevé (index public en retard, annonces en vérification invisibles) — sa preuve est ailleurs
+// (constats 404 de l'extension, balayage de handler-watch).
+import { champsRetraitDejaAbsent } from "../_shared/retrait-deja-absent.js";
 import { requalificationCompteVintedBloque } from "../_shared/vinted-compte-bloque.js";
 import { boutiqueConnecteeVinted, loginsDesBoutiques } from "../_shared/boutique-connectee.js";
 import { leverPauseIntrouvable, champsApresLevee } from "../_shared/introuvable-boutique.js";
@@ -226,6 +231,9 @@ import { tacheAMettreDeCote, messageTacheSansDemarrage, SOURCE_TACHE_SANS_DEMARR
 import { attenteBoutiqueLevable, POSE_PAR_PUBLICATION_BOUTIQUE, messageAttenteBoutique } from "../_shared/attente-autre-boutique.js";
 import { OPLA_PRIX_MAX, prixOplaTropHaut, messagePrixOplaTropHaut } from "../_shared/opla-prix.js";
 import { retenirRetraitVerificationLongue } from "../_shared/beebs-retrait-verification-longue.js";
+// (25/10) Le texte du vendeur lu en arrière-plan, dès l'import (page publique Vinted, extension ≥ 0.6.144).
+import { LECTURE_FOND_VERSION_MIN, LECTURE_FOND_RYTHME, modeLectureFond, regleLectureFond, listeLectureFond, aLireEnFond, debutJourParis } from "../_shared/lecture-fond.js";
+import { palierDuProfil, aAuMoins } from "../_shared/palier.js";
 
 // ── Format de colis Vinted : deux lectures du PARC, gardées 10 min par instance
 // (02/10, _shared/vinted-colis.js). Un rayon où un refus « faute de format »
@@ -1298,7 +1306,7 @@ serve(async (req) => {
           .gte("created_at", new Date(Date.now() - 30 * 86_400_000).toISOString())
           .limit(20);
         const avecNumero = ((arretes ?? []) as Array<Record<string, unknown>>)
-          .filter((j) => String(j.platform_listing_id ?? "").trim() || String(j.listing_url ?? "").trim());
+          .filter((j) => j.platform !== "beebs" && (String(j.platform_listing_id ?? "").trim() || String(j.listing_url ?? "").trim()));
         const lectures = new Map<string, { releves: unknown[]; annonces: unknown[] } | null>();
         let clos = 0;
         for (const j of avecNumero) {
@@ -1321,8 +1329,10 @@ serve(async (req) => {
           pfJ.erreurs_archivees = archiverErreur(pfJ.erreurs_archivees, j.error as string, String(j.status), "get-pending-jobs (retrait introuvable : deux relevés complets)");
           pfJ.retrait_conclu = { le: new Date().toISOString(), par: "deux_releves_complets", releves: v.releves, numero: v.numero };
           delete pfJ.needs_user_source;
+          const pfFait = champsRetraitDejaAbsent(pfJ, { verdict: { numero: v.numero, vente: null, delete_confirmed_by: "releves", preuve: { source: "releves_complets", releves: v.releves } },
+            platform: plat, erreur: null, statut: String(j.status), par: "get-pending-jobs (retrait introuvable : deux relevés complets)" });
           const { data: maj } = await admin.from("cross_post_jobs")
-            .update({ status: "cancelled", error: v.message, platform_fields: pfJ })
+            .update({ status: "deleted", error: null, platform_fields: pfFait })
             .eq("id", j.id as string).in("status", ["needs_user", "failed"]).select("id");
           clos += (maj ?? []).length;
         }
@@ -1335,6 +1345,7 @@ serve(async (req) => {
         // d'autre ne bouge (la personne garde la main).
         const sansNumero = ((arretes ?? []) as Array<Record<string, unknown>>).filter((j) =>
           j.status === "needs_user"
+          && j.platform !== "beebs"
           && ((j.platform_fields ?? {}) as Record<string, unknown>).needs_user_source === "retrait_sans_numero"
           && !String(j.platform_listing_id ?? "").trim() && !String(j.listing_url ?? "").trim());
         let n2 = 0;
@@ -1384,8 +1395,10 @@ serve(async (req) => {
             ...(v.neesApresDepot ? { nees_apres_depot: v.neesApresDepot } : {}),
             ...(v.numeroteesAvantDepot ? { numerotees_avant_depot: v.numeroteesAvantDepot } : {}) };
           delete pfJ.needs_user_source;
+          const pfFait2 = champsRetraitDejaAbsent(pfJ, { verdict: { numero: null, vente: null, delete_confirmed_by: "releves", preuve: { source: "releves_complets_sans_numero", releves: v.releves } },
+            platform: plat, erreur: null, statut: "needs_user", par: "get-pending-jobs (retrait sans numéro : deux relevés complets)" });
           const { data: maj } = await admin.from("cross_post_jobs")
-            .update({ status: "cancelled", error: v.message, platform_fields: pfJ })
+            .update({ status: "deleted", error: null, platform_fields: pfFait2 })
             .eq("id", j.id as string).eq("status", "needs_user").select("id");
           if ((maj ?? []).length && dep && dep.status === "published" && !String(dep.listing_url ?? "").trim() && !String(dep.platform_listing_id ?? "").trim()) {
             const { data: ref } = await admin.rpc("refund_publish_unconfirmed", { p_job: dep.id });
@@ -1545,11 +1558,14 @@ serve(async (req) => {
             if (estRepublication) pfJ.annonce_disparue = { ...conclu, pose_par: "get-pending-jobs (republication : annonce absente de toutes les boutiques)" };
             else pfJ.retrait_conclu = conclu;
             for (const k of ["needs_user_source", "retenue_serveur", "next_action_after"]) delete pfJ[k];
+            // (25/10) Le RETRAIT : fait (deleted, deja_absente). La republication : inchangée (décision de Nico).
+            const pfV = estRepublication ? pfJ : champsRetraitDejaAbsent(pfJ, { verdict: { numero, vente: null, delete_confirmed_by: "releves", preuve: { source: "releves_complets_par_boutique", boutiques: vus } },
+              platform: "vinted", erreur: null, statut: String(j.status), par: "get-pending-jobs (retrait Vinted introuvable : deux relevés complets par boutique)" });
             const { data: maj } = await admin.from("cross_post_jobs").update({
-              status: "cancelled", platform_fields: pfJ,
+              status: estRepublication ? "cancelled" : "deleted", platform_fields: pfV,
               error: estRepublication
                 ? `Cette annonce n'est plus sur Vinted : le n° ${numero} n'apparaît dans aucun des deux derniers relevés complets de ${vus.join(" et ")}. FillSell n'a rien retiré. Pour la remettre en vente, publie l'article sur Vinted.`
-                : `Annonce déjà retirée de Vinted : le n° ${numero} n'apparaît dans aucun des deux derniers relevés complets de ${vus.join(" et ")}. Rien n'a été fait sur Vinted, rien n'est à faire.`,
+                : null,
             }).eq("id", j.id as string).in("status", ["pending", "needs_user", "failed"]).select("id");
             closV += (maj ?? []).length;
             // La fiche dont l'annonce Vinted COURANTE est ce numéro est datée
@@ -3239,11 +3255,13 @@ serve(async (req) => {
             retrait_par: "vendue_sur_la_plateforme",
             retrait_non_envoye: { le: new Date().toISOString(), motif: "annonce_vendue", releve_le: s.captured_at, item: idVinted(j), pose_par: "get-pending-jobs (relevé du dressing : annonce vendue, aucune requête envoyée)" },
           };
+          const pfRFait = champsRetraitDejaAbsent(pfR, { verdict: { numero: idVinted(j), vente: true, delete_confirmed_by: "releve", preuve: { source: "releve_vendue", releve_le: s.captured_at } },
+            platform: "vinted", erreur: null, statut: "pending", par: "get-pending-jobs (relevé du dressing : annonce vendue)" });
           const { error: wErr } = await userClient.from("cross_post_jobs")
             .update({
-              status: "cancelled",
-              error: "Retrait inutile : cette annonce est vendue sur Vinted, elle n'est plus en vente. Aucune requête envoyée.",
-              platform_fields: pfR,
+              status: "deleted",
+              error: null,
+              platform_fields: pfRFait,
             })
             .eq("id", j.id).eq("status", "pending");
           ecartes.add(String(j.id));
@@ -6765,8 +6783,11 @@ serve(async (req) => {
     // dont l'annonce est déjà retirée, passeAvantLaSynchro) ; l'extension lit juste après sa boucle (3 par cycle,
     // espacées), puis la file reprend dans son ordre. Jamais pendant une pause anti-robot Vinted (rien ne serait lu),
     // jamais vers une extension qui ne sait pas lire (< 0.6.130). Illisible → la file part comme avant.
+    // ⛔ (25/10 après-midi) Seulement vers une extension ≥ 0.6.144 : de la 0.6.130 à la 0.6.143, le lecteur de
+    // l'extension ne lisait RIEN (restRequest rendait null à la place de la liste — prouvé chez louis-seller, et dans
+    // le code) ; retenir la file de ces postes pour une lecture qui n'arrivera jamais la gelait jusqu'à 15 min.
     let heldLecturesOrigine = 0;
-    if (!includeProcessing && !includeNeedsUser && out.length && !compteEnPauseAr && versionAuMoins(version, "0.6.130")) {
+    if (!includeProcessing && !includeNeedsUser && out.length && !compteEnPauseAr && versionAuMoins(version, LECTURE_FOND_VERSION_MIN)) {
       try {
         const { data: lecturesDemandees } = await userClient.from("lectures_origine_demandees").select("inventaire_id")
           .eq("user_id", user.id).eq("plateforme", "vinted").is("faite_le", null).lt("essais", 3)
@@ -7669,9 +7690,11 @@ serve(async (req) => {
             if (depotJamaisEnLigne) {
               await userClient.from("cross_post_jobs")
                 .update({
-                  status: "cancelled",
-                  error: `Rien à retirer sur ${labelDe(d.platform)} : l'annonce n'a jamais été mise en ligne (dépôt non confirmé).`,
-                  platform_fields: { ...pf, retrait_attend_lien: { ...attente, annule_le: nowIso, motif: "depot_jamais_en_ligne" } },
+                  status: "deleted",
+                  error: null,
+                  platform_fields: champsRetraitDejaAbsent({ ...pf, retrait_attend_lien: { ...attente, annule_le: nowIso, motif: "depot_jamais_en_ligne" } },
+                    { verdict: { numero: null, vente: null, delete_confirmed_by: "depot_jamais_en_ligne", preuve: { source: "depot_jamais_en_ligne" } },
+                      platform: String(d.platform), erreur: null, statut: "pending", par: "get-pending-jobs (retrait : dépôt jamais mis en ligne)" }),
                 })
                 .eq("id", d.id).eq("status", "pending");
               aRetenir.add(String(d.id));
@@ -7684,7 +7707,7 @@ serve(async (req) => {
             // numéro à un autre article) : retrait clos, dépôt rendu (« ne
             // compte pas dans tes limites »). Sinon : attente avec un message
             // vrai (combien de relevés manquent, ou quelle annonce est libre).
-            if (PLATEFORMES_RELEVE.has(String(d.platform))) {
+            if (PLATEFORMES_RELEVE.has(String(d.platform)) && String(d.platform) !== "beebs") {
               const lecture = await lectureRelevePlateforme(String(d.platform));
               const verdict = lecture ? jugerRetraitIntrouvable(d as Record<string, unknown>, {
                 releves: lecture.releves, annonces: lecture.annonces,
@@ -7693,10 +7716,12 @@ serve(async (req) => {
               if (verdict?.verdict === "deja_retire") {
                 const adminR = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
                 await adminR.from("cross_post_jobs").update({
-                  status: "cancelled", error: verdict.message,
-                  platform_fields: { ...pf, retrait_attend_lien: { ...attente, conclu_le: nowIso, motif: "releves_complets" },
+                  status: "deleted", error: null,
+                  platform_fields: champsRetraitDejaAbsent({ ...pf, retrait_attend_lien: { ...attente, conclu_le: nowIso, motif: "releves_complets" },
                     retrait_conclu: { le: nowIso, par: "deux_releves_complets", releves: verdict.releves, numero: verdict.numero,
                       ...(verdict.numeroteesAvantDepot ? { numerotees_avant_depot: verdict.numeroteesAvantDepot } : {}) } },
+                    { verdict: { numero: verdict.numero ?? null, vente: null, delete_confirmed_by: "releves", preuve: { source: "releves_complets", releves: verdict.releves } },
+                      platform: String(d.platform), erreur: null, statut: "pending", par: "get-pending-jobs (retrait en attente de lien : deux relevés complets)" }),
                 }).eq("id", d.id).eq("status", "pending");
                 // Le dépôt jamais vu en ligne (published sans lien NI numéro) :
                 // il ne compte plus dans les limites, l'unité est rendue s'il en a pris une.
@@ -13006,8 +13031,64 @@ serve(async (req) => {
     } catch (_e) { /* allumé par défaut */ }
     if (!prevolCopieActif) console.log(`[get-pending-jobs] userId=${user.id} : prevol_copie_actif=0 → pré-vol de la copie ÉTEINT pour ce poll`);
 
+    // ══ (25/10) LE TEXTE DU VENDEUR LU EN ARRIÈRE-PLAN, DÈS L'IMPORT (_shared/lecture-fond.js) ════════════════════
+    // Les fiches importées de Vinted sans texte, couleur ou rayon : l'extension (≥ 0.6.144) lit leur page PUBLIQUE à la
+    // fin de ses polls, à ce rythme, dans cet ordre. Coupé 6 h après le premier refus de Vinted sur ce compte (sa trace
+    // usage_logs « lecture_fond »), et pendant une pause anti-robot. Illisible → rien n'est servi, la file part comme avant.
+    let lectureFond: Record<string, unknown> | null = null;
+    if (!includeProcessing && !includeNeedsUser && versionAuMoins(version, LECTURE_FOND_VERSION_MIN)) {
+      try {
+        const maintenantLf = Date.now();
+        const [cfgLf, profLf, refusLf, luesLf] = await Promise.all([
+          userClient.from("coin_config").select("value").eq("key", "lecture_fond_mode").maybeSingle(),
+          userClient.from("profiles").select("is_premium, is_pro, is_business, is_comped").eq("id", user.id).maybeSingle(),
+          userClient.from("usage_logs").select("created_at").eq("user_id", user.id).eq("feature", "lecture_fond")
+            .eq("metadata->>resultat", "antirobot")
+            .gte("created_at", new Date(maintenantLf - LECTURE_FOND_RYTHME.pause_refus_h * 3_600_000).toISOString())
+            .order("created_at", { ascending: false }).limit(1),
+          userClient.from("usage_logs").select("id", { count: "exact", head: true }).eq("user_id", user.id)
+            .eq("feature", "lecture_fond").gte("created_at", debutJourParis(maintenantLf)),
+        ]);
+        const regleLf = regleLectureFond({
+          userId: user.id, mode: modeLectureFond(cfgLf.data?.value), versionOk: true,
+          payant: aAuMoins(palierDuProfil(profLf.data ?? null), "premium"),
+          pauseAntirobot: Boolean(antirobotPause) || compteEnPauseAr,
+          luesAujourdhui: luesLf.count ?? 0,
+          dernierRefusMs: refusLf.data?.[0]?.created_at ? Date.parse(String(refusLf.data[0].created_at)) : null,
+          maintenant: maintenantLf,
+        });
+        if (regleLf.actif) {
+          // Les fiches du compte importées de Vinted, au stock et vivantes. Rattrapage : seulement celles sans texte, sans
+          // rayon ou sans couleur, pas relues depuis 7 jours, les plus récentes d'abord (50 au plus : lecture bornée, la
+          // règle fine des 30 jours est appliquée ensuite) ; mesure : toutes, en rotation, rien n'est écrit.
+          let q = userClient.from("inventaire")
+            .select(`id, vinted_item_id, vinted_catalog_id, created_at, couleur:attributs->couleur, page_publique_lue:attributs->page_publique_lue${regleLf.mode === "mesure" ? ", description" : ""}`)
+            .eq("user_id", user.id).eq("origine", "vinted_sync").eq("statut", "stock")
+            .not("vinted_item_id", "is", null).is("disparu_le", null)
+            .order("created_at", { ascending: false });
+          if (regleLf.mode === "mesure") q = q.limit(200);
+          else {
+            q = q.or("description.is.null,description.eq.,vinted_catalog_id.is.null,attributs->couleur.is.null")
+              .or(`attributs->page_publique_lue.is.null,attributs->page_publique_lue->>at.lt.${new Date(maintenantLf - 7 * 86_400_000).toISOString()}`)
+              .limit(50);
+          }
+          const { data: lignesLf } = await q;
+          // Rattrapage : la requête a déjà écarté les fiches complètes (sans texte lu ici, aLireEnFond ne juge que la date
+          // de lecture). Mesure (pilotes, 200 fiches au plus) : le texte est lu, ses fiches à lire passent d'abord.
+          const lignesTriees = ((lignesLf ?? []) as unknown as Record<string, unknown>[]).map((f) => (regleLf.mode === "mesure" ? f : { ...f, description: "" }));
+          const listeLf = listeLectureFond(lignesTriees, regleLf, maintenantLf);
+          lectureFond = { ...regleLf, liste: listeLf, a_lire: regleLf.mode === "mesure" ? null : lignesTriees.filter((f) => aLireEnFond(f, maintenantLf)).length };
+          if (listeLf.length) console.log(`[get-pending-jobs] userId=${user.id} : lecture de fond (${regleLf.mode}) — ${listeLf.length} page(s) servie(s), ${lectureFond.a_lire ?? "—"} fiche(s) à lire (50 au plus comptées)`);
+        } else {
+          lectureFond = regleLf;
+        }
+      } catch (_e) { lectureFond = null; /* jamais un point de panne */ }
+    }
+
     return json({
       jobs: out,
+      // (25/10) Le rattrapage des textes en arrière-plan (null : rien de servi à ce poll).
+      lecture_fond: lectureFond,
       // (02/10) Poste sous le seuil servi de ses seules recréations à 'deleted'.
       ...(posteSousMinimum ? {
         extension_update_required: true, extension_min_build: EXTENSION_MIN_BUILD,

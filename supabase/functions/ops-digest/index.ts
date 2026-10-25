@@ -774,6 +774,114 @@ serve(async (req) => {
     iaAlertes.push(`Relevé des retouches illisible (${String((e as Error)?.message ?? e)}).`);
   }
 
+  // ── (25/10) LA LECTURE DE FOND DES TEXTES (pages publiques Vinted, extension ≥ 0.6.144) ──────────────────────
+  // Chaque page lue laisse sa ligne usage_logs « lecture_fond » (résultat, HTTP, durée — jamais le contenu). La garde :
+  // le PREMIER refus de Vinted (403, 429, page de vérification) coupe le compte 6 h (extension et get-pending-jobs) ;
+  // ici, les refus du parc sur 24 h, en tête du récapitulatif dès le premier. Couper tout le monde :
+  //   insert into coin_config (key, value) values ('lecture_fond_mode', 0)
+  //     on conflict (key) do update set value = 0;   -- 1 = pilotes, 2 = payants, 3 = tous
+  const lectureFondAlertes: string[] = [];
+  let lectureFondResume = "";
+  try {
+    const { data: lf, error: eLf } = await supabase
+      .from("usage_logs")
+      .select("user_id, metadata")
+      .eq("feature", "lecture_fond")
+      .gte("created_at", iso24h)
+      .limit(20000);
+    if (eLf) throw new Error(eLf.message);
+    const lignes = (lf ?? []) as Array<{ user_id: string | null; metadata: Record<string, unknown> | null }>;
+    if (lignes.length) {
+      const parResultat = new Map<string, number>();
+      const refusParCompte = new Map<string, number>();
+      for (const l of lignes) {
+        const r = String(l.metadata?.resultat ?? "?");
+        parResultat.set(r, (parResultat.get(r) ?? 0) + 1);
+        if (r === "antirobot") refusParCompte.set(String(l.user_id ?? "?"), (refusParCompte.get(String(l.user_id ?? "?")) ?? 0) + 1);
+      }
+      const comptes = new Set(lignes.map((l) => l.user_id)).size;
+      lectureFondResume = `${lignes.length} page${lignes.length > 1 ? "s" : ""} lue${lignes.length > 1 ? "s" : ""} en 24 h sur ${comptes} compte${comptes > 1 ? "s" : ""} — ${[...parResultat].map(([k, v]) => `${k} ×${v}`).join(", ")}`;
+      if (refusParCompte.size) {
+        const total = [...refusParCompte.values()].reduce((a, b) => a + b, 0);
+        lectureFondAlertes.push(`Lecture de fond : ${total} refus de Vinted (anti-robot) en 24 h sur ${refusParCompte.size} compte${refusParCompte.size > 1 ? "s" : ""} (${[...refusParCompte].map(([u, n]) => `${u.slice(0, 8)} ×${n}`).join(", ")}). Chaque compte est coupé 6 h tout seul ; si les refus se répètent, couper tout le monde (coin_config.lecture_fond_mode = 0).`);
+      }
+    }
+  } catch (e) {
+    lectureFondAlertes.push(`Journal de la lecture de fond illisible (${String((e as Error)?.message ?? e)}) — refus de Vinted non vérifiables aujourd'hui.`);
+  }
+
+  // ── (25/10, Jocabroc — Nico : « Je dois pouvoir le voir dans mes checks avant qu'un client écrive ») ──────────────
+  // 1. LES ACTIONS DE L'APP EN ÉCHEC : chaque action ratée (bouton qui échoue, requête refusée, session expirée,
+  //    exception) laisse sa ligne usage_logs « action_app_ratee » (src/utils/actionRatee.js : action, motif, build,
+  //    plateforme). Ici, les 24 h : par action et motif, et les comptes les plus touchés.
+  // 2. LES COMPTES ACTIFS DONT LES ACTIONS APP S'ARRÊTENT NET : au moins 10 actions app (publish, generate_listing,
+  //    lens_identify, republish « manuel ») sur les 72 h d'avant, AUCUNE sur les dernières 24 h, et l'extension vue
+  //    ces 24 h (le compte n'est pas parti : il est retenu quelque part). Jocabroc le 25/10 : 52 → 0.
+  // Lecture par pages de 1 000 (PostgREST coupe à 1 000 sans erreur).
+  const actionsAppAlertes: string[] = [];
+  let actionsAppResume = "";
+  const lirePagesUsage = async (features: string[], depuisIso: string, jusquaIso: string | null = null, max = 20) => {
+    const lignes: Array<{ user_id: string | null; feature: string; metadata: Record<string, unknown> | null; created_at: string }> = [];
+    for (let p = 0; p < max; p++) {
+      let q = supabase.from("usage_logs").select("user_id, feature, metadata, created_at")
+        .in("feature", features).gte("created_at", depuisIso).order("created_at", { ascending: true }).range(p * 1000, p * 1000 + 999);
+      if (jusquaIso) q = q.lt("created_at", jusquaIso);
+      const { data, error } = await q;
+      if (error) throw new Error(error.message);
+      const lot = (data ?? []) as typeof lignes;
+      lignes.push(...lot);
+      if (lot.length < 1000) break;
+    }
+    return lignes;
+  };
+  try {
+    const ratees = await lirePagesUsage(["action_app_ratee"], iso24h);
+    if (ratees.length) {
+      const parMotif = new Map<string, number>();
+      const parCompte = new Map<string, number>();
+      for (const l of ratees) {
+        const k = `${String(l.metadata?.action ?? "?")} · ${String(l.metadata?.motif ?? "?")}`;
+        parMotif.set(k, (parMotif.get(k) ?? 0) + 1);
+        parCompte.set(String(l.user_id ?? "?"), (parCompte.get(String(l.user_id ?? "?")) ?? 0) + 1);
+      }
+      const top = [...parMotif].sort((a, b) => b[1] - a[1]).slice(0, 8);
+      const comptesTop = [...parCompte].sort((a, b) => b[1] - a[1]).slice(0, 6);
+      actionsAppResume = `${ratees.length} action${ratees.length > 1 ? "s" : ""} app en échec en 24 h sur ${parCompte.size} compte${parCompte.size > 1 ? "s" : ""}`;
+      actionsAppAlertes.push(`Actions app en échec (24 h) : ${top.map(([k, v]) => `${k} ×${v}`).join(" ; ")}. Comptes : ${comptesTop.map(([u, n]) => `${u.slice(0, 8)} ×${n}`).join(", ")}.`);
+    }
+  } catch (e) {
+    actionsAppAlertes.push(`Journal des actions app en échec illisible (${String((e as Error)?.message ?? e)}).`);
+  }
+  try {
+    const iso96h = new Date(now - 96 * 3_600_000).toISOString();
+    const FEATURES_APP = ["publish", "generate_listing", "lens_identify", "republish"];
+    const lignes = await lirePagesUsage(FEATURES_APP, iso96h);
+    const avant = new Map<string, number>();
+    const depuis = new Map<string, number>();
+    for (const l of lignes) {
+      // Une republication automatique (planifiée, serveur) n'est pas une action de l'app.
+      if (l.feature === "republish" && String(l.metadata?.source ?? "") !== "manuel") continue;
+      const u = String(l.user_id ?? "");
+      if (!u) continue;
+      if (l.created_at >= iso24h) depuis.set(u, (depuis.get(u) ?? 0) + 1);
+      else avant.set(u, (avant.get(u) ?? 0) + 1);
+    }
+    const arretes = [...avant].filter(([u, n]) => n >= 10 && !depuis.has(u)).map(([u]) => u);
+    if (arretes.length) {
+      const { data: profils, error: eP } = await supabase.from("profiles")
+        .select("id, username, extension_last_seen_at, app_build").in("id", arretes.slice(0, 200));
+      if (eP) throw new Error(eP.message);
+      const vus = ((profils ?? []) as Array<{ id: string; username: string | null; extension_last_seen_at: string | null; app_build: string | null }>)
+        .filter((p) => p.extension_last_seen_at && p.extension_last_seen_at >= iso24h);
+      if (vus.length) {
+        const liste = vus.map((p) => `${p.username || p.id.slice(0, 8)} (${avant.get(p.id)} → 0)`).slice(0, 15);
+        actionsAppAlertes.push(`Comptes actifs dont les actions app s'arrêtent net (≥ 10 actions sur les 72 h d'avant, 0 depuis 24 h, extension vue ces 24 h) : ${vus.length} — ${liste.join(", ")}${vus.length > 15 ? "…" : ""}. À regarder : actions app en échec ci-dessus, et chargements de page (set_app_build) sans action.`);
+      }
+    }
+  } catch (e) {
+    actionsAppAlertes.push(`Relevé des actions app illisible (${String((e as Error)?.message ?? e)}) — arrêts nets non vérifiables aujourd'hui.`);
+  }
+
   // ── CPU DE LA BASE (04/10, incident CPU 99 %) ───────────────────────────────
   // Échantillons de veille-cpu (toutes les 2 min). Une anomalie dès qu'un
   // relevé des 24 dernières heures a dépassé 70 % : la veille a déjà prévenu
@@ -950,6 +1058,8 @@ serve(async (req) => {
     decisions_repetees: decisionsRepetees.length,
     releves_auto_retenus: relevesRetenus.length,
     ia_alertes: iaAlertes.length,
+    lecture_fond_alertes: lectureFondAlertes.length,
+    actions_app_alertes: actionsAppAlertes.length,
     needs_user_sans_motif_24h: sansMotif.length,
     tentatives_en_cours: tentativesEnCours.length,
     failed_24h: (failed ?? []).length,
@@ -1087,6 +1197,26 @@ serve(async (req) => {
     </h2>
     <ul style="margin:0;padding:0 0 0 18px;">
       ${iaAlertes.map((a) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#B91C1C;">${esc(a)}</li>`).join("")}
+    </ul>`
+  }
+    ${
+    actionsAppAlertes.length === 0 && !actionsAppResume ? "" : `
+    <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:${actionsAppAlertes.length ? "#B91C1C" : "#374151"};">
+      ${actionsAppAlertes.length ? "🔴" : "•"} Actions de l'app (en échec, arrêts nets)
+    </h2>
+    <ul style="margin:0 0 12px;padding-left:18px;">
+      ${actionsAppResume ? `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#374151;">${esc(actionsAppResume)}</li>` : ""}
+      ${actionsAppAlertes.map((a) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#B91C1C;">${esc(a)}</li>`).join("")}
+    </ul>`
+  }
+    ${
+    lectureFondAlertes.length === 0 && !lectureFondResume ? "" : `
+    <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:${lectureFondAlertes.length ? "#B91C1C" : "#374151"};">
+      ${lectureFondAlertes.length ? "🔴" : "•"} Lecture de fond des textes (pages publiques Vinted)
+    </h2>
+    <ul style="margin:0;padding:0 0 0 18px;">
+      ${lectureFondResume ? `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#374151;">${esc(lectureFondResume)}</li>` : ""}
+      ${lectureFondAlertes.map((a) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#B91C1C;">${esc(a)}</li>`).join("")}
     </ul>`
   }
     ${
@@ -1328,7 +1458,7 @@ serve(async (req) => {
       from: FROM,
       to: [TO],
       // (01/10) Les fournisseurs d'IA en tête, jusque dans l'objet du mail.
-      subject: `${ventesAnomalies.length ? `🔴 Ventes prouvées : ${ventesAnomalies.map((a) => a.code).join(", ")} — ` : ""}${cpuMinutesAuDessus ? `🔴 CPU base ${cpuMax} % — ` : ""}${iaSujet.length ? `🔴 IA : ${iaSujet.join(" · ")} — ` : ""}⚠️ FillSell ops-digest — ${total} anomalie${total > 1 ? "s" : ""} (failed ${counts.failed_24h} · stuck ${counts.stuck_processing} · delete ${counts.delete_overdue} · beebs ${counts.beebs_unavailable_7d} · iap ${counts.iap_alerts} · abo ${counts.awaiting_payment} · identify ${counts.lens_identify} · email_logs ${counts.email_log_doublons + counts.email_log_echecs} · resa ${counts.reservations_expirees} · gardes ${counts.sync_gardes_graves + counts.sync_gardes_anomalies} · dressings ${counts.dressings_croises} · pending48h ${counts.pending_bloques} · relevés morts ${counts.releves_morts} · champs ${counts.champs_requis} · retenues ${retenuesServeurJobs} · tentatives ${counts.tentatives_en_cours} · stockage ${counts.stockage_au_dessus_du_seuil})`,
+      subject: `${ventesAnomalies.length ? `🔴 Ventes prouvées : ${ventesAnomalies.map((a) => a.code).join(", ")} — ` : ""}${cpuMinutesAuDessus ? `🔴 CPU base ${cpuMax} % — ` : ""}${iaSujet.length ? `🔴 IA : ${iaSujet.join(" · ")} — ` : ""}${lectureFondAlertes.length ? `🔴 Lecture de fond : refus Vinted — ` : ""}${actionsAppAlertes.length ? `🔴 Actions app — ` : ""}⚠️ FillSell ops-digest — ${total} anomalie${total > 1 ? "s" : ""} (failed ${counts.failed_24h} · stuck ${counts.stuck_processing} · delete ${counts.delete_overdue} · beebs ${counts.beebs_unavailable_7d} · iap ${counts.iap_alerts} · abo ${counts.awaiting_payment} · identify ${counts.lens_identify} · email_logs ${counts.email_log_doublons + counts.email_log_echecs} · resa ${counts.reservations_expirees} · gardes ${counts.sync_gardes_graves + counts.sync_gardes_anomalies} · dressings ${counts.dressings_croises} · pending48h ${counts.pending_bloques} · relevés morts ${counts.releves_morts} · champs ${counts.champs_requis} · retenues ${retenuesServeurJobs} · tentatives ${counts.tentatives_en_cours} · stockage ${counts.stockage_au_dessus_du_seuil})`,
       html,
     }),
   });

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, Fragment } from "react";
 import { createPortal } from "react-dom";
+import { signalerActionRatee } from "../utils/actionRatee";
 import { Camera, Check, ChevronLeft, Mic, Plus, X, Pencil, Clock, ImageOff, GripVertical, MapPin, Lock, LogOut } from "lucide-react";
 import { Capacitor } from "@capacitor/core";
 import { Camera as CapCamera } from "@capacitor/camera";
@@ -6459,6 +6460,8 @@ export default function ListingPreviewScreen({
       setOptionRedaction(option);
     } catch (e) {
       setPlatformError(e.message);
+      // (25/10, Jocabroc) Plus jamais un échec invisible : la rédaction ratée est signalée au serveur.
+      signalerActionRatee({ action: "generer_annonce", motif: String(e?.message ?? e).slice(0, 120) });
     } finally {
       setGeneratingPlatforms(false);
     }
@@ -10867,6 +10870,9 @@ export default function ListingPreviewScreen({
         }
         break;
       }
+      // (25/10, Jocabroc) Chaque refus ou erreur de publication est signalé au serveur (motif, version de l'app).
+      if (pubErr) signalerActionRatee({ action: "publier", motif: "rpc_erreur", details: { message: String(pubErr.message ?? "").slice(0, 160) } });
+      else if (pubRes?.allowed === false) signalerActionRatee({ action: "publier", motif: String(pubRes.reason ?? "refus"), details: { plateformes: Array.isArray(pubRes.platforms) ? pubRes.platforms.join(",") : null } });
       // Le vrai motif en clair (refonte) ; l'ancien stepper garde le générique.
       if (pubErr) throw new Error(variante === "nouvelle"
         ? (lang === "en"

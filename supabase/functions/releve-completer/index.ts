@@ -94,12 +94,27 @@ function normaliserBeebs(h: Record<string, unknown>): Record<string, unknown> {
   return d;
 }
 
+/**
+ * Sérialisation canonique : clés triées à tous les niveaux. (25/10) Un jsonb relu de Postgres n'a PAS l'ordre
+ * d'insertion de l'objet JS (Postgres range ses clés) : `JSON.stringify` des deux ne coïncidait jamais — chaque passage
+ * Beebs écrivait « 600 écrites, 0 inchangée » (≈ 57 600 réécritures par jour, chacune relançant annonce_vers_fiche),
+ * et les mêmes trois comptes passaient toujours en tête.
+ */
+function canonique(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(canonique).join(",")}]`;
+  if (v && typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    return `{${Object.keys(o).filter((k) => o[k] !== undefined).sort().map((k) => `${JSON.stringify(k)}:${canonique(o[k])}`).join(",")}}`;
+  }
+  return JSON.stringify(v ?? null);
+}
+
 /** Même contenu (hors date de lecture) ? Évite une écriture qui ne dirait rien. */
 function memeContenu(x: unknown, y: Record<string, unknown>): boolean {
   if (!x || typeof x !== "object") return false;
   const a = { ...(x as Record<string, unknown>) }; const b = { ...y };
   delete a.lu_le; delete b.lu_le;
-  return JSON.stringify(a) === JSON.stringify(b);
+  return canonique(a) === canonique(b);
 }
 
 /** Le passage du relevé serveur pour CE compte — jamais une écriture par annonce. */

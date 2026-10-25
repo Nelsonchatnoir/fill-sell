@@ -402,3 +402,22 @@ Rapport : `docs/enquetes/session-sans-nico-1810/lot4-ventes-lot-multi-exemplaire
 - Réparation des 64 lignes LANCÉE le 25/10 à 08:55:46 (ordre de Nico, après un essai à blanc : 64 lignes, 24 articles,
   416,64 € comptés en trop, compte af37fa49 ; les 24 lignes gardées relues ; sauvegarde `_backup_2510_ventes_doublons`,
   inverse `20261025_ventes_en_double_INVERSE.sql` ; 0 mail lié).
+
+## ⛔ 25/10 après-midi — UN RETRAIT SUR UNE ANNONCE DÉJÀ ABSENTE EST UN RETRAIT FAIT (règle de Nico ; rapport `docs/enquetes/import-publier-ailleurs-2510/RAPPORT.md`)
+- L'issue d'une absence PROUVÉE est `deleted` (« Fait · retirée »), `error` NULL, l'erreur d'avant archivée, drapeau unique
+  `platform_fields.deja_absente` { le, plateforme, numero, preuve, vente, pose_par } (`_shared/retrait-deja-absent.js`) —
+  jamais `cancelled` ni `failed` (ils défont le « Oui » d'une fusion : `deja_vendu_retrait_echoue_defait`).
+- Preuves, par NUMÉRO (jamais un titre) : Vinted — 3 lectures unanimes « introuvable/fermée/vendue », instantané « sold »,
+  ou 2 relevés complets de SA boutique depuis la dernière vue ; Leboncoin, Depop, eBay — vue puis absente des 2 derniers
+  relevés complets, 410 hors fenêtre de modération, fiche Depop 404 / STATUS_PURCHASED, eBay GetItem ≠ Active ; Beebs —
+  JAMAIS par le relevé ni l'index : deux constats « page 404 » de l'extension à 6 h d'écart ET (vue en ligne, ou dépôt de
+  plus de **7 jours** — 72 h avant le 25/10 : mesuré, une annonce jamais vue en ligne peut l'être jusqu'à 126 h après sa
+  sortie de vérification).
+- Partout : extension 0.6.144 (`processDeleteJob`), `update-job-status` v150 (étiquette sur les champs), `handler-watch`
+  v131 (balayage des retraits ouverts), `ebay-api-worker` v98, `get-pending-jobs` v286 (ses six clôtures « déjà retiré »
+  passent en `deleted`, jamais Beebs sur relevé). Réparé le 25/10 : 9 retraits ouverts (3 Leboncoin, 6 Vinted) + 2
+  copies (`scripts/reparations/20261025_retraits_deja_absents.sql`, sauvegarde + inverse, 0 mail).
+- Affichage (`src/utils/retraitsBloques.js`) : un retrait Beebs « en vérification » (ni achetable ni supprimable) est un
+  mur à part, `verification_beebs`, en ambre, sans « risque de double vente ».
+- ⛔ Question « retirer ? » gardée quand l'annonce est en ligne malgré un relevé « vendue » : Beebs 34209200 vue
+  achetable le 25/10 15:12 alors que `annonces_plateforme.statut_plateforme` = vendue.

@@ -16,7 +16,8 @@
 // reproduite à l'identique ; les autres : annonce EN LIGNE portée par un job
 // FillSell (computeRemovalInfo.publishedActive + listing_url), aucune
 // republication vivante sur cette plateforme, aucune aboutie depuis 24 h.
-import { computeRemovalInfo, vintedMasqueeMalgreJobs, estGeleLivres } from './publicationState';
+import { computeRemovalInfo, vintedMasqueeMalgreJobs, estGeleLivres, estArretUtilisateur } from './publicationState';
+import { attenteAutomatique } from '../../supabase/functions/_shared/etat-job.js';
 import { republierArticleVinted } from './vintedSync';
 import { PLATEFORMES_STOCK, plateformesDuCompte } from './stockFiltres';
 import { messagePlafondRepublicationGratuit } from './jourRemise';
@@ -94,10 +95,14 @@ export function plateformesRepubliables(item, jobsAll, { multiOuverte = false, p
 
 // Le job republish en needs_user le plus récent, toutes plateformes — celui
 // que le bouton « Republier maintenant / Compléter » doit viser.
+// (25/10, balayage des erreurs visibles, règle 1) Seulement s'il attend VRAIMENT la personne : une attente
+// AUTOMATIQUE (_shared/etat-job.js, attenteAutomatique — relevé attendu, coupure technique, plateforme écartée…)
+// repart seule, un arrêt demandé ou un gel ne demandent rien. Avant, « Régler » visait n'importe quel needs_user.
 export function republishAReprendre(jobsAll) {
   let r = null;
   for (const j of jobsAll ?? []) {
     if (j.action !== 'republish' || j.status !== 'needs_user') continue;
+    if (attenteAutomatique(j) || estArretUtilisateur(j) || estGeleLivres(j)) continue;
     if (!r || Date.parse(j.created_at || 0) > Date.parse(r.created_at || 0)) r = j;
   }
   return r;

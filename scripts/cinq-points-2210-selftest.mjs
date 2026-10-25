@@ -161,9 +161,17 @@ console.log('\n2. Retraits d\'articles vendus : jamais en attente sans fin (Dead
   const now = Date.parse('2026-10-22T10:00:00Z'); const ext = '2026-10-22T09:59:00Z';
   const verif = { id: 'a', inventaire_id: 1, action: 'delete', platform: 'beebs', status: 'pending', created_at: '2026-10-14T00:00:00Z', listing_url: 'https://www.beebs.app/fr/p/34083555', error: 'Beebs vérifie encore cette annonce', platform_fields: { retrait_en_attente_verification: {} } };
   const r1 = rb.retraitsBloquesParConnexion({ jobs: [verif], fiches: [{ id: 1, statut: 'vendu', title: 'Jean 511' }], maintenant: now, extensionVueLe: ext });
-  verifier(r1.total === 1 && r1.parPlateforme[0].mur === 'en_retard', 'Beebs en vérification depuis 8 j (DeadRoz 53cff028) : une ligne « À régler »');
+  // (25/10, Nico : « L'utilisateur ne doit voir AUCUNE erreur qui vient de nous ou qui est déjà réglée ») un mur à
+  // part, jamais « en retard » : ni achetable ni supprimable — ambre, sans « risque de double vente ».
+  verifier(r1.total === 1 && r1.parPlateforme[0].mur === 'verification_beebs', 'Beebs en vérification depuis 8 j (DeadRoz 53cff028) : une ligne « À régler », mur « vérification Beebs »');
   const t1 = rb.texteRetraitsBloques(r1.parPlateforme[0]);
   verifier(/ne permet pas de la supprimer/.test(t1) && /pas achetable/.test(t1) && /support Beebs/.test(t1), 'le texte dit le vrai : pas achetable, Beebs ne permet pas de la supprimer (vu le 22/10), support Beebs');
+  const l1 = rb.ligneARegler(r1);
+  verifier(/Annonce Beebs en vérification/.test(l1.titre) && /pas achetable/.test(l1.detail) && !/double vente|en ligne à retirer/.test(`${l1.titre} ${l1.detail}`), '« À régler » : « Annonce Beebs en vérification », jamais « encore en ligne » ni « risque de double vente »');
+  const carte1 = rb.ligneCarteRetraitBloque('beebs', 'fr', 'verification_beebs');
+  verifier(/pas achetable/.test(carte1) && !/échec|double vente|toi-même/.test(carte1), 'carte : « Beebs vérifie encore cette annonce — elle n\'est pas achetable », sans échec ni geste impossible');
+  const av1 = rb.articlesVendusEncoreEnLigne({ retraits: r1, fiches: [{ id: 1, statut: 'vendu', title: 'Jean 511' }] });
+  verifier(av1.length === 1 && av1[0].ton === 'regler' && !/double vente|encore en ligne/.test(rb.detailArticleVenduEnLigne(av1[0])), 'article vendu : ton ambre (jamais rouge), détail sans « encore en ligne » ni « double vente »');
   const echec = { ...verif, id: 'b', inventaire_id: 2, error: 'Le retrait n\'est pas encore fait', platform_fields: { pas_de_rouge: { motif: 'retrait_inconnu_relancer' } } };
   const r2 = rb.retraitsBloquesParConnexion({ jobs: [echec], fiches: [{ id: 2, statut: 'vendu' }], maintenant: now, extensionVueLe: ext });
   verifier(r2.parPlateforme[0]?.mur === 'en_retard' && /Retire-la toi-même sur Beebs/.test(rb.texteRetraitsBloques(r2.parPlateforme[0])), 'retrait sans effet depuis 8 j (DeadRoz ecd27eef) : « retire-la toi-même », FillSell continue');

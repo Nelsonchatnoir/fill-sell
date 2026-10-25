@@ -793,6 +793,29 @@ chrome.runtime.onInstalled.addListener(rattrapageSyncAuDemarrage);
 // version, sinon le prochain poll déclarerait encore une attente qui n'existe
 // plus et la mesure en base mentirait. chrome.storage.session est censé être
 // vidé au rechargement — on ne s'en remet pas à « censé ».
+// ── (25/10, 0.6.144 — Louis) LE PONT DE LA PAGE FILLSELL RÉINJECTÉ À CHAQUE INSTALLATION OU MISE À JOUR ─────────
+// Chrome ne réinjecte pas les scripts de contenu dans les onglets déjà ouverts : un onglet fillsell.app ouvert avant
+// une mise à jour gardait un pont MORT (louis-seller, 25/10 : extension mise à jour à 01:58:40, onglet resté ouvert,
+// lectures sans réponse ; reproduit sur le poste de Nico à 13:43-13:46). On le réinjecte ici ; le script ne se lance
+// pas deux fois dans le même monde isolé (__fillsellPontActif). Un onglet fermé ou en erreur : sans conséquence.
+async function reinjecterPontFillsell(raison) {
+  const onglets = await chrome.tabs.query({ url: "https://fillsell.app/*" }).catch(() => []);
+  let n = 0;
+  for (const t of onglets ?? []) {
+    if (t?.id == null || t.discarded) continue;
+    try {
+      await chrome.scripting.executeScript({ target: { tabId: t.id }, files: ["content-scripts/fillsell-auth.js"] });
+      n++;
+    } catch { /* onglet fermé, page d'erreur : sans conséquence */ }
+  }
+  if (n) console.log(`[background] pont FillSell réinjecté dans ${n} onglet(s) déjà ouvert(s) (${raison})`);
+  return n;
+}
+chrome.runtime.onInstalled.addListener((details) => {
+  if (details?.reason !== "update" && details?.reason !== "install") return;
+  reinjecterPontFillsell(details.reason).catch(() => {});
+});
+
 chrome.runtime.onInstalled.addListener((details) => {
   if (details?.reason !== "update" && details?.reason !== "install") return;
   chrome.storage.session.remove(MAJ_ATTENTE_KEY).catch(() => {});
@@ -1723,6 +1746,35 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     );
     return true; // réponse asynchrone
   }
+  // (25/10, 0.6.144) La PAGE PUBLIQUE d'une annonce Vinted, demandée par le site (stepper, lot) : une page vue, sous
+  // le verrou de flux (jamais pendant un dépôt sur l'onglet de travail), lisible quel que soit le compte Vinted ouvert
+  // dans ce navigateur. Ce qu'elle dit est AUSSI posé sur la fiche de ce compte (seulement ce qui manque) : si la page
+  // a cessé d'attendre, la fiche est complète quand même. Jamais pendant une pause anti-robot locale.
+  if (msg?.type === "FETCH_VINTED_PUBLIC") {
+    const id = String(msg.vintedItemId ?? "").trim();
+    (async () => {
+      if (!/^\d+$/.test(id)) return { ok: false, motif: "id_illisible" };
+      if (await lectureFondEnPause()) return { ok: false, motif: "antirobot_pause" };
+      const lu = await withJobFlowLock("page-publique-vinted", () => lirePagePubliqueVintedSousVerrou(id));
+      try {
+        const session = await getValidSession();
+        if (session?.access_token) {
+          if (lu?.motif === "antirobot") await poserPauseLectureFond(6);
+          const lignes = await restRequest(`inventaire?vinted_item_id=eq.${encodeURIComponent(id)}&select=id,vinted_item_id`, session.access_token).catch(() => []);
+          const ligne = Array.isArray(lignes) ? lignes[0] ?? null : null;
+          tracerLectureFond(session.access_token, ligne ? { inventaire_id: ligne.id, vinted_item_id: id } : { vinted_item_id: id }, lu, "page").catch(() => {});
+          if (ligne && lu?.ok) {
+            await Promise.race([ecrireLecturePagePublique(session.access_token, { inventaire_id: ligne.id }, lu), new Promise((r) => setTimeout(r, 5000))]);
+          }
+        }
+      } catch { /* la réponse part quand même */ }
+      return lu;
+    })().then(
+      (r) => sendResponse({ success: Boolean(r?.ok), ...(r ?? {}) }),
+      (e) => sendResponse({ success: false, ok: false, motif: "exception", error: String(e?.message ?? e) }),
+    );
+    return true; // réponse asynchrone
+  }
   // É1 republication (2026-08-05) : capture COMPLÈTE d'une annonce en ligne —
   // payload natif + résolutions id→libellé + verdict. Lecture SEULE, à
   // l'unité, sur action humaine (relais fillsell-auth.js), jamais de lot ni de
@@ -2626,10 +2678,177 @@ async function lectureOrigineDemandeeRecente(token) {
   return (Array.isArray(liste) ? liste : []).some((l) => l?.plateforme === "vinted"
     && Date.now() - (Date.parse(String(l?.depuis ?? "")) || 0) < 15 * 60_000);
 }
+// ══ (25/10, 0.6.144 — chantier « importer son Vinted puis publier ailleurs ») LA PAGE PUBLIQUE D'UNE ANNONCE ═══
+// Le relevé du dressing (wardrobe, 96 annonces par page) ne porte NI la description, NI la couleur, NI le rayon :
+// le 25/10, 71 473 des 83 027 articles importés de Vinted n'avaient pas de description. Ils se lisaient AU CLIC,
+// par le formulaire d'édition (item_upload, réservé au propriétaire, interdit en boucle) — et quand cette lecture
+// n'aboutissait pas, l'écran attendait sans rien dire (Louis, 25/10). La PAGE PUBLIQUE de l'annonce porte tout, en
+// clair : son JSON-LD (Product : name, description, color, brand, category, offers) et son fil d'Ariane
+// (/catalog/<id>-…?referrer=item-crumbs, la feuille en dernier) — observé le 25/10 sur 10499143345 (louis-seller,
+// lue depuis le navigateur de Nico : texte complet, « Multicolore », 1193 > 1499 > 1730 > 3313). Une page vue,
+// comme un visiteur, depuis l'onglet de travail (cookies et IP de la personne, le chemin de la veille des ventes) ;
+// lisible quel que soit le compte Vinted ouvert dans ce navigateur. Jamais le formulaire d'édition.
+
+/** La page publique d'une annonce Vinted → ce qu'elle dit de l'annonce (pur, testé : selftest lecture-page-publique). */
+function analyserPagePubliqueVinted(page, itemId) {
+  const id = String(itemId ?? "").trim();
+  const status = Number(page?.status) || 0;
+  const html = String(page?.html ?? "");
+  const finale = String(page?.finalUrl ?? "");
+  if (!/^\d+$/.test(id)) return { ok: false, motif: "id_illisible" };
+  // Jeton web périmé : Vinted sert sa page d'attente, que seul un vrai chargement renouvelle — rien n'est conclu.
+  if (/\/session-refresh/.test(finale)) return { ok: false, motif: "session_a_rafraichir", http: status };
+  if (status === 404 || status === 410) return { ok: false, motif: "introuvable", http: status };
+  let produit = null;
+  for (const m of html.matchAll(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g)) {
+    let j = null;
+    try { j = JSON.parse(m[1]); } catch { continue; }
+    const liste = Array.isArray(j) ? j : (Array.isArray(j?.["@graph"]) ? j["@graph"] : [j]);
+    for (const x of liste) {
+      if (String(x?.["@type"] ?? "") !== "Product") continue;
+      const url = String(x?.offers?.url ?? x?.url ?? "");
+      if (!new RegExp(`/items/${id}(?:[-/?#]|$)`).test(url)) continue;   // jamais le produit d'une AUTRE annonce
+      produit = x;
+      break;
+    }
+    if (produit) break;
+  }
+  // 403 / 429, ou page de vérification sans l'annonce : l'anti-robot de Vinted a parlé — tout s'arrête.
+  if (status === 403 || status === 429 || (!produit && estPageBotShield(html))) return { ok: false, motif: "antirobot", http: status };
+  if (!page?.ok) return { ok: false, motif: `http_${status || "inconnu"}`, http: status };
+  if (!produit) return { ok: false, motif: "page_sans_annonce", http: status };
+  const texte = (v) => { const s = String(v ?? "").trim(); return s || null; };
+  const fil = [...new Set([...html.matchAll(/href="\/catalog\/(\d+)-[^"?\/]*\?referrer=item-crumbs"/g)].map((m) => Number(m[1])))]
+    .filter((n) => Number.isFinite(n) && n > 0);
+  const couleurs = String(produit.color ?? "").split(/\s*[,/]\s*/).map((c) => c.trim()).filter(Boolean);
+  const dispo = String(produit?.offers?.availability ?? "");
+  const prix = Number(produit?.offers?.price);
+  return {
+    ok: true, http: status,
+    titre: texte(produit.name),
+    description: texte(produit.description),
+    couleur: couleurs[0] ?? null,
+    couleur2: couleurs[1] ?? null,
+    marque: texte(produit.brand?.name ?? (typeof produit.brand === "string" ? produit.brand : null)),
+    categorie_libelle: texte(produit.category),
+    catalog_id: fil.length ? fil[fil.length - 1] : null,
+    fil_ariane: fil,
+    prix: Number.isFinite(prix) ? prix : null,
+    disponible: /InStock/i.test(dispo) ? true : (/SoldOut|OutOfStock|Discontinued/i.test(dispo) ? false : null),
+  };
+}
+
+/** Lecture par l'ONGLET de travail seulement (jamais le fetch du service worker, que DataDome refuse en 403 depuis
+ *  le 12/08 : ce refus serait le NÔTRE, pas un signal sur la personne). null = onglet indisponible. */
+async function lirePageParOngletDeTravail(url, platform) {
+  const tabId = await workTabForFetch(platform).catch(() => null);
+  if (tabId == null) return null;
+  let timer;
+  try {
+    const inject = chrome.scripting.executeScript({
+      target: { tabId }, world: "MAIN", args: [url],
+      func: async (cible) => {
+        try {
+          const r = await fetch(cible, { credentials: "include", redirect: "follow", headers: { Accept: "text/html" } });
+          const txt = await r.text();
+          return { ok: r.ok, status: r.status, finalUrl: r.url, html: txt.slice(0, 3_000_000) };
+        } catch (e) { return { erreur: String(e?.message ?? e) }; }
+      },
+    });
+    const garde = new Promise((_, rej) => { timer = setTimeout(() => rej(new Error("BLOCKED_TAB")), 20_000); });
+    const [res] = await Promise.race([inject, garde]);
+    const r = res?.result;
+    return r && !r.erreur ? r : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** La page publique d'UNE annonce Vinted, lue SOUS le verrou de flux (l'appelant le tient). */
+async function lirePagePubliqueVintedSousVerrou(itemId) {
+  const id = String(itemId ?? "").trim();
+  if (!/^\d+$/.test(id)) return { ok: false, motif: "id_illisible" };
+  const t0 = Date.now();
+  const url = `${VO.origineVinted()}/items/${id}`;
+  const page = await lirePageParOngletDeTravail(url, "vinted").catch(() => null);
+  if (!page) return { ok: false, motif: "onglet_indisponible", ms: Date.now() - t0 };
+  const lu = analyserPagePubliqueVinted(page, id);
+  // (25/10, mesuré sur le poste pilote : 2 lectures sur 9 à 14:24-14:26) Le jeton web de l'onglet de travail a expiré :
+  // Vinted renvoie sa page d'attente, que seul un VRAI chargement renouvelle. Un chargement de la page de l'annonce
+  // (le geste d'un visiteur), puis une seule nouvelle lecture — jamais une boucle.
+  if (lu.motif === "session_a_rafraichir") {
+    try { await getOrCreateWorkTab("vinted", url); } catch { return { ...lu, ms: Date.now() - t0 }; }
+    const relue = await lirePageParOngletDeTravail(url, "vinted").catch(() => null);
+    if (relue) return { ...analyserPagePubliqueVinted(relue, id), ms: Date.now() - t0, apres_rechargement: true };
+  }
+  return { ...lu, ms: Date.now() - t0 };
+}
+
+/** Ce que la page a dit, posé sur la fiche : seulement ce qui MANQUE (jamais un texte écrasé ; attributs fusionnés
+ *  par la base, inventaire_attributs_fusion). Rend la liste des champs complétés. */
+async function ecrireLecturePagePublique(token, ligne, lu) {
+  const id = Number(ligne?.inventaire_id ?? ligne?.id);
+  if (!token || !Number.isFinite(id) || !lu?.ok) return [];
+  const at = new Date().toISOString();
+  const poses = [];
+  const attributs = attributsChamps({
+    couleur: lu.couleur, couleur2: lu.couleur2, marque: lu.marque,
+    categorie_vinted: lu.catalog_id,
+  }, "vinted_detail", at);
+  const lus = [lu.description ? "description" : null, lu.couleur ? "couleur" : null, lu.catalog_id ? "categorie" : null].filter(Boolean);
+  attributs.page_publique_lue = { v: at, source: "vinted_detail", at, champs: lus };
+  if (lu.description) attributs.description_source = { v: "vinted", source: "vinted_detail", at, via: "page_publique" };
+  await restRequest(`inventaire?id=eq.${id}`, token, { method: "PATCH", body: JSON.stringify({ attributs }) }).then(() => poses.push("attributs"), () => {});
+  if (lu.description) {
+    await restRequest(`inventaire?id=eq.${id}&or=(description.is.null,description.eq.)`, token, {
+      method: "PATCH", body: JSON.stringify({ description: lu.description }),
+    }).then(() => poses.push("description"), () => {});
+  }
+  if (lu.catalog_id) {
+    await restRequest(`inventaire?id=eq.${id}&vinted_catalog_id=is.null`, token, {
+      method: "PATCH", body: JSON.stringify({ vinted_catalog_id: lu.catalog_id }),
+    }).then(() => poses.push("vinted_catalog_id"), () => {});
+  }
+  return poses;
+}
+
+// Pause LOCALE des lectures de pages publiques après un signal anti-robot (6 h) : rien ne relit Vinted en
+// arrière-plan pendant ce temps, quel que soit ce que le serveur sert. Mémoire du navigateur, pas du serveur.
+const LECTURE_FOND_PAUSE_KEY = "fs_lecture_fond_pause_jusqua";
+async function lectureFondEnPause() {
+  try {
+    const s = await chrome.storage.local.get(LECTURE_FOND_PAUSE_KEY);
+    return Number(s?.[LECTURE_FOND_PAUSE_KEY] ?? 0) > Date.now();
+  } catch { return false; }
+}
+async function poserPauseLectureFond(heures = 6) {
+  try { await chrome.storage.local.set({ [LECTURE_FOND_PAUSE_KEY]: Date.now() + heures * 3600_000 }); } catch { /* mémoire indisponible */ }
+}
+/** Une ligne par lecture (usage_logs « lecture_fond ») : c'est elle que surveillent get-pending-jobs (arrêt du compte
+ *  après un refus) et ops-digest (refus du parc). Jamais le contenu de l'annonce. */
+async function tracerLectureFond(token, ligne, lu, origine) {
+  const userId = decodeJwtSub(token);
+  if (!userId) return;
+  await restRequest("usage_logs", token, {
+    method: "POST",
+    body: JSON.stringify([{ user_id: userId, feature: "lecture_fond", metadata: {
+      resultat: lu?.ok ? "ok" : String(lu?.motif ?? "inconnu").slice(0, 40),
+      http: lu?.http ?? null, ms: lu?.ms ?? null, origine: String(origine ?? "fond").slice(0, 20),
+      inventaire_id: String(ligne?.inventaire_id ?? ligne?.id ?? ""), vinted_item_id: String(ligne?.vinted_item_id ?? ""),
+      description: Boolean(lu?.description), couleur: Boolean(lu?.couleur), categorie: Boolean(lu?.catalog_id),
+      rechargement: Boolean(lu?.apres_rechargement),
+      build: FILLSELL_BUILD_ID, at: new Date().toISOString(),
+    } }]),
+  }).catch(() => {});
+}
+
 async function lireAnnoncesOrigineEnAttente(session) {
   const token = session?.access_token;
   if (!token) return;
   if (vintedPauseAntirobotServeur) return;   // Vinted demande une vérification anti-robot : aucune lecture de fond
+  if (await lectureFondEnPause()) return;
   const liste = await restRequest("rpc/lectures_origine_en_attente", token, { method: "POST", body: "{}" }).catch(() => []);
   const vinted = (Array.isArray(liste) ? liste : []).filter((l) => l?.plateforme === "vinted" && /^\d+$/.test(String(l?.vinted_item_id ?? "")));
   let n = 0;
@@ -2639,32 +2858,77 @@ async function lireAnnoncesOrigineEnAttente(session) {
     if (attente > 0) await sleep(attente);
     n++;
     derniereLectureOrigine = Date.now();
-    // Dans le poll : le verrou de flux est DÉJÀ tenu (jamais fetchVintedItemDetail ici — interblocage).
-    const r = await lireDetailVintedSousVerrou(String(l.vinted_item_id)).catch((e) => ({ success: false, error: String(e?.message ?? e) }));
-    if (!r?.success) {
-      console.log(`[origine] détail Vinted ${l.vinted_item_id} illisible cette fois — relu au cycle suivant`);
-      // (25/10, 0.6.143 — Louis : 5 lectures demandées à 10:29, jamais faites, aucune trace nulle part) Une lecture
-      // ratée DIT pourquoi, une fois par annonce et par heure (usage_logs « lecture_origine_echec ») : la cause se lit
-      // en base au lieu de se deviner. Jamais bloquant.
-      tracerLectureOrigineRatee(token, l, r?.error ?? r?.code ?? "réponse vide").catch(() => {});
+    // (25/10, 0.6.144) La PAGE PUBLIQUE de l'annonce (une page vue), plus le formulaire d'édition : lisible même
+    // quand le compte Vinted ouvert dans ce navigateur n'est pas celui de l'annonce. Dans le poll : le verrou de flux
+    // est DÉJÀ tenu (jamais une fonction qui le reprend ici — interblocage).
+    const r = await lirePagePubliqueVintedSousVerrou(String(l.vinted_item_id)).catch((e) => ({ ok: false, motif: "exception", detail: String(e?.message ?? e) }));
+    lecturesFondDuCycle.add(String(l.inventaire_id));
+    tracerLectureFond(token, l, r, "demandee").catch(() => {});
+    if (r?.motif === "antirobot") {
+      console.warn(`[origine] page publique Vinted ${l.vinted_item_id} : vérification anti-robot — plus aucune lecture de fond pendant 6 h`);
+      await poserPauseLectureFond(6);
+      tracerLectureOrigineRatee(token, l, "anti-robot Vinted (page publique)").catch(() => {});
+      return;
+    }
+    if (!r?.ok && r?.motif !== "introuvable") {
+      console.log(`[origine] page publique Vinted ${l.vinted_item_id} illisible cette fois (${r?.motif ?? "?"}) — relue au cycle suivant`);
+      // (25/10, 0.6.143 — Louis) Une lecture ratée DIT pourquoi, une fois par annonce et par heure.
+      tracerLectureOrigineRatee(token, l, r?.motif ?? "réponse vide").catch(() => {});
       continue;
     }
-    const at = new Date().toISOString();
-    const attributs = { ...attributsDepuisDetail(r.natif, at, r.libelles?.catalog_id_depot) };
-    const description = String(r.description ?? "").trim();
-    if (description) attributs.description_source = { v: "vinted", source: "vinted_detail", at };
-    if (Object.keys(attributs).length) {
-      await restRequest(`inventaire?id=eq.${Number(l.inventaire_id)}`, token, { method: "PATCH", body: JSON.stringify({ attributs }) }).catch(() => {});
+    const poses = r?.ok ? await ecrireLecturePagePublique(token, l, r) : [];
+    // Lue = close, avec ou sans texte (et une annonce qui n'existe plus n'a rien à attendre) : l'attente s'arrête,
+    // jamais une attente sans fin.
+    await restRequest("rpc/lecture_origine_faite", token, { method: "POST", body: JSON.stringify({ p_fiche: Number(l.inventaire_id) }) }).catch(() => {});
+    console.log(`[origine] fiche ${l.inventaire_id} : annonce Vinted d'origine ${l.vinted_item_id} ${r?.ok ? `lue (${poses.join(", ") || "rien à compléter"})` : "introuvable sur Vinted — attente close"}`);
+  }
+}
+
+// ── (25/10, 0.6.144) LE RATTRAPAGE EN ARRIÈRE-PLAN : les fiches importées sans texte, lues avant tout clic ──────
+// Le SERVEUR choisit (get-pending-jobs → lecture_fond : comptes ouverts, ordre, plafonds) ; ici on lit, à son rythme :
+// `par_cycle` pages au plus par poll (2 par défaut), espacées de `ecart_s` (20 à 45 s), jamais pendant une pause
+// anti-robot (serveur ou locale), jamais deux fois la même fiche dans un cycle. Le premier refus de Vinted (403, 429,
+// page de vérification) arrête tout pour 6 h et se trace — get-pending-jobs coupe aussi le compte 6 h.
+// Mode « mesure » (comptes pilotes) : le même chemin et le même rythme, rien n'est écrit sur la fiche.
+const lecturesFondDuCycle = new Set();
+let lectureFondServie = null;
+async function lireFondVinted(session) {
+  const token = session?.access_token;
+  const regle = lectureFondServie;
+  if (!token || !regle || regle.actif !== true) return;
+  if (vintedPauseAntirobotServeur || await lectureFondEnPause()) return;
+  const liste = (Array.isArray(regle.liste) ? regle.liste : [])
+    .filter((l) => /^\d+$/.test(String(l?.vinted_item_id ?? "")) && !lecturesFondDuCycle.has(String(l?.inventaire_id)));
+  const parCycle = Math.max(0, Math.min(Number(regle.par_cycle) || 0, 4));
+  const eMin = Math.max(10, Number(regle.ecart_s?.[0]) || 20);
+  const eMax = Math.max(eMin, Number(regle.ecart_s?.[1]) || 45);
+  let n = 0;
+  for (const l of liste) {
+    if (n >= parCycle) break;
+    const attente = derniereLectureOrigine + (eMin + Math.random() * (eMax - eMin)) * 1000 - Date.now();
+    if (attente > 0) await sleep(attente);
+    n++;
+    derniereLectureOrigine = Date.now();
+    lecturesFondDuCycle.add(String(l.inventaire_id));
+    const r = await lirePagePubliqueVintedSousVerrou(String(l.vinted_item_id)).catch((e) => ({ ok: false, motif: "exception", detail: String(e?.message ?? e) }));
+    await tracerLectureFond(token, l, r, regle.mode === "mesure" ? "mesure" : "fond");
+    if (r?.motif === "antirobot") {
+      console.warn(`[lecture-fond] page publique Vinted ${l.vinted_item_id} : vérification anti-robot — arrêt 6 h`);
+      await poserPauseLectureFond(6);
+      return;
     }
-    if (description) {
-      await restRequest(`inventaire?id=eq.${Number(l.inventaire_id)}&or=(description.is.null,description.eq.)`, token, {
-        method: "PATCH", body: JSON.stringify({ description }),
+    // Mesure du rythme : rien n'est écrit — sauf les vraies fiches à lire du poste pilote (`ecrire: true`).
+    if (regle.mode === "mesure" && l.ecrire !== true) continue;
+    if (r?.ok) {
+      const poses = await ecrireLecturePagePublique(token, l, r);
+      console.log(`[lecture-fond] fiche ${l.inventaire_id} (${l.vinted_item_id}) : ${poses.join(", ") || "rien à compléter"}`);
+    } else if (r?.motif === "introuvable" || r?.motif === "page_sans_annonce") {
+      // Une annonce qui n'existe plus (ou une page sans elle) n'est pas relue chaque cycle : la marque dit pourquoi.
+      const at = new Date().toISOString();
+      await restRequest(`inventaire?id=eq.${Number(l.inventaire_id)}`, token, {
+        method: "PATCH", body: JSON.stringify({ attributs: { page_publique_lue: { v: at, source: "vinted_detail", at, echec: r.motif } } }),
       }).catch(() => {});
     }
-    // Lue = close, avec ou sans texte : une annonce d'origine sans description n'en a pas — l'attente s'arrête
-    // (jamais une attente sans fin) et le moteur complète ce qui est vide CHEZ LE VENDEUR.
-    await restRequest("rpc/lecture_origine_faite", token, { method: "POST", body: JSON.stringify({ p_fiche: Number(l.inventaire_id) }) }).catch(() => {});
-    console.log(`[origine] fiche ${l.inventaire_id} : annonce Vinted d'origine ${l.vinted_item_id} lue${description ? " — la publication partira avec SON texte" : " (sans description chez le vendeur)"}`);
   }
 }
 
@@ -3199,6 +3463,8 @@ async function pollAndProcessJobsUnlocked() {
   // (01/10) Chaque cycle repart sans rechargement prévu : la décision se
   // reprend job par job (majPrete), jamais héritée d'un cycle précédent.
   majPlanifiee = false;
+  // (25/10, 0.6.144) Les fiches lues CE cycle (lecture d'origine ou rattrapage) : jamais deux fois la même.
+  lecturesFondDuCycle.clear();
   const session = await getValidSession();
   if (!session) {
     console.log("[background] Pas de session valide, poll ignoré");
@@ -3290,6 +3556,9 @@ async function pollAndProcessJobsUnlocked() {
     fileEnPauseServeur = rep.file_en_pause === true ? { le: Date.now(), retenus: Number(rep.jobs_retenus_pause) || 0 } : null;
     chrome.storage.local.set({ fillsell_file_pause: fileEnPauseServeur }).catch(() => {});
     vintedPauseAntirobotServeur = rep.vinted_pause_antirobot === true;
+    // (25/10, 0.6.144) Le rattrapage des textes en arrière-plan : ce que le serveur ouvre à CE compte (liste, rythme,
+    // plafonds). Absent (serveur plus ancien, compte pas encore ouvert) : aucune lecture de fond.
+    lectureFondServie = rep.lecture_fond && typeof rep.lecture_fond === "object" ? rep.lecture_fond : null;
     // Relevés multiplateforme (2026-09-17) : [{ id, platform }] — servis aux
     // extensions ≥ 0.6.42 seulement, traités après le poll (verrou rendu).
     commandesAnnoncesEnAttente = Array.isArray(rep.sync_commands_annonces) ? rep.sync_commands_annonces : [];
@@ -3555,6 +3824,9 @@ async function pollAndProcessJobsUnlocked() {
   // (25/10) Déjà faites devant la file ce cycle : pas une seconde série.
   if (!lectureOrigineDevant) await lireAnnoncesOrigineEnAttente(session).catch((e) =>
     console.warn("[origine] lectures d'origine :", String(e?.message ?? e)));
+  // (25/10, 0.6.144) Puis le rattrapage : les fiches importées sans texte, couleur ni rayon, lues avant tout clic.
+  await lireFondVinted(session).catch((e) =>
+    console.warn("[lecture-fond] rattrapage :", String(e?.message ?? e)));
   await recoverMissingListingUrls(session).catch((e) =>
     console.error("[background] recoverMissingListingUrls:", e)
   );
@@ -13483,9 +13755,18 @@ async function restRequest(path, accessToken, init = {}, rejeu = false) {
   // victimes silencieuses : la création du run de sync (« run_non_cree » au
   // premier clic, le 2e clic reprenait la ligne pourtant créée) et le
   // rattachement du dressing (rattaches toujours vide → 409 du run d10ab149).
+  // ── (25/10, 0.6.144 — Louis) UN APPEL RPC REND TOUJOURS SA RÉPONSE ──────────────────────────────────────────
+  // Une fonction SQL appelée par POST /rpc/… rend son RÉSULTAT (Prefer return=minimal ne s'applique qu'aux
+  // écritures de table). La règle ci-dessus le jetait : depuis la 0.6.130 (22/10), lireAnnoncesOrigineEnAttente
+  // recevait null à la place de la liste et n'a JAMAIS rien lu, pour personne (louis-seller le 25/10 : la liste
+  // relue toutes les 2 min, la requête suivante 59 ms après, aucune lecture) ; file_etat_poste (pause et synchro
+  // entre deux tâches) rendait null de même. Un corps vide (fonction void) rend null, jamais une exception.
   const prefer = String(init.headers?.Prefer ?? "");
-  if (init.method && init.method !== "GET" && !prefer.includes("return=representation")) return null;
-  return res.status === 204 ? null : res.json();
+  const appelRpc = String(path).startsWith("rpc/");
+  if (init.method && init.method !== "GET" && !appelRpc && !prefer.includes("return=representation")) return null;
+  if (res.status === 204) return null;
+  const corps = await res.text();
+  return corps.trim() ? JSON.parse(corps) : null;
 }
 
 // ── Étape de republication telle qu'elle est EN BASE (2026-09-11) ────────────
@@ -28465,10 +28746,11 @@ async function autoCaptureEtRepublier(cand, token, userId) {
 // temps laisserait l'annonce en ligne à la fin de l'examen : double vente.
 // LA RÈGLE : une annonce Beebs absente des deux onglets n'est « déjà retirée »
 // que si elle a été VUE en ligne (relevé, ou vérification d'un dépôt), ou si
-// son dépôt a plus de 72 h. Sinon le retrait reste en file, SANS essai
+// son dépôt a plus de 7 jours (25/10 : 72 h avant — mesuré, une annonce jamais vue en ligne peut le devenir
+// jusqu'à 126 h après sa sortie de vérification). Sinon le retrait reste en file, SANS essai
 // consommé, relu à 1 h, 3 h, 6 h puis toutes les 12 h : dès qu'elle apparaît,
 // le passage suivant la retire (bouton « Supprimer l'annonce » sur sa page).
-const BEEBS_MODERATION_MAX_MS = 72 * 3600_000;
+const BEEBS_MODERATION_MAX_MS = 7 * 24 * 3600_000;
 const BEEBS_MODERATION_RELECTURES_MIN = [60, 180, 360, 720];
 async function beebsAbsenteParModeration(job, accessToken) {
   try {
@@ -28686,6 +28968,98 @@ async function processRepublierVintedJob(job, accessToken) {
   return plusTard(trace(pfApres, apres ? { apres } : {}), "annonce_attendue", "Vinted a remis l'article en vente : FillSell attend de voir la nouvelle annonce pour la rattacher. Rien à faire de ton côté.");
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// (25/10, règle de Nico — 0.6.144) UN RETRAIT SUR UNE ANNONCE DÉJÀ ABSENTE EST UN RETRAIT FAIT
+// ══════════════════════════════════════════════════════════════════════════
+// « Si l'annonce est déjà absente (404, retirée, vendue), le retrait est considéré comme fait et se clôt seul,
+// sans erreur ni message à l'utilisateur. Sur toutes les plateformes. » Cas fondateur : boncoin59300, retrait
+// Beebs d87c8614 — 30 essais, « elle reste en vente sur Beebs » sur une page 404, clos à la main. Le drapeau est
+// le MÊME que celui du serveur (supabase/functions/_shared/retrait-deja-absent.js, dejaAbsente) :
+// platform_fields.deja_absente = { le, plateforme, numero, preuve, vente, pose_par } — vente : true (la page dit
+// vendue), null (on ne sait pas). update-job-status en tire l'étiquette (retrait_par), archive l'erreur d'avant et
+// ferme l'attente. ⛔ Jamais « retirée » une annonce peut-être en ligne : seulement sur une preuve LUE.
+
+/** Le numéro d'annonce du retrait (colonne, sinon lien). */
+function numeroAnnonceRetrait(job) {
+  const col = String(job?.platform_listing_id ?? "").trim();
+  return col || extractListingId(job?.listing_url, job?.platform) || null;
+}
+
+function dejaAbsenteRetrait(job, preuve, vente = null) {
+  return {
+    le: new Date().toISOString(),
+    plateforme: job.platform,
+    numero: numeroAnnonceRetrait(job),
+    preuve,
+    vente: vente === true ? true : null,
+    pose_par: "extension (retrait)",
+  };
+}
+
+/** « Déjà absente » dit par le handler lui-même : Depop (fiche 404 ou vendue, aucun DELETE), Beebs (absente avant tout clic). */
+function dejaAbsenteDuResultat(job, result) {
+  if (!result?.success) return null;
+  if (job.platform === "depop" && result.deja_absente === true) {
+    return dejaAbsenteRetrait(job, { source: result.vendue === true ? "depop_status_purchased" : "depop_fiche_404", etape: result.etape ?? null }, result.vendue === true);
+  }
+  if (job.platform === "beebs" && result.dejaRetiree === true && result.preuveRetrait) {
+    // ⚠️ « SoldOut » ne prouve pas une vente sur Beebs : nos retraits choisissent « Vendu via une autre
+    // plateforme », et Beebs passe alors l'annonce « Vendu ». Vente inconnue.
+    const p = result.preuveRetrait;
+    return dejaAbsenteRetrait(job, {
+      source: String(p.source ?? "mes_annonces"), moment: p.moment ?? null, lu_le: p.lu_le ?? null,
+      ...(p.annonce?.regle ? { regle: p.annonce.regle } : {}),
+    }, null);
+  }
+  return null;
+}
+
+/** Ce que la page a répondu, en court (sans les tirs) : gardé sur le job pour qu'aucun message ne devine. */
+function lectureEtatRetrait(lecture) {
+  return { etat: lecture?.state ?? "unknown", raison: lecture?.raison ?? null, http: lecture?.http ?? null, lu_le: new Date().toISOString() };
+}
+
+/** Un retrait dont l'annonce est relue « plus en ligne » ou « vendue » (lectures unanimes) : fait, avec sa preuve. */
+async function cloreRetraitDejaAbsent(accessToken, job, lecture, result, moment) {
+  const pf = {
+    ...(job.platform_fields ?? {}),
+    delete_confirmed_by: "etat_annonce",
+    delete_trace: result?.trace ?? [],
+    delete_preuve: preuveDeLecture(lecture, job.listing_url),
+  };
+  pf.deja_absente = dejaAbsenteRetrait(job, {
+    source: "etat_annonce", moment, etat: lecture?.state ?? null, http: lecture?.http ?? null, lu_le: pf.delete_preuve.lu_le,
+  }, lecture?.state === "sold");
+  delete pf.lecture_etat_retrait;
+  delete pf.verification_boutique_vinted;
+  await updateJobStatus(accessToken, job.id, "deleted", { error: null, platform_fields: pf });
+  await cancelPublishAfterDelete(accessToken, job);
+  await recordRecentResult(job, "deleted");
+  return { status: "deleted" };
+}
+
+/** (25/10, L1) Leboncoin : la date du dernier DÉPÔT FillSell de cette annonce (jamais un import du relevé), ou null. */
+async function publieLeDuDepotFillsell(job, accessToken) {
+  try {
+    const id = numeroAnnonceRetrait(job);
+    const uid = decodeJwtSub(accessToken);
+    if (!/^\d+$/.test(String(id ?? "")) || !uid) return null;
+    // Au-delà de 2 h la garde ne joue plus : les dépôts des 6 dernières heures suffisent.
+    const depuis = new Date(Date.now() - 6 * 3600_000).toISOString();
+    const depots = await restRequest(
+      `cross_post_jobs?user_id=eq.${uid}&platform=eq.leboncoin&platform_listing_id=eq.${id}&action=in.(publish,republish)` +
+      `&published_at=gte.${encodeURIComponent(depuis)}&select=published_at,handler_build&order=published_at.desc&limit=5`,
+      accessToken,
+    );
+    const d = (Array.isArray(depots) ? depots : [])
+      .find((x) => x?.published_at && !/releve-annonces|sync-dressing/i.test(String(x?.handler_build ?? "")));
+    return d?.published_at ?? null;
+  } catch {
+    // Illisible : la garde ne joue pas (comportement d'avant) — jamais un blocage du retrait.
+    return null;
+  }
+}
+
 async function processDeleteJob(job, accessToken) {
   console.log(`[background] Job ${job.id} → ${job.platform} (DELETE)`);
 
@@ -28764,6 +29138,19 @@ async function processDeleteJob(job, accessToken) {
     // appelants, un seul geste, aucune divergence possible.
     const { result } = await executerRetraitViaHandler(job, accessToken);
 
+    // ── (25/10, boncoin59300 — 0.6.144) LES CONSTATS « PAGE 404 » BEEBS SURVIVENT À TOUT CHEMIN ──────────
+    // Le constat de CET essai (beebs.js, jugerConstats404Beebs) n'était posé sur le job que par la branche
+    // « reprise » — or son message dit « introuvable », et la branche « introuvable » ci-dessous le captait avant :
+    // le constat se perdait, chaque essai repartait d'un premier constat, le second (≥ 6 h) n'arrivait jamais
+    // (30 essais sur d87c8614, 0 / 377 retraits Beebs avec un constat gardé). Posés ICI, sur la copie mémoire que
+    // relisent rearmBounded et toutes les écritures d'après ; [] = l'annonce s'est relue présente, on repart de zéro.
+    if (job.platform === "beebs" && Array.isArray(result?.beebs404Constats)) {
+      const pfC0 = { ...(job.platform_fields ?? {}) };
+      if (result.beebs404Constats.length) pfC0.beebs_404_constats = result.beebs404Constats.slice(-6);
+      else delete pfC0.beebs_404_constats;
+      job.platform_fields = pfC0;
+    }
+
     // ⚠️ « ANNONCE INTROUVABLE » PEUT VOULOIR DIRE « DÉJÀ SUPPRIMÉE » (2026-07-13,
     // vécu sur les deux annonces eBay : elles étaient bel et bien retirées, et le
     // job s'acharnait en « introuvable dans le Hub — nouvelle tentative »).
@@ -28784,8 +29171,27 @@ async function processDeleteJob(job, accessToken) {
       // serveur peut retrouver la preuve exacte du dépôt et la prochaine
       // sonde relira la session. On n'accuse personne à tort.
       if (job.platform === "vinted" && result.verificationBoutiqueImpossible) {
+        // ── (25/10, V1) L'ANNONCE PARTIE N'A PLUS DE BOUTIQUE À PROUVER ──────────────────────────────
+        // Une annonce supprimée n'a plus de page, donc plus de vendeur lisible : le retrait revenait en file
+        // toutes les 2 min (« identité invérifiable ») jusqu'à ce que deux relevés le closent — 28,7 h en
+        // moyenne. On LIT d'abord l'état (un GET, rien n'est envoyé) : trois lectures unanimes « plus en
+        // ligne » ou « vendue » = le retrait est fait (vérifié le 22/09 : une annonce vivante d'une autre
+        // boutique rend 200 avec son numéro, jamais un faux « absente »). Sinon, l'attente d'avant.
+        // Borné : seulement quand la page n'a pas montré de vendeur (une session illisible n'en dit rien), et au
+        // plus une lecture (trois tirs) par demi-heure — l'attente repasse toutes les 2 min, jamais trois GET.
+        const luV = job.platform_fields?.lecture_etat_retrait;
+        const luRecentV = Date.now() - Date.parse(String(luV?.lu_le ?? "")) < 30 * 60_000;
+        const lireV = result.verdict?.preuve_manquante !== "session" && !luRecentV;
+        const lectureV = lireV
+          ? await checkListingState(job.listing_url, "vinted", { revueLe: derniereRevueEnLigne(job.platform_fields) })
+            .catch(() => ({ state: "unknown", raison: "lecture_impossible" }))
+          : { state: "unknown", raison: "non_relue" };
+        if (lectureV.state === "unavailable" || lectureV.state === "sold") {
+          return cloreRetraitDejaAbsent(accessToken, job, lectureV, result, "lecture_avant_garde_boutique");
+        }
         const verdict = nettoyerVerdictSuppression(result.verdict ?? null);
         const pfV = { ...(job.platform_fields ?? {}) };
+        if (lireV) pfV.lecture_etat_retrait = lectureEtatRetrait(lectureV);
         delete pfV.processing_since;
         pfV.verification_boutique_vinted = {
           motif: verdict?.preuve_manquante === "session" ? "session_inconnue" : "origine_inconnue",
@@ -28816,9 +29222,16 @@ async function processDeleteJob(job, accessToken) {
         await updateJobStatus(accessToken, job.id, "needs_user", { error: result.error, platform_fields: pfB });
         return { status: "needsUser", error: result.error };
       }
-      const lecture = await checkListingState(job.listing_url, job.platform, { revueLe: derniereRevueEnLigne(job.platform_fields) })
+      // (25/10, L1) Leboncoin : la date du DÉPÔT FillSell de cette annonce, pour la garde « 410 de modération
+      // < 2 h » de checkListingState — elle n'était jamais passée ici : un retrait lancé dans les 2 h d'un vrai
+      // dépôt concluait « retirée » une annonce qui sortait de modération (double vente). Jamais un import.
+      const publieLe = job.platform === "leboncoin" ? await publieLeDuDepotFillsell(job, accessToken) : null;
+      const lecture = await checkListingState(job.listing_url, job.platform, { revueLe: derniereRevueEnLigne(job.platform_fields), publieLe })
         .catch(() => ({ state: "unknown", raison: "lecture_impossible" }));
       const { state, raison } = lecture;
+      // (25/10) Ce que la page a répondu, gardé sur le job : le serveur ne dit « encore en ligne » que sur preuve
+      // (pas-de-rouge, retrait-deja-absent.js indiceEtatRetrait) — jamais « elle reste en vente » sur une page 404.
+      job.platform_fields = { ...(job.platform_fields ?? {}), lecture_etat_retrait: lectureEtatRetrait(lecture) };
       // ⛔ (03/10) BEEBS : LA PAGE PUBLIQUE NE CLÔT JAMAIS UN RETRAIT. Une annonce
       // en vérification y est en 404, exactement comme une annonce retirée :
       // seule la liste du propriétaire (« Mes annonces », relue par beebs.js)
@@ -28828,20 +29241,9 @@ async function processDeleteJob(job, accessToken) {
           `[background] Job ${job.id} : le content script n'a pas abouti (${result.error}), MAIS l'annonce ` +
           `${job.platform} n'est plus en ligne — suppression CONFIRMÉE par l'état réel de l'annonce`
         );
-        await updateJobStatus(accessToken, job.id, "deleted", {
-          error: null,
-          platform_fields: {
-            ...(job.platform_fields ?? {}),
-            delete_confirmed_by: "etat_annonce",
-            delete_trace: result.trace ?? [],
-            // ⛔ AUCUN RETRAIT CLOS SANS PREUVE ÉCRITE (2026-09-25, jocabroc) :
-            //    ce que la page a répondu, tir par tir — relisible en base.
-            delete_preuve: preuveDeLecture(lecture, job.listing_url),
-          },
-        });
-        await cancelPublishAfterDelete(accessToken, job);
-        await recordRecentResult(job, "deleted");
-        return { status: "deleted" };
+        // ⛔ AUCUN RETRAIT CLOS SANS PREUVE ÉCRITE (2026-09-25, jocabroc) : ce que la page a répondu, tir par
+        //    tir — relisible en base ; (25/10) et le drapeau unique deja_absente (cloreRetraitDejaAbsent).
+        return cloreRetraitDejaAbsent(accessToken, job, lecture, result, "lecture_apres_echec");
       }
 
       // L'annonce est TOUJOURS là (ou illisible) : ré-armement borné, jamais un
@@ -28854,7 +29256,11 @@ async function processDeleteJob(job, accessToken) {
       // présentait une lecture ratée comme une vérification aboutie, et
       // l'utilisateur allait chercher sur la plateforme une annonce qui pouvait
       // très bien être déjà retirée.
-      if (!result.needsUser && /introuvable|0×0|0x0|modale|non peinte/i.test(String(result.error ?? ""))) {
+      // (25/10, boncoin59300) JAMAIS un résultat « reprise » (Beebs, Depop) : le handler a déjà dit, mot pour mot,
+      // ce qui s'est passé (« rien n'a été touché, nouvel essai ») — et le constat « page 404 » Beebs (« sa page
+      // est introuvable ») était réécrit ici en « elle est peut-être encore en ligne », ce qui désarmait la règle
+      // du second constat côté serveur. Il suit la branche « reprise », plus bas, son texte intact.
+      if (!result.needsUser && !result.reprise && /introuvable|0×0|0x0|modale|non peinte/i.test(String(result.error ?? ""))) {
         // ⚠️ « ELLE EST PEUT-ÊTRE DÉJÀ RETIRÉE » RETOURNÉ (2026-09-14). La
         // phrase penchait du côté rassurant sur la seule issue qui peut coûter
         // une DOUBLE VENTE : l'utilisateur lisait « c'est sans doute bon » et
@@ -28969,6 +29375,29 @@ async function processDeleteJob(job, accessToken) {
       }
       await rearmBounded(accessToken, job, result.error);
       return { status: "needsUser", error: result.error };
+    } else if (result?.success && job.platform === "vinted" && result.verdict?.conclusion === "http_404_presumee_absente") {
+      // ── (25/10, V3) UN 404 DE VINTED À LA SUPPRESSION N'EST QU'UNE PRÉSOMPTION ────────────────────────
+      // vinted.js le dit lui-même (« endpoint jamais mesuré sur un article absent ») : le retrait se concluait
+      // pourtant sur lui seul, étiqueté « retiré par FillSell ». ⛔ Jamais « retirée » une annonce peut-être en
+      // ligne : la page est relue (trois lectures unanimes) — absente ou vendue → retrait fait, avec sa preuve ;
+      // en ligne ou illisible → rien n'est conclu, nouvel essai borné.
+      const lecture404 = await checkListingState(job.listing_url, "vinted", { revueLe: derniereRevueEnLigne(job.platform_fields) })
+        .catch(() => ({ state: "unknown", raison: "lecture_impossible" }));
+      if (lecture404.state === "unavailable" || lecture404.state === "sold") {
+        return cloreRetraitDejaAbsent(accessToken, job, lecture404, result, "post_404_confirme_par_lecture");
+      }
+      const verdict404 = nettoyerVerdictSuppression(result.verdict ?? null);
+      job.platform_fields = {
+        ...(job.platform_fields ?? {}),
+        lecture_etat_retrait: lectureEtatRetrait(lecture404),
+        ...(verdict404 ? { suppression_verdict: verdict404 } : {}),
+      };
+      // (rearmBounded ajoute « Nouvel essai automatique (tentative n/5), rien à faire. »)
+      const msg404 = lecture404.state === "active"
+        ? "Vinted a répondu « introuvable » à la suppression, mais l'annonce est toujours en ligne (vérifié) : rien n'est conclu."
+        : `Vinted a répondu « introuvable » à la suppression, et l'état de l'annonce n'a pas pu être relu (${causeLectureImpossible(lecture404.raison, "vinted")}) : rien n'est conclu.`;
+      await rearmBounded(accessToken, job, msg404);
+      return { status: "retry", error: msg404 };
     } else if (result?.success && job.platform === "beebs" && result.preuveRetrait?.moment === "deja_absente"
                && await beebsAbsenteParModeration(job, accessToken)) {
       // (0.6.104) Jamais « déjà retirée » pour une annonce que Beebs retient
@@ -28983,6 +29412,11 @@ async function processDeleteJob(job, accessToken) {
       // de l'essai 1 resté sur un retrait fait à l'essai 2).
       const pfOk = { ...(job.platform_fields ?? {}), delete_trace: result.trace ?? [] };
       if (result.preuveRetrait) pfOk.preuve_retrait = result.preuveRetrait;
+      // (25/10, D1) « Déjà absente » dit par le handler (Depop : fiche 404 ou vendue, aucun DELETE ; Beebs :
+      // absente avant tout clic) : le drapeau unique, que le serveur lit pour l'étiquette — il se perdait ici.
+      const dejaAbsenteHandler = dejaAbsenteDuResultat(job, result);
+      if (dejaAbsenteHandler) pfOk.deja_absente = dejaAbsenteHandler;
+      delete pfOk.lecture_etat_retrait;
       if (pfOk.last_diagnostic) { pfOk.diagnostic_essai_precedent = pfOk.last_diagnostic; delete pfOk.last_diagnostic; }
       if (pfOk.error_technique) { pfOk.error_technique_essai_precedent = pfOk.error_technique; delete pfOk.error_technique; }
       await updateJobStatus(accessToken, job.id, "deleted", { error: null, platform_fields: pfOk });
@@ -29039,7 +29473,9 @@ async function processDeleteJob(job, accessToken) {
       // (et conclure « annonce introuvable » au tour suivant, en boucle).
       // On demande donc à la PLATEFORME, pas au canal : si l'annonce n'est plus
       // en ligne, la suppression a réussi.
-      const lectureCanal = await checkListingState(job.listing_url, job.platform, { revueLe: derniereRevueEnLigne(job.platform_fields) }).catch(() => ({ state: "unknown" }));
+      // (25/10, L1) Leboncoin : la garde « 410 de modération < 2 h » a besoin de la date du dépôt FillSell.
+      const publieLeCanal = job.platform === "leboncoin" ? await publieLeDuDepotFillsell(job, accessToken) : null;
+      const lectureCanal = await checkListingState(job.listing_url, job.platform, { revueLe: derniereRevueEnLigne(job.platform_fields), publieLe: publieLeCanal }).catch(() => ({ state: "unknown" }));
       const { state } = lectureCanal;
       // (03/10) Beebs : jamais sur la page publique (cf. plus haut) — reprise, le
       // passage suivant relit « Mes annonces ».
@@ -29048,10 +29484,12 @@ async function processDeleteJob(job, accessToken) {
           `[background] Job ${job.id} : canal coupé PAR LA NAVIGATION de suppression — ` +
           `l'annonce ${job.platform} n'est PLUS en ligne : suppression CONFIRMÉE`
         );
+        // (25/10) Pas « déjà absente » : le canal coupé est la signature probable de NOTRE geste — l'annonce
+        // vient sans doute d'être retirée par cet essai. Marque distincte, jamais lue comme « déjà hors ligne ».
         await updateJobStatus(accessToken, job.id, "deleted", {
           error: null,
           platform_fields: {
-            ...(job.platform_fields ?? {}), delete_confirmed_by: "etat_annonce",
+            ...(job.platform_fields ?? {}), delete_confirmed_by: "etat_annonce_apres_coupure",
             delete_preuve: preuveDeLecture(lectureCanal, job.listing_url),
           },
         }).catch((err) => console.error("[background] update-job-status failed:", err));
@@ -29060,6 +29498,7 @@ async function processDeleteJob(job, accessToken) {
         return { status: "deleted" };
       }
       // Toujours en ligne (ou état illisible) : là seulement, on retente.
+      job.platform_fields = { ...(job.platform_fields ?? {}), lecture_etat_retrait: lectureEtatRetrait(lectureCanal) };
       await rearmBounded(accessToken, job, `Suppression interrompue (onglet navigué/rechargé) : ${msg}`)
         .catch((err) => console.error("[background] update-job-status failed:", err));
       return { status: "retry", error: msg };

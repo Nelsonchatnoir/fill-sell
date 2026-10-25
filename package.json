@@ -274,6 +274,8 @@
     "selftest:platform-settings-ecriture": "node scripts/platform-settings-ecriture-selftest.mjs",
     "selftest:texte-du-vendeur": "node --import ./scripts/loader-ext.mjs scripts/texte-du-vendeur-selftest.mjs",
     "selftest:beebs-retrait-preuve": "node scripts/beebs-retrait-preuve-selftest.mjs",
+    "selftest:retrait-deja-absent": "node scripts/retrait-deja-absent-selftest.mjs",
+    "selftest:etat-terminal": "node scripts/etat-terminal-selftest.mjs",
     "selftest:ebay-saisie-libre": "node scripts/ebay-saisie-libre-selftest.mjs",
     "selftest:ebay-aspects-auto": "node --import ./scripts/loader-ext.mjs scripts/ebay-aspects-auto-selftest.mjs",
     "selftest:ebay-aspects-seconde-passe": "deno run --allow-read scripts/ebay-aspects-seconde-passe-selftest.ts",
@@ -466,8 +468,13 @@
     "selftest:retrait-beebs-verification-longue": "node scripts/retrait-beebs-verification-longue-selftest.mjs",
     "selftest:beebs-sortie-verification": "node scripts/beebs-sortie-verification-selftest.mjs",
     "selftest:lbc-adresse-france": "node --import ./scripts/loader-ext.mjs scripts/lbc-adresse-france-selftest.mjs",
+    "selftest:erreurs-visibles": "node --import ./scripts/loader-ext.mjs scripts/erreurs-visibles-selftest.mjs",
     "gen:codes-postaux-fr": "node scripts/gen-codes-postaux-fr.mjs",
-    "selftest:lecture-origine-devant": "node scripts/lecture-origine-devant-selftest.mjs"
+    "selftest:lecture-origine-devant": "node scripts/lecture-origine-devant-selftest.mjs",
+    "selftest:lecture-page-publique": "node scripts/lecture-page-publique-selftest.mjs",
+    "selftest:lecture-fond": "node --import ./scripts/loader-ext.mjs scripts/lecture-fond-selftest.mjs",
+    "selftest:action-app-ratee": "node --import ./scripts/loader-ext.mjs scripts/action-app-ratee-selftest.mjs",
+    "selftest:releve-completer-inchange": "node scripts/releve-completer-inchange-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

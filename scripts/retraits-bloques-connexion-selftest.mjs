@@ -161,7 +161,8 @@ console.log("\n── 6. Le câblage du Stock ───────────�
   ok("aucun bandeau de retraits en haut du Stock", !src.includes("{retraitsBloques.total>0&&(") && !/<div ref=\{bandeauRetraitsRef\}/.test(src));
   // (12/10 soir, Nico) Un article VENDU (fiche présente) a sa PROPRE ligne
   // (selftest:a-regler-sans-bandeau) ; la ligne « retraits » garde le reste.
-  ok("la ligne « À régler » ouvre l'écran des retraits", /\{ cle: 'retraits', n: nbRetraitsAutres[\s\S]{0,200}onOuvrir: \(\) => setGesteOuvert\('retraits'\) \}/.test(src));
+  // (25/10) La ligne porte aussi son ton (ambre quand tout n'est que vérification Beebs) : la fenêtre s'élargit.
+  ok("la ligne « À régler » ouvre l'écran des retraits", /\{ cle: 'retraits', n: nbRetraitsAutres[\s\S]{0,500}onOuvrir: \(\) => setGesteOuvert\('retraits'\) \}/.test(src));
   ok("l'écran est rendu, retour vers « À régler »", /\{gesteOuvert==='retraits'&&\(\s*<EcranRetraitsBloques [^>]*retraits=\{retraitsAutres\}[\s\S]{0,300}onFermer=\{\(\)=>setGesteOuvert\('a_regler'\)\}/.test(src));
   const ecranRetraits = readFileSync(new URL("../src/stock/EcranRetraitsBloques.jsx", import.meta.url), "utf8");
   ok("l'écran : la phrase, « Me connecter » par plateforme et la liste des articles", /texteRetraitsBloques\(g, lang\)/.test(ecranRetraits) && /<BoutonMeConnecter userId=\{userId\} platform=\{g\.platform\}/.test(ecranRetraits) && /g\.lignes\.map\(\(l\) =>/.test(ecranRetraits));

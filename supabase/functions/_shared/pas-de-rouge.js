@@ -54,6 +54,8 @@ export { CANAL_RE };
 import { repriseTitreSymbolesVinted } from "./titre-symboles-vinted.js";
 // (25/10, décision de Nico) Titre « trop de lettres majuscules » : la casse normale, une reprise (bloc 0 ter).
 import { repriseTitreMajuscules } from "./casse-titre.js";
+// (25/10, boncoin59300) Ce qu'un retrait en reprise a le droit de dire de son annonce : lu sur des champs, jamais deviné.
+import { indiceEtatRetrait } from "./retrait-deja-absent.js";
 // (25/10, N6 et R2) eBay voie clic : le manquant qu'eBay nomme au refus du brouillon (retours, photos).
 import {
   classeRefusBrouillonEbay, SOURCE_RETOURS_EBAY, CHAMP_RETOURS_EBAY, MOTIF_PHOTOS_EBAY, REPRISES_PHOTOS_MAX,
@@ -77,7 +79,13 @@ function acte(action) {
 // encore d'annonce), et sur une republication dont l'annonce était déjà
 // retirée. Une seule phrase par situation, jamais une phrase figée.
 export function rienTouche(action, pf = {}) {
-  if (action === "delete") return "Rien n'a été retiré : l'annonce est toujours en ligne.";
+  // (25/10, boncoin59300) « toujours en ligne » seulement sur preuve (lecture de la page < 24 h) : une page 404
+  // n'est pas « en ligne », et on ne le sait pas toujours.
+  if (action === "delete") {
+    return indiceEtatRetrait(pf) === "en_ligne"
+      ? "Rien n'a été retiré : l'annonce est toujours en ligne."
+      : "Rien n'a été retiré par FillSell.";
+  }
   if (action === "republish") {
     return pf && pf.republish_step === "deleted"
       ? "Ton annonce, déjà retirée, sera remise en ligne dès que possible."
@@ -199,10 +207,12 @@ export function decisionRefusContenuLeboncoin({ action = "publish", brut = "", p
   };
 }
 
-function risqueRetrait(action, nom) {
-  return action === "delete"
+// (25/10, règle de Nico) « encore en ligne » seulement sur preuve (indiceEtatRetrait) ; sinon « peut-être ».
+function risqueRetrait(action, nom, pf = {}) {
+  if (action !== "delete") return "";
+  return indiceEtatRetrait(pf) === "en_ligne"
     ? ` Ton article est vendu mais son annonce est encore en ligne sur ${nom} (risque de double vente).`
-    : "";
+    : ` Ton article est vendu et son annonce est peut-être encore en ligne sur ${nom} (risque de double vente).`;
 }
 
 // ── LES MOTIFS, DANS L'ORDRE OÙ ILS SONT ESSAYÉS ───────────────────────────
@@ -338,18 +348,36 @@ export function delaiRepriseRetrait(reprisesFaites) {
   return DELAIS_RETRAIT_MIN[Math.min(n, DELAIS_RETRAIT_MIN.length - 1)];
 }
 
+// ── (25/10, boncoin59300 — règle de Nico) JAMAIS « ELLE RESTE EN VENTE » SANS LA PREUVE ──
+// Retrait Beebs d87c8614 : trois fois « Tant que ce n'est pas fait, elle reste en vente sur Beebs » sur une
+// annonce dont la page était un 404 — rien d'achetable. Le message dit désormais ce que les CHAMPS du job savent
+// (retrait-deja-absent.js, indiceEtatRetrait) : vue en ligne (lecture de la page < 24 h) → on le dit, avec le
+// conseil contre la double vente ; page introuvable (constat « 404 », lecture « plus en ligne » non concluante) →
+// rien d'achetable à cet instant, FillSell vérifie et clôt seul ; on ne sait pas → « si elle est encore en
+// ligne… », le conseil reste. Le statut et la reprise espacée ne changent pas.
+function messageRetraitEnReprise(platform, pf) {
+  const nom = NOM[platform] ?? platform;
+  const debut = "Le retrait n'est pas encore fait : l'essai n'a pas abouti de notre côté, et rien n'a été touché. ";
+  const indice = indiceEtatRetrait(pf);
+  if (indice === "introuvable") {
+    return `${nom} ne montre plus cette annonce : sa page est introuvable, elle n'est pas achetable en ce moment. ` +
+      "FillSell vérifie qu'elle est bien retirée et clôt le retrait tout seul — rien à faire de ton côté.";
+  }
+  if (indice === "en_ligne") {
+    return debut + "FillSell réessaie tout seul, et continuera jusqu'à ce que l'annonce soit retirée. " +
+      `Elle est encore en ligne sur ${nom} : si tu veux être sûr d'éviter une double vente, retire-la toi-même depuis l'appli ${nom}.`;
+  }
+  return debut + "FillSell réessaie tout seul, et continuera jusqu'à ce que l'annonce soit retirée. " +
+    `Si elle est encore en ligne sur ${nom} et que tu veux être sûr d'éviter une double vente, retire-la toi-même depuis l'appli ${nom}.`;
+}
+
 function retraitJamaisArrete(arg, sortie) {
   if (arg?.action !== "delete" || !sortie || sortie.statut !== "needs_user") return sortie;
   if (!MOTIFS_TECHNIQUES_RETRAIT.has(sortie.motif)) return sortie;
-  const nom = NOM[arg.platform] ?? arg.platform;
   return {
     verdict: "reprise", statut: "pending", motif: `retrait_${sortie.motif}`,
     dansMinutes: delaiRepriseRetrait(arg.reprises),
-    message:
-      "Le retrait n'est pas encore fait : l'essai n'a pas abouti de notre côté, et rien n'a été touché. " +
-      "FillSell réessaie tout seul, et continuera jusqu'à ce que l'annonce soit retirée. " +
-      `Tant que ce n'est pas fait, elle reste en vente sur ${nom} : si tu veux être sûr d'éviter une double vente, ` +
-      `retire-la toi-même depuis l'appli ${nom}.`,
+    message: messageRetraitEnReprise(arg.platform, arg.pf ?? {}),
   };
 }
 
@@ -597,7 +625,7 @@ function classerEchecSansRegleRetrait(arg) {
         verdict: "a_toi", statut: "needs_user", motif: "connexion", source: "connexion",
         message:
           `Connexion ${nom} requise : ton navigateur n'est plus connecté à ${nom}, ` +
-          `donc ${acte(action)} ne peut pas aboutir.${risqueRetrait(action, nom)} Clique sur « Me connecter » ci-dessous : ` +
+          `donc ${acte(action)} ne peut pas aboutir.${risqueRetrait(action, nom, pf)} Clique sur « Me connecter » ci-dessous : ` +
           "dès que tu es reconnecté, on repart tout seuls. Rien n'a été touché.",
       };
     }
@@ -673,7 +701,7 @@ function classerEchecSansRegleRetrait(arg) {
       verdict: "a_toi", statut: "needs_user", motif: "connexion", source: "connexion",
       message:
         `Connexion ${nom} requise : ton navigateur n'est plus connecté à ${nom}, ` +
-        `donc ${acte(action)} ne peut pas aboutir.${risqueRetrait(action, nom)} Clique sur « Me connecter » ci-dessous : ` +
+        `donc ${acte(action)} ne peut pas aboutir.${risqueRetrait(action, nom, pf)} Clique sur « Me connecter » ci-dessous : ` +
         "dès que tu es reconnecté, on repart tout seuls. Rien n'a été touché.",
     };
   }

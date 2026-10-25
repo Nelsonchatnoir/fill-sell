@@ -210,11 +210,23 @@ export const GROUPES = [
     id: 'aide',
     intitule: (T) => T.gAide,
     entrees: [
+      // (25/10, Jocabroc : « impossible de vous contacter via l'application ») Un lien mailto: ne fait RIEN sur un
+      // ordinateur sans logiciel de messagerie (Chrome sous Windows, le cas de Jocabroc) : connecté, « Contacter le
+      // support » ouvre le formulaire de l'app (send-bug-report, le même envoi que « Signaler un bug ») ; l'adresse
+      // reste pour qui n'a pas de compte.
       {
         id: 'support',
         icone: LifeBuoy,
         libelle: (T) => T.support,
+        action: (c) => c.ouvrirSignalementBug('support'),
+        visible: (c) => Boolean(c.user),
+      },
+      {
+        id: 'support-mail',
+        icone: LifeBuoy,
+        libelle: (T) => T.support,
         href: () => 'mailto:support@fillsell.app',
+        visible: (c) => !c.user,
       },
       {
         id: 'signaler-bug',

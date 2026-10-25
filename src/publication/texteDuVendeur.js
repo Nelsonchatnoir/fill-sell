@@ -30,7 +30,10 @@
 //    celle du vendeur, ici (texteDuVendeurFiche) comme au serveur
 //    (generate-listing, « LE TEXTE DU VENDEUR FAIT FOI »).
 import { attributsDepuisVinted } from "../utils/vintedAttributs";
-import { demanderDetailArticleVinted, ecouterDetailArticleVinted } from "../utils/vintedSync";
+import {
+  demanderDetailArticleVinted, ecouterDetailArticleVinted, sonderPontExtension, signalerPontMort, versionAuMoins,
+  PUBLIC_VERSION_MIN, demanderAnnoncePubliqueVinted, ecouterAnnoncePubliqueVinted,
+} from "../utils/vintedSync";
 
 /** L'écart entre deux lectures VINTED d'un même lot : celui des dépôts de
  *  l'extension (8 à 20 s), jamais une rafale. */
@@ -92,8 +95,8 @@ async function completerFiche(supabase, userId, id, patch) {
     .then(() => {}, () => {});
 }
 
-/** Le détail d'UN article Vinted, lu par l'extension (pont de la page). */
-export function lireDetailVintedParExtension(vintedItemId, delaiMs = DELAI_DETAIL_VINTED_MS) {
+/** Le détail d'UN article Vinted, lu par l'extension par le formulaire d'édition (pont de la page). */
+function lireDetailEditionParExtension(vintedItemId, delaiMs) {
   return new Promise((resolve) => {
     const timer = setTimeout(() => { stop(); resolve(null); }, delaiMs);
     const stop = ecouterDetailArticleVinted((d) => {
@@ -102,6 +105,60 @@ export function lireDetailVintedParExtension(vintedItemId, delaiMs = DELAI_DETAI
     });
     demanderDetailArticleVinted(vintedItemId);
   });
+}
+
+/** La PAGE PUBLIQUE d'UN article Vinted, lue par l'extension ≥ 0.6.144 (pont de la page). */
+function lireAnnoncePubliqueParExtension(vintedItemId, delaiMs) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => { stop(); resolve(null); }, delaiMs);
+    const stop = ecouterAnnoncePubliqueVinted((d) => {
+      if (String(d.vintedItemId) !== String(vintedItemId)) return;
+      clearTimeout(timer); stop(); resolve(d);
+    });
+    demanderAnnoncePubliqueVinted(vintedItemId);
+  });
+}
+
+/**
+ * Le détail d'UN article Vinted, lu par l'extension de CET ordinateur.
+ * (25/10 — Louis) D'abord : le pont est-il vivant ? Un onglet resté ouvert pendant une mise à jour de l'extension
+ * a un pont MORT — on le sait en 1,5 s au lieu d'attendre 12 ou 25 s sans réponse ({ pontMort: true }). Puis, avec
+ * une extension ≥ 0.6.144, la PAGE PUBLIQUE de l'annonce (texte, couleur, rayon : une page vue, jamais le formulaire
+ * d'édition, lisible quel que soit le compte Vinted ouvert) ; le formulaire d'édition n'est plus qu'un repli.
+ */
+export async function lireDetailVintedParExtension(vintedItemId, delaiMs = DELAI_DETAIL_VINTED_MS, { sonder = sonderPontExtension } = {}) {
+  const pont = await sonder();
+  if (!pont?.vivant) {
+    signalerPontMort();
+    return { success: false, pontMort: true };
+  }
+  if (versionAuMoins(pont.version, PUBLIC_VERSION_MIN)) {
+    const p = await lireAnnoncePubliqueParExtension(vintedItemId, delaiMs);
+    if (p?.success || p?.ok) {
+      return {
+        success: true, source: "page_publique", description: p.description ?? null,
+        natif: { catalog_id: p.catalog_id ?? null }, libelles: null, publique: p,
+      };
+    }
+    // Vinted a demandé une vérification, ou l'annonce n'existe plus : on ne relit pas par un autre chemin.
+    if (["antirobot", "antirobot_pause", "introuvable"].includes(String(p?.motif ?? ""))) {
+      return { success: false, motif: p.motif, publique: p };
+    }
+  }
+  return lireDetailEditionParExtension(vintedItemId, delaiMs);
+}
+
+/** Les attributs que la page publique porte (couleur, rayon, marque), source vinted_detail — la base arbitre (pur). */
+export function attributsDepuisPagePublique(p, at = new Date().toISOString()) {
+  const out = {};
+  const poser = (k, v) => { const s = typeof v === "string" ? v.trim() : v; if (s !== null && s !== undefined && s !== "") out[k] = { v: s, source: "vinted_detail", at }; };
+  poser("couleur", p?.couleur ?? null);
+  poser("couleur2", p?.couleur2 ?? null);
+  poser("marque", p?.marque ?? null);
+  const cat = Number(p?.catalog_id);
+  if (Number.isFinite(cat) && cat > 0) poser("categorie_vinted", cat);
+  if (Object.keys(out).length) out.page_publique_lue = { v: at, source: "vinted_detail", at, via: "page" };
+  return out;
 }
 
 /**
@@ -115,7 +172,7 @@ export function lireDetailVintedParExtension(vintedItemId, delaiMs = DELAI_DETAI
  * @param opts.delaiDetailMs     délai d'une lecture Vinted
  * @param opts.avantLecture      (plateforme) => void|Promise — juste avant une lecture qui touche une plateforme
  * @param opts.lireDetailVinted  (vintedItemId, delaiMs) => Promise<detail|null> — l'extension par défaut (injectable pour le selftest)
- * @returns {Promise<{item, source: string|null, lectures: string[], note: null|'vinted_sans_extension'|'vinted_echec'}>}
+ * @returns {Promise<{item, source: string|null, lectures: string[], note: null|'vinted_sans_extension'|'vinted_echec'|'pont_mort'|'sans_description'}>}
  *   `item` = l'article complété (description, vinted_catalog_id) ; `source` = d'où vient la description reprise.
  */
 export async function completerTexteDuVendeur(item, {
@@ -186,8 +243,18 @@ export async function completerTexteDuVendeur(item, {
         await avantLecture?.("vinted");
         res.lectures.push("vinted");
         const detail = await lireDetailVinted(it.vinted_item_id, delaiDetailMs);
+        if (detail?.success) res.vintedLue = true;
         const catalogId = Number(detail?.natif?.catalog_id);
         const catalogAEcrire = Number.isFinite(catalogId) && catalogId > 0 && !it.vinted_catalog_id ? catalogId : null;
+        // (25/10) La page publique : couleur, rayon, marque — source vinted_detail, la base arbitre.
+        if (detail?.success && detail.source === "page_publique") {
+          try {
+            const a = attributsDepuisPagePublique(detail.publique);
+            if (Object.keys(a).length) {
+              await supabase.from("inventaire").update({ attributs: a }).eq("id", it.id).eq("user_id", userId).then(() => {}, () => {});
+            }
+          } catch { /* enrichissement best-effort */ }
+        }
         // Ce que le détail porte AUSSI (taille, état, marque, couleurs, colis) :
         // écrit dans attributs, source vinted_detail — la base arbitre.
         if (detail?.success && detail.libelles) {
@@ -210,7 +277,11 @@ export async function completerTexteDuVendeur(item, {
               .eq("id", it.id).eq("user_id", userId).then(() => {}, () => {});
             it = { ...it, vinted_catalog_id: catalogAEcrire };
           }
-          if (vide(it.description)) res.note = "vinted_echec";
+          // (25/10) Pont mort (onglet resté ouvert pendant une mise à jour de l'extension) : dit tel quel — la page
+          // propose de se recharger, et la lecture passe par l'ordinateur en attendant.
+          // (25/10, Nico) Lue, mais l'annonce n'a VRAIMENT aucun texte : « sans_description » — le seul cas où l'app
+          // propose « Écrire ma description ». Une lecture ratée reste « vinted_echec ».
+          if (vide(it.description)) res.note = detail?.pontMort ? "pont_mort" : (detail?.success ? "sans_description" : "vinted_echec");
         }
       }
     }
@@ -240,6 +311,11 @@ export async function completerTexteDuVendeur(item, {
   }
 
   if (!vide(it.description) && res.note) res.note = null;
+  // (25/10) Une lecture faite ICI (stepper, lot) ferme la demande de lecture d’origine : sans cela, elle restait
+  // ouverte — comptée 7 jours dans le Stock, et la file du compte retenue jusqu’à 15 min pour une lecture déjà faite.
+  if (it.origine === "vinted_sync" && (res.vintedLue || res.source)) {
+    try { await supabase.rpc("lecture_origine_faite", { p_fiche: Number(it.id) }); } catch { /* best-effort */ }
+  }
   res.item = it;
   return res;
 }

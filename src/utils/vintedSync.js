@@ -136,6 +136,78 @@ export function pinguerExtension() {
   catch { /* origine opaque (sandbox) : sans conséquence, on restera grisé */ }
 }
 
+// ── (25/10 — Louis) LE PONT VERS L'EXTENSION EST-IL VIVANT, ICI, MAINTENANT ? ─────────────────────────────────
+// Un onglet FillSell resté ouvert pendant une mise à jour de l'extension garde un pont MORT : Chrome ne réinjecte
+// pas le script de la page, et l'ancien avalait chaque commande en silence (louis-seller, 25/10 : extension mise à
+// jour à 01:58:40, onglet resté ouvert, 20+ lectures sans réponse entre 10:29 et 10:50, 25 s chacune ; reproduit
+// sur le poste de Nico : même onglet, plus aucune réponse après le rechargement de l'extension, réponse en 3,2 s
+// une fois l'onglet rechargé). Avant de compter sur l'extension pour une lecture, la page pingue : sans réponse en
+// 1,5 s, le pont est mort — elle le dit (« recharge la page ») et passe par l'ordinateur sans attendre. Une
+// extension ≥ 0.6.144 réinjecte elle-même son script à chaque mise à jour, et dit quand une ancienne copie est coupée.
+export const PONT_PING_MS = 1500;
+/** @returns {Promise<{vivant: boolean, version: string|null}>} */
+export function sonderPontExtension(delaiMs = PONT_PING_MS) {
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined') { resolve({ vivant: false, version: null }); return; }
+    let fini = false;
+    let minuteur = null;
+    const fin = (r) => {
+      if (fini) return;
+      fini = true;
+      clearTimeout(minuteur);
+      window.removeEventListener('message', surMessage);
+      resolve(r);
+    };
+    const surMessage = (e) => {
+      if (e.source !== window || !e.data?.__fillsellExt) return;
+      fin({ vivant: true, version: e.data.version ?? null });
+    };
+    minuteur = setTimeout(() => fin({ vivant: false, version: null }), delaiMs);
+    window.addEventListener('message', surMessage);
+    pinguerExtension();
+  });
+}
+// L'état du pont pour toute la page : mort une fois constaté, VIVANT de nouveau dès qu'un script neuf s'annonce
+// (une extension ≥ 0.6.144 se réinjecte d'elle-même après sa mise à jour).
+let pontMort = false;
+const abonnesPont = new Set();
+function poserEtatPont(mort) {
+  if (pontMort === mort) return;
+  pontMort = mort;
+  for (const f of abonnesPont) { try { f(mort); } catch { /* un abonné cassé n'arrête pas les autres */ } }
+}
+export function signalerPontMort() { poserEtatPont(true); }
+export function pontExtensionMort() { return pontMort; }
+/** onEtat(mort: boolean) — appelé tout de suite avec l'état courant, puis à chaque changement. Rend le démontage. */
+export function ecouterEtatPont(onEtat) {
+  abonnesPont.add(onEtat);
+  try { onEtat(pontMort); } catch { /* sans conséquence */ }
+  return () => abonnesPont.delete(onEtat);
+}
+if (typeof window !== 'undefined') {
+  window.addEventListener('message', (e) => {
+    if (e.source !== window) return;
+    if (e.data?.__fillsellPontMort) poserEtatPont(true);
+    else if (e.data?.__fillsellExt && pontMort) poserEtatPont(false);
+  });
+}
+
+// ── (25/10) LA PAGE PUBLIQUE D'UNE ANNONCE VINTED, LUE PAR L'EXTENSION (≥ 0.6.144) ──────────────────────────────
+// Texte, couleur, rayon : une page vue, comme un visiteur — jamais le formulaire d'édition — et lisible quel que soit
+// le compte Vinted ouvert dans Chrome. Aller-retour relayé par fillsell-auth.js (FETCH_VINTED_PUBLIC).
+export const PUBLIC_VERSION_MIN = '0.6.144';
+export function demanderAnnoncePubliqueVinted(vintedItemId) {
+  window.postMessage({ __fillsellCmd: 'FETCH_VINTED_PUBLIC', vintedItemId: String(vintedItemId) }, window.location.origin);
+}
+export function ecouterAnnoncePubliqueVinted(onLue) {
+  const surMessage = (e) => {
+    if (e.source !== window || !e.data?.__fillsellAnnoncePublique) return;
+    onLue(e.data.__fillsellAnnoncePublique);
+  };
+  window.addEventListener('message', surMessage);
+  return () => window.removeEventListener('message', surMessage);
+}
+
 // Pose l'écoute du signal de présence ET pingue immédiatement. Retourne le
 // démontage. PIÈGE : le content script s'annonce spontanément à l'injection,
 // donc souvent AVANT le montage du composant — sans le ping, un écouteur posé

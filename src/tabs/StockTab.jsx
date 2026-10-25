@@ -78,6 +78,9 @@ import { plateformesJumelles } from '../utils/copiesJumelles';
 // Republication multiplateforme (2026-09-17) : éligibilité par plateforme,
 // appel RPC générique, refus en mots — utils/republication.js, source unique.
 import { plateformesRepubliables, republierArticle, messageRefusRepublication, republishAReprendre, LABEL_PLATEFORME as LABEL_PF, LABEL_COURT as LABEL_PF_COURT } from '../utils/republication';
+// (25/10, balayage des erreurs visibles) CE QUI DEMANDE VRAIMENT UN GESTE, une règle pour la carte, « À régler »,
+// le filtre, la modale de statut et la pastille de l'onglet (App.jsx).
+import { causeARegler, jobSupplante, derniersParLigne, republicationLibereeApresArret, pastilleRepublicationEnPause, indexSelonARegler, plateformesHorsJeu as plateformesHorsJeuDe } from '../utils/erreursVisibles';
 import { jourRemise, messagePlafondRepublicationGratuit } from '../utils/jourRemise';
 // Relevé des annonces par plateforme (2026-09-17, sync lot 2) — FERMÉ tant que
 // coin_config.sync_multi_ouverte = 0 : le bloc n'existe pas, aucun texte ne
@@ -171,7 +174,9 @@ import { propsStepperArticle } from '../publication/lot/propsArticle';
 import LotPublication from '../publication/lot/LotPublication';
 import SuiviLot from '../publication/lot/SuiviLot';
 import { AppelFiltrePublier, EnteteModeLot, BarreSelectionLot, LigneLotEnCours } from '../publication/lot/EntreesStock';
-import { PLATEFORMES_LOT, articleSelectionnable, suiviDuLot, idLotDeJob, CLE_REPRISE_LOT, repriseValable } from '../publication/lot/regles';
+// (25/10) Le suivi du lot sans les clôtures de nos règles (Leboncoin hors de France, veilleur de 72 h…) :
+// jobsDuSuivi et lotLePlusRecent (qui appelle suiviDuLot) remplacent l'appel direct d'ici.
+import { PLATEFORMES_LOT, articleSelectionnable, idLotDeJob, CLE_REPRISE_LOT, repriseValable, jobsDuSuivi, lotLePlusRecent } from '../publication/lot/regles';
 import { genericFieldToSharedKey, EBAY_ASPECT_LABELS } from '../publication/moteur/champsPartages';
 import { natureNeedsUser, texteEnCoursConfirmation, lienVerificationEbay,
   champsServeurSaisissables, needsUserOuvrable, republicationAnnonceDisparue,
@@ -189,7 +194,9 @@ import { estChampEtatVinted, libelleEtatVinted, nomChampEtat } from '../utils/et
 import { searchMatch } from '../utils/recherche';
 import { completerTexteDuVendeur, aCompleter as aCompleterTexteVendeur, DELAI_DETAIL_VINTED_MS } from '../publication/texteDuVendeur';
 // (22/10 soir, point 8 — Louis) Une fiche importée ne part pas avant la lecture de son annonce d'origine.
-import { attenteLectureOrigine, demanderLectureOrigine, useLecturesOrigine, phraseLecturesOrigine, messageLectureOrigine } from '../publication/lectureOrigine';
+import { attenteLectureOrigine, demanderLectureOrigine, useLecturesOrigine, phraseLecturesOrigine } from '../publication/lectureOrigine';
+import AttenteLectureOrigine from '../publication/AttenteLectureOrigine';
+import { signalerActionRatee } from '../utils/actionRatee';
 import { plateformeOrigine } from '../../supabase/functions/_shared/contenu-fiche.js';
 import { uniteDuChamp, valeurAvecUnite, nombreSansUnite } from '../utils/champsDimension';
 import { ChampPortDepop } from '../components/PortDepop';
@@ -2158,7 +2165,13 @@ function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose,
   // promet plus le prochain passage à sa place.
   const enCours = (j) => j.status === "pending" || j.status === "processing";
   const aEchoue = (j) => Boolean(String(j.error ?? "").trim());
-  const enFile = jobs.some(j => enCours(j) && !aEchoue(j));
+  // ── (25/10) LA BANNIÈRE NE COMPTE QUE LE DERNIER JOB DE CHAQUE LIGNE ──────
+  // Balayage des erreurs visibles (règle 4) : elle comptait TOUS les jobs de l'article — un vieil échec déjà
+  // dépassé, une attente automatique (« En pause »), un arrêt demandé faisaient encore « Publication arrêtée —
+  // 1 est arrêtée ». Désormais : le dernier job de chaque plateforme × action (la règle de la carte et de
+  // « À régler »), et « à compléter » / « arrêtée » selon CE qui demande un geste (utils/erreursVisibles.causeARegler).
+  const derniers = derniersParLigne(jobs);
+  const enFile = derniers.some(j => enCours(j) && !aEchoue(j));
   // ── VOIE API (07/09/2026, job d9463010 publié par le worker serveur) ──────
   // Un job eBay en voie 'api' est publié par NOS serveurs : l'extension, Chrome
   // et l'ordinateur n'y sont pour rien. Le bandeau ne doit donc jamais parler
@@ -2167,17 +2180,17 @@ function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose,
   // worker) — jamais du drapeau du profil. Un lot MIXTE (eBay API + Vinted
   // extension) garde le texte extension : il est vrai pour les autres.
   const voieApi = (j) => j.voie === "api" || j.platform_fields?.last_diagnostic?.voie === "api";
-  const enFileApiSeule = enFile && jobs.filter(j => enCours(j) && !aEchoue(j)).every(voieApi);
-  const enReprise = jobs.filter(j => enCours(j) && aEchoue(j)).length;
+  const enFileApiSeule = enFile && derniers.filter(j => enCours(j) && !aEchoue(j)).every(voieApi);
+  const enReprise = derniers.filter(j => enCours(j) && aEchoue(j)).length;
   // needs_user EN COURS chez la plateforme (2026-09-10) : ni « attend une
   // information de ta part » ni orange — l'app dit « en cours » et ne demande rien.
-  const enConfirmation = jobs.filter(j => natureNeedsUser(j) === "en_cours").length;
-  const aCompleter = jobs.filter(j => j.status === "needs_user").length - enConfirmation;
-  const enEchec = jobs.filter(j => j.status === "failed").length;
+  const enConfirmation = derniers.filter(j => natureNeedsUser(j) === "en_cours").length;
+  const aCompleter = derniers.filter(j => causeARegler(j, { jobsDeLArticle: jobs }) === "completer").length;
+  const enEchec = derniers.filter(j => causeARegler(j, { jobsDeLArticle: jobs }) === "echec").length;
   // Recours ÉPUISÉS : même source que le bouton de relance affiché plus bas
   // (relanceManuelleInfo) — une seule vérité, jamais deux avis contradictoires
-  // dans la même modale.
-  const sansRecours = jobs.some(j => relanceManuelleInfo(j, jobs)?.epuise);
+  // dans la même modale. (25/10) Sur les seuls jobs qui demandent encore un geste.
+  const sansRecours = derniers.some(j => causeARegler(j, { jobsDeLArticle: jobs }) && relanceManuelleInfo(j, jobs)?.epuise);
   const diagExt = diagnostiquerExtension(extensionStatus, lang);
   const parties = fr
     ? [
@@ -2253,6 +2266,10 @@ function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose,
   const libStatut = (j) => {
     const n = natureNeedsUser(j);
     if (n === "en_cours") return L.en_cours;
+    // (25/10) Une attente automatique est « En pause » (etat-job.js) ; une republication arrêtée avant tout retrait,
+    // « Arrêtée » — l'annonce est intacte, l'emplacement de la carte dit la même chose.
+    if (j.status === "needs_user" && attenteAutomatique(j)) return L.en_pause;
+    if (j.status === "failed" && j.action === "republish" && !causeARegler(j)) return L.arretee;
     return LIB_STATUT[j.status] || j.status;
   };
   // Un seul job par plateforme : le plus récent — même règle que les badges.
@@ -2309,7 +2326,7 @@ function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose,
                   {enPause && (fr ? " · plateforme en pause (reprise auto)" : " · platform paused (auto-resume)")}
                 </div>
                 {j.error && (
-                  <div style={{ fontSize:11.5, lineHeight:1.45, color: natureNeedsUser(j) === "en_cours" ? "#5A6B66" : "#8C2F28", marginTop:6 }}>{humanizeJobError(j, lang)}</div>
+                  <div style={{ fontSize:11.5, lineHeight:1.45, color: (natureNeedsUser(j) === "en_cours" || (j.status === "needs_user" && attenteAutomatique(j))) ? "#5A6B66" : "#8C2F28", marginTop:6 }}>{humanizeJobError(j, lang)}</div>
                 )}
                 {/* ── « ME CONNECTER », À L'ENDROIT DU MUR (2026-09-22) ───────
                     Le geste doit être LÀ, sous le message qui l'explique — pas
@@ -5098,6 +5115,13 @@ function etapeRepublication(job, fr, reprise = null, attente = null, item = null
   };
   if (st === 'failed' || st === 'cancelled') {
     const apres = step === 'deleted';
+    // ── (25/10) ARRÊTÉE AVANT TOUT RETRAIT, ANNONCE INTACTE : LE SLOT SE LIBÈRE ──
+    // Balayage des erreurs visibles (règle 1, cas B6 et N1) : 99 pastilles « Arrêtée » (dont 94 de la remise à zéro
+    // du 15/08, 71 jours plus tard) et des « Plus en ligne » sur des annonces REVUES EN LIGNE depuis. Même doctrine
+    // que l'arrêt demandé (plus haut) : rien n'a été touché → la carte ne dit rien, « ● En ligne » reprend sa place.
+    // Copie faite ou 404 à la capture : seulement sur PREUVE (relevé du dressing actif, postérieur au job —
+    // utils/erreursVisibles.republicationLibereeApresArret). Retirée (étape deleted) : jamais.
+    if (republicationLibereeApresArret(job, item)) return null;
     // ── ANNONCE PLUS EN LIGNE (2026-09-12, dossier Anaïs) ──────────────────
     // Le 404 constaté à la CAPTURE (avant toute suppression) n'est pas un
     // échec FillSell : l'annonce n'existe plus sur Vinted, c'est tout. Le
@@ -5145,6 +5169,15 @@ function etapeRepublication(job, fr, reprise = null, attente = null, item = null
         : `This listing lives on ${qui}. Open that shop on vinted.fr in Chrome: the repost resumes on its own, nothing to relaunch. Your listing is still online, nothing was removed.`,
     };
   }
+  // ── (25/10) UNE ATTENTE AUTOMATIQUE EST « EN PAUSE », JAMAIS « À TOI DE JOUER » ──
+  // Balayage des erreurs visibles (règle 1, cas B1 et B2) : la file, « À régler » et la carte des publications
+  // lisaient déjà attenteAutomatique (_shared/etat-job.js : relevé attendu, coupure technique avant tout retrait,
+  // plateforme écartée, mise à jour de l'extension…), l'emplacement de republication non — il disait « À toi de
+  // jouer » en ambre (« Connexion Vinted requise » d'une session prouvée vivante, relevé attendu). La phrase est
+  // celle de la file (situationJob), bleu, aucun bouton « Régler » (republication.republishAReprendre l'écarte).
+  // Les mots : utils/erreursVisibles.pastilleRepublicationEnPause (prouvés par selftest:erreurs-visibles).
+  const enPauseAuto = st === 'needs_user' && attenteAutomatique(job) ? pastilleRepublicationEnPause(job, fr ? 'fr' : 'en') : null;
+  if (enPauseAuto) return { ...enPauseAuto, ...bleu, fini: false };
   if (st === 'needs_user') {
     const apres = step === 'deleted';
     // ── DIRE LA VÉRITÉ QUAND L'APP NE PEUT RIEN OUVRIR (2026-09-04) ──────────
@@ -5352,7 +5385,8 @@ export function RepublishProgressSheet({ lang, job, onClose, onSaisieRelance, re
   // 'plafond_jour' n'est pas une étape du parcours mais une ATTENTE posée sur
   // l'étape en cours : la frise reste ancrée sur republish_step (sans quoi
   // indexOf rendrait -1 et la frise entière retomberait à « rien de fait »).
-  const courant = et.cle === 'arret' || et.cle === 'needs_user' || et.cle === 'plafond_jour'
+  // (25/10) 'en_pause' (attente automatique) aussi : une attente posée sur l'étape en cours.
+  const courant = et.cle === 'arret' || et.cle === 'needs_user' || et.cle === 'plafond_jour' || et.cle === 'en_pause'
     ? (pf.republish_step ?? 'a_capturer')
     : (et.cle === 'file' || et.cle === 'lecture' ? 'a_capturer' : et.cle);
   const iCourant = REPUB_ORDRE.indexOf(courant);
@@ -5958,6 +5992,9 @@ const StockTab = memo(function StockTab({
   }, []);
   const [detailFetchId, setDetailFetchId] = useState(null); // item.id en cours de récupération
   const [detailNote, setDetailNote] = useState(null);       // message doux (repli), auto-effacé
+  // (25/10, Jocabroc) La fiche importée qui attend la lecture de son annonce d'origine : un ÉCRAN qui relit seul et
+  // ouvre le stepper dès que c'est lu, jamais plus une bulle de 7 s suivie de rien (audit E1).
+  const [attenteStepper, setAttenteStepper] = useState(null); // { item, attente }
   const detailNoteTimer = useRef(null);
   // Cible du CTA « publie-les aussi… » de la carte de sync (2026-09-01) :
   // la grille d'articles, où vivent les boutons Publier. Navigation pure.
@@ -6016,13 +6053,26 @@ const StockTab = memo(function StockTab({
     setDetailFetchId(null);
     if (attenteOrigine) {
       demanderLectureOrigine(supabase, item.id);
-      montrerNoteDetail(messageLectureOrigine(attenteOrigine, lang === 'fr' ? 'fr' : 'en'));
+      // (25/10, Jocabroc) Plus jamais une impasse : l'écran d'attente relit seul, ouvre le stepper dès que l'annonce
+      // est lue, et offre « Écrire ma description ». Le serveur est prévenu de l'attente (actionRatee).
+      signalerActionRatee({ action: 'publier', motif: 'lecture_origine_en_attente', userId: user?.id ?? null,
+        details: { fiche: item.id, manque: (attenteOrigine?.manque ?? []).join(','), extension: extDetailOk, note: r?.note ?? null } });
+      setAttenteStepper({ item: r?.item ?? item, attente: attenteOrigine });
       return;
     }
-    if (r?.note === 'vinted_sans_extension') {
+    if (r?.note === 'pont_mort') {
+      // (25/10 — Louis) Onglet resté ouvert pendant une mise à jour de l'extension : le pont est mort — on le dit.
+      montrerNoteDetail(lang === 'fr'
+        ? "Ton extension FillSell vient d'être mise à jour : recharge cette page pour qu'elle relise tes annonces Vinted. En attendant, la lecture passe par ton ordinateur, toute seule."
+        : "Your FillSell extension has just been updated: reload this page so it can read your Vinted listings again. Meanwhile, the reading goes through your computer on its own.");
+    } else if (r?.note === 'vinted_sans_extension') {
       montrerNoteDetail(lang === 'fr'
         ? "La description Vinted sera récupérée quand l'extension sera à jour — tu peux la compléter à la main en attendant."
         : "The Vinted description will be fetched once the extension is updated — you can fill it in manually meanwhile.");
+    } else if (r?.note === 'sans_description') {
+      montrerNoteDetail(lang === 'fr'
+        ? "Ton annonce Vinted n'a pas de description : FillSell en rédige une d'après tes photos et ton titre — relis-la avant qu'elle parte."
+        : "Your Vinted listing has no description: FillSell writes one from your photos and your title — check it before it goes out.");
     } else if (r?.note === 'vinted_echec') {
       montrerNoteDetail(lang === 'fr'
         ? "La description Vinted n'a pas pu être récupérée cette fois — les photos sont là, tu peux compléter le texte à la main."
@@ -6332,8 +6382,9 @@ const StockTab = memo(function StockTab({
   const msgPlafondRepub = (res) => messagePlafondRepublicationGratuit(res, lang === 'fr' ? 'fr' : 'en');
 
   async function lancerRepublication(item, prixRepublication = null, plateformes = ['vinted']) {
-    if (repubBusy || repubEnPause) return;
-    if (extensionNeverSeen === true) { setExtPitchItem(item); return; }
+    // (25/10, Jocabroc) Une republication retenue par l'app le dit au serveur : plus jamais un clic qui ne laisse rien.
+    if (repubBusy || repubEnPause) { signalerActionRatee({ action: 'republier', motif: repubEnPause ? 'republication_en_pause' : 'republication_deja_en_cours', userId: user?.id ?? null, details: { fiche: item?.id ?? null } }); return; }
+    if (extensionNeverSeen === true) { signalerActionRatee({ action: 'republier', motif: 'extension_jamais_vue', userId: user?.id ?? null, details: { fiche: item?.id ?? null } }); setExtPitchItem(item); return; }
     setRepubBusy(item.id);
     setRepubMsgs(m => ({ ...m, [item.id]: null }));
     try {
@@ -6347,6 +6398,7 @@ const StockTab = memo(function StockTab({
           platform, inventaireId: item.id, vintedItemId: item.vinted_item_id, prixRepublication,
         });
         if (!res.success) {
+          signalerActionRatee({ action: 'republier', motif: String(res.reason ?? 'refus'), userId: user?.id ?? null, details: { fiche: item?.id ?? null, plateforme: platform, message: res.error ? String(res.error).slice(0, 160) : null } });
           if (rejetMaintenance(res)) { setRepubMaintenance(true); return; }
           if (res.reason === 'plafond_republication_free') {
             if (!ouvrirModalePlafondRepub(res)) {
@@ -6454,13 +6506,16 @@ const StockTab = memo(function StockTab({
   async function lancerRepublicationLot(cibles /* [{item, prix}] */) {
     // Ceinture (02/09 soir) : le bouton est déjà gaté, mais si un chemin
     // résiduel arrivait ici en Free, on ouvre la modale et RIEN ne part.
-    if (repubLotReserve) { ouvrirModaleLotReserve(); return; }
-    if (repubEnPause) return;
+    if (repubLotReserve) { signalerActionRatee({ action: 'republier_lot', motif: 'lot_reserve_aux_payants', userId: user?.id ?? null }); ouvrirModaleLotReserve(); return; }
+    if (repubEnPause) { signalerActionRatee({ action: 'republier_lot', motif: 'republication_en_pause', userId: user?.id ?? null }); return; }
     // Multiplateforme (2026-09-17) : une paire (article, plateforme) par
     // republication à créer — la boucle ne change pas, elle compte des paires.
     cibles = (cibles ?? []).flatMap(({ item, prix, plateformes }) =>
       (Array.isArray(plateformes) && plateformes.length ? plateformes : ['vinted']).map((platform) => ({ item, prix, platform })));
-    if (!cibles.length || repubLot?.fait != null && repubLot.fait < repubLot.total) return;
+    if (!cibles.length || repubLot?.fait != null && repubLot.fait < repubLot.total) {
+      signalerActionRatee({ action: 'republier_lot', motif: !cibles.length ? 'aucune_cible' : 'lot_precedent_en_cours', userId: user?.id ?? null, details: { cibles: cibles.length } });
+      return;
+    }
     setRepubLot({ fait: 0, total: cibles.length, refus: [] });
     const refus = [];
     // ── Identité du LOT en base (2026-08-28) ─────────────────────────────────
@@ -6514,6 +6569,7 @@ const StockTab = memo(function StockTab({
             }],
           }));
         } else {
+          signalerActionRatee({ action: 'republier_lot', motif: String(res.reason ?? 'refus'), userId: user?.id ?? null, details: { fiche: item?.id ?? null, plateforme: platform, message: res.error ? String(res.error).slice(0, 160) : null } });
           // FILET maintenance : le trigger refusera pareil tous les suivants —
           // on s'arrête là, le bandeau (armé ici) dit pourquoi, pas de liste
           // de refus techniques.
@@ -7170,6 +7226,12 @@ const StockTab = memo(function StockTab({
   // (25/10) Leboncoin fermé à ce compte (adresse de remise hors de France) : aucune carte Leboncoin à régler —
   // ses dépôts sont clos par le serveur, rien n'y repartira.
   const lbcFermee = plateformesFermees.includes('leboncoin');
+  // (25/10) Les plateformes HORS JEU pour ce compte (Leboncoin fermé ci-dessus, Opla quittée) : rien à y régler —
+  // ni ligne « À régler », ni filtre (utils/erreursVisibles.causeARegler).
+  const horsJeu = useMemo(
+    () => plateformesHorsJeuDe({ plateformesOuvertes, plateformesFermees }),
+    [plateformesOuvertes, plateformesFermees],
+  );
   const identiteLbc = useMemo(
     () => (lbcFermee ? [] : attentesIdentiteLbc(tousLesJobs).filter((j) => fichesToutes.has(String(j.inventaire_id)))),
     [tousLesJobs, fichesToutes, lbcFermee],
@@ -7312,7 +7374,9 @@ const StockTab = memo(function StockTab({
   // débloquer ». Un article supprimé entre-temps sort : on ne propose pas un
   // geste sur un fantôme.
   // Un arrêt demandé et un gel Livres ne demandent RIEN : ils n'entrent pas.
-  const attenteAction = useMemo(() => {
+  // (25/10) Lue ici avec la règle du job seul ; « dépassé par une réussite » et « plateforme hors jeu », qui lisent
+  // les autres jobs de la fiche et le compte, s'appliquent juste après (attenteAction).
+  const attenteActionLue = useMemo(() => {
     const fr = lang !== 'en';
     const lignes = [];
     for (const [cle, j] of activiteParCle) {
@@ -7327,8 +7391,10 @@ const StockTab = memo(function StockTab({
       // boutique à ouvrir, site eBay étranger, plateforme écartée…) n'attend
       // aucun geste : « En pause », jamais dans « À régler » (_shared/etat-job.js).
       if (j.status === 'needs_user' && attenteAutomatique(j)) continue;
-      const cause = j.status === 'needs_user' ? 'completer'
-        : j.status === 'failed' ? 'echec' : null;
+      // (25/10, balayage des erreurs visibles) LA règle unique (utils/erreursVisibles.causeARegler), celle de la
+      // carte, du filtre, de la modale et de la pastille de l'onglet : un dépôt « en cours de confirmation » ou une
+      // republication arrêtée avant tout retrait (annonce intacte) ne demandent rien.
+      const cause = causeARegler(j);
       if (!cause) continue;
       if (!fichesParId.has(String(j.inventaire_id))) continue;
       lignes.push({
@@ -7361,6 +7427,21 @@ const StockTab = memo(function StockTab({
       ids: [...new Set(lignes.map((l) => String(l.job.inventaire_id)))],
     };
   }, [activiteParCle, fichesParId, lang, compteLbcPro]);
+  // (25/10, balayage des erreurs visibles) La règle complète (causeARegler avec les jobs de la fiche et le compte) :
+  // une publication dépassée par une republication réussie sur la même plateforme (B3), une plateforme hors jeu
+  // (Leboncoin fermé à ce compte, Opla quittée) sortent de « À régler ».
+  const attenteAction = useMemo(() => {
+    if (!attenteActionLue) return null;
+    const lignes = attenteActionLue.lignes.filter((l) => causeARegler(l.job, { jobsDeLArticle: jobsByInventaire[l.job.inventaire_id] ?? null, plateformesHorsJeu: horsJeu }));
+    if (lignes.length === attenteActionLue.lignes.length) return attenteActionLue;
+    if (!lignes.length) return null;
+    const echecs = lignes.filter((l) => l.cause === 'echec').length;
+    return {
+      ...attenteActionLue, lignes, total: lignes.length, echecs, aCompleter: lignes.length - echecs,
+      gravite: echecs > 0 ? 'echec' : 'completer',
+      ids: [...new Set(lignes.map((l) => String(l.job.inventaire_id)))],
+    };
+  }, [attenteActionLue, jobsByInventaire, horsJeu]);
   // Les deux feuilles du haut de page. Affichage seul : elles n'écrivent rien,
   // elles rouvrent les portes qui existent déjà.
   const [fileOuverte, setFileOuverte] = useState(false);
@@ -7554,9 +7635,13 @@ const StockTab = memo(function StockTab({
   // computeRemovalInfo — la MÊME fonction qui décide des logos de la carte :
   // un compteur de filtre qui divergerait d'elle annoncerait un nombre que
   // l'écran n'applique pas.
+  // (25/10, balayage des erreurs visibles, S3) « À compléter » et « En échec » de l'index — compteurs et filtre
+  // « État » de la feuille, pastille « à traiter » de la carte, vue « À régler » — suivent LA règle de « À régler »
+  // (utils/erreursVisibles.causeARegler) : jamais une attente automatique, un échec suivi d'une annulation ou
+  // dépassé par une republication réussie, une republication arrêtée avant tout retrait, une plateforme hors jeu.
   const indexEtat = useMemo(
-    () => indexEtatStock(stockFiltre, jobsByInventaire, lang),
-    [stockFiltre, jobsByInventaire, lang],
+    () => indexSelonARegler(indexEtatStock(stockFiltre, jobsByInventaire, lang), jobsByInventaire, { plateformesHorsJeu: horsJeu }),
+    [stockFiltre, jobsByInventaire, lang, horsJeu],
   );
   const comptesStock = useMemo(() => compteursStock(stockFiltre, indexEtat), [stockFiltre, indexEtat]);
   // UNE seule liste pour tout l'écran (2026-09-17 soir, manque Opla sur les
@@ -7600,6 +7685,7 @@ const StockTab = memo(function StockTab({
     const jours = ancienneteJours(i, jobsByInventaire[i.id], e?.enLigne ?? []);
     const jobsEnAttente = (jobsByInventaire[i.id] ?? []).filter((j) => j.action !== 'delete' && (j.status === 'pending' || j.status === 'processing'));
     const surConnexion = jobsEnAttente.length > 0 && jobsEnAttente.every(attenteDeConnexion);
+    // (25/10) aCompleter / enEchec suivent déjà la règle de « À régler » (indexEtat, plus haut).
     const aRegler = !!(e?.aCompleter?.length || e?.enEchec?.length) || surConnexion;
     return { enLigne, aPublier, jours, ancienne: estAncienne(jours), aRegler, vendu: i.statut === 'vendu' };
   };
@@ -7673,25 +7759,10 @@ const StockTab = memo(function StockTab({
   };
   // Le lot le plus récent (identifiant posé sur ses jobs) : tant qu'il avance,
   // ou qu'il a fini il y a moins de 6 h, une ligne en haut du Stock le suit.
-  const lotRecent = useMemo(() => {
-    const parLot = new Map();
-    for (const list of Object.values(jobsByInventaire)) {
-      for (const j of list) {
-        const id = idLotDeJob(j);
-        if (!id || j.action !== 'publish' || !j.platform_fields?.lot_publication) continue;
-        if (!parLot.has(id)) parLot.set(id, { id, le: j.platform_fields.lot_publication.le ?? j.created_at, jobs: [] });
-        parLot.get(id).jobs.push(j);
-      }
-    }
-    let recent = null;
-    for (const l of parLot.values()) if (!recent || String(l.le) > String(recent.le)) recent = l;
-    if (!recent) return null;
-    const suivi = suiviDuLot(recent.jobs);
-    const ilYa = Date.now() - Date.parse(recent.le ?? 0);
-    if (suivi.fini && !(ilYa < 6 * 3600 * 1000) && !suivi.compte.geste) return null;
-    if (ilYa > 7 * 86400 * 1000) return null;
-    return { ...recent, suivi };
-  }, [jobsByInventaire]);
+  // (25/10, balayage des erreurs visibles, règle 3) La règle vit dans publication/lot/regles.lotLePlusRecent
+  // (prouvée par selftest:erreurs-visibles) : sans les clôtures de nos règles — un lot fait seulement de
+  // Leboncoin clos « hors de France » ne dit plus « 0 annonce en ligne sur 38 » (Marta, 25/10).
+  const lotRecent = useMemo(() => lotLePlusRecent(jobsByInventaire), [jobsByInventaire]);
   // ── LE LOT INTERROMPU PAR UN PAIEMENT (03/10) ────────────────────────────
   // Le mur de conversion du lot mène au parcours d'achat existant ; sur le
   // web, Stripe QUITTE la page. Au retour, le lot est retrouvé tel qu'il
@@ -8995,7 +9066,9 @@ const StockTab = memo(function StockTab({
     })),
     // Le reste des retraits : le tap ouvre « Annonces à retirer », qui porte
     // « Me connecter ».
+    // (25/10) Rien que des annonces Beebs en vérification (ni achetables ni supprimables) : ambre, jamais rouge.
     { cle: 'retraits', n: nbRetraitsAutres, titre: ligneRetraits.titre, detail: ligneRetraits.detail,
+      ...((retraitsAutres.parPlateforme ?? []).length && retraitsAutres.parPlateforme.every((g) => g.mur === 'verification_beebs') ? { ton: 'regler' } : {}),
       onOuvrir: () => setGesteOuvert('retraits') },
     // (24/10 nuit, Nico) Une vente annulée : l'article est revenu au stock, un appui le remet en vente partout.
     { cle: 'ventes_annulees', n: nbVentesAnnulees,
@@ -9343,14 +9416,19 @@ const StockTab = memo(function StockTab({
       const cur=latestByPlatform[j.platform];
       if(!cur||Date.parse(j.created_at||0)>Date.parse(cur.created_at||0)) latestByPlatform[j.platform]=j;
     }
+    // (25/10, balayage des erreurs visibles, règle 5 — cas B3) Le « dernier job » ne lisait que les publications :
+    // une publication en échec que suit une republication RÉUSSIE sur la même plateforme restait rouge, l'article
+    // étant en ligne. Une réussite plus récente (utils/erreursVisibles.jobSupplante) l'éteint ; une plateforme hors
+    // jeu (Leboncoin fermé à ce compte) n'alerte jamais.
+    const depasse=j=>jobSupplante(j,jobsAll)||horsJeu.has(j.platform);
     // Un 404 « annonce disparue » à la capture n'est pas un échec
     // (2026-09-12) : pas de rouge, la carte dit « Plus en ligne ».
-    const failedJobs=Object.values(latestByPlatform).filter(j=>j.status==="failed"&&!republicationAnnonceDisparue(j));
+    const failedJobs=Object.values(latestByPlatform).filter(j=>j.status==="failed"&&!republicationAnnonceDisparue(j)&&!depasse(j));
     // « À compléter » (socle needs_user, 2026-07-19) : même règle
     // que l'Échec — seul le job LE PLUS RÉCENT de la plateforme
     // compte. Dès que le job repart en pending (valeur fournie)
     // ou se conclut (published/failed), le badge s'éteint.
-    const needsUserTous=Object.values(latestByPlatform).filter(j=>j.status==="needs_user");
+    const needsUserTous=Object.values(latestByPlatform).filter(j=>j.status==="needs_user"&&!depasse(j));
     // needs_user EN COURS chez la plateforme (2026-09-10) : ni une
     // action ni un « À compléter » — pastille grise, sans tap. Ils
     // sortent de needsUserJobs pour ne compter dans aucun « actionable ».
@@ -9705,8 +9783,9 @@ const StockTab = memo(function StockTab({
       const pfARetirer = [...new Set(aRetirer.map((j) => j.platform))];
       // La bonne boutique Vinted à ouvrir, un retrait qui attend l'accord :
       // ambre ; un vrai mur (connexion, compte bloqué, ordinateur) : rouge.
-      const alarme = pfBloquees.some(([p]) => murDe.get(p) !== 'boutique');
-      const tonMur = (m) => (m === 'boutique' || m === 'a_retirer' ? { encre: SK.ambreEncre, icone: Store } : { encre: SK.rouge, icone: AlertTriangle });
+      // (25/10) Une annonce Beebs en vérification n'est pas achetable : jamais une alarme.
+      const alarme = pfBloquees.some(([p]) => murDe.get(p) !== 'boutique' && murDe.get(p) !== 'verification_beebs');
+      const tonMur = (m) => (m === 'boutique' || m === 'a_retirer' || m === 'verification_beebs' ? { encre: SK.ambreEncre, icone: Store } : { encre: SK.rouge, icone: AlertTriangle });
       const element = (pfBloquees.length || pfARetirer.length) && user?.id ? (
         <div onClick={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()}
           style={{display:'flex',flexDirection:'column',gap:8,padding:'9px 10px',borderRadius:12,background:alarme?SK.rougeFond:SK.ambreFond,border:`1px solid ${alarme?SK.rougeBord:SK.ambreBord}`}}>
@@ -9735,7 +9814,7 @@ const StockTab = memo(function StockTab({
       return {
         principale: null, element, mur, prixAchat: null, note: null, bas: null, action: null,
         infos: [
-          ...pfBloquees.map(([p]) => ({ cle: `retrait-bloque-${p}`, ton: murDe.get(p) === 'boutique' ? 'regler' : 'echec', texte: ligneCarteRetraitBloque(p, lang, murDe.get(p), boutiqueDe.get(p)) })),
+          ...pfBloquees.map(([p]) => ({ cle: `retrait-bloque-${p}`, ton: murDe.get(p) === 'boutique' || murDe.get(p) === 'verification_beebs' ? 'regler' : 'echec', texte: ligneCarteRetraitBloque(p, lang, murDe.get(p), boutiqueDe.get(p)) })),
           ...pfARetirer.map((p) => ({ cle: `a-retirer-${p}`, ton: 'regler', texte: ligneCarteRetraitBloque(p, lang, 'a_retirer') })),
         ],
         menu: [
@@ -9750,13 +9829,17 @@ const StockTab = memo(function StockTab({
     }
     // ── La republication à reprendre (needs_user) — l'ancien bouton « ✋ Compléter »
     //    / « 🔁 Relancer » / « Republier maintenant », mêmes branches.
-    const repubCible = republishAReprendre(d.jobsAll) ?? d.repubLatest;
+    // (25/10, balayage des erreurs visibles, règle 1) « Régler » ne vise qu'une republication qui attend VRAIMENT la
+    // personne : republishAReprendre écarte les attentes automatiques, et sans elle le dernier needs_user venu (une
+    // attente automatique, « En pause ») ne fait plus de « Régler ».
+    const repubAttendLaPersonne = republishAReprendre(d.jobsAll);
+    const repubCible = repubAttendLaPersonne ?? d.repubLatest;
     const stRepub = repubCible?.status;
     const repubGelee = estGeleLivres(repubCible);
     const apresSuppr = repubCible?.platform_fields?.republish_step === 'deleted';
     const aSaisir = (repubCible?.platform_fields?.champs_a_completer ?? []).some((c) => repubCleSaisie(c) in REPUB_SAISISSABLES);
     const aChoisir = !aSaisir && !!repubCible?.platform_fields?.needsUserField;
-    const repubAReprendre = d.repubEligibleTout && !repubGelee && stRepub === 'needs_user';
+    const repubAReprendre = d.repubEligibleTout && !repubGelee && !!repubAttendLaPersonne && stRepub === 'needs_user';
     const reprendreRepub = () => {
       if (aSaisir && !apresSuppr) setRepubProgress(repubCible);
       else if (aChoisir && !apresSuppr) setNeedsUserJob(repubCible);
@@ -12022,6 +12105,21 @@ const StockTab = memo(function StockTab({
           stepper : elle doit rester lisible PAR-DESSUS l'écran qui vient de
           s'ouvrir. Ton invitation, jamais alerte : rien n'a échoué de grave,
           il manque juste un texte que l'utilisateur peut poser à la main. */}
+      {attenteStepper && user?.id && (
+        <AttenteLectureOrigine
+          item={attenteStepper.item} lang={lang} supabase={supabase} userId={user.id}
+          extensionVinted={extDetailOk} lireEbay={(id) => agirEbay('lire_description', { inventaire_id: id })}
+          delaiDetailMs={DELAI_DETAIL_VINTED_MS} attenteInitiale={attenteStepper.attente}
+          onPret={(relu, info) => {
+            setAttenteStepper(null);
+            // L'annonce d'origine n'a VRAIMENT aucun texte : le stepper s'ouvre, et la note le dit (texte rédigé à relire).
+            if (info?.note === 'sans_description') montrerNoteDetail(lang === 'fr'
+              ? "Ton annonce Vinted n'a pas de description : FillSell en rédige une d'après tes photos et ton titre — relis-la avant qu'elle parte."
+              : "Your Vinted listing has no description: FillSell writes one from your photos and your title — check it before it goes out.");
+            ouvrirStepper(relu ?? attenteStepper.item);
+          }}
+          onFermer={() => setAttenteStepper(null)} />
+      )}
       {detailNote&&createPortal(
         <div style={{position:"fixed",left:"50%",bottom:24,transform:"translateX(-50%)",zIndex:12000,maxWidth:"min(92vw,420px)",background:"#fff",border:"1px solid rgba(47,158,144,0.35)",borderRadius:14,padding:"11px 16px",boxShadow:"0 12px 32px -10px rgba(16,32,27,0.35)",fontSize:12.5,lineHeight:1.5,color:"#10201B",fontFamily:"inherit"}}>
           <IconeTexte icone={Info} style={{ marginRight: 6, color: '#1B6E62' }} />{detailNote}
@@ -12452,7 +12550,7 @@ const StockTab = memo(function StockTab({
         <SuiviLot
           lang={lang}
           lot={suiviLotOuvert}
-          jobs={Object.values(jobsByInventaire).flat().filter(j=>idLotDeJob(j)===suiviLotOuvert.id&&j.action==='publish')}
+          jobs={jobsDuSuivi(Object.values(jobsByInventaire).flat().filter(j=>idLotDeJob(j)===suiviLotOuvert.id&&j.action==='publish'))}
           articles={new Map(stockFiltreComplet.map(i=>[String(i.id),i]))}
           userId={user.id}
           supabase={supabase}

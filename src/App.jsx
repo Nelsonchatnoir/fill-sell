@@ -69,6 +69,8 @@ function effacerAttenteConfirmation(){
 // s'ordonne pas). Un id sans préfixe ISO (« SOURCE non-buildé » en dev) n'est
 // jamais flaggé.
 const APP_BUILD_ID = typeof __FILLSELL_APP_BUILD__ !== 'undefined' ? __FILLSELL_APP_BUILD__ : null;
+// Les exceptions et promesses rejetées non rattrapées sont signalées au serveur (5 par onglet au plus).
+ecouterEchecsNonRattrapes();
 // Build extension MINIMAL requis (injecté par Vite depuis scripts/build-id.mjs,
 // bumpé à chaque commit touchant chrome-extension/ — garde-fou au build).
 // C'est LUI que la bannière « extension obsolète » compare au build installé,
@@ -88,6 +90,8 @@ const buildIdTimestamp = (id) => {
   return m ? Date.parse(m[1]) : null;
 };
 import { supabase, supabaseUrl, supabaseAnonKey } from './lib/supabase';
+// (25/10, Jocabroc) Plus jamais d'échec invisible côté serveur : chaque action ratée est signalée (utils/actionRatee).
+import { ecouterEchecsNonRattrapes, viderEnAttente, signalerActionRatee } from './utils/actionRatee';
 import { supprimerMonCompte } from './compte/supprimerCompte';
 import { fusionnerReglages } from './utils/reglagesPlateformes';
 import { titreNorm } from './utils/rapprochementJumeau.js';
@@ -188,6 +192,8 @@ import { useSortieOpla } from './hooks/useSortieOpla';
 import { etatBascule } from './utils/basculeOplaDepop.js';
 // (25/10, décision de Nico) Leboncoin réservé aux adresses de remise en France.
 import { plateformesFermeesHorsFrance } from '../supabase/functions/_shared/lbc-adresse-france.js';
+// (25/10, balayage des erreurs visibles, règle 2) La pastille de l'onglet Stock suit la règle de « À régler ».
+import { articlesARegler, plateformesHorsJeu } from './utils/erreursVisibles';
 import { useDemandeAvis } from './hooks/useDemandeAvis';
 import { palierDuProfil, droitsDuPalier, palierLePlusHaut } from './utils/palier';
 import { lireToutesPagesRecentsDabord } from './utils/lireToutesPages';
@@ -1926,7 +1932,9 @@ export default function App({ loginOnly = false }){
   // Articles en attente d'une information (jobs 'needs_user'), comptés par
   // ARTICLE. Sert la pastille de l'entrée « Stock IA » — visible sans ouvrir
   // l'écran. 0 = aucune pastille, jamais un rond vide.
-  const [nbAComplete,setNbAComplete]=useState(0);
+  // (25/10) Les needs_user LUS (une lecture légère, fetchAll) ; le compte (nbAComplete, plus bas, après le stock)
+  // applique la règle de « À régler » (utils/erreursVisibles.articlesARegler).
+  const [jobsAttenteOnglet,setJobsAttenteOnglet]=useState([]);
   const [sales,setSales]=useState([]);
   const [loading,setLoading]=useState(true);
   const [appLoading,setAppLoading]=useState(true);
@@ -2635,6 +2643,8 @@ export default function App({ loginOnly = false }){
   );
   const [showBugReport,setShowBugReport]=useState(false);
   const [bugMessage,setBugMessage]=useState("");
+  // (25/10) Le même formulaire sert « Contacter le support » (une question) et « Signaler un bug ».
+  const [bugMode,setBugMode]=useState('bug');
   const [bugSending,setBugSending]=useState(false);
   const [selectedRange,setSelectedRange]=useState('6M');
   const [cancelStep,setCancelStep]=useState(0);
@@ -3430,12 +3440,16 @@ export default function App({ loginOnly = false }){
     // disparaît, c'est tout. On compte les ARTICLES distincts, pas les jobs :
     // un article bloqué sur deux plateformes ne compte qu'une fois, comme dans
     // l'écran Stock.
+    // ⛔ (25/10, balayage des erreurs visibles, règle 2) Elle comptait TOUS les needs_user, sans la règle de
+    // « À régler » : attentes automatiques (relevé attendu, plateforme écartée…), articles vendus ou supprimés —
+    // 10 articles sur 73 portés par des lignes « de notre fait ». Les colonnes que la règle lit sont relues ici (les
+    // needs_user d'un compte se comptent en dizaines, borne 1 000 inchangée) ; le compte se fait plus bas.
     supabase.from('cross_post_jobs')
-      .select('inventaire_id').eq('user_id',uid).eq('status','needs_user')
+      .select('id,inventaire_id,platform,action,status,error,created_at,platform_fields').eq('user_id',uid).eq('status','needs_user')
       .not('inventaire_id','is',null).limit(1000)
       .then(({data,error})=>{
         if(error)return;
-        setNbAComplete(new Set((data||[]).map(r=>String(r.inventaire_id))).size);
+        setJobsAttenteOnglet(data||[]);
       });
     // ── Drapeau d'affichage par profil (2026-09-15, lot 7 Opla) ─────────────
     // Lecture SÉPARÉE du gros chargement, et c'est le point important :
@@ -3482,6 +3496,8 @@ export default function App({ loginOnly = false }){
     if(APP_BUILD_ID&&!buildMarqueRef.current){
       buildMarqueRef.current=true;
       supabase.rpc('set_app_build',{p_build:APP_BUILD_ID}).then(()=>{}).catch(()=>{});
+      // Les échecs gardés sans session (session expirée) partent maintenant.
+      viderEnAttente(uid).catch(()=>{});
     }
     // LE PALIER, un seul calcul (utils/palier.js, 04/10) : is_business, puis
     // is_pro, puis l'expression premium canonique du 25/07 (is_premium OR
@@ -3953,6 +3969,14 @@ export default function App({ loginOnly = false }){
   const caComptabilise=totalCA(comptabilisables(salesForKpis));
   const avgM=caComptabilise>0?(totalM/caComptabilise)*100:0;
   const stock=useMemo(()=>items.filter(i=>i.statut==="stock"),[items]);
+  // (25/10, balayage des erreurs visibles, règle 2) La pastille de l'onglet Stock : les articles qui attendent
+  // VRAIMENT un geste — la règle de « À régler » (utils/erreursVisibles.articlesARegler) : jamais une attente
+  // automatique, jamais la publication d'un article vendu ou supprimé, jamais une plateforme hors jeu (Leboncoin
+  // fermé à ce compte, Opla quittée) ; un retrait qui attend la personne compte toujours.
+  const nbAComplete=useMemo(
+    ()=>articlesARegler(jobsAttenteOnglet,{enStock:new Set(stock.map(i=>String(i.id))),plateformesHorsJeu:plateformesHorsJeu({plateformesOuvertes,plateformesFermees})}).size,
+    [jobsAttenteOnglet,stock,plateformesOuvertes,plateformesFermees],
+  );
   const sold=useMemo(()=>items.filter(i=>i.statut==="vendu"),[items]);
   // La fiche d'un job en une lecture (11/10) : l'inventaire est désormais lu EN
   // ENTIER (jusqu'à 3 434 fiches) — un `items.find` par bandeau ne passe plus
@@ -9553,7 +9577,7 @@ export default function App({ loginOnly = false }){
           onToast={(message)=>{setToast({visible:true,message});setTimeout(()=>setToast({visible:false,message:''}),3000);}}
           ouvrirOffres={(origine)=>openUpgradeModal(null,origine??'reglages')}
           actionsCloud={actionsCloud}
-          ouvrirSignalementBug={()=>{setShowBugReport(true);setBugMessage("");}}
+          ouvrirSignalementBug={(mode)=>{setBugMode(mode==='support'?'support':'bug');setShowBugReport(true);setBugMessage("");}}
           resiliation={{
             etape:cancelStep,setEtape:setCancelStep,enCours:cancelLoading,
             lancer:handleCancelSubscription,
@@ -10115,13 +10139,13 @@ export default function App({ loginOnly = false }){
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:10000,display:"flex",alignItems:"flex-end"}} onClick={()=>setShowBugReport(false)}>
           <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:"20px 20px 0 0",width:"100%",padding:"24px 20px 32px",animation:"slideUpModal 0.3s cubic-bezier(0.22,1,0.36,1)"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
-              <div style={{fontSize:16,fontWeight:700,color:"#0D0D0D"}}>{lang==='fr'?'Signaler un bug 🐛':'Report a bug 🐛'}</div>
+              <div style={{fontSize:16,fontWeight:700,color:"#0D0D0D"}}>{bugMode==='support'?(lang==='fr'?'Contacter le support':'Contact support'):(lang==='fr'?'Signaler un bug 🐛':'Report a bug 🐛')}</div>
               <IconButton onClick={()=>setShowBugReport(false)} icon={X} size={32} bg={UI.chip} iconColor={UI.mute2} />
             </div>
             <textarea
               value={bugMessage}
               onChange={e=>setBugMessage(e.target.value)}
-              placeholder={lang==='fr'?'Décris le problème rencontré...':'Describe the issue...'}
+              placeholder={bugMode==='support'?(lang==='fr'?'Ton message : on te répond par e-mail.':'Your message: we reply by email.'):(lang==='fr'?'Décris le problème rencontré...':'Describe the issue...')}
               style={{width:"100%",minHeight:100,borderRadius:10,border:"1px solid #E5E7EB",padding:10,fontSize:13,fontFamily:"inherit",resize:"vertical",outline:"none",boxSizing:"border-box",color:"#111827"}}
             />
             <PrimaryButton
@@ -10144,6 +10168,7 @@ export default function App({ loginOnly = false }){
                   // un 401 déguisé en « erreur d'envoi » n'apprend rien à
                   // l'utilisateur, qui a une action concrète à faire.
                   if(!jwt){
+                    signalerActionRatee({action:'contact',motif:'session_expiree'});
                     setToast({visible:true,message:lang==='fr'?'Ta session a expiré — reconnecte-toi puis réessaie':'Your session expired — sign in again then retry'});
                     setTimeout(()=>setToast({visible:false,message:""}),5000);
                     return;
@@ -10151,9 +10176,9 @@ export default function App({ loginOnly = false }){
                   const res=await fetch(`${supabaseUrl}/functions/v1/send-bug-report`,{
                     method:"POST",
                     headers:{"Content-Type":"application/json","Authorization":`Bearer ${jwt}`,"apikey":supabaseAnonKey},
-                    body:JSON.stringify({message:bugMessage.trim(),userEmail:user?.email,platform:platform,userId:user?.id}),
+                    body:JSON.stringify({message:(bugMode==='support'?'[Contact support] ':'')+bugMessage.trim(),userEmail:user?.email,platform:platform,userId:user?.id}),
                   });
-                  if(!res.ok)throw new Error("send error");
+                  if(!res.ok){signalerActionRatee({action:'contact',motif:`http_${res.status}`,userId:user?.id??null});throw new Error("send error");}
                   setShowBugReport(false);setBugMessage("");
                   setToast({visible:true,message:lang==='fr'?'Merci ! On regarde ça rapidement 🙏':'Thanks! We\'ll look into it 🙏'});
                   setTimeout(()=>setToast({visible:false,message:""}),4000);

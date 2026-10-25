@@ -57,6 +57,8 @@ import { COIN_CONFIG_FALLBACK } from "../../components/ConversionModal";
 import { completerTexteDuVendeur, aCompleter as texteACompleter, RYTHME_LECTURE_VINTED_MS, RYTHME_LECTURE_EBAY_MS } from "../texteDuVendeur";
 // (22/10 soir, point 8 — Louis) Une fiche importée ne se prépare pas avant la lecture de son annonce d'origine.
 import { attenteLectureOrigine, demanderLectureOrigine, messageLectureOrigine } from "../lectureOrigine";
+// (25/10 — Louis) Le pont de la page vers l'extension : mort après une mise à jour, la page le dit.
+import { ecouterEtatPont } from "../../utils/vintedSync";
 import { plateformeOrigine } from "../../../supabase/functions/_shared/contenu-fiche.js";
 import { demarrerRelecture } from "../../utils/relectureBornee";
 import { propsStepperArticle } from "./propsArticle";
@@ -550,7 +552,7 @@ function EcranDuLot({
       // Retiré du lot pendant la lecture : il le reste.
       setEtats((prev) => (prev[suivant]?.phase === "lecture"
         ? { ...prev, [suivant]: attenteOrigine
-          ? { ...prev[suivant], phase: "origine", lecture: null, raison: messageLectureOrigine(attenteOrigine, en ? "en" : "fr") }
+          ? { ...prev[suivant], phase: "origine", lecture: null, origineDepuis: prev[suivant]?.origineDepuis ?? Date.now(), raison: messageLectureOrigine(attenteOrigine, en ? "en" : "fr", "preparation") }
           : { ...prev[suivant], phase: "attente", lecture: null } }
         : prev));
     })();
@@ -684,6 +686,31 @@ function EcranDuLot({
   };
   const retirerDuLot = (id) => { majEtat(id, { phase: "retire" }); };
 
+  // ── (25/10 — Louis) JAMAIS RETENU SANS ISSUE PAR LA LECTURE DE L'ANNONCE D'ORIGINE ──────────────────────────────
+  // Chez Louis, les 5 articles du lot sont restés « Lecture de ton annonce d'origine » de 10:29 à 10:50, bouton
+  // d'envoi grisé, sans un mot de plus : le pont de sa page vers l'extension était mort (onglet resté ouvert pendant
+  // une mise à jour) et le lecteur de secours de l'extension muet. Désormais :
+  //   · pont mort constaté (sonde de 1,5 s, ou l'extension ≥ 0.6.144 qui le dit) → la page le dit et propose de se
+  //     recharger, le lot gardé (même reprise qu'un passage au paiement) ;
+  //   · l'attente se compte (affichée), et passé 60 s chaque article offre ses issues : écrire sa description
+  //     soi-même (c'est le texte du vendeur), ou le retirer du lot — la relecture continue en arrière-plan.
+  const [pontMort, setPontMort] = useState(false);
+  useEffect(() => ecouterEtatPont(setPontMort), []);
+  const attendOrigine = lot ? lot.ids.some((id) => etats[id]?.phase === "origine") : false;
+  // Une horloge d'AFFICHAGE seulement (jamais une lecture de base), tant qu'un article attend.
+  const [horloge, setHorloge] = useState(() => Date.now());
+  useEffect(() => {
+    if (!attendOrigine) return undefined;
+    setHorloge(Date.now());
+    const t = setInterval(() => setHorloge(Date.now()), 15_000);
+    return () => clearInterval(t);
+  }, [attendOrigine]);
+  const rechargerPourLePont = () => {
+    try {
+      if (lot) localStorage.setItem(CLE_REPRISE_LOT(userId), JSON.stringify({ ids: lot.ids, plateformes: lot.plateformes, le: new Date().toISOString() }));
+    } catch { /* navigation privée : le lot se relance à la main */ }
+    try { window.location.reload(); } catch { /* sans conséquence */ }
+  };
   // ── LA LIVRAISON DU LOT (04/10, Louis) : poids, transporteurs, format ────
   // Le poids est celui de l'ARTICLE : écrit sur la fiche (inventaire.poids_g,
   // le seul champ Poids — Beebs le lit là au service du job) et sur la copie
@@ -1022,8 +1049,12 @@ function EcranDuLot({
       sous = [en ? "You can answer below as soon as a question shows up." : "Tu peux déjà répondre ci-dessous dès qu'une question apparaît."];
     } else {
       disabled = !prets.length;
+      // (25/10 — Louis) Rien de prêt parce que des articles attendent leur annonce d'origine : on le dit, pas « réponds ».
+      const enOrigine = lot.ids.filter((id) => etats[id]?.phase === "origine").length;
       cta = !prets.length
-        ? (en ? "Answer the questions to send" : "Réponds aux questions pour envoyer")
+        ? (enOrigine && !aCompleter.length
+          ? (en ? "Reading your original listings…" : "Lecture de tes annonces d'origine…")
+          : (en ? "Answer the questions to send" : "Réponds aux questions pour envoyer"))
         : aCompleter.length
           ? (en
               ? `Send ${prets.length > 1 ? `the ${prets.length} ready items` : "the ready item"} (${annoncesPretes} listing${annoncesPretes > 1 ? "s" : ""})`
@@ -1032,6 +1063,11 @@ function EcranDuLot({
       onCta = envoyer;
       if (aCompleter.length && prets.length) sous = [en ? `The ${aCompleter.length} others stay in your stock, prepared: nothing is lost.` : `${aCompleter.length > 1 ? `Les ${aCompleter.length} autres restent` : "L'autre reste"} dans ton stock, préparé${aCompleter.length > 1 ? "s" : ""} : rien n'est perdu.`];
       else if (prets.length) sous = [en ? "The FillSell extension then posts them from your computer, one after the other." : "L'extension FillSell les dépose ensuite depuis ton ordinateur, une après l'autre."];
+      if (!prets.length && enOrigine && !aCompleter.length) {
+        sous = [pontMort
+          ? (en ? "Reload the page (above): your batch is kept." : "Recharge la page (plus haut) : ton lot est gardé.")
+          : (en ? "Each item is ready with YOUR text as soon as its listing is read. If reading drags on, each item lets you write the description yourself or remove it from the batch." : "Chaque article est prêt avec TON texte dès que son annonce est lue. Si la lecture traîne, chaque article te propose d'écrire la description toi-même ou de le retirer du lot.")];
+      }
     }
   } else if (etape === "envoi") {
     cta = en ? `Queuing… ${envoi?.fait ?? 0} of ${envoi?.total ?? 0}` : `Mise en file… ${envoi?.fait ?? 0} sur ${envoi?.total ?? 0}`;
@@ -1104,6 +1140,7 @@ function EcranDuLot({
               colisVinted={colisVinted} choisirColisVinted={choisirColisVinted}
               userId={userId} exclusDepop={exclusDepop} mettreDeCote={mettreDeCote} signalerErreurBloc={signalerErreurBloc}
               choixPoidsLbc={poidsLbc.choix} choisirPoidsLbc={poidsLbc.choisir} poidsExigeLbc={poidsLbc.exige}
+              pontMort={pontMort} horloge={horloge} rechargerPourLePont={rechargerPourLePont}
             />
           )}
           {etape === "fin" && lot && (
@@ -1318,6 +1355,8 @@ export function EcranAvant({
   choixPoidsLbc = "estimer", choisirPoidsLbc = () => {}, poidsExigeLbc = false,
   // (18/10 nuit) Ce que la mémoire « compte × catégorie » a posé — reçu, jamais supposé.
   posesDuLot = [], changerPosesDuLot = () => {},
+  // (25/10 — Louis) Le pont vers l'extension, l'horloge d'affichage et les issues d'une attente d'origine — reçus.
+  pontMort = false, horloge = 0, rechargerPourLePont = null,
 }) {
   const total = lot.ids.length;
   // Un bloc commun qui casse est remplacé par une phrase ; le lot continue.
@@ -1338,6 +1377,7 @@ export function EcranAvant({
   const autres = lignes.filter((id) => !lot.ids.includes(id));
   return (
     <>
+      {pontMort && !envoi ? <BandeauPontMort en={en} recharger={rechargerPourLePont} /> : null}
       {envoi ? (
         <BarreProgression
           titre={en ? "Queuing your listings" : "Mise en file de tes annonces"}
@@ -1422,11 +1462,63 @@ export function EcranAvant({
           <BarriereErreur key={id} nom={`ligne ${id}`} onErreur={(e) => mettreDeCote(id, e, "ligne")}
             secours={<ArticleMisDeCote en={en} item={parId.get(id)?.item} ligne />}>
             <LigneArticle id={id} en={en} L={L} item={parId.get(id)?.item} st={etats[id] ?? { phase: "attente" }} m={moteurs.get(id)}
-              envoi={envoi} retirerDuLot={retirerDuLot} />
+              envoi={envoi} retirerDuLot={retirerDuLot} horloge={horloge} pontMort={pontMort} />
           </BarriereErreur>
         ))}
       </div>
     </>
+  );
+}
+
+/** (25/10 — Louis) Le pont de cette page vers l'extension est mort : on le dit, et on propose la seule issue utile. */
+function BandeauPontMort({ en, recharger }) {
+  return (
+    <Carte gravite="geste" titre={en ? "Reload this page" : "Recharge cette page"}>
+      <div className="fsn-card-p">{en
+        ? "Your FillSell extension has just been updated: this page can no longer talk to it, so it cannot read your Vinted listings from here. Reload the page — your batch is kept, and the reading resumes on its own."
+        : "Ton extension FillSell vient d'être mise à jour : cette page ne lui parle plus, elle ne peut donc plus lire tes annonces Vinted d'ici. Recharge la page — ton lot est gardé, et la lecture reprend toute seule."}</div>
+      {recharger ? (
+        <div className="fsn-btn-row">
+          <Bouton onClick={recharger}>{en ? "Reload the page" : "Recharger la page"}</Bouton>
+        </div>
+      ) : null}
+    </Carte>
+  );
+}
+
+/** Depuis combien de temps (mots de l'écran). */
+function depuisMots(ms, en) {
+  const s = Math.max(0, Math.round(ms / 1000));
+  if (s < 60) return en ? `${s} s` : `${s} s`;
+  const m = Math.floor(s / 60);
+  return en ? `${m} min` : `${m} min`;
+}
+
+/** L'attente d'une annonce d'origine : ce qui se passe, depuis quand, et — passé 60 s — les issues. */
+function AttenteOrigine({ id, en, st, horloge, pontMort, retirerDuLot }) {
+  // (25/10, méthode de Nico) Jamais « Écrire ma description » pendant l'attente : l'annonce d'origine n'est pas encore
+  // lue, son texte existe peut-être. Lue sans texte, l'article quitte cette attente tout seul (préparé, texte rédigé à
+  // relire). Après 60 s, la seule issue est de le sortir du lot — rien n'est écrit à la place du vendeur.
+  // L'horloge vient du parent (rafraîchie toutes les 15 s pendant l'attente) : jamais Date.now() pendant le rendu.
+  const ecoule = st.origineDepuis && horloge ? Math.max(0, horloge - st.origineDepuis) : 0;
+  const issues = pontMort || ecoule >= 60_000;
+  return (
+    <div className="fsl-origine">
+      <small>
+        {pontMort
+          ? (en ? "Your extension can't be reached from this page (it was just updated): reload the page above."
+            : "L'extension ne répond plus à cette page (elle vient d'être mise à jour) : recharge la page, plus haut.")
+          : (en ? `Reading in progress for ${depuisMots(ecoule, en)} — FillSell keeps trying on its own.`
+            : `Lecture en cours depuis ${depuisMots(ecoule, en)} — FillSell réessaie tout seul.`)}
+      </small>
+      {issues ? (
+        <div className="fsn-btn-row">
+          <button type="button" className="fsn-btn fsn-btn--secondary fsn-btn--sm" onClick={() => retirerDuLot(id)}>
+            {en ? "Remove from this batch" : "Retirer du lot"}
+          </button>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -1451,7 +1543,7 @@ function ArticleMisDeCote({ en, item, ligne = false }) {
 }
 
 // Une ligne d'article (préparé, en file, laissé de côté…).
-function LigneArticle({ id, en, L, item, st, m, envoi, retirerDuLot }) {
+function LigneArticle({ id, en, L, item, st, m, envoi, retirerDuLot, horloge = 0, pontMort = false }) {
   const pfs = st.envoyees ?? (m ? [...(m.plateformesPubliables ?? [])] : []);
   return (
     <div className="fsl-art">
@@ -1464,6 +1556,9 @@ function LigneArticle({ id, en, L, item, st, m, envoi, retirerDuLot }) {
             : pfs.length && ["pret", "envoi", "envoye"].includes(st.phase) ? pfs.map(NOM).join(" · ")
             : null}
         </small>
+        {st.phase === "origine" && !envoi ? (
+          <AttenteOrigine id={id} en={en} st={st} horloge={horloge} pontMort={pontMort} retirerDuLot={retirerDuLot} />
+        ) : null}
       </div>
       {PHASES_EN_PREPARATION.has(st.phase) ? <span className="fsn-spin" aria-hidden="true" /> : null}
       <Puce ton={TON_PHASE[st.phase] ?? "mute"}>{L[st.phase] ?? st.phase}</Puce>
@@ -1536,6 +1631,10 @@ export function ArticleAQuestions({ id, en, item, m, st, decision, decider, tran
                 // lire (pas d'extension : un téléphone) — on dit où elle se lit.
                 : lecture?.note === "vinted_sans_extension"
                   ? (en ? "Your description is on Vinted and is read from your computer, where the FillSell extension runs. This one was written from your photos and your title: check it, or prepare this batch from your computer." : "Ta description est sur Vinted et se lit depuis ton ordinateur, là où tourne l'extension FillSell. Celle-ci a été écrite d'après tes photos et ton titre : relis-la, ou prépare ce lot depuis ton ordinateur.")
+                  : lecture?.note === "pont_mort"
+                    ? (en ? "Your FillSell extension was just updated and this page can no longer reach it, so your Vinted description couldn't be read from here. This one was written from your photos and your title: check it — or reload the page to read yours." : "Ton extension FillSell vient d'être mise à jour et cette page ne la joint plus : ta description Vinted n'a pas pu être lue d'ici. Celle-ci a été écrite d'après tes photos et ton titre : relis-la — ou recharge la page pour lire la tienne.")
+                  : lecture?.note === "sans_description"
+                    ? (en ? "Your Vinted listing has no description. This one was written from your photos and your title: check it before it goes out." : "Ton annonce Vinted n'a pas de description. Celle-ci a été écrite d'après tes photos et ton titre : relis-la avant qu'elle parte.")
                   : lecture?.note === "vinted_echec"
                     ? (en ? "Your Vinted description couldn't be read this time. This one was written from your photos and your title: check it before it goes out." : "Ta description Vinted n'a pas pu être lue cette fois. Celle-ci a été écrite d'après tes photos et ton titre : relis-la avant qu'elle parte.")
                     : (en ? "Your description isn't in FillSell: this one was written from your photos and your title." : "Ta description n'est pas dans FillSell : celle-ci a été écrite d'après tes photos et ton titre."))

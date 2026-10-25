@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // louis-seller, 25/10 10:29-10:35 : lot « Publier 5 articles » arrêté sur « Lecture de ton annonce d'origine » ; les
 // 5 lectures demandées n'étaient faites qu'APRÈS la boucle des tâches du cycle (et ratées sans trace). La règle :
-//   · serveur (toutes versions ≥ 0.6.130) : une lecture Vinted demandée il y a < 15 min, pas faite, < 3 essais, passe
+//   · serveur (extensions ≥ 0.6.144 depuis le 25/10 après-midi — avant, le lecteur ne lisait rien) : une lecture Vinted demandée il y a < 15 min, pas faite, < 3 essais, passe
 //     devant — le cycle ne porte que ce qui ne peut pas attendre (passeAvantLaSynchro), jamais pendant une pause
 //     anti-robot, jamais vers une extension qui ne sait pas lire ;
 //   · extension (0.6.143) : lecture AVANT la boucle des tâches quand elle est demandée récemment, pas deux séries
@@ -23,7 +23,9 @@ console.log("1. Serveur — get-pending-jobs");
   const i = gpj.indexOf("LA LECTURE DE L'ANNONCE D'ORIGINE PASSE DEVANT LA FILE");
   const bloc = i >= 0 ? gpj.slice(i, i + 4000) : "";
   verifier(bloc.length > 0, "le bloc est là");
-  verifier(/!compteEnPauseAr && versionAuMoins\(version, "0\.6\.130"\)/.test(bloc), "jamais pendant une pause anti-robot, jamais avant la 0.6.130");
+  // (25/10 après-midi) Seulement vers une extension qui lit VRAIMENT (≥ 0.6.144) : de la 0.6.130 à la 0.6.143, son
+  // lecteur ne lisait rien (restRequest rendait null), et retenir la file pour elle la gelait jusqu'à 15 min.
+  verifier(/!compteEnPauseAr && versionAuMoins\(version, LECTURE_FOND_VERSION_MIN\)/.test(bloc), "jamais pendant une pause anti-robot, seulement vers une extension qui lit vraiment (≥ 0.6.144)");
   verifier(/\.from\("lectures_origine_demandees"\)[\s\S]{0,200}\.is\("faite_le", null\)\.lt\("essais", 3\)/.test(bloc), "seulement une lecture pas faite, moins de 3 essais");
   verifier(/15 \* 60_000/.test(bloc), "seulement une demande de moins de 15 min");
   verifier(/out = out\.filter\(\(j\) => passeAvantLaSynchro\(j\)\)/.test(bloc), "retraits et republications retirées partent (passeAvantLaSynchro)");

@@ -291,3 +291,10 @@
   visible, utils/relectureBornee.js) : un message reçu apparaît sans rouvrir l'écran. Le relevé du poste reste à
   10 min ± 90 s.
 
+
+## 25/10 — bordereaux des comptes Pro/Business hors bêta : la copie du PDF est refusée (`copie_http_400`)
+- Observé : les bordereaux sont ouverts aux Pro/Business depuis le 24/10 (`bordereaux_ouverts_pour`), mais la politique de
+  stockage `bordereaux_insert` n'accepte que la bêta messagerie (`messagerie_beta`) — Jocabroc : 7 demandes, toutes
+  `copie_http_400` (24-25/10) ; 26 échecs sur 5 comptes depuis le 25/10 00:27. Correctif écrit, NON appliqué :
+  `supabase/migrations/PROPOSITION_20261025_bordereaux_copie_pro_business.sql.txt` (`messagerie_beta(auth.uid()) OR
+  bordereaux_ouverts_pour(auth.uid(), 'vinted')`) — feu vert nommé de Nico.

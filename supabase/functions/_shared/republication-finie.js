@@ -9,7 +9,11 @@
 // Règle (get-pending-jobs pour une tâche en file, handler-watch pour une tâche
 // déjà passée à la personne) : une republication à l'étape 'recreated' qui
 // porte le numéro de sa nouvelle annonce, distinct de l'ancienne, est close
-// « published » ; sans ce numéro, rien n'est conclu. ES module sans import.
+// « published » ; sans ce numéro, rien n'est conclu.
+// (25/10, Thibault 44d125ac) Les marqueurs de l'attente tombent par la liste
+// UNIQUE (_shared/etat-terminal.js) — le brut technique est archivé, plus jeté.
+
+import { champsAttenteClose } from "./etat-terminal.js";
 
 /** La republication est-elle prouvée finie (nouvelle annonce connue) ? */
 export function republicationFinie(job) {
@@ -27,9 +31,9 @@ export function republicationFinie(job) {
 
 /** Les platform_fields d'une republication close « finie » (attente levée, trace posée). */
 export function champsRepublicationFinie(pf, annonce, posePar, maintenantIso = new Date().toISOString()) {
-  const out = { ...(pf ?? {}) };
-  for (const k of ["needs_user_source", "needsUserField", "needsUserAttempts", "next_action_after", "processing_since",
-    "error_technique", "needs_user_actif_ms", "needs_user_tick_le", "needs_user_vu_le", "needs_user_vu_erreur", "needs_user_sans_motif"]) delete out[k];
+  const { pf: out } = champsAttenteClose(pf, { par: posePar });
+  // Propres à cette clôture (comme avant le 25/10) : la tâche ne repart jamais, ni ses essais ni sa prise en charge.
+  for (const k of ["needsUserAttempts", "processing_since"]) delete out[k];
   out.republication_finie = { le: maintenantIso, annonce: String(annonce), pose_par: posePar };
   return out;
 }

@@ -81,7 +81,8 @@ export default function ReglagesPage({
   adresseLbc, setAdresseLbc,
   plateformesOuvertes,
   // (25/10, décision de Nico) Fermées à ce compte (App.jsx, depuis l'adresse) : Leboncoin d'une adresse de remise
-  // hors de France. Sa ligne de « Mes plateformes » reste et dit pourquoi ; la republication ne la propose plus.
+  // hors de France. (25/10 après-midi) Elle disparaît de « Mes plateformes » et de son compteur ; la republication
+  // ne la propose plus ; seule la phrase d'Expédition la nomme.
   plateformesFermees = [],
   // (02/10) Dressing Opla synchronisé : Opla garde sa ligne (session,
   // autorisation) pour que la synchronisation continue. Sinon, plus d'Opla.
@@ -114,12 +115,19 @@ export default function ReglagesPage({
   // UNE SEULE RÉPONSE À « QUELLES PLATEFORMES ? » : celle du Stock
   // (utils/stockFiltres.plateformesDuCompte), jamais une liste recopiée ici —
   // c'est exactement la divergence corrigée le 17/09 (Opla absente des cartes).
-  const plateformesSession = useMemo(() => plateformesDeReleve(plateformesOuvertes, oplaRelie), [plateformesOuvertes, oplaRelie]);
+  // (25/10, Nico : « Je veux que Leboncoin DISPARAISSE de tous les choix pour une adresse hors de France […]
+  // réglages, partout ») Sans les plateformes fermées à ce compte : plus de ligne grisée « réservé à la France »
+  // dans Mes plateformes, et Leboncoin ne compte plus dans « comptes connectés x sur N » (sessions.total et
+  // vérité serveur lisent cette liste). La phrase d'Expédition reste (lbcHorsFrance, plus bas).
+  const plateformesSession = useMemo(
+    () => plateformesDeReleve(plateformesOuvertes, oplaRelie).filter((p) => !(plateformesFermees ?? []).includes(p)),
+    [plateformesOuvertes, oplaRelie, plateformesFermees],
+  );
   // (10/10) Les plateformes que l'app PROPOSE à ce compte (même réponse que la
   // publication) : la republication automatique Depop n'a de ligne que là où
   // Depop est ouverte (extension ≥ 0.6.106, utils/basculeOplaDepop.js).
-  // (25/10) Sans Leboncoin pour une adresse de remise hors de France (plateformesFermees). `plateformesSession`,
-  // elle, la garde : sa ligne dit « réservé aux adresses en France ».
+  // (25/10) Sans Leboncoin pour une adresse de remise hors de France (plateformesFermees) — comme
+  // `plateformesSession` ci-dessus depuis le 25/10 après-midi.
   const plateformesCompte = useMemo(
     () => plateformesDuCompte(plateformesOuvertes ?? []).filter((p) => !(plateformesFermees ?? []).includes(p)),
     [plateformesOuvertes, plateformesFermees],
@@ -243,7 +251,8 @@ export default function ReglagesPage({
       resume: [adresseLbc?.cp, adresseLbc?.ville].filter(Boolean).join(' ').trim(),
     },
     setAdresseLbc,
-    // (25/10) Adresse de remise hors de France : Leboncoin n'est ni proposé ni tenté (Mes plateformes le dit).
+    // (25/10) Adresse de remise hors de France : Leboncoin n'est ni proposé ni tenté (la phrase d'Expédition le dit ;
+    // Mes plateformes ne la montre plus).
     lbcHorsFrance: (plateformesFermees ?? []).includes('leboncoin'),
     sessions, plateformesSession, verite,
     // (02/10) Opla encore proposée à la publication (avant la sortie du 10/10).

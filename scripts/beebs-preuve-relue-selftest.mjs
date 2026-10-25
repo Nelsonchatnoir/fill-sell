@@ -121,7 +121,9 @@ console.log('4 bis. Retrait : « déjà absente » n\'est pas « retirée » tan
   ok(Date.parse(r1.ecrit[0]?.champs?.platform_fields?.next_action_after) - Date.now() > 55 * 60_000, '   prochaine vérification ~1 h, aucun essai consommé (needsUserAttempts intact)');
   ok((await essai({ vues: [{ id: 'a1' }], depots: [{ published_at: ilYa(1), vu_en_ligne_le: null }] })).garde === false, 'vue en ligne par un relevé : « déjà retirée » comme avant');
   ok((await essai({ depots: [{ published_at: ilYa(5), vu_en_ligne_le: ilYa(4) }] })).garde === false, 'vue en ligne après le dépôt : « déjà retirée » comme avant');
-  ok((await essai({ depots: [{ published_at: ilYa(80), vu_en_ligne_le: null }] })).garde === false, 'dépôt de plus de 72 h : « déjà retirée » (Beebs a tranché)');
+  // (25/10) 7 jours, plus 72 h : un dépôt jamais vu en ligne peut le devenir jusqu'à 126 h après sa sortie de vérification.
+  ok((await essai({ depots: [{ published_at: ilYa(80), vu_en_ligne_le: null }] })).garde === true, 'dépôt de 80 h jamais vu en ligne : retrait GARDÉ (mesuré : en ligne jusqu’à 126 h après)');
+  ok((await essai({ depots: [{ published_at: ilYa(7 * 24 + 2), vu_en_ligne_le: null }] })).garde === false, 'dépôt de plus de 7 jours : « déjà retirée » (Beebs a tranché)');
   ok((await essai({ depots: [] })).garde === false, 'pas un dépôt FillSell : comme avant');
   ok((await essai({ panne: true, depots: [{ published_at: ilYa(1) }] })).garde === false, 'lecture impossible : comme avant (jamais bloqué)');
   ok(/result\?\.success && job\.platform === "beebs" && result\.preuveRetrait\?\.moment === "deja_absente"\s*&& await beebsAbsenteParModeration\(job, accessToken\)\)/.test(b), 'branchée avant la clôture « deleted » du retrait');

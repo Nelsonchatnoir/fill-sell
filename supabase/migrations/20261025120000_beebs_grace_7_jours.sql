@@ -1,11 +1,19 @@
--- PROPOSITION (NON APPLIQUÉE, hors dépôt) — 25/10, N11 : la grâce Beebs de trancher_publications_sans_lien passe de
--- 72 h à 7 jours. Corps relu en prod (pg_get_functiondef, 25/10 matin) : deux lignes changent : v_grace, et le message Beebs « trois jours après le dépôt » → « sept jours ».
--- Pourquoi : mesuré le 25/10 sur 31 jours (1 452 dépôts Beebs lus avant/après par l’extension), une annonce sortie
--- de « en vérification » sans être en ligne peut le devenir 48 à 126 h plus tard (18 cas) ; la boucle du 20/10
--- (dépôts AVEC lien, jamais vus par un relevé) les déclarerait refusées à 72 h — job « failed », publication rendue,
--- annonce pourtant mise en ligne ensuite et plus suivie (double vente possible). À 7 jours : 0 faux refus.
--- Application (feu vert de Nico) : npx supabase db query --linked -f <ce fichier>, puis migration repair.
--- Inverse : le même corps avec interval '72 hours'.
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 20261025120000_beebs_grace_7_jours   (feu vert NOMMÉ de Nico, 25/10 ~13:05 : « PROPOSITION_20261025_beebs_grace_7_jours. Applique-la. »)
+-- (25/10, mesure N11) LA GRÂCE BEEBS DE trancher_publications_sans_lien PASSE DE 72 H À 7 JOURS.
+-- Un dépôt Beebs AVEC lien, jamais vu en ligne par un relevé, était déclaré « refusé » (job failed, publication rendue)
+-- 72 h après le dépôt. Mesuré le 25/10 sur 31 jours (1 452 dépôts Beebs lus avant/après par l'extension) : 18 annonces
+-- sorties de « en vérification » sans être en ligne le sont devenues 48 à 126 h plus tard — déclarées refusées, elles
+-- restaient en vente sans être suivies (double vente possible). À 7 jours : 0 faux refus sur 1 293 dépôts vus en ligne.
+-- Deux lignes changent, rien d'autre : v_grace (Beebs 7 jours, ailleurs 4 h inchangé) et le message Beebs
+-- (« trois jours » → « sept jours »). Corps relu en prod (pg_get_functiondef) le 25/10 à 13:06 : identique à la
+-- proposition hors ces deux lignes.
+-- Application : npx supabase db query --linked -f supabase/migrations/20261025120000_beebs_grace_7_jours.sql
+--               npx supabase migration repair --linked --status applied 20261025120000
+-- Essai à blanc (ROLLBACK) : scripts/essais/20261025120000_essai.sql
+-- Inverse : supabase/rollbacks/20261025120000_beebs_grace_7_jours_INVERSE.sql (le corps de prod du 25/10 13:06, 72 h)
+-- ═══════════════════════════════════════════════════════════════════════════
+SET LOCAL lock_timeout = '5s';
 CREATE OR REPLACE FUNCTION public.trancher_publications_sans_lien(p_user uuid, p_platform text, p_run_id uuid)
  RETURNS jsonb
  LANGUAGE plpgsql
