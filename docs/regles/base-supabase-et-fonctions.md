@@ -328,3 +328,24 @@ authenticated;` (le déclencheur le fait aussi). Inverse du régime : `supabase/
   boutique Vinted / Leboncoin / Beebs / eBay / Depop et les liens entre comptes partent avec le compte ; une boutique
   ne reste jamais « prise » par un compte qui n'existe plus. 7 réservations orphelines libérées le 23/10 (sauvegarde
   `_backup_2410_boutiques_orphelines`, inverse `supabase/rollbacks/20261024100000_*_INVERSE.sql`).
+
+## ⛔ 25/10 nuit — l'origine d'une inscription se pose par RPC et survit au compte (point 6 ; migration `20261025013000`, appliquée 01:30)
+- `authenticated` n'écrit plus `profiles.acquisition_*` (GRANT par colonnes, migration 20260706400000) : l'UPDATE de l'app
+  rendait un 403 avalé à chaque session d'un compte de moins de 30 jours (0 origine sur 3 229 profils ; lizzyguzzy :
+  `PATCH /rest/v1/profiles` → 403 le 23/10 à 22:11:58). L'origine passe par `poser_origine_inscription` (SECURITY
+  DEFINER : la personne connectée, son seul profil, une fois, compte de moins de 30 jours, capture antérieure au compte,
+  valeurs bornées, « @ » masqué, referrer réduit au domaine). App : web au push, mobile à l'OTA.
+- Un profil supprimé laisse UNE ligne ANONYME dans `origines_comptes_supprimes` (jour, mois d'inscription, ancienneté,
+  origine, plateforme, fournisseur, palier, canal de paiement — ni e-mail, ni identifiant, ni horodatage précis),
+  écrite par un déclencheur BEFORE DELETE qui ne bloque JAMAIS une suppression. Les statistiques d'acquisition se lisent
+  dans la vue `origines_inscriptions` (vivants + partis), service_role seul.
+- Une table « serveur seulement » le DIT : le déclencheur d'événement du 30/10 donne SELECT, INSERT, UPDATE, DELETE à
+  service_role ; une archive écrite par un déclencheur ou des fonctions SECURITY DEFINER retire l'écriture à service_role
+  (`REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER … FROM service_role`) et porte le marqueur
+  « droits : serveur seulement — <table> » (selftest `tables-droits-explicites`).
+
+## 25/10 nuit — esm.sh peut refuser de construire un paquet (« no space left on device »)
+- Un déploiement dont un import esm.sh n'est pas déjà construit échoue (« Failed to bundle the function … 500 ») ; la
+  version en prod reste intacte. Ne pas changer l'import d'une fonction de paiement pour contourner : vérifier
+  `curl -s -o /dev/null -w "%{http_code}" -H "User-Agent: Deno/2.1.4" https://esm.sh/<paquet>@<version>` (200 attendu),
+  puis redéployer. Cas du 25/10 : apple-iap-webhook (`@peculiar/x509@1.9.0`), trois essais de 01:35 à 01:50.

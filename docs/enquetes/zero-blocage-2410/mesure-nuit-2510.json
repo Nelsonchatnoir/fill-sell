@@ -1,0 +1,933 @@
+{
+ "mesure": "zéro blocage",
+ "libelle": "nuit-2510",
+ "fait_le": "2026-10-24T23:53:24.104Z",
+ "depuis": "2026-10-18",
+ "jours_actifs": 14,
+ "en_cours": {
+  "total_nous": 23,
+  "par_cause": {
+   "utilisateur · connexion · vinted · republish": {
+    "n": 17,
+    "comptes": 3
+   },
+   "utilisateur · compte_a_finir · depop · publish": {
+    "n": 11,
+    "comptes": 2
+   },
+   "nous · marque_hors_menu · vinted · republish": {
+    "n": 10,
+    "comptes": 4
+   },
+   "plateforme · moderation · beebs · publish": {
+    "n": 10,
+    "comptes": 2
+   },
+   "utilisateur · connexion · ebay · publish": {
+    "n": 9,
+    "comptes": 3
+   },
+   "utilisateur · connexion · beebs · publish": {
+    "n": 8,
+    "comptes": 2
+   },
+   "utilisateur · compte_a_finir · ebay · publish": {
+    "n": 6,
+    "comptes": 3
+   },
+   "utilisateur · connexion · leboncoin · republish": {
+    "n": 4,
+    "comptes": 1
+   },
+   "utilisateur · connexion · depop · publish": {
+    "n": 4,
+    "comptes": 1
+   },
+   "nous · format_colis_refuse · vinted · republish": {
+    "n": 3,
+    "comptes": 2
+   },
+   "nous · depot_non_confirme · leboncoin · publish": {
+    "n": 2,
+    "comptes": 1
+   },
+   "plateforme · moderation · leboncoin · publish": {
+    "n": 2,
+    "comptes": 1
+   },
+   "utilisateur · connexion · vinted · publish": {
+    "n": 2,
+    "comptes": 2
+   },
+   "utilisateur · connexion · depop · delete": {
+    "n": 1,
+    "comptes": 1
+   },
+   "utilisateur · paiement_plateforme · leboncoin · publish": {
+    "n": 1,
+    "comptes": 1
+   },
+   "nous · isbn · vinted · publish": {
+    "n": 1,
+    "comptes": 1
+   },
+   "utilisateur · compte_restreint · vinted · republish": {
+    "n": 1,
+    "comptes": 1
+   },
+   "nous · marque_inconnue · vinted · republish": {
+    "n": 1,
+    "comptes": 1
+   },
+   "utilisateur · reglage_du_compte · ebay · publish": {
+    "n": 1,
+    "comptes": 1
+   },
+   "nous · selecteur_casse · vinted · republish": {
+    "n": 1,
+    "comptes": 1
+   },
+   "utilisateur · reglage_du_compte · beebs · publish": {
+    "n": 1,
+    "comptes": 1
+   },
+   "nous · champ_demande · vinted · republish": {
+    "n": 1,
+    "comptes": 1
+   },
+   "utilisateur · connexion · vinted · delete": {
+    "n": 1,
+    "comptes": 1
+   },
+   "nous · echec_inexplique · depop · publish": {
+    "n": 1,
+    "comptes": 1
+   },
+   "nous · introuvable_a_confirmer · leboncoin · republish": {
+    "n": 1,
+    "comptes": 1
+   },
+   "nous · echec_inexplique · ebay · publish": {
+    "n": 1,
+    "comptes": 1
+   },
+   "nous · introuvable_a_confirmer · vinted · republish": {
+    "n": 1,
+    "comptes": 1
+   },
+   "utilisateur · plateforme_desactivee · depop · publish": {
+    "n": 1,
+    "comptes": 1
+   },
+   "utilisateur · plateforme_desactivee · ebay · publish": {
+    "n": 1,
+    "comptes": 1
+   }
+  },
+  "ids_nous": {
+   "marque_hors_menu · vinted · republish": [
+    "f2d57dc7-7737-4a19-ab7a-80053213f161",
+    "2b0ecf70-a28d-4cc4-b9d8-bec2f8ac4dea",
+    "8befd876-629e-49b5-b8da-d7298d278dd0",
+    "ee9a3c87-9f94-4e78-8f43-9cc8c4616499",
+    "d81ee2de-6a92-4912-81df-db51d13dd52b",
+    "9b24a685-e7c8-44a6-888d-21aff96b872a",
+    "c3af418b-915a-4af9-af4f-74ce21a7d2e9",
+    "5b179870-b2bc-42ad-821f-655e812dd02a",
+    "3f6b8afd-0e3a-4ee9-be20-3707e99453b8",
+    "c9d1ecc2-66e4-47ad-97a4-cea0449370ea"
+   ],
+   "depot_non_confirme · leboncoin · publish": [
+    "8bfc0b4f-7e6c-4cab-9e61-896b5cf3103e",
+    "580e6522-fc66-47e9-95db-eb8bca8518c3"
+   ],
+   "isbn · vinted · publish": [
+    "578a6eb0-2fff-4b21-9daa-da6732e24fc4"
+   ],
+   "format_colis_refuse · vinted · republish": [
+    "110c27ae-a4bc-4ef3-b4bc-fed559011655",
+    "5ad5bbb1-3654-450b-a465-f60f8a52ddda",
+    "c28e2c60-be0f-4e94-b59d-b620debb25dd"
+   ],
+   "marque_inconnue · vinted · republish": [
+    "770bed7f-f9ee-4218-9a54-ee103da1da69"
+   ],
+   "selecteur_casse · vinted · republish": [
+    "3730ef49-d394-4cdf-beaf-367c557a530c"
+   ],
+   "champ_demande · vinted · republish": [
+    "dca41766-e05d-4c37-8f0b-7c02d85c2dde"
+   ],
+   "echec_inexplique · depop · publish": [
+    "e41ec2a1-98a9-4886-949d-4e4645778995"
+   ],
+   "introuvable_a_confirmer · leboncoin · republish": [
+    "f33c3f24-8952-464a-a178-d6f6f0395b97"
+   ],
+   "echec_inexplique · ebay · publish": [
+    "c64e5596-b3f1-4a1f-89a8-def7092b519d"
+   ],
+   "introuvable_a_confirmer · vinted · republish": [
+    "04659f4b-d94c-4e3f-aea5-7915b56a6d2b"
+   ]
+  }
+ },
+ "historique": {
+  "jobs": 324,
+  "total_nous": 188,
+  "par_cause": {
+   "utilisateur · compte_a_finir · depop · publish": {
+    "n": 80,
+    "comptes": 4
+   },
+   "nous · champ_demande · depop · publish": {
+    "n": 31,
+    "comptes": 5
+   },
+   "nous · capture_depop_frais_de_port · depop · republish": {
+    "n": 26,
+    "comptes": 1
+   },
+   "plateforme · moderation · beebs · publish": {
+    "n": 24,
+    "comptes": 3
+   },
+   "utilisateur · plateforme_desactivee · depop · publish": {
+    "n": 19,
+    "comptes": 2
+   },
+   "nous · champ_demande · beebs · publish": {
+    "n": 16,
+    "comptes": 8
+   },
+   "utilisateur · connexion · vinted · republish": {
+    "n": 14,
+    "comptes": 3
+   },
+   "nous · capture_depop_incomplete · depop · republish": {
+    "n": 13,
+    "comptes": 1
+   },
+   "nous · lecture_annonce_echouee · leboncoin · republish": {
+    "n": 11,
+    "comptes": 4
+   },
+   "nous · champ_demande · vinted · publish": {
+    "n": 10,
+    "comptes": 4
+   },
+   "nous · lecture_annonce_echouee · beebs · republish": {
+    "n": 9,
+    "comptes": 1
+   },
+   "nous · valeur_refusee · ebay · publish": {
+    "n": 8,
+    "comptes": 4
+   },
+   "nous · categorie · ebay · publish": {
+    "n": 8,
+    "comptes": 2
+   },
+   "utilisateur · connexion · depop · publish": {
+    "n": 6,
+    "comptes": 1
+   },
+   "nous · echec_inexplique · vinted · republish": {
+    "n": 5,
+    "comptes": 2
+   },
+   "nous · autre · vinted · republish": {
+    "n": 5,
+    "comptes": 2
+   },
+   "utilisateur · connexion · beebs · publish": {
+    "n": 5,
+    "comptes": 1
+   },
+   "nous · champ_demande · leboncoin · publish": {
+    "n": 5,
+    "comptes": 3
+   },
+   "nous · echec_inexplique · leboncoin · publish": {
+    "n": 5,
+    "comptes": 3
+   },
+   "utilisateur · connexion · ebay · publish": {
+    "n": 4,
+    "comptes": 2
+   },
+   "nous · echec_inexplique · ebay · publish": {
+    "n": 4,
+    "comptes": 2
+   },
+   "plateforme · moderation · leboncoin · publish": {
+    "n": 4,
+    "comptes": 2
+   },
+   "garde · doublon_possible · beebs · publish": {
+    "n": 4,
+    "comptes": 1
+   },
+   "nous · marque_inconnue · vinted · publish": {
+    "n": 3,
+    "comptes": 2
+   },
+   "nous · titre_refuse · vinted · publish": {
+    "n": 3,
+    "comptes": 2
+   },
+   "nous · isbn · vinted · publish": {
+    "n": 3,
+    "comptes": 2
+   },
+   "nous · format_colis_refuse · vinted · republish": {
+    "n": 3,
+    "comptes": 2
+   },
+   "garde · doublon_possible · leboncoin · republish": {
+    "n": 3,
+    "comptes": 2
+   },
+   "nous · ean · ebay · publish": {
+    "n": 3,
+    "comptes": 1
+   },
+   "nous · echec_inexplique · vinted · publish": {
+    "n": 2,
+    "comptes": 1
+   },
+   "utilisateur · connexion · vinted · publish": {
+    "n": 2,
+    "comptes": 2
+   },
+   "nous · marque_inconnue · vinted · republish": {
+    "n": 2,
+    "comptes": 2
+   },
+   "nous · autre · vinted · publish": {
+    "n": 2,
+    "comptes": 2
+   },
+   "nous · champ_demande · vinted · republish": {
+    "n": 2,
+    "comptes": 1
+   },
+   "nous · depot_non_confirme · leboncoin · publish": {
+    "n": 2,
+    "comptes": 1
+   },
+   "utilisateur · compte_a_finir · ebay · publish": {
+    "n": 1,
+    "comptes": 1
+   },
+   "nous · introuvable_a_confirmer · vinted · republish": {
+    "n": 1,
+    "comptes": 1
+   },
+   "utilisateur · compte_restreint · vinted · republish": {
+    "n": 1,
+    "comptes": 1
+   },
+   "utilisateur · connexion · vinted · delete": {
+    "n": 1,
+    "comptes": 1
+   },
+   "utilisateur · plateforme_desactivee · ebay · publish": {
+    "n": 1,
+    "comptes": 1
+   },
+   "nous · categorie · beebs · republish": {
+    "n": 1,
+    "comptes": 1
+   },
+   "utilisateur · plateforme_desactivee · leboncoin · publish": {
+    "n": 1,
+    "comptes": 1
+   },
+   "nous · introuvable_a_confirmer · leboncoin · republish": {
+    "n": 1,
+    "comptes": 1
+   },
+   "nous · echec_inexplique · depop · publish": {
+    "n": 1,
+    "comptes": 1
+   },
+   "nous · interruption_repetee · vinted · republish": {
+    "n": 1,
+    "comptes": 1
+   },
+   "utilisateur · reglage_du_compte · beebs · publish": {
+    "n": 1,
+    "comptes": 1
+   },
+   "utilisateur · connexion · ebay · delete": {
+    "n": 1,
+    "comptes": 1
+   },
+   "nous · capture_incomplete · vinted · republish": {
+    "n": 1,
+    "comptes": 1
+   },
+   "nous · autre · ebay · publish": {
+    "n": 1,
+    "comptes": 1
+   },
+   "utilisateur · connexion · depop · delete": {
+    "n": 1,
+    "comptes": 1
+   },
+   "utilisateur · compte_a_finir · ebay · delete": {
+    "n": 1,
+    "comptes": 1
+   }
+  },
+  "abandons_apres_echec_nous": {
+   "categorie · ebay · publish": {
+    "n": 4,
+    "comptes": 2
+   },
+   "echec_inexplique · ebay · publish": {
+    "n": 3,
+    "comptes": 1
+   },
+   "marque_inconnue · vinted · publish": {
+    "n": 2,
+    "comptes": 1
+   },
+   "isbn · vinted · publish": {
+    "n": 2,
+    "comptes": 1
+   },
+   "champ_demande · beebs · publish": {
+    "n": 2,
+    "comptes": 1
+   },
+   "champ_demande · depop · publish": {
+    "n": 2,
+    "comptes": 1
+   },
+   "echec_inexplique · vinted · publish": {
+    "n": 1,
+    "comptes": 1
+   },
+   "titre_refuse · vinted · publish": {
+    "n": 1,
+    "comptes": 1
+   },
+   "autre · vinted · publish": {
+    "n": 1,
+    "comptes": 1
+   },
+   "autre · ebay · publish": {
+    "n": 1,
+    "comptes": 1
+   },
+   "echec_inexplique · leboncoin · publish": {
+    "n": 1,
+    "comptes": 1
+   }
+  }
+ },
+ "encarts_publication_7j": {
+  "total_affiches": 537,
+  "lignes": [
+   {
+    "platform": "beebs",
+    "champ": "Taille",
+    "issue": "affiche",
+    "n": 79,
+    "comptes": 8
+   },
+   {
+    "platform": "beebs",
+    "champ": "Âge",
+    "issue": "affiche",
+    "n": 47,
+    "comptes": 5
+   },
+   {
+    "platform": "ebay",
+    "champ": "Longueur",
+    "issue": "affiche",
+    "n": 46,
+    "comptes": 2
+   },
+   {
+    "platform": "leboncoin",
+    "champ": "dvd_movies_format",
+    "issue": "affiche",
+    "n": 40,
+    "comptes": 1
+   },
+   {
+    "platform": "ebay",
+    "champ": "Largeur",
+    "issue": "affiche",
+    "n": 37,
+    "comptes": 2
+   },
+   {
+    "platform": "beebs",
+    "champ": "taille",
+    "issue": "affiche",
+    "n": 34,
+    "comptes": 6
+   },
+   {
+    "platform": "ebay",
+    "champ": "Hauteur",
+    "issue": "affiche",
+    "n": 31,
+    "comptes": 1
+   },
+   {
+    "platform": "vinted",
+    "champ": "taille",
+    "issue": "affiche",
+    "n": 21,
+    "comptes": 6
+   },
+   {
+    "platform": "ebay",
+    "champ": "Taille",
+    "issue": "affiche",
+    "n": 16,
+    "comptes": 4
+   },
+   {
+    "platform": "leboncoin",
+    "champ": "shoe_size",
+    "issue": "affiche",
+    "n": 16,
+    "comptes": 4
+   },
+   {
+    "platform": "ebay",
+    "champ": "Type",
+    "issue": "bloque_au_clic",
+    "n": 12,
+    "comptes": 3
+   },
+   {
+    "platform": "ebay",
+    "champ": "Longueur de la robe",
+    "issue": "affiche",
+    "n": 11,
+    "comptes": 2
+   },
+   {
+    "platform": "ebay",
+    "champ": "Numéro de pièce fabricant",
+    "issue": "bloque_au_clic",
+    "n": 11,
+    "comptes": 3
+   },
+   {
+    "platform": "beebs",
+    "champ": "Taille [#2]",
+    "issue": "affiche",
+    "n": 10,
+    "comptes": 3
+   },
+   {
+    "platform": "ebay",
+    "champ": "Département",
+    "issue": "bloque_au_clic",
+    "n": 9,
+    "comptes": 4
+   },
+   {
+    "platform": "ebay",
+    "champ": "taille",
+    "issue": "affiche",
+    "n": 9,
+    "comptes": 2
+   },
+   {
+    "platform": "beebs",
+    "champ": "Taille [attributes.size_men_shirt]",
+    "issue": "affiche",
+    "n": 8,
+    "comptes": 2
+   },
+   {
+    "platform": "ebay",
+    "champ": "Style",
+    "issue": "affiche",
+    "n": 8,
+    "comptes": 3
+   },
+   {
+    "platform": "vinted",
+    "champ": "size",
+    "issue": "affiche",
+    "n": 8,
+    "comptes": 4
+   },
+   {
+    "platform": "ebay",
+    "champ": "matiere",
+    "issue": "affiche",
+    "n": 7,
+    "comptes": 4
+   },
+   {
+    "platform": "beebs",
+    "champ": "matiere",
+    "issue": "affiche",
+    "n": 6,
+    "comptes": 2
+   },
+   {
+    "platform": "leboncoin",
+    "champ": "clothing_type",
+    "issue": "affiche",
+    "n": 6,
+    "comptes": 2
+   },
+   {
+    "platform": "leboncoin",
+    "champ": "decoration_type",
+    "issue": "affiche",
+    "n": 6,
+    "comptes": 3
+   },
+   {
+    "platform": "leboncoin",
+    "champ": "toy_type",
+    "issue": "affiche",
+    "n": 6,
+    "comptes": 2
+   },
+   {
+    "platform": "leboncoin",
+    "champ": "leisure_book_genre",
+    "issue": "affiche",
+    "n": 5,
+    "comptes": 1
+   },
+   {
+    "platform": "vinted",
+    "champ": "condition",
+    "issue": "affiche",
+    "n": 5,
+    "comptes": 2
+   },
+   {
+    "platform": "beebs",
+    "champ": "Format du colis",
+    "issue": "affiche",
+    "n": 4,
+    "comptes": 1
+   },
+   {
+    "platform": "beebs",
+    "champ": "Fermeture",
+    "issue": "affiche",
+    "n": 3,
+    "comptes": 1
+   },
+   {
+    "platform": "beebs",
+    "champ": "Matière",
+    "issue": "affiche",
+    "n": 3,
+    "comptes": 1
+   },
+   {
+    "platform": "beebs",
+    "champ": "Pointure",
+    "issue": "affiche",
+    "n": 3,
+    "comptes": 3
+   },
+   {
+    "platform": "leboncoin",
+    "champ": "computer_type",
+    "issue": "affiche",
+    "n": 3,
+    "comptes": 1
+   },
+   {
+    "platform": "leboncoin",
+    "champ": "diy_product",
+    "issue": "affiche",
+    "n": 3,
+    "comptes": 2
+   },
+   {
+    "platform": "leboncoin",
+    "champ": "image_sound_product",
+    "issue": "affiche",
+    "n": 3,
+    "comptes": 2
+   },
+   {
+    "platform": "leboncoin",
+    "champ": "sports_hobbies_universe",
+    "issue": "affiche",
+    "n": 3,
+    "comptes": 3
+   },
+   {
+    "platform": "leboncoin",
+    "champ": "taille",
+    "issue": "affiche",
+    "n": 3,
+    "comptes": 2
+   },
+   {
+    "platform": "vinted",
+    "champ": "isbn",
+    "issue": "affiche",
+    "n": 3,
+    "comptes": 2
+   },
+   {
+    "platform": "vinted",
+    "champ": "video_game_ratings",
+    "issue": "affiche",
+    "n": 3,
+    "comptes": 1
+   },
+   {
+    "platform": "beebs",
+    "champ": "Taille [attributes.women_bras]",
+    "issue": "affiche",
+    "n": 2,
+    "comptes": 2
+   },
+   {
+    "platform": "ebay",
+    "champ": "Nom du jeu vidéo",
+    "issue": "affiche",
+    "n": 2,
+    "comptes": 2
+   },
+   {
+    "platform": "ebay",
+    "champ": "Taille de matelas compatible",
+    "issue": "affiche",
+    "n": 2,
+    "comptes": 1
+   },
+   {
+    "platform": "leboncoin",
+    "champ": "antique_product",
+    "issue": "affiche",
+    "n": 2,
+    "comptes": 2
+   },
+   {
+    "platform": "leboncoin",
+    "champ": "condition",
+    "issue": "affiche",
+    "n": 2,
+    "comptes": 1
+   },
+   {
+    "platform": "leboncoin",
+    "champ": "diy_type",
+    "issue": "affiche",
+    "n": 2,
+    "comptes": 1
+   },
+   {
+    "platform": "leboncoin",
+    "champ": "house_and_garden_type",
+    "issue": "affiche",
+    "n": 2,
+    "comptes": 2
+   },
+   {
+    "platform": "vinted",
+    "champ": "marque",
+    "issue": "affiche",
+    "n": 2,
+    "comptes": 2
+   },
+   {
+    "platform": "vinted",
+    "champ": "skirt_length",
+    "issue": "affiche",
+    "n": 2,
+    "comptes": 2
+   },
+   {
+    "platform": "vinted",
+    "champ": "Taille",
+    "issue": "affiche",
+    "n": 2,
+    "comptes": 1
+   },
+   {
+    "platform": "vinted",
+    "champ": "video_game_platform",
+    "issue": "affiche",
+    "n": 2,
+    "comptes": 1
+   },
+   {
+    "platform": "beebs",
+    "champ": "Console",
+    "issue": "affiche",
+    "n": 1,
+    "comptes": 1
+   },
+   {
+    "platform": "beebs",
+    "champ": "marque",
+    "issue": "affiche",
+    "n": 1,
+    "comptes": 1
+   },
+   {
+    "platform": "ebay",
+    "champ": "Couleur",
+    "issue": "bloque_au_clic",
+    "n": 1,
+    "comptes": 1
+   },
+   {
+    "platform": "ebay",
+    "champ": "Département",
+    "issue": "affiche",
+    "n": 1,
+    "comptes": 1
+   },
+   {
+    "platform": "ebay",
+    "champ": "Hauteur",
+    "issue": "bloque_au_clic",
+    "n": 1,
+    "comptes": 1
+   },
+   {
+    "platform": "ebay",
+    "champ": "Longueur de la robe",
+    "issue": "bloque_au_clic",
+    "n": 1,
+    "comptes": 1
+   },
+   {
+    "platform": "ebay",
+    "champ": "Marque compatible",
+    "issue": "bloque_au_clic",
+    "n": 1,
+    "comptes": 1
+   },
+   {
+    "platform": "ebay",
+    "champ": "Matière",
+    "issue": "affiche",
+    "n": 1,
+    "comptes": 1
+   },
+   {
+    "platform": "ebay",
+    "champ": "Plateforme",
+    "issue": "affiche",
+    "n": 1,
+    "comptes": 1
+   },
+   {
+    "platform": "ebay",
+    "champ": "Résolution maximale",
+    "issue": "affiche",
+    "n": 1,
+    "comptes": 1
+   },
+   {
+    "platform": "ebay",
+    "champ": "Source d'alimentation",
+    "issue": "affiche",
+    "n": 1,
+    "comptes": 1
+   },
+   {
+    "platform": "ebay",
+    "champ": "Taille d'écran",
+    "issue": "affiche",
+    "n": 1,
+    "comptes": 1
+   },
+   {
+    "platform": "ebay",
+    "champ": "Technologie d'affichage",
+    "issue": "affiche",
+    "n": 1,
+    "comptes": 1
+   },
+   {
+    "platform": "ebay",
+    "champ": "Type de cuisinière compatible",
+    "issue": "affiche",
+    "n": 1,
+    "comptes": 1
+   },
+   {
+    "platform": "leboncoin",
+    "champ": "home_appliance_product",
+    "issue": "affiche",
+    "n": 1,
+    "comptes": 1
+   },
+   {
+    "platform": "leboncoin",
+    "champ": "home_appliance_type",
+    "issue": "affiche",
+    "n": 1,
+    "comptes": 1
+   },
+   {
+    "platform": "leboncoin",
+    "champ": "home_office_stationery_school_supplies_product",
+    "issue": "affiche",
+    "n": 1,
+    "comptes": 1
+   },
+   {
+    "platform": "leboncoin",
+    "champ": "image_sound_universe",
+    "issue": "affiche",
+    "n": 1,
+    "comptes": 1
+   },
+   {
+    "platform": "leboncoin",
+    "champ": "leisure_collection_product",
+    "issue": "affiche",
+    "n": 1,
+    "comptes": 1
+   },
+   {
+    "platform": "leboncoin",
+    "champ": "phone_product",
+    "issue": "affiche",
+    "n": 1,
+    "comptes": 1
+   },
+   {
+    "platform": "leboncoin",
+    "champ": "shoe_type",
+    "issue": "affiche",
+    "n": 1,
+    "comptes": 1
+   },
+   {
+    "platform": "vinted",
+    "champ": "Classement du contenu",
+    "issue": "affiche",
+    "n": 1,
+    "comptes": 1
+   },
+   {
+    "platform": "vinted",
+    "champ": "ISBN",
+    "issue": "affiche",
+    "n": 1,
+    "comptes": 1
+   }
+  ]
+ }
+}

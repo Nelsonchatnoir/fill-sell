@@ -168,3 +168,20 @@ marge de 100 % sur du vent, indétectable ensuite.
   converties. Les 3 dénominateurs divergents de « marge % » (prix de vente,
   prix d'achat, COGS) sont une dette connue, à ne pas unifier sans décision.
 
+
+## ⛔ 25/10 nuit — revenus : la date de fin Apple s'écrit, chaque appel de Google se journalise (point 4 ; rapport `docs/enquetes/nuit-2510/RAPPORT.md` § 4)
+- apple-iap-webhook (code prêt, **NON déployé** le 25/10 : esm.sh ne construisait plus `@peculiar/x509` ; la v37 tourne) :
+  à chaque notification qui ouvre ou prolonge (achat, renouvellement, reprise), la date de fin VÉRIFIÉE (JWS) est écrite
+  dans `subscription_period_end`, jamais en arrière ; `autoRenewStatus` → `subscription_cancel_at_period_end` ; les refus
+  400/403 sont journalisés. validate-apple-receipt (v33) écrit la date de fin et le renouvellement auto du reçu.
+- google-play-webhook (v30) : UNE ligne de journal par appel AVANT tout décodage (illisibles compris, `connu` NULL),
+  complétée à la sortie (code HTTP, motif, compte, échéance, état) ; le jeton d'achat est haché (sha256), jamais en clair,
+  ni en base ni dans les journaux ; le jeton OIDC de Pub/Sub est vérifié en mode « observer » (rien n'est refusé) —
+  `GOOGLE_PUBSUB_AUTH=exiger` seulement après l'activation de l'authentification sur l'abonnement push (geste de Nico).
+- `stores_notifications_journal` : colonnes d'appel et d'échéance, droits serveur seulement (migration `20261025020000`,
+  appliquée le 25/10 à 01:32). Sans elles, payment-notify écrit la forme du 12/10 (aucune ligne perdue) ; ⛔ l'écriture du
+  journal ne retient jamais un paiement (bornée à 2 s, issue à 1 s).
+- Rattrapage des abonnés Apple actifs sans date (depuis `coin_wallets.next_grant_at`, sans appel Apple) :
+  `scripts/reparations/20261025_fin_periode_apple_rattrapage.sql` (sauvegarde + inverse), à lancer APRÈS le déploiement
+  d'apple-iap-webhook. Aucune fonction SQL ne lit `subscription_period_end` (relu le 25/10) : la date ne retire jamais
+  un abonnement à elle seule.

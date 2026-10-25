@@ -367,3 +367,20 @@ trois relevés et deux reprises lancés tout seuls, aucun Vinted abouti, un faux
   (motif NULL : aucune question créée à l'écriture) et sans aucune trace de vente sur leurs fiches (vente, note de
   vente, commande, job vendu ou signal `sold`, achat en cours Leboncoin ; `unavailable` n'est pas une vente). Une
   boutique Vinted non confirmée sur le compte : la base refuse la fusion (`[boutique_a_confirmer]`), rien ne change.
+
+## ⛔ 25/10 nuit — « FillSell attend le prochain relevé » tranche, et le relevé est DEMANDÉ (point 1b de Nico ; rapport `docs/enquetes/nuit-2510/RAPPORT.md` § 1b)
+- Une pause « introuvable à confirmer » (republication arrêtée AVANT tout retrait : la plateforme n'a pas rendu l'annonce)
+  se tranche au relevé, sur l'annonce EXACTE du job (`_shared/introuvable-a-confirmer.js`) :
+  - l'absence se compte depuis la **DERNIÈRE VUE** de l'annonce : deux relevés complets de SA boutique sans elle, dont au
+    moins un commencé après la première lecture ratée → close (« n'est plus en ligne… FillSell n'a rien retiré ») ;
+  - la page lue « Article vendu » à la lecture de CETTE pause (`republish_etat_reel` = sold) → close avec le message de la
+    vente ; relevée vendue après la lecture → close ; relevée en ligne après la lecture → la republication repart seule ;
+  - un `disparu_le` d'AVANT la lecture ne clôt jamais seul ; relevés et traces lus sur `FENETRE_TRACE_MS` (14 j) avant la
+    première lecture — la même borne pour les deux.
+- **Le relevé attendu, handler-watch le demande** (déclencheur `serveur:introuvable_a_confirmer`) : au plus un toutes les
+  6 h par compte et plateforme (aucun relevé commencé, demandé, en file ou en cours depuis 6 h), seulement à un poste vu
+  depuis moins de 10 min, Vinted seulement si la boutique ouverte dans Chrome est celle de l'annonce. ⛔ Tout nouveau
+  déclencheur serveur de relevé d'import entre dans `releve_est_veille()` (migration) : sans cela
+  `garde_releve_sans_geste` l'avale EN SILENCE (RETURN NULL, aucune erreur) — d'où le `.select("id")` après l'insertion.
+- Preuve du 25/10 : 8 pauses → 5 closes au premier passage (01:36, exactement le rejeu), un relevé Leboncoin demandé à
+  01:36, fait à 01:40, la pause tranchée à 01:42. Selftest `introuvable-a-confirmer` (83 cas, dont les cas réels du 24/10).

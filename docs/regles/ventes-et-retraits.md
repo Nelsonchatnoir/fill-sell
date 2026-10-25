@@ -369,3 +369,35 @@ Rapport : `docs/enquetes/session-sans-nico-1810/lot4-ventes-lot-multi-exemplaire
   ne sait pas encore l'actionner (prochain lot : geste 0.6.142, job serveur, vrai test) ; 235900 n'est qu'un secours.
   Ne JAMAIS publier une nouvelle annonce Vinted ET laisser le « Republier » possible : doublon.
 - **OUVERT (prochain lot)** : la notification push « Vente annulée » (Nico, 22:20) — elle passera par push-ventes.
+
+## ⛔ 25/10 nuit — vente Vinted ANNULÉE : remise en vente par le bouton « Republier » de Vinted (décision de Nico du 24/10 23:21 ; rapport `docs/enquetes/nuit-2510/RAPPORT.md` § 2)
+- Jamais une nouvelle annonce en plus : l'annonce annulée revient par le geste « Republier » de Vinted (même annonce, mêmes
+  photos). Relevé sur la vraie page : `POST /api/v2/transactions/<n>/reupload` ; la conversation porte
+  `actions [{action: "reupload"}]`.
+- Base (migration `20261025010000`, appliquée le 25/10 à 00:47) : `remises_en_vente_tick` crée, pour une vente Vinted
+  annulée dont la remise est acceptée, UN job « publish » hors quota marqué `remise_par_republier {transaction_id,
+  conversation_id, item_id}` ; sans numéro de commande → rien (`republier_commande_inconnue`).
+- get-pending-jobs met ces jobs de côté et ne les sert qu'au poste qui déclare `vinted_republier_v1` (extension ≥ 0.6.142) ;
+  ailleurs : « En attente de la mise à jour de l'extension FillSell (0.6.142) », dit une fois.
+- Extension (`processRepublierVintedJob`, 0.6.142) : lit compte, conversation et dressing ; l'envoi est NOTÉ avant UN SEUL
+  POST ; l'annonce née du geste est rattachée par son numéro ou ses photos, jamais par son titre ; un « Republier » déjà fait
+  par le vendeur est détecté et rattaché ; refus, brouillon, lot, autre boutique, doute → question `republier_vinted`.
+  La reprise d'un job figé ne rattache jamais un « Republier » par son titre.
+- ⚠️ Le « Republier » remet l'annonce à SON prix Vinted : un test réel se fait sur une annonce à 999 € ou plus (règle des
+  tests), ou sur décision nommée de Nico.
+
+## 25/10 nuit — notification push « Vente annulée » PRÉPARÉE, non armée (point 3 ; rapport § 3)
+- Migration `20261025040000` ÉCRITE, non appliquée (essai 19/19 en prod, annulé) : `push_annulations` (une note par
+  annulation, clé user + commande ; droits serveur seulement), seulement les annulations NEUVES (après l'armement
+  `coin_config.push_annulations_depuis`, moins de 24 h, au moins 6 min), relue avant l'envoi ; cron à part. push-ventes v14
+  (non déployée) les envoie après les ventes, sans jamais retarder une vente. App : l'appui mène à « Ventes annulées »
+  (type `vente_annulee`, jamais `vente`).
+- Aucun push ne peut partir aujourd'hui : 0 appareil enregistré, aucun secret APNs/FCM en prod (ventes comprises) —
+  décision de Nico avant d'armer.
+
+## 25/10 nuit — une vente n'est jamais écrite deux fois (audit N7)
+- VentesTab : verrou par ligne et relecture avant écriture (ligne et lot, par pages `lireToutesPages`) — un double appui
+  ou une reprise après un envoi au sort inconnu écrivait la vente deux fois (af37fa49 : 64 lignes en double le 28/09 ;
+  chaouidz 274893/274894 à 70 ms d'écart le 24/10).
+- Réparation des 64 lignes PRÊTE (`scripts/reparations/20261025_ventes_en_double.sql` + inverse, essai à blanc vert), NON
+  appliquée (refus du mode auto « Unverifiable Deletion Scope ») : à lancer par Nico.

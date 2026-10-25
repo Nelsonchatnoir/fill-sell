@@ -559,3 +559,38 @@
   mutuel) → la question reste. Déjà relancé une fois par la règle → plus rien d'automatique. Jamais titre, prix ou date.
 - Preuves : `selftest:depot-coupe-tranche` (fixture relevée en prod : louis, 21/10) ; premier passage réel le 25/10 à
   00:27 : 6 relances (louis ×2, Ciddjy ×4), conformes à l'essai à blanc.
+
+## ⛔ 25/10 nuit — un accident AVANT tout retrait n'est jamais un geste (règle A5 du 24/10, appliquée au parc par le serveur ; rapport `docs/enquetes/nuit-2510/RAPPORT.md` § 1c)
+- `_shared/accident-avant-retrait.js` : une republication Vinted arrêtée AVANT le retrait (étape `a_capturer`/`captured`)
+  par une coupure (onglet de dépôt muet, canal coupé, page rechargée, même coupure répétée) repart SEULE, espacée
+  5, 20, 60 min puis 3 h (`reprise_avant_retrait` ; au-delà de 3, la sentinelle la compte) ; jamais au-delà de `captured`,
+  jamais un article qui n'est plus en stock.
+- update-job-status (v148) ne pose plus « Relance-la » / « ferme Chrome » sur ces arrêts ; handler-watch (v128+) remet en
+  file ceux déjà en base (100 lus, fiches lues en un lot, aucune ligne inchangée réécrite). Premier passage : exactement
+  Deborah 83206086 et Jocabroc bfe46249 (essai à blanc : 2 sur 35) ; Jocabroc republié dans la foulée.
+- Un sélecteur de l'extension non résolu AVANT retrait (« [selectors] vinted/publish.photo_input … n'a résolu ») est un
+  accident technique : repris comme les autres motifs techniques, même sous une source `prevol_negatif` héritée ; la reprise
+  efface la question héritée ; le réveil par capture archive le motif et ferme la question réveillée.
+- Une sonde publique NON mesurée (null) ne vaut jamais « toujours en ligne, connexion requise » : pause « introuvable à
+  confirmer », le relevé tranche (audit N2, update-job-status).
+
+## ⛔ 25/10 nuit — un titre refusé pour « trop de majuscules » est remis en casse normale SEUL (décision de Nico, point 1d)
+- Vinted (seule plateforme qui a ce refus) refuse 7 capitales latines À LA SUITE : espaces et ponctuation ne coupent pas la
+  suite, un chiffre ou une minuscule la coupe (0 des 104 048 titres acceptés en 90 j n'y arrive ; la PART de capitales ne
+  décide pas).
+- `_shared/casse-titre.js` (pur, Node + Deno) : un mot tout en capitales passe en casse normale ; gardés tels quels : la
+  marque (fiche/copie), les sigles, les références à chiffres, les chiffres romains, les mots mêlés ; ponctuation et
+  espaces intacts ; si des mots gardés dépassent encore, le plus long passe en casse normale (jamais une référence) ;
+  impossible → la question. Rien d'autre n'est modifié.
+- Branché : au refus (pas-de-rouge, reprise `vinted_titre_recase` UNE fois par job, ancien titre archivé), sur les questions
+  déjà posées (questions-tranchees, règle 8), au service (get-pending-jobs : publication et titre de recréation) et dans
+  l'app (`moteur/regles.js`). Selftest `casse-titre` (115, cas réels + banc de 3 294 titres acceptés).
+
+## 25/10 nuit — la sentinelle range les vraies causes (audit N1 ; `_shared/cause-blocage.js`, ops-digest v39)
+- La vérification anti-robot sur le compte (`verification_antirobot`) et l'annonce d'une autre boutique que celle ouverte
+  (`boutique_etrangere`) sont des gestes de la personne ; « Vinted a restreint ton compte » = compte restreint.
+- « Arrêtée à ta demande » (féminin, `arretLot.js`) et la marque `arret_utilisateur` comptent comme un ABANDON : un job
+  arrêté par la personne APRÈS un arrêt de notre fait reste un échec de notre fait, jamais une annulation (12 échecs
+  invisibles avant). « s'interrompt au même moment » est reconnu avec ou sans « chaque fois ».
+- Mesure de référence du 25/10 (18 → 25/10, 324 jobs) : 188 arrêts de notre fait, 139 de la personne, 28 plateforme,
+  7 gardes (`docs/enquetes/zero-blocage-2410/mesure-nuit-2510.json`).

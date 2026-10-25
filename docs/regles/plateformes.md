@@ -373,3 +373,20 @@ Rapport : `docs/enquetes/dix-points-1710/RAPPORT.md` (points 1, 4, 5, 7, 9).
 - **« Switch & Go » (VTech) → Leboncoin « Loisirs > Jeux & Jouets »** (même règle que eBay, icône 🦸).
 - **Beebs Bijoux (femme) : « Taille » est OBLIGATOIRE** (relevé DOM 11/10) → la question reste (décision 5 de Nico).
 
+
+## 25/10 nuit — Beebs : cycle de dépôts entier, copie réalignée sur le relevé, rayon de la famille ; Leboncoin : « EU N » = « N » (rapport `docs/enquetes/nuit-2510/RAPPORT.md` § 1c et 5)
+- Beebs, dépôts coupés d'un même cycle (Ciddjy, 20/10) : `jugerCycleDepots` (`_shared/depot-sans-numero.js`) — photos pour
+  tous les dépôts du cycle, rattachements d'abord, puis le reste ; plus jamais une question qui cite les annonces d'AUTRES
+  fiches rattachées dans la même seconde.
+- Beebs, lien et copie contradictoires (Glowik 6d95f4eb) : get-pending-jobs réaligne la copie quand le relevé le prouve
+  (annonce mise en ligne par CE job, l'ancienne datée disparue), sinon arrêt avant retrait au message vrai ; l'extension dit
+  la vraie cause de son abstention.
+- Beebs, rayon : une famille maison (Lens `maison_deco`) filtre les feuilles candidates du mot ; jamais un repli sur les
+  jouets (`familleFiltreDesCandidates` ; sebbastien1 « poisson bois gravé » → « Décorations murales »).
+- Leboncoin (et Beebs « Pointure », Vinted chaussures) : sur un champ de pointure SEULEMENT, « EU N » est l'option « N »
+  nue (`estChampPointure` / `pointureNuePourEu`, `src/publication/moteur/listes.js`) — jamais UK/US, jamais une
+  demi-pointure arrondie, jamais une taille de vêtement (régression du 28/09, Marta « EU 37.5 » ; selftest
+  `pointure-eu-nue`).
+- eBay voie clic (Fleur de Lotus, 22-23/10), NON codé : l'extension ne vérifie pas qu'eBay a reçu les photos avant de
+  cliquer ; un refus de brouillon qui nomme l'élément manquant tombe en « motif inconnu » ; le mur « inscription vendeur »
+  n'est pas étendu aux autres jobs du compte. À traiter (R1-R3 du rapport).
