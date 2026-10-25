@@ -40,11 +40,27 @@ const heureFr = (v) => {
 };
 
 /**
- * @param {{ etape: 'deleted'|'captured', vivant: boolean, platform?: string, vuLe?: string|null }} arg
+ * `envoiLe` (26/10 nuit, point 2 — nerema75, 259e97c8) : l'heure de l'envoi de la nouvelle annonce parti APRÈS le
+ * retrait (une-passe Vinted, recréation LBC/Beebs). Connu, la phrase le dit : l'annonce est peut-être déjà en ligne,
+ * FillSell la relit avant tout nouvel envoi (pré-vol de la recréation) — jamais « arrêté juste après le retrait ».
+ * @param {{ etape: 'deleted'|'captured', vivant: boolean, platform?: string, vuLe?: string|null, envoiLe?: string|null }} arg
  */
-export function messageInterruption({ etape, vivant, platform = "", vuLe = null }) {
+export function messageInterruption({ etape, vivant, platform = "", vuLe = null, envoiLe = null }) {
   const nom = NOM[platform] ?? platform ?? "";
   if (etape === "deleted") {
+    const hEnvoi = heureFr(envoiLe);
+    if (hEnvoi) {
+      if (vivant) {
+        return `Reprise après interruption : le retrait et l'envoi de ta nouvelle annonce sont partis à ${hEnvoi}, puis l'onglet de travail ` +
+          "s'est arrêté avant la confirmation (Chrome, lui, tourne toujours). FillSell vérifie tout de suite qu'elle est bien en ligne" +
+          (nom ? ` sur ${nom}` : "") + ", en tête de file, avant tout nouvel envoi — rien à faire de ton côté.";
+      }
+      const hVu = heureFr(vuLe);
+      return `Reprise après interruption : le retrait et l'envoi de ta nouvelle annonce sont partis à ${hEnvoi}, puis ton ordinateur ou Chrome ` +
+        "s'est arrêté avant la confirmation" + (hVu ? ` (aucun signe de l'extension depuis ${hVu})` : "") +
+        ". Dès que Chrome sera rouvert, FillSell vérifie qu'elle est bien en ligne" + (nom ? ` sur ${nom}` : "") +
+        ", avant tout nouvel envoi — rien à faire de ton côté.";
+    }
     if (vivant) {
       return "Reprise après interruption : la remise en ligne de ton annonce s'est arrêtée dans l'onglet de travail " +
         "(Chrome, lui, tourne toujours). Elle repart tout de suite, en tête de file — rien à faire de ton côté.";

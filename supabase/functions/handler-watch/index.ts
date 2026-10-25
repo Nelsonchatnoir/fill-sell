@@ -49,6 +49,7 @@ import { ageProcessing, motifReprise, silenceDuDetenteur, REPRISE_AGE_MIN_MS } f
 // (02/10) Sortie d'Opla : les publications/republications Opla en attente se closent.
 import { oplaACloreJob, clotureOpla, STATUTS_OPLA_A_CLORE, OPLA_SORTIE, sortieOplaActive } from "../_shared/opla-sortie.js";
 import { posteVivant, messageInterruption } from "../_shared/interruption-poste.js";
+import { alerteOrphelineDue, envoiDepuisLeRetrait } from "../_shared/alerte-orpheline.js";
 import { requalificationCompteVintedBloque } from "../_shared/vinted-compte-bloque.js";
 import { requalificationMiseANiveauEbay } from "../_shared/ebay-mise-a-niveau.js";
 import { OPLA_PRIX_MAX, prixOplaTropHaut, messagePrixOplaTropHaut } from "../_shared/opla-prix.js";
@@ -343,8 +344,12 @@ serve(async (req) => {
       .filter("platform_fields->>orphan_alerted_at", "is", "null")
       .lt("platform_fields->>deleted_at", seuilIso);
     // deleted_at absent = pas de durée mesurable, on ne crie pas dessus.
+    // (26/10 nuit, point 2 — nerema75, 259e97c8) L'âge du retrait ne suffit plus : un envoi de la nouvelle annonce
+    // parti depuis le retrait, que rien n'a démenti, n'est PAS une orpheline (11 alertes Vinted sur 15 en 14 jours
+    // tombaient sur une copie déjà en ligne). _shared/alerte-orpheline.js : rien envoyé → l'alerte ; relu sans copie
+    // depuis 30 min → l'alerte ; envoi jamais vérifié en 6 h → l'alerte.
     // deno-lint-ignore no-explicit-any
-    const orphelins = ((bruts ?? []) as any[]).filter((j) => j.platform_fields?.deleted_at);
+    const orphelins = ((bruts ?? []) as any[]).filter((j) => j.platform_fields?.deleted_at && alerteOrphelineDue(j.platform_fields, now).due);
     if (orphelins.length && resendKey) {
       const userIds = [...new Set(orphelins.map((j) => j.user_id as string))];
       const { data: profs } = await supabase
@@ -361,6 +366,11 @@ serve(async (req) => {
         const p = profParId.get(j.user_id) ?? {};
         const horsLigneMin = minutes(j.platform_fields.deleted_at);
         const hbMin = minutes(p.extension_last_seen_at ?? null);
+        const motif = ({
+          sans_envoi: "rien n'a été renvoyé depuis le retrait",
+          relu_sans_copie: "renvoyée, mais la relecture n'a pas trouvé la copie (rien renvoyé depuis 30 min)",
+          envoi_non_verifie: "renvoyée, jamais vérifiée depuis 6 h",
+        } as Record<string, string>)[alerteOrphelineDue(j.platform_fields, now).motif] ?? "";
         return `
     <div style="margin:0 0 12px;padding:12px 14px;border:1px solid #FED7AA;border-radius:12px;background:#FFF7ED;font-family:sans-serif;">
       <div style="font-size:14px;font-weight:700;color:#9A3412;">
@@ -368,7 +378,7 @@ serve(async (req) => {
       </div>
       <div style="font-size:13px;color:#374151;margin-top:4px;">
         Hors ligne depuis <strong>${horsLigneMin != null ? `${horsLigneMin} min` : "durée inconnue"}</strong>
-        · job <code>${esc(j.id)}</code> en <strong>${esc(j.status)}</strong>
+        · job <code>${esc(j.id)}</code> en <strong>${esc(j.status)}</strong>${motif ? ` · ${esc(motif)}` : ""}
       </div>
       <div style="font-size:12px;color:#6B7280;margin-top:4px;">
         ${esc(p.email ?? "email inconnu")} · extension vue il y a ${hbMin != null ? `${hbMin} min` : "jamais / inconnu"}
@@ -382,8 +392,8 @@ serve(async (req) => {
       ⚠️ ${orphelins.length} annonce(s) hors ligne sans recréation
     </h1>
     <p style="margin:0 0 14px;font-size:12px;font-family:sans-serif;color:#9CA3AF;">
-      Étape 'deleted' depuis plus de 30 min — l'extension du compte ne recrée pas
-      (endormie, session perdue…). L'annonce est retirée de sa plateforme, la copie
+      Étape 'deleted' depuis plus de 30 min, et aucune nouvelle annonce partie que rien n'a démentie
+      — l'extension du compte ne recrée pas (endormie, session perdue…). L'annonce est retirée de sa plateforme, la copie
       (capture Vinted, ou snapshot du dépôt ailleurs) est en base : rien n'est perdu,
       mais personne ne le voit. Une alerte par job.
     </p>
@@ -806,7 +816,10 @@ serve(async (req) => {
       const vuLeD = vusDeleted.get(String(j.user_id)) ?? null;
       const vivantD = posteVivant({ vuLe: vuLeD, priseLe: pf0.processing_since ?? null, maintenant: now });
       pf.interruption = { le: new Date(now).toISOString(), etape: "deleted", poste: vivantD ? "vivant" : "muet", extension_vue_le: vuLeD };
-      const msg = messageInterruption({ etape: "deleted", vivant: vivantD, platform: j.platform, vuLe: vuLeD });
+      // (26/10 nuit, point 2) Un envoi parti depuis le retrait se dit : jamais « arrêté juste après le retrait ».
+      const envoiRetrait = envoiDepuisLeRetrait(pf0);
+      const msg = messageInterruption({ etape: "deleted", vivant: vivantD, platform: j.platform, vuLe: vuLeD,
+        envoiLe: Number.isFinite(envoiRetrait) ? new Date(envoiRetrait).toISOString() : null });
       const { data: maj } = await supabase
         .from("cross_post_jobs")
         .update({ status: "pending", error: msg, platform_fields: pf })
