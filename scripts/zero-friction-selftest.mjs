@@ -45,7 +45,9 @@ console.log("\n1. La tranche Vinted, tranchée par le texte du vendeur");
   const LPS = lire("src/components/ListingPreviewScreen.jsx");
   // (19/10) Quatre : la ligne « missing » d'une taille lit aussi le texte (tailles-titre-selftest).
   // (24/10 nuit, décision 5 de Nico) Cinq : l'homonyme « Taille » de Beebs (tailleHomonymeBeebs) lit le même texte.
-  ok("l'écran passe le texte du vendeur (fiche d'abord) aux cinq jugements", (LPS.match(/textes: textesDuVendeurPour\(/g) ?? []).length === 5
+  // (25/10 soir, décisions de Nico) Six : les champs requis qui se remplissent seuls (champRequisAuto : pointure, matière,
+  // âge, bijoux) lisent le même texte (selftest champs-requis-auto).
+  ok("l'écran passe le texte du vendeur (fiche d'abord) aux six jugements", (LPS.match(/textes: textesDuVendeurPour\(/g) ?? []).length === 6
     && /const textesDuVendeurPour = \(p\) => \[initialListing\?\.titre \?\? "", initialListing\?\.description \?\? "", edited\[p\]\?\.title \?\? "", edited\[p\]\?\.description \?\? ""\];/.test(LPS));
 }
 console.log("\n2. Les dimensions eBay : UNE question");

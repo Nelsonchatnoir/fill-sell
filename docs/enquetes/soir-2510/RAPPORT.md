@@ -133,3 +133,20 @@ qui tiennent dans le rythme partagé (≈ 3 + 3), ou séparer les créneaux des 
 - Règle proposée (une chaîne pour l'écran, le lot et le serveur) : la personne → la FICHE lue au jugement (pas seulement pour
   Opla) → le texte du vendeur → la règle du rayon → l'IA avec photos → le bac de la grille quand il est vrai → une seule
   question, liste fermée. Détail, fichiers, selftests et les 7 décisions : `CHAMPS-REQUIS.md` (même dossier).
+
+## 11. Lot 2 — décisions de Nico (20:00) : rythme par plateforme, champs requis a à g, Beebs aux payants
+- **Rythme par plateforme** : migration `20261025200000` appliquée à 20:24:49 (feu vert nommé), interrupteur ÉTEINT
+  (`coin_config.republish_rythme_par_plateforme` absent). Essais : éteint = identique sur 13 créneaux ; Jocabroc rejoué :
+  éteint, Leboncoin attend 36 min derrière la republication Vinted ; allumé, il part. Allumer :
+  `scripts/reparations/20261025_rythme_par_plateforme_allumer.sql` (quand la 0.6.144 aura fait ses premiers jobs propres).
+- **Champs requis** (règles dans `docs/regles/republication-et-publication.md` § « 25/10 soir (lot 2) ») : matière Beebs
+  (fiche → rayon → « Autre »), âge Beebs (écrit, PEGI, livre adulte ; jamais jeunesse en 16+ ; aucun défaut de jouets
+  prouvé), pointure (fiche, puis texte explicite ; passage sur 3 959 fiches : `POINTURE-PASSAGE.md`), bijoux hors bagues
+  → « Ajustable », matière eBay (composition lue, sinon valeur neutre de la liste). Lens au scan : abandonné (Nico).
+- **Corrections g** : rien appliqué — Leboncoin et Beebs n'ont pas de modification en place ; cas listés
+  (`CORRECTIONS-G.md`).
+- **Beebs aux payants** : interrupteur préparé (`scripts/reparations/20261025_lecture_fond_beebs_payants.sql`, NON lancé).
+  **Pilote propre** = au moins 48 h (jusqu'au 27/10 ~19:18), au moins 200 lectures, 0 refus (403 / 429 / vérification),
+  médiane < 3 s, échecs de lecture hors annonce disparue (404) < 5 %, aucune écriture hors des fiches qui manquaient
+  vraiment. **À 20:28** : 35 lectures en 1 h 10, 0 refus, médiane 318 ms (max 3,8 s, la première : onglet réveillé),
+  3 échecs = la même annonce disparue (34010041, 404), 1 écriture (34132220, la seule fiche du compte qui manquait vraiment).

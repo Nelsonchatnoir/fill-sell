@@ -701,3 +701,33 @@
 - Les refus et le plafond du jour se comptent PAR plateforme (`metadata.plateforme` ; sans plateforme = Vinted) : un refus
   Beebs ne coupe pas Vinted. ops-digest lit le journal par pages (> 1 000 lignes par jour avec les payants) et par plateforme.
 - Selftest `lecture-fond-beebs` (44 contrôles : règle, liste, motif de l'extension exécuté, branchements).
+
+## ⛔ 25/10 soir (lot 2, décisions de Nico) — le rythme par plateforme est en place, ÉTEINT ; les champs requis se remplissent seuls quand une source fiable existe
+- **Migration `20261025200000_rythme_par_plateforme` APPLIQUÉE à 20:24:49** (feu vert nommé ; garde md5 22bb479d… ; essais
+  annulés : éteint = balayage identique sur les 13 créneaux en cours, le créneau de Jocabroc rejoué allumé → Leboncoin
+  part). Interrupteur `coin_config.republish_rythme_par_plateforme` : **ABSENT = éteint** (rythme du compte, règle du
+  18/09). Allumé : chaque plateforme compte son attente depuis SA dernière republication ; « un job par compte et par
+  passage », anti-rafale par plateforme et l'extension à une action à la fois restent. Allumer (décision de Nico : quand la
+  0.6.144 aura fait ses premiers jobs propres) : `scripts/reparations/20261025_rythme_par_plateforme_allumer.sql` ;
+  éteindre : `…_eteindre.sql`. Selftest `rythme-par-plateforme`.
+- **Champs requis** (`_shared/champs-requis-auto.js`, `_shared/pointure-du-texte.js`, branchés dans `ListingPreviewScreen.jsx`
+  — `champRequisAuto` pour les champs des rayons, `matiereEbayAuto` et la pointure pour eBay ; selftest
+  `champs-requis-auto`). Règle commune : jamais deviner ; pas de source fiable → la question, comme avant.
+  - Matière Beebs : la fiche (une seule entrée de la liste), sinon le rayon (doudous, peluches → Tissu ; jouets électroniques
+    pour bébé, figurines → Plastique ; jouets en bois → Bois), sinon « Autre ». Jamais le texte libre.
+  - Âge Beebs : l'âge écrit (« dès 3 ans », « 18 mois et + », « 3+ », tranche exacte « 4-6 ans ») ; jeu vidéo : PEGI / USK ;
+    livre, magazine, film ADULTE (signe adulte écrit ET aucun signe jeunesse) → « 16 ans et + » ; jamais un livre jeunesse
+    (rayon « Romans pour enfant », « jeunesse », un âge écrit…) ; jouets : aucun défaut de rayon (6 mois de publications :
+    aucun rayon n'a d'âge dominant) → l'âge écrit, sinon la question.
+  - Pointure (Leboncoin, Beebs, Vinted, eBay) : la fiche d'abord ; sinon un nombre COLLÉ à « pointure / P / taille / taglia /
+    talla / Größe / maat / EU », cohérent avec le public du rayon (enfant 16-38, adulte 34-50), une seule valeur, demi-pointure
+    jamais arrondie, tiers (Adidas) et UK/US → doute ; fiche et texte en désaccord → doute. Passage sur les 3 959 fiches de
+    chaussures en base : 0 valeur contre la fiche (`docs/enquetes/soir-2510/POINTURE-PASSAGE.md`).
+  - Bijoux Beebs (« Bijoux (femme) », grille de bagues + « Ajustable ») : collier, bracelet, boucles d'oreilles… →
+    « Ajustable » ; bague, « anneau », parure, type inconnu → la question.
+  - Matière eBay : la composition LUE sur l'étiquette (Lens, avec pourcentages : Lens n'a aucune confiance propre à la
+    matière), sinon la valeur neutre de LA liste de la catégorie (une seule existe : « Inconnue », 175758), sinon la question.
+  - La taille au scan Lens : NON (décision de Nico : la mesure donnait 3 fois plus de questions) — la question reste à
+    « Publier », seulement quand une plateforme ciblée l'exige.
+- **Valeurs fausses déjà en ligne** : Leboncoin et Beebs n'ont AUCUNE modification en place dans FillSell (3 actions de job
+  seulement) : rien appliqué, cas listés (`docs/enquetes/soir-2510/CORRECTIONS-G.md`).

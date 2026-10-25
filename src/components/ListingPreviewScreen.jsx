@@ -153,6 +153,11 @@ import {
   tailleDuJob, tailleDansListeEbay, tailleDeduiteDuTexte, estChampTaille, rayonPublicIncoherent, messageRayonPublic,
   clePositionnelleBeebs, tailleHomonymeBeebs,
 } from "../publication/moteur/listes";
+// (25/10 soir, décisions de Nico) Les champs requis qui se remplissent seuls quand une source fiable existe — sinon la
+// question, comme avant (jamais une valeur devinée).
+import { matiereBeebsAuto, ageBeebsAuto, tailleBijouBeebsAuto, matiereEbayAuto } from "../../supabase/functions/_shared/champs-requis-auto.js";
+import { pointureDuTexte } from "../../supabase/functions/_shared/pointure-du-texte.js";
+import { estChampChaussures } from "../../supabase/functions/_shared/taille-du-texte.js";
 // (10/10, cas Manon) Ce que l'encart eBay remplit seul, et quand.
 import { aspectsADemanderIa, valeursAutoAReprendre } from "../publication/moteur/aspectsEbayAuto";
 // (18/10, eBay ÷ 5) La longueur de la robe lue dans le texte, la valeur connue
@@ -4467,6 +4472,33 @@ const FREE_STOCK_LIMIT = FREE_STOCK_LIMIT_FALLBACK;
 // (25/10) Aucune plateforme fermée : une seule référence (dépendance stable des mémos).
 const AUCUNE_PLATEFORME_FERMEE = Object.freeze([]);
 
+// ── LE CHAMP REQUIS QUI SE REMPLIT SEUL (25/10 soir, décisions de Nico) ─────────────────────────────────────────────
+// Un champ d'un rayon, exigé et vide : la valeur que donne une source FIABLE — la pointure de la fiche, puis un nombre
+// collé à « pointure / taille / EU… » dans le texte (pointure-du-texte.js) ; pour Beebs, la matière (fiche, rayon,
+// sinon « Autre »), l'âge (écrit, PEGI, livre adulte), la taille d'un bijou qui n'est pas une bague (« Ajustable »)
+// (champs-requis-auto.js). Rien de sûr → null : la question reste, comme avant. Pur.
+// Sources tracées (option_du_texte) ; la valeur est posée sur la COPIE, jamais sur la fiche.
+const CHAMP_REQUIS_VERS_COPIE = new Set(["pointure_de_la_fiche", "pointure_du_texte", "matiere_de_la_fiche", "matiere_du_rayon", "matiere_autre", "bijou_hors_bague"]);
+function champRequisAuto({ platform, key, label, allowedValues, chemin, textes, publicCopie = [], tailleFiche = "", matiereFiche = "", classementFiche = "" }) {
+  if (!Array.isArray(allowedValues) || !allowedValues.length) return null;
+  const nom = `${key ?? ""} ${label ?? ""}`;
+  const cheminListe = Array.isArray(chemin) ? chemin : (chemin ? [String(chemin)] : []);
+  const estPointure = /pointure|shoe_size/i.test(nom) || (/^(taille|size|_size)$/i.test(String(label ?? key ?? "").trim()) && estChampChaussures("", cheminListe));
+  if (estPointure) {
+    const r = pointureDuTexte({ valeurFiche: tailleFiche, textes, chemin: [...cheminListe, ...publicCopie].filter(Boolean), grille: allowedValues });
+    return r?.valeur ? { valeur: r.valeur, source: r.source === "fiche" ? "pointure_de_la_fiche" : "pointure_du_texte", motif: r.motif } : null;
+  }
+  if (platform !== "beebs") return null;
+  const lib = String(label ?? key ?? "").trim();
+  if (/^mati[eè]re$/i.test(lib)) return matiereBeebsAuto({ chemin: cheminListe, valeurFiche: matiereFiche, allowedValues });
+  if (/^[aâ]ge$/i.test(lib)) {
+    const r = ageBeebsAuto({ chemin: cheminListe, textes, classement: classementFiche, allowedValues });
+    return r?.valeur ? r : null;
+  }
+  if (/^taille$/i.test(lib)) return tailleBijouBeebsAuto({ chemin: cheminListe, textes, allowedValues });
+  return null;
+}
+
 export default function ListingPreviewScreen({
   // profiles.plateformes_visibles, lu par App.jsx. AFFICHAGE SEULEMENT.
   plateformesVisibles = [],
@@ -7934,6 +7966,26 @@ export default function ListingPreviewScreen({
       if (src?.key === "taille" && allowedValues?.length) {
         const t = tailleDansListeEbay("", allowedValues, { textes: textesVendeurEbay, champ: name, chemin: pf.ebayCategoryPath ?? null });
         if (t) return { ...manquant, deduit: { valeur: t, source: "taille_du_texte" } };
+        // (25/10 soir, décision de Nico) La POINTURE d'une chaussure : la fiche, puis un nombre collé à un mot explicite,
+        // cohérent avec le public du rayon (pointure-du-texte.js) — sinon la question.
+        if (estChampChaussures(name, pf.ebayCategoryPath ?? null)) {
+          const a = initialListing?.attributs?.taille;
+          const p = pointureDuTexte({
+            valeurFiche: String(pf.taille || initialListing?.taille || (a && typeof a === "object" ? a.v : a) || ""),
+            textes: textesVendeurEbay, chemin: [pf.ebayCategoryPath, pf.genre].flat().filter(Boolean), grille: allowedValues,
+          });
+          if (p?.valeur) return { ...manquant, deduit: { valeur: p.valeur, source: p.source === "fiche" ? "pointure_de_la_fiche" : "pointure_du_texte" } };
+        }
+      }
+      // (25/10 soir, décision 2b de Nico — prudence : une matière inventée = litige « non conforme ») LA MATIÈRE EXIGÉE
+      // PAR eBAY : la composition LUE sur l'étiquette (Lens, avec pourcentages), sinon la valeur NEUTRE de la liste de
+      // CETTE catégorie (« Inconnue »…), sinon la question, comme avant (champs-requis-auto.js).
+      if (src?.key === "matiere") {
+        const visible = initialListing?.attributs?.attributs_visibles;
+        const composition = initialListing?.attributs_visibles?.composition
+          ?? (visible && typeof visible === "object" ? (visible.v?.composition ?? visible.composition) : null) ?? "";
+        const mt = matiereEbayAuto({ composition: String(composition ?? ""), allowedValues });
+        if (mt) return { ...manquant, deduit: { valeur: mt.valeur, source: mt.source } };
       }
       // (18/10, zéro friction — banc de 571 VRAIES annonces eBay France, valeur
       // choisie par le vendeur) Sur ces aspects à liste SUGGÉRÉE, l'option que
@@ -8116,7 +8168,8 @@ export default function ListingPreviewScreen({
           && !String(pfAspects[a.name] ?? "").trim() && peutPoser(a)) {
         toSet[a.name] = a.deduit.valeur;
         // (19/10) La taille dite par le texte : sa question partagée de ce rendu n'en est pas une.
-        if (a.deduit.source === "taille_du_texte") tailleDuTexteEnVol.current.add("ebay");
+        // (25/10 soir) La pointure (fiche ou texte) aussi.
+        if (a.deduit.source === "taille_du_texte" || String(a.deduit.source).startsWith("pointure_")) tailleDuTexteEnVol.current.add("ebay");
         const repose = aspectDefaultsPoses.current.has(a.name);
         noterPose(a);
         if (a.deduit.source === "memoire" && !repose) noterPoseMemoire("ebay", a, a.deduit, ebayPreviewCategoryId ?? null);
@@ -8974,6 +9027,22 @@ export default function ListingPreviewScreen({
           if (t) return { key, label, state: "missing", value: "", allowedValues, inputType: r.input_type, dedicatedTarget: genericDedicatedTarget(platform, key),
                           suggested: t.valeur, blocking: false, deduit: { valeur: t.valeur, source: "taille_du_texte" }, deduite: t };
         }
+        // (25/10 soir, décisions de Nico) LE CHAMP REQUIS QUI SE REMPLIT SEUL quand une source fiable existe : pointure
+        // (fiche, puis texte), matière et âge Beebs, bijou Beebs hors bague — posé (jamais bloquant), sinon la question.
+        if (allowedValues.length) {
+          const ficheA = (attributsBase && typeof attributsBase === "object") ? attributsBase
+            : (initialListing?.attributs && typeof initialListing.attributs === "object" ? initialListing.attributs : {});
+          const vF = (c) => { const x = ficheA?.[c]; return x && typeof x === "object" ? x.v : x; };
+          const auto = champRequisAuto({
+            platform, key, label, allowedValues, chemin: cheminDe(platform), textes: textesDuVendeurPour(platform),
+            publicCopie: [pf.univers, pf.genre],
+            tailleFiche: String(pf.taille || initialListing?.taille || vF("taille") || ""),
+            matiereFiche: String(pf.matiere || initialListing?.matiere || vF("matiere") || ""),
+            classementFiche: String(vF("classement_age") || ""),
+          });
+          if (auto?.valeur) return { key, label, state: "missing", value: "", allowedValues, inputType: r.input_type, dedicatedTarget: genericDedicatedTarget(platform, key),
+                                     suggested: auto.valeur, blocking: false, deduit: { valeur: auto.valeur, source: auto.source, motif: auto.motif } };
+        }
         if (GENERIC_PREFILLED[platform]?.includes(key)) {
           return {
             key, label, state: "prefilled", allowedValues, inputType: r.input_type,
@@ -9192,6 +9261,12 @@ export default function ListingPreviewScreen({
         if (d.source === "taille_du_texte" && a.dedicatedTarget === "taille") {
           tailleDuTexteEnVol.current.add(gp);
           setPlatformDedicatedField(gp, "taille", d.valeur);
+        }
+        // (25/10 soir) Pointure, matière Beebs, bijou hors bague : sur la copie de CETTE plateforme, dans son champ dédié
+        // partagé (taille, matière) — là où l'extension le lit, le lien partagé coupé pour elle seule, comme la taille.
+        else if (CHAMP_REQUIS_VERS_COPIE.has(d.source) && (a.dedicatedTarget === "taille" || a.dedicatedTarget === "matiere")) {
+          if (a.dedicatedTarget === "taille") tailleDuTexteEnVol.current.add(gp);
+          setPlatformDedicatedField(gp, a.dedicatedTarget, d.valeur);
         }
         else if (versDedie) setPlatformDedicatedField(gp, a.dedicatedTarget, d.valeur);
         else setPlatformAspect(gp, a.key, d.valeur);
