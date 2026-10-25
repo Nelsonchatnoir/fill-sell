@@ -11,7 +11,7 @@ SET LOCAL lock_timeout = '3s';
 
 CREATE TEMP TABLE essai_sortie (ordre serial, section text, ligne jsonb) ON COMMIT DROP;
 CREATE TEMP TABLE essai_comptes ON COMMIT DROP AS
-SELECT p.id AS uid, p.email, pf
+SELECT p.id AS uid, split_part(p.email, '@', 1) AS email, pf
 FROM profiles p CROSS JOIN unnest(republish_planifiee_plateformes()) pf
 WHERE p.id IN ('53efea05-dc2d-4467-a8cd-c6fa52a47a61', 'afeef3c7-0b0b-408c-a25b-3823448e3eb1', 'de63ca45-63d9-4a3c-b65a-d1345acd8b2e', 'faf5021a-479a-4bb3-b3ec-c296770739b7', '63ad8597-4fee-4277-9a69-14ad44af1896')
   AND COALESCE((p.platform_settings #> ARRAY[pf, 'republish_planifiee'] ->> 'actif')::boolean, false);
@@ -37,7 +37,7 @@ BEGIN
   END LOOP;
 END $m$;
 INSERT INTO essai_creneaux
-SELECT 'avant', r.id, p.email, r.platform, r.statut, r.prevues, r.sautes
+SELECT 'avant', r.id, split_part(p.email, '@', 1), r.platform, r.statut, r.prevues, r.sautes
 FROM republish_creneaux r JOIN profiles p ON p.id = r.user_id
 WHERE r.statut = 'en_cours';
 
@@ -49,7 +49,7 @@ BEGIN
   BEGIN
     v := public.republish_planifiee_sweep();
     v_ms := round(extract(epoch FROM clock_timestamp() - t0) * 1000)::integer;
-    SELECT jsonb_agg(jsonb_build_object('id', r.id, 'email', p.email, 'platform', r.platform, 'statut', r.statut,
+    SELECT jsonb_agg(jsonb_build_object('id', r.id, 'email', split_part(p.email, '@', 1), 'platform', r.platform, 'statut', r.statut,
                                         'prevues', r.prevues, 'sautes', r.sautes))
       INTO v_cr
     FROM republish_creneaux r JOIN profiles p ON p.id = r.user_id
@@ -1304,7 +1304,7 @@ BEGIN
   INSERT INTO essai_balayage VALUES ('nouvelle_regle', v, round(extract(epoch FROM clock_timestamp() - t0) * 1000)::integer);
 END $b$;
 INSERT INTO essai_creneaux
-SELECT 'nouvelle_regle', r.id, p.email, r.platform, r.statut, r.prevues, r.sautes
+SELECT 'nouvelle_regle', r.id, split_part(p.email, '@', 1), r.platform, r.statut, r.prevues, r.sautes
 FROM republish_creneaux r JOIN profiles p ON p.id = r.user_id
 WHERE r.statut = 'en_cours' OR r.updated_at >= now();
 
@@ -1389,7 +1389,7 @@ ORDER BY r.jour, r.platform;
 INSERT INTO essai_sortie (section, ligne)
 SELECT 'balayage', jsonb_build_object('regle', b.phase, 'ms', b.ms,
   'comptes', b.sortie #> '{comptes}', 'crees', b.sortie #> '{crees}', 'traites', b.sortie #> '{traites}',
-  'detail', (SELECT jsonb_agg(jsonb_build_object('compte', e ->> 'compte', 'pf', e ->> 'platform', 'allowed', e -> 'allowed',
+  'detail', (SELECT jsonb_agg(jsonb_build_object('compte', split_part(e ->> 'compte', '@', 1), 'pf', e ->> 'platform', 'allowed', e -> 'allowed',
                     'reason', e ->> 'reason', 'annonce', COALESCE(e ->> 'vinted_item_id', e ->> 'inventaire_id'), 'examines', e -> 'examines'))
              FROM jsonb_array_elements(b.sortie -> 'detail') e),
   'erreur', b.sortie ->> 'message')
@@ -1431,7 +1431,7 @@ FROM (
     FROM essai_comptes k
     CROSS JOIN LATERAL (SELECT CASE WHEN k.pf = 'vinted' THEN republish_boutique_connectee(k.uid) ->> 'user_id' END AS boutique) b
     CROSS JOIN LATERAL republish_planifiee_candidats(k.uid, republish_planifiee_reglage(k.uid, k.pf), k.pf) c
-    WHERE k.id = '53efea05-dc2d-4467-a8cd-c6fa52a47a61'
+    WHERE k.uid = '53efea05-dc2d-4467-a8cd-c6fa52a47a61'
   ) x
   WHERE x.n_groupe <= 50
 ) y
