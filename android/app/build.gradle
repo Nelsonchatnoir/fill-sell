@@ -108,9 +108,11 @@ android {
         // du téléphone ferait planter l'app. scripts/binaires-2.9.62.mjs refuse
         // de le fabriquer sans ce fichier. Même numéro que le bundle embarqué
         // (package.json 2.9.62) ; prochaine OTA ≥ 2.9.63.
+        // (25/10) versionName 2.9.115, versionCode 33 inchangé (jamais fabriqué ni envoyé) : le binaire des notifications
+        // suit la version de package.json (scripts/binaires.mjs) ; prochaine OTA ≥ 2.9.116.
         // ⚠️ versionCode ne recule JAMAIS : Google Play le refuserait.
         versionCode 33
-        versionName "2.9.62"
+        versionName "2.9.115"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

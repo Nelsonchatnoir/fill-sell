@@ -101,7 +101,8 @@ workflows:
           # et le profil « FillSell AppStore » régénéré ensuite (docs/push/CLES-NICO.md,
           # bloc B). Aligné sur package.json 2.9.62 et Android 2.9.62 / versionCode 33.
           # Plancher des OTA : la suivante sera 2.9.63 ou au-dessus.
-          cd ios/App && agvtool new-marketing-version 2.9.62 && agvtool new-version -all $BUILD_NUMBER
+          # (25/10) 2.9.115 : même version que package.json (scripts/binaires.mjs vérifie l alignement) ; OTA suivante ≥ 2.9.116.
+          cd ios/App && agvtool new-marketing-version 2.9.115 && agvtool new-version -all $BUILD_NUMBER
       - name: Build IPA
         script: |
           xcode-project use-profiles
