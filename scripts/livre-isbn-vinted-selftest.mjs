@@ -50,7 +50,7 @@ console.log('\n4. L’app : lue avant d’être demandée, la règle avant le ca
 const lps = lire('src/components/ListingPreviewScreen.jsx');
 verifier(/if \(platform === "vinted" && vintedExigeUnIsbn\(String\(key\)\.split\(" > "\)\)\) \{\s*\n\s*rows = \[\.\.\.rows\.filter\(r => r\.field_key !== "isbn"\), \{ field_key: "isbn"[^\n]*allowed_values: \[ISBN_ABSENT\], synthetique: "vinted_isbn_exige" \}\];/.test(lps), 'ligne ISBN posée par la RÈGLE (remplace une ligne « facultative » du catalogue), avec « Ce livre n’a pas d’ISBN »');
 verifier(/material: "matiere", isbn: "isbn" \}\[key\]/.test(lps), 'la réponse va dans pf.isbn (parallèle exact de genericKnownSource)');
-verifier(/body: \{ resolve_isbn: true, photos: photosIa/.test(lps) && /const texte = resoudreIsbn\(\{ article: isbnFiche, description, titre \}\);/.test(lps) && /setIaGeneriqueEnVol\(n => n \+ 1\);/.test(lps), 'avant la question : texte puis photos (le lot attend la lecture)');
+verifier(/body: \{ resolve_isbn: true, photos: photosIa/.test(lps) && /const texte = resoudreIsbn\(\{ article: isbnFiche, description: descriptions, titre: titres \}\);/.test(lps) && /setIaGeneriqueEnVol\(n => n \+ 1\);/.test(lps), 'avant la question : texte puis photos (le lot attend la lecture)');
 verifier(/if \(String\(pf\.isbn \?\? ""\)\.trim\(\) \|\| String\(pf\.vintedAspects\?\.isbn \?\? ""\)\.trim\(\)\) return prev;/.test(lps), 'jamais par-dessus une saisie');
 const rp = lire('src/utils/resolutionPublication.js');
 verifier(/pf\.isbn_absent = true;\s*\n\s*delete pf\.isbn;/.test(rp), '« Ce livre n’a pas d’ISBN » devient isbn_absent : jamais tapé chez Vinted');

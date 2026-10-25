@@ -108,6 +108,12 @@ export function isbnDansTexte(texte) {
  *   4. `description`  — annoncé dans le texte de l'annonce ← le cas Xewer ;
  *   5. `titre`        — dernier recours, même exigence d'ancrage.
  *
+ * (26/10 nuit, point 1 — « EAT » de Nico) `description` et `titre` acceptent aussi une LISTE de textes, la fiche
+ * d'abord : la description de la COPIE (réécrite par la rédaction, sans l'ISBN) masquait celle de la FICHE, qui
+ * l'écrivait en toutes lettres (« ISBN 9782981413604 ») — la question « ISBN » partait, puis les photos lisaient un
+ * faux numéro. Deux ISBN VALIDES DIFFÉRENTS d'un texte à l'autre (un lot de livres ?) → null : la question, jamais un
+ * choix au hasard.
+ *
  * @param {{reponse?:unknown, capture?:unknown, article?:unknown, description?:unknown, titre?:unknown}} sources
  * @returns {{isbn13:string, source:string, trouve:string}|null}
  */
@@ -119,8 +125,15 @@ export function resoudreIsbn(sources) {
     if (norme.ok) return { isbn13: norme.isbn13, source: cle, trouve: brut };
   }
   for (const cle of ["description", "titre"]) {
-    const trouve = isbnDansTexte(sources?.[cle]);
-    if (trouve) return { isbn13: trouve.isbn13, source: cle, trouve: trouve.trouve };
+    const textes = (Array.isArray(sources?.[cle]) ? sources[cle] : [sources?.[cle]]).filter((t) => String(t ?? "").trim());
+    let premier = null;
+    for (const texte of textes) {
+      const trouve = isbnDansTexte(texte);
+      if (!trouve) continue;
+      if (!premier) premier = trouve;
+      else if (trouve.isbn13 !== premier.isbn13) return null;
+    }
+    if (premier) return { isbn13: premier.isbn13, source: cle, trouve: premier.trouve };
   }
   return null;
 }

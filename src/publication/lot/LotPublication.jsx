@@ -1639,8 +1639,12 @@ export function ArticleAQuestions({ id, en, item, m, st, decision, decider, tran
                     ? (en ? "Your Vinted description couldn't be read this time. This one was written from your photos and your title: check it before it goes out." : "Ta description Vinted n'a pas pu être lue cette fois. Celle-ci a été écrite d'après tes photos et ton titre : relis-la avant qu'elle parte.")
                     : (en ? "Your description isn't in FillSell: this one was written from your photos and your title." : "Ta description n'est pas dans FillSell : celle-ci a été écrite d'après tes photos et ton titre."))
             : (en ? "This title was written by FillSell." : "Ce titre a été écrit par FillSell.")}</div>
-          <input className="fsn-input" type="text" defaultValue={titreQuiPart}
-            onBlur={(ev) => { if (ev.target.value !== titreQuiPart) m.poserValeurGenerale?.("titre", ev.target.value); }} />
+          {/* (26/10 nuit, point 1) Le titre se lit ENTIER (« Téléphone intelligent noir écran 6 pc… » coupé dans un
+              champ d'une ligne) : deux lignes, jamais de retour à la ligne dans la valeur. */}
+          <textarea className="fsn-textarea" rows={2} style={{ minHeight: 0, resize: "none" }} defaultValue={titreQuiPart}
+            aria-label={en ? "Title" : "Titre"}
+            onKeyDown={(ev) => { if (ev.key === "Enter") { ev.preventDefault(); ev.currentTarget.blur(); } }}
+            onBlur={(ev) => { const v = ev.target.value.replace(/\s*\n+\s*/g, " "); if (v !== titreQuiPart) m.poserValeurGenerale?.("titre", v); }} />
           <textarea className="fsn-textarea" defaultValue={descriptionQuiPart}
             onBlur={(ev) => { if (ev.target.value !== descriptionQuiPart) m.poserValeurGenerale?.("description", ev.target.value); }} />
           <div className="fsn-btn-row">
@@ -1687,7 +1691,10 @@ export function ArticleAQuestions({ id, en, item, m, st, decision, decider, tran
       {Object.entries(m.rayonsAChoisir ?? {}).map(([p, q]) => (
         <CarteRayon key={`rayon-${p}`} platform={p} lang={m.lang} rayon={null} question={q}
           suggestions={m.suggestionsParPf?.[p] ?? []} champs={{}} configLocale={[]} supabase={m.supabase}
-          onChoisirRayon={(choixRayon) => m.choisirRayon?.(p, choixRayon)} regle="nouvelle" />
+          onChoisirRayon={(choixRayon) => m.choisirRayon?.(p, choixRayon)} regle="nouvelle"
+          // (26/10 nuit, point 1 — le robot de Nico) « Pas sur Beebs » en un geste, même pour un article qui n'a que
+          // cette plateforme : il sort alors du lot (rien ne part pour lui), comme « Le garder pour plus tard ».
+          onPasSurPlateforme={() => (plateformes.length > 1 ? sansPlateforme(id, p) : retirerDuLot(id))} />
       ))}
 
       {/* Une question qu'on ne veut pas trancher pour UNE plateforme : on la

@@ -151,6 +151,18 @@ export function valeurPourListe(platform, key, value) {
   return v;
 }
 
+// ── (26/10 nuit, point 1 — le téléphone Samsung de Nico) LES MODÈLES VINTED SONT CEUX D'UNE MARQUE ────────────────────
+// Chez Vinted, la liste « Modèle » dépend de la marque choisie avant elle ; notre relevé ne porte pas la marque et n'en
+// a qu'une (Apple : 50 « iPhone … » en Téléphones portables, 9 « AirPods » en Casques). Servie à un Samsung, elle ne
+// proposait que des iPhone. Règle : une liste de modèles Apple ne se propose qu'à un article Apple ; ailleurs le modèle
+// se tape (champ à recherche : l'extension le cherche dans la liste de SA marque chez Vinted). Pur.
+const RE_MODELES_APPLE = /^(iphone|ipad|ipod|airpods|apple watch|macbook|imac|mac mini)\b/i;
+export function modelesVintedPourLaMarque(platform, key, valeurs, marque) {
+  if (platform !== "vinted" || key !== "model" || !Array.isArray(valeurs) || !valeurs.length) return valeurs;
+  if (!valeurs.every((v) => RE_MODELES_APPLE.test(String(v).trim()))) return valeurs;
+  return /^\s*apple\s*$/i.test(String(marque ?? "")) ? valeurs : [];
+}
+
 // Les champs qui portent une TAILLE (ou une pointure) : eux seuls passent par
 // le vocabulaire des tailles (_shared/tailles.js — celui du serveur Opla et
 // du pré-vol de l'extension), qui sait qu'une étiquette composite

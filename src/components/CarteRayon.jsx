@@ -50,6 +50,9 @@ const MOTS = {
     chargement: 'Chargement des rayons…',
     tapez: 'Tape un mot pour chercher un rayon.',
     choisir: 'Choisir',
+    // (26/10 nuit, point 1 — le robot aspirateur de Nico) Aucun candidat : on le dit, et l'issue est en un geste.
+    aucunCandidat: (pf, objet) => `Aucun rayon ${pf} ne correspond à ${objet ? `« ${objet} »` : 'cet article'}.`,
+    pasSur: (pf) => `Pas sur ${pf}`, chercherQuandMeme: 'Chercher un rayon', autreRayon: 'Autre rayon…',
     // (25/09) Rayon refusé par la vérification, aucun rayon sûr à sa place.
     // On dit ce qui s'est passé, ce qu'on attend, et ce qui arrive sinon —
     // la liste juste en dessous commence par nos candidats.
@@ -73,6 +76,8 @@ const MOTS = {
     chargement: 'Loading categories…',
     tapez: 'Type a word to search.',
     choisir: 'Pick',
+    aucunCandidat: (pf, objet) => `No ${pf} category matches ${objet ? `“${objet}”` : 'this item'}.`,
+    pasSur: (pf) => `Not on ${pf}`, chercherQuandMeme: 'Search a category', autreRayon: 'Another category…',
     aChoisir: 'CATEGORY TO PICK',
     question: (pf, objet, ecarte) =>
       `We found no ${pf} category we’re sure of for ${objet ? `“${objet}”` : 'this item'}` +
@@ -140,16 +145,25 @@ export default function CarteRayon({
   // (19/10) Les textes du vendeur (fiche, copie) : la taille qu'ils disent
   // (« W30 » + « FR40 ») — le même jugement que le moteur. Absent : inchangé.
   textes = null,
+  // (26/10 nuit, point 1) L'issue « Pas sur <plateforme> » quand la question n'a AUCUN candidat (le robot aspirateur de
+  // Nico : l'arbre Beebs n'a aucun rayon pour lui). Absent : la carte d'avant.
+  onPasSurPlateforme = null,
 }) {
   const T = MOTS[lang === 'en' ? 'en' : 'fr'];
   const questionOuverte = Boolean(question) && !rayon?.chemin?.length;
+  // (26/10 nuit, point 1) Une question de rayon se répond en UN geste : ses 3 premiers candidats en puces ; sans
+  // candidat, « Pas sur <plateforme> » — jamais un champ de recherche vide ouvert d'office.
+  const candidatsEnPuces = questionOuverte ? (suggestions ?? []).filter((f) => Array.isArray(f?.chemin) && f.chemin.length).slice(0, 3) : [];
+  const questionSansCandidat = questionOuverte && candidatsEnPuces.length === 0;
   // Tant que personne n'a touché au bouton, la liste suit la question : ouverte
   // quand elle est posée (elle peut arriver APRÈS le montage, la résolution est
   // asynchrone), fermée sinon — c'est-à-dire exactement comme avant pour toute
   // carte sans question. Dès le premier geste, c'est la personne qui décide.
   const [ouvertManuel, setOuvertManuel] = useState(null);
-  const ouvertPicker = ouvertManuel ?? questionOuverte;
-  const setOuvertPicker = (v) => setOuvertManuel((prec) => (typeof v === 'function' ? v(prec ?? questionOuverte) : v));
+  // (26/10 nuit, point 1) La liste ne s'ouvre plus d'office quand des puces (ou l'issue « Pas sur ») répondent déjà.
+  const ouvertParDefaut = questionOuverte && candidatsEnPuces.length === 0 && !onPasSurPlateforme;
+  const ouvertPicker = ouvertManuel ?? ouvertParDefaut;
+  const setOuvertPicker = (v) => setOuvertManuel((prec) => (typeof v === 'function' ? v(prec ?? ouvertParDefaut) : v));
   const [motif, setMotif] = useState('');
   const [feuilles, setFeuilles] = useState(null);
   const [catalogue, setCatalogue] = useState(null);
@@ -371,11 +385,13 @@ export default function CarteRayon({
               </>
             ) : questionOuverte ? (
               <div style={{ ...st.chemin, marginTop: 0, color: '#92400E', fontSize: 12.5 }}>
-                {T.question(
-                  NOM_PLATEFORME[platform] ?? platform,
-                  question?.objet ?? null,
-                  libelleRayon(question?.chemins_refuses?.[0] ?? null),
-                )}
+                {questionSansCandidat && onPasSurPlateforme
+                  ? T.aucunCandidat(NOM_PLATEFORME[platform] ?? platform, question?.objet ?? null)
+                  : T.question(
+                    NOM_PLATEFORME[platform] ?? platform,
+                    question?.objet ?? null,
+                    libelleRayon(question?.chemins_refuses?.[0] ?? null),
+                  )}
               </div>
             ) : (
               <div style={{ ...st.chemin, marginTop: 0 }}>
@@ -387,6 +403,31 @@ export default function CarteRayon({
             {ouvertPicker ? T.annuler : T.changer}
           </button>
         </div>
+
+        {/* (26/10 nuit, point 1) La réponse en un geste : les candidats en puces, ou « Pas sur <plateforme> ». */}
+        {questionOuverte && !ouvertPicker && (candidatsEnPuces.length > 0 || onPasSurPlateforme) && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+            {candidatsEnPuces.map((f, i) => (
+              <button key={`puce-${f.chemin.join('>')}-${i}`} type="button" title={cheminComplet(f.chemin)}
+                style={{ ...st.option, width: 'auto', marginTop: 0, minHeight: 44, padding: '0 14px', borderRadius: 999, fontSize: 14, fontWeight: 600, color: UI.ink }}
+                onClick={() => onChoisirRayon?.({ chemin: f.chemin, id: f.id ?? null, le: new Date().toISOString() })}>
+                {libelleRayon(f.chemin)}
+              </button>
+            ))}
+            {onPasSurPlateforme && (
+              <button type="button"
+                style={{ ...st.option, width: 'auto', marginTop: 0, minHeight: 44, padding: '0 14px', borderRadius: 999, fontSize: 14, fontWeight: 700, color: UI.tealDeep, borderColor: UI.teal }}
+                onClick={() => onPasSurPlateforme()}>
+                {T.pasSur(NOM_PLATEFORME[platform] ?? platform)}
+              </button>
+            )}
+            <button type="button"
+              style={{ ...st.option, width: 'auto', marginTop: 0, minHeight: 44, padding: '0 14px', borderRadius: 999, fontSize: 14, fontWeight: 600, color: UI.tealDeep, borderStyle: 'dashed' }}
+              onClick={() => { setOuvertPicker(true); setMotif(''); }}>
+              {questionSansCandidat ? T.chercherQuandMeme : T.autreRayon}
+            </button>
+          </div>
+        )}
 
         {/* ── LE RAYON CONTREDIT LA FICHE (2026-09-20) ────────────────────
             Trouvé en testant : rayon « Pantalons et jeans (garçon) » posé à

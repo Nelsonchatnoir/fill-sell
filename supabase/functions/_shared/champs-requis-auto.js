@@ -170,6 +170,53 @@ export function tailleBijouBeebsAuto({ chemin = null, textes = [], allowedValues
   return { valeur: ajustable, source: "bijou_hors_bague", motif: `${m[0]} : pas une bague` };
 }
 
+// ── f) MONTRES : « Taille » = le DIAMÈTRE DU BOÎTIER (26/10 nuit, point 1 — la G-Shock GA-2100 de Nico) ──────────
+// Vinted (« Montres », « Montres connectées ») et Beebs (« Montres (homme|femme) ») exigent une « Taille » qui est une
+// grille de diamètres de boîtier (Jusqu'à 30 mm, 31/30–38 mm, 39–42 mm, 43–46 mm, 47 mm et plus) + « Taille unique ».
+// Le lot de Nico demandait cette « Taille » (sélecteur de vêtements) et l'IA, ailleurs, en posait une au hasard
+// (« 39 mm - 42 mm » sans aucune source). Règle : le diamètre ÉCRIT par le vendeur, collé à un mot du boîtier
+// (« boîtier 42 mm », « diamètre de 40 mm », « cadran 38 mm », « 45 mm de diamètre ») → sa tranche ; aucun diamètre
+// écrit → « Taille unique » (une montre se règle au poignet : la grille la propose pour ça, et l'extension Beebs pose
+// déjà la neutre quand la copie n'a rien — règle du 21/09). Jamais deviné : « bracelet 20 mm » n'est pas le boîtier ;
+// deux diamètres différents → la question.
+const RE_DIAMETRE_AVANT = /\b(?:boitier|cadran|diametre|lunette)(?:\s+(?:de|d'environ|environ|d'un|du|:|=))*\s*(\d{2}(?:[.,]\d{1,2})?)\s?mm\b/g;
+const RE_DIAMETRE_APRES = /\b(\d{2}(?:[.,]\d{1,2})?)\s?mm\s+(?:de\s+)?diametre\b/g;
+/** Les tranches de la grille : [min, max[ en mm, lues dans SES libellés (jamais une table à nous). */
+function tranchesDiametre(allowedValues) {
+  const out = [];
+  for (const v of (Array.isArray(allowedValues) ? allowedValues : []).map(String)) {
+    const p = plier(v).replace(/[–—]/g, "-");
+    let m;
+    if ((m = /^jusqu'a\s*(\d{2})\s*mm$/.exec(p))) out.push({ v, min: 0, max: Number(m[1]) + 1 });
+    else if ((m = /^(\d{2})\s*(?:mm)?\s*-\s*(\d{2})\s*mm$/.exec(p))) out.push({ v, min: Number(m[1]), max: Number(m[2]) + 1 });
+    else if ((m = /^(\d{2})\s*mm\s*et\s*plus$/.exec(p))) out.push({ v, min: Number(m[1]), max: Infinity });
+  }
+  return out;
+}
+/** @returns {{valeur:string, source:string, motif:string} | {doute:string} | null} */
+export function tailleMontreAuto({ chemin = null, textes = [], allowedValues = [] } = {}) {
+  if (!/\bmontres?\b/.test(cheminTexte(chemin))) return null;
+  const tranches = tranchesDiametre(allowedValues);
+  const unique = dansListe("Taille unique", allowedValues);
+  if (tranches.length < 3 || !unique) return null; // pas la grille des diamètres : la règle ne joue pas
+  const t = plier((Array.isArray(textes) ? textes : [textes]).join(" \n "));
+  const lus = new Set();
+  for (const re of [RE_DIAMETRE_AVANT, RE_DIAMETRE_APRES]) {
+    re.lastIndex = 0;
+    let m;
+    while ((m = re.exec(t)) !== null) lus.add(Number(String(m[1]).replace(",", ".")));
+  }
+  if (lus.size > 1) return { doute: `diamètres écrits différents (${[...lus].join(", ")} mm)` };
+  if (lus.size === 1) {
+    const d = [...lus][0];
+    // Un diamètre entre deux tranches (38,5 mm entre « 30–38 » et « 39–42 ») prend celle dont il passe le bas.
+    const tr = tranches.filter((x) => d >= x.min).sort((a, b) => b.min - a.min)[0];
+    if (!tr) return { doute: `diamètre ${d} mm hors de la grille` };
+    return { valeur: tr.v, source: "diametre_ecrit", motif: `diamètre du boîtier écrit par le vendeur (${d} mm)` };
+  }
+  return { valeur: unique, source: "montre_sans_diametre", motif: "aucun diamètre de boîtier écrit : la taille unique de la grille" };
+}
+
 // ── b) MATIÈRE eBAY (prudence : une matière inventée = litige « non conforme ») ──────────────────────────────────
 // Lens ne donne AUCUNE confiance pour la matière (sa confiance est celle de l'identification entière) : le seul signal
 // SÛR est une COMPOSITION LUE sur l'étiquette, avec un pourcentage (« 70% coton, 30% nylon » : 73 scans sur 678 en

@@ -151,11 +151,11 @@ import {
   vintedExigeUneCouleur, vintedExigeUnIsbn, ISBN_ABSENT, valeurUneLettre, rayonNeufSeulement, messageRayonNeuf,
   deduireOptionDuTexte, estFourreTout, listeCandidatsDabord, textesDeLAnnonce,
   tailleDuJob, tailleDansListeEbay, tailleDeduiteDuTexte, estChampTaille, rayonPublicIncoherent, messageRayonPublic,
-  clePositionnelleBeebs, tailleHomonymeBeebs,
+  clePositionnelleBeebs, tailleHomonymeBeebs, modelesVintedPourLaMarque,
 } from "../publication/moteur/listes";
 // (25/10 soir, décisions de Nico) Les champs requis qui se remplissent seuls quand une source fiable existe — sinon la
 // question, comme avant (jamais une valeur devinée).
-import { matiereBeebsAuto, ageBeebsAuto, tailleBijouBeebsAuto, matiereEbayAuto } from "../../supabase/functions/_shared/champs-requis-auto.js";
+import { matiereBeebsAuto, ageBeebsAuto, tailleBijouBeebsAuto, matiereEbayAuto, tailleMontreAuto } from "../../supabase/functions/_shared/champs-requis-auto.js";
 import { pointureDuTexte } from "../../supabase/functions/_shared/pointure-du-texte.js";
 import { estChampChaussures } from "../../supabase/functions/_shared/taille-du-texte.js";
 // (10/10, cas Manon) Ce que l'encart eBay remplit seul, et quand.
@@ -4478,7 +4478,7 @@ const AUCUNE_PLATEFORME_FERMEE = Object.freeze([]);
 // sinon « Autre »), l'âge (écrit, PEGI, livre adulte), la taille d'un bijou qui n'est pas une bague (« Ajustable »)
 // (champs-requis-auto.js). Rien de sûr → null : la question reste, comme avant. Pur.
 // Sources tracées (option_du_texte) ; la valeur est posée sur la COPIE, jamais sur la fiche.
-const CHAMP_REQUIS_VERS_COPIE = new Set(["pointure_de_la_fiche", "pointure_du_texte", "matiere_de_la_fiche", "matiere_du_rayon", "matiere_autre", "bijou_hors_bague"]);
+const CHAMP_REQUIS_VERS_COPIE = new Set(["pointure_de_la_fiche", "pointure_du_texte", "matiere_de_la_fiche", "matiere_du_rayon", "matiere_autre", "bijou_hors_bague", "diametre_ecrit", "montre_sans_diametre"]);
 function champRequisAuto({ platform, key, label, allowedValues, chemin, textes, publicCopie = [], tailleFiche = "", matiereFiche = "", classementFiche = "" }) {
   if (!Array.isArray(allowedValues) || !allowedValues.length) return null;
   const nom = `${key ?? ""} ${label ?? ""}`;
@@ -4487,6 +4487,13 @@ function champRequisAuto({ platform, key, label, allowedValues, chemin, textes, 
   if (estPointure) {
     const r = pointureDuTexte({ valeurFiche: tailleFiche, textes, chemin: [...cheminListe, ...publicCopie].filter(Boolean), grille: allowedValues });
     return r?.valeur ? { valeur: r.valeur, source: r.source === "fiche" ? "pointure_de_la_fiche" : "pointure_du_texte", motif: r.motif } : null;
+  }
+  // (26/10 nuit, point 1 — la G-Shock de Nico) Une MONTRE, sur Vinted comme sur Beebs : la « Taille » est le diamètre
+  // du boîtier — écrit par le vendeur, sinon « Taille unique » de la grille (champs-requis-auto.js, tailleMontreAuto).
+  if (/^(taille|size)$/i.test(String(label ?? "").trim()) || /^size$/i.test(String(key ?? "").trim())) {
+    const m = tailleMontreAuto({ chemin: cheminListe, textes, allowedValues });
+    if (m?.valeur) return m;
+    if (m?.doute) return null;
   }
   if (platform !== "beebs") return null;
   const lib = String(label ?? key ?? "").trim();
@@ -8851,9 +8858,14 @@ export default function ListingPreviewScreen({
               (k) => String(genericKnownSource(platform, k, pf) ?? aspects[k] ?? "").trim())
              ?? lbcListePlate(genericCategoryKeys?.[platform], key))
           : null;
-        const allowedValues = dependants ?? (Array.isArray(r.allowed_values)
+        const allowedValuesCatalogue = dependants ?? (Array.isArray(r.allowed_values)
           ? r.allowed_values.slice(0, 1000).map(v => String(v).trim()).filter(Boolean)
           : []);
+        // (26/10 nuit, point 1 — le téléphone Samsung de Nico) La liste « Modèle » de Vinted DÉPEND DE LA MARQUE, et
+        // notre relevé ne porte pas la marque : relevée sous Apple (50 « iPhone … », 9 « AirPods »), elle était servie
+        // à un Samsung. Hors d'une marque Apple, le modèle se TAPE (champ à recherche, l'extension le cherche dans la
+        // liste de SA marque chez Vinted) : jamais les modèles d'une autre marque en suggestion.
+        const allowedValues = modelesVintedPourLaMarque(platform, key, allowedValuesCatalogue, pf.marque || initialListing?.marque || "");
         // « title » (appris par un 400 serveur sur Montres homme Vinted) : le
         // job porte TOUJOURS un titre (edited[platform].title, édité au step
         // Génération et posé tel quel à l'insert) — ce n'est jamais un requis
@@ -8991,7 +9003,12 @@ export default function ListingPreviewScreen({
           // sticky du 30/07 (l'input restait monté, mais écrivait à côté).
           return { key, label, state: "ok", value: src, allowedValues, dedicatedTarget: genericDedicatedTarget(platform, key) };
         }
-        const generic = String(aspects[key] ?? "").trim();
+        // (26/10 nuit, point 1 — la G-Shock de Nico) Sur Beebs, une valeur posée dans le canal générique sous une clé que
+        // beebs.js SAUTE (Taille, Pointure, Couleur, Marque, État, Matière, Âge, Format du colis : servies par leur champ
+        // dédié) n'est PAS une valeur : elle ne part jamais sur Beebs. La ligne restait « ok » (« 39 mm - 42 mm » de l'IA
+        // dans beebsAspects.Taille) pendant que le sélecteur partagé demandait la taille : deux verdicts contraires. Elle
+        // est jugée vide — la déduction (montre, matière, âge…) ou la question, comme toute ligne vide.
+        const generic = platform === "beebs" && !canalGeneriquePose(platform, key) ? "" : String(aspects[key] ?? "").trim();
         if (generic) {
           if (variante === "nouvelle" && allowedValues.length && allowedValues.length <= EBAY_CLOSED_LIST_MAX) {
             // Même règle sur le canal générique (une valeur tapée en « Autre
@@ -9616,7 +9633,8 @@ export default function ListingPreviewScreen({
       if (!catKey || genericResolvedFor.current[gp] === catKey) continue;
       // Valeur catalogue unique exclue (2026-07-19) : réservée à la
       // confirmation explicite du bloc générique, jamais posée par l'IA.
-      const missingAll = list.filter(a => a.state === "missing" && (a.allowedValues?.length ?? 0) !== 1);
+      // (26/10 nuit, point 1) Une ligne déjà DÉDUITE d'une source fiable se pose seule (champRequisAuto…) : jamais l'IA.
+      const missingAll = list.filter(a => a.state === "missing" && (a.allowedValues?.length ?? 0) !== 1 && !a.deduit);
       if (!missingAll.length) continue;
       genericResolvedFor.current[gp] = catKey;
       const src = edited[gp] ?? {};
@@ -9717,7 +9735,10 @@ export default function ListingPreviewScreen({
       // laisse le champ VIDE — le pré-rempli Leboncoin (souvent juste, règle
       // du 13/08 côté extension) ou le mini-éditeur needs_user (options
       // relevées au blocage) font foi.
-      const askable = missing.filter(a =>
+      // (26/10 nuit, point 1) Une TAILLE ne part jamais à l'IA, même avec un champ dédié : la règle du 01/10 (« UNE
+      // TAILLE NE SE DEMANDE JAMAIS À L'IA ») ne couvrait que les homonymes — l'IA posait « 39 mm - 42 mm » à la G-Shock
+      // de Nico et « 22,6 mm » à la bague d'Elodie, sans aucune source. La taille connue (ci-dessus) reste posée.
+      const askable = missing.filter(a => !(estChampTaille(gp, a.key) || a.dedicatedTarget === "taille")).filter(a =>
         (a.dedicatedTarget === "marque" || a.dedicatedTarget === "modele" ||
           (a.dedicatedTarget === "matiere" && gp !== "vinted")) ||
         (a.allowedValues?.length ?? 0) > 0
@@ -10029,6 +10050,10 @@ export default function ListingPreviewScreen({
     if (String(pfV.isbn ?? "").trim() || String(pfV.vintedAspects?.isbn ?? "").trim()) return;
     const titre = copie.title || initialListing?.titre || "";
     const description = copie.description || initialListing?.description || null;
+    // (26/10 nuit, point 1 — « EAT » de Nico) La FICHE d'abord, puis la copie : la rédaction réécrit la description
+    // sans l'ISBN que le vendeur avait écrit (« ISBN 9782981413604 »). Deux ISBN différents → la question.
+    const descriptions = [initialListing?.description, copie.description];
+    const titres = [initialListing?.titre, copie.title];
     const attrs = attributsBase ?? initialListing?.attributs ?? null;
     const isbnFiche = attrs?.isbn && typeof attrs.isbn === "object" ? attrs.isbn.v : attrs?.isbn;
     const poser = (isbn13, source) => setEdited(prev => {
@@ -10038,7 +10063,7 @@ export default function ListingPreviewScreen({
       if (String(pf.isbn ?? "").trim() || String(pf.vintedAspects?.isbn ?? "").trim()) return prev; // une saisie arrivée entre-temps
       return { ...prev, vinted: { ...c, platform_fields: { ...pf, isbn: isbn13, isbn_auto: { valeur: isbn13, source, le: new Date().toISOString() } } } };
     });
-    const texte = resoudreIsbn({ article: isbnFiche, description, titre });
+    const texte = resoudreIsbn({ article: isbnFiche, description: descriptions, titre: titres });
     if (texte) { isbnIaRef.current = "fait"; poser(texte.isbn13, texte.source); return; }
     const photosIa = urlsPhotos(processedPhotos?.length ? processedPhotos : photos).slice(0, 4);
     if (!photosIa.length) { isbnIaRef.current = "fait"; return; }

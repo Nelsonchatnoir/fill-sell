@@ -22,6 +22,7 @@ import { titreVide, couperTitre, titrePourJob } from "../../../supabase/function
 import { casseTitre, depasseSeuilMajuscules } from "../../../supabase/functions/_shared/casse-titre.js";
 import { tailleDansGrille, diagnosticTaille, candidatsTaille } from "../../../supabase/functions/_shared/tailles.js";
 import { departementEbayPour } from "./departementEbay.js";
+import { ISBN_ABSENT } from "../../../supabase/functions/_shared/vinted-exigences.js";
 
 // ── Un aspect BLOQUE-t-il la publication ? ───────────────────────────────────
 // Règle unique (2026-07-29) partagée par la garde du CTA, la liste des motifs
@@ -487,7 +488,12 @@ export function questionsAPoser({
     + (dimensionsBloque ? 1 : 0);
   // Valeur catalogue UNIQUE (2026-07-19, cas Medik8) : confirmation explicite,
   // pleine largeur ; « Non » décoche la plateforme.
-  const genSeule = ({ a }) => aspectBloquant(a)
+  // (26/10 nuit, point 1 — « EAT » de Nico) La ligne ISBN n'est PAS une liste à une valeur : « Ce livre n'a pas
+  // d'ISBN » est le raccourci que NOTRE code y pose (vinted_isbn_exige), Vinted accepte tout ISBN valide. Elle garde sa
+  // vraie question (le numéro se tape, ou « Ce livre n'a pas d'ISBN » en un geste) — « Oui, confirmer » aurait publié
+  // sans ISBN un livre qui en a un.
+  const raccourciIsbn = (a) => a?.key === "isbn" && Array.isArray(a.allowedValues) && a.allowedValues.length === 1 && a.allowedValues[0] === ISBN_ABSENT;
+  const genSeule = ({ a }) => aspectBloquant(a) && !raccourciIsbn(a)
     && Array.isArray(a.allowedValues) && a.allowedValues.length === 1 && Boolean(peutDecocher);
   return { sharedFieldsToRender, redGenericAspects, redEbayAspects, redTotal, redRestants, genSeule, questionTaille, questionDimensions };
 }

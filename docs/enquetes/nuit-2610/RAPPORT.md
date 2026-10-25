@@ -21,3 +21,46 @@ Prompt de nuit de Nico (25/10, 22:00). Ce fichier se remplit point par point ; l
 - Banc : `node scripts/apercu/capture-maquettes-lot.mjs <lignes.json>` (lignes lues hors dépôt) — 390 px (2x) et 1280 px,
   contrôles : 32 cases, bilan exact, « Tout valider », feuille, cibles ≥ 44 px, champs ≥ 16 px, aucun débordement,
   aucune erreur de page : tout vert.
+
+### 1b. Les défauts de fond vus sur l'écran de Nico — corrigés à la règle (commit du point 1)
+- **Le livre « EAT »** : il A un ISBN, écrit sur sa fiche (« ISBN 9782981413604 », clé valide). La rédaction l'avait
+  retiré de la copie, et l'app ne lisait QUE la copie ; puis les photos ont donné un faux numéro (« 9782897763 »,
+  rejeté à raison). La question « cette catégorie n'accepte que « Ce livre n'a pas d'ISBN » » venait d'une liste à une
+  valeur fabriquée par notre code : « Oui, confirmer » aurait publié sans ISBN un livre qui en a un. Corrigé :
+  `resoudreIsbn` lit tous les textes, la fiche d'abord (deux ISBN différents → la question) — app ET serveur
+  (get-pending-jobs) ; la ligne ISBN n'est plus traitée comme « la seule valeur acceptée » : elle garde sa vraie
+  question (le numéro se tape, ou « Ce livre n'a pas d'ISBN » en un geste). Pour EAT : la question disparaît.
+- **La montre G-Shock** : le rayon est le bon. Chez Beebs (et Vinted), la « Taille » d'une montre est le diamètre du
+  boîtier (Jusqu'à 30 mm … 47 mm et plus) + « Taille unique ». L'IA y posait une valeur sans source
+  (« 39 mm - 42 mm ») dans un canal que beebs.js ne lit pas, et le sélecteur partagé redemandait la taille. Corrigé :
+  diamètre écrit (« boîtier 42 mm », « 45 mm de diamètre ») → sa tranche ; sinon « Taille unique », posée sur la copie
+  (Vinted et Beebs) ; une taille ne part plus jamais à l'IA (même avec un champ dédié : la bague d'Elodie a reçu
+  « 22,6 mm » de la même façon) ; sur Beebs, une valeur dans un canal sauté par l'extension n'est plus une valeur.
+- **Le robot aspirateur** : l'arbre Beebs (579 feuilles) n'a AUCUN rayon pour un aspirateur (Petit électroménager =
+  5 feuilles de cuisine) : aucune proposition honnête n'existe. Corrigé : sans candidat, la carte dit « Aucun rayon
+  Beebs ne correspond à … » et propose « Pas sur Beebs » en un geste (même pour un article qui n'a que Beebs : il sort
+  du lot) ; avec des candidats, les 3 premiers en puces ; la recherche vide ne s'ouvre plus d'office.
+- **Le téléphone** : la marque était connue (Samsung). La liste « Modèle » relevée chez Vinted est celle d'Apple (le
+  champ dépend de la marque, notre relevé ne la porte pas) : 50 iPhone servis à un Samsung. Corrigé : une liste de
+  modèles Apple ne se propose qu'à un article Apple ; ailleurs le modèle se tape (l'extension le cherche dans la liste
+  de SA marque). Reste : une vraie recherche dans toute la liste Vinted exige de relever les modèles PAR MARQUE
+  (extension) — non fait cette nuit. « Espace de stockage » reste une vraie question (aucune source), en puces.
+- **Titres coupés** : le titre du texte qui part est un champ de 2 lignes (plus une ligne qui le coupe).
+- Selftest neuf `lot-defauts-2610` (36 contrôles) ; `livre-isbn-vinted` suit le nouveau code (43 contrôles).
+
+## 12. Valeurs fausses dans les copies stockées — FAIT (ces 5 cas seulement)
+- Script `scripts/reparations/20261026_copies_valeurs_fausses.sql` : simulation (transaction annulée) à 23:13, puis
+  appliqué à **23:14:42** ; sauvegarde `_backup_2610_copies_valeurs_fausses` (5 copies + 3 fiches) ; inverse
+  `20261026_copies_valeurs_fausses_INVERSE.sql`. Garde : chaque ligne devait porter la valeur d'avant attendue.
+  | compte | annonce | copie (job source) | avant → après |
+  |---|---|---|---|
+  | chaouidz | Leboncoin 3294638238 | e7f181c8, `taille` | 16 → 31 |
+  | chaouidz | Beebs 34229052 | 29f9116e, `taille` | 16 → 31 (correction tracée) |
+  | louis-seller | Beebs 34200707 | ff37632d, `age` (+ fiche) | 8 ans - 12 ans → 16 ans et + |
+  | josephinecerni | Beebs 33904993 | f8807f54, `age` (+ fiche) | 8 ans - 12 ans → 16 ans et + |
+  | voirememe | Beebs 34174205 | 72d8c9aa, `age` (+ fiche « 8 ans - 12 ans ») | 2 ans - 3 ans → 3 ans - 4 ans |
+- Les fiches (âge) : corrigées aussi (l'écran Publier relit la fiche) ; source « manuel » = le seul rang que la fusion
+  des attributs laisse passer devant un relevé — « par » et « motif » disent que c'est ce script.
+- ⚠️ chaouidz sur Beebs : à la republication, l'extension relit l'annonce et pose d'abord la taille AFFICHÉE (« 16 »).
+  La correction est tracée (`correction_tracee`) ; elle passe devant la valeur affichée avec la nouvelle extension.
+- Les 26 autres livres de louis-seller : non touchés. Aucune annonce en ligne modifiée, aucun job relancé, aucun mail.

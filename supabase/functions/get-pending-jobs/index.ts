@@ -8605,11 +8605,13 @@ serve(async (req) => {
             // remplacée par une déduction : valide, elle part telle quelle ;
             // non standard, elle part telle quelle sur un poste corrigé.
             if (String(snap?.isbn ?? "").trim() && (normalizeIsbn(snap?.isbn).ok || posteIsbnTelQuel(snap?.isbn))) continue;
+            // (26/10 nuit, point 1) Tous les textes, l'annonce d'origine d'abord : la description du job
+            // (réécrite) ne masque plus celle qui portait l'ISBN. Deux ISBN différents → rien (la question).
             const trouve = resoudreIsbn({
               reponse: va.isbn,
               capture: snap?.isbn,
-              description: snap?.description ?? j.description,
-              titre: snap?.titre ?? j.title,
+              description: [snap?.description, j.description],
+              titre: [snap?.titre, j.title],
             });
             if (!trouve) continue;
             j.platform_fields = {
@@ -10670,7 +10672,9 @@ serve(async (req) => {
             // Un ISBN VALIDE l'emporte toujours (même après « pas d'ISBN ») ;
             // sinon le choix « Ce livre n'a pas d'ISBN » fait partir sans ;
             // sinon la question.
-            const r = resoudreIsbn({ reponse: reponse === ISBN_ABSENT ? null : reponse, capture: pf.isbn, article: isbnFiche, description: pf.description ?? fiche?.description ?? null, titre: pf.title ?? fiche?.titre ?? j.title ?? null });
+            // (26/10 nuit, point 1 — « EAT » de Nico) La FICHE d'abord, puis la copie : la rédaction réécrit la
+            // description sans l'ISBN que le vendeur avait écrit. Deux ISBN valides différents → la question.
+            const r = resoudreIsbn({ reponse: reponse === ISBN_ABSENT ? null : reponse, capture: pf.isbn, article: isbnFiche, description: [fiche?.description, pf.description], titre: [fiche?.titre, pf.title, j.title] });
             if (r) {
               pf.isbn = r.isbn13;
               pf.vintedAspects = { ...aspects, isbn: r.isbn13 };
