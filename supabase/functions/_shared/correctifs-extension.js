@@ -56,9 +56,10 @@ export const BUILD_ISBN_CAPTURE_TEL_QUEL = "2026-09-27T09:42:56Z"; // BUILD_ID d
 // "isbn": null APRÈS le retrait, annonce perdue (cas du 27/09). Le premier
 // paquet qui arme la sonde sur 10 caractères (0.6.143) porte cette valeur ;
 // avant elle, aucune republication à ISBN capturé de 10 caractères n'est
-// servie à l'étape qui retire. posée au BUILD_ID du paquet 0.6.143 (le premier
-// qui arme la sonde sur 10 caractères) — « 2099 » d'ici là, valeur jamais atteinte.
-export const BUILD_ISBN_10_TEL_QUEL = "2099-01-01T00:00:00Z";
+// servie à l'étape qui retire. Posée le 25/10 au BUILD_ID du paquet 0.6.143
+// (2026-10-25T10:06:44Z+a5ea8ba, build/CWS-0.6.143-A-TELEVERSER) : le premier
+// qui arme la sonde sur 10 caractères.
+export const BUILD_ISBN_10_TEL_QUEL = "2026-10-25T10:06:44Z";
 
 // ── LA REPUBLICATION OPLA JUGÉE SUR L'ANNONCE (2026-09-27, doriane-henri) ───
 // BUILD_ID du premier build (0.6.74, e1dbc59) qui reprend la marque et la
