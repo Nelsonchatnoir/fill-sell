@@ -12027,6 +12027,9 @@ export default function ListingPreviewScreen({
     plateformesPubliables, plateformesBloqueesChamps, publishChips, publishTotalFor,
     // La rédaction
     propsStepGeneration, etatsParPlateforme, nbQuestions, copieManquante,
+    // (26/10 nuit, refonte B du lot) Les clés des questions comptées (même calcul que nbQuestions) : l'écran « par
+    // question » du lot les range par sujet et fait répondre CHACUNE par le même bloc (BlocQuestions `seulement`).
+    clesQuestions: [...clesQuestions],
     generatingPlatforms, platformError, platformErrorCode, platformListings, processedPhotos, handleGeneratePlatforms, ficheReprise,
     modifierCarte, platformFieldsConfig,
     // Les questions et le geste

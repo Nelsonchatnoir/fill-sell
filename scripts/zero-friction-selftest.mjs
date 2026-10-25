@@ -64,7 +64,8 @@ console.log("\n2. Les dimensions eBay : UNE question");
   const pp = questionsParPlateforme({ selected: new Set(["ebay"]), ebayRequiredStatus: statut });
   ok("« Attend une réponse » dit « Dimensions » une fois", JSON.stringify(pp.ebay) === JSON.stringify(["Dimensions", "Type"]), JSON.stringify(pp.ebay));
   const BQ = lire("src/publication/BlocQuestions.jsx");
-  ok("le bloc de questions rend la carte « Dimensions » (un champ par dimension)", /q\.questionDimensions && \(\(\) => \{/.test(BQ) && /data-question="dimensions"/.test(BQ) && /m\.setEbayAspect\(a\.name, v\)/.test(BQ));
+  // (26/10 nuit, design B) + `voir("ebay:Dimensions")` : la même carte, aussi montrée seule dans l'écran « par question ».
+  ok("le bloc de questions rend la carte « Dimensions » (un champ par dimension)", /q\.questionDimensions && (voir\("ebay:Dimensions"\) && )?\(\(\) => \{/.test(BQ) && /data-question="dimensions"/.test(BQ) && /m\.setEbayAspect\(a\.name, v\)/.test(BQ));
   const LPS = lire("src/components/ListingPreviewScreen.jsx");
   ok("la télémétrie compte UNE ligne « Dimensions » et la garde jusqu'à la dernière", /champs: \["Dimensions"\], dimensions: dimsEbay\.map\(d => d\.name\)/.test(LPS) && /dimOuverte\.dimensions\?\.includes\(a\.name\)/.test(LPS));
   ok("« N questions » compte les dimensions une fois", /"ebay:Dimensions" : `ebay:\$\{a\.name\}`/.test(LPS) && /\+ \(dimsGroupees\.length \? 1 : 0\)/.test(LPS));

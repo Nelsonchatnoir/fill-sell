@@ -55,6 +55,8 @@ function moteurFactice(t, tpl, p = {}) {
     demanderPrixAchat: false, prixAchatManquant: false, descriptionVideVinted: false, vintedGenreBlocked: false, beebsGenreBlocked: false,
     EBAY_CLOSED_LIST_MAX: 30, edited: {}, jumeaux: [], generales: {}, texteVendeur: { titre: 'x x', description: 'x x' },
     initialListing: { description: '' }, price: 12, rayonsAChoisir: {}, suggestionsParPf: {}, plateformesRetirables: [], questionsParPlateforme: {},
+    // (26/10 nuit) Les clés des questions, comme le pilote les exporte (vue « par question »).
+    clesQuestions: [],
     ...p,
   };
 }
@@ -66,6 +68,8 @@ function Avant({ etape }) {
   // (11/10 soir) Le choix du poids Leboncoin : « Laisser Leboncoin estimer »
   // (défaut) ; la scène « poids-lbc-saisir » part de « Saisir le poids ».
   const [choixPoids, setChoixPoids] = useState(etape === 'poids-lbc-saisir' ? 'saisir' : 'estimer');
+  const [decisions, setDecisions] = useState({});
+  const decider = (id, patch) => setDecisions((prev) => ({ ...prev, [id]: { ...(prev[id] ?? {}), ...patch } }));
   const lot = { id: 'apercu', le: '2026-10-02T21:40:00Z', ids: A.map((a) => String(a.id)), plateformes: ['vinted', 'leboncoin', 'ebay', 'beebs'] };
   const enPrep = etape === 'preparation';
   const etats = {};
@@ -108,13 +112,25 @@ function Avant({ etape }) {
       generales: { titre: 'Robe midi Marc Cain noir et blanc', description: "Robe midi Marc Cain à motif graphique noir et blanc, coupe droite, manches courtes. Très bon état, portée quelques fois. Taille 38." },
       jumeaux: [{ platform: 'leboncoin', titre: 'Robe Marc Cain noire et blanche T38', prix: 45, url: 'https://www.leboncoin.fr/ad/x' }],
     }));
-    // Cluedo : le poids du colis Leboncoin (liste fermée) et le prix.
+    // Cluedo : le poids du colis Leboncoin (liste fermée) et le prix ; Hot Wheels : le même poids (même liste).
     etats['103'] = { phase: 'questions', motifs: [{ cle: 'questions', libelle: '1 réponse' }, { cle: 'prix', libelle: 'Prix' }] };
     moteurs.set('103', moteurFactice(t, tpl, {
       plateformes: ['vinted', 'leboncoin', 'ebay', 'beebs'], price: null, nbQuestions: 1,
       genericRequiredStatus: { leboncoin: [{ key: 'estimated_parcel_weight', label: 'Poids du colis', state: 'missing', allowedValues: POIDS, inputType: 'select' }] },
-      questionsParPlateforme: { leboncoin: ['Poids du colis'] },
+      questionsParPlateforme: { leboncoin: ['Poids du colis'] }, clesQuestions: ['leboncoin:estimated_parcel_weight'],
     }));
+    etats['106'] = { phase: 'questions', motifs: [{ cle: 'questions', libelle: '1 réponse' }] };
+    moteurs.set('106', moteurFactice(t, tpl, {
+      plateformes: ['vinted', 'leboncoin', 'ebay', 'beebs'], nbQuestions: 1,
+      genericRequiredStatus: { leboncoin: [{ key: 'estimated_parcel_weight', label: 'Poids du colis', state: 'missing', allowedValues: POIDS, inputType: 'select' }] },
+      questionsParPlateforme: { leboncoin: ['Poids du colis'] }, clesQuestions: ['leboncoin:estimated_parcel_weight'],
+    }));
+  }
+  // (26/10 nuit) Le texte validé quitte les motifs de l'article, comme bilanArticle le fait dans l'écran réel.
+  for (const [id, d] of Object.entries(decisions)) {
+    if (!d?.texteValide || !etats[id]?.motifs) continue;
+    const motifs = etats[id].motifs.filter((x) => x.cle !== 'texte');
+    etats[id] = motifs.length ? { ...etats[id], motifs } : { phase: 'pret', envoyees: pfs(id) };
   }
   const prets = lot.ids.filter((id) => etats[id]?.phase === 'pret');
   const aCompleter = lot.ids.filter((id) => etats[id]?.phase === 'questions');
@@ -133,9 +149,9 @@ function Avant({ etape }) {
   return (
     <CoqueLot en={false} ecran="lot-avant" titre="Publier 7 articles" numeroEcran={2}
       retour={{ onClick: noop }} quitter={{ onClick: noop }} cta={cta} ctaDesactive={enPrep || etape === 'envoi'} onCta={noop} sous={sous}>
-      <EcranAvant en={false} lang="fr" L={L} lot={lot} etats={etats} lignes={lot.ids} parId={parId} moteurs={moteurs} decisions={{}}
+      <EcranAvant en={false} lang="fr" L={L} lot={lot} etats={etats} lignes={lot.ids} parId={parId} moteurs={moteurs} decisions={decisions}
         prepares={prepares} preparationFinie={!enPrep} prets={prets} aCompleter={aCompleter} annoncesPretes={annoncesPretes}
-        communes={communes} repondreCommune={noop} decider={noop} trancherJumeau={noop} sansPlateforme={noop} retirerDuLot={noop} envoi={envoi}
+        communes={communes} repondreCommune={noop} decider={decider} trancherJumeau={noop} sansPlateforme={noop} retirerDuLot={noop} envoi={envoi}
         poidsDe={poidsScene} poserPoids={noop} poserPoidsDuLot={noop}
         choixPoidsLbc={choixPoids} choisirPoidsLbc={setChoixPoids} />
     </CoqueLot>

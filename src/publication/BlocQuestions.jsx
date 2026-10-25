@@ -29,8 +29,50 @@ import { phraseGenreAChoisir, phraseGenreDeduit } from "./moteur/genreAChoisir";
 const TN = { border: "var(--fs-border)", chip: "var(--fs-card)", ink: "var(--fs-ink)", mute: "var(--fs-mute2)" };
 const slug = s => String(s).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 
-export default function BlocQuestions({ m }) {
+// ── (26/10 nuit, refonte B du lot validée par Nico) UNE QUESTION SEULE, RÉPONDUE EN UN GESTE ─────────────────────
+// `seulement` : les clés des questions à montrer (mêmes clés que le moteur, clesQuestions : « taille », « couleur »,
+// « matiere », « marque », « <plateforme>:<clé> », « ebay:<nom> », « ebay:Dimensions », « genre:<plateforme> »,
+// « description », « prix_achat ») — l'écran « par question » du lot range chaque question dans son sujet, et la
+// MÊME question (même bloc, même écriture, même « sticky ») s'y répond. Sans en-tête de carte.
+// `puces` : une liste fermée se répond en puces (les premières valeurs, puis « Toute la liste » ouvre le sélecteur
+// d'avant). Sans ces deux props, le bloc est EXACTEMENT celui d'avant (stepper à l'unité, feuille de l'article).
+const PUCES_MAX = 8;
+function ChoixEnPuces({ valeurs, valeur = "", onChoisir, en, children }) {
+  const [tout, setTout] = useState(false);
+  const liste = [...new Set((valeurs ?? []).map((v) => String(v)))].filter(Boolean);
+  if (tout || liste.length < 2) return (
+    <>
+      {children}
+      {liste.length >= 2 && (
+        <button type="button" className="fsn-lien" style={{ alignSelf: "flex-start" }} onClick={() => setTout(false)}>{en ? "Fewer choices" : "Moins de choix"}</button>
+      )}
+    </>
+  );
+  const vus = liste.slice(0, PUCES_MAX);
+  if (valeur && liste.includes(String(valeur)) && !vus.includes(String(valeur))) vus[vus.length - 1] = String(valeur);
+  return (
+    <div className="fsn-choices fsq-puces">
+      {vus.map((v) => (
+        <button key={v} type="button" className={`fsn-choice${v === String(valeur) ? " fsn-choice--on" : ""}`} onClick={() => onChoisir(v)}>
+          {v === String(valeur) ? "✓ " : ""}{v}
+        </button>
+      ))}
+      {liste.length > PUCES_MAX && (
+        <button type="button" className="fsn-choice fsq-puce-plus" onClick={() => setTout(true)}>
+          {en ? `All (${liste.length})` : `Toute la liste (${liste.length})`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+export default function BlocQuestions({ m, seulement = null, puces = false }) {
   const en = m.lang === "en";
+  const voir = (cle) => !seulement || seulement.includes(cle);
+  // La liste fermée en puces (mode `puces`), l'entrée d'avant sinon (ou derrière « Toute la liste »).
+  const enPuces = (valeurs, valeur, onChoisir, entree) => (puces && Array.isArray(valeurs) && valeurs.length >= 2
+    ? <ChoixEnPuces valeurs={valeurs} valeur={valeur} onChoisir={onChoisir} en={en}>{entree}</ChoixEnPuces>
+    : entree);
   const t = m.t; const tpl = m.tpl;
   const fieldsCfg = m.platformFieldsConfig;
   const sharedFieldCfg = {
@@ -132,31 +174,12 @@ export default function BlocQuestions({ m }) {
 
   const origine = (texte) => texte ? <span className="qui"> · {texte}</span> : null;
 
-  return (
-    <Carte gravite={restants > 0 ? "geste" : "info"} style={{ gap: 12 }}>
-      <div className="fsn-row fsn-row--between">
-        <div className="fsn-card-t">
-          {restants > 0
-            ? (restants === 1 ? (en ? "One question before publishing" : "Une question avant de publier") : (en ? `${restants} questions before publishing` : `${restants} questions avant de publier`))
-            // (24/10, lot « zéro blocage », B8) Jamais « Tout est complété » sous « Pas publié » :
-            // l'écran dit une seule vérité (Ornella, 24/10 13:49).
-            : m.publishError
-              ? (en ? "Nothing left to fill in here — the message above says what blocked" : "Rien à compléter ici — le message au-dessus dit ce qui a bloqué")
-              : (en ? "Everything is filled in — you can publish" : "Tout est complété — tu peux publier")}
-        </div>
-        <Puce ton={restants > 0 ? "geste" : "ok"}>{restants > 0 ? (en ? `${restants} to fill in` : `${restants} à compléter`) : "✓"}</Puce>
-      </div>
-      <p className="fsn-card-p">
-        {restants > 0
-          ? (en ? "Each answer is written on the item card too: you won't be asked again." : "Chaque réponse s'écrit aussi sur la fiche de l'article : on ne te la redemandera pas.")
-          : (en ? "What you typed stays below — you can still adjust it." : "Ce que tu as saisi reste ci-dessous — tu peux encore l'ajuster.")}
-      </p>
-
+  const grille = (
       <div className="fsn-grid2">
         {/* Prix d'achat : demandé à un article né de ce parcours. VIDE ≠ ZÉRO,
             et « je ne sais plus » existe enfin ici (jamais un 0 écrit à la
             place d'un « je ne sais pas »). */}
-        {demandePrixAchat && (
+        {demandePrixAchat && voir("prix_achat") && (
           <div className="fsn-q fsn-q--bloque" style={{ gridColumn: "1 / -1" }}>
             <div className="fsn-q-t">{t("stepPublishBuyPriceLabel")}</div>
             <div className="fsn-q-why">{en ? "For your margin. Zero is a valid answer (a gift); if you don't remember, say so." : "Pour ta marge. Zéro est une réponse valable (un cadeau) ; si tu ne sais plus, dis-le."}</div>
@@ -176,7 +199,7 @@ export default function BlocQuestions({ m }) {
         )}
 
         {/* Description Vinted vide : SES mots, jamais un texte inventé. */}
-        {montrerDescription && (
+        {montrerDescription && voir("description") && (
           <div className={`fsn-q${descriptionVide ? " fsn-q--bloque" : ""}`} style={{ gridColumn: "1 / -1" }}>
             <div className="fsn-row fsn-row--between"><div className="fsn-q-t">{t("fieldDescriptionLabel")}</div><Puce ton={descriptionVide ? "geste" : "ok"}>Vinted</Puce></div>
             <div className="fsn-q-why">{en ? "Vinted refuses a listing without a description. Write it in your own words." : "Vinted refuse une annonce sans description. Écris-la avec tes mots."}</div>
@@ -184,7 +207,7 @@ export default function BlocQuestions({ m }) {
           </div>
         )}
 
-        {q.sharedFieldsToRender.map((key) => {
+        {q.sharedFieldsToRender.filter(voir).map((key) => {
           const field = sharedFieldCfg[key];
           const val = m.sharedFields[key] ?? "";
           const fieldGroups = field.childGroups && m.sharedChildAxes
@@ -201,8 +224,8 @@ export default function BlocQuestions({ m }) {
           return (
             <div key={key} className={`fsn-q${manque ? " fsn-q--bloque" : ""}`}>
               <div className="fsn-q-t">{field.label}{origine(originLabel)}</div>
-              <div className="fsn-q-why">{en ? "Required by these platforms. One answer serves them all." : "Exigé par ces plateformes. Une réponse sert à toutes."}</div>
-              {paletteVinted ? (
+              {!seulement && <div className="fsn-q-why">{en ? "Required by these platforms. One answer serves them all." : "Exigé par ces plateformes. Une réponse sert à toutes."}</div>}
+              {paletteVinted ? enPuces(VINTED_COLORS, val, (v) => { toucherShared(key); repondre(key, v); }, (
                 <AspectValueInput
                   value={val}
                   allowedValues={VINTED_COLORS}
@@ -213,7 +236,10 @@ export default function BlocQuestions({ m }) {
                   tailleTexte={16}
                   idBase="fsn-shared-couleur"
                 />
-              ) : field.type === "select" ? (
+              )) : field.type === "select" ? enPuces(
+                // (26/10 nuit) En puces : les VALEURS du sélecteur (dans son ordre, groupes à plat).
+                (fieldGroups ? fieldGroups.flatMap(g => g.options) : (field.options ?? [])).map(o => String(o.value)),
+                val, (v) => { toucherShared(key); repondre(key, v); }, (
                 <select className="fsn-select" value={val} onChange={ev => { toucherShared(key); repondre(key, ev.target.value); }}>
                   <option value="">—</option>
                   {fieldGroups
@@ -224,7 +250,7 @@ export default function BlocQuestions({ m }) {
                       ))
                     : field.options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
-              ) : (
+              )) : (
                 <input className="fsn-input" type="text" value={val} placeholder="—" onChange={ev => { toucherShared(key); repondre(key, ev.target.value); }} />
               )}
               {/* Une lettre n'est une marque, une couleur ni une matière pour
@@ -247,7 +273,7 @@ export default function BlocQuestions({ m }) {
             l'écrire (02/10, point 11) : une seule réponse quand une valeur
             vaut dans toutes leurs grilles, sinon la grille de chacune — dans
             la même question, ses candidates en tête. */}
-        {q.questionTaille && (() => {
+        {q.questionTaille && (voir("taille") || q.questionTaille.lignes.some(({ gp, a }) => voir(gp === "ebay" ? `ebay:${a.name}` : `${gp}:${a.key}`))) && (() => {
           const qt = q.questionTaille;
           const bloque = qt.lignes.some(({ a }) => aspectBloquant(a));
           const noms = qt.lignes.map(({ gp }) => NOM(gp)).join(" · ");
@@ -258,11 +284,15 @@ export default function BlocQuestions({ m }) {
             return (
               <div key="taille-unique" className={`fsn-q${bloque ? " fsn-q--bloque" : ""}`} style={{ gridColumn: "1 / -1" }}>
                 <div className="fsn-row fsn-row--between"><div className="fsn-q-t">{en ? "Size" : "Taille"}</div><Puce ton={bloque ? "geste" : "ok"}>{noms}</Puce></div>
-                <div className="fsn-q-why">
+                {(brut || !seulement) && <div className="fsn-q-why">
                   {brut
                     ? (en ? `“${brut}” can't be written as is on ${noms}: choose once, it's written for each.` : `« ${brut} » ne s'écrit pas tel quel sur ${noms} : choisis une fois, on l'écrit pour chacune.`)
                     : (en ? `Required on ${noms}: choose once, it's written for each.` : `Exigée sur ${noms} : choisis une fois, on l'écrit pour chacune.`)}
-                </div>
+                </div>}
+                {enPuces(qt.communes, commune, (v) => {
+                    for (const { gp, a } of qt.lignes) ecrireTaille(gp, a, tailleDansGrille(v, a.allowedValues)?.valeur ?? v);
+                    m.noterReponseFicheValeur?.("taille", v);
+                  },
                 <AspectValueInput
                   value={commune}
                   allowedValues={qt.communes}
@@ -275,7 +305,7 @@ export default function BlocQuestions({ m }) {
                   T={TN}
                   tailleTexte={16}
                   idBase="fsn-taille-commune"
-                />
+                />)}
               </div>
             );
           }
@@ -290,6 +320,8 @@ export default function BlocQuestions({ m }) {
               {qt.lignes.map(({ gp, a, candidats }) => (
                 <div key={`t:${gp}`} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                   <div className="fsn-row fsn-row--between"><span className="fsn-q-why">{NOM(gp)}</span><Puce ton={aspectBloquant(a) ? "geste" : "ok"}>{aspectBloquant(a) ? (en ? "to choose" : "à choisir") : "✓"}</Puce></div>
+                  {enPuces(candidats.length ? listeCandidatsDabord(a.allowedValues, candidats) : a.allowedValues,
+                    a.state === "invalid" ? (a.suggested ?? a.value ?? "") : a.value, (v) => repondreTaille(gp, a, v),
                   <AspectValueInput
                     value={a.state === "invalid" ? (a.suggested ?? a.value ?? "") : a.value}
                     allowedValues={candidats.length ? listeCandidatsDabord(a.allowedValues, candidats) : a.allowedValues}
@@ -299,14 +331,14 @@ export default function BlocQuestions({ m }) {
                     T={TN}
                     tailleTexte={16}
                     idBase={`fsn-taille-${gp}`}
-                  />
+                  />)}
                 </div>
               ))}
             </div>
           );
         })()}
 
-        {q.redGenericAspects.map(({ gp, a }) => {
+        {q.redGenericAspects.filter(({ gp, a }) => voir(`${gp}:${a.key}`)).map(({ gp, a }) => {
           // (25/09) Rayon Vinted « neuf seulement » face à un article d'occasion :
           // aucune valeur à choisir (la seule serait « Neuf », un mensonge) —
           // le message dit de changer de rayon, ou de laisser Vinted de côté.
@@ -358,7 +390,7 @@ export default function BlocQuestions({ m }) {
           return (
             <div key={`g:${gp}:${a.key}`} className={`fsn-q${aspectBloquant(a) ? " fsn-q--bloque" : ""}`}>
               <div className="fsn-row fsn-row--between"><div className="fsn-q-t">{a.label}</div><Puce ton={aspectBloquant(a) ? "geste" : "ok"}>{NOM(gp)}</Puce></div>
-              <div className="fsn-q-why">
+              {(!seulement || (gp === "vinted" && a.key === "isbn") || a.state === "invalid") && <div className="fsn-q-why">
                 {gp === "vinted" && a.key === "isbn"
                   ? (en ? "Vinted requires the ISBN of a book — on the back, under the barcode (978… or 979…)." : "Vinted exige l'ISBN d'un livre — au dos, sous le code-barres (978… ou 979…).")
                   : a.state === "invalid"
@@ -366,7 +398,9 @@ export default function BlocQuestions({ m }) {
                   : (a.allowedValues?.length
                       ? (en ? "Required here — the values come from its form." : "Exigé ici — les valeurs viennent de son formulaire.")
                       : (en ? "Required here — free text." : "Exigé ici — texte libre."))}
-              </div>
+              </div>}
+              {enPuces(gp === "vinted" && a.key === "isbn" ? [] : (champARecherche(gp, a.key) ? [] : a.allowedValues),
+                a.state === "invalid" ? (a.suggested ?? a.value ?? "") : a.value, ecrire,
               <AspectValueInput
                 value={gp === "vinted" && a.key === "isbn" && a.value === ISBN_ABSENT ? "" : (a.state === "invalid" ? (a.suggested ?? a.value ?? "") : a.value)}
                 // (12/10, Morgane) L'ISBN se TAPE : jamais derrière « Autre valeur… ».
@@ -383,7 +417,7 @@ export default function BlocQuestions({ m }) {
                 T={TN}
                 tailleTexte={16}
                 idBase={`fsn-gen-${gp}-${slug(a.key)}`}
-              />
+              />)}
               {gp === "vinted" && a.key === "isbn" && (
                 <button type="button" className={`fsn-choice${a.value === ISBN_ABSENT ? " fsn-choice--on" : ""}`} style={{ alignSelf: "flex-start" }}
                   onClick={() => ecrire(ISBN_ABSENT)}>
@@ -400,7 +434,7 @@ export default function BlocQuestions({ m }) {
           );
         })}
 
-        {genresBloques.map((p) => {
+        {genresBloques.filter((p) => voir(`genre:${p}`)).map((p) => {
           const choix = m.genreAChoisir?.[p] ?? null;
           return (
             <div key={`genre:${p}`} className="fsn-q fsn-q--bloque" style={{ gridColumn: "1 / -1" }} data-question={`genre-${p}`}>
@@ -419,7 +453,7 @@ export default function BlocQuestions({ m }) {
           );
         })}
 
-        {genresPoses.map(([p, d]) => {
+        {!seulement && genresPoses.map(([p, d]) => {
           const valeur = d.change ?? d.valeur;
           return (
             <div key={`genre-pose:${p}`} className="fsn-q" style={{ gridColumn: "1 / -1" }} data-genre-deduit={p}>
@@ -442,7 +476,7 @@ export default function BlocQuestions({ m }) {
           );
         })}
 
-        {poses.map(({ k, pose, valeur }) => (
+        {!seulement && poses.map(({ k, pose, valeur }) => (
           <div key={`mem:${k}`} className="fsn-q" data-memoire={k}>
             <div className="fsn-row fsn-row--between"><div className="fsn-q-t">{pose.label}</div><Puce ton="ok">{NOM(pose.plateforme)}</Puce></div>
             <div className="fsn-q-why">
@@ -465,7 +499,7 @@ export default function BlocQuestions({ m }) {
 
         {/* Les dimensions eBay, UNE question (18/10, zéro friction) : un champ
             par dimension, côte à côte, chacun écrit dans son aspect eBay. */}
-        {q.questionDimensions && (() => {
+        {q.questionDimensions && voir("ebay:Dimensions") && (() => {
           const lignes = q.questionDimensions.lignes;
           const bloque = lignes.some(aspectBloquant);
           return (
@@ -497,14 +531,21 @@ export default function BlocQuestions({ m }) {
           );
         })()}
 
-        {q.redEbayAspects.map(a => (
+        {q.redEbayAspects.filter(a => voir(`ebay:${a.name}`)).map(a => (
           <div key={`e:${a.name}`} className={`fsn-q${aspectBloquant(a) ? " fsn-q--bloque" : ""}`}>
             <div className="fsn-row fsn-row--between"><div className="fsn-q-t">{a.label ?? a.name}</div><Puce ton={aspectBloquant(a) ? "geste" : "ok"}>eBay</Puce></div>
-            <div className="fsn-q-why">
+            {(!seulement || a.state === "invalid") && <div className="fsn-q-why">
               {a.state === "invalid"
                 ? (en ? `“${a.value}” is not in eBay's list for this category.` : `« ${a.value} » n'est pas dans la liste eBay de cette catégorie.`)
                 : (en ? "Required by eBay for this category." : "Exigé par eBay pour cette catégorie.")}
-            </div>
+            </div>}
+            {enPuces(a.mode === "SELECTION_ONLY" ? a.allowedValues : [], a.state === "invalid" ? (a.suggested ?? a.value ?? "") : a.value, (v) => {
+                if (a.sharedKey === "taille") { repondreTaille("ebay", a, v); return; }
+                toucherEbay(a.name);
+                if (!a.sharedKey) m.noterReponseQuestion?.("ebay", a, v);
+                if (a.sharedKey && m.setEbaySharedField) { m.noterReponseFiche?.(a.sharedKey); m.setEbaySharedField(a.sharedKey, v); }
+                else m.setEbayAspect(a.name, v);
+              },
             <AspectValueInput
               value={a.state === "invalid" ? (a.suggested ?? a.value ?? "") : a.value}
               allowedValues={a.allowedValues}
@@ -520,10 +561,36 @@ export default function BlocQuestions({ m }) {
               T={TN}
               tailleTexte={16}
               idBase={`fsn-ebay-${slug(a.name)}`}
-            />
+            />)}
           </div>
         ))}
       </div>
+  );
+
+  // (26/10 nuit) Une question seule (écran « par question » du lot) : le bloc, sans l'en-tête de la carte.
+  if (seulement) return <div className="fsq-seule">{grille}</div>;
+
+  return (
+    <Carte gravite={restants > 0 ? "geste" : "info"} style={{ gap: 12 }}>
+      <div className="fsn-row fsn-row--between">
+        <div className="fsn-card-t">
+          {restants > 0
+            ? (restants === 1 ? (en ? "One question before publishing" : "Une question avant de publier") : (en ? `${restants} questions before publishing` : `${restants} questions avant de publier`))
+            // (24/10, lot « zéro blocage », B8) Jamais « Tout est complété » sous « Pas publié » :
+            // l'écran dit une seule vérité (Ornella, 24/10 13:49).
+            : m.publishError
+              ? (en ? "Nothing left to fill in here — the message above says what blocked" : "Rien à compléter ici — le message au-dessus dit ce qui a bloqué")
+              : (en ? "Everything is filled in — you can publish" : "Tout est complété — tu peux publier")}
+        </div>
+        <Puce ton={restants > 0 ? "geste" : "ok"}>{restants > 0 ? (en ? `${restants} to fill in` : `${restants} à compléter`) : "✓"}</Puce>
+      </div>
+      <p className="fsn-card-p">
+        {restants > 0
+          ? (en ? "Each answer is written on the item card too: you won't be asked again." : "Chaque réponse s'écrit aussi sur la fiche de l'article : on ne te la redemandera pas.")
+          : (en ? "What you typed stays below — you can still adjust it." : "Ce que tu as saisi reste ci-dessous — tu peux encore l'ajuster.")}
+      </p>
+
+      {grille}
 
     </Carte>
   );

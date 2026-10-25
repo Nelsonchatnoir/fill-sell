@@ -480,6 +480,7 @@
     "selftest:action-app-ratee": "node --import ./scripts/loader-ext.mjs scripts/action-app-ratee-selftest.mjs",
     "selftest:releve-completer-inchange": "node scripts/releve-completer-inchange-selftest.mjs",
     "selftest:lot-defauts-2610": "node scripts/lot-defauts-2610-selftest.mjs",
+    "selftest:lot-par-question": "node scripts/lot-par-question-selftest.mjs",
     "selftest:copies-completes-2610": "node scripts/copies-completes-2610-selftest.mjs"
   },
   "dependencies": {

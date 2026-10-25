@@ -48,6 +48,25 @@ Prompt de nuit de Nico (25/10, 22:00). Ce fichier se remplit point par point ; l
 - **Titres coupés** : le titre du texte qui part est un champ de 2 lignes (plus une ligne qui le coupe).
 - Selftest neuf `lot-defauts-2610` (36 contrôles) ; `livre-isbn-vinted` suit le nouveau code (43 contrôles).
 
+### 1c. Le design B « Par question » — CODÉ (validé par Nico le 25/10 au soir)
+- L'étape 2 du lot, hors envoi : le bilan en haut (prêts · à revoir · annonces, une case par article), UN « Tout
+  valider » pour les textes écrits par FillSell (leurs vignettes ouvrent chacune sa feuille ; « Annuler » ensuite),
+  puis les questions RANGÉES PAR SUJET (« Taille · Beebs », « Âge · Beebs »…, les plus nombreux d'abord), chacune
+  répondue en un geste, en puces (≥ 44 px), par le MÊME bloc que le stepper (`BlocQuestions seulement`) ; la réponse
+  commune se range dans son sujet ; « Le même poids pour les N » dans le sujet du poids. Ensuite la Livraison du lot,
+  repliée (ouverte d'office en « Saisir le poids »), les refus Depop, les réponses reprises, et les prêts repliés.
+  Toucher un article ouvre SA feuille (la carte d'avant : son texte, ses plateformes, « Pas sur … », « Le garder pour
+  plus tard »). Pendant l'envoi : l'écran d'avant, inchangé.
+- Aucune règle réécrite : les questions sont celles que le moteur compte (`clesQuestions`, exportées par le pilote) ;
+  deux tailles = une question (comme le stepper). Dans une ligne, la phrase « Exigé … » répétée sous chaque article
+  disparaît ; ce qui informe reste (valeur hors liste, où trouver l'ISBN, valeur lue).
+- Garde-fous : un moteur qui lève ne met de côté que SON article (même barrière qu'avant, jamais tout l'écran) ; les
+  prêts repliés restent rendus sous leur barrière ; un article à revoir a toujours une ligne (« À vérifier » ouvre sa
+  feuille), sauf le texte seul que porte « Tout valider ».
+- Preuves : selftest neuf `lot-par-question` (39 contrôles) ; banc `capture-lot-publication` (27 écrans à 390 px,
+  2 à 1280 px : bilan, sujets, feuille, textes validés, poids saisi, article cassé) tout vert ; suite complète
+  (441 selftests) verte ; `build:essai` OK. Le nombre de questions du lot de Nico avant/après : point 16.
+
 ## 12. Valeurs fausses dans les copies stockées — FAIT (ces 5 cas seulement)
 - Script `scripts/reparations/20261026_copies_valeurs_fausses.sql` : simulation (transaction annulée) à 23:13, puis
   appliqué à **23:14:42** ; sauvegarde `_backup_2610_copies_valeurs_fausses` (5 copies + 3 fiches) ; inverse
