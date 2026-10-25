@@ -21,6 +21,10 @@ SET LOCAL lock_timeout = '5s';
 CREATE TABLE IF NOT EXISTS public.codes_postaux_fr (code text PRIMARY KEY CHECK (code ~ '^[0-9]{5}$'));
 ALTER TABLE public.codes_postaux_fr ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.codes_postaux_fr FROM PUBLIC, anon, authenticated;
+-- droits : serveur seulement — codes_postaux_fr : lue par lbc_adresse_hors_france (SECURITY DEFINER) seulement ; aucun droit
+-- anon/authenticated. service_role : les droits que le déclencheur fillsell_table_nait_protegee lui a donnés à la création
+-- (appliquée le 25/10 à 18:08:28 ; relu en prod : service_role=arwd), écrits ici (régime du 30/10) — sans effet en prod.
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.codes_postaux_fr TO service_role;
 INSERT INTO public.codes_postaux_fr (code) VALUES
 ('01000'),
 ('01090'),

@@ -298,3 +298,12 @@
   `copie_http_400` (24-25/10) ; 26 échecs sur 5 comptes depuis le 25/10 00:27. Correctif écrit, NON appliqué :
   `supabase/migrations/PROPOSITION_20261025_bordereaux_copie_pro_business.sql.txt` (`messagerie_beta(auth.uid()) OR
   bordereaux_ouverts_pour(auth.uid(), 'vinted')`) — feu vert nommé de Nico.
+- **APPLIQUÉE le 25/10 à 18:02:02** (feu vert nommé de Nico) : `20261025181000_bordereaux_copie_pro_business` — la politique
+  `bordereaux_insert` accepte `messagerie_beta(auth.uid()) OR bordereaux_ouverts_pour(auth.uid(), 'vinted')`. Essai annulé
+  sous les claims de 9 comptes réels : les 7 Pro/Business acceptés, Free et Premium refusés. Inverse :
+  `supabase/rollbacks/20261025181000_bordereaux_copie_pro_business_INVERSE.sql`.
+- Relance (script `scripts/reparations/20261025_bordereaux_copie_relance.sql`, sauvegarde `_backup_2510_bordereaux_relance`,
+  inverse) : 31 commandes de 7 comptes (dernière demande en `copie_http_*`, commande « a_expedier » / « pret », aucune copie)
+  → une demande « recuperer » chacune, comme le clic. Jocabroc : 4 bordereaux prêts de 18:07 à 18:13 (PDF de 52 à 57 Ko).
+  Le plafond de 20 demandes par jour compte la relance jusqu'à minuit (recrutementgroupezk704 seul l'atteint).
+- Un poste dont l'onglet Vinted ne répond pas rend `onglet_fige` (45 s sans réponse) : ce n'est pas la règle de stockage.

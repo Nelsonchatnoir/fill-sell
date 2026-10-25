@@ -664,3 +664,23 @@
   session suivante. `ops-digest` : « actions app en échec » et « comptes actifs dont les actions app s'arrêtent net ».
 - « Contacter le support » ouvre le formulaire de l'app (un `mailto:` ne fait rien sur un PC sans messagerie).
 - ⛔ La republication (capture, retrait, recréation, réveil) reste telle quelle (décision de Nico, 25/10).
+
+## ⛔ 25/10 soir — le créneau remplace ses sautés, écarte les annonces mortes, dit chaque retenue (Jocabroc ; migration `20261025180000`, rapport `docs/enquetes/soir-2510/RAPPORT.md`)
+- **Appliquée le 25/10 à 17:58:56** (feu vert nommé de Nico ; essai annulé rejoué juste avant, 14 comptes, 0 erreur ; md5
+  relus après). Inverse : `supabase/rollbacks/20261025180000_creneau_remplace_les_sautes_INVERSE.sql`.
+- Un essai **sauté** (`republish_essai_saute` : portée ARTICLE, clos ou en attente, rien retiré ni redéposé — marques de
+  `_shared/accident-avant-retrait.js`) ne prend ni une place des prévues ni le rythme : le candidat suivant passe au passage
+  suivant (au plus `prevues` sautés rendus, un article tenté une fois par créneau). Une panne du COMPTE n'est jamais un sauté.
+- **Vinted** : une annonce absente de DEUX relevés complets du dressing depuis sa dernière vue est `annonce_introuvable`
+  AVANT tout essai (jamais vue / boutique inconnue : inchangé).
+- **Toute retenue écrit son motif**, à la transition, jamais à chaque passage : `_extension_absente` (Chrome muet > 10 min :
+  depuis, dernier signe, levé au retour), `_espacement` (la republication de référence, sa plateforme, la prochaine heure,
+  `apres_fin`), `_aucun_candidat`, `_remplacements_epuises`.
+- **L'app le dit** (`RepublicationPlanifiee.jsx`, selftest `creneau-remplace-les-sautes`) : pendant le créneau, « Le créneau
+  attend Chrome » / « Les republications Leboncoin sont réparties sur le créneau — la republication Vinted de 19h30 compte
+  aussi » / « Plus rien ne partira sur Leboncoin dans ce créneau » passent AVANT le créneau manqué de la veille — jamais
+  l'heure de la suivante (règle « aucun temps estimé », 15/10) ; l'historique écrit
+  « Chrome était fermé de 19h03 à 21h12 (dernier signe à 16h58) » et le rythme (sauf sur un créneau qui a tout fait).
+- ⛔ **Cadence intouchée** : rythme du COMPTE toutes plateformes (18/09), un job par compte et par passage, intervalle =
+  durée / prévues, plafonds, quotas. Le **rythme par plateforme** (étape 6 : `AND j.platform = v_pf`) attend la décision de
+  Nico : sans lui, deux plateformes du même créneau ne font pas 6 + 5 (la plus lente ne passe jamais).

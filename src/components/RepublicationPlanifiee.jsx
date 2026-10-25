@@ -255,12 +255,51 @@ function texteMotifCompte(motif, fr) {
     plafond_compte:          fr ? 'Arrêt du jour, selon une ancienne règle supprimée depuis.' : 'Stopped for the day under a former rule, since removed.',
     plafond_compte_atteint:  fr ? 'Arrêt du jour, selon une ancienne règle supprimée depuis.' : 'Stopped for the day under a former rule, since removed.',
     echecs_consecutifs:      fr ? 'Deux retraits de suite ont échoué : on s’est arrêté pour aujourd’hui.' : 'Two removals failed in a row: stopped for today.',
+    echecs_compte_consecutifs: fr ? 'Deux retraits de suite ont échoué : on s’est arrêté pour aujourd’hui.' : 'Two removals failed in a row: stopped for today.',
+    // (25/10, Jocabroc) Toute retenue du créneau dit son motif (migration 20261025180000).
+    extension_absente:       fr ? 'Chrome était fermé : rien ne pouvait partir.' : 'Chrome was closed: nothing could go out.',
+    espacement:              fr ? 'Le rythme du créneau : la suivante attendait son heure.' : 'The slot’s pace: the next one was waiting for its time.',
+    aucun_candidat_eligible: fr ? 'Aucune annonce ne pouvait partir à ce moment-là (toutes écartées ou déjà tentées).' : 'No listing could go out at that point (all set aside or already tried).',
+    remplacements_epuises:   fr ? 'Beaucoup d’annonces sautées : les suivantes comptent dans le nombre prévu.' : 'Many listings skipped: the next ones count towards the planned number.',
+    fin_de_creneau:          fr ? 'Fin du créneau : plus assez de temps pour une republication de plus.' : 'End of the slot: not enough time left for one more repost.',
+    reglage_change:          fr ? 'Réglage modifié pendant le créneau : le rythme est reparti de là.' : 'Setting changed during the slot: the pace restarted from there.',
     plateforme_fermee:       fr ? 'Cette plateforme n’est pas ouverte à la republication automatique.' : 'This platform is not open to automatic reposting.',
     module_inactif:          fr ? 'Le module n’est pas actif sur cette plateforme.' : 'The module is not on for this platform.',
     annonce_introuvable:     fr ? 'Aucune annonce FillSell en ligne à republier.' : 'No live FillSell listing to repost.',
     article_vendu:           fr ? 'Article vendu.' : 'Item sold.',
   };
   return M[motif] ?? (fr ? `Arrêt du passage (${motif}).` : `Pass stopped (${motif}).`);
+}
+// (25/10, Jocabroc) Les deux retenues DATÉES du créneau, en clair : Chrome fermé (de … à …) et le rythme
+// (« la suivante ne pouvait partir qu'à … », après quelle republication, de quelle plateforme).
+function sousExtensionAbsente(n, fuseau, fr) {
+  const de = heureDans(n?.depuis ?? n?.at, fuseau, fr);
+  const a = n?.leve_le ? heureDans(n.leve_le, fuseau, fr) : null;
+  const vue = n?.derniere_vue ? heureDans(n.derniere_vue, fuseau, fr) : null;
+  return (a ? (fr ? `De ${de ?? '—'} à ${a}` : `From ${de ?? '—'} to ${a}`) : (fr ? `Depuis ${de ?? '—'}` : `Since ${de ?? '—'}`))
+    + (vue ? (fr ? ` · dernier signe de Chrome à ${vue}` : ` · last sign of Chrome at ${vue}`) : '');
+}
+function phraseExtensionAbsente(n, fuseau, fr) {
+  const de = heureDans(n?.depuis ?? n?.at, fuseau, fr) ?? '—';
+  const a = n?.leve_le ? heureDans(n.leve_le, fuseau, fr) : null;
+  const vue = n?.derniere_vue ? heureDans(n.derniere_vue, fuseau, fr) : null;
+  return fr
+    ? `Chrome était fermé ${a ? `de ${de} à ${a}` : `à partir de ${de}`}${vue ? ` (dernier signe à ${vue})` : ''}.`
+    : `Chrome was closed ${a ? `from ${de} to ${a}` : `from ${de} on`}${vue ? ` (last sign at ${vue})` : ''}.`;
+}
+function sousEspacement(n, pf, fuseau, fr, maintenant = Date.now()) {
+  const dernier = heureDans(n?.dernier, fuseau, fr);
+  // Une heure à venir ne s'écrit jamais (aucune estimation devant la personne) : seulement un fait passé.
+  const prochaine = Date.parse(n?.prochaine ?? '') <= maintenant ? heureDans(n?.prochaine, fuseau, fr) : null;
+  const autre = n?.dernier_platform && n.dernier_platform !== pf ? (NOMS[n.dernier_platform] ?? n.dernier_platform) : null;
+  const apres = fr
+    ? `Après la republication${autre ? ` ${autre}` : ''} de ${dernier ?? '—'}`
+    : `After the${autre ? ` ${autre}` : ''} repost at ${dernier ?? '—'}`;
+  if (n?.apres_fin === true) {
+    return fr ? `${apres}, la suivante ne pouvait partir qu’après la fin du créneau.` : `${apres}, the next one could only go after the slot ended.`;
+  }
+  if (!prochaine) return fr ? `${apres}, la suivante attend son tour.` : `${apres}, the next one waits its turn.`;
+  return fr ? `${apres}, la suivante ne pouvait partir qu’à ${prochaine}.` : `${apres}, the next one could only go at ${prochaine}.`;
 }
 function texteErreurReglage(code, fr) {
   const M = {
@@ -368,6 +407,15 @@ function synthese(etat, { fr, enService, extensionStatus, session = null, lectur
   // après N échecs de retrait consécutifs (coin_config, N = 2).
   const disjoncteur = actif && etat?.disjoncteur && typeof etat.disjoncteur === 'object' ? etat.disjoncteur : null;
   const faitesLive = Number.isFinite(Number(etat?.faites_live)) ? Number(etat.faites_live) : null;
+  // (25/10, Jocabroc) Les deux retenues du créneau COURANT que le serveur écrit désormais : Chrome fermé
+  // (_extension_absente, levée au retour) et le rythme (_espacement, la prochaine heure possible).
+  const notesCourant = dans && etat?.creneau_courant?.sautes && typeof etat.creneau_courant.sautes === 'object'
+    ? etat.creneau_courant.sautes : null;
+  const attenteChrome = actif && notesCourant?._extension_absente && !notesCourant._extension_absente.leve_le
+    ? notesCourant._extension_absente : null;
+  const attenteRythme = actif && notesCourant?._espacement
+    && (notesCourant._espacement.apres_fin === true || Date.parse(notesCourant._espacement.prochaine ?? '') > Date.now())
+    ? notesCourant._espacement : null;
   const moteurLegacy = !actif && etat?.moteur === 'legacy';
   const invalide = r?.invalide ?? null;
 
@@ -394,10 +442,15 @@ function synthese(etat, { fr, enService, extensionStatus, session = null, lectur
     etatLigne = fr ? 'Active · extension muette depuis 7 jours' : 'On · extension silent for 7 days'; etatTon = 'amber';
   } else if (quotaPlein) {
     etatLigne = fr ? 'Active · compteur du mois plein' : 'On · monthly counter full'; etatTon = 'amber';
+  } else if (dans && blocage) {
+    // (25/10) Pendant le créneau, ce qui le retient MAINTENANT passe avant le créneau manqué d'hier (même ordre que l'avis).
+    etatLigne = fr ? 'Active · en attente d’une republication en vol' : 'On · waiting for a repost under way'; etatTon = 'amber';
+  } else if (dans && attenteChrome) {
+    etatLigne = fr ? 'Active · le créneau attend Chrome' : 'On · the slot is waiting for Chrome'; etatTon = 'amber';
+  } else if (dans && attenteRythme?.apres_fin === true) {
+    etatLigne = fr ? 'Active · plus rien ne part dans ce créneau' : 'On · nothing more goes out in this slot'; etatTon = 'amber';
   } else if (manque) {
     etatLigne = fr ? 'Active · dernier créneau manqué' : 'On · last slot missed'; etatTon = 'amber';
-  } else if (dans && blocage) {
-    etatLigne = fr ? 'Active · en attente d’une republication en vol' : 'On · waiting for a repost under way'; etatTon = 'amber';
   } else if (dans) {
     const deja = faitesLive > 0 ? (fr ? ` · ${nf(faitesLive, fr)} ${plur(faitesLive, 'remontée', 'remontées')}` : ` · ${nf(faitesLive, fr)} reposted`) : '';
     etatLigne = fr ? `Active · en cours jusqu'à ${fmtHHMM(a, fr)}${deja}` : `On · running until ${fmtHHMM(a, fr)}${deja}`; etatTon = 'teal';
@@ -456,11 +509,51 @@ function synthese(etat, { fr, enService, extensionStatus, session = null, lectur
           ? (fr ? ` ${nf(parques, fr)} ${plur(parques, 'republication attend', 'republications attendent')} une autre de tes boutiques : connecte-toi à cette boutique sur vinted.fr pour les libérer.`
                 : ` ${nf(parques, fr)} ${plur(parques, 'repost is', 'reposts are')} waiting for another of your shops: sign in to that shop on vinted.fr to release them.`)
           : '') };
+  } else if (actif && dans && attenteChrome) {
+    // (25/10, Jocabroc) Chrome fermé pendant le créneau : rien ne peut partir, et on le dit tout de suite.
+    const vue = attenteChrome.derniere_vue ? `${jourRelatif(attenteChrome.derniere_vue, fuseau, fr)} ${fr ? 'à' : 'at'} ${heureDans(attenteChrome.derniere_vue, fuseau, fr)}` : null;
+    avis = { ton: 'amber',
+      titre: fr ? 'Le créneau attend Chrome' : 'The slot is waiting for Chrome',
+      corps: fr ? `Les republications passent par Chrome sur ton ordinateur, et Chrome ne répond plus${vue ? ` (dernier signe ${vue})` : ''}. Ouvre Chrome : le créneau reprend tout seul jusqu’à ${fmtHHMM(a, fr)}.`
+                : `Reposts run through Chrome on your computer, and Chrome is not responding${vue ? ` (last sign ${vue})` : ''}. Open Chrome: the slot resumes on its own until ${fmtHHMM(a, fr)}.` };
+  } else if (actif && dans && attenteRythme) {
+    // (25/10, Jocabroc) Le rythme qui retient le dit : après quelle republication (un fait daté au passé) — jamais
+    // l'heure de la suivante (« plus aucun temps estimé devant la personne », Nico 15/10, selftest aucune-estimation).
+    const autre = attenteRythme.dernier_platform && attenteRythme.dernier_platform !== pf ? (NOMS[attenteRythme.dernier_platform] ?? attenteRythme.dernier_platform) : null;
+    const dernierH = heureDans(attenteRythme.dernier, fuseau, fr);
+    const nom = NOMS[pf] ?? pf;
+    const pourquoi = autre
+      ? (fr ? ` Le rythme est celui de ton compte, toutes plateformes : la republication ${autre} de ${dernierH ?? '—'} compte aussi pour ${nom}.`
+            : ` The pace is your account’s, across platforms: the ${autre} repost at ${dernierH ?? '—'} counts for ${nom} too.`)
+      : (fr ? ` La dernière est partie à ${dernierH ?? '—'}.` : ` The last one went at ${dernierH ?? '—'}.`);
+    avis = attenteRythme.apres_fin === true
+      ? { ton: 'amber',
+          titre: fr ? `Plus rien ne partira sur ${nom} dans ce créneau` : `Nothing more will go out on ${nom} in this slot`,
+          corps: (fr ? `Les republications sont réparties sur le créneau, jamais en rafale : la suivante ne pourrait partir qu’après ${fmtHHMM(a, fr)}.`
+                     : `Reposts are spread over the slot, never in a burst: the next one could only go after ${fmtHHMM(a, fr)}.`) + pourquoi
+                 + (fr ? ' Les annonces éligibles attendent le créneau suivant.' : ' Eligible listings wait for the next slot.') }
+      : { ton: 'neutre',
+          titre: fr ? `Les republications ${nom} sont réparties sur le créneau` : `${nom} reposts are spread over the slot`,
+          corps: (fr ? 'Jamais en rafale : la suivante attend son tour.' : 'Never in a burst: the next one waits its turn.') + pourquoi };
   } else if (manque) {
     const h = fmtCreneau(dernier.de, dernier.a, fr);
     const j = jourHistorique(dernier.debut, dernier.fuseau ?? fuseau, fr);
     const prochainTxt = prochain ? `${jourRelatif(prochain, fuseau, fr)} ${fr ? 'à' : 'at'} ${heureDans(prochain, fuseau, fr)}` : null;
-    avis = { ton: 'neutre',
+    // (25/10, Jocabroc) Le motif écrit par le serveur passe avant la seule présence de Chrome : extension_vue
+    // devient vrai dès que Chrome revient, même à 21:12 dans un créneau 19:00-22:00.
+    const absent = dernier?.sautes?._extension_absente ?? null;
+    const rythme = dernier?.sautes?._espacement?.apres_fin === true ? dernier.sautes._espacement : null;
+    const fuseauDernier = dernier.fuseau ?? fuseau;
+    avis = absent ? { ton: 'neutre',
+      titre: fr ? `${j}, ${h} : rien n’est parti, Chrome était fermé.` : `${j}, ${h}: nothing went out, Chrome was closed.`,
+      corps: `${phraseExtensionAbsente(absent, fuseauDernier, fr)} `
+        + (fr ? `Les annonces éligibles sont toujours en file. Prochaine tentative ${prochainTxt ?? 'au prochain créneau'}, dès que Chrome est ouvert.`
+              : `Eligible listings are still queued. Next attempt ${prochainTxt ?? 'at the next slot'}, as soon as Chrome is open.`) }
+    : rythme ? { ton: 'neutre',
+      titre: fr ? `${j}, ${h} : rien n’est parti.` : `${j}, ${h}: nothing went out.`,
+      corps: sousEspacement(rythme, pf, fuseauDernier, fr)
+        + (fr ? ' Les annonces éligibles attendent le créneau suivant.' : ' Eligible listings wait for the next slot.') }
+    : { ton: 'neutre',
       titre: dernier.extension_vue
         ? (fr ? `${j}, ${h} : rien n’est parti.` : `${j}, ${h}: nothing went out.`)
         : (fr ? `${j}, ${h} : rien n’est parti, Chrome était fermé.` : `${j}, ${h}: nothing went out, Chrome was closed.`),
@@ -1539,7 +1632,8 @@ export function RepublicationPlanifieeHistorique({ lang, userId, etat, onClose }
             const nOk = c.statut === 'en_cours' ? ok.length : Math.max(Number(c.faites) || 0, ok.length);
             const sautes = Object.entries(c.sautes ?? {});
             const sautesArticles = sautes.filter(([k]) => !k.startsWith('_'));
-            const notesCompte = sautes.filter(([k]) => k.startsWith('_'));
+            // (25/10) Le rythme n'est une retenue que si le créneau n'a pas tout fait : un créneau terminé ne le montre pas.
+            const notesCompte = sautes.filter(([k]) => k.startsWith('_') && !(k === '_espacement' && c.statut === 'termine'));
             const manque = c.statut === 'manque';
             const couleurPoint = manque ? P.amber : c.statut === 'vide' ? P.mute : nOk > 0 ? P.teal : c.statut === 'en_cours' ? P.teal : P.mute;
             const titre = `${jourHistorique(c.debut, fuseau, fr)} · ${fmtCreneau(c.de, c.a, fr)}`;
@@ -1552,6 +1646,9 @@ export function RepublicationPlanifieeHistorique({ lang, userId, etat, onClose }
             else if (manque && c.sautes?._bloque_en_vol) phrase = fr
               ? `Rien n'est parti : le créneau est resté bloqué derrière ${c.sautes._bloque_en_vol.motif === 'annonce_hors_ligne' ? 'une annonce retirée non recréée' : 'une republication en cours'}.`
               : `Nothing went out: the slot stayed blocked behind ${c.sautes._bloque_en_vol.motif === 'annonce_hors_ligne' ? 'a removed listing not yet recreated' : 'a repost under way'}.`;
+            // (25/10, Jocabroc) Le motif écrit par le serveur d'abord : Chrome fermé (de … à …), puis le rythme.
+            else if (manque && c.sautes?._extension_absente) phrase = `${fr ? 'Rien n’est parti. ' : 'Nothing went out. '}${phraseExtensionAbsente(c.sautes._extension_absente, fuseau, fr)}`;
+            else if (manque && c.sautes?._espacement?.apres_fin === true) phrase = `${fr ? 'Rien n’est parti. ' : 'Nothing went out. '}${sousEspacement(c.sautes._espacement, c.platform ?? 'vinted', fuseau, fr)}`;
             else if (manque) phrase = c.extension_vue
               ? (fr ? `Rien n'est parti. ${eligibles} ${plur(eligibles, 'annonce était éligible', 'annonces étaient éligibles')}.` : `Nothing went out. ${eligibles} ${plur(eligibles, 'listing was', 'listings were')} eligible.`)
               : (fr ? `Chrome était fermé. Les ${eligibles} ${plur(eligibles, 'annonce éligible attend', 'annonces éligibles attendent')} le créneau suivant.` : `Chrome was closed. The ${eligibles} eligible ${plur(eligibles, 'listing waits', 'listings wait')} for the next slot.`);
@@ -1623,6 +1720,13 @@ export function RepublicationPlanifieeHistorique({ lang, userId, etat, onClose }
                           + (enVol ? (fr ? ` · ${enVol} en vol` : ` · ${enVol} under way`) : '')
                           + (parques ? (fr ? ` · ${parques} en attente d’une autre boutique` : ` · ${parques} waiting for another shop`) : '');
                         return <LigneDetail key={k} ton="amber" titre={texteMotifCompte(n?.motif ?? 'republication_en_vol', fr)} sous={sous} />;
+                      }
+                      // (25/10, Jocabroc) Les deux retenues datées : Chrome fermé (de … à …), le rythme (la suivante à …).
+                      if (k === '_extension_absente') {
+                        return <LigneDetail key={k} ton="amber" titre={texteMotifCompte('extension_absente', fr)} sous={sousExtensionAbsente(n, fuseau, fr)} />;
+                      }
+                      if (k === '_espacement') {
+                        return <LigneDetail key={k} ton="amber" titre={texteMotifCompte('espacement', fr)} sous={sousEspacement(n, c.platform ?? 'vinted', fuseau, fr)} />;
                       }
                       return (
                         <LigneDetail key={k} ton="amber" titre={texteMotifCompte(n?.motif ?? k.replace(/^_/, ''), fr)}

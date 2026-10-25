@@ -416,3 +416,12 @@ Rapport : `docs/enquetes/dix-points-1710/RAPPORT.md` (points 1, 4, 5, 7, 9).
   dépôts voie clic du compte attendent (un seul éclaireur). Photos (OBSERVÉ le 25/10 sur un brouillon de test du compte
   de Nico : le geste de l'extension marche, la preuve de réception est le compteur « N/25 » et la vignette
   i.ebayimg.com) : mesure en mode « observer » dans la 0.6.143 (interrupteur `coin_config.ebay_photos_recues_bloquant`).
+
+## ⛔ 25/10 soir — Leboncoin réservé à la France DÈS LA CRÉATION du job (migration `20261025181500`, appliquée à 18:08:28)
+- `spend_coins_and_publish` refuse une publication Leboncoin d'un compte dont l'adresse de remise est hors de France, comme
+  une plateforme en pause (`platform_paused`, motif `lbc_hors_france`, message de Nico) : rien créé, rien décompté, toutes
+  versions de l'app (l'app 2.9.115+ ne le propose déjà plus). Verdict : `lbc_adresse_hors_france(uuid)` = celui de
+  `_shared/lbc-adresse-france.js` (code postal, sinon le dernier nombre de 5 chiffres de l'adresse ; pas d'adresse ou code
+  illisible → France, jamais retiré sur un doute) contre `codes_postaux_fr` (6 310 codes, outre-mer compris).
+- Essai annulé avant application : Marta (Italie) refusée, son Vinted et le Leboncoin de Nico non touchés ; 2 comptes hors
+  de France au 25/10 (Belgique, Italie). Inverse : `supabase/rollbacks/20261025181500_lbc_hors_france_creation_INVERSE.sql`.
