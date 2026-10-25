@@ -77,8 +77,21 @@ désormais). Avec le rythme par plateforme : Vinted aux mêmes heures, Leboncoin
 = 11**, fini vers 21:40 (Chrome ouvert, annonces en ligne). Sans y toucher, l'autre issue honnête : annoncer des prévues
 qui tiennent dans le rythme partagé (≈ 3 + 3), ou séparer les créneaux des deux plateformes.
 
-## 6. Le créneau de Jocabroc ce soir — mesure
-(à compléter après 22:00)
+## 6. Le créneau de Jocabroc ce soir — ce qui est mesuré (Nico : « n'attends pas qu'il rouvre, je verrai par les check news »)
+- 19:00:06 : lignes du créneau nées (Vinted 641 : 6 prévues, 135 éligibles ; Leboncoin 644 à 19:03 : 5 prévues, 53
+  éligibles). La 1re republication Vinted (job d3fcf5a6) vise **10297584228**, la 1re annonce vivante — la morte d'hier
+  (10125516124, rang 6) n'est plus candidate ; deux annonces mortes notées une fois « annonce_introuvable » (10118315224,
+  10176517596).
+- Son Chrome est muet depuis **18:51:24** (juste après sa publication Leboncoin de 18:49) : à 19:03 le balayage a écrit
+  `_extension_absente` sur les deux lignes ; ce que son app reçoit (relu sous ses droits, transaction annulée) : créneau en
+  cours + « extension absente, dernier signe 18:51 » → elle affiche « Le créneau attend Chrome ». Le job d3fcf5a6 attend
+  son poste ; rien n'est perdu (le créneau reprend seul jusqu'à 22:00).
+- Sans rythme par plateforme, Leboncoin fera 0 ce soir même si Chrome revient (§ 5) — l'app le dira (« Plus rien ne
+  partira sur Leboncoin dans ce créneau »).
+- À vérifier au prochain check : créneaux 641 / 644 clos (faites, motifs), job d3fcf5a6.
+- Sa publication Leboncoin de 18:49 (job 6ae4cdc7, fiche « Dessin signé Nelson Mandela… » importée sans texte) est retenue
+  « en cours de lecture de ton annonce d'origine » : son extension 0.6.141 ne lit pas (lecteur réparé dans la 0.6.144) —
+  elle part seule dès que la 0.6.144 est sur son poste.
 
 ## 8. Beebs en arrière-plan (0.6.145) — écrit, pilote sur le poste de Nico
 - Serveur (`_shared/lecture-fond.js` § Beebs, `get-pending-jobs` → `lecture_fond_beebs`) : servi aux seuls postes ≥ 0.6.145 ;
@@ -95,4 +108,28 @@ qui tiennent dans le rythme partagé (≈ 3 + 3), ou séparer les créneaux des 
 ## 7. Selftests
 - Avant (18:10 → 18:20, arbre au commit fceb2d5 + migrations renommées) : 433/434 ; le rouge,
   `tables-droits-explicites`, venait de la table `codes_postaux_fr` (droits non écrits dans le fichier) — corrigé.
-- Après : voir le commit.
+- Lot 1 (438a539) : 435/435 (18:34 → 18:43 ; un rouge intermédiaire, `aucune-estimation`, a fait retirer toute heure
+  future des textes du créneau). Lot Beebs (5f8f54c) : 436/436 (19:05 → 19:15 ; rouge intermédiaire
+  `gpj-file-longue-et-pause` : lecture des fiches passée par `lireParLots`). Lint : rien de neuf.
+
+## 9. Bordereaux — état à 19:20
+- 26 sur 31 prêts (Jocabroc 4/4, recrutementgroupezk704 18/18, seghirdeborah711 2/4, sebastien64310 1/1, voirememe 1/1).
+- 4 « onglet_fige » (antikcollections 2, seghirdeborah711 2) : relancés UNE fois de plus à 19:19:14
+  (`scripts/reparations/20261025_bordereaux_copie_relance_2.sql`) ; antikcollections est muet depuis 18:47 (sa demande attend
+  son poste, 24 h au plus). Marta : 1 en file, poste éteint.
+
+## 10. Champs requis (« zéro question ») — diagnostic fait, plan prêt, à coder après les décisions de Nico
+- 7 jours : 418 questions affichées sur 26 comptes (190 levées par la personne, 70 par le moteur, 45 abandons) ; les quatre
+  champs (taille, âge, pointure, matière) = 273 (65 %) : Beebs Taille 135, Beebs Âge 52, Vinted Taille 25, Leboncoin Pointure 17
+  (11 abandons, dont Marta 12 affichages), eBay Taille 17, Beebs Matière 11, eBay Matière 8. La friction est dans l'app (6 jobs
+  seulement en attente sur ces champs).
+- Causes prouvées des 5 cas : Sandra (Beebs Matière : rédaction sans photo, la Matière est un champ « partagé » que
+  l'enrichissement saute, question en texte libre face à une liste fermée ; Beebs Âge d'un magazine : âge non déduit hors
+  jouets, levier IA en « fantôme ») ; chaouidz (eBay Matière libre, l'IA « ne jamais inventer », aucun repli) ; Marta (copie
+  rédigée sans les champs de la fiche ; « EU 37.5 » jugé hors liste — corrigé le 25/10 01:07 ; Leboncoin de toute façon
+  hors de France) ; Johan (Lens sans taille, titre muet : vrai dernier recours).
+- Valeurs FAUSSES en ligne nées d'une question : chaouidz « Pointure 16 » au lieu de 31 (Leboncoin 3294638238, Beebs
+  34229052) ; louis-seller, 27 livres Beebs en « 8 ans - 12 ans ».
+- Règle proposée (une chaîne pour l'écran, le lot et le serveur) : la personne → la FICHE lue au jugement (pas seulement pour
+  Opla) → le texte du vendeur → la règle du rayon → l'IA avec photos → le bac de la grille quand il est vrai → une seule
+  question, liste fermée. Détail, fichiers, selftests et les 7 décisions : `CHAMPS-REQUIS.md` (même dossier).
