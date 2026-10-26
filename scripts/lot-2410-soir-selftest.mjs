@@ -193,8 +193,9 @@ ok(origineLbcApres({ toy_type: "ia" }, "toy_type", null) === undefined && JSON.s
   "toute autre écriture (la personne, le texte, la mémoire) efface la marque");
 const LBCJS = lire("chrome-extension/content-scripts/leboncoin.js");
 ok(LBCJS.includes('if (prefilled && origineIa && !estValeurGenerique(prefilled) && !REJOUE_ANNONCE_D_ORIGINE && fieldName !== "marque") {')
-  && LBCJS.includes('origineIa: origineLbc[forKey] === "ia" });') && LBCJS.includes('origineLbc["dedie:lbcProduit"] === "ia"'),
-  "extension : le pré-rempli précis de Leboncoin est gardé face à une valeur de l'IA (canal générique et Produit)");
+  && LBCJS.includes('origineIa: origineLbc[forKey] === "ia",') && LBCJS.includes('origineLbc["dedie:lbcProduit"] === "ia"')
+  && LBCJS.includes("const verdict = departagerPreRempliIa("),
+  "extension : face à une valeur de l'IA, le pré-rempli précis de Leboncoin est départagé (26/10 : jamais un blocage, puis la valeur que l'article nomme — selftest lbc-prerempli-ia)");
 ok((LPS.match(/setPlatformAspect\((?:gp|"leboncoin"), (?:a\.key|cle), (?:exacte|val), "ia"\)/g) ?? []).length === 3 && LPS.includes('marquerOrigineDedieLbc(a.dedicatedTarget, "ia")'),
   "app : les trois écritures IA de Leboncoin sont marquées « ia »");
 

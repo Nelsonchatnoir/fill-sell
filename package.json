@@ -85,6 +85,7 @@
     "selftest:vinted-taille-eu": "node scripts/vinted-taille-eu-selftest.mjs",
     "selftest:lbc-etapes-avant-photos": "node scripts/lbc-etapes-avant-photos-selftest.mjs",
     "selftest:lbc-photos-gratuites": "node scripts/lbc-photos-gratuites-selftest.mjs",
+    "selftest:lbc-prerempli-ia": "node scripts/lbc-prerempli-ia-selftest.mjs",
     "selftest:vitesse-publication": "node scripts/vitesse-publication-selftest.mjs",
     "selftest:lbc-categorie-racines": "node scripts/lbc-categorie-racines-selftest.mjs",
     "selftest:vinted-retrait-mur-compte-bloque": "node scripts/vinted-retrait-mur-compte-bloque-selftest.mjs",

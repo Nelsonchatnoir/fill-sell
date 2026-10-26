@@ -291,7 +291,7 @@ ok(/const \{ hasCriteria, formulairePro \} = await sonderCriteresLbc\(job, warni
 ok(/label\[for="baby_age"\], label\[for="estimated_parcel_weight"\]'/.test(SRC) && /const LBC_SONDE_PRO_MS = 15_000;/.test(SRC) && /\[name="custom_ref"\]/.test(SRC), "sonde : Poids du colis, 15 s sur le formulaire PRO (compte_pro ou custom_ref)");
 ok(/if \(hasCriteria \|\| formulairePro\) \{\s*etatPose = await lbcSecondePasseCriteres\(\{/.test(SRC), "seconde passe : `if (hasCriteria || formulairePro)`");
 // (24/10 nuit) + l'origine de la valeur (« ia » : jamais par-dessus un pré-rempli précis de Leboncoin).
-ok(/fallbackValues: repliProduit, libelle: LBC_LIBELLES_PRO\[forKey\] \?\? null,\s*origineIa: origineLbc\[forKey\] === "ia" \}\);/.test(SRC), "canal générique : le libellé PRO en repli aussi au premier passage");
+ok(/fallbackValues: repliProduit, libelle: LBC_LIBELLES_PRO\[forKey\] \?\? null,\s*origineIa: origineLbc\[forKey\] === "ia",/.test(SRC), "canal générique : le libellé PRO en repli aussi au premier passage");
 ok(/if \(!reposeEtatFaite\) reposes \+= await reposerValeursConnuesLbc\(bloqueurs, fields, warnings\);/.test(SRC)
   && /if \(reposes && !bloqueurs\.length && !reposeEtatFaite\) \{[\s\S]{0,200}reposeEtatFaite = true;/.test(SRC), "verdict : valeurs connues reposées, UN seul recliquage de « Continuer »");
 ok(!/valider et payer[^\n]*realClick|realClick\([^)]*payer/i.test(SRC), "aucun chemin ne clique « Valider et payer »");

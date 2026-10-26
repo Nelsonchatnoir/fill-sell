@@ -2929,8 +2929,10 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
       );
     } else if (produitLabel) {
       cleEcriteParProduit = clePremierType;
+      const cleProduitDep = LBC_PAIRES_TYPE_PRODUIT[clePremierType] ?? null;
       const ok = await fillCriterionSafe("produit", PRODUIT_LABEL_SELECTOR, fields.lbcProduit, warnings, { skipIfPrefilled: true,
-        origineIa: origineLbc[clePremierType] === "ia" || origineLbc["dedie:lbcProduit"] === "ia" });
+        origineIa: origineLbc[clePremierType] === "ia" || origineLbc["dedie:lbcProduit"] === "ia",
+        produitDependant: cleProduitDep && valeurAspect(cleProduitDep) ? { labelSelector: `label[for="${cleProduitDep}"]`, valeur: valeurAspect(cleProduitDep) } : null });
       if (!ok) unfilledRequired.push("produit");
     } else {
       const note = `produit: critère introuvable sur cette catégorie — valeur "${fields.lbcProduit}" non appliquée`;
@@ -3075,13 +3077,16 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
       // d'être vu par son libellé (« Poids du colis ») — sans ce repli, le
       // remplissage ne le retrouvait pas et rendait false sans un mot.
       await fillCriterionSafe(forKey, `label[for="${forKey}"]`, val, warnings, { skipIfPrefilled: true, composants: true, fallbackValues: repliProduit, libelle: LBC_LIBELLES_PRO[forKey] ?? null,
-        origineIa: origineLbc[forKey] === "ia" });
+        origineIa: origineLbc[forKey] === "ia",
+        produitDependant: valProduitDep ? { labelSelector: `label[for="${cleProduitDep}"]`, valeur: valProduitDep } : null });
     }
   }
 
   // ── PRODUIT REQUIS SANS VALEUR : LE REPLI LEBONCOIN, PUIS ON PUBLIE ────────
   // (2026-09-08, décision Nico.) Les listes Produit de Maison & Jardin
   // DÉPENDENT du premier combobox (relevé live 07/09 : Univers « Autre » →
+      const cleProduitDep = LBC_PAIRES_TYPE_PRODUIT[forKey] ?? null;
+      const valProduitDep = cleProduitDep ? String(lbcAspectsJob[cleProduitDep] ?? "").trim() : "";
   // Produit ["Autre"], Électroménager Type « Autre » → ["Autres"]). Elles sont
   // relevées COMPLÈTES — leboncoin.js ne tape JAMAIS dans un combobox fermé
   // (vérifié 08/09 : seule Marque/Modèle passent par la frappe, et seulement
@@ -4231,6 +4236,57 @@ async function releverOptionsCritere(labelSelector) {
     await sleep(700);
     // (03/10, point 9) PLUS DE REPLI SUR TOUT LE DOCUMENT : sans le menu propre
     // du champ (aria-controls), on ramassait les options du menu ouvert à côté
+// ⟦prerempli-ia:début⟧ (26/10, étape 4 — règle de Nico : « la valeur qui colle à l'article gagne ; jamais une valeur qui
+// mène à un blocage quand l'autre aurait passé ») QUAND LEBONCOIN A PRÉ-REMPLI ET QUE NOTRE VALEUR VIENT DE L'IA.
+// La règle du 24/10 (0.6.141) gardait TOUJOURS le pré-rempli : Jocabroc, pot à sucre (26/10, a64153a4) — notre paire
+// « Accessoire de table › Salière, poivrière et sucrier » (juste) remplacée par le Type « Vaisselle de table », dont la
+// liste Produit (21 options) n'a ni sucrier ni « Autre » : publication bloquée. Mesuré sur ses 6 cas depuis le 25/10 :
+// 3 fois nous avions raison, 2 fois Leboncoin, 1 fois les deux. Désormais, dans l'ordre :
+//   1. jamais un blocage : sous le Type pré-rempli, la liste Produit n'a ni notre Produit ni « Autre(s) », et Leboncoin
+//      n'a pas pré-rempli ce Produit → notre paire ;
+//   2. la valeur que l'ARTICLE nomme (titre, texte : un mot propre à l'une des deux) gagne ;
+//   3. aucune des deux nommée (ou les deux) : la valeur précise de Leboncoin reste (décision du 24/10, inchangée).
+const LBC_PAIRES_TYPE_PRODUIT = Object.freeze({
+  home_appliance_type: "home_appliance_product", house_and_garden_type: "decoration_type", table_art_type: "table_art_product",
+  diy_type: "diy_product", gardening_type: "gardening_product", linens_type: "linens_product", furniture_category: "furniture_type",
+});
+const MOTS_VIDES_LIBELLE_LBC = new Set(["avec", "pour", "sans", "autre", "autres", "accessoire", "accessoires", "objet", "objets", "divers"]);
+/** Les mots (4 lettres et plus) d'un libellé qui ne sont PAS dans l'autre libellé. */
+function motsPropresLibelle(valeur, autre) {
+  const mots = (v) => normalizeFuzzy(String(v ?? "")).split(/[^a-z0-9]+/).filter((m) => m.length >= 4 && !MOTS_VIDES_LIBELLE_LBC.has(m));
+  const a = new Set(mots(autre));
+  return [...new Set(mots(valeur))].filter((m) => !a.has(m));
+}
+/** L'article (texte normalisé) nomme-t-il ce libellé par un mot qui lui est propre ? (singulier/pluriel compris) */
+function libelleNommeParArticle(valeur, autre, texte) {
+  if (!texte) return false;
+  // Pluriel et féminin compris : « sucriers », « murale » ↔ « mural », « décoratives » ↔ « décoratif » non (radical trop loin).
+  return motsPropresLibelle(valeur, autre).some((m) => {
+    const radicaux = new Set([m, m.replace(/(s|x)$/, ""), m.replace(/es$/, ""), m.replace(/e$/, "")].filter((r) => r.length >= 4));
+    return [...radicaux].some((r) => containsAsWords(texte, r) || containsAsWords(texte, `${r}s`) || containsAsWords(texte, `${r}x`) || containsAsWords(texte, `${r}e`) || containsAsWords(texte, `${r}es`));
+  });
+}
+/**
+ * Pré-rempli Leboncoin contre notre valeur venue de l'IA : faut-il garder le pré-rempli ? (pur)
+ * @param {{prefilled:string, notre:string, texte?:string, optionsProduit?:string[]|null, produitNotre?:string, produitPreRempli?:string}} p
+ * @returns {{garder:boolean, motif:string}}
+ */
+function departagerPreRempliIa({ prefilled, notre, texte = "", optionsProduit = null, produitNotre = "", produitPreRempli = "" }) {
+  if (Array.isArray(optionsProduit) && optionsProduit.length && String(produitNotre ?? "").trim() && !String(produitPreRempli ?? "").trim()) {
+    const n = normalizeFuzzy(produitNotre);
+    const opts = optionsProduit.map((o) => normalizeFuzzy(o)).filter(Boolean);
+    const notreDedans = opts.some((o) => o === n || containsAsWords(o, n) || containsAsWords(n, o));
+    const repli = opts.some((o) => o === "autre" || o === "autres");
+    if (!notreDedans && !repli) return { garder: false, motif: `sa liste Produit n'a ni « ${produitNotre} » ni « Autre » : il menait à un blocage` };
+  }
+  const nommeLbc = libelleNommeParArticle(prefilled, notre, texte);
+  const nommeNous = libelleNommeParArticle(notre, prefilled, texte);
+  if (nommeNous && !nommeLbc) return { garder: false, motif: "l'article nomme notre valeur, pas la sienne" };
+  if (nommeLbc && !nommeNous) return { garder: true, motif: "l'article nomme sa valeur" };
+  return { garder: true, motif: nommeLbc ? "l'article nomme les deux : la valeur précise de Leboncoin reste" : "l'article ne nomme aucune des deux : la valeur précise de Leboncoin reste" };
+}
+// ⟦prerempli-ia:fin⟧
+
     // — c'est ainsi que « Poids » (diy_weight, furniture_weight) et
     // « Quantité » ont appris au catalogue la liste du champ « Type ». Pas de
     // menu propre → pas de liste.
@@ -4293,7 +4349,7 @@ function prefilledMatchesTarget(prefilled, rawValue) {
 // sans marque se trouve moins bien : c'est de la vente perdue, tous les jours.
 // `composants` : rapprochement par composants EXACTS (« 38 - M » ⊂
 // « M / 38 / 10 », « Marine » ∈ « Marine / Turquoise »), cf. findOptionCascade.
-async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, { skipIfPrefilled = false, sizeField = false, fallbackValues = [], rechercheParFrappe = false, composants = false, libelle = null, attendreMs = 0, etatExact = false, origineIa = false } = {}) {
+async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, { skipIfPrefilled = false, sizeField = false, fallbackValues = [], rechercheParFrappe = false, composants = false, libelle = null, attendreMs = 0, etatExact = false, origineIa = false, produitDependant = null } = {}) {
   try {
     // `etatExact` (2026-09-17 soir) : rawValue est une LISTE de candidats (du
     // plus sûr au moins sûr) et la sélection se fait par correspondance
@@ -4346,16 +4402,31 @@ async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, {
     // du vendeur (son texte, sa réponse, l'annonce d'origine rejouée) garde la main ; celle de l'IA s'efface devant la
     // valeur précise de Leboncoin. Marque : règle à part (marquePreRemplieNonCitee). Pré-rempli générique : on pose.
     if (prefilled && origineIa && !estValeurGenerique(prefilled) && !REJOUE_ANNONCE_D_ORIGINE && fieldName !== "marque") {
-      const note = `${fieldName}: pré-rempli LBC "${prefilled}" CONSERVÉ — notre valeur "${rawValue}" venait de l'IA, jamais mieux qu'une valeur précise posée par Leboncoin`;
+      let optionsProduit = null;
+      let produitPreRempli = "";
+      if (produitDependant?.labelSelector && String(produitDependant.valeur ?? "").trim()) {
+        produitPreRempli = String(findCriterionInput(produitDependant.labelSelector)?.value ?? "").trim();
+        if (!produitPreRempli) optionsProduit = await releverOptionsCritere(produitDependant.labelSelector);
+      }
+      const verdict = departagerPreRempliIa({ prefilled, notre: rawValue, texte: TEXTE_ARTICLE_LBC, optionsProduit, produitNotre: produitDependant?.valeur ?? "", produitPreRempli });
+      if (verdict.garder) {
+        const note = `${fieldName}: pré-rempli LBC "${prefilled}" CONSERVÉ — notre valeur "${rawValue}" venait de l'IA (${verdict.motif})`;
+        console.log(`[leboncoin] ${note}`);
+        warnings.push(note);
+        return true;
+      }
+      const note = `${fieldName}: pré-rempli LBC "${prefilled}" REMPLACÉ par notre valeur "${rawValue}" (IA) — ${verdict.motif}`;
       console.log(`[leboncoin] ${note}`);
       warnings.push(note);
       return true;
     }
     if (prefilled && estValeurGenerique(rawValue) && !estValeurGenerique(prefilled) && !REJOUE_ANNONCE_D_ORIGINE && !marquePreRemplieNonCitee) {
       const note = `${fieldName}: pré-rempli LBC "${prefilled}" CONSERVÉ — notre valeur "${rawValue}" est un repli générique, jamais mieux qu'une valeur précise posée par Leboncoin`;
+    // (26/10, étape 4) Départagé par departagerPreRempliIa (⟦prerempli-ia⟧) : jamais un blocage, puis la valeur que
+    // l'article nomme ; sinon le pré-rempli reste, comme avant. `produitDependant` : { labelSelector, valeur } du Produit
+    // qui dépend de ce Type (LBC_PAIRES_TYPE_PRODUIT) — sa liste, rendue sous le Type pré-rempli, est relue sans rien poser.
       console.log(`[leboncoin] ${note}`);
       warnings.push(note);
-      return true;
     }
     await humanPause();
     input.dispatchEvent(new MouseEvent("click", { bubbles: true }));

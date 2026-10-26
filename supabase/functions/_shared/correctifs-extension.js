@@ -131,6 +131,13 @@ export const BUILD_VINTED_MODELE_REPLI = "2026-10-26T00:53:28Z";
 // crée la marque (« Utiliser … comme marque ») ou la choisit dans le catalogue, même par-dessus un pré-remplissage.
 export const BUILD_VINTED_MARQUE_CREEE = "2026-10-26T00:53:28Z";
 
+// ── (26/10, étape 4 — Jocabroc, pot à sucre a64153a4) LE PRÉ-REMPLI LEBONCOIN NE GAGNE PLUS QUAND IL BLOQUE ──
+// La 0.6.141 gardait toujours le Type pré-rempli par Leboncoin face à une valeur de l'IA : « Vaisselle de table » à la
+// place de « Accessoire de table », dont la liste Produit n'a ni sucrier ni « Autre » → « Leboncoin demande : Produit »,
+// une question sans bonne réponse. Le paquet suivant départage (leboncoin.js ⟦prerempli-ia⟧). VIDE tant que ce paquet
+// n'est pas empaqueté : posée au BUILD_ID du zip (npm run package:extension) — un poste plus ancien ne reçoit rien.
+export const BUILD_LBC_PREREMPLI_IA = "";
+
 export const CORRECTIFS_EXTENSION = [
   {
     // (17/10) Rien n'a été créé chez Depop : la question tombe avant les
@@ -317,6 +324,25 @@ export const CORRECTIFS_EXTENSION = [
     condition: (job) => {
       const pf = (job?.platform_fields && typeof job.platform_fields === "object") ? job.platform_fields : {};
       return !(pf.republish_step === "deleted" || pf.deleted_at);
+    },
+    clesARetirer: ["needsUserField", "needsUserFields", "champs_a_completer", "boucle_needs_user"],
+  },
+  {
+    // (26/10, étape 4) Une publication Leboncoin arrêtée sur « Produit » / « Type » / « Univers » APRÈS que l'extension a
+    // gardé un pré-rempli Leboncoin contre notre valeur de l'IA (avertissement « … CONSERVÉ — notre valeur … venait de
+    // l'IA ») : elle repart UNE fois vers un poste qui départage (jamais un blocage quand l'autre valeur passe). La
+    // réponse de la personne n'est pas nécessaire ; rien n'est publié tant que le poste n'est pas à jour.
+    cle: "lbc_prerempli_ia_blocage",
+    platform: "leboncoin",
+    actions: ["publish"],
+    signature: /Leboncoin demande : (Produit|Type|Univers)/,
+    buildMin: BUILD_LBC_PREREMPLI_IA,
+    version: "0.6.146",
+    motif: "le pré-rempli Leboncoin gardé face à l'IA menait à un Produit introuvable : le Type qui porte notre Produit est désormais posé",
+    condition: (job) => {
+      const pf = (job?.platform_fields && typeof job.platform_fields === "object") ? job.platform_fields : {};
+      const w = Array.isArray(pf.warnings) ? pf.warnings : [];
+      return w.some((x) => /CONSERVÉ — notre valeur .* venait de l'IA/.test(String(x?.message ?? x ?? "")));
     },
     clesARetirer: ["needsUserField", "needsUserFields", "champs_a_completer", "boucle_needs_user"],
   },
