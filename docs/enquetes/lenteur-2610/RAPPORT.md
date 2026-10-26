@@ -38,8 +38,8 @@ Prompt de Nico du 26/10 matin. Compte de Jocabroc (53efea05) : LECTURE SEULE. Es
   597 464 octets, sha256 `2aef5b28dd8026d5f020a70daf7d715f194b0a36ce8d47127c5981a567f4f306`, manifest 0.6.146 relu dans le
   zip, BUILD_ID `2026-10-26T07:44:08Z+4ade5e1`. À faire par toi : le téléverser sur le Chrome Web Store et « Envoyer pour
   examen ».
-- **Bloqué par le classifieur (à toi)** : `! npx supabase functions deploy get-pending-jobs` (pause de la lecture de fond
-  pendant la publication + couleur écrite dans le titre ; prod v292, verify_jwt true).
+- **get-pending-jobs v293** déployée à 09:18 sur ordre de Nico (v292 → v293, verify_jwt true relu avant/après) : pause de la
+  lecture de fond pendant la publication, couleur écrite dans le titre, relance du pot à sucre (voie normale).
 
 ## Étape 1 — la lecture de fond était en cause : OUI
 - Code : la lecture de fond tourne DANS le poll de l'extension, verrou de flux tenu, et attend 20 à 45 s entre deux
