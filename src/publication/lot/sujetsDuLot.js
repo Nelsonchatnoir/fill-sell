@@ -94,6 +94,9 @@ export function questionsDeLArticle(m, motifs = [], { jumeaux = [], lang = "fr" 
   if (a.has("poids")) ajouter({ cle: "poids", type: "poids", libelle: en ? "Parcel weight" : "Poids du colis", plateformes: ["leboncoin"] });
   if (a.has("jumeau")) for (const j of jumeaux ?? []) ajouter({ cle: `jumeau:${j.platform}`, type: "jumeau", libelle: en ? "Same item?" : "Le même article ?", plateformes: [j.platform], jumeau: j });
   if (a.has("port_depop")) ajouter({ cle: "port_depop", type: "port_depop", libelle: en ? "Shipping" : "Frais de port", plateformes: ["depop"] });
+  // (26/10, D3) « À la demande », fiche sans description : la sienne, écrite ou « Générer » (la question Vinted suffit
+  // quand elle est déjà posée).
+  if (a.has("description") && !out.some((q) => q.cle === "description")) ajouter({ cle: "description_fiche", type: "description", libelle: "Description", plateformes: [] });
   // Ce que rien ci-dessus n'a posé (le bouton gris, ou un motif « questions » sans clé lisible) : « À vérifier ».
   const autreQueLeTexte = !a.size || [...a].some((c) => c !== "texte");
   if (!out.length && autreQueLeTexte) ajouter({ cle: "cta", type: "cta", libelle: en ? "To check" : "À vérifier", plateformes: [] });

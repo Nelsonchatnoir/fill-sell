@@ -34,7 +34,8 @@ ok(/const ecrireType=editItem\.typeConnu!==false\|\|editItem\.typeChoisi===true;
 const stock = lire("src/tabs/StockTab.jsx");
 ok(/<Field label=\{t\('fieldPoids'\)\} value=\{iPoids\} set=\{setIPoids\}/.test(stock) && /icon=\{iconeChamp\(Weight\)\}/.test(stock), "ajout : le champ Poids, icône au trait (refonte, zéro émoji)");
 const lps = lire("src/components/ListingPreviewScreen.jsx");
-ok(/const comblerPoidsFiche = \(copies\) =>/.test(lps) && /lbcPoidsGrammes: poidsDeLaFiche/.test(lps), "stepper : la carte Livraison Leboncoin part du poids de la fiche");
+ok(/const comblerPoidsFiche = \(copies\) =>/.test(lps) && /const poids = poidsDeLaFiche \?\? defaut\?\.poids_g \?\? null;/.test(lps) && /lbcPoidsGrammes: poids,/.test(lps),
+  "stepper : la carte Livraison Leboncoin part du poids de la fiche (sinon, depuis le 26/10, du colis par défaut des Réglages)");
 ok(/\.update\(\{ poids_g: poidsCopieLbc \}\)/.test(lps), "et un poids tapé au stepper revient sur la fiche");
 ok(/const champs = v\.champs\.filter\(c => c !== "prix"\);/.test(lps), "le prix n'est plus un « contenu divergent » : la base le suit et le journalise");
 

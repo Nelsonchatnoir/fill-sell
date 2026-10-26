@@ -93,6 +93,7 @@ const TEXTE = {
     creneau: "En pause (créneau de republication) : elle repart toute seule au prochain créneau",
     auto_en_pause: "Republication automatique en pause : elle repartira quand tu la relanceras. Ton annonce est intacte",
     file_en_pause: "Ta file est en pause : elle partira quand tu la reprendras",
+    programmee: "Programmée : elle partira dans ton créneau, une à la fois",
     essai: "En pause : nouvel essai automatique, rien à faire",
     plateforme: (p) => `En pause : ${p} est en pause de notre côté — reprise automatique`,
     boutique: (login) => (login
@@ -129,6 +130,7 @@ const TEXTE = {
     creneau: "Paused (repost time slot): it resumes on its own at the next slot",
     auto_en_pause: "Automatic reposting is paused: it resumes when you restart it. Your listing is untouched",
     file_en_pause: "Your queue is paused: it goes out when you resume it",
+    programmee: "Scheduled: it goes out in your time slot, one at a time",
     essai: "Paused: automatic retry, nothing to do",
     plateforme: (p) => `Paused: ${p} is paused on our side — resumes automatically`,
     boutique: (login) => (login

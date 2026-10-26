@@ -131,6 +131,10 @@ export function ageBeebsAuto({ chemin = null, textes = [], classement = "", ageC
   // 2. Un jeu vidéo : le classement PEGI / USK écrit ou lu sur la fiche (table BEEBS_AGE_PAR_CLASSEMENT de l'app).
   if (/jeux video/.test(c)) {
     const pegi = /\b(pegi|usk)\s?(3|6|7|12|16|18)\b/i.exec(`${nfc(classement)} ${(Array.isArray(textes) ? textes : [textes]).map(nfc).join(" ")}`);
+    // (26/10, D1) Un classement ESRB RÉPONDU (la liste de Vinted) qui dit un âge minimum : même table que l'app
+    // (src/utils/jeuxVideo.js, BEEBS_AGE_PAR_CLASSEMENT). Jamais lu dans le texte libre (une lettre seule y est ambiguë).
+    const esrb = { "E10+": "8 ans - 12 ans", T: "12 ans - 16 ans", M: "16 ans et +", AO: "16 ans et +" }[(/^(E10\+|T|M|AO)\s*[–-]/.exec(nfc(classement).trim()) ?? [])[1]] ?? null;
+    if (!pegi && esrb && dansListe(esrb, liste)) return { valeur: dansListe(esrb, liste), source: "age_pegi", motif: `classement ${nfc(classement).trim()}` };
     const tranche = ageClassement ?? (pegi ? null : null);
     const t = tranche ?? (pegi ? ({ pegi: { 3: "3 ans - 4 ans", 7: "6 ans - 8 ans", 12: "12 ans - 16 ans", 16: "16 ans et +", 18: "16 ans et +" }, usk: { 6: "6 ans - 8 ans", 12: "12 ans - 16 ans", 16: "16 ans et +", 18: "16 ans et +" } }[pegi[1].toLowerCase()]?.[pegi[2]] ?? null) : null);
     if (t && dansListe(t, liste)) return { valeur: dansListe(t, liste), source: "age_pegi", motif: `classement ${pegi ? pegi[0].toUpperCase() : nfc(classement)}` };

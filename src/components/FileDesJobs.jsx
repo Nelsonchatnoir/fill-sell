@@ -197,6 +197,7 @@ export default function FileDesJobs({
   const ctx = useMemo(() => ({
     lang, maintenant,
     filePause: contexte?.filePause ?? (file_.pause === true),
+    programmation: contexte?.programmation ?? false,
     extension: contexte?.extension ?? autonome?.extension ?? null,
     plateformesEnPause: contexte?.plateformesEnPause ?? autonome?.plateformesEnPause ?? new Set(),
     plafond: retenues?.plafond ?? contexte?.plafond ?? null,

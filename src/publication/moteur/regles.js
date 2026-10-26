@@ -173,6 +173,9 @@ export function construireJobs({
   // (26/10, règles 4 et 5 de Nico) La fiche (état, mots) et « le texte est-il celui du vendeur ? » : la description
   // qui part ne contredit jamais la fiche, et ses hashtags ne partent que là où ils servent (moteur/descriptionFidele).
   ficheTexte = null, texteDuVendeur = false,
+  // (26/10, D4) Publication PROGRAMMÉE (réglage de la personne) : la tâche naît marquée ; get-pending-jobs la sert
+  // dans le créneau, une à la fois (_shared/publication-programmee.js). eBay par l'API part de nos serveurs : non retenu.
+  programmee = false,
 }) {
   const { entreesPhotos, getLbcFreePhotoQuota, normalizeVintedTitle } = outils;
   const rows = [];
@@ -231,7 +234,7 @@ export function construireJobs({
         : (edited[platform]?.description ?? ""),
       price:           edited[platform]?.price ?? price,
       photos:          rowPhotos,
-      platform_fields: pf,
+      platform_fields: programmee ? { ...pf, programmee: true, programmee_le: new Date().toISOString() } : pf,
     });
   }
   return { rows, erreur: null, journal };

@@ -148,6 +148,10 @@ export default function CarteRayon({
   // (26/10 nuit, point 1) L'issue « Pas sur <plateforme> » quand la question n'a AUCUN candidat (le robot aspirateur de
   // Nico : l'arbre Beebs n'a aucun rayon pour lui). Absent : la carte d'avant.
   onPasSurPlateforme = null,
+  // (26/10, refonte C du lot) Dans la pop-up d'un article : « Changer » ouvre la recherche d'office (un geste de
+  // moins), et la carte ne montre que le RAYON — la section de la plateforme dit déjà ses champs et sa limite « neuf ».
+  rechercheOuverte = false,
+  seulementLeRayon = false,
 }) {
   const T = MOTS[lang === 'en' ? 'en' : 'fr'];
   const questionOuverte = Boolean(question) && !rayon?.chemin?.length;
@@ -159,7 +163,7 @@ export default function CarteRayon({
   // quand elle est posée (elle peut arriver APRÈS le montage, la résolution est
   // asynchrone), fermée sinon — c'est-à-dire exactement comme avant pour toute
   // carte sans question. Dès le premier geste, c'est la personne qui décide.
-  const [ouvertManuel, setOuvertManuel] = useState(null);
+  const [ouvertManuel, setOuvertManuel] = useState(rechercheOuverte ? true : null);
   // (26/10 nuit, point 1) La liste ne s'ouvre plus d'office quand des puces (ou l'issue « Pas sur ») répondent déjà.
   const ouvertParDefaut = questionOuverte && candidatsEnPuces.length === 0 && !onPasSurPlateforme;
   const ouvertPicker = ouvertManuel ?? ouvertParDefaut;
@@ -529,7 +533,7 @@ export default function CarteRayon({
 
       {/* ── RAYON « NEUF SEULEMENT » (24/09) — changer de rayon, jamais
              répondre « neuf » pour un objet porté. ─────────────────────── */}
-      {(limites ?? []).map((l) => (
+      {!seulementLeRayon && (limites ?? []).map((l) => (
         <div key={`limite-${l.cle}`} style={{ ...st.bloc, background: '#FFFBEB', borderColor: '#F59E0B' }}>
           <div style={{ fontSize: 12.5, color: '#92400E', lineHeight: 1.45 }}>
             {l.motif === 'rayon_public'
@@ -540,7 +544,7 @@ export default function CarteRayon({
       ))}
 
       {/* ── CE QU'IL RESTE À DONNER ─────────────────────────────────── */}
-      {questionsAffichees.length > 0 && (
+      {!seulementLeRayon && questionsAffichees.length > 0 && (
         <div style={{ ...st.bloc, background: UI.card, borderColor: UI.teal }}>
           <div style={st.eyebrow}>{resteAQuestionner ? T.manque : T.reponses}</div>
           {questionsAffichees.map((q) => (
@@ -577,7 +581,7 @@ export default function CarteRayon({
 
       {/* ── CE QU'ON SAIT DÉJÀ — replié, parce que ce ne sont pas des
              questions : ce sont des réponses. ─────────────────────────── */}
-      {connusAffiches.length > 0 && (
+      {!seulementLeRayon && connusAffiches.length > 0 && (
         <div style={{ ...st.bloc, marginBottom: 12 }}>
           <button type="button" onClick={() => setConnusOuverts((v) => !v)}
             style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,

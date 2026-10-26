@@ -45,7 +45,7 @@ import { gardeFouCategorie } from "../utils/categorieGardeFou";
 // passe 2 avec une description anglaise DOIT juger exactement comme le serveur.
 import { estAnglaisAvere } from "../../supabase/functions/_shared/langue.js";
 import { valeurDecritLObjet, feuilleDepuisOrigine, genreDepuisOrigine } from "../utils/categorieParMot";
-import { VINTED_CHAMP_PLATEFORME, VINTED_CHAMP_CLASSEMENT, familleJeuVideo, jeuVideoDeLArticle, cheminJeuVideo, plateformeEbayDuJeu, EBAY_ASPECT_PLATEFORME } from "../utils/jeuxVideo";
+import { VINTED_CHAMP_PLATEFORME, VINTED_CHAMP_CLASSEMENT, EBAY_ASPECT_CLASSEMENT, familleJeuVideo, jeuVideoDeLArticle, cheminJeuVideo, plateformeEbayDuJeu, EBAY_ASPECT_PLATEFORME } from "../utils/jeuxVideo";
 import { mentionsAutrePlateforme, messageMentions } from "../utils/descriptionMentions";
 import { normalizeVintedTitle } from "../utils/vintedTitle";
 import { getEbayCategoryId } from "../utils/ebayCategories";
@@ -81,7 +81,9 @@ import { PLATEFORMES_STOCK_OUVERTES, PLATEFORMES_STOCK_A_VENIR, PLATEFORMES_JAMA
 import { copiesProposees } from "../publication/copiesProposees";
 import { deriverCopieDepop, DEPOP_DESCRIPTION_MAX, DEPOP_HASHTAGS_MAX, compterHashtagsDepop } from "../utils/depopPublication";
 import { usePortDepopParDefaut, lirePortSaisi, formaterPort } from "../utils/fraisPortDepop";
-import { useChoixPoidsLeboncoin } from "../utils/useChoixPoidsLeboncoin";
+import { useChoixPoidsLeboncoin, colisDefautLbcConnu } from "../utils/useChoixPoidsLeboncoin";
+import { useRedactionALaDemande, redactionALaDemandeConnue } from "../utils/redactionALaDemande";
+import { usePublicationProgrammee } from "../utils/usePublicationProgrammee";
 import { poidsLbcManquantPour } from "../utils/choixPoidsLeboncoin";
 // La résolution de catégorie et de champs plateforme — SORTIE de handlePublish
 // le 20/09 pour tourner à la fin de la génération. Même code, même ordre,
@@ -5118,11 +5120,25 @@ export default function ListingPreviewScreen({
   // restent écrits tels quels (scripts/reponses-partagees-selftest.mjs les lit).
   const POIDS_LBC_MAX = 30000;
   const poidsDeLaFiche = lirePoidsGrammes(initialListing?.poids_g).valeur;
+  // (26/10, D2 — Nico) Le COLIS LEBONCOIN PAR DÉFAUT des Réglages (taille + poids, choisis par la personne) : son poids
+  // quand la fiche n'en a pas, sa taille quand la copie n'en porte pas — aux mêmes trois arrivées, jamais par-dessus
+  // une valeur connue. Lu dans la mémoire partagée (déjà chargée par le hook du choix de poids, plus bas).
   const comblerPoidsFiche = (copies) => {
     const lbc = copies?.leboncoin;
-    if (!lbc || poidsDeLaFiche == null || poidsDeLaFiche > POIDS_LBC_MAX) return copies;
-    if (Number(lbc.platform_fields?.lbcPoidsGrammes) > 0) return copies;
-    return { ...copies, leboncoin: { ...lbc, platform_fields: { ...(lbc.platform_fields ?? {}), lbcPoidsGrammes: poidsDeLaFiche } } };
+    if (!lbc) return copies;
+    const defaut = colisDefautLbcConnu(userId);
+    const poids = poidsDeLaFiche ?? defaut?.poids_g ?? null;
+    let pf = lbc.platform_fields ?? {};
+    let change = false;
+    if (poids != null && poids <= POIDS_LBC_MAX && !(Number(pf.lbcPoidsGrammes) > 0)) {
+      pf = { ...pf, lbcPoidsGrammes: poids, ...(poidsDeLaFiche == null ? { poids_par_defaut: true } : {}) };
+      change = true;
+    }
+    if (defaut?.format && !String(pf.format_colis ?? "").trim()) {
+      pf = { ...pf, format_colis: defaut.format, format_colis_par_defaut: true };
+      change = true;
+    }
+    return change ? { ...copies, leboncoin: { ...lbc, platform_fields: pf } } : copies;
   };
   // Le poids TAPÉ sur la carte Leboncoin (un geste, pas une valeur reprise) :
   // lui seul autorise à réécrire un poids que la fiche porte déjà.
@@ -6223,7 +6239,7 @@ export default function ListingPreviewScreen({
       // comparent à la sélection courante.
       photosAnalyseesRef.current = [...photos];
       // Prix par défaut : la valeur de marché estimée, jamais le prix d'achat.
-      if (res?.prix_vente_suggere != null) {
+      if (res?.prix_vente_suggere != null && !redactionALaDemandeConnue(userId)) {
         const estime = res.prix_vente_suggere;
         setPrice(estime);
         // Même propagation que le champ central de StepGeneration (2026-07-28) :
@@ -6532,13 +6548,20 @@ export default function ListingPreviewScreen({
   // côté.
   function appliquerGeneration(data, platforms) {
       setProcessedPhotos(data.photos ?? []);
-      setPrice(prev => data.price ?? prev);
+      // (26/10, D3) Titre, description et prix À LA DEMANDE (réglage de la personne) : la rédaction tourne comme avant
+      // (rayon, caractéristiques), mais ce qui part est la FICHE — le titre (s'il existe), la description (même vide :
+      // la question « Description » la demande alors), le prix. Ce que FillSell a écrit reste dans platformListings,
+      // derrière « Générer » (genererChamp).
+      const aLaDemande = redactionALaDemandeConnue(userId);
+      const titreFiche = String(initialListing?.titre ?? "").trim();
+      const descriptionFiche = String(initialListing?.description ?? "").trim();
+      setPrice(prev => (aLaDemande ? prev : (data.price ?? prev)));
 
       const initialEdited = {};
       for (const p of platforms) {
         initialEdited[p] = {
-          title:           data.platforms[p]?.title           ?? "",
-          description:     data.platforms[p]?.description     ?? "",
+          title:           aLaDemande && titreFiche ? titreFiche : (data.platforms[p]?.title ?? ""),
+          description:     aLaDemande ? descriptionFiche : (data.platforms[p]?.description ?? ""),
           platform_fields: mergeFieldsWithLens(
             data.platforms[p]?.platform_fields ?? {},
             // lensPourChamps, PAS initialListing : un `modele` non confirmé
@@ -6969,7 +6992,16 @@ export default function ListingPreviewScreen({
   // ⚠️ Les deux listes doivent rester identiques. Si l'une bouge, l'autre
   //    aussi : le serveur décide ce qui PART, cet écran ce qui s'AFFICHE, et
   //    un écart entre les deux se lit comme un bug d'affichage.
+  const texteGenereRef = useRef({ titre: false, description: false }); // (26/10, D3) champs écrits par « Générer »
   const texteDuVendeurFiche = () => {
+    // (26/10, D3) « À la demande » : le titre et la description de la fiche sont ceux de la personne, quelle que soit
+    // leur origine — sauf le champ qu'elle vient de faire écrire par « Générer » (texteGenereRef).
+    if (redactionALaDemandeConnue(userId)) {
+      return {
+        titre: texteGenereRef.current.titre ? "" : String(initialListing?.titre ?? "").trim(),
+        description: texteGenereRef.current.description ? "" : String(initialListing?.description ?? "").trim(),
+      };
+    }
     const origine = String(initialListing?.origine ?? "").trim().toLowerCase();
     const marqueur = (cle) => String(attributV(cle) ?? "").trim().toLowerCase();
     const propre = (cle) => {
@@ -7371,6 +7403,26 @@ export default function ListingPreviewScreen({
   // (11/10 soir) Le poids Leboncoin : « Laisser Leboncoin estimer » (défaut)
   // ou « Saisir le poids », retenu pour le compte (utils/useChoixPoidsLeboncoin).
   const choixPoidsLbc = useChoixPoidsLeboncoin(userId);
+  // (26/10, D3) Titre, description et prix à la demande : le réglage, et ce que « Générer » a posé dans cette session.
+  const redaction = useRedactionALaDemande(userId);
+  // (26/10, D4) Publications programmées (réglage) : les tâches naissent marquées, sauf « Envoyer tout de suite ».
+  const programmation = usePublicationProgrammee(userId);
+  const envoyerMaintenantRef = useRef(false);
+  const genererChamp = (champ) => {
+    const copies = platformListings?.platforms ?? {};
+    const ordre = ["vinted", "leboncoin", "beebs", "ebay", "depop", "opla"];
+    const premiere = (cle) => ordre.map((p) => String(copies[p]?.[cle] ?? "").trim()).find(Boolean) ?? "";
+    if (champ === "prix") {
+      const v = platformListings?.price ?? photoAnalysis?.prix_vente_suggere ?? null;
+      if (v != null && Number(v) > 0) poserPrixGeneral(String(v));
+      return v != null;
+    }
+    const valeur = premiere(champ === "titre" ? "title" : "description");
+    if (!valeur) return false;
+    texteGenereRef.current = { ...texteGenereRef.current, [champ]: true };
+    poserValeurGenerale(champ, valeur);
+    return true;
+  };
   const portDepopToucheRef = useRef(false);
   const portDepopSaisi = edited?.depop?.platform_fields?.depopPort;
   useEffect(() => {
@@ -9107,7 +9159,12 @@ export default function ListingPreviewScreen({
             publicCopie: [pf.univers, pf.genre],
             tailleFiche: String(pf.taille || initialListing?.taille || vF("taille") || ""),
             matiereFiche: String(pf.matiere || initialListing?.matiere || vF("matiere") || ""),
-            classementFiche: String(vF("classement_age") || ""),
+            // (26/10, D1 — XEWER : l'Âge Beebs demandé 18 fois en 10 jours, juste après avoir répondu le PEGI de Vinted
+            // sur le même écran) Le classement RÉPONDU dans cette publication (Vinted, puis eBay) vaut celui de la fiche :
+            // l'Âge Beebs s'en déduit sur-le-champ (même table, ageBeebsDuClassement). Jamais deviné : rien de répondu,
+            // rien d'écrit, rien sur la fiche → la question, comme avant.
+            classementFiche: String(edited?.vinted?.platform_fields?.vintedAspects?.[VINTED_CHAMP_CLASSEMENT]
+              || edited?.ebay?.platform_fields?.ebayAspects?.[EBAY_ASPECT_CLASSEMENT] || vF("classement_age") || ""),
           });
           if (auto?.valeur) return { key, label, state: "missing", value: "", allowedValues, inputType: r.input_type, dedicatedTarget: genericDedicatedTarget(platform, key),
                                      suggested: auto.valeur, blocking: false, deduit: { valeur: auto.valeur, source: auto.source, motif: auto.motif } };
@@ -10675,6 +10732,7 @@ export default function ListingPreviewScreen({
         // (26/10, règles 4 et 5 de Nico) Ce que la fiche dit : l'état, le genre, et les mots qui fondent un hashtag.
         ficheTexte: ficheDuTexte(),
         texteDuVendeur: Boolean(texteDuVendeurFiche().description),
+        programmee: Boolean(programmation.reglage) && !envoyerMaintenantRef.current,
       });
       if (construction.erreur === "ebay_sans_photo") {
         throw new Error(lang === "en"
@@ -11244,7 +11302,11 @@ export default function ListingPreviewScreen({
       //     jamais par-dessus celui de la fiche, qui a pu changer depuis.
       // Requête à part, best-effort : la publication est partie, et le prix
       // ci-dessus ne doit pas tomber avec le poids.
-      const poidsCopieLbc = lirePoidsGrammes(edited?.leboncoin?.platform_fields?.lbcPoidsGrammes).valeur;
+      // (26/10, D2) Sans copie Leboncoin, le poids par défaut des Réglages sert à Beebs : il se range sur la fiche (Beebs
+      // lit son palier « Poids jusqu'à … » du poids de la fiche, côté serveur) — seulement quand la fiche n'en a aucun.
+      const poidsDefautBeebs = poidsDeLaFiche == null && plateformesAPublier.includes("beebs")
+        ? (colisDefautLbcConnu(userId)?.poids_g ?? null) : null;
+      const poidsCopieLbc = lirePoidsGrammes(edited?.leboncoin?.platform_fields?.lbcPoidsGrammes).valeur ?? poidsDefautBeebs;
       if (currentInvId && poidsCopieLbc != null && poidsCopieLbc !== poidsDeLaFiche
           && (poidsSaisiAuStepperRef.current || poidsDeLaFiche == null)) {
         const { error: poidsErr } = await supabase
@@ -11479,7 +11541,11 @@ export default function ListingPreviewScreen({
   const ebayAttendLePrecalcul = selected.has("ebay") && plateformesPubliables.has("ebay") && Boolean(edited.ebay)
     && !ebayPreviewCategoryId && Boolean(platformListings?.platforms)
     && resolutionFaitePour !== platformListings && attentePrecalculEbayPour !== platformListings;
+  // (26/10, D3) « À la demande » : une description vide ne part jamais — la personne écrit la sienne, ou « Générer ».
+  const descriptionVideALaDemande = redaction.aLaDemande && step === 3 && !descriptionVideVinted
+    && ![generales?.description, ...Object.values(edited ?? {}).map((c) => c?.description)].some((d) => String(d ?? "").trim());
   const requiredBlocking =
+    descriptionVideALaDemande ||
     (ebayRequiredStatus ?? []).some(aspectBloquant) ||
     missingSharedFields.length > 0 ||
     prixAchatManquant ||
@@ -11581,6 +11647,7 @@ export default function ListingPreviewScreen({
         : `Rayon ${nomPlateforme(p)} à choisir — aucun rayon sûr trouvé (sur sa carte, liste prête)`);
     }
     if (descriptionVideVinted) m.push(lang === "en" ? "Vinted description to write" : "Description Vinted à écrire");
+    if (descriptionVideALaDemande) m.push(lang === "en" ? "Description to write (or tap “Generate”)" : "Description à écrire (ou « Générer »)");
     if (portDepopManquant) m.push(lang === "en" ? "Depop shipping price to fill in" : "Frais de port Depop à indiquer");
     if (poidsLbcManquant) m.push(lang === "en" ? "Leboncoin parcel weight to fill in (or let Leboncoin estimate)" : "Poids du colis Leboncoin à indiquer (ou laisser Leboncoin estimer)");
     if (refusSansQuestion) m.push(String(resolutionAffichee?.refus?.message ?? (lang === "en" ? "Category to pick" : "Rayon à choisir")));
@@ -12169,6 +12236,15 @@ export default function ListingPreviewScreen({
     // (26/10, refonte C du lot) Un champ de la COPIE d'une plateforme, posé comme depuis sa carte (setEdited) : la
     // politique de livraison eBay de l'article (ebayFulfillmentPolicyId) choisie dans la pop-up de l'article.
     ficheDuTexte,
+    // (26/10, D2) Le colis Leboncoin par défaut des Réglages (taille + poids), pour la pop-up « Vérifier ».
+    colisDefautLbc: choixPoidsLbc.colisDefaut,
+    // (26/10, D3) Titre, description et prix à la demande : le réglage, et le geste « Générer » (champ par champ).
+    redactionALaDemande: redaction.aLaDemande,
+    genererChamp,
+    texteGenere: { ...texteGenereRef.current },
+    // (26/10, D4) Le réglage de programmation (null : éteint) et l'exception « Envoyer tout de suite » de ce lot.
+    programmation: programmation.reglage,
+    envoyerMaintenant: (v) => { envoyerMaintenantRef.current = Boolean(v); },
     poserChampCopie: (p, cle, valeur) => setEdited(prev => {
       const c = prev[p];
       if (!c) return prev;

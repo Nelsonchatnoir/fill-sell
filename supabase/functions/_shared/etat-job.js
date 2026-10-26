@@ -222,6 +222,11 @@ export function etatJob(j, ctx = {}) {
     // commencées attendent la reprise (un retrait n'est jamais en pause ; une republication retirée est plus haut).
     if (ctx.filePause && (j.action === "publish" || j.action === "republish")
         && !(pf.deleted_at || pf.republish_suppression_envoyee)) return { etat: ETATS.EN_PAUSE, motif: "file_en_pause" };
+    // (26/10, D4) Une publication PROGRAMMÉE pas encore servie attend son créneau (réglage de la personne, « une à la
+    // fois », plafond du jour) — jamais une heure. Réglage éteint (ctx.programmation faux) : elle part à son tour.
+    if (j.action === "publish" && pf.programmee === true && !pf.programmee_servie_le && ctx.programmation) {
+      return { etat: ETATS.EN_PAUSE, motif: "programmee" };
+    }
     // (22/10 soir, point 8) Fiche importée : la publication attend la lecture de l'annonce d'origine (texte, photos,
     // état du vendeur) — elle avance, ce n'est jamais une erreur.
     if (pf.attente_lecture_origine && typeof pf.attente_lecture_origine === "object") {

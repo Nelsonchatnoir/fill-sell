@@ -143,6 +143,11 @@ const FR = {
 
   // ── Expédition ──────────────────────────────────────────────────────────
   adresseRemise: 'Adresse de remise',
+  colisLbcDefaut: 'Colis Leboncoin par défaut',
+  publicationProgrammee: 'Publications programmées',
+  sRedaction: 'Rédaction',
+  redactionALaDemande: 'Titre, description et prix à la demande',
+  redactionALaDemandeNote: "Les tiens partent tels quels ; FillSell propose les siens quand tu touches « Générer ». Tes photos sont toujours analysées (rayon, marque, caractéristiques).",
   adresseRemiseLbc: 'Adresse de remise Leboncoin',
   aRenseigner: 'à renseigner',
   rue: 'Rue',
@@ -358,6 +363,11 @@ const EN = {
   oplaMemNote: 'You are asked again as soon as you forget an answer.',
 
   adresseRemise: 'Pickup address',
+  colisLbcDefaut: 'Default Leboncoin parcel',
+  publicationProgrammee: 'Scheduled listings',
+  sRedaction: 'Writing',
+  redactionALaDemande: 'Title, description and price on demand',
+  redactionALaDemandeNote: "Yours go out as they are; FillSell suggests its own when you tap “Generate”. Your photos are always analysed (category, brand, details).",
   adresseRemiseLbc: 'Leboncoin pickup address',
   aRenseigner: 'to be filled in',
   rue: 'Street',

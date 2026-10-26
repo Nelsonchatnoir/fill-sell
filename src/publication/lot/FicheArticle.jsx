@@ -23,7 +23,7 @@ import { descriptionFidele, hashtagsServent } from "../moteur/descriptionFidele"
 import { lirePoidsSaisi } from "./regles";
 import {
   cheminRayon, texteRayon, plateformesDeLArticle, statutPlateforme, colisDe, detailsDe, rayonNeufDe,
-  poidsAffiche, textePoids, poidsIncoherent,
+  poidsAffiche, poidsParDefaut, textePoids, poidsIncoherent,
 } from "./ficheLue";
 
 const ETATS_ARTICLE = ["Neuf avec étiquette", "Neuf sans étiquette", "Très bon état", "Bon état", "Satisfaisant"];
@@ -115,7 +115,7 @@ function clesCommunes(m) {
   return (m?.clesQuestions ?? []).filter((c) => !/^(vinted|leboncoin|beebs|depop|ebay|opla):/.test(c) || c.startsWith("genre:"));
 }
 
-function SectionPlateforme({ m, p, en, poids, poserPoids, retirer, ecartee = null, remettre = null }) {
+function SectionPlateforme({ m, p, en, poids, deDefaut = false, poserPoids, retirer, ecartee = null, remettre = null }) {
   const [ouvert, setOuvert] = useState(null); // « rayon » | « colis » | id d'un détail
   const basculer = (k) => setOuvert((o) => (o === k ? null : k));
   const lang = en ? "en" : "fr";
@@ -143,11 +143,14 @@ function SectionPlateforme({ m, p, en, poids, poserPoids, retirer, ecartee = nul
   const neuf = rayonNeufDe(m, p);
   const grille = p === "vinted" ? grilleColisVinted(chemin) : null;
   const colis = colisDe(m, p, { poids, grilleVinted: grille, lang });
+  // (26/10, D2) Le poids des Réglages se dit comme tel : la personne voit d'où il vient, et le change ici.
+  if (deDefaut && (p === "leboncoin" || p === "beebs") && !colis.manquant) colis.libelle = `${colis.libelle} · ${en ? "default" : "par défaut"}`;
   const details = detailsDe(m, p);
   // La ligne « neuf seulement » a son encadré (ses deux sorties) : jamais redite par le bloc de questions.
   const cles = clesDeLaPlateforme(m, p).filter((c) => !(neuf && c === `${p}:${neuf.ligne?.key}`));
   const carteRayon = (
-    <CarteRayon platform={p} lang={m.lang} rayon={question ? null : rayon} question={question}
+    <CarteRayon key={ouvert === "rayon" ? "recherche" : "carte"} platform={p} lang={m.lang} rayon={question ? null : rayon} question={question}
+      seulementLeRayon rechercheOuverte={ouvert === "rayon"}
       suggestions={m.suggestionsParPf?.[p] ?? []} champs={m.edited?.[p]?.platform_fields ?? {}} configLocale={[]} supabase={m.supabase}
       onChoisirRayon={(choix) => { m.choisirRayon?.(p, choix); setOuvert(null); }} regle="nouvelle" />
   );
@@ -213,8 +216,10 @@ function SectionPlateforme({ m, p, en, poids, poserPoids, retirer, ecartee = nul
       )}
 
       {details.filter((d) => !cles.includes(d.id)).map((d) => (
-        <Champ key={d.id} label={d.label} valeur={d.valeur || (en ? "To choose" : "À choisir")} aRegler={d.aRegler}
-          action={null} ouvert={ouvert === d.id} onToucher={() => basculer(d.id)}>
+        <Champ key={d.id} label={d.label} aRegler={d.aRegler}
+          valeur={d.valeur || (d.rempli === "plateforme" ? (en ? `Filled in by ${NOM(p)}` : `Rempli par ${NOM(p)}`)
+            : d.rempli ? (en ? "Filled in when listing" : "Rempli au dépôt") : (en ? "To choose" : "À choisir"))}
+          action={null} ouvert={ouvert === d.id} onToucher={d.lectureSeule ? null : () => basculer(d.id)}>
           <ChoixDeValeur en={en} valeur={d.valeur} valeurs={d.allowedValues} onChoisir={(v) => { ecrireDetail(m, d, v); setOuvert(null); }} />
         </Champ>
       ))}
@@ -261,9 +266,10 @@ export function PoidsDeLArticle({ en, poids, poserPoids }) {
  * @param {boolean} [props.photoVide] la seule « photo » est une image de remplissage
  * @param {object} props.actions     { poserPoids(g), retirerPlateforme(p), remettrePlateforme(p), validerTexte() }
  */
-export default function FicheArticle({ m, item = null, decision = {}, ecartees = [], photoVide = false, actions = {}, en = false, lecture = null }) {
+export default function FicheArticle({ m, item = null, decision = {}, ecartees = [], photoVide = false, actions = {}, en = false, lecture = null, poidsDefaut = null }) {
   const fichier = useRef(null);
   const [ajout, setAjout] = useState(false);
+  const [rien, setRien] = useState(null);
   if (!m) return null;
   const general = m.generales ?? {};
   const pfs = plateformesDeLArticle(m);
@@ -273,7 +279,9 @@ export default function FicheArticle({ m, item = null, decision = {}, ecartees =
   const etat = String(general.etat || m.etatArticle || "");
   const prix = m.price ?? item?.sell ?? "";
   const photos = (m.processedPhotos?.length ? m.processedPhotos : m.photos) ?? urlsPhotos(item?.photos);
-  const poids = poidsAffiche(m, decision, item);
+  const defautG = poidsDefaut ?? m.colisDefautLbc?.poids_g ?? null;
+  const poids = poidsAffiche(m, decision, item, defautG);
+  const deDefaut = poidsParDefaut(m, decision, item, defautG);
   const incoherent = poids ? poidsIncoherent(`${titre} ${m.edited?.[premiere]?.platform_fields?.categorie_objet_ia ?? ""}`, poids, en ? "en" : "fr") : null;
   const ecritParFillSell = !String(m.texteVendeur?.description ?? "").trim();
   // La MÊME fiche que celle du texte qui part (construireJobs) : ce qu'on montre est ce qui partira sur Vinted.
@@ -283,6 +291,12 @@ export default function FicheArticle({ m, item = null, decision = {}, ecartees =
   const sansHashtags = pfs.filter((p) => !hashtagsServent(p));
   const lang = en ? "en" : "fr";
   const communes = clesCommunes(m);
+  // (26/10, D3) Titre, description et prix « à la demande » (réglage) : ce que FillSell propose, champ par champ.
+  const generer = (champ) => (m.redactionALaDemande && m.genererChamp ? (
+    <button type="button" className="fsn-lien fsf-generer" onClick={(e) => { e.preventDefault(); if (!m.genererChamp(champ)) setRien(champ); }}>
+      {rien === champ ? (en ? "Nothing to suggest yet" : "Rien à proposer pour l'instant") : (en ? "Generate" : "Générer")}
+    </button>
+  ) : null);
   const ajouterPhotos = async (files) => {
     if (!files?.length || !m.handleAddMorePhotos) return;
     setAjout(true);
@@ -321,7 +335,7 @@ export default function FicheArticle({ m, item = null, decision = {}, ecartees =
       </div>
 
       <div className="fsf-bloc">
-        <div className="fsf-bloc-t"><span>{en ? "Title" : "Titre"}</span></div>
+        <div className="fsf-bloc-t"><span>{en ? "Title" : "Titre"}</span>{generer("titre")}</div>
         <TexteQuiGrandit key={`titre-${titre}`} valeur={titre} lignesMin={1} aria-label={en ? "Title" : "Titre"}
           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } }}
           onFini={(v) => m.poserValeurGenerale?.("titre", v.replace(/\s*\n+\s*/g, " "))} />
@@ -329,7 +343,7 @@ export default function FicheArticle({ m, item = null, decision = {}, ecartees =
 
       <div className="fsf-deux">
         <label className="fsf-mini">
-          <small>{en ? "Price" : "Prix"}</small>
+          <small className="fsf-mini-t"><span>{en ? "Price" : "Prix"}</span>{generer("prix")}</small>
           <input className="fsn-input" type="number" inputMode="decimal" min="1" step="0.5" defaultValue={prix}
             key={`prix-${prix}`} aria-label={en ? "Selling price" : "Prix de vente"}
             onBlur={(e) => { if (String(e.target.value) !== String(prix)) m.poserPrixGeneral?.(e.target.value); }}
@@ -348,6 +362,7 @@ export default function FicheArticle({ m, item = null, decision = {}, ecartees =
       <div className="fsf-bloc">
         <div className="fsf-bloc-t">
           <span>{en ? "Description" : "Description"}</span>
+          {generer("description")}
           {ecritParFillSell
             ? <span className="fsf-tag">{decision?.texteValide ? (en ? "Written by FillSell · approved" : "Écrite par FillSell · validée") : (en ? "Written by FillSell, check it" : "Écrite par FillSell, relis-la")}</span>
             : <span className="fsf-tag fsf-tag--toi">{en ? "Your text" : "Ton texte"}</span>}
@@ -380,7 +395,7 @@ export default function FicheArticle({ m, item = null, decision = {}, ecartees =
       )}
 
       {pfs.map((p) => (
-        <SectionPlateforme key={p} m={m} p={p} en={en} poids={poids} poserPoids={actions.poserPoids}
+        <SectionPlateforme key={p} m={m} p={p} en={en} poids={poids} deDefaut={deDefaut} poserPoids={actions.poserPoids}
           retirer={pfs.length > 1 ? actions.retirerPlateforme : null} />
       ))}
       {(ecartees ?? []).filter((e) => !pfs.includes(e.p)).map((e) => (

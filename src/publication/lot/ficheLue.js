@@ -101,14 +101,20 @@ export function phraseEcartees(ecartees, nom, lang = "fr") {
 }
 
 // ── LE POIDS (règle 7 de Nico) ─────────────────────────────────────────────────────────────────────────────────
-/** Le poids de l'article : le choix de la personne dans ce lot, sinon celui de la fiche. Jamais une estimation
- *  (ni celle de l'IA, ni la tranche Leboncoin « De 100 g à 250 g »). null : « sans poids ». */
-export function poidsAffiche(m, decision = {}, item = null) {
-  for (const v of [decision?.poids, m?.initialListing?.poids_g, item?.poids_g]) {
+/** Le poids de l'article : le choix de la personne dans ce lot, sinon celui de la fiche, sinon (26/10, D2) le poids
+ *  par défaut que la personne a choisi dans Réglages › Expédition. Jamais une estimation (ni celle de l'IA, ni la
+ *  tranche Leboncoin « De 100 g à 250 g »). null : « sans poids ». */
+export function poidsAffiche(m, decision = {}, item = null, defaut = null) {
+  for (const v of [decision?.poids, m?.initialListing?.poids_g, item?.poids_g, defaut]) {
     const g = Number(v);
     if (v != null && v !== "" && Number.isFinite(g) && g > 0) return Math.round(g);
   }
   return null;
+}
+
+/** Le poids montré est-il celui des Réglages (aucun poids choisi dans le lot ni sur la fiche) ? */
+export function poidsParDefaut(m, decision = {}, item = null, defaut = null) {
+  return poidsAffiche(m, decision, item) == null && poidsAffiche(m, decision, item, defaut) != null;
 }
 
 /** Un poids en mots : « 650 g », « 1,2 kg ». */
@@ -212,6 +218,8 @@ export function colisDe(m, p, { poids = null, grilleVinted = null, lang = "fr" }
 
 // ── LES CARACTÉRISTIQUES ───────────────────────────────────────────────────────────────────────────────────────
 const CLES_HORS_DETAILS = new Set(["title", "description", "photos"]);
+// Ce que la ligne « Colis » (ou « Port ») de la section dit déjà : jamais répété en « À choisir » plus bas.
+const CLES_DU_COLIS = { vinted: ["package_size_id", "package_size"], leboncoin: ["estimated_parcel_weight"], beebs: ["Format du colis"] };
 /**
  * Les champs du rayon de la plateforme, avec leur valeur : tout ce qui part, une ligne chacun. Les champs à
  * régler d'abord. [{ id, gp, cle, label, valeur, aRegler, allowedValues, dedicatedTarget, ebay }]
@@ -225,9 +233,17 @@ export function detailsDe(m, p) {
     }
   } else {
     for (const a of m?.genericRequiredStatus?.[p] ?? []) {
-      if (CLES_HORS_DETAILS.has(a.key) || a.neufSeulement || a.rayonEnCause) continue;
+      if (CLES_HORS_DETAILS.has(a.key) || a.neufSeulement || a.rayonEnCause || (CLES_DU_COLIS[p] ?? []).includes(a.key)) continue;
       out.push({ id: `${p}:${a.key}`, gp: p, cle: a.key, label: String(a.label ?? a.key), valeur: String(a.value ?? ""),
-        aRegler: etatBloquant(a), allowedValues: Array.isArray(a.allowedValues) ? a.allowedValues : [], dedicatedTarget: a.dedicatedTarget ?? null, ligne: a });
+        aRegler: etatBloquant(a), allowedValues: Array.isArray(a.allowedValues) ? a.allowedValues : [], dedicatedTarget: a.dedicatedTarget ?? null, ligne: a,
+        // Un champ que l'extension ou la plateforme remplit au dépôt : dit tel quel, jamais « À choisir ».
+        rempli: a.state === "prefilled" ? (a.prefilledByPlatform ? "plateforme" : "depot") : null });
+    }
+    // (règle 6 de Nico) La taille de la copie — la taille connue, déjà convertie dans la grille de la plateforme — se
+    // voit dans sa section même quand le rayon la porte en champ partagé (Vinted : jamais dans la liste des aspects).
+    const taille = String(m?.edited?.[p]?.platform_fields?.taille ?? "").trim();
+    if (taille && !out.some((d) => /taille|pointure|size/i.test(`${d.cle} ${d.label}`))) {
+      out.push({ id: `${p}:taille`, gp: p, cle: "taille", label: "Taille", valeur: taille, aRegler: false, allowedValues: [], lectureSeule: true });
     }
   }
   return out.sort((x, y) => Number(y.aRegler) - Number(x.aRegler));

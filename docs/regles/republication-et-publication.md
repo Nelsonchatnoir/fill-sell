@@ -773,3 +773,27 @@
   (« Galaxy S10 ») est posé sans question, une gamme seule (« Galaxy ») jamais.
 - Selftests : `lot-refonte-c`, `lot-par-question`, `publication-moteur` (C8) ; aperçu : `ECRANS=^3 node
   scripts/apercu/capture-lot-publication.mjs` (le lot de Nico du 26/10 : Medik8, Samsung, Scotch, bouilloire, robot LIEE…).
+
+## 26/10 — bloc D (XEWER, Nico) : âge Beebs du classement, colis par défaut, rédaction à la demande, publications programmées
+- **D1 — Âge Beebs d'un jeu vidéo** : le classement RÉPONDU dans la même publication (Vinted « Classement du contenu »,
+  puis eBay « Classification ») vaut celui de la fiche — l'âge se déduit sur-le-champ (XEWER : 9 jeux redemandés en
+  10 jours juste après avoir répondu le PEGI). PEGI, USK, et l'ESRB qui dit un âge minimum (E10+ → 8-12 ans, T → 12-16,
+  M et AO → 16 ans et +). ⛔ « E – Tous publics », « RP », « Non précisé », USK 0, une lettre dans le texte : la question.
+- **D2 — Colis Leboncoin par défaut** (Réglages › Expédition) : `platform_settings.leboncoin.colis_defaut`
+  `{ format: Petit|Moyen|Volumineux, poids_g }`. Posé sur la copie Leboncoin (poids si la fiche n'en a pas, taille si la
+  copie n'en porte pas), jamais par-dessus une valeur connue ; dit « par défaut » dans la pop-up du lot ; rangé sur la
+  fiche à la publication quand elle n'en a pas (le même poids sert à Beebs : palier lu du poids de la fiche). C'est le
+  choix de la personne, jamais une estimation (règle 7).
+- **D3 — Titre, description et prix à la demande** (Réglages › Préférences › Rédaction, éteint par défaut) :
+  `platform_settings.redaction.a_la_demande`. La rédaction tourne (rayon, caractéristiques) ; ce qui part est la FICHE
+  (titre, description même vide, prix) ; « Générer » pose ce que FillSell a écrit, champ par champ (pop-up du lot et
+  « Vérifier », question Prix du lot). Une description vide ne part jamais (« Description à écrire (ou « Générer ») »).
+  Un champ généré redevient « écrit par FillSell » (règles 4 et 5 : description fidèle, hashtags).
+- **D4 — Publications programmées** (Réglages › Automatismes, éteint par défaut) : `platform_settings.publication_programmee`
+  `{ actif, creneau matin|midi|soir|perso, de, a, jours, plafond_jour, fuseau }` (`_shared/publication-programmee.js`).
+  La tâche naît marquée `platform_fields.programmee` (quota au clic, comme avant) ; get-pending-jobs la RETIENT hors
+  créneau, au-delà du plafond du jour, tant qu'une autre programmée est en cours ou que l'espacement (créneau ÷ annonces
+  du jour) n'est pas écoulé — il en sert UNE, marquée `programmee_servie_le`. Le surplus attend le créneau suivant.
+  Éteindre le réglage libère la file. « Envoyer tout de suite » au lot. eBay par l'API (nos serveurs) n'est pas retenu.
+  ⛔ Jamais une heure dans les phrases (« dans ton créneau du matin », c'est tout).
+- Selftest : `bloc-d-2610`.

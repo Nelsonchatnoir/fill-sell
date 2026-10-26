@@ -491,6 +491,7 @@
     "selftest:lot-defauts-2610": "node scripts/lot-defauts-2610-selftest.mjs",
     "selftest:lot-par-question": "node scripts/lot-par-question-selftest.mjs",
     "selftest:lot-refonte-c": "node --import ./scripts/loader-ext.mjs scripts/lot-refonte-c-selftest.mjs",
+    "selftest:bloc-d-2610": "node --import ./scripts/loader-ext.mjs scripts/bloc-d-2610-selftest.mjs",
     "selftest:alerte-orpheline": "node scripts/alerte-orpheline-selftest.mjs",
     "selftest:lbc-moderation": "node scripts/lbc-moderation-selftest.mjs",
     "selftest:mur-poste-pause-avant-retrait": "node scripts/mur-poste-pause-avant-retrait-selftest.mjs",

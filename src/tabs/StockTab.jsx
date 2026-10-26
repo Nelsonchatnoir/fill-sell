@@ -51,6 +51,7 @@ import { FeuilleAttente } from '../components/FeuilleActivite';
 // file complète des jobs au tap sur n'importe quelle barre de job.
 import FileDesJobs from '../components/FileDesJobs';
 import { useEtatFile } from '../stock/etatFile';
+import { usePublicationProgrammee } from '../utils/usePublicationProgrammee';
 import { useAchatsAnnules, achatsAnnulesAMontrer, lireMasquesAchatsAnnules, masquerAchatAnnule, texteAchatAnnule } from '../stock/achatsAnnules';
 import { messageFileEnPause } from '../../supabase/functions/_shared/file-pause.js';
 import BarreJobCarte from '../components/BarreJobCarte';
@@ -7474,6 +7475,8 @@ const StockTab = memo(function StockTab({
   // (22/10 soir, points 5 et 6 — Louis) La file en pause (geste de la personne) et la synchro qui attend une
   // remise en ligne ; (point 1c) les achats annulés. Lectures bornées (utils/relectureBornee.js).
   const etatFileDuCompte = useEtatFile({ supabase, userId: user?.id });
+  // (26/10, D4) Publications programmées : une tâche programmée dit qu'elle attend son créneau (jamais une erreur).
+  const programmationDuCompte = usePublicationProgrammee(user?.id ?? null);
   const achatsAnnulesLus = useAchatsAnnules({ supabase, userId: user?.id });
   const [achatsAnnulesMasques, setAchatsAnnulesMasques] = useState(() => lireMasquesAchatsAnnules());
   const [attenteOuverte, setAttenteOuverte] = useState(false);
@@ -8578,6 +8581,7 @@ const StockTab = memo(function StockTab({
   const ctxBarres = { lang, extension: extFraicheur, plateformesEnPause: pausedSet, plafond: repubPlafondEtat, oplaAAutoriser: oplaVerdictRepub === 'a_autoriser', texteErreur: (j) => humanizeJobError(j, lang),
     // (22/10 soir, point 6) La file mise en pause par la personne : les publications pas encore parties le disent.
     filePause: etatFileDuCompte.pause === true,
+    programmation: Boolean(programmationDuCompte.reglage),
     boutiques: (boutiquesVinted?.length ?? 0) >= 1 ? { connectee: boutiqueConnectee, liste: boutiquesVinted, origines: originesBoutique } : null,
     // (03/10, point 25) Poste trop ancien : la file attend la mise à jour (même règle que le bandeau).
     extensionAMettreAJour: extensionStatus?.outdated === true };

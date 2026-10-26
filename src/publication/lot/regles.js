@@ -222,6 +222,11 @@ export function bilanArticle(m, decisions = {}, lang = "fr") {
   }
   // Le texte : en lot personne ne relit une carte — un texte qui n'est pas
   // celui du vendeur (titre OU description) se montre et se valide.
+  // (26/10, D3) « À la demande » : une fiche SANS description n'a rien à relire — elle attend la sienne (écrite, ou
+  // « Générer »). Jamais une description vide qui part.
+  if (m.redactionALaDemande && !descriptionDuMoteur(m)) {
+    motifs.push({ cle: "description", libelle: en ? "Description" : "Description" });
+  }
   if (texteARelire(m) && !decisions.texteValide) {
     motifs.push({ cle: "texte", libelle: en ? "Text to check" : "Texte à relire" });
   }
@@ -309,7 +314,17 @@ export function lirePoidsSaisi(brut) {
 }
 
 /** Le texte qui part n'est-il PAS celui du vendeur ? (titre ou description) */
+/** La description qui partirait (le champ général, sinon la première copie qui en porte une). */
+export function descriptionDuMoteur(m) {
+  const g = String(m?.generales?.description ?? "").trim();
+  if (g) return g;
+  for (const c of Object.values(m?.edited ?? {})) { const d = String(c?.description ?? "").trim(); if (d) return d; }
+  return "";
+}
+
 export function texteARelire(m) {
+  // (26/10, D3) « À la demande » : le texte est celui de la personne — sauf un champ qu'elle a fait écrire par « Générer ».
+  if (m?.redactionALaDemande) return Boolean((m.texteGenere?.titre || m.texteGenere?.description) && descriptionDuMoteur(m));
   const tv = m?.texteVendeur ?? {};
   return !String(tv.titre ?? "").trim() || !String(tv.description ?? "").trim();
 }

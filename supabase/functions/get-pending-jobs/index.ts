@@ -1,5 +1,6 @@
 import { recreationRetientFile } from "../_shared/file-republication.js";
 import { estFileEnPause, jobRetenuParPause, syncDemandeeParLaPersonne, SYNC_DEVANT_FILE_MS, passeAvantLaSynchro } from "../_shared/file-pause.js";
+import { reglageProgrammation, estProgrammee, servieAujourdhui, decisionProgrammee } from "../_shared/publication-programmee.js";
 import { lectureOrigineEnAttente, contenuAImposer, messageLectureOrigine } from "../_shared/contenu-fiche.js";
 import { conformerTexte } from "../../../src/utils/texteConforme.js";
 import { correctionCaptureVinted, photosDeLaFicheALaRecreation } from "../_shared/capture-corrigee.js";
@@ -2513,10 +2514,12 @@ serve(async (req) => {
     // Les jobs en pause ne tiennent pas le PC éveillé (heldBacklog). Illisible → comme avant.
     let filePause = false;
     const idsEnPause = new Set<string>();
+    let psProfil: unknown = null; // (26/10, D4) relu une fois ici, servi aussi aux publications programmées
     if (!includeProcessing && !includeNeedsUser) {
       try {
         const { data: profPause } = await userClient.from("profiles").select("platform_settings").eq("id", user.id).maybeSingle();
-        filePause = estFileEnPause((profPause as { platform_settings?: unknown } | null)?.platform_settings ?? null);
+        psProfil = (profPause as { platform_settings?: unknown } | null)?.platform_settings ?? null;
+        filePause = estFileEnPause(psProfil);
       } catch (_e) { /* jamais un point de panne : file servie comme avant */ }
       if (filePause && out.length) {
         for (const j of out) if (jobRetenuParPause(j)) idsEnPause.add(String(j.id));
@@ -2525,6 +2528,46 @@ serve(async (req) => {
           console.log(`[get-pending-jobs] userId=${user.id} : file EN PAUSE (geste de la personne) → ${idsEnPause.size} publication(s)/republication(s) gardée(s) en file ; retraits et republications engagées servis`);
         }
       }
+    }
+
+    // ══ LES NOUVELLES PUBLICATIONS PROGRAMMÉES (26/10, D4 — promis à XEWER le 26/09) ══
+    // (_shared/publication-programmee.js) Réglage platform_settings.publication_programmee : créneau, jours actifs,
+    // plafond par jour. Une publication marquée platform_fields.programmee reste 'pending' (AUCUNE écriture) tant que
+    // le créneau est fermé, le plafond du jour atteint, une autre programmée en cours, ou l'espacement pas écoulé ;
+    // UNE seule est servie à la fois, marquée programmee_servie_le (le compte du jour). Réglage éteint : rien n'est
+    // retenu, la file part comme avant. Une lecture bornée (les programmées servies depuis 36 h). Illisible → servi.
+    const idsProgrammeesRetenues = new Set<string>();
+    if (!includeProcessing && !includeNeedsUser && out.length) {
+      try {
+        const reglageProg = reglageProgrammation(psProfil);
+        const enAttenteProg = reglageProg ? out.filter((j) => estProgrammee(j)) : [];
+        if (enAttenteProg.length) {
+          const depuis = new Date(Date.now() - 36 * 3600_000).toISOString();
+          const { data: servies } = await userClient.from("cross_post_jobs")
+            .select("id, status, servie:platform_fields->>programmee_servie_le")
+            .eq("user_id", user.id).eq("action", "publish")
+            .gte("platform_fields->>programmee_servie_le", depuis)
+            .limit(500);
+          const lignes = ((servies ?? []) as Array<{ id: string; status: string; servie: string | null }>);
+          const nServies = lignes.filter((l) => servieAujourdhui({ platform_fields: { programmee_servie_le: l.servie } }, reglageProg)).length;
+          const enVol = lignes.some((l) => l.status === "processing");
+          const derniere = lignes.reduce((m, l) => Math.max(m, Date.parse(String(l.servie ?? "")) || 0), 0) || null;
+          const d = decisionProgrammee({ enAttente: enAttenteProg, reglage: reglageProg, servies: nServies, enVol, derniereServieMs: derniere });
+          for (const id of d.retenues) idsProgrammeesRetenues.add(id);
+          if (d.servir) {
+            const j = out.find((x) => String(x.id) === d.servir);
+            const pfServie = { ...((j?.platform_fields ?? {}) as Record<string, unknown>), programmee_servie_le: new Date().toISOString() };
+            const { data: marque } = await userClient.from("cross_post_jobs").update({ platform_fields: pfServie })
+              .eq("id", d.servir).eq("status", "pending").select("id");
+            if (marque?.length && j) j.platform_fields = pfServie;
+            else idsProgrammeesRetenues.add(d.servir); // pas marquée : elle attend le poll suivant (jamais deux servies)
+          }
+          if (idsProgrammeesRetenues.size) {
+            out = out.filter((j) => !idsProgrammeesRetenues.has(String(j.id)));
+            console.log(`[get-pending-jobs] userId=${user.id} : publications programmées → ${idsProgrammeesRetenues.size} retenue(s) (${d.motif ?? "une_a_la_fois"}), ${d.servir ? "1 servie" : "aucune servie"} ; ${nServies} servie(s) aujourd'hui`);
+          }
+        }
+      } catch (_e) { /* jamais un point de panne : la file part comme avant */ }
     }
 
     // ══ LE CONTENU DU VENDEUR PART TEL QUEL (22/10 soir, point 8 — Louis, Zombicide) ══
@@ -13371,6 +13414,8 @@ serve(async (req) => {
       // aussi ENTRE DEUX TÂCHES et le dit dans son popup ; les plus anciennes ne reçoivent simplement rien.
       file_en_pause: filePause,
       jobs_retenus_pause: idsEnPause.size,
+      // (26/10, D4) Publications programmées retenues à ce poll (créneau, plafond du jour, une à la fois, espacement).
+      jobs_retenus_programmation: idsProgrammeesRetenues.size,
       // (22/10 soir, point 5) Relevés retenus parce qu'une republication est entre le retrait et la recréation.
       releves_attente_republication: [...releveAttendRepublication.entries()].filter(([, id]) => id).map(([pf]) => pf),
       // (22/10 soir, point 8) Publications en attente de la lecture de l'annonce d'origine.

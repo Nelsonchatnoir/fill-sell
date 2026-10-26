@@ -91,6 +91,7 @@ import { transporteursPourPoids } from "../../utils/leboncoinColis";
 import { fusionnerReglages } from "../../utils/reglagesPlateformes";
 import { noterGeste } from "../../utils/dernierGeste";
 import { useChoixPoidsLeboncoin } from "../../utils/useChoixPoidsLeboncoin";
+import { usePublicationProgrammee } from "../../utils/usePublicationProgrammee";
 import {
   cleColisRetenu, grilleColisVinted, chargerGrilleColisRelevee, colisRetenusDuProfil, colisRetenuDuRayon,
   colisVintedDeLaFiche, semerColisRetenus, colisRetenusEnCache, retenirColisVinted,
@@ -271,6 +272,10 @@ function EcranDuLot({
   // défaut) ou « Saisir le poids », retenu pour le compte. Le bilan de chaque
   // article le lit (m.poidsLbcChoix) : seul « Saisir » sans poids le retient.
   const poidsLbc = useChoixPoidsLeboncoin(userId);
+  // (26/10, D4) Publications programmées (réglage) : le lot les PROGRAMME — sauf « Envoyer tout de suite » pour ce lot.
+  const programmation = usePublicationProgrammee(userId);
+  const [maintenantLot, setMaintenantLot] = useState(false);
+  const programme = Boolean(programmation.reglage) && !maintenantLot;
   const poidsLbcChoixRef = useRef(poidsLbc.choix); poidsLbcChoixRef.current = poidsLbc.choix;
   const plateformesCompte = (ctx.plateformesCompte ?? PLATEFORMES_LOT_DEFAUT).filter((p) => PLATEFORMES_LOT.includes(p));
   const fermer = (r) => {
@@ -674,7 +679,9 @@ function EcranDuLot({
             const restantes = [...(m.selected ?? [])].filter((p) => !aEcarter.some((e) => e.p === p));
             const deja = decisions[id]?.ecartees ?? {};
             if (!restantes.length) {
-              patchs[id] = { phase: "rien", raison: phraseEcartees(aEcarter, NOM, lang) };
+              // Il ne partirait nulle part : « ne part pas », avec la raison — et « Annuler » sous sa ligne le remet.
+              patchs[id] = { phase: "rien", raison: phraseEcartees(aEcarter, NOM, lang), ecartement: true };
+              decider(id, { ecartees: { ...deja, ...Object.fromEntries(aEcarter.map((e) => [e.p, e.motif])) } });
               continue;
             }
             if (!pil.ecartement || maintenant - pil.ecartement > 3000) {
@@ -736,6 +743,9 @@ function EcranDuLot({
     decider(id, { remises: [...new Set([...avant, platform])] });
     const m = moteursRef.current.get(id);
     if (m) m.setSelected((prev) => { const s = new Set(prev); s.add(platform); return s; });
+    // Un article « ne part pas » parce que sa seule plateforme a été écartée d'office : il revient à la vérification.
+    setEtats((prev) => (prev[id]?.phase === "rien" && prev[id]?.ecartement
+      ? { ...prev, [id]: { ...prev[id], phase: "verification", raison: null, ecartement: false } } : prev));
   };
   const retirerDuLot = (id) => { majEtat(id, { phase: "retire" }); };
 
@@ -836,7 +846,7 @@ function EcranDuLot({
     ? profil.platform_settings.leboncoin.transporteurs : null;
   const transporteursDuLot = livraison.transporteurs === undefined ? transporteursRetenus : livraison.transporteurs;
   // (26/10, règle 7 de Nico) Le poids d'un article : celui de la fiche ou du choix de la personne — jamais une estimation.
-  const poidsDe = (id) => poidsAffiche(moteursRef.current.get(id), decisionsRef.current[id], parId.get(id)?.item ?? null);
+  const poidsDe = (id) => poidsAffiche(moteursRef.current.get(id), decisionsRef.current[id], parId.get(id)?.item ?? null, poidsLbc.colisDefaut?.poids_g ?? null);
   const appliquerLivraison = (id, g = poidsDe(id)) => {
     const m = moteursRef.current.get(id);
     if (!m?.edited?.leboncoin || !m.poserLivraisonLbc) return;
@@ -931,6 +941,7 @@ function EcranDuLot({
       catch (e) { mettreDeCote(id, e, "envoi_bilan"); setEnvoi((x) => ({ ...x, fait: x.fait + 1 })); continue; }
       if (!m || !b?.pret) { majEtat(id, { phase: "questions", motifs: b?.motifs ?? [] }); setEnvoi((e) => ({ ...e, fait: e.fait + 1 })); continue; }
       majEtat(id, { phase: "envoi" });
+      try { m.envoyerMaintenant?.(maintenantLot); } catch { /* moteur d'avant : la règle du réglage vaut */ }
       try { await m.publier(); } catch { /* le moteur pose publishError */ }
       await attendre(() => { const mm = moteursRef.current.get(id); return etatsRef.current[id]?.phase === "erreur" || Boolean(mm && (mm.done || (!mm.publishing && mm.publishError))); }, 10_000);
       const mm = moteursRef.current.get(id);
@@ -1184,9 +1195,18 @@ function EcranDuLot({
               ? `Send ${prets.length > 1 ? `the ${prets.length} ready items` : "the ready item"} (${annoncesPretes} listing${annoncesPretes > 1 ? "s" : ""})`
               : `Envoyer ${prets.length > 1 ? `les ${prets.length} prêts` : "l'article prêt"} (${annoncesPretes} annonce${annoncesPretes > 1 ? "s" : ""})`)
           : (en ? `Send ${annoncesPretes} listing${annoncesPretes > 1 ? "s" : ""}` : `Envoyer ${annoncesPretes} annonce${annoncesPretes > 1 ? "s" : ""}`);
+      // (26/10, D4) Programmées : le geste dit ce qu'il fait.
+      if (prets.length && programme) cta = cta.replace(/^Envoyer/, "Programmer").replace(/^Send/, "Schedule");
       onCta = envoyer;
       if (aCompleter.length && prets.length) sous = [en ? `The ${aCompleter.length} others stay in your stock, prepared: nothing is lost.` : `${aCompleter.length > 1 ? `Les ${aCompleter.length} autres restent` : "L'autre reste"} dans ton stock, préparé${aCompleter.length > 1 ? "s" : ""} : rien n'est perdu.`];
       else if (prets.length) sous = [en ? "The FillSell extension then posts them from your computer, one after the other." : "L'extension FillSell les dépose ensuite depuis ton ordinateur, une après l'autre."];
+      if (prets.length && programme) {
+        const nom = { matin: en ? "morning " : "du matin", midi: en ? "midday " : "de midi", soir: en ? "evening " : "du soir" }[programmation.reglage.creneau] ?? "";
+        const plafond = programmation.reglage.plafond_jour;
+        sous = [en
+          ? `Scheduled: they go out one at a time in your ${nom}slot${plafond ? `, ${plafond} a day at most` : ""}. Anything over the limit waits for the next slot.`
+          : `Programmées : elles partiront une à une dans ton créneau${nom ? ` ${nom}` : ""}${plafond ? `, ${plafond} par jour au plus` : ""}. Ce qui dépasse attend le créneau suivant.`];
+      }
       if (!prets.length && enOrigine && !aCompleter.length) {
         sous = [sansLecteurIci
           ? (en ? "For each item: write your description, have FillSell write it, or wait for your computer." : "Pour chaque article : écris ta description, fais-la rédiger par FillSell, ou attends ton ordinateur.")
@@ -1266,6 +1286,8 @@ function EcranDuLot({
               colisVinted={colisVinted} choisirColisVinted={choisirColisVinted}
               userId={userId} exclusDepop={exclusDepop} mettreDeCote={mettreDeCote} signalerErreurBloc={signalerErreurBloc}
               choixPoidsLbc={poidsLbc.choix} choisirPoidsLbc={poidsLbc.choisir} poidsExigeLbc={poidsLbc.exige}
+              programmation={programmation.reglage} maintenantLot={maintenantLot} setMaintenantLot={setMaintenantLot}
+              poidsDefaut={poidsLbc.colisDefaut?.poids_g ?? null}
               pontMort={pontMort} horloge={horloge} rechargerPourLePont={rechargerPourLePont}
               sansLecteur={sansLecteur}
             />
@@ -1482,6 +1504,10 @@ export function EcranAvant({
   userId = null, exclusDepop = [], mettreDeCote = () => {}, signalerErreurBloc = () => {},
   // (11/10 soir) Le choix du poids Leboncoin du lot — reçu, jamais supposé.
   choixPoidsLbc = "estimer", choisirPoidsLbc = () => {}, poidsExigeLbc = false,
+  // (26/10, D2) Le poids par défaut des Réglages (Colis Leboncoin par défaut) — reçu, jamais supposé.
+  poidsDefaut = null,
+  // (26/10, D4) La programmation (réglage, null : éteinte) et l'exception « Envoyer tout de suite » de ce lot — reçues.
+  programmation = null, maintenantLot = false, setMaintenantLot = () => {},
   // (18/10 nuit) Ce que la mémoire « compte × catégorie » a posé — reçu, jamais supposé.
   posesDuLot = [], changerPosesDuLot = () => {},
   // (25/10 — Louis) Le pont vers l'extension, l'horloge d'affichage et les issues d'une attente d'origine — reçus.
@@ -1529,12 +1555,24 @@ export function EcranAvant({
       {/* (26/10, refonte C validée par Nico) Hors de l'envoi : UNE ligne par article — l'en-tête gardé, né dès la
           préparation (C2), les questions sous leur ligne en un geste (C4), la pop-up de l'article au toucher (C3),
           les plateformes écartées d'office dites en une ligne (C9), puis les réglages du lot. */}
+      {!envoi && preparationFinie && programmation && (
+        <div className="fsv-lot">
+          <div className="fsv-lot-l">
+            <span>{maintenantLot
+              ? (en ? "This batch goes out now, outside your schedule." : "Ce lot part tout de suite, hors programmation.")
+              : (en ? "Scheduled: one at a time, in your time slot." : "Programmé : une à la fois, dans ton créneau.")}</span>
+            <button type="button" className="fsn-lien" onClick={() => setMaintenantLot(!maintenantLot)}>
+              {maintenantLot ? (en ? "Schedule it" : "Le programmer") : (en ? "Send now" : "Envoyer tout de suite")}
+            </button>
+          </div>
+        </div>
+      )}
       {!envoi && blocProtege("liste", (
         <VueListe en={en} L={L} lot={lot} etats={etats} lignes={lignes} parId={parId} moteurs={moteurs} decisions={decisions}
           prets={prets} aCompleter={aCompleter} annoncesPretes={annoncesPretes} communes={communes} repondreCommune={repondreCommune}
           decider={decider} trancherJumeau={trancherJumeau} sansPlateforme={sansPlateforme} remettrePlateforme={remettrePlateforme} retirerDuLot={retirerDuLot}
           lectures={lectures} poserPoids={poserPoids} poserPoidsDuLot={poserPoidsDuLot} mettreDeCote={mettreDeCote} horloge={horloge} pontMort={pontMort}
-          sansLecteur={sansLecteur} preparation={preparationFinie ? null : { faits: prepares, total }}
+          sansLecteur={sansLecteur} preparation={preparationFinie ? null : { faits: prepares, total }} poidsDefaut={poidsDefaut}
           blocsDuLot={(
             <>
               {/* (04/10) Poids, transporteurs et format : AVANT l'envoi, pour le lot — repliés, ouverts d'office
@@ -1960,7 +1998,7 @@ function VignetteLot({ item, photos = null, onVide = null, en = false }) {
 export function VueListe({
   en, L, lot, etats, lignes, parId, moteurs, decisions, prets, aCompleter, annoncesPretes, communes, repondreCommune,
   decider, trancherJumeau, sansPlateforme, remettrePlateforme = () => {}, retirerDuLot, lectures = {}, poserPoids, poserPoidsDuLot = () => {},
-  mettreDeCote, horloge = 0, pontMort = false, preparation = null,
+  mettreDeCote, horloge = 0, pontMort = false, preparation = null, poidsDefaut = null,
   // Les réglages du lot (livraison, refus de Depop, réponses reprises) : rendus APRÈS la liste.
   blocsDuLot = null,
   // (26/10 nuit, point 9) Le lecteur et les trois issues quand il n'y en a pas (lignes en attente d'origine).
@@ -2002,7 +2040,7 @@ export function VueListe({
     try {
       const m = moteurs.get(id);
       const pfs = [...(m?.plateformesPubliables ?? [])];
-      return (pfs.includes("leboncoin") || pfs.includes("beebs")) && poidsAffiche(m, decisions[id], parId.get(id)?.item) == null;
+      return (pfs.includes("leboncoin") || pfs.includes("beebs")) && poidsAffiche(m, decisions[id], parId.get(id)?.item, poidsDefaut) == null;
     } catch { return false; }
   });
   const signalerVide = useCallback((id, vide) => {
@@ -2024,9 +2062,15 @@ export function VueListe({
       );
     }
     if (q.type === "prix") return (
-      <input className="fsn-input" type="number" inputMode="decimal" min="1" step="0.5" defaultValue={m.price ?? ""}
-        aria-label={en ? "Selling price" : "Prix de vente"} placeholder={en ? "Price in €" : "Prix en €"}
-        onBlur={(ev) => m.poserPrixGeneral?.(ev.target.value)} onKeyDown={(ev) => { if (ev.key === "Enter") ev.currentTarget.blur(); }} />
+      <div className="fsf-saisie">
+        <input className="fsn-input" type="number" inputMode="decimal" min="1" step="0.5" defaultValue={m.price ?? ""} key={`prix-${m.price ?? ""}`}
+          aria-label={en ? "Selling price" : "Prix de vente"} placeholder={en ? "Price in €" : "Prix en €"}
+          onBlur={(ev) => m.poserPrixGeneral?.(ev.target.value)} onKeyDown={(ev) => { if (ev.key === "Enter") ev.currentTarget.blur(); }} />
+        {/* (26/10, D3) « À la demande » : le prix que FillSell propose, en un geste. */}
+        {m.redactionALaDemande && m.genererChamp ? (
+          <button type="button" className="fsn-btn fsn-btn--secondary fsn-btn--sm" onClick={() => m.genererChamp("prix")}>{en ? "Generate" : "Générer"}</button>
+        ) : null}
+      </div>
     );
     if (q.type === "poids") return <PoidsDeLArticle en={en} poids={null} poserPoids={(g) => poserPoids(id, g)} />;
     if (q.type === "jumeau") {
@@ -2043,6 +2087,18 @@ export function VueListe({
       );
     }
     if (q.type === "port_depop") return <CartePortDepop m={m} id={`port-depop-q-${id}`} />;
+    if (q.type === "description") return (
+      <div className="fsf-choix">
+        <textarea className="fsn-textarea" rows={3} defaultValue="" aria-label="Description"
+          placeholder={en ? "Condition, size, what's included…" : "État, taille, ce qui est inclus…"}
+          onBlur={(ev) => { const v = ev.target.value.trim(); if (v) m.poserValeurGenerale?.("description", v); }} />
+        {m.genererChamp ? (
+          <div className="fsn-choices fsq-puces">
+            <button type="button" className="fsn-choice" onClick={() => m.genererChamp("description")}>{en ? "Generate" : "Générer"}</button>
+          </div>
+        ) : null}
+      </div>
+    );
     return (
       <div className="fsn-choices fsq-puces">
         {m.motifsCtaGris?.[0] ? <span className="fsq-note">{String(m.motifsCtaGris[0])}</span> : null}
@@ -2060,7 +2116,7 @@ export function VueListe({
     const ecartees = Object.entries(d.ecartees ?? {}).filter(([p]) => !(d.remises ?? []).includes(p)).map(([p, motif]) => ({ p, motif }));
     const pfs = m ? plateformesDeLArticle(m).filter((p) => [...(m.plateformesPubliables ?? [])].includes(p)) : [];
     const prix = m?.price ?? item?.sell ?? null;
-    const poids = m ? poidsAffiche(m, d, item) : null;
+    const poids = m ? poidsAffiche(m, d, item, poidsDefaut) : null;
     const incoherent = poids && m ? poidsIncoherent(`${titreDe(item)} ${m.edited?.[pfs[0]]?.platform_fields?.categorie_objet_ia ?? ""}`, poids, lang) : null;
     const motifs = st.motifs ?? [];
     const premier = d.photoVide ? (en ? "Photo" : "Photo")
@@ -2218,6 +2274,14 @@ export function VueListe({
               secours={<ArticleMisDeCote en={en} item={parId.get(id)?.item} ligne />}>
               <LigneArticle id={id} en={en} L={L} item={parId.get(id)?.item} st={etats[id] ?? { phase: "attente" }} m={moteurs.get(id)}
                 envoi={null} retirerDuLot={retirerDuLot} horloge={horloge} pontMort={pontMort} sansLecteur={sansLecteur} />
+              {etats[id]?.phase === "rien" && etats[id]?.ecartement && Object.keys(decisions[id]?.ecartees ?? {}).length > 0 && (
+                <div className="fsv-ecart fsv-ecart--rien">
+                  <span />
+                  <button type="button" className="fsn-lien" onClick={() => { for (const p of Object.keys(decisions[id]?.ecartees ?? {})) remettrePlateforme(id, p); }}>
+                    {en ? "Undo" : "Annuler"}
+                  </button>
+                </div>
+              )}
             </BarriereErreur>
           ))}
         </div>
@@ -2252,7 +2316,7 @@ export function VueListe({
               <BarriereErreur nom={`feuille ${ouvert}`} onErreur={(e) => mettreDeCote(ouvert, e, "questions")}
                 secours={<ArticleMisDeCote en={en} item={parId.get(ouvert)?.item} />}>
                 {mOuvert ? (
-                  <FicheArticle m={mOuvert} item={parId.get(ouvert)?.item} decision={decisions[ouvert] ?? {}} en={en} lecture={lectures[ouvert] ?? null}
+                  <FicheArticle m={mOuvert} item={parId.get(ouvert)?.item} decision={decisions[ouvert] ?? {}} en={en} lecture={lectures[ouvert] ?? null} poidsDefaut={poidsDefaut}
                     photoVide={Boolean(decisions[ouvert]?.photoVide)}
                     ecartees={Object.entries(decisions[ouvert]?.ecartees ?? {}).filter(([p]) => !(decisions[ouvert]?.remises ?? []).includes(p)).map(([p, motif]) => ({ p, motif }))}
                     actions={{

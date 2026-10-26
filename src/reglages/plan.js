@@ -125,6 +125,14 @@ export const GROUPES = [
         ouvre: 'transporteurs',
       },
       {
+        // (26/10, D2 — Nico) La taille et le poids du colis Leboncoin, choisis une fois, pour les nouvelles annonces
+        // sans poids (le même poids sert à Beebs). Pas de valeur à droite : elle se lit dans la sous-page.
+        id: 'colis-lbc',
+        icone: Truck,
+        libelle: (T) => T.colisLbcDefaut,
+        ouvre: 'colis-lbc',
+      },
+      {
         // (09/10 soir) Depop : le prix de livraison que paie l'acheteur, saisi
         // UNE fois, appliqué à toutes les annonces Depop (stepper, lot,
         // republication, annonces importées). Visible là où Depop est ouverte.
@@ -169,6 +177,14 @@ export const GROUPES = [
           : T.inactif),
         action: (c) => c.ouvrirRepublication(),
         visible: (c) => c.republication.exposee,
+      },
+      {
+        // (26/10, D4 — promis à XEWER) Les NOUVELLES publications, sur le modèle de la republication planifiée :
+        // créneau, jours actifs, plafond par jour, une à la fois. Ouvert à tous les comptes, éteint par défaut.
+        id: 'publication-programmee',
+        icone: Repeat,
+        libelle: (T) => T.publicationProgrammee,
+        ouvre: 'publication-programmee',
       },
     ],
   },

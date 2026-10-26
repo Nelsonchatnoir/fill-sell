@@ -49,6 +49,14 @@ ok(F.texteRayon(F.cheminRayon(m1, "vinted")) === "Beauté › Soins du visage �
 const neuf = { genericRequiredStatus: { beebs: [{ key: "Etat", label: "État", neufSeulement: true, value: "Très bon état", valeursNeuves: ["Neuf avec étiquette"], state: "invalid" }] } };
 ok(F.rayonNeufDe(neuf, "beebs")?.valeursNeuves?.[0] === "Neuf avec étiquette" && F.aReglerSurPlateforme(neuf, "beebs").includes("neuf"), "rayon « neuf seulement » : la valeur neuve à proposer est connue (C8)");
 ok(!F.detailsDe(neuf, "beebs").length, "… et la ligne « neuf » n'est pas répétée dans les caractéristiques");
+// (26/10, test réel sur le lot de Nico) « Format du colis : À choisir » sous un colis « 200 g » ; la taille Vinted absente.
+const mBeebs = { genericRequiredStatus: { beebs: [{ key: "Format du colis", label: "Format du colis", state: "prefilled" }, { key: "Taille", label: "Taille", value: "M", state: "ok" }],
+  leboncoin: [{ key: "quantity", label: "Quantité", state: "prefilled" }] },
+  edited: { vinted: { platform_fields: { taille: "M" } }, beebs: { platform_fields: { taille: "M" } } } };
+ok(!F.detailsDe(mBeebs, "beebs").some((d) => d.cle === "Format du colis"), "le format du colis Beebs n'est pas redit sous la ligne « Colis »");
+ok(F.detailsDe(mBeebs, "leboncoin")[0]?.rempli === "depot", "un champ rempli au dépôt est dit tel quel (jamais « À choisir »)");
+ok(F.detailsDe(mBeebs, "vinted").some((d) => d.cle === "taille" && d.valeur === "M" && d.lectureSeule), "la taille de la copie Vinted se voit dans sa section (règle 6)");
+ok(F.detailsDe(mBeebs, "beebs").filter((d) => /taille/i.test(d.label)).length === 1, "… jamais deux fois quand le rayon la porte déjà");
 
 console.log("\n2. Le poids : la fiche ou le choix, jamais une estimation (règle 7)");
 const mPoids = { initialListing: { poids_g: 650 }, edited: { leboncoin: { platform_fields: { estimated_parcel_weight: "De 250 g à 500 g", poids_ia: 300 } } } };
@@ -120,6 +128,9 @@ ok(/statutPlateforme\(/.test(fa) && /"Prêt"|Prêt/.test(fa) && /À régler/.tes
 ok(/<FicheArticle m=\{m\}/.test(ver), "« Vérifier » d'un seul article monte la même pop-up (C11)");
 ok(/descriptionFidele\(edited\[platform\]\?\.description \?\? "", platform, \{ fiche: ficheTexte, texteDuVendeur \}\)/.test(mr), "le texte qui PART passe par descriptionFidele (construireJobs)");
 ok(/descriptionFidele\(/.test(fa) && /hashtagsServent\(/.test(fa), "le texte MONTRÉ aussi (même fonction)");
+ok(/seulementLeRayon rechercheOuverte=\{ouvert === "rayon"\}/.test(fa), "« Changer » ouvre la recherche de rayon d'office, la carte ne redit ni la limite ni les champs");
+ok(/phase === "rien" && etats\[id\]\?\.ecartement/.test(lp) && /prev\[id\]\?\.phase === "rien" && prev\[id\]\?\.ecartement/.test(lp), "un article qui ne part nulle part (sa seule plateforme écartée d'office) a son « Annuler »");
+ok(/\{\(\) => setOuvert\(null\)\}>\{en \? "Later" : "Plus tard"\}/.test(lp), "« Plus tard » ferme la pop-up, sans retirer l'article du lot");
 
 console.log(`\n${rouges ? `✗ ${rouges} RATÉ(S)` : "✓ tout est vert"} — ${verts} vérifications`);
 process.exit(rouges ? 1 : 0);

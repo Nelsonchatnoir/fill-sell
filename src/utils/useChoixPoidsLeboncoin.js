@@ -5,7 +5,8 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { fusionnerReglages } from './reglagesPlateformes';
-import { CLE_REGLAGE_POIDS_LBC, CHOIX_POIDS_LBC_DEFAUT, POIDS_LBC_SAISIR, choixPoidsValide, choixPoidsDesReglages, poidsExigeDesReglages } from './choixPoidsLeboncoin';
+import { CLE_REGLAGE_POIDS_LBC, CHOIX_POIDS_LBC_DEFAUT, POIDS_LBC_SAISIR, choixPoidsValide, choixPoidsDesReglages, poidsExigeDesReglages,
+  CLE_COLIS_DEFAUT_LBC, colisDefautValide, colisDefautDesReglages } from './choixPoidsLeboncoin';
 
 // ── LECTURE PARTAGÉE (une lecture par compte et par session de l'app) ──────
 // Même forme que le port Depop par défaut (utils/fraisPortDepop.js) : le
@@ -19,7 +20,8 @@ async function lireDepuisBase(userId) {
   try {
     const { data, error } = await supabase.from('profiles').select('platform_settings').eq('id', userId).maybeSingle();
     if (error) return { choix: CHOIX_POIDS_LBC_DEFAUT, lue: false };
-    return { choix: choixPoidsDesReglages(data?.platform_settings), lue: true, exige: poidsExigeDesReglages(data?.platform_settings) };
+    return { choix: choixPoidsDesReglages(data?.platform_settings), lue: true, exige: poidsExigeDesReglages(data?.platform_settings),
+      colisDefaut: colisDefautDesReglages(data?.platform_settings) };
   } catch {
     return { choix: CHOIX_POIDS_LBC_DEFAUT, lue: false };
   }
@@ -38,7 +40,7 @@ export function lireChoixPoidsLbc(userId) {
     // Un choix fait à l'écran pendant la lecture l'emporte (jamais écrasé).
     const deja = memoire.get(userId);
     if (deja?.lue) return { choix: deja.choix, lue: true };
-    memoire.set(userId, { choix: r.choix, lue: r.lue, exige: Boolean(r.exige), promesse: null });
+    memoire.set(userId, { choix: r.choix, lue: r.lue, exige: Boolean(r.exige), colisDefaut: r.colisDefaut ?? null, promesse: null });
     prevenir();
     return r;
   });
@@ -55,14 +57,32 @@ export async function enregistrerChoixPoidsLbc(userId, choix) {
   // (15/10 soir) Compte où Leboncoin exige le poids : « estimer » n'existe pas.
   const exige = Boolean(userId && memoire.get(userId)?.exige);
   const c = exige ? POIDS_LBC_SAISIR : choixPoidsValide(choix);
-  if (userId) memoire.set(userId, { choix: c, lue: true, exige, promesse: null });
+  if (userId) memoire.set(userId, { ...(memoire.get(userId) ?? {}), choix: c, lue: true, exige, promesse: null });
   prevenir();
   if (!userId || !UUID.test(String(userId))) return { ok: false };
   const { error } = await fusionnerReglages(['leboncoin'], { [CLE_REGLAGE_POIDS_LBC]: c });
   return { ok: !error };
 }
 
-/** Le choix du compte : { choix, lue, choisir }. */
+// ── (26/10, D2) LE COLIS LEBONCOIN PAR DÉFAUT (Réglages › Expédition) ─────
+/** Le colis par défaut DÉJÀ LU pour ce compte (lecture synchrone, null tant que la base n'a pas répondu). */
+export function colisDefautLbcConnu(userId) {
+  return userId ? (memoire.get(userId)?.colisDefaut ?? null) : null;
+}
+
+/** Retient le colis par défaut ({ format, poids_g } ; null = l'effacer). L'écran suit tout de suite. Rend { ok }. */
+export async function enregistrerColisDefautLbc(userId, colis) {
+  const v = colisDefautValide(colis);
+  if (userId) memoire.set(userId, { ...(memoire.get(userId) ?? { choix: CHOIX_POIDS_LBC_DEFAUT, lue: false }), colisDefaut: v });
+  prevenir();
+  if (!userId || !UUID.test(String(userId))) return { ok: false };
+  const { error } = v
+    ? await fusionnerReglages(['leboncoin'], { [CLE_COLIS_DEFAUT_LBC]: v })
+    : await fusionnerReglages(['leboncoin'], null, [CLE_COLIS_DEFAUT_LBC]);
+  return { ok: !error };
+}
+
+/** Le choix du compte : { choix, lue, choisir, colisDefaut, choisirColisDefaut }. */
 export function useChoixPoidsLeboncoin(userId) {
   const [, setTic] = useState(0);
   useEffect(() => {
@@ -77,5 +97,7 @@ export function useChoixPoidsLeboncoin(userId) {
     lue: Boolean(e?.lue),
     exige: Boolean(e?.exige),
     choisir: (c) => enregistrerChoixPoidsLbc(userId, c),
+    colisDefaut: e?.colisDefaut ?? null,
+    choisirColisDefaut: (colis) => enregistrerColisDefautLbc(userId, colis),
   };
 }

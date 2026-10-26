@@ -43,6 +43,8 @@ import {
 import SousPageAbonnement from './SousPageAbonnement';
 import SousPagePlateformes from './SousPagePlateformes';
 import SousPageExpedition from './SousPageExpedition';
+import ColisLeboncoinParDefaut from './ColisLeboncoinParDefaut';
+import SousPagePublicationProgrammee from './SousPagePublicationProgrammee';
 import SousPageTransporteurs from './SousPageTransporteurs';
 import SousPagePortDepop from './SousPagePortDepop';
 import SousPageBordereaux from './SousPageBordereaux';
@@ -65,6 +67,8 @@ const SOUS_PAGES = {
   plateformes:   { titre: (T) => T.gPlateformes,   Composant: SousPagePlateformes },
   expedition:    { titre: (T) => T.adresseRemise,  Composant: SousPageExpedition },
   transporteurs: { titre: (T) => T.transporteurs,  Composant: SousPageTransporteurs },
+  'colis-lbc':   { titre: (T) => T.colisLbcDefaut, Composant: ColisLeboncoinParDefaut },
+  'publication-programmee': { titre: (T) => T.publicationProgrammee, Composant: SousPagePublicationProgrammee },
   'port-depop':  { titre: (T) => T.portDepop,      Composant: SousPagePortDepop },
   bordereaux:    { titre: (T) => T.bordereauAuto,  Composant: SousPageBordereaux },
   preferences:   { titre: (T) => T.gPreferences,   Composant: SousPagePreferences },

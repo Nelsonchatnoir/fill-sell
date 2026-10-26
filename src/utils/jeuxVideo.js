@@ -417,6 +417,13 @@ export const BEEBS_AGE_PAR_CLASSEMENT = {
   "USK 12": "12 ans - 16 ans",
   "USK 16": "16 ans et +",
   "USK 18": "16 ans et +",
+  // (26/10, D1 — XEWER répond souvent le classement ESRB sur Vinted : « M – 17 ans et plus » sur 3 des 9 jeux dont
+  // l'Âge Beebs a été redemandé en 10 jours.) Un ESRB qui DIT un âge minimum suit la même lecture (la tranche qui le
+  // contient) ; « E – Tous publics », « RP », « Non précisé », USK 0 : aucun âge minimum → la question, comme avant.
+  "E10+ – 10 ans et plus": "8 ans - 12 ans",
+  "T – 13 ans et plus": "12 ans - 16 ans",
+  "M – 17 ans et plus": "16 ans et +",
+  "AO – Réservé aux adultes": "16 ans et +",
 };
 
 /** La tranche Beebs qu'ouvre un classement (« PEGI 12 »), ou null. */
