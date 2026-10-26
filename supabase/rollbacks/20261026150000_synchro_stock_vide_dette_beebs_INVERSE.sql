@@ -1,40 +1,5 @@
--- ═══════════════════════════════════════════════════════════════════════════
--- 26/10 (bloc B, synchro — Nico) : stock vide sans cadence (B3) ; la dette Beebs ne bloque plus les annonces vues
--- AVANT le dépôt sans numéro (B1, réimport après « Réinitialiser »).
--- ═══════════════════════════════════════════════════════════════════════════
--- Corps réécrits depuis pg_get_functiondef de la PROD (26/10 13:30), garde md5 : rien n'est appliqué si un corps a
--- bougé. Inverse : supabase/rollbacks/20261026150000_synchro_stock_vide_dette_beebs_INVERSE.sql.
--- ⛔ À N'APPLIQUER QU'AVEC LE FEU VERT NOMMÉ DE NICO : npx supabase db query --linked -f <ce fichier>, puis
---    npx supabase migration repair --linked --status applied 20261026150000.
+-- INVERSE de 20261026150000_synchro_stock_vide_dette_beebs.sql : les trois corps de prod du 26/10 13:30, à l'identique.
 BEGIN;
-DO $garde$
-BEGIN
-  IF md5(pg_get_functiondef('public.demander_sync_dressing'::regproc)) <> 'c64ff51ce7842a772f4214b977563770'
-     OR md5(pg_get_functiondef('public.demander_sync_plateforme'::regproc)) <> 'd144172bfc61397cbf18fb8034790151'
-     OR md5(pg_get_functiondef('public.rapprochement_v3_fiche_de'::regproc)) <> '56a0ffed1c5414290052a3efae3c9e15' THEN
-    RAISE EXCEPTION 'un corps de prod a changé depuis le 26/10 13:30 — rien n''est appliqué, relire pg_get_functiondef';
-  END IF;
-END $garde$;
-
-CREATE OR REPLACE FUNCTION public.releve_dette_beebs_depuis(p_user uuid, p_vu timestamptz)
- RETURNS boolean
- LANGUAGE sql
- STABLE SECURITY DEFINER
- SET search_path TO 'public', 'pg_temp'
-AS $function$
-  -- (26/10, B1) Même dette que releve_dette_beebs (un dépôt Beebs publié sans numéro ni lien), mais seulement pour
-  -- une annonce apparue APRÈS ce dépôt (10 min de marge, horloges) : une annonce vue avant ne peut pas être lui.
-  SELECT EXISTS (
-    SELECT 1 FROM cross_post_jobs j
-     WHERE j.user_id = p_user AND j.platform = 'beebs' AND j.action IN ('publish', 'republish')
-       AND j.status = 'published' AND j.platform_listing_id IS NULL AND j.listing_url IS NULL
-       AND (COALESCE(j.platform_fields, '{}'::jsonb) ? 'lien_en_attente'
-            OR COALESCE(j.platform_fields, '{}'::jsonb) ? 'retour_arriere_attente_identifiant_beebs')
-       AND COALESCE(j.published_at, j.created_at) >= '2026-09-29 20:22:00+02'::timestamptz
-       AND (p_vu IS NULL OR COALESCE(j.published_at, j.created_at) <= p_vu + interval '10 minutes'));
-$function$;
-REVOKE ALL ON FUNCTION public.releve_dette_beebs_depuis(uuid, timestamptz) FROM PUBLIC, anon, authenticated;
-
 CREATE OR REPLACE FUNCTION public.demander_sync_dressing()
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -84,10 +49,7 @@ begin
   select max(finished_at) into v_fini
   from vinted_sync_runs
   where user_id = v_user and kind = 'dressing' and status = 'done';
-  -- (26/10, B3 — Nico) Pas de cadence sur un stock VIDE : la synchro part (miroir : stockVideCadence de l'extension,
-  -- source 'stock_empty' de l'app).
-  if v_fini is not null and v_fini > now() - interval '15 minutes'
-     and exists (select 1 from inventaire i where i.user_id = v_user and i.statut = 'stock' and i.fusionne_dans is null) then
+  if v_fini is not null and v_fini > now() - interval '15 minutes' then
     v_dans := greatest(1, ceil(extract(epoch from (v_fini + interval '15 minutes' - now())) / 60)::int);
     return jsonb_build_object('ok', false, 'reason', 'cadence', 'prochaine_dans_min', v_dans);
   end if;
@@ -188,9 +150,7 @@ BEGIN
   END IF;
   SELECT max(finished_at) INTO v_fini FROM vinted_sync_runs
   WHERE user_id = v_user AND kind = 'annonces' AND platform = v_pf AND status = 'done';
-  -- (26/10, B3 — Nico) Pas de raccourci « vient d'être lue » sur un stock VIDE : la plateforme est relue.
-  IF v_fini IS NOT NULL AND v_fini > now() - interval '15 minutes'
-     AND EXISTS (SELECT 1 FROM inventaire i WHERE i.user_id = v_user AND i.statut = 'stock' AND i.fusionne_dans IS NULL) THEN
+  IF v_fini IS NOT NULL AND v_fini > now() - interval '15 minutes' THEN
     -- (08/10) Pas un refus : la plateforme vient d'être lue, le rangement repart.
     PERFORM rapprochement_demander(v_user, 'recent:' || v_pf);
     PERFORM rapprochement_relancer(v_user);
@@ -231,9 +191,7 @@ BEGIN
   IF a.statut_plateforme IS DISTINCT FROM 'en_ligne' THEN RETURN NULL; END IF;
   IF releve_run_hors_liste(a.run_id) THEN RETURN NULL; END IF;
   IF a.platform = 'ebay' AND a.run_id IS NOT NULL AND releve_ebay_run_bloque(a.run_id) THEN RETURN NULL; END IF;
-  -- (26/10, B1) La dette Beebs ne retient plus QUE les annonces apparues après le dépôt sans numéro le plus ancien
-  -- (elles seules peuvent être lui) : une annonce vue avant — un stock réinitialisé — se réimporte.
-  IF a.platform = 'beebs' AND releve_dette_beebs_depuis(p_user, COALESCE(a.publiee_le, a.created_at)) THEN RETURN NULL; END IF;
+  IF a.platform = 'beebs' AND releve_dette_beebs(p_user) THEN RETURN NULL; END IF;
   IF COALESCE((SELECT value FROM coin_config WHERE key = 'import_auto_ouvert'), 0) <> 1 THEN RETURN NULL; END IF;
   IF NOT p_geste THEN
     SELECT * INTO v_run FROM vinted_sync_runs WHERE id = a.run_id;
@@ -244,4 +202,5 @@ BEGIN
   RETURN NULL;
 END;
 $function$;
+DROP FUNCTION IF EXISTS public.releve_dette_beebs_depuis(uuid, timestamptz);
 COMMIT;

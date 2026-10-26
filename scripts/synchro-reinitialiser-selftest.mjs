@@ -19,7 +19,7 @@ let ko = 0;
 const ok = (c, m, detail) => { if (c) console.log(`  ✓ ${m}`); else { ko++; console.log(`  ✗ ${m}${detail !== undefined ? ` — ${JSON.stringify(detail)}` : ""}`); } };
 
 console.log("B1. La dette Beebs bornée (migration préparée, appliquée seulement sur feu vert)");
-const mig = lire("supabase/migrations/20261026150000_synchro_stock_vide_dette_beebs.sql");
+const mig = lire("supabase/migrations/PROPOSITION_20261026150000_synchro_stock_vide_dette_beebs.sql.txt");
 const inv = lire("supabase/rollbacks/20261026150000_synchro_stock_vide_dette_beebs_INVERSE.sql");
 ok(/md5\(pg_get_functiondef\('public\.demander_sync_dressing'::regproc\)\) <> 'c64ff51ce7842a772f4214b977563770'/.test(mig)
   && /'d144172bfc61397cbf18fb8034790151'/.test(mig) && /'56a0ffed1c5414290052a3efae3c9e15'/.test(mig), "garde md5 des trois corps de prod du 26/10");
