@@ -76,7 +76,9 @@ console.log("3. L'extension (0.6.145)");
 {
   const bg = lire("chrome-extension/background.js");
   const manifest = JSON.parse(lire("chrome-extension/manifest.json"));
-  ok(manifest.version === "0.6.145", `manifest en 0.6.145 (lu : ${manifest.version})`);
+  // (26/10 nuit) La 0.6.146 contient le pilote Beebs (éteint chez les autres) : le manifest est en 0.6.145 OU PLUS.
+  const vNum = (v) => String(v ?? "").split(".").map((x) => Number(x) || 0).reduce((a, x) => a * 1000 + x, 0);
+  ok(vNum(manifest.version) >= vNum("0.6.145"), `manifest en 0.6.145 ou plus (lu : ${manifest.version})`);
   const extraire = (nom) => { const i = bg.indexOf(`function ${nom}(`); return i < 0 ? "" : bg.slice(i, bg.indexOf("\n}\n", i) + 2); };
   const motifLectureBeebs = new Function(`${extraire("motifLectureBeebs")}\nreturn motifLectureBeebs;`)();
   ok(motifLectureBeebs("HTTP 403").motif === "antirobot" && motifLectureBeebs("HTTP 429").http === 429 && motifLectureBeebs("anti-robot").motif === "antirobot",
