@@ -22,6 +22,8 @@ BEGIN
 END $$;
 CREATE TABLE IF NOT EXISTS public._backup_2610_fiches_test_remise AS
   SELECT id, titre, description, attributs, now() AS sauvegarde_le FROM public.inventaire WHERE false;
+ALTER TABLE public._backup_2610_fiches_test_remise ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public._backup_2610_fiches_test_remise FROM PUBLIC, anon, authenticated;
 INSERT INTO public._backup_2610_fiches_test_remise
   SELECT id, titre, description, attributs, now() FROM public.inventaire WHERE id IN (1791730636507, 1791729478750);
 UPDATE public.inventaire i
