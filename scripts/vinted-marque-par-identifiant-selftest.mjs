@@ -310,13 +310,16 @@ console.log("\n6. SERVEUR : PREUVE DU PARC, RÉARMEMENT, L'ANNONCE GAGNE, « EN 
     ok(C.correctifPourJob(cousu)?.cle === "vinted_marque_par_identifiant", "l'arrêt des builds ≤ 0.6.93 (« n'a pas pu être renseigné ») aussi");
     ok(C.correctifPourJob(retiree)?.cle === "vinted_marque_par_identifiant", "une annonce retirée, refusée 400 `brand` : recréée avec sa marque");
   }
-  ok(C.correctifPourJob({ ...patrick, platform_fields: { ...patrick.platform_fields, republish_snapshot: { marque: "Paris 2024", brand_id: 1 } } }) === null
-    && C.correctifPourJob({ ...patrick, platform_fields: { republish_step: "captured" } }) === null, "sans vraie marque à identifiant : jamais réarmé");
+  // (26/10 nuit) Ces règles valent pour les entrées d'AVANT la 0.6.146 ; la 0.6.146 (marque créée, correctifs-extension-selftest
+  // § 1 quater) reprend une fois ce qu'elles laissaient en question.
+  const AVANT_0146 = C.CORRECTIFS_EXTENSION.filter((x) => x.cle !== "vinted_marque_creee");
+  ok(C.correctifPourJob({ ...patrick, platform_fields: { ...patrick.platform_fields, republish_snapshot: { marque: "Paris 2024", brand_id: 1 } } }, AVANT_0146) === null
+    && C.correctifPourJob({ ...patrick, platform_fields: { republish_step: "captured" } }, AVANT_0146) === null, "sans vraie marque à identifiant : jamais réarmé (avant la 0.6.146)");
   ok(C.correctifPourJob({ ...patrick, handler_build: `${M.BUILD_VINTED_MARQUE_PAR_ID}+abcdef0` })?.cle !== "vinted_marque_par_identifiant", "un arrêt SUR le build corrigé n'est jamais réarmé par ce correctif");
   // (25/10 nuit) … mais la chaîne de repli (0.6.134) le reprend UNE fois ; un arrêt sur la 0.6.134+ jamais.
   ok(C.correctifPourJob({ ...patrick, handler_build: `${M.BUILD_VINTED_MARQUE_PAR_ID}+abcdef0` })?.cle === "vinted_marque_chaine_de_repli", "arrêt en 0.6.123-0.6.133 : réarmé une fois vers la chaîne de repli (0.6.134)");
-  ok(C.correctifPourJob({ ...patrick, handler_build: `${M.BUILD_VINTED_MARQUE_CHAINE}+abcdef0` }) === null, "un arrêt SUR la chaîne de repli n'est jamais réarmé");
-  ok(C.correctifPourJob({ ...patrick, platform: "leboncoin" }) === null && C.correctifPourJob({ ...patrick, action: "publish" }) === null, "Vinted, republication seulement");
+  ok(C.correctifPourJob({ ...patrick, handler_build: `${M.BUILD_VINTED_MARQUE_CHAINE}+abcdef0` }, AVANT_0146) === null, "un arrêt SUR la chaîne de repli n'est jamais réarmé (par elle)");
+  ok(C.correctifPourJob({ ...patrick, platform: "leboncoin" }, AVANT_0146) === null && C.correctifPourJob({ ...patrick, action: "publish" }, AVANT_0146) === null, "Vinted, republication seulement (entrées d'avant la 0.6.146)");
   ok(C.posteAJour(`${M.BUILD_VINTED_MARQUE_PAR_ID}+abcdef0`, c) === true, "un poste au build du correctif le porte");
 }
 {

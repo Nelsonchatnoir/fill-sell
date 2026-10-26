@@ -121,9 +121,15 @@ export const BUILD_VINTED_STOCKAGE_CAPTURE = "2026-10-24T13:58:51Z";
 // ── (26/10 nuit, point 3c — Thibault, dca41766) LE MODÈLE DE REPLI REPOSÉ À LA RECRÉATION ──
 // Le premier paquet qui sait CHOISIR une ligne de repli du champ Modèle (« Mon modèle ne figure pas dans la liste »,
 // vinted.js selectVintedModel) — avant lui, les replis étaient toujours écartés : servir le repli à un poste plus
-// ancien recréerait sans modèle (400) et la relance tournerait en boucle. VIDE tant que le paquet n'existe pas :
-// buildMsDe("") n'est pas un nombre, aucun poste ne le porte, get-pending-jobs ne verse pas le repli.
-export const BUILD_VINTED_MODELE_REPLI = "";
+// ancien recréerait sans modèle (400) et la relance tournerait en boucle. Posée au BUILD_ID du paquet 0.6.146
+// (2026-10-26T00:53:28Z+ebdc605, build/CWS-0.6.146-A-TELEVERSER) : un poste plus ancien ne reçoit jamais le repli.
+export const BUILD_VINTED_MODELE_REPLI = "2026-10-26T00:53:28Z";
+
+// ── (26/10 nuit, point 4) LA MARQUE VINTED CRÉÉE, MÊME PAR-DESSUS UN PRÉ-REMPLISSAGE ──
+// « Vinted ne permet plus de créer une marque » était un constat manuel du 03/10, démenti le 17/10 puis en prod les
+// 20-21/10 ; et la chaîne de repli ne jouait pas quand Vinted avait pré-rempli une autre marque. Le paquet 0.6.146
+// crée la marque (« Utiliser … comme marque ») ou la choisit dans le catalogue, même par-dessus un pré-remplissage.
+export const BUILD_VINTED_MARQUE_CREEE = "2026-10-26T00:53:28Z";
 
 export const CORRECTIFS_EXTENSION = [
   {
@@ -293,6 +299,25 @@ export const CORRECTIFS_EXTENSION = [
     version: "0.6.134",
     motif: "marque hors du menu de Vinted : même marque autrement écrite, sinon « Sans marque » (règle de Nico, 24/10)",
     condition: (job) => marqueAIdentifiantCapturee(job?.platform_fields) != null,
+    clesARetirer: ["needsUserField", "needsUserFields", "champs_a_completer", "boucle_needs_user"],
+  },
+  {
+    // (26/10 nuit, point 4) Les arrêts « Vinted ne connaît pas la marque … et ne permet plus d'en créer » (christophe
+    // « uncle stubble » ×2, patrick « Paris 2024 », Johan « The North Face », Romain « pago ») : la 0.6.146 crée la
+    // marque ou la choisit, même par-dessus un pré-remplissage de Vinted. Le job repart UNE fois vers un poste qui la
+    // porte : une republication pas encore retirée repart de la relecture de l'annonce (a_capturer), une publication
+    // refait son dépôt. Jamais après un retrait (sa règle à elle). Rien n'est demandé à la personne.
+    cle: "vinted_marque_creee",
+    platform: "vinted",
+    actions: ["publish", "republish"],
+    signature: /Vinted ne connaît pas la marque|ne permet plus d'en créer|n'a pas proposé de créer|Le champ Marque n'a pas pu être (renseigné|posé)/,
+    buildMin: BUILD_VINTED_MARQUE_CREEE,
+    version: "0.6.146",
+    motif: "marque Vinted créée ou choisie même par-dessus un pré-remplissage (la règle « Vinted n'en crée plus » est retirée)",
+    condition: (job) => {
+      const pf = (job?.platform_fields && typeof job.platform_fields === "object") ? job.platform_fields : {};
+      return !(pf.republish_step === "deleted" || pf.deleted_at);
+    },
     clesARetirer: ["needsUserField", "needsUserFields", "champs_a_completer", "boucle_needs_user"],
   },
 ];

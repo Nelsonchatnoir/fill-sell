@@ -78,9 +78,31 @@ console.log("\n1 ter. (25/10 nuit) patrick 3730ef49 — « Paris 2024 », déjà
   ok(posteAJour("2026-10-24T21:18:48Z+a07091c", c) && !posteAJour("2026-10-18T16:26:21Z+492f753", c), "0.6.141 porte la chaîne, 0.6.128 non");
   ok(correctifPourJob({ ...patrick({ correctif_leve: null }), handler_build: "2026-10-15T19:36:02Z+18cc681 · v0.6.114" })?.cle === "vinted_marque_par_identifiant",
     "arrêt d'avant la 0.6.123, jamais réarmé : l'entrée 0.6.123 d'abord (inchangé)");
-  ok(correctifPourJob({ ...patrick(), handler_build: "2026-10-24T21:18:48Z+a07091c · v0.6.141" }) === null, "un arrêt SUR la 0.6.134+ n'est jamais réarmé");
-  ok(correctifPourJob(patrick({ correctif_leve: { cle: "vinted_marque_chaine_de_repli" } })) === null, "un seul réarmement par correctif");
-  ok(correctifPourJob(patrick({ republish_snapshot: { brand_id: 1 } })) === null, "sans marque à identifiant : la question reste");
+  // (26/10 nuit) Ces trois règles valent pour les entrées d'AVANT la 0.6.146 ; la 0.6.146 (marque créée) reprend, une
+  // fois, ce qu'elles laissaient en question (bloc 1 quater).
+  const AVANT_0146 = CORRECTIFS_EXTENSION.filter((x) => x.cle !== "vinted_marque_creee");
+  ok(correctifPourJob({ ...patrick(), handler_build: "2026-10-24T21:18:48Z+a07091c · v0.6.141" }, AVANT_0146) === null, "un arrêt SUR la 0.6.134+ n'est jamais réarmé (par la chaîne)");
+  ok(correctifPourJob(patrick({ correctif_leve: { cle: "vinted_marque_chaine_de_repli" } }), AVANT_0146) === null, "un seul réarmement par correctif");
+  ok(correctifPourJob(patrick({ republish_snapshot: { brand_id: 1 } }), AVANT_0146) === null, "sans marque à identifiant : la question reste (avant la 0.6.146)");
+  ok(correctifPourJob({ ...patrick(), handler_build: "2026-10-24T21:18:48Z+a07091c · v0.6.141" })?.cle === "vinted_marque_creee", "… et la 0.6.146 la reprend, une fois (marque créée)");
+}
+
+console.log("\n1 quater. (26/10 nuit, point 4) la marque créée par la 0.6.146");
+{
+  const job = (o = {}, pfPlus = {}) => ({
+    id: "62385e33", platform: "vinted", action: "republish", status: "needs_user",
+    handler_build: "2026-10-24T21:18:48Z+a07091c · v0.6.141",
+    error: "Republication en pause AVANT toute suppression — ton annonce est intacte sur Vinted. Vinted ne connaît pas la marque « uncle stubble » et ne permet plus d'en créer une nouvelle.",
+    platform_fields: { republish_step: "captured", ...pfPlus }, ...o,
+  });
+  const c = correctifPourJob(job());
+  ok(c?.cle === "vinted_marque_creee", "christophe « uncle stubble » (0.6.141) : reconnu", c?.cle);
+  ok(posteAJour("2026-10-26T00:53:28Z+ebdc605", c) && !posteAJour("2026-10-25T15:28:19Z+7b08e45", c), "0.6.146 porte le correctif, 0.6.144 non");
+  ok(correctifPourJob(job({ action: "publish", handler_build: "2026-10-23T11:19:48Z+4098342 · v0.6.131", error: "Vinted ne connaît pas la marque « The North Face » et ne permet plus d'en créer une nouvelle." }, { republish_step: undefined }))?.cle === "vinted_marque_creee",
+    "Johan « The North Face » (publication, 0.6.131) : reconnu aussi");
+  ok(correctifPourJob(job({ handler_build: "2026-10-26T00:53:28Z+ebdc605 · v0.6.146" })) === null, "un arrêt SUR la 0.6.146 n'est jamais réarmé (sa question au texte vrai reste)");
+  ok(correctifPourJob(job({}, { correctif_leve: { cle: "vinted_marque_creee" } })) === null, "un seul réarmement");
+  ok(correctifPourJob(job({}, { republish_step: "deleted" })) === null, "jamais après un retrait");
 }
 
 console.log("\n2. Le poste qui polle porte-t-il le correctif ?");

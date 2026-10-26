@@ -2825,6 +2825,11 @@ serve(async (req) => {
             // (26/10 nuit, point 3c) Le modèle de REPLI de l'annonce d'origine n'est versé qu'à un poste qui sait le choisir.
             const cap = aspectsDeLaCapture(natif, { repliModele: buildMsDe(buildDuPoll) >= buildMsDe(BUILD_VINTED_MODELE_REPLI) });
             const { vintedAspects, poses, remplace } = completerAspects(pfA["vintedAspects"], cap);
+            // (26/10 nuit, point 3c) Un modèle de REPLI posé : le job n'est plus servi qu'à un poste qui sait le choisir
+            // (build_min_requis) — un autre poste du compte, plus ancien, recréerait sans modèle.
+            if (cap.modele_repli && poses.includes("model") && !(buildMsDe(String(pfA["build_min_requis"] ?? "")) >= buildMsDe(BUILD_VINTED_MODELE_REPLI))) {
+              pfA["build_min_requis"] = BUILD_VINTED_MODELE_REPLI;
+            }
             const relancer = j.status === "needs_user"
               && String(pfA["needs_user_source"] ?? "") === "champ_a_choisir"
               && exigencesCouvertes(pfA["server_required_fields"], vintedAspects);
