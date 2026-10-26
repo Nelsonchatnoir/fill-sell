@@ -71,6 +71,8 @@ export const SOURCES_AUTOMATIQUES = Object.freeze({
   ebay_site_etranger: "ebay_etranger",
   plateforme_ecartee: "ecartee",
   build_min_requis: "mise_a_jour",
+  // (26/10 nuit, point 5) Leboncoin a refusé le texte à la modération : FillSell adapte la copie Leboncoin.
+  lbc_moderation: "lbc_moderation",
 });
 
 // Les motifs TECHNIQUES d'une republication mise en pause avant tout retrait :

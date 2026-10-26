@@ -28,7 +28,8 @@ import {
 import { marqueurDeDeveloppeur, porteDuVocabulaireDeDeveloppeur, porteUnPrefixeDeJournal, sansIncisesTechniques } from "../_shared/vocabulaire-developpeur.ts";
 // Trois sorties, jamais une quatrième : reprise (chez nous) · à toi (avec le
 // bouton ou le choix) · info neutre (job clos). Plus aucun `failed` rouge.
-import { classerEchec, estTailleHorsGrille, restrictionVinted } from "../_shared/pas-de-rouge.js";
+import { classerEchec, estTailleHorsGrille, restrictionVinted, LBC_REFUS_CONTENU_RE, empreinteTexteServi } from "../_shared/pas-de-rouge.js";
+import { nettoyerDescriptionLeboncoin, nettoyerTitreLeboncoin } from "../_shared/description-leboncoin.ts";
 import { marqueIntrouvable, messagePause, SOURCE_INTROUVABLE } from "../_shared/introuvable-a-confirmer.js";
 import { questionEnFrancais } from "../_shared/question-francais.js";
 // L'option que l'annonce nomme déjà (24/09) — module JS sans import, le même
@@ -4005,6 +4006,15 @@ serve(async (req) => {
     const ebayRefusNommeAPoser = (statutEffectif === "pending" || statutEffectif === "failed" || statutEffectif === "needs_user")
       && !pfEbayVendeurInactif && !pfEbayConnexionRequise
       && classeRefusBrouillonEbay({ brut: typeof body.error === "string" ? body.error : "", pf: (pfIn ?? {}) as Record<string, unknown> }) != null;
+    // (26/10 nuit, point 5 — xxewwer, 52b5ec71) Leboncoin refuse le CONTENU (« Leboncoin refuse le dépôt : « … » ») :
+    // les essais suivants de l'extension renverraient le MÊME texte, refusé de la même façon (cinq dépôts identiques
+    // le 25/10, de 18:49 à 19:51). Le classement parle dès la première remontée : le texte qui vient d'être refusé est
+    // celui que get-pending-jobs sert, son empreinte est gardée, et la décision est celle de
+    // decisionRefusContenuLeboncoin (la pause « FillSell s'en occupe », jamais « à toi » ; le titre seul reste une
+    // question). Une recréation (étape 'deleted') garde son circuit.
+    const lbcRefusContenuAPoser = (statutEffectif === "pending" || statutEffectif === "failed" || statutEffectif === "needs_user")
+      && typeof body.error === "string" && LBC_REFUS_CONTENU_RE.test(body.error)
+      && String((pfIn ?? {})["republish_step"] ?? "") !== "deleted";
     // ══ UNE EXCEPTION DE NOTRE CODE EST UN DÉFAUT DE CHEZ NOUS (02/10 soir, point 3) ══
     // (_shared/defaut-fillsell.js) Jamais « illisible », jamais « plateforme » :
     // le job porte defaut_fillsell {build} et attend un poste plus récent
@@ -4051,12 +4061,12 @@ serve(async (req) => {
         }
       }
     }
-    if (!pfDefautFillsell && (statutEffectif === "failed" || oplaMurCookies || oplaCategorieAPoser || tailleHorsGrilleAPoser || restrictionVintedAPoser || ebayRefusNommeAPoser)) {
+    if (!pfDefautFillsell && (statutEffectif === "failed" || oplaMurCookies || oplaCategorieAPoser || tailleHorsGrilleAPoser || restrictionVintedAPoser || ebayRefusNommeAPoser || lbcRefusContenuAPoser)) {
       try {
         // (18/10) `title` : un refus Vinted « trop de symboles » se reprend avec le
         // titre assagi (_shared/titre-symboles-vinted.js), calculé sur le titre du job.
         const { data: jPdr } = await userClient
-          .from("cross_post_jobs").select("platform, action, title, platform_fields").eq("id", jobId).maybeSingle();
+          .from("cross_post_jobs").select("platform, action, title, description, platform_fields").eq("id", jobId).maybeSingle();
         const pfBase = (pfIn ?? (jPdr?.platform_fields ?? {})) as Record<string, unknown>;
         const essais = Math.max(
           Number(pfBase["needsUserAttempts"] ?? 0) || 0,
@@ -4080,6 +4090,26 @@ serve(async (req) => {
           if (s && typeof s === "object") sessionsSondees = s as Record<string, unknown>;
           if (ebayRefusNommeAPoser) retoursEbayChoix = retoursChoisisDuCompte((prof as { platform_settings?: unknown } | null)?.platform_settings ?? null);
         } catch (_e) { /* la sonde est un renfort, jamais un prérequis */ }
+        // (26/10 nuit, point 5) L'empreinte du texte Leboncoin SERVI (titre et description nettoyés, comme
+        // get-pending-jobs) : celui que Leboncoin vient de refuser — jamais renvoyé tel quel.
+        let empreinteLbcServie: string | null = null;
+        if (lbcRefusContenuAPoser && String(jPdr?.platform ?? "") === "leboncoin") {
+          try {
+            // deno-lint-ignore no-explicit-any
+            const jL = jPdr as any;
+            const titreBrut = typeof jL?.title === "string" ? jL.title : "";
+            const tt = nettoyerTitreLeboncoin(titreBrut);
+            const titreServi = tt.modifie ? tt.titre : titreBrut;
+            const descBrute = typeof jL?.description === "string" ? jL.description : "";
+            const r = descBrute ? nettoyerDescriptionLeboncoin(descBrute, {
+              titre: titreServi,
+              marque: typeof pfBase["marque"] === "string" ? pfBase["marque"] as string : "",
+              etat: typeof pfBase["etat"] === "string" ? pfBase["etat"] as string : "",
+              taille: typeof pfBase["taille"] === "string" ? pfBase["taille"] as string : "",
+            }) : null;
+            empreinteLbcServie = empreinteTexteServi(titreServi, r && r.modifiee ? r.texte : descBrute);
+          } catch (_e) { empreinteLbcServie = null; }
+        }
         // Reprises déjà faites par pas-de-rouge sur ce job : les suivantes
         // s'espacent (45 min, 3 h, 6 h) au lieu de tourner toutes les 8 min.
         const reprisesFaites = Number(pfBase["pas_de_rouge_reprises"] ?? 0) || 0;
@@ -4106,6 +4136,8 @@ serve(async (req) => {
             || ((jPdr?.platform_fields ?? {}) as Record<string, unknown>)["titre_casse_corrigee"]),
           // (25/10, N6) Le choix de retours eBay du compte (null : la question part).
           retoursEbayChoix,
+          // (26/10 nuit, point 5) Le texte servi vient d'être refusé : son empreinte, jamais « nettoyage changé ».
+          ...(empreinteLbcServie ? { empreinteTexteServi: empreinteLbcServie, nettoyageModifie: false } : {}),
         });
         const pfS = { ...pfBase };
         if (erreurTechniqueBrute == null && typeof body.error === "string" && body.error) {

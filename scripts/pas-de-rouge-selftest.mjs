@@ -343,7 +343,7 @@ console.log("\n── 11. eBay : le manquant que nomme le refus du brouillon (25
   // Les branchements : le classement parle dès la PREMIÈRE remontée (pending), la question se range pour le compte.
   const UJS = readFileSync(new URL("../supabase/functions/update-job-status/index.ts", import.meta.url), "utf8").replace(/\r\n/g, "\n");
   ok(/const ebayRefusNommeAPoser = \(statutEffectif === "pending" \|\| statutEffectif === "failed" \|\| statutEffectif === "needs_user"\)\s*&& !pfEbayVendeurInactif && !pfEbayConnexionRequise/.test(UJS)
-    && /restrictionVintedAPoser \|\| ebayRefusNommeAPoser\)\) \{/.test(UJS) && /retoursEbayChoix,\n\s*\}\);/.test(UJS),
+    && /restrictionVintedAPoser \|\| ebayRefusNommeAPoser( \|\| lbcRefusContenuAPoser)?\)\) \{/.test(UJS) && /retoursEbayChoix,\n[\s\S]{0,400}?\n\s*\}\);/.test(UJS),
     "update-job-status : classé dès la première remontée (jamais par-dessus le mur vendeur ni la connexion), avec le choix du compte");
   const GPJ = readFileSync(new URL("../supabase/functions/get-pending-jobs/index.ts", import.meta.url), "utf8").replace(/\r\n/g, "\n");
   ok(/rpc\("platform_settings_fusionner", \{\s*p_chemin: \["ebay", "retours_voie_clic"\],/.test(GPJ)

@@ -58,6 +58,8 @@ const PAR_SOURCE = Object.freeze({
   introuvable_persistant: [ORIGINE.NOUS, "introuvable_persistant"],
   capture_incomplete: [ORIGINE.NOUS, "capture_incomplete"],
   ebay_site_etranger: [ORIGINE.NOUS, "site_ebay_non_pris_en_charge"],
+  // (26/10 nuit, point 5) Leboncoin refuse le texte de la copie à la modération : FillSell adapte la copie.
+  lbc_moderation: [ORIGINE.NOUS, "texte_refuse_moderation"],
 });
 
 // Le texte, dans l'ordre : la première règle qui reconnaît gagne. Les causes
@@ -95,6 +97,9 @@ const PAR_TEXTE = Object.freeze([
   [/exige une couleur [àa] la cr[ée]ation|aucune couleur n.a pu [êe]tre d[ée]duite/i, ORIGINE.NOUS, "couleur_absente"],
   [/cat[ée]gorie plus pr[ée]cise|ne propose pas « [^»]+ » [àa] cet endroit de son catalogue|Le catalogue Vinted a chang[ée] autour de|n.accepte plus la cat[ée]gorie de cette annonce/i, ORIGINE.NOUS, "sous_categorie_a_choisir"],
   [/mention d.un site internet|site internet autre que leboncoin|ne respectent pas nos r[èe]gles de contenu/i, ORIGINE.NOUS, "texte_refuse_mention_site"],
+  // (26/10 nuit, point 5 — 52b5ec71) « Nous refusons ce type de bien ou service », « ne respecte pas nos règles de
+  // diffusion » : la modération refuse le TEXTE servi (la même description est en ligne ailleurs) — notre fait.
+  [/refusons ce type de bien|ne respecte pas nos r[èe]gles de diffusion|a refus[ée] cette annonce [àa] la mod[ée]ration/i, ORIGINE.NOUS, "texte_refuse_moderation"],
   [/exige des champs encore vides|exige une taille|champs? (obligatoire|requis)|demande .* pour ton compte, et ce champ/i, ORIGINE.NOUS, "champ_demande"],
   [/refuse le titre|titolo|simboli|trop de lettres majuscules|titre (vide|refus[ée])/i, ORIGINE.NOUS, "titre_refuse"],
   [/ISBN/i, ORIGINE.NOUS, "isbn"],

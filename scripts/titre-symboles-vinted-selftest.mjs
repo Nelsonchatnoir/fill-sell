@@ -153,7 +153,8 @@ ok(/let servi = j\.action === "publish" \? tempererMajuscules\(j\.title, marqueJ
 ok(/j\.title_servi_tempere = \{ avant: j\.title, apres: servi, motif \}/.test(blocServi) && !/\.update\(/.test(blocServi), "service : trace title_servi_tempere, job en base jamais réécrit");
 ok(/if \(!pf\.titre_refuse \|\| titreVide\(pf\[CLE_TITRE_SAISI\]\) \|\| !titreRecevable\(pf\[CLE_TITRE_SAISI\]\)\) continue;/.test(gpj), "get-pending-jobs écrit titre_saisi sur le job (bloc du 15/10) — jamais une réponse générique (24/10, B4)");
 const ujs = lire("supabase/functions/update-job-status/index.ts");
-ok(/select\("platform, action, title, platform_fields"\)\.eq\("id", jobId\)\.maybeSingle\(\);\n\s*const pfBase = /.test(ujs), "update-job-status lit le titre du job avant le classement");
+// (26/10 nuit, point 5) + la description : l'empreinte du texte Leboncoin servi, au premier refus de contenu.
+ok(/select\("platform, action, title, (description, )?platform_fields"\)\.eq\("id", jobId\)\.maybeSingle\(\);\n\s*const pfBase = /.test(ujs), "update-job-status lit le titre du job avant le classement");
 ok(/titre: typeof jPdr\?\.title === "string" \? jPdr\.title : "",/.test(ujs) && /titreDejaAssagi: Boolean\(pfBase\["titre_symboles_assagi"\]/.test(ujs), "update-job-status passe le titre et la passe déjà faite");
 const qt = lire("supabase/functions/_shared/questions-tranchees.ts");
 ok(/\.select\("id, user_id, platform, action, status, inventaire_id, created_at, error, title, platform_fields"\)/.test(qt), "questions-tranchees lit le titre");

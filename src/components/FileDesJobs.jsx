@@ -122,7 +122,7 @@ function useRetenuesRepublication({ supabase, actif }) {
 // Une icône par motif de l'état unique (_shared/etat-job.js).
 const ICONES = {
   rythme: Clock, limite_jour: Clock, creneau: Clock, essai: Clock, auto_en_pause: Clock,
-  retenue_serveur: ShieldCheck, releve: ShieldCheck, technique: ShieldCheck,
+  retenue_serveur: ShieldCheck, releve: ShieldCheck, technique: ShieldCheck, lbc_moderation: ShieldCheck,
   file_en_pause: Pause, lecture_origine: Clock,
   boutique: Pause, boutiques_a_ouvrir: Pause, plateforme: Pause, gel: Pause, ecartee: Pause, ebay_etranger: Pause,
   ordinateur: Monitor, ordinateur_session: Monitor, mise_a_jour: Monitor,

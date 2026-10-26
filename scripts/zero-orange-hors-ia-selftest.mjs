@@ -50,18 +50,20 @@ cas("jocabroc8 : le texte servi a CHANGÉ (instagram retiré) → UNE reprise, m
   assert.equal(d.statut, "pending");
   assert.equal(d.motif, "lbc_texte_nettoye");
   assert.deepEqual(d.pf.lbc_refus_contenu.empreintes, [emp]);
-  // Refusé encore AVEC CE texte : la question, jamais un second essai identique.
+  // Refusé encore AVEC CE texte : jamais un second essai identique. (26/10 nuit, point 5, décision de Nico) Jamais
+  // « à toi » non plus : la pause « FillSell s'en occupe » (source lbc_moderation), les mots exacts de Leboncoin.
   const d2 = P.decisionRefusContenuLeboncoin({ action: "publish", brut: REFUS, pf: { ...d.pf }, empreinte: emp, nettoyageModifie: true });
   assert.equal(d2.statut, "needs_user");
-  assert.equal(d2.source, "relancer");
+  assert.equal(d2.source, "lbc_moderation");
+  assert.equal(d2.verdict, "attente");
   assert.ok(d2.message.includes("« Nous vous invitons à supprimer toute mention d'un site internet"), "les mots exacts");
-  assert.ok(d2.message.includes("le même texte serait refusé de nouveau"));
+  assert.ok(d2.message.includes("FillSell s'en occupe") && !/Corrige|relance/i.test(d2.message), "jamais « corrige » ni « relance »");
 });
 
 cas("premier refus d'un texte que le nettoyage ne change pas → la question TOUT DE SUITE (jamais 3 reprises à l'identique)", () => {
   const d = P.decisionRefusContenuLeboncoin({ action: "publish", brut: REFUS, pf: {}, empreinte: P.empreinteTexteServi(TITRE, "Texte propre."), nettoyageModifie: false });
   assert.equal(d.statut, "needs_user");
-  assert.equal(d.motif, "lbc_contenu_refuse");
+  assert.equal(d.motif, "lbc_moderation");
 });
 
 cas("la fiche corrigée (autre texte servi) → une reprise ; au plus trois", () => {
@@ -85,10 +87,10 @@ cas("seul le TITRE est refusé → la question « Titre » (servie par get-pendi
 cas("pas-de-rouge (update-job-status, sans empreinte) : la question tout de suite, plus jamais « motif inconnu »", () => {
   const s = P.classerEchec({ platform: "leboncoin", action: "publish", brut: REFUS, reecrit: "", essais: 0, pf: {}, sessions: { leboncoin: false } });
   assert.equal(s.statut, "needs_user");
-  assert.equal(s.motif, "lbc_contenu_refuse");
+  assert.equal(s.motif, "lbc_moderation");
   assert.notEqual(s.motif, "inconnu_reprise");
   // Les autres plateformes : rien ne change.
-  assert.notEqual(P.classerEchec({ platform: "vinted", action: "publish", brut: REFUS, essais: 0, pf: {} }).motif, "lbc_contenu_refuse");
+  assert.notEqual(P.classerEchec({ platform: "vinted", action: "publish", brut: REFUS, essais: 0, pf: {} }).motif, "lbc_moderation");
 });
 
 cas("la marque n'est jamais retirée ; la fiche jamais touchée (seul le texte SERVI change)", () => {

@@ -3560,6 +3560,86 @@ serve(async (req) => {
     console.error("[handler-watch] refus de contenu Leboncoin :", (e as Error)?.message ?? e);
   }
 
+  // ══ (26/10 nuit, point 5 — 52b5ec71) LA MODÉRATION LEBONCOIN N'EST JAMAIS « À TOI » ══
+  // Un refus de contenu laissé en « corrige le titre ou la description dans la fiche, puis relance » (pas-de-rouge
+  // lbc_contenu_refuse, avant le 26/10) devient la pause « FillSell s'en occupe » (source lbc_moderation, même
+  // message que _shared/pas-de-rouge.js) ; chaque pause neuve prévient le support, UNE fois par job
+  // (lbc_moderation_alerte_le posé après l'envoi réussi). Lectures bornées, écriture conditionnée au statut lu.
+  let lbcModerationRequalifies = 0; let lbcModerationAlertes = 0;
+  try {
+    const depuis30j = new Date(Date.now() - 30 * 24 * 60 * 60_000).toISOString();
+    const { data: anciens } = await supabase.from("cross_post_jobs")
+      .select("id, status, error, platform_fields")
+      .eq("platform", "leboncoin").eq("status", "needs_user").in("action", ["publish", "republish"])
+      .eq("platform_fields->>needs_user_source", "relancer").eq("platform_fields->pas_de_rouge->>motif", "lbc_contenu_refuse")
+      .gte("created_at", depuis30j).limit(40);
+    // deno-lint-ignore no-explicit-any
+    for (const j of (anciens ?? []) as any[]) {
+      const pf = { ...(j.platform_fields ?? {}) } as Record<string, unknown>;
+      const rc = (pf.lbc_refus_contenu ?? {}) as Record<string, unknown>;
+      const d = decisionRefusContenuLeboncoin({
+        action: "publish", brut: "Leboncoin refuse le dépôt : " + ((Array.isArray(rc.mots) ? rc.mots : []) as unknown[]).map((m) => "« " + String(m) + " »").join(" · "),
+        pf, empreinte: null,
+      });
+      if (d.source !== "lbc_moderation") continue;
+      const pfN: Record<string, unknown> = { ...pf };
+      pfN.erreurs_archivees = archiverErreur(pfN.erreurs_archivees, j.error, j.status, "handler-watch (modération Leboncoin : jamais « à toi »)");
+      pfN.needs_user_source = "lbc_moderation";
+      pfN.pas_de_rouge = { at: new Date().toISOString(), motif: d.motif, verdict: d.verdict, par: "handler-watch" };
+      const { data: maj } = await supabase.from("cross_post_jobs")
+        .update({ error: d.message, platform_fields: pfN })
+        .eq("id", j.id).eq("status", "needs_user").select("id");
+      if (maj?.length) lbcModerationRequalifies++;
+    }
+    if (resendKey) {
+      const { data: pauses } = await supabase.from("cross_post_jobs")
+        .select("id, user_id, title, platform_fields")
+        .eq("platform", "leboncoin").eq("status", "needs_user")
+        .eq("platform_fields->>needs_user_source", "lbc_moderation")
+        .filter("platform_fields->>lbc_moderation_alerte_le", "is", "null")
+        .gte("created_at", depuis30j).limit(20);
+      // deno-lint-ignore no-explicit-any
+      const aDire = (pauses ?? []) as any[];
+      if (aDire.length) {
+        const { data: profsM } = await supabase.from("profiles").select("id, username, email").in("id", [...new Set(aDire.map((j) => String(j.user_id)))]);
+        // deno-lint-ignore no-explicit-any
+        const profM = new Map(((profsM ?? []) as any[]).map((p) => [String(p.id), p]));
+        const lignesM = aDire.map((j) => {
+          const p = profM.get(String(j.user_id)) ?? {};
+          const rc = ((j.platform_fields ?? {}).lbc_refus_contenu ?? {}) as Record<string, unknown>;
+          const mots = (Array.isArray(rc.mots) ? rc.mots : []).map((m: unknown) => "« " + esc(String(m)) + " »").join(" · ");
+          return "<div style=\"margin:0 0 12px;padding:12px 14px;border:1px solid #FED7AA;border-radius:12px;background:#FFF7ED;font-family:sans-serif;\">" +
+            "<div style=\"font-size:14px;font-weight:700;color:#9A3412;\">" + esc(p.username ?? p.email ?? j.user_id) + " — « " + esc(j.title ?? "(sans titre)") + " » · Leboncoin</div>" +
+            "<div style=\"font-size:13px;color:#374151;margin-top:4px;\">Refus : " + (mots || "(mots non relevés)") + " · job <code>" + esc(j.id) + "</code></div></div>";
+        });
+        const htmlM = "<!DOCTYPE html><html lang=\"fr\"><head><meta charset=\"utf-8\"></head><body style=\"margin:0;padding:24px;background:#F2F2EE;\">" +
+          "<div style=\"max-width:680px;margin:0 auto;background:#fff;border-radius:16px;padding:26px;\">" +
+          "<h1 style=\"margin:0 0 4px;font-size:18px;font-family:sans-serif;color:#9A3412;\">" + aDire.length + " publication(s) Leboncoin refusée(s) à la modération</h1>" +
+          "<p style=\"margin:0 0 14px;font-size:12px;font-family:sans-serif;color:#9CA3AF;\">La personne lit « En pause — FillSell s'en occupe ». " +
+          "Trouver la phrase refusée, adapter la copie Leboncoin (_shared/description-leboncoin.ts, liste fermée et mesurée), puis relancer le job une fois.</p>" +
+          lignesM.join("") + "</div></body></html>";
+        const resM = await fetch(RESEND_API, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendKey}` },
+          body: JSON.stringify({ from: FROM, to: [TO], subject: "⚠️ " + aDire.length + " publication(s) Leboncoin refusée(s) à la modération — FillSell s'en occupe", html: htmlM }),
+        });
+        if (resM.ok) {
+          for (const j of aDire) {
+            const { data: frais } = await supabase.from("cross_post_jobs").select("platform_fields").eq("id", j.id).maybeSingle();
+            const pfA = { ...(frais?.platform_fields ?? j.platform_fields ?? {}), lbc_moderation_alerte_le: new Date().toISOString() };
+            await supabase.from("cross_post_jobs").update({ platform_fields: pfA }).eq("id", j.id).eq("status", "needs_user");
+          }
+          lbcModerationAlertes = aDire.length;
+        } else {
+          console.error("[handler-watch] alerte modération Leboncoin Resend:", await resM.text().catch(() => ""));
+        }
+      }
+    }
+    if (lbcModerationRequalifies || lbcModerationAlertes) console.log(`[handler-watch] modération Leboncoin : ${lbcModerationRequalifies} question(s) « corrige la fiche » devenue(s) « FillSell s'en occupe », ${lbcModerationAlertes} alerte(s) au support`);
+  } catch (e) {
+    console.error("[handler-watch] modération Leboncoin :", (e as Error)?.message ?? e);
+  }
+
   // ══ (18/10, lot 3) eBAY EXIGE UN EAN : LA PUBLICATION REPART UNE FOIS, AVEC L'EAN ══
   // Les publications par l'API déjà arrêtées sur le refus 25002 « Le champ EAN
   // n'a pas été renseigné » (paramètre « EAN » — sebimsn10, 3 jobs du 18/10)

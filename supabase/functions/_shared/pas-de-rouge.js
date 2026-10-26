@@ -165,7 +165,7 @@ export function empreinteTexteServi(titre, description) {
  * La décision pour un refus de contenu Leboncoin, pure.
  * @param {{ action?: string, brut?: string, pf?: any, empreinte?: string|null, nettoyageModifie?: boolean }} arg
  *   empreinte : celle du texte qui serait servi MAINTENANT ; nettoyageModifie : ce texte diffère du texte brut du job.
- * @returns {{ verdict: "reprise"|"a_toi", statut: "pending"|"needs_user", motif: string, message: string, source?: string, champ?: any, dansMinutes?: number, pf: any }}
+ * @returns {{ verdict: "reprise"|"a_toi"|"attente", statut: "pending"|"needs_user", motif: string, message: string, source?: string, champ?: any, dansMinutes?: number, pf: any }}
  */
 export function decisionRefusContenuLeboncoin({ action = "publish", brut = "", pf = {}, empreinte = null, nettoyageModifie = false } = {}) {
   const { mots, champs } = motsRefusLeboncoin(brut);
@@ -199,11 +199,17 @@ export function decisionRefusContenuLeboncoin({ action = "publish", brut = "", p
         `Écris un autre titre ci-dessous (bouton « ✋ Compléter ») : ${acte(action)} repart d'elle-même avec ce titre.`,
     };
   }
+  // (26/10 nuit, point 5 — xxewwer, 52b5ec71 « WWE 2K20 – PS4 », décision de Nico) Un refus de MODÉRATION de
+  // Leboncoin (« Nous refusons ce type de bien ou service », « ne respecte pas nos règles de diffusion », un mot du
+  // texte) n'est JAMAIS « à toi » : c'est le texte de la copie Leboncoin que FillSell sert qui est refusé — à FillSell
+  // de l'adapter (la même description est en ligne sur Vinted, eBay et Beebs). La publication est EN PAUSE
+  // (source lbc_moderation, « FillSell s'en occupe »), le support est prévenu (handler-watch), la fiche ne change
+  // pas, rien n'est renvoyé avec le même texte. Seul le TITRE refusé reste une question (un mot nommé, un geste).
   return {
-    verdict: "a_toi", statut: "needs_user", motif: "lbc_contenu_refuse", source: "relancer", pf: pfMarque,
+    verdict: "attente", statut: "needs_user", motif: "lbc_moderation", source: "lbc_moderation", pf: pfMarque,
     message:
-      `Leboncoin refuse le texte de cette annonce : ${motsTexte}. Rien n'a été publié, et le même texte serait refusé de nouveau. ` +
-      "Corrige le titre ou la description dans la fiche de l'article, puis relance d'un clic ci-dessous.",
+      `Leboncoin a refusé cette annonce à la modération (${motsTexte}). Rien n'a été publié. ` +
+      "En pause — FillSell s'en occupe : l'équipe est prévenue et adapte le texte Leboncoin de cette annonce (ta fiche ne change pas). Rien à faire de ton côté.",
   };
 }
 
