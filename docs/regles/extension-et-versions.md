@@ -99,3 +99,10 @@
   Les constantes BUILD_VINTED_MODELE_REPLI / BUILD_VINTED_MARQUE_CREEE (00:53:28Z) restent valables (≤ ce build).
 - Le dossier `FillSell-Extension-Nico` : une copie du build y a été prise par le poste de Nico (0.6.146 4ade5e1 annoncée
   à 09:00) — voir le rapport pour le test réel.
+
+## 26/10 nuit — 0.6.148 (urgence Johan) : le SEUL zip à téléverser
+- `build/CWS-0.6.148-A-TELEVERSER/` : la 0.6.147 + la relecture avant redépôt (`devant: true`, servie par
+  get-pending-jobs) en TÊTE de cycle, puis repoll ; un seul poll en attente du verrou (l'alarme ne les empile plus).
+  Les zips 0.6.146 et 0.6.147, jamais téléversés (dernière servie : 0.6.144), passent dans `build/CWS-PERIMES/`.
+- Les versions ≤ 0.6.147 font la relecture en fin de cycle : sur un ordinateur qui dort, le serveur la relance une
+  fois puis le dit à la personne (`_shared/releve-verif-non-pris.js`).
