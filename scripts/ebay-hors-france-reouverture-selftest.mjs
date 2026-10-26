@@ -59,6 +59,9 @@ const hw = lire("supabase/functions/handler-watch/index.ts");
 ok(/\.eq\("ebay_site", "France"\)\.is\("revoked_at", null\)/.test(hw) && /rouvrirPublicationsEbayHorsFrance\(supabase, String\(c\.user_id\), \{ par: "handler-watch" \}\)/.test(hw), "handler-watch : le filet borné");
 const wk = lire("supabase/functions/ebay-api-worker/index.ts");
 ok(/clotureEbayHorsFrance\(job, \{ par: "ebay-api-worker", site: s\.site, compte: s\.pseudo, archiver: archiverErreur \}\)/.test(wk), "ebay-api-worker : la clôture nomme le compte");
+const st = lire("src/tabs/StockTab.jsx");
+ok(/if \(siteEbay\?\.site && !siteEbay\.horsFrance\) return null;/.test(st) && /texteEbayHorsFrance\(m\.preuve \?\? siteEbay\?\.site, lang, m\.compte \?\? null\)/.test(st),
+  "Stock : une publication close dit SON compte et SON site ; compte d'aujourd'hui en France → la relance est permise");
 
 console.log(`\n${rouges ? `✗ ${rouges} RATÉ(S)` : "✓ tout est vert"} — ${verts} vérifications`);
 process.exit(rouges ? 1 : 0);

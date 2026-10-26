@@ -8030,9 +8030,15 @@ const StockTab = memo(function StockTab({
     if (estClotureLbcHorsFrance(job) || (plateformesFermees.includes('leboncoin') && estPublicationLbc(job))) return messageLbcHorsFrance(lang);
     const siteEbay = ebayCompte?.voieApi && ebayCompte?.lu ? ebaySiteHorsFrance(ebayCompte?.etat?.ebay_site) : null;
     const publicationEbay = job?.platform === 'ebay' && ['publish', 'republish'].includes(job?.action ?? 'publish');
-    if (estClotureEbayHorsFrance(job) || (publicationEbay && siteEbay?.horsFrance)) {
-      return texteEbayHorsFrance(siteEbay?.site ?? job?.platform_fields?.ebay_hors_france?.preuve, lang);
+    // (26/10 nuit, point 7 — Elodie82) Une publication CLOSE dit le compte et le site qui l'ont close (son marqueur) :
+    // lue sur le compte d'AUJOURD'HUI (eBay France), la phrase devenait « ton compte eBay est sur eBay France ». Et si
+    // le compte relié aujourd'hui est sur eBay France, rien ne s'oppose plus à la relance (le serveur la rouvre aussi).
+    if (estClotureEbayHorsFrance(job)) {
+      if (siteEbay?.site && !siteEbay.horsFrance) return null;
+      const m = job?.platform_fields?.ebay_hors_france ?? {};
+      return texteEbayHorsFrance(m.preuve ?? siteEbay?.site, lang, m.compte ?? null);
     }
+    if (publicationEbay && siteEbay?.horsFrance) return texteEbayHorsFrance(siteEbay.site, lang);
     return null;
   }
   // ── REPUBLIER UNE PUBLICATION JAMAIS CONFIRMÉE (2026-09-23 soir) ──────────
