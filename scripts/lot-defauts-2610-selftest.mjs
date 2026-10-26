@@ -59,7 +59,8 @@ ok(v(C.tailleMontreAuto({ chemin: "Hommes > Accessoires > Montres", textes: ["bo
 ok(v(C.tailleMontreAuto({ chemin: "Hommes > Accessoires > Montres", textes: ["bracelet 20 mm"], allowedValues: VINTED })) === "Taille unique", "« bracelet 20 mm » seul n'est pas un boîtier → « Taille unique »");
 ok(C.tailleMontreAuto({ chemin: "Femmes > Vêtements > Robes", textes: ["boîtier 40 mm"], allowedValues: VINTED }) === null, "hors montres : la règle ne joue pas");
 ok(C.tailleMontreAuto({ chemin: "Hommes > Accessoires > Montres", textes: ["boitier 40mm"], allowedValues: ["S", "M"] }) === null, "une autre grille que les diamètres : la règle ne joue pas");
-ok(/tailleMontreAuto\(\{ chemin: cheminListe, textes, allowedValues \}\)/.test(lps) && /"diametre_ecrit", "montre_sans_diametre"\]/.test(lps), "branchée dans l'écran Publier, posée sur la copie (champ dédié « taille »)");
+// (26/10 nuit, point 11) + les sources de la bague, après celles de la montre.
+ok(/tailleMontreAuto\(\{ chemin: cheminListe, textes, allowedValues \}\)/.test(lps) && /"diametre_ecrit", "montre_sans_diametre"(, "bague_du_texte", "bague_ajustable")?\]/.test(lps), "branchée dans l'écran Publier, posée sur la copie (champ dédié « taille »)");
 ok(/const askable = missing\.filter\(a => !\(estChampTaille\(gp, a\.key\) \|\| a\.dedicatedTarget === "taille"\)\)/.test(lps), "une TAILLE ne part jamais à l'IA, même avec un champ dédié (« 39 mm - 42 mm », « 22,6 mm » sans source)");
 ok(/\(a\.allowedValues\?\.length \?\? 0\) !== 1 && !a\.deduit\)/.test(lps), "une ligne déjà déduite d'une source fiable ne part pas à l'IA");
 ok(/const generic = platform === "beebs" && !canalGeneriquePose\(platform, key\) \? "" : /.test(lps), "Beebs : une valeur dans un canal que beebs.js saute n'est pas une valeur (plus deux verdicts contraires)");

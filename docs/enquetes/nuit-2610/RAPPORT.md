@@ -164,3 +164,42 @@ Prompt de nuit de Nico (25/10, 22:00). Ce fichier se remplit point par point ; l
   reprenait l'étape de retrait toutes les 5 à 180 min. Corrigé (update-job-status) : le motif et l'adresse de ce
   rapport comptent ; les jobs vont au poste connecté. Les 31 jobs concernés sont publiés depuis. Selftest neuf
   `mur-poste-pause-avant-retrait` (9 contrôles).
+
+## 10. Depop : « Pour » et frais de port (Thibault)
+- « Pour » (18d5cbb1, doudoune enfant) : PROUVÉ — la copie venait d'un job de suivi du relevé, sans genre, et la
+  règle ne comptait pas le genre manquant d'un article enfant. Corrigé (commit du point 10, get-pending-jobs v288) :
+  le genre manquant se compte et se reprend du dépôt FillSell de la même annonce (« male » ici). Ajouté cette nuit :
+  sans dépôt, le genre BRUT de l'annonce en ligne (male / female / unisex) — l'extension le garde désormais à côté de
+  « enfant » (0.6.146) ; jamais « Mixte » déduit, sinon la question reste.
+- Frais de port (7b2e81e0, 2084dc4b) : annonces créées hors FillSell, aucun port relevé, aucun port par défaut dans
+  ses Réglages, et Depop n'a PAS d'option d'expédition par défaut en France (prix national obligatoire, étiquettes
+  Depop seulement US/UK/AU). La question est juste : rien n'est inventé (jamais l'historique du compte).
+
+## 11. Taille de bague (Elodie82)
+- PROUVÉ : son texte ne porte aucune taille (« Bague vintage diamants baguette ») : la question est juste et reste.
+- Règle ajoutée (écran Publier, champ requis) : une taille ÉCRITE collée à un mot explicite (« taille 52 », « T52 »,
+  « tour de doigt 60 », « diamètre 17,3 mm ») → la seule valeur de la grille Vinted/Beebs à 0,1 mm (diamètre = tour ÷ π,
+  norme ISO 8653) ; « ajustable » → « Ajustable » ; jamais la taille d'une pierre, deux tailles, une taille US/UK, ni
+  une valeur sans voisine exacte (« taille 54 » = 17,19 mm → la question). Selftest neuf `taille-bague-du-texte` (18).
+- ⚠️ Le même dépôt sur Beebs (34235519, publié à 18:22) porte « 22,6 mm » : écrit nulle part, aucune question
+  journalisée — origine NON PROUVÉE (probablement l'IA, avant la règle de cette nuit qui ne lui laisse plus jamais une
+  taille). Valeur probablement fausse en ligne : **rien touché, décision de Nico**.
+
+## 12 bis. La correction tracée tient aussi côté extension
+- beebs.js (0.6.146) : à la republication, une correction TRACÉE de la copie (chaouidz, 34229052 : 16 → 31) passe
+  devant la taille que l'annonce affiche encore ; si l'annonce affiche une troisième valeur, rien n'est forcé. Miroir
+  exact de `_shared/correction-tracee.js` (parité vérifiée sur 13 109 cas). L'âge : la copie part déjà seule.
+
+## 14. Adresse refusée par Beebs (Srideals)
+- PROUVÉ : ses Réglages n'ont PAS de rue (rue = ville = « Thionville ») ; la suggestion cliquée était la commune seule,
+  et Beebs l'a refusée (« Renseigner votre adresse ») — 15 dépôts Beebs acceptés sur 15 avaient une rue. Leboncoin, lui,
+  se contente de la commune (32 publications).
+- Corrigé : l'extension (0.6.146) ne clique ni ne soumet jamais une suggestion sans rue : arrêt AVANT « Mettre en
+  vente » (et avant tout retrait en republication), phrase vraie : « Beebs a besoin de ta rue pour publier : ton adresse
+  dans Réglages n'a pas de rue (« Thionville »). Ajoute ta rue et ton numéro dans Réglages › Expédition › Adresse de
+  remise : rien n'a été publié. » (classée « réglage du compte ») ; un lieu-dit reste accepté. L'app le dit dès les
+  Réglages (« Ajoute ta rue et ton numéro : Beebs les demande pour publier »).
+- Non fait : retenir côté serveur, avant Beebs, la publication d'un compte sans rue (l'arrêt de l'extension suffit à
+  ne rien publier à moitié). Doute à trancher par Nico : « Meaux 77100 Meaux » (rue = ville) a été validé sur la rue
+  d'un commerce proposée par Beebs — faut-il arrêter dès que les Réglages n'ont pas de rue, quelle que soit la
+  suggestion ? Srideals : aucun mail envoyé ; 88f51828 reste en attente de sa rue (rien ne la relance tant que ses Réglages n'en ont pas).

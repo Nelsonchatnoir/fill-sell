@@ -156,6 +156,7 @@ import {
 // (25/10 soir, décisions de Nico) Les champs requis qui se remplissent seuls quand une source fiable existe — sinon la
 // question, comme avant (jamais une valeur devinée).
 import { matiereBeebsAuto, ageBeebsAuto, tailleBijouBeebsAuto, matiereEbayAuto, tailleMontreAuto } from "../../supabase/functions/_shared/champs-requis-auto.js";
+import { tailleBagueDuTexte } from "../../supabase/functions/_shared/taille-bague-du-texte.js";
 import { pointureDuTexte } from "../../supabase/functions/_shared/pointure-du-texte.js";
 import { estChampChaussures } from "../../supabase/functions/_shared/taille-du-texte.js";
 // (10/10, cas Manon) Ce que l'encart eBay remplit seul, et quand.
@@ -4478,7 +4479,7 @@ const AUCUNE_PLATEFORME_FERMEE = Object.freeze([]);
 // sinon « Autre »), l'âge (écrit, PEGI, livre adulte), la taille d'un bijou qui n'est pas une bague (« Ajustable »)
 // (champs-requis-auto.js). Rien de sûr → null : la question reste, comme avant. Pur.
 // Sources tracées (option_du_texte) ; la valeur est posée sur la COPIE, jamais sur la fiche.
-const CHAMP_REQUIS_VERS_COPIE = new Set(["pointure_de_la_fiche", "pointure_du_texte", "matiere_de_la_fiche", "matiere_du_rayon", "matiere_autre", "bijou_hors_bague", "diametre_ecrit", "montre_sans_diametre"]);
+const CHAMP_REQUIS_VERS_COPIE = new Set(["pointure_de_la_fiche", "pointure_du_texte", "matiere_de_la_fiche", "matiere_du_rayon", "matiere_autre", "bijou_hors_bague", "diametre_ecrit", "montre_sans_diametre", "bague_du_texte", "bague_ajustable"]);
 function champRequisAuto({ platform, key, label, allowedValues, chemin, textes, publicCopie = [], tailleFiche = "", matiereFiche = "", classementFiche = "" }) {
   if (!Array.isArray(allowedValues) || !allowedValues.length) return null;
   const nom = `${key ?? ""} ${label ?? ""}`;
@@ -4494,6 +4495,12 @@ function champRequisAuto({ platform, key, label, allowedValues, chemin, textes, 
     const m = tailleMontreAuto({ chemin: cheminListe, textes, allowedValues });
     if (m?.valeur) return m;
     if (m?.doute) return null;
+    // (26/10 nuit, point 11 — Elodie82) Une BAGUE (Vinted « Bagues », Beebs « Bijoux (femme) ») : la taille ÉCRITE par
+    // le vendeur, collée à un mot explicite (« taille 52 », « T52 », « diamètre 16,5 mm »), une seule valeur de la
+    // grille à 0,1 mm (taille-bague-du-texte.js) ; « ajustable » → « Ajustable » ; sinon la question, comme avant.
+    const b = tailleBagueDuTexte({ chemin: cheminListe, textes, allowedValues });
+    if (b?.valeur) return b;
+    if (b?.doute) return null;
   }
   if (platform !== "beebs") return null;
   const lib = String(label ?? key ?? "").trim();
