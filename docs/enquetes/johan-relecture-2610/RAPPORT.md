@@ -52,3 +52,13 @@ Republications à l'étape `deleted` encore ouvertes (26/10 ~18:40) : 14. Une se
 (Johan). Les autres : 7 comptes inactifs depuis août (0.5.4 / 0.6.6, extension jamais revenue), 1 needs_user Vinted
 (25/10, autre cause), 1 Vinted en reprise (Chrome fermé), 4 en cours normal à la minute du relevé. Aucune autre à
 traiter par cette règle.
+
+## Suite (20:05)
+
+- get-pending-jobs v295 déployée à 19:58 (verify_jwt true) ; commits poussés ; OTA 2.9.122.
+- La relecture est partie à 19:40:10 (le poste de Johan est resté éveillé à partir de 19:35 : sa 0.6.144 a atteint la
+  fin de cycle). 91 annonces en ligne lues, aucune apparue depuis le retrait → redépôt → 19:41:46, annonce
+  3296005486 (adsubmit 201 « created », confirmation « Votre annonce est publiée ») ; une seule annonce, pas de double.
+- Retenues levées à 19:42:48 ; la file repart dans son ordre : une republication à la fois, la plus ancienne d'abord.
+  Beebs et Depop passent après 41 republications Leboncoin plus anciennes (22/10) : c'est l'ordre de la file, pas un
+  gel. Changer cet ordre (alterner les plateformes) toucherait la cadence : décision de Nico.
