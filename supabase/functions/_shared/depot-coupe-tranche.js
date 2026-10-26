@@ -307,7 +307,10 @@ export function patchRattachementDepotCoupe(job, d, { maintenant = new Date().to
   const c = d?.annonce ?? {};
   const listingId = String(c.listing_id ?? "");
   const statutEnLigne = String(c.statut_plateforme ?? "") === "en_ligne";
-  const url = String(c.url ?? "") || (statutEnLigne && typeof lienDepuisId === "function" ? lienDepuisId(String(job?.platform), listingId) : null) || null;
+  // (26/10, Elodie82) Un lien Leboncoin de relevé sans rayon réel (/ad/<id>) mène à une 404 : jamais recopié tel quel.
+  const lienReleve = String(c.url ?? "");
+  const lienFauxLbc = String(job?.platform) === "leboncoin" && lienReleve && !/^https:\/\/www\.leboncoin\.fr\/ad\/(?!ad\/|x\/)[a-z_]+\/\d{6,}/.test(lienReleve);
+  const url = (lienFauxLbc ? null : lienReleve) || ((statutEnLigne || lienFauxLbc) && typeof lienDepuisId === "function" ? lienDepuisId(String(job?.platform), listingId) : null) || null;
   const pf = { ...(job?.platform_fields ?? {}) };
   for (const k of CHAMPS_LEVES) delete pf[k];
   const trace = { apres: maintenant, le: maintenant, verdict: "certaine", listing_id: listingId, preuve: d?.preuve ?? null };

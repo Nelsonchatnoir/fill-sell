@@ -2067,6 +2067,51 @@ serve(async (req) => {
     }
 
     // ══════════════════════════════════════════════════════════════════════
+    // (26/10, Ritthik 2003) RETRAIT LEBONCOIN EN VUE ACHETEUR = ATTENTE DE CONNEXION (_shared/lbc-vue-visiteur.js)
+    // ══════════════════════════════════════════════════════════════════════
+    // « Contrôle « Supprimer l'annonce » introuvable » alors que la page montrait « Acheter / Faire une offre /
+    // Contacter » : la session n'est pas celle du compte qui a publié l'annonce. Ni un essai raté ni un contrôle
+    // manquant : pending, aucune tentative consommée, sonde espacée (échelle de l'extension), phrase vraie. Lu sur le
+    // diagnostic des postes d'avant la 0.6.147 ; la 0.6.147 le dit elle-même (« Connexion Leboncoin requise »).
+    if (!pfRetraitVerif && !pfCanalCoupe && (statutEffectif === "pending" || statutEffectif === "failed" || statutEffectif === "needs_user")
+        && body.platform_fields && typeof body.platform_fields === "object") {
+      const pfVV = body.platform_fields as Record<string, unknown>;
+      const vue = vueVisiteurLbc(pfVV.last_diagnostic);
+      if (vue) {
+        try {
+          const { data: jrowVV } = await userClient.from("cross_post_jobs")
+            .select("action, platform, platform_fields").eq("id", jobId).maybeSingle();
+          if (jrowVV?.platform === "leboncoin" && (jrowVV.action === "delete" || jrowVV.action === "republish")) {
+            const pfBaseVV = (jrowVV.platform_fields ?? {}) as Record<string, unknown>;
+            const prec = (pfBaseVV.attente_session && typeof pfBaseVV.attente_session === "object") ? pfBaseVV.attente_session as Record<string, unknown> : null;
+            const maintenant = new Date().toISOString();
+            const observations = (Number(prec?.observations) || 0) + 1;
+            const {
+              needs_user_source: _nusV, pas_de_rouge: _pdrV, needs_user_tick_le: _ntV, needs_user_actif_ms: _naV,
+              needs_user_vu_le: _nvV, needs_user_vu_erreur: _neV, ...pfSansVV
+            } = pfVV;
+            pfRetraitVerif = {
+              ...pfSansVV,
+              needsUserAttempts: Number(pfBaseVV.needsUserAttempts ?? 0) || 0,
+              attente_session: {
+                platform: "leboncoin", depuis: typeof prec?.depuis === "string" ? prec.depuis : maintenant, observations, derniere: maintenant,
+                motif: `vue acheteur de l'annonce${vue.vendeur ? ` (vendeur affiché « ${vue.vendeur} »)` : ""}`,
+                pose_par: "update-job-status (retrait Leboncoin en vue acheteur = attente de connexion)",
+              },
+              next_action_after: new Date(Date.now() + delaiVueVisiteurMin(observations) * 60_000).toISOString(),
+            };
+            statutEffectif = "pending";
+            messageEffectif = messageVueVisiteurLbc(vue.vendeur);
+            raisonRequalif = `retrait Leboncoin : vue acheteur (${vue.vendeur ?? "vendeur ?"}) — attente de connexion, aucune tentative consommée`;
+          }
+        } catch (e) {
+          console.error("[update-job-status] retrait Leboncoin vue acheteur :", (e as Error)?.message ?? e);
+          pfRetraitVerif = null;
+        }
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
     // UNE ANNONCE EN VÉRIFICATION CHEZ VINTED PEUT ÊTRE ACHETÉE (04/10)
     // ══════════════════════════════════════════════════════════════════════
     // Nico, 04/10 : « Le buste femme a été vendu, j'ai annulé la vente. »
@@ -5256,5 +5301,6 @@ serve(async (req) => {
 });
 import { EXTENSION_MIN_BUILD, posteExtensionCompatible } from "../_shared/version-min-extension.js";
 import { questionOplaFinale } from "../_shared/opla-questions.js";
+import { vueVisiteurLbc, messageVueVisiteurLbc, delaiVueVisiteurMin } from "../_shared/lbc-vue-visiteur.js";
 import { defautFillsell, messageDefautFillsell } from "../_shared/defaut-fillsell.js";
 import { pauseRayonMoteur } from "../_shared/rayon-moteur-attendu.js";

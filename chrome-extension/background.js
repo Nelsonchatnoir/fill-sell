@@ -5779,6 +5779,75 @@ async function processJob(rawJob, accessToken) {
         return { status: "published", listingUrl: publishedUrl };
       }
 
+      // ── (26/10, Jocabroc — sculpture bouddhiste, Leboncoin, 11:22 ; La Fleur de Lotus, eBay, 23/10) ──────────
+      // « A listener indicated an asynchronous response by returning true, but the message channel closed » : la
+      // page a été rechargée ou remplacée pendant que son script travaillait (2 080 publications Vinted le portent
+      // dans leur historique en 7 jours, toutes reparties). Le job « repartait seul »… 17 min plus tard, en brûlant
+      // une tentative, avec l'exception Chrome affichée. Désormais : (1) Leboncoin — l'adsubmit tranche AVANT toute
+      // reprise : 2xx avec un numéro = publié (jamais un second dépôt) ; parti sans réponse lisible = la reprise
+      // passe par « Mes annonces » (depotPeutEtreParti, chemin existant) ; (2) rien n'est parti : la reprise est
+      // RAPIDE (2 min) et ne consomme aucune tentative, deux fois au plus par job — la troisième suit le recul
+      // ordinaire ; (3) la phrase dit ce qui s'est passé, jamais l'exception brute.
+      if (CANAL_COUPE_RE.test(msg) && job.action === "publish") {
+        let depotParti = false;
+        if (job.platform === "leboncoin" && tabId != null) {
+          const depuis = Date.parse(String(job.platform_fields?.processing_since ?? "")) || 0;
+          const vu = await lbcDepotRequestSeen(tabId, depuis).catch(() => null);
+          const st = Number(vu?.adsubmit?.status);
+          const idAd = String(vu?.adsubmit?.detail?.id ?? vu?.horsAdsubmit?.id ?? "");
+          if (st >= 200 && st < 300 && /^\d{6,}$/.test(idAd)) {
+            console.log(`[background] Job ${job.id} : canal coupé, mais l'adsubmit a répondu ${st} avec l'annonce ${idAd} — publié, aucun second dépôt`);
+            await restRequest(`cross_post_jobs?id=eq.${job.id}`, accessToken, {
+              method: "PATCH", body: JSON.stringify({ platform_listing_id: idAd }),
+            }).catch((err) => console.warn(`[background] PATCH platform_listing_id leboncoin :`, String(err?.message ?? err)));
+            await updateJobStatus(accessToken, job.id, "published", {
+              error: null,
+              platform_fields: {
+                ...(job.platform_fields ?? {}),
+                lbc_depot: { ...(job.platform_fields?.lbc_depot ?? {}), preuve: "adsubmit_canal_coupe", adsubmit: { id: idAd, status: st }, at: new Date().toISOString() },
+              },
+            });
+            await recordRecentResult(job, "published");
+            return { status: "published", listingUrl: null };
+          }
+          depotParti = Boolean(vu?.adsubmit?.envoye);
+          if (depotParti) {
+            // Parti sans réponse lisible : jamais un second dépôt sur un doute (même règle qu'eBay, plus haut).
+            const msgIncertainLbc =
+              "Une demande de publication est partie vers Leboncoin avant que la page ne soit interrompue, " +
+              "et son résultat n'a pas pu être lu. Vérifie tes annonces Leboncoin : si l'article y est, " +
+              "ne relance pas — sinon relance la publication depuis la fiche de l'article.";
+            job.platform_fields = {
+              ...(job.platform_fields ?? {}),
+              last_diagnostic: { quoi: "canal_coupe_publication_incertaine", detail: `adsubmit parti, réponse illisible — ${msg.slice(0, 200)}`, at: new Date().toISOString() },
+            };
+            stampEtatFenetre(job, "at_end", await releverEtatFenetreTravail(job.platform));
+            await updateJobStatus(accessToken, job.id, "needs_user", { error: msgIncertainLbc, platform_fields: job.platform_fields })
+              .catch((err) => console.error("[background] update-job-status failed:", err));
+            return { status: "needsUser", error: msgIncertainLbc };
+          }
+        }
+        const reprisesCanal = Number(job.platform_fields?.canal_coupe_reprises ?? 0) || 0;
+        if (!depotParti && reprisesCanal < 2) {
+          const actuel = await jobStatusNow(accessToken, job.id);
+          if (!actuel || actuel === "processing" || actuel === "pending") {
+            const label = LABEL_PLATEFORME[job.platform] ?? job.platform;
+            console.warn(`[background] Job ${job.id} : canal coupé (${reprisesCanal + 1}/2) — reprise rapide, aucune tentative consommée — ${msg}`);
+            await updateJobStatus(accessToken, job.id, "pending", {
+              error: `La page ${label} s'est rechargée pendant la publication, avant qu'elle parte : rien n'a été publié. ` +
+                "FillSell recommence tout seul, rien à faire.",
+              platform_fields: {
+                ...(job.platform_fields ?? {}),
+                canal_coupe_reprises: reprisesCanal + 1,
+                derniere_interruption: msg.slice(0, 500),
+                next_action_after: new Date(Date.now() + 2 * 60_000).toISOString(),
+              },
+            });
+            return { status: "pending", error: msg };
+          }
+        }
+      }
+
       console.warn(`[background] Job ${job.id} : incident transitoire (canal coupé ou page trop lente) — ${msg}`);
       // Défaut n°2 du 31/08 (job fa69b1bd) : l'exception technique masquait la
       // cause réelle déjà en base (last_diagnostic prevol_stepup_vente). Quand
@@ -6545,7 +6614,8 @@ async function conclureDepotPayeLbc(att, url) {
     },
   };
   for (const k of ["needs_user_source", "needs_user_tick_le", "needs_user_actif_ms", "needs_user_vu_le", "needs_user_vu_erreur", "next_action_after"]) delete extra.platform_fields[k];
-  if (id) extra.listing_url = `https://www.leboncoin.fr/ad/x/${id}`;
+  // (26/10) /ad/x/<id> est une 404 (relevé réel) : la forme qui s'ouvre, comme partout ailleurs.
+  if (id) extra.listing_url = lienLeboncoinOuvrable(null, id);
   await updateJobStatus(session.access_token, att.jobId, "published", extra);
   console.warn(`[background] Job ${att.jobId} : dépôt Leboncoin payé par la personne → publié${id ? ` (annonce ${id})` : " (numéro non lu sur la page)"}`);
 }
@@ -11981,7 +12051,8 @@ async function checkListingState(url, platform, { routine = false, publieLe = nu
   // (« /ad/<id> », 404 chez Leboncoin) est lu sous « /vi/<id>.htm » ; (2) une mémoire PLUS ANCIENNE qu'un relevé
   // qui a revu l'annonce en ligne est oubliée ; (3) un 410 sur une annonce publiée depuis moins de 2 h n'est ni
   // mémorisé ni conclu (modération en cours) : « inconnu », le passage suivant relit.
-  const lienSansCategorie = String(url ?? "").match(/^https?:\/\/www\.leboncoin\.fr\/ad\/(\d+)\/?$/);
+  // (26/10, Elodie82) « /ad/x/<id> » et « /ad/ad/<id> » sont des 404 au même titre (relevé réel) : même lecture.
+  const lienSansCategorie = String(url ?? "").match(/^https?:\/\/www\.leboncoin\.fr\/ad\/(?:(?:ad|x)\/)?(\d+)\/?$/);
   if (lienSansCategorie) url = `https://www.leboncoin.fr/vi/${lienSansCategorie[1]}.htm`;
   const revueMs = Date.parse(String(revueLe ?? ""));
   if (Number.isFinite(revueMs)) await oublierLbcMorteSiRevue(url, revueMs);
@@ -18553,7 +18624,9 @@ async function releverLeboncoinParApi() {
         const cents = nombre(a?.price_cents);
         vues.set(id, {
           listing_id: id,
-          url: a?.url ? String(a.url) : `https://www.leboncoin.fr/ad/${id}`,
+          // (26/10, Elodie82) Jamais /ad/<id> : Leboncoin le redirige vers une 404 (cf. lienLeboncoinOuvrable ;
+          // ce code s'exécute DANS la page, la règle y est donc écrite, pas appelée).
+          url: /^https:\/\/www\.leboncoin\.fr\/ad\/(?!ad\/|x\/)[a-z_]+\/\d{6,}/.test(String(a?.url ?? "")) ? String(a.url) : `https://www.leboncoin.fr/ad/vetements/${id}`,
           titre: a?.subject ? String(a.subject) : null,
           prix: cents != null ? cents / 100 : nombre(a?.price),
           photo_url: a?.images?.thumb_url ?? a?.images?.urls_thumb?.[0] ?? a?.images?.urls?.[0] ?? null,
@@ -23714,9 +23787,23 @@ async function paintTab(tabId) {
 // le clic sur le lien. Relevé réel : sur la page de la robe, cette clé contenait
 // encore la MONTRE d'une session précédente — y aller en direct aurait supprimé
 // la mauvaise annonce.
+// ── (26/10, Elodie82) UN LIEN LEBONCOIN QUI S'OUVRE SUR L'ANNONCE ────────────────────────────────────────────────
+// Le portefeuille Celine (vendu sur Vinted) restait en ligne : son retrait ouvrait /ad/3295261130, que Leboncoin
+// redirige vers /ad/ad/3295261130 — une 404 dont la garde d'identité lisait le titre « 404 » et abandonnait. Mesuré le
+// 26/10 dans un vrai navigateur : /ad/<id> et /ad/x/<id> → 404 ; /ad/<n'importe quel rayon réel>/<id> → l'annonce
+// (/ad/vetements/3295273889 sert des baskets, rayon chaussures). Même règle que le serveur (_shared/annonce-lien.ts).
+const RAYON_CANONIQUE_LBC = "vetements";
+function lienLeboncoinOuvrable(url, id = null) {
+  const u = String(url ?? "").trim();
+  const m = u.match(/^https:\/\/www\.leboncoin\.fr\/ad\/([a-z_]+)\/(\d{6,})(?:[/?#]|$)/);
+  if (m && m[1] !== "ad" && m[1] !== "x") return u;
+  const ident = String(id ?? "").trim() || (u.match(/leboncoin\.fr\/ad\/(?:[^/?#]+\/)?(\d{6,})(?:[/?#]|$)/)?.[1] ?? "");
+  return /^\d{6,}$/.test(ident) ? `https://www.leboncoin.fr/ad/${RAYON_CANONIQUE_LBC}/${ident}` : (u || null);
+}
+
 const DELETE_TARGETS = {
   vinted: (job) => job.listing_url,
-  leboncoin: (job) => job.listing_url || "https://www.leboncoin.fr/compte/part/mes-annonces",
+  leboncoin: (job) => lienLeboncoinOuvrable(job.listing_url, job.platform_listing_id) || "https://www.leboncoin.fr/compte/part/mes-annonces",
   // eBay (2026-09-22) : le Hub vendeur FILTRÉ PAR L'IDENTIFIANT. La cible
   // était `/sh/lst/active` nu, c'est-à-dire la PREMIÈRE PAGE — exactement le
   // défaut déjà payé sur « Mes annonces » de Beebs (Joe0410, rangs 66-175

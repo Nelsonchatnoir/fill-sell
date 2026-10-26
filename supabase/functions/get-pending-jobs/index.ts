@@ -103,7 +103,7 @@ import { BUILD_EBAY_FIN_PAR_NUMERO, BUILD_BEEBS_ADRESSE_STRICTE, BUILD_BEEBS_FOR
 import { formatBeebsExplicite, formatBeebsDuChoix } from "../_shared/beebs-format-colis.js";
 import { AGE_ANGLAIS_RE, NOMBRE_NU_RE, ORDRE_EXACT_D_ABORD, TAILLE_PREFIXEE_RE, grilleDuDernierEchecTaille, normaliserTaille, tailleAServir, tailleAServirPublication } from "../_shared/vinted-taille-republication.ts";
 // Nommer une annonce par son IDENTIFIANT quand son lien manque (21/09).
-import { lienDepuisId, idDepuisLien } from "../_shared/annonce-lien.ts";
+import { lienDepuisId, idDepuisLien, lienOuvrable } from "../_shared/annonce-lien.ts";
 // (18/10) Un retrait Depop retrouve son slug et son numéro (lien, puis dépôt prouvé).
 import { identifiantRetraitDepop, retraitDepopSansIdentifiant } from "../_shared/depop-identifiant-retrait.js";
 
@@ -7548,6 +7548,29 @@ serve(async (req) => {
     //      portant un segment de catégorie qu'on ne fabrique jamais.
     // Et sans identifiant, la règle de Beebs devient la règle de tout le monde :
     // ON NE RETIRE RIEN, on retient et on le DIT. Jamais par le titre.
+    // ── (26/10, Elodie82) UN LIEN LEBONCOIN QUI NE S'OUVRE PAS EST RÉÉCRIT AVANT D'ÊTRE SERVI ──────────────
+    // Le portefeuille Celine (vendu sur Vinted) restait en ligne sur Leboncoin : son retrait portait /ad/3295261130,
+    // que Leboncoin redirige vers /ad/ad/3295261130 (404) — la garde d'identité lisait « 404 » et abandonnait, à
+    // chaque essai. Règle (annonce-lien.ts, relevé réel du 26/10) : un lien Leboncoin sans rayon réel est réécrit
+    // /ad/<rayon réel>/<id> depuis l'identifiant de l'annonce ; l'identité reste prouvée par la page (id + titre).
+    if (!includeProcessing && !includeNeedsUser) {
+      for (const j of out) {
+        if (j.platform !== "leboncoin" || j.action !== "delete") continue;
+        const avant = String(j.listing_url ?? "").trim();
+        if (!avant) continue;
+        const apres = lienOuvrable("leboncoin", avant, j.platform_listing_id);
+        if (!apres || apres === avant) continue;
+        const pfL = { ...((j.platform_fields as Record<string, unknown> | null) ?? {}),
+          lien_reecrit: { le: new Date().toISOString(), avant, apres, motif: "lien Leboncoin sans rayon réel (page 404)" } };
+        const { data: majL } = await userClient.from("cross_post_jobs").update({ listing_url: apres, platform_fields: pfL })
+          .eq("id", j.id).eq("status", "pending").eq("listing_url", avant).select("id");
+        if (majL?.length) {
+          j.listing_url = apres;
+          j.platform_fields = pfL;
+          console.log(`[get-pending-jobs] retrait leboncoin ${String(j.id).slice(0, 8)} : lien ${avant} réécrit ${apres}`);
+        }
+      }
+    }
     let heldRetraitSansLien = 0;
     if (!includeProcessing && !includeNeedsUser) {
       const retraitsSansLien = out.filter((j) =>
@@ -7706,7 +7729,7 @@ serve(async (req) => {
                   .limit(5);
                 for (const a of (releve ?? []) as Array<{ listing_id: string; url: string | null }>) {
                   if (String(a.url ?? "").trim()) {
-                    url = String(a.url); idRetrouve = String(a.listing_id); provenance = "releve_du_compte"; break;
+                    url = lienOuvrable(String(d.platform), a.url, a.listing_id) ?? String(a.url); idRetrouve = String(a.listing_id); provenance = "releve_du_compte"; break;
                   }
                 }
               }

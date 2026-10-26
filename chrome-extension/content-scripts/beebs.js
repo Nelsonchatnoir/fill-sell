@@ -562,20 +562,70 @@ function lirePageIdentifiantsBeebs(page, chemin, reponseUrl, http, html) {
   return out;
 }
 
+// ── (26/10, retraits Beebs en panne) LA PAGE, QUAND LA LECTURE PAR FETCH EST REFUSÉE ─────────────────────────────
+// Depuis le 26/10 01:55, la vérification anti-robot de Beebs (DataDome) répond 403 aux lectures de « Mes annonces »
+// faites par fetch depuis l'onglet de travail : 19 dépôts sur 24 le 26/10, 0 sur 735 du 14 au 25/10 (preuve
+// d'identifiant des dépôts). Les retraits ne pouvaient plus rien prouver (« Mes annonces illisible en entier ») : 9
+// retraits ouverts tournaient en boucle (Sébastien, DeadRoz, the_closet72, Louis). Repli : la MÊME page, chargée
+// comme une vraie page dans un cadre de même origine (une navigation, que l'onglet fait déjà sans mur sur les pages
+// d'annonce) ; son document — flux de la page compris — passe par la MÊME lecture (lirePageIdentifiantsBeebs) : mêmes
+// clés exactes, même compteur, même refus au moindre écart. Un mur dans le cadre se nomme, comme avant.
+const BEEBS_CADRE_DELAI_MS = 20_000;
+async function lirePageParCadreBeebs(page, chemin) {
+  const cadre = document.createElement("iframe");
+  cadre.setAttribute("aria-hidden", "true");
+  cadre.tabIndex = -1;
+  cadre.style.cssText = "position:fixed;left:-10000px;top:0;width:1024px;height:900px;border:0;opacity:0;pointer-events:none;";
+  try {
+    const charge = new Promise((resolve) => { cadre.addEventListener("load", () => resolve(true), { once: true }); });
+    cadre.src = `${chemin}${chemin.includes("?") ? "&" : "?"}fs_lecture=${Date.now()}`;
+    document.body.appendChild(cadre);
+    const ok = await Promise.race([charge, new Promise((r) => setTimeout(() => r(false), BEEBS_CADRE_DELAI_MS))]);
+    if (!ok) return { page, ok: false, ids: [], motif: "cadre : page non chargée", par: "cadre" };
+    // La liste « en vérification » est streamée puis déplacée par Next.js : on laisse la page finir (≤ 6 s).
+    const doc = () => { try { return cadre.contentDocument; } catch { return null; } };
+    const fin = Date.now() + 6_000;
+    while (Date.now() < fin) {
+      const d = doc();
+      if (d?.readyState === "complete" && /actuellement en ligne/i.test(d.body?.textContent ?? "")) break;
+      await sleep(400);
+    }
+    const d = doc();
+    if (!d) return { page, ok: false, ids: [], motif: "cadre : document illisible", par: "cadre" };
+    const html = d.documentElement.outerHTML;
+    const mur = /captcha-delivery|geo\.captcha/i.test(html.slice(0, 20_000)) && !/actuellement en ligne/i.test(d.body?.textContent ?? "");
+    let adresse;
+    try { adresse = cadre.contentWindow.location.href.replace(/[?&]fs_lecture=\d+/, ""); } catch { adresse = `${location.origin}${chemin}`; }
+    const lu = lirePageIdentifiantsBeebs(page, chemin, adresse, mur ? 403 : 200, html);
+    return { ...lu, par: "cadre", ...(mur ? { motif: "vérification anti-robot de Beebs (DataDome) — aussi dans la page", mur: "anti_robot" } : {}) };
+  } catch (e) {
+    return { page, ok: false, ids: [], motif: `cadre : ${String(e?.message ?? e).slice(0, 80)}`, par: "cadre" };
+  } finally {
+    cadre.remove();
+  }
+}
+
 async function lireIdsMesAnnoncesBeebs() {
   const pages = [];
   for (const { page, chemin } of BEEBS_PAGES_IDENTIFIANTS) {
     const ctrl = new AbortController();
     const garde = setTimeout(() => ctrl.abort(), BEEBS_LECTURE_DELAI_MS);
+    let lu;
     try {
       const r = await fetch(chemin, { credentials: "include", cache: "no-store", redirect: "follow", signal: ctrl.signal });
       const html = await r.text();
-      pages.push(lirePageIdentifiantsBeebs(page, chemin, r.url, r.status, html));
+      lu = lirePageIdentifiantsBeebs(page, chemin, r.url, r.status, html);
     } catch (e) {
-      pages.push({ page, ok: false, ids: [], motif: `lecture impossible : ${String(e?.message ?? e).slice(0, 80)}` });
+      lu = { page, ok: false, ids: [], motif: `lecture impossible : ${String(e?.message ?? e).slice(0, 80)}` };
     } finally {
       clearTimeout(garde);
     }
+    // (26/10) Refus anti-robot (ou lecture impossible) : la même page, chargée dans un cadre — jamais conclue autrement.
+    if (!lu.ok && (lu.mur === "anti_robot" || /^lecture impossible/.test(String(lu.motif ?? "")))) {
+      const parCadre = await lirePageParCadreBeebs(page, chemin);
+      lu = parCadre.ok ? parCadre : { ...lu, cadre: parCadre.motif ?? "illisible" };
+    }
+    pages.push(lu);
   }
   const ids = [...new Set(pages.flatMap((p) => p.ok ? p.ids : []))];
   // Chaque page garde SES identifiants, dans l'ordre où Beebs les rend : c'est

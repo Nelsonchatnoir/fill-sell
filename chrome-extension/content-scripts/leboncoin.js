@@ -400,6 +400,13 @@ async function deleteDepuisPageAnnonce(job, adId, trace, t) {
     await sleep(1000);
     h1 = lireH1();
   }
+  // (26/10, Elodie82) Une page 404 n'est PAS une annonce qui « s'intitule 404 » : c'est un lien qui ne mène à
+  // aucune annonce (/ad/<id> → /ad/ad/<id>). Aucun clic ; le mot « introuvable » envoie le background demander
+  // l'état réel à Leboncoin, et le prochain essai part du lien qui s'ouvre (lienLeboncoinOuvrable).
+  if (h1 === "404" || /page introuvable/i.test(document.title)) {
+    t(`page 404 : le lien ${location.pathname} ne mène à aucune annonce — aucun clic`);
+    return { success: false, lienMort: true, error: `Annonce introuvable à ce lien (${location.pathname} : page 404) — rien n'a été touché`, trace };
+  }
   if (/desactivee|annonce introuvable|n est plus en ligne|supprimee/.test(lbcNorm(h1))) {
     t(`annonce déjà hors ligne — LBC affiche « ${h1} »`);
     return { success: false, error: `Annonce introuvable sur sa page (LBC affiche « ${h1} ») — probablement déjà retirée`, trace };
@@ -487,6 +494,25 @@ async function deleteDepuisPageAnnonce(job, adId, trace, t) {
     const typeVendeur = typeVendeurAnnonceLbc();
     t(`contrôle Supprimer INTROUVABLE sur la page de l'annonce — actions relevées : ${visible.join(" | ") || "(aucune)"}`);
     if (DELETE_DRY_RUN) return { success: true, dryRun: true, found: false, trace };
+    // ── (26/10, Ritthik 2003) LA VUE ACHETEUR EST UN MUR DE CONNEXION, PAS UN CONTRÔLE MANQUANT ──────────────────
+    // Lecteur DVD LG 3264507731 : trois essais « Contrôle Supprimer introuvable » — la page montrait « Acheter /
+    // Faire une offre / Contacter » (vue VISITEUR, relevé du 14/09) : l'ordinateur n'était pas connecté au compte
+    // Leboncoin qui a publié l'annonce (aucun relevé Leboncoin de ce compte depuis le 18/09). Le dire tel quel, sous
+    // la forme « Connexion … requise » que le background traite en attente de session (aucune tentative consommée).
+    const vueVisiteur = visible.some((x) => /^(?:acheter|faire une offre|contacter)$/i.test(x))
+      && !visible.some((x) => /modifier|supprimer|g[ée]rer|mettre en pause/i.test(x));
+    if (vueVisiteur) {
+      const vendeur = visible.find((x) => !/^(?:acheter|faire une offre|contacter|réactif|\d.*)$/i.test(x) && !/annonces?$/i.test(x)) ?? null;
+      t(`vue ACHETEUR de l'annonce ${idPage}${vendeur ? ` (vendeur affiché « ${vendeur} »)` : ""} — la session n'est pas celle du compte qui l'a publiée : aucun clic`);
+      return {
+        success: false,
+        vueVisiteur: true,
+        error: `Connexion Leboncoin requise : Leboncoin montre cette annonce comme à un acheteur${vendeur ? ` (vendeur affiché « ${vendeur} »)` : ""} — ` +
+          "ton ordinateur n'est pas connecté au compte Leboncoin qui l'a publiée. Rien n'a été touché.",
+        diagnostic: `vue acheteur sur la page de l'annonce ${idPage} — actions relevées: ${JSON.stringify(visible)} ; vendeur ${typeVendeur ?? "?"}`,
+        trace,
+      };
+    }
     return {
       success: false,
       error: "Contrôle « Supprimer l'annonce » introuvable sur la page de l'annonce",
