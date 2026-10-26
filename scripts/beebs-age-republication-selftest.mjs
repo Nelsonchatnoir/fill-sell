@@ -54,4 +54,15 @@ assert.ok(iLecture > 0 && iCaptured > iLecture, "la lecture de l'annonce précè
 const bg = fs.readFileSync(new URL("../chrome-extension/background.js", import.meta.url), "utf8");
 assert.match(bg, /out\.age = ligneLibellee\(\["Âge", "Age"\]\);/, "le relevé Beebs lit la ligne « Âge »");
 
+// 4. (26/10 nuit, point 12) Une correction TRACÉE de l'âge de la copie (louis-seller 34200707, josephinecerni
+// 33904993 → « 16 ans et + » ; voirememe 34174205 → « 3 ans - 4 ans ») tient à la republication : beebs.js pose
+// l'âge de la COPIE (aucune préférence pour l'âge affiché, contrairement à la taille), et l'âge relu sur l'annonce
+// ne comble que le VIDE de la copie (extension et serveur). La taille : scripts/beebs-correction-tracee-selftest.mjs.
+const beebs = fs.readFileSync(new URL("../chrome-extension/content-scripts/beebs.js", import.meta.url), "utf8");
+assert.match(beebs, /if \(fields\.age\) await selectDropdownValue\("Âge", fields\.age, warnings, unfilledRequired\);/, "beebs.js pose l'âge de la copie");
+assert.ok(!/valeurAfficheeSurLAnnonce\(fields, "age"\)/.test(beebs) || /correctionTient\(fields, "age"/.test(beebs),
+  "si l'âge affiché passait un jour devant la copie, la correction tracée serait consultée (comme pour la taille)");
+assert.match(bg0, /const manquants = CHAMPS_LUS_SUR_L_ANNONCE\.filter\(\(c\) => !String\(pf\[c\] \?\? ""\)\.trim\(\)\);/, "l'extension ne comble que les champs VIDES de la copie");
+assert.match(gpj, /if \(j\.action === "republish" && !String\(pf\["age"\] \?\? ""\)\.trim\(\)\) \{\s*const ageCap = ageBeebsDuReleve\(cap\);/, "le serveur ne reprend l'âge relevé que si la copie n'en a pas");
+
 console.log("✓ Beebs : l'âge de l'annonce en ligne est repris à la republication, jamais redemandé");

@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const BEEBS_BUILD = "2026-10-25-404-deux-constats (retrait : une page 404 sans fiche, absente de « en vérification » lue en entier, constatée deux fois à 6 h d’écart au moins, prouve le retrait même si l’index public la porte encore — constats rendus au background, gardés sur le job) · 2026-10-24-vendue-sur-beebs (0.6.133 : un retrait est prouvé aussi quand la fiche produit du numéro exact dit SoldOut — Beebs passe « Vendu » une annonce supprimée avec le motif « Vendu via une autre plateforme » et la garde dans « Mes annonces » ; une annonce déjà vendue n’est jamais re-supprimée) · 2026-10-18-marque-exacte (la marque de la fiche part telle quelle : égalité tolérante sur casse, espaces, ponctuation, accents ; jamais une marque voisine ni un choix de l'IA ; hors liste → « Autre » et la marque écrite une fois dans la description) · 2026-10-17-mur-nomme (relevé : « Mes annonces » lue par fetch — la vérification anti-robot de Beebs, servie sous la même adresse, et le renvoi vers la connexion se nomment : motif + mur) · 2026-10-08-preuve-relue (0.6.104 : BEEBS_PREUVE_RETRAIT, la preuve d'une suppression envoyée relue sans geste ; l'heure d'envoi remonte au background) · 2026-10-08-ping (0.6.103 : FILLSELL_PING, réponse synchrone « je suis là ») ·2026-10-04-format-colis-explicite (0.6.95 : un format de colis EXPLICITE — réponse de la personne, format relu sur l annonce par son identifiant, poids de la fiche — passe devant le pré-remplissage de Beebs ; les formats du formulaire sont appris par le serveur) · 2026-09-29-prevol-republication-complet (0.6.80 : le vrai formulaire, catégorie et champs dynamiques compris, doit être entièrement remplissable avant tout retrait ; aucun upload ni clic pendant ce pré-vol ; identifiant durable obligatoire) · 2026-09-24-compte-vu-sur-la-page (0.6.66 : un compte Beebs connecte vu sur n importe quelle page beebs.app leve l attente de session, desormais espacee 1 h/3 h/6 h) · 2026-09-22-page-de-depot-refaite (0.6.55 : Beebs a refait sa page de depot entre 13h26 et 15h24 le 22/09 — plus aucune classe ne nomme un role. Photos: input[type=file] ANONYME (#input-pictures mort, cause du blocage total). Champs: label.group/field-label + bouton frere a aria-haspopup. Panneaux: popovers RADIX portalises sur body, designes par aria-controls — plus aucune heuristique de panneau unique. Options: button.group/popover-item. Anciennes classes gardees en dernier maillon. Depot verifie de bout en bout sur la page du jour.)";
+const BEEBS_BUILD = "2026-10-26-correction-tracee (une correction TRACÉE de la copie — platform_fields.correction_tracee — passe devant la taille que l'annonce affiche encore, jamais l'ancienne valeur en repli ; miroir de _shared/correction-tracee.js) · 2026-10-25-404-deux-constats (retrait : une page 404 sans fiche, absente de « en vérification » lue en entier, constatée deux fois à 6 h d’écart au moins, prouve le retrait même si l’index public la porte encore — constats rendus au background, gardés sur le job) · 2026-10-24-vendue-sur-beebs (0.6.133 : un retrait est prouvé aussi quand la fiche produit du numéro exact dit SoldOut — Beebs passe « Vendu » une annonce supprimée avec le motif « Vendu via une autre plateforme » et la garde dans « Mes annonces » ; une annonce déjà vendue n’est jamais re-supprimée) · 2026-10-18-marque-exacte (la marque de la fiche part telle quelle : égalité tolérante sur casse, espaces, ponctuation, accents ; jamais une marque voisine ni un choix de l'IA ; hors liste → « Autre » et la marque écrite une fois dans la description) · 2026-10-17-mur-nomme (relevé : « Mes annonces » lue par fetch — la vérification anti-robot de Beebs, servie sous la même adresse, et le renvoi vers la connexion se nomment : motif + mur) · 2026-10-08-preuve-relue (0.6.104 : BEEBS_PREUVE_RETRAIT, la preuve d'une suppression envoyée relue sans geste ; l'heure d'envoi remonte au background) · 2026-10-08-ping (0.6.103 : FILLSELL_PING, réponse synchrone « je suis là ») ·2026-10-04-format-colis-explicite (0.6.95 : un format de colis EXPLICITE — réponse de la personne, format relu sur l annonce par son identifiant, poids de la fiche — passe devant le pré-remplissage de Beebs ; les formats du formulaire sont appris par le serveur) · 2026-09-29-prevol-republication-complet (0.6.80 : le vrai formulaire, catégorie et champs dynamiques compris, doit être entièrement remplissable avant tout retrait ; aucun upload ni clic pendant ce pré-vol ; identifiant durable obligatoire) · 2026-09-24-compte-vu-sur-la-page (0.6.66 : un compte Beebs connecte vu sur n importe quelle page beebs.app leve l attente de session, desormais espacee 1 h/3 h/6 h) · 2026-09-22-page-de-depot-refaite (0.6.55 : Beebs a refait sa page de depot entre 13h26 et 15h24 le 22/09 — plus aucune classe ne nomme un role. Photos: input[type=file] ANONYME (#input-pictures mort, cause du blocage total). Champs: label.group/field-label + bouton frere a aria-haspopup. Panneaux: popovers RADIX portalises sur body, designes par aria-controls — plus aucune heuristique de panneau unique. Options: button.group/popover-item. Anciennes classes gardees en dernier maillon. Depot verifie de bout en bout sur la page du jour.)";
 console.log(`[beebs.js] build ${BEEBS_BUILD}`);
 
 // Content script Beebs — remplit le formulaire de dépôt d'annonce.
@@ -1532,10 +1532,13 @@ async function fillListingForm(job) {
   // selon la catégorie — jamais les deux en même temps, on tente les deux et
   // le champ absent est ignoré silencieusement par selectDropdownValue.
   // Republication : la taille AFFICHÉE sur l'annonce d'abord, la copie en
-  // repli (taillesAPoser, 03/10 nuit — ceinture de nivake03).
+  // repli (taillesAPoser, 03/10 nuit — ceinture de nivake03) ; une correction
+  // TRACÉE de la copie passe devant l'ancienne valeur affichée (26/10 nuit).
   const tailles = taillesAPoser(fields);
   if (tailles) {
-    if (tailles.replis.length) {
+    if (tailles.correctionTracee) {
+      warnings.push(`taille: l'annonce en ligne affiche encore « ${tailles.affichee} », la copie porte la correction tracée « ${tailles.copie} » — republication : la correction seule, jamais l'ancienne valeur`);
+    } else if (tailles.replis.length) {
       warnings.push(`taille: l'annonce en ligne affiche « ${tailles.affichee} », la copie porte « ${tailles.copie} » — republication : la valeur affichée d'abord`);
     }
     const sansEu = (t) => String(t).replace(/^EU\s*/i, "");
@@ -3100,11 +3103,41 @@ function formatColisExplicite(fields, champsFiber) {
   return null;
 }
 
+// ── UNE CORRECTION TRACÉE DE LA COPIE PASSE DEVANT LA VALEUR AFFICHÉE (26/10 nuit, point 12) ──
+// chaouidz, Beebs 34229052 : pointure « 16 » (réponse fausse à une question du
+// 24/10) au lieu de 31. La copie a été corrigée par script
+// (scripts/reparations/20261026_copies_valeurs_fausses.sql), avec sa trace
+// `platform_fields.correction_tracee` { cle, avant, apres, source, motif, … }.
+// Mais une republication relit l'annonce AVANT le retrait, et taillesAPoser
+// posait d'abord la taille AFFICHÉE (« 16 ») : la valeur fausse serait revenue
+// en ligne. Règle (la même que get-pending-jobs) : la correction tient tant que
+// l'annonce affiche encore l'ANCIENNE valeur (`avant`) et que la copie porte la
+// nouvelle (`apres`). L'annonce affiche autre chose (la personne l'a changée
+// depuis sur Beebs) : rien n'est forcé, la règle du 03/10 reprend. L'âge n'a
+// pas cette préférence ici (fields.age, la copie, part seul) : une correction
+// d'âge tient sans rien de plus.
+// MIROIR de supabase/functions/_shared/correction-tracee.js (correctionTient,
+// même sémantique) : beebs.js n'est pas un module (ADR-03). Parité vérifiée
+// cas par cas : scripts/beebs-correction-tracee-selftest.mjs.
+function correctionTient(pf, cle, valeurAffichee) {
+  const plier = (v) => String(v ?? "").normalize("NFC").trim().toLowerCase();
+  const c = pf && typeof pf === "object" ? pf.correction_tracee : null;
+  if (!c || typeof c !== "object" || c.cle !== cle) return false;
+  const apres = plier(c.apres);
+  if (!apres || plier(pf[cle]) !== apres) return false;
+  return plier(valeurAffichee) === plier(c.avant);
+}
+
 // La taille à tenter d'abord, et le repli (03/10 nuit) : la valeur affichée
 // sur l'annonce, puis la copie si elle diffère. null = rien à poser.
+// (26/10 nuit, point 12) Sauf une correction TRACÉE qui tient : la copie
+// corrigée part seule — jamais la valeur fausse en repli.
 function taillesAPoser(fields) {
   const affichee = valeurAfficheeSurLAnnonce(fields, "taille");
   const copie = String(fields?.taille ?? "").trim();
+  if (affichee && correctionTient(fields, "taille", affichee)) {
+    return { primaire: copie, replis: [], affichee, copie, correctionTracee: true };
+  }
   const primaire = affichee || copie;
   if (!primaire) return null;
   const memes = (a, b) => String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
