@@ -183,6 +183,19 @@ const job = (o) => ({ action: 'publish', status: 'published', created_at: '2026-
     { id: 5, gp: 'vinted', key: 'brand', label: 'Marque', allowedValues: [] },
   ]);
   verifier(g.length === 1 && egal(g[0].ids, [1, 2]), 'même plateforme, même champ, MÊME liste : une réponse pour tous ; une liste différente reste à part', JSON.stringify(g));
+  // (26/10 nuit, lot de Nico) jamais une réponse commune pour l'ISBN, une liste à une valeur, un champ déjà résolu.
+  const isbn = ["Ce livre n'a pas d'ISBN"];
+  const g2 = groupesReponseCommune([
+    { id: 1, gp: 'vinted', key: 'isbn', label: 'ISBN', allowedValues: isbn, a: { state: 'missing' } },
+    { id: 2, gp: 'vinted', key: 'isbn', label: 'ISBN', allowedValues: isbn, a: { state: 'missing' } },
+    { id: 3, gp: 'beebs', key: 'Âge', label: 'Âge', allowedValues: ['16 ans et +'], a: { state: 'missing' } },
+    { id: 4, gp: 'beebs', key: 'Âge', label: 'Âge', allowedValues: ['16 ans et +'], a: { state: 'missing' } },
+    { id: 5, gp: 'beebs', key: 'Taille', label: 'Taille', allowedValues: ['S', 'M'], a: { state: 'missing', blocking: false, deduit: { valeur: 'S' } } },
+    { id: 6, gp: 'beebs', key: 'Taille', label: 'Taille', allowedValues: ['S', 'M'], a: { state: 'missing', blocking: false } },
+    { id: 7, gp: 'beebs', key: 'Couleur', label: 'Couleur', allowedValues: ['Noir', 'Blanc'], a: { state: 'missing' } },
+    { id: 8, gp: 'beebs', key: 'Couleur', label: 'Couleur', allowedValues: ['Noir', 'Blanc'], a: { state: 'invalid', blocking: true } },
+  ]);
+  verifier(g2.length === 1 && egal(g2[0].ids, [7, 8]), "ni l'ISBN, ni une liste à une valeur, ni un champ résolu (déduit, non bloquant) : seule la vraie question commune reste", JSON.stringify(g2));
 }
 
 // ── Le mur de conversion (03/10, décision de Nico) ────────────────────────

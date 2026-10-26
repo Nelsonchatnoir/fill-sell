@@ -521,6 +521,14 @@ export function groupesReponseCommune(entrees) {
   for (const e of entrees ?? []) {
     const vals = Array.isArray(e.allowedValues) ? e.allowedValues.map((v) => String(v)) : [];
     if (!vals.length || vals.length > 60) continue;
+    // (26/10 nuit, lot de Nico) Une réponse commune n'est offerte que pour une VRAIE question : jamais un champ déjà
+    // résolu (deduit, non bloquant — l'ISBN de « EAT » lu sur la fiche), jamais une liste à une seule valeur (ce n'est
+    // pas un choix), jamais l'ISBN (il se tape, livre par livre). Avant : « Ce livre n'a pas d'ISBN » pour 2 livres
+    // dont l'un avait son ISBN — un geste l'aurait effacé.
+    const a = e.a && typeof e.a === "object" ? e.a : null;
+    if (a && (a.deduit || !((a.state === "missing" && a.blocking !== false) || (a.state === "invalid" && a.blocking === true)))) continue;
+    if (vals.length < 2) continue;
+    if (e.gp === "vinted" && e.key === "isbn") continue;
     const signature = `${e.gp}|${e.key}|${vals.join("␟")}`;
     if (!groupes.has(signature)) groupes.set(signature, { signature, gp: e.gp, key: e.key, label: e.label, allowedValues: vals, ids: [] });
     const g = groupes.get(signature);
