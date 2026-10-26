@@ -1081,8 +1081,10 @@ export default function ConversionModal({
             {quotaCas.geste === 'retouches'
               ? (fr ? <>Ton forfait comprend {quotaCas.plafond ?? 0} annonces retouchées par mois (jusqu'à 5 photos chacune) — elles sont toutes utilisées. Rien n'a été décompté.</>
                     : <>Your plan includes {quotaCas.plafond ?? 0} retouched listings a month (up to 5 photos each) — they are all used. Nothing was deducted.</>)
-              : (fr ? <>Ton forfait comprend {quotaCas.plafond ?? K.quota_annonces_free} annonces créées par mois — elles le sont toutes. Rien n'a été décompté.</>
-                    : <>Your plan includes {quotaCas.plafond ?? K.quota_annonces_free} created listings a month — they are all used. Nothing was deducted.</>)}
+              // (26/10, Jocabroc « je me retrouve plus qu'à 5 ») Jamais le plafond Free (5) prêté à un compte : sans plafond
+              // rendu par le serveur, la phrase ne dit AUCUN nombre (un compte payant lisait « 5 annonces »).
+              : (fr ? <>{quotaCas.plafond != null ? <>Ton forfait comprend {quotaCas.plafond} annonces créées par mois — elles le sont toutes.</> : <>Les annonces créées de ton forfait pour ce mois sont toutes utilisées.</>} Rien n'a été décompté.</>
+                    : <>{quotaCas.plafond != null ? <>Your plan includes {quotaCas.plafond} created listings a month — they are all used.</> : <>Your plan's created listings for this month are all used.</>} Nothing was deducted.</>)}
           </div>
           <div style={{ fontSize: 11.5, fontWeight: 600, lineHeight: 1.5, color: C.mute2, marginTop: 6 }}>
             {quotaCas.geste === 'retouches'
