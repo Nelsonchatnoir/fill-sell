@@ -1,0 +1,57 @@
+-- ═══════════════════════════════════════════════════════════════════════════
+-- PROPOSITION (26/10/2026 nuit, point 6) — NON APPLIQUÉE : feu vert NOMMÉ de Nico requis
+-- « Une vente relevée, datée par la plateforme il y a moins de 24 h, a son mail — même sans relevé d'annonces »
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Cas : 7 ventes eBay relevées par ebay-ventes-sync, datées de moins de 24 h, SANS note (donc sans mail) depuis le
+-- 20/10 — elpastelero (2 ventes, 20/10 06:40), lesforcesdelaudela (22/10 06:41, 25/10 05:41), antikcollections
+-- (3 ventes, 23/10 10:51). Cause PROUVÉE : push_trg_ventes('releve') exige push_plateforme_suivie (un relevé
+-- d'annonces terminé dans les 24 h), et ebay-ventes-sync n'écrit aucun vinted_sync_runs : un compte eBay sans relevé
+-- d'annonces n'est jamais « suivi ».
+-- RÈGLE : sur eBay, la date de vente est celle de la COMMANDE (ebay-ventes-sync : order.creationDate) — de moins de
+-- 24 h, elle est sa propre preuve (même règle que la garde « vente ancienne » de push-ventes v7). Les autres
+-- plateformes gardent « plateforme suivie » (leur date de relevé peut être celle du constat, pas de la vente). La rafale (8 ventes ou
+-- plus en 5 min = rattrapage de masse), le doublon, « trop tard » : inchangés (push_ventes_a_envoyer, push-ventes).
+-- Corps de PROD lu le 26/10 vers 01:50 (pg_get_functiondef) ; seule la ligne marquée change.
+--
+-- Pour appliquer (après le feu vert) :
+--   npx supabase db query --linked -f supabase/migrations/20261026030000_vente_releve_date_lue.sql
+--   npx supabase migration repair --linked --status applied 20261026030000
+-- Inverse : le même fichier avec la ligne d'origine (ci-dessous, en commentaire).
+--
+-- ⚠️ Ce n'est PAS la Peluche de nerema75 (vente Vinted constatée le 25/10 à 19:27, annonce vue en ligne pour la
+-- dernière fois le 10/10) : là, la garde « pas de preuve récente » est voulue (date de vente inconnue). Décision de
+-- Nico à prendre : un mail honnête « vente constatée le 25/10 à 19:27 ; date exacte inconnue, vue en ligne pour la
+-- dernière fois le 10/10 » (une rafale = un mail), ou une trace seule — 77 ventes Vinted de 25 comptes dans ce cas
+-- depuis le 20/10.
+
+CREATE OR REPLACE FUNCTION public.push_trg_ventes()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+declare
+  v_pf text;
+begin
+  begin
+    v_pf := public.plateforme_normalisee(coalesce(nullif(btrim(new.plateforme_code), ''), new.plateforme));
+    if tg_argv[0] = 'releve' then
+      if new.vendu_le is not null and new.vendu_le < now() - interval '24 hours' then return new; end if;
+      if new.vendu_le is not null and new.vendu_le > now() + interval '1 hour' then return new; end if;
+      -- (26/10 nuit, point 6) eBay : la date de la COMMANDE, de moins de 24 h (bornes ci-dessus), est sa propre preuve ;
+      -- ailleurs, ou sans date, la garde « plateforme suivie » reste. Avant :
+      --   if v_pf is null or not public.push_plateforme_suivie(new.user_id, v_pf) then return new; end if;
+      if v_pf is null then return new; end if;
+      if not (v_pf = 'ebay' and new.vendu_le is not null) and not public.push_plateforme_suivie(new.user_id, v_pf) then return new; end if;
+      perform public.push_noter(new.user_id, 'commande', v_pf, new.id, new.inventaire_id, null,
+        new.commande_ref, new.annonce_id, new.titre, new.prix_vente, new.devise, new.vendu_le, false);
+    elsif tg_argv[0] = 'personne' or public.push_declaration_en_cours(new.user_id, new.inventaire_id) then
+      perform public.push_noter(new.user_id, 'declaree', v_pf, new.id, new.inventaire_id, null,
+        new.commande_ref, new.annonce_id, new.titre, new.prix_vente, new.devise, new.vendu_le, true);
+    end if;
+  exception when others then
+    raise warning 'push_trg_ventes (vente %) : % — vente enregistrée quand même', new.id, sqlerrm;
+  end;
+  return new;
+end;
+$function$;

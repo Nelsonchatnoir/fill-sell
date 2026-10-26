@@ -220,3 +220,18 @@ Prompt de nuit de Nico (25/10, 22:00). Ce fichier se remplit point par point ; l
 - Limites (dites) : la version d'UN poste n'est pas en base (celle du compte est prêtée au poste au build le plus
   récent) ; « La faire rédiger » à l'unité n'a pas de « C'est bon » bloquant (le texte se voit à l'étape du texte) ;
   le dépôt Vinted/Leboncoin/Beebs/Depop attend toujours un ordinateur — seul eBay part de nos serveurs.
+
+## 6. Le mail de vente manquant (nerema75, la Peluche) et les autres ventes sans mail depuis le 20/10
+- La Peluche (job 9bd1a3d8, @celineetmarie) : vue en ligne pour la dernière fois le 10/10 ; vente CONSTATÉE le 25/10 à
+  19:27 par « Synchroniser » ; la garde « preuve récente » (vue en ligne hier ou aujourd'hui, ou publiée il y a moins
+  de 48 h) a arrêté la note, donc le mail. La vraie date de la vente : inconnue (entre le 10/10 et le 25/10). La garde
+  est voulue (pas de mail pour une vente ancienne) — **décision de Nico** : un mail honnête « vente constatée le 25/10 à
+  19:27, date exacte inconnue », ou une simple trace. 77 ventes Vinted de 25 comptes dans ce cas depuis le 20/10.
+- Défaut de règle PROUVÉ : 7 ventes eBay relevées, datées de moins de 24 h, sans mail (elpastelero ×2, lesforcesdelaudela
+  ×2, antikcollections ×3) : la garde « plateforme suivie » exige un relevé d'annonces, qu'ebay-ventes-sync n'écrit
+  jamais. Correctif PRÉPARÉ, NON APPLIQUÉ (migration : **feu vert nommé de Nico requis**) :
+  `supabase/migrations/PROPOSITION_20261026_vente_releve_date_lue.sql.txt` — sur eBay, la date de la COMMANDE (moins de
+  24 h) est sa propre preuve ; ailleurs rien ne change. Corps de prod relu (pg_get_functiondef) ; commandes pour
+  l'appliquer dans le fichier. Aucun mail rétroactif.
+- Le reste (410 sur 495 ventes sans mail) suit une règle écrite : ventes déclarées par la personne (316), articles non
+  suivis par FillSell (58), rattrapages de masse (17), Leboncoin (15)…
