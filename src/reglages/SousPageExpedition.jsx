@@ -24,7 +24,7 @@
 //     changent pas). Enregistrée, la phrase reste sous le formulaire.
 import { useState } from 'react';
 import { fusionnerReglages } from '../utils/reglagesPlateformes';
-import { adresseLbcHorsFrance } from '../../supabase/functions/_shared/lbc-adresse-france.js';
+import { adresseLbcHorsFrance, rueAbsente } from '../../supabase/functions/_shared/lbc-adresse-france.js';
 import { R } from './theme';
 import { Groupe, Carte, Champ, Bouton, Note } from './ReglagesUI';
 
@@ -126,6 +126,10 @@ export default function SousPageExpedition({ c, T }) {
         </div>
 
         {cpErreur && <div style={{ fontSize: 12.5, color: R.negatifTexte, fontWeight: 600 }}>{T.cpInvalide}</div>}
+        {/* (26/10 nuit, point 14) Une adresse sans rue (vide, ou la ville répétée) : Beebs la refuse. */}
+        {!cpErreur && ville.trim() && rueAbsente({ rue, ville }) && (
+          <div style={{ fontSize: 12.5, color: R.ink, lineHeight: 1.5 }}>{T.rueBeebs}</div>
+        )}
 
         {ban?.kind === 'proposition' && (
           <div style={{ background: R.menthe, border: `1px solid ${R.mentheBord}`, borderRadius: 12, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>

@@ -50,6 +50,23 @@ for (const [saisie, choisie] of [
   ok(l.adresseSurAutreChose === null, `« ${saisie} » → vraie adresse`);
 }
 
+console.log("\n2 bis. (26/10 nuit, point 14c) La commune seule, arrêtée AVANT tout clic, n'est pas « autre chose »");
+{
+  // Srideals (88f51828) : l'extension trace la suggestion refusée puis s'arrête (beebs-adresse-sans-rue) ;
+  // ce n'est pas le défaut « 8XL » du 01/10 (un bouton qui n'est pas une adresse) — jamais ce correctif-là.
+  const pf = { warnings: [
+    { code: "generic", message: "adresse: \"Thionville 57100 Thionville\" → suggestion Beebs \"Thionville57100, France\"" },
+    { code: "generic", message: "adresse: suggestion sans rue (commune seule) — non cliquée, arrêt avant « Mettre en vente », rien n'est soumis" },
+  ] };
+  ok(lectureRefusBeebs(pf, "").adresseSurAutreChose === null, "« Thionville57100, France » porte le code postal : jamais lue comme un clic sur autre chose");
+  // Même sur un poste d'avant le correctif et derrière un « Dépôt Beebs non confirmé », la condition (une adresse
+  // validée sur autre chose) ne se lit pas dans ces avertissements : jamais réarmé par ce correctif-là.
+  const job = { id: "88f51828-d7a9-4690-b7d2-347abd69ab50", platform: "beebs", action: "publish", status: "needs_user",
+    handler_build: "2026-09-30T20:16:41Z+73c4929 · v0.6.81", error: "Beebs a besoin de ta rue pour publier : …",
+    platform_fields: { ...pf, error_technique: { brut: BRUT_MARIE } } };
+  ok(correctifPourJob(job)?.cle !== "beebs_adresse_suggestion_stricte", "et le correctif « suggestion stricte » ne le réarme pas");
+}
+
 console.log("\n3. Classement : needs_user tout de suite, pas une reprise");
 {
   const s = classerEchec({ platform: "beebs", action: "publish", brut: BRUT_MARIE, essais: 0, pf: pfMarie(), reprises: 0 });

@@ -26465,7 +26465,7 @@ async function processRepublishJobPlateforme(job, accessToken) {
       // Le serveur (update-job-status) le garde pour un poste plus récent.
       const defautNotreCode = !ok && EXCEPTION_JS_RE.test(String(resultatPrevol?.error ?? ""));
       tracerGarde(pf, "prevol_formulaire_beebs", {
-        verdict: ok ? "ok" : resultatPrevol?.needsUserField ? "champ_a_choisir" : defautNotreCode ? "defaut_fillsell" : "illisible",
+        verdict: ok ? "ok" : resultatPrevol?.needsUserField ? "champ_a_choisir" : resultatPrevol?.attenteUtilisateur ? "attente_utilisateur" : defautNotreCode ? "defaut_fillsell" : "illisible",
         plateforme: "beebs", etape: "avant_retrait",
         champs_verifies: ["categorie", "champs_dynamiques", "adresse", "prix"],
         ...(champs.length ? { manquants: champs } : {}),
@@ -26478,6 +26478,15 @@ async function processRepublishJobPlateforme(job, accessToken) {
         await markNeedsUser(accessToken, job, resultatPrevol);
         console.warn(`[republish] job ${job.id} : retrait Beebs REFUSÉ — champ dynamique « ${libelle} » manquant`);
         return { status: "needsUser", error: resultatPrevol.error };
+      }
+      // (26/10 nuit, point 14c) Une attente NOMMÉE de la personne (adresse sans rue : Beebs ne publiera pas) n'est
+      // jamais « illisible » : la republication s'arrête AVANT tout retrait, avec la phrase vraie, sans reprise à
+      // l'identique toutes les 30 min (rien ne change tant que ses Réglages n'ont pas de rue).
+      if (!ok && resultatPrevol?.attenteUtilisateur === true) {
+        const msg = `Republication Beebs mise en pause AVANT tout retrait, ton annonce est toujours en ligne : ${String(resultatPrevol.error ?? "").trim()}`;
+        await marquerAttenteUtilisateur(accessToken, { ...job, platform_fields: pf }, { ...resultatPrevol, error: msg });
+        console.warn(`[republish] job ${job.id} : retrait Beebs REFUSÉ — attente de la personne (${String(resultatPrevol.attenteMotif ?? "?")})`);
+        return { status: "needsUser", error: msg };
       }
       if (!ok) {
         // Une absence de preuve n'est jamais une permission de retirer. Ce qui

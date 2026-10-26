@@ -486,6 +486,7 @@
     "selftest:mur-poste-pause-avant-retrait": "node scripts/mur-poste-pause-avant-retrait-selftest.mjs",
     "selftest:ebay-hors-france-reouverture": "node scripts/ebay-hors-france-reouverture-selftest.mjs",
     "selftest:beebs-correction-tracee": "node scripts/beebs-correction-tracee-selftest.mjs",
+    "selftest:beebs-adresse-sans-rue": "node scripts/beebs-adresse-sans-rue-selftest.mjs",
     "selftest:copies-completes-2610": "node scripts/copies-completes-2610-selftest.mjs"
   },
   "dependencies": {

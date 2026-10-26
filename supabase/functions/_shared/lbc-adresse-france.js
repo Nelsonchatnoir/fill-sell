@@ -106,6 +106,16 @@ export function plateformesFermeesHorsFrance(reglagesLbc) {
 const actionDe = (job) => (job?.action == null || job?.action === "" ? "publish" : String(job.action));
 
 /** Une publication ou une republication Leboncoin (jamais un retrait). */
+// (26/10 nuit, point 14 — Srideals, Beebs 88f51828) L'adresse de remise n'a PAS DE RUE : la rue est vide, ou c'est la
+// ville répétée (« Thionville »). Leboncoin se contente de la commune ; Beebs, non (« Renseigner votre adresse » après
+// une suggestion de niveau commune — 15 dépôts Beebs acceptés sur 15 avaient une rue). Un lieu-dit (« Le Moulin ») est
+// une rue. Pur.
+export function rueAbsente({ rue = "", ville = "" } = {}) {
+  const plier = (x) => String(x ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const r = plier(rue);
+  return !r || r === plier(ville);
+}
+
 export function estPublicationLbc(job) {
   if (!job || String(job.platform ?? "") !== "leboncoin") return false;
   const a = actionDe(job);

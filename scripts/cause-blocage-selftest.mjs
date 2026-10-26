@@ -171,6 +171,8 @@ cas("11. (25/10, N6, R2, R3) eBay par l'extension : les retours du compte, les p
   const refus = (x) => "Publication eBay bloquée : le clic « Mettre en vente » n'a produit aucune requête, et la soumission directe du brouillon a été REFUSÉE par eBay — éléments manquants dans le brouillon : " + x + ". Aucune annonce n'a été créée.";
   est(causeDuTexte({ texte: refus("Conditions des retours nationaux"), source: "relancer", platform: "ebay" }), ORIGINE.UTILISATEUR, "reglage_du_compte");
   est(causeDuTexte({ texte: R.messageRetoursAChoisir("publish"), source: R.SOURCE_RETOURS_EBAY, platform: "ebay" }), ORIGINE.UTILISATEUR, "reglage_du_compte");
+  // (26/10 nuit, point 14c) L'adresse sans rue : un réglage du compte (la personne seule donne sa rue).
+  est(causeDuTexte({ texte: "Beebs a besoin de ta rue pour publier : ton adresse dans Réglages n'a pas de rue (« Thionville »). Ajoute ta rue et ton numéro dans Réglages › Expédition › Adresse de remise : rien n'a été publié." }), ORIGINE.UTILISATEUR, "reglage_du_compte");
   est(causeDuTexte({ texte: R.messageRetoursNonPoses("publish"), source: null, platform: "ebay" }), ORIGINE.NOUS, "retours_non_poses");
   est(causeDuTexte({ texte: refus("Photos"), source: "relancer", platform: "ebay" }), ORIGINE.NOUS, "photos_non_recues");
   est(causeDuTexte({ texte: R.messagePhotosArret("publish"), source: null, platform: "ebay" }), ORIGINE.NOUS, "photos_non_recues");

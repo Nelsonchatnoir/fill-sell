@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const BEEBS_BUILD = "2026-10-26-correction-tracee (une correction TRACÉE de la copie — platform_fields.correction_tracee — passe devant la taille que l'annonce affiche encore, jamais l'ancienne valeur en repli ; miroir de _shared/correction-tracee.js) · 2026-10-25-404-deux-constats (retrait : une page 404 sans fiche, absente de « en vérification » lue en entier, constatée deux fois à 6 h d’écart au moins, prouve le retrait même si l’index public la porte encore — constats rendus au background, gardés sur le job) · 2026-10-24-vendue-sur-beebs (0.6.133 : un retrait est prouvé aussi quand la fiche produit du numéro exact dit SoldOut — Beebs passe « Vendu » une annonce supprimée avec le motif « Vendu via une autre plateforme » et la garde dans « Mes annonces » ; une annonce déjà vendue n’est jamais re-supprimée) · 2026-10-18-marque-exacte (la marque de la fiche part telle quelle : égalité tolérante sur casse, espaces, ponctuation, accents ; jamais une marque voisine ni un choix de l'IA ; hors liste → « Autre » et la marque écrite une fois dans la description) · 2026-10-17-mur-nomme (relevé : « Mes annonces » lue par fetch — la vérification anti-robot de Beebs, servie sous la même adresse, et le renvoi vers la connexion se nomment : motif + mur) · 2026-10-08-preuve-relue (0.6.104 : BEEBS_PREUVE_RETRAIT, la preuve d'une suppression envoyée relue sans geste ; l'heure d'envoi remonte au background) · 2026-10-08-ping (0.6.103 : FILLSELL_PING, réponse synchrone « je suis là ») ·2026-10-04-format-colis-explicite (0.6.95 : un format de colis EXPLICITE — réponse de la personne, format relu sur l annonce par son identifiant, poids de la fiche — passe devant le pré-remplissage de Beebs ; les formats du formulaire sont appris par le serveur) · 2026-09-29-prevol-republication-complet (0.6.80 : le vrai formulaire, catégorie et champs dynamiques compris, doit être entièrement remplissable avant tout retrait ; aucun upload ni clic pendant ce pré-vol ; identifiant durable obligatoire) · 2026-09-24-compte-vu-sur-la-page (0.6.66 : un compte Beebs connecte vu sur n importe quelle page beebs.app leve l attente de session, desormais espacee 1 h/3 h/6 h) · 2026-09-22-page-de-depot-refaite (0.6.55 : Beebs a refait sa page de depot entre 13h26 et 15h24 le 22/09 — plus aucune classe ne nomme un role. Photos: input[type=file] ANONYME (#input-pictures mort, cause du blocage total). Champs: label.group/field-label + bouton frere a aria-haspopup. Panneaux: popovers RADIX portalises sur body, designes par aria-controls — plus aucune heuristique de panneau unique. Options: button.group/popover-item. Anciennes classes gardees en dernier maillon. Depot verifie de bout en bout sur la page du jour.)";
+const BEEBS_BUILD = "2026-10-26-adresse-sans-rue (une suggestion d'adresse sans rue — la commune seule, « Thionville57100, France » — n'est jamais cliquée ni soumise : arrêt avant « Mettre en vente », attente nommée beebs_adresse_sans_rue, la personne complète Réglages › Expédition › Adresse de remise ; une rue ou un lieu-dit restent acceptés) · 2026-10-26-correction-tracee (une correction TRACÉE de la copie — platform_fields.correction_tracee — passe devant la taille que l'annonce affiche encore, jamais l'ancienne valeur en repli ; miroir de _shared/correction-tracee.js) · 2026-10-25-404-deux-constats (retrait : une page 404 sans fiche, absente de « en vérification » lue en entier, constatée deux fois à 6 h d’écart au moins, prouve le retrait même si l’index public la porte encore — constats rendus au background, gardés sur le job) · 2026-10-24-vendue-sur-beebs (0.6.133 : un retrait est prouvé aussi quand la fiche produit du numéro exact dit SoldOut — Beebs passe « Vendu » une annonce supprimée avec le motif « Vendu via une autre plateforme » et la garde dans « Mes annonces » ; une annonce déjà vendue n’est jamais re-supprimée) · 2026-10-18-marque-exacte (la marque de la fiche part telle quelle : égalité tolérante sur casse, espaces, ponctuation, accents ; jamais une marque voisine ni un choix de l'IA ; hors liste → « Autre » et la marque écrite une fois dans la description) · 2026-10-17-mur-nomme (relevé : « Mes annonces » lue par fetch — la vérification anti-robot de Beebs, servie sous la même adresse, et le renvoi vers la connexion se nomment : motif + mur) · 2026-10-08-preuve-relue (0.6.104 : BEEBS_PREUVE_RETRAIT, la preuve d'une suppression envoyée relue sans geste ; l'heure d'envoi remonte au background) · 2026-10-08-ping (0.6.103 : FILLSELL_PING, réponse synchrone « je suis là ») ·2026-10-04-format-colis-explicite (0.6.95 : un format de colis EXPLICITE — réponse de la personne, format relu sur l annonce par son identifiant, poids de la fiche — passe devant le pré-remplissage de Beebs ; les formats du formulaire sont appris par le serveur) · 2026-09-29-prevol-republication-complet (0.6.80 : le vrai formulaire, catégorie et champs dynamiques compris, doit être entièrement remplissable avant tout retrait ; aucun upload ni clic pendant ce pré-vol ; identifiant durable obligatoire) · 2026-09-24-compte-vu-sur-la-page (0.6.66 : un compte Beebs connecte vu sur n importe quelle page beebs.app leve l attente de session, desormais espacee 1 h/3 h/6 h) · 2026-09-22-page-de-depot-refaite (0.6.55 : Beebs a refait sa page de depot entre 13h26 et 15h24 le 22/09 — plus aucune classe ne nomme un role. Photos: input[type=file] ANONYME (#input-pictures mort, cause du blocage total). Champs: label.group/field-label + bouton frere a aria-haspopup. Panneaux: popovers RADIX portalises sur body, designes par aria-controls — plus aucune heuristique de panneau unique. Options: button.group/popover-item. Anciennes classes gardees en dernier maillon. Depot verifie de bout en bout sur la page du jour.)";
 console.log(`[beebs.js] build ${BEEBS_BUILD}`);
 
 // Content script Beebs — remplit le formulaire de dépôt d'annonce.
@@ -1710,11 +1710,15 @@ async function fillListingForm(job) {
 
   // Adresse de remise (politique A+C, même contrat que Leboncoin) : absente
   // ou introuvable dans l'autocomplete → needsUser, jamais failed.
+  // (26/10 nuit, point 14c) Une adresse sans rue (suggestion = la commune
+  // seule) : attente de la personne, nommée — needs_user persisté, aucune
+  // reprise à l'identique (rien ne change tant que ses Réglages n'ont pas de rue).
   const addressResult = await fillAddress(fields.adresse, warnings);
   if (!addressResult.ok) {
     return {
       success: false,
       needsUser: true,
+      ...(addressResult.attenteUtilisateur ? { attenteUtilisateur: true, attenteMotif: addressResult.attenteMotif } : {}),
       error: addressResult.error,
       warnings,
       unfilledRequired,
@@ -4749,7 +4753,7 @@ async function fillAddress(adresse, warnings) {
   await typeHuman(input, adresse);
 
   // Boutons suggestions rendus après un court debounce réseau (Google Places).
-  const suggestion = await waitForAddressSuggestion(adresse);
+  let suggestion = await waitForAddressSuggestion(adresse);
   if (!suggestion) {
     return {
       ok: false,
@@ -4758,7 +4762,23 @@ async function fillAddress(adresse, warnings) {
         "l'orthographe dans les Réglages FillSell (format : numéro rue, ville).",
     };
   }
-  const chosen = suggestion.el.textContent.trim();
+  let chosen = suggestion.el.textContent.trim();
+  // (26/10 nuit, point 14c — Srideals) Une suggestion SANS RUE (la commune
+  // seule) n'est jamais cliquée ni soumise : Beebs la refuse après « Mettre en
+  // vente » (suggestionSansRue, plus bas). Une liste encore en train de se
+  // rafraîchir ne vaut pas verdict : relue une fois, puis arrêt AVANT tout
+  // clic — attente de la personne (ses Réglages), jamais une reprise à l'identique.
+  if (suggestionSansRue(chosen, adresse)) {
+    await sleep(1500);
+    const relue = await waitForAddressSuggestion(adresse, 3000);
+    if (relue) { suggestion = relue; chosen = relue.el.textContent.trim(); }
+    if (suggestionSansRue(chosen, adresse)) {
+      warnings.push(`adresse: "${adresse}" → suggestion Beebs "${chosen}"`);
+      warnings.push("adresse: suggestion sans rue (commune seule) — non cliquée, arrêt avant « Mettre en vente », rien n'est soumis");
+      console.warn(`[beebs] adresse sans rue : « ${chosen} » pour « ${adresse} » — arrêt avant « Mettre en vente »`);
+      return { ok: false, attenteUtilisateur: true, attenteMotif: "beebs_adresse_sans_rue", error: messageAdresseSansRue(adresse, chosen) };
+    }
+  }
   await humanPause(); // temps de "lecture" des suggestions avant le clic
   suggestion.el.click();
   await humanPause();
@@ -4803,6 +4823,84 @@ function estSuggestionAdresse(texte, { codePostal, mots }) {
   if (!n) return false;
   if (codePostal) return n.includes(codePostal);
   return mots.filter((m) => n.includes(m)).length >= Math.min(2, mots.length || 2);
+}
+
+// ── UNE ADRESSE SANS RUE N'EST JAMAIS SOUMISE (26/10 nuit, point 14c — Srideals) ──
+// Job 88f51828 (20/10) : Réglages rue = ville = « Thionville » ; texte tapé
+// « Thionville 57100 Thionville » ; suggestion cliquée « Thionville57100,
+// France » — la COMMUNE, sans rue ; après « Mettre en vente », Beebs a affiché
+// « Renseigner votre adresse », rien publié. Mesuré sur le parc : les 15
+// publications acceptées ont toutes suivi une suggestion AVEC rue (ou lieu-dit :
+// « 28 La Merlennerie44310 Saint-Philbert-de-Grand-Lieu, France ») ; la seule
+// suggestion de niveau commune est ce refus. Le type de la suggestion n'était
+// jamais vérifié (estSuggestionAdresse ne lit que le code postal).
+// Règle : la suggestion retenue porte un nom de voie OU un lieu-dit distinct de
+// la commune, sinon arrêt AVANT « Mettre en vente » (needs_user, la personne
+// complète ses Réglages). Lecture du texte (Beebs colle le texte principal au
+// secondaire : « 3 Rue des Cordeliers63100 Clermont-Ferrand, France ») :
+// « France » final et code postal retirés, la commune retirée EN BLOC (ce qui
+// suit le code postal, et la ville tapée) ; reste-t-il un mot de deux lettres
+// et plus qui n'est ni « bis », ni « cedex », ni un ordinal, ni
+// « arrondissement » ? Non → commune seule. Sans code postal (tapé ou dans la
+// suggestion) : aucun verdict, comme avant. Leboncoin n'est pas concerné.
+// Pur : testé par scripts/beebs-adresse-sans-rue-selftest.mjs.
+const MOTS_HORS_VOIE_BEEBS = new Set(["france", "cedex", "bis", "ter", "quater", "er", "ere", "eme", "ieme", "arrondissement"]);
+function motsAdresseBeebs(s) {
+  return texteComparable(s).split(/[^a-z0-9]+/).filter(Boolean);
+}
+// Retire chaque occurrence de la suite de mots `suite` (la commune, en bloc :
+// « Grand Lieu » reste un lieu-dit à Saint-Philbert-de-Grand-Lieu).
+function retirerSuiteDeMots(mots, suite) {
+  if (!suite.length) return mots;
+  const out = [];
+  for (let i = 0; i < mots.length;) {
+    if (suite.every((m, k) => mots[i + k] === m)) { i += suite.length; continue; }
+    out.push(mots[i]);
+    i++;
+  }
+  return out;
+}
+// « 77rue » (numéro collé par Beebs) porte « rue » ; « 56b », « 1er », « 17e » non.
+function motPorteUneVoie(mot) {
+  const lettres = String(mot).replace(/^\d+/, "");
+  return lettres.length >= 2 && /^[a-z]/.test(lettres) && !MOTS_HORS_VOIE_BEEBS.has(lettres);
+}
+// L'adresse des Réglages telle que tapée (« rue code-postal ville », SousPageExpedition).
+function decouperAdresseTapee(adresse) {
+  const brut = String(adresse ?? "").replace(/\s+/g, " ").trim();
+  const cp = jetonsAdresse(brut).codePostal;
+  const i = cp ? brut.search(new RegExp(`(?<![0-9])${cp}(?![0-9])`)) : -1;
+  if (i < 0) return { rue: brut, codePostal: null, ville: "" };
+  return { rue: brut.slice(0, i).replace(/[\s,;]+$/, ""), codePostal: cp, ville: brut.slice(i + cp.length).replace(/^[\s,;]+/, "") };
+}
+/** true = la suggestion est la commune seule (aucune voie, aucun lieu-dit). */
+function suggestionSansRue(texte, adresse) {
+  const { codePostal, ville } = decouperAdresseTapee(adresse);
+  if (!codePostal) return false;
+  const s = texteComparable(texte).replace(/[\s,]*\bfrance\s*$/, "");
+  const i = s.lastIndexOf(codePostal);
+  if (i < 0) return false;
+  const apres = s.slice(i + codePostal.length);
+  const virgule = apres.indexOf(",");
+  const communeSuggeree = virgule >= 0 ? apres.slice(0, virgule) : apres;
+  let reste = [...motsAdresseBeebs(s.slice(0, i)), ...motsAdresseBeebs(virgule >= 0 ? apres.slice(virgule + 1) : "")];
+  for (const commune of [motsAdresseBeebs(communeSuggeree), motsAdresseBeebs(ville)]) reste = retirerSuiteDeMots(reste, commune);
+  return !reste.some(motPorteUneVoie);
+}
+// Le message, vrai dans les deux cas : la rue des Réglages manque (Srideals),
+// ou elle y est mais Beebs ne propose que la commune. Même tête (« Beebs a
+// besoin de ta rue pour publier ») : l'ancre du classement serveur
+// (_shared/cause-blocage.js, utilisateur / réglage du compte).
+function messageAdresseSansRue(adresse, suggestion) {
+  const { rue, ville } = decouperAdresseTapee(adresse);
+  const ou = "Réglages › Expédition › Adresse de remise";
+  const rueSansVoie = !retirerSuiteDeMots(motsAdresseBeebs(rue), motsAdresseBeebs(ville)).some(motPorteUneVoie);
+  if (rueSansVoie) {
+    return `Beebs a besoin de ta rue pour publier : ton adresse dans Réglages n'a pas de rue${rue ? ` (« ${rue} »)` : ""}. ` +
+      `Ajoute ta rue et ton numéro dans ${ou} : rien n'a été publié.`;
+  }
+  return `Beebs a besoin de ta rue pour publier : pour « ${adresse} », la suggestion de Beebs la plus proche est la commune seule ` +
+    `(« ${suggestion} »), sans ta rue. Vérifie l'orthographe de ta rue et ton numéro dans ${ou} : rien n'a été publié.`;
 }
 
 // Choix de la suggestion la plus PERTINENTE (partage de tokens avec l'adresse

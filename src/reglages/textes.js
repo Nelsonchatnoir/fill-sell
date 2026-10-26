@@ -161,6 +161,7 @@ const FR = {
   // (25/10, décision de Nico) Leboncoin réservé aux adresses en France (_shared/lbc-adresse-france.js).
   adresseHorsFrance: "Ce code postal n'est pas un code postal français. Leboncoin n'accepte que les adresses en France : avec cette adresse, FillSell ne publiera pas sur Leboncoin pour ton compte. Tes autres plateformes ne changent pas.",
   lbcHorsFrance: 'Leboncoin : réservé aux adresses en France. Une adresse en France ? Indique-la dans Réglages › Expédition.',
+  rueBeebs: 'Ajoute ta rue et ton numéro : Beebs les demande pour publier (Leboncoin, lui, se contente de la ville).',
   lbcHorsFrancePastille: 'réservé à la France',
   adresseEnregistree: '✅ Adresse enregistrée !',
   erreurSauvegarde: '❌ Erreur lors de la sauvegarde',
@@ -373,6 +374,7 @@ const EN = {
   adresseInconnue: 'Address not recognised by the French national address base: check the street and city spelling.',
   enregistrerQuandMeme: 'Save anyway',
   adresseHorsFrance: "This postal code is not a French one. Leboncoin only accepts addresses in France: with this address, FillSell won't publish on Leboncoin for your account. Your other platforms don't change.",
+  rueBeebs: 'Add your street and number: Beebs asks for them to publish (Leboncoin only needs the city).',
   lbcHorsFrance: 'Leboncoin: France-only addresses. Have an address in France? Enter it in Settings › Shipping.',
   lbcHorsFrancePastille: 'France only',
   adresseEnregistree: '✅ Address saved!',

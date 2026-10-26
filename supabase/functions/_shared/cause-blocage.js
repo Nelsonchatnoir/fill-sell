@@ -75,7 +75,8 @@ const PAR_TEXTE = Object.freeze([
   [/aucune option gratuite|Valider et payer|pr[êe]te sur Leboncoin/i, ORIGINE.UTILISATEUR, "paiement_plateforme"],
   [/eBay ne le laisse pas encore vendre|eBay a retir[ée] l.acc[èe]s de FillSell/i, ORIGINE.UTILISATEUR, "compte_a_finir"],
   [/Vinted affiche .{0,60} sur ton ordinateur|En attente de ta boutique Vinted/i, ORIGINE.UTILISATEUR, "connexion"],
-  [/n.a pas accept[ée] l.adresse d.envoi|Pas de retour.* exige que tu acceptes les retours/i, ORIGINE.UTILISATEUR, "reglage_du_compte"],
+  // (26/10 nuit, point 14c) « Beebs a besoin de ta rue pour publier » : l'adresse de SES Réglages n'a pas de rue — lui seul la donne.
+  [/n.a pas accept[ée] l.adresse d.envoi|a besoin de ta rue pour publier|Pas de retour.* exige que tu acceptes les retours/i, ORIGINE.UTILISATEUR, "reglage_du_compte"],
   // (25/10, N6) Le refus du brouillon qui nomme les retours, et la question qu'il pose : un réglage du compte.
   [/manquants dans le brouillon\s*:[^.]*\bretours?\b|eBay refuse de mettre cet article en vente sans conditions de retour/i, ORIGINE.UTILISATEUR, "reglage_du_compte"],
   // ── garde voulue (doute → question) ──
