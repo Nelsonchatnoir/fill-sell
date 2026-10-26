@@ -414,4 +414,10 @@ trois relevés et deux reprises lancés tout seuls, aucun Vinted abouti, un faux
   Nico ; migration 20261026171000, md5 14dab1677b7b47c3fd77bbe20640aec2, inverse dans supabase/rollbacks/) : un relevé « serveur:quotidien_api » / « serveur:lecture_origine »
   d'un compte eBay relié vaut un geste pour ses annonces eBay ; releve_est_geste inchangée. Rattrapage fait à 16:54
   (scripts/reparations/20261026_import_ebay_api.sql, sauvegarde _backup_2610_import_ebay_api) : 13 comptes actifs,
-  281 annonces, 276 rattachées (Julian : 14 fiches) ; les comptes inactifs (relevés du 14 au 25/10) restent une question.
+  281 annonces, 276 rattachées (Julian : 14 fiches).
+- **Jamais d'import sur un relevé ancien** : un rattrapage d'annonces orphelines lues il y a plus de 20 h pose d'abord un
+  relevé NEUF (« serveur:quotidien_api », lecture seule chez eBay) ; le moteur n'importe que ce qui est en ligne ce
+  jour-là (un article vendu depuis ne renaît pas en stock). Connexion eBay révoquée = rien. Appliqué aux comptes
+  inactifs le 26/10 à 17:23 (oui de Nico ; scripts/reparations/20261026_releve_ebay_inactifs.sql, 11 comptes).
+- La dette Beebs bornée et la cadence serveur sur stock vide (§ 26/10 après-midi, « migration préparée ») : migration
+  20261026150000 APPLIQUÉE le 26/10 à 17:10 (feu vert nommé de Nico).

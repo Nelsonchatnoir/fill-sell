@@ -91,11 +91,13 @@ Deploy », comme le 26/10 matin). update-job-status et handler-watch attendent a
 - **Reproduit sur la règle (essai ANNULÉ, ROLLBACK)** : « Réinitialiser » sur le compte de Nico → les 37 annonces
   restent, sans fiche, toutes lues par le moteur ; Leboncoin, eBay et Depop se réimportent ; **Beebs : 0**, retenu par
   `releve_dette_beebs` (un dépôt Beebs sans numéro — cf. A2 — bloque TOUT import Beebs du compte).
-- **Corrigé, en migration PRÉPARÉE** (`supabase/migrations/PROPOSITION_20261026150000_synchro_stock_vide_dette_beebs.sql.txt`,
-  inverse dans `supabase/rollbacks/`, garde md5 des corps de prod) : la dette ne retient plus que les annonces apparues
-  APRÈS le dépôt sans numéro (10 min de marge) — une annonce vue avant ne peut pas être lui. Essai annulé avec la
-  migration : 10 annonces Beebs en ligne sur 10 réimportées, celle « en vérification » non.
-- **Reste** : ⛔ feu vert nommé de Nico pour appliquer.
+- **Corrigé, migration APPLIQUÉE à 17:10 sur le feu vert nommé de Nico**
+  (`supabase/migrations/20261026150000_synchro_stock_vide_dette_beebs.sql`, inverse dans `supabase/rollbacks/` remis
+  sur le corps de fiche_de d'après Julian, garde md5 des corps de prod) : la dette ne retient plus que les annonces
+  apparues APRÈS le dépôt sans numéro (10 min de marge) — une annonce vue avant ne peut pas être lui. Essai annulé avec
+  la migration : 10 annonces Beebs en ligne sur 10 réimportées, celle « en vérification » non. md5 relus après :
+  dressing 5cfea172fe17bf4c21a4b4dda5db7467, plateforme 188118aaefee39dd4488715087ea4ca9, fiche_de
+  43a77328b052658dc5b4f646b767ef7d.
 
 ## B2 — Une plateforme « inconnue » exclue de la synchro
 
@@ -132,14 +134,7 @@ Deploy », comme le 26/10 matin). update-job-status et handler-watch attendent a
   166 en attente (Leboncoin 59, Vinted 51, Depop 29, Beebs 27), 0 échec. Rythme conforme à la cadence (un geste à la
   fois, suppression puis recréation) : aucun frein anormal. À ce rythme, il faut son ordinateur allumé environ un jour.
 
-## Lignes pour Nico (déploiements refusés à l'outil)
-
-```
-npx supabase functions deploy get-pending-jobs
-npx supabase functions deploy update-job-status --no-verify-jwt
-npx supabase functions deploy handler-watch --no-verify-jwt
-```
-Avant (relu 13:12) : get-pending-jobs v293 true, update-job-status v152 false, handler-watch v134 false.
+## Déploiements de l'après-midi (refusés à l'outil, faits le soir — voir « Déploiements » plus bas)
 
 ## Bloc C — refonte du lot (livrée, 09bc85b + fef1e64, OTA 2.9.120)
 
@@ -168,8 +163,10 @@ Avant (relu 13:12) : get-pending-jobs v293 true, update-job-status v152 false, h
   204 Mo, jamais purgé), photo_empreintes (602 Mo). Mes déploiements de l'après-midi : du code de l'app (aucune requête
   nouvelle en boucle) — rien ne les relie à la panne ; le test de lot sur le compte de Nico (≈ 40 appels de rayon,
   9 rédactions, entre 15:00 et 15:07) passait par les fonctions edge.
-- Allègement proposé (feu vert) : `supabase/migrations/PROPOSITION_20261026170000_purge_cron_run_details.sql.txt`
-  (purge à 3 jours + cron quotidien borné). Medium garde la marge.
+- Allègement APPLIQUÉ sur le feu vert nommé de Nico : purge initiale par lots de 20 000 hors migration
+  (relu ensuite : 0 ligne de plus de 3 jours, 29 022 restantes sur 269 096) ; cron quotidien `purge-cron-journal`
+  (id 67, 03:40 UTC, 3 jours gardés, 20 000 lignes et 60 s au plus) par
+  `supabase/migrations/20261026170000_purge_cron_run_details.sql`. Medium garde la marge.
 
 ## Diana Soares — couches « Taille 5 (12-18 kg) » (Pro depuis 14:46)
 
@@ -203,27 +200,41 @@ Avant (relu 13:12) : get-pending-jobs v293 true, update-job-status v152 false, h
   14dab1677b7b47c3fd77bbe20640aec2, essai préalable en transaction annulée, inverse dans supabase/rollbacks/).
 - Rattrapage à 16:54 (`scripts/reparations/20261026_import_ebay_api.sql`, sauvegarde + inverse) : 13 comptes actifs,
   281 annonces, **276 rattachées** ; **Julian : 14 annonces → 14 fiches** (passe {creer: 14}, 16:54:54). Restent : 5
-  annonces (règles inchangées) et 10 comptes inactifs (relevés du 14 au 25/10, 161 annonces) — question pour Nico.
+  annonces (règles inchangées) et les comptes inactifs (annoncés « 10 comptes, 161 annonces »).
+- Comptes inactifs (« Oui » de Nico) : recompte à 17:23 = 12 comptes, 257 annonces orphelines du 13 au 25/10, dont 1
+  compte à la connexion eBay révoquée (18 annonces, 16/10 : aucun relevé possible, rien d'ancien importé). Importer ces
+  annonces telles quelles ferait naître des fiches d'articles peut-être vendus depuis : un relevé NEUF est posé pour les
+  11 comptes reliés (`scripts/reparations/20261026_releve_ebay_inactifs.sql`, sauvegarde
+  `_backup_2610_import_ebay_inactifs` 239 annonces, inverse), ebay-releve-api relit eBay et le moteur importe ce qui est
+  en ligne aujourd'hui. Essai préalable en transaction annulée (11 relevés). Bilan plus bas.
 
 ## Johan DÉSIRÉ — restreint jusqu'au 09/11
 
 - 49 republications Vinted retenues, toutes reprogrammées à 23:04:59 UTC le 09/11 : elles seraient reparties d'un bloc.
 - Corrigé : message complet de Vinted gardé sur le compte ; reprise par paliers (10 par jour, une à la fois, 45 min).
   Mesure : 6 comptes restreints en 60 jours ; rythme avant restriction très variable (0 à 42 faits en 24 h), 149 comptes
-  non restreints au-dessus de 50 un jour → aucun seuil de rythme mesurable : plafond général laissé à Nico.
+  non restreints au-dessus de 50 un jour → aucun seuil de rythme mesurable. **Décision de Nico (soir du 26/10) : pas de plafond
+  général ; 10 par jour pour un compte qui sort d'une restriction** (déployé : get-pending-jobs v294).
 
 ## Elodie82 et Ornella
 
 - Elodie82 : retrait Leboncoin du Celine en attente, lien réparé à 12:34 (`/ad/vetements/3295261130`) ; extension
   absente depuis 11:17 — part à son retour.
-- Ornella : 1 retrait Leboncoin « Supprimer introuvable » encore en attente (Veste bomber, 15:00), extension 0.6.144.
-  La 0.6.147 (vue acheteur = attente de connexion) et update-job-status déployé le traitent.
+  À 17:25 : toujours absente, retrait en attente.
+- Ornella : 1 retrait Leboncoin « Supprimer introuvable » (Veste bomber, 15:00), extension 0.6.144. Après le
+  déploiement d'update-job-status (v153) : 17:09 « vue acheteur (vendeur affiché Ornella) », 17:22 en attente de
+  connexion : « connecte-toi au compte Leboncoin qui l'a publiée, le retrait repartira tout seul ». Plus de tentatives
+  dans le vide ; il faut que Chrome soit connecté au compte Leboncoin qui a publié l'annonce.
 
-## Lignes pour Nico (mises à jour)
+## Déploiements (faits, Nico a accepté la demande d'autorisation)
 
-```
-npx supabase functions deploy get-pending-jobs
-npx supabase functions deploy update-job-status --no-verify-jwt
-npx supabase functions deploy handler-watch --no-verify-jwt
-```
 Avant (relu 16:20) : get-pending-jobs v293 true, update-job-status v152 false, handler-watch v134 false.
+Après (relu) : **get-pending-jobs v294 true, update-job-status v153 false, handler-watch v135 false**.
+
+## Vérifications après déploiement (17:25)
+
+- Louis : « Maison Gabby chat et accessoires » repartie — handler-watch R7 « » → « Taille unique » (17:09), publiée
+  sur Vinted à 17:11 (annonce 10545330531).
+- Azizak : extension vue pour la dernière fois à 15:13 (pendant la panne), jamais revenue depuis : la première synchro
+  n'a pas encore pu partir. Elle partira à son prochain passage (session Vinted vue, 0 relevé, inscrit le 26/10). Un
+  autre compte l'a déjà reçue à 17:09 (7e634575).

@@ -4,7 +4,7 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Corps réécrits depuis pg_get_functiondef de la PROD (26/10 13:30), garde md5 : rien n'est appliqué si un corps a
 -- bougé. Inverse : supabase/rollbacks/20261026150000_synchro_stock_vide_dette_beebs_INVERSE.sql.
--- ⛔ À N'APPLIQUER QU'AVEC LE FEU VERT NOMMÉ DE NICO : renommer en 20261026150000_synchro_stock_vide_dette_beebs.sql, puis
+-- APPLIQUÉE le 26/10 à 17:10 sur le feu vert nommé de Nico (« Feu vert pour la migration B »), après essai annulé ; étapes :
 --    npx supabase db query --linked -f <ce fichier>, puis
 --    npx supabase migration repair --linked --status applied 20261026150000.
 BEGIN;

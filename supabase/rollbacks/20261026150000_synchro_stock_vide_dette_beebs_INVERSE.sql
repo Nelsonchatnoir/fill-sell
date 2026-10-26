@@ -175,6 +175,7 @@ BEGIN
 END;
 $function$;
 
+-- (26/10 17:10) Corps de PROD APRÈS la migration 20261026171000 (exception eBay de Julian) : l'inverse de B ne la perd jamais.
 CREATE OR REPLACE FUNCTION public.rapprochement_v3_fiche_de(p_user uuid, p_annonce uuid, p_geste boolean)
  RETURNS bigint
  LANGUAGE plpgsql
@@ -195,12 +196,19 @@ BEGIN
   IF COALESCE((SELECT value FROM coin_config WHERE key = 'import_auto_ouvert'), 0) <> 1 THEN RETURN NULL; END IF;
   IF NOT p_geste THEN
     SELECT * INTO v_run FROM vinted_sync_runs WHERE id = a.run_id;
-    IF NOT releve_est_geste(v_run.declencheur) THEN RETURN NULL; END IF;
+    -- (26/10, Julian Boissel — Nico) Le relevé serveur d'un compte eBay relié, lu par SON jeton, importe comme
+    -- « Synchroniser » : une annonce eBay en ligne sans fiche devient une fiche. Les veilles de l'extension, non.
+    IF NOT (releve_est_geste(v_run.declencheur)
+            OR (a.platform = 'ebay' AND v_run.declencheur IN ('serveur:quotidien_api', 'serveur:lecture_origine'))) THEN
+      RETURN NULL;
+    END IF;
   END IF;
   v_imp := rapprocher_importer(p_user, a.id, 'rapprochement');
   IF COALESCE((v_imp ->> 'ok')::boolean, false) THEN RETURN (v_imp ->> 'inventaire_id')::bigint; END IF;
   RETURN NULL;
 END;
-$function$;
+$function$
+;
+
 DROP FUNCTION IF EXISTS public.releve_dette_beebs_depuis(uuid, timestamptz);
 COMMIT;
