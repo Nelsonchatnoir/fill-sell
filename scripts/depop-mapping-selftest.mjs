@@ -23,8 +23,13 @@
 //      par selftest:depop-acces et selftest:depop-app).
 //   E. LE TEST MORD : chaque contrôle est rejoué sur une copie abîmée et doit
 //      tomber.
+//   F. LE RELEVÉ GARDE LE GENRE BRUT (26/10 nuit, point 10c) : la fiche lue
+//      par le VRAI connecteur (capturerArticle) garde `genre: "enfant"` ET le
+//      genre que Depop donne (`depopGenre` : male / female / unisex) ; rien
+//      n'est déduit (sans valeur de Depop : null, jamais « Mixte »).
 // ═══════════════════════════════════════════════════════════════════════════
 import fs from "node:fs";
+import vm from "node:vm";
 import { execFileSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -309,6 +314,53 @@ function controleManifeste(manifeste) {
   mord("taille enfant mal libellée", controleTaillesEnfant({ ...att.DEPOP_TAILLE_ENFANT, "8 ans": { grille: 101, id: 14, libelle: "9 years" } }));
   mord("hôte Depop obligatoire", controleManifeste({ host_permissions: ["https://www.depop.com/*"] }));
   mord("hôte Depop optionnel trop large", controleManifeste({ optional_host_permissions: ["https://*.depop.com/*"] }));
+}
+
+// ═══ F (le relevé garde le genre brut, 26/10 nuit, point 10c) ═════════════
+// Thibault, doudoune enfant : `genre` dit « enfant » pour un article des Enfants
+// (le département, que le serveur rattache) — et le « Pour » de Depop (Garçon,
+// Fille, Mixte), exigé à la recréation, était perdu. La fiche est lue par le
+// VRAI connecteur (content-scripts/depop.js, après depop-tailles.js comme
+// Chrome), réseau simulé : la lecture publique by-slug de l'API.
+{
+  const SLUG = "thibault-doudoune-enfant-1";
+  const reponse = (status, corps) => ({ ok: status >= 200 && status < 300, status, text: async () => JSON.stringify(corps ?? {}) });
+  const DEPOP_SRC = lire("chrome-extension/content-scripts/depop.js");
+  const lireFiche = async (attributes, abimer = (s) => s) => {
+    const ctx = vm.createContext({
+      console: { log() {}, warn() {}, error() {}, info() {} }, URL, Math, Number, String, Array, Object, Set, Map, JSON, Date,
+      Promise, RegExp, Error, TypeError, Uint8Array, globalThis: undefined, document: { cookie: "" },
+      setTimeout: (f) => setTimeout(f, 0), clearTimeout,
+      fetch: async (url) => (String(url).endsWith(`/presentation/api/v1/products/by-slug/${SLUG}/`)
+        ? reponse(200, { id: 958375049, slug: SLUG, status: "STATUS_ONSALE", description: "Doudoune enfant", attributes, pictures: [], variants_all: [] })
+        : reponse(404)),
+    });
+    ctx.globalThis = ctx;
+    vm.runInContext(lire("chrome-extension/content-scripts/depop-tailles.js"), ctx, { filename: "depop-tailles.js" });
+    vm.runInContext(`${abimer(DEPOP_SRC)}\n;globalThis.__t = { capturerArticle };`, ctx, { filename: "depop.js" });
+    const r = await ctx.__t.capturerArticle(SLUG);
+    return r?.success ? r.capture : null;
+  };
+  const vu = (c) => JSON.stringify(c && { genre: c.genre, depopGenre: c.depopGenre, categorie: c.categorie });
+  const ENFANT = { is_kids: true, gender: "male", group: "coats-jackets", product_type: "gilets", condition: "used_good", brand: "unbranded", colour: ["blue"] };
+  const garde = (c) => c?.genre === "enfant" && c?.depopGenre === "male";
+  const enfant = await lireFiche(ENFANT);
+  ok(garde(enfant) && enfant.categorie === "coats-jackets/gilets", `article enfant : genre « enfant » inchangé ET genre brut « male » gardé (${vu(enfant)})`);
+  const fille = await lireFiche({ ...ENFANT, gender: "female" });
+  const mixte = await lireFiche({ ...ENFANT, gender: "unisex" });
+  ok(fille?.genre === "enfant" && fille?.depopGenre === "female" && mixte?.genre === "enfant" && mixte?.depopGenre === "unisex",
+    `female et unisex : la valeur de Depop telle quelle (${vu(fille)} ${vu(mixte)})`);
+  const sansGenre = await lireFiche({ ...ENFANT, gender: undefined });
+  const inconnu = await lireFiche({ ...ENFANT, gender: "kids" });
+  ok(sansGenre?.genre === "enfant" && sansGenre?.depopGenre === null && inconnu?.depopGenre === null,
+    `sans genre de Depop (ou une valeur hors des trois) : null — jamais « unisex » / « Mixte » déduit (${vu(sansGenre)} ${vu(inconnu)})`);
+  const femme = await lireFiche({ ...ENFANT, is_kids: false, gender: "female", group: "tops", product_type: "jumpers" });
+  ok(femme?.genre === "Femme" && femme?.depopGenre === "female", `article femme : « Femme » comme avant, et le brut à côté (${vu(femme)})`);
+  const maison = await lireFiche({ group: "home", product_type: "furniture", condition: "used_good", brand: "unbranded" });
+  ok(maison?.genre === null && maison?.depopGenre === null, `« Tout le reste » : ni genre ni brut (${vu(maison)})`);
+  // Le test mord : sans la ligne du genre brut, la fiche d'enfant le perd.
+  const abimee = await lireFiche(ENFANT, (s) => s.replace(/\n[ \t]*depopGenre:[^\n]*\n/, "\n"));
+  ok(abimee && !garde(abimee), "mutation non détectée : genre brut retiré du relevé");
 }
 
 // ── Bilan ───────────────────────────────────────────────────────────────────

@@ -112,6 +112,32 @@ cas("6 bis. (26/10 nuit, point 10) un article ENFANT sans « Pour » : le genre 
   assert.deepEqual(M.champsManquantsCopieDepop(adulte), [], "un article homme ou femme n'a pas de « Pour » à chercher");
 });
 
+cas("6 ter. (26/10 nuit, point 10c) la capture porte le genre BRUT à côté de « enfant » : le rayon reste celui des Enfants, le dépôt FillSell garde la main", () => {
+  // La fiche telle que depop.js (capturerArticle) la relève désormais : `genre` inchangé, `depopGenre` à côté.
+  const capture = { categorie: "coats-jackets/gilets", genre: "enfant", depopGenre: "female", etat: "Bon état", description: "Doudoune enfant" };
+  assert.deepEqual(M.rayonDepopDeLaCapture(capture), ["kidswear", "coats-jackets", "gilets"], "« enfant » mène toujours au département Enfants");
+  assert.deepEqual(M.rayonDepopDeLaCapture({ ...capture, genre: "Femme", depopGenre: "female" }), ["womenswear", "coats-jackets", "gilets"],
+    "le genre brut ne décide jamais du département à la place de `genre`");
+  const job = { ...E62, id: "18d5cbb1", inventaire_id: 1792064439929012, platform_listing_id: "thibault-doudoune-enfant-1", listing_url: "https://www.depop.com/products/thibault-doudoune-enfant-1/",
+    description: "Doudoune enfant", platform_fields: { depopEtat: "used_good", depopPort: 4.15 } };
+  const depot = { ...D387, id: "99741713", inventaire_id: 1792064439929012, listing_url: job.listing_url,
+    platform_fields: { depopCategoryPath: ["kidswear", "coats-jackets", "gilets"], depopGenre: "male", depopEtat: "used_good", depopPort: 4.15 } };
+  const r = M.completerCopieDepop({ job, depots: [depot], capture });
+  assert.equal(r.platform_fields.depopGenre, "male", "le dépôt FillSell d'abord (jamais remplacé par une autre source)");
+  assert.equal(r.sources.depopGenre, "depot_fillsell");
+  assert.deepEqual(r.platform_fields.depopCategoryPath, ["kidswear", "coats-jackets", "gilets"]);
+  assert.deepEqual(r.manquants, []);
+  // Sans dépôt FillSell : le genre BRUT de l'annonce en ligne (étape 3 bis), tracé.
+  const seul = M.completerCopieDepop({ job, depots: [], capture });
+  assert.equal(seul.platform_fields.depopGenre, "female", "sans dépôt : le genre brut de l'annonce en ligne");
+  assert.equal(seul.sources.depopGenre, "annonce_en_ligne");
+  assert.deepEqual(seul.manquants, []);
+  const inconnu = M.completerCopieDepop({ job, depots: [], capture: { ...capture, depopGenre: "mixte" } });
+  assert.ok(!inconnu?.platform_fields?.depopGenre, "une valeur inconnue n'est jamais posée (jamais « Mixte » déduit)");
+  const adulteCap = M.completerCopieDepop({ job: { ...job, platform_fields: { ...job.platform_fields, depopCategoryPath: ["womenswear", "coats-jackets", "gilets"] } }, depots: [], capture: { ...capture, genre: "Femme" } });
+  assert.ok(!adulteCap?.platform_fields?.depopGenre, "un article adulte : pas de « Pour » à poser");
+});
+
 cas("7. get-pending-jobs complète la copie AVANT le port et avant de servir, jamais une fois le retrait engagé", () => {
   const gpj = lire("supabase/functions/get-pending-jobs/index.ts");
   assert.ok(gpj.includes('import { completerCopieDepop, champsManquantsCopieDepop, slugDepop } from "../_shared/copie-republication-depop.js";'));

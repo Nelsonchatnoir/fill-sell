@@ -203,6 +203,15 @@ export function completerCopieDepop({ job, depots = [], capture = null, fiche = 
       sources.depopCategoryPath = "annonce_en_ligne";
     }
   }
+  // 3 bis. (26/10 nuit, point 10c) « Pour » d'un article ENFANT, quand ni la copie ni le dépôt FillSell ne le portent :
+  // le genre BRUT de l'annonce en ligne (capture.depopGenre, lu par depop.js à côté de « enfant » — male, female,
+  // unisex), jamais déduit, jamais « Mixte » inventé.
+  if (Array.isArray(pf.depopCategoryPath) && pf.depopCategoryPath[0] === "kidswear"
+      && !GENRES_DEPOP.has(String(pf.depopGenre ?? "").trim())
+      && String(capture?.genre ?? "") === "enfant" && GENRES_DEPOP.has(String(capture?.depopGenre ?? "").trim())) {
+    pf.depopGenre = String(capture.depopGenre).trim();
+    sources.depopGenre = "annonce_en_ligne";
+  }
   // 4. L'état : le palier le plus bas des sources, jamais au-dessus de la fiche ni de l'annonce.
   if (vide(pf.depopEtat)) {
     const type = Array.isArray(pf.depopCategoryPath) ? pf.depopCategoryPath[2] : null;

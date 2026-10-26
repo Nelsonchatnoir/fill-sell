@@ -871,6 +871,15 @@ async function capturerArticle(slug) {
       // DEPOP_TYPE_VERS_INTERNE.
       categorie: at.group && at.product_type ? `${at.group}/${at.product_type}` : null,
       genre: at.is_kids === true ? "enfant" : at.gender === "female" ? "Femme" : at.gender === "male" ? "Homme" : null,
+      // (26/10 nuit, point 10c — la doudoune enfant de Thibault) Le genre BRUT que
+      // Depop donne (male / female / unisex), À CÔTÉ de `genre` : pour un article
+      // enfant, `genre` dit « enfant » (le département, que le serveur rattache —
+      // inchangé) et le « Pour » (Garçon, Fille, Mixte) que la recréation exige
+      // était perdu. Même clé et mêmes valeurs que platform_fields.depopGenre
+      // (pré-vol ci-dessus, _shared/copie-republication-depop.js). Rien n'est
+      // déduit : sans l'une des trois valeurs de Depop, null — jamais « unisex »
+      // (« Mixte ») par défaut.
+      depopGenre: Object.values(DEPOP_GENRE_PAR_LIBELLE).includes(at.gender) ? at.gender : null,
       quantite: Number.isFinite(Number(a.listed_quantity)) ? Number(a.listed_quantity) : null,
       depop_id: a.id ?? null,
       depop_statut: a.status ?? null,
