@@ -25,7 +25,7 @@ Prompt de nuit de Nico (25/10, 22:00).
   « introuvable » (§ 8).
 - Statut par point : 0 ✅ · 1 ✅ (refonte B + défauts de fond) · 2 ✅ alerte et phrase / 2a filet extension non fait ·
   3 ✅ (Thibault : en ligne dès que son poste aura la 0.6.146) · 4 ✅ (0.6.146) · 5 ✅ (mot refusé PROUVÉ : « SuperCard »,
-  règle en ligne, 52b5ec71 relancé une fois) ·
+  règle en ligne, 52b5ec71 relancé une fois et PUBLIÉ à 03:18) ·
   6 ⏸ migration préparée · 7 ✅ (5 articles rouverts) · 8 ✅ · 9 ✅ · 10 ✅ · 11 ✅ · 12 ✅ · 13 ✅ OTA 2.9.118 · 14 ✅ ·
   15 ✅ (+ mur du poste corrigé) · 16 ✅ sauf bordereau (aucune vraie commande).
 - Mis en ligne : get-pending-jobs **v291**, handler-watch **v133**, update-job-status **v151**, ebay-oauth-callback
@@ -192,8 +192,8 @@ Prompt de nuit de Nico (25/10, 22:00).
   Selftests : `description-leboncoin` (105), `lbc-moderation` (24).
 - En ligne à 03:15 : get-pending-jobs v292, update-job-status v152, handler-watch v134 (suite complète verte : 451
   selftests). 52b5ec71 relancé UNE fois à 03:16 par `scripts/reparations/20261026_relance_52b5ec71_supercard.sql`
-  (sauvegarde `_backup_2610_relance_52b5ec71` + inverse) : en file, il part quand le poste de la personne interroge.
-  À vérifier au prochain check : publié, ou retombé en pause (alerte support réarmée) — jamais renvoyé tel quel.
+  (sauvegarde `_backup_2610_relance_52b5ec71` + inverse). **PUBLIÉ** : servi à 03:17:34 par get-pending-jobs v292
+  (journal « descriptions Leboncoin nettoyées : 1 »), accepté par Leboncoin à 03:18:31 (annonce 3295483958).
 - **Option toujours à trancher par Nico** : un retrait automatique phrase par phrase pour un refus dont le mot n'est
   pas encore dans la liste (au plus 3 reprises — chaque refus compte sur le compte Leboncoin de la personne).
 - Vu pendant les essais, **cause NON prouvée** (rien corrigé) : (a) une fiche TEST dont la photo est hébergée chez Beebs
@@ -349,8 +349,15 @@ Prompt de nuit de Nico (25/10, 22:00).
   attend que Beebs affiche le bouton « Supprimer l'annonce » (annonce encore en vérification chez Beebs), il se refait seul.
 - **Annonces TEST encore en ligne ou en vérification** (à retirer dès que Leboncoin les affiche, l'app ne propose pas
   le retrait pendant sa vérification) : T-shirt n°2 sur Beebs (508fb8b8) ; les essais Leboncoin du point 5 —
-  T2 3295481647, T3 3295482142, T5 3295483038, T6 3295483342. Les deux fiches créées par « Dupliquer » pour T5 et T6
-  (1792979691394, 1792980069881) restent en stock, sans autre annonce.
+  T2 3295481647, T3 3295482142, T5 3295483038, T6 3295483342 (encore « Leboncoin vérifie ton annonce » à 03:25).
+  Geste : fiche → « Gérer les plateformes » → Leboncoin → Retirer, dès que la ligne dit « En ligne ». Les deux fiches
+  créées par « Dupliquer » pour T5 et T6 (1792979691394, 1792980069881) restent en stock (à supprimer ensuite si tu
+  veux). Les fiches TEST 1791730636507 et 1791729478750 gardent le 🎮 et le texte WWE jusqu'au retrait de leurs
+  annonces, puis reprennent leur titre d'origine (« TEST FillSell ne pas acheter - jeu PS4 », « TEST FillSell ne pas
+  acheter - Call of Duty Modern Warfare PS4 ») et leur texte d'origine (« Jeu vidéo Call of Duty Modern Warfare pour
+  PlayStation 4, version française PAL FR. Boîtier et disque en très bon état. Jeu d'action FPS édité par Activision,
+  sorti en octobre 2019. Classé PEGI 18. ») ; la fiche 1791299785299 (T4, T5) est déjà remise. Leur marqueur
+  `description_source = manuel` reste : la base n'efface jamais un attribut (trigger `inventaire_attributs_fusion`).
 - **Bordereaux** : l'écran « À expédier » s'ouvre (« Aucune commande à expédier ») ; un bordereau ne se teste qu'avec
   une vraie commande d'une plateforme — non fait.
 - Tout s'est fait avec l'extension ACTUELLE du poste de Nico (0.6.145 pilote) : les gestes propres à la 0.6.146 ne sont
