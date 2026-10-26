@@ -425,3 +425,15 @@ Rapport : `docs/enquetes/dix-points-1710/RAPPORT.md` (points 1, 4, 5, 7, 9).
   illisible → France, jamais retiré sur un doute) contre `codes_postaux_fr` (6 310 codes, outre-mer compris).
 - Essai annulé avant application : Marta (Italie) refusée, son Vinted et le Leboncoin de Nico non touchés ; 2 comptes hors
   de France au 25/10 (Belgique, Italie). Inverse : `supabase/rollbacks/20261025181500_lbc_hors_france_creation_INVERSE.sql`.
+
+## ⛔ 26/10 — Leboncoin : le pré-rempli départagé (jamais un blocage) ; poids et couleur (rapport `docs/enquetes/lenteur-2610/RAPPORT.md` § 4-5)
+- Remplace la règle du 24/10 nuit « le pré-rempli bat l'IA » (cause d'origine jamais prouvée ; 6 cas : nous 3, Leboncoin 2,
+  les deux 1, 1 blocage — le pot à sucre de Jocabroc). `leboncoin.js` ⟦prerempli-ia⟧ `departagerPreRempliIa` : 1. jamais un
+  blocage (liste Produit sous le Type pré-rempli sans notre Produit ni « Autre », Produit non pré-rempli → notre paire) ;
+  2. la valeur que l'article nomme (mot propre, pluriel/féminin) ; 3. sinon le pré-rempli reste. Paires Type → Produit =
+  `src/utils/lbcMaisonJardin.js`. Relance : `correctifs-extension` « lbc_prerempli_ia_blocage » (BUILD_LBC_PREREMPLI_IA).
+- « estimated_parcel_weight : contrôle introuvable » était FAUX en particulier (pas de critère, le poids passe par la
+  livraison) : plus noté ; le formulaire PRO garde sa seconde passe.
+- Couleur : une couleur ÉCRITE dans le titre (puis la 1re phrase) gagne toujours (`_shared/couleur-du-texte.js`, servie par
+  get-pending-jobs aux publications Leboncoin) ; jamais une couleur de décor ; deux couleurs → rien ; une réponse de la
+  personne n'est jamais remplacée.

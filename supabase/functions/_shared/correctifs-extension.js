@@ -136,7 +136,7 @@ export const BUILD_VINTED_MARQUE_CREEE = "2026-10-26T00:53:28Z";
 // place de « Accessoire de table », dont la liste Produit n'a ni sucrier ni « Autre » → « Leboncoin demande : Produit »,
 // une question sans bonne réponse. Le paquet suivant départage (leboncoin.js ⟦prerempli-ia⟧). VIDE tant que ce paquet
 // n'est pas empaqueté : posée au BUILD_ID du zip (npm run package:extension) — un poste plus ancien ne reçoit rien.
-export const BUILD_LBC_PREREMPLI_IA = "";
+export const BUILD_LBC_PREREMPLI_IA = "2026-10-26T07:44:08Z"; // BUILD_ID du paquet 0.6.146 refait le 26/10 (2026-10-26T07:44:08Z+4ade5e1)
 
 export const CORRECTIFS_EXTENSION = [
   {

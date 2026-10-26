@@ -731,3 +731,13 @@
     « Publier », seulement quand une plateforme ciblée l'exige.
 - **Valeurs fausses déjà en ligne** : Leboncoin et Beebs n'ont AUCUNE modification en place dans FillSell (3 actions de job
   seulement) : rien appliqué, cas listés (`docs/enquetes/soir-2510/CORRECTIONS-G.md`).
+
+## ⛔ 26/10 — vitesse de publication (urgence Jocabroc ; rapport `docs/enquetes/lenteur-2610/RAPPORT.md`)
+- JAMAIS un minuteur qui change un état du composant App sans que son écran soit affiché : trois rotations de textes
+  d'exemple redessinaient toute l'app ~chaque seconde (stock + écran de publication) — avec 778 fiches, la page ne
+  répondait plus (selftest `vitesse-publication`).
+- Le lot lit les annonces Vinted EN PARALLÈLE (10 à la fois ; l'extension les sérialise, ~1,1 s chacune) ; eBay et l'ancien
+  lecteur Vinted (formulaire d'édition) gardent leur espacement par créneau réservé.
+- La lecture de fond ne s'exécute jamais pendant qu'on publie (serveur : geste < 10 min ou tâches servies ; extension
+  0.6.146 : elle cède le verrou). `coin_config.lecture_fond_mode` : clé ABSENTE (= pilote seul) depuis le 26/10 07:38.
+- Le plafond Free n'est jamais prêté à un compte (selftest `quota-payant-jamais-free`).

@@ -91,3 +91,11 @@
   l'onglet — la page (OTA) le constate en 1,5 s et propose « Recharger la page ».
 - Le poste de Nico a tourné le 25/10 sur des builds `-dirty` (pilote de la lecture de fond) ; le serveur ne lit que
   l'horodatage du BUILD_ID (`posteExtensionCompatible`), le suffixe est sans effet.
+
+## 26/10 — 0.6.146 REFAITE (urgence lenteur) — un seul zip à téléverser
+- `build/CWS-0.6.146-A-TELEVERSER/fillsell-extension-0.6.146-4ade5e1-cws.zip` (BUILD_ID `2026-10-26T07:44:08Z+4ade5e1`) :
+  la 0.6.146 de la nuit + lecture de fond qui cède le verrou, maintenance du poll après une demande de l'écran,
+  pré-rempli Leboncoin départagé, plus de faux « poids introuvable ». L'ancien zip (ebdc605) est dans `build/CWS-PERIMES/`.
+  Les constantes BUILD_VINTED_MODELE_REPLI / BUILD_VINTED_MARQUE_CREEE (00:53:28Z) restent valables (≤ ce build).
+- Le dossier `FillSell-Extension-Nico` : une copie du build y a été prise par le poste de Nico (0.6.146 4ade5e1 annoncée
+  à 09:00) — voir le rapport pour le test réel.
