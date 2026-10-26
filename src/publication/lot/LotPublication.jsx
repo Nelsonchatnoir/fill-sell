@@ -63,6 +63,7 @@ import {
 } from "../lectureOrigine";
 import {
   issuesSansLecteur, phraseSansLecteur, libellesSansLecteur, texteAttenteSansLecteur, urlAnnonceVinted, descriptionEcriteSuffisante,
+  versionAuMoins, LECTEUR_VERSION_MIN,
 } from "../attenteLectureRegles";
 // (25/10 — Louis) Le pont de la page vers l'extension : mort après une mise à jour, la page le dit.
 import { ecouterEtatPont } from "../../utils/vintedSync";
@@ -509,22 +510,30 @@ function EcranDuLot({
   // ── LA LECTURE DU TEXTE DU VENDEUR (03/10, décision de Nico) ────────────
   // Un article sans description la reprend là où il est en ligne, AVANT que
   // son moteur ne s'ouvre — le même chemin que le stepper à l'unité
-  // (publication/texteDuVendeur.js). UNE lecture à la fois ; deux lectures
-  // d'une même plateforme sont espacées au rythme des dépôts (Vinted 8 à
-  // 20 s, eBay 1,5 à 3 s) : jamais une rafale, aucun anti-robot. Pendant ce
-  // temps les autres articles se préparent.
+  // (publication/texteDuVendeur.js). Pendant ce temps les autres articles se préparent.
+  // ⛔ (26/10, urgence lenteur — règle de Nico : « les lectures des articles sélectionnés se font en parallèle »)
+  // AVANT : UNE lecture à la fois, puis 8 à 20 s d'attente avant la suivante — 10 articles d'un nouvel utilisateur
+  // attendaient 1 min 30 à 3 min 20 rien que pour leurs textes (mesuré le 26/10 sur le compte de Nico). La page
+  // PUBLIQUE d'une annonce Vinted (extension ≥ 0.6.144) est une page vue comme un visiteur : toutes les lectures
+  // partent ensemble, et l'extension les fait l'une après l'autre sous son verrou de flux (~1 s chacune, jamais en
+  // même temps qu'un dépôt). Gardent leur espacement : eBay (API au budget partagé, 1,5 à 3 s) et l'ancien lecteur
+  // Vinted par le formulaire d'édition (extension < 0.6.144, « jamais en boucle ») — un créneau réservé par plateforme.
   const lusRef = useRef(new Set());
   const [complets, setComplets] = useState({}); // id → l'article complété (description reprise)
   const [lectures, setLectures] = useState({}); // id → { source, note }
-  const lecteurOccupe = useRef(false);
-  const derniereLecture = useRef({}); // plateforme → horodatage de la fin de la dernière lecture
+  const LECTURES_SIMULTANEES = 10;
+  const enLectureRef = useRef(new Set());   // les articles dont la lecture est partie
+  const prochainCreneau = useRef({});       // plateforme → heure du prochain départ autorisé (lecteurs espacés)
+  const lecturePubliqueVinted = versionAuMoins(versionExtensionIci, LECTEUR_VERSION_MIN);
   useEffect(() => {
-    if (!lot || lecteurOccupe.current) return;
-    const suivant = lot.ids.find((id) => !lusRef.current.has(id) && etats[id]?.phase === "attente");
-    if (!suivant) return;
+    if (!lot) return;
+    const libres = LECTURES_SIMULTANEES - enLectureRef.current.size;
+    if (libres <= 0) return;
+    const aLancer = lot.ids.filter((id) => !lusRef.current.has(id) && !enLectureRef.current.has(id) && etats[id]?.phase === "attente").slice(0, libres);
+    for (const suivant of aLancer) {
     const d = donnees.find((x) => x.id === suivant);
-    if (!d) { lusRef.current.add(suivant); return; }
-    lecteurOccupe.current = true;
+    if (!d) { lusRef.current.add(suivant); continue; }
+    enLectureRef.current.add(suivant);
     majEtat(suivant, { phase: "lecture", lecture: null });
     (async () => {
       let r = null;
@@ -537,12 +546,14 @@ function EcranDuLot({
           delaiDetailMs: 25000,
           avantLecture: async (pf) => {
             majEtat(suivant, { lecture: pf });
+            // (26/10) La page publique Vinted part tout de suite (l'extension sérialise) ; les autres lecteurs
+            // réservent leur créneau, espacé comme avant.
+            if (pf === "vinted" && lecturePubliqueVinted) return;
             const [min, max] = pf === "vinted" ? RYTHME_LECTURE_VINTED_MS : RYTHME_LECTURE_EBAY_MS;
-            const der = derniereLecture.current[pf];
-            if (der) {
-              const reste = der + min + Math.random() * (max - min) - Date.now();
-              if (reste > 0) await new Promise((ok) => setTimeout(ok, reste));
-            }
+            const maintenant = Date.now();
+            const depart = Math.max(maintenant, prochainCreneau.current[pf] ?? 0);
+            prochainCreneau.current[pf] = depart + min + Math.random() * (max - min);
+            if (depart > maintenant) await new Promise((ok) => setTimeout(ok, depart - maintenant));
           },
         });
       } catch { r = null; }
@@ -554,11 +565,10 @@ function EcranDuLot({
         try { attenteOrigine = await attenteLectureOrigine(supabase, userId, d.item?.id ?? suivant); } catch { attenteOrigine = null; }
         if (attenteOrigine) demanderLectureOrigine(supabase, d.item?.id ?? suivant);
       }
-      for (const pf of r?.lectures ?? []) derniereLecture.current[pf] = Date.now();
       if (r?.item) setComplets((prev) => ({ ...prev, [suivant]: r.item }));
       setLectures((prev) => ({ ...prev, [suivant]: { source: r?.source ?? null, note: r?.note ?? null } }));
       lusRef.current.add(suivant);
-      lecteurOccupe.current = false;
+      enLectureRef.current.delete(suivant);
       // Retiré du lot pendant la lecture : il le reste.
       setEtats((prev) => (prev[suivant]?.phase === "lecture"
         ? { ...prev, [suivant]: attenteOrigine
@@ -566,6 +576,7 @@ function EcranDuLot({
           : { ...prev[suivant], phase: "attente", lecture: null } }
         : prev));
     })();
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lot, etats]);
 

@@ -2765,11 +2765,14 @@ export default function App({ loginOnly = false }){
   const [dealIALoading,setDealIALoading]=useState(false);
   const [dealMicActive,setDealMicActive]=useState(false);
   const dealMicRef=useRef(null);
-  const [dealPlaceholderIdx,setDealPlaceholderIdx]=useState(0);
-  useEffect(()=>{
-    const t=setInterval(()=>setDealPlaceholderIdx(i=>(i+1)%DEAL_PLACEHOLDERS_FR.length),4000);
-    return()=>clearInterval(t);
-  },[]);
+  // ⛔ (26/10, urgence « la publication est devenue lente ») PLUS AUCUN MINUTEUR QUI REND TOUTE L'APP. Trois rotations
+  // de textes d'exemple (ici l'onglet « Deal », retiré depuis longtemps — l'index n'était plus lu nulle part ; le Lens ;
+  // la saisie vocale du Stock) changeaient un état de CE composant toutes les 3 à 4 s, et toujours, quel que soit
+  // l'onglet : environ un rendu complet de l'app par seconde (Stock entier, écran de publication compris). Mesuré le
+  // 26/10 sur le compte de Nico (33 fiches) : une tâche de ~60 ms toutes les 1 à 1,5 s, page au repos ; chez une
+  // personne à 778 fiches, le fil de la page n'avait plus de répit (deux requêtes lancées ensemble partaient à 4,6 s
+  // d'écart, 18 s de calcul entre la fiche relue et le débit). Chaque rotation ne tourne plus que pendant que son
+  // texte est À L'ÉCRAN (bon onglet, zone ouverte, page visible).
   // Lens tab
   const [userCountry,setUserCountry]=useState(null); // {code,name}
   const [lensPhotos,setLensPhotos]=useState([]); // [{preview,base64,mime}]
@@ -2807,12 +2810,14 @@ export default function App({ loginOnly = false }){
   // Plus aucun quota Lens côté client (payant-par-scan 2026-07-23) : chaque
   // analyse coûte 6 unités côté serveur, il n'y a plus de compteur mensuel.
   useEffect(()=>{
+    if(tab!==2)return undefined;   // (26/10) seulement l'onglet Lens à l'écran — voir plus haut
     const _id=setInterval(()=>{
+      if(document.visibilityState!=='visible')return;
       setLensPlaceholderFade(false);
       setTimeout(()=>{setLensPlaceholderIdx(i=>(i+1)%LENS_PLACEHOLDERS_FR.length);setLensPlaceholderFade(true);},300);
     },3000);
     return()=>clearInterval(_id);
-  },[]);
+  },[tab]);
   useEffect(()=>{
     fetch("https://ipapi.co/json/")
       .then(r=>r.ok?r.json():Promise.reject(r.status))
@@ -2841,9 +2846,10 @@ export default function App({ loginOnly = false }){
   useEffect(()=>{if(!voiceError)return;const t=setTimeout(()=>{setVoiceError(null);setVoiceStep("");},4000);return()=>clearTimeout(t);},[voiceError]);
   const [showManualForm,setShowManualForm]=useState(false);
   useEffect(()=>{
-    const t=setInterval(()=>setVoicePlaceholderIdx(i=>(i+1)%TEXTAREA_PLACEHOLDERS.length),4000);
+    if(tab!==1||!voiceZoneOpen)return undefined;   // (26/10) seulement la zone de saisie du Stock ouverte — voir plus haut
+    const t=setInterval(()=>{if(document.visibilityState==='visible')setVoicePlaceholderIdx(i=>(i+1)%TEXTAREA_PLACEHOLDERS.length);},4000);
     return()=>clearInterval(t);
-  },[]);
+  },[tab,voiceZoneOpen]);
   const [manualMode,setManualMode]=useState("single");
   const [lotManualTotal,setLotManualTotal]=useState("");
   const [lotManualItems,setLotManualItems]=useState([{nom:""},{nom:""}]);
