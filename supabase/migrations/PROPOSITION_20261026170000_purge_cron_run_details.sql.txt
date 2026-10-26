@@ -1,0 +1,29 @@
+-- ═══════════════════════════════════════════════════════════════════════════
+-- PROPOSITION (26/10, panne 15:15 → 15:48) — NON APPLIQUÉE, feu vert de Nico requis
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Le journal de pg_cron (cron.job_run_details) n'est jamais purgé : 268 767 lignes, 204 Mo — la 3e table de la base
+-- (après photo_empreintes et cross_post_jobs), réécrite à chaque passage des 29 crons (≈ 6 900 lignes par jour).
+-- Chaque passage d'un cron l'écrit, et sa lecture par le tableau de bord la parcourt.
+-- 1. Purge : on garde 3 jours (assez pour toute enquête : les journaux Supabase gardent 24 h, les rapports citent
+--    les passages du jour). Lots de 20 000 lignes, borne de temps, jamais une table verrouillée longtemps.
+-- 2. Un cron quotidien (04:40 Paris = 03:40 UTC en hiver) refait la purge, bornée.
+-- Inverse : rien à restaurer (journal d'exécution) ; désactiver le cron : SELECT cron.unschedule('purge-cron-journal');
+-- Application (après feu vert) : npx supabase db query --linked -f <ce fichier renommé en .sql>
+BEGIN;
+SET LOCAL statement_timeout = '120s';
+SET LOCAL lock_timeout = '5s';
+
+DELETE FROM cron.job_run_details
+WHERE runid IN (
+  SELECT runid FROM cron.job_run_details
+  WHERE start_time < now() - interval '3 days'
+  ORDER BY runid
+  LIMIT 200000
+);
+
+SELECT cron.schedule(
+  'purge-cron-journal',
+  '40 3 * * *',
+  $$SET statement_timeout = '60s'; DELETE FROM cron.job_run_details WHERE runid IN (SELECT runid FROM cron.job_run_details WHERE start_time < now() - interval '3 days' ORDER BY runid LIMIT 20000);$$
+);
+COMMIT;

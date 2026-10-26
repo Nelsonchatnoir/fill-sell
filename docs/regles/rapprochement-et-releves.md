@@ -395,3 +395,23 @@ trois relevés et deux reprises lancés tout seuls, aucun Vinted abouti, un faux
   essai annulé : 10/10 Beebs réimportées après « Réinitialiser »).
 - Deux fiches déjà rangées ne sont jamais comparées en mode normal (doublon de Louis, licorne) : question proposée,
   non codée (rapport § B5).
+
+## 26/10 (soir) — la première synchro part seule ; le relevé serveur eBay importe (décisions de Nico)
+- **Première synchro automatique** (Azizak Shop : extension active, Vinted connecté, jamais touché « Synchroniser » →
+  0 fiche) : au passage de l'extension (get-pending-jobs), un compte inscrit depuis 15 jours au plus
+  (coin_config.premiere_synchro_auto_jours), avec au moins une plateforme choisie connectée et AUCUNE synchro demandée
+  jamais (déclencheur bouton|bouton_distant|app), reçoit sa première synchro par les MÊMES RPC que le bouton
+  (demander_sync_dressing, demander_sync_plateforme) — une fois par compte, tracée usage_logs « premiere_synchro_auto ».
+  coin_config.premiere_synchro_auto = 0 coupe tout. La règle du 05/10 (la veille n'importe rien) reste vraie pour les
+  relevés de veille : seule la PREMIÈRE synchro, demandée comme par le bouton, change. Rattrapage : la même règle prend
+  les 14 inscrits des 15 derniers jours (extension vue, jamais synchronisés) à leur prochain passage.
+- La carte « Installe l'extension » ne parle que si la base confirme l'absence (jamais pendant la lecture, jamais sur
+  une lecture illisible) ; la capacité se relit, bornée (relectureBornee, stock vide, 10 min) ; plus de carte montée
+  cachée dans la variante « ligne ».
+- **Relevé serveur eBay (API)** (Julian Boissel : 14 annonces lues à 09:30, plan {creer: 14}, 0 fiche) : la règle de
+  Nico — le relevé serveur passe par le même rapprochement et le même import que « Synchroniser ». Le moteur décidait
+  déjà « créer » ; rapprochement_v3_fiche_de refusait hors geste. Exception APPLIQUÉE le 26/10 à 16:53 (feu vert de
+  Nico ; migration 20261026171000, md5 14dab1677b7b47c3fd77bbe20640aec2, inverse dans supabase/rollbacks/) : un relevé « serveur:quotidien_api » / « serveur:lecture_origine »
+  d'un compte eBay relié vaut un geste pour ses annonces eBay ; releve_est_geste inchangée. Rattrapage fait à 16:54
+  (scripts/reparations/20261026_import_ebay_api.sql, sauvegarde _backup_2610_import_ebay_api) : 13 comptes actifs,
+  281 annonces, 276 rattachées (Julian : 14 fiches) ; les comptes inactifs (relevés du 14 au 25/10) restent une question.

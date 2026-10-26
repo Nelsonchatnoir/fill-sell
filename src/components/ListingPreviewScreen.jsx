@@ -151,6 +151,7 @@ import {
 import {
   normAspectVal, nearestAllowedValue, jugerValeurContreListe, horsListeBloque, vintedExigeUneMarque, estChampMarque,
   vintedExigeUneCouleur, vintedExigeUnIsbn, ISBN_ABSENT, valeurUneLettre, rayonNeufSeulement, messageRayonNeuf,
+  vintedExigeUneTaille, vintedObjetSansTaille, VINTED_TAILLES_JOUETS,
   deduireOptionDuTexte, estFourreTout, listeCandidatsDabord, textesDeLAnnonce,
   tailleDuJob, tailleDansListeEbay, tailleDeduiteDuTexte, estChampTaille, rayonPublicIncoherent, messageRayonPublic,
   clePositionnelleBeebs, tailleHomonymeBeebs, modelesVintedPourLaMarque, modelesVintedDuRelevé, modeleLuDansLeTexte,
@@ -4481,7 +4482,7 @@ const AUCUNE_PLATEFORME_FERMEE = Object.freeze([]);
 // sinon « Autre »), l'âge (écrit, PEGI, livre adulte), la taille d'un bijou qui n'est pas une bague (« Ajustable »)
 // (champs-requis-auto.js). Rien de sûr → null : la question reste, comme avant. Pur.
 // Sources tracées (option_du_texte) ; la valeur est posée sur la COPIE, jamais sur la fiche.
-const CHAMP_REQUIS_VERS_COPIE = new Set(["pointure_de_la_fiche", "pointure_du_texte", "matiere_de_la_fiche", "matiere_du_rayon", "matiere_autre", "bijou_hors_bague", "diametre_ecrit", "montre_sans_diametre", "bague_du_texte", "bague_ajustable"]);
+const CHAMP_REQUIS_VERS_COPIE = new Set(["objet_sans_taille", "pointure_de_la_fiche", "pointure_du_texte", "matiere_de_la_fiche", "matiere_du_rayon", "matiere_autre", "bijou_hors_bague", "diametre_ecrit", "montre_sans_diametre", "bague_du_texte", "bague_ajustable"]);
 function champRequisAuto({ platform, key, label, allowedValues, chemin, textes, publicCopie = [], tailleFiche = "", matiereFiche = "", classementFiche = "" }) {
   if (!Array.isArray(allowedValues) || !allowedValues.length) return null;
   const nom = `${key ?? ""} ${label ?? ""}`;
@@ -4503,6 +4504,13 @@ function champRequisAuto({ platform, key, label, allowedValues, chemin, textes, 
     const b = tailleBagueDuTexte({ chemin: cheminListe, textes, allowedValues });
     if (b?.valeur) return b;
     if (b?.doute) return null;
+    // (26/10, « Maison Gabby » de Louis) Un OBJET de la branche des jouets Vinted (ni déguisement ni tablier) : quand
+    // ni la fiche, ni la copie, ni le texte ne disent une taille (sinon on n'arrive pas ici), « Taille unique » de la
+    // grille — 45 des 73 jouets en ligne la portent. Un âge RECOMMANDÉ (« à partir de 1 an ») n'est jamais une taille.
+    if (platform === "vinted" && vintedObjetSansTaille(cheminListe)) {
+      const unique = allowedValues.find((v) => /^taille unique$/i.test(String(v).trim()));
+      if (unique) return { valeur: unique, source: "objet_sans_taille", motif: "objet de la branche des jouets : taille unique" };
+    }
   }
   if (platform !== "beebs") return null;
   const lib = String(label ?? key ?? "").trim();
@@ -8633,6 +8641,13 @@ export default function ListingPreviewScreen({
           // c'est la règle qui dit si l'ISBN est exigé, pas le dernier relevé.
           if (platform === "vinted" && vintedExigeUnIsbn(String(key).split(" > "))) {
             rows = [...rows.filter(r => r.field_key !== "isbn"), { field_key: "isbn", field_label: "ISBN", required: true, input_type: null, allowed_values: [ISBN_ABSENT], synthetique: "vinted_isbn_exige" }];
+          }
+          // ── VINTED EXIGE UNE TAILLE POUR UN JOUET (26/10, « Maison Gabby » de Louis) — cf. vinted-exigences.js ──
+          // Un rayon de jouets jamais relevé n'a aucune ligne : l'écran disait « Prêt », l'extension s'arrêtait sur
+          // « Taille ». La règle porte l'exigence et LA grille mesurée sur les 10 rayons de la branche (31 valeurs) ;
+          // une ligne size du catalogue passe devant.
+          if (platform === "vinted" && variante === "nouvelle" && !rows.some(r => r.field_key === "size") && vintedExigeUneTaille(String(key).split(" > "))) {
+            rows = [...rows, { field_key: "size", field_label: "Taille", required: true, input_type: "grid", allowed_values: [...VINTED_TAILLES_JOUETS], synthetique: "vinted_taille_exigee" }];
           }
           // (11/10, point 9) Toute ligne `color` de Vinted porte la palette
           // ENTIÈRE (29) : 67 des 77 rayons où le catalogue l'exige n'en avaient

@@ -45,6 +45,7 @@ import { texteComparable } from "../../utils/texteComparable.js";
 import { normalizeVintedColors } from "../../utils/vintedColors.js";
 import { VINTED_MODELES } from "../../data/vintedModeles.js";
 import { tailleDansGrille } from "../../../supabase/functions/_shared/tailles.js";
+import { tailleParPoidsKg } from "../../../supabase/functions/_shared/taille-de-service.js";
 import { tailleDuTexte } from "../../../supabase/functions/_shared/taille-du-texte.js";
 import { toPlatformChildSize, tailleEnfantSelonLeTexte } from "../../utils/childSizes.js";
 import {
@@ -364,6 +365,11 @@ export function jugerValeurContreListe({ platform, key, value, allowedValues, ch
     }
     const t = tailleDansGrille(v, vals, { tableFemme: platform === "opla" && brancheFemmesOpla(cheminCategorie) });
     if (t) return { dans: true, valeurListe: t.valeur, suggested: null };
+    // (26/10, Diana — règle de Nico) Une tranche de POIDS (couches « Taille 5 (12-18 kg) ») face à une grille en kg :
+    // l'option qui contient toute la tranche, au plus près de son poids de départ (_shared/taille-de-service.js, R6 —
+    // la même règle que la réponse automatique du serveur).
+    const kg = tailleParPoidsKg(v, vals);
+    if (kg) return { dans: true, valeurListe: kg.valeur, suggested: null };
     // (25/10, point 5) Une pointure « EU N » est l'option « N » d'une grille de pointures nue (estChampPointure).
     if (estChampPointure(platform, key, cheminCategorie)) {
       const nue = pointureNuePourEu(v, vals);
@@ -456,6 +462,8 @@ export function tailleDansListeEbay(valeur, liste, { textes = null, champ = "Tai
   if (!vals.length || (!v && !textes)) return null;
   const t = v ? tailleDansGrille(v, vals) : null;
   if (t) return t.valeur;
+  const kg = v ? tailleParPoidsKg(v, vals) : null; // (26/10, Diana) une tranche de poids dans une liste en kg
+  if (kg) return kg.valeur;
   // (19/10) Avec les textes du vendeur : la taille qu'ils disent avec la copie
   // (taille-du-texte.js), placée par le vocabulaire des tailles — avant le
   // rapprochement par mots, qui ne joue jamais sur un nombre.
@@ -495,7 +503,7 @@ export function horsListeBloque({ regle = "classique", platform, key, inputType,
 //   · AUCUNE marque nulle part (fiche, Lens, copies, aucune lecture partielle
 //     sur l'étiquette) → « Sans marque » d'office — moteur/reponsesPartagees.js
 //     (sansMarqueDOffice). Une marque présente hors catalogue garde sa question.
-export { vintedExigeUneMarque, vintedExigeUneCouleur, vintedExigeUnIsbn, ISBN_ABSENT, valeurUneLettre } from "../../../supabase/functions/_shared/vinted-exigences.js";
+export { vintedExigeUneMarque, vintedExigeUneCouleur, vintedExigeUnIsbn, ISBN_ABSENT, valeurUneLettre, vintedExigeUneTaille, vintedObjetSansTaille, VINTED_TAILLES_JOUETS } from "../../../supabase/functions/_shared/vinted-exigences.js";
 
 // ── RAYON VINTED « NEUF SEULEMENT » : C'EST LE RAYON QU'ON CHANGE (24/09) ───
 // Relevé réel du formulaire le 24/09 : « Casques de sécurité » (Maison >

@@ -4222,6 +4222,26 @@ serve(async (req) => {
         }
         delete pfS["processing_since"];
         pfS["pas_de_rouge"] = { at: new Date().toISOString(), motif: sortie.motif, verdict: sortie.verdict };
+        // (26/10, Johan DÉSIRÉ — Nico) Une restriction Vinted : le message COMPLET de la page de Vinted (« violation de
+        // nos Termes et conditions et de nos Règles du catalogue… »), jamais seulement son titre, gardé sur le COMPTE
+        // (platform_settings.vinted.restriction) — une écriture par restriction (même date : rien n'est réécrit).
+        if (sortie.motif === "compte_restreint" && String(jPdr?.platform ?? "") === "vinted") {
+          try {
+            const r = restrictionVinted(pfBase) ?? restrictionVinted((pfIn ?? {}) as Record<string, unknown>);
+            const diag = ((pfBase["last_diagnostic"] ?? (pfIn as Record<string, unknown> | null)?.["last_diagnostic"] ?? {}) as Record<string, unknown>);
+            const texte = [String(diag["titre"] ?? ""), String(diag["corps"] ?? "")].filter((x) => x.trim()).join("\n").slice(0, 4000);
+            if (r?.jusquau && texte) {
+              const { data: prR } = await userClient.from("profiles").select("platform_settings").eq("id", user.id).maybeSingle();
+              const deja = (((prR as { platform_settings?: Record<string, unknown> } | null)?.platform_settings ?? {})["vinted"] as Record<string, unknown> | undefined)?.["restriction"] as Record<string, unknown> | undefined;
+              if (!deja || deja["jusquau"] !== r.jusquau || String(deja["message"] ?? "").length < texte.length) {
+                await userClient.rpc("platform_settings_fusionner", {
+                  p_chemin: ["vinted", "restriction"],
+                  p_patch: { jusquau: r.jusquau, fin: r.fin != null ? new Date(r.fin).toISOString() : null, message: texte, vu_le: new Date().toISOString(), job: jobId },
+                });
+              }
+            }
+          } catch (_e) { /* garder le message est un renfort : jamais un point de panne */ }
+        }
         statutEffectif = sortie.statut;
         messageEffectif = sortie.message;
         raisonRequalif = `pas-de-rouge : ${sortie.motif} → ${sortie.verdict}`;

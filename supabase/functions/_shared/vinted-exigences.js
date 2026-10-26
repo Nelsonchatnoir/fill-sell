@@ -114,3 +114,37 @@ export function vintedExigeUnIsbn(cheminCategorie, catalogId = null) {
 export function valeurUneLettre(v) {
   return /^[A-Za-zÀ-ÿ?]$/.test(String(v ?? "").trim());
 }
+
+// ── VINTED EXIGE UNE TAILLE POUR UN JOUET (26/10, « Maison Gabby » de Louis) ─────────────────────────────────────────
+// « Maisons de poupées » (3326) jamais vue avant le 26/10 12:13 : aucune ligne au catalogue, l'écran « Vérifier » a dit
+// « Prêt », le contrôle de vinted.js a arrêté le dépôt sur « Taille ». MESURÉ le 26/10 : les 10 rayons « Enfants › Jeux
+// et jouets › … » relevés exigent tous la MÊME grille de 31 valeurs (tailles enfant + « Taille unique ») ; 73 annonces
+// Vinted de jouets synchronisées sur 60 jours, 73 avec une taille (45 « Taille unique ») ; 11 publications de jouets,
+// 11 avec une taille. Aucun rayon de jouets ne dispense de la taille : changer de rayon n'y change rien.
+// LA RÈGLE : tout « Enfants › Jeux et jouets › … » exige une taille, dans cette grille ; un OBJET (tout sauf ce qui se
+// porte : déguisements, tabliers et blouses) prend « Taille unique » quand rien d'autre ne la dit (fiche, copie, texte
+// — un âge RECOMMANDÉ « à partir de 1 an » n'est jamais une taille).
+export const VINTED_TAILLES_JOUETS = Object.freeze([
+  "Prématuré, jusqu'à 44cm", "Naissance / 44 cm", "Jusqu'à 1 mois / 50 cm", "1-3 mois / 56 cm", "3-6 mois / 62 cm",
+  "6-9 mois / 68 cm", "9-12 mois / 74 cm", "12-18 mois / 80 cm", "18-24 mois / 86 cm", "24-36 mois / 92 cm",
+  "3 ans / 98 cm", "4 ans / 104 cm", "5 ans / 110 cm", "6 ans / 116 cm", "7 ans / 122 cm", "8 ans / 128 cm",
+  "9 ans / 134 cm", "10 ans / 140 cm", "11 ans / 146 cm", "12 ans / 152 cm", "13 ans / 158 cm", "14 ans / 164 cm",
+  "15 ans / 170 cm", "16 ans / 176 cm", "Taille unique", "XS", "S", "M", "L", "XL", "XXL",
+]);
+const JOUETS = ["enfants", "jeux et jouets"];
+// Ce qui se PORTE dans la branche des jouets : la taille y est une vraie taille, jamais « Taille unique » d'office.
+const JOUETS_QUI_SE_PORTENT = [
+  ["enfants", "jeux et jouets", "deguisements et jeux de role"],
+  ["enfants", "jeux et jouets", "loisirs creatifs", "tabliers et blouses"],
+];
+
+/** Vinted exige-t-il une taille pour ce rayon de jouets (même jamais relevé) ? */
+export function vintedExigeUneTaille(cheminCategorie) {
+  return commencePar(chemin(cheminCategorie), JOUETS);
+}
+
+/** Un OBJET de la branche des jouets (rien qui se porte) : « Taille unique » est sa taille. */
+export function vintedObjetSansTaille(cheminCategorie) {
+  const c = chemin(cheminCategorie);
+  return commencePar(c, JOUETS) && !JOUETS_QUI_SE_PORTENT.some((p) => commencePar(c, p));
+}

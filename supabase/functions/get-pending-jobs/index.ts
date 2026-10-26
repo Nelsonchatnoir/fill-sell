@@ -1,6 +1,7 @@
 import { recreationRetientFile } from "../_shared/file-republication.js";
 import { estFileEnPause, jobRetenuParPause, syncDemandeeParLaPersonne, SYNC_DEVANT_FILE_MS, passeAvantLaSynchro } from "../_shared/file-pause.js";
 import { reglageProgrammation, estProgrammee, servieAujourdhui, decisionProgrammee } from "../_shared/publication-programmee.js";
+import { premiereSynchroAPoser, PREMIERE_SYNCHRO_JOURS_DEFAUT } from "../_shared/premiere-synchro.js";
 import { lectureOrigineEnAttente, contenuAImposer, messageLectureOrigine } from "../_shared/contenu-fiche.js";
 import { conformerTexte } from "../../../src/utils/texteConforme.js";
 import { correctionCaptureVinted, photosDeLaFicheALaRecreation } from "../_shared/capture-corrigee.js";
@@ -1862,6 +1863,43 @@ serve(async (req) => {
         return null;
       }
     };
+    // ══ LA PREMIÈRE SYNCHRO PART SEULE (26/10, Azizak Shop — Nico ; _shared/premiere-synchro.js) ══
+    // Un compte récent dont l'extension passe, avec au moins une plateforme choisie connectée, qui n'a JAMAIS eu de
+    // synchro demandée : sa première synchro est demandée ICI, par les mêmes RPC que le bouton (client de la personne,
+    // déclencheurs « bouton_distant » / « app », les seuls que l'extension installée importe), puis lue juste dessous
+    // dans ce même passage. Une fois par compte (la demande est la marque ; les gardes des RPC — cadence, déjà en
+    // attente, version — empêchent tout doublon entre postes). coin_config.premiere_synchro_auto = 0 coupe tout.
+    if (versionAuMoins(version, SYNC_VERSION_MIN) && !includeProcessing && !includeNeedsUser) {
+      try {
+        const adminP = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        const { data: cfgP } = await adminP.from("coin_config").select("key, value").in("key", ["premiere_synchro_auto", "premiere_synchro_auto_jours"]);
+        const cfgPM = new Map(((cfgP ?? []) as Array<{ key: string; value: unknown }>).map((r) => [r.key, Number(r.value)]));
+        const reglageP = { actif: cfgPM.get("premiere_synchro_auto") !== 0, jours: cfgPM.get("premiere_synchro_auto_jours") };
+        if (reglageP.actif) {
+          const { data: profP } = await adminP.from("profiles").select("created_at, platform_settings, extension_sessions").eq("id", user.id).maybeSingle();
+          const inscritLe = (profP as { created_at?: string } | null)?.created_at ?? null;
+          const jours = Number(reglageP.jours) > 0 ? Number(reglageP.jours) : PREMIERE_SYNCHRO_JOURS_DEFAUT;
+          if (inscritLe && Date.now() - Date.parse(inscritLe) <= jours * 86_400_000) {
+            const { data: runsP } = await adminP.from("vinted_sync_runs").select("declencheur").eq("user_id", user.id).in("kind", ["dressing", "annonces"]).limit(200);
+            const aPoser = premiereSynchroAPoser({
+              inscritLe, platformSettings: (profP as { platform_settings?: unknown } | null)?.platform_settings,
+              sessions: (profP as { extension_sessions?: unknown } | null)?.extension_sessions, runs: (runsP ?? []) as Array<{ declencheur?: string | null }>, reglage: reglageP,
+            });
+            if (aPoser.length) {
+              const poses: Record<string, unknown> = {};
+              for (const pf of aPoser) {
+                const { data: rep, error: errP } = pf === "vinted"
+                  ? await userClient.rpc("demander_sync_dressing")
+                  : await userClient.rpc("demander_sync_plateforme", { p_platform: pf });
+                poses[pf] = errP ? `erreur: ${errP.message}`.slice(0, 120) : ((rep as { reason?: unknown } | null)?.reason ?? rep ?? null);
+              }
+              await adminP.from("usage_logs").insert({ user_id: user.id, feature: "premiere_synchro_auto", metadata: { plateformes: aPoser, poses, build: buildDuPoll.slice(0, 60) } });
+              console.log(`[get-pending-jobs] userId=${user.id} : PREMIÈRE SYNCHRO automatique demandée (${aPoser.join(", ")}) → ${JSON.stringify(poses).slice(0, 200)}`);
+            }
+          }
+        }
+      } catch (_e) { /* jamais un point de panne : la file part comme avant */ }
+    }
     if (versionAuMoins(version, SYNC_VERSION_MIN) && !includeProcessing) {
       try {
         // Marque en 'expired' les demandes trop vieilles AVANT de lire. Sans
@@ -2565,6 +2603,49 @@ serve(async (req) => {
           if (idsProgrammeesRetenues.size) {
             out = out.filter((j) => !idsProgrammeesRetenues.has(String(j.id)));
             console.log(`[get-pending-jobs] userId=${user.id} : publications programmées → ${idsProgrammeesRetenues.size} retenue(s) (${d.motif ?? "une_a_la_fois"}), ${d.servir ? "1 servie" : "aucune servie"} ; ${nServies} servie(s) aujourd'hui`);
+          }
+        }
+      } catch (_e) { /* jamais un point de panne : la file part comme avant */ }
+    }
+
+    // ══ APRÈS UNE RESTRICTION VINTED, LA FILE REPART PAR PALIERS (26/10, Johan DÉSIRÉ — Nico) ══
+    // Johan : restreint le 26/10 jusqu'au 09/11, 49 republications retenues — toutes reprogrammées à la même minute
+    // (fin de la restriction + 5 min) : elles seraient reparties d'un bloc, le geste même qui fait restreindre.
+    // Désormais, une tâche Vinted retenue par la restriction (pas_de_rouge compte_restreint / _echu) ne repart qu'au
+    // rythme de coin_config.vinted_reprise_restriction_jour par jour de Paris (défaut 10), UNE à la fois (une par
+    // poll), marquée reprise_restriction_jour ; le reste attend le lendemain, sans rien perdre. Illisible → servi.
+    if (!includeProcessing && !includeNeedsUser && out.length) {
+      try {
+        const motifRestriction = (j: { platform_fields?: unknown }) => String((((j.platform_fields ?? {}) as Record<string, unknown>)["pas_de_rouge"] as Record<string, unknown> | undefined)?.["motif"] ?? "");
+        const apresRestriction = out.filter((j) => String(j.platform) === "vinted"
+          && ["compte_restreint", "compte_restreint_echu"].includes(motifRestriction(j as { platform_fields?: unknown }))
+          && !((j.platform_fields ?? {}) as Record<string, unknown>)["reprise_restriction_jour"]);
+        if (apresRestriction.length) {
+          const aujourdhuiParis = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Paris" });
+          const { data: cfgR } = await userClient.from("coin_config").select("value").eq("key", "vinted_reprise_restriction_jour").maybeSingle();
+          const plafondR = Number((cfgR as { value?: unknown } | null)?.value) > 0 ? Number((cfgR as { value?: unknown }).value) : 10;
+          const { data: lignesR } = await userClient.from("cross_post_jobs").select("id, le:platform_fields->>reprise_restriction_le")
+            .eq("user_id", user.id).eq("platform", "vinted").eq("platform_fields->>reprise_restriction_jour", aujourdhuiParis).limit(200);
+          const serviesR = (lignesR ?? []).length;
+          // Espacées sur la journée : 45 min au moins entre deux (jamais dix en vingt minutes).
+          const derniereR = Math.max(0, ...((lignesR ?? []) as Array<{ le: string | null }>).map((l) => Date.parse(String(l.le ?? "")) || 0));
+          const espaceeR = !derniereR || Date.now() - derniereR >= 45 * 60_000;
+          const retenuesR = new Set<string>(apresRestriction.map((j) => String(j.id)));
+          if (serviesR < plafondR && espaceeR) {
+            const j = apresRestriction[0];
+            const pfR = { ...((j.platform_fields ?? {}) as Record<string, unknown>), reprise_restriction_jour: aujourdhuiParis, reprise_restriction_le: new Date().toISOString() };
+            const { data: marqueR } = await userClient.from("cross_post_jobs").update({ platform_fields: pfR })
+              .eq("id", String(j.id)).eq("status", "pending").select("id");
+            if (marqueR?.length) { j.platform_fields = pfR; retenuesR.delete(String(j.id)); }
+          }
+          if (retenuesR.size) {
+            out = out.filter((j) => !retenuesR.has(String(j.id)));
+            const attenteR = `Reprise progressive après la restriction de ton compte Vinted : ${plafondR} par jour au plus, une à la fois, pour ne pas l'alerter à nouveau. Ton annonce est intacte, rien à faire.`;
+            for (const j of apresRestriction) {
+              if (!retenuesR.has(String(j.id)) || (j as { error?: unknown }).error === attenteR) continue;
+              await userClient.from("cross_post_jobs").update({ error: attenteR }).eq("id", String(j.id)).eq("status", "pending").select("id");
+            }
+            console.log(`[get-pending-jobs] userId=${user.id} : reprise après restriction Vinted → ${retenuesR.size} retenue(s), ${serviesR}/${plafondR} servie(s) aujourd'hui`);
           }
         }
       } catch (_e) { /* jamais un point de panne : la file part comme avant */ }

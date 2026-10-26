@@ -140,3 +140,90 @@ npx supabase functions deploy update-job-status --no-verify-jwt
 npx supabase functions deploy handler-watch --no-verify-jwt
 ```
 Avant (relu 13:12) : get-pending-jobs v293 true, update-job-status v152 false, handler-watch v134 false.
+
+## Bloc C — refonte du lot (livrée, 09bc85b + fef1e64, OTA 2.9.120)
+
+- Une ligne par article, une pop-up par article (commun, puis une section par plateforme, statut Prêt / À régler, retrait
+  = bouton), la même pop-up pour « Vérifier ». Test réel sur le lot de Nico (9 articles « pas encore partout ») : Medik8
+  (sans photo, rayon Vinted neuf : « Passer l'état en Neuf » / « Changer de rayon »), Scotch, legging, EAT (âge Beebs),
+  Call of Duty (PEGI 18 → Beebs « 16 ans et + »), bouilloire (« 200 g pour une bouilloire ? »), Meilleur des mondes,
+  téléphone et robot (« ne part pas » : Beebs sans rayon). Corrigé après le test : « Format du colis : À choisir » redit,
+  taille Vinted/Depop invisible, recherche de rayon en un geste, « Annuler » sur un article qui ne part nulle part.
+
+## Bloc D (livré, fef1e64)
+
+- D1 âge Beebs depuis le classement répondu (PEGI, USK, ESRB à âge minimum) ; D2 colis Leboncoin par défaut
+  (Réglages › Expédition) ; D3 titre, description et prix à la demande (Réglages › Préférences) ; D4 publications
+  programmées (Réglages › Automatismes ; la retenue vit dans get-pending-jobs — à déployer).
+
+## Panne de la base, 15:12 → 15:47 (UTC+1)
+
+- 15:12 : gel de 10 s (une requête de statistiques de Supabase à 17,6 s, tous les crons « job startup timeout ») ;
+  15:14:30 : plus rien (Cloudflare 522). Redémarrage par Nico à 15:47, passage en Medium à 15:57.
+- Ce qui ne l'explique pas : CPU de la base 15-35 % (veille_cpu) jusqu'à 15:14, 40-55 connexions sur 90, trafic normal
+  (≈ 2 200 requêtes/min). Dès 14:54, une lecture de coin_ledger (6 Mo) d'une autre session prenait 19 s : la machine
+  peinait déjà. Le tableau (mémoire à 92 %, relevé par Nico) : une instance Small saturée en mémoire.
+- Ce qui consomme : 28 connexions PostgREST longues (568 fonctions plpgsql, 1,2 Mo de source mis en cache par
+  connexion), 29 crons (≈ 6 900 démarrages de connexion par jour), le journal cron.job_run_details (268 767 lignes,
+  204 Mo, jamais purgé), photo_empreintes (602 Mo). Mes déploiements de l'après-midi : du code de l'app (aucune requête
+  nouvelle en boucle) — rien ne les relie à la panne ; le test de lot sur le compte de Nico (≈ 40 appels de rayon,
+  9 rédactions, entre 15:00 et 15:07) passait par les fonctions edge.
+- Allègement proposé (feu vert) : `supabase/migrations/PROPOSITION_20261026170000_purge_cron_run_details.sql.txt`
+  (purge à 3 jours + cron quotidien borné). Medium garde la marge.
+
+## Diana Soares — couches « Taille 5 (12-18 kg) » (Pro depuis 14:46)
+
+- Cause : la grille Vinted « Couches jetables » (en kilos) n'était connue de personne avant 16:13 ; à 16:13 l'extension
+  s'est arrêtée « Vinted ne reconnaît pas la taille » ; aucune règle ne savait lire une tranche de poids. Diana a choisi
+  « 11–25 kg » ; **publiée à 16:21:52**.
+- Règle : R6 (`_shared/taille-de-service.js`) — l'option qui contient toute la tranche, au plus près de son poids de
+  départ (12-18 kg → « 11–25 kg », son propre choix). App (sans question), serveur (handler-watch répond seul).
+  Preuve : selftest `tailles-poids-kg` (13).
+
+## Louis — « Maison Gabby » (Vinted « Maisons de poupées »)
+
+- Vinted l'exige vraiment : les 10 rayons de jouets relevés exigent la même grille (31 valeurs), 73 jouets en ligne sur
+  73 portent une taille (45 « Taille unique »). « Prêt » à tort : rayon jamais relevé avant 12:13 (deux minutes APRÈS le
+  job), aucune ligne au catalogue.
+- Règle : tout rayon de jouets exige une taille (ligne synthétique), un objet prend « Taille unique » (écran ; serveur
+  R7). Son job repart seul au passage de handler-watch déployé. Selftest `vinted-jouets-taille` (9).
+
+## Azizak Shop — 0 fiche
+
+- Cause : aucune synchro ne part sans geste (règle du 05/10) et il n'a jamais touché « Synchroniser » ; la carte
+  « Installe l'extension » parlait pendant la lecture de la capacité (téléphone à 14:15) ; son PC retarde d'environ 14 h.
+- Règle : première synchro automatique au passage de l'extension (get-pending-jobs, une fois par compte, 15 jours) ;
+  carte seulement si la base confirme l'absence, relue bornée. Rattrapage : 14 comptes (liste à l'enquête), pris à leur
+  prochain passage. Selftest `premiere-synchro` (14).
+
+## Julian Boissel — 14 annonces eBay, 0 fiche
+
+- Cause : le moteur décide « créer » ×14, rapprochement_v3_fiche_de refuse hors geste (« serveur:quotidien_api »).
+- Migration APPLIQUÉE à 16:53 sur le feu vert de Nico (`20261026171000_releve_ebay_api_importe`, md5 relu
+  14dab1677b7b47c3fd77bbe20640aec2, essai préalable en transaction annulée, inverse dans supabase/rollbacks/).
+- Rattrapage à 16:54 (`scripts/reparations/20261026_import_ebay_api.sql`, sauvegarde + inverse) : 13 comptes actifs,
+  281 annonces, **276 rattachées** ; **Julian : 14 annonces → 14 fiches** (passe {creer: 14}, 16:54:54). Restent : 5
+  annonces (règles inchangées) et 10 comptes inactifs (relevés du 14 au 25/10, 161 annonces) — question pour Nico.
+
+## Johan DÉSIRÉ — restreint jusqu'au 09/11
+
+- 49 republications Vinted retenues, toutes reprogrammées à 23:04:59 UTC le 09/11 : elles seraient reparties d'un bloc.
+- Corrigé : message complet de Vinted gardé sur le compte ; reprise par paliers (10 par jour, une à la fois, 45 min).
+  Mesure : 6 comptes restreints en 60 jours ; rythme avant restriction très variable (0 à 42 faits en 24 h), 149 comptes
+  non restreints au-dessus de 50 un jour → aucun seuil de rythme mesurable : plafond général laissé à Nico.
+
+## Elodie82 et Ornella
+
+- Elodie82 : retrait Leboncoin du Celine en attente, lien réparé à 12:34 (`/ad/vetements/3295261130`) ; extension
+  absente depuis 11:17 — part à son retour.
+- Ornella : 1 retrait Leboncoin « Supprimer introuvable » encore en attente (Veste bomber, 15:00), extension 0.6.144.
+  La 0.6.147 (vue acheteur = attente de connexion) et update-job-status déployé le traitent.
+
+## Lignes pour Nico (mises à jour)
+
+```
+npx supabase functions deploy get-pending-jobs
+npx supabase functions deploy update-job-status --no-verify-jwt
+npx supabase functions deploy handler-watch --no-verify-jwt
+```
+Avant (relu 16:20) : get-pending-jobs v293 true, update-job-status v152 false, handler-watch v134 false.

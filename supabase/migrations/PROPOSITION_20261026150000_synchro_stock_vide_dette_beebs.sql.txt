@@ -12,7 +12,7 @@ DO $garde$
 BEGIN
   IF md5(pg_get_functiondef('public.demander_sync_dressing'::regproc)) <> 'c64ff51ce7842a772f4214b977563770'
      OR md5(pg_get_functiondef('public.demander_sync_plateforme'::regproc)) <> 'd144172bfc61397cbf18fb8034790151'
-     OR md5(pg_get_functiondef('public.rapprochement_v3_fiche_de'::regproc)) <> '56a0ffed1c5414290052a3efae3c9e15' THEN
+     OR md5(pg_get_functiondef('public.rapprochement_v3_fiche_de'::regproc)) NOT IN ('56a0ffed1c5414290052a3efae3c9e15', '14dab1677b7b47c3fd77bbe20640aec2') THEN
     RAISE EXCEPTION 'un corps de prod a changé depuis le 26/10 13:30 — rien n''est appliqué, relire pg_get_functiondef';
   END IF;
 END $garde$;
@@ -238,7 +238,12 @@ BEGIN
   IF COALESCE((SELECT value FROM coin_config WHERE key = 'import_auto_ouvert'), 0) <> 1 THEN RETURN NULL; END IF;
   IF NOT p_geste THEN
     SELECT * INTO v_run FROM vinted_sync_runs WHERE id = a.run_id;
-    IF NOT releve_est_geste(v_run.declencheur) THEN RETURN NULL; END IF;
+    -- (26/10, Julian Boissel — Nico) Le relevé serveur d'un compte eBay relié importe comme « Synchroniser »
+    -- (même exception que PROPOSITION_20261026171000, pour que l'ordre d'application ne la perde jamais).
+    IF NOT (releve_est_geste(v_run.declencheur)
+            OR (a.platform = 'ebay' AND v_run.declencheur IN ('serveur:quotidien_api', 'serveur:lecture_origine'))) THEN
+      RETURN NULL;
+    END IF;
   END IF;
   v_imp := rapprocher_importer(p_user, a.id, 'rapprochement');
   IF COALESCE((v_imp ->> 'ok')::boolean, false) THEN RETURN (v_imp ->> 'inventaire_id')::bigint; END IF;

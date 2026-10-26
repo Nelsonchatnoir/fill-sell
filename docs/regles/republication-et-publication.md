@@ -797,3 +797,18 @@
   Éteindre le réglage libère la file. « Envoyer tout de suite » au lot. eBay par l'API (nos serveurs) n'est pas retenu.
   ⛔ Jamais une heure dans les phrases (« dans ton créneau du matin », c'est tout).
 - Selftest : `bloc-d-2610`.
+
+## 26/10 (soir) — tailles en kilos, jouets Vinted, reprise après restriction (Diana, Louis, Johan)
+- **Tailles en poids** (Diana, couches « Taille 5 (12-18 kg) », grille Vinted en kg) : règle R6 de
+  `_shared/taille-de-service.js` — l'option qui CONTIENT toute la tranche, au plus près de son poids de départ
+  (12-18 kg → « 11–25 kg », le choix de la personne). App (jugerValeurContreListe, eBay), serveur (réponse
+  automatique de handler-watch). Aucune option ne contient la tranche : la question, grille entière.
+- **Jouets Vinted** (« Maison Gabby » de Louis) : tout « Enfants › Jeux et jouets › … » exige une taille (mesure : 10
+  rayons, 31 valeurs, 73 jouets en ligne sur 73 avec une taille) — ligne synthétique avant l'envoi, plus de « Prêt » à
+  tort ; un OBJET (ni déguisement ni tablier) prend « Taille unique » quand rien d'autre ne la dit (écran,
+  champRequisAuto ; serveur, R7 de taille-question-auto.js). Un âge recommandé n'est jamais une taille.
+- **Après une restriction Vinted** (Johan) : le message COMPLET de la page de Vinted est gardé sur le compte
+  (platform_settings.vinted.restriction) ; les tâches retenues ne repartent qu'au rythme de
+  coin_config.vinted_reprise_restriction_jour (défaut 10) par jour de Paris, une à la fois, 45 min au moins entre deux.
+  Plafond général du parc : NON posé — la mesure (6 comptes restreints en 60 jours ; 149 comptes non restreints au-dessus
+  de 50 publications un jour) ne montre pas de seuil de rythme ; décision à Nico.

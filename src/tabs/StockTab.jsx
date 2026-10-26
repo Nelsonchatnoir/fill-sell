@@ -3051,6 +3051,23 @@ export function VintedDressingSync({ lang, user, isNative, extensionStatus, sour
       .catch(() => { if (!annule) { setCapacite({ inconnu: true }); setCapaciteLueA(Date.now()); } });
     return () => { annule = true; };
   }, [user?.id]);
+  // (26/10, Azizak) Tant que le compte n'a PAS d'extension connue, la capacité se relit, bornée (relectureBornee :
+  // 20 s, doublée sur erreur, 10 min au plus, onglet visible seulement) : l'extension installée pendant que l'écran
+  // est ouvert éteint la carte et débloque le bouton sans recharger. S'arrête dès qu'elle est connue.
+  const capableConnu = capacite?.capable === true;
+  // Seulement sur le stock VIDE (là où la carte parle), et 10 minutes au plus depuis l'ouverture de l'écran.
+  const stockVideIci = source === 'stock_empty';
+  useEffect(() => {
+    if (!user?.id || capableConnu || !stockVideIci) return undefined;
+    const debut = Date.now();
+    const r = demarrerRelecture(async () => {
+      if (Date.now() - debut > 10 * 60_000) { r.arreter(); return; }
+      const c = await lireCapaciteSyncCompte(user.id);
+      setCapacite(c); setCapaciteLueA(Date.now());
+      if (c?.capable) r.arreter();
+    }, { intervalleMs: 20_000, maxMs: 10 * 60_000, immediat: false });
+    return () => r.arreter();
+  }, [user?.id, capableConnu, stockVideIci]);
 
   // Reprise d'affichage au montage : une sync peut tourner depuis un autre
   // onglet ou depuis avant le rechargement de la page.
@@ -3374,7 +3391,10 @@ export function VintedDressingSync({ lang, user, isNative, extensionStatus, sour
   // Un blocage PRÉSENT prime aussi sur le résultat d'un run PASSÉ : les deux
   // ensemble se contredisent (« synchronisé ✓ » + « installe l'extension »).
   // Le bilan et la cadence ne s'affichent que débloqué.
-  const blocage = !peutLancer && (sondeFinie || capaciteConnue);
+  // (26/10, Azizak Shop — Nico) La carte « Installe l'extension » ne parle que quand la BASE confirme l'absence
+  // (capacité lue, pas d'extension connue) ET que la sonde de ce navigateur a fini : jamais pendant la lecture (le
+  // téléphone l'affichait 15 s à tort), jamais sur une lecture illisible.
+  const blocage = !peutLancer && sondeFinie && capaciteConnue;
   const MESSAGE_BLOCAGE = fr
     ? "Installe l'extension FillSell sur ton ordinateur pour synchroniser tes annonces."
     : 'Install the FillSell extension on your computer to sync your listings.';
@@ -4151,13 +4171,8 @@ export function VintedDressingSync({ lang, user, isNative, extensionStatus, sour
             </button>
           )}
         </div>
-        {blocage&&source==='stock_empty'&&(
-          <InstallExtensionCta
-            lang={lang} isNative={isNative}
-            userId={user?.id??null} userEmail={user?.email??null}
-            source="stock_vide" message={MESSAGE_BLOCAGE}
-          />
-        )}
+        {/* (26/10, Azizak) Plus de carte « Installe l'extension » dans la variante « ligne » : BlocSynchro la monte
+            CACHÉE (display:none) — elle journalisait des « carte_vue » pour une carte que personne ne voyait. */}
         {blocQuestionBoutique}
         {/* (06/10) Portail : visible même si cette ligne est montée cachée. */}
         {feuilleBoutique}

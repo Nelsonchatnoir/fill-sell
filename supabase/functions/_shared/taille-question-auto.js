@@ -19,6 +19,7 @@
 // Pur (Deno + Node), imports relatifs.
 import { tailleDeService, brancheDeTaille } from "./taille-de-service.js";
 import { tailleDuTexte } from "./taille-du-texte.js";
+import { vintedObjetSansTaille } from "./vinted-exigences.js";
 
 const CLES_TAILLE = /^(taille|size|oplasizechoice|depoptaille|pointure|shoe_size|clothing_st)$/i;
 
@@ -48,7 +49,7 @@ export function reponseTailleAuto(job, tailleFiche = null, textes = null) {
   const vintedA = pf.vintedAspects && typeof pf.vintedAspects === "object" ? pf.vintedAspects : {};
   const brut = [pf.taille, ebay.Taille, ebay.Pointure, vintedA.size, tailleFiche]
     .map((v) => String(v ?? "").trim()).find(Boolean) ?? "";
-  if (!brut && !textes) return null;
+  if (!brut && !textes && !(String(job.platform ?? "") === "vinted" && vintedObjetSansTaille(pf.categoryPath ?? []))) return null;
   const branche = brancheDeTaille(
     pf.categoryPath ?? [], pf.oplaCategoryPath ?? [], pf.beebsCategoryPath ?? [], pf.lbcCategoryPath ?? [],
     pf.ebayCategoryPath ?? [], String(ebay["Département"] ?? ""), String(pf.genre ?? ""),
@@ -59,6 +60,13 @@ export function reponseTailleAuto(job, tailleFiche = null, textes = null) {
       .find((c) => Array.isArray(c) && c.length) ?? null;
     const d = tailleDuTexte({ valeur: brut, textes, grille: f.allowed_values, champ: `${f.field_key ?? ""} ${f.field_label ?? ""}`, chemin });
     if (d?.valeur) r = { valeur: d.valeur, motif: d.motif, regle: "R5" };
+  }
+  // (26/10, « Maison Gabby » de Louis) Un OBJET de la branche des jouets Vinted, sans aucune taille nulle part (copie,
+  // fiche, texte) : « Taille unique » de la grille — la même règle que l'écran (vinted-exigences.js). Jamais un
+  // déguisement ni un tablier (ils se portent), jamais à la place d'une taille écrite.
+  if (!r && !brut && String(job.platform ?? "") === "vinted" && vintedObjetSansTaille(pf.categoryPath ?? [])) {
+    const unique = (f.allowed_values ?? []).find((v) => /^taille unique$/i.test(String(v ?? "").trim()));
+    if (unique) r = { valeur: String(unique), motif: "objet de la branche des jouets : taille unique", regle: "R7" };
   }
   if (!r) return null;
   const cible = f.target && typeof f.target === "object" && f.target.key

@@ -171,7 +171,52 @@ export function tailleDeService(brut, grille, opts = {}) {
       };
     }
   }
+
+  // R6 — une tranche de poids (couches) lue dans une grille en kg.
+  const kg = tailleParPoidsKg(valeur, opt);
+  if (kg) return { ...kg, regle: "R6" };
   return null;
+}
+
+// ── R6 — LES TAILLES EN POIDS (26/10, Diana — règle de Nico : « toute taille de la fiche se convertit seule vers la
+// grille du rayon ») ──────────────────────────────────────────────────────────────────────────────────────────────
+// Couches de Diana : « Taille 5 (12-18 kg) » face à la grille Vinted « Couches jetables » : « Jusqu'à 2 kg », « 2–5 kg »,
+// « 3–6 kg », « 4–9 kg », « 7–18 kg », « 9–20 kg », « 11–25 kg », « 13–27 kg », « 16 kg et plus ». La même mesure (des
+// kilos), écrite en tranches : ce n'est pas une conversion entre systèmes, c'est lire SA tranche dans la grille.
+// La règle : parmi les options qui CONTIENNENT toute la tranche de l'article (jamais une option qui en exclut une
+// partie), celle qui commence au plus près de son poids minimum sans le dépasser — une taille de couche se définit par
+// son poids de départ (12-18 kg → « 11–25 kg », la taille 5 du marché ; Diana a choisi la même à la main). Aucune
+// option ne contient la tranche : null, la question (avec la grille entière).
+/** Une tranche de poids en kg, lue dans une écriture : { min, max } (max = Infinity pour « 16 kg et plus »), ou null. */
+export function lirePoidsKg(v) {
+  // Pas `plier` : il efface les tirets, et ici le tiret EST la tranche (« 12-18 kg »).
+  const s = String(v ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase()
+    .replace(/,/g, ".").replace(/[–—−]/g, "-").replace(/[’`]/g, "'").replace(/\s+/g, " ").trim();
+  if (!/\d\s*kg/.test(s)) return null;
+  const NB = "(\\d+(?:\\.\\d+)?)";
+  let m = new RegExp(`${NB}\\s*(?:kg)?\\s*(?:-|a|to)\\s*${NB}\\s*kg`).exec(s);
+  if (m && Number(m[1]) < Number(m[2])) return { min: Number(m[1]), max: Number(m[2]) };
+  m = new RegExp(`(?:jusqu'a|jusqu a|moins de|max(?:imum)?|<|up to)\\s*${NB}\\s*kg`).exec(s);
+  if (m) return { min: 0, max: Number(m[1]) };
+  m = new RegExp(`${NB}\\s*kg\\s*(?:et plus|et \\+|\\+|ou plus|minimum|min\\b|and more|plus)`).exec(s)
+    || new RegExp(`(?:\\+|plus de|des|a partir de|from)\\s*${NB}\\s*kg`).exec(s);
+  if (m) return { min: Number(m[1]), max: Infinity };
+  m = new RegExp(`${NB}\\s*kg`).exec(s);
+  if (m) return { min: Number(m[1]), max: Number(m[1]) };
+  return null;
+}
+
+/** R6 : la tranche de poids de l'article placée dans une grille en kg, ou null. */
+export function tailleParPoidsKg(brut, grille) {
+  const t = lirePoidsKg(brut);
+  if (!t) return null;
+  const opts = options(grille).map((o) => ({ o, k: lirePoidsKg(o) })).filter((x) => x.k);
+  if (!opts.length) return null;
+  const contenantes = opts.filter(({ k }) => k.min <= t.min && k.max >= t.max);
+  if (!contenantes.length) return null;
+  contenantes.sort((a, b) => (b.k.min - a.k.min) || ((a.k.max - a.k.min) - (b.k.max - b.k.min)));
+  const c = contenantes[0];
+  return { valeur: c.o, motif: `tranche ${t.min}–${t.max === Infinity ? "+" : t.max} kg placée dans « ${c.o} » (grille en kg)` };
 }
 
 /**
