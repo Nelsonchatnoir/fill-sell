@@ -147,5 +147,37 @@ console.log("5. Le branchement serveur (get-pending-jobs)");
   ok(/lecture_fond: lectureFond,/.test(gpj), "la réponse porte lecture_fond");
 }
 
+console.log("6. (26/10, urgence lenteur) La lecture de fond s'efface quand la personne publie");
+{
+  const NICO = lf.LECTURE_FOND_PILOTES[0];
+  const base = { versionOk: true, luesAujourdhui: 0, dernierRefusMs: null, maintenant: Date.parse("2026-10-26T07:00:00Z") };
+  ok(lf.regleLectureFond({ ...base, userId: NICO, mode: 1, personnePublie: true }).raison === "personne_publie", "la personne publie (geste < 10 min) : rien servi, même au pilote");
+  ok(lf.regleLectureFond({ ...base, userId: NICO, mode: 1, personnePublie: false }).actif === true, "sans geste récent : la règle d'avant");
+  ok(lf.FEATURES_PUBLICATION.includes("generate_listing") && lf.FEATURES_PUBLICATION.includes("publish") && lf.PAUSE_PUBLICATION_MIN === 10, "les gestes de publication et la fenêtre de 10 min");
+  const gpj = readFileSync(join(RACINE, "supabase/functions/get-pending-jobs/index.ts"), "utf8");
+  ok(/let personnePublie = out\.length > 0;/.test(gpj), "un poll qui sert des tâches : pas de lecture de fond");
+  ok(/\.in\("feature", FEATURES_PUBLICATION/.test(gpj) && /PAUSE_PUBLICATION_MIN \* 60_000/.test(gpj), "le geste récent est relu (usage_logs, 10 min)");
+  ok((gpj.match(/personnePublie,\r?\n\s*\}\);/g) ?? []).length === 2, "Vinted ET Beebs reçoivent la pause");
+  const bg = readFileSync(join(RACINE, "chrome-extension/background.js"), "utf8");
+  ok(/jobFlowWaiters\+\+;/.test(bg) && /jobFlowWaiters = Math\.max\(0, jobFlowWaiters - 1\);/.test(bg), "extension : le verrou compte ceux qui l'attendent");
+  const iv = bg.indexOf("async function lireFondVinted(");
+  const fv = bg.slice(iv, iv + 2500);
+  ok(/if \(fondDoitCeder\(\)\) return;/.test(fv) && /await attendreOuCeder\(attente\)/.test(fv) && !/await sleep\(attente\)/.test(fv), "extension : la lecture Vinted n'attend plus, verrou tenu, sans céder");
+  const ib = bg.indexOf("async function lireFondBeebs(");
+  const fb = bg.slice(ib, ib + 2500);
+  ok(/if \(fondDoitCeder\(\)\) return;/.test(fb) && /await attendreOuCeder\(attente\)/.test(fb) && !/await sleep\(attente\)/.test(fb), "extension : la lecture Beebs pareil");
+  for (const t of ["PUBLISH_NOW", "FETCH_VINTED_ITEM", "FETCH_VINTED_PUBLIC", "CAPTURE_VINTED_ITEM"]) {
+    const i = bg.indexOf(`if (msg?.type === "${t}") {`);
+    ok(i > 0 && /^\s*noterDemandeApp\(\);/.test(bg.slice(i + `if (msg?.type === "${t}") {`.length)), `extension : « ${t} » de l'app efface la lecture de fond 10 min`);
+  }
+  ok(/tachesDuCycle = Array\.isArray\(jobs\) \? jobs\.length : 0;/.test(bg), "extension : une file qui tourne ce cycle, pas de lecture de fond derrière");
+  {
+    const i = bg.indexOf("await recoverMissingListingUrls(session)");
+    const avant = bg.slice(Math.max(0, i - 1200), i);
+    ok(i > 0 && /if \(jobFlowWaiters > 0 && !majPlanifiee\) \{[\s\S]*repollApresCycle = true;\s*return;\s*\}\s*$/.test(avant), "extension : quelqu'un attend le verrou → la maintenance de fond (liens, veille, messagerie) passe après lui, un poll repart aussitôt");
+  }
+  ok(/if \(Date\.now\(\) - derniereDemandeAppMs < FOND_PAUSE_APRES_DEMANDE_MS\) return "personne_publie";/.test(bg) && /FOND_PAUSE_APRES_DEMANDE_MS = 10 \* 60_000/.test(bg), "extension : 10 min après une demande de l'app");
+}
+
 console.log(`\n${rouges === 0 ? "✓" : "✗"} lecture-fond : ${verts} contrôles verts, ${rouges} rouges`);
 process.exit(rouges === 0 ? 0 : 1);

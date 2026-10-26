@@ -237,7 +237,7 @@ import { OPLA_PRIX_MAX, prixOplaTropHaut, messagePrixOplaTropHaut } from "../_sh
 import { retenirRetraitVerificationLongue } from "../_shared/beebs-retrait-verification-longue.js";
 // (25/10) Le texte du vendeur lu en arrière-plan, dès l'import (page publique Vinted, extension ≥ 0.6.144).
 import { LECTURE_FOND_VERSION_MIN, LECTURE_FOND_RYTHME, modeLectureFond, regleLectureFond, listeLectureFond, aLireEnFond, debutJourParis,
-  LECTURE_FOND_BEEBS_VERSION_MIN, LECTURE_FOND_BEEBS_MODE_DEFAUT, LECTURE_FOND_BEEBS_RYTHME, listeLectureFondBeebs, aLireEnFondBeebs } from "../_shared/lecture-fond.js";
+  FEATURES_PUBLICATION, PAUSE_PUBLICATION_MIN, LECTURE_FOND_BEEBS_VERSION_MIN, LECTURE_FOND_BEEBS_MODE_DEFAUT, LECTURE_FOND_BEEBS_RYTHME, listeLectureFondBeebs, aLireEnFondBeebs } from "../_shared/lecture-fond.js";
 import { palierDuProfil, aAuMoins } from "../_shared/palier.js";
 
 // ── Format de colis Vinted : deux lectures du PARC, gardées 10 min par instance
@@ -13104,7 +13104,7 @@ serve(async (req) => {
           pauseAntirobot: Boolean(antirobotPause) || compteEnPauseAr,
           luesAujourdhui: luesLf.count ?? 0,
           dernierRefusMs: refusLf.data?.[0]?.created_at ? Date.parse(String(refusLf.data[0].created_at)) : null,
-          maintenant: maintenantLf,
+          maintenant: maintenantLf, personnePublie,
         });
         if (regleLf.actif) {
           // Les fiches du compte importées de Vinted, au stock et vivantes. Rattrapage : seulement celles sans texte, sans
@@ -13125,6 +13125,18 @@ serve(async (req) => {
           // Rattrapage : la requête a déjà écarté les fiches complètes (sans texte lu ici, aLireEnFond ne juge que la date
           // de lecture). Mesure (pilotes, 200 fiches au plus) : le texte est lu, ses fiches à lire passent d'abord.
           const lignesTriees = ((lignesLf ?? []) as unknown as Record<string, unknown>[]).map((f) => (regleLf.mode === "mesure" ? f : { ...f, description: "" }));
+    // (26/10, urgence lenteur) La personne publie (un geste tracé il y a moins de 10 min) ou ce poll lui sert des tâches :
+    // aucune lecture de fond (Vinted, Beebs) — dans l'extension elle tient le verrou de flux en s'espaçant de 20 à 60 s,
+    // et tout ce que l'écran demande attendait derrière (75 s et 97 s mesurées le 26/10). Illisible → pas de pause.
+    let personnePublie = out.length > 0;
+    if (!personnePublie && !includeProcessing && !includeNeedsUser && versionAuMoins(version, LECTURE_FOND_VERSION_MIN)) {
+      try {
+        const { data: gestes } = await userClient.from("usage_logs").select("id").eq("user_id", user.id)
+          .in("feature", FEATURES_PUBLICATION as unknown as string[])
+          .gte("created_at", new Date(Date.now() - PAUSE_PUBLICATION_MIN * 60_000).toISOString()).limit(1);
+        personnePublie = (gestes ?? []).length > 0;
+      } catch (_e) { /* illisible : pas de pause */ }
+    }
           const listeLf = listeLectureFond(lignesTriees, regleLf, maintenantLf);
           lectureFond = { ...regleLf, liste: listeLf, a_lire: regleLf.mode === "mesure" ? null : lignesTriees.filter((f) => aLireEnFond(f, maintenantLf)).length };
           if (listeLf.length) console.log(`[get-pending-jobs] userId=${user.id} : lecture de fond (${regleLf.mode}) — ${listeLf.length} page(s) servie(s), ${lectureFond.a_lire ?? "—"} fiche(s) à lire (50 au plus comptées)`);
@@ -13162,7 +13174,7 @@ serve(async (req) => {
           pauseAntirobot: (pauseLb.data ?? []).length > 0,
           luesAujourdhui: luesLb.count ?? 0,
           dernierRefusMs: refusLb.data?.[0]?.created_at ? Date.parse(String(refusLb.data[0].created_at)) : null,
-          maintenant: maintenantLb, rythme: LECTURE_FOND_BEEBS_RYTHME,
+          maintenant: maintenantLb, rythme: LECTURE_FOND_BEEBS_RYTHME, personnePublie,
         });
         if (regleLb.actif) {
           // Les annonces Beebs VIVANTES du compte rattachées à une fiche (200 au plus, les plus récentes d'abord) ; la 2e

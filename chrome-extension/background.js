@@ -1693,6 +1693,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   // (plateformes cochées de l'annonce affichée), en réutilisant processJob.
   // Le poll automatique (POLL_NOW) reste inchangé.
   if (msg?.type === "PUBLISH_NOW") {
+    noterDemandeApp();   // (26/10, 0.6.146) la personne publie : la lecture de fond s'efface 10 min
     publishSelected(Array.isArray(msg.jobIds) ? msg.jobIds : []).then(
       (r) => sendResponse(r),
       (e) => sendResponse({ ok: false, reason: "error", error: String(e?.message ?? e) })
@@ -1717,6 +1718,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   // À L'UNITÉ, SUR ACTION HUMAINE UNIQUEMENT — jamais de lot ni de cron (cadre
   // du bandeau ⛔ de lirePageDressing, content-scripts/vinted.js).
   if (msg?.type === "FETCH_VINTED_ITEM") {
+    noterDemandeApp();   // (26/10, 0.6.146) la personne publie : la lecture de fond s'efface 10 min
     fetchVintedItemDetail(msg.vintedItemId).then(
       async (r) => {
         // (b) 2026-09-06 : le détail est GARDÉ sur l'article (couleur, état,
@@ -1751,6 +1753,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   // dans ce navigateur. Ce qu'elle dit est AUSSI posé sur la fiche de ce compte (seulement ce qui manque) : si la page
   // a cessé d'attendre, la fiche est complète quand même. Jamais pendant une pause anti-robot locale.
   if (msg?.type === "FETCH_VINTED_PUBLIC") {
+    noterDemandeApp();   // (26/10, 0.6.146) la personne publie : la lecture de fond s'efface 10 min
     const id = String(msg.vintedItemId ?? "").trim();
     (async () => {
       if (!/^\d+$/.test(id)) return { ok: false, motif: "id_illisible" };
@@ -1780,6 +1783,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   // l'unité, sur action humaine (relais fillsell-auth.js), jamais de lot ni de
   // cron — même cadre que FETCH_VINTED_ITEM. Aucune suppression ici.
   if (msg?.type === "CAPTURE_VINTED_ITEM") {
+    noterDemandeApp();   // (26/10, 0.6.146) la personne publie : la lecture de fond s'efface 10 min
     captureVintedItem(msg.vintedItemId).then(
       (r) => sendResponse(r),
       (e) => sendResponse({ success: false, error: String(e?.message ?? e) })
@@ -2602,11 +2606,17 @@ async function jobStatusNow(accessToken, jobId) {
 // On sérialise : un seul flux de jobs à la fois, le suivant attend son tour.
 let jobFlowTail = Promise.resolve();
 let jobFlowBusyLabel = null;
+// (26/10, urgence lenteur — 0.6.146) Combien de flux ATTENDENT le verrou : la lecture de fond (qui s'espace de 20 à
+// 45 s entre deux pages, verrou tenu) cède dès que quelqu'un attend — mesuré sur le poste de Nico le 26/10 : une
+// lecture demandée par l'écran (0,9 s de lecture) a attendu 75 s derrière trois pages de fond.
+let jobFlowWaiters = 0;
 function withJobFlowLock(label, fn) {
   if (jobFlowBusyLabel) {
     console.log(`[background] ${label} : flux "${jobFlowBusyLabel}" en cours — mise en file (onglets de travail partagés)`);
   }
+  jobFlowWaiters++;
   const run = jobFlowTail.then(async () => {
+    jobFlowWaiters = Math.max(0, jobFlowWaiters - 1);
     jobFlowBusyLabel = label;
     try {
       return await fn();
@@ -2892,11 +2902,39 @@ async function lireAnnoncesOrigineEnAttente(session) {
 // Mode « mesure » (comptes pilotes) : le même chemin et le même rythme, rien n'est écrit sur la fiche.
 const lecturesFondDuCycle = new Set();
 let lectureFondServie = null;
+// ── (26/10, urgence lenteur — 0.6.146) LA LECTURE DE FOND CÈDE TOUJOURS LA PLACE ──────────────────────────────────
+// Elle tourne dans le poll, verrou de flux tenu, et attend 20 à 45 s (Beebs : 30 à 60 s) entre deux pages : pendant ce
+// temps, tout ce que l'écran demande (page publique d'une annonce au clic « Publier », capture, « Publier maintenant »)
+// attendait derrière — 75 s mesurées le 26/10 sur le poste de Nico pour une lecture de 0,9 s. Désormais elle s'arrête
+// (et rend le verrou) dès que : un autre flux attend le verrou ; l'app de cet ordinateur a demandé quelque chose il y a
+// moins de 10 min (la personne publie) ; ce poll a eu des tâches (une file qui tourne). Les pages non lues reviennent
+// au poll suivant (le serveur les resert) : rien n'est perdu, seul le rythme de fond ralentit.
+let derniereDemandeAppMs = 0;
+let tachesDuCycle = 0;
+const FOND_PAUSE_APRES_DEMANDE_MS = 10 * 60_000;
+function noterDemandeApp() { derniereDemandeAppMs = Date.now(); }
+/** La lecture de fond doit-elle s'arrêter maintenant ? (raison, ou null) */
+function fondDoitCeder() {
+  if (jobFlowWaiters > 0) return "flux_en_attente";
+  if (Date.now() - derniereDemandeAppMs < FOND_PAUSE_APRES_DEMANDE_MS) return "personne_publie";
+  if (tachesDuCycle > 0) return "file_active";
+  return null;
+}
+/** Attend `ms`, mais rend la main (true) dès que la lecture de fond doit céder. */
+async function attendreOuCeder(ms) {
+  const fin = Date.now() + Math.max(0, ms);
+  while (Date.now() < fin) {
+    if (fondDoitCeder()) return true;
+    await sleep(Math.min(250, fin - Date.now()));
+  }
+  return Boolean(fondDoitCeder());
+}
 async function lireFondVinted(session) {
   const token = session?.access_token;
   const regle = lectureFondServie;
   if (!token || !regle || regle.actif !== true) return;
   if (vintedPauseAntirobotServeur || await lectureFondEnPause()) return;
+  if (fondDoitCeder()) return;
   const liste = (Array.isArray(regle.liste) ? regle.liste : [])
     .filter((l) => /^\d+$/.test(String(l?.vinted_item_id ?? "")) && !lecturesFondDuCycle.has(String(l?.inventaire_id)));
   const parCycle = Math.max(0, Math.min(Number(regle.par_cycle) || 0, 4));
@@ -2906,7 +2944,7 @@ async function lireFondVinted(session) {
   for (const l of liste) {
     if (n >= parCycle) break;
     const attente = derniereLectureOrigine + (eMin + Math.random() * (eMax - eMin)) * 1000 - Date.now();
-    if (attente > 0) await sleep(attente);
+    if (await attendreOuCeder(attente)) { console.log(`[lecture-fond] cède la place (${fondDoitCeder()}) — reprise au poll suivant`); return; }
     n++;
     derniereLectureOrigine = Date.now();
     lecturesFondDuCycle.add(String(l.inventaire_id));
@@ -3042,6 +3080,7 @@ async function lireFondBeebs(session) {
   if (!token || !regle || regle.actif !== true) return;
   if (releveEnCours) return;                       // jamais pendant un relevé du poste (même onglet de travail)
   if (await lectureFondBeebsEnPause()) return;
+  if (fondDoitCeder()) return;                     // (26/10, 0.6.146) la personne publie, une file tourne, un flux attend
   const userId = decodeJwtSub(token);
   if (!userId) return;
   const liste = (Array.isArray(regle.liste) ? regle.liste : [])
@@ -3054,7 +3093,7 @@ async function lireFondBeebs(session) {
   for (const l of liste) {
     if (n >= parCycle) break;
     const attente = derniereLectureBeebs + (eMin + Math.random() * (eMax - eMin)) * 1000 - Date.now();
-    if (attente > 0) await sleep(attente);
+    if (await attendreOuCeder(attente)) { console.log(`[lecture-fond][beebs] cède la place (${fondDoitCeder()}) — reprise au poll suivant`); return; }
     if (releveEnCours) return;
     n++;
     derniereLectureBeebs = Date.now();
@@ -3613,6 +3652,7 @@ async function pollAndProcessJobsUnlocked() {
   // (25/10, 0.6.144) Les fiches lues CE cycle (lecture d'origine ou rattrapage) : jamais deux fois la même.
   lecturesFondDuCycle.clear();
   lecturesFondBeebsDuCycle.clear();
+  tachesDuCycle = 0;   // (26/10, 0.6.146) une file qui tourne ce cycle : pas de lecture de fond derrière
   const session = await getValidSession();
   if (!session) {
     console.log("[background] Pas de session valide, poll ignoré");
@@ -3690,6 +3730,7 @@ async function pollAndProcessJobsUnlocked() {
       ...ceQueLePosteDitDeLui(),
     });
     jobs = rep.jobs;
+    tachesDuCycle = Array.isArray(jobs) ? jobs.length : 0;
     // (03/10, point 24) Poste sous le seuil de version : le serveur ne sert
     // plus rien. On le garde pour le popup (qui le dit, avec le geste), et on
     // demande la mise à jour à Chrome sans attendre la vérification des 2 h.
@@ -3980,6 +4021,16 @@ async function pollAndProcessJobsUnlocked() {
   // (25/10 soir, 0.6.145) Puis Beebs : les photos (et le texte, l'état) lus sur la page de l'annonce, sans naviguer.
   await lireFondBeebs(session).catch((e) =>
     console.warn("[lecture-fond][beebs] rattrapage :", String(e?.message ?? e)));
+  // (26/10, urgence lenteur — 0.6.146) Quelqu'un attend le verrou (une lecture demandée par l'écran, « Publier
+  // maintenant ») : la maintenance de fond qui suit (liens manquants, veille des commandes et des ventes, messagerie,
+  // republication automatique) passe APRÈS lui. Mesuré le 26/10 sur le poste de Nico : 10 lectures demandées ensemble
+  // ont attendu 24,5 s la fin de ce cycle avant la première réponse. Le cycle rend le verrou tout de suite ; un poll
+  // repart 1,5 s après (repollApresCycle), derrière ce qui attendait — rien n'est sauté, tout est décalé de quelques s.
+  if (jobFlowWaiters > 0 && !majPlanifiee) {
+    console.log(`[background] ${jobFlowWaiters} demande(s) en attente du verrou : la maintenance de fond repart juste après`);
+    repollApresCycle = true;
+    return;
+  }
   await recoverMissingListingUrls(session).catch((e) =>
     console.error("[background] recoverMissingListingUrls:", e)
   );

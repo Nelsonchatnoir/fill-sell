@@ -28,6 +28,14 @@ export const LECTURE_FOND_MODE_DEFAUT = 1;
 // continue derrière un import ; le plafond du jour et la coupure au premier refus ne changent pas.
 export const LECTURE_FOND_RYTHME = Object.freeze({ par_cycle: 3, ecart_s: Object.freeze([20, 45]), par_jour: 300, pause_refus_h: 6 });
 const JOUR_MS = 86_400_000;
+// (26/10, urgence « la publication est devenue lente ») La lecture de fond se met en PAUSE pendant que la personne
+// publie : elle tourne dans le poll de l'extension, verrou de flux tenu, et s'espace de 20 à 45 s entre deux pages —
+// une lecture demandée par l'écran au clic « Publier » attendait derrière (75 s et 97 s mesurées le 26/10 sur le poste
+// de Nico, pour une lecture de 1 s). Signal : un geste de publication tracé (usage_logs) il y a moins de 10 min.
+export const FEATURES_PUBLICATION = Object.freeze([
+  "generate_listing", "resolve_categorie", "resolve_categorie_cache", "ia_levier", "lbc_champs_ia", "ebay_aspects_ia", "publish",
+]);
+export const PAUSE_PUBLICATION_MIN = 10;
 
 /** coin_config.lecture_fond_mode → 0..3 ; absent ou illisible → le mode par défaut. */
 export function modeLectureFond(valeur, defaut = LECTURE_FOND_MODE_DEFAUT) {
@@ -39,18 +47,19 @@ export function modeLectureFond(valeur, defaut = LECTURE_FOND_MODE_DEFAUT) {
 /**
  * Ce compte lit-il en arrière-plan à ce poll ? (pur)
  * @param {{userId?: string, mode?: number, payant?: boolean, versionOk?: boolean, pauseAntirobot?: boolean,
- *   luesAujourdhui?: number, dernierRefusMs?: number|null, maintenant?: number,
+ *   luesAujourdhui?: number, dernierRefusMs?: number|null, maintenant?: number, personnePublie?: boolean,
  *   rythme?: {par_cycle: number, ecart_s: readonly number[], par_jour: number, pause_refus_h: number}}} [p]
  * @returns {{actif:false, raison:string} | {actif:true, mode:'mesure'|'rattrapage', par_cycle:number, ecart_s:number[], par_jour:number}}
  */
 export function regleLectureFond({
   userId, mode, payant = false, versionOk = false, pauseAntirobot = false,
-  luesAujourdhui = 0, dernierRefusMs = null, maintenant = Date.now(), rythme = LECTURE_FOND_RYTHME,
+  luesAujourdhui = 0, dernierRefusMs = null, maintenant = Date.now(), rythme = LECTURE_FOND_RYTHME, personnePublie = false,
 } = {}) {
   const pilote = LECTURE_FOND_PILOTES.includes(String(userId ?? ""));
   const non = (raison) => ({ actif: false, raison });
   if (!versionOk) return non("extension_trop_ancienne");
   if (mode === 0) return non("coupe");
+  if (personnePublie) return non("personne_publie");
   if (pauseAntirobot) return non("pause_antirobot");
   if (Number.isFinite(dernierRefusMs) && maintenant - dernierRefusMs < rythme.pause_refus_h * 3_600_000) return non("refus_recent");
   if (mode === 1 && !pilote) return non("pas_encore_ouvert");

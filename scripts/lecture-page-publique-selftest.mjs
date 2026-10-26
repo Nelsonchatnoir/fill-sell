@@ -132,7 +132,11 @@ const page = (id, { p = produit(id), crumbs = [1193, 1499, 1730, 3313], status =
 
 // ── 3. et 4. Le lecteur des annonces d'origine et le rattrapage ─────────────
 console.log("3. lireAnnoncesOrigineEnAttente — la liste du serveur est LUE");
-function monde({ liste = [], lu = () => ({ ok: true, description: "Texte du vendeur", couleur: "Noir", catalog_id: 77, http: 200 }), servie = null } = {}) {
+function monde({ liste = [], lu = () => ({ ok: true, description: "Texte du vendeur", couleur: "Noir", catalog_id: 77, http: 200 }), servie = null, etat = { attente: 0, demande: 0, taches: 0 }, apresLecture = null } = {}) {
+  // (26/10) Une horloge simulée : la lecture de fond attend 20 à 45 s entre deux pages (attendreOuCeder) — le temps avance
+  // d'un coup à chaque sommeil, sans attendre pour de vrai.
+  let horloge = Date.now();
+  class FausseDate extends Date { constructor(...a) { super(...(a.length ? a : [horloge])); } static now() { return horloge; } }
   const appels = [];
   const stockage = {};
   const doublures = {
@@ -141,15 +145,17 @@ function monde({ liste = [], lu = () => ({ ok: true, description: "Texte du vend
       if (path.startsWith("rpc/lectures_origine_en_attente")) return liste;
       return null;
     },
-    lirePagePubliqueVintedSousVerrou: async (id) => ({ ...lu(id), ms: 12 }),
-    sleep: async () => {},
+    lirePagePubliqueVintedSousVerrou: async (id) => { const r = { ...lu(id), ms: 12 }; apresLecture?.(etat); return r; },
+    sleep: async (ms) => { horloge += Math.max(1, Number(ms) || 0); },
+    Date: FausseDate, __etat: etat,
     decodeJwtSub: () => "u1",
     FILLSELL_BUILD_ID: "test",
     tracerLectureOrigineRatee: async () => { appels.push({ path: "trace_ratee" }); },
     chrome: { storage: { local: { get: async (k) => ({ [k]: stockage[k] }), set: async (o) => Object.assign(stockage, o) } } },
   };
-  const prelude = `let derniereLectureOrigine = 0; let vintedPauseAntirobotServeur = false;\n${constante("LECTURE_FOND_PAUSE_KEY")}${constante("lecturesFondDuCycle")}let lectureFondServie = ${JSON.stringify(servie)};`;
-  const f = bac(["attributsChamps", "ecrireLecturePagePublique", "lectureFondEnPause", "poserPauseLectureFond", "tracerLectureFond", "lireAnnoncesOrigineEnAttente", "lireFondVinted"], doublures, prelude);
+  // jobFlowWaiters, derniereDemandeAppMs, tachesDuCycle : lus par fondDoitCeder, pilotés de l'extérieur par `etat`.
+  const prelude = `let derniereLectureOrigine = 0; let vintedPauseAntirobotServeur = false;\n${constante("LECTURE_FOND_PAUSE_KEY")}${constante("lecturesFondDuCycle")}${constante("FOND_PAUSE_APRES_DEMANDE_MS")}let lectureFondServie = ${JSON.stringify(servie)};\nObject.defineProperty(globalThis, "jobFlowWaiters", { get: () => __etat.attente });\nObject.defineProperty(globalThis, "derniereDemandeAppMs", { get: () => __etat.demande });\nObject.defineProperty(globalThis, "tachesDuCycle", { get: () => __etat.taches });`;
+  const f = bac(["attributsChamps", "ecrireLecturePagePublique", "lectureFondEnPause", "poserPauseLectureFond", "tracerLectureFond", "lireAnnoncesOrigineEnAttente", "fondDoitCeder", "attendreOuCeder", "lireFondVinted"], doublures, prelude);
   return { f, appels, stockage };
 }
 {
@@ -194,6 +200,24 @@ console.log("4. lireFondVinted — le rattrapage au rythme servi");
   const o = monde({ servie: { actif: false, raison: "pas_encore_ouvert" } });
   await o.f.lireFondVinted({ access_token: "t" });
   ok(o.appels.length === 0, "compte pas encore ouvert : aucune lecture");
+  // (26/10, urgence lenteur) La lecture de fond cède la place — mesuré sur le poste de Nico : 75 s et 97 s d'attente
+  // d'une lecture demandée par l'écran derrière trois pages de fond espacées de 20 à 45 s, verrou tenu.
+  const s3 = { actif: true, mode: "rattrapage", par_cycle: 3, ecart_s: [20, 45], liste };
+  const a = monde({ servie: s3, etat: { attente: 1, demande: 0, taches: 0 } });
+  await a.f.lireFondVinted({ access_token: "t" });
+  ok(!a.appels.some((x) => x.path === "usage_logs"), "un flux attend le verrou (lecture demandée, Publier maintenant) : aucune page de fond");
+  const d = monde({ servie: s3, etat: { attente: 0, demande: Date.now() - 5 * 60_000, taches: 0 } });
+  await d.f.lireFondVinted({ access_token: "t" });
+  ok(!d.appels.some((x) => x.path === "usage_logs"), "l'app a demandé quelque chose il y a 5 min (la personne publie) : aucune page de fond");
+  const t = monde({ servie: s3, etat: { attente: 0, demande: 0, taches: 2 } });
+  await t.f.lireFondVinted({ access_token: "t" });
+  ok(!t.appels.some((x) => x.path === "usage_logs"), "ce poll a eu des tâches : pas de lecture de fond derrière la file");
+  const v = monde({ servie: s3, apresLecture: (e) => { e.attente = 1; } });
+  await v.f.lireFondVinted({ access_token: "t" });
+  ok(v.appels.filter((x) => x.path === "usage_logs").length === 1, "une demande arrive pendant l'attente entre deux pages : la lecture de fond s'arrête après la page en cours (le verrou est rendu)", String(v.appels.filter((x) => x.path === "usage_logs").length));
+  const libre = monde({ servie: s3, etat: { attente: 0, demande: Date.now() - 11 * 60_000, taches: 0 } });
+  await libre.f.lireFondVinted({ access_token: "t" });
+  ok(libre.appels.filter((x) => x.path === "usage_logs").length === 3, "personne n'attend, plus de demande depuis 10 min : les 3 pages du poll, comme avant");
 }
 
 // ── 5. fillsell-auth.js ─────────────────────────────────────────────────────
