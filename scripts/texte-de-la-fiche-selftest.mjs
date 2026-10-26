@@ -67,7 +67,10 @@ ok(T.retoucheAEcrire(louis, { ...generalesCopie, description: retouche }, new Se
 console.log("4. câblage de l'écran");
 const ecran = lire("src/components/ListingPreviewScreen.jsx");
 ok(/select\("prix_achat,prix_achat_inconnu,attributs,titre,description,origine"\)/.test(ecran)
-  && /champsAReprendreDeLaFiche\(texteDuVendeurDe\(art\), data\.fiche\.generales \?\? \{\}\)/.test(ecran), "réouverture : la fiche relue est comparée à la copie enregistrée");
+  && /champsAReprendreDeLaFiche\(texteDuVendeurDe\(art\), generalesRef\.current \?\? data\.fiche\.generales \?\? \{\}, \[\.\.\.retouchesMainRef\.current\]\)/.test(ecran), "réouverture : la fiche relue est comparée au texte AFFICHÉ (26/10, étape 6), une retouche de l'écran reste");
+ok(/const generalesRef = useRef\(generales\);\r?\n\s*generalesRef\.current = generales;/.test(ecran), "le texte général courant est tenu à chaque rendu (generalesRef)");
+ok(/const base = attributsBase && typeof attributsBase === "object" \? attributsBase\r?\n\s*: \(initialListing\?\.attributs/.test(ecran), "attributV : les attributs de l'article du Stock tant que la ligne n'est pas relue");
+ok(/attributs: attributsBase \?\? initialListing\?\.attributs \?\? null,/.test(ecran), "version en ligne : le texte du vendeur se reconnaît dès l'ouverture (marqueur de l'article du Stock)");
 ok(/\.select\("titre,description,origine,attributs"\)\.eq\("id", idFiche\)/.test(ecran) && /edited: editedEnvoi, price/.test(ecran),
   "envoi : la fiche est relue et les jobs sont construits depuis ce texte");
 ok(ecran.indexOf("retoucheAEcrire(ligneFiche") < ecran.indexOf("const construction = construireJobs("), "envoi : la retouche est écrite sur la fiche AVANT les jobs");
@@ -76,6 +79,29 @@ ok(/onValeurGenerale: retoucherValeurGenerale/.test(ecran) && /onValeurGenerale=
 ok(/if \(duVendeur\[champ\]\) continue; \/\/ le texte du vendeur sur la fiche fait foi/.test(ecran), "repli « version en ligne la plus récente » coupé sur un texte du vendeur");
 const lot = lire("src/publication/lot/LotPublication.jsx");
 ok(/m\.poserValeurGenerale\?\.\("description", ev\.target\.value\)/.test(lot), "lot : le texte relu passe par la retouche de l'écran");
+
+console.log("5. (26/10, étape 6) Le texte qui n'est pas celui du vendeur ne reste jamais à l'écran — fiche 1791299785299, 02:45");
+{
+  // Rejoue la préparation du lot : (1) la copie enregistrée = le texte du vendeur ; (2) la version en ligne d'une autre
+  // plateforme (Beebs) est posée par l'effet « version en ligne » ; (3) le filet de réouverture relit la fiche.
+  const WWE = "TEST FillSell, ne pas acheter.\n\nJe vends WWE 2K20 sur PlayStation 4 (PS4), carte promotionnelle.";
+  const BEEBS = "Call of Duty Modern Warfare pour PlayStation 4, version française PAL FR.\n#activision #callofduty #ps4 #jeuvidéo";
+  const attributs = { description_source: { v: "manuel", source: "manuel", at: "2026-10-26T01:38:39Z" } };
+  const article = { titre: "TEST FillSell ne pas acheter - Call of Duty PS4", description: WWE, origine: null, attributs };
+  const effet = (generales, attrs) => {
+    const duVendeur = T.texteDuVendeurDe({ ...article, attributs: attrs });
+    const manuel = String(attrs?.description_source?.v ?? "").toLowerCase() === "manuel";
+    if (manuel || duVendeur.description) return generales;
+    return { ...generales, description: BEEBS };
+  };
+  const enregistree = { titre: article.titre, description: WWE };
+  const avant = effet(enregistree, null);
+  ok(avant.description === BEEBS, "code d'avant : sans les attributs de la ligne (pas encore relue), le texte Beebs remplaçait celui du vendeur");
+  ok(T.champsAReprendreDeLaFiche(T.texteDuVendeurDe(article), enregistree).description === undefined, "code d'avant : le filet comparait à la copie ENREGISTRÉE — égale à la fiche, il ne corrigeait rien");
+  ok(effet(enregistree, article.attributs).description === WWE, "corrigé : les attributs de l'article du Stock suffisent — le texte du vendeur reste");
+  ok(T.champsAReprendreDeLaFiche(T.texteDuVendeurDe(article), avant, []).description === WWE, "corrigé : le filet compare au texte affiché — un texte posé entre-temps est remplacé par celui du vendeur");
+  ok(T.champsAReprendreDeLaFiche(T.texteDuVendeurDe(article), { ...avant, description: "Ma retouche" }, ["description"]).description === undefined, "une retouche à la main de cet écran n'est jamais défaite");
+}
 
 console.log(ko ? `\n${ko} échec(s)` : "\nTout est vert.");
 process.exit(ko ? 1 : 0);

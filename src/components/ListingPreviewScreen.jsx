@@ -4859,6 +4859,10 @@ export default function ListingPreviewScreen({
   // premier texte qui diverge après conformité. Il est donc gardé à part, et
   // ENSEMENCÉ une fois depuis les copies (effet ci-dessous).
   const [generales, setGenerales] = useState(() => draft?.generales ?? { titre: "", description: "", etat: "" });
+  // (26/10, étape 6) Le texte général COURANT, lu par les filets asynchrones (réouverture d'une fiche) : comparer à la
+  // copie enregistrée laissait passer un texte posé entre-temps (la version en ligne d'une autre plateforme).
+  const generalesRef = useRef(generales);
+  generalesRef.current = generales;
   // ── Analyse photo optionnelle (chantier 3) ────────────────────────────────
   // photoAnalysis porte la réponse brute de lens-analysis. Elle complète
   // initialListing SANS le remplacer : le contrat (prix_vente_suggere +
@@ -4994,7 +4998,13 @@ export default function ListingPreviewScreen({
     return () => { vivant = false; };
   }, [inventaireId, supabase]);
   const attributV = (cle) => {
-    const champ = attributsBase && typeof attributsBase === "object" ? attributsBase[cle] : null;
+    // (26/10, étape 6 — prouvé sur la fiche 1791299785299 de Nico, 02:45) Tant que la ligne inventaire n'est pas relue
+    // (deux allers-retours sur le chemin « fiche enregistrée »), les attributs de l'article du Stock font foi : sans eux,
+    // un texte marqué « manuel » ou « vinted » passait pour un brouillon, et la version en ligne d'une autre plateforme
+    // le remplaçait à l'écran (et dans fiches_annonce).
+    const base = attributsBase && typeof attributsBase === "object" ? attributsBase
+      : (initialListing?.attributs && typeof initialListing.attributs === "object" ? initialListing.attributs : null);
+    const champ = base ? base[cle] : null;
     const v = champ && typeof champ === "object" ? champ.v : null;
     if (v == null || v === "") return null;
     // État d'une page Vinted étrangère : lu en français (cf. valeurAttributFiche).
@@ -5885,7 +5895,9 @@ export default function ListingPreviewScreen({
                 // récent. Le texte du vendeur sur la fiche l'emporte : texte
                 // général ET toutes les cartes — une exception posée sur une
                 // carte portait sur l'ancien texte, elle ne tient plus.
-                const patch = champsAReprendreDeLaFiche(texteDuVendeurDe(art), data.fiche.generales ?? {});
+                // (26/10, étape 6) Comparé au texte AFFICHÉ (pas à la copie enregistrée) : un texte posé entre-temps qui
+                // n'est pas celui du vendeur est remplacé ; une retouche à la main de cet écran reste.
+                const patch = champsAReprendreDeLaFiche(texteDuVendeurDe(art), generalesRef.current ?? data.fiche.generales ?? {}, [...retouchesMainRef.current]);
                 const champs = Object.keys(patch);
                 if (champs.length) {
                   setGenerales(prev => ({ ...prev, ...patch }));
@@ -7051,7 +7063,7 @@ export default function ListingPreviewScreen({
     const marqueur = (cle) => String(attributV(cle) ?? "").trim().toLowerCase();
     const duVendeur = texteDuVendeurDe({
       titre: initialListing?.titre, description: initialListing?.description,
-      origine: initialListing?.origine, attributs: attributsBase,
+      origine: initialListing?.origine, attributs: attributsBase ?? initialListing?.attributs ?? null,
     });
     for (const [champ, cle] of [["titre", "titre_source"], ["description", "description_source"]]) {
       if (marqueur(cle) === "manuel") continue;
