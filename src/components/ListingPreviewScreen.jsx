@@ -151,7 +151,7 @@ import {
   vintedExigeUneCouleur, vintedExigeUnIsbn, ISBN_ABSENT, valeurUneLettre, rayonNeufSeulement, messageRayonNeuf,
   deduireOptionDuTexte, estFourreTout, listeCandidatsDabord, textesDeLAnnonce,
   tailleDuJob, tailleDansListeEbay, tailleDeduiteDuTexte, estChampTaille, rayonPublicIncoherent, messageRayonPublic,
-  clePositionnelleBeebs, tailleHomonymeBeebs, modelesVintedPourLaMarque,
+  clePositionnelleBeebs, tailleHomonymeBeebs, modelesVintedPourLaMarque, modelesVintedDuRelevé, modeleLuDansLeTexte,
 } from "../publication/moteur/listes";
 // (25/10 soir, décisions de Nico) Les champs requis qui se remplissent seuls quand une source fiable existe — sinon la
 // question, comme avant (jamais une valeur devinée).
@@ -6986,6 +6986,14 @@ export default function ListingPreviewScreen({
       description: (propre("description_source") || venuDeSaPage) ? assezLong(initialListing?.description) : "",
     };
   };
+  // (26/10, règles 4 et 5 de Nico) Ce que la fiche dit — l'état, le genre, les mots qui fondent un hashtag : la MÊME
+  // fiche pour le texte qui part (construireJobs) et pour celui que la pop-up du lot montre (moteur.ficheDuTexte).
+  const ficheDuTexte = () => ({
+    titre: initialListing?.titre ?? "", marque: initialListing?.marque ?? attributV("marque") ?? "",
+    couleur: attributV("couleur") ?? "", matiere: attributV("matiere") ?? "", taille: attributV("taille") ?? "",
+    genre: attributV("genre") ?? "", etat: generales?.etat || attributV("etat") || "",
+    texteVendeur: texteDuVendeurFiche().description || "", objet: activeAiObjet ?? "",
+  });
 
   // SEMER — une fois, quand les copies existent et que rien n'a encore été
   // écrit. Couvre TOUS les chemins d'entrée sans en toucher un seul : une
@@ -8475,6 +8483,27 @@ export default function ListingPreviewScreen({
   // réellement. Le contraste avec les effets eBay (qui ne bouclaient pas) tient
   // à leur dépendance à ebayPreviewCategoryId, une valeur primitive.
   const genericCategoryKeysSig = JSON.stringify(genericCategoryKeys);
+  // ── (26/10, C6 — Nico) LE MODÈLE VINTED LU DANS LE TITRE, SANS QUESTION ────────────────────────────────────────
+  // « Marque connue + modèle lisible sur le titre → rempli sans question. » Le modèle de la liste de SA marque que le
+  // TITRE nomme sans ambiguïté (moteur/listes.modeleLuDansLeTexte : un nom chiffré, en mots entiers) est posé sur la
+  // copie Vinted, une fois, comme s'il venait de la fiche. Jamais par-dessus un modèle déjà là ; jamais la description
+  // (« compatible Galaxy S10 » n'est pas le modèle de l'article).
+  const modeleVintedPose = String(edited?.vinted?.platform_fields?.modele ?? "").trim();
+  const marqueVintedCopie = String(edited?.vinted?.platform_fields?.marque ?? initialListing?.marque ?? "").trim();
+  const titreVintedCopie = String(edited?.vinted?.title ?? "");
+  useEffect(() => {
+    if (variante !== "nouvelle" || modeleVintedPose || !edited?.vinted) return;
+    const liste = modelesVintedDuRelevé(genericCategoryKeys?.vinted ?? null, marqueVintedCopie);
+    if (!liste) return;
+    const lu = modeleLuDansLeTexte(`${initialListing?.titre ?? ""} ${titreVintedCopie}`, liste);
+    if (!lu) return;
+    setEdited(prev => {
+      const vt = prev.vinted;
+      if (!vt || String(vt.platform_fields?.modele ?? "").trim()) return prev;
+      return { ...prev, vinted: { ...vt, platform_fields: { ...(vt.platform_fields ?? {}), modele: lu, modele_source: "titre" } } };
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [variante, modeleVintedPose, marqueVintedCopie, titreVintedCopie, genericCategoryKeys?.vinted]);
   // (02/10, lot) Les rayons dont le catalogue des champs exigés a été LU —
   // le pilote du lot attend cette lecture avant de compter les questions.
   const [catalogueLuPour, setCatalogueLuPour] = useState(null);
@@ -8884,7 +8913,8 @@ export default function ListingPreviewScreen({
         // notre relevé ne porte pas la marque : relevée sous Apple (50 « iPhone … », 9 « AirPods »), elle était servie
         // à un Samsung. Hors d'une marque Apple, le modèle se TAPE (champ à recherche, l'extension le cherche dans la
         // liste de SA marque chez Vinted) : jamais les modèles d'une autre marque en suggestion.
-        const allowedValues = modelesVintedPourLaMarque(platform, key, allowedValuesCatalogue, pf.marque || initialListing?.marque || "");
+        // (26/10, C7) … et la liste COMPLÈTE de la marque quand le relevé Vinted la porte (src/data/vintedModeles.js).
+        const allowedValues = modelesVintedPourLaMarque(platform, key, allowedValuesCatalogue, pf.marque || initialListing?.marque || "", genericCategoryKeys?.[platform] ?? null);
         // « title » (appris par un 400 serveur sur Montres homme Vinted) : le
         // job porte TOUJOURS un titre (edited[platform].title, édité au step
         // Génération et posé tel quel à l'insert) — ce n'est jamais un requis
@@ -8939,6 +8969,9 @@ export default function ListingPreviewScreen({
             return {
               key, label: lang === "en" ? "Category" : "Rayon", state: "invalid", value: src, allowedValues: [],
               neufSeulement: true, blocking: true,
+              // (26/10, C8 — décision de Nico) Les deux sorties en un geste : changer de rayon, ou passer l'état en
+              // Neuf — un choix de la PERSONNE, jamais posé par FillSell. Les valeurs neuves du rayon, pour ce geste.
+              valeursNeuves: allowedValues.slice(),
               message: messageRayonNeuf({ valeur: src, platform }, lang === "en" ? "en" : "fr"),
             };
           }
@@ -10639,6 +10672,9 @@ export default function ListingPreviewScreen({
         // rédigée, sinon le titre de la fiche — jamais un job à title "".
         titresGeneres: Object.fromEntries(Object.entries(platformListings?.platforms ?? {}).map(([p, c]) => [p, c?.title ?? ""])),
         titreFiche: initialListing?.titre ?? "",
+        // (26/10, règles 4 et 5 de Nico) Ce que la fiche dit : l'état, le genre, et les mots qui fondent un hashtag.
+        ficheTexte: ficheDuTexte(),
+        texteDuVendeur: Boolean(texteDuVendeurFiche().description),
       });
       if (construction.erreur === "ebay_sans_photo") {
         throw new Error(lang === "en"
@@ -12129,6 +12165,16 @@ export default function ListingPreviewScreen({
       }
       delete pf.packageSize;
       return { ...prev, vinted: { ...vt, platform_fields: pf } };
+    }),
+    // (26/10, refonte C du lot) Un champ de la COPIE d'une plateforme, posé comme depuis sa carte (setEdited) : la
+    // politique de livraison eBay de l'article (ebayFulfillmentPolicyId) choisie dans la pop-up de l'article.
+    ficheDuTexte,
+    poserChampCopie: (p, cle, valeur) => setEdited(prev => {
+      const c = prev[p];
+      if (!c) return prev;
+      const pf = { ...(c.platform_fields ?? {}) };
+      if (valeur == null || valeur === "") delete pf[cle]; else pf[cle] = valeur;
+      return { ...prev, [p]: { ...c, platform_fields: pf } };
     }),
     setPrice, poserPrixGeneral, poserValeurGenerale: retoucherValeurGenerale, rayonsParPf, resolutionAffichee, preparationAuRepos,
     // L'envoi, sans l'écran d'accroche de l'extension : le lot dit lui-même,

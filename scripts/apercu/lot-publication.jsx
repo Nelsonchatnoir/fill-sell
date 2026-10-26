@@ -286,6 +286,170 @@ function EcranCasse() {
   );
 }
 
+// ── (26/10) LA REFONTE C — le lot de Nico du 26/10 au matin, tel que le moteur le prépare ─────────────────────────
+// Une ligne par article, une pop-up par article. Les moteurs restent FACTICES (la forme du pilote du stepper) ; les
+// valeurs sont celles du lot réel : le Medik8 (image par défaut de Beebs, rayon Beebs « neuf seulement »), le
+// téléphone Samsung (modèle lu sur le titre), le Scotch (aucun rayon Depop), la bouilloire à 200 g, le robot LIEE sans
+// poids, le jeu PS4 (âge Beebs), le livre EAT (ISBN), le legging (taille déjà connue, convertie).
+const remplissage = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="200" height="200" fill="#F2EEF8"/><path d="M50 120 Q100 40 150 120 Z" fill="#7B4FB8"/><rect x="40" y="118" width="130" height="14" rx="7" fill="#5E3A93"/></svg>');
+const B = [
+  { id: 201, title: 'Medik8 Crystal Retinal 6 sérum 30 ml', sell: 38, photos: [remplissage], statut: 'stock', poids_g: 100 },
+  { id: 202, title: 'Téléphone Samsung Galaxy S10 128 Go noir', sell: 120, photos: [photo('#1F2A33', '📱')], statut: 'stock', poids_g: 400 },
+  { id: 203, title: 'Lot de 6 rouleaux Scotch Magic 3M', sell: 9, photos: [photo('#C9A227', '🧻')], statut: 'stock', poids_g: 250 },
+  { id: 204, title: 'Bouilloire électrique inox 1,7 L', sell: 15, photos: [photo('#9AA5A8', '🫖')], statut: 'stock', poids_g: 200 },
+  { id: 205, title: 'Robot aspirateur laveur LIEE', sell: 85, photos: [photo('#2B2B2B', '🤖')], statut: 'stock' },
+  { id: 206, title: 'Call of Duty Black Ops III PS4', sell: 8, photos: [photo('#3B4A2F', '🎮')], statut: 'stock', poids_g: 150 },
+  { id: 207, title: 'EAT Gilles Lartigot livre', sell: 12, photos: [photo('#E7E1D2', '📗')], statut: 'stock', poids_g: 900 },
+  { id: 208, title: 'Legging de sport Ironwomen noir taille M', sell: 14, photos: [photo('#111111', '🩱')], statut: 'stock', poids_g: 200 },
+];
+const donneesC = B.map((item) => ({ id: String(item.id), item, jobs: [] }));
+const parIdC = new Map(donneesC.map((d) => [d.id, d]));
+const AGES = ['0-3 mois', '3-6 mois', '6-12 mois', '1-2 ans', '2-4 ans', '4-6 ans', '6-8 ans', '8-10 ans', '10-12 ans', '12 ans et +', '16 ans et +', '18 ans et +'];
+const ETATS_BEEBS = ['Neuf avec étiquette', 'Neuf sans étiquette', 'Très bon état', 'Bon état', 'Satisfaisant'];
+const copie = (titre, description, pf = {}) => ({ title: titre, description, platform_fields: pf });
+function moteursC(t, tpl) {
+  const mk = (id, p) => moteurFactice(t, tpl, p);
+  const all = ['vinted', 'leboncoin', 'beebs', 'ebay'];
+  const m = new Map();
+  m.set('201', {
+    ...mk('201', { plateformes: all, price: 38, generales: { titre: B[0].title, description: 'Sérum Medik8 Crystal Retinal 6, flacon de 30 ml entamé une fois. Très bon état.', etat: 'Très bon état' } }),
+    initialListing: { titre: B[0].title, poids_g: 100, description: '' },
+    edited: {
+      vinted: copie(B[0].title, '', { categoryPath: ['Beauté', 'Soins du visage', 'Sérums'] }),
+      leboncoin: copie(B[0].title, '', { lbcCategoryPath: ['Mode', 'Accessoires et bagagerie', 'Beauté'] }),
+      beebs: copie(B[0].title, '', { beebsCategoryPath: ['Maman', 'Soins et beauté', 'Soins du visage'] }),
+      ebay: copie(B[0].title, '', { ebayCategoryPath: ['Beauté, bien-être, parfums', 'Soins du visage et de la peau', 'Sérums'] }),
+    },
+    genericRequiredStatus: { beebs: [{ key: 'État', label: 'Rayon', value: 'Très bon état', state: 'invalid', neufSeulement: true, blocking: true, allowedValues: [], valeursNeuves: ['Neuf avec étiquette', 'Neuf sans étiquette'], message: 'Ce rayon Beebs n\'accepte que des articles neufs (ton article : « Très bon état »).' }] },
+    ebayRequiredStatus: [{ name: 'Marque', label: 'Marque', value: 'Medik8', state: 'ok' }, { name: 'Type', label: 'Type', value: 'Sérum', state: 'ok' }],
+    clesQuestions: ['beebs:État'], questionsParPlateforme: { beebs: ['État'] },
+  });
+  m.set('202', {
+    ...mk('202', { plateformes: all, price: 120, texteVendeur: { titre: '', description: '' }, generales: { titre: B[1].title, description: 'Samsung Galaxy S10, 128 Go, noir. Écran sans rayure, batterie qui tient la journée. Vendu avec son câble.', etat: 'Très bon état' } }),
+    initialListing: { titre: B[1].title, poids_g: 400, description: '' },
+    edited: {
+      vinted: copie(B[1].title, '', { categoryPath: ['Électronique', 'Téléphones portables et équipements de communication', 'Téléphones portables'], packageSizeId: 1 }),
+      leboncoin: copie(B[1].title, '', { lbcCategoryPath: ['Électronique', 'Téléphones & Objets connectés'] }),
+      beebs: copie(B[1].title, '', { beebsCategoryPath: ['Maison', 'Multimédia', 'Téléphonie'] }),
+      ebay: copie(B[1].title, '', { ebayCategoryPath: ['Téléphonie, mobilité', 'Téléphones mobiles'] }),
+    },
+    genericRequiredStatus: { vinted: [{ key: 'brand', label: 'Marque', value: 'Samsung', state: 'ok' }, { key: 'model', label: 'Modèle', value: 'Galaxy S10', state: 'ok' }, { key: 'storage', label: 'Capacité de stockage', value: '128 Go', state: 'ok' }] },
+    ebayRequiredStatus: [{ name: 'Marque', label: 'Marque', value: 'Samsung', state: 'ok' }, { name: 'Modèle', label: 'Modèle', value: 'Galaxy S10', state: 'ok' }],
+  });
+  m.set('203', {
+    ...mk('203', { plateformes: [...all, 'depop'], price: 9, generales: { titre: B[2].title, description: 'Six rouleaux de Scotch Magic 3M, neufs sous blister.', etat: 'Neuf avec étiquette' } }),
+    plateformesPubliables: new Set(all), selected: new Set(all),
+    initialListing: { titre: B[2].title, poids_g: 250, description: '' },
+    edited: {
+      vinted: copie(B[2].title, '', { categoryPath: ['Maison', 'Fournitures de bureau'] }),
+      leboncoin: copie(B[2].title, '', { lbcCategoryPath: ['Maison', 'Fournitures de bureau'] }),
+      beebs: copie(B[2].title, '', { beebsCategoryPath: ['Maison', 'Papeterie'] }),
+      ebay: copie(B[2].title, '', { ebayCategoryPath: ['Fournitures de bureau', 'Rubans adhésifs'] }),
+    },
+  });
+  m.set('204', {
+    ...mk('204', { plateformes: all, price: 15, generales: { titre: B[3].title, description: 'Bouilloire électrique en inox, 1,7 litre, arrêt automatique. Bon état, détartrée.', etat: 'Bon état' } }),
+    initialListing: { titre: B[3].title, poids_g: 200, description: '' },
+    edited: {
+      vinted: copie(B[3].title, '', { categoryPath: ['Maison', 'Cuisine', 'Petit électroménager'] }),
+      leboncoin: copie(B[3].title, '', { lbcCategoryPath: ['Maison', 'Électroménager'] }),
+      beebs: copie(B[3].title, '', { beebsCategoryPath: ['Maison', 'Cuisine'] }),
+      ebay: copie(B[3].title, '', { ebayCategoryPath: ['Maison', 'Petit électroménager', 'Bouilloires'] }),
+    },
+  });
+  m.set('205', {
+    ...mk('205', { plateformes: ['leboncoin', 'beebs', 'ebay'], price: 85, generales: { titre: B[4].title, description: 'Robot aspirateur laveur LIEE, avec sa base de charge et deux brosses. Fonctionne parfaitement.', etat: 'Très bon état' } }),
+    initialListing: { titre: B[4].title, description: '' },
+    edited: {
+      leboncoin: copie(B[4].title, '', { lbcCategoryPath: ['Maison', 'Électroménager'] }),
+      beebs: copie(B[4].title, '', { beebsCategoryPath: ['Maison', 'Électroménager'] }),
+      ebay: copie(B[4].title, '', { ebayCategoryPath: ['Maison', 'Aspirateurs', 'Robots aspirateurs'] }),
+    },
+  });
+  m.set('206', {
+    ...mk('206', { plateformes: all, price: 8, nbQuestions: 1, generales: { titre: B[5].title, description: 'Call of Duty Black Ops III pour PS4, avec sa boîte. Disque sans rayure.', etat: 'Très bon état' } }),
+    initialListing: { titre: B[5].title, poids_g: 150, description: '' },
+    edited: {
+      vinted: copie(B[5].title, '', { categoryPath: ['Électronique', 'Jeux vidéo et consoles', 'Jeux vidéo'] }),
+      leboncoin: copie(B[5].title, '', { lbcCategoryPath: ['Électronique', 'Consoles & Jeux vidéo'] }),
+      beebs: copie(B[5].title, '', { beebsCategoryPath: ['Jeux et jouets', 'Jeux vidéo'] }),
+      ebay: copie(B[5].title, '', { ebayCategoryPath: ['Jeux vidéo, consoles', 'Jeux vidéo'] }),
+    },
+    genericRequiredStatus: { beebs: [{ key: 'Âge', label: 'Âge', value: '', state: 'missing', allowedValues: AGES, inputType: 'select' }] },
+    clesQuestions: ['beebs:Âge'], questionsParPlateforme: { beebs: ['Âge'] },
+  });
+  m.set('207', {
+    ...mk('207', { plateformes: all, price: 12, nbQuestions: 1, generales: { titre: B[6].title, description: 'Le livre EAT de Gilles Lartigot, broché. Très bon état, aucune annotation.', etat: 'Très bon état' } }),
+    initialListing: { titre: B[6].title, poids_g: 900, description: '' },
+    edited: {
+      vinted: copie(B[6].title, '', { categoryPath: ['Divertissement', 'Livres', 'Non-fiction'] }),
+      leboncoin: copie(B[6].title, '', { lbcCategoryPath: ['Loisirs', 'Livres'] }),
+      beebs: copie(B[6].title, '', { beebsCategoryPath: ['Maman', 'Livres'] }),
+      ebay: copie(B[6].title, '', { ebayCategoryPath: ['Livres, BD, revues', 'Livres'] }),
+    },
+    genericRequiredStatus: { vinted: [{ key: 'isbn', label: 'ISBN', value: '', state: 'missing', inputType: 'text' }] },
+    clesQuestions: ['vinted:isbn'], questionsParPlateforme: { vinted: ['ISBN'] },
+  });
+  m.set('208', {
+    ...mk('208', { plateformes: all, price: 14, texteVendeur: { titre: '', description: '' }, generales: { titre: B[7].title, description: 'Legging de sport Ironwomen noir, taille M. Bon état général, porté deux fois. Idéal pour femme.\n\n#ironwomen #legging #noir #femme #fitness', etat: 'Très bon état' } }),
+    initialListing: { titre: B[7].title, poids_g: 200, description: '' },
+    edited: {
+      vinted: copie(B[7].title, '', { categoryPath: ['Femmes', 'Vêtements de sport', 'Leggings'], packageSizeId: 1 }),
+      leboncoin: copie(B[7].title, '', { lbcCategoryPath: ['Mode', 'Vêtements', 'Femme'] }),
+      beebs: copie(B[7].title, '', { beebsCategoryPath: ['Maman', 'Vêtements', 'Sport'] }),
+      ebay: copie(B[7].title, '', { ebayCategoryPath: ['Vêtements, accessoires', 'Femmes', 'Vêtements de sport', 'Leggings'] }),
+    },
+    genericRequiredStatus: { vinted: [{ key: 'size', label: 'Taille', value: 'M / 38 / 10', state: 'ok' }], beebs: [{ key: 'Taille', label: 'Taille', value: 'M', state: 'ok' }] },
+    ebayRequiredStatus: [{ name: 'Taille', label: 'Taille', value: 'M', state: 'ok' }, { name: 'Marque', label: 'Marque', value: 'Ironwomen', state: 'ok' }],
+  });
+  return m;
+}
+
+function RefonteC({ etape }) {
+  const { t, tpl } = useTranslation('fr');
+  const [decisions, setDecisions] = useState({ '203': { ecartees: { depop: 'aucun_rayon' } } });
+  const decider = (id, patch) => setDecisions((prev) => ({ ...prev, [id]: { ...(prev[id] ?? {}), ...patch } }));
+  const [moteurs] = useState(() => moteursC(t, tpl));
+  const lot = { id: 'apercu-c', le: '2026-10-26T09:40:00Z', ids: B.map((a) => String(a.id)), plateformes: ['vinted', 'leboncoin', 'beebs', 'ebay', 'depop'] };
+  const enPrep = etape === 'preparation';
+  const etats = {};
+  const pfs = (id) => [...(moteurs.get(id)?.plateformesPubliables ?? [])];
+  for (const [i, a] of B.entries()) {
+    const id = String(a.id);
+    const d = decisions[id] ?? {};
+    if (enPrep && i >= 5) { etats[id] = { phase: i === 5 ? 'redaction' : 'attente' }; continue; }
+    const motifs = [];
+    if (id === '201') motifs.push({ cle: 'questions', libelle: '1 réponse' });
+    if (id === '206' || id === '207') motifs.push({ cle: 'questions', libelle: '1 réponse' });
+    if (['202', '208'].includes(id) && !d.texteValide) motifs.push({ cle: 'texte', libelle: 'Texte à relire' });
+    if (d.photoVide) motifs.push({ cle: 'photo', libelle: 'Photo' });
+    etats[id] = motifs.length ? { phase: 'questions', motifs } : { phase: 'pret', envoyees: pfs(id) };
+  }
+  const prets = lot.ids.filter((id) => etats[id]?.phase === 'pret');
+  const aCompleter = lot.ids.filter((id) => etats[id]?.phase === 'questions');
+  const prepares = lot.ids.filter((id) => !['attente', 'lecture', 'montage', 'redaction', 'verification'].includes(etats[id]?.phase)).length;
+  const annoncesPretes = prets.reduce((n, id) => n + pfs(id).length, 0);
+  const cta = enPrep ? `Préparation… ${prepares} sur ${lot.ids.length}` : aCompleter.length ? `Envoyer les ${prets.length} prêts (${annoncesPretes} annonces)` : `Envoyer ${annoncesPretes} annonces`;
+  const sous = enPrep ? ["Tu peux déjà répondre ci-dessous dès qu'une question apparaît."]
+    : aCompleter.length ? [`Les ${aCompleter.length} autres restent dans ton stock, préparés : rien n'est perdu.`]
+    : ["L'extension FillSell les dépose ensuite depuis ton ordinateur, une après l'autre."];
+  const poidsDe = (id) => decisions[id]?.poids ?? parIdC.get(id)?.item?.poids_g ?? null;
+  return (
+    <CoqueLot en={false} ecran="lot-avant" titre={`Publier ${B.length} articles`} numeroEcran={2}
+      retour={{ onClick: noop }} quitter={{ onClick: noop }} cta={cta} ctaDesactive={enPrep} onCta={noop} sous={sous}>
+      <EcranAvant en={false} lang="fr" L={L} lot={lot} etats={etats} lignes={lot.ids} parId={parIdC} moteurs={moteurs} decisions={decisions}
+        prepares={prepares} preparationFinie={!enPrep} prets={prets} aCompleter={aCompleter} annoncesPretes={annoncesPretes}
+        communes={[]} repondreCommune={noop} decider={decider} trancherJumeau={noop}
+        sansPlateforme={(id, p) => decider(id, { ecartees: { ...(decisions[id]?.ecartees ?? {}), [p]: 'retiree' } })}
+        remettrePlateforme={(id, p) => decider(id, { remises: [...(decisions[id]?.remises ?? []), p] })}
+        retirerDuLot={noop} envoi={null}
+        poidsDe={poidsDe} poserPoids={(id, g) => decider(id, { poids: g, poidsConfirme: true })} poserPoidsDuLot={(ids, g) => { for (const id of ids) decider(id, { poids: g }); }}
+        choixPoidsLbc="estimer" choisirPoidsLbc={noop} />
+    </CoqueLot>
+  );
+}
+
 const SCENES = {
   'stock-porte': () => <Stock variante="porte" />,
   'stock-filtre': () => <Stock variante="filtre" />,
@@ -304,6 +468,8 @@ const SCENES = {
   envoi: () => <Avant etape="envoi" />,
   casse: () => <Avant etape="casse" />,
   'ecran-casse': () => <EcranCasse />,
+  'c-liste': () => <RefonteC />,
+  'c-preparation': () => <RefonteC etape="preparation" />,
   fin: () => <Fin />,
   'fin-erreur': () => <Fin variante="erreur" />,
   suivi: () => <Suivi />,

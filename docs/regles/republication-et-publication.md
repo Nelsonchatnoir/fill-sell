@@ -741,3 +741,35 @@
 - La lecture de fond ne s'exécute jamais pendant qu'on publie (serveur : geste < 10 min ou tâches servies ; extension
   0.6.146 : elle cède le verrou). `coin_config.lecture_fond_mode` : clé ABSENTE (= pilote seul) depuis le 26/10 07:38.
 - Le plafond Free n'est jamais prêté à un compte (selftest `quota-payant-jamais-free`).
+
+## 26/10 — refonte C du lot : une ligne par article, une pop-up par article (maquettes validées par Nico ; rapport `docs/enquetes/session-2610/RAPPORT.md` § C)
+- La liste : UNE ligne par article (vignette, titre entier, vrais logos, prix, statut), ses questions dessous en un geste
+  (3 au plus, le reste dans la pop-up) ; « À régler » en haut, « Prêts » en bas ; une ligne qui devient prête GARDE sa
+  place (« Réglé — touche la ligne pour revoir »). Chaque ligne se construit DANS sa barrière (`Rendu`) : un moteur qui
+  lève met son article de côté, jamais la liste (selftest `lot-par-question` § 6).
+- La pop-up (`src/publication/lot/FicheArticle.jsx`, lue par `ficheLue.js`) : le commun (photos, titre, prix, état,
+  description entière), puis UNE section par plateforme : statut Prêt / À régler, rayon et « Changer », colis ou port,
+  caractéristiques ; retirer une plateforme = le bouton « ✕ Ne pas publier sur X ». La MÊME pop-up sert « Vérifier » à
+  l'unité (`EcranVerifier.jsx`) ; les cartes d'avant restent un geste plus bas, repliées.
+- ⛔ Rien n'est coupé par « … » (rayon, colis, port, règle eBay, titre d'une ligne) : sur deux lignes s'il le faut.
+- Rayon « neuf seulement » (C8) : le message dit le fait, sans citer de bouton ; dessous, deux sorties en un geste —
+  « Passer l'état en « Neuf … » » (choix de la PERSONNE, jamais posé par FillSell) ou « Changer de rayon ».
+- Beebs ou Depop SANS aucun rayon candidat (ou Depop qui interdit l'objet) : écartés d'office, une ligne discrète « Pas sur
+  Depop : aucun rayon. » et « Annuler » qui les remet (C9). Jamais Vinted, Leboncoin ni eBay.
+- ⛔ Le poids montré vient de la fiche ou du choix de la personne, JAMAIS d'une estimation (ni l'IA, ni la tranche
+  Leboncoin) ; sans poids, l'article compte dans « Colis · N articles sans poids » (« Un poids pour les N »). Un poids
+  grossièrement incohérent pour l'objet (robot aspirateur, bouilloire, maison de poupée… bornes larges) est signalé avec
+  deux poids plausibles et « Garder ».
+- Photo de remplissage (l'image par défaut de Beebs rapatriée comme photo) : lue dans la page (≤ 256 px ET ≤ 40 couleurs),
+  dite dès la ligne (« Sans photo », motif « Photo » : rien ne part avec elle) ; une image illisible n'est JAMAIS déclarée vide.
+- ⛔ Une description écrite par FillSell ne contredit jamais la fiche (`moteur/descriptionFidele.js`, appliquée au texte qui
+  PART dans construireJobs ET à celui qu'on montre — même fiche, `moteur.ficheDuTexte`) : même état (« Bon état » →
+  « Très bon état » de la fiche), même genre (« homme » contre une fiche « femme » réécrit ; « pour femme » que rien ne
+  fonde retiré), hashtags seulement fondés par la fiche. Hashtags seulement sur Vinted et Depop (5 au plus), jamais sur
+  Leboncoin, eBay, Beebs (une queue de hashtags tombe, un « #mot » dans une phrase redevient « mot »). Le texte du
+  vendeur fait foi : sur Vinted et Depop il part tel quel.
+- Modèle Vinted : la liste COMPLÈTE de la marque relevée sur Vinted (`src/data/vintedModeles.js` : téléphones, casques,
+  ordinateurs portables ; 1 504 modèles Samsung), avec recherche ; un modèle chiffré lu sans ambiguïté sur le titre
+  (« Galaxy S10 ») est posé sans question, une gamme seule (« Galaxy ») jamais.
+- Selftests : `lot-refonte-c`, `lot-par-question`, `publication-moteur` (C8) ; aperçu : `ECRANS=^3 node
+  scripts/apercu/capture-lot-publication.mjs` (le lot de Nico du 26/10 : Medik8, Samsung, Scotch, bouilloire, robot LIEE…).

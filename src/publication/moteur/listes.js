@@ -43,6 +43,7 @@
 //    « à compléter » avec la liste, et c'est la personne qui choisit.
 import { texteComparable } from "../../utils/texteComparable.js";
 import { normalizeVintedColors } from "../../utils/vintedColors.js";
+import { VINTED_MODELES } from "../../data/vintedModeles.js";
 import { tailleDansGrille } from "../../../supabase/functions/_shared/tailles.js";
 import { tailleDuTexte } from "../../../supabase/functions/_shared/taille-du-texte.js";
 import { toPlatformChildSize, tailleEnfantSelonLeTexte } from "../../utils/childSizes.js";
@@ -157,10 +158,48 @@ export function valeurPourListe(platform, key, value) {
 // proposait que des iPhone. Règle : une liste de modèles Apple ne se propose qu'à un article Apple ; ailleurs le modèle
 // se tape (champ à recherche : l'extension le cherche dans la liste de SA marque chez Vinted). Pur.
 const RE_MODELES_APPLE = /^(iphone|ipad|ipod|airpods|apple watch|macbook|imac|mac mini)\b/i;
-export function modelesVintedPourLaMarque(platform, key, valeurs, marque) {
-  if (platform !== "vinted" || key !== "model" || !Array.isArray(valeurs) || !valeurs.length) return valeurs;
+// (26/10, C7 — Nico) La liste COMPLÈTE de la marque : relevée sur Vinted (src/data/vintedModeles.js, toutes les pages
+// de /api/v2/item_upload/models par rayon et par marque — 1 504 modèles Samsung en Téléphones portables). Un Samsung
+// ne voit que des Samsung, avec recherche (champ long). Une marque absente du relevé : le champ se tape, comme avant.
+const cleMarque = (s) => texteComparable(String(s ?? "")).replace(/[^a-z0-9]+/g, "");
+export function modelesVintedDuRelevé(chemin, marque) {
+  const cle = Array.isArray(chemin) ? chemin.join(" > ") : String(chemin ?? "");
+  const rayon = VINTED_MODELES?.rayons?.[cle];
+  const m = cleMarque(marque);
+  if (!rayon || !m) return null;
+  for (const [nom, v] of Object.entries(rayon.marques ?? {})) {
+    if (cleMarque(nom) === m) return Array.isArray(v?.modeles) && v.modeles.length ? v.modeles : null;
+  }
+  return null;
+}
+export function modelesVintedPourLaMarque(platform, key, valeurs, marque, chemin = null) {
+  if (platform !== "vinted" || key !== "model") return valeurs;
+  const releve = chemin ? modelesVintedDuRelevé(chemin, marque) : null;
+  if (releve) return releve;
+  if (!Array.isArray(valeurs) || !valeurs.length) return valeurs;
   if (!valeurs.every((v) => RE_MODELES_APPLE.test(String(v).trim()))) return valeurs;
   return /^\s*apple\s*$/i.test(String(marque ?? "")) ? valeurs : [];
+}
+
+// (26/10, C6 — Nico) « Marque connue + modèle lisible sur le titre → rempli sans question. » Le modèle de la liste de
+// SA marque que le texte nomme : le PLUS LONG qui y figure en mots entiers (« Galaxy S10+ » avant « Galaxy S10 »),
+// et seulement s'il n'y en a qu'un de cette longueur — au moindre doute, null (la question reste). Jamais un modèle
+// d'une autre marque, jamais une ressemblance approchée.
+export function modeleLuDansLeTexte(texte, modeles) {
+  const t = ` ${texteComparable(String(texte ?? "")).replace(/[^a-z0-9+]+/g, " ")} `;
+  if (!Array.isArray(modeles) || !modeles.length || t.trim().length < 2) return null;
+  let meilleurs = [], longueur = 0;
+  for (const nom of modeles) {
+    const n = texteComparable(String(nom)).replace(/[^a-z0-9+]+/g, " ").trim();
+    // Seul un nom CHIFFRÉ nomme un modèle (« Galaxy S10 ») : « Galaxy », « Galaxy Note » sont des gammes — jamais posées.
+    if (n.length < 3 || !/\d/.test(n)) continue;
+    if (!t.includes(` ${n} `)) continue;
+    // Un modèle chiffré (« Galaxy S10 ») nomme plus qu'un nom de gamme (« Samsung Galaxy ») : il passe devant.
+    const poids = (/\d/.test(n) ? 1000 : 0) + n.length;
+    if (poids > longueur) { meilleurs = [nom]; longueur = poids; }
+    else if (poids === longueur) meilleurs.push(nom);
+  }
+  return meilleurs.length === 1 ? meilleurs[0] : null;
 }
 
 // Les champs qui portent une TAILLE (ou une pointure) : eux seuls passent par
@@ -495,8 +534,8 @@ export function rayonNeufSeulement({ platform, key, value, allowedValues }) {
 export function messageRayonNeuf({ valeur, platform = "vinted" }, lang = "fr") {
   const nom = platform === "beebs" ? "Beebs" : "Vinted";
   return lang === "en"
-    ? `This ${nom} category only accepts new items, and this item is “${valeur}”. Pick another category with “Change” if the item fits one; otherwise ${nom} won't take it second-hand, and it will go to your other platforms.`
-    : `Ce rayon ${nom} n'accepte que des articles neufs, et ton article est « ${valeur} ». Choisis un autre rayon avec « Changer » si l'objet y a sa place ; sinon ${nom} ne le prendra pas d'occasion, et il partira sur tes autres plateformes.`;
+    ? `This ${nom} category only accepts new items (this item: “${valeur}”).`
+    : `Ce rayon ${nom} n'accepte que des articles neufs (ton article : « ${valeur} »).`;
 }
 
 // ── (24/10, point 1, sujet du 22/10) RAYON ADULTE, TAILLE ENFANT (ET L'INVERSE) ──────────────────────────────────

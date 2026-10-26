@@ -66,7 +66,7 @@ function ChoixEnPuces({ valeurs, valeur = "", onChoisir, en, children }) {
   );
 }
 
-export default function BlocQuestions({ m, seulement = null, puces = false }) {
+export default function BlocQuestions({ m, seulement = null, puces = false, onChangerRayon = null }) {
   const en = m.lang === "en";
   const voir = (cle) => !seulement || seulement.includes(cle);
   // La liste fermée en puces (mode `puces`), l'entrée d'avant sinon (ou derrière « Toute la liste »).
@@ -346,6 +346,21 @@ export default function BlocQuestions({ m, seulement = null, puces = false }) {
             <div key={`g:${gp}:${a.key}`} className="fsn-q fsn-q--bloque" style={{ gridColumn: "1 / -1" }}>
               <div className="fsn-row fsn-row--between"><div className="fsn-q-t">{a.label}</div><Puce ton="geste">{NOM(gp)}</Puce></div>
               <div className="fsn-q-why">{a.message}</div>
+              {/* (26/10, C8 — Nico) Un rayon « neuf seulement » offre ses deux sorties en un geste : passer l'état en neuf
+                  (le choix de la PERSONNE, jamais deviné) ou changer de rayon — et aucun message ne cite un bouton absent. */}
+              {a.neufSeulement && (Array.isArray(a.valeursNeuves) && a.valeursNeuves.length > 0 || onChangerRayon) ? (
+                <div className="fsn-choices fsq-puces">
+                  {(a.valeursNeuves ?? []).map((v) => (
+                    <button key={v} type="button" className="fsn-choice" onClick={() => {
+                      m.poserValeurGenerale?.("etat", v);
+                      m.noterReponseQuestion?.(gp, a, v);
+                      if (a.dedicatedTarget && m.setPlatformDedicatedField) m.setPlatformDedicatedField(gp, a.dedicatedTarget, v);
+                      else m.setPlatformAspect?.(gp, a.key, v);
+                    }}>{en ? `Set the condition to “${v}”` : `Passer l'état en « ${v} »`}</button>
+                  ))}
+                  {onChangerRayon ? <button type="button" className="fsn-choice" onClick={() => onChangerRayon(gp)}>{en ? "Change category" : "Changer de rayon"}</button> : null}
+                </div>
+              ) : null}
               {m.setSelected && (
                 <div className="fsn-btn-row">
                   <button type="button" className="fsn-btn fsn-btn--ghost fsn-btn--sm"

@@ -7,9 +7,10 @@
 //      rayons) + celles du lot (prix, poids, même article ?, port Depop) ; deux tailles = UNE question ;
 //   2. un article à revoir a toujours au moins une ligne (sauf texte seul : « Tout valider » le porte) ;
 //   3. les sujets : les plus nombreux d'abord, puis dans l'ordre d'apparition ;
-//   4. le code livré : un moteur qui lève ne met de côté que SON article (même barrière qu'avant), les prêts repliés
-//      restent rendus sous leur barrière, la livraison repliée s'ouvre d'office en « Saisir le poids », l'envoi garde
-//      les cartes d'avant ; dans une ligne, la phrase « Exigé … » répétée disparaît, les phrases qui informent restent.
+//   4. le code livré (26/10, refonte C : une ligne par article) : un moteur qui lève ne met de côté que SON article
+//      (même barrière qu'avant), chaque ligne et chaque question sous sa barrière, la livraison repliée s'ouvre
+//      d'office en « Saisir le poids », l'envoi garde les cartes d'avant ; dans une ligne, la phrase « Exigé … »
+//      répétée disparaît, les phrases qui informent restent.
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -85,19 +86,27 @@ ok(sujets.map((s) => s.sujet).join(" ; ") === "Taille|beebs ; Âge|beebs ; Prix 
 ok(sujets[0].lignes.map((l) => l.id).join() === "b,c" && sujets[2].lignes[0].id === "a", "chaque ligne = un article × une question");
 ok(S.titreDuSujet(sujets[2]) === "Prix de vente" && S.titreDuSujet(sujets[0]) === "Taille · Beebs", "titres : « Prix de vente », « Taille · Beebs »");
 
-console.log("\n6. Le code livré de l'écran");
+console.log("\n6. Le code livré de l'écran (26/10, refonte C : une ligne par article)");
 const lot = lire("src/publication/lot/LotPublication.jsx");
-const vue = lot.slice(lot.indexOf("export function VueParQuestion("), lot.indexOf("// Un article prêt, dans sa feuille"));
+const vue = lot.slice(lot.indexOf("export function VueListe("), lot.indexOf("// Rend, sous une barrière, l'erreur"));
+ok(vue.length > 2000, "la vue « une ligne par article » est là (VueListe)");
 ok(/try \{[\s\S]{0,700}questionsDeLArticle\([\s\S]{0,200}\} catch \(erreur\) \{\s*casses\.push\(\{ id, erreur \}\);/.test(vue), "un moteur qui lève en lisant ses questions : l'article est mis à part, l'écran continue");
 ok(/casses\.map\(\(\{ id, erreur \}\) => \([\s\S]{0,200}onErreur=\{\(e\) => mettreDeCote\(id, e, "questions"\)\}[\s\S]{0,200}<Relancer erreur=\{erreur\} \/>/.test(vue), "… et mis de côté par SA barrière, comme avant (mettreDeCote « questions »)");
 ok(/function Relancer\(\{ erreur \}\) \{\s*throw erreur;/.test(lot), "Relancer rend l'erreur sous la barrière");
-ok(/<div hidden=\{!pretsOuverts\}>\s*\{prets\.map\(\(id\) => \(\s*<BarriereErreur key=\{id\} nom=\{`ligne \$\{id\}`\} onErreur=\{\(e\) => mettreDeCote\(id, e, "ligne"\)\}/.test(vue), "les prêts repliés restent rendus, chacun sous sa barrière (une ligne cassée met son article de côté)");
-ok(vue.includes("seulement={q.cles ?? [q.cle]} puces"), "une ligne = le bloc du stepper limité à SES clés, en puces");
-ok(/\(q\.cles \?\? \[q\.cle\]\)\.includes\(`\$\{g\.gp\}:\$\{g\.key\}`\)/.test(vue), "la réponse commune se range dans le sujet qui porte sa clé");
+ok((vue.match(/<BarriereErreur key=\{id\} nom=\{`ligne \$\{id\}`\} onErreur=\{\(e\) => mettreDeCote\(id, e, "ligne"\)\}/g) ?? []).length >= 3, "chaque ligne (à régler, prêts, autres) sous sa barrière : une ligne cassée met son article de côté");
+ok(/<BarriereErreur key=\{`\$\{id\}:\$\{q\.cle\}`\} nom=\{`question \$\{id\}`\}/.test(vue), "chaque question sous la ligne, sous sa barrière");
+ok((vue.match(/<Rendu f=\{\(\) => ligne\(id\)\} \/>/g) ?? []).length === 2 && !/\{ligne\(id\)\}/.test(vue) && /function Rendu\(\{ f \}\) \{\s*return f\(\);/.test(lot),
+  "une ligne se construit DANS sa barrière (Rendu), jamais dans le rendu de la liste (aperçu « casse » du 26/10)");
+ok(/const sansPoids = [^;]*?try \{/.test(vue.replace(/\n/g, " ")), "le compte « sans poids » ne lève jamais pour un moteur cassé");
+ok(vue.includes("seulement={q.cles ?? [q.cle]} puces"), "une question sous la ligne = le bloc du stepper limité à SES clés, en puces");
 ok(/for \(const id of aTexte\) decider\(id, \{ texteValide: true \}\)/.test(vue) && /for \(const id of textesValides\) decider\(id, \{ texteValide: false \}\)/.test(vue), "« Tout valider » valide les textes du lot, « Annuler » les rend");
+ok(/places\.current\.get\(id\) === "haut"/.test(vue) && /useRef\(new Map\(\)\)/.test(vue), "une ligne garde sa place quand elle devient prête (C2 : rien ne saute)");
+ok(/remettrePlateforme\(id, e\.p\)/.test(vue) && /phraseEcartees\(/.test(vue), "une plateforme écartée d'office : une ligne discrète et « Annuler »");
+ok(/<FicheArticle m=\{mOuvert\}/.test(vue), "toucher une ligne ouvre LA pop-up de l'article (FicheArticle)");
+ok(/onClick=\{\(\) => setOuvert\(null\)\}>\{en \? "Later" : "Plus tard"\}/.test(vue), "« Plus tard » ferme sans rien décider (jamais un retrait du lot)");
 ok(/<PliDuLot [^>]*ouvertDOffice=\{choixPoidsLbc === "saisir"\}/.test(lot), "la livraison du lot est repliée, ouverte d'office quand le lot attend un poids saisi");
-ok(/\{!envoi && blocProtege\("par_question",/.test(lot) && /\{envoi && aCompleter\.map\(\(id\) => \(/.test(lot), "hors envoi : la vue par question ; pendant l'envoi : les cartes d'avant");
-ok(/s\.type === "poids" && s\.lignes\.length > 1 && \(\s*<PoidsPourTous /.test(vue), "le sujet « Poids du colis » porte « Le même poids pour les N »");
+ok(/\{!envoi && blocProtege\("liste",/.test(lot) && /\{envoi && aCompleter\.map\(\(id\) => \(/.test(lot), "hors envoi : la liste ; pendant l'envoi : les cartes d'avant");
+ok(/sansPoids\.length > 0 && \(/.test(vue) && /<PoidsPourTous en=\{en\} ids=\{sansPoids\}/.test(vue), "« Colis · N articles sans poids » porte « Un poids pour les N »");
 
 console.log("\n7. Le bloc de questions dans une ligne de sujet");
 const bloc = lire("src/publication/BlocQuestions.jsx");

@@ -500,7 +500,14 @@ console.log("\n[RN] Rayon Vinted « neuf seulement » (25/09) — jamais « Neuf
   ok("autre plateforme / autre champ → jamais", rn("Bon état", neufSeul, "leboncoin", "condition") === false && rn("Bon état", neufSeul, "vinted", "size") === false
     && rn("Bon état", neufBeebs, "beebs", "Taille") === false);
   ok("le message nomme la plateforme (Beebs / Vinted)", /Ce rayon Beebs/.test(L.messageRayonNeuf({ valeur: "Bon état", platform: "beebs" })) && /Ce rayon Vinted/.test(L.messageRayonNeuf({ valeur: "Bon état" })));
-  ok("le message dit de changer de rayon, jamais de choisir « Neuf »", /Changer/.test(L.messageRayonNeuf({ valeur: "Bon état" })) && !/choisis\s+«\s*Neuf/i.test(L.messageRayonNeuf({ valeur: "Bon état" })));
+  // (26/10, C8 — Nico) Le message ne cite plus aucun bouton (« Changer » n'existait pas partout) : les deux sorties sont
+  // des BOUTONS sous lui (« Passer l'état en … », « Changer de rayon ») — BlocQuestions et la pop-up du lot.
+  ok("le message dit le fait, ne cite aucun bouton, jamais « choisis Neuf »", !/«\s*Changer\s*»/.test(L.messageRayonNeuf({ valeur: "Bon état" })) && !/choisis\s+«\s*Neuf/i.test(L.messageRayonNeuf({ valeur: "Bon état" }))
+    && /n'accepte que des articles neufs/.test(L.messageRayonNeuf({ valeur: "Bon état" })));
+  {
+    const bq = readFileSync(join(ROOT, "src/publication/BlocQuestions.jsx"), "utf8");
+    ok("C8 : sous le message, « Passer l'état en … » et « Changer de rayon » (quand l'écran sait l'ouvrir)", /a\.neufSeulement && \(/.test(bq) && /Passer l'état en « \$\{v\} »/.test(bq) && /onChangerRayon \? <button/.test(bq));
+  }
   // La CARTE du rayon : plus de question « État » à côté (sa seule réponse
   // serait « Neuf ») — une limite, avec le message.
   const cat = [

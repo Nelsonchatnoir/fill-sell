@@ -80,7 +80,7 @@ ok(L.modelesVintedPourLaMarque("vinted", "model", IPHONES, "Apple").length === 3
 ok(L.modelesVintedPourLaMarque("vinted", "model", ["AirPods Pro", "AirPods Max"], "Sony").length === 0, "les AirPods ne se proposent pas à un casque Sony");
 ok(L.modelesVintedPourLaMarque("vinted", "model", ["Galaxy S21", "iPhone 12"], "Samsung").length === 2, "une liste qui n'est pas que d'Apple : inchangée");
 ok(L.modelesVintedPourLaMarque("vinted", "size", IPHONES, "Samsung").length === 3 && L.modelesVintedPourLaMarque("beebs", "model", IPHONES, "Samsung").length === 3, "les autres champs et plateformes : inchangés");
-ok(/const allowedValues = modelesVintedPourLaMarque\(platform, key, allowedValuesCatalogue, pf\.marque \|\| initialListing\?\.marque \|\| ""\)/.test(lps), "branché dans l'écran Publier, avec la marque de la copie ou de la fiche");
+ok(/const allowedValues = modelesVintedPourLaMarque\(platform, key, allowedValuesCatalogue, pf\.marque \|\| initialListing\?\.marque \|\| ""(, genericCategoryKeys\?\.\[platform\] \?\? null)?\)/.test(lps), "branché dans l'écran Publier, avec la marque de la copie ou de la fiche (et, depuis le 26/10, le rayon : liste relevée)");
 
 console.log("\n5. Les titres se lisent entiers");
 ok(/<textarea className="fsn-textarea" rows=\{2\}[\s\S]{0,200}defaultValue=\{titreQuiPart\}/.test(lot), "le titre du texte qui part : un champ de 2 lignes, plus un champ d'une ligne qui le coupe");

@@ -75,11 +75,15 @@ import {
   plateformesLibres, resumeParPlateforme, choixInitial, ficheCouvre, partagerQuota,
   dureeEstimeeMin, libelleDuree, bilanArticle, jumeauxQuiRetiennent, marqueLot, groupesReponseCommune,
   palierCourant, palierSuivant, canalAppareil, canalAbonnement, monteePossibleIci, CLE_REPRISE_LOT,
-  poidsConnu, lirePoidsSaisi,
+  lirePoidsSaisi,
 } from "./regles";
 import { posesMemoireVisibles } from "../moteur/memoireCategorie";
 // (26/10 nuit, design B validé par Nico) L'étape 2 rangée par question.
-import { questionsDeLArticle, sujetsDuLot, titreDuSujet } from "./sujetsDuLot";
+import { questionsDeLArticle } from "./sujetsDuLot";
+// (26/10, refonte C validée par Nico) Une ligne par article, une pop-up par article.
+import FicheArticle, { PoidsDeLArticle } from "./FicheArticle";
+import { usePhotoVide } from "./photoVide";
+import { plateformesDeLArticle, poidsAffiche, poidsIncoherent, textePoids, phraseEcartees, ecarteesAutomatiques } from "./ficheLue";
 import LivraisonDuLot from "./LivraisonDuLot";
 import { parLots } from "../../utils/parLots.js";
 import BarriereErreur from "../../components/BarriereErreur";
@@ -661,6 +665,26 @@ function EcranDuLot({
             else planifierTick(1500);
             continue;
           }
+          // (26/10, C9) Beebs ou Depop sans AUCUN rayon pour l'article (ou un objet que Depop interdit) : écartée d'office,
+          // sans question — la ligne le dit, « Annuler » la remet. Jamais la dernière plateforme de l'article : il ne
+          // partirait nulle part, il est dit « ne part pas » avec la raison.
+          const remises = decisions[id]?.remises ?? [];
+          const aEcarter = ecarteesAutomatiques(m, remises).filter((e) => m.selected?.has?.(e.p));
+          if (aEcarter.length) {
+            const restantes = [...(m.selected ?? [])].filter((p) => !aEcarter.some((e) => e.p === p));
+            const deja = decisions[id]?.ecartees ?? {};
+            if (!restantes.length) {
+              patchs[id] = { phase: "rien", raison: phraseEcartees(aEcarter, NOM, lang) };
+              continue;
+            }
+            if (!pil.ecartement || maintenant - pil.ecartement > 3000) {
+              pil.ecartement = maintenant;
+              decider(id, { ecartees: { ...deja, ...Object.fromEntries(aEcarter.map((e) => [e.p, e.motif])) } });
+              m.setSelected((prev) => { const s = new Set(prev); for (const e of aEcarter) s.delete(e.p); return s; });
+            }
+            planifierTick(800);
+            continue;
+          }
           const b = bilanArticle({ ...m, preparationAuRepos: true, quantiteFiche: quantiteDe(id), poidsLbcChoix: poidsLbcChoixRef.current }, decisions[id], lang);
           const nouvelle = b.pret ? "pret" : "questions";
           if (nouvelle !== phase || JSON.stringify(st.motifs ?? []) !== JSON.stringify(b.motifs)) patchs[id] = { phase: nouvelle, motifs: b.motifs };
@@ -704,6 +728,14 @@ function EcranDuLot({
   const sansPlateforme = (id, platform) => {
     const m = moteursRef.current.get(id);
     if (m) m.setSelected((prev) => { const s = new Set(prev); s.delete(platform); return s; });
+  };
+  // (26/10, C9) « Annuler » sur une plateforme écartée d'office : elle revient, et sa question de rayon avec elle
+  // (jamais réécartée d'office pour cet article).
+  const remettrePlateforme = (id, platform) => {
+    const avant = decisionsRef.current[id]?.remises ?? [];
+    decider(id, { remises: [...new Set([...avant, platform])] });
+    const m = moteursRef.current.get(id);
+    if (m) m.setSelected((prev) => { const s = new Set(prev); s.add(platform); return s; });
   };
   const retirerDuLot = (id) => { majEtat(id, { phase: "retire" }); };
 
@@ -803,7 +835,8 @@ function EcranDuLot({
   const transporteursRetenus = Array.isArray(profil?.platform_settings?.leboncoin?.transporteurs)
     ? profil.platform_settings.leboncoin.transporteurs : null;
   const transporteursDuLot = livraison.transporteurs === undefined ? transporteursRetenus : livraison.transporteurs;
-  const poidsDe = (id) => poidsConnu(moteursRef.current.get(id), decisionsRef.current[id]);
+  // (26/10, règle 7 de Nico) Le poids d'un article : celui de la fiche ou du choix de la personne — jamais une estimation.
+  const poidsDe = (id) => poidsAffiche(moteursRef.current.get(id), decisionsRef.current[id], parId.get(id)?.item ?? null);
   const appliquerLivraison = (id, g = poidsDe(id)) => {
     const m = moteursRef.current.get(id);
     if (!m?.edited?.leboncoin || !m.poserLivraisonLbc) return;
@@ -1226,7 +1259,7 @@ function EcranDuLot({
               prets={prets} aCompleter={aCompleter} annoncesPretes={annoncesPretes} communes={communes}
               repondreCommune={repondreCommune} decider={decider} trancherJumeau={trancherJumeau}
               posesDuLot={posesDuLot} changerPosesDuLot={changerPosesDuLot}
-              sansPlateforme={sansPlateforme} retirerDuLot={retirerDuLot} envoi={envoi} supabase={supabase}
+              sansPlateforme={sansPlateforme} remettrePlateforme={remettrePlateforme} retirerDuLot={retirerDuLot} envoi={envoi} supabase={supabase}
               lectures={lectures}
               livraison={{ transporteurs: transporteursDuLot, format: livraison.format }} poidsDe={poidsDe} poserPoids={poserPoids}
               poserPoidsDuLot={poserPoidsDuLot} poserTransporteurs={poserTransporteurs} poserFormat={poserFormat}
@@ -1439,6 +1472,8 @@ export function EcranAvant({
   en, lang, L, lot, etats, lignes, parId, moteurs, decisions, prepares, preparationFinie,
   prets, aCompleter, annoncesPretes, communes, repondreCommune, decider, trancherJumeau, sansPlateforme, retirerDuLot, envoi,
   lectures = {},
+  // (26/10, C9) Une plateforme écartée d'office, remise par « Annuler » (sa question de rayon reparaît).
+  remettrePlateforme = () => {},
   livraison = { transporteurs: null, format: "" }, poidsDe = () => null, poserPoids = () => {}, poserPoidsDuLot = () => {},
   poserTransporteurs = () => {}, poserFormat = () => {},
   colisVinted = [], choisirColisVinted = () => {},
@@ -1483,28 +1518,23 @@ export function EcranAvant({
           lang={lang}
           phrase={en ? `${envoi.fait} of ${envoi.total} items` : `${envoi.fait} sur ${envoi.total} articles`}
         />
-      ) : !preparationFinie ? (
-        <BarreProgression
-          titre={en ? "Preparing the listings" : "Préparation des annonces"}
-          fraction={total ? prepares / total : 0}
-          pas={total ? 1 / total : 1}
-          dureePas={15}
-          etat="en_cours"
-          lang={lang}
-          article={itemEnCours ? { photo: urlsPhotos(itemEnCours.photos)[0] ?? null, titre: titreDe(itemEnCours) } : undefined}
-          phrase={en ? `${prepares} of ${total} ready to check` : `${prepares} sur ${total} préparés`}
-        />
-      ) : null /* (26/10 nuit) le bilan vit dans la vue par question, plus bas */}
+      ) : null /* (26/10, C2) pendant la préparation, l'en-tête du lot EST la progression : plus bas, une case par article */}
+      {!envoi && !preparationFinie && itemEnCours ? (
+        <p className="fsv-prep" aria-live="polite">
+          <span className="fsn-spin" aria-hidden="true" />
+          {en ? `Preparing “${titreDe(itemEnCours)}”… You can already answer below.` : `Préparation de « ${titreDe(itemEnCours)} »… Tu peux déjà répondre plus bas.`}
+        </p>
+      ) : null}
 
-      {/* (26/10 nuit, design B) Hors de l'envoi : l'écran PAR QUESTION — bilan en haut, « Tout valider », les
-          questions rangées par sujet, puis les réglages du lot (livraison repliée), les prêts repliés, la feuille de
-          chaque article. Mêmes blocs, mêmes gestes qu'avant : seul l'ordre et le pli changent. */}
-      {!envoi && blocProtege("par_question", (
-        <VueParQuestion en={en} L={L} lot={lot} etats={etats} lignes={lignes} parId={parId} moteurs={moteurs} decisions={decisions}
+      {/* (26/10, refonte C validée par Nico) Hors de l'envoi : UNE ligne par article — l'en-tête gardé, né dès la
+          préparation (C2), les questions sous leur ligne en un geste (C4), la pop-up de l'article au toucher (C3),
+          les plateformes écartées d'office dites en une ligne (C9), puis les réglages du lot. */}
+      {!envoi && blocProtege("liste", (
+        <VueListe en={en} L={L} lot={lot} etats={etats} lignes={lignes} parId={parId} moteurs={moteurs} decisions={decisions}
           prets={prets} aCompleter={aCompleter} annoncesPretes={annoncesPretes} communes={communes} repondreCommune={repondreCommune}
-          decider={decider} trancherJumeau={trancherJumeau} sansPlateforme={sansPlateforme} retirerDuLot={retirerDuLot}
+          decider={decider} trancherJumeau={trancherJumeau} sansPlateforme={sansPlateforme} remettrePlateforme={remettrePlateforme} retirerDuLot={retirerDuLot}
           lectures={lectures} poserPoids={poserPoids} poserPoidsDuLot={poserPoidsDuLot} mettreDeCote={mettreDeCote} horloge={horloge} pontMort={pontMort}
-          sansLecteur={sansLecteur}
+          sansLecteur={sansLecteur} preparation={preparationFinie ? null : { faits: prepares, total }}
           blocsDuLot={(
             <>
               {/* (04/10) Poids, transporteurs et format : AVANT l'envoi, pour le lot — repliés, ouverts d'office
@@ -1882,22 +1912,27 @@ export function ArticleAQuestions({ id, en, item, m, st, decision, decider, tran
   );
 }
 
-// ═══ ÉCRAN 2, PAR QUESTION (26/10 nuit — design B validé par Nico) ═══════════
-// Un seul écran : le bilan (prêts · à revoir · annonces, une case par article), UN « Tout valider » pour les textes
-// écrits par FillSell, puis les questions RANGÉES PAR SUJET (toutes les tailles Beebs ensemble…), chacune répondue
-// en un geste par le MÊME bloc que le stepper (BlocQuestions `seulement`, en puces) ; les prêts repliés ; toucher un
-// article ouvre SA feuille (ArticleAQuestions, inchangée : son texte, ses plateformes, toutes ses questions,
-// « Pas sur … », « Le garder pour plus tard »). ⛔ Aucune règle n'est réécrite ici : seul l'agencement change.
-function BilanDuLot({ en, lot, etats, prets, aCompleter, annoncesPretes, ouvrir }) {
+// ═══ ÉCRAN 2, UNE LIGNE PAR ARTICLE (26/10 — refonte C validée par Nico) ═══════════════════════════════════════════
+// C1 : la liste du lot, UNE ligne par article (photo, titre, prix, logos des plateformes, statut). C2 : l'en-tête
+// gardé (« prêts · à régler · annonces », une case par article), né dès la préparation, qui se remplit case par case.
+// C4 : une question se répond SOUS SA LIGNE, en un geste (le MÊME bloc que le stepper, BlocQuestions `seulement`, en
+// puces ; une longue liste se cherche). C3 : toucher la ligne ouvre LA pop-up de l'article (FicheArticle), prêts
+// compris. C9 : une plateforme sans aucun rayon est écartée d'office, une ligne discrète le dit, « Annuler » la remet.
+// C10 : « X articles sans poids » et « un poids pour les X » — jamais un poids posé sur un article qui en a un.
+// ⛔ Une ligne ne SAUTE pas sous le doigt : un article garde sa place une fois rangé (« À régler » ou « Prêts »).
+// ⛔ Aucune règle n'est réécrite ici : seul l'agencement change (même pilote, même bilan, mêmes gestes).
+function BilanDuLot({ en, lot, etats, prets, aCompleter, annoncesPretes, ouvrir, preparation = null }) {
   const nPrets = prets.length, nRevoir = aCompleter.length;
   return (
     <section className="fsq-bilan" aria-label={en ? "Where the batch stands" : "Où en est le lot"}>
       <div className="fsq-nombres">
         <div className="fsq-nombre fsq-nombre--ok"><b className="num">{nPrets}</b><small>{en ? "ready" : nPrets > 1 ? "prêts" : "prêt"}</small></div>
-        <div className={`fsq-nombre ${nRevoir ? "fsq-nombre--revoir" : "fsq-nombre--zero"}`}><b className="num">{nRevoir}</b><small>{en ? "to review" : "à revoir"}</small></div>
-        <div className="fsq-nombre"><b className="num">{annoncesPretes}</b><small>{en ? (annoncesPretes > 1 ? "listings" : "listing") : (annoncesPretes > 1 ? "annonces" : "annonce")}</small></div>
+        <div className={`fsq-nombre ${nRevoir ? "fsq-nombre--revoir" : "fsq-nombre--zero"}`}><b className="num">{nRevoir}</b><small>{en ? "to settle" : "à régler"}</small></div>
+        {preparation
+          ? <div className="fsq-nombre"><b className="num">{preparation.faits}<span className="fsq-sur"> / {preparation.total}</span></b><small>{en ? "prepared" : "préparés"}</small></div>
+          : <div className="fsq-nombre"><b className="num">{annoncesPretes}</b><small>{en ? (annoncesPretes > 1 ? "listings" : "listing") : (annoncesPretes > 1 ? "annonces" : "annonce")}</small></div>}
       </div>
-      <div className="fsq-cases">
+      <div className="fsq-cases" style={{ gridTemplateColumns: `repeat(${Math.min(Math.max(lot.ids.length, 1), 20)}, 1fr)` }}>
         {lot.ids.map((id) => {
           const ph = etats[id]?.phase ?? "attente";
           const ton = prets.includes(id) ? "ok" : aCompleter.includes(id) ? "revoir" : ["retire", "rien", "erreur", "quota"].includes(ph) ? "hors" : "attente";
@@ -1908,21 +1943,44 @@ function BilanDuLot({ en, lot, etats, prets, aCompleter, annoncesPretes, ouvrir 
   );
 }
 
-export function VueParQuestion({
+// La vignette de la ligne : la première photo, et « Sans photo » quand il n'y en a pas de vraie (photoVide.js).
+function VignetteLot({ item, photos = null, onVide = null, en = false }) {
+  const url = (photos && photos.length ? (typeof photos[0] === "string" ? photos[0] : photos[0]?.url) : null) ?? urlsPhotos(item?.photos)[0] ?? null;
+  const lu = usePhotoVide(url ? urlPhoto(url) : null);
+  const vide = !url || lu === true;
+  useEffect(() => { if (onVide && (lu !== null || !url)) onVide(vide); }, [vide, lu, url, onVide]);
+  return (
+    <div className="fsn-thumb fsv-thumb" aria-hidden="true">
+      {url ? <img src={urlPhoto(url)} alt="" loading="lazy" /> : "📦"}
+      {vide ? <span className="fsv-sans">{en ? "No photo" : "Sans photo"}</span> : null}
+    </div>
+  );
+}
+
+export function VueListe({
   en, L, lot, etats, lignes, parId, moteurs, decisions, prets, aCompleter, annoncesPretes, communes, repondreCommune,
-  decider, trancherJumeau, sansPlateforme, retirerDuLot, lectures = {}, poserPoids, poserPoidsDuLot = () => {}, mettreDeCote, horloge = 0, pontMort = false,
-  // Les réglages du lot (livraison, refus de Depop, réponses reprises) : rendus APRÈS les questions, avant les prêts.
+  decider, trancherJumeau, sansPlateforme, remettrePlateforme = () => {}, retirerDuLot, lectures = {}, poserPoids, poserPoidsDuLot = () => {},
+  mettreDeCote, horloge = 0, pontMort = false, preparation = null,
+  // Les réglages du lot (livraison, refus de Depop, réponses reprises) : rendus APRÈS la liste.
   blocsDuLot = null,
   // (26/10 nuit, point 9) Le lecteur et les trois issues quand il n'y en a pas (lignes en attente d'origine).
   sansLecteur = null,
 }) {
+  const lang = en ? "en" : "fr";
   const [ouvert, setOuvert] = useState(null);
-  const [pretsOuverts, setPretsOuverts] = useState(false);
   const [textesValides, setTextesValides] = useState([]); // validés par « Tout valider » : « Annuler » les rend
-  // Les questions de chaque article à revoir, puis leurs sujets. Un moteur qui lève en les lisant ne casse pas
-  // l'écran : l'article est rendu sous SA barrière, qui le met de côté comme avant (mettreDeCote « questions »).
+  const [poidsTousOuvert, setPoidsTousOuvert] = useState(false);
+  // Une place par article, gardée : « haut » (rangé avec quelque chose à régler) ou « bas » (rangé prêt).
+  const places = useRef(new Map());
+  for (const id of lot.ids) {
+    if (places.current.has(id)) continue;
+    if (aCompleter.includes(id)) places.current.set(id, "haut");
+    else if (prets.includes(id)) places.current.set(id, "bas");
+  }
+  // Les questions de chaque article à régler. Un moteur qui lève en les lisant ne casse pas l'écran : l'article est
+  // rendu sous SA barrière, qui le met de côté comme avant (mettreDeCote « questions »).
   const casses = [];
-  const articles = [];
+  const questions = new Map();
   for (const id of aCompleter) {
     try {
       const m = moteurs.get(id);
@@ -1930,20 +1988,31 @@ export function VueParQuestion({
       const tranches = decisions[id]?.jumeauxTranches ?? new Set();
       const plateformes = [...(m?.plateformesPubliables ?? [])];
       const jumeaux = m ? jumeauxQuiRetiennent({ ...m, quantiteFiche: parId.get(id)?.item?.quantite }, plateformes, tranches) : [];
-      articles.push({ id, m, st, questions: questionsDeLArticle(m, st.motifs ?? [], { jumeaux, lang: en ? "en" : "fr" }) });
+      questions.set(id, questionsDeLArticle(m, st.motifs ?? [], { jumeaux, lang }));
     } catch (erreur) {
       casses.push({ id, erreur });
     }
   }
-  const sujets = sujetsDuLot(articles);
-  const aTexte = articles.filter(({ st }) => (st.motifs ?? []).some((x) => x.cle === "texte")).map(({ id }) => id);
+  const aTexte = aCompleter.filter((id) => (etats[id]?.motifs ?? []).some((x) => x.cle === "texte"));
   const validerTextes = () => { for (const id of aTexte) decider(id, { texteValide: true }); setTextesValides(aTexte); };
   const annulerTextes = () => { for (const id of textesValides) decider(id, { texteValide: false }); setTextesValides([]); };
-  const autres = lot.ids.filter((id) => !aCompleter.includes(id) && !prets.includes(id)).concat(lignes.filter((id) => !lot.ids.includes(id)));
+  // (C10, règle 7) Les articles SANS poids (fiche ou choix de la personne) qui partent sur une plateforme au poids.
+  // Un moteur qui lève ici n'emporte pas la liste : son article est seulement compté à part (sa ligne le dit).
+  const sansPoids = [...prets, ...aCompleter].filter((id) => {
+    try {
+      const m = moteurs.get(id);
+      const pfs = [...(m?.plateformesPubliables ?? [])];
+      return (pfs.includes("leboncoin") || pfs.includes("beebs")) && poidsAffiche(m, decisions[id], parId.get(id)?.item) == null;
+    } catch { return false; }
+  });
+  const signalerVide = useCallback((id, vide) => {
+    if (Boolean(decisions[id]?.photoVide) !== Boolean(vide)) decider(id, { photoVide: Boolean(vide) });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [decisions]);
   const ligneMoteur = (id, q) => {
     const m = moteurs.get(id);
     if (!m) return null;
-    if (q.type === "moteur") return <BlocQuestions m={m} seulement={q.cles ?? [q.cle]} puces />;
+    if (q.type === "moteur") return <BlocQuestions m={m} seulement={q.cles ?? [q.cle]} puces onChangerRayon={() => setOuvert(id)} />;
     if (q.type === "rayon") {
       const p = q.plateformes[0];
       const plateformes = [...(m.plateformesPubliables ?? [])];
@@ -1959,12 +2028,7 @@ export function VueParQuestion({
         aria-label={en ? "Selling price" : "Prix de vente"} placeholder={en ? "Price in €" : "Prix en €"}
         onBlur={(ev) => m.poserPrixGeneral?.(ev.target.value)} onKeyDown={(ev) => { if (ev.key === "Enter") ev.currentTarget.blur(); }} />
     );
-    if (q.type === "poids") return (
-      <input className="fsn-input" type="text" inputMode="decimal" placeholder={en ? "e.g. 650 g or 1.2 kg" : "ex. 650 g ou 1,2 kg"}
-        aria-label={en ? "Parcel weight" : "Poids du colis"}
-        onBlur={(ev) => { const g = lirePoidsSaisi(ev.target.value); if (g) poserPoids(id, g); }}
-        onKeyDown={(ev) => { if (ev.key === "Enter") ev.currentTarget.blur(); }} />
-    );
+    if (q.type === "poids") return <PoidsDeLArticle en={en} poids={null} poserPoids={(g) => poserPoids(id, g)} />;
     if (q.type === "jumeau") {
       const j = q.jumeau;
       return (
@@ -1986,101 +2050,146 @@ export function VueParQuestion({
       </div>
     );
   };
-  const enTeteLigne = (id) => {
+  const ligne = (id) => {
     const item = parId.get(id)?.item;
+    const m = moteurs.get(id);
+    const st = etats[id] ?? {};
+    const d = decisions[id] ?? {};
+    const pret = prets.includes(id);
+    const qs = questions.get(id) ?? [];
+    const ecartees = Object.entries(d.ecartees ?? {}).filter(([p]) => !(d.remises ?? []).includes(p)).map(([p, motif]) => ({ p, motif }));
+    const pfs = m ? plateformesDeLArticle(m).filter((p) => [...(m.plateformesPubliables ?? [])].includes(p)) : [];
+    const prix = m?.price ?? item?.sell ?? null;
+    const poids = m ? poidsAffiche(m, d, item) : null;
+    const incoherent = poids && m ? poidsIncoherent(`${titreDe(item)} ${m.edited?.[pfs[0]]?.platform_fields?.categorie_objet_ia ?? ""}`, poids, lang) : null;
+    const motifs = st.motifs ?? [];
+    const premier = d.photoVide ? (en ? "Photo" : "Photo")
+      : qs[0]?.libelle ?? (motifs.some((x) => x.cle === "texte") ? (en ? "To re-read" : "À relire") : motifs[0]?.libelle ?? (en ? "To settle" : "À régler"));
     return (
-      <button type="button" className="fsq-ligne-art" onClick={() => setOuvert(id)}>
-        <Vignette item={item} />
-        <span className="fsq-ligne-t"><b>{titreDe(item) || (en ? "Untitled item" : "Article sans titre")}</b></span>
-        <span className="fsq-chevron" aria-hidden="true">›</span>
-      </button>
+      <div key={id} className="fsv-art">
+        <button type="button" className="fsv-ligne" onClick={() => setOuvert(id)}>
+          <VignetteLot en={en} item={item} photos={m ? ((m.processedPhotos?.length ? m.processedPhotos : m.photos) ?? null) : null} onVide={(v) => signalerVide(id, v)} />
+          <span className="fsv-tx">
+            <b>{titreDe(item) || (en ? "Untitled item" : "Article sans titre")}</b>
+            <span className="fsv-meta">
+              {pfs.map((p) => <Logo key={p} platform={p} size={18} />)}
+              {ecartees.map((e) => <span key={`x-${e.p}`} className="fsv-barre"><Logo platform={e.p} size={18} desature /></span>)}
+              {prix != null && prix !== "" ? <span className="fsv-px num">{String(prix).replace(".", ",")} €</span> : null}
+            </span>
+          </span>
+          <Puce ton={pret ? "ok" : d.photoVide ? "refus" : "geste"}>{pret ? (en ? "Ready" : "Prêt") : premier}</Puce>
+          <span className="fsq-chevron" aria-hidden="true">›</span>
+        </button>
+        {!pret && d.photoVide && (
+          <div className="fsv-q">
+            <p className="fsq-note"><b>{en ? "No real photo:" : "Aucune vraie photo :"}</b> {en ? "the picture is a placeholder." : "l'image vient de Beebs (image par défaut)."}</p>
+            <div className="fsn-choices fsq-puces"><button type="button" className="fsn-choice fsn-choice--on" onClick={() => setOuvert(id)}>{en ? "Add photos" : "Ajouter des photos"}</button></div>
+          </div>
+        )}
+        {!pret && qs.slice(0, 3).map((q) => (
+          <BarriereErreur key={`${id}:${q.cle}`} nom={`question ${id}`} onErreur={(e) => mettreDeCote(id, e, "question")}
+            secours={<ArticleMisDeCote en={en} item={item} ligne />}>
+            <div className="fsv-q">
+              <div className="fsv-q-t">{(q.plateformes ?? []).map((p) => <Logo key={p} platform={p} size={16} />)}<b>{q.libelle}</b></div>
+              {ligneMoteur(id, q)}
+            </div>
+          </BarriereErreur>
+        ))}
+        {!pret && qs.length > 3 && (
+          <div className="fsv-q"><button type="button" className="fsn-lien" onClick={() => setOuvert(id)}>{en ? `${qs.length - 3} more in the item sheet` : `${qs.length - 3} autre${qs.length - 3 > 1 ? "s" : ""} dans la fiche de l'article`}</button></div>
+        )}
+        {!pret && !qs.length && motifs.some((x) => x.cle === "texte") && !d.photoVide && (
+          <div className="fsv-q">
+            <p className="fsq-note">{en ? "Text written by FillSell." : "Texte écrit par FillSell."}</p>
+            <div className="fsn-choices fsq-puces">
+              <button type="button" className="fsn-choice" onClick={() => setOuvert(id)}>{en ? "Re-read it" : "Le relire"}</button>
+              <button type="button" className="fsn-choice" onClick={() => decider(id, { texteValide: true })}>{en ? "It's right" : "C'est bon"}</button>
+            </div>
+          </div>
+        )}
+        {incoherent && !d.poidsConfirme && (
+          <div className="fsv-q">
+            <div className="fsv-q-t"><b>{en ? `${textePoids(poids, lang)} for ${incoherent.nom}?` : `${textePoids(poids)} pour ${incoherent.nom} ?`}</b></div>
+            <div className="fsn-choices fsq-puces">
+              {incoherent.propositions.map((g) => <button key={g} type="button" className="fsn-choice" onClick={() => poserPoids(id, g)}>{textePoids(g, lang)}</button>)}
+              <button type="button" className="fsn-choice" onClick={() => decider(id, { poidsConfirme: true })}>{en ? `Keep ${textePoids(poids, lang)}` : `Garder ${textePoids(poids)}`}</button>
+            </div>
+          </div>
+        )}
+        {places.current.get(id) === "haut" && pret && (
+          <div className="fsv-fait"><span className="fsv-ok" aria-hidden="true">✓</span><span>{en ? "Settled — tap the line to review." : "Réglé — touche la ligne pour revoir."}</span></div>
+        )}
+        {ecartees.length > 0 && (
+          <div className="fsv-ecart">
+            <span>{phraseEcartees(ecartees, NOM, lang)}</span>
+            <button type="button" className="fsn-lien" onClick={() => { for (const e of ecartees) remettrePlateforme(id, e.p); }}>{en ? "Undo" : "Annuler"}</button>
+          </div>
+        )}
+      </div>
     );
   };
-  const communeDuSujet = (s) => (communes ?? []).find((g) => s.lignes.length > 1 && s.lignes.every(({ id, q }) => g.ids.includes(id) && (q.cles ?? [q.cle]).includes(`${g.gp}:${g.key}`)));
+  // Un article dont le moteur a levé en lisant ses questions n'a qu'UNE place : sa carte « mis de côté », plus bas.
+  const haut = lot.ids.filter((id) => places.current.get(id) === "haut" && (aCompleter.includes(id) || prets.includes(id)) && !casses.some((c) => c.id === id));
+  const bas = lot.ids.filter((id) => places.current.get(id) === "bas" && (aCompleter.includes(id) || prets.includes(id)));
+  const autres = lot.ids.filter((id) => !aCompleter.includes(id) && !prets.includes(id)).concat(lignes.filter((id) => !lot.ids.includes(id)));
+  const communeDuLot = (communes ?? []).filter((g) => g.ids.length >= 3);
+  const mOuvert = ouvert ? moteurs.get(ouvert) : null;
   return (
     <>
-      <BilanDuLot en={en} lot={lot} etats={etats} prets={prets} aCompleter={aCompleter} annoncesPretes={annoncesPretes} ouvrir={setOuvert} />
+      <BilanDuLot en={en} lot={lot} etats={etats} prets={prets} aCompleter={aCompleter} annoncesPretes={annoncesPretes} ouvrir={setOuvert} preparation={preparation} />
 
-      {aTexte.length > 0 ? (
+      {sansPoids.length > 0 && (
+        <div className="fsv-lot">
+          <div className="fsv-lot-l">
+            <span><b>{en ? "Parcel" : "Colis"}</b> · {en ? `${sansPoids.length} item${sansPoids.length > 1 ? "s" : ""} without weight` : `${sansPoids.length} article${sansPoids.length > 1 ? "s" : ""} sans poids`}</span>
+            <button type="button" className="fsn-lien" onClick={() => setPoidsTousOuvert((o) => !o)}>
+              {poidsTousOuvert ? (en ? "Close" : "Fermer") : (en ? `One weight for the ${sansPoids.length}` : sansPoids.length > 1 ? `Un poids pour les ${sansPoids.length}` : "Son poids")} ›
+            </button>
+          </div>
+          {poidsTousOuvert && <PoidsPourTous en={en} ids={sansPoids} poserPoidsDuLot={(ids, g) => { poserPoidsDuLot(ids, g); setPoidsTousOuvert(false); }} />}
+        </div>
+      )}
+
+      {aTexte.length > 1 ? (
         <div className="fsq-textes">
           <div className="fsq-textes-ligne">
             <div className="fsq-textes-t">
-              <b>{en ? `${aTexte.length} text${aTexte.length > 1 ? "s" : ""} written by FillSell` : `${aTexte.length} texte${aTexte.length > 1 ? "s" : ""} écrit${aTexte.length > 1 ? "s" : ""} par FillSell`}</b>
+              <b>{en ? `${aTexte.length} texts written by FillSell` : `${aTexte.length} textes écrits par FillSell`}</b>
               <small>{en ? "Tap an item to re-read its own." : "Touche un article pour relire le sien."}</small>
             </div>
-            <button type="button" className="fsn-btn fsn-btn--secondary fsn-btn--sm fsq-btn" onClick={validerTextes}>
-              {en ? "Approve all" : "Tout valider"}
-            </button>
-          </div>
-          <div className="fsq-textes-vigs">
-            {aTexte.map((id) => (
-              <button key={id} type="button" className="fsq-vig-btn" onClick={() => setOuvert(id)}
-                aria-label={`${en ? "Re-read" : "Relire"} : ${titreDe(parId.get(id)?.item) || (en ? "item" : "article")}`}>
-                <Vignette item={parId.get(id)?.item} />
-              </button>
-            ))}
+            <button type="button" className="fsn-btn fsn-btn--secondary fsn-btn--sm fsq-btn" onClick={validerTextes}>{en ? "Approve all" : "Tout valider"}</button>
           </div>
         </div>
       ) : textesValides.length > 0 ? (
         <div className="fsq-textes fsq-textes--fait">
           <div className="fsq-textes-ligne">
-            <div className="fsq-textes-t">
-              <b>{en ? `✓ ${textesValides.length} text${textesValides.length > 1 ? "s" : ""} approved` : `✓ ${textesValides.length} texte${textesValides.length > 1 ? "s" : ""} validé${textesValides.length > 1 ? "s" : ""}`}</b>
-              <small>{en ? "Written by FillSell. Tap an item to re-read its own." : "Écrits par FillSell. Touche un article pour relire le sien."}</small>
-            </div>
+            <div className="fsq-textes-t"><b>{en ? `✓ ${textesValides.length} texts approved` : `✓ ${textesValides.length} texte${textesValides.length > 1 ? "s" : ""} validé${textesValides.length > 1 ? "s" : ""}`}</b></div>
             <button type="button" className="fsn-btn fsn-btn--secondary fsn-btn--sm fsq-btn" onClick={annulerTextes}>{en ? "Undo" : "Annuler"}</button>
           </div>
         </div>
       ) : null}
 
-      {/* Une réponse commune qu'aucun sujet ne porte (listes égales sur des articles rangés ailleurs) : comme avant. */}
-      {(communes ?? []).filter((g) => !sujets.some((s) => communeDuSujet(s) === g)).map((g) => (
-        <Carte key={g.signature} gravite="geste" titre={`${g.label} · ${NOM(g.gp)}`}>
-          <div className="fsn-card-p">{en
-            ? `Asked for ${g.ids.length} items: one answer fills them all (you can still change one below).`
-            : `Demandé pour ${g.ids.length} articles : une réponse les remplit tous (tu peux encore en changer un plus bas).`}</div>
+      {/* Une même réponse pour plusieurs articles (même champ, même liste) : un geste pour tous. */}
+      {communeDuLot.map((g) => (
+        <div key={g.signature} className="fsv-lot">
+          <div className="fsv-lot-l"><span><b>{g.label}</b> · {NOM(g.gp)} — {en ? `the same for the ${g.ids.length}` : `la même pour les ${g.ids.length}`}</span></div>
           <div className="fsn-choices fsq-puces">
-            {g.allowedValues.slice(0, 12).map((v) => (
-              <button key={v} type="button" className="fsn-choice" onClick={() => repondreCommune(g, v)}>{v}</button>
-            ))}
+            {g.allowedValues.slice(0, 12).map((v) => <button key={v} type="button" className="fsn-choice" onClick={() => repondreCommune(g, v)}>{v}</button>)}
           </div>
-        </Carte>
+        </div>
       ))}
 
-      {sujets.map((s) => {
-        const commune = communeDuSujet(s);
-        return (
-          <section key={s.sujet} className="fsq-sujet">
-            <div className="fsq-sujet-tete">
-              {s.plateformes.length === 1 ? <Logo platform={s.plateformes[0]} size={20} /> : null}
-              <h3>{titreDuSujet(s)}</h3>
-              <span className="num">{s.lignes.length} {en ? (s.lignes.length > 1 ? "items" : "item") : (s.lignes.length > 1 ? "articles" : "article")}</span>
-            </div>
-            {s.type === "poids" && s.lignes.length > 1 && (
-              <PoidsPourTous en={en} ids={s.lignes.map(({ id }) => id)} poserPoidsDuLot={poserPoidsDuLot} />
-            )}
-            {commune && (
-              <div className="fsq-commune">
-                <p>{en ? `The same answer for all ${s.lignes.length}:` : `La même réponse pour les ${s.lignes.length} :`}</p>
-                <div className="fsn-choices fsq-puces">
-                  {commune.allowedValues.slice(0, 12).map((v) => (
-                    <button key={v} type="button" className="fsn-choice" onClick={() => repondreCommune(commune, v)}>{v}</button>
-                  ))}
-                </div>
-              </div>
-            )}
-            {s.lignes.map(({ id, q }) => (
-              <BarriereErreur key={`${id}:${q.cle}`} nom={`question ${id}`} onErreur={(e) => mettreDeCote(id, e, "question")}
-                secours={<ArticleMisDeCote en={en} item={parId.get(id)?.item} ligne />}>
-                <div className="fsq-ligne">
-                  {enTeteLigne(id)}
-                  <div className="fsq-ligne-q">{ligneMoteur(id, q)}</div>
-                </div>
-              </BarriereErreur>
-            ))}
-          </section>
-        );
-      })}
+      {haut.length > 0 && (
+        <section className="fsv-liste" aria-label={en ? "To settle" : "À régler"}>
+          <div className="fsv-liste-t"><span>{en ? `To settle · ${haut.filter((id) => aCompleter.includes(id)).length}` : `À régler · ${haut.filter((id) => aCompleter.includes(id)).length}`}</span><span>{en ? "tap to see everything" : "touche pour tout voir"}</span></div>
+          {haut.map((id) => (
+            <BarriereErreur key={id} nom={`ligne ${id}`} onErreur={(e) => mettreDeCote(id, e, "ligne")}
+              secours={<div className="fsv-secours"><ArticleMisDeCote en={en} item={parId.get(id)?.item} ligne /></div>}>
+              <Rendu f={() => ligne(id)} />
+            </BarriereErreur>
+          ))}
+        </section>
+      )}
 
       {/* Un article dont le moteur lève : mis de côté par SA barrière, les autres restent. */}
       {casses.map(({ id, erreur }) => (
@@ -2089,6 +2198,18 @@ export function VueParQuestion({
           <Relancer erreur={erreur} />
         </BarriereErreur>
       ))}
+
+      {bas.length > 0 && (
+        <section className="fsv-liste" aria-label={en ? "Ready" : "Prêts"}>
+          <div className="fsv-liste-t"><span>{en ? `Ready · ${prets.length}` : `Prêts · ${prets.length}`}</span><span>{en ? "tap to see everything" : "touche pour tout voir"}</span></div>
+          {bas.map((id) => (
+            <BarriereErreur key={id} nom={`ligne ${id}`} onErreur={(e) => mettreDeCote(id, e, "ligne")}
+              secours={<div className="fsv-secours"><ArticleMisDeCote en={en} item={parId.get(id)?.item} ligne /></div>}>
+              <Rendu f={() => ligne(id)} />
+            </BarriereErreur>
+          ))}
+        </section>
+      )}
 
       {autres.length > 0 && (
         <div className="fsn-card" style={{ gap: 0 }}>
@@ -2104,57 +2225,67 @@ export function VueParQuestion({
 
       {blocsDuLot}
 
-      {prets.length > 0 && (
-        <section className="fsq-prets">
-          <button type="button" className="fsq-prets-tete" aria-expanded={pretsOuverts} onClick={() => setPretsOuverts((o) => !o)}>
-            <span className="fsq-vigs" aria-hidden="true">{prets.slice(0, 4).map((id) => <Vignette key={id} item={parId.get(id)?.item} />)}</span>
-            <b><span className="num">{prets.length}</span> {en ? "ready" : prets.length > 1 ? "prêts" : "prêt"}</b>
-            <span className="fsq-voir">{pretsOuverts ? (en ? "Hide" : "Replier") : (en ? "See" : "Voir")}</span>
-          </button>
-          {/* Toujours rendus (une ligne qui lève met son article de côté, comme avant) ; repliés, ils ne se voient pas. */}
-          <div hidden={!pretsOuverts}>
-            {prets.map((id) => (
-              <BarriereErreur key={id} nom={`ligne ${id}`} onErreur={(e) => mettreDeCote(id, e, "ligne")}
-                secours={<div className="fsq-pret"><ArticleMisDeCote en={en} item={parId.get(id)?.item} ligne /></div>}>
-                <div className="fsq-pret" onClick={() => setOuvert(id)} role="button" tabIndex={0} onKeyDown={(ev) => { if (ev.key === "Enter") setOuvert(id); }}>
-                  <LigneArticle id={id} en={en} L={L} item={parId.get(id)?.item} st={etats[id] ?? { phase: "pret" }} m={moteurs.get(id)}
-                    envoi={null} retirerDuLot={retirerDuLot} horloge={horloge} pontMort={pontMort} />
-                </div>
-              </BarriereErreur>
-            ))}
-          </div>
-        </section>
-      )}
-
       {ouvert && createPortal((
         <div className="fsn fsq-feuille-hote" data-ecran="lot-feuille">
           <div className="fsq-voile" onClick={() => setOuvert(null)} />
           <div className="fsq-feuille" role="dialog" aria-modal="true" aria-label={titreDe(parId.get(ouvert)?.item) || (en ? "Item" : "Article")}>
-            <div className="fsq-feuille-tete">
+            <div className="fsq-feuille-tete fsv-feuille-tete">
               <span className="fsq-poignee" aria-hidden="true" />
+              <BarriereErreur nom={`tete ${ouvert}`} onErreur={(e) => mettreDeCote(ouvert, e, "questions")}
+                secours={<b className="fsv-ligne fsv-ligne--tete">{titreDe(parId.get(ouvert)?.item)}</b>}>
+                <Rendu f={() => (
+                  <div className="fsv-ligne fsv-ligne--tete">
+                    <VignetteLot en={en} item={parId.get(ouvert)?.item} photos={mOuvert ? ((mOuvert.processedPhotos?.length ? mOuvert.processedPhotos : mOuvert.photos) ?? null) : null} />
+                    <span className="fsv-tx">
+                      <b>{titreDe(parId.get(ouvert)?.item) || (en ? "Untitled item" : "Article sans titre")}</b>
+                      <span className="fsv-meta">
+                        {mOuvert ? plateformesDeLArticle(mOuvert).map((p) => <Logo key={p} platform={p} size={18} />) : null}
+                        {mOuvert?.price != null ? <span className="fsv-px num">{String(mOuvert.price).replace(".", ",")} €</span> : null}
+                      </span>
+                    </span>
+                  </div>
+                )} />
+              </BarriereErreur>
               <button type="button" className="fsq-fermer" onClick={() => setOuvert(null)} aria-label={en ? "Close" : "Fermer"}>✕</button>
             </div>
             <div className="fsq-feuille-corps">
               <BarriereErreur nom={`feuille ${ouvert}`} onErreur={(e) => mettreDeCote(ouvert, e, "questions")}
                 secours={<ArticleMisDeCote en={en} item={parId.get(ouvert)?.item} />}>
-                {moteurs.get(ouvert) && aCompleter.includes(ouvert) ? (
-                  <ArticleAQuestions id={ouvert} en={en} L={L} item={parId.get(ouvert)?.item} m={moteurs.get(ouvert)} st={etats[ouvert]}
-                    decision={decisions[ouvert] ?? {}} decider={decider} trancherJumeau={trancherJumeau} sansPlateforme={sansPlateforme}
-                    retirerDuLot={(i) => { retirerDuLot(i); setOuvert(null); }} lecture={lectures[ouvert] ?? null} poserPoids={poserPoids} />
+                {mOuvert ? (
+                  <FicheArticle m={mOuvert} item={parId.get(ouvert)?.item} decision={decisions[ouvert] ?? {}} en={en} lecture={lectures[ouvert] ?? null}
+                    photoVide={Boolean(decisions[ouvert]?.photoVide)}
+                    ecartees={Object.entries(decisions[ouvert]?.ecartees ?? {}).filter(([p]) => !(decisions[ouvert]?.remises ?? []).includes(p)).map(([p, motif]) => ({ p, motif }))}
+                    actions={{
+                      poserPoids: (g) => poserPoids(ouvert, g),
+                      retirerPlateforme: (p) => sansPlateforme(ouvert, p),
+                      remettrePlateforme: (p) => remettrePlateforme(ouvert, p),
+                      validerTexte: () => decider(ouvert, { texteValide: true }),
+                    }} />
                 ) : (
-                  <ArticlePret en={en} item={parId.get(ouvert)?.item} m={moteurs.get(ouvert)} st={etats[ouvert] ?? {}}
-                    retirerDuLot={(i) => { retirerDuLot(i); setOuvert(null); }} id={ouvert} />
+                  <ArticleMisDeCote en={en} item={parId.get(ouvert)?.item} />
                 )}
               </BarriereErreur>
             </div>
-            <div className="fsq-feuille-pied">
-              <button type="button" className="fsn-btn fsn-btn--secondary" onClick={() => setOuvert(null)}>{en ? "Close" : "Fermer"}</button>
+            <div className="fsq-feuille-pied fsv-pied">
+              {/* « Plus tard » ferme sans rien décider (l'article reste à régler, dans le lot) ; « C'est bon » vaut relecture. */}
+              <button type="button" className="fsn-btn fsn-btn--secondary" onClick={() => setOuvert(null)}>{en ? "Later" : "Plus tard"}</button>
+              <button type="button" className="fsn-btn fsn-btn--primary" onClick={() => {
+                // « C'est bon » vaut relecture du texte écrit par FillSell (c'est la personne qui vient de le lire).
+                if ((etats[ouvert]?.motifs ?? []).some((x) => x.cle === "texte")) decider(ouvert, { texteValide: true });
+                setOuvert(null);
+              }}>{en ? "Done" : "C'est bon"}</button>
             </div>
           </div>
         </div>
       ), document.body)}
     </>
   );
+}
+
+// Rend ce que `f` construit, DANS son propre rendu : une ligne qui lève est arrêtée par la barrière qui l'entoure
+// (appelée dans le rendu du parent, elle emporterait toute la liste — vu le 26/10 sur l'aperçu « casse »).
+function Rendu({ f }) {
+  return f();
 }
 
 // Rend, sous une barrière, l'erreur qu'un calcul du parent a attrapée : la barrière met l'article de côté.
@@ -2200,42 +2331,6 @@ function PliDuLot({ en, titre, resume, ouvertDOffice = false, children }) {
       </button>
       {visible ? <div className="fsq-pli-corps">{children}</div> : null}
     </section>
-  );
-}
-
-// Un article prêt, dans sa feuille : son texte et ses plateformes, et l'issue « Le garder pour plus tard ».
-function ArticlePret({ en, id, item, m, st, retirerDuLot }) {
-  const general = m?.generales ?? {};
-  const plateformes = st?.envoyees ?? [...(m?.plateformesPubliables ?? [])];
-  const premiere = plateformes[0];
-  const titre = String(general.titre || m?.edited?.[premiere]?.title || titreDe(item) || "");
-  const description = String(general.description || m?.edited?.[premiere]?.description || "");
-  return (
-    <Carte className="fsl-article" gravite={null}>
-      <div className="fsl-article-tete" style={{ alignItems: "flex-start" }}>
-        <Vignette item={item} />
-        <div className="fsn-grow">
-          <div className="fsn-article-t">{titreDe(item) || (en ? "Untitled item" : "Article sans titre")}</div>
-          <div style={{ marginTop: 6 }}><Puce ton="ok">{en ? "Ready" : "Prêt"}</Puce></div>
-        </div>
-      </div>
-      <div className="fsn-q">
-        <div className="fsn-q-t">{en ? "The text that goes out" : "Le texte qui part"}</div>
-        <b style={{ fontSize: 15, lineHeight: 1.35, overflowWrap: "anywhere" }}>{titre}</b>
-        {description ? <p className="fsn-q-why" style={{ whiteSpace: "pre-line" }}>{description}</p> : null}
-      </div>
-      <div className="fsn-q">
-        <div className="fsn-q-t">{en ? "Its platforms" : "Ses plateformes"}</div>
-        <div className="fsn-row fsn-row--wrap" style={{ gap: 8 }}>
-          {plateformes.map((p) => <span key={p} className="fsn-row" style={{ gap: 6 }}><Logo platform={p} size={20} />{NOM(p)}</span>)}
-        </div>
-      </div>
-      {retirerDuLot && (
-        <div className="fsn-row fsn-row--wrap" style={{ gap: 12 }}>
-          <button type="button" className="fsl-retirer" onClick={() => retirerDuLot(id)}>{en ? "Leave it for later" : "Le garder pour plus tard"}</button>
-        </div>
-      )}
-    </Carte>
   );
 }
 

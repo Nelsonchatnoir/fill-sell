@@ -9,16 +9,26 @@
 // du rayon, livraison Leboncoin / eBay, prix par plateforme) est CELUI de
 // l'ancien écran, rendu par le même composant (StepGeneration, variante
 // « nouvelle ») : rien n'est réécrit, tout est câblé comme aujourd'hui.
+// (26/10, C11 — refonte validée par Nico) Le corps est désormais LA pop-up de l'article du lot (FicheArticle, mode
+// page) : le commun, puis une section par plateforme, tout modifiable sur place. Les cartes d'avant (StepGeneration :
+// prix par plateforme, versions du texte) restent un geste plus bas, repliées — rien n'est perdu.
+import { useState } from "react";
 import { StepGeneration } from "../components/ListingPreviewScreen";
 import { urlPhoto } from "../utils/photos";
 import { formaterRemiseAZero } from "../reglages/quotas";
 import { Carte } from "./composants";
+import FicheArticle from "./lot/FicheArticle";
+import { usePhotoVide } from "./lot/photoVide";
 
 export default function EcranVerifier({ m }) {
   const en = m.lang === "en";
   const enCours = m.generatingPlatforms || (!m.platformListings && !m.platformError);
   const dateRemise = formaterRemiseAZero(m.remiseAZero, m.lang);
   const photos = m.processedPhotos?.length ? m.processedPhotos : (m.photos ?? []);
+  const [cartes, setCartes] = useState(false);
+  const premiere = photos[0] ? urlPhoto(typeof photos[0] === "string" ? photos[0] : photos[0]?.url) : null;
+  const photoLue = usePhotoVide(premiere);
+  const photoVide = Boolean(premiere) && photoLue === true; // seule une image LUE comme remplissage le dit
   return (
     <>
       <div>
@@ -27,19 +37,12 @@ export default function EcranVerifier({ m }) {
         {!enCours && m.platformListings && (
           <p className="fsn-lead" style={{ marginTop: 4 }}>
             {m.texteDuVendeur
-              ? (en ? "Your text goes out as it is. Tap a platform to adjust only what differs." : "Ton texte part tel quel. Appuie sur une plateforme pour ajuster seulement ce qui diffère.")
-              : (en ? "Check the text, then tap a platform to adjust only what differs." : "Vérifie le texte, puis appuie sur une plateforme pour ajuster seulement ce qui diffère.")}
+              ? (en ? "Your text goes out as it is. Below, platform by platform, everything that goes out: tap a line to change it." : "Ton texte part tel quel. Dessous, plateforme par plateforme, tout ce qui part : touche une ligne pour la changer.")
+              : (en ? "Check the text. Below, platform by platform, everything that goes out: tap a line to change it." : "Vérifie le texte. Dessous, plateforme par plateforme, tout ce qui part : touche une ligne pour la changer.")}
           </p>
         )}
       </div>
 
-      {!enCours && m.platformListings && photos.length > 0 && (
-        <div className="fsn-thumbs">
-          {photos.map((ph, i) => (
-            <div key={i} className="fsn-thumb" onClick={() => m.setLightboxUrl(urlPhoto(ph))}><img src={urlPhoto(ph)} alt="" /></div>
-          ))}
-        </div>
-      )}
 
       {/* (01/10) L'encadré « Aucune plateforme cochée » n'existe plus : on
           n'arrive ici qu'avec au moins une plateforme cochée (bouton de
@@ -85,9 +88,26 @@ export default function EcranVerifier({ m }) {
           </Carte>
         )
       ) : (
-        /* Le moteur de l'ancien écran, dans la peau du nouveau : en-tête et
-           bande de photos masqués (ils sont ici), puce d'état par plateforme. */
-        <StepGeneration {...m.propsStepGeneration} variante="nouvelle" etatsParPlateforme={m.etatsParPlateforme} />
+        enCours ? (
+          /* La rédaction en cours : la barre de l'ancien écran, telle quelle. */
+          <StepGeneration {...m.propsStepGeneration} variante="nouvelle" etatsParPlateforme={m.etatsParPlateforme} />
+        ) : (
+          <>
+            <FicheArticle m={m} en={en} photoVide={photoVide}
+              actions={{
+                poserPoids: (g) => m.poidsLbc?.poser?.(g),
+                retirerPlateforme: (p) => m.basculer?.(p),
+              }} />
+            <div>
+              <button type="button" className="fsn-lien" onClick={() => setCartes((c) => !c)} aria-expanded={cartes}>
+                {cartes
+                  ? (en ? "Hide the per-platform cards" : "Replier les cartes par plateforme")
+                  : (en ? "Edit each platform's title and price separately" : "Modifier le titre et le prix plateforme par plateforme")}
+              </button>
+            </div>
+            {cartes && <StepGeneration {...m.propsStepGeneration} variante="nouvelle" etatsParPlateforme={m.etatsParPlateforme} />}
+          </>
+        )
       )}
 
       {!enCours && m.nbQuestions > 0 && (

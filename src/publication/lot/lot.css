@@ -14,7 +14,7 @@
 .fsl-art:last-child { padding-bottom: 0; }
 .fsl-art .fsn-thumb { width: 42px; height: 42px; border-radius: 10px; font-size: 18px; }
 .fsl-art-t { flex: 1; min-width: 0; }
-.fsl-art-t b { display: block; font-size: 13.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fsl-art-t b { display: block; font-size: 13.5px; font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; } /* (26/10, règle 2 de Nico) jamais coupé par « … » */
 .fsl-art-t small { display: block; font-size: 12px; color: var(--fs-mute); line-height: 1.4; overflow-wrap: anywhere; }
 .fsl-art .fsn-chip { font-size: 11.5px; padding: 3px 8px; }
 
@@ -137,3 +137,94 @@
 .fsq-feuille-corps > * { flex: none; }
 .fsq-feuille-pied { flex: none; padding: 10px 16px calc(env(safe-area-inset-bottom, 0px) + 12px); border-top: 1px solid var(--fs-border); background: var(--fs-canvas); }
 @media (min-width: 700px) { .fsq-feuille { bottom: 24px; border-radius: 22px; max-height: calc(100dvh - 48px); } }
+
+/* ═══ (26/10) REFONTE C — UNE LIGNE PAR ARTICLE, UNE POP-UP PAR ARTICLE (validée par Nico) ════════════════════
+   Mêmes jetons (--fs-*), aucune couleur nouvelle. Cibles tactiles ≥ 44 px. Aucune valeur coupée par des points de
+   suspension : un rayon, un colis, une règle eBay passent à la ligne (règle 2 de Nico). */
+.fsq-case { transition: background-color .45s ease, box-shadow .45s ease; }
+.fsq-sur { font-size: 15px; color: var(--fs-mute); font-weight: 600; }
+@media (prefers-reduced-motion: reduce) { .fsq-case { transition: none; } }
+.fsv-prep { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 13px; color: var(--fs-mute); line-height: 1.4; }
+.fsv-lot { background: var(--fs-card); border: 1px solid var(--fs-border); border-radius: 14px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.fsv-lot-l { display: flex; align-items: center; gap: 10px; justify-content: space-between; font-size: 13.5px; color: var(--fs-ink2); }
+.fsv-lot-l span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.fsv-lot-l .fsn-lien { flex: none; }
+.fsv-liste { background: var(--fs-card); border: 1px solid var(--fs-border); border-radius: var(--fs-r); overflow: hidden; }
+.fsv-liste-t { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 10px 12px 4px; font-size: 11.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--fs-mute); }
+.fsv-liste-t span:last-child { font-weight: 600; letter-spacing: 0; text-transform: none; }
+.fsv-art { border-top: 1px solid var(--fs-border-soft); }
+.fsv-ligne { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 64px; padding: 9px 12px; text-align: left; }
+.fsv-ligne--tete { padding: 0; min-height: 0; flex: 1; min-width: 0; }
+.fsv-thumb { position: relative; width: 48px; height: 48px; border-radius: 10px; font-size: 20px; }
+.fsv-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.fsv-sans { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 2px; font-size: 10px; font-weight: 700; line-height: 1.1; color: #FFFFFF; background: rgba(155, 81, 72, .86); }
+.fsv-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.fsv-tx b { font-size: 14px; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.fsv-meta { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.fsv-meta .fsn-logo { display: inline-flex; }
+.fsv-barre { position: relative; display: inline-flex; }
+.fsv-barre::after { content: ""; position: absolute; left: -1px; right: -1px; top: 50%; height: 2px; background: var(--fs-mute); transform: rotate(-35deg); border-radius: 2px; }
+.fsv-px { margin-left: auto; font-weight: 700; font-size: 13.5px; }
+.fsv-q { padding: 0 12px 12px 70px; display: flex; flex-direction: column; gap: 7px; }
+.fsv-q-t { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--fs-ink2); }
+.fsv-q-t b { color: var(--fs-ink); font-weight: 700; }
+.fsv-q .fsn-q { border: none; padding: 0; background: transparent; }
+.fsv-fait { display: flex; align-items: center; gap: 8px; padding: 0 12px 10px 70px; font-size: 12.5px; color: var(--fs-teal-ink); }
+.fsv-ok { width: 18px; height: 18px; border-radius: 50%; background: var(--fs-teal); color: #FFFFFF; font-size: 11px; font-weight: 700; display: grid; place-items: center; flex: none; }
+.fsv-ecart { display: flex; align-items: center; gap: 10px; padding: 0 12px 10px 70px; font-size: 12.5px; color: var(--fs-mute); }
+.fsv-ecart span { flex: 1; min-width: 0; }
+@media (max-width: 380px) { .fsv-q, .fsv-fait, .fsv-ecart { padding-left: 12px; } }
+.fsq-feuille-tete.fsv-feuille-tete { justify-content: flex-start; align-items: center; gap: 10px; padding: 16px 64px 10px 16px; border-bottom: 1px solid var(--fs-border); }
+.fsv-feuille-tete .fsq-poignee { position: absolute; left: 50%; top: 6px; transform: translateX(-50%); }
+.fsv-feuille-tete .fsq-fermer { top: 50%; transform: translateY(-50%); }
+.fsv-pied { display: grid; grid-template-columns: 1fr 1.4fr; gap: 8px; }
+
+/* La pop-up d'un article : le commun, puis une section par plateforme. */
+.fsf { display: flex; flex-direction: column; gap: 10px; }
+.fsf-photos { display: flex; gap: 6px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: 2px; }
+.fsf-ph { position: relative; flex: none; width: 76px; height: 76px; border-radius: 12px; overflow: hidden; background: var(--fs-chip); border: 1px solid var(--fs-border); }
+.fsf-ph img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.fsf-ph-x { position: absolute; top: 3px; right: 3px; width: 26px; height: 26px; border-radius: 50%; background: var(--fs-dim); color: #FFFFFF; font-size: 12px; display: grid; place-items: center; }
+.fsf-ph--plus { display: grid; place-items: center; font-size: 13px; font-weight: 700; color: var(--fs-teal-ink); border-style: dashed; }
+.fsf-bloc { background: var(--fs-card); border: 1px solid var(--fs-border); border-radius: 14px; padding: 9px 12px 12px; display: flex; flex-direction: column; gap: 8px; }
+.fsf-bloc-t { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--fs-mute); }
+.fsf-tag { text-transform: none; letter-spacing: 0; font-weight: 600; font-size: 11.5px; color: var(--fs-amber-ink); background: var(--fs-amber-fond); border: 1px solid var(--fs-amber-bord); border-radius: 999px; padding: 2px 8px; }
+.fsf-tag--toi { color: var(--fs-teal-ink); background: var(--fs-teal-fond); border-color: var(--fs-teal-bord); }
+.fsf-grandit { resize: none; overflow: hidden; min-height: 0; line-height: 1.5; }
+.fsf-deux { display: grid; grid-template-columns: 1fr 1.3fr; gap: 8px; }
+.fsf-mini { display: flex; flex-direction: column; gap: 4px; background: var(--fs-card); border: 1px solid var(--fs-border); border-radius: 14px; padding: 8px 10px; }
+.fsf-mini small { font-size: 12px; color: var(--fs-mute); }
+.fsf-alerte { border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; font-size: 13.5px; line-height: 1.4; }
+.fsf-alerte p { margin: 0; }
+.fsf-alerte--regler { background: var(--fs-amber-fond); border: 1px solid var(--fs-amber-bord); }
+.fsf-alerte--refus { background: var(--fs-bad-fond); border: 1px solid var(--fs-bad-bord); }
+.fsf-questions { display: flex; flex-direction: column; gap: 8px; }
+.fsf-questions--commun { background: var(--fs-amber-fond); border: 1px solid var(--fs-amber-bord); border-radius: 14px; padding: 10px 12px; }
+.fsf-pf { background: var(--fs-card); border: 1px solid var(--fs-border); border-radius: 14px; overflow: hidden; }
+.fsf-pf--regler { border-color: var(--fs-amber-bord); }
+.fsf-pf--ecartee { background: var(--fs-paper); }
+.fsf-pf-t { display: flex; align-items: center; gap: 8px; padding: 9px 12px; background: var(--fs-paper); border-bottom: 1px solid var(--fs-border-soft); }
+.fsf-pf-t b { flex: 1; font-size: 14.5px; }
+.fsf-pf-ecart { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; font-size: 13px; color: var(--fs-mute); }
+.fsf-pf-ecart .fsn-btn { align-self: flex-start; }
+.fsf-pf .fsf-questions { padding: 10px 12px; border-top: 1px solid var(--fs-border-soft); background: var(--fs-amber-fond); }
+.fsf-pf .fsf-alerte { margin: 8px 12px; }
+.fsf-champ { border-top: 1px solid var(--fs-border-soft); }
+.fsf-pf-t + .fsf-champ { border-top: none; }
+.fsf-champ-l { display: flex; align-items: flex-start; gap: 10px; width: 100%; min-height: 44px; padding: 11px 12px; text-align: left; font-size: 14px; }
+.fsf-champ-l:disabled { cursor: default; }
+.fsf-champ--regler .fsf-champ-l { background: var(--fs-amber-fond); }
+.fsf-lb { width: 86px; flex: none; color: var(--fs-mute); font-size: 13px; padding-top: 1px; }
+.fsf-val { flex: 1; min-width: 0; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; white-space: normal; }
+.fsf-act { flex: none; font-weight: 700; color: var(--fs-teal-ink); font-size: 13px; padding-top: 1px; }
+.fsf-champ-corps { padding: 0 12px 12px; display: flex; flex-direction: column; gap: 8px; }
+.fsf-champ-corps > .fsn-card { border: none; box-shadow: none; padding: 0; background: transparent; }
+.fsf-choix { display: flex; flex-direction: column; gap: 8px; }
+.fsf-saisie { display: flex; gap: 8px; }
+.fsf-saisie .fsn-input { flex: 1; min-width: 0; }
+.fsf-poids { display: flex; flex-direction: column; gap: 6px; }
+.fsf-pf-pied { padding: 8px 12px 12px; border-top: 1px solid var(--fs-border-soft); }
+.fsf-retirer-pf { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--fs-bad-bord); color: var(--fs-bad-ink); background: var(--fs-card); font-size: 13px; font-weight: 700; }
+
+/* Une ligne de la liste mise de côté (son moteur a levé) : la phrase, dans la marge de la liste. */
+.fsv-secours { padding: 10px 12px; border-top: 1px solid var(--fs-border-soft); }

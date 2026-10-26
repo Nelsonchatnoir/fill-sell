@@ -22,6 +22,7 @@ import { titreVide, couperTitre, titrePourJob } from "../../../supabase/function
 import { casseTitre, depasseSeuilMajuscules } from "../../../supabase/functions/_shared/casse-titre.js";
 import { tailleDansGrille, diagnosticTaille, candidatsTaille } from "../../../supabase/functions/_shared/tailles.js";
 import { departementEbayPour } from "./departementEbay.js";
+import { descriptionFidele } from "./descriptionFidele.js";
 import { ISBN_ABSENT } from "../../../supabase/functions/_shared/vinted-exigences.js";
 
 // ── Un aspect BLOQUE-t-il la publication ? ───────────────────────────────────
@@ -169,6 +170,9 @@ export function construireJobs({
   plateformes, champsResolus, processedPhotos, lbcAddress = null,
   userId, inventaireId = null, photoOption, edited, price, ebayVoieApiReelle = false, outils,
   titresGeneres = null, titreFiche = "",
+  // (26/10, règles 4 et 5 de Nico) La fiche (état, mots) et « le texte est-il celui du vendeur ? » : la description
+  // qui part ne contredit jamais la fiche, et ses hashtags ne partent que là où ils servent (moteur/descriptionFidele).
+  ficheTexte = null, texteDuVendeur = false,
 }) {
   const { entreesPhotos, getLbcFreePhotoQuota, normalizeVintedTitle } = outils;
   const rows = [];
@@ -222,7 +226,9 @@ export function construireJobs({
       title:           platform === "vinted"
         ? titreVintedSousLaLimite(normalizeVintedTitle(titre), pf, edited[platform]?.description)
         : titre,
-      description:     edited[platform]?.description ?? "",
+      description:     ficheTexte
+        ? descriptionFidele(edited[platform]?.description ?? "", platform, { fiche: ficheTexte, texteDuVendeur })
+        : (edited[platform]?.description ?? ""),
       price:           edited[platform]?.price ?? price,
       photos:          rowPhotos,
       platform_fields: pf,

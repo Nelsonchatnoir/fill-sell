@@ -252,6 +252,11 @@ export function bilanArticle(m, decisions = {}, lang = "fr") {
   if (plateformes.includes("depop") && m.portDepop?.manquant) {
     motifs.push({ cle: "port_depop", libelle: en ? "Depop shipping" : "Port Depop" });
   }
+  // (26/10, Medik8 de Nico) La seule « photo » est une image de remplissage (l'image par défaut de Beebs, lue dans
+  // la page : photoVide.js) : rien ne part avec elle — l'article attend une vraie photo, dite dès sa ligne.
+  if (decisions.photoVide === true) {
+    motifs.push({ cle: "photo", libelle: en ? "Photo" : "Photo" });
+  }
   // Plus aucune plateforme où partir (toutes exclues) : rien ne partira.
   if (!plateformes.length) {
     motifs.push({ cle: "aucune", libelle: en ? "Nowhere to publish" : "Aucune plateforme" });
