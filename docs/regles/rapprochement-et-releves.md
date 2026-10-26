@@ -384,3 +384,14 @@ trois relevés et deux reprises lancés tout seuls, aucun Vinted abouti, un faux
   `garde_releve_sans_geste` l'avale EN SILENCE (RETURN NULL, aucune erreur) — d'où le `.select("id")` après l'insertion.
 - Preuve du 25/10 : 8 pauses → 5 closes au premier passage (01:36, exactement le rejeu), un relevé Leboncoin demandé à
   01:36, fait à 01:40, la pause tranchée à 01:42. Selftest `introuvable-a-confirmer` (83 cas, dont les cas réels du 24/10).
+
+## 26/10 après-midi — la synchro après « Réinitialiser » (rapport `docs/enquetes/session-2610/RAPPORT.md` § B)
+- Une plateforme dont la session est « inconnue » n'est plus exclue si un relevé passé a lu des annonces ; seul un
+  « déconnecté » prouvé ou une plateforme jamais utilisée restent dehors. Une sonde muette (403) garde l'état connu
+  avec sa date (extension 0.6.147, `sonde_muette`).
+- Stock vide = pas de cadence anti-rafale (app `stock_empty`, extension `stockVideCadence`, serveur : migration préparée).
+- « Rapprochement : terminé » seulement quand tous les relevés de la vague sont arrivés.
+- La « dette Beebs » (un dépôt sans numéro) ne doit retenir que les annonces apparues après lui (migration préparée,
+  essai annulé : 10/10 Beebs réimportées après « Réinitialiser »).
+- Deux fiches déjà rangées ne sont jamais comparées en mode normal (doublon de Louis, licorne) : question proposée,
+  non codée (rapport § B5).

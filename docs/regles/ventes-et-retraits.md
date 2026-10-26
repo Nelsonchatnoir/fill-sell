@@ -421,3 +421,14 @@ Rapport : `docs/enquetes/session-sans-nico-1810/lot4-ventes-lot-multi-exemplaire
   mur à part, `verification_beebs`, en ambre, sans « risque de double vente ».
 - ⛔ Question « retirer ? » gardée quand l'annonce est en ligne malgré un relevé « vendue » : Beebs 34209200 vue
   achetable le 25/10 15:12 alors que `annonces_plateforme.statut_plateforme` = vendue.
+
+## ⛔ 26/10 après-midi — un retrait au lien faux retrouve l'annonce ; vue acheteur = connexion ; Beebs lu par la page (rapport `docs/enquetes/session-2610/RAPPORT.md` § A)
+- Leboncoin : `/ad/<id>` et `/ad/x/<id>` mènent à une 404 (relevé réel 26/10) ; la forme qui s'ouvre est
+  `/ad/<rayon réel>/<id>` (`_shared/annonce-lien.ts` `lienOuvrable` ; extension `lienLeboncoinOuvrable`). get-pending-jobs
+  réécrit le lien d'un retrait avant de le servir ; une page 404 n'est jamais « une annonce intitulée 404 ».
+- Retrait Leboncoin en vue acheteur (« Acheter / Faire une offre / Contacter ») = attente de connexion au compte qui a
+  publié (`_shared/lbc-vue-visiteur.js`, update-job-status ; 0.6.147 « Connexion Leboncoin requise »), jamais un essai.
+- Beebs : lecture par fetch refusée (DataDome) → la même page lue dans un cadre de même origine, même fonction (0.6.147).
+  Une page 404 + absente de l'index ne prouve toujours pas un retrait.
+- Canal coupé d'une publication : Leboncoin, l'adsubmit tranche avant toute reprise ; sinon reprise rapide sans
+  tentative consommée (deux fois), puis le recul ordinaire.
