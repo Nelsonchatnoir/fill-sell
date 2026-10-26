@@ -1,8 +1,12 @@
 // ── LA QUESTION « MARQUE » QUAND LA PLATEFORME NE CONNAÎT PAS LA MARQUE ─────
 // (03/10 nuit, Nico — clôture « marque »)
-// vinted.fr ne permet plus de créer une marque (relevé du 03/10) : une marque
-// absente de son catalogue arrête la publication AVANT tout dépôt (extension
-// 0.6.93+), et la personne choisit. Cette question :
+// Sur la foi d'un relevé manuel du 03/10 (vinted.fr n'offrait plus la ligne
+// de création), une marque absente du catalogue arrêtait la publication AVANT
+// tout dépôt (extension 0.6.93+), et la personne choisissait.
+// (26/10, point 4 — Nico) Relevé démenti depuis le 17/10 : Vinted crée la
+// marque (« Utiliser "X" comme marque »), et l'extension la crée. La question
+// ne vient plus que quand CE formulaire n'a pas proposé de la créer — et pour
+// Vinted, c'est ce qu'elle dit. Cette question :
 //   · dit POURQUOI, en une phrase ;
 //   · propose « Sans marque » en un geste ;
 //   · propose une RECHERCHE dans le catalogue de la plateforme : les marques
@@ -51,6 +55,19 @@ export default function QuestionMarque({ job, f, lang = 'fr', saving = false, on
   const liste = [...new Set([...enDirect, ...filtrees])].slice(0, 30);
   const exacte = terme && liste.some((v) => comparable(v) === comparable(terme));
 
+  // (26/10, point 4 — Nico) Le pourquoi, vrai : Vinted crée les marques hors
+  // catalogue (prouvé depuis le 17/10) — la question ne vient que quand CE
+  // formulaire n'a pas proposé de créer celle-ci. Les autres plateformes
+  // gardent leur phrase, sans l'affirmation du 03/10, qui ne valait que pour
+  // Vinted (et seul Vinted pose cette question : raison « marque_hors_catalogue »).
+  const pourquoi = job?.platform === 'vinted'
+    ? (fr
+      ? `Vinted n'a pas proposé de créer ${demandee ? `« ${demandee} »` : 'cette marque'} sur ce formulaire. Cherche-la dans la liste de Vinted (elle y est peut-être sous un autre nom), ou publie en « Sans marque ». Rien n'a été envoyé à Vinted.`
+      : `Vinted didn't offer to create ${demandee ? `“${demandee}”` : 'this brand'} on this form. Look for it in Vinted's list (it may have another name), or publish as “No brand”. Nothing was sent to Vinted.`)
+    : (fr
+      ? `${plateforme} ne connaît pas la marque${demandee ? ` « ${demandee} »` : ''}. Cherche-la dans la liste de ${plateforme} (elle y est peut-être sous un autre nom), ou publie en « Sans marque ». Rien n'a été envoyé à ${plateforme}.`
+      : `${plateforme} doesn't know the brand${demandee ? ` “${demandee}”` : ''}. Look for it in ${plateforme}'s list (it may have another name), or publish as “No brand”. Nothing was sent to ${plateforme}.`);
+
   const chercher = () => {
     if (!terme || terme.length < 2) return;
     setRecherche({ etat: 'cours', q: terme, marques: [] });
@@ -74,9 +91,7 @@ export default function QuestionMarque({ job, f, lang = 'fr', saving = false, on
         {fr ? 'Marque' : 'Brand'}
       </div>
       <div style={{ fontSize: 12.5, lineHeight: 1.5, color: '#6B7A75', marginBottom: 12 }}>
-        {fr
-          ? `${plateforme} ne connaît pas la marque${demandee ? ` « ${demandee} »` : ''} et ne permet plus d'en créer une. Cherche-la dans la liste de ${plateforme} (elle y est peut-être sous un autre nom), ou publie en « Sans marque ». Rien n'a été envoyé à ${plateforme}.`
-          : `${plateforme} doesn't know the brand${demandee ? ` “${demandee}”` : ''} and no longer lets you create one. Look for it in ${plateforme}'s list (it may have another name), or publish as “No brand”. Nothing was sent to ${plateforme}.`}
+        {pourquoi}
         {/* (11/10) La réponse est rangée sur l'article (attributs.marque_vinted) :
             ses publications Vinted suivantes la reprennent, sans redemander. */}
         {job?.platform === 'vinted' && job?.inventaire_id != null && (

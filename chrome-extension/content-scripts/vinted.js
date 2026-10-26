@@ -10,7 +10,7 @@
 // début pour couvrir même une exécution qui échouerait en cours de route.
 globalThis.__fillsellVintedCharge = true;
 
-const VINTED_BUILD = "2026-10-25-isbn-titre-colis (0.6.143 : ISBN de 10 caractères remis tel quel et armé pour le POST, erreur avant tout retrait sinon ; titre relu dans le champ et rendu ; format de colis retiré par Vinted du même rayon → le plus petit qui suffit, sinon le plus grand ; id 8 nommé selon sa famille) · 2026-10-24-zero-blocage (0.6.134 : une marque introuvable ne bloque jamais — attente du champ après le clic, garde qui compare la marque posée, ligne « Utiliser X comme marque » dans toutes les langues, même marque autrement écrite, puis « Sans marque » ; « Espace de stockage » et « Simlockage » repris de la capture) · 2026-10-09-vinted-etranger (0.6.106 : la page nomme SON domaine — vinted.fr inchangé, vinted.it… chez un vendeur étranger qui l'a autorisé — et le navigateur réel ; référentiel colis du domaine de la page) · 2026-10-08-onglet-muet-relance (0.6.103 : FILLSELL_PING accepté ; un onglet chargé mais muet est rechargé puis remplacé par le background avant tout envoi, jamais constaté) · 2026-10-05-colis-choix-cadenceur (0.6.97 : format de colis = le choix de la personne, relu après le clic et juste avant le dépôt, sinon le pré-coché de Vinted, sinon une question — plus jamais « Petit » d'office ; absence de marque selon la liste fermée du serveur et suggestions triées comme l'app ; pauses humaines à échéances qui rattrapent le retard des réveils sur Mac, attentes et battement sur le Worker, remplissage_mesures dans le résultat) · 2026-10-02-colis-demande (0.6.85 : format de colis inconnu ou non offert → demandé avant tout retrait, jamais choisi à la place de la personne) · 2026-10-02-colis-feu-vert-vendeur (0.6.84 : format de colis posé dans l'envoi quand le formulaire l'oublie, retrait refusé tant qu'il n'est pas en main ; feu vert de l'arrière-plan avant tout retrait une-passe ; vendeur lu en écartant le compte connecté ; compte bloqué nommé) · 2026-09-29-preuve-boutique-delete (0.6.80 : vendeur de la page exacte et session relus avant chaque DELETE ; inconnue et boutique différente restent deux verdicts distincts ; boutique du dépôt estampillée après succès) · 2026-09-28-rayon-deplace-page-annonce (0.6.79 : un rayon du formulaire d édition absent de l arbre du compte — Vinted remanie ses catégories compte par compte, Casio 5570 — est relu sur la page de l annonce, vérifié feuille de l arbre et fil d Ariane ; sinon capture incomplète comme avant) · 2026-09-25-zone-euro (0.6.69 : sur une page Vinted NON française — compte italien, espagnol… servi sur vinted.fr dans sa langue — catégorie, état et couleurs posés par IDENTIFIANT Vinted, jamais par libellé ; page française inchangée) · 2026-09-24-rayon-neuf-seulement (0.6.66 : un rayon Vinted qui n accepte que du neuf face a un article porte demande le RAYON, jamais clos ni ecarte ; releve d options sans avertissement) · 2026-09-17-taille-candidats-onglets (0.6.42 : « W32 L34 » → W32, toutes les formes dans TOUS les onglets, diagnostic dans last_diagnostic) · 2026-09-14-ping-et-ecouteur-unique (0.6.34 : VINTED_PING répond « je suis là » — c'est le seul verdict fiable de « l'onglet est prêt », l'événement de chargement se manque ; drapeau __fillsellVintedCharge posé en première instruction et écouteur enregistré UNE SEULE FOIS, pour qu'une réinjection ne double jamais les handlers ni ne redéclare les const) — précédent : 2026-09-09-envoi-journalise-et-taille-lettree (l'ENVOI de la création est journalisé avant la réponse ; 42 → XL sur une grille purement lettrée)";
+const VINTED_BUILD = "2026-10-26-marque-creee (marque : un #brand déjà pré-rempli par Vinted avec LA marque suffit ; sinon la marque est choisie ou créée — 30 s pour sa ligne, liste figée relancée, relecture jusqu'à LA marque, second essai — puis la chaîne du 24/10 même sur un champ pré-rempli, remplacé, jamais gardé ; la question seulement au bout, avec le texte vrai) · 2026-10-25-isbn-titre-colis (0.6.143 : ISBN de 10 caractères remis tel quel et armé pour le POST, erreur avant tout retrait sinon ; titre relu dans le champ et rendu ; format de colis retiré par Vinted du même rayon → le plus petit qui suffit, sinon le plus grand ; id 8 nommé selon sa famille) · 2026-10-24-zero-blocage (0.6.134 : une marque introuvable ne bloque jamais — attente du champ après le clic, garde qui compare la marque posée, ligne « Utiliser X comme marque » dans toutes les langues, même marque autrement écrite, puis « Sans marque » ; « Espace de stockage » et « Simlockage » repris de la capture) · 2026-10-09-vinted-etranger (0.6.106 : la page nomme SON domaine — vinted.fr inchangé, vinted.it… chez un vendeur étranger qui l'a autorisé — et le navigateur réel ; référentiel colis du domaine de la page) · 2026-10-08-onglet-muet-relance (0.6.103 : FILLSELL_PING accepté ; un onglet chargé mais muet est rechargé puis remplacé par le background avant tout envoi, jamais constaté) · 2026-10-05-colis-choix-cadenceur (0.6.97 : format de colis = le choix de la personne, relu après le clic et juste avant le dépôt, sinon le pré-coché de Vinted, sinon une question — plus jamais « Petit » d'office ; absence de marque selon la liste fermée du serveur et suggestions triées comme l'app ; pauses humaines à échéances qui rattrapent le retard des réveils sur Mac, attentes et battement sur le Worker, remplissage_mesures dans le résultat) · 2026-10-02-colis-demande (0.6.85 : format de colis inconnu ou non offert → demandé avant tout retrait, jamais choisi à la place de la personne) · 2026-10-02-colis-feu-vert-vendeur (0.6.84 : format de colis posé dans l'envoi quand le formulaire l'oublie, retrait refusé tant qu'il n'est pas en main ; feu vert de l'arrière-plan avant tout retrait une-passe ; vendeur lu en écartant le compte connecté ; compte bloqué nommé) · 2026-09-29-preuve-boutique-delete (0.6.80 : vendeur de la page exacte et session relus avant chaque DELETE ; inconnue et boutique différente restent deux verdicts distincts ; boutique du dépôt estampillée après succès) · 2026-09-28-rayon-deplace-page-annonce (0.6.79 : un rayon du formulaire d édition absent de l arbre du compte — Vinted remanie ses catégories compte par compte, Casio 5570 — est relu sur la page de l annonce, vérifié feuille de l arbre et fil d Ariane ; sinon capture incomplète comme avant) · 2026-09-25-zone-euro (0.6.69 : sur une page Vinted NON française — compte italien, espagnol… servi sur vinted.fr dans sa langue — catégorie, état et couleurs posés par IDENTIFIANT Vinted, jamais par libellé ; page française inchangée) · 2026-09-24-rayon-neuf-seulement (0.6.66 : un rayon Vinted qui n accepte que du neuf face a un article porte demande le RAYON, jamais clos ni ecarte ; releve d options sans avertissement) · 2026-09-17-taille-candidats-onglets (0.6.42 : « W32 L34 » → W32, toutes les formes dans TOUS les onglets, diagnostic dans last_diagnostic) · 2026-09-14-ping-et-ecouteur-unique (0.6.34 : VINTED_PING répond « je suis là » — c'est le seul verdict fiable de « l'onglet est prêt », l'événement de chargement se manque ; drapeau __fillsellVintedCharge posé en première instruction et écouteur enregistré UNE SEULE FOIS, pour qu'une réinjection ne double jamais les handlers ni ne redéclare les const) — précédent : 2026-09-09-envoi-journalise-et-taille-lettree (l'ENVOI de la création est journalisé avant la réponse ; 42 → XL sur une grille purement lettrée)";
 console.log(`[vinted.js] build ${VINTED_BUILD}`);
 
 // Content script Vinted — remplit le formulaire de dépôt d'annonce.
@@ -695,6 +695,9 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage && !globalThis.__
   // relaie AUSSITÔT au background, seul endroit qui survit à la navigation.
   window.addEventListener("message", (e) => {
     if (e.source !== window || !e.data?.__fillsellProbe) return;
+    // (26/10, point 4) La marque pré-remplie par Vinted (prefill_brand) relevée au passage, pour le
+    // diagnostic d'un arrêt « Marque » — jamais un geste, jamais une valeur posée.
+    try { if (e.data.capture) noterPrefillMarqueVinted(e.data.capture); } catch { /* relevé seulement */ }
     try {
       if (e.data.capture) chrome.runtime.sendMessage({ type: "VINTED_PROBE_CAPTURE", capture: e.data.capture }).catch(() => {});
       // 0.6.24 : l'ENVOI (requête partie, réponse pas encore lue) est relayé
@@ -3387,6 +3390,8 @@ async function remplirFormulaireVinted(job) {
   // Marque par son identifiant : même raison (17/10) — un armement qui traîne
   // poserait la marque d'une annonce sur l'article suivant.
   armerMarquePourPost(null);
+  // (26/10) La marque pré-remplie relevée sur l'article précédent ne parle pas pour celui-ci.
+  prefillMarqueVinted = undefined;
   // { id, titre } quand la marque de l'annonce d'origine part par son
   // identifiant (menu de Vinted muet) : lu par la porte des requis et par la
   // garde de retrait de l'une-passe, plus bas.
@@ -3876,6 +3881,9 @@ async function remplirFormulaireVinted(job) {
     // (17/10) SAUF la marque de l'annonce d'origine d'une republication
     // (marque_capturee + marque_id, posés par construireJobRecreation) : quand
     // le menu ne la propose pas, elle part par son identifiant (sonde du POST).
+    // (26/10) Un #brand déjà pré-rempli par Vinted avec CETTE marque suffit ;
+    // sinon la marque est créée ou choisie (30 s), une marque pré-remplie fausse
+    // est remplacée, et la question ne vient qu'au bout de tout.
     const questionMarque = await selectVintedBrand(fields.marque, warnings, {
       marqueId: fields.marque_id,
       marqueCapturee: fields.marque_capturee ?? null,
@@ -6727,6 +6735,119 @@ async function selectVintedNoBrand(trigger) {
   }
 }
 
+// ══ L'ÉTAPE MARQUE : SES ATTENTES, SON BUDGET, SON DIAGNOSTIC (26/10, point 4 — Nico) ═══════════════════
+// Rend la main jusqu'au prochain changement du DOM, ou `ms` au plus (minuteur du Worker, jamais bridé dans
+// l'onglet caché) — `minMs` d'écart au moins entre deux réveils, pour ne pas tourner à vide sur une page qui
+// s'anime. Une attente qui réagit dès que Vinted rend sa liste, sans relire en boucle à l'aveugle.
+function attendreMutationOu(ms, minMs = 40) {
+  return new Promise((resolve) => {
+    let fini = false;
+    let vue = false;
+    let minAtteint = false;
+    let observateur = null;
+    const annulations = [];
+    const finir = () => {
+      if (fini) return;
+      fini = true;
+      try { observateur?.disconnect(); } catch { /* déjà débranché */ }
+      for (const annuler of annulations) annuler();
+      resolve();
+    };
+    try {
+      observateur = new MutationObserver(() => { vue = true; if (minAtteint) finir(); });
+      observateur.observe(document.body, { childList: true, subtree: true, characterData: true });
+    } catch { /* pas d'observateur : le minuteur seul */ }
+    annulations.push(planifierSurWorker(Math.min(minMs, ms), () => { minAtteint = true; if (vue) finir(); }));
+    annulations.push(planifierSurWorker(ms, finir));
+  });
+}
+
+// Relance d'une recherche FIGÉE : le dernier caractère effacé puis retapé, au rythme et avec les événements
+// clavier de typeHuman — la page relance sa recherche sur la valeur entière, le champ finit identique.
+async function retaperDernierCaractere(el) {
+  const valeur = String(el?.value ?? "");
+  if (!valeur) return;
+  const dernier = valeur.slice(-1);
+  el.focus();
+  dispatchKey(el, "keydown", "Backspace");
+  setNativeValue(el, valeur.slice(0, -1));
+  dispatchKey(el, "keyup", "Backspace");
+  await cadenceur.pause(randInt(HUMAN_CHAR_MIN, HUMAN_CHAR_MAX));
+  dispatchKey(el, "keydown", dernier);
+  dispatchKey(el, "keypress", dernier);
+  setNativeValue(el, valeur);
+  dispatchKey(el, "keyup", dernier);
+  await cadenceur.pause(randInt(HUMAN_CHAR_MIN, HUMAN_CHAR_MAX));
+}
+
+// Attend que #brand porte une valeur acceptée (`accepte`), `ms` au plus : le DOM réveille l'attente, le
+// Worker la borne. Rend la valeur, ou null.
+async function attendreValeurMarque(trigger, accepte, ms) {
+  const fin = Date.now() + Math.max(0, ms);
+  for (;;) {
+    const valeur = String(document.querySelector(trigger)?.value ?? "").trim();
+    if (accepte(valeur)) return valeur;
+    const reste = fin - Date.now();
+    if (reste <= 0) return null;
+    await attendreMutationOu(Math.min(250, reste));
+  }
+}
+
+// Le budget de l'étape Marque (hors « Sans marque » demandé) : 60 s au plus — 30 s d'attente de la ligne,
+// un second essai, la chaîne du 24/10 — et jamais de quoi faire déborder le remplissage. L'arrière-plan
+// l'attend 300 s (sendMessageToTab ; le port de 10 min est éteint : coin_config.keepalive_actif = 0, relu le
+// 26/10) : on garde 150 s pour la suite (attributs, prix, colis, photos, dépôt — le remplissage ENTIER fait
+// 112 s au p99 des 1 500 derniers, 377 s au pire). 10 s au moins : l'attente d'avant le 26/10.
+function budgetMarqueMs() {
+  const m = mesuresRemplissageEnCours;
+  const ecoule = m ? Math.max(0, maintenantMs() - m.t0) : 0;
+  return Math.max(10_000, Math.min(60_000, 300_000 - 150_000 - ecoule));
+}
+
+// UN échec final de la ligne « Utiliser … comme marque » remonte à l'observatoire des sélecteurs
+// (selector_health, -1) : une résolution SANS reportFailure:false, une seule fois par marque, quand l'attente
+// entière (relances comprises) n'a vu ni elle ni la ligne du catalogue — panneau encore ouvert sur la
+// recherche. Les sondes de l'attente restent muettes (un -1 par passage de boucle serait un faux signal).
+// Rend true quand la ligne est absente.
+async function signalerLigneDeCreationAbsente() {
+  try {
+    (await sel()).resolveSelector("vinted", "publish.custom_brand_option");
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+// La marque que Vinted pré-remplit d'après les photos : la réponse de POST
+// /api/v2/item_upload/suggestions/attributes porte `prefill_brand` (null, ou la marque), relevée au passage
+// sur l'extrait que la sonde relaie (250 caractères : connue seulement quand elle y tient — relevé du 24/10,
+// jobs adf0454e et f86ecce8 : {"brands":[…],"prefill_brand":null,"colors":[…]}). Sert au DIAGNOSTIC d'un
+// arrêt « Marque », jamais à choisir. undefined = pas relevée ; null = rien de pré-rempli ; { id, titre }.
+// Remise à zéro à chaque remplissage (onglet de travail partagé).
+let prefillMarqueVinted = undefined;
+function noterPrefillMarqueVinted(capture) {
+  if (!capture || !/item_upload\/suggestions/i.test(String(capture.url ?? ""))) return;
+  const extrait = String(capture.reponse ?? "");
+  const cle = '"prefill_brand"';
+  const i = extrait.indexOf(cle);
+  if (i < 0) return;
+  const suite = extrait.slice(i + cle.length).replace(/^\s*:\s*/, "");
+  if (/^null\b/.test(suite)) { prefillMarqueVinted = null; return; }
+  if (!suite.startsWith("{")) return;
+  const objet = suite.slice(0, suite.indexOf("}") + 1 || suite.length);
+  const id = Number(objet.match(/"id"\s*:\s*(\d+)/)?.[1]);
+  const brut = objet.match(/"title"\s*:\s*"((?:[^"\\]|\\.)*)"/)?.[1] ?? null;
+  let titre = brut;
+  if (brut != null) { try { titre = JSON.parse(`"${brut}"`); } catch { titre = brut; } }
+  prefillMarqueVinted = { id: Number.isInteger(id) && id > 0 ? id : null, titre };
+}
+function decrirePrefillMarque() {
+  const p = prefillMarqueVinted;
+  if (p === undefined) return "prefill_brand non relevé";
+  if (p === null) return "prefill_brand : aucun (Vinted n'a rien pré-rempli)";
+  return `prefill_brand « ${p.titre ?? "?"} »${p.id ? ` (id ${p.id})` : ""}`;
+}
+
 // (17/10) `marqueCapturee` : le libellé de la marque de l'annonce d'origine
 // (republication, construireJobRecreation). L'identifiant `marqueId` ne peut
 // partir dans le corps du dépôt que pour CETTE marque — jamais pour une autre.
@@ -6802,13 +6923,72 @@ async function selectVintedBrand(marque, warnings, { marqueId = null, marqueCapt
   // L'id ne vaut que pour LA marque capturée sur l'annonce d'origine.
   const idDeLAnnonce = idMarque && String(marqueCapturee ?? "").trim()
     && texteComparable(marqueCapturee) === texteComparable(demandee) ? idMarque : null;
-  const attenteMs = idMarque ? 30000 : 10000;
+  // ── (26/10, point 4 de la nuit — Nico : « créer la marque au lieu de bloquer ») ─────────────────────
+  // CE QUI SE PASSAIT : Vinted PRÉ-REMPLIT la marque d'après les photos (POST
+  // /api/v2/item_upload/suggestions/attributes → prefill_brand) — « Volkswagen » pour un phare HELLA
+  // (06269422), « Zara » pour du Shein, « Kiabi » pour du Tape à l'œil, « H&M » pour du Kiabi. Or la chaîne
+  // de repli du 24/10 et la voie par identifiant ne partaient que sur un #brand VIDE, l'attente du commit
+  // s'arrêtait dès que le champ n'était plus vide (un champ pré-rempli ne l'est jamais), et la question
+  // partait sans comparer #brand à la marque voulue : 18 arrêts depuis le 06/10 (« The North Face »,
+  // « Orchestra », « uncle stubble », « Paris 2024 »…), tous en onglet caché, sous une phrase fausse — Vinted
+  // crée bien la marque (test réel de Nico le 17/10 : « Paris 2024 » posée par « Utiliser … comme marque »,
+  // annonce 10416597607 ; 8 dépôts du parc par cette ligne les 20 et 21/10). LA RÈGLE :
+  //   1. #brand porte déjà LA marque (texteComparable) → c'est fait, sans rien ouvrir ni demander ;
+  //   2. sinon, pré-rempli ou vide, on la CHOISIT ou on la CRÉE : frappe, puis 30 s au plus pour la ligne du
+  //      catalogue (son nom, ou l'identifiant que /api/v2/brands donne à la même marque) ou la ligne
+  //      « Utiliser "X" comme marque » qui la nomme — le DOM réveille l'attente, une liste figée est relancée
+  //      (attendreChoixMarque) ; clic, « Fait », puis #brand doit porter LA marque ; un second essai si le
+  //      clic n'a pas pris ;
+  //   3. puis la chaîne de repli du 24/10, sans plus exiger un #brand vide : identifiant prouvé, même marque
+  //      autrement écrite, « Sans marque » (règle de Nico du 24/10, inchangée) — un pré-remplissage faux est
+  //      REMPLACÉ, jamais gardé. L'envoi par identifiant, lui, exige toujours un #brand VIDE : la sonde
+  //      n'écrit jamais par-dessus la marque que la page envoie, une marque pré-remplie partirait à sa place ;
+  //   4. la question seulement si tout a échoué, avec ce qui s'est vraiment passé sur CE formulaire.
+  // Le tout tient dans budgetMarqueMs() : 60 s au plus, jamais de quoi faire déborder le remplissage.
+  const lireBrand = () => String(document.querySelector(trigger)?.value ?? "").trim();
+  const estLaMarque = (v) => Boolean(String(v ?? "").trim()) && texteComparable(v) === texteComparable(demandee);
+  const prerempli = lireBrand();
+  if (estLaMarque(prerempli)) {
+    const note = `marque : « ${demandee} » déjà posée par Vinted (champ pré-rempli) — rien à choisir, aucune question`;
+    console.log(`[vinted] ${note}`);
+    warnings.push(note);
+    return;
+  }
+  const finMarque = Date.now() + budgetMarqueMs();
+  const restant = () => Math.max(0, finMarque - Date.now());
+  const attenteMs = Math.min(30000, restant());
+  // Ce que l'étape a tenté (relances, second essai, ligne de création absente) : dit au diagnostic d'un arrêt.
+  const traces = [];
+  // b. La même marque au catalogue de Vinted (/api/v2/brands, une lecture) : son identifiant, pendant l'attente.
+  let idCatalogue = null;
+  // Liste figée (attendreChoixMarque) : le dernier caractère retapé ; la recherche retapée si la page l'a
+  // vidée ; le menu rouvert s'il s'est refermé (re-rendu du formulaire quand les suggestions des photos
+  // arrivent pendant la frappe).
+  const relancer = async (raison) => {
+    let champ = document.querySelector("#brand-search-input");
+    if (!champ) {
+      await openDropdown(trigger);
+      champ = await waitForElement("#brand-search-input", 5000);
+      await typeHuman(champ, demandee);
+      traces.push(`menu rouvert, recherche retapée (${raison})`);
+      return;
+    }
+    const tapee = String(champ.value ?? "");
+    if (texteComparable(tapee) !== texteComparable(demandee)) {
+      await typeHuman(champ, demandee);
+      traces.push(`recherche retapée — elle portait « ${tapee} » (${raison})`);
+      return;
+    }
+    await retaperDernierCaractere(champ);
+    traces.push(`dernier caractère retapé (${raison})`);
+  };
   let choix = null;
   try {
     await openDropdown(trigger);
     const search = await waitForElement("#brand-search-input", 5000);
     await typeHuman(search, demandee);
-    choix = await attendreChoixMarque(demandee, attenteMs, idMarque);
+    marqueExacteDuCatalogueVinted(demandee).then((b) => { idCatalogue = b?.id ?? null; }, () => {});
+    choix = await attendreChoixMarque(demandee, attenteMs, idMarque, { relancer, idCatalogue: () => idCatalogue });
   } catch (e) {
     // ── Catégorie SANS champ Marque, valeur RÉELLE (2026-08-23) : relevé DOM
     // — les formulaires Livres et médias n'ont AUCUN champ #brand. L'absence
@@ -6825,30 +7005,67 @@ async function selectVintedBrand(marque, warnings, { marqueId = null, marqueCapt
     }
     console.warn(`[vinted] marque "${demandee}" : ouverture du choix impossible (${e.message})`);
   }
-  if (choix?.el) {
-    await humanPause(); // temps de "lecture" avant le clic, comme partout
-    choix.el.click();
-    await humanPause();
-    await confirmDropdownIfNeeded(); // « Fait » — c'est LUI qui commite #brand (création)
-  }
-  // ── (17/10, Nico) REPUBLICATION : LA MARQUE DE L'ANNONCE, PAR SON IDENTIFIANT ──
-  // patrick giry « Paris 2024 » (brand_id 305315), Romain « pago » (352029) :
-  // anciennes marques libres que ni le menu (30 s) ni /api/v2/brands ne
-  // proposent plus, alors que l'annonce en ligne les porte. Rien n'est demandé,
-  // rien n'est choisi à la place : #brand reste vide côté page et
-  // l'identifiant CAPTURÉ part dans le corps du dépôt (sonde, jamais
-  // d'écrasement). Vaut aussi quand la ligne a été cliquée mais que #brand est
-  // resté vide. Si #brand porte une AUTRE valeur, on ne touche à rien : la
-  // question ou l'arrêt ci-dessous, comme avant — jamais une autre marque.
+  // ── a. LA LIGNE TROUVÉE : CLIC, « FAIT », RELECTURE ──────────────────────────────────────────────────
   // (24/10, lot « zéro blocage », A3) Une ligne CLIQUÉE commite #brand avec retard quand l'onglet est en
   // arrière-plan (horloge retardée jusqu'à 53 s) : 5 des 12 pauses « marque » du 16 au 24/10 avaient la
-  // bonne marque dans #brand au moment du retrait. On attend le champ (8 s, toutes les 250 ms) avant de
-  // conclure que le menu ne la propose pas.
-  if (choix?.el && !String(document.querySelector(trigger)?.value ?? "").trim()) {
-    const finAttente = Date.now() + 8000;
-    while (Date.now() < finAttente && !String(document.querySelector(trigger)?.value ?? "").trim()) await new Promise((r) => setTimeout(r, 250));
+  // bonne marque dans #brand au moment du retrait. (26/10) On attend que #brand porte LA marque (8 s au
+  // plus), plus seulement un champ non vide : un champ pré-rempli ne l'est jamais, et l'attente du 24/10
+  // s'arrêtait avant le commit — HELLA, Shein, Zara, Kiabi, Tape à l'œil : « ligne du catalogue cliquée,
+  // mais #brand porte « Volkswagen » ». Une ligne reconnue par son IDENTIFIANT vaut aussi sous son propre
+  // libellé (même identifiant, même marque). Un clic qui n'a pas pris : un second essai, menu rouvert.
+  const poserLaLigne = async (c) => {
+    await humanPause(); // temps de "lecture" avant le clic, comme partout
+    c.el.click();
+    await humanPause();
+    await confirmDropdownIfNeeded(); // « Fait » — c'est LUI qui commite #brand (création)
+    const libelle = String(c.el.getAttribute?.("aria-label") || c.el.textContent || "").trim();
+    const accepte = (v) => estLaMarque(v)
+      || Boolean(c.parId && libelle && String(v ?? "").trim() && texteComparable(v) === texteComparable(libelle));
+    return (await attendreValeurMarque(trigger, accepte, Math.max(1000, Math.min(8000, restant())))) != null;
+  };
+  let poseeParLigne = false;
+  if (choix?.el) {
+    poseeParLigne = await poserLaLigne(choix);
+    if (!poseeParLigne && restant() >= 10000) {
+      traces.push(`ligne ${choix.type === "libre" ? "« Utiliser … comme marque »" : "du catalogue"} cliquée, #brand = « ${lireBrand()} » : second essai`);
+      try {
+        await closeAnyOpenDropdown();
+        await openDropdown(trigger);
+        const encore = await waitForElement("#brand-search-input", 5000);
+        await typeHuman(encore, demandee);
+        const choix2 = await attendreChoixMarque(demandee, Math.min(15000, restant()), idMarque, { relancer, idCatalogue: () => idCatalogue });
+        if (choix2?.el) {
+          choix = choix2;
+          poseeParLigne = await poserLaLigne(choix2);
+        }
+      } catch (e) {
+        traces.push(`second essai impossible (${e?.message ?? e})`);
+      }
+    }
   }
-  const surLaPage = String(document.querySelector(trigger)?.value ?? "").trim();
+  if (poseeParLigne) {
+    if (choix.type === "libre") {
+      const note = `marque: "${demandee}" absente du catalogue Vinted — posée telle quelle via « Utiliser "${demandee}" comme marque »`;
+      console.warn(`[vinted] ${note}`);
+      warnings.push(note);
+    }
+    if (prerempli) warnings.push(`marque : « ${prerempli} », pré-remplie par Vinted, remplacée par « ${lireBrand()} »`);
+    return;
+  }
+  // (26/10) Le pré-remplissage de Vinted arrive parfois PENDANT la recherche — avec la bonne marque : fait.
+  if (!choix?.el && estLaMarque(lireBrand())) {
+    await closeAnyOpenDropdown();
+    const note = `marque : « ${demandee} » posée par Vinted pendant la recherche (pré-remplissage) — rien à choisir`;
+    console.log(`[vinted] ${note}`);
+    warnings.push(note);
+    return;
+  }
+  // (26/10) Aucune ligne « Utiliser … comme marque » de toute l'attente, relances comprises : UN échec
+  // remonte à l'observatoire des sélecteurs (selector_health), une seule fois, panneau encore ouvert sur la
+  // recherche — les sondes de l'attente restent muettes (reportFailure:false).
+  if (choix && !choix.el && !choix.ligneCreationVue && await signalerLigneDeCreationAbsente()) {
+    traces.push("ligne « Utiliser … comme marque » jamais rendue (signalée à selector_health)");
+  }
   // ── (24/10, lot « zéro blocage », A3 — Nico) UNE MARQUE INTROUVABLE NE BLOQUE JAMAIS ──
   // « Marque la plus proche PROUVÉE, ou « Sans marque » quand la catégorie l'accepte ; jamais une marque
   // inventée. » (Remplace la règle du 17/10 « jamais Sans marque à la place d'une vraie marque », et la
@@ -6858,8 +7075,12 @@ async function selectVintedBrand(marque, warnings, { marqueId = null, marqueCapt
   //      casse, accents, « & » / « and », espaces) — jamais une voisine ;
   //   3. la ligne native « Sans marque » (#empty-brand) : le rayon l'accepte puisque Vinted la propose.
   // Tracé dans les avertissements (marque_resolution), rien n'est demandé.
-  if (!surLaPage && !choix?.el && (choix?.type === "inconnue" || choix?.type === "aucune" || idDeLAnnonce)) {
-    if (idDeLAnnonce && injectionProuvee) {
+  // (26/10) Plus de condition « #brand vide » : la marque que Vinted a pré-remplie d'après les photos ne
+  // coupe plus la chaîne — elle est REMPLACÉE (même marque autrement écrite, sinon « Sans marque »), jamais
+  // gardée. Seul l'envoi par identifiant exige toujours un #brand vide (la sonde n'écrit jamais par-dessus
+  // la marque que la page envoie : la marque pré-remplie partirait à sa place).
+  if (!choix?.el && (choix?.type === "inconnue" || choix?.type === "aucune" || idDeLAnnonce)) {
+    if (idDeLAnnonce && injectionProuvee && !lireBrand()) {
       await closeAnyOpenDropdown();
       armerMarquePourPost(idDeLAnnonce, demandee);
       warnings.push(`marque : « ${demandee} » (id ${idDeLAnnonce}) posée par son identifiant (envoi direct prouvé)`);
@@ -6875,9 +7096,8 @@ async function selectVintedBrand(marque, warnings, { marqueId = null, marqueCapt
         ligne.click();
         await humanPause();
         await confirmDropdownIfNeeded();
-        const finA = Date.now() + 8000;
-        while (Date.now() < finA && !String(document.querySelector(trigger)?.value ?? "").trim()) await new Promise((r) => setTimeout(r, 250));
-        if (String(document.querySelector(trigger)?.value ?? "").trim()) {
+        // (26/10) Relu jusqu'à ce que #brand porte CETTE écriture : un champ pré-rempli n'est jamais vide.
+        if ((await attendreValeurMarque(trigger, (v) => Boolean(cible) && cleMarqueChaine(v) === cible, 8000)) != null) {
           warnings.push(`marque : « ${demandee} » posée sous l'écriture du catalogue Vinted « ${memes[0]} » (même marque)`);
           return { resolution: "meme_marque", marque: memes[0] };
         }
@@ -6885,9 +7105,17 @@ async function selectVintedBrand(marque, warnings, { marqueId = null, marqueCapt
     }
     await closeAnyOpenDropdown();
     if (document.querySelector(trigger)) {
+      const avantSansMarque = lireBrand();
       try {
         await selectVintedNoBrand(trigger);
-        const note = `marque : « ${demandee} » introuvable dans le menu de Vinted (ni ligne, ni création, ni écriture équivalente) — « Sans marque », que ce rayon accepte (règle de Nico, 24/10)`;
+        // (26/10) Un pré-remplissage faux est REMPLACÉ, jamais gardé : #brand doit l'avoir quitté (le
+        // contrôle de selectVintedNoBrand — « non vide » — passe d'office sur un champ pré-rempli).
+        if (avantSansMarque && !SANS_MARQUE_RE.test(avantSansMarque)
+          && (await attendreValeurMarque(trigger, (v) => Boolean(v) && texteComparable(v) !== texteComparable(avantSansMarque), 8000)) == null) {
+          throw new Error(`#brand porte toujours « ${avantSansMarque} », pré-remplie par Vinted`);
+        }
+        const note = `marque : « ${demandee} » introuvable dans le menu de Vinted (ni ligne, ni création, ni écriture équivalente) — « Sans marque », que ce rayon accepte (règle de Nico, 24/10)` +
+          (avantSansMarque ? ` ; « ${avantSansMarque} », pré-remplie par Vinted, remplacée` : "");
         console.warn(`[vinted] ${note}`);
         warnings.push(note);
         return { resolution: "sans_marque" };
@@ -6896,7 +7124,16 @@ async function selectVintedBrand(marque, warnings, { marqueId = null, marqueCapt
       }
     }
   }
-  if (idDeLAnnonce && !surLaPage) {
+  // ── (17/10, Nico) REPUBLICATION : LA MARQUE DE L'ANNONCE, PAR SON IDENTIFIANT ──
+  // patrick giry « Paris 2024 » (brand_id 305315), Romain « pago » (352029) :
+  // anciennes marques libres que ni le menu (30 s) ni /api/v2/brands ne
+  // proposent plus, alors que l'annonce en ligne les porte. Rien n'est demandé,
+  // rien n'est choisi à la place : #brand reste vide côté page et
+  // l'identifiant CAPTURÉ part dans le corps du dépôt (sonde, jamais
+  // d'écrasement). Vaut aussi quand la ligne a été cliquée mais que #brand est
+  // resté vide. Si #brand porte une AUTRE valeur, on ne touche à rien : la
+  // question ou l'arrêt ci-dessous, comme avant — jamais une autre marque.
+  if (idDeLAnnonce && !lireBrand()) {
     await closeAnyOpenDropdown();
     armerMarquePourPost(idDeLAnnonce, demandee);
     const note = `marque : « ${demandee} » (id ${idDeLAnnonce}, celle de l'annonce en ligne) non proposée par le menu de Vinted — posée par son identifiant dans le corps du dépôt`;
@@ -6904,14 +7141,21 @@ async function selectVintedBrand(marque, warnings, { marqueId = null, marqueCapt
     warnings.push(note);
     return { poseeParId: true, marqueId: idDeLAnnonce };
   }
-  // ── VINTED NE CONNAÎT PAS CETTE MARQUE ET N'EN CRÉE PLUS (relevé du 03/10) ──
-  // Formulaire vinted.fr, compte de Nico, 03/10 ~21:20 : pour « Zorglubia »,
-  // le menu Marque n'offre QUE « Sans marque » (#empty-brand) — plus de ligne
-  // « Utiliser … comme marque » (#custom-select-brand absent), en
-  // « Encadrements » comme en « Pulls et pulls à capuche ». La 0.6.91 posait
-  // alors « Sans marque » en silence (annonce de test 10231930752). Désormais :
-  // une QUESTION, avant tout dépôt — « Sans marque » ou une marque de sa liste.
+  // ── LA QUESTION « MARQUE », QUAND TOUT A ÉCHOUÉ ─────────────────────────────────────────────────────
+  // (03/10) Formulaire vinted.fr, compte de Nico, 03/10 ~21:20 : pour « Zorglubia », le menu Marque
+  // n'offrait QUE « Sans marque » (#empty-brand), sans ligne « Utiliser … comme marque »
+  // (#custom-select-brand absent), en « Encadrements » comme en « Pulls et pulls à capuche ». La 0.6.91
+  // posait alors « Sans marque » en silence (annonce de test 10231930752) ; d'où une QUESTION, avant tout
+  // dépôt — « Sans marque » ou une marque de sa liste.
+  // (26/10, point 4 — Nico) Ce relevé MANUEL n'a jamais été reproduit et il est démenti depuis le 17/10 :
+  // Vinted crée la marque par cette ligne. La question ne vient donc plus qu'au bout de TOUT (création et
+  // catalogue, 30 s ; chaîne du 24/10), et elle dit ce qui s'est passé sur CE formulaire : « Vinted n'a pas
+  // proposé de créer « X » sur ce formulaire » — plus jamais la phrase du 03/10. « est introuvable dans son
+  // menu Marque » : vrai à ce point, et c'est ce que lit le classement des arrêts du serveur
+  // (_shared/cause-blocage.js, « marque_inconnue »). Le diagnostic dit la valeur trouvée dans #brand et la
+  // marque que Vinted avait pré-remplie (prefill_brand), quand elle est connue.
   if (choix && (choix.type === "inconnue" || choix.type === "aucune")) {
+    const brandTrouve = lireBrand();
     await closeAnyOpenDropdown();
     // (03/10 nuit, 0.6.94) La question propose de VRAIES marques du catalogue
     // Vinted proches du nom tapé (son propre moteur de recherche, lu ici, sur
@@ -6926,10 +7170,15 @@ async function selectVintedBrand(marque, warnings, { marqueId = null, marqueCapt
     return {
       needsUser: true,
       error:
-        `Vinted ne connaît pas la marque « ${demandee} » et ne permet plus d'en créer une nouvelle. ` +
+        `Vinted n'a pas proposé de créer « ${demandee} » sur ce formulaire, et la marque « ${demandee} » est introuvable dans son menu Marque. ` +
         "Choisis-la dans la liste de Vinted si elle y est sous un autre nom, ou « Sans marque » (bouton « ✋ Compléter ») : la publication repart d'elle-même. " +
         "Rien n'a été envoyé à Vinted.",
-      diagnostic: `Marque "${demandee}" : ${choix.type === "inconnue" ? "seule la ligne « Sans marque » proposée" : `aucune ligne exacte ni de création en ${Math.round(attenteMs / 1000)} s${idMarque ? ` (id ${idMarque} attendu)` : ""}`} ; suggestions : ${[...(choix.suggestions ?? []), ...catalogue].slice(0, 10).join(" · ") || "aucune"}`,
+      diagnostic:
+        `Marque "${demandee}" : ${choix.type === "inconnue" ? `seule la ligne « Sans marque » proposée en ${Math.round(attenteMs / 1000)} s` : `aucune ligne exacte ni de création en ${Math.round(attenteMs / 1000)} s${idMarque ? ` (id ${idMarque} attendu)` : ""}`}` +
+        ` ; #brand = « ${brandTrouve} »${prerempli && texteComparable(prerempli) !== texteComparable(brandTrouve) ? ` (« ${prerempli} » avant la recherche)` : ""}` +
+        ` ; ${decrirePrefillMarque()}` +
+        (traces.length ? ` ; ${traces.join(" · ")}` : "") +
+        ` ; suggestions : ${[...(choix.suggestions ?? []), ...catalogue].slice(0, 10).join(" · ") || "aucune"}`,
       needsUserField: {
         platform: "vinted", field_key: "brand", field_label: "Marque", input_type: "list_search",
         allowed_values: proposees, target: { key: "marque" },
@@ -6953,9 +7202,12 @@ async function selectVintedBrand(marque, warnings, { marqueId = null, marqueCapt
     `Le champ Marque n'a pas pu être posé tel quel (« ${demandee} »). ` +
     "Publication interrompue AVANT le dépôt — rien n'a été soumis à Vinted, et aucune autre marque n'a été posée à la place."
   );
-  err.diagnostic = choix
+  err.diagnostic = (choix
     ? `Marque "${demandee}" : ligne ${choix.type === "libre" ? "« Utiliser … comme marque »" : "du catalogue"} cliquée, mais #brand porte « ${posee} »`
-    : `Marque "${demandee}" : ni ligne exacte du catalogue ni ligne de création nommant cette marque en ${Math.round(attenteMs / 1000)} s (#brand = « ${posee} »)`;
+    : `Marque "${demandee}" : ni ligne exacte du catalogue ni ligne de création nommant cette marque en ${Math.round(attenteMs / 1000)} s (#brand = « ${posee} »)`) +
+    (prerempli ? ` ; « ${prerempli} » pré-remplie par Vinted avant la recherche` : "") +
+    ` ; ${decrirePrefillMarque()}` +
+    (traces.length ? ` ; ${traces.join(" · ")}` : "");
   throw err;
 }
 
@@ -6990,32 +7242,75 @@ async function marquesDuCatalogueVinted(nom, max = 20) {
   return [...vues.values()];
 }
 
+// (26/10, point 4 — b.) La marque est-elle au catalogue de Vinted À L'IDENTIQUE ? Le moteur du menu Marque
+// (/api/v2/brands, lecture seule, cookies de la personne), interrogé UNE fois avec le nom entier, borné à
+// 4 s : { id, titre } quand un titre EST la marque (texteComparable), sinon null. Sert à reconnaître SA ligne
+// par son identifiant (brand-<id>, suggested-brand-<id>) pendant l'attente — jamais à choisir une autre
+// marque. Un échec rend null.
+async function marqueExacteDuCatalogueVinted(nom) {
+  const brut = String(nom ?? "").trim();
+  if (brut.length < 2) return null;
+  try {
+    const ctl = new AbortController();
+    const minuteur = setTimeout(() => ctl.abort(), 4000);
+    const r = await fetch(`/api/v2/brands?keyword=${encodeURIComponent(brut)}&per_page=20`, {
+      credentials: "include", headers: { accept: "application/json" }, signal: ctl.signal,
+    }).finally(() => clearTimeout(minuteur));
+    if (!r.ok) return null;
+    const j = await r.json();
+    const cible = texteComparable(brut);
+    const b = (Array.isArray(j?.brands) ? j.brands : []).find((x) => texteComparable(String(x?.title ?? "")) === cible);
+    const id = Number(b?.id);
+    return b && Number.isInteger(id) && id > 1 ? { id, titre: String(b.title).trim() } : null;
+  } catch {
+    return null; // reconnaissance par identifiant seulement : jamais un point de panne
+  }
+}
+
 // La ligne à cliquer pour poser `marque` TELLE QUELLE, ou null (03/10) :
 //   · une ligne du catalogue (« brand-123 », « suggested-brand-123 », role
 //     radio ou button) dont le libellé EST la marque ;
 //   · sinon la ligne « Utiliser "X" comme marque » quand X EST la marque —
 //     après 1,5 s, pour laisser au catalogue le temps de répondre.
 // Jamais « la plus proche », jamais la première suggestion.
-async function attendreChoixMarque(marque, timeoutMs = 10000, marqueId = null) {
+// (26/10, point 4 — Nico) L'attente :
+//   · se réveille sur le DOM (attendreMutationOu : MutationObserver, minuteur du Worker en filet de 250 ms)
+//     au lieu de relire toutes les 80 ms ; bornée par `timeoutMs` (30 s, selectVintedBrand) ;
+//   · reconnaît aussi la ligne d'une marque du catalogue par l'identifiant que /api/v2/brands donne à la
+//     même marque (`idCatalogue`, lu pendant l'attente), en plus de celui de l'annonce d'origine ;
+//   · relance une liste FIGÉE (rien n'a bougé depuis 4 s, ni ligne voulue) par `relancer` — le dernier
+//     caractère retapé, la recherche retapée si elle a été vidée, le menu rouvert —, 3 fois au plus ;
+//   · ne conclut plus « inconnue » au bout de 3 s de « Sans marque » seule : une recherche lente (onglet
+//     caché, réponse de Vinted en retard) passait ainsi pour une marque que Vinted refuse de créer, et le
+//     repli prenait la place de la création. « inconnue » se dit à l'échéance, sur le dernier état vu.
+async function attendreChoixMarque(marque, timeoutMs = 30000, marqueId = null, { relancer = null, idCatalogue = null } = {}) {
   const S = await sel();
   const cible = texteComparable(marque);
   const debut = Date.now();
   let libreVueLe = null;
-  let inconnueVueLe = null;
+  let seuleSansMarque = false;
   let suggestions = [];
+  let signature = null;
+  let figeeDepuis = Date.now();
+  let relances = 0;
+  let ligneCreationVue = false;
   while (Date.now() - debut < timeoutMs) {
     const lignes = Array.from(document.querySelectorAll('[role="radio"], [role="button"]'))
       .filter((el) => /^(?:suggested-)?brand-\d/.test(el.id || ""));
     suggestions = lignes.map((el) => String(el.getAttribute("aria-label") || el.textContent || "").trim()).filter(Boolean);
-    // (06/10) La ligne de la marque de l'annonce d'origine, par son id.
-    if (marqueId) {
-      const parId = lignes.find((el) => el.id === `brand-${marqueId}` || el.id === `suggested-brand-${marqueId}`);
+    // (06/10) La ligne de la marque de l'annonce d'origine, par son id ; (26/10) et celle de la même
+    // marque au catalogue (/api/v2/brands), dès que son identifiant est connu.
+    const idsVoulus = [marqueId, typeof idCatalogue === "function" ? idCatalogue() : idCatalogue]
+      .map(Number).filter((id) => Number.isInteger(id) && id > 1);
+    for (const id of idsVoulus) {
+      const parId = lignes.find((el) => el.id === `brand-${id}` || el.id === `suggested-brand-${id}`);
       if (parId) return { type: "catalogue", el: parId, parId: true };
     }
     const exacte = lignes.find((el) => texteComparable(el.getAttribute("aria-label") || el.textContent) === cible);
     if (exacte) return { type: "catalogue", el: exacte };
     let libre = null;
     try { libre = S.resolveSelector("vinted", "publish.custom_brand_option", { reportFailure: false }).el; } catch { libre = null; }
+    if (libre) ligneCreationVue = true;
     // (24/10, lot « zéro blocage », A3) La ligne « Utiliser "X" comme marque » se lit dans TOUTES les
     // langues de Vinted (page italienne de mele.marta : jamais reconnue) : le nom entre guillemets suffit.
     const nommee = libre
@@ -7026,16 +7321,24 @@ async function attendreChoixMarque(marque, timeoutMs = 10000, marqueId = null) {
       if (libreVueLe == null) libreVueLe = Date.now();
       if (Date.now() - libreVueLe >= 1500) return { type: "libre", el: libre };
     }
-    // Seule la ligne native « Sans marque » (#empty-brand), ni marque ni
-    // création, 3 s de suite : Vinted ne connaît pas cette marque.
-    // Marque connue par son id : jamais « inconnue » sur une liste encore vide.
-    if (!marqueId && !lignes.length && !libre && document.querySelector("#empty-brand")) {
-      if (inconnueVueLe == null) inconnueVueLe = Date.now();
-      if (Date.now() - inconnueVueLe >= 3000) return { type: "inconnue", suggestions: [] };
-    } else inconnueVueLe = null;
-    await sleep(80);
+    // Seule la ligne native « Sans marque » (#empty-brand), ni marque ni création : retenu pour le verdict
+    // de l'échéance. Marque connue par son id : jamais « inconnue » sur une liste encore vide.
+    seuleSansMarque = !lignes.length && !libre && Boolean(document.querySelector("#empty-brand"));
+    // (26/10) Liste figée : la même depuis 4 s, sans la ligne voulue → relancée (3 fois au plus).
+    const vue = `${lignes.map((el) => el.id).join(",")}|${libre ? String(libre.textContent ?? "") : ""}|${seuleSansMarque ? 1 : 0}`;
+    if (vue !== signature) {
+      signature = vue;
+      figeeDepuis = Date.now();
+    } else if (relancer && relances < 3 && libreVueLe == null && Date.now() - figeeDepuis >= 4000) {
+      relances += 1;
+      try { await relancer(`liste inchangée depuis ${Math.round((Date.now() - figeeDepuis) / 1000)} s`); } catch { /* relance : jamais un point de panne */ }
+      figeeDepuis = Date.now();
+    }
+    await attendreMutationOu(250);
   }
-  return { type: "aucune", suggestions };
+  // `ligneCreationVue` : une ligne « Utiliser … comme marque » a été vue (même pour une autre marque) — le
+  // sélecteur vit ; seule son absence complète remonte à selector_health (selectVintedBrand).
+  return { type: !marqueId && seuleSansMarque ? "inconnue" : "aucune", suggestions, relances, ligneCreationVue };
 }
 
 // ── Modèle Vinted : champ à RECHERCHE sur liste virtualisée ────────────────────

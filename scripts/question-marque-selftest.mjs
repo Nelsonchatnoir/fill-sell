@@ -30,7 +30,12 @@ assert.match(stock, /<QuestionMarque job=\{job\} f=\{f\} lang=\{lang\} saving=\{
 assert.match(stock, /\{!questionMarque && <button\s*onClick=\{\(\) => valider\(\{ sansValeur: valeursIndisponibles \}\)\}/, "pas de bouton Valider (gris) sous la question marque");
 assert.match(stock, /if \(!sansValeur && job\.inventaire_id != null && !questionMarque\) \{/, "« Sans marque » n'est jamais écrit sur la fiche");
 const comp = fs.readFileSync(new URL("../src/annonces/QuestionMarque.jsx", import.meta.url), "utf8");
-assert.match(comp, /ne connaît pas la marque/, "la phrase dit pourquoi");
+// (26/10, point 4 — Nico) Le pourquoi VRAI pour Vinted : « Vinted n'a pas proposé de créer « X » sur ce
+// formulaire » — Vinted crée les marques (prouvé depuis le 17/10) ; l'affirmation du 03/10 a disparu.
+assert.match(comp, /const pourquoi = job\?\.platform === 'vinted'\s*\?\s*\(fr\s*\?\s*`Vinted n'a pas proposé de créer \$\{demandee \? `« \$\{demandee\} »` : 'cette marque'\} sur ce formulaire\. Cherche-la dans la liste de Vinted/, "la phrase dit pourquoi — pour Vinted, ce qui s'est passé sur CE formulaire");
+assert.match(comp, /`Vinted didn't offer to create /, "… et en anglais");
+assert.match(comp, /\{pourquoi\}/, "c'est elle qui s'affiche");
+assert.doesNotMatch(comp, /ne permet plus|no longer lets you create/, "plus jamais « ne permet plus d'en créer une »");
 assert.match(comp, /ligne\('Sans marque', true\)/, "« Sans marque » en premier, en un geste");
 assert.match(comp, /__fillsellCmd: 'CHERCHER_MARQUE'/, "recherche dans le catalogue via l'extension");
 assert.match(comp, /cette question revient/, "le nom tapé tel quel : on dit ce qui se passera");

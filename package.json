@@ -488,6 +488,7 @@
     "selftest:beebs-correction-tracee": "node scripts/beebs-correction-tracee-selftest.mjs",
     "selftest:beebs-adresse-sans-rue": "node scripts/beebs-adresse-sans-rue-selftest.mjs",
     "selftest:taille-bague-du-texte": "node scripts/taille-bague-du-texte-selftest.mjs",
+    "selftest:vinted-marque-preremplie": "node scripts/vinted-marque-preremplie-selftest.mjs",
     "selftest:copies-completes-2610": "node scripts/copies-completes-2610-selftest.mjs"
   },
   "dependencies": {

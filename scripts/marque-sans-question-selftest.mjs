@@ -99,7 +99,8 @@ console.log("3. Marque du catalogue : passe ; marque hors catalogue : la questio
   const vinted = lire("chrome-extension/content-scripts/vinted.js");
   ok(/raison: "marque_hors_catalogue", demandee,/.test(vinted), "l'extension pose toujours la question « marque hors catalogue » au dépôt");
   const comp = lire("src/annonces/QuestionMarque.jsx");
-  ok(/ligne\('Sans marque', true\)/.test(comp) && /ne connaît pas la marque/.test(comp), "la question : le pourquoi, « Sans marque » ou une marque de la liste");
+  // (26/10, point 4) Le pourquoi vrai pour Vinted : « n'a pas proposé de créer » (plus « ne connaît pas »).
+  ok(/ligne\('Sans marque', true\)/.test(comp) && /Vinted n'a pas proposé de créer /.test(comp), "la question : le pourquoi, « Sans marque » ou une marque de la liste");
   ok(/Ton choix vaut pour cet article/.test(comp), "… et elle dit que le choix vaut pour l'article");
 }
 

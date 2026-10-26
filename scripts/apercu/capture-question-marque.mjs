@@ -46,7 +46,8 @@ try {
     await page.waitForTimeout(1500);
     verifier(erreurs.length === 0, 'aucune erreur de page', erreurs.join(' | ').slice(0, 300));
     const texte = await page.evaluate(() => document.body.innerText);
-    verifier(texte.includes('Vinted ne connaît pas la marque « Bonobo » et ne permet plus d\'en créer une.'), 'la phrase dit pourquoi');
+    // (26/10 nuit, point 4) Plus jamais « ne permet plus d'en créer » : Vinted crée des marques (17/10, 20-21/10).
+    verifier(texte.includes('Vinted n\'a pas proposé de créer « Bonobo » sur ce formulaire.'), 'la phrase dit pourquoi');
     const boutons = await page.$$eval('button', (els) => els.map((e) => ({ t: e.textContent.trim(), dis: e.disabled })));
     verifier(boutons.some((b) => b.t === 'Sans marque' && !b.dis), '« Sans marque » : un bouton actif', JSON.stringify(boutons));
     verifier(boutons.some((b) => b.t === 'Bonobo Jeans'), 'les marques du catalogue sont proposées');

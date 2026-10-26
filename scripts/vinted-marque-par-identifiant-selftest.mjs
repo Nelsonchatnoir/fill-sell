@@ -157,9 +157,13 @@ console.log("\n4. LE FORMULAIRE : PAR SON IDENTIFIANT, SANS QUESTION — JAMAIS 
 const texteComparable = new Function(`${extraireFonctionJs(vt, "texteComparable")}; return texteComparable;`)();
 {
   const SEL = extraireFonctionJs(vt, "selectVintedBrand");
+  // (26/10) + les aides de l'étape Marque : relance de la recherche, identifiant du catalogue, budget,
+  // relecture de #brand, signal à selector_health, prefill_brand du diagnostic.
   const noms = ["document", "SANS_MARQUE_RE", "marqueAbsenceComparable", "selectVintedNoBrand", "closeAnyOpenDropdown", "openDropdown",
     "waitForElement", "typeHuman", "attendreChoixMarque", "humanPause", "confirmDropdownIfNeeded", "marquesDuCatalogueVinted",
-    "suggestionsMarqueProches", "texteComparable", "armerMarquePourPost"];
+    "suggestionsMarqueProches", "texteComparable", "armerMarquePourPost",
+    "retaperDernierCaractere", "marqueExacteDuCatalogueVinted", "budgetMarqueMs", "attendreValeurMarque",
+    "signalerLigneDeCreationAbsente", "decrirePrefillMarque"];
   // (24/10, lot « zéro blocage », A3 — Nico) « Une marque introuvable ne bloque jamais : marque la plus proche
   // prouvée, ou « Sans marque » quand la catégorie l'accepte. » Le harnais NOTE la pose de « Sans marque ».
   const harnais = ({ brandValue = "", choix = { type: "aucune", suggestions: [] } } = {}) => {
@@ -174,6 +178,10 @@ const texteComparable = new Function(`${extraireFonctionJs(vt, "texteComparable"
       async () => {}, async () => {}, async () => [],
       (dem, v) => v, texteComparable,
       (id, titre) => armements.push({ id, titre }),
+      async () => {}, async () => null, () => 60000,
+      // #brand est figé dans ce harnais : la relecture rend sa valeur si elle convient, sinon rien.
+      async (_t, accepte) => (accepte(brandValue) ? brandValue : null),
+      async () => true, () => "prefill_brand non relevé",
     ];
     const fn = new Function(...noms, `${SEL}; return selectVintedBrand;`)(...valeurs);
     return { fn, armements, attentes, sansMarque };
@@ -202,16 +210,20 @@ const texteComparable = new Function(`${extraireFonctionJs(vt, "texteComparable"
     h = harnais({ brandValue: "Paris 2024", choix: { type: "catalogue", el: { click() {} } } });
     r = await h.fn("Paris 2024", [], { marqueId: 305315, marqueCapturee: "Paris 2024" });
     ok(r === undefined && h.armements.length === 0, "Vinted propose la ligne et #brand la porte → chemin normal, rien d'armé");
+    // (26/10) #brand porte une AUTRE marque (pré-remplie par Vinted) : la chaîne tourne quand même, mais
+    // l'identifiant n'est jamais armé sur un champ rempli ; ici le champ reste figé sur « Zara » (rien ne
+    // la remplace) → la question, jamais « Zara » gardée en silence.
     h = harnais({ brandValue: "Zara" });
-    r = await h.fn("Paris 2024", [], { marqueId: 305315, marqueCapturee: "Paris 2024" });
-    ok(r?.needsUser === true && h.armements.length === 0, "#brand porte une AUTRE marque → rien d'armé (jamais deux marques), la règle d'avant");
+    r = await h.fn("Paris 2024", [], { marqueId: 305315, marqueCapturee: "Paris 2024", injectionProuvee: true });
+    ok(r?.needsUser === true && h.armements.length === 0 && h.sansMarque.length === 1,
+      "#brand porte une AUTRE marque → rien d'armé (jamais deux marques), même envoi prouvé ; « Sans marque » tenté pour la remplacer, puis la question");
     h = harnais();
     r = await h.fn("Nike", [], { marqueId: 305315, marqueCapturee: "Paris 2024" });
     ok(r?.resolution === "sans_marque" && h.armements.length === 0 && h.attentes[0]?.t === 30000, "l'identifiant ne vaut que pour LA marque capturée (jamais armé pour « Nike ») ; (24/10) « Sans marque », aucune question");
     h = harnais();
     r = await h.fn("Zorglubia", [], { marqueId: null });
-    ok(r?.resolution === "sans_marque" && !r?.needsUser && h.armements.length === 0 && h.attentes[0]?.t === 10000,
-      "(24/10) publication neuve (aucun identifiant), marque inconnue de Vinted : « Sans marque », plus la question du 03/10");
+    ok(r?.resolution === "sans_marque" && !r?.needsUser && h.armements.length === 0 && h.attentes[0]?.t === 30000,
+      "(24/10) publication neuve (aucun identifiant), marque inconnue de Vinted : « Sans marque », plus la question du 03/10 ; (26/10) après 30 s d'attente de la ligne de création, plus 10");
     h = harnais();
     r = await h.fn("Paris 2024", [], { marqueId: 305315 });
     ok(r?.resolution === "sans_marque" && h.armements.length === 0, "identifiant sans marque capturée (appel ancien) : jamais armé");

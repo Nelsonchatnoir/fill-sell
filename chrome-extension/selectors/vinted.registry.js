@@ -157,7 +157,9 @@ export const VINTED_SELECTORS = {
       "⚠️ JAMAIS rendue quand la recherche ≈ « Sans marque » : Vinted substitue la ligne native #empty-brand (clé publish.no_brand_option) — les deux lignes sont EXCLUSIVES " +
       "(panne du 08/08, jobs cad96961/577b371d : attendre custom_brand_option sur ce terme = timeout garanti) ; " +
       "le clic seul ne commite PAS #brand (la ligne disparaît, valeur vide) — c'est la fermeture du panneau par « Fait » qui commite ; " +
-      "vérif post : relecture de #brand.value non vide, sinon throw (le job échoue avant soumission)",
+      "vérif post : relecture de #brand.value non vide, sinon throw (le job échoue avant soumission). " +
+      "(26/10) Vinted PRÉ-REMPLIT #brand d'après les photos (prefill_brand) : la vérif post attend #brand ≡ la marque demandée (8 s), plus « non vide » ; " +
+      "la ligne est attendue 30 s (sondes reportFailure:false), et UN seul -1 est émis quand toute l'attente ne l'a jamais vue (signalerLigneDeCreationAbsente)",
   },
 
   "publish.no_brand_option": {
