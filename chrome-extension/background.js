@@ -13516,6 +13516,21 @@ async function ecrireExtensionSessions(accessToken, sub, releve, previous) {
       // (17/10) Le statut vendeur Depop suit la session Depop, avec la même date.
       if (pf === "depop") fusion.depop_vendeur = prev.depop_vendeur ?? null;
     }
+    // ── (B) UNE SONDE MUETTE N'EFFACE PAS UN ÉTAT CONNU (26/10, B2 — Nico) ─────────────────────────────────────
+    // La sonde de 10:44 a lu Leboncoin et Beebs en 403 (anti-robot) et les a remis à null, alors que le relevé
+    // Leboncoin de 10:36 venait de lire ses 12 annonces : la synchro de 11:02 les a laissés dehors. 57 comptes actifs
+    // sur 81 avaient Leboncoin « inconnu ». Une sonde SONDÉE mais muette (null : 403, réseau, page ambiguë) garde
+    // la valeur connue AVEC SA DATE d'origine — les lecteurs jugent la fraîcheur ; le statut HTTP de cette sonde,
+    // lui, est écrit (traçabilité) et l'heure de la sonde muette est notée à part.
+    for (const pf of releve.sondees) {
+      if (releve[pf] !== null && releve[pf] !== undefined) continue;
+      if (typeof prev[pf] !== "boolean") continue;
+      fusion[pf] = prev[pf];
+      fusion.checked_at_par_plateforme[pf] = prevPar[pf] ?? prev.checked_at ?? null;
+      fusion.sonde_muette = { ...(prev.sonde_muette && typeof prev.sonde_muette === "object" ? prev.sonde_muette : {}),
+        [pf]: { le: releve.checked_at ?? new Date().toISOString(), http: releve.http?.[pf] ?? null } };
+      // (vinted_identite n'est jamais reprise : l'identité de boutique ne se dit que lue — règle du 03/09.)
+    }
     final = fusion;
   }
   await restRequest(`profiles?id=eq.${sub}`, accessToken, {
@@ -14157,6 +14172,14 @@ const SYNC_CHUNK = 24;
 // (declencheur='cron'). Miroir front : SYNC_CADENCE_MANUELLE_MS dans
 // src/utils/vintedSync.js — même valeur, à faire évoluer ENSEMBLE.
 const SYNC_MANUAL_COOLDOWN_MS = 15 * 60 * 1000;
+// (26/10, B3 — Nico) Pas de cadence anti-rafale sur un stock VIDE (appui de 10:49 : stock vidé, plateformes non relues).
+// Lu seulement quand la cadence refuserait (une requête, bornée à 1 ligne) ; illisible = la cadence d'avant.
+async function stockVideCadence(token, userId) {
+  try {
+    const r = await restRequest(`inventaire?user_id=eq.${userId}&statut=eq.stock&fusionne_dans=is.null&select=id&limit=1`, token);
+    return Array.isArray(r) && r.length === 0;
+  } catch { return false; }
+}
 // ── Verdict d'identité Vinted inconnu (403 anti-robot, 2026-08-12) ───────────
 // Un 403 se lève TOUT SEUL en quelques minutes. Relevé prod du 12/08 au soir,
 // sur TOUTE la table vinted_sync_runs : 21 échecs 403, dont 11 résolus par un
@@ -19295,7 +19318,7 @@ async function traiterCommandeSyncDistante(cmd) {
       token, { headers: { Prefer: "return=representation" } },
     );
     const dernierFini = Date.parse(derniers?.[0]?.finished_at ?? "");
-    if (Number.isFinite(dernierFini) && Date.now() - dernierFini < SYNC_MANUAL_COOLDOWN_MS) {
+    if (Number.isFinite(dernierFini) && Date.now() - dernierFini < SYNC_MANUAL_COOLDOWN_MS && !(await stockVideCadence(token, userId))) {
       const dansMin = Math.max(1, Math.ceil((dernierFini + SYNC_MANUAL_COOLDOWN_MS - Date.now()) / 60000));
       // Clôturée, pas laissée en file : sinon l'index unique bloquerait tout
       // nouveau clic jusqu'à l'expiration, et l'utilisateur n'aurait aucun
@@ -19595,7 +19618,7 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
           token, { headers: { Prefer: "return=representation" } },
         );
         const dernierFini = Date.parse(derniers?.[0]?.finished_at ?? "");
-        if (Number.isFinite(dernierFini) && Date.now() - dernierFini < SYNC_MANUAL_COOLDOWN_MS) {
+        if (Number.isFinite(dernierFini) && Date.now() - dernierFini < SYNC_MANUAL_COOLDOWN_MS && !(await stockVideCadence(token, userId))) {
           const dansMin = Math.max(1, Math.ceil((dernierFini + SYNC_MANUAL_COOLDOWN_MS - Date.now()) / 60000));
           console.log(`[sync-dressing] dressing synchronisé il y a moins de 15 min — prochaine sync manuelle possible dans ~${dansMin} min (cron non concerné)`);
           return { ok: false, reason: "cadence", prochaine_dans_min: dansMin }; // estimation-ok: donnée interne, plus jamais affichée

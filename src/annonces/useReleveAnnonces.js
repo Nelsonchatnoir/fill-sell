@@ -144,8 +144,13 @@ export function useReleveAnnonces({ lang, user, ouvert, plateformes, lancerVinte
     setToutBusy(true); setMessage(null);
     let choix = null;
     try { choix = await lireChoixEtSessions(userId); } catch { /* rien de connu : tout, comme avant */ }
+    // (26/10, B2 — Nico) Une plateforme dont la session est « inconnue » (sonde muette, 403 anti-robot) restait
+    // dehors si le stock venait d'être vidé : clic de 11:02, Leboncoin et Beebs exclus alors que leur relevé de
+    // 10:36 avait lu 12 et 10 annonces. Un relevé passé qui a LU des annonces vaut « déjà relevée », comme une
+    // annonce encore en base : seul un « déconnecté » prouvé ou une plateforme jamais utilisée restent dehors.
     const dejaRelevees = [
       ...Object.entries(compte ?? {}).filter(([, c]) => (c?.total ?? 0) > 0).map(([p]) => p),
+      ...Object.entries(runs ?? {}).filter(([, x]) => Number(x?.items_vus) > 0 || Number(x?.total_entries) > 0).map(([p]) => p),
       ...(runVinted ? ['vinted'] : []),
     ];
     const cibles = ciblesReleve({

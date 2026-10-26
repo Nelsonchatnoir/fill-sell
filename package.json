@@ -448,6 +448,7 @@
     "selftest:beebs-lecture-cadre": "node scripts/beebs-lecture-cadre-selftest.mjs",
     "selftest:lbc-vue-visiteur": "node scripts/lbc-vue-visiteur-selftest.mjs",
     "selftest:canal-coupe-reprise": "node scripts/canal-coupe-reprise-selftest.mjs",
+    "selftest:synchro-reinitialiser": "node scripts/synchro-reinitialiser-selftest.mjs",
     "selftest:lbc-mur-paiement-perime": "node scripts/lbc-mur-paiement-perime-selftest.mjs",
     "selftest:surveillance-releves": "node scripts/surveillance-releves-selftest.mjs",
     "selftest:boutique-autre-compte-app": "node scripts/boutique-autre-compte-app-selftest.mjs",

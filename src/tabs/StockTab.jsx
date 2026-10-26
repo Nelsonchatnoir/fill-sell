@@ -3338,7 +3338,9 @@ export function VintedDressingSync({ lang, user, isNative, extensionStatus, sour
     return () => clearInterval(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [retryProchaineA, user?.id]);
-  const enCadence = !enCours && cadenceFinA > Date.now();
+  // (26/10, B3 — Nico) Pas de cadence anti-rafale sur un stock VIDE : l'appui de 10:49 (stock vidé) n'a relancé que le
+  // rangement, Leboncoin et Beebs n'ont pas été relus. Stock vide = la synchro part (le serveur tranche le reste).
+  const enCadence = !enCours && cadenceFinA > Date.now() && source !== 'stock_empty';
   // ── LIGNE 2 : CE QU'ON PEUT FAIRE (refonte lisibilité 2026-09-04) ──────────
   // Ne dit plus QUE ça. Le « Dressing synchronisé il y a N min » qui ouvrait
   // cette phrase répétait mot pour mot la ligne d'état juste au-dessus : c'est

@@ -178,7 +178,12 @@ export default function BlocSynchro({
   // heures) : un passage de veille ne s'affiche jamais (règle du 05/10).
   const av = r.avancement ?? null;
   const rap = av?.rapprochement ?? null;
-  const rapActif = !!rap && rap.etat !== 'termine' && Array.isArray(av?.releves) && av.releves.length > 0;
+  // (26/10, B4 — Nico) « Rapprochement : terminé » s'affichait pendant que 4 relevés sur 5 attendaient : la passe
+  // d'avant l'arrivée des autres plateformes est finie, pas le rangement de la synchro. Il n'est fini qu'une fois
+  // TOUS les relevés de la vague arrivés (ni en file, ni en cours).
+  const relevesEnVol = Array.isArray(av?.releves) && av.releves.some((x) => x.status === 'queued' || x.status === 'running');
+  const rapFini = !!rap && rap.etat === 'termine' && !relevesEnVol;
+  const rapActif = !!rap && !rapFini && Array.isArray(av?.releves) && av.releves.length > 0;
   const actifGlobal = vague.active || rapActif;
   const [vagueAvant, setVagueAvant] = useState(actifGlobal);
   if (actifGlobal !== vagueAvant) {
@@ -278,9 +283,9 @@ export default function BlocSynchro({
     ...(rap && (av.releves ?? []).length ? [{
       cle: 'rapprochement', platform: null, nom: T.ligneRapprochement,
       actif: rapActif && !vague.active,
-      ton: rap.etat === 'termine' ? 'fait' : 'neutre',
-      etat: rap.etat === 'termine' ? T.ligneFini
-        : (rap.etat === 'attente_releves' || vague.active) ? T.ligneAttente
+      ton: rapFini ? 'fait' : 'neutre',
+      etat: rapFini ? T.ligneFini
+        : (rap.etat === 'attente_releves' || vague.active || relevesEnVol) ? T.ligneAttente
         : ((rap.en_attente ?? 0) + (rap.nouvelles ?? 0) > 0 ? T.ligneLues(Number(rap.traitees ?? 0), Number(rap.traitees ?? 0) + Number(rap.en_attente ?? 0) + Number(rap.nouvelles ?? 0)) : T.ligneEnCours),
     }] : []),
   ] : [];
