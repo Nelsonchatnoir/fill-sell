@@ -155,7 +155,7 @@ console.log("6. (26/10, urgence lenteur) La lecture de fond s'efface quand la pe
   ok(lf.regleLectureFond({ ...base, userId: NICO, mode: 1, personnePublie: false }).actif === true, "sans geste récent : la règle d'avant");
   ok(lf.FEATURES_PUBLICATION.includes("generate_listing") && lf.FEATURES_PUBLICATION.includes("publish") && lf.PAUSE_PUBLICATION_MIN === 10, "les gestes de publication et la fenêtre de 10 min");
   const gpj = readFileSync(join(RACINE, "supabase/functions/get-pending-jobs/index.ts"), "utf8");
-  ok(/let personnePublie = out\.length > 0;/.test(gpj), "un poll qui sert des tâches : pas de lecture de fond");
+  ok(/let personnePublie = out\.length > 0(?: \|\| syncCommandsAnnonces\.some\(\(c\) => c\.devant\))?;/.test(gpj), "un poll qui sert des tâches (ou une relecture avant redépôt) : pas de lecture de fond");
   ok(/\.in\("feature", FEATURES_PUBLICATION/.test(gpj) && /PAUSE_PUBLICATION_MIN \* 60_000/.test(gpj), "le geste récent est relu (usage_logs, 10 min)");
   ok((gpj.match(/personnePublie,\r?\n\s*\}\);/g) ?? []).length === 2, "Vinted ET Beebs reçoivent la pause");
   const bg = readFileSync(join(RACINE, "chrome-extension/background.js"), "utf8");

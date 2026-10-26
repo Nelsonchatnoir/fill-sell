@@ -226,9 +226,10 @@ import { plateformesFigees, rotationFiges, gelSansConstat } from "../_shared/rot
 // La tranche « Poids du colis » d'une annonce Leboncoin relue depuis ses grammes (25/09).
 import { trancheLbcDepuisGrammes } from "../_shared/lbc-poids-tranche.js";
 import { poidsColisDeLAnnonceLbc } from "../_shared/lbc-poids-annonce.js";
-import { frereHorsLigne, retenueLevee, plateformesRetenuesPar, MESSAGE_EN_FILE } from "../_shared/retenue-hors-ligne.js";
+import { frereHorsLigne, retenueLevee, plateformesRetenuesPar, idsQuiRetiennent, MESSAGE_EN_FILE } from "../_shared/retenue-hors-ligne.js";
 import { localisationLbcATaper } from "../_shared/lbc-localisation.js";
 import { candidatesDepuisRetrait, depotPeutEtrePartiDepuis, jugerCandidates, urlsPhotos } from "../_shared/recreation-deja-partie.js";
+import { decisionReleveVerif, motifReleveNonPris, messageReleveNonPris, releveServiDevant } from "../_shared/releve-verif-non-pris.js";
 import { depotPublicationPeutEtrePartiDepuis, candidatesDuDepot, urlsAnnonce, jugerCycleDepots } from "../_shared/depot-sans-numero.js";
 import { corrigerFeuilleLbc } from "../_shared/lbc-feuille-corrigee.js";
 import { BUILD_COLIS_DANS_ENVOI, VERSION_COLIS_DANS_ENVOI, RETENUE_COLIS_ANCIEN_POSTE, envoiColisProuve, messageColisAttendMiseAJour, colisVintedRetenuAuService } from "../_shared/vinted-colis.js";
@@ -2041,7 +2042,10 @@ serve(async (req) => {
     // kind='annonces' en file (une par plateforme), servies aux extensions
     // ≥ 0.6.42 seulement — une plus ancienne ne sait pas relever. Même TTL de
     // 6 h, même purge. Best-effort : jamais un point de panne.
-    let syncCommandsAnnonces: Array<{ id: string; platform: string }> = [];
+    // (26/10, Johan) `devant` : un relevé de VÉRIFICATION avant redépôt (une annonce retirée l'attend pour revenir en
+    // ligne) — l'extension ≥ 0.6.148 le fait en tête de cycle (_shared/releve-verif-non-pris.js). Les plus anciennes
+    // ne lisent que id et platform.
+    let syncCommandsAnnonces: Array<{ id: string; platform: string; declencheur?: string; devant?: boolean }> = [];
     // (05/10) Demande de relevé FRAÎCHE (posée il y a moins de 30 min) : elle
     // passe devant les jobs de ce cycle, comme la sync du dressing (plus bas).
     const relevesFrais = new Set<string>();
@@ -2066,7 +2070,9 @@ serve(async (req) => {
           }
           lues.push(c);
         }
-        syncCommandsAnnonces = lues.map((c) => ({ id: String(c.id), platform: String(c.platform) }));
+        syncCommandsAnnonces = lues.map((c) => ({
+          id: String(c.id), platform: String(c.platform), declencheur: String(c.declencheur ?? ""), devant: releveServiDevant(c.declencheur),
+        }));
         for (const c of lues) {
           const ageCmd = Date.now() - Date.parse(String(c.queued_at ?? ""));
           if (ageCmd < 30 * 60_000) relevesFrais.add(String(c.id));
@@ -5752,7 +5758,7 @@ serve(async (req) => {
         // bouton) sortait les plus récents de la liste. Et les 6 h d'attente se
         // comptent depuis la PREMIÈRE retenue, pas depuis l'essai de la veille.
         const { data: runs } = await userClient.from("vinted_sync_runs")
-          .select("id, status, erreur, items_vus, started_at, finished_at, queued_at")
+          .select("id, status, erreur, items_vus, started_at, finished_at, queued_at, declencheur")
           .eq("user_id", user.id).eq("kind", "annonces").eq("platform", plateforme)
           .order("started_at", { ascending: false, nullsFirst: false }).limit(10);
         const liste = (runs ?? []) as Array<Record<string, unknown>>;
@@ -5777,7 +5783,43 @@ serve(async (req) => {
             );
             continue;
           }
-          const actif = liste.some((r) => r.status === "queued" || r.status === "running");
+          let actif = liste.some((r) => r.status === "queued" || r.status === "running");
+          // ══ (26/10, Johan Désiré) LA RELECTURE SERVIE ET JAMAIS PRISE : RELANCÉE UNE FOIS, PUIS DITE ══════════════
+          // _shared/releve-verif-non-pris.js : servie à un poste qui polle (3 passages, 20 min) sans être prise, elle
+          // est relancée (l'ancienne close « non pris », une neuve posée) ; la relance non prise non plus → needs_user
+          // avec le lien. Jamais de redépôt sans relecture. Seuls les passages qui la SERVENT comptent (un poste absent
+          // n'avance rien : la borne de RELEVE_ATTENTE_MAX_H reste le dernier filet).
+          const verifEnFile = liste.find((r) => r.status === "queued" && releveServiDevant(r.declencheur)) ?? null;
+          const suiviAvant = (pf["releve_verif_suivi"] ?? null) as Record<string, unknown> | null;
+          const decVerif = decisionReleveVerif({
+            run: verifEnFile,
+            servi: !!verifEnFile && syncCommandsAnnonces.some((c) => c.id === String(verifEnFile.id)),
+            suivi: suiviAvant, maintenant: Date.now(),
+          });
+          if (decVerif.suivi && decVerif.suivi !== suiviAvant) pf["releve_verif_suivi"] = decVerif.suivi;
+          if (verifEnFile && decVerif.action !== "attendre") {
+            const suite = decVerif.action === "relancer" ? "relancé" : "dit à la personne (needs_user)";
+            const { data: clos } = await userClient.from("vinted_sync_runs")
+              .update({ status: "expired", finished_at: new Date().toISOString(), erreur: motifReleveNonPris(decVerif.suivi, suite) })
+              .eq("id", String(verifEnFile.id)).eq("status", "queued").select("id");
+            if ((clos ?? []).length) {
+              actif = false;
+              if (decVerif.action === "personne") {
+                await needsUser(messageReleveNonPris(nomPf, j.title), { verdict: "releve_non_pris", essai: susp, releve: String(verifEnFile.id), suivi: decVerif.suivi });
+                continue;
+              }
+              const { data: neuf, error: rErr } = await userClient.from("vinted_sync_runs").insert({
+                user_id: user.id, kind: "annonces", platform: plateforme, status: "queued",
+                declencheur: "serveur:verif_redepot", queued_at: new Date().toISOString(),
+              }).select("id").maybeSingle();
+              const relances = (Number((decVerif.suivi as Record<string, unknown> | null)?.["relances"]) || 0) + 1;
+              pf["releve_verif_suivi"] = neuf
+                ? { run: String((neuf as { id: string }).id), premier_service: null, services: 0, relances, relance_le: new Date().toISOString(), ancien: String(verifEnFile.id) }
+                : { ...(decVerif.suivi ?? {}), relances, relance_le: new Date().toISOString(), relance_refusee: rErr?.message ?? "insertion refusée" };
+              actif = !!neuf;
+              console.log(`[get-pending-jobs] redépôt ${court} (${plateforme}) : relecture ${String(verifEnFile.id).slice(0, 8)} servie ${Number((decVerif.suivi as Record<string, unknown> | null)?.["services"]) || 0} fois sans être prise → RELANCÉE${neuf ? ` (${String((neuf as { id: string }).id).slice(0, 8)})` : ` — refusée : ${rErr?.message ?? "?"}`}`);
+            }
+          }
           if (!actif) {
             const { error: qErr } = await userClient.from("vinted_sync_runs").insert({
               user_id: user.id, kind: "annonces", platform: plateforme, status: "queued",
@@ -5787,7 +5829,9 @@ serve(async (req) => {
           }
           const msgAttente = `On relit tes annonces ${nomPf} avant de redéposer : un essai précédent a peut-être déjà ` +
             "remis ton annonce en ligne, et elle ne doit jamais partir en double. Rien à faire de ton côté.";
-          if (j.error !== msgAttente || !(j.platform_fields as Record<string, unknown> | null)?.["recreation_attente_depuis"]) {
+          const pfAvant = (j.platform_fields as Record<string, unknown> | null) ?? {};
+          if (j.error !== msgAttente || !pfAvant["recreation_attente_depuis"]
+              || JSON.stringify(pfAvant["releve_verif_suivi"] ?? null) !== JSON.stringify(pf["releve_verif_suivi"] ?? null)) {
             await ecrire({ error: msgAttente, platform_fields: pf }, "message d'attente");
           }
           continue;
@@ -12923,7 +12967,7 @@ serve(async (req) => {
         // aucune republication 'captured' (l'attente de 30 min de l'extension
         // la retire de la file).
         const { data: marques } = await adminR.from("cross_post_jobs")
-          .select("id, error, platform_fields")
+          .select("id, platform, error, platform_fields")
           .eq("user_id", user.id).eq("action", "republish").eq("status", "pending")
           .not("platform_fields->retenue_hors_ligne", "is", null)
           .limit(50);
@@ -12943,9 +12987,11 @@ serve(async (req) => {
         // « En file ». Bornée (50), compare-and-swap sur pending, ancien message
         // archivé. Rien n'est servi ni retiré ici.
         if (!hErr) {
-          const idsHorsLigne = new Set(((horsLigne ?? []) as Array<Record<string, unknown>>).map((h) => String(h["id"])));
+          // (26/10, Johan) Par marque : seules les republications hors ligne qui retiennent ENCORE sa plateforme
+          // (une annonce qui attend sa relecture ne retient plus que la sienne — _shared/retenue-hors-ligne.js, règle 3).
           for (const m of ((marques ?? []) as Array<Record<string, unknown>>)) {
             const pfM = (m["platform_fields"] as Record<string, unknown> | null) ?? {};
+            const idsHorsLigne = idsQuiRetiennent(String(m["platform"] ?? ""), (horsLigne ?? []) as Array<Record<string, unknown>>);
             const levee = retenueLevee(pfM, idsHorsLigne, Date.now());
             if (!levee) continue;
             const pfW: Record<string, unknown> = { ...pfM, ...levee.champs };
@@ -12969,6 +13015,7 @@ serve(async (req) => {
             // (15/10) Leboncoin, Beebs et Depop forment UN groupe : une annonce
             // retirée sur l'une retient tout nouveau retrait sur les trois
             // (_shared/retenue-hors-ligne.js). Vinted reste par plateforme.
+            // (26/10, Johan) Sauf une annonce qui attend sa RELECTURE : elle ne retient que sa plateforme.
             const frere = frereHorsLigne(j, (horsLigne ?? []) as Array<Record<string, unknown>>);
             if (!frere) continue;
             retenus.add(String(j.id));
@@ -12998,7 +13045,7 @@ serve(async (req) => {
           for (const frere of ((horsLigne ?? []) as Array<Record<string, unknown>>)) {
             const { data: autres } = await adminR.from("cross_post_jobs")
               .select("id, platform, error, platform_fields")
-              .eq("user_id", user.id).in("platform", plateformesRetenuesPar(String(frere["platform"]))).eq("action", "republish")
+              .eq("user_id", user.id).in("platform", plateformesRetenuesPar(String(frere["platform"]), frere)).eq("action", "republish")
               .eq("status", "pending").eq("platform_fields->>republish_step", "captured")
               .neq("id", String(frere["id"])).limit(50);
             const titre = String(frere["title"] ?? "").split("\n")[0].replace(/\s+/g, " ").trim().slice(0, 80);
@@ -13275,7 +13322,8 @@ serve(async (req) => {
     // (26/10, urgence lenteur) La personne publie (un geste tracé il y a moins de 10 min) ou ce poll lui sert des tâches :
     // aucune lecture de fond (Vinted, Beebs) — dans l'extension elle tient le verrou de flux en s'espaçant de 20 à 60 s,
     // et tout ce que l'écran demande attendait derrière (75 s et 97 s mesurées le 26/10). Illisible → pas de pause.
-    let personnePublie = out.length > 0;
+    // (26/10, Johan) Une relecture servie DEVANT (vérification avant redépôt) : rien de fond ne passe avant elle.
+    let personnePublie = out.length > 0 || syncCommandsAnnonces.some((c) => c.devant);
     if (!personnePublie && !includeProcessing && !includeNeedsUser && versionAuMoins(version, LECTURE_FOND_VERSION_MIN)) {
       try {
         const { data: gestes } = await userClient.from("usage_logs").select("id").eq("user_id", user.id)
@@ -13343,7 +13391,8 @@ serve(async (req) => {
     // pendant une attente anti-robot d'un job Beebs du compte. coin_config.lecture_fond_mode_beebs (absent = 1 : le poste
     // pilote, en mesure). Lectures bornées : 200 annonces, deux lectures de fiches par identifiants. Illisible → rien servi.
     let lectureFondBeebs: Record<string, unknown> | null = null;
-    if (!includeProcessing && !includeNeedsUser && versionAuMoins(version, LECTURE_FOND_BEEBS_VERSION_MIN)) {
+    if (!includeProcessing && !includeNeedsUser && versionAuMoins(version, LECTURE_FOND_BEEBS_VERSION_MIN)
+        && !syncCommandsAnnonces.some((c) => c.devant)) {
       try {
         const maintenantLb = Date.now();
         const [cfgLb, profLb, refusLb, luesLb, pauseLb] = await Promise.all([

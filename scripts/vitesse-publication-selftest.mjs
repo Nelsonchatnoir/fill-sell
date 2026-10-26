@@ -48,7 +48,7 @@ console.log("3. L'extension ne fait plus attendre l'écran derrière son travail
   const i = bg.indexOf("await recoverMissingListingUrls(session)");
   ok(i > 0 && /if \(jobFlowWaiters > 0 && !majPlanifiee\) \{[\s\S]{0,400}repollApresCycle = true;\s*return;\s*\}\s*$/.test(bg.slice(i - 900, i)), "la maintenance de fond passe après une demande de l'écran");
   const gpj = lire("supabase/functions/get-pending-jobs/index.ts");
-  ok(/let personnePublie = out\.length > 0;/.test(gpj) && /personnePublie,\n\s*\}\);/.test(gpj), "serveur : aucune lecture de fond servie pendant que la personne publie (toutes versions ≥ 0.6.144)");
+  ok(/let personnePublie = out\.length > 0(?: \|\| syncCommandsAnnonces\.some\(\(c\) => c\.devant\))?;/.test(gpj) && /personnePublie,\n\s*\}\);/.test(gpj), "serveur : aucune lecture de fond servie pendant que la personne publie (toutes versions ≥ 0.6.144)");
 }
 
 console.log(`\n${rouges === 0 ? "✓" : "✗"} vitesse-publication : ${verts} contrôles verts, ${rouges} rouges`);

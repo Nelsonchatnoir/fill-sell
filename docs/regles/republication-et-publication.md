@@ -7,6 +7,7 @@
 
 ## Sommaire
 
+- 26/10 nuit — la relecture avant redépôt passe devant, relancée puis dite ; en relecture, une annonce ne retient que sa plateforme (en fin de fichier)
 - 17/10 — « introuvable » sur l'annonce exacte (2 relevés complets) ; une republication naît avec son lien et garde sa copie (en fin de fichier)
 - 17/10 — la limite du jour se dit en entier : minuit, « environ N jours » (exception à la règle du 16/10) (en fin de fichier)
 - 16/10 nuit — une seule vérité sur les attentes : six mots d'état, une source, aucun temps estimé (en fin de fichier)
@@ -812,3 +813,25 @@
   coin_config.vinted_reprise_restriction_jour (défaut 10) par jour de Paris, une à la fois, 45 min au moins entre deux.
   Plafond général du parc : NON posé — la mesure (6 comptes restreints en 60 jours ; 149 comptes non restreints au-dessus
   de 50 publications un jour) ne montre pas de seuil de rythme ; décision à Nico.
+
+## 26/10 (nuit) — la relecture avant redépôt ne laisse jamais une annonce hors ligne des heures (Johan Désiré)
+- **Cas** : « Jean Lee Carol Western » retirée de Leboncoin (15:49), essai de recréation coupé à 16:33 sur la page
+  /options (0.6.144). La garde anti-doublon a posé un relevé `serveur:verif_redepot` à 17:08 : servi trois fois, jamais
+  pris. Prouvé : l'ordinateur dort et se réveille une minute toutes les 16 à 29 min (un minuteur de 45 s de
+  l'extension n'a pas sonné pendant 17 à 28 min), et l'extension ne lançait un relevé servi qu'en FIN de cycle, derrière
+  les polls que l'alarme empilait. Pendant ce temps, Beebs (24) et Depop (29) restaient retenus par le groupe.
+- **Règle 1 — devant** : un relevé de vérification est servi `devant: true` (`_shared/releve-verif-non-pris.js`) ;
+  l'extension ≥ 0.6.148 le fait en TÊTE de cycle (avant la lecture d'origine et les tâches), puis repolle : le serveur
+  juge tout de suite. Rien de fond (lecture Vinted, Beebs) n'est servi tant qu'il attend. Un seul poll attend le verrou
+  à la fois (l'alarme ne les empile plus).
+- **Règle 2 — relancée, puis dite** : servi à un poste qui POLLE (3 passages, 20 min au moins) sans être pris → relancé
+  une fois (l'ancien clos `[non pris]`, un neuf posé) ; la relance non prise non plus → needs_user avec le titre, quoi
+  regarder et « relance d'un clic ». Un poste absent n'avance rien (seuls les passages qui servent comptent) : la borne
+  de 6 h reste le dernier filet. Suivi : `platform_fields.releve_verif_suivi`.
+- **Règle 3 — sa plateforme seule** : une annonce qui attend sa relecture (`depotPeutEtrePartiDepuis` non nul) ne retient
+  plus le groupe Leboncoin / Beebs / Depop (`_shared/retenue-hors-ligne.js`, `attendSaRelecture`, `idsQuiRetiennent`) :
+  les autres plateformes repartent, leurs marques se lèvent au passage suivant. Sur SA plateforme, « une seule annonce
+  hors ligne » tient toujours.
+- ⛔ Inchangé : jamais un redépôt sans relevé complet postérieur à l'essai (seul le verdict « aucune » rend le job à la
+  file) ; identité certaine → rattachée ; doute → needs_user avec les liens.
+- Selftests : `releve-verif-non-pris`, `retenue-hors-ligne`. Rapport : `docs/enquetes/johan-relecture-2610/RAPPORT.md`.

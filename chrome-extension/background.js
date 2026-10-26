@@ -3144,14 +3144,21 @@ let keepaliveActif = false;
 // `undefined` → la garde reste ALLUMÉE : on n'éteint jamais par ignorance.
 let prevolCopieActif = true;
 
+// (26/10, 0.6.148 — Johan Désiré) UN SEUL POLL EN ATTENTE DU VERROU. L'alarme (2 min) ajoutait un poll à la file du
+// verrou à CHAQUE sonnerie, même quand un cycle était déjà bloqué (ordinateur en veille, onglet figé) : au réveil, une
+// pile de polls passait AVANT tout ce qui avait été mis en file après eux — dont le relevé servi, posé en fin de cycle,
+// jamais atteint. Un poll déjà en attente suffit (il relira le serveur en démarrant) : les appels suivants le
+// rejoignent au lieu d'en empiler un autre. Le poll en cours, lui, n'est jamais concerné.
+let pollEnAttenteDuVerrou = null;
 function pollAndProcessJobs() {
-  const p = withJobFlowLock("poll", pollAndProcessJobsUnlocked);
+  if (pollEnAttenteDuVerrou) return pollEnAttenteDuVerrou;
+  const p = withJobFlowLock("poll", () => { pollEnAttenteDuVerrou = null; return pollAndProcessJobsUnlocked(); });
   // ⚠️ La commande de sync distante s'exécute APRÈS libération du verrou.
   // syncDressingVinted en réclame un à son tour : l'appeler depuis l'intérieur
   // du poll serait un auto-blocage (jobFlowTail attendrait la sync, qui
   // attendrait la fin du poll). Fire-and-forget : la sync dure des minutes et
   // rend compte dans vinted_sync_runs, le poll n'a pas à l'attendre.
-  return p.finally(() => {
+  const suite = p.finally(() => {
     const cmd = commandeSyncEnAttente;
     commandeSyncEnAttente = null;
     // ── Mise à jour en attente : on retente à CHAQUE fin de cycle ───────────
@@ -3193,6 +3200,8 @@ function pollAndProcessJobs() {
     traiterCommandeSyncDistante(cmd).catch((e) =>
       console.error("[sync-dressing][distant]", e?.message ?? e)).finally(lancerRelevesAnnonces);
   });
+  pollEnAttenteDuVerrou = suite;
+  return suite;
 }
 
 // ── Reprise des jobs orphelins bloqués en 'processing' (2026-07-12) ───────────
@@ -3795,6 +3804,26 @@ async function pollAndProcessJobsUnlocked() {
   }
 
   console.log(`[background] ${jobs.length} job(s) pending`);
+
+  // ══ (26/10, 0.6.148 — Johan Désiré) LA RELECTURE QUI REMET UNE ANNONCE EN LIGNE PASSE EN TÊTE DE CYCLE ══════════
+  // Une annonce retirée attend la relecture de « Mes annonces » avant tout redépôt (garde anti-doublon du serveur) :
+  // le serveur la sert `devant: true` (_shared/releve-verif-non-pris.js). Elle partait en FIN de cycle, après les
+  // tâches, les lectures de fond, la messagerie et le veilleur, et derrière les polls empilés : sur un ordinateur qui
+  // dort et ne se réveille qu'une minute (Johan, 26/10), jamais atteinte — l'annonce restait hors ligne. Elle part
+  // ICI, avant toute autre tâche (un relevé Leboncoin par l'adresse : ~15 s), puis un poll repart juste après le
+  // cycle : le serveur juge la relecture et sert la remise en ligne (ou la rattache). Même chemin que d'habitude
+  // (lancerRelevePlateforme, la commande réclamée en base) : rien de neuf côté garde, jamais un redépôt sans elle.
+  const relecturesDevant = commandesAnnoncesEnAttente.filter((c) => c?.devant === true && c?.id && c?.platform);
+  if (relecturesDevant.length) {
+    commandesAnnoncesEnAttente = commandesAnnoncesEnAttente.filter((c) => !relecturesDevant.includes(c));
+    await demanderEveil(relecturesDevant.length, null, "relecture(s) avant redépôt").catch(() => {});
+    for (const cmd of relecturesDevant) {
+      const r = await lancerRelevePlateforme({ platform: cmd.platform, declencheur: "serveur", runId: cmd.id })
+        .catch((e) => ({ ok: false, reason: "erreur", message: String(e?.message ?? e) }));
+      console.log(`[releve][${cmd.platform}] relecture avant redépôt ${cmd.id} (en tête de cycle) → ${r?.ok ? "faite" : (r?.reason ?? "?")}`);
+    }
+    repollApresCycle = true;
+  }
 
   // (25/10, 0.6.143 — Louis) La lecture d'origine que la personne attend passe AVANT les tâches du cycle.
   let lectureOrigineDevant = false;
