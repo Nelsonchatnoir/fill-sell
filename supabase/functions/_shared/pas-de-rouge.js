@@ -163,14 +163,20 @@ export function empreinteTexteServi(titre, description) {
 
 /**
  * La décision pour un refus de contenu Leboncoin, pure.
- * @param {{ action?: string, brut?: string, pf?: any, empreinte?: string|null, nettoyageModifie?: boolean }} arg
- *   empreinte : celle du texte qui serait servi MAINTENANT ; nettoyageModifie : ce texte diffère du texte brut du job.
+ * @param {{ action?: string, brut?: string, pf?: any, empreinte?: string|null, nettoyageModifie?: boolean, vientDEtreRefusee?: boolean }} arg
+ *   empreinte : celle du texte qui serait servi MAINTENANT ; nettoyageModifie : ce texte diffère du texte brut du job ;
+ *   vientDEtreRefusee : l'empreinte est celle du texte que Leboncoin VIENT de refuser (update-job-status).
  * @returns {{ verdict: "reprise"|"a_toi"|"attente", statut: "pending"|"needs_user", motif: string, message: string, source?: string, champ?: any, dansMinutes?: number, pf: any }}
  */
-export function decisionRefusContenuLeboncoin({ action = "publish", brut = "", pf = {}, empreinte = null, nettoyageModifie = false } = {}) {
+export function decisionRefusContenuLeboncoin({ action = "publish", brut = "", pf = {}, empreinte = null, nettoyageModifie = false, vientDEtreRefusee = false } = {}) {
   const { mots, champs } = motsRefusLeboncoin(brut);
   const prec = pf?.lbc_refus_contenu && typeof pf.lbc_refus_contenu === "object" ? pf.lbc_refus_contenu : null;
-  const essayees = Array.isArray(prec?.empreintes) ? prec.empreintes.map(String).slice(-5) : [];
+  // (26/10 nuit, point 5) Au retour d'un refus (update-job-status), le texte servi EST celui que Leboncoin vient de
+  // refuser : il compte parmi les textes refusés. Sans ça, un second refus après une relance au texte changé
+  // (liste des mentions allongée, fiche corrigée) renvoyait UNE fois ce même texte — un refus de plus sur le compte
+  // Leboncoin de la personne, pour rien.
+  const essayees = [...(Array.isArray(prec?.empreintes) ? prec.empreintes.map(String) : []),
+    ...(vientDEtreRefusee && empreinte ? [String(empreinte)] : [])].filter((e, i, t) => t.indexOf(e) === i).slice(-5);
   const reprises = Number(prec?.reprises) || 0;
   const le = new Date().toISOString();
   const motsTexte = mots.length ? mots.map((x) => `« ${x} »`).join(" · ") : "un mot de l'annonce ne respecte pas ses règles";
@@ -206,7 +212,10 @@ export function decisionRefusContenuLeboncoin({ action = "publish", brut = "", p
   // (source lbc_moderation, « FillSell s'en occupe »), le support est prévenu (handler-watch), la fiche ne change
   // pas, rien n'est renvoyé avec le même texte. Seul le TITRE refusé reste une question (un mot nommé, un geste).
   return {
-    verdict: "attente", statut: "needs_user", motif: "lbc_moderation", source: "lbc_moderation", pf: pfMarque,
+    // (26/10 nuit) Un refus NEUF (remonté par l'extension) réarme l'alerte au support (handler-watch lit
+    // lbc_moderation_alerte_le nul) : après une relance au texte adapté, un second refus ne passe jamais en silence.
+    verdict: "attente", statut: "needs_user", motif: "lbc_moderation", source: "lbc_moderation",
+    pf: vientDEtreRefusee ? { ...pfMarque, lbc_moderation_alerte_le: null } : pfMarque,
     message:
       `Leboncoin a refusé cette annonce à la modération (${motsTexte}). Rien n'a été publié. ` +
       "En pause — FillSell s'en occupe : l'équipe est prévenue et adapte le texte Leboncoin de cette annonce (ta fiche ne change pas). Rien à faire de ton côté.",
@@ -483,6 +492,8 @@ function classerEchecSansRegleRetrait(arg) {
       action, brut: String(arg.brut ?? "") || t, pf,
       empreinte: typeof arg.empreinteTexteServi === "string" ? arg.empreinteTexteServi : null,
       nettoyageModifie: arg.nettoyageModifie === true,
+      // (26/10 nuit, point 5) classerEchec est appelé au RETOUR d'un refus : l'empreinte est celle du texte refusé.
+      vientDEtreRefusee: typeof arg.empreinteTexteServi === "string",
     });
   }
 

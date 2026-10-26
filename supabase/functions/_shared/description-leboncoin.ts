@@ -198,7 +198,36 @@ export function hashtagsARetirer(texte: string, contexte: ContexteLeboncoin = {}
 }
 
 
+// ═══════════════════════════════════════════════════════════════════════════
+// (26/10 nuit, point 5) CE QUE LA MODÉRATION DE LEBONCOIN REFUSE DANS LE TEXTE — LISTE FERMÉE, PROUVÉE
+// ═══════════════════════════════════════════════════════════════════════════
+// xxewwer, 52b5ec71 « WWE 2K20 – PS4 » (25/10) : adsubmit 403 sur le champ body, « Nous refusons ce type de bien ou
+// service sur leboncoin.fr » · « Le bien que vous essayez de vendre ne respecte pas nos règles de diffusion », alors
+// que la même description est en ligne sur Vinted, eBay et Beebs. Rejoué le 26/10 sur le compte de Nico (fiches TEST
+// à 999 €, rubrique Électronique › Jeux vidéo comme le client, son texte) :
+//   T1 le texte tel quel ...................................................... REFUSÉ (mêmes mots)
+//   T2 sans « Document publicitaire WWE Network », « Carte promotionnelle WWE SuperCard »,
+//      « Documents promotionnels … » ........................................... accepté
+//   T3 avec « Document publicitaire WWE Network » seule .......................... accepté
+//   T4 avec « Carte promotionnelle WWE SuperCard » seule ......................... REFUSÉ (mêmes mots)
+//   T5 avec « Carte promotionnelle » seule (sans « WWE SuperCard ») .............. accepté
+//   T6 le texte que cette règle sert désormais pour 52b5ec71 ..................... accepté
+// « WWE » passe (T2, T3) : c'est « SuperCard » (un jeu mobile WWE, dont la carte porte un code) qui est refusé.
+// Mesuré en base (90 j, dépôts Leboncoin) : « supercard » 0 accepté ; « promotionnel » 16 acceptés (3 comptes),
+// « publicitaire » 25 (6 comptes) — ces mots-là ne sont PAS visés.
+// CE QU'ON RETIRE : la PHRASE qui porte le terme (même découpe que les mentions de site : « ✅ Carte promotionnelle
+// WWE SuperCard. » part en entier), dans la copie Leboncoin SERVIE — jamais la fiche, jamais le titre (le refus vise
+// le champ body ; un titre refusé reste une question, _shared/pas-de-rouge.js). Toute addition se prouve d'abord :
+// un essai sur le compte de Nico (le texte tel quel, puis sans la phrase) et un comptage en base.
+export const TERMES_MODERATION_LEBONCOIN: readonly string[] = [
+  "supercard",           // prouvé le 26/10 (T4 refusé, T5 accepté)
+];
+
 const minuscule = (s: string) => s.toLowerCase();
+const termesModerationDans = (s: string): string[] => {
+  const bas = minuscule(s);
+  return TERMES_MODERATION_LEBONCOIN.filter((x) => bas.includes(x));
+};
 const termesDans = (s: string): string[] => {
   const bas = minuscule(s);
   const t = TERMES_SITES_LEBONCOIN.filter((x) => bas.includes(x));
@@ -207,16 +236,18 @@ const termesDans = (s: string): string[] => {
   return t;
 };
 
-function nettoyerLigne(ligne: string, termes: Set<string>): { ligne: string; retires: number } {
+// (26/10 nuit, point 5) Le détecteur est un paramètre : la même découpe sert aux mentions de site et aux termes
+// que la modération refuse (TERMES_MODERATION_LEBONCOIN) ; les adresses web ne concernent que les sites.
+function nettoyerLigne(ligne: string, termes: Set<string>, detecter: (s: string) => string[] = termesDans, adresses = true): { ligne: string; retires: number } {
   let retires = 0;
   // 1. hashtags entiers
   let l = ligne.replace(/#[^\s#]+/g, (h) => {
-    if (termesDans(h).length) { retires++; termesDans(h).forEach((t) => termes.add(t)); return ""; }
+    if (detecter(h).length) { retires++; detecter(h).forEach((t) => termes.add(t)); return ""; }
     return h;
   });
   // 3. adresses web (mot seul)
-  l = l.replace(ADRESSE_WEB, () => { retires++; termes.add("adresse web"); return ""; });
-  if (!termesDans(l).length) return { ligne: l, retires };
+  if (adresses) l = l.replace(ADRESSE_WEB, () => { retires++; termes.add("adresse web"); return ""; });
+  if (!detecter(l).length) return { ligne: l, retires };
   // 2. phrases : segments entre délimiteurs
   const parts = l.split(DELIM); // [seg, delim, seg, delim, …]
   const garder: boolean[] = parts.map(() => true);
@@ -224,7 +255,7 @@ function nettoyerLigne(ligne: string, termes: Set<string>): { ligne: string; ret
   const vide = (s: string | undefined) => !s || !s.trim();
   for (let i = 0; i < parts.length; i += 2) {
     const seg = parts[i];
-    const trouves = termesDans(seg);
+    const trouves = detecter(seg);
     if (!trouves.length) continue;
     trouves.forEach((t) => termes.add(t));
     garder[i] = false; retires++;
@@ -431,11 +462,12 @@ export function nettoyerSeulement(description: string, contexte: ContexteLebonco
   const original = String(description ?? "");
   try {
     const aSites = termesDans(original).length > 0;
+    const aModeration = termesModerationDans(original).length > 0;
     const { marques, plafonnes } = hashtagsARetirer(original, contexte);
     const hashtagsRestants = new Set((original.match(/#[^\s#]+/g) ?? []).filter((h) => !marques.has(h) && !plafonnes.has(h))).size;
     const motsClesLignes = original.split(/\r?\n/).reduce((n, l) => n + elementsMotsCles(l), 0);
     const motsClesEnTrop = motsClesLignes > 0 && hashtagsRestants + motsClesLignes > 5;
-    if (!aSites && !marques.size && !plafonnes.size && !motsClesEnTrop) {
+    if (!aSites && !aModeration && !marques.size && !plafonnes.size && !motsClesEnTrop) {
       return { texte: original, modifiee: false, termes: [], retires: 0, vide: false, marques: [], plafonnes: 0 };
     }
     const termes = new Set<string>();
@@ -445,6 +477,11 @@ export function nettoyerSeulement(description: string, contexte: ContexteLebonco
       // (15/10 soir) La ligne de mots-clés au-delà du plafond part en entier.
       if (motsClesEnTrop && elementsMotsCles(ligne) > 0) { retires += elementsMotsCles(ligne); return null; }
       const r = aSites ? nettoyerLigne(ligne, termes) : { ligne, retires: 0 };
+      // (26/10 nuit, point 5) La phrase qui porte un terme que la modération refuse part, même découpe.
+      if (aModeration) {
+        const m = nettoyerLigne(r.ligne, termes, termesModerationDans, false);
+        r.ligne = m.ligne; r.retires += m.retires;
+      }
       retires += r.retires;
       // Hashtags de marque tierce et hashtags au-delà du plafond : le MOT
       // entier, rien d'autre (les hashtags de sites sont déjà partis plus haut).

@@ -1,6 +1,40 @@
 # Nuit du 25 au 26/10 — refonte de la publication en lot + « zéro rouge de notre fait » (heure de Paris)
 
-Prompt de nuit de Nico (25/10, 22:00). Ce fichier se remplit point par point ; le résumé pour Nico est en tête à la fin.
+Prompt de nuit de Nico (25/10, 22:00).
+
+## En tête, pour Nico
+- **Maquettes** : https://fillsell.app/demo/lot (ton compte seulement) · page de présentation :
+  https://claude.ai/artifact/W2w4oFZpoSPR2irSG27oxB. **Le design B « Par question » est en ligne** (web + OTA 2.9.118).
+  Ton lot rejoué : **11 questions bloquantes → 8**, dont 7 en un geste ; reste à taper le Modèle du téléphone Samsung.
+- **0.6.144 : PAS cassée** (28 comptes, 0 échec de son fait, jobs réussis avant/après comparés — § 15).
+- **Doublons** : aucun né d'une republication ni d'une publication rejouée depuis le 24/10. Deux fiches portent deux
+  annonces Leboncoin en ligne (la leur + celle de FillSell), nées AVANT cette nuit : PAUGUES (fiche 1792686704185,
+  22/10) et kevin pro louel (fiche 1792781614560, 23/10) — rien retiré, à trancher.
+- **IPRoyal** : prolongé jusqu'au **25/11/2026 11:19**, **5,40 $** payés sur le solde (16,00 → 10,60 $).
+- **Extension 0.6.146 — UN zip, prêt, seul dans son dossier** :
+  `C:\Users\nicol\fill-and-sell\build\CWS-0.6.146-A-TELEVERSER\fillsell-extension-0.6.146-ebdc605-cws.zip`
+  (596 231 octets, sha256 `ced42944218bf22dd358248412b25fb407c5989f5c0442a01fa58b2e13b4fa0c`, manifest **0.6.146** relu
+  dans le zip, BUILD_ID `2026-10-26T00:53:28Z+ebdc605`). Contient le pilote Beebs de la 0.6.145 (éteint chez les
+  autres : `coin_config.lecture_fond_mode_beebs` absent). Le zip 0.6.145 est rangé dans `build/CWS-PERIMES/`.
+  À faire par toi : zipper rien, juste téléverser ce fichier sur le Chrome Web Store et « Envoyer pour examen ». Sur ton
+  poste (dossier non empaqueté), « Recharger » dans chrome://extensions pour tester la 0.6.146.
+- **Décisions à prendre (rien fait sans toi)** : la migration « mail de vente eBay » (§ 6, feu vert NOMMÉ) ; la Peluche
+  (mail « constatée » ou trace) ; le port de remplissage pour la une-passe Vinted (§ 2a) ; le retrait automatique phrase
+  par phrase sur Leboncoin (§ 5) ; hors quota des 5 eBay rouverts (§ 7) ; la valeur Beebs « 22,6 mm » de la bague
+  d'Elodie (§ 11) ; « rue = ville » acceptée par Beebs sur une rue de commerce (§ 14) ; une borne d'horloge de 72 h pour
+  « introuvable » (§ 8).
+- Statut par point : 0 ✅ · 1 ✅ (refonte B + défauts de fond) · 2 ✅ alerte et phrase / 2a filet extension non fait ·
+  3 ✅ (Thibault : en ligne dès que son poste aura la 0.6.146) · 4 ✅ (0.6.146) · 5 ✅ (mot refusé PROUVÉ : « SuperCard »,
+  règle en ligne, 52b5ec71 relancé une fois) ·
+  6 ⏸ migration préparée · 7 ✅ (5 articles rouverts) · 8 ✅ · 9 ✅ · 10 ✅ · 11 ✅ · 12 ✅ · 13 ✅ OTA 2.9.118 · 14 ✅ ·
+  15 ✅ (+ mur du poste corrigé) · 16 ✅ sauf bordereau (aucune vraie commande).
+- Mis en ligne : get-pending-jobs **v291**, handler-watch **v133**, update-job-status **v151**, ebay-oauth-callback
+  **v12**, ebay-api-worker **v99** (verify_jwt relus avant/après, inchangés) ; web au push ; OTA 2.9.118. Puis à 03:15
+  (point 5, « SuperCard ») : get-pending-jobs **v292** (verify_jwt true), update-job-status **v152** et handler-watch
+  **v134** (verify_jwt false), relus avant/après. Aucun mail
+  client, rien chez Stripe, l'interrupteur `republish_rythme_par_plateforme` reste éteint, les 8 vieux échecs du stock
+  pas touchés.
+
 
 ## 0. Proxy IPRoyal — FAIT
 - Commande **#83578416** (ISP Dedicated, France, 1 IP, 30 jours : la même offre et le même compte qu'au 26/09) prolongée
@@ -142,10 +176,36 @@ Prompt de nuit de Nico (25/10, 22:00). Ce fichier se remplit point par point ; l
   (source `lbc_moderation`, état « en pause », cause « nous »), le support reçoit une alerte par job. Le titre seul
   refusé reste une question (un mot nommé, un geste). 52b5ec71 passe dans cette pause au prochain passage de
   handler-watch. Selftest neuf `lbc-moderation` (17 contrôles).
-- Reste : trouver la phrase par un essai sur le compte Leboncoin de Nico (le texte tel quel ; sans les deux encarts ;
-  un encart à la fois), puis la liste fermée dans `_shared/description-leboncoin.ts`, puis UNE relance de 52b5ec71.
-  **Option à trancher par Nico** : un retrait automatique phrase par phrase (au plus 3 reprises — chaque refus compte
-  sur le compte Leboncoin de la personne).
+- **PROUVÉ le 26/10 (02:29 → 03:10) sur le compte Leboncoin de Nico** — fiches TEST à 999 €, rubrique Électronique ›
+  Jeux vidéo comme le client (🎮 en tête du titre), son texte précédé d'une ligne TEST :
+  T1 tel quel → **REFUSÉ** (mêmes mots, et la nouvelle pause « FillSell s'en occupe » dès le 1er refus) ; T2 sans
+  « Document publicitaire WWE Network », « Carte promotionnelle WWE SuperCard », « Documents promotionnels » → accepté ;
+  T3 avec « Document publicitaire WWE Network » seule → accepté ; T4 avec « Carte promotionnelle WWE SuperCard »
+  seule → **REFUSÉ** ; T5 « Carte promotionnelle. » sans « WWE SuperCard » → accepté ; T6 = le texte EXACT que FillSell
+  sert désormais pour 52b5ec71 → accepté. **Le mot refusé est « SuperCard »** (le jeu mobile WWE ; sa carte porte un
+  code) — « WWE », « promotionnel(le) », « publicitaire » passent (mesuré en base sur 90 j : 16 et 25 dépôts acceptés).
+- Corrigé à la règle : `TERMES_MODERATION_LEBONCOIN` (liste fermée, prouvée, `_shared/description-leboncoin.ts`) —
+  la PHRASE qui porte le terme part de la copie Leboncoin servie, même découpe que les mentions de site ; jamais la
+  fiche, jamais le titre. Et deux trous fermés dans `_shared/pas-de-rouge.js` : un second refus après une relance au
+  texte changé renvoyait UNE fois ce même texte (un refus de plus sur le compte de la personne) — il passe maintenant
+  en pause aussitôt ; et ce refus neuf réarme l'alerte au support (sinon une pause relancée retombait en silence).
+  Selftests : `description-leboncoin` (105), `lbc-moderation` (24).
+- En ligne à 03:15 : get-pending-jobs v292, update-job-status v152, handler-watch v134 (suite complète verte : 451
+  selftests). 52b5ec71 relancé UNE fois à 03:16 par `scripts/reparations/20261026_relance_52b5ec71_supercard.sql`
+  (sauvegarde `_backup_2610_relance_52b5ec71` + inverse) : en file, il part quand le poste de la personne interroge.
+  À vérifier au prochain check : publié, ou retombé en pause (alerte support réarmée) — jamais renvoyé tel quel.
+- **Option toujours à trancher par Nico** : un retrait automatique phrase par phrase pour un refus dont le mot n'est
+  pas encore dans la liste (au plus 3 reprises — chaque refus compte sur le compte Leboncoin de la personne).
+- Vu pendant les essais, **cause NON prouvée** (rien corrigé) : (a) une fiche TEST dont la photo est hébergée chez Beebs
+  (`cdn.beebs.app`, l'annonce Beebs retirée le 11/10, l'adresse répond 200 d'ici) : la page de dépôt Leboncoin n'a pas
+  pu la charger, et le message promet un rapatriement automatique alors que `photos_a_rapatrier` reste faux ; (b) juste
+  après un changement de photos de la fiche (1791299785299, 02:44), le lot a proposé un texte réécrit d'après la photo
+  (« Call of Duty … #activision #callofduty #ps4 #jeuvidéo ») au lieu du texte de la fiche marqué « tapé à la main », et
+  l'a enregistré dans `fiches_annonce` (02:45:45) ; à la préparation suivante (02:50), le bon texte est revenu. Piste,
+  NON prouvée : photos changées → copies régénérées d'après la photo, et le texte du vendeur (reprise de la fiche,
+  `champsAReprendreDeLaFiche`) n'a pas repris la main ce coup-là. Si c'est ça, un vendeur qui change ses photos puis
+  publie en lot peut voir partir un texte qui n'est pas le sien. À rejouer avant tout correctif : fiche avec une
+  `fiches_annonce`, description tapée à la main, changer une photo, lot, lire « Le texte qui part ».
 
 ## 7. eBay : « États-Unis » puis « pas prêt » (Elodie82) — la vérité, et les 5 articles qui repartent seuls
 - PROUVÉ : la détection était juste, mais le COMPTE a changé : « États-Unis » valait pour @echa_5 (site lu 4 fois,
@@ -163,7 +223,11 @@ Prompt de nuit de Nico (25/10, 22:00). Ce fichier se remplit point par point ; l
   envoyé à eBay) ; elles partiront dès que ses conditions de vente existeront chez eBay. Aucun message envoyé.
 
 ## 15. Contrôles du 25/10 au soir
-- 0.6.144 : PAS CASSÉE (voir la tête du rapport). ISBN « 0000000000 » : la retenue se lève avec la 0.6.144 — Rég
+- 0.6.144 : PAS CASSÉE. Jobs traités par elle de 19:56 à 22:43 : Vinted republish 13 réussis (1 question, 25 en
+  reprise, 2 en cours, réussis depuis), Leboncoin republish 9/9, Depop publish 10/10, Beebs 2/2, eBay 1/1, 0 failed ;
+  avant, en 0.6.141 (mêmes comptes, depuis le 24/10) : Vinted republish 242 ok / 2 questions / 15 reprises, Vinted
+  publish 193/197, Leboncoin 53/54, Beebs 28/30, Depop 0/4. La seule erreur neuve (24 jobs de Vincent A.) vient d'un
+  second poste sans session Vinted — chemin d'avant la 0.6.144, corrigé ci-dessous. ISBN « 0000000000 » : la retenue se lève avec la 0.6.144 — Rég
   (« Moby Dick » publiée à 22:17:39) et Vincent A. (29 retenues levées de 21:31 à 21:35, 6 publiées). Règle juste.
 - Alizee : ce n'est pas l'extension — elle a mis sa file EN PAUSE depuis l'app à 20:03:06, et son poste s'est éteint
   juste après ; rien ne part tant qu'elle ne la reprend pas (le bouton est dans sa file).
@@ -243,3 +307,54 @@ Prompt de nuit de Nico (25/10, 22:00). Ce fichier se remplit point par point ; l
   l'appliquer dans le fichier. Aucun mail rétroactif.
 - Le reste (410 sur 495 ventes sans mail) suit une règle écrite : ventes déclarées par la personne (316), articles non
   suivis par FillSell (58), rattrapages de masse (17), Leboncoin (15)…
+
+## 3. Champs exigés à la recréation (Thibault, boncoin59300)
+- **boncoin59300 (Beebs, copie sans rayon)** : PROUVÉ — la copie venait d'un job de suivi du relevé, sans rayon, alors
+  que l'index public de Beebs le dit. Corrigé (commit du point 3, get-pending-jobs) : le rayon de l'index (identifiants
+  à un seul chemin, 257) se reprend avant tout retrait ; tracé. a19be901 a reçu son rayon.
+- **Thibault (dca41766, Vinted, téléphone Samsung)** : PROUVÉ — l'annonce d'origine portait un modèle de REPLI (« other »),
+  que la copie jetait ; l'annonce a été RETIRÉE le 25/10 à 10:29, puis 4 recréations refusées (400 model). Corrigé : la
+  capture garde ce modèle, le serveur le verse sur une copie sans modèle (seulement pour un poste ≥ 0.6.146, qui sait
+  choisir une ligne de repli ; jamais une boucle de 400), l'extension choisit le repli et relit la valeur, le modèle
+  exigé se compte avant tout retrait. ⚠️ La correspondance « other » ↔ « Mon modèle ne figure pas dans la liste » est une
+  HYPOTHÈSE (aucune preuve en base : 2 captures « other », toutes deux CETTE annonce). **Son annonce reste hors ligne tant
+  que son poste n'a pas la 0.6.146** (aujourd'hui 0.6.141) ; elle se recrée seule ensuite (rien d'écrit à la main). Rien
+  n'est perdu : la copie et la capture sont en base.
+- Non fait (dit) : le relevé des modèles Vinted marque par marque (pour proposer une vraie liste Samsung) ; le contrôle
+  des champs requis rejoué juste avant le retrait (dernier filet côté extension).
+
+## 4. La marque Vinted « que Vinted ne crée plus » — règle retirée
+- PROUVÉ : c'était un constat manuel du 03/10, démenti le 17/10 (test réel « Paris 2024 ») puis en prod (8 dépôts des
+  20-21/10 passés par « Utiliser … comme marque ») ; et depuis la 0.6.134, la chaîne de repli ne jouait pas quand Vinted
+  avait PRÉ-REMPLI une autre marque d'après les photos. Corrigé (0.6.146) : une marque déjà posée et égale suffit ;
+  sinon, même par-dessus un pré-remplissage, la ligne du catalogue ou « Utiliser … comme marque » est attendue jusqu'à
+  30 s, cliquée, validée, relue ; la question au texte vrai en dernier recours. Les 5 jobs ouverts (christophe ×2
+  « uncle stubble », patrick « Paris 2024 », Johan « The North Face », Romain « pago ») repartent seuls, UNE fois, vers un
+  poste en 0.6.146 (correctifs-extension). Le repli « Sans marque » du 24/10 est gardé (règle de Nico).
+- Non fait : l'essai réel sur le compte de Nico (le Chrome de Nico tourne sur un dossier non empaqueté que je ne sais
+  pas recharger sans « Recharger » dans chrome://extensions) — voir la 0.6.146.
+
+## 13. OTA
+- **2.9.118 envoyée** sur le canal production (relu : 2.9.118), build `2026-10-26T00:59:02Z+89a2cde` (arbre propre),
+  après le web (même code). Contient la refonte B du lot (validée par Nico), la réponse commune, la modération
+  Leboncoin en pause, eBay hors France, publier sans ordinateur, la taille de bague, l'adresse sans rue.
+
+## 16. Parcours de bout en bout sur le compte de Nico (26/10, 01:45 → …)
+- **Lot sur 5 plateformes** (écran « par question ») : 2 articles TEST à 999 € (vase blanc, T-shirt n°2), 5 annonces :
+  Leboncoin 01:47:20, eBay 01:48:14, Vinted 01:48:19, Depop 01:48:53, Beebs 01:50:01 — toutes publiées, 0 échec.
+- **Republication** (T-shirt n°2) : Vinted — supprimée puis recréée (2439d239, publiée) ; Leboncoin — retirée puis
+  redéposée (8b587ec2, attente imposée par Leboncoin après le retrait).
+- **Vente simulée avec retrait des copies** : vase « vendu ailleurs » (frais NON mémorisés) → 4 retraits créés à 02:01,
+  tous faits (eBay, Vinted, Leboncoin, Depop « deleted ») ; le retrait Beebs du vase (4a965139, créé le 25/10 à 16:16)
+  attend que Beebs affiche le bouton « Supprimer l'annonce » (annonce encore en vérification chez Beebs), il se refait seul.
+- **Annonces TEST encore en ligne ou en vérification** (à retirer dès que Leboncoin les affiche, l'app ne propose pas
+  le retrait pendant sa vérification) : T-shirt n°2 sur Beebs (508fb8b8) ; les essais Leboncoin du point 5 —
+  T2 3295481647, T3 3295482142, T5 3295483038, T6 3295483342. Les deux fiches créées par « Dupliquer » pour T5 et T6
+  (1792979691394, 1792980069881) restent en stock, sans autre annonce.
+- **Bordereaux** : l'écran « À expédier » s'ouvre (« Aucune commande à expédier ») ; un bordereau ne se teste qu'avec
+  une vraie commande d'une plateforme — non fait.
+- Tout s'est fait avec l'extension ACTUELLE du poste de Nico (0.6.145 pilote) : les gestes propres à la 0.6.146 ne sont
+  prouvés que par les selftests.
+- Hors suite : `scripts/opla-message-unique-selftest.mjs` (aucune commande npm, donc hors de la suite complète) est
+  rouge — « handler-watch importe autorisationOplaRequise » — sans lien avec cette nuit (Opla quittée le 10/10) ; à
+  supprimer ou rebrancher.

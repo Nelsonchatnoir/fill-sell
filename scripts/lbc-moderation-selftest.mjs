@@ -34,6 +34,27 @@ ok(s.source === "lbc_moderation", "classerEchec (update-job-status) : la même d
 const titre = P.decisionRefusContenuLeboncoin({ brut: "Leboncoin refuse le dépôt : « Merci de modifier votre titre. » — Observabilité: adsubmit HTTP 403 (champ subject)", pf: {}, empreinte: "x", nettoyageModifie: false });
 ok(titre.source === "champ_a_choisir", "seul le TITRE refusé reste une question (un mot nommé, un geste)");
 
+console.log("\n1 bis. Jamais deux fois le même texte, même après une relance au texte changé");
+{
+  // Le job a déjà un refus (texte A) et une reprise ; relancé avec un texte B (liste fermée allongée), Leboncoin
+  // refuse B : B est le texte qui vient d'être refusé — la pause, jamais un second envoi de B.
+  const pfA = { lbc_refus_contenu: { le: "2026-10-26T01:00:00Z", mots: ["Nous refusons ce type de bien ou service sur leboncoin.fr"], champs: ["body"], empreintes: ["aaaa1111"], reprises: 1 } };
+  const s2 = P.classerEchec({ platform: "leboncoin", action: "publish", brut: BRUT, essais: 0, pf: pfA, empreinteTexteServi: "bbbb2222", nettoyageModifie: false });
+  ok(s2.verdict === "attente" && s2.statut === "needs_user" && s2.source === "lbc_moderation", "second refus (texte B) : la pause, pas un renvoi du même texte", JSON.stringify({ v: s2.verdict, s: s2.statut }));
+  ok(JSON.stringify(s2.pf?.lbc_refus_contenu?.empreintes) === JSON.stringify(["aaaa1111", "bbbb2222"]), "les deux textes refusés sont gardés", JSON.stringify(s2.pf?.lbc_refus_contenu?.empreintes));
+  ok(s2.pf?.lbc_refus_contenu?.reprises === 1, "le compteur de reprises ne bouge pas");
+  ok(Object.prototype.hasOwnProperty.call(s2.pf ?? {}, "lbc_moderation_alerte_le") && s2.pf.lbc_moderation_alerte_le === null,
+    "un refus NEUF réarme l'alerte au support (lbc_moderation_alerte_le remis à nul) : jamais un second refus en silence");
+  const hw = P.decisionRefusContenuLeboncoin({ action: "publish", brut: BRUT, pf: pfA, empreinte: "aaaa1111", nettoyageModifie: false });
+  ok(hw.verdict === "attente" && !Object.prototype.hasOwnProperty.call(hw.pf ?? {}, "lbc_moderation_alerte_le"),
+    "handler-watch (requalification, aucun refus neuf) : l'alerte déjà envoyée n'est pas réarmée");
+  // handler-watch, lui, compare le texte qu'il SERVIRAIT maintenant : un texte C neuf → UNE reprise (inchangé).
+  const h = P.decisionRefusContenuLeboncoin({ action: "publish", brut: BRUT, pf: { lbc_refus_contenu: { ...pfA.lbc_refus_contenu, empreintes: ["aaaa1111", "bbbb2222"] } }, empreinte: "cccc3333", nettoyageModifie: true });
+  ok(h.verdict === "reprise" && h.statut === "pending", "handler-watch : un texte servi neuf repart une fois (règle du 18/10 inchangée)", JSON.stringify({ v: h.verdict }));
+  const h2 = P.decisionRefusContenuLeboncoin({ action: "publish", brut: BRUT, pf: { lbc_refus_contenu: { ...pfA.lbc_refus_contenu, empreintes: ["aaaa1111", "bbbb2222"] } }, empreinte: "bbbb2222", nettoyageModifie: true });
+  ok(h2.verdict === "attente", "handler-watch : un texte déjà refusé ne repart jamais");
+}
+
 console.log("\n2. L'état affiché et la cause");
 const job = { id: "52b5ec71", platform: "leboncoin", action: "publish", status: "needs_user", error: d.message, platform_fields: { needs_user_source: "lbc_moderation" } };
 ok(E.attenteAutomatique(job) === "lbc_moderation", "attente automatique (en pause), jamais « à toi de jouer »");

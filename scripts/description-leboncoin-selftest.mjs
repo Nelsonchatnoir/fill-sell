@@ -48,6 +48,32 @@ console.log("▸ (18/10) la description de jocabroc8 : la phrase « vidéo dispo
   egal("idempotent", n(r.texte).texte, r.texte);
 }
 
+console.log("▸ (26/10 nuit, point 5) la modération refuse « SuperCard » : la phrase part de la copie Leboncoin, rien d'autre");
+{
+  const { TERMES_MODERATION_LEBONCOIN, nettoyerTitreLeboncoin } = mod;
+  check("« supercard » est dans la liste de modération (T4 refusé, T5 accepté le 26/10)", TERMES_MODERATION_LEBONCOIN.includes("supercard"));
+  check("« promotionnel », « publicitaire », « wwe », « carte » n'y sont PAS (acceptés)", !TERMES_MODERATION_LEBONCOIN.some((t) => /promotion|publicit|wwe|carte/.test(t)));
+  check("la liste de modération n'est pas celle des sites", !TERMES_SITES_LEBONCOIN.includes("supercard"));
+  // Le texte de xxewwer (52b5ec71), tel qu'en base.
+  const wwe = "🎮 Je vends WWE 2K20 sur PlayStation 4 (PS4).\n\n📦 Version boîte comprenant :\n\n✅ Disque du jeu WWE 2K20.\n\n✅ Boîtier avec jaquette.\n\n✅ Notice du jeu.\n\n✅ Document publicitaire WWE Network.\n\n✅ Carte promotionnelle WWE SuperCard.\n\n✨ État :\n\n💿 Disque en excellent état.\n\n📦 Boîtier en très bon état.\n\n🖼️ Jaquette en excellent état.\n\n📘 Notice en excellent état.\n\n📄 Documents promotionnels en excellent état.\n\n🔎 À noter :\n\nUne étiquette de magasin est présente sur le plastique extérieur, au dos du boîtier.\n\n⚠️ Le système de fixation central du boîtier est défectueux et ne maintient plus le disque en place.\n\nJeu testé aujourd’hui, le 25 octobre 2026, et fonctionnel.\n\nVendu comme sur les photos.\n\n📍 Remise en main propre possible.\n\n🚚 Expédition rapide et soignée, généralement sous 12 heures ouvrées.";
+  const r = n(wwe, { titre: "🎮 WWE 2K20 – PS4 –" });
+  check("modifiée", r.modifiee);
+  egal("terme", JSON.stringify(r.termes), JSON.stringify(["supercard"]));
+  egal("1 retrait", r.retires, 1);
+  check("la ligne « ✅ Carte promotionnelle WWE SuperCard. » part en entier (puce comprise)", !/supercard/i.test(r.texte) && !/Carte promotionnelle/.test(r.texte), r.texte);
+  egal("le reste est intact, ligne pour ligne", r.texte, wwe.replace("✅ Carte promotionnelle WWE SuperCard.\n\n", ""));
+  check("« Document publicitaire WWE Network » reste (T3 accepté)", r.texte.includes("✅ Document publicitaire WWE Network."));
+  check("« Documents promotionnels en excellent état » reste (accepté sur 16 dépôts)", r.texte.includes("📄 Documents promotionnels en excellent état."));
+  egal("idempotent", n(r.texte).texte, r.texte);
+  egal("« Supercard » en casse quelconque, hashtag compris", n("Jeu complet. #WWESupercard\nCarte SUPERCARD offerte.\nEnvoi rapide.").texte, "Jeu complet.\nEnvoi rapide.");
+  egal("un texte sans le terme ne bouge pas", n("Carte promotionnelle offerte. Document publicitaire WWE Network.").texte, "Carte promotionnelle offerte. Document publicitaire WWE Network.");
+  const t = nettoyerTitreLeboncoin("Lot WWE SuperCard - cartes");
+  check("le TITRE n'est jamais touché par cette liste (le refus visait le champ body)", !t.modifie && t.titre === "Lot WWE SuperCard - cartes", JSON.stringify(t));
+  // Le nettoyage seul (le minimum de 10 caractères, règle à part, s'applique ensuite).
+  const seul = propre("Carte WWE SuperCard.");
+  check("fail-safe : un texte fait de la seule phrase reste tel quel (jamais une description vidée)", seul.texte === "Carte WWE SuperCard." && seul.vide === true, JSON.stringify(seul));
+}
+
 console.log("▸ la description de Nico (job 8fea6e80) : seul #VintedStyle part, les défauts restent");
 const nico = "Je vends un sweat Tommy Jeans bleu marine, taille M.\n\nCoupe classique, col rond, matière épaisse et confortable.\nPetit logo Tommy Jeans brodé sur la poitrine 🔴⚪🔵\nCouleur bleu marine profonde, facile à assortir.\n\nIdéal pour un look casual / streetwear, se porte aussi bien avec jean que jogging.\n\n✔ Marque : Tommy Jeans\n✔ Taille : M\n✔ Couleur : Bleu marine\n✔ État : Très bon \n⚠️ Attention léger petit accroc devant voir photos \n\nenvoi rapide 📦\n\n\n#TommyJeans\n#TommyHilfiger\n#SweatHomme\n#TailleM\n#Streetwear\n#CasualStyle\n#LookUrbain\n#VetementHomme\n#BleuMarine\n#ModeHomme\n#BasicPremium\n#VintedStyle";
 {
