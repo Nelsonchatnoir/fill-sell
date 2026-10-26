@@ -10,7 +10,7 @@
 // début pour couvrir même une exécution qui échouerait en cours de route.
 globalThis.__fillsellVintedCharge = true;
 
-const VINTED_BUILD = "2026-10-26-marque-creee (marque : un #brand déjà pré-rempli par Vinted avec LA marque suffit ; sinon la marque est choisie ou créée — 30 s pour sa ligne, liste figée relancée, relecture jusqu'à LA marque, second essai — puis la chaîne du 24/10 même sur un champ pré-rempli, remplacé, jamais gardé ; la question seulement au bout, avec le texte vrai) · 2026-10-25-isbn-titre-colis (0.6.143 : ISBN de 10 caractères remis tel quel et armé pour le POST, erreur avant tout retrait sinon ; titre relu dans le champ et rendu ; format de colis retiré par Vinted du même rayon → le plus petit qui suffit, sinon le plus grand ; id 8 nommé selon sa famille) · 2026-10-24-zero-blocage (0.6.134 : une marque introuvable ne bloque jamais — attente du champ après le clic, garde qui compare la marque posée, ligne « Utiliser X comme marque » dans toutes les langues, même marque autrement écrite, puis « Sans marque » ; « Espace de stockage » et « Simlockage » repris de la capture) · 2026-10-09-vinted-etranger (0.6.106 : la page nomme SON domaine — vinted.fr inchangé, vinted.it… chez un vendeur étranger qui l'a autorisé — et le navigateur réel ; référentiel colis du domaine de la page) · 2026-10-08-onglet-muet-relance (0.6.103 : FILLSELL_PING accepté ; un onglet chargé mais muet est rechargé puis remplacé par le background avant tout envoi, jamais constaté) · 2026-10-05-colis-choix-cadenceur (0.6.97 : format de colis = le choix de la personne, relu après le clic et juste avant le dépôt, sinon le pré-coché de Vinted, sinon une question — plus jamais « Petit » d'office ; absence de marque selon la liste fermée du serveur et suggestions triées comme l'app ; pauses humaines à échéances qui rattrapent le retard des réveils sur Mac, attentes et battement sur le Worker, remplissage_mesures dans le résultat) · 2026-10-02-colis-demande (0.6.85 : format de colis inconnu ou non offert → demandé avant tout retrait, jamais choisi à la place de la personne) · 2026-10-02-colis-feu-vert-vendeur (0.6.84 : format de colis posé dans l'envoi quand le formulaire l'oublie, retrait refusé tant qu'il n'est pas en main ; feu vert de l'arrière-plan avant tout retrait une-passe ; vendeur lu en écartant le compte connecté ; compte bloqué nommé) · 2026-09-29-preuve-boutique-delete (0.6.80 : vendeur de la page exacte et session relus avant chaque DELETE ; inconnue et boutique différente restent deux verdicts distincts ; boutique du dépôt estampillée après succès) · 2026-09-28-rayon-deplace-page-annonce (0.6.79 : un rayon du formulaire d édition absent de l arbre du compte — Vinted remanie ses catégories compte par compte, Casio 5570 — est relu sur la page de l annonce, vérifié feuille de l arbre et fil d Ariane ; sinon capture incomplète comme avant) · 2026-09-25-zone-euro (0.6.69 : sur une page Vinted NON française — compte italien, espagnol… servi sur vinted.fr dans sa langue — catégorie, état et couleurs posés par IDENTIFIANT Vinted, jamais par libellé ; page française inchangée) · 2026-09-24-rayon-neuf-seulement (0.6.66 : un rayon Vinted qui n accepte que du neuf face a un article porte demande le RAYON, jamais clos ni ecarte ; releve d options sans avertissement) · 2026-09-17-taille-candidats-onglets (0.6.42 : « W32 L34 » → W32, toutes les formes dans TOUS les onglets, diagnostic dans last_diagnostic) · 2026-09-14-ping-et-ecouteur-unique (0.6.34 : VINTED_PING répond « je suis là » — c'est le seul verdict fiable de « l'onglet est prêt », l'événement de chargement se manque ; drapeau __fillsellVintedCharge posé en première instruction et écouteur enregistré UNE SEULE FOIS, pour qu'une réinjection ne double jamais les handlers ni ne redéclare les const) — précédent : 2026-09-09-envoi-journalise-et-taille-lettree (l'ENVOI de la création est journalisé avant la réponse ; 42 → XL sur une grille purement lettrée)";
+const VINTED_BUILD = "2026-10-26-modele-repli (modèle : une ligne de repli demandée telle quelle — « Mon modèle ne figure pas dans la liste », « Je ne connais pas le nom du modèle » — se choisit, à l'exact, et la valeur posée est relue ; le modèle d'une capture compte au contrôle avant retrait même sans valeur reposable) · 2026-10-26-marque-creee (marque : un #brand déjà pré-rempli par Vinted avec LA marque suffit ; sinon la marque est choisie ou créée — 30 s pour sa ligne, liste figée relancée, relecture jusqu'à LA marque, second essai — puis la chaîne du 24/10 même sur un champ pré-rempli, remplacé, jamais gardé ; la question seulement au bout, avec le texte vrai) · 2026-10-25-isbn-titre-colis (0.6.143 : ISBN de 10 caractères remis tel quel et armé pour le POST, erreur avant tout retrait sinon ; titre relu dans le champ et rendu ; format de colis retiré par Vinted du même rayon → le plus petit qui suffit, sinon le plus grand ; id 8 nommé selon sa famille) · 2026-10-24-zero-blocage (0.6.134 : une marque introuvable ne bloque jamais — attente du champ après le clic, garde qui compare la marque posée, ligne « Utiliser X comme marque » dans toutes les langues, même marque autrement écrite, puis « Sans marque » ; « Espace de stockage » et « Simlockage » repris de la capture) · 2026-10-09-vinted-etranger (0.6.106 : la page nomme SON domaine — vinted.fr inchangé, vinted.it… chez un vendeur étranger qui l'a autorisé — et le navigateur réel ; référentiel colis du domaine de la page) · 2026-10-08-onglet-muet-relance (0.6.103 : FILLSELL_PING accepté ; un onglet chargé mais muet est rechargé puis remplacé par le background avant tout envoi, jamais constaté) · 2026-10-05-colis-choix-cadenceur (0.6.97 : format de colis = le choix de la personne, relu après le clic et juste avant le dépôt, sinon le pré-coché de Vinted, sinon une question — plus jamais « Petit » d'office ; absence de marque selon la liste fermée du serveur et suggestions triées comme l'app ; pauses humaines à échéances qui rattrapent le retard des réveils sur Mac, attentes et battement sur le Worker, remplissage_mesures dans le résultat) · 2026-10-02-colis-demande (0.6.85 : format de colis inconnu ou non offert → demandé avant tout retrait, jamais choisi à la place de la personne) · 2026-10-02-colis-feu-vert-vendeur (0.6.84 : format de colis posé dans l'envoi quand le formulaire l'oublie, retrait refusé tant qu'il n'est pas en main ; feu vert de l'arrière-plan avant tout retrait une-passe ; vendeur lu en écartant le compte connecté ; compte bloqué nommé) · 2026-09-29-preuve-boutique-delete (0.6.80 : vendeur de la page exacte et session relus avant chaque DELETE ; inconnue et boutique différente restent deux verdicts distincts ; boutique du dépôt estampillée après succès) · 2026-09-28-rayon-deplace-page-annonce (0.6.79 : un rayon du formulaire d édition absent de l arbre du compte — Vinted remanie ses catégories compte par compte, Casio 5570 — est relu sur la page de l annonce, vérifié feuille de l arbre et fil d Ariane ; sinon capture incomplète comme avant) · 2026-09-25-zone-euro (0.6.69 : sur une page Vinted NON française — compte italien, espagnol… servi sur vinted.fr dans sa langue — catégorie, état et couleurs posés par IDENTIFIANT Vinted, jamais par libellé ; page française inchangée) · 2026-09-24-rayon-neuf-seulement (0.6.66 : un rayon Vinted qui n accepte que du neuf face a un article porte demande le RAYON, jamais clos ni ecarte ; releve d options sans avertissement) · 2026-09-17-taille-candidats-onglets (0.6.42 : « W32 L34 » → W32, toutes les formes dans TOUS les onglets, diagnostic dans last_diagnostic) · 2026-09-14-ping-et-ecouteur-unique (0.6.34 : VINTED_PING répond « je suis là » — c'est le seul verdict fiable de « l'onglet est prêt », l'événement de chargement se manque ; drapeau __fillsellVintedCharge posé en première instruction et écouteur enregistré UNE SEULE FOIS, pour qu'une réinjection ne double jamais les handlers ni ne redéclare les const) — précédent : 2026-09-09-envoi-journalise-et-taille-lettree (l'ENVOI de la création est journalisé avant la réponse ; 42 → XL sur une grille purement lettrée)";
 console.log(`[vinted.js] build ${VINTED_BUILD}`);
 
 // Content script Vinted — remplit le formulaire de dépôt d'annonce.
@@ -128,7 +128,12 @@ function caracteristiquesCaptureNonReposees(job) {
     if (c && !ATTRIBUTS_CANAUX_DEDIES.has(c)) codes.add(c);
   }
   // Le modèle de l'annonce d'origine (versé par le serveur dans vintedAspects).
-  if (String(pf.vintedAspects?.model ?? "").trim()) codes.add("model");
+  // (26/10, point 3c — Thibault, dca41766) Et dès que la capture en portait un, même sans valeur reposable
+  // (modele_capture / modele_exige, _shared/vinted-attributs-capture.js) : Vinted l'avait accepté avec un
+  // modèle, il le redemandera (400 {"field":"model"} quatre fois après le retrait) — un #model vide sur ce
+  // formulaire refuse le retrait. Une copie sans ces clés : la règle d'avant, à l'identique.
+  if (String(pf.vintedAspects?.model ?? "").trim()
+    || (pf.modele_capture && typeof pf.modele_capture === "object") || pf.modele_exige === true) codes.add("model");
   for (const code of codes) {
     const el = document.querySelector(vintedFieldSelector(code));
     if (!el) continue; // absent de ce formulaire : Vinted ne le demandera pas
@@ -3922,11 +3927,16 @@ async function remplirFormulaireVinted(job) {
     // En recréation : B.5, jamais bloquant (l'annonce d'origine n'existe plus).
     if (modeleStatut === "introuvable" && !recreation) {
       const opts = optionsRelevees.get("modèle") ?? [];
+      // (26/10, point 3c) Un libellé de repli demandé et non pris : le dire tel quel (ce n'est pas un modèle
+      // « qui n'y figure pas »). Toute autre valeur : le message d'avant, inchangé.
+      const repliNonPris = MODEL_FALLBACK_LABELS.has(normModel(fields.modele));
       return {
         success: false,
         needsUser: true,
         error:
-          `Vinted exige un modèle de son catalogue pour cette catégorie, et « ${fields.modele} » n'y figure pas` +
+          (repliNonPris
+            ? `Le formulaire de Vinted n'a pas pris le choix « ${fields.modele} » du champ « Modèle »`
+            : `Vinted exige un modèle de son catalogue pour cette catégorie, et « ${fields.modele} » n'y figure pas`) +
           (opts.length ? ` — modèles proposés par le formulaire : ${opts.slice(0, 8).join(" · ")}` : "") +
           ". Choisis le modèle exact dans le champ « Modèle » de la copie Vinted (app), puis relance la publication. " +
           "Rien n'a été envoyé à Vinted.",
@@ -7376,8 +7386,17 @@ const MODEL_FALLBACK_LABELS = new Set([
   "je ne connais pas le nom du modèle",
 ].map(normModel));
 
+// (26/10, point 3c — Thibault, dca41766) Un libellé de REPLI DEMANDÉ tel quel — la réponse de la personne, ou
+// le modèle « other » de l'annonce d'origine que le serveur verse dans la copie (_shared/vinted-attributs-
+// capture.js) — se choisit : SA ligne, à l'exact (normModel), et seulement elle — jamais un modèle du
+// catalogue à sa place, jamais l'autre repli. Toute autre valeur garde la règle d'avant : les replis restent
+// écartés, un modèle du catalogue ne se confond jamais avec eux.
 function findVintedModelOption(optionSelector, rawWanted) {
   const wanted = normModel(rawWanted);
+  if (MODEL_FALLBACK_LABELS.has(wanted)) {
+    const repli = Array.from(document.querySelectorAll(optionSelector)).find((el) => normModel(el.textContent) === wanted);
+    return repli ? { el: repli, label: repli.textContent.trim(), stage: "repli" } : null;
+  }
   const wantedTokens = wanted.split(" ").filter(Boolean);
   const opts = Array.from(document.querySelectorAll(optionSelector))
     .map((el) => ({ el, txt: normModel(el.textContent) }))
@@ -7427,6 +7446,9 @@ async function selectVintedModel(wanted, warnings) {
   const trigger = '#model, [data-testid="model-select-input"]';
   const optionSel = '[data-testid^="model-"][data-testid$="--title"]';
 
+  // (26/10, point 3c) Un libellé de repli demandé tel quel : une seule recherche, le libellé entier (aucun
+  // modèle du catalogue n'y répond, et Vinted n'affiche alors que ses lignes de repli — relevé du 18/07).
+  const repliDemande = MODEL_FALLBACK_LABELS.has(normModel(raw));
   // Requêtes candidates : valeur complète puis en retirant les tokens de queue.
   const words = raw.split(/\s+/).filter(Boolean);
   const queries = [];
@@ -7435,6 +7457,7 @@ async function selectVintedModel(wanted, warnings) {
     const q = words.slice(0, n).join(" ");
     const k = q.toLowerCase();
     if (!seen.has(k)) { seen.add(k); queries.push(q); }
+    if (repliDemande) break;
   }
 
   try {
@@ -7464,6 +7487,24 @@ async function selectVintedModel(wanted, warnings) {
       await clickModelOption(match.el);
       await humanPause();
       await confirmDropdownIfNeeded();
+      if (match.stage === "repli") {
+        // (26/10, point 3c) Le commit d'une ligne de repli n'a jamais été prouvé (18/07 : un clic sur son
+        // <span> laissait #model vide ; c'est la LIGNE qui est cliquée ici) : la valeur posée est RELUE
+        // (8 s, l'onglet caché commite en retard) avant de dire « posé ». Aide générique de la marque : elle
+        // relit le champ qu'on lui donne.
+        const pose = await attendreValeurMarque(trigger, (v) => Boolean(v), 8000);
+        const note = pose
+          ? `modèle : ligne de repli « ${match.label} » choisie (demandée telle quelle) — #model = « ${pose} »`
+          : `modèle : ligne de repli « ${match.label} » cliquée, mais #model est resté vide (choix non pris par Vinted)`;
+        console.warn(`[vinted] ${pose ? "≈" : "⚠️"} ${note}`);
+        warnings.push(note);
+        if (!pose) {
+          optionsRelevees.delete("modèle");
+          await closeAnyOpenDropdown();
+          return "introuvable";
+        }
+        return "pose";
+      }
       if (match.stage !== "exact") {
         const note = `modèle: "${raw}" absent à l'exact → option Vinted "${match.label}" (base du variant retenue)`;
         console.warn(`[vinted] ≈ ${note}`);
@@ -7486,7 +7527,9 @@ async function selectVintedModel(wanted, warnings) {
   if (affichees.length) optionsRelevees.set("modèle", affichees);
   else optionsRelevees.delete("modèle");
   await closeAnyOpenDropdown();
-  const note = `modèle: "${raw}" introuvable dans le catalogue Vinted (aucune correspondance)` +
+  const note = (repliDemande
+    ? `modèle : la ligne de repli « ${raw} » n'est pas proposée par ce formulaire`
+    : `modèle: "${raw}" introuvable dans le catalogue Vinted (aucune correspondance)`) +
     (affichees.length ? ` — options affichées: ${JSON.stringify(affichees)}` : "");
   console.warn(`[vinted] ⚠️ ${note}`);
   warnings.push(note);

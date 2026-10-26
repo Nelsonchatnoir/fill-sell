@@ -118,6 +118,13 @@ export const BUILD_DEPOP_MARQUE = "2026-10-17T13:13:01Z";
 // qui corrige un arrêt y ajoute son entrée). BUILD_ID de la 0.6.134 = BUILD_VINTED_MARQUE_CHAINE.
 export const BUILD_VINTED_STOCKAGE_CAPTURE = "2026-10-24T13:58:51Z";
 
+// ── (26/10 nuit, point 3c — Thibault, dca41766) LE MODÈLE DE REPLI REPOSÉ À LA RECRÉATION ──
+// Le premier paquet qui sait CHOISIR une ligne de repli du champ Modèle (« Mon modèle ne figure pas dans la liste »,
+// vinted.js selectVintedModel) — avant lui, les replis étaient toujours écartés : servir le repli à un poste plus
+// ancien recréerait sans modèle (400) et la relance tournerait en boucle. VIDE tant que le paquet n'existe pas :
+// buildMsDe("") n'est pas un nombre, aucun poste ne le porte, get-pending-jobs ne verse pas le repli.
+export const BUILD_VINTED_MODELE_REPLI = "";
+
 export const CORRECTIFS_EXTENSION = [
   {
     // (17/10) Rien n'a été créé chez Depop : la question tombe avant les

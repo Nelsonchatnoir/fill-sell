@@ -99,7 +99,7 @@ import { requalificationCompteVintedBloque } from "../_shared/vinted-compte-bloq
 import { boutiqueConnecteeVinted, loginsDesBoutiques } from "../_shared/boutique-connectee.js";
 import { leverPauseIntrouvable, champsApresLevee } from "../_shared/introuvable-boutique.js";
 import { cleCategorieLbc, requisParCategorie, requisManquantsAvantRetrait, questionAvantRetraitLbc } from "../_shared/requis-recreation-lbc.js";
-import { BUILD_EBAY_FIN_PAR_NUMERO, BUILD_BEEBS_ADRESSE_STRICTE, BUILD_BEEBS_FORMAT_EXPLICITE } from "../_shared/correctifs-extension.js";
+import { BUILD_EBAY_FIN_PAR_NUMERO, BUILD_BEEBS_ADRESSE_STRICTE, BUILD_BEEBS_FORMAT_EXPLICITE, BUILD_VINTED_MODELE_REPLI } from "../_shared/correctifs-extension.js";
 import { formatBeebsExplicite, formatBeebsDuChoix } from "../_shared/beebs-format-colis.js";
 import { AGE_ANGLAIS_RE, NOMBRE_NU_RE, ORDRE_EXACT_D_ABORD, TAILLE_PREFIXEE_RE, grilleDuDernierEchecTaille, normaliserTaille, tailleAServir, tailleAServirPublication } from "../_shared/vinted-taille-republication.ts";
 // Nommer une annonce par son IDENTIFIANT quand son lien manque (21/09).
@@ -2822,7 +2822,8 @@ serve(async (req) => {
             const pfA = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
             const natif = natifPar.get(Number(pfA["capture_id"]));
             if (!natif) continue;
-            const cap = aspectsDeLaCapture(natif);
+            // (26/10 nuit, point 3c) Le modèle de REPLI de l'annonce d'origine n'est versé qu'à un poste qui sait le choisir.
+            const cap = aspectsDeLaCapture(natif, { repliModele: buildMsDe(buildDuPoll) >= buildMsDe(BUILD_VINTED_MODELE_REPLI) });
             const { vintedAspects, poses, remplace } = completerAspects(pfA["vintedAspects"], cap);
             const relancer = j.status === "needs_user"
               && String(pfA["needs_user_source"] ?? "") === "champ_a_choisir"

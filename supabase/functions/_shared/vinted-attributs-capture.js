@@ -47,13 +47,39 @@ export const VINTED_LIBELLES_RELEVES = {
 /** Codes posés par leurs propres canaux (jamais par celui-ci). */
 const CANAUX_DEDIES = new Set(["condition", "size", "material", "language_book", "color", "isbn", "brand"]);
 
+// ── LE MODÈLE DE REPLI DE L'ANNONCE D'ORIGINE (26/10, point 3c — Thibault, dca41766) ──
+// Capture 18142 (Téléphones portables, rayon 3661, Samsung « player start 2 ») :
+// natif.model = { type: "other", metadata: { collection_id: 2 } }, sans nom — l'annonce
+// avait été déposée avec une ligne de REPLI du champ Modèle de Vinted, pas un modèle de
+// sa liste. Seul un modèle « known » était repris : la copie est partie SANS modèle,
+// l'annonce a été retirée (25/10 10:29) et Vinted a refusé quatre fois la recréation
+// (400 {"field":"model"}).
+// ⚠️ HYPOTHÈSE, NON PROUVÉE (relevé en base du 26/10) : « other » = la ligne « Mon
+// modèle ne figure pas dans la liste ». Sur 90 jours, 5 captures portent un modèle :
+// 3 « known », 2 « other » — toutes deux CETTE annonce (10349761909, déposée à la main
+// sur Vinted : aucun remplissage FillSell n'a jamais choisi un repli) ; aucun job n'a
+// porté un libellé de repli, aucun dto public ne nomme le modèle. Le mot « other »
+// (un modèle AUTRE que ceux de la liste) va dans ce sens ; « Je ne connais pas le nom
+// du modèle » n'a jamais été vu en capture. Un autre type : rien n'est inventé.
+export const VINTED_MODELE_REPLI_PAR_TYPE = Object.freeze({ other: "Mon modèle ne figure pas dans la liste" });
+
 /**
  * Ce que la capture permet de reposer, À L'IDENTIQUE, et ce qu'elle porte sans
  * qu'on sache le relire.
+ * (26/10, point 3c) + `modele_repli` (le modèle reposé est une ligne de repli —
+ * completerAspects ne le pose jamais par-dessus une valeur), `modele_capture`
+ * (ce que la capture dit du modèle, tel quel) et `modele_exige` (l'annonce
+ * d'origine portait un modèle : Vinted le redemandera).
  * @param {Record<string, any>|null} natif  vinted_republish_captures.payload.natif
- * @returns {{ aspects: Record<string, string>, nonResolus: string[], modele: string|null }}
+ * @returns {{ aspects: Record<string, string>, nonResolus: string[], modele: string|null, modele_repli: boolean,
+ *   modele_capture: { type: string|null, collection_id: number|null, name: string|null }|null, modele_exige: boolean }}
  */
-export function aspectsDeLaCapture(natif) {
+/**
+ * `repliModele` (26/10 nuit) : le poste qui servira la recréation sait-il choisir une ligne de repli ?
+ * (get-pending-jobs : build ≥ BUILD_VINTED_MODELE_REPLI). Faux : le repli n'est pas versé (la question reste,
+ * aucune relance vers un poste qui ne pourrait pas le poser — jamais une boucle de 400).
+ */
+export function aspectsDeLaCapture(natif, { repliModele = false } = {}) {
   const aspects = {};
   const nonResolus = [];
   const n = natif && typeof natif === "object" ? natif : {};
@@ -62,6 +88,14 @@ export function aspectsDeLaCapture(natif) {
   // formulaire (« model-8576--title » = « Chromebook CM14 »).
   const modele = m && String(m.type ?? "") === "known" && String(m.name ?? "").trim() ? String(m.name).trim() : null;
   if (modele) aspects.model = modele;
+  // (26/10) Un modèle de REPLI : le libellé de sa ligne (hypothèse ci-dessus) — reposé seulement sur une
+  // copie qui n'a pas de modèle (completerAspects), jamais à la place d'une réponse.
+  const repli = repliModele && !modele && m ? (VINTED_MODELE_REPLI_PAR_TYPE[String(m.type ?? "")] ?? null) : null;
+  if (repli) aspects.model = repli;
+  const collection = Number(m?.metadata?.collection_id ?? m?.collection_id);
+  const modele_capture = m
+    ? { type: String(m.type ?? "").trim() || null, collection_id: Number.isFinite(collection) ? collection : null, name: String(m.name ?? "").trim() || null }
+    : null;
   for (const a of Array.isArray(n.item_attributes) ? n.item_attributes : []) {
     const code = String(a?.code ?? "").trim();
     if (!code || CANAUX_DEDIES.has(code)) continue;
@@ -71,7 +105,8 @@ export function aspectsDeLaCapture(natif) {
     if (libelle) aspects[code] = libelle;
     else nonResolus.push(code);
   }
-  return { aspects, nonResolus, modele };
+  // « Exigé » dès que natif.model n'est pas nul : l'annonce en portait un, la recréation le devra aussi.
+  return { aspects, nonResolus, modele, modele_repli: Boolean(repli), modele_capture, modele_exige: n.model != null };
 }
 
 /**
@@ -79,6 +114,8 @@ export function aspectsDeLaCapture(natif) {
  * est rempli ; le MODÈLE de l'annonce d'origine prime sur une saisie qui n'est
  * pas un modèle de la liste Vinted (Tech-t a répondu « CM1400FX » — aucun
  * modèle de ce nom chez Vinted, la recréation ne pouvait pas passer).
+ * (26/10, point 3c) Un modèle de REPLI (capture.modele_repli) ne remplit qu'un
+ * modèle VIDE : il ne remplace jamais une valeur de la copie.
  * @returns {{ vintedAspects: Record<string, string>, poses: string[], remplace: Record<string, string> }}
  */
 export function completerAspects(vintedAspectsActuels, capture) {
@@ -88,7 +125,7 @@ export function completerAspects(vintedAspectsActuels, capture) {
   for (const [code, libelle] of Object.entries(capture?.aspects ?? {})) {
     const avant = String(actuels[code] ?? "").trim();
     if (!avant) { actuels[code] = libelle; poses.push(code); continue; }
-    if (code === "model" && avant !== libelle) { remplace.model = avant; actuels.model = libelle; poses.push(code); }
+    if (code === "model" && avant !== libelle && capture?.modele_repli !== true) { remplace.model = avant; actuels.model = libelle; poses.push(code); }
   }
   return { vintedAspects: actuels, poses, remplace };
 }

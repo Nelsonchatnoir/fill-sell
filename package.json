@@ -490,6 +490,7 @@
     "selftest:taille-bague-du-texte": "node scripts/taille-bague-du-texte-selftest.mjs",
     "selftest:vinted-marque-preremplie": "node scripts/vinted-marque-preremplie-selftest.mjs",
     "selftest:attente-sans-lecteur": "node --import ./scripts/loader-ext.mjs scripts/attente-sans-lecteur-selftest.mjs",
+    "selftest:vinted-modele-repli": "node scripts/vinted-modele-repli-selftest.mjs",
     "selftest:copies-completes-2610": "node scripts/copies-completes-2610-selftest.mjs"
   },
   "dependencies": {
