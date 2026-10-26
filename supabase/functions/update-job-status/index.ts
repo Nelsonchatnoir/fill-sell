@@ -2519,11 +2519,21 @@ serve(async (req) => {
       //    texte, comportement d'origine inchangé).
       const brutVerdict = typeof body.error === "string" ? body.error : "";
       const mPage = brutVerdict.match(PAGE_AUTH_SUPPRESSION_RE);
-      const parLeTexte = brutVerdict !== "" &&
-        (SESSION_REQUISE_RE.test(brutVerdict) || (mPage != null && estPageDeConnexionQuelconque(mPage[1]))
-         || (statutEffectif === "pending" && ATTENTE_ANCRE_RE.test(brutVerdict)));
       const pfBodyS = (body.platform_fields && typeof body.platform_fields === "object"
         ? body.platform_fields : null) as Record<string, unknown> | null;
+      // (26/10 nuit, point 15 — Vincent A., 2e poste sans session Vinted) La « pause avant toute suppression » de
+      // l'extension (0.6.134+, chemin A5) range le motif DANS sa phrase (« … accident de parcours (Connexion Vinted
+      // requise…) ») et l'adresse dans reprise_avant_retrait / last_diagnostic, jamais dans work_window_state : le mur
+      // du poste ne partait jamais, et ce poste reprenait l'étape de retrait toutes les 5 à 180 min (21 jobs, 25/10).
+      // Le motif du rapport (reprise_avant_retrait.motif, posé par CE rapport) et son adresse comptent désormais.
+      const repriseAvantRetrait = (pfBodyS?.reprise_avant_retrait && typeof pfBodyS.reprise_avant_retrait === "object"
+        ? pfBodyS.reprise_avant_retrait : null) as Record<string, unknown> | null;
+      const motifRepriseS = /^Republication en pause avant toute suppression/i.test(brutVerdict)
+        ? String(repriseAvantRetrait?.motif ?? "") : "";
+      const parLeTexte = brutVerdict !== "" &&
+        (SESSION_REQUISE_RE.test(brutVerdict) || (mPage != null && estPageDeConnexionQuelconque(mPage[1]))
+         || (statutEffectif === "pending" && ATTENTE_ANCRE_RE.test(brutVerdict))
+         || SESSION_REQUISE_RE.test(motifRepriseS));
       const nommeUnChampS = pfBodyS != null && (
         pfBodyS.needsUserField != null ||
         (Array.isArray(pfBodyS.champs_a_completer) && pfBodyS.champs_a_completer.length > 0) ||
@@ -2533,7 +2543,12 @@ serve(async (req) => {
       // Pré-filtre SANS lecture : la quasi-totalité des verdicts n'est pas
       // devant un mur, et cette fonction est le chemin le plus chaud du
       // produit. On ne lit la ligne du job que si l'adresse peut l'être.
-      const finBodyS = derniereFinDeJob(pfBodyS);
+      const finBodyS0 = derniereFinDeJob(pfBodyS);
+      // (26/10 nuit, point 15) L'adresse d'une pause avant retrait (A5) : celle du rapport, puis du diagnostic.
+      const urlRepriseS = motifRepriseS
+        ? (String(repriseAvantRetrait?.url ?? "").trim() || String(((pfBodyS?.last_diagnostic ?? {}) as Record<string, unknown>).url ?? "").trim())
+        : "";
+      const finBodyS = finBodyS0?.tab_url ? finBodyS0 : (urlRepriseS ? { ...(finBodyS0 ?? {}), tab_url: urlRepriseS } : finBodyS0);
       const peutEtreUnMur = !nommeUnChampS && estPageDeConnexionQuelconque(finBodyS?.tab_url);
       if (parLeTexte || peutEtreUnMur) {
         try {

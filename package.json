@@ -483,6 +483,7 @@
     "selftest:lot-par-question": "node scripts/lot-par-question-selftest.mjs",
     "selftest:alerte-orpheline": "node scripts/alerte-orpheline-selftest.mjs",
     "selftest:lbc-moderation": "node scripts/lbc-moderation-selftest.mjs",
+    "selftest:mur-poste-pause-avant-retrait": "node scripts/mur-poste-pause-avant-retrait-selftest.mjs",
     "selftest:copies-completes-2610": "node scripts/copies-completes-2610-selftest.mjs"
   },
   "dependencies": {
