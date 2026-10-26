@@ -56,7 +56,14 @@ import { businessOfferVisible } from "../../config/businessOffer";
 import { COIN_CONFIG_FALLBACK } from "../../components/ConversionModal";
 import { completerTexteDuVendeur, aCompleter as texteACompleter, RYTHME_LECTURE_VINTED_MS, RYTHME_LECTURE_EBAY_MS } from "../texteDuVendeur";
 // (22/10 soir, point 8 — Louis) Une fiche importée ne se prépare pas avant la lecture de son annonce d'origine.
-import { attenteLectureOrigine, demanderLectureOrigine, messageLectureOrigine } from "../lectureOrigine";
+// (26/10 nuit, point 9 — patrick giry) … sauf sans lecteur : la vérité, puis les trois issues du stepper.
+import {
+  attenteLectureOrigine, demanderLectureOrigine, messageLectureOrigine,
+  lireLecteurVinted, ecrireDescriptionSansLecteur, noterChoixSansLecteur, tracerChoixSansLecteur,
+} from "../lectureOrigine";
+import {
+  issuesSansLecteur, phraseSansLecteur, libellesSansLecteur, texteAttenteSansLecteur, urlAnnonceVinted, descriptionEcriteSuffisante,
+} from "../attenteLectureRegles";
 // (25/10 — Louis) Le pont de la page vers l'extension : mort après une mise à jour, la page le dit.
 import { ecouterEtatPont } from "../../utils/vintedSync";
 import { plateformeOrigine } from "../../../supabase/functions/_shared/contenu-fiche.js";
@@ -222,6 +229,7 @@ const HoteMoteur = memo(function HoteMoteur({
  * @param onMonterDePalier (palier, origine) => void — le parcours d'achat existant (openUpgradeModal)
  * @param onOuvrirArticle (item) => void — le stepper à l'unité, pour un article laissé de côté
  * @param extensionVinted l'extension de CET appareil sait lire le détail d'un article Vinted
+ * @param versionExtensionIci (26/10 nuit) la version qu'elle annonce (null : aucune) — un lecteur de la description Vinted ?
  */
 export default function LotPublication(props) {
   // Le dernier recours : l'écran du lot entier. Jamais une page blanche — une
@@ -249,7 +257,7 @@ export default function LotPublication(props) {
 
 function EcranDuLot({
   articles, jobsByInventaire, prixVinted, ctx, onJobsQueued, onFermer, onEnvoye, onMonterDePalier = null, onOuvrirArticle, choixPrefere = null, boutiqueVinted = null,
-  extensionVinted = false,
+  extensionVinted = false, versionExtensionIci = null,
 }) {
   const { userId, supabase, lang } = ctx;
   const en = lang === "en";
@@ -713,6 +721,66 @@ function EcranDuLot({
     } catch { /* navigation privée : le lot se relance à la main */ }
     try { window.location.reload(); } catch { /* sans conséquence */ }
   };
+
+  // ── (26/10 nuit, point 9 — patrick giry) SANS LECTEUR, PAS D'ATTENTE : LA VÉRITÉ, PUIS LES TROIS ISSUES ─────────
+  // La règle du stepper (attenteLectureRegles.lecteurDisponible) : un article Vinted en « origine » n'attend que s'il
+  // existe un lecteur MAINTENANT (extension ≥ 0.6.144 sur cet appareil, ou un poste du compte en ≥ 0.6.144 vu il y a
+  // moins de 15 min). Sinon SA ligne dit pourquoi (heure et version réelles) et propose, chacune en un geste :
+  //   · écrire sa description — écrite sur la fiche, marquée manuelle ; l'article se prépare avec elle ;
+  //   · la faire rédiger par FillSell — le choix sur la fiche, jamais le texte ; l'article se prépare et son texte
+  //     passe par « Relis le texte qui part » (« C'est bon » / « Tout valider ») avant l'envoi ;
+  //   · attendre son ordinateur — la relecture d'origine continue, le lecteur s'y relit (un poste à jour revient :
+  //     l'attente d'avant, sans « Écrire »).
+  // Avec un lecteur (ou profil illisible), rien ne change. Chaque cas est tracé (usage_logs « lecture_origine_sans_lecteur »).
+  const [lecteur, setLecteur] = useState(null);
+  const lecteurRef = useRef(lecteur); lecteurRef.current = lecteur;
+  const ficheDuLot = (id) => donnees.find((x) => x.id === id)?.item ?? null;
+  const nOrigineVinted = lot ? lot.ids.filter((id) => etats[id]?.phase === "origine" && plateformeOrigine(ficheDuLot(id)) === "vinted").length : 0;
+  const origineVinted = nOrigineVinted > 0;
+  useEffect(() => {
+    if (!origineVinted || !userId) return undefined;
+    let vivant = true;
+    lireLecteurVinted(supabase, userId, { versionIci: versionExtensionIci }).then((l) => {
+      if (!vivant) return;
+      setLecteur(l);
+      if (l && !l.disponible) tracerChoixSansLecteur(supabase, userId, { evenement: "propose", lot: lotRef.current?.id ?? null, lecteur: l, details: { articles: nOrigineVinted } });
+    }, () => {});
+    return () => { vivant = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [origineVinted, userId, supabase, versionExtensionIci]);
+  // Le choix fait : l'article quitte l'attente et se prépare (avec SA description, ou pour un texte rédigé à relire).
+  const reprendreApresChoix = (id, item, note) => {
+    if (item) setComplets((prev) => ({ ...prev, [id]: item }));
+    setLectures((prev) => ({ ...prev, [id]: { ...(prev[id] ?? {}), note } }));
+    lusRef.current.add(id);
+    setEtats((prev) => (prev[id]?.phase === "origine" ? { ...prev, [id]: { ...prev[id], phase: "attente", raison: null, sansLecture: null } } : prev));
+  };
+  const sansLecteur = {
+    lecteur,
+    ecrire: async (id, texte) => {
+      const item = ficheDuLot(id);
+      const r = await ecrireDescriptionSansLecteur(supabase, userId, item?.id ?? id, texte);
+      const trace = { fiche: item?.id ?? id, lot: lotRef.current?.id ?? null, lecteur: lecteurRef.current };
+      if (!r.ok) { tracerChoixSansLecteur(supabase, userId, { ...trace, evenement: "echec", choix: "ecrite", details: { cause: r.motif } }); return r; }
+      tracerChoixSansLecteur(supabase, userId, { ...trace, choix: "ecrite" });
+      reprendreApresChoix(id, { ...(complets[id] ?? item ?? {}), description: r.description }, null);
+      return r;
+    },
+    rediger: async (id) => {
+      const item = ficheDuLot(id);
+      const r = await noterChoixSansLecteur(supabase, userId, item?.id ?? id);
+      const trace = { fiche: item?.id ?? id, lot: lotRef.current?.id ?? null, lecteur: lecteurRef.current };
+      if (!r.ok) { tracerChoixSansLecteur(supabase, userId, { ...trace, evenement: "echec", choix: "redigee", details: { cause: r.motif } }); return r; }
+      tracerChoixSansLecteur(supabase, userId, { ...trace, choix: "redigee" });
+      reprendreApresChoix(id, null, "redigee_sans_lecteur");
+      return r;
+    },
+    attendre: (id) => {
+      const item = ficheDuLot(id);
+      tracerChoixSansLecteur(supabase, userId, { choix: "attendre", fiche: item?.id ?? id, lot: lotRef.current?.id ?? null, lecteur: lecteurRef.current });
+      majEtat(id, { sansLecture: "attendre" });
+    },
+  };
   // ── LA LIVRAISON DU LOT (04/10, Louis) : poids, transporteurs, format ────
   // Le poids est celui de l'ARTICLE : écrit sur la fiche (inventaire.poids_g,
   // le seul champ Poids — Beebs le lit là au service du job) et sur la copie
@@ -765,6 +833,12 @@ function EcranDuLot({
     if (!idsOrigine || envoi) return undefined;
     const ids = idsOrigine.split("|");
     const r = demarrerRelecture(async () => {
+      // (26/10 nuit, point 9) Sans lecteur, il se relit au même rythme : un poste à jour qui revient, et l'attente
+      // redevient celle d'avant (les issues disparaissent).
+      if (lecteurRef.current?.disponible === false) {
+        const l = await lireLecteurVinted(supabase, userId, { versionIci: versionExtensionIci }).catch(() => null);
+        if (l) setLecteur(l);
+      }
       const lus = [];
       for (const id of ids) {
         const d = donnees.find((x) => x.id === id);
@@ -1053,9 +1127,13 @@ function EcranDuLot({
       disabled = !prets.length;
       // (25/10 — Louis) Rien de prêt parce que des articles attendent leur annonce d'origine : on le dit, pas « réponds ».
       const enOrigine = lot.ids.filter((id) => etats[id]?.phase === "origine").length;
+      // (26/10 nuit, point 9) Sans lecteur, rien ne se lit : ce n'est pas « Lecture… », c'est à la personne de choisir.
+      const sansLecteurIci = enOrigine > 0 && nOrigineVinted === enOrigine && issuesSansLecteur(lecteur).length > 0;
       cta = !prets.length
         ? (enOrigine && !aCompleter.length
-          ? (en ? "Reading your original listings…" : "Lecture de tes annonces d'origine…")
+          ? (sansLecteurIci
+            ? (en ? "Choose for each item below" : "Choisis pour chaque article ci-dessous")
+            : (en ? "Reading your original listings…" : "Lecture de tes annonces d'origine…"))
           : (en ? "Answer the questions to send" : "Réponds aux questions pour envoyer"))
         : aCompleter.length
           ? (en
@@ -1066,9 +1144,11 @@ function EcranDuLot({
       if (aCompleter.length && prets.length) sous = [en ? `The ${aCompleter.length} others stay in your stock, prepared: nothing is lost.` : `${aCompleter.length > 1 ? `Les ${aCompleter.length} autres restent` : "L'autre reste"} dans ton stock, préparé${aCompleter.length > 1 ? "s" : ""} : rien n'est perdu.`];
       else if (prets.length) sous = [en ? "The FillSell extension then posts them from your computer, one after the other." : "L'extension FillSell les dépose ensuite depuis ton ordinateur, une après l'autre."];
       if (!prets.length && enOrigine && !aCompleter.length) {
-        sous = [pontMort
-          ? (en ? "Reload the page (above): your batch is kept." : "Recharge la page (plus haut) : ton lot est gardé.")
-          : (en ? "Each item is ready with YOUR text as soon as its listing is read. If reading drags on, each item lets you write the description yourself or remove it from the batch." : "Chaque article est prêt avec TON texte dès que son annonce est lue. Si la lecture traîne, chaque article te propose d'écrire la description toi-même ou de le retirer du lot.")];
+        sous = [sansLecteurIci
+          ? (en ? "For each item: write your description, have FillSell write it, or wait for your computer." : "Pour chaque article : écris ta description, fais-la rédiger par FillSell, ou attends ton ordinateur.")
+          : pontMort
+            ? (en ? "Reload the page (above): your batch is kept." : "Recharge la page (plus haut) : ton lot est gardé.")
+            : (en ? "Each item is ready with YOUR text as soon as its listing is read. If reading drags on, each item lets you write the description yourself or remove it from the batch." : "Chaque article est prêt avec TON texte dès que son annonce est lue. Si la lecture traîne, chaque article te propose d'écrire la description toi-même ou de le retirer du lot.")];
       }
     }
   } else if (etape === "envoi") {
@@ -1143,6 +1223,7 @@ function EcranDuLot({
               userId={userId} exclusDepop={exclusDepop} mettreDeCote={mettreDeCote} signalerErreurBloc={signalerErreurBloc}
               choixPoidsLbc={poidsLbc.choix} choisirPoidsLbc={poidsLbc.choisir} poidsExigeLbc={poidsLbc.exige}
               pontMort={pontMort} horloge={horloge} rechargerPourLePont={rechargerPourLePont}
+              sansLecteur={sansLecteur}
             />
           )}
           {etape === "fin" && lot && (
@@ -1359,6 +1440,8 @@ export function EcranAvant({
   posesDuLot = [], changerPosesDuLot = () => {},
   // (25/10 — Louis) Le pont vers l'extension, l'horloge d'affichage et les issues d'une attente d'origine — reçus.
   pontMort = false, horloge = 0, rechargerPourLePont = null,
+  // (26/10 nuit, point 9) Le lecteur et les trois issues quand il n'y en a pas — reçus, jamais supposés.
+  sansLecteur = null,
 }) {
   const total = lot.ids.length;
   // Un bloc commun qui casse est remplacé par une phrase ; le lot continue.
@@ -1410,6 +1493,7 @@ export function EcranAvant({
           prets={prets} aCompleter={aCompleter} annoncesPretes={annoncesPretes} communes={communes} repondreCommune={repondreCommune}
           decider={decider} trancherJumeau={trancherJumeau} sansPlateforme={sansPlateforme} retirerDuLot={retirerDuLot}
           lectures={lectures} poserPoids={poserPoids} poserPoidsDuLot={poserPoidsDuLot} mettreDeCote={mettreDeCote} horloge={horloge} pontMort={pontMort}
+          sansLecteur={sansLecteur}
           blocsDuLot={(
             <>
               {/* (04/10) Poids, transporteurs et format : AVANT l'envoi, pour le lot — repliés, ouverts d'office
@@ -1473,7 +1557,7 @@ export function EcranAvant({
             <BarriereErreur key={id} nom={`ligne ${id}`} onErreur={(e) => mettreDeCote(id, e, "ligne")}
               secours={<ArticleMisDeCote en={en} item={parId.get(id)?.item} ligne />}>
               <LigneArticle id={id} en={en} L={L} item={parId.get(id)?.item} st={etats[id] ?? { phase: "attente" }} m={moteurs.get(id)}
-                envoi={envoi} retirerDuLot={retirerDuLot} horloge={horloge} pontMort={pontMort} />
+                envoi={envoi} retirerDuLot={retirerDuLot} horloge={horloge} pontMort={pontMort} sansLecteur={sansLecteur} />
             </BarriereErreur>
           ))}
         </div>
@@ -1507,13 +1591,70 @@ function depuisMots(ms, en) {
 }
 
 /** L'attente d'une annonce d'origine : ce qui se passe, depuis quand, et — passé 60 s — les issues. */
-function AttenteOrigine({ id, en, st, horloge, pontMort, retirerDuLot }) {
+function AttenteOrigine({ id, en, st, horloge, pontMort, retirerDuLot, item = null, sansLecteur = null }) {
   // (25/10, méthode de Nico) Jamais « Écrire ma description » pendant l'attente : l'annonce d'origine n'est pas encore
   // lue, son texte existe peut-être. Lue sans texte, l'article quitte cette attente tout seul (préparé, texte rédigé à
   // relire). Après 60 s, la seule issue est de le sortir du lot — rien n'est écrit à la place du vendeur.
   // L'horloge vient du parent (rafraîchie toutes les 15 s pendant l'attente) : jamais Date.now() pendant le rendu.
   const ecoule = st.origineDepuis && horloge ? Math.max(0, horloge - st.origineDepuis) : 0;
   const issues = pontMort || ecoule >= 60_000;
+  // (26/10 nuit, point 9 — patrick giry) … SAUF SANS LECTEUR (règle de Nico du 26/10) : une fiche Vinted qu'aucun
+  // ordinateur ne peut lire n'attend pas — la phrase vraie, puis les trois issues du stepper, chacune en un geste.
+  const [ecrire, setEcrire] = useState(false);
+  const [texte, setTexte] = useState("");
+  const [envoi, setEnvoi] = useState(false);
+  const [echec, setEchec] = useState(null);
+  const lecteur = plateformeOrigine(item) === "vinted" ? (sansLecteur?.lecteur ?? null) : null;
+  if (issuesSansLecteur(lecteur).length) {
+    const lang = en ? "en" : "fr";
+    const M = libellesSansLecteur(lang);
+    const attend = st.sansLecture === "attendre";
+    const url = urlAnnonceVinted(item);
+    const assez = descriptionEcriteSuffisante(texte);
+    const geste = async (faire) => {
+      if (envoi) return;
+      setEnvoi(true);
+      setEchec(null);
+      const r = await faire().catch(() => ({ ok: false }));
+      setEnvoi(false);
+      if (!r?.ok) setEchec(M.echec);
+    };
+    const tactile = { minHeight: 44 };
+    return (
+      <div className="fsl-origine">
+        <small>{phraseSansLecteur(lecteur, { lang, maintenant: horloge || undefined })}</small>
+        {attend && !ecrire ? <small>{texteAttenteSansLecteur(lecteur, { lang, contexte: "lot" })}</small> : null}
+        {ecrire ? (
+          <div className="fsl-origine-ecrire">
+            {url ? <small><a href={url} target="_blank" rel="noopener noreferrer">{M.ouvrirVinted}</a> {M.pourCopier}</small> : null}
+            <textarea className="fsn-textarea" value={texte} onChange={(e) => setTexte(e.target.value)} placeholder={M.placeholder} aria-label={M.ecrireTitre} />
+            {texte.trim() && !assez ? <small>{M.tropCourt}</small> : null}
+            <div className="fsn-btn-row">
+              <button type="button" className="fsn-btn fsn-btn--secondary fsn-btn--sm" style={tactile} disabled={!assez || envoi}
+                onClick={() => geste(() => sansLecteur.ecrire(id, texte))}>
+                {envoi ? M.enregistrement : M.continuer}
+              </button>
+              <button type="button" className="fsn-btn fsn-btn--ghost fsn-btn--sm" style={tactile} disabled={envoi} onClick={() => { setEchec(null); setEcrire(false); }}>
+                {M.retour}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="fsn-btn-row">
+            <button type="button" className="fsn-btn fsn-btn--secondary fsn-btn--sm" style={tactile} disabled={envoi} onClick={() => setEcrire(true)}>{M.ecrire}</button>
+            <button type="button" className="fsn-btn fsn-btn--ghost fsn-btn--sm" style={tactile} disabled={envoi} onClick={() => geste(() => sansLecteur.rediger(id))}>{M.rediger}</button>
+            {!attend ? (
+              <button type="button" className="fsn-btn fsn-btn--ghost fsn-btn--sm" style={tactile} disabled={envoi} onClick={() => sansLecteur.attendre(id)}>{M.attendre}</button>
+            ) : null}
+            {issues ? (
+              <button type="button" className="fsn-btn fsn-btn--ghost fsn-btn--sm" style={tactile} onClick={() => retirerDuLot(id)}>{en ? "Remove from this batch" : "Retirer du lot"}</button>
+            ) : null}
+          </div>
+        )}
+        {echec ? <small role="alert">{echec}</small> : null}
+      </div>
+    );
+  }
   return (
     <div className="fsl-origine">
       <small>
@@ -1555,25 +1696,31 @@ function ArticleMisDeCote({ en, item, ligne = false }) {
 }
 
 // Une ligne d'article (préparé, en file, laissé de côté…).
-function LigneArticle({ id, en, L, item, st, m, envoi, retirerDuLot, horloge = 0, pontMort = false }) {
+function LigneArticle({ id, en, L, item, st, m, envoi, retirerDuLot, horloge = 0, pontMort = false, sansLecteur = null }) {
   const pfs = st.envoyees ?? (m ? [...(m.plateformesPubliables ?? [])] : []);
+  // (26/10 nuit, point 9) Sans lecteur, la phrase « lecture… » serait une promesse fausse : la ligne dit la vérité
+  // (AttenteOrigine) et sa pastille demande le geste — ou « En attente » quand la personne attend son ordinateur.
+  const origineSansLecteur = st.phase === "origine" && plateformeOrigine(item) === "vinted" && issuesSansLecteur(sansLecteur?.lecteur ?? null).length > 0;
   return (
     <div className="fsl-art">
       <Vignette item={item} />
       <div className="fsl-art-t">
         <b>{titreDe(item) || (en ? "Untitled item" : "Article sans titre")}</b>
         <small>
-          {st.raison ? st.raison
+          {origineSansLecteur ? (envoi ? phraseSansLecteur(sansLecteur?.lecteur ?? null, { lang: en ? "en" : "fr", maintenant: horloge || undefined }) : null)
+            : st.raison ? st.raison
             : st.phase === "lecture" ? TEXTE_LECTURE[en ? "en" : "fr"][st.lecture ?? "null"]
             : pfs.length && ["pret", "envoi", "envoye"].includes(st.phase) ? pfs.map(NOM).join(" · ")
             : null}
         </small>
         {st.phase === "origine" && !envoi ? (
-          <AttenteOrigine id={id} en={en} st={st} horloge={horloge} pontMort={pontMort} retirerDuLot={retirerDuLot} />
+          <AttenteOrigine id={id} en={en} st={st} horloge={horloge} pontMort={pontMort} retirerDuLot={retirerDuLot} item={item} sansLecteur={sansLecteur} />
         ) : null}
       </div>
       {PHASES_EN_PREPARATION.has(st.phase) ? <span className="fsn-spin" aria-hidden="true" /> : null}
-      <Puce ton={TON_PHASE[st.phase] ?? "mute"}>{L[st.phase] ?? st.phase}</Puce>
+      {origineSansLecteur
+        ? <Puce ton={st.sansLecture === "attendre" ? "mute" : "geste"}>{st.sansLecture === "attendre" ? L.attente : L.questions}</Puce>
+        : <Puce ton={TON_PHASE[st.phase] ?? "mute"}>{L[st.phase] ?? st.phase}</Puce>}
       {st.phase === "pret" && !envoi && (
         <button type="button" className="fsl-retirer" onClick={() => retirerDuLot(id)} aria-label={en ? "Remove from batch" : "Retirer du lot"}>✕</button>
       )}
@@ -1639,6 +1786,9 @@ export function ArticleAQuestions({ id, en, item, m, st, decision, decider, tran
           <div className="fsn-q-why">{!String(m.texteVendeur?.description ?? "").trim()
             ? (String(m.initialListing?.description ?? "").trim()
                 ? (en ? "This text was written by FillSell (from your photos), not by you: check it before it goes out." : "Ce texte a été écrit par FillSell (d'après tes photos), pas par toi : relis-le avant qu'il parte.")
+                // (26/10 nuit, point 9) Sans lecteur, la personne a choisi « La faire rédiger par FillSell ».
+                : lecture?.note === "redigee_sans_lecteur"
+                  ? (en ? "You chose to have FillSell write it, from your photos and your title: check it before it goes out. It isn't saved on your item." : "Tu as choisi de la faire rédiger par FillSell, d'après tes photos et ton titre : relis-la avant qu'elle parte. Elle n'est pas enregistrée sur ta fiche.")
                 // Ta description vit sur Vinted, et CET appareil ne peut pas la
                 // lire (pas d'extension : un téléphone) — on dit où elle se lit.
                 : lecture?.note === "vinted_sans_extension"
@@ -1752,6 +1902,8 @@ export function VueParQuestion({
   decider, trancherJumeau, sansPlateforme, retirerDuLot, lectures = {}, poserPoids, poserPoidsDuLot = () => {}, mettreDeCote, horloge = 0, pontMort = false,
   // Les réglages du lot (livraison, refus de Depop, réponses reprises) : rendus APRÈS les questions, avant les prêts.
   blocsDuLot = null,
+  // (26/10 nuit, point 9) Le lecteur et les trois issues quand il n'y en a pas (lignes en attente d'origine).
+  sansLecteur = null,
 }) {
   const [ouvert, setOuvert] = useState(null);
   const [pretsOuverts, setPretsOuverts] = useState(false);
@@ -1933,7 +2085,7 @@ export function VueParQuestion({
             <BarriereErreur key={id} nom={`ligne ${id}`} onErreur={(e) => mettreDeCote(id, e, "ligne")}
               secours={<ArticleMisDeCote en={en} item={parId.get(id)?.item} ligne />}>
               <LigneArticle id={id} en={en} L={L} item={parId.get(id)?.item} st={etats[id] ?? { phase: "attente" }} m={moteurs.get(id)}
-                envoi={null} retirerDuLot={retirerDuLot} horloge={horloge} pontMort={pontMort} />
+                envoi={null} retirerDuLot={retirerDuLot} horloge={horloge} pontMort={pontMort} sansLecteur={sansLecteur} />
             </BarriereErreur>
           ))}
         </div>

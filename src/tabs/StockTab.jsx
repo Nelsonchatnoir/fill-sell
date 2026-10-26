@@ -194,8 +194,10 @@ import { estChampEtatVinted, libelleEtatVinted, nomChampEtat } from '../utils/et
 import { searchMatch } from '../utils/recherche';
 import { completerTexteDuVendeur, aCompleter as aCompleterTexteVendeur, DELAI_DETAIL_VINTED_MS } from '../publication/texteDuVendeur';
 // (22/10 soir, point 8 — Louis) Une fiche importée ne part pas avant la lecture de son annonce d'origine.
-import { attenteLectureOrigine, demanderLectureOrigine, useLecturesOrigine, phraseLecturesOrigine } from '../publication/lectureOrigine';
+import { attenteLectureOrigine, demanderLectureOrigine, useLecturesOrigine, phraseLecturesOrigine, lireLecteurVinted } from '../publication/lectureOrigine';
 import AttenteLectureOrigine from '../publication/AttenteLectureOrigine';
+// (26/10 nuit, point 9 — patrick giry) Sans lecteur de la description Vinted, l'app le dit et propose d'écrire.
+import { libellesSansLecteur } from '../publication/attenteLectureRegles';
 import { signalerActionRatee } from '../utils/actionRatee';
 import { plateformeOrigine } from '../../supabase/functions/_shared/contenu-fiche.js';
 import { uniteDuChamp, valeurAvecUnite, nombreSansUnite } from '../utils/champsDimension';
@@ -5981,12 +5983,16 @@ const StockTab = memo(function StockTab({
   // s'ouvre quand même (photos + titre déjà là) avec une note douce, jamais un
   // écran vide sans explication.
   const [extDetailOk, setExtDetailOk] = useState(false);
+  // (26/10 nuit, point 9) La version que l'extension de CET appareil annonce (null : aucune — un téléphone) : avec la
+  // 0.6.144 ou plus, cet appareil lit lui-même la description Vinted (attenteLectureRegles.lecteurDisponible).
+  const [extVersionIci, setExtVersionIci] = useState(null);
   // (22/10 soir, point 8) Ce qui attend la lecture de son annonce d'origine (dit dans le Stock) ; sur cet
   // ordinateur, si l'extension sait lire un détail Vinted, les lectures Vinted se font ici, une à la fois.
   const lecturesOrigine = useLecturesOrigine({ supabase, userId: user?.id, extensionVinted: extDetailOk });
   useEffect(() => {
     const stop = ecouterPresenceExtension((version) => {
       setExtDetailOk(versionAuMoins(version, DETAIL_VERSION_MIN));
+      setExtVersionIci(version ? String(version) : null);
     });
     return stop;
   }, []);
@@ -5995,6 +6001,9 @@ const StockTab = memo(function StockTab({
   // (25/10, Jocabroc) La fiche importée qui attend la lecture de son annonce d'origine : un ÉCRAN qui relit seul et
   // ouvre le stepper dès que c'est lu, jamais plus une bulle de 7 s suivie de rien (audit E1).
   const [attenteStepper, setAttenteStepper] = useState(null); // { item, attente }
+  // (26/10 nuit, point 9) Le lecteur lu au clic (lireLecteurVinted) : sans lui, l'écran dit la vérité et propose trois
+  // issues au lieu d'attendre ; null = pas une fiche Vinted, ou profil illisible (l'écran d'avant).
+  const [lecteurAttente, setLecteurAttente] = useState(null);
   const detailNoteTimer = useRef(null);
   // Cible du CTA « publie-les aussi… » de la carte de sync (2026-09-01) :
   // la grille d'articles, où vivent les boutons Publier. Navigation pure.
@@ -6050,13 +6059,28 @@ const StockTab = memo(function StockTab({
     if (importee) {
       try { attenteOrigine = await attenteLectureOrigine(supabase, user.id, item.id); } catch { attenteOrigine = null; }
     }
+    // ── (26/10 nuit, point 9 — patrick giry) ON N'ATTEND QUE S'IL EXISTE UN LECTEUR MAINTENANT ─────────────────
+    // Sa description Vinted ne se lit que par une extension ≥ 0.6.144 : sur cet appareil, ou sur un poste du compte
+    // vu il y a moins de 15 min. Sinon l'écran ne promet plus « la lecture se fait depuis ton ordinateur » : il dit
+    // pourquoi (heure et version réelles) et propose d'écrire sa description, de la faire rédiger, ou d'attendre.
+    let lecteur = null;
+    if (attenteOrigine?.plateforme === 'vinted') {
+      try { lecteur = await lireLecteurVinted(supabase, user.id, { versionIci: extVersionIci }); } catch { lecteur = null; }
+    }
     setDetailFetchId(null);
     if (attenteOrigine) {
       demanderLectureOrigine(supabase, item.id);
-      // (25/10, Jocabroc) Plus jamais une impasse : l'écran d'attente relit seul, ouvre le stepper dès que l'annonce
-      // est lue, et offre « Écrire ma description ». Le serveur est prévenu de l'attente (actionRatee).
-      signalerActionRatee({ action: 'publier', motif: 'lecture_origine_en_attente', userId: user?.id ?? null,
-        details: { fiche: item.id, manque: (attenteOrigine?.manque ?? []).join(','), extension: extDetailOk, note: r?.note ?? null } });
+      // (25/10, Jocabroc) Plus jamais une impasse : l'écran d'attente relit seul et ouvre le stepper dès que l'annonce
+      // est lue. Le serveur est prévenu de l'attente (actionRatee) — et, sans lecteur, de la vraie raison.
+      if (lecteur && !lecteur.disponible) {
+        signalerActionRatee({ action: 'publier', motif: 'lecture_origine_sans_lecteur', userId: user?.id ?? null,
+          details: { fiche: item.id, manque: (attenteOrigine?.manque ?? []).join(','), raison: lecteur.raison, version: lecteur.version,
+            vu_le: lecteur.vuLe, version_ici: lecteur.versionIci, note: r?.note ?? null } });
+      } else {
+        signalerActionRatee({ action: 'publier', motif: 'lecture_origine_en_attente', userId: user?.id ?? null,
+          details: { fiche: item.id, manque: (attenteOrigine?.manque ?? []).join(','), extension: extDetailOk, note: r?.note ?? null } });
+      }
+      setLecteurAttente(lecteur);
       setAttenteStepper({ item: r?.item ?? item, attente: attenteOrigine });
       return;
     }
@@ -12110,12 +12134,18 @@ const StockTab = memo(function StockTab({
           item={attenteStepper.item} lang={lang} supabase={supabase} userId={user.id}
           extensionVinted={extDetailOk} lireEbay={(id) => agirEbay('lire_description', { inventaire_id: id })}
           delaiDetailMs={DELAI_DETAIL_VINTED_MS} attenteInitiale={attenteStepper.attente}
+          // (26/10 nuit, point 9) Le lecteur lu au clic, et de quoi le relire pendant « Attendre mon ordinateur ».
+          lecteurInitial={lecteurAttente}
+          lireLecteur={() => lireLecteurVinted(supabase, user.id, { versionIci: extVersionIci })}
           onPret={(relu, info) => {
             setAttenteStepper(null);
             // L'annonce d'origine n'a VRAIMENT aucun texte : le stepper s'ouvre, et la note le dit (texte rédigé à relire).
             if (info?.note === 'sans_description') montrerNoteDetail(lang === 'fr'
               ? "Ton annonce Vinted n'a pas de description : FillSell en rédige une d'après tes photos et ton titre — relis-la avant qu'elle parte."
               : "Your Vinted listing has no description: FillSell writes one from your photos and your title — check it before it goes out.");
+            // (26/10 nuit) Sans lecteur, « La faire rédiger par FillSell » : le stepper rédige, la personne relit à
+            // l'étape du texte avant « Publier » ; rien n'est écrit sur la fiche.
+            else if (info?.choix === 'redigee') montrerNoteDetail(libellesSansLecteur(lang).redigeeNote);
             ouvrirStepper(relu ?? attenteStepper.item);
           }}
           onFermer={() => setAttenteStepper(null)} />
@@ -12543,6 +12573,8 @@ const StockTab = memo(function StockTab({
           onEnvoye={(lot)=>{track('lot_publication_envoye',{lot:lot.id});}}
           onMonterDePalier={(palier,origine)=>openUpgradeModal?.(palier,origine)}
           extensionVinted={extDetailOk}
+          // (26/10 nuit, point 9) La version de l'extension de CET appareil : un lecteur de la description Vinted ?
+          versionExtensionIci={extVersionIci}
           onOuvrirArticle={(item)=>{setLotOuvert(null);quitterModeLot();publierAvecDetail(item);}}
         />
       )}

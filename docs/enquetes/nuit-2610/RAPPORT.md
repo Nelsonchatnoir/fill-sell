@@ -203,3 +203,20 @@ Prompt de nuit de Nico (25/10, 22:00). Ce fichier se remplit point par point ; l
   ne rien publier à moitié). Doute à trancher par Nico : « Meaux 77100 Meaux » (rue = ville) a été validé sur la rue
   d'un commerce proposée par Beebs — faut-il arrêter dès que les Réglages n'ont pas de rue, quelle que soit la
   suggestion ? Srideals : aucun mail envoyé ; 88f51828 reste en attente de sa rue (rien ne la relance tant que ses Réglages n'en ont pas).
+
+## 9. Publier sans ordinateur (patrick giry) — jamais une attente sans issue
+- PROUVÉ : son poste était en 0.6.141, vu pour la dernière fois à 17:15 ; la lecture de la description Vinted exige un
+  poste en 0.6.144 ; aucune voie serveur ne lit une page Vinted. L'app promettait pourtant « publie dès qu'elle est
+  lue » avec le seul bouton « Fermer » : abandon au bout de 3 s, aucun job créé (55 de ses 126 fiches sont sans texte).
+- Corrigé (app + serveur) : on n'attend la lecture que s'il existe un LECTEUR maintenant (extension ≥ 0.6.144 sur cet
+  appareil, ou un poste du compte en ≥ 0.6.144 vu il y a moins de 15 min). Sinon l'app dit la vérité, en une phrase :
+  « Seule l'extension FillSell d'un ordinateur sait lire ta description Vinted : ton ordinateur n'a pas été vu depuis
+  17:15 et son extension (0.6.141) doit se mettre à jour. » et propose trois issues : « Écrire ma description »
+  (principale ; enregistrée sur la fiche, avec le lien de son annonce Vinted pour copier son texte), « La faire rédiger
+  par FillSell » (relue avant de partir, jamais écrite sur la fiche), « Attendre mon ordinateur ». Même règle dans le
+  lot, en un geste par article. Le serveur n'attend plus une description que la personne a choisi d'écrire ou de
+  faire rédiger. Avec un lecteur, l'écran d'avant, mot pour mot. Chaque cas est tracé. Selftest neuf
+  `attente-sans-lecteur` (80 contrôles).
+- Limites (dites) : la version d'UN poste n'est pas en base (celle du compte est prêtée au poste au build le plus
+  récent) ; « La faire rédiger » à l'unité n'a pas de « C'est bon » bloquant (le texte se voit à l'étape du texte) ;
+  le dépôt Vinted/Leboncoin/Beebs/Depop attend toujours un ordinateur — seul eBay part de nos serveurs.

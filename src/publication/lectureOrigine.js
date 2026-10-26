@@ -11,10 +11,18 @@
 //     ordinateur dont l'extension sait lire un détail Vinted, fait ces lectures UNE à la fois, au rythme des
 //     dépôts (8 à 20 s) — le même geste que « Publier » (texteDuVendeur.js), jamais une rafale.
 // Pendant l'attente, la personne lit « En cours de lecture de ton annonce d'origine » — jamais une erreur.
+// (26/10 nuit, point 9 — patrick giry) … SEULEMENT s'il existe un lecteur maintenant (attenteLectureRegles.js,
+// lecteurDisponible) : `lireLecteurVinted` le lit au clic ; sans lecteur, la personne choisit — sa description écrite
+// (`ecrireDescriptionSansLecteur`) ou rédigée par FillSell (`noterChoixSansLecteur`), portées par la fiche
+// (_shared/contenu-fiche.js, choixSansLecture), ou l'attente de son ordinateur — et chaque choix est tracé
+// (`tracerChoixSansLecteur`, usage_logs « lecture_origine_sans_lecteur »).
 import { useEffect, useRef, useState } from "react";
 import { demarrerRelecture } from "../utils/relectureBornee";
 import { lectureOrigineEnAttente, plateformeOrigine, messageLectureOrigine } from "../../supabase/functions/_shared/contenu-fiche.js";
 import { completerTexteDuVendeur, RYTHME_LECTURE_VINTED_MS } from "./texteDuVendeur";
+import {
+  lecteurDisponible, versionAuMoins, LECTEUR_VERSION_MIN, patchDescriptionEcrite, patchChoixRedigee,
+} from "./attenteLectureRegles.js";
 
 export { messageLectureOrigine };
 
@@ -54,6 +62,10 @@ export async function attenteLectureOrigine(supabase, userId, inventaireId) {
   return lectureOrigineEnAttente(f, (annonces.data ?? []).map(versLigneOrigine), {
     descriptionLueLe: f?.attributs?.description_source?.at ?? null,
     origineLueLe: demande?.data?.faite_le ?? null,
+    // (26/10 nuit, point 9) Un choix fait faute de lecteur (« rédiger ») vaut pour la publication d'alors, côté
+    // serveur ; ici, à chaque « Publier », la question se repose : avec un lecteur on attend le vrai texte, sans lui
+    // la personne rechoisit. Rien ne change pour un compte dont le lecteur est là.
+    ignorerChoix: true,
   });
 }
 
@@ -65,6 +77,88 @@ export async function demanderLectureOrigine(supabase, inventaireId) {
   } catch {
     return null;
   }
+}
+
+// ── (26/10 nuit, point 9) LE LECTEUR, ET LES CHOIX QUAND IL N'Y EN A PAS ─────────────────────────────────────────
+
+/**
+ * Un lecteur de la description Vinted existe-t-il maintenant ? Une lecture du profil, au clic (jamais en boucle).
+ * L'extension de CET appareil en ≥ 0.6.144 suffit (rien à lire). Profil illisible → null : on ne conclut rien
+ * (l'attente d'avant) — jamais un « pas de lecteur » sur une panne.
+ */
+export async function lireLecteurVinted(supabase, userId, { versionIci = null, maintenant = Date.now() } = {}) {
+  if (versionAuMoins(versionIci, LECTEUR_VERSION_MIN)) return lecteurDisponible({ versionIci, maintenant });
+  if (!supabase || !userId) return null;
+  try {
+    const { data, error } = await supabase.from("profiles")
+      .select("extension_version, extension_last_seen_at, extension_postes")
+      .eq("id", userId).maybeSingle();
+    if (error || !data) return null;
+    return lecteurDisponible({
+      versionIci,
+      compte: { version: data.extension_version ?? null, vuLe: data.extension_last_seen_at ?? null, postes: data.extension_postes ?? null },
+      maintenant,
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * « Écrire ma description » : la description de la personne, sur la fiche (marquée « manuel », choix daté).
+ * @returns {Promise<{ok:true, description:string} | {ok:false, motif:string}>} — jamais d'exception.
+ */
+export async function ecrireDescriptionSansLecteur(supabase, userId, ficheId, texte) {
+  const patch = patchDescriptionEcrite(texte);
+  if (!patch) return { ok: false, motif: "texte_trop_court" };
+  if (!supabase || !userId || ficheId == null) return { ok: false, motif: "sans_session" };
+  try {
+    const { data, error } = await supabase.from("inventaire").update(patch)
+      .eq("id", ficheId).eq("user_id", userId).select("id");
+    if (error) return { ok: false, motif: String(error.message ?? "ecriture_refusee").slice(0, 120) };
+    if (!Array.isArray(data) || !data.length) return { ok: false, motif: "fiche_introuvable" };
+    // La description est là : la demande de lecture n'a plus d'objet (même règle qu'une lecture faite ici,
+    // texteDuVendeur.js) — sans quoi elle se comptait 7 jours dans le Stock et retenait la file du compte jusqu'à
+    // 15 min pour rien. L'extension n'écrit de toute façon que sur une fiche vide.
+    try { await supabase.rpc("lecture_origine_faite", { p_fiche: Number(ficheId) }); } catch { /* best-effort */ }
+    return { ok: true, description: patch.description };
+  } catch (e) {
+    return { ok: false, motif: String(e?.message ?? "ecriture_impossible").slice(0, 120) };
+  }
+}
+
+/**
+ * « La faire rédiger par FillSell » : le choix seul, sur la fiche — jamais un texte (la copie le porte, relue).
+ * Sans ce choix écrit, get-pending-jobs retiendrait la publication jusqu'à une lecture qui n'arrivera pas : un échec
+ * se dit (ok:false), on n'ouvre rien.
+ * @returns {Promise<{ok:boolean, motif?:string}>}
+ */
+export async function noterChoixSansLecteur(supabase, userId, ficheId) {
+  if (!supabase || !userId || ficheId == null) return { ok: false, motif: "sans_session" };
+  try {
+    const { data, error } = await supabase.from("inventaire").update(patchChoixRedigee())
+      .eq("id", ficheId).eq("user_id", userId).select("id");
+    if (error) return { ok: false, motif: String(error.message ?? "ecriture_refusee").slice(0, 120) };
+    if (!Array.isArray(data) || !data.length) return { ok: false, motif: "fiche_introuvable" };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, motif: String(e?.message ?? "ecriture_impossible").slice(0, 120) };
+  }
+}
+
+/** La trace d'un cas sans lecteur (usage_logs « lecture_origine_sans_lecteur ») : proposé, puis le choix. Jamais bloquant. */
+export function tracerChoixSansLecteur(supabase, userId, { evenement = "choix", choix = null, fiche = null, lot = null, lecteur = null, details = null } = {}) {
+  if (!supabase || !userId) return;
+  try {
+    supabase.from("usage_logs").insert({
+      user_id: userId, feature: "lecture_origine_sans_lecteur",
+      metadata: {
+        evenement, choix, fiche, lot,
+        raison: lecteur?.raison ?? null, version: lecteur?.version ?? null, vu_le: lecteur?.vuLe ?? null,
+        ...(details && typeof details === "object" ? details : {}),
+      },
+    }).then(({ error }) => { if (error) console.warn("[lecture d'origine] trace non écrite :", error.message); }, () => {});
+  } catch { /* une trace ratée n'en crée pas d'autre */ }
 }
 
 /**

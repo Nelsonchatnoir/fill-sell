@@ -20,7 +20,8 @@
 //
 // Ce fichier (.js, lu par Deno ET par l'app, comme etat-plateformes.js) porte :
 //   · plateformeOrigine / texteDuVendeurSurFiche — qui a écrit la fiche ;
-//   · lectureOrigineEnAttente — faut-il attendre la lecture de l'annonce d'origine ;
+//   · lectureOrigineEnAttente — faut-il attendre la lecture de l'annonce d'origine (choixSansLecture : sauf si la
+//     personne, faute de lecteur, a choisi d'écrire sa description ou de la faire rédiger — 26/10 nuit, point 9) ;
 //   · contenuAImposer — au moment de partir (get-pending-jobs), ce que la fiche
 //     impose à une copie dont le contenu a été produit AVANT que le vendeur ne
 //     soit lu (publication faite trop tôt, republication qui recopie ce dépôt).
@@ -94,14 +95,38 @@ export function photoVenueDeLaPlateforme(u, ficheId) {
 /** Combien de temps, au plus, une fiche lue attend encore les photos que son annonce porte (jamais sans fin). */
 export const ATTENTE_PHOTOS_APRES_LECTURE_MS = 24 * 3600_000;
 
+// ── (26/10 nuit, point 9 — patrick giry) LE CHOIX DE LA PERSONNE, QUAND AUCUN LECTEUR N'EXISTE ──────────────────────
+// Sans ordinateur relié en 0.6.144 ou plus, la description Vinted ne se lit pas (aucune voie serveur ne lit une page
+// Vinted). L'app le dit et propose d'écrire sa description ou de la faire rédiger par FillSell
+// (src/publication/attenteLectureRegles.js). Ce choix est porté par la FICHE (attributs.description_sans_lecture,
+// source « manuel », daté) : get-pending-jobs n'attend plus la description — sinon il retenait la publication
+// jusqu'à une lecture qui n'arrivera pas. « ecrite » : la personne a écrit sa description (elle est sur la fiche,
+// marquée manuelle) ; « redigee » : FillSell la rédige, relue par la personne, et ne l'écrit JAMAIS sur la fiche
+// (une description lue plus tard passe devant la copie rédigée, contenuAImposer). L'app, elle, ne s'en sert pas pour
+// sauter l'attente (lu.ignorerChoix) : à chaque « Publier », avec un lecteur elle attend le vrai texte, sans lui elle
+// repose la question. Le choix ne vaut que pour la description : un état ou des photos jamais lus s'attendent.
+/** La clé de la fiche qui porte ce choix. */
+export const CLE_CHOIX_SANS_LECTURE = "description_sans_lecture";
+/** Les choix qui mettent fin à l'attente de la description. */
+export const CHOIX_SANS_LECTURE = Object.freeze(["ecrite", "redigee"]);
+
+/** Le choix porté par la fiche ({choix, at}) ou null. */
+export function choixSansLecture(fiche) {
+  const c = fiche?.attributs?.[CLE_CHOIX_SANS_LECTURE];
+  const v = String((c && typeof c === "object" ? c.v : c) ?? "").trim().toLowerCase();
+  return CHOIX_SANS_LECTURE.includes(v) ? { choix: v, at: (c && typeof c === "object" ? c.at : null) ?? null } : null;
+}
+
 /**
  * Faut-il attendre la lecture de l'annonce d'origine avant toute publication ?
  *
  * @param fiche     {id, origine, description, photos, attributs}
  * @param annonces  lignes annonces_plateforme de la fiche : [{platform, capture_le, detail_le, photos_origine, disparu_le}]
- * @param lu        {descriptionLueLe, origineLueLe, maintenant} — une lecture DÉJÀ faite (détail Vinted lu, description
- *                  reprise) : ce qui manque encore n'existe pas chez le vendeur, on n'attend plus (jamais une attente
- *                  sans fin). `maintenant` (ms) : pour les essais.
+ * @param lu        {descriptionLueLe, origineLueLe, maintenant, ignorerChoix} — une lecture DÉJÀ faite (détail Vinted lu,
+ *                  description reprise) : ce qui manque encore n'existe pas chez le vendeur, on n'attend plus (jamais une
+ *                  attente sans fin). `maintenant` (ms) : pour les essais. `ignorerChoix` (26/10 nuit) : l'APP, avant
+ *                  d'ouvrir le stepper ou le lot, ne tient pas compte d'un choix d'hier (choixSansLecture) — avec un
+ *                  lecteur, elle attend le vrai texte ; sans lui, elle redemande. Le serveur, lui, en tient compte.
  * @returns null (rien à attendre) | {plateforme, manque: Array<'description'|'etat'|'photos'>}
  *
  * Par plateforme d'origine :
@@ -117,13 +142,15 @@ export const ATTENTE_PHOTOS_APRES_LECTURE_MS = 24 * 3600_000;
  *  · Toutes : une annonce LUE qui porte plus de photos que la fiche, dont la seule photo est encore celle de la
  *    plateforme (ou sa copie chez nous), attend que la fiche les reçoive (la base les reporte à la lecture, le
  *    rapatriement les copie) — 24 h au plus après la lecture. Une photo choisie par la personne n'attend jamais.
+ *  · Toutes : (26/10 nuit, point 9) la description n'est plus attendue quand la personne a CHOISI, faute de lecteur,
+ *    de l'écrire ou de la faire rédiger (choixSansLecture) — jamais une attente sans issue (sauf lu.ignorerChoix).
  */
 export function lectureOrigineEnAttente(fiche, annonces = [], lu = {}) {
   const pf = plateformeOrigine(fiche);
   if (!pf) return null;
   const photos = photosEnUrls(fiche?.photos);
   const manque = [];
-  if (!texteSuffisant(fiche?.description)) manque.push("description");
+  if (!texteSuffisant(fiche?.description) && (lu?.ignorerChoix || !choixSansLecture(fiche))) manque.push("description");
   if (pf !== "vinted") {
     if (!String(fiche?.attributs?.etat?.v ?? "").trim()) manque.push("etat");
     if (photos.length <= 1) manque.push("photos");
