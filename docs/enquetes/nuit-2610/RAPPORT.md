@@ -66,6 +66,14 @@ Prompt de nuit de Nico (25/10, 22:00). Ce fichier se remplit point par point ; l
 - Preuves : selftest neuf `lot-par-question` (39 contrôles) ; banc `capture-lot-publication` (27 écrans à 390 px,
   2 à 1280 px : bilan, sujets, feuille, textes validés, poids saisi, article cassé) tout vert ; suite complète
   (441 selftests) verte ; `build:essai` OK. Le nombre de questions du lot de Nico avant/après : point 16.
+- **Le critère de Nico, rejoué** (26/10 à 01:12, son compte, « Publier 32 articles », 5 plateformes, rien envoyé) :
+  **11 questions bloquantes avant (25/10, 20:59) → 8**. Disparues, source fiable : la montre (« Taille unique »), le livre
+  (âge Beebs), l'ISBN de « EAT » (lu sur la fiche). En UN geste (puces) : Produit Leboncoin ×2 (photo-audio, jouets),
+  Taille Beebs (gants enfant), « Pour qui » ×2 (le Scotch, Vinted et Beebs), Support Leboncoin (les bobines, rangées en
+  DVD-Films), Espace de stockage (le téléphone). **Reste à taper : le Modèle du téléphone Samsung** — aucune liste fiable
+  (il faudrait relever les modèles Vinted marque par marque, côté extension : non fait). Hors des 11 (rayons) : Depop ×6
+  « Pas sur Depop » en un geste, Beebs ×4 en puces. Trouvé au rejeu et corrigé (57f2484) : une réponse commune
+  « Ce livre n'a pas d'ISBN » proposée pour 2 livres dont « EAT » — un geste aurait effacé son ISBN.
 
 ## 12. Valeurs fausses dans les copies stockées — FAIT (ces 5 cas seulement)
 - Script `scripts/reparations/20261026_copies_valeurs_fausses.sql` : simulation (transaction annulée) à 23:13, puis
