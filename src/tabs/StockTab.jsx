@@ -6278,86 +6278,25 @@ const StockTab = memo(function StockTab({
   }, []);
   const [repubBusy, setRepubBusy] = useState(null);          // inventaire_id en cours
   const [repubMsgs, setRepubMsgs] = useState({});            // inventaire_id → {ton, texte}
-  // ── ARRÊT DE LA VAGUE (07/09/2026, demande Ornella) ───────────────────────
-  // `repubArret` : null | { annulables, encoreEnVol }  → feuille de confirmation.
-  // `repubArretEnCours` : le temps de l'écriture. `repubArretBilan` : le retour
-  // court après coup (« N republications arrêtées »), effacé au clic suivant.
-  const [repubArret, setRepubArret] = useState(null);
-  const [repubArretEnCours, setRepubArretEnCours] = useState(false);
-  const [repubArretBilan, setRepubArretBilan] = useState(null);
-
-  // Arrête les republications qui n'ont RIEN supprimé. Les gardes sont
-  // REJOUÉES dans la requête elle-même — la liste d'ids venue de l'écran peut
-  // avoir jusqu'à 20 s de retard (période du poll), et pendant ces 20 s un job
-  // a pu passer à 'captured' et supprimer l'annonce. Le filtre serveur est ce
-  // qui rend le geste sûr ; la liste d'ids ne fait que borner le périmètre :
-  //   · user_id      = celui qui clique, et personne d'autre ;
-  //   · action       = 'republish' SEUL — jamais un publish (autre chantier),
-  //                    jamais un delete (une vente doit retirer l'annonce
-  //                    partout, même si on arrête ses republications) ;
-  //   · status       ∈ pending | needs_user — jamais 'processing' : une
-  //                    extension l'a en main à cet instant ;
-  //   · republish_step null OU 'a_capturer' — la démonstration est dans
-  //                    republishAnnulable (utils/publicationState).
-  // Aucune Pépite à rendre (la republication n'en coûte pas), aucune colonne
-  // de l'article touchée : ni date de publication, ni ancienneté, ni compteurs
-  // de vues/favoris. Rien n'a bougé sur la plateforme, rien ne doit bouger.
-  async function arreterRepublications(jobs) {
-    const ids = (jobs ?? []).filter(republishAnnulable).map((j) => j.id);
-    if (!ids.length || !user?.id) { setRepubArret(null); return; }
-    setRepubArretEnCours(true);
-    try {
-      const { data, error } = await supabase
-        .from('cross_post_jobs')
-        .update({
-          status: 'cancelled',
-          error: lang === 'fr'
-            ? 'Arrêtée à ta demande — ton annonce est restée en ligne.'
-            : 'Stopped at your request — your listing stayed online.',
-        })
-        .in('id', ids)
-        .eq('user_id', user.id)
-        .eq('action', 'republish')
-        .in('status', ['pending', 'needs_user'])
-        .or('platform_fields->>republish_step.is.null,platform_fields->>republish_step.eq.a_capturer')
-        .select('id,inventaire_id');
-      if (error) throw error;
-      const arretes = data ?? [];
-      // ⚠️ platform_fields est écrasé EN ENTIER par une update qui le porte :
-      // le marqueur se pose donc job par job, sur la valeur relue, jamais en
-      // masse. Best-effort — s'il manque, le job reste 'cancelled' (l'annonce
-      // est en ligne quoi qu'il arrive), il s'affichera juste « Arrêtée ».
-      const parId = new Map((jobs ?? []).map((j) => [j.id, j]));
-      await Promise.all(arretes.map((r) => supabase
-        .from('cross_post_jobs')
-        .update({ platform_fields: { ...(parId.get(r.id)?.platform_fields ?? {}), [MARQUEUR_ARRET_UTILISATEUR]: new Date().toISOString() } })
-        .eq('id', r.id).eq('user_id', user.id)
-        .then(({ error: e }) => { if (e) console.warn('[repub-arret] marqueur non posé', r.id, e.message); })));
-      // Patch OPTIMISTE : les cartes repassent « En ligne » sans recharger la
-      // liste (le poll de 20 s confirmera). On ne remplace rien : on retouche
-      // les lignes concernées là où elles sont déjà.
-      const arretesIds = new Set(arretes.map((r) => r.id));
-      const marqueur = new Date().toISOString();
-      if (arretesIds.size) {
-        setJobsByInventaire((prev) => {
-          const suivant = { ...prev };
-          for (const [invId, liste] of Object.entries(prev)) {
-            if (!liste?.some((j) => arretesIds.has(j.id))) continue;
-            suivant[invId] = liste.map((j) => arretesIds.has(j.id)
-              ? { ...j, status: 'cancelled', platform_fields: { ...(j.platform_fields ?? {}), [MARQUEUR_ARRET_UTILISATEUR]: marqueur } }
-              : j);
-          }
-          return suivant;
-        });
+  // ── ANNULÉS DANS « TA FILE » (26/10, Nico — remplace l'arrêt de la vague du 07/09) ──────────────────────
+  // FileDesJobs annule ce qui attend (utils/annulerFile.js : jamais un job en cours, jamais une republication dont
+  // l'annonce est ou a pu être supprimée, jamais un retrait après une vente) et rend les ids annulés : les cartes
+  // repassent « En ligne » sans recharger la liste (patch OPTIMISTE, le poll de 20 s confirmera).
+  function marquerAnnulesDansLeStock(ids) {
+    const annules = new Set((ids ?? []).map(String));
+    if (!annules.size) return;
+    const marqueur = new Date().toISOString();
+    setJobsByInventaire((prev) => {
+      const suivant = { ...prev };
+      for (const [invId, liste] of Object.entries(prev)) {
+        if (!liste?.some((j) => annules.has(String(j.id)))) continue;
+        suivant[invId] = liste.map((j) => annules.has(String(j.id))
+          ? { ...j, status: 'cancelled', platform_fields: { ...(j.platform_fields ?? {}), [MARQUEUR_ARRET_UTILISATEUR]: marqueur } }
+          : j);
       }
-      setRepubArretBilan({ n: arretes.length, restants: (jobs ?? []).length - arretes.length });
-      track('republish_arret', { demandes: ids.length, arretes: arretes.length });
-    } catch (e) {
-      setRepubArretBilan({ erreur: e?.message || (lang === 'fr' ? "L'arrêt n'a pas pu être enregistré." : 'The stop could not be saved.') });
-    } finally {
-      setRepubArretEnCours(false);
-      setRepubArret(null);
-    }
+      return suivant;
+    });
+    track('file_annulation', { annules: annules.size });
   }
   useEffect(() => {
     if (!republishActif) return;
@@ -8628,10 +8567,9 @@ const StockTab = memo(function StockTab({
   // inséré rendu dans jobsByInventaire) puis « retirée » quand le job atteint
   // 'deleted'. Retourne un message d'erreur (affiché DANS le modal) ou null.
   const [removeModalItem, setRemoveModalItem] = useState(null);
-  // Les deux modales de Stock qui ne passent PAS par le patron partagé (elles
-  // sont écrites en ligne dans le rendu) : elles ont droit au même fond figé,
+  // La modale de Stock qui ne passent PAS par le patron partagé (elle
+  // est écrite en ligne dans le rendu) : elle a droit au même fond figé,
   // sinon le défaut corrigé le 08/09 revient par la porte d'à côté.
-  useFondFige(!!repubArret);
   useFondFige(!!failJobModal);
   // Tap sur « En cours… » → panneau de diagnostic (2026-07-20).
   const [jobStatusItem, setJobStatusItem] = useState(null);
@@ -10209,18 +10147,6 @@ const StockTab = memo(function StockTab({
                 </button>
               );
             })()}
-            {/* Retour COURT après l'arrêt — une ligne, ton posé, et le nombre
-                exact. La mention des « encore en cours » n'apparaît que s'il y
-                en a : on ne fabrique pas une réserve pour rien. */}
-            {repubArretBilan&&(
-              <div style={{fontSize:12,lineHeight:1.5,marginTop:10,color:repubArretBilan.erreur?"#B91C1C":"#1B6E62"}}>
-                {repubArretBilan.erreur
-                  ?repubArretBilan.erreur
-                  :lang==='fr'
-                  ?`${repubArretBilan.n} republication${repubArretBilan.n>1?'s':''} arrêtée${repubArretBilan.n>1?'s':''}. Tes annonces sont restées en ligne.${repubArretBilan.restants>0?` ${repubArretBilan.restants} déjà commencée${repubArretBilan.restants>1?'s':''} vont finir.`:''}`
-                  :`${repubArretBilan.n} repost${repubArretBilan.n>1?'s':''} stopped. Your listings stayed online.${repubArretBilan.restants>0?` ${repubArretBilan.restants} already under way will finish.`:''}`}
-              </div>
-            )}
             {/* Un dry run n'est ni une republiée ni une arrêtée : sans cette
                 ligne il disparaîtrait de l'écran (recette REPUBLISH_DRY_RUN). */}
             {repubBandeau?.dryRuns>0&&(
@@ -12201,9 +12127,11 @@ const StockTab = memo(function StockTab({
           (publications, republications, retraits), le job en cours avec sa
           barre, puis ce qui attend dans l'ordre de départ, chaque attente
           avec sa raison. Ouverte par le bandeau ET par toute barre de job.
-          LECTURE SEULE, sauf deux portes qui existaient déjà : le geste
-          d'une ligne « à faire » (mini-éditeur, modale, connexion) et, en
-          pied, l'arrêt des republications en attente (décision Nico 01/10). */}
+          Rien ne s'y relance. Ses gestes : celui d'une ligne « à faire »
+          (mini-éditeur, modale, connexion), la pause, et (26/10, Nico)
+          l'annulation de ce qui attend — « Tout annuler » et par ligne
+          (utils/annulerFile.js) ; elle remplace l'arrêt des republications
+          qui était en pied. */}
       {fileOuverte&&(
         <FileDesJobs
           lang={lang}
@@ -12234,23 +12162,7 @@ const StockTab = memo(function StockTab({
             if(job.error||job.status==='needs_user')return <button type="button" style={style} onClick={()=>{fermer();setFailJobModal(job);}}>{fr?'Régler':'Fix it'}</button>;
             return null;
           }}
-          pied={activite?.annulables?.length>0?(
-            <>
-              <button type="button"
-                onClick={()=>{setFileOuverte(false);setRepubArretBilan(null);setRepubArret({annulables:activite.annulables,encoreEnVol:activite.encoreEnVol});}}
-                style={{display:'flex',alignItems:'center',gap:8,width:'100%',textAlign:'left',border:'1px solid #E7E3D8',background:'transparent',color:'#5C6560',borderRadius:12,padding:'11px 12px',fontSize:12.5,fontWeight:700,cursor:'pointer',fontFamily:'inherit',lineHeight:1.45}}>
-                <Pause size={14} style={{flexShrink:0}}/>
-                <span style={{flex:1,minWidth:0}}>
-                  {lang==='fr'
-                    ?(activite.annulables.length>1?`Arrêter les ${activite.annulables.length} republications en attente`:'Arrêter la republication en attente')
-                    :(activite.annulables.length>1?`Stop the ${activite.annulables.length} queued reposts`:'Stop the queued repost')}
-                </span>
-              </button>
-              <div style={{fontSize:11.5,color:'#8A8578',textAlign:'center',lineHeight:1.45}}>
-                {lang==='fr'?'Tes annonces restent en ligne, rien n’est supprimé.':'Your listings stay online, nothing is deleted.'}
-              </div>
-            </>
-          ):null}
+          onAnnules={marquerAnnulesDansLeStock}
           onFermer={()=>setFileOuverte(false)}
         />
       )}
@@ -12264,49 +12176,6 @@ const StockTab = memo(function StockTab({
           onFiltrerListe={()=>{setAttenteOuverte(false);setRepubFiltre('relancer');sauterAuxArticles();}}
           onFermer={()=>setAttenteOuverte(false)}
         />
-      )}
-      {repubArret&&createPortal(
-        <div onClick={()=>!repubArretEnCours&&setRepubArret(null)} style={{position:"fixed",inset:0,zIndex:10000,background:"rgba(16,32,27,0.45)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
-          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:20,padding:"24px",width:"min(92vw,420px)",boxShadow:"0 24px 80px rgba(0,0,0,0.2)",fontFamily:"inherit"}}>
-            <div style={{fontSize:16,fontWeight:700,color:"#10201B",marginBottom:10,lineHeight:1.4}}>
-              {lang==='fr'
-                ?`Arrêter les ${repubArret.annulables.length} republication${repubArret.annulables.length>1?'s':''} en attente ?`
-                :`Stop the ${repubArret.annulables.length} queued repost${repubArret.annulables.length>1?'s':''}?`}
-            </div>
-            <div style={{fontSize:14,color:"#3A443F",lineHeight:1.6,marginBottom:repubArret.encoreEnVol>0?12:18}}>
-              {lang==='fr'
-                ?'Tes annonces restent en ligne telles quelles, rien n\'est supprimé.'
-                :'Your listings stay online exactly as they are, nothing is deleted.'}
-            </div>
-            {/* Les republications déjà engagées ne sont PAS annulables (elles
-                ont pu retirer l'annonce ; l'arrêter maintenant la perdrait).
-                On le dit ici, calmement, plutôt que de laisser découvrir que
-                l'arrêt n'était pas total. */}
-            {repubArret.encoreEnVol>0&&(
-              <div style={{fontSize:12.5,color:"#5C6560",lineHeight:1.55,marginBottom:18,padding:"9px 11px",background:"#F7F5EF",border:"1px solid #E7E3D8",borderRadius:10}}>
-                {lang==='fr'
-                  ?`${repubArret.encoreEnVol} republication${repubArret.encoreEnVol>1?'s sont':' est'} déjà en cours et ${repubArret.encoreEnVol>1?'iront':'ira'} au bout : les interrompre maintenant laisserait ${repubArret.encoreEnVol>1?'ces annonces':'cette annonce'} hors ligne.`
-                  :`${repubArret.encoreEnVol} repost${repubArret.encoreEnVol>1?'s are':' is'} already under way and will finish: stopping ${repubArret.encoreEnVol>1?'them':'it'} now would leave ${repubArret.encoreEnVol>1?'those listings':'that listing'} offline.`}
-              </div>
-            )}
-            <button type="button" disabled={repubArretEnCours} onClick={()=>arreterRepublications(repubArret.annulables)}
-              style={{display:"block",width:"100%",textAlign:"center",padding:"12px",borderRadius:999,border:"none",
-                background:repubArretEnCours?"#DCEEEA":"linear-gradient(120deg,#2F9E90,#1B6E62)",
-                color:repubArretEnCours?"#8FB5AE":"#fff",fontSize:14,fontWeight:700,fontFamily:"inherit",
-                cursor:repubArretEnCours?"not-allowed":"pointer",marginBottom:8}}>
-              {repubArretEnCours
-                ?(lang==='fr'?'Arrêt…':'Stopping…')
-                :(lang==='fr'?'Arrêter':'Stop')}
-            </button>
-            <button type="button" disabled={repubArretEnCours} onClick={()=>setRepubArret(null)}
-              style={{display:"block",width:"100%",textAlign:"center",padding:"11px",borderRadius:999,
-                border:"1px solid #E7E3D8",background:"transparent",color:"#5C6560",fontSize:13.5,fontWeight:600,
-                fontFamily:"inherit",cursor:repubArretEnCours?"not-allowed":"pointer"}}>
-              {lang==='fr'?'Laisser continuer':'Keep going'}
-            </button>
-          </div>
-        </div>,
-        document.body
       )}
 
       {failJobModal&&createPortal(

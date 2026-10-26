@@ -56,7 +56,7 @@
     (moteur `utils/progression.js`, étapes réelles des jobs `utils/barresJobs.js`).
     Grande barre dans le parcours où l'on attend, compacte sur la carte du Stock
     (`BarreJobCarte`), jamais les deux pour le même job sur le même écran. Tap sur
-    une barre de job = `FileDesJobs` (lecture seule, raisons `utils/fileDesJobs.js`).
+    une barre de job = `FileDesJobs` (raisons `utils/fileDesJobs.js` ; ne relance rien — pause et annulation de ce qui attend, `utils/annulerFile.js`).
     Jamais 100 % ni « Terminé » avant la vraie fin. Relevés et synchronisation :
     hors périmètre, leur chargement reste le leur. Preuves : `npm run
     selftest:progression`, `selftest:file-des-jobs`, `scripts/apercu/capture-barres.mjs`.

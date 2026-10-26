@@ -7,6 +7,7 @@
 
 ## Sommaire
 
+- 26/10 nuit — « Ta file » : annuler ce qui attend (Tout annuler, par ligne) — jamais l'en cours, une annonce retirée ni un retrait (en fin de fichier)
 - 26/10 nuit — la relecture avant redépôt passe devant, relancée puis dite ; en relecture, une annonce ne retient que sa plateforme (en fin de fichier)
 - 17/10 — « introuvable » sur l'annonce exacte (2 relevés complets) ; une republication naît avec son lien et garde sa copie (en fin de fichier)
 - 17/10 — la limite du jour se dit en entier : minuit, « environ N jours » (exception à la règle du 16/10) (en fin de fichier)
@@ -835,3 +836,20 @@
 - ⛔ Inchangé : jamais un redépôt sans relevé complet postérieur à l'essai (seul le verdict « aucune » rend le job à la
   file) ; identité certaine → rattachée ; doute → needs_user avec les liens.
 - Selftests : `releve-verif-non-pris`, `retenue-hors-ligne`. Rapport : `docs/enquetes/johan-relecture-2610/RAPPORT.md`.
+
+## 26/10 (nuit) — « Ta file » : annuler ce qui attend (Nico)
+- **Geste** : « Tout annuler » (rouge, à côté de « Mettre en pause / Reprendre », confirmation « Annuler les N … en
+  attente ? ») et, par ligne, glisser vers la gauche (« Annuler ») ou la petite croix (confirmation dans la ligne).
+  Remplace l'ancien « Arrêter les N republications en attente » en pied de la file.
+- **S'annule** (`src/utils/annulerFile.js`, `jobAnnulable`) : une publication pending / needs_user sans lien ni numéro ;
+  une republication pending / needs_user dont le relevé n'a pas commencé (étape absente ou `a_capturer`).
+- ⛔ **Jamais** : un job en cours (il va au bout) ; une republication `captured` (la suppression a pu partir avant
+  d'être écrite), `deleted` ou suppression envoyée (l'annonce doit revenir en ligne) ; un retrait (`delete`, après une
+  vente : double vente). Les lignes « En cours » n'ont pas de croix et ne comptent pas dans « Tout annuler ».
+- **Écriture** : une mise à jour par job, relue juste avant, gardée en base (statut lu, action, étape / lien) ;
+  `status = cancelled` + `arret_utilisateur` ENSEMBLE (controler_job_extension refuse alors toute écriture de
+  l'extension). Quota : une publication se compte à la génération (rien à rendre) ; une republication porte
+  `hors_quota`, déjà exclu par quotas_etat, quota_republication_free_etat, spend_coins_and_republish et
+  remise_en_vente_place (vérifié en prod le 26/10) — aucune migration.
+- Selftest : `file-annuler`. Aperçu et preuve : `node scripts/apercu/capture-file-annuler.mjs`
+  (`screenshots-review/file-annuler/`, 390 et 1280 px).

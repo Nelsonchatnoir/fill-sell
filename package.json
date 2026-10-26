@@ -380,6 +380,7 @@
     "selftest:lbc-poids-main-propre": "node scripts/lbc-poids-main-propre-selftest.mjs",
     "selftest:retenue-hors-ligne": "node scripts/retenue-hors-ligne-selftest.mjs",
     "selftest:releve-verif-non-pris": "node scripts/releve-verif-non-pris-selftest.mjs",
+    "selftest:file-annuler": "node scripts/file-annuler-selftest.mjs",
     "selftest:introuvable-a-confirmer": "node scripts/introuvable-a-confirmer-selftest.mjs",
     "selftest:vente-relevee-sans-annonce": "node scripts/vente-relevee-sans-annonce-selftest.mjs",
     "selftest:depot-muet": "node scripts/depot-muet-selftest.mjs",
