@@ -292,6 +292,9 @@ ok(/label\[for="baby_age"\], label\[for="estimated_parcel_weight"\]'/.test(SRC) 
 ok(/if \(hasCriteria \|\| formulairePro\) \{\s*etatPose = await lbcSecondePasseCriteres\(\{/.test(SRC), "seconde passe : `if (hasCriteria || formulairePro)`");
 // (24/10 nuit) + l'origine de la valeur (« ia » : jamais par-dessus un pré-rempli précis de Leboncoin).
 ok(/fallbackValues: repliProduit, libelle: LBC_LIBELLES_PRO\[forKey\] \?\? null,\s*origineIa: origineLbc\[forKey\] === "ia",/.test(SRC), "canal générique : le libellé PRO en repli aussi au premier passage");
+// (26/10, étape 5) Particulier : pas de critère « Poids du colis » (le poids part par le bloc livraison) — plus jamais
+// « contrôle introuvable » sur 2 publications sur 3 ; le formulaire PRO garde la seconde passe et son avertissement.
+ok(/if \(forKey === "estimated_parcel_weight" && !formulairePro\) \{[^}]*continue;\s*\}\s*clesAbsentesPremierePasse\.push\(\[forKey, val\]\);/.test(SRC), "particulier : estimated_parcel_weight n'est jamais noté absent (le poids passe par la livraison) ; PRO inchangé");
 ok(/if \(!reposeEtatFaite\) reposes \+= await reposerValeursConnuesLbc\(bloqueurs, fields, warnings\);/.test(SRC)
   && /if \(reposes && !bloqueurs\.length && !reposeEtatFaite\) \{[\s\S]{0,200}reposeEtatFaite = true;/.test(SRC), "verdict : valeurs connues reposées, UN seul recliquage de « Continuer »");
 ok(!/valider et payer[^\n]*realClick|realClick\([^)]*payer/i.test(SRC), "aucun chemin ne clique « Valider et payer »");

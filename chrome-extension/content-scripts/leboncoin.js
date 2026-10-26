@@ -3062,6 +3062,14 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
       // Contrôle absent MAINTENANT (formulaire pro : Poids du colis, Quantité
       // rendus tard) → noté pour la seconde passe, cf. plus bas.
       if (!findCriterionInput(`label[for="${forKey}"]`) && !(LBC_LIBELLES_PRO[forKey] && findCriterionInputByLabelText(LBC_LIBELLES_PRO[forKey]))) {
+        // (26/10, étape 5) Le formulaire PARTICULIER n'a pas de critère « Poids du colis » : le poids s'y pose par le
+        // bloc livraison (poserLivraisonLbc, « Choisissez un poids »). Le noter absent écrivait « estimated_parcel_weight :
+        // contrôle introuvable » sur 668 publications sur 990 depuis le 20/10 (19 sur 19 en 0.6.144) — 584 d'entre elles
+        // relevées AVEC livraison et un palier de poids ≥ celui de la fiche : un faux avertissement, jamais un poids perdu.
+        if (forKey === "estimated_parcel_weight" && !formulairePro) {
+          console.log("[leboncoin] estimated_parcel_weight : formulaire particulier — le poids part par le bloc livraison");
+          continue;
+        }
         clesAbsentesPremierePasse.push([forKey, val]);
         continue;
       }
@@ -3076,6 +3084,8 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
       // (18/10, 0.6.128) Le libellé PRO en repli AUSSI ici : le contrôle vient
       // d'être vu par son libellé (« Poids du colis ») — sans ce repli, le
       // remplissage ne le retrouvait pas et rendait false sans un mot.
+      const cleProduitDep = LBC_PAIRES_TYPE_PRODUIT[forKey] ?? null;
+      const valProduitDep = cleProduitDep ? String(lbcAspectsJob[cleProduitDep] ?? "").trim() : "";
       await fillCriterionSafe(forKey, `label[for="${forKey}"]`, val, warnings, { skipIfPrefilled: true, composants: true, fallbackValues: repliProduit, libelle: LBC_LIBELLES_PRO[forKey] ?? null,
         origineIa: origineLbc[forKey] === "ia",
         produitDependant: valProduitDep ? { labelSelector: `label[for="${cleProduitDep}"]`, valeur: valProduitDep } : null });
@@ -3085,8 +3095,6 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
   // ── PRODUIT REQUIS SANS VALEUR : LE REPLI LEBONCOIN, PUIS ON PUBLIE ────────
   // (2026-09-08, décision Nico.) Les listes Produit de Maison & Jardin
   // DÉPENDENT du premier combobox (relevé live 07/09 : Univers « Autre » →
-      const cleProduitDep = LBC_PAIRES_TYPE_PRODUIT[forKey] ?? null;
-      const valProduitDep = cleProduitDep ? String(lbcAspectsJob[cleProduitDep] ?? "").trim() : "";
   // Produit ["Autre"], Électroménager Type « Autre » → ["Autres"]). Elles sont
   // relevées COMPLÈTES — leboncoin.js ne tape JAMAIS dans un combobox fermé
   // (vérifié 08/09 : seule Marque/Modèle passent par la frappe, et seulement
@@ -4228,14 +4236,6 @@ function marqueCiteeDansLArticle(marque) {
   return !!m && !!TEXTE_ARTICLE_LBC && containsAsWords(TEXTE_ARTICLE_LBC, m);
 }
 
-async function releverOptionsCritere(labelSelector) {
-  try {
-    const input = findCriterionInput(labelSelector);
-    if (!input) return null;
-    input.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    await sleep(700);
-    // (03/10, point 9) PLUS DE REPLI SUR TOUT LE DOCUMENT : sans le menu propre
-    // du champ (aria-controls), on ramassait les options du menu ouvert à côté
 // ⟦prerempli-ia:début⟧ (26/10, étape 4 — règle de Nico : « la valeur qui colle à l'article gagne ; jamais une valeur qui
 // mène à un blocage quand l'autre aurait passé ») QUAND LEBONCOIN A PRÉ-REMPLI ET QUE NOTRE VALEUR VIENT DE L'IA.
 // La règle du 24/10 (0.6.141) gardait TOUJOURS le pré-rempli : Jocabroc, pot à sucre (26/10, a64153a4) — notre paire
@@ -4287,6 +4287,14 @@ function departagerPreRempliIa({ prefilled, notre, texte = "", optionsProduit = 
 }
 // ⟦prerempli-ia:fin⟧
 
+async function releverOptionsCritere(labelSelector) {
+  try {
+    const input = findCriterionInput(labelSelector);
+    if (!input) return null;
+    input.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await sleep(700);
+    // (03/10, point 9) PLUS DE REPLI SUR TOUT LE DOCUMENT : sans le menu propre
+    // du champ (aria-controls), on ramassait les options du menu ouvert à côté
     // — c'est ainsi que « Poids » (diy_weight, furniture_weight) et
     // « Quantité » ont appris au catalogue la liste du champ « Type ». Pas de
     // menu propre → pas de liste.
@@ -4401,6 +4409,9 @@ async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, {
     // « Loisirs créatifs » (platform_fields.lbcAspectsOrigine[clé] = « ia », posé par l'app à ses passes IA). Une valeur
     // du vendeur (son texte, sa réponse, l'annonce d'origine rejouée) garde la main ; celle de l'IA s'efface devant la
     // valeur précise de Leboncoin. Marque : règle à part (marquePreRemplieNonCitee). Pré-rempli générique : on pose.
+    // (26/10, étape 4) Départagé par departagerPreRempliIa (⟦prerempli-ia⟧) : jamais un blocage, puis la valeur que
+    // l'article nomme ; sinon le pré-rempli reste, comme avant. `produitDependant` : { labelSelector, valeur } du Produit
+    // qui dépend de ce Type (LBC_PAIRES_TYPE_PRODUIT) — sa liste, rendue sous le Type pré-rempli, est relue sans rien poser.
     if (prefilled && origineIa && !estValeurGenerique(prefilled) && !REJOUE_ANNONCE_D_ORIGINE && fieldName !== "marque") {
       let optionsProduit = null;
       let produitPreRempli = "";
@@ -4418,15 +4429,12 @@ async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, {
       const note = `${fieldName}: pré-rempli LBC "${prefilled}" REMPLACÉ par notre valeur "${rawValue}" (IA) — ${verdict.motif}`;
       console.log(`[leboncoin] ${note}`);
       warnings.push(note);
-      return true;
     }
     if (prefilled && estValeurGenerique(rawValue) && !estValeurGenerique(prefilled) && !REJOUE_ANNONCE_D_ORIGINE && !marquePreRemplieNonCitee) {
       const note = `${fieldName}: pré-rempli LBC "${prefilled}" CONSERVÉ — notre valeur "${rawValue}" est un repli générique, jamais mieux qu'une valeur précise posée par Leboncoin`;
-    // (26/10, étape 4) Départagé par departagerPreRempliIa (⟦prerempli-ia⟧) : jamais un blocage, puis la valeur que
-    // l'article nomme ; sinon le pré-rempli reste, comme avant. `produitDependant` : { labelSelector, valeur } du Produit
-    // qui dépend de ce Type (LBC_PAIRES_TYPE_PRODUIT) — sa liste, rendue sous le Type pré-rempli, est relue sans rien poser.
       console.log(`[leboncoin] ${note}`);
       warnings.push(note);
+      return true;
     }
     await humanPause();
     input.dispatchEvent(new MouseEvent("click", { bubbles: true }));

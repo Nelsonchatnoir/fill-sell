@@ -239,6 +239,7 @@ import { retenirRetraitVerificationLongue } from "../_shared/beebs-retrait-verif
 import { LECTURE_FOND_VERSION_MIN, LECTURE_FOND_RYTHME, modeLectureFond, regleLectureFond, listeLectureFond, aLireEnFond, debutJourParis,
   FEATURES_PUBLICATION, PAUSE_PUBLICATION_MIN, LECTURE_FOND_BEEBS_VERSION_MIN, LECTURE_FOND_BEEBS_MODE_DEFAUT, LECTURE_FOND_BEEBS_RYTHME, listeLectureFondBeebs, aLireEnFondBeebs } from "../_shared/lecture-fond.js";
 import { palierDuProfil, aAuMoins } from "../_shared/palier.js";
+import { couleurEcriteDansLeTexte, optionCouleurDansListe } from "../_shared/couleur-du-texte.js";
 
 // ── Format de colis Vinted : deux lectures du PARC, gardées 10 min par instance
 // (02/10, _shared/vinted-colis.js). Un rayon où un refus « faute de format »
@@ -11263,6 +11264,26 @@ serve(async (req) => {
         grillesEtatCache.set(chemin, trouve);
         return trouve;
       };
+      // (26/10, étape 5) La liste « Couleur » de la catégorie : celle relevée sur le formulaire (needsUserField), sinon le
+      // catalogue (platform_category_aspects, clé *_color). Inconnue → null (on sert la couleur de base).
+      const listesCouleurCache = new Map<string, string[] | null>();
+      const listeCouleurLeboncoin = async (pf: Record<string, unknown>, chemin: string): Promise<string[] | null> => {
+        const nuf = (pf.needsUserField && typeof pf.needsUserField === "object") ? (pf.needsUserField as Record<string, unknown>) : null;
+        if (nuf && /(_color$|^color$)/.test(String(nuf.field_key ?? "")) && Array.isArray(nuf.allowed_values) && nuf.allowed_values.length) {
+          return (nuf.allowed_values as unknown[]).map(String);
+        }
+        if (!chemin) return null;
+        if (listesCouleurCache.has(chemin)) return listesCouleurCache.get(chemin) ?? null;
+        let liste: string[] | null = null;
+        try {
+          const { data: rows } = await userClient.from("platform_category_aspects").select("field_key, allowed_values")
+            .eq("platform", "leboncoin").eq("category_key", chemin.slice(0, 300)).like("field_key", "%color").limit(3);
+          const row = (rows ?? []).find((r: { allowed_values?: unknown }) => Array.isArray(r.allowed_values) && (r.allowed_values as unknown[]).length) as { allowed_values?: unknown[] } | undefined;
+          liste = row?.allowed_values ? row.allowed_values.map(String) : null;
+        } catch (_e) { liste = null; }
+        listesCouleurCache.set(chemin, liste);
+        return liste;
+      };
       const TAILLE_AGE_RE = /^\s*\d{1,2}\s*(ans?|mois)\b|^\s*\d{2,3}\s*cm\b/i;
       const normaliser = (v: unknown): string | null => {
         const s = String(v ?? "").trim().toLowerCase();
@@ -11540,6 +11561,28 @@ serve(async (req) => {
               pf.univers = valeur;
             } else {
               console.log(`[get-pending-jobs] univers Leboncoin ${String(j.id).slice(0, 8)} (${chemin}) : « ${actuel || "vide"} » hors liste et aucune source certaine — rien posé`);
+            }
+          }
+        }
+
+        // ── (26/10, étape 5 — règle de Nico) LA COULEUR ÉCRITE DANS LE TITRE OU LE TEXTE GAGNE TOUJOURS ──────────
+        // Jocabroc : « Pot à sucre … bleu marine à pois blancs » parti en « Blanc » (couleur déclarée sur son annonce
+        // Vinted, à la place du « Bleu » pré-rempli par Leboncoin). Le titre d'abord, puis la première phrase du texte ;
+        // jamais une couleur de décor (« à pois blancs ») ; deux couleurs → rien (_shared/couleur-du-texte.js). Une
+        // réponse de la personne à la question Couleur n'est jamais remplacée. Servi : l'option exacte de la liste de la
+        // catégorie quand elle est connue, sinon la couleur de base (« Bleu » pour bleu marine, « Vert » pour vert d'eau).
+        {
+          const resolu = (pf.needsUserResolved && typeof pf.needsUserResolved === "object") ? (pf.needsUserResolved as Record<string, unknown>) : {};
+          const repondue = Object.keys(resolu).some((k) => /colo|couleur/i.test(k));
+          const ecrite = repondue ? null : couleurEcriteDansLeTexte(String(j.title ?? ""), String(j.description ?? ""));
+          if (ecrite) {
+            const liste = await listeCouleurLeboncoin(pf, chemin);
+            const valeur = (liste ? optionCouleurDansListe(ecrite, liste) : null) ?? ecrite.base;
+            const avant = String(((pf.colors as unknown[] | undefined)?.[0] ?? pf.couleur) ?? "").trim();
+            if (valeur && valeur.toLowerCase() !== avant.toLowerCase()) {
+              pf.couleur = valeur;
+              pf.colors = [valeur];
+              trace.couleur = { valeur, avant: avant || null, source: `${ecrite.source} « ${ecrite.mot} »${liste ? " (liste de la catégorie)" : ""}` };
             }
           }
         }
@@ -13082,6 +13125,18 @@ serve(async (req) => {
     // fin de ses polls, à ce rythme, dans cet ordre. Coupé 6 h après le premier refus de Vinted sur ce compte (sa trace
     // usage_logs « lecture_fond »), et pendant une pause anti-robot. Illisible → rien n'est servi, la file part comme avant.
     let lectureFond: Record<string, unknown> | null = null;
+    // (26/10, urgence lenteur) La personne publie (un geste tracé il y a moins de 10 min) ou ce poll lui sert des tâches :
+    // aucune lecture de fond (Vinted, Beebs) — dans l'extension elle tient le verrou de flux en s'espaçant de 20 à 60 s,
+    // et tout ce que l'écran demande attendait derrière (75 s et 97 s mesurées le 26/10). Illisible → pas de pause.
+    let personnePublie = out.length > 0;
+    if (!personnePublie && !includeProcessing && !includeNeedsUser && versionAuMoins(version, LECTURE_FOND_VERSION_MIN)) {
+      try {
+        const { data: gestes } = await userClient.from("usage_logs").select("id").eq("user_id", user.id)
+          .in("feature", FEATURES_PUBLICATION as unknown as string[])
+          .gte("created_at", new Date(Date.now() - PAUSE_PUBLICATION_MIN * 60_000).toISOString()).limit(1);
+        personnePublie = (gestes ?? []).length > 0;
+      } catch (_e) { /* illisible : pas de pause */ }
+    }
     if (!includeProcessing && !includeNeedsUser && versionAuMoins(version, LECTURE_FOND_VERSION_MIN)) {
       try {
         const maintenantLf = Date.now();
@@ -13125,18 +13180,6 @@ serve(async (req) => {
           // Rattrapage : la requête a déjà écarté les fiches complètes (sans texte lu ici, aLireEnFond ne juge que la date
           // de lecture). Mesure (pilotes, 200 fiches au plus) : le texte est lu, ses fiches à lire passent d'abord.
           const lignesTriees = ((lignesLf ?? []) as unknown as Record<string, unknown>[]).map((f) => (regleLf.mode === "mesure" ? f : { ...f, description: "" }));
-    // (26/10, urgence lenteur) La personne publie (un geste tracé il y a moins de 10 min) ou ce poll lui sert des tâches :
-    // aucune lecture de fond (Vinted, Beebs) — dans l'extension elle tient le verrou de flux en s'espaçant de 20 à 60 s,
-    // et tout ce que l'écran demande attendait derrière (75 s et 97 s mesurées le 26/10). Illisible → pas de pause.
-    let personnePublie = out.length > 0;
-    if (!personnePublie && !includeProcessing && !includeNeedsUser && versionAuMoins(version, LECTURE_FOND_VERSION_MIN)) {
-      try {
-        const { data: gestes } = await userClient.from("usage_logs").select("id").eq("user_id", user.id)
-          .in("feature", FEATURES_PUBLICATION as unknown as string[])
-          .gte("created_at", new Date(Date.now() - PAUSE_PUBLICATION_MIN * 60_000).toISOString()).limit(1);
-        personnePublie = (gestes ?? []).length > 0;
-      } catch (_e) { /* illisible : pas de pause */ }
-    }
           const listeLf = listeLectureFond(lignesTriees, regleLf, maintenantLf);
           lectureFond = { ...regleLf, liste: listeLf, a_lire: regleLf.mode === "mesure" ? null : lignesTriees.filter((f) => aLireEnFond(f, maintenantLf)).length };
           if (listeLf.length) console.log(`[get-pending-jobs] userId=${user.id} : lecture de fond (${regleLf.mode}) — ${listeLf.length} page(s) servie(s), ${lectureFond.a_lire ?? "—"} fiche(s) à lire (50 au plus comptées)`);
