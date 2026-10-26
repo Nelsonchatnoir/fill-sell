@@ -3798,7 +3798,7 @@ Deno.serve(async (req) => {
       if (job.action === "publish" || job.action === "republish") {
         const s = await siteDuCompteEbay(admin, env, job.user_id);
         if (s.site && siteEbayEtranger(s.site)) {
-          const cl = clotureEbayHorsFrance(job, { par: "ebay-api-worker", site: s.site, archiver: archiverErreur });
+          const cl = clotureEbayHorsFrance(job, { par: "ebay-api-worker", site: s.site, compte: s.pseudo, archiver: archiverErreur });
           job.platform_fields = cl.platform_fields;
           await marquer(admin, job, { status: cl.status, error: cl.error }, { etape: "compte", quoi: "site_ebay_etranger", site: s.site });
           resultats.push({ job: job.id, issue: "cancelled", motif: "site_ebay_etranger" });

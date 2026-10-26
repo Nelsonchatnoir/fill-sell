@@ -119,3 +119,48 @@ Prompt de nuit de Nico (25/10, 22:00). Ce fichier se remplit point par point ; l
 - Une annonce revue en ligne repart toujours d'elle-même ; rien n'est jamais retiré par cette règle. Non fait : une
   borne d'horloge de 72 h sans démenti (aujourd'hui : 72 h d'extension ouverte, puis un message) — décision de Nico.
 - Selftest `introuvable-a-confirmer` : 100 contrôles (18 neufs, les deux cas réels).
+
+## 5. Leboncoin refuse « WWE 2K20 – PS4 » (xxewwer, 52b5ec71) — la modération n'est plus jamais « à toi »
+- PROUVÉ : la catégorie est la bonne (Électronique › Jeux vidéo, la même feuille que « Call of Duty Black Ops 4 – PS4 »
+  publié par le même compte à 17:40, et cinq autres jeux le même soir) — ce n'est PAS une règle des jeux vidéo. La
+  modération a refusé la DESCRIPTION (adsubmit 403, champ body : « Nous refusons ce type de bien ou service sur
+  leboncoin.fr » · « Le bien que vous essayez de vendre ne respecte pas nos règles de diffusion »), cinq fois à
+  l'identique de 18:49 à 19:51, puis « Corrige le titre ou la description dans la fiche, puis relance ». La même
+  description est en ligne sur Vinted, eBay et Beebs. La phrase exacte : NON PROUVÉE (candidats : « Document
+  publicitaire WWE Network », « Carte promotionnelle WWE SuperCard », jamais vus dans une annonce Leboncoin acceptée).
+- Corrigé à la règle (pas-de-rouge, update-job-status, handler-watch, état, file, cause) : un refus de contenu
+  Leboncoin est classé dès la PREMIÈRE remontée (plus jamais cinq dépôts identiques) et n'est JAMAIS « à toi » :
+  « En pause — FillSell s'en occupe : l'équipe est prévenue et adapte le texte Leboncoin (ta fiche ne change pas) »
+  (source `lbc_moderation`, état « en pause », cause « nous »), le support reçoit une alerte par job. Le titre seul
+  refusé reste une question (un mot nommé, un geste). 52b5ec71 passe dans cette pause au prochain passage de
+  handler-watch. Selftest neuf `lbc-moderation` (17 contrôles).
+- Reste : trouver la phrase par un essai sur le compte Leboncoin de Nico (le texte tel quel ; sans les deux encarts ;
+  un encart à la fois), puis la liste fermée dans `_shared/description-leboncoin.ts`, puis UNE relance de 52b5ec71.
+  **Option à trancher par Nico** : un retrait automatique phrase par phrase (au plus 3 reprises — chaque refus compte
+  sur le compte Leboncoin de la personne).
+
+## 7. eBay : « États-Unis » puis « pas prêt » (Elodie82) — la vérité, et les 5 articles qui repartent seuls
+- PROUVÉ : la détection était juste, mais le COMPTE a changé : « États-Unis » valait pour @echa_5 (site lu 4 fois,
+  toujours US) ; à 18:23 elle a relié @aelevy.-86 (eBay France, conditions de vente absentes, bloqué par eBay). Les deux
+  messages se contredisaient faute de nommer le compte, et les 5 publications closes « hors France » ne pouvaient
+  JAMAIS repartir (le ré-armement eBay ne lit que les pauses). Non prouvé : pourquoi l'app a laissé cocher eBay
+  (non reproduit cette nuit).
+- Corrigé : un compte relié sur eBay France rouvre, UNE fois, ce que l'ancien compte avait clos — publication jamais
+  publiée, close depuis moins de 30 jours, fiche en stock, aucune autre publication eBay vivante ni annonce eBay en
+  ligne (jamais un doublon) — à la connexion (ebay-oauth-callback) et en filet (handler-watch). Elle repart « compte à
+  finir » et part seule dès que le compte est prêt ; hors quota gardé (**décision de Nico** si elle doit compter).
+  Les phrases nomment le compte (« ton compte eBay « echa_5 » est sur eBay États-Unis »). Selftest neuf
+  `ebay-hors-france-reouverture` (27 contrôles).
+- Elodie : ses 5 publications se rouvrent au prochain passage de handler-watch, en « compte à finir » (rien n'est
+  envoyé à eBay) ; elles partiront dès que ses conditions de vente existeront chez eBay. Aucun message envoyé.
+
+## 15. Contrôles du 25/10 au soir
+- 0.6.144 : PAS CASSÉE (voir la tête du rapport). ISBN « 0000000000 » : la retenue se lève avec la 0.6.144 — Rég
+  (« Moby Dick » publiée à 22:17:39) et Vincent A. (29 retenues levées de 21:31 à 21:35, 6 publiées). Règle juste.
+- Alizee : ce n'est pas l'extension — elle a mis sa file EN PAUSE depuis l'app à 20:03:06, et son poste s'est éteint
+  juste après ; rien ne part tant qu'elle ne la reprend pas (le bouton est dans sa file).
+- Défaut trouvé chez Vincent A. (deux postes, le second sans session Vinted) : le « mur du poste » ne partait jamais
+  pour la « pause avant toute suppression » (le motif est DANS la phrase, l'adresse dans le diagnostic) — ce poste
+  reprenait l'étape de retrait toutes les 5 à 180 min. Corrigé (update-job-status) : le motif et l'adresse de ce
+  rapport comptent ; les jobs vont au poste connecté. Les 31 jobs concernés sont publiés depuis. Selftest neuf
+  `mur-poste-pause-avant-retrait` (9 contrôles).

@@ -192,7 +192,7 @@ console.log("\n[5] eBay hors de France, plateformes écartées");
   const cl = clotureEbayHorsFrance(pris, { par: "ebay-api-worker", site: "UK", maintenant: Date.parse("2026-10-25T09:00:00Z"), archiver: archiverErreur });
   ok("clôture eBay : cancelled, message vrai, marque ebay_hors_france, hors quota, rien à relancer",
     cl.status === "cancelled" && cl.error === messageClotureEbayHorsFrance("UK") && cl.platform_fields.hors_quota === true
-    && egal(cl.platform_fields.ebay_hors_france, { le: "2026-10-25T09:00:00.000Z", par: "ebay-api-worker", statut_avant: "pending", source_avant: null, preuve: "UK" })
+    && egal(cl.platform_fields.ebay_hors_france, { le: "2026-10-25T09:00:00.000Z", par: "ebay-api-worker", statut_avant: "pending", source_avant: null, preuve: "UK", compte: null }) // (26/10 nuit, point 7) + le compte, inconnu ici
     && !("processing_since" in cl.platform_fields) && !("next_action_after" in cl.platform_fields) && !("needs_user_source" in cl.platform_fields));
   ok("la clôture eBay se reconnaît", estClotureEbayHorsFrance({ ...pris, ...cl }) && !estClotureEbayHorsFrance(pris));
   // Plateformes écartées (job 75344bf6 : republication Vinted pending, compte qui a écarté Vinted et eBay).
@@ -225,7 +225,7 @@ console.log("\n[6] Le câblage serveur");
     && gpj.indexOf("LEBONCOIN, RÉSERVÉ AUX ADRESSES EN FRANCE") < gpj.indexOf("« REPUBLIER » VINTED : SEULEMENT À UN POSTE"));
   const worker = lire("supabase/functions/ebay-api-worker/index.ts");
   ok("ebay-api-worker CLÔT un compte étranger (plus jamais needs_user « ebay_site_etranger »)",
-    /clotureEbayHorsFrance\(job, \{ par: "ebay-api-worker", site: s\.site, archiver: archiverErreur \}\)/.test(worker)
+    /clotureEbayHorsFrance\(job, \{ par: "ebay-api-worker", site: s\.site, (compte: s\.pseudo, )?archiver: archiverErreur \}\)/.test(worker)
     && !/needs_user_source: SOURCE_EBAY_SITE_ETRANGER/.test(worker) && /issue: "cancelled", motif: "site_ebay_etranger"/.test(worker));
   const oauth = lire("supabase/functions/_shared/ebay-oauth.ts");
   ok("ebay-account expose le site du compte à l'app (etatPublic.ebay_site)", /ebay_site: compte\.ebay_site \?\? null,/.test(oauth) && /politiques: null, ebay_site: null,/.test(oauth));

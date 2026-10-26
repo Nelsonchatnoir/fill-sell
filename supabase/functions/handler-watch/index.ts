@@ -50,6 +50,7 @@ import { ageProcessing, motifReprise, silenceDuDetenteur, REPRISE_AGE_MIN_MS } f
 import { oplaACloreJob, clotureOpla, STATUTS_OPLA_A_CLORE, OPLA_SORTIE, sortieOplaActive } from "../_shared/opla-sortie.js";
 import { posteVivant, messageInterruption } from "../_shared/interruption-poste.js";
 import { alerteOrphelineDue, envoiDepuisLeRetrait } from "../_shared/alerte-orpheline.js";
+import { rouvrirPublicationsEbayHorsFrance } from "../_shared/ebay-reouverture.ts";
 import { requalificationCompteVintedBloque } from "../_shared/vinted-compte-bloque.js";
 import { requalificationMiseANiveauEbay } from "../_shared/ebay-mise-a-niveau.js";
 import { OPLA_PRIX_MAX, prixOplaTropHaut, messagePrixOplaTropHaut } from "../_shared/opla-prix.js";
@@ -3640,6 +3641,32 @@ serve(async (req) => {
     console.error("[handler-watch] modération Leboncoin :", (e as Error)?.message ?? e);
   }
 
+  // ══ (26/10 nuit, point 7 — Elodie82) eBAY : UN COMPTE DEVENU « FRANCE » ROUVRE CE QUE L'ANCIEN AVAIT FERMÉ ══
+  // Filet de ebay-oauth-callback (qui rouvre à la connexion) : les comptes dont une publication est close « hors
+  // France » et dont le site lu est MAINTENANT la France. Deux lectures bornées ; la règle et l'écriture sont dans
+  // _shared/ebay-reouverture.ts (une fois par publication, jamais un doublon).
+  let ebayRouvertes = 0;
+  try {
+    const { data: closesEbay } = await supabase.from("cross_post_jobs")
+      .select("user_id")
+      .eq("platform", "ebay").eq("action", "publish").eq("status", "cancelled")
+      .not("platform_fields->ebay_hors_france", "is", null)
+      .filter("platform_fields->ebay_hors_france_rouverte", "is", "null")
+      .gte("created_at", new Date(Date.now() - 30 * 24 * 60 * 60_000).toISOString()).limit(200);
+    // deno-lint-ignore no-explicit-any
+    const comptesClos = [...new Set(((closesEbay ?? []) as any[]).map((j) => String(j.user_id)))].slice(0, 50);
+    if (comptesClos.length) {
+      const { data: enFrance } = await supabase.from("ebay_accounts").select("user_id")
+        .in("user_id", comptesClos).eq("ebay_site", "France").is("revoked_at", null);
+      // deno-lint-ignore no-explicit-any
+      for (const c of ((enFrance ?? []) as any[]).slice(0, 5)) {
+        ebayRouvertes += await rouvrirPublicationsEbayHorsFrance(supabase, String(c.user_id), { par: "handler-watch" });
+      }
+    }
+    if (ebayRouvertes) console.log(`[handler-watch] eBay : ${ebayRouvertes} publication(s) close(s) « hors France » rouverte(s) (compte maintenant sur eBay France)`);
+  } catch (e) {
+    console.error("[handler-watch] réouverture eBay hors France :", (e as Error)?.message ?? e);
+  }
   // ══ (18/10, lot 3) eBAY EXIGE UN EAN : LA PUBLICATION REPART UNE FOIS, AVEC L'EAN ══
   // Les publications par l'API déjà arrêtées sur le refus 25002 « Le champ EAN
   // n'a pas été renseigné » (paramètre « EAN » — sebimsn10, 3 jobs du 18/10)

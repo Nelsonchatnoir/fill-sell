@@ -31,6 +31,7 @@ import {
   SCOPES_DEMANDES,
   verifierState,
 } from "../_shared/ebay-oauth.ts";
+import { rouvrirPublicationsEbayHorsFrance } from "../_shared/ebay-reouverture.ts";
 
 function retour(etat: "ok" | "refus" | "erreur", motif?: string): Response {
   const u = new URL(`${APP_ORIGIN}/ebay/retour`);
@@ -146,6 +147,14 @@ Deno.serve(async (req) => {
       else console.log(`[ebay-oauth-callback] ebay_voie_api=true posé pour ${userId} (connexion prouvée par GetUser)`);
     } else {
       console.warn(`[ebay-oauth-callback] connexion stockée SANS preuve GetUser pour ${userId} — drapeau ebay_voie_api inchangé`);
+    }
+    // (26/10 nuit, point 7 — Elodie82) Un compte relié sur eBay France rouvre, UNE fois, les publications que
+    // l'ancien compte (hors de France) avait closes — règle pure _shared/ebay-hors-france.js. Jamais bloquant.
+    try {
+      const n = await rouvrirPublicationsEbayHorsFrance(admin, userId, { par: "ebay-oauth-callback" });
+      if (n) console.log(`[ebay-oauth-callback] ${n} publication(s) close(s) « hors France » rouverte(s) pour ${userId}`);
+    } catch (e) {
+      console.warn(`[ebay-oauth-callback] réouverture hors France non tentée : ${(e as Error)?.message ?? e}`);
     }
     // (05/10) La vente vue à la commande : le compte qui vient d'être relié
     // s'abonne à ORDER_CONFIRMATION (ebay-notifications, action « abonner »).
