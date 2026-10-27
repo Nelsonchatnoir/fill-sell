@@ -102,8 +102,10 @@ export default function EcranRattachement({ lang, items, annonces, onClose, onDe
     setBusy(false);
     if (!r?.ok) { setErreur(r?.message ?? r?.reason ?? T.ratErreur); return; }
     track('rapprochement_decision', { platform: annonce.platform, decision });
+    // (27/10) « Importer » sur l'annonce d'un dépôt FillSell : le serveur la rattache à la fiche de ce dépôt
+    // (annonce_rattacher_par_identifiant) — on dit où elle est allée, jamais « importée ».
     setFait(
-      decision === 'attache' ? T.ratFaitAttache(titreDe(inventaireId ?? r.inventaire_id) ?? '—')
+      decision === 'attache' || r?.decision === 'attache' ? T.ratFaitAttache(titreDe(inventaireId ?? r.inventaire_id) ?? '—')
         : decision === 'import' ? T.ratFaitImport
           : T.ratFaitIgnore,
     );

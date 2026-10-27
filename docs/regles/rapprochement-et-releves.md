@@ -421,3 +421,17 @@ trois relevés et deux reprises lancés tout seuls, aucun Vinted abouti, un faux
   inactifs le 26/10 à 17:23 (oui de Nico ; scripts/reparations/20261026_releve_ebay_inactifs.sql, 11 comptes).
 - La dette Beebs bornée et la cadence serveur sur stock vide (§ 26/10 après-midi, « migration préparée ») : migration
   20261026150000 APPLIQUÉE le 26/10 à 17:10 (feu vert nommé de Nico).
+
+## ⛔ 27/10 — l'identifiant d'annonce fait foi AVANT toute fiche (Nico/Depop, XEWER/Leboncoin, Johan/Beebs ; rapport `docs/enquetes/doublons-identifiant-2710/RAPPORT.md`)
+- Une annonce relevée qu'un dépôt FillSell de CE compte, sur CETTE plateforme, désigne (job publish/republish publié,
+  vendu ou annulé, non détaché ; `listing_designe`) rejoint la fiche de ce dépôt — jamais une fiche neuve, jamais une
+  autre fiche par la photo. Le dépôt passe avant un job de suivi d'un relevé. Règle `annonce_rattacher_par_identifiant`
+  (mig `20261027120000`), à l'entrée des DEUX portes : `rapprocher_importer` (seule porte d'une fiche « releve_* » :
+  moteur, « Importer » de la personne, rattrapages) et `rapprochement_attacher` (rattachement par la photo).
+- Dépôt publié → l'annonce prend son job ; clos sur fiche en stock → job de suivi (règle du 25/09) ; clos sur fiche
+  vendue → le dépôt clos, rien retiré ni redéposé. Une annonce que la personne a détachée de cette fiche n'y revient pas.
+- Cause (07/10, `6d6e012`) : le moteur v3 a remplacé `rapprocher_traiter_annonce` (identifiant publié OU clos, 25/09) ;
+  `70a1bfe` (09/10) n'a remis que les dépôts publiés, avant la passe seulement.
+- Après coup : `fiche_releve_doublon_resorber` absorbe (fusionne_dans + `inventaire_fusions`) une fiche née d'un relevé
+  ET intacte ; sinon rend la raison (« à signaler ») — jamais une fiche avec vente, autre annonce ou job en cours.
+- Selftest `selftest:releve-identifiant-avant-fiche` ; essai `scripts/essais/20261027120000_essai.sql` (18/18).

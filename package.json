@@ -466,6 +466,7 @@
     "selftest:beebs-commandes-flux-rsc": "node scripts/beebs-commandes-flux-rsc-selftest.mjs",
     "selftest:refus-plateformes-vraie-cause": "node scripts/refus-plateformes-vraie-cause-selftest.mjs",
     "selftest:jamais-en-ligne-referme": "node scripts/jamais-en-ligne-referme-selftest.mjs",
+    "selftest:releve-identifiant-avant-fiche": "node scripts/releve-identifiant-avant-fiche-selftest.mjs",
     "selftest:cause-blocage": "node scripts/cause-blocage-selftest.mjs",
     "selftest:copie-republication-depop": "node scripts/copie-republication-depop-selftest.mjs",
     "selftest:ventes-un-mail": "node scripts/ventes-un-mail-selftest.mjs",
