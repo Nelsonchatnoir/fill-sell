@@ -55,6 +55,9 @@ cas("3. ce qui vient de NOUS (le check du 24/10 à 13:29) : chaque cause est nom
 cas("4. la plateforme qui refuse sans motif (modération) est à part ; Opla (quittée le 10/10) aussi", () => {
   est(causeDuTexte({ texte: "Beebs n'a jamais mis cette annonce en ligne : trois jours après le dépôt, elle n'est ni en ligne ni « en vérification »" }), ORIGINE.PLATEFORME, "moderation");
   est(causeDuTexte({ texte: "Leboncoin n'a pas mis cette annonce en ligne — refusée à la vérification (ou retirée depuis)" }), ORIGINE.PLATEFORME, "moderation");
+  // (27/10) Le motif qui dit ce qu'on sait (migration 20261027100000) reste dans la même classe.
+  est(causeDuTexte({ texte: "Cette annonce est absente de tes annonces Leboncoin aux relevés complets du 25/10 à 16h44 et du 26/10 à 19h23, et Leboncoin n'a donné aucun motif. Rien n'est vendu, ton article reste dans ton stock, et cette publication ne compte pas dans tes limites." }), ORIGINE.PLATEFORME, "moderation");
+  est(causeDuTexte({ texte: "Trois jours après le dépôt, cette annonce n'était ni en ligne ni « en vérification » dans tes annonces Beebs aux relevés complets du 22/10 à 21h19 et du 23/10 à 02h33, et Beebs n'a donné aucun motif." }), ORIGINE.PLATEFORME, "moderation");
   est(causeDuTexte({ texte: "Aucune catégorie Opla n'a été résolue pour cet article.", platform: "opla" }), ORIGINE.PLATEFORME, "plateforme_quittee");
 });
 

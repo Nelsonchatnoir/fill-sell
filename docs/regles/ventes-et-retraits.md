@@ -432,3 +432,19 @@ Rapport : `docs/enquetes/session-sans-nico-1810/lot4-ventes-lot-multi-exemplaire
   Une page 404 + absente de l'index ne prouve toujours pas un retrait.
 - Canal coupé d'une publication : Leboncoin, l'adsubmit tranche avant toute reprise ; sinon reprise rapide sans
   tentative consommée (deux fois), puis le recul ordinaire.
+
+## ⛔ 27/10 — une ligne « jamais mise en ligne » se referme quand le relevé retrouve l'article (GTA de BONCOIN ; rapport `docs/enquetes/jamais-en-ligne-2710/RAPPORT.md`)
+- Le jugement « jamais vu en ligne » (`trancher_publications_sans_lien`, fin de relevé) tombe AVANT le rapprochement du
+  même relevé (moteur du compte, minutes plus tard) : une annonce de la fiche lue par CE relevé n'y est pas encore
+  rattachée. Rien ne revenait ensuite sur une ligne `failed`. Les « remises en published » du 10/10 au 21/10 étaient des
+  relances (`erreurs_archivees.par = relance_manuelle`), jamais un rattrapage.
+- **Règle** `depot_jamais_en_ligne_refermer` (mig `20261027100000`) — preuve exigée, même compte, même plateforme :
+  même NUMÉRO que le dépôt en ligne → « publiée » avec son lien (close si une autre publication suit déjà l'annonce) ;
+  autre annonce de la MÊME FICHE en ligne → close sans rouge « en ligne sous l'annonce … ». Jamais un titre, une photo,
+  une fiche jumelle. Rien redéposé, retiré, vendu ; aucun quota, aucun mail.
+- Appelée par les déclencheurs `annonces_plateforme_referme_depot_ins/_maj` (annonce en ligne apparue, ou rattachée à
+  une fiche ; jamais une ligne relue à l'identique) et par `trancher_publications_sans_lien` à chaque relevé complet.
+- **Motif** : aucune plateforme ne dit pourquoi → « Cette annonce est absente de tes annonces <plateforme> aux relevés
+  complets du … et du …, et <plateforme> n'a donné aucun motif. » Plus jamais « refusée par sa modération / sa
+  vérification » sans motif lu ; un vrai motif (adsubmit 4xx, `pas-de-rouge.js`) garde son texte.
+- Selftest `selftest:jamais-en-ligne-referme` ; essai à blanc `scripts/essais/20261027100000_essai.sql` (26/26).

@@ -83,7 +83,9 @@ const PAR_TEXTE = Object.freeze([
   [/pourrait (correspondre|[êe]tre cet article)|On ne red[ée]pose pas, pour ne jamais la mettre en double/i, ORIGINE.GARDE, "doublon_possible"],
   [/signal[ée] vendu|Vendue \?/i, ORIGINE.GARDE, "vente_a_confirmer"],
   // ── la plateforme refuse sans motif ──
-  [/n.a jamais mis cette annonce en ligne|refus[ée]e par sa mod[ée]ration|n.a pas mis cette annonce en ligne|refus[ée]e [àa] la v[ée]rification/i, ORIGINE.PLATEFORME, "moderation"],
+  // (27/10) Le motif ne dit plus « refusée par sa modération » (une déduction) mais l'absence constatée : « absente de
+  // tes annonces … aux relevés complets du … et du …, et Leboncoin n'a donné aucun motif ». Même classe.
+  [/n.a jamais mis cette annonce en ligne|refus[ée]e par sa mod[ée]ration|n.a pas mis cette annonce en ligne|refus[ée]e [àa] la v[ée]rification|n.a donn[ée] aucun motif/i, ORIGINE.PLATEFORME, "moderation"],
   // ── nous ──
   [/description, le rayon Depop et l.[ée]tat manquent|manquent dans la copie de ton annonce/i, ORIGINE.NOUS, "capture_depop_incomplete"],
   [/frais de port/i, ORIGINE.NOUS, "capture_depop_frais_de_port"],
