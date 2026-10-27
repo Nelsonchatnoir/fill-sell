@@ -21,7 +21,7 @@ l'annonce, même plateforme, même compte, était déjà porté par une autre fi
 | XEWER, Leboncoin 3295236977 | `3b92d5ca` **vendu**, fiche 1792945124235 | import du moteur le 26/10 à 08:29 → fiche 1792999747010 | régression du 07/10 (dépôt clos) |
 | Johan, Beebs 34209247 | `a385636d` **vendu**, fiche 1792585627450 | rattachée par la photo le 26/10 à 12:27 à 1792909660810 | régression du 07/10 (dépôt clos) |
 
-## 2. Ce qui change (migration `20261027120000`, en attente du feu vert nommé de Nico)
+## 2. Ce qui change (migration `20261027120000`, appliquée le 27/10 vers 10:20, feu vert nommé de Nico)
 
 - **`annonce_rattacher_par_identifiant`** : une annonce qu'un dépôt FillSell du compte désigne (même plateforme,
   `listing_designe`, non détaché ; le dépôt avant un job de suivi d'un relevé) rejoint la fiche de ce dépôt. Dépôt publié
@@ -63,3 +63,12 @@ Aucune depuis, hors les 3 cas.
 - Sans dépôt : fiche neuve comme avant ; dépôt annulé sur fiche en stock : job de suivi publié ; détachée par la
   personne : la règle s'abstient. Coût : 7,9 ms par annonce sur le plus gros compte (4 418 jobs).
 - Aucun retrait, aucun dépôt, aucune vente écrite, aucun mail. Inverse essayé : corps rendus au md5 près.
+
+## 5. Appliqué le 27/10
+
+- Migration appliquée + `migration repair` ; réparation jouée : Nico (Huxley) résorbé — l'annonce Depop est sur
+  1793009407689006 avec son dépôt `6eef55a8`, 1793089261133 absorbée, `dc8dca7a` clos. Johan et afeef3c7 : rien touché
+  (Nico : « on ne fusionne rien, c'est sa fiche à lui »).
+- XEWER, sur décision de Nico (« on garde la vente 290670 ») : `scripts/reparations/20261027_xewer_vente_en_double.sql`
+  (essai ROLLBACK d'abord, sauvegardes, inverse) — vente 315890 retirée, annonce 3295236977 rattachée PAR LA RÈGLE à
+  1792945124235 (dépôt `3b92d5ca`), 1792999747010 absorbée, statut inchangé. Rien sur Leboncoin, aucun push, aucun mail.

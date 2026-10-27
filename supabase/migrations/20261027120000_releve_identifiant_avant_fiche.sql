@@ -1,5 +1,6 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- 20261027120000_releve_identifiant_avant_fiche   (EN ATTENTE du feu vert NOMMÉ de Nico)
+-- 20261027120000_releve_identifiant_avant_fiche   (feu vert NOMMÉ de Nico, 27/10 ~10:15 : « Feu vert sur 20261027120000 :
+--   applique, lance la réparation »). Corps relus en prod juste avant (27/10 10:19) : md5 identiques à ceux ci-dessous.
 -- (27/10, rapport docs/enquetes/doublons-identifiant-2710/RAPPORT.md)
 -- LE RELEVÉ NE CRÉE JAMAIS UNE FICHE POUR UNE ANNONCE QU'UN DÉPÔT FILLSELL DU COMPTE PORTE DÉJÀ.
 -- Cas : Nico/Depop (nvlsonchatnoir-roman-en-tres-bon-etat-30fa, dépôt publié 6eef55a8 → fiche neuve 1793089261133 à
