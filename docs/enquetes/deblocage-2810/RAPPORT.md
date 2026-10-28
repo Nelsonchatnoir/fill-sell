@@ -72,3 +72,92 @@ pont mort et bandeau 12-13), correctifs appliqués et prouvés depuis le termina
 - Points 1, 2, 3 : relance automatique par poste (relance-apres-maj), à la 0.6.150 — jamais avant (même mur).
 - Reprise constatée après la levée : republications et publications servies et publiées (nadegemarcelin78 21:25,
   patrick.giry07, remialbertholl, thibault.andrieux…) ; get-pending-jobs distribue (« article par article »).
+
+### Contrôle final Vinted — libellé de rayon périmé (0.6.152)
+- remialbertholl `1cb28a66` : « Vinted ne propose pas « Jewellery » à cet endroit de son catalogue » — la capture porte
+  « Accessoires de mode › Jewellery › Boutons de manchette » (rayon 5564), le menu dit « Bijoux » ; 10 republications
+  portent ce nouveau chemin (Vinted a sorti les accessoires des rayons Femmes/Hommes : racine « Accessoires de mode »,
+  relevée au navigateur). Correctif `722a9ae` (0.6.152) : niveau introuvable + identifiant du rayon connu → pose par
+  identifiants avant la question (jamais par-dessus un choix de la personne). Relance `vinted_rayon_par_identifiant_*`
+  (seuil `21:20Z`, build du zip `21:24:13Z+379de55`).
+
+## Lot 2 — Beebs, Depop, eBay, Leboncoin
+
+### Point 8 — Beebs « ni en ligne ni en vérification après 3 jours »
+- Les 4 dépôts ont eu lieu (redirection `/fr/listing/success`, numéro lu dans « en vérification »). Pages publiques
+  relues au navigateur (28/10 ~22:02) : 34200711, 34200634 (louis-seller) et 34198358 (xxewwer) en **404** — vrai refus
+  de Beebs, le verdict tient (règle de 7 jours).
+- ⚠️ **34206489 (Polly Pocket, louis-seller) : EN LIGNE, « Ajouter au panier », 10 €**, même vendeur « Eva T. » que les
+  annonces relevées du compte — alors que l'article est **VENDU sur Leboncoin** (71290f88) et que FillSell la disait
+  « jamais en ligne » (relevé de 13:11 : 256 annonces, pas elle). Risque de double vente. Réparation
+  `20261028_beebs_polly_en_ligne_vendue.sql` (sauvegarde `_backup_2810_beebs_polly`, inverse) : la ligne revient
+  « published » avec le constat ; la règle de vente (`publie_apres_vente_serveur`) a armé le retrait **8f1bfdf7**.
+  Seule ligne de ce genre en base (2 dépôts « jamais en ligne » d'articles vendus ; l'autre est en 404).
+- Correctif `8a00ae1` : la lecture de « en vérification » est écrite dans le run du relevé.
+- Reste : pourquoi le relevé de louis-seller ne voit pas une annonce en ligne (index public incomplet ?) — à
+  instruire ; garde proposée (non appliquée, migration à valider) : à la vente, armer aussi le retrait d'un dépôt
+  « jamais en ligne » qui a un numéro (le retrait se clôt seul si la page est en 404).
+
+### Point 9 — file Beebs de sebastien64310
+- 15 suppressions parties (9 le 26/10, 6 le 28/10), jamais prouvées : la page de l'annonce était relue par un fetch du
+  content script que l'anti-robot de Beebs refuse (403) ; et la garde « une seule annonce hors ligne » ne comptait que
+  l'étape `deleted` → 15 annonces hors ligne, aucune recréation. La cadence n'y est pour rien.
+- Constat navigateur : les 15 pages en 404 ; les 15 articles en stock. Réparation
+  `20261028_sebastien_republications_beebs.sql` (sauvegarde, inverse) : étape `deleted` → la recréation part au prochain
+  passage de son poste (vu à 20:45, éteint depuis).
+- Correctif `8a00ae1` : une suppression envoyée compte « hors ligne » (get-pending-jobs v298 + extension) ; la preuve
+  relit la page par `BEEBS_LIRE_PAGE` (fetch de la page) quand le content script est refusé (0.6.151+).
+
+### Point 10 — retraits Beebs en attente
+- Les 21 pages relues au navigateur : **toutes en 404**, aucune achetable — pas de double vente.
+- Cause : bouton absent parce que la page est déjà en 404 ; preuve impossible (même 403 qu'au point 9) ; comptage des
+  cartes « en vérification » doublé. Correctif `8a00ae1` (beebs.js, background.js).
+- Réparation `20261028_retraits_beebs_thecloset.sql` : 8 retraits de thecloset72000 clos par la règle du 25/10 ; les
+  3 autres, louis-seller ×3, xxewwer ×6 et recrutementgroupezk704 (Levi's en vérification Beebs depuis le 30/09)
+  suivent le circuit. Au plafond, `pas-de-rouge` relance sans fin (jamais `failed`) et l'app affiche « À régler » :
+  jamais d'abandon silencieux.
+
+### Point 11 — Depop et eBay
+- gatignol.pro (Polo, Depop) : vraie cause = compte Depop pas encore vendeur ; deux lectures de session ratées classées
+  « inconnu », et `error_technique` écrasé à chaque essai. Correctif `06a6eae` : historique des bruts
+  (`error_technique.precedents`), « Session Depop illisible » ramenée à l'attente vendeur quand le mur a été vu.
+  Réparation : le Polo revient dans l'attente vendeur Depop (à la personne).
+- mataich67 (Air Max, eBay) : dépôt fait (336857790393), arrêté par le vendeur le 24/10 16:07 « car elle comportait une
+  erreur » — très probablement la pointure lue par Lens sur la ligne CM (26 au lieu de 41). Ligne close comme la règle
+  du 24/10 ; consigne Lens « ligne EUR » commitée, **lens-analysis non redéployée** (sa prod v108 date du 18/10 et
+  d'autres changements partagés non déployés suivraient — à décider). La copie Vinted (71f8e602) porte sans doute la
+  même pointure : non touchée.
+
+### Point 12 — page muette (« pont mort ») et job orphelin
+- Faux « pont mort » (jocabroc8) : le minuteur de 1,5 s sonnait en retard sur une page lourde ; la lecture de page
+  publique attendait le verrou des onglets de travail pendant un dépôt, la page redemandait en rafale. thecloset72000 :
+  l'app n'a PAS conclu « extension absente » (`extension:false` = son téléphone). doriane-henri : get-pending-jobs tenait
+  un Leboncoin « en cours » pour mort à 10 min et servait le suivant ; le DVD est publié (3297249838), rien relancé.
+- Correctif `30d1e7e` : sonde qui repingue si le minuteur est en retard ; une seule lecture en vol par annonce ; dépôts
+  Leboncoin qui attendent la reprise 30 min au plus ; `withJobFlowLock` inchangé. OTA 2.9.124 + get-pending-jobs v297+.
+
+### Point 13 — bandeau de pause
+- Retiré du haut du Stock par la refonte du 04/10 (`41e06d0`) vers une carte non comptée de la feuille « À régler ».
+  Correctif `30d1e7e` : bandeau sous le titre du Stock, un par plateforme en pause, relecture bornée. OTA 2.9.124.
+
+### Point 14 — tailles françaises → grille Depop
+- Le jean Lee FR 50 : la question était juste (la grille Depop du rayon n'a pas de 50) ; « Other » est la réponse de la
+  cliente, son annonce n'est pas touchée. Vrai défaut trouvé : une taille française tombait sur un tour de taille W du
+  même nombre (grilles 24/62 : 25 jeans « W30 L32 FR40 » partis en « 40 » = W40). Correctif `06a6eae`.
+- Grille relevée au navigateur (édition de l'annonce de test) : XS…XXL, puis des nombres nus (24…) — Depop n'affiche
+  aucun système ; un « 38 » français part en « 38 » (inchangé).
+
+## Preuves réelles (compte de Nico, extensions non empaquetées)
+| Version | Geste | Résultat |
+|---|---|---|
+| 0.6.150 | publication Vinted (Kiabi) | 10576137564 à 21:31:53 |
+| 0.6.150 | republication Vinted | 10576216857 à 21:38:18 (ancienne retirée) |
+| 0.6.151 | publication Vinted « Sans marque » | 10576670884 à 22:16:54 |
+| 0.6.151 | publication Depop jean femme 38 | publiée à 22:17:25 (Size 38 • Good condition • Lee) |
+| 0.6.152 | publication Vinted, libellé de rayon périmé | voir ci-dessous |
+
+## Livraisons
+- Extension : **0.6.152** (`build/CWS-0.6.152-A-TELEVERSER/fillsell-extension-0.6.152-379de55-cws.zip`), remplace les
+  0.6.150 et 0.6.151 (rangées dans `build/CWS-PERIMES/`).
+- OTA **2.9.124** (canal production relu). Web servi `631f472` puis le push final.
+- Fonctions : handler-watch v141, get-pending-jobs v298, update-job-status v154 (verify_jwt relus avant/après).
