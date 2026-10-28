@@ -10,7 +10,7 @@
 // ce motif, relevés le 06/10, ne bougent pas).
 // ═══════════════════════════════════════════════════════════════════════════
 import {
-  RELANCES_APRES_MAJ, regleDeRelance, posteALeBuild, champsRelance, msDuBuild,
+  RELANCES_APRES_MAJ, regleDeRelance, posteALeBuild, champsRelance, msDuBuild, messageAttenteMaj,
 } from "../supabase/functions/_shared/relance-apres-maj.js";
 
 let ko = 0;
@@ -165,6 +165,16 @@ console.log("\n[5] (08/10 soir) Tâche mise de côté « sans démarrage » (Jon
   ok("   question sans « État » parmi les vides (vraie question) : jamais",
     regleDeRelance({ ...XEWER, error: "Vinted exige des champs encore vides pour cette catégorie : Taille (accepte : 14,1 mm)" }) === null);
   ok("   Leboncoin, même texte : jamais", regleDeRelance({ ...XEWER, platform: "leboncoin" }) === null);
+  // Tant que le poste n'a pas la 0.6.150 : un message neutre, et la tâche reste reconnue après ce message.
+  const rx = regleDeRelance(XEWER);
+  const attente = messageAttenteMaj(XEWER, rx);
+  ok("message d'attente : neutre, sans « Relance » ni « mets à jour », avant toute suppression dit",
+    /repartira toute seule dès que ton extension FillSell se sera mise à jour/.test(attente ?? "") && !/[Rr]elance|mets à jour/.test(attente)
+      && /AVANT toute suppression/.test(attente));
+  const apresMessage = { ...XEWER, error: attente, platform_fields: { ...XEWER.platform_fields, attente_maj_extension: { cle: rx.cle } } };
+  ok("   après le message, la règle reconnaît toujours la tâche (relancée à la 0.6.150)", regleDeRelance(apresMessage)?.cle === rx.cle);
+  ok("   publication : message « Rien n'a été publié »", /Rien n'a été publié/.test(messageAttenteMaj(ORNELLA, regleDeRelance(ORNELLA)) ?? ""));
+  ok("   règles d'avant le 28/10 : aucun message", messageAttenteMaj(GLOWIK, regleDeRelance(GLOWIK)) === null);
 }
 
 console.log(ko ? `\n[selftest:relance-apres-maj] ÉCHEC — ${ko} vérification(s) en défaut.` : "\n[selftest:relance-apres-maj] OK");

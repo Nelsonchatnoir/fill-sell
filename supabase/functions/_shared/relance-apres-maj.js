@@ -88,6 +88,7 @@ export const RELANCES_APRES_MAJ = [
     brut: "Le champ Marque n'a pas pu être posé",
     buildMin: BUILD_0_6_150,
     version: "0.6.150",
+    messageAttente: true,
   },
   {
     cle: "vinted_menus_bloom_grille",
@@ -96,6 +97,7 @@ export const RELANCES_APRES_MAJ = [
     source: "grille_incoherente",
     buildMin: BUILD_0_6_150,
     version: "0.6.150",
+    messageAttente: true,
   },
   // Même défaut, autre phrase : « Vinted exige des champs encore vides … État (accepte : …) » alors que la tâche PORTE
   // un état (XEWER, jeux vidéo : Plateforme, Classement du contenu ET État « vides » — catégorie 3026 juste ; la liste
@@ -107,10 +109,13 @@ export const RELANCES_APRES_MAJ = [
     platform: "vinted",
     action,
     source,
-    predicat: (job) => /État \(accepte\s*:/.test(String(job?.error ?? ""))
-      && (action === "republish" || Boolean(String(job?.platform_fields?.etat ?? "").trim())),
+    // Le message d'attente (messageAttenteMaj) remplace le texte de l'arrêt : la marque qu'il pose fait foi ensuite.
+    predicat: (job) => job?.platform_fields?.attente_maj_extension?.cle === `vinted_menus_bloom_etat_vide_${action}_${source}`
+      || (/État \(accepte\s*:/.test(String(job?.error ?? ""))
+        && (action === "republish" || Boolean(String(job?.platform_fields?.etat ?? "").trim()))),
     buildMin: BUILD_0_6_150,
     version: "0.6.150",
+    messageAttente: true,
   }))),
 ];
 
@@ -144,6 +149,23 @@ export function regleDeRelance(job, regles = RELANCES_APRES_MAJ) {
 
 // La valeur de needs_user_source que vise une règle (la requête du balayage).
 export const sourceDeRegle = (regle) => regle?.source ?? "relancer";
+
+// (28/10) Tant que le poste n'a pas le build qui corrige, une règle marquée `messageAttente` le DIT à la personne, avec
+// un message neutre (règle du 25/10 : jamais « mets à jour », jamais « Relance » qui retomberait sur le même mur) — ni
+// relance, ni compteur touché. null : la règle ne dit rien (les règles d'avant le 28/10, inchangées).
+const MESSAGES_ATTENTE = {
+  vinted: {
+    publish: "Vinted a changé son formulaire de vente : ta publication repartira toute seule dès que ton extension FillSell " +
+      "se sera mise à jour (c'est automatique). Rien n'a été publié, rien à faire.",
+    republish: "Republication en pause AVANT toute suppression — ton annonce est intacte sur Vinted. Vinted a changé son " +
+      "formulaire de vente : elle repartira toute seule dès que ton extension FillSell se sera mise à jour (c'est " +
+      "automatique). Rien à faire.",
+  },
+};
+export function messageAttenteMaj(job, regle) {
+  if (!regle?.messageAttente) return null;
+  return MESSAGES_ATTENTE[regle.platform]?.[regle.action] ?? null;
+}
 
 // Le poste a-t-il le build qui corrige ? (build absent ou illisible : non)
 export function posteALeBuild(extensionBuild, regle) {

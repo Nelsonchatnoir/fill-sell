@@ -12,7 +12,7 @@ import { grilleDuDernierEchecTaille, normaliserTaille, tailleAServir } from "../
 // update-job-status — une remise en pending automatique n'efface plus le motif.
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
 // (06/10, Glowik) Un échec qu'une extension corrige repart dès que le poste l'a.
-import { RELANCES_APRES_MAJ, regleDeRelance, posteALeBuild, champsRelance, sourceDeRegle } from "../_shared/relance-apres-maj.js";
+import { RELANCES_APRES_MAJ, regleDeRelance, posteALeBuild, champsRelance, sourceDeRegle, messageAttenteMaj } from "../_shared/relance-apres-maj.js";
 import { reponseTailleAuto, champsApresReponseTaille } from "../_shared/taille-question-auto.js";
 import { MOTIF_LBC_IDENTITE, FENETRE_IDENTITE_MS, ECLAIREUR_INTERVALLE_MS, attendIdentiteLbc, attentesIdentiteLbc, eclaireurIdentiteLbc, champsEclaireur, champsReprise } from "../_shared/lbc-identite.js";
 import {
@@ -5208,7 +5208,19 @@ serve(async (req) => {
         .map((p) => [p.id, p.extension_build]));
       for (const j of cands) {
         const eb = buildDe.get(String(j.user_id)) ?? null;
-        if (!posteALeBuild(eb, regle)) continue; // le poste n'a pas encore le correctif
+        if (!posteALeBuild(eb, regle)) {
+          // le poste n'a pas encore le correctif. (28/10) Une règle `messageAttente` le DIT, une fois par texte, sans
+          // relancer ni toucher au compteur : jamais « Relance » qui retomberait sur le même mur.
+          const attente = messageAttenteMaj(j, regle);
+          if (attente && j.error !== attente) {
+            const pfA = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
+            pfA.erreurs_archivees = archiverErreur(pfA.erreurs_archivees, j.error as string, "needs_user", `handler-watch (attente de l'extension ${regle.version})`);
+            pfA.attente_maj_extension = { le: new Date(now).toISOString(), cle: regle.cle, version: regle.version };
+            await supabase.from("cross_post_jobs").update({ error: attente, platform_fields: pfA })
+              .eq("id", String(j.id)).eq("status", "needs_user").select("id");
+          }
+          continue;
+        }
         if (j.inventaire_id) {
           const { data: art } = await supabase
             .from("inventaire").select("statut, disparu_le, fusionne_dans")
