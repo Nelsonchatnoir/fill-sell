@@ -27,6 +27,9 @@ const BUILD_0_6_104 = "2026-10-08T14:53:27Z";
 // Le premier build qui relit les menus « bloom » de Vinted (0.6.150, 28/10 soir) : tout build construit après
 // 20:15Z le porte (0.6.149 = 09:52:53Z ; essai du poste de Nico 20:17:07Z, zip du Chrome Web Store après).
 const BUILD_0_6_150 = "2026-10-28T20:15:00Z";
+// Le premier build qui pose le rayon par son identifiant quand un libellé du chemin est introuvable (0.6.152, 28/10
+// soir ; 0.6.151 = 21:10:54Z, zip de la 0.6.152 construit après 21:25Z).
+const BUILD_0_6_152 = "2026-10-28T21:25:00Z";
 
 // Une entrée vise soit une tâche « relancer » dont le message technique
 // commence par `brut`, soit (champ `source`) une tâche mise de côté pour ce
@@ -117,6 +120,23 @@ export const RELANCES_APRES_MAJ = [
     version: "0.6.150",
     messageAttente: true,
   }))),
+  // (28/10 soir) « Vinted ne propose pas « X » à cet endroit de son catalogue » sur une tâche qui CONNAÎT l'identifiant
+  // de son rayon (vinted_ids de la copie, capture d'une republication) : libellé périmé (« Jewellery » sous « Accessoires
+  // de mode », remialbertholl) ou page étrangère sans pays lu (« Électronique » sur une page italienne, mele.marta). La
+  // 0.6.152 pose alors le rayon par son identifiant : la question repart une fois. Sans identifiant : jamais (la
+  // question reste celle de la personne).
+  ...["publish", "republish"].map((action) => ({
+    cle: `vinted_rayon_par_identifiant_${action}`,
+    platform: "vinted",
+    action,
+    source: "prevol_negatif",
+    predicat: (job) => job?.platform_fields?.attente_maj_extension?.cle === `vinted_rayon_par_identifiant_${action}`
+      || (/ne propose pas « .+ » à cet endroit de son catalogue/.test(String(job?.error ?? ""))
+        && Number(job?.platform_fields?.vinted_ids?.catalog_id ?? job?.platform_fields?.republish_snapshot?.catalog_id) > 0),
+    buildMin: BUILD_0_6_152,
+    version: "0.6.152",
+    // Pas de message d'attente : la question « Catégorie Vinted » reste à la personne, sa réponse marche dès maintenant.
+  })),
 ];
 
 // Les champs d'attente que « Relancer » (app) efface — plus la boucle

@@ -58,3 +58,16 @@ assert.match(src, /const TAILLE_TRIGGER_SEL = '[^']*\[data-testid="category-size
 assert.match(src, /size: '[^']*\[data-testid="category-size-single-grid_chips-input"\]'/, "vintedFieldSelector(size) aussi");
 
 console.log("vinted-menus-bloom : OK");
+
+// 5. (28/10 soir, remialbertholl) Un libellé de chemin introuvable, l'identifiant du rayon connu : la pose par
+//    identifiants, avant la question — seulement sur « niveau introuvable », sans choix de la personne.
+{
+  const i = src.indexOf("UN LIBELLÉ PÉRIMÉ, UN IDENTIFIANT CONNU");
+  const bloc = src.slice(i, i + 2200);
+  assert.ok(i > 0, "le repli par identifiant existe");
+  assert.match(bloc, /e\?\.needsUserField\?\.field_key !== "categoryLevelChoice"/, "seulement sur un niveau introuvable");
+  assert.match(bloc, /String\(fields\.categoryLevelChoice \?\? ""\)\.trim\(\)\) throw e;/, "jamais par-dessus un choix de la personne");
+  assert.match(bloc, /if \(await selectCategoryParIds\(repli, warnings\)\) \{/, "la pose par identifiants du rayon connu");
+  assert.match(bloc, /throw e;\s*\}\s*\}\);/, "sinon la question d'avant");
+}
+console.log("vinted-menus-bloom (repli rayon) : OK");
