@@ -1612,10 +1612,16 @@ async function selectCategoryParIds(catalogId, warnings) {
       el.click();
       await sleep(350);
     }
+    // (28/10 soir, essai réel) Menu « bloom » : après le clic de la feuille, le bouton dit FERMÉ (aria-expanded="false",
+    // data-state="closed") et porte la valeur, mais le panneau reste monté le temps de son animation de fermeture —
+    // qui ne finit pas dans une fenêtre de travail minimisée (animations suspendues) : l'attente de « panneau absent »
+    // ne finissait jamais et la pose par identifiants concluait à l'échec. Le bouton fermé vaut panneau fermé.
     const pose = await waitFor(() => {
       const t = document.querySelector(TRIGGER);
       const v = valeurChampVinted(t).trim();
-      return v && !document.querySelector('[data-testid="catalog-select-dropdown-content"]') ? v : null;
+      const ferme = !document.querySelector('[data-testid="catalog-select-dropdown-content"]')
+        || (estMenuVintedBloom(t) && (t.getAttribute("aria-expanded") === "false" || t.getAttribute("data-state") === "closed"));
+      return v && ferme ? v : null;
     }, 4000);
     if (!pose) throw new Error("feuille cliquée mais champ Catégorie vide ou panneau encore ouvert");
     console.log(`[vinted] catégorie posée par identifiants ${ids.join(" > ")} → « ${pose} » (page non française)`);

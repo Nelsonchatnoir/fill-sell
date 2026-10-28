@@ -71,3 +71,13 @@ console.log("vinted-menus-bloom : OK");
   assert.match(bloc, /throw e;\s*\}\s*\}\);/, "sinon la question d'avant");
 }
 console.log("vinted-menus-bloom (repli rayon) : OK");
+
+// 6. (28/10 soir, essai réel) La pose par identifiants conclut sur le bouton FERMÉ (aria-expanded / data-state), pas
+//    seulement sur un panneau démonté : l'animation de fermeture ne finit pas dans une fenêtre minimisée.
+{
+  const corps = extraireFonctionJs(src, "selectCategoryParIds");
+  assert.match(corps, /aria-expanded"\) === "false" \|\| t\.getAttribute\("data-state"\) === "closed"/, "bouton fermé = panneau fermé");
+  assert.match(corps, /return v && ferme \? v : null;/, "la valeur ET la fermeture");
+  assert.match(corps, /const depart = await waitFor\(/, "reprise au niveau affiché du panneau");
+}
+console.log("vinted-menus-bloom (pose par identifiants) : OK");
