@@ -1242,6 +1242,9 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 // ── Messages (auth content script + popup) ────────────────────────────────────
 
+// (28/10) Les lectures de page publique demandées par la page, en file ou en cours : id Vinted → promesse (une seule
+// lecture par annonce, quel que soit le nombre de demandes reçues pendant un dépôt). Mémoire du service worker.
+const lecturesPubliquesEnVol = new Map();
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   // Preuve de commit du prix Vinted (2026-07-13) — demandes émises par le
   // content script vinted.js PENDANT le remplissage (cf. readVintedPriceState).
@@ -1758,7 +1761,17 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     (async () => {
       if (!/^\d+$/.test(id)) return { ok: false, motif: "id_illisible" };
       if (await lectureFondEnPause()) return { ok: false, motif: "antirobot_pause" };
-      const lu = await withJobFlowLock("page-publique-vinted", () => lirePagePubliqueVintedSousVerrou(id));
+      // (28/10, jocabroc8 — 4 pages de la même annonce en 20 s à 17:25:54-17:26:14) Pendant un dépôt, chaque relecture
+      // de l'écran d'attente empilait une lecture derrière le verrou : toutes partaient d'affilée au verrou rendu. Une
+      // demande pour une annonce déjà en file (ou en cours) s'y rattache : UNE page lue, la même réponse pour tous ;
+      // seule la première trace la lecture et complète la fiche. Le verrou reste celui de toujours.
+      const proprietaire = !lecturesPubliquesEnVol.has(id);
+      if (proprietaire) {
+        lecturesPubliquesEnVol.set(id, withJobFlowLock("page-publique-vinted", () => lirePagePubliqueVintedSousVerrou(id))
+          .finally(() => lecturesPubliquesEnVol.delete(id)));
+      }
+      const lu = await lecturesPubliquesEnVol.get(id) ?? await withJobFlowLock("page-publique-vinted", () => lirePagePubliqueVintedSousVerrou(id));
+      if (!proprietaire) return lu;
       try {
         const session = await getValidSession();
         if (session?.access_token) {

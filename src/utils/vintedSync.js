@@ -145,12 +145,24 @@ export function pinguerExtension() {
 // 1,5 s, le pont est mort — elle le dit (« recharge la page ») et passe par l'ordinateur sans attendre. Une
 // extension ≥ 0.6.144 réinjecte elle-même son script à chaque mise à jour, et dit quand une ancienne copie est coupée.
 export const PONT_PING_MS = 1500;
-/** @returns {Promise<{vivant: boolean, version: string|null}>} */
-export function sonderPontExtension(delaiMs = PONT_PING_MS) {
+// ── (28/10, jocabroc8 — trois « pont_mort » à 11:36, 11:53 et 19:45) UN MINUTEUR EN RETARD N'EST PAS UN PONT MORT ──
+// Le script de la page répond au ping SUR PLACE (fillsell-auth.js, `annoncer`, sans passer par le service worker) :
+// ni un dépôt en cours ni le verrou des onglets de travail ne le retardent. Mais il partage le fil de la page : un
+// rendu long (Stock de ~1 000 fiches) qui passe entre le ping et la fin du délai fait sonner le minuteur APRÈS coup,
+// et sa réponse, déjà postée, attend derrière lui. Constaté : 10:53:25 « pont mort », et la sonde suivante de l'écran
+// d'attente, 2 s plus tard, a eu sa réponse (abandon à 10:53:37 avec pont_mort:false) — aucune mise à jour de
+// l'extension ce matin-là (maj_extension à 15:16 seulement), la phrase « elle vient d'être mise à jour » était fausse.
+// Règle : un minuteur qui sonne en retard (au-delà de PONT_RETARD_TOLERE_MS) reping UNE fois avant de conclure ; un
+// pont n'est dit mort que sur un délai tenu à l'heure sans réponse. Le retard part avec le verdict (`retardMs`).
+export const PONT_RETARD_TOLERE_MS = 400;
+/** @returns {Promise<{vivant: boolean, version: string|null, retardMs?: number}>} */
+export function sonderPontExtension(delaiMs = PONT_PING_MS, { reessais = 1 } = {}) {
   return new Promise((resolve) => {
     if (typeof window === 'undefined') { resolve({ vivant: false, version: null }); return; }
     let fini = false;
     let minuteur = null;
+    let reste = Math.max(0, Number(reessais) || 0);
+    let retardMax = 0;
     const fin = (r) => {
       if (fini) return;
       fini = true;
@@ -162,8 +174,22 @@ export function sonderPontExtension(delaiMs = PONT_PING_MS) {
       if (e.source !== window || !e.data?.__fillsellExt) return;
       fin({ vivant: true, version: e.data.version ?? null });
     };
-    minuteur = setTimeout(() => fin({ vivant: false, version: null }), delaiMs);
+    const armer = () => {
+      const t0 = Date.now();
+      minuteur = setTimeout(() => {
+        const retard = Date.now() - t0 - delaiMs;
+        retardMax = Math.max(retardMax, retard);
+        if (retard > PONT_RETARD_TOLERE_MS && reste > 0) {
+          reste -= 1;
+          armer();
+          pinguerExtension();
+          return;
+        }
+        fin({ vivant: false, version: null, retardMs: Math.round(retardMax) });
+      }, delaiMs);
+    };
     window.addEventListener('message', surMessage);
+    armer();
     pinguerExtension();
   });
 }

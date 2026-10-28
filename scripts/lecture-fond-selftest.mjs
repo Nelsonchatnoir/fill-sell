@@ -12,16 +12,22 @@ import { fileURLToPath } from "node:url";
 // Une fausse page pour le pont (le module l'écoute dès son chargement).
 const ecouteurs = new Set();
 let reponseAuPing = null;   // null : personne ne répond (pont mort) ; sinon la version annoncée
+// (28/10) Une extension OCCUPÉE (sa lecture attend la fin d'un dépôt, sous le verrou) : la page publique répond après
+// `retardPublique` ms ; `commandes` garde ce que la page a demandé.
+let retardPublique = 0;
+const commandes = [];
 globalThis.window = {
   location: { origin: "https://fillsell.app" },
   addEventListener: (t, f) => { if (t === "message") ecouteurs.add(f); },
   removeEventListener: (t, f) => { if (t === "message") ecouteurs.delete(f); },
   postMessage: (data) => {
+    if (data?.__fillsellCmd) commandes.push(data.__fillsellCmd);
     setTimeout(() => {
       for (const f of [...ecouteurs]) f({ source: globalThis.window, data });
       if (data?.__fillsellPing && reponseAuPing) globalThis.window.postMessage({ __fillsellExt: true, version: reponseAuPing });
       if (data?.__fillsellCmd === "FETCH_VINTED_PUBLIC" && reponseAuPing) {
-        globalThis.window.postMessage({ __fillsellAnnoncePublique: { vintedItemId: data.vintedItemId, success: true, ok: true, description: "Texte lu sur la page", couleur: "Noir", catalog_id: 3313 } });
+        const repondre = () => globalThis.window.postMessage({ __fillsellAnnoncePublique: { vintedItemId: data.vintedItemId, success: true, ok: true, description: "Texte lu sur la page", couleur: "Noir", catalog_id: 3313 } });
+        if (retardPublique > 0) setTimeout(repondre, retardPublique); else repondre();
       }
     }, 0);
   },
@@ -177,6 +183,63 @@ console.log("6. (26/10, urgence lenteur) La lecture de fond s'efface quand la pe
     ok(i > 0 && /if \(jobFlowWaiters > 0 && !majPlanifiee\) \{[\s\S]*repollApresCycle = true;\s*return;\s*\}\s*$/.test(avant), "extension : quelqu'un attend le verrou → la maintenance de fond (liens, veille, messagerie) passe après lui, un poll repart aussitôt");
   }
   ok(/if \(Date\.now\(\) - derniereDemandeAppMs < FOND_PAUSE_APRES_DEMANDE_MS\) return "personne_publie";/.test(bg) && /FOND_PAUSE_APRES_DEMANDE_MS = 10 \* 60_000/.test(bg), "extension : 10 min après une demande de l'app");
+}
+
+console.log("7. (28/10, jocabroc8) Page occupée ≠ pont mort ; extension occupée = une seule demande, jamais le formulaire d'édition");
+{
+  const bloquer = (ms) => { const fin = Date.now() + ms; while (Date.now() < fin) { /* le fil de la page est pris */ } };
+  // 7a. La page est prise 1 s juste après le ping (rendu d'un gros Stock) : la réponse arrive après le minuteur.
+  reponseAuPing = "0.6.149";
+  let p = vs.sonderPontExtension(300);
+  bloquer(1000);
+  let r = await p;
+  ok(r.vivant === true && r.version === "0.6.149", "page occupée 1 s pendant la sonde : le minuteur en retard repingue, le pont est VIVANT", JSON.stringify(r));
+  // 7b. Personne ne répond, page occupée : mort quand même, après UN seul repingue, et le retard est dit.
+  reponseAuPing = null;
+  const t0 = Date.now();
+  p = vs.sonderPontExtension(300);
+  bloquer(1000);
+  r = await p;
+  ok(r.vivant === false && Number(r.retardMs) >= vs.PONT_RETARD_TOLERE_MS && Date.now() - t0 < 2500, "personne ne répond : mort après un seul repingue, retard dit (retardMs)", JSON.stringify(r));
+  // 7c. À l'heure et sans réponse : mort tout de suite, sans repingue (la règle du 25/10 tient).
+  const t1 = Date.now();
+  r = await vs.sonderPontExtension(300);
+  ok(r.vivant === false && Date.now() - t1 < 900, "délai tenu à l'heure, aucune réponse : pont mort constaté vite");
+  // 7d. L'extension publie (lecture sous verrou, réponse dans 700 ms) : deux appels pour la même annonce = UNE commande,
+  //     aucune demande par le formulaire d'édition, « sans_reponse » dit l'extension occupée.
+  reponseAuPing = "0.6.149";
+  retardPublique = 700;
+  commandes.length = 0;
+  const sansCreneau = { sonder: () => vs.sonderPontExtension(200), attendreCreneau: async () => {} };
+  const a = await tv.lireDetailVintedParExtension("10573279036", 150, sansCreneau);
+  ok(tv.lecturePubliqueEnVol("10573279036") === true, "la demande reste en vol après le délai de l'appelant");
+  const b = await tv.lireDetailVintedParExtension("10573279036", 150, sansCreneau);
+  ok(a?.motif === "sans_reponse" && a.occupee === true && b?.motif === "sans_reponse", "sans réponse dans le délai : « sans_reponse » (extension occupée)", JSON.stringify([a, b]));
+  ok(commandes.filter((c) => c === "FETCH_VINTED_PUBLIC").length === 1 && !commandes.includes("FETCH_VINTED_ITEM"), "une seule page publique demandée, jamais le formulaire d'édition en plus", commandes.join(","));
+  await new Promise((ok2) => setTimeout(ok2, 800));
+  ok(tv.lecturePubliqueEnVol("10573279036") === false, "la réponse arrivée, la demande n'est plus en vol");
+  retardPublique = 0;
+  const c = await tv.lireDetailVintedParExtension("10573279036", 2000, sansCreneau);
+  ok(c?.success === true && c.source === "page_publique", "l'extension libre : la lecture suivante aboutit", JSON.stringify(c));
+  // 7e. La trace : un pont mort porte son retard, une extension occupée le dit.
+  const supa = { from: () => { const q = { select: () => q, eq: () => q, gte: () => q, order: () => q, is: () => q, limit: async () => ({ data: [] }),
+    update: () => ({ eq: () => ({ eq: () => ({ then: (f) => f(), or: () => ({ then: (f) => f() }) }) }) }) }; return q; } };
+  const fiche = { id: 8, description: "", origine: "vinted_sync", vinted_item_id: "1", vinted_catalog_id: null, title: "soupière" };
+  const rm = await tv.completerTexteDuVendeur(fiche, { supabase: supa, userId: "u1", extensionVinted: true, lireDetailVinted: async () => ({ success: false, pontMort: true, retardMs: 1200 }) });
+  ok(rm.note === "pont_mort" && rm.pontRetardMs === 1200, "pont mort : la note et le retard du minuteur", JSON.stringify(rm));
+  const ro = await tv.completerTexteDuVendeur(fiche, { supabase: supa, userId: "u1", extensionVinted: true, lireDetailVinted: async () => ({ success: false, motif: "sans_reponse", occupee: true }) });
+  ok(ro.note === "vinted_echec" && ro.extensionOccupee === true, "extension occupée : la note d'avant (vinted_echec) et extensionOccupee", JSON.stringify(ro));
+  // 7f. Les branchements : l'écran d'attente suit la dernière sonde ; l'extension rattache les demandes, sous le MÊME verrou.
+  const att = readFileSync(join(RACINE, "src/publication/AttenteLectureOrigine.jsx"), "utf8");
+  ok(/setPontMort\(res\?\.note === "pont_mort"\);/.test(att) && !/if \(res\?\.note === "pont_mort"\) setPontMort\(true\);/.test(att), "écran d'attente : « recharge la page » suit la dernière sonde (plus collé après un instant)");
+  const bg = readFileSync(join(RACINE, "chrome-extension/background.js"), "utf8");
+  const i = bg.indexOf('if (msg?.type === "FETCH_VINTED_PUBLIC") {');
+  const h = bg.slice(i, i + 3000);
+  ok(/const proprietaire = !lecturesPubliquesEnVol\.has\(id\);/.test(h) && /withJobFlowLock\("page-publique-vinted", \(\) => lirePagePubliqueVintedSousVerrou\(id\)\)/.test(h) && /if \(!proprietaire\) return lu;/.test(h),
+    "extension : une demande pour une annonce déjà en file s'y rattache — une page lue, sous le verrou de toujours");
+  ok(/^const lecturesPubliquesEnVol = new Map\(\);$/m.test(bg) && bg.indexOf("const lecturesPubliquesEnVol") < bg.indexOf("chrome.runtime.onMessage.addListener("), "extension : la mémoire des lectures en vol est déclarée avant l'écoute des messages");
+  const v = bg.indexOf("function withJobFlowLock(label, fn) {");
+  ok(v > 0 && /jobFlowTail = run\.catch\(\(\) => \{\}\);\s*return run;\s*\}/.test(bg.slice(v, v + 900)), "extension : withJobFlowLock inchangé (un seul flux à la fois)");
 }
 
 console.log(`\n${rouges === 0 ? "✓" : "✗"} lecture-fond : ${verts} contrôles verts, ${rouges} rouges`);

@@ -279,5 +279,26 @@ const D = await charger('src/stock/dupliquer.js');
   verifier(depop.length === 0, 'Depop n’est écrit nulle part : il viendra de la configuration des plateformes', depop.join(', '));
 }
 
+// ── 10. (28/10) Plateforme en pause : le bandeau en tête du Stock, relu sans setInterval ─────────────────────────
+{
+  const st = lire('src/tabs/StockTab.jsx');
+  const i = st.indexOf('const [pausedPlatforms, setPausedPlatforms] = useState([]);');
+  const lecture = i > 0 ? st.slice(i, i + 1800) : '';
+  verifier(/supabase\.from\("platform_health"\)\.select\("platform, message_fr, message_en"\)\.eq\("paused", true\)/.test(lecture), 'pause : platform_health lu (plateformes en pause et leur message)');
+  verifier(/demarrerRelecture\(async \(\) => \{/.test(lecture) && /intervalleMs: 60_000, maxMs: 10 \* 60_000/.test(lecture) && /r\.arreter\(\)/.test(lecture), 'pause : relecture BORNÉE (60 s, 10 min au plus si la base peine), arrêtée au démontage');
+  verifier(!/setInterval\(/.test(lecture), 'pause : plus aucun setInterval qui relit la base');
+  verifier(/if \(error\) return false;/.test(lecture), 'pause : une lecture en erreur ne vide pas le bandeau (l’état d’avant reste)');
+  const titre = st.indexOf('<TitreStock lang={lang}');
+  const bandeau = st.indexOf('{pausedPlatforms.map(p=>(', titre);
+  const suite = st.indexOf('{(activite||repubBandeau?.dryRuns>0||repubBandeau?.orpheline)&&(', titre);
+  verifier(titre > 0 && bandeau > titre && suite > bandeau, 'pause : un bandeau par plateforme, juste sous le titre du Stock (avant tout le reste)');
+  const b = bandeau > 0 ? st.slice(bandeau, bandeau + 1600) : '';
+  verifier(/role="status"/.test(b) && /<PauseCircle /.test(b) && /pausedReasons\[p\]\|\|/.test(b), 'pause : le message écrit en base, sinon la phrase générique ; une icône, pas d’émoji');
+  verifier(!lignesDeCode(b).some((l) => /\p{Extended_Pictographic}/u.test(l)), 'pause : aucun émoji dans le bandeau');
+  const a = st.indexOf('const alertesCompte = (() => {');
+  const alertes = a > 0 ? st.slice(a, st.indexOf('return out;', a)) : '';
+  verifier(alertes.length > 0 && !/cle: `pause-\$\{p\}`/.test(alertes), 'pause : plus dans la feuille « points à régler » (une seule place, jamais deux)');
+}
+
 console.log(ko ? `\n${ko} échec(s), ${ok} vérifications vertes.` : `\nTout est vert (${ok} vérifications).`);
 process.exit(ko ? 1 : 0);

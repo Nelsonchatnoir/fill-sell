@@ -144,16 +144,47 @@ function lireDetailEditionParExtension(vintedItemId, delaiMs) {
   });
 }
 
+// ── (28/10, jocabroc8) PENDANT UN DÉPÔT, LA LECTURE ATTEND SON TOUR : UNE SEULE DEMANDE PAR ANNONCE ────────────────
+// L'extension lit la page publique SOUS le verrou des onglets de travail (background.js, FETCH_VINTED_PUBLIC →
+// withJobFlowLock) : pendant un dépôt (Leboncoin : 1 à 7 min) ou un poll, sa réponse n'arrive qu'à la fin. La page,
+// elle, n'attendait que 12 s, puis redemandait par le formulaire d'édition (derrière le même verrou), et l'écran
+// d'attente recommençait toutes les 6 s : autant de lectures empilées, faites d'affilée dès le verrou rendu — mesuré
+// le 28/10 à 17:25:54, 17:26:04, 17:26:10, 17:26:14 : quatre pages Vinted de la même annonce en 20 s. Désormais une
+// demande reste EN VOL jusqu'à sa réponse (DEMANDE_PUBLIQUE_MAX_MS au plus) : un nouvel appel pour la même annonce
+// s'y rattache, sans nouvelle commande ni nouveau créneau ; sans réponse dans son délai, l'appelant apprend
+// « sans_reponse » (l'extension est occupée — elle lira, et pose le texte sur la fiche, que l'écran relit en base),
+// jamais une seconde demande par le formulaire d'édition.
+export const DEMANDE_PUBLIQUE_MAX_MS = 8 * 60_000;
+const demandesPubliquesEnVol = new Map();   // vintedItemId → { promesse, jusqua }
+/** Une lecture de la page publique de cette annonce est-elle déjà demandée à l'extension ? */
+export function lecturePubliqueEnVol(vintedItemId, maintenant = Date.now()) {
+  const d = demandesPubliquesEnVol.get(String(vintedItemId));
+  return Boolean(d && maintenant < d.jusqua);
+}
+const auPlus = (promesse, ms) => new Promise((resolve) => {
+  const t = setTimeout(() => resolve(null), ms);
+  promesse.then((v) => { clearTimeout(t); resolve(v); }, () => { clearTimeout(t); resolve(null); });
+});
+
 /** La PAGE PUBLIQUE d'UN article Vinted, lue par l'extension ≥ 0.6.144 (pont de la page). */
 function lireAnnoncePubliqueParExtension(vintedItemId, delaiMs) {
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => { stop(); resolve(null); }, delaiMs);
-    const stop = ecouterAnnoncePubliqueVinted((d) => {
-      if (String(d.vintedItemId) !== String(vintedItemId)) return;
-      clearTimeout(timer); stop(); resolve(d);
-    });
-    demanderAnnoncePubliqueVinted(vintedItemId);
+  const cle = String(vintedItemId);
+  if (lecturePubliqueEnVol(cle)) return auPlus(demandesPubliquesEnVol.get(cle).promesse, delaiMs);
+  let resoudre = () => {};
+  const promesse = new Promise((ok) => { resoudre = ok; });
+  const stop = ecouterAnnoncePubliqueVinted((d) => {
+    if (String(d.vintedItemId) !== cle) return;
+    stop();
+    if (demandesPubliquesEnVol.get(cle)?.promesse === promesse) demandesPubliquesEnVol.delete(cle);
+    resoudre(d);
   });
+  demandesPubliquesEnVol.set(cle, { promesse, jusqua: Date.now() + DEMANDE_PUBLIQUE_MAX_MS });
+  setTimeout(() => {
+    if (demandesPubliquesEnVol.get(cle)?.promesse !== promesse) return;
+    stop(); demandesPubliquesEnVol.delete(cle); resoudre(null);
+  }, DEMANDE_PUBLIQUE_MAX_MS);
+  demanderAnnoncePubliqueVinted(cle);
+  return auPlus(promesse, delaiMs);
 }
 
 /**
@@ -169,11 +200,12 @@ export async function lireDetailVintedParExtension(vintedItemId, delaiMs = DELAI
   const pont = await sonder();
   if (!pont?.vivant) {
     signalerPontMort();
-    return { success: false, pontMort: true };
+    return { success: false, pontMort: true, retardMs: pont?.retardMs ?? null };
   }
   if (versionAuMoins(pont.version, PUBLIC_VERSION_MIN)) {
     // (28/10) Jamais une rafale : au-delà de 3 d'affilée, une page toutes les 8 à 20 s (le délai court après le départ).
-    await attendreCreneau();
+    // Une demande déjà en vol pour cette annonce ne consomme pas de créneau : aucune page de plus ne sera lue.
+    if (!lecturePubliqueEnVol(vintedItemId)) await attendreCreneau();
     const p = await lireAnnoncePubliqueParExtension(vintedItemId, delaiMs);
     if (p?.success || p?.ok) {
       return {
@@ -185,6 +217,10 @@ export async function lireDetailVintedParExtension(vintedItemId, delaiMs = DELAI
     if (["antirobot", "antirobot_pause", "introuvable"].includes(String(p?.motif ?? ""))) {
       return { success: false, motif: p.motif, publique: p };
     }
+    // (28/10) Aucune réponse dans le délai : l'extension est occupée (dépôt ou poll sous le verrou des onglets de
+    // travail). Sa lecture partira à la fin et posera le texte sur la fiche : on ne redemande pas par le formulaire
+    // d'édition, qui attendrait derrière le même verrou puis relirait la même annonce une fois de plus.
+    if (p == null) return { success: false, motif: "sans_reponse", occupee: true };
   }
   return lireDetailEditionParExtension(vintedItemId, delaiMs);
 }
@@ -323,6 +359,9 @@ export async function completerTexteDuVendeur(item, {
           // (25/10, Nico) Lue, mais l'annonce n'a VRAIMENT aucun texte : « sans_description » — le seul cas où l'app
           // propose « Écrire ma description ». Une lecture ratée reste « vinted_echec ».
           if (vide(it.description)) res.note = detail?.pontMort ? "pont_mort" : (detail?.success ? "sans_description" : "vinted_echec");
+          // (28/10) La trace dit pourquoi : le retard du minuteur d'un pont mort, ou une extension occupée (sous verrou).
+          if (detail?.pontMort && detail.retardMs != null) res.pontRetardMs = detail.retardMs;
+          if (detail?.occupee) res.extensionOccupee = true;
         }
       }
     }

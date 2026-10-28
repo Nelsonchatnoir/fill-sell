@@ -6099,7 +6099,10 @@ const StockTab = memo(function StockTab({
       } else {
         signalerActionRatee({ action: 'publier', motif: 'lecture_origine_en_attente', userId: user?.id ?? null,
           details: { fiche: item.id, manque: (attenteOrigine?.manque ?? []).join(','), extension: extDetailOk, note: r?.note ?? null,
-            lecteur: lecteur?.ou ?? null, lecteur_vu_le: lecteur?.vuLe ?? null, lecteur_version: lecteur?.version ?? null } });
+            lecteur: lecteur?.ou ?? null, lecteur_vu_le: lecteur?.vuLe ?? null, lecteur_version: lecteur?.version ?? null,
+            // (28/10) `extension` = CET appareil (false sur un téléphone, jamais « absente du compte ») ; la preuve d'un
+            // pont mort (retard du minuteur) et d'une extension occupée (lecture sous le verrou d'un dépôt).
+            pont_retard_ms: r?.pontRetardMs ?? null, extension_occupee: r?.extensionOccupee === true } });
       }
       setLecteurAttente(lecteur);
       setAttenteStepper({ item: r?.item ?? item, attente: attenteOrigine });
@@ -8511,21 +8514,22 @@ const StockTab = memo(function StockTab({
   const [pausedPlatforms, setPausedPlatforms] = useState([]);
   const [pausedReasons, setPausedReasons] = useState({});
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id) return undefined;
     let alive = true;
-    const lire = async () => {
-      try {
-        // PostgREST est tout-ou-rien : colonne absente → catch → rien d'affiché.
-        const { data } = await supabase.from("platform_health").select("platform, message_fr, message_en").eq("paused", true);
-        if (alive) {
-          setPausedPlatforms((data ?? []).map(h => h.platform));
-          setPausedReasons(Object.fromEntries((data ?? []).map(h => [h.platform, (lang === 'en' ? (h.message_en || h.message_fr) : h.message_fr) || null])));
-        }
-      } catch { /* jamais bloquant */ }
-    };
-    lire();
-    const timer = setInterval(() => { if (document.visibilityState === "visible") lire(); }, 60000);
-    return () => { alive = false; clearInterval(timer); };
+    // (28/10) Relecture BORNÉE (utils/relectureBornee), jamais setInterval : 60 s onglet visible, doublée quand la
+    // base peine (10 min au plus), la première lecture au montage. Une pause posée en base (platform_health.paused)
+    // apparaît en tête du Stock en une minute, et disparaît de même à la reprise. Lecture en erreur : l'état d'avant
+    // reste (PostgREST est tout-ou-rien : colonne absente → erreur → rien de nouveau affiché).
+    const r = demarrerRelecture(async () => {
+      const { data, error } = await supabase.from("platform_health").select("platform, message_fr, message_en").eq("paused", true);
+      if (error) return false;
+      if (alive) {
+        setPausedPlatforms((data ?? []).map(h => h.platform));
+        setPausedReasons(Object.fromEntries((data ?? []).map(h => [h.platform, (lang === 'en' ? (h.message_en || h.message_fr) : h.message_fr) || null])));
+      }
+      return true;
+    }, { intervalleMs: 60_000, maxMs: 10 * 60_000 });
+    return () => { alive = false; r.arreter(); };
   }, [user?.id, lang]);
   const pausedSet = new Set(pausedPlatforms);
   // ── Ce que les barres de job SAVENT du poste et du serveur (01/10) ──────
@@ -9229,11 +9233,10 @@ const StockTab = memo(function StockTab({
         titre: fr ? 'Remontée en maintenance' : 'Bumping under maintenance',
         texte: fr ? "On corrige un problème qui pouvait empêcher la remise en ligne de certaines annonces. Tes annonces sont protégées et rien n'est décompté. On te prévient dès que c'est rétabli." : "We're fixing an issue that could prevent some listings from going back online. Your listings are safe and nothing is deducted. We'll let you know as soon as it's back." });
     }
-    for (const p of pausedPlatforms) {
-      out.push({ cle: `pause-${p}`, icone: PauseCircle, ton: 'info', compte: false,
-        titre: fr ? `${PLATFORM_LABELS[p] || p} en pause` : `${PLATFORM_LABELS[p] || p} paused`,
-        texte: pausedReasons[p] || (fr ? `Les publications ${PLATFORM_LABELS[p] || p} sont momentanément en pause. Reprise automatique dès rétablissement — rien à faire de ton côté.` : `${PLATFORM_LABELS[p] || p} posting is temporarily paused. It will resume automatically — nothing you need to do.`) });
-    }
+    // (28/10) Une PLATEFORME EN PAUSE n'est plus ici : depuis la refonte du 04/10 (41e06d0) elle n'était qu'une carte
+    // non comptée de la feuille « points à régler » (BlocSynchro, sync_multi_ouverte = 1 : tout le parc) — invisible
+    // tant qu'on n'ouvrait pas la feuille. Elle a retrouvé son bandeau en tête du Stock (bandeauxPause, plus bas) :
+    // l'état du service, pas un geste à faire — une seule place, jamais deux.
     const retard = detecterRetardHorloge(Object.values(jobsByInventaire).flat());
     if (retard.enRetard) {
       out.push({ cle: 'horloge', icone: Clock, ton: 'regler',
@@ -10083,6 +10086,28 @@ const StockTab = memo(function StockTab({
         <TitreStock lang={lang} boutiques={boutiquesVinted} boutiqueConnectee={boutiqueConnectee}
           filterBoutique={filterBoutique} setFilterBoutique={(v)=>{setFilterBoutique(v);setShowAllStock(false);}}
           attenteBoutique={attenteBoutique}/>
+        {/* ── (28/10) LE BANDEAU « PLATEFORME EN PAUSE » REVIENT EN TÊTE DU STOCK ──────────────────────────────────
+            Né le 27/08 (0fe9aaf, Beebs), retiré du haut de page par la refonte du 04/10 (41e06d0) vers la feuille
+            « points à régler », où il n'était ni compté ni vu. platform_health.paused = true → un bandeau par
+            plateforme, texte = message_fr / message_en écrit en base, incident par incident, sans redéploiement.
+            Purement informatif : rien n'est grisé ici (le stepper et le lot grisent la plateforme), les tâches
+            restent en file et repartent à la reprise. Lu par relecture bornée (pausedPlatforms, plus haut). */}
+        {pausedPlatforms.map(p=>(
+          <div key={`pause-${p}`} role="status" data-pause-plateforme={p} style={{
+            display:"flex", gap:10, alignItems:"flex-start", marginTop:16, width:"100%", boxSizing:"border-box",
+            background:"#EFF3F8", border:"1px solid #C7D6E5", borderLeft:"4px solid #64748B", borderRadius:14, padding:"12px 14px",
+          }}>
+            <PauseCircle size={18} color="#475569" strokeWidth={2} aria-hidden="true" style={{flexShrink:0, marginTop:1}}/>
+            <div style={{fontSize:13, lineHeight:1.5, color:"#334155", minWidth:0}}>
+              <div style={{fontWeight:700, marginBottom:2, color:"#1E293B"}}>
+                {lang==='fr'?`${PLATFORM_LABELS[p]||p} en pause`:`${PLATFORM_LABELS[p]||p} paused`}
+              </div>
+              {pausedReasons[p]||(lang==='fr'
+                ?`Les publications ${PLATFORM_LABELS[p]||p} sont momentanément en pause. Reprise automatique dès rétablissement — rien à faire de ton côté.`
+                :`${PLATFORM_LABELS[p]||p} posting is temporarily paused. It will resume automatically — nothing you need to do.`)}
+            </div>
+          </div>
+        ))}
         {(activite||repubBandeau?.dryRuns>0||repubBandeau?.orpheline)&&(
           <div style={{background:"#fff",border:"1px solid #E7E3D8",borderRadius:16,padding:16,marginTop:16,boxShadow:"0 1px 3px rgba(16,32,27,0.04)"}}>
             {activite&&(()=>{

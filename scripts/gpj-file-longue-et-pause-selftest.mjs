@@ -118,5 +118,23 @@ const ok = (c, l, d = '') => { total++; if (!c) echecs++; console.log(`${c ? '�
   ok(/\.update\(\{ status: "published", error: null, platform_fields: pf \}\)\s*\n\s*\.eq\("id", j\.id\)\.eq\("status", "pending"\)/.test(GPJ), '5f. écriture bornée au statut pending, tracée (republication_finie)');
 }
 
+// 6. (28/10, doriane-henri — « Lot 15 DVD ») Un Leboncoin resté « en cours » retient les suivants jusqu'à sa reprise
+{
+  const i = GPJ.indexOf('let heldLbc = 0;');
+  const bloc = i > 0 ? GPJ.slice(i, i + 4500) : '';
+  ok(bloc.length > 0, '6a. la garde « un seul dépôt Leboncoin à la fois » est là');
+  const m = /const LBC_ZOMBIE_MS = (\d+) \* 60_000;/.exec(bloc);
+  ok(m && Number(m[1]) >= 25, '6b. un « processing » Leboncoin n\'est zombie qu\'au-delà de la reprise de l\'extension (15 min + 20 min d\'onglet au plus, vu 24 min)', m?.[1]);
+  ok(/const limite = Date\.now\(\) - LBC_ZOMBIE_MS;/.test(bloc) && /if \(depuis > limite\) occupeDepots = true;/.test(bloc), '6c. les dépôts attendent la reprise (30 min)');
+  ok(/const limiteTout = Date\.now\(\) - 10 \* 60_000;/.test(bloc) && /if \(depuis > limiteTout\) occupeTout = true;/.test(bloc)
+    && /j\.platform !== "leboncoin" \|\| \(!occupeTout && String\(j\.action \?\? "publish"\) === "delete"\)/.test(bloc), '6c bis. un RETRAIT (vente) n\'attend jamais plus de 10 min, comme avant');
+  ok(/if \(!Number\.isFinite\(depuis\)\) \{ occupeTout = true; continue; \}/.test(bloc) && !/\.update\(/.test(bloc.slice(0, bloc.indexOf('heldLbc = avant - out.length;'))), '6d. rien n\'est écrit ni refusé : les Leboncoin restent en file (horodatage illisible = vivant)');
+  // Rejoué sur la soirée du 28/10 (heures UTC) : DVD repris 19:16:44 → Pyjama servi 19:28:12 (12 min) avant ; plus maintenant.
+  const zombie = (depuisIso, maintenantIso, limiteMs) => Date.parse(depuisIso) <= Date.parse(maintenantIso) - limiteMs;
+  ok(zombie('2026-10-28T19:16:44Z', '2026-10-28T19:28:12Z', 10 * 60_000) === true, '6e. AVANT (10 min) : à 19:28:12 le DVD passait pour zombie, Pyjama Minnie passait devant');
+  ok(zombie('2026-10-28T19:16:44Z', '2026-10-28T19:28:12Z', Number(m?.[1] ?? 0) * 60_000) === false, '6f. APRÈS : à 19:28:12 le DVD tient la file ; repris à 19:41 il part le premier');
+  ok(zombie('2026-10-28T19:16:44Z', '2026-10-28T19:47:00Z', Number(m?.[1] ?? 0) * 60_000) === true, '6g. 30 min sans reprise : Leboncoin repart comme avant (jamais gelé)');
+}
+
 console.log(`\n${total - echecs}/${total} contrôles verts`);
 process.exit(echecs ? 1 : 0);

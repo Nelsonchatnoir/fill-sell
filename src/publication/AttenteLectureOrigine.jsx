@@ -107,7 +107,9 @@ export default function AttenteLectureOrigine({
           const res = await completerTexteDuVendeur(dernierItem.current, { supabase, userId, extensionVinted, lireEbay, delaiDetailMs });
           if (res?.item) dernierItem.current = res.item;
           derniereNote.current = res?.note ?? null;
-          if (res?.note === "pont_mort") setPontMort(true);
+          // (28/10, jocabroc8) Le pont suit la DERNIÈRE sonde : un « pont mort » d'un instant (page occupée) ne laisse
+          // plus « recharge la page » à l'écran quand la sonde suivante a eu sa réponse.
+          setPontMort(res?.note === "pont_mort");
         } catch { /* la relecture suivante réessaie */ }
         finally { enLecture.current = false; }
       }

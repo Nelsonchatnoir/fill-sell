@@ -7345,19 +7345,37 @@ serve(async (req) => {
           .eq("platform", "leboncoin")
           .eq("status", "processing")
           .limit(20);
-        const limite = Date.now() - 10 * 60_000;
-        const occupe = (lbcEnCours ?? []).some((j) => {
+        // ── (28/10, doriane-henri — « Lot 15 DVD ») LA PÉREMPTION ATTEND LA REPRISE : 30 MIN, PLUS 10 ───────────
+        // À 10 min, le job resté 'processing' passait pour zombie et le Leboncoin SUIVANT était servi (Pyjama Minnie,
+        // démarré à 20:28:12 = premier poll après 20:16:44 + 10 min), mais RIEN ne reprenait le zombie : l'extension
+        // ne le repasse en file qu'à 15 min (STALE_PROCESSING_MS, + jusqu'à 20 min si l'onglet dit le remplissage
+        // en cours ; repris ici à 24 min, « bloqué 24 min », à 20:41) et handler-watch le laisse à un poste vivant.
+        // Entre les deux, un second formulaire partait dans le MÊME onglet de travail (le télescopage que cette
+        // garde existe pour empêcher), la file programmée perdait son ordre, et l'annonce restait « en cours » 25 min.
+        // Désormais la garde tient les DÉPÔTS (publication, republication) jusqu'à ce que l'extension ait repris le
+        // job (il redevient 'pending' et part le premier, c'est le plus ancien), 30 min au plus : au-delà, plus
+        // personne ne le reprendra vite — on sert comme avant (jamais Leboncoin gelé). ⛔ Un RETRAIT (après une
+        // vente : double vente) garde la règle d'avant : retenu 10 min au plus, jamais davantage. Rien n'est écrit,
+        // rien n'est refusé : les autres attendent leur tour.
+        const LBC_ZOMBIE_MS = 30 * 60_000;
+        const limiteTout = Date.now() - 10 * 60_000;
+        const limite = Date.now() - LBC_ZOMBIE_MS;
+        let occupeTout = false;
+        let occupeDepots = false;
+        for (const j of (lbcEnCours ?? [])) {
           const pf = j.platform_fields as Record<string, unknown> | null;
           const depuis = Date.parse(String(pf?.["processing_since"] ?? "")) ||
                          Date.parse(String((j as Record<string, unknown>).created_at ?? ""));
           // Horodatage illisible : on considère le job VIVANT. Mieux vaut
           // attendre un tour que fabriquer le brouillon qui bloque tout.
-          if (!Number.isFinite(depuis)) return true;
-          return depuis > limite;
-        });
+          if (!Number.isFinite(depuis)) { occupeTout = true; continue; }
+          if (depuis > limiteTout) occupeTout = true;
+          if (depuis > limite) occupeDepots = true;
+        }
+        const occupe = occupeTout || occupeDepots;
         if (occupe) {
           const avant = out.length;
-          out = out.filter((j) => j.platform !== "leboncoin");
+          out = out.filter((j) => j.platform !== "leboncoin" || (!occupeTout && String(j.action ?? "publish") === "delete"));
           heldLbc = avant - out.length;
           if (heldLbc) {
             console.log(
