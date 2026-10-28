@@ -154,10 +154,37 @@ pont mort et bandeau 12-13), correctifs appliqués et prouvés depuis le termina
 | 0.6.150 | republication Vinted | 10576216857 à 21:38:18 (ancienne retirée) |
 | 0.6.151 | publication Vinted « Sans marque » | 10576670884 à 22:16:54 |
 | 0.6.151 | publication Depop jean femme 38 | publiée à 22:17:25 (Size 38 • Good condition • Lee) |
-| 0.6.152 | publication Vinted, libellé de rayon périmé | voir ci-dessous |
+| 0.6.152 | publication Vinted, libellé de rayon périmé (« Tops and t-shirts », rayon 1868) | publiée (10576830425, 10576961041, 10577118226) mais par le MOTEUR DE RAYON du serveur après une question : le repli par identifiant n'a pas abouti (3 essais) — non prouvé, aucune relance automatique branchée dessus |
 
 ## Livraisons
-- Extension : **0.6.152** (`build/CWS-0.6.152-A-TELEVERSER/fillsell-extension-0.6.152-379de55-cws.zip`), remplace les
+- Extension : **0.6.152** (`build/CWS-0.6.152-A-TELEVERSER/fillsell-extension-0.6.152-f567f2e-cws.zip`, BUILD_ID `2026-10-28T21:51:44Z+f567f2e`), remplace les
   0.6.150 et 0.6.151 (rangées dans `build/CWS-PERIMES/`).
 - OTA **2.9.124** (canal production relu). Web servi `631f472` puis le push final.
-- Fonctions : handler-watch v141, get-pending-jobs v298, update-job-status v154 (verify_jwt relus avant/après).
+- Fonctions : handler-watch v142, get-pending-jobs v298, update-job-status v154 (verify_jwt relus avant/après) ; lens-analysis NON redéployée.
+
+## Point 9 — suite (questions de Nico, 23:00)
+- L'écriture groupée de 22:06:35 (15 jobs de Sébastien à « deleted », même deleted_at) est la réparation
+  `20261028_sebastien_republications_beebs.sql` de ce terminal. Revérifié à 22:5x, annonce par annonce : 15/15 en 404 (témoin
+  34238221, en ligne : 200 + « Ajouter au panier ») ; dressing public de « Sébastien C. » relu (119 annonces) : aucune copie
+  (« Hublot » 34214535 = modèle Nikita, autre fiche, autre prix que le « Janna » à recréer).
+- « La recréation échoue depuis le 26/10 » : elle n'a jamais démarré — dernière republication complète le 26/10 07:32
+  (34238221) ; ensuite suppression envoyée → preuve impossible (403 du content script) → étape « captured » → la garde « une
+  seule hors ligne » ne la comptait pas → cascade de 15. Racine corrigée (8a00ae1).
+- Même trou, 2 cas de plus (Nico) : boncoin59300 ccbe94e3 (Vtech, 17700749 en 404, 1 096 annonces relues, aucune copie) →
+  « deleted » ; recrutementgroupezk704 1a323b66 (Levi's 514 J150, 34165538 en 404, seul J157 en ligne = autre exemplaire)
+  → fiche « disparue » depuis le 26/10 20:21 et annonce Vinted d'origine supprimée : QUESTION à la personne, pas de
+  recréation d'office. Réparations `20261028_beebs_suppression_envoyee_2.sql`, `20261028_beebs_levis_j150_question.sql`.
+- Alerte « republication orpheline » : part aussi pour une suppression envoyée sans preuve (étape « captured ») après 30 min
+  (`_shared/alerte-orpheline.js` suppressionEnvoyeeLe, handler-watch v142, commit c4b8421). Plus aucun cas en base hormis la
+  question J150.
+
+## Contrôle final (28/10 ~23:15) — comptes à extension vue en 7 jours, dernier état par article × plateforme depuis le 18/09
+- Rouges restants = gestes de la personne (configuration vendeur Depop 12, eBay compte vendeur inactif 9 / à finir 5,
+  connexions LBC 5 / Beebs 3 / Vinted 2, plateforme écartée, article vendu, accès Depop) ; refus de plateforme (Beebs
+  « jamais en ligne » ×3 vérifiés en 404, eBay compte bloqué par eBay, Leboncoin sans option gratuite) ; questions vraies
+  (Âge / Alimentation Beebs, frais de port Depop, ISBN, taille de bague, catégorie mele.marta / remialbertholl).
+- Rouges de notre fait, avec issue automatique : Vinted « menus bloom » (12 grille_incoherente, 6 marque, 8 État vide XEWER)
+  → repartent seuls quand chaque poste a la 0.6.150+ (message neutre en attendant).
+- Aucun job « processing » de plus de 20 min ; aucun job à needsUserAttempts ≥ 5 chez les comptes vivants. Retraits Beebs en
+  404 relancés en reprise espacée (thecloset ×2, louis ×1, sebastien ×1) : se ferment avec la 0.6.151+ (preuve par la page).
+- Suite complète : 476 selftests verts (suite3) ; relancée sur l'arbre final (suite4).
