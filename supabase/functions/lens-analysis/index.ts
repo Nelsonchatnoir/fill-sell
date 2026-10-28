@@ -1608,7 +1608,7 @@ const PLAFOND_REFUND_CONTREDITE_24H = 2;
 // Version du prompt : elle entre dans la clé du cache d'idempotence. À BUMPER
 // à chaque modification des prompts ou du schéma, sinon on continue de servir
 // un résultat produit par l'ancienne version.
-const VERSION_PROMPT = "2026-10-03-marque-lue-entiere";
+const VERSION_PROMPT = "2026-10-28-pointure-ligne-eur";
 
 // Champs de marché forcés à null en identify — dans le CODE, pas seulement par
 // consigne de prompt (ils ne figurent déjà plus dans le schéma identify).
