@@ -1278,6 +1278,29 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     })();
     return true;
   }
+  // ── (28/10) BEEBS : LA PAGE LUE PAR LE FETCH DE LA PAGE, POUR beebs.js ────────────────────────────────────────
+  // Sur certains postes, la vérification anti-robot de Beebs refuse en 403 le fetch du content script (monde isolé),
+  // pas celui de l'onglet : thecloset72000, le 28/10, « Mes annonces » lue par beebs.js en 403 à 20:38-20:39, la page
+  // des mêmes annonces lue en 404 par fetchListingHtml à 20:53. beebs.js demande ici la MÊME adresse, lue par
+  // fetchListingHtml (le chemin des vérifications d'annonce : fetch de l'onglet de travail, monde MAIN, puis repli
+  // service worker). Seulement trois formes d'adresse de www.beebs.app, et seulement pour un onglet beebs.app ; rien
+  // n'est conclu ici — beebs.js lit la réponse brute avec ses propres règles (clés exactes, compteur, fiche Product).
+  if (msg?.type === "BEEBS_LIRE_PAGE") {
+    (async () => {
+      const chemin = String(msg.chemin ?? "");
+      const permis = /^\/fr\/p\/\d{6,}$/.test(chemin) || /^\/fr\/account\/my-adverts(?:\/creating)?$/.test(chemin);
+      let hote = "";
+      try { hote = new URL(String(_sender?.tab?.url ?? "")).hostname; } catch { hote = ""; }
+      if (!permis || !/(^|\.)beebs\.app$/.test(hote)) return sendResponse({ ok: false, reason: "BEEBS_LIRE_PAGE refusé" });
+      try {
+        const r = await fetchListingHtml(`https://www.beebs.app${chemin}`, "beebs");
+        sendResponse({ ok: true, status: Number.isInteger(r?.status) ? r.status : null, finalUrl: r?.finalUrl ?? null, html: String(r?.html ?? "").slice(0, 3_000_000) });
+      } catch (e) {
+        sendResponse({ ok: false, reason: `BEEBS_LIRE_PAGE : ${String(e?.message ?? e).slice(0, 120)}` });
+      }
+    })();
+    return true;
+  }
   // ── FORMATS DE COLIS BEEBS, APPRIS DU FORMULAIRE (04/10, 0.6.95) ──────────
   // beebs.js envoie les options « Format du colis » vues dans le formulaire
   // ({ id, titre }) ; le serveur les garde (noter_formats_colis_beebs,
@@ -16662,6 +16685,10 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
   // le donne, et lui seul. `beebsIndexMotif` porte la raison quand il se tait :
   // un index muet n'est pas un dressing vide.
   let beebsTotalIndex = null;
+  // (28/10, louis-seller / xxewwer) Ce que l'onglet « en vérification » a rendu (clés exactes du flux, cartes,
+  // annonces relevées) : écrit dans le run. Avant, ce constat ne vivait qu'en console — et le jugement « ni en ligne
+  // ni en vérification » (trancher_publications_sans_lien) s'appuyait sur une lecture que rien ne prouvait.
+  let beebsVerifTrace = null;
   // La plateforme a-t-elle ÉCRIT qu'elle n'a aucune annonce ? (2026-09-23)
   let pageDitVide = false;
   let beebsIndexMotif = null;
@@ -16865,6 +16892,11 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
       if (platform === "ebay" && r?.page) dernierePageHub = r.page;
       illisibles.prix += Number(r.diag?.sans_prix) || 0;
       illisibles.titre += Number(r.diag?.sans_titre) || 0;
+      if (platform === "beebs" && r?.diag?.beebs_rsc && typeof r.diag.beebs_rsc === "object") {
+        const v = r.diag.beebs_rsc;
+        beebsVerifTrace = `en vérification : ${Number(v.ids) || 0} clé(s) exacte(s), ${Number(v.cartes) || 0} carte(s), `
+          + `${Number(v.relevees) || 0} relevée(s)${(Number(v.ids) || 0) !== (Number(v.cartes) || 0) ? " — désaccord clés/cartes : rien relevé sans lien" : ""}`;
+      }
       for (const a of r.annonces ?? []) {
         if (!annonces.has(a.listing_id)) annonces.set(a.listing_id, { ...a, statut: a.statut ?? page.statut });
       }
@@ -17256,6 +17288,8 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
     // (17/10, Ornella) Le verdict du flux de « Mes annonces », TOUJOURS dit —
     // relevé fini comme incomplet : c'est lui qui dit POURQUOI.
     ...(platform === "beebs" && beebsFluxTrace ? [beebsFluxTrace] : []),
+    // (28/10) La lecture de l'onglet « en vérification », toujours dite (absente = onglet non lu).
+    ...(platform === "beebs" ? [beebsVerifTrace ?? "en vérification : onglet non lu"] : []),
   ].join(" | ") || null;
   return {
     annonces: [...annonces.values()], complet, illisibles, erreur: erreurCouverture, vide,
@@ -26892,13 +26926,26 @@ async function processRepublishJobPlateforme(job, accessToken) {
     }
     // Invariant « une seule annonce hors ligne à la fois », par plateforme
     // (même échec fermé que Vinted : lecture impossible → on ne retire pas).
+    // (28/10, sebastien64310) Une suppression ENVOYÉE et pas encore prouvée (étape 'captured' + marqueur
+    // republish_suppression_envoyee) laisse l'annonce hors ligne comme l'étape 'deleted' : elle retient aussi.
+    // 15 annonces Beebs retirées les 26 et 28/10, aucune remise en ligne : la garde ne lisait que 'deleted'.
+    // Ce job-ci, si SA suppression est déjà partie, va au bout (il relit la preuve) : jamais retenu par un autre.
     try {
-      const horsLigne = await restRequest(
+      const baseHorsLigne = `cross_post_jobs?user_id=eq.${decodeJwtSub(accessToken)}&action=eq.republish` +
+        `&platform=eq.${job.platform}&id=neq.${job.id}&status=in.(pending,processing)`;
+      let horsLigne = suppressionDejaEnvoyee(job, pf) ? [] : await restRequest(
         `cross_post_jobs?user_id=eq.${decodeJwtSub(accessToken)}&action=eq.republish` +
         `&platform=eq.${job.platform}&id=neq.${job.id}&status=in.(pending,processing)` +
         `&platform_fields->>republish_step=eq.deleted&select=id,title&limit=1`,
         accessToken, { headers: { Prefer: "return=representation" } },
       );
+      if (Array.isArray(horsLigne) && !horsLigne.length && !suppressionDejaEnvoyee(job, pf)) {
+        horsLigne = await restRequest(
+          `${baseHorsLigne}&platform_fields->>republish_step=eq.captured` +
+          `&platform_fields->republish_suppression_envoyee=not.is.null&select=id,title&limit=1`,
+          accessToken, { headers: { Prefer: "return=representation" } },
+        );
+      }
       if (Array.isArray(horsLigne) && horsLigne.length) {
         console.log(`[republish] job ${job.id} : retrait reporté — une annonce ${label} du compte est déjà hors ligne (job ${horsLigne[0].id})`);
         // (11/10) Retenu, et DIT : plus jamais un « skipped » muet (cf. retenirDerriereAnnonceHorsLigne).

@@ -6524,8 +6524,10 @@ serve(async (req) => {
     try {
       const pfR = (j: { platform_fields: unknown }) =>
         ((j.platform_fields && typeof j.platform_fields === "object") ? j.platform_fields : {}) as Record<string, unknown>;
+      // (28/10, sebastien64310) Une republication dont la suppression est PARTIE (retraitEngage) n'est pas un retrait
+      // « qui va partir » : elle va au bout (preuve relue, puis remise en ligne) et n'est jamais retenue ici.
       const vaRetirerMaintenant = out.filter((j) =>
-        j.action === "republish" && String(pfR(j)["republish_step"] ?? "a_capturer") === "captured");
+        j.action === "republish" && String(pfR(j)["republish_step"] ?? "a_capturer") === "captured" && !retraitEngage(j));
       if (vaRetirerMaintenant.length) {
         const { data: enVol } = await userClient
           .from("cross_post_jobs")
@@ -6534,8 +6536,20 @@ serve(async (req) => {
           .eq("action", "republish")
           .eq("platform_fields->>republish_step", "deleted")
           .in("status", ["pending", "processing", "needs_user"]);
+        // (28/10, sebastien64310) Une suppression ENVOYÉE et pas encore prouvée (étape 'captured' + marqueur
+        // republish_suppression_envoyee) laisse l'annonce hors ligne comme l'étape 'deleted' : 15 annonces Beebs
+        // retirées en deux jours, aucune remise en ligne, parce que celle-ci ne comptait pas.
+        const { data: envoyees } = await userClient
+          .from("cross_post_jobs")
+          .select("id, platform, title, status, error, platform_fields")
+          .eq("user_id", user.id)
+          .eq("action", "republish")
+          .eq("platform_fields->>republish_step", "captured")
+          .not("platform_fields->republish_suppression_envoyee", "is", null)
+          .in("status", ["pending", "processing"])
+          .limit(50);
         const horsLigneParPf = new Map<string, Array<{ titre: string; statut: string }>>();
-        for (const r of (enVol ?? []).filter(recreationRetientFile)) {
+        for (const r of [...(enVol ?? []).filter(recreationRetientFile), ...(envoyees ?? []).filter((e) => retraitEngage(e as Record<string, unknown>))]) {
           const row = r as { platform: string; title: string | null; status: string };
           if (!horsLigneParPf.has(row.platform)) horsLigneParPf.set(row.platform, []);
           horsLigneParPf.get(row.platform)!.push({ titre: String(row.title ?? "").slice(0, 40), statut: row.status });
@@ -13000,11 +13014,29 @@ serve(async (req) => {
           .not("platform_fields->retenue_hors_ligne", "is", null)
           .limit(50);
         if (!aRetenir && !(marques ?? []).length) throw new Error("__rien_a_retenir__");
-        const { data: horsLigne, error: hErr } = await adminR.from("cross_post_jobs")
+        const { data: horsLigneRetirees, error: hErr } = await adminR.from("cross_post_jobs")
           .select("id, platform, title, platform_fields")
           .eq("user_id", user.id).eq("action", "republish").in("status", ["pending", "processing"])
           .eq("platform_fields->>republish_step", "deleted")
           .order("created_at", { ascending: true }).limit(50);
+        // ══ (28/10, sebastien64310) UNE SUPPRESSION ENVOYÉE, NON PROUVÉE, EST UNE ANNONCE HORS LIGNE ══════════
+        // 15 republications Beebs à l'étape 'captured' portaient republish_suppression_envoyee (9 le 26/10 entre
+        // 08:27 et 12:27, 6 le 28/10 entre 10:51 et 14:25, heure de Paris). Beebs avait bien retiré les annonces
+        // (index public 110 → 101 entre les relevés du 26/10 07:40 et 18:28), mais la preuve ne passait pas : chacune
+        // restait « captured », ne comptait pas « hors ligne », et la suivante était servie et retirée à son tour —
+        // « jamais deux annonces hors ligne » ne tenait plus. Désormais une republication dont la suppression est partie
+        // (marqueur, ou trace écrite : retraitEngage) retient comme une étape 'deleted' ; elle-même va au bout
+        // (exemptée plus bas) et n'est jamais retenue par une autre.
+        const { data: horsLigneEnvoyees } = await adminR.from("cross_post_jobs")
+          .select("id, platform, title, error, platform_fields")
+          .eq("user_id", user.id).eq("action", "republish").in("status", ["pending", "processing"])
+          .eq("platform_fields->>republish_step", "captured")
+          .not("platform_fields->republish_suppression_envoyee", "is", null)
+          .order("created_at", { ascending: true }).limit(50);
+        const horsLigne = [
+          ...((horsLigneRetirees ?? []) as Array<Record<string, unknown>>),
+          ...((horsLigneEnvoyees ?? []) as Array<Record<string, unknown>>).filter((h) => retraitEngage(h)),
+        ];
         // ══ (15/10, RoCotCot) LE MOTIF SE LÈVE QUAND L'ANNONCE EST REVENUE ════
         // « Bop It » recréée à 16:16:59, trois jobs Beebs disaient encore à 16:18
         // « … n'est pas encore revenue en ligne » ; « Guerlain » revenue à 14:41,
@@ -13040,6 +13072,8 @@ serve(async (req) => {
           for (const j of out) {
             const pfJ = (j.platform_fields as Record<string, unknown> | null) ?? {};
             if (j.action !== "republish" || String(pfJ["republish_step"] ?? "") !== "captured") continue;
+            // (28/10) Sa suppression est partie : elle va au bout (preuve relue, puis remise en ligne), jamais retenue.
+            if (retraitEngage(j)) continue;
             // (15/10) Leboncoin, Beebs et Depop forment UN groupe : une annonce
             // retirée sur l'une retient tout nouveau retrait sur les trois
             // (_shared/retenue-hors-ligne.js). Vinted reste par plateforme.
@@ -13081,6 +13115,7 @@ serve(async (req) => {
             const restriction = /selling-restriction/.test(JSON.stringify(pfF["error_technique"] ?? "") + String(pfF["last_diagnostic"] ? JSON.stringify(pfF["last_diagnostic"]) : ""));
             for (const a of ((autres ?? []) as Array<Record<string, unknown>>)) {
               if (retenus.has(String(a["id"]))) continue;
+              if (retraitEngage(a)) continue; // (28/10) suppression partie : jamais marquée « retenue »
               const pfA = (a["platform_fields"] as Record<string, unknown> | null) ?? {};
               const prec = pfA["retenue_hors_ligne"] as Record<string, unknown> | null | undefined;
               if (prec && typeof prec === "object" && String(prec["job"] ?? "") === String(frere["id"])) continue; // déjà dit

@@ -519,10 +519,19 @@ function lirePageIdentifiantsBeebs(page, chemin, reponseUrl, http, html) {
     // numéro depuis la 0.6.80. On compte les cartes dans <main> ET dans les
     // segments streamés, sans exiger d'image (une photo pas encore traitée
     // par Beebs ne doit pas faire disparaître la carte).
+    // (28/10) Une page VIVANTE (document du cadre) peut porter la liste DEUX fois : dans <main>, où Next.js
+    // l'a déplacée, et encore dans son segment streamé — « 1 clé(s) exacte(s) pour 2 carte(s) » à chaque
+    // lecture par cadre d'un compte qui a une annonce en vérification (thecloset72000 le 28/10 à 16:56 et
+    // 20:39, XEWER les 26 et 28/10) : dépôt sans numéro, retrait sans preuve. <main> fait foi dès qu'il porte
+    // des cartes ; sinon les segments (document lu par fetch : aucun script n'a tourné). Une carte qui en
+    // contient une autre ne compte qu'une fois. Le refus au moindre écart clés / cartes reste entier.
     const zones = Array.from(doc.querySelectorAll('main, div[hidden][id^="S:"]'));
-    const cartes = new Set(zones
-      .flatMap((z) => Array.from(z.querySelectorAll("div.px-section.w-section.border-grey-metal.border-b")))
-      .filter((el) => /Vérification en cours/i.test(el.textContent || "")));
+    const cartesDe = (z) => Array.from(z.querySelectorAll("div.px-section.w-section.border-grey-metal.border-b"))
+      .filter((el) => /Vérification en cours/i.test(el.textContent || ""));
+    const dansMain = zones.filter((z) => z.tagName === "MAIN").flatMap(cartesDe).filter((el) => !el.closest("[hidden]"));
+    const dansSegments = zones.filter((z) => z.tagName !== "MAIN").flatMap(cartesDe);
+    const brutes = [...new Set(dansMain.length ? dansMain : dansSegments)];
+    const cartes = new Set(brutes.filter((el) => !brutes.some((o) => o !== el && el.contains(o))));
     out.cartes = cartes.size;
     if (ids.length !== cartes.size) {
       out.motif = `${ids.length} clé(s) exacte(s) pour ${cartes.size} carte(s)`;
@@ -560,6 +569,30 @@ function lirePageIdentifiantsBeebs(page, chemin, reponseUrl, http, html) {
   out.ok = true;
   out.ids = ids;
   return out;
+}
+
+// ── (28/10, retraits et republications Beebs bloqués) LA MÊME PAGE, LUE PAR LE FETCH DE LA PAGE ───────────────────
+// Sur certains postes, la vérification anti-robot de Beebs refuse en 403 le fetch d'ICI (monde isolé du content
+// script), pas celui de la page : le 28/10, chez thecloset72000, « Mes annonces » lue d'ici rendait 403 à 20:38-20:39
+// pendant que fetchListingHtml (background, fetch de l'onglet dans le monde MAIN) lisait la page des mêmes
+// annonces en 404 à 20:53 — et aucun des 11 retraits de ce compte n'a jamais noté un constat « page 404 » (beebs.js
+// ne le note que sur SA lecture de la page de l'annonce). Ici, la même adresse est demandée au background, qui la lit
+// par fetchListingHtml ; la réponse brute (statut, adresse finale, document) repasse par les MÊMES lectures que le
+// fetch d'ici (lirePageIdentifiantsBeebs, fiche Product du numéro exact). Trois formes d'adresse seulement.
+// Rend { http, url, html } ou null (background muet, refus, délai).
+const BEEBS_LECTURE_PAGE_DELAI_MS = 25_000;
+async function lirePageParLaPageBeebs(chemin) {
+  let r = null;
+  try {
+    r = await Promise.race([
+      chrome.runtime.sendMessage({ type: "BEEBS_LIRE_PAGE", chemin }),
+      new Promise((resolve) => setTimeout(() => resolve(null), BEEBS_LECTURE_PAGE_DELAI_MS)),
+    ]);
+  } catch {
+    r = null;
+  }
+  if (!r || r.ok !== true || !Number.isInteger(r.status)) return null;
+  return { http: r.status, url: String(r.finalUrl || `${location.origin}${chemin}`), html: String(r.html ?? "") };
 }
 
 // ── (26/10, retraits Beebs en panne) LA PAGE, QUAND LA LECTURE PAR FETCH EST REFUSÉE ─────────────────────────────
@@ -622,8 +655,16 @@ async function lireIdsMesAnnoncesBeebs() {
     }
     // (26/10) Refus anti-robot (ou lecture impossible) : la même page, chargée dans un cadre — jamais conclue autrement.
     if (!lu.ok && (lu.mur === "anti_robot" || /^lecture impossible/.test(String(lu.motif ?? "")))) {
-      const parCadre = await lirePageParCadreBeebs(page, chemin);
-      lu = parCadre.ok ? parCadre : { ...lu, cadre: parCadre.motif ?? "illisible" };
+      // (28/10) D'abord la même page lue par le fetch de la PAGE (lirePageParLaPageBeebs), même lecture ; puis le cadre.
+      const viaPage = await lirePageParLaPageBeebs(chemin);
+      const parPage = viaPage ? lirePageIdentifiantsBeebs(page, chemin, viaPage.url, viaPage.http, viaPage.html) : null;
+      if (parPage?.ok) {
+        lu = { ...parPage, par: "page" };
+      } else {
+        if (parPage) lu = { ...lu, par_la_page: parPage.motif ?? "illisible" };
+        const parCadre = await lirePageParCadreBeebs(page, chemin);
+        lu = parCadre.ok ? parCadre : { ...lu, cadre: parCadre.motif ?? "illisible" };
+      }
     }
     pages.push(lu);
   }
@@ -643,23 +684,42 @@ async function lireIdsMesAnnoncesBeebs() {
 // { http, produit, sku, disponibilite } — produit = une fiche Product dans le
 // ld+json ; sku et disponibilite = ceux de la fiche Product de CE numéro
 // (« SoldOut », « InStock »…), jamais ceux d'un autre produit de la page.
+// (28/10, thecloset72000 / louis-seller / sebastien64310) Le fetch d'ici REFUSÉ — 403, vérification anti-robot servie
+// à la place de la page, lecture impossible — ne lisait ni le 404 d'une annonce retirée ni le « SoldOut » d'une
+// annonce passée « Vendu » : aucune preuve, aucun constat, 30 retraits et republications (3 comptes) en boucle.
+// Repli : la même page lue par le fetch de la PAGE (lirePageParLaPageBeebs), même lecture du document. Rien de
+// lisible de ce côté non plus : la lecture d'ici, telle quelle — jamais une preuve.
+function lireDocumentAnnonceBeebs(http, html, id) {
+  const doc = new DOMParser().parseFromString(String(html ?? ""), "text/html");
+  const fiches = Array.from(doc.querySelectorAll("script[type='application/ld+json']"))
+    .map((s) => { try { return JSON.parse(s.textContent); } catch { return null; } })
+    .filter(Boolean).flatMap((x) => (Array.isArray(x) ? x : [x]))
+    .filter((x) => x && /Product/i.test(String(x["@type"])));
+  return { http, produit: fiches.length > 0, ...ficheProduitBeebs(fiches, id) };
+}
+function pageAnnonceRefuseeBeebs(lue, html) {
+  if (lue?.http == null || lue.http === 403) return true;
+  return lue.http === 200 && !lue.produit && /captcha-delivery|geo\.captcha/i.test(String(html ?? "").slice(0, 20_000));
+}
 async function pageAnnonceBeebs(id) {
   const ctrl = new AbortController();
   const garde = setTimeout(() => ctrl.abort(), BEEBS_LECTURE_DELAI_MS);
+  let lue = { http: null, produit: false, sku: null, disponibilite: null };
+  let html = "";
   try {
     const r = await fetch(`/fr/p/${id}`, { credentials: "include", cache: "no-store", headers: { Accept: "text/html" }, signal: ctrl.signal });
-    const html = await r.text();
-    const doc = new DOMParser().parseFromString(html, "text/html");
-    const fiches = Array.from(doc.querySelectorAll("script[type='application/ld+json']"))
-      .map((s) => { try { return JSON.parse(s.textContent); } catch { return null; } })
-      .filter(Boolean).flatMap((x) => (Array.isArray(x) ? x : [x]))
-      .filter((x) => x && /Product/i.test(String(x["@type"])));
-    return { http: r.status, produit: fiches.length > 0, ...ficheProduitBeebs(fiches, id) };
+    html = await r.text();
+    lue = lireDocumentAnnonceBeebs(r.status, html, id);
   } catch {
-    return { http: null, produit: false, sku: null, disponibilite: null };
+    // lecture impossible : `lue` reste illisible
   } finally {
     clearTimeout(garde);
   }
+  if (!pageAnnonceRefuseeBeebs(lue, html) || !/^\d{6,}$/.test(String(id ?? ""))) return lue;
+  const viaPage = await lirePageParLaPageBeebs(`/fr/p/${id}`);
+  if (!viaPage) return lue;
+  const parPage = lireDocumentAnnonceBeebs(viaPage.http, viaPage.html, id);
+  return pageAnnonceRefuseeBeebs(parPage, viaPage.html) ? lue : { ...parPage, par: "page" };
 }
 
 // La fiche Product du numéro EXACT et sa disponibilité schema.org (dernier segment : « SoldOut », « InStock »).
