@@ -1598,7 +1598,14 @@ async function selectCategoryParIds(catalogId, warnings) {
   }
   try {
     await openDropdown(TRIGGER);
-    for (let i = 0; i < ids.length; i++) {
+    // (28/10 soir, essai réel 0.6.152) Le panneau rouvert garde le NIVEAU où une descente par libellés s'est arrêtée
+    // (repli « libellé périmé ») : on reprend au premier niveau du chemin AFFICHÉ, jamais en cliquant un autre rayon.
+    // Panneau à la racine (page neuve) : le niveau 1, comme avant.
+    const depart = await waitFor(() => {
+      const k = ids.findIndex((id) => document.getElementById(`catalog-${id}`));
+      return k >= 0 ? k + 1 : null;
+    }, CATALOG_PREMIER_NIVEAU_MS);
+    for (let i = depart ? depart - 1 : 0; i < ids.length; i++) {
       const el = await waitForElement(`#catalog-${ids[i]}`, i === 0 ? CATALOG_PREMIER_NIVEAU_MS : 5000).catch(() => null);
       if (!el) throw new Error(`niveau ${i + 1}/${ids.length} : #catalog-${ids[i]} absent du panneau`);
       await humanPause();
