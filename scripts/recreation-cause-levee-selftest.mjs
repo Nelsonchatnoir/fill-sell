@@ -55,7 +55,25 @@ ok(/j\.platform === "beebs" && \(j\.action === "publish" \|\| j\.action === "rep
 ok(/select\("id, attributs, description"\)/.test(gpj) && /descFiche\.trim\(\)\.length >= BEEBS_DESCRIPTION_MIN/.test(gpj), "la description de la FICHE passe avant les faits du job");
 ok(/if \(j\.action !== "publish"\) \{/.test(gpj), "couleur / matière ajoutées aux publications seulement (une republication recopie son annonce)");
 const hw = fs.readFileSync(new URL("../supabase/functions/handler-watch/index.ts", import.meta.url), "utf8");
-ok(/causeLeveePourRelance\(j\)/.test(hw) && /\.eq\("id", j\.id\)\.eq\("status", "needs_user"\)/.test(hw), "handler-watch relance (CAS sur needs_user)");
+ok(/causeLeveePourRelance\(j, buildBloquee\.get\(String\(j\.user_id\)\) \?\? null\)/.test(hw) && /\.eq\("id", j\.id\)\.eq\("status", "needs_user"\)/.test(hw), "handler-watch relance (CAS sur needs_user)");
+
+console.log("\n4. (28/10) MENUS « BLOOM » DE VINTED : LA REMISE EN LIGNE REPART QUAND LE POSTE A LA 0.6.150");
+{
+  const thibault = { id: "dca41766", action: "republish", status: "needs_user", platform: "vinted", title: "Samsung player start 2",
+    error: "Ton annonce a été retirée de Vinted et FillSell n'a pas réussi à la remettre en ligne (3 essais).",
+    platform_fields: { needs_user_source: SOURCE_RECREATION_BLOQUEE, republish_step: "deleted",
+      error_technique: { brut: "COULEUR INTROUVABLE : la couleur [\"Noir\"] existe bien chez Vinted mais n'a pas pu être posée sur le formulaire" } } };
+  ok(causeLeveePourRelance(thibault, "2026-10-28T09:52:53Z+9ca925f") === null, "poste en 0.6.149 : pas encore (même mur)");
+  ok(causeLeveePourRelance(thibault, null) === null, "build du poste inconnu : non");
+  const c = causeLeveePourRelance(thibault, "2026-10-28T21:51:44Z+f567f2e");
+  ok(c?.code === "vinted_menus_bloom", "poste en 0.6.152 : relancée");
+  const pf = champsRelanceCauseLevee(thibault.platform_fields, c, "2026-10-29T08:00:00Z");
+  ok(pf.republish_step === "deleted" && !pf.needs_user_source && Boolean(pf.recreation_relancee?.vinted_menus_bloom),
+    "étape gardée, attente levée, marquée « une fois par cause »");
+  ok(causeLeveePourRelance({ ...thibault, platform_fields: { ...thibault.platform_fields, recreation_relancee: pf.recreation_relancee } },
+    "2026-10-28T21:51:44Z+f567f2e") === null, "jamais une seconde fois pour cette cause");
+  ok(causeLeveePourRelance({ ...thibault, platform: "beebs" }, "2026-10-28T21:51:44Z+f567f2e") === null, "Beebs : pas cette cause");
+}
 
 console.log(ko ? `\n${ko} ÉCHEC(S)` : "\nTOUT VERT");
 process.exit(ko ? 1 : 0);

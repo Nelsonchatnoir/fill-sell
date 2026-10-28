@@ -148,7 +148,26 @@ export const CAUSES_LEVEES_PAR_LE_SERVEUR = [
     // 5 caractères (annonce → fiche → faits du job).
     correctif: "get-pending-jobs sert la description de la fiche (ou des faits du job) à toute remise en ligne Beebs",
   },
+  {
+    // (28/10 soir, Nico — point 15, thibault.andrieux dca41766 « Samsung player start 2 ») Retirée de Vinted le 25/10,
+    // remise en ligne ratée le 28/10 sur « COULEUR INTROUVABLE : la couleur ["Noir"] existe bien chez Vinted mais n'a
+    // pas pu être posée » : la relecture `.value` des menus « bloom » de Vinted (la couleur était posée, lue vide) — même
+    // défaut que la marque et l'État. La 0.6.150 relit le span affiché. La cause n'est levée que pour un POSTE qui a ce
+    // build (buildMin, lu par handler-watch) : sur une 0.6.149, le même mur.
+    code: "vinted_menus_bloom",
+    plateformes: ["vinted"],
+    signature: /existe bien chez Vinted mais n'a pas pu être posée|#brand porte «  »|#brand est resté vide|n'a pas accepté État|État \(accepte\s*:/i,
+    buildMin: "2026-10-28T20:15:00Z",
+    correctif: "extension 0.6.150+ : les menus « bloom » de Vinted relus dans le span affiché (valeurChampVinted)",
+  },
 ];
+
+/** (28/10) Le poste a-t-il le build qu'exige une cause (`buildMin`) ? Préfixe horodaté du BUILD_ID ; absent : non. */
+export function posteAuBuildDeLaCause(cause, extensionBuild) {
+  if (!cause?.buildMin) return true;
+  const m = String(extensionBuild ?? "").match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)/);
+  return Boolean(m) && Date.parse(m[1]) >= Date.parse(cause.buildMin);
+}
 
 /** Les textes où vit le motif d'un échec de remise en ligne. */
 function textesEchec(job) {
@@ -163,7 +182,11 @@ function textesEchec(job) {
 }
 
 /** La cause levée qui permet de relancer ce job, ou null. */
-export function causeLeveePourRelance(job) {
+/**
+ * @param {any} job
+ * @param {string | null} [extensionBuild] le BUILD_ID du poste (causes qui exigent un build d'extension)
+ */
+export function causeLeveePourRelance(job, extensionBuild = undefined) {
   const pf = (job?.platform_fields && typeof job.platform_fields === "object") ? job.platform_fields : {};
   if (job?.action !== "republish" || job?.status !== "needs_user") return null;
   if (pf.needs_user_source !== SOURCE_RECREATION_BLOQUEE || pf.republish_step !== "deleted") return null;
@@ -172,6 +195,7 @@ export function causeLeveePourRelance(job) {
   for (const c of CAUSES_LEVEES_PAR_LE_SERVEUR) {
     if (!c.plateformes.includes(job.platform)) continue;
     if (pf.recreation_relancee && pf.recreation_relancee[c.code]) continue; // une fois par cause
+    if (!posteAuBuildDeLaCause(c, extensionBuild)) continue; // (28/10) le poste n'a pas encore le correctif
     if (c.signature.test(textes) && (!c.condition || c.condition(job))) return c;
   }
   return null;

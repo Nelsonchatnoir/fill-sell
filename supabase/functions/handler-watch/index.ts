@@ -3065,9 +3065,17 @@ serve(async (req) => {
       .eq("action", "republish").eq("status", "needs_user")
       .eq("platform_fields->>needs_user_source", SOURCE_RECREATION_BLOQUEE)
       .order("created_at", { ascending: true }).limit(50);
+    // (28/10) Une cause corrigée par l'EXTENSION (buildMin) n'est levée que pour un poste qui a ce build.
+    // deno-lint-ignore no-explicit-any
+    const uidsBloquees = [...new Set(((bloquees ?? []) as any[]).map((j) => String(j.user_id)))];
+    const { data: profsBloquees } = uidsBloquees.length
+      ? await supabase.from("profiles").select("id, extension_build").in("id", uidsBloquees)
+      : { data: [] };
+    const buildBloquee = new Map(((profsBloquees ?? []) as Array<{ id: string; extension_build: string | null }>)
+      .map((p) => [p.id, p.extension_build]));
     // deno-lint-ignore no-explicit-any
     for (const j of (bloquees ?? []) as any[]) {
-      const cause = causeLeveePourRelance(j);
+      const cause = causeLeveePourRelance(j, buildBloquee.get(String(j.user_id)) ?? null);
       if (!cause) continue;
       const pf = champsRelanceCauseLevee(j.platform_fields ?? {}, cause, new Date().toISOString()) as Record<string, unknown>;
       if (j.error) pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error, j.status, `handler-watch (cause levée : ${cause.code})`);
