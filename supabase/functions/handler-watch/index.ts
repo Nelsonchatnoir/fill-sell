@@ -349,8 +349,21 @@ serve(async (req) => {
     // parti depuis le retrait, que rien n'a démenti, n'est PAS une orpheline (11 alertes Vinted sur 15 en 14 jours
     // tombaient sur une copie déjà en ligne). _shared/alerte-orpheline.js : rien envoyé → l'alerte ; relu sans copie
     // depuis 30 min → l'alerte ; envoi jamais vérifié en 6 h → l'alerte.
+    // (28/10 soir, Nico) Et les suppressions ENVOYÉES jamais prouvées (étape restée 'captured') : Sébastien (15 annonces
+    // Beebs hors ligne depuis le 26/10), recrutementgroupezk704, boncoin59300 — invisibles tant qu'on ne regardait que
+    // l'étape 'deleted'. Même dédup (orphan_alerted_at), même seuil de 30 min (alerteOrphelineDue).
+    const { data: envoyees } = await supabase
+      .from("cross_post_jobs")
+      .select("id, user_id, platform, title, status, platform_fields")
+      .eq("action", "republish")
+      .in("status", ["pending", "processing", "needs_user", "failed"])
+      .filter("platform_fields->>republish_step", "eq", "captured")
+      .filter("platform_fields->>orphan_alerted_at", "is", "null")
+      .not("platform_fields->republish_suppression_envoyee", "is", null)
+      .limit(200);
     // deno-lint-ignore no-explicit-any
-    const orphelins = ((bruts ?? []) as any[]).filter((j) => j.platform_fields?.deleted_at && alerteOrphelineDue(j.platform_fields, now).due);
+    const orphelins = ([...((bruts ?? []) as any[]), ...((envoyees ?? []) as any[])]).filter((j) =>
+      (j.platform_fields?.deleted_at || j.platform_fields?.republish_suppression_envoyee) && alerteOrphelineDue(j.platform_fields, now).due);
     if (orphelins.length && resendKey) {
       const userIds = [...new Set(orphelins.map((j) => j.user_id as string))];
       const { data: profs } = await supabase
@@ -365,9 +378,10 @@ serve(async (req) => {
       };
       const lignes = orphelins.map((j) => {
         const p = profParId.get(j.user_id) ?? {};
-        const horsLigneMin = minutes(j.platform_fields.deleted_at);
+        const horsLigneMin = minutes(j.platform_fields.deleted_at ?? j.platform_fields.republish_suppression_envoyee?.at ?? null);
         const hbMin = minutes(p.extension_last_seen_at ?? null);
         const motif = ({
+          suppression_envoyee: "suppression envoyée, jamais prouvée — étape restée « captured », rien ne recrée",
           sans_envoi: "rien n'a été renvoyé depuis le retrait",
           relu_sans_copie: "renvoyée, mais la relecture n'a pas trouvé la copie (rien renvoyé depuis 30 min)",
           envoi_non_verifie: "renvoyée, jamais vérifiée depuis 6 h",
@@ -393,7 +407,7 @@ serve(async (req) => {
       ⚠️ ${orphelins.length} annonce(s) hors ligne sans recréation
     </h1>
     <p style="margin:0 0 14px;font-size:12px;font-family:sans-serif;color:#9CA3AF;">
-      Étape 'deleted' depuis plus de 30 min, et aucune nouvelle annonce partie que rien n'a démentie
+      Étape 'deleted' (ou suppression envoyée sans preuve) depuis plus de 30 min, et aucune nouvelle annonce partie que rien n'a démentie
       — l'extension du compte ne recrée pas (endormie, session perdue…). L'annonce est retirée de sa plateforme, la copie
       (capture Vinted, ou snapshot du dépôt ailleurs) est en base : rien n'est perdu,
       mais personne ne le voit. Une alerte par job.

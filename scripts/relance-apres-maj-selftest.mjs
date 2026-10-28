@@ -175,20 +175,8 @@ console.log("\n[5] (08/10 soir) Tâche mise de côté « sans démarrage » (Jon
   ok("   après le message, la règle reconnaît toujours la tâche (relancée à la 0.6.150)", regleDeRelance(apresMessage)?.cle === rx.cle);
   ok("   publication : message « Rien n'a été publié »", /Rien n'a été publié/.test(messageAttenteMaj(ORNELLA, regleDeRelance(ORNELLA)) ?? ""));
   ok("   règles d'avant le 28/10 : aucun message", messageAttenteMaj(GLOWIK, regleDeRelance(GLOWIK)) === null);
-  // Rayon par identifiant (0.6.152) : libellé périmé ou page étrangère, identifiant connu.
-  const REMI = {
-    platform: "vinted", action: "republish", status: "needs_user",
-    error: "Republication en pause AVANT toute suppression — ton annonce est intacte sur Vinted. Vinted ne propose pas « Jewellery » à cet endroit de son catalogue. Choisis la bonne catégorie",
-    platform_fields: { needs_user_source: "prevol_negatif", republish_step: "captured", republish_snapshot: { catalog_id: 5564 } },
-  };
-  const rr = regleDeRelance(REMI);
-  ok("remialbertholl « Jewellery » (rayon 5564 connu) → relancée à la 0.6.152", rr?.cle === "vinted_rayon_par_identifiant_republish" && rr?.version === "0.6.152");
-  ok("   poste en 0.6.151 (21:10:54Z) : pas encore", posteALeBuild("2026-10-28T21:10:54Z+eafd77c", rr) === false && posteALeBuild("2026-10-28T21:24:13Z+379de55", rr) === true);
-  const MARTA = { ...REMI, action: "publish", error: "Vinted ne propose pas « Électronique » à cet endroit de son catalogue. Choisis la bonne catégorie",
-    platform_fields: { needs_user_source: "prevol_negatif", vinted_ids: { catalog_id: 3026, status_id: 2 } } };
-  ok("   mele.marta « Électronique » (rayon 3026 connu) → relancée", regleDeRelance(MARTA)?.cle === "vinted_rayon_par_identifiant_publish");
-  ok("   sans identifiant de rayon : jamais (la question reste à la personne)",
-    regleDeRelance({ ...MARTA, platform_fields: { needs_user_source: "prevol_negatif" } }) === null);
+  // (28/10 soir) Rayon par identifiant non prouvé : aucune règle de relance pour « ne propose pas « X » ».
+  ok("« Jewellery » (rayon connu) : aucune relance tant que le repli n'est pas prouvé", regleDeRelance({ platform: "vinted", action: "republish", status: "needs_user", error: "Vinted ne propose pas « Jewellery » à cet endroit de son catalogue.", platform_fields: { needs_user_source: "prevol_negatif", republish_step: "captured", republish_snapshot: { catalog_id: 5564 } } }) === null);
 }
 
 console.log(ko ? `\n[selftest:relance-apres-maj] ÉCHEC — ${ko} vérification(s) en défaut.` : "\n[selftest:relance-apres-maj] OK");

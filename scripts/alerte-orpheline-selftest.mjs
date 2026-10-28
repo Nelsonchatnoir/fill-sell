@@ -45,12 +45,26 @@ ok(A.alerteOrphelineDue({ republish_step: "deleted" }, t("2026-10-25T20:00:00Z")
 console.log("\n5. Branchements");
 const hw = lire("supabase/functions/handler-watch/index.ts");
 ok(/import \{ alerteOrphelineDue, envoiDepuisLeRetrait \} from "\.\.\/_shared\/alerte-orpheline\.js";/.test(hw), "handler-watch importe la règle");
-ok(/\.filter\(\(j\) => j\.platform_fields\?\.deleted_at && alerteOrphelineDue\(j\.platform_fields, now\)\.due\)/.test(hw), "le mail au support ne part que si l'alerte est due");
+ok(/\(j\.platform_fields\?\.deleted_at \|\| j\.platform_fields\?\.republish_suppression_envoyee\) && alerteOrphelineDue\(j\.platform_fields, now\)\.due\)/.test(hw), "le mail au support ne part que si l'alerte est due (étape deleted, ou suppression envoyée — 28/10)");
 const avecEnvoi = I.messageInterruption({ etape: "deleted", vivant: false, platform: "vinted", vuLe: "2026-10-25T18:44:20.000Z", envoiLe: "2026-10-25T18:44:14.000Z" });
 ok(/^Reprise après interruption : le retrait et l'envoi de ta nouvelle annonce sont partis à 19:44/.test(avecEnvoi) && !/s'est arrêté juste après le retrait/.test(avecEnvoi), "à la personne : « … le retrait et l'envoi de ta nouvelle annonce sont partis à 19:44 », plus « arrêté juste après le retrait »", avecEnvoi);
 const sansEnvoi = I.messageInterruption({ etape: "deleted", vivant: false, platform: "beebs", vuLe: "2026-10-25T17:34:36.000Z" });
 ok(/s'est arrêté juste après le retrait/.test(sansEnvoi), "sans envoi : la phrase d'avant, vraie");
 ok(/envoiLe: (Number\.isFinite\(envoiRetrait\)|envoiDepuisLeRetrait)/.test(hw), "handler-watch passe l'heure de l'envoi à la phrase");
+
+// (28/10 soir, Nico) Une suppression ENVOYÉE jamais prouvée (étape 'captured') alerte aussi, après 30 min.
+ok(/\.not\("platform_fields->republish_suppression_envoyee", "is", null\)/.test(hw) && /"platform_fields->>republish_step", "eq", "captured"/.test(hw),
+  "(28/10) handler-watch lit aussi les suppressions envoyées restées à « captured »");
+{
+  const t0 = Date.parse("2026-10-26T08:27:15Z");
+  const seb = { republish_step: "captured", republish_suppression_envoyee: { at: "2026-10-26T08:27:15Z", annonce: "34207184" } };
+  ok(A.suppressionEnvoyeeLe(seb) === t0, "(28/10) heure de la suppression envoyée lue");
+  const r1 = A.alerteOrphelineDue(seb, t0 + 31 * 60_000);
+  ok(r1.due === true && r1.motif === "suppression_envoyee", "(28/10) Sébastien : suppression envoyée sans preuve + 31 min → l'alerte", JSON.stringify(r1));
+  ok(A.alerteOrphelineDue(seb, t0 + 10 * 60_000).due === false, "(28/10) avant 30 min : pas encore");
+  ok(A.alerteOrphelineDue({ republish_step: "captured" }, t0 + 99 * 60_000).due === false, "(28/10) « captured » sans suppression envoyée : rien");
+  ok(A.alerteOrphelineDue({ ...seb, republish_step: "a_capturer" }, t0 + 99 * 60_000).due === false, "(28/10) autre étape : rien");
+}
 
 console.log(`\n${verts} vert(s), ${rouges} rouge(s)`);
 process.exit(rouges ? 1 : 0);

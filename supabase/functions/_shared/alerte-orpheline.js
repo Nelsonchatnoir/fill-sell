@@ -43,12 +43,31 @@ export function relectureSansCopie(pf, envoi) {
 }
 
 /**
- * L'alerte « hors ligne sans recréation » est-elle due pour ce job (republication à l'étape 'deleted') ?
- * @returns {{ due: boolean, motif: "sans_envoi"|"relu_sans_copie"|"envoi_non_verifie"|"envoi_parti"|"trop_tot"|"sans_retrait" }}
+ * (28/10 soir, Nico — Sébastien, recrutementgroupezk704, boncoin59300) Une SUPPRESSION ENVOYÉE jamais prouvée laisse
+ * l'étape à 'captured' : l'annonce est (ou peut être) hors ligne, et l'alerte, qui ne regardait que l'étape 'deleted',
+ * restait muette — 15 annonces de Sébastien hors ligne 2,5 jours sans un signal. Son heure (ms), ou NaN.
+ */
+export function suppressionEnvoyeeLe(pf) {
+  const p = objet(pf) ?? {};
+  if (String(p.republish_step ?? "") !== "captured") return NaN;
+  return ms(objet(p.republish_suppression_envoyee)?.at);
+}
+
+/**
+ * L'alerte « hors ligne sans recréation » est-elle due pour ce job (republication à l'étape 'deleted', ou à l'étape
+ * 'captured' dont la suppression est partie sans preuve) ?
+ * @returns {{ due: boolean, motif: "sans_envoi"|"relu_sans_copie"|"envoi_non_verifie"|"envoi_parti"|"trop_tot"|"sans_retrait"|"suppression_envoyee" }}
  */
 export function alerteOrphelineDue(pf, maintenant = Date.now()) {
   const retrait = retraitLe(pf);
-  if (!Number.isFinite(retrait)) return { due: false, motif: "sans_retrait" };
+  if (!Number.isFinite(retrait)) {
+    // Suppression partie, jamais prouvée : rien ne peut recréer tant que l'étape reste 'captured'.
+    const envoyee = suppressionEnvoyeeLe(pf);
+    if (!Number.isFinite(envoyee)) return { due: false, motif: "sans_retrait" };
+    return maintenant - envoyee < ALERTE_APRES_RETRAIT_MS
+      ? { due: false, motif: "trop_tot" }
+      : { due: true, motif: "suppression_envoyee" };
+  }
   if (maintenant - retrait < ALERTE_APRES_RETRAIT_MS) return { due: false, motif: "trop_tot" };
   const envoi = envoiDepuisLeRetrait(pf);
   if (!Number.isFinite(envoi)) return { due: true, motif: "sans_envoi" };
