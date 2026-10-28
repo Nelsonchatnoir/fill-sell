@@ -101,6 +101,37 @@ export function lecteurDisponible({ versionIci = null, compte = null, maintenant
   return { ...base, disponible: false, ou: null, raison: "extension_ancienne", vuLe: iso(vuDernier), allume: recent(vuDernier) };
 }
 
+// ── (28/10, Juliette, Petite planète — « lecture_origine_abandonnee ») UNE ATTENTE QUI N'ABOUTIT PAS A SES ISSUES ─────
+// Avec un lecteur, l'écran attendait sans rien proposer ; sur un téléphone, il disait même « Ferme, et publie dès
+// qu'elle est lue ». Constaté en base du 25 au 28/10 : 16 écrans fermés après 0 à 16 s, alors que l'ordinateur lisait la
+// page 12 s à 2 min après la demande (Juliette 20:47:10 → lue 20:47:22) — et, sur un poste dont l'onglet Vinted est
+// en veille (Microsoft Edge), jamais (1 072 essais de 20 s pour 6 fiches). Règle : avec un lecteur, l'écran attend
+// (l'ordinateur lit au poll suivant, 2 min au plus) ; passé 3 min sans lecture, la lecture est EN RETARD — la phrase
+// le dit et les trois issues du « sans lecteur » s'ajoutent (écrire, faire rédiger, continuer d'attendre), la relecture
+// continue. Jamais une description à la place du vendeur sans son geste, jamais une attente sans issue.
+/** Le temps laissé au lecteur (un poll de l'ordinateur, 2 min au plus, et sa lecture) avant de proposer les issues. */
+export const ATTENTE_LECTEUR_MAX_MS = 3 * 60_000;
+
+/**
+ * Le lecteur tel que l'écran doit le traiter après `ecouleMs` d'attente (pur) : en retard → « sans lecteur » (raison
+ * `lecture_en_retard`, les trois issues) ; sinon tel quel. Un lecteur inconnu (profil illisible) en retard aussi.
+ */
+export function lecteurEnRetard(lecteur, ecouleMs) {
+  if (lecteur?.disponible === false) return lecteur;
+  if (!(Number(ecouleMs) >= ATTENTE_LECTEUR_MAX_MS)) return lecteur;
+  return {
+    disponible: false, ou: lecteur?.ou ?? null, raison: "lecture_en_retard", enRetard: true,
+    version: lecteur?.version ?? null, versionIci: lecteur?.versionIci ?? null, vuLe: lecteur?.vuLe ?? null, allume: lecteur?.allume ?? null,
+  };
+}
+
+/** La phrase de l'attente quand c'est l'ORDINATEUR qui lit (aucune extension sur cet appareil) — jamais « ferme ». */
+export function texteAttenteParOrdinateur(lang = "fr") {
+  return lang === "en"
+    ? "Your computer (its FillSell extension) is reading your Vinted description, usually in under 2 minutes: keep this screen open, the publishing screen opens by itself as soon as it's read."
+    : "Ton ordinateur (son extension FillSell) lit ta description Vinted, en général en moins de 2 minutes : garde cet écran ouvert, l'écran de publication s'ouvre tout seul dès qu'elle est lue.";
+}
+
 // Heure de Paris : « 17:15 » le jour même, « hier à 17:15 », sinon « le 25/10 à 17:15 » (jamais une heure future).
 const PARTIES_PARIS = new Intl.DateTimeFormat("en-CA", {
   timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
@@ -132,7 +163,14 @@ export function phraseSansLecteur(lecteur, { lang = "fr", maintenant = Date.now(
   const v = lecteur.version ? ` (${lecteur.version})` : "";
   const quand = quandEnMots(lecteur.vuLe, maintenant, lang);
   let suite;
-  if (lecteur.raison === "extension_ancienne_ici") {
+  if (lecteur.raison === "lecture_en_retard") {
+    // (28/10) Un lecteur existe, mais la lecture n'est pas venue : la vérité, sans accuser l'ordinateur.
+    suite = lecteur.ou === "ici"
+      ? (en ? "the extension on this computer hasn't been able to read it yet." : "l'extension de cet ordinateur n'a pas encore pu la lire.")
+      : quand
+        ? (en ? `your computer hasn't read it yet (last seen at ${quand}).` : `ton ordinateur ne l'a pas encore lue (vu pour la dernière fois à ${quand}).`)
+        : (en ? "your computer hasn't read it yet." : "ton ordinateur ne l'a pas encore lue.");
+  } else if (lecteur.raison === "extension_ancienne_ici") {
     suite = en ? `the extension on this computer${v} needs updating.` : `l'extension de cet ordinateur${v} doit se mettre à jour.`;
   } else if (lecteur.raison === "aucun_ordinateur") {
     suite = en ? "no computer with the extension is linked to your account." : "aucun ordinateur avec l'extension n'est relié à ton compte.";
@@ -199,6 +237,11 @@ export function texteAttenteSansLecteur(lecteur, { lang = "fr", contexte = "step
   const ensuite = contexte === "lot"
     ? (en ? "your description is read and the item gets prepared." : "ta description est lue et l'article se prépare.")
     : (en ? "your description is read and the publishing screen opens." : "ta description est lue et l'écran de publication s'ouvre.");
+  if (lecteur?.raison === "lecture_en_retard") {
+    return contexte === "lot"
+      ? (en ? "The reading carries on: as soon as it succeeds, the item gets prepared." : "La lecture continue : dès qu'elle aboutit, l'article se prépare.")
+      : (en ? "The reading carries on: as soon as it succeeds, the publishing screen opens by itself." : "La lecture continue : dès qu'elle aboutit, l'écran de publication s'ouvre tout seul.");
+  }
   const quand = lecteur?.raison === "extension_ancienne_ici"
     ? (en ? "As soon as the extension on this computer is up to date, " : "Dès que l'extension de cet ordinateur est à jour, ")
     : lecteur?.raison === "ordinateur_eteint"

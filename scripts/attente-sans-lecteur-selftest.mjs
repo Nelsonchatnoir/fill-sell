@@ -264,9 +264,10 @@ console.log("\n6. Le câblage, et rien ne change quand le lecteur est là");
   const brancheLecteur = e.slice(e.indexOf("  } else {\n    corps = ("), e.indexOf("  const contenu = ("));
   ok(brancheLecteur.length > 500 && !/choisir\(/.test(brancheLecteur) && !/L\.ecrire|L\.rediger/.test(brancheLecteur)
     && /messageLectureOrigine\(attente \?\? \{ plateforme: "vinted" \}, en \? "en" : "fr", "preparation"\)/.test(brancheLecteur)
-    && /L'extension FillSell n'est pas sur cet appareil : la lecture se fait depuis ton ordinateur/.test(brancheLecteur)
+    // (28/10) Sur un appareil sans extension, l'écran dit que l'ORDINATEUR lit — jamais plus « Ferme, et publie ».
+    && /texteAttenteParOrdinateur\(lang\)/.test(brancheLecteur) && !/Ferme, et publie/.test(brancheLecteur)
     && /Fermer \(la lecture continue\)/.test(brancheLecteur) && /Recharger la page/.test(brancheLecteur),
-    "écran, avec un lecteur : mot pour mot celui d'avant — aucune issue d'écriture pendant l'attente (règle du 25/10)");
+    "écran, avec un lecteur : aucune issue d'écriture pendant l'attente (règle du 25/10) ; l'ordinateur lit, garder l'écran ouvert");
   ok(/if \(mode !== "attente"\) return undefined;/.test(e) && /immediat: true/.test(e) && /if \(!a\) \{ await pret\(\); return true; \}/.test(e),
     "écran : la relecture est celle de l'attente (rien ne se relit pendant que la personne choisit ou écrit)");
   ok(/intervalleMs: sansLecteurAuDepart \? RELECTURE_SANS_LECTEUR_MS : RELECTURE_ATTENTE_MS/.test(e) && /if \(l\.disponible\) r\?\.changerIntervalle\(RELECTURE_ATTENTE_MS\);/.test(e)

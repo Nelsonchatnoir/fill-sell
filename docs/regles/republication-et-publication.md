@@ -740,6 +740,8 @@
   répondait plus (selftest `vitesse-publication`).
 - Le lot lit les annonces Vinted EN PARALLÈLE (10 à la fois ; l'extension les sérialise, ~1,1 s chacune) ; eBay et l'ancien
   lecteur Vinted (formulaire d'édition) gardent leur espacement par créneau réservé.
+  ⛔ Amendé le 28/10 (429 de Vinted chez Cédric, axel terver) : les lectures partent ensemble, mais la page publique
+  attend son créneau — 3 d'affilée, puis une toutes les 8 à 20 s (section du 28/10 ci-dessous).
 - La lecture de fond ne s'exécute jamais pendant qu'on publie (serveur : geste < 10 min ou tâches servies ; extension
   0.6.146 : elle cède le verrou). `coin_config.lecture_fond_mode` : clé ABSENTE (= pilote seul) depuis le 26/10 07:38.
 - Le plafond Free n'est jamais prêté à un compte (selftest `quota-payant-jamais-free`).
@@ -853,3 +855,20 @@
   remise_en_vente_place (vérifié en prod le 26/10) — aucune migration.
 - Selftest : `file-annuler`. Aperçu et preuve : `node scripts/apercu/capture-file-annuler.mjs`
   (`screenshots-review/file-annuler/`, 390 et 1280 px).
+
+## ⛔ 28/10 — la lecture d'origine juste avant la publication (Juliette, Petite planète, Cédric ; rapport `docs/enquetes/lecture-origine-2810/RAPPORT.md`)
+- La description manquante se lit JUSTE AVANT la publication (lecture d'origine), jamais à l'import : la lecture de fond
+  reste coupée (décision de Nico du 26/10, rappelée le 28/10 : « sous aucune forme »).
+- Avec un lecteur, l'écran attend et le DIT (« Ton ordinateur lit ta description Vinted, en général en moins de 2 minutes :
+  garde cet écran ouvert ») — jamais « Ferme » ; un appui à côté ne ferme pas une attente. Passé 3 min sans lecture
+  (`ATTENTE_LECTEUR_MAX_MS`), la lecture est « en retard » : phrase vraie + Écrire / Faire rédiger / Attendre, la
+  relecture continue (stepper et lot, `lecteurEnRetard`). La règle du 25/10 (« jamais Écrire pendant l'attente ») vaut
+  pendant ces 3 min.
+- Pages publiques Vinted demandées par l'app (stepper, lot, Stock) : un seul créneau, 3 d'affilée puis 8 à 20 s,
+  rafale rechargée après 60 s (`prochainDepartLectureVinted`). Mesuré : 15 pages en 17 s → 429 ; 8 en 43 s → 429.
+- Extension ≥ 0.6.149 : onglet de travail gelé ou muet → réveillé par un vrai chargement de l'annonce, puis UNE relecture ;
+  lectures demandées de la plus récente à la plus ancienne ; une fiche ratée se repose 5 → 60 min, jamais close à tort.
+- « vinted_sans_extension » = l'appareil qui clique n'a pas d'extension (téléphone) ; la trace `lecture_origine_en_attente`
+  dit qui lit (`lecteur`, `lecteur_vu_le`).
+- Rédaction : un 401 se dit « Ta session a expiré : reconnecte-toi » (après UN rafraîchissement + relance), jamais « nos
+  serveurs » ; le code HTTP part avec le signal. generate-listing décode les images retouchées en boucle simple (CPU).

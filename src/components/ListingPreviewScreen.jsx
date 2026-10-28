@@ -6478,13 +6478,31 @@ export default function ListingPreviewScreen({
           : "La rédaction prend beaucoup plus de temps que prévu.")), 180_000);
       });
       let reponse;
+      const appelerRedaction = () => Promise.race([supabase.functions.invoke("generate-listing", { body: corps }), delaiDepasse]);
       try {
-        reponse = await Promise.race([supabase.functions.invoke("generate-listing", { body: corps }), delaiDepasse]);
+        reponse = await appelerRedaction();
+        // ── (28/10, Petite planète) 401 : LA SESSION DE CET APPAREIL A ÉTÉ FERMÉE, PAS « NOS SERVEURS » ───────────────
+        // Le 27/10 à 16:06 (Android), generate-listing a répondu 401 cinq fois : « Session not found » côté auth (sa
+        // session avait été fermée ; le jeton restait lisible par la base) — l'écran disait « Le souci vient de nos
+        // serveurs », elle s'est reconnectée deux minutes plus tard. Une session rafraîchie relance UNE fois ; sinon
+        // l'écran dit de se reconnecter. Rien n'est débité sur un 401 (le serveur refuse avant tout débit).
+        if (reponse?.error && reponse.error.context?.status === 401) {
+          const r = await supabase.auth.refreshSession().catch((e) => ({ data: null, error: e }));
+          if (!r?.error && r?.data?.session) reponse = await appelerRedaction();
+        }
       } finally {
         clearTimeout(minuteurDelai);
       }
       const { data, error: fnErr } = reponse;
       if (fnErr) {
+        const httpRedaction = Number(fnErr.context?.status) || null;
+        if (httpRedaction === 401) {
+          const e401 = new Error(lang === "en"
+            ? "Your session has expired: sign in again. Nothing was counted."
+            : "Ta session a expiré : reconnecte-toi. Rien n'a été décompté.");
+          e401.http = 401;
+          throw e401;
+        }
         // 402 insufficient_coins (course : solde consommé entre le pré-check
         // client du step 1 et cet appel) : functions.invoke ne lit pas le
         // body d'erreur, il faut aller le chercher sur fnErr.context
@@ -6529,9 +6547,12 @@ export default function ListingPreviewScreen({
         // non-2xx status code », « Failed to send a request… ») à l'écran.
         // Une seule information : la cause. La carte dit déjà « La rédaction
         // n'a pas abouti » et « Réessaie ci-dessous » (relu en réel le 01/10).
-        throw new Error(fnErr.name === "FunctionsFetchError"
+        const eServeur = new Error(fnErr.name === "FunctionsFetchError"
           ? (lang === "en" ? "Couldn't reach our servers: check your internet connection." : "Impossible de joindre nos serveurs : vérifie ta connexion internet.")
           : (lang === "en" ? "The problem is on our side." : "Le souci vient de nos serveurs."));
+        // (28/10) Le code HTTP part avec le signal : « nos serveurs » cachait un 546 (CPU dépassé, Juliette) et un 401.
+        eServeur.http = httpRedaction;
+        throw eServeur;
       }
       if (!data?.platforms) throw new Error(t("stepGenNoListingsError"));
 
@@ -6543,7 +6564,7 @@ export default function ListingPreviewScreen({
     } catch (e) {
       setPlatformError(e.message);
       // (25/10, Jocabroc) Plus jamais un échec invisible : la rédaction ratée est signalée au serveur.
-      signalerActionRatee({ action: "generer_annonce", motif: String(e?.message ?? e).slice(0, 120) });
+      signalerActionRatee({ action: "generer_annonce", motif: String(e?.message ?? e).slice(0, 120), details: e?.http ? { http: e.http } : undefined });
     } finally {
       setGeneratingPlatforms(false);
     }

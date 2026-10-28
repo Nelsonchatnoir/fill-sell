@@ -43,6 +43,43 @@ export const RYTHME_LECTURE_EBAY_MS = [1500, 3000];
 /** Le délai d'une lecture de détail Vinted à l'unité (inchangé depuis le 03/08). */
 export const DELAI_DETAIL_VINTED_MS = 12000;
 
+// ── (28/10, Cédric GRIZSTYLE — « vinted_echec » au clic « Publier ») JAMAIS UNE RAFALE DE PAGES VINTED ──────────────
+// Depuis le 26/10 (89b29f7) le lot lançait toutes ses pages publiques Vinted d'un coup ; l'extension les lisait l'une
+// derrière l'autre (~1,1 s chacune). Mesuré en base (usage_logs « lecture_fond », origine « page ») : Cédric, 15 pages
+// en 17 s le 27/10 à 22:33 puis 429 de Vinted sur les 9 suivantes ; axel terver, 8 pages en 43 s puis 429 (27/10
+// 01:05). Un refus coupe TOUTE lecture Vinted du poste 6 h : son clic « Publier » de 23:42 n'a rien pu lire. Les rythmes
+// qui n'ont jamais eu un refus : les lectures demandées (8 à 20 s, des centaines) et les rafales de 5 pages au plus.
+// Règle, pour TOUTE page publique demandée par l'app (stepper, lot, Stock) : 3 départs d'affilée au plus, puis un
+// départ toutes les 8 à 20 s (RYTHME_LECTURE_VINTED_MS) ; la rafale se recharge après 60 s sans lecture.
+export const RAFALE_LECTURE_VINTED = 3;
+export const REPOS_RAFALE_VINTED_MS = 60_000;
+
+/**
+ * Quand la prochaine page publique Vinted peut-elle partir ? (pur, testé : vitesse-publication-selftest)
+ * @param {{dernier: number|null, enRafale: number}} etat  le créneau partagé (le dernier départ réservé)
+ * @returns {{ attenteMs: number, etat: {dernier: number, enRafale: number} }}
+ */
+export function prochainDepartLectureVinted(etat, maintenant = Date.now(), {
+  rafale = RAFALE_LECTURE_VINTED, ecart = RYTHME_LECTURE_VINTED_MS, repos = REPOS_RAFALE_VINTED_MS, alea = Math.random,
+} = {}) {
+  const dernier = Number.isFinite(etat?.dernier) ? etat.dernier : null;
+  const enRafale = dernier == null || maintenant - dernier >= repos ? 0 : Math.max(0, Number(etat?.enRafale) || 0);
+  if (enRafale < rafale) {
+    const depart = Math.max(maintenant, dernier ?? maintenant);
+    return { attenteMs: depart - maintenant, etat: { dernier: depart, enRafale: enRafale + 1 } };
+  }
+  const [min, max] = ecart;
+  const depart = Math.max(maintenant, dernier + min + alea() * (max - min));
+  return { attenteMs: depart - maintenant, etat: { dernier: depart, enRafale: enRafale + 1 } };
+}
+// Le créneau de CETTE page (un seul pour l'app : le stepper, le lot et le Stock partagent la même extension).
+let creneauVinted = { dernier: null, enRafale: 0 };
+async function attendreCreneauLectureVinted() {
+  const r = prochainDepartLectureVinted(creneauVinted);
+  creneauVinted = r.etat;
+  if (r.attenteMs > 0) await new Promise((ok) => setTimeout(ok, r.attenteMs));
+}
+
 const vide = (v) => !String(v ?? "").trim();
 
 /** Faut-il passer par ici avant d'ouvrir le moteur ? (pur) */
@@ -126,13 +163,17 @@ function lireAnnoncePubliqueParExtension(vintedItemId, delaiMs) {
  * une extension ≥ 0.6.144, la PAGE PUBLIQUE de l'annonce (texte, couleur, rayon : une page vue, jamais le formulaire
  * d'édition, lisible quel que soit le compte Vinted ouvert) ; le formulaire d'édition n'est plus qu'un repli.
  */
-export async function lireDetailVintedParExtension(vintedItemId, delaiMs = DELAI_DETAIL_VINTED_MS, { sonder = sonderPontExtension } = {}) {
+export async function lireDetailVintedParExtension(vintedItemId, delaiMs = DELAI_DETAIL_VINTED_MS, {
+  sonder = sonderPontExtension, attendreCreneau = attendreCreneauLectureVinted,
+} = {}) {
   const pont = await sonder();
   if (!pont?.vivant) {
     signalerPontMort();
     return { success: false, pontMort: true };
   }
   if (versionAuMoins(pont.version, PUBLIC_VERSION_MIN)) {
+    // (28/10) Jamais une rafale : au-delà de 3 d'affilée, une page toutes les 8 à 20 s (le délai court après le départ).
+    await attendreCreneau();
     const p = await lireAnnoncePubliqueParExtension(vintedItemId, delaiMs);
     if (p?.success || p?.ok) {
       return {

@@ -128,6 +128,44 @@ const page = (id, { p = produit(id), crumbs = [1193, 1499, 1730, 3313], status =
   });
   const r7 = await sv.lirePagePubliqueVintedSousVerrou("7");
   ok(r7.ok === true && r7.apres_rechargement === true && navigations.length === 1 && lectures.length === 2, "jeton web expiré : la page de l'annonce est chargée une fois, puis relue — et lue", JSON.stringify({ r7: r7.motif ?? "ok", navigations, lectures: lectures.length }));
+
+  // (28/10, 0.6.149 — Petite planète, Microsoft Edge) L'onglet de travail en veille : 1 072 lectures de 20 s, toutes
+  // « onglet_indisponible », du 27/10 19:43 au 28/10 02:00. Un vrai chargement de l'annonce le réveille, puis UNE relecture.
+  const w = { lectures: 0, navigations: [], reminimise: 0 };
+  const sw = bac(["lirePagePubliqueVintedSousVerrou", "analyserPagePubliqueVinted", "estPageBotShield"], {
+    VO: { origineVinted: () => "https://www.vinted.fr" },
+    getOrCreateWorkTab: async (pf, url) => { w.navigations.push(url); return 1; },
+    reminimiserFenetreSiRestauree: async () => { w.reminimise++; },
+    lirePageParOngletDeTravail: async () => { w.lectures++; return w.lectures === 1 ? null : page("8"); },
+  });
+  const r8 = await sw.lirePagePubliqueVintedSousVerrou("8");
+  ok(r8.ok === true && w.navigations.length === 1 && /\/items\/8$/.test(w.navigations[0]) && w.lectures === 2 && w.reminimise === 1,
+    "onglet en veille : la page de l'annonce est chargée une fois (réveil), relue — et lue ; la fenêtre de travail se re-minimise", JSON.stringify({ r8: r8.motif ?? "ok", ...w }));
+  const z = { lectures: 0, navigations: 0 };
+  const sz = bac(["lirePagePubliqueVintedSousVerrou", "analyserPagePubliqueVinted", "estPageBotShield"], {
+    VO: { origineVinted: () => "https://www.vinted.fr" },
+    getOrCreateWorkTab: async () => { z.navigations++; throw new Error("onglet de travail vinted : le content script ne répond pas"); },
+    reminimiserFenetreSiRestauree: async () => {},
+    lirePageParOngletDeTravail: async () => { z.lectures++; return null; },
+  });
+  const r9 = await sz.lirePagePubliqueVintedSousVerrou("9");
+  ok(r9.ok === false && r9.motif === "onglet_indisponible" && r9.reveil === true && z.navigations === 1 && z.lectures === 1,
+    "réveil impossible : « onglet_indisponible » dit tout de suite, un seul geste, jamais une boucle", JSON.stringify({ r9, ...z }));
+  // Un onglet GELÉ se dit sans attendre les 20 s de l'injection.
+  let injections = 0;
+  const lp = bac(["lirePageParOngletDeTravail"], {
+    workTabForFetch: async () => 5,
+    chrome: { tabs: { get: async () => ({ id: 5, frozen: true }) }, scripting: { executeScript: async () => { injections++; return [{ result: { ok: true, status: 200, html: "" } }]; } } },
+  });
+  ok(await lp.lirePageParOngletDeTravail("https://www.vinted.fr/items/1", "vinted") === null && injections === 0,
+    "onglet gelé (tab.frozen) : rien n'est injecté, l'appelant le réveille aussitôt");
+  let injVivant = 0;
+  const lv = bac(["lirePageParOngletDeTravail"], {
+    workTabForFetch: async () => 5,
+    chrome: { tabs: { get: async () => ({ id: 5, frozen: false }) }, scripting: { executeScript: async () => { injVivant++; return [{ result: { ok: true, status: 200, finalUrl: "u", html: "x" } }]; } } },
+  });
+  const pv = await lv.lirePageParOngletDeTravail("https://www.vinted.fr/items/1", "vinted");
+  ok(pv?.status === 200 && injVivant === 1, "onglet éveillé : la lecture d'avant, inchangée");
 }
 
 // ── 3. et 4. Le lecteur des annonces d'origine et le rattrapage ─────────────
@@ -142,7 +180,11 @@ function monde({ liste = [], lu = () => ({ ok: true, description: "Texte du vend
   const doublures = {
     restRequest: async (path, token, init = {}) => {
       appels.push({ path, method: init.method ?? "GET", body: init.body ? JSON.parse(init.body) : null });
-      if (path.startsWith("rpc/lectures_origine_en_attente")) return liste;
+      // Comme la base : une lecture close (lecture_origine_faite) quitte la liste.
+      if (path.startsWith("rpc/lectures_origine_en_attente")) {
+        const closes = new Set(appels.filter((a) => a.path === "rpc/lecture_origine_faite").map((a) => String(a.body?.p_fiche)));
+        return liste.filter((l) => !closes.has(String(l.inventaire_id)));
+      }
       return null;
     },
     lirePagePubliqueVintedSousVerrou: async (id) => { const r = { ...lu(id), ms: 12 }; apresLecture?.(etat); return r; },
@@ -154,9 +196,10 @@ function monde({ liste = [], lu = () => ({ ok: true, description: "Texte du vend
     chrome: { storage: { local: { get: async (k) => ({ [k]: stockage[k] }), set: async (o) => Object.assign(stockage, o) } } },
   };
   // jobFlowWaiters, derniereDemandeAppMs, tachesDuCycle : lus par fondDoitCeder, pilotés de l'extérieur par `etat`.
-  const prelude = `let derniereLectureOrigine = 0; let vintedPauseAntirobotServeur = false;\n${constante("LECTURE_FOND_PAUSE_KEY")}${constante("lecturesFondDuCycle")}${constante("FOND_PAUSE_APRES_DEMANDE_MS")}let lectureFondServie = ${JSON.stringify(servie)};\nObject.defineProperty(globalThis, "jobFlowWaiters", { get: () => __etat.attente });\nObject.defineProperty(globalThis, "derniereDemandeAppMs", { get: () => __etat.demande });\nObject.defineProperty(globalThis, "tachesDuCycle", { get: () => __etat.taches });`;
-  const f = bac(["attributsChamps", "ecrireLecturePagePublique", "lectureFondEnPause", "poserPauseLectureFond", "tracerLectureFond", "lireAnnoncesOrigineEnAttente", "fondDoitCeder", "attendreOuCeder", "lireFondVinted"], doublures, prelude);
-  return { f, appels, stockage };
+  const prelude = `let derniereLectureOrigine = 0; let vintedPauseAntirobotServeur = false;\n${constante("LECTURE_FOND_PAUSE_KEY")}${constante("lecturesFondDuCycle")}${constante("echecsLectureOrigine")}${constante("FOND_PAUSE_APRES_DEMANDE_MS")}let lectureFondServie = ${JSON.stringify(servie)};\nObject.defineProperty(globalThis, "jobFlowWaiters", { get: () => __etat.attente });\nObject.defineProperty(globalThis, "derniereDemandeAppMs", { get: () => __etat.demande });\nObject.defineProperty(globalThis, "tachesDuCycle", { get: () => __etat.taches });`;
+  const f = bac(["attributsChamps", "ecrireLecturePagePublique", "lectureFondEnPause", "poserPauseLectureFond", "tracerLectureFond",
+    "lectureOrigineEnRepos", "noterEchecLectureOrigine", "ordreLecturesOrigine", "lireAnnoncesOrigineEnAttente", "fondDoitCeder", "attendreOuCeder", "lireFondVinted"], doublures, prelude);
+  return { f, appels, stockage, avancer: (ms) => { horloge += ms; } };
 }
 {
   const { f, appels } = monde({ liste: [{ inventaire_id: 42, plateforme: "vinted", vinted_item_id: "10499143345", depuis: new Date().toISOString() }] });
@@ -186,6 +229,34 @@ function monde({ liste = [], lu = () => ({ ok: true, description: "Texte du vend
   const { f, appels } = monde({ liste: [{ inventaire_id: 9, plateforme: "vinted", vinted_item_id: "9" }], lu: () => ({ ok: false, motif: "introuvable", http: 404 }) });
   await f.lireAnnoncesOrigineEnAttente({ access_token: "t" });
   ok(appels.some((a) => a.path === "rpc/lecture_origine_faite"), "une annonce qui n'existe plus : l'attente est close (jamais une attente sans fin)");
+}
+{
+  // (28/10, 0.6.149) Petite planète : trois demandes anciennes qui échouent à chaque cycle (onglet en veille), puis la
+  // fiche qu'elle attend devant son téléphone. Avant : les trois anciennes d'abord, à chaque cycle — la nouvelle jamais lue.
+  const t0 = Date.now();
+  const iso = (minAvant) => new Date(t0 - minAvant * 60_000).toISOString();
+  const liste = [
+    { inventaire_id: 19, plateforme: "vinted", vinted_item_id: "19", depuis: iso(180) },
+    { inventaire_id: 20, plateforme: "vinted", vinted_item_id: "20", depuis: iso(170) },
+    { inventaire_id: 21, plateforme: "vinted", vinted_item_id: "21", depuis: iso(160) },
+    { inventaire_id: 11, plateforme: "vinted", vinted_item_id: "11", depuis: iso(0.2) },
+  ];
+  const lues = [];
+  const m = monde({ liste, lu: (id) => { lues.push(id); return ["19", "20", "21"].includes(id) ? { ok: false, motif: "onglet_indisponible" } : { ok: true, description: "Texte", http: 200 }; } });
+  await m.f.lireAnnoncesOrigineEnAttente({ access_token: "t" });
+  ok(lues.join(",") === "11,21,20", "la demande la plus RÉCENTE est lue d'abord (celle que l'écran attend), puis les autres de la plus récente à la plus ancienne", lues.join(","));
+  ok(m.appels.some((a) => a.path === "rpc/lecture_origine_faite" && a.body.p_fiche === 11) && !m.appels.some((a) => a.path === "rpc/lecture_origine_faite" && a.body.p_fiche !== 11),
+    "elle est lue et close ; les fiches ratées ne sont JAMAIS closes (leur texte existe peut-être)");
+  const cycle = async (min) => { const n = lues.length; m.avancer(min * 60_000); await m.f.lireAnnoncesOrigineEnAttente({ access_token: "t" }); return lues.slice(n).join(","); };
+  const c2 = await cycle(2);
+  ok(c2 === "19", "2 min plus tard : les deux fiches ratées se reposent, la suivante passe", c2);
+  const c3 = await cycle(4);
+  ok(c3 === "21,20", "après 5 min de repos, les ratées du 1er cycle sont relues ; celle du 2e cycle se repose encore", c3);
+  const c4 = await cycle(6);
+  ok(c4 === "19", "deuxième échec : 10 min de repos (5, 10, 20, 40, puis 60 min au plus) — seule la fiche reposée repasse", c4);
+  const { f: g } = monde();
+  ok(g.ordreLecturesOrigine([{ inventaire_id: 1, plateforme: "vinted", vinted_item_id: "1", depuis: null }, { inventaire_id: 2, plateforme: "vinted", vinted_item_id: "2", depuis: iso(1) }, { inventaire_id: 3, plateforme: "leboncoin", vinted_item_id: null, depuis: iso(0) }]).map((l) => l.inventaire_id).join(",") === "2,1",
+    "ordre : récente d'abord, sans date en dernier, jamais une autre plateforme");
 }
 console.log("4. lireFondVinted — le rattrapage au rythme servi");
 {

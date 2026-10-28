@@ -6090,13 +6090,16 @@ const StockTab = memo(function StockTab({
       demanderLectureOrigine(supabase, item.id);
       // (25/10, Jocabroc) Plus jamais une impasse : l'écran d'attente relit seul et ouvre le stepper dès que l'annonce
       // est lue. Le serveur est prévenu de l'attente (actionRatee) — et, sans lecteur, de la vraie raison.
+      // (28/10) « vinted_sans_extension » parle de CET appareil (un téléphone n'a pas d'extension) : la lecture est alors
+      // confiée à l'ordinateur du compte — la trace d'attente dit lequel lit (lecteur « poste ») et quand il a été vu.
       if (lecteur && !lecteur.disponible) {
         signalerActionRatee({ action: 'publier', motif: 'lecture_origine_sans_lecteur', userId: user?.id ?? null,
           details: { fiche: item.id, manque: (attenteOrigine?.manque ?? []).join(','), raison: lecteur.raison, version: lecteur.version,
             vu_le: lecteur.vuLe, version_ici: lecteur.versionIci, note: r?.note ?? null } });
       } else {
         signalerActionRatee({ action: 'publier', motif: 'lecture_origine_en_attente', userId: user?.id ?? null,
-          details: { fiche: item.id, manque: (attenteOrigine?.manque ?? []).join(','), extension: extDetailOk, note: r?.note ?? null } });
+          details: { fiche: item.id, manque: (attenteOrigine?.manque ?? []).join(','), extension: extDetailOk, note: r?.note ?? null,
+            lecteur: lecteur?.ou ?? null, lecteur_vu_le: lecteur?.vuLe ?? null, lecteur_version: lecteur?.version ?? null } });
       }
       setLecteurAttente(lecteur);
       setAttenteStepper({ item: r?.item ?? item, attente: attenteOrigine });

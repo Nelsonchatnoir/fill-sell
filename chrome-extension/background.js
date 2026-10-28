@@ -2753,6 +2753,11 @@ function analyserPagePubliqueVinted(page, itemId) {
 async function lirePageParOngletDeTravail(url, platform) {
   const tabId = await workTabForFetch(platform).catch(() => null);
   if (tabId == null) return null;
+  // (28/10, 0.6.149 — Petite planète, Microsoft Edge) Un onglet GELÉ (onglets en veille d'Edge, économiseur de Chrome)
+  // n'exécute rien tant qu'il dort : l'injection attendait 20 s pour rien. On le dit tout de suite (null) — l'appelant
+  // le réveille par un vrai chargement (lirePagePubliqueVintedSousVerrou).
+  const etat = await chrome.tabs.get(tabId).catch(() => null);
+  if (etat?.frozen === true) return null;
   let timer;
   try {
     const inject = chrome.scripting.executeScript({
@@ -2782,8 +2787,22 @@ async function lirePagePubliqueVintedSousVerrou(itemId) {
   if (!/^\d+$/.test(id)) return { ok: false, motif: "id_illisible" };
   const t0 = Date.now();
   const url = `${VO.origineVinted()}/items/${id}`;
-  const page = await lirePageParOngletDeTravail(url, "vinted").catch(() => null);
-  if (!page) return { ok: false, motif: "onglet_indisponible", ms: Date.now() - t0 };
+  let page = await lirePageParOngletDeTravail(url, "vinted").catch(() => null);
+  // ── (28/10, 0.6.149 — Petite planète, Microsoft Edge) UN ONGLET EN VEILLE SE RÉVEILLE, PUIS UNE SEULE RELECTURE ────
+  // Du 27/10 19:43 au 28/10 02:00, ses lectures demandées ont toutes fini « onglet_indisponible » après 20 s (1 072 fois,
+  // 6 fiches) : l'onglet Vinted de travail dormait (onglets en veille d'Edge — ni « déchargé », ni fermé : le réveil du
+  // 15/08 ne le voyait pas) et ses publications attendaient une lecture qui ne venait jamais. Le geste qui le réveille
+  // est celui du jeton périmé ci-dessous et des dépôts : un VRAI chargement de la page de l'annonce dans l'onglet de
+  // travail (getOrCreateWorkTab : relance d'un onglet muet, fenêtre de travail rendue visible sans le focus le temps
+  // de la lecture, re-minimisée aussitôt). Une fois, jamais une boucle.
+  let reveil = false;
+  if (!page) {
+    reveil = true;
+    const ouvert = await getOrCreateWorkTab("vinted", url).then(() => true, () => false);
+    if (ouvert) page = await lirePageParOngletDeTravail(url, "vinted").catch(() => null);
+    await reminimiserFenetreSiRestauree().catch(() => {});
+  }
+  if (!page) return { ok: false, motif: "onglet_indisponible", ms: Date.now() - t0, reveil };
   const lu = analyserPagePubliqueVinted(page, id);
   // (25/10, mesuré sur le poste pilote : 2 lectures sur 9 à 14:24-14:26) Le jeton web de l'onglet de travail a expiré :
   // Vinted renvoie sa page d'attente, que seul un VRAI chargement renouvelle. Un chargement de la page de l'annonce
@@ -2854,13 +2873,33 @@ async function tracerLectureFond(token, ligne, lu, origine) {
   }).catch(() => {});
 }
 
+// ── (28/10, 0.6.149) LA LECTURE QU'ON ATTEND D'ABORD, ET JAMAIS UNE FICHE QUI BLOQUE LES AUTRES ──────────────────────
+// Le serveur rend les lectures demandées de la plus ANCIENNE à la plus récente, 3 lues par cycle : trois fiches qui
+// échouent à chaque cycle (onglet en veille chez Petite planète, 1 072 essais ; « page sans annonce » chez Ianis, 116)
+// passaient devant toutes les suivantes, et la fiche que la personne attendait devant son écran n'était jamais lue.
+// Désormais : la demande la plus RÉCENTE d'abord (celle que l'écran attend), et une fiche ratée attend avant d'être
+// relue (5, 10, 20, 40 puis 60 min) — mémoire du service worker, rien en base ; une lecture réussie l'efface.
+const echecsLectureOrigine = new Map();   // inventaire_id → { n, jusqua }
+function lectureOrigineEnRepos(inventaireId, maintenant = Date.now()) {
+  return (echecsLectureOrigine.get(String(inventaireId))?.jusqua ?? 0) > maintenant;
+}
+function noterEchecLectureOrigine(inventaireId, maintenant = Date.now()) {
+  const cle = String(inventaireId);
+  const n = (echecsLectureOrigine.get(cle)?.n ?? 0) + 1;
+  echecsLectureOrigine.set(cle, { n, jusqua: maintenant + Math.min(60, 5 * 2 ** (n - 1)) * 60_000 });
+}
+function ordreLecturesOrigine(liste, maintenant = Date.now()) {
+  return (Array.isArray(liste) ? liste : [])
+    .filter((l) => l?.plateforme === "vinted" && /^\d+$/.test(String(l?.vinted_item_id ?? "")) && !lectureOrigineEnRepos(l.inventaire_id, maintenant))
+    .sort((a, b) => (Date.parse(String(b?.depuis ?? "")) || 0) - (Date.parse(String(a?.depuis ?? "")) || 0));
+}
 async function lireAnnoncesOrigineEnAttente(session) {
   const token = session?.access_token;
   if (!token) return;
   if (vintedPauseAntirobotServeur) return;   // Vinted demande une vérification anti-robot : aucune lecture de fond
   if (await lectureFondEnPause()) return;
   const liste = await restRequest("rpc/lectures_origine_en_attente", token, { method: "POST", body: "{}" }).catch(() => []);
-  const vinted = (Array.isArray(liste) ? liste : []).filter((l) => l?.plateforme === "vinted" && /^\d+$/.test(String(l?.vinted_item_id ?? "")));
+  const vinted = ordreLecturesOrigine(liste);
   let n = 0;
   for (const l of vinted) {
     if (n >= 3) break;
@@ -2884,8 +2923,11 @@ async function lireAnnoncesOrigineEnAttente(session) {
       console.log(`[origine] page publique Vinted ${l.vinted_item_id} illisible cette fois (${r?.motif ?? "?"}) — relue au cycle suivant`);
       // (25/10, 0.6.143 — Louis) Une lecture ratée DIT pourquoi, une fois par annonce et par heure.
       tracerLectureOrigineRatee(token, l, r?.motif ?? "réponse vide").catch(() => {});
+      // (28/10, 0.6.149) … et se repose : les autres fiches passent devant elle aux cycles suivants.
+      noterEchecLectureOrigine(l.inventaire_id);
       continue;
     }
+    echecsLectureOrigine.delete(String(l.inventaire_id));
     const poses = r?.ok ? await ecrireLecturePagePublique(token, l, r) : [];
     // Lue = close, avec ou sans texte (et une annonce qui n'existe plus n'a rien à attendre) : l'attente s'arrête,
     // jamais une attente sans fin.

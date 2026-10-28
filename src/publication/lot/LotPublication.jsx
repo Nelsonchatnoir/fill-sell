@@ -63,7 +63,7 @@ import {
 } from "../lectureOrigine";
 import {
   issuesSansLecteur, phraseSansLecteur, libellesSansLecteur, texteAttenteSansLecteur, urlAnnonceVinted, descriptionEcriteSuffisante,
-  versionAuMoins, LECTEUR_VERSION_MIN,
+  lecteurEnRetard, versionAuMoins, LECTEUR_VERSION_MIN,
 } from "../attenteLectureRegles";
 // (25/10 — Louis) Le pont de la page vers l'extension : mort après une mise à jour, la page le dit.
 import { ecouterEtatPont } from "../../utils/vintedSync";
@@ -527,6 +527,9 @@ function EcranDuLot({
   // partent ensemble, et l'extension les fait l'une après l'autre sous son verrou de flux (~1 s chacune, jamais en
   // même temps qu'un dépôt). Gardent leur espacement : eBay (API au budget partagé, 1,5 à 3 s) et l'ancien lecteur
   // Vinted par le formulaire d'édition (extension < 0.6.144, « jamais en boucle ») — un créneau réservé par plateforme.
+  // ⛔ (28/10, Cédric GRIZSTYLE) … mais jamais en rafale chez Vinted : 15 pages en 17 s → 429 de Vinted, toute lecture
+  // du poste coupée 6 h. Les lectures partent ensemble, et la page publique attend son créneau (texteDuVendeur,
+  // prochainDepartLectureVinted : 3 d'affilée, puis une toutes les 8 à 20 s).
   const lusRef = useRef(new Set());
   const [complets, setComplets] = useState({}); // id → l'article complété (description reprise)
   const [lectures, setLectures] = useState({}); // id → { source, note }
@@ -555,7 +558,7 @@ function EcranDuLot({
           delaiDetailMs: 25000,
           avantLecture: async (pf) => {
             majEtat(suivant, { lecture: pf });
-            // (26/10) La page publique Vinted part tout de suite (l'extension sérialise) ; les autres lecteurs
+            // (26/10) La page publique Vinted réserve son créneau dans lireDetailVintedParExtension (28/10) ; les autres lecteurs
             // réservent leur créneau, espacé comme avant.
             if (pf === "vinted" && lecturePubliqueVinted) return;
             const [min, max] = pf === "vinted" ? RYTHME_LECTURE_VINTED_MS : RYTHME_LECTURE_EBAY_MS;
@@ -1683,7 +1686,8 @@ function AttenteOrigine({ id, en, st, horloge, pontMort, retirerDuLot, item = nu
   const [texte, setTexte] = useState("");
   const [envoi, setEnvoi] = useState(false);
   const [echec, setEchec] = useState(null);
-  const lecteur = plateformeOrigine(item) === "vinted" ? (sansLecteur?.lecteur ?? null) : null;
+  // (28/10) Avec un lecteur, 3 min sans lecture : la lecture est en retard — mêmes issues que sans lecteur.
+  const lecteur = plateformeOrigine(item) === "vinted" ? lecteurEnRetard(sansLecteur?.lecteur ?? null, ecoule) : null;
   if (issuesSansLecteur(lecteur).length) {
     const lang = en ? "en" : "fr";
     const M = libellesSansLecteur(lang);
@@ -1779,14 +1783,16 @@ function LigneArticle({ id, en, L, item, st, m, envoi, retirerDuLot, horloge = 0
   const pfs = st.envoyees ?? (m ? [...(m.plateformesPubliables ?? [])] : []);
   // (26/10 nuit, point 9) Sans lecteur, la phrase « lecture… » serait une promesse fausse : la ligne dit la vérité
   // (AttenteOrigine) et sa pastille demande le geste — ou « En attente » quand la personne attend son ordinateur.
-  const origineSansLecteur = st.phase === "origine" && plateformeOrigine(item) === "vinted" && issuesSansLecteur(sansLecteur?.lecteur ?? null).length > 0;
+  const ecouleOrigine = st.origineDepuis && horloge ? Math.max(0, horloge - st.origineDepuis) : 0;
+  const lecteurLigne = lecteurEnRetard(sansLecteur?.lecteur ?? null, ecouleOrigine);
+  const origineSansLecteur = st.phase === "origine" && plateformeOrigine(item) === "vinted" && issuesSansLecteur(lecteurLigne).length > 0;
   return (
     <div className="fsl-art">
       <Vignette item={item} />
       <div className="fsl-art-t">
         <b>{titreDe(item) || (en ? "Untitled item" : "Article sans titre")}</b>
         <small>
-          {origineSansLecteur ? (envoi ? phraseSansLecteur(sansLecteur?.lecteur ?? null, { lang: en ? "en" : "fr", maintenant: horloge || undefined }) : null)
+          {origineSansLecteur ? (envoi ? phraseSansLecteur(lecteurLigne, { lang: en ? "en" : "fr", maintenant: horloge || undefined }) : null)
             : st.raison ? st.raison
             : st.phase === "lecture" ? TEXTE_LECTURE[en ? "en" : "fr"][st.lecture ?? "null"]
             : pfs.length && ["pret", "envoi", "envoye"].includes(st.phase) ? pfs.map(NOM).join(" · ")

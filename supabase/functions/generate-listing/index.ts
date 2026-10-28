@@ -1201,7 +1201,14 @@ Réponds UNIQUEMENT du JSON valide {"objet":"<nom commun ou null>","icon":"<un e
             return { type: idx === 0 ? "original" : `photo_${idx}`, url: photoUrl };
           }
 
-          const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+          // (28/10, Juliette — « Le souci vient de nos serveurs ») Décodage en boucle simple : Uint8Array.from(chaîne,
+          // fonction) itère la chaîne caractère par caractère avec un appel par octet — ~130 ms de CPU par image de
+          // 1024 px (mesuré : 661 ms pour 5 images, 24 ms en boucle). Avec 5 photos retouchées + le re-hébergement de 6,
+          // la fonction dépassait son budget CPU (2 s) : « CPU Time exceeded », HTTP 546, trois fois de suite sur la fiche
+          // 1793129900393000 le 28/10 à 02:54.
+          const bin = atob(b64);
+          const bytes = new Uint8Array(bin.length);
+          for (let k = 0; k < bin.length; k++) bytes[k] = bin.charCodeAt(k);
           const outBlob = new Blob([bytes], { type: "image/png" });
           const path = `${user.id}/enhanced/${ts}_${idx}.png`;
 

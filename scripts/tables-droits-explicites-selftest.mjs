@@ -95,7 +95,10 @@ for (const f of scripts) {
     sauvegardes++;
     const rls = new RegExp(`alter\\s+table\\s+(?:public\\.)?${t}\\s+enable\\s+row\\s+level\\s+security`, 'i').test(s);
     // (« FROM PUBLIC, anon, authenticated » ferme autant : anon ET authenticated restent exigés.)
-    const ferme = new RegExp(`revoke\\s+all\\s+on\\s+(?:table\\s+)?(?:public\\.)?${t}\\s+from\\s+(?:public,\\s*)?anon,\\s*authenticated`, 'i').test(s);
+    // (28/10) Un REVOKE peut fermer plusieurs sauvegardes d'un coup (« ON a, b, c FROM … », scripts du 27/10) : la table
+    // est fermée si elle figure dans la liste — relu en prod le 28/10 : RLS active, aucun droit anon/authenticated.
+    const autre = `(?:public\\.)?[a-z_0-9]+`;
+    const ferme = new RegExp(`revoke\\s+all\\s+on\\s+(?:table\\s+)?(?:${autre}\\s*,\\s*)*(?:public\\.)?${t}\\b(?:\\s*,\\s*${autre})*\\s+from\\s+(?:public,\\s*)?anon,\\s*authenticated`, 'i').test(s);
     ok(rls && ferme, `${f} ${t} : sauvegarde née protégée`);
   }
 }

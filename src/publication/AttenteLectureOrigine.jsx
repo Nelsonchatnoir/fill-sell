@@ -27,6 +27,13 @@
 //     « La faire rédiger par FillSell » (le stepper rédige, la personne relit ; rien n'est écrit sur la fiche) ou
 //     « Attendre mon ordinateur » (l'attente, vraie : le lecteur se relit, elle reprend dès qu'un poste à jour revient).
 // Les mots et les règles vivent dans attenteLectureRegles.js (purs, testés : attente-sans-lecteur-selftest).
+//
+// ── (28/10, Juliette, Petite planète — 16 écrans fermés après 0 à 16 s) L'ATTENTE TIENT, PUIS A SES ISSUES ─────────
+// Sur un téléphone, l'écran disait « Ferme, et publie dès qu'elle est lue » et se fermait au moindre appui à côté :
+// l'ordinateur lisait pourtant la page 12 s à 2 min plus tard (Juliette 20:47:10 → lue 20:47:22, écran fermé à
+// 20:47:11). Désormais : la phrase dit que l'ordinateur lit (moins de 2 min en général) et de garder l'écran ouvert ;
+// seul « Fermer » ferme pendant une attente ; passé 3 min sans lecture (attenteLectureRegles.lecteurEnRetard), la
+// vérité et les issues « Écrire ma description » / « La faire rédiger par FillSell » s'ajoutent — la relecture continue.
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { demarrerRelecture } from "../utils/relectureBornee";
@@ -38,6 +45,7 @@ import { signalerActionRatee } from "../utils/actionRatee";
 import {
   depuisEnMots, RELECTURE_ATTENTE_MS, RELECTURE_ATTENTE_MAX_MS, RELECTURE_SANS_LECTEUR_MS, ATTENTE_SANS_LECTEUR_MAX_MS,
   issuesSansLecteur, phraseSansLecteur, libellesSansLecteur, texteAttenteSansLecteur, urlAnnonceVinted, descriptionEcriteSuffisante,
+  lecteurEnRetard, texteAttenteParOrdinateur,
 } from "./attenteLectureRegles";
 
 export default function AttenteLectureOrigine({
@@ -130,20 +138,22 @@ export default function AttenteLectureOrigine({
   }, [supabase, userId, item?.id, extensionVinted, mode]);
 
   const ecoule = Math.max(0, horloge - depuis);
-  const sansLecteur = lecteur?.disponible === false;
+  // (28/10) Le lecteur tel que l'écran le traite : en attente depuis 3 min sans lecture, il est « en retard ».
+  const lecteurVu = mode === "attente" ? lecteurEnRetard(lecteur, Math.max(0, horloge - debutAttente)) : lecteur;
+  const sansLecteur = lecteurVu?.disponible === false;
 
   const fermer = () => {
     if (!fini.current) {
       signalerActionRatee({ action: "publier", motif: "lecture_origine_abandonnee", userId,
         details: { fiche: item?.id ?? null, attendu_s: Math.round(ecoule / 1000), pont_mort: pontMort, extension: extensionVinted, manque: (attente?.manque ?? []).join(","), note: derniereNote.current,
-          sans_lecteur: sansLecteur, mode, raison: lecteur?.raison ?? null } });
+          sans_lecteur: sansLecteur, mode, raison: lecteurVu?.raison ?? null, ou: lecteur?.ou ?? null, en_retard: lecteurVu?.enRetard === true } });
     }
     fini.current = true;
     onFermer?.();
   };
 
   // ── (26/10 nuit) Les trois issues, sans lecteur ───────────────────────────────────────────────────────────────
-  const trace = (choix) => tracerChoixSansLecteur(supabase, userId, { choix, fiche: item?.id ?? null, lecteur, details: { plateforme: attente?.plateforme ?? "vinted" } });
+  const trace = (choix) => tracerChoixSansLecteur(supabase, userId, { choix, fiche: item?.id ?? null, lecteur: lecteurVu, details: { plateforme: attente?.plateforme ?? "vinted" } });
   const choisir = async (cle) => {
     if (envoi) return;
     setEchec(null);
@@ -233,7 +243,8 @@ export default function AttenteLectureOrigine({
             style={{ ...issue("principal"), ...(!assez ? { background: "#E5E7EB", color: "#374151", cursor: "not-allowed" } : {}) }}>
             {envoi ? L.enregistrement : L.continuer}
           </button>
-          <button type="button" disabled={envoi} onClick={() => { setEchec(null); setMode("choix"); }} style={issue("discret")}>{L.retour}</button>
+          {/* (28/10) Venu d'une lecture en retard (un lecteur existe) : retour à l'attente, toujours en retard, pas aux choix. */}
+          <button type="button" disabled={envoi} onClick={() => { setEchec(null); setMode(issuesSansLecteur(lecteur).length ? "choix" : "attente"); }} style={issue("discret")}>{L.retour}</button>
         </div>
       </>
     );
@@ -242,8 +253,8 @@ export default function AttenteLectureOrigine({
     corps = (
       <>
         <div style={titreStyle}>{L.attenteTitre}</div>
-        <div style={texteStyle}>{relectureFinie ? L.attenteFinie : texteAttenteSansLecteur(lecteur, { lang, contexte: "stepper" })}</div>
-        <div style={{ fontSize: 12, color: "#6B7280", marginTop: 10 }}>{phraseSansLecteur(lecteur, { lang, maintenant: horloge })}</div>
+        <div style={texteStyle}>{relectureFinie ? L.attenteFinie : texteAttenteSansLecteur(lecteurVu, { lang, contexte: "stepper" })}</div>
+        <div style={{ fontSize: 12, color: "#6B7280", marginTop: 10 }}>{phraseSansLecteur(lecteurVu, { lang, maintenant: horloge })}</div>
         {!relectureFinie ? (
           <div style={{ fontSize: 12, color: "#6B7280", marginTop: 6 }}>
             {en ? `Waiting for ${depuisEnMots(Math.max(0, horloge - debutAttente))}.` : `En attente depuis ${depuisEnMots(Math.max(0, horloge - debutAttente))}.`}
@@ -271,8 +282,8 @@ export default function AttenteLectureOrigine({
             ? (en ? "Your extension can't be reached from this page (it was just updated): reload the page."
               : "Ton extension ne répond plus à cette page (elle vient d'être mise à jour) : recharge la page.")
             : !extensionVinted
-              ? (en ? "The FillSell extension isn't on this device: the reading is done by your computer, in the background. Close this, and publish once it's read."
-                : "L'extension FillSell n'est pas sur cet appareil : la lecture se fait depuis ton ordinateur, en arrière-plan. Ferme, et publie dès qu'elle est lue.")
+              // (28/10) Jamais « Ferme » : l'ordinateur lit au poll suivant ; l'écran attend et s'ouvre tout seul.
+              ? `${texteAttenteParOrdinateur(lang)} ${en ? `Waiting for ${depuisEnMots(ecoule)}.` : `En attente depuis ${depuisEnMots(ecoule)}.`}`
               : (en ? `In progress for ${depuisEnMots(ecoule)} — the publishing screen opens as soon as it is read.`
                 : `En cours depuis ${depuisEnMots(ecoule)} — l'écran de publication s'ouvre dès qu'elle est lue.`)}
         </div>
@@ -292,7 +303,8 @@ export default function AttenteLectureOrigine({
   }
 
   const contenu = (
-    <div role="dialog" aria-modal="true" onClick={mode === "ecrire" ? undefined : fermer}
+    // (28/10) Un appui à côté ne ferme que l'écran des choix : pendant une attente ou une saisie, seul « Fermer » ferme.
+    <div role="dialog" aria-modal="true" onClick={mode === "choix" ? fermer : undefined}
       style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 10000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div onClick={(e) => e.stopPropagation()}
         style={{ background: "#fff", borderRadius: 18, width: "100%", maxWidth: 460, maxHeight: "calc(100dvh - 32px)", overflowY: "auto", padding: "22px 20px", boxShadow: "0 12px 40px rgba(0,0,0,0.18)", fontFamily: "inherit" }}>
