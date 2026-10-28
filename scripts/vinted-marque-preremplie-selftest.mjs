@@ -55,7 +55,7 @@ const CODE = [
   blocAbsences,
   ...["marqueAbsenceComparable", "estAbsenceDeMarque", "texteComparable", "attendreValeurMarque", "budgetMarqueMs",
     "signalerLigneDeCreationAbsente", "noterPrefillMarqueVinted", "decrirePrefillMarque", "attendreChoixMarque",
-    "selectVintedBrand"].map((f) => extraireFonctionJs(vt, f)),
+    "selectVintedBrand", "estMenuVintedBloom", "valeurChampVinted"].map((f) => extraireFonctionJs(vt, f)),
   "const SANS_MARQUE_RE = Object.freeze({ test: (v) => estAbsenceDeMarque(v) });",
   "let prefillMarqueVinted = undefined;",
   "return { selectVintedBrand, attendreChoixMarque, budgetMarqueMs, noterPrefillMarqueVinted, decrirePrefillMarque };",

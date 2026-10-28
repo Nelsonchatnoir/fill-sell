@@ -872,3 +872,17 @@
   dit qui lit (`lecteur`, `lecteur_vu_le`).
 - Rédaction : un 401 se dit « Ta session a expiré : reconnecte-toi » (après UN rafraîchissement + relance), jamais « nos
   serveurs » ; le code HTTP part avec le signal. generate-listing décode les images retouchées en boucle simple (CPU).
+
+## ⛔ 28/10 soir — les menus « bloom » de Vinted : toute relecture d'un menu passe par `valeurChampVinted` (0.6.150 ; rapport `docs/enquetes/deblocage-2810/RAPPORT.md`)
+- Vinted remplace ses menus (Catégorie, Marque, Taille, État, Couleur, Matériau, attributs dynamiques) compte par compte
+  (1 compte le 24/10, 1 le 27/10, 34 arrêts le 28/10) : le déclencheur est un `<button class="select-root"
+  data-testid="…-input">`, la valeur choisie ne vit que dans `<span data-testid="…-input--value">`, le `<input
+  class="select-proxy" name="…">` caché reste VIDE, et le bouton porte `data-placeholder` tant que rien n'est choisi.
+- ⛔ Ne JAMAIS relire `.value` d'un déclencheur de menu Vinted : `valeurChampVinted(el)` (ancien `<input>` et bouton bloom),
+  `readCommittedValue` y renvoie pour un bouton. Selftest `vinted-menus-bloom` (aucune lecture `querySelector(…)?.value`
+  d'un menu ne doit revenir). La grille de tailles à puces : `data-testid="category-size-single-grid_chips-input"`.
+- Ce que la 0.6.149 faisait sur un compte « bloom » : publication arrêtée AVANT le dépôt (« #brand porte «  » » même pour
+  « Sans marque »), republication arrêtée AVANT tout retrait (« le formulaire n'a pas accepté État », `grille_incoherente` ;
+  « Vinted exige des champs encore vides … État … »). Jamais une annonce retirée. Ces arrêts repartent seuls, une fois, dès
+  que le poste a la 0.6.150 (`_shared/relance-apres-maj.js` : `vinted_menus_bloom_marque`, `vinted_menus_bloom_grille`).
+- Prouvé le 28/10 à 21:31 sur le compte de Nico (menus bloom) : annonce 10576137564, Kiabi / M / Très bon état / Bleu.

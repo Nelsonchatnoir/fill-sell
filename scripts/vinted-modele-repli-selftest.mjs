@@ -88,6 +88,7 @@ function menu({ modeles = ["Galaxy S10", "Galaxy S10+", "Galaxy A52"], commitRat
   };
   const noms = Object.keys(fakes);
   const api = new Function(...noms, [NORM, REPLIS, extraireFonctionJs(vt, "findVintedModelOption"), extraireFonctionJs(vt, "attendreValeurMarque"),
+    extraireFonctionJs(vt, "estMenuVintedBloom"), extraireFonctionJs(vt, "valeurChampVinted"),
     extraireFonctionJs(vt, "selectVintedModel"), "return { findVintedModelOption, selectVintedModel, normModel, MODEL_FALLBACK_LABELS };"].join("\n"))(...noms.map((k) => fakes[k]));
   return { etat, api, fakes };
 }
@@ -152,7 +153,7 @@ console.log("\nB. UNE VALEUR ORDINAIRE : LA RÈGLE D'AVANT, À L'IDENTIQUE");
 console.log("\nC. LE CONTRÔLE AVANT RETRAIT COMPTE LE MODÈLE DÈS QUE LA CAPTURE EN PORTAIT UN");
 {
   const fabriquer = (modelPresent, valeur = "") => new Function("document", "vintedFieldSelector", "VINTED_SERVER_FIELD_LABELS", "CSS",
-    `${CANAUX}\n${extraireFonctionJs(vt, "caracteristiquesCaptureNonReposees")}; return caracteristiquesCaptureNonReposees;`)(
+    `${CANAUX}\n${extraireFonctionJs(vt, "estMenuVintedBloom")}\n${extraireFonctionJs(vt, "valeurChampVinted")}\n${extraireFonctionJs(vt, "caracteristiquesCaptureNonReposees")}; return caracteristiquesCaptureNonReposees;`)(
     { querySelector: (q) => (q === TRIGGER && modelPresent ? { value: valeur } : null) },
     new Function(`${extraireFonctionJs(vt, "vintedFieldSelector")}; return vintedFieldSelector;`)(),
     { model: "Modèle" }, { escape: (s) => s });

@@ -24,6 +24,9 @@
 
 // BUILD_ID de la 0.6.104 (0cec9e6), premier paquet téléversé depuis la 0.6.102.
 const BUILD_0_6_104 = "2026-10-08T14:53:27Z";
+// Le premier build qui relit les menus « bloom » de Vinted (0.6.150, 28/10 soir) : tout build construit après
+// 20:15Z le porte (0.6.149 = 09:52:53Z ; essai du poste de Nico 20:17:07Z, zip du Chrome Web Store après).
+const BUILD_0_6_150 = "2026-10-28T20:15:00Z";
 
 // Une entrée vise soit une tâche « relancer » dont le message technique
 // commence par `brut`, soit (champ `source`) une tâche mise de côté pour ce
@@ -71,6 +74,29 @@ export const RELANCES_APRES_MAJ = [
     buildMin: BUILD_0_6_104,
     version: "0.6.104",
   }))),
+  // (28/10/2026) Vinted a remplacé ses menus (Catégorie, Marque, Taille, État, Couleur, Matériau) par des boutons
+  // « bloom » dont la valeur ne vit que dans le span « --value » : la 0.6.149 et avant relisaient `.value` et
+  // s'arrêtaient AVANT le dépôt — « Le champ Marque n'a pas pu être posé … » en publication (Ornella, chaowx1305,
+  // thecloset72000), « le formulaire n'a pas accepté État … » en republication, AVANT tout retrait (needs_user_source
+  // grille_incoherente : abenjemaa, labouquinerie85, vincent.armengol, chaowx1305). La 0.6.150 relit la valeur affichée.
+  // Rien n'a été déposé ni retiré : une relance, une fois, dès que le poste a la 0.6.150 (une republication déjà
+  // retirée n'est jamais relancée ici — regleDeRelance).
+  {
+    cle: "vinted_menus_bloom_marque",
+    platform: "vinted",
+    action: "publish",
+    brut: "Le champ Marque n'a pas pu être posé",
+    buildMin: BUILD_0_6_150,
+    version: "0.6.150",
+  },
+  {
+    cle: "vinted_menus_bloom_grille",
+    platform: "vinted",
+    action: "republish",
+    source: "grille_incoherente",
+    buildMin: BUILD_0_6_150,
+    version: "0.6.150",
+  },
 ];
 
 // Les champs d'attente que « Relancer » (app) efface — plus la boucle

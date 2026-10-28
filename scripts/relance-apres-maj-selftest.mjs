@@ -126,5 +126,33 @@ console.log("\n[5] (08/10 soir) Tâche mise de côté « sans démarrage » (Jon
   ok("content script muet : 4 plateformes, build 0.6.104 (la 0.6.103 n'a jamais été téléversée)", muet.length === 4 && muet.every((x) => x.buildMin === "2026-10-08T14:53:27Z"));
 }
 
+// (28/10) Les menus « bloom » de Vinted : la 0.6.149 relisait `.value` d'un bouton — arrêts AVANT le dépôt / le retrait.
+{
+  console.log("\n— 28/10 : menus « bloom » de Vinted (0.6.150) —");
+  const ORNELLA = {
+    platform: "vinted", action: "publish", status: "needs_user",
+    platform_fields: {
+      needs_user_source: "relancer", needsUserAttempts: 3,
+      error_technique: { brut: "Le champ Marque n'a pas pu être posé tel quel (« Ottordram »). Publication interrompue AVANT le dépôt — rien n'a été soumis à Vinted" },
+    },
+  };
+  const r = regleDeRelance(ORNELLA);
+  ok("publication « Marque non posée » : règle vinted_menus_bloom_marque", r?.cle === "vinted_menus_bloom_marque" && r?.version === "0.6.150", JSON.stringify(r));
+  ok("   « Sans marque » natif aussi (même début de message)", regleDeRelance({ ...ORNELLA, platform_fields: { ...ORNELLA.platform_fields,
+    error_technique: { brut: "Le champ Marque n'a pas pu être posé sur « Sans marque » (option native du picker Vinted introuvable)." } } })?.cle === "vinted_menus_bloom_marque");
+  ok("poste en 0.6.149 (09:52:53Z) : pas encore", posteALeBuild("2026-10-28T09:52:53Z+9ca925f", r) === false);
+  ok("poste en 0.6.150 (essai du poste de Nico 20:17:07Z) : oui", posteALeBuild("2026-10-28T20:17:07Z+1b183e8-dirty", r) === true);
+  const LIVRE = {
+    platform: "vinted", action: "republish", status: "needs_user",
+    platform_fields: { needs_user_source: "grille_incoherente", republish_step: "captured", erreurs_archivees: [{ erreur: "x" }] },
+  };
+  const g = regleDeRelance(LIVRE);
+  ok("republication « État refusé » (grille_incoherente, avant tout retrait) : règle vinted_menus_bloom_grille", g?.cle === "vinted_menus_bloom_grille", JSON.stringify(g));
+  const pf = champsRelance(LIVRE, g, { maintenant: "2026-10-29T08:00:00Z", extensionBuild: "2026-10-28T21:00:00Z+abcdef0" });
+  ok("   relancée : étape et erreurs archivées CONSERVÉES", pf.republish_step === "captured" && pf.erreurs_archivees?.length === 1 && !pf.needs_user_source);
+  ok("   republication déjà retirée : jamais", regleDeRelance({ ...LIVRE, platform_fields: { ...LIVRE.platform_fields, republish_step: "deleted" } }) === null);
+  ok("   question « marque » à la personne (champ_a_choisir) : jamais", regleDeRelance({ ...ORNELLA, platform_fields: { needs_user_source: "champ_a_choisir" } }) === null);
+}
+
 console.log(ko ? `\n[selftest:relance-apres-maj] ÉCHEC — ${ko} vérification(s) en défaut.` : "\n[selftest:relance-apres-maj] OK");
 process.exit(ko ? 1 : 0);

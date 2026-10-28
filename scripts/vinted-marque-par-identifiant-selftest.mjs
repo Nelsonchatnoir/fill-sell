@@ -163,7 +163,9 @@ const texteComparable = new Function(`${extraireFonctionJs(vt, "texteComparable"
     "waitForElement", "typeHuman", "attendreChoixMarque", "humanPause", "confirmDropdownIfNeeded", "marquesDuCatalogueVinted",
     "suggestionsMarqueProches", "texteComparable", "armerMarquePourPost",
     "retaperDernierCaractere", "marqueExacteDuCatalogueVinted", "budgetMarqueMs", "attendreValeurMarque",
-    "signalerLigneDeCreationAbsente", "decrirePrefillMarque"];
+    "signalerLigneDeCreationAbsente", "decrirePrefillMarque",
+    // (28/10) La relecture d'un menu Vinted, ancien <input> comme bouton « bloom » (selftest vinted-menus-bloom).
+    "valeurChampVinted"];
   // (24/10, lot « zéro blocage », A3 — Nico) « Une marque introuvable ne bloque jamais : marque la plus proche
   // prouvée, ou « Sans marque » quand la catégorie l'accepte. » Le harnais NOTE la pose de « Sans marque ».
   const harnais = ({ brandValue = "", choix = { type: "aucune", suggestions: [] } } = {}) => {
@@ -182,6 +184,7 @@ const texteComparable = new Function(`${extraireFonctionJs(vt, "texteComparable"
       // #brand est figé dans ce harnais : la relecture rend sa valeur si elle convient, sinon rien.
       async (_t, accepte) => (accepte(brandValue) ? brandValue : null),
       async () => true, () => "prefill_brand non relevé",
+      (el) => String(el?.value ?? ""),
     ];
     const fn = new Function(...noms, `${SEL}; return selectVintedBrand;`)(...valeurs);
     return { fn, armements, attentes, sansMarque };

@@ -307,6 +307,7 @@
     "selftest:reponses-partagees": "node --import ./scripts/loader-ext.mjs scripts/reponses-partagees-selftest.mjs",
     "selftest:vinted-marque-libre": "node scripts/vinted-marque-libre-selftest.mjs",
     "selftest:vinted-marque-parite": "node scripts/vinted-marque-parite-selftest.mjs",
+    "selftest:vinted-menus-bloom": "node scripts/vinted-menus-bloom-selftest.mjs",
     "selftest:vinted-cadenceur": "node scripts/vinted-cadenceur-selftest.mjs",
     "selftest:veille-commandes": "node scripts/veille-commandes-selftest.mjs",
     "selftest:ebay-commande-notification": "node scripts/ebay-commande-notification-selftest.mjs",
