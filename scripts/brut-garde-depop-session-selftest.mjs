@@ -83,8 +83,9 @@ console.log("\nC. update-job-status : le brut gardé à chaque réécriture");
 console.log("\nD. lens-analysis : l'étiquette de chaussure multi-systèmes");
 {
   const lens = lire("supabase/functions/lens-analysis/index.ts");
-  dit("EN : la ligne EUR, jamais le CM seul", /is read on its EUR line, with its system \("EUR 41"\); CM, JP or mm is a foot LENGTH, never a shoe size/.test(lens));
-  dit("FR : la même règle", /se lit sur sa ligne EUR, avec son système \(« EUR 41 »\) ; CM, JP ou mm est une LONGUEUR de pied, jamais une pointure/.test(lens));
+  // (28/10 soir, essais réels v109 « US 8 », v110 « EUR 41 ») : TOUJOURS la ligne EUR, rendue « EU N » ; CM jamais seul.
+  dit("EN : la ligne EUR, rendue « EU N », jamais le CM seul", /is ALWAYS read on its EUR \(or EU\) line, returned as "EU N"[\s\S]{0,400}CM, JP or mm is a foot LENGTH, never a shoe size/.test(lens));
+  dit("FR : la même règle", /se lit TOUJOURS sur sa ligne EUR \(ou EU\), rendue sous la forme « EU N »[\s\S]{0,400}CM, JP ou mm est une LONGUEUR de pied, jamais une pointure/.test(lens));
 }
 
 console.log(`\n${ko === 0 ? "✓" : "✗"} brut-garde-depop-session : ${ok} contrôles verts, ${ko} rouges`);

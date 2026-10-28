@@ -188,3 +188,20 @@ pont mort et bandeau 12-13), correctifs appliqués et prouvés depuis le termina
 - Aucun job « processing » de plus de 20 min ; aucun job à needsUserAttempts ≥ 5 chez les comptes vivants. Retraits Beebs en
   404 relancés en reprise espacée (thecloset ×2, louis ×1, sebastien ×1) : se ferment avec la 0.6.151+ (preuve par la page).
 - Suite complète : 476 selftests verts (suite3) ; relancée sur l'arbre final (suite4).
+
+## Clôture (GO de Nico, 28/10 ~23:30 → 00:00)
+1. **Lens** : prod v108 (18/10) = dépôt avant la consigne ; écarts embarqués en plus : `src/utils/jeuxVideo.js` (« Switch & Go »
+   VTech, âges ESRB — déjà servis par d'autres fonctions), helper `vinted-pays.ts`. Essai réel par le chemin interne (identify,
+   aucun débit) sur les 5 photos de l'Air Max de mataich67 : v108 → « 41 » ; v109 (consigne copiant l'étiquette du cas) → « US 8 » ;
+   v110 → « EUR 41 » (hors format) ; **v111 → « EU 41 »** (taille_estimee et attributs_visibles.pointure). VERSION_PROMPT changé.
+2. **Migration 20261028230000** appliquée (voir l'état) ; essai annulé avant : Assassin's Creed → 1 retrait sur 34198358, Polly → 0.
+3. **Point 15 — thibault.andrieux dca41766 « Samsung player start 2 »** : retirée le 25/10 ; 1er échec 400 « modèle » (corrigé
+   le 26/10), puis le 28/10 16:28 en 0.6.149 « COULEUR INTROUVABLE : Noir existe bien chez Vinted mais n'a pas pu être posée » =
+   la relecture des menus bloom (couleur posée, lue vide) → recreation_bloquee. Règle : `_shared/recreation-bloquee.js` cause
+   « vinted_menus_bloom » levée pour un poste ≥ 0.6.150 (`buildMin`, nouveau) ; handler-watch v143. Remise en ligne : dès que
+   son poste a la 0.6.152 (CWS) — avant, le même mur ; la garde prevol_recreation relit le dressing avant de recréer.
+4. **Quota en anglais (ajmalmuntazar25)** : pas le serveur (il renvoie le code `quota_annonces_atteint`) ; l'app web choisit
+   sa langue = choix enregistré (`fs_lang`), sinon la langue du NAVIGATEUR — anglais chez ce compte, donc toute l'interface
+   en anglais. `profiles.lang` vaut 'fr' par défaut pour tout le monde (pas un choix). Rien corrigé.
+5. Onglet de test fermé (page quittée sans boîte) ; retirées par FillSell : Vinted 10576216857, 10576670884, 10576830425,
+   10576961041, 10577118226 et Depop « Jean Lee femme W28 » (6 retraits « deleted ») ; file de Nico remise en pause.
