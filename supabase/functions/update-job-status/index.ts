@@ -4,7 +4,7 @@ import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
 import { valeurFigureDansListeServie } from "../_shared/vinted-grille-servie.ts";
 // Archive des erreurs remplacées (2026-09-12) : même fichier que l'app et
 // handler-watch — module JS sans import, chargé tel quel par Deno.
-import { archiverErreur } from "../_shared/erreurs-archivees.js";
+import { archiverErreur, errorTechniqueAvecHistorique } from "../_shared/erreurs-archivees.js";
 import { accidentAvantRetrait, coupureSeule, prochaineRepriseAvantRetrait, MESSAGE_ACCIDENT_AVANT_RETRAIT, MARQUES_RETRAIT_OU_DEPOT, CLES_ATTENTE_A_RETIRER } from "../_shared/accident-avant-retrait.js";
 // Les phrases lues par la personne vivent dans leur fichier, pas au milieu de
 // la logique qui les déclenche (même convention que src/*/textes.js).
@@ -4773,14 +4773,14 @@ serve(async (req) => {
     // complet de l'extension (posé au début de l'assemblage) et le garde
     // aucunAutreRequalif garantit qu'aucun pfX ne l'a remplacé — on fusionne une
     // seule clé. Le diagnostic reste requêtable par error_technique->>'brut'.
+    // (28/10, point 11) Le brut précédent n'est plus écrasé : il passe dans error_technique.precedents, et `pose_par`
+    // dit QUI a réécrit l'affichage (pas-de-rouge, G1/G4…) au lieu d'un libellé figé.
     if (erreurTechniqueBrute != null && patch.platform_fields && typeof patch.platform_fields === "object") {
+      const pfT = patch.platform_fields as Record<string, unknown>;
       patch.platform_fields = {
-        ...(patch.platform_fields as Record<string, unknown>),
-        error_technique: {
-          brut: erreurTechniqueBrute.slice(0, 2000),
-          at: new Date().toISOString(),
-          pose_par: "update-job-status (requalification affichage G1/G4)",
-        },
+        ...pfT,
+        error_technique: errorTechniqueAvecHistorique(pfT.error_technique,
+          erreurTechniqueBrute, `update-job-status (${raisonRequalif ?? "requalification affichage G1/G4"})`),
       };
     }
 
@@ -5032,6 +5032,36 @@ serve(async (req) => {
         if (q?.message) patch.error = q.message;
       } catch (e) {
         console.warn("[update-job-status] question en français :", (e as Error)?.message ?? e);
+      }
+    }
+
+    // ── (28/10, point 11 — gatignol.pro, 6584f843) LE MOTIF BRUT EST TOUJOURS GARDÉ ──────────────────────────────
+    // Le brut d'un essai n'atteignait error_technique que par deux chemins (G1/G4, pas-de-rouge) : toute autre
+    // réécriture de l'affichage (défaut FillSell, canal coupé, attente de session, vendeur Depop…) le perdait, et
+    // l'erreur archivée ne garde que le texte AFFICHÉ. Règle : un échec dont le texte affiché n'est pas celui que
+    // l'extension a rapporté garde ce brut dans error_technique (historique dans `precedents`) — jamais affiché,
+    // toujours requêtable. Une erreur effacée (réparation) n'écrit rien ; un brut déjà posé n'est pas réécrit.
+    if (erreurTechniqueBrute == null && ["failed", "pending", "needs_user", "cancelled"].includes(String(statutEffectif))) {
+      try {
+        const brutCorps = typeof body.error === "string" ? body.error.trim().slice(0, 2000) : "";
+        const affiche = "error" in patch && patch.error != null ? String(patch.error).trim() : "";
+        if (brutCorps && affiche && affiche !== brutCorps) {
+          let pfB = (patch.platform_fields && typeof patch.platform_fields === "object") ? patch.platform_fields as Record<string, unknown> : null;
+          if (!pfB) {
+            const { data: jB } = await userClient.from("cross_post_jobs").select("platform_fields").eq("id", jobId).maybeSingle();
+            pfB = (jB?.platform_fields ?? null) as Record<string, unknown> | null;
+          }
+          const avantB = (pfB?.error_technique ?? null) as Record<string, unknown> | null;
+          if (pfB && String(avantB?.brut ?? "").trim() !== brutCorps) {
+            patch.platform_fields = {
+              ...pfB,
+              error_technique: errorTechniqueAvecHistorique(avantB, brutCorps,
+                `update-job-status (message affiché réécrit${raisonRequalif ? ` : ${raisonRequalif}` : ""})`),
+            };
+          }
+        }
+      } catch (e) {
+        console.warn("[update-job-status] brut gardé :", (e as Error)?.message ?? e);
       }
     }
 

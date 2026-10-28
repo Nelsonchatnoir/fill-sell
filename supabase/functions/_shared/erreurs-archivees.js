@@ -47,3 +47,36 @@ export function archiverErreur(existantes, erreur, statut, par) {
   });
   return liste.length > ENTREES_MAX ? liste.slice(liste.length - ENTREES_MAX) : liste;
 }
+
+// ── LE BRUT D'UN ESSAI N'EST JAMAIS PERDU (28/10, point 11 — gatignol.pro, 6584f843) ─────────────────────────────
+// error_technique ne gardait que le DERNIER brut : la publication « Polo Province Of Canada » a fait huit essais
+// (26/10 23:37 → 27/10 19:05) ; il ne restait que « Session Depop illisible (reseau) », et les erreurs archivées ne
+// portaient que les textes AFFICHÉS (« On ne sait pas encore pourquoi… »). Chaque nouveau brut pousse le précédent
+// dans `precedents` (les PRECEDENTS_MAX derniers, le plus récent en dernier) : l'histoire réelle d'un job se relit
+// en base. `brut`, `at`, `pose_par` gardent leur sens (lus par handler-watch, cause-blocage, relance-apres-maj…).
+export const PRECEDENTS_MAX = 5;
+
+/**
+ * @param {unknown} avant — platform_fields.error_technique actuel (ou rien)
+ * @param {unknown} brut — le brut de CET essai
+ * @param {string} posePar — qui le pose (« update-job-status (pas-de-rouge : … ) »…)
+ * @param {string} [maintenantIso]
+ * @returns {{brut: string, at: string, pose_par: string, precedents?: Array<{brut: string, at: string|null, pose_par: string|null}>}|null}
+ */
+export function errorTechniqueAvecHistorique(avant, brut, posePar, maintenantIso = new Date().toISOString()) {
+  const texte = String(brut ?? "").trim().slice(0, 2000);
+  if (!texte) return avant && typeof avant === "object" ? avant : null;
+  const a = avant && typeof avant === "object" ? avant : null;
+  let precedents = Array.isArray(a?.precedents) ? a.precedents.filter((p) => p && typeof p === "object") : [];
+  const brutAvant = String(a?.brut ?? "").trim();
+  if (brutAvant && brutAvant !== texte) {
+    precedents = [...precedents, { brut: brutAvant.slice(0, TEXTE_MAX), at: a?.at ?? null, pose_par: a?.pose_par ?? null }];
+  }
+  if (precedents.length > PRECEDENTS_MAX) precedents = precedents.slice(precedents.length - PRECEDENTS_MAX);
+  return {
+    brut: texte,
+    at: maintenantIso,
+    pose_par: String(posePar ?? "").slice(0, 160),
+    ...(precedents.length ? { precedents } : {}),
+  };
+}

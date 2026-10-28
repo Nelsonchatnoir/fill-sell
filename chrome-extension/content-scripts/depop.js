@@ -473,7 +473,122 @@ function depopTailleEquivalente(brute, idGrille, libelles) {
   return null;
 }
 
-function depopResoudreTaille(pf, chemin, region, grilles) {
+// (28/10, point 14 — thecloset72000, recrutementgroupezk704, tiblancdeshaut) LE BLOC DES TOURS DE TAILLE DES BAS.
+// Les grilles Depop des bas d'un compte en euros (IT) portent DEUX systèmes sous des nombres nus (relevé du 08/10,
+// docs/plateformes/depop/brut/attributes-categories-size-mapping.json) : les TOURS DE TAILLE en pouces, un par un
+// (62 homme : 24…40 ; 24 femme : 24…34 — créés juste après les lettres, dans le même ordre que les 24"…40" de la
+// grille britannique 58), puis des tailles EU paires ajoutées plus tard (62 : 42…56 ; 24 : 36…48). Dans ce bloc, le
+// « 40 » de Depop est donc un W40 : un nombre FRANÇAIS de la plage n'est JAMAIS l'option du même nombre. Mesuré en base
+// le 28/10 : 26 jeans « Levi's … W30 L32 FR40 » de recrutementgroupezk704 (14/10, fiche « 40 ») partis en « 40 » (W40),
+// le chino « Taille 30 » de thecloset72000 (28/10, fiche « 40 ») en « 40 », trois bas H&M « EUR 34 » de tiblancdeshaut
+// (22/10) en « 34 » (W34). Règle, dans cet ordre — AVANT l'exacte, sur ces deux grilles seulement :
+//   1. un W ÉCRIT (« W30 », « W30 L32 », « 30W », « 30x32 », « W33 | FR 42 ») de la plage → l'option « 30 » (même système) ;
+//   2. un nombre NU de la plage que la taille de la FICHE écrit en W (tailleDepop l'a traduit : « W33 L34 » → « 33 »)
+//      → l'option du même nombre ;
+//   3. un nombre NU IMPAIR de la plage → l'option du même nombre (aucune taille française n'est impaire : c'est un W) ;
+//   4. un nombre (nu, FR, T, EU, EUR) PAIR de la plage, et le titre ou la description du vendeur écrivent UN SEUL W :
+//      égal au nombre (le W écrit sans W) → ce nombre ; ou dont le FR, par LA table que Vinted publie (« W30 | FR 40 »,
+//      FR_PAR_TOUR_DE_TAILLE de _shared/taille-de-service.js), est ce nombre → l'option de ce W (deux sources d'accord) ;
+//   5. sinon : QUESTION, avec en tête les W que la table de Vinted donne à ce FR (« 40 » → 30, 31) puis la lecture W du
+//      nombre — jamais choisie seule. La réponse de la personne (needsUserResolved) n'est jamais rejugée.
+// Hors de la plage (42…56 homme, 36…48 femme), sur toute autre grille, et pour une réponse donnée : la règle d'avant.
+const DEPOP_ZONE_TOUR_DE_TAILLE = Object.freeze({ 62: Object.freeze([24, 40]), 24: Object.freeze([24, 34]) });
+// W (pouces) → FR : la table que Vinted publie — copie de FR_PAR_TOUR_DE_TAILLE (selftest:depop-tailles-fr : égalité).
+const DEPOP_FR_PAR_W = Object.freeze({
+  23: 32, 24: 34, 25: 34, 26: 36, 27: 36, 28: 38, 29: 38, 30: 40, 31: 40,
+  32: 42, 33: 42, 34: 44, 35: 44, 36: 46, 38: 48, 40: 50, 42: 52, 44: 54,
+  46: 56, 48: 58, 50: 60, 52: 62, 54: 64,
+});
+const depopPlierTaille = (v) => String(v ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "")
+  .toLowerCase().replace(/,/g, ".").replace(/[\s_\-–—]+/g, " ").replace(/\s+/g, " ").trim();
+// Un tour de taille écrit — même lecture que lireTourDeTaille (_shared/tailles.js) : le W, ou null (fourchette
+// française possible « 34/36 » : null).
+function depopLireW(v) {
+  const s = depopPlierTaille(v);
+  const plausible = (w, l) => w >= 23 && w <= 54 && (l === null || (l >= 26 && l <= 38));
+  let m = /^w\s*(\d{2})(?:\s*(?:\/|x)?\s*l\s*(\d{2}))?$/.exec(s) || /^(\d{2})\s*w(?:\s*(?:\/|x)?\s*(\d{2})\s*l)?$/.exec(s);
+  if (m) { const w = Number(m[1]); const l = m[2] === undefined ? null : Number(m[2]); return plausible(w, l) ? w : null; }
+  m = /^(\d{2})\s*x\s*(\d{2})$/.exec(s);
+  if (m && plausible(Number(m[1]), Number(m[2]))) return Number(m[1]);
+  m = /^(\d{2})\s*\/\s*(\d{2})$/.exec(s);
+  if (m) {
+    const a = Number(m[1]), b = Number(m[2]);
+    if (a % 2 === 0 && b === a + 2) return null;
+    if (plausible(a, b)) return a;
+  }
+  return null;
+}
+// Le W d'une étiquette, composite comprise (« W33 | FR 42 ») : UN seul W, sinon null.
+function depopWDeLEtiquette(v) {
+  const t = String(v ?? "").trim();
+  if (!t) return null;
+  const morceaux = [t, ...t.split(/\s*[|·•]\s*|\s+[-–—]\s+/)].map((x) => x.trim()).filter(Boolean);
+  const ws = [...new Set(morceaux.map(depopLireW).filter((w) => w != null))];
+  return ws.length === 1 ? ws[0] : null;
+}
+// Un nombre de taille : « 40 », « T40 », « taille 40 », « FR 40 », « EU 40 », « EUR 40 » → { n, nu }.
+function depopNombreTaille(v) {
+  const m = /^(?:(fr|eur?|t|taille)\s*)?(\d{2})(?:\s*(fr|eur?))?$/.exec(depopPlierTaille(v));
+  if (!m || (m[1] && m[3])) return null;
+  return { n: Number(m[2]), nu: !m[1] && !m[3] };
+}
+// Les W ÉCRITS dans les textes du vendeur (« W30 L32 », « W 30 », « w30/l32 ») : valeurs distinctes, 23…54.
+function depopWDesTextes(textes) {
+  const ws = new Set();
+  for (const t of Array.isArray(textes) ? textes : []) {
+    for (const m of String(t ?? "").toLowerCase().matchAll(/(?:^|[^a-z0-9])w ?(\d{2})(?!\d)/g)) {
+      const w = Number(m[1]);
+      if (w >= 23 && w <= 54) ws.add(w);
+    }
+  }
+  return [...ws];
+}
+/** Le bloc des tours de taille (grilles 62, 24) : { valeur, motif } | { question, candidats, n, zone } | null (pas concerné). */
+function depopTailleZoneW(brute, idGrille, libelles, { tailleFiche = "", textes = [] } = {}) {
+  const zone = DEPOP_ZONE_TOUR_DE_TAILLE[Number(idGrille)];
+  if (!zone) return null;
+  const [a, b] = zone;
+  const dans = (x) => Number.isFinite(x) && x >= a && x <= b && libelles.includes(String(x));
+  const w = depopWDeLEtiquette(brute);
+  if (w != null) return dans(w) ? { valeur: String(w), motif: `tour de taille W${w} (bloc des W de la grille ${idGrille})` } : null;
+  const nb = depopNombreTaille(brute);
+  if (!nb || nb.n < a || nb.n > b) return null;
+  const n = nb.n;
+  if (nb.nu && depopWDeLEtiquette(tailleFiche) === n) return dans(n) ? { valeur: String(n), motif: `W${n} de la fiche` } : null;
+  if (nb.nu && n % 2 === 1) return dans(n) ? { valeur: String(n), motif: `« ${n} » impair : un tour de taille` } : null;
+  const ws = depopWDesTextes(textes);
+  if (ws.length === 1) {
+    const wt = ws[0];
+    if (wt === n && nb.nu && dans(n)) return { valeur: String(n), motif: `le texte du vendeur écrit W${n}` };
+    if (DEPOP_FR_PAR_W[wt] === n && dans(wt)) return { valeur: String(wt), motif: `le texte écrit W${wt}, et W${wt} = FR ${n} (table publiée par Vinted)` };
+  }
+  const parTable = Object.keys(DEPOP_FR_PAR_W).map(Number).filter((x) => DEPOP_FR_PAR_W[x] === n && dans(x));
+  const candidats = [...new Set([...parTable, ...(dans(n) ? [n] : [])].map(String))];
+  return { question: true, candidats, n, zone };
+}
+function depopMessageZoneW(zw) {
+  const [a, b] = zw.zone;
+  const w = zw.candidats.filter((c) => c !== String(zw.n));
+  return `Depop exige une taille de SA grille pour ce rayon. Dans ce rayon, « ${a} » à « ${b} » sont des TOURS DE TAILLE `
+    + `en pouces (W) : le « ${zw.n} » de ta fiche, si c'est une taille française, n'est pas le « ${zw.n} » de Depop (W${zw.n}). `
+    + `Choisis le tour de taille de l'article${w.length ? ` (la table de Vinted donne W${w.join(" ou W")} pour un ${zw.n})` : ""}`
+    + ` ; « ${zw.n} » seulement si l'article est vraiment un W${zw.n}.`;
+}
+// Hors grille : la phrase dit ce qui manque, et que « Other » ne fait pas disparaître la taille.
+function depopMessageHorsGrille(brute, libelles, textes) {
+  const chiffres = libelles.filter((l) => /^\d{1,3}$/.test(l)).map(Number);
+  const nb = depopNombreTaille(brute);
+  const max = chiffres.length ? Math.max(...chiffres) : null;
+  const auDela = nb && max != null && nb.n > max ? ` (la plus grande taille chiffrée de cette grille est « ${max} »)` : "";
+  const dite = (Array.isArray(textes) ? textes : []).some((t) => String(t ?? "").includes(brute));
+  return `Depop exige une taille de SA grille pour ce rayon : « ${brute} » n'y est pas${auDela}. Choisis la taille de la grille `
+    + `qui correspond à l'article ; si aucune ne convient, « Other »${dite ? " — la taille reste écrite dans la description" : " — et écris la taille dans la description"}.`;
+}
+
+// `republication` : une republication remet l'annonce telle qu'elle est (get-pending-jobs, 22/10) — le bloc des tours de
+// taille n'y corrige que ce qui est CERTAIN (règles 1 à 4) ; un doute n'y devient jamais une question (la taille de
+// l'annonce en ligne repart, comme avant, et le doute est tracé).
+function depopResoudreTaille(pf, chemin, region, grilles, textes = [], { republication = false } = {}) {
   const e = grilles.feuilles.get(chemin.join("/"));
   if (!e) return { refus: "feuille_inconnue" };
   const idGrille = e.size_set_by_region?.[region] ?? null;
@@ -481,17 +596,29 @@ function depopResoudreTaille(pf, chemin, region, grilles) {
   const grille = grilles.grilles.get(idGrille);
   if (!grille || !Array.isArray(grille.sizes) || !grille.sizes.length) return { refus: "grille_illisible" };
   const libelles = grille.sizes.map((s) => String(s?.name_i18n?.en ?? s?.name_i18n?.fr ?? "").trim());
-  const question = () => ({ question: depopQuestion("depopTaille", "Taille (Depop)", { allowed_values: [...new Set(libelles.filter(Boolean))] }) });
+  const toutes = [...new Set(libelles.filter(Boolean))];
+  const question = (enTete = [], message = null) => ({
+    question: depopQuestion("depopTaille", "Taille (Depop)", { allowed_values: [...new Set([...enTete.filter((c) => toutes.includes(c)), ...toutes])] }),
+    ...(message ? { message } : {}),
+  });
   const brute = String(pf.depopTaille ?? pf.taille ?? "").trim();
   if (!brute) return question();
+  // (28/10, point 14) Le bloc des tours de taille (62, 24) passe AVANT l'exacte — jamais sur une réponse de la personne.
+  const repondue = String(pf.needsUserResolved?.depopTaille ?? "").trim() === brute;
+  const zw = repondue ? null : depopTailleZoneW(brute, idGrille, libelles, {
+    tailleFiche: String(pf.taille ?? pf.taille_depop_de_la_fiche?.fiche ?? ""), textes,
+  });
+  if (zw?.question && !republication) return question(zw.candidats, depopMessageZoneW(zw));
+  const doute = zw?.question ? { motif: `bloc des tours de taille : « ${brute} » douteux, la republication garde la taille de l'annonce` } : null;
   const exacte = libelles.indexOf(brute);
   const tv = globalThis.taillesVocabulaire;
-  const trouvee = exacte >= 0 ? { valeur: brute } : ((tv?.tailleDansGrille ? tv.tailleDansGrille(brute, libelles) : null)
+  const trouvee = zw?.valeur ? zw : exacte >= 0 ? { valeur: brute } : ((tv?.tailleDansGrille ? tv.tailleDansGrille(brute, libelles) : null)
     ?? depopTailleEquivalente(brute, idGrille, libelles));
-  if (!trouvee) return question();
+  if (!trouvee) return question([], depopMessageHorsGrille(brute, libelles, textes));
   const s = grille.sizes[libelles.indexOf(trouvee.valeur)];
-  if (!s) return question();
-  return { idGrille, idTaille: s.id, libelle: trouvee.valeur };
+  if (!s) return question([], depopMessageHorsGrille(brute, libelles, textes));
+  const motif = zw?.motif ?? doute?.motif ?? null;
+  return { idGrille, idTaille: s.id, libelle: trouvee.valeur, ...(motif ? { motif } : {}) };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -636,12 +763,14 @@ async function fillListingForm(job) {
     const [referentiel, grilles] = await Promise.all([depopAttributs(), depopGrilles()]);
     const marque = depopResoudreMarque(pf, referentiel);
     if (marque.remplacee) depopTracer(`marque « ${marque.remplacee.de} » → Other (${marque.remplacee.motif})`);
-    const taille = depopResoudreTaille(pf, v.chemin, depopRegion(session.pays), grilles);
+    const taille = depopResoudreTaille(pf, v.chemin, depopRegion(session.pays), grilles, [job?.title, job?.description],
+      { republication: job?.action === "republish" || pf.republish_recreation === true || pf.republish_prevol_only === true });
     if (taille.refus) {
       return depopSortie({ success: false, needsUser: true, attenteUtilisateur: true, attenteMotif: "depop_rayon_inconnu",
         error: `Le rayon Depop du job (${v.chemin.join(" › ")}) n'existe pas chez Depop : choisis-le à nouveau dans l'app.`, t0 });
     }
-    if (taille.question) return depopSortie({ success: false, needsUser: true, motif_prevol: "taille", error: "Depop exige une taille de SA grille pour ce rayon.", needsUserField: taille.question, t0 });
+    if (taille.question) return depopSortie({ success: false, needsUser: true, motif_prevol: "taille", error: taille.message ?? "Depop exige une taille de SA grille pour ce rayon.", needsUserField: taille.question, t0 });
+    if (taille.motif) depopTracer(`taille « ${String(pf.depopTaille ?? pf.taille ?? "")} » → « ${taille.libelle} » (${taille.motif})`);
     const lieu = await depopLieu(session.pays);
     if (!lieu) {
       return depopSortie({ success: false, needsUser: true, attenteUtilisateur: true, attenteMotif: "depop_lieu",

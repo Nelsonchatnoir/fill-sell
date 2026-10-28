@@ -56,6 +56,8 @@ import { repriseTitreSymbolesVinted } from "./titre-symboles-vinted.js";
 import { repriseTitreMajuscules } from "./casse-titre.js";
 // (25/10, boncoin59300) Ce qu'un retrait en reprise a le droit de dire de son annonce : lu sur des champs, jamais deviné.
 import { indiceEtatRetrait } from "./retrait-deja-absent.js";
+// (28/10, point 11) Le mur « configuration vendeur » de Depop : une seule source (pur, sans import).
+import { MOTIF_VENDEUR_DEPOP, SOURCE_VENDEUR_DEPOP, MESSAGE_VENDEUR_DEPOP } from "./vendeur-depop.js";
 // (25/10, N6 et R2) eBay voie clic : le manquant qu'eBay nomme au refus du brouillon (retours, photos).
 import {
   classeRefusBrouillonEbay, SOURCE_RETOURS_EBAY, CHAMP_RETOURS_EBAY, MOTIF_PHOTOS_EBAY, REPRISES_PHOTOS_MAX,
@@ -239,6 +241,10 @@ function risqueRetrait(action, nom, pf = {}) {
  *  (18/10, lot 3) CANAL_RE vit dans etat-job.js (importé en tête) : une seule
  *  source pour ce module, handler-watch et l'écran. */
 
+/** (28/10, point 11) Depop : la lecture de session du connecteur a échoué avant tout geste (content-scripts/depop.js,
+ *  fillListingForm, étape « session » : « Session Depop illisible (reseau|http_NNN) »). */
+const DEPOP_SESSION_ILLISIBLE_RE = /Session Depop illisible \((reseau|http_\d{3})\)/i;
+
 /** Notre serveur ou celui d'en face a hoqueté : 5xx, 429, 408. */
 const SERVEUR_RE = /HTTP\s*(?:5\d\d|429|408)\b|\b(?:502|503|504|520|522|524)\b\s*$/i;
 
@@ -355,7 +361,7 @@ function antirobotContreditParLaSonde(pf, sessions, platform) {
 // (update-job-status), jamais une reprise sur un geste réel (connexion,
 // autorisation Opla, refus de Vinted pour CETTE annonce) : ceux-là gardent
 // leur bouton.
-const MOTIFS_TECHNIQUES_RETRAIT = new Set(["inconnu_relancer", "attente_trop_longue"]);
+const MOTIFS_TECHNIQUES_RETRAIT = new Set(["inconnu_relancer", "attente_trop_longue", "depop_session_illisible"]);
 const DELAIS_RETRAIT_MIN = [10, 30, 60, 120, 180];
 
 export function delaiRepriseRetrait(reprisesFaites) {
@@ -1016,6 +1022,37 @@ function classerEchecSansRegleRetrait(arg) {
       `${nom} a affiché une vérification anti-robot au lieu de la page attendue. Rien n'a été ` +
       `${action === "delete" ? "retiré" : "publié"}, ton annonce est intacte. On réessaie plus tard, ` +
       "au calme — tu peux aussi ouvrir " + nom + " et passer la vérification, ça ira plus vite.", 45);
+  }
+  // ── (28/10, point 11 — gatignol.pro, « Polo Province Of Canada » 6584f843) DEPOP : LA SESSION ILLISIBLE ──
+  // « Session Depop illisible (reseau) : rien n'a été envoyé, nouvel essai plus tard. » (content-scripts/depop.js,
+  // étape « session », AVANT le contrôle vendeur) ne portait aucune signature connue : classée « motif inconnu », trois
+  // reprises, puis « n'a pas abouti après plusieurs essais » — sur la publication ÉCLAIREUR d'un compte dont Depop
+  // demandait la configuration vendeur (mur vu le 27/10 à 15:47, Paris ; revu le 28/10 à 12:19 sur la suivante, b18e096e). Le vrai blocage
+  // disparaissait de l'écran, et la tâche sortait de la carte « À régler » (eclaireur_le > mur vu) : elle ne serait
+  // jamais repartie seule après la configuration. Règle :
+  //   · un mur vendeur VU sur ce job (last_diagnostic.quoi) : l'essai n'a rien appris de neuf (il s'est arrêté avant le
+  //     contrôle vendeur) → la tâche RETOURNE à l'attente du geste du compte (source depop_vendeur, message du compte) ;
+  //   · sinon : une coupure de la lecture de session, dite telle quelle, reprise espacée (15, 45, 180 min), puis
+  //     « vérifie ta connexion Depop sur ton ordinateur » — jamais « motif inconnu ».
+  if (platform === "depop" && DEPOP_SESSION_ILLISIBLE_RE.test(t)) {
+    const cause = DEPOP_SESSION_ILLISIBLE_RE.exec(t)[1].toLowerCase();
+    const dit = cause === "reseau" ? "coupure réseau" : cause.replace("http_", "réponse HTTP ");
+    const Acte = acte(action).replace(/^la /, "La ").replace(/^le /, "Le ");
+    if ((action === "publish" || action === "republish") && pf?.last_diagnostic?.quoi === MOTIF_VENDEUR_DEPOP) {
+      return { verdict: "a_toi", statut: "needs_user", motif: MOTIF_VENDEUR_DEPOP, source: SOURCE_VENDEUR_DEPOP, message: MESSAGE_VENDEUR_DEPOP };
+    }
+    if (reprisesFaites < 3) {
+      return reprise("depop_session_illisible",
+        `${Acte} n'a pas pu commencer : Depop n'a pas répondu à la lecture de ta session (${dit}). ${rienTouche(action, pf)} ` +
+        "On refait un essai tout seuls, un peu plus tard.", [15, 45, 180][reprisesFaites]);
+    }
+    return {
+      verdict: "a_toi", statut: "needs_user", motif: "depop_session_illisible", source: "relancer",
+      message:
+        `${Acte} n'a pas pu commencer : depuis plusieurs essais, Depop ne répond pas à la lecture de ta session sur ton ` +
+        `ordinateur (${dit}). ${rienTouche(action, pf)} Ouvre depop.com dans Chrome et vérifie que tu y es connecté, ` +
+        "puis relance-la d'un clic ci-dessous.",
+    };
   }
   if (SERVEUR_RE.test(t)) {
     return reprise("serveur",

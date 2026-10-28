@@ -28,6 +28,7 @@ import {
 } from "./depopAttributs.js";
 import { couperAuMot } from "./texteConforme.js";
 import { lireTourDeTaille } from "../../supabase/functions/_shared/taille-de-service.js";
+import { AGE_PAR_STATURE_ENFANT } from "../../supabase/functions/_shared/tailles.js";
 // (11/10) Les libellés corrigés et la trace du moteur de rayon (module partagé avec le serveur).
 import { libellesRayonDepop, VERSION_RAYON_DEPOP, SOURCE_RAYON_DEPOP, CLE_QUESTION_RAYON_DEPOP } from "../../supabase/functions/_shared/depop-rayon.js";
 
@@ -95,7 +96,19 @@ export function tailleDepop(taille, chemin) {
     // Enfants : la colonne Depop des tailles canoniques (grille 101) ou la
     // pointure enfant (grille 104). Pas d'équivalent exact → la canonique
     // part telle quelle et le connecteur DEMANDE (jamais une voisine).
-    const k = groupe === "footwear" ? depopPointureEnfant(t) : DEPOP_TAILLE_ENFANT[t];
+    let k = groupe === "footwear" ? depopPointureEnfant(t) : DEPOP_TAILLE_ENFANT[t];
+    if (k === undefined && groupe !== "footwear") {
+      // (28/10, point 14) La règle R3 de _shared/taille-de-service.js : « 8 ans (123-128 cm) » (écriture Beebs) est
+      // « 8 ans » — la même taille, sa stature entre parenthèses. Puis une stature SEULE (« 128 », « 128 cm ») :
+      // l'étiquette française (AGE_PAR_STATURE_ENFANT, _shared/tailles.js), seulement si TOUTES ses écritures donnent
+      // la MÊME taille Depop (92 cm = « 24 mois » = « 2 ans » : deux tailles Depop, la question reste).
+      const par = /^(.*?)\s*\(([^()]+)\)\s*$/.exec(t);
+      if (par) k = DEPOP_TAILLE_ENFANT[par[1].trim()];
+      const st = k === undefined ? /^(?:t|taille)?\s*(\d{2,3})\s*(?:cm)?$/i.exec(t) : null;
+      const ages = st ? AGE_PAR_STATURE_ENFANT[st[1]] : null;
+      const libs = ages ? [...new Set(ages.map((a) => DEPOP_TAILLE_ENFANT[a]?.libelle ?? null))] : [];
+      if (libs.length === 1 && libs[0]) k = DEPOP_TAILLE_ENFANT[ages[0]];
+    }
     return k?.libelle ?? t;
   }
   // (24/10, point 1 — le W sur la grille Depop 62, sujet du 22/10) UN BAS ÉCRIT EN TOUR DE TAILLE. La grille
