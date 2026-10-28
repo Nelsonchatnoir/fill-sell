@@ -97,6 +97,21 @@ export const RELANCES_APRES_MAJ = [
     buildMin: BUILD_0_6_150,
     version: "0.6.150",
   },
+  // Même défaut, autre phrase : « Vinted exige des champs encore vides … État (accepte : …) » alors que la tâche PORTE
+  // un état (XEWER, jeux vidéo : Plateforme, Classement du contenu ET État « vides » — catégorie 3026 juste ; la liste
+  // « Acer Nitro Blaze… Atari, Ayaneo » n'est que le début alphabétique des consoles). Un État « vide » sur une tâche
+  // qui en a un, c'est la relecture, jamais la personne : la question (champ_a_choisir) ou la pause (prevol_negatif)
+  // repart une fois avec la 0.6.150 — une vraie question reviendra, posée sur un formulaire bien relu.
+  ...["publish", "republish"].flatMap((action) => ["prevol_negatif", "champ_a_choisir"].map((source) => ({
+    cle: `vinted_menus_bloom_etat_vide_${action}_${source}`,
+    platform: "vinted",
+    action,
+    source,
+    predicat: (job) => /État \(accepte\s*:/.test(String(job?.error ?? ""))
+      && (action === "republish" || Boolean(String(job?.platform_fields?.etat ?? "").trim())),
+    buildMin: BUILD_0_6_150,
+    version: "0.6.150",
+  }))),
 ];
 
 // Les champs d'attente que « Relancer » (app) efface — plus la boucle
@@ -120,9 +135,11 @@ export function regleDeRelance(job, regles = RELANCES_APRES_MAJ) {
   if (pf.deleted_at) return null;
   if (job.action === "republish" && String(pf.republish_step ?? "") === "deleted") return null;
   const brut = String(pf.error_technique?.brut ?? "");
+  // (28/10) `predicat` : une condition de plus sur la tâche (le texte de l'arrêt, la fiche) — jamais à sa place.
   return regles.find((r) => r.platform === job.platform && r.action === job.action && (r.source
     ? pf.needs_user_source === r.source
-    : pf.needs_user_source === "relancer" && !!brut && brut.startsWith(r.brut))) ?? null;
+    : pf.needs_user_source === "relancer" && !!brut && brut.startsWith(r.brut))
+    && (typeof r.predicat !== "function" || r.predicat(job) === true)) ?? null;
 }
 
 // La valeur de needs_user_source que vise une règle (la requête du balayage).

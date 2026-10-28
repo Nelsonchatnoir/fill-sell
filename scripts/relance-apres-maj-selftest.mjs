@@ -152,6 +152,19 @@ console.log("\n[5] (08/10 soir) Tâche mise de côté « sans démarrage » (Jon
   ok("   relancée : étape et erreurs archivées CONSERVÉES", pf.republish_step === "captured" && pf.erreurs_archivees?.length === 1 && !pf.needs_user_source);
   ok("   republication déjà retirée : jamais", regleDeRelance({ ...LIVRE, platform_fields: { ...LIVRE.platform_fields, republish_step: "deleted" } }) === null);
   ok("   question « marque » à la personne (champ_a_choisir) : jamais", regleDeRelance({ ...ORNELLA, platform_fields: { needs_user_source: "champ_a_choisir" } }) === null);
+  const XEWER = {
+    platform: "vinted", action: "republish", status: "needs_user",
+    error: "Republication en pause AVANT toute suppression — ton annonce est intacte sur Vinted. Vinted exige des champs encore vides pour cette catégorie : Plateforme (accepte : Acer Nitro Blaze 11 · Atari · Ayaneo), Classement du contenu (accepte : PEGI 12), État (accepte : Neuf avec étiquette · Très bon état)",
+    platform_fields: { needs_user_source: "prevol_negatif", republish_step: "captured" },
+  };
+  ok("XEWER (jeux vidéo) : « État vide » sur une republication → relancée avec la 0.6.150",
+    regleDeRelance(XEWER)?.cle === "vinted_menus_bloom_etat_vide_republish_prevol_negatif");
+  const PES = { ...XEWER, action: "publish", platform_fields: { needs_user_source: "champ_a_choisir", etat: "Très bon état" } };
+  ok("   publication qui PORTE un état, question « État vide » → relancée", regleDeRelance(PES)?.cle === "vinted_menus_bloom_etat_vide_publish_champ_a_choisir");
+  ok("   publication SANS état : la question est vraie, on n'y touche pas", regleDeRelance({ ...PES, platform_fields: { needs_user_source: "champ_a_choisir" } }) === null);
+  ok("   question sans « État » parmi les vides (vraie question) : jamais",
+    regleDeRelance({ ...XEWER, error: "Vinted exige des champs encore vides pour cette catégorie : Taille (accepte : 14,1 mm)" }) === null);
+  ok("   Leboncoin, même texte : jamais", regleDeRelance({ ...XEWER, platform: "leboncoin" }) === null);
 }
 
 console.log(ko ? `\n[selftest:relance-apres-maj] ÉCHEC — ${ko} vérification(s) en défaut.` : "\n[selftest:relance-apres-maj] OK");
