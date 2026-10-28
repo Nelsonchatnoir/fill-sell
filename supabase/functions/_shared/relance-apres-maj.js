@@ -28,8 +28,8 @@ const BUILD_0_6_104 = "2026-10-08T14:53:27Z";
 // 20:15Z le porte (0.6.149 = 09:52:53Z ; essai du poste de Nico 20:17:07Z, zip du Chrome Web Store après).
 const BUILD_0_6_150 = "2026-10-28T20:15:00Z";
 // Le premier build qui pose le rayon par son identifiant quand un libellé du chemin est introuvable (0.6.152, 28/10
-// soir ; 0.6.151 = 21:10:54Z, zip de la 0.6.152 construit après 21:25Z).
-const BUILD_0_6_152 = "2026-10-28T21:25:00Z";
+// soir ; 0.6.151 = 21:10:54Z, zip de la 0.6.152 = 21:24:13Z+379de55).
+const BUILD_0_6_152 = "2026-10-28T21:20:00Z";
 
 // Une entrée vise soit une tâche « relancer » dont le message technique
 // commence par `brut`, soit (champ `source`) une tâche mise de côté pour ce

@@ -183,7 +183,7 @@ console.log("\n[5] (08/10 soir) Tâche mise de côté « sans démarrage » (Jon
   };
   const rr = regleDeRelance(REMI);
   ok("remialbertholl « Jewellery » (rayon 5564 connu) → relancée à la 0.6.152", rr?.cle === "vinted_rayon_par_identifiant_republish" && rr?.version === "0.6.152");
-  ok("   poste en 0.6.151 (21:10:54Z) : pas encore", posteALeBuild("2026-10-28T21:10:54Z+eafd77c", rr) === false);
+  ok("   poste en 0.6.151 (21:10:54Z) : pas encore", posteALeBuild("2026-10-28T21:10:54Z+eafd77c", rr) === false && posteALeBuild("2026-10-28T21:24:13Z+379de55", rr) === true);
   const MARTA = { ...REMI, action: "publish", error: "Vinted ne propose pas « Électronique » à cet endroit de son catalogue. Choisis la bonne catégorie",
     platform_fields: { needs_user_source: "prevol_negatif", vinted_ids: { catalog_id: 3026, status_id: 2 } } };
   ok("   mele.marta « Électronique » (rayon 3026 connu) → relancée", regleDeRelance(MARTA)?.cle === "vinted_rayon_par_identifiant_publish");
