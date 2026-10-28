@@ -166,7 +166,8 @@ ok(/setInterval\(\(\) => chrome\.runtime\.getPlatformInfo\(\)\.catch\(\(\) => \{
   const r2 = await fab(async () => rep)('123');
   ok(r2 === rep, 'une capture qui répond sort à l\'identique');
 }
-ok(/return \{ success: false, error: capture\?\.error \?\? "capture en échec", \.\.\.\(capture\?\.delaiDepasse \? \{ delaiDepasse: true \} : \{\}\) \};/.test(b), 'le dépassement voyage jusqu\'à la republication');
+// (28/10) Le retour porte aussi le TYPE de l'échec (accesRefuse, sessionExpiree, botShield, httpStatus — point 5).
+ok(/success: false, error: capture\?\.error \?\? "capture en échec",\s*\.\.\.\(capture\?\.delaiDepasse \? \{ delaiDepasse: true \} : \{\}\)/.test(b),'le dépassement voyage jusqu\'à la republication');
 const blocD = entre(b, 'if (cap.delaiDepasse) {', '// ── ANTI-ROBOT : ON SE CALME');
 ok(/if \(nD < 3\) \{/.test(blocD) && /new Date\(Date\.now\(\) \+ 30 \* 60_000\)/.test(blocD) && /updateJobStatus\(accessToken, job\.id, "pending", \{ platform_fields: pf, error: msgD \}\)/.test(blocD),
   'dépassement : écrit, pending, nouvel essai dans 30 min');

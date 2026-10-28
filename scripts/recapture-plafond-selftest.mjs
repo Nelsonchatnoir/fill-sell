@@ -107,7 +107,7 @@ const NOMS = nomsLocaux();
 console.log(`noms locaux lus dans le bloc : capMeta=${NOMS.capMeta} · pf=${NOMS.pf} · job=${NOMS.job} · accessToken=${NOMS.accessToken}\n`);
 
 /** Exécute le bloc avec des doublures, et rend ce qu'il a fait. */
-async function jouer({ ageHeures, pf, recapture }) {
+async function jouer({ ageHeures, pf, recapture, cause403 = null }) {
   const ecritures = [];
   const capMeta = { captured_at: new Date(Date.now() - ageHeures * 3600 * 1000).toISOString(), payload: {} };
   const etat = { pf: { ...pf }, route404: false };
@@ -121,6 +121,7 @@ async function jouer({ ageHeures, pf, recapture }) {
     updateJobStatus: async (_t, _id, status, opts) => { ecritures.push({ status, error: opts?.error ?? null }); },
     capturerEtPersisterDepuisExtension: async () => recapture,
     traiterIntrouvable404Republication: async () => { etat.route404 = true; return { status: 'needsUser', error: '404 routé' }; },
+    classifierCause403: async () => cause403 ?? 'session_presente',
     motifLisible: (e, n) => String(e ?? '').slice(0, n),
     VO,
     console: { log: () => {}, warn: () => {}, error: () => {} },
@@ -215,6 +216,29 @@ console.log('\nNON-RÉGRESSION\n');
   // ⛔ LA RÈGLE D'OR : rien ne supprime quoi que ce soit dans ce bloc.
   ok('aucune suppression dans le bloc — il précède tout retrait',
     !/deleteListing|republish_step\s*=\s*["']deleted["']|supprimer/i.test(BLOC));
+}
+
+console.log('\nLE MUR DE LECTURE N\'ATTEND PAS UNE RELANCE À LA MAIN (28/10, vincent.armengol 52f63459)\n');
+{
+  const ANTIROBOT = { success: false, accesRefuse: true, httpStatus: 403, error: "lecture de l'annonce refusée par Vinted (HTTP 403) — protection anti-robot" };
+  const r = await jouer({ ageHeures: 31, pf: { vinted_item_id: '2801714080' }, recapture: ANTIROBOT });
+  ok('403 anti-robot (session présente) : en file, jamais needs_user', r.status === 'skipped' && r.ecritures.at(-1)?.status === 'pending', JSON.stringify(r.ecritures));
+  ok('…nouvel essai espacé de 45 min', Math.abs(Date.parse(r.pf.next_action_after) - Date.now() - 45 * 60_000) < 60_000, String(r.pf.next_action_after));
+  ok('…trace capture_echec lisible par la pause anti-robot du compte', /anti-?robot/i.test(String(r.pf.capture_echec?.motif)) && r.pf.capture_echec?.http === 403, JSON.stringify(r.pf.capture_echec));
+  ok('…aucune source de question posée', r.pf.needs_user_source === undefined, String(r.pf.needs_user_source));
+  ok('…compteur à 1', r.pf.recapture_antirobot?.n === 1, JSON.stringify(r.pf.recapture_antirobot));
+}
+{
+  const r = await jouer({ ageHeures: 31, pf: { recapture_antirobot: { n: 6 } }, recapture: { success: false, error: 'CHALLENGE Vinted (bot-shield)', botShield: true } });
+  ok('7ᵉ mur de suite : le message d\'avant (needs_user), borne tenue', r.status === 'needsUser' && /la nouvelle capture a échoué/.test(String(r.ecritures.at(-1)?.error)), JSON.stringify(r.ecritures));
+}
+{
+  const r = await jouer({ ageHeures: 31, pf: {}, cause403: 'session_absente', recapture: { success: false, accesRefuse: true, httpStatus: 403, error: "lecture de l'annonce refusée par Vinted (HTTP 403) — protection anti-robot" } });
+  ok('403 sans session Vinted dans ce navigateur : la connexion, reprise seule', r.status === 'needsUser' && r.pf.needs_user_source === 'session_vinted' && /Connexion Vinted requise/.test(String(r.ecritures.at(-1)?.error)), JSON.stringify({ s: r.status, src: r.pf.needs_user_source, e: r.ecritures.at(-1)?.error }));
+}
+{
+  const r = await jouer({ ageHeures: 31, pf: { recapture_antirobot: { n: 3 } }, recapture: OK_RECAP });
+  ok('recapture réussie après des murs : compteur remis à zéro', r.status === 'skipped' && r.pf.recapture_antirobot === undefined && r.pf.capture_id === 7777, JSON.stringify(r.pf.recapture_antirobot));
 }
 
 console.log(`\n${ko === 0 ? '✅ TOUT PASSE' : `❌ ${ko} CONTRÔLE(S) EN ÉCHEC`}`);

@@ -18,7 +18,7 @@ import { boutiquePublicationVinted } from "../_shared/boutique-publication-vinte
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
-import { ETATS_VINTED, langueVintedDuJob, paysDeLaLangue, PAYS_VINTED_EURO, type LangueVinted } from "../_shared/vinted-pays.ts";
+import { ETATS_VINTED, langueVintedDuJob, languesOuvertesSansPays, paysDeLaLangue, PAYS_VINTED_EURO, type LangueVinted } from "../_shared/vinted-pays.ts";
 import { navigateurDeUA, paysDeEntete, vintedEtranger, paysAppareilDesReglages } from "../_shared/navigateur-poste.js";
 import { vintedIdsPourPublication } from "../_shared/vinted-ids-publication.ts";
 import { sessionIdDuJwt, identifiantPosteExtension, postesVivants, posteCourt, posteAvecAccesOpla, posteAvecAccesDepop, POSTE_TTL_MS, type Poste } from "../_shared/poste-extension.ts";
@@ -12786,7 +12786,9 @@ serve(async (req) => {
         const ouverts = new Set(((cfgPays ?? []) as Array<{ key: string; value: number }>)
           .filter((r) => Number(r.value) === 1).map((r) => r.key.replace("vinted_pays_", "").toUpperCase()));
 
-        let etats = 0, autorises = 0, fermes = 0;
+        // (28/10, mele.marta) Pays du compte non lu (sonde muette) : les langues de page qui suffisent (cf. _shared).
+        const languesSansPays = languesOuvertesSansPays(ouverts);
+        let etats = 0, autorises = 0, fermes = 0, sansPays = 0;
         for (const j of jobsVinted) {
           const pf = (j.platform_fields && typeof j.platform_fields === "object")
             ? (j.platform_fields as Record<string, unknown>) : null;
@@ -12817,6 +12819,14 @@ serve(async (req) => {
           // ou inconnue) n'est jamais concernée.
           const francaisPageEtrangere = (!pays.length || pays.includes("FR")) && !!langue && langue !== "fr";
           if (!francaisPageEtrangere) {
+            // (28/10, mele.marta 2fd83d73) PAYS NON LU — sonde muette (« jeton_expire_session_ouverte »), publication
+            // sans capture : l'autorisation n'est pas servie, mais les langues dont tous les pays sont ouverts le
+            // sont. vinted.js ne s'en sert QUE si <html lang> de la page en fait partie ; une page française (ou en
+            // anglais) n'y voit rien. Rien n'est écrit en base : seul le job servi est enrichi.
+            if (!pays.length && languesSansPays.length) {
+              pf.vinted_ids_langues_ouvertes = languesSansPays;
+              sansPays++;
+            }
             if (!pays.length || pays.includes("FR")) continue; // français ou inconnu : chemin d'aujourd'hui
             if (!pays.some((cc) => ouverts.has(cc))) { fermes++; continue; }
 
@@ -12843,7 +12853,7 @@ serve(async (req) => {
           console.log(`[get-pending-jobs] user=${user.id} job=${String(j.id).slice(0, 8)} : état Vinted servi en ${langue} (status ${statusId} → « ${valeur} »)`);
         }
         if (fermes) console.log(`[get-pending-jobs] user=${user.id} : ${fermes} job(s) Vinted d'un pays FERMÉ (coin_config vinted_pays_*) — servis comme avant`);
-        if (autorises || etats) console.log(`[get-pending-jobs] user=${user.id} : zone euro — ${autorises} job(s) autorisé(s) par identifiant, ${etats} état(s) servi(s) dans la langue du compte`);
+        if (autorises || etats || sansPays) console.log(`[get-pending-jobs] user=${user.id} : zone euro — ${autorises} job(s) autorisé(s) par identifiant, ${etats} état(s) servi(s) dans la langue du compte, ${sansPays} job(s) servi(s) avec les langues ouvertes (pays du compte non lu)`);
       }
     } catch (e) {
       console.warn(`[get-pending-jobs] Vinted zone euro : ${String((e as Error)?.message ?? e)} — jobs servis tels quels`);

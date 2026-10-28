@@ -1549,6 +1549,21 @@ function pageVintedFrancaise() {
   return !l || l === "fr" || l.startsWith("fr-");
 }
 
+// ── LE PAYS NON LU N'EMPÊCHE PLUS LA POSE PAR IDENTIFIANT (28/10/2026, mele.marta 2fd83d73) ──────────────────────
+// « Gioco PS4 F1 2015 », page en italien : la sonde du compte s'était tue (jeton expiré, pays non lu) — le serveur
+// n'a pas servi vinted_ids_actifs, et la catégorie est descendue par libellés français : « Électronique »
+// introuvable parmi « Elettronica, Libri e media… », question sans issue. Le serveur sert désormais les langues
+// dont TOUS les pays sont ouverts (vinted_ids_langues_ouvertes, _shared/vinted-pays.ts) ; la page dit la sienne.
+// ⛔ Jamais le français ni l'anglais ; une langue absente de la liste (pays fermé) = le chemin d'avant.
+function langueDePageOuverte(fields) {
+  const l = String(document.documentElement?.getAttribute("lang") ?? "").trim().toLowerCase().split(/[-_]/)[0];
+  if (!l || l === "fr" || l === "en") return false;
+  const ouvertes = Array.isArray(fields?.vinted_ids_langues_ouvertes)
+    ? fields.vinted_ids_langues_ouvertes.map((x) => String(x ?? "").trim().toLowerCase())
+    : [];
+  return ouvertes.includes(l);
+}
+
 // catalog_id → chemin d'IDENTIFIANTS de la racine à la feuille, lu dans
 // l'arbre du compte (/api/v2/item_upload/catalogs — mêmes ids et même
 // hiérarchie dans les 18 pays euro, relevé du 25/09).
@@ -3320,7 +3335,7 @@ async function remplirFormulaireVinted(job) {
   // vinted_ids_actifs : AUTORISATION du serveur (get-pending-jobs, pays du
   // compte OUVERT — coin_config vinted_pays_<cc>). Absente = on ne s'en sert
   // pas : fermer un pays côté serveur coupe ces poses en un geste.
-  const idsVinted = !pageVintedFrancaise() && fields.vinted_ids_actifs === true &&
+  const idsVinted = !pageVintedFrancaise() && (fields.vinted_ids_actifs === true || langueDePageOuverte(fields)) &&
     fields.vinted_ids && typeof fields.vinted_ids === "object"
     ? fields.vinted_ids : null;
   if (idsVinted) {

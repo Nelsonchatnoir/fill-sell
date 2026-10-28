@@ -15772,7 +15772,18 @@ async function capturerEtPersisterDepuisExtension({ vintedItemId, inventaireId, 
   const capture = await captureVintedItemUnlocked(id);
   if (!capture?.success) {
     // (11/10) Le dépassement de délai voyage jusqu'à processRepublishJob, qui l'écrit.
-    return { success: false, error: capture?.error ?? "capture en échec", ...(capture?.delaiDepasse ? { delaiDepasse: true } : {}) };
+    // (28/10, vincent.armengol 52f63459) Le TYPE de l'échec aussi (lireDetailArticle, vinted.js : 403 accesRefuse,
+    // 401 sessionExpiree, bot-shield, code HTTP) : il était perdu ici, si bien que la branche « 403 sans connexion »
+    // de l'étape a_capturer ne pouvait jamais tirer, et que la recapture d'une copie périmée ne savait pas
+    // reconnaître un anti-robot.
+    return {
+      success: false, error: capture?.error ?? "capture en échec",
+      ...(capture?.delaiDepasse ? { delaiDepasse: true } : {}),
+      ...(capture?.accesRefuse ? { accesRefuse: true } : {}),
+      ...(capture?.sessionExpiree ? { sessionExpiree: true } : {}),
+      ...(capture?.botShield ? { botShield: true } : {}),
+      ...(Number.isFinite(Number(capture?.httpStatus)) ? { httpStatus: Number(capture.httpStatus) } : {}),
+    };
   }
 
   // Re-hébergement des photos : remplace le marqueur 'photos_rehebergees' posé
@@ -24767,6 +24778,9 @@ function construireJobRecreation(job, pf, cap, prix) {
       // Autorisation serveur (pays ouvert, get-pending-jobs) — sans elle,
       // vinted_ids reste lettre morte côté vinted.js.
       ...(pf.vinted_ids_actifs === true ? { vinted_ids_actifs: true } : {}),
+      // (28/10, mele.marta) Pays du compte non lu : les langues de page ouvertes (get-pending-jobs).
+      ...(Array.isArray(pf.vinted_ids_langues_ouvertes) && pf.vinted_ids_langues_ouvertes.length
+        ? { vinted_ids_langues_ouvertes: pf.vinted_ids_langues_ouvertes.map(String) } : {}),
       // (25/10, paugues 110c27ae / 5ad5bbb1) Rayon de la capture changé par FillSell (œuvre d'art,
       // _shared/capture-corrigee.js) : la une-passe ne remplace jamais son format de colis (vinted.js,
       // règle B) — le serveur fait relire l'annonce dans SON rayon (questions tranchées, règle 9 A ;
@@ -27758,6 +27772,55 @@ async function processRepublishJob(job, accessToken) {
             // n'a été supprimé : la recapture précède tout retrait.
             return await traiterIntrouvable404Republication({ accessToken, job, pf, userId, etape: "captured" });
           }
+          // ── (28/10, vincent.armengol 52f63459) UN MUR DE LECTURE N'ATTEND JAMAIS UNE RELANCE À LA MAIN ──────────
+          // « Robert Delavignette. Les Paysans noirs » : capture du 24/10 14:54, servie le 25/10 21:29 (31 h plus
+          // tard, file de ~50 republications et pause anti-robot du compte) → recapture → GET item_upload/items 403
+          // « protection anti-robot » → needs_user « Relance depuis l'app », trois fois (20:30, 20:42, 21:03), puis
+          // plus rien : la reprise après reconnexion de handler-watch s'arrête à 3 sur le même mur. Annonce en
+          // ligne, intacte, depuis le 25/10. Ses voisines (même lot, même mur à l'étape a_capturer) étaient
+          // simplement ESPACÉES de 45 min et sont toutes parties. Même règle ici, avant tout retrait :
+          //   · 403 sans aucune session Vinted dans ce navigateur (cookie absent) → la connexion, demandée et
+          //     reprise seule à la reconnexion (needs_user_source session_vinted) — comme a_capturer ;
+          //   · anti-robot (403 avec session, bot-shield, CHALLENGE) → en file, nouvel essai dans 45 min, trace
+          //     capture_echec (que la pause anti-robot du compte, get-pending-jobs, sait lire) ; borné à 6 essais
+          //     (≈ 4 h 30), puis le message d'avant ;
+          //   · tout le reste : inchangé.
+          {
+            const maintenantIso = new Date().toISOString();
+            pf.capture_echec = {
+              at: maintenantIso, etape: "captured_recapture", motif: String(recap.error ?? "").slice(0, 300),
+              ...(Number.isFinite(Number(recap.httpStatus)) ? { http: Number(recap.httpStatus) } : {}),
+            };
+            if (recap.accesRefuse) {
+              const cause403 = await classifierCause403().catch(() => "indetermine");
+              pf.capture_echec.cause403 = cause403;
+              if (cause403 === "session_absente") {
+                pf.capture_echec.motif = "lecture de l'annonce refusée par Vinted (HTTP 403) — aucune session Vinted dans ce navigateur";
+                pf.needs_user_source = "session_vinted";
+                delete pf.next_action_after;
+                const msgCo = `Connexion Vinted requise : connecte-toi sur ${VO.domaineVintedAffiche()} dans ${VO.navigateurCourt()}, sur ton ordinateur. ` +
+                  "Ton annonce est intacte, rien n'a été touché ; la republication repartira toute seule dès que tu seras connecté.";
+                await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msgCo });
+                return { status: "needsUser", error: "recapture 403 : connexion Vinted absente" };
+              }
+            }
+            const RECAPTURE_ANTIROBOT_MAX = 6;
+            if (recap.accesRefuse || recap.botShield || /protection anti-?robot|CHALLENGE|anti-?robot/i.test(String(recap.error ?? ""))) {
+              const nAr = (Number(pf.recapture_antirobot?.n) || 0) + 1;
+              pf.recapture_antirobot = { n: nAr, le: maintenantIso, depuis: pf.recapture_antirobot?.depuis ?? maintenantIso };
+              if (nAr <= RECAPTURE_ANTIROBOT_MAX) {
+                pf.next_action_after = new Date(Date.now() + 45 * 60_000).toISOString();
+                delete pf.needs_user_source;
+                const msgAr =
+                  "Vinted a affiché une vérification anti-robot au lieu de ton annonce. Rien n'a été touché, " +
+                  "ton annonce est toujours en ligne. On réessaie tout seuls, au calme — " +
+                  "tu peux aussi ouvrir Vinted et passer la vérification, ça ira plus vite.";
+                await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: msgAr });
+                console.warn(`[republish] job ${job.id} : recapture de la copie périmée refusée par l'anti-robot (${nAr}/${RECAPTURE_ANTIROBOT_MAX}) — nouvel essai dans 45 min`);
+                return { status: "skipped", error: `recapture anti-robot (${nAr}/${RECAPTURE_ANTIROBOT_MAX}) : ${recap.error}` };
+              }
+            }
+          }
           const msg =
             `Republication en pause AVANT toute suppression : ta capture datait de plus de 24 h et la nouvelle capture a échoué : ${motifLisible(recap.error, 160)}. ` +
             "Rien n'a été touché, ton annonce est intacte. Relance la republication depuis l'app, " + VO.navigateurCourt() + " ouvert.";
@@ -27799,6 +27862,8 @@ async function processRepublishJob(job, accessToken) {
         // la borne de fraîcheur passera, et la suppression suivra. Même
         // logique « un geste par passage » que l'étape a_capturer.
         pf.capture_id = recap.capture_id;
+        // (28/10) Le mur de lecture est passé : son compteur repart de zéro.
+        delete pf.recapture_antirobot;
         // La marque qui rend le compteur honnête : à partir d'ici, une
         // péremption sera bien une capture QUE NOUS AVONS REFAITE et qui a
         // expiré — le cycle que le plafond doit attraper. Tant qu'elle est

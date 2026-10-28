@@ -55,7 +55,8 @@ ok(/pfJ\.vintedAspects = \{ \.\.\.\(\(pfJ\.vintedAspects \?\? \{\}\) as Record<s
 const gpj = lire("supabase/functions/get-pending-jobs/index.ts");
 ok(/const francaisPageEtrangere = \(!pays\.length \|\| pays\.includes\("FR"\)\) && !!langue && langue !== "fr";/.test(gpj),
   "get-pending-jobs : un compte français à page étrangère reçoit l'état dans la langue de sa page");
-ok(/if \(!francaisPageEtrangere\) \{\s+if \(!pays\.length \|\| pays\.includes\("FR"\)\) continue;/.test(gpj),
+// (28/10, mele.marta) Entre les deux : les langues ouvertes servies quand le pays n'est pas lu (rien d'écrit en base).
+ok(/if \(!francaisPageEtrangere\) \{[\s\S]{0,1200}?if \(!pays\.length \|\| pays\.includes\("FR"\)\) continue;/.test(gpj),
   "… sans identifiants ni autorisation : le chemin français reste celui d'avant");
 
 if (ko) { console.error(`\n✗ ${ko} échec(s)`); process.exit(1); }

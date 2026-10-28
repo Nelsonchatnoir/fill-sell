@@ -1,7 +1,7 @@
 // Selftest de la langue Vinted d'un job (_shared/vinted-pays.ts, 25/09).
 // deno run scripts/vinted-pays-selftest.ts
 import {
-  ETATS_VINTED, langueVintedDuJob, languesDeLaRacine, paysDeLaLangue, PAYS_VINTED_EURO, RACINES_CATALOGUE,
+  ETATS_VINTED, langueVintedDuJob, languesDeLaRacine, languesOuvertesSansPays, paysDeLaLangue, PAYS_VINTED_EURO, RACINES_CATALOGUE,
 } from "../supabase/functions/_shared/vinted-pays.ts";
 import { VINTED_CONDITION_LIBELLES } from "../supabase/functions/_shared/vinted-etat.ts";
 
@@ -43,6 +43,15 @@ ok(Object.entries(ETATS_VINTED).filter(([, e]) => e.formulaire).map(([l]) => l).
 ok(Object.keys(PAYS_VINTED_EURO).length === 18, "18 pays euro");
 ok(paysDeLaLangue("it").join() === "IT" && paysDeLaLangue("de").sort().join() === "AT,DE" && paysDeLaLangue("en").join() === "IE", "langue → pays");
 ok(languesDeLaRacine("Uomo").join() === "it", "racine Uomo → it seul");
+
+// (28/10, mele.marta 2fd83d73) Pays du compte non lu : les langues de page qui suffisent.
+ok(languesOuvertesSansPays(new Set(["IT"])).join() === "it", "IT ouvert seul → it");
+ok(languesOuvertesSansPays(new Set()).length === 0, "aucun pays ouvert → rien");
+ok(languesOuvertesSansPays(new Set(["DE"])).length === 0, "DE ouvert, AT fermé → pas « de » (une page allemande peut être autrichienne)");
+ok(languesOuvertesSansPays(new Set(["DE", "AT"])).join() === "de", "DE et AT ouverts → de");
+ok(languesOuvertesSansPays(new Set(["NL"])).length === 0, "NL ouvert, BE fermé → pas « nl »");
+ok(!languesOuvertesSansPays(new Set(Object.keys(PAYS_VINTED_EURO))).includes("fr"), "jamais le français, même tout ouvert");
+ok(!languesOuvertesSansPays(new Set(Object.keys(PAYS_VINTED_EURO))).includes("en"), "jamais l'anglais (compte français possible), même IE ouvert");
 
 if (echecs) { console.error(`\n${echecs} échec(s)`); Deno.exit(1); }
 console.log("\nTout est vert.");

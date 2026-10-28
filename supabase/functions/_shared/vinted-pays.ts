@@ -99,6 +99,25 @@ export const RACINES_CATALOGUE: Readonly<Record<LangueVinted, Readonly<Record<nu
   el: { 1904: "Γυναίκα", 5: "Άνδρας", 1193: "Παιδιά", 1918: "Σπίτι", 2994: "Ηλεκτρονικά είδη", 2309: "Βιβλία & πολυμέσα", 4824: "Χόμπι και συλλεκτικά είδη", 4332: "Άθληση" },
 };
 
+/**
+ * (28/10/2026, mele.marta 2fd83d73) Langues de PAGE qui ouvrent, seules, la pose par identifiant quand le pays du
+ * compte n'a PAS été lu : la sonde users/current se tait dès que le jeton d'une heure a expiré (http
+ * « jeton_expire_session_ouverte » → vinted_identite null), et une publication n'a ni capture ni liste d'états pour
+ * dire sa langue. L'autorisation n'était alors jamais servie : la page italienne descendait l'arbre par libellés
+ * français (« Électronique » introuvable parmi « Elettronica »…). Une langue n'est rendue que si TOUS les pays où
+ * Vinted la sert sont ouverts (coin_config vinted_pays_<cc> = 1) — fermer un pays la retire, comme avant.
+ * ⛔ Jamais le français (chemin d'aujourd'hui) ni l'anglais (un compte FRANÇAIS peut voir sa page en anglais : seule
+ * la sonde dit alors son pays). C'est la page elle-même (<html lang>, lu par vinted.js) qui dit sa langue.
+ */
+export function languesOuvertesSansPays(ouverts: ReadonlySet<string>): LangueVinted[] {
+  return (Object.keys(ETATS_VINTED) as LangueVinted[])
+    .filter((l) => l !== "fr" && l !== "en")
+    .filter((l) => {
+      const pays = paysDeLaLangue(l);
+      return pays.length > 0 && pays.every((cc) => ouverts.has(cc));
+    });
+}
+
 /** Pays de la zone euro dont c'est la langue (pour l'interrupteur par pays). */
 export function paysDeLaLangue(l: LangueVinted): string[] {
   return Object.entries(PAYS_VINTED_EURO).filter(([, p]) => p.langues.includes(l)).map(([cc]) => cc);
