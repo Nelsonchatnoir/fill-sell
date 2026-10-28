@@ -13,6 +13,8 @@ BEGIN;
 CREATE TABLE IF NOT EXISTS public._backup_2810_polo_vendeur_depop AS
   SELECT id, status, error, platform_fields, now() AS sauve_le
     FROM public.cross_post_jobs WHERE id = '6584f843-ed1a-4bde-aa9b-f489ca5ee840';
+ALTER TABLE public._backup_2810_polo_vendeur_depop ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public._backup_2810_polo_vendeur_depop FROM PUBLIC, anon, authenticated;
 UPDATE public.cross_post_jobs SET
   error = 'Depop demande de terminer ta configuration de vendeur (ajouter un moyen de paiement) avant ta première mise en ligne. '
        || 'Fais-le une seule fois sur depop.com, sur ton ordinateur : tes publications Depop repartiront toutes seules. Rien n''a été publié ni retiré.',
@@ -44,6 +46,8 @@ BEGIN;
 CREATE TABLE IF NOT EXISTS public._backup_2810_ebay_arretee_mataich AS
   SELECT id, status, error, platform_fields, now() AS sauve_le
     FROM public.cross_post_jobs WHERE id = '43e3371c-39bd-45ec-9686-05e500000828';
+ALTER TABLE public._backup_2810_ebay_arretee_mataich ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public._backup_2810_ebay_arretee_mataich FROM PUBLIC, anon, authenticated;
 UPDATE public.cross_post_jobs SET
   status = 'cancelled',
   error = 'Cette annonce a bien été en ligne sur eBay, puis elle y a été arrêtée le 24/10 à 16h07 — pas par FillSell, et sans vente. '
