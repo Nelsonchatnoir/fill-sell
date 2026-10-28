@@ -13,25 +13,34 @@
 // Postgres parcourait alors la clé primaire de TOUS les comptes (16 893 lignes
 // écartées pour une page de 500). Plus gros compte : 2 967 lignes. Lecture en
 // échec → rien d'inventé : null, le bloc ne montre pas la répartition.
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { lireToutesPagesRecentsDabord } from '../utils/lireToutesPages';
 import { etatPlateformes } from '../utils/stockFiltres';
 
-const COLONNES = 'id, inventaire_id, platform, status, action, created_at, published_at, listing_url, platform_listing_id';
+// (28/10) `price` : le prix PUBLIÉ sur la plateforme — « prix encaissé / prix affiché »
+// du Tableau et des Stats (utils/tableauStats.prixAffiche). Une colonne numérique de
+// plus sur la même lecture, aucune requête en plus.
+const COLONNES = 'id, inventaire_id, platform, status, action, created_at, published_at, listing_url, platform_listing_id, price';
 const STATUTS = ['pending', 'processing', 'published', 'deleted', 'sold'];
 
-/** Calcul pur (testable) : { enLigne, pasEncore, parPlateforme: { vinted: n, … }, total }. */
+/**
+ * Calcul pur (testable) : { enLigne, pasEncore, parPlateforme: { vinted: n, … }, total,
+ * parArticle: Map(id → ['vinted', …]) }. `parArticle` (28/10) donne au Tableau desktop les
+ * articles derrière chaque pastille, avec la MÊME règle que les compteurs.
+ */
 export function compterStockEnLigne(stock, jobsParArticle) {
   const parPlateforme = {};
+  const parArticle = new Map();
   let enLigne = 0, total = 0;
   for (const it of stock ?? []) {
     total += 1;
     const e = etatPlateformes(jobsParArticle?.[it.id] ?? [], 'fr', it);
+    parArticle.set(it.id, e.enLigne);
     if (e.enLigne.length) enLigne += 1;
     for (const p of e.enLigne) parPlateforme[p] = (parPlateforme[p] ?? 0) + 1;
   }
-  return { enLigne, pasEncore: total - enLigne, parPlateforme, total };
+  return { enLigne, pasEncore: total - enLigne, parPlateforme, total, parArticle };
 }
 
 export function useStockEnLigne(userId, stock) {
@@ -52,7 +61,9 @@ export function useStockEnLigne(userId, stock) {
       .catch((e) => { if (!annule) { console.warn('[stock en ligne] lecture impossible :', e?.message); setJobs(false); } });
     return () => { annule = true; };
   }, [userId]);
+  // (28/10) Mémorisé : le Tableau desktop calcule ses statistiques à partir de ce résultat.
+  // `jobsParArticle` rend les jobs lus (avec leur prix publié) aux calculs du Tableau.
+  const compte = useMemo(() => (jobs ? { ...compterStockEnLigne(stock, jobs), jobsParArticle: jobs } : null), [stock, jobs]);
   if (!userId) return null;
-  if (jobs === null || jobs === false) return null;
-  return compterStockEnLigne(stock, jobs);
+  return compte;
 }

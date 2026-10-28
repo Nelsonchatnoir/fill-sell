@@ -5,8 +5,7 @@ import { prixAchatConnu, prixAchatNum, comptabilisables } from '../utils/comptab
 import { UI } from '../components/ui';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import {
-  ventesParPlateforme, margeMoyenne, margePctVente, prixAchatZero, totalEncaisse, indexAjouts,
-  joursPourVendre, libelleJours, cheminMonotone, CODES_PLATEFORME_VENTE, CLE_SANS_PLATEFORME,
+  ventesParPlateforme, margeMoyenne, margePctVente, prixAchatZero, totalEncaisse, libelleJours, cheminMonotone, CODES_PLATEFORME_VENTE, CLE_SANS_PLATEFORME,
   COULEUR_PLATEFORME, LIBELLE_PLATEFORME_VENTE,
 } from '../utils/ventesStats';
 import { CSS_ECRANS } from '../ecrans/animations';
@@ -16,6 +15,15 @@ import { Carte, Libelle, Segments, BoiteIcone } from '../ecrans/pleins/communs';
 import { ENCRE2, DISCRET, PECHE_ENCRE, libellePct } from '../ecrans/pleins/jetons';
 import { useStockEnLigne } from '../ecrans/useStockEnLigne';
 import StatsVide from '../ecrans/vides/StatsVide';
+import { useBureau } from '../hooks/useBureau';
+import { creerContexte, delaiVente, periode, ventesDe, PERIODES_BUREAU } from '../utils/tableauStats';
+import StatsBureau from '../ecrans/bureau/StatsBureau';
+
+// (28/10) Les périodes de l'écran mobile, traduites dans celles de utils/tableauStats :
+// « 1M » = les 30 derniers jours (nommés ainsi), 3M/6M/1A = mois glissants, Tout = tout.
+const CLE_PERIODE_STATS={'1M':'30j','3M':'3m','6M':'6m','1A':'12m','1Y':'12m','Tout':'tout','All':'tout'};
+const CLE_BUREAU='fs_stats_periode';
+const lirePeriodeBureau=()=>{try{const v=localStorage.getItem(CLE_BUREAU);return PERIODES_BUREAU.includes(v)?v:'12m';}catch{return '12m';}};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // STATS — refonte du 16/10 (maquette « fillsell-ecrans-pleins.html » validée
@@ -67,7 +75,7 @@ const CAT_AUTRE='#C9C3B8';
 const MAX_CATEGORIES=5;
 
 const PERIODE_LIBELLE={
-  '1M':['DERNIER MOIS','LAST MONTH'],'3M':['3 DERNIERS MOIS','LAST 3 MONTHS'],'6M':['6 DERNIERS MOIS','LAST 6 MONTHS'],
+  '1M':['30 DERNIERS JOURS','LAST 30 DAYS'],'3M':['3 DERNIERS MOIS','LAST 3 MONTHS'],'6M':['6 DERNIERS MOIS','LAST 6 MONTHS'],
   '1A':['12 DERNIERS MOIS','LAST 12 MONTHS'],'1Y':['12 DERNIERS MOIS','LAST 12 MONTHS'],'Tout':['DEPUIS LE DÉBUT','ALL-TIME'],'All':['DEPUIS LE DÉBUT','ALL-TIME'],
 };
 const MOIS_COURTS_FR=['Janv.','Févr.','Mars','Avr.','Mai','Juin','Juil.','Août','Sept.','Oct.','Nov.','Déc.'];
@@ -144,10 +152,17 @@ function Barre({largeur,couleur,delai,hauteur=10}){
   );
 }
 
-const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,aiCache={},setAiCache=()=>{},setTab=()=>{},isActive=true}){
+const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,aiCache={},setAiCache=()=>{},setTab=()=>{},isActive=true,isNative=false}){
   const RANGES=lang==='en'?['1M','3M','6M','1Y','All']:['1M','3M','6M','1A','Tout'];
   const fr=lang!=='en';
   const [range,setRange]=useState('6M');
+  // (28/10) Sur ordinateur (web, ≥ 1 024 px) : la page Statistiques desktop (ecrans/bureau),
+  // ses quatre périodes nommées et sa propre mémoire de période. Sous ce seuil : l'écran d'avant.
+  const bureau=useBureau(isNative);
+  const [rangeBureau,setRangeBureauEtat]=useState(lirePeriodeBureau);
+  const setRangeBureau=(v)=>{setRangeBureauEtat(v);try{localStorage.setItem(CLE_BUREAU,v);}catch{/* préférence locale */}};
+  const rangeActif=bureau?rangeBureau:range;
+  const cleStats=CLE_PERIODE_STATS[rangeActif]??rangeActif;
   const [aiText,setAiText]=useState('');
   const [aiLoading,setAiLoading]=useState(false);
   const [outdated,setOutdated]=useState(false);
@@ -160,27 +175,18 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
   if(isActive!==actifAvant){setActifAvant(isActive);if(isActive)setEntree(e=>e+1);}
 
   const now=new Date();
-  const cutoff=useMemo(()=>{
-    const d=new Date();
-    if(range==='1M'){d.setMonth(d.getMonth()-1);}
-    else if(range==='3M'){d.setMonth(d.getMonth()-3);}
-    else if(range==='6M'){d.setMonth(d.getMonth()-6);}
-    else if(range==='1A'||range==='1Y'){d.setFullYear(d.getFullYear()-1);}
-    else d.setFullYear(2000);
-    return d;
-  },[range]);
+  // (28/10) Les bornes viennent de utils/tableauStats (jours de Paris) : les mêmes ventes
+  // que le Tableau et l'en-tête pour une même période nommée.
+  const periodeActive=useMemo(()=>periode(cleStats),[cleStats]);
+  const cutoff=useMemo(()=>periodeActive.debut?new Date(`${periodeActive.debut}T00:00:00`):new Date(2000,0,1),[periodeActive]);
 
   // « Tout » n'est PAS une période : c'est le total global, et une vente SANS
   // date en fait partie. Le `||0` la faisait tomber en 1970 (new Date(0)),
   // c'est-à-dire AVANT le plancher de « Tout » (setFullYear(2000)) — elle
   // disparaissait même du total censé tout contenir. Les vraies fenêtres
   // (1M/3M/6M/1A) continuent de l'exclure : sans date, pas de période.
-  const rangeTout=range==='Tout'||range==='All';
-  const filtered=useMemo(()=>sales.filter(s=>{
-    const brut=s.created_at||s.date;
-    if(!brut) return rangeTout;
-    return new Date(brut)>=cutoff;
-  }),[sales,cutoff,rangeTout]);
+  const rangeTout=cleStats==='tout';
+  const filtered=useMemo(()=>ventesDe(sales,periodeActive),[sales,periodeActive]);
 
   // Les ventes dont le prix d'achat est inconnu n'entrent dans AUCUN calcul de
   // bénéfice ni de moyenne — elles restent dans `filtered` pour le CA et les
@@ -188,9 +194,10 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
   const ventesComptables=useMemo(()=>comptabilisables(filtered),[filtered]);
   const totalProfit=ventesComptables.reduce((a,s)=>a+(s.margin||0),0);
   const totalRev=totalEncaisse(filtered);
-  // (16/10, règle b) Moyenne SIMPLE des % (comme avant), mais seulement sur les
-  // ventes au prix d'achat > 0 : un « gratuit » à 100 % ne gonfle plus rien.
-  const margeStats=useMemo(()=>margeMoyenne(filtered,{mode:'simple'}),[filtered]);
+  // (16/10, règle b) Seulement sur les ventes au prix d'achat > 0 : un « gratuit » à
+  // 100 % ne gonfle plus rien. (28/10) PONDÉRÉE (Σ bénéfices ÷ Σ prix de vente), comme
+  // le Tableau et l'en-tête : une seule règle de marge partout (utils/tableauStats).
+  const margeStats=useMemo(()=>margeMoyenne(filtered,{mode:'ponderee'}),[filtered]);
   const avgMargin=margeStats.pct==null?0:Math.round(margeStats.pct*10)/10;
 
   const titleToType=useMemo(()=>{
@@ -262,10 +269,17 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
   // Panier moyen = CA / nombre de ventes : deux grandeurs indépendantes du prix
   // d'achat, donc AUCUN filtre ici — filtrer fausserait le panier moyen.
   const avgBasket=filtered.length?totalRev/filtered.length:0;
-  // Délai entre l'ajout et la vente : la fiche par inventaire_id d'abord, le
-  // titre exact sinon (utils/ventesStats.joursPourVendre).
-  const ajouts=useMemo(()=>indexAjouts(items),[items]);
-  const delais=useMemo(()=>filtered.map(s=>({s,j:joursPourVendre(s,ajouts)})).filter(x=>x.j!=null),[filtered,ajouts]);
+  // Stock en ligne : lu UNE fois, et seulement quand l'onglet a été ouvert
+  // (il est monté dès le démarrage de l'app : sans cette garde, chaque ouverture
+  // de l'app paierait la lecture).
+  const stockActif=useMemo(()=>items.filter(i=>i.statut==='stock'),[items]);
+  const enLigne=useStockEnLigne(entree>0?(user?.id??null):null,stockActif);
+  // (28/10) Délai de vente CONSTATÉ, la règle de utils/tableauStats (la même que le
+  // Tableau) : de la première mise en ligne à la vente, articles créés dans FillSell
+  // seulement — plus de rapprochement par le titre, plus de date d'import prise pour
+  // une date de mise en ligne.
+  const ctxStats=useMemo(()=>creerContexte({ventes:sales,items,jobsParArticle:enLigne?.jobsParArticle??null,enLigneParArticle:enLigne?.parArticle??null}),[sales,items,enLigne]);
+  const delais=useMemo(()=>filtered.map(s=>({s,j:delaiVente(ctxStats,s)})).filter(x=>x.j!=null),[filtered,ctxStats]);
   const avgDays=delais.length?delais.reduce((a,x)=>a+x.j,0)/delais.length:null;
   const delaisParCategorie=useMemo(()=>{
     const acc={};
@@ -303,18 +317,17 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
   // bénéfice) ; le % seulement au prix d'achat > 0.
   const topSellers=[...ventesComptables].sort((a,b)=>(b.margin||0)-(a.margin||0)).slice(0,3);
 
-  const stockActif=useMemo(()=>items.filter(i=>i.statut==='stock'),[items]);
   const slowStock=[...items].filter(i=>i.statut!=='vendu').sort((a,b)=>new Date(a.date_ajout||a.date||0)-new Date(b.date_ajout||b.date||0)).slice(0,3);
   const slowCount=[...items].filter(i=>{
     if(i.statut==='vendu') return false;
     return (now-new Date(i.date_ajout||i.date||0))>30*24*3600*1000;
   }).length;
-  // Stock en ligne : lu UNE fois, et seulement quand l'onglet a été ouvert
-  // (il est monté dès le démarrage de l'app : sans cette garde, chaque ouverture
-  // de l'app paierait la lecture).
-  const enLigne=useStockEnLigne(entree>0?(user?.id??null):null,stockActif);
 
-  const PERIOD_CACHE_KEY={'1M':'1m','3M':'3m','6M':'6m','1A':'1y','1Y':'1y','Tout':'all','All':'all'};
+  // (28/10) Les périodes desktop partagent le cache de leur équivalent mobile (30 j = 1M,
+  // 12 mois = 1A) ; « mois » (calendaire) a sa clé, datée : le cache d'octobre ne sert pas en novembre.
+  const PERIOD_CACHE_KEY={'1M':'1m','3M':'3m','6M':'6m','1A':'1y','1Y':'1y','Tout':'all','All':'all','30j':'1m','12m':'1y','tout':'all',mois:`mois-${periodeActive.debut?.slice(0,7)}`};
+  // Ce que l'IA lit comme période : le code mobile, ou le mois nommé (« octobre 2026 »).
+  const PERIODE_IA={'30j':'1M','12m':'1A','tout':'Tout',mois:periodeActive.debut?new Intl.DateTimeFormat(fr?'fr-FR':'en-GB',{month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(`${periodeActive.debut}T12:00:00Z`)):'mois'};
 
   const activeItemCount=useMemo(()=>items.filter(i=>i.statut!=='vendu').length,[items]);
   const dataHash=useMemo(()=>`${filtered.length}_${activeItemCount}_${Math.round(totalProfit)}`,[filtered.length,activeItemCount,totalProfit]);
@@ -323,7 +336,7 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
     if(filtered.length===0){setAiText('');return;}
     const SURL=supabaseUrl;
     if(!user?.id){setAiText('');return;}
-    const cacheKey=PERIOD_CACHE_KEY[range]??range;
+    const cacheKey=PERIOD_CACHE_KEY[rangeActif]??rangeActif;
 
     // Tier 1 : cache mémoire — instantané, zéro réseau
     const memEntry=aiCache[cacheKey];
@@ -358,7 +371,7 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
         fetch(`${SURL}/functions/v1/stats-analysis`,{
           method:'POST',
           headers:{'Content-Type':'application/json','Authorization':`Bearer ${stToken}`,'apikey':supabaseAnonKey},
-          body:JSON.stringify({periode:range,profit:Math.round(totalProfit),ventes:filtered.length,marge:avgMargin,meilleure_cat:bestCategory||'',meilleure_cat_pct:bestCategoryPct,meilleur_article:bestItemName||'',meilleur_article_profit:Math.round(bestItemProfit),articles_lents:slowCount,plateformes_ventes:platVentesAI,plateformes_stock:platStockAI,lang}),
+          body:JSON.stringify({periode:PERIODE_IA[rangeActif]??rangeActif,profit:Math.round(totalProfit),ventes:filtered.length,marge:avgMargin,meilleure_cat:bestCategory||'',meilleure_cat_pct:bestCategoryPct,meilleur_article:bestItemName||'',meilleur_article_profit:Math.round(bestItemProfit),articles_lents:slowCount,plateformes_ventes:platVentesAI,plateformes_stock:platStockAI,lang}),
         })
           .then(async r=>{if(!r.ok)throw new Error(`HTTP ${r.status}`);return r.json();})
           .then(d=>{
@@ -377,7 +390,7 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
           .catch(()=>{setAiLoading(false);});
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[range,dataHash,refreshKey]);
+  },[rangeActif,dataHash,refreshKey]);
 
   const fmt2=n=>formatCurrency(n,currency);
   // « 200 € → 2 468 € » : sans centimes quand le montant est rond (lignes courtes).
@@ -399,6 +412,23 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
     return fr?`calculée sur ${retenues} vente${retenues>1?'s':''} sur ${total} (${raison})`:`based on ${retenues} of ${total} sales (${raison})`;
   })();
   const libelleCat=(c)=>typeLabel(c,lang);
+
+  // (28/10) Ordinateur : la page desktop. Même analyse IA (même effet, même cache, même
+  // fonction stats-analysis), pilotée par la période desktop. Sans vente : le même écran vide.
+  if(bureau) return(
+    <div className="fsx-ecran" style={{display:'flex',flexDirection:'column',gap:12}}>
+      <style>{CSS_ECRANS}</style>
+      {sales.length===0?(
+        <div key={entree} style={{display:'flex',flexDirection:'column',gap:12,maxWidth:640,width:'100%',margin:'0 auto'}}>
+          <h1 className="fsx-rise" style={{margin:'2px 0 0',fontSize:34,lineHeight:1.08,fontWeight:700,letterSpacing:'-0.025em',color:UI.ink}}>{fr?'Statistiques':'Statistics'}</h1>
+          <StatsVide lang={lang} range="Tout" onStock={allerAuStock}/>
+        </div>
+      ):(
+        <StatsBureau key={entree} ctx={ctxStats} lang={lang} currency={currency} cle={rangeBureau} setCle={setRangeBureau} setTab={setTab}
+          ia={{texte:aiText,chargement:aiLoading,perime:outdated,lancer:lancerAnalyse,html:aiText?renderMd(aiText.replace(/#{1,6}\s*/g,'').replace(/\*\*(.*?)\*\*/g,'$1')):null}}/>
+      )}
+    </div>
+  );
 
   return(
     <div className="fsx-ecran" style={{display:'flex',flexDirection:'column',gap:12}}>
@@ -465,7 +495,7 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
               <Carte entree={0.26} style={{padding:18,display:'flex',flexDirection:'column',gap:8,minWidth:0}}>
                 <Libelle>{fr?'Délai moyen':'Avg. time'}</Libelle>
                 <span style={{fontSize:24,fontWeight:700,letterSpacing:'-0.02em',color:avgDays==null?DISCRET:UI.ink}}>{libelleJours(avgDays,lang)}</span>
-                <span style={{fontSize:13,color:ENCRE2}}>{fr?"entre l'ajout et la vente":'from adding to selling'}</span>
+                <span style={{fontSize:13,color:ENCRE2}}>{fr?'de la mise en ligne à la vente':'from listing to sale'}</span>
               </Carte>
               <Carte entree={0.3} style={{padding:18,display:'flex',flexDirection:'column',gap:8,minWidth:0}}>
                 <Libelle>{fr?'Panier moyen':'Avg. basket'}</Libelle>

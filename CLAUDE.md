@@ -62,6 +62,7 @@ si elle sert à CHAQUE session. Jumeau Codex : `AGENTS.md`.
 - Historique des sessions (ex-CLAUDE.md) : `docs/regles/historique-sessions.md` ; rapports `docs/enquetes/` ; reprises `docs/reprise/`
 - Moteur de fusion, Synchroniser, relevés : `docs/regles/rapprochement-et-releves.md`, `docs/multi-synchro.md`
 - Ventes, mails et push de vente, retraits : `docs/regles/ventes-et-retraits.md`
+- Tableau, en-tête, Statistiques (une source : `utils/tableauStats.js`) : `docs/regles/tableau-et-statistiques.md`
 - Republication, publication (unité, lot), cadence, quotas : `docs/regles/republication-et-publication.md`
 - Depop, eBay, Leboncoin, Opla : `docs/regles/plateformes.md`, `docs/plateformes/depop/` (Vinted, Beebs : fichiers ci-dessus)
 - Extension (versions servies, CWS, poste de Nico) : `docs/regles/extension-et-versions.md`, `docs/agents/extension.md`

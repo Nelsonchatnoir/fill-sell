@@ -136,6 +136,7 @@ import { executeVoiceTasks, groupSellLots } from './utils/voiceEngine';
 import { detectType, normalizeMarque, marqueKey, uuidV4, DESC_MANUELLE_MAX, lirePoidsGrammes } from './utils/shared';
 import { prixAchatConnu, comptabilisables, nbSansPrixAchat, totalInvesti, totalMarge, totalCA, margeUnitaire } from './utils/comptabilite';
 import { trierVentes } from './utils/ventesStats';
+import { periode as periodeStats, ventesDe as ventesDePeriode } from './utils/tableauStats';
 import EmptyStateDashboard from './ecrans/vides/TableauVide';
 import StockTab from './tabs/StockTab';
 import LensTab from './tabs/LensTab';
@@ -1004,7 +1005,7 @@ const TEXTAREA_PLACEHOLDERS=VOICE_EXAMPLES.map(e=>e.text);
 // qui tirait vers le bas toutes les moyennes qui lisent marginPct (les quatre
 // agrégations de graphe plus bas le faisaient). `margin` était déjà correct
 // (null tel quel), c'est le pourcentage qui mentait. Corrigé le 11/08.
-function mapSale(v){return{id:v.id,title:v.titre,prix_vente:v.prix_vente,buy:v.prix_achat,sell:v.prix_vente,inventaire_id:v.inventaire_id??null,cree_le:v.created_at??null,ship:0,margin:v.benefice,marginPct:(v.benefice==null||!(v.prix_vente>0))?null:(v.benefice/v.prix_vente)*100,date:v.date,date_vente:v.date||v.created_at,marque:v.marque||"",type:v.type||"",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0,description:v.description||null,emplacement:v.emplacement||null,plateforme:v.plateforme||null,plateforme_code:v.plateforme_code??null,quantite:v.quantite||null};}
+function mapSale(v){return{id:v.id,title:v.titre,prix_vente:v.prix_vente,buy:v.prix_achat,sell:v.prix_vente,inventaire_id:v.inventaire_id??null,cree_le:v.created_at??null,ship:0,margin:v.benefice,marginPct:(v.benefice==null||!(v.prix_vente>0))?null:(v.benefice/v.prix_vente)*100,date:v.date,date_vente:v.date||v.created_at,marque:v.marque||"",type:v.type||"",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0,description:v.description||null,emplacement:v.emplacement||null,plateforme:v.plateforme||null,plateforme_code:v.plateforme_code??null,quantite:v.quantite||null,vendu_le:v.vendu_le??null,source:v.source??null};}
 
 // Groups consecutive rows with same title+date+sell price into one display row
 function groupSales(arr){
@@ -3869,14 +3870,18 @@ export default function App({ loginOnly = false }){
 
   const now=new Date();
 
-  // KPI mois courant — indépendant du filtre
-  const currentMonthSales=sales.filter(s=>{const sd=new Date(s.date);return sd.getMonth()===now.getMonth()&&sd.getFullYear()===now.getFullYear();});
+  // KPI mois courant — indépendant du filtre. (28/10) La période 'mois' de
+  // utils/tableauStats (du 1er à aujourd'hui, jours de Paris) : LE même ensemble de
+  // ventes que le Tableau et les Statistiques — l'en-tête disait « 99 ventes ce mois »
+  // pendant que les Stats disaient « 124 ventes · dernier mois » (un mois glissant).
+  const currentMonthSales=ventesDePeriode(sales,periodeStats('mois'));
   // `reduce((a,s)=>a+s.margin,0)` additionnait les marges null comme des 0 : le
   // « bénéfice du mois » du dashboard était donc juste seulement si TOUTES les
   // ventes du mois avaient un prix d'achat. `count` reste le nombre RÉEL de
   // ventes ; `sansAchat` dit combien d'entre elles ne sont pas comptabilisées.
   const _tmMarge=totalMarge(currentMonthSales);
   const tm={profit:_tmMarge.total,count:currentMonthSales.length,retenues:_tmMarge.retenues,sansAchat:_tmMarge.exclus};
+  const nomMoisCourant=new Intl.DateTimeFormat(lang==='en'?'en-GB':'fr-FR',{month:'long',timeZone:'UTC'}).format(new Date(`${periodeStats('mois').debut}T12:00:00Z`));
 
   function buildChartData(salesArr,range){
     const byMonth=(n)=>Array.from({length:n},(_,i)=>{
@@ -8394,7 +8399,9 @@ export default function App({ loginOnly = false }){
             {fmt(tm.profit)}<span style={{opacity:0.55,fontSize:11,fontWeight:700}}> {t('profit')}</span>
           </div>
           <div style={{fontSize:10,fontWeight:700,color:UI.mute,marginTop:2,whiteSpace:"nowrap"}}>
-            {tm.count} {t('ventesMonth')}
+            {/* (28/10) Le mois est NOMMÉ : « 99 ventes en octobre », jamais « ce mois » à
+                côté d'un « dernier mois » (cf. utils/tableauStats). */}
+            {lang==='en'?`${tm.count} sale${tm.count===1?'':'s'} in ${nomMoisCourant}`:`${tm.count} vente${tm.count>1?'s':''} en ${nomMoisCourant}`}
           </div>
         </div>
         <div className="tb-right">
@@ -8517,7 +8524,7 @@ export default function App({ loginOnly = false }){
         </div>
       )}
 
-      <div ref={scrollRef} className={(messagerie.beta||messagerie.bordereaux)&&espaceMessagerie?"wrap page-pad fs-espace-beta-ouvert":"wrap page-pad"} style={{padding:"18px 14px 16px",background:"var(--bg)",flex:"1",overflowY:"auto",WebkitOverflowScrolling:"touch",minHeight:0}}>
+      <div ref={scrollRef} className={(messagerie.beta||messagerie.bordereaux)&&espaceMessagerie?"wrap page-pad fs-espace-beta-ouvert":"wrap page-pad"} data-bureau-large={!isNative&&(tab===0||tab===4)?"1":undefined} style={{padding:"18px 14px 16px",background:"var(--bg)",flex:"1",overflowY:"auto",WebkitOverflowScrolling:"touch",minHeight:0}}>
 
         {/* (11/10, Louis) Ventes détectées à confirmer — avec ou sans téléphone.
             En tête de la zone des bandeaux (Stock compris) ; le lien du mail
@@ -8918,7 +8925,7 @@ export default function App({ loginOnly = false }){
         )}
         {/* StatsTab toujours monté — état local préservé entre les onglets */}
         <div style={{display:tab===4?'block':'none'}}>
-          <StatsTab sales={sales} items={items} lang={lang} currency={currency} user={user} aiCache={aiCache} setAiCache={setAiCache} setTab={setTab} isActive={tab===4}/>
+          <StatsTab sales={sales} items={items} lang={lang} currency={currency} user={user} aiCache={aiCache} setAiCache={setAiCache} setTab={setTab} isActive={tab===4} isNative={isNative}/>
         </div>
       </div>
 

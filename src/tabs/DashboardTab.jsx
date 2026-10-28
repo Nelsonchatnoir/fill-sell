@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import { useTranslation } from '../i18n/useTranslation';
 import { formatCurrency, MONTHS_FR, MONTHS_EN, groupSales } from '../utils/shared';
 import { UI, Loader } from '../components/ui';
@@ -13,6 +13,9 @@ import { Carte, Libelle, BoiteIcone, Segments, NomPlateforme } from '../ecrans/p
 import { ENCRE2, DISCRET, LIGNE2, PECHE, PECHE_ENCRE, libellePct } from '../ecrans/pleins/jetons';
 import { BarresBenefices, MargeParMois } from '../ecrans/pleins/GraphesTableau';
 import { useStockEnLigne } from '../ecrans/useStockEnLigne';
+import { useBureau } from '../hooks/useBureau';
+import { creerContexte, periode, ventesDe } from '../utils/tableauStats';
+import TableauBureau from '../ecrans/bureau/TableauBureau';
 
 // ── Design « Dashboard » (Claude Design, projet e47b36df — intégré 2026-07-14) ──
 // (16/10) Refonte d'après la maquette « fillsell-ecrans-pleins.html » validée
@@ -144,11 +147,16 @@ const DashboardTab = memo(function DashboardTab({
   // carte « PROFIT NET ».
   const margeTout = margeMoyenne(salesForKpis, { mode:'ponderee' });
   const hasData = sales.length>0;
-  // « Ce mois » : encaissé et nombre de ventes du mois (même filtre que tm, App.jsx).
-  const ventesDuMois = sales.filter(s=>{const sd=new Date(s.date);return sd.getMonth()===now.getMonth()&&sd.getFullYear()===now.getFullYear();});
+  // « Ce mois » : encaissé et nombre de ventes du mois — (28/10) la période 'mois' de
+  // utils/tableauStats, la même que l'en-tête (tm, App.jsx) et le Tableau desktop.
+  const ventesDuMois = ventesDe(sales, periode('mois'));
   const encaisseMois = totalEncaisse(ventesDuMois);
   // Stock en ligne par plateforme : une lecture à l'ouverture (useStockEnLigne).
   const enLigne = useStockEnLigne(userId, stock);
+  // (28/10) Sur ordinateur (web, ≥ 1 024 px) : le Tableau desktop (ecrans/bureau), calculé
+  // par utils/tableauStats sur ce qui est déjà chargé. Sous ce seuil, rien ne change.
+  const bureau = useBureau(isNative);
+  const ctxBureau = useMemo(() => (bureau ? creerContexte({ ventes: sales, items, jobsParArticle: enLigne?.jobsParArticle ?? null, enLigneParArticle: enLigne?.parArticle ?? null }) : null), [bureau, sales, items, enLigne]);
 
   const rangeLabel = selectedRange==='7j'?t('dernierNJours')
     :selectedRange==='1M'?t('trente')
@@ -250,6 +258,8 @@ const DashboardTab = memo(function DashboardTab({
             onExtensionInfo={onExtensionInfo}
           />
         </div>
+      ):bureau&&ctxBureau?(
+        <TableauBureau ctx={ctxBureau} lang={lang} currency={currency} username={username} setTab={setTab}/>
       ):(
         <>
           {/* Badge période + salutation (16/10 : plus d'émoji dans cet écran) */}
