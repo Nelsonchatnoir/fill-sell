@@ -28,8 +28,8 @@
       "largeur": 720,
       "hauteur": 1280,
       "duree_s": 53.5,
-      "poids_octets": 1657358,
-      "debit_moyen_kbps": 248
+      "poids_octets": 1654239,
+      "debit_moyen_kbps": 247
     },
     {
       "role": "video",
@@ -39,8 +39,8 @@
       "largeur": 720,
       "hauteur": 1280,
       "duree_s": 53.5,
-      "poids_octets": 2535382,
-      "debit_moyen_kbps": 379
+      "poids_octets": 2539299,
+      "debit_moyen_kbps": 380
     },
     {
       "role": "video",
@@ -50,8 +50,8 @@
       "largeur": 720,
       "hauteur": 1280,
       "duree_s": 53.5,
-      "poids_octets": 4009563,
-      "debit_moyen_kbps": 600
+      "poids_octets": 4035071,
+      "debit_moyen_kbps": 603
     },
     {
       "role": "affiche",
@@ -59,7 +59,7 @@
       "type": "image/webp",
       "largeur": 720,
       "hauteur": 1280,
-      "poids_octets": 21036,
+      "poids_octets": 21058,
       "image_source": "image 150 (5 s) : icône FillSell, « FillSell », les cinq plateformes (logos de l’app et noms), « Une seule app. »"
     },
     {
@@ -68,7 +68,7 @@
       "type": "image/webp",
       "largeur": 360,
       "hauteur": 640,
-      "poids_octets": 8866,
+      "poids_octets": 8972,
       "image_source": "même image, rendue à 360×640"
     }
   ],
