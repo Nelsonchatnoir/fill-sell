@@ -36,3 +36,11 @@ trait (l'écart du bloc entre le graphe et le pied).
 Les 202 ventes du compte de Nico ont toutes `prix_achat = 0` (gratuit) le 29/10 à 10 h ; l'export du matin en avait
 200 à NULL (inconnu). D'où profit = encaissé (3 980,60 €) : le calcul suit la règle (0 = gratuit). Seul chemin
 d'écriture en lot trouvé : « C'était gratuit (0 €) » de l'onglet Ventes. Question posée à Nico.
+
+## Livraison (29/10, fin de matinée)
+- 2.9.129 (`1cd70e2` + `52765cd`, web `52765cd`) : graphe à la hauteur de sa boîte, posé sur la ligne ; puis 2.9.130
+  (`60ec9be` + `21826f1`, web `21826f1`) : ancrage au bas de la boîte. Canal production relu à chaque fois (2.9.128 →
+  2.9.129 → 2.9.130) ; builds d'arbres propres `…09:57:02Z+52765cd` et `2026-10-29T10:20:47Z+21826f1`.
+- **Production** après la 2.9.130 (session de Nico, lecture seule, ordinateur, ses vraies données) : « 12 mois » et
+  « Depuis le début » 5 barres à 0,00 px de la ligne ; « Octobre » courbe à 1,2 px (demi-trait) ; aucune erreur
+  console ; préférences remises. Téléphone : vérifié au banc d'essai (même code), à regarder sur l'iPhone de Nico.
