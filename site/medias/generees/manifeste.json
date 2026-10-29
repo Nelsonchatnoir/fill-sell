@@ -1,41 +1,5 @@
 {
   "medias": {
-    "/og-image-en.png": {
-      "source": "public/og-image-en.png",
-      "empreinte": "28d3019652",
-      "largeur": 1200,
-      "hauteur": 630,
-      "variantes": {
-        "webp": [
-          {
-            "largeur": 480,
-            "fichier": "og-image-en-480.webp"
-          },
-          {
-            "largeur": 720,
-            "fichier": "og-image-en-720.webp"
-          },
-          {
-            "largeur": 960,
-            "fichier": "og-image-en-960.webp"
-          }
-        ],
-        "avif": [
-          {
-            "largeur": 480,
-            "fichier": "og-image-en-480.avif"
-          },
-          {
-            "largeur": 720,
-            "fichier": "og-image-en-720.avif"
-          },
-          {
-            "largeur": 960,
-            "fichier": "og-image-en-960.avif"
-          }
-        ]
-      }
-    },
     "captures/accueil-tableau-de-bord.png": {
       "source": "site/medias/captures/accueil-tableau-de-bord.png",
       "empreinte": "c69085f611",
@@ -89,7 +53,7 @@
     },
     "captures/extension-popup-ordinateur.png": {
       "source": "site/medias/captures/extension-popup-ordinateur.png",
-      "empreinte": "6b7635e6ed",
+      "empreinte": "a8c32a12c1",
       "largeur": 2560,
       "hauteur": 1600,
       "variantes": {
@@ -133,7 +97,7 @@
     },
     "captures/extension-popup.png": {
       "source": "site/medias/captures/extension-popup.png",
-      "empreinte": "e44325aa7b",
+      "empreinte": "5a7c36773c",
       "largeur": 1140,
       "hauteur": 3315,
       "variantes": {
@@ -241,7 +205,7 @@
     },
     "captures/publication-choix-plateformes.png": {
       "source": "site/medias/captures/publication-choix-plateformes.png",
-      "empreinte": "a748cdefe0",
+      "empreinte": "5453e4fa38",
       "largeur": 1170,
       "hauteur": 2532,
       "variantes": {
@@ -313,7 +277,7 @@
     },
     "captures/publication-en-lot.png": {
       "source": "site/medias/captures/publication-en-lot.png",
-      "empreinte": "66cdbc8bd8",
+      "empreinte": "a3055af9c7",
       "largeur": 1170,
       "hauteur": 2532,
       "variantes": {
@@ -349,7 +313,7 @@
     },
     "captures/publication-verification-annonces.png": {
       "source": "site/medias/captures/publication-verification-annonces.png",
-      "empreinte": "74c41d6da4",
+      "empreinte": "7e85034866",
       "largeur": 1170,
       "hauteur": 2532,
       "variantes": {
@@ -421,7 +385,7 @@
     },
     "captures/republication-remonter.png": {
       "source": "site/medias/captures/republication-remonter.png",
-      "empreinte": "74e2f1b355",
+      "empreinte": "645d2cc795",
       "largeur": 1170,
       "hauteur": 2532,
       "variantes": {
@@ -457,7 +421,7 @@
     },
     "captures/statistiques-ventes-par-plateforme.png": {
       "source": "site/medias/captures/statistiques-ventes-par-plateforme.png",
-      "empreinte": "a005973c61",
+      "empreinte": "f3937a811e",
       "largeur": 1170,
       "hauteur": 2532,
       "variantes": {
@@ -493,7 +457,7 @@
     },
     "captures/stock-cartes-multi-plateformes.png": {
       "source": "site/medias/captures/stock-cartes-multi-plateformes.png",
-      "empreinte": "f50df8c9a0",
+      "empreinte": "ed93e189f6",
       "largeur": 1170,
       "hauteur": 2532,
       "variantes": {
@@ -529,7 +493,7 @@
     },
     "captures/stock-vue-ensemble.png": {
       "source": "site/medias/captures/stock-vue-ensemble.png",
-      "empreinte": "36cfc9ae5b",
+      "empreinte": "f708850835",
       "largeur": 1170,
       "hauteur": 2532,
       "variantes": {
@@ -565,7 +529,7 @@
     },
     "captures/synchronisation-en-cours.png": {
       "source": "site/medias/captures/synchronisation-en-cours.png",
-      "empreinte": "36044c3784",
+      "empreinte": "b3af54615d",
       "largeur": 1170,
       "hauteur": 2532,
       "variantes": {
@@ -673,7 +637,7 @@
     },
     "captures/ventes-et-marges.png": {
       "source": "site/medias/captures/ventes-et-marges.png",
-      "empreinte": "c366bc64fe",
+      "empreinte": "3052424c5a",
       "largeur": 1170,
       "hauteur": 2532,
       "variantes": {
