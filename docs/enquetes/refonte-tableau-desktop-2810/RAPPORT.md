@@ -87,9 +87,22 @@ vitesse), marques et catégories, jours de la semaine, évolution mois par mois 
 
 ## 6. Vérifications
 - `npm run selftest:tableau-stats` (74 vérifications), `build:essai` vert, lint des fichiers touchés vert.
-- Suite complète : voir § 7 (deux rouges hors de ce lot, à leur source).
+- Suite complète (477 selftests, 4 en parallèle, 275 s) : tout vert sauf `selftest:brut-garde-depop-session` (§ D,
+  lens-analysis « ligne EUR » : rouge né des commits Lens du 28/10 23:38-23:40 d'un autre terminal, fichier non touché ici).
+  Deux rouges NÉS de ce lot, corrigés avant le commit : `messagerie-app` et `a-regler-sans-bandeau` épinglent la balise
+  d'ouverture du conteneur de page (la largeur desktop passe donc par un attribut `data-bureau-large` posé APRÈS la
+  classe) ; `aucune-estimation` lisait « jour après jour » comme un délai promis (titre devenu « jour par jour »).
 - Banc d'essai local (vrais composants `DashboardTab` / `StatsTab`, données exportées d'Ornella et de Nico, aucune
   connexion) : 1 100, 1 280, 1 440, 1 920 px, panneau, téléphone 390 px (écran mobile identique).
 
-## 7. Livraison
-(complété au push)
+## 7. Livraison (29/10, nuit)
+- Commits `6c6455b` (lot) et `e87f4af` (version 2.9.125), poussés avec l'accord de Nico en même temps que 6 commits
+  d'autres terminaux déjà commités (Lens ×3, handler-watch, migration Beebs appliquée, docs de clôture).
+- **Web** : `https://fillsell.app/build.json` = `2026-10-29T05:16:51Z+e87f4af` ; script d'entrée 200 avec et sans `Origin`.
+- **OTA Capgo 2.9.125** envoyée (canal production relu à 2.9.124 avant, **2.9.125** après), build d'un arbre propre
+  `2026-10-29T05:16:43Z+e87f4af`. Le natif garde l'écran mobile (`useBureau` : web seulement) : l'OTA porte le calcul
+  commun (en-tête, carte « Ce mois », Stats mobiles).
+- **Contrôle en production** (session de Nico déjà ouverte, lecture seule, 1 536 px) : Tableau desktop (période,
+  tuiles, plateformes en ligne sans vente, états vides), Statistiques desktop (12 mois, comparaison aux 12 mois
+  d'avant), aucune erreur console. Correctif de suite (web seulement, sans OTA : ces écrans ne s'affichent jamais dans
+  l'app native) : graduations des axes toujours rondes (« 333 € / 667 € » vus en production → 500 / 1 000 / 1 500 €).

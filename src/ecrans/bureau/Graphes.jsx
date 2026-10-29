@@ -6,12 +6,13 @@
 import { useState } from 'react';
 import { useTaille } from './outils';
 
-function maxRond(v) {
-  if (!(v > 0)) return 1;
-  const p = 10 ** Math.floor(Math.log10(v));
-  const n = v / p;
-  const m = [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10].find((x) => n <= x) ?? 10;
-  return m * p;
+/** Haut d'axe tel que CHAQUE graduation tombe sur un nombre rond (250, 500… jamais 333 ou 667). */
+function maxRond(v, n = 4) {
+  if (!(v > 0)) return n;
+  const brut = v / n;
+  const p = 10 ** Math.floor(Math.log10(brut));
+  const pas = ([1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10].find((x) => brut / p <= x) ?? 10) * p;
+  return pas * n;
 }
 const graduations = (max, n) => Array.from({ length: n + 1 }, (_, i) => (max * i) / n);
 /** Graduations à libeller : jamais deux fois le même texte (« 1 € » répété sur un petit axe), rien sur un axe vide. */
@@ -48,7 +49,7 @@ export function Courbes({ n, series, fy, xTicks, bulle, aria, hauteurMin = 290, 
   const padL = 56, padR = 86, padT = 10, padB = 26;
   const iw = Math.max(10, w - padL - padR), ih = H - padT - padB;
   const tous = series.flatMap((s) => s.vals.filter((v) => v != null));
-  const max = maxRond(Math.max(...tous, 0) * 1.04);
+  const max = maxRond(Math.max(...tous, 0) * 1.04, 4);
   const X = (i) => padL + (n <= 1 ? 0 : (i * iw) / (n - 1));
   const Y = (v) => padT + ih - (v / max) * ih;
   const pointer = (e) => {
@@ -108,7 +109,7 @@ export function Colonnes({ labels, series, fy = null, vlab = null, bulle, aria, 
   const padL = padLProp ?? (fy ? 48 : 6), padR = 8, padT = vlab ? 20 : 12, padB = 26;
   const n = labels.length, iw = Math.max(10, w - padL - padR), ih = H - padT - padB, bande = iw / Math.max(1, n);
   const tous = series.flatMap((s) => s.vals.filter((v) => v != null));
-  const max = maxRond(Math.max(...tous, 0) * 1.02);
+  const max = maxRond(Math.max(...tous, 0) * 1.02, fy ? graduationsY : 4);
   const Y = (v) => padT + ih - (v / max) * ih;
   const k = series.length;
   const bw = Math.max(2, Math.min(epaisseurMax, (bande * 0.72 - (k - 1) * 2) / k));
