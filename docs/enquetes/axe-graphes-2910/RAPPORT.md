@@ -33,3 +33,14 @@ chevauche encore ; seul le graphe connaît sa largeur.
   0 en défaut, écart le plus serré 11,4 px.
 - Ordinateur : mêmes repères qu'avant sur les courbes (1, 8, 15, 22, auj., 31 oct.) ; seul changement visible, janvier
   écrit « 2025 », « 2026 » sur les séries à cheval sur deux années.
+
+## Livraison (29/10, matin)
+- Commits `424ac09` (correctif) et `37b0693` (version 2.9.127), un seul push.
+- **Web** : `build.json` = `2026-10-29T08:22:39Z+37b0693` ; script d'entrée 200 avec et sans `Origin` ; la feuille de
+  styles servie (`App-*.css`) porte `.fsb-annee`.
+- **OTA Capgo 2.9.127** (canal production relu à 2.9.126 avant, **2.9.127** après), build d'un arbre propre
+  `2026-10-29T08:22:23Z+37b0693`.
+- **Production** (session de Nico déjà ouverte, lecture seule, ordinateur, ses vraies données) : Tableau « Depuis le
+  début » = les 22 mois, janvier écrit « 2025 » / « 2026 » ; panneau Vinted = un mois sur deux ; écart le plus serré
+  13,6 px ; aucune erreur console. Préférences remises comme avant (onglet Lens, période par défaut). Le téléphone ne se
+  contrôle pas d'ici sur fillsell.app (la page refuse d'être mise dans un cadre) : vérifié au banc d'essai sur le même code.
