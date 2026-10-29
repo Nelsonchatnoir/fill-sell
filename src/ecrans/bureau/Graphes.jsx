@@ -204,10 +204,16 @@ export function Colonnes({ axe, series, fy = null, vlab = null, bulle, aria, hau
   return <div className="fsb-tactile-bloc"><Lecture contenu={survol != null ? bulle(survol) : null} indication={indication} />{graphe}</div>;
 }
 
-/** Mini-courbe du bloc profit (fond encre) : cumul de la période, et celle d'avant en filigrane. */
+/**
+ * Mini-courbe du bloc profit (fond encre) : cumul de la période, et celle d'avant en filigrane.
+ * (29/10, captures iPhone de Nico) Dessinée à la hauteur RÉELLE de sa boîte, jamais plus (84 px
+ * débordaient sous la ligne du bas dans la boîte de 64 px du téléphone), et POSÉE sur la ligne du
+ * pied : la boîte touche le trait (bureau.css), les barres ont une base plate au ras de la boîte,
+ * la courbe part de ce trait ; un cumul négatif reste dans la boîte (échelle min → max).
+ */
 export function TraceHeros({ cur, prev, n, colonnes = null }) {
   const [ref, { w, h: hBoite }] = useTaille();
-  const H = Math.max(84, hBoite || 0);
+  const H = hBoite > 0 ? hBoite : 84;
   if (colonnes) {
     const max = Math.max(...colonnes.map((c) => c), 1);
     const bw = w ? Math.min(18, (w / colonnes.length) * 0.6) : 0;
@@ -216,13 +222,17 @@ export function TraceHeros({ cur, prev, n, colonnes = null }) {
         {w > 0 && <svg width={w} height={H}>{colonnes.map((v, i) => {
           const cx = ((i + 0.5) * w) / colonnes.length;
           const hh = v > 0 ? Math.max(2, (v / max) * (H - 10)) : 0;
-          return <rect key={i} className="fsb-grow" style={{ animationDelay: `${0.1 + i * 0.03}s` }} x={cx - bw / 2} y={H - hh} width={bw} height={hh} rx="3" fill={i === colonnes.length - 1 ? 'var(--fsb-hero-line)' : 'rgba(108,210,193,.45)'} />;
+          if (!hh) return null;
+          const x = cx - bw / 2, y = H - hh, r = Math.min(3, bw / 2, hh);
+          return <path key={i} className="fsb-grow" style={{ animationDelay: `${0.1 + i * 0.03}s` }} d={`M${x},${H}V${y + r}Q${x},${y} ${x + r},${y}H${x + bw - r}Q${x + bw},${y} ${x + bw},${y + r}V${H}Z`} fill={i === colonnes.length - 1 ? 'var(--fsb-hero-line)' : 'rgba(108,210,193,.45)'} />;
         })}</svg>}
       </span>
     );
   }
-  const max = Math.max(...cur, ...prev, 1);
-  const X = (i) => 4 + (i * (w - 12)) / Math.max(1, n - 1), Y = (v) => H - 6 - (v / max) * (H - 14);
+  const max = Math.max(...cur, ...prev, 1), min = Math.min(...cur, ...prev, 0);
+  // Le trait du bas (2,5 px) repose sur la ligne du pied ; le haut garde la place du point final.
+  const bas = H - 1.25, haut = 8;
+  const X = (i) => 4 + (i * (w - 12)) / Math.max(1, n - 1), Y = (v) => bas - ((v - min) / (max - min)) * (bas - haut);
   const chemin = (a) => a.map((v, i) => `${i ? 'L' : 'M'}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join('');
   const li = cur.length - 1;
   return (
@@ -230,7 +240,7 @@ export function TraceHeros({ cur, prev, n, colonnes = null }) {
       {w > 0 && cur.length > 0 && (
         <svg width={w} height={H}>
           {prev.length > 0 && <path d={chemin(prev)} fill="none" stroke="rgba(246,245,241,.28)" strokeWidth="2" strokeLinecap="round" />}
-          <path className="fsb-wash" d={`${chemin(cur)}L${X(li)},${H - 6}L${X(0)},${H - 6}Z`} fill="var(--fsb-hero-line)" fillOpacity=".14" />
+          <path className="fsb-wash" d={`${chemin(cur)}L${X(li)},${Y(0)}L${X(0)},${Y(0)}Z`} fill="var(--fsb-hero-line)" fillOpacity=".14" />
           <path className="fsb-draw" pathLength="1" d={chemin(cur)} fill="none" stroke="var(--fsb-hero-line)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
           <circle cx={X(li)} cy={Y(cur[li])} r="4.5" fill="var(--fsb-hero-line)" stroke="var(--fsb-hero)" strokeWidth="2" />
         </svg>

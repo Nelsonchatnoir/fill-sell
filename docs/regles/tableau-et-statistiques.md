@@ -76,3 +76,9 @@
   d'achat manquants » quand il y a des ventes sans prix d'achat.
 - **Coin bas-gauche** : aucun libellé de l'axe horizontal ne commence avant le tracé (`placerAxe({ gauche })`) —
   jamais sous le « 0 € » de l'axe vertical.
+- **Un graphe ne sort jamais de sa boîte, et le bloc profit repose SUR sa ligne** (29/10, captures iPhone : barres sous
+  la ligne du bas, puis « aligné à la barre, propre, nickel ») : chaque graphe est dessiné à la hauteur RÉELLE de sa
+  boîte, jamais à une hauteur minimale codée en dur (`TraceHeros` gardait 84 px dans une boîte de 64 px) ; la boîte
+  du graphe du bloc profit touche le trait du pied (marge basse négative = l'écart du bloc : 10 px ordinateur, 8 px
+  téléphone), les barres ont une base plate au ras de ce trait (coins arrondis en haut seulement), la courbe en part ;
+  un cumul négatif reste dans la boîte (échelle min → max). Rapport `docs/enquetes/graphe-profit-cadre-2910/RAPPORT.md`.
