@@ -380,12 +380,12 @@ const VentesTab = memo(function VentesTab({
   // PostgREST est atomique. On applique groupe par groupe, tranche par tranche ;
   // ce qui est écrit est marqué et sort de la sélection, le reste y demeure. Une
   // panne en cours laisse un état lisible et relançable, jamais indéterminé.
-  async function ecrireLotACompleter(lignes,pa,{marquerInventaire=false}={}){
+  async function ecrireLotACompleter(lignes,pa,{marquerInventaire=false,mode='prix'}={}){
     setBusy(true);setErreur(null);
     const groupes=grouperParEcriture(lignes,pa);
     const total=groupes.reduce((a,g)=>a+g.lignes.length,0);
     setProgressLot({fait:0,total});
-    let fait=0,arret=null;
+    let fait=0,ventesEcrites=0,arret=null;
 
     // ⚠️ On avance par TRANCHE, pas par groupe. Découper les ids du groupe puis
     // ne marquer qu'à la fin du groupe donnait un rapport faux : « je ne sais
@@ -426,13 +426,24 @@ const VentesTab = memo(function VentesTab({
           return n;
         });
         setSelection(prev=>{const n=new Set(prev);for(const {ligne} of lot)n.delete(ligne.id);return n;});
-        fait+=lot.length;
+        fait+=lot.length;ventesEcrites+=ids.length;
         setProgressLot({fait,total});
       }
       if(arret) break;
     }
 
     setBusy(false);setProgressLot(null);setConfirmLot(null);
+    // Trace (29/10, Nico : 200 prix d'achat passés à 0 € d'un coup, profit = encaissé, origine
+    // retrouvée à la main). Un prix d'achat écrit EN LOT change le profit et la marge de tout le
+    // compte : usage_logs « ventes_prix_achat_lot » dit quand (created_at), quel geste (mode
+    // gratuit | inconnu | prix), et sur combien de ventes réellement écrites.
+    if(user?.id&&ventesEcrites>0){
+      supabase.from('usage_logs').insert({user_id:user.id,feature:'ventes_prix_achat_lot',metadata:{
+        mode,ventes:ventesEcrites,lignes:fait,lignes_demandees:total,
+        ...(mode==='prix'?{prix_achat:pa}:{}),...(arret?{interrompu:true}:{}),
+      }}).then(({error})=>{if(error)console.warn('[ventes] lot de prix d’achat non journalisé :',error.message);},
+        (e)=>{console.warn('[ventes] lot de prix d’achat non journalisé :',e?.message??e);});
+    }
     onSaleUpdated();
     if(arret){
       setErreur({id:null,message:fr
@@ -463,9 +474,9 @@ const VentesTab = memo(function VentesTab({
   }
 
   function executerLot(mode){
-    if(mode==='inconnu') return ecrireLotACompleter(lignesSelectionnees,null,{marquerInventaire:true});
-    if(mode==='gratuit') return ecrireLotACompleter(lignesSelectionnees,0);
-    return ecrireLotACompleter(lignesSelectionnees,parsePrix(prixLot));
+    if(mode==='inconnu') return ecrireLotACompleter(lignesSelectionnees,null,{marquerInventaire:true,mode});
+    if(mode==='gratuit') return ecrireLotACompleter(lignesSelectionnees,0,{mode});
+    return ecrireLotACompleter(lignesSelectionnees,parsePrix(prixLot),{mode:'prix'});
   }
 
   const appliquerLot=()=>demanderLot('prix');

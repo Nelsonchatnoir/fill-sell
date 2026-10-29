@@ -112,8 +112,10 @@ eux-mêmes. Rapport : `docs/enquetes/refonte-ecrans-1610/RAPPORT.md`.
 - **Plateforme** = libellé normalisé (`plateformeVente`, miroir de `plateforme_normalisee`) : « Vinted »,
   « vinted », « Vinted␣ » sont UNE plateforme ; le libellé corrigé par la personne prime sur `plateforme_code`
   (aucun déclencheur ne le recalcule) ; un texte libre inconnu garde sa ligne à lui.
-- **Marge en %** : seulement si le prix d'achat est > 0 (`margePctVente`, `margeMoyenne`) — à 0 €, « prix d'achat
-  à 0 € » sans %, hors moyenne, IA comprise ; le bénéfice en euros reste compté. NULL ≠ 0 tient toujours.
+- **Marge en %** (29/10, Nico — remplace « seulement si > 0 » du 16/10) : dès que le prix d'achat est CONNU, 0 €
+  (gratuit) compris (`margePctVente`, `margeMoyenne`), IA comprise ; seul l'inconnu reste hors marge et fait dire
+  « prix d'achat manquants ». NULL ≠ 0 tient toujours. Trace des prix écrits en lot : `usage_logs`
+  `ventes_prix_achat_lot` (`docs/regles/mails-paiements-comptabilite.md`).
 - **Ventes par plateforme** : ligne « Sans plateforme » toujours présente ; Σ lignes = revenu de la période.
 - **Ordre** : date de vente décroissante, puis enregistrement, puis id ; sans date en dernier (`trierVentes`,
   appliqué dans `App.jsx` à ce qui descend vers l'onglet Ventes).

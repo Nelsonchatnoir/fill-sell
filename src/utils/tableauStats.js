@@ -24,8 +24,8 @@
 //   4. LE PRIX AFFICHÉ est le prix que FillSell a publié sur la plateforme de la
 //      vente (cross_post_jobs.price du dernier job publié avant la vente).
 //   5. L'ARGENT suit utils/comptabilite.js et utils/ventesStats.js : profit sur
-//      les ventes au prix d'achat CONNU, marge en % pondérée sur les ventes au
-//      prix d'achat > 0, encaissé sur toutes les ventes.
+//      les ventes au prix d'achat CONNU, marge en % pondérée sur ces MÊMES ventes
+//      (0 € = gratuit compris, depuis le 29/10), encaissé sur toutes les ventes.
 //   6. LE STOCK est un état d'AUJOURD'HUI (en ligne, immobilisé, ancienneté) :
 //      aucune comparaison avec un passé qu'on n'a pas photographié.
 //
@@ -360,7 +360,7 @@ export function ecart(cur, prev, kind = 'pct') {
 /**
  * Les meilleures ventes d'une période (bloc « Meilleures ventes » du téléphone, gardé le 29/10) :
  * bénéfice en euros, sur les ventes au prix d'achat CONNU (0 € compris : un vrai bénéfice) ;
- * le % seulement au prix d'achat > 0 (ventesStats.margePctVente).
+ * le % dès que le prix d'achat est connu, gratuit compris (ventesStats.margePctVente, 29/10).
  */
 export function meilleuresVentes(ctx, cle, n = 3) {
   const vs = ventesDe(ctx.ventes, periode(cle, ctx.auj)).filter((s) => prixAchatConnu(s) && Number.isFinite(Number(s.margin ?? s.benefice)));

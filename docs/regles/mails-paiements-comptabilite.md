@@ -145,8 +145,13 @@ Règle à respecter AVANT d'ajouter un type d'email :
 
 <!-- ex-CLAUDE.md L987-1008 : Prix d'achat : vide ≠ zéro -->
 ## Prix d'achat : VIDE ≠ ZÉRO (règle posée le 03/08)
-- **(16/10, Nico)** Prix d'achat à 0 € : bénéfice compté, mais AUCUNE marge en % (ni affichée, ni dans une
-  moyenne) — `src/utils/ventesStats.js`, `docs/regles/ventes-et-retraits.md` § 16/10.
+- **(29/10, Nico — remplace la règle du 16/10)** Prix d'achat à 0 € = GRATUIT = prix CONNU : bénéfice ET marge en %,
+  dans toutes les moyennes (Tableau, Stats, Ventes, IA). « Prix d'achat manquants » ne se dit que des ventes au
+  prix INCONNU (NULL, « je ne sais plus »). `src/utils/ventesStats.js` (`margePctVente`, `margeMoyenne`).
+- **(29/10)** Tout prix d'achat écrit EN LOT depuis l'onglet Ventes (« prix commun », « C'était gratuit (0 €) »,
+  « Je ne sais plus ») laisse une trace `usage_logs` feature `ventes_prix_achat_lot` : `created_at` = quand,
+  `metadata` = { mode: prix | gratuit | inconnu, ventes (réellement écrites), lignes, lignes_demandees, prix_achat
+  (mode prix), interrompu }. Origine d'un changement de masse : lire cette trace avant toute enquête.
 
 `inventaire.prix_achat` **NULL = inconnu** → l'article n'entre dans **AUCUN**
 calcul de marge, de bénéfice, de total investi ni de moyenne.

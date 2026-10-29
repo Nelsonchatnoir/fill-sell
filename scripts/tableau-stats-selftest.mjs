@@ -90,8 +90,8 @@ eq(io.nb, 4, 'nb');
 proche(io.encaisse, 75, 'encaissé = toutes les ventes');
 proche(io.profit, 8 + 20 + 10, 'profit : prix d’achat connus seulement (gratuit compris)');
 eq([io.profitRetenues, io.profitExclus], [3, 1], 'profit : 3 comptées, 1 sans prix d’achat');
-proche(io.marge, ((8 + 10) / (10 + 15)) * 100, 'marge pondérée, prix d’achat > 0 seulement');
-eq([io.margeRetenues, io.margeAZero, io.margeSansPrix], [2, 1, 1], 'marge : sur quoi elle porte');
+proche(io.marge, ((8 + 20 + 10) / (10 + 20 + 15)) * 100, 'marge pondérée sur les prix d’achat connus, gratuit compris (29/10)');
+eq([io.margeRetenues, io.margeAZero, io.margeSansPrix], [3, 1, 1], 'marge : 3 ventes (dont 1 gratuite), 1 sans prix d’achat');
 proche(io.panier, 75 / 4, 'panier');
 eq([io.delaiN, io.delaiMediane], [3, 7], 'délai : 3 ventes mesurées (6, 7 et 87 j)');
 proche(io.delai, (6 + 7 + 87) / 3, 'délai moyen');
@@ -152,7 +152,7 @@ eq(nbHeuresReelles([{ vendu_le: '2026-10-02T10:00:00Z' }, { vendu_le: '2026-10-0
 // ── meilleures ventes (téléphone) ──────────────────────────────────────────
 const mv = meilleuresVentes(ctx, 'mois', 3);
 eq(mv.map((v) => v.id), [2, 4, 1], 'meilleures ventes : bénéfice en euros (gratuit compris), prix d’achat connu seulement');
-eq([mv[0].gratuit, mv[0].pct], [true, null], 'gratuit : bénéfice, jamais de %');
+eq([mv[0].gratuit, mv[0].pct], [true, 100], 'gratuit : bénéfice et son % (prix connu, 29/10)');
 eq(mv[2].achat, 2, 'prix d’achat rendu');
 
 console.log(`tableau-stats : ${n} assertions OK`);

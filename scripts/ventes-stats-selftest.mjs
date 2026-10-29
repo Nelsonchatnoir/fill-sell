@@ -2,7 +2,9 @@
 // Les quatre corrections vues sur le compte de Nico, prouvées sur des ventes
 // fabriquées ici (aucune donnée réelle) :
 //   a) une plateforme = UNE ligne, quelle que soit la casse du libellé ;
-//   b) prix d'achat 0 € : bénéfice compté, AUCUN pourcentage, hors moyenne ;
+//   b) prix d'achat 0 € (gratuit) = prix CONNU : bénéfice ET pourcentage, dans
+//      les moyennes (décision de Nico du 29/10, qui remplace la règle du 16/10) ;
+//      seul l'inconnu (NULL, « je ne sais plus ») reste hors marge ;
 //   c) « Sans plateforme » existe et la somme des lignes = le revenu ;
 //   d) tri par date de vente décroissante, sans date en dernier.
 // Plus : la courbe monotone ne dépasse jamais ses points.
@@ -67,29 +69,33 @@ ok(venteDeLaPlateforme(ventesNico[0], 'toutes'), 'filtre : toutes');
 const gratuit = { sell: 120, buy: 0, margin: 120, marginPct: 100 };
 const inconnu = { sell: 50, buy: null, margin: null, marginPct: null };
 const paye = { sell: 2468, buy: 200, margin: 2268, marginPct: 2268 / 2468 * 100 };
-eq(margePctVente(gratuit), null, 'b) 0 € : aucun pourcentage');
+eq(margePctVente(gratuit), 100, 'b) 0 € (gratuit) : un pourcentage, comme tout prix connu');
 eq(beneficeVente(gratuit), 120, 'b) 0 € : le bénéfice en euros reste');
-ok(prixAchatZero(gratuit) && !prixAchatPositif(gratuit), 'b) 0 € reconnu comme saisi, pas positif');
+ok(prixAchatZero(gratuit) && !prixAchatPositif(gratuit), 'b) 0 € reconnu comme saisi (gratuit), pas positif');
+ok(Math.abs(margePctVente({ sell: 20, buy: 0, margin: 17 }) - 85) < 1e-9, 'b) gratuit avec frais : bénéfice ÷ prix de vente (85 %, pas un 100 % de principe)');
 eq(margePctVente(inconnu), null, 'b) inconnu : aucun pourcentage');
 ok(!prixAchatZero(inconnu), 'b) NULL ≠ 0 €');
 eq(beneficeVente(inconnu), null, 'b) inconnu : aucun bénéfice');
 ok(Math.abs(margePctVente(paye) - 91.896) < 0.01, 'b) prix > 0 : pourcentage');
-eq(margePctVente({ sell: 10, buy: '0', margin: 10 }), null, 'b) « 0 » en texte : aucun pourcentage');
+eq(margePctVente({ sell: 10, buy: '0', margin: 10 }), 100, 'b) « 0 » en texte : gratuit aussi');
 eq(margePctVente({ sell: 10, buy: 4, prix_achat_inconnu: true, margin: 6 }), null, 'b) « je ne sais plus » : aucun pourcentage');
 const moy = margeMoyenne([gratuit, inconnu, paye], { mode: 'simple' });
-eq(moy.retenues, 1, 'b) moyenne : seule la vente au prix > 0 compte');
-eq(moy.aZero, 1, 'b) moyenne : 0 € compté à part');
-eq(moy.sansPrix, 1, 'b) moyenne : inconnu compté à part');
-ok(Math.abs(moy.pct - 91.896) < 0.01, 'b) la moyenne ne monte pas à 100 % avec le gratuit');
-eq(margeMoyenne([gratuit, inconnu]).pct, null, 'b) aucune vente au prix > 0 : pas de moyenne (et pas 0,0 %)');
+eq(moy.retenues, 2, 'b) moyenne : le gratuit et la vente payée comptent');
+eq(moy.aZero, 1, 'b) moyenne : les gratuites sont comptées (pour le dire)');
+eq(moy.sansPrix, 1, 'b) moyenne : inconnu compté à part, hors moyenne');
+ok(Math.abs(moy.pct - (100 + 91.896) / 2) < 0.01, 'b) moyenne simple : le gratuit y entre');
+const toutGratuit = margeMoyenne([gratuit, { sell: 30, buy: 0, margin: 27 }, inconnu]);
+ok(Math.abs(toutGratuit.pct - ((120 + 27) / (120 + 30)) * 100) < 1e-9, 'b) tout à 0 € : la marge s’affiche (98 %), jamais « prix d’achat manquants »');
+eq(margeMoyenne([inconnu, { sell: 9, buy: 4, prix_achat_inconnu: true, margin: 5 }]).pct, null, 'b) que des inconnus : pas de moyenne (et pas 0,0 %)');
 const pond = margeMoyenne([paye, { sell: 100, buy: 50, margin: 50, marginPct: 50 }]);
 ok(Math.abs(pond.pct - (2318 / 2568) * 100) < 1e-9, 'moyenne pondérée = Σ bénéfices / Σ ventes');
-// Meilleure marge par plateforme : eBay (que des ventes à 0 €) n'a pas de %.
-eq(margeMoyenne(ventesNico.filter((s) => s.plateforme === 'ebay')).pct, null, 'b) « Meilleure marge : eBay 100 % » impossible');
+// Meilleure marge par plateforme : eBay (que des ventes à 0 €) a désormais son % (29/10, « Compte partout »).
+ok(margeMoyenne(ventesNico.filter((s) => s.plateforme === 'ebay')).pct != null, 'b) eBay, que des ventes gratuites : une marge en %');
 
 // ── marge par période ───────────────────────────────────────────────────────
 eq(margeDePeriode([]).etat, 'vide', 'mois sans vente : aucun point');
-eq(margeDePeriode([inconnu, gratuit]).etat, 'sans_achat', 'mois sans prix d\'achat > 0 : hachures, pas 0 %');
+eq(margeDePeriode([inconnu, gratuit]).etat, 'ok', 'mois avec un gratuit : une marge');
+eq(margeDePeriode([inconnu]).etat, 'sans_achat', 'mois sans aucun prix d\'achat connu : hachures, pas 0 %');
 eq(margeDePeriode([paye]).etat, 'ok', 'mois avec prix');
 
 // ── d) tri par date de vente ────────────────────────────────────────────────

@@ -83,3 +83,6 @@
   téléphone) et le dessin est ancré au bas de la boîte (`bottom: 0`, aucun écart dû aux fractions de pixel), les
   barres ont une base plate au ras de ce trait (coins arrondis en haut seulement), la courbe en part ;
   un cumul négatif reste dans la boîte (échelle min → max). Rapport `docs/enquetes/graphe-profit-cadre-2910/RAPPORT.md`.
+- **Marge et ventes gratuites** (29/10, Nico) : une vente à 0 € (gratuite) entre dans la marge comme tout prix connu ;
+  les tuiles Marge (Tableau, Stats, détail d'une plateforme) ne disent « prix d'achat manquants » que s'il y a des
+  ventes et qu'AUCUNE n'a de prix d'achat connu ; le détail dit « dont N gratuites ». Règle : `ventesStats.js` b).

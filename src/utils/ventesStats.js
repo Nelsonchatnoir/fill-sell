@@ -13,11 +13,13 @@
 //      Règle : une vente se range par son CODE ; sans code, le libellé est
 //      ramené au code par la même table que le serveur (plateforme_normalisee).
 //   b) Un prix d'achat à 0 € comptait pour 100 % de marge (Casio, Aspirateur,
-//      « Meilleure marge : eBay 100 % »). Règle (Nico, 16/10) : la marge EN %
-//      ne s'affiche et n'entre dans une moyenne que si le prix d'achat est
-//      STRICTEMENT positif. À 0 €, le bénéfice en euros reste vrai et compté
-//      (gratuit assumé, cf. comptabilite.js), mais aucun pourcentage.
-//      Vide ≠ zéro tient toujours : NULL = inconnu, 0 = gratuit.
+//      « Meilleure marge : eBay 100 % »). Règle du 16/10 : aucun % à 0 €.
+//      REMPLACÉE le 29/10 (décision de Nico, « Compte partout ») : un prix
+//      d'achat à 0 € est un prix GRATUIT, donc CONNU — la vente a son % et
+//      entre dans toutes les moyennes (Tableau, Stats, Ventes, IA) ; seul un
+//      prix d'achat INCONNU (NULL, « je ne sais plus ») reste hors marge et
+//      fait dire « prix d'achat manquants ». Vide ≠ zéro tient toujours :
+//      NULL = inconnu, 0 = gratuit. `aZero` compte les gratuites, pour le dire.
 //   c) La somme des plateformes (≈ 739 €) ne collait pas au revenu de la
 //      période (3 385,65 €) : les ventes SANS plateforme (Stratocaster…)
 //      n'étaient comptées nulle part. Règle : une ligne « Sans plateforme »,
@@ -152,14 +154,14 @@ export function grouperParMois(lignes) {
 const nombre = (v) => { const n = Number(v); return Number.isFinite(n) ? n : null; };
 export const prixVente = (s) => nombre(s?.sell ?? s?.prix_vente) ?? 0;
 
-/** Le prix d'achat est-il connu ET strictement positif ? (règle b) */
+/** Le prix d'achat est-il connu ET strictement positif ? (ne décide plus de la marge depuis le 29/10) */
 export function prixAchatPositif(x) {
   if (!prixAchatConnu(x)) return false;
   const pa = prixAchatNum(x);
   return Number.isFinite(pa) && pa > 0;
 }
 
-/** Prix d'achat SAISI à 0 € (gratuit assumé) — à dire, sans pourcentage. */
+/** Prix d'achat SAISI à 0 € (gratuit assumé) — une vente gratuite : prix connu, marge comprise (29/10). */
 export function prixAchatZero(x) {
   return prixAchatConnu(x) && prixAchatNum(x) === 0;
 }
@@ -171,12 +173,12 @@ export function beneficeVente(s) {
 }
 
 /**
- * La marge EN % d'une vente, ou null. Règle b : seulement si le prix d'achat
- * est > 0 (à 0 €, le « 100 % » ne dit rien de vrai). Dénominateur : le prix de
- * vente (convention de comptabilite.margeUnitaire).
+ * La marge EN % d'une vente, ou null. Règle b (29/10) : dès que le prix d'achat
+ * est CONNU, 0 € (gratuit) compris ; null seulement s'il est inconnu.
+ * Dénominateur : le prix de vente (convention de comptabilite.margeUnitaire).
  */
 export function margePctVente(s) {
-  if (!prixAchatPositif(s)) return null;
+  if (!prixAchatConnu(s)) return null;
   const pct = nombre(s?.marginPct);
   if (pct !== null) return pct;
   const m = beneficeVente(s);
@@ -185,7 +187,8 @@ export function margePctVente(s) {
 }
 
 /**
- * Marge moyenne en % d'une liste de ventes (règle b : prix d'achat > 0 seulement).
+ * Marge moyenne en % d'une liste de ventes (règle b, 29/10 : toutes les ventes au
+ * prix d'achat connu, gratuites comprises ; les inconnues sont comptées à part).
  *   mode 'ponderee' : Σ bénéfices / Σ prix de vente (Tableau, Ventes) ;
  *   mode 'simple'   : moyenne des % de chaque vente (Stats, comme avant).
  * Rend { pct|null, retenues, sansPrix, aZero, total } — de quoi DIRE sur quoi
@@ -196,12 +199,12 @@ export function margeMoyenne(ventes, { mode = 'ponderee' } = {}) {
   let somme = 0, ca = 0, sommePct = 0, retenues = 0, sansPrix = 0, aZero = 0;
   for (const s of liste) {
     if (!prixAchatConnu(s)) { sansPrix += 1; continue; }
-    if (!prixAchatPositif(s)) { aZero += 1; continue; }
     const m = beneficeVente(s);
     const pct = margePctVente(s);
     const pv = prixVente(s);
     if (m === null || pct === null || !(pv > 0)) { sansPrix += 1; continue; }
     somme += m; ca += pv; sommePct += pct; retenues += 1;
+    if (prixAchatZero(s)) aZero += 1;
   }
   const pct = retenues === 0 ? null : (mode === 'simple' ? sommePct / retenues : (ca > 0 ? (somme / ca) * 100 : null));
   return { pct, retenues, sansPrix, aZero, total: liste.length };
