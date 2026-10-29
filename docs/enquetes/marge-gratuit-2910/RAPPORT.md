@@ -24,3 +24,10 @@ manquant — la tuile Marge s'affiche normalement, « prix d'achat manquants » 
 - Banc d'essai, copie des données de Nico toutes à 0 € : tuile Marge « — · prix d'achat manquants » → « 100,0 % · sur
   202 ventes » ; détail « dont 202 gratuites ». Ornella (222 gratuites) : 84,5 % sur 482 → 88,9 % sur 700 ventes.
 - La trace n'a pas été déclenchée en vrai (ce serait réécrire les ventes d'un compte) : elle apparaîtra au prochain lot.
+
+## Livraison (29/10, midi)
+- Commits `4fa7196` (règle + trace) et `32cd97f` (version 2.9.131), un seul push ; web `32cd97f` (entrée 200 avec et
+  sans `Origin`) ; **OTA 2.9.131** (canal relu 2.9.130 → 2.9.131), build `2026-10-29T11:52:42Z+32cd97f`.
+- Production (session de Nico, lecture seule) : Marge « 100,0 % sur 202 ventes au prix d'achat connu » (depuis le
+  début), « 100,0 % … sur 76 ventes » (12 mois), « — » sans texte en octobre (aucune vente) ; aucune erreur console ;
+  préférences remises.
