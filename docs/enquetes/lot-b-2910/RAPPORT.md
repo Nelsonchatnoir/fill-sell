@@ -4,7 +4,8 @@ Consigne de Nico (29/10 ~18:30) : 4 parties (promesses à XEWER avant le 01/11, 
 la preuve « compte business » de paugues, zéro rouge). Heures de Paris. Enquêtes menées en parallèle (lecture seule),
 correctifs écrits par lots indépendants, intégrés, testés et livrés depuis ce terminal. Livraison : fin du rapport.
 
-__ETAT_PUSH__
+**Push** : un seul push de tout le lot (code, docs, essais) sur `main`, après ce rapport. **Extension à téléverser : la
+0.6.157** (la 0.6.156, envoyée un temps dans la conversation, est remplacée — voir 4.4).
 
 ## Partie 1 — promesses à XEWER (formulations exactes retrouvées dans Gmail)
 Les promesses ne sont écrites nulle part dans le dépôt : elles sont dans les réponses de Nico citées par les mails de
@@ -134,13 +135,22 @@ publications et 1 185 republications en attente.
   Leboncoin lui a envoyé. Rien de notre fait trouvé (même rayon et mêmes critères que ses assiettes Wasmuël acceptées le
   23/10 ; 1 dépôt jamais en ligne sur 82 en 14 jours). Le « dépôt du 29/10 14:11 à 4 tentatives » est un autre article
   (Ridgway e2a32d4f), publié au 5e essai (3297689730). Aucune relance (même contenu, même refus).
-- **4.4 boncoin59300 — CLOS pour notre faute, RESTE le motif.** Défaut PROUVÉ : la marque Leboncoin est un champ de
-  recherche ; le pré-rempli faux était gardé et dit « hors liste » sans recherche (« Vintage Dressing » au lieu de
-  « Fourrures D.S Paris », « Jordan » jugée absente). Règle : taper notre marque, sinon « Autre », pré-rempli en dernier,
-  « hors liste » seulement après une recherche relue (extension 0.6.156). ⚠ Mesuré : la recherche par frappe n'a jamais
-  rien trouvé en production (594 recherches) — diagnostic ajouté, essai réel : __LBC_MARQUE__. Motif des deux refus :
-  non prouvé (manteau en renard = animal sauvage, interdit par Leboncoin depuis le 21/09/2023 : cause la plus probable).
-  Aucune relance sans le motif.
+- **4.4 boncoin59300 — CLOS pour la marque fausse ; RESTE : la recherche de marque muette, et le motif des refus.**
+  Défaut PROUVÉ : la marque Leboncoin est un champ de recherche ; le pré-rempli que Leboncoin devine était gardé et dit
+  « hors liste » sans recherche (« Vintage Dressing » posé sur le manteau « Fourrures D.S Paris »). Mesuré : la
+  recherche par frappe n'a JAMAIS répondu en production (594 recherches, 0 marque trouvée).
+  **Essai réel n° 1 (ton compte, 0.6.156, 20:26, dépôt 3297848873)** : la frappe de « Jordan » a VIDÉ le champ, la
+  recherche est restée muette (menu « 1 enfant, texte vide »), « Nike » — que le titre nomme — n'a pas pu être remis :
+  annonce partie SANS marque, là où la 0.6.155 gardait « Nike » (≈ 123 dépôts en 14 jours, 12 comptes, passaient par ce
+  chemin). La 0.6.156 n'a donc PAS été livrée. Règle corrigée (0.6.157) : un pré-rempli que l'article NOMME reste, sans
+  aucune frappe ; un pré-rempli que l'article ne nomme pas (marque devinée, règle P8 du 15/10) : notre marque tapée, puis
+  « Autre » ; recherche muette → champ vide, jamais la marque devinée. **Essai réel n° 2 (0.6.157, 20:47, dépôt
+  3297858252)** : « pré-rempli LBC "Nike" CONSERVÉ — l'article nomme « Nike » », aucune frappe, dépôt confirmé (201,
+  « Votre annonce est publiée »). Les deux annonces retirées. RESTE : faire répondre la recherche (le diagnostic dit
+  désormais l'état de l'onglet ; piste non prouvée : liste virtualisée non dessinée dans un onglet en arrière-plan) —
+  d'ici là, « Jordan » n'est jamais posé à la place d'un « Nike » que l'article nomme. Motif des deux refus : non prouvé
+  (manteau en renard = animal sauvage, interdit par Leboncoin depuis le 21/09/2023 : cause la plus probable). Aucune
+  relance sans le motif.
 - **4.5 Dépôts Beebs « fantômes » — CLOS (refus Beebs prouvé ; notre règle corrigée).** Les trois dépôts sont ARRIVÉS chez
   Beebs (numéros 34200634, 34200711, 34198358 lus en vérification juste après le clic), puis retirés de la vérification
   sans mise en ligne (louis : ~3 min) ; index public et pages : absents. Défaut : deux juges ; le SQL jugeait « jamais en
@@ -159,8 +169,10 @@ publications et 1 185 republications en attente.
   « Jeu testé aujourd'hui, le … et fonctionnel », 35 sur 42 sans ; le seul du lot du 29/10 sans cette phrase (Pirates des
   Caraïbes, 1bcdf638) est en ligne (34260368). Règle : un refus prouvé ne se relance plus à l'identique (« Change
   d'abord le texte, les photos ou le rayon »). Aussi : « xbox » seul n'est plus « Xbox Series » sur Beebs.
-- **4.7 doriane-henri — CLOS (pas un blocage).** Ses 110 tâches sont PROGRAMMÉES par son réglage (18:30–19:15, 10 par jour,
-  une à la fois) : à 15:23 le créneau était fermé ; 5 parties ce soir à 4 min 30 d'écart. Risque latent corrigé : la
+- **4.7 doriane-henri — CLOS (pas un blocage).** Ses tâches sont PROGRAMMÉES par son réglage (18:30–19:15, 10 par jour,
+  une à la fois ; le plafond compte les annonces, une plateforme = une annonce) : à 15:23 le créneau était fermé ; le soir,
+  10 parties de 18:32 à 19:14, puis plafond atteint (relu à 20:45 : 100 tâches en attente, 28 articles, toutes « programmée »,
+  aucune erreur, extension 0.6.153 vue à 20:45:20) → ~10 jours à ce rythme. Les 19 « publiées » de 18:28 = un relevé. Risque latent corrigé : la
   marque « programmée servie » n'est posée que sur la tâche réellement rendue.
 - **4.8 ornellaracano — RESTE (geste : compte de test).** Garde de boutique : son Chrome est sur @luciatrendyshop, les 4
   articles sont sur @ornella-vend (472079) ; 3 captures 404 « mauvaise boutique ». Ouvrir @ornella-vend sur vinted.fr dans
@@ -188,10 +200,52 @@ publications et 1 185 republications en attente.
   à leur retour. Défaut de notre mécanisme trouvé ailleurs (2189c4d8) : une republication retenue par le serveur
   bloquait la mise à jour sans fin — corrigé (0.6.157). ⚠ Trouvé en plus : une BOUCLE de poll (postes 0.6.146 → 0.6.155,
   jusqu'à 913 appels/h au lieu de ~30 ; 6 763 appels de get-pending-jobs entre 18:45 et 19:45) — corrigée dans la 0.6.157 (déjà dans la 0.6.156, jamais téléversée).
-- **Contrôle final** : __CONTROLE__
+- **Contrôle final** : 29/10 à 20:48:58, après les tests réels (`docs/sql/controle-stock-zero-rouge.sql`) : **ROUGE 0** —
+  blanc 24 lignes (9 comptes), file 525 (15), orange 835 (30). Aucun job en `processing` (0 à 20:49), aucun `failed`
+  créé depuis 20:00, mele.marta 2fd83d73 en pause neutre « mise à jour » (`build_min_requis`). Boucle du poll : ton poste
+  (0.6.156 puis 0.6.157) ≈ 6 lectures en 9 min ; le parc (postes 0.6.146 → 0.6.155) reste à ~1 200 – 1 400 appels de
+  get-pending-jobs par 10 min (20:20 → 20:50) jusqu'à la 0.6.157 servie par le Chrome Web Store. Selftests : suite
+  complète 493, zéro rouge (20:41).
 
 ## Livraison
-__LIVRAISON__
+- **Extension — LE zip à téléverser** (seul dans son dossier) :
+  `C:\Users\nicol\fill-and-sell\build\CWS-0.6.157-A-TELEVERSER\fillsell-extension-0.6.157-40dcb82-cws.zip`
+  (BUILD_ID `2026-10-29T19:41:53Z+40dcb82`, 591 350 octets, sha256 `514f2b8554139c60bf9bd5efc714d7c24c0639edb0e89717bfb31ad6e2d11dda`),
+  envoyé aussi dans la conversation. Anciens zips : 0.6.155 → `build/anciens-zips/JAMAIS-SERVIE-REMPLACEE-PAR-0.6.156-CWS-0.6.155/`
+  (servie à aucun compte : seul ton poste la portait) ; 0.6.156 (96793d4, envoyée à 20:2x puis retirée : la marque
+  Leboncoin) → `build/anciens-zips/JAMAIS-TELEVERSEE-REMPLACEE-PAR-0.6.157-CWS-0.6.156/`. Ton poste : 0.6.157 depuis
+  20:44:16 (copie posée 20:42, sauvegardes 0.6.155 et 0.6.156 dans `build/anciennes-extensions-nico/`).
+  Geste à toi : téléverser ce zip sur la fiche du Chrome Web Store, puis « Envoyer pour examen ».
+- **OTA 2.9.135** : canal production relu 2.9.134 à 20:22, envoi 20:23, relu **2.9.135** ; build `2026-10-29T19:22:37Z+c09c9d2`.
+- **Fonctions déployées** (version et verify_jwt relus avant et après, 20:21) :
+  beebs-lien v15 → **v16** (verify_jwt false) · ebay-api-worker v99 → **v100** (false) · generate-listing v125 → **v126**
+  (true) · get-pending-jobs v301 → **v302** (true) · handler-watch v147 → **v148** (false) · lens-analysis v111 → **v112**
+  (true) · ops-digest v42 → **v43** (false) · update-job-status v155 → **v156** (false). verify_jwt inchangé partout.
+- **Migrations** (feu vert nommé de Nico, appliquées à 20:10 par `db query --linked -f` + `migration repair --status applied`) :
+  `20261029200000_beebs_un_seul_juge_jamais_en_ligne` (trancher_publications_sans_lien md5 6ea3fdf3… → a9538270…, trois
+  fonctions neuves) et `20261029201000_beebs_rearmer_retrait_vente_sans_fiche` (retraits_beebs_rearmer_revus md5 0756d52c…
+  → 15f9ba27…). Sauvegardes du corps lu en prod : `scripts/essais/2026102920*_avant.sql` ; inverses :
+  `supabase/rollbacks/20261029200000_beebs_un_seul_juge_jamais_en_ligne_INVERSE.sql`,
+  `supabase/rollbacks/20261029201000_beebs_rearmer_retrait_vente_sans_fiche_INVERSE.sql`.
+- **Réparations de données** : aucune. **Mails** : aucun. **Stripe** : rien.
+- **Tests réels sur ton compte (999 €, tous retirés)** : Vinted 10587366165 (texte tapé octet pour octet) ; Leboncoin
+  3297848873 (0.6.156, marque partie vide → correctif) ; Leboncoin 3297858252 (0.6.157, « Nike » que l'article nomme CONSERVÉ, aucune frappe) ; Scripts : `scripts/essais/20261029_test_*_nico*.sql`.
+  Ta file est remise en pause après les retraits ; les fiches de test restent dans ton stock (les supprimer = ton geste).
+- **Selftests** : suite complète 493, **zéro rouge** (20:03 → 20:12 avant la 0.6.156, puis 20:32 → 20:41 avec la 0.6.157) ;
+  lint : aucune erreur neuve dans les fichiers touchés ; banc 11/11.
+- **Commits** (sur main) : 2d09632 (code du lot), 96793d4, c09c9d2 (2.9.135), b000942 (0.6.157), f2ca67c, 40dcb82 et le commit de ce rapport.
+
+## Ce qui RESTE (le reste est CLOS)
+- **Toi** : téléverser la 0.6.157 sur le Chrome Web Store (« Envoyer pour examen ») — c'est elle qui arrête la boucle du
+  poll sur tout le parc et porte les correctifs d'extension du lot (Vinted en langue étrangère, marque et compte pro
+  Leboncoin, constats 404 Beebs, mise à jour non bloquée).
+- **4.4** : la recherche de marque Leboncoin muette (piste à prouver) ; motif des refus de boncoin59300 (son mail).
+- **4.3** : motif du refus de jocabroc8 (le mail de Leboncoin, à lui demander).
+- **4.8** : Ornella ouvre @ornella-vend sur vinted.fr dans le Chrome du poste.
+- **4.9** : Dayane 34083555, en vérification chez Beebs (mur Beebs) ; Joséphine : clôture seule à constater.
+- **4.1** : mele.marta, deux F1 2015 — une question à lui poser (jamais une fusion).
+- **Lot C** : bordereaux bêta Leboncoin / Beebs / eBay pour XEWER (aucun drapeau ne les ouvre aujourd'hui).
+- **À regarder** : le repli par mot sans resolve-categorie (une peinture rangée dans « Pinceaux », vu au banc).
 
 ## Ce qu'on peut dire à chaque compte (partie 4)
 - **mele.marta** : « Ton jeu était dans le bon rayon (Elettronica › Videogiochi e console › Giochi). FillSell cherchait les
@@ -214,8 +268,10 @@ __LIVRAISON__
   ligne par Beebs, contre 35 sur 42 sans cette phrase. Essaie sur deux jeux en la retirant. Ton Assassin's Creed
   Chronicles s'est vendu sur eBay le 23/10 : rien à retirer sur Beebs. Et tes textes partent désormais mot pour mot, état
   compris. »
-- **doriane-henri** : « Ton lot n'est pas bloqué, il est programmé : 18 h 30 – 19 h 15, 10 annonces par jour, une à la fois.
-  Les 5 premières sont parties ce soir. Pour aller plus vite, augmente le nombre par jour ou coupe la programmation. »
+- **doriane-henri** : « Ta file n'est pas bloquée, elle suit ta programmation : 18 h 30 – 19 h 15, 10 annonces par jour,
+  une plateforme comptant pour une annonce, une à la fois. Le 29/10, 10 sont parties de 18:32 à 19:14 ; la suite reprend
+  chaque jour à 18 h 30 (tes 100 annonces en attente, 28 articles, prennent une dizaine de jours à ce rythme). Pour aller
+  plus vite, augmente le nombre par jour ou coupe la programmation dans Réglages › Publication programmée. »
 - **ornellaracano** : « Tes 4 republications attendent ta boutique @ornella-vend : ton Chrome est ouvert sur
   @luciatrendyshop. Ouvre @ornella-vend sur vinted.fr dans Chrome, elles partiront seules. »
 - **recrutementgroupezk704 (Dayane)** : « Ton jean Levi's 511 est vendu. Sur Beebs, son annonce (n° 34083555) est en
