@@ -236,7 +236,18 @@ export function champsRelanceCauseLevee(pf0 = {}, cause, maintenant = new Date()
   delete pf.recreation_bloquee; delete pf.needs_user_source; delete pf.next_action_after; delete pf.processing_since;
   delete pf.pas_de_rouge; delete pf.error_technique;
   pf.recreation_relancee = { ...(pf.recreation_relancee ?? {}), [cause.code]: { le: maintenant, par: "handler-watch", correctif: cause.correctif } };
+  // (29/10 soir, lot A point 7 — thibault.andrieux, deux postes : 0.6.152 et un vieux 0.6.149) Une cause corrigée par
+  // l'EXTENSION n'est levée que sur le build du poste du compte (profiles.extension_build) ; le job relancé doit alors
+  // n'être servi qu'à un poste qui a ce build (garde `build_min_requis` de get-pending-jobs) — sinon le vieux poste
+  // le reprend, retombe sur le même mur, et la relance unique est perdue. Jamais abaissé.
+  if (cause.buildMin && !(msBuild(pf.build_min_requis) >= Date.parse(cause.buildMin))) pf.build_min_requis = cause.buildMin;
   return pf;
+}
+
+/** Le préfixe horodaté d'un BUILD_ID (ou une date ISO seule) en millisecondes ; illisible : NaN. */
+function msBuild(b) {
+  const m = String(b ?? "").match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)/);
+  return m ? Date.parse(m[1]) : NaN;
 }
 
 /** Le message de la remise en file : vrai, sans durée promise. */

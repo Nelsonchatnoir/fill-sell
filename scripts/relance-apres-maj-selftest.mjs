@@ -150,6 +150,11 @@ console.log("\n[5] (08/10 soir) Tâche mise de côté « sans démarrage » (Jon
   ok("republication « État refusé » (grille_incoherente, avant tout retrait) : règle vinted_menus_bloom_grille", g?.cle === "vinted_menus_bloom_grille", JSON.stringify(g));
   const pf = champsRelance(LIVRE, g, { maintenant: "2026-10-29T08:00:00Z", extensionBuild: "2026-10-28T21:00:00Z+abcdef0" });
   ok("   relancée : étape et erreurs archivées CONSERVÉES", pf.republish_step === "captured" && pf.erreurs_archivees?.length === 1 && !pf.needs_user_source);
+  // (29/10 soir) Un vieux poste du même compte ne la reprend jamais : servie au build qui corrige, au plus tôt.
+  ok("   relancée : servie seulement à un poste au build du correctif (build_min_requis = 0.6.150)", pf.build_min_requis === "2026-10-28T20:15:00Z", pf.build_min_requis);
+  const pfPlusHaut = champsRelance({ ...LIVRE, platform_fields: { ...LIVRE.platform_fields, build_min_requis: "2026-10-29T13:30:00Z" } }, g,
+    { maintenant: "2026-10-29T08:00:00Z", extensionBuild: "2026-10-29T14:00:00Z+abcdef0" });
+  ok("   un build_min_requis plus récent déjà posé : jamais abaissé", pfPlusHaut.build_min_requis === "2026-10-29T13:30:00Z", pfPlusHaut.build_min_requis);
   ok("   republication déjà retirée : jamais", regleDeRelance({ ...LIVRE, platform_fields: { ...LIVRE.platform_fields, republish_step: "deleted" } }) === null);
   ok("   question « marque » à la personne (champ_a_choisir) : jamais", regleDeRelance({ ...ORNELLA, platform_fields: { needs_user_source: "champ_a_choisir" } }) === null);
   const XEWER = {

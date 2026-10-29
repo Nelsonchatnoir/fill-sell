@@ -87,6 +87,12 @@ console.log("\n5. (29/10, lot A point 2) ATTRIBUTS DE L'ANNONCE D'ORIGINE : LA Q
   const pf = champsRelanceCauseLevee(thibault.platform_fields, c, "2026-10-29T15:00:00Z");
   ok(!pf.needs_user_source && pf.republish_step === "deleted" && Boolean(pf.recreation_relancee?.vinted_attributs_origine) && Boolean(pf.recreation_relancee?.vinted_menus_bloom),
     "question levée, étape gardée, marquée une fois (l'ancienne marque reste)");
+  // (29/10 soir) Thibault a un second poste en 0.6.149 : le job relancé ne lui est jamais servi (garde de get-pending-jobs).
+  ok(pf.build_min_requis === "2026-10-29T13:30:00Z", `relancée : servie seulement à un poste au build qui pose les identifiants (build_min_requis ${pf.build_min_requis})`);
+  const pfPlusHaut = champsRelanceCauseLevee({ ...thibault.platform_fields, build_min_requis: "2026-10-30T08:00:00Z+abcdef0" }, c, "2026-10-29T15:00:00Z");
+  ok(pfPlusHaut.build_min_requis === "2026-10-30T08:00:00Z+abcdef0", "un build_min_requis plus récent déjà posé : jamais abaissé");
+  const sansBuild = champsRelanceCauseLevee({}, { code: "cause_serveur", correctif: "serveur" }, "2026-10-29T15:00:00Z");
+  ok(!("build_min_requis" in sansBuild), "une cause corrigée par le SERVEUR (sans buildMin) n'exige aucun build");
   ok(causeLeveePourRelance({ ...thibault, platform_fields: { ...thibault.platform_fields, republish_step: "captured" } }, "2026-10-29T14:10:00Z+abcdef0") === null,
     "annonce encore en ligne (captured) : la question reste à la personne");
   const isbn = { ...thibault, error: "Ton annonce a été retirée de Vinted et n'a pas pu être recréée automatiquement : Vinted exige « ISBN »." };

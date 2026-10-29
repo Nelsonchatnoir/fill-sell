@@ -114,3 +114,8 @@
   `20261029150000_battement_extension`). handler-watch : un poste qui bat sur CE job n'est jamais « arrêté » ; l'alerte
   « hors ligne sans recréation » ne part pas pour un poste éteint (aucun signe depuis 10 min), revenu depuis < 30 min ou
   occupé ailleurs (< 2 h) — seulement pour un poste vivant, libre, qui ne recrée pas.
+- ⛔ **29/10 soir — une relance « au build qui corrige » épingle le job à ce build** (thibault.andrieux : un poste en
+  0.6.152, un vieux en 0.6.149). `champsRelanceCauseLevee` (`_shared/recreation-bloquee.js`) et `champsRelance`
+  (`_shared/relance-apres-maj.js`) posent `build_min_requis` = le build de la cause (jamais abaissé) : get-pending-jobs ne
+  sert alors le job qu'à un poste à jour ; un autre poste du compte, plus ancien, ne le reprend plus pour retomber sur le
+  même mur (la relance est unique). Une cause corrigée par le serveur (sans `buildMin`) n'exige aucun build.

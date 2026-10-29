@@ -72,7 +72,9 @@ const APP_BUILD_ID = typeof __FILLSELL_APP_BUILD__ !== 'undefined' ? __FILLSELL_
 // Les exceptions et promesses rejetées non rattrapées sont signalées au serveur (5 par onglet au plus).
 ecouterEchecsNonRattrapes();
 // (29/10, point 10) Un DOM touché par un tiers (traduction du navigateur…) ne lève plus : signalé une fois, avec la
-// langue. La traduction du navigateur reste PERMISE (interdireTraductionApp, utils/domTraduit.js : décision de Nico).
+// langue. Et l'app ne se laisse plus traduire (décision de Nico, 29/10 soir) : index.html le déclare, et ce geste le
+// repose si un tiers l'a retiré (utils/domTraduit.js).
+interdireTraductionApp();
 garderDomContreTiers((op) => signalerActionRatee({ action: 'dom_tiers', motif: op, details: contexteLangue() }));
 // Build extension MINIMAL requis (injecté par Vite depuis scripts/build-id.mjs,
 // bumpé à chaque commit touchant chrome-extension/ — garde-fou au build).
@@ -96,7 +98,7 @@ import { supabase, supabaseUrl, supabaseAnonKey } from './lib/supabase';
 // (25/10, Jocabroc) Plus jamais d'échec invisible côté serveur : chaque action ratée est signalée (utils/actionRatee).
 import { ecouterEchecsNonRattrapes, viderEnAttente, signalerActionRatee } from './utils/actionRatee';
 // (29/10, point 10) Une page traduite par le navigateur blanchissait l'écran (utils/domTraduit.js).
-import { garderDomContreTiers, contexteLangue } from './utils/domTraduit.js';
+import { garderDomContreTiers, contexteLangue, interdireTraductionApp } from './utils/domTraduit.js';
 import { supprimerMonCompte } from './compte/supprimerCompte';
 import { fusionnerReglages } from './utils/reglagesPlateformes';
 import { titreNorm } from './utils/rapprochementJumeau.js';

@@ -158,18 +158,23 @@ console.log('3. Le renouvellement par la page');
 const texteRenouv = extraire('async function renouvelerJetonLeboncoinPage()');
 const texteEtat = extraire('function etatJetonLeboncoinDansLaPage()');
 const texteValable = extraire('function jetonLeboncoinValable(');
-async function renouveler({ urls, etats, jusqua = 20_000 }) {
+// (29/10 soir, point 6) La porte de connexion n'est retenue que vue DEUX fois à plus d'1 s d'écart.
+const texteAdresseCnx = extraire('function adresseConnexionLeboncoin(');
+const texteCnxConfirmee = extraire('async function pageConnexionLeboncoinConfirmee(');
+// `urlsGet` : l'adresse lue à chaque chrome.tabs.get, dans l'ordre (sinon : celle du coup d'œil en cours).
+async function renouveler({ urls, etats, jusqua = 20_000, urlsGet = null }) {
   let horloge = 1_800_000_000_000;
   let n = 0;
+  let g = 0;
   const Date_ = { now: () => horloge };
   const chrome = {
-    tabs: { get: async () => ({ url: urls[Math.min(n, urls.length - 1)] }) },
+    tabs: { get: async () => ({ url: urlsGet ? urlsGet[Math.min(g++, urlsGet.length - 1)] : urls[Math.min(n, urls.length - 1)] }) },
     scripting: { executeScript: async () => [{ result: etats[Math.min(n++, etats.length - 1)] }] },
   };
   const getOrCreateWorkTab = async () => 7;
   const sleep = async (ms) => { horloge += ms; };
   const fn = new Function('chrome', 'getOrCreateWorkTab', 'sleep', 'Date', 'LBC_PAGE_JETON', 'LBC_JETON_ATTENTE_MS',
-    `${texteEtat}\n${texteValable.replace('maintenantMs = Date.now()', 'maintenantMs = Date.now()')}\n${texteRenouv}\nreturn renouvelerJetonLeboncoinPage();`);
+    `${texteEtat}\n${texteValable.replace('maintenantMs = Date.now()', 'maintenantMs = Date.now()')}\n${texteAdresseCnx}\n${texteCnxConfirmee}\n${texteRenouv}\nreturn renouvelerJetonLeboncoinPage();`);
   return fn(chrome, getOrCreateWorkTab, sleep, Date_, 'https://www.leboncoin.fr/compte/part/mes-annonces', jusqua);
 }
 {
@@ -179,7 +184,14 @@ async function renouveler({ urls, etats, jusqua = 20_000 }) {
 }
 {
   const r = await renouveler({ urls: ['https://auth.leboncoin.fr/login?x=1'], etats: [{ present: false }] });
-  ok(r.ok === false && r.motif === 'session_fermee', 'redirection vers auth.leboncoin.fr → « session_fermee »');
+  ok(r.ok === false && r.motif === 'session_fermee' && r.lieu === 'auth.leboncoin.fr/login', `redirection vers auth.leboncoin.fr, encore là 1,2 s plus tard → « session_fermee » [${r.lieu}] (jamais la requête)`);
+}
+{
+  // Passage éclair par la porte de connexion (renvoi de jeton qui revient seul) : ce n'est pas une session fermée.
+  const exp = Math.floor(1_800_000_000_000 / 1000) + 7200;
+  const r = await renouveler({ urls: [], etats: [{ present: true, exp }],
+    urlsGet: ['https://auth.leboncoin.fr/api/authorizer/v2/authorize?x=1', 'https://www.leboncoin.fr/compte/part/mes-annonces'] });
+  ok(r.ok === true, 'passage éclair par auth.leboncoin.fr puis retour sur « Mes annonces » → pas de « session_fermee », jeton lu');
 }
 {
   const r = await renouveler({ urls: ['https://www.leboncoin.fr/compte/part/mes-annonces'], etats: [{ present: false }] });
@@ -212,12 +224,50 @@ const apresPage = BG.slice(BG.indexOf('// ── LEBONCOIN : LA PAGE A CHARGÉ, 
 ok(/lireAdresseLbc\(motifsBis, 2\)/.test(apresPage) && /api\.annonces\.length >= vuesPage/.test(apresPage), 'après le repli sur la page, l’adresse est relue avant de conclure');
 // (29/10) Session fermée vue au renouvellement, liste non rendue : le mur de connexion, jamais « n'a pas rendu sa liste ».
 const boucleLbc = BG.slice(BG.indexOf('  let dernierTabId = null;'), BG.indexOf('// ── LEBONCOIN : LA PAGE A CHARGÉ, L\'ADRESSE EST RELUE'));
+// (29/10 soir) Tout ce qui n'est pas une liste rendue (`surLaListe !== true`) — un résultat VIDE compris.
 ok(/motifsAdresseListe\.some\(\(m\) => \/non renouvelé \\\(session_fermee\\\)\/\.test/.test(boucleLbc)
-  && /r\.surLaListe === false && annonces\.size === 0/.test(boucleLbc)
+  && /r\.surLaListe !== true && annonces\.size === 0/.test(boucleLbc)
   && /absente: true,\s*erreur: "session leboncoin : page de connexion \("/.test(boucleLbc),
-  'renouvellement renvoyé vers la connexion + liste non rendue → « session leboncoin : page de connexion », « absente »');
-ok(/const ongletApres = await chrome\.tabs\.get\(tabId\)/.test(boucleLbc) && /r\?\.page\?\.connexion === true/.test(boucleLbc),
-  'l’adresse de l’onglet est relue APRÈS la lecture (renvoi tardif), et le formulaire rendu sur place compte');
+  'renouvellement renvoyé vers la connexion + liste non rendue (ou rien rendu) → « session leboncoin : page de connexion », « absente »');
+ok(/if \(r\.surLaListe !== true\) lbcListeRendue = false;/.test(boucleLbc) && !/if \(r\.surLaListe === false\) lbcListeRendue = false;/.test(boucleLbc),
+  'la liste n’est rendue que si la page l’ÉCRIT (`surLaListe: true`) : un résultat vide ne vaut plus « couverture inconnue »');
+ok(/let lieuConnexion = await pageConnexionLeboncoinConfirmee\(tabId\);/.test(boucleLbc)
+  && /for \(let i = 0; r\.sansResultat && !lieuConnexion && i < 10; i\+\+\) \{\s*await sleep\(500\);/.test(boucleLbc)
+  && /r\?\.page\?\.connexion === true/.test(boucleLbc),
+  'l’adresse de l’onglet est relue APRÈS la lecture, toutes les 500 ms pendant 5 s si rien n’a été rendu (renvoi en cours), et le formulaire rendu sur place compte');
+{
+  // Exécution réelle : le script de lecture n'a RIEN rendu (document remplacé pendant l'attente du compteur).
+  // Fonction trop riche en chaînes à accolades pour extraire() : coupée à sa fermeture de colonne 0.
+  const iLire = BG.indexOf('async function releverLiensAnnoncesDansOnglet(');
+  const texteLire = BG.slice(iLire, BG.indexOf('\n}\n', iLire) + 2);
+  const lire = new Function('chrome', 'LISTING_URL_PATTERNS', 'COMPTEUR_EBAY_SRC', 'COMPTEUR_EBAY_ATTENTE_MS', 'COMPTEUR_LBC_ATTENTE_MS', 'CHEMIN_LISTE_DU_COMPTE',
+    `${texteLire}\nreturn releverLiensAnnoncesDansOnglet;`);
+  const chromeVide = (url) => ({
+    scripting: { executeScript: async () => [{ result: null }] },
+    tabs: { get: async () => ({ url }) },
+  });
+  const f = lire(chromeVide('https://auth.leboncoin.fr/login/?client_id=lbc-front-web&x=1'), { leboncoin: /leboncoin\.fr\/ad\// }, [], 0, 0, { leboncoin: /^\/compte/ });
+  const r = await f(7, 'leboncoin');
+  ok(r.surLaListe === false && r.sansResultat === true && r.pageQuittee === 'auth.leboncoin.fr/login/' && Array.isArray(r.annonces) && !r.annonces.length,
+    `résultat vide → surLaListe false, sansResultat, page quittée « ${r.pageQuittee} » (jamais la requête)`);
+  const g = lire(chromeVide('https://www.leboncoin.fr/compte/part/mes-annonces'), { leboncoin: /leboncoin\.fr\/ad\// }, [], 0, 0, { leboncoin: /^\/compte/ });
+  const r2 = await g(7, 'leboncoin');
+  ok(r2.surLaListe === false && r2.pageQuittee === 'www.leboncoin.fr/compte/part/mes-annonces', 'résultat vide, onglet resté sur « Mes annonces » → liste NON rendue (le run dit « hors liste », jamais « couverture inconnue »)');
+}
+{
+  // Exécution réelle de la confirmation : porte vue deux fois → l'endroit ; vue une fois → rien.
+  const confirmer = (urls) => {
+    let i = 0;
+    const chrome = { tabs: { get: async () => ({ url: urls[Math.min(i++, urls.length - 1)] }) } };
+    return new Function('chrome', 'sleep', `${texteAdresseCnx}\n${texteCnxConfirmee}\nreturn pageConnexionLeboncoinConfirmee(7);`)(chrome, async () => {});
+  };
+  ok(await confirmer(['https://auth.leboncoin.fr/login?a=1', 'https://auth.leboncoin.fr/login?a=1']) === 'auth.leboncoin.fr/login', 'porte de connexion vue deux fois → retenue');
+  ok(await confirmer(['https://auth.leboncoin.fr/login?a=1', 'https://www.leboncoin.fr/compte/part/mes-annonces']) === null, 'porte vue une fois puis retour → rien (pas de « Connecte-toi »)');
+  ok(await confirmer(['https://www.leboncoin.fr/compte/part/mes-annonces']) === null, '« Mes annonces » → rien');
+}
+ok(/« Mes annonces » n'a pas rendu sa liste \(redirection du compte, challenge ou page non peinte\)" \+ horsListe/.test(BG)
+  && /la page a quitté « Mes annonces » pendant la lecture/.test(BG),
+  'le libellé lu par le serveur (releve_hors_liste) reste mot pour mot ; la page quittée et son état s’y ajoutent');
 {
   const F = await import(pathToFileURL(join(ROOT, 'src/annonces/finReleve.js')).href);
   const e = '[incomplet] session leboncoin : page de connexion (« Mes annonces » renvoie vers la connexion de Leboncoin au renouvellement du jeton) · [défilement] [adresse muette : essai 1 : jeton_absent ; jeton non renouvelé (session_fermee)] repli sur la page';

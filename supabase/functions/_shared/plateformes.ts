@@ -41,7 +41,9 @@ export const PLATEFORMES: Readonly<Record<string, DescriptionPlateforme>> = {
   vinted: { label: "Vinted", logo: "logo-vinted.png" },
   leboncoin: { label: "Leboncoin", logo: "logo-leboncoin.png" },
   ebay: { label: "eBay", logo: "logo-ebay.png" },
-  beebs: { label: "Beebs", logo: "logo-beebs.png" },
+  // (29/10/2026) Nouveau logo Beebs (jaune, « B » noir) sous un NOUVEAU nom : les images de fillsell.app sont servies
+  // « immutable » un an (vercel.json) ; l'ancien fichier reste en ligne pour les mails déjà envoyés.
+  beebs: { label: "Beebs", logo: "logo-beebs-2910.png" },
   opla: { label: "Opla", logo: "logo-opla.png" },
   // Depop (09/10/2026) : nommée pour les comptes où elle est ouverte (« Vendu
   // sur Depop »), JAMAIS proposée dans un mail (cf. SLUGS_PLATEFORMES_PROPOSEES).

@@ -139,9 +139,10 @@ ${principal}
 </main>
 ${pied({ site, page, t })}`, page.lang);
   return `<!doctype html>
-<html lang="${page.lang}">
+<html lang="${page.lang}" translate="no" class="notranslate">
 <head>
 <meta charset="utf-8">
+<meta name="google" content="notranslate">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script${page.racine ? ' data-racine="1"' : ''}>${site.aiguillage}</script>
 ${blocEnPage(site.balises, 'consentement')}

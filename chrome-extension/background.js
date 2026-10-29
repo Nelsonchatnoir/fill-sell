@@ -16630,7 +16630,48 @@ async function releverLiensAnnoncesDansOnglet(tabId, platform) {
   let res;
   try { [res] = await Promise.race([injection, borne]); }
   finally { clearTimeout(attente); }
-  return res?.result ?? { annonces: [], diag: null };
+  if (res?.result) return res.result;
+  // ── (29/10 soir, point 6) UN RÉSULTAT VIDE N'EST JAMAIS « LISTE RENDUE » ──────────────────────────────────────
+  // Le script n'a rien rendu : le document a été remplacé PENDANT la lecture (Leboncoin : le renvoi vers la
+  // connexion arrive pendant l'attente du compteur « En ligne (N) »). Avant, ce vide ne portait pas `surLaListe` :
+  // la liste passait pour rendue et le run sortait « …couverture inconnue » au lieu de « page de connexion »
+  // (annehelene.reve et nadegemarcelin78 depuis le 28/10, le poste de Nico le 29/10 à 15:22 en 0.6.153). On dit
+  // où l'onglet est allé ; l'appelant tranche.
+  let pageQuittee = null;
+  try {
+    const u = new URL((await chrome.tabs.get(tabId).catch(() => null))?.url ?? "");
+    pageQuittee = u.hostname + u.pathname;
+  } catch { pageQuittee = null; }
+  return { annonces: [], diag: { motif: "sans_resultat" }, totalEnLigne: null, surLaListe: false, sansResultat: true, pageQuittee };
+}
+
+// Une adresse de la porte de connexion Leboncoin (domaine auth.leboncoin.fr, ou /connexion, /login… sur le site).
+function adresseConnexionLeboncoin(adresse) {
+  try {
+    const u = new URL(String(adresse ?? ""));
+    return /(^|\.)auth\.leboncoin\.fr$/.test(u.hostname) || /^\/(?:connexion|login|signin|identification)/i.test(u.pathname);
+  } catch { return false; }
+}
+
+// ── (29/10 soir, point 6) LA PAGE DE CONNEXION SE VOIT DEUX FOIS AVANT DE CONCLURE ─────────────────────────────
+// Un passage éclair par auth.leboncoin.fr (renvoi de jeton qui revient seul) n'est pas une session fermée : on ne
+// conclut « page de connexion » — et l'app ne dit « Connecte-toi » — que si l'onglet est ENCORE sur la porte de
+// connexion au moins 1 s plus tard. Rend l'endroit vu (domaine + chemin, jamais la requête) ou null.
+async function pageConnexionLeboncoinConfirmee(tabId) {
+  const lire = async () => (await chrome.tabs.get(tabId).catch(() => null))?.url ?? null;
+  const premiere = await lire();
+  if (!adresseConnexionLeboncoin(premiere)) return null;
+  await sleep(1200);
+  const seconde = await lire();
+  if (!adresseConnexionLeboncoin(seconde)) return null;
+  try { const u = new URL(seconde); return u.hostname + u.pathname; } catch { return "connexion"; }
+}
+
+/** L'état d'une page « Mes annonces » de Leboncoin quand le relevé l'a quittée, en une ligne lisible dans le run. */
+function decrirePageLeboncoin(page) {
+  if (!page || typeof page !== "object") return null;
+  return `[page] ${page.etat ?? "?"}, ${Number(page.liens) || 0} lien(s) d'annonce${page.connexion ? ", formulaire de connexion" : ""}`
+    + ` — « ${String(page.texte ?? "").slice(0, 100)} »`;
 }
 
 /** L'état de la page eBay au moment où le relevé l'a quittée, en une ligne lisible dans le run. */
@@ -16792,6 +16833,8 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
   // et si elle a bien rendu sa liste. Cf. verdict de couverture en fin de fonction.
   let lbcTotalEnLigne = null;
   let lbcListeRendue = true;
+  let lbcPageQuittee = null;   // (29/10 soir) où l'onglet est allé quand la lecture n'a rien rendu
+  let dernierePageLbc = null;  // ce que « Mes annonces » montrait quand le relevé l'a lue
   // Couverture eBay (2026-09-19) : « Gérer les annonces en cours(N) ». Même
   // rôle que le compteur Leboncoin — cible de la pagination ET juge de
   // couverture. Sans lui, aucune disparition n'est conclue.
@@ -16916,7 +16959,7 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
       if (LBC_JETON_A_RENOUVELER_RE.test(String(api?.motif ?? ""))) {
         if (essai >= essais) break;
         const ren = await renouvelerJetonLeboncoin();
-        motifsApi.push(`jeton ${ren.ok ? `renouvelé par la page en ${(ren.attente_ms / 1000).toFixed(1)} s` : `non renouvelé (${ren.motif})`}`);
+        motifsApi.push(`jeton ${ren.ok ? `renouvelé par la page en ${(ren.attente_ms / 1000).toFixed(1)} s` : `non renouvelé (${ren.motif})${ren.lieu ? ` [${ren.lieu}]` : ""}`}`);
         if (!ren.ok) break;
         continue; // relue tout de suite, avec le jeton neuf
       }
@@ -17021,7 +17064,10 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
       // du compte, challenge) ne vaut jamais « 0 annonce » — elle vaut incomplet.
       if (platform === "leboncoin") {
         if (Number.isFinite(r.totalEnLigne)) lbcTotalEnLigne = r.totalEnLigne;
-        if (r.surLaListe === false) lbcListeRendue = false;
+        // (29/10 soir) Par défaut, la liste N'est PAS rendue : seul un `surLaListe: true` écrit par la page le dit.
+        if (r.surLaListe !== true) lbcListeRendue = false;
+        if (r.sansResultat && r.pageQuittee) lbcPageQuittee = r.pageQuittee;
+        if (r.page) dernierePageLbc = r.page;
         // ── (29/10) LEBONCOIN : UNE SESSION FERMÉE SE NOMME, MÊME QUAND LE RENVOI ARRIVE TARD ──────────────
         // nadegemarcelin78, annehelene.reve, Amiral, le poste de Nico : 20 relevés « « Mes annonces » n'a pas
         // rendu sa liste » en 30 jours, TOUS avec « jeton non renouvelé (session_fermee) » — le renouvellement
@@ -17032,15 +17078,24 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
         // renvoi tombait avant le coup d'œil. Liste non rendue + l'un des trois signes (adresse relue APRÈS la
         // lecture, formulaire de connexion sur la page, renouvellement renvoyé vers la connexion) = le mur de
         // connexion : même sortie que la redirection vue au chargement (« absente », rien n'est conclu ni importé).
-        if (r.surLaListe === false && annonces.size === 0 && !(r.annonces ?? []).length) {
-          const ongletApres = await chrome.tabs.get(tabId).catch(() => null);
-          const renvoyeeConnexion = /\/(?:connexion|login|signin|auth|identification)/i.test(String(ongletApres?.url ?? ""));
+        // (29/10 soir, point 6) Ce correctif exigeait `surLaListe === false` : un résultat VIDE (document remplacé
+        // pendant la lecture) ne le portait pas, et le poste de Nico, déconnecté, sortait encore « …couverture
+        // inconnue » à 15:22 en 0.6.153. Désormais : tout ce qui n'est pas une liste rendue ; et quand le script n'a
+        // rien rendu, le renvoi est peut-être EN COURS — l'adresse se relit toutes les 500 ms, 5 s au plus. La porte
+        // de connexion n'est retenue que vue deux fois à plus d'1 s d'écart (pageConnexionLeboncoinConfirmee).
+        if (r.surLaListe !== true && annonces.size === 0 && !(r.annonces ?? []).length) {
+          let lieuConnexion = await pageConnexionLeboncoinConfirmee(tabId);
+          for (let i = 0; r.sansResultat && !lieuConnexion && i < 10; i++) {
+            await sleep(500);
+            lieuConnexion = await pageConnexionLeboncoinConfirmee(tabId);
+          }
+          const renvoyeeConnexion = !!lieuConnexion;
           const formulaire = r?.page?.connexion === true;
           const renouvellementRenvoye = motifsAdresseListe.some((m) => /non renouvelé \(session_fermee\)/.test(String(m)));
           if (renvoyeeConnexion || formulaire || renouvellementRenvoye) {
             return { annonces: [], complet: false, absente: true,
               erreur: "session leboncoin : page de connexion (" + (renvoyeeConnexion
-                ? "« Mes annonces » a renvoyé vers la connexion après son chargement"
+                ? `« Mes annonces » a renvoyé vers la connexion après son chargement [${lieuConnexion}]`
                 : formulaire ? "formulaire de connexion rendu sur « Mes annonces »"
                   : "« Mes annonces » renvoie vers la connexion de Leboncoin au renouvellement du jeton") + ")" };
           }
@@ -17308,7 +17363,11 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
   const COUVERTURE = {
     leboncoin: {
       total: lbcTotalEnLigne, comptees: annonces.size, libelle: "« en ligne »", listeRendue: lbcListeRendue,
-      absent: "« Mes annonces » n'a pas rendu sa liste (redirection du compte, challenge ou page non peinte)" + horsListe,
+      // (29/10 soir) Le libellé reste mot pour mot (lu par le serveur) ; on y ajoute où la page est allée et ce
+      // qu'elle montrait, pour que la prochaine occurrence dise sa cause.
+      absent: "« Mes annonces » n'a pas rendu sa liste (redirection du compte, challenge ou page non peinte)" + horsListe
+        + (lbcPageQuittee ? ` · la page a quitté « Mes annonces » pendant la lecture (${lbcPageQuittee})` : "")
+        + (dernierePageLbc ? ` · ${decrirePageLeboncoin(dernierePageLbc)}` : ""),
     },
     ebay: {
       total: ebayTotalEnCours, comptees: annonces.size, libelle: "« en cours »", listeRendue: !pagesHorsListe.length,
@@ -18768,12 +18827,10 @@ async function renouvelerJetonLeboncoinPage() {
   try { tabId = await getOrCreateWorkTab("leboncoin", LBC_PAGE_JETON); }
   catch (e) { return { ok: false, motif: `onglet : ${String(e?.message ?? e).slice(0, 80)}`, attente_ms: Date.now() - t0 }; }
   for (;;) {
-    const tab = await chrome.tabs.get(tabId).catch(() => null);
-    let url = null;
-    try { url = new URL(tab?.url ?? ""); } catch { url = null; }
-    if (url && (/(^|\.)auth\.leboncoin\.fr$/.test(url.hostname) || /^\/(connexion|login)/.test(url.pathname))) {
-      return { ok: false, motif: "session_fermee", attente_ms: Date.now() - t0 };
-    }
+    // (29/10 soir, point 6) « session_fermee » seulement sur une porte de connexion vue DEUX fois à plus d'1 s
+    // d'écart : un passage éclair par auth.leboncoin.fr ne ferme rien. L'endroit vu suit le motif, entre crochets.
+    const lieu = await pageConnexionLeboncoinConfirmee(tabId);
+    if (lieu) return { ok: false, motif: "session_fermee", lieu, attente_ms: Date.now() - t0 };
     const etat = await chrome.scripting.executeScript({ target: { tabId }, world: "MAIN", func: etatJetonLeboncoinDansLaPage })
       .then(([r]) => r?.result ?? null).catch(() => null);
     if (jetonLeboncoinValable(etat)) return { ok: true, attente_ms: Date.now() - t0 };

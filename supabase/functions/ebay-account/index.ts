@@ -15,7 +15,8 @@
 //                       action EXPLICITE de l'utilisateur (bouton « Créer »),
 //                       puis la mémorise. JAMAIS appelée d'office.
 //   services_livraison  la liste VIVANTE des modes d'envoi qu'eBay FR accepte
-//                       aujourd'hui (GeteBayDetails), groupée pour un vendeur
+//                       aujourd'hui (API Metadata getShippingServices depuis le
+//                       29/10/2026, repli GeteBayDetails), groupée pour un vendeur
 //   detail_politique    { type, id } — LECTURE SEULE du contenu d'une politique
 //                       (transporteur, prix, délai) : la liste des politiques
 //                       ne rend qu'un nom, le vendeur ne savait pas ce qu'il
@@ -73,7 +74,7 @@ import {
 import { obtenirJetonApplicatif } from "../_shared/ebay-app-token.ts";
 import { texteDepuisHtml } from "../_shared/texte-depuis-html.js";
 import {
-  listerServicesLivraison, resoudreServiceLivraison, resumerServicesDomestiques, MODES_LIVRAISON,
+  listerServicesLivraison, listerServicesLivraisonAvecSource, resoudreServiceLivraison, resumerServicesDomestiques, MODES_LIVRAISON,
   grouperServicesDomestiques, resoudreCodeService, familleService, PLAFOND_SERVICES_DOMESTIQUES,
   type ServiceLivraison,
 } from "../_shared/ebay-shipping.ts";
@@ -233,7 +234,7 @@ async function releverChecklist(admin: SupabaseClient, env: EbayEnv, token: stri
 // Toute valeur refusée par eBay remonte TELLE QUELLE (messageErreurEbay) : on
 // ne devine pas ce qu'eBay attend.
 // Politique de livraison : le shippingServiceCode n'est JAMAIS écrit en dur
-// ici — il est résolu depuis la liste GeteBayDetails d'eBay pour le mode de
+// ici — il est résolu depuis la liste d'eBay (Metadata, repli GeteBayDetails) pour le mode de
 // l'app (cf. _shared/ebay-shipping.ts) et passé en `serviceCode`. Le 06/09,
 // « FR_Colissimo » codé en dur avait valu « Échec de la validation LSAS ».
 // ⚠️ Ces corps ne servent QU'À LA CRÉATION (POST). eBay y applique les défauts
@@ -559,15 +560,16 @@ Deno.serve(async (req) => {
     }
 
     // ── Les modes d'envoi qu'eBay FR accepte AUJOURD'HUI ────────────────────
-    // Lecture seule. La liste vient de GeteBayDetails (cache 1 h par isolat),
+    // Lecture seule. La liste vient de l'API Metadata (getShippingServices ; repli GeteBayDetails journalisé), cache 1 h par isolat,
     // filtrée sur ValidForSellingFlow : un service retiré par eBay disparaît
     // de l'écran tout seul, un service ajouté y apparaît sans redéploiement.
     if (action === "services_livraison") {
       try {
-        const services = await listerServicesLivraison(env, token);
+        const { services, source } = await listerServicesLivraisonAvecSource(env, token);
         return json({
           familles: grouperServicesDomestiques(services),
           plafond: PLAFOND_SERVICES_DOMESTIQUES,
+          source,
           at: new Date().toISOString(),
         });
       } catch (e) {
@@ -716,7 +718,7 @@ Deno.serve(async (req) => {
       let serviceCode: string | undefined;
       if (type === "fulfillment") {
         // Le code du mode est lu dans la liste qu'eBay rend pour le site FR
-        // (GeteBayDetails, cache 1 h) et refusé ICI s'il n'y est pas valide.
+        // (Metadata, repli GeteBayDetails ; cache 1 h) et refusé ICI s'il n'y est pas valide.
         const mode = String(options.livraison ?? "colissimo");
         if (!MODES_LIVRAISON[mode]) return json({ error: `Mode de livraison inconnu : ${mode}` }, 400);
         let services;

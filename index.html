@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="fr">
+<html lang="fr" translate="no" class="notranslate">
   <head>
     <!-- site:balises:gtm:debut — bloc recopié tel quel dans chaque page du site vitrine (scripts/site/lib/balises.mjs) ; garder ce marqueur et celui de fin -->
     <!-- Google Tag Manager -->
@@ -23,6 +23,9 @@
 
     <!-- Primary Meta Tags -->
     <meta charset="UTF-8" />
+    <!-- (29/10, décision de Nico) FillSell ne se laisse pas traduire par le navigateur : la traduction remplace les
+         textes de React par des <font> et blanchissait l'écran (src/utils/domTraduit.js). -->
+    <meta name="google" content="notranslate" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <!-- ⚠️ TITRE : décrire le produit, ne PAS énumérer les marques tierces.
          Cas réel 2026-07-30 : « FillSell – Publier sur Vinted, Leboncoin,

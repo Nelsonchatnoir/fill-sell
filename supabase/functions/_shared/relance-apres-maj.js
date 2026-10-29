@@ -189,5 +189,9 @@ export function champsRelance(job, regle, { maintenant, extensionBuild }) {
     statut_avant: job?.status ?? null,
     pose_par: `handler-watch (défaut corrigé par l'extension ${regle.version}, poste à jour)`,
   };
+  // (29/10 soir, lot A point 7) La tâche relancée n'est servie qu'à un poste qui a le correctif (garde
+  // `build_min_requis` de get-pending-jobs) : un autre poste du compte, resté plus ancien, la reprendrait et
+  // retomberait sur le même mur — la relance unique serait perdue. Jamais abaissé.
+  if (regle.buildMin && !(msDuBuild(pf.build_min_requis) >= Date.parse(regle.buildMin))) pf.build_min_requis = regle.buildMin;
   return pf;
 }

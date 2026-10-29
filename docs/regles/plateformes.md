@@ -448,3 +448,23 @@ Rapport : `docs/enquetes/dix-points-1710/RAPPORT.md` (points 1, 4, 5, 7, 9).
 - **Beebs, refus de vérification** : un refus (`refus_verification_beebs`) vaut pour SON numéro ; un numéro refusé n'est
   jamais une remise en ligne « finie » (`_shared/republication-finie.js`). Un retrait sans numéro sur un dépôt Beebs de
   plus de 7 jours passe par le juge des relevés ; une attente inchangée n'est réécrite qu'une fois toutes les 6 h.
+
+## 29/10 soir — clôture du lot A (rapport `docs/enquetes/lot-a-cloture-2910/RAPPORT.md`)
+- ⛔ **eBay, modes d'envoi** : la liste vient de l'API Metadata `getShippingServices`
+  (`GET /sell/metadata/v1/shipping/marketplace/EBAY_FR/get_shipping_services`, jeton APPLICATIF api_scope,
+  `_shared/ebay-app-token.ts`), plus de GeteBayDetails (retiré par eBay le 15/03/2027). Repli sur GeteBayDetails
+  (jeton du vendeur) journalisé `[ebay-shipping] repli` tant qu'eBay le sert ; tant qu'il vit, chaque remplissage du cache
+  (1 h par isolat) compare les deux listes et journalise `comparaison … IDENTIQUES|DIFFÉRENTES`. Le code texte du service
+  fait foi (le numéro ShippingServiceID n'existe plus). Les publications ne lisent jamais cette liste (elles portent la
+  politique déjà posée). Selftest `ebay-modes-envoi-metadata`.
+- **Leboncoin, relevé** : un résultat VIDE de la lecture de « Mes annonces » (document remplacé pendant l'attente du
+  compteur, renvoi vers la connexion en cours) n'est jamais « liste rendue » ; l'adresse de l'onglet est relue toutes les
+  500 ms pendant 5 s. La porte de connexion (auth.leboncoin.fr, /connexion, /login) n'est retenue que vue DEUX fois à plus
+  d'1 s d'écart — au renouvellement du jeton (« session_fermee [lieu] ») comme après la lecture ; un passage éclair n'est
+  pas une session fermée. Le libellé « « Mes annonces » n'a pas rendu sa liste » reste mot pour mot (lu par le serveur) ;
+  la page quittée et son état s'y ajoutent. Selftest `lbc-jeton-releve`.
+- **Beebs, logo** : nouveau logo (fond jaune #FAE368, « B » noir, badge Kiabi), relevé sur l'App Store le 29/10
+  (`BeebsIcon.jsx`, `platform-logos/source/beebs-icon.png`, `chrome-extension/assets/beebs.png`, mails
+  `public/email/logo-beebs-2910.png`). ⛔ Une image de fillsell.app change de NOM quand elle change de contenu
+  (`vercel.json` : images « immutable » un an) ; l'ancien fichier reste pour les mails déjà envoyés. Le CDN de Beebs
+  (cdn.beebs.app) sert encore l'ancien logo : ne rien y prendre.

@@ -220,7 +220,7 @@ ${pastille(logo("logo-leboncoin.png", "Leboncoin"))}
 ${espaceur}
 ${pastille(logo("logo-ebay.png", "eBay"))}
 ${espaceur}
-${pastille(logo("logo-beebs.png", "Beebs"))}
+${pastille(logo("logo-beebs-2910.png", "Beebs"))}
 </tr>
 </table>
 <p style="margin:16px 0 0 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:15px; line-height:1.6; color:#10201B;">Tu prépares ton article une fois. Il part sur les quatre.</p>

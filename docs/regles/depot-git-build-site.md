@@ -174,4 +174,11 @@ avec une phrase, les autres continuent — jamais tout l'écran.
   racine (écran blanc, mele.marta 6 fois le 28/10, pedrobaylina le 27/10). `src/utils/domTraduit.js`
   `garderDomContreTiers` : un insertBefore/removeChild sur un nœud sorti du parent ne lève plus (signalé une fois,
   `action_app_ratee` `dom_tiers`, avec la langue). Les exceptions gardent pile, composants et langue (`main.jsx`
-  onUncaughtError, `actionRatee.js`). La traduction reste permise (décision de Nico : `interdireTraductionApp`).
+  onUncaughtError, `actionRatee.js`).
+- ⛔ **29/10 soir (décision de Nico) : FillSell ne se laisse plus traduire, PARTOUT.** Chaque page HTML servie porte
+  `<html … translate="no" class="notranslate">` et `<meta name="google" content="notranslate">` : `index.html` (app web
+  et mobile, `interdireTraductionApp()` les repose au chargement d'App.jsx), `site/gabarits/layout.mjs` (toutes les pages
+  du site vitrine, fr et en), `chrome-extension/popup.html`, `serveur-cloud/public/connexion.html`. Une nouvelle page
+  HTML servie les porte aussi (selftest `dom-traduit`). Prouvé le 29/10 dans un Chrome en italien : en prod, icône et
+  bulle « Tradurre la pagina? » ; version corrigée : ni l'une ni l'autre, rendu identique au pixel sur téléphone.
+  La garde du DOM reste (autres extensions qui touchent au DOM).

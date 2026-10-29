@@ -6,7 +6,8 @@
 // (Portugal, 27/10 11:17). Ce test prouve :
 //   1. la garde du DOM (src/utils/domTraduit.js) : un insertBefore / removeChild sur un nœud sorti par un tiers ne
 //      lève plus, le geste normal est inchangé, le tiers est signalé UNE fois ;
-//   2. l'app se déclare non traduisible (translate="no", notranslate, meta google) — la vitrine (index.html) non ;
+//   2. FillSell se déclare non traduisible PARTOUT (translate="no", notranslate, meta google — décision de Nico du 29/10
+//      soir) : app (index.html + interdireTraductionApp), site vitrine (gabarit), popup de l'extension, page du Cloud ;
 //   3. le câblage : App.jsx pose les deux gestes, main.jsx garde la pile des composants, le journal joint la pile,
 //      les composants et la langue.
 import fs from "node:fs";
@@ -80,15 +81,24 @@ console.log("\n2. L'app se déclare non traduisible");
   ok(D.pageTraduite(doc) === false, "page non traduite : traduite = false");
   classes.add("translated-ltr");
   ok(D.pageTraduite(doc) === true, "Google Traduction (translated-ltr) : traduite = true");
-  const html = lire("index.html");
-  ok(!/translate="no"|notranslate/.test(html), "la vitrine (index.html) reste traduisible");
+  // Chaque page servie par FillSell porte les deux marques que Chrome (et Safari) lisent avant de proposer la traduction.
+  const pages = {
+    "index.html": [/<html lang="fr" translate="no" class="notranslate">/, "app web et mobile"],
+    "site/gabarits/layout.mjs": [/<html lang="\$\{page\.lang\}" translate="no" class="notranslate">/, "site vitrine"],
+    "chrome-extension/popup.html": [/<html lang="fr" translate="no" class="notranslate">/, "extension"],
+    "serveur-cloud/public/connexion.html": [/<html lang="fr" translate="no" class="notranslate">/, "Cloud"],
+  };
+  for (const [p, [html, ou]] of Object.entries(pages)) {
+    const src = lire(p);
+    ok(html.test(src) && /<meta name="google" content="notranslate"/.test(src), `${p} (${ou}) : translate="no", notranslate et meta google`);
+  }
 }
 
 console.log("\n3. Le câblage");
 {
   const app = lire("src/App.jsx");
-  // (29/10) La traduction du navigateur reste permise tant que Nico n'a pas tranché : seule la garde est branchée.
-  ok(!/^interdireTraductionApp\(\);$/m.test(app), "App.jsx : la traduction du navigateur reste permise (interdireTraductionApp non appelée)");
+  // (29/10 soir) Nico a tranché : la traduction du navigateur est bloquée ; l'app repose la marque au chargement.
+  ok(/^interdireTraductionApp\(\);$/m.test(app), "App.jsx : interdireTraductionApp() au chargement (traduction bloquée)");
   ok(/^garderDomContreTiers\(\(op\) => signalerActionRatee\(\{ action: 'dom_tiers', motif: op, details: contexteLangue\(\) \}\)\);$/m.test(app), "App.jsx : la garde du DOM, signalée en dom_tiers avec la langue");
   const main = lire("src/main.jsx");
   ok(/createRoot\(document\.getElementById\('root'\), \{ onUncaughtError: signalerErreurNonRattrapee \}\)/.test(main)

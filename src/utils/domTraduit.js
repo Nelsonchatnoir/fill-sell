@@ -10,14 +10,15 @@
 // rechargements autour de « Synchroniser » (BlocSynchro : `{!ctaInactif && <RefreshCw/>}{ctaTexte}`) ;
 // pedrobaylina (Chrome Windows, Portugal) le 27/10 à 11:17, fin de sa première synchro. Profils en « fr ».
 // Deux gestes, pour tous les comptes :
-//   1. l'app (/app) se déclare non traduisible (translate="no", classe notranslate, meta google notranslate) ; la
-//      vitrine reste traduisible ; l'anglais reste dans Réglages ;
+//   1. FillSell se déclare non traduisible (translate="no", classe notranslate, meta google notranslate) — décision de
+//      Nico du 29/10 soir, PARTOUT : app web et mobile (index.html, reposé par interdireTraductionApp), site vitrine
+//      (site/gabarits/layout.mjs), popup de l'extension, page « Me connecter » du Cloud ; l'anglais reste dans Réglages ;
 //   2. ceinture pour les autres tiers (extensions qui touchent au DOM) : un insertBefore / removeChild sur un nœud
 //      qui n'est plus l'enfant du parent ne lève plus — l'insertion se fait en fin de parent, le retrait n'a plus
 //      rien à retirer — et se signale UNE fois par onglet (action_app_ratee, action « dom_tiers »).
 
 let interdite = false;
-/** L'app ne se laisse plus traduire par le navigateur (appelé au chargement d'App.jsx, jamais sur la vitrine). */
+/** L'app ne se laisse plus traduire par le navigateur (appelé au chargement d'App.jsx ; index.html le déclare déjà). */
 export function interdireTraductionApp(doc = typeof document !== 'undefined' ? document : null) {
   if (interdite || !doc?.documentElement) return;
   interdite = true;
