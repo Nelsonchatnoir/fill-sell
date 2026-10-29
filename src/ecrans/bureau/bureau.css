@@ -67,8 +67,10 @@
 .fsb-hero .fsb-lab{font-size:12.5px;font-weight:600;color:var(--fsb-hero2);display:flex;justify-content:space-between;gap:8px}
 .fsb-hero .fsb-val{font-size:52px;font-weight:700;letter-spacing:-.035em;line-height:1;color:var(--fsb-paper)}
 .fsb-hero .fsb-cmp{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--fsb-hero2);flex-wrap:wrap}
-/* Le graphe du bloc profit repose sur la ligne du pied (29/10) : sa boîte touche le trait, l'écart du bloc est repris. */
+/* Le graphe du bloc profit repose sur la ligne du pied (29/10) : sa boîte touche le trait, l'écart du bloc est repris,
+   le dessin est ancré au bas de la boîte (0 px d'écart à toute taille). */
 .fsb-hero .fsb-chart{flex:1;min-height:84px;margin-bottom:-10px}
+.fsb-hero .fsb-chart > svg{position:absolute;left:0;bottom:0} /* ancré au ras du trait, même quand la boîte a une hauteur fractionnaire */
 .fsb-hero .fsb-foot{font-size:12px;color:var(--fsb-hero2);border-top:1px solid rgba(246,245,241,.12);padding-top:10px;margin-top:auto;width:100%}
 /* Portable étroit : le bloc profit en bandeau, la courbe à droite du chiffre. */
 @container fsb (max-width:1179px){

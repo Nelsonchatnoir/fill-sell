@@ -19,13 +19,18 @@ trait (l'écart du bloc entre le graphe et le pied).
   portable étroit, -8 px téléphone) ; barres à base plate au ras de la boîte (coins arrondis en haut seulement) ;
   courbe dont le trait du bas (2,5 px) repose sur la ligne ; échelle du minimum (0 ou un cumul négatif) au maximum.
   Période sans profit : le trait plat est couché sur la ligne, le point du jour centré dessus.
+- Le dessin est ANCRÉ au bas de sa boîte (`svg` en position absolue, `bottom: 0`) : contrôlé en production après la
+  2.9.129, une boîte de hauteur fractionnaire laissait 0,4 px entre les barres et la ligne (12 mois, ordinateur).
 
 ## Vérifications
 - Banc d'essai (données d'Ornella et de Nico), 11 largeurs (360, 390, 412, 430, 768, 1 000, 1 024, 1 100, 1 280,
   1 440, 1 920 px), Tableau et Stats, 4 périodes : chaque trait, barre, point et libellé de chaque graphe mesuré dans
   sa boîte, et le graphe du bloc profit au-dessus de sa ligne. **Avant** (390 px) : 84 px dans 64 px, jusqu'à 12 px
   sous la ligne. **Après** : 330 graphes (dont 88 blocs profit), 0 défaut ; chaque barre posée sur la ligne (écart
-  0 px, tolérance 0,5 px), courbe partant de la ligne (1,3 px = demi-épaisseur du trait).
+  0 px, tolérance resserrée à 0,1 px), courbe partant de la ligne (1,3 px = demi-épaisseur du trait).
+- Production (session de Nico déjà ouverte, lecture seule, ordinateur, après la 2.9.129) : « Depuis le début » 5 barres
+  à 0 px, « 12 mois » 0,4 px (→ ancrage ci-dessus), « Octobre » courbe à 1,2 px ; aucune erreur console ; préférences
+  remises (onglet Lens, période par défaut).
 
 ## Constat à part (données, rien modifié)
 Les 202 ventes du compte de Nico ont toutes `prix_achat = 0` (gratuit) le 29/10 à 10 h ; l'export du matin en avait
