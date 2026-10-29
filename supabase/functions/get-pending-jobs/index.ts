@@ -76,7 +76,7 @@ import { ageBeebsDuReleve } from "../_shared/beebs-age-releve.js";
 import { attenteSessionEncoreEspacee } from "../_shared/attente-session.js";
 import { pausePageDepotLbc, decisionPausePageDepotLbc } from "../_shared/lbc-pause-page-depot.js";
 import {
-  MOTIF_LBC_A_PAYER, MOTIFS_LBC_PAIEMENT, FENETRE_FORFAIT_MS, FILTRE_PREUVE_PRO, MSG_FORFAIT_LBC_RETENUE,
+  MOTIF_LBC_A_PAYER, MOTIFS_LBC_PAIEMENT, FENETRE_FORFAIT_MS, FILTRE_PREUVE_PRO, MSG_FORFAIT_LBC_RETENUE, comptesLbcProParType,
   MSG_FORFAIT_LBC_REPUBLICATION_RETENUE, candidatRetenueForfait, dernierMurForfait, dernierMotifMur, partagerCandidatsForfait,
   partagerCandidatsAPayer, attentePaiementVivante, attentePaiementCloseSansPaiement, prochainePublicationAPreparer,
   champsRetenueForfait, champsPreparerDeNouveau,
@@ -5169,10 +5169,13 @@ serve(async (req) => {
               .gt("published_at", new Date(murForfait).toISOString())
               .or("platform_fields->lbc_depot->>preuve.is.null,platform_fields->lbc_depot->>preuve.neq.paiement_utilisateur")
               .limit(1);
-            const { data: preuvePro } = (passeeDepuis ?? []).length ? { data: [] } : await userClient.from("cross_post_jobs").select("id")
+            const { data: preuveProJobs } = (passeeDepuis ?? []).length ? { data: [] } : await userClient.from("cross_post_jobs").select("id")
               .eq("user_id", user.id).eq("platform", "leboncoin")
               .gte("created_at", new Date(Date.now() - FENETRE_FORFAIT_MS).toISOString())
               .or(FILTRE_PREUVE_PRO).limit(1);
+            // (29/10 soir, paugues.contact) Sinon, le TYPE du compte dit par Leboncoin (lecture des ventes, usage_logs).
+            const preuvePro = (preuveProJobs ?? []).length || (passeeDepuis ?? []).length ? (preuveProJobs ?? [])
+              : ((await comptesLbcProParType(createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!), [user.id])).has(user.id) ? [{ id: "type_compte" }] : []);
             if (!(passeeDepuis ?? []).length && (preuvePro ?? []).length) {
               const motifMur = dernierMotifMur(mursLus as never[]);
               const maintenantIso = new Date().toISOString();
@@ -5259,7 +5262,10 @@ serve(async (req) => {
             .eq("user_id", user.id).eq("platform", "leboncoin")
             .gte("created_at", new Date(Date.now() - FENETRE_FORFAIT_MS).toISOString())
             .or(FILTRE_PREUVE_PRO).limit(1);
-          if ((preuveProDepot ?? []).length) {
+          // (29/10 soir, paugues.contact) Le TYPE du compte dit par Leboncoin (account.type ≠ individual, relevé aux
+          // ventes) prouve aussi le compte pro : le formulaire pro n'apparaît pas dans tous les rayons.
+          if ((preuveProDepot ?? []).length
+            || (await comptesLbcProParType(createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!), [user.id])).has(user.id)) {
             for (const j of pubsLbc) j.platform_fields = { ...((j.platform_fields as Record<string, unknown>) ?? {}), compte_pro: true };
           }
         }

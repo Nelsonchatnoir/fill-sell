@@ -16,7 +16,7 @@ import { RELANCES_APRES_MAJ, regleDeRelance, posteALeBuild, champsRelance, sourc
 import { reponseTailleAuto, champsApresReponseTaille } from "../_shared/taille-question-auto.js";
 import { MOTIF_LBC_IDENTITE, FENETRE_IDENTITE_MS, ECLAIREUR_INTERVALLE_MS, attendIdentiteLbc, attentesIdentiteLbc, eclaireurIdentiteLbc, champsEclaireur, champsReprise } from "../_shared/lbc-identite.js";
 import {
-  MOTIFS_LBC_PAIEMENT, FENETRE_FORFAIT_MS, ECLAIREUR_FORFAIT_INTERVALLE_MS, FILTRE_PREUVE_PRO, motifDiagnostic as motifDiagnosticForfait,
+  MOTIFS_LBC_PAIEMENT, FENETRE_FORFAIT_MS, ECLAIREUR_FORFAIT_INTERVALLE_MS, FILTRE_PREUVE_PRO, motifDiagnostic as motifDiagnosticForfait, comptesLbcProParType,
   attendForfaitLbc, attentesForfaitLbc, compteProuvePro, dernierMurForfait, publicationApresMur, eclaireurForfaitLbc,
   champsEclaireurForfait, champsRepriseForfait,
 } from "../_shared/lbc-forfait.js";
@@ -2109,6 +2109,8 @@ serve(async (req) => {
           .gte("created_at", new Date(now - FENETRE_FORFAIT_MS).toISOString())
           .or(FILTRE_PREUVE_PRO).limit(1000);
         for (const p of (preuves ?? []) as Array<{ user_id: string }>) comptesForfaitLbc.add(String(p.user_id));
+        // (29/10 soir, paugues.contact) Sinon, le TYPE du compte dit par Leboncoin (lecture des ventes, usage_logs).
+        for (const u of await comptesLbcProParType(supabase, aProuver.filter((x) => !comptesForfaitLbc.has(x)), now)) comptesForfaitLbc.add(u);
       }
     } catch (e) {
       console.warn("[handler-watch] comptes Leboncoin pro au mur du paiement :", (e as Error)?.message ?? e);
@@ -5494,6 +5496,8 @@ serve(async (req) => {
           .gte("created_at", new Date(now - FENETRE_FORFAIT_MS).toISOString())
           .or(FILTRE_PREUVE_PRO).limit(1000);
         for (const p of (preuves ?? []) as Array<{ user_id: string }>) prouves.add(String(p.user_id));
+        // (29/10 soir, paugues.contact) Sinon, le TYPE du compte dit par Leboncoin (lecture des ventes, usage_logs).
+        for (const u of await comptesLbcProParType(supabase, aProuverF.filter((x) => !prouves.has(x)), now)) prouves.add(u);
       }
       const comptesPro = comptesF.filter((u) => prouves.has(u));
       if (comptesPro.length) {

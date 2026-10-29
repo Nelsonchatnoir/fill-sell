@@ -467,4 +467,17 @@ Rapport : `docs/enquetes/dix-points-1710/RAPPORT.md` (points 1, 4, 5, 7, 9).
   (`BeebsIcon.jsx`, `platform-logos/source/beebs-icon.png`, `chrome-extension/assets/beebs.png`, mails
   `public/email/logo-beebs-2910.png`). ⛔ Une image de fillsell.app change de NOM quand elle change de contenu
   (`vercel.json` : images « immutable » un an) ; l'ancien fichier reste pour les mails déjà envoyés. Le CDN de Beebs
-  (cdn.beebs.app) sert encore l'ancien logo : ne rien y prendre.
+  (cdn.beebs.app) sert encore l'ancien logo : ne rien y prendre. Captures du site : un logo seul se remplace au pixel près
+  (même place, même taille, coins 28 %) ; un logo EMPILÉ (pastilles qui se chevauchent) se refait par
+  `scripts/apercu/site-capture.mjs <clé>` ; puis `site:images`. Vidéo du site : `docs/seo/briefs/video-variante-site`
+  (preparer → patch → logo remplacé dans `public/logos/` du dossier de travail, jamais dans fillsell-video → rendu.cjs A et
+  B → encoder.sh → video-json.mjs A).
+- ⛔ **Leboncoin, compte PRO prouvé aussi par son TYPE** (paugues.contact, 29/10) : `account/v2/members/me/account` →
+  `account.type` « individual » = particulier, tout autre type (« business »…) = PRO. Le formulaire pro
+  (`general_sales_condition`, `custom_ref`) n'apparaît pas dans tous les rayons (Maison > Décoration, Loisirs >
+  Antiquités) : la preuve par les jobs ne suffit pas. Preuve serveur : `comptesLbcProParType` (`_shared/lbc-forfait.js`,
+  usage_logs `releve_ventes` motif `compte_non_individual_<type>`, 30 jours) dans get-pending-jobs (compte_pro servi,
+  retenue au mur) et handler-watch (carte, éclaireur) ; preuve de l'extension (≥ 0.6.155) : type lu au mur, noté
+  `lbc_depot.type_compte`, circuit pro (`lbc_valider_et_payer`). Un compte pro hors forfait paie chaque dépôt (aide
+  Leboncoin « Combien coûte le dépôt d'une annonce ? » : dépôt payant pour un pro en Maison, Loisirs, Multimédia…),
+  quel que soit le nombre d'annonces en ligne ; FillSell ne paie jamais et ne relance jamais sur ce mur.

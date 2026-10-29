@@ -2413,6 +2413,22 @@ async function fillListingForm(job) {
   const estComptePro = (j, champs) =>
     j?.platform_fields?.compte_pro === true
     || (Array.isArray(champs) && champs.some((c) => /general_sales_condition|custom_ref/.test(String(c?.key ?? ""))));
+  // (29/10 soir, lot A point 8 — paugues.contact) Le TYPE du compte, dit par Leboncoin lui-même : le formulaire pro
+  // n'apparaît pas dans tous les rayons (Maison > Décoration, Loisirs > Antiquités : aucun champ pro), et le compte
+  // « business » passait pour un particulier au mur « Valider et payer ». Même lecture que le relevé des ventes
+  // (account/v2/members/me/account, jeton de la page) ; « individual » = particulier, tout autre type = pro.
+  // Rien de lisible → null (la règle d'avant s'applique).
+  const lireTypeCompteLbc = async () => {
+    try {
+      const tok = localStorage.getItem("luat");
+      if (!tok) return null;
+      const r = await fetch("https://api.leboncoin.fr/api/account/v2/members/me/account",
+        { headers: { authorization: `Bearer ${tok}`, accept: "application/json" } });
+      if (r.status !== 200) return null;
+      const t = (await r.json())?.account?.type;
+      return typeof t === "string" && t.trim() ? t.trim().toLowerCase().slice(0, 40) : null;
+    } catch { return null; }
+  };
   const MSG_LBC_NON_FINALISE =
     "Leboncoin a reçu l'annonce, mais l'option gratuite « Déposer sans booster mon annonce » n'a pas pu être " +
     "choisie — sans ce choix, Leboncoin ne met pas l'annonce en ligne. Relance la publication depuis le Stock : " +
@@ -2530,12 +2546,13 @@ async function fillListingForm(job) {
           // Leboncoin. Compte PRO seulement (preuve du serveur
           // platform_fields.compte_pro, ou le formulaire pro lu ici) : un
           // particulier garde la règle d'avant (pack photos, annonce par annonce).
-          if (estComptePro(job, enumerated)) {
-            console.warn("[leboncoin] /options : compte pro hors forfait — dépôt préparé, l'onglet reste ouvert pour « Valider et payer » (jamais cliqué par FillSell)");
+          const typeCompte = estComptePro(job, enumerated) ? null : await lireTypeCompteLbc();
+          if (estComptePro(job, enumerated) || (typeCompte && typeCompte !== "individual")) {
+            console.warn(`[leboncoin] /options : compte pro hors forfait${typeCompte ? ` (type « ${typeCompte} » dit par Leboncoin)` : ""} — dépôt préparé, l'onglet reste ouvert pour « Valider et payer » (jamais cliqué par FillSell)`);
             return {
               success: false, needsUser: true, attenteUtilisateur: true, attenteMotif: "lbc_valider_et_payer", garderOnglet: true,
               warnings, unfilledRequired, discoveredRequired: enumerated,
-              lbcDepot: { preuve: "ecran_options_payant_pret", note: "dépôt préparé jusqu'à « Valider et payer » : la personne paie elle-même, FillSell ne clique jamais", adsubmit: depotAccepte, at: new Date().toISOString() },
+              lbcDepot: { preuve: "ecran_options_payant_pret", note: "dépôt préparé jusqu'à « Valider et payer » : la personne paie elle-même, FillSell ne clique jamais", adsubmit: depotAccepte, ...(typeCompte ? { type_compte: typeCompte } : {}), at: new Date().toISOString() },
               error: MSG_LBC_A_PAYER,
             };
           }
@@ -2543,7 +2560,7 @@ async function fillListingForm(job) {
           return {
             success: false, needsUser: true, attenteUtilisateur: true, attenteMotif: "lbc_options_payant_seulement",
             warnings, unfilledRequired, discoveredRequired: enumerated,
-            lbcDepot: { preuve: "ecran_options_payant", note: "barre d'action sans CTA gratuit ; seul « Valider et payer » proposé", adsubmit: depotAccepte, at: new Date().toISOString() },
+            lbcDepot: { preuve: "ecran_options_payant", note: "barre d'action sans CTA gratuit ; seul « Valider et payer » proposé", adsubmit: depotAccepte, ...(typeCompte ? { type_compte: typeCompte } : {}), at: new Date().toISOString() },
             error: `${MSG_LBC_PAYANT_SEULEMENT}${motPhotosMurPayantLbc()} — Observabilité: ${dumpEcranVisible()}`,
           };
         }

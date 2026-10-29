@@ -16,7 +16,7 @@ import {
   partagerCandidatsAPayer, preparationDemandeeApres, prochainePublicationAPreparer, champsPreparerDeNouveau, publicationPayee, motifDiagnostic,
   jobProuvePro, compteProuvePro, murVuLe, dernierMurForfait, publicationApresMur, attendForfaitLbc, attentesForfaitLbc,
   candidatRetenueForfait, estEclaireurForfait, partagerCandidatsForfait, eclaireurForfaitLbc, champsRetenueForfait,
-  champsEclaireurForfait, champsRepriseForfait, adressageDemande,
+  champsEclaireurForfait, champsRepriseForfait, adressageDemande, typeCompteEstPro, comptesLbcProParType,
 } from "../supabase/functions/_shared/lbc-forfait.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -225,7 +225,7 @@ ok(eclaireurForfaitLbc([prete("p15", "10:00")], true, Date.parse(t("23:00"))) ==
 const lbcJs = lire("chrome-extension/content-scripts/leboncoin.js");
 const iMur = lbcJs.indexOf("if (surEcranOptions() && trouverBoutonPayant()) {");
 const blocMur = lbcJs.slice(iMur, lbcJs.indexOf("return depotNonFinalise(", iMur));
-ok(iMur > 0 && /if \(estComptePro\(job, enumerated\)\) \{/.test(blocMur) && /attenteMotif: "lbc_valider_et_payer", garderOnglet: true/.test(blocMur)
+ok(iMur > 0 && /if \(estComptePro\(job, enumerated\) \|\| \(typeCompte && typeCompte !== "individual"\)\) \{/.test(blocMur) && /attenteMotif: "lbc_valider_et_payer", garderOnglet: true/.test(blocMur)
   && /preuve: "ecran_options_payant_pret"/.test(blocMur) && /error: MSG_LBC_A_PAYER,/.test(blocMur)
   && /attenteMotif: "lbc_options_payant_seulement",/.test(blocMur) && blocMur.indexOf("estComptePro") < blocMur.indexOf("lbc_options_payant_seulement"),
   "extension : compte pro → dépôt préparé, onglet gardé, motif lbc_valider_et_payer ; sinon la règle d'avant");
@@ -267,6 +267,38 @@ ok(/estAttentePaiement\(j\)/.test(ec) && /attentePaiementVivante\(j, maintenant\
 const natP = ep.natureAttente(prete("p17", "10:00"));
 ok(natP.kind === "attente" && natP.motif === "a_payer_lbc" && /Valider et payer/.test(ep.phraseEtat("leboncoin", natP)) && /onglet/.test(ep.phraseEtat("leboncoin", natP)),
   "l'état d'une plateforme : prête, à payer dans l'onglet");
+// (29/10 soir, lot A point 8 — paugues.contact) LE TYPE DU COMPTE DIT PAR LEBONCOIN PROUVE LE COMPTE PRO.
+{
+  ok(typeCompteEstPro("business") && typeCompteEstPro("pro") && !typeCompteEstPro("individual") && !typeCompteEstPro("inconnu") && !typeCompteEstPro(null) && !typeCompteEstPro(""),
+    "type du compte : « business » / « pro » = pro ; « individual », inconnu ou vide = non");
+  const jPg = { platform: "leboncoin", error: MUR, platform_fields: { lbc_depot: { preuve: "ecran_options_payant_pret", type_compte: "business" } } };
+  ok(jobProuvePro(jPg) && !jobProuvePro({ ...jPg, platform_fields: { lbc_depot: { type_compte: "individual" } } }),
+    "un mur où l'extension a lu « business » prouve le compte pro ; « individual » non");
+  ok(jobProuvePro({ platform: "leboncoin", error: "x", platform_fields: { last_diagnostic: { quoi: MOTIF_LBC_A_PAYER } } }),
+    "le circuit pro déjà posé (lbc_valider_et_payer) prouve le compte pro (la carte « forfait » de l'app s'allume)");
+  ok(/platform_fields->lbc_depot->>type_compte\.eq\.business/.test(FILTRE_PREUVE_PRO) && /platform_fields->last_diagnostic->>quoi\.eq\.lbc_valider_et_payer/.test(FILTRE_PREUVE_PRO),
+    "le filtre serveur lit aussi le type lu au mur et le circuit pro");
+  // Les lectures des ventes de paugues.contact (usage_logs releve_ventes, 21/10 → 29/10) : « compte_non_individual_business ».
+  const appels = [];
+  const faux = { from: (t) => { const q = { t, f: [] }; const c = {
+    select: (s) => { q.select = s; return c; }, in: (k, v) => { q.f.push(["in", k, v]); return c; }, eq: (k, v) => { q.f.push(["eq", k, v]); return c; },
+    gte: (k, v) => { q.f.push(["gte", k, v]); return c; }, like: (k, v) => { q.f.push(["like", k, v]); return c; },
+    limit: async () => { appels.push(q); return { data: [
+      { user_id: "pg", motif: "compte_non_individual_business" }, { user_id: "x", motif: "compte_non_individual_inconnu" }, { user_id: "y", motif: "compte_non_individual_individual" },
+    ] }; } }; return c; } };
+  const pros = await comptesLbcProParType(faux, ["pg", "x", "y"], Date.parse("2026-10-29T16:00:00Z"));
+  ok(pros.has("pg") && !pros.has("x") && !pros.has("y") && appels[0]?.t === "usage_logs"
+    && appels[0].f.some(([o, k, v]) => o === "eq" && k === "feature" && v === "releve_ventes") && appels[0].f.some(([o, k, v]) => o === "like" && k === "metadata->>motif" && v === "compte_non_individual_%"),
+    "comptesLbcProParType : lit usage_logs releve_ventes, garde « business », écarte inconnu / individual");
+  ok((await comptesLbcProParType({ from: () => { throw new Error("panne"); } }, ["pg"])).size === 0 && (await comptesLbcProParType(faux, [])).size === 0,
+    "une lecture ratée ou aucun compte : rien de prouvé, jamais un point de panne");
+  ok(/const lireTypeCompteLbc = async \(\) => \{[\s\S]{0,400}api\.leboncoin\.fr\/api\/account\/v2\/members\/me\/account/.test(lbcJs)
+    && /const typeCompte = estComptePro\(job, enumerated\) \? null : await lireTypeCompteLbc\(\);/.test(lbcJs) && /type_compte: typeCompte/.test(lbcJs),
+    "extension : au mur, le type du compte est lu chez Leboncoin et noté dans lbc_depot");
+  ok((gpj.match(/comptesLbcProParType\(createClient\(/g) ?? []).length === 2, "get-pending-jobs : le type du compte prouve le pro (retenue au mur ET compte_pro servi à l'extension)");
+  const hwPro = lire("supabase/functions/handler-watch/index.ts");
+  ok((hwPro.match(/await comptesLbcProParType\(supabase, /g) ?? []).length === 2, "handler-watch : le type du compte prouve le pro (carte et éclaireur)");
+}
 const textes8 = [MSG_LBC_A_PAYER, MSG_FORFAIT_LBC_REPUBLICATION_RETENUE];
 ok(textes8.every((x) => !DUREE.test(x) && !TECH.test(x) && !/\p{Extended_Pictographic}/u.test(x)), "textes du 18/10 : ni durée, ni mot technique, ni émoji");
 

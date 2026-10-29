@@ -65,7 +65,10 @@ export const PREUVE_PRO_RE = /general_sales_condition|custom_ref/;
 /** Le même relevé en filtre PostgREST (erreur courante ou archivée d'un job). */
 export const FILTRE_PREUVE_PRO =
   "error.ilike.*general_sales_condition*,error.ilike.*custom_ref*," +
-  "platform_fields->>erreurs_archivees.ilike.*general_sales_condition*,platform_fields->>erreurs_archivees.ilike.*custom_ref*";
+  "platform_fields->>erreurs_archivees.ilike.*general_sales_condition*,platform_fields->>erreurs_archivees.ilike.*custom_ref*," +
+  // (29/10 soir) le type lu au mur par l'extension (≥ 0.6.154) et le circuit pro déjà posé (cf. jobProuvePro)
+  "platform_fields->lbc_depot->>type_compte.eq.business,platform_fields->lbc_depot->>type_compte.eq.pro," +
+  "platform_fields->last_diagnostic->>quoi.eq.lbc_valider_et_payer";
 /** « Mise à jour de ligne d'adressage requise » : un geste de COMPTE que Leboncoin réclame sur son écran (14/10). */
 export const ADRESSAGE_RE = /ligne d[’']adressage/i;
 /** Les marqueurs d'une question passée : un mur de paiement n'en garde aucun. */
@@ -82,10 +85,44 @@ export function motifDiagnostic(job) {
   return d && typeof d === "object" ? String(d.quoi ?? "") || null : null;
 }
 
-/** Ce job Leboncoin prouve-t-il que son compte est PRO (erreur courante ou archivée) ? */
+/**
+ * (29/10 soir, lot A point 8 — paugues.contact) LE TYPE DU COMPTE, DIT PAR LEBONCOIN LUI-MÊME. Le formulaire pro
+ * (`general_sales_condition`, `custom_ref`) n'apparaît pas dans tous les rayons : ses 68 dépôts en Maison > Décoration
+ * et Loisirs > Antiquités n'en portaient aucun, et FillSell la traitait en particulier au mur « Valider et payer »
+ * (mauvais message, relances qui laissaient un dépôt impayé de plus chez Leboncoin) alors que Leboncoin répondait
+ * `account.type = "business"` à chaque lecture de ses ventes depuis le 21/10. `account/v2/members/me/account` :
+ * « individual » = particulier ; tout autre type = compte PRO. Lu par l'extension aux ventes (usage_logs
+ * `releve_ventes`, motif `compte_non_individual_<type>`) et au mur (lbc_depot.type_compte).
+ */
+export function typeCompteEstPro(type) {
+  const t = String(type ?? "").trim().toLowerCase();
+  return Boolean(t) && t !== "individual" && t !== "inconnu";
+}
+
+/** Les comptes (parmi `userIds`) dont Leboncoin a dit le type pro sur 30 jours (usage_logs `releve_ventes`). */
+export async function comptesLbcProParType(client, userIds, maintenant = Date.now()) {
+  const ids = [...new Set((Array.isArray(userIds) ? userIds : []).map(String))].slice(0, 200);
+  const pros = new Set();
+  if (!ids.length || !client) return pros;
+  try {
+    const { data } = await client.from("usage_logs").select("user_id, motif:metadata->>motif")
+      .in("user_id", ids).eq("feature", "releve_ventes")
+      .gte("created_at", new Date(maintenant - FENETRE_FORFAIT_MS).toISOString())
+      .like("metadata->>motif", "compte_non_individual_%").limit(1000);
+    for (const r of Array.isArray(data) ? data : []) {
+      if (typeCompteEstPro(String(r?.motif ?? "").replace(/^compte_non_individual_/, ""))) pros.add(String(r.user_id));
+    }
+  } catch { /* jamais un point de panne : la preuve par les jobs reste */ }
+  return pros;
+}
+
+/** Ce job Leboncoin prouve-t-il que son compte est PRO (erreur courante ou archivée, type lu au mur, circuit pro) ? */
 export function jobProuvePro(job) {
   if (!job || job.platform !== "leboncoin") return false;
   if (PREUVE_PRO_RE.test(String(job.error ?? ""))) return true;
+  // (29/10 soir) Le type du compte lu par l'extension au mur, ou le circuit pro lui-même (posé pour un compte prouvé pro).
+  if (typeCompteEstPro(pfDe(job).lbc_depot?.type_compte)) return true;
+  if (motifDiagnostic(job) === MOTIF_LBC_A_PAYER) return true;
   const arch = pfDe(job).erreurs_archivees;
   return Array.isArray(arch) && arch.length > 0 && PREUVE_PRO_RE.test(JSON.stringify(arch));
 }
