@@ -27,7 +27,7 @@ import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import { UI } from '../components/ui';
 import Icone from '../ecrans/Icone';
 import { demarrerRelecture } from '../utils/relectureBornee';
-import { sourcesVignette, suiviCommande, expedieesRecentes, actionCommande, commandesAExpedier, dateCourte, delaiEnvoi, etatDemandeBordereau, extensionCommandeVinted, libelleEtatCommande, libelleTransporteur, libelleTypeEtiquette, montantTexte, nomPlateforme, pseudoAffiche, refusDemandeBordereau } from './vue';
+import { sourcesVignette, suiviCommande, commandesEnRoute, etapeSuivi, actionCommande, commandesAExpedier, dateCourte, delaiEnvoi, etatDemandeBordereau, extensionCommandeVinted, libelleEtatCommande, libelleTransporteur, libelleTypeEtiquette, montantTexte, nomPlateforme, pseudoAffiche, refusDemandeBordereau } from './vue';
 import { ouvrirLien } from './ouvrir';
 import { useReglagesMessagerie } from './useMessagerieBeta';
 import Couche from './Couche';
@@ -190,13 +190,14 @@ export function SectionAExpedier({ supabase, lang = 'fr', photosParInventaire = 
       lireDemandes(COLS_DEMANDES),
       supabase.from('bordereaux_copies').select('id,commande_id,chemin,expire_le').is('efface_le', null).gt('expire_le', maintenant).order('cree_le', { ascending: false }).limit(60),
     ]);
-    // (17/10) Les commandes expédiées depuis 3 jours : leur suivi reste visible ici
-    // (une étiquette eBay achetée passe la commande « expédiée » aussitôt).
+    // (17/10) Les commandes expédiées : leur suivi reste visible ici (une étiquette eBay achetée passe la commande
+    // « expédiée » aussitôt). (29/10, lot C partie 2) « En route » jusqu'à « reçu » : expédiée (tant que la plateforme
+    // ne dit pas autre chose), puis reçue par l'acheteur (3 jours) — lu chez la plateforme, jamais supposé.
     // Lecture annexe : sa panne ne cache jamais la liste principale.
     try {
-      const e = await supabase.from('plateforme_commandes').select(`${COLONNES_BASE},maj_le`).eq('etat', 'expediee')
-        .gte('maj_le', new Date(Date.now() - 3 * 86400000).toISOString()).order('maj_le', { ascending: false }).limit(20);
-      if (vivant.current) setExpediees(e.error ? [] : expedieesRecentes(e.data ?? []));
+      const e = await supabase.from('plateforme_commandes').select(`${COLONNES_BASE},maj_le`).in('etat', ['expediee', 'livree'])
+        .order('maj_le', { ascending: false }).limit(20);
+      if (vivant.current) setExpediees(e.error ? [] : commandesEnRoute(e.data ?? []));
     } catch { if (vivant.current) setExpediees([]); }
     // (18/10) Lecture annexe (une ligne) : sa panne laisse « inconnu », jamais un bouton en moins.
     try {
@@ -383,18 +384,27 @@ export function SectionAExpedier({ supabase, lang = 'fr', photosParInventaire = 
       })}
       {expediees.length > 0 && (
         <div data-expediees style={{ borderTop: `1px solid ${LIGNE}`, padding: '12px 16px 14px', display: 'flex', flexDirection: 'column', gap: 10, background: '#FBFAF7' }}>
-          <span style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '.11em', color: '#6F7774', textTransform: 'uppercase' }}>{fr ? 'Expédiées depuis 3 jours' : 'Shipped in the last 3 days'}</span>
+          <span style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '.11em', color: '#6F7774', textTransform: 'uppercase' }}>{fr ? 'En route' : 'On the way'}</span>
           {expediees.map((c) => {
             const suivi = suiviCommande(c, lang);
+            // (29/10, lot C partie 2) L'étape (expédié → reçu) et le bordereau, gardé tant que sa copie vit.
+            const etape = etapeSuivi(c, lang);
+            const copieGardee = copies[c.id] ?? null;
             return (
               <div key={c.id} data-expediee={c.platform} style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                 <Vignette sources={sourcesVignette(c.photo_url, c.inventaire_id ? photosParInventaire?.[c.inventaire_id] : null)} platform={c.platform} taille={40} icone="colis" />
                 <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
                   <span style={{ fontSize: 13.5, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.titre ?? (fr ? 'Article' : 'Item')}</span>
                   <span style={{ fontSize: 12.5, color: ENCRE2, overflowWrap: 'anywhere' }}>
-                    {suivi ? suivi.texte : [nomPlateforme(c.platform), libelleTransporteur(c.transporteur), fr ? 'expédiée' : 'shipped'].filter(Boolean).join(' · ')}
+                    {suivi ? suivi.texte : [nomPlateforme(c.platform), libelleTransporteur(c.transporteur)].filter(Boolean).join(' · ')}
                   </span>
                 </div>
+                <span data-etape-suivi={etape.cle} style={{ flex: 'none', fontSize: 11.5, fontWeight: 700, padding: '4px 8px', borderRadius: 999, background: TONS[etape.ton].fond, color: TONS[etape.ton].encre }}>{etape.texte}</span>
+                {copieGardee && (
+                  <button type="button" onClick={() => setApercu(copiePour(c, copieGardee))} style={{ flex: 'none', minHeight: 32, padding: '0 10px', borderRadius: 999, border: `1px solid ${LIGNE}`, background: '#fff', color: ENCRE2, fontFamily: 'inherit', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                    {fr ? 'Bordereau' : 'Label'}
+                  </button>
+                )}
               </div>
             );
           })}

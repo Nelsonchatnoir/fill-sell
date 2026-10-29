@@ -237,11 +237,14 @@ console.log("7. (28/10, jocabroc8) Page occupée ≠ pont mort ; extension occup
   const bg = readFileSync(join(RACINE, "chrome-extension/background.js"), "utf8");
   const i = bg.indexOf('if (msg?.type === "FETCH_VINTED_PUBLIC") {');
   const h = bg.slice(i, i + 3000);
-  ok(/const proprietaire = !lecturesPubliquesEnVol\.has\(id\);/.test(h) && /withJobFlowLock\("page-publique-vinted", \(\) => lirePagePubliqueVintedSousVerrou\(id\)\)/.test(h) && /if \(!proprietaire\) return lu;/.test(h),
-    "extension : une demande pour une annonce déjà en file s'y rattache — une page lue, sous le verrou de toujours");
+  // (29/10, lot C 1) La lecture que la personne attend : sans le verrou d'abord (onglet vivant), sinon EN TÊTE de file —
+  // toujours une seule page lue par annonce (lecture-prioritaire-selftest prouve l'ordre).
+  ok(/const proprietaire = !lecturesPubliquesEnVol\.has\(id\);/.test(h) && /lirePagePubliqueVintedPrioritaire\(id, "page-publique-vinted"\)/.test(h) && /if \(!proprietaire\) return lu;/.test(h),
+    "extension : une demande pour une annonce déjà en file s'y rattache — une page lue, par la voie prioritaire");
   ok(/^const lecturesPubliquesEnVol = new Map\(\);$/m.test(bg) && bg.indexOf("const lecturesPubliquesEnVol") < bg.indexOf("chrome.runtime.onMessage.addListener("), "extension : la mémoire des lectures en vol est déclarée avant l'écoute des messages");
   const v = bg.indexOf("function withJobFlowLock(label, fn) {");
-  ok(v > 0 && /jobFlowTail = run\.catch\(\(\) => \{\}\);\s*return run;\s*\}/.test(bg.slice(v, v + 900)), "extension : withJobFlowLock inchangé (un seul flux à la fois)");
+  ok(v > 0 && /jobFlowTail = run\.catch\(\(\) => \{\}\);\s*return run;\s*\}/.test(bg.slice(v, v + 1100)) && /await drainerLecturesPrioritaires\("tour"\);/.test(bg.slice(v, v + 1100)),
+    "extension : withJobFlowLock toujours une file (un seul flux à la fois), qui fait passer d'abord les lectures prioritaires");
 }
 
 console.log(`\n${rouges === 0 ? "✓" : "✗"} lecture-fond : ${verts} contrôles verts, ${rouges} rouges`);

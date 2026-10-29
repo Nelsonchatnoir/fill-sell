@@ -32,18 +32,31 @@ export function dechiffrer({ chiffre, iv }, cle, { user, plateforme }) {
   return JSON.parse(clair.toString('utf8'));
 }
 
-export function creerCoffre({ base, cle, cleVersion = 1 }) {
-  const cleBuf = Buffer.isBuffer(cle) ? cle : Buffer.from(cle, 'base64');
+// ── (29/10, lot C partie 6) LE TROUSSEAU : UNE ROTATION DE CLÉ NE REND RIEN ILLISIBLE ───────────────────────────────
+// Chaque ligne du coffre porte la version de la clé qui l'a chiffrée (cloud_coffre.cle_version). Avant, la lecture ne
+// connaissait que la clé COURANTE : une rotation (COFFRE_CLE changée) rendait toutes les connexions « illisibles » et
+// chaque compte Cloud aurait dû se reconnecter. Désormais : on écrit toujours avec la clé courante (cleVersion), on lit
+// avec la clé de LA VERSION de la ligne (`anciennes` : { version: clé base64 }, COFFRE_CLES_ANCIENNES), et une ligne
+// lue avec une ancienne clé est rechiffrée avec la courante à la sauvegarde suivante (jamais d'écriture à la lecture).
+export function creerCoffre({ base, cle, cleVersion = 1, anciennes = {} }) {
+  const versBuf = (k) => (Buffer.isBuffer(k) ? k : Buffer.from(String(k), 'base64'));
+  const cleBuf = versBuf(cle);
+  const trousseau = new Map(Object.entries(anciennes ?? {}).map(([v, k]) => [Number(v), versBuf(k)]));
+  trousseau.set(Number(cleVersion), cleBuf);
+  const cleDeLaLigne = (l) => trousseau.get(Number(l?.cle_version ?? cleVersion)) ?? null;
 
   async function lire(user) {
     const { data, error } = await base.rpc('cloud_coffre_lire', { p_user: user });
     if (error) throw new Error(`cloud_coffre_lire : ${error.message}`);
     const out = {};
     for (const l of data ?? []) {
+      const k = cleDeLaLigne(l);
       try {
-        out[l.plateforme] = { ...dechiffrer(l, cleBuf, { user, plateforme: l.plateforme }), connecte: l.connecte, maj_le: l.maj_le };
+        if (!k) throw new Error('version de clé inconnue');
+        out[l.plateforme] = { ...dechiffrer(l, k, { user, plateforme: l.plateforme }), connecte: l.connecte, maj_le: l.maj_le,
+          ...(Number(l?.cle_version ?? cleVersion) !== Number(cleVersion) ? { cle_ancienne: Number(l.cle_version) } : {}) };
       } catch {
-        out[l.plateforme] = { illisible: true, connecte: false, maj_le: l.maj_le };
+        out[l.plateforme] = { illisible: true, connecte: false, maj_le: l.maj_le, cle_version: l?.cle_version ?? null };
       }
     }
     return out;

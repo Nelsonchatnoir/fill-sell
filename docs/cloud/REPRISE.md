@@ -412,3 +412,14 @@ Fusion : `origin/main` b38d842 n'a touché AUCUN de ces fichiers (ni `serveur-cl
 - Docker sur le serveur : **29.1.3** (Ubuntu 24.04, paquet docker.io), sans
   buildx/BuildKit — pas de `COPY --chmod` ni `RUN --mount` dans les Dockerfiles ;
   API Docker de l'orchestrateur épinglée en 1.44 (`src/docker.js`).
+
+## 29/10 (lot C partie 6) — prérequis : prise atomique en un appel, coffre à trousseau
+- **`prendre_job(p_user, p_poste, p_job, p_build)`** (migration 20261030100000, service_role seulement) : controler puis
+  pending → processing dans UNE transaction, SEULEMENT depuis « pending » (ferme le trou « deux exécutants d'un même
+  poste » de l'ancien chemin). Les trois RPC existantes et l'extension : inchangées (md5 relus). Preuve de concurrence
+  sur Postgres 17 jetable : `scripts/cloud/preuve-prendre-job-concurrente.mjs` (200 jobs, 16 connexions : 0 double ;
+  extension + Cloud en même temps : 0 double ; gardes arrêt / lecture d'origine conservées).
+- **Coffre** (`serveur-cloud/src/coffre.js`) : AES-256-GCM, clé hors base, et désormais un TROUSSEAU — chaque ligne se
+  lit avec la clé de SA version (`COFFRE_CLES_ANCIENNES` « version:base64,… »), l'écriture prend la courante : une
+  rotation ne rend plus rien illisible. Test : `serveur-cloud/tests/orchestrateur.test.mjs` (rotation).
+- Restent à Nico : le sel `cloud_empreinte_sel` (vault), la sauvegarde de `COFFRE_CLE`.

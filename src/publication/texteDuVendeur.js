@@ -362,6 +362,8 @@ export async function completerTexteDuVendeur(item, {
           // (28/10) La trace dit pourquoi : le retard du minuteur d'un pont mort, ou une extension occupée (sous verrou).
           if (detail?.pontMort && detail.retardMs != null) res.pontRetardMs = detail.retardMs;
           if (detail?.occupee) res.extensionOccupee = true;
+          // (29/10, lot C 1) Le motif de l'échec (anti-robot, introuvable, onglet indisponible…) : l'écran le dit tout de suite.
+          if (detail?.motif) res.motif = String(detail.motif);
         }
       }
     }

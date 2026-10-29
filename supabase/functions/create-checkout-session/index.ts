@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@12.18.0?target=deno&no-check";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
-import { choisirClientExistant, trierSessionsOuvertes, abonnementRemplacable, causeEchec } from "../_shared/paiement-stripe.js";
+import { choisirClientExistant, trierSessionsOuvertes, abonnementRemplacable, causeEchec, refusDoubleAbonnement, messageDoubleAbonnement } from "../_shared/paiement-stripe.js";
 import { estAbonnementCloud, essaiCloudPermis, parametresCheckoutCloud, sessionEstCloud, ESSAI_CLOUD_JOURS } from "../_shared/cloud-option.js";
 
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
@@ -464,6 +464,28 @@ serve(async (req) => {
     }
     const planType = plan.planType;
 
+    // ── (29/10, lot C 5 — boncoin59300) JAMAIS DEUX ABONNEMENTS AU MÊME PALIER ──
+    // Un abonnement Google Play / Apple vivant ferme le paiement web d'un palier égal
+    // ou inférieur (_shared/paiement-stripe.js, refusDoubleAbonnement) : rien n'est
+    // créé chez Stripe, la personne lit où se gère l'abonnement qu'elle a déjà.
+    const refuserDouble = (r: { motif: string; canal: string; fin: string | null }) => {
+      console.log(`[checkout] ${authUser.id} : ${r.motif} (${r.canal}) — paiement ${planType} refusé, rien créé chez Stripe`);
+      return new Response(JSON.stringify({
+        error: "deja_abonne", motif: r.motif, canal: r.canal, tier: planType,
+        message_fr: messageDoubleAbonnement(r, "fr"), message_en: messageDoubleAbonnement(r, "en"),
+      }), { status: 409, headers: { "Content-Type": "application/json", ...CORS } });
+    };
+    {
+      const { data: profilStore } = await supabase
+        .from("profiles")
+        .select("google_purchase_token, google_product_id, apple_original_transaction_id, is_premium, is_pro, is_business, subscription_period_end")
+        .eq("id", authUser.id)
+        .maybeSingle();
+      const r = refusDoubleAbonnement(profilStore, plan.rang, 0);
+      if (r.refus) return refuserDouble(r as { motif: string; canal: string; fin: string | null });
+      if (r.store) console.log(`[checkout] ${authUser.id} : abonnement ${r.store.canal} de rang ${r.store.rang} vivant, montée web vers ${planType} (rang ${plan.rang}) laissée passer`);
+    }
+
     // Réutilise le customer Stripe existant (historique de facturation unifié —
     // et à l'époque de l'essai 7 jours, c'était aussi la garde anti-2ème trial).
     const { data: profile } = await supabase
@@ -480,6 +502,18 @@ serve(async (req) => {
       authUser.id,
       verifiedEmail ?? null,
     );
+
+    // (29/10, lot C 5) Premium (rang 1) au-dessus d'un abonnement Stripe déjà vivant :
+    // la garde de montée ci-dessous ne le voit pas (plan.rang > 1) — un second
+    // abonnement au même palier se créait. Refusé, rien créé.
+    if (plan.rang === 1 && existingCustomerId) {
+      const { data: abos } = await stripe.subscriptions.list({ customer: existingCustomerId, limit: 20 });
+      const rangVivant = Math.max(0, ...(abos ?? [])
+        .filter((s: Stripe.Subscription) => (s.status === "active" || s.status === "trialing") && !estAbonnementCloud(s, prixConnus()))
+        .map((s: Stripe.Subscription) => rangAbonnement(s)));
+      const r = refusDoubleAbonnement(null, plan.rang, rangVivant);
+      if (r.refus) return refuserDouble(r as { motif: string; canal: string; fin: string | null });
+    }
 
     // ── Upgrade Premium→Pro in situ (2026-07-23) ─────────────────────────────
     // Si le customer a DÉJÀ un abonnement Stripe vivant (Premium standard ou

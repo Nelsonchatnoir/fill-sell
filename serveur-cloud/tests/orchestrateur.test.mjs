@@ -92,6 +92,31 @@ test('coffre : une plateforme déconnectée ne touche jamais sa sauvegarde ; la 
   assert.equal(r2.aPoser.length, 0);
 });
 
+// (29/10, lot C 6) Le trousseau : une rotation de COFFRE_CLE ne rend aucune connexion illisible.
+test('coffre : rotation de clé — les lignes chiffrées avec l\'ancienne restent lisibles, les nouvelles prennent la courante', async () => {
+  const lignes = new Map();
+  const base = { rpc: async (nom, a) => {
+    if (nom === 'cloud_coffre_ecrire') { lignes.set(a.p_plateforme, { plateforme: a.p_plateforme, chiffre: a.p_chiffre, iv: a.p_iv, cle_version: a.p_cle_version, connecte: a.p_connecte }); return { error: null }; }
+    if (nom === 'cloud_coffre_lire') return { data: [...lignes.values()], error: null };
+    return { data: null, error: null };
+  } };
+  const ancienne = randomBytes(32).toString('base64');
+  const nouvelle = randomBytes(32).toString('base64');
+  const cookies = [{ name: 'access_token_web', value: jwt({ sub: 7 }), domain: '.vinted.fr' }, { name: 'refresh_token_web', value: 'r', domain: '.vinted.fr' }];
+  await creerCoffre({ base, cle: ancienne, cleVersion: 1 }).sauvegarderCookies(U, cookies);
+  assert.equal(lignes.get('vinted').cle_version, 1);
+  const sansTrousseau = await creerCoffre({ base, cle: nouvelle, cleVersion: 2 }).lire(U);
+  assert.equal(sansTrousseau.vinted.illisible, true, 'avant : la rotation rendait la connexion illisible');
+  const apres = creerCoffre({ base, cle: nouvelle, cleVersion: 2, anciennes: { 1: ancienne } });
+  const lu = await apres.lire(U);
+  assert.equal(lu.vinted.illisible, undefined);
+  assert.equal(lu.vinted.cookies.length, 2);
+  assert.equal(lu.vinted.cle_ancienne, 1, 'la ligne dit qu\'elle vient de l\'ancienne clé');
+  await apres.sauvegarderCookies(U, cookies);
+  assert.equal(lignes.get('vinted').cle_version, 2, 'la sauvegarde suivante rechiffre avec la clé courante');
+  assert.equal((await creerCoffre({ base, cle: nouvelle, cleVersion: 2 }).lire(U)).vinted.cookies.length, 2);
+});
+
 test('tickets : signés, liés à un compte, échus au bout du délai', () => {
   const cle = randomBytes(32).toString('base64');
   const t = signerTicket({ user: U, minutes: 30 }, cle);

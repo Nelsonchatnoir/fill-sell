@@ -95,7 +95,7 @@ const page = (id, { p = produit(id), crumbs = [1193, 1499, 1730, 3313], status =
     crumbs.map((c) => `<a href="/catalog/${c}-x?referrer=item-crumbs">x</a>`).join("") + `<a href="/brand/12-playmobil">Playmobil</a></body></html>`,
 });
 {
-  const { analyserPagePubliqueVinted } = bac(["analyserPagePubliqueVinted", "estPageBotShield"]);
+  const { analyserPagePubliqueVinted } = bac(["lireFluxNextVinted", "analyserPagePubliqueVinted", "estPageBotShield"]);
   const lu = analyserPagePubliqueVinted(page("10499143345"), "10499143345");
   ok(lu.ok === true, "la page de l'annonce se lit", JSON.stringify(lu));
   ok(lu.description?.startsWith("Vendu avec tous les accessoires") && lu.description.includes("\n"), "le texte du vendeur, entier (retours à la ligne gardés)");
@@ -118,7 +118,7 @@ const page = (id, { p = produit(id), crumbs = [1193, 1499, 1730, 3313], status =
   // Jeton web expiré (mesuré sur le poste pilote le 25/10, 14:24) : un vrai chargement, puis UNE nouvelle lecture.
   const lectures = [];
   const navigations = [];
-  const sv = bac(["lirePagePubliqueVintedSousVerrou", "analyserPagePubliqueVinted", "estPageBotShield"], {
+  const sv = bac(["lirePagePubliqueVintedSousVerrou", "lireFluxNextVinted", "analyserPagePubliqueVinted", "estPageBotShield"], {
     VO: { origineVinted: () => "https://www.vinted.fr" },
     getOrCreateWorkTab: async (pf, url) => { navigations.push(url); return 1; },
     lirePageParOngletDeTravail: async (url) => {
@@ -132,7 +132,7 @@ const page = (id, { p = produit(id), crumbs = [1193, 1499, 1730, 3313], status =
   // (28/10, 0.6.149 — Petite planète, Microsoft Edge) L'onglet de travail en veille : 1 072 lectures de 20 s, toutes
   // « onglet_indisponible », du 27/10 19:43 au 28/10 02:00. Un vrai chargement de l'annonce le réveille, puis UNE relecture.
   const w = { lectures: 0, navigations: [], reminimise: 0 };
-  const sw = bac(["lirePagePubliqueVintedSousVerrou", "analyserPagePubliqueVinted", "estPageBotShield"], {
+  const sw = bac(["lirePagePubliqueVintedSousVerrou", "lireFluxNextVinted", "analyserPagePubliqueVinted", "estPageBotShield"], {
     VO: { origineVinted: () => "https://www.vinted.fr" },
     getOrCreateWorkTab: async (pf, url) => { w.navigations.push(url); return 1; },
     reminimiserFenetreSiRestauree: async () => { w.reminimise++; },
@@ -142,7 +142,7 @@ const page = (id, { p = produit(id), crumbs = [1193, 1499, 1730, 3313], status =
   ok(r8.ok === true && w.navigations.length === 1 && /\/items\/8$/.test(w.navigations[0]) && w.lectures === 2 && w.reminimise === 1,
     "onglet en veille : la page de l'annonce est chargée une fois (réveil), relue — et lue ; la fenêtre de travail se re-minimise", JSON.stringify({ r8: r8.motif ?? "ok", ...w }));
   const z = { lectures: 0, navigations: 0 };
-  const sz = bac(["lirePagePubliqueVintedSousVerrou", "analyserPagePubliqueVinted", "estPageBotShield"], {
+  const sz = bac(["lirePagePubliqueVintedSousVerrou", "lireFluxNextVinted", "analyserPagePubliqueVinted", "estPageBotShield"], {
     VO: { origineVinted: () => "https://www.vinted.fr" },
     getOrCreateWorkTab: async () => { z.navigations++; throw new Error("onglet de travail vinted : le content script ne répond pas"); },
     reminimiserFenetreSiRestauree: async () => {},
@@ -196,9 +196,9 @@ function monde({ liste = [], lu = () => ({ ok: true, description: "Texte du vend
     chrome: { storage: { local: { get: async (k) => ({ [k]: stockage[k] }), set: async (o) => Object.assign(stockage, o) } } },
   };
   // jobFlowWaiters, derniereDemandeAppMs, tachesDuCycle : lus par fondDoitCeder, pilotés de l'extérieur par `etat`.
-  const prelude = `let derniereLectureOrigine = 0; let vintedPauseAntirobotServeur = false;\n${constante("LECTURE_FOND_PAUSE_KEY")}${constante("lecturesFondDuCycle")}${constante("echecsLectureOrigine")}${constante("FOND_PAUSE_APRES_DEMANDE_MS")}let lectureFondServie = ${JSON.stringify(servie)};\nObject.defineProperty(globalThis, "jobFlowWaiters", { get: () => __etat.attente });\nObject.defineProperty(globalThis, "derniereDemandeAppMs", { get: () => __etat.demande });\nObject.defineProperty(globalThis, "tachesDuCycle", { get: () => __etat.taches });`;
+  const prelude = `let derniereLectureOrigine = 0; let vintedPauseAntirobotServeur = false;\n${constante("LECTURE_FOND_PAUSE_KEY")}${constante("lecturesFondDuCycle")}${constante("echecsLectureOrigine")}${constante("lecturesDemandeesEnVol")}${constante("FOND_PAUSE_APRES_DEMANDE_MS")}let lectureFondServie = ${JSON.stringify(servie)};\nObject.defineProperty(globalThis, "jobFlowWaiters", { get: () => __etat.attente });\nObject.defineProperty(globalThis, "derniereDemandeAppMs", { get: () => __etat.demande });\nObject.defineProperty(globalThis, "tachesDuCycle", { get: () => __etat.taches });`;
   const f = bac(["attributsChamps", "ecrireLecturePagePublique", "lectureFondEnPause", "poserPauseLectureFond", "tracerLectureFond",
-    "lectureOrigineEnRepos", "noterEchecLectureOrigine", "ordreLecturesOrigine", "lireAnnoncesOrigineEnAttente", "fondDoitCeder", "attendreOuCeder", "lireFondVinted"], doublures, prelude);
+    "lectureOrigineEnRepos", "noterEchecLectureOrigine", "ordreLecturesOrigine", "marquerLectureDemandee", "lireAnnoncesOrigineEnAttente", "fondDoitCeder", "attendreOuCeder", "lireFondVinted"], doublures, prelude);
   return { f, appels, stockage, avancer: (ms) => { horloge += ms; } };
 }
 {

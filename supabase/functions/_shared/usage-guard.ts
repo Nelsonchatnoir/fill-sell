@@ -39,6 +39,16 @@ export const TARIF_HAIKU_USD = {
   webSearchParRequete: 0.01,
 } as const;
 
+// (29/10, lot C partie 3) Haiku 5.5 — le modèle du scan Lens depuis le lot C (claude-haiku-5-5, grille du 06/10 :
+// 0,10 $ / 0,50 $ par MTok jusqu'à 100 000 tokens de prompt ; cache aux mêmes multiplicateurs, 1,25× et 0,10×).
+export const TARIF_HAIKU_55_USD = {
+  entreeParMTok: 0.10,
+  sortieParMTok: 0.50,
+  cacheEcritureParMTok: 0.125,
+  cacheLectureParMTok: 0.01,
+  webSearchParRequete: 0.01,
+} as const;
+
 export type UsageTokens = {
   in: number;
   out: number;
@@ -54,14 +64,15 @@ export type UsageTokens = {
  * premier qui en utilisera — l'ancienne version (in/out seulement) n'était
  * correcte pour lens_identify que par accident.
  */
-export function coutHaikuUsd(t: UsageTokens): number {
+export function coutHaikuUsd(t: UsageTokens, tarif: { entreeParMTok: number; sortieParMTok: number; cacheEcritureParMTok: number; cacheLectureParMTok: number; webSearchParRequete: number } = TARIF_HAIKU_USD): number {
+  const TARIF_HAIKU_USD_ = tarif;
   return (
-    t.in * TARIF_HAIKU_USD.entreeParMTok
-    + t.out * TARIF_HAIKU_USD.sortieParMTok
-    + (t.cacheW ?? 0) * TARIF_HAIKU_USD.cacheEcritureParMTok
-    + (t.cacheR ?? 0) * TARIF_HAIKU_USD.cacheLectureParMTok
+    t.in * TARIF_HAIKU_USD_.entreeParMTok
+    + t.out * TARIF_HAIKU_USD_.sortieParMTok
+    + (t.cacheW ?? 0) * TARIF_HAIKU_USD_.cacheEcritureParMTok
+    + (t.cacheR ?? 0) * TARIF_HAIKU_USD_.cacheLectureParMTok
   ) / 1_000_000
-    + (t.webSearches ?? 0) * TARIF_HAIKU_USD.webSearchParRequete;
+    + (t.webSearches ?? 0) * TARIF_HAIKU_USD_.webSearchParRequete;
 }
 
 /** Extrait les tokens d'une réponse Anthropic, quelle que soit sa forme —

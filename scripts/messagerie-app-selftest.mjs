@@ -67,7 +67,8 @@ await cas("Stock et Ventes : indicateur et section derrière le drapeau", () => 
   assert.ok(/messages=\{messagerie \? \(Number\(messagerie\.parArticle\?\.\[item\.id\]\) \|\| 0\) : null\}/.test(STOCK));
   assert.ok(/\{p\.messages > 0 && \(/.test(CARTE), "la carte n'affiche rien à 0 ni à null");
   assert.ok(/\(p\.marque \|\| p\.vues != null \|\| p\.favoris != null \|\| p\.boutique \|\| p\.messages > 0\)/.test(CARTE));
-  assert.ok(/\{messagerieBeta&&<SectionAExpedier /.test(VENTES));
+  // (29/10, lot C 2) Toujours derrière le drapeau : la ligne compacte (ou, sans chemin vers la page, la section d'avant).
+  assert.ok(/\{messagerieBeta&&\(onOuvrirExpedier\s+\?<LigneBordereaux [^\n]+\n\s+:<SectionAExpedier /.test(VENTES));
   assert.ok(/messagerieBeta=false,/.test(VENTES), "défaut fermé");
 });
 
@@ -564,4 +565,51 @@ await cas("bordereau automatique : « Bordereau en préparation », court ; éch
   // 15 essais sans fichier : plus « en préparation », la vraie situation est dite.
   assert.ok(etatDemandeBordereau({ action: 'generer', statut: 'generee', essais_fichier: 15, choix: { auto: true } }, 'fr', 'vinted').texte.includes('15 essais'));
 });
+
+// ── (29/10, lot C partie 2) UNE LIGNE DANS LES VENTES, LE SUIVI JUSQU'À « REÇU » ──────────────────────────────────────
+{
+  const { resumeBordereaux, commandesEnRoute, etapeSuivi } = await import('../src/messagerie/vue.js');
+  const t0 = Date.parse('2026-10-29T10:00:00Z');
+  const jours = (j) => new Date(t0 - j * 86400000).toISOString();
+  await cas('lot C 2 — la ligne compacte : « 3 bordereaux à imprimer », puis le reste', async () => {
+    const commandes = [
+      { id: 'a', platform: 'vinted', etat: 'a_expedier' }, { id: 'b', platform: 'vinted', etat: 'a_expedier' }, { id: 'c', platform: 'vinted', etat: 'a_expedier' },
+      { id: 'd', platform: 'vinted', etat: 'a_expedier' }, { id: 'e', platform: 'leboncoin', etat: 'a_expedier' },
+    ];
+    const copies = { a: { id: 1 }, b: { id: 2 }, c: { id: 3 } };
+    const demandes = { d: { action: 'generer', statut: 'demandee' } };
+    const r = resumeBordereaux({ commandes, demandes, copies, enRoute: [{ id: 'x' }, { id: 'y' }] }, 'fr');
+    assert.equal(r.titre, '3 bordereaux à imprimer');
+    assert.deepEqual(r.details, ['1 commande à expédier', '1 bordereau en préparation', '2 colis en route']);
+    assert.equal(resumeBordereaux({ commandes: [commandes[0]], copies: { a: {} } }, 'fr').titre, '1 bordereau à imprimer');
+  });
+  await cas('lot C 2 — rien du tout : aucune ligne ; colis en route seuls : la ligne le dit', async () => {
+    assert.equal(resumeBordereaux({}, 'fr').titre, null);
+    assert.equal(resumeBordereaux({ enRoute: [{ id: 'x' }] }, 'fr').titre, '1 colis en route');
+  });
+  await cas('lot C 2 — « Bordereau automatique » coupé : jamais « en préparation », la commande est « à expédier »', async () => {
+    const r = resumeBordereaux({ commandes: [{ id: 'd', platform: 'vinted', etat: 'a_expedier' }], demandes: { d: { action: 'generer', statut: 'demandee' } }, auto: false }, 'fr');
+    assert.equal(r.titre, '1 commande à expédier');
+    assert.equal(r.enPreparation, 0);
+  });
+  await cas('lot C 2 — en route : expédiée tant que Vinted ne dit pas autre chose, reçue 3 jours, jamais terminée', async () => {
+    const l = commandesEnRoute([
+      { id: 'e1', etat: 'expediee', maj_le: jours(9) }, { id: 'l1', etat: 'livree', maj_le: jours(1) },
+      { id: 'l2', etat: 'livree', maj_le: jours(4) }, { id: 't1', etat: 'terminee', maj_le: jours(0.1) }, { id: 'a1', etat: 'a_expedier', maj_le: jours(0) },
+    ], t0);
+    assert.deepEqual(l.map((c) => c.id), ['l1', 'e1']);
+    assert.equal(etapeSuivi({ etat: 'livree' }, 'fr').texte, 'Reçu par l’acheteur');
+    assert.equal(etapeSuivi({ etat: 'expediee' }, 'fr').texte, 'Expédié');
+  });
+  await cas("lot C 2 — une commande ne quitte « à expédier » que sur l'état LU (jamais copie, impression ni âge)", async () => {
+    const src = fs.readFileSync(new URL('../src/messagerie/vue.js', import.meta.url), 'utf8');
+    const corps = src.slice(src.indexOf('export function commandesAExpedier'), src.indexOf('export function delaiEnvoi'));
+    const filtre = corps.slice(corps.indexOf('.filter('), corps.indexOf('.sort('));
+    assert.ok(/c\?\.etat === 'a_confirmer'/.test(filtre) && !/copie|expire|vendue_le|maj_le|Date/.test(filtre), "commandesAExpedier ne filtre que sur l'état (la date ne sert qu'à l'ordre)");
+    const ventes = fs.readFileSync(new URL('../src/tabs/VentesTab.jsx', import.meta.url), 'utf8');
+    assert.ok(ventes.includes('<LigneBordereaux supabase={supabase} lang={lang} userId={user?.id??null} onOuvrir={onOuvrirExpedier}/>'), 'Ventes : la ligne compacte');
+    const app = fs.readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8');
+    assert.ok(app.includes("onOuvrirExpedier={()=>setEspaceMessagerie({onglet:'expedier',article:null})}"), 'la ligne mène à la page « À expédier »');
+  });
+}
 console.log(`messagerie-app-selftest : ${n} cas verts`);

@@ -4539,6 +4539,15 @@ async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, {
       warnings.push(note);
       return true;
     }
+    // ── (29/10, lot C partie 4 — 0.6.159) LA MARQUE POSÉE PAR SON IDENTIFIANT, DEPUIS LA LISTE DE LEBONCOIN ──────────
+    // La liste entière est dans la page (1 503 marques en Mode) ; la recherche par frappe n'est jamais dessinée dans la
+    // fenêtre de travail minimisée (0 sur 601). On lit la liste, on choisit par ⟦marque-exacte⟧ (notre marque, sinon
+    // « Autre » — décision inchangée : decisionMarqueRechercheLbc), et on pose l'identifiant. Un pré-rempli que
+    // l'article nomme reste (règle du 29/10, sans aucune action). Canal indisponible → la voie d'avant, inchangée.
+    if (rechercheParFrappe && fieldName === "marque" && !estMarqueConsole && !(prefilled && marqueCiteeDansLArticle(prefilled) && !estValeurGenerique(prefilled))) {
+      const posee = await poserMarqueParIdentifiantLbc({ fieldName, labelSelector, notre: String(rawValue), prefilled, warnings });
+      if (posee !== null) return posee;
+    }
     await humanPause();
     input.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await sleep(700);
@@ -6526,6 +6535,49 @@ function decisionMarqueRechercheLbc({ notre, prefilled = null, prefilledCite = f
   return { geste: pre ? "garder" : "vider", horsListe: repondu, muette: !repondu, marqueDansDescription: reelle && !!pre && estOptionAutreLbc(pre), motif };
 }
 // ⟦marque-recherche:fin⟧
+
+// ── (29/10, lot C partie 4 — 0.6.159) LE PONT MAIN LEBONCOIN, ET LA MARQUE PAR IDENTIFIANT ──────────────────────────────
+/** Une fonction du monde MAIN de CET onglet (background, LBC_MAIN) ; null si le canal lui-même est muet. */
+async function demanderMainLbc(fn, args) {
+  try {
+    const r = await Promise.race([
+      chrome.runtime.sendMessage({ type: "LBC_MAIN", fn, args }),
+      sleep(8000).then(() => ({ ok: false, reason: "executeScript : aucune réponse du background en 8 s" })),
+    ]);
+    return r && typeof r === "object" ? r : null;
+  } catch (e) {
+    return { ok: false, reason: `executeScript : ${String(e?.message ?? e)}` };
+  }
+}
+/**
+ * La marque posée par son identifiant (liste de Leboncoin lue dans la page). true : posée ; null : canal ou liste
+ * indisponible, ou rien à poser de sûr — l'appelant reprend la voie d'avant (frappe), à l'identique.
+ */
+async function poserMarqueParIdentifiantLbc({ fieldName, labelSelector, notre, prefilled = null, warnings }) {
+  const liste = await demanderMainLbc("listerChoixCritere", [labelSelector]);
+  if (!liste?.ok || !Array.isArray(liste.choix) || !liste.choix.length) {
+    warnings.push(`${fieldName}: liste Leboncoin non lue (${liste?.reason ?? "canal muet"}) — recherche par frappe, comme avant`);
+    return null;
+  }
+  const libelles = liste.choix.map((c) => c.label);
+  const d = decisionMarqueRechercheLbc({ notre, prefilled, prefilledCite: false, vuesNotre: libelles, vuesAutre: libelles });
+  if (d.geste !== "poser") return null;
+  const choix = liste.choix.find((c) => c.label === d.option);
+  if (!choix) return null;
+  const r = await demanderMainLbc("poserChoixCritere", [labelSelector, choix.id]);
+  const relu = String(r?.valeurInput ?? "").trim();
+  if (!r?.ok || !(relu === choix.label || marquesEgales(relu, choix.label))) {
+    warnings.push(`${fieldName}: « ${choix.label} » (${choix.id}) non relu après la pose par identifiant (${r?.reason ?? `champ « ${relu} »`}) — recherche par frappe`);
+    return null;
+  }
+  if (d.autre) MARQUE_HORS_LISTE = String(notre);
+  const note = d.autre
+    ? `${fieldName}: « ${notre} » absente de la liste Leboncoin (${liste.choix.length} marques) → « ${choix.label} » posée par son identifiant (${choix.id}), la marque est écrite dans la description`
+    : `${fieldName}: « ${choix.label} » posée par son identifiant Leboncoin (${choix.id}, liste de ${liste.choix.length} marques, formulaire « ${r.valeurForm ?? "?"} »)${prefilled ? ` — pré-rempli « ${prefilled} » que l'article ne nomme pas, remplacé` : ""}`;
+  console.log(`[leboncoin] ${note}`);
+  warnings.push(note);
+  return true;
+}
 
 // ── Forme comparable d'une ADRESSE (2026-09-05, santanalily010) ─────────────
 // La forme comparable générale GARDE l'apostrophe ; or « 56b rue dalger »

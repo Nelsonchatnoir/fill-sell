@@ -5,6 +5,7 @@ import GalleryPhoto, { premierePhoto } from '../components/GalleryPhoto';
 import { UI } from '../components/ui';
 import { supabase } from '../lib/supabase';
 import SectionAExpedier from '../messagerie/SectionAExpedier';
+import LigneBordereaux from '../messagerie/LigneBordereaux';
 import {
   formatCurrency,
   typeLabel, marqueLabel,
@@ -161,6 +162,8 @@ const VentesTab = memo(function VentesTab({
   onSaleUpdated=()=>{},
   // (16/10, bêta messages + bordereaux) Section « À expédier » : compte bêta seulement.
   messagerieBeta=false,
+  // (29/10, lot C partie 2) Ouvre la page « À expédier » (EspaceMessagerie) depuis la ligne des bordereaux.
+  onOuvrirExpedier=null,
 }) {
   const fmt = (amount, dec=null) => formatCurrency(amount, currency, dec);
   const [filterType, setFilterType] = useState("Tous");
@@ -1083,7 +1086,11 @@ const VentesTab = memo(function VentesTab({
       <style>{CARTES_CSS}</style>
       <style>{CSS_ECRANS}</style>
 
-      {messagerieBeta&&<SectionAExpedier supabase={supabase} lang={lang} photosParInventaire={photosParInventaire}/>}
+      {/* (29/10, lot C partie 2) UNE ligne compacte (« 3 bordereaux à imprimer ») qui mène à la page « À expédier » —
+          plus l'empilement des cartes ; sans le chemin vers la page (ancien hôte), la section d'avant. */}
+      {messagerieBeta&&(onOuvrirExpedier
+        ?<LigneBordereaux supabase={supabase} lang={lang} userId={user?.id??null} onOuvrir={onOuvrirExpedier}/>
+        :<SectionAExpedier supabase={supabase} lang={lang} photosParInventaire={photosParInventaire}/>)}
 
       {sales.length>0&&(
         <h1 className="fsx-rise" style={{margin:'2px 0 0',fontSize:34,lineHeight:1.08,fontWeight:700,letterSpacing:'-0.025em',color:UI.ink}}>{fr?'Ventes':'Sales'}</h1>

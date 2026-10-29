@@ -551,3 +551,54 @@ export function murReleve(r, lang = 'fr', maintenant = Date.now()) {
   }
   return null;
 }
+
+// ── (29/10, lot C partie 2) BORDEREAUX : UNE LIGNE DANS LES VENTES, LE SUIVI JUSQU'À « REÇU » ──────────────────────────
+// Nico (lot C) : dans l'onglet Ventes, plus d'empilement de cartes (32 chez recrutementgroupezk704, 17 chez Ornella le
+// 29/10) — UNE ligne compacte qui mène à la page « À expédier ». Une commande ne quitte « à expédier » que sur preuve
+// LUE chez la plateforme (etat expediee/livree/terminee écrit par l'extension après /api/v2/transactions/<id> : envoi
+// 300/310 = expédié, 400 = livré, 450 = vente finalisée) — jamais à l'ouverture, à l'impression ni à l'âge.
+// Le suivi : « En route » (expédiée, puis reçue par l'acheteur) jusqu'à la fin de la vente chez la plateforme.
+/** Expédiée ou reçue, encore à suivre : expédiée (jusqu'au changement lu), reçue (3 jours). Plus récente d'abord. */
+export function commandesEnRoute(liste, maintenant = Date.now()) {
+  const t = (c) => Date.parse(c?.maj_le ?? '');
+  return (liste ?? []).filter((c) => (c?.etat === 'expediee' || (c?.etat === 'livree' && Number.isFinite(t(c)) && maintenant - t(c) < 3 * 86400000)))
+    .sort((a, b) => (t(b) || 0) - (t(a) || 0));
+}
+/** L'étape du suivi, en mots (« reçu » = Vinted dit la commande livrée). */
+export function etapeSuivi(c, lang = 'fr') {
+  const fr = lang !== 'en';
+  if (c?.etat === 'livree') return { cle: 'recue', texte: fr ? 'Reçu par l’acheteur' : 'Received by the buyer', ton: 'ok' };
+  return { cle: 'expediee', texte: fr ? 'Expédié' : 'Shipped', ton: 'neutre' };
+}
+/** Une demande de bordereau en préparation (l'ordinateur la traite), sans copie encore. */
+function demandeEnPreparation(d, copie) {
+  if (!d || copie) return false;
+  return d.statut === 'demandee' || d.statut === 'en_cours'
+    || (d.action === 'generer' && d.statut === 'generee' && Number(d.essais_fichier) < 15);
+}
+/**
+ * Le résumé de la ligne des Ventes (pur). `commandes` : à expédier (commandesAExpedier) ; `demandes`, `copies` : par
+ * commande_id ; `enRoute` : commandesEnRoute ; `auto` : réglage « Bordereau automatique » (false = coupé).
+ * @returns {{ aImprimer: number, enPreparation: number, aExpedier: number, enRoute: number, titre: string|null, details: string[] }}
+ */
+export function resumeBordereaux({ commandes = [], demandes = {}, copies = {}, enRoute = [], auto = true } = {}, lang = 'fr') {
+  const fr = lang !== 'en';
+  let aImprimer = 0, enPreparation = 0, aExpedier = 0;
+  for (const c of commandes ?? []) {
+    const copie = copies?.[c.id] ?? null;
+    if (c.platform === 'vinted' && copie) aImprimer++;
+    else if (c.platform === 'vinted' && auto !== false && demandeEnPreparation(demandes?.[c.id], copie)) enPreparation++;
+    else aExpedier++;
+  }
+  const nRoute = (enRoute ?? []).length;
+  const pl = (n, s, p) => `${n} ${n > 1 ? p : s}`;
+  const morceaux = {
+    aImprimer: aImprimer ? (fr ? pl(aImprimer, 'bordereau à imprimer', 'bordereaux à imprimer') : pl(aImprimer, 'label to print', 'labels to print')) : null,
+    aExpedier: aExpedier ? (fr ? pl(aExpedier, 'commande à expédier', 'commandes à expédier') : pl(aExpedier, 'order to ship', 'orders to ship')) : null,
+    enPreparation: enPreparation ? (fr ? pl(enPreparation, 'bordereau en préparation', 'bordereaux en préparation') : pl(enPreparation, 'label being prepared', 'labels being prepared')) : null,
+    enRoute: nRoute ? (fr ? pl(nRoute, 'colis en route', 'colis en route') : pl(nRoute, 'parcel on its way', 'parcels on their way')) : null,
+  };
+  const ordre = ['aImprimer', 'aExpedier', 'enPreparation', 'enRoute'];
+  const presents = ordre.filter((k) => morceaux[k]);
+  return { aImprimer, enPreparation, aExpedier, enRoute: nRoute, titre: presents.length ? morceaux[presents[0]] : null, details: presents.slice(1).map((k) => morceaux[k]) };
+}

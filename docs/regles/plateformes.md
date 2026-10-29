@@ -506,3 +506,14 @@ Rapport : `docs/enquetes/dix-points-1710/RAPPORT.md` (points 1, 4, 5, 7, 9).
   relancer à l'identique → needs_user `refus_beebs_meme_contenu` (« Change d'abord le texte, les photos ou le rayon »),
   jamais redéposé. Constat (non une cause prouvée) : 0/87 en ligne avec « Jeu testé aujourd'hui, le … et fonctionnel »,
   35/42 sans. Jeux vidéo : « xbox » seul n'est plus Beebs « Xbox Series » (Xbox originale → Retrogaming).
+
+## 29/10 (lot C partie 4) — Leboncoin : la marque posée par son IDENTIFIANT
+- Prouvé le 29/10 (compte de Nico, onglet visible, dépôt quitté sans brouillon) : le champ Marque est une combobox Spark
+  dont la liste ENTIÈRE est dans la page (1 503 marques en Mode : `answerChoiceIdentifier` / `answerChoiceLabel` dans
+  `questionDefinition`), filtrée côté page (aucun appel réseau à la frappe) et jamais dessinée dans la fenêtre de travail
+  minimisée — d'où « la recherche ne répond jamais » (0 sur 601). La pose se fait par le gestionnaire du composant
+  (`onValueChange(id)`), lu et appelé dans le monde MAIN (`LBC_MAIN`, `listerChoixCritere` / `poserChoixCritere`).
+- La décision reste `decisionMarqueRechercheLbc` (notre marque exacte, sinon « Autre » + marque dans la description) ;
+  un pré-rempli que l'article nomme reste (règle du 29/10) ; liste illisible ou pose non relue → la voie d'avant (frappe).
+- Essai réel : dépôt 3297910134 (999 €, titre sans marque) → « Zara posée par son identifiant (zara, liste de 1 503
+  marques, formulaire zara) », page publique « Marque : Zara », retiré. Selftest `champs-lbc-etat-marque` § 7.

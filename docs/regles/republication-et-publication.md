@@ -970,3 +970,39 @@
 - Une tâche retenue par la restriction Vinted (`platform_fields.restriction_compte {fin}`, sans `pas_de_rouge`) entre
   dans la reprise par paliers du 26/10 (même compteur, 45 min) quand la fin est passée
   (`_shared/reprise-apres-restriction.js`) — avant, elle partait d'un coup à l'échéance.
+
+## 29/10 (lot C partie 1) — la description d'origine : zéro friction (rapport `docs/enquetes/lot-c-2910/RAPPORT.md`)
+- **L'écran s'ouvre au clic** (`StockTab.publierAvecDetail`) : fiche importée qui attend sa description → la règle
+  d'abord (une lecture en base), « Récupération de ta description… » tout de suite ; l'écran lit (même chemin,
+  `completerTexteDuVendeur`, premier tour toujours) et ouvre le stepper dès que c'est lu, sans écran intermédiaire.
+- **L'état de la lecture est sur la demande** (`lectures_origine_demandees` : prise_le, essai_le, motif, faite_le ;
+  migration 20261030090000) : l'extension ≥ 0.6.159 écrit « prise », « échec + motif », « conclue (ok, sans_texte,
+  introuvable) » (`lecture_origine_essai`, `lecture_origine_conclure`) ; l'écran le relit à chaque tour
+  (`etatDeLaDemande`) et dit l'étape vraie (`phraseEtatDemande`, jamais une durée promise).
+- **Les issues** (`issuesDeLEtat`) : échec → TOUT DE SUITE « Réessayer » (si utile) + « Écrire ma description » +
+  « La faire rédiger par FillSell » ; annonce sans texte ou supprimée → écrire / faire rédiger (jamais un stepper qui
+  rédige en silence) ; sans échec → aucune issue avant 45 s, en discret ensuite. « Réessayer » =
+  `demander_lecture_origine(p_relancer)` (même dans les 15 min ; l'extension ne fait plus attendre le repos d'une
+  demande posée après l'échec).
+- **La lecture passe devant tout** (extension 0.6.159) : d'abord SANS le verrou (GET dans un onglet Vinted vivant, jamais
+  une navigation : `lirePagePubliqueVintedSansVerrou`), sinon EN TÊTE de file (`withJobFlowLockPrioritaire`, drain au
+  début de chaque tour et entre deux tâches du poll). Une demande de téléphone est vue en 30 s (alarme
+  `fillsell-lecture-signal`, RPC `lecture_origine_signal` : une ligne par la clé primaire).
+- **Page Vinted sans JSON-LD** : la description, la marque, la couleur et le rayon se lisent dans le flux Next.js de la
+  page, pour CETTE annonce seulement (`lireFluxNextVinted`, item_id égal) — cause de « page_sans_annonce ».
+- **Mesure durable** : usage_logs `recuperation_description` (une ligne par écran : issue, motif, lecteur, durée) ;
+  requêtes : `docs/sql/recuperation-description.sql`.
+- Jamais de lecture en masse (la lecture de fond reste coupée), jamais le texte du vendeur réécrit, jamais une durée
+  promise. Selftests : `recuperation-description`, `lecture-prioritaire`, `lecture-page-publique`,
+  `lecture-origine-publication`, `attente-sans-lecteur`, `lecture-fond`, `repoll-borne`.
+
+## 29/10 (lot C partie 3) — Lens : rien d'invisible, le bon nom du vêtement, un vêtement au rayon des vêtements
+- Prompt v2026-10-29 (lens-analysis) : ce qu'aucune photo ne montre ne s'écrit jamais (capuche, dos, poche, doublure ;
+  la phrase multi-photos n'annonce plus de « dos ») ; le genre du vêtement se nomme d'après la matière et la façon
+  (polaire, softshell, coupe-vent, doudoune, sweat…) ; « veste de sport » seulement si établi ; une marque LUE NETTEMENT
+  reste même sans trace en ligne ; l'éditeur d'un jeu (Bethesda, Nintendo…) est sa marque.
+- Modèle du scan : Haiku 5.5 (effort low, sans temperature ni prefill, web_search_20250305) ; retour à Haiku 4.5 sans
+  redéploiement : coin_config.lens_scan_haiku45 = 1. Banc réel (25 articles, avant / après) : scripts/bancs/lens/README.md.
+- Rayon : une fiche Lens « mode » ou « chaussures » écarte, sur Leboncoin, Vinted et Beebs, les candidates du mot hors
+  de la famille « mode » (familleFiltreDesCandidates) — plus jamais « Loisirs > Sport & Plein air » pour une veste.
+  eBay et Depop inchangés. Quotas Lens inchangés. Selftest lens-visible.

@@ -6084,6 +6084,37 @@ const StockTab = memo(function StockTab({
     if (!aCompleterTexteVendeur(item) && !importee) { ouvrirStepper(item); return; }
     if (detailFetchId) return; // une récupération à la fois — jamais de lot
     setDetailFetchId(item.id);
+    // ── (29/10, lot C partie 1) ZÉRO FRICTION : L'ÉCRAN DE RÉCUPÉRATION S'OUVRE AU CLIC ─────────────────────────────
+    // Avant : une fiche importée sans texte attendait ici la lecture par l'extension de cet ordinateur (12 s au plus,
+    // bouton figé), puis seulement l'écran. Désormais la règle d'abord (une lecture en base, ~0,3 s) : la fiche attend
+    // sa description → « Récupération de ta description » tout de suite ; c'est l'écran qui lit (même chemin,
+    // completerTexteDuVendeur) et ouvre le stepper dès que c'est lu. Rien ne change pour une fiche qui n'attend rien.
+    if (importee) {
+      let attenteVite = null;
+      try { attenteVite = await attenteLectureOrigine(supabase, user.id, item.id); } catch { attenteVite = null; }
+      if (attenteVite) {
+        let lecteurVite = null;
+        if (attenteVite.plateforme === 'vinted') {
+          try { lecteurVite = await lireLecteurVinted(supabase, user.id, { versionIci: extVersionIci }); } catch { lecteurVite = null; }
+        }
+        setDetailFetchId(null);
+        // Une conclusion (annonce sans texte ou supprimée) n'a rien à redemander.
+        if (!attenteVite.conclusion) demanderLectureOrigine(supabase, item.id);
+        if (lecteurVite && !lecteurVite.disponible) {
+          signalerActionRatee({ action: 'publier', motif: 'lecture_origine_sans_lecteur', userId: user?.id ?? null,
+            details: { fiche: item.id, manque: (attenteVite?.manque ?? []).join(','), raison: lecteurVite.raison, version: lecteurVite.version,
+              vu_le: lecteurVite.vuLe, version_ici: lecteurVite.versionIci, note: null } });
+        } else {
+          signalerActionRatee({ action: 'publier', motif: 'lecture_origine_en_attente', userId: user?.id ?? null,
+            details: { fiche: item.id, manque: (attenteVite?.manque ?? []).join(','), extension: extDetailOk, note: null,
+              lecteur: lecteurVite?.ou ?? null, lecteur_vu_le: lecteurVite?.vuLe ?? null, lecteur_version: lecteurVite?.version ?? null,
+              conclusion: attenteVite.conclusion ?? null, travail: lecteurVite?.travail?.flux ?? null } });
+        }
+        setLecteurAttente(lecteurVite);
+        setAttenteStepper({ item, attente: attenteVite });
+        return;
+      }
+    }
     let r = null;
     if (aCompleterTexteVendeur(item)) {
       try {

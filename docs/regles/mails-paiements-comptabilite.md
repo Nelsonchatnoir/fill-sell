@@ -215,3 +215,12 @@ marge de 100 % sur du vent, indétectable ensuite.
   `base-supabase-et-fonctions.md` § 25/10 matin) : la date de fin s'écrit à chaque notification vérifiée.
 - `20261025_fin_periode_apple_rattrapage.sql` lancé à 08:54:23 (essai à blanc d'abord) : 8 abonnés Apple datés (27/10 →
   24/11), sauvegarde `_backup_2510_fin_periode_apple`, inverse prêt. 0 mail.
+
+## 29/10 (lot C partie 5) — jamais deux abonnements au même palier
+- Cas boncoin59300 : Premium par Google Play le 26/10 (09:54), puis Premium par Stripe le 29/10 (18:14, payé 18:15:20) :
+  deux abonnements actifs. `create-checkout-session` ne refusait que les montées Stripe (Pro, Business).
+- Règle (`_shared/paiement-stripe.js`, `refusDoubleAbonnement`) : un abonnement Google Play / Apple vivant (jeton,
+  drapeau payant, fin à venir) ferme le paiement web d'un palier égal ou inférieur ; un abonnement Stripe vivant aussi
+  (Premium compris). Réponse 409 `deja_abonne` + la phrase (« Tu as déjà cet abonnement par Google Play
+  (renouvellement le 26/11) : rien n'a été débité. ») ; rien n'est créé chez Stripe. Une montée au-dessus d'un
+  abonnement des stores n'est pas fermée ici (journalisée) : décision de Nico. Selftest `paiement-stripe`.

@@ -121,10 +121,12 @@ function poste({ ancienneRegle = false } = {}) {
     function cederAuxDemandesEnAttente() { if (jobFlowWaiters > 0 && !majPlanifiee) { repollApresCycle = true; return true; } return false; }
     function demanderRepoll() { repollApresCycle = true; return true; }
     function armerRelanceApresCycle() { if (repollApresCycle) { repollApresCycle = false; setTimeout(() => { pollAndProcessJobs(); }, 1500); } }`;
-  const noms = ["withJobFlowLock", "noterAttenteVerrou", "attentesHorsPoll", "pollAndProcessJobs", "decisionPollImmediat"]
+  // (29/10, lot C 1) withJobFlowLock draine d'abord la file des lectures prioritaires (vide ici : rien ne change).
+  const noms = ["withJobFlowLock", "drainerLecturesPrioritaires", "noterAttenteVerrou", "attentesHorsPoll", "pollAndProcessJobs", "decisionPollImmediat"]
     .concat(ancienneRegle ? [] : ["demanderRepoll", "cederAuxDemandesEnAttente", "armerRelanceApresCycle"]);
   const decl = ["jobFlowTail", "jobFlowBusyLabel", "jobFlowWaiters", "attentesVerrouParLabel", "repollApresCycle", "REPOLL_PLANCHER_MS",
-    "REPOLL_DELAI_MIN_MS", "debutDernierPoll", "pollsDemarres", "relanceDuCycle", "relancePrecedente", "pollEnAttenteDuVerrou"].map(declaration).join("\n");
+    "REPOLL_DELAI_MIN_MS", "debutDernierPoll", "pollsDemarres", "relanceDuCycle", "relancePrecedente", "pollEnAttenteDuVerrou",
+    "lecturesPrioritaires", "drainPrioritaireEnCours"].map(declaration).join("\n");
   const api = vm.runInContext(`${decl}\n${doublures}\n${ancienneRegle ? ancienne : ""}\n${noms.map(extraire).join("\n")}
     ;({ pollAndProcessJobs, withJobFlowLock, attendre })`, ctx);
   const alarme = () => { api.pollAndProcessJobs(); h.setTimeout(alarme, 2 * 60_000); };   // l'alarme de 2 min
@@ -269,9 +271,9 @@ console.log("\n4. (4.11) La trace d'une mise à jour reportée : une par heure a
     demarrerBattementPresence: () => () => {},
   };
   vm.createContext(ctx);
-  const t = vm.runInContext(`${declaration("MAJ_REPORTEE_TRACE_KEY")}\n${["jobFlowTail", "jobFlowBusyLabel", "jobFlowWaiters", "attentesVerrouParLabel"].map(declaration).join("\n")}
+  const t = vm.runInContext(`${declaration("MAJ_REPORTEE_TRACE_KEY")}\n${["jobFlowTail", "jobFlowBusyLabel", "jobFlowWaiters", "attentesVerrouParLabel", "lecturesPrioritaires", "drainPrioritaireEnCours"].map(declaration).join("\n")}
     let travailEnCours = null;
-    ${["tracerMajReportee", "withJobFlowLock", "noterAttenteVerrou", "appliquerMajSiSansRisque"].map(extraire).join("\n")}
+    ${["tracerMajReportee", "withJobFlowLock", "drainerLecturesPrioritaires", "noterAttenteVerrou", "appliquerMajSiSansRisque"].map(extraire).join("\n")}
     ;({ appliquerMajSiSansRisque })`, ctx);
   await t.appliquerMajSiSansRisque("fin de cycle");
   await h.avancer(10);

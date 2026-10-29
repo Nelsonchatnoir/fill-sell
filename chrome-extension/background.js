@@ -291,6 +291,7 @@ eveilArme = false;
 })().catch(() => { /* jamais bloquant */ });
 
 const ALARM_NAME = "fillsell-poll-jobs";
+const LECTURE_SIGNAL_ALARM = "fillsell-lecture-signal";   // (29/10, lot C 1 — 0.6.159) une lecture attendue, vue en 30 s
 const SYNC_DRESSING_ALARM = "fillsell-sync-dressing";
 
 // Plafond du chemin « refus serveur nommé → needs_user » (Vinted 400, voir
@@ -1210,6 +1211,10 @@ async function scheduleAlarm() {
     periodInMinutes: 24 * 60,
     delayInMinutes: 25,
   });
+  // (29/10, lot C 1 — 0.6.159) Une personne attend une lecture de description (clic « Publier » sur son téléphone) :
+  // vue en 30 s au plus, pas au poll suivant (2 min). Une ligne lue par la clé primaire (lecture_origine_signal) ; la
+  // lecture elle-même passe sans le verrou, ou en tête de file (lireLecturesDemandeesPrioritaires).
+  await creerAlarmeSiBesoin(LECTURE_SIGNAL_ALARM, { periodInMinutes: 0.5, delayInMinutes: 0.5 });
 }
 
 // ── (24/10) POSTE DE DÉVELOPPEMENT : UNE COPIE NEUVE DANS LE DOSSIER RECHARGE L'EXTENSION SEULE ──
@@ -1249,6 +1254,9 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     // pour le poll, aucune requête réseau tant qu'aucune sync n'est ouverte.
     veillerRunFige().catch((e) =>
       console.warn("[sync-dressing][veille]", e?.message ?? e));
+  }
+  if (alarm.name === LECTURE_SIGNAL_ALARM) {
+    veillerLecturesDemandees().catch((e) => console.warn("[origine][signal]", String(e?.message ?? e)));
   }
   if (alarm.name === SYNC_DRESSING_ALARM) {
     syncDressingVinted({ declencheur: "cron" }).catch((e) =>
@@ -1312,6 +1320,17 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   // onglet (cf. beebsMain) : le canal déjà prouvé pour le prix Vinted. Sans
   // onglet émetteur (popup, autre contexte) on refuse — jamais un autre onglet
   // que celui qui demande.
+  // ── (29/10, lot C partie 4 — 0.6.159) PONT MONDE MAIN LEBONCOIN : la liste d'un critère et sa pose par identifiant ──
+  // Même canal que BEEBS_MAIN, réservé à l'onglet leboncoin.fr qui demande (jamais un autre onglet).
+  if (msg?.type === "LBC_MAIN") {
+    (async () => {
+      let hote = "";
+      try { hote = new URL(String(_sender?.tab?.url ?? "")).hostname; } catch { hote = ""; }
+      if (!Number.isInteger(senderTabId) || !/(^|\.)leboncoin\.fr$/.test(hote)) return sendResponse({ ok: false, reason: "LBC_MAIN refusé (onglet émetteur)" });
+      sendResponse(await mainDuSite(LBC_MAIN_FONCTIONS, senderTabId, _sender?.frameId, msg.fn, msg.args));
+    })();
+    return true;
+  }
   if (msg?.type === "BEEBS_MAIN") {
     (async () => {
       if (!Number.isInteger(senderTabId)) return sendResponse({ ok: false, reason: "BEEBS_MAIN sans onglet émetteur" });
@@ -1830,11 +1849,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       // demande pour une annonce déjà en file (ou en cours) s'y rattache : UNE page lue, la même réponse pour tous ;
       // seule la première trace la lecture et complète la fiche. Le verrou reste celui de toujours.
       const proprietaire = !lecturesPubliquesEnVol.has(id);
+      // (29/10, lot C 1 — 0.6.159) La personne attend devant son écran : sans le verrou d'abord (onglet Vinted vivant),
+      // sinon EN TÊTE de file (lirePagePubliqueVintedPrioritaire) — plus jamais derrière un dépôt, une synchro, un relevé.
       if (proprietaire) {
-        lecturesPubliquesEnVol.set(id, withJobFlowLock("page-publique-vinted", () => lirePagePubliqueVintedSousVerrou(id))
+        lecturesPubliquesEnVol.set(id, lirePagePubliqueVintedPrioritaire(id, "page-publique-vinted")
           .finally(() => lecturesPubliquesEnVol.delete(id)));
       }
-      const lu = await lecturesPubliquesEnVol.get(id) ?? await withJobFlowLock("page-publique-vinted", () => lirePagePubliqueVintedSousVerrou(id));
+      const lu = await lecturesPubliquesEnVol.get(id) ?? await lirePagePubliqueVintedPrioritaire(id, "page-publique-vinted");
       if (!proprietaire) return lu;
       try {
         const session = await getValidSession();
@@ -2734,6 +2755,8 @@ function withJobFlowLock(label, fn) {
     jobFlowBusyLabel = label;
     const arreterBattement = demarrerBattementPresence(label);
     try {
+      // (29/10, lot C 1 — 0.6.159) Une lecture qu'une personne attend passe devant le flux qui prend son tour.
+      await drainerLecturesPrioritaires("tour");
       return await fn();
     } finally {
       arreterBattement();
@@ -2743,6 +2766,110 @@ function withJobFlowLock(label, fn) {
   });
   jobFlowTail = run.catch(() => {});
   return run;
+}
+
+// ══ (29/10, lot C partie 1 — 0.6.159) LA LECTURE QU'UNE PERSONNE ATTEND PASSE DEVANT TOUT LE RESTE ══════════════════
+// Mesuré (usage_logs 23 → 29/10) : la lecture de la description d'origine attendait le verrou des onglets de travail
+// derrière TOUT flux en cours — un poll, une synchro, un relevé, un dépôt Leboncoin (1 à 7 min) —, sans délai maximal,
+// et la demande d'un téléphone n'était vue qu'au poll suivant (alarme de 2 min). Règle :
+//   1. d'abord SANS le verrou : la page publique se lit par un fetch GET dans un onglet Vinted VIVANT déjà ouvert
+//      (l'onglet de travail, sinon un onglet Vinted de la personne) — jamais une navigation, jamais une fenêtre
+//      touchée, jamais un onglet créé. Un GET ne passe par aucune réécriture des dépôts (la chaîne corpsPourDepot ne
+//      touche que les envois) : un dépôt Vinted en cours n'est pas dérangé ; un onglet qui navigue rend null ;
+//   2. sinon EN TÊTE de file : elle passe avant le flux qui prend le verrou ensuite, et entre deux tâches du poll
+//      (drainerLecturesPrioritaires) — au pire, la fin de la tâche en cours ;
+//   3. une demande venue d'un téléphone est vue en 30 s (alarme « lecture-signal », lecture_origine_signal : une ligne
+//      lue par la clé primaire), pas au poll suivant ;
+//   4. l'état est écrit sur la demande (lecture_origine_essai / _conclure) : l'écran dit l'étape vraie, et un échec
+//      tout de suite, avec ses issues.
+const lecturesPrioritaires = [];   // { label, fn, resolve, reject }
+let drainPrioritaireEnCours = false;
+/** Fait les lectures prioritaires en attente — à appeler SOUS le verrou (début d'un tour, entre deux tâches). */
+async function drainerLecturesPrioritaires(ou) {
+  if (drainPrioritaireEnCours || !lecturesPrioritaires.length) return 0;
+  drainPrioritaireEnCours = true;
+  const labelAvant = jobFlowBusyLabel;
+  let n = 0;
+  try {
+    while (lecturesPrioritaires.length) {
+      const t = lecturesPrioritaires.shift();
+      jobFlowBusyLabel = t.label;
+      console.log(`[origine] lecture prioritaire « ${t.label} » (${ou}${labelAvant && labelAvant !== t.label ? `, avant « ${labelAvant} »` : ""})`);
+      try { t.resolve(await t.fn()); } catch (e) { t.reject(e); }
+      n++;
+    }
+  } finally {
+    jobFlowBusyLabel = labelAvant;
+    drainPrioritaireEnCours = false;
+  }
+  return n;
+}
+/** Le verrou, en tête de file : immédiat s'il est libre, sinon avant le prochain flux et entre deux tâches du poll. */
+function withJobFlowLockPrioritaire(label, fn) {
+  if (!jobFlowBusyLabel) return withJobFlowLock(label, fn);
+  console.log(`[origine] ${label} : flux "${jobFlowBusyLabel}" en cours — lecture mise EN TÊTE de file`);
+  return new Promise((resolve, reject) => {
+    lecturesPrioritaires.push({ label, fn, resolve, reject });
+    // Filet : si aucun point de cession ne la prend avant, son propre tour la fait (le tour draine d'abord).
+    withJobFlowLock(label, () => drainerLecturesPrioritaires("filet")).catch(() => {});
+  });
+}
+/** Un onglet Vinted VIVANT déjà ouvert (travail d'abord, puis ceux de la personne), sans rien créer ni naviguer. */
+async function ongletVintedVivant() {
+  const origine = VO.origineVinted();
+  const hote = (() => { try { return new URL(origine).hostname; } catch { return null; } })();
+  if (!hote) return null;
+  const vivant = (t) => t && !t.discarded && t.frozen !== true && t.status === "complete"
+    && (() => { try { return new URL(t.url || "https://x.invalid").hostname === hote; } catch { return false; } })();
+  const store = await chrome.storage.session.get(workTabKey("vinted")).catch(() => ({}));
+  const travail = store?.[workTabKey("vinted")];
+  if (travail != null) {
+    const t = await chrome.tabs.get(travail).catch(() => null);
+    if (vivant(t)) return t.id;
+  }
+  const autres = await chrome.tabs.query({ url: `*://${hote}/*` }).catch(() => []);
+  const t = (Array.isArray(autres) ? autres : []).find(vivant);
+  return t ? t.id : null;
+}
+/** La page publique lue SANS le verrou (règle 1) : un GET dans un onglet vivant ; null s'il n'y en a pas ou s'il bouge. */
+async function lirePagePubliqueVintedSansVerrou(itemId) {
+  const id = String(itemId ?? "").trim();
+  if (!/^\d+$/.test(id)) return null;
+  const tabId = await ongletVintedVivant().catch(() => null);
+  if (tabId == null) return null;
+  const t0 = Date.now();
+  const url = `${VO.origineVinted()}/items/${id}`;
+  let timer;
+  try {
+    const inject = chrome.scripting.executeScript({
+      target: { tabId }, world: "MAIN", args: [url],
+      func: async (cible) => {
+        try {
+          const r = await fetch(cible, { credentials: "include", redirect: "follow", headers: { Accept: "text/html" } });
+          const txt = await r.text();
+          return { ok: r.ok, status: r.status, finalUrl: r.url, html: txt.slice(0, 3_000_000) };
+        } catch (e) { return { erreur: String(e?.message ?? e) }; }
+      },
+    });
+    const garde = new Promise((_, rej) => { timer = setTimeout(() => rej(new Error("BLOCKED_TAB")), 15_000); });
+    const [res] = await Promise.race([inject, garde]);
+    const page = res?.result;
+    if (!page || page.erreur) return null;
+    const lu = analyserPagePubliqueVinted(page, id);
+    // Jeton périmé : seul un vrai chargement le renouvelle — c'est un geste de navigation, il attend le verrou.
+    if (lu.motif === "session_a_rafraichir") return null;
+    return { ...lu, ms: Date.now() - t0, sans_verrou: true };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+/** LA lecture d'une page publique qu'une personne attend : sans le verrou d'abord, sinon en tête de file. */
+async function lirePagePubliqueVintedPrioritaire(itemId, label = "lecture-prioritaire") {
+  const vite = await lirePagePubliqueVintedSansVerrou(itemId).catch(() => null);
+  if (vite) return vite;
+  return withJobFlowLockPrioritaire(label, () => lirePagePubliqueVintedSousVerrou(itemId));
 }
 
 // Commande de sync mise en file depuis le mobile, rapportée par le poll.
@@ -2905,10 +3032,13 @@ function analyserPagePubliqueVinted(page, itemId) {
     }
     if (produit) break;
   }
+  // (29/10, lot C 1 — 0.6.159) Sans JSON-LD : les données de la page (flux Next.js), pour CETTE annonce seulement.
+  const flux = produit ? null : lireFluxNextVinted(html, id);
   // 403 / 429, ou page de vérification sans l'annonce : l'anti-robot de Vinted a parlé — tout s'arrête.
-  if (status === 403 || status === 429 || (!produit && estPageBotShield(html))) return { ok: false, motif: "antirobot", http: status };
+  if (status === 403 || status === 429 || (!produit && !flux && estPageBotShield(html))) return { ok: false, motif: "antirobot", http: status };
   if (!page?.ok) return { ok: false, motif: `http_${status || "inconnu"}`, http: status };
-  if (!produit) return { ok: false, motif: "page_sans_annonce", http: status };
+  if (!produit && !flux) return { ok: false, motif: "page_sans_annonce", http: status };
+  if (flux) return { ok: true, http: status, source: "flux_next", ...flux };
   const texte = (v) => { const s = String(v ?? "").trim(); return s || null; };
   const fil = [...new Set([...html.matchAll(/href="\/catalog\/(\d+)-[^"?\/]*\?referrer=item-crumbs"/g)].map((m) => Number(m[1])))]
     .filter((n) => Number.isFinite(n) && n > 0);
@@ -2927,6 +3057,59 @@ function analyserPagePubliqueVinted(page, itemId) {
     fil_ariane: fil,
     prix: Number.isFinite(prix) ? prix : null,
     disponible: /InStock/i.test(dispo) ? true : (/SoldOut|OutOfStock|Discontinued/i.test(dispo) ? false : null),
+  };
+}
+
+// ── (29/10, lot C partie 1 — 0.6.159) LA PAGE SANS JSON-LD : LES DONNÉES DE LA PAGE ELLE-MÊME ─────────────────────────
+// Essai réel du 29/10 à 22:58 (compte de Nico, annonce 9872357762 « Casquette Volcom beige logo diamant ») : page 200,
+// titre juste, mais AUCUN <script type="application/ld+json"> — « page_sans_annonce », alors que la description est là,
+// dans le flux Next.js de la page (self.__next_f.push) : un bloc { data: { description, item_id }, name: "description" },
+// les attributs (marque, couleur, état) et le fil d'Ariane (catalog_id, item_id). Cause de « page_sans_annonce » (202
+// lectures de fond et 115 lectures d'origine sur 7 jours, 7 comptes). On lit ces blocs pour CETTE annonce seulement
+// (item_id égal), jamais ceux d'une autre annonce de la page (annonces similaires, dressing). Rien → null : la règle
+// d'avant (page_sans_annonce), à l'identique.
+function lireFluxNextVinted(html, itemId) {
+  const id = String(itemId ?? "").trim();
+  const source = String(html ?? "");
+  if (!/^\d+$/.test(id) || !source.includes("self.__next_f.push")) return null;
+  let flux = "";
+  for (const m of source.matchAll(/self\.__next_f\.push\(\[1,"((?:[^"\\]|\\.)*)"\]\)/g)) {
+    try { flux += JSON.parse(`"${m[1]}"`); } catch { /* morceau illisible : les autres suffisent */ }
+  }
+  if (!flux) return null;
+  const chaine = (s) => { try { return JSON.parse(`"${s}"`); } catch { return null; } };
+  const texte = (v) => { const s = String(v ?? "").trim(); return s || null; };
+  // La description de CETTE annonce : le bloc qui porte son item_id avant de se refermer.
+  let description = null;
+  for (const m of flux.matchAll(/"description":"((?:[^"\\]|\\.)*)"/g)) {
+    const suite = flux.slice(m.index + m[0].length, m.index + m[0].length + 600);
+    const fin = suite.indexOf("}");
+    const bloc = fin >= 0 ? suite.slice(0, fin) : suite;
+    if (new RegExp(`"item_id":"?${id}"?(?:[,}]|$)`).test(bloc)) { description = chaine(m[1]); break; }
+  }
+  if (description == null) return null;
+  const catalogue = new RegExp(`"catalog_id":"?(\\d+)"?,"item_id":"?${id}"?`).exec(flux);
+  // Les attributs : le bloc « Détails » de CETTE annonce (item_id juste après la liste).
+  const finAttributs = flux.search(new RegExp(`"item_id":"?${id}"?,"section_title"`));
+  const attributs = finAttributs > 0 ? flux.slice(Math.max(0, finAttributs - 5000), finAttributs) : "";
+  const valeurDe = (code) => {
+    const r = [...attributs.matchAll(new RegExp(`"code":"${code}","data":\\{[^{}]*?"value":"((?:[^"\\\\]|\\\\.)*)"`, "g"))];
+    return r.length ? texte(chaine(r[r.length - 1][1])) : null;
+  };
+  const couleurs = String(valeurDe("color") ?? "").split(/\s*[,/]\s*/).map((c) => c.trim()).filter(Boolean);
+  const titre = /<title>([^<]*)<\/title>/.exec(source)?.[1]?.replace(/\s*\|\s*Vinted\s*$/i, "") ?? null;
+  const catalog = catalogue ? Number(catalogue[1]) : null;
+  return {
+    titre: texte(titre),
+    description: texte(description),
+    couleur: couleurs[0] ?? null,
+    couleur2: couleurs[1] ?? null,
+    marque: valeurDe("brand"),
+    categorie_libelle: null,
+    catalog_id: Number.isFinite(catalog) && catalog > 0 ? catalog : null,
+    fil_ariane: Number.isFinite(catalog) && catalog > 0 ? [catalog] : [],
+    prix: null,
+    disponible: null,
   };
 }
 
@@ -3061,44 +3244,78 @@ async function tracerLectureFond(token, ligne, lu, origine) {
 // passaient devant toutes les suivantes, et la fiche que la personne attendait devant son écran n'était jamais lue.
 // Désormais : la demande la plus RÉCENTE d'abord (celle que l'écran attend), et une fiche ratée attend avant d'être
 // relue (5, 10, 20, 40 puis 60 min) — mémoire du service worker, rien en base ; une lecture réussie l'efface.
-const echecsLectureOrigine = new Map();   // inventaire_id → { n, jusqua }
-function lectureOrigineEnRepos(inventaireId, maintenant = Date.now()) {
-  return (echecsLectureOrigine.get(String(inventaireId))?.jusqua ?? 0) > maintenant;
+const echecsLectureOrigine = new Map();   // inventaire_id → { n, jusqua, le }
+// (29/10, lot C 1 — 0.6.159) « Réessayer » : une demande posée APRÈS le dernier échec n'attend pas son repos.
+function lectureOrigineEnRepos(inventaireId, maintenant = Date.now(), demandeeLe = null) {
+  const e = echecsLectureOrigine.get(String(inventaireId));
+  if (!e) return false;
+  if (Number.isFinite(demandeeLe) && Number.isFinite(e.le) && demandeeLe > e.le) return false;
+  return (e.jusqua ?? 0) > maintenant;
 }
 function noterEchecLectureOrigine(inventaireId, maintenant = Date.now()) {
   const cle = String(inventaireId);
   const n = (echecsLectureOrigine.get(cle)?.n ?? 0) + 1;
-  echecsLectureOrigine.set(cle, { n, jusqua: maintenant + Math.min(60, 5 * 2 ** (n - 1)) * 60_000 });
+  echecsLectureOrigine.set(cle, { n, jusqua: maintenant + Math.min(60, 5 * 2 ** (n - 1)) * 60_000, le: maintenant });
 }
 function ordreLecturesOrigine(liste, maintenant = Date.now()) {
   return (Array.isArray(liste) ? liste : [])
-    .filter((l) => l?.plateforme === "vinted" && /^\d+$/.test(String(l?.vinted_item_id ?? "")) && !lectureOrigineEnRepos(l.inventaire_id, maintenant))
+    .filter((l) => l?.plateforme === "vinted" && /^\d+$/.test(String(l?.vinted_item_id ?? ""))
+      && !lectureOrigineEnRepos(l.inventaire_id, maintenant, Date.parse(String(l?.depuis ?? ""))))
     .sort((a, b) => (Date.parse(String(b?.depuis ?? "")) || 0) - (Date.parse(String(a?.depuis ?? "")) || 0));
 }
-async function lireAnnoncesOrigineEnAttente(session) {
+// (29/10, lot C 1 — 0.6.159) L'état de la lecture, écrit sur la demande : l'écran le relit (prise, échec et son motif,
+// conclusion). Sans la migration 20261030090000, ces RPC n'existent pas : l'erreur est avalée, rien ne change.
+const lecturesDemandeesEnVol = new Set();   // inventaire_id lu en ce moment (poll et signal ne lisent jamais la même)
+async function marquerLectureDemandee(token, l, etat, motif = null) {
+  const p_fiche = Number(l?.inventaire_id);
+  if (!token || !Number.isFinite(p_fiche)) return;
+  if (etat === "conclure") {
+    await restRequest("rpc/lecture_origine_conclure", token, { method: "POST", body: JSON.stringify({ p_fiche, p_resultat: String(motif ?? "ok") }) }).catch(() => {});
+    return;
+  }
+  await restRequest("rpc/lecture_origine_essai", token, { method: "POST", body: JSON.stringify({ p_fiche, p_etat: etat, p_motif: motif }) }).catch(() => {});
+}
+async function lireAnnoncesOrigineEnAttente(session, { recentesSeulement = false, prioritaire = false } = {}) {
   const token = session?.access_token;
   if (!token) return;
   if (vintedPauseAntirobotServeur) return;   // Vinted demande une vérification anti-robot : aucune lecture de fond
   if (await lectureFondEnPause()) return;
   const liste = await restRequest("rpc/lectures_origine_en_attente", token, { method: "POST", body: "{}" }).catch(() => []);
-  const vinted = ordreLecturesOrigine(liste);
+  const maintenant = Date.now();
+  // (29/10) Le signal (une personne attend) ne lit que les demandes de moins de 15 min ; le poll, toutes.
+  const vinted = ordreLecturesOrigine(liste, maintenant)
+    .filter((l) => !recentesSeulement || maintenant - (Date.parse(String(l?.depuis ?? "")) || 0) < 15 * 60_000);
   let n = 0;
   for (const l of vinted) {
     if (n >= 3) break;
+    const cle = String(l.inventaire_id);
+    if (lecturesDemandeesEnVol.has(cle)) continue;
     const attente = derniereLectureOrigine + 8000 + Math.floor(Math.random() * 12000) - Date.now();
     if (attente > 0) await sleep(attente);
     n++;
     derniereLectureOrigine = Date.now();
-    // (25/10, 0.6.144) La PAGE PUBLIQUE de l'annonce (une page vue), plus le formulaire d'édition : lisible même
-    // quand le compte Vinted ouvert dans ce navigateur n'est pas celui de l'annonce. Dans le poll : le verrou de flux
-    // est DÉJÀ tenu (jamais une fonction qui le reprend ici — interblocage).
-    const r = await lirePagePubliqueVintedSousVerrou(String(l.vinted_item_id)).catch((e) => ({ ok: false, motif: "exception", detail: String(e?.message ?? e) }));
-    lecturesFondDuCycle.add(String(l.inventaire_id));
-    tracerLectureFond(token, l, r, "demandee").catch(() => {});
+    lecturesDemandeesEnVol.add(cle);
+    let r;
+    try {
+      await marquerLectureDemandee(token, l, "prise");
+      // (25/10, 0.6.144) La PAGE PUBLIQUE de l'annonce (une page vue), plus le formulaire d'édition : lisible même
+      // quand le compte Vinted ouvert dans ce navigateur n'est pas celui de l'annonce. Dans le poll : le verrou de flux
+      // est DÉJÀ tenu (jamais une fonction qui le reprend ici — interblocage). (29/10) Depuis le signal : sans le
+      // verrou d'abord, sinon en tête de file (lirePagePubliqueVintedPrioritaire).
+      r = await (prioritaire
+        ? lirePagePubliqueVintedPrioritaire(String(l.vinted_item_id), "lecture-demandee")
+        : lirePagePubliqueVintedSousVerrou(String(l.vinted_item_id)))
+        .catch((e) => ({ ok: false, motif: "exception", detail: String(e?.message ?? e) }));
+    } finally {
+      lecturesDemandeesEnVol.delete(cle);
+    }
+    lecturesFondDuCycle.add(cle);
+    tracerLectureFond(token, l, r, prioritaire ? (r?.sans_verrou ? "demandee_vite" : "demandee_tete") : "demandee").catch(() => {});
     if (r?.motif === "antirobot") {
       console.warn(`[origine] page publique Vinted ${l.vinted_item_id} : vérification anti-robot — plus aucune lecture de fond pendant 6 h`);
       await poserPauseLectureFond(6);
       tracerLectureOrigineRatee(token, l, "anti-robot Vinted (page publique)").catch(() => {});
+      await marquerLectureDemandee(token, l, "echec", "antirobot");
       return;
     }
     if (!r?.ok && r?.motif !== "introuvable") {
@@ -3107,14 +3324,46 @@ async function lireAnnoncesOrigineEnAttente(session) {
       tracerLectureOrigineRatee(token, l, r?.motif ?? "réponse vide").catch(() => {});
       // (28/10, 0.6.149) … et se repose : les autres fiches passent devant elle aux cycles suivants.
       noterEchecLectureOrigine(l.inventaire_id);
+      // (29/10) … et l'écran l'apprend tout de suite (ses issues s'ouvrent : réessayer, écrire, faire rédiger).
+      await marquerLectureDemandee(token, l, "echec", String(r?.motif ?? "inconnu"));
       continue;
     }
-    echecsLectureOrigine.delete(String(l.inventaire_id));
+    echecsLectureOrigine.delete(cle);
     const poses = r?.ok ? await ecrireLecturePagePublique(token, l, r) : [];
     // Lue = close, avec ou sans texte (et une annonce qui n'existe plus n'a rien à attendre) : l'attente s'arrête,
-    // jamais une attente sans fin.
+    // jamais une attente sans fin. (29/10) La conclusion dit laquelle : l'écran le dit à la personne.
+    await marquerLectureDemandee(token, l, "conclure", r?.ok ? (r.description ? "ok" : "sans_texte") : "introuvable");
     await restRequest("rpc/lecture_origine_faite", token, { method: "POST", body: JSON.stringify({ p_fiche: Number(l.inventaire_id) }) }).catch(() => {});
     console.log(`[origine] fiche ${l.inventaire_id} : annonce Vinted d'origine ${l.vinted_item_id} ${r?.ok ? `lue (${poses.join(", ") || "rien à compléter"})` : "introuvable sur Vinted — attente close"}`);
+  }
+}
+// (29/10, lot C 1 — 0.6.159) Toutes les 30 s : une personne attend-elle une lecture ? Une ligne lue (lecture_origine_signal).
+// Oui → lue sans attendre le poll, sans le verrou ou en tête de file. Lectures coupées (anti-robot) → l'écran l'apprend.
+let veilleLectureEnCours = false;
+const pausesSignalees = new Set();   // « fiche:demande » dont la pause anti-robot a déjà été dite
+async function veillerLecturesDemandees() {
+  if (veilleLectureEnCours) return;
+  veilleLectureEnCours = true;
+  try {
+    const session = await getValidSession().catch(() => null);
+    const token = session?.access_token;
+    if (!token) return;
+    const sig = await restRequest("rpc/lecture_origine_signal", token, { method: "POST", body: "{}" }).catch(() => null);
+    const ligne = Array.isArray(sig) ? sig[0] : sig;
+    if (!(Number(ligne?.n) > 0)) return;
+    if (vintedPauseAntirobotServeur || await lectureFondEnPause()) {
+      const liste = await restRequest("rpc/lectures_origine_en_attente", token, { method: "POST", body: "{}" }).catch(() => []);
+      for (const l of (Array.isArray(liste) ? liste : []).filter((x) => x?.plateforme === "vinted" && Date.now() - (Date.parse(String(x?.depuis ?? "")) || 0) < 15 * 60_000)) {
+        const cle = `${l.inventaire_id}:${l.depuis}`;
+        if (pausesSignalees.has(cle)) continue;
+        pausesSignalees.add(cle);
+        await marquerLectureDemandee(token, l, "echec", "antirobot_pause");
+      }
+      return;
+    }
+    await lireAnnoncesOrigineEnAttente(session, { recentesSeulement: true, prioritaire: true });
+  } finally {
+    veilleLectureEnCours = false;
   }
 }
 
@@ -4187,6 +4436,8 @@ async function pollAndProcessJobsUnlocked() {
   // onglets trop vite.
   for (let i = 0; i < jobs.length; i++) {
     const job = jobs[i];
+    // (29/10, lot C 1 — 0.6.159) Une lecture qu'une personne attend passe entre deux tâches, jamais derrière la file.
+    await drainerLecturesPrioritaires("entre_taches").catch(() => {});
     if (lbcPaiementPrepare && job.platform === "leboncoin" && String(job.action ?? "publish") === "publish") {
       console.log(`[background] Job ${job.id} : laissé en file — un dépôt Leboncoin attend déjà « Valider et payer » sur ce cycle`);
       continue;
@@ -10464,6 +10715,89 @@ async function noterIdentiteBeebs(accessToken, identite) {
 // ⛔ Les fonctions ci-dessous sont SÉRIALISÉES : aucune référence à une
 //    variable extérieure, aucune closure — tout ce dont elles ont besoin
 //    arrive par `args` et repart par `return`.
+// ══ (29/10, lot C partie 4 — 0.6.159) LA MARQUE LEBONCOIN POSÉE PAR SON IDENTIFIANT ══════════════════════════════════
+// Prouvé le 29/10 sur le compte de Nico (dépôt ouvert dans un onglet VISIBLE, rien publié, « Quitter sans enregistrer ») :
+// le champ Marque de Leboncoin (Mode > Vêtements) est une combobox Spark dont la liste ENTIÈRE est dans la page — 1 503
+// choix { answerChoiceIdentifier, answerChoiceLabel } dans questionDefinition (props React du champ), filtrés côté page :
+// taper « Zar » n'appelle AUCUN serveur (réseau relu : rien d'autre que clarity.ms) et rend « Ana Alcazar, Azzaro, Rene
+// Lezard, Zara ». Dans la fenêtre de travail MINIMISÉE (585 dépôts sur 601), cette liste filtrée n'est pas dessinée
+// (menu « 1 enfant, texte vide ») : d'où « la recherche ne répond jamais » (0 marque trouvée sur 601 depuis le 31/08).
+// À la racine : la marque se pose par son IDENTIFIANT, par le gestionnaire du composant (onValueChange de la
+// Combobox) — prouvé : onValueChange("zara") → champ « Zara », valeur du formulaire clothing_brand = « zara ». Aucun
+// dessin, aucune frappe. Le content script choisit (sa règle ⟦marque-exacte⟧) ; ici on ne fait que lire et poser.
+const LBC_MAIN_FONCTIONS = {
+  // La liste d'un critère à choix : [{ id, label }], la valeur affichée. Fonction autonome (sérialisée vers la page).
+  listerChoixCritere: (labelSelector) => {
+    try {
+      const lab = document.querySelector(labelSelector);
+      if (!lab) return { ok: false, reason: "libellé absent" };
+      let boite = lab;
+      for (let i = 0; i < 5 && boite && !boite.querySelector('input[role="combobox"]'); i++) boite = boite.parentElement;
+      const champ = boite?.querySelector('input[role="combobox"]');
+      if (!champ) return { ok: false, reason: "combobox absente" };
+      const cle = Object.keys(champ).find((k) => k.startsWith("__reactFiber"));
+      if (!cle) return { ok: false, reason: "fibre React absente" };
+      let f = champ[cle], q = null, combo = false;
+      for (let i = 0; i < 60 && f; i++, f = f.return) {
+        const p = f.memoizedProps || {};
+        if (!combo && typeof p.onValueChange === "function" && "filtering" in p) combo = true;
+        if (!q && p.questionDefinition) q = p.questionDefinition;
+        if (combo && q) break;
+      }
+      const choix = q?.questionAnswerModelization?.questionMultipleAnswers?.questionAnswerChoices;
+      if (!combo || !Array.isArray(choix)) return { ok: false, reason: `liste ou gestionnaire introuvable (gestionnaire ${combo}, liste ${Array.isArray(choix)})` };
+      return {
+        ok: true, valeur: String(champ.value ?? ""),
+        cle: String(q?.questionAnswerModelization?.questionAnswerFinalRepresentation?.associatedKeyInFinalRepresentation ?? ""),
+        choix: choix.map((c) => ({ id: String(c?.answerChoiceIdentifier ?? ""), label: String(c?.answerChoiceLabel ?? "") })).filter((c) => c.id && c.label),
+      };
+    } catch (e) {
+      return { ok: false, reason: "exception MAIN: " + (e && e.message) };
+    }
+  },
+  // Pose un choix par son identifiant (gestionnaire du composant), puis relit le champ et le formulaire.
+  poserChoixCritere: async (labelSelector, id) => {
+    try {
+      const lab = document.querySelector(labelSelector);
+      let boite = lab;
+      for (let i = 0; i < 5 && boite && !boite.querySelector('input[role="combobox"]'); i++) boite = boite.parentElement;
+      const champ = boite?.querySelector('input[role="combobox"]');
+      const cle = champ ? Object.keys(champ).find((k) => k.startsWith("__reactFiber")) : null;
+      if (!cle) return { ok: false, reason: "combobox ou fibre absente" };
+      let f = champ[cle], combo = null, q = null, control = null;
+      for (let i = 0; i < 60 && f; i++, f = f.return) {
+        const p = f.memoizedProps || {};
+        if (!combo && typeof p.onValueChange === "function" && "filtering" in p) combo = p;
+        if (!q && p.questionDefinition) { q = p.questionDefinition; control = p.control || null; }
+        if (combo && q) break;
+      }
+      if (!combo) return { ok: false, reason: "gestionnaire introuvable" };
+      combo.onValueChange(String(id));
+      for (let i = 0; i < 20; i++) {
+        await new Promise((r) => setTimeout(r, 100));
+        if (String(champ.value ?? "").trim()) break;
+      }
+      const cleForm = String(q?.questionAnswerModelization?.questionAnswerFinalRepresentation?.associatedKeyInFinalRepresentation ?? "");
+      const valeurs = control?._formValues || {};
+      return { ok: true, valeurInput: String(champ.value ?? ""), valeurForm: cleForm ? (valeurs[cleForm] ?? valeurs[`${cleForm}_id`] ?? null) : null, cleForm };
+    } catch (e) {
+      return { ok: false, reason: "exception MAIN: " + (e && e.message) };
+    }
+  },
+};
+async function mainDuSite(table, tabId, frameId, fn, args) {
+  const func = table[fn];
+  if (typeof func !== "function") return { ok: false, reason: `executeScript : fonction MAIN inconnue (${String(fn)})` };
+  try {
+    const target = { tabId };
+    if (Number.isInteger(frameId)) target.frameIds = [frameId];
+    const [res] = await chrome.scripting.executeScript({ target, world: "MAIN", func, args: Array.isArray(args) ? args : [] });
+    return res?.result ?? { ok: false, reason: "executeScript sans résultat" };
+  } catch (e) {
+    return { ok: false, reason: `executeScript : ${String(e?.message ?? e)}` };
+  }
+}
+
 const BEEBS_MAIN_FONCTIONS = {
   // Commit de la catégorie par les props React du sélecteur : le composant
   // { categories, onSelected } porte l'ARBRE COMPLET (nœuds Contentful) et
@@ -22506,8 +22840,14 @@ async function releverMessagerieUnePlateforme(platform, token, e, { commandesSeu
     // 1re page Vinted (20 commandes en cours), n'était PLUS JAMAIS relue (recrutementgroupezk704, 29/10 : 10 sur 22).
     // Le tour de détail reste celui du poste (commandesLues : la tentative la plus ancienne d'abord, 5 par passage) :
     // aucune requête de plus par passage, chaque commande en cours a simplement son tour.
+    // (29/10, lot C partie 2 — 0.6.159) Vinted : une commande LIVRÉE reste suivie 10 jours, jusqu'à « vente finalisée »
+    // (450, terminee) — avant, une livrée hors de la 1re page « en cours » n'était plus jamais relue (45 livrées sur 95
+    // inchangées depuis 3 jours le 29/10). Le suivi de l'app va ainsi jusqu'à « reçu », puis la ligne se ferme.
+    const etatsSuivis = platform === "vinted"
+      ? `or=(etat.in.(a_confirmer,a_expedier,expediee,inconnu),and(etat.eq.livree,maj_le.gt.${new Date(Date.now() - 10 * 86400000).toISOString().slice(0, 19)}))`
+      : "etat=in.(a_confirmer,a_expedier,expediee,inconnu)";
     const suivies = await restRequest(
-      `plateforme_commandes?platform=eq.${platform}&etat=in.(a_confirmer,a_expedier,expediee,inconnu)&select=commande_ref,etat&order=maj_le.asc&limit=100`,
+      `plateforme_commandes?platform=eq.${platform}&${etatsSuivis}&select=commande_ref,etat&order=maj_le.asc&limit=100`,
       token).catch(() => []);
     // (16/10 nuit) Vinted : les options d'étiquette d'une commande ne sont relues
     // qu'une fois toutes les 6 h (mémoire du poste).

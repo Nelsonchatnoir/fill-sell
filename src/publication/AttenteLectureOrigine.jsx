@@ -34,12 +34,22 @@
 // 20:47:11). Désormais : la phrase dit que l'ordinateur lit (moins de 2 min en général) et de garder l'écran ouvert ;
 // seul « Fermer » ferme pendant une attente ; passé 3 min sans lecture (attenteLectureRegles.lecteurEnRetard), la
 // vérité et les issues « Écrire ma description » / « La faire rédiger par FillSell » s'ajoutent — la relecture continue.
+//
+// ── (29/10, lot C partie 1) ZÉRO FRICTION : L'ÉTAPE VRAIE, L'ÉCHEC TOUT DE SUITE, LE STEPPER DÈS QUE C'EST LU ────────────
+// L'écran s'ouvre AU CLIC (plus 12 s de lecture muette avant lui) et dit « Récupération de ta description » ; il relit
+// la demande que l'extension (≥ 0.6.159) tient à jour : envoyée, prise, ordinateur occupé (la lecture passe en tête de
+// file), lue → le stepper s'ouvre aussitôt ; échec → le motif en clair et, TOUT DE SUITE, « Réessayer », « Écrire ma
+// description », « La faire rédiger par FillSell » ; annonce sans texte ou supprimée → écrire / faire rédiger. Sans
+// échec, écrire / faire rédiger restent proposés en discret après 45 s. Chaque écran laisse UNE ligne de mesure
+// (usage_logs « recuperation_description » : issue, motif, lecteur, durée). Règles pures : attenteLectureRegles.js.
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { demarrerRelecture } from "../utils/relectureBornee";
 import {
-  attenteLectureOrigine, messageLectureOrigine, ecrireDescriptionSansLecteur, noterChoixSansLecteur, tracerChoixSansLecteur,
+  attenteLectureOrigine, ecrireDescriptionSansLecteur, noterChoixSansLecteur, tracerChoixSansLecteur,
+  demanderLectureOrigine, tracerRecuperation,
 } from "./lectureOrigine";
+import { plateformeApp } from "../utils/actionRatee";
 import { completerTexteDuVendeur } from "./texteDuVendeur";
 import { signalerActionRatee } from "../utils/actionRatee";
 // (29/10, lot B 1.3) La dictée sur la description à écrire.
@@ -47,7 +57,7 @@ import BoutonDictee from "../components/BoutonDictee";
 import {
   depuisEnMots, RELECTURE_ATTENTE_MS, RELECTURE_ATTENTE_MAX_MS, RELECTURE_SANS_LECTEUR_MS, ATTENTE_SANS_LECTEUR_MAX_MS,
   issuesSansLecteur, phraseSansLecteur, libellesSansLecteur, texteAttenteSansLecteur, urlAnnonceVinted, descriptionEcriteSuffisante,
-  lecteurEnRetard, texteAttenteParOrdinateur,
+  lecteurEnRetard, etatDeLaDemande, phraseEtatDemande, issuesDeLEtat,
 } from "./attenteLectureRegles";
 
 export default function AttenteLectureOrigine({
@@ -75,6 +85,12 @@ export default function AttenteLectureOrigine({
   const dernierItem = useRef(item);
   const derniereNote = useRef(null);
   const lecteurRef = useRef(lecteurInitial);
+  // (29/10, lot C 1) Le résultat de la dernière lecture faite ICI ({ note, motif, occupee }), la relance (« Réessayer »),
+  // et la mesure de l'écran (une ligne à sa fin, jamais deux).
+  const [ici, setIci] = useState(null);
+  const echecIci = useRef(false);
+  const [relance, setRelance] = useState(0);
+  const mesure = useRef({ trace: false, motif: null, prise: false, etats: new Set() });
 
   // Horloge d'AFFICHAGE seulement (aucune lecture de base).
   useEffect(() => {
@@ -94,6 +110,7 @@ export default function AttenteLectureOrigine({
         const { data } = await supabase.from("inventaire").select("description").eq("id", item.id).eq("user_id", userId).maybeSingle();
         if (data && typeof data.description === "string" && data.description.trim()) relu = { ...relu, description: data.description };
       } catch { /* le stepper relit de toute façon la fiche */ }
+      mesurerRef.current?.("lue");
       onPret?.(relu, { note: derniereNote.current });
     };
     const sansLecteurAuDepart = lecteurRef.current?.disponible === false;
@@ -103,12 +120,20 @@ export default function AttenteLectureOrigine({
     r = demarrerRelecture(async () => {
       if (fini.current) return true;
       tours += 1;
-      if (extensionVinted && !enLecture.current) {
+      // (29/10, lot C 1) Le premier tour lit toujours (relevé, capture de republication, eBay : sans extension aussi) ;
+      // les suivants, seulement par l'extension de cet appareil.
+      if ((extensionVinted || tours === 1) && !enLecture.current && !echecIci.current) {
         enLecture.current = true;
         try {
           const res = await completerTexteDuVendeur(dernierItem.current, { supabase, userId, extensionVinted, lireEbay, delaiDetailMs });
           if (res?.item) dernierItem.current = res.item;
           derniereNote.current = res?.note ?? null;
+          // (29/10, lot C 1) Ce que la lecture d'ici a dit : un échec s'affiche tout de suite (et la lecture d'ici
+          // s'arrête jusqu'à « Réessayer ») ; une extension occupée se dit « occupée », jamais une erreur.
+          const r = { note: res?.note ?? null, motif: res?.motif ?? null, occupee: res?.extensionOccupee === true };
+          const e = etatDeLaDemande(null, r);
+          if (e.etat === "echec" || e.etat === "conclue") echecIci.current = true;
+          setIci(r);
           // (28/10, jocabroc8) Le pont suit la DERNIÈRE sonde : un « pont mort » d'un instant (page occupée) ne laisse
           // plus « recharge la page » à l'écran quand la sonde suivante a eu sa réponse.
           setPontMort(res?.note === "pont_mort");
@@ -139,15 +164,47 @@ export default function AttenteLectureOrigine({
     }, { intervalleMs: sansLecteurAuDepart ? RELECTURE_SANS_LECTEUR_MS : RELECTURE_ATTENTE_MS, maxMs: RELECTURE_ATTENTE_MAX_MS, immediat: true });
     return () => r.arreter();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [supabase, userId, item?.id, extensionVinted, mode]);
+  }, [supabase, userId, item?.id, extensionVinted, mode, relance]);
 
   const ecoule = Math.max(0, horloge - depuis);
   // (28/10) Le lecteur tel que l'écran le traite : en attente depuis 3 min sans lecture, il est « en retard ».
   const lecteurVu = mode === "attente" ? lecteurEnRetard(lecteur, Math.max(0, horloge - debutAttente)) : lecteur;
   const sansLecteur = lecteurVu?.disponible === false;
+  // (29/10, lot C 1) L'étape vraie : la conclusion de la règle (sans texte, introuvable) d'abord, puis la demande et
+  // ce que la lecture d'ici a dit.
+  const etat = attente?.conclusion ? { etat: "conclue", motif: attente.conclusion, reessayable: false } : etatDeLaDemande(attente?.demande ?? null, ici);
+  const plateforme = attente?.plateforme ?? "vinted";
+  if (etat.etat === "echec") mesure.current.motif = etat.motif;
+  if (etat.etat === "conclue") mesure.current.motif = etat.motif;
+  if (etat.etat === "prise") mesure.current.prise = true;
+  mesure.current.etats.add(etat.etat);
+  function mesurer(issue) {
+    if (mesure.current.trace) return;
+    mesure.current.trace = true;
+    tracerRecuperation(supabase, userId, {
+      issue, fiche: item?.id ?? null, plateforme, appareil: plateformeApp(),
+      lecteur: sansLecteur ? "aucun" : (lecteur?.ou ?? null), raison: lecteurVu?.raison ?? null, version: lecteur?.version ?? null,
+      motif: mesure.current.motif, etat: etat.etat, etats: [...mesure.current.etats].join(","), prise_vue: mesure.current.prise,
+      duree_ms: Math.max(0, Date.now() - depuis), relances: relance, pont_mort: pontMort,
+    });
+  }
+  // La mesure vue par la relecture (montée une fois) : toujours la dernière, jamais celle du premier rendu.
+  const mesurerRef = useRef(null);
+  mesurerRef.current = mesurer;
+  const reessayer = async () => {
+    if (envoi) return;
+    setEchec(null);
+    echecIci.current = false;
+    setIci(null);
+    setAttente((a) => (a ? { ...a, demande: null, conclusion: null } : a));
+    try { await demanderLectureOrigine(supabase, item?.id, { relancer: true }); } catch { /* la relecture repart quand même */ }
+    setDebutAttente(Date.now());
+    setRelance((n) => n + 1);
+  };
 
   const fermer = () => {
     if (!fini.current) {
+      mesurer("abandon");
       signalerActionRatee({ action: "publier", motif: "lecture_origine_abandonnee", userId,
         details: { fiche: item?.id ?? null, attendu_s: Math.round(ecoule / 1000), pont_mort: pontMort, extension: extensionVinted, manque: (attente?.manque ?? []).join(","), note: derniereNote.current,
           sans_lecteur: sansLecteur, mode, raison: lecteurVu?.raison ?? null, ou: lecteur?.ou ?? null, en_retard: lecteurVu?.enRetard === true } });
@@ -173,6 +230,7 @@ export default function AttenteLectureOrigine({
       return;
     }
     trace("redigee");
+    mesurer("redigee");
     fini.current = true;
     onPret?.(dernierItem.current, { choix: "redigee" });
   };
@@ -188,6 +246,7 @@ export default function AttenteLectureOrigine({
       return;
     }
     trace("ecrite");
+    mesurer("ecrite");
     fini.current = true;
     onPret?.({ ...dernierItem.current, description: r.description }, { choix: "ecrite" });
   };
@@ -274,25 +333,52 @@ export default function AttenteLectureOrigine({
       </>
     );
   } else {
+    // (29/10, lot C 1) « Récupération en cours » : l'étape vraie ; un échec ou une conclusion → ses issues TOUT DE SUITE ;
+    // sans échec, écrire / faire rédiger en discret après 45 s.
+    const attendu = Math.max(0, horloge - debutAttente);
+    const issues = issuesDeLEtat(etat, attendu);
+    const libelleIssue = { reessayer: en ? "Try again" : "Réessayer", ecrire: L.ecrire, rediger: L.rediger };
+    const agir = (cle) => (cle === "reessayer" ? reessayer() : choisir(cle));
+    const titre = etat.etat === "echec"
+      ? (en ? "Your description couldn't be read" : "Ta description n'a pas pu être lue")
+      : etat.etat === "conclue"
+        ? (en ? "Your description can't be retrieved" : "Ta description ne peut pas être récupérée")
+        : (en ? "Retrieving your description…" : "Récupération de ta description…");
+    const enCours = etat.etat !== "echec" && etat.etat !== "conclue";
     corps = (
       <>
-        <div style={titreStyle}>
-          {en ? "Reading your original listing…" : "Lecture de ton annonce d'origine…"}
+        <div style={{ ...titreStyle, display: "flex", alignItems: "center", gap: 10 }}>
+          {enCours ? <span aria-hidden="true" className="fs-attente-roue" style={{ width: 16, height: 16, borderRadius: "50%", border: "2px solid #CDEBE6", borderTopColor: "#2F9E90", display: "inline-block", animation: "fsAttenteRoue 0.9s linear infinite", flex: "0 0 auto" }} /> : null}
+          <span>{titre}</span>
         </div>
-        <div style={{ fontSize: 13, lineHeight: 1.5, color: "#374151" }}>
-          {messageLectureOrigine(attente ?? { plateforme: "vinted" }, en ? "en" : "fr", "preparation")}
-        </div>
-        <div style={{ fontSize: 12, color: "#6B7280", marginTop: 10 }}>
+        <style>{"@keyframes fsAttenteRoue{to{transform:rotate(360deg)}}@media (prefers-reduced-motion: reduce){.fs-attente-roue{animation:none!important}}"}</style>
+        <div role="status" aria-live="polite" style={texteStyle}>
           {pontMort
             ? (en ? "Your extension can't be reached from this page (it was just updated): reload the page."
               : "Ton extension ne répond plus à cette page (elle vient d'être mise à jour) : recharge la page.")
-            : !extensionVinted
-              // (28/10) Jamais « Ferme » : l'ordinateur lit au poll suivant ; l'écran attend et s'ouvre tout seul.
-              ? `${texteAttenteParOrdinateur(lang)} ${en ? `Waiting for ${depuisEnMots(ecoule)}.` : `En attente depuis ${depuisEnMots(ecoule)}.`}`
-              : (en ? `In progress for ${depuisEnMots(ecoule)} — the publishing screen opens as soon as it is read.`
-                : `En cours depuis ${depuisEnMots(ecoule)} — l'écran de publication s'ouvre dès qu'elle est lue.`)}
+            : phraseEtatDemande(etat, { lang, lecteur, travail: lecteur?.travail ?? null, plateforme })}
         </div>
-        <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
+        {enCours ? (
+          <div style={{ fontSize: 12, color: "#6B7280", marginTop: 8 }}>
+            {en ? `In progress for ${depuisEnMots(ecoule)} — the publishing screen opens as soon as it's read.`
+              : `En cours depuis ${depuisEnMots(ecoule)} — l'écran de publication s'ouvre dès qu'elle est lue.`}
+          </div>
+        ) : null}
+        {issues.length ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 14 }}>
+            {issues.some((x) => x.discret) ? (
+              <div style={{ fontSize: 12.5, color: "#6B7280" }}>{en ? "Don't want to wait?" : "Tu ne veux pas attendre ?"}</div>
+            ) : null}
+            {issues.map((x) => (
+              <button key={x.cle} type="button" disabled={envoi} onClick={() => agir(x.cle)}
+                style={issue(x.principal ? "principal" : x.discret ? "discret" : "secondaire")}>
+                {libelleIssue[x.cle]}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {ligneEchec}
+        <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
           {pontMort ? (
             <button type="button" onClick={() => { try { window.location.reload(); } catch { /* rien */ } }}
               style={bouton("#ECFDF5", "#065F46", "#A7F3D0")}>
@@ -300,7 +386,7 @@ export default function AttenteLectureOrigine({
             </button>
           ) : null}
           <button type="button" onClick={fermer} style={{ ...bouton("#fff", "#374151", "#E5E7EB"), fontWeight: 600 }}>
-            {en ? "Close (reading continues)" : "Fermer (la lecture continue)"}
+            {enCours ? (en ? "Close (reading continues)" : "Fermer (la lecture continue)") : (en ? "Close" : "Fermer")}
           </button>
         </div>
       </>

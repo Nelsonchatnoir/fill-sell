@@ -280,3 +280,132 @@ export function patchDescriptionEcrite(texte, at = new Date().toISOString()) {
 export function patchChoixRedigee(at = new Date().toISOString()) {
   return { attributs: { [CLE_CHOIX_SANS_LECTURE]: { v: "redigee", source: "manuel", at, motif: "lecture_origine_sans_lecteur" } } };
 }
+
+// ── (29/10, lot C partie 1) LA DEMANDE SUIVIE : L'ÉTAPE VRAIE, L'ÉCHEC DIT TOUT DE SUITE, JAMAIS UN ÉCRAN FIGÉ ─────────
+// Mesuré (usage_logs, 23 → 29/10) : 27 attentes et 24 abandons de cet écran (13 et 11 comptes) ; l'extension échouait
+// sans que l'écran le sache (onglet indisponible 1 133 fois, introuvable 430, page sans annonce 202, anti-robot 12) — il
+// attendait 3 min avant toute issue, et une annonce supprimée ouvrait le stepper sans un mot. Désormais l'extension
+// (≥ 0.6.159) écrit l'état sur la demande (lectures_origine_demandees : prise_le, essai_le, motif, faite_le — migration
+// 20261030090000), et l'écran le relit à chaque tour :
+//   · envoyée / prise / ordinateur occupé : l'étape vraie, en mots ;
+//   · échec : le motif en clair et, TOUT DE SUITE, « Réessayer » + écrire / faire rédiger ;
+//   · conclue sans texte ou introuvable : la vérité, écrire / faire rédiger — jamais un stepper qui rédige en silence ;
+//   · lue : le stepper s'ouvre, sans écran intermédiaire.
+// Et, quoi qu'il arrive, écrire / faire rédiger restent proposés en discret après 45 s d'attente.
+/** Après combien de temps d'attente les issues « écrire / faire rédiger » s'affichent (en discret) sans échec. */
+export const ISSUES_EN_ATTENTE_APRES_MS = 45_000;
+/** La version qui lit en 30 s au plus (signal) et dit son état (prise, échec, conclusion). */
+export const LECTEUR_SUIVI_VERSION_MIN = "0.6.159";
+const MOTIFS_ECHEC = new Set(["antirobot", "antirobot_pause", "onglet_indisponible", "page_sans_annonce", "session_a_rafraichir", "exception", "id_illisible", "inconnu", "reponse_vide"]);
+const estMotifEchec = (m) => MOTIFS_ECHEC.has(String(m ?? "")) || /^http_/.test(String(m ?? ""));
+const NOMS_PLATEFORMES = { vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", depop: "Depop", ebay: "eBay" };
+
+/**
+ * Où en est la lecture ? (pur)
+ * @param demande  la ligne lectures_origine_demandees { demandee_le, prise_le, essai_le, motif, faite_le } (ou null)
+ * @param ici      le dernier résultat d'une lecture faite par l'extension de CET appareil { note, motif, occupee } (ou null)
+ * @returns {{ etat: 'envoyee'|'prise'|'occupee'|'echec'|'conclue'|'lue', motif: string|null, reessayable: boolean }}
+ */
+export function etatDeLaDemande(demande, ici = null) {
+  const m = String(ici?.motif ?? "");
+  if (ici?.note === "sans_description") return { etat: "conclue", motif: "sans_texte", reessayable: false };
+  if (m === "introuvable") return { etat: "conclue", motif: "introuvable", reessayable: false };
+  if (estMotifEchec(m)) return { etat: "echec", motif: m, reessayable: m !== "antirobot" && m !== "antirobot_pause" };
+  const d = demande ?? null;
+  const t = (v) => { const x = Date.parse(String(v ?? "")); return Number.isFinite(x) ? x : null; };
+  const demandee = t(d?.demandee_le);
+  const dm = String(d?.motif ?? "");
+  if (d?.faite_le) {
+    if (dm === "introuvable" || dm === "sans_texte") return { etat: "conclue", motif: dm, reessayable: false };
+    return { etat: "lue", motif: null, reessayable: false };
+  }
+  const essai = t(d?.essai_le);
+  if (dm && estMotifEchec(dm) && essai != null && (demandee == null || essai >= demandee)) {
+    return { etat: "echec", motif: dm, reessayable: dm !== "antirobot" && dm !== "antirobot_pause" };
+  }
+  if (ici?.occupee) return { etat: "occupee", motif: null, reessayable: false };
+  const prise = t(d?.prise_le);
+  if (prise != null && (demandee == null || prise >= demandee)) return { etat: "prise", motif: null, reessayable: false };
+  return { etat: "envoyee", motif: null, reessayable: false };
+}
+
+/** Ce que l'ordinateur fait en ce moment, s'il l'a dit il y a moins de 6 min (battement d'un travail sous verrou). */
+export function travailDuPoste(postes, maintenant = Date.now()) {
+  const liste = Object.values(postes && typeof postes === "object" && !Array.isArray(postes) ? postes : {})
+    .map((p) => ({ flux: String(p?.travail?.flux ?? ""), le: Date.parse(String(p?.travail?.le ?? "")) }))
+    .filter((p) => p.flux && Number.isFinite(p.le) && maintenant - p.le < 6 * 60_000);
+  if (!liste.length) return null;
+  liste.sort((a, b) => b.le - a.le);
+  const f = liste[0].flux;
+  const quoi = /sync/.test(f) ? "synchro" : /releve/.test(f) ? "releve" : "publication";
+  return { flux: f, quoi };
+}
+
+/** Le motif d'un échec, en clair (pur). */
+export function messageEchecLecture(motif, { lang = "fr", plateforme = "vinted" } = {}) {
+  const en = lang === "en";
+  const nom = NOMS_PLATEFORMES[plateforme] ?? "";
+  const m = String(motif ?? "");
+  if (m === "antirobot" || m === "antirobot_pause") {
+    return en ? `${nom} asked your computer for a security check: readings are paused for a few hours. Write your description or have it written.`
+      : `${nom} a demandé une vérification à ton ordinateur : les lectures sont en pause quelques heures. Écris ta description ou fais-la rédiger.`;
+  }
+  if (m === "onglet_indisponible") {
+    return en ? `Your computer couldn't open ${nom} (tab asleep or closed).` : `Ton ordinateur n'a pas pu ouvrir ${nom} (onglet en veille ou fermé).`;
+  }
+  if (m === "page_sans_annonce") {
+    return en ? `${nom} returned a page without your listing.` : `${nom} a renvoyé une page sans ton annonce.`;
+  }
+  if (m === "session_a_rafraichir") {
+    return en ? `Your ${nom} session on your computer needs refreshing.` : `Ta session ${nom} sur ton ordinateur doit être rafraîchie.`;
+  }
+  return en ? "The reading didn't succeed this time." : "La lecture n'a pas abouti cette fois.";
+}
+
+/** La phrase de l'étape (pur) — un fait, jamais une heure promise. */
+export function phraseEtatDemande(e, { lang = "fr", lecteur = null, travail = null, plateforme = "vinted" } = {}) {
+  const en = lang === "en";
+  const nom = NOMS_PLATEFORMES[plateforme] ?? "";
+  const ici = lecteur?.ou === "ici";
+  const sujet = ici ? (en ? "The extension on this computer" : "L'extension de cet ordinateur") : (en ? "Your computer" : "Ton ordinateur");
+  switch (e?.etat) {
+    case "prise":
+      return en ? `${sujet} is reading your ${nom} listing…` : `${sujet} lit ton annonce ${nom}…`;
+    case "occupee":
+      return en ? `${sujet} is finishing a task: your reading goes first, right after it.` : `${sujet} termine une tâche en cours : ta lecture passe en premier, juste après.`;
+    case "echec":
+      return messageEchecLecture(e.motif, { lang, plateforme });
+    case "conclue":
+      return e.motif === "introuvable"
+        ? (en ? `Your ${nom} listing no longer exists (sold or deleted): its description can't be read anymore.` : `Ton annonce ${nom} n'existe plus (vendue ou supprimée) : sa description ne peut plus être lue.`)
+        : (en ? `Your ${nom} listing has no description.` : `Ton annonce ${nom} n'a pas de description.`);
+    case "lue":
+      return en ? "Read: opening the publishing screen…" : "Lue : ouverture de l'écran de publication…";
+    default: {
+      if (ici) return en ? `${sujet} is reading your ${nom} listing…` : `${sujet} lit ton annonce ${nom}…`;
+      const occupe = travail
+        ? (en ? ({ synchro: "syncing your listings", releve: "reading your listings", publication: "publishing" })[travail.quoi]
+          : ({ synchro: "synchronise tes annonces", releve: "relève tes annonces", publication: "publie" })[travail.quoi])
+        : null;
+      if (occupe) {
+        return en ? `Request sent to your computer, which is ${occupe}: your reading goes first, as soon as the current step ends.`
+          : `Demande envoyée à ton ordinateur, qui ${occupe} en ce moment : ta lecture passe en premier, dès la fin de l'étape en cours.`;
+      }
+      // Jamais une durée promise (règle du 16/10, selftest aucune-estimation) : la condition, pas l'heure.
+      return en ? "Request sent to your computer: it reads it as soon as it receives it."
+        : "Demande envoyée à ton ordinateur : il la lit dès qu'il la reçoit.";
+    }
+  }
+}
+
+/** Les issues de l'état (pur) : échec → réessayer d'abord (s'il a un sens), conclue → écrire d'abord, attente → discrètes après 45 s. */
+export function issuesDeLEtat(e, attenduMs = 0) {
+  if (e?.etat === "echec") {
+    return e.reessayable
+      ? [{ cle: "reessayer", principal: true }, { cle: "ecrire", principal: false }, { cle: "rediger", principal: false }]
+      : [{ cle: "ecrire", principal: true }, { cle: "rediger", principal: false }];
+  }
+  if (e?.etat === "conclue") return [{ cle: "ecrire", principal: true }, { cle: "rediger", principal: false }];
+  if (e?.etat === "lue") return [];
+  return Number(attenduMs) >= ISSUES_EN_ATTENTE_APRES_MS ? [{ cle: "ecrire", principal: false, discret: true }, { cle: "rediger", principal: false, discret: true }] : [];
+}

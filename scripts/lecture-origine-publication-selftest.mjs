@@ -63,7 +63,8 @@ console.log("2. Câblage : écran d'attente (stepper), lot, Stock");
   ok(/onClick=\{mode === "choix" \? fermer : undefined\}/.test(e), "un appui à côté ne ferme que l'écran des choix (jamais une attente ni une saisie)");
   ok(/setMode\(issuesSansLecteur\(lecteur\)\.length \? "choix" : "attente"\)/.test(e), "« Retour » d'une saisie venue d'une lecture en retard : retour à l'attente, jamais un écran vide");
   ok(/ou: lecteur\?\.ou \?\? null, en_retard: lecteurVu\?\.enRetard === true/.test(e), "l'abandon dit qui lisait et si la lecture était en retard");
-  ok(!/Ferme, et publie dès qu'elle est lue\."\)/.test(e) && /texteAttenteParOrdinateur\(lang\)/.test(e), "plus jamais « Ferme, et publie dès qu'elle est lue »");
+  // (29/10, lot C 1) L'étape vient de phraseEtatDemande (attenteLectureRegles) : « Demande envoyée à ton ordinateur… ».
+  ok(!/Ferme, et publie dès qu'elle est lue\."\)/.test(e) && /phraseEtatDemande\(etat,/.test(e), "plus jamais « Ferme, et publie dès qu'elle est lue »");
   const lot = lire("src/publication/lot/LotPublication.jsx");
   ok(/const lecteur = plateformeOrigine\(item\) === "vinted" \? lecteurEnRetard\(sansLecteur\?\.lecteur \?\? null, ecoule\) : null;/.test(lot)
     && /const lecteurLigne = lecteurEnRetard\(sansLecteur\?\.lecteur \?\? null, ecouleOrigine\);/.test(lot), "lot : la même lecture en retard, sur la ligne et sa pastille");
@@ -131,7 +132,7 @@ console.log("5. Extension : la version qui porte le réveil de l'onglet et l'ord
   const [a, b, c] = String(man.version).split(".").map(Number);
   ok(a > 0 || b > 6 || (b === 6 && c >= 149), "manifest ≥ 0.6.149", man.version);
   const bg = lire("chrome-extension/background.js");
-  ok(/const vinted = ordreLecturesOrigine\(liste\);/.test(bg) && /noterEchecLectureOrigine\(l\.inventaire_id\);/.test(bg), "les lectures demandées : la plus récente d'abord, une ratée se repose");
+  ok(/const vinted = ordreLecturesOrigine\(liste, maintenant\)/.test(bg) && /noterEchecLectureOrigine\(l\.inventaire_id\);/.test(bg), "les lectures demandées : la plus récente d'abord, une ratée se repose");
   ok(/if \(etat\?\.frozen === true\) return null;/.test(bg) && /const ouvert = await getOrCreateWorkTab\("vinted", url\)/.test(bg), "un onglet gelé se réveille par un vrai chargement, puis une relecture");
 }
 

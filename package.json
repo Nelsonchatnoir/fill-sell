@@ -1,7 +1,7 @@
 {
   "name": "fillsell",
   "private": true,
-  "version": "2.9.135",
+  "version": "2.9.136",
   "type": "module",
   "scripts": {
     "postinstall": "node -e \"if(process.env.VERCEL){console.log('Vercel: patch-package saute (patches natifs seulement, et le cache de build casse leur application)')}else{require('child_process').execSync('patch-package',{stdio:'inherit'})}\"",
@@ -506,6 +506,9 @@
     "gen:codes-postaux-fr": "node scripts/gen-codes-postaux-fr.mjs",
     "selftest:lecture-origine-devant": "node scripts/lecture-origine-devant-selftest.mjs",
     "selftest:lecture-page-publique": "node scripts/lecture-page-publique-selftest.mjs",
+    "selftest:lecture-prioritaire": "node scripts/lecture-prioritaire-selftest.mjs",
+    "selftest:lens-visible": "node --import ./scripts/loader-ext.mjs scripts/lens-visible-selftest.mjs",
+    "selftest:recuperation-description": "node --import ./scripts/loader-ext.mjs scripts/recuperation-description-selftest.mjs",
     "selftest:lecture-fond": "node --import ./scripts/loader-ext.mjs scripts/lecture-fond-selftest.mjs",
     "selftest:lecture-fond-beebs": "node scripts/lecture-fond-beebs-selftest.mjs",
     "selftest:action-app-ratee": "node --import ./scripts/loader-ext.mjs scripts/action-app-ratee-selftest.mjs",

@@ -25,7 +25,11 @@ const i = BG.indexOf("async function releverMessagerieUnePlateforme");
 const corps = BG.slice(i, BG.indexOf("\n}\n", i));
 
 await cas("1. le poste suit TOUTES les commandes en cours (100 au plus), la plus anciennement changée d'abord", () => {
-  assert.ok(corps.includes("etat=in.(a_confirmer,a_expedier,expediee,inconnu)&select=commande_ref,etat&order=maj_le.asc&limit=100"));
+  // (29/10, lot C 2) Vinted suit AUSSI les commandes livrées de moins de 10 jours (jusqu'à « vente finalisée ») ; les
+  // autres plateformes : la liste d'avant, à l'identique.
+  assert.ok(corps.includes("&${etatsSuivis}&select=commande_ref,etat&order=maj_le.asc&limit=100"));
+  assert.ok(corps.includes('"etat=in.(a_confirmer,a_expedier,expediee,inconnu)"'), "hors Vinted : la liste d'avant");
+  assert.ok(corps.includes("or=(etat.in.(a_confirmer,a_expedier,expediee,inconnu),and(etat.eq.livree,maj_le.gt."), "Vinted : + les livrées récentes");
   assert.ok(!corps.includes("order=maj_le.desc&limit=20"), "plus de fenêtre des 20 changées le plus récemment");
 });
 

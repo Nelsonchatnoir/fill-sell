@@ -274,9 +274,21 @@ export function plausibiliteDuChemin(plateforme, chemin, familleObjet) {
 // construction en bois ») ; filtrées, le chemin de l'icône 🖼️ (Maison > Décoration > …), sa vérification
 // et la descente de l'arbre décident — comme pour une famille certaine. Jamais un repli sur les jouets.
 const FAMILLE_LENS_MAISON = new Set(["maison_deco", "mobilier", "electromenager", "jardin", "bricolage"]);
+// ── (29/10, lot C partie 3) UN VÊTEMENT VA AU RAYON DES VÊTEMENTS, SUR LEBONCOIN, VINTED ET BEEBS ──────────────────────
+// Cas réel du 29/10 (compte de Nico, polaire RATP, lens_scans 87557468) : fiche Lens famille « mode », objet « Veste de
+// sport » → candidatsParMot(« Veste de sport », leboncoin) = UNE candidate, « Loisirs > Sport & Plein air » (le jeton
+// « sport » ; « veste » ne touche pas « Vêtements ») → resolve-categorie l'a prise. La famille Lens « mode » ne filtrait
+// que sur Beebs (maison) : rien ne retenait un vêtement hors du rayon des vêtements. Désormais, sur ces trois
+// plateformes, une fiche Lens « mode » ou « chaussures » écarte les candidates du MOT hors de la famille « mode » (comme
+// la famille certaine : rien de compatible → le chemin de l'icône, sa vérification, la descente, sinon la question).
+// eBay et Depop : inchangés (eBay a sa règle « mode hors branche spécialisée », 10/10). Jamais au contrôle final, jamais
+// contre un rayon choisi par la personne — comme la règle Beebs du 25/10.
+const FAMILLE_LENS_MODE = new Set(["mode", "chaussures"]);
+const PLATEFORMES_FILTRE_MODE = new Set(["leboncoin", "vinted", "beebs"]);
 export function familleFiltreDesCandidates(plateforme, fiche) {
-  if (plateforme !== "beebs") return null;
   const v = String(fiche?.famille ?? fiche?.attributs?.famille?.v ?? "").trim();
+  if (FAMILLE_LENS_MODE.has(v) && PLATEFORMES_FILTRE_MODE.has(plateforme)) return "mode";
+  if (plateforme !== "beebs") return null;
   return FAMILLE_LENS_MAISON.has(v) ? "maison" : null;
 }
 

@@ -237,5 +237,65 @@ ok(/\(marqueDevineeFausse \|\| marqueReelle\) \? fallbackValues\.filter\(\(v\) =
     '6d. champ vide (voie d\'avant) : le menu propre du champ est relu à chaque lecture, jamais le nœud d\'avant la frappe');
 }
 
+// ── 7. (29/10, lot C partie 4 — 0.6.159) LA MARQUE POSÉE PAR SON IDENTIFIANT ────────────────────────────────────────
+// Prouvé le 29/10 sur le compte de Nico : la liste ENTIÈRE est dans la page (1 503 marques Mode, { id, label }), la pose
+// passe par le gestionnaire du composant (onValueChange("zara") → champ « Zara », formulaire clothing_brand « zara »).
+// Le monde MAIN est simulé (demanderMainLbc) ; la décision est la règle livrée (decisionMarqueRechercheLbc).
+console.log('\n7. (29/10) LA MARQUE PAR SON IDENTIFIANT, DEPUIS LA LISTE DE LEBONCOIN');
+{
+  const vm = await import('node:vm');
+  const bloc = (debut, fin) => { const d = LBC.indexOf(debut), f = LBC.indexOf(fin); if (d < 0 || f < 0) throw new Error(`bloc introuvable : ${debut}`); return LBC.slice(d, f + fin.length); };
+  const ligne = (re) => { const m = LBC.match(re); if (!m) throw new Error(`ligne introuvable : ${re}`); return m[0]; };
+  const fonction = (entete) => { const i = LBC.indexOf(entete); if (i < 0) throw new Error(`fonction introuvable : ${entete}`); return LBC.slice(i, LBC.indexOf('\n}\n', i) + 2); };
+  const LISTE = [
+    { id: '3suisses', label: '3 Suisses' }, { id: 'ana_alcazar', label: 'Ana Alcazar' }, { id: 'azzaro', label: 'Azzaro' },
+    { id: 'hm', label: 'H&M' }, { id: 'jordan', label: 'Jordan' }, { id: 'nike', label: 'Nike' }, { id: 'vintage_dressing', label: 'Vintage Dressing' },
+    { id: 'zara', label: 'Zara' }, { id: 'autre', label: 'Autre' },
+  ];
+  const source = [
+    bloc('// ⟦texte-comparable:début⟧', '// ⟦texte-comparable:fin⟧'),
+    'const normalizeFuzzy = (s) => texteComparable(s);',
+    fonction('function containsAsWords(hay, needle) {'),
+    bloc('// ⟦marque-exacte:début⟧', '// ⟦marque-exacte:fin⟧'),
+    ligne(/^const VALEUR_GENERIQUE_RE = .*$/m),
+    ligne(/^const estValeurGenerique = .*$/m),
+    bloc('// ⟦marque-recherche:début⟧', '// ⟦marque-recherche:fin⟧'),
+    fonction('async function poserMarqueParIdentifiantLbc({'),
+    'globalThis.__t = { poserMarqueParIdentifiantLbc, horsListe: () => MARQUE_HORS_LISTE, raz: () => { MARQUE_HORS_LISTE = null; } };',
+  ].join('\n');
+  const banc = { liste: { ok: true, choix: LISTE, valeur: '' }, poses: [], relu: null };
+  const ctx = vm.createContext({
+    console: { log() {}, warn() {} }, String, Array, RegExp, Object, Map, Set, Number, Boolean, JSON, Date,
+    demanderMainLbc: async (fn, args) => {
+      if (fn === 'listerChoixCritere') return banc.liste;
+      if (fn === 'poserChoixCritere') { banc.poses.push(args[1]); const c = LISTE.find((x) => x.id === args[1]); return { ok: true, valeurInput: banc.relu ?? c?.label ?? '', valeurForm: args[1] }; }
+      return null;
+    },
+  });
+  vm.runInContext(source, ctx);
+  const T = ctx.__t;
+  const jouer = async (notre, prefilled = null) => { banc.poses = []; T.raz(); const w = []; const r = await T.poserMarqueParIdentifiantLbc({ fieldName: 'marque', labelSelector: 'label[for$="_brand"]', notre, prefilled, warnings: w }); return { r, poses: [...banc.poses], w, hors: T.horsListe() }; };
+  let j = await jouer('Zara');
+  ok(j.r === true && j.poses.join() === 'zara' && /posée par son identifiant Leboncoin \(zara/.test(j.w[0]), '7a. « Zara » : posée par son identifiant « zara », sans frappe ni dessin du menu', JSON.stringify(j));
+  j = await jouer('H&M');
+  ok(j.r === true && j.poses.join() === 'hm', '7b. « H&M » → identifiant « hm » (la valeur ne se devine jamais depuis le libellé : elle est LUE)', JSON.stringify(j));
+  j = await jouer('Fourrures D.S Paris');
+  ok(j.r === true && j.poses.join() === 'autre' && j.hors === 'Fourrures D.S Paris' && /absente de la liste.*« Autre »/.test(j.w[0]), '7c. une vraie marque hors liste → « Autre » de CETTE liste, la marque écrite dans la description (boncoin59300)', JSON.stringify(j));
+  j = await jouer('Jordan', 'Vintage Dressing');
+  ok(j.r === true && j.poses.join() === 'jordan' && /pré-rempli « Vintage Dressing » que l'article ne nomme pas, remplacé/.test(j.w[0]), '7d. pré-rempli deviné que l\'article ne nomme pas : remplacé par notre marque, lue dans la liste', JSON.stringify(j));
+  j = await jouer('Zar');
+  ok(j.r === true && j.poses.join() === 'autre', '7e. jamais la plus proche : « Zar » ne devient pas « Zara » (égalité exacte), « Autre »', JSON.stringify(j));
+  banc.liste = { ok: false, reason: 'fibre React absente' };
+  j = await jouer('Zara');
+  ok(j.r === null && j.poses.length === 0 && /recherche par frappe, comme avant/.test(j.w[0]), '7f. liste illisible (canal, page changée) : null → la voie d\'avant, à l\'identique', JSON.stringify(j));
+  banc.liste = { ok: true, choix: LISTE, valeur: '' }; banc.relu = '';
+  j = await jouer('Zara');
+  ok(j.r === null && /non relu après la pose/.test(j.w[0]), '7g. pose non relue dans le champ : jamais « posée » sans preuve, la voie d\'avant', JSON.stringify(j));
+  banc.relu = null;
+  ok(/if \(rechercheParFrappe && fieldName === "marque" && !estMarqueConsole && !\(prefilled && marqueCiteeDansLArticle\(prefilled\) && !estValeurGenerique\(prefilled\)\)\) \{\s+const posee = await poserMarqueParIdentifiantLbc\(/.test(LBC)
+    && LBC.indexOf('const posee = await poserMarqueParIdentifiantLbc(') < LBC.indexOf('if (rechercheParFrappe && !prefilled && menu && !menu.querySelector(optionSelector)'),
+    '7h. branché AVANT toute frappe ; un pré-rempli que l\'article nomme ne passe jamais par là (il reste, règle du 29/10)');
+}
+
 console.log(`\n${total - echecs}/${total} contrôles verts`);
 process.exit(echecs ? 1 : 0);

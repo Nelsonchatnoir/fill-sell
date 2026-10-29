@@ -24,6 +24,10 @@ export function lireConfig(env = process.env) {
     //    les serveurs : la base ne voit que du chiffré.
     cleCoffre: exiger('COFFRE_CLE'),
     cleCoffreVersion: lireEntier(env.COFFRE_CLE_VERSION, 1),
+    // (29/10, lot C 6) Le trousseau : les clés d'avant une rotation, « version:base64,version:base64 » — lecture seule.
+    clesCoffreAnciennes: Object.fromEntries(String(env.COFFRE_CLES_ANCIENNES ?? '').split(',').map((s) => s.trim()).filter(Boolean)
+      .map((s) => { const i = s.indexOf(':'); return [Number(s.slice(0, i)), s.slice(i + 1)]; })
+      .filter(([v, k]) => Number.isInteger(v) && v > 0 && Buffer.from(k, 'base64').length === 32)),
     // ── Les tickets de la page de connexion autonome (test sans l'app) ───────
     cleTickets: exiger('TICKETS_CLE'),
     // ── Ce serveur ──────────────────────────────────────────────────────────

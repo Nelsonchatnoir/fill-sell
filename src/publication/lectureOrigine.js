@@ -18,10 +18,10 @@
 // (`tracerChoixSansLecteur`, usage_logs « lecture_origine_sans_lecteur »).
 import { useEffect, useRef, useState } from "react";
 import { demarrerRelecture } from "../utils/relectureBornee";
-import { lectureOrigineEnAttente, plateformeOrigine, messageLectureOrigine } from "../../supabase/functions/_shared/contenu-fiche.js";
+import { lectureOrigineEnAttente, plateformeOrigine, messageLectureOrigine, texteSuffisant } from "../../supabase/functions/_shared/contenu-fiche.js";
 import { completerTexteDuVendeur, RYTHME_LECTURE_VINTED_MS } from "./texteDuVendeur";
 import {
-  lecteurDisponible, versionAuMoins, LECTEUR_VERSION_MIN, patchDescriptionEcrite, patchChoixRedigee,
+  lecteurDisponible, versionAuMoins, LECTEUR_VERSION_MIN, patchDescriptionEcrite, patchChoixRedigee, travailDuPoste,
 } from "./attenteLectureRegles.js";
 
 export { messageLectureOrigine };
@@ -55,24 +55,52 @@ export async function attenteLectureOrigine(supabase, userId, inventaireId) {
     supabase.from("annonces_plateforme")
       .select("platform, capture_le, disparu_le, donnees_index_le, photos_capture:capture->photos, photos_index:donnees_index->photos")
       .eq("inventaire_id", inventaireId).eq("user_id", userId).limit(20),
-    supabase.from("lectures_origine_demandees").select("faite_le")
-      .eq("inventaire_id", inventaireId).eq("user_id", userId).maybeSingle(),
+    lireDemandeLecture(supabase, userId, inventaireId),
   ]);
   if (annonces.error) return null;   // illisible : le serveur retient au départ, rien n'est perdu
-  return lectureOrigineEnAttente(f, (annonces.data ?? []).map(versLigneOrigine), {
+  const regle = lectureOrigineEnAttente(f, (annonces.data ?? []).map(versLigneOrigine), {
     descriptionLueLe: f?.attributs?.description_source?.at ?? null,
-    origineLueLe: demande?.data?.faite_le ?? null,
+    origineLueLe: demande?.faite_le ?? null,
     // (26/10 nuit, point 9) Un choix fait faute de lecteur (« rédiger ») vaut pour la publication d'alors, côté
     // serveur ; ici, à chaque « Publier », la question se repose : avec un lecteur on attend le vrai texte, sans lui
     // la personne rechoisit. Rien ne change pour un compte dont le lecteur est là.
     ignorerChoix: true,
   });
+  if (regle) return { ...regle, demande };
+  // (29/10, lot C 1) Lue SANS texte, ou annonce disparue : jamais un stepper qui rédige en silence — l'écran le dit et
+  // propose d'écrire ou de faire rédiger (conclusion). Une fiche qui a déjà sa description n'est jamais retenue ici.
+  const pf = plateformeOrigine(f);
+  if (!texteSuffisant(f?.description)) {
+    const motif = String(demande?.motif ?? "");
+    if (demande?.faite_le && (motif === "introuvable" || motif === "sans_texte")) return { plateforme: pf, manque: ["description"], demande, conclusion: motif };
+    if (pf === "vinted" && f?.disparu_le) return { plateforme: pf, manque: ["description"], demande, conclusion: "introuvable" };
+  }
+  return null;
 }
 
-/** Demande la lecture de l'annonce d'origine (sans attendre). */
-export async function demanderLectureOrigine(supabase, inventaireId) {
+/**
+ * (29/10, lot C 1) La demande de lecture telle que l'extension la tient à jour (prise, échec et son motif, conclusion).
+ * Avant la migration 20261030090000 (colonnes absentes) : la date de fin seule, comme avant. null : aucune demande.
+ */
+export async function lireDemandeLecture(supabase, userId, inventaireId) {
+  if (!supabase || !userId || inventaireId == null) return null;
   try {
-    const { data } = await supabase.rpc("demander_lecture_origine", { p_fiche: Number(inventaireId) });
+    const plein = await supabase.from("lectures_origine_demandees").select("demandee_le, prise_le, essai_le, motif, faite_le")
+      .eq("inventaire_id", inventaireId).eq("user_id", userId).maybeSingle();
+    if (!plein.error) return plein.data ?? null;
+    const seul = await supabase.from("lectures_origine_demandees").select("faite_le")
+      .eq("inventaire_id", inventaireId).eq("user_id", userId).maybeSingle();
+    return seul.error ? null : (seul.data ?? null);
+  } catch {
+    return null;
+  }
+}
+
+/** Demande la lecture de l'annonce d'origine (sans attendre). (29/10) `relancer` : « Réessayer », même dans les 15 min. */
+export async function demanderLectureOrigine(supabase, inventaireId, { relancer = false } = {}) {
+  try {
+    const { data } = await supabase.rpc("demander_lecture_origine", relancer
+      ? { p_fiche: Number(inventaireId), p_relancer: true } : { p_fiche: Number(inventaireId) });
     return data ?? null;
   } catch {
     return null;
@@ -94,11 +122,15 @@ export async function lireLecteurVinted(supabase, userId, { versionIci = null, m
       .select("extension_version, extension_last_seen_at, extension_postes")
       .eq("id", userId).maybeSingle();
     if (error || !data) return null;
-    return lecteurDisponible({
-      versionIci,
-      compte: { version: data.extension_version ?? null, vuLe: data.extension_last_seen_at ?? null, postes: data.extension_postes ?? null },
-      maintenant,
-    });
+    // (29/10, lot C 1) Et ce que l'ordinateur fait en ce moment (battement d'un travail sous verrou) : l'écran le dit.
+    return {
+      ...lecteurDisponible({
+        versionIci,
+        compte: { version: data.extension_version ?? null, vuLe: data.extension_last_seen_at ?? null, postes: data.extension_postes ?? null },
+        maintenant,
+      }),
+      travail: travailDuPoste(data.extension_postes ?? null, maintenant),
+    };
   } catch {
     return null;
   }
@@ -144,6 +176,20 @@ export async function noterChoixSansLecteur(supabase, userId, ficheId) {
   } catch (e) {
     return { ok: false, motif: String(e?.message ?? "ecriture_impossible").slice(0, 120) };
   }
+}
+
+/**
+ * (29/10, lot C 1) LA MESURE DURABLE : une ligne par écran de récupération, à sa fin (usage_logs
+ * « recuperation_description ») — issue (lue | ecrite | redigee | abandon), dernier motif d'échec vu, lecteur (ici |
+ * poste | aucun), plateforme, durée jusqu'à l'issue, étapes vues. Au prochain check : combien réussissent, combien
+ * échouent, par motif (docs/sql/recuperation-description.sql). Jamais bloquant, jamais le texte de l'annonce.
+ */
+export function tracerRecuperation(supabase, userId, metadata = {}) {
+  if (!supabase || !userId) return;
+  try {
+    supabase.from("usage_logs").insert({ user_id: userId, feature: "recuperation_description", metadata })
+      .then(({ error }) => { if (error) console.warn("[récupération] trace non écrite :", error.message); }, () => {});
+  } catch { /* une trace ratée n'en crée pas d'autre */ }
 }
 
 /** La trace d'un cas sans lecteur (usage_logs « lecture_origine_sans_lecteur ») : proposé, puis le choix. Jamais bloquant. */

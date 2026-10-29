@@ -9012,6 +9012,7 @@ export default function App({ loginOnly = false }){
             photosParInventaire={photosParInventaire}
             onSaleUpdated={()=>{if(user?.id)fetchAll(user.id,{silencieux:true});}}
             messagerieBeta={messagerie.beta||messagerie.bordereaux}
+            onOuvrirExpedier={()=>setEspaceMessagerie({onglet:'expedier',article:null})}
           />
         )}
         {/* StatsTab toujours monté — état local préservé entre les onglets */}

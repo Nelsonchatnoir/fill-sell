@@ -327,3 +327,17 @@
   auto_desactive », l'app n'en dit rien) ; la suite d'une génération déjà faite (fichier seulement) finit. Les clics du
   vendeur passent comme avant ; aucun bordereau, aucune copie effacés ; aucune donnée d'acheteur en plus.
   Réglages › Bordereau automatique : interrupteur + une phrase par position. `selftest:bordereau-auto-par-compte`.
+
+## 29/10 (lot C partie 2) — les bordereaux : une ligne dans les Ventes, le suivi jusqu'à « reçu »
+- **Ventes** : plus la section entière (une carte par commande) — UNE ligne compacte (`src/messagerie/LigneBordereaux.jsx`) :
+  « 3 bordereaux à imprimer », puis « 1 commande à expédier · 2 colis en route » ; un clic ouvre la page « À expédier »
+  (EspaceMessagerie, onglet expedier : les cartes et le design d'avant, inchangés). Rien quand il n'y a rien. Une lecture
+  à l'ouverture, bornée (60/60/60/20 lignes), jamais de minuteur. Règle pure : `vue.js`, `resumeBordereaux`.
+- **Clôture** : une commande ne quitte « à expédier » que sur l'état LU chez Vinted par l'extension (envoi 300/310 =
+  expédiée, 400 = livrée, 450 = vente finalisée) — jamais à l'ouverture, à l'impression ni à l'âge
+  (`commandesAExpedier` ne filtre que sur l'état).
+- **Suivi** : « En route » (page « À expédier ») = expédiée (jusqu'au prochain état lu) puis « Reçu par l'acheteur »
+  (livrée, 3 jours), avec le bordereau tant que sa copie vit (`commandesEnRoute`, `etapeSuivi`). L'extension 0.6.159
+  suit aussi les commandes Vinted LIVRÉES de moins de 10 jours, jusqu'à la vente finalisée.
+- « Bordereau automatique » coupé : jamais « en préparation » dans la ligne. Vinted seulement pour les bordereaux.
+  Selftest : `messagerie-app` (cas « lot C 2 »), `commandes-toutes-suivies`.
