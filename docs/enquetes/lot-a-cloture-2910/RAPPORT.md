@@ -1,7 +1,6 @@
 # Lot A — clôture (29/10/2026 soir)
 
-⛔ Push refusé par le garde-fou de Claude Code (« Out-of-Place Publication », 29/10 ~17:57) : les commits du lot sont sur main en LOCAL, non poussés ; le web (Vercel) sert encore a50fca2 — traduction, logo Beebs du site et du mail (logo-beebs-2910.png) n'y seront qu'au push ; OTA 2.9.134, fonctions et extension 0.6.155 sont livrés.
-
+Push : refusé une première fois par le garde-fou de Claude Code (« Out-of-Place Publication », ~17:57), fait sur ordre explicite de Nico (65d57df..e210a6f). Web servi `2026-10-29T16:58:45Z+e210a6f` (build.json relu ; translate="no" + meta notranslate sur /, /en et /app ; /email/logo-beebs-2910.png 200 ; entrée index-g6MR3RtS.js 200 avec et sans Origin).
 Consigne de Nico (29/10 ~15:20) : clore le lot A en entier ; tout ce qui ne demande pas Leboncoin d'abord, puis arrêt
 pour la reconnexion Leboncoin du poste de Nico. Heures de Paris. Enquêtes en lecture seule en parallèle (relevé
 Leboncoin, eBay, logo Beebs, listes et clôtures), correctifs, tests réels et livraison depuis ce terminal.
