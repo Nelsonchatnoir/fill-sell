@@ -81,7 +81,15 @@ XEWER (`xxewwer@gmail.com`, fils « ta suggestion de publication programmée »)
   Vinted (999 €, rayon 5564, question « Pour qui ? » répondue comme l'app) → annonce **10587366165** ; page publique relue
   (curl) : description **IDENTIQUE octet pour octet**, titre « TEST FillSell 999 ne pas acheter - Jazz man boutons ».
   Retirée (job 08dd44ec deleted, page 404), ta file remise en pause. Scripts : `scripts/essais/20261029_test_texte_
-  vendeur_vinted_nico*.sql`. __BANC__
+  vendeur_vinted_nico*.sql`. 
+- **Banc (le vrai écran, faux serveur, 29/10 20:01–20:03) — 11 parcours sur 11 verts, dans les deux peaux** : la fiche
+  du Stock est montée comme StockTab le fait (Vinted, 999 €) ; le faux generate-listing rend TOUJOURS la copie de l'IA
+  (le pire cas). Fiche sans marqueur (tapée avant le correctif) et fiche « manuel » : titre et description passés à
+  `spend_coins_and_publish` **octet pour octet** (retours à la ligne et ligne vide compris), étiquette « Ton texte ».
+  Témoin « lens » (notre brouillon) : la copie de FillSell, étiquetée « Écrite par FillSell, relis-la ». Fiche rouverte
+  alors qu'une copie de l'IA est déjà enregistrée (le cas des 56 fiches d'avant) : le texte de la fiche, 0 appel à
+  generate-listing. Aucune écriture du titre ni de la description sur la fiche. Vu au passage (hors sujet, à regarder) :
+  sans resolve-categorie, le repli par mot range une peinture dans « Outils et accessoires de peinture › Pinceaux ».
 
 ## Partie 3 — paugues : la preuve « compte business »
 - **Source précise** : table `usage_logs`, `feature = 'releve_ventes'`, `metadata.motif =
@@ -97,13 +105,13 @@ XEWER (`xxewwer@gmail.com`, fils « ta suggestion de publication programmée »)
   rapport du lot A. La preuve restante (la session de SON compte) suffit : le correctif reste.
 - **Durci** (garde-fou « jamais le circuit pro sans preuve lue chez Leboncoin pour SON compte ») : au mur « Valider et
   payer », l'extension lit désormais TOUJOURS le type de la session qui dépose ; une lecture « individual » l'emporte sur
-  la preuve du serveur et sur le formulaire pro (`decisionMurProLbc`, extension 0.6.156) ; type, heure et source
+  la preuve du serveur et sur le formulaire pro (`decisionMurProLbc`, extension 0.6.157) ; type, heure et source
   (`session` | `serveur` | `formulaire`) gardés dans `lbc_depot`.
 - **Comptes basculés depuis le correctif (29/10 17:49) : UN SEUL** — paugues.contact, job 93548ae4 « Lanterne marine
   Stern » (29/10 17:57, adsubmit 3297762677, `ecran_options_payant_pret`). Comptes que la même preuve désigne pro
   (usage_logs, 45 jours) mais qui n'ont touché aucun mur depuis, donc rien basculé : batix-pilotage (2 postes),
   boitellealexia, contact.grizstyle, famouus-x3 (2 postes), locolutins, recrutementgroupezk704, s.mussard07, sebimsn10.
-  Pour un compte à deux postes, la lecture à la session qui dépose (0.6.156) tranche.
+  Pour un compte à deux postes, la lecture à la session qui dépose (0.6.157) tranche.
 
 ## Partie 4 — zéro rouge
 Méthode : `docs/sql/controle-stock-zero-rouge.sql` (dernier état article × plateforme depuis le 18/09, comptes à
@@ -136,7 +144,15 @@ publications et 1 185 republications en attente.
 - **4.5 Dépôts Beebs « fantômes » — CLOS (refus Beebs prouvé ; notre règle corrigée).** Les trois dépôts sont ARRIVÉS chez
   Beebs (numéros 34200634, 34200711, 34198358 lus en vérification juste après le clic), puis retirés de la vérification
   sans mise en ligne (louis : ~3 min) ; index public et pages : absents. Défaut : deux juges ; le SQL jugeait « jamais en
-  ligne » sur le compteur de l'INDEX (précédent Polly : jugée absente, en ligne le 28/10). __BEEBS_45__
+  ligne » sur le compteur de l'INDEX (précédent Polly : jugée absente, en ligne le 28/10). Migration
+  **20261029200000 appliquée le 29/10 à 20:10 sur ton feu vert** (corps relu en prod juste avant : md5 6ea3fdf3… =
+  celui de l'essai ; après : a9538270…) : la seconde boucle ne conclut « jamais en ligne » que sur une lecture qui a vu
+  TOUTE la page, ou deux constats 404 du numéro exact à 6 h d'écart, 7 jours au moins après la dernière vue « en
+  vérification », jamais à 500 € ou plus ; sinon `pas_encore_visible`, jamais « refusée ». Le message dit les deux
+  heures constatées (« en vérification à … le …, n'y était plus à … le … »). Essai à blanc 24/24 ; inverse :
+  `supabase/rollbacks/20261029200000_beebs_un_seul_juge_jamais_en_ligne_INVERSE.sql` (corps d'avant + suppression des
+  trois fonctions neuves). Aucune copie achetable : les 6 numéros des points 4.5 et 4.9 sont absents de l'index public
+  de Beebs (lu à 18:47).
   Assassin's Creed (XEWER) est vendu sur eBay depuis le 23/10 : rien à faire. louis : pas de recréation d'office.
 - **4.6 XEWER, 10 jeux refusés — CLOS (refus Beebs prouvé ; notre faute : la relance à l'identique).** Rayon, âge (PEGI),
   état, prix, photos : identiques à ses jeux acceptés. Constat chiffré (pas une cause prouvée) : 0 sur 87 en ligne avec
@@ -149,15 +165,29 @@ publications et 1 185 republications en attente.
 - **4.8 ornellaracano — RESTE (geste : compte de test).** Garde de boutique : son Chrome est sur @luciatrendyshop, les 4
   articles sont sur @ornella-vend (472079) ; 3 captures 404 « mauvaise boutique ». Ouvrir @ornella-vend sur vinted.fr dans
   le Chrome de ce poste : elles partent seules.
-- **4.9 Retraits Beebs — __BEEBS_49__**
+- **4.9 Retraits Beebs — CLOS pour nos règles ; Dayane RESTE (mur Beebs).**
+  - **Dayane (recrutementgroupezk704), 34083555 — RESTE (Beebs).** En vérification depuis le 30/09 (relevé du 29/10 à
+    16:54) : ni visible ni achetable, et Beebs ne permet pas de supprimer une annonce en vérification. Blanc. ⚠ L'état
+    de prod du lot A attendait sa clôture « par la page » (404) : FAUX, rectifié dans `docs/agents/etat-2026-10-01.md`.
+  - **sebastien64310, 34219819 — CLOS.** Jamais mise en ligne par Beebs ; la garde de 7 jours la clôt seule (après le
+    30/10 vers 10:09). Défaut trouvé et corrigé : le filet qui réarme un retrait revu EN LIGNE exigeait une fiche
+    « vendu » ; sa fiche est supprimée (inventaire_id vide) → jamais réarmé si Beebs la publiait tard = double vente
+    possible. **Migration 20261029201000 appliquée le 29/10 à 20:10 sur ton feu vert** (md5 avant 0756d52c…, après
+    15f9ba27…) : sans fiche, la vente se prouve par SA ligne de ventes (même compte, autre plateforme, non annulée, née
+    à ± 2 min de l'armement du retrait). Essai à blanc 11/11 ; inverse :
+    `supabase/rollbacks/20261029201000_beebs_rearmer_retrait_vente_sans_fiche_INVERSE.sql`.
+  - **josephinecerni, 33911382 — CLOS côté règle, la clôture se fera seule.** FillSell a ENVOYÉ la suppression le 26/10
+    au soir ; la preuve exigeait « Mes annonces » lue en entier, impossible sur son poste (0.6.150). Règle : après une
+    suppression envoyée, les constats « page 404 » d'après l'envoi comptent (deux à 6 h d'écart), sans consommer d'essai
+    (update-job-status v156, extension 0.6.157). Clôture constatée : non encore (à vérifier au prochain check).**
 - **4.10 famouus-x3 — CLOS (légitime).** Vraie restriction Vinted jusqu'au 05/11, lue sur /selling-restriction le 29/10 à
   10:19 ; « capture incomplète » n'était qu'une trace sur un job reparti. Défaut corrigé : la sortie de restriction passe
   désormais par les paliers (10 par jour, une toutes les 45 min) au lieu de tout lancer le 06/11 à 00:05.
 - **4.11 Postes non mis à jour — CLOS (pas leur Chrome, pas nous pour ceux-là).** abenjemaa, labouquinerie85, bigfoutte09 :
   éteints depuis le 28/10 au soir, AVANT que la 0.6.152 soit servie (29/10 ~00:15) ; chaowx1305 et tiblancdeshaut à jour
   à leur retour. Défaut de notre mécanisme trouvé ailleurs (2189c4d8) : une republication retenue par le serveur
-  bloquait la mise à jour sans fin — corrigé (0.6.156). ⚠ Trouvé en plus : une BOUCLE de poll (postes 0.6.146 → 0.6.155,
-  jusqu'à 913 appels/h au lieu de ~30 ; 6 763 appels de get-pending-jobs entre 18:45 et 19:45) — corrigée dans la 0.6.156.
+  bloquait la mise à jour sans fin — corrigé (0.6.157). ⚠ Trouvé en plus : une BOUCLE de poll (postes 0.6.146 → 0.6.155,
+  jusqu'à 913 appels/h au lieu de ~30 ; 6 763 appels de get-pending-jobs entre 18:45 et 19:45) — corrigée dans la 0.6.157 (déjà dans la 0.6.156, jamais téléversée).
 - **Contrôle final** : __CONTROLE__
 
 ## Livraison
@@ -173,8 +203,9 @@ __LIVRAISON__
   c'est un refus de sa modération, dont le motif t'a été envoyé par mail. Peux-tu nous le transférer ? Rien n'est vendu,
   l'article reste dans ton stock. »
 - **boncoin59300** : « Leboncoin a reçu tes annonces du 26/10 (manteau et Air Jordan MA2) sans les mettre en ligne : refus
-  de sa modération, motif envoyé par mail — peux-tu nous le transférer ? Nous avons corrigé la marque, mal renseignée
-  chez Leboncoin. Pour le manteau, Leboncoin n'accepte plus les fourrures d'animaux sauvages. »
+  de sa modération, motif envoyé par mail — peux-tu nous le transférer ? Nous avons corrigé la marque : FillSell ne
+  laisse plus une marque devinée par Leboncoin (« Vintage Dressing » sur ton manteau). Pour le manteau, sache que
+  Leboncoin n'accepte plus les fourrures d'animaux sauvages : c'est peut-être le motif. »
 - **louis-seller** : « Beebs a bien reçu tes annonces « T-shirt Kiabi 10 ans » et « Maillot de bain Ariel 8 ans » le 20/10
   (n° 34200634 et 34200711), puis les a retirées de sa vérification quelques minutes plus tard sans les mettre en ligne —
   Beebs ne dit pas pourquoi. Rien n'est vendu ; pour réessayer, change d'abord les photos ou le titre. »
