@@ -35,3 +35,14 @@ durable : `docs/regles/tableau-et-statistiques.md` § 29/10 « Toucher : jamais 
 - Clavier (390, 1 024, 1 440, 1 920 px) : 146 focus, tous avec le repère à nos couleurs, flèches → curseur ; clic
   souris : aucun cadre. Survol souris d'un graphe vide (1 024 → 1 920 px) : ni curseur ni infobulle ; graphe plein :
   le curseur suit la souris. Libellés d'axe : 834 graphes de 360 à 1 920 px, 0 en défaut.
+
+## Livraison (29/10, matin)
+- Commits `ea68ba3` (correctif) et `bb37f4d` (version 2.9.128), un seul push.
+- **Web** : `build.json` = `2026-10-29T09:10:04Z+bb37f4d` ; script d'entrée 200 avec et sans `Origin` ; la feuille de
+  styles servie porte les règles `data-saisie`.
+- **OTA Capgo 2.9.128** (canal production relu à 2.9.127 avant, **2.9.128** après), build d'un arbre propre
+  `2026-10-29T09:09:53Z+bb37f4d`.
+- **Production** (session de Nico déjà ouverte, lecture seule, ordinateur, son octobre sans vente) : graphe vide sans
+  zone tactile, message à 56 px du bord (début du tracé), « 1 oct. » à 9 px de « 0 € » ; clic puis survol du graphe :
+  ni cadre, ni curseur, ni infobulle ; aucune erreur console. Onglet Lens remis. Le téléphone ne se contrôle pas d'ici
+  (fillsell.app refuse d'être mise dans un cadre) : vérifié au banc d'essai avec un toucher réel sur le même code.
