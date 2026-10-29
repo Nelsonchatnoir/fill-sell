@@ -168,16 +168,22 @@ bleu marine, J150 » (tel quel, sans « J » au début, apostrophe typographique
   écrit dans aucune page officielle de Leboncoin : ne pas le lui annoncer comme un fait).
 
 ## Livraison
-- Commits `345ec4f` (correctifs), `aae6b7b` (EXTENSION_LAST_COMMIT), `ce4397d` (0.6.153 servie), `af65373` + `d6f3c9d`
-  (eBay), `bd92047` (version 2.9.133), `caed134` (captures du site), puis vidéo, image de partage et docs ; un push.
-- **Extension 0.6.154 PRÊTE** : `C:\Users\nicol\fill-and-sell\build\CWS-0.6.154-A-TELEVERSER\fillsell-extension-0.6.154-aae6b7b-cws.zip`
-  (seul dans son dossier ; BUILD_ID `2026-10-29T15:11:33Z+aae6b7b` ; 585 448 octets ; sha256
-  `0c641b980ac6b93ce9e975eaa6cb4b0a7a20f4dbdbfe65690e02af23718f2c2f`). 0.6.153 SERVIE (9 comptes) → ALREADY_PUBLISHED,
-  zip rangé dans `build/anciens-zips/PUBLIEE-SERVIE-2910-CWS-0.6.153/`. EXTENSION_MIN_BUILD non touché. Poste de Nico :
-  0.6.154 posée à 16:15 (sauvegarde `build/anciennes-extensions-nico/FillSell-Extension-Nico-SAUVEGARDE-0.6.153-1c4a578-20261029-1615`),
-  reprise seule à 16:19.
-- **OTA 2.9.133** (canal production relu 2.9.132 → 2.9.133), build `2026-10-29T15:29:41Z+bd92047`.
-- **Fonctions** (version et verify_jwt lus avant/après) : ebay-account v19 → **v22** (true), email-tunnel v74 → **v75**
-  (false), handler-watch v145 → **v146** (false).
-- Aucune migration, aucune réparation de données, aucun mail. Tests sur le compte de Nico seulement (999 €), retirés.
-- Suite complète : 486 selftests verts (+ eBay réel et LBC complétés après) ; `build:essai` vert ; lint sans erreur nouvelle.
+- Commits (un push) : `345ec4f` (correctifs), `aae6b7b` (EXTENSION_LAST_COMMIT 0.6.154), `ce4397d` (0.6.153 servie),
+  `af65373` + `d6f3c9d` (eBay), `bd92047` (2.9.133), `caed134` (captures du site), `5abc9dd` (point 8, 0.6.155),
+  `66b269e` (EXTENSION_LAST_COMMIT 0.6.155), `8865c84` (vidéo et image de partage), `0c4a65c` (docs), `35000e3` (2.9.134), docs.
+- **Extension 0.6.155 PRÊTE** (contient toute la 0.6.154) :
+  `C:\Users\nicol\fill-and-sell\build\CWS-0.6.155-A-TELEVERSER\fillsell-extension-0.6.155-0c4a65c-cws.zip` (seul dans son dossier ;
+  BUILD_ID `2026-10-29T16:50:51Z+0c4a65c` ; 585 655 octets ; sha256 `7f39ec6915791070eeba13968d463b4e340489600e230e79af86e996ab17da40`).
+  0.6.154, jamais téléversée, rangée dans `build/CWS-PERIMES/JAMAIS-TELEVERSEE-REMPLACEE-PAR-0.6.155-CWS-0.6.154/` ; 0.6.153 SERVIE
+  (9 comptes) → ALREADY_PUBLISHED, zip rangé dans `build/anciens-zips/PUBLIEE-SERVIE-2910-CWS-0.6.153/`. EXTENSION_MIN_BUILD non
+  touché. Poste de Nico : 0.6.154 posée à 16:15 (reprise seule à 16:19), puis 0.6.155 posée à 17:52 (sauvegardes dans
+  `build/anciennes-extensions-nico/`).
+- **OTA 2.9.133** (canal relu 2.9.132 → 2.9.133, build `2026-10-29T15:29:41Z+bd92047`) puis **2.9.134** (canal relu 2.9.133 →
+  2.9.134, build `2026-10-29T16:52:36Z+35000e3` : la preuve du compte pro dans l'app).
+- **Fonctions** (version et verify_jwt lus avant/après) : ebay-account v19 → **v22** (true) ; email-tunnel v74 → **v75** (false) ;
+  handler-watch v145 → v146 → **v147** (false) ; get-pending-jobs v300 → **v301** (true).
+- Aucune migration, aucune réparation de données, aucun mail. Tests réels sur le compte de Nico seulement (999 €), tous
+  retirés (eBay 820292123879, Vinted 10584642129, Leboncoin 3297725351 et 3297735492 : 410) ; sa file remise en pause à 17:22.
+  Les fiches de test restent dans son stock (à supprimer d'un geste dans l'app s'il le veut).
+- Suite complète : **486 selftests verts** sur l'arbre final (une première passe coupée par le manque de mémoire du PC,
+  relancée sur ton accord) ; `build:essai` vert ; lint sans erreur nouvelle sur les fichiers touchés.
