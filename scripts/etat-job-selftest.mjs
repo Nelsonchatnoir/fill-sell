@@ -54,6 +54,8 @@ const cas = [
   [job({ status: "needs_user", platform_fields: { needs_user_source: "opla_acces" }, platform: "opla" }), "a_toi", "opla", "Opla à autoriser"],
   [job({ status: "needs_user", platform_fields: { needs_user_source: "depop_acces" }, platform: "depop" }), "a_toi", "depop", "Depop à autoriser"],
   [job({ status: "needs_user", platform_fields: { needs_user_source: "connexion" } }), "a_toi", "connexion", "needs_user connexion"],
+  // (29/10, lot B 4.6) Refus Beebs relancé à l'identique : à la personne de changer le contenu, jamais « en pause ».
+  [job({ status: "needs_user", platform: "beebs", platform_fields: { needs_user_source: "refus_beebs_meme_contenu" } }), "a_toi", "geste", "refus Beebs relancé à l'identique"],
   [job({ status: "needs_user", platform_fields: { needs_user_source: "ebay_connexion_requise" }, platform: "ebay" }), "a_toi", "connexion", "eBay à relier"],
   [job({ status: "needs_user", platform_fields: { needs_user_source: "introuvable_a_confirmer" }, action: "republish" }), "en_pause", "releve", "« plus en ligne » à confirmer par un relevé"],
   [job({ status: "needs_user", platform_fields: { needs_user_source: "ebay_site_etranger" }, platform: "ebay" }), "en_pause", "ebay_etranger", "eBay sur un site étranger"],

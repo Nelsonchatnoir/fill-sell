@@ -22,11 +22,34 @@
 // Lu par handler-watch (balayage 3 min) ; testé par
 // scripts/relance-apres-maj-selftest.mjs.
 
+import { langueEtrangereDesRacines } from "./vinted-pays.ts";
+import { archiverErreur } from "./erreurs-archivees.js";
+
 // BUILD_ID de la 0.6.104 (0cec9e6), premier paquet téléversé depuis la 0.6.102.
 const BUILD_0_6_104 = "2026-10-08T14:53:27Z";
 // Le premier build qui relit les menus « bloom » de Vinted (0.6.150, 28/10 soir) : tout build construit après
 // 20:15Z le porte (0.6.149 = 09:52:53Z ; essai du poste de Nico 20:17:07Z, zip du Chrome Web Store après).
 const BUILD_0_6_150 = "2026-10-28T20:15:00Z";
+// (29/10, lot B 4.1) BUILD_ID de la 0.6.153 : rayon posé par identifiants quand un niveau est introuvable (repli
+// 0.6.152 « libellé périmé », niveau par son identifiant dans le panneau ouvert), page non française comprise.
+const BUILD_0_6_153 = "2026-10-29T13:49:28Z";
+
+// (29/10, lot B 4.1) La question « categoryLevelChoice » que porte une tâche (posée, mise de côté pour le moteur, ou
+// retirée par la pause d'attente de la mise à jour — attente_maj_extension.question).
+const questionCategorie = (pf) => [pf?.needsUserField, pf?.rayon_moteur_attendu?.question, pf?.attente_maj_extension?.question]
+  .find((q) => q && typeof q === "object" && q.field_key === "categoryLevelChoice") ?? null;
+const PREFIXE_PAGE_ETRANGERE = "vinted_categorie_page_etrangere_";
+const predicatPageEtrangere = (job) => {
+  const pf = job?.platform_fields ?? {};
+  const q = questionCategorie(pf);
+  return !!q && !!langueEtrangereDesRacines(q.allowed_values) && catalogueConnu(job)
+    && !String(pf.categoryLevelChoice ?? "").trim() && !String(pf.needsUserResolved?.categoryLevelChoice ?? "").trim();
+};
+const catalogueConnu = (job) => {
+  const pf = job?.platform_fields ?? {};
+  const id = Number(pf.vinted_ids?.catalog_id ?? (job?.action === "republish" ? pf.republish_snapshot?.catalog_id : null));
+  return Number.isInteger(id) && id > 0;
+};
 
 // Une entrée vise soit une tâche « relancer » dont le message technique
 // commence par `brut`, soit (champ `source`) une tâche mise de côté pour ce
@@ -119,6 +142,33 @@ export const RELANCES_APRES_MAJ = [
   }))),
   // (28/10 soir) Le rayon par identifiant quand un libellé est périmé (0.6.152, « Jewellery ») n'a PAS été prouvé en
   // réel (3 essais : la publication est partie par le moteur de rayon du serveur) : aucune relance automatique ici.
+  // (29/10, lot B 4.1 — mele.marta 2fd83d73, « Gioco PS4 F1 2015 ») PAGE VINTED ÉTRANGÈRE : le rayon était juste
+  // (3026), la 0.6.149 a descendu la catégorie par libellés FRANÇAIS sur une page ITALIENNE et posé « Vinted ne propose
+  // pas « Électronique » » avec les racines italiennes pour choix. Ce n'est pas une question pour la personne : le rayon
+  // se pose par son identifiant (0.6.153). Seulement quand la question porte des racines d'une AUTRE langue, que
+  // l'identifiant du rayon est connu, et que la personne n'a pas répondu ; une relance, une fois (comme les voisines).
+  // `pauseAttente` : tant que le poste est SOUS la 0.6.153, la question fausse n'est plus montrée (y répondre casserait
+  // la pose par identifiants) — la tâche passe EN PAUSE (needs_user_source « build_min_requis », champsPauseAttenteMaj),
+  // et l'entrée « …_en_pause » la retrouve sous ce motif pour la relancer, une fois, dès que le poste a le build.
+  ...["publish", "republish"].flatMap((action) => [...["prevol_negatif", "champ_a_choisir"].map((source) => ({
+    cle: `${PREFIXE_PAGE_ETRANGERE}${action}_${source}`,
+    platform: "vinted",
+    action,
+    source,
+    predicat: predicatPageEtrangere,
+    buildMin: BUILD_0_6_153,
+    version: "0.6.153",
+    pauseAttente: true,
+  })), {
+    cle: `${PREFIXE_PAGE_ETRANGERE}${action}_en_pause`,
+    platform: "vinted",
+    action,
+    source: "build_min_requis",
+    predicat: (job) => String(job?.platform_fields?.attente_maj_extension?.cle ?? "").startsWith(PREFIXE_PAGE_ETRANGERE) && predicatPageEtrangere(job),
+    buildMin: BUILD_0_6_153,
+    version: "0.6.153",
+    pauseAttente: true,
+  }]),
 ];
 
 // Les champs d'attente que « Relancer » (app) efface — plus la boucle
@@ -169,6 +219,41 @@ export function messageAttenteMaj(job, regle) {
   return MESSAGES_ATTENTE[regle.platform]?.[regle.action] ?? null;
 }
 
+// ── (29/10, lot B 4.1 — mele.marta 2fd83d73) EN PAUSE TANT QUE LE POSTE N'A PAS LE BUILD ─────────────────────────────
+// Une règle `pauseAttente` ne laisse pas la question fausse à la personne (« Vinted ne propose pas « Électronique » »,
+// racines italiennes : y répondre ferait descendre par libellés et casserait la pose par identifiants). Tant que le
+// poste est sous le build, la tâche passe EN PAUSE automatique — needs_user_source « build_min_requis » (etat-job.js :
+// « En pause », mise à jour), build_min_requis posé (jamais abaissé), la question retirée et gardée sous
+// attente_maj_extension, l'ancien message archivé, un message neutre et vrai, sans heure. Une fois : une tâche déjà en
+// pause pour cette cause n'est jamais réécrite (null). Quand le poste a le build, champsRelance la relance, une fois.
+export const MESSAGES_PAUSE_ATTENTE = Object.freeze({
+  publish: "Ta publication est en pause, rien n'a été publié : elle repart toute seule dès que l'extension FillSell de " +
+    "ton ordinateur est à jour. Rien à faire.",
+  republish: "Republication en pause AVANT toute suppression — ton annonce est intacte sur Vinted : elle repart toute " +
+    "seule dès que l'extension FillSell de ton ordinateur est à jour. Rien à faire.",
+});
+/** @returns {{ error: string, platform_fields: Record<string, unknown> } | null} l'écriture de la pause, ou null (rien à écrire) */
+export function champsPauseAttenteMaj(job, regle, { maintenant = new Date().toISOString() } = {}) {
+  if (!regle?.pauseAttente || job?.status !== "needs_user") return null;
+  const pf0 = job?.platform_fields ?? {};
+  const deja = pf0.needs_user_source === "build_min_requis" && pf0.attente_maj_extension?.cle
+    && String(pf0.attente_maj_extension.cle).startsWith(String(regle.cle).replace(/_(prevol_negatif|champ_a_choisir|en_pause)$/, ""));
+  if (deja) return null;
+  const message = MESSAGES_PAUSE_ATTENTE[job.action] ?? MESSAGES_PAUSE_ATTENTE.publish;
+  const pf = { ...pf0 };
+  const question = pf.needsUserField && typeof pf.needsUserField === "object" ? pf.needsUserField : null;
+  for (const k of ["needsUserField", "needsUserFields", "champs_a_completer", "needs_user_tick_le", "needs_user_actif_ms", "needs_user_vu_le", "needs_user_vu_erreur"]) delete pf[k];
+  pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, job.error, "needs_user", `handler-watch (en pause jusqu'à l'extension ${regle.version})`);
+  pf.attente_maj_extension = {
+    le: maintenant, cle: regle.cle, version: regle.version, source_avant: pf0.needs_user_source ?? null,
+    ...(question ? { question } : (pf0.attente_maj_extension?.question ? { question: pf0.attente_maj_extension.question } : {})),
+    pose_par: `handler-watch (poste sous l'extension ${regle.version} : question retirée, pause automatique)`,
+  };
+  pf.needs_user_source = "build_min_requis";
+  if (regle.buildMin && !(msDuBuild(pf.build_min_requis) >= Date.parse(regle.buildMin))) pf.build_min_requis = regle.buildMin;
+  return { error: message, platform_fields: pf };
+}
+
 // Le poste a-t-il le build qui corrige ? (build absent ou illisible : non)
 export function posteALeBuild(extensionBuild, regle) {
   const ms = msDuBuild(extensionBuild);
@@ -179,6 +264,10 @@ export function posteALeBuild(extensionBuild, regle) {
 // l'appelant, qui a `archiverErreur`).
 export function champsRelance(job, regle, { maintenant, extensionBuild }) {
   const pf = { ...(job?.platform_fields ?? {}) };
+  // (29/10, lot B 4.1) La question de catégorie levée reste lisible (ses racines disent la langue de la page à
+  // get-pending-jobs : vinted_ids_actifs servi si le pays est ouvert) — une trace, jamais une question rouverte.
+  const qSrc = [pf.needsUserField, pf.attente_maj_extension?.question].find((q) => q?.field_key === "categoryLevelChoice" && Array.isArray(q.allowed_values));
+  const qLevee = qSrc ? { field_key: "categoryLevelChoice", allowed_values: qSrc.allowed_values.slice(0, 40).map(String) } : null;
   for (const k of CHAMPS_LEVES) delete pf[k];
   pf.needsUserAttempts = 0;
   pf.relance_apres_maj = {
@@ -188,6 +277,7 @@ export function champsRelance(job, regle, { maintenant, extensionBuild }) {
     build_du_poste: String(extensionBuild ?? "").slice(0, 48),
     statut_avant: job?.status ?? null,
     pose_par: `handler-watch (défaut corrigé par l'extension ${regle.version}, poste à jour)`,
+    ...(qLevee ? { question_levee: qLevee } : {}),
   };
   // (29/10 soir, lot A point 7) La tâche relancée n'est servie qu'à un poste qui a le correctif (garde
   // `build_min_requis` de get-pending-jobs) : un autre poste du compte, resté plus ancien, la reprendrait et

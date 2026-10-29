@@ -133,6 +133,39 @@ export function languesDeLaRacine(racine: unknown): LangueVinted[] {
     .filter((l) => Object.values(RACINES_CATALOGUE[l]).some((t) => norm(t) === r));
 }
 
+// ── (29/10, lot B 4.1 — mele.marta 2fd83d73) UNE LISTE DE RACINES DIT LA LANGUE DE LA PAGE ─────────────────────
+// La page italienne affichait [Accessori, Donna, Uomo, Bambini, Casa, Elettronica, Libri e media, Hobby e
+// collezionismo, Sport] : la 0.6.149 la jugeait française parce que « Sport » s'écrit pareil, et demandait
+// « Vinted ne propose pas « Électronique » ». La règle : 3 libellés ou plus qui sont des racines d'une MÊME langue
+// autre que le français — en ne comptant que les racines que le français n'a pas (« Sport ») — = page étrangère.
+// Une page française n'en a jamais plus d'une (« Sport ») : mesuré sur les 15 langues ci-dessus.
+// ⛔ Recopiée dans chrome-extension/content-scripts/vinted.js (RACINES_CATALOGUE_VINTED, l'extension n'importe pas ce
+//    module) : scripts/vinted-langue-page-ouverte-selftest.mjs vérifie que les deux tables sont identiques.
+export const RACINES_ETRANGERES_MIN = 3;
+
+function comptesRacinesEtrangeres(liste: unknown): Array<{ l: LangueVinted; n: number }> {
+  if (!Array.isArray(liste)) return [];
+  const vus = new Set(liste.map(norm).filter(Boolean));
+  const fr = new Set(Object.values(RACINES_CATALOGUE.fr).map(norm));
+  return (Object.keys(RACINES_CATALOGUE) as LangueVinted[])
+    .filter((l) => l !== "fr")
+    .map((l) => ({ l, n: new Set(Object.values(RACINES_CATALOGUE[l]).map(norm).filter((t) => !fr.has(t) && vus.has(t))).size }))
+    .filter((x) => x.n >= RACINES_ETRANGERES_MIN)
+    .sort((a, b) => b.n - a.n);
+}
+
+/** Les langues NON françaises dont au moins 3 libellés de la liste sont des racines (hors racines françaises), de la plus représentée à la moins. */
+export function languesEtrangeresDesRacines(liste: unknown): LangueVinted[] {
+  return comptesRacinesEtrangeres(liste).map((x) => x.l);
+}
+
+/** LA langue étrangère d'une liste de racines (la plus représentée, sans ex æquo), ou null. */
+export function langueEtrangereDesRacines(liste: unknown): LangueVinted | null {
+  const c = comptesRacinesEtrangeres(liste);
+  if (!c.length || (c.length > 1 && c[0].n === c[1].n)) return null;
+  return c[0].l;
+}
+
 /** Langues dont les 5 libellés d'état sont EXACTEMENT cette liste (ordre indifférent). */
 export function languesDeLaListeEtats(liste: unknown): LangueVinted[] {
   if (!Array.isArray(liste) || liste.length !== 5) return [];
@@ -149,7 +182,7 @@ export function languesDeLaListeEtats(liste: unknown): LangueVinted[] {
  * et le français n'est jamais « déduit » ici : un job français suit son
  * chemin d'aujourd'hui, sans rien de posé.
  */
-export function langueVintedDuJob(indices: { racineCapturee?: unknown; listeEtatsRelevee?: unknown }): LangueVinted | null {
+export function langueVintedDuJob(indices: { racineCapturee?: unknown; listeEtatsRelevee?: unknown; racinesQuestion?: unknown }): LangueVinted | null {
   const ensembles: LangueVinted[][] = [];
   if (indices.racineCapturee != null && String(indices.racineCapturee).trim()) {
     ensembles.push(languesDeLaRacine(indices.racineCapturee));
@@ -157,6 +190,12 @@ export function langueVintedDuJob(indices: { racineCapturee?: unknown; listeEtat
   if (indices.listeEtatsRelevee != null) {
     const l = languesDeLaListeEtats(indices.listeEtatsRelevee);
     if (l.length) ensembles.push(l);
+  }
+  // (29/10, lot B 4.1) Les racines qu'une question « categoryLevelChoice » de CE job a relevées sur la page (liste
+  // affichée par Vinted à ce compte) : une seule langue étrangère sans ex æquo, sinon pas un indice.
+  if (indices.racinesQuestion != null) {
+    const l = langueEtrangereDesRacines(indices.racinesQuestion);
+    if (l) ensembles.push([l]);
   }
   if (!ensembles.length) return null;
   let reste = ensembles[0];

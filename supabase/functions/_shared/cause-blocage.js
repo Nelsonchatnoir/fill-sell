@@ -60,6 +60,9 @@ const PAR_SOURCE = Object.freeze({
   ebay_site_etranger: [ORIGINE.NOUS, "site_ebay_non_pris_en_charge"],
   // (26/10 nuit, point 5) Leboncoin refuse le texte de la copie à la modération : FillSell adapte la copie.
   lbc_moderation: [ORIGINE.NOUS, "texte_refuse_moderation"],
+  // (29/10, lot B 4.6) Beebs a refusé l'annonce à sa vérification (sans motif) et la relance la redéposerait à
+  // l'identique : FillSell la retient (get-pending-jobs) — le refus vient de la plateforme.
+  refus_beebs_meme_contenu: [ORIGINE.PLATEFORME, "moderation"],
 });
 
 // Le texte, dans l'ordre : la première règle qui reconnaît gagne. Les causes

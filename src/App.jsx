@@ -113,6 +113,9 @@ import { searchMatch } from './utils/recherche';
 import { moveItem } from './utils/photosGalerie';
 import { dupliquerArticle } from './stock/dupliquer';
 import GaleriePhotos from './components/GaleriePhotos';
+// (29/10, lot B 1.3) La dictée sur les champs de texte libre ; la fusion des résultats du micro du Lens.
+import BoutonDictee from './components/BoutonDictee';
+import { ajouterDictee, fusionnerResultatsReconnaissance, reserverMicro } from './utils/dictee';
 import { sonderAnnonceVinted, lireBoutiquesVinted, lireBoutiqueConnectee, ecouterPresenceExtension, pinguerExtension, versionAuMoins } from './utils/vintedSync';
 import { plateformesReserveesParRepublication, vintedRemplaceeParUneEnLigne } from './utils/publicationState';
 // Propositions du moteur de rattachement (2026-09-17, sync lot 2) : une
@@ -207,6 +210,7 @@ import { palierDuProfil, droitsDuPalier, palierLePlusHaut } from './utils/palier
 import { lireToutesPagesRecentsDabord } from './utils/lireToutesPages';
 import { prixParDefautDuBandeau, preuveDeVente } from './utils/prixBandeauVente';
 import { dansLaBoutique } from './utils/filtreBoutique';
+import { marqueursDeNaissance } from './utils/sourceDuTexte';
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler);
 ChartJS.defaults.font.family = "'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif";
 import './App.css';
@@ -2792,6 +2796,9 @@ export default function App({ loginOnly = false }){
   // photos montées une à une, puis l'analyse. AFFICHAGE SEUL — posé aux mêmes
   // endroits que le marqueur de reprise, il ne décide de rien.
   const [lensProgres,setLensProgres]=useState(null);
+  // (29/10, lot B 1.2) Le scan_id du dernier scan qui a RÉUSSI ici (posé par analyzeLens, jamais sur un échec) :
+  // LensTab enchaîne sur « Créer l'annonce » quand « Ouvrir l'annonce dès la fin de l'analyse » est allumé, une fois.
+  const [lensScanAbouti,setLensScanAbouti]=useState(null);
   // Vrai pendant la REPRISE d'un scan interrompu (2026-09-13) : cette attente
   // n'est pas un scan qui démarre, c'est un scan qu'on retrouve — et ça se dit
   // à l'écran, sinon l'utilisateur croit qu'il repaie.
@@ -4304,7 +4311,7 @@ export default function App({ loginOnly = false }){
       const _td1=detectType(item.nom||"",marqueNorm);const typeAuto=(item.categorie&&item.categorie!=='Luxe')?item.categorie:_td1;
       let nomNorm=item.nom||"Article";
       if(avToken&&(qty>1||voiceParsed.isLot)){try{const nRes=await fetch(`${supabaseUrl}/functions/v1/normalize-title`,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${avToken}`,"apikey":supabaseAnonKey},body:JSON.stringify({titre:nomNorm})});if(nRes.ok){const nJson=await nRes.json();if(nJson?.nom)nomNorm=nJson.nom;}}catch(e){console.warn("[normalize-title] normalisation ignorée, le titre saisi est conservé —",e?.message??e);}}
-      const row={id:idBase++,user_id:user.id,titre:stripMarque(nomNorm,marqueNorm),prix_achat:b,prix_vente:hasS?s:null,margin:hasS?mg:null,margin_pct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:item.date?new Date(item.date).toISOString():new Date().toISOString(),marque:marqueNorm,description:item.description||null,type:typeAuto,purchase_costs:pc,selling_fees:hasS?sf:0,quantite:qty,emplacement:item.emplacement||null,plateforme:item.plateforme||null};
+      const row={id:idBase++,user_id:user.id,titre:stripMarque(nomNorm,marqueNorm),prix_achat:b,prix_vente:hasS?s:null,margin:hasS?mg:null,margin_pct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:item.date?new Date(item.date).toISOString():new Date().toISOString(),marque:marqueNorm,description:item.description||null,type:typeAuto,purchase_costs:pc,selling_fees:hasS?sf:0,quantite:qty,emplacement:item.emplacement||null,plateforme:item.plateforme||null,attributs:marqueursDeNaissance({titre:nomNorm,description:item.description},"vocal")};
       const{data,error}=await supabase.from('inventaire').insert([row]).select().single();
       if(!error){
         if(!hasS) insertedCount++;
@@ -4359,7 +4366,7 @@ export default function App({ loginOnly = false }){
       const lotFraisU=lotFraisG>0?lotFraisG/(voiceParsed?.items?.length||1):(parseFloat(voiceParsed?.items?.[0]?.frais_unitaire)||0);
       let nomNorm=item.nom||"Article";
       if(ntToken){try{const nRes=await fetch(`${supabaseUrl}/functions/v1/normalize-title`,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${ntToken}`,"apikey":supabaseAnonKey},body:JSON.stringify({titre:nomNorm})});if(nRes.ok){const nJson=await nRes.json();if(nJson?.nom)nomNorm=nJson.nom;}}catch(e){console.warn("[normalize-title] normalisation ignorée, le titre saisi est conservé —",e?.message??e);}}
-      const row={id:idBase++,user_id:user.id,titre:stripMarque(nomNorm,marqueNorm),prix_achat:b,prix_vente:null,margin:null,margin_pct:null,statut:"stock",date:new Date().toISOString(),marque:marqueNorm,description:item.description||null,type:typeAuto,purchase_costs:lotFraisU,selling_fees:0,quantite:1,plateforme:voiceParsed?.items?.[0]?.plateforme||null};
+      const row={id:idBase++,user_id:user.id,titre:stripMarque(nomNorm,marqueNorm),prix_achat:b,prix_vente:null,margin:null,margin_pct:null,statut:"stock",date:new Date().toISOString(),marque:marqueNorm,description:item.description||null,type:typeAuto,purchase_costs:lotFraisU,selling_fees:0,quantite:1,plateforme:voiceParsed?.items?.[0]?.plateforme||null,attributs:marqueursDeNaissance({titre:nomNorm,description:item.description},"vocal")};
       const{data,error}=await supabase.from('inventaire').insert([row]).select().single();
       if(!error){insertedCount++;setItems(prev=>[mapItem(data),...prev]);}
     }
@@ -4530,7 +4537,10 @@ export default function App({ loginOnly = false }){
     // `photos` n'est posé QUE s'il y en a : sans photo, l'insert est
     // rigoureusement celui d'avant. Forme écrite = { type, url } via
     // entreesPhotos (règle du 05/09), jamais des chaînes nues.
-    const row={id:Date.now(),user_id:user.id,titre:iTitle,prix_achat:prixAchat,prix_achat_inconnu:iBuyInconnu||false,prix_vente:hasS?s:null,margin:hasS&&margeCalculable?mg:null,margin_pct:hasS&&margeCalculable?mgp:null,statut:hasS?"vendu":"stock",date:new Date().toISOString(),marque:marqueNormalized,description:iDesc||null,type:typeAuto,purchase_costs:pc,selling_fees:hasS?sf:0,quantite:iQuantite||1,emplacement:iEmplacement||null,plateforme:iPlateforme||null,...(iPhotos.length?{photos:entreesPhotos(iPhotos)}:{}),...(poidsAjout.valeur!=null?{poids_g:poidsAjout.valeur}:{})};
+    const row={id:Date.now(),user_id:user.id,titre:iTitle,prix_achat:prixAchat,prix_achat_inconnu:iBuyInconnu||false,prix_vente:hasS?s:null,margin:hasS&&margeCalculable?mg:null,margin_pct:hasS&&margeCalculable?mgp:null,statut:hasS?"vendu":"stock",date:new Date().toISOString(),marque:marqueNormalized,description:iDesc||null,type:typeAuto,purchase_costs:pc,selling_fees:hasS?sf:0,quantite:iQuantite||1,emplacement:iEmplacement||null,plateforme:iPlateforme||null,...(iPhotos.length?{photos:entreesPhotos(iPhotos)}:{}),...(poidsAjout.valeur!=null?{poids_g:poidsAjout.valeur}:{}),
+      // (29/10, lot B partie 2) Le texte tapé ici est celui de la personne, dès la naissance de la fiche : l'IA ne le
+      // réécrit jamais (paugues, « Jazz man » : sans ce marqueur, la publication le réécrivait).
+      attributs:marqueursDeNaissance({titre:iTitle,description:iDesc},'manuel')};
     const{data,error}=await supabase.from('inventaire').insert([row]).select().single();
     if(!error){
       track('add_item', { purchase_price: prixAchat, prix_achat_inconnu: iBuyInconnu, has_sell_price: hasS });
@@ -5980,7 +5990,13 @@ export default function App({ loginOnly = false }){
       // Photos : même forme écrite qu'à l'ajout manuel (entreesPhotos).
       // Poids : posé seulement s'il est lisible (poidsMaj) — sinon l'insert
       // est rigoureusement celui d'avant.
-      const row={id:Date.now()+Math.floor(Math.random()*10000),user_id:uid,titre:stripMarque(editItem.title||"Article",marqueNorm),marque:marqueNorm,type:typeAuto,prix_achat:b,prix_vente:hasS?s:null,margin:mg,margin_pct:mgp,statut:"stock",date:new Date().toISOString(),description:editItem.description||null,purchase_costs:f,selling_fees:0,quantite:qty,emplacement:editItem.emplacement?.trim()||null,plateforme:null,...(Array.isArray(editItem.photos)&&editItem.photos.length?{photos:entreesPhotos(editItem.photos)}:{}),...poidsMaj};
+      // (29/10, lot B partie 2) Un champ que la personne a changé (ou tapé sans suggestion) est SON texte : il part tel
+      // quel (pas de marque retirée du titre) et naît marqué « manuel » ; un champ resté celui du scan reste « lens ».
+      const _sug=editItem._suggestion??null;
+      const _srcChamp=(v,s)=>(s!=null&&String(v??"").trim()===String(s??"").trim())?'lens':'manuel';
+      const _srcTitre=_srcChamp(editItem.title,_sug?.titre), _srcDesc=_srcChamp(editItem.description,_sug?.description);
+      const _marqueursNaissance={...marqueursDeNaissance({titre:editItem.title||"Article"},_srcTitre),...marqueursDeNaissance({description:editItem.description},_srcDesc)};
+      const row={id:Date.now()+Math.floor(Math.random()*10000),user_id:uid,titre:_srcTitre==='manuel'?(editItem.title||"Article"):stripMarque(editItem.title||"Article",marqueNorm),marque:marqueNorm,type:typeAuto,prix_achat:b,prix_vente:hasS?s:null,margin:mg,margin_pct:mgp,statut:"stock",date:new Date().toISOString(),description:editItem.description||null,purchase_costs:f,selling_fees:0,quantite:qty,emplacement:editItem.emplacement?.trim()||null,plateforme:null,...(Array.isArray(editItem.photos)&&editItem.photos.length?{photos:entreesPhotos(editItem.photos)}:{}),...poidsMaj,attributs:_marqueursNaissance};
       const{data:d,error}=await supabase.from('inventaire').insert([row]).select().single();
       if(!error){
         setItems(prev=>[mapItem({...d,quantite:d.quantite??qty}),...prev]);
@@ -6861,6 +6877,9 @@ export default function App({ loginOnly = false }){
         rendrePhotos(photosServeur);
         marquerScanVu(scan.scan_id);
         if(scan.resultat)setLensResult(scan.resultat);
+        // (29/10, lot B) Comme envoyerAnalyseLens : l'article que ce scan a créé côté serveur est CELUI du parcours —
+        // sans lui, publier après une reprise créait une seconde ligne d'inventaire, et « Modifier la fiche » une création.
+        if(scan.resultat?.inventaire_id){setLensInventaireId(scan.resultat.inventaire_id);setLensAdded(true);}
         return;
       }
 
@@ -7495,7 +7514,12 @@ export default function App({ loginOnly = false }){
       const marqueNorm=normalizeMarque(data.marque);
       const _td3=detectType(data.nom||"",marqueNorm);const typeAuto=(data.categorie&&data.categorie!=='Luxe')?data.categorie:_td3;
       const _cleanDesc=(desc,nom,marque)=>{if(!desc)return null;let s=desc;const _strip=(w)=>{if(!w)return;s=s.replace(new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}\\b`,'gi'),'').trim();};_strip(nom);_strip(marque);s=s.replace(/\s+/g,' ').replace(/^[,\s]+|[,\s]+$/g,'').trim();return s||null;};
-      const row={id:Date.now()+Math.floor(Math.random()*10000),user_id:user.id,titre:stripMarque(data.nom||"Article",marqueNorm),prix_achat:b,prix_vente:null,margin:null,margin_pct:null,statut:"stock",date:new Date().toISOString(),marque:marqueNorm,description:_cleanDesc(data.description,data.nom,marqueNorm),type:typeAuto,purchase_costs:0,selling_fees:0,quantite:data.quantite||1,emplacement:data.emplacement||null,plateforme:data.plateforme||null};
+      // (29/10, lot B partie 2) Qui a écrit ce texte : « lens » (le scan), « vocal » (l'assistant), « manuel » (la note
+      // tapée par la personne, reprise faute de description du scan). Un texte « manuel » part tel quel : ni marque
+      // retirée du titre, ni mots retirés de la description.
+      const _srcTexte=['lens','vocal','manuel'].includes(data.source_texte)?data.source_texte:'vocal';
+      const _tapeParElle=_srcTexte==='manuel';
+      const row={id:Date.now()+Math.floor(Math.random()*10000),user_id:user.id,titre:_tapeParElle?(data.nom||"Article"):stripMarque(data.nom||"Article",marqueNorm),prix_achat:b,prix_vente:null,margin:null,margin_pct:null,statut:"stock",date:new Date().toISOString(),marque:marqueNorm,description:_tapeParElle?(String(data.description??'').trim()||null):_cleanDesc(data.description,data.nom,marqueNorm),attributs:marqueursDeNaissance({titre:data.nom||"Article",description:data.description},_srcTexte),type:typeAuto,purchase_costs:0,selling_fees:0,quantite:data.quantite||1,emplacement:data.emplacement||null,plateforme:data.plateforme||null};
       console.log("[addItem] data reçu:", JSON.stringify(data), "row.quantite:", row.quantite);
       const{data:d,error}=await supabase.from('inventaire').insert([row]).select().single();
       if(error){const isAuth=/jwt|auth|session|not authenticated|authorization/i.test(error.message);throw new Error(isAuth?`SESSION_EXPIRED:${error.message}`:error.message);}
@@ -7819,9 +7843,13 @@ export default function App({ loginOnly = false }){
       const rec=new SR();
       rec.lang=lang==="en"?"en-US":"fr-FR";
       rec.interimResults=false;rec.continuous=true;
-      rec.onresult=e=>{const t=Array.from(e.results).map(r=>r[0].transcript).join(" ");setLensDesc(prev=>(prev?prev+" ":"")+t);};
-      rec.onend=()=>{setLensMicActive(false);lensMicRef.current=null;};
-      rec.onerror=()=>{setLensMicActive(false);lensMicRef.current=null;};
+      // (29/10, lot B 1.3) En continu, e.results porte TOUTE la session : l'ancien collage la re-versait à chaque
+      // résultat (« robe », puis « robe robe rouge »). Seuls les mots neufs s'ajoutent (utils/dictee.js) ; un seul micro à la fois.
+      let verse='';
+      const liberer=reserverMicro(()=>{try{rec.stop();}catch{/* déjà arrêté */}});
+      rec.onresult=e=>{const r=fusionnerResultatsReconnaissance(verse,Array.from(e.results,x=>({texte:x[0]?.transcript,final:x.isFinal})));verse=r.session;if(r.ajout)setLensDesc(prev=>ajouterDictee(prev,r.ajout));};
+      rec.onend=()=>{liberer();setLensMicActive(false);lensMicRef.current=null;};
+      rec.onerror=()=>{liberer();setLensMicActive(false);lensMicRef.current=null;};
       lensMicRef.current=rec;rec.start();setLensMicActive(true);
       return;
     }
@@ -7837,7 +7865,9 @@ export default function App({ loginOnly = false }){
       const mr=new MediaRecorder(stream);
       const chunks=[];
       mr.ondataavailable=e=>{if(e.data.size>0)chunks.push(e.data);};
+      let liberer=()=>{};
       mr.onstop=async()=>{
+        liberer();
         stream.getTracks().forEach(t=>t.stop());
         setLensMicActive(false);setLensMicLoading(true);
         lensMicRef.current=null;
@@ -7865,6 +7895,8 @@ export default function App({ loginOnly = false }){
       };
       lensMicRef.current=mr;
       mr.start();
+      // (29/10, lot B 1.3) Un seul micro à la fois : un autre micro qui démarre arrête celui-ci (sa dictée part quand même).
+      liberer=reserverMicro(()=>{try{if(mr.state!=='inactive')mr.stop();}catch{/* déjà arrêté */}});
       setLensMicActive(true);
     }catch(err){
       console.warn("[vocal] accès micro refusé :",err?.message??err);
@@ -7989,11 +8021,15 @@ export default function App({ loginOnly = false }){
         if(ligne)setItems(prev=>[mapItem(ligne),...prev.filter(i=>i.id!==ligne.id)]);
       }catch(e){console.warn('[lens] article créé mais pas ajouté à la liste locale —',e?.message??e);}
     }
+    // (29/10, lot B 1.2) Le résultat RENDU, pour qu'analyzeLens sache que le scan a réussi (rien sur un refus, une
+    // erreur ou un suivi de ligne : l'enchaînement automatique ne part que d'ici).
+    return result;
   }
 
   async function analyzeLens(){
     if(!lensPhotos.length)return;
     setInfoRepriseLens(null);
+    setLensScanAbouti(null); // (29/10, lot B 1.2) un nouveau scan : l'enchaînement du précédent ne vaut plus
     // ── (c) UN APPUI NE PEUT PLUS CRÉER UN SECOND SCAN (2026-09-13 soir) ────
     // La garantie que Nico veut, et la seule qui ne dépende ni du réseau ni du
     // système : avant de créer quoi que ce soit, on demande au SERVEUR s'il
@@ -8137,7 +8173,10 @@ export default function App({ loginOnly = false }){
       supabase.rpc('reserver_scan_lens',{p_scan_id:scanId,p_photos:urls}).then(()=>{},()=>{});
       ecrireMarqueurLens({...marqueurInitial,urls:[...urls],paths:cheminsParRang.filter(Boolean),etape:'envoye'});
       setLensProgres(p=>p?{...p,etape:'analyse'}:p);
-      await envoyerAnalyseLens({scanId,urls,avgMargin,onRendu:marquerRendu});
+      const rendu=await envoyerAnalyseLens({scanId,urls,avgMargin,onRendu:marquerRendu});
+      // (29/10, lot B 1.2) Scan RÉUSSI ici : LensTab peut enchaîner sur « Créer l'annonce » (réglage
+      // « Ouvrir l'annonce dès la fin de l'analyse »), une fois. Refus, erreur, suivi de ligne : rien.
+      if(rendu&&!rendu.error)setLensScanAbouti(scanId);
     }catch(e){
       setLensResult({error:`❌ ${e.message}`});
     }finally{
@@ -8154,6 +8193,40 @@ export default function App({ loginOnly = false }){
       // Elles sont jetées au lancement du scan SUIVANT (début d'analyzeLens) :
       // au plus un jeu survit par utilisateur.
     }
+  }
+
+  // ── (29/10, lot B 1.5) L'HISTORIQUE DE LENS ROUVRE UN SCAN GARDÉ EN BASE ──
+  // Une LECTURE (lens_scans.resultat, par HistoriqueLens) : aucun appel à lens-analysis, aucun débit — ce que fait la
+  // reprise d'un scan terminé. Même pose que le résultat d'un scan qui vient de finir (envoyerAnalyseLens) : la fiche
+  // créée par le scan reste LA fiche de l'article, pour qu'aucune seconde ligne ne naisse au publish — tant qu'elle
+  // est encore au Stock. Supprimée (ou fusionnée) depuis : rien n'est désigné, la création repart comme avant le 15/09.
+  function rouvrirScanLens({resultat,photos}={}){
+    if(!resultat||typeof resultat!=='object'||lensLoading)return;
+    const inv=resultat.inventaire_id??null;
+    const article=inv!=null?items.find(i=>String(i.id)===String(inv)):null;
+    setLensScanAbouti(null);
+    setInfoRepriseLens(null);
+    setLensDesc("");setLensBuy("");
+    setLensPhotos((Array.isArray(photos)?photos:[]).filter(u=>typeof u==='string'&&u).slice(0,MAX_PHOTOS).map(u=>({preview:u,mime:'image/jpeg'})));
+    setLensInventaireId(article?article.id:null);
+    setLensAdded(Boolean(article));
+    setLensResult(resultat);
+  }
+  // La fiche d'un article au Stock, par le chemin d'ouverture d'un article depuis une notification (plus haut) :
+  // l'onglet Stock et la modale de modification. Rend false si l'article n'est plus au Stock.
+  function ouvrirArticleLens(invId){
+    const it=invId!=null?items.find(i=>String(i.id)===String(invId)):null;
+    if(!it)return false;
+    setTab(1);try{localStorage.setItem('tab','1');}catch{/* stockage indisponible */}
+    setEditItem({...it,_table:'inventaire',frais:(it.statut==='vendu'?it.sellingFees:it.purchaseCosts)??0,sell:it.sell??''});
+    return true;
+  }
+  // Quota du mois atteint → « Créer à la main » : l'ajout à la main du Stock (il ne consomme aucun quota), les photos
+  // du viseur montées dans son formulaire (ajouterPhotosAjout, comme si on les y avait choisies).
+  function creerALaMainDepuisLens(){
+    setTab(1);try{localStorage.setItem('tab','1');}catch{/* stockage indisponible */}
+    setShowManualForm(true);
+    if(lensPhotos.length)ajouterPhotosAjout(lensPhotos.map(p=>p.preview));
   }
 
   function openLensEditModal(){
@@ -8204,6 +8277,9 @@ export default function App({ loginOnly = false }){
     setEditItem({
       _isNew:true,
       _table:'inventaire',
+      // (29/10, lot B partie 2) Ce que le scan a proposé : à l'enregistrement, un champ resté tel quel est notre
+      // brouillon (« lens »), un champ changé par la personne est SON texte (« manuel », jamais réécrit).
+      _suggestion:{titre:lensResult.titre||"",description:lensResult.etat_estime||""},
       title:lensResult.titre||"",
       marque:lensResult.marque||"",
       type:lensResult.categorie||"",
@@ -8238,6 +8314,7 @@ export default function App({ loginOnly = false }){
         marque:src.marque||null,
         categorie:src.categorie||"Autre",
         description:src.description||(lensDesc.trim()||null),
+        source_texte:src.description?'lens':(lensDesc.trim()?'manuel':'lens'),
         // Jamais de fallback sur prix_achat_suggere (estimation marché IA, pas ce que l'user a payé).
         prix_achat:saisi??src.prix_achat_reel??null,
         // null en identify : aucun prix de marché n'est produit. Le prix saisi au
@@ -8325,6 +8402,7 @@ export default function App({ loginOnly = false }){
           marque:lensResult.marque||null,
           categorie:lensResult.categorie||"Autre",
           description:lensResult.description||(lensDesc.trim()||null),
+          source_texte:lensResult.description?'lens':(lensDesc.trim()?'manuel':'lens'),
           // Jamais de fallback sur prix_achat_suggere (estimation marché IA, pas ce que l'user a payé).
           prix_achat:lensResult.prix_achat_reel??null,
           prix_vente:lensResult.prix_vente_suggere||null,
@@ -8906,6 +8984,12 @@ export default function App({ loginOnly = false }){
             onStepperOpenChange={setListingStepperOpen}
             extensionNeverSeen={extensionNeverSeen}
             extensionLastSeenAt={extensionLastSeenAt}
+            // (29/10, lot B 1.2-1.5) Refonte de Lens : l'enchaînement « ouvrir l'annonce dès la fin de l'analyse »,
+            // l'historique (rouvrir un scan, ouvrir la fiche au Stock), le quota atteint (ajout à la main, relecture
+            // UNIQUE de quotas_etat quand l'onglet s'ouvre sur un quota épuisé).
+            lensScanAbouti={lensScanAbouti} onScanAboutiVu={()=>setLensScanAbouti(null)}
+            onRouvrirScan={rouvrirScanLens} onOuvrirArticle={ouvrirArticleLens} onCreerALaMain={creerALaMainDepuisLens}
+            rafraichirQuotas={()=>{supabase.rpc('quotas_etat').then(({data})=>{if(data&&!data.error)setQuotas(data);}).catch(()=>{});}}
           />
         )}
 
@@ -9013,6 +9097,7 @@ export default function App({ loginOnly = false }){
                     placeholder="Ex: Air Max 90..." rows={2}
                     style={{...S.input,resize:"none",lineHeight:1.4}}
                     onFocus={focusTeal} onBlur={blurBorder}/>
+                  <BoutonDictee valeur={editItem.title??""} onChange={v=>setEditItem(p=>({...p,title:v}))} lang={lang}/>
                 </div>
                 <div>
                   <div style={S.label}>{lang==='fr'?"Marque (optionnel)":"Brand (optional)"}</div>
@@ -9210,6 +9295,7 @@ export default function App({ loginOnly = false }){
                     style={{...S.input,resize:"none",lineHeight:1.5,fontWeight:500,fontSize:13}}
                     onFocus={focusTeal} onBlur={blurBorder}
                   />
+                  <BoutonDictee valeur={editItem.description||""} onChange={v=>setEditItem(p=>({...p,description:v.slice(0,DESC_MANUELLE_MAX)}))} lang={lang} separateur={"\n"}/>
                   <div style={{fontSize:10,color:"#8A8578",textAlign:"right",marginTop:2}}>{(editItem.description||"").length}/{DESC_MANUELLE_MAX}</div>
                 </div>
               </div>
@@ -10168,6 +10254,7 @@ export default function App({ loginOnly = false }){
               placeholder={bugMode==='support'?(lang==='fr'?'Ton message : on te répond par e-mail.':'Your message: we reply by email.'):(lang==='fr'?'Décris le problème rencontré...':'Describe the issue...')}
               style={{width:"100%",minHeight:100,borderRadius:10,border:"1px solid #E5E7EB",padding:10,fontSize:13,fontFamily:"inherit",resize:"vertical",outline:"none",boxSizing:"border-box",color:"#111827"}}
             />
+            <BoutonDictee valeur={bugMessage} onChange={setBugMessage} lang={lang} separateur={"\n"} disabled={bugSending} style={{marginBottom:8}}/>
             <PrimaryButton
               onClick={async()=>{
                 if(!bugMessage.trim())return;

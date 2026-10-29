@@ -1,0 +1,340 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   L'ÉCRAN LENS — viseur, résultat, états, historique (29/10, lot B 1.5)
+   ═══════════════════════════════════════════════════════════════════════════
+   Maquettes validées par Nico le 29/10 (Main, LensResultat, LensEtats). Même
+   peau que le stepper : les jetons --fs-* de src/publication/stepper.css, les
+   mêmes valeurs, posés ici sur la racine de l'écran (.lns) et sur la feuille
+   d'historique (rendue en portail, hors de .lns).
+   ⛔ Lens reste CLAIR comme toute l'app (décision du 29/10) : color-scheme:
+      light sur la racine, pour qu'un téléphone en mode sombre n'altère ni les
+      champs ni les barres de défilement.
+   ⛔ Aucune largeur fixe au-delà de 520 px, rien qui dépasse à 320 px : tout
+      ce qui tient sur une ligne a le droit de passer à la ligne. */
+.lns, .lns-feuille-voile {
+  --fs-canvas: #EDEAE0; --fs-paper: #F6F5F1; --fs-card: #FFFFFF; --fs-chip: #F2F0E9;
+  --fs-ink: #10201B; --fs-ink2: #3A4742; --fs-mute: #5C6560; --fs-mute2: #8A8578;
+  --fs-border: #E7E3D8; --fs-border-soft: #EFECE3;
+  --fs-teal: #2F9E90; --fs-teal-deep: #1B6E62; --fs-teal-fond: #EFF4F2; --fs-teal-bord: #D6E2DE;
+  --fs-amber-fond: #FFF6E3; --fs-amber-bord: #EED9A6; --fs-amber-ink: #8A6100;
+  --fs-bad-fond: #FBEFEC; --fs-bad-bord: #EBC9C2; --fs-bad-ink: #9B5148;
+  color-scheme: light;
+  color: var(--fs-ink);
+}
+.lns {
+  width: 100%; max-width: 520px; margin: 0 auto; box-sizing: border-box;
+  display: flex; flex-direction: column; gap: 12px; min-width: 0;
+}
+.lns *, .lns *::before, .lns *::after,
+.lns-feuille-voile *, .lns-feuille-voile *::before, .lns-feuille-voile *::after { box-sizing: border-box; }
+.lns button { font-family: inherit; -webkit-tap-highlight-color: transparent; }
+.lns button:focus-visible, .lns input:focus-visible, .lns textarea:focus-visible,
+.lns-feuille-voile button:focus-visible { outline: 2px solid var(--fs-teal); outline-offset: 2px; }
+
+/* ── En-tête du viseur ─────────────────────────────────────────────────────── */
+.lns-tete { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.lns-tete-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.lns-kicker { font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--fs-mute); }
+.lns-titre { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -.015em; line-height: 1.2; color: var(--fs-ink); }
+.lns-lead { margin: -4px 0 0; font-size: 14px; line-height: 1.5; color: var(--fs-mute); }
+.lns-pilule {
+  display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 14px; flex: none;
+  border-radius: 999px; background: #FFFFFF; border: 1px solid var(--fs-border); color: var(--fs-ink);
+  font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.lns-pilule:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ── Cartes ────────────────────────────────────────────────────────────────── */
+.lns-carte {
+  background: var(--fs-card); border: 1px solid var(--fs-border); border-radius: 20px;
+  box-shadow: 0 1px 4px rgba(16,32,27,.05); padding: 16px; display: flex; flex-direction: column; gap: 14px; min-width: 0;
+}
+.lns-carte--s { border-radius: 16px; padding: 14px; gap: 12px; }
+
+/* ── La zone de prise de vue ───────────────────────────────────────────────── */
+.lns-prise {
+  position: relative; min-height: 236px; border-radius: 16px; background: var(--fs-paper);
+  border: 1.5px dashed var(--fs-teal-bord); display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 18px; padding: 20px 12px; overflow: hidden; contain: layout paint;
+}
+.lns-declencheur-zone { position: relative; width: 96px; height: 96px; flex: none; }
+.lns-halo {
+  position: absolute; left: 50%; top: 50%; width: 170px; height: 170px; margin: -85px 0 0 -85px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(47,158,144,.20) 0%, rgba(47,158,144,0) 68%); pointer-events: none;
+  animation: lnsHalo 4.2s ease-in-out infinite;
+}
+@keyframes lnsHalo { 0%, 100% { transform: scale(.92); opacity: .75; } 50% { transform: scale(1.06); opacity: 1; } }
+.lns-declencheur {
+  position: relative; z-index: 2; width: 96px; height: 96px; border-radius: 50%; border: none; padding: 0;
+  background: linear-gradient(150deg, #2F9E90, #1B6E62); box-shadow: 0 12px 28px rgba(47,158,144,.30);
+  display: grid; place-items: center; cursor: pointer; color: #FFFFFF;
+}
+.lns-declencheur:active { transform: scale(.97); }
+.lns-boutons-prise { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; position: relative; z-index: 4; }
+.lns-bouton-pilule {
+  height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--fs-border); background: #FFFFFF;
+  font-size: 13.5px; font-weight: 600; color: var(--fs-ink); cursor: pointer; white-space: nowrap;
+}
+.lns-bouton-pilule:disabled, .lns-declencheur:disabled { opacity: .55; cursor: not-allowed; }
+
+/* ── L'orbite des plateformes (29/10, demande de Nico) ───────────────────────
+   Les logos tournent lentement autour du déclencheur sur une ellipse couchée :
+   devant lui sur la moitié basse, derrière sur la moitié haute (z-index animé),
+   plus petits et plus pâles au fond. Deux sinusoïdes (x, y) décalées d'un
+   quart de tour : seules des transformations et l'opacité bougent, toutes
+   composées par la carte graphique — aucun calcul de mise en page par image,
+   rien qui saccade sur un petit téléphone. Les keyframes x/y portent le rayon
+   en clair (OrbiteLogos les écrit), jamais une variable : un vieux WebKit qui
+   ne relirait pas la variable poserait les logos SUR le bouton.
+   « Réduire les animations » : chaque logo s'arrête à sa place (pause sur un
+   délai négatif = l'image à cet instant), répartis autour du bouton. */
+.lns-orbite { position: absolute; left: 50%; top: 50%; width: 0; height: 0; }
+.lns-orbite-anneau {
+  position: absolute; border-radius: 50%; border: 1px solid rgba(47,158,144,.20); pointer-events: none; z-index: 0;
+}
+.lns-orb { position: absolute; left: 0; top: 0; width: 34px; height: 34px; margin: -17px 0 0 -17px; will-change: transform; pointer-events: none; }
+.lns-orb-y { width: 100%; height: 100%; will-change: transform; }
+.lns-orb-p {
+  width: 100%; height: 100%; border-radius: 10px; background: #FFFFFF; display: grid; place-items: center;
+  box-shadow: 0 6px 16px rgba(16,32,27,.14), 0 1px 2px rgba(16,32,27,.08); will-change: transform, opacity;
+}
+@keyframes lnsOrbProfondeur {
+  0%   { transform: scale(.86); opacity: .92; }
+  25%  { transform: scale(1.08); opacity: 1; }
+  50%  { transform: scale(.86); opacity: .92; }
+  75%  { transform: scale(.7); opacity: .5; }
+  100% { transform: scale(.86); opacity: .92; }
+}
+@keyframes lnsOrbPlan { 0% { z-index: 3; } 50% { z-index: 1; } 100% { z-index: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .lns-orb, .lns-orb-y, .lns-orb-p { animation-play-state: paused !important; }
+  .lns-halo { animation: none; }
+}
+
+/* ── Les photos ────────────────────────────────────────────────────────────── */
+.lns-section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.lns-section-tete { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.lns-h { font-size: 13px; font-weight: 700; color: var(--fs-ink); }
+.lns-h-doux { font-weight: 500; color: var(--fs-mute); }
+.lns-compte { font-size: 12px; color: var(--fs-mute); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lns-grille { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.lns-vignette { position: relative; aspect-ratio: 1; border-radius: 10px; overflow: hidden; background: #E7F3F0; min-width: 0; }
+.lns-vignette img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.lns-rang {
+  position: absolute; left: 4px; bottom: 4px; font-size: 10px; font-weight: 700; line-height: 1.4; color: #FFFFFF;
+  background: rgba(16,32,27,.72); border-radius: 6px; padding: 0 5px; font-variant-numeric: tabular-nums;
+}
+.lns-retirer {
+  position: absolute; top: 3px; right: 3px; width: 22px; height: 22px; border-radius: 50%; border: none; padding: 0;
+  background: rgba(16,32,27,.66); color: #FFFFFF; display: grid; place-items: center; cursor: pointer;
+}
+.lns-ajouter {
+  aspect-ratio: 1; border-radius: 10px; border: 1.5px dashed #C9C3B4; background: #FFFFFF; padding: 0;
+  display: grid; place-items: center; cursor: pointer; color: var(--fs-mute); min-width: 0;
+}
+.lns-aide { margin: 0; font-size: 12px; line-height: 1.45; color: var(--fs-mute); }
+
+/* ── La note dictée ou tapée ───────────────────────────────────────────────── */
+.lns-label { font-size: 13px; font-weight: 700; color: var(--fs-ink); }
+.lns-champ { position: relative; }
+.lns-input {
+  width: 100%; height: 48px; border-radius: 12px; border: 1px solid var(--fs-border); background: var(--fs-paper);
+  padding: 0 52px 0 14px; font: inherit; font-size: 16px; color: var(--fs-ink); outline: none; -webkit-appearance: none; appearance: none;
+}
+.lns-input:focus { border-color: var(--fs-teal); background: #FFFFFF; }
+.lns-input--micro { border-color: #EF4444; }
+.lns-indice {
+  position: absolute; left: 15px; right: 56px; top: 50%; transform: translateY(-50%); pointer-events: none;
+  font-size: 16px; color: var(--fs-mute2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity .3s ease;
+}
+.lns-micro {
+  position: absolute; right: 6px; top: 6px; width: 36px; height: 36px; border-radius: 50%; border: none; padding: 0;
+  background: var(--fs-teal-fond); display: grid; place-items: center; cursor: pointer; color: var(--fs-teal-deep);
+}
+.lns-micro--actif { background: rgba(239,68,68,.12); color: #EF4444; }
+.lns-micro:disabled { opacity: .6; cursor: not-allowed; }
+
+/* ── L'interrupteur « Ouvrir l'annonce dès la fin de l'analyse » ──────────── */
+.lns-bascule {
+  display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 12px; width: 100%; text-align: left;
+  background: var(--fs-teal-fond); border: 1px solid var(--fs-teal-bord); cursor: pointer; color: var(--fs-ink); font-size: inherit;
+}
+.lns-bascule-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.lns-bascule-titre { font-size: 14px; font-weight: 600; line-height: 1.3; }
+.lns-bascule-sous { font-size: 12px; color: var(--fs-ink2); line-height: 1.4; }
+.lns-interrupteur { width: 46px; height: 28px; border-radius: 999px; background: #C3CEC9; position: relative; flex: none; transition: background .2s ease; }
+.lns-interrupteur::after {
+  content: ""; position: absolute; left: 3px; top: 3px; width: 22px; height: 22px; border-radius: 50%; background: #FFFFFF;
+  box-shadow: 0 1px 3px rgba(16,32,27,.25); transition: transform .2s ease;
+}
+.lns-bascule[aria-checked="true"] .lns-interrupteur { background: var(--fs-teal-deep); }
+.lns-bascule[aria-checked="true"] .lns-interrupteur::after { transform: translateX(18px); }
+@media (prefers-reduced-motion: reduce) { .lns-interrupteur, .lns-interrupteur::after { transition: none; } }
+
+/* ── Le pied : le bouton d'analyse et la ligne du quota ───────────────────── */
+.lns-pied { display: flex; flex-direction: column; gap: 8px; padding-top: 2px; }
+.lns-cta {
+  width: 100%; height: 54px; border-radius: 999px; border: none; background: linear-gradient(120deg, #2F9E90, #1B6E62);
+  color: #FFFFFF; font-size: 16px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 8px;
+  cursor: pointer; box-shadow: 0 10px 24px rgba(47,158,144,.28); padding: 0 16px;
+}
+.lns-cta:disabled { background: #DCEEEA; color: #7FA9A1; box-shadow: none; cursor: not-allowed; }
+.lns-pied-ligne { display: flex; justify-content: space-between; align-items: baseline; gap: 4px 12px; flex-wrap: wrap; font-size: 12.5px; color: var(--fs-mute); }
+.lns-lien {
+  background: none; border: none; padding: 0; font-size: inherit; font-weight: 600; color: var(--fs-teal-deep);
+  text-decoration: underline; text-underline-offset: 2px; cursor: pointer;
+}
+
+/* ── Bandeaux (reprise d'un scan, montée inachevée, erreur de préparation) ── */
+.lns-bandeau { padding: 10px 14px; border-radius: 14px; font-size: 12.5px; line-height: 1.4; }
+.lns-bandeau--info { background: #E7F3F0; border: 1px solid #BFE0D9; color: var(--fs-teal-deep); }
+.lns-bandeau--attention { background: #FFF6E5; border: 1px solid #F0DCB4; color: #8A6A1F; }
+.lns-bandeau--erreur { background: var(--fs-bad-fond); border: 1px solid var(--fs-bad-bord); color: var(--fs-bad-ink); font-weight: 500; }
+
+/* ── Pendant l'analyse ─────────────────────────────────────────────────────── */
+.lns-etapes { list-style: none; margin: 0; padding: 10px 0 0; border-top: 1px solid var(--fs-border-soft); display: flex; flex-direction: column; gap: 8px; }
+.lns-etape { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; line-height: 1.35; color: var(--fs-mute); min-width: 0; }
+.lns-etape[data-etat="fait"] { color: var(--fs-teal-deep); font-weight: 600; }
+.lns-etape[data-etat="encours"] { color: var(--fs-ink); font-weight: 600; }
+.lns-etape-signe { width: 16px; height: 16px; flex: none; margin-top: 1px; display: grid; place-items: center; }
+.lns-rond { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--fs-border); }
+.lns-tourne { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--fs-teal); border-top-color: transparent; animation: lnsTourne .9s linear infinite; }
+@keyframes lnsTourne { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .lns-tourne { animation: none; border-top-color: var(--fs-teal); opacity: .55; } }
+
+/* ── Échec, quota atteint ──────────────────────────────────────────────────── */
+.lns-alerte { border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.lns-alerte--echec { background: var(--fs-bad-fond); border: 1px solid var(--fs-bad-bord); }
+.lns-alerte--quota { background: var(--fs-amber-fond); border: 1px solid var(--fs-amber-bord); }
+.lns-alerte-tete { display: flex; gap: 10px; align-items: flex-start; }
+.lns-alerte-tete svg { flex: none; margin-top: 1px; }
+.lns-alerte-txt { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.lns-alerte-titre { font-size: 14.5px; font-weight: 700; line-height: 1.3; }
+.lns-alerte--echec .lns-alerte-titre { color: var(--fs-bad-ink); }
+.lns-alerte--quota .lns-alerte-titre { color: var(--fs-amber-ink); }
+.lns-alerte-corps { margin: 0; font-size: 13px; line-height: 1.45; color: var(--fs-ink2); }
+.lns-alerte-detail { margin: 0; font-size: 11.5px; line-height: 1.4; color: var(--fs-mute); overflow-wrap: anywhere; }
+.lns-duo { display: flex; gap: 8px; }
+.lns-duo > * { flex: 1 1 0; min-width: 0; }
+.lns-bouton-plein {
+  width: 100%; min-height: 48px; border-radius: 999px; border: none; background: linear-gradient(120deg, #2F9E90, #1B6E62);
+  color: #FFFFFF; font-size: 15px; font-weight: 700; cursor: pointer; padding: 0 14px;
+}
+.lns-bouton-blanc {
+  width: 100%; min-height: 44px; border-radius: 999px; border: 1px solid var(--fs-border); background: #FFFFFF;
+  color: var(--fs-ink); font-size: 14px; font-weight: 600; cursor: pointer; padding: 0 14px;
+}
+.lns-bouton-contour {
+  width: 100%; min-height: 44px; border-radius: 999px; border: 1.5px solid var(--fs-teal-deep); background: transparent;
+  color: var(--fs-teal-deep); font-size: 14px; font-weight: 600; cursor: pointer; padding: 0 12px;
+}
+.lns-bouton-nuit {
+  width: 100%; min-height: 44px; border-radius: 999px; border: none; background: var(--fs-ink);
+  color: #FFFFFF; font-size: 14px; font-weight: 600; cursor: pointer; padding: 0 12px;
+}
+.lns-bouton-plein:disabled, .lns-bouton-blanc:disabled, .lns-bouton-contour:disabled, .lns-bouton-nuit:disabled { opacity: .55; cursor: not-allowed; }
+
+/* ── Le résultat ───────────────────────────────────────────────────────────── */
+.lns-res-tete { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.lns-retour {
+  width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--fs-border); background: #FFFFFF; padding: 0;
+  display: grid; place-items: center; cursor: pointer; flex: none; color: var(--fs-ink);
+}
+.lns-res-titre { flex: 1; min-width: 0; font-size: 16px; font-weight: 700; color: var(--fs-ink); }
+.lns-statut {
+  font-size: 12px; font-weight: 600; border-radius: 999px; padding: 5px 10px; white-space: nowrap; flex: none;
+  color: var(--fs-teal-deep); background: var(--fs-teal-fond); border: 1px solid var(--fs-teal-bord);
+}
+.lns-statut--doute { color: var(--fs-amber-ink); background: var(--fs-amber-fond); border-color: var(--fs-amber-bord); }
+.lns-statut--neutre { color: var(--fs-ink2); background: var(--fs-chip); border-color: var(--fs-border); }
+/* La tuile de LensIdentite porte la PHOTO de l'article (maquette du 29/10) :
+   la règle ne touche qu'au rendu, jamais au composant ni à ce qu'il lit. */
+.lns-identite--photo .lens-tuile {
+  width: 72px !important; height: 72px !important; border-radius: 12px !important; font-size: 0 !important;
+  background: var(--lns-photo) center / cover no-repeat, #C9D8D3 !important; box-shadow: none !important;
+}
+
+/* Le prix selon la stratégie du vendeur */
+.lns-prix-tete { display: flex; align-items: baseline; justify-content: space-between; gap: 4px 10px; flex-wrap: wrap; }
+.lns-prix-ligne { display: flex; align-items: baseline; gap: 4px 10px; flex-wrap: wrap; }
+.lns-prix { font-size: 30px; font-weight: 700; letter-spacing: -.02em; line-height: 1.05; font-variant-numeric: tabular-nums; color: var(--fs-ink); }
+.lns-strategie { font-size: 13px; font-weight: 600; color: var(--fs-teal-deep); }
+.lns-jauge { position: relative; height: 8px; margin: 4px 8px 0; border-radius: 999px; background: linear-gradient(90deg, #A8DBD2, #2F9E90); }
+.lns-jauge-curseur {
+  position: absolute; top: 50%; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%;
+  background: #FFFFFF; border: 3px solid var(--fs-teal-deep); box-shadow: 0 1px 3px rgba(16,32,27,.2);
+}
+.lns-jauge-legende { display: flex; justify-content: space-between; gap: 6px; font-size: 11.5px; color: var(--fs-mute); }
+.lns-jauge-legende [data-actif="1"] { color: var(--fs-teal-deep); font-weight: 700; }
+.lns-note-prix { margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--fs-ink2); }
+.lns-note-prix--attention { color: #92400E; background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 10px; padding: 8px 10px; }
+
+/* Les actions */
+.lns-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.lns-heros-sous { display: block; font-size: 11.5px; font-weight: 500; color: #CFE6E0; letter-spacing: 0; line-height: 1.3; }
+.lns-secondaire {
+  width: 100%; min-height: 48px; border-radius: 999px; border: 1.5px solid var(--fs-teal-deep); background: transparent;
+  color: var(--fs-teal-deep); font-size: 14.5px; font-weight: 600; cursor: pointer; padding: 0 14px;
+}
+.lns-secondaire--fait { background: #E7F3F0; border-color: #BFE0D9; cursor: default; }
+.lns-mention { margin: 0; text-align: center; font-size: 12px; line-height: 1.45; color: var(--fs-mute); }
+.lns-mention--ok { color: var(--fs-teal-deep); font-weight: 600; }
+
+/* Les plis : détail du marché, photos du scan */
+.lns-plis { background: #FFFFFF; border: 1px solid var(--fs-border); border-radius: 16px; overflow: hidden; }
+.lns-pli + .lns-pli { border-top: 1px solid var(--fs-border-soft); }
+.lns-pli-bouton {
+  width: 100%; min-height: 52px; display: flex; align-items: center; gap: 10px; padding: 0 14px; border: none;
+  background: transparent; color: var(--fs-ink); cursor: pointer; text-align: left;
+}
+.lns-pli-titre { flex: 1 1 auto; min-width: 0; font-size: 14px; font-weight: 600; }
+.lns-pli-info { flex: 0 1 auto; min-width: 0; font-size: 12.5px; color: var(--fs-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lns-pli-chevron { flex: none; color: var(--fs-mute); transition: transform .2s ease; }
+.lns-pli-bouton[aria-expanded="true"] .lns-pli-chevron { transform: rotate(180deg); }
+.lns-pli-corps { padding: 0 14px 14px; display: flex; flex-direction: column; gap: 12px; }
+@media (prefers-reduced-motion: reduce) { .lns-pli-chevron { transition: none; } }
+/* Le pliant d'AnalyseMarche s'ouvre avec le nôtre : son propre bouton, une fois
+   ouvert, ferait doublon avec l'en-tête du pli. Fermé (ouverture ratée), il
+   reste visible et cliquable — jamais un pli vide. */
+.lns-marche > div > button[aria-expanded="true"] { display: none !important; }
+.lns-marche > div > button[aria-expanded="true"] + div { margin-top: 0 !important; }
+
+.lns-tertiaire {
+  width: 100%; min-height: 44px; border-radius: 12px; border: 1px solid var(--fs-border); background: transparent;
+  color: var(--fs-ink2); font-size: 13.5px; font-weight: 600; cursor: pointer; padding: 0 14px;
+}
+.lns-tertiaire + .lns-mention { margin-top: -6px; }
+
+/* ── La feuille d'historique (portail) ─────────────────────────────────────── */
+.lns-feuille-voile {
+  position: fixed; inset: 0; z-index: 10000; background: rgba(16,32,27,.45);
+  display: flex; align-items: flex-end; justify-content: center; font-family: inherit;
+}
+.lns-feuille {
+  width: 100%; max-width: 520px; max-height: 84vh; display: flex; flex-direction: column; gap: 12px;
+  background: var(--fs-paper); border: 1px solid var(--fs-border); border-bottom: none; border-radius: 24px 24px 0 0;
+  padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); box-shadow: 0 -18px 50px rgba(16,32,27,.25);
+  animation: lnsFeuilleMonte .22s cubic-bezier(.2,.8,.3,1);
+}
+@keyframes lnsFeuilleMonte { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .lns-feuille { animation: none; } }
+.lns-feuille-poignee { width: 40px; height: 4px; border-radius: 999px; background: #D8D2C4; margin: 0 auto; flex: none; }
+.lns-feuille-tete { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.lns-feuille-titre { margin: 0; font-size: 17px; font-weight: 700; color: var(--fs-ink); }
+.lns-fermer {
+  width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--fs-border); background: #FFFFFF; padding: 0;
+  display: grid; place-items: center; cursor: pointer; color: var(--fs-mute); flex: none;
+}
+.lns-feuille-liste { list-style: none; margin: 0; padding: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.lns-histo {
+  display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px; border-radius: 14px; text-align: left;
+  background: #FFFFFF; border: 1px solid var(--fs-border); cursor: pointer; color: var(--fs-ink); font-size: inherit;
+}
+.lns-histo:disabled { cursor: default; }
+.lns-histo-photo { width: 48px; height: 48px; border-radius: 10px; overflow: hidden; background: #E7F3F0; flex: none; display: grid; place-items: center; color: var(--fs-mute); }
+.lns-histo-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.lns-histo-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.lns-histo-titre { font-size: 14px; font-weight: 600; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.lns-histo-sous { font-size: 12px; color: var(--fs-mute); line-height: 1.35; }
+.lns-histo[data-statut="echec"] .lns-histo-titre { color: var(--fs-bad-ink); }
+.lns-histo-chevron { flex: none; color: var(--fs-mute2); }
+.lns-feuille-msg { margin: 0; font-size: 13px; line-height: 1.45; color: var(--fs-mute); text-align: center; padding: 18px 8px; }

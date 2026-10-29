@@ -42,6 +42,8 @@ import {
 } from "./lectureOrigine";
 import { completerTexteDuVendeur } from "./texteDuVendeur";
 import { signalerActionRatee } from "../utils/actionRatee";
+// (29/10, lot B 1.3) La dictée sur la description à écrire.
+import BoutonDictee from "../components/BoutonDictee";
 import {
   depuisEnMots, RELECTURE_ATTENTE_MS, RELECTURE_ATTENTE_MAX_MS, RELECTURE_SANS_LECTEUR_MS, ATTENTE_SANS_LECTEUR_MAX_MS,
   issuesSansLecteur, phraseSansLecteur, libellesSansLecteur, texteAttenteSansLecteur, urlAnnonceVinted, descriptionEcriteSuffisante,
@@ -238,6 +240,7 @@ export default function AttenteLectureOrigine({
         <textarea value={texte} onChange={(e) => setTexte(e.target.value)} rows={6} autoFocus
           placeholder={L.placeholder} aria-label={L.ecrireTitre}
           style={{ width: "100%", boxSizing: "border-box", minHeight: 132, padding: "11px 12px", borderRadius: 12, border: "1px solid #E5E7EB", fontSize: 16, lineHeight: 1.4, color: "#0D0D0D", fontFamily: "inherit", resize: "vertical" }} />
+        <BoutonDictee valeur={texte} onChange={setTexte} lang={lang} separateur={"\n"} disabled={envoi} style={{ marginTop: 4 }} />
         {texte.trim() && !assez ? <div style={{ fontSize: 12.5, color: "#6B7280", marginTop: 6 }}>{L.tropCourt}</div> : null}
         {ligneEchec}
         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 14 }}>

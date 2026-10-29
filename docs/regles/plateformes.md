@@ -481,3 +481,21 @@ Rapport : `docs/enquetes/dix-points-1710/RAPPORT.md` (points 1, 4, 5, 7, 9).
   `lbc_depot.type_compte`, circuit pro (`lbc_valider_et_payer`). Un compte pro hors forfait paie chaque dépôt (aide
   Leboncoin « Combien coûte le dépôt d'une annonce ? » : dépôt payant pour un pro en Maison, Loisirs, Multimédia…),
   quel que soit le nombre d'annonces en ligne ; FillSell ne paie jamais et ne relance jamais sur ce mur.
+
+## 29/10 (lot B) — Leboncoin : la marque par la recherche ; le compte pro lu sur la session qui dépose ; Vinted en langue étrangère ; Beebs : un refus ne se relance pas à l'identique
+- **Marque Leboncoin** (4.4, boncoin59300) : le champ Marque est une RECHERCHE (menu vide tant qu'on ne tape pas). Quand
+  le pré-rempli de Leboncoin diffère de notre marque, on TAPE la nôtre (`decisionMarqueRechercheLbc`, `marquesEgales`) ;
+  sinon, si le pré-rempli n'est pas cité dans l'article, « Autre » (la marque reste dans la description) ; le pré-rempli
+  n'est gardé qu'en dernier ; « hors liste » ne s'écrit qu'après une recherche RELUE (sinon « recherche muette »).
+  ⚠ Mesuré : 594 recherches par frappe depuis le 07/09, 0 trouvée — un diagnostic du menu est désormais noté.
+- **Compte pro au mur « Valider et payer »** (partie 3) : l'extension lit TOUJOURS le type de la session qui dépose
+  (`account/v2/members/me/account`) ; une lecture `individual` l'emporte sur la preuve du serveur et sur le formulaire pro
+  (`decisionMurProLbc`) ; `lbc_depot.type_compte`, `type_compte_lu_le`, `type_compte_source` sur les deux parcours.
+- **Vinted, page dans une autre langue** (4.1, mele.marta) : la langue se juge sur les racines du catalogue (3 racines
+  d'une même langue ≠ fr) ; catalog_id connu → pose par identifiants avant toute question ; jamais « Vinted ne propose
+  pas » sur une page étrangère ; une question de racines étrangères n'est pas un rayon refusé ; relance unique
+  « vinted_categorie_page_etrangere » au build 0.6.153+ (`relance-apres-maj.js`), pause neutre en attendant.
+- **Beebs, refus prouvé** (4.6, XEWER) : `empreinte_contenu` (titre, description, photos, rayon) posée au refus ;
+  relancer à l'identique → needs_user `refus_beebs_meme_contenu` (« Change d'abord le texte, les photos ou le rayon »),
+  jamais redéposé. Constat (non une cause prouvée) : 0/87 en ligne avec « Jeu testé aujourd'hui, le … et fonctionnel »,
+  35/42 sans. Jeux vidéo : « xbox » seul n'est plus Beebs « Xbox Series » (Xbox originale → Retrogaming).

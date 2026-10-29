@@ -2410,9 +2410,11 @@ async function fillListingForm(job) {
     "Si l'onglet a été fermé, appuie sur « Préparer à nouveau » dans « À régler ».";
   // (18/10) Compte PRO : dit par le serveur (platform_fields.compte_pro, preuve sur ses
   // jobs) ou vu sur le formulaire (un champ que seul le formulaire pro porte).
-  const estComptePro = (j, champs) =>
-    j?.platform_fields?.compte_pro === true
-    || (Array.isArray(champs) && champs.some((c) => /general_sales_condition|custom_ref/.test(String(c?.key ?? ""))));
+  // (29/10, lot B partie 3) Les deux preuves sont lues À PART : au mur, le type de la session les départage
+  // (decisionMurProLbc, ⟦mur-pro⟧).
+  const compteProDuServeur = (j) => j?.platform_fields?.compte_pro === true;
+  const formulaireProVu = (champs) =>
+    Array.isArray(champs) && champs.some((c) => /general_sales_condition|custom_ref/.test(String(c?.key ?? "")));
   // (29/10 soir, lot A point 8 — paugues.contact) Le TYPE du compte, dit par Leboncoin lui-même : le formulaire pro
   // n'apparaît pas dans tous les rayons (Maison > Décoration, Loisirs > Antiquités : aucun champ pro), et le compte
   // « business » passait pour un particulier au mur « Valider et payer ». Même lecture que le relevé des ventes
@@ -2546,13 +2548,22 @@ async function fillListingForm(job) {
           // Leboncoin. Compte PRO seulement (preuve du serveur
           // platform_fields.compte_pro, ou le formulaire pro lu ici) : un
           // particulier garde la règle d'avant (pack photos, annonce par annonce).
-          const typeCompte = estComptePro(job, enumerated) ? null : await lireTypeCompteLbc();
-          if (estComptePro(job, enumerated) || (typeCompte && typeCompte !== "individual")) {
-            console.warn(`[leboncoin] /options : compte pro hors forfait${typeCompte ? ` (type « ${typeCompte} » dit par Leboncoin)` : ""} — dépôt préparé, l'onglet reste ouvert pour « Valider et payer » (jamais cliqué par FillSell)`);
+          // (29/10, lot B partie 3) Le type de la SESSION est TOUJOURS lu ici et l'emporte : « individual » →
+          // particulier, même si le serveur dit pro ; lecture impossible → formulaire pro, puis preuve du serveur.
+          const typeCompte = await lireTypeCompteLbc();
+          const murPro = decisionMurProLbc({ compteProServeur: compteProDuServeur(job), formulairePro: formulaireProVu(enumerated), typeLu: typeCompte });
+          const typeCompteDepot = { type_compte: typeCompte, type_compte_lu_le: typeCompte ? new Date().toISOString() : null, type_compte_source: murPro.source };
+          if (murPro.contredit) {
+            const note = `compte : Leboncoin dit « ${typeCompte} » pour la session qui dépose, alors que ${compteProDuServeur(job) ? "le serveur" : "le formulaire"} disait pro — circuit particulier (jamais de circuit pro sans preuve pour ce compte)`;
+            console.warn(`[leboncoin] ⚠️ ${note}`);
+            warnings.push(note);
+          }
+          if (murPro.pro) {
+            console.warn(`[leboncoin] /options : compte pro hors forfait (${murPro.source === "session" ? `type « ${typeCompte} » dit par Leboncoin` : murPro.source === "formulaire" ? "formulaire pro vu sur ce dépôt" : "preuve du serveur, type de la session illisible"}) — dépôt préparé, l'onglet reste ouvert pour « Valider et payer » (jamais cliqué par FillSell)`);
             return {
               success: false, needsUser: true, attenteUtilisateur: true, attenteMotif: "lbc_valider_et_payer", garderOnglet: true,
               warnings, unfilledRequired, discoveredRequired: enumerated,
-              lbcDepot: { preuve: "ecran_options_payant_pret", note: "dépôt préparé jusqu'à « Valider et payer » : la personne paie elle-même, FillSell ne clique jamais", adsubmit: depotAccepte, ...(typeCompte ? { type_compte: typeCompte } : {}), at: new Date().toISOString() },
+              lbcDepot: { preuve: "ecran_options_payant_pret", note: "dépôt préparé jusqu'à « Valider et payer » : la personne paie elle-même, FillSell ne clique jamais", adsubmit: depotAccepte, ...typeCompteDepot, at: new Date().toISOString() },
               error: MSG_LBC_A_PAYER,
             };
           }
@@ -2560,7 +2571,7 @@ async function fillListingForm(job) {
           return {
             success: false, needsUser: true, attenteUtilisateur: true, attenteMotif: "lbc_options_payant_seulement",
             warnings, unfilledRequired, discoveredRequired: enumerated,
-            lbcDepot: { preuve: "ecran_options_payant", note: "barre d'action sans CTA gratuit ; seul « Valider et payer » proposé", adsubmit: depotAccepte, ...(typeCompte ? { type_compte: typeCompte } : {}), at: new Date().toISOString() },
+            lbcDepot: { preuve: "ecran_options_payant", note: "barre d'action sans CTA gratuit ; seul « Valider et payer » proposé", adsubmit: depotAccepte, ...typeCompteDepot, at: new Date().toISOString() },
             error: `${MSG_LBC_PAYANT_SEULEMENT}${motPhotosMurPayantLbc()} — Observabilité: ${dumpEcranVisible()}`,
           };
         }
@@ -4039,6 +4050,30 @@ function jobPorteCriteresLbc(job) {
 function formulaireProLbc(job) {
   return job?.platform_fields?.compte_pro === true || Boolean(document.querySelector('[name="custom_ref"]'));
 }
+
+// ⟦mur-pro:début⟧ (29/10, lot B partie 3 — garde-fou de Nico : « personne ne bascule en circuit pro (dépôt préparé,
+// l'utilisateur paie) sans une preuve lue chez Leboncoin pour SON compte ») LE CIRCUIT DU MUR « VALIDER ET PAYER ».
+// La preuve du serveur (platform_fields.compte_pro) vient d'autres lectures (usage_logs des ventes lues sur ce Chrome,
+// erreurs d'autres jobs) : elle ne dit pas qui est connecté à Leboncoin au moment du dépôt. Au mur, le type de la
+// SESSION est donc toujours lu (une requête, account/v2/members/me/account) et il l'emporte :
+//   · « individual » → particulier (règle d'avant : pack photos, annonce par annonce), même si le serveur dit pro
+//     ou si le formulaire portait un champ pro (contradiction notée) ;
+//   · tout autre type lu → circuit pro ;
+//   · rien de lisible → le formulaire pro vu sur ce dépôt (general_sales_condition / custom_ref), puis la preuve du
+//     serveur, comme avant ; sans aucune des deux : particulier.
+// `source` part dans lbc_depot.type_compte_source. Pur (joué par scripts/lbc-forfait-pro-selftest.mjs).
+function decisionMurProLbc({ compteProServeur = false, formulairePro = false, typeLu = null } = {}) {
+  const t = String(typeLu ?? "").trim().toLowerCase();
+  if (t) {
+    const contredit = t === "individual" && (compteProServeur === true || formulairePro === true);
+    return { pro: t !== "individual", source: "session", contredit };
+  }
+  if (formulairePro === true) return { pro: true, source: "formulaire", contredit: false };
+  if (compteProServeur === true) return { pro: true, source: "serveur", contredit: false };
+  return { pro: false, source: null, contredit: false };
+}
+// ⟦mur-pro:fin⟧
+
 // (29/10) Ce que la page du dépôt montre quand le wizard n'avance pas : ses titres, les clés des critères
 // affichés et les boutons — de quoi savoir, au prochain cas, sur quelle étape Leboncoin s'est arrêté. Borné.
 function pageWizardLbc() {
@@ -4447,9 +4482,10 @@ async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, {
     const estMarqueConsole = fieldName === "marque" && marqueConsole(labelSelector);
     const marquePreRemplieNonCitee = fieldName === "marque" && !estMarqueConsole && !!prefilled
       && !estValeurGenerique(prefilled) && !marqueCiteeDansLArticle(prefilled);
+    // (29/10) Marque : le pré-rempli ÉGAL à la nôtre (marquesEgales : « ChicMe » = « Chic Me ») convient aussi.
     const prefilledConvient = prefilled && (etatExact
       ? etatLeboncoinExactParmi(rawList, [prefilled]) != null
-      : prefilledMatchesTarget(prefilled, rawValue));
+      : prefilledMatchesTarget(prefilled, rawValue) || (fieldName === "marque" && marquesEgales(prefilled, rawValue)));
     if (prefilledConvient) {
       const note = `${fieldName}: pré-rempli LBC "${prefilled}" conservé (matche "${rawValue}")`;
       console.log(`[leboncoin] ${note}`);
@@ -4587,21 +4623,26 @@ async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, {
     //     201 s'en sortent parce que Leboncoin a lui-même pré-rempli la
     //     marque : typeInto VIDE le champ avant de taper, une frappe qui
     //     échouerait ferait donc perdre un pré-rempli correct. On ne touche
-    //     qu'un champ VIDE.
+    //     qu'un champ VIDE. (29/10) Sauf la MARQUE pré-remplie ≠ la nôtre :
+    //     voie à part plus bas (poserMarqueParRechercheLbc), qui remet le
+    //     pré-rempli quand la recherche ne trouve rien.
     //  2. Correspondance EXACTE seulement (aucune cascade, aucun repli
     //     générique) : taper « Zar » rend « Ana Alcazar, Azzaro, Rene Lezard,
     //     Zara » — prendre la première serait catastrophique. Rien d'exact,
     //     on efface la frappe et on saute le champ, comme avant.
     //  3. Attente BORNÉE (2,5 s) : un menu muet ne fige jamais la publication.
     if (rechercheParFrappe && !prefilled && menu && !menu.querySelector(optionSelector)?.textContent?.trim()) {
+      // (29/10, point 4.4) Le menu propre du champ est RELU à chaque lecture (menuDuChampLbc) : 594 recherches
+      // depuis le 07/09 sur le nœud pris avant la frappe, 0 marque trouvée, 0 « Autre » trouvé (Oakley, Celio…).
+      const menuVif = () => menuDuChampLbc(input) ?? menu;
       await typeInto(input, String(rawValue));
-      for (let i = 0; i < 25 && !menu.querySelector(optionSelector)?.textContent?.trim(); i++) {
+      for (let i = 0; i < 25 && !menuVif().querySelector(optionSelector)?.textContent?.trim(); i++) {
         await sleep(100);
       }
       const cible = normalizeFuzzy(rawValue);
       // (18/10) La marque : égalité tolérante (casse, espaces, ponctuation, accents).
       const estMarqueReelle = fieldName === "marque" && !estValeurGenerique(rawValue);
-      const exact = [...menu.querySelectorAll(optionSelector)]
+      const exact = [...menuVif().querySelectorAll(optionSelector)]
         .map((el) => ({ el, label: el.textContent.trim() }))
         .find((o) => (estMarqueReelle ? marquesEgales(o.label, rawValue) : normalizeFuzzy(o.label) === cible));
       if (exact) {
@@ -4618,10 +4659,10 @@ async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, {
       if (estMarqueReelle) {
         MARQUE_HORS_LISTE = String(rawValue);
         await typeInto(input, "Autre");
-        for (let i = 0; i < 25 && !menu.querySelector(optionSelector)?.textContent?.trim(); i++) {
+        for (let i = 0; i < 25 && !menuVif().querySelector(optionSelector)?.textContent?.trim(); i++) {
           await sleep(100);
         }
-        const autre = [...menu.querySelectorAll(optionSelector)]
+        const autre = [...menuVif().querySelectorAll(optionSelector)]
           .map((el) => ({ el, label: el.textContent.trim() }))
           .find((o) => /^(autre|autres|autremarque|autresmarques)$/.test(cleMarqueExacte(o.label)));
         if (autre) {
@@ -4636,11 +4677,12 @@ async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, {
       }
       // Rien d'exact : on retire la frappe pour ne pas laisser un texte
       // parasite dans un champ qui n'accepte que ses propres options.
+      const diagMenu = diagMenuRechercheLbc(input); // avant d'effacer : le menu tel que la recherche l'a laissé
       await typeInto(input, "");
       document.body.click();
       await humanPause();
-      const vues = [...menu.querySelectorAll(optionSelector)].map((o) => o.textContent.trim()).filter(Boolean).slice(0, 12);
-      const note = `${fieldName}: « ${rawValue} » sans correspondance EXACTE dans la recherche Leboncoin — champ laissé vide (jamais la valeur la plus proche). Propositions vues: ${JSON.stringify(vues)}`;
+      const vues = [...menuVif().querySelectorAll(optionSelector)].map((o) => o.textContent.trim()).filter(Boolean).slice(0, 12);
+      const note = `${fieldName}: « ${rawValue} » sans correspondance EXACTE dans la recherche Leboncoin — champ laissé vide (jamais la valeur la plus proche). Propositions vues: ${JSON.stringify(vues)}${vues.length ? "" : ` (${diagMenu})`}`;
       console.warn(`[leboncoin] ⚠️ ${note}`);
       warnings.push(note);
       VALEURS_NON_RECONNUES[fieldName] = String(rawValue);
@@ -4656,6 +4698,12 @@ async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, {
         ? trouverOptionMarqueExacte(scope, optionSelector, rawValue)
         : findOptionCascade(scope, optionSelector, rawValue, { sizeField, composants });
     let valeurPosee = rawValue;
+    // (29/10, point 4.4 — ⟦marque-recherche⟧) Marque pré-remplie par Leboncoin ≠ la nôtre, absente du menu ouvert
+    // (vide tant qu'on ne tape pas, ou partiel) : notre marque est TAPÉE, puis « Autre » si l'article ne nomme pas le
+    // pré-rempli ; le pré-rempli ne reste que si rien n'est trouvé. Jamais de « hors liste » sans recherche relue.
+    if (!match && rechercheParFrappe && fieldName === "marque" && !estMarqueConsole && prefilled && menu) {
+      return await poserMarqueParRechercheLbc({ fieldName, input, optionSelector, notre: String(rawValue), prefilled, warnings });
+    }
     // (15/10, P8 — Ornella 495e9ffc « Canon ») LA MARQUE est une exception à la
     // règle du pré-rempli (13/08, établie sur Type/Produit) : une marque devinée
     // par Leboncoin qui n'est PAS celle de l'article est fausse — conservée, elle
@@ -4663,6 +4711,8 @@ async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, {
     // différent : l'option générique « Autre » si la liste l'offre (vrai : une
     // autre marque) — jamais « Sans marque » (l'article en a une). Sans « Autre »
     // visible, le pré-rempli reste (comportement d'avant) et le journal le dit.
+    // (29/10) Sur un champ Marque à RECHERCHE, ce cas est tranché plus haut par une vraie recherche
+    // (poserMarqueParRechercheLbc) ; ce repli ne joue plus que sur un menu sans recherche.
     const marqueDevineeFausse = fieldName === "marque" && !estMarqueConsole && prefilled
       && !prefilledMatchesTarget(prefilled, rawValue) && !marqueCiteeDansLArticle(prefilled);
     if (!match && (!prefilled || marqueDevineeFausse)) {
@@ -4761,6 +4811,117 @@ async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, {
     return false;
   }
 }
+
+// ⟦marque-recherche-gestes:début⟧
+// ── LES GESTES DU CHAMP MARQUE À RECHERCHE (29/10, point 4.4 — décision : ⟦marque-recherche⟧) ──────────────
+// Le menu propre du champ est RELU à chaque lecture (aria-controls / aria-owns de l'input) : un menu re-rendu
+// après la frappe n'est jamais lu sur l'ancien nœud. Mesuré en base avant ce correctif : depuis le 07/09, 594
+// recherches par frappe (champ vide), 0 marque trouvée et 0 « Autre » trouvé, y compris Oakley, Celio, Burberry ;
+// leur « Propositions vues: [] » était lu après effacement : la note dit désormais l'état du menu avant.
+function menuDuChampLbc(input) {
+  const id = input?.getAttribute?.("aria-controls") || input?.getAttribute?.("aria-owns");
+  return id ? document.getElementById(id) : null;
+}
+/** Ce que montre le menu quand la recherche reste muette (lecture pure, sans layout) : de quoi trancher au
+ *  prochain cas entre un menu re-rendu ailleurs, une liste non dessinée (fenêtre minimisée) et une vraie absence. */
+function diagMenuRechercheLbc(input) {
+  try {
+    const id = input.getAttribute("aria-controls") || input.getAttribute("aria-owns") || "";
+    const m = id ? document.getElementById(id) : null;
+    const listes = document.querySelectorAll('[role="listbox"]').length;
+    return `menu ${id ? `« ${id} »` : "sans id"} ${m ? `trouvé (${m.childElementCount} enfant(s), texte « ${m.textContent.trim().slice(0, 60)} »)` : "introuvable"}`
+      + ` · listbox dans la page : ${listes} · champ « ${String(input.value ?? "").slice(0, 40)} »`;
+  } catch { return "menu illisible"; }
+}
+/** Tape `valeur` (typeInto vide le champ d'abord) et relit les propositions du menu propre du champ : attente
+ *  bornée 2,5 s, rendue dès que la liste est stable 300 ms. Rend [{ el, label }] (vide = rien relu). */
+async function taperEtLireRechercheLbc(input, valeur, optionSelector) {
+  await typeInto(input, String(valeur));
+  let opts = [], signature = null, depuis = Date.now();
+  for (let i = 0; i < 25; i++) {
+    const m = menuDuChampLbc(input);
+    opts = m ? [...m.querySelectorAll(optionSelector)].map((el) => ({ el, label: el.textContent.trim() })).filter((o) => o.label) : [];
+    const sig = opts.map((o) => o.label).join("|");
+    if (sig !== signature) { signature = sig; depuis = Date.now(); }
+    else if (opts.length && Date.now() - depuis >= 300) break;
+    await sleep(100);
+  }
+  return opts;
+}
+/** Clique l'option, relit le contrôle ; second geste (séquence pointer) si le premier n'a pas pris. */
+async function choisirOptionRechercheLbc(input, option) {
+  await humanPause();
+  option.el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await humanPause();
+  if ((await relireCombobox(input, option.label)).ok) return true;
+  if (option.el.isConnected) { realClick(option.el); await humanPause(); }
+  return (await relireCombobox(input, option.label)).ok;
+}
+/**
+ * Pré-rempli de Leboncoin ≠ notre marque, sur le champ Marque à recherche : notre marque tapée, puis « Autre »
+ * (pré-rempli que l'article ne nomme pas), puis le pré-rempli remis. Rend true si le champ porte une valeur.
+ */
+async function poserMarqueParRechercheLbc({ fieldName, input, optionSelector, notre, prefilled, warnings }) {
+  const prefilledCite = marqueCiteeDansLArticle(prefilled);
+  const base = { notre, prefilled, prefilledCite };
+  let d = decisionMarqueRechercheLbc(base);
+  let vues = await taperEtLireRechercheLbc(input, d.valeur, optionSelector);
+  const vuesNotre = vues.map((o) => o.label);
+  d = decisionMarqueRechercheLbc({ ...base, vuesNotre });
+  let vuesAutre = null;
+  if (d.geste === "taper") {
+    vues = await taperEtLireRechercheLbc(input, d.valeur, optionSelector);
+    vuesAutre = vues.map((o) => o.label);
+    d = decisionMarqueRechercheLbc({ ...base, vuesNotre, vuesAutre });
+  }
+  const vuesDites = JSON.stringify([...new Set([...vuesNotre, ...(vuesAutre ?? [])])].slice(0, 12));
+  if (d.geste === "poser") {
+    const option = vues.find((o) => o.label === d.option);
+    if (option && await choisirOptionRechercheLbc(input, option)) {
+      if (d.marqueDansDescription) MARQUE_HORS_LISTE = String(notre);
+      const note = d.autre
+        ? `${fieldName}: pré-rempli LBC "${prefilled}" remplacé — « ${notre} » absent de la recherche Leboncoin (propositions vues: ${vuesDites}) → « ${option.label} »${d.marqueDansDescription ? ", la marque est écrite dans la description" : ""} (${d.motif})`
+        : `${fieldName}: pré-rempli LBC "${prefilled}" remplacé par « ${option.label} », trouvé par recherche (le menu de ce champ est vide tant qu'on ne tape pas)`;
+      console.warn(`[leboncoin] ≈ ${note}`);
+      warnings.push(note);
+      return true;
+    }
+    const note = `${fieldName}: option « ${d.option} » de la recherche cliquée mais NON retenue par le contrôle — le pré-rempli "${prefilled}" est remis`;
+    console.warn(`[leboncoin] ⚠️ ${note}`);
+    warnings.push(note);
+  }
+  // Le pré-rempli reste : la frappe l'a peut-être effacé. Le champ referme d'abord ; s'il ne le montre plus, il est
+  // retapé et choisi à l'identique. Introuvable → champ vidé (jamais un texte tapé laissé dans le champ).
+  const constat = d.geste === "poser"
+    ? "option non retenue"
+    : d.muette ? `recherche muette — ${d.motif} (${diagMenuRechercheLbc(input)})`
+      : `« ${notre} » hors liste (propositions vues: ${vuesDites}) — ${d.motif}`;
+  document.body.click();
+  await humanPause();
+  const remis = async () => {
+    if (marquesEgales(input.value, prefilled)) return true;
+    const opts = await taperEtLireRechercheLbc(input, prefilled, optionSelector);
+    const o = opts.find((x) => marquesEgales(x.label, prefilled));
+    if (o && await choisirOptionRechercheLbc(input, o)) { document.body.click(); await humanPause(); return true; }
+    return false;
+  };
+  if (await remis()) {
+    if (d.geste !== "poser" && d.marqueDansDescription) MARQUE_HORS_LISTE = String(notre);
+    const note = `${fieldName}: pré-rempli LBC "${prefilled}" CONSERVÉ — ${constat}${d.geste !== "poser" && d.marqueDansDescription ? " ; la marque est écrite dans la description" : ""}`;
+    console.log(`[leboncoin] ${note}`);
+    warnings.push(note);
+    return true;
+  }
+  await typeInto(input, "");
+  document.body.click();
+  await humanPause();
+  const note = `${fieldName}: pré-rempli LBC "${prefilled}" effacé par la recherche et introuvable à la relecture — champ laissé vide (${constat})`;
+  console.warn(`[leboncoin] ⚠️ ${note}`);
+  warnings.push(note);
+  VALEURS_NON_RECONNUES[fieldName] = String(notre);
+  return false;
+}
+// ⟦marque-recherche-gestes:fin⟧
 
 // ── Univers (critère OBLIGATOIRE du rayon Mode) ──────────────────────────────
 // "Veuillez choisir un univers de vêtement" bloque le passage à l'aperçu :
@@ -6276,6 +6437,67 @@ function trouverOptionMarqueExacte(root, optionSelector, text) {
 // comparable (accents, apostrophes, casse) — on ne réécrit jamais avec.
 const VALEUR_GENERIQUE_RE = /^(autres?|sans marque|non renseignee?|ne s'applique pas|inconnue?|indeterminee?)$/;
 const estValeurGenerique = (v) => VALEUR_GENERIQUE_RE.test(normalizeFuzzy(v));
+
+// ⟦marque-recherche:début⟧ (29/10, point 4.4 — boncoin59300, dépôts du 26/10 3295898405 « manteau fourrures » et
+// 3295940657 « Air Jordan MA2 ») LE CHAMP MARQUE À RECHERCHE QUAND LEBONCOIN A PRÉ-REMPLI UNE AUTRE MARQUE.
+// Le menu de ce champ est vide tant qu'on ne tape pas, et la frappe n'avait lieu que sur un champ VIDE : avec un
+// pré-rempli différent, « Autre » était cherché dans le menu vide, le pré-rempli GARDÉ et notre marque dite « hors
+// liste » sans aucune recherche (« Options: [] » dans les deux jobs) — « Vintage Dressing » posé sur le manteau
+// « Fourrures D.S Paris », « Nike » gardé alors que « Jordan » est dans la liste de Leboncoin. Règle, pour tout compte :
+//   1. notre marque est TAPÉE dans la recherche ; l'égalité exacte (marquesEgales) la pose ;
+//   2. sinon, si l'article (titre, description) ne nomme pas le pré-rempli : « Autre » est tapé et choisi, la vraie
+//      marque part dans la description (MARQUE_HORS_LISTE) ;
+//   3. sinon le pré-rempli reste (remis s'il a été effacé par la frappe).
+// « hors liste » ne se dit qu'après une recherche qui a RÉPONDU (au moins une proposition relue) ; une recherche
+// muette se dit muette et ne conclut rien sur la marque. Sans pré-rempli : « Autre » pour une vraie marque seulement
+// (inchangé). Décision PURE (jouée par scripts/champs-lbc-etat-marque-selftest.mjs) ; les gestes sont dans
+// poserMarqueParRechercheLbc.
+const LBC_OPTION_AUTRE_RE = /^(autre|autres|autremarque|autresmarques)$/;
+const estOptionAutreLbc = (label) => LBC_OPTION_AUTRE_RE.test(cleMarqueExacte(label));
+/** Une proposition de la recherche EST-elle notre valeur ? Vraie marque : égalité tolérante (casse, espaces,
+ *  ponctuation, accents) ; valeur générique (« Sans marque ») : forme comparable. Jamais une voisine. */
+function optionEgaleMarqueLbc(label, valeur) {
+  return estValeurGenerique(valeur) ? normalizeFuzzy(label) === normalizeFuzzy(valeur) : marquesEgales(label, valeur);
+}
+/**
+ * Le geste suivant sur le champ Marque à recherche (pur).
+ * @param {{notre:string, prefilled?:string|null, prefilledCite?:boolean, vuesNotre?:string[]|null, vuesAutre?:string[]|null}} p
+ *   vuesNotre / vuesAutre : propositions relues après la frappe de notre marque / de « Autre » (null = pas encore tapé).
+ * @returns {{geste:"taper", valeur:string}
+ *   | {geste:"poser", option:string, autre:boolean, marqueDansDescription:boolean, motif:string}
+ *   | {geste:"garder"|"vider", horsListe:boolean, muette:boolean, marqueDansDescription:boolean, motif:string}}
+ *   « garder » : le pré-rempli reste ; « vider » : pas de pré-rempli, le champ reste vide (comme avant).
+ *   Un pré-rempli générique (« Autre », « Sans marque ») n'est jamais une marque que l'article nomme.
+ */
+function decisionMarqueRechercheLbc({ notre, prefilled = null, prefilledCite = false, vuesNotre = null, vuesAutre = null }) {
+  const valeur = String(notre ?? "").trim();
+  const reelle = !estValeurGenerique(valeur);
+  const pre = String(prefilled ?? "").trim();
+  const cite = !!pre && !!prefilledCite && !estValeurGenerique(pre);
+  if (!Array.isArray(vuesNotre)) return { geste: "taper", valeur };
+  const exacte = vuesNotre.find((l) => optionEgaleMarqueLbc(l, valeur));
+  if (exacte) return { geste: "poser", option: exacte, autre: false, marqueDansDescription: false, motif: "trouvée par la recherche" };
+  // « Autre » : jamais à la place d'un pré-rempli que l'article nomme ; sans pré-rempli, pour une vraie marque seulement.
+  const tenterAutre = pre ? !cite : reelle;
+  let vuesA = Array.isArray(vuesAutre) ? vuesAutre : null;
+  if (tenterAutre) {
+    if (estOptionAutreLbc(valeur)) vuesA = vuesNotre; // notre valeur EST « Autre » : déjà cherchée
+    else if (!vuesA) return { geste: "taper", valeur: "Autre" };
+    const autre = vuesA.find((l) => estOptionAutreLbc(l));
+    if (autre) {
+      return { geste: "poser", option: autre, autre: true, marqueDansDescription: reelle,
+        motif: pre ? `l'article ne nomme pas « ${pre} »` : "notre marque est absente de la recherche" };
+    }
+  }
+  const repondu = vuesNotre.length > 0 || (vuesA?.length ?? 0) > 0;
+  const motif = !repondu
+    ? "la recherche n'a rendu aucune proposition : rien n'est conclu sur la marque"
+    : cite ? `l'article nomme « ${pre} »`
+      : tenterAutre ? "ni notre marque ni « Autre » dans la recherche" : "notre valeur est absente de la recherche";
+  // Un « Autre » pré-rempli qui reste : la vraie marque part quand même dans la description.
+  return { geste: pre ? "garder" : "vider", horsListe: repondu, muette: !repondu, marqueDansDescription: reelle && !!pre && estOptionAutreLbc(pre), motif };
+}
+// ⟦marque-recherche:fin⟧
 
 // ── Forme comparable d'une ADRESSE (2026-09-05, santanalily010) ─────────────
 // La forme comparable générale GARDE l'apostrophe ; or « 56b rue dalger »

@@ -10,6 +10,8 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { fusionnerReglages } from './reglagesPlateformes';
+import { consignesValides } from './consignesRedaction';
+import { strategieValide } from './strategiePrix';
 
 export const CLE_REGLAGE_REDACTION = 'redaction';
 
@@ -19,7 +21,23 @@ export function redactionALaDemandeDesReglages(ps) {
   return Boolean(r && typeof r === 'object' && r.a_la_demande === true);
 }
 
-const memoire = new Map(); // userId → { aLaDemande, lue, promesse }
+// (29/10, lot B 1.2-1.4) Le MÊME objet `redaction` porte aussi les consignes du vendeur (consignes), sa stratégie de
+// prix (strategie_prix) et « ouvrir l'annonce dès la fin de l'analyse » (ouvrir_annonce_apres_scan) : une lecture,
+// une mémoire, pour tous les écrans.
+/** Tous les réglages de rédaction d'un objet platform_settings (défauts = comportement d'avant). */
+export function reglagesRedactionDesReglages(ps) {
+  const r = ps && typeof ps === 'object' && ps[CLE_REGLAGE_REDACTION] && typeof ps[CLE_REGLAGE_REDACTION] === 'object'
+    ? ps[CLE_REGLAGE_REDACTION] : {};
+  return {
+    aLaDemande: r.a_la_demande === true,
+    consignes: consignesValides(r.consignes),
+    strategiePrix: strategieValide(r.strategie_prix),
+    ouvrirApresScan: r.ouvrir_annonce_apres_scan === true,
+  };
+}
+const DEFAUTS = Object.freeze(reglagesRedactionDesReglages(null));
+
+const memoire = new Map(); // userId → { aLaDemande, reglages, lue, promesse }
 const abonnes = new Set();
 const prevenir = () => { for (const f of abonnes) { try { f(); } catch { /* écran démonté */ } } };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -33,13 +51,14 @@ function lire(userId) {
       const { data, error } = await supabase.from('profiles').select('platform_settings').eq('id', userId).maybeSingle();
       const deja = memoire.get(userId);
       if (deja?.lue) return; // un choix fait à l'écran pendant la lecture l'emporte
-      memoire.set(userId, { aLaDemande: error ? false : redactionALaDemandeDesReglages(data?.platform_settings), lue: !error, promesse: null });
+      const reglages = error ? DEFAUTS : reglagesRedactionDesReglages(data?.platform_settings);
+      memoire.set(userId, { aLaDemande: reglages.aLaDemande, reglages, lue: !error, promesse: null });
     } catch {
-      memoire.set(userId, { aLaDemande: false, lue: false, promesse: null });
+      memoire.set(userId, { aLaDemande: false, reglages: DEFAUTS, lue: false, promesse: null });
     }
     prevenir();
   })();
-  memoire.set(userId, { aLaDemande: false, lue: false, promesse });
+  memoire.set(userId, { aLaDemande: false, reglages: DEFAUTS, lue: false, promesse });
 }
 
 /** Lecture synchrone (false tant que la base n'a pas répondu : le défaut, inchangé). */
@@ -47,15 +66,70 @@ export function redactionALaDemandeConnue(userId) {
   return Boolean(userId && memoire.get(userId)?.aLaDemande);
 }
 
+/** (29/10, lot B) Tous les réglages de rédaction connus (les défauts tant que la base n'a pas répondu). */
+export function reglagesRedactionConnus(userId) {
+  return (userId && memoire.get(userId)?.reglages) || DEFAUTS;
+}
+
 /** Retient le réglage ; l'écran suit tout de suite. Rend { ok }. */
 export async function enregistrerRedactionALaDemande(userId, on) {
-  if (userId) memoire.set(userId, { aLaDemande: Boolean(on), lue: true, promesse: null });
+  if (userId) {
+    const avant = reglagesRedactionConnus(userId);
+    memoire.set(userId, { aLaDemande: Boolean(on), reglages: { ...avant, aLaDemande: Boolean(on) }, lue: true, promesse: null });
+  }
   prevenir();
   if (!userId || !UUID.test(String(userId))) return { ok: false };
   const { error } = on
     ? await fusionnerReglages([CLE_REGLAGE_REDACTION], { a_la_demande: true })
     : await fusionnerReglages([CLE_REGLAGE_REDACTION], null, ['a_la_demande']);
   return { ok: !error };
+}
+
+/**
+ * (29/10, lot B 1.2-1.4) Retient une partie des réglages de rédaction : { consignes?, strategiePrix?, ouvrirApresScan? }.
+ * Seules les clés données changent (platform_settings_fusionner) ; des consignes vides sont RETIRÉES, jamais écrites
+ * vides. Rend { ok }.
+ */
+export async function enregistrerReglagesRedaction(userId, partiel = {}) {
+  const avant = reglagesRedactionConnus(userId);
+  const suivant = { ...avant };
+  const patch = {};
+  const supprimer = [];
+  if ('consignes' in partiel) {
+    suivant.consignes = consignesValides(partiel.consignes);
+    if (Object.keys(suivant.consignes).length) patch.consignes = suivant.consignes; else supprimer.push('consignes');
+  }
+  if ('strategiePrix' in partiel) {
+    suivant.strategiePrix = strategieValide(partiel.strategiePrix);
+    patch.strategie_prix = suivant.strategiePrix;
+  }
+  if ('ouvrirApresScan' in partiel) {
+    suivant.ouvrirApresScan = partiel.ouvrirApresScan === true;
+    if (suivant.ouvrirApresScan) patch.ouvrir_annonce_apres_scan = true; else supprimer.push('ouvrir_annonce_apres_scan');
+  }
+  if (userId) memoire.set(userId, { aLaDemande: suivant.aLaDemande, reglages: suivant, lue: true, promesse: null });
+  prevenir();
+  if (!userId || !UUID.test(String(userId))) return { ok: false };
+  // Une consigne retirée est une clé SUPPRIMÉE (jamais un objet vide écrit) : seules les clés nommées bougent.
+  const { error } = await fusionnerReglages([CLE_REGLAGE_REDACTION], Object.keys(patch).length ? patch : null, supprimer);
+  return { ok: !error };
+}
+
+/** (29/10, lot B) { reglages, lue, enregistrer(partiel) } — tous les réglages de rédaction. */
+export function useReglagesRedaction(userId) {
+  const [, setTic] = useState(0);
+  useEffect(() => {
+    const f = () => setTic((n) => n + 1);
+    abonnes.add(f);
+    lire(userId);
+    return () => { abonnes.delete(f); };
+  }, [userId]);
+  const e = userId ? memoire.get(userId) : null;
+  return {
+    reglages: e?.reglages || DEFAUTS,
+    lue: Boolean(e?.lue),
+    enregistrer: (partiel) => enregistrerReglagesRedaction(userId, partiel),
+  };
 }
 
 /** { aLaDemande, lue, choisir(on) } */

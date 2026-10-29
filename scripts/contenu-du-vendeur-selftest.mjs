@@ -232,9 +232,12 @@ console.log("D. LES CHEMINS PORTENT LA RÈGLE (lecture du code)");
     "Lot : l'article importé pas encore lu ne se prépare pas, il attend « origine » avec sa phrase");
   ok(/n\[id\] = \{ \.\.\.n\[id\], phase: "attente", raison: null \}/.test(lot), "Lot : il repart tout seul dès que l'annonce d'origine est lue");
   const gl = lire("supabase/functions/generate-listing/index.ts");
-  ok(/const venuDUnReleve = origineItem\.startsWith\("releve"\)/.test(gl) && /const venuDuDressing = origineItem === "vinted_sync"/.test(gl),
-    "generate-listing : un texte relevé ou du dressing est celui du vendeur");
-  ok((gl.match(/texteDuVendeur\("(description|titre)_source"\) \|\| venuDUnReleve \|\| venuDuDressing/g) ?? []).length === 2,
+  // (29/10, lot B partie 2) Une seule règle, partagée avec l'écran : src/utils/sourceDuTexte.js (relevé, dressing,
+  // marqueur du vendeur, et toute fiche du stock sans marque de FillSell).
+  ok(/import \{ champDuVendeur \} from "\.\.\/\.\.\/\.\.\/src\/utils\/sourceDuTexte\.js"/.test(gl) && /const ligneDuStock = !item_data;/.test(gl)
+      && /champDuVendeur\(item as Record<string, unknown>, cle\.replace\(\/_source\$\/, ""\), \{ ligneDuStock \}\)/.test(gl),
+    "generate-listing : un texte relevé, du dressing ou tapé (fiche du stock sans marque de FillSell) est celui du vendeur");
+  ok((gl.match(/texteDuVendeur\("(description|titre)_source"\) \|\| body\.(description|titre)_verrouille(e)? === true/g) ?? []).length === 2,
     "generate-listing : description ET titre gardés (jamais réécrits par l'IA)");
   const bg = lire("chrome-extension/background.js");
   const lecteur = bg.slice(bg.indexOf("async function lireAnnoncesOrigineEnAttente"), bg.indexOf("// Nombre de jobs que le serveur a retenus"));

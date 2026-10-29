@@ -38,6 +38,7 @@
 // annoncé qu'il sait vivre avec : `fiche_serveur: true` dans le corps.
 // Sans le drapeau, comportement d'avant ce lot, à l'octet près.
 // ═══════════════════════════════════════════════════════════════════════════
+import { marqueursDeNaissance } from "../../../src/utils/sourceDuTexte.js";
 
 /**
  * Le client sait-il lire la fiche que le serveur s'apprête à écrire ?
@@ -105,6 +106,12 @@ export type ArticleACreer = {
   photos?: string[] | null;
   /** Sac d'attributs déjà construit par attributsLus(). */
   attributs?: Record<string, unknown> | null;
+  /**
+   * (29/10, lot B partie 2) Qui a écrit le titre et la description : « lens » (le scan, défaut), « manuel » (tapés
+   * par la personne avant l'enregistrement). Posé en marqueur titre_source / description_source : sans lui, une
+   * fiche du stock sans marqueur est désormais lue comme le texte du VENDEUR (src/utils/sourceDuTexte.js).
+   */
+  sourceTexte?: "lens" | "manuel" | null;
 };
 
 /**
@@ -143,7 +150,9 @@ export async function creerArticlePourFiche(admin: Admin, a: ArticleACreer): Pro
     selling_fees: 0,
     quantite: 1,
     ...(Array.isArray(a.photos) && a.photos.length ? { photos: a.photos } : {}),
-    ...(a.attributs && Object.keys(a.attributs).length ? { attributs: a.attributs } : {}),
+    // (29/10, lot B partie 2) Le texte porte sa source dès la naissance de la fiche : « lens » pour ce que le scan a
+    // écrit (notre brouillon, l'IA garde la main), « manuel » pour ce que la personne a tapé (jamais réécrit).
+    attributs: { ...(a.attributs ?? {}), ...marqueursDeNaissance({ titre: titreBrut, description: a.description }, a.sourceTexte ?? "lens") },
   };
   try {
     const { data, error } = await admin.from("inventaire").insert([row]).select("id").single();

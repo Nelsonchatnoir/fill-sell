@@ -35,7 +35,7 @@
 //    contexte est monté une fois par ReglagesPage.
 import {
   CreditCard, Link2, MapPin, Truck, Repeat, User, Globe, Coins,
-  LifeBuoy, Bug, FileText, Puzzle, ShieldCheck, ListChecks,
+  LifeBuoy, Bug, FileText, Puzzle, ShieldCheck, ListChecks, Sparkles,
 } from 'lucide-react';
 
 // ── QUI VOIT L'ARBITRAGE DU CATALOGUE ──────────────────────────────────────
@@ -197,6 +197,14 @@ export const GROUPES = [
     id: 'preferences',
     intitule: (T) => T.gPreferences,
     entrees: [
+      {
+        // (29/10, lot B 1.1-1.4 — promesses XEWER) Titre/description/prix à la demande, mes consignes pour l'IA,
+        // ma stratégie de prix, ouvrir l'annonce dès la fin de l'analyse Lens.
+        id: 'redaction',
+        icone: Sparkles,
+        libelle: (T) => T.redactionConsignes,
+        ouvre: 'redaction',
+      },
       {
         id: 'profil',
         icone: User,

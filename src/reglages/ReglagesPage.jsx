@@ -50,6 +50,7 @@ import SousPagePortDepop from './SousPagePortDepop';
 import SousPageBordereaux from './SousPageBordereaux';
 import { usePortDepopParDefaut, formaterPort } from '../utils/fraisPortDepop';
 import SousPagePreferences from './SousPagePreferences';
+import SousPageRedaction from './SousPageRedaction';
 import SousPageCompte from './SousPageCompte';
 import SousPageCatalogueQuarantaine from './SousPageCatalogueQuarantaine';
 
@@ -72,6 +73,8 @@ const SOUS_PAGES = {
   'port-depop':  { titre: (T) => T.portDepop,      Composant: SousPagePortDepop },
   bordereaux:    { titre: (T) => T.bordereauAuto,  Composant: SousPageBordereaux },
   preferences:   { titre: (T) => T.gPreferences,   Composant: SousPagePreferences },
+  // (29/10, lot B 1.1-1.4 — promesses XEWER) Rédaction : mode, consignes pour l'IA, stratégie de prix.
+  redaction:     { titre: (T) => T.redactionConsignes, Composant: SousPageRedaction },
   compte:        { titre: (T) => T.gCompte,        Composant: SousPageCompte },
   'catalogue-quarantaine': { titre: (T) => T.champsPlateformes, Composant: SousPageCatalogueQuarantaine },
 };

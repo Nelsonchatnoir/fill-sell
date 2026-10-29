@@ -46,7 +46,8 @@ console.log("3. L'extension ne fait plus attendre l'écran derrière son travail
   const bg = lire("chrome-extension/background.js");
   ok(/jobFlowWaiters\+\+;/.test(bg) && /async function attendreOuCeder\(ms\)/.test(bg), "le verrou compte ceux qui l'attendent ; la lecture de fond cède");
   const i = bg.indexOf("await recoverMissingListingUrls(session)");
-  ok(i > 0 && /if \(jobFlowWaiters > 0 && !majPlanifiee\) \{[\s\S]{0,400}repollApresCycle = true;\s*return;\s*\}\s*$/.test(bg.slice(i - 900, i)), "la maintenance de fond passe après une demande de l'écran");
+  // (29/10, lot B — boucle du poll) Une demande HORS poll seulement (un poll en attente n'est pas l'écran) — repoll-borne.
+  ok(i > 0 && /if \(cederAuxDemandesEnAttente\(\)\) return;\s*$/.test(bg.slice(i - 900, i)) && /attentesHorsPoll\(\)/.test(bg), "la maintenance de fond passe après une demande de l'écran");
   const gpj = lire("supabase/functions/get-pending-jobs/index.ts");
   ok(/let personnePublie = out\.length > 0(?: \|\| syncCommandsAnnonces\.some\(\(c\) => c\.devant\))?;/.test(gpj) && /personnePublie,\n\s*\}\);/.test(gpj), "serveur : aucune lecture de fond servie pendant que la personne publie (toutes versions ≥ 0.6.144)");
 }

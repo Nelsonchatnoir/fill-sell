@@ -106,6 +106,23 @@ export function decisionProgrammee({ enAttente = [], reglage = null, servies = 0
   return { servir: ids[0], retenues: ids.slice(1), motif: ids.length > 1 ? "une_a_la_fois" : null, libres: [] };
 }
 
+/**
+ * (29/10, lot B 4.7) L'ordre de passage des programmées : celles qui PEUVENT partir à ce poll d'abord (échéance
+ * platform_fields.next_action_after venue ou absente), les autres derrière, chacune dans l'ordre de la file. Même
+ * liste, même nombre : le créneau, le plafond et l'espacement ne changent pas. Sans cela, une programmée dont
+ * l'échéance n'est pas venue (restriction Vinted, relance espacée) était choisie, écartée plus bas par la garde de
+ * l'échéance, et bloquait toutes les autres (la servie n'est plus marquée qu'en fin de chaîne, si elle part vraiment).
+ */
+export function ordreProgrammeesPretesDabord(jobs, maintenant = Date.now()) {
+  const liste = Array.isArray(jobs) ? jobs : [];
+  const prete = (j) => {
+    const pf = j && typeof j.platform_fields === "object" && j.platform_fields ? j.platform_fields : {};
+    const t = Date.parse(String(pf.next_action_after ?? ""));
+    return !(Number.isFinite(t) && t > maintenant);
+  };
+  return [...liste.filter(prete), ...liste.filter((j) => !prete(j))];
+}
+
 /** La phrase d'une publication programmée qui attend (jamais une heure). */
 export function messageProgrammee(motif, reglage, lang = "fr") {
   const en = lang === "en";

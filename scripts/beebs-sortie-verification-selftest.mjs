@@ -88,17 +88,56 @@ ok(M.jugerSortieVerificationBeebs(rep, { lectures: M.lecturesDesDepotsBeebs([rep
 
 console.log('\n4. Ce que le job dit, et ce qui s’écrit');
 const m1 = M.messageRefusVerificationBeebs(J29, v3);
-ok(/Beebs a refusé cette annonce à sa vérification \(Beebs ne dit pas pourquoi\)/.test(m1) && /déposée le 25\/10 à 05h58/.test(m1) && /plus « en cours de vérification » le 25\/10 à 06h01/.test(m1)
-  && /Rien n'est en ligne, rien n'est vendu/.test(m1) && /ne compte pas dans tes limites/.test(m1) && /à l'identique serait refusé/.test(m1) && !/relance/i.test(m1),
-  'publication : refusée, motif inconnu, dates (heure de Paris), rien en ligne ni vendu, rendue, jamais « relance »', m1);
+// (29/10, lot B 4.5) Le message vrai, daté : reçue, en vérification à HHhMM le JJ/MM, retirée (plus là à HHhMM le JJ/MM) sans mise en
+// ligne, Beebs ne dit pas pourquoi ; la preuve datée ; jamais « refusée à sa vérification » ni « serait refusé de même ».
+ok(m1.startsWith("Beebs a reçu ton annonce (n° 34229929, en vérification à 05h58 le 25/10), puis l'a retirée de sa vérification sans la mettre en ligne (elle n'y était plus à 06h01 le 25/10) ; Beebs ne dit pas pourquoi.")
+  && /Le relevé fait à 07h00 le 01\/11, qui a lu toutes tes annonces en ligne, ne la montre pas : Beebs n'a jamais mis cette annonce en ligne\./.test(m1)
+  && /Rien n'est en ligne, rien n'est vendu/.test(m1) && /ne compte pas dans tes limites/.test(m1) && !/serait refusé|a refusé|relance/i.test(m1),
+  'publication : reçue, en vérification à 05h58 le 25/10, plus là à 06h01 (deux heures, jamais une durée), preuve datée (heure de Paris), rien en ligne ni vendu, rendue, jamais « refusée » ni « relance »', m1);
 const m2 = M.messageRefusVerificationBeebs(rep, v3);
-ok(/la nouvelle annonce/.test(m2) && /L'ancienne annonce avait été retirée : ton article n'est plus en ligne sur Beebs/.test(m2) && /republication ne compte pas/.test(m2), 'republication : l’ancienne retirée, l’article n’est plus en ligne', m2);
+ok(/^Beebs a reçu ta nouvelle annonce \(n° 34229929/.test(m2) && /L'ancienne annonce avait été retirée : ton article n'est plus en ligne sur Beebs/.test(m2) && /republication ne compte pas/.test(m2), 'republication : l’ancienne retirée, l’article n’est plus en ligne', m2);
 const pfS = M.pfApresSortieVerification(J29, v1, { maintenant: t('2026-10-25T06:00:00Z') });
 ok(pfS.pas_encore_visible?.sortie_constatee_le === v1.sortie_constatee_le && pfS.pas_encore_visible.regle === 'sortie_de_verification_2510' && pfS.pas_encore_visible.depuis === v1.sortie_constatee_le,
   'sortie : marqueur pas_encore_visible daté (l’app dit « Beebs vérifie ton annonce »)');
 const pfR = M.pfApresRefusVerification({ ...J29, platform_fields: { ...J29.platform_fields, sale_signal: 'unavailable', unavailable_since: 'x', pas_encore_visible: pfS.pas_encore_visible } }, v3);
 ok(pfR.refus_verification_beebs?.regle === M.REGLE_SORTIE_VERIFICATION && pfR.refus_verification_beebs.confirmee_le === v3.confirmee_le && !pfR.sale_signal && !pfR.unavailable_since && !pfR.pas_encore_visible
   && pfR.preuve_identifiant_beebs, 'refus : la preuve posée, les signaux de vente et le marqueur retirés, la preuve du dépôt gardée');
+
+// (29/10, lot B 4.6 — XEWER) Relancer un refus prouvé, c'est changer le contenu d'abord : l'empreinte du contenu refusé
+// (titre, description, photos, rayon) est posée au refus ; une relance à l'identique est retenue, une relance modifiée servie.
+console.log('\n4 bis. L’empreinte du contenu refusé (lot B 4.6)');
+const E = await import(pathToFileURL(join(RACINE, 'src/utils/empreinteContenu.js')).href);
+const PHOTOS = [{ url: 'https://x.supabase.co/storage/v1/object/public/listing-photos/u/raw/1792243456064_0.jpg?v=1792243456064', type: 'original' },
+  { url: 'https://x.supabase.co/storage/v1/object/public/listing-photos/u/raw/1792243456064_1.jpg?v=1792243456064', type: 'original' }];
+const RAYON_JV = ['Jeux, jouets et loisirs', 'Multimédia', 'Jeux vidéo'];
+const JC = { ...J29, id: '824ba918', title: '🎮 Conflict: Desert Storm II – Xbox Classics', description: '🎮 Je vends Conflict: Desert Storm II sur Xbox première génération.',
+  photos: PHOTOS, platform_fields: { ...J29.platform_fields, beebsCategoryPath: RAYON_JV } };
+const pfE = M.pfApresRefusVerification(JC, v3);
+const emp = pfE.refus_verification_beebs?.empreinte_contenu;
+ok(typeof emp === 'string' && /^c1:[0-9a-f]{16}$/.test(emp) && emp === E.empreinteContenuDuJob(JC), 'refus : empreinte_contenu posée (titre + description + photos + rayon), la même fonction que l’app et le serveur', String(emp));
+ok(!('empreinte_contenu' in (M.pfApresRefusVerification(J29, v3).refus_verification_beebs ?? {})), 'job lu sans son texte ni ses photos (select de handler-watch d’avant) : aucune empreinte, rien ne serait comparé à faux');
+const refuse = { ...JC, status: 'pending', platform_fields: pfE };
+ok(E.relanceRefusBeebs(refuse)?.verdict === 'meme_contenu', 'relance À L’IDENTIQUE (même titre, description, photos, rayon) → retenue');
+ok(E.relanceRefusBeebs({ ...refuse, description: `${JC.description}\n\n` })?.verdict === 'meme_contenu' && E.relanceRefusBeebs({ ...refuse, title: `  ${JC.title} ` })?.verdict === 'meme_contenu',
+  'un espace ou un retour à la ligne de plus ne change pas l’annonce : toujours retenue');
+ok(E.relanceRefusBeebs({ ...refuse, title: '🎮 Conflict: Desert Storm II – Xbox originale – PAL' })?.verdict === 'contenu_modifie', 'titre modifié → servie');
+ok(E.relanceRefusBeebs({ ...refuse, description: 'Jeu Xbox originale, testé, boîte et notice.' })?.verdict === 'contenu_modifie', 'description modifiée → servie');
+ok(E.relanceRefusBeebs({ ...refuse, photos: [PHOTOS[1], PHOTOS[0]] })?.verdict === 'contenu_modifie' && E.relanceRefusBeebs({ ...refuse, photos: PHOTOS.slice(0, 1) })?.verdict === 'contenu_modifie',
+  'photos réordonnées (autre vignette) ou retirées → servie');
+ok(E.relanceRefusBeebs({ ...refuse, platform_fields: { ...pfE, beebsCategoryPath: ['Jeux, jouets et loisirs', 'Multimédia', 'Consoles de jeux'] } })?.verdict === 'contenu_modifie', 'rayon modifié → servie');
+ok(E.relanceRefusBeebs({ ...refuse, photos: PHOTOS.map((p) => p.url) })?.verdict === 'meme_contenu', 'photos en chaînes ou en objets : la même liste');
+ok(E.relanceRefusBeebs({ id: refuse.id, platform: 'beebs', action: 'publish', title: refuse.title, platform_fields: pfE })?.verdict === 'a_verifier',
+  'job de la liste de l’app (ni description ni photos) : « à vérifier », jamais conclu');
+ok(E.relanceRefusBeebs(J29) === null && E.relanceRefusBeebs({ ...refuse, platform: 'vinted' }) === null
+  && E.relanceRefusBeebs({ ...refuse, platform_fields: { ...pfE, refus_verification_beebs: { ...pfE.refus_verification_beebs, empreinte_contenu: undefined } } }) === null,
+  'sans refus, hors Beebs, ou refus d’avant le 29/10 (sans empreinte) : rien ne change');
+ok(E.relanceRefusBeebs({ ...refuse, platform_fields: { ...pfE, refus_verification_beebs: { ...pfE.refus_verification_beebs, empreinte_contenu: 'c0:0000000000000000' } } })?.verdict === 'contenu_modifie',
+  'empreinte d’une autre version : jamais « la même » (on laisse partir)');
+const mM = E.messageRefusBeebsMemeContenu(refuse);
+ok(/Beebs a refusé cette annonce à sa vérification/.test(mM) && /à l'identique/.test(mM) && /Rien n'a été envoyé à Beebs/.test(mM) && /Change d'abord le texte, les photos ou le rayon/.test(mM) && !/\d+\s*(min|h)\b/.test(mM),
+  'le motif du job retenu : refus, à l’identique, rien envoyé, quoi changer — jamais une durée', mM);
+ok(E.SOURCE_REFUS_BEEBS_MEME_CONTENU === 'refus_beebs_meme_contenu' && E.MESSAGE_BOUTON_REFUS_BEEBS.fr === "Change d'abord le texte, les photos ou le rayon : Beebs refuserait la même annonce",
+  'source et texte du bouton, mot pour mot');
 
 console.log('\n5. Le câblage (handler-watch)');
 const hw = lire('supabase/functions/handler-watch/index.ts');
@@ -111,6 +150,30 @@ ok(/if \(!String\(j\.listing_url \?\? ""\)\.trim\(\)\) continue;/.test(b) && /pe
 ok((b.match(/\.eq\("status", "published"\)\.is\("vu_en_ligne_le", null\)/g) ?? []).length === 2, 'chaque écriture garde l’état lu (publié, jamais vu en ligne)');
 ok(/status: "failed", error: messageRefusVerificationBeebs\(j, v\)/.test(b) && /if \(j\.action === "publish"\) \{\s*const \{ data: ref, error: refErr \} = await supabase\.rpc\("refund_publish_unconfirmed", \{ p_job: j\.id \}\)/.test(b)
   && b.indexOf('status: "failed"') < b.indexOf('supabase.rpc("refund_publish_unconfirmed"'), 'refus : « failed » + message vrai, PUIS la publication rendue (la republication l’est par son déclencheur)');
+// (29/10, lot B 4.6) L'empreinte n'est posée que si handler-watch lit le texte et les photos du dépôt : constat, pas un rouge.
+{
+  const sel = (b.match(/\.select\("([^"]*)"\)\s*\.eq\("platform", "beebs"\)\.in\("action", \["publish", "republish"\]\)\.eq\("status", "published"\)/) ?? [])[1] ?? '';
+  const lit = ['title', 'description', 'photos'].every((c) => new RegExp(`\\b${c}\\b`).test(sel));
+  console.log(lit ? '  ✓ handler-watch lit titre, description et photos des dépôts jugés : l’empreinte est posée au refus'
+    : `  ⚠ handler-watch ne lit pas encore « title, description, photos » des dépôts jugés (select : ${sel || 'introuvable'}) : aucune empreinte posée en prod tant qu'ils n'y sont pas`);
+}
+
+console.log('\n6. Le câblage du refus à l’identique (lot B 4.6 : get-pending-jobs, Stock)');
+const gpj = lire('supabase/functions/get-pending-jobs/index.ts');
+const bg = gpj.slice(gpj.indexOf("UN REFUS BEEBS PROUVÉ NE REPART JAMAIS À L'IDENTIQUE"), gpj.indexOf("UN ARTICLE VENDU N'EST JAMAIS PUBLIÉ NI REPUBLIÉ"));
+ok(/from "\.\.\/\.\.\/\.\.\/src\/utils\/empreinteContenu\.js"/.test(gpj) && bg.length > 200 && /relanceRefusBeebs\(j\)/.test(bg) && /verdict !== "meme_contenu"\) continue/.test(bg),
+  'get-pending-jobs : la fonction de l’app, seulement sur un contenu identique');
+ok(/status: "needs_user", error: messageRefusBeebsMemeContenu\(j\)/.test(bg) && /needs_user_source: SOURCE_REFUS_BEEBS_MEME_CONTENU/.test(bg) && /\.eq\("status", "pending"\)/.test(bg)
+  && /out = out\.filter\(\(j\) => !memeContenu\.has\(String\(j\.id\)\)\)/.test(bg) && !/needsUserAttempts\s*[:=]/.test(bg),
+  'retenue en needs_user « refus_beebs_meme_contenu » (état lu gardé), jamais servie, aucune tentative consommée');
+const st = lire('src/tabs/StockTab.jsx');
+ok(/from '\.\.\/utils\/empreinteContenu\.js'/.test(st) && /refus\?\.verdict === 'meme_contenu'\) return \{ \.\.\.info, memeContenuBeebs: true \}/.test(st)
+  && /if\(r\.memeContenuBeebs\)return\(/.test(st) && /MESSAGE_BOUTON_REFUS_BEEBS\[lang==="en"\?"en":"fr"\]/.test(st),
+  'Stock : le bouton dit « Change d’abord le texte, les photos ou le rayon… » sur un contenu identique');
+const rel = st.slice(st.indexOf('async function relancerJobEchoue'), st.indexOf('async function relancerJobEchoue') + 2500);
+ok(/job\?\.platform === 'beebs'/.test(rel) && /select\('id, platform, action, status, title, description, photos, platform_fields'\)/.test(rel)
+  && /verdictB === 'meme_contenu'\) \{[\s\S]{0,200}?return;/.test(rel) && rel.indexOf("verdictB === 'meme_contenu'") < rel.indexOf("if (mode === 'copie')"),
+  'Stock : la relance (copie comprise) relit le job et ne relance pas un contenu identique');
 
 console.log(`\n${ko ? `✗ ${ko} échec(s)` : '✓ tout est vert'} — ${n} contrôles`);
 process.exit(ko ? 1 : 0);

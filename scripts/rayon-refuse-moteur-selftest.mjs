@@ -44,6 +44,16 @@ const plan = M.rayonRefuseDuJob(horloge);
 verifier(plan?.plateforme === 'vinted' && plan.base.join('>') === 'Enfants>Jeux et jouets', 'Horloge : Vinted, rayon d’origine « Enfants › Jeux et jouets »');
 verifier(M.rayonRefuseDuJob({ ...horloge, status: 'pending' }) === null, 'un job qui ne pose pas la question : pas son cas');
 verifier(M.rayonRefuseDuJob({ ...horloge, platform_fields: { ...horloge.platform_fields, needsUserField: { field_key: 'size' } } }) === null, 'une autre question (taille) : pas son cas');
+// (29/10, lot B 4.1 — mele.marta 2fd83d73) Page italienne : « Électronique » introuvable parmi les racines ITALIENNES.
+// Le rayon (3026) était juste : ce n'est pas un refus, le moteur ne s'en mêle pas.
+const RACINES_IT = ['Accessori', 'Donna', 'Uomo', 'Bambini', 'Casa', 'Elettronica', 'Libri e media', 'Hobby e collezionismo', 'Sport'];
+const marta = { id: '2fd83d73', platform: 'vinted', action: 'publish', status: 'needs_user',
+  platform_fields: { needs_user_source: 'prevol_negatif', categoryPath: ['Électronique', 'Jeux vidéo et consoles', 'Jeux'], vinted_ids: { catalog_id: 3026, status_id: 2 },
+    needsUserField: { field_key: 'categoryLevelChoice', allowed_values: RACINES_IT } } };
+verifier(M.rayonRefuseDuJob(marta) === null, 'racines italiennes (« Sport » commun au français) : pas un refus prouvé → null');
+verifier(M.rayonRefuseDuJob({ ...marta, platform_fields: { ...marta.platform_fields, needsUserField: { field_key: 'categoryLevelChoice', allowed_values: ['Women', 'Men', 'Kids', 'Home'] } } }) === null, 'racines anglaises : pas un refus non plus');
+verifier(M.rayonRefuseDuJob({ ...marta, platform_fields: { ...marta.platform_fields, needsUserField: { field_key: 'categoryLevelChoice', allowed_values: ['Jeux', 'Consoles', 'Accessoires', 'Sport'] } } })?.plateforme === 'vinted',
+  'sous-niveau français (un seul libellé commun, « Sport ») : la règle d’avant, inchangée');
 const beebs = { platform: 'beebs', action: 'republish', status: 'needs_user', platform_fields: { republish_prevol_manquants: ['le rayon Beebs'] } };
 verifier(M.rayonRefuseDuJob(beebs)?.plateforme === 'beebs', 'Beebs : rayon absent de la copie → le moteur');
 verifier(M.rayonRefuseDuJob({ ...beebs, platform_fields: { republish_prevol_manquants: ['le rayon Beebs'], beebsCategoryPath: ['Mode', 'Homme'] } }) === null, 'Beebs : rayon déjà là → rien');

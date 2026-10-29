@@ -57,6 +57,8 @@ import { creerArticlePourFiche, enregistrerFiche, attributsLus, ficheDemandee } 
 import { langueRedactionVinted } from "../_shared/langue-vendeur.ts";
 import { noterEchecFournisseur } from "../_shared/echecs-fournisseurs.ts";
 import { palierDuProfil } from "../_shared/palier.js";
+import { champDuVendeur } from "../../../src/utils/sourceDuTexte.js";
+import { consignesDuCompte } from "../_shared/consignes-du-compte.ts";
 
 // ── Retouche photo (GPT Image 2) ───────────────────────────────────────────────
 // Niveau "ia_light" : un seul prompt générique (luminosité/balance des blancs
@@ -1289,10 +1291,15 @@ Réponds UNIQUEMENT du JSON valide {"objet":"<nom commun ou null>","icon":"<un e
     // ── Step 3 : contexte + rédaction par plateforme — MODULE PARTAGÉ ────────
     // (extraits tels quels le 02/09 soir, cf. _shared/redaction-plateformes.ts
     // — la porte Lens unifiée appelle exactement le même code.)
+    // (29/10, lot B 1.3) La « précision pour la rédaction » (dictée ou tapée à l'écran de publication) entrait dans le
+    // corps sous `notes` mais n'était lue nulle part : elle rejoint le contexte de la rédaction.
     const { itemContext } = construireContexteArticle({
       item, canonicalProvided,
       familleLivresMedias: retouchProfileFor(item).family === "livres_medias",
+      noteVendeur: typeof body.notes === "string" ? body.notes : null,
     });
+    // (29/10, lot B 1.3 — promesse XEWER) Les consignes du vendeur, appliquées à chaque génération qu'il demande.
+    const consignesVendeur = await consignesDuCompte(adminClient, user.id);
     // ── DESCRIPTION DE LA VENDEUSE : VERROU (2026-09-07) ───────────────────
     // Quand l'article porte la description de son annonce Vinted (rapatriée par
     // la capture de republication ou par la lecture du détail au clic Publier),
@@ -1348,24 +1355,23 @@ Réponds UNIQUEMENT du JSON valide {"objet":"<nom commun ou null>","icon":"<un e
     //    aucun marqueur n'est posé : comportement d'avant, à l'identique.
     // ⛔ Le client peut toujours forcer la génération avec
     //    description_verrouillee:false (bouton « régénérer le texte »).
-    const attributsItem = item.attributs as Record<string, { v?: unknown }> | null | undefined;
-    const marqueurSource = (cle: string) => String(attributsItem?.[cle]?.v ?? "").trim().toLowerCase();
+    // ═══════════════════════════════════════════════════════════════════════
+    // (29/10, lot B partie 2) UN TEXTE QUE FILLSELL N'A PAS SIGNÉ EST CELUI DU VENDEUR
+    // ═══════════════════════════════════════════════════════════════════════
+    // paugues.contact, « Jazz man » (27/10) : fiche tapée au Stock, aucun marqueur (la création n'en posait pas),
+    // origine NULL → texte_vendeur_titre=false, texte_vendeur_description=false → l'IA a réécrit SON titre et SA
+    // description (gabarit Vinted, hashtags). La règle de Nico (29/10) : « ce que le vendeur tape est gardé tel quel,
+    // partout. L'IA n'écrit que dans un champ vide, ou sur demande explicite. » Désormais, sur une fiche du STOCK
+    // (lue ici en base), seul un texte qui porte NOTRE marque (lens, vocal, ia) reste notre brouillon ; tout autre
+    // texte est au vendeur. Un corps item_data (article pas encore enregistré, souvent un résultat Lens) n'a de texte
+    // du vendeur que s'il le dit par un marqueur. Une seule règle, la même que l'écran : src/utils/sourceDuTexte.js.
+    // « Générer » (demande explicite) passe description_verrouillee:false / titre_verrouille:false, comme avant.
+    const ligneDuStock = !item_data;
+    const texteDuVendeur = (cle: string) => champDuVendeur(item as Record<string, unknown>, cle.replace(/_source$/, ""), { ligneDuStock });
     const origineItem = String(item.origine ?? "").trim().toLowerCase();
-    // Un texte RELEVÉ sur la propre annonce du vendeur est SON texte : la page
-    // qu'on a lue est la sienne. Les quatre relevés valent le marqueur.
-    const venuDUnReleve = origineItem.startsWith("releve");
-    // `vinted_sync` : titre ET description sont ceux du dressing de la
-    // personne. La description porte déjà description_source='vinted' depuis le
-    // 07/09 ; le TITRE n'avait rien, et c'est pourtant la même page.
-    const venuDuDressing = origineItem === "vinted_sync";
-    const texteDuVendeur = (cle: string) => {
-      const src = marqueurSource(cle);
-      return src === "vinted" || src === "manuel" || src.startsWith("releve");
-    };
     const descriptionVendeuse = (() => {
       if (body.description_verrouillee === false) return null;
-      const deLaPersonne = texteDuVendeur("description_source") || venuDUnReleve || venuDuDressing
-        || body.description_verrouillee === true;
+      const deLaPersonne = texteDuVendeur("description_source") || body.description_verrouillee === true;
       if (!deLaPersonne) return null;
       // Une description vide ou d'UN SEUL MOT ne dit rien de l'article : l'IA
       // reprend alors la main (seule exception, demandée par Nico le 07/09).
@@ -1374,8 +1380,7 @@ Réponds UNIQUEMENT du JSON valide {"objet":"<nom commun ou null>","icon":"<un e
     })();
     const titreVendeur = (() => {
       if (body.titre_verrouille === false) return null;
-      const deLaPersonne = texteDuVendeur("titre_source") || venuDUnReleve || venuDuDressing
-        || body.titre_verrouille === true;
+      const deLaPersonne = texteDuVendeur("titre_source") || body.titre_verrouille === true;
       if (!deLaPersonne) return null;
       // Même seuil que la description : un titre d'un seul mot ne dit rien, et
       // une chaîne vide encore moins — l'IA reprend la main.
@@ -1398,6 +1403,7 @@ Réponds UNIQUEMENT du JSON valide {"objet":"<nom commun ou null>","icon":"<un e
       itemContext, item, canonicalProvided, trackClaude,
       descriptionFournie: descriptionVendeuse,
       titreFourni: titreVendeur,
+      consignes: consignesVendeur,
     });
 
     // category_icon : attendu ICI seulement (il chevauchait la retouche photo
@@ -1512,6 +1518,8 @@ Réponds UNIQUEMENT du JSON valide {"objet":"<nom commun ou null>","icon":"<un e
         // qui la crée — pas le clic Publier, qui peut ne jamais venir.
         inventaireIdFiche = await creerArticlePourFiche(adminClient, {
           userId: user.id,
+          // (29/10, lot B partie 2) Le texte que le client dit être celui de la personne naît marqué « manuel ».
+          sourceTexte: (titreVendeur || descriptionVendeuse) ? "manuel" : "lens",
           titre: item.titre ?? "Article",
           marque: item.marque ?? null,
           categorie: item.type ?? null,

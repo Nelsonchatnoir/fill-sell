@@ -38,6 +38,8 @@ import CarteRayon from "../../components/CarteRayon";
 import { CartePortDepop } from "../../components/PortDepop";
 import ExclusDepop from "./ExclusDepop";
 import BoutonMeConnecter from "../../components/BoutonMeConnecter";
+// (29/10, lot B 1.3) La dictée sur chaque champ de texte libre du lot.
+import BoutonDictee from "../../components/BoutonDictee";
 import { MOTIFS } from "../../utils/connexionPlateformes";
 // (11/10) Les postes du compte disent si Depop est autorisée (trace écrite par get-pending-jobs).
 import { etatAccesDepop } from "../../../supabase/functions/_shared/acces-depop.js";
@@ -1711,6 +1713,7 @@ function AttenteOrigine({ id, en, st, horloge, pontMort, retirerDuLot, item = nu
           <div className="fsl-origine-ecrire">
             {url ? <small><a href={url} target="_blank" rel="noopener noreferrer">{M.ouvrirVinted}</a> {M.pourCopier}</small> : null}
             <textarea className="fsn-textarea" value={texte} onChange={(e) => setTexte(e.target.value)} placeholder={M.placeholder} aria-label={M.ecrireTitre} />
+            <BoutonDictee valeur={texte} onChange={setTexte} lang={lang} separateur={"\n"} disabled={envoi} />
             {texte.trim() && !assez ? <small>{M.tropCourt}</small> : null}
             <div className="fsn-btn-row">
               <button type="button" className="fsn-btn fsn-btn--secondary fsn-btn--sm" style={tactile} disabled={!assez || envoi}
@@ -1892,8 +1895,14 @@ export function ArticleAQuestions({ id, en, item, m, st, decision, decider, tran
             aria-label={en ? "Title" : "Titre"}
             onKeyDown={(ev) => { if (ev.key === "Enter") { ev.preventDefault(); ev.currentTarget.blur(); } }}
             onBlur={(ev) => { const v = ev.target.value.replace(/\s*\n+\s*/g, " "); if (v !== titreQuiPart) m.poserValeurGenerale?.("titre", v); }} />
+          {/* (29/10, lot B 1.3) Champs non contrôlés : la dictée pose le texte dans le champ et enregistre
+              ce que son blur aurait enregistré — une dictée vaut une saisie. */}
+          <BoutonDictee lang={en ? "en" : "fr"}
+            onChange={(texte) => { const v = texte.replace(/\s*\n+\s*/g, " "); if (v !== titreQuiPart) m.poserValeurGenerale?.("titre", v); }} />
           <textarea className="fsn-textarea" defaultValue={descriptionQuiPart}
             onBlur={(ev) => { if (ev.target.value !== descriptionQuiPart) m.poserValeurGenerale?.("description", ev.target.value); }} />
+          <BoutonDictee lang={en ? "en" : "fr"} separateur={"\n"}
+            onChange={(texte) => { if (texte !== descriptionQuiPart) m.poserValeurGenerale?.("description", texte); }} />
           <div className="fsn-btn-row">
             <button type="button" className="fsn-btn fsn-btn--secondary fsn-btn--sm" onClick={() => decider(id, { texteValide: true })}>
               {en ? "That's right" : "C'est bon"}
@@ -2098,6 +2107,9 @@ export function VueListe({
         <textarea className="fsn-textarea" rows={3} defaultValue="" aria-label="Description"
           placeholder={en ? "Condition, size, what's included…" : "État, taille, ce qui est inclus…"}
           onBlur={(ev) => { const v = ev.target.value.trim(); if (v) m.poserValeurGenerale?.("description", v); }} />
+        {/* (29/10, lot B 1.3) Non contrôlé : la dictée enregistre ce que le blur aurait enregistré. */}
+        <BoutonDictee lang={en ? "en" : "fr"} separateur={"\n"}
+          onChange={(texte) => { const v = texte.trim(); if (v) m.poserValeurGenerale?.("description", v); }} />
         {m.genererChamp ? (
           <div className="fsn-choices fsq-puces">
             <button type="button" className="fsn-choice" onClick={() => m.genererChamp("description")}>{en ? "Generate" : "Générer"}</button>

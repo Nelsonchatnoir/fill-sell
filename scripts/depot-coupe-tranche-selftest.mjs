@@ -8,7 +8,7 @@ import {
   decisionDepotCoupe, estDepotCoupe, presenceCandidate, relevesProbants, candidatesDepotCoupe, appariementMutuel,
   patchRelanceDepotCoupe, patchRattachementDepotCoupe, RELANCES_MAX,
 } from "../supabase/functions/_shared/depot-coupe-tranche.js";
-import { depotPeutEtrePartiDepuis, depotInacheveLbc, essaisArretesSurOptionsLbc } from "../supabase/functions/_shared/recreation-deja-partie.js";
+import { depotPeutEtrePartiDepuis, depotInacheveLbc, essaisArretesSurOptionsLbc, depotsAutresFiches, fichesDesJobs, numerosVusAvantRetrait } from "../supabase/functions/_shared/recreation-deja-partie.js";
 import { depotPublicationPeutEtrePartiDepuis } from "../supabase/functions/_shared/depot-sans-numero.js";
 
 let ko = 0;
@@ -165,6 +165,101 @@ ok(decisionDepotCoupe({ job: { ...jobVP, platform_fields: sansOptions }, lignes:
 const gpj = fs.readFileSync(new URL("../supabase/functions/get-pending-jobs/index.ts", import.meta.url), "utf8");
 ok(gpj.includes("depotInacheveLbc(plateforme, pf, c,") && /publiee_le"\)\s*\n\s*\.eq\("platform", plateforme\)/.test(gpj), "get-pending-jobs écarte le dépôt inachevé avant de juger (publiee_le lu)");
 ok(hw.includes("retiree_le, publiee_le\")"), "handler-watch lit publiee_le des candidates");
+
+console.log("\n10. UNE ANNONCE D'UNE AUTRE FICHE N'EST PAS CE DÉPÔT (29/10, tiblancdeshaut c9fe1ee1 ; Leboncoin 1660ea94)");
+// Relevé en base le 29/10. Beebs, « Sweat GAP » c9fe1ee1 (fiche 1792587088278), retiré le 27/10 à 14:02:31 (Paris),
+// essai coupé le 28/10 à 08:06, question à 08:17 sur 34245064 (sac, job 9a096169, fiche 1792586354104) et 34246760
+// (pantalon, job c002a882, fiche 1792586859815), revues au relevé 99f7288a du 29/10 18:22. Numéros des jobs tels
+// que posés le 29/10 à 18:27, lignes pas encore rattachées.
+const uGap = "7b9d8a71-6464-457f-abdc-9baee2a8543f";
+const jobGap = {
+  id: "c9fe1ee1-391d-458c-bb47-e7cc2f2b3a4f", user_id: uGap, platform: "beebs", action: "republish", status: "needs_user",
+  inventaire_id: 1792587088278, photos: [],
+  platform_fields: {
+    republish_step: "deleted", deleted_at: "2026-10-27T13:02:31.506Z", old_platform_listing_id: "34209525",
+    needs_user_source: "recreation_deja_partie",
+    recreation_deja_partie: { le: "2026-10-28T07:17:19.268Z", essai: { at: "2026-10-28T07:06:01.778Z", raison: "essai de recréation coupé en route (ordinateur muet) — fin inconnue" }, verdict: "incertaine" },
+  },
+};
+const ligneGap = (listing_id, titre) => ({ user_id: uGap, listing_id, url: `https://www.beebs.app/fr/p/${listing_id}`, titre, statut_plateforme: "en_ligne",
+  photo_url: null, capture: null, job_id: null, inventaire_id: null, proposition: null, created_at: "2026-10-28T07:15:57.126Z", vu_le: "2026-10-29T17:22:23.773Z", disparu_le: null, retiree_le: null, publiee_le: null });
+const lignesGap = [ligneGap("34245064", "Sac à main Michael Kors orange en cuir synthétique"), ligneGap("34246760", "Pantalon de ski Quicksilver Vintage noir avec bretelles")];
+const runsGap = [
+  { id: "51de8deb-af2a-447a-816b-e6b03ddbc631", status: "done", started_at: "2026-10-28T07:15:37.576Z", finished_at: "2026-10-28T07:17:15.091Z", items_vus: 39, total_entries: 39,
+    erreur: "[défilement] page : 39 annonce(s) affichée(s) (1 défilement(s), la page n'en affichait pas plus) | page : 0 annonce(s) affichée(s) (1 défilement(s), la page n'en affichait pas plus) | index public Beebs : 39 annonce(s) en ligne, 39 lue(s) au total · [rattachement] par identifiant 0, automatiques 0, proposées 0, sans candidat 0, importées 0, disparues 0" },
+  { id: "99f7288a-4877-4f4c-855a-f8a3e55542f7", status: "done", started_at: "2026-10-29T17:22:07.064Z", finished_at: "2026-10-29T17:23:18.196Z", items_vus: 39, total_entries: 39,
+    erreur: "[défilement] page : 39 annonce(s) affichée(s) (1 défilement(s), la page n'en affichait pas plus) | page : 0 annonce(s) affichée(s) (1 défilement(s), la page n'en affichait pas plus) | index public Beebs : 39 annonce(s) en ligne, 39 lue(s) au total | en vérification : 0 clé(s) exacte(s), 0 carte(s), 0 relevée(s) · [rattachement] par identifiant 0, automatiques 0, proposées 0, sans candidat 0, importées 0, disparues 0" },
+];
+const jobsCompteGap = [
+  { id: jobGap.id, inventaire_id: 1792587088278, platform_listing_id: "34209525" },
+  { id: "9a096169-3c9f-4245-a417-5ddbe6b01a2a", inventaire_id: 1792586354104, platform_listing_id: "34245064" },
+  { id: "c002a882-bc66-4c70-a54b-c56c626bcb89", inventaire_id: 1792586859815, platform_listing_id: "34246760" },
+];
+const optsGap = { numerosAutres: depotsAutresFiches(jobsCompteGap, jobGap.inventaire_id), fichesJobs: fichesDesJobs(jobsCompteGap) };
+ok(estDepotCoupe(jobGap) && candidatesDepotCoupe(jobGap, lignesGap).length === 2, "rétrocompatible : sans les jobs du compte, les deux annonces restent candidates");
+ok(decisionDepotCoupe({ job: jobGap, lignes: lignesGap, runs: runsGap, empreinte: () => undefined }).decision !== "relancer",
+  "sans les jobs : deux annonces encore en ligne → jamais une relance (la question reste)");
+ok(candidatesDepotCoupe(jobGap, lignesGap, optsGap).length === 0, "c9fe1ee1 : sac et pantalon (numéros d'autres fiches) écartés → aucune candidate");
+const dGap = decisionDepotCoupe({ job: jobGap, lignes: lignesGap, runs: runsGap, empreinte: () => undefined, ...optsGap });
+ok(dGap.decision === "relancer" && /aucune annonce apparue/.test(dGap.raison), "→ aucune annonce apparue, relevé complet du 29/10 à l'appui → la remise en ligne repart une fois", JSON.stringify(dGap));
+const jobMeme = { id: "11111111-0000-0000-0000-000000000001", inventaire_id: 1792587088278, platform_listing_id: "34245064" };
+ok(candidatesDepotCoupe(jobGap, lignesGap, { numerosAutres: depotsAutresFiches([...jobsCompteGap, jobMeme], jobGap.inventaire_id), fichesJobs: fichesDesJobs([...jobsCompteGap, jobMeme]) })
+  .map((c) => c.listing_id).join() === "34245064", "même fiche : un numéro aussi porté par un job de LA MÊME fiche reste candidat (doute → question)");
+const ligneJobMeme = { ...lignesGap[0], listing_id: "34250000", job_id: jobMeme.id };
+ok(candidatesDepotCoupe(jobGap, [ligneJobMeme], { ...optsGap, fichesJobs: fichesDesJobs([...jobsCompteGap, jobMeme]) }).length === 1
+  && candidatesDepotCoupe(jobGap, [ligneJobMeme]).length === 0, "même fiche lue sur le job de la ligne → candidate (sans fichesJobs : écartée, comme avant)");
+ok(candidatesDepotCoupe(jobGap, [{ ...lignesGap[0], listing_id: "34250001", proposition: { job_id: "9a096169-3c9f-4245-a417-5ddbe6b01a2a" } }], optsGap).length === 0,
+  "proposition du relevé vers le job d'une autre fiche → écartée");
+// Leboncoin, « Service à thé » 1660ea94 (fiche 1790847723391), retrait du 07/10 21:01:08 ; candidates du relevé 33357123
+// (08/10 06:55:50) : 3284289939 (service à thé), 3284198810 (sculpture, fiche 1790835242041), 3284198745 (lampe, fiche
+// 1790663577320). Jobs des deux dernières nés du même relevé à 07:05:04 — rejugé tel qu'il se relit ensuite.
+const uThe = "53efea05-dc2d-4467-a8cd-c6fa52a47a61";
+const jobThe = { id: "1660ea94-fbf4-4b29-96a2-ea92bf792f8b", user_id: uThe, platform: "leboncoin", action: "republish", status: "needs_user", inventaire_id: 1790847723391, photos: [],
+  platform_fields: { republish_step: "deleted", deleted_at: "2026-10-07T19:01:08.995Z", old_platform_listing_id: "3279968973", needs_user_source: "recreation_deja_partie",
+    recreation_deja_partie: { le: "2026-10-08T05:04:40.031Z", essai: { at: "2026-10-08T04:56:40.245Z" }, verdict: "incertaine" } } };
+const lignesThe = ["3284289939", "3284198810", "3284198745"].map((listing_id) => ({ user_id: uThe, listing_id, statut_plateforme: "en_ligne", job_id: null, inventaire_id: null, proposition: null,
+  created_at: "2026-10-08T04:55:50.917Z", vu_le: "2026-10-08T04:55:50.917Z", disparu_le: null, retiree_le: null }));
+const jobsCompteThe = [
+  { id: "0ed2a9b5-39e4-4e87-89e1-293bc5648f65", inventaire_id: 1790835242041, platform_listing_id: "3284198810" },
+  { id: "1bd4a153-ca10-4154-9d64-a9c87d96db32", inventaire_id: 1790663577320, platform_listing_id: "3284198745" },
+];
+ok(candidatesDepotCoupe(jobThe, lignesThe).length === 3, "1660ea94 rétrocompatible : sans les jobs, trois candidates");
+ok(candidatesDepotCoupe(jobThe, lignesThe, { numerosAutres: depotsAutresFiches(jobsCompteThe, jobThe.inventaire_id), fichesJobs: fichesDesJobs(jobsCompteThe) })
+  .map((c) => c.listing_id).join() === "3284289939", "1660ea94 : sculpture et lampe écartées, seul le service à thé reste candidat");
+ok(hw.includes("COLONNES_JOBS_AUTRES_FICHES") && hw.includes("depotsAutresFiches(jobsC, j.inventaire_id ?? null)") && hw.includes("job_id, inventaire_id, proposition,")
+  && hw.includes("...autresDe.get(String(j.id))"), "handler-watch lit les jobs du compte (une fois par groupe) et la proposition des lignes, et les passe au jugement");
+ok(gpj.includes("trierCandidatesDepuisRetrait({") && gpj.includes("depotsAutresFiches(jobsC, j.inventaire_id ?? null)") && gpj.includes("disparu_le, proposition, publiee_le")
+  && gpj.includes("...(ecartees.length ? { ecartees } : {})"), "get-pending-jobs écarte les annonces des autres fiches et trace les écartées");
+
+console.log("\n11. VUE AVANT LE RETRAIT : JAMAIS LE REDÉPÔT (29/10, Nico : « un candidat doit correspondre réellement à l'article »)");
+// Les jobs tels qu'au 28/10 : AUCUN numéro, mais les listes « Mes annonces » de leurs dépôts (relevées en base),
+// lues le 27/10 à 03:41:46 (9a096169) et 13:04:16 (c002a882) — retrait de c9fe1ee1 à 14:02:31 (Paris).
+const jobsGap28 = [
+  { id: jobGap.id, inventaire_id: 1792587088278, platform_listing_id: "34209525" },
+  { id: "9a096169-3c9f-4245-a417-5ddbe6b01a2a", inventaire_id: 1792586354104, platform_listing_id: null,
+    lecture_apres_ids: ["34245064", "34220603", "34209525", "34209507"], lecture_apres_le: "2026-10-27T02:41:46.296Z" },
+  { id: "c002a882-bc66-4c70-a54b-c56c626bcb89", inventaire_id: 1792586859815, platform_listing_id: null,
+    lecture_apres_ids: ["34246760", "34245064", "34220603", "34209525"], lecture_apres_le: "2026-10-27T12:04:16.169Z" },
+];
+const optsGap28 = { numerosAutres: depotsAutresFiches(jobsGap28, jobGap.inventaire_id), fichesJobs: fichesDesJobs(jobsGap28),
+  vusAvant: numerosVusAvantRetrait(jobsGap28, jobGap.platform_fields.deleted_at) };
+ok(candidatesDepotCoupe(jobGap, lignesGap, { numerosAutres: optsGap28.numerosAutres, fichesJobs: optsGap28.fichesJobs }).length === 2,
+  "c9fe1ee1 au 28/10 : sans numéro sur les jobs, les numéros seuls n'écartent rien");
+ok(candidatesDepotCoupe(jobGap, lignesGap, optsGap28).length === 0, "c9fe1ee1 au 28/10 : sac et pantalon lus dans « Mes annonces » avant le retrait → aucune candidate");
+const dGap28 = decisionDepotCoupe({ job: jobGap, lignes: lignesGap, runs: runsGap, empreinte: () => undefined, ...optsGap28 });
+ok(dGap28.decision === "relancer" && /aucune annonce apparue/.test(dGap28.raison), "→ la remise en ligne repart une fois, relevé complet à l'appui", JSON.stringify(dGap28));
+ok(candidatesDepotCoupe(jobGap, lignesGap, { vusAvant: numerosVusAvantRetrait(jobsGap28.map((j) => ({ ...j, lecture_apres_le: "2026-10-27T12:50:00Z" })), jobGap.platform_fields.deleted_at) }).length === 2,
+  "listes lues moins de 15 min avant le retrait (heure du poste) → rien de prouvé, les deux restent candidates");
+// Leboncoin 1660ea94 au 08/10 (aucun job pour les deux annonces) : publiee_le 20:55:27 et 20:55:17, retrait à 21:01:08.
+const lignesThePubliees = lignesThe.map((l) => ({ ...l, publiee_le: { "3284198810": "2026-10-07T18:55:27Z", "3284198745": "2026-10-07T18:55:17Z" }[l.listing_id] ?? null }));
+ok(candidatesDepotCoupe(jobThe, lignesThePubliees).length === 3, "1660ea94 rétrocompatible : sans vusAvant, trois candidates");
+ok(candidatesDepotCoupe(jobThe, lignesThePubliees, { vusAvant: new Map() }).map((c) => c.listing_id).join() === "3284289939",
+  "1660ea94 au 08/10 : sculpture et lampe mises en ligne (selon Leboncoin) avant le retrait → écartées");
+const depotCoupeB = { ...depotB, platform_fields: { ...depotB.platform_fields, deleted_at: "2026-10-21T00:00:00Z" } };
+ok(candidatesDepotCoupe(depotCoupeB, [ligneB], { vusAvant: new Map([["34202692", { lu_le: "2026-10-19T00:00:00.000Z", job_id: "x" }]]) }).length === 1,
+  "dépôt coupé (depot_deja_parti) : jamais cette règle (son repère est la fin de l'essai, heure du poste)");
+ok(hw.includes("vusAvant: numerosVusAvantRetrait(jobsC, j.platform_fields?.deleted_at)") && gpj.includes("platform: plateforme, vusAvant: numerosVusAvantRetrait(jobsC, pf[\"deleted_at\"])"),
+  "handler-watch et get-pending-jobs passent les listes lues avant le retrait au jugement");
 
 if (ko) { console.error(`\n✗ ${ko} contrôle(s) en échec`); process.exit(1); }
 console.log("\n✓ dépôts coupés : tous les contrôles passent");

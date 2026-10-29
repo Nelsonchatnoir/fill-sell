@@ -18,6 +18,8 @@ import { useTranslation } from '../i18n/useTranslation';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { track } from '../analytics/analytics';
 import Field from '../components/Field';
+// (29/10, lot B 1.3) La dictée sur les champs de texte libre (nom, descriptions).
+import BoutonDictee from '../components/BoutonDictee';
 import GaleriePhotos from '../components/GaleriePhotos';
 import BoutonMeConnecter from '../components/BoutonMeConnecter';
 import { MOTIFS } from '../utils/connexionPlateformes';
@@ -222,6 +224,7 @@ import { decisionDemarrage, decisionQuestionBoutique, attentesDeConnexion, jobAt
 import { lirePrixAnnoncesVinted } from '../utils/prixAnnoncesVinted.js';
 import { parLots } from '../utils/parLots.js';
 import { relanceSansDepotMort, TRACES_DEPOT_MORT } from '../utils/relanceDepotMort.js';
+import { relanceRefusBeebs, MESSAGE_BOUTON_REFUS_BEEBS, SOURCE_REFUS_BEEBS_MEME_CONTENU } from '../utils/empreinteContenu.js';
 import CeQueFillSellFait, { BandeauStockVide } from '../ecrans/vides/StockVide.jsx';
 
 // ── UN SEUL JEU D'ICÔNES (03/10/2026, refonte du Stock) ────────────────────
@@ -427,6 +430,9 @@ const MURS_LEVES_A_LA_RELANCE = [
   // (17/10) Depop attend la configuration vendeur du compte : la relance vaut
   // « c'est fait » (le serveur la sert comme éclaireur et repose le mur s'il tient).
   'depop_vendeur',
+  // (29/10, lot B 4.6) Refus Beebs relancé à l'identique : la relance n'a lieu que si le contenu a changé
+  // (relancerJobEchoue le relit) ; le serveur repose le mur si l'empreinte est encore celle du refus.
+  SOURCE_REFUS_BEEBS_MEME_CONTENU,
   // (03/10, point F) Mise de côté par le serveur (servie sans jamais
   // démarrer) : la relance la remet en file, le compteur repart de zéro.
   'tache_sans_demarrage',
@@ -540,7 +546,21 @@ const RELANCE_MANUELLE_COOLDOWN_MS = 10 * 60 * 1000;
 // ZÉRO débit. ⛔ Jamais en mode 'copie' : copie INSÈRE un job neuf via
 // spend_coins_and_publish, ce qui débiterait une seconde fois un article déjà
 // payé et laisserait deux jobs vivants sur la même plateforme.
+// ── (29/10, lot B 4.6 — XEWER) UN REFUS BEEBS PROUVÉ NE SE RELANCE PAS À L'IDENTIQUE ──────────────────────────────
+// Le message du refus disait « La reproposer à l'identique serait refusé de même » et le bouton relançait quand même :
+// 10 jeux relancés le 29/10 sans rien changer, 9 refusés de nouveau. L'empreinte du contenu refusé (titre, description,
+// photos, rayon — src/utils/empreinteContenu.js, la fonction du serveur) est comparée à celle du job : identique →
+// `memeContenuBeebs` (le bouton le dit, et ne relance pas) ; contenu pas en main (la liste n'a ni description ni
+// photos) → `refusBeebsAVerifier` (relancerJobEchoue relit le job avant tout geste).
 function relanceManuelleInfo(job, jobsArticle) {
+  const info = relanceManuelleInfoDuJob(job, jobsArticle);
+  if (!info || info.epuise) return info;
+  const refus = relanceRefusBeebs(job);
+  if (refus?.verdict === 'meme_contenu') return { ...info, memeContenuBeebs: true };
+  if (refus?.verdict === 'a_verifier') return { ...info, refusBeebsAVerifier: true };
+  return info;
+}
+function relanceManuelleInfoDuJob(job, jobsArticle) {
   if (!['failed', 'cancelled', 'needs_user'].includes(job?.status)) return null;
   // (25/10) Close parce que la plateforme n'est pas possible pour ce compte (Leboncoin d'une adresse hors de France,
   // eBay inscrit hors d'eBay France) : aucune relance ne pourrait aboutir — aucun bouton, nulle part.
@@ -2005,6 +2025,7 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
               placeholder={lang === "en" ? "E.g. Black blazer, lined, worn twice, no flaws." : "Ex. Blazer noir doublé, porté deux fois, aucun défaut."}
               style={{ width:"100%", padding:"10px 12px", borderRadius:12, border:`1px solid ${NU_T.border}`, fontSize:13, fontFamily:"inherit", outline:"none", background:"#fff", color:NU_T.ink, resize:"vertical", boxSizing:"border-box", lineHeight:1.5 }}
             />
+            <BoutonDictee valeur={texte.description} onChange={(v) => setTexte((t) => ({ ...t, description: v }))} lang={lang} separateur={"\n"} />
           </div>
         )}
         {errMsg && (
@@ -7925,6 +7946,18 @@ const StockTab = memo(function StockTab({
   const [relanceBusy, setRelanceBusy] = useState(false);
   const [relanceMsg, setRelanceMsg] = useState(null);
   useEffect(() => { setRelanceMsg(null); }, [failJobModal?.id]);
+  // (29/10, lot B 4.6) Un job Beebs dont le refus porte l'empreinte du contenu : son texte et ses photos (absents de la
+  // liste) relus UNE fois à l'ouverture de la fenêtre — le bouton dit alors s'il repartirait à l'identique.
+  const [contenuFraisModal, setContenuFraisModal] = useState(null);
+  useEffect(() => {
+    const j = failJobModal;
+    setContenuFraisModal(null);
+    if (!j?.id || relanceRefusBeebs(j)?.verdict !== 'a_verifier') return undefined;
+    let vivant = true;
+    supabase.from('cross_post_jobs').select('id, platform, action, status, title, description, photos, platform_fields').eq('id', j.id).maybeSingle()
+      .then(({ data }) => { if (vivant && data) setContenuFraisModal(data); }, () => {});
+    return () => { vivant = false; };
+  }, [failJobModal]);
 
   // ── ABANDONNER CETTE PLATEFORME POUR CET ARTICLE (2026-09-20) ─────────────
   // La sortie qui manquait à un job bloqué. Les règles (quoi, quand, jamais)
@@ -8142,6 +8175,21 @@ const StockTab = memo(function StockTab({
     { const refus = refusRelanceHorsFrance(job); if (refus) { setRelanceMsg(refus); return; } }
     setRelanceBusy(true); setRelanceMsg(null);
     try {
+      // (29/10, lot B 4.6 — XEWER) Un refus Beebs prouvé ne repart pas à l'identique (copie comprise) : le job est RELU
+      // (la liste n'a ni description ni photos) et son empreinte comparée à celle du refus — la fonction du serveur.
+      // Illisible alors qu'un refus est connu : on ne relance pas à l'aveugle.
+      if (job?.platform === 'beebs') {
+        const { data: fraisB } = await supabase.from('cross_post_jobs')
+          .select('id, platform, action, status, title, description, photos, platform_fields').eq('id', job.id).maybeSingle();
+        const verdictB = relanceRefusBeebs(fraisB ?? job)?.verdict;
+        if (verdictB === 'meme_contenu') {
+          setRelanceMsg(MESSAGE_BOUTON_REFUS_BEEBS[lang === 'en' ? 'en' : 'fr']);
+          setContenuFraisModal(fraisB);
+          setFailJobModal((m) => m ?? job);
+          return;
+        }
+        if (!fraisB && verdictB) { setRelanceMsg(lang === 'en' ? 'Could not read the job — try again.' : 'Lecture du job impossible — réessaie.'); return; }
+      }
       if (mode === 'copie') {
         await relancerParCopie(job);
         return;
@@ -10460,6 +10508,7 @@ const StockTab = memo(function StockTab({
           )}
           <div>
             <Field label={t('fieldNom')} value={iTitle} set={setITitle} placeholder="Ex: Air Max 90, Jean slim, Lot vêtements..." icon={iconeChamp(Tag)}/>
+            <BoutonDictee valeur={iTitle} onChange={setITitle} lang={lang}/>
             {items.length===0&&<div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>{t('fieldNomHint')}</div>}
           </div>
           <div>
@@ -10575,6 +10624,7 @@ const StockTab = memo(function StockTab({
               onFocus={e=>e.currentTarget.style.borderColor=C.teal}
               onBlur={e=>e.currentTarget.style.borderColor=iDesc?C.teal:"rgba(0,0,0,0.12)"}
             />
+            <BoutonDictee valeur={iDesc} onChange={v=>setIDesc(v.slice(0,DESC_MANUELLE_MAX))} lang={lang} separateur={"\n"}/>
             <div style={{fontSize:10,color:C.label,textAlign:"right",marginTop:2}}>{iDesc.length}/{DESC_MANUELLE_MAX}</div>
           </div>
           <div>
@@ -12250,8 +12300,16 @@ const StockTab = memo(function StockTab({
                 soldée au failed, capture sautée par construction). Offerte
                 UNIQUEMENT sur les causes récupérables — relanceManuelleInfo. */}
             {(()=>{
-              const r=relanceManuelleInfo(failJobModal,jobsByInventaire[failJobModal.inventaire_id]);
+              // (29/10, lot B 4.6) Le contenu relu à l'ouverture (contenuFraisModal) dit si un refus Beebs repartirait à l'identique.
+              const cf=contenuFraisModal?.id===failJobModal.id?contenuFraisModal:null;
+              const r=relanceManuelleInfo(cf?{...failJobModal,title:cf.title,description:cf.description,photos:cf.photos,platform_fields:cf.platform_fields}:failJobModal,jobsByInventaire[failJobModal.inventaire_id]);
               if(!r)return null;
+              if(r.memeContenuBeebs)return(
+                <button disabled
+                  style={{width:"100%",padding:"12px",borderRadius:999,border:"1px solid #E7E3D8",background:"#F4F2EC",color:"#8A5A52",fontSize:13.5,fontWeight:700,cursor:"default",fontFamily:"inherit",marginBottom:8,lineHeight:1.35}}>
+                  {MESSAGE_BOUTON_REFUS_BEEBS[lang==="en"?"en":"fr"]}
+                </button>
+              );
               if(r.epuise)return(
                 <div style={{fontSize:12,color:"#8A8578",textAlign:"center",marginBottom:8,lineHeight:1.5}}>
                   {lang==="en"

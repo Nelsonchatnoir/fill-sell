@@ -46,6 +46,8 @@ export function preuveRetraitBeebsValide(pf) {
   // (25/10) Une preuve par l'annonce elle-même « deux constats 404 » se vérifie ici aussi : deux constats au
   // moins, le dernier 6 h au moins après le premier (jamais crue sur parole).
   if (p.source === "mes_annonces" && p.absente === true) {
+    // (29/10, lot B 4.9 C) La suppression envoyée par FillSell, puis deux pages 404 à 6 h d'écart APRÈS l'envoi.
+    if (p.annonce?.regle === REGLE_SUPPRESSION_ENVOYEE_404) return preuveSuppressionEnvoyee404Valide(p.annonce);
     return p.annonce?.regle === REGLE_DEUX_CONSTATS_404 ? deuxConstats404Prouvent(p.annonce?.constats_404) : true;
   }
   return p.source === "page_produit" && p.vendue === true && p.disponibilite === "SoldOut";
@@ -101,6 +103,82 @@ export function messageRetraitBeebs404(constats, maintenant = Date.now()) {
   return `Beebs ne montre plus cette annonce : sa page est introuvable depuis ${quandFr(premier)} (404, constaté ${n > 1 ? `${n} fois` : "une fois"}) `
     + "et elle n'est pas dans tes annonces en vérification — elle n'est plus achetable ; seul l'index public de Beebs, en retard, la porte encore. "
     + `FillSell la relit à partir du ${quandFr(prochain).replace(/^le /, "")} et clôt alors le retrait — rien à faire.`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// (29/10, lot B 4.9 C) UNE SUPPRESSION ENVOYÉE PAR FILLSELL EST UN FAIT GARDÉ
+// ═══════════════════════════════════════════════════════════════════════════
+// Joséphine (afeef3c7), retrait 1845ce62, annonce 33911382 : FillSell a RÉELLEMENT supprimé l'annonce le 26/10 au
+// soir (« Suppression envoyée à Beebs, mais « Mes annonces » n'a pas pu être relue en entier ») ; depuis, sa page est
+// en 404 sans bouton, et la preuve exigeait « Mes annonces » lue en entier (liste « en ligne » tronquée 60/297,
+// « en vérification » illisible) : le retrait tournait sans fin. L'envoi n'était gardé nulle part.
+// LA RÈGLE : le retrait garde le fait (platform_fields.beebs_suppression_envoyee { le, numero, vue_en_ligne_avant }) —
+// l'envoi n'est possible que sur une annonce vue EN LIGNE juste avant (bouton « Supprimer l'annonce » de sa page, ou
+// de sa carte : une annonce en vérification n'a aucun geste) ; puis deux lectures « page 404 » sans fiche du numéro
+// EXACT, à 6 h d'écart au moins, toutes deux APRÈS l'envoi, prouvent le retrait — sans attendre « Mes annonces »
+// complète. Une page relue 200 avec sa fiche remet les constats à zéro (beebs.js). Jamais un titre, jamais l'index.
+export const REGLE_SUPPRESSION_ENVOYEE_404 = "suppression_envoyee_deux_404";
+
+/** Le fait « suppression envoyée » d'un retrait (bien formé : date, vue en ligne avant l'envoi), ou null. */
+export function suppressionEnvoyeeBeebs(pf, numero = null) {
+  const s = pf && typeof pf === "object" ? pf.beebs_suppression_envoyee : null;
+  if (!s || typeof s !== "object" || !Number.isFinite(ms(s.le))) return null;
+  if (!s.vue_en_ligne_avant || typeof s.vue_en_ligne_avant !== "object") return null;
+  if (numero && String(s.numero ?? "").trim() && String(s.numero).trim() !== String(numero)) return null;
+  return { le: new Date(ms(s.le)).toISOString(), numero: String(s.numero ?? numero ?? ""), vue_en_ligne_avant: s.vue_en_ligne_avant };
+}
+
+/** Les dates (ISO, croissantes) des constats « page 404 » sans fiche postérieurs à l'envoi (en vérification lue ou non). */
+export function constats404ApresEnvoi(constats, envoyeeLe) {
+  const t0 = ms(envoyeeLe);
+  if (!Number.isFinite(t0)) return [];
+  return (Array.isArray(constats) ? constats : [])
+    .filter((c) => c && c.page_http === 404 && c.produit === false && ms(c.le) > t0)
+    .map((c) => ms(c.le)).sort((a, b) => a - b).map((t) => new Date(t).toISOString());
+}
+
+/** La preuve « suppression envoyée + deux 404 à 6 h d'écart après l'envoi » posée par l'extension, revérifiée. */
+export function preuveSuppressionEnvoyee404Valide(annonce) {
+  const a = annonce && typeof annonce === "object" ? annonce : null;
+  const t0 = ms(a?.suppression_envoyee_le);
+  if (!a || !Number.isFinite(t0) || !a.vue_en_ligne_avant || a.page_http !== 404 || a.produit !== false) return false;
+  const dates = Array.isArray(a.constats_404) ? a.constats_404 : [];
+  return dates.length >= 2 && dates.every((d) => ms(d) > t0) && deuxConstats404Prouvent(dates);
+}
+
+/**
+ * Les constats qui font ATTENDRE un retrait (update-job-status, « attente du second constat, pas un essai ») : ceux de
+ * la règle du 25/10 (« en vérification » lue en entier) ; à défaut, après une suppression envoyée, ceux d'après l'envoi
+ * (« en vérification » lue ou non). Objets, du plus ancien au plus récent.
+ */
+export function constats404DuRetraitBeebs(pf) {
+  const complets = constats404Beebs(pf);
+  if (complets.length) return complets;
+  const s = suppressionEnvoyeeBeebs(pf);
+  if (!s) return [];
+  const t0 = ms(s.le);
+  return (Array.isArray(pf?.beebs_404_constats) ? pf.beebs_404_constats : [])
+    .filter((c) => c && c.page_http === 404 && c.produit === false && ms(c.le) > t0)
+    .sort((a, b) => ms(a.le) - ms(b.le));
+}
+
+/** Le message vrai d'un retrait dont la suppression est partie et dont la page est en 404 depuis, second constat attendu. */
+export function messageRetraitBeebsApresEnvoi404(pf, maintenant = Date.now()) {
+  const s = suppressionEnvoyeeBeebs(pf);
+  const constats = constats404DuRetraitBeebs(pf);
+  const { premier, prochain } = attente404Beebs(constats, maintenant);
+  const n = constats.length;
+  return `Suppression envoyée à Beebs ${s ? quandFr(ms(s.le)) : ""} : depuis, sa page est introuvable (404, constaté ${n > 1 ? `${n} fois` : "une fois"} depuis ${quandFr(ms(premier))}) — `
+    + `elle n'est plus achetable. FillSell la relit à partir du ${quandFr(ms(prochain)).replace(/^le /, "")} et clôt alors le retrait — rien à faire.`;
+}
+
+/** Côté serveur (balayage des retraits ouverts) : les champs d'un retrait prouvent-ils la règle ? → { … } ou null. */
+export function suppressionEnvoyeeProuvee(pf, numero = null) {
+  const s = suppressionEnvoyeeBeebs(pf, numero);
+  if (!s) return null;
+  const dates = constats404ApresEnvoi(pf?.beebs_404_constats, s.le);
+  if (!deuxConstats404Prouvent(dates)) return null;
+  return { suppression_envoyee_le: s.le, vue_en_ligne_avant: s.vue_en_ligne_avant, constats_404: [dates[0], dates[dates.length - 1]], n: dates.length };
 }
 
 /**

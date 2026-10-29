@@ -85,9 +85,11 @@ const iOrigine = bg.indexOf('let lectureOrigineDevant = false;', debutCycle);
 ok(iRelecture > debutCycle && iRelecture < iOrigine && iOrigine < iBoucle, 'la relecture part en tête de cycle, avant la lecture d’origine et les tâches');
 ok(/lancerRelevePlateforme\(\{ platform: cmd\.platform, declencheur: "serveur", runId: cmd\.id \}\)/.test(bg), 'par le chemin ordinaire (commande réclamée en base)');
 ok(/commandesAnnoncesEnAttente = commandesAnnoncesEnAttente\.filter\(\(c\) => !relecturesDevant\.includes\(c\)\)/.test(bg), 'jamais deux fois (retirée de la fin de cycle)');
-ok(/relecturesDevant\.length\) \{[\s\S]{0,900}repollApresCycle = true;/.test(bg), 'un poll repart après le cycle : le serveur juge tout de suite');
+// (29/10, lot B — boucle du poll) La relance est bornée : raison neuve (la même relecture resservie ne relance pas
+// deux fois de suite), 20 s au moins après le début du poll — exécuté par le selftest repoll-borne.
+ok(/relecturesDevant\.length\) \{[\s\S]{0,1100}demanderRepoll\(\{ raison: "releve_devant", cle: relecturesDevant\.map/.test(bg), 'un poll repart après le cycle : le serveur juge tout de suite');
 ok(/let pollEnAttenteDuVerrou = null;/.test(bg) && /if \(pollEnAttenteDuVerrou\) return pollEnAttenteDuVerrou;/.test(bg), 'un seul poll en attente du verrou (plus d’empilement par l’alarme)');
-ok(/withJobFlowLock\("poll", \(\) => \{ pollEnAttenteDuVerrou = null; return pollAndProcessJobsUnlocked\(\); \}\)/.test(bg), 'le poll libère sa place en DÉMARRANT (le suivant peut se mettre en file pendant qu’il tourne)');
+ok(/withJobFlowLock\("poll", \(\) => \{\s*pollEnAttenteDuVerrou = null;[^}]*return pollAndProcessJobsUnlocked\(\);\s*\}\)/.test(bg), 'le poll libère sa place en DÉMARRANT (le suivant peut se mettre en file pendant qu’il tourne)');
 ok(/pollEnAttenteDuVerrou = suite;\s*\n\s*return suite;/.test(bg.replace(/\r/g, '')), 'la promesse rendue est celle de la fin de cycle (relevés, sync distante)');
 const manifest = JSON.parse(readFileSync(new URL('../chrome-extension/manifest.json', import.meta.url), 'utf8'));
 ok(manifest.version === '0.6.148' || manifest.version.localeCompare('0.6.148', undefined, { numeric: true }) > 0, 'extension ≥ 0.6.148');

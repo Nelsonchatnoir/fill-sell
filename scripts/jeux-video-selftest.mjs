@@ -320,5 +320,38 @@ if (jeuVideoDeLArticle("📚", "Guide officiel Zelda Switch") !== null) ko("livr
   if (plateformeEbayDuJeu(a, "Manette PS4 DualShock 4 noire") !== null) ko("accessoire : aucune Plateforme posée");
 }
 
+// ── 8. (29/10, lot B 4.6 — XEWER) La première Xbox, jamais la Xbox Series ──
+// 10 jeux de la première Xbox refusés à la vérification Beebs : « Xbox » nue partait en Beebs « Xbox Series ».
+// Génération dite en toutes lettres → rétro (comme la PS1) ; « Xbox » nue → rien là où la génération compte.
+console.log("8. Xbox : la génération lue, jamais devinée");
+for (const [titre, vinted, beebs, ebay] of [
+  ["🎮 Conflict: Desert Storm II – Xbox Classics", "Xbox (originale)", "Retrogaming", "Microsoft Xbox"],
+  ["🎮 FIFA 06 – Xbox première génération", "Xbox (originale)", "Retrogaming", "Microsoft Xbox"],
+  ["🎮 Men of Valor – Xbox originale – sans notice", "Xbox (originale)", "Retrogaming", "Microsoft Xbox"],
+  ["Halo Xbox (originale) PAL", "Xbox (originale)", "Retrogaming", "Microsoft Xbox"],
+  ["Halo 2 Xbox 1re génération", "Xbox (originale)", "Retrogaming", "Microsoft Xbox"],
+  ["🎮 Starsky & Hutch – Xbox – Sans notice", null, null, null],
+  ["Lara Croft Tomb Raider Legend Xbox", null, null, null],
+  // Non-régression : les générations nommées gardent leur valeur.
+  ["Gears of War 3 Xbox 360 Classics", "Xbox 360", "Xbox 360", "Microsoft Xbox 360"],
+  ["NBA 2K25 – Xbox Series X / Xbox One", "Xbox Series S et X", "Xbox Series", "Microsoft Xbox Series X|S"],
+  ["LEGO Jurassic World Xbox One", "Xbox One", "Xbox One", "Microsoft Xbox One"],
+]) {
+  const m = machineDuTexte(titre);
+  if (!m) { ko(`« ${titre} » : machine non reconnue`); continue; }
+  if (m.vinted !== vinted) ko(`« ${titre} » → Vinted « ${m.vinted} » (attendu « ${vinted} »)`);
+  if (m.beebs !== beebs) ko(`« ${titre} » → Beebs « ${m.beebs} » (attendu « ${beebs} »)`);
+  if (m.ebay !== ebay) ko(`« ${titre} » → eBay « ${m.ebay} » (attendu « ${ebay} »)`);
+  if (m.lbc !== "Microsoft") ko(`« ${titre} » → Leboncoin « ${m.lbc} » (la marque reste sûre : Microsoft)`);
+  if (m.vinted && !VINTED_PLATEFORMES.has(m.vinted)) ko(`« ${m.vinted} » absent de la liste Vinted relevée`);
+  if (m.beebs && !BEEBS_CONSOLES.has(m.beebs)) ko(`« ${m.beebs} » absent de la liste Beebs relevée`);
+  if (m.ebay && !EBAY_PLATEFORMES_139973.includes(m.ebay)) ko(`« ${m.ebay} » absent de la liste eBay relevée`);
+  const d = jeuVideoDeLArticle("🎮", titre);
+  if (d?.famille !== "jeu") ko(`« ${titre} » : famille ${d?.famille ?? "null"} (attendu jeu)`);
+  if (plateformeEbayDuJeu(d, titre) !== ebay) ko(`« ${titre} » : Plateforme eBay ${plateformeEbayDuJeu(d, titre)} (attendu ${ebay})`);
+}
+// Plus aucune « Xbox » sans génération vers la Xbox Series de Beebs.
+if (machineDuTexte("xbox")?.beebs === "Xbox Series") ko("« xbox » nue → Beebs « Xbox Series » : la génération n'est pas lue");
+
 if (echecs) { console.error(`\n❌ ${echecs} échec(s)`); process.exit(1); }
 console.log("\n✅ tout passe");

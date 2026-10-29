@@ -3571,8 +3571,11 @@ async function remplirFormulaireVinted(job) {
           // vinted_ids de la copie). Seulement quand un NIVEAU est introuvable, sans choix de la personne : la pose
           // par identifiants (même arbre du compte, même panneau) ; si elle échoue aussi, la question d'avant.
           const repli = Number(fields.vinted_ids?.catalog_id);
-          if (e?.needsUserField?.field_key !== "categoryLevelChoice" || !Number.isInteger(repli) || repli <= 0
-            || String(fields.categoryLevelChoice ?? "").trim()) throw e;
+          // (29/10, lot B 4.1) Page ÉTRANGÈRE (e.pageEtrangere) : idem, avant toute question ; un choix qui est la racine
+          // du même rayon (« Elettronica » pour 3026, réponse à une 0.6.149) ne s'y oppose pas.
+          const choixCompatible = !!e?.pageEtrangere && await choixEstLaRacineDuRayon(fields.categoryLevelChoice, repli).catch(() => false);
+          if ((e?.needsUserField?.field_key !== "categoryLevelChoice" && !e?.pageEtrangere) || !Number.isInteger(repli) || repli <= 0
+            || !choixCompatible && String(fields.categoryLevelChoice ?? "").trim()) throw e;
           await closeAnyOpenDropdown().catch(() => {});
           if (await selectCategoryParIds(repli, warnings)) {
             warnings.push(`catégorie : ${String(e?.message ?? e).slice(0, 140)} — posée par l'identifiant du rayon ${repli}`);
@@ -8242,6 +8245,60 @@ function erreurCategorie(messageCourt, annexeTechnique, extra = null) {
 // rien, seul l'utilisateur peut repasser Vinted en français).
 const RACINES_FR_VINTED = ["Femmes", "Hommes", "Enfants", "Maison", "Électronique", "Livres et médias", "Loisirs et collections", "Sport", "Articles de créateurs"];
 
+// ── (29/10, lot B 4.1 — mele.marta 2fd83d73) LA LANGUE DE LA PAGE, LUE SUR SES RACINES ───────────────────────────
+// « Gioco PS4 F1 2015 » : la page italienne affichait [Accessori, Donna, Uomo, Bambini, Casa, Elettronica, Libri e
+// media, Hobby e collezionismo, Sport]. La garde « interface non française » exigeait qu'AUCUNE option ne soit une
+// racine française — « Sport » s'écrit pareil en italien : la page passait pour française et la question partait
+// (« Vinted ne propose pas « Électronique » »), le rayon étant juste (3026). La règle : 3 options ou plus qui sont des
+// racines d'une MÊME langue autre que le français (racines françaises non comptées) = page étrangère.
+// ⛔ COPIE À L'IDENTIQUE de RACINES_CATALOGUE (supabase/functions/_shared/vinted-pays.ts, relevé du 25/09) : un
+//    content script n'importe pas ce module. scripts/vinted-langue-page-ouverte-selftest.mjs refuse toute divergence.
+const RACINES_CATALOGUE_VINTED = {
+  fr: { 1904: "Femmes", 5: "Hommes", 1193: "Enfants", 1918: "Maison", 2994: "Électronique", 2309: "Livres et médias", 4824: "Loisirs et collections", 4332: "Sport" },
+  it: { 1904: "Donna", 5: "Uomo", 1193: "Bambini", 1918: "Casa", 2994: "Elettronica", 2309: "Libri e media", 4824: "Hobby e collezionismo", 4332: "Sport" },
+  es: { 1904: "Mujer", 5: "Hombre", 1193: "Niños", 1918: "Hogar", 2994: "Electrónica", 2309: "Libros y multimedia", 4824: "Hobbies y coleccionismo", 4332: "Deportes" },
+  de: { 1904: "Damen", 5: "Herren", 1193: "Kinder", 1918: "Home", 2994: "Elektronik", 2309: "Bücher & andere Medien", 4824: "Hobby- & Sammlerartikel", 4332: "Sport" },
+  nl: { 1904: "Dames", 5: "Heren", 1193: "Kinderen", 1918: "Home", 2994: "Elektronica", 2309: "Boeken & multimedia", 4824: "Hobby's & verzamelen", 4332: "Sport" },
+  pt: { 1904: "Mulher", 5: "Homem", 1193: "Criança", 1918: "Casa", 2994: "Eletrónica", 2309: "Livros e Multimédia", 4824: "Hobbies e Coleções", 4332: "Desporto" },
+  en: { 1904: "Women", 5: "Men", 1193: "Kids", 1918: "Home", 2994: "Electronics", 2309: "Books & Media", 4824: "Hobbies & collectables", 4332: "Sports" },
+  fi: { 1904: "Naiset", 5: "Miehet", 1193: "Lapset", 1918: "Koti", 2994: "Elektroniikka", 2309: "Lukeminen ja viihde", 4824: "Harrastukset ja keräily", 4332: "Urheilu" },
+  et: { 1904: "Naised", 5: "Mehed", 1193: "Lastele", 1918: "Kodu", 2994: "Elektroonika", 2309: "Raamatud ja meedia", 4824: "Hobid ja kogumine", 4332: "Sport" },
+  lv: { 1904: "Sievietēm", 5: "Vīriešiem", 1193: "Bērniem", 1918: "Mājai", 2994: "Elektronika", 2309: "Grāmatas un ieraksti", 4824: "Hobiji un kolekcionēšana", 4332: "Sports" },
+  lt: { 1904: "Moterims", 5: "Vyrams", 1193: "Vaikams", 1918: "Namams", 2994: "Elektronika", 2309: "Knygos ir įrašai", 4824: "Hobiams ir kolekcijoms", 4332: "Sportui" },
+  sk: { 1904: "Ženy", 5: "Muži", 1193: "Deti", 1918: "Domov", 2994: "Elektronika", 2309: "Knihy a médiá", 4824: "Koníčky a zberateľstvo", 4332: "Šport" },
+  sl: { 1904: "Ženske", 5: "Moški", 1193: "Otroci", 1918: "Dom", 2994: "Elektronika", 2309: "Knjige in mediji", 4824: "Hobiji in zbirateljski artikli", 4332: "Šport" },
+  hr: { 1904: "Žene", 5: "Muškarci", 1193: "Djeca", 1918: "Dom", 2994: "Elektronika", 2309: "Knjige i mediji", 4824: "Hobiji i kolekcionarstvo", 4332: "Sport" },
+  el: { 1904: "Γυναίκα", 5: "Άνδρας", 1193: "Παιδιά", 1918: "Σπίτι", 2994: "Ηλεκτρονικά είδη", 2309: "Βιβλία & πολυμέσα", 4824: "Χόμπι και συλλεκτικά είδη", 4332: "Άθληση" },
+};
+
+// La langue NON française dont au moins 3 options sont des racines (hors racines françaises), ou null — même règle
+// que langueEtrangereDesRacines (vinted-pays.ts), ex æquo compris : rendu « ? » (page étrangère, langue incertaine).
+function langueEtrangereDesRacinesVinted(options) {
+  if (!Array.isArray(options)) return null;
+  const n = (s) => String(s ?? "").normalize("NFC").trim().toLowerCase();
+  const vus = new Set(options.map(n).filter(Boolean));
+  const fr = new Set(Object.values(RACINES_CATALOGUE_VINTED.fr).map(n));
+  const comptes = Object.keys(RACINES_CATALOGUE_VINTED).filter((l) => l !== "fr")
+    .map((l) => ({ l, k: new Set(Object.values(RACINES_CATALOGUE_VINTED[l]).map(n).filter((t) => !fr.has(t) && vus.has(t))).size }))
+    .filter((x) => x.k >= 3).sort((a, b) => b.k - a.k);
+  if (!comptes.length) return null;
+  return comptes.length > 1 && comptes[0].k === comptes[1].k ? "?" : comptes[0].l;
+}
+
+// Un choix de la personne qui est une RACINE (toute langue) du rayon connu : la réponse à la question d'une ancienne
+// extension sur une page étrangère (« Elettronica » pour 3026) — la pose par identifiants ne passe pas par-dessus elle.
+async function choixEstLaRacineDuRayon(choix, catalogId) {
+  const c = String(choix ?? "").normalize("NFC").trim().toLowerCase();
+  if (!c) return false;
+  const idsRacine = new Set();
+  for (const table of Object.values(RACINES_CATALOGUE_VINTED)) {
+    for (const [id, lib] of Object.entries(table)) if (String(lib).normalize("NFC").trim().toLowerCase() === c) idsRacine.add(Number(id));
+  }
+  if (!idsRacine.size) return false;
+  const ids = await resoudreCheminIdsCatalogue(catalogId, []).catch(() => null);
+  return Array.isArray(ids) && idsRacine.has(Number(ids[0]));
+}
+
 // Renommages de racine AVÉRÉS de l'arbre Vinted — pas des devinettes : le
 // renommage « Divertissement » → « Livres et médias » est documenté (relevé
 // live du 13/08, niveaux 2-3 INCHANGÉS, cf. vintedCategories.js). Sert aux
@@ -8465,6 +8522,9 @@ async function selectCategory(path, fields = {}, titreArticle = "") {
     }
   }
 
+  // (29/10, lot B 4.1) Les racines affichées au niveau 0 (lues une fois, DOM seulement) : elles disent la langue de la
+  // page quand un niveau plus bas est introuvable (« Sport » trouvé tel quel sur une page italienne, puis « Cyclisme »).
+  let racinesPage = null;
   for (let i = 0; i < path.length; i++) {
     let levelLabel = path[i];
     const isLast = i === path.length - 1;
@@ -8558,19 +8618,27 @@ async function selectCategory(path, fields = {}, titreArticle = "") {
         //    Media) : une vraie liste racine sans AUCUNE racine FR. Aucun
         //    retry ni choix n'y peut rien — seul l'utilisateur peut repasser
         //    Vinted en français. Message dédié, jamais « niveau introuvable ».
-        if (i === 0 && options.length >= 3 && !options.some((o) => RACINES_FR_VINTED.includes(o))) {
-          throw erreurCategorie(
+        // (29/10, lot B 4.1 — mele.marta 2fd83d73) … OU 3 options ou plus qui sont des racines d'une même langue
+        //    étrangère (« Sport », commun au français, ne la dit plus française). Plus bas que la racine, les racines lues
+        //    au niveau 0 (racinesPage) disent la langue : jamais « Vinted ne propose pas … » sur une page étrangère.
+        //    `pageEtrangere` : l'appelant pose d'abord le rayon par ses identifiants (catalog_id connu), puis la question.
+        const racinesVues = i === 0 ? options : (racinesPage ?? []);
+        const langueRacines = racinesVues.length >= 3 ? langueEtrangereDesRacinesVinted(racinesVues) : null;
+        if ((i === 0 && options.length >= 3 && !options.some((o) => RACINES_FR_VINTED.includes(o))) || langueRacines) {
+          const errLangue = erreurCategorie(
             "interface Vinted dans une autre langue",
-            `interface non française au niveau racine (chemin ${JSON.stringify(path)}). ` +
-            `Racines affichées: ${JSON.stringify(options)}.`,
+            `interface non française (${langueRacines ?? "aucune racine française"}) au niveau ${i} « ${levelLabel} » (chemin ${JSON.stringify(path)}). ` +
+            `Racines affichées: ${JSON.stringify(racinesVues)}.` + (i > 0 ? ` Options du niveau: ${JSON.stringify(options)}.` : ""),
             {
               needsUser: true,
               message:
                 "Ton Vinted est réglé dans une autre langue que le français " +
-                `(rayons affichés : ${options.slice(0, 3).join(", ")}…). FillSell choisit les catégories en français : ` +
+                `(rayons affichés : ${racinesVues.slice(0, 3).join(", ")}…). FillSell choisit les catégories en français : ` +
                 "ouvre " + VINTED_DOMAINE_PAGE + ", passe la langue en Français (Paramètres), puis relance la publication.",
             }
           );
+          errLangue.pageEtrangere = { langue: langueRacines, niveau: i, racines: racinesVues.slice(0, 12) };
+          throw errLangue;
         }
         // 3. PANNEAU VIDE : rien d'exploitable — c'est un état de rendu (panneau
         //    pas affiché, sélecteur aveugle), PAS un chemin faux. Jamais un
@@ -8614,6 +8682,8 @@ async function selectCategory(path, fields = {}, titreArticle = "") {
         );
       }
     }
+    // (29/10, lot B 4.1) Niveau 0 trouvé : ses racines, lues une fois (aucun clic, aucun appel) — cf. racinesPage.
+    if (i === 0 && racinesPage == null) racinesPage = await visibleCatalogChoices().catch(() => []);
 
     // Parmi TOUS les candidats du libellé (doublons possibles même hors
     // suggestions), préférer celui dont la NATURE colle à l'attendu : chevron

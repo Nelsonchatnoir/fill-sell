@@ -67,7 +67,8 @@ ok(republicationEngagee(job({ action: "republish", platform_fields: { deleted_at
   const boucle = bg.slice(debutBoucle, bg.indexOf("emitProgress({ jobId: job.id, platform: job.platform, phase: \"processing\" });", debutBoucle));
   ok(/if \(i > 0 && !etapeDeleted\)/.test(boucle), "extension : on ne regarde qu'ENTRE deux tâches (jamais au milieu d'une)");
   ok(/const publication = \(job\.action === "publish" \|\| job\.action === "republish"\) && !engagee;/.test(boucle), "extension : seules les publications pas engagées s'arrêtent (retraits et republications retirées continuent)");
-  ok(/repollApresCycle = true;/.test(boucle) && /setTimeout\(\(\) => \{ pollAndProcessJobs\(\); \}, 1500\)/.test(bg), "extension : la synchro part au poll qui suit, la file reprend seule");
+  // (29/10, lot B — boucle du poll) Le geste « Synchroniser » relance le poll 1,5 s après le cycle (selftest repoll-borne).
+  ok(/demanderRepoll\(\{ raison: "synchro", cle: "synchro", geste: true \}\)/.test(boucle) && /armerRelanceApresCycle\(\);/.test(bg), "extension : la synchro part au poll qui suit, la file reprend seule");
   ok(/fileEnPauseServeur/.test(bg) && /fillsell_file_pause/.test(lire("chrome-extension/popup.js")), "extension : le popup dit « en pause »");
 }
 

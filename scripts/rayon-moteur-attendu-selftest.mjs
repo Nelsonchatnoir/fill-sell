@@ -47,6 +47,10 @@ verifier(/Publication en attente/.test(A.pauseRayonMoteur({ platform: "vinted", 
 verifier(A.pauseRayonMoteur({ platform: "vinted", action: "republish", pfIn: { ...pfFerosinge(), republish_step: "deleted", deleted_at: "x" }, maintenant: T0 }) === null, "⛔ étape « deleted » (annonce hors ligne) : la question part, comme avant");
 verifier(A.pauseRayonMoteur({ platform: "vinted", action: "republish", pfIn: { ...pfFerosinge(), rayon_moteur: { chemin: ["x"] } }, maintenant: T0 }) === null, "⛔ le moteur est déjà passé sur ce job : la question part (le balayage la juge)");
 verifier(A.pauseRayonMoteur({ platform: "vinted", action: "republish", pfIn: { ...pfFerosinge(), categoryLevelChoice: "Boosters" }, maintenant: T0 }) === null, "⛔ une réponse de la personne déjà donnée : jamais remise en pause");
+// (29/10, lot B 4.1 — mele.marta 2fd83d73) Racines d'une autre langue : le rayon n'est pas refusé, le moteur n'a rien à choisir.
+verifier(A.pauseRayonMoteur({ platform: "vinted", action: "publish", pfIn: { categoryPath: ["Électronique", "Jeux vidéo et consoles", "Jeux"], vinted_ids: { catalog_id: 3026 },
+  needsUserField: { ...QUESTION, allowed_values: ["Accessori", "Donna", "Uomo", "Bambini", "Casa", "Elettronica", "Libri e media", "Hobby e collezionismo", "Sport"] } }, maintenant: T0 }) === null,
+  "⛔ racines italiennes (page étrangère) : pas de pause moteur, ce n'est pas un rayon refusé");
 verifier(A.pauseRayonMoteur({ platform: "vinted", action: "republish", pfIn: { ...pfFerosinge(), needsUserField: { ...QUESTION, field_key: "color" } }, maintenant: T0 }) === null
   && A.pauseRayonMoteur({ platform: "beebs", action: "republish", pfIn: pfFerosinge(), maintenant: T0 }) === null, "une autre question, une autre plateforme : rien");
 verifier(A.pauseRayonMoteur({ platform: "vinted", action: "republish", pfIn: { ...pfFerosinge(), republish_snapshot: { capture_id: 16530, categoryPath: ["Rayon inventé"] } }, maintenant: T0 }) === null,

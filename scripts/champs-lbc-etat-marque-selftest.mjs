@@ -76,5 +76,146 @@ ok(/TEXTE_ARTICLE_LBC = normalizeFuzzy\(`\$\{job\.title \?\? ""\} \$\{job\.descr
 ok(/\(marqueDevineeFausse \|\| marqueReelle\) \? fallbackValues\.filter\(\(v\) => !\/\^sans marque\$\/i\.test\(String\(v\)\)\) : fallbackValues/.test(LBC),
   '3b. jamais « Sans marque » à la place d\'une marque devinée (l\'article en a une)');
 
+// ── (29/10, point 4.4 — boncoin59300) LE CHAMP MARQUE À RECHERCHE QUAND LEBONCOIN A PRÉ-REMPLI UNE AUTRE MARQUE ──
+// Dépôts du 26/10 : 3295898405 « manteau fourrures » (pré-rempli « Vintage Dressing » gardé, « Fourrures D.S Paris »
+// dite hors liste, « Options: [] ») et 3295940657 « Air Jordan MA2 » (« Nike » gardé, « Jordan » dite hors liste alors
+// qu'elle est dans la liste). Le bloc LIVRÉ ⟦marque-recherche⟧ est exécuté (vm), puis les gestes ⟦marque-recherche-gestes⟧
+// sont joués sur un faux champ à recherche (menu vide tant qu'on ne tape pas).
+{
+  const vm = await import('node:vm');
+  const bloc = (debut, fin) => { const d = LBC.indexOf(debut), f = LBC.indexOf(fin); if (d < 0 || f < 0) throw new Error(`bloc introuvable : ${debut}`); return LBC.slice(d, f + fin.length); };
+  const ligne = (re) => { const m = LBC.match(re); if (!m) throw new Error(`ligne introuvable : ${re}`); return m[0]; };
+  const fonction = (entete) => { const i = LBC.indexOf(entete); if (i < 0) throw new Error(`fonction introuvable : ${entete}`); return LBC.slice(i, LBC.indexOf('\n}\n', i) + 2); };
+  const source = [
+    bloc('// ⟦texte-comparable:début⟧', '// ⟦texte-comparable:fin⟧'),
+    'const normalizeFuzzy = (s) => texteComparable(s);',
+    fonction('function containsAsWords(hay, needle) {'),
+    bloc('// ⟦marque-exacte:début⟧', '// ⟦marque-exacte:fin⟧'),
+    ligne(/^const VALEUR_GENERIQUE_RE = .*$/m),
+    ligne(/^const estValeurGenerique = .*$/m),
+    bloc('// ⟦marque-recherche:début⟧', '// ⟦marque-recherche:fin⟧'),
+    'let TEXTE_ARTICLE_LBC = ""; const VALEURS_NON_RECONNUES = {};',
+    fonction('function marqueCiteeDansLArticle(marque) {'),
+    fonction('async function relireCombobox(input, label) {'),
+    bloc('// ⟦marque-recherche-gestes:début⟧', '// ⟦marque-recherche-gestes:fin⟧'),
+    'globalThis.__t = { decisionMarqueRechercheLbc, poserMarqueParRechercheLbc, normalizeFuzzy, poserTexte: (t) => { TEXTE_ARTICLE_LBC = normalizeFuzzy(t); }, horsListe: () => MARQUE_HORS_LISTE, razHorsListe: () => { MARQUE_HORS_LISTE = null; }, nonReconnues: VALEURS_NON_RECONNUES };',
+  ].join('\n');
+  // Le faux DOM : un combobox comme celui de Leboncoin. Taper filtre la liste servie (menu vide sans frappe) ; cliquer
+  // une option la retient ; refermer (clic ailleurs) remet dans le champ la valeur retenue (`blurRemet`) ou laisse le
+  // texte tapé sans rien retenir.
+  const muet = { log() {}, warn() {} };
+  const banc = { recherche: () => [], blurRemet: true };
+  const etat = { selection: null, clics: [] };
+  const menu = { options: [], querySelectorAll() { return this.options; }, querySelector() { return this.options[0] ?? null; }, get childElementCount() { return this.options.length; }, get textContent() { return this.options.map((o) => o.textContent).join(' '); } };
+  const input = { value: '', getAttribute: (k) => (k === 'aria-controls' ? 'menu-marque' : null), dispatchEvent() {}, focus() {} };
+  const option = (label) => ({ textContent: label, isConnected: true, dispatchEvent() { etat.selection = label; etat.clics.push(label); input.value = label; menu.options = []; } });
+  const document = {
+    getElementById: (id) => (id === 'menu-marque' ? menu : null),
+    querySelectorAll: () => [],
+    body: { click() { if (banc.blurRemet) input.value = etat.selection ?? ''; else if (input.value !== etat.selection) etat.selection = null; menu.options = []; } },
+  };
+  const ctx = vm.createContext({
+    console: muet, String, Array, RegExp, Object, Map, Set, Number, Boolean, JSON, Date, document,
+    MouseEvent: class { constructor(type) { this.type = type; } },
+    sleep: async () => {}, humanPause: async () => {}, realClick: (el) => el.dispatchEvent(),
+    typeInto: async (el, texte) => { el.value = String(texte); menu.options = String(texte) ? banc.recherche(String(texte)).map(option) : []; },
+  });
+  vm.runInContext(source, ctx);
+  const T = ctx.__t;
+  const D = T.decisionMarqueRechercheLbc;
+  // La liste de Leboncoin servie à la frappe (contenance, comme une recherche) — « Jordan » y est (posée chez d'autres comptes).
+  const LISTE = ['Air Jordan', 'Jordan', 'Nike', 'Vintage Dressing', 'Fourrures Toscane', 'Paris Fourrures', 'Autre', 'Sans marque', 'Canon'];
+  const chercheLbc = (t) => LISTE.filter((b) => T.normalizeFuzzy(b).includes(T.normalizeFuzzy(t))).slice(0, 10);
+  const MANTEAU = { titre: 'manteau fourrures ds paris femme 38/40 long  col volumineux vintage', description: 'Fourrures D.S Paris manteau long fourrure marron vintage M/L poches boutons\n\nManteau long en véritable fourrure de renard teinté brun, signé Fourrures DS Paris.' };
+  const JORDAN = { titre: 'Basket femme Nike air jordan MA2 taille 38', description: 'Basket femme blanche noir et rouge\nNike air Jordan Ma2\ntaille 38\ntres bon etat' };
+  const jouer = async ({ article, prefilled, notre, recherche = chercheLbc, blurRemet = true }) => {
+    T.poserTexte(`${article.titre} ${article.description}`); T.razHorsListe();
+    banc.recherche = recherche; banc.blurRemet = blurRemet;
+    etat.selection = prefilled; etat.clics = []; input.value = prefilled; menu.options = [];
+    for (const k of Object.keys(T.nonReconnues)) delete T.nonReconnues[k];
+    const warnings = [];
+    const r = await T.poserMarqueParRechercheLbc({ fieldName: 'marque', input, optionSelector: 'li', notre, prefilled, warnings });
+    return { r, valeur: etat.selection, champ: input.value, clics: [...etat.clics], horsListe: T.horsListe(), note: warnings.join(' | '), nonReconnue: T.nonReconnues.marque };
+  };
+
+  console.log('\n4. (29/10) LA DÉCISION — LE PRÉ-REMPLI ≠ NOTRE MARQUE : ON TAPE LA NÔTRE');
+  ok(D({ notre: 'Jordan', prefilled: 'Nike', prefilledCite: true }).geste === 'taper' && D({ notre: 'Jordan', prefilled: 'Nike', prefilledCite: true }).valeur === 'Jordan',
+    '4a. d\'abord, notre marque est TAPÉE (même si l\'article nomme le pré-rempli)');
+  {
+    const d = D({ notre: 'Jordan', prefilled: 'Nike', prefilledCite: true, vuesNotre: ['Air Jordan', 'Jordan'] });
+    ok(d.geste === 'poser' && d.option === 'Jordan' && !d.autre, '4b. Air Jordan MA2 : « Jordan » est dans la recherche → « Jordan » (jamais « Air Jordan », la voisine)', JSON.stringify(d));
+  }
+  {
+    const d1 = D({ notre: 'Fourrures D.S Paris', prefilled: 'Vintage Dressing', prefilledCite: false, vuesNotre: [] });
+    const d2 = D({ notre: 'Fourrures D.S Paris', prefilled: 'Vintage Dressing', prefilledCite: false, vuesNotre: [], vuesAutre: ['Autre'] });
+    ok(d1.geste === 'taper' && d1.valeur === 'Autre' && d2.geste === 'poser' && d2.option === 'Autre' && d2.autre && d2.marqueDansDescription,
+      '4c. manteau : « Fourrures D.S Paris » absente, l\'article ne nomme pas « Vintage Dressing » → « Autre », la marque dans la description', JSON.stringify(d2));
+  }
+  {
+    const d = D({ notre: 'Jordan', prefilled: 'Nike', prefilledCite: true, vuesNotre: ['Air Jordan'] });
+    ok(d.geste === 'garder' && d.horsListe && !d.muette, '4d. notre marque absente et l\'article nomme le pré-rempli : il reste (« hors liste » : la recherche a répondu)', JSON.stringify(d));
+  }
+  {
+    const d = D({ notre: 'Fourrures D.S Paris', prefilled: 'Vintage Dressing', prefilledCite: false, vuesNotre: [], vuesAutre: [] });
+    ok(d.geste === 'garder' && d.muette && !d.horsListe, '4e. recherche MUETTE (rien relu, ni pour la marque ni pour « Autre ») : jamais « hors liste », le pré-rempli reste', JSON.stringify(d));
+    const c = D({ notre: 'Jordan', prefilled: 'Nike', prefilledCite: true, vuesNotre: [] });
+    ok(c.geste === 'garder' && c.muette && !c.horsListe, '4f. muette, pré-rempli nommé : « Autre » n\'est jamais tenté, rien n\'est conclu');
+  }
+  ok(D({ notre: 'Chic Me', prefilled: 'Zara', prefilledCite: false, vuesNotre: ['Chic', 'Chicco'], vuesAutre: ['Autre'] }).option === 'Autre'
+    && D({ notre: 'Chic Me', prefilled: 'Zara', vuesNotre: ['ChicMe'] }).option === 'ChicMe', '4g. égalité tolérante seulement : « Chic » jamais pour « Chic Me », « ChicMe » oui');
+  {
+    const d = D({ notre: 'Karrimor', prefilled: 'Autre', prefilledCite: true, vuesNotre: [], vuesAutre: ['Autre'] });
+    ok(d.geste === 'poser' && d.option === 'Autre' && d.marqueDansDescription, '4h. un pré-rempli générique (« Autre ») n\'est jamais « nommé » par l\'article : « Autre » + la marque dans la description');
+    const g = D({ notre: 'Karrimor', prefilled: 'Autre', vuesNotre: [], vuesAutre: [] });
+    ok(g.geste === 'garder' && g.marqueDansDescription, '4i. « Autre » pré-rempli qui reste (recherche muette) : la vraie marque part quand même dans la description');
+  }
+  ok(D({ notre: 'Sans marque', prefilled: 'Canon', prefilledCite: false, vuesNotre: ['Sans marque'] }).option === 'Sans marque',
+    '4j. Ornella « Canon » (sans marque) sur un champ à recherche : « Sans marque » trouvé → posé');
+  ok(D({ notre: 'Oakley', vuesNotre: [] }).valeur === 'Autre' && D({ notre: 'Sans marque', vuesNotre: [] }).geste === 'vider',
+    '4k. sans pré-rempli (inchangé) : « Autre » pour une vraie marque seulement, sinon champ vide');
+
+  console.log('\n5. (29/10) LES GESTES, JOUÉS SUR UN CHAMP À RECHERCHE (menu vide tant qu\'on ne tape pas)');
+  {
+    const j = await jouer({ article: JORDAN, prefilled: 'Nike', notre: 'Jordan' });
+    ok(j.r === true && j.valeur === 'Jordan' && j.clics.join() === 'Jordan' && j.horsListe === null && /remplacé par « Jordan », trouvé par recherche/.test(j.note),
+      '5a. 3295940657 Air Jordan MA2 : « Nike » pré-rempli → « Jordan » tapé et posé', JSON.stringify(j));
+  }
+  {
+    const j = await jouer({ article: MANTEAU, prefilled: 'Vintage Dressing', notre: 'Fourrures D.S Paris' });
+    ok(j.r === true && j.valeur === 'Autre' && j.horsListe === 'Fourrures D.S Paris' && /absent de la recherche Leboncoin \(propositions vues: \["Autre"\]\) → « Autre », la marque est écrite dans la description/.test(j.note),
+      '5b. 3295898405 manteau : « Vintage Dressing » pré-rempli → « Autre », « Fourrures D.S Paris » dans la description', JSON.stringify(j));
+  }
+  {
+    const j = await jouer({ article: JORDAN, prefilled: 'Nike', notre: 'Jordan', recherche: (t) => chercheLbc(t).filter((b) => b !== 'Jordan') });
+    ok(j.r === true && j.valeur === 'Nike' && j.champ === 'Nike' && /CONSERVÉ — « Jordan » hors liste \(propositions vues: \["Air Jordan"\]\)/.test(j.note),
+      '5c. « Jordan » absente de la recherche, l\'article nomme « Nike » : « Nike » reste (« hors liste » après une recherche qui a répondu)', JSON.stringify(j));
+  }
+  {
+    const j = await jouer({ article: MANTEAU, prefilled: 'Vintage Dressing', notre: 'Fourrures D.S Paris', recherche: () => [] });
+    ok(j.r === true && j.valeur === 'Vintage Dressing' && j.champ === 'Vintage Dressing' && /CONSERVÉ — recherche muette/.test(j.note) && !/hors liste/.test(j.note),
+      '5d. recherche muette : le pré-rempli reste, « hors liste » n\'est jamais écrit, l\'état du menu est dit', JSON.stringify(j));
+  }
+  {
+    const j = await jouer({ article: JORDAN, prefilled: 'Nike', notre: 'Jordan', recherche: (t) => chercheLbc(t).filter((b) => b !== 'Jordan'), blurRemet: false });
+    ok(j.r === true && j.valeur === 'Nike' && j.clics.join() === 'Nike', '5e. la frappe a effacé le pré-rempli (le champ ne le remet pas) : il est retapé et choisi à l\'identique', JSON.stringify(j));
+  }
+  {
+    const j = await jouer({ article: JORDAN, prefilled: 'Nike', notre: 'Jordan', recherche: () => [], blurRemet: false });
+    ok(j.r === false && j.champ === '' && j.nonReconnue === 'Jordan' && /champ laissé vide/.test(j.note),
+      '5f. pré-rempli effacé et introuvable : champ vidé et dit (jamais un texte tapé laissé dans le champ)', JSON.stringify(j));
+  }
+
+  console.log('\n6. (29/10) LE BRANCHEMENT DANS fillCriterionSafe');
+  ok(/if \(!match && rechercheParFrappe && fieldName === "marque" && !estMarqueConsole && prefilled && menu\) \{\s+return await poserMarqueParRechercheLbc\(\{ fieldName, input, optionSelector, notre: String\(rawValue\), prefilled, warnings \}\);/.test(LBC)
+    && LBC.indexOf('return await poserMarqueParRechercheLbc(') < LBC.indexOf('const marqueDevineeFausse = fieldName === "marque"'),
+    '6a. marque pré-remplie ≠ la nôtre, absente du menu ouvert : la recherche passe AVANT l\'ancien repli « Autre » dans le menu vide');
+  ok(/fillCriterionSafe\("marque", 'label\[for\$="_brand"\]', fields\.marque, warnings,\s+\{ skipIfPrefilled: true, fallbackValues: [^\n]+, rechercheParFrappe: true \}\);/.test(LBC),
+    '6b. le champ Marque est bien appelé en recherche (skipIfPrefilled + rechercheParFrappe)');
+  ok(/: prefilledMatchesTarget\(prefilled, rawValue\) \|\| \(fieldName === "marque" && marquesEgales\(prefilled, rawValue\)\)\);/.test(LBC),
+    '6c. un pré-rempli ÉGAL à notre marque (« ChicMe » = « Chic Me ») est gardé sans recherche');
+  ok(/const menuVif = \(\) => menuDuChampLbc\(input\) \?\? menu;/.test(LBC) && (LBC.match(/menuVif\(\)\.querySelector/g) ?? []).length >= 4,
+    '6d. champ vide (voie d\'avant) : le menu propre du champ est relu à chaque lecture, jamais le nœud d\'avant la frappe');
+}
+
 console.log(`\n${total - echecs}/${total} contrôles verts`);
 process.exit(echecs ? 1 : 0);

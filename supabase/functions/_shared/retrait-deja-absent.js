@@ -25,7 +25,7 @@
 // Pur, sans réseau (Deno + Node).
 
 import { jugerRetraitIntrouvable, jugerRetraitVintedIntrouvable, numeroDepuisLien } from "./retrait-introuvable.js";
-import { constats404Beebs, deuxConstats404Prouvent, REGLE_DEUX_CONSTATS_404 } from "./beebs-preuve-retrait.js";
+import { constats404Beebs, constats404DuRetraitBeebs, deuxConstats404Prouvent, REGLE_DEUX_CONSTATS_404, REGLE_SUPPRESSION_ENVOYEE_404, suppressionEnvoyeeProuvee } from "./beebs-preuve-retrait.js";
 import { champsAttenteClose } from "./etat-terminal.js";
 import { archiverErreur } from "./erreurs-archivees.js";
 
@@ -169,7 +169,15 @@ export function jugerRetraitDejaAbsent(job, { releves = [], annonces = [], snaps
     // ⛔ Jamais le relevé ni l'index : deux constats « page 404 » de l'extension, 6 h d'écart au moins…
     const constats = constats404Beebs(pf);
     const dates = constats.map((c) => String(c.le));
-    if (!deuxConstats404Prouvent(dates)) return null;
+    if (!deuxConstats404Prouvent(dates)) {
+      // (29/10, lot B 4.9 C — Joséphine 1845ce62) … ou la suppression ENVOYÉE par FillSell sur l'annonce vue en ligne
+      // juste avant (aucune garde de modération : elle était en ligne), puis deux pages 404 à 6 h d'écart APRÈS
+      // l'envoi — « Mes annonces » lue en entier ou non (_shared/beebs-preuve-retrait.js).
+      const envoi = suppressionEnvoyeeProuvee(pf, numero);
+      if (!envoi) return null;
+      return { numero, vente: null, delete_confirmed_by: "suppression_envoyee_404", motif: REGLE_SUPPRESSION_ENVOYEE_404,
+        preuve: { source: "suppression_envoyee_404", regle: REGLE_SUPPRESSION_ENVOYEE_404, ...envoi } };
+    }
     // … et la garde de modération : une annonce jamais vue en ligne, d'un dépôt de moins de 7 jours, peut être en
     // examen chez Beebs (invisible des deux onglets) — elle sortirait en ligne après la vente : double vente.
     if (!vueEnLigneBeebs) {
@@ -279,7 +287,9 @@ export function clotureCopie(platformFields, { le, retraitId, numero }) {
  */
 export function constat404DeCetEssai(pf, maintenant = Date.now()) {
   const p = objet(pf) ?? {};
-  const constats = constats404Beebs(p);
+  // (29/10, lot B 4.9) Après une suppression ENVOYÉE, un constat 404 d'après l'envoi compte aussi (« en vérification »
+  // lue ou non) : il fait attendre le second constat au lieu de consommer un essai.
+  const constats = constats404DuRetraitBeebs(p);
   if (!constats.length) return false;
   const dernier = ms(constats[constats.length - 1].le);
   if (!Number.isFinite(dernier)) return false;

@@ -790,6 +790,59 @@ const MESSAGE_CONSTAT_404_BEEBS =
   "seul l'index public de Beebs, en retard, la porte encore. Constat noté : le retrait se clôt au second constat, au moins 6 h après le premier. " +
   "Rien n'a été touché, nouvel essai";
 
+// ── (29/10, lot B 4.9 C — Joséphine 1845ce62) UNE SUPPRESSION ENVOYÉE EST UN FAIT ─────────────────────────────────────
+// FillSell avait RÉELLEMENT supprimé 33911382 le 26/10 au soir ; depuis, sa page est en 404 sans bouton, et la preuve
+// exigeait « Mes annonces » lue en entier (« en ligne » tronquée 60/297, « en vérification » illisible) : le retrait
+// tournait sans fin, l'envoi n'était gardé nulle part. Désormais le background garde l'envoi sur le retrait
+// (platform_fields.beebs_suppression_envoyee { le, numero, vue_en_ligne_avant } — l'envoi n'est possible que sur une
+// annonce vue EN LIGNE : bouton de sa page, ou de sa carte ; une annonce en vérification n'a aucun geste) ; ensuite
+// deux lectures « page 404 » sans fiche du numéro EXACT, à 6 h d'écart au moins, toutes deux APRÈS l'envoi, prouvent
+// le retrait — « en vérification » lue ou non. Une page relue 200 avec sa fiche (ou l'annonce listée) remet à zéro.
+// Miroir de _shared/beebs-preuve-retrait.js (REGLE_SUPPRESSION_ENVOYEE_404, preuveSuppressionEnvoyee404Valide).
+const REGLE_SUPPRESSION_ENVOYEE_404 = "suppression_envoyee_deux_404";
+function suppressionEnvoyeeDuJob(job, idCible) {
+  const s = job?.platform_fields?.beebs_suppression_envoyee;
+  if (!s || typeof s !== "object" || !Number.isFinite(Date.parse(String(s.le ?? ""))) || !s.vue_en_ligne_avant) return null;
+  if (String(s.numero ?? "").trim() && String(s.numero).trim() !== String(idCible)) return null;
+  return { le: String(s.le), vue_en_ligne_avant: s.vue_en_ligne_avant };
+}
+// Pur : seuls les constats APRÈS l'envoi comptent (et sont gardés) ; le premier après l'envoi date l'écart, plus les 5 derniers.
+function jugerConstats404ApresEnvoi(precedents, constat, envoyeeLe) {
+  const ECART_MIN_MS = 6 * 3600_000;
+  const date = (c) => Date.parse(String(c?.le ?? ""));
+  const envoi = Date.parse(String(envoyeeLe ?? ""));
+  const apres = [...(Array.isArray(precedents) ? precedents : []), constat]
+    .filter((c) => c && c.page_http === 404 && c.produit === false && date(c) > envoi)
+    .sort((a, b) => date(a) - date(b));
+  const constats = apres.length > 6 ? [apres[0], ...apres.slice(-5)] : apres;
+  const premier = constats.length ? date(constats[0]) : NaN;
+  const dernier = constats.length ? date(constats[constats.length - 1]) : NaN;
+  return { constats, prouve: constats.length >= 2 && dernier - premier >= ECART_MIN_MS, premier: Number.isFinite(premier) ? new Date(premier).toISOString() : null };
+}
+const MESSAGE_CONSTAT_404_APRES_ENVOI_BEEBS =
+  "Suppression envoyée à Beebs : depuis, la page de l'annonce est introuvable (404) — elle n'est plus achetable. " +
+  "Constat noté : le retrait se clôt au second constat, au moins 6 h après le premier. Rien d'autre n'est fait, nouvel essai";
+
+// ── (29/10, lot B 4.9) CE QUE LA LECTURE DE « MES ANNONCES » A DONNÉ, PAR ONGLET ───────────────────────────────────────
+// « « Mes annonces » illisible en entier » revenait à chaque reprise sans sa cause. Le résumé (par onglet : ok, par
+// quelle voie — fetch, page, cadre —, http, motif, lues / annoncées) part avec le résultat ; le background le garde sur
+// le retrait (platform_fields.beebs_lecture_mes_annonces), seulement s'il change.
+function resumeLectureMesAnnonces(lecture, verdict) {
+  const pages = Array.isArray(lecture?.pages) ? lecture.pages : [];
+  return {
+    lu_le: lecture?.lu_le ?? new Date().toISOString(),
+    verdict: verdict ?? null,
+    onglets: pages.map((p) => ({
+      page: p.page ?? null, ok: p.ok === true, par: p.par ?? "fetch", http: Number.isInteger(p.http) ? p.http : null,
+      motif: p.ok === true ? null : String(p.motif ?? "?").slice(0, 120),
+      n: Array.isArray(p.ids) ? p.ids.length : (p.n ?? null), annoncees: p.annoncees ?? null,
+      ...(p.mur ? { mur: p.mur } : {}),
+      ...(p.par_la_page ? { par_la_page: String(p.par_la_page).slice(0, 80) } : {}),
+      ...(p.cadre ? { cadre: String(p.cadre).slice(0, 80) } : {}),
+    })),
+  };
+}
+
 // ── UN RETRAIT BEEBS NE SE CLÔT QUE SUR LA LISTE DU PROPRIÉTAIRE (03/10) ─────
 // Bouilloire de Nico (34097677, 03/10 10:12) : premier essai sur une page sans
 // bouton propriétaire, second essai qui confirme, puis « supprimé » sans que
@@ -817,9 +870,53 @@ async function preuveAbsenceMesAnnonces(idCible, t, ctx = {}) {
       return { verdict: "absente", lecture: { ...lecture, vendue } };
     }
     t(`preuve propriétaire : ${idCible} ENCORE dans « Mes annonces » (${resume})`);
-    return { verdict: "presente", lecture: { ...lecture, ...constatsRemis } };
+    // (29/10, lot B 4.9 C) Revue « en vérification » après l'envoi : ses pages 404 ne diraient plus rien — l'envoi levé.
+    const enVerifApresEnvoi = !!ctx?.suppressionEnvoyee
+      && (pages.find((p) => p.page === "en_verification")?.ids ?? []).map(String).includes(String(idCible));
+    return { verdict: "presente", lecture: { ...lecture, ...constatsRemis, ...(enVerifApresEnvoi ? { suppression_levee: true } : {}) } };
   }
   const complete = lecture.ok && pages.every((p) => p.ok && !(p.annoncees != null && p.n < p.annoncees));
+  // (29/10, lot B 4.9 C) Suppression ENVOYÉE par FillSell sur ce retrait (ctx.suppressionEnvoyee, annonce vue en
+  // ligne avant l'envoi) : la page de l'annonce tranche sans attendre « Mes annonces » complète — 200 avec sa fiche =
+  // encore là (constats remis à zéro) ; 404 sans fiche = un constat après l'envoi, deux à 6 h d'écart = retirée. La
+  // règle des trois preuves (liste « en ligne » seule tronquée, hors vérification, hors index) garde la main.
+  const envoi = !complete && avecConstats && ctx?.suppressionEnvoyee && Number.isFinite(Date.parse(String(ctx.suppressionEnvoyee.le ?? "")))
+    ? ctx.suppressionEnvoyee : null;
+  if (envoi) {
+    const verifE = pages.find((p) => p.page === "en_verification");
+    const enLigneE = pages.find((p) => p.page === "en_ligne");
+    const page = await pageAnnonceBeebs(idCible);
+    if (page.http === 200 && page.produit) {
+      t(`preuve après l'envoi du ${envoi.le} : ${idCible} ENCORE en vente (page 200, fiche produit) — rien n'est conclu, l'envoi est levé`);
+      return { verdict: "presente", lecture: { ...lecture, constats404: [], suppression_levee: true } };
+    }
+    if (page.http === 404 && !page.produit) {
+      const verifLue = verifE?.ok === true;
+      const tronquee = verifLue && enLigneE?.ok === true && enLigneE.annoncees != null && enLigneE.n < enLigneE.annoncees;
+      const index = await presenceIndexBeebs(idCible);
+      const enLigneTxt = enLigneE?.ok === true ? `${enLigneE.n}/${enLigneE.annoncees ?? "?"}` : "non_lue";
+      if (tronquee && index === false) {
+        t(`preuve propriétaire : liste « en ligne » tronquée (${resume}) → page de l'annonce HTTP 404, index public : absente`);
+        return { verdict: "absente", lecture: { ...lecture, preuve_annonce: { page_http: 404, produit: false, index: "absente", en_verification: "complete", en_ligne: enLigneTxt, suppression_envoyee_le: envoi.le } } };
+      }
+      const constat = {
+        le: new Date().toISOString(), page_http: 404, produit: false, en_verification: verifLue ? "complete" : "non_lue",
+        en_ligne: enLigneTxt, index: index === null ? "non_lu" : index ? "la_porte_encore" : "absente", apres_envoi: envoi.le,
+      };
+      const juge = jugerConstats404ApresEnvoi(ctx.constats404, constat, envoi.le);
+      if (juge.prouve) {
+        t(`preuve après l'envoi du ${envoi.le} : page 404 sans fiche constatée ${juge.constats.length} fois depuis le ${juge.premier} (6 h et plus) — retirée (« Mes annonces » : ${resume})`);
+        return { verdict: "absente", lecture: { ...lecture, constats404: juge.constats, preuve_annonce: {
+          page_http: 404, produit: false, index: constat.index, en_verification: constat.en_verification, en_ligne: enLigneTxt,
+          regle: REGLE_SUPPRESSION_ENVOYEE_404, suppression_envoyee_le: envoi.le, vue_en_ligne_avant: envoi.vue_en_ligne_avant,
+          constats_404: juge.constats.map((c) => c.le) } } };
+      }
+      t(`preuve après l'envoi du ${envoi.le} : constat 404 n° ${juge.constats.length} noté (premier le ${juge.premier}) — la preuve attend un constat au moins 6 h après le premier (« Mes annonces » : ${resume})`);
+      return { verdict: "illisible", lecture: { ...lecture, constats404: juge.constats, apres_envoi: true } };
+    }
+    t(`preuve après l'envoi du ${envoi.le} : page de l'annonce illisible (HTTP ${page.http ?? "?"}) et « Mes annonces » incomplète (${resume}) — rien n'est conclu`);
+    return { verdict: "illisible", lecture };
+  }
   if (!complete) {
     // ── UN GROS COMPTE : « EN LIGNE » NE REND QUE SES 60 PREMIÈRES (04/10) ──
     // Joséphine (Joe0410, ~190 annonces) : « Actuellement en ligne » ne rend
@@ -905,7 +1002,10 @@ function preuveRetraitDepuis(lecture, idCible, moment) {
 // continue de relire (BEEBS_PREUVE_RETRAIT, appels courts) jusqu'à ~6 min
 // après elle — un seul message ne peut pas durer 6 min (borne de 300 s, et
 // Chrome arrête un service worker sur un appel de 5 min).
-async function confirmerRetraitParMesAnnonces(idCible, t) {
+// (29/10, lot B 4.9 C) `vue` : comment l'annonce a été vue EN LIGNE juste avant l'envoi (« bouton_page » : le bouton
+// « Supprimer l'annonce » de sa page ; « carte_mes_annonces » : celui de sa carte) — rendu avec l'envoi, que le
+// background garde sur le retrait (beebs_suppression_envoyee), avec le résumé de la dernière lecture (R6).
+async function confirmerRetraitParMesAnnonces(idCible, t, vue = null) {
   const suppressionEnvoyeeLe = new Date().toISOString();
   let dernier = null;
   for (const attente of [0, 10_000, 20_000, 40_000, 60_000]) {
@@ -917,6 +1017,8 @@ async function confirmerRetraitParMesAnnonces(idCible, t) {
   }
   return {
     success: false, reprise: true, suppressionEnvoyee: true, suppressionEnvoyeeLe,
+    ...(vue?.par ? { suppressionVueEnLigneAvant: { par: vue.par, le: vue.le ?? suppressionEnvoyeeLe } } : {}),
+    ...(dernier?.lecture ? { lectureMesAnnonces: resumeLectureMesAnnonces(dernier.lecture, dernier.verdict) } : {}),
     error: dernier?.verdict === "presente"
       ? "Suppression envoyée à Beebs, mais l'annonce est encore dans « Mes annonces » deux minutes après — vérification au prochain passage, rien d'autre n'est fait"
       : "Suppression envoyée à Beebs, mais « Mes annonces » n'a pas pu être relue en entier — vérification au prochain passage, rien d'autre n'est fait",
@@ -1026,11 +1128,29 @@ async function deleteListing(job) {
   // (25/10, boncoin59300) Les constats « page 404 » d'un RETRAIT (jamais d'une
   // republication) voyagent avec le job : lus ici, rendus au background à chaque
   // essai (beebs404Constats), qui les garde sur le job (jugerConstats404Beebs).
+  // (29/10, lot B 4.9 C) … avec la suppression déjà ENVOYÉE sur ce retrait (beebs_suppression_envoyee, même numéro).
+  const envoiDuJob = job?.action === "delete" ? suppressionEnvoyeeDuJob(job, idCible) : null;
   const ctxPreuve = job?.action === "delete"
-    ? { constats404: Array.isArray(job?.platform_fields?.beebs_404_constats) ? job.platform_fields.beebs_404_constats : [] }
+    ? { constats404: Array.isArray(job?.platform_fields?.beebs_404_constats) ? job.platform_fields.beebs_404_constats : [],
+        ...(envoiDuJob ? { suppressionEnvoyee: envoiDuJob } : {}) }
     : {};
-  const constatsDe = (preuve) => (Array.isArray(preuve?.lecture?.constats404) ? { beebs404Constats: preuve.lecture.constats404 } : {});
+  // (29/10, lot B 4.9) Chaque reprise rend aussi le résumé de sa lecture de « Mes annonces » (R6) et, revue en
+  // vérification ou en vente après l'envoi, l'envoi levé (le background retire beebs_suppression_envoyee).
+  const constatsDe = (preuve) => ({
+    ...(Array.isArray(preuve?.lecture?.constats404) ? { beebs404Constats: preuve.lecture.constats404 } : {}),
+    ...(preuve?.lecture?.pages ? { lectureMesAnnonces: resumeLectureMesAnnonces(preuve.lecture, preuve.verdict) } : {}),
+    ...(preuve?.lecture?.suppression_levee ? { suppressionEnvoyeeLevee: true } : {}),
+  });
   const constatNote = (preuve) => (preuve?.lecture?.constats404 ?? []).length > 0;
+  const messageConstat = (preuve) => (preuve?.lecture?.apres_envoi ? MESSAGE_CONSTAT_404_APRES_ENVOI_BEEBS : MESSAGE_CONSTAT_404_BEEBS);
+  // Absente APRÈS NOTRE envoi (un essai précédent) : retirée par FillSell, preuve « apres_suppression » — jamais « déjà
+  // absente » (et jamais la garde de modération du background : elle était en ligne quand l'envoi est parti).
+  const sortieAbsente = (preuve) => {
+    const apresEnvoi = !!preuve?.lecture?.preuve_annonce?.suppression_envoyee_le;
+    return { success: true, ...(apresEnvoi ? {} : { dejaRetiree: true }),
+      preuveRetrait: preuveRetraitDepuis(preuve.lecture, idCible, apresEnvoi ? "apres_suppression" : "deja_absente"),
+      ...constatsDe(preuve), trace };
+  };
 
   // ── CHEMIN 1 (nominal depuis le 11/09) : LA PAGE DE L'ANNONCE ─────────────
   // Relevé (Joe0410, 189 annonces) : « Mes annonces » ne rend que sa première
@@ -1058,9 +1178,7 @@ async function deleteListing(job) {
       t("bouton propriétaire « Supprimer l'annonce » ABSENT de la page (annonce déjà retirée, autre compte connecté ou page non rendue) — on relit « Mes annonces »");
       // (03/10) Jamais de conclusion sur cette page : la liste du propriétaire tranche.
       const preuve = await preuveAbsenceMesAnnonces(idCible, t, ctxPreuve);
-      if (preuve.verdict === "absente") {
-        return { success: true, dejaRetiree: true, preuveRetrait: preuveRetraitDepuis(preuve.lecture, idCible, "deja_absente"), trace };
-      }
+      if (preuve.verdict === "absente") return sortieAbsente(preuve);
       if (preuve.verdict === "presente") {
         return {
           success: false, reprise: true,
@@ -1070,7 +1188,7 @@ async function deleteListing(job) {
       }
       return {
         success: false, pageAnnonceSansControle: true, reprise: true,
-        error: constatNote(preuve) ? MESSAGE_CONSTAT_404_BEEBS
+        error: constatNote(preuve) ? messageConstat(preuve)
           : "Page de l'annonce sans bouton « Supprimer l'annonce », et « Mes annonces » illisible en entier — rien n'a été touché, nouvel essai",
         ...constatsDe(preuve), trace,
       };
@@ -1090,7 +1208,7 @@ async function deleteListing(job) {
     if (!dialog) return { success: false, reprise: true, error: "Dialogue « Supprimer mon annonce » introuvable après le clic — aucune confirmation envoyée, retrait à reprendre", trace };
     const verdict = await supprimerDansLeDialogue(dialog, t);
     // (03/10) La confirmation envoyée ne prouve rien : « Mes annonces » relue.
-    if (verdict?.success) return { ...(await confirmerRetraitParMesAnnonces(idCible, t)), trace };
+    if (verdict?.success) return { ...(await confirmerRetraitParMesAnnonces(idCible, t, { par: "bouton_page" })), trace };
     return { ...verdict, trace };
   }
 
@@ -1118,14 +1236,12 @@ async function deleteListing(job) {
     // (03/10) La page rendue ne montre que la première page : seule la lecture
     // complète des deux onglets dit si l'annonce est vraiment partie.
     const preuve = await preuveAbsenceMesAnnonces(idCible, t, ctxPreuve);
-    if (preuve.verdict === "absente") {
-      return { success: true, dejaRetiree: true, preuveRetrait: preuveRetraitDepuis(preuve.lecture, idCible, "deja_absente"), trace };
-    }
+    if (preuve.verdict === "absente") return sortieAbsente(preuve);
     return {
       success: false, reprise: true,
       error: preuve.verdict === "presente"
         ? `L'annonce Beebs ${idCible} est toujours dans « Mes annonces », mais sa carte n'est pas sur la page affichée — rien n'a été touché, nouvel essai`
-        : constatNote(preuve) ? MESSAGE_CONSTAT_404_BEEBS
+        : constatNote(preuve) ? messageConstat(preuve)
         : `Annonce introuvable sur la page « Mes annonces » affichée, et la liste complète n'a pas pu être relue — rien n'a été touché, nouvel essai`,
       ...constatsDe(preuve), trace,
     };
@@ -1169,7 +1285,7 @@ async function deleteListing(job) {
   }, 10000);
   if (!dialog) return { success: false, reprise: true, error: "Dialogue « Supprimer mon annonce » introuvable après le clic — aucune confirmation envoyée, retrait à reprendre", trace };
   const verdict = await supprimerDansLeDialogue(dialog, t);
-  if (verdict?.success) return { ...(await confirmerRetraitParMesAnnonces(idCible, t)), trace };
+  if (verdict?.success) return { ...(await confirmerRetraitParMesAnnonces(idCible, t, { par: "carte_mes_annonces" })), trace };
   return { ...verdict, trace };
 }
 

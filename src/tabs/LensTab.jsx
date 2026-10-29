@@ -1,13 +1,12 @@
 import { memo, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Camera, Mic, Sparkles, Plus, HelpCircle, X, Image as ImageIcon } from 'lucide-react';
-import ListingPreviewScreen, { PLATFORM_LABELS, clearStepperPersistence, readStepperHost, writeStepperHost } from '../components/ListingPreviewScreen';
+import { Camera, Mic, Sparkles, Plus, X, ChevronLeft, History, Image as ImageIcon } from 'lucide-react';
+import ListingPreviewScreen, { clearStepperPersistence, readStepperHost, writeStepperHost } from '../components/ListingPreviewScreen';
 import { apresFermetureStepper } from '../utils/parcoursLens';
 // La peau du stepper (refonte 24/09) : ancienne par défaut, nouvelle par l'interrupteur.
 import { useNouveauStepper } from '../publication/interrupteur';
 import ExtensionReminderModal, { shouldShowExtensionReminder } from '../components/ExtensionReminderModal';
 import ExtensionPitchScreen from '../components/ExtensionPitchScreen';
-import PlatformLogo from '../components/platform-logos/PlatformLogo';
 // (imports PepiteIcon/PepiteAmount retirés au nettoyage unités du 02/09
 // soir — plus aucun point d'affichage dans cet onglet.)
 // getTypeStyle / typeLabel sont partis avec les pastilles d'identification :
@@ -15,16 +14,26 @@ import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import { getRotatingLensPlaceholders } from '../utils/shared';
 import { televerserPhotos as televerserVersBucket } from '../utils/photosUpload';
 import { MAX_PHOTOS, LENS_PHOTOS_LUES } from '../utils/photos';
-import AnalyseMarche, { analyseFiabilite } from '../components/AnalyseMarche';
+import { analyseFiabilite } from '../components/AnalyseMarche';
 import LensIdentite from '../components/LensIdentite';
 import { useTranslation } from '../i18n/useTranslation';
-import { UI, PrimaryButton, PremiumButton } from '../components/ui';
+import { UI } from '../components/ui';
 // (01/10) LA barre de progression : le scan, la lecture des photos et la
 // préparation de l'annonce l'utilisent à la place du sablier.
 import BarreProgression from '../components/BarreProgression';
 import { PLATEFORMES_STOCK_OUVERTES } from "../utils/stockFiltres";
+// (29/10, lot B 1.2-1.5) La refonte de l'écran Lens (maquettes validées par Nico le 29/10) : la peau, l'orbite des
+// plateformes, les états, le prix selon la stratégie, l'historique. Les réglages de rédaction portent la stratégie de
+// prix et « Ouvrir l'annonce dès la fin de l'analyse ».
+import '../components/lens/lens.css';
+import OrbiteLogos from '../components/lens/OrbiteLogos';
+import { ProgressionScan, EchecAnalyse, QuotaAtteint } from '../components/lens/EtatsLens';
+import { motifEchec } from '../components/lens/motifEchec';
+import PrixStrategie from '../components/lens/PrixStrategie';
+import HistoriqueLens from '../components/lens/HistoriqueLens';
+import { Pli, DetailMarche } from '../components/lens/PlisResultat';
+import { useReglagesRedaction } from '../utils/redactionALaDemande';
 
-const CANVAS    = '#F6F5F1';
 const INK       = '#10201B';
 const TEAL      = '#2F9E90';
 const TEAL_DEEP = '#1B6E62';
@@ -38,6 +47,8 @@ const MUTE      = '#6B7A75';
 // serait mise à défiler sur l'écran d'accueil Lens de TOUT LE MONDE, en
 // promettant une publication qui n'existe pas. Une plateforme n'entre ici
 // qu'une fois réellement publiable.
+// (29/10, lot B 1.5) Le bandeau défilant est devenu l'ORBITE autour du
+// déclencheur (components/lens/OrbiteLogos) : même liste, même règle.
 const LENS_PLATFORMS = PLATEFORMES_STOCK_OUVERTES; // même table que le stock (utils/stockFiltres)
 
 // Feuille bas-écran « Prendre une photo / Choisir dans la photothèque »,
@@ -54,7 +65,7 @@ function PhotoSourceSheet({ open, onClose, onCamera, onGallery, lang, maxPhotos 
   return createPortal(
     <div
       onClick={onClose}
-      style={{ position:'fixed', inset:0, zIndex:10000, background:'rgba(16,32,27,0.45)', display:'flex', alignItems:'flex-end', justifyContent:'center' }}
+      style={{ position:'fixed', inset:0, zIndex:10000, background:'rgba(16,32,27,0.45)', display:'flex', alignItems:'flex-end', justifyContent:'center', colorScheme:'light' }}
     >
       <style>{`
         @keyframes lensSheetUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
@@ -107,29 +118,155 @@ function PhotoSourceSheet({ open, onClose, onCamera, onGallery, lang, maxPhotos 
   );
 }
 
-// `plateformes` : les quatre ouvertes + celles que l'app déclare OUVERTES
-// pour ce compte (plateformesOuvertes, calculé par App.jsx sur l'interrupteur
-// serveur ET la borne de build — la MÊME condition qui active la case du
-// stepper, 2026-09-17 soir). Un bandeau qui promettrait Opla à quelqu'un dont
-// la case est grisée serait pire que pas de bandeau.
-function PlatformMarquee({ plateformes = LENS_PLATFORMS }) {
-  const list = [...plateformes, ...plateformes];
+// ── La note dictée ou tapée (viseur ET pli « Tes photos du scan ») ───────────
+// Le texte d'exemple qui tourne (lensPlaceholderIdx, App.jsx) et le micro
+// (toggleLensMic, App.jsx) sont branchés tels quels : rien de leur logique
+// n'est touché ici, seule la peau change (29/10, lot B 1.5).
+function NoteLens({ id, lang, currency, lensDesc, setLensDesc, lensMicActive, lensMicLoading, toggleLensMic, lensPlaceholderFade, lensPlaceholderIdx, disabled = false }) {
+  const { t } = useTranslation(lang);
   return (
-    <div style={{ position:'relative', width:'100%', overflow:'hidden', padding:'4px 0', WebkitMaskImage:'linear-gradient(90deg, transparent, black 12%, black 88%, transparent)', maskImage:'linear-gradient(90deg, transparent, black 12%, black 88%, transparent)' }}>
-      <div className="lens-marquee-track" style={{ display:'flex', gap:12, width:'max-content' }}>
-        {list.map((p, i) => (
-          <div key={i} style={{ display:'flex', alignItems:'center', gap:8, padding:'10px 16px', borderRadius:999, flexShrink:0, background:'#FFFFFF', border:'1px solid #E7E3D8', boxShadow:'0 1px 2px rgba(16,32,27,0.04)' }}>
-            <PlatformLogo platform={p} size={24} />
-            <span style={{ fontSize:13, fontWeight:500, color:'#3A443F' }}>{PLATFORM_LABELS[p]}</span>
-          </div>
-        ))}
+    <div className="lns-section" style={{ gap:6 }}>
+      <label htmlFor={id} className="lns-label">
+        {t('lensDetailLabel')} <span className="lns-h-doux">{t('lensFacultatif')}</span>
+      </label>
+      <div className="lns-champ">
+        {!lensDesc && (
+          <span className="lns-indice" aria-hidden="true" style={{ opacity: lensPlaceholderFade ? 1 : 0 }}>
+            {getRotatingLensPlaceholders(currency, lang)[lensPlaceholderIdx]}
+          </span>
+        )}
+        <input
+          id={id}
+          className={`lns-input${lensMicActive ? ' lns-input--micro' : ''}`}
+          value={lensDesc}
+          onChange={e => setLensDesc(e.target.value)}
+          placeholder=""
+          autoComplete="off"
+          disabled={disabled}
+        />
+        <button
+          type="button"
+          className={`lns-micro${lensMicActive ? ' lns-micro--actif' : ''}`}
+          onClick={toggleLensMic}
+          disabled={lensMicLoading}
+          aria-label={t('lensDicter')}
+          aria-pressed={Boolean(lensMicActive)}
+        >
+          <Mic size={16} strokeWidth={2} />
+        </button>
       </div>
     </div>
   );
 }
 
+// ── La grille des photos (viseur ET pli « Tes photos du scan ») ─────────────
+// Autant que le stepper (MAX_PHOTOS, 2026-09-27) ; l'IA ne lit que les
+// LENS_PHOTOS_LUES premières (App.jsx, envoyerRequeteLens) — elles portent
+// leur rang —, toutes vont sur la fiche. Le dire : « L'analyse lit les 5
+// premières. Toutes partent sur l'annonce. »
+function GrillePhotos({ lang, photos, onRetirer, onAjouter, desactive = false }) {
+  const { t, tpl } = useTranslation(lang);
+  return (
+    <>
+      <div className="lns-grille">
+        {photos.map((p, i) => (
+          <div key={i} className="lns-vignette">
+            <img src={p.preview} alt="" />
+            {i < LENS_PHOTOS_LUES && <span className="lns-rang">{i + 1}</span>}
+            <button type="button" className="lns-retirer" onClick={() => onRetirer(i)} disabled={desactive} aria-label={t('lensRetirerPhoto')}>
+              <X size={12} strokeWidth={2.6} />
+            </button>
+          </div>
+        ))}
+        {photos.length < MAX_PHOTOS && (
+          <button type="button" className="lns-ajouter" onClick={onAjouter} disabled={desactive} aria-label={t('lensAjouterPhotos')}>
+            <Plus size={18} strokeWidth={2} />
+          </button>
+        )}
+      </div>
+      <p className="lns-aide">{tpl('lensPhotosLues', { n: LENS_PHOTOS_LUES })}</p>
+    </>
+  );
+}
+
+// ── Notice « Comment ça marche ? » ──────────────────────────────────────────
+function AideLens({ lang, onClose }) {
+  return (
+    <div
+      onClick={onClose}
+      style={{ position:'fixed', inset:0, zIndex:1000, background:'rgba(16,32,27,0.45)', display:'flex', alignItems:'center', justifyContent:'center', padding:20, colorScheme:'light' }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{ width:'100%', maxWidth:400, background:UI.paper, border:`1px solid ${UI.border}`, borderRadius:24, padding:'24px 22px 22px', boxShadow:'0 24px 60px rgba(16,32,27,0.28)', fontFamily:'inherit' }}
+      >
+        <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:12, marginBottom:16 }}>
+          <div>
+            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <span style={{ display:'flex', alignItems:'center', justifyContent:'center', width:34, height:34, borderRadius:12, background:`linear-gradient(155deg,${TEAL},${TEAL_DEEP})` }}>
+                <Sparkles size={17} color="#FFFFFF" strokeWidth={2.2} />
+              </span>
+              <h2 style={{ margin:0, fontSize:19, fontWeight:600, letterSpacing:'-0.01em', color:INK }}>
+                {lang === 'en' ? 'How the scan works' : 'Comment marche le scan'}
+              </h2>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={lang === 'en' ? 'Close' : 'Fermer'}
+            style={{ flexShrink:0, width:34, height:34, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', background:'#FFFFFF', border:`1px solid ${UI.border}`, cursor:'pointer' }}
+          >
+            <X size={16} color={MUTE} strokeWidth={2.2} />
+          </button>
+        </div>
+
+        <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+          {[
+            { n:'1', emoji:'📸', fr:['Prends une photo', 'Photographie l’article (ou ajoute plusieurs clichés) directement depuis l’appareil ou la galerie.'], en:['Take a photo', 'Snap the item (or add several shots) straight from your camera or gallery.'] },
+            { n:'2', emoji:'✨', fr:['Le scan IA analyse', 'L’IA reconnaît l’article, estime sa valeur et évalue si c’est un bon deal.'], en:['The AI scan runs', 'The AI recognises the item, estimates its value and rates whether it’s a good deal.'] },
+            { n:'3', emoji:'📋', fr:['Ta fiche est générée', 'Titre, description et prix prêts à publier sur Vinted, eBay, Leboncoin…'], en:['Your listing is generated', 'Title, description and price ready to post on Vinted, eBay, Leboncoin…'] },
+          ].map(step => (
+            <div key={step.n} style={{ display:'flex', gap:12, alignItems:'flex-start', background:UI.card, border:`1px solid ${UI.border}`, borderRadius:16, padding:'14px 14px' }}>
+              <span style={{ flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', width:40, height:40, borderRadius:12, background:UI.chip, fontSize:20 }}>
+                {step.emoji}
+              </span>
+              <div>
+                <div style={{ fontSize:14, fontWeight:600, color:INK, marginBottom:2 }}>
+                  {lang === 'en' ? step.en[0] : step.fr[0]}
+                </div>
+                <div style={{ fontSize:12.5, lineHeight:1.45, color:MUTE }}>
+                  {lang === 'en' ? step.en[1] : step.fr[1]}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <button
+          type="button"
+          onClick={onClose}
+          style={{ width:'100%', boxSizing:'border-box', marginTop:18, borderRadius:999, padding:'13px 0', fontSize:14, fontWeight:600, border:'none', cursor:'pointer', fontFamily:'inherit', background:`linear-gradient(120deg,${TEAL},${TEAL_DEEP})`, color:'#FFFFFF', boxShadow:'0 10px 24px rgba(47,158,144,0.28)' }}
+        >
+          {lang === 'en' ? 'Got it' : 'J’ai compris'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LE VISEUR (refonte 29/10, lot B 1.5 — maquette « Main » validée par Nico)
+// ═══════════════════════════════════════════════════════════════════════════
+// En-tête (Lens · Photographie ton article · Historique), la carte de prise de
+// vue (déclencheur, orbite des plateformes tant qu'aucune photo n'est prise,
+// Prendre une photo / Galerie, la grille, la note, « Ouvrir l'annonce dès la
+// fin de l'analyse »), puis le bouton d'analyse et « Il te reste N analyses ».
+// Le même écran porte les états : pendant l'analyse (la barre et ses étapes
+// réelles), l'échec (réessayer, ou créer l'annonce sans analyse — les photos
+// restent là, modifiables), le quota du mois atteint.
 export function LensScanHome({
-  lang, currency, isPremium, isNative, isPro,
+  lang, currency, isNative,
   plateformesOuvertes = [],
   // (25/10) Leboncoin d'une adresse hors de France : absent du bandeau (App.jsx).
   plateformesFermees = [],
@@ -142,6 +279,15 @@ export function LensScanHome({
   // (lensPrice retiré au nettoyage unités du 02/09 soir ;
   // onCreateListing/creatingListing retirés à la fusion des CTA du même
   // soir — le viseur n'a plus qu'UN bouton, le scan unifié.)
+  // (29/10, lot B 1.5) Les états et les gestes de la refonte.
+  quotas = null,
+  erreur = null,            // lensResult.error : l'analyse a échoué, ou une photo n'a pas pu être lue
+  onSansAnalyse = null,     // « Créer l'annonce sans analyse » (LensTab : stepper avec les photos seules)
+  occupe = false,           // une préparation d'annonce est en cours (EcranPreparation)
+  listingError = '',
+  ouvrirApresScan = false, onOuvrirApresScan = null,
+  onHistorique = null,
+  onCreerALaMain = null, onVoirForfaits = null,
 }) {
   const { t, tpl } = useTranslation(lang);
   const [showLensHelp, setShowLensHelp] = useState(false);
@@ -159,226 +305,173 @@ export function LensScanHome({
   // @capacitor/action-sheet, pour garder la multi-sélection de pickImages et
   // ne pas ajouter de plugin natif. Sur le web, tout retombe sur l'input file
   // multiple — la feuille du navigateur propose déjà caméra + galerie.
+  // (29/10) La maquette pose aussi « Prendre une photo » et « Galerie » sous le
+  // déclencheur : ce sont openCamera et openGallery, tels quels.
   const openCamera  = () => { setShowPhotoSheet(false); (isNative && handleLensCameraNative ? handleLensCameraNative() : lensFileRef.current?.click()); };
   const openGallery = () => { setShowPhotoSheet(false); (isNative && handleLensPhotoNative ? handleLensPhotoNative() : lensFileRef.current?.click()); };
   const openPicker  = () => (isNative && handleLensCameraNative && handleLensPhotoNative ? setShowPhotoSheet(true) : lensFileRef.current?.click());
   const removePhoto = (i) => { setLensPhotos(prev => prev.filter((_, j) => j !== i)); setLensResult(null); setLensAdded(false); };
 
-  const analyzeDisabled = !lensPhotos.length || lensLoading;
+  const enAnalyse = Boolean(lensLoading || finScan);
+  const plein = photoCount >= maxPhotos;
+  const restantes = quotas?.annonces?.plafond != null ? (quotas.annonces.restantes ?? null) : null;
+  const quotaAtteint = restantes === 0 && !enAnalyse;
+  const echecPhoto = erreur ? motifEchec(erreur, lang).type === 'photo' : false;
+  const echecAnalyse = Boolean(erreur) && !echecPhoto && !enAnalyse;
+  const plateformesOrbite = [...LENS_PLATFORMS, ...plateformesOuvertes.filter((p) => !LENS_PLATFORMS.includes(p))]
+    .filter((p) => !plateformesFermees.includes(p));
 
   return (
-    <div style={{ width:'100%', maxWidth:520, margin:'0 auto' }}>
-      <style>{`
-        @keyframes lensMarqueeScroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
-        .lens-marquee-track { animation: lensMarqueeScroll 24s linear infinite; }
-        @keyframes lensRingPulse {
-          0% { transform: scale(0.9); opacity: 0.5; }
-          70% { transform: scale(1.35); opacity: 0; }
-          100% { transform: scale(1.35); opacity: 0; }
-        }
-        .lens-ring-pulse { animation: lensRingPulse 2.8s cubic-bezier(0.2,0.6,0.4,1) infinite; }
-        .lens-ring-pulse-delay { animation-delay: 0.9s; }
-      `}</style>
-
+    <div className="lns">
       <input ref={lensFileRef} type="file" accept="image/*" multiple style={{ display:'none' }} onChange={handleLensPhoto} />
 
-      <div style={{ position:'relative', overflow:'hidden', borderRadius:28, background:CANVAS, border:'1px solid #E7E3D8', boxShadow:'0 1px 4px rgba(16,32,27,0.05)' }}>
-        {/* ambient teal glow */}
-        <div style={{ position:'absolute', pointerEvents:'none', top:'-8%', left:'50%', transform:'translateX(-50%)', width:460, height:320, background:'radial-gradient(ellipse, rgba(47,158,144,0.14) 0%, rgba(47,158,144,0) 70%)' }} />
-
-        {/* Hero copy */}
-        <div style={{ position:'relative', padding:'24px 24px 4px', textAlign:'center', zIndex:10 }}>
-          <h1 style={{ margin:0, fontSize:31, fontWeight:600, lineHeight:1.1, letterSpacing:'-0.02em', color:INK }}>
-            {t('lensHeroTitleLine1')}<br />{t('lensHeroTitleLine2')}
-          </h1>
-          <p style={{ fontSize:14, marginTop:12, marginBottom:0, lineHeight:1.375, padding:'0 16px', color:MUTE }}>
-            {t('lensHeroSubtitle')}
-          </p>
+      <div className="lns-tete">
+        <div className="lns-tete-txt">
+          <span className="lns-kicker">{t('lensKicker')}</span>
+          <h1 className="lns-titre">{t('lensTitreViseur')}</h1>
         </div>
-
-        {/* Viewfinder hero CTA */}
-        <div style={{ position:'relative', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'24px 0', zIndex:10 }}>
-          {/* Le viseur ouvre la feuille de choix caméra/photothèque en natif ;
-              sur le web il ouvre l'input file (la feuille du navigateur
-              propose déjà les deux). */}
-          <button onClick={openPicker} style={{ position:'relative', display:'flex', alignItems:'center', justifyContent:'center', width:210, height:210, background:'none', border:'none', cursor:'pointer', padding:0 }}>
-            <span className="lens-ring-pulse" style={{ position:'absolute', inset:0, borderRadius:'50%', border:`1.5px solid ${TEAL}` }} />
-            <span className="lens-ring-pulse lens-ring-pulse-delay" style={{ position:'absolute', inset:0, borderRadius:'50%', border:`1.5px solid ${TEAL}` }} />
-            <span style={{ position:'absolute', inset:26, borderRadius:'50%', border:'1px solid rgba(47,158,144,0.25)' }} />
-            <span style={{ position:'relative', display:'flex', alignItems:'center', justifyContent:'center', width:124, height:124, borderRadius:'50%', background:`linear-gradient(155deg,${TEAL},${TEAL_DEEP})`, boxShadow:'0 14px 34px rgba(47,158,144,0.32)' }}>
-              <Camera size={38} color="#FFFFFF" strokeWidth={1.6} />
-            </span>
+        {onHistorique && (
+          <button type="button" className="lns-pilule" onClick={onHistorique} disabled={enAnalyse} aria-label={t('lensHistoriqueAria')}>
+            <History size={16} strokeWidth={2} color={TEAL_DEEP} aria-hidden="true" />
+            {t('lensHistorique')}
           </button>
+        )}
+      </div>
+      <p className="lns-lead">{t('lensSousTitreViseur')}</p>
 
-          <span style={{ fontSize:13, fontWeight:500, marginTop:20, letterSpacing:'0.02em', color:'#8A8578' }}>
-            {photoCount === 0 ? t('lensViewfinderEmpty') : tpl('lensViewfinderPhotos', { n:photoCount })}
-          </span>
+      {/* ── L'échec, en tête : c'est la première chose à lire au retour ──
+          Les photos restent dans la carte ci-dessous : on peut en retirer, en
+          ajouter, corriger la note, puis réessayer. */}
+      {!enAnalyse && erreur && (
+        <EchecAnalyse
+          lang={lang}
+          erreur={erreur}
+          onReessayer={analyzeLens}
+          onSansAnalyse={photoCount > 0 ? onSansAnalyse : null}
+          occupe={occupe || lensLoading}
+          peutReessayer={photoCount > 0}
+        />
+      )}
+      {listingError && <div className="lns-bandeau lns-bandeau--erreur">{listingError}</div>}
+
+      {/* ── MONTÉE DES PHOTOS INACHEVÉE (2026-09-13 soir) ───────────────
+          L'app est morte pendant l'envoi des photos. Celles qui étaient
+          parties sont dans le viseur ; celles qui vivaient en mémoire sont
+          perdues avec la page, et on ne fait pas semblant du contraire —
+          analyser un lot tronqué et le facturer serait pire que de le
+          dire. Le message nomme le compte exact et rappelle que rien n'a
+          été décompté : c'est LA question que se pose l'utilisateur. */}
+      {!lensReprise && infoRepriseLens && !enAnalyse && (
+        <div className="lns-bandeau lns-bandeau--attention">{infoRepriseLens}</div>
+      )}
+
+      {enAnalyse ? (
+        // ── LA BARRE DU SCAN (01/10) ─────────────────────────────────────
+        // L'article (la première photo, la description s'il y en a une),
+        // les photos montées UNE À UNE (étapes réelles, relevées pendant la
+        // montée), puis l'analyse (~20 s mesurées). 100 % et la coche
+        // seulement quand le résultat est là — il s'affiche juste après.
+        <ProgressionScan
+          lang={lang}
+          photo={lensPhotos[0]?.preview ?? null}
+          titre={lensDesc}
+          nbPhotos={photoCount}
+          lensProgres={lensProgres}
+          enCours={Boolean(lensLoading)}
+          reprise={Boolean(lensReprise)}
+          onFini={onFinScan}
+        />
+      ) : (
+        <div className="lns-carte">
+          <div className="lns-prise">
+            <div className="lns-declencheur-zone">
+              <span className="lns-halo" aria-hidden="true" />
+              {photoCount === 0 && <OrbiteLogos plateformes={plateformesOrbite} />}
+              <button
+                type="button"
+                className="lns-declencheur"
+                onClick={openPicker}
+                disabled={plein}
+                aria-label={photoCount === 0 ? t('lensPrendrePhoto') : t('lensAjouterPhotos')}
+              >
+                <Camera size={36} strokeWidth={1.7} aria-hidden="true" />
+              </button>
+            </div>
+            <div className="lns-boutons-prise">
+              <button type="button" className="lns-bouton-pilule" onClick={openCamera} disabled={plein}>{t('lensPrendrePhoto')}</button>
+              <button type="button" className="lns-bouton-pilule" onClick={openGallery} disabled={plein}>{t('lensGalerie')}</button>
+            </div>
+          </div>
 
           {photoCount > 0 && (
-            <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:16, flexWrap:'wrap', justifyContent:'center', padding:'0 24px' }}>
-              {lensPhotos.map((p, i) => (
-                <div key={i} style={{ position:'relative', width:44, height:44, borderRadius:12, overflow:'hidden', flexShrink:0, background:'#E7F3F0', border:'1px solid #BFE0D9' }}>
-                  <img src={p.preview} alt="" style={{ width:'100%', height:'100%', objectFit:'cover', display:'block' }} />
-                  <button onClick={() => removePhoto(i)} style={{ position:'absolute', top:2, right:2, width:16, height:16, borderRadius:'50%', border:'none', background:'rgba(16,32,27,0.65)', color:'#FFFFFF', fontSize:10, lineHeight:1, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', padding:0 }}>×</button>
-                </div>
-              ))}
-              {photoCount < maxPhotos && (
-                <button onClick={openPicker} style={{ width:44, height:44, borderRadius:12, flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', background:'none', border:'1px dashed #D8D2C4', cursor:'pointer' }}>
-                  <Plus size={15} color="#8A8578" />
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Note input + CTA */}
-        <div style={{ position:'relative', padding:'0 24px', zIndex:10 }}>
-          <div style={{ position:'relative' }}>
-            {!lensDesc && (
-              <div style={{ position:'absolute', top:'50%', left:20, right:48, transform:'translateY(-50%)', pointerEvents:'none', zIndex:1, fontSize:14, color:MUTE, fontFamily:'inherit', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', opacity:lensPlaceholderFade?1:0, transition:'opacity 0.3s ease' }}>
-                {getRotatingLensPlaceholders(currency,lang)[lensPlaceholderIdx]}
+            <div className="lns-section">
+              <div className="lns-section-tete">
+                <span className="lns-h">{t('lensTesPhotos')}</span>
+                <span className="lns-compte">{tpl('lensPhotosSurMax', { n: photoCount, max: maxPhotos })}</span>
               </div>
-            )}
-            <input
-              value={lensDesc}
-              onChange={e => setLensDesc(e.target.value)}
-              placeholder=""
-              style={{ width:'100%', boxSizing:'border-box', borderRadius:999, padding:'14px 48px 14px 20px', fontSize:14, outline:'none', background:'#FFFFFF', border:`1px solid ${lensMicActive ? '#EF4444' : '#E7E3D8'}`, color:INK, fontFamily:'inherit' }}
-            />
-            <button
-              onClick={toggleLensMic}
-              disabled={lensMicLoading}
-              style={{ position:'absolute', right:6, top:'50%', transform:'translateY(-50%)', width:36, height:36, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', background: lensMicActive ? 'rgba(239,68,68,0.12)' : '#F2F0E9', border:'none', cursor: lensMicLoading ? 'not-allowed' : 'pointer', opacity: lensMicLoading ? 0.6 : 1 }}
-            >
-              <Mic size={14} color={lensMicActive ? '#EF4444' : MUTE} />
-            </button>
-          </div>
-
-          {/* ── UN SEUL CTA (fusion 02/09 soir, décision Nico) ───────────────
-              « Créer l'annonce » (identify gratuit) et « Analyser le deal »
-              (scan complet) faisaient la même passe chère pour deux sorties :
-              le geste unique lance le scan UNIFIÉ (mode 'annonce' de
-              lens-analysis) et livre TOUT — identification, estimation,
-              verdict du deal ET annonce prête à publier. 1 scan = 1 unité du
-              compteur fusionné, quoi qu'on fasse du résultat. Le libellé dit
-              les deux sorties sans faire une phrase. */}
-          <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:12 }}>
-            <button
-              onClick={analyzeLens}
-              disabled={analyzeDisabled}
-              style={{ flex:1, boxSizing:'border-box', borderRadius:999, padding:'16px 0', display:'flex', alignItems:'center', justifyContent:'center', gap:8, fontSize:15, fontWeight:600, border:'none', cursor: analyzeDisabled ? 'not-allowed' : 'pointer', fontFamily:'inherit', background: photoCount === 0 ? '#DCEEEA' : `linear-gradient(120deg,${TEAL},${TEAL_DEEP})`, color: photoCount === 0 ? '#8FB5AE' : '#FFFFFF', boxShadow: photoCount === 0 ? 'none' : '0 10px 24px rgba(47,158,144,0.28)' }}
-            >
-              <Sparkles size={16} strokeWidth={2.2} />
-              {lensLoading
-                ? t('lensAnalyzing')
-                : (lang === 'en' ? 'Price it & create the listing' : "Estimer et créer l'annonce")}
-            </button>
-            {/* Notice « ? » — explique le fonctionnement (photo → scan IA → fiche) */}
-            <button
-              type="button"
-              onClick={() => setShowLensHelp(true)}
-              aria-label={lang === 'en' ? 'How does the scan work?' : 'Comment fonctionne le scan ?'}
-              title={lang === 'en' ? 'How does it work?' : 'Comment ça marche ?'}
-              style={{ flexShrink:0, width:52, height:52, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', background:'#FFFFFF', border:`1px solid #E7E3D8`, cursor:'pointer', boxShadow:'0 1px 4px rgba(16,32,27,0.05)' }}
-            >
-              <HelpCircle size={20} color={TEAL_DEEP} strokeWidth={2} />
-            </button>
-          </div>
-
-          {/* ── LA BARRE DU SCAN (01/10) ──────────────────────────────────
-              L'article (la première photo, la description s'il y en a une),
-              les photos montées UNE À UNE (étapes réelles, relevées pendant la
-              montée), puis l'analyse (~20 s mesurées). 100 % et la coche
-              seulement quand le résultat est là — il s'affiche juste après. */}
-          {(lensLoading || finScan) && (() => {
-            const fr = lang !== 'en';
-            const n = Math.max(1, lensProgres?.total ?? lensPhotos.length);
-            const etapes = [
-              ...Array.from({ length: n }, (_, i) => ({
-                cle: `photo${i + 1}`,
-                texte: fr ? `Envoi des photos (${i + 1} sur ${n})…` : `Sending photos (${i + 1} of ${n})…`,
-                duree: i < LENS_PHOTOS_LUES ? 3 : 1,
-              })),
-              {
-                cle: 'analyse',
-                texte: fr ? "Analyse de l'article : identification, prix de revente, annonce…" : 'Analysing the item: identification, resale prices, listing…',
-                duree: 20,
-              },
-            ];
-            const etape = !lensProgres || lensProgres.etape === 'analyse'
-              ? 'analyse'
-              : `photo${Math.min(n, (lensProgres.faites ?? 0) + 1)}`;
-            return (
-              <div style={{ marginTop:12, background:'#FFFFFF', border:'1px solid #E7E3D8', borderRadius:16, padding:'14px 14px 12px' }}>
-                <BarreProgression
-                  lang={lang}
-                  article={{
-                    photo: lensPhotos[0]?.preview ?? null,
-                    titre: (lensDesc ?? '').trim() || (fr ? 'Ton article' : 'Your item'),
-                    sousTitre: fr ? 'Scan Lens' : 'Lens scan',
-                  }}
-                  etapes={etapes}
-                  etape={etape}
-                  etat={lensLoading ? 'en_cours' : 'termine'}
-                  phraseFin={fr ? 'Analyse terminée : voici ton résultat.' : 'Analysis done: here is your result.'}
-                  onFini={onFinScan ?? undefined}
-                />
-              </div>
-            );
-          })()}
-
-          {/* ── REPRISE D'UN SCAN INTERROMPU (2026-09-13) ──────────────────
-              Quitter l'app pendant l'analyse ne la perd plus : elle va au bout
-              côté serveur et son résultat est retrouvé au retour. Le dire
-              explicitement, sinon cette attente ressemble à un nouveau scan —
-              donc à une facturation de plus. « Rien de plus ne t'est
-              décompté » n'est pas une formule de politesse : c'est le fait,
-              et c'est la question que l'utilisateur se pose. */}
-          {lensReprise && (
-            <div style={{ marginTop:10, padding:'10px 14px', borderRadius:14, background:'#E7F3F0', border:'1px solid #BFE0D9' }}>
-              <span style={{ fontSize:12.5, lineHeight:1.4, color:TEAL_DEEP }}>
-                {lang === 'en'
-                  ? 'Picking your scan back up where it was — nothing extra is charged.'
-                  : "On reprend ton scan là où il en était — rien de plus ne t'est décompté."}
-              </span>
+              <GrillePhotos lang={lang} photos={lensPhotos} onRetirer={removePhoto} onAjouter={openPicker} />
             </div>
           )}
 
-          {/* ── MONTÉE DES PHOTOS INACHEVÉE (2026-09-13 soir) ───────────────
-              L'app est morte pendant l'envoi des photos. Celles qui étaient
-              parties sont dans le viseur ; celles qui vivaient en mémoire sont
-              perdues avec la page, et on ne fait pas semblant du contraire —
-              analyser un lot tronqué et le facturer serait pire que de le
-              dire. Le message nomme le compte exact et rappelle que rien n'a
-              été décompté : c'est LA question que se pose l'utilisateur. */}
-          {!lensReprise && infoRepriseLens && (
-            <div style={{ marginTop:10, padding:'10px 14px', borderRadius:14, background:'#FFF6E5', border:'1px solid #F0DCB4' }}>
-              <span style={{ fontSize:12.5, lineHeight:1.4, color:'#8A6A1F' }}>
-                {infoRepriseLens}
-              </span>
-            </div>
-          )}
+          <NoteLens
+            id="lns-note-viseur" lang={lang} currency={currency}
+            lensDesc={lensDesc} setLensDesc={setLensDesc}
+            lensMicActive={lensMicActive} lensMicLoading={lensMicLoading} toggleLensMic={toggleLensMic}
+            lensPlaceholderFade={lensPlaceholderFade} lensPlaceholderIdx={lensPlaceholderIdx}
+          />
 
-          {/* ⚠️ CE COMPOSANT EST CELUI QUI S'AFFICHE. LensTab rend
-              <LensScanHome/> et RETOURNE (`if (!lensResult) return`) : tout ce
-              qui suit dans LensTab n'est atteint qu'une fois un résultat
-              obtenu. (L'icône unité qui vivait ici est morte au nettoyage
-              du 02/09 soir — plus aucun point d'affichage.) */}
-          <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:5, fontSize:11.5, marginTop:8, textAlign:'center', color:'#A6A192' }}>
-            {lang === 'en'
-              ? 'Price estimate, deal verdict + ready-to-publish listing'
-              : 'Estimation du prix, verdict du deal + annonce prête à publier'}
+          {onOuvrirApresScan && (
+            <BasculeOuvrirApres lang={lang} actif={ouvrirApresScan} onBasculer={onOuvrirApresScan} />
+          )}
+        </div>
+      )}
+
+      {/* Pendant l'analyse, l'interrupteur reste à portée : c'est à la FIN du
+          scan qu'il est lu. */}
+      {enAnalyse && onOuvrirApresScan && (
+        <BasculeOuvrirApres lang={lang} actif={ouvrirApresScan} onBasculer={onOuvrirApresScan} />
+      )}
+
+      {/* ── UN SEUL CTA (fusion 02/09 soir, décision Nico) ───────────────
+          « Créer l'annonce » (identify gratuit) et « Analyser le deal »
+          (scan complet) faisaient la même passe chère pour deux sorties :
+          le geste unique lance le scan UNIFIÉ (mode 'annonce' de
+          lens-analysis) et livre TOUT — identification, estimation,
+          verdict du deal ET annonce prête à publier. 1 scan = 1 unité du
+          compteur fusionné, quoi qu'on fasse du résultat.
+          ⚠️ CE COMPOSANT EST CELUI QUI S'AFFICHE avant tout résultat (et,
+          depuis le 29/10, après un échec) : LensTab rend <LensScanHome/>
+          tant qu'il n'y a pas de résultat RÉUSSI. */}
+      {!enAnalyse && (quotaAtteint ? (
+        <QuotaAtteint
+          lang={lang}
+          plafond={quotas?.annonces?.plafond ?? null}
+          onCreerALaMain={onCreerALaMain}
+          onVoirForfaits={onVoirForfaits}
+        />
+      ) : (
+        <div className="lns-pied">
+          {/* En échec, « Réessayer » de la carte d'échec EST ce bouton : deux
+              boutons qui relancent la même analyse ne diraient pas lequel
+              choisir. */}
+          {!echecAnalyse && (
+            <button type="button" className="lns-cta" onClick={analyzeLens} disabled={!photoCount || lensLoading || occupe}>
+              <Sparkles size={18} strokeWidth={2.2} aria-hidden="true" />
+              {t('lensAnalyserCta')}
+            </button>
+          )}
+          <div className="lns-pied-ligne">
+            {/* Fusion scans+annonces (02/09 soir) : UN compteur, UN chiffre — le
+                même que l'en-tête. Un scan consomme une annonce du forfait.
+                Rien d'affiché tant que le plafond n'est pas connu (jamais un
+                faux zéro). */}
+            {restantes != null
+              ? <span>{restantes === 1 ? t('lensResteUne') : tpl('lensResteN', { n: restantes })}</span>
+              : <span />}
+            <button type="button" className="lns-lien" onClick={() => setShowLensHelp(true)}>{t('lensCommentCaMarche')}</button>
           </div>
         </div>
-
-        {/* Platform marquee */}
-        <div style={{ position:'relative', marginTop:28, paddingBottom:36, zIndex:10 }}>
-          <p style={{ textAlign:'center', fontSize:11, fontWeight:500, textTransform:'uppercase', letterSpacing:'0.14em', marginBottom:12, color:'#A6A192' }}>
-            {t('lensMarqueeCaption')}
-          </p>
-          <PlatformMarquee plateformes={[...LENS_PLATFORMS, ...plateformesOuvertes.filter((p) => !LENS_PLATFORMS.includes(p))].filter((p) => !plateformesFermees.includes(p))} />
-        </div>
-      </div>
+      ))}
 
       {/* ── Feuille de choix caméra / photothèque (natif uniquement) ── */}
       <PhotoSourceSheet
@@ -390,70 +483,24 @@ export function LensScanHome({
         maxPhotos={maxPhotos}
       />
 
-      {/* ── Notice « Comment ça marche ? » ── */}
-      {showLensHelp && (
-        <div
-          onClick={() => setShowLensHelp(false)}
-          style={{ position:'fixed', inset:0, zIndex:1000, background:'rgba(16,32,27,0.45)', display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}
-        >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{ width:'100%', maxWidth:400, background:UI.paper, border:`1px solid ${UI.border}`, borderRadius:24, padding:'24px 22px 22px', boxShadow:'0 24px 60px rgba(16,32,27,0.28)', fontFamily:'inherit' }}
-          >
-            <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:12, marginBottom:16 }}>
-              <div>
-                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                  <span style={{ display:'flex', alignItems:'center', justifyContent:'center', width:34, height:34, borderRadius:12, background:`linear-gradient(155deg,${TEAL},${TEAL_DEEP})` }}>
-                    <Sparkles size={17} color="#FFFFFF" strokeWidth={2.2} />
-                  </span>
-                  <h2 style={{ margin:0, fontSize:19, fontWeight:600, letterSpacing:'-0.01em', color:INK }}>
-                    {lang === 'en' ? 'How the scan works' : 'Comment marche le scan'}
-                  </h2>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowLensHelp(false)}
-                aria-label={lang === 'en' ? 'Close' : 'Fermer'}
-                style={{ flexShrink:0, width:34, height:34, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', background:'#FFFFFF', border:`1px solid ${UI.border}`, cursor:'pointer' }}
-              >
-                <X size={16} color={MUTE} strokeWidth={2.2} />
-              </button>
-            </div>
-
-            <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-              {[
-                { n:'1', emoji:'📸', fr:['Prends une photo', 'Photographie l’article (ou ajoute plusieurs clichés) directement depuis l’appareil ou la galerie.'], en:['Take a photo', 'Snap the item (or add several shots) straight from your camera or gallery.'] },
-                { n:'2', emoji:'✨', fr:['Le scan IA analyse', 'L’IA reconnaît l’article, estime sa valeur et évalue si c’est un bon deal.'], en:['The AI scan runs', 'The AI recognises the item, estimates its value and rates whether it’s a good deal.'] },
-                { n:'3', emoji:'📋', fr:['Ta fiche est générée', 'Titre, description et prix prêts à publier sur Vinted, eBay, Leboncoin…'], en:['Your listing is generated', 'Title, description and price ready to post on Vinted, eBay, Leboncoin…'] },
-              ].map(step => (
-                <div key={step.n} style={{ display:'flex', gap:12, alignItems:'flex-start', background:UI.card, border:`1px solid ${UI.border}`, borderRadius:16, padding:'14px 14px' }}>
-                  <span style={{ flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', width:40, height:40, borderRadius:12, background:UI.chip, fontSize:20 }}>
-                    {step.emoji}
-                  </span>
-                  <div>
-                    <div style={{ fontSize:14, fontWeight:600, color:INK, marginBottom:2 }}>
-                      {lang === 'en' ? step.en[0] : step.fr[0]}
-                    </div>
-                    <div style={{ fontSize:12.5, lineHeight:1.45, color:MUTE }}>
-                      {lang === 'en' ? step.en[1] : step.fr[1]}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setShowLensHelp(false)}
-              style={{ width:'100%', boxSizing:'border-box', marginTop:18, borderRadius:999, padding:'13px 0', fontSize:14, fontWeight:600, border:'none', cursor:'pointer', fontFamily:'inherit', background:`linear-gradient(120deg,${TEAL},${TEAL_DEEP})`, color:'#FFFFFF', boxShadow:'0 10px 24px rgba(47,158,144,0.28)' }}
-            >
-              {lang === 'en' ? 'Got it' : 'J’ai compris'}
-            </button>
-          </div>
-        </div>
-      )}
+      {showLensHelp && <AideLens lang={lang} onClose={() => setShowLensHelp(false)} />}
     </div>
+  );
+}
+
+// « Ouvrir l'annonce dès la fin de l'analyse » (29/10, lot B 1.2) — le réglage
+// vit dans platform_settings.redaction.ouvrir_annonce_apres_scan
+// (useReglagesRedaction) : il suit le compte, pas le téléphone.
+function BasculeOuvrirApres({ lang, actif, onBasculer }) {
+  const { t } = useTranslation(lang);
+  return (
+    <button type="button" role="switch" aria-checked={Boolean(actif)} className="lns-bascule" onClick={onBasculer}>
+      <span className="lns-bascule-txt">
+        <span className="lns-bascule-titre">{t('lensOuvrirApres')}</span>
+        <span className="lns-bascule-sous">{t('lensOuvrirApresSous')}</span>
+      </span>
+      <span className="lns-interrupteur" aria-hidden="true" />
+    </button>
   );
 }
 
@@ -476,16 +523,19 @@ export function LensScanHome({
 // balayage lumineux — pour qu'aucun autre bouton ne rivalise. PrimaryButton
 // (teal plein) reste le style des CTA ordinaires ailleurs. Style uniquement :
 // mêmes onClick/disabled que le bouton qu'il remplace.
-function LensHeroCta({ onClick, disabled, children, style }) {
+// (29/10, lot B 1.2) Deux lignes, comme la maquette : « Créer l'annonce » et ce
+// qu'elle emporte déjà (`sousTitre`).
+function LensHeroCta({ onClick, disabled, children, sousTitre = null, style }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       disabled={disabled}
       style={{
-        position:'relative', overflow:'hidden', width:'100%', boxSizing:'border-box',
-        borderRadius:999, padding:'17px 0', display:'flex', alignItems:'center',
-        justifyContent:'center', gap:8, fontSize:15.5, fontWeight:700,
-        fontFamily:'inherit', letterSpacing:'0.01em',
+        position:'relative', overflow:'hidden', width:'100%', boxSizing:'border-box', minHeight:58,
+        borderRadius:999, padding: sousTitre ? '9px 16px' : '17px 16px', display:'flex', alignItems:'center',
+        flexDirection: sousTitre ? 'column' : 'row', justifyContent:'center', gap: sousTitre ? 1 : 8,
+        fontSize:16, fontWeight:700, fontFamily:'inherit', letterSpacing:'0.01em', textAlign:'center',
         cursor:disabled?'not-allowed':'pointer',
         background:disabled?'#DCEEEA':'linear-gradient(135deg,#1A5F52 0%,#0E3A32 55%,#10201B 100%)',
         color:disabled?'#8FB5AE':'#FFFFFF',
@@ -499,32 +549,58 @@ function LensHeroCta({ onClick, disabled, children, style }) {
       {!disabled && (
         <span aria-hidden className="lens-hero-shine" style={{ position:'absolute', top:0, bottom:0, left:0, width:'34%', background:'linear-gradient(105deg,transparent,rgba(255,255,255,0.28),transparent)', animation:'lensHeroShine 3.4s ease-in-out infinite', pointerEvents:'none' }} />
       )}
-      {children}
+      <span style={{ position:'relative' }}>{children}</span>
+      {sousTitre && <span className="lns-heros-sous" style={{ position:'relative', color: disabled ? '#8FB5AE' : undefined }}>{sousTitre}</span>}
     </button>
   );
 }
 
-export function LensAnalysisResult({ result, lensBuy, lang, currency, lensAdded, addLensItem, openLensEditModal, onReset, createCta }) {
+// ═══════════════════════════════════════════════════════════════════════════
+// LE RÉSULTAT (refonte 29/10, lot B 1.5 — maquette « LensResultat » validée)
+// ═══════════════════════════════════════════════════════════════════════════
+// Dans l'ordre : l'objet reconnu (LensIdentite, la photo de l'article dans sa
+// tuile), le prix selon la stratégie du vendeur, LES ACTIONS (Créer l'annonce,
+// puis le stock ou la vente), puis, repliés, le détail du marché et les photos
+// du scan, et « Nouvelle analyse » avec la mention de son coût. La hiérarchie
+// du 15/09 est intacte : publier passe avant les annonces comparables.
+export function LensAnalysisResult({
+  result, lensBuy, lang, currency, lensAdded, addLensItem, openLensEditModal, onReset, createCta,
+  // (29/10) La refonte : la photo de tête (tuile), la stratégie de prix, le
+  // contenu du pli « Tes photos du scan », le pays des prix, le retour.
+  photo = null, strategie = 'marche', photosPanel = null, nbPhotos = 0, userCountry = null, onRetour = null,
+}) {
+  const { t, tpl } = useTranslation(lang);
   if (result.error) {
+    // (LensTab ne passe plus par ici depuis le 29/10 : un échec revient au
+    // viseur, photos comprises. Rendu gardé pour les autres montages.)
     return (
-      <>
-        <div style={{background:'#FFF5F5',borderRadius:14,padding:'16px',border:'1px solid #FED7D7',marginBottom:10}}>
-          <div style={{fontSize:14,color:'#C53030',fontWeight:600}}>{result.error}</div>
-        </div>
-        <button onClick={onReset} style={{width:'100%',padding:'9px',background:'transparent',border:'1px solid rgba(0,0,0,0.12)',borderRadius:10,fontSize:13,fontWeight:600,color:'#6B7A75',cursor:'pointer',fontFamily:'inherit'}}>
-          🔄 {lang==='en'?'New analysis':'Nouvelle analyse'}
-        </button>
-      </>
+      <div className="lns">
+        <EchecAnalyse lang={lang} erreur={result.error} />
+        <button type="button" className="lns-tertiaire" onClick={onReset}>{t('lensNouvelleAnalyse')}</button>
+      </div>
     );
   }
 
-  // Les deux cartes et la pile de boutons partagent exactement le rendu
-  // d'origine (mêmes fonds, mêmes bordures, mêmes rayons, mêmes ombres) : la
-  // refonte du 15/09 ne déplace que l'ORDRE.
-  const carte = {background:'#fff',borderRadius:14,padding:'16px',border:'1px solid rgba(0,0,0,0.08)',marginBottom:10,boxShadow:'0 2px 8px rgba(0,0,0,0.04)'};
+  const incertaine = result.identification_incertaine === true;
+  const deduit = result.objet_source === 'deduit';
+  const statut = incertaine
+    ? { classe: 'lns-statut lns-statut--doute', texte: t('lensAConfirmer') }
+    : deduit
+      ? { classe: 'lns-statut lns-statut--neutre', texte: t('lensDeduit') }
+      : { classe: 'lns-statut', texte: t('lensReconnu') };
+  const { count } = analyseFiabilite(result);
+  // La photo de l'article dans la tuile de LensIdentite (règle .lns-identite--photo).
+  const fondPhoto = photo ? `url("${String(photo).replace(/"/g, '%22')}")` : null;
 
   return (
-    <div style={{animation:'vrFadeSlide 0.35s cubic-bezier(0.22,1,0.36,1) both'}}>
+    <div className="lns" style={{ animation:'vrFadeSlide 0.35s cubic-bezier(0.22,1,0.36,1) both' }}>
+      <div className="lns-res-tete">
+        <button type="button" className="lns-retour" onClick={onRetour ?? onReset} aria-label={t('lensRetourViseur')}>
+          <ChevronLeft size={18} strokeWidth={2.2} aria-hidden="true" />
+        </button>
+        <span className="lns-res-titre">{t('lensResultatTitre')}</span>
+        <span className={statut.classe}>{statut.texte}</span>
+      </div>
 
       {/* ══ 1. L'OBJET RECONNU (15/09/2026, demande Nico) ══════════════════
           C'est le bloc le plus important de l'écran, et il est au-dessus de la
@@ -532,111 +608,91 @@ export function LensAnalysisResult({ result, lensBuy, lang, currency, lensAdded,
           COMPLÈTE — la seule chose qui prouve à l'utilisateur que l'IA a
           reconnu SON objet. Les pastilles et la ligne « lu sur l'objet »
           suivent, secondaires. (LensIdentite, 11/08 : la tuile de catégorie,
-          « aucune marque lisible » assumée, et ce qui a été LU sur l'objet —
-          des attributs qui partaient jusque-là directement dans les aspects
-          eBay sans jamais passer devant l'utilisateur.) */}
-      <div style={carte}>
+          « aucune marque lisible » assumée, et ce qui a été LU sur l'objet.)
+          (29/10) La tuile porte la photo de l'article (maquette). */}
+      <div
+        className={`lns-carte lns-carte--s lns-identite${fondPhoto ? ' lns-identite--photo' : ''}`}
+        style={{ display:'block', ...(fondPhoto ? { '--lns-photo': fondPhoto } : null) }}
+      >
         <LensIdentite result={result} lang={lang} />
       </div>
 
-      {/* ══ 2. LE PRIX ═════════════════════════════════════════════════════
-          Le montant, sa fourchette (celle du marché, la seule), le verdict ou
-          le seuil d'achat. Composant UNIQUE partagé avec le stepper. Le prix
-          d'achat SAISI (lensBuy) pilote la marge ; sans lui on est en chine et
-          le composant rend le prix plafond à la place d'un verdict qui serait
-          circulaire. */}
-      <div style={carte}>
-        <AnalyseMarche
-          result={result}
-          prixAchat={lensBuy}
-          lang={lang}
-          currency={currency}
-          variant="verdict"
-          section="prix"
-          masquerNotes
-          masquerDescription
-        />
-      </div>
+      {/* ══ 2. LE PRIX, SELON LA STRATÉGIE DU VENDEUR (29/10, lot B 1.4) ════
+          Le montant que la stratégie choisit dans la fourchette, la jauge, la
+          fiabilité, le plafond d'achat en chine. Affichage seul. */}
+      <PrixStrategie result={result} strategie={strategie} prixAchat={lensBuy} lang={lang} currency={currency} />
 
       {/* ══ 3. LES ACTIONS ═════════════════════════════════════════════════
-          1. createCta (encart « annonce prête » + bouton PRINCIPAL de création,
-             construits par LensTab qui porte handleCreateListing) — en tête :
-             c'est l'action attendue, et l'encart qui l'explique la précède.
-          2. « Modifier & ajouter au stock » en SECONDAIRE (contour) : deux
-             verts pleins empilés ne disaient pas lequel crée l'annonce.
+          1. createCta (le bouton PRINCIPAL de création, construit par LensTab
+             qui porte handleCreateListing) — en tête : c'est l'action attendue.
+          2. Le stock (ou la vente) en SECONDAIRE (contour) : deux verts pleins
+             empilés ne disaient pas lequel crée l'annonce.
           3. « Nouvelle analyse » en dernier, avec la mention de son coût : des
              utilisateurs relançaient l'analyse jusqu'à épuiser leur quota sans
-             que rien ne le dise.
-          Elles sont désormais AU-DESSUS du détail du marché (15/09) : publier
-          passe avant les annonces comparables. */}
-      {createCta}
+             que rien ne le dise. */}
+      <div className="lns-actions">
+        {createCta}
 
-      {/* ── LE BOUTON N'AJOUTE PLUS DEUX FOIS (2026-09-15) ──────────────────
-          Un article scanné est DÉJÀ dans le stock : le scan l'y a mis en même
-          temps qu'il débitait l'annonce. Ce bouton ouvrait toujours une
-          CRÉATION, donc posait une seconde ligne, vide, à côté de la vraie
-          fiche (cas Akld du 15/09 : 2 scans, 2 lignes vides, 0 job). Il ouvre
-          désormais la fiche EXISTANTE, et le dit.
-          Le cas « article vendu » est intact : rien n'entre au stock, c'est une
-          vente qu'on enregistre, et elle ne s'enregistre qu'une fois. */}
-      {result.titre&&(
-        result.est_vendu ? (
-          lensAdded ? (
-            <button disabled
-              style={{width:'100%',padding:'13px',background:'#E7F3F0',color:'#1B6E62',border:'1px solid #BFE0D9',borderRadius:999,fontSize:14,fontWeight:600,cursor:'default',fontFamily:'inherit',marginBottom:6}}>
-              {lang==='en'?'✅ Sale recorded!':'✅ Vente enregistrée !'}
-            </button>
+        {/* ── LE BOUTON N'AJOUTE PLUS DEUX FOIS (2026-09-15) ──────────────────
+            Un article scanné est DÉJÀ dans le stock : le scan l'y a mis en même
+            temps qu'il débitait l'annonce. Ce bouton ouvre la fiche EXISTANTE,
+            et le dit. (29/10) « Ajouter au stock seulement » / « Modifier la
+            fiche de l'article » : mêmes handlers qu'avant.
+            Le cas « article vendu » est intact : rien n'entre au stock, c'est une
+            vente qu'on enregistre, et elle ne s'enregistre qu'une fois. */}
+        {result.titre && (
+          result.est_vendu ? (
+            lensAdded ? (
+              <button type="button" disabled className="lns-secondaire lns-secondaire--fait">✓ {t('lensVenteEnregistree')}</button>
+            ) : (
+              <button type="button" className="lns-secondaire" onClick={addLensItem}>{t('lensEnregistrerVente')}</button>
+            )
           ) : (
-            <button onClick={addLensItem}
-              style={{width:'100%',padding:'12px',background:'transparent',color:'#1B6E62',border:'1.5px solid #1B6E62',borderRadius:999,fontSize:14,fontWeight:600,cursor:'pointer',fontFamily:'inherit',marginBottom:6}}>
-              {lang==='en'?'💰 Record sale':'💰 Enregistrer la vente'}
-            </button>
+            <>
+              <button type="button" className="lns-secondaire" onClick={openLensEditModal}>
+                {lensAdded ? t('lensModifierFiche') : t('lensAjouterStock')}
+              </button>
+              {lensAdded && <p className="lns-mention lns-mention--ok">{t('lensDejaStock')}</p>}
+            </>
           )
-        ) : (
-          <>
-            {lensAdded&&(
-              <div style={{textAlign:'center',fontSize:11.5,color:'#1B6E62',fontWeight:600,marginBottom:6}}>
-                {lang==='en'?'✅ Already in your stock — nothing gets added twice.':'✅ Déjà dans ton stock — rien n’est ajouté deux fois.'}
-              </div>
-            )}
-            <button onClick={openLensEditModal}
-              style={{width:'100%',padding:'12px',background:'transparent',color:'#1B6E62',border:'1.5px solid #1B6E62',borderRadius:999,fontSize:14,fontWeight:600,cursor:'pointer',fontFamily:'inherit',marginBottom:6}}>
-              {lensAdded
-                ?(lang==='en'?'✏️ Edit the item':'✏️ Modifier la fiche de l’article')
-                :(lang==='en'?'✏️ Edit & add to stock':'✏️ Modifier & ajouter au stock')}
-            </button>
-          </>
-        )
-      )}
-      <button onClick={onReset}
-        style={{width:'100%',padding:'9px',background:'transparent',border:'1px solid rgba(0,0,0,0.12)',borderRadius:10,fontSize:13,fontWeight:600,color:'#6B7A75',cursor:'pointer',fontFamily:'inherit',transition:'all 0.15s',marginTop:4}}>
-        🔄 {lang==='en'?'New analysis':'Nouvelle analyse'}
-      </button>
-      <div style={{textAlign:'center',fontSize:11,marginTop:6,color:'#8A8578',fontWeight:500,lineHeight:1.4}}>
-        {lang==='en'
-          ?'A new analysis uses one listing from your monthly quota.'
-          :'Une nouvelle analyse consomme une annonce de ton quota mensuel.'}
+        )}
+        {/* « ne consomme rien de plus » n'est vrai que si le scan a DÉJÀ rédigé
+            l'annonce (lens_unifie) : sans elle, l'écran de publication la
+            rédigera et la comptera. */}
+        <p className="lns-mention">
+          {result.annonce?.platforms ? `${t('lensRienDePlus')} ${t('lensRienPublie')}` : t('lensRienPublie')}
+        </p>
       </div>
 
-      {/* ══ 4. LE DÉTAIL DU MARCHÉ, REPLIÉ ═════════════════════════════════
+      {/* ══ 4. REPLIÉS : LE DÉTAIL DU MARCHÉ, LES PHOTOS DU SCAN ══════════════
           Annonces comparables, fourchette bas/moyen/haut, vitesse de vente,
-          plateformes, conseils, et la note du modèle sur la façon dont le prix
-          a été établi. Tout ça reste accessible en un tap, et ne pousse plus
-          la reconnaissance de l'objet deux écrans plus bas. `masquerNotes` ne
-          reste armé que quand le bandeau « identification incertaine » de
-          LensIdentite rend déjà la note : sinon elle atterrit ici. */}
-      <div style={{...carte,marginTop:14,marginBottom:0}}>
-        <AnalyseMarche
-          result={result}
-          prixAchat={lensBuy}
-          lang={lang}
-          currency={currency}
-          variant="verdict"
-          section="details"
-          masquerNotes={result.identification_incertaine===true}
-          masquerDescription
-        />
-      </div>
+          plateformes, conseils, et la note du modèle (AnalyseMarche, section
+          details — `masquerNotes` ne reste armé que quand le bandeau
+          « identification incertaine » de LensIdentite rend déjà la note). */}
+      {(result.prix_vente_suggere != null || photosPanel) && (
+        <div className="lns-plis">
+          {result.prix_vente_suggere != null && (
+            <Pli
+              titre={t('lensDetailMarche')}
+              info={count > 0 ? tpl('lensAnnoncesComparees', { n: count }) : t('lensAucuneComparee')}
+            >
+              <DetailMarche result={result} prixAchat={lensBuy} lang={lang} currency={currency} />
+              {/* Recueilli de l'en-tête supprimé le 15/09 : le pays situe les prix. */}
+              {userCountry?.name && <p className="lns-aide">{tpl('lensPrixPays', { pays: userCountry.name })}</p>}
+            </Pli>
+          )}
+          {photosPanel && (
+            <Pli titre={t('lensTesPhotosScan')} info={tpl('lensNPhotos', { n: nbPhotos })}>
+              {photosPanel}
+            </Pli>
+          )}
+        </div>
+      )}
+
+      {/* « Nouvelle analyse » est un RESET pur : il ne débite rien, mais la
+          suivante comptera — on le dit. */}
+      <button type="button" className="lns-tertiaire" onClick={onReset}>{t('lensNouvelleAnalyse')}</button>
+      <p className="lns-mention">{t('lensNouvelleAnalyseQuota')}</p>
     </div>
   );
 }
@@ -647,7 +703,7 @@ export function LensAnalysisResult({ result, lensBuy, lang, currency, lensAdded,
 // réelles, relevées pendant le geste. Le stepper s'ouvre dès que c'est prêt.
 export function EcranPreparation({ lang, photo, titre, etape, etapes, sousTitre }) {
   return (
-    <div style={{position:"fixed",inset:0,background:UI.canvas,zIndex:9998,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"0 16px"}}>
+    <div style={{position:"fixed",inset:0,background:UI.canvas,zIndex:9998,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"0 16px",colorScheme:"light"}}>
       <div style={{width:"100%",maxWidth:440,background:"#FFFFFF",border:"1px solid #E7E3D8",borderRadius:16,padding:"14px 14px 12px",boxSizing:"border-box"}}>
         <BarreProgression
           lang={lang}
@@ -674,6 +730,9 @@ const LensTab = memo(function LensTab({
   // Bascule quotas (02/09) : compteurs du cycle (quotas_etat via App) — sert
   // le « N scans restants ce mois-ci » sous le CTA d'analyse.
   quotas = null,
+  // (29/10, lot B 1.5) Relecture UNIQUE de quotas_etat quand le quota paraît
+  // épuisé à l'ouverture de l'onglet (le cycle a pu repartir depuis).
+  rafraichirQuotas = null,
   // Compte eBay vu par App.jsx (07/09/2026) : { voieApi, etat, lu,
   // voieApiReelle, rafraichir }. Le parcours Lens l'ignorait complètement —
   // le stepper ouvert depuis un scan croyait donc TOUJOURS être en voie
@@ -690,12 +749,23 @@ const LensTab = memo(function LensTab({
   // Battement serveur de l'extension — relayé au stepper pour la ligne
   // « ordinateur éteint » au-dessus du CTA Publier (2026-08-13).
   extensionLastSeenAt = null,
+  // (29/10, lot B 1.2) Le scan qui vient d'aboutir (scan_id posé par analyzeLens
+  // sur un résultat RÉUSSI) : « Ouvrir l'annonce dès la fin de l'analyse » ne
+  // s'enchaîne que sur lui, une fois (onScanAboutiVu le consomme).
+  lensScanAbouti = null, onScanAboutiVu = null,
+  // (29/10, lot B 1.5) L'historique : rouvrir un scan gardé en base, ou la fiche
+  // de l'article au Stock ; le quota atteint : l'ajout à la main du Stock.
+  onRouvrirScan = null, onOuvrirArticle = null, onCreerALaMain = null,
 }) {
+  const { t } = useTranslation(lang);
   const [generatingListing,setGeneratingListing]=useState(false);
   // (01/10) L'étape RÉELLE de la préparation de l'annonce (montée des photos
   // puis lecture ou ouverture), pour LA barre de progression de l'écran
   // d'attente. Affichage seul.
   const [etapeCreation,setEtapeCreation]=useState('envoi');
+  // (29/10) Quel geste prépare l'annonce : 'create' (le résultat), 'sans' (sans
+  // analyse), 'identify' (reprise du parcours gratuit) — les étapes de l'attente.
+  const [typeCreation,setTypeCreation]=useState('create');
   // La fin du scan se MONTRE (01/10) : la barre glisse jusqu'à 100 % et la
   // coche paraît avant le résultat. Seulement pour un scan vu en cours ici.
   const [scanVu,setScanVu]=useState(false);
@@ -707,10 +777,12 @@ const LensTab = memo(function LensTab({
   const [showListingPreview,setShowListingPreview]=useState(false);
   const nouveauStepper=useNouveauStepper(supabase,user?.id);
   const [listingError,setListingError]=useState('');
-  const [showExtReminder,setShowExtReminder]=useState(false);
+  // Rappel extension : porte l'action à reprendre ('create', 'sans', 'identify')
+  // — un seul rappel, quel que soit l'écran qui l'a demandé (29/10).
+  const [rappelAction,setRappelAction]=useState(null);
   // Accroche extension (2026-08-04) : extension JAMAIS vue → accroche (sync
   // dressing + récupération du lien) à la place du rappel. Porte l'action à
-  // reprendre : 'identify' (viseur) ou 'create' (écran résultat).
+  // reprendre : 'identify' (viseur), 'create' (écran résultat), 'sans' (29/10).
   const [extPitchAction,setExtPitchAction]=useState(null);
   // Ajout de photos depuis l'écran résultat : même feuille de choix
   // caméra/photothèque que le viseur (2026-07-27, remplace les deux tuiles
@@ -730,7 +802,26 @@ const LensTab = memo(function LensTab({
   // depuis ce parcours doit ramener au viseur, pas sur un écran de deal vide.
   const [identifyResult,setIdentifyResult]=useState(null);
   const [identifyEchec,setIdentifyEchec]=useState(false);
-  const listingSource=identifyResult??lensResult;
+  // (29/10, lot B 1.5) « Créer l'annonce sans analyse » (après un échec) : le
+  // stepper s'ouvre avec les photos SEULES — aucune analyse ne le pré-remplit.
+  const [sansAnalyse,setSansAnalyse]=useState(false);
+  const listingSource=sansAnalyse?null:(identifyResult??lensResult);
+  // (29/10, lot B 1.2) Ouvert par « Créer l'annonce » du résultat (ou son
+  // enchaînement automatique) : l'écran de publication va droit à l'annonce.
+  const [ouvertureDirecte,setOuvertureDirecte]=useState(false);
+  // (29/10, lot B 1.2) « Voir l'analyse » depuis l'écran de publication : le
+  // lensResult sur lequel le stepper a été mis EN PAUSE (fermé sans rien
+  // purger). « Créer l'annonce » sur CE résultat le rouvre tel qu'il était.
+  const [stepperEnPause,setStepperEnPause]=useState(null);
+  // (29/10, lot B 1.5) Le résultat rouvert depuis l'historique : sa fiche a pu
+  // vivre depuis le scan (photos changées au Stock) — « Créer l'annonce » ne
+  // lui recolle pas les photos du scan.
+  const [resultatHistorique,setResultatHistorique]=useState(null);
+  const depuisHistorique=resultatHistorique!=null&&resultatHistorique===lensResult;
+  const [showHistorique,setShowHistorique]=useState(false);
+  // (29/10, lot B 1.2-1.4) Les réglages de rédaction du compte : la stratégie de
+  // prix (affichage du résultat) et « Ouvrir l'annonce dès la fin de l'analyse ».
+  const { reglages: reglagesRedaction, lue: reglagesLus, enregistrer: enregistrerReglages } = useReglagesRedaction(user?.id);
 
   // (La lecture de coin_config posée ici le 01/09 pour afficher le prix du
   // scan — price_lens_overflow — a été RETIRÉE au nettoyage unités du 02/09
@@ -742,6 +833,8 @@ const LensTab = memo(function LensTab({
   // interne) : le blob hôte écrit à l'ouverture permet de le REMONTER avec les
   // mêmes props ; son état interne (étape, annonces générées…) revient, lui,
   // du brouillon sessionStorage du stepper.
+  // (29/10) Un stepper mis EN PAUSE par « Voir l'analyse » revient en pause :
+  // le résultat à l'écran, le stepper prêt à rouvrir — pas rouvert d'office.
   useEffect(()=>{
     const h=readStepperHost('lens');
     if(!h)return;
@@ -750,9 +843,30 @@ const LensTab = memo(function LensTab({
     // LOCAL, sinon le lensResult de App ressusciterait l'écran de deal.
     if(h.lensResult){ if(h.viaIdentify)setIdentifyResult(h.lensResult); else setLensResult(h.lensResult); }
     if(h.identifyEchec)setIdentifyEchec(true);
+    if(h.sansAnalyse)setSansAnalyse(true);
+    if(h.ouvertureDirecte)setOuvertureDirecte(true);
     if(h.inventaireId)setRestoredInvId(h.inventaireId);
+    if(h.enPause&&h.lensResult&&!h.viaIdentify){ setStepperEnPause(h.lensResult); return; }
     setShowListingPreview(true);
     onStepperOpenChange?.(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
+
+  // (29/10) Le résultat a changé sous un stepper en pause (photo retirée,
+  // nouvelle analyse, scan rouvert) : la pause ne désigne plus rien — son
+  // brouillon part, sinon un remount ressusciterait l'ancien article.
+  useEffect(()=>{
+    if(!stepperEnPause||stepperEnPause===lensResult)return;
+    if(readStepperHost('lens'))clearStepperPersistence();
+    setStepperEnPause(null);
+    setLensListingPhotos([]);
+  },[lensResult,stepperEnPause]);
+
+  // (29/10, lot B 1.5) Le quota paraît épuisé à l'ouverture de l'onglet : UNE
+  // relecture de quotas_etat (le cycle a pu repartir depuis le chargement de
+  // l'app). Une fois par montage, jamais en boucle.
+  useEffect(()=>{
+    if(quotas?.annonces?.plafond!=null&&quotas.annonces.restantes===0)rafraichirQuotas?.();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
 
@@ -802,6 +916,7 @@ const LensTab = memo(function LensTab({
   // generate-listing invente et l'utilisateur croit lire une analyse de ses
   // photos — exactement ce que ce chantier supprime.
   async function handleIdentifyAndCreate(){
+    setTypeCreation('identify');
     setEtapeCreation('envoi');
     setGeneratingListing(true);
     setListingError('');
@@ -847,6 +962,8 @@ const LensTab = memo(function LensTab({
       writeStepperHost({source:'lens',photos:uploadedUrls,lensResult:identification,viaIdentify:true,identifyEchec:echec,inventaireId:lensInventaireId??null});
       setIdentifyResult(identification);
       setIdentifyEchec(echec);
+      setSansAnalyse(false);
+      setOuvertureDirecte(false);
       setLensListingPhotos(uploadedUrls);
       setShowListingPreview(true);
       onStepperOpenChange?.(true);
@@ -858,6 +975,7 @@ const LensTab = memo(function LensTab({
   }
 
   async function handleCreateListing(){
+    setTypeCreation('create');
     setEtapeCreation('envoi');
     setGeneratingListing(true);
     setListingError('');
@@ -869,12 +987,19 @@ const LensTab = memo(function LensTab({
       const uploadedUrls=await televerserPhotos();
       if(!uploadedUrls.length)throw new Error(lang==='en'?'Photo upload failed.':'Échec upload des photos.');
       setEtapeCreation('ouverture');
-      await rattacherPhotosDurables(uploadedUrls);
+      // (29/10) Pas sur un résultat rouvert depuis l'historique : sa fiche a pu
+      // changer de photos au Stock depuis le scan, on ne les écrase pas.
+      if(!depuisHistorique)await rattacherPhotosDurables(uploadedUrls);
 
       // Ouverture fraîche : on purge tout brouillon précédent avant d'écrire le
       // blob hôte de CETTE session de publication.
       clearStepperPersistence();
-      writeStepperHost({source:'lens',photos:uploadedUrls,lensResult,inventaireId:lensInventaireId??null});
+      writeStepperHost({source:'lens',photos:uploadedUrls,lensResult,inventaireId:lensInventaireId??null,ouvertureDirecte:true});
+      setIdentifyResult(null);
+      setIdentifyEchec(false);
+      setSansAnalyse(false);
+      setOuvertureDirecte(true);
+      setStepperEnPause(null);
       setLensListingPhotos(uploadedUrls);
       setShowListingPreview(true);
       onStepperOpenChange?.(true);
@@ -884,6 +1009,111 @@ const LensTab = memo(function LensTab({
       setGeneratingListing(false);
     }
   }
+
+  // ── « Créer l'annonce sans analyse » (29/10, lot B 1.5) ───────────────────
+  // Après un échec : l'écran de publication avec les photos SEULES, sans IA de
+  // lecture. Le chemin existant le plus proche est celui du parcours gratuit
+  // (handleIdentifyAndCreate) MOINS l'appel identify : montée des photos dans
+  // listing-photos, blob hôte, stepper. La mention discrète « les photos n'ont
+  // pas pu être analysées » du stepper (identifyFailed) dit ce qui s'est passé.
+  // ⚠️ Ce n'est pas « sans quota » : l'étape 2 du stepper rédige l'annonce
+  //    (generate-listing) et compte, comme toute annonce créée.
+  async function handleCreateSansAnalyse(){
+    setTypeCreation('sans');
+    setEtapeCreation('envoi');
+    setGeneratingListing(true);
+    setListingError('');
+    try{
+      const uploadedUrls=await televerserPhotos();
+      if(!uploadedUrls.length)throw new Error(lang==='en'?'Photo upload failed.':'Échec upload des photos.');
+      setEtapeCreation('ouverture');
+      clearStepperPersistence();
+      writeStepperHost({source:'lens',photos:uploadedUrls,lensResult:null,viaIdentify:true,identifyEchec:true,sansAnalyse:true,inventaireId:lensInventaireId??null});
+      setIdentifyResult(null);
+      setIdentifyEchec(true);
+      setSansAnalyse(true);
+      setOuvertureDirecte(false);
+      setStepperEnPause(null);
+      setLensListingPhotos(uploadedUrls);
+      setShowListingPreview(true);
+      onStepperOpenChange?.(true);
+    }catch(e){
+      setListingError(e.message||'Erreur inattendue');
+    }finally{
+      setGeneratingListing(false);
+    }
+  }
+
+  // Le geste, une fois l'accroche ou le rappel extension passés.
+  function executer(action){
+    if(action==='create')return handleCreateListing();
+    if(action==='sans')return handleCreateSansAnalyse();
+    return handleIdentifyAndCreate();
+  }
+  // Accroche (extension jamais vue) ou rappel extension AVANT d'ouvrir le
+  // stepper — même garde qu'avant pour « Créer l'annonce », étendue à « sans
+  // analyse » et à l'enchaînement automatique (29/10).
+  function lancer(action){
+    if(extensionNeverSeen===true){setExtPitchAction(action);return;}
+    if(shouldShowExtensionReminder()){setRappelAction(action);return;}
+    executer(action);
+  }
+
+  // ── « Voir l'analyse » / reprise du stepper en pause (29/10, lot B 1.2) ────
+  // L'écran de publication appelle onVoirAnalyse : on referme le stepper sur le
+  // résultat SANS RIEN PURGER — ni l'état Lens, ni le brouillon du stepper, ni
+  // le blob hôte (marqué en pause). « Créer l'annonce » le rouvre tel quel :
+  // mêmes photos, même étape, sans remonter les photos ni régénérer.
+  function voirAnalyse(){
+    const h=readStepperHost('lens');
+    if(h)writeStepperHost({...h,enPause:true});
+    setStepperEnPause(lensResult);
+    setShowListingPreview(false);
+    onStepperOpenChange?.(false);
+  }
+  function clicCreerAnnonce(){
+    if(stepperEnPause&&stepperEnPause===lensResult&&lensListingPhotos.length&&readStepperHost('lens')){
+      const h=readStepperHost('lens');
+      writeStepperHost({...h,enPause:false});
+      setStepperEnPause(null);
+      setShowListingPreview(true);
+      onStepperOpenChange?.(true);
+      return;
+    }
+    lancer('create');
+  }
+
+  // ── « OUVRIR L'ANNONCE DÈS LA FIN DE L'ANALYSE » (29/10, lot B 1.2) ───────
+  // Allumé (platform_settings.redaction.ouvrir_annonce_apres_scan), l'écran
+  // enchaîne SEUL sur « Créer l'annonce » dès qu'un scan RÉUSSIT :
+  //   · une seule fois par scan — lensScanAbouti (le scan_id, posé par
+  //     analyzeLens sur un résultat réussi) est consommé ici, que l'on enchaîne
+  //     ou non ;
+  //   · jamais sur un échec (analyzeLens ne pose rien), jamais sur un article
+  //     VENDU (son geste est « Enregistrer la vente »), ni sur une
+  //     identification INCERTAINE (l'écran demande d'abord une photo de plus —
+  //     l'ouvrir d'office la cacherait) ;
+  //   · après la fin visible de la barre (finScan) — le résultat reste
+  //     consultable par « Voir l'analyse » de l'écran de publication ;
+  //   · par lancer('create') : l'accroche et le rappel extension passent avant.
+  // Réglage pas encore lu (base lente) : on attend sa réponse, sans rien
+  // consommer ; il est lu à l'ouverture de l'onglet, un scan dure ~20 s.
+  const scanAboutiPret=lensScanAbouti!=null&&!lensLoading&&Boolean(lensResult)&&!lensResult?.error&&!finScan&&!showListingPreview&&!generatingListing;
+  useEffect(()=>{
+    if(!scanAboutiPret)return;
+    if(!reglagesLus&&!reglagesRedaction.ouvrirApresScan)return;
+    onScanAboutiVu?.();
+    if(!reglagesRedaction.ouvrirApresScan)return;
+    if(lensResult.est_vendu===true||lensResult.identification_incertaine===true)return;
+    lancer('create');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[scanAboutiPret,reglagesLus]);
+
+  const basculerOuvrirApres=user?.id
+    ?()=>{enregistrerReglages({ouvrirApresScan:!reglagesRedaction.ouvrirApresScan});}
+    :null;
+
+  const peutVoirAnalyse=!sansAnalyse&&!identifyResult&&Boolean(lensResult)&&!lensResult?.error;
 
   if (showListingPreview) {
     return (
@@ -907,6 +1137,15 @@ const LensTab = memo(function LensTab({
           // = identifyResult → annonce absente → prop null, comportement
           // classique).
           annoncePrete={listingSource?.annonce ?? null}
+          // (29/10, lot B 1.2) Ouvert par « Créer l'annonce » du résultat : droit
+          // à l'annonce (traité par ListingPreviewScreen). « Voir l'analyse »
+          // referme le stepper sur le résultat, sans rien purger — seulement
+          // quand il y a une analyse à revoir. La note du viseur et le prix
+          // d'achat saisi voyagent avec (ils ne passaient pas au stepper).
+          ouvertureDirecte={ouvertureDirecte}
+          onVoirAnalyse={peutVoirAnalyse?voirAnalyse:undefined}
+          noteVendeur={lensDesc}
+          prixAchatSaisi={lensBuy}
           // published=true : le bouton de l'écran ✅ du stepper — on purge TOUT
           // le parcours (état App : photos, analyse, description, prix d'achat,
           // ligne inventaire) pour revenir au viseur vide. Sans argument
@@ -923,7 +1162,7 @@ const LensTab = memo(function LensTab({
           //    même article, sinon on crée une deuxième ligne d'inventaire).
           //    Règle énoncée dans utils/parcoursLens.js, rejouée par
           //    scripts/identite-article-lens-selftest.mjs.
-          onClose={(published)=>{clearStepperPersistence();setShowListingPreview(false);setLensListingPhotos([]);setIdentifyResult(null);setIdentifyEchec(false);setRestoredInvId(apresFermetureStepper({restoredInvId},published===true).restoredInvId);if(published){resetLensParcours?.();}onStepperOpenChange?.(false);}}
+          onClose={(published)=>{clearStepperPersistence();setShowListingPreview(false);setLensListingPhotos([]);setIdentifyResult(null);setIdentifyEchec(false);setSansAnalyse(false);setOuvertureDirecte(false);setStepperEnPause(null);setRestoredInvId(apresFermetureStepper({restoredInvId},published===true).restoredInvId);if(published){resetLensParcours?.();}onStepperOpenChange?.(false);}}
           supabase={supabase}
           lang={lang}
           isPremium={isPremium}
@@ -941,12 +1180,43 @@ const LensTab = memo(function LensTab({
     );
   }
 
-  if (!lensResult || finScan) {
-    return (
-      <>
+  // « Nouvelle analyse » (et le retour du résultat) : un RESET pur, il ne
+  // débite rien. Un stepper en pause part avec le résultat qu'il servait.
+  const reinitialiser=()=>{
+    if(stepperEnPause&&readStepperHost('lens'))clearStepperPersistence();
+    setStepperEnPause(null);setLensListingPhotos([]);
+    setLensPhotos([]);setLensResult(null);setLensAdded(false);setLensDesc("");setLensBuy("");
+  };
+
+  // Le viseur tant qu'il n'y a pas de résultat RÉUSSI : avant le scan, pendant
+  // (et la fin de la barre), et après un échec — les photos y restent.
+  const surViseur=!lensResult||finScan||Boolean(lensResult?.error);
+  const enAttente=generatingListing&&(
+    typeCreation==='identify'
+      ? {
+          etapes:[
+            {cle:'envoi',texte:lang==="en"?"Sending your photos…":"Envoi de tes photos…",duree:Math.max(3,lensPhotos.length*1.5)},
+            {cle:'lecture',texte:lang==="en"?"Reading your photos: brand, size, material, condition…":"Lecture de tes photos : marque, taille, matière, état…",duree:10},
+          ],
+          sousTitre:lang==="en"?"Reading your photos · free":"Lecture de tes photos · gratuit",
+          titre:lensDesc,
+        }
+      : {
+          etapes:[
+            {cle:'envoi',texte:lang==="en"?"Sending your photos…":"Envoi de tes photos…",duree:Math.max(3,lensPhotos.length*1.5)},
+            {cle:'ouverture',texte:lang==="en"?"Opening your listing…":"Ouverture de ton annonce…",duree:3},
+          ],
+          sousTitre:lang==="en"?"Preparing your listing":"Préparation de ton annonce",
+          titre:typeCreation==='create'?(lensResult?.titre??lensDesc):lensDesc,
+        }
+  );
+
+  return (
+    <>
+      {surViseur ? (
         <LensScanHome
           finScan={finScan} onFinScan={()=>setFinScanVue(true)}
-          lang={lang} currency={currency} isPremium={isPremium} isNative={isNative} isPro={isPro}
+          lang={lang} currency={currency} isNative={isNative}
           plateformesOuvertes={plateformesOuvertes}
           plateformesFermees={plateformesFermees}
           lensPhotos={lensPhotos} setLensPhotos={setLensPhotos} setLensResult={setLensResult} setLensAdded={setLensAdded}
@@ -954,101 +1224,41 @@ const LensTab = memo(function LensTab({
           lensPlaceholderFade={lensPlaceholderFade} lensPlaceholderIdx={lensPlaceholderIdx}
           lensFileRef={lensFileRef} handleLensPhoto={handleLensPhoto} handleLensPhotoNative={handleLensPhotoNative} handleLensCameraNative={handleLensCameraNative}
           analyzeLens={analyzeLens} lensLoading={lensLoading} lensProgres={lensProgres} lensReprise={lensReprise} infoRepriseLens={infoRepriseLens}
+          quotas={quotas}
+          erreur={lensResult?.error??null}
+          onSansAnalyse={()=>lancer('sans')}
+          occupe={generatingListing}
+          listingError={listingError}
+          ouvrirApresScan={reglagesRedaction.ouvrirApresScan}
+          onOuvrirApresScan={basculerOuvrirApres}
+          onHistorique={onRouvrirScan&&user?.id?()=>setShowHistorique(true):null}
+          onCreerALaMain={onCreerALaMain}
+          // Le quota du mois atteint : la modale des offres, variante quota
+          // (ConversionModal, trigger quota_geste) — ouverte par un CLIC.
+          onVoirForfaits={openUpgradeModal?()=>openUpgradeModal(undefined,'lens_quota_atteint','quota_geste'):null}
         />
-        {/* (onCreateListing/creatingListing retirés à la fusion des CTA du
-            02/09 soir : le viseur n'a plus qu'UN bouton — le scan unifié —
-            et le scan n'exige pas l'extension. L'accroche/rappel extension
-            gardent leur rôle sur le CTA de l'écran RÉSULTAT, action 'create'.
-            Le parcours identify gratuit n'est plus déclenchable depuis le
-            viseur ; handleIdentifyAndCreate reste pour la reprise d'un blob
-            hôte viaIdentify d'une session antérieure.) */}
-        {listingError&&(
-          <div style={{maxWidth:520,margin:"10px auto 0",padding:"8px 12px",background:"#F3E6E3",border:"1px solid #D9A69C",borderRadius:8,fontSize:12,color:"#B0645A",fontWeight:500}}>
-            {listingError}
-          </div>
-        )}
-        {/* Rappel extension : le viseur DOIT le monter lui aussi — il vit plus
-            bas dans l'écran de résultat, que ce parcours ne traverse jamais. */}
-        {showExtReminder&&(
-          <ExtensionReminderModal
+      ) : (
+        <>
+          {/* (onCreateListing/creatingListing retirés à la fusion des CTA du
+              02/09 soir : le viseur n'a plus qu'UN bouton — le scan unifié —
+              et le scan n'exige pas l'extension. L'accroche/rappel extension
+              gardent leur rôle sur le CTA de l'écran RÉSULTAT, action 'create'.) */}
+          <PhotoSourceSheet
+            open={showPhotoSheet}
+            onClose={()=>setShowPhotoSheet(false)}
+            onCamera={()=>{setShowPhotoSheet(false);handleLensCameraNative();}}
+            onGallery={()=>{setShowPhotoSheet(false);handleLensPhotoNative();}}
             lang={lang}
-            onClose={()=>setShowExtReminder(false)}
-            onContinue={()=>{setShowExtReminder(false);handleIdentifyAndCreate();}}
+            maxPhotos={MAX_PHOTOS}
           />
-        )}
-        {/* Accroche extension : même règle de montage que le rappel — le
-            viseur DOIT la porter lui aussi. */}
-        {extPitchAction&&(
-          <ExtensionPitchScreen
-            lang={lang}
-            onClose={()=>setExtPitchAction(null)}
-            onContinue={()=>{const a=extPitchAction;setExtPitchAction(null);(a==='create'?handleCreateListing:handleIdentifyAndCreate)();}}
-            supabase={supabase}
-            userId={user?.id}
-            onExtensionSeen={()=>{const a=extPitchAction;setExtPitchAction(null);(a==='create'?handleCreateListing:handleIdentifyAndCreate)();}}
+          <input
+            ref={lensFileRef}
+            type="file"
+            accept="image/*"
+            multiple
+            style={{display:"none"}}
+            onChange={handleLensPhoto}
           />
-        )}
-        {generatingListing&&(
-          <EcranPreparation lang={lang} photo={lensPhotos[0]?.preview??null} titre={lensDesc}
-            etape={etapeCreation}
-            etapes={[
-              {cle:'envoi',texte:lang==="en"?"Sending your photos…":"Envoi de tes photos…",duree:Math.max(3,lensPhotos.length*1.5)},
-              {cle:'lecture',texte:lang==="en"?"Reading your photos: brand, size, material, condition…":"Lecture de tes photos : marque, taille, matière, état…",duree:10},
-            ]}
-            sousTitre={lang==="en"?"Reading your photos · free":"Lecture de tes photos · gratuit"}/>
-        )}
-      </>
-    );
-  }
-
-  return (
-    <div style={{maxWidth:520,margin:"0 auto",display:"flex",flexDirection:"column",gap:16}}>
-
-      {/* ── En-tête « Lens » SUPPRIMÉ (15/09/2026, demande Nico) ──────────────
-          Tuile dégradée 46 px + wordmark 25 px + badge IA + baseline : un quart
-          de l'écran pour dire « Lens » à quelqu'un qui vient d'appuyer sur
-          Lens, et la reconnaissance de son objet repoussée d'autant. Ce que
-          l'en-tête portait d'utile — le pays qui sert à situer les prix — vit
-          maintenant sur la ligne de section ci-dessous, en un mot.
-          (L'écran de SCAN, lui, garde son hero : là-bas il annonce le geste.) */}
-
-      <PhotoSourceSheet
-        open={showPhotoSheet}
-        onClose={()=>setShowPhotoSheet(false)}
-        onCamera={()=>{setShowPhotoSheet(false);handleLensCameraNative();}}
-        onGallery={()=>{setShowPhotoSheet(false);handleLensPhotoNative();}}
-        lang={lang}
-        maxPhotos={MAX_PHOTOS}
-      />
-
-      <input
-        ref={lensFileRef}
-        type="file"
-        accept="image/*"
-        multiple
-        style={{display:"none"}}
-        onChange={handleLensPhoto}
-      />
-
-      {/* ── RÉSULTAT D'ABORD (03/09 soir, demande Nico) ──────────────────────
-          L'utilisateur doit comprendre en un regard que son objet est reconnu :
-          le résultat précède désormais les photos, qui n'apportent plus rien
-          une fois le scan rendu. En ÉCHEC, l'ordre historique reprend plus
-          bas : photos, puis bouton de reprise, puis l'encart d'erreur. */}
-      {!lensResult.error&&(
-        <div>
-          <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:8,paddingLeft:2}}>
-            <span style={{width:7,height:7,borderRadius:99,background:TEAL,boxShadow:"0 0 0 3px rgba(47,158,144,0.18)",flexShrink:0}}/>
-            <span style={{fontSize:10,fontWeight:800,letterSpacing:"0.11em",textTransform:"uppercase",color:MUTE}}>
-              {lang==="en"?"Scan result":"Résultat du scan"}
-            </span>
-            {/* Recueilli de l'en-tête supprimé : le pays situe les prix. */}
-            {userCountry&&(
-              <span style={{fontSize:10,fontWeight:700,letterSpacing:"0.06em",color:"#A3A9A6"}}>
-                · 📍 {userCountry.name}
-              </span>
-            )}
-          </div>
           {/* (prop openUpgradeModal retirée le 2026-08-09 : LensAnalysisResult
               ne la destructure pas — elle n'a jamais rien ouvert.) */}
           <LensAnalysisResult
@@ -1056,11 +1266,14 @@ const LensTab = memo(function LensTab({
             lensBuy={lensBuy}
             lang={lang}
             currency={currency}
-            isPremium={isPremium}
             lensAdded={lensAdded}
             addLensItem={addLensItem}
             openLensEditModal={openLensEditModal}
-            onReset={()=>{setLensPhotos([]);setLensResult(null);setLensAdded(false);setLensDesc("");setLensBuy("");}}
+            onReset={reinitialiser}
+            photo={lensPhotos[0]?.preview??null}
+            strategie={reglagesRedaction.strategiePrix}
+            userCountry={userCountry}
+            nbPhotos={lensPhotos.length}
             // ⚠️ PAS DE GATE DE TIER (2026-07-21) : la condition était
             // `isPro && !lensResult.error`, et isPro valait alors profiles.is_pro
             // seul (App.jsx ; « au moins Pro » depuis le 04/10, utils/palier.js) —
@@ -1071,208 +1284,86 @@ const LensTab = memo(function LensTab({
             // CTA PRINCIPAL de l'écran (03/09) : construit ici (LensTab porte
             // handleCreateListing et l'état d'extension), rendu par
             // LensAnalysisResult EN TÊTE de la pile de boutons, en style HÉROS
-            // (LensHeroCta). Destination et comportement inchangés.
+            // (LensHeroCta). (29/10, lot B 1.2) « Créer l'annonce », sous-titre
+            // « photos, marque, modèle, état et rayon déjà posés » ; il rouvre
+            // tel quel un stepper mis en pause par « Voir l'analyse ».
             createCta={
               <>
-                {/* Scan UNIFIÉ (02/09 soir) : le même scan a déjà rédigé
-                    l'annonce (lensResult.annonce, flag lens_unifie serveur).
-                    L'encart le DIT sans le vendre, et PRÉCÈDE le bouton
-                    qu'il explique. Sans annonce (flag éteint, rédaction
-                    ratée, vieux résultat), le CTA adaptatif reprend tel quel. */}
-                {lensResult.annonce?.platforms&&(
-                  <div style={{marginBottom:8,padding:"12px 14px",background:"#F0FDF9",border:"1px solid #CBE5DF",borderRadius:12}}>
-                    <div style={{fontSize:13,fontWeight:700,color:"#10201B",marginBottom:2}}>
-                      {lang==="en"?"📝 Your listing is ready":"📝 Ton annonce est prête"}
-                    </div>
-                    <div style={{fontSize:12,color:"#5C6560",fontWeight:500,lineHeight:1.5}}>
-                      {lang==="en"
-                        ?"Title, description and fields for the 4 marketplaces are already written by this scan. Creating it uses nothing more."
-                        :"Titre, description et champs pour les 4 plateformes sont déjà rédigés par ce scan. La créer ne consomme rien de plus."}
-                    </div>
-                  </div>
-                )}
                 <LensHeroCta
-                  onClick={()=>extensionNeverSeen===true?setExtPitchAction('create'):(shouldShowExtensionReminder()?setShowExtReminder(true):handleCreateListing())}
+                  onClick={clicCreerAnnonce}
                   disabled={generatingListing}
-                  style={{marginBottom:6}}
+                  sousTitre={t('lensCreerAnnonceSous')}
                 >
-                  {analyseFiabilite(lensResult).niveau==='aucune'
-                    ? `✨ ${lang==="en"?"Create the listing":"Créer l'annonce"}`
-                    : lensResult.annonce?.platforms
-                      ? `✨ ${lang==="en"?"Open & publish the listing":"Ouvrir et publier l'annonce"}`
-                      : `✨ ${lang==="en"?"Create a listing":"Créer une annonce"}`}
+                  {t('lensCreerAnnonce')}
                 </LensHeroCta>
-                {listingError&&(
-                  <div style={{marginBottom:8,padding:"8px 12px",background:"#F3E6E3",border:"1px solid #D9A69C",borderRadius:8,fontSize:12,color:"#B0645A",fontWeight:500}}>
-                    {listingError}
-                  </div>
-                )}
+                {listingError&&<div className="lns-bandeau lns-bandeau--erreur">{listingError}</div>}
               </>
             }
+            // Les photos du scan, repliées : la grille (retirer, ajouter — une
+            // photo de plus = un nouvel article, le résultat retombe, comme
+            // avant) et la note, micro compris.
+            photosPanel={
+              <div className="lns-section" style={{gap:12}}>
+                <div className="lns-section">
+                  <GrillePhotos
+                    lang={lang}
+                    photos={lensPhotos}
+                    onRetirer={(i)=>{setLensPhotos(prev=>prev.filter((_,j)=>j!==i));setLensResult(null);setLensAdded(false);}}
+                    onAjouter={openLensPicker}
+                  />
+                </div>
+                <NoteLens
+                  id="lns-note-resultat" lang={lang} currency={currency}
+                  lensDesc={lensDesc} setLensDesc={setLensDesc}
+                  lensMicActive={lensMicActive} lensMicLoading={lensMicLoading} toggleLensMic={toggleLensMic}
+                  lensPlaceholderFade={lensPlaceholderFade} lensPlaceholderIdx={lensPlaceholderIdx}
+                />
+              </div>
+            }
           />
-        </div>
+        </>
       )}
 
-      {/* ── Zone photo — sous le résultat en succès, en tête en échec ── */}
-      <div style={{background:"#fff",borderRadius:16,padding:"20px",border:"1px solid rgba(0,0,0,0.07)",boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
-        {!lensResult.error&&(
-          <div style={{fontSize:10,fontWeight:800,letterSpacing:"0.11em",textTransform:"uppercase",color:MUTE,marginBottom:10}}>
-            {lang==="en"?"Your scan photos":"Tes photos du scan"}
-          </div>
-        )}
-        {lensPhotos.length>0?(
-          <div style={{marginBottom:12}}>
-            {/* Grille photos — autant que le stepper (2026-09-27) ; l'IA ne lit
-                que les LENS_PHOTOS_LUES premières, toutes vont sur la fiche. */}
-            <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:lensPhotos.length<MAX_PHOTOS?8:0}}>
-              {lensPhotos.map((p,i)=>(
-                <div key={i} style={{position:"relative",width:"calc(33.33% - 6px)",aspectRatio:"1",flexShrink:0}}>
-                  <img src={p.preview} alt="" style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:10,display:"block"}}/>
-                  <button
-                    onClick={()=>{setLensPhotos(prev=>prev.filter((_,j)=>j!==i));setLensResult(null);setLensAdded(false);}}
-                    style={{position:"absolute",top:4,right:4,width:22,height:22,borderRadius:"50%",border:"none",background:"rgba(0,0,0,0.6)",color:"#fff",fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}
-                  >×</button>
-                </div>
-              ))}
-              {lensPhotos.length<MAX_PHOTOS&&(
-                <button
-                  onClick={openLensPicker}
-                  style={{width:"calc(33.33% - 6px)",aspectRatio:"1",background:"#F9FAFB",border:"2px dashed rgba(0,0,0,0.15)",borderRadius:10,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,color:"#8A8578",flexShrink:0,fontFamily:"inherit"}}
-                >
-                  <Plus size={22} color="#8A8578" />
-                </button>
-              )}
-            </div>
-            <div style={{fontSize:11,color:"#A3A9A6",textAlign:"right"}}>{lensPhotos.length}/{MAX_PHOTOS} {lang==="en"?"photos":"photos"}</div>
-          </div>
-        ):(
-          <button
-            onClick={openLensPicker}
-            style={{width:"100%",padding:"32px 20px",background:"#F9FAFB",border:"2px dashed rgba(0,0,0,0.12)",borderRadius:14,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:10,transition:"all 0.15s",marginBottom:12}}
-            onMouseEnter={e=>{e.currentTarget.style.borderColor="#1B6E62";e.currentTarget.style.background="#F0FDF4";}}
-            onMouseLeave={e=>{e.currentTarget.style.borderColor="rgba(0,0,0,0.12)";e.currentTarget.style.background="#F9FAFB";}}
-          >
-            <span style={{fontSize:40}}>📸</span>
-            <div style={{fontSize:14,fontWeight:700,color:"#6B7A75"}}>
-              {lang==="en"?`Add photos (up to ${MAX_PHOTOS})`:`Ajouter des photos (jusqu'à ${MAX_PHOTOS})`}
-            </div>
-            <div style={{fontSize:12,color:"#A3A9A6"}}>
-              {lang==="en"?"Tap to open camera or gallery":"Appuie pour ouvrir l'appareil photo ou la galerie"}
-            </div>
-          </button>
-        )}
-
-        {/* Champ description optionnel + mic */}
-        <div style={{position:"relative",marginBottom:10}}>
-          {!lensDesc&&(
-            <div style={{position:"absolute",top:10,left:14,right:44,pointerEvents:"none",zIndex:1,fontSize:13,color:"#8A8578",lineHeight:1.5,fontFamily:"inherit",opacity:lensPlaceholderFade?1:0,transition:"opacity 0.3s ease"}}>
-              {getRotatingLensPlaceholders(currency,lang)[lensPlaceholderIdx]}
-            </div>
-          )}
-          <textarea
-            value={lensDesc}
-            onChange={e=>setLensDesc(e.target.value)}
-            placeholder=""
-            rows={2}
-            style={{width:"100%",padding:"10px 44px 10px 14px",borderRadius:12,border:`1.5px solid ${lensMicActive?"#EF4444":"rgba(0,0,0,0.1)"}`,fontSize:16,fontFamily:"inherit",resize:"none",outline:"none",background:"#F9FAFB",boxSizing:"border-box",lineHeight:1.5,color:"#10201B",transition:"border-color 0.15s"}}
-          />
-          <button
-            onClick={toggleLensMic}
-            disabled={lensMicLoading}
-            style={{position:"absolute",right:8,bottom:8,width:30,height:30,borderRadius:"50%",border:"none",background:lensMicActive?"#EF4444":lensMicLoading?"#E5E7EB":"rgba(0,0,0,0.07)",color:lensMicActive?"#fff":lensMicLoading?"#8A8578":"#6B7A75",fontSize:15,cursor:lensMicLoading?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.15s",boxShadow:lensMicActive?"0 0 0 3px rgba(239,68,68,0.2)":"none"}}
-          >
-            {lensMicLoading?"⏳":lensMicActive?"⏹":"🎙️"}
-          </button>
-        </div>
-
-        {/* ── Bouton Analyser : UNIQUEMENT en reprise après ÉCHEC (2026-07-22) ──
-            Cet écran n'est atteint que si lensResult existe, donc APRÈS une
-            tentative. Le bouton y était rendu inconditionnellement : sur une
-            analyse RÉUSSIE, l'utilisateur voyait « Analyser avec l'IA » posé
-            AU-DESSUS de son résultat, cliquable, et sans la ligne « 6 unités »
-            (elle ne vit que dans LensScanHome, l'écran de scan vide) — un tap
-            relançait donc une analyse payante sans jamais afficher son prix.
-            Règle désormais :
-              • succès  → aucun bouton d'analyse. Seul « Nouvelle analyse »
-                (LensAnalysisResult, plus bas) reste : c'est un RESET pur, il ne
-                débite rien. Il repasse lensResult à null → LensScanHome revient,
-                vide, avec son bouton et son tarif « 6 unités » ; le prochain
-                tap est une analyse neuve, payante, annoncée comme telle.
-              • échec   → le bouton revient pour retenter. La reprise ne coûte
-                rien de plus : la tentative ratée est relâchée côté serveur
-                (usage_logs + remboursement des unités, cf. lens-analysis),
-                donc l'utilisateur paie une seule fois l'analyse qu'il reçoit.
-            La ligne de tarif accompagne le bouton : elle annonce le coût du
-            prochain tap (la reprise d'un échec, elle, est gratuite de fait :
-            la tentative ratée est remboursée côté serveur). */}
-        {lensResult.error&&(<>
-        <PrimaryButton
-          onClick={analyzeLens}
-          disabled={!lensPhotos.length||lensLoading}
-        >
-          {lensLoading
-            ?(lang==="en"?"🧠 Analyzing...":"🧠 Analyse en cours...")
-            :(lang==="en"?"✨ Analyze with AI":"✨ Analyser avec l'IA")}
-        </PrimaryButton>
-
-        {/* Fusion scans+annonces (02/09 soir) : UN compteur, UN chiffre — le
-            même que l'en-tête et la génération. Un scan consomme une annonce
-            du forfait (le geste unifié rédige les annonces dans la foulée).
-            Sobre, jamais alarmiste. (La mention « N unités l'analyse » et
-            son icône ont été retirées au nettoyage unités du même soir.) */}
-        {quotas?.annonces?.plafond!=null&&(
-          <div style={{textAlign:"center",fontSize:11,marginTop:6,color:"#8A8578",fontWeight:600}}>
-            {lang==="en"
-              ?`${quotas.annonces.restantes} listing${quotas.annonces.restantes>1?"s":""} left this month`
-              :`${quotas.annonces.restantes} annonce${quotas.annonces.restantes>1?"s":""} restante${quotas.annonces.restantes>1?"s":""} ce mois-ci`}
-          </div>
-        )}
-        </>)}
-
-        {/* Résultat en ÉCHEC uniquement : l'encart d'erreur + « Nouvelle
-            analyse » restent sous le bouton de reprise. Le SUCCÈS vit dans sa
-            propre carte, AU-DESSUS de celle-ci (03/09 soir). */}
-        {lensResult.error&&(
-          <div style={{marginTop:14}}>
-            <LensAnalysisResult
-              result={lensResult}
-              lang={lang}
-              onReset={()=>{setLensPhotos([]);setLensResult(null);setLensAdded(false);setLensDesc("");setLensBuy("");}}
-            />
-          </div>
-        )}
-      </div>
-
-      {showExtReminder&&(
-        <ExtensionReminderModal
+      {showHistorique&&(
+        <HistoriqueLens
+          open
+          onClose={()=>setShowHistorique(false)}
+          supabase={supabase}
+          userId={user?.id}
           lang={lang}
-          onClose={()=>setShowExtReminder(false)}
-          onContinue={()=>{setShowExtReminder(false);handleCreateListing();}}
+          remplacePhotos={lensPhotos.length>0}
+          onRouvrir={(r)=>{setResultatHistorique(r.resultat);onRouvrirScan?.(r);}}
+          onOuvrirArticle={onOuvrirArticle}
         />
       )}
 
+      {/* Rappel extension : le viseur ET le résultat le montent — il porte le
+          geste à reprendre. */}
+      {rappelAction&&(
+        <ExtensionReminderModal
+          lang={lang}
+          onClose={()=>setRappelAction(null)}
+          onContinue={()=>{const a=rappelAction;setRappelAction(null);executer(a);}}
+        />
+      )}
+      {/* Accroche extension : même règle de montage que le rappel. */}
       {extPitchAction&&(
         <ExtensionPitchScreen
           lang={lang}
           onClose={()=>setExtPitchAction(null)}
-          onContinue={()=>{const a=extPitchAction;setExtPitchAction(null);(a==='create'?handleCreateListing:handleIdentifyAndCreate)();}}
+          onContinue={()=>{const a=extPitchAction;setExtPitchAction(null);executer(a);}}
           supabase={supabase}
           userId={user?.id}
-          onExtensionSeen={()=>{const a=extPitchAction;setExtPitchAction(null);(a==='create'?handleCreateListing:handleIdentifyAndCreate)();}}
+          onExtensionSeen={()=>{const a=extPitchAction;setExtPitchAction(null);executer(a);}}
         />
       )}
-
-      {generatingListing&&(
-        <EcranPreparation lang={lang} photo={lensPhotos[0]?.preview??null} titre={lensResult?.titre??lensDesc}
+      {enAttente&&(
+        <EcranPreparation lang={lang} photo={lensPhotos[0]?.preview??null} titre={enAttente.titre}
           etape={etapeCreation}
-          etapes={[
-            {cle:'envoi',texte:lang==="en"?"Sending your photos…":"Envoi de tes photos…",duree:Math.max(3,lensPhotos.length*1.5)},
-            {cle:'ouverture',texte:lang==="en"?"Opening your listing…":"Ouverture de ton annonce…",duree:3},
-          ]}
-          sousTitre={lang==="en"?"Preparing your listing":"Préparation de ton annonce"}/>
+          etapes={enAttente.etapes}
+          sousTitre={enAttente.sousTitre}/>
       )}
-
-    </div>
+    </>
   );
 });
 

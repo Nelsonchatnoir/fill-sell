@@ -38,7 +38,8 @@ console.log('1. Content script : la preuve se relit sans aucun geste');
   ok(/preuveAbsenceMesAnnonces\(idCible, t\)/.test(h) && !/realClick|\.click\(|location\.(href|assign)|history\./.test(h), 'elle ne fait que lire (preuveAbsenceMesAnnonces), aucun clic ni navigation');
   ok(/if \(!\/\^\\d\{6,\}\$\/\.test\(idCible\)\)/.test(h), 'un numéro d\'annonce exact obligatoire');
   ok(/p\.verdict === "absente" \? preuveRetraitDepuis\(p\.lecture, idCible, "apres_confirmation_relue"\) : null/.test(h), 'une preuve n\'est rendue que sur le verdict « absente »');
-  const c = corps(s, 'async function confirmerRetraitParMesAnnonces(idCible, t) {', '\n}\n');
+  // (29/10, lot B 4.9 C) + `vue` : comment l'annonce a été vue en ligne juste avant l'envoi.
+  const c = corps(s, 'async function confirmerRetraitParMesAnnonces(idCible, t, vue = null) {', '\n}\n');
   ok(/const suppressionEnvoyeeLe = new Date\(\)\.toISOString\(\);/.test(c) && /suppressionEnvoyee: true, suppressionEnvoyeeLe,/.test(c), 'l\'heure d\'envoi de la suppression remonte au background');
   ok(/for \(const attente of \[0, 10_000, 20_000, 40_000, 60_000\]\)/.test(c), 'le content script relit toujours ~2 min, pas plus (un message borné à 300 s)');
   // (17/10) Une empreinte plus récente peut passer devant : la 0.6.104 doit rester dans la chaîne.

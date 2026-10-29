@@ -12,6 +12,7 @@
 //    se lit comme une action (règle 3), jamais un texte qui ressemble à un statut.
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import BlocQuestions from "../BlocQuestions";
+import BoutonDictee from "../../components/BoutonDictee";
 import CarteRayon from "../../components/CarteRayon";
 import { CartePortDepop } from "../../components/PortDepop";
 import CarteLivraisonEbay from "../../components/CarteLivraisonEbay";
@@ -292,9 +293,14 @@ export default function FicheArticle({ m, item = null, decision = {}, ecartees =
   const lang = en ? "en" : "fr";
   const communes = clesCommunes(m);
   // (26/10, D3) Titre, description et prix « à la demande » (réglage) : ce que FillSell propose, champ par champ.
-  const generer = (champ) => (m.redactionALaDemande && m.genererChamp ? (
-    <button type="button" className="fsn-lien fsf-generer" onClick={(e) => { e.preventDefault(); if (!m.genererChamp(champ)) setRien(champ); }}>
-      {rien === champ ? (en ? "Nothing to suggest yet" : "Rien à proposer pour l'instant") : (en ? "Generate" : "Générer")}
+  // (29/10, lot B 1.1 — promesse XEWER) Un bouton par champ, dans les DEUX modes (« FillSell écrit tout » : il propose
+  // une autre version) ; sur un champ rempli, la feuille « Remplacer ? » demande l'accord. Le prix suit la stratégie.
+  const generer = (champ) => (m.genererChamp ? (
+    <button type="button" className="fsn-lien fsf-generer" disabled={Boolean(m.genereEnCours)}
+      onClick={(e) => { e.preventDefault(); setRien(null); Promise.resolve(m.genererChamp(champ)).then((ok) => { if (!ok) setRien(champ); }); }}>
+      {m.genereEnCours === champ ? (en ? "Writing…" : "Rédaction…")
+        : rien === champ ? (en ? "Nothing to suggest yet" : "Rien à proposer pour l'instant")
+        : champ === "prix" ? (en ? "Estimate with AI" : "Estimer avec l'IA") : (en ? "Generate with AI" : "Générer avec l'IA")}
     </button>
   ) : null);
   const ajouterPhotos = async (files) => {
@@ -339,6 +345,8 @@ export default function FicheArticle({ m, item = null, decision = {}, ecartees =
         <TexteQuiGrandit key={`titre-${titre}`} valeur={titre} lignesMin={1} aria-label={en ? "Title" : "Titre"}
           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } }}
           onFini={(v) => m.poserValeurGenerale?.("titre", v.replace(/\s*\n+\s*/g, " "))} />
+        {/* (29/10, lot B 1.3) La dictée sur le titre : elle s'ajoute, jamais à la place. */}
+        <BoutonDictee lang={lang} onChange={(v) => m.poserValeurGenerale?.("titre", String(v ?? "").replace(/\s*\n+\s*/g, " "))} />
       </div>
 
       <div className="fsf-deux">
@@ -369,6 +377,8 @@ export default function FicheArticle({ m, item = null, decision = {}, ecartees =
         </div>
         <TexteQuiGrandit key={`desc-${montre.length}-${montre.slice(0, 40)}`} valeur={montre} lignesMin={4} aria-label={en ? "Description" : "Description"}
           onFini={(v) => m.poserValeurGenerale?.("description", v)} />
+        {/* (29/10, lot B 1.3) La dictée sur la description : elle s'ajoute à la ligne, jamais à la place. */}
+        <BoutonDictee lang={lang} separateur={"\n"} onChange={(v) => m.poserValeurGenerale?.("description", v)} />
         {lecture?.note ? <p className="fsq-note">{phraseLecture(lecture.note, en)}</p> : null}
         {avecHashtags && sansHashtags.length > 0
           ? <p className="fsq-note">{en ? `Hashtags only go out on Vinted and Depop (5 at most there): ${sansHashtags.map(NOM).join(", ")} get the text without them.` : `Les hashtags ne partent que sur Vinted et Depop (5 au plus) : ${sansHashtags.map(NOM).join(", ")} reçoi${sansHashtags.length > 1 ? "vent" : "t"} le texte sans eux.`}</p>

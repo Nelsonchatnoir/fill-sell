@@ -55,7 +55,7 @@ import {
 // les retours choisis pour le compte, et le compte enfin ouvert à la vente qui relâche les tâches en attente.
 import { classeRefusBrouillonEbay, retoursChoisisDuCompte } from "../_shared/ebay-brouillon-refus.js";
 import { SOURCE_VENDEUR_EBAY, attentesVendeurEbay, champsRepriseVendeurEbay } from "../_shared/vendeur-ebay.js";
-import { verdictClotureRetraitBeebs, MESSAGE_RETRAIT_BEEBS_EN_VERIFICATION, constats404Beebs, attente404Beebs, messageRetraitBeebs404 } from "../_shared/beebs-preuve-retrait.js";
+import { verdictClotureRetraitBeebs, MESSAGE_RETRAIT_BEEBS_EN_VERIFICATION, constats404Beebs, constats404DuRetraitBeebs, attente404Beebs, messageRetraitBeebs404, messageRetraitBeebsApresEnvoi404 } from "../_shared/beebs-preuve-retrait.js";
 // (25/10, règle de Nico) Un retrait sur une annonce déjà absente est un retrait fait : étiquette lue sur les champs.
 import { etiquetteRetraitDejaAbsent, etiquetteRetraitParTrace, dejaAbsente, numeroAnnonceDuJob, constat404DeCetEssai } from "../_shared/retrait-deja-absent.js";
 // (25/10, Thibault 44d125ac) Une tâche finie n'attend plus personne : la liste UNIQUE des marqueurs d'attente.
@@ -2033,7 +2033,10 @@ serve(async (req) => {
     if (!pfRetraitVerif && !pfCanalCoupe && (statutEffectif === "pending" || statutEffectif === "failed" || statutEffectif === "needs_user")
         && (constat404DuCorps || (typeof body.error === "string" && CONSTAT_404_BEEBS_RE.test(body.error)))
         && body.platform_fields && typeof body.platform_fields === "object") {
-      const constats404 = constats404Beebs(body.platform_fields as Record<string, unknown>);
+      // (29/10, lot B 4.9 — Joséphine) Après une suppression ENVOYÉE par FillSell, les constats d'après l'envoi comptent
+      // aussi (« en vérification » lue ou non) : la page 404 fait attendre le second constat, sans consommer d'essai.
+      const pfCorps404 = body.platform_fields as Record<string, unknown>;
+      const constats404 = constats404DuRetraitBeebs(pfCorps404);
       if (constats404.length) {
         try {
           const { data: jrow404 } = await userClient.from("cross_post_jobs")
@@ -2056,7 +2059,7 @@ serve(async (req) => {
               },
             };
             statutEffectif = "pending";
-            messageEffectif = messageRetraitBeebs404(constats404);
+            messageEffectif = constats404Beebs(pfCorps404).length ? messageRetraitBeebs404(constats404) : messageRetraitBeebsApresEnvoi404(pfCorps404);
             raisonRequalif = `retrait Beebs : page 404 constatée (${constats404.length}) — attente du second constat jusqu'à ${attente.prochain}, aucune tentative consommée`;
           }
         } catch (e) {

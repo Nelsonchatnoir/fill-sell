@@ -199,6 +199,9 @@ export function etatJob(j, ctx = {}) {
     if (src === "opla_acces") return { etat: ETATS.A_TOI, motif: "opla" };
     if (src === "depop_acces") return { etat: ETATS.A_TOI, motif: "depop" };
     if (src === "connexion" || src === "session_vinted" || src === "ebay_connexion_requise" || src === "ebay_compte_chrome" || src === "verification_antirobot") return { etat: ETATS.A_TOI, motif: "connexion" };
+    // (29/10, lot B 4.6) Refus Beebs prouvé relancé à l'identique (get-pending-jobs) : la personne change le texte, les
+    // photos ou le rayon — à toi de jouer, jamais « en pause » ni un nouvel essai automatique.
+    if (src === "refus_beebs_meme_contenu") return { etat: ETATS.A_TOI, motif: "geste" };
     return { etat: ETATS.A_TOI, motif: "geste" };
   }
   if (attendConnexion(j)) return { etat: ETATS.A_TOI, motif: "connexion" };

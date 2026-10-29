@@ -59,7 +59,8 @@ export const EXCEPTIONS = [
   // ── APP ────────────────────────────────────────────────────────────────────
   { fichier: "src/stock/Carte.jsx", signature: "objet:beebs,ebay,leboncoin,opla,vinted", n: 1,
     raison: "Règle de la refonte du stock (selftest:stock-refonte) : aucune plateforme nouvelle écrite en dur dans src/stock/ — le nom de Depop vient de stockFiltres.LIBELLE_PLATEFORME (repli de la même ligne)." },
-  { fichier: "src/utils/jeuxVideo.js", signature: "objet:beebs,cle,ebay,lbc,opla,salon,vinted", n: 21,
+  // (29/10, lot B 4.6) 22 : la première Xbox (« Xbox originale / Classics / première génération ») a sa ligne.
+  { fichier: "src/utils/jeuxVideo.js", signature: "objet:beebs,cle,ebay,lbc,opla,salon,vinted", n: 22,
     raison: "Machines de jeu et leur valeur PAR PLATEFORME (champ « Console ») : Depop n'a aucun rayon jeux vidéo (🎮 « unavailable », depopCategories.js) ni de champ console." },
   { fichier: "src/utils/jeuxVideo.js", signature: "objet:beebs,cle,ebay,lbc,opla,portable,vinted", n: 8,
     raison: "Machines portables, même table : Depop n'a aucun rayon jeux vidéo ni de champ console." },

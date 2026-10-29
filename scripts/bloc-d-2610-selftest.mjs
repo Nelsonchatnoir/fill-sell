@@ -65,10 +65,15 @@ if (redactionALaDemandeDesReglages) {
   ok(/r\.a_la_demande === true/.test(RD), "allumé seulement par la valeur true (lecture du fichier : import navigateur)");
 }
 ok(/fusionnerReglages\(\[CLE_REGLAGE_REDACTION\], \{ a_la_demande: true \}\)/.test(RD) && /fusionnerReglages\(\[CLE_REGLAGE_REDACTION\], null, \['a_la_demande'\]\)/.test(RD), "écrit par platform_settings_fusionner seulement ; l'éteindre supprime la clé");
-ok(/title:\s+aLaDemande && titreFiche \? titreFiche : \(data\.platforms\[p\]\?\.title \?\? ""\)/.test(lps) && /description:\s+aLaDemande \? descriptionFiche : \(data\.platforms\[p\]\?\.description \?\? ""\)/.test(lps),
+// (29/10, lot B 1.1) Le titre de FillSell ne remplit plus la carte d'office : seule la FICHE du stock (un résultat Lens
+// n'en a pas) — la proposition attend derrière « Générer avec l'IA ».
+ok(/title:\s+aLaDemande \? titreFiche : \(data\.platforms\[p\]\?\.title \?\? ""\)/.test(lps) && /description:\s+aLaDemande \? descriptionFiche : \(data\.platforms\[p\]\?\.description \?\? ""\)/.test(lps)
+    && /const titreFiche = ficheDuStock \? String\(initialListing\?\.titre \?\? ""\)\.trim\(\) : "";/.test(lps),
   "à la demande, les copies reçoivent le titre et la description de la FICHE (la rédaction tourne : rayon, caractéristiques)");
 ok(/setPrice\(prev => \(aLaDemande \? prev : \(data\.price \?\? prev\)\)\)/.test(lps) && /res\?\.prix_vente_suggere != null && !redactionALaDemandeConnue\(userId\)/.test(lps), "le prix reste celui de la fiche (ni la rédaction, ni l'estimation des photos)");
-ok(/const genererChamp = \(champ\) =>/.test(lps) && /texteGenereRef\.current = \{ \.\.\.texteGenereRef\.current, \[champ\]: true \}/.test(lps), "« Générer » pose ce que FillSell a écrit, champ par champ — et ce champ redevient « écrit par FillSell » (règles 4 et 5)");
+// (29/10, lot B 1.1) « Générer avec l'IA » est asynchrone (proposition rédigée si besoin) et demande l'accord sur un champ rempli.
+ok(/const genererChamp = async \(champ\) =>/.test(lps) && /texteGenereRef\.current = \{ \.\.\.texteGenereRef\.current, \[champ\]: true \}/.test(lps)
+    && /setRemplacer\(\{ champ, actuel, propose: prop\.valeur/.test(lps), "« Générer » pose ce que FillSell a écrit, champ par champ — et ce champ redevient « écrit par FillSell » (règles 4 et 5)");
 ok(/descriptionVideALaDemande \|\|/.test(lps) && /Description à écrire \(ou « Générer »\)/.test(lps), "une description vide ne part jamais : le bouton le dit");
 const Rg = await imp("src/publication/lot/regles.js");
 const mALD = { redactionALaDemande: true, generales: { titre: "Pull", description: "" }, edited: { vinted: { description: "" } }, texteVendeur: { titre: "Pull", description: "" }, texteGenere: {} };
@@ -77,8 +82,9 @@ ok(Rg.texteARelire({ ...mALD, generales: { description: "Joli pull" }, texteGene
 ok(Rg.descriptionDuMoteur(mALD) === "" && Rg.descriptionDuMoteur({ edited: { leboncoin: { description: " x " } } }) === "x", "la description qui partirait se lit (général, sinon une copie)");
 const fa = lire("src/publication/lot/FicheArticle.jsx");
 ok(/generer\("titre"\)/.test(fa) && /generer\("description"\)/.test(fa) && /generer\("prix"\)/.test(fa), "la pop-up de l'article (lot et « Vérifier ») : « Générer » sur le titre, la description, le prix");
-const pref = lire("src/reglages/SousPagePreferences.jsx");
-ok(/useRedactionALaDemande\(c\.user\?\.id \?\? null\)/.test(pref) && /<Toggle checked=\{redaction\.aLaDemande\}/.test(pref), "Réglages › Préférences › Rédaction : l'interrupteur");
+// (29/10, lot B 1.1) Le choix vit dans Réglages › Rédaction et consignes IA (avec les consignes et la stratégie de prix).
+const pref = lire("src/reglages/SousPageRedaction.jsx");
+ok(/useRedactionALaDemande\(userId\)/.test(pref) && /redaction\.choisir\(true\)/.test(pref) && /redaction\.choisir\(false\)/.test(pref), "Réglages › Rédaction : « FillSell écrit tout » / « J'écris, FillSell m'aide champ par champ »");
 
 console.log("\nD4. Les nouvelles publications programmées (créneau, jours actifs, plafond par jour, une à la fois)");
 const PP = await imp("supabase/functions/_shared/publication-programmee.js");
@@ -108,7 +114,31 @@ const EJ = await imp("supabase/functions/_shared/etat-job.js");
 ok(EJ.etatJob({ status: "pending", action: "publish", platform: "vinted", platform_fields: { programmee: true } }, { programmation: true }).motif === "programmee", "dans l'app : « Programmée : elle partira dans ton créneau » (jamais une erreur)");
 ok(EJ.etatJob({ status: "pending", action: "publish", platform: "vinted", platform_fields: { programmee: true } }, { programmation: false }).motif !== "programmee", "réglage éteint : elle part à son tour, sans phrase de programmation");
 const gpj = lire("supabase/functions/get-pending-jobs/index.ts");
-ok(/const d = decisionProgrammee\(\{ enAttente: enAttenteProg, reglage: reglageProg/.test(gpj) && /\.eq\("id", d\.servir\)\.eq\("status", "pending"\)/.test(gpj), "get-pending-jobs retient les programmées et n'en sert qu'une, marquée servie (garde « pending »)");
+ok(/const d = decisionProgrammee\(\{ enAttente: enAttenteProg, reglage: reglageProg/.test(gpj) && /\.eq\("id", idP\)\.eq\("status", "pending"\)\.select\("id"\)/.test(gpj), "get-pending-jobs retient les programmées et n'en sert qu'une, marquée servie (garde « pending »)");
+// (29/10, lot B 4.7) La servie n'est marquée qu'en FIN de chaîne, si elle part vraiment.
+{
+  const iChoix = gpj.indexOf("if (d.servir) programmeeAMarquer = d.servir;");
+  const iReservation = gpj.indexOf("admin.rpc(\"reserver_jobs_extension\"");
+  const iDernierePorte = gpj.indexOf("job(s) retenu(s) à la dernière porte");
+  const iMarque = gpj.indexOf("programmee_servie_le: le };");
+  const ecritures = [...gpj.matchAll(/programmee_servie_le: (?:new Date|le)/g)].map((m) => m.index);
+  ok(iChoix > 0 && iReservation > iChoix && iDernierePorte > iReservation && iMarque > iDernierePorte && ecritures.every((i) => i > iDernierePorte),
+    "la marque programmee_servie_le n'est écrite qu'après toutes les gardes, la réservation et la dernière porte (une écartée ne compte plus dans le plafond)");
+  ok(/if \(!marquee\) \{\s*out = out\.filter\(\(x\) => String\(x\.id\) !== idP\);/.test(gpj), "marque impossible : retenue jusqu'au poll suivant (jamais deux servies)");
+  ok(/select\("platform_fields"\)\.eq\("id", idP\)\.eq\("status", "pending"\)\.maybeSingle\(\)/.test(gpj), "la marque se pose sur la ligne EN BASE, jamais sur la copie servie ajustée pour l'envoi");
+  // L'ordre : celles dont l'échéance est venue d'abord ; même liste, même nombre (espacement inchangé).
+  const tard = { id: "t", action: "publish", platform_fields: { programmee: true, next_action_after: "2026-10-26T09:00:00Z" } };
+  const o = PP.ordreProgrammeesPretesDabord([tard, ...jobs], lundi0830);
+  ok(o.map((j) => j.id).join() === "a,b,c,d,t" && o.length === 5, "une programmée à l'échéance pas venue passe derrière (elle ne bloque plus la file)");
+  const d1 = PP.decisionProgrammee({ enAttente: o, reglage: reg, servies: 1, derniereServieMs: lundi0830 - 41 * 60_000, maintenant: lundi0830 });
+  const d0 = PP.decisionProgrammee({ enAttente: [tard, ...jobs], reglage: reg, servies: 1, derniereServieMs: lundi0830 - 41 * 60_000, maintenant: lundi0830 });
+  const e1 = PP.decisionProgrammee({ enAttente: o, reglage: reg, servies: 1, derniereServieMs: lundi0830 - 31 * 60_000, maintenant: lundi0830 });
+  const e0 = PP.decisionProgrammee({ enAttente: [tard, ...jobs], reglage: reg, servies: 1, derniereServieMs: lundi0830 - 31 * 60_000, maintenant: lundi0830 });
+  ok(d1.servir === "a" && d0.servir === "t" && d1.motif === d0.motif && e1.motif === "espacement" && e0.motif === "espacement",
+    "même décision (créneau, plafond, espacement de 40 min), seule la servie change : une qui peut partir", JSON.stringify({ d1, d0, e1: e1.motif }));
+  ok(PP.ordreProgrammeesPretesDabord([tard, ...jobs], Date.parse("2026-10-26T10:00:00Z"))[0].id === "t", "échéance venue : elle reprend sa place dans la file");
+  ok(/ordreProgrammeesPretesDabord\(out\.filter\(\(j\) => estProgrammee\(j\)\)\)/.test(gpj), "get-pending-jobs ordonne les programmées avant la décision");
+}
 ok(/jobs_retenus_programmation: idsProgrammeesRetenues\.size/.test(gpj), "la réponse dit combien sont retenues (popup, suivi)");
 const mr = lire("src/publication/moteur/regles.js");
 ok(/platform_fields: programmee \? \{ \.\.\.pf, programmee: true, programmee_le: new Date\(\)\.toISOString\(\) \} : pf/.test(mr), "la tâche naît marquée « programmée » (quota décompté au clic, comme avant)");

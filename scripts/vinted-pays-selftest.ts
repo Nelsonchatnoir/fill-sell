@@ -2,6 +2,7 @@
 // deno run scripts/vinted-pays-selftest.ts
 import {
   ETATS_VINTED, langueVintedDuJob, languesDeLaRacine, languesOuvertesSansPays, paysDeLaLangue, PAYS_VINTED_EURO, RACINES_CATALOGUE,
+  langueEtrangereDesRacines, languesEtrangeresDesRacines, RACINES_ETRANGERES_MIN,
 } from "../supabase/functions/_shared/vinted-pays.ts";
 import { VINTED_CONDITION_LIBELLES } from "../supabase/functions/_shared/vinted-etat.ts";
 
@@ -52,6 +53,28 @@ ok(languesOuvertesSansPays(new Set(["DE", "AT"])).join() === "de", "DE et AT ouv
 ok(languesOuvertesSansPays(new Set(["NL"])).length === 0, "NL ouvert, BE fermé → pas « nl »");
 ok(!languesOuvertesSansPays(new Set(Object.keys(PAYS_VINTED_EURO))).includes("fr"), "jamais le français, même tout ouvert");
 ok(!languesOuvertesSansPays(new Set(Object.keys(PAYS_VINTED_EURO))).includes("en"), "jamais l'anglais (compte français possible), même IE ouvert");
+
+// (29/10, lot B 4.1 — mele.marta 2fd83d73) La langue d'une LISTE de racines : 3 racines ou plus d'une même langue autre
+// que le français (hors racines françaises : « Sport »). La page italienne passait pour française par « Sport ».
+const RACINES_IT = ["Accessori", "Donna", "Uomo", "Bambini", "Casa", "Elettronica", "Libri e media", "Hobby e collezionismo", "Sport"];
+const RACINES_FR = ["Femmes", "Hommes", "Enfants", "Maison", "Électronique", "Livres et médias", "Loisirs et collections", "Sport", "Articles de créateurs"];
+ok(langueEtrangereDesRacines(RACINES_IT) === "it", "2fd83d73 : racines italiennes (« Sport » commun) → it");
+ok(langueEtrangereDesRacines(RACINES_FR) === null && languesEtrangeresDesRacines(RACINES_FR).length === 0, "page française : jamais étrangère (une seule racine commune au plus)");
+for (const l of Object.keys(RACINES_CATALOGUE) as (keyof typeof RACINES_CATALOGUE)[]) {
+  if (l === "fr") continue;
+  ok(langueEtrangereDesRacines(Object.values(RACINES_CATALOGUE[l])) === l, `${l} : ses 8 racines → ${l}, sans ex æquo`);
+}
+ok(langueEtrangereDesRacines(["Donna", "Uomo"]) === null, "2 racines seulement : pas assez");
+ok(langueEtrangereDesRacines(["Jeux", "Consoles", "Accessoires"]) === null, "un sous-niveau français : rien");
+ok(langueEtrangereDesRacines(["Sport", "Casa", "Home"]) === null, "racines partagées entre langues (Sport, Casa, Home) : rien");
+ok(langueEtrangereDesRacines(null) === null && langueEtrangereDesRacines("Donna") === null, "pas une liste : rien");
+ok(RACINES_ETRANGERES_MIN === 3, "seuil : 3 racines");
+// L'indice de la question entre dans langueVintedDuJob, en intersection avec les autres.
+ok(langueVintedDuJob({ racinesQuestion: RACINES_IT }) === "it", "question de racine italienne seule → it (pays IT : vinted_ids_actifs si ouvert)");
+ok(langueVintedDuJob({ racinesQuestion: RACINES_IT, racineCapturee: "Uomo" }) === "it", "question italienne + racine capturée Uomo → it");
+ok(langueVintedDuJob({ racinesQuestion: RACINES_IT, listeEtatsRelevee: Object.values(ETATS_VINTED.fr.libelles) }) === null, "question italienne + liste d'états française : contradictoire → rien");
+ok(langueVintedDuJob({ racinesQuestion: RACINES_FR }) === null, "question de racines françaises : jamais un indice (le français n'est jamais déduit ici)");
+ok(langueVintedDuJob({ racinesQuestion: ["Jeux", "Consoles"] }) === null, "question de sous-niveau : pas un indice");
 
 if (echecs) { console.error(`\n${echecs} échec(s)`); Deno.exit(1); }
 console.log("\nTout est vert.");

@@ -142,6 +142,11 @@ bleu marine, J150 » (tel quel, sans « J » au début, apostrophe typographique
   Preuve : Leboncoin lui-même répond `account.type = "business"` à chaque lecture de ses ventes par l'extension depuis le
   21/10 (usage_logs `releve_ventes`, motif `compte_non_individual_business`, encore le 29/10 à 13:40) ; owner.type « pro » sur
   son annonce (16/10) ; champs pro sur ses annonces ; 5 photos gratuites (défaut d'un pro). Aide Leboncoin « Combien coûte le
+  ⚠ **Rectifié le 29/10 soir (lot B partie 3, `docs/enquetes/lot-b-2910/RAPPORT.md`)** : la preuve tient, mais elle se
+  date du **19/10 19:39** (6 lignes usage_logs `releve_ventes` du 19/10 19:39 au 29/10 13:40, déclencheur `cron`), lue par
+  l'extension de SON Chrome (poste unique b2101271…) avec le jeton Leboncoin de sa session (`background.js`, GET
+  `api/account/v2/members/me/account`, motif = `compte_non_individual_${account.type}`). « owner.type pro sur son annonce
+  (16/10) » n'a AUCUNE trace en base et la page publique n'est pas relisible d'ici (403 anti-robot) : NON PROUVÉ, retiré.
   dépôt d'une annonce ? » : pour un professionnel, le dépôt est payant en Maison, Loisirs, Multimédia… (gratuit pour un
   particulier hors Véhicules et Immobilier). Le mur est venu après **51 dépôts acceptés** du 15/10 au 27/10 (37 en Maison >
   Décoration, 5 en Loisirs > Antiquités) : premier mur le 26/10 à 20:38, puis 27/10 17:24 / 17:32 / 17:35 et 29/10 13:10 ; il

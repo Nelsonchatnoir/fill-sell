@@ -21,7 +21,6 @@ import ReglageNotifications from '../notifications/ReglageNotifications';
 // (18/10 nuit, point 1) Les réponses retenues par rayon : voir, oublier, vider.
 import MemoireRayons from './MemoireRayons';
 // (26/10, D3) Titre, description et prix : écrits par FillSell (défaut) ou à la demande (« Générer »).
-import { useRedactionALaDemande } from '../utils/redactionALaDemande';
 
 export default function SousPagePreferences({ c, T }) {
   const [pseudo, setPseudo] = useState(c.username ?? '');
@@ -38,11 +37,6 @@ export default function SousPagePreferences({ c, T }) {
       .catch(() => {});
     return () => { mort = true; };
   }, [c.user?.id]);
-  const redaction = useRedactionALaDemande(c.user?.id ?? null);
-  const basculerRedaction = async (on) => {
-    const { ok } = await redaction.choisir(on);
-    if (!ok) c.toast(T.erreurSauvegarde);
-  };
   const basculerAlertes = async (on) => {
     setAlertesActives(on);
     const { error } = await fusionnerReglages([CLE_REGLAGE_ALERTES], { desactivees: !on });
@@ -98,17 +92,8 @@ export default function SousPagePreferences({ c, T }) {
         </Carte>
       </Groupe>
 
-      <Groupe intitule={T.sRedaction}>
-        <Carte>
-          <div className="rg-ligne" style={{ minHeight: 60, gap: 12 }}>
-            <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
-              <span style={{ fontSize: 15, fontWeight: 500, color: R.ink }}>{T.redactionALaDemande}</span>
-              <span style={{ fontSize: 12, lineHeight: '17px', color: R.texteSecondaire }}>{T.redactionALaDemandeNote}</span>
-            </span>
-            <Toggle checked={redaction.aLaDemande} onChange={basculerRedaction} />
-          </div>
-        </Carte>
-      </Groupe>
+      {/* (29/10, lot B 1.1) « Titre, description et prix à la demande » vit désormais dans Réglages › Rédaction et
+          consignes IA, avec les consignes et la stratégie de prix : un seul endroit pour ces choix. */}
 
       <Groupe intitule={T.sLangueDevise}>
         <Carte>

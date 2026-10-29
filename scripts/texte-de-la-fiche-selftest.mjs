@@ -95,8 +95,10 @@ console.log("5. (26/10, étape 6) Le texte qui n'est pas celui du vendeur ne res
     return { ...generales, description: BEEBS };
   };
   const enregistree = { titre: article.titre, description: WWE };
-  const avant = effet(enregistree, null);
-  ok(avant.description === BEEBS, "code d'avant : sans les attributs de la ligne (pas encore relue), le texte Beebs remplaçait celui du vendeur");
+  // Ce que le code d'avant affichait sans les attributs de la ligne (pas encore relue) : le texte Beebs.
+  const avant = { ...enregistree, description: BEEBS };
+  // (29/10, lot B partie 2) Même sans aucun marqueur, une ligne du stock porte le texte du vendeur : il reste.
+  ok(effet(enregistree, null).description === WWE, "(29/10) sans les attributs de la ligne, le texte du vendeur reste (fiche du stock sans marque de FillSell)");
   ok(T.champsAReprendreDeLaFiche(T.texteDuVendeurDe(article), enregistree).description === undefined, "code d'avant : le filet comparait à la copie ENREGISTRÉE — égale à la fiche, il ne corrigeait rien");
   ok(effet(enregistree, article.attributs).description === WWE, "corrigé : les attributs de l'article du Stock suffisent — le texte du vendeur reste");
   ok(T.champsAReprendreDeLaFiche(T.texteDuVendeurDe(article), avant, []).description === WWE, "corrigé : le filet compare au texte affiché — un texte posé entre-temps est remplacé par celui du vendeur");

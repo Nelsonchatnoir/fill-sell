@@ -119,3 +119,16 @@
   (`_shared/relance-apres-maj.js`) posent `build_min_requis` = le build de la cause (jamais abaissé) : get-pending-jobs ne
   sert alors le job qu'à un poste à jour ; un autre poste du compte, plus ancien, ne le reprend plus pour retomber sur le
   même mur (la relance est unique). Une cause corrigée par le serveur (sans `buildMin`) n'exige aucun build.
+
+## 29/10 (lot B) — plus de poll en boucle ; une republication retenue n'empêche plus la mise à jour
+- **Boucle** (prouvée par les request_id UUIDv7 : 194 ms entre deux polls, 826 à 913 polls/h au lieu de ~30) : la
+  maintenance de fond cédait le verrou dès qu'un poll attendait (0.6.146) et un poll repartait 1,5 s après — pendant le
+  poll suivant, donc toujours « attendu ». Règle (`decisionPollImmediat`, background.js) : un poll immédiat seulement pour
+  une raison NEUVE, jamais deux fois de suite la même, plancher 20 s ; un geste (Synchroniser) reste servi en 1,5 s ; la
+  maintenance ne cède jamais deux cycles de suite. Selftest `repoll-borne` (182 → 7 polls en 10 min). Les postes 0.6.146
+  → 0.6.155 gardent la boucle jusqu'à la 0.6.156 (Chrome Web Store) ou un redémarrage de Chrome.
+- **Mise à jour refusée sans fin** (4.11, cas 2189c4d8) : une republication à l'étape 'deleted' RETENUE par le serveur
+  (dressing relu attendu) ne compte plus comme « recréation en jeu » : get-pending-jobs rend `retenues_deleted`, valable
+  10 min. Un report de mise à jour se trace (usage_logs `maj_extension_reportee`, une par heure et par poste).
+- Constat 29/10 : abenjemaa, labouquinerie85, bigfoutte09 éteints depuis le 28/10 au soir (avant la 0.6.152 au CWS) ;
+  chaowx1305 mis à jour 3 min après son retour.

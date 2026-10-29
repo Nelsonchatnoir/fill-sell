@@ -915,3 +915,58 @@
   (« racine|feuille "X" introuvable … Options affichées ») entre dans le moteur de rayon ; une page de catégorie illisible
   se réessaie, la catégorie d'origine reste (`_shared/rayon-refuse-moteur.js`). Vinted : libellé de rayon périmé → au
   niveau qui échoue, l'option `#catalog-<id>` (relevée sur les menus bloom le 29/10) donne le libellé affiché.
+
+## 29/10 (lot B) — le texte du vendeur n'est jamais réécrit ; titre, description, prix facultatifs ; consignes ; stratégie de prix ; Lens direct (promesses XEWER)
+- **Qui a écrit ce texte** : UNE règle, `src/utils/sourceDuTexte.js`, partagée par l'écran (`texteDeLaFiche.js`,
+  `texteDuVendeurFiche`) et le serveur (generate-listing). Sur une fiche du STOCK, tout texte qui ne porte pas une marque
+  de FillSell (`lens`, `vocal`, `ia`) est celui du vendeur — y compris une fiche sans aucun marqueur (tapée avant ce lot).
+  Un résultat Lens ou un corps `item_data` (pas une ligne du stock) n'a de texte du vendeur que s'il le dit par un
+  marqueur. Cas : paugues.contact « Jazz man » 1793117541271 (27/10) — fiche tapée sans marqueur → réécrite par l'IA
+  (gabarit Vinted, hashtags), puis la retouche de la copie IA recopiée sur la fiche (marqueur « manuel » 8 s après) :
+  texte d'origine perdu. Mesuré sur 30 jours : 56 fiches tapées à la main (15 comptes), 21 titres réécrits.
+- **Marqueurs de naissance** : la création les pose (`marqueursDeNaissance`) — ajout manuel du Stock et modale « Ajouter
+  au stock » (`manuel`, ou `lens` pour un champ resté tel que le scan l'a proposé), assistant vocal (`vocal`), fiche née
+  d'un scan (`fiche-article.ts` : `lens`). Un texte « manuel » part tel quel : ni marque retirée du titre
+  (`stripMarque`), ni mots retirés de la description (`_cleanDesc`).
+- **À l'envoi**, « texte du vendeur » se lit sur la fiche RELUE et sur la retouche de cette publication (plus à
+  l'ouverture) : `descriptionFidele` ne remplace plus « bon état » par l'état de la fiche dans le texte que la personne
+  vient de coller (XEWER, Mario Kart Wii 1793095499602, Tony Hawk 1793116418631).
+- ⛔ `contenu-fiche.js` (ce que get-pending-jobs impose aux copies existantes) est VOLONTAIREMENT inchangé : aucune
+  annonce déjà en ligne n'est réécrite en masse sans preuve de ce qu'avait tapé le vendeur ; les fiches neuves portent
+  leur marqueur et y entrent d'elles-mêmes.
+- **Titre, description, prix facultatifs** (1.1) : « J'écris, FillSell m'aide champ par champ »
+  (`platform_settings.redaction.a_la_demande`, Réglages › Rédaction et consignes IA) — les champs restent vides, y compris
+  depuis Lens (le titre / le prix du scan ne remplissent plus rien) ; « FillSell écrit tout » reste le défaut. Chaque
+  champ a son bouton « Générer avec l'IA » / « Estimer avec l'IA » dans les deux modes et les deux peaux
+  (`genererChamp`, BlocValeursGenerales, FicheArticle) : champ vide → la proposition s'y pose ; champ rempli → feuille
+  « Remplacer ? » (`FeuilleRemplacer.jsx`, « Garder mon texte » par défaut). La proposition : la copie déjà rédigée ;
+  sinon une rédaction de CE champ, verrou levé pour lui seul, rendue sans rien appliquer (`handleGeneratePlatforms`
+  mode `proposition`, `fiche_serveur:false` — même décompte qu'aujourd'hui). Gardes « à la demande » : « Titre à écrire
+  (ou « Générer avec l'IA ») », « Prix à donner (ou « Estimer avec l'IA ») » ; un titre vide n'est plus rempli en
+  silence par celui de FillSell (`construireJobs`).
+- **Consignes du vendeur** (1.3) : `platform_settings.redaction.consignes` { ton, titre, description, etat, toujours,
+  eviter } (`src/utils/consignesRedaction.js`), lues à chaque rédaction (`_shared/consignes-du-compte.ts`, lens-analysis
+  ET generate-listing) et ajoutées au prompt (`directiveConsignes`) : forme seulement, jamais un fait ni une liste
+  fermée ; « pas de hashtags / d'émojis » tenus aussi sur le texte généré (`respecterConsignes`). La note du viseur Lens
+  et la « précision pour la rédaction » (dictées ou tapées) entrent dans le contexte (`noteVendeur`) — `notes` n'était
+  lu nulle part par generate-listing.
+- **Stratégie de prix** (1.4) : `platform_settings.redaction.strategie_prix` (`rapide` | `marche` | `haut`, défaut marché,
+  `src/utils/strategiePrix.js`) : la borne de `fourchette_marche` (bas / moyen / haut). Elle ne sert qu'à « Estimer avec
+  l'IA » et s'affiche avant la publication (EcranConfirmer, résultat Lens) ; un prix tapé n'est jamais recalculé.
+- **Lens → l'annonce** (1.2) : « Créer l'annonce » et « Ouvrir l'annonce dès la fin de l'analyse »
+  (`redaction.ouvrir_annonce_apres_scan`) ouvrent directement l'écran des champs (`ouvertureDirecte`, nouvelle peau :
+  étape 2) ; « Voir l'analyse » y ramène. La note et le prix d'achat du viseur passent à l'annonce (`noteVendeur`,
+  `prixAchatSaisi`).
+- **Dictée** : `src/components/BoutonDictee.jsx` (ajoute, jamais ne remplace ; un micro à la fois) sur les champs de
+  texte libre ; le doublon du micro Lens sur le web (continuous=true recollé à chaque événement) est corrigé
+  (`fusionnerResultatsReconnaissance`). Selftest `dictee-partout`.
+- Selftests : `source-du-texte`, `strategie-prix`, `consignes-redaction`, `texte-de-la-fiche`, `contenu-du-vendeur`,
+  `bloc-d-2610`, `dictee-partout`.
+
+## 29/10 (lot B 4.7, 4.10) — programmées marquées en fin de chaîne ; la sortie d'une restriction Vinted garde ses paliers
+- `programmee_servie_le` n'est posé que sur la tâche réellement rendue, après toutes les gardes (plus jamais une tâche
+  marquée puis écartée qui compte dans le plafond du jour) ; les programmées dont l'échéance n'est pas venue passent
+  derrière les autres (`ordreProgrammeesPretesDabord`). Créneau, plafond, espacement inchangés.
+- Une tâche retenue par la restriction Vinted (`platform_fields.restriction_compte {fin}`, sans `pas_de_rouge`) entre
+  dans la reprise par paliers du 26/10 (même compteur, 45 min) quand la fin est passée
+  (`_shared/reprise-apres-restriction.js`) — avant, elle partait d'un coup à l'échéance.

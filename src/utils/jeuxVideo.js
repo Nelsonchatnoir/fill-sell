@@ -199,7 +199,13 @@ const MACHINES = [
   [/\bxbox\s?(series|serie)\b/,            { cle: "xbox_series", ebay: "Microsoft Xbox Series X|S", vinted: "Xbox Series S et X", beebs: "Xbox Series", lbc: "Microsoft", opla: "xbox", salon: true }],
   [/\bxbox\s?360\b/,                       { cle: "xbox360",     ebay: "Microsoft Xbox 360", vinted: "Xbox 360",           beebs: "Xbox 360",    lbc: "Microsoft", opla: "xbox", salon: true }],
   [/\bxbox\s?one\b/,                       { cle: "xboxone",     ebay: "Microsoft Xbox One", vinted: "Xbox One",           beebs: "Xbox One",    lbc: "Microsoft", opla: "xbox", salon: true }],
-  [/\bxbox\b/,                             { cle: "xbox",        ebay: null, vinted: "Xbox (originale)",   beebs: "Xbox Series", lbc: "Microsoft", opla: "xbox", salon: true }],
+  // (29/10, lot B 4.6 — XEWER) La PREMIÈRE Xbox, dite en toutes lettres (« Xbox originale », « Xbox Classics »,
+  // « Xbox première génération ») : une machine rétro, comme la PS1 — Beebs « Retrogaming », Vinted « Xbox
+  // (originale) », eBay « Microsoft Xbox » (valeurs des listes relevées). « Xbox » NUE ne dit pas sa génération :
+  // elle partait en Beebs « Xbox Series » (10 jeux de la première Xbox refusés à la vérification Beebs) — plus
+  // jamais : rien n'est posé là où la génération compte, la question part ; la marque (Leboncoin, Opla) reste sûre.
+  [/\bxbox\s*\(?\s*(?:originale?|classics?|premiere\s+generation|1(?:ere|re)\s+generation)\b/, { cle: "xbox_originale", ebay: "Microsoft Xbox", vinted: "Xbox (originale)", beebs: "Retrogaming", lbc: "Microsoft", opla: "xbox", salon: true }],
+  [/\bxbox\b/,                             { cle: "xbox",        ebay: null, vinted: null,                 beebs: null,          lbc: "Microsoft", opla: "xbox", salon: true }],
   [/\bps\s?5\s?pro\b/,                     { cle: "ps5pro",      ebay: "Sony PlayStation 5", vinted: "PlayStation 5 Pro",  beebs: "PS5",         lbc: "Sony",      opla: "playstation", salon: true }],
   [/\bps\s?vita\b|\bpsvita\b/,             { cle: "psvita",      ebay: "Sony PlayStation Vita", vinted: "PlayStation Vita",   beebs: "PS Vita",     lbc: "Sony",      opla: "playstation", portable: true }],
   [/\bpsp\b/,                              { cle: "psp",         ebay: "Sony PSP", vinted: "PlayStation Portable", beebs: "PSP",       lbc: "Sony",      opla: "playstation", portable: true }],

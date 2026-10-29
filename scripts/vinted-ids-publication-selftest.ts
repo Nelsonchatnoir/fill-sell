@@ -34,5 +34,18 @@ const ids = vintedIdsPourPublication({ categoryPath: ["Hommes", "Vêtements", "H
 ok(!!ids && Number(ids.catalog_id) > 0 && ids.status_id === 2 && JSON.stringify(ids.color_ids) === "[3]", `job réel 88fe1e3f → ${JSON.stringify(ids)}`);
 ok(vintedIdsPourPublication({}) === null, "rien à traduire → null");
 
+// (29/10, lot B 4.1 — mele.marta 2fd83d73) L'autorisation de poser par identifiants (vinted_ids_actifs) suit aussi la
+// langue que disent les racines d'une question « categoryLevelChoice » de CE job — posée, mise de côté, ou levée.
+{
+  const gpj = (await Deno.readTextFile(new URL("../supabase/functions/get-pending-jobs/index.ts", import.meta.url))).replace(/\r\n/g, "\n");
+  const i = gpj.indexOf("const langue = langueVintedDuJob({");
+  const bloc = gpj.slice(Math.max(0, i - 1200), i + 400);
+  ok(i > 0 && /racinesQuestion: qCat\?\.allowed_values/.test(bloc)
+    && /rayon_moteur_attendu[\s\S]{0,80}\?\.question/.test(bloc) && /relance_apres_maj[\s\S]{0,80}\?\.question_levee/.test(bloc)
+    && /"categoryLevelChoice"/.test(bloc), "get-pending-jobs : la langue lue aussi sur les racines de la question de catégorie du job");
+  const suite = gpj.slice(i, i + 4000);
+  ok(/pf\.vinted_ids_actifs = true;/.test(suite) && /pays\.some\(\(cc\) => ouverts\.has\(cc\)\)/.test(suite), "… et vinted_ids_actifs servi seulement si le pays de cette langue est ouvert");
+}
+
 if (echecs) { console.error(`\n${echecs} échec(s)`); Deno.exit(1); }
 console.log("\nTout est vert.");

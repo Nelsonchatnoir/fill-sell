@@ -29,37 +29,21 @@
 //    venu d'un relevé ou du dressing, ou un texte marqué vinted / manuel /
 //    releve_*. Un brouillon Lens ou vocal que personne n'a touché reste NOTRE
 //    brouillon : l'IA le rédige, comme avant — il n'est pas imposé.
+// ⛔ (29/10, lot B partie 2) ET toute fiche du stock dont le texte ne porte pas la marque de FillSell (lens, vocal,
+//    ia) : un texte tapé à la création n'avait aucun marqueur et passait pour notre brouillon (paugues, « Jazz man »).
+//    Une seule règle, la même au serveur : src/utils/sourceDuTexte.js.
 // Pur, sans React ni réseau (scripts/texte-de-la-fiche-selftest.mjs).
+import { texteDuVendeurDeLaFiche } from "../utils/sourceDuTexte.js";
 
 export const CHAMPS_TEXTE = Object.freeze(["titre", "description"]);
-
-const marqueur = (attributs, cle) => {
-  const c = attributs && typeof attributs === "object" ? attributs[cle] : null;
-  const v = c && typeof c === "object" ? c.v : c;
-  return String(v ?? "").trim().toLowerCase();
-};
-
-const assezLong = (v) => {
-  const t = String(v ?? "").trim();
-  return t && t.split(/\s+/).filter(Boolean).length >= 2 ? t : "";
-};
 
 /**
  * Le texte de la fiche quand c'est celui du vendeur (sinon "").
  * @param {{titre?:string, description?:string, origine?:string, attributs?:object}|null} ligne
+ * @param {{ ligneDuStock?: boolean }} [opts]  une ligne du stock porte la clé `origine` ; un résultat Lens, non
  */
-export function texteDuVendeurDe(ligne) {
-  if (!ligne) return { titre: "", description: "" };
-  const origine = String(ligne.origine ?? "").trim().toLowerCase();
-  const venuDeSaPage = origine.startsWith("releve") || origine === "vinted_sync";
-  const propre = (cle) => {
-    const src = marqueur(ligne.attributs, cle);
-    return src === "vinted" || src === "manuel" || src.startsWith("releve");
-  };
-  return {
-    titre: (propre("titre_source") || venuDeSaPage) ? assezLong(ligne.titre) : "",
-    description: (propre("description_source") || venuDeSaPage) ? assezLong(ligne.description) : "",
-  };
+export function texteDuVendeurDe(ligne, opts = {}) {
+  return texteDuVendeurDeLaFiche(ligne, opts);
 }
 
 const memeTexte = (a, b) => String(a ?? "").replace(/\r\n/g, "\n").trim() === String(b ?? "").replace(/\r\n/g, "\n").trim();

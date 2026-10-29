@@ -12,6 +12,8 @@ import { budgetIaAutorise } from "../_shared/budget-ia.ts";
 import { construireContexteArticle, redigerAnnoncesPlateformes } from "../_shared/redaction-plateformes.ts";
 import { langueRedactionVinted } from "../_shared/langue-vendeur.ts";
 import { creerArticlePourFiche, enregistrerFiche, attributsLus, ficheDemandee } from "../_shared/fiche-article.ts";
+import { reglagesRedactionDuCompte } from "../_shared/consignes-du-compte.ts";
+import { prixSelonStrategie } from "../../../src/utils/strategiePrix.js";
 // Verdict de langue sur la sortie du modèle. MÊME fichier que celui chargé par
 // l'app (ListingPreviewScreen) : la garde qui refuse de nourrir la passe 2 avec
 // une description anglaise et la traduction ci-dessous jugent à l'identique.
@@ -3168,10 +3170,14 @@ serve(async (req) => {
         for (const [k, v] of Object.entries(brut)) {
           if (typeof v === "string" && v.trim() && v.trim().toLowerCase() !== "null") canonicalProvided[k] = v.trim();
         }
+        // (29/10, lot B 1.3 — promesse XEWER) La note du viseur (dictée ou tapée : « boîte en bon état, notice
+        // présente… ») et les consignes du vendeur entrent dans la rédaction du scan.
         const { itemContext } = construireContexteArticle({
           item, canonicalProvided,
           familleLivresMedias: itemData.famille === "livres_medias",
+          noteVendeur: description || null,
         });
+        const { consignes: consignesVendeur, strategiePrix: strategieVendeur } = await reglagesRedactionDuCompte(adminClient, userId);
         // Zone euro (lot 4, 25/09) : la copie Vinted dans la langue du site
         // Vinted du vendeur. null pour un compte français → rien ne change.
         const langueVinted = platformsDemandees.includes("vinted") && userId
@@ -3180,6 +3186,7 @@ serve(async (req) => {
         const { platformListings, traceEtat, traceIsbn } = await redigerAnnoncesPlateformes({
           langues: langueVinted ? { vinted: langueVinted.langue } : null,
           apiKey, platforms: platformsDemandees, itemContext, item, canonicalProvided,
+          consignes: consignesVendeur,
           trackClaude: (data: unknown) => {
             const u = (data as { usage?: { input_tokens?: number; output_tokens?: number } })?.usage;
             if (!u) return;
@@ -3267,13 +3274,16 @@ serve(async (req) => {
             if (itemData.est_vendu === true) throw { ignorer: true };
             const av = (itemData.attributs_visibles ?? null) as Record<string, unknown> | null;
             const prixSuggere = Number(itemData.prix_vente_suggere);
+            // (29/10, lot B 1.4 — promesse XEWER) La fiche née du scan porte le prix que la stratégie du vendeur propose
+            // (vente rapide = bas de la fourchette, marché, prix haut) ; prix_vente_suggere reste l'estimation du marché.
+            const prixFiche = prixSelonStrategie(itemData, strategieVendeur)?.prix ?? (Number.isFinite(prixSuggere) ? prixSuggere : null);
             const invId = await creerArticlePourFiche(adminClient, {
               userId,
               titre: String(itemData.titre ?? itemData.objet ?? "Article"),
               marque: (itemData.marque as string) ?? null,
               categorie: (itemData.categorie as string) ?? null,
               description: (itemData.description as string) ?? null,
-              prixVente: Number.isFinite(prixSuggere) ? prixSuggere : null,
+              prixVente: prixFiche,
               // Les photos DU SCAN : les seules qui existent à cet instant. Le
               // bucket durable (listing-photos) n'est alimenté qu'à l'ouverture
               // du stepper — l'app y remplace ces URLs par les copies
@@ -3309,7 +3319,7 @@ serve(async (req) => {
                   // à un second chemin de recopie, qui divergerait.
                   platformListings: { ...annonce, lens_unifie: true },
                   selected: livrEes,
-                  price: Number.isFinite(prixSuggere) ? prixSuggere : null,
+                  price: prixFiche,
                   // La fiche canonique du scan, RECOPIÉE : lens_scans porte la
                   // réponse complète mais se purge à 90 jours, alors que la
                   // fiche vit aussi longtemps que l'article. Ce que le stepper

@@ -82,7 +82,7 @@ import { copiesProposees } from "../publication/copiesProposees";
 import { deriverCopieDepop, DEPOP_DESCRIPTION_MAX, DEPOP_HASHTAGS_MAX, compterHashtagsDepop } from "../utils/depopPublication";
 import { usePortDepopParDefaut, lirePortSaisi, formaterPort } from "../utils/fraisPortDepop";
 import { useChoixPoidsLeboncoin, colisDefautLbcConnu } from "../utils/useChoixPoidsLeboncoin";
-import { useRedactionALaDemande, redactionALaDemandeConnue } from "../utils/redactionALaDemande";
+import { useRedactionALaDemande, redactionALaDemandeConnue, useReglagesRedaction, reglagesRedactionConnus } from "../utils/redactionALaDemande";
 import { usePublicationProgrammee } from "../utils/usePublicationProgrammee";
 import { poidsLbcManquantPour } from "../utils/choixPoidsLeboncoin";
 // La résolution de catégorie et de champs plateforme — SORTIE de handlePublish
@@ -111,6 +111,9 @@ import {
 } from "../utils/valeursGenerales";
 // (04/10, Louis) Le texte qui part est celui de la fiche au moment de l'envoi.
 import { CHAMPS_TEXTE, texteDuVendeurDe, champsAReprendreDeLaFiche, retoucheAEcrire } from "../publication/texteDeLaFiche";
+import { estLigneDuStock } from "../utils/sourceDuTexte";
+import { prixSelonStrategie, libelleStrategie } from "../utils/strategiePrix";
+import FeuilleRemplacer from "../publication/FeuilleRemplacer";
 import { avecFormatChoisi } from "../utils/leboncoinColis";
 // ── LE MOTEUR ET LA NOUVELLE PEAU (refonte du 24/09/2026) ──────────────────
 // Les RÈGLES (qui part, qui est exclu, ce qui bloque, la forme d'un job, la
@@ -2353,6 +2356,8 @@ export function StepGeneration({ generating, generateError, platformListings, pr
   price, setPrice, customPriced, setCustomPriced, articleIcon = "📦", photoOption = null,
   onEstimatePrice = null, estimating = false, estimateCost = null, estimateError = "", estimateResult = null,
   prixAchat = null, carteAOuvrir = null, onCarteOuverte = null, ficheReprise = false,
+  // (29/10, lot B 1.1) « Générer avec l'IA », champ par champ.
+  onGenerer = null, genereEnCours = null,
   // ebayVoieApiReelle (2026-09-20) : la carte de livraison eBay ne se montre
   // que quand la voie API est reellement active — par le formulaire, une
   // politique de livraison ne s'applique pas.
@@ -2668,6 +2673,7 @@ export function StepGeneration({ generating, generateError, platformListings, pr
         nbSuiveuses={platforms.length}
         titre={generales?.titre ?? ""} onTitreChange={v => onValeurGenerale?.("titre", v)}
         description={generales?.description ?? ""} onDescriptionChange={v => onValeurGenerale?.("description", v)}
+        onGenerer={onGenerer} genereEnCours={genereEnCours}
         etat={generales?.etat ?? ""} onEtatChange={v => onValeurGenerale?.("etat", v)}
         versions={versionsTexte} ficheTexte={ficheTexte}
         enfantsPrix={
@@ -4626,6 +4632,13 @@ export default function ListingPreviewScreen({
   // session (un seul emplacement, partagé avec le stepper), aucune modale
   // ouverte toute seule. À utiliser avec variante="nouvelle".
   pilote = null,
+  // ── (29/10, lot B 1.2 — promesse XEWER) DEPUIS LE RÉSULTAT DE LENS, DIRECTEMENT L'ANNONCE ─────────────────
+  // « aller directement à la création de l'annonce après l'analyse, sans repasser par la fiche d'estimation. Ceux
+  // qui aiment consulter l'analyse pourront toujours le faire. » (mail du 27/10). `ouvertureDirecte` : la nouvelle
+  // peau ouvre l'écran des champs (« Vérifier ») dès que les plateformes sont connues, au lieu de « Où publier ? ».
+  // `onVoirAnalyse` : le lien « Voir l'analyse » qui ramène au résultat (LensTab). `noteVendeur` / `prixAchatSaisi`
+  // ce que la personne a dit ou tapé au viseur : rien ne se perd entre Lens et l'annonce.
+  ouvertureDirecte = false, onVoirAnalyse = null, noteVendeur = null, prixAchatSaisi: prixAchatSaisiLens = null,
 }) {
   const { t, tpl } = useTranslation(lang);
   const stepLabels = [t("stepLabelUpload"), t("stepLabelPhotos"), t("stepLabelGeneration"), t("stepLabelPublish")];
@@ -4724,7 +4737,7 @@ export default function ListingPreviewScreen({
   // crée l'article dans l'inventaire. Constante et non plus un état ; depuis le
   // 2026-07-30 plus rien ne l'affiche (toggle retiré de StepPublish).
   const addToStock = true;
-  const [prixAchatSaisi, setPrixAchatSaisi] = useState(draft?.prixAchatSaisi ?? "");
+  const [prixAchatSaisi, setPrixAchatSaisi] = useState(draft?.prixAchatSaisi ?? (prixAchatSaisiLens != null && String(prixAchatSaisiLens).trim() !== "" ? String(prixAchatSaisiLens) : ""));
   // Ce que la LIGNE dit du prix d'achat — { valeur, inconnu } — lu à l'init.
   // null = pas encore lu (ou pas de ligne).
   const [prixAchatBase, setPrixAchatBase] = useState(null);
@@ -4832,7 +4845,7 @@ export default function ListingPreviewScreen({
   // Step 0
   const [pickedFiles, setPickedFiles]       = useState([]);
   const [pickedPreviews, setPickedPreviews] = useState([]);
-  const [notes, setNotes]                   = useState(draft?.notes ?? "");
+  const [notes, setNotes]                   = useState(draft?.notes ?? (String(noteVendeur ?? "").trim() || ""));
   // Dictée (2026-09-25, utils/dictee.js) : 'repos' | 'ecoute' | 'transcription'.
   const [micEtat, setMicEtat]               = useState("repos");
   const [micMessage, setMicMessage]         = useState(null);
@@ -5214,6 +5227,8 @@ export default function ListingPreviewScreen({
     // l'extension lisent `p.url`. Même forme que la génération, à l'octet près.
     appliquerGeneration({ ...annoncesDuScan, lens_unifie: true, photos: entreesPhotos(initialPhotos) }, dispo);
     setOptionRedaction("original");
+    // (29/10, lot B 1.2) Depuis Lens, sans fiche enregistrée : directement l'écran des champs, sur les plateformes du scan.
+    if (variante === "nouvelle" && ouvertureDirecte) { setSelected(new Set(dispo.filter(p => !lockedSet.has(p)))); setStep(2); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -5837,12 +5852,12 @@ export default function ListingPreviewScreen({
           Object.entries(f.sharedOverrides).map(([k, v]) => [k, new Set(Array.isArray(v) ? v : [])])
         ));
       }
-      if (f.price != null) setPrice(f.price);
+      if (f.price != null && !prixDuScanIgnore()) setPrice(f.price);
     } else {
       // Fiche fraîche du serveur : le chemin normal d'application, jamais une
       // recopie parallèle.
       appliquerGeneration({ ...gen, photos: photosGeneration, price: f.price ?? gen.price ?? null }, dispo);
-      if (f.price != null) setPrice(f.price);
+      if (f.price != null && !prixDuScanIgnore()) setPrice(prixDuScanSelonStrategie(f.price));
     }
 
     // ⛔ UNE COPIE VAUT UNE ANNONCE GÉNÉRÉE (2026-09-21). Le filtre ne lisait
@@ -5870,7 +5885,8 @@ export default function ListingPreviewScreen({
     // toucher aux photos ou à la retouche, il fallait revenir en arrière.
     // L'ancienne peau garde son arrivée, à l'identique.
     if (variante === "nouvelle") {
-      setStep(1);
+      // (29/10, lot B 1.2) Depuis Lens, directement l'écran des champs quand les plateformes sont connues.
+      setStep(ouvertureDirecte && selectionFinale.length ? 2 : 1);
       // Le choix photos dit ce qui a été FAIT pour ce texte : « Telles
       // quelles », sauf photos déjà retouchées (affichées comme telles).
       // Choisir la retouche ensuite relance la rédaction (cf. optionRedaction).
@@ -5967,11 +5983,12 @@ export default function ListingPreviewScreen({
           // partait donc en ligne à marge nulle. Sans analyse et sans prix
           // saisi, le champ reste VIDE — le garde-fou de publication (≥ 1 €,
           // commit c85548b) empêche toute annonce sans prix.
-          const finalPrice = initialListing?.prix_vente_suggere ?? data?.prix_vente ?? null;
+          // (29/10, lot B 1.1) « À la demande » : le prix suggéré par le scan ne remplit pas le champ.
+          const finalPrice = prixDuScanIgnore() ? null : (initialListing?.prix_vente_suggere != null ? prixDuScanSelonStrategie(initialListing.prix_vente_suggere) : (data?.prix_vente ?? null));
           if (finalPrice != null) setPrice(finalPrice);
         });
-    } else if (initialListing?.prix_vente_suggere != null) {
-      setPrice(initialListing.prix_vente_suggere);
+    } else if (initialListing?.prix_vente_suggere != null && !prixDuScanIgnore()) {
+      setPrice(prixDuScanSelonStrategie(initialListing.prix_vente_suggere));
     }
 
     if (initialPhotos.length > 0) {
@@ -6316,7 +6333,12 @@ export default function ListingPreviewScreen({
   // aussi en onClick (un événement en premier argument) : on ne lit la clé que
   // si c'est une chaîne.
   async function handleGeneratePlatforms(opts) {
-    const option = typeof opts?.optionPhotos === "string" ? opts.optionPhotos : photoOption;
+    // (29/10, lot B 1.1 — promesse XEWER) « Générer avec l'IA » sur UN champ dont le texte est celui de la personne : la
+    // rédaction est demandée pour ce champ (verrou levé pour lui seul), RENDUE à l'appelant et jamais appliquée — ni
+    // les cartes, ni la fiche enregistrée, ni la retouche photo ne bougent. Même décompte qu'une rédaction d'aujourd'hui
+    // (le même article sous 24 h ne compte pas deux fois, spend_coins_for_generate).
+    const proposition = opts?.proposition === "titre" || opts?.proposition === "description" ? opts.proposition : null;
+    const option = proposition ? "original" : (typeof opts?.optionPhotos === "string" ? opts.optionPhotos : photoOption);
     // Garde d'identité (2026-08-08, même doctrine que requireTitle posé après
     // les contaminations de listing_url des 13 et 19/07) : générer avec le
     // contexte d'un AUTRE article est pire qu'un refus. Normalement
@@ -6332,9 +6354,11 @@ export default function ListingPreviewScreen({
         : "Ces photos ne correspondent plus à l'article analysé. Rien n'a été généré — reviens à la première étape et relance l'analyse pour ce nouvel article.");
       return;
     }
-    setGeneratingPlatforms(true);
-    setPlatformError("");
-    setPlatformErrorCode(null);
+    if (!proposition) {
+      setGeneratingPlatforms(true);
+      setPlatformError("");
+      setPlatformErrorCode(null);
+    }
     try {
       // (01/10) Opla n'est JAMAIS rédigée par generate-listing : sa copie dérive
       // d'une autre (effet « COPIE OPLA DÉRIVÉE »). Opla cochée seule, le
@@ -6440,7 +6464,10 @@ export default function ListingPreviewScreen({
           // « Je sais lire la fiche que tu vas écrire, et je ne recréerai pas
           // de ligne au publish » (2026-09-15). Sans ce drapeau le serveur ne
           // crée rien : l'app native garde l'ancien client jusqu'à l'OTA.
-          fiche_serveur: true,
+          // (29/10, lot B 1.1) Une proposition n'écrit ni article ni fiche enregistrée.
+          fiche_serveur: !proposition,
+          ...(proposition === "description" ? { description_verrouillee: false } : {}),
+          ...(proposition === "titre" ? { titre_verrouille: false } : {}),
           photo_option: option,
           // Fond pris en compte uniquement en ia_advanced (le backend l'ignore
           // sinon, mais on n'envoie même pas une valeur trompeuse hors avancé).
@@ -6462,6 +6489,7 @@ export default function ListingPreviewScreen({
       // regénérer, pas ressortir le texte de l'ancienne version.
       const signature = signatureGeneration({ userId, body: corps, src });
       const dejaPayee = lireGenerationCache(signature);
+      if (dejaPayee && proposition) return dejaPayee;
       if (dejaPayee) {
         appliquerGeneration(dejaPayee, platforms);
         setOptionRedaction(option);
@@ -6559,14 +6587,16 @@ export default function ListingPreviewScreen({
       // Rangée AVANT d'être appliquée : si l'utilisateur referme le stepper
       // dans la seconde qui suit, la génération est déjà payée et déjà sauvée.
       ecrireGenerationCache(signature, data);
+      if (proposition) return data;
       appliquerGeneration(data, platforms);
       setOptionRedaction(option);
     } catch (e) {
+      if (proposition) throw e;
       setPlatformError(e.message);
       // (25/10, Jocabroc) Plus jamais un échec invisible : la rédaction ratée est signalée au serveur.
       signalerActionRatee({ action: "generer_annonce", motif: String(e?.message ?? e).slice(0, 120), details: e?.http ? { http: e.http } : undefined });
     } finally {
-      setGeneratingPlatforms(false);
+      if (!proposition) setGeneratingPlatforms(false);
     }
   }
 
@@ -6582,14 +6612,17 @@ export default function ListingPreviewScreen({
       // la question « Description » la demande alors), le prix. Ce que FillSell a écrit reste dans platformListings,
       // derrière « Générer » (genererChamp).
       const aLaDemande = redactionALaDemandeConnue(userId);
-      const titreFiche = String(initialListing?.titre ?? "").trim();
-      const descriptionFiche = String(initialListing?.description ?? "").trim();
+      // (29/10, lot B 1.1) Le titre et la description de la FICHE seulement (un résultat Lens n'en a pas) : le titre
+      // écrit par FillSell ne remplit plus la carte d'office, il attend derrière « Générer avec l'IA ».
+      const ficheDuStock = estLigneDuStock(initialListing);
+      const titreFiche = ficheDuStock ? String(initialListing?.titre ?? "").trim() : "";
+      const descriptionFiche = ficheDuStock ? String(initialListing?.description ?? "").trim() : "";
       setPrice(prev => (aLaDemande ? prev : (data.price ?? prev)));
 
       const initialEdited = {};
       for (const p of platforms) {
         initialEdited[p] = {
-          title:           aLaDemande && titreFiche ? titreFiche : (data.platforms[p]?.title ?? ""),
+          title:           aLaDemande ? titreFiche : (data.platforms[p]?.title ?? ""),
           description:     aLaDemande ? descriptionFiche : (data.platforms[p]?.description ?? ""),
           platform_fields: mergeFieldsWithLens(
             data.platforms[p]?.platform_fields ?? {},
@@ -6604,7 +6637,8 @@ export default function ListingPreviewScreen({
             // quatre tirets (mesuré sur 1789676224963 et 1789676272841).
             initialListing?.attributs ?? null
           ),
-          price: data.price ?? price ?? null,
+          // (29/10, lot B 1.1) « À la demande » : la carte suit le prix de la personne, jamais celui que FillSell propose.
+          price: aLaDemande ? (price ?? null) : (data.price ?? price ?? null),
         };
       }
       // Genre eBay/Beebs : dérivé de la même source que les autres plateformes
@@ -7028,29 +7062,44 @@ export default function ListingPreviewScreen({
   //    aussi : le serveur décide ce qui PART, cet écran ce qui s'AFFICHE, et
   //    un écart entre les deux se lit comme un bug d'affichage.
   const texteGenereRef = useRef({ titre: false, description: false }); // (26/10, D3) champs écrits par « Générer »
+  // (29/10, lot B 1.1) « À la demande » : le prix que le scan Lens a suggéré n'est jamais posé d'office (un résultat
+  // Lens n'est pas une ligne du stock ; le prix d'une fiche du stock est celui de la personne).
+  const prixDuScanIgnore = () => redactionALaDemandeConnue(userId) && !estLigneDuStock(initialListing);
+  // (29/10, lot B 1.4 — promesse XEWER, « l'estimation la suivra ») Le prix que le SCAN propose (jamais un prix de la
+  // fiche du stock, jamais un prix tapé ni une reprise de travail corrigé) suit la stratégie du vendeur : la même borne
+  // que le résultat Lens affichait.
+  const prixDuScanSelonStrategie = (repli) => {
+    if (estLigneDuStock(initialListing)) return repli;
+    const s = prixSelonStrategie(initialListing ?? null, reglagesRedactionConnus(userId).strategiePrix);
+    if (s?.prix == null) return repli;
+    prixSourceRef.current = { source: "strategie", strategie: s.strategie };
+    return s.prix;
+  };
   const texteDuVendeurFiche = () => {
     // (26/10, D3) « À la demande » : le titre et la description de la fiche sont ceux de la personne, quelle que soit
     // leur origine — sauf le champ qu'elle vient de faire écrire par « Générer » (texteGenereRef).
+    // (29/10, lot B 1.1) Sauf un résultat Lens : son titre et sa description sont ceux du scan, pas les siens — le champ
+    // reste vide, la proposition attend derrière « Générer avec l'IA » (promesse à XEWER : « ne se remplissent plus
+    // d'office »).
     if (redactionALaDemandeConnue(userId)) {
+      const duStock = estLigneDuStock(initialListing);
       return {
-        titre: texteGenereRef.current.titre ? "" : String(initialListing?.titre ?? "").trim(),
-        description: texteGenereRef.current.description ? "" : String(initialListing?.description ?? "").trim(),
+        titre: texteGenereRef.current.titre || !duStock ? "" : String(initialListing?.titre ?? "").trim(),
+        description: texteGenereRef.current.description || !duStock ? "" : String(initialListing?.description ?? "").trim(),
       };
     }
-    const origine = String(initialListing?.origine ?? "").trim().toLowerCase();
-    const marqueur = (cle) => String(attributV(cle) ?? "").trim().toLowerCase();
-    const propre = (cle) => {
-      const src = marqueur(cle);
-      return src === "vinted" || src === "manuel" || src.startsWith("releve");
+    // (29/10, lot B partie 2) La règle partagée avec le serveur (src/utils/sourceDuTexte.js) : sur une fiche du STOCK,
+    // tout texte que FillSell n'a pas signé (lens, vocal, ia) est celui du vendeur — un texte tapé à la création n'avait
+    // aucun marqueur et passait pour notre brouillon (paugues, « Jazz man »). Un résultat Lens (pas une ligne du stock)
+    // reste notre brouillon. Le champ qu'elle vient de faire écrire par « Générer » n'est plus le sien.
+    const ligne = {
+      titre: initialListing?.titre, description: initialListing?.description, origine: initialListing?.origine,
+      attributs: { titre_source: attributV("titre_source"), description_source: attributV("description_source") },
     };
-    const venuDeSaPage = origine.startsWith("releve") || origine === "vinted_sync";
-    const assezLong = (v) => {
-      const t = String(v ?? "").trim();
-      return t && t.split(/\s+/).filter(Boolean).length >= 2 ? t : "";
-    };
+    const sien = texteDuVendeurDe(ligne, { ligneDuStock: estLigneDuStock(initialListing) });
     return {
-      titre: (propre("titre_source") || venuDeSaPage) ? assezLong(initialListing?.titre) : "",
-      description: (propre("description_source") || venuDeSaPage) ? assezLong(initialListing?.description) : "",
+      titre: texteGenereRef.current.titre ? "" : sien.titre,
+      description: texteGenereRef.current.description ? "" : sien.description,
     };
   };
   // (26/10, règles 4 et 5 de Nico) Ce que la fiche dit — l'état, le genre, les mots qui fondent un hashtag : la MÊME
@@ -7080,8 +7129,10 @@ export default function ListingPreviewScreen({
     if (generales.titre || generales.description || generales.etat) return;
     const duVendeur = texteDuVendeurFiche();
     const suivant = {
-      titre: duVendeur.titre || valeurCommune(edited, "titre", pf, dissociees),
-      description: duVendeur.description || valeurCommune(edited, "description", pf, dissociees),
+      // (29/10, lot B 1.1) « À la demande » : le champ général ne reçoit que le texte de la personne ; la copie de
+      // FillSell attend derrière « Générer avec l'IA ».
+      titre: duVendeur.titre || (redactionALaDemandeConnue(userId) ? "" : valeurCommune(edited, "titre", pf, dissociees)),
+      description: duVendeur.description || (redactionALaDemandeConnue(userId) ? "" : valeurCommune(edited, "description", pf, dissociees)),
       etat: valeurCommune(edited, "etat", pf, dissociees),
     };
     if (!suivant.titre && !suivant.description && !suivant.etat) return;
@@ -7440,23 +7491,67 @@ export default function ListingPreviewScreen({
   const choixPoidsLbc = useChoixPoidsLeboncoin(userId);
   // (26/10, D3) Titre, description et prix à la demande : le réglage, et ce que « Générer » a posé dans cette session.
   const redaction = useRedactionALaDemande(userId);
+  // (29/10, lot B 1.3-1.4) Consignes, stratégie de prix : une lecture partagée avec Réglages › Rédaction et Lens.
+  const reglagesRedaction = useReglagesRedaction(userId).reglages;
+  // D'où vient le prix qui partira : { source: "strategie", strategie } quand « Estimer avec l'IA » l'a posé, null sinon
+  // (tapé, repris de la fiche). Dit avant la publication, jamais recalculé en silence.
+  const prixSourceRef = useRef(null);
   // (26/10, D4) Publications programmées (réglage) : les tâches naissent marquées, sauf « Envoyer tout de suite ».
   const programmation = usePublicationProgrammee(userId);
   const envoyerMaintenantRef = useRef(false);
-  const genererChamp = (champ) => {
-    const copies = platformListings?.platforms ?? {};
-    const ordre = ["vinted", "leboncoin", "beebs", "ebay", "depop", "opla"];
-    const premiere = (cle) => ordre.map((p) => String(copies[p]?.[cle] ?? "").trim()).find(Boolean) ?? "";
+  // ══ (29/10, lot B 1.1 + 1.4 — promesse XEWER) « GÉNÉRER AVEC L'IA », CHAMP PAR CHAMP ══════════════════════════
+  // « si un jour tu veux un coup de main, un bouton te permet de les faire générer par l'IA, champ par champ. Fini
+  // d'effacer avant d'écrire. » (mail du 27/10). Champ VIDE : la proposition s'y pose. Champ REMPLI : la feuille
+  // « Remplacer ? » (FeuilleRemplacer), « Garder mon texte » par défaut — l'IA n'écrit jamais sur un champ rempli sans
+  // accord. La proposition : la copie déjà rédigée (payée avec la rédaction) ; sinon, quand le champ porte le texte de
+  // la personne (la rédaction ne l'a pas réécrit), une rédaction de CE champ, rendue sans rien appliquer
+  // (handleGeneratePlatforms en mode proposition — même décompte qu'aujourd'hui). Le prix suit la stratégie du vendeur
+  // (src/utils/strategiePrix.js) ; un prix tapé n'est jamais touché sans son accord.
+  const [remplacer, setRemplacer] = useState(null); // { champ, actuel, propose, strategie }
+  const [genereEnCours, setGenereEnCours] = useState(null);
+  const poserProposition = (champ, valeur, strategie = null) => {
     if (champ === "prix") {
-      const v = platformListings?.price ?? photoAnalysis?.prix_vente_suggere ?? null;
-      if (v != null && Number(v) > 0) poserPrixGeneral(String(v));
-      return v != null;
+      poserPrixGeneral(String(valeur));
+      prixSourceRef.current = { source: "strategie", strategie: strategie ?? reglagesRedaction.strategiePrix };
+      return;
     }
-    const valeur = premiere(champ === "titre" ? "title" : "description");
-    if (!valeur) return false;
     texteGenereRef.current = { ...texteGenereRef.current, [champ]: true };
     poserValeurGenerale(champ, valeur);
-    return true;
+  };
+  const propositionDuChamp = async (champ) => {
+    if (champ === "prix") {
+      const s = prixSelonStrategie(photoAnalysis ?? initialListing ?? null, reglagesRedaction.strategiePrix);
+      const repli = Number(platformListings?.price) > 0 ? Math.round(Number(platformListings.price)) : null;
+      const v = s?.prix ?? repli;
+      return v != null ? { valeur: String(v), strategie: s?.strategie ?? null } : null;
+    }
+    const cle = champ === "titre" ? "title" : "description";
+    const actuel = String(generales?.[champ] ?? "").trim();
+    const ordre = ["vinted", "leboncoin", "beebs", "ebay", "depop", "opla"];
+    const premiere = (copies) => ordre.map((p) => String(copies?.[p]?.[cle] ?? "").trim()).find((v) => v && v !== actuel) ?? "";
+    let valeur = premiere(platformListings?.platforms);
+    if (!valeur) valeur = premiere((await handleGeneratePlatforms({ proposition: champ }))?.platforms);
+    return valeur ? { valeur } : null;
+  };
+  const genererChamp = async (champ) => {
+    if (genereEnCours) return true;
+    setGenereEnCours(champ);
+    try {
+      const prop = await propositionDuChamp(champ);
+      if (!prop) return false;
+      const actuel = champ === "prix" ? String(price ?? "").trim() : String(generales?.[champ] ?? "").trim();
+      if (actuel && actuel !== prop.valeur) {
+        setRemplacer({ champ, actuel, propose: prop.valeur, strategie: prop.strategie ?? null });
+        return true;
+      }
+      poserProposition(champ, prop.valeur, prop.strategie ?? null);
+      return true;
+    } catch (e) {
+      setPlatformError(String(e?.message ?? e));
+      return false;
+    } finally {
+      setGenereEnCours(null);
+    }
   };
   const portDepopToucheRef = useRef(false);
   const portDepopSaisi = edited?.depop?.platform_fields?.depopPort;
@@ -10737,12 +10832,18 @@ export default function ListingPreviewScreen({
       // les a déjà alignées sur la fiche).
       let editedEnvoi = edited;
       const idFiche = currentInvId || invId;
+      // (29/10, lot B partie 2 — XEWER, Mario Kart Wii / Tony Hawk) Le texte part-il tel que le VENDEUR l'a écrit ?
+      // Lu à l'ENVOI, plus à l'ouverture : sa retouche de cette publication et la fiche relue ci-dessous comptent. Sinon
+      // descriptionFidele remplaçait « bon état » par l'état de la fiche dans le texte qu'il venait de coller.
+      let texteVendeurEnvoi = Boolean(texteDuVendeurFiche().description)
+        || (retouchesMainRef.current.has("description") && !texteGenereRef.current.description);
       if (idFiche) {
         try {
           const { data: ligneFiche, error: errFiche } = await supabase.from("inventaire")
             .select("titre,description,origine,attributs").eq("id", idFiche).maybeSingle();
           if (errFiche) throw errFiche;
           if (ligneFiche) {
+            if (!texteGenereRef.current.description && texteDuVendeurDe(ligneFiche).description) texteVendeurEnvoi = true;
             const aEcrire = retoucheAEcrire(ligneFiche, generales, retouchesMainRef.current);
             if (aEcrire) {
               const { error: errEcrit } = await supabase.from("inventaire").update(aEcrire).eq("id", idFiche).eq("user_id", userId);
@@ -10769,11 +10870,13 @@ export default function ListingPreviewScreen({
         outils: { entreesPhotos, getLbcFreePhotoQuota, normalizeVintedTitle },
         // (25/09, patrick giry) Une carte au titre vide reprend sa copie
         // rédigée, sinon le titre de la fiche — jamais un job à title "".
-        titresGeneres: Object.fromEntries(Object.entries(platformListings?.platforms ?? {}).map(([p, c]) => [p, c?.title ?? ""])),
-        titreFiche: initialListing?.titre ?? "",
+        // (29/10, lot B 1.1) « À la demande » : un titre laissé vide n'est jamais rempli en silence par celui de FillSell
+        // (ni par le titre d'un scan Lens) — la garde ci-dessus le dit, construireJobs refuse « sans_titre ».
+        titresGeneres: redaction.aLaDemande ? {} : Object.fromEntries(Object.entries(platformListings?.platforms ?? {}).map(([p, c]) => [p, c?.title ?? ""])),
+        titreFiche: redaction.aLaDemande && !estLigneDuStock(initialListing) ? "" : (initialListing?.titre ?? ""),
         // (26/10, règles 4 et 5 de Nico) Ce que la fiche dit : l'état, le genre, et les mots qui fondent un hashtag.
         ficheTexte: ficheDuTexte(),
-        texteDuVendeur: Boolean(texteDuVendeurFiche().description),
+        texteDuVendeur: texteVendeurEnvoi,
         programmee: Boolean(programmation.reglage) && !envoyerMaintenantRef.current,
       });
       if (construction.erreur === "ebay_sans_photo") {
@@ -11586,8 +11689,15 @@ export default function ListingPreviewScreen({
   // (26/10, D3) « À la demande » : une description vide ne part jamais — la personne écrit la sienne, ou « Générer ».
   const descriptionVideALaDemande = redaction.aLaDemande && step === 3 && !descriptionVideVinted
     && ![generales?.description, ...Object.values(edited ?? {}).map((c) => c?.description)].some((d) => String(d ?? "").trim());
+  // (29/10, lot B 1.1 — promesse XEWER) Titre et prix facultatifs à la création, jamais à l'envoi : un titre vide ne
+  // repart plus avec celui de FillSell sans le dire (construireJobs), un prix vide ne part pas.
+  const titreVideALaDemande = redaction.aLaDemande && step === 3
+    && ![generales?.titre, ...Object.values(edited ?? {}).map((c) => c?.title)].some((d) => String(d ?? "").trim());
+  const prixVideALaDemande = redaction.aLaDemande && step === 3 && !(parseFloat(String(price ?? "").replace(",", ".")) >= 1);
   const requiredBlocking =
     descriptionVideALaDemande ||
+    titreVideALaDemande ||
+    prixVideALaDemande ||
     (ebayRequiredStatus ?? []).some(aspectBloquant) ||
     missingSharedFields.length > 0 ||
     prixAchatManquant ||
@@ -11689,7 +11799,9 @@ export default function ListingPreviewScreen({
         : `Rayon ${nomPlateforme(p)} à choisir — aucun rayon sûr trouvé (sur sa carte, liste prête)`);
     }
     if (descriptionVideVinted) m.push(lang === "en" ? "Vinted description to write" : "Description Vinted à écrire");
+    if (titreVideALaDemande) m.push(lang === "en" ? "Title to write (or tap “Generate with AI”)" : "Titre à écrire (ou « Générer avec l'IA »)");
     if (descriptionVideALaDemande) m.push(lang === "en" ? "Description to write (or tap “Generate”)" : "Description à écrire (ou « Générer »)");
+    if (prixVideALaDemande) m.push(lang === "en" ? "Price to set (or tap “Estimate with AI”)" : "Prix à donner (ou « Estimer avec l'IA »)");
     if (portDepopManquant) m.push(lang === "en" ? "Depop shipping price to fill in" : "Frais de port Depop à indiquer");
     if (poidsLbcManquant) m.push(lang === "en" ? "Leboncoin parcel weight to fill in (or let Leboncoin estimate)" : "Poids du colis Leboncoin à indiquer (ou laisser Leboncoin estimer)");
     if (refusSansQuestion) m.push(String(resolutionAffichee?.refus?.message ?? (lang === "en" ? "Category to pick" : "Rayon à choisir")));
@@ -11849,6 +11961,16 @@ export default function ListingPreviewScreen({
   // par la nouvelle (StepperNouveau reçoit `modales` dans le moteur).
   const modales = (
     <>
+      {remplacer && (
+        <FeuilleRemplacer
+          champ={remplacer.champ} actuel={remplacer.actuel} propose={remplacer.propose} lang={lang}
+          note={remplacer.champ === "prix" && remplacer.strategie
+            ? (lang === "en" ? `Your pricing strategy: ${libelleStrategie(remplacer.strategie, "en")}.` : `Ta stratégie de prix : ${libelleStrategie(remplacer.strategie)}.`)
+            : null}
+          onGarder={() => setRemplacer(null)}
+          onRemplacer={() => { const r = remplacer; setRemplacer(null); poserProposition(r.champ, r.propose, r.strategie); }}
+        />
+      )}
       {quotaModal.open && (
         <ConversionModal
           isOpen={true}
@@ -12128,6 +12250,7 @@ export default function ListingPreviewScreen({
     prixAchat: prixAchatSaisi || initialListing?.prix_achat || null,
     carteAOuvrir, onCarteOuverte: () => setCarteAOuvrir(null),
     generales, onValeurGenerale: retoucherValeurGenerale,
+    onGenerer: genererChamp, genereEnCours,
     versionsTexte, ficheTexte: { titre: initialListing?.titre ?? "", description: initialListing?.description ?? "" },
     divergence, divergenceTranchee, onTrancherDivergence: trancherDivergence,
     dissociees, onModifierCarte: modifierCarte, onRetablirCarte: retablirCarte,
@@ -12136,6 +12259,8 @@ export default function ListingPreviewScreen({
   const moteur = {
     // Contexte
     lang, t, tpl, userId, supabase, onClose, onCompleter, modales,
+    // (29/10, lot B 1.2) « Voir l'analyse » depuis l'annonce ouverte directement après Lens.
+    onVoirAnalyse,
     step, done, isLocked, initializing,
     suivant: handleNextNouveau, retour: handleBackNouveau, quitter: quitterLeStepper, quitterArme, quitterPerdraitDuTravail,
     MIN_PHOTOS, MAX_PHOTOS, MAX_RETOUCHED,
@@ -12283,6 +12408,9 @@ export default function ListingPreviewScreen({
     // (26/10, D3) Titre, description et prix à la demande : le réglage, et le geste « Générer » (champ par champ).
     redactionALaDemande: redaction.aLaDemande,
     genererChamp,
+    genereEnCours,
+    strategiePrix: reglagesRedaction.strategiePrix,
+    prixSource: prixSourceRef.current,
     texteGenere: { ...texteGenereRef.current },
     // (26/10, D4) Le réglage de programmation (null : éteint) et l'exception « Envoyer tout de suite » de ce lot.
     programmation: programmation.reglage,

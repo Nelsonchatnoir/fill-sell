@@ -31,6 +31,8 @@ import { ArrowLeft, Send } from 'lucide-react';
 import { sourcesVignette, conversationNonLue, dateCourte, etatReponse, etatZoneReponse, lienConversation, montantTexte, murReleve, nomPlateforme, ORDRE_PLATEFORMES, pseudoAffiche, trierConversations } from './vue';
 import { ouvrirLien } from './ouvrir';
 import SectionAExpedier from './SectionAExpedier';
+// (29/10, lot B 1.3) La dictée sur la réponse.
+import BoutonDictee from '../components/BoutonDictee';
 import { empreinteTexte } from './empreinte';
 import { useReglagesMessagerie } from './useMessagerieBeta';
 import Vignette from './Vignette';
@@ -229,7 +231,7 @@ function Conversation({ supabase, conv, lang, sources, onRetour, onVue, envoiMod
           <Icone nom={zone.verrouillee ? 'alerte' : zone.possible ? 'coche' : 'croix'} taille={15} couleur={tz.encre} epaisseur={2.3} style={{ flex: 'none', marginTop: 1 }} />
           <span>{zone.texte}</span>
         </div>
-        {zone.possible && (
+        {zone.possible && (<>
           <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
             <textarea value={texte} onChange={(e) => setTexte(e.target.value.slice(0, 2000))} rows={2}
               placeholder={fr ? 'Écrire une réponse…' : 'Write a reply…'} aria-label={fr ? 'Réponse' : 'Reply'}
@@ -240,7 +242,9 @@ function Conversation({ supabase, conv, lang, sources, onRetour, onVue, envoiMod
               <Send size={19} strokeWidth={2.2} color={texte.trim() && !envoi ? '#FFFFFF' : '#8A8578'} aria-hidden="true" />
             </button>
           </div>
-        )}
+          {/* (29/10, lot B 1.3) Sous la rangée : la cible est la réponse qu'elle contient. */}
+          <BoutonDictee valeur={texte} onChange={(v) => setTexte(v.slice(0, 2000))} lang={lang} />
+        </>)}
         {erreur && <div style={{ fontSize: 12.5, color: '#B91C1C' }}>{erreur}</div>}
       </div>
       {/* La fin de la conversation, posée au-dessus de la barre du bas (marge de

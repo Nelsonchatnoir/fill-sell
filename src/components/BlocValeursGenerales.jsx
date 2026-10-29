@@ -20,6 +20,7 @@
 //    C'est la consigne « code rangé pour la refonte ».
 // ═══════════════════════════════════════════════════════════════════════════
 import { useState } from "react";
+import BoutonDictee from "./BoutonDictee";
 import { ETATS_GENERAUX } from "../../supabase/functions/_shared/etat-plateformes.js";
 
 export default function BlocValeursGenerales({
@@ -44,9 +45,21 @@ export default function BlocValeursGenerales({
   // tap pose ce texte comme valeur générale — la personne choisit, rien ne
   // s'écrase sans elle.
   versions = [], ficheTexte = null,
+  // (29/10, lot B 1.1 — promesse XEWER) « Générer avec l'IA », champ par champ (ListingPreviewScreen.genererChamp :
+  // champ rempli → feuille « Remplacer ? »). `genereEnCours` : le champ en cours de rédaction.
+  onGenerer = null, genereEnCours = null,
 }) {
   const [descOuverte, setDescOuverte] = useState(false);
   const en = lang === "en";
+  const [rien, setRien] = useState(null);
+  const boutonGenerer = (champ) => (onGenerer ? (
+    <button type="button" style={st.lien} disabled={Boolean(genereEnCours)}
+      onClick={() => { setRien(null); Promise.resolve(onGenerer(champ)).then((ok) => { if (!ok) setRien(champ); }); }}>
+      {genereEnCours === champ ? (en ? "Writing…" : "Rédaction…")
+        : rien === champ ? (en ? "Nothing to suggest yet" : "Rien à proposer pour l'instant")
+        : champ === "prix" ? (en ? "✨ Estimate with AI" : "✨ Estimer avec l'IA") : (en ? "✨ Generate with AI" : "✨ Générer avec l'IA")}
+    </button>
+  ) : null);
   const NOMS = { vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", ebay: "eBay", opla: "Opla", depop: "Depop" };
   const dateCourte = (iso) => {
     const d = new Date(iso ?? "");
@@ -141,6 +154,8 @@ export default function BlocValeursGenerales({
       {/* Le bouton « Estimer », l'analyse de marché et l'erreur d'estimation
           restent EXACTEMENT ce qu'ils étaient : l'hôte les passe en enfants,
           ce bloc ne connaît pas leur contenu. */}
+      {/* (29/10, lot B 1.4) « Estimer avec l'IA » : le prix selon ta stratégie (vente rapide, marché, prix haut). */}
+      {onGenerer ? <div style={{ marginTop: 8 }}>{boutonGenerer("prix")}</div> : null}
       {enfantsPrix}
       {estimateError && (
         <div style={{ fontSize: 12, fontWeight: 600, color: "#B0645A", marginTop: 8 }}>{estimateError}</div>
@@ -149,7 +164,10 @@ export default function BlocValeursGenerales({
       {nbSuiveuses > 0 && (
         <>
           <div style={st.separateur} />
-          <div style={st.intitule}>{t("generalTitleLabel")}</div>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+            <span style={st.intitule}>{t("generalTitleLabel")}</span>
+            {boutonGenerer("titre")}
+          </div>
           <input
             type="text"
             value={titre ?? ""}
@@ -157,14 +175,19 @@ export default function BlocValeursGenerales({
             placeholder={t("generalTitlePlaceholder")}
             style={st.champ}
           />
+          {/* (29/10, lot B 1.3) La dictée sur le titre : elle s'ajoute, jamais à la place. */}
+          <BoutonDictee valeur={titre ?? ""} onChange={(v) => onTitreChange(v)} lang={lang} />
           {rangeeVersions("titre", titre, (v) => onTitreChange(v))}
 
           <div style={st.separateur} />
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
             <span style={st.intitule}>{t("generalDescriptionLabel")}</span>
-            <button type="button" style={st.lien} onClick={() => setDescOuverte((v) => !v)}>
-              {descOuverte ? t("generalCollapse") : t("generalEdit")}
-            </button>
+            <span style={{ display: "inline-flex", gap: 12, alignItems: "baseline" }}>
+              {boutonGenerer("description")}
+              <button type="button" style={st.lien} onClick={() => setDescOuverte((v) => !v)}>
+                {descOuverte ? t("generalCollapse") : t("generalEdit")}
+              </button>
+            </span>
           </div>
           {descOuverte ? (
             <textarea
@@ -174,6 +197,10 @@ export default function BlocValeursGenerales({
               placeholder={t("generalDescriptionPlaceholder")}
               style={{ ...st.champ, fontSize: 13, resize: "vertical", lineHeight: 1.5 }}
             />
+          ) : null}
+          {descOuverte ? (
+            // (29/10, lot B 1.3) La dictée sur la description : elle s'ajoute à la ligne, jamais à la place.
+            <BoutonDictee valeur={description ?? ""} onChange={(v) => onDescriptionChange(v)} lang={lang} separateur={"\n"} />
           ) : (
             // ── L'APERÇU RESPECTE LES RETOURS À LA LIGNE (2026-09-21, 16:25) ──
             // 🚨 LE DÉFAUT, signalé par Louis THONET dans l'heure qui a suivi la

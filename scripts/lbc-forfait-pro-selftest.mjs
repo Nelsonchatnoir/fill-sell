@@ -5,6 +5,7 @@
 // jamais soldé), l'app (une carte par compte, « ✋ Compléter » ferme la question).
 // Cas réel : DeadRoz, 14/10 — 26 dépôts au mur, 5 passés intercalés, mêmes
 // 10 photos ; 12 murs restés en « champ_a_choisir » d'une question répondue.
+// (29/10, lot B partie 3) § 9 : au mur, le type de la SESSION qui dépose est toujours lu et l'emporte (⟦mur-pro⟧).
 import fs from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -225,12 +226,13 @@ ok(eclaireurForfaitLbc([prete("p15", "10:00")], true, Date.parse(t("23:00"))) ==
 const lbcJs = lire("chrome-extension/content-scripts/leboncoin.js");
 const iMur = lbcJs.indexOf("if (surEcranOptions() && trouverBoutonPayant()) {");
 const blocMur = lbcJs.slice(iMur, lbcJs.indexOf("return depotNonFinalise(", iMur));
-ok(iMur > 0 && /if \(estComptePro\(job, enumerated\) \|\| \(typeCompte && typeCompte !== "individual"\)\) \{/.test(blocMur) && /attenteMotif: "lbc_valider_et_payer", garderOnglet: true/.test(blocMur)
+ok(iMur > 0 && /if \(murPro\.pro\) \{/.test(blocMur) && /attenteMotif: "lbc_valider_et_payer", garderOnglet: true/.test(blocMur)
   && /preuve: "ecran_options_payant_pret"/.test(blocMur) && /error: MSG_LBC_A_PAYER,/.test(blocMur)
-  && /attenteMotif: "lbc_options_payant_seulement",/.test(blocMur) && blocMur.indexOf("estComptePro") < blocMur.indexOf("lbc_options_payant_seulement"),
+  && /attenteMotif: "lbc_options_payant_seulement",/.test(blocMur) && blocMur.indexOf("murPro.pro") < blocMur.indexOf("lbc_options_payant_seulement"),
   "extension : compte pro → dépôt préparé, onglet gardé, motif lbc_valider_et_payer ; sinon la règle d'avant");
-ok(/j\?\.platform_fields\?\.compte_pro === true\s*\|\| \(Array\.isArray\(champs\) && champs\.some\(\(c\) => \/general_sales_condition\|custom_ref\/\.test\(String\(c\?\.key \?\? ""\)\)\)\)/.test(lbcJs),
-  "compte pro : dit par le serveur (compte_pro) ou vu sur le formulaire pro");
+ok(/const compteProDuServeur = \(j\) => j\?\.platform_fields\?\.compte_pro === true;/.test(lbcJs)
+  && /const formulaireProVu = \(champs\) =>\s*Array\.isArray\(champs\) && champs\.some\(\(c\) => \/general_sales_condition\|custom_ref\/\.test\(String\(c\?\.key \?\? ""\)\)\);/.test(lbcJs),
+  "compte pro : dit par le serveur (compte_pro) ou vu sur le formulaire pro — deux preuves lues à part");
 const mExt = lbcJs.match(/const MSG_LBC_A_PAYER =\s*((?:"[^"\n]*"\s*\+?\s*)+);/);
 ok(mExt && eval(`(${mExt[1]})`) === MSG_LBC_A_PAYER, "le texte du dépôt prêt est le même dans l'extension et la règle partagée");
 ok(!/trouverBoutonPayant\(\)\.click|boutonPayant\.click|valider et payer[^\n]*\.click\(/i.test(lbcJs), "FillSell ne clique JAMAIS « Valider et payer »");
@@ -293,7 +295,7 @@ ok(natP.kind === "attente" && natP.motif === "a_payer_lbc" && /Valider et payer/
   ok((await comptesLbcProParType({ from: () => { throw new Error("panne"); } }, ["pg"])).size === 0 && (await comptesLbcProParType(faux, [])).size === 0,
     "une lecture ratée ou aucun compte : rien de prouvé, jamais un point de panne");
   ok(/const lireTypeCompteLbc = async \(\) => \{[\s\S]{0,400}api\.leboncoin\.fr\/api\/account\/v2\/members\/me\/account/.test(lbcJs)
-    && /const typeCompte = estComptePro\(job, enumerated\) \? null : await lireTypeCompteLbc\(\);/.test(lbcJs) && /type_compte: typeCompte/.test(lbcJs),
+    && /const typeCompte = await lireTypeCompteLbc\(\);/.test(blocMur) && /type_compte: typeCompte/.test(blocMur),
     "extension : au mur, le type du compte est lu chez Leboncoin et noté dans lbc_depot");
   ok((gpj.match(/comptesLbcProParType\(createClient\(/g) ?? []).length === 2, "get-pending-jobs : le type du compte prouve le pro (retenue au mur ET compte_pro servi à l'extension)");
   const hwPro = lire("supabase/functions/handler-watch/index.ts");
@@ -301,6 +303,43 @@ ok(natP.kind === "attente" && natP.motif === "a_payer_lbc" && /Valider et payer/
 }
 const textes8 = [MSG_LBC_A_PAYER, MSG_FORFAIT_LBC_REPUBLICATION_RETENUE];
 ok(textes8.every((x) => !DUREE.test(x) && !TECH.test(x) && !/\p{Extended_Pictographic}/u.test(x)), "textes du 18/10 : ni durée, ni mot technique, ni émoji");
+
+console.log("\n9. (29/10, lot B partie 3) AU MUR, LE TYPE DE LA SESSION QUI DÉPOSE EST TOUJOURS LU ET L'EMPORTE");
+// Garde-fou de Nico : « personne ne bascule en circuit pro (dépôt préparé, l'utilisateur paie) sans une preuve lue chez
+// Leboncoin pour SON compte ». La preuve du serveur (compte_pro, tirée des ventes lues sur ce Chrome) ne dit pas qui est
+// connecté. Le bloc LIVRÉ ⟦mur-pro⟧ est exécuté (vm), puis son branchement au mur est vérifié.
+{
+  const vm = await import("node:vm");
+  const d0 = lbcJs.indexOf("// ⟦mur-pro:début⟧"), d1 = lbcJs.indexOf("// ⟦mur-pro:fin⟧");
+  ok(d0 > 0 && d1 > d0, "le bloc ⟦mur-pro⟧ est trouvé");
+  const ctxMur = vm.createContext({ String });
+  vm.runInContext(`${lbcJs.slice(d0, d1)}\n;globalThis.__d = decisionMurProLbc;`, ctxMur);
+  const D = ctxMur.__d;
+  const v = (r) => `${r.pro ? "pro" : "particulier"}/${r.source ?? "aucune"}${r.contredit ? "/contredit" : ""}`;
+  ok(v(D({ compteProServeur: true, typeLu: "individual" })) === "particulier/session/contredit",
+    "serveur « pro » mais la session lit « individual » : chemin particulier d'aujourd'hui (contradiction notée)");
+  ok(v(D({ compteProServeur: false, formulairePro: true, typeLu: "individual" })) === "particulier/session/contredit",
+    "formulaire pro vu mais la session lit « individual » : particulier (jamais de circuit pro contre la lecture)");
+  ok(v(D({ compteProServeur: true, typeLu: "business" })) === "pro/session" && v(D({ typeLu: "business" })) === "pro/session" && v(D({ typeLu: "pro" })) === "pro/session",
+    "une lecture pro (≠ individual) → circuit pro, preuve de la session (paugues.contact : « business », sans formulaire pro)");
+  ok(v(D({ typeLu: "individual" })) === "particulier/session", "particulier lu, rien d'autre : particulier, sans contradiction");
+  ok(v(D({ compteProServeur: true, typeLu: null })) === "pro/serveur" && v(D({ formulairePro: true, typeLu: null })) === "pro/formulaire"
+    && v(D({ compteProServeur: true, formulairePro: true, typeLu: null })) === "pro/formulaire",
+    "lecture impossible : le formulaire pro vu sur ce dépôt, puis la preuve du serveur (comme avant)");
+  ok(v(D({})) === "particulier/aucune" && v(D({ compteProServeur: "true", typeLu: "" })) === "particulier/aucune",
+    "aucune preuve, rien de lisible : particulier ; seule une preuve vraie (true) compte");
+  // Le branchement au mur : lecture toujours faite, décision unique, type + date + source dans lbc_depot (deux parcours).
+  const iLu = blocMur.indexOf("const typeCompte = await lireTypeCompteLbc();");
+  ok(iLu > 0 && !/estComptePro|\? null : await lireTypeCompteLbc/.test(blocMur) && iLu < blocMur.indexOf("decisionMurProLbc("),
+    "au mur, le type de la session est TOUJOURS lu (une requête), avant la décision — plus de raccourci par la preuve du serveur");
+  ok(/const murPro = decisionMurProLbc\(\{ compteProServeur: compteProDuServeur\(job\), formulairePro: formulaireProVu\(enumerated\), typeLu: typeCompte \}\);/.test(blocMur),
+    "une seule décision (serveur, formulaire, type lu)");
+  ok(/const typeCompteDepot = \{ type_compte: typeCompte, type_compte_lu_le: typeCompte \? new Date\(\)\.toISOString\(\) : null, type_compte_source: murPro\.source \};/.test(blocMur)
+    && (blocMur.match(/adsubmit: depotAccepte, \.\.\.typeCompteDepot, at:/g) ?? []).length === 2,
+    "lbc_depot porte toujours type_compte, type_compte_lu_le et type_compte_source (circuit pro ET particulier)");
+  ok(/if \(murPro\.contredit\) \{[\s\S]{0,400}warnings\.push\(note\);/.test(blocMur), "une contradiction (lu « individual », serveur ou formulaire pro) est dite dans les avertissements");
+  ok(!typeCompteEstPro("individual") && typeCompteEstPro("business"), "le serveur lit le même type : « individual » posé au mur ne prouve jamais le pro");
+}
 
 console.log(ko ? `\n✗ ${ko} échec(s)` : "\n✓ Leboncoin, compte pro au mur du paiement : une carte, FillSell prépare et la personne paie — tout est vert");
 process.exit(ko ? 1 : 0);

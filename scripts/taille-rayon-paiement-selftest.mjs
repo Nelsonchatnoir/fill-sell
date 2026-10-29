@@ -108,7 +108,10 @@ console.log("\n3. LEBONCOIN QUI DEMANDE À ÊTRE PAYÉ N'EST PAS UNE PANNE");
   const i = lbc.indexOf("LEBONCOIN DEMANDE À ÊTRE PAYÉ");
   // (18/10) Le bloc porte d'abord le parcours du compte PRO (dépôt préparé, onglet
   // gardé, motif lbc_valider_et_payer) puis la règle d'avant : fenêtre élargie.
-  const bloc = i < 0 ? "" : lbc.slice(i, i + 3400);
+  // (29/10, lot B partie 3) Le mur lit désormais le type de la session : fenêtre bornée sur la fin du bloc
+  // (« return depotNonFinalise( »), plus sur un nombre fixe de caractères.
+  const fin = i < 0 ? -1 : lbc.indexOf("return depotNonFinalise(", i);
+  const bloc = i < 0 ? "" : lbc.slice(i, fin > i ? fin : i + 3400);
   ok(/attenteUtilisateur: true, attenteMotif: "lbc_options_payant_seulement"/.test(bloc),
     "l'écran payant pose une attente PERSISTÉE — aucune reprise");
   ok(/attenteMotif: "lbc_valider_et_payer", garderOnglet: true/.test(bloc) && bloc.indexOf("lbc_valider_et_payer") < bloc.indexOf("lbc_options_payant_seulement"),

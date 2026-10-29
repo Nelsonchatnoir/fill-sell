@@ -1,6 +1,7 @@
 import { recreationRetientFile } from "../_shared/file-republication.js";
 import { estFileEnPause, jobRetenuParPause, syncDemandeeParLaPersonne, SYNC_DEVANT_FILE_MS, passeAvantLaSynchro } from "../_shared/file-pause.js";
-import { reglageProgrammation, estProgrammee, servieAujourdhui, decisionProgrammee } from "../_shared/publication-programmee.js";
+import { reglageProgrammation, estProgrammee, servieAujourdhui, decisionProgrammee, ordreProgrammeesPretesDabord } from "../_shared/publication-programmee.js";
+import { estApresRestrictionVinted } from "../_shared/reprise-apres-restriction.js";
 import { premiereSynchroAPoser, PREMIERE_SYNCHRO_JOURS_DEFAUT } from "../_shared/premiere-synchro.js";
 import { lectureOrigineEnAttente, contenuAImposer, messageLectureOrigine } from "../_shared/contenu-fiche.js";
 import { conformerTexte } from "../../../src/utils/texteConforme.js";
@@ -45,6 +46,8 @@ import { couleursVintedSansQuestion, marqueVintedSansQuestion, couleurRepublicat
 import { ecarterFormatDevine, formatChoisi, livraisonLbcAuService } from "../_shared/livraison-poids.js";
 import { decisionPoidsLbc, poidsManquantCompteExige } from "../_shared/poids-leboncoin.js";
 import { classementAgeEcrit, familleJeuVideo, ageBeebsDuClassement, ageBeebsJeuVideoLu } from "../../../src/utils/jeuxVideo.js";
+// (29/10, lot B 4.6) Un refus Beebs prouvé ne repart jamais à l'identique (même fonction que l'app).
+import { relanceRefusBeebs, messageRefusBeebsMemeContenu, SOURCE_REFUS_BEEBS_MEME_CONTENU } from "../../../src/utils/empreinteContenu.js";
 import { estFourreToutCatalogue } from "../../../src/utils/fourreTout.js";
 import { VINTED_COLORS } from "../../../src/utils/vintedColors.js";
 // (25/09) Les correctifs d'extension qui réarment un job dès qu'un poste à jour polle.
@@ -228,7 +231,7 @@ import { trancheLbcDepuisGrammes } from "../_shared/lbc-poids-tranche.js";
 import { poidsColisDeLAnnonceLbc } from "../_shared/lbc-poids-annonce.js";
 import { frereHorsLigne, retenueLevee, plateformesRetenuesPar, idsQuiRetiennent, MESSAGE_EN_FILE } from "../_shared/retenue-hors-ligne.js";
 import { localisationLbcATaper } from "../_shared/lbc-localisation.js";
-import { candidatesDepuisRetrait, depotInacheveLbc, depotPeutEtrePartiDepuis, jugerCandidates, urlsPhotos } from "../_shared/recreation-deja-partie.js";
+import { trierCandidatesDepuisRetrait, depotsAutresFiches, fichesDesJobs, numerosVusAvantRetrait, COLONNES_JOBS_AUTRES_FICHES, depotInacheveLbc, depotPeutEtrePartiDepuis, jugerCandidates, urlsPhotos } from "../_shared/recreation-deja-partie.js";
 import { decisionReleveVerif, motifReleveNonPris, messageReleveNonPris, releveServiDevant } from "../_shared/releve-verif-non-pris.js";
 import { depotPublicationPeutEtrePartiDepuis, candidatesDuDepot, urlsAnnonce, jugerCycleDepots } from "../_shared/depot-sans-numero.js";
 import { corrigerFeuilleLbc } from "../_shared/lbc-feuille-corrigee.js";
@@ -2585,10 +2588,14 @@ serve(async (req) => {
     // UNE seule est servie à la fois, marquée programmee_servie_le (le compte du jour). Réglage éteint : rien n'est
     // retenu, la file part comme avant. Une lecture bornée (les programmées servies depuis 36 h). Illisible → servi.
     const idsProgrammeesRetenues = new Set<string>();
+    // (29/10, lot B 4.7) La programmée choisie n'est MARQUÉE servie qu'en fin de chaîne, si elle part vraiment (après
+    // toutes les gardes et la réservation) : écartée plus bas (restriction Vinted, échéance, boutique), elle ne compte
+    // plus dans le plafond du jour. Les programmées dont l'échéance n'est pas venue passent derrière (même liste).
+    let programmeeAMarquer: string | null = null;
     if (!includeProcessing && !includeNeedsUser && out.length) {
       try {
         const reglageProg = reglageProgrammation(psProfil);
-        const enAttenteProg = reglageProg ? out.filter((j) => estProgrammee(j)) : [];
+        const enAttenteProg = reglageProg ? ordreProgrammeesPretesDabord(out.filter((j) => estProgrammee(j))) : [];
         if (enAttenteProg.length) {
           const depuis = new Date(Date.now() - 36 * 3600_000).toISOString();
           const { data: servies } = await userClient.from("cross_post_jobs")
@@ -2602,14 +2609,7 @@ serve(async (req) => {
           const derniere = lignes.reduce((m, l) => Math.max(m, Date.parse(String(l.servie ?? "")) || 0), 0) || null;
           const d = decisionProgrammee({ enAttente: enAttenteProg, reglage: reglageProg, servies: nServies, enVol, derniereServieMs: derniere });
           for (const id of d.retenues) idsProgrammeesRetenues.add(id);
-          if (d.servir) {
-            const j = out.find((x) => String(x.id) === d.servir);
-            const pfServie = { ...((j?.platform_fields ?? {}) as Record<string, unknown>), programmee_servie_le: new Date().toISOString() };
-            const { data: marque } = await userClient.from("cross_post_jobs").update({ platform_fields: pfServie })
-              .eq("id", d.servir).eq("status", "pending").select("id");
-            if (marque?.length && j) j.platform_fields = pfServie;
-            else idsProgrammeesRetenues.add(d.servir); // pas marquée : elle attend le poll suivant (jamais deux servies)
-          }
+          if (d.servir) programmeeAMarquer = d.servir;   // (29/10, lot B 4.7) marquée en fin de chaîne si elle part
           if (idsProgrammeesRetenues.size) {
             out = out.filter((j) => !idsProgrammeesRetenues.has(String(j.id)));
             console.log(`[get-pending-jobs] userId=${user.id} : publications programmées → ${idsProgrammeesRetenues.size} retenue(s) (${d.motif ?? "une_a_la_fois"}), ${d.servir ? "1 servie" : "aucune servie"} ; ${nServies} servie(s) aujourd'hui`);
@@ -2626,10 +2626,10 @@ serve(async (req) => {
     // poll), marquée reprise_restriction_jour ; le reste attend le lendemain, sans rien perdre. Illisible → servi.
     if (!includeProcessing && !includeNeedsUser && out.length) {
       try {
-        const motifRestriction = (j: { platform_fields?: unknown }) => String((((j.platform_fields ?? {}) as Record<string, unknown>)["pas_de_rouge"] as Record<string, unknown> | undefined)?.["motif"] ?? "");
-        const apresRestriction = out.filter((j) => String(j.platform) === "vinted"
-          && ["compte_restreint", "compte_restreint_echu"].includes(motifRestriction(j as { platform_fields?: unknown }))
-          && !((j.platform_fields ?? {}) as Record<string, unknown>)["reprise_restriction_jour"]);
+        // (29/10, lot B 4.10) _shared/reprise-apres-restriction.js : pas-de-rouge compte_restreint(_echu) OU retenue par
+        // la garde du serveur (restriction_compte, sans pas_de_rouge) ; seulement fin passée et échéance venue (jamais
+        // comptée dans le palier une tâche que la garde de l'échéance écarterait plus bas). Même palier, même compteur.
+        const apresRestriction = out.filter((j) => estApresRestrictionVinted(j));
         if (apresRestriction.length) {
           const aujourdhuiParis = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Paris" });
           const { data: cfgR } = await userClient.from("coin_config").select("value").eq("key", "vinted_reprise_restriction_jour").maybeSingle();
@@ -3235,6 +3235,32 @@ serve(async (req) => {
           console.warn(`[get-pending-jobs] retraits Beebs en vérification longue : ${String((e as Error)?.message ?? e)} — servis tels quels`);
         }
       }
+    }
+
+    // ══ (29/10, lot B 4.6 — XEWER) UN REFUS BEEBS PROUVÉ NE REPART JAMAIS À L'IDENTIQUE ══════════════════════════
+    // 10 jeux vidéo refusés à la vérification Beebs (refus prouvé, _shared/beebs-sortie-verification.js), relancés le
+    // 29/10 avec le même titre, la même description, les mêmes photos, le même rayon : 9 sur 10 refusés de nouveau.
+    // Une publication Beebs servie dont l'empreinte du contenu (src/utils/empreinteContenu.js, la fonction de l'app)
+    // est celle du refus n'est PAS déposée : needs_user « refus_beebs_meme_contenu », motif vrai, aucune tentative
+    // consommée (needsUserAttempts inchangé). Contenu changé, refus sans empreinte (d'avant le 29/10) : servie.
+    try {
+      const memeContenu = new Set<string>();
+      for (const j of out as unknown as Array<Record<string, unknown>>) {
+        if (j.platform !== "beebs" || j.status !== "pending" || !["publish", "republish"].includes(String(j.action ?? "publish"))) continue;
+        const rb = relanceRefusBeebs(j);
+        if (rb?.verdict !== "meme_contenu") continue;
+        memeContenu.add(String(j.id));
+        const pfB: Record<string, unknown> = { ...((j.platform_fields ?? {}) as Record<string, unknown>), needs_user_source: SOURCE_REFUS_BEEBS_MEME_CONTENU,
+          refus_beebs_meme_contenu: { le: new Date().toISOString(), empreinte: rb.refus.empreinte_contenu ?? null, numero_refuse: rb.refus.numero ?? null, pose_par: "get-pending-jobs" } };
+        delete pfB.processing_since;
+        const { error: wErr } = await userClient.from("cross_post_jobs")
+          .update({ status: "needs_user", error: messageRefusBeebsMemeContenu(j), platform_fields: pfAPersister(pfB) })
+          .eq("id", j.id as string).eq("status", "pending");
+        console.log(`[get-pending-jobs] ${String(j.id).slice(0, 8)} (beebs/${j.action ?? "publish"}) : refus Beebs prouvé, contenu identique (même empreinte) → RETENU needs_user ${SOURCE_REFUS_BEEBS_MEME_CONTENU}${wErr ? ` (écriture refusée : ${wErr.message})` : ""}`);
+      }
+      if (memeContenu.size) out = out.filter((j) => !memeContenu.has(String(j.id)));
+    } catch (e) {
+      console.warn(`[get-pending-jobs] refus Beebs à l'identique : ${String((e as Error)?.message ?? e)} — distribution normale`);
     }
 
     // ══ UN ARTICLE VENDU N'EST JAMAIS PUBLIÉ NI REPUBLIÉ (2026-09-25) ═══════
@@ -5702,6 +5728,18 @@ serve(async (req) => {
       console.warn(`[get-pending-jobs] catégorie d'origine : ${String((e as Error)?.message ?? e)} — distribution normale`);
     }
 
+    // (29/10, lot B 4.11) Les republications à l'étape 'deleted' que CE poll retient en attendant un relevé (dressing
+    // Vinted relu par la personne, vérification avant redépôt) : rien ne tourne pour elles. Rendues dans la réponse
+    // (`retenues_deleted`) : l'extension ne les compte plus comme « recréation en jeu » qui refuse sa mise à jour
+    // (2189c4d8 : 0.6.153 refusée à chaque cycle depuis 18:09:48 le 29/10, rien ne tournait).
+    const retenuesDeleted = new Set<string>();
+    const noterRetenuesDeleted = (liste: unknown, ids: Set<string>) => {
+      for (const j of (Array.isArray(liste) ? liste : []) as Array<Record<string, unknown>>) {
+        const pfJ = (j?.platform_fields ?? {}) as Record<string, unknown>;
+        if (ids.has(String(j?.id)) && j?.action === "republish" && String(pfJ.republish_step ?? "") === "deleted") retenuesDeleted.add(String(j.id));
+      }
+    };
+
     // ══ REDÉPÔT INTERROMPU : UNE ANNONCE EST PEUT-ÊTRE DÉJÀ PARTIE (2026-09-25) ══
     // Les Petites Fioles (f554a951) : un essai de recréation arrêté sur la page
     // /options (dépôt envoyé), rendu « pending », puis redéposé 8 min plus tard
@@ -5727,6 +5765,9 @@ serve(async (req) => {
       const suspects = (out as unknown as Array<Record<string, unknown>>).filter((j) =>
         j.action === "republish" && (j.platform === "leboncoin" || j.platform === "beebs") && j.status === "pending");
       const retirerDeLaFile = new Set<string>();
+      // (29/10, tiblancdeshaut c9fe1ee1) Les jobs du compte sur la plateforme, lus une fois par plateforme et
+      // seulement au jugement : leurs numéros et leurs fiches écartent les annonces d'une AUTRE fiche.
+      const jobsDuCompte = new Map<string, Array<Record<string, unknown>>>();
       for (const j of suspects) {
         const pf = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
         const plateforme = String(j.platform);
@@ -5851,9 +5892,29 @@ serve(async (req) => {
         const ancienId = String(pf["old_platform_listing_id"] ?? "").trim()
           || (String(pf["old_listing_url"] ?? "").match(/(\d{6,})(?:[/?#]|$)/)?.[1] ?? "");
         const { data: lignes } = await userClient.from("annonces_plateforme")
-          .select("listing_id, url, titre, prix, photo_url, capture, statut_plateforme, job_id, inventaire_id, created_at, disparu_le, publiee_le")
+          .select("listing_id, url, titre, prix, photo_url, capture, statut_plateforme, job_id, inventaire_id, created_at, disparu_le, proposition, publiee_le")
           .eq("platform", plateforme).gte("created_at", String(pf["deleted_at"])).limit(50);
-        const toutesCandidates = candidatesDepuisRetrait({ jobId: idJ, ancienId, deletedAt: pf["deleted_at"], lignes: lignes ?? [], inventaireId: j.inventaire_id ?? null });
+        // (29/10, tiblancdeshaut c9fe1ee1) Une annonce qu'une AUTRE fiche du compte désigne (numéro d'un de ses jobs,
+        // proposition du relevé, fiche rattachée) n'est pas cette copie : écartée, jamais rattachée
+        // (recreation-deja-partie.js motifAutreFiche). Lecture bornée : 60 jours, 1 000 jobs.
+        let jobsC = jobsDuCompte.get(plateforme);
+        if (!jobsC) {
+          const { data: jc, error: jcErr } = await userClient.from("cross_post_jobs").select(COLONNES_JOBS_AUTRES_FICHES)
+            .eq("user_id", user.id).eq("platform", plateforme)
+            .gte("created_at", new Date(Date.now() - 60 * 86_400_000).toISOString())
+            .order("created_at", { ascending: false }).limit(1000);
+          if (jcErr) console.warn(`[get-pending-jobs] redépôt ${court} : jobs du compte illisibles (${jcErr.message}) — aucune annonce écartée par numéro`);
+          jobsC = (jc ?? []) as unknown as Array<Record<string, unknown>>;
+          jobsDuCompte.set(plateforme, jobsC);
+        }
+        const tri = trierCandidatesDepuisRetrait({
+          jobId: idJ, ancienId, deletedAt: pf["deleted_at"], lignes: lignes ?? [], inventaireId: j.inventaire_id ?? null,
+          numerosAutres: depotsAutresFiches(jobsC, j.inventaire_id ?? null), fichesJobs: fichesDesJobs(jobsC),
+          // (29/10) Vue avant le retrait (listes « Mes annonces » de nos dépôts Beebs, mise en ligne Leboncoin) : écartée.
+          platform: plateforme, vusAvant: numerosVusAvantRetrait(jobsC, pf["deleted_at"]),
+        });
+        const toutesCandidates = tri.candidates;
+        const ecartees = tri.ecartees;
         // (29/10, louis 68e39f7c) Le dépôt Leboncoin inachevé d'un essai arrêté sur /options (statut « inactive »,
         // aucune date de mise en ligne) n'est pas en ligne et ne le sera jamais : il ne retient pas le redépôt.
         const inachevees = toutesCandidates.filter((c: Record<string, unknown>) =>
@@ -5880,6 +5941,7 @@ serve(async (req) => {
           apres: susp.at, le: new Date().toISOString(), releve: String(fait.id), verdict: juge.verdict,
           candidates: candidates.map((c: Record<string, unknown>) => String(c["listing_id"])),
           ...(inachevees.length ? { inachevees: inachevees.map((c: Record<string, unknown>) => String(c["listing_id"])) } : {}),
+          ...(ecartees.length ? { ecartees } : {}),
         };
 
         if (juge.verdict === "aucune") {
@@ -5921,10 +5983,11 @@ serve(async (req) => {
           `Une annonce ${nomPf} pourrait correspondre à cet article : ${liens.join(" ; ")}. ` +
           `On ne redépose pas, pour ne jamais la mettre en double (${raisons.join(", ")}). Regarde-la sur ${nomPf} : ` +
           "Confirme dans tes annonces s’il s’agit du même exemplaire. Ne supprime aucune annonce pour résoudre ce doute.",
-          { verdict: "incertaine", liens, raisons, releve: String(fait.id), essai: susp },
+          { verdict: "incertaine", liens, raisons, releve: String(fait.id), essai: susp, ...(ecartees.length ? { ecartees } : {}) },
         );
       }
       if (retirerDeLaFile.size) {
+        noterRetenuesDeleted(out, retirerDeLaFile);   // (29/10, lot B 4.11)
         out = out.filter((j) => !retirerDeLaFile.has(String(j.id)));
         console.log(`[get-pending-jobs] userId=${user.id} : ${retirerDeLaFile.size} republication(s) retenue(s) — annonce peut-être déjà partie, vérification avant redépôt`);
       }
@@ -6014,6 +6077,7 @@ serve(async (req) => {
           console.warn(`[get-pending-jobs] remise en ligne Vinted : vérification impossible (${String((e as Error)?.message ?? e)}) — ${retenusV.size} job(s) retenu(s) ce cycle`);
         }
         if (retenusV.size) {
+          noterRetenuesDeleted(out, retenusV);   // (29/10, lot B 4.11)
           out = out.filter((j) => !retenusV.has(String(j.id)));
           console.log(`[get-pending-jobs] userId=${user.id} : ${retenusV.size} remise(s) en ligne Vinted retenue(s) — dressing relu avant tout nouvel essai`);
         }
@@ -12871,10 +12935,19 @@ serve(async (req) => {
             ? (pf.republish_snapshot as Record<string, unknown>) : null;
           const nuf = (pf.needsUserField && typeof pf.needsUserField === "object")
             ? (pf.needsUserField as Record<string, unknown>) : null;
+          // (29/10, lot B 4.1 — mele.marta 2fd83d73) Les racines d'une question « categoryLevelChoice » de CE job (posée,
+          // mise de côté pour le moteur, retirée par la pause d'attente de la mise à jour, ou levée par une relance) :
+          // Vinted les a affichées à ce compte, elles disent la langue de sa page — vinted_ids_actifs servi si le pays de
+          // cette langue est ouvert.
+          const qCat = [nuf, (pf.rayon_moteur_attendu as Record<string, unknown> | undefined)?.question,
+            (pf.attente_maj_extension as Record<string, unknown> | undefined)?.question,
+            (pf.relance_apres_maj as Record<string, unknown> | undefined)?.question_levee]
+            .find((q) => q && typeof q === "object" && String((q as Record<string, unknown>).field_key ?? "") === "categoryLevelChoice") as Record<string, unknown> | undefined;
           // La langue de la page, lue sur ce que Vinted a montré à ce compte.
           const langue = langueVintedDuJob({
             racineCapturee: Array.isArray(snap?.categoryPath) ? (snap!.categoryPath as unknown[])[0] : null,
             listeEtatsRelevee: nuf && String(nuf.field_key ?? "") === "condition" ? nuf.allowed_values : undefined,
+            racinesQuestion: qCat?.allowed_values,
           });
           // Le pays : la sonde d'abord ; sinon celui de la langue lue — JAMAIS
           // pour l'anglais : un compte en anglais sur vinted.fr peut être un
@@ -13304,6 +13377,34 @@ serve(async (req) => {
       if (out.length !== avant) console.log(`[get-pending-jobs] userId=${user.id} : ${avant - out.length} job(s) retenu(s) à la dernière porte (plateforme écartée ou Leboncoin hors de France)`);
     }
 
+    // ══ (29/10, lot B 4.7) LA PUBLICATION PROGRAMMÉE N'EST MARQUÉE SERVIE QUE SI ELLE PART VRAIMENT ══
+    // Choisie plus haut (une à la fois), elle a passé TOUTES les gardes et la réservation de ce poste : c'est ici, et
+    // seulement ici, que programmee_servie_le est posé (le compte du jour, l'espacement). Écartée en route : rien n'est
+    // écrit, elle reste programmée. Marque écrite sur la ligne EN BASE (jamais la copie servie, que des gardes ont pu
+    // ajuster pour ce seul envoi) ; impossible à écrire → retenue jusqu'au poll suivant (jamais deux servies).
+    if (programmeeAMarquer) {
+      const idP = programmeeAMarquer;
+      const jP = out.find((x) => String(x.id) === idP);
+      if (jP) {
+        let marquee = false;
+        try {
+          const { data: ligneP } = await userClient.from("cross_post_jobs").select("platform_fields").eq("id", idP).eq("status", "pending").maybeSingle();
+          if (ligneP) {
+            const le = new Date().toISOString();
+            const pfBase = { ...(((ligneP as { platform_fields?: unknown }).platform_fields ?? {}) as Record<string, unknown>), programmee_servie_le: le };
+            const { data: marque } = await userClient.from("cross_post_jobs").update({ platform_fields: pfAPersister(pfBase) })
+              .eq("id", idP).eq("status", "pending").select("id");
+            if (marque?.length) { marquee = true; jP.platform_fields = { ...((jP.platform_fields ?? {}) as Record<string, unknown>), programmee_servie_le: le }; }
+          }
+        } catch (_e) { /* marque impossible : retenue ci-dessous */ }
+        if (!marquee) {
+          out = out.filter((x) => String(x.id) !== idP);
+          idsProgrammeesRetenues.add(idP);
+          console.log(`[get-pending-jobs] userId=${user.id} : publication programmée ${idP.slice(0, 8)} non marquée servie — retenue jusqu'au poll suivant`);
+        }
+      }
+    }
+
     const _outIds = new Set(out.map((j) => String(j.id)));
     const _nowMs = Date.now();
     // ── (18/10, zéro friction, point A — décision de Nico) ────────────────────
@@ -13578,6 +13679,8 @@ serve(async (req) => {
       // retenu (cf. bandeau ci-dessus) : « il reste du travail, ne dors pas ».
       sync_prioritaire: travailRetenu > 0,
       jobs_retenus_sync: travailRetenu,
+      // (29/10, lot B 4.11) Republications 'deleted' retenues par CE poll (relevé attendu) : pas « en jeu » pour la MAJ.
+      retenues_deleted: [...retenuesDeleted],
       keepalive_actif: keepaliveActif,
       // prevol_copie_actif (2026-09-23) : interrupteur du pré-vol de la copie.
       // false = la garde ne vérifie plus rien (extension ≥ 0.6.60).

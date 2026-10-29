@@ -313,6 +313,17 @@ import {
 } from "./etat-plateformes.js";
 // Refus du fournisseur d'IA → journal lu par l'ops-digest (01/10).
 import { noterEchecFournisseur } from "./echecs-fournisseurs.ts";
+// (29/10, lot B 1.3) Les consignes du vendeur : la même règle que l'écran Réglages › Rédaction.
+import { directiveConsignes, consigneSansHashtag, consigneSansEmoji } from "../../../src/utils/consignesRedaction.js";
+
+/** (29/10, lot B 1.3) Le texte GÉNÉRÉ tient « pas de hashtags » / « pas d'émojis » des consignes, même si le modèle s'en écarte. */
+function respecterConsignes(texte: string, consignes?: Record<string, unknown> | null): string {
+  let t = String(texte ?? "");
+  if (!consignes) return t;
+  if (consigneSansHashtag(consignes)) t = t.replace(/(^|\s)#[\p{L}\p{N}_-]+/gu, "$1").replace(/[ \t]+\n/g, "\n");
+  if (consigneSansEmoji(consignes)) t = t.replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}]/gu, "");
+  return t.replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+}
 // Le module partagé est en .js — la seule forme que Deno ET Vite savent lire
 // sans transpilation. TypeScript en infère des types littéraux très étroits,
 // alors que ce fichier-ci indexe la table avec un nom de plateforme
@@ -333,11 +344,17 @@ function clampToWord(s: string, max: number): string {
 // ── Contexte article commun aux rédacteurs (extrait tel quel) ───────────────
 // familleLivresMedias : l'appelant fournit le booléen (generate-listing via
 // retouchProfileFor, lens-analysis via la famille de son analyse).
-export function construireContexteArticle({ item, canonicalProvided, familleLivresMedias }: {
+export function construireContexteArticle({ item, canonicalProvided, familleLivresMedias, noteVendeur = null }: {
   item: { titre?: string; marque?: string; description?: string; type?: string };
   canonicalProvided: Record<string, string>;
   familleLivresMedias: boolean;
+  /**
+   * (29/10, lot B 1.3 — promesse XEWER) Ce que le vendeur a dit de l'article (note du viseur Lens, « précision pour
+   * la rédaction » de l'écran de publication), dicté au micro ou tapé. Absente = contexte d'avant, à l'identique.
+   */
+  noteVendeur?: string | null;
 }): { itemContext: string; canonicalCtx: string[] } {
+    const note = String(noteVendeur ?? "").replace(/[<>]/g, "").trim().slice(0, 1200);
     // ── Step 3: Claude Haiku — title + description per platform ──────────────
     // Champs canoniques connus (client) : injectés comme CONTRAINTES — chaque
     // prompt plateforme doit les recopier tels quels au lieu de ré-inférer
@@ -362,6 +379,8 @@ export function construireContexteArticle({ item, canonicalProvided, familleLivr
       item.titre && `Article: ${item.titre}`,
       item.type && `Type: ${item.type}`,
       item.description && `Description: ${item.description}`,
+      // (29/10, lot B 1.3) La note du vendeur (dictée ou tapée) : elle fait foi sur l'état et les détails qu'elle dit.
+      note && `Ce que le vendeur dit de son article (fait foi sur l'état et les détails qu'il nomme) : ${note}`,
       // ⚠️ `item.statut` VOLONTAIREMENT ABSENT du contexte (2026-07-28, lot 2).
       // Il était envoyé sous le libellé « État: stock » — or c'est le STATUT
       // D'INVENTAIRE (inventaire.statut : stock | vendu, ou le littéral "stock"
@@ -458,7 +477,13 @@ const directiveEtatImpose = (etat: string) =>
   `en particulier, n'applique PAS le repli « Très bon état » ci-dessus, il ne vaut que lorsque l'état est inconnu. ` +
   `Si tu ne mentionnes pas l'état du tout, c'est très bien aussi.`;
 
-export async function redigerAnnoncesPlateformes({ apiKey, platforms, itemContext, item, canonicalProvided, trackClaude, descriptionFournie, titreFourni, langues }: {
+export async function redigerAnnoncesPlateformes({ apiKey, platforms, itemContext, item, canonicalProvided, trackClaude, descriptionFournie, titreFourni, langues, consignes }: {
+  /**
+   * (29/10, lot B 1.3 — promesse XEWER) Les consignes du vendeur (profiles.platform_settings.redaction.consignes) :
+   * ajoutées au prompt de CHAQUE plateforme. Absentes = prompt d'avant, à l'octet près. Elles ne touchent jamais un
+   * texte fourni par le vendeur (descriptionFournie / titreFourni : rien n'est rédigé pour ces champs).
+   */
+  consignes?: Record<string, unknown> | null;
   /**
    * Langue de sortie PAR plateforme (zone euro, 25/09) — p. ex. { vinted: "it" }.
    * Absente pour une plateforme = sa langue habituelle (cfg.lang), à l'identique.
@@ -533,7 +558,9 @@ export async function redigerAnnoncesPlateformes({ apiKey, platforms, itemContex
               system: `${cfg.system}\n${(langues?.[platform] && LANG_DIRECTIVE[langues[platform]]) || LANG_DIRECTIVE[cfg.lang] || LANG_DIRECTIVE.fr}\n${redactionDirective(platform, cfg.lang)}`
                 + (descVendeuse ? `\n${DIRECTIVE_DESCRIPTION_FOURNIE}` : "")
                 + (titreVendeuse ? `\n${DIRECTIVE_TITRE_FOURNI}` : "")
-                + (canonicalProvided.etat ? `\n${directiveEtatImpose(canonicalProvided.etat)}` : ""),
+                + (canonicalProvided.etat ? `\n${directiveEtatImpose(canonicalProvided.etat)}` : "")
+                // (29/10, lot B 1.3) Les consignes du vendeur, en dernier : elles portent sur la forme du texte généré.
+                + (directiveConsignes(consignes) ? `\n${directiveConsignes(consignes)}` : ""),
               messages: [{ role: "user", content: userMsg }],
             }),
           });
@@ -570,7 +597,8 @@ export async function redigerAnnoncesPlateformes({ apiKey, platforms, itemContex
                     : tempererMajuscules(lim ? clampToWord(brutTitle, lim.titre) : brutTitle, item?.marque),
                   // La description de la vendeuse passe INTACTE : ni tronquée,
                   // ni reformulée, quelle que soit la limite de la plateforme.
-                  description: descVendeuse ?? (lim ? clampToWord(brutDesc, lim.desc) : brutDesc),
+                  // (29/10, lot B 1.3) « Pas de hashtags » / « pas d'émojis » des consignes : tenus sur le texte GÉNÉRÉ.
+                  description: descVendeuse ?? respecterConsignes(lim ? clampToWord(brutDesc, lim.desc) : brutDesc, consignes),
                   platform_fields: parsed.platform_fields ?? {},
                 };
               } catch (parseErr) {

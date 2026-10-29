@@ -32,6 +32,7 @@
 // d'une réponse « chemin complet » avant de servir le job).
 
 import { CATALOGUE_VINTED_FR } from "./vinted-catalogue-fr.js";
+import { langueEtrangereDesRacines } from "./vinted-pays.ts";
 import { FEUILLES as FEUILLES_BEEBS } from "../../../src/utils/arbres/beebsFeuilles.js";
 import { FEUILLES as FEUILLES_LBC } from "../../../src/utils/arbres/leboncoinFeuilles.js";
 
@@ -315,6 +316,10 @@ export function rayonRefuseDuJob(job) {
   if (job?.platform === "vinted" && job.status === "needs_user") {
     const nf = pf.needsUserField;
     if (!nf || nf.field_key !== "categoryLevelChoice") return null;
+    // ⛔ (29/10, lot B 4.1 — mele.marta 2fd83d73) Des racines d'une AUTRE langue (« Elettronica, Libri e media… »)
+    //    ne prouvent aucun refus : Vinted a servi la page dans la langue du compte et le rayon était juste (3026). Le
+    //    libellé français est seulement introuvable — même règle que « seul un refus prouvé est un refus ».
+    if (langueEtrangereDesRacines(nf.allowed_values)) return null;
     const snap = (pf.republish_snapshot && typeof pf.republish_snapshot === "object") ? pf.republish_snapshot : {};
     const brut = job.action === "republish" ? snap.categoryPath : pf.categoryPath;
     const base = prefixeVintedConnu(brut);

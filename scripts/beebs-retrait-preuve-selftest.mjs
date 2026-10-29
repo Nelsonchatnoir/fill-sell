@@ -63,7 +63,9 @@ const extraire = (nom) => {
   return bj.slice(d, f + 2);
 };
 // (25/10) + jugerConstats404Beebs : preuveAbsenceMesAnnonces juge les constats « page 404 » d'un retrait.
-const src = [extraire("produitVenduSurBeebs"), extraire("jugerConstats404Beebs"), extraire("preuveAbsenceMesAnnonces"), extraire("preuveRetraitDepuis"), extraire("confirmerRetraitParMesAnnonces")].join("\n");
+// (29/10, lot B 4.9) + la règle « suppression envoyée + deux 404 après l'envoi » et le résumé de la lecture (R6).
+const src = [bj.match(/^const REGLE_SUPPRESSION_ENVOYEE_404 = .*$/m)?.[0] ?? "", extraire("produitVenduSurBeebs"), extraire("jugerConstats404Beebs"), extraire("jugerConstats404ApresEnvoi"),
+  extraire("resumeLectureMesAnnonces"), extraire("preuveAbsenceMesAnnonces"), extraire("preuveRetraitDepuis"), extraire("confirmerRetraitParMesAnnonces")].join("\n");
 // (04/10) La page de l'annonce et l'index, simulés : par défaut ILLISIBLES
 // (aucune réponse), donc jamais une preuve par accident.
 const fabrique = (lectures, { pageAnnonce = { http: null, produit: false }, index = null } = {}) => {
@@ -178,7 +180,8 @@ console.log("\n3 ter. (25/10) UN RETRAIT : DEUX CONSTATS « PAGE 404 » À 6 H D
   // Le câblage : retrait seulement, constats rendus, gardés par le background, attente datée côté serveur.
   const dlb = bj.slice(bj.indexOf("async function deleteListing(job)"), bj.indexOf("// ⚠️⚠️ AUCUNE MESURE DE LAYOUT DANS CE FICHIER"));
   ok(/const ctxPreuve = job\?\.action === "delete"/.test(dlb) && (dlb.match(/beebs404Constats: preuve\.lecture\.constats404/g) ?? []).length === 1
-    && (dlb.match(/\.\.\.constatsDe\(preuve\)/g) ?? []).length === 3, "deleteListing : constats du job pour un RETRAIT seulement, rendus au background à chaque reprise");
+    // (29/10, lot B 4.9) 3 reprises + la sortie « absente » (sortieAbsente) : les constats et le résumé de la lecture partent aussi.
+    && (dlb.match(/\.\.\.constatsDe\(preuve\)/g) ?? []).length === 4, "deleteListing : constats du job pour un RETRAIT seulement, rendus au background à chaque reprise");
   ok(/MESSAGE_CONSTAT_404_BEEBS/.test(dlb) && /Beebs ne montre plus cette annonce/.test(bj) && !/reste en vente/.test(bj.slice(bj.indexOf("const MESSAGE_CONSTAT_404_BEEBS"), bj.indexOf("const MESSAGE_CONSTAT_404_BEEBS") + 500)),
     "le message d'un constat est vrai (introuvable, hors vérification, index en retard) — jamais « encore en vente »");
   const bgr = lire("chrome-extension/background.js");
@@ -187,9 +190,12 @@ console.log("\n3 ter. (25/10) UN RETRAIT : DEUX CONSTATS « PAGE 404 » À 6 H D
     && rep.indexOf("job.platform_fields = pfC;") < rep.indexOf("await rearmBounded(accessToken, job"), "background : les constats sont posés sur le job AVANT rearmBounded (la trace survit à la reprise)");
   const uj = lire("supabase/functions/update-job-status/index.ts");
   const b404 = uj.slice(uj.indexOf("RETRAIT BEEBS : PAGE 404 CONSTATÉE"), uj.indexOf("RETRAIT BEEBS : PAGE 404 CONSTATÉE") + 4000);
-  ok(/constats404Beebs\(body\.platform_fields/.test(b404) && /jrow404\?\.action === "delete" && jrow404\.platform === "beebs"/.test(b404)
+  // (29/10, lot B 4.9) Les constats d'un retrait : ceux du 25/10, ou — après une suppression ENVOYÉE — ceux d'après l'envoi ;
+  // le message dit alors l'envoi (messageRetraitBeebsApresEnvoi404).
+  ok(/constats404DuRetraitBeebs\(pfCorps404\)/.test(b404) && /jrow404\?\.action === "delete" && jrow404\.platform === "beebs"/.test(b404)
     && /needsUserAttempts: Number\(pfBase404\.needsUserAttempts \?\? 0\) \|\| 0/.test(b404) && /next_action_after: attente\.prochain/.test(b404)
-    && /statutEffectif = "pending";/.test(b404) && /messageEffectif = messageRetraitBeebs404\(constats404\);/.test(b404),
+    && /statutEffectif = "pending";/.test(b404)
+    && /messageEffectif = constats404Beebs\(pfCorps404\)\.length \? messageRetraitBeebs404\(constats404\) : messageRetraitBeebsApresEnvoi404\(pfCorps404\);/.test(b404),
     "update-job-status : attente du second constat = pending, aucun essai consommé, prochain essai à 6 h du premier, message vrai");
   ok(uj.indexOf("RETRAIT BEEBS : PAGE 404 CONSTATÉE") > uj.indexOf("const RETRAIT_VERIF_BEEBS_RE") && /if \(!pfRetraitVerif && !pfCanalCoupe/.test(b404),
     "… après la règle « en vérification » (qui garde la main), jamais par-dessus un canal coupé");
@@ -215,7 +221,8 @@ console.log("\n3 ter. (25/10) UN RETRAIT : DEUX CONSTATS « PAGE 404 » À 6 H D
 
 console.log("\n4. LES CHEMINS DE CLÔTURE");
 const dl = bj.slice(bj.indexOf("async function deleteListing(job)"), bj.indexOf("// ⚠️⚠️ AUCUNE MESURE DE LAYOUT DANS CE FICHIER"));
-ok((dl.match(/await confirmerRetraitParMesAnnonces\(idCible, t\)/g) ?? []).length === 2, "les deux chemins (page de l'annonce, carte) relisent « Mes annonces » après la confirmation");
+// (29/10, lot B 4.9 C) chaque chemin dit comment l'annonce a été vue en ligne avant l'envoi (bouton de sa page, de sa carte).
+ok((dl.match(/await confirmerRetraitParMesAnnonces\(idCible, t, \{ par: "(bouton_page|carte_mes_annonces)" \}\)/g) ?? []).length === 2, "les deux chemins (page de l'annonce, carte) relisent « Mes annonces » après la confirmation");
 ok(!/return \{ success: true \}/.test(dl) && !/return \{ success: true, trace \}/.test(dl), "aucun succès sans preuve dans deleteListing");
 // (25/10) Les deux appels portent le contexte du retrait (ses constats « page 404 ») : ctxPreuve.
 ok((dl.match(/await preuveAbsenceMesAnnonces\(idCible, t, ctxPreuve\)/g) ?? []).length === 2, "page sans bouton / carte introuvable : la liste complète tranche");

@@ -44,7 +44,7 @@
 import { releveComplet } from "./introuvable-a-confirmer.js";
 import { trancherParPhotos } from "./annonce-partagee.js";
 import { numeroteeAvantLeDepot } from "./retrait-introuvable.js";
-import { urlsPhotos, depotInacheveLbc } from "./recreation-deja-partie.js";
+import { urlsPhotos, depotInacheveLbc, motifAutreFiche, preuveVueAvantRetrait } from "./recreation-deja-partie.js";
 
 export const SOURCES_DEPOT_COUPE = Object.freeze(["recreation_deja_partie", "depot_deja_parti"]);
 export const PLATEFORMES_DEPOT_COUPE = Object.freeze(["leboncoin", "beebs"]);
@@ -130,8 +130,20 @@ export function presenceCandidate(c, lignes, probants) {
   return { etat: "presente", preuve: sans.length ? "absente d'un seul relevé complet depuis sa dernière vue" : "vue au dernier relevé" };
 }
 
-/** Les annonces qui peuvent être ce dépôt (sans juger leur présence). */
-export function candidatesDepotCoupe(job, lignes) {
+/**
+ * Les annonces qui peuvent être ce dépôt (sans juger leur présence).
+ * (29/10, tiblancdeshaut c9fe1ee1) `opts.numerosAutres` (numéros donnés par les jobs d'une AUTRE fiche du compte :
+ * depotsAutresFiches) et `opts.fichesJobs` (jobId → fiche : fichesDesJobs) écartent aussi l'annonce qu'une autre
+ * fiche désigne par son numéro ou par la proposition du relevé — exclusion seulement, jamais un rattachement
+ * (recreation-deja-partie.js motifAutreFiche). `opts.vusAvant` (numerosVusAvantRetrait) : une remise en ligne
+ * (recreation_deja_partie) écarte l'annonce vue avant le retrait — liste « Mes annonces » de nos dépôts, ou mise en
+ * ligne Leboncoin (preuveVueAvantRetrait). Jamais pour un dépôt coupé (depot_deja_parti) : son repère est la fin de
+ * l'essai, heure du poste, et le dépôt a pu partir avant. Sans eux : les candidates d'avant le 29/10.
+ * @param {any} job
+ * @param {any[]} lignes
+ * @param {{ numerosAutres?: Set<string> | Map<string, any> | null, fichesJobs?: Map<string, string> | null, vusAvant?: Map<string, { lu_le: string, job_id: string }> | null }} [opts]
+ */
+export function candidatesDepotCoupe(job, lignes, { numerosAutres = null, fichesJobs = null, vusAvant = null } = {}) {
   const rep = reperesDuJob(job);
   if (!Number.isFinite(rep.depuis)) return [];
   const ancien = idNum(rep.ancienId);
@@ -145,16 +157,25 @@ export function candidatesDepotCoupe(job, lignes) {
     const id = String(l.listing_id);
     if (vus.has(id) || id === String(rep.ancienId || "")) continue;
     if (l.retiree_le) continue;
-    // Rattachée à un autre job ou à une autre fiche : ce n'est pas ce dépôt.
+    // Rattachée à un autre job ou à une autre fiche : ce n'est pas ce dépôt. (29/10) La fiche de ce job, lue dans
+    // `fichesJobs`, dit aussi « même fiche ».
     if (l.job_id && String(l.job_id) !== String(job?.id)) {
-      const memeFiche = inv != null && l.inventaire_id != null && String(l.inventaire_id) === inv;
+      const memeFiche = inv != null && ((l.inventaire_id != null && String(l.inventaire_id) === inv)
+        || (fichesJobs instanceof Map && fichesJobs.get(String(l.job_id)) === inv));
       if (!memeFiche) continue;
     }
     if (l.inventaire_id != null && inv != null && String(l.inventaire_id) !== inv) continue;
+    if ((numerosAutres || fichesJobs)
+      && motifAutreFiche(l, { jobId: job?.id, inventaireId: inv, numerosAutres, fichesJobs, avecFicheLigne: false })) continue;
     const cree = ms(l.created_at);
     if (!Number.isFinite(cree) || cree < rep.depuis) continue;
     const n = idNum(id);
     if (ancien != null && n != null && n <= ancien) continue;
+    if (vusAvant instanceof Map && rep.source === "recreation_deja_partie"
+      && preuveVueAvantRetrait(String(job?.platform ?? ""), l, { deletedAt: job?.platform_fields?.deleted_at, vusAvant })) continue;
+    // (29/10) Le plancher ne se nourrit pas des numéros de NOS dépôts confirmés : leur depot_confirme_le est l'heure
+    // du POSTE (horloge_client_ecart_s le mesure), et un poste en retard de plus de 10 min ferait passer un numéro né
+    // après l'essai pour antérieur — un redépôt en double. Seules les premières vues des relevés (heure serveur).
     if (rep.source === "depot_deja_parti"
       && numeroteeAvantLeDepot(String(job.platform), l, { lignes, depotLe: new Date(rep.essai).toISOString() })) continue;
     vus.add(id);
@@ -170,16 +191,17 @@ export function urlsCandidate(c) {
 
 /**
  * LA DÉCISION, pure.
- * @param {{ job: any, lignes: any[], runs: any[], empreinte: (url: string) => any }} arg
+ * @param {{ job: any, lignes: any[], runs: any[], empreinte: (url: string) => any, numerosAutres?: Set<string> | Map<string, any> | null, fichesJobs?: Map<string, string> | null, vusAvant?: Map<string, { lu_le: string, job_id: string }> | null }} arg
  *   job       : le job en question (id, user_id, platform, action, status, photos, inventaire_id, platform_fields) ;
  *   lignes    : annonces_plateforme de la plateforme créées depuis le retrait / l'essai — celles du compte, et les
  *               lignes d'AUTRES comptes portant les mêmes numéros (boutique partagée : leur vu_le compte) ;
  *   runs      : relevés « annonces » de CE compte sur la plateforme (status, started_at, finished_at, items_vus,
  *               total_entries, erreur, id) ;
- *   empreinte : url → ligne photo_empreintes, ou undefined.
+ *   empreinte : url → ligne photo_empreintes, ou undefined ;
+ *   numerosAutres, fichesJobs, vusAvant : (29/10, facultatifs) voir candidatesDepotCoupe.
  * @returns {{ decision: 'rattacher'|'relancer'|'empreintes'|'question'|'attendre', raison: string, [k: string]: any }}
  */
-export function decisionDepotCoupe({ job, lignes = [], runs = [], empreinte = () => undefined }) {
+export function decisionDepotCoupe({ job, lignes = [], runs = [], empreinte = () => undefined, numerosAutres = null, fichesJobs = null, vusAvant = null }) {
   if (!estDepotCoupe(job)) return { decision: "attendre", raison: "pas une question « peut-être déjà partie »" };
   const pf = job.platform_fields ?? {};
   if ((Number(pf.relance_depot_coupe?.n) || 0) >= RELANCES_MAX) {
@@ -193,7 +215,7 @@ export function decisionDepotCoupe({ job, lignes = [], runs = [], empreinte = ()
   if (!apresEssai.length) return { decision: "attendre", raison: "aucun relevé complet après l'essai" };
   const dernier = apresEssai.reduce((a, b) => (ms(b.started_at) > ms(a.started_at) ? b : a));
 
-  const candidates = candidatesDepotCoupe(job, lignes);
+  const candidates = candidatesDepotCoupe(job, lignes, { numerosAutres, fichesJobs, vusAvant });
   // (29/10, louis 68e39f7c) Le dépôt Leboncoin inachevé d'un essai arrêté sur /options (statut « inactive », aucune
   // date de mise en ligne) n'est pas en ligne et ne le sera jamais : il ne retient pas le redépôt
   // (recreation-deja-partie.js depotInacheveLbc).

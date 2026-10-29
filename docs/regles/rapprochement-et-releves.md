@@ -435,3 +435,19 @@ trois relevés et deux reprises lancés tout seuls, aucun Vinted abouti, un faux
 - Après coup : `fiche_releve_doublon_resorber` absorbe (fusionne_dans + `inventaire_fusions`) une fiche née d'un relevé
   ET intacte ; sinon rend la raison (« à signaler ») — jamais une fiche avec vente, autre annonce ou job en cours.
 - Selftest `selftest:releve-identifiant-avant-fiche` ; essai `scripts/essais/20261027120000_essai.sql` (18/18).
+
+## 29/10 (lot B 4.2) — la garde anti-doublon d'une remise en ligne ne cite plus une annonce sans rapport (tiblancdeshaut)
+- **Cas** : sweat GAP (c9fe1ee1, Beebs) : « 2 annonces apparues depuis le retrait » = un sac Michael Kors et un pantalon de
+  ski, déposés AVANT le retrait mais vus pour la première fois par un relevé après (aucun relevé entre le 26/10 12:21 et
+  le 28/10 08:15). Même défaut Leboncoin (« Service à thé » 1660ea94, 08/10).
+- **Règle** (`_shared/recreation-deja-partie.js` trierCandidatesDepuisRetrait, `_shared/depot-coupe-tranche.js`) : une
+  candidate est ÉCARTÉE — jamais rattachée — si (1) elle a été VUE AVANT le retrait : son numéro figure dans une liste
+  « Mes annonces » lue par nos dépôts Beebs avant `deleted_at − 15 min` (heure du poste), ou Leboncoin la dit mise en
+  ligne (`publiee_le`) avant `deleted_at − 5 min` (horloges serveur ; mesuré : notre redépôt est toujours en ligne ≥ 3,4 min
+  après le retrait) ; (2) son numéro est celui qu'un autre job du compte a confirmé sur une AUTRE fiche
+  (platform_listing_id, new_platform_listing_id, preuve_identifiant_beebs.id, lbc_depot.adsubmit.id) ; (3) sa ligne
+  (inventaire_id, job_id, proposition) désigne une autre fiche. Même fiche : reste candidate. Les écartées et leur motif
+  partent dans `recreation_verifiee` / `recreation_deja_partie.ecartees`. Jamais sur le titre.
+- La règle « vue avant le retrait » ne vaut que pour une remise en ligne (repère `deleted_at` serveur), jamais pour un
+  dépôt coupé `depot_deja_parti` (repère = fin de l'essai, heure du poste).
+- Selftests : `recreation-deja-partie` (§ 6-7), `depot-coupe-tranche` (§ 10-11).

@@ -223,11 +223,79 @@ export async function transcrireAudio({ audio, mime, lang, dureeMs }) {
   return { erreur: fr ? "La transcription a échoué — réessaie. Ton texte n'a pas été touché." : "Transcription failed — try again. Your text wasn't touched." };
 }
 
-/** Ajoute le texte dicté APRÈS ce qui est déjà écrit — jamais à la place. */
-export function ajouterDictee(existant, dicte) {
+/** Ajoute le texte dicté APRÈS ce qui est déjà écrit — jamais à la place.
+ *  (29/10, lot B 1.3) `separateur` : un espace (titre, nom, message) ou un saut
+ *  de ligne (description) entre l'existant et la dictée ; rien d'autre n'est admis. */
+export function ajouterDictee(existant, dicte, separateur = ' ') {
   const a = String(existant ?? '');
   const b = String(dicte ?? '').trim();
   if (!b) return a;
   if (!a.trim()) return b;
-  return `${a.replace(/\s+$/, '')} ${b}`;
+  return `${a.replace(/\s+$/, '')}${separateur === '\n' ? '\n' : ' '}${b}`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LA DICTÉE PARTOUT (29/10, lot B 1.3) — ce que partagent les micros des champs
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Où remettre le curseur après une dictée. Le texte s'ajoute À LA FIN : un
+ *  curseur posé au bout du texte suit l'ajout ; un curseur posé AILLEURS (la
+ *  personne corrigeait un mot) reste où il était. `selection` : { debut, fin }
+ *  lus avant l'ajout ; `longueur` : la longueur du champ APRÈS (un plafond de
+ *  caractères a pu couper). */
+export function curseurApresDictee(avant, selection, longueur) {
+  const n = Math.max(0, Number(longueur) || 0);
+  const finTexte = String(avant ?? '').replace(/\s+$/, '').length;
+  if (!selection || selection.debut == null || selection.fin == null || selection.fin >= finTexte) return { debut: n, fin: n };
+  return { debut: Math.min(selection.debut, n), fin: Math.min(selection.fin, n) };
+}
+
+// UN SEUL MICRO À LA FOIS DANS L'APP. Le micro qui démarre arrête celui qui
+// écoutait : l'enregistrement de l'autre part quand même à la transcription,
+// dans SON champ — rien de ce qui a été dit n'est perdu, et deux micros ne
+// s'ouvrent jamais ensemble. Rend la fonction qui libère la place (sans effet
+// si un autre micro l'a prise entre-temps).
+let microEnCours = null;
+export function reserverMicro(arreter) {
+  const jeton = { arreter };
+  const precedent = microEnCours;
+  microEnCours = jeton;
+  if (precedent) { try { precedent.arreter?.(); } catch { /* déjà arrêté */ } }
+  return () => { if (microEnCours === jeton) microEnCours = null; };
+}
+/** Pour les tests : un micro tient-il la place ? */
+export function microReserve() { return microEnCours !== null; }
+
+/**
+ * LA RECONNAISSANCE DU NAVIGATEUR EN MODE CONTINU (micro du Lens, sur le web).
+ * LE DÉFAUT LU DANS LE CODE (App.jsx, toggleLensMic) : avec `continuous = true`,
+ * `e.results` est la liste de TOUS les résultats de la session, pas le dernier ;
+ * `Array.from(e.results).map(r => r[0].transcript).join(" ")` recollait donc à
+ * chaque événement tout ce qui avait déjà été versé au champ — « robe », puis
+ * « robe robe rouge », puis « robe robe rouge robe rouge taille M ».
+ * Chrome Android, lui, rend des résultats CUMULÉS (« robe », « robe rouge ») :
+ * un résultat qui reprend toute la session la REMPLACE au lieu de s'y ajouter.
+ *   · resultats : [{ texte, final }] dans l'ordre de e.results (un résultat
+ *     provisoire — final === false — ne compte pas) ;
+ *   · dejaVerse : la `session` rendue à l'événement précédent ('' au départ).
+ * Rend { ajout, session } : `ajout` = les mots NEUFS seulement (peut être vide),
+ * `session` = à repasser au prochain événement.
+ */
+export function fusionnerResultatsReconnaissance(dejaVerse, resultats) {
+  const propre = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
+  const comparable = (s) => propre(s).toLocaleLowerCase();
+  let session = '';
+  for (const r of Array.isArray(resultats) ? resultats : []) {
+    if (!r || r.final === false) continue;
+    const t = propre(r.texte);
+    if (!t) continue;
+    session = session && comparable(t).startsWith(comparable(session)) ? t : (session ? `${session} ${t}` : t);
+  }
+  const deja = propre(dejaVerse);
+  const motsDeja = deja ? deja.split(' ') : [];
+  const mots = session ? session.split(' ') : [];
+  // Une session qui raccourcit (révision du navigateur) ne retire rien du champ
+  // et ne fait pas rejouer les mots déjà versés : on garde la plus longue.
+  if (mots.length <= motsDeja.length) return { ajout: '', session: deja };
+  return { ajout: mots.slice(motsDeja.length).join(' '), session };
 }

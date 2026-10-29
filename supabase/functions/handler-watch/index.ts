@@ -12,7 +12,7 @@ import { grilleDuDernierEchecTaille, normaliserTaille, tailleAServir } from "../
 // update-job-status — une remise en pending automatique n'efface plus le motif.
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
 // (06/10, Glowik) Un échec qu'une extension corrige repart dès que le poste l'a.
-import { RELANCES_APRES_MAJ, regleDeRelance, posteALeBuild, champsRelance, sourceDeRegle, messageAttenteMaj } from "../_shared/relance-apres-maj.js";
+import { RELANCES_APRES_MAJ, regleDeRelance, posteALeBuild, champsRelance, sourceDeRegle, messageAttenteMaj, champsPauseAttenteMaj } from "../_shared/relance-apres-maj.js";
 import { reponseTailleAuto, champsApresReponseTaille } from "../_shared/taille-question-auto.js";
 import { MOTIF_LBC_IDENTITE, FENETRE_IDENTITE_MS, ECLAIREUR_INTERVALLE_MS, attendIdentiteLbc, attentesIdentiteLbc, eclaireurIdentiteLbc, champsEclaireur, champsReprise } from "../_shared/lbc-identite.js";
 import {
@@ -80,7 +80,7 @@ import { republicationFinie, champsRepublicationFinie } from "../_shared/republi
 import { trancherQuestions } from "../_shared/questions-tranchees.ts";
 import { jobDeLaPauseRayon, pfQuestionApresPause, entreeMoteurDuJob } from "../_shared/rayon-moteur-attendu.js";
 import { depotMuetDepuis } from "../_shared/depot-muet.js";
-import { urlsPhotos } from "../_shared/recreation-deja-partie.js";
+import { urlsPhotos, depotsAutresFiches, fichesDesJobs, numerosVusAvantRetrait, COLONNES_JOBS_AUTRES_FICHES } from "../_shared/recreation-deja-partie.js";
 import { estDepotCoupe, reperesDuJob, candidatesDepotCoupe, urlsCandidate, decisionDepotCoupe, appariementMutuel, patchRelanceDepotCoupe, patchRattachementDepotCoupe } from "../_shared/depot-coupe-tranche.js";
 import { lienDepuisId } from "../_shared/annonce-lien.ts";
 import { titreNommeAnnonce, decisionAlignementTitre, CONTRADICTION_IDENTITE_RE } from "../_shared/titre-aligne.js";
@@ -1921,8 +1921,10 @@ serve(async (req) => {
   if (new Date().getUTCMinutes() % 15 >= 9 && new Date().getUTCMinutes() % 15 < 12) {
     try {
       const il7j = new Date(Date.now() - SORTIE_VERIFICATION_REFUS_MS).toISOString();
+      // (29/10, lot B 4.6) title, description, photos : l'empreinte du contenu refusé (empreinte_contenu) se calcule sur
+      // CE que le dépôt a envoyé — sans eux, une relance à l'identique d'un refus prouvé ne serait jamais reconnue.
       const { data: deposSV } = await supabase.from("cross_post_jobs")
-        .select("id, user_id, platform, action, status, price, created_at, published_at, vu_en_ligne_le, platform_listing_id, listing_url, error, platform_fields")
+        .select("id, user_id, platform, action, status, price, created_at, published_at, vu_en_ligne_le, platform_listing_id, listing_url, error, title, description, photos, platform_fields")
         .eq("platform", "beebs").in("action", ["publish", "republish"]).eq("status", "published")
         .is("vu_en_ligne_le", null).not("platform_listing_id", "is", null).lt("price", PRIX_EXAMEN_INVISIBLE_BEEBS)
         .gte("created_at", new Date(Date.now() - SORTIE_VERIFICATION_FENETRE_MS).toISOString())
@@ -3002,20 +3004,32 @@ serve(async (req) => {
       if (!debuts.length) continue;
       // Les lignes du compte depuis le plus ancien retrait / essai (et 3 jours avant pour le plancher des numéros Beebs).
       const depuisLignes = new Date(Math.min(...debuts) - 3 * 86_400_000).toISOString();
-      const [{ data: runsC }, { data: lignesC }] = await Promise.all([
+      // (29/10, tiblancdeshaut c9fe1ee1) Les jobs du compte sur la plateforme (60 jours, 1 000 au plus) : une annonce
+      // qu'une AUTRE fiche désigne (numéro d'un de ses jobs, proposition du relevé) est écartée, jamais rattachée
+      // (recreation-deja-partie.js motifAutreFiche).
+      const [{ data: runsC }, { data: lignesC }, { data: jobsCompte }] = await Promise.all([
         supabase.from("vinted_sync_runs")
           .select("id, status, started_at, finished_at, items_vus, total_entries, erreur, kind")
           .eq("user_id", uid).eq("kind", "annonces").eq("platform", plateforme)
           .order("started_at", { ascending: false, nullsFirst: false }).limit(15),
         supabase.from("annonces_plateforme")
-          .select("user_id, listing_id, url, statut_plateforme, photo_url, capture, job_id, inventaire_id, created_at, vu_le, disparu_le, retiree_le, publiee_le")
+          .select("user_id, listing_id, url, statut_plateforme, photo_url, capture, job_id, inventaire_id, proposition, created_at, vu_le, disparu_le, retiree_le, publiee_le")
           .eq("user_id", uid).eq("platform", plateforme).gte("created_at", depuisLignes)
           .order("created_at", { ascending: true }).limit(1000),
+        supabase.from("cross_post_jobs").select(COLONNES_JOBS_AUTRES_FICHES)
+          .eq("user_id", uid).eq("platform", plateforme).gte("created_at", new Date(Date.now() - 60 * 86_400_000).toISOString())
+          .order("created_at", { ascending: false }).limit(1000),
       ]);
       // deno-lint-ignore no-explicit-any
       let lignes = (lignesC ?? []) as any[];
+      // deno-lint-ignore no-explicit-any
+      const jobsC = (jobsCompte ?? []) as any[];
+      const fichesJobs = fichesDesJobs(jobsC);
+      // (29/10) + vue avant le retrait : listes « Mes annonces » de nos dépôts Beebs lues avant lui (remises en ligne seulement).
+      const autresDe = new Map(jobs.map((j) => [String(j.id), { numerosAutres: depotsAutresFiches(jobsC, j.inventaire_id ?? null), fichesJobs,
+        vusAvant: numerosVusAvantRetrait(jobsC, j.platform_fields?.deleted_at) }]));
       // Boutique partagée : la dernière vue d'une candidate se lit aussi sous les autres comptes.
-      const idsCand = [...new Set(jobs.flatMap((j) => candidatesDepotCoupe(j, lignes).map((c: Record<string, unknown>) => String(c.listing_id))))];
+      const idsCand = [...new Set(jobs.flatMap((j) => candidatesDepotCoupe(j, lignes, autresDe.get(String(j.id))).map((c: Record<string, unknown>) => String(c.listing_id))))];
       if (idsCand.length) {
         const { data: autres } = await supabase.from("annonces_plateforme")
           .select("user_id, listing_id, vu_le, disparu_le").eq("platform", plateforme).in("listing_id", idsCand.slice(0, 200)).neq("user_id", uid);
@@ -3023,7 +3037,7 @@ serve(async (req) => {
         lignes = [...lignes, ...((autres ?? []) as any[])];
       }
       // Les empreintes : notre copie et les candidates du compte.
-      const urls = [...new Set(jobs.flatMap((j) => [...urlsPhotos(j.photos), ...candidatesDepotCoupe(j, lignes).flatMap((c) => urlsCandidate(c))]))];
+      const urls = [...new Set(jobs.flatMap((j) => [...urlsPhotos(j.photos), ...candidatesDepotCoupe(j, lignes, autresDe.get(String(j.id))).flatMap((c) => urlsCandidate(c))]))];
       const { data: empC } = urls.length
         ? await supabase.from("photo_empreintes").select("url, dhash, phash, variantes").in("url", urls.slice(0, 200))
         : { data: [] };
@@ -3031,7 +3045,7 @@ serve(async (req) => {
       const parUrl = new Map(((empC ?? []) as any[]).map((e) => [String(e.url), e]));
       // deno-lint-ignore no-explicit-any
       const decisions = new Map<string, any>();
-      for (const j of jobs) decisions.set(String(j.id), decisionDepotCoupe({ job: j, lignes, runs: runsC ?? [], empreinte: (u: string) => parUrl.get(u) }));
+      for (const j of jobs) decisions.set(String(j.id), decisionDepotCoupe({ job: j, lignes, runs: runsC ?? [], empreinte: (u: string) => parUrl.get(u), ...autresDe.get(String(j.id)) }));
       for (const [id, d] of appariementMutuel(decisions)) {
         const j = jobs.find((x) => String(x.id) === id);
         if (!j) continue;
@@ -5272,6 +5286,14 @@ serve(async (req) => {
         if (!posteALeBuild(eb, regle)) {
           // le poste n'a pas encore le correctif. (28/10) Une règle `messageAttente` le DIT, une fois par texte, sans
           // relancer ni toucher au compteur : jamais « Relance » qui retomberait sur le même mur.
+          // (29/10, lot B 4.1) Une règle `pauseAttente` met la tâche EN PAUSE (needs_user_source build_min_requis,
+          // build_min_requis posé, question fausse retirée, ancien message archivé) — une fois, rien de réécrit ensuite.
+          const pauseMaj = champsPauseAttenteMaj(j, regle, { maintenant: new Date(now).toISOString() });
+          if (pauseMaj) {
+            await supabase.from("cross_post_jobs").update(pauseMaj).eq("id", String(j.id)).eq("status", "needs_user").select("id");
+            console.log(`[handler-watch] job ${j.id} (${j.platform}/${j.action}) : poste sous l'extension ${regle.version} (${regle.cle}) → en pause « build_min_requis », question retirée`);
+            continue;
+          }
           const attente = messageAttenteMaj(j, regle);
           if (attente && j.error !== attente) {
             const pfA = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };

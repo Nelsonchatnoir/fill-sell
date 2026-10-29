@@ -25,6 +25,7 @@ import { Carte, Puce, Logo, CarteArticle } from "./composants";
 import { NOM } from "./texte";
 import { verdictConfirmation, puceVerrouillee } from "./plateformes";
 import BlocQuestions from "./BlocQuestions";
+import { libelleStrategie } from "../utils/strategiePrix";
 import CarteRayon from "../components/CarteRayon";
 import { CartePortDepop } from "../components/PortDepop";
 import { CartePoidsLeboncoin } from "../components/PoidsLeboncoin";
@@ -107,6 +108,16 @@ export default function EcranConfirmer({ m }) {
         lang={m.lang}
         onPhoto={m.setLightboxUrl}
       />
+
+      {/* (29/10, lot B 1.4 — promesse XEWER) La stratégie de prix, dite AVANT la publication ; un prix tapé n'est jamais
+          changé (il ne bouge que par « Estimer avec l'IA », geste de la personne). */}
+      {m.strategiePrix ? (
+        <div className="fsn-hint" style={{ textAlign: "left" }}>
+          {m.prixSource?.source === "strategie"
+            ? (en ? `Price estimated with your strategy: ${libelleStrategie(m.prixSource.strategie ?? m.strategiePrix, "en")}.` : `Prix estimé selon ta stratégie : ${libelleStrategie(m.prixSource.strategie ?? m.strategiePrix)}.`)
+            : (en ? `Your pricing strategy: ${libelleStrategie(m.strategiePrix, "en")}. A price you type is never changed.` : `Ta stratégie de prix : ${libelleStrategie(m.strategiePrix)}. Un prix que tu tapes n'est jamais changé.`)}
+        </div>
+      ) : null}
 
       {m.publishError && <Carte gravite="refus" titre={en ? "Not published" : "Pas publié"}><div className="fsn-card-p">{m.publishError}</div></Carte>}
 

@@ -23,6 +23,8 @@ import { Carte, Puce } from "./composants";
 import { NOM } from "./texte";
 import { posesMemoireVisibles } from "./moteur/memoireCategorie";
 import { phraseGenreAChoisir, phraseGenreDeduit } from "./moteur/genreAChoisir";
+// (29/10, lot B 1.3) La dictée sur la description Vinted à écrire.
+import BoutonDictee from "../components/BoutonDictee";
 
 // L'objet de jetons attendu par AspectValueInput : des variables, jamais des
 // couleurs en dur.
@@ -204,6 +206,8 @@ export default function BlocQuestions({ m, seulement = null, puces = false, onCh
             <div className="fsn-row fsn-row--between"><div className="fsn-q-t">{t("fieldDescriptionLabel")}</div><Puce ton={descriptionVide ? "geste" : "ok"}>Vinted</Puce></div>
             <div className="fsn-q-why">{en ? "Vinted refuses a listing without a description. Write it in your own words." : "Vinted refuse une annonce sans description. Écris-la avec tes mots."}</div>
             <textarea className="fsn-textarea" value={m.edited?.vinted?.description ?? ""} onChange={ev => { setDescriptionTouchee(true); m.modifierCarte("vinted", "description", ev.target.value); }} placeholder={en ? "Condition, size, what's included…" : "État, taille, ce qui est inclus…"} />
+            <BoutonDictee valeur={m.edited?.vinted?.description ?? ""} lang={en ? "en" : "fr"} separateur={"\n"}
+              onChange={v => { setDescriptionTouchee(true); m.modifierCarte("vinted", "description", v); }} />
           </div>
         )}
 

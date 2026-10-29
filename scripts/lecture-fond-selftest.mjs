@@ -180,7 +180,9 @@ console.log("6. (26/10, urgence lenteur) La lecture de fond s'efface quand la pe
   {
     const i = bg.indexOf("await recoverMissingListingUrls(session)");
     const avant = bg.slice(Math.max(0, i - 1200), i);
-    ok(i > 0 && /if \(jobFlowWaiters > 0 && !majPlanifiee\) \{[\s\S]*repollApresCycle = true;\s*return;\s*\}\s*$/.test(avant), "extension : quelqu'un attend le verrou → la maintenance de fond (liens, veille, messagerie) passe après lui, un poll repart aussitôt");
+    // (29/10, lot B — boucle du poll) Un poll en attente n'est plus « quelqu'un » ; la relance est bornée (selftest repoll-borne).
+    ok(i > 0 && /if \(cederAuxDemandesEnAttente\(\)\) return;\s*$/.test(avant) && /const attentes = majPlanifiee \? \[\] : attentesHorsPoll\(\);/.test(bg),
+      "extension : quelqu'un attend le verrou (hors poll) → la maintenance de fond (liens, veille, messagerie) passe après lui, un poll repart ensuite (borné)");
   }
   ok(/if \(Date\.now\(\) - derniereDemandeAppMs < FOND_PAUSE_APRES_DEMANDE_MS\) return "personne_publie";/.test(bg) && /FOND_PAUSE_APRES_DEMANDE_MS = 10 \* 60_000/.test(bg), "extension : 10 min après une demande de l'app");
 }

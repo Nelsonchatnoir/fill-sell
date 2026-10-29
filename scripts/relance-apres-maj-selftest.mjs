@@ -11,7 +11,9 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import {
   RELANCES_APRES_MAJ, regleDeRelance, posteALeBuild, champsRelance, msDuBuild, messageAttenteMaj,
+  champsPauseAttenteMaj, sourceDeRegle,
 } from "../supabase/functions/_shared/relance-apres-maj.js";
+import { attenteAutomatique, etatJob, porteUneEstimation } from "../supabase/functions/_shared/etat-job.js";
 
 let ko = 0;
 const ok = (nom, cond, detail = "") => { if (!cond) ko++; console.log(`  ${cond ? "ok  " : "KO  "} ${nom}${cond ? "" : `   ← ${detail}`}`); };
@@ -182,6 +184,91 @@ console.log("\n[5] (08/10 soir) Tâche mise de côté « sans démarrage » (Jon
   ok("   règles d'avant le 28/10 : aucun message", messageAttenteMaj(GLOWIK, regleDeRelance(GLOWIK)) === null);
   // (28/10 soir) Rayon par identifiant non prouvé : aucune règle de relance pour « ne propose pas « X » ».
   ok("« Jewellery » (rayon connu) : aucune relance tant que le repli n'est pas prouvé", regleDeRelance({ platform: "vinted", action: "republish", status: "needs_user", error: "Vinted ne propose pas « Jewellery » à cet endroit de son catalogue.", platform_fields: { needs_user_source: "prevol_negatif", republish_step: "captured", republish_snapshot: { catalog_id: 5564 } } }) === null);
+}
+
+// (29/10, lot B 4.1) mele.marta 2fd83d73 « Gioco PS4 F1 2015 » : page Vinted ITALIENNE, catégorie descendue par libellés
+// français par la 0.6.149 → « Vinted ne propose pas « Électronique » » avec les racines italiennes pour choix.
+{
+  console.log("\n— 29/10 : page Vinted étrangère, rayon connu (0.6.153) —");
+  const RACINES_IT = ["Accessori", "Donna", "Uomo", "Bambini", "Casa", "Elettronica", "Libri e media", "Hobby e collezionismo", "Sport"];
+  const MARTA = {
+    id: "2fd83d73-f43b-4362-811f-f447b98b865b", platform: "vinted", action: "publish", status: "needs_user",
+    error: "Vinted ne propose pas « Électronique » à cet endroit de son catalogue. Choisis la bonne catégorie parmi celles que Vinted propose — ton annonce partira ensuite toute seule.",
+    platform_fields: {
+      needs_user_source: "prevol_negatif", needsUserAttempts: 0, vinted_ids: { status_id: 2, catalog_id: 3026 },
+      categoryPath: ["Électronique", "Jeux vidéo et consoles", "Jeux"],
+      needsUserField: { target: { key: "categoryLevelChoice", root: null }, platform: "vinted", field_key: "categoryLevelChoice", input_type: "selection_only", field_label: "Catégorie Vinted", allowed_values: RACINES_IT },
+      needsUserBoucle: { categoryLevelChoice: { n: 1, at: "2026-10-28T12:28:46.920Z", valeur: null } },
+    },
+  };
+  const r = regleDeRelance(MARTA);
+  ok("2fd83d73 : règle vinted_categorie_page_etrangere (publication, prevol_negatif), 0.6.153",
+    r?.cle === "vinted_categorie_page_etrangere_publish_prevol_negatif" && r?.version === "0.6.153" && r?.buildMin === "2026-10-29T13:49:28Z", JSON.stringify(r));
+  ok("   poste en 0.6.149 (le sien, 09:52:53Z) : pas encore", posteALeBuild("2026-10-28T09:52:53Z+9ca925f", r) === false);
+  ok("   poste en 0.6.153 : oui", posteALeBuild("2026-10-29T13:49:28Z+abcdef0", r) === true);
+  ok("   aucun message d'attente (ce n'est pas un formulaire changé)", messageAttenteMaj(MARTA, r) === null);
+  const pf = champsRelance(MARTA, r, { maintenant: "2026-10-29T18:00:00Z", extensionBuild: "2026-10-29T14:10:00Z+abcdef0" });
+  ok("   relancée : build_min_requis = 0.6.153, question levée, compteurs à zéro, identifiants gardés",
+    pf.build_min_requis === "2026-10-29T13:49:28Z" && !pf.needsUserField && !pf.needs_user_source && pf.needsUserAttempts === 0 && pf.vinted_ids?.catalog_id === 3026, JSON.stringify(pf));
+  ok("   la question levée reste lisible (ses racines disent la langue à get-pending-jobs)",
+    pf.relance_apres_maj?.question_levee?.field_key === "categoryLevelChoice" && pf.relance_apres_maj.question_levee.allowed_values.join() === RACINES_IT.join());
+  ok("   une relance, une fois", regleDeRelance({ ...MARTA, platform_fields: pf, status: "needs_user" }) === null);
+  ok("   la personne a répondu (« Elettronica ») : jamais", regleDeRelance({ ...MARTA, platform_fields: { ...MARTA.platform_fields, categoryLevelChoice: "Elettronica" } }) === null
+    && regleDeRelance({ ...MARTA, platform_fields: { ...MARTA.platform_fields, needsUserResolved: { categoryLevelChoice: "Elettronica" } } }) === null);
+  ok("   rayon inconnu (pas de vinted_ids.catalog_id) : jamais", regleDeRelance({ ...MARTA, platform_fields: { ...MARTA.platform_fields, vinted_ids: { status_id: 2 } } }) === null);
+  ok("   racines FRANÇAISES (vraie question de sous-niveau) : jamais",
+    regleDeRelance({ ...MARTA, platform_fields: { ...MARTA.platform_fields, needsUserField: { ...MARTA.platform_fields.needsUserField, allowed_values: ["Jeux", "Consoles", "Accessoires", "Sport"] } } }) === null);
+  ok("   question mise de côté pour le moteur (rayon_moteur_attendu) : lue aussi",
+    regleDeRelance({ ...MARTA, platform_fields: { ...MARTA.platform_fields, needsUserField: undefined, rayon_moteur_attendu: { question: MARTA.platform_fields.needsUserField } } })?.cle === r.cle);
+  ok("   champ_a_choisir aussi", regleDeRelance({ ...MARTA, platform_fields: { ...MARTA.platform_fields, needs_user_source: "champ_a_choisir" } })?.cle === "vinted_categorie_page_etrangere_publish_champ_a_choisir");
+  const REP = { ...MARTA, action: "republish", platform_fields: { ...MARTA.platform_fields, vinted_ids: undefined, republish_step: "captured", republish_snapshot: { catalog_id: 3026, categoryPath: ["Elettronica"] } } };
+  ok("   republication avant retrait, rayon de la capture : relancée", regleDeRelance(REP)?.cle === "vinted_categorie_page_etrangere_republish_prevol_negatif");
+  ok("   republication déjà retirée : jamais", regleDeRelance({ ...REP, platform_fields: { ...REP.platform_fields, republish_step: "deleted" } }) === null);
+  ok("   Leboncoin : jamais", regleDeRelance({ ...MARTA, platform: "leboncoin" }) === null);
+
+  // (29/10, complément 4.1) Poste SOUS la 0.6.153 (le sien : 0.6.149, éteint depuis le 28/10 13:32) : la question fausse
+  // n'est plus montrée (y répondre casserait la pose par identifiants) — EN PAUSE automatique, message neutre et vrai.
+  console.log("   — en attendant la 0.6.153 : en pause, question retirée —");
+  const pause = champsPauseAttenteMaj(MARTA, r, { maintenant: "2026-10-29T18:00:00Z" });
+  const pp = pause?.platform_fields ?? {};
+  ok("   en pause : needs_user_source « build_min_requis », build_min_requis = 0.6.153",
+    pp.needs_user_source === "build_min_requis" && pp.build_min_requis === "2026-10-29T13:49:28Z", JSON.stringify(pp));
+  ok("   « En pause » (etat-job : build_min_requis → mise_a_jour)", attenteAutomatique({ ...MARTA, platform_fields: pp }) === "mise_a_jour"
+    && etatJob({ ...MARTA, error: pause?.error, platform_fields: pp }).etat === "en_pause");
+  ok("   message neutre et vrai, sans heure ni « Relance »",
+    pause?.error === "Ta publication est en pause, rien n'a été publié : elle repart toute seule dès que l'extension FillSell de ton ordinateur est à jour. Rien à faire."
+      && !porteUneEstimation(pause?.error) && !/[Rr]elance/.test(pause?.error ?? ""), pause?.error);
+  ok("   la question fausse retirée (plus de « Compléter »), gardée sous attente_maj_extension",
+    !pp.needsUserField && pp.attente_maj_extension?.question?.allowed_values?.join() === RACINES_IT.join()
+      && pp.attente_maj_extension.cle === r.cle && pp.attente_maj_extension.source_avant === "prevol_negatif");
+  ok("   l'ancien message archivé", (pp.erreurs_archivees ?? []).some((e) => /ne propose pas « Électronique »/.test(String(e?.erreur ?? e?.message ?? JSON.stringify(e)))), JSON.stringify(pp.erreurs_archivees));
+  ok("   identifiants et compteur intacts (aucune tentative consommée)", pp.vinted_ids?.catalog_id === 3026 && pp.needsUserAttempts === 0);
+  const enPause = { ...MARTA, error: pause?.error, platform_fields: pp };
+  ok("   en pause : une fois, jamais réécrite", champsPauseAttenteMaj(enPause, regleDeRelance(enPause), { maintenant: "2026-10-29T18:03:00Z" }) === null);
+  const rp = regleDeRelance(enPause);
+  ok("   en pause : retrouvée sous son nouveau motif (requête du balayage : build_min_requis)",
+    rp?.cle === "vinted_categorie_page_etrangere_publish_en_pause" && sourceDeRegle(rp) === "build_min_requis" && rp.buildMin === r.buildMin, JSON.stringify(rp));
+  ok("   poste toujours en 0.6.149 : rien ne bouge", posteALeBuild("2026-10-28T09:52:53Z+9ca925f", rp) === false && messageAttenteMaj(enPause, rp) === null);
+  const pfR = champsRelance(enPause, rp, { maintenant: "2026-10-30T09:00:00Z", extensionBuild: "2026-10-29T14:10:00Z+abcdef0" });
+  ok("   poste à la 0.6.153 : la relance unique part (pause levée, build_min_requis gardé, question lisible)",
+    !pfR.needs_user_source && pfR.build_min_requis === "2026-10-29T13:49:28Z" && pfR.relance_apres_maj?.cle === rp.cle
+      && pfR.relance_apres_maj.question_levee?.allowed_values?.join() === RACINES_IT.join());
+  ok("   puis plus jamais", regleDeRelance({ ...enPause, platform_fields: { ...pfR, needs_user_source: "build_min_requis" } }) === null);
+  ok("   republication : la pause dit « AVANT toute suppression »",
+    /AVANT toute suppression/.test(champsPauseAttenteMaj(REP, regleDeRelance(REP), { maintenant: "2026-10-29T18:00:00Z" })?.error ?? ""));
+  ok("   une autre pause « build_min_requis » (autre cause) : jamais prise pour celle-ci",
+    regleDeRelance({ ...MARTA, platform_fields: { ...MARTA.platform_fields, needs_user_source: "build_min_requis", attente_maj_extension: { cle: "autre" } } }) === null);
+  ok("   les règles d'avant (sans pauseAttente) : aucune pause", champsPauseAttenteMaj(GLOWIK, regleDeRelance(GLOWIK)) === null);
+  // Le câblage : handler-watch pose la pause (compare-and-swap sur needs_user) AVANT le message d'attente, et ne relance pas.
+  const { readFileSync } = await import("node:fs");
+  const hw = readFileSync(new URL("../supabase/functions/handler-watch/index.ts", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  const ib = hw.indexOf("if (!posteALeBuild(eb, regle)) {");
+  const blocHw = hw.slice(ib, ib + 1800);
+  ok("   handler-watch : la pause posée (needs_user gardé), puis `continue` — jamais une relance sous le build",
+    ib > 0 && /const pauseMaj = champsPauseAttenteMaj\(j, regle, \{ maintenant: new Date\(now\)\.toISOString\(\) \}\);/.test(blocHw)
+      && /\.update\(pauseMaj\)\.eq\("id", String\(j\.id\)\)\.eq\("status", "needs_user"\)/.test(blocHw)
+      && blocHw.indexOf("champsPauseAttenteMaj(") < blocHw.indexOf("messageAttenteMaj(j, regle)")
+      && /champsPauseAttenteMaj \} from "\.\.\/_shared\/relance-apres-maj\.js"/.test(hw));
 }
 
 console.log(ko ? `\n[selftest:relance-apres-maj] ÉCHEC — ${ko} vérification(s) en défaut.` : "\n[selftest:relance-apres-maj] OK");

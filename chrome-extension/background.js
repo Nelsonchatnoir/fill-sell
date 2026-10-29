@@ -904,6 +904,43 @@ chrome.runtime.onUpdateAvailable.addListener((details) => {
   appliquerMajSiSansRisque("onUpdateAvailable").catch(() => {});
 });
 
+// ── (29/10, lot B 4.11) LES RECRÉATIONS QUE LE SERVEUR RETIENT NE REFUSENT PLUS LA MISE À JOUR ──────────────────
+// get-pending-jobs rend `retenues_deleted` : les republications à l'étape 'deleted' qu'il retient à ce poll (dressing
+// Vinted relu par la personne, vérification avant redépôt). Rien ne tourne pour elles ; la règle 2 les comptait
+// « recréation en jeu » et refusait le rechargement à chaque cycle (2189c4d8, 0.6.153 en attente depuis 18:09:48).
+// Mémoire seule (un worker neuf ne sait rien : il compte tout, comme avant), valable 10 min (alarme : 2 min).
+let retenuesDeletedServeur = { le: 0, ids: new Set() };
+const RETENUES_DELETED_VALIDITE_MS = 10 * 60_000;
+function noterRetenuesDeletedServeur(liste) {
+  retenuesDeletedServeur = { le: Date.now(), ids: new Set((Array.isArray(liste) ? liste : []).map((id) => String(id))) };
+}
+function retenueDeletedParLeServeur(id) {
+  if (Date.now() - retenuesDeletedServeur.le > RETENUES_DELETED_VALIDITE_MS) return false;
+  return retenuesDeletedServeur.ids.has(String(id ?? ""));
+}
+// La trace d'une mise à jour reportée (usage_logs « maj_extension_reportee », même canal que « maj_extension ») :
+// une par heure au plus et par poste (horodatage en storage.local), raisons en clair.
+const MAJ_REPORTEE_TRACE_KEY = "fillsell_maj_reportee_trace_le";
+async function tracerMajReportee(version, declencheur, raisons) {
+  try {
+    const s = await chrome.storage.local.get(MAJ_REPORTEE_TRACE_KEY);
+    const avant = Date.parse(String(s?.[MAJ_REPORTEE_TRACE_KEY] ?? ""));
+    if (Number.isFinite(avant) && Date.now() - avant < 3600_000) return;
+    const session = await getValidSession();
+    const userId = session?.access_token ? decodeJwtSub(session.access_token) : null;
+    if (!userId) return;
+    await chrome.storage.local.set({ [MAJ_REPORTEE_TRACE_KEY]: new Date().toISOString() });
+    await restRequest("usage_logs", session.access_token, {
+      method: "POST",
+      body: JSON.stringify({ user_id: userId, feature: "maj_extension_reportee", metadata: {
+        version_visee: String(version ?? "").slice(0, 20), declencheur: String(declencheur ?? "").slice(0, 40),
+        raisons: (Array.isArray(raisons) ? raisons : []).slice(0, 6).map((r) => String(r).slice(0, 160)),
+        build: FILLSELL_BUILD_ID, version: chrome.runtime.getManifest().version, at: new Date().toISOString(),
+      } }),
+    });
+  } catch { /* une trace ne bloque jamais rien */ }
+}
+
 /** Les raisons de NE PAS recharger, en clair. Tableau vide = c'est sûr. */
 async function raisonsDeNePasRecharger() {
   const raisons = [];
@@ -953,6 +990,9 @@ async function raisonsDeNePasRecharger() {
     );
     const recreationsEnJeu = (Array.isArray(repub) ? repub : []).filter((j) => {
       if (j.status === "processing") return true;
+      // (29/10, lot B 4.11 — 2189c4d8) Retenue par le SERVEUR au dernier poll (relevé du dressing attendu, vérification
+      // avant redépôt) : rien ne tourne pour elle, elle ne refuse plus la mise à jour. Liste de moins de 10 min.
+      if (retenueDeletedParLeServeur(j.id)) return false;
       const nao = Date.parse(String(j.nao ?? ""));
       return !(Number.isFinite(nao) && nao > Date.now());
     });
@@ -1091,6 +1131,7 @@ async function appliquerMajSiSansRisque(declencheur) {
         `[background] mise à jour ${version} REPORTÉE (${declencheur}) — ${raisons.join(" ; ")}. ` +
         "Rien n'est perdu : elle sera reprise au prochain moment sûr."
       );
+      tracerMajReportee(version, declencheur, raisons).catch(() => {});   // (29/10, lot B 4.11) une par heure au plus
       return false;
     }
     console.warn(`[background] mise à jour ${version} APPLIQUÉE (${declencheur}) — aucun job en vol, aucun relevé en cours. Rechargement.`);
@@ -2646,6 +2687,7 @@ let jobFlowBusyLabel = null;
 // 45 s entre deux pages, verrou tenu) cède dès que quelqu'un attend — mesuré sur le poste de Nico le 26/10 : une
 // lecture demandée par l'écran (0,9 s de lecture) a attendu 75 s derrière trois pages de fond.
 let jobFlowWaiters = 0;
+const attentesVerrouParLabel = new Map();   // (29/10, lot B — boucle du poll) label → flux en attente du verrou de flux
 // ── (29/10, point 5 — Johan Désiré, 098cab75) LA PRÉSENCE BAT AUSSI PENDANT UN LONG TRAVAIL ─────────────────
 // profiles.extension_last_seen_at n'était stampé QUE par get-pending-jobs, en tête de cycle — et le cycle tient ce
 // verrou jusqu'à sa dernière tâche : 27/10, 11:37:39 → 12:13:17, une recréation Leboncoin de 36 min sans un signe.
@@ -2685,8 +2727,10 @@ function withJobFlowLock(label, fn) {
     console.log(`[background] ${label} : flux "${jobFlowBusyLabel}" en cours — mise en file (onglets de travail partagés)`);
   }
   jobFlowWaiters++;
+  noterAttenteVerrou(label, +1);   // (29/10, lot B — boucle du poll) qui attend, par label : un poll n'est pas une demande
   const run = jobFlowTail.then(async () => {
     jobFlowWaiters = Math.max(0, jobFlowWaiters - 1);
+    noterAttenteVerrou(label, -1);
     jobFlowBusyLabel = label;
     const arreterBattement = demarrerBattementPresence(label);
     try {
@@ -2714,6 +2758,71 @@ let repollApresCycle = false;
 let fileEnPauseServeur = null;
 let vintedPauseAntirobotServeur = false;
 let etatFileLu = { le: 0, pause: false, synchro: false };
+// ── (29/10, lot B — boucle du poll) UN POLL « TOUT DE SUITE » A UNE RAISON NEUVE — JAMAIS UNE BOUCLE ─────────────────────────
+// Prouvé le 29/10 (2189c4d8 : 826 polls de 18:00 à 18:51 ; 53efea05, b3897d60, 90ace0e4, 7b9d8a71) : le cycle rendait le
+// verrou « parce que quelqu'un l'attend » (jobFlowWaiters > 0) — et ce quelqu'un était le POLL relancé 1,5 s plus tôt par
+// le cycle d'avant (un poll dure 2 à 4 s) : chaque cycle se voyait attendu par le suivant, se relançait et sautait toute
+// la maintenance (veille des ventes comprise). function_edge_logs : un poll ~200 ms après la réponse du précédent
+// (request_id UUIDv7), et rien d'autre du poste que lectures_origine_en_attente ×2 entre deux polls.
+// Règle : (1) un poll qui attend le verrou n'est jamais « quelqu'un qui attend » (attentesHorsPoll) ; (2) une relance
+// n'a lieu que pour une raison NEUVE (raison + clé ≠ la relance du cycle d'avant), jamais deux fois de suite pour la
+// même ; (3) 20 s au moins entre le début d'un poll et le poll relancé automatiquement ; un geste de la personne
+// (Synchroniser) part 1,5 s après le cycle ; (4) une relance devenue inutile (un poll a démarré entre-temps) ne part pas.
+const REPOLL_PLANCHER_MS = 20_000;
+const REPOLL_DELAI_MIN_MS = 1500;
+let debutDernierPoll = 0;       // début (ms) du dernier poll qui a pris le verrou
+let pollsDemarres = 0;          // polls qui ont pris le verrou : une relance devenue inutile ne part pas
+let relanceDuCycle = null;      // { raison, cle, geste } demandée par le cycle en cours
+let relancePrecedente = null;   // la relance accordée au cycle d'avant (null : le cycle d'avant n'en a pas eu)
+/** Décision pure : une relance « tout de suite » est-elle permise, et dans combien de ms ? */
+function decisionPollImmediat(demande, precedente, maintenant, debutPoll, plancherMs = REPOLL_PLANCHER_MS) {
+  if (!demande || !demande.raison) return { permis: false, motif: "sans_raison" };
+  if (precedente && precedente.raison === demande.raison && String(precedente.cle ?? "") === String(demande.cle ?? "")) {
+    return { permis: false, motif: "meme_raison_deux_fois" };
+  }
+  if (demande.geste === true) return { permis: true, delaiMs: REPOLL_DELAI_MIN_MS, motif: "geste" };
+  const ecoule = Number.isFinite(debutPoll) && debutPoll > 0 ? maintenant - debutPoll : Infinity;
+  return { permis: true, delaiMs: Math.max(REPOLL_DELAI_MIN_MS, plancherMs - ecoule), motif: "raison_neuve" };
+}
+/** Un flux entre (+1) ou sort (-1) de la file du verrou. */
+function noterAttenteVerrou(label, sens) {
+  const n = (attentesVerrouParLabel.get(label) ?? 0) + sens;
+  if (n > 0) attentesVerrouParLabel.set(label, n); else attentesVerrouParLabel.delete(label);
+}
+/** Les flux qui attendent le verrou, polls exclus (un poll en attente est le cycle suivant, pas une demande). */
+function attentesHorsPoll() {
+  return [...attentesVerrouParLabel.keys()].filter((l) => l !== "poll").sort();
+}
+/** Le cycle demande un poll juste après lui. Rend true si la règle le permet (sinon, l'alarme suivante s'en charge). */
+function demanderRepoll(demande) {
+  const d = decisionPollImmediat(demande, relancePrecedente, Date.now(), debutDernierPoll);
+  if (!d.permis) {
+    console.log(`[background] relance du poll refusée (${demande?.raison ?? "?"} : ${d.motif}) — l'alarme suivante s'en charge`);
+    return false;
+  }
+  if (!relanceDuCycle || demande.geste === true) relanceDuCycle = { raison: demande.raison, cle: String(demande.cle ?? ""), geste: demande.geste === true };
+  return true;
+}
+/** La maintenance de fond cède-t-elle le verrou aux demandes qui l'attendent ? (polls exclus, jamais deux cycles de suite) */
+function cederAuxDemandesEnAttente() {
+  const attentes = majPlanifiee ? [] : attentesHorsPoll();
+  if (!attentes.length || !demanderRepoll({ raison: "attente_verrou", cle: attentes.join(",") })) return false;
+  console.log(`[background] demande(s) en attente du verrou (${attentes.join(", ")}) : la maintenance de fond repart juste après`);
+  return true;
+}
+/** Fin de cycle : arme la relance accordée (au plancher), ou rien — et la mémoire « deux fois de suite » suit. */
+function armerRelanceApresCycle() {
+  if (repollApresCycle && !relanceDuCycle) relanceDuCycle = { raison: "repoll", cle: "", geste: false };
+  repollApresCycle = false;
+  const relance = relanceDuCycle;
+  relanceDuCycle = null;
+  const d = relance ? decisionPollImmediat(relance, relancePrecedente, Date.now(), debutDernierPoll) : null;
+  relancePrecedente = d?.permis ? relance : null;
+  if (!d?.permis) return null;
+  const armeAuPoll = pollsDemarres;
+  setTimeout(() => { if (pollsDemarres === armeAuPoll) pollAndProcessJobs(); }, d.delaiMs);
+  return d.delaiMs;
+}
 /** Une republication dont le retrait est engagé (annonce retirée ou retrait envoyé) : elle va au bout. */
 function retraitEngageJob(job) {
   const pf = job?.platform_fields ?? {};
@@ -3267,7 +3376,11 @@ let prevolCopieActif = true;
 let pollEnAttenteDuVerrou = null;
 function pollAndProcessJobs() {
   if (pollEnAttenteDuVerrou) return pollEnAttenteDuVerrou;
-  const p = withJobFlowLock("poll", () => { pollEnAttenteDuVerrou = null; return pollAndProcessJobsUnlocked(); });
+  const p = withJobFlowLock("poll", () => {
+    pollEnAttenteDuVerrou = null;
+    debutDernierPoll = Date.now(); pollsDemarres++; relanceDuCycle = null;   // (29/10, lot B — boucle du poll) plancher, relance unique
+    return pollAndProcessJobsUnlocked();
+  });
   // ⚠️ La commande de sync distante s'exécute APRÈS libération du verrou.
   // syncDressingVinted en réclame un à son tour : l'appeler depuis l'intérieur
   // du poll serait un auto-blocage (jobFlowTail attendrait la sync, qui
@@ -3307,10 +3420,8 @@ function pollAndProcessJobs() {
     };
     // (22/10 soir, 0.6.130, point 5) La boucle s'est arrêtée pour une synchro demandée : un poll repart tout de
     // suite — c'est lui qui emporte la demande (le serveur la sert devant la file, garde absolue comprise).
-    if (repollApresCycle) {
-      repollApresCycle = false;
-      setTimeout(() => { pollAndProcessJobs(); }, 1500);
-    }
+    // (29/10, lot B — boucle du poll) Une raison neuve seulement, au plancher de 20 s (un geste : 1,5 s) — armerRelanceApresCycle.
+    armerRelanceApresCycle();
     if (!cmd) { lancerRelevesAnnonces(); return; }
     traiterCommandeSyncDistante(cmd).catch((e) =>
       console.error("[sync-dressing][distant]", e?.message ?? e)).finally(lancerRelevesAnnonces);
@@ -3870,6 +3981,7 @@ async function pollAndProcessJobsUnlocked() {
     fileEnPauseServeur = rep.file_en_pause === true ? { le: Date.now(), retenus: Number(rep.jobs_retenus_pause) || 0 } : null;
     chrome.storage.local.set({ fillsell_file_pause: fileEnPauseServeur }).catch(() => {});
     vintedPauseAntirobotServeur = rep.vinted_pause_antirobot === true;
+    noterRetenuesDeletedServeur(rep.retenues_deleted);   // (29/10, lot B 4.11) absent (serveur plus ancien) : liste vide
     // (25/10, 0.6.144) Le rattrapage des textes en arrière-plan : ce que le serveur ouvre à CE compte (liste, rythme,
     // plafonds). Absent (serveur plus ancien, compte pas encore ouvert) : aucune lecture de fond.
     lectureFondServie = rep.lecture_fond && typeof rep.lecture_fond === "object" ? rep.lecture_fond : null;
@@ -3938,7 +4050,8 @@ async function pollAndProcessJobsUnlocked() {
         .catch((e) => ({ ok: false, reason: "erreur", message: String(e?.message ?? e) }));
       console.log(`[releve][${cmd.platform}] relecture avant redépôt ${cmd.id} (en tête de cycle) → ${r?.ok ? "faite" : (r?.reason ?? "?")}`);
     }
-    repollApresCycle = true;
+    // (29/10, lot B — boucle du poll) La même relecture resservie au cycle suivant ne relance plus : l'alarme s'en charge.
+    demanderRepoll({ raison: "releve_devant", cle: relecturesDevant.map((c) => String(c.id)).sort().join(",") });
   }
 
   // (25/10, 0.6.143 — Louis) La lecture d'origine que la personne attend passe AVANT les tâches du cycle.
@@ -4113,9 +4226,11 @@ async function pollAndProcessJobsUnlocked() {
           continue;
         }
         if (etatFile.synchro) {
-          if (!synchroPasseDevant) console.warn(`[background] synchro demandée par la personne : les publications de ce cycle restent en file, la synchro passe entre deux tâches`);
+          if (!synchroPasseDevant) {
+            console.warn(`[background] synchro demandée par la personne : les publications de ce cycle restent en file, la synchro passe entre deux tâches`);
+            demanderRepoll({ raison: "synchro", cle: "synchro", geste: true });   // (29/10, lot B — boucle du poll) un geste : 1,5 s
+          }
           synchroPasseDevant = true;
-          repollApresCycle = true;
           continue;
         }
       }
@@ -4172,11 +4287,9 @@ async function pollAndProcessJobsUnlocked() {
   // republication automatique) passe APRÈS lui. Mesuré le 26/10 sur le poste de Nico : 10 lectures demandées ensemble
   // ont attendu 24,5 s la fin de ce cycle avant la première réponse. Le cycle rend le verrou tout de suite ; un poll
   // repart 1,5 s après (repollApresCycle), derrière ce qui attendait — rien n'est sauté, tout est décalé de quelques s.
-  if (jobFlowWaiters > 0 && !majPlanifiee) {
-    console.log(`[background] ${jobFlowWaiters} demande(s) en attente du verrou : la maintenance de fond repart juste après`);
-    repollApresCycle = true;
-    return;
-  }
+  // (29/10, lot B — boucle du poll) Un POLL en attente n'est pas une demande (c'était la boucle : chaque cycle cédait au suivant) ; et
+  // la maintenance ne cède pas deux cycles de suite aux mêmes demandes (demanderRepoll) : au second, elle se fait.
+  if (cederAuxDemandesEnAttente()) return;
   await recoverMissingListingUrls(session).catch((e) =>
     console.error("[background] recoverMissingListingUrls:", e)
   );
@@ -27758,6 +27871,9 @@ async function processRepublishJob(job, accessToken) {
     pf.capture_id = cap.capture_id;
     pf.republish_step = "captured";
     delete pf.capture_sans_reponse; // (11/10) la lecture a répondu : le compte de dépassements repart de zéro
+    // (29/10, lot B 4.10 — 89947a21) La capture est valide : la question « capture incomplète » est levée. Sa source ne
+    // reste plus sur le job pending (relancer_republish conserve platform_fields, cette écriture le recopiait).
+    if (pf.needs_user_source === "capture_incomplete") { delete pf.needs_user_source; delete pf.champs_a_completer; }
     // Le titre du job reste celui de l'inventaire, posé par la RPC : c'est de
     // l'affichage (popup, cartes), et update-job-status a un contrat de champs
     // qui lui est propre — on ne lui passe pas un `title` non prévu pour du
@@ -28139,6 +28255,8 @@ async function processRepublishJob(job, accessToken) {
         // expiré — le cycle que le plafond doit attraper. Tant qu'elle est
         // absente, aucune péremption n'est comptée.
         pf.recapture_le = new Date().toISOString();
+        // (29/10, lot B 4.10) Recapture valide : la question « capture incomplète » est levée (aucune source résiduelle).
+        if (pf.needs_user_source === "capture_incomplete") { delete pf.needs_user_source; delete pf.champs_a_completer; }
         await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: null });
         console.log(`[background] Job ${job.id} → capture périmée recapturée (${recap.capture_id}, occurrence ${peremptions}) — suppression au prochain passage`);
         return { status: "skipped", error: "capture périmée refaite — suppression au prochain passage" };
@@ -29878,6 +29996,32 @@ async function processDeleteJob(job, accessToken) {
       if (result.beebs404Constats.length) pfC0.beebs_404_constats = result.beebs404Constats.slice(-6);
       else delete pfC0.beebs_404_constats;
       job.platform_fields = pfC0;
+    }
+    // ── (29/10, lot B 4.9 C/R5-R6) BEEBS : LA SUPPRESSION ENVOYÉE ET LA LECTURE DE « MES ANNONCES » SONT GARDÉES ──
+    // Joséphine 1845ce62 : supprimée par FillSell le 26/10 au soir, puis « Mes annonces » illisible en entier à chaque
+    // reprise — l'envoi ne survivait que dans un texte archivé, la cause de l'illisible nulle part. Même copie mémoire
+    // que les constats : beebs_suppression_envoyee { le, numero, vue_en_ligne_avant } (le dernier envoi ; levé quand
+    // l'annonce est revue en vérification ou en vente après lui) — beebs.js en fait une preuve avec deux pages 404 à
+    // 6 h d'écart APRÈS l'envoi ; beebs_lecture_mes_annonces (par onglet : ok, par, http, motif, lues / annoncées),
+    // écrit seulement s'il change (même verdict, mêmes onglets : rien n'est réécrit).
+    if (job.platform === "beebs" && result) {
+      const pfS0 = { ...(job.platform_fields ?? {}) };
+      let changeS0 = false;
+      if (result.suppressionEnvoyee === true && Number.isFinite(Date.parse(String(result.suppressionEnvoyeeLe ?? "")))) {
+        pfS0.beebs_suppression_envoyee = { le: String(result.suppressionEnvoyeeLe), numero: numeroAnnonceRetrait(job),
+          vue_en_ligne_avant: result.suppressionVueEnLigneAvant ?? null, pose_par: "extension (retrait)" };
+        changeS0 = true;
+      } else if (result.suppressionEnvoyeeLevee === true && pfS0.beebs_suppression_envoyee) {
+        delete pfS0.beebs_suppression_envoyee;
+        changeS0 = true;
+      }
+      const lu0 = result.lectureMesAnnonces;
+      const cleLu0 = (l) => JSON.stringify([l?.verdict ?? null, l?.onglets ?? null]);
+      if (lu0 && Array.isArray(lu0.onglets) && cleLu0(lu0) !== cleLu0(pfS0.beebs_lecture_mes_annonces)) {
+        pfS0.beebs_lecture_mes_annonces = lu0;
+        changeS0 = true;
+      }
+      if (changeS0) job.platform_fields = pfS0;
     }
 
     // ⚠️ « ANNONCE INTROUVABLE » PEUT VOULOIR DIRE « DÉJÀ SUPPRIMÉE » (2026-07-13,

@@ -190,6 +190,10 @@ export default function StepperNouveau({ m }) {
               <button type="button" className="fsn-back" onClick={m.retour} disabled={m.isLocked} aria-label={ecran === 1 ? (en ? "Back to stock" : "Retour au stock") : (en ? "Previous step" : "Étape précédente")}>‹</button>
               <div className="fsn-top-title">{titreBarre}</div>
               <div className="fsn-top-step num">{ecran} / 3</div>
+              {/* (29/10, lot B 1.2 — promesse XEWER) L'annonce ouverte directement après Lens : l'analyse reste à un geste. */}
+              {m.onVoirAnalyse && ecran < 4 ? (
+                <button type="button" className="fsn-lien" onClick={m.onVoirAnalyse} disabled={m.isLocked}>{en ? "See the analysis" : "Voir l'analyse"}</button>
+              ) : null}
               <button type="button" className={`fsn-quit${m.quitterArme ? " fsn-quit--arme" : ""}`} onClick={m.quitter} disabled={m.isLocked}>
                 {m.quitterArme ? (en ? "Leave without keeping these photos?" : "Quitter sans garder ces photos ?") : (en ? "Leave" : "Quitter")}
               </button>
