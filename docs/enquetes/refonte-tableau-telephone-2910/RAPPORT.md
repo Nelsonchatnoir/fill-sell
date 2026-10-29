@@ -35,5 +35,12 @@ carte « Profit net · depuis le début » du 16/10 n'est pas gardée. Règle du
 - Pas de test sur un appareil iOS / Android réel depuis ce poste (aucun appareil ni émulateur connecté) : l'app native
   reçoit le même code par l'OTA ; à regarder sur le téléphone de Nico après mise à jour.
 
-## Livraison
-(complété au push)
+## Livraison (29/10, matin)
+- Commits `34fe8a5` (lot) et `91d857b` (version 2.9.126), un seul push.
+- **Web** : `build.json` = `2026-10-29T06:51:38Z+91d857b` ; script d'entrée 200 avec et sans `Origin` ; la feuille de styles du
+  téléphone (`App-*.css`, `fst-feuille`) est servie.
+- **OTA Capgo 2.9.126** (canal production relu à 2.9.125 avant, **2.9.126** après), build d'un arbre propre
+  `2026-10-29T06:51:24Z+91d857b`.
+- **Production** (session de Nico déjà ouverte, lecture seule, ordinateur) : Tableau et Stats desktop identiques, aucune
+  erreur console. L'écran téléphone ne se contrôle pas d'ici sur fillsell.app (la page refuse d'être mise dans un cadre) :
+  vérifié au banc d'essai sur le même code, à regarder sur le téléphone de Nico.
