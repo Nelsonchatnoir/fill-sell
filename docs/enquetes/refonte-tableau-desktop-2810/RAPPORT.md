@@ -88,7 +88,8 @@ vitesse), marques et catégories, jours de la semaine, évolution mois par mois 
 ## 6. Vérifications
 - `npm run selftest:tableau-stats` (74 vérifications), `build:essai` vert, lint des fichiers touchés vert.
 - Suite complète (477 selftests, 4 en parallèle, 275 s) : tout vert sauf `selftest:brut-garde-depop-session` (§ D,
-  lens-analysis « ligne EUR » : rouge né des commits Lens du 28/10 23:38-23:40 d'un autre terminal, fichier non touché ici).
+  lens-analysis « ligne EUR », né des commits Lens du 28/10 23:38-23:40 d'un autre terminal) — remis au vert par ce
+  terminal dans `67e4282` (relu vert le 29/10 après le push) : suite entièrement verte.
   Deux rouges NÉS de ce lot, corrigés avant le commit : `messagerie-app` et `a-regler-sans-bandeau` épinglent la balise
   d'ouverture du conteneur de page (la largeur desktop passe donc par un attribut `data-bureau-large` posé APRÈS la
   classe) ; `aucune-estimation` lisait « jour après jour » comme un délai promis (titre devenu « jour par jour »).
