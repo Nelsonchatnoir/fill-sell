@@ -11,9 +11,10 @@ import { useMemo, useState } from 'react';
 import './bureau.css';
 import { blocPeriode, comparable, etatStock, evolutionMensuelle, nbHeuresReelles, nbSansDate, PERIODES_BUREAU, periode } from '../../utils/tableauStats';
 import { Colonnes } from './Graphes';
+import { axeMois, axeSimple } from './axe';
 import PanneauDetail from './PanneauDetail';
 import { Logo, Puce, Tuile, ChoixPeriode, Barres, IcoInfo, IcoEtincelle, BarresAges, Repartition } from './pieces';
-import { formats, libellesPeriode, jourCourt, moisAnnee, nomMois, nomPlateforme } from './outils';
+import { formats, libellesPeriode, jourCourt, moisAnnee, nomPlateforme } from './outils';
 
 const JOURS = { fr: ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'], en: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] };
 const JOURS_C = { fr: ['lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.'], en: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] };
@@ -116,8 +117,8 @@ export default function StatsBureau({ ctx, lang, currency, cle, setCle, ia, setT
             {evolution.length > 0 && <div className="fsb-legend"><span><i className="fsb-box" style={{ background: 'var(--fsb-teal-soft)' }} />{f.L('Encaissé', 'Collected')}</span><span><i className="fsb-box" style={{ background: 'var(--fsb-teal-deep)' }} />{f.L('Profit', 'Profit')}</span></div>}</div>
           {evolution.length === 0 ? <div className="fsb-empty"><b>{f.L('Aucune vente datée sur 12 mois', 'No dated sale in 12 months')}</b>{f.L('Les mois se rempliront avec tes ventes.', 'Months will fill up with your sales.')}</div> : (
             <>
-              <Colonnes hauteur={200} labels={evolution.map((m) => nomMois(m.mois, lang, true))} fy={f.eur0} epaisseurMax={22} aria={f.L('Encaissé et profit par mois', 'Takings and profit per month')}
-                series={[{ vals: evolution.map((m) => m.encaisse), couleur: 'var(--fsb-teal-soft)' }, { vals: evolution.map((m) => (m.profitRetenues ? m.profit : null)), couleur: 'var(--fsb-teal-deep)' }]} fort={(i) => i === evolution.length - 1}
+              <Colonnes hauteur={200} axe={axeMois(evolution.map((m) => m.mois), lang, { gras: (i) => i === evolution.length - 1 })} fy={f.eur0} epaisseurMax={22} aria={f.L('Encaissé et profit par mois', 'Takings and profit per month')}
+                series={[{ vals: evolution.map((m) => m.encaisse), couleur: 'var(--fsb-teal-soft)' }, { vals: evolution.map((m) => (m.profitRetenues ? m.profit : null)), couleur: 'var(--fsb-teal-deep)' }]}
                 bulle={(i) => ({ titre: `${capital(moisAnnee(evolution[i].mois, lang))}${i === evolution.length - 1 ? f.L(' (en cours)', ' (so far)') : ''}`, lignes: [{ couleur: 'var(--fsb-teal-soft)', boite: true, libelle: f.L('encaissé', 'collected'), valeur: f.eur(evolution[i].encaisse) }, { couleur: 'var(--fsb-teal-deep)', boite: true, libelle: 'profit', valeur: evolution[i].profitRetenues ? f.eur(evolution[i].profit) : '—' }], note: f.L(`${evolution[i].nb} ventes`, `${evolution[i].nb} sales`) })} />
               <div className="fsb-tbl-box" style={{ marginTop: 10 }}><table className="fsb-tbl">
                 <thead><tr><th>{f.L('Mois', 'Month')}</th><th>{f.L('Ventes', 'Sales')}</th><th>{f.L('Encaissé', 'Collected')}</th><th>{f.L('Marge', 'Margin')}</th><th>{f.L('vs mois d’avant', 'vs prior month')}</th></tr></thead>
@@ -204,7 +205,7 @@ export default function StatsBureau({ ctx, lang, currency, cle, setCle, ia, setT
           {js.n === 0 ? <div className="fsb-empty"><b>{f.L('Aucune vente datée', 'No dated sale')}</b>{f.L('Choisis une période plus longue.', 'Pick a longer period.')}</div> : (
             <>
               {top2.length === 2 && <p className="fsb-insight"><b>{capital(JOURS[lj][top2[0].jour])}</b>{f.L(' et ', ' and ')}<b>{f.L(JOURS[lj][top2[1].jour], JOURS[lj][top2[1].jour])}</b>{f.L(' sont tes meilleurs jours.', ' are your best days.')}</p>}
-              <Colonnes hauteur={150} labels={js.jours.map((j) => JOURS_C[lj][j.jour])} vlab={(v) => f.num(v)} epaisseurMax={26} aria={f.L('Ventes par jour de la semaine', 'Sales per weekday')}
+              <Colonnes hauteur={150} axe={axeSimple(js.jours.map((j) => JOURS_C[lj][j.jour]))} vlab={(v) => f.num(v)} epaisseurMax={26} aria={f.L('Ventes par jour de la semaine', 'Sales per weekday')}
                 series={[{ vals: js.jours.map((j) => j.nb), couleur: (i) => (js.jours[i].nb === jmax ? 'var(--fsb-teal-deep)' : 'var(--fsb-teal-soft)') }]}
                 bulle={(i) => ({ titre: capital(JOURS[lj][i]), lignes: [{ couleur: 'var(--fsb-teal)', boite: true, libelle: f.L('ventes', 'sales'), valeur: f.num(js.jours[i].nb) }], note: `${f.eur(js.jours[i].ca)} ${f.L('encaissés', 'collected')}` })} />
             </>

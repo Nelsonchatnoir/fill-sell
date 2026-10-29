@@ -47,6 +47,7 @@
     "selftest:ventes-supprimees": "node scripts/ventes-supprimees-selftest.mjs",
     "selftest:ventes-stats": "node scripts/ventes-stats-selftest.mjs",
     "selftest:tableau-stats": "node scripts/tableau-stats-selftest.mjs",
+    "selftest:axe-graphes": "node scripts/axe-graphes-selftest.mjs",
     "selftest:ventes-prix-inconnu": "node scripts/ventes-prix-inconnu-selftest.mjs",
     "selftest:messagerie": "node scripts/messagerie-selftest.mjs",
     "selftest:messagerie-app": "node scripts/messagerie-app-selftest.mjs",

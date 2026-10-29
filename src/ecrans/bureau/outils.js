@@ -1,7 +1,8 @@
 // Outils du Tableau et des Statistiques sur ordinateur (28/10) : formats, libellés de
 // période, largeur mesurée des graphes. Aucun composant ici (fast refresh).
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { formatCurrency, typeLabel } from '../../utils/shared';
+import { largeurApprochee } from './axe';
 
 // ── Formats ─────────────────────────────────────────────────────────────────
 export function formats(lang, currency = 'EUR') {
@@ -69,6 +70,37 @@ export function useTaille() {
     return () => ro.disconnect();
   }, []);
   return [ref, taille];
+}
+
+/**
+ * Largeur réelle d'un libellé d'axe (11,5 px, police calculée du graphe), mesurée au canvas ;
+ * remesurée une fois les polices de la page chargées (avant : police de repli).
+ */
+const TAILLE_AXE = 11.5;
+const approchee = largeurApprochee(TAILLE_AXE);
+let toile = null;
+const largeurs = new Map();
+export function useMesureTexte(ref) {
+  const [polices, setPolices] = useState(() => typeof document === 'undefined' || !document.fonts || document.fonts.status === 'loaded');
+  useEffect(() => {
+    if (polices) return undefined;
+    let vivant = true;
+    document.fonts.ready.then(() => { if (vivant) setPolices(true); });
+    return () => { vivant = false; };
+  }, [polices]);
+  return useCallback((texte, gras) => {
+    const el = ref.current;
+    if (!el) return approchee(texte, gras);
+    const famille = getComputedStyle(el).fontFamily;
+    const cle = `${polices ? 1 : 0}|${gras ? 1 : 0}|${famille}|${texte}`;
+    if (largeurs.has(cle)) return largeurs.get(cle);
+    toile = toile || document.createElement('canvas').getContext('2d');
+    if (!toile) return approchee(texte, gras);
+    toile.font = `${gras ? 600 : 400} ${TAILLE_AXE}px ${famille}`;
+    const l = Math.ceil(toile.measureText(texte).width) + 1;
+    largeurs.set(cle, l);
+    return l;
+  }, [ref, polices]);
 }
 
 const NOMS = { vinted: 'Vinted', leboncoin: 'Leboncoin', ebay: 'eBay', beebs: 'Beebs', depop: 'Depop', opla: 'Opla', ailleurs: 'Ailleurs' };

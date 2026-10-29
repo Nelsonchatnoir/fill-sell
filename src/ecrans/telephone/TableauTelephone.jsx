@@ -13,8 +13,9 @@ import './telephone.css';
 import { blocPeriode, comparable, etatStock, PERIODES_BUREAU, periode } from '../../utils/tableauStats';
 import { toucherLeger } from '../../utils/retourHaptique';
 import { Courbes, Colonnes, TraceHeros } from '../bureau/Graphes';
+import { axeJours, axeMois } from '../bureau/axe';
 import { Logo, Puce, PuceEtat, Tuile, IcoOuvrir, IcoChevron, LigneVente, LigneArticle, BarresAges } from '../bureau/pieces';
-import { formats, libellesPeriode, jourLong, jourMoyen, jourCourt, nomMois, moisAnnee, nomPlateforme } from '../bureau/outils';
+import { formats, libellesPeriode, jourLong, jourMoyen, jourCourt, moisAnnee, nomPlateforme } from '../bureau/outils';
 import FeuilleDetail from './FeuilleDetail';
 
 const CLE_PERIODE = 'fs_tableau_periode';
@@ -64,12 +65,10 @@ export default function TableauTelephone({ ctx, lang, currency, username, setTab
     const prev = Array.from({ length: n }, (_, i) => (serie.prev[i] ? serie.prev[i][M[0]] : null));
     const der = serie.points.length - 1;
     const milieu = Math.round((n - 1) / 2);
-    const xTicks = [{ i: 0, l: estMois ? jourCourt(bloc.periode.debut, lang) : jourCourt(serie.points[0].jour, lang) }];
-    if (Math.abs(milieu - der) > 4) xTicks.push({ i: milieu, l: estMois ? String(milieu + 1) : jourCourt(serie.points[milieu].jour, lang) });
-    xTicks.push({ i: der, l: f.L('auj.', 'today'), fort: true });
-    if (estMois && der < n - 5) xTicks.push({ i: n - 1, l: String(n) });
+    const lib = (i) => (estMois ? (i ? String(i + 1) : jourCourt(bloc.periode.debut, lang)) : jourCourt(serie.points[i].jour, lang));
+    const axe = axeJours({ n, lib, grilles: [[0, milieu], [0]], aujourdhui: der, libAuj: f.L('auj.', 'today'), fin: estMois });
     graphe = (
-      <Courbes n={n} bandeau hauteurMin={200} padGauche={46} padDroite={14} aria={`${M[4]} ${f.L('cumulé', 'cumulative')}, ${lp.nom}`} fy={M[3]} xTicks={xTicks}
+      <Courbes n={n} bandeau hauteurMin={200} padGauche={46} padDroite={14} aria={`${M[4]} ${f.L('cumulé', 'cumulative')}, ${lp.nom}`} fy={M[3]} axe={axe}
         vide={I.nb === 0 && (!V || V.nb === 0) ? <span><b>{f.L(`Aucune vente pour l’instant · ${lp.nom}`, `No sale yet · ${lp.nom}`)}</b>{f.L('La courbe se dessine dès la première vente.', 'The curve draws itself from the first sale.')}</span> : null}
         series={[{ vals: prev, couleur: 'var(--fsb-prev)' }, { vals: cur, couleur: 'var(--fsb-teal)', voile: true, epaisseur: 2.5 }]}
         bulle={(i) => {
@@ -84,8 +83,8 @@ export default function TableauTelephone({ ctx, lang, currency, username, setTab
   } else {
     const pts = serie.points;
     graphe = (
-      <Colonnes bandeau hauteur={200} indication={f.L('Touche un mois', 'Tap a month')} labels={pts.map((m, i) => (pts.length > 8 && i % 2 ? '' : nomMois(m.mois, lang, true)))} fy={M[3]} epaisseurMax={22}
-        aria={`${M[4]}, ${f.L('mois par mois', 'month by month')}`} fort={(i) => i === pts.length - 1}
+      <Colonnes bandeau hauteur={200} indication={f.L('Touche un mois', 'Tap a month')} axe={axeMois(pts.map((m) => m.mois), lang, { gras: (i) => i === pts.length - 1 })} fy={M[3]} epaisseurMax={22}
+        aria={`${M[4]}, ${f.L('mois par mois', 'month by month')}`}
         series={[{ vals: pts.map((m) => (mesure === 'profit' && !m.profitRetenues ? null : m[M[5]])), couleur: (i) => (i === pts.length - 1 ? 'var(--fsb-teal-soft)' : 'var(--fsb-teal)') }]}
         bulle={(i) => ({ titre: `${moisAnnee(pts[i].mois, lang)}${i === pts.length - 1 ? f.L(' (en cours)', ' (so far)') : ''}`, lignes: [{ couleur: 'var(--fsb-teal)', boite: true, valeur: mesure === 'profit' && !pts[i].profitRetenues ? '—' : M[2](pts[i][M[5]]) }], note: f.L(`${pts[i].nb} ventes`, `${pts[i].nb} sales`) })} />
     );

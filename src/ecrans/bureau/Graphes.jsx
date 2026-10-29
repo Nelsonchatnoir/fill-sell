@@ -6,8 +6,11 @@
 // (29/10) Téléphone : `bandeau` — on lit au doigt (toucher ou glisser) et la valeur
 // s'affiche dans un bandeau AU-DESSUS du graphe, que le pouce ne cache pas ;
 // le défilement vertical de la page reste libre (touch-action: pan-y).
+// (29/10) Axe horizontal : l'appelant décrit des jeux de libellés (axe.js), le graphe garde
+// le premier qui tient à sa largeur mesurée — jamais deux libellés qui se touchent.
 import { useState } from 'react';
-import { useTaille } from './outils';
+import { useMesureTexte, useTaille } from './outils';
+import { placerAxe } from './axe';
 
 /** Haut d'axe tel que CHAQUE graduation tombe sur un nombre rond (250, 500… jamais 333 ou 667). */
 function maxRond(v, n = 4) {
@@ -25,6 +28,8 @@ function libellees(max, n, fy, vide) {
   for (const t of graduations(max, n)) { const l = fy(t); if (!out.length || out[out.length - 1].l !== l) out.push({ t, l }); }
   return out;
 }
+
+const classeAxe = (k) => (k.annee ? 'fsb-annee' : k.gras ? 'fsb-fort' : undefined);
 
 /** Infobulle : { titre, lignes: [{ couleur, libelle, valeur, boite }], note }. */
 function Bulle({ contenu, x, largeurBoite }) {
@@ -61,8 +66,9 @@ function Lecture({ contenu, indication }) {
  * Courbes (cumuls jour par jour). n points sur l'axe ; séries : { vals (null =
  * pas encore passé), couleur, voile, epaisseur, fin (étiquette du dernier point) }.
  */
-export function Courbes({ n, series, fy, xTicks, bulle, aria, hauteurMin = 290, vide = null, bandeau = false, indication = '', padGauche = 56, padDroite = 86 }) {
+export function Courbes({ n, series, fy, axe, bulle, aria, hauteurMin = 290, vide = null, bandeau = false, indication = '', padGauche = 56, padDroite = 86 }) {
   const [ref, { w, h: hBoite }] = useTaille();
+  const mesurer = useMesureTexte(ref);
   const [survol, setSurvol] = useState(null);
   const H = Math.max(hauteurMin, hBoite || 0);
   const padL = padGauche, padR = padDroite, padT = 10, padB = 26;
@@ -90,7 +96,7 @@ export function Courbes({ n, series, fy, xTicks, bulle, aria, hauteurMin = 290, 
           {libellees(max, bandeau ? 3 : 4, fy, !(Math.max(...tous, 0) > 0)).map(({ t, l }) => (
             <g key={t}><line x1={padL} x2={w - padR + 8} y1={Y(t)} y2={Y(t)} stroke="var(--fsb-line)" /><text x={padL - 10} y={Y(t) + 4} textAnchor="end">{l}</text></g>
           ))}
-          {xTicks.map((k) => <text key={k.i} x={X(k.i)} y={H - 6} textAnchor="middle" className={k.fort ? 'fsb-fort' : undefined}>{k.l}</text>)}
+          {placerAxe(axe, { x: X, largeur: w, mesurer }).map((k) => <text key={k.i} x={k.x} y={H - 6} textAnchor="middle" className={classeAxe(k)}>{k.l}</text>)}
           {series.map((s, si) => {
             const pts = s.vals.map((v, i) => (v == null ? null : [X(i), Y(v)])).filter(Boolean);
             if (!pts.length) return null;
@@ -127,14 +133,15 @@ export function Courbes({ n, series, fy, xTicks, bulle, aria, hauteurMin = 290, 
 
 /**
  * Colonnes, une ou deux séries côte à côte. couleur : chaîne ou (i) => chaîne.
- * labels '' = graduation masquée (la colonne reste). fy null = pas d'axe Y.
+ * axe : jeux de libellés (axe.js : axeMois, axeJours, axeSimple). fy null = pas d'axe Y.
  */
-export function Colonnes({ labels, series, fy = null, vlab = null, bulle, aria, hauteur = 150, hauteurMin = null, epaisseurMax = 24, fort = null, graduationsY = 3, padL: padLProp = null, bandeau = false, indication = '' }) {
+export function Colonnes({ axe, series, fy = null, vlab = null, bulle, aria, hauteur = 150, hauteurMin = null, epaisseurMax = 24, graduationsY = 3, padL: padLProp = null, bandeau = false, indication = '' }) {
   const [ref, { w, h: hBoite }] = useTaille();
+  const mesurer = useMesureTexte(ref);
   const [survol, setSurvol] = useState(null);
   const H = hauteurMin ? Math.max(hauteurMin, hBoite || 0) : hauteur;
   const padL = padLProp ?? (fy ? 48 : 6), padR = 8, padT = vlab ? 20 : 12, padB = 26;
-  const n = labels.length, iw = Math.max(10, w - padL - padR), ih = H - padT - padB, bande = iw / Math.max(1, n);
+  const n = series[0]?.vals.length ?? 0, iw = Math.max(10, w - padL - padR), ih = H - padT - padB, bande = iw / Math.max(1, n);
   const tous = series.flatMap((s) => s.vals.filter((v) => v != null));
   const max = maxRond(Math.max(...tous, 0) * 1.02, fy ? graduationsY : 4);
   const Y = (v) => padT + ih - (v / max) * ih;
@@ -149,7 +156,7 @@ export function Colonnes({ labels, series, fy = null, vlab = null, bulle, aria, 
           {fy ? libellees(max, graduationsY, fy, !(Math.max(...tous, 0) > 0)).map(({ t, l }) => (
             <g key={t}><line x1={padL} x2={w - padR} y1={Y(t)} y2={Y(t)} stroke="var(--fsb-line)" /><text x={padL - 10} y={Y(t) + 4} textAnchor="end">{l}</text></g>
           )) : <line x1={padL} x2={w - padR} y1={Y(0)} y2={Y(0)} stroke="var(--fsb-line)" />}
-          {labels.map((lab, i) => {
+          {series[0]?.vals.map((_, i) => {
             const cx = padL + bande * i + bande / 2;
             return (
               <g key={i} opacity={survol != null && survol !== i ? 0.55 : 1}>
@@ -166,12 +173,14 @@ export function Colonnes({ labels, series, fy = null, vlab = null, bulle, aria, 
                     </g>
                   );
                 })}
-                {lab && <text x={cx} y={H - 6} textAnchor="middle" className={fort && fort(i) ? 'fsb-fort' : undefined}>{lab}</text>}
                 {!bandeau && <rect x={padL + bande * i} y={padT} width={bande} height={ih} fill="transparent" tabIndex={-1}
                   onPointerEnter={() => setSurvol(i)} onPointerLeave={() => setSurvol(null)} />}
               </g>
             );
           })}
+          {placerAxe(axe, { x: (i) => padL + bande * i + bande / 2, largeur: w, mesurer }).map((k) => (
+            <text key={k.i} x={k.x} y={H - 6} textAnchor="middle" className={classeAxe(k)} opacity={survol != null && survol !== k.i ? 0.55 : 1}>{k.l}</text>
+          ))}
           {bandeau && <rect x={padL} y={0} width={iw} height={H} fill="transparent" aria-hidden="true"
             onPointerDown={toucher} onPointerMove={(e) => { if (e.pointerType === 'mouse' || e.buttons) toucher(e); }} />}
         </svg>

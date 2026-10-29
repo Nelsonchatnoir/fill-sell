@@ -4,8 +4,9 @@
 // `tactile` : graphes lus au doigt (bandeau au-dessus du graphe, jamais sous le pouce).
 import { comparable } from '../../utils/tableauStats';
 import { Colonnes } from './Graphes';
+import { axeJours, axeMois, grillesSemaines } from './axe';
 import { Logo, Puce, PuceEtat, IcoChevron, IcoOuvrir, Barres, MiniTuile, LigneArticle, LigneVente, Repartition, BarresAges } from './pieces';
-import { jourMoyen, nomMois, moisAnnee, libellesPeriode, nomPlateforme } from './outils';
+import { jourMoyen, moisAnnee, libellesPeriode, nomPlateforme } from './outils';
 
 export function contenuDetail({ ouvert, bloc, stock, f, lang, onOuvrir, onAller, tactile = false }) {
   if (!ouvert) return null;
@@ -16,9 +17,9 @@ export function contenuDetail({ ouvert, bloc, stock, f, lang, onOuvrir, onAller,
   const parJourOuMois = (serie) => {
     const jour = Boolean(serie[0]?.jour);
     return (
-      <Colonnes hauteur={tactile ? 130 : 150} bandeau={tactile} labels={serie.map((x, i) => (jour ? (i % 7 === 0 || i === serie.length - 1 ? String(Number(x.jour.slice(8, 10))) : '') : nomMois(x.mois, lang, true)))}
+      <Colonnes hauteur={tactile ? 130 : 150} bandeau={tactile} axe={jour ? axeJours({ n: serie.length, lib: (i) => String(Number(serie[i].jour.slice(8, 10))), grilles: grillesSemaines(serie.length), fin: true }) : axeMois(serie.map((x) => x.mois), lang)}
         series={[{ vals: serie.map((x) => x.nb), couleur: 'var(--fsb-teal)' }]} fy={(v) => f.num(v)} epaisseurMax={14}
-        aria={f.L('Ventes par jour', 'Sales per day')} indication={f.L('Touche un jour', 'Tap a day')}
+        aria={jour ? f.L('Ventes par jour', 'Sales per day') : f.L('Ventes par mois', 'Sales per month')} indication={jour ? f.L('Touche un jour', 'Tap a day') : f.L('Touche un mois', 'Tap a month')}
         bulle={(i) => ({ titre: jour ? jourMoyen(serie[i].jour, lang) : moisAnnee(serie[i].mois, lang), lignes: [{ couleur: 'var(--fsb-teal)', boite: true, libelle: f.L('ventes', 'sales'), valeur: f.num(serie[i].nb) }], note: `${f.eur(serie[i].ca)} ${f.L('encaissés', 'collected')}` })} />
     );
   };
@@ -147,7 +148,7 @@ export function contenuDetail({ ouvert, bloc, stock, f, lang, onOuvrir, onAller,
         <div className="fsb-how"><b>{f.L('Comment c’est calculé.', 'How it is calculated.')}</b> {DEF[4]}</div>
         {DEF[5] && serie.pas === 'jour' && (
           <div className="fsb-sec"><h4>{f.L('Jour par jour', 'Day by day')}<span>{lp.nom}</span></h4>
-            <Colonnes hauteur={tactile ? 130 : 150} bandeau={tactile} indication={f.L('Touche un jour', 'Tap a day')} labels={serie.points.map((x, i) => (i % 7 === 0 || i === serie.points.length - 1 ? String(Number(x.jour.slice(8, 10))) : ''))}
+            <Colonnes hauteur={tactile ? 130 : 150} bandeau={tactile} indication={f.L('Touche un jour', 'Tap a day')} axe={axeJours({ n: serie.points.length, lib: (i) => String(Number(serie.points[i].jour.slice(8, 10))), grilles: grillesSemaines(serie.points.length), fin: true })}
               series={[{ vals: serie.points.map((x) => x[DEF[5]]), couleur: 'var(--fsb-teal)' }]} fy={DEF[5] === 'nb' ? (v) => f.num(v) : f.eur0} epaisseurMax={14} aria={DEF[0]}
               bulle={(i) => ({ titre: jourMoyen(serie.points[i].jour, lang), lignes: [{ couleur: 'var(--fsb-teal)', boite: true, libelle: DEF[0], valeur: DEF[5] === 'nb' ? f.num(serie.points[i].nb) : f.eur(serie.points[i][DEF[5]]) }], note: DEF[5] !== 'nb' ? f.L(`${serie.points[i].nb} ventes`, `${serie.points[i].nb} sales`) : null })} /></div>
         )}

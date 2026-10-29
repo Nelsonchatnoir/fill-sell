@@ -10,6 +10,7 @@ import { useMemo, useState } from 'react';
 import './bureau.css';
 import { blocPeriode, comparable, etatStock, PERIODES_BUREAU, periode } from '../../utils/tableauStats';
 import { Courbes, Colonnes, TraceHeros } from './Graphes';
+import { axeJours, axeMois } from './axe';
 import PanneauDetail from './PanneauDetail';
 import { Logo, Puce, PuceEtat, Tuile, ChoixPeriode, IcoOuvrir, IcoChevron, LigneVente, LigneArticle, BarresAges } from './pieces';
 import { formats, libellesPeriode, jourLong, jourMoyen, jourCourt, nomPlateforme } from './outils';
@@ -49,11 +50,10 @@ export default function TableauBureau({ ctx, lang, currency, username, setTab })
     const cur = Array.from({ length: n }, (_, i) => (serie.points[i] ? serie.points[i][M[0]] : null));
     const prev = Array.from({ length: n }, (_, i) => (serie.prev[i] ? serie.prev[i][M[0]] : null));
     const der = serie.points.length - 1;
-    const ticks = (estMois ? [0, 7, 14, 21, n - 1] : [0, 7, 14, 21, n - 1]).filter((i, k, a) => i <= n - 1 && a.indexOf(i) === k && (i === der || Math.abs(i - der) > 2 || i === n - 1));
-    const xTicks = [...new Set([...ticks, der])].sort((a, b) => a - b).map((i) => ({ i, l: i === der ? f.L('auj.', 'today') : estMois ? jourCourt(`${bloc.periode.debut.slice(0, 8)}${String(i + 1).padStart(2, '0')}`, lang) : jourCourt(serie.points[i].jour, lang), fort: i === der }));
+    const axe = axeJours({ n, lib: (i) => (estMois ? jourCourt(`${bloc.periode.debut.slice(0, 8)}${String(i + 1).padStart(2, '0')}`, lang) : jourCourt(serie.points[i].jour, lang)), grilles: [[0, 7, 14, 21], [0, 14], [0]], aujourdhui: der, libAuj: f.L('auj.', 'today'), fin: true });
     const legCur = estMois ? lp.nom : f.L('30 derniers jours', 'last 30 days');
     graphe = (
-      <Courbes n={n} aria={`${M[4]} ${f.L('cumulé', 'cumulative')}, ${lp.nom}`} fy={M[3]} xTicks={xTicks}
+      <Courbes n={n} aria={`${M[4]} ${f.L('cumulé', 'cumulative')}, ${lp.nom}`} fy={M[3]} axe={axe}
         vide={I.nb === 0 && (!V || V.nb === 0) ? <span><b>{f.L(`Aucune vente pour l’instant · ${lp.nom}`, `No sale yet · ${lp.nom}`)}</b>{f.L('La courbe se dessine dès la première vente.', 'The curve draws itself from the first sale.')}</span> : null}
         series={[
           { vals: prev, couleur: 'var(--fsb-prev)', fin: prev[der] != null && V?.nb ? M[2](prev[der]) : null },
@@ -222,8 +222,8 @@ function ColonnesMois({ bloc, mesure, f, lang }) {
   const lib = { ca: f.L('encaissé', 'collected'), profit: f.L('profit', 'profit'), nb: f.L('ventes', 'sales') }[mesure];
   const nomM = (k, court) => new Intl.DateTimeFormat(lang === 'en' ? 'en-GB' : 'fr-FR', { timeZone: 'UTC', month: court ? 'short' : 'long', ...(court ? {} : { year: 'numeric' }) }).format(new Date(`${k}-15T12:00:00Z`));
   return (
-    <ColonnesPleine labels={pts.map((m, i) => (pts.length > 14 && i % 2 ? '' : nomM(m.mois, true)))} fy={fy} aria={`${lib}, ${f.L('mois par mois', 'month by month')}`}
-      series={[{ vals: pts.map((m) => (mesure === 'profit' && !m.profitRetenues ? null : m[key])), couleur: (i) => (i === pts.length - 1 ? 'var(--fsb-teal-soft)' : 'var(--fsb-teal)') }]} fort={(i) => i === pts.length - 1}
+    <ColonnesPleine axe={axeMois(pts.map((m) => m.mois), lang, { gras: (i) => i === pts.length - 1 })} fy={fy} aria={`${lib}, ${f.L('mois par mois', 'month by month')}`}
+      series={[{ vals: pts.map((m) => (mesure === 'profit' && !m.profitRetenues ? null : m[key])), couleur: (i) => (i === pts.length - 1 ? 'var(--fsb-teal-soft)' : 'var(--fsb-teal)') }]}
       bulle={(i) => ({ titre: `${nomM(pts[i].mois, false)}${i === pts.length - 1 ? f.L(' (en cours)', ' (so far)') : ''}`, lignes: [{ couleur: 'var(--fsb-teal)', boite: true, libelle: lib, valeur: mesure === 'profit' && !pts[i].profitRetenues ? '—' : fv(pts[i][key]) }], note: f.L(`${pts[i].nb} ventes${pts[i].marge != null ? ` · marge ${f.pct(pts[i].marge)}` : ''}`, `${pts[i].nb} sales${pts[i].marge != null ? ` · margin ${f.pct(pts[i].marge)}` : ''}`) })} />
   );
 }

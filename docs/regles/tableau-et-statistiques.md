@@ -43,3 +43,19 @@
   l'ouverture (natif seulement, `toucherLeger`).
 - Inchangés : l'écran de démarrage d'un compte vide, les bandeaux du haut, les encarts de quota, l'ordinateur
   (même rendu, le contenu du panneau n'a été que déplacé), le découpage des paliers (Stats ouvertes à tous).
+
+## 29/10 — Libellés de l'axe horizontal : jamais deux qui se touchent (rapport `docs/enquetes/axe-graphes-2910/RAPPORT.md`)
+- Bug vu par Nico sur iPhone (feuille « Vinted · depuis le début », Ventes par mois) : ~20 mois écrits côte à côte,
+  « janvfévmarsavr… » illisible. RÈGLE pour TOUS les graphes (ordinateur et téléphone, Tableau, panneau / feuille,
+  Statistiques, toutes périodes) : un graphe ne reçoit plus une liste de libellés figée, mais des JEUX du plus dense
+  au plus clairsemé (`ecrans/bureau/axe.js`) ; `Courbes` / `Colonnes` mesurent le texte à leur largeur réelle
+  (`useMesureTexte`, canvas, police de la page) et gardent le premier jeu dont les libellés tiennent avec 10 px
+  d'écart, sans déborder du graphe (`placerAxe`). Le détail de chaque mois ou jour se lit au survol / au toucher.
+- **Mois** (`axeMois`) : tous, un sur deux, trimestres (janv. avr. juil. oct.), semestres, puis les seuls changements
+  d'année ; dès que la série couvre deux années civiles, janvier s'écrit **« 2026 »** (graisse 600). Le mois en cours
+  reste en gras quand il a sa place. **Jours** (`axeJours`) : grille par semaine, « auj. » toujours écrit (un repère
+  qui le touche s'efface), la fin du mois seulement si elle a la place. **Listes courtes** (`axeSimple`) : jours de la
+  semaine.
+- Jamais de `labels` à trous calculés à la main (`i % 2 ? '' : …`) : c'est ce qui cassait à une autre largeur. Un
+  nouveau graphe passe un `axe`. Selftest `npm run selftest:axe-graphes` (toutes largeurs 220 → 1 920 px × séries
+  1 → 130 mois et 1 → 31 jours).

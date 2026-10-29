@@ -13,8 +13,9 @@ import './telephone.css';
 import { blocPeriode, comparable, etatStock, evolutionMensuelle, meilleuresVentes, nbHeuresReelles, nbSansDate } from '../../utils/tableauStats';
 import { toucherLeger } from '../../utils/retourHaptique';
 import { Colonnes } from '../bureau/Graphes';
+import { axeMois, axeSimple } from '../bureau/axe';
 import { Logo, Puce, Tuile, Barres, IcoInfo, IcoEtincelle, IcoChevron, BarresAges, Repartition } from '../bureau/pieces';
-import { formats, libellesPeriode, jourCourt, moisAnnee, nomMois, nomPlateforme } from '../bureau/outils';
+import { formats, libellesPeriode, jourCourt, moisAnnee, nomPlateforme } from '../bureau/outils';
 import FeuilleDetail from './FeuilleDetail';
 import { PastillesPeriode } from './TableauTelephone';
 
@@ -111,8 +112,8 @@ export default function StatsTelephone({ ctx, lang, currency, cle, setCle, ia, s
         {evolution.length === 0 ? <div className="fsb-empty"><b>{f.L('Aucune vente datée sur 12 mois', 'No dated sale in 12 months')}</b>{f.L('Les mois se rempliront avec tes ventes.', 'Months will fill up with your sales.')}</div> : (
           <>
             <div className="fsb-legend"><span><i className="fsb-box" style={{ background: 'var(--fsb-teal-soft)' }} />{f.L('Encaissé', 'Collected')}</span><span><i className="fsb-box" style={{ background: 'var(--fsb-teal-deep)' }} />{f.L('Profit', 'Profit')}</span></div>
-            <Colonnes bandeau hauteur={170} indication={f.L('Touche un mois', 'Tap a month')} labels={evolution.map((m, i) => (evolution.length > 8 && i % 2 ? '' : nomMois(m.mois, lang, true)))} fy={f.eur0} epaisseurMax={18} aria={f.L('Encaissé et profit par mois', 'Takings and profit per month')}
-              series={[{ vals: evolution.map((m) => m.encaisse), couleur: 'var(--fsb-teal-soft)' }, { vals: evolution.map((m) => (m.profitRetenues ? m.profit : null)), couleur: 'var(--fsb-teal-deep)' }]} fort={(i) => i === evolution.length - 1}
+            <Colonnes bandeau hauteur={170} indication={f.L('Touche un mois', 'Tap a month')} axe={axeMois(evolution.map((m) => m.mois), lang, { gras: (i) => i === evolution.length - 1 })} fy={f.eur0} epaisseurMax={18} aria={f.L('Encaissé et profit par mois', 'Takings and profit per month')}
+              series={[{ vals: evolution.map((m) => m.encaisse), couleur: 'var(--fsb-teal-soft)' }, { vals: evolution.map((m) => (m.profitRetenues ? m.profit : null)), couleur: 'var(--fsb-teal-deep)' }]}
               bulle={(i) => ({ titre: capital(moisAnnee(evolution[i].mois, lang)), lignes: [{ couleur: 'var(--fsb-teal-soft)', boite: true, valeur: f.eur(evolution[i].encaisse) }, { couleur: 'var(--fsb-teal-deep)', boite: true, valeur: evolution[i].profitRetenues ? f.eur(evolution[i].profit) : '—' }], note: f.L(`${evolution[i].nb} ventes`, `${evolution[i].nb} sales`) })} />
             <div className="fsb-list" style={{ marginTop: 6 }}>
               {evRecent.map((m, i) => {
@@ -192,7 +193,7 @@ export default function StatsTelephone({ ctx, lang, currency, cle, setCle, ia, s
         {js.n === 0 ? <div className="fsb-empty"><b>{f.L('Aucune vente datée', 'No dated sale')}</b>{f.L('Choisis une période plus longue.', 'Pick a longer period.')}</div> : (
           <>
             {top2.length === 2 && <p className="fsb-insight"><b>{capital(JOURS[lj][top2[0].jour])}</b>{f.L(' et ', ' and ')}<b>{JOURS[lj][top2[1].jour]}</b>{f.L(' sont tes meilleurs jours.', ' are your best days.')}</p>}
-            <Colonnes bandeau hauteur={140} indication={f.L('Touche un jour', 'Tap a day')} labels={js.jours.map((j) => JOURS_C[lj][j.jour])} vlab={(v) => f.num(v)} epaisseurMax={26} aria={f.L('Ventes par jour de la semaine', 'Sales per weekday')}
+            <Colonnes bandeau hauteur={140} indication={f.L('Touche un jour', 'Tap a day')} axe={axeSimple(js.jours.map((j) => JOURS_C[lj][j.jour]))} vlab={(v) => f.num(v)} epaisseurMax={26} aria={f.L('Ventes par jour de la semaine', 'Sales per weekday')}
               series={[{ vals: js.jours.map((j) => j.nb), couleur: (i) => (js.jours[i].nb === jmax ? 'var(--fsb-teal-deep)' : 'var(--fsb-teal-soft)') }]}
               bulle={(i) => ({ titre: capital(JOURS[lj][i]), lignes: [{ couleur: 'var(--fsb-teal)', boite: true, valeur: f.L(`${js.jours[i].nb} ventes`, `${js.jours[i].nb} sales`) }], note: `${f.eur(js.jours[i].ca)} ${f.L('encaissés', 'collected')}` })} />
           </>
