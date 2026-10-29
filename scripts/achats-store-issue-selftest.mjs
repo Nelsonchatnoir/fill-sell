@@ -82,6 +82,26 @@ verifier(/decisionNotif\.effet === "on"\) isPremium = true;/.test(wh) && /if \(P
 verifier(/if \(!decisionNotif\.connu\) \{\s*\n\s*await signalerNotificationStoreInconnue/.test(wh) && /if \(!decisionJ\.connu\) \{\s*\n\s*await signalerNotificationStoreInconnue/.test(gw), 'Apple ET Google : un inconnu est signalé (alerte support@)');
 verifier(/journaliserNotificationStore\(supabaseAdmin, ligneJournal\(/.test(wh) && /journaliserNotificationStore\(supabaseAdmin, ligneJournal\(/.test(gw), 'Apple ET Google : chaque notification est enregistrée');
 
+console.log('\n4 bis. Un remboursement est signalé comme tel (29/10, boncoin59300)');
+{
+  const rv = D.decisionGoogleRemboursement({ purchaseToken: 'x', orderId: 'GPA.3369-1510-4339-09469', productType: 1, refundType: 1 });
+  verifier(rv.connu === true && rv.effet === 'remboursement' && rv.type === 'abonnement' && rv.partiel === false && rv.nom === 'REMBOURSEMENT_ABONNEMENT_TOTAL', 'voidedPurchase (abonnement, total) : connu, « remboursement », jamais « inconnu »', JSON.stringify(rv));
+  const rp = D.decisionGoogleRemboursement({ productType: 2, refundType: 2 });
+  verifier(rp.type === 'pack' && rp.partiel === true && rp.connu === true, 'voidedPurchase (achat ponctuel, partiel) : pack, partiel');
+  verifier(D.natureRemboursementApple('REFUND') === 'remboursement' && D.natureRemboursementApple('REVOKE') === 'retrait' && D.natureRemboursementApple('EXPIRED') === null, 'Apple : REFUND = remboursement, REVOKE = retrait, le reste n\'en est pas');
+  const iAnnule = gw.indexOf('const annule = notification.voidedPurchaseNotification;');
+  const iSortie = gw.indexOf('return json(200, { ok: true, remboursement: d.nom });', iAnnule);
+  verifier(iAnnule > 0 && iSortie > iAnnule && /signalerRemboursementStore\(/.test(gw.slice(iAnnule, iSortie)) && !/alerterPaiementNonCredite\(/.test(gw.slice(iAnnule, iSortie)),
+    'Google : un remboursement part en « Remboursement », jamais en « PAIEMENT NON ENREGISTRÉ »');
+  verifier(/eq\("google_purchase_token", jeton\)/.test(gw) && /eq\("jeton_empreinte", empreinte\)/.test(gw), 'Google : le compte se retrouve par le jeton d\'achat (profil, puis empreinte au journal)');
+  verifier(/if \(!appAccountToken && natureRemb\)/.test(wh) && /eq\("apple_original_transaction_id", originalTransactionId\)/.test(wh), 'Apple : remboursement sans appAccountToken → compte par la transaction d\'origine, pas « paiement non enregistré »');
+  const pnR = lire('supabase/functions/_shared/payment-notify.ts');
+  verifier(/export async function signalerRemboursementStore\([\s\S]{0,900}auPlus\(envoi, DELAI_JOURNAL_MS\)/.test(pnR), 'le signalement d\'un remboursement est borné à 2 s, avalé');
+  const et = lire('supabase/functions/email-tunnel/index.ts');
+  verifier(/if \(body\?\.store_remboursement\)/.test(et) && /type: "ops_remboursement"/.test(et) && !/PAIEMENT NON ENREGISTRÉ/.test(et.slice(et.indexOf('if (body?.store_remboursement)'), et.indexOf('// ── Paiement échoué (2026-08-07)'))),
+    'email-tunnel : alerte « Remboursement » à part (ops_remboursement), sans le mot « paiement non enregistré »');
+}
+
 console.log('\n5. Le journal ne bloque jamais un paiement');
 const pn = lire('supabase/functions/_shared/payment-notify.ts');
 const jn = pn.slice(pn.indexOf('export async function journaliserNotificationStore('), pn.indexOf('// ── Paiement ÉCHOUÉ'));

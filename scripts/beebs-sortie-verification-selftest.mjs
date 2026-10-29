@@ -75,8 +75,12 @@ ok(M.jugerSortieVerificationBeebs({ ...J29, vu_en_ligne_le: '2026-10-26T00:00:00
 ok(M.jugerSortieVerificationBeebs({ ...J29, price: '999' }, { lectures: ls, releves: [releve('2026-11-01T06:00:00Z')], maintenant: t('2026-11-01T07:00:00Z') }) === null,
   '999 € : Beebs examine les annonces chères dans un état invisible (34109673, en ligne 48 h après) → jamais jugée ici');
 ok(M.jugerSortieVerificationBeebs({ ...J29, status: 'failed' }, { lectures: ls, maintenant: t('2026-10-25T06:00:00Z') }) === null
-  && M.jugerSortieVerificationBeebs({ ...J29, platform_fields: { ...J29.platform_fields, refus_verification_beebs: { le: 'x' } } }, { lectures: ls, maintenant: t('2026-10-25T06:00:00Z') }) === null
+  && M.jugerSortieVerificationBeebs({ ...J29, platform_fields: { ...J29.platform_fields, refus_verification_beebs: { le: 'x', numero: '34229929' } } }, { lectures: ls, maintenant: t('2026-10-25T06:00:00Z') }) === null
   && M.jugerSortieVerificationBeebs(J29, { lectures: ls, maintenant: t('2026-12-01T06:00:00Z') }) === null, 'pas « publié », déjà tranché, ou dépôt de plus de 30 jours : rien');
+// (29/10, lot A point 8 — XEWER 99571727) Un refus posé sur un ANCIEN numéro (refus sur 34099938, nouveau dépôt 34234780 après une
+// relance) ne protège pas le nouveau dépôt : il se juge à neuf.
+ok(M.jugerSortieVerificationBeebs({ ...J29, platform_fields: { ...J29.platform_fields, refus_verification_beebs: { le: 'x', numero: '34099938' } } }, { lectures: ls, releves: [releve('2026-11-01T06:00:00Z')], lignes: fantome, maintenant: t('2026-11-01T07:00:00Z') })?.verdict === 'refus',
+  'marqueur de refus d’un ANCIEN numéro : le nouveau dépôt se juge à neuf (plus de protection à vie)');
 const autreCompte = M.lecturesDesDepotsBeebs([J29, depot('z', '35000001', lecture('2026-10-25T05:30:00Z', ['35000001'], ['35000002'], 1), lecture('2026-10-25T05:30:05Z', ['35000001'], ['35000002'], 1))]);
 ok(M.jugerSortieVerificationBeebs(J29, { lectures: autreCompte, maintenant: t('2026-10-25T06:00:00Z') }) === null, 'une lecture d’un AUTRE compte Beebs (aucune annonce en commun) ne prouve jamais une sortie');
 const rep = { ...J29, action: 'republish', id: '6a38d0b6' };
@@ -100,8 +104,8 @@ console.log('\n5. Le câblage (handler-watch)');
 const hw = lire('supabase/functions/handler-watch/index.ts');
 const b = hw.slice(hw.indexOf('BEEBS : UN DÉPÔT SORTI DE LA VÉRIFICATION SANS ÊTRE MIS EN LIGNE'), hw.indexOf('BEEBS : UN DÉPÔT SORTI DE LA VÉRIFICATION SANS ÊTRE MIS EN LIGNE') + 9000);
 ok(/from "\.\.\/_shared\/beebs-sortie-verification\.js"/.test(hw) && /getUTCMinutes\(\) % 15 >= 9/.test(b) && /\.limit\(120\)/.test(b) && /parCompteSV\.size >= 10/.test(b), 'toutes les 15 min, 120 dépôts et 10 comptes au plus');
-ok(/\.not\("platform_fields->preuve_identifiant_beebs", "is", null\)/.test(b) && /\.is\("platform_fields->refus_verification_beebs", null\)/.test(b)
-  && /sortie_constatee_le\.lt\."\$\{il7j\}"/.test(b), 'seulement les dépôts lus avant/après, pas déjà tranchés, sorties marquées depuis moins de 7 j non relues');
+ok(/\.not\("platform_fields->preuve_identifiant_beebs", "is", null\)/.test(b) && !/\.is\("platform_fields->refus_verification_beebs", null\)/.test(b)
+  && /sortie_constatee_le\.lt\."\$\{il7j\}"/.test(b), 'seulement les dépôts lus avant/après (le refus déjà posé sur CE numéro écarté par le juge), sorties marquées depuis moins de 7 j non relues');
 ok(/if \(!String\(j\.listing_url \?\? ""\)\.trim\(\)\) continue;/.test(b) && /pevSV\?\.sortie_constatee_le === v\.sortie_constatee_le\) continue;/.test(b),
   'sortie : jamais sur un dépôt sans lien (aucun lien posé par ricochet), aucune ligne inchangée réécrite');
 ok((b.match(/\.eq\("status", "published"\)\.is\("vu_en_ligne_le", null\)/g) ?? []).length === 2, 'chaque écriture garde l’état lu (publié, jamais vu en ligne)');

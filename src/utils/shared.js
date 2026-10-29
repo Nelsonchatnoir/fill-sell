@@ -1271,6 +1271,9 @@ const OBJECT_ICON_RULES = [
   // sur ⚽ / 🏠 (« robot ») / 🚗 (« voiture ») — mesuré sur les 4 fiches du parc.
   [/figurines?|\bfunko\b|nendoroid|\bamiibo\b|\bbandai\b|banpresto|kotobukiya|good[sx]?.?smile|mc.?farlane|s\.?h\.?\s?figuarts|pop.?!?\s?vinyl|switch\s*(?:&|and|et|n)\s*go\b/i, '🦸'],
   [/basket[sx]?.?ball|ballon.?(?:de.?)?basket|panier[sx]?.?de.?basket/i, '🏀'],  // ballon de basket : "basket" seul → 👟 (bug)
+  // (29/10, point 3 — Ianis Martin) « Top case » est un BAGAGE DE MOTO, pas un haut ni un casque : sans cette règle,
+  // « Top case … 2 casques » partait en 👕 (« top ») puis, une fois 👕 gardé, en 🪖 (« casques » = la contenance).
+  [/\btop[\s-]?cases?\b/i, '🏍️'],
   [/casque.?(?:moto|scooter|cross|intégral|jet)/i, '🪖'],
   // Vêtements de SPORT AVANT les règles d'ÉQUIPEMENT sport (⛑️/🤿/🎿/⚽) : un
   // maillot de foot est un HAUT (pas une robe), une combinaison de ski un
@@ -1415,7 +1418,7 @@ const OBJECT_ICON_RULES = [
   // → Hauts et t-shirts).
   // \bbod(?:ys?|ies)\b (2026-08-08, B3b) : le pluriel courant de « body »
   // est « bodies » — « Lot 8 bodies bébé » (job réel 46e7dfc9) tombait en 📦.
-  [/t.?shirt|tee[sx]?.?shirt|débardeur|caracos?\b|marinieres?\b|(?<!volkswagen\s)(?<!vw\s)polos?\b(?!\s*(?:\d|tdi|tsi|gti|gtd))|(?<!au\s)\btops?\b(?!\s*(?:qualité|état|etat|condition|niveau|prix))|tunique|\bbod(?:ys?|ies)\b/i, '👕'],
+  [/t.?shirt|tee[sx]?.?shirt|débardeur|caracos?\b|marinieres?\b|(?<!volkswagen\s)(?<!vw\s)polos?\b(?!\s*(?:\d|tdi|tsi|gti|gtd))|(?<!au\s)\btops?\b(?!\s*(?:qualité|état|etat|condition|niveau|prix)|[\s-]*cases?\b)|tunique|\bbod(?:ys?|ies)\b/i, '👕'],
   // « maillot » NU (2026-08-12, dressing importés) : la règle sport (plus
   // haut) exige un qualificatif (foot/rugby/basket/…) et « maillot de bain »
   // part en 👙 avant — un « Maillot Adidas » seul ne matchait RIEN et tombait

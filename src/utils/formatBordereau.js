@@ -7,6 +7,9 @@
 // « pdf » (étiquette à imprimer, par défaut) ou « code » (code à montrer au point relais). Il vit dans
 // profiles.platform_settings.bordereaux.format, écrit par platform_settings_fusionner SEULEMENT (jamais l'objet
 // entier, 02/10). Une lecture au premier besoin, puis la mémoire (aucune relecture en boucle, 04/10).
+// (29/10, point 6) L'INTERRUPTEUR du compte : platform_settings.bordereaux.auto — false = FillSell ne génère et ne
+// récupère AUCUN bordereau tout seul, sur aucune plateforme (lu en base par bordereau_auto_actif, migration
+// 20261029150000) ; absent ou true = activé (comportement d'avant). Même voie d'écriture, à côté du format.
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { fusionnerReglages } from './reglagesPlateformes';
@@ -17,6 +20,11 @@ export function formatBordereauDesReglages(ps) {
   const b = ps && typeof ps === 'object' ? ps.bordereaux : null;
   return b && typeof b === 'object' && b.format === 'code' ? 'code' : 'pdf';
 }
+/** (29/10, point 6) Bordereau automatique : coupé SEULEMENT si `false` est écrit — même règle que la base. */
+export function bordereauAutoDesReglages(ps) {
+  const b = ps && typeof ps === 'object' ? ps.bordereaux : null;
+  return !(b && typeof b === 'object' && b.auto === false);
+}
 export function libelleFormatBordereau(format, lang = 'fr') {
   const en = lang === 'en';
   return format === 'code'
@@ -24,8 +32,8 @@ export function libelleFormatBordereau(format, lang = 'fr') {
     : (en ? 'Label to print (PDF)' : 'Étiquette à imprimer (PDF)');
 }
 
-const memoire = new Map(); // userId → { valeur, lue }
-const DEFAUT = Object.freeze({ valeur: 'pdf', lue: false });
+const memoire = new Map(); // userId → { valeur, auto, lue }
+const DEFAUT = Object.freeze({ valeur: 'pdf', auto: true, lue: false });
 export function useFormatBordereau(userId) {
   const [, rafraichir] = useState(0);
   useEffect(() => {
@@ -34,7 +42,13 @@ export function useFormatBordereau(userId) {
     (async () => {
       try {
         const { data, error } = await supabase.from('profiles').select('platform_settings').eq('id', userId).maybeSingle();
-        if (!error) memoire.set(userId, { valeur: formatBordereauDesReglages(data?.platform_settings), lue: true });
+        if (!error) {
+          memoire.set(userId, {
+            valeur: formatBordereauDesReglages(data?.platform_settings),
+            auto: bordereauAutoDesReglages(data?.platform_settings),
+            lue: true,
+          });
+        }
       } catch { /* lecture ratée : défaut « pdf », rien d'écrit */ }
       if (vivant) rafraichir((x) => x + 1);
     })();
@@ -44,9 +58,18 @@ export function useFormatBordereau(userId) {
     if (!userId || !FORMATS_BORDEREAU.includes(format)) return { ok: false };
     const { data, error } = await fusionnerReglages(['bordereaux'], { format });
     if (error || !data) return { ok: false };
-    memoire.set(userId, { valeur: format, lue: true });
+    memoire.set(userId, { ...(memoire.get(userId) ?? DEFAUT), valeur: format, lue: true });
     rafraichir((x) => x + 1);
     return { ok: true };
   };
-  return { ...(memoire.get(userId) ?? DEFAUT), enregistrer };
+  // (29/10, point 6) L'interrupteur : la valeur RELUE dans la réponse du serveur (jamais supposée).
+  const choisirAuto = async (on) => {
+    if (!userId || typeof on !== 'boolean') return { ok: false };
+    const { data, error } = await fusionnerReglages(['bordereaux'], { auto: on });
+    if (error || !data) return { ok: false };
+    memoire.set(userId, { valeur: formatBordereauDesReglages(data), auto: bordereauAutoDesReglages(data), lue: true });
+    rafraichir((x) => x + 1);
+    return { ok: true };
+  };
+  return { ...(memoire.get(userId) ?? DEFAUT), enregistrer, choisirAuto };
 }

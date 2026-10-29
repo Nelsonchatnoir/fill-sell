@@ -44,7 +44,7 @@ ok(A.alerteOrphelineDue({ republish_step: "deleted" }, t("2026-10-25T20:00:00Z")
 
 console.log("\n5. Branchements");
 const hw = lire("supabase/functions/handler-watch/index.ts");
-ok(/import \{ alerteOrphelineDue, envoiDepuisLeRetrait \} from "\.\.\/_shared\/alerte-orpheline\.js";/.test(hw), "handler-watch importe la règle");
+ok(/import \{ alerteOrphelineDue, envoiDepuisLeRetrait, presenceDuCompte \} from "\.\.\/_shared\/alerte-orpheline\.js";/.test(hw), "handler-watch importe la règle (et la présence, 29/10)");
 ok(/\(j\.platform_fields\?\.deleted_at \|\| j\.platform_fields\?\.republish_suppression_envoyee\) && alerteOrphelineDue\(j\.platform_fields, now\)\.due\)/.test(hw), "le mail au support ne part que si l'alerte est due (étape deleted, ou suppression envoyée — 28/10)");
 const avecEnvoi = I.messageInterruption({ etape: "deleted", vivant: false, platform: "vinted", vuLe: "2026-10-25T18:44:20.000Z", envoiLe: "2026-10-25T18:44:14.000Z" });
 ok(/^Reprise après interruption : le retrait et l'envoi de ta nouvelle annonce sont partis à 19:44/.test(avecEnvoi) && !/s'est arrêté juste après le retrait/.test(avecEnvoi), "à la personne : « … le retrait et l'envoi de ta nouvelle annonce sont partis à 19:44 », plus « arrêté juste après le retrait »", avecEnvoi);
@@ -64,6 +64,48 @@ ok(/\.not\("platform_fields->republish_suppression_envoyee", "is", null\)/.test(
   ok(A.alerteOrphelineDue(seb, t0 + 10 * 60_000).due === false, "(28/10) avant 30 min : pas encore");
   ok(A.alerteOrphelineDue({ republish_step: "captured" }, t0 + 99 * 60_000).due === false, "(28/10) « captured » sans suppression envoyée : rien");
   ok(A.alerteOrphelineDue({ ...seb, republish_step: "a_capturer" }, t0 + 99 * 60_000).due === false, "(28/10) autre étape : rien");
+}
+
+console.log("\n6. (29/10, point 5 — Nico, Johan) Poste éteint = pas d'alerte ; poste vivant qui ne recrée pas = l'alerte");
+{
+  // Johan, 098cab75 (Leboncoin) : retrait 10:41:50 (Paris), redépôt « au prochain passage », poste occupé par sa file
+  // jusqu'à 11:21, recréation prise à 11:37:39, publiée à 12:13:17. L'alerte est partie à 11:12:02.
+  const pf = { republish_step: "deleted", deleted_at: "2026-10-27T09:41:50.666Z" };
+  const a1112 = t("2026-10-27T10:12:02Z");
+  ok(A.alerteOrphelineDue(pf, a1112).due === true, "sans présence fournie : la règle d'avant, à l'identique (11:12 → l'alerte)");
+  const occupe = A.presenceDuCompte({ maintenant: a1112, compteVuLe: "2026-10-27T09:39:50Z",
+    postes: { s1: { le: "2026-10-27T10:09:00Z", battement_le: "2026-10-27T10:09:00Z", vivant_depuis: "2026-10-27T05:00:00Z",
+      travail: { flux: "poll", job: "c002a882-0000-4000-8000-000000000000", le: "2026-10-27T10:09:00Z" } } } });
+  const r1 = A.alerteOrphelineDue(pf, a1112, { ...occupe, jobId: "098cab75-261f-416f-aac3-51f27999704f" });
+  ok(r1.due === false && r1.motif === "poste_occupe", "11:12 : le poste bat sur un AUTRE travail → pas encore (poste_occupe)", JSON.stringify(r1));
+  const a1151 = t("2026-10-27T10:51:00Z");
+  const enCours = A.presenceDuCompte({ maintenant: a1151, compteVuLe: "2026-10-27T10:47:40Z",
+    postes: { s1: { le: "2026-10-27T10:47:40Z", vivant_depuis: "2026-10-27T05:00:00Z",
+      travail: { job: "098cab75-261f-416f-aac3-51f27999704f", le: "2026-10-27T10:47:40Z" } } } });
+  ok(A.alerteOrphelineDue(pf, a1151, { ...enCours, jobId: "098cab75-261f-416f-aac3-51f27999704f" }).motif === "recreation_en_cours", "11:51 : le poste bat sur CE job → recreation_en_cours");
+  const occupeTard = A.alerteOrphelineDue(pf, t("2026-10-27T11:45:00Z"), { vuLe: "2026-10-27T11:44:00Z", vivantDepuis: "2026-10-27T05:00:00Z", travaux: ["autre"], jobId: "098cab75" });
+  ok(occupeTard.due === true, "occupé ailleurs plus de 2 h après le retrait → l'alerte (jamais une attente sans fin)", JSON.stringify(occupeTard));
+
+  // PC simplement éteint : Sébastien (cas 2) — retrait 18:30, dernier signe 18:33.
+  const pcEteint = { vuLe: "2026-10-25T17:33:00Z", vivantDepuis: null, travaux: [], jobId: "1ab00947" };
+  const r2 = A.alerteOrphelineDue(seb, t("2026-10-25T18:03:01Z"), pcEteint);
+  ok(r2.due === false && r2.motif === "poste_eteint", "PC éteint (aucun signe depuis 30 min) → pas d'alerte (poste_eteint)", JSON.stringify(r2));
+  ok(A.alerteOrphelineDue(seb, t("2026-10-26T07:00:00Z"), pcEteint).motif === "poste_eteint", "toujours éteint le lendemain → toujours rien");
+  const revenu = { vuLe: "2026-10-26T07:01:00Z", vivantDepuis: "2026-10-26T07:00:00Z", travaux: [], jobId: "1ab00947" };
+  ok(A.alerteOrphelineDue(seb, t("2026-10-26T07:02:00Z"), revenu).motif === "poste_revenu", "le poste revient : 30 min pour reprendre sa file (poste_revenu)");
+  const revenuSansRecreer = { ...revenu, vuLe: "2026-10-26T07:31:00Z" };
+  const r3 = A.alerteOrphelineDue(seb, t("2026-10-26T07:32:00Z"), revenuSansRecreer);
+  ok(r3.due === true && r3.motif === "sans_envoi", "revenu depuis 32 min, libre, toujours rien renvoyé → l'alerte (poste vivant qui ne recrée pas)", JSON.stringify(r3));
+  ok(A.alerteOrphelineDue(seb, t("2026-10-26T07:32:00Z"), { vuLe: "2026-10-26T07:31:00Z", vivantDepuis: null, travaux: [], jobId: "x" }).due === true,
+    "retour inconnu (poste vu avant le déploiement) → la règle d'avant");
+  // presenceDuCompte : le poste le plus frais, un travail périmé ne compte pas.
+  const p = A.presenceDuCompte({ maintenant: t("2026-10-27T12:00:00Z"), compteVuLe: "2026-10-27T11:40:00Z", postes: {
+    a: { le: "2026-10-27T11:58:00Z", vivant_depuis: "2026-10-27T09:00:00Z", travail: { job: "j1", le: "2026-10-27T11:40:00Z" } },
+    b: { le: "2026-10-26T20:00:00Z", vivant_depuis: "2026-10-26T08:00:00Z", travail: { job: "j2", le: "2026-10-26T20:00:00Z" } } } });
+  ok(p.vuLe === "2026-10-27T11:58:00.000Z" && p.vivantDepuis === "2026-10-27T09:00:00.000Z" && p.travaux.length === 0,
+    "presenceDuCompte : le poste le plus frais ; poste muet et travail de plus de 10 min ignorés", JSON.stringify(p));
+  ok(/alerteOrphelineDue\(j\.platform_fields, now, presence\)\.due/.test(hw) && /extension_last_seen_at, extension_postes/.test(hw),
+    "handler-watch : le mail ne part qu'avec la présence du compte (extension_postes relus)");
 }
 
 console.log(`\n${verts} vert(s), ${rouges} rouge(s)`);

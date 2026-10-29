@@ -2646,6 +2646,40 @@ let jobFlowBusyLabel = null;
 // 45 s entre deux pages, verrou tenu) cède dès que quelqu'un attend — mesuré sur le poste de Nico le 26/10 : une
 // lecture demandée par l'écran (0,9 s de lecture) a attendu 75 s derrière trois pages de fond.
 let jobFlowWaiters = 0;
+// ── (29/10, point 5 — Johan Désiré, 098cab75) LA PRÉSENCE BAT AUSSI PENDANT UN LONG TRAVAIL ─────────────────
+// profiles.extension_last_seen_at n'était stampé QUE par get-pending-jobs, en tête de cycle — et le cycle tient ce
+// verrou jusqu'à sa dernière tâche : 27/10, 11:37:39 → 12:13:17, une recréation Leboncoin de 36 min sans un signe.
+// handler-watch a conclu « ton ordinateur ou Chrome s'est arrêté » à 11:51 et remis en file un job EN COURS.
+// Ici : tant qu'un flux tient le verrou, un battement (RPC battement_extension : UNE écriture, aucune lecture,
+// aucune fonction edge) toutes les 5 min, et seulement si aucun poll n'a stampé depuis. Borné à 36 battements
+// (3 h) par flux, arrêté à la sortie du flux. Un service worker mort ne bat plus : le silence redevient la preuve.
+const BATTEMENT_PRESENCE_MS = 5 * 60_000;
+const BATTEMENT_PRESENCE_MAX = 36;
+let travailEnCours = null;        // { job, plateforme, depuis } — posé par processJob, mémoire seule
+let dernierSigneDeVieEnvoye = 0;  // dernier poll réussi ou dernier battement (ms)
+function demarrerBattementPresence(label) {
+  let n = 0;
+  let arrete = false;
+  let minuteur = null;
+  const tic = async () => {
+    if (arrete) return;
+    if (Date.now() - dernierSigneDeVieEnvoye >= BATTEMENT_PRESENCE_MS - 15_000) {
+      try {
+        const session = await getValidSession();
+        if (session?.access_token && !arrete) {
+          await restRequest("rpc/battement_extension", session.access_token, {
+            method: "POST",
+            body: JSON.stringify({ p_travail: { flux: String(label).slice(0, 40), ...(travailEnCours ?? {}) } }),
+          });
+          dernierSigneDeVieEnvoye = Date.now();
+        }
+      } catch { /* un battement manqué ne casse rien : le suivant, ou le prochain poll */ }
+    }
+    if (!arrete && ++n < BATTEMENT_PRESENCE_MAX) minuteur = setTimeout(tic, BATTEMENT_PRESENCE_MS);
+  };
+  minuteur = setTimeout(tic, BATTEMENT_PRESENCE_MS);
+  return () => { arrete = true; if (minuteur) clearTimeout(minuteur); };
+}
 function withJobFlowLock(label, fn) {
   if (jobFlowBusyLabel) {
     console.log(`[background] ${label} : flux "${jobFlowBusyLabel}" en cours — mise en file (onglets de travail partagés)`);
@@ -2654,9 +2688,12 @@ function withJobFlowLock(label, fn) {
   const run = jobFlowTail.then(async () => {
     jobFlowWaiters = Math.max(0, jobFlowWaiters - 1);
     jobFlowBusyLabel = label;
+    const arreterBattement = demarrerBattementPresence(label);
     try {
       return await fn();
     } finally {
+      arreterBattement();
+      travailEnCours = null;
       jobFlowBusyLabel = null;
     }
   });
@@ -3816,6 +3853,7 @@ async function pollAndProcessJobsUnlocked() {
       // (18/10, lot 6) La boutique Vinted et les sessions de CE poste (deux postes sur un compte).
       ...ceQueLePosteDitDeLui(),
     });
+    dernierSigneDeVieEnvoye = Date.now();   // (29/10) ce poll a stampé la présence : pas de battement avant 5 min
     jobs = rep.jobs;
     tachesDuCycle = Array.isArray(jobs) ? jobs.length : 0;
     // (03/10, point 24) Poste sous le seuil de version : le serveur ne sert
@@ -4088,6 +4126,7 @@ async function pollAndProcessJobsUnlocked() {
     // ne relâche jamais au milieu du travail).
     await demanderEveil(jobs.length - i, null).catch(() => {});
     const outcome = await processJob(job, session.access_token);
+    travailEnCours = null;   // (29/10) tâche finie : le battement suivant ne la donne plus pour en cours
     // (24/10 soir) Une fenêtre de travail rendue visible pour un onglet muet se re-minimise dès le job fini.
     await reminimiserFenetreSiRestauree().catch(() => {});
     if (outcome?.garderOnglet === true && job.platform === "leboncoin") lbcPaiementPrepare = true;
@@ -4449,6 +4488,10 @@ async function ebayIssueApresCanalCoupe(accessToken, job, tabId, { hubAutorise }
 }
 
 async function processJob(rawJob, accessToken) {
+  // (29/10, point 5) Le job en cours voyage avec le battement de présence : handler-watch sait que le poste travaille
+  // sur CE job (jamais « ordinateur arrêté », jamais remis en file sous ses pieds). Effacé après la tâche par la boucle
+  // du cycle et, au plus tard, à la sortie du verrou.
+  travailEnCours = { job: String(rawJob?.id ?? ""), plateforme: String(rawJob?.platform ?? ""), depuis: new Date().toISOString() };
   const job = sanitizeJob(rawJob);
   // (0.6.106) Un job Vinted travaille sur le domaine où la personne est
   // connectée (vinted.fr sauf vendeur étranger qui a autorisé le sien).
@@ -9811,11 +9854,73 @@ async function installNetworkProbe(tabId, platform) {
             return Number.isInteger(v) && v > 0 ? v : null;
           } catch { return null; }
         };
+        // ══ (29/10) LES ATTRIBUTS DE L'ANNONCE D'ORIGINE, PAR LEURS IDENTIFIANTS ══
+        // Thibault dca41766 (« Samsung player start 2 », rayon 3661) : la capture
+        // porte item_attributes internal_memory_capacity [1292] et sim_lock [1313].
+        // Le 25/10 (anciens menus) la recréation les reposait en relisant leurs
+        // libellés sur le formulaire : seul « model » était refusé. Le 29/10
+        // (menus « bloom », 0.6.152) cette relecture ne rend plus rien et le POST
+        // part sans « Espace de stockage » (400). Une recréation remet donc les
+        // IDENTIFIANTS de l'annonce d'origine dans le corps — même forme
+        // { code, ids } que language_book ci-dessus (211 payloads réels), même
+        // règle : seulement les codes que la page a laissés vides, jamais
+        // d'écrasement, seulement sur la création, seulement dans LE rayon de la
+        // capture (catalog_id égal), armement borné à 15 min. Aucune valeur
+        // inventée : ce sont les ids que Vinted a lui-même rendus pour l'annonce.
+        window.__fsAttributsOrigineAPoser = null;
+        const attributsOrigineArmes = () => {
+          const a = window.__fsAttributsOrigineAPoser;
+          if (!Array.isArray(a?.attrs) || (!a.attrs.length && !a.modele) || !(Number(a?.catalogId) > 0)) return null;
+          return (Date.now() - (a.armeeA ?? 0)) < ISBN_ARME_TTL_MS ? a : null;
+        };
+        window.addEventListener("message", (e) => {
+          if (e.source !== window || !e.data?.__fillsellArmeAttributsOrigine) return;
+          const attrs = (Array.isArray(e.data.attrs) ? e.data.attrs : [])
+            .map((x) => ({ code: String(x?.code ?? "").trim(), ids: (Array.isArray(x?.ids) ? x.ids : []).map(Number).filter((n) => Number.isInteger(n) && n > 0) }))
+            .filter((x) => /^[a-z0-9_]+$/.test(x.code) && x.ids.length);
+          const cat = Number(e.data.catalogId);
+          // (29/10) Le modèle de l'annonce d'origine (capture : model.metadata.collection_id) — forme du POST relevée
+          // en réel le 29/10 sur le compte de Nico : « model »: { « metadata »: { « collection_id »: 2 } } (Autre).
+          const coll = Number(e.data.modele?.collection_id);
+          const modele = Number.isInteger(coll) && coll > 0 ? { collection_id: coll } : null;
+          window.__fsAttributsOrigineAPoser = (attrs.length || modele) && Number.isInteger(cat) && cat > 0
+            ? { attrs, modele, catalogId: cat, armeeA: Date.now() } : null;
+        });
+        let dernierePoseAttributs = null;
+        const corpsAvecAttributsOrigine = (url, body) => {
+          dernierePoseAttributs = null;
+          const a = attributsOrigineArmes();
+          if (!a) return null;
+          if (!/item_upload\/items(?:[?#]|$)/i.test(String(url))) return null;
+          if (typeof body !== "string" || body.charAt(0) !== "{") return null;
+          let j;
+          try { j = JSON.parse(body); } catch { return null; }
+          if (!j || typeof j !== "object" || Array.isArray(j)) return null;
+          const cible = (j.item && typeof j.item === "object" && !Array.isArray(j.item)) ? j.item : j;
+          if (!("catalog_id" in cible) || Number(cible.catalog_id) !== a.catalogId) return null; // autre rayon : rien
+          const presents = Array.isArray(cible.item_attributes) ? cible.item_attributes : [];
+          const cle = (x) => String(x?.code ?? "").trim().toLowerCase();
+          const remplis = new Set(presents.filter((x) => Array.isArray(x?.ids) && x.ids.length).map(cle));
+          const aPoser = a.attrs.filter((x) => !remplis.has(x.code.toLowerCase()));
+          // (29/10) Le modèle d'origine, seulement si la page n'en a posé AUCUN (jamais par-dessus un choix du formulaire).
+          const modeleAbsent = a.modele && !(Number(cible.model?.metadata?.collection_id) > 0);
+          if (!aPoser.length && !modeleAbsent) return null;
+          if (aPoser.length) {
+            const codes = new Set(aPoser.map((x) => x.code.toLowerCase()));
+            cible.item_attributes = [...presents.filter((x) => !codes.has(cle(x))), ...aPoser.map((x) => ({ code: x.code, ids: x.ids }))];
+          }
+          if (modeleAbsent) cible.model = { metadata: { collection_id: a.modele.collection_id } };
+          try {
+            const corrige = JSON.stringify(j);
+            dernierePoseAttributs = [...aPoser.map((x) => `${x.code}=${x.ids.join("|")}`), ...(modeleAbsent ? [`model=${a.modele.collection_id}`] : [])].join(",");
+            return corrige;
+          } catch { return null; }
+        };
         // Les poses s'enchaînent sur le MÊME corps : l'ISBN d'abord (chemin
         // éprouvé, inchangé), la langue ensuite, le format de colis, puis la
         // marque de l'annonce d'origine (17/10).
         // Rend le corps final, ou null s'il n'y avait rien à faire.
-        const corpsPourDepot = (url, body) => {
+        const corpsPourDepotSaufAttributs = (url, body) => {
           const avecIsbn = corpsAvecIsbn(url, body);
           const avecLangue = corpsAvecLangueLivre(url, avecIsbn ?? body);
           const avant = avecLangue ?? avecIsbn;
@@ -9823,6 +9928,12 @@ async function installNetworkProbe(tabId, platform) {
           const avantMarque = avecColis ?? avant;
           const avecMarque = corpsAvecMarque(url, avantMarque ?? body);
           return avecMarque ?? avantMarque;
+        };
+        // (29/10) Les attributs de l'annonce d'origine (recréation) ferment la chaîne.
+        const corpsPourDepot = (url, body) => {
+          const avant = corpsPourDepotSaufAttributs(url, body);
+          const avecAttributs = corpsAvecAttributsOrigine(url, avant ?? body);
+          return avecAttributs ?? avant;
         };
 
         const origFetch = window.fetch;
@@ -9834,6 +9945,7 @@ async function installNetworkProbe(tabId, platform) {
           let languePosee = null;
           let colisPose = null;
           let marquePosee = null;
+          let attributsPoses = null;
           try {
             // Corps lisible uniquement : un Request porteur d'un flux n'est pas
             // réécrit (angle mort assumé, jamais une publication cassée).
@@ -9844,6 +9956,7 @@ async function installNetworkProbe(tabId, platform) {
                 languePosee = dernierePoseLangue;
                 colisPose = dernierePoseColis;
                 marquePosee = dernierePoseMarque;
+                attributsPoses = dernierePoseAttributs;
                 corpsEnvoye = corrige;
                 args = [input, { ...init, body: corrige }];
               }
@@ -9870,6 +9983,7 @@ async function installNetworkProbe(tabId, platform) {
                 // (17/10) brand_id posé par la sonde, les clés brand* parties, et
                 // la marque relue dans la réponse (la preuve que Vinted l'a prise).
                 marquePosee,
+                attributsPoses,
                 marqueEnvoyee: marqueEnvoyeeOf(url, corpsEnvoye),
                 marqueRelue: marquePosee ? marqueRelueOf(txt) : null,
                 annonceId: annonceIdOf(txt),
@@ -9890,10 +10004,11 @@ async function installNetworkProbe(tabId, platform) {
           let languePosee = null;
           let colisPose = null;
           let marquePosee = null;
+          let attributsPoses = null;
           try {
             if (String(this.__m).toUpperCase() !== "GET" && typeof body === "string") {
               const corrige = corpsPourDepot(this.__u ?? "", body);
-              if (corrige != null) { corpsEnvoye = corrige; isbnPose = dernierePoseIsbn; languePosee = dernierePoseLangue; colisPose = dernierePoseColis; marquePosee = dernierePoseMarque; }
+              if (corrige != null) { corpsEnvoye = corrige; isbnPose = dernierePoseIsbn; languePosee = dernierePoseLangue; colisPose = dernierePoseColis; marquePosee = dernierePoseMarque; attributsPoses = dernierePoseAttributs; }
             }
           } catch { /* idem */ }
           try {
@@ -9912,6 +10027,7 @@ async function installNetworkProbe(tabId, platform) {
                   languePosee,
                   colisPose,
                   marquePosee,
+                  attributsPoses,
                   marqueEnvoyee: marqueEnvoyeeOf(this.__u, typeof corpsEnvoye === "string" ? corpsEnvoye : null),
                   marqueRelue: marquePosee ? marqueRelueOf(corps) : null,
                   annonceId: annonceIdOf(corps),
@@ -16906,6 +17022,29 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
       if (platform === "leboncoin") {
         if (Number.isFinite(r.totalEnLigne)) lbcTotalEnLigne = r.totalEnLigne;
         if (r.surLaListe === false) lbcListeRendue = false;
+        // ── (29/10) LEBONCOIN : UNE SESSION FERMÉE SE NOMME, MÊME QUAND LE RENVOI ARRIVE TARD ──────────────
+        // nadegemarcelin78, annehelene.reve, Amiral, le poste de Nico : 20 relevés « « Mes annonces » n'a pas
+        // rendu sa liste » en 30 jours, TOUS avec « jeton non renouvelé (session_fermee) » — le renouvellement
+        // avait VU l'onglet partir vers auth.leboncoin.fr / /connexion, mais le coup d'œil unique sur l'adresse
+        // (1,5 à 3 s après le chargement) passe avant ce renvoi, fait côté page : le run sortait « échec »
+        // (finReleve : echec ; surveillance_releves : aucun mur), et la sonde de session, en 403, gardait
+        // « leboncoin: true » du 26/10. Le poste de Nico, même cause, sortait « page de connexion » quand le
+        // renvoi tombait avant le coup d'œil. Liste non rendue + l'un des trois signes (adresse relue APRÈS la
+        // lecture, formulaire de connexion sur la page, renouvellement renvoyé vers la connexion) = le mur de
+        // connexion : même sortie que la redirection vue au chargement (« absente », rien n'est conclu ni importé).
+        if (r.surLaListe === false && annonces.size === 0 && !(r.annonces ?? []).length) {
+          const ongletApres = await chrome.tabs.get(tabId).catch(() => null);
+          const renvoyeeConnexion = /\/(?:connexion|login|signin|auth|identification)/i.test(String(ongletApres?.url ?? ""));
+          const formulaire = r?.page?.connexion === true;
+          const renouvellementRenvoye = motifsAdresseListe.some((m) => /non renouvelé \(session_fermee\)/.test(String(m)));
+          if (renvoyeeConnexion || formulaire || renouvellementRenvoye) {
+            return { annonces: [], complet: false, absente: true,
+              erreur: "session leboncoin : page de connexion (" + (renvoyeeConnexion
+                ? "« Mes annonces » a renvoyé vers la connexion après son chargement"
+                : formulaire ? "formulaire de connexion rendu sur « Mes annonces »"
+                  : "« Mes annonces » renvoie vers la connexion de Leboncoin au renouvellement du jeton") + ")" };
+          }
+        }
       }
       if (platform === "ebay" && Number.isFinite(r.totalEnLigne)) ebayTotalEnCours = r.totalEnLigne;
       // La plateforme a ÉCRIT qu'elle n'a rien : on le retient pour le juge de
@@ -22153,7 +22292,10 @@ async function releverMessagerieUnePlateforme(platform, token, e, { commandesSeu
   // absente) n'est pas un blocage : les messages sont sautés, les commandes
   // sont lues quand même, et le motif est noté en base pour que l'app le dise.
   const motifListe = commandesSeules ? null : (liste?.ok ? null : (liste?.motif ?? "liste_illisible"));
-  if (motifListe && !liste?.mur) return { motif: motifListe, requetes };
+  // (29/10, point 7) Une liste des CONVERSATIONS illisible pour une autre raison qu'un mur (onglet, injection, réseau,
+  // http) ne saute plus les commandes : elles avaient leur propre lecture et restaient figées (Ornella, 29/10 :
+  // « injection_impossible » à chaque passage, 18 commandes à expédier inchangées depuis plus de 24 h). Seul un signe
+  // de blocage (bloc1, ci-dessus) arrête le passage ; le motif de la liste est rendu comme avant (fin de fonction).
   let bilan = null;
   let refs = [];
   if (!motifListe && !commandesSeules) {
@@ -22188,8 +22330,14 @@ async function releverMessagerieUnePlateforme(platform, token, e, { commandesSeu
   // 3. Les commandes en cours (Vinted, Leboncoin, Depop, Beebs).
   let bilanCommandes = null;
   if (L.commandes) {
+    // (29/10, point 7) TOUTES les commandes encore en cours (100 au plus), la plus anciennement CHANGÉE d'abord. Avant :
+    // les 20 changées le plus récemment — or `maj_le` ne bouge que si la commande change (commandes_enregistrer
+    // n'écrit jamais une ligne inchangée) : une commande « à expédier » inchangée glissait hors des 20, et, sortie de la
+    // 1re page Vinted (20 commandes en cours), n'était PLUS JAMAIS relue (recrutementgroupezk704, 29/10 : 10 sur 22).
+    // Le tour de détail reste celui du poste (commandesLues : la tentative la plus ancienne d'abord, 5 par passage) :
+    // aucune requête de plus par passage, chaque commande en cours a simplement son tour.
     const suivies = await restRequest(
-      `plateforme_commandes?platform=eq.${platform}&etat=in.(a_confirmer,a_expedier,expediee,inconnu)&select=commande_ref,etat&order=maj_le.desc&limit=20`,
+      `plateforme_commandes?platform=eq.${platform}&etat=in.(a_confirmer,a_expedier,expediee,inconnu)&select=commande_ref,etat&order=maj_le.asc&limit=100`,
       token).catch(() => []);
     // (16/10 nuit) Vinted : les options d'étiquette d'une commande ne sont relues
     // qu'une fois toutes les 6 h (mémoire du poste).
@@ -24794,6 +24942,11 @@ function construireJobRecreation(job, pf, cap, prix) {
       // suppression, les jobs bloqués repartent à leur passage suivant.
       ...(Array.isArray(natifCap.item_attributes) && natifCap.item_attributes.length
         ? { itemAttributesCaptures: natifCap.item_attributes }
+        : {}),
+      // (29/10, Thibault dca41766) Le modèle de l'annonce d'origine, tel que Vinted l'a rendu (« known » ou « other »,
+      // metadata.collection_id) : il repart au POST d'une recréation si le formulaire n'en a posé aucun.
+      ...(Number(natifCap.model?.metadata?.collection_id) > 0
+        ? { modeleCapture: { collection_id: Number(natifCap.model.metadata.collection_id), type: String(natifCap.model.type ?? "") || null } }
         : {}),
       // Choix de niveau de catégorie tranché au mini-éditeur (needs_user
       // « Catégorie Vinted » du pré-vol, 2026-09-03) : target root:null →

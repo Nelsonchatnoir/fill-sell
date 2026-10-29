@@ -308,9 +308,12 @@ function libelleAttributParId(meta, id, code) {
 // on ne les écrase jamais.
 async function libellesParOuvertureDeLaListe(code, ids) {
   try {
-    const champ = document.querySelector(`[data-testid="category-${CSS.escape(code)}-single-list-input"], [data-testid="category-${CSS.escape(code)}-single-list_search-input"]`);
+    const sel = `[data-testid="category-${CSS.escape(code)}-single-list-input"], [data-testid="category-${CSS.escape(code)}-single-list_search-input"]`;
+    const champ = document.querySelector(sel);
     if (!champ) return [];
-    champ.click();
+    // (29/10) Menus « bloom » : click() seul n'ouvre pas ces composants (cf. simulateFullClick) ; openDropdown
+    // rejoue le vrai clic et attend le panneau de CE champ. Pas de panneau : rien n'est lu.
+    try { await openDropdown(sel); } catch { return []; }
     await sleep(700); // (05/10) minuteur du Worker, plus celui de la page (bridé dans l'onglet caché)
     const out = ids.map((id) => {
       const el = document.querySelector(`[data-testid="${CSS.escape(code)}-${Number(id)}--title"]`);
@@ -766,6 +769,29 @@ function armerMarquePourPost(id, titre = null) {
       id: Number.isInteger(n) && n > 1 ? n : null,
       titre: String(titre ?? "").trim() || null,
     }, window.location.origin);
+  } catch { /* l'armement ne doit JAMAIS casser le remplissage */ }
+}
+
+// ── (29/10) Attributs de l'annonce d'origine : armement de la pose au POST ──
+// Thibault dca41766 : sur les menus « bloom », la relecture des libellés de
+// internal_memory_capacity [1292] / sim_lock [1313] ne rend plus rien et la
+// recréation partait sans « Espace de stockage ». La sonde remet les ids
+// capturés dans le corps, seulement pour les codes que la page a laissés
+// vides et seulement dans le rayon de la capture. Les codes à canal dédié
+// (état, taille, matière, langue, couleur, ISBN, marque) n'y passent jamais.
+// Passer null DÉSARME.
+const ATTRIBUTS_ORIGINE_CANAUX_DEDIES = new Set(["condition", "size", "material", "language_book", "color", "isbn", "brand"]);
+function armerAttributsOriginePourPost(attrs, catalogId, modele = null) {
+  try {
+    const propres = (Array.isArray(attrs) ? attrs : [])
+      .map((a) => ({ code: String(a?.code ?? "").trim(), ids: (Array.isArray(a?.ids) ? a.ids : []).map(Number).filter((n) => Number.isInteger(n) && n > 0) }))
+      .filter((a) => a.code && a.ids.length && !ATTRIBUTS_ORIGINE_CANAUX_DEDIES.has(a.code));
+    const cat = Number(catalogId);
+    // (29/10) Le modèle de l'annonce d'origine (collection_id capturé) part avec les attributs.
+    const coll = Number(modele?.collection_id);
+    const modelePropre = Number.isInteger(coll) && coll > 0 ? { collection_id: coll } : null;
+    const arme = (propres.length || modelePropre) && Number.isInteger(cat) && cat > 0;
+    window.postMessage({ __fillsellArmeAttributsOrigine: true, attrs: arme ? propres : null, modele: arme ? modelePropre : null, catalogId: arme ? cat : null }, window.location.origin);
   } catch { /* l'armement ne doit JAMAIS casser le remplissage */ }
 }
 // L'id à poser : celui de l'annonce d'origine s'il est dans la table relevée,
@@ -3423,6 +3449,8 @@ async function remplirFormulaireVinted(job) {
   // Marque par son identifiant : même raison (17/10) — un armement qui traîne
   // poserait la marque d'une annonce sur l'article suivant.
   armerMarquePourPost(null);
+  // (29/10) Attributs de l'annonce d'origine : même raison, même geste.
+  armerAttributsOriginePourPost(null);
   // (26/10) La marque pré-remplie relevée sur l'article précédent ne parle pas pour celui-ci.
   prefillMarqueVinted = undefined;
   // { id, titre } quand la marque de l'annonce d'origine part par son
@@ -3443,6 +3471,11 @@ async function remplirFormulaireVinted(job) {
   // ouvert ; une annonce supprimée et jamais recréée ne se rattrape pas.
   // Hors recréation (publication normale), RIEN NE CHANGE : l'exception passe.
   const recreation = job.platform_fields?.republish_recreation === true;
+  // (29/10, Thibault dca41766) Une remise en ligne repart avec les attributs de l'annonce d'origine :
+  // leurs identifiants capturés vont au POST quand le formulaire ne les a pas posés (sonde, background.js).
+  if (recreation || job.platform_fields?.republish_delete_then_submit) {
+    armerAttributsOriginePourPost(job.platform_fields?.itemAttributesCaptures, job.platform_fields?.vinted_ids?.catalog_id, job.platform_fields?.modeleCapture ?? null);
+  }
   // ── Republication UNE-PASSE (2026-08-12) : le pré-vol EST ce formulaire ────
   // Le job porte platform_fields.republish_delete_then_submit = { item_id } :
   // l'annonce d'ORIGINE est ENCORE en ligne pendant tout le remplissage, donc
@@ -3570,12 +3603,20 @@ async function remplirFormulaireVinted(job) {
   } catch (e) {
     if (e?.needsUser || e?.needsUserField) {
       await closeAnyOpenDropdown().catch(() => {});
+      // (29/10, point 3) La raison d'un repli par identifiant qui n'a pas abouti voyage avec la question : sans elle,
+      // les 3 essais réels du 28/10 n'ont laissé aucune trace (warnings non rendus sur un needs_user).
+      const replis = [
+        ...(Array.isArray(fields.__categorieParIdentifiant) ? fields.__categorieParIdentifiant : []),
+        ...warnings.filter((w) => typeof w === "string" && /^catégorie(?: par id)? ?:/.test(w)),
+      ];
+      const diagnostic = [e?.diagnostic, replis.length ? `Repli par identifiant : ${replis.join(" ; ")}` : null]
+        .filter(Boolean).join(" | ").slice(0, 1500);
       return {
         success: false,
         needsUser: true,
         ...(e.needsUserField ? { needsUserField: e.needsUserField } : {}),
         error: String(e?.message ?? e),
-        ...(e?.diagnostic ? { diagnostic: e.diagnostic } : {}),
+        ...(diagnostic ? { diagnostic } : {}),
       };
     }
     throw e;
@@ -3962,6 +4003,7 @@ async function remplirFormulaireVinted(job) {
   // (contrairement aux marques) : on matche par texte sur les fils --title.
   if (fields.modele) {
     const modeleStatut = await selectVintedModel(fields.modele, warnings);
+    if (recreation) diagnosticsRecreation.push(`modèle « ${fields.modele} » : ${modeleStatut}`);
     // ── Modèle fourni mais HORS catalogue = arrêt AVANT l'envoi (point 9,
     // 2026-08-15 soir — AirPods de Samdo, 3 essais, 3 refus serveur 400
     // « Sélectionne le modèle de ton article » APRÈS soumission) ─────────────
@@ -4008,7 +4050,8 @@ async function remplirFormulaireVinted(job) {
       .filter((a) => ["internal_memory_capacity", "sim_lock"].includes(String(a?.code ?? "")));
     if (dedies.length) {
       const dejaDedies = new Set([...(fields.stockage ? ["internal_memory_capacity"] : []), ...(fields.simlock != null ? ["sim_lock"] : [])]);
-      const { resolus } = await resoudreAttributsCaptures(dedies, dejaDedies);
+      const { resolus, nonResolus } = await resoudreAttributsCaptures(dedies, dejaDedies);
+      if (recreation) diagnosticsRecreation.push(`attributs de la capture relus sur le formulaire : ${Object.keys(resolus).join(", ") || "aucun"}${nonResolus.length ? ` ; non relus (ids envoyés au POST) : ${nonResolus.join(", ")}` : ""}`);
       if (resolus.internal_memory_capacity && !fields.stockage) fields.stockage = resolus.internal_memory_capacity;
       if (resolus.sim_lock && fields.simlock == null) fields.simlock = resolus.sim_lock;
     }
@@ -4036,7 +4079,13 @@ async function remplirFormulaireVinted(job) {
   // fields.simlock ("Oui"/"Non") prime s'il est fourni un jour. Le bloc est
   // gaté sur la PRÉSENCE du champ dans le DOM : hors téléphone, il n'existe
   // pas et on ne tente rien.
-  if (document.querySelector('#sim_lock, [data-testid="category-sim_lock-single-list-input"]')) {
+  // (29/10) Recréation : l'annonce d'origine porte son simlockage (ids capturés) — s'il n'a pas été relu,
+  // on ne pose pas « Non » d'office : ses ids partent au POST (armerAttributsOriginePourPost). Hors recréation,
+  // rien ne change.
+  const simlockDeLaCapture = recreation && fields.simlock == null
+    && Array.isArray(job.platform_fields?.itemAttributesCaptures)
+    && job.platform_fields.itemAttributesCaptures.some((a) => String(a?.code ?? "") === "sim_lock" && Array.isArray(a?.ids) && a.ids.length);
+  if (!simlockDeLaCapture && document.querySelector('#sim_lock, [data-testid="category-sim_lock-single-list-input"]')) {
     await selectClosedOptionSafe(
       "simlockage",
       '#sim_lock, [data-testid="category-sim_lock-single-list-input"]',
@@ -8474,6 +8523,32 @@ async function selectCategory(path, fields = {}, titreArticle = "") {
           match = await waitForStableCatalogOption(catalogOptionSel, levelLabel, matchOpts);
           console.log(`[vinted] catégorie niveau ${i} « ${levelLabel} » : trouvé APRÈS réouverture — la porte était fermée, pas le panneau vide`);
         } catch { match = null; }
+      }
+      // ── (29/10, point 3 — remialbertholl) LE NIVEAU PAR SON IDENTIFIANT, DANS LE PANNEAU DÉJÀ OUVERT ──────────────
+      // Le repli de la 0.6.152 refermait puis rouvrait le menu « bloom » et repartait de la racine : jamais abouti
+      // (3 essais réels le 28/10, raison perdue avec le needs_user). Ici, au niveau même qui échoue : l'identifiant du
+      // rayon connu (vinted_ids : capture d'une republication, ou serveur) donne, dans l'arbre DU COMPTE, l'identifiant
+      // de CE niveau ; s'il est affiché (#catalog-<id>), son libellé AFFICHÉ remplace le libellé périmé (« Jewellery »
+      // → « Bijoux ») et la descente continue par libellés, comme avant. Jamais par-dessus un choix de la personne ;
+      // seulement quand l'arbre du compte a la MÊME profondeur que le chemin ; sinon les sorties d'avant.
+      if (!match && !choixUtilisateur) {
+        const idConnu = Number(fields?.vinted_ids?.catalog_id);
+        const ids = Number.isInteger(idConnu) && idConnu > 0
+          ? await resoudreCheminIdsCatalogue(idConnu, []).catch(() => null) : null;
+        const idNiveau = Array.isArray(ids) && ids.length === path.length ? ids[i] : null;
+        const elId = idNiveau ? document.getElementById(`catalog-${idNiveau}`) : null;
+        const libelleAffiche = String(elId?.textContent ?? "").replace(/\s+/g, " ").trim();
+        const trace = `niveau « ${levelLabel} » : identifiant ${idNiveau ?? "?"} (rayon ${Number.isInteger(idConnu) ? idConnu : "?"}) `
+          + (libelleAffiche ? `affiché « ${libelleAffiche} »` : (idNiveau ? "absent du panneau" : (ids ? "profondeur différente" : "arbre du compte illisible")));
+        (fields.__categorieParIdentifiant ??= []).push(trace);
+        if (libelleAffiche) {
+          try {
+            match = await waitForStableCatalogOption(catalogOptionSel, libelleAffiche, matchOpts);
+            console.log(`[vinted] catégorie : ${trace} — libellé du chemin remplacé`);
+            levelLabel = libelleAffiche;
+            path[i] = libelleAffiche;
+          } catch { match = null; }
+        }
       }
       if (!match) {
         // Dernière chance bornée avant de conclure « panneau vide » : on

@@ -53,12 +53,63 @@ export function suppressionEnvoyeeLe(pf) {
   return ms(objet(p.republish_suppression_envoyee)?.at);
 }
 
+// ── (29/10, point 5 — Nico, Johan Désiré) POSTE ÉTEINT = PAS D'ALERTE ; POSTE VIVANT QUI NE RECRÉE PAS = L'ALERTE ──
+// Johan : 16 alertes en 5 jours, une par republication Leboncoin/Beebs/Depop (redépôt « au prochain passage », pris
+// 30 à 60 min plus tard par un poste bien vivant mais occupé), plus celles d'un PC simplement éteint la nuit — la
+// remise en ligne se fait au retour du poste, il n'y a rien à faire. La présence (battement_extension, poll) tranche :
+//   · aucun signe du compte depuis 10 min → « poste_eteint », pas d'alerte (ré-examinée à chaque passage) ;
+//   · un poste bat sur CE job → « recreation_en_cours » ;
+//   · le poste vient de revenir (vivant_depuis < 30 min) → « poste_revenu » : il a la main, rang 0 de sa file ;
+//   · un poste bat sur un AUTRE travail, retrait de moins de 2 h → « poste_occupe » ;
+//   · sinon le motif d'origine : un poste vivant, revenu depuis 30 min, libre, et l'annonce toujours hors ligne.
+// Sans présence fournie (appel d'avant), la règle d'avant, à l'identique.
+export const PRESENCE_VIVANTE_MS = 10 * 60_000;          // même seuil que POSTE_VIVANT_MS (interruption-poste.js)
+export const ALERTE_APRES_RETOUR_MS = 30 * 60_000;
+export const ALERTE_POSTE_OCCUPE_MAX_MS = 2 * 3600_000;
+
+/**
+ * La présence d'un compte, lue sur profiles (extension_last_seen_at, extension_postes) :
+ * le signe de vie le plus frais, le retour le plus ancien des postes vivants, les jobs sur lesquels un poste bat.
+ */
+export function presenceDuCompte({ postes = null, compteVuLe = null, maintenant = Date.now() } = {}) {
+  let vu = ms(compteVuLe);
+  let vivantDepuis = NaN;
+  const travaux = [];
+  for (const p of Object.values(objet(postes) ?? {})) {
+    const le = ms(p?.le);
+    if (!Number.isFinite(le)) continue;
+    if (!Number.isFinite(vu) || le > vu) vu = le;
+    if (maintenant - le > PRESENCE_VIVANTE_MS) continue;
+    const depuis = ms(p?.vivant_depuis);
+    if (Number.isFinite(depuis) && (!Number.isFinite(vivantDepuis) || depuis < vivantDepuis)) vivantDepuis = depuis;
+    const t = objet(p?.travail);
+    // Un flux sans job (relevé, sync du dressing) compte comme « occupé » : job vide.
+    if (t && maintenant - ms(t.le) <= PRESENCE_VIVANTE_MS) travaux.push(String(t.job ?? ""));
+  }
+  return { vuLe: Number.isFinite(vu) ? new Date(vu).toISOString() : null, vivantDepuis: Number.isFinite(vivantDepuis) ? new Date(vivantDepuis).toISOString() : null, travaux };
+}
+
 /**
  * L'alerte « hors ligne sans recréation » est-elle due pour ce job (republication à l'étape 'deleted', ou à l'étape
  * 'captured' dont la suppression est partie sans preuve) ?
- * @returns {{ due: boolean, motif: "sans_envoi"|"relu_sans_copie"|"envoi_non_verifie"|"envoi_parti"|"trop_tot"|"sans_retrait"|"suppression_envoyee" }}
+ * `presence` (29/10) : { vuLe, vivantDepuis, travaux, jobId } — cf. presenceDuCompte ; absente = règle d'avant.
+ * @returns {{ due: boolean, motif: "sans_envoi"|"relu_sans_copie"|"envoi_non_verifie"|"envoi_parti"|"trop_tot"|"sans_retrait"|"suppression_envoyee"|"poste_eteint"|"recreation_en_cours"|"poste_revenu"|"poste_occupe" }}
  */
-export function alerteOrphelineDue(pf, maintenant = Date.now()) {
+export function alerteOrphelineDue(pf, maintenant = Date.now(), presence = undefined) {
+  const base = alerteOrphelineSansPresence(pf, maintenant);
+  if (!base.due || presence == null) return base;
+  const vu = ms(presence.vuLe);
+  if (!Number.isFinite(vu) || maintenant - vu > PRESENCE_VIVANTE_MS) return { due: false, motif: "poste_eteint" };
+  const travaux = Array.isArray(presence.travaux) ? presence.travaux.map(String) : [];
+  if (presence.jobId && travaux.includes(String(presence.jobId))) return { due: false, motif: "recreation_en_cours" };
+  const depuis = ms(presence.vivantDepuis);
+  if (Number.isFinite(depuis) && maintenant - depuis < ALERTE_APRES_RETOUR_MS) return { due: false, motif: "poste_revenu" };
+  const debut = Number.isFinite(retraitLe(pf)) ? retraitLe(pf) : suppressionEnvoyeeLe(pf);
+  if (travaux.length && Number.isFinite(debut) && maintenant - debut < ALERTE_POSTE_OCCUPE_MAX_MS) return { due: false, motif: "poste_occupe" };
+  return base;
+}
+
+function alerteOrphelineSansPresence(pf, maintenant) {
   const retrait = retraitLe(pf);
   if (!Number.isFinite(retrait)) {
     // Suppression partie, jamais prouvée : rien ne peut recréer tant que l'étape reste 'captured'.

@@ -86,7 +86,16 @@ window.addEventListener('vite:preloadError', (evt) => {
   }
 })
 
-ReactDOM.createRoot(document.getElementById('root')).render(
+// (29/10, point 10) Une erreur non rattrapée démonte la racine (React 19) : on garde la pile des COMPOSANTS — le seul
+// fil vers l'écran fautif — pour le journal (utils/actionRatee.js), puis le geste par défaut de React (reportError →
+// événement « error » de window, que le journal écoute déjà).
+const signalerErreurNonRattrapee = (erreur, info) => {
+  try { window.__fillsellPileComposants = String(info?.componentStack ?? '').slice(0, 600) || null } catch { /* rien */ }
+  if (typeof window.reportError === 'function') window.reportError(erreur)
+  else setTimeout(() => { throw erreur })
+}
+
+ReactDOM.createRoot(document.getElementById('root'), { onUncaughtError: signalerErreurNonRattrapee }).render(
   <React.StrictMode>
     <AppRouter />
   </React.StrictMode>

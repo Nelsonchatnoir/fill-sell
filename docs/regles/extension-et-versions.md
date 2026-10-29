@@ -106,3 +106,11 @@
   Les zips 0.6.146 et 0.6.147, jamais téléversés (dernière servie : 0.6.144), passent dans `build/CWS-PERIMES/`.
 - Les versions ≤ 0.6.147 font la relecture en fin de cycle : sur un ordinateur qui dort, le serveur la relance une
   fois puis le dit à la personne (`_shared/releve-verif-non-pris.js`).
+
+## 29/10 — la présence bat aussi pendant un long travail (lot A point 5)
+- `profiles.extension_last_seen_at` n'était stampé que par get-pending-jobs en tête de cycle : une recréation de 36 min
+  (Johan, 098cab75) passait pour un poste éteint. Extension ≥ 0.6.153 : battement `rpc/battement_extension` toutes les
+  5 min tant qu'un flux tient le verrou (setTimeout en chaîne, 36 au plus, seulement sans poll depuis 5 min ; migration
+  `20261029150000_battement_extension`). handler-watch : un poste qui bat sur CE job n'est jamais « arrêté » ; l'alerte
+  « hors ligne sans recréation » ne part pas pour un poste éteint (aucun signe depuis 10 min), revenu depuis < 30 min ou
+  occupé ailleurs (< 2 h) — seulement pour un poste vivant, libre, qui ne recrée pas.

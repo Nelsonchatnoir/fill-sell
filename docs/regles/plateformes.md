@@ -437,3 +437,14 @@ Rapport : `docs/enquetes/dix-points-1710/RAPPORT.md` (points 1, 4, 5, 7, 9).
 - Couleur : une couleur ÉCRITE dans le titre (puis la 1re phrase) gagne toujours (`_shared/couleur-du-texte.js`, servie par
   get-pending-jobs aux publications Leboncoin) ; jamais une couleur de décor ; deux couleurs → rien ; une réponse de la
   personne n'est jamais remplacée.
+
+## 29/10 — lot A stabilité (rapport `docs/enquetes/lot-a-stabilite-2910/RAPPORT.md`)
+- **Leboncoin, critères rendus tard** (thecloset72000, 2 jeans, 9 essais) : un job qui PORTE des critères attend leur
+  rendu 15 s (comme le formulaire PRO), et la seconde passe joue aussi sur un formulaire de particulier quand la sonde est
+  muette ; un wizard qui n'avance pas dit sa page (titres, critères, boutons) dans le motif (`pageWizardLbc`).
+- **Leboncoin, session fermée** : « Mes annonces n'a pas rendu sa liste » + jeton non renouvelé (session_fermee),
+  adresse renvoyée vers la connexion ou formulaire de connexion = le mur de connexion (« Connecte-toi »), jamais un
+  échec anonyme ; un relevé incomplet ne date jamais rien « disparu ».
+- **Beebs, refus de vérification** : un refus (`refus_verification_beebs`) vaut pour SON numéro ; un numéro refusé n'est
+  jamais une remise en ligne « finie » (`_shared/republication-finie.js`). Un retrait sans numéro sur un dépôt Beebs de
+  plus de 7 jours passe par le juge des relevés ; une attente inchangée n'est réécrite qu'une fois toutes les 6 h.

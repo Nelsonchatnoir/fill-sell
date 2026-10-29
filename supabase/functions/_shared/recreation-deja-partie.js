@@ -83,6 +83,45 @@ export function depotPeutEtrePartiDepuis(platform, pf) {
   return { at: new Date(dernier.t).toISOString(), raison: dernier.raison };
 }
 
+// ── UN DÉPÔT LEBONCOIN INACHEVÉ N'EST PAS UNE ANNONCE EN LIGNE (29/10, louis 68e39f7c) ──────────────────────
+// Leboncoin CRÉE l'annonce à l'adsubmit (201) mais ne la met en ligne qu'une fois l'option (gratuite ou
+// payante) choisie sur /deposer-une-annonce/options — prouvé le 13/09 (dossier Joséphine : 12 dépôts arrêtés
+// sur /options, 12 « désactivées », 0 en ligne ; cf. leboncoin.js « /options SANS L'OPTION GRATUITE »).
+// louis, « Rangement Noir et Vert Pomme » (29/10) : l'essai de 09:22 s'arrête SUR /options (« Leboncoin a
+// refusé l'accès à la page à l'instant ») ; l'annonce 3297429776 apparaît dans « Mes annonces » au statut
+// Leboncoin « inactive » (relevé : « inconnu »), sans date de mise en ligne ; sa page publique répond 410
+// « Cette annonce est désactivée ». La garde la tenait pour une copie peut-être en ligne → question, et la
+// remise en ligne restait gelée. Une candidate qui (1) n'a jamais été vue en ligne (statut relevé ni
+// « en_ligne » ni « en_verification »), (2) n'a aucune date de mise en ligne (publiee_le vide), (3) est apparue
+// pendant un essai de CE job arrêté sur /options, sans aucune confirmation ensuite, n'est pas en ligne et ne le
+// sera jamais : elle ne retient pas le redépôt. Une annonce en vérification chez Leboncoin vient d'un essai qui
+// a passé /options (option choisie, confirmation) : jamais visée. Pur.
+const URL_OPTIONS_LBC_RE = /\/deposer-une-annonce\/options(?:[/?#]|$)/;
+const URL_CONFIRMATION_LBC_RE = /\/deposer-une-annonce\/confirmation(?:[/?#]|$)/;
+const MARGE_ESSAI_OPTIONS_MS = 30 * 60_000;
+
+/** Les fins d'essai de ce job relevées sur /options (après `depuisMs`), sans confirmation ensuite. */
+export function essaisArretesSurOptionsLbc(pf, depuisMs = NaN) {
+  const wws = pf?.work_window_state && typeof pf.work_window_state === "object" ? pf.work_window_state : {};
+  const fins = [...(Array.isArray(wws.fins) ? wws.fins : []), ...(wws.at_end ? [wws.at_end] : [])]
+    .map((f) => ({ t: ms(f?.at), url: String(f?.tab_url ?? "") }))
+    .filter((f) => f.t != null && !(Number.isFinite(depuisMs) && f.t <= depuisMs));
+  const confirmations = fins.filter((f) => URL_CONFIRMATION_LBC_RE.test(f.url)).map((f) => f.t);
+  // at_end répète souvent la dernière fin : une heure, un arrêt.
+  return [...new Set(fins.filter((f) => URL_OPTIONS_LBC_RE.test(f.url) && !confirmations.some((c) => c >= f.t)).map((f) => f.t))];
+}
+
+/** La candidate est-elle le dépôt inachevé d'un essai arrêté sur /options (jamais en ligne) ? */
+export function depotInacheveLbc(platform, pf, c, { depuis = NaN } = {}) {
+  if (String(platform ?? "") !== "leboncoin" || !c) return false;
+  if (/^(en_ligne|en_verification|vendue)$/.test(String(c.statut_plateforme ?? ""))) return false;
+  if (String(c.publiee_le ?? "").trim()) return false;
+  const vue = ms(c.created_at);
+  if (vue == null) return false;
+  const arrets = essaisArretesSurOptionsLbc(pf, depuis);
+  return arrets.some((t) => vue >= t - MARGE_ESSAI_OPTIONS_MS);
+}
+
 /** Titre comparable : sans emoji, sans accents, sans ponctuation, minuscules. */
 export function titreComparable(s) {
   return String(s ?? "")

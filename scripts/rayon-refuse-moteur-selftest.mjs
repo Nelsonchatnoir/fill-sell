@@ -49,6 +49,11 @@ verifier(M.rayonRefuseDuJob(beebs)?.plateforme === 'beebs', 'Beebs : rayon absen
 verifier(M.rayonRefuseDuJob({ ...beebs, platform_fields: { republish_prevol_manquants: ['le rayon Beebs'], beebsCategoryPath: ['Mode', 'Homme'] } }) === null, 'Beebs : rayon déjà là → rien');
 const lbc = { platform: 'leboncoin', action: 'republish', status: 'pending', platform_fields: { lbcCategoryPath: ['Mode', 'Vêtements'], republish_prevol_formulaire: { verdict: 'illisible', detail: 'Catégorie: feuille introuvable' } } };
 verifier(M.rayonRefuseDuJob(lbc)?.exclure?.join('>') === 'Mode>Vêtements', 'Leboncoin : rayon refusé au pré-vol → le moteur, sans reproposer le refusé');
+// (29/10, point 3 — camille.ferren) Une page de dépôt NON LUE n'est pas un refus : la catégorie d'origine reste.
+const lbcIllisible = { ...lbc, platform_fields: { lbcCategoryPath: ['Loisirs', 'Loisirs créatifs'], republish_prevol_formulaire: { verdict: 'illisible', detail: 'Catégorie: ni suggestion ni sélecteur manuel trouvés.' } } };
+verifier(M.rayonRefuseDuJob(lbcIllisible) === null, 'Leboncoin : « ni suggestion ni sélecteur » (page non lue) → pas le moteur, la catégorie d’origine reste');
+verifier(M.rayonRefuseDuJob({ ...lbcIllisible, platform_fields: { ...lbcIllisible.platform_fields, republish_prevol_formulaire: { verdict: 'illisible', detail: 'Catégorie: panneau des racines introuvable. — Observabilité: 3 liste(s)' } } }) === null, 'Leboncoin : panneau des racines non reconnu → pas un refus');
+verifier(M.rayonRefuseDuJob({ ...lbcIllisible, platform_fields: { ...lbcIllisible.platform_fields, republish_prevol_formulaire: { verdict: 'illisible', detail: 'Catégorie: feuille "Loisirs créatifs" introuvable sous "Loisirs". Options affichées: ["Livres"]' } } })?.exclure?.join('>') === 'Loisirs>Loisirs créatifs', 'Leboncoin : feuille absente de l’arbre affiché → le moteur, sans reproposer le refusé');
 
 console.log('\n2. Les candidats, et le contrôle de la réponse');
 const feuilles = M.feuillesCandidates({ plateforme: 'vinted', base: plan.base, enfantsVivants: VIVANTS_1499 });

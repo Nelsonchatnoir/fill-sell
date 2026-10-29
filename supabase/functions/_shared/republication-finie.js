@@ -21,6 +21,9 @@ export function republicationFinie(job) {
   const pf = (job.platform_fields && typeof job.platform_fields === "object") ? job.platform_fields : {};
   if (pf.republish_step !== "recreated" || !pf.recreated_at) return false;
   const lid = String(job.platform_listing_id ?? "").trim();
+  // (29/10, lot A point 8 — XEWER 6a38d0b6) Un numéro REFUSÉ par la vérification Beebs (refus prouvé) n'est jamais
+  // une remise en ligne finie : sans cette garde, la tâche refusée revenait « published » sur l'annonce refusée.
+  if (lid && String(pf.refus_verification_beebs?.numero ?? "").trim() === lid) return false;
   // L'ancienne annonce (Vinted : old_vinted_item_id ; autres : old_platform_listing_id)
   // et la nouvelle si l'extension l'a nommée (new_vinted_item_id, new_listing_url).
   const ancien = String(pf.old_platform_listing_id ?? pf.old_vinted_item_id ?? "").trim();

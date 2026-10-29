@@ -245,10 +245,11 @@ console.log("\n3. Formulaire PRO, label sans clé sémantique (for= id React) : 
   ok(m.payer.clics === 0, "« Valider et payer » : JAMAIS cliqué");
 }
 
-console.log("\n4. Particulier : la sonde de 4 s ne change pas");
+console.log("\n4. Particulier : 4 s sans critère à poser, 15 s quand le job en porte (29/10, thecloset72000)");
 {
   const m = formulaire({ pro: false, critereApresMs: 9000 });
-  const job = JOB(false);
+  // Un job SANS critère garde la sonde de 4 s.
+  const job = { ...JOB(false), platform_fields: { lbcCategoryPath: ["Mode", "Vêtements"] } };
   H.remettre();
   const ctx = charger(m);
   H.setT(m.rendre, m.critereApresMs);
@@ -262,6 +263,13 @@ console.log("\n4. Particulier : la sonde de 4 s ne change pas");
   H.setT(m2.rendre, m2.critereApresMs);
   const s2 = await H.executer(ctx2.sonderCriteresLbc(job, []));
   ok(s2.hasCriteria && H.ms() >= 1000 && H.ms() < 1300, "critère rendu à 1 s : vu à 1 s");
+  // Un job qui PORTE des critères (État, Taille…) attend leur rendu jusqu'à 15 s : rendus à 9 s, ils sont vus.
+  H.remettre();
+  const m3 = formulaire({ pro: false, critereApresMs: 9000 });
+  const ctx3 = charger(m3);
+  H.setT(m3.rendre, m3.critereApresMs);
+  const s3 = await H.executer(ctx3.sonderCriteresLbc(JOB(false), []));
+  ok(s3.hasCriteria && H.ms() >= 9000 && H.ms() < 9300, `job avec État : critères rendus à 9 s → vus à 9 s (avant : sautés à 4 s), ${H.ms()} ms virtuelles`);
 }
 
 console.log("\n5. Au verdict : la valeur connue, SI la liste la porte (jamais hors liste)");
@@ -289,7 +297,7 @@ console.log("\n5. Au verdict : la valeur connue, SI la liste la porte (jamais ho
 console.log("\n6. Ancres — le câblage dans lbcRemplirJusquAApercu et le verdict");
 ok(/const \{ hasCriteria, formulairePro \} = await sonderCriteresLbc\(job, warnings\);/.test(SRC), "la sonde passe par sonderCriteresLbc");
 ok(/label\[for="baby_age"\], label\[for="estimated_parcel_weight"\]'/.test(SRC) && /const LBC_SONDE_PRO_MS = 15_000;/.test(SRC) && /\[name="custom_ref"\]/.test(SRC), "sonde : Poids du colis, 15 s sur le formulaire PRO (compte_pro ou custom_ref)");
-ok(/if \(hasCriteria \|\| formulairePro\) \{\s*etatPose = await lbcSecondePasseCriteres\(\{/.test(SRC), "seconde passe : `if (hasCriteria || formulairePro)`");
+ok(/if \(hasCriteria \|\| formulairePro \|\| jobPorteCriteresLbc\(job\)\) \{\s*etatPose = await lbcSecondePasseCriteres\(\{/.test(SRC), "seconde passe : `if (hasCriteria || formulairePro || jobPorteCriteresLbc(job))`");
 // (24/10 nuit) + l'origine de la valeur (« ia » : jamais par-dessus un pré-rempli précis de Leboncoin).
 ok(/fallbackValues: repliProduit, libelle: LBC_LIBELLES_PRO\[forKey\] \?\? null,\s*origineIa: origineLbc\[forKey\] === "ia",/.test(SRC), "canal générique : le libellé PRO en repli aussi au premier passage");
 // (26/10, étape 5) Particulier : pas de critère « Poids du colis » (le poids part par le bloc livraison) — plus jamais

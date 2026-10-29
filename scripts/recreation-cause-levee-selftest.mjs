@@ -75,5 +75,29 @@ console.log("\n4. (28/10) MENUS « BLOOM » DE VINTED : LA REMISE EN LIGNE REPAR
   ok(causeLeveePourRelance({ ...thibault, platform: "beebs" }, "2026-10-28T21:51:44Z+f567f2e") === null, "Beebs : pas cette cause");
 }
 
+console.log("\n5. (29/10, lot A point 2) ATTRIBUTS DE L'ANNONCE D'ORIGINE : LA QUESTION « VINTED EXIGE » D'UNE RECRÉATION REPART AU BUILD QUI LES POSE");
+{
+  // Relevé en base le 29/10 (dca41766, poste en 0.6.152 depuis 09:02) : étape « deleted », question champ_a_choisir.
+  const thibault = { id: "dca41766", action: "republish", status: "needs_user", platform: "vinted", title: "Samsung player start 2 # téléphone portable",
+    error: "Ton annonce a été retirée de Vinted et n'a pas pu être recréée automatiquement : Vinted exige « Modèle », « Espace de stockage ». Rien n'est perdu.",
+    platform_fields: { needs_user_source: "champ_a_choisir", republish_step: "deleted", recreation_relancee: { vinted_menus_bloom: { le: "2026-10-29T08:05:00Z" } } } };
+  ok(causeLeveePourRelance(thibault, "2026-10-28T21:51:44Z+f567f2e") === null, "poste en 0.6.152 (sans la pose des identifiants) : pas encore");
+  const c = causeLeveePourRelance(thibault, "2026-10-29T14:10:00Z+abcdef0");
+  ok(c?.code === "vinted_attributs_origine", "poste au build qui pose modèle et attributs d'origine : la question repart une fois");
+  const pf = champsRelanceCauseLevee(thibault.platform_fields, c, "2026-10-29T15:00:00Z");
+  ok(!pf.needs_user_source && pf.republish_step === "deleted" && Boolean(pf.recreation_relancee?.vinted_attributs_origine) && Boolean(pf.recreation_relancee?.vinted_menus_bloom),
+    "question levée, étape gardée, marquée une fois (l'ancienne marque reste)");
+  ok(causeLeveePourRelance({ ...thibault, platform_fields: { ...thibault.platform_fields, republish_step: "captured" } }, "2026-10-29T14:10:00Z+abcdef0") === null,
+    "annonce encore en ligne (captured) : la question reste à la personne");
+  const isbn = { ...thibault, error: "Ton annonce a été retirée de Vinted et n'a pas pu être recréée automatiquement : Vinted exige « ISBN »." };
+  ok(causeLeveePourRelance(isbn, "2026-10-29T14:10:00Z+abcdef0") === null, "un autre champ exigé (ISBN) : jamais relancé par cette cause");
+  const autreCause = { ...thibault, platform_fields: { ...thibault.platform_fields, needs_user_source: "champ_a_choisir" },
+    error: "COULEUR INTROUVABLE : la couleur [\"Noir\"] existe bien chez Vinted mais n'a pas pu être posée" };
+  ok(causeLeveePourRelance({ ...autreCause, platform_fields: { ...autreCause.platform_fields, recreation_relancee: {} } }, "2026-10-29T14:10:00Z+abcdef0") === null,
+    "une cause sans `sources` ne vise jamais une question (vinted_menus_bloom : l'arrêt seul)");
+  ok(/\.in\("platform_fields->>needs_user_source", \[SOURCE_RECREATION_BLOQUEE, "champ_a_choisir"\]\)\s*\n\s*\.eq\("platform_fields->>republish_step", "deleted"\)/.test(hw),
+    "handler-watch lit aussi les questions des remises en ligne déjà retirées (étape deleted seulement)");
+}
+
 console.log(ko ? `\n${ko} ÉCHEC(S)` : "\nTOUT VERT");
 process.exit(ko ? 1 : 0);

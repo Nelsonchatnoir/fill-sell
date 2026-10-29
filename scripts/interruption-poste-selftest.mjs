@@ -1,6 +1,6 @@
 // Autotest — « ordinateur coupé » seulement quand l'extension se tait (point 5,
 // 02/10 soir). `npm run selftest:interruption-poste` (_shared/interruption-poste.js).
-import { posteVivant, messageInterruption, POSTE_VIVANT_MS } from "../supabase/functions/_shared/interruption-poste.js";
+import { posteVivant, messageInterruption, POSTE_VIVANT_MS, posteTravailleSurLeJob } from "../supabase/functions/_shared/interruption-poste.js";
 
 let ko = 0;
 const ok = (c, nom, d = "") => { if (c) console.log(`  ✓ ${nom}`); else { console.error(`  ✗ ${nom}${d ? `\n      ${d}` : ""}`); ko++; } };
@@ -26,6 +26,20 @@ ok(!posteVivant({ vuLe: null, priseLe: "2026-10-02T01:22:07Z", maintenant: t }),
 console.log("\n3. ÉTAPE 'captured' (annonce encore en ligne)");
 ok(/toujours en ligne sur Vinted/.test(messageInterruption({ etape: "captured", vivant: false, platform: "vinted", vuLe: null })), "muette : annonce intacte");
 ok(!/ordinateur/.test(messageInterruption({ etape: "captured", vivant: true, platform: "vinted" })), "vivante : pas « ordinateur »");
+
+console.log("\n4. (29/10, point 5) JOHAN, 098cab75 — recréation Leboncoin prise 11:37:39, publiée 12:13:17 (Paris)");
+{
+  const job = "098cab75-261f-416f-aac3-51f27999704f";
+  const h1151 = Date.parse("2026-10-27T10:51:00Z");
+  const postes = { s88: { le: "2026-10-27T10:47:40Z", battement_le: "2026-10-27T10:47:40Z", travail: { flux: "poll", job, plateforme: "leboncoin", le: "2026-10-27T10:47:40Z" } } };
+  ok(posteTravailleSurLeJob({ postes, jobId: job, maintenant: h1151 }) === true, "11:51 : le poste a battu sur CE job il y a 3 min → en cours, on ne le reprend pas");
+  ok(posteTravailleSurLeJob({ postes, jobId: "autre", maintenant: h1151 }) === false, "un autre job : pas protégé");
+  ok(posteTravailleSurLeJob({ postes, jobId: job, maintenant: Date.parse("2026-10-27T11:05:00Z") }) === false, "battement de plus de 10 min : plus une preuve");
+  ok(posteTravailleSurLeJob({ postes: null, jobId: job, maintenant: h1151 }) === false, "aucun poste lu : jamais de promesse sans preuve");
+  // Sans battement (≤ 0.6.148), le dernier signe est le poll de 11:37 : muet, la phrase d'avant — d'où le correctif.
+  ok(posteVivant({ vuLe: "2026-10-27T10:37:33Z", priseLe: "2026-10-27T10:37:39Z", maintenant: h1151 }) === false, "sans battement : « muette » (le faux d'avant, reproduit)");
+  ok(posteVivant({ vuLe: "2026-10-27T10:47:40Z", priseLe: "2026-10-27T10:37:39Z", maintenant: h1151 }) === true, "avec battement : « vivante »");
+}
 
 if (ko) { console.error(`\n✗ ${ko} échec(s)`); process.exit(1); }
 console.log("\n✓ interruption : poste muet ≠ onglet en échec");

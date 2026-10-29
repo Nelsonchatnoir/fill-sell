@@ -168,3 +168,10 @@ avec une phrase, les autres continuent — jamais tout l'écran.
 - Au-delà de 15 s sur le logo : phrase + « Réessayer » + « Recharger » ; version en ligne → un rechargement ; un
   rechargement par onglet et par build à 45 s (`fs_recharge_chargement`) ; nouvelle version : une fois par build distant
   (`fs_recharge_build`). Le 22/10, la cause était le RÉSEAU de la personne (QUIC cassé), pas le déploiement.
+
+## 29/10 — page traduite par le navigateur (lot A point 10)
+- Google Traduction remplace les nœuds texte de React : « insertBefore … not a child of this node » démontait toute la
+  racine (écran blanc, mele.marta 6 fois le 28/10, pedrobaylina le 27/10). `src/utils/domTraduit.js`
+  `garderDomContreTiers` : un insertBefore/removeChild sur un nœud sorti du parent ne lève plus (signalé une fois,
+  `action_app_ratee` `dom_tiers`, avec la langue). Les exceptions gardent pile, composants et langue (`main.jsx`
+  onUncaughtError, `actionRatee.js`). La traduction reste permise (décision de Nico : `interdireTraductionApp`).

@@ -16,6 +16,8 @@
 //   'annulation'  : renouvellement coupé, accès gardé jusqu'à la fin payée ;
 //   'reprise'     : renouvellement réactivé ;
 //   'pack'        : achat d'un pack (Apple ONE_TIME_CHARGE) ;
+//   'remboursement' : (29/10) Google voidedPurchaseNotification — signalé comme
+//                   un remboursement, jamais comme un paiement perdu ; rien appliqué ;
 //   'aucun_effet' : connu, sans effet sur le droit maintenant (descente de
 //                   palier effective au renouvellement, hausse de prix, test…) ;
 // et tout ce qui n'est PAS dans la table → { connu: false } : la notification
@@ -65,7 +67,7 @@ export const GOOGLE_DECISIONS = Object.freeze({
   3: { nom: "SUBSCRIPTION_CANCELED", effet: "annulation" },
   4: { nom: "SUBSCRIPTION_PURCHASED", effet: "on" },
   5: { nom: "SUBSCRIPTION_ON_HOLD", effet: "off" },
-  6: { nom: "SUBSCRIPTION_IN_GRACE_PERIOD", effet: "aucun_effet" },
+  6: { nom: "SUBSCRIPTION_IN_GRACE_PERIOD", effet: "off" }, // (29/10) impayé = gratuit, tous canaux
   7: { nom: "SUBSCRIPTION_RESTARTED", effet: "on" },
   8: { nom: "SUBSCRIPTION_PRICE_CHANGE_CONFIRMED", effet: "aucun_effet" },
   9: { nom: "SUBSCRIPTION_DEFERRED", effet: "aucun_effet" },
@@ -93,6 +95,30 @@ export function decisionApple(type, sousType) {
 export function decisionGoogle(notificationType) {
   const d = GOOGLE_DECISIONS[Number(notificationType)];
   return d ? { effet: d.effet, nom: d.nom, connu: true } : { effet: null, nom: `type_${notificationType}`, connu: false };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// (29/10, boncoin59300) UN REMBOURSEMENT N'EST PAS UN « PAIEMENT NON ENREGISTRÉ »
+// ═══════════════════════════════════════════════════════════════════════════
+// 29/10 10:04 : Google rembourse un Premium (commande GPA.3369-1510-4339-09469) et envoie, à la même seconde,
+// SUBSCRIPTION_REVOKED (12), SUBSCRIPTION_EXPIRED (13) — appliqués, droit retiré — ET une
+// voidedPurchaseNotification { productType 1, refundType 1 }. Celle-ci n'était pas dans la table : « inconnue »,
+// donc alerte « 🚨 PAIEMENT NON ENREGISTRÉ — le client a payé, rien n'est arrivé sur son compte », compte
+// INCONNU. Faux sur les deux points : c'est un REMBOURSEMENT, et le compte se retrouve par le jeton d'achat.
+// Effet 'remboursement' : connu, signalé comme tel (signalerRemboursementStore, payment-notify.ts), RIEN
+// appliqué ici — le retrait du droit d'un abonnement arrive par REVOKED / EXPIRED ; les Pépites d'un pack
+// remboursé restent créditées (décision humaine, dite dans l'alerte).
+// Google : productType 1 = abonnement, 2 = achat ponctuel ; refundType 1 = total, 2 = partiel (quantité).
+/** voidedPurchaseNotification → { effet: 'remboursement', nom, type, partiel, connu: true }. */
+export function decisionGoogleRemboursement(v) {
+  const type = Number(v?.productType) === 2 ? "pack" : "abonnement";
+  const partiel = Number(v?.refundType) === 2;
+  return { effet: "remboursement", nom: `REMBOURSEMENT_${type === "pack" ? "ACHAT" : "ABONNEMENT"}_${partiel ? "PARTIEL" : "TOTAL"}`, type, partiel, connu: true };
+}
+
+/** Apple : REFUND = remboursement, REVOKE = retrait (partage familial). Le droit tombe déjà (table : off). */
+export function natureRemboursementApple(type) {
+  return type === "REFUND" ? "remboursement" : type === "REVOKE" ? "retrait" : null;
 }
 
 /**

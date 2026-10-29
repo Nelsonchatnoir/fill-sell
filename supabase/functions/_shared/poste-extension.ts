@@ -46,6 +46,13 @@ export type Poste = {
   vinted_source?: string;         // « depot » · « garde » · « poll »
   // (18/10) Ce que la sonde de CE poste voit connecté (« sessions_poste », ≥ 0.6.126).
   sessions?: Record<string, boolean | null | string>;
+  // (29/10, point 5 — Johan) LA PRÉSENCE PENDANT UN LONG TRAVAIL : battement_extension (RPC, toutes les 5 min tant
+  // qu'un flux tient le verrou de l'extension) pose `le`, `battement_le` et `travail` (le flux, le job en cours, son
+  // heure). `vivant_depuis` : posé par le poll quand le poste revient après plus de 10 min de silence — l'alerte
+  // « hors ligne sans recréation » laisse 30 min au poste revenu (_shared/alerte-orpheline.js).
+  battement_le?: string;
+  travail?: { flux?: string; job?: string; plateforme?: string; depuis?: string; le?: string } | null;
+  vivant_depuis?: string;
 };
 
 export const POSTE_TTL_MS = 48 * 3600_000;

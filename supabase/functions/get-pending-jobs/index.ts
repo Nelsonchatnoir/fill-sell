@@ -228,7 +228,7 @@ import { trancheLbcDepuisGrammes } from "../_shared/lbc-poids-tranche.js";
 import { poidsColisDeLAnnonceLbc } from "../_shared/lbc-poids-annonce.js";
 import { frereHorsLigne, retenueLevee, plateformesRetenuesPar, idsQuiRetiennent, MESSAGE_EN_FILE } from "../_shared/retenue-hors-ligne.js";
 import { localisationLbcATaper } from "../_shared/lbc-localisation.js";
-import { candidatesDepuisRetrait, depotPeutEtrePartiDepuis, jugerCandidates, urlsPhotos } from "../_shared/recreation-deja-partie.js";
+import { candidatesDepuisRetrait, depotInacheveLbc, depotPeutEtrePartiDepuis, jugerCandidates, urlsPhotos } from "../_shared/recreation-deja-partie.js";
 import { decisionReleveVerif, motifReleveNonPris, messageReleveNonPris, releveServiDevant } from "../_shared/releve-verif-non-pris.js";
 import { depotPublicationPeutEtrePartiDepuis, candidatesDuDepot, urlsAnnonce, jugerCycleDepots } from "../_shared/depot-sans-numero.js";
 import { corrigerFeuilleLbc } from "../_shared/lbc-feuille-corrigee.js";
@@ -957,6 +957,10 @@ serve(async (req) => {
           postesDuCompte = postes;
           const avant: Poste = postes[sessionId] ?? {};
           const patchPoste: Poste = { le: new Date().toISOString() };
+          // (29/10, point 5) Le RETOUR d'un poste : plus de 10 min sans un signe (poll ou battement), ou jamais vu.
+          // L'alerte « hors ligne sans recréation » lui laisse 30 min pour reprendre sa file (alerte-orpheline.js).
+          const leAvant = Date.parse(String(avant.le ?? ""));
+          if (!Number.isFinite(leAvant) || Date.now() - leAvant > 10 * 60_000) patchPoste.vivant_depuis = patchPoste.le;
           if (build) patchPoste.build = build;
           // (09/10, Marta) Le navigateur et le pays du poste : l'extension de
           // Marta tournait dans Edge, son app dans Chrome — personne ne le
@@ -5841,9 +5845,14 @@ serve(async (req) => {
         const ancienId = String(pf["old_platform_listing_id"] ?? "").trim()
           || (String(pf["old_listing_url"] ?? "").match(/(\d{6,})(?:[/?#]|$)/)?.[1] ?? "");
         const { data: lignes } = await userClient.from("annonces_plateforme")
-          .select("listing_id, url, titre, prix, photo_url, capture, statut_plateforme, job_id, inventaire_id, created_at, disparu_le")
+          .select("listing_id, url, titre, prix, photo_url, capture, statut_plateforme, job_id, inventaire_id, created_at, disparu_le, publiee_le")
           .eq("platform", plateforme).gte("created_at", String(pf["deleted_at"])).limit(50);
-        const candidates = candidatesDepuisRetrait({ jobId: idJ, ancienId, deletedAt: pf["deleted_at"], lignes: lignes ?? [], inventaireId: j.inventaire_id ?? null });
+        const toutesCandidates = candidatesDepuisRetrait({ jobId: idJ, ancienId, deletedAt: pf["deleted_at"], lignes: lignes ?? [], inventaireId: j.inventaire_id ?? null });
+        // (29/10, louis 68e39f7c) Le dépôt Leboncoin inachevé d'un essai arrêté sur /options (statut « inactive »,
+        // aucune date de mise en ligne) n'est pas en ligne et ne le sera jamais : il ne retient pas le redépôt.
+        const inachevees = toutesCandidates.filter((c: Record<string, unknown>) =>
+          depotInacheveLbc(plateforme, pf, c, { depuis: Date.parse(String(pf["deleted_at"] ?? "")) }));
+        const candidates = toutesCandidates.filter((c: Record<string, unknown>) => !inachevees.includes(c));
         // Cascade (15/10 soir) : l'identifiant conservé après le dépôt, puis
         // les photos de NOTRE copie contre celles des candidates (empreintes).
         const urlsCopie = urlsPhotos(j.photos);
@@ -5864,6 +5873,7 @@ serve(async (req) => {
         const trace = {
           apres: susp.at, le: new Date().toISOString(), releve: String(fait.id), verdict: juge.verdict,
           candidates: candidates.map((c: Record<string, unknown>) => String(c["listing_id"])),
+          ...(inachevees.length ? { inachevees: inachevees.map((c: Record<string, unknown>) => String(c["listing_id"])) } : {}),
         };
 
         if (juge.verdict === "aucune") {
@@ -7973,7 +7983,16 @@ serve(async (req) => {
             // numéro à un autre article) : retrait clos, dépôt rendu (« ne
             // compte pas dans tes limites »). Sinon : attente avec un message
             // vrai (combien de relevés manquent, ou quelle annonce est libre).
-            if (PLATEFORMES_RELEVE.has(String(d.platform)) && String(d.platform) !== "beebs") {
+            // (29/10, XEWER b6803c70 « Hitman », dépôt 74037bf3 du 23/09 sans numéro) Beebs sautait ce juge pour
+            // de bon : pendant sa modération, une annonce n'est ni dans l'index ni dans « en vérification », et deux
+            // relevés complets sans elle ne prouvent rien. Passé ATTENTE_MAX_MS (7 jours, la fenêtre de modération
+            // Beebs — beebsAbsenteParModeration, refus prouvé de handler-watch) cette raison tombe : Beebs est jugé
+            // comme les autres. Sans ce juge, le retrait attendait un lien qui ne viendra plus, réécrit à chaque
+            // passage (26 170 observations en 52 h), sans jamais passer à la personne.
+            const depotLeMs = Date.parse(String(depotLe ?? ""));
+            const beebsHorsModeration = String(d.platform) !== "beebs"
+              || (Number.isFinite(depotLeMs) && Date.now() - depotLeMs > ATTENTE_MAX_MS);
+            if (PLATEFORMES_RELEVE.has(String(d.platform)) && beebsHorsModeration) {
               const lecture = await lectureRelevePlateforme(String(d.platform));
               const verdict = lecture ? jugerRetraitIntrouvable(d as Record<string, unknown>, {
                 releves: lecture.releves, annonces: lecture.annonces,
@@ -8047,6 +8066,14 @@ serve(async (req) => {
                   console.log(`[get-pending-jobs] retrait ${d.platform} ${String(d.id).slice(0, 8)} : relevé ${d.platform} redemandé${qErr ? ` (refusé : ${qErr.message})` : ""}`);
                 }
                 const redemandeLe = releveRedemandeLe ?? attente["releve_redemande_le"] ?? null;
+                // (29/10) Aucune ligne inchangée réécrite : même message, même motif, aucun relevé redemandé — on
+                // n'écrit qu'une fois toutes les 6 h (le job reste retenu, rien n'est servi).
+                const motifAttente = verdict.verdict === "non_reliee" ? "annonce_non_reliee" : "attend_deux_releves_complets";
+                if (!releveRedemandeLe && String((d as { error?: string | null }).error ?? "") === verdict.message && attente["motif"] === motifAttente
+                    && Date.now() - (Date.parse(String(attente["derniere"] ?? "")) || 0) < RETRAIT_SANS_NUMERO_RELEVE_MS) {
+                  aRetenir.add(String(d.id));
+                  continue;
+                }
                 await userClient.from("cross_post_jobs").update({
                   error: verdict.message,
                   platform_fields: { ...pf, retrait_attend_lien: {
@@ -8087,12 +8114,19 @@ serve(async (req) => {
             // quoi. Une attente qui ne se dit pas est indiscernable d'une
             // panne. Le message nomme ce qu'on attend, jusqu'à quand, et
             // l'issue si ça n'arrive pas.
+            const msgSansLien = `Retrait ${labelDe(d.platform)} en attente : ${labelDe(d.platform)} ne nous a pas encore donné le lien de cette annonce, `
+              + "et on ne la retire JAMAIS en la cherchant par son titre — deux annonces au même titre, "
+              + "et c'est la mauvaise qui partirait. On réessaie tout seuls à chaque passage"
+              + `. Si tu la vois dans tes annonces ${labelDe(d.platform)}, tu peux la retirer à la main — rien ne sera fait en double.`;
+            // (29/10, XEWER b6803c70 : 26 170 réécritures en 52 h) Déjà dit, il y a moins de 6 h : rien n'est réécrit.
+            if (String((d as { error?: string | null }).error ?? "") === msgSansLien && attente["motif"] === "sans_lien_jamais_par_titre"
+                && Date.now() - (Date.parse(String(attente["derniere"] ?? "")) || 0) < RETRAIT_SANS_NUMERO_RELEVE_MS) {
+              aRetenir.add(String(d.id));
+              continue;
+            }
             await userClient.from("cross_post_jobs")
               .update({
-                error: `Retrait ${labelDe(d.platform)} en attente : ${labelDe(d.platform)} ne nous a pas encore donné le lien de cette annonce, `
-                  + "et on ne la retire JAMAIS en la cherchant par son titre — deux annonces au même titre, "
-                  + "et c'est la mauvaise qui partirait. On réessaie tout seuls à chaque passage"
-                  + `. Si tu la vois dans tes annonces ${labelDe(d.platform)}, tu peux la retirer à la main — rien ne sera fait en double.`,
+                error: msgSansLien,
                 platform_fields: {
                   ...pf,
                   retrait_attend_lien: {

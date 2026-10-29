@@ -724,6 +724,56 @@ serve(async (req) => {
     });
   }
 
+  // ── Remboursement / retrait par le store (29/10, boncoin59300) ─────────────
+  // Appelé par google-play-webhook (voidedPurchaseNotification) et
+  // apple-iap-webhook (REFUND, REVOKE) via signalerRemboursementStore. Ce n'est
+  // PAS un paiement perdu : le store a rendu l'argent. Le mail le dit, nomme le
+  // compte (retrouvé par le jeton d'achat / la transaction d'origine) et le
+  // palier au moment de l'alerte. Répond TOUJOURS 200, comme payment_alert.
+  if (body?.store_remboursement) {
+    const rb = body.store_remboursement as Record<string, unknown>;
+    const escR = (v: unknown) =>
+      String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const nature = rb.nature === "retrait" ? "Retrait par Apple (partage familial)" : `Remboursement${rb.partiel === true ? " partiel" : ""}`;
+    const lignesR: Array<[string, unknown]> = [
+      ["Canal", rb.canal],
+      ["Nature", nature],
+      ["Type", rb.type],
+      ["Compte", rb.user_id ?? "INTROUVABLE (jeton d'achat inconnu de FillSell)"],
+      ["Email", rb.email ?? "—"],
+      ["Produit / plan", rb.produit ?? "—"],
+      ["Référence (commande / transaction d'origine)", rb.ref ?? "—"],
+      ["Palier au moment de l'alerte", rb.palier ?? "—"],
+      ["Droit", rb.droit ?? "—"],
+    ];
+    const htmlR = `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"></head>
+<body style="margin:0;padding:24px;background:#F2F2EE;">
+  <div style="max-width:640px;margin:0 auto;background:#fff;border-radius:16px;padding:26px;">
+    <h1 style="margin:0 0 6px;font-size:18px;font-family:sans-serif;color:#111827;">↩️ ${escR(nature.toUpperCase())}</h1>
+    <p style="margin:0 0 14px;font-size:12px;font-family:sans-serif;color:#9CA3AF;">
+      ${escR(new Date().toISOString())} — le store a rendu l'argent au client : rien à enregistrer. Si le palier ou des Pépites restent ouverts, décider à la main.
+    </p>
+    <table style="width:100%;border-collapse:collapse;font-family:sans-serif;font-size:13px;">
+      ${lignesR.map(([k, v]) => `<tr>
+        <td style="padding:6px 10px 6px 0;color:#6B7280;white-space:nowrap;vertical-align:top;">${escR(k)}</td>
+        <td style="padding:6px 0;color:#111827;word-break:break-all;"><strong>${escR(v)}</strong></td>
+      </tr>`).join("")}
+    </table>
+  </div>
+</body></html>`;
+    const rR = await envoyer({
+      to: TO_OPS,
+      subject: `↩️ ${nature} — ${escR(rb.canal)} ${escR(rb.produit ?? "")}`.trim(),
+      html: htmlR,
+      type: "ops_remboursement",
+      categorie: "support",
+      dedup: "journal",
+    });
+    return new Response(JSON.stringify({ ok: true, mail_envoye: rR.envoye }), {
+      status: 200, headers: { "Content-Type": "application/json" },
+    });
+  }
+
   // ── Paiement échoué (2026-08-07) — signalé par stripe-webhook ─────────────
   // TROIS gestes, dans cet ordre :
   //   1. RÉSERVATION par INSERT avant tout envoi : email_type =

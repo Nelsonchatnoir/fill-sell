@@ -183,8 +183,13 @@ async function candidatsDeQuestion(platform, { proposes = [], niveau = [], connu
   }
   // 3. Les feuilles du dernier niveau que l'IA a regardé : la branche où elle
   //    s'est arrêtée est la plus proche de l'objet.
+  //    ⛔ (29/10, point 3 — Ianis Martin) SAUF si l'IA a répondu « aucune » à CE niveau : ses feuilles ont été JUGÉES
+  //    et refusées (« Romans pour adultes », « Agendas et cahiers de texte » proposés pour un phare et un top case de
+  //    moto). Une feuille refusée n'est jamais une puce : sans candidate, la question dit « aucun rayon » et Beebs ou
+  //    Depop sont écartés d'office (C9) ; la recherche reste ouverte.
   for (const o of niveau ?? []) ajoute(o);
-  // 4. Les candidates ratissées par le mot (étape 3 de la résolution).
+  // 4. Les candidates ratissées par le mot (étape 3 de la résolution) — même règle : celles que l'IA a toutes
+  //    refusées à l'étape 3 arrivent vides (connusRejetes, resolutionPublication.js).
   for (const c of connus ?? []) if (estChemin(c?.chemin)) ajoute(c.chemin);
   return out.slice(0, QUESTION_MAX);
 }
@@ -214,6 +219,7 @@ async function descendre({ platform, genre, exclure, appelerResolve, corps }, { 
   let appels = 0;
   let chemin = [];
   let niveauVu = [];
+  let niveauRejete = false;
   let arret = false;
   let retours = 0;
   const mortes = new Set(racinesExclues.filter(Boolean).map((r) => cle([r])));
@@ -264,6 +270,8 @@ async function descendre({ platform, genre, exclure, appelerResolve, corps }, { 
         retours++;
         continue;
       }
+      // (29/10, point 3) L'IA a JUGÉ ce niveau et n'y a rien trouvé : ses options ne sont pas des candidates.
+      niveauRejete = true;
       arret = true;
       break;
     }
@@ -273,7 +281,7 @@ async function descendre({ platform, genre, exclure, appelerResolve, corps }, { 
     if (await estFeuilleDeLArbre(platform, chemin)) break;
   }
   const feuille = !arret && chemin.length && (await estFeuilleDeLArbre(platform, chemin)) ? chemin : null;
-  return { feuille, racine: chemin[0] ?? null, paliers, appels, niveauVu };
+  return { feuille, racine: chemin[0] ?? null, paliers, appels, niveauVu: niveauRejete ? [] : niveauVu, niveauRejete };
 }
 
 /**
@@ -304,7 +312,7 @@ async function descendre({ platform, genre, exclure, appelerResolve, corps }, { 
  */
 export async function rayonApresRefus({
   platform, objet, titre, attributs = {}, genre = "", refuses = [], familleVeto = null,
-  pf = {}, appelerResolve, candidatsConnus = [],
+  pf = {}, appelerResolve, candidatsConnus = [], connusRejetes = false,
 }) {
   // Le « Autres » d'une branche que la vérification n'a jamais pu montrer à
   // l'IA (le serveur le retire dès qu'il a des voisines — cf. plus haut) n'a
@@ -330,9 +338,18 @@ export async function rayonApresRefus({
   // Chaque issue dit AUSSI quels rayons étaient refusés (jugés par l'IA) et
   // lesquels ne l'étaient pas (jamais montrés) : la trace du job le garde.
   const fin = (o) => ({ ...o, paliers, appels, refuses_juges: refusesJuges, non_juges: nonJuges });
+  // (29/10, point 3) « non_confirme » = l'arbitrage IA a répondu « aucune » sur ces feuilles : elles restent dans la
+  // trace (chemin_propose), jamais dans les puces — ni elles, ni leurs voisines, ni le niveau où la descente les a
+  // prises (l'IA les y avait déjà jugées moins proches). Un refus par CONTRÔLE (âge, sexe, famille de la fiche) garde
+  // ses proposées et leur niveau : c'est là que la voisine juste se trouve.
   const question = async (motif, proposes = []) => fin({
     issue: "question", motif, chemin_propose: proposes[0] ?? null,
-    candidats: await candidatsDeQuestion(platform, { proposes, niveau: niveauVu, connus: candidatsConnus, exclus }),
+    candidats: await candidatsDeQuestion(platform, {
+      proposes: motif === "non_confirme" ? [] : proposes,
+      niveau: motif === "non_confirme" ? [] : niveauVu,
+      connus: connusRejetes ? [] : candidatsConnus,
+      exclus,
+    }),
   });
   const ctx = { platform, genre, exclure: refusesJuges, appelerResolve, corps };
 

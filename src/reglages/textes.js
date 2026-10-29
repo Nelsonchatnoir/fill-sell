@@ -175,6 +175,11 @@ const FR = {
   portDepop: 'Frais de port Depop',
   bordereauAuto: 'Bordereau automatique',
   bordereauFormatEnregistre: '✅ Format du bordereau enregistré !',
+  // (29/10, point 6) L'interrupteur : ce qu'il fait, en une phrase, dans ses deux positions.
+  bordereauAutoNoteActive: 'Activé : dès qu’une vente arrive, FillSell génère le bordereau sur la plateforme (ou récupère celui qui est déjà prêt) et le garde ici.',
+  bordereauAutoNoteDesactive: 'Désactivé : FillSell ne génère et ne récupère aucun bordereau tout seul. Tu le génères toi-même sur la plateforme ; le bouton « Bordereau » reste sur chaque commande.',
+  bordereauAutoActive: '✅ Bordereau automatique activé',
+  bordereauAutoDesactive: '✅ Bordereau automatique désactivé',
   portDepopEnregistre: '✅ Prix de livraison Depop enregistré !',
   portDepopRetire: 'Prix par défaut retiré',
 
@@ -394,6 +399,10 @@ const EN = {
   portDepop: 'Depop shipping price',
   bordereauAuto: 'Automatic label',
   bordereauFormatEnregistre: '✅ Label format saved!',
+  bordereauAutoNoteActive: 'On: as soon as a sale comes in, FillSell generates the label on the platform (or fetches the one already ready) and keeps it here.',
+  bordereauAutoNoteDesactive: 'Off: FillSell generates and fetches no label on its own. You generate it yourself on the platform; the “Label” button stays on each order.',
+  bordereauAutoActive: '✅ Automatic label on',
+  bordereauAutoDesactive: '✅ Automatic label off',
   portDepopEnregistre: '✅ Depop shipping price saved!',
   portDepopRetire: 'Default price removed',
 

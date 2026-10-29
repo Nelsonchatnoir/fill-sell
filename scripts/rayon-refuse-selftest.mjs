@@ -228,5 +228,26 @@ console.log("Aucun rayon trouvé : on demande, on ne bloque jamais (03/10, cas L
   ok(/motif: "aucun_rayon_trouve"/.test(res) && /for \(const platform of PLATEFORMES_RAYON_A_DEMANDER\)/.test(res), "la résolution pose la question en fin de calcul, une seule fois pour les quatre");
 }
 
+console.log("11. (29/10, Ianis Martin) Une feuille que l'IA a JUGÉE et refusée n'est jamais une puce");
+{
+  // Phare de moto sur Beebs : la descente « le plus proche » trouve « Romans pour adultes », l'arbitrage répond
+  // « aucune » (non_confirme). Avant : la question proposait cette feuille ET ses 11 voisines (tous les livres).
+  const ROMANS = ["Jeux, jouets et loisirs", "Livres", "Romans pour adultes"];
+  const appeler = async (corps) => {
+    const cands = corps?.candidats?.beebs ?? [];
+    const arbitrage = cands.length === 1 && cle(cands[0].chemin) === cle(ROMANS);
+    if (arbitrage) return { data: { choix: {} }, injoignable: false };
+    const hit = cands.find((c) => cle(c.chemin) === cle(ROMANS)) ?? cands.find((c) => cle(ROMANS).startsWith(`${cle(c.chemin)} > `));
+    return { data: { choix: hit ? { beebs: { chemin: hit.chemin, id: null } } : {} }, injoignable: false };
+  };
+  const res = await rayonApresRefus({ platform: "beebs", objet: "phare additionnel", titre: "Phare additionnel moto", refuses: [], pf: {}, appelerResolve: appeler });
+  ok(res.issue === "question" && res.motif === "non_confirme", "Beebs : feuille refusée par l'arbitrage → une question");
+  ok(cle(res.chemin_propose ?? []) === cle(ROMANS), "la feuille refusée reste dans la trace (chemin_propose)");
+  ok(!(res.candidats ?? []).some((c) => c.chemin[1] === "Livres"), "…mais ni elle ni ses voisines « Livres » ne sont des candidats");
+  const res2 = await rayonApresRefus({ platform: "beebs", objet: "phare additionnel", titre: "Phare", refuses: [], pf: {}, appelerResolve: appeler,
+    candidatsConnus: [{ chemin: ["Fournitures scolaires", "Agendas et cahiers de texte"], id: null }], connusRejetes: true });
+  ok(!(res2.candidats ?? []).length, "candidates du mot toutes refusées par l'IA (connusRejetes) : aucune puce — C9 écarte Beebs");
+}
+
 console.log(ko ? `\n✗ ${ko} échec(s)` : "\n✓ rayon refusé : tout passe");
 process.exit(ko ? 1 : 0);

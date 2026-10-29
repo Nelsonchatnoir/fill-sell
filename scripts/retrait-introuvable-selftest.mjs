@@ -166,6 +166,28 @@ ok(jugerRetraitVintedIntrouvable({ ...fb9, listing_url: null }, { releves: avecU
 const hwSrc = fs.readFileSync(new URL("../supabase/functions/handler-watch/index.ts", import.meta.url), "utf8");
 ok(/jugerRetraitVintedIntrouvable\(/.test(hwSrc) && /vinted_listing_snapshots/.test(hwSrc), "handler-watch juge les retraits Vinted ouverts sur tout le parc");
 
+console.log("\n8 bis. BEEBS SANS NUMÉRO, DÉPÔT DE PLUS DE 7 JOURS — XEWER b6803c70 « Hitman » (29/10)");
+// Relevé en base le 29/10 : retrait armé le 27/10 09:20 sur le dépôt 74037bf3 (publié le 23/09, jamais de numéro) ;
+// get-pending-jobs sautait Beebs dans ce juge → message réécrit à chaque passage (26 170 observations), jamais conclu.
+const gpjSrc = fs.readFileSync(new URL("../supabase/functions/get-pending-jobs/index.ts", import.meta.url), "utf8");
+ok(!/PLATEFORMES_RELEVE\.has\(String\(d\.platform\)\) && String\(d\.platform\) !== "beebs"\)/.test(gpjSrc)
+  && /const beebsHorsModeration = String\(d\.platform\) !== "beebs"\s*\|\| \(Number\.isFinite\(depotLeMs\) && Date\.now\(\) - depotLeMs > ATTENTE_MAX_MS\)/.test(gpjSrc),
+  "Beebs jugé par deux relevés complets une fois sa fenêtre de modération (7 jours après le dépôt) passée");
+ok((gpjSrc.match(/Date\.now\(\) - \(Date\.parse\(String\(attente\["derniere"\] \?\? ""\)\) \|\| 0\) < RETRAIT_SANS_NUMERO_RELEVE_MS/g) ?? []).length >= 2,
+  "attente sans lien : aucune ligne inchangée réécrite (une écriture toutes les 6 h au plus)");
+const hitmanAnnonces = Array.from({ length: 31 }, (_, i) => ({ listing_id: String(34200000 + i), job_id: `j-${i}`, inventaire_id: 1790000 + i, vu_le: "2026-10-28T16:25:00Z", statut_plateforme: "en_ligne", created_at: "2026-10-20T10:00:00Z" }));
+const vHit = jugerRetraitIntrouvable(retraitBeebs("b6803c70", "2026-10-27T08:20:36Z"), {
+  releves: [R("2026-10-28T16:24:00Z", 31, 31), R("2026-10-28T16:22:00Z", 31, 31)],
+  annonces: hitmanAnnonces, depotId: "74037bf3-10f0-4146-a716-7ddeb545a73a", depotLe: "2026-09-23T06:44:00Z",
+});
+ok(vHit?.verdict === "deja_retire", "31 annonces en ligne, toutes reliées par leur numéro → rien à retirer, dépôt rendu", JSON.stringify(vHit));
+const vHitLibre = jugerRetraitIntrouvable(retraitBeebs("b6803c70", "2026-10-27T08:20:36Z"), {
+  releves: [R("2026-10-28T16:24:00Z", 32, 32), R("2026-10-28T16:22:00Z", 32, 32)],
+  annonces: [...hitmanAnnonces, { listing_id: "34240001", job_id: null, inventaire_id: null, vu_le: "2026-10-28T16:25:00Z", statut_plateforme: "en_ligne", created_at: "2026-09-23T07:00:00Z" }],
+  depotId: "74037bf3-10f0-4146-a716-7ddeb545a73a", depotLe: "2026-09-23T06:44:00Z",
+});
+ok(vHitLibre?.verdict === "non_reliee" && vHitLibre.nonReliees?.[0] === "34240001", "une annonce libre → la question (needs_user après 48 h), jamais un retrait par titre", JSON.stringify(vHitLibre));
+
 
 console.log("\n9. NUMÉROTÉE AVANT LE DÉPÔT (BEEBS) : JOE0410, T-SHIRT NASA (15/10 soir)");
 // Relevé en base le 15/10 : retrait 450b05b6 armé le 11/10 ; dépôt 3b0346fa

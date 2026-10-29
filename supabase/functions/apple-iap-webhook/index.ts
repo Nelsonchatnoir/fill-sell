@@ -4,10 +4,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 // device » puis 408 « waiting to be built », 25/10 01:35 → 08:45), ce qui rendait le webhook indéployable. Banc local
 // avant déploiement : empreinte de la racine Apple G3 = la constante, chaîne WWDR G6 → G3 vérifiée, inverse refusé.
 import * as x509 from "npm:@peculiar/x509@1.9.0";
-import { notifierPaiement, alerterPaiementNonCredite, signalerNotificationStoreInconnue, journaliserNotificationStore } from "../_shared/payment-notify.ts";
+import { notifierPaiement, alerterPaiementNonCredite, signalerNotificationStoreInconnue, journaliserNotificationStore, signalerRemboursementStore } from "../_shared/payment-notify.ts";
 import { lectureCloudApple, ecritureCloudStore } from "../_shared/cloud-option.js";
 import { profilCloudPourStore } from "../_shared/cloud-essai-store.ts";
-import { decisionApple, ligneJournal, finPeriodeAEcrire, isoOuNull } from "../_shared/notifications-stores.js";
+import { decisionApple, ligneJournal, finPeriodeAEcrire, isoOuNull, natureRemboursementApple } from "../_shared/notifications-stores.js";
+import { palierDuProfil } from "../_shared/palier.js";
 
 // (25/10) Prise au registre npm, la bibliothèque ne trouve pas seule la cryptographie du runtime edge (pas de `self`) :
 // la v38 a refusé la notification de TEST d'Apple (« Cannot get Crypto by name 'default' », 08:51:33). On la lui donne.
@@ -363,6 +364,28 @@ serve(async (req) => {
       `[apple-iap-webhook] received type=${notificationType} product=${productId} originalTransactionId=${originalTransactionId} appAccountToken=${appAccountToken ?? "MISSING"}`
     );
 
+    // (29/10) Un remboursement / retrait n'est jamais un « paiement non enregistré » : alerte « Remboursement »,
+    // compte retrouvé par appAccountToken, sinon par la transaction d'origine (profiles.apple_original_transaction_id).
+    const natureRemb = natureRemboursementApple(notificationType);
+    if (!appAccountToken && natureRemb) {
+      const { data: parTx } = originalTransactionId
+        ? await supabaseAdmin.from("profiles").select("id, email, is_premium, is_pro, is_business, is_comped")
+            .eq("apple_original_transaction_id", originalTransactionId).limit(2)
+        : { data: null };
+      const compte = Array.isArray(parTx) && parTx.length === 1 ? parTx[0] : null;
+      const palier = compte ? palierDuProfil(compte) : null;
+      await signalerRemboursementStore({
+        canal: "apple", nature: natureRemb, type: COIN_PRODUCTS[productId] != null ? "pack" : "abonnement",
+        user_id: compte?.id ?? null, email: compte?.email ?? null, produit: productId,
+        ref: originalTransactionId ?? (tx.transactionId as string | undefined) ?? null, palier,
+        droit: palier && palier !== "gratuit" ? "NON retiré (pas d'appAccountToken) : à retirer à la main" : "rien d'ouvert",
+      });
+      console.warn(`[apple-iap-webhook] ${notificationType} sans appAccountToken → compte=${compte?.id ?? "INTROUVABLE"} (transaction d'origine ${originalTransactionId ?? "?"})`);
+      return new Response(JSON.stringify({ ok: true, remboursement: natureRemb, skipped: "no appAccountToken" }), {
+        status: 200, headers: { "Content-Type": "application/json" },
+      });
+    }
+
     if (!appAccountToken) {
       // Payload complet : c'est la SEULE trace qui permette un crédit manuel
       // a posteriori (transactionId + productId) quand l'utilisateur est
@@ -454,6 +477,12 @@ serve(async (req) => {
         // REFUND/CONSUMPTION_REQUEST d'un pack… : jamais de crédit ici, mais
         // payload loggé en entier (un remboursement de pack se traite à la main).
         console.warn(`[apple-iap-webhook] coin product, type=${notificationType} — skipped — tx=`, JSON.stringify(tx));
+        if (natureRemb) {
+          await signalerRemboursementStore({
+            canal: "apple", nature: natureRemb, type: "pack", user_id: appAccountToken, produit: productId,
+            ref: (tx.transactionId as string | undefined) ?? null, droit: "Pépites du pack NON reprises (à décider)",
+          });
+        }
         return new Response(JSON.stringify({ ok: true, skipped: `coin_${notificationType}` }), {
           status: 200, headers: { "Content-Type": "application/json" },
         });
@@ -626,6 +655,15 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: error.message }), {
         status: 500,
         headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // (29/10) Remboursement / retrait d'un abonnement : le droit vient de tomber (table : off) — dit à support@
+    // comme un remboursement, jamais comme un paiement perdu.
+    if (natureRemb && isPremium === false) {
+      await signalerRemboursementStore({
+        canal: "apple", nature: natureRemb, type: "abonnement", user_id: appAccountToken, produit: productId,
+        ref: originalTransactionId ?? null, palier: "gratuit (sauf autre canal)", droit: "retiré (is_premium=false écrit)",
       });
     }
 

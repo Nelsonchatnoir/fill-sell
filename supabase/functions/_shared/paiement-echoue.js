@@ -29,8 +29,9 @@
 //         prochaine tentative (next_payment_attempt), jamais pour un 3D Secure
 //         ni une carte expirée (la même carte échouerait encore).
 //       – « ton abonnement reste actif » seulement au renouvellement, et si
-//         Stripe dit l'abonnement active ou past_due (stripe-webhook : past_due
-//         compte comme vivant, le palier est gardé).
+//         Stripe dit l'abonnement active (ou past_due pour l'option Cloud).
+//         (29/10) Un palier past_due n'est plus gardé (stripe-webhook) : le
+//         mail ne le promet plus.
 
 export const CAUSES = Object.freeze(['3ds', 'carte_refusee', 'carte_expiree', 'autre']);
 export const CONTEXTES = Object.freeze(['souscription', 'renouvellement', 'fin_essai']);
@@ -103,7 +104,10 @@ export function faitsEchec({ facture, abonnement = null, estCloud = false }) {
     // Souscription : jamais la page de la facture (cf. en tête).
     lien_facture: contexte === 'souscription' ? null : lienFacture(facture),
     relance_le: prochaine != null && contexte !== 'souscription' ? new Date(prochaine * 1000).toISOString() : null,
-    abonnement_actif: contexte === 'renouvellement' && ['active', 'past_due'].includes(abonnement?.status),
+    // (29/10) Un palier past_due n'est plus ouvert (litAbonnementStripe.paye) : « ton abonnement reste
+    // actif » ne se dit plus que d'un abonnement active, ou d'une option Cloud past_due (règle inchangée).
+    abonnement_actif: contexte === 'renouvellement'
+      && (abonnement?.status === 'active' || (abonnement?.status === 'past_due' && estCloud === true)),
     offre: estCloud ? 'cloud' : null,
   };
 }

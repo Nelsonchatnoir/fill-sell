@@ -418,10 +418,12 @@ async function enfant() {
       reponsesGoogle: { "jeton-factice-achat": achatV2(P) },
       attendu: { ecritures: [], tier: null, http: 200, inconnue: true },
       head: "signalement_en_plus", pourquoiHead: "HEAD : même absence d'effet, mais ni journal ni alerte (jetée en silence)" },
-    { canal: "google", nom: "inconnue (voidedPurchase)", libelle: "voidedPurchaseNotification (remboursement)",
+    // (29/10, boncoin59300) Un remboursement est CONNU : alerte « Remboursement » (store_remboursement), jamais
+    // « INCONNUE » ni « paiement non enregistré » ; aucune écriture de droit (REVOKED / EXPIRED s'en chargent).
+    { canal: "google", nom: "remboursement (voidedPurchase)", libelle: "voidedPurchaseNotification (remboursement)",
       requete: requeteGoogle({ version: "1.0", packageName: "app.fillsell", eventTimeMillis: "1791700000000", voidedPurchaseNotification: { purchaseToken: "jeton-factice-achat", orderId: "GPA.0000-0000-0000-00001", productType: 1, refundType: 1 } }),
-      attendu: { ecritures: [], tier: null, http: 200, inconnue: true },
-      head: "signalement_en_plus", pourquoiHead: "HEAD : « not a subscription event », sans alerte" },
+      attendu: { ecritures: [], tier: null, http: 200 },
+      head: "signalement_en_plus", pourquoiHead: "HEAD : alerte « INCONNUE » / « PAIEMENT NON ENREGISTRÉ » ; le neuf : alerte « Remboursement » — écart VOULU" },
     { canal: "google", nom: "mise en pause (type 10)", libelle: `type 10 PAUSED · ${P} (info : décision NOUVELLE)`, requete: requeteGoogle(notifAbo(10, P, "jeton-factice-achat")),
       reponsesGoogle: { "jeton-factice-achat": achatV2(P, { etat: "SUBSCRIPTION_STATE_PAUSED" }) },
       profils: { [UUID_G]: { id: UUID_G, google_purchase_token: "jeton-factice-achat", is_premium: true } },

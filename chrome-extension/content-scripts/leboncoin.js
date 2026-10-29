@@ -3178,7 +3178,9 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
   // (job b1b9bb68 : le poids du colis ne passait jamais) : sans sonde, toutes
   // les entrées lbcAspects du job non servies par un bloc dédié y passent
   // (entreesSecondePasseLbc) ; le corps est lbcSecondePasseCriteres.
-  if (hasCriteria || formulairePro) {
+  // (29/10) Et sur un formulaire de particulier quand la sonde est restée muette alors que le job porte des
+  // critères (thecloset72000) : l'état et les entrées lbcAspects ont encore leur chance, attente bornée à 6 s.
+  if (hasCriteria || formulairePro || jobPorteCriteresLbc(job)) {
     etatPose = await lbcSecondePasseCriteres({
       etatPose, etatCandidats, warnings,
       entrees: entreesSecondePasseLbc({
@@ -3338,7 +3340,9 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
         (validationMsgs.length
           ? ` — messages de validation LBC: ${JSON.stringify(validationMsgs)}`
           : " (aucun message de validation visible)") +
-        `. Warnings du remplissage: ${warnings.join(" | ") || "aucun"}.`;
+        `. Warnings du remplissage: ${warnings.join(" | ") || "aucun"}.` +
+        // (29/10) La page où le wizard s'est arrêté, dite : titres, critères affichés et boutons (jamais un texte saisi).
+        ` Page : ${pageWizardLbc()}.`;
 
     // ── needsUserField (socle needs_user, 2026-07-19) : cas (a) — champ précis
     // identifié par la VALIDATION LBC (blockedFields, source de vérité) ou par
@@ -4005,8 +4009,28 @@ function findCriterionInputByLabelText(re) {
 const LBC_SONDE_CRITERES_SELECTOR = 'label[for="condition"], label[for$="_condition"], label[for$="_brand"], label[for$="_size"], label[for$="_univers"], label[for$="_universe"], label[for$="_material"], label[for$="_type"], label[for="clothing_st"], label[for="baby_age"], label[for="estimated_parcel_weight"]';
 const LBC_SONDE_MS = 4000;
 const LBC_SONDE_PRO_MS = 15_000;
+// (29/10, thecloset72000 — 2 jeans, 9 essais du 28/10 20:42 au 29/10 03:35) Sur Mode > Vêtements, la sonde de 4 s
+// est restée muette à CHAQUE essai (onglet de travail minimisé) : État, Univers, Taille jamais posés, le Continuer
+// refusé, « Le wizard n'est pas passé à l'aperçu » — la personne a fini par publier elle-même. Un job qui PORTE des
+// critères attend donc qu'ils se rendent (15 s, comme le formulaire PRO) ; un job sans critère garde 4 s.
+function jobPorteCriteresLbc(job) {
+  const pf = job?.platform_fields ?? {};
+  const aspects = pf.lbcAspects && typeof pf.lbcAspects === "object" ? Object.values(pf.lbcAspects) : [];
+  return ["etat", "taille", "marque", "couleur", "univers", "genre", "matiere"].some((k) => String(pf[k] ?? "").trim())
+    || aspects.some((v) => String(v ?? "").trim());
+}
 function formulaireProLbc(job) {
   return job?.platform_fields?.compte_pro === true || Boolean(document.querySelector('[name="custom_ref"]'));
+}
+// (29/10) Ce que la page du dépôt montre quand le wizard n'avance pas : ses titres, les clés des critères
+// affichés et les boutons — de quoi savoir, au prochain cas, sur quelle étape Leboncoin s'est arrêté. Borné.
+function pageWizardLbc() {
+  try {
+    const titres = [...document.querySelectorAll("h1, h2, h3")].map((e) => e.textContent.trim()).filter(Boolean).slice(0, 4);
+    const criteres = [...document.querySelectorAll("label[for]")].map((e) => e.getAttribute("for")).filter(Boolean).slice(0, 12);
+    const boutons = [...document.querySelectorAll("button")].map((e) => e.textContent.trim()).filter((t) => t && t.length <= 40).slice(0, 8);
+    return `titres ${JSON.stringify(titres)} · critères ${JSON.stringify(criteres)} · boutons ${JSON.stringify(boutons)}`.slice(0, 600);
+  } catch { return "illisible"; }
 }
 async function sonderCriteresLbc(job, warnings) {
   const t0 = Date.now();
@@ -4015,7 +4039,7 @@ async function sonderCriteresLbc(job, warnings) {
     const vu = document.querySelector(LBC_SONDE_CRITERES_SELECTOR)
       ?? (pro ? (findCriterionInputByLabelText(LBC_LIBELLES_PRO.estimated_parcel_weight) ?? findCriterionInputByLabelText(LBC_ETAT_LIBELLE_RE)) : null);
     if (vu) return { hasCriteria: vu, formulairePro: pro };
-    const budget = pro ? LBC_SONDE_PRO_MS : LBC_SONDE_MS;
+    const budget = pro || jobPorteCriteresLbc(job) ? LBC_SONDE_PRO_MS : LBC_SONDE_MS;
     if (Date.now() - t0 >= budget) {
       const note = pro
         ? `critères : aucun critère vu en ${budget / 1000} s sur le formulaire PRO (État, Poids du colis…) — remplissage par la seconde passe avant le Continuer`

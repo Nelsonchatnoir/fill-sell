@@ -44,7 +44,7 @@
 import { releveComplet } from "./introuvable-a-confirmer.js";
 import { trancherParPhotos } from "./annonce-partagee.js";
 import { numeroteeAvantLeDepot } from "./retrait-introuvable.js";
-import { urlsPhotos } from "./recreation-deja-partie.js";
+import { urlsPhotos, depotInacheveLbc } from "./recreation-deja-partie.js";
 
 export const SOURCES_DEPOT_COUPE = Object.freeze(["recreation_deja_partie", "depot_deja_parti"]);
 export const PLATEFORMES_DEPOT_COUPE = Object.freeze(["leboncoin", "beebs"]);
@@ -194,7 +194,12 @@ export function decisionDepotCoupe({ job, lignes = [], runs = [], empreinte = ()
   const dernier = apresEssai.reduce((a, b) => (ms(b.started_at) > ms(a.started_at) ? b : a));
 
   const candidates = candidatesDepotCoupe(job, lignes);
-  const etats = candidates.map((c) => ({ c, ...presenceCandidate(c, lignes, probants) }));
+  // (29/10, louis 68e39f7c) Le dépôt Leboncoin inachevé d'un essai arrêté sur /options (statut « inactive », aucune
+  // date de mise en ligne) n'est pas en ligne et ne le sera jamais : il ne retient pas le redépôt
+  // (recreation-deja-partie.js depotInacheveLbc).
+  const etats = candidates.map((c) => (depotInacheveLbc(platform, pf, c, { depuis: rep.depuis })
+    ? { c, etat: "absente", preuve: "dépôt Leboncoin inachevé (essai arrêté sur l'écran « options », jamais vu en ligne, aucune date de mise en ligne)" }
+    : { c, ...presenceCandidate(c, lignes, probants) }));
   const presentes = etats.filter((e) => e.etat === "presente").map((e) => e.c);
   const absentes = etats.filter((e) => e.etat === "absente");
 

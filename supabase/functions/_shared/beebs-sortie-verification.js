@@ -105,8 +105,10 @@ export function jugerSortieVerificationBeebs(job, { lectures = [], releves = [],
   if (!job || job.platform !== "beebs" || !["publish", "republish"].includes(String(job.action)) || job.status !== "published") return null;
   if (job.vu_en_ligne_le) return null;
   const pf = (job.platform_fields && typeof job.platform_fields === "object") ? job.platform_fields : {};
-  if (pf.refus_verification_beebs) return null;
   const numero = String(job.platform_listing_id ?? "").trim();
+  // (29/10, lot A point 8 — XEWER 99571727) Un refus vaut pour SON numéro : après une relance, le nouveau dépôt
+  // (autre numéro) se juge à neuf ; un marqueur périmé ne le protège plus à vie.
+  if (pf.refus_verification_beebs && String(pf.refus_verification_beebs.numero ?? "").trim() === numero) return null;
   if (!/^\d{6,}$/.test(numero)) return null;
   if (!(Number(job.price) > 0) || Number(job.price) >= PRIX_EXAMEN_INVISIBLE_BEEBS) return null;
   const depose = ms(job.published_at ?? job.created_at);

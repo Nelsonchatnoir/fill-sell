@@ -32,6 +32,21 @@ export function posteVivant({ vuLe = null, priseLe = null, maintenant = Date.now
   return !Number.isFinite(prise) || vu > prise + 60_000;
 }
 
+/**
+ * (29/10, point 5 — Johan Désiré, 098cab75) Un poste du compte BAT-il sur CE job (battement_extension, toutes les
+ * 5 min tant qu'un flux tient le verrou de l'extension) ? Alors le job n'est pas coupé : il est en cours.
+ * Recréation Leboncoin prise à 11:37:39, remise en file à 11:51 avec « ton ordinateur ou Chrome s'est arrêté » alors
+ * que l'extension la terminait (publiée à 12:13:17) — 16 phrases fausses sur 29 en 14 jours.
+ * @param {{ postes?: Record<string, any>|null, jobId: string, maintenant?: number }} arg
+ */
+export function posteTravailleSurLeJob({ postes = null, jobId, maintenant = Date.now() } = {}) {
+  if (!jobId || !postes || typeof postes !== "object") return false;
+  return Object.values(postes).some((p) => {
+    const t = p && typeof p === "object" ? p.travail : null;
+    return Boolean(t && String(t.job ?? "") === String(jobId) && maintenant - ms(t.le) <= POSTE_VIVANT_MS);
+  });
+}
+
 const heureFr = (v) => {
   const t = ms(v);
   if (!Number.isFinite(t)) return null;

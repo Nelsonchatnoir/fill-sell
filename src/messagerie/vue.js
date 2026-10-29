@@ -455,6 +455,9 @@ export function etatDemandeBordereau(d, lang = 'fr', platform = null) {
   // un état simple et court tant qu'il se prépare — jamais un paragraphe. Un échec dit son motif réel, et le bouton
   // manuel revient (la demande close ne retient plus rien).
   const preparation = { ton: 'neutre', attente: true, texte: fr ? 'Bordereau en préparation' : 'Label being prepared' };
+  // (29/10, point 6) Une demande AUTOMATIQUE close parce que le vendeur a coupé le bordereau automatique (motif
+  // « auto_desactive », bordereau_demande_a_traiter) : rien n'a été fait, rien à dire — le bouton manuel revient.
+  if (d?.choix?.auto === true && d.statut === 'expiree' && d.motif === 'auto_desactive') return null;
   if (d?.choix?.auto === true && (d.statut === 'demandee' || d.statut === 'en_cours'
     || (d.action === 'generer' && d.statut === 'generee' && d.motif !== 'fichier_sur_beebs' && Number(d.essais_fichier) < 15))) {
     return preparation;

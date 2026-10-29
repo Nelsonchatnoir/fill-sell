@@ -330,7 +330,14 @@ export function rayonRefuseDuJob(job) {
   if (job?.platform === "leboncoin" && job.action === "republish" && ["pending", "needs_user"].includes(job.status)) {
     const detail = String(pf.republish_prevol_formulaire?.detail ?? "");
     const sansRayon = !(Array.isArray(pf.lbcCategoryPath) && pf.lbcCategoryPath.length);
-    const refuse = /Catégorie\s*:/.test(detail) && pf.republish_prevol_formulaire?.verdict !== "ok";
+    // ⛔ (29/10, point 3 — camille.ferren c82117cd) SEUL un refus PROUVÉ est un refus : la racine ou la feuille que
+    //    l'arbre AFFICHÉ par Leboncoin n'a pas (« Catégorie: feuille "X" introuvable sous "Y". Options affichées… »).
+    //    « ni suggestion ni sélecteur manuel trouvés » / « panneau des racines introuvable » disent que la PAGE n'a pas
+    //    été lue (verdict « illisible », nouvel essai dans 30 min) : la catégorie d'origine n'y est pour rien. Avant, le
+    //    moteur l'écartait (« Loisirs créatifs », en ligne et relevée le 28/10), en choisissait une autre
+    //    (« Jeux & Jouets », 27 dépôts acceptés en 4 jours), puis disait « Leboncoin n'accepte plus la catégorie ».
+    const refuse = /Catégorie\s*:\s*(?:racine|feuille)\b[^.]*introuvable/i.test(detail)
+      && pf.republish_prevol_formulaire?.verdict !== "ok";
     if (!sansRayon && !refuse) return null;
     return { plateforme: "leboncoin", base: [], raison: sansRayon ? RAISON_RAYON_ABSENT : RAISON_RAYON_REFUSE,
       ...(refuse && !sansRayon ? { exclure: pf.lbcCategoryPath } : {}) };

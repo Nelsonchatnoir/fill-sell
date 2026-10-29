@@ -6957,10 +6957,16 @@ export default function ListingPreviewScreen({
   //    Vinted et l'écran refuse TOUT le lot en lui demandant de « nommer
   //    l'objet dans le titre ("combinaison"…) ». Elle venait de le faire.
   //    ⚠️ REPLI SEULEMENT : un mot de l'IA gagne toujours.
+  //    ⛔ (29/10, point 3 — Ianis Martin) ET UN MOT DU TITRE GAGNE AUSSI, comme l'écrit rayonPublication.js (« appelé
+  //    quand ni l'IA ni le titre n'ont nommé l'objet ») : « Maquettes et modélisme », choisi sur Beebs faute de
+  //    rayon plongée, était devenu l'objet de l'article — Vinted (« Kits de plongée ») et Leboncoin (« Sport & Plein
+  //    air ») déjà justes ont été reposés en « Jeux de plateau et jeux miniatures » et « Modélisme », sans question.
   const activeAiObjet = useMemo(() => {
     const o = String(platformListings?.objet ?? "").trim();
-    return o || objetDuRayonChoisi(edited) || null;
-  }, [platformListings, edited]);
+    if (o) return o;
+    const motDuTitre = detectObjectKeywordDetail(textesFrDeLaPublication({ initialListing, edited }).titre, "")?.mot;
+    return motDuTitre ? null : (objetDuRayonChoisi(edited) || null);
+  }, [platformListings, edited, initialListing]);
 
   // ══ LE RAYON, PRÊT À AFFICHER (lot B, 20/09) ══════════════════════════════
   // Ce que le pré-calcul a trouvé, RECOUVERT par le choix de la personne. Une

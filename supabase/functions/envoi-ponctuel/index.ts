@@ -26,7 +26,11 @@
 //     initiative. Une réponse de support n'est jamais plafonnée.
 //
 // ── LE PLAFOND, ET CE QU'IL COMPTE EXACTEMENT ──────────────────────────────
-// Il compte TOUTES les lignes email_logs de la personne sur 24 h glissantes,
+// (29/10) SAUF les mails déclenchés par une vente (vente:<id>, ventes_du_jour —
+// liste fermée, _shared/plafond-mails.js) : un vendeur qui vend beaucoup ne
+// doit pas devenir injoignable (thecloset72000, 28/10 : 4 mails de vente + 1
+// campagne = « deja: 5 », refusé).
+// Il compte les autres lignes email_logs de la personne sur 24 h glissantes,
 // quel que soit le type. C'est un choix, et il est assumé : `email_logs` ne
 // porte pas la catégorie, et surtout « deux mails par jour » se juge depuis la
 // BOÎTE DE RÉCEPTION de quelqu'un, pas depuis nos catégories internes. Une
@@ -54,8 +58,7 @@
 // flottant a rendu tout déploiement impossible le 23/09).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { type CategorieEmail, envoyerEmail } from "../_shared/desinscription.ts";
-
-const PLAFOND_24H = 2;
+import { PLAFOND_24H, mailsQuiComptent } from "../_shared/plafond-mails.js";
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -294,15 +297,22 @@ Deno.serve(async (req) => {
     // lecture impossible ne bloque PAS : le plafond est une politesse, pas un
     // garde-fou de sécurité — et la désinscription, elle, est vérifiée par la
     // porte unique et n'est jamais contournable.
+    // (29/10, thecloset72000) Les mails DÉCLENCHÉS PAR UNE VENTE (vente:<id>, ventes_du_jour) ne comptent
+    // plus : ils sont lus puis retirés du compte (_shared/plafond-mails.js). 200 lignes au plus sur 24 h pour
+    // une personne : bien au-delà de ce qu'un vendeur reçoit (relevé du 29/10 : 755 mails de vente en 30 j,
+    // 103 comptes).
     if (categorie === "marketing") {
       try {
         const depuis = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
-        let q = admin.from("email_logs").select("id", { count: "exact", head: true }).gte("sent_at", depuis);
+        let q = admin.from("email_logs").select("email_type").gte("sent_at", depuis)
+          .order("sent_at", { ascending: false }).limit(200);
         q = d.user_id ? q.eq("user_id", d.user_id) : q.eq("email", email);
-        const { count } = await q;
-        if ((count ?? 0) >= PLAFOND_24H) {
+        const { data: lignes, error: errPlafond } = await q;
+        if (errPlafond) throw errPlafond;
+        const deja = mailsQuiComptent(lignes ?? []);
+        if (deja >= PLAFOND_24H) {
           plafonnes++;
-          resultats.push({ email, envoye: false, motif: "plafond_24h", deja: count });
+          resultats.push({ email, envoye: false, motif: "plafond_24h", deja, hors_plafond: (lignes?.length ?? 0) - deja });
           continue;
         }
       } catch (_e) { /* plafond illisible : on laisse passer, la porte garde le reste */ }

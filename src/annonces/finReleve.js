@@ -20,7 +20,9 @@ const MUR_OPLA = /acc[èe]s opla non accord/i;
 //   arret         la lecture s'est arrêtée avant la fin (chien de garde)
 //   pas_prise     l'ordinateur n'a jamais pris la demande (Chrome fermé)
 //   echec         tout le reste
-const RE_PAS_CONNECTE = /\[pas_connecte\]|aucune session vinted|session_absente|session vinted.{0,40}401|refusé la lecture du compte|page de connexion/i;
+// (29/10) « jeton non renouvelé (session_fermee) » : le renouvellement du jeton Leboncoin a VU « Mes annonces »
+// renvoyer vers la connexion — runs des extensions ≤ 0.6.152, écrits « n'a pas rendu sa liste ».
+const RE_PAS_CONNECTE = /\[pas_connecte\]|aucune session vinted|session_absente|session vinted.{0,40}401|refusé la lecture du compte|page de connexion|jeton non renouvelé \(session_fermee\)/i;
 const RE_BOUTIQUE_AUTRE_COMPTE = /\[boutique_autre_compte\]/i;
 const RE_AUTRE_COMPTE = /\[boutique_a_confirmer\]|\[boutique_autre_compte\]|\[hors-compte-ebay\]/i;
 const RE_ANTI_ROBOT = /\[anti_robot\]|anti-robot|\[retry403\]/i;

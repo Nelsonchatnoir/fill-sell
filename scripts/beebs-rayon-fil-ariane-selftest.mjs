@@ -122,9 +122,13 @@ console.log('\n4. serveur : un rayon absent n’est pas un rayon refusé');
 const M = await import(pathToFileURL(join(RACINE, 'supabase/functions/_shared/rayon-refuse-moteur.js')).href);
 const beebs = { platform: 'beebs', action: 'republish', status: 'needs_user', platform_fields: { republish_prevol_manquants: ['le rayon Beebs'] } };
 ok(M.rayonRefuseDuJob(beebs)?.raison === M.RAISON_RAYON_ABSENT, 'Beebs, rayon absent de la copie : raison « rayon_absent_de_la_copie »');
-const lbcSans = { platform: 'leboncoin', action: 'republish', status: 'pending', platform_fields: { republish_prevol_formulaire: { verdict: 'illisible', detail: 'Catégorie: x' } } };
+// (29/10, lot A point 3 c) Seul un refus PROUVÉ (racine/feuille introuvable dans l'arbre affiché) est un refus ; une page
+// illisible (« ni suggestion ni sélecteur ») ne l'est plus (camille.ferren c82117cd).
+const lbcSans = { platform: 'leboncoin', action: 'republish', status: 'pending', platform_fields: { republish_prevol_formulaire: { verdict: 'non', detail: 'Catégorie: feuille "Vêtements" introuvable sous "Mode". Options affichées : Chaussures' } } };
 const lbcRefuse = { ...lbcSans, platform_fields: { ...lbcSans.platform_fields, lbcCategoryPath: ['Mode', 'Vêtements'] } };
 ok(M.rayonRefuseDuJob(lbcSans)?.raison === M.RAISON_RAYON_ABSENT && M.rayonRefuseDuJob(lbcRefuse)?.raison === M.RAISON_RAYON_REFUSE, 'Leboncoin : sans rayon → absent ; rayon refusé au pré-vol → refusé');
+const lbcIllisible = { ...lbcRefuse, platform_fields: { ...lbcRefuse.platform_fields, republish_prevol_formulaire: { verdict: 'illisible', detail: 'Catégorie: ni suggestion ni sélecteur manuel trouvés' } } };
+ok(M.rayonRefuseDuJob(lbcIllisible) === null, 'Leboncoin : page de catégorie illisible → jamais un refus (la catégorie d’origine reste)');
 const horloge = { platform: 'vinted', action: 'republish', status: 'needs_user', platform_fields: { needsUserField: { field_key: 'categoryLevelChoice' }, republish_snapshot: { categoryPath: ['Enfants', 'Jeux et jouets'] } } };
 ok(M.rayonRefuseDuJob(horloge)?.raison === M.RAISON_RAYON_REFUSE, 'Vinted (niveau intermédiaire) : refusé, comme avant');
 const mAbs = M.messageRayonAChoisir('beebs', [], M.RAISON_RAYON_ABSENT);

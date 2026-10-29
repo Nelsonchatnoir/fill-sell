@@ -36,13 +36,17 @@ function prixConnus() {
 // n'importe quel abonnement vivant → is_premium. is_founder n'est JAMAIS
 // touché (marqueur de prix legacy sans effet sur l'accès, cf. CLAUDE.md).
 //
-// « Vivant » inclut past_due (2026-07-25, cas réel Mériné) : pendant la
-// fenêtre de retry Stripe (dunning, jusqu'à ~1 mois), l'abonnement n'est PAS
-// résilié — un client en retard de paiement garde son statut tant que Stripe
-// n'a pas tranché. Seuls les états terminaux font perdre le premium :
-// canceled (abonnement supprimé → subscription.deleted) et unpaid /
-// incomplete_expired (issues de dunning épuisé → subscription.updated), qui
-// déclenchent tous ce recalcul et n'y comptent pas comme vivants.
+// ⛔ (29/10, Romain Colson — remplace la règle du 25/07, cas Mériné) UN IMPAYÉ
+// NE GARDE PLUS SON PALIER. Avant : past_due comptait comme vivant, et un
+// renouvellement refusé gardait Pro pendant toute la relance Stripe (relevé :
+// 13 à 14 jours, puis customer.subscription.deleted — geronimo0550 06/10 →
+// 19/10, nivake03 13/10 → 27/10 ; Romain Colson, 5 refus du 19/10 au 28/10,
+// toujours Pro). Maintenant seul un abonnement PAYÉ (active | trialing) porte
+// un palier (litAbonnementStripe.paye, _shared/cloud-option.js) : past_due,
+// unpaid, incomplete, incomplete_expired, canceled → le palier tombe au
+// recalcul, et REVIENT au recalcul quand la facture est réglée (past_due →
+// active). Le recalcul se fait donc à CHAQUE changement de statut
+// (customer.subscription.updated, plus bas). L'option Cloud garde sa règle.
 // deno-lint-ignore no-explicit-any
 // Un abonnement vivant porte-t-il CE palier ? metadata.plan_type d'abord
 // (posé par create-checkout-session), price ID en repli (abonnements créés
@@ -116,9 +120,9 @@ async function recomputeStripeFlags(supabase: any, customerId: string) {
   // écrites en isPro.
   //
   // (04/10) Le calcul vit dans drapeauxDepuisStripe : mêmes règles qu'avant
-  // pour les paliers (tout abonnement vivant hors Cloud vaut premium ; pro /
-  // business par métadonnée plan_type, prix en repli ; vivant = active |
-  // trialing | past_due). Les abonnements Cloud (metadata.option = "cloud")
+  // pour les paliers (tout abonnement PAYÉ hors Cloud vaut premium ; pro /
+  // business par métadonnée plan_type, prix en repli ; payé = active |
+  // trialing depuis le 29/10, past_due n'en est plus). Les abonnements Cloud (metadata.option = "cloud")
   // n'y entrent JAMAIS : ils posent is_cloud et l'essai, rien d'autre — Cloud
   // seul ne rend jamais premium, et Cloud continue si le palier tombe. Les
   // colonnes Cloud ne bougent que si Stripe porte l'option (ou personne).
@@ -129,7 +133,8 @@ async function recomputeStripeFlags(supabase: any, customerId: string) {
   await supabase.from("profiles").update(update).eq("stripe_customer_id", customerId);
   console.log(
     "[webhook] recomputed flags for", customerId,
-    "live subs:", (subs ?? []).filter((s: Stripe.Subscription) => ["active", "trialing", "past_due"].includes(s.status)).length,
+    "paid subs:", (subs ?? []).filter((s: Stripe.Subscription) => ["active", "trialing"].includes(s.status)).length,
+    "unpaid subs:", (subs ?? []).filter((s: Stripe.Subscription) => ["past_due", "unpaid", "incomplete"].includes(s.status)).length,
     "→", JSON.stringify(update)
   );
 }
@@ -776,6 +781,7 @@ serve(async (req) => {
         headers: { "Content-Type": "application/json" },
       });
     }
+    let recalcule = false;
     if (prixChange && !subscription.pending_update
         && (status === "active" || status === "trialing" || status === "past_due")) {
       const plan = planDuPrix(subscription);
@@ -788,13 +794,21 @@ serve(async (req) => {
         }
       }
       await recomputeStripeFlags(supabase, customerId);
+      recalcule = true;
     }
 
-    if (status === "unpaid" || status === "incomplete_expired") {
-      // Même logique que subscription.deleted : recalcul depuis ce qui reste
-      // de vivant, jamais de double remise à zéro aveugle (un double-abo
-      // historique dont SEUL le Premium tombe en unpaid garde son Pro).
-      await recomputeStripeFlags(supabase, customerId);
+    // ── (29/10) LE STATUT A CHANGÉ : LE PALIER SUIT, DANS LES DEUX SENS ───────
+    // active → past_due (renouvellement refusé) : le palier tombe ; past_due /
+    // unpaid → active (facture réglée, même des jours plus tard) : il revient.
+    // Avant, seuls unpaid / incomplete_expired recalculaient : une facture
+    // impayée réglée après coup (unpaid → active) ne rendait jamais le palier.
+    // Même logique que subscription.deleted : recalcul depuis ce qui reste de
+    // PAYÉ, jamais de remise à zéro aveugle (un double-abo historique dont SEUL
+    // le Premium tombe en impayé garde son Pro).
+    const statutChange = "status" in precedent;
+    if (statutChange || status === "unpaid" || status === "incomplete_expired" || status === "past_due") {
+      if (statutChange) console.log(`[webhook] statut ${String(precedent.status)} → ${status} (${subscription.id}) : palier recalculé`);
+      if (!recalcule) await recomputeStripeFlags(supabase, customerId);
     } else {
       await supabase
         .from("profiles")

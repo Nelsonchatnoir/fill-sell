@@ -13,6 +13,7 @@
 // Jamais bloquant : une écriture ratée ne lève rien, ne relance rien.
 import { Capacitor } from '@capacitor/core';
 import { supabase } from '../lib/supabase';
+import { contexteLangue } from './domTraduit.js';
 
 export const FEATURE_ACTION_RATEE = 'action_app_ratee';
 const BUILD = typeof __FILLSELL_APP_BUILD__ !== 'undefined' ? __FILLSELL_APP_BUILD__ : null;
@@ -122,13 +123,21 @@ export function ecouterEchecsNonRattrapes() {
     exceptionsSignalees += 1;
     signalerActionRatee({ action, motif, details });
   };
+  // (29/10, point 10 — mele.marta) Le motif seul (120 caractères) ne disait ni l'écran ni la cause : la pile JS, la
+  // pile des COMPOSANTS (posée par main.jsx, onUncaughtError) et la langue (page traduite par le navigateur ?).
+  const pileComposants = () => {
+    try { const p = window.__fillsellPileComposants ?? null; window.__fillsellPileComposants = null; return p; } catch { return null; }
+  };
   window.addEventListener('error', (ev) => {
     // Une ressource qui ne charge pas (image, script tiers) n'est pas une action ratée.
     if (!ev?.error && !ev?.message) return;
-    signaler('exception_js', motifDe(ev.error ?? ev), { source: court(ev.filename, 160), ligne: ev.lineno ?? null });
+    signaler('exception_js', motifDe(ev.error ?? ev), {
+      source: court(ev.filename, 160), ligne: ev.lineno ?? null, colonne: ev.colno ?? null,
+      pile: court(ev.error?.stack, 300), composants: court(pileComposants(), 300), ...contexteLangue(),
+    });
   });
   window.addEventListener('unhandledrejection', (ev) => {
-    signaler('promesse_rejetee', motifDe(ev?.reason));
+    signaler('promesse_rejetee', motifDe(ev?.reason), { pile: court(ev?.reason?.stack, 300), ...contexteLangue() });
   });
 }
 

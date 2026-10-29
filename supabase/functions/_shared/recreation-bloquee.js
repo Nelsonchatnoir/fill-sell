@@ -136,6 +136,10 @@ export function messageRecreationBloquee(job) {
 // cause : le nouveau diagnostic est la mesure qui manquait.
 // Les essais déjà ratés sont mis de côté (`recreation_essais_avant_relance`),
 // sinon la sortie de file la reprendrait au passage suivant, avant tout essai.
+// (29/10) Premier build qui remet au POST le modèle et les attributs capturés (0.6.153) : tout build construit après
+// cette heure le porte (le 0.6.152 servi date du 28/10 21:51:44Z ; le poste de Nico est rechargé après).
+export const BUILD_ATTRIBUTS_ORIGINE = "2026-10-29T13:30:00Z";
+
 export const CAUSES_LEVEES_PAR_LE_SERVEUR = [
   {
     code: "description_beebs_trop_courte",
@@ -159,6 +163,20 @@ export const CAUSES_LEVEES_PAR_LE_SERVEUR = [
     signature: /existe bien chez Vinted mais n'a pas pu être posée|#brand porte «  »|#brand est resté vide|n'a pas accepté État|État \(accepte\s*:/i,
     buildMin: "2026-10-28T20:15:00Z",
     correctif: "extension 0.6.150+ : les menus « bloom » de Vinted relus dans le span affiché (valeurChampVinted)",
+  },
+  {
+    // (29/10, lot A point 2 — thibault.andrieux dca41766) La recréation repartait sans « Modèle » ni « Espace de
+    // stockage » : la capture les portait (model collection 2, internal_memory_capacity 1292, sim_lock 1313), mais la
+    // relecture de leurs libellés sur les menus « bloom » ne rendait rien → 400 de Vinted, puis la QUESTION « Vinted
+    // exige … » (champ_a_choisir). Ce sont les champs de l'annonce d'origine : notre copie, jamais la personne. Le
+    // build qui les remet par leurs identifiants au POST (forme prouvée en réel le 29/10, annonce de test 10582889236)
+    // relance la remise en ligne UNE fois — question comprise (champ `sources`).
+    code: "vinted_attributs_origine",
+    plateformes: ["vinted"],
+    sources: [SOURCE_RECREATION_BLOQUEE, "champ_a_choisir"],
+    signature: /Vinted exige[^.]*(?:« Modèle »|« Espace de stockage »|« Simlockage »)|model.{0,40}internal_memory_capacity|Sélectionne le modèle/i,
+    buildMin: BUILD_ATTRIBUTS_ORIGINE,
+    correctif: "extension 0.6.153+ : la recréation Vinted remet au POST le modèle et les attributs de l'annonce d'origine par leurs identifiants",
   },
 ];
 
@@ -189,11 +207,14 @@ function textesEchec(job) {
 export function causeLeveePourRelance(job, extensionBuild = undefined) {
   const pf = (job?.platform_fields && typeof job.platform_fields === "object") ? job.platform_fields : {};
   if (job?.action !== "republish" || job?.status !== "needs_user") return null;
-  if (pf.needs_user_source !== SOURCE_RECREATION_BLOQUEE || pf.republish_step !== "deleted") return null;
+  // (29/10) Une cause peut viser aussi la question posée sur une remise en ligne (champ `sources`) ; par défaut, l'arrêt seul.
+  const sourcesVisees = new Set(CAUSES_LEVEES_PAR_LE_SERVEUR.flatMap((c) => c.sources ?? [SOURCE_RECREATION_BLOQUEE]));
+  if (!sourcesVisees.has(String(pf.needs_user_source ?? "")) || pf.republish_step !== "deleted") return null;
   if (causeCompte(pf)) return null; // la cause est le compte : jamais relancé d'office
   const textes = textesEchec(job);
   for (const c of CAUSES_LEVEES_PAR_LE_SERVEUR) {
     if (!c.plateformes.includes(job.platform)) continue;
+    if (!(c.sources ?? [SOURCE_RECREATION_BLOQUEE]).includes(String(pf.needs_user_source ?? ""))) continue;
     if (pf.recreation_relancee && pf.recreation_relancee[c.code]) continue; // une fois par cause
     if (!posteAuBuildDeLaCause(c, extensionBuild)) continue; // (28/10) le poste n'a pas encore le correctif
     if (c.signature.test(textes) && (!c.condition || c.condition(job))) return c;

@@ -147,6 +147,9 @@ export default function EcranConfirmer({ m }) {
           configLocale={[]}
           supabase={m.supabase}
           onChoisirRayon={(choix) => m.choisirRayon?.(p, choix)}
+          /* (29/10, point 3 — Ianis Martin) La sortie « Pas sur <plateforme> » en un geste, comme dans le lot : sans
+             elle, un article sans rayon sur Beebs (phare de moto) ne partait qu'en choisissant N'IMPORTE QUEL rayon. */
+          onPasSurPlateforme={m.setSelected ? () => m.setSelected((prev) => { const s = new Set(prev); s.delete(p); return s; }) : null}
           regle="nouvelle"
         />
       ))}

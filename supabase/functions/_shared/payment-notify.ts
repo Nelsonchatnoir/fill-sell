@@ -104,6 +104,44 @@ export async function signalerNotificationStoreInconnue(n: {
   if (r === "delai") console.error("[payment-notify] signalement d'une notification inconnue : pas de réponse en 2 s, le paiement continue —", JSON.stringify(n));
 }
 
+// ── (29/10, boncoin59300) UN REMBOURSEMENT DU STORE : SIGNALÉ COMME TEL ─────
+// Avant : une voidedPurchaseNotification Google tombait dans « inconnue » →
+// alerterPaiementNonCredite → « 🚨 PAIEMENT NON ENREGISTRÉ — le client a payé,
+// rien n'est arrivé », compte INCONNU. Un remboursement a son alerte à lui
+// (email-tunnel, store_remboursement) : nature, compte retrouvé par le jeton
+// d'achat / la transaction d'origine, palier au moment de l'alerte. Mêmes
+// règles que le reste du fichier : avalé, borné à DELAI_JOURNAL_MS, jamais
+// d'incidence sur le code HTTP rendu au store.
+export type RemboursementStore = {
+  canal: "apple" | "google";
+  nature: "remboursement" | "retrait";
+  type: "pack" | "abonnement";
+  user_id?: string | null;
+  email?: string | null;
+  produit?: string | null;
+  ref?: string | null;          // orderId Google / transaction d'origine Apple
+  partiel?: boolean;
+  palier?: string | null;       // palier lu au moment de l'alerte (palierDuProfil)
+  droit?: string | null;        // ce que FillSell a fait du droit (« retiré », « à retirer par REVOKED »…)
+};
+
+export async function signalerRemboursementStore(r: RemboursementStore): Promise<void> {
+  const envoi = (async () => {
+    try {
+      const rep = await fetch(TUNNEL_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-cron-secret": CRON_SECRET },
+        body: JSON.stringify({ store_remboursement: r }),
+      });
+      if (!rep.ok) console.error(`[payment-notify] remboursement email-tunnel HTTP ${rep.status} —`, JSON.stringify(r));
+    } catch (e) {
+      console.error("[payment-notify] remboursement : envoi impossible:", (e as Error)?.message, "—", JSON.stringify(r));
+    }
+  })();
+  const fin = await auPlus(envoi, DELAI_JOURNAL_MS).catch(() => null);
+  if (fin === "delai") console.error("[payment-notify] signalement d'un remboursement : pas de réponse en 2 s, le store est acquitté —", JSON.stringify(r));
+}
+
 // Ce que rend une écriture PostgREST dans le journal (le client est typé « any » ici).
 type ReponseJournal = { error?: { code?: string; message?: string } | null } | null | undefined;
 

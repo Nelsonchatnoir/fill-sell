@@ -133,12 +133,13 @@ titre('nadegemarcelin78 (09/10 01:58 Paris) : VRAI échec de renouvellement → 
   const { cause, code } = causeDuPaiement({ pi: NADEGE.pi, evenement: 'invoice.payment_failed' });
   ok(cause === 'carte_refusee' && code === 'generic_decline', 'cause relue : carte_refusee (comme le journal)');
   const f = faitsEchec({ facture: NADEGE.facture, abonnement: NADEGE.abonnement });
-  ok(f.contexte === 'renouvellement' && f.lien_facture === LIEN('nadege') && f.abonnement_actif === true
-    && f.relance_le === '2026-10-09T21:57:52.000Z', 'faits identiques au journal : renouvellement, bouton facture, relance 21:57:52Z, actif');
+  // (29/10) Abonnement past_due : le palier n'est plus gardé (impayé = gratuit) → « actif » n'est plus dit.
+  ok(f.contexte === 'renouvellement' && f.lien_facture === LIEN('nadege') && f.abonnement_actif === false
+    && f.relance_le === '2026-10-09T21:57:52.000Z', 'faits : renouvellement, bouton facture, relance 21:57:52Z, plus « actif » (past_due)');
   const t = texteEchec({ lang: 'fr', cause, contexte: f.contexte, lienFacture: f.lien_facture, relanceLe: f.relance_le, abonnementActif: f.abonnement_actif });
   ok(t.sujet === "Ton paiement n'a pas abouti" && t.bouton?.texte === 'Régler la facture' && t.bouton?.url === LIEN('nadege'),
     'texte inchangé : « Ton paiement n\'a pas abouti », bouton « Régler la facture »');
-  ok(t.suite.some((x) => x.includes('vendredi 9 octobre')) && t.suite.includes("Ton abonnement reste actif pour l'instant."), 'relance « vendredi 9 octobre » et « reste actif »');
+  ok(t.suite.some((x) => x.includes('vendredi 9 octobre')) && !t.suite.includes("Ton abonnement reste actif pour l'instant."), 'relance « vendredi 9 octobre », jamais « reste actif » sur un impayé');
 }
 
 titre('geronimo0550 (06/10) : renouvellement échoué → le mail part toujours');

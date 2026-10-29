@@ -68,6 +68,9 @@ CE QUE LA PORTE GARANTIT, et qu'aucune des 31 ne garantissait :
   toutes les lignes `email_logs` de la personne sur 24 h glissantes, quel que
   soit le type : « deux mails par jour » se juge depuis SA boîte de réception,
   pas depuis nos catégories. Un `support` n'est **jamais** plafonné.
+  ⛔ **(29/10, thecloset72000) SAUF les mails déclenchés par une vente** (`vente:<id>`, `ventes_du_jour` —
+  liste FERMÉE, `_shared/plafond-mails.js`, `npm run selftest:plafond-mails`) : 4 mails de vente + 1 campagne
+  faisaient « deja: 5 » et retenaient tout mail de notre initiative chez nos meilleurs vendeurs.
 
 ⛔ **UN TYPE ONE-SHOT ENTRE DANS L'INDEX, LE JOUR MÊME.** Un type envoyé une
 fois par personne et absent de `email_logs_one_shot_unique` repartira en
@@ -103,6 +106,13 @@ compte vivant se lit par le geste, jamais ici :
 ## Premium detection
 
 Règle métier (2026-07-25) : **résilié/expiré = plus premium, partout**. Depuis le 05/10, UN SEUL calcul du palier : `supabase/functions/_shared/palier.js` (l'app : `src/utils/palier.js` le ré-exporte ; les fonctions edge l'importent) et, en SQL, `palier_de(uuid)` / `palier_au_moins(uuid, text)`. Ordre : business, puis pro, puis premium (`is_premium OR is_comped`), sinon free ; les paliers s'emboîtent (business ⇒ pro ⇒ premium). ⛔ Jamais un drapeau seul (`is_pro !== true`) : un Business offert sans is_pro (ornellaracano) se voyait refuser la republication auto.
+- ⛔ **(29/10, Romain Colson) Impayé = gratuit, sur tous les canaux.** Le palier ne tient que sur une période PAYÉE
+  (ou un essai) ; il revient tout seul au paiement. Stripe : seul `active | trialing` porte un palier
+  (`litAbonnementStripe.paye`, `_shared/cloud-option.js`) — `past_due` n'en porte plus (remplace la règle du 25/07,
+  cas Mériné : la relance Stripe durait 13-14 j puis supprimait l'abonnement, palier gardé tout du long) ; le
+  recalcul suit CHAQUE changement de statut (`customer.subscription.updated`). Apple : `DID_FAIL_TO_RENEW` → off,
+  `DID_RENEW / BILLING_RECOVERY` → on (inchangé). Google : `ON_HOLD`, `PAUSED`, `REVOKED`, `EXPIRED` → off,
+  `RECOVERED` → on (inchangé ; `IN_GRACE_PERIOD` reste « aucun effet » : à trancher). L'option Cloud garde sa règle.
 - `is_premium`/`is_pro` = source de vérité, maintenus par les 4 flux de paiement (stripe-webhook/recomputeStripeFlags, apple-iap-webhook, validate-apple-receipt, google-play-webhook).
 - `is_comped` = premium offert sans abonnement actif (décision explicite, posé à la main).
 - Ne JAMAIS traiter `is_founder` ni la présence d'`apple_original_transaction_id`/`google_purchase_token` comme signal premium : ces marqueurs survivent à la résiliation (bug « premium fantôme » corrigé le 25/07). `is_founder` reste un marqueur de prix legacy (9,99 €) pour l'affichage tarifaire uniquement.
@@ -113,6 +123,15 @@ Règle métier (2026-07-25) : **résilié/expiré = plus premium, partout**. Dep
 ## apple-iap-webhook
 
 Les users promus manuellement sans passer par le flow IAP n'auront jamais d'`apple_original_transaction_id` tant qu'ils ne renouvellent pas via l'app. Sans `appAccountToken` dans le payload Apple, impossible d'identifier l'utilisateur.
+
+## ⛔ (29/10, boncoin59300) Un remboursement n'est jamais un « paiement non enregistré »
+- Google `voidedPurchaseNotification` (abonnement ou pack, total ou partiel) et Apple `REFUND` / `REVOKE` partent
+  en alerte « ↩️ Remboursement » (`signalerRemboursementStore`, `_shared/payment-notify.ts` → email-tunnel
+  `store_remboursement`, type `ops_remboursement`), jamais en « 🚨 PAIEMENT NON ENREGISTRÉ ».
+- Le compte se retrouve par le jeton d'achat (Google : `profiles.google_purchase_token`, sinon l'empreinte
+  `jeton_empreinte` du journal) ou la transaction d'origine (Apple : `apple_original_transaction_id`).
+- Rien n'est appliqué par le remboursement lui-même : le droit d'un abonnement tombe par REVOKED / EXPIRED (Google)
+  ou REFUND (Apple, table : off) ; les Pépites d'un pack remboursé restent créditées — décision humaine.
 
 
 <!-- ex-CLAUDE.md L961-986 : email_logs — type one-shot dans l'index -->

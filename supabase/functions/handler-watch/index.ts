@@ -30,6 +30,7 @@ import {
 // filet ne connaissait que Vinted et les photos Beebs d'un article importé
 // n'étaient jamais rapatriées, 19/09).
 import { estCdnPlateforme, estCdnPlateformeHorsVinted } from "../_shared/photos-rapatriement.ts";
+import { trancherPhotosMortes } from "../_shared/photos-mortes.js";
 import { rearmerJobsEbayConnexionSiUtilisable, SOURCES_EBAY_REARMABLES } from "../_shared/ebay-voie.ts";
 // Opla : UN message pour l'attente d'autorisation (2026-09-23), partagé.
 import { autorisationOplaRequise, autorisationDepopRequise, SOURCE_DEPOP_ACCES } from "../_shared/textes-jobs.ts";
@@ -48,8 +49,8 @@ import { postesVivants, posteAvecAccesOpla, posteSansAccesOpla } from "../_share
 import { ageProcessing, motifReprise, silenceDuDetenteur, REPRISE_AGE_MIN_MS } from "../_shared/reprise-processing.js";
 // (02/10) Sortie d'Opla : les publications/republications Opla en attente se closent.
 import { oplaACloreJob, clotureOpla, STATUTS_OPLA_A_CLORE, OPLA_SORTIE, sortieOplaActive } from "../_shared/opla-sortie.js";
-import { posteVivant, messageInterruption } from "../_shared/interruption-poste.js";
-import { alerteOrphelineDue, envoiDepuisLeRetrait } from "../_shared/alerte-orpheline.js";
+import { posteVivant, messageInterruption, posteTravailleSurLeJob } from "../_shared/interruption-poste.js";
+import { alerteOrphelineDue, envoiDepuisLeRetrait, presenceDuCompte } from "../_shared/alerte-orpheline.js";
 import { rouvrirPublicationsEbayHorsFrance } from "../_shared/ebay-reouverture.ts";
 import { requalificationCompteVintedBloque } from "../_shared/vinted-compte-bloque.js";
 import { requalificationMiseANiveauEbay } from "../_shared/ebay-mise-a-niveau.js";
@@ -217,8 +218,10 @@ const urlDePhoto = (p: any): string | null =>
 // échec TRANSITOIRE (réseau, timeout, 5xx/429/408, upload Storage — le HTTP
 // 520 du 27/08) ; un refus permanent (404, pas une image…) sort au premier
 // tour. Retourne l'URL publique, ou null.
+// (29/10) `etat.http` reçoit le statut d'un refus PERMANENT (404, 410, 403…) : la photo n'existe plus chez la
+// plateforme (cf. photos mortes, plus bas).
 // deno-lint-ignore no-explicit-any
-async function rapatriePhoto(supabase: any, src: string, dest: string): Promise<string | null> {
+async function rapatriePhoto(supabase: any, src: string, dest: string, etat: { http?: number } = {}): Promise<string | null> {
   for (let tentative = 1; tentative <= 2; tentative++) {
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), PHOTO_TIMEOUT_MS);
@@ -227,6 +230,7 @@ async function rapatriePhoto(supabase: any, src: string, dest: string): Promise<
       const resp = await fetch(src, { signal: ctl.signal });
       if (!resp.ok) {
         transitoire = resp.status >= 500 || resp.status === 429 || resp.status === 408;
+        if (!transitoire) etat.http = resp.status;
         console.error(`[handler-watch] rapatriement photo: HTTP ${resp.status} (${src.slice(0, 90)})`);
       } else {
         const bytes = new Uint8Array(await resp.arrayBuffer());
@@ -362,16 +366,29 @@ serve(async (req) => {
       .not("platform_fields->republish_suppression_envoyee", "is", null)
       .limit(200);
     // deno-lint-ignore no-explicit-any
-    const orphelins = ([...((bruts ?? []) as any[]), ...((envoyees ?? []) as any[])]).filter((j) =>
+    const candidats = ([...((bruts ?? []) as any[]), ...((envoyees ?? []) as any[])]).filter((j) =>
       (j.platform_fields?.deleted_at || j.platform_fields?.republish_suppression_envoyee) && alerteOrphelineDue(j.platform_fields, now).due);
-    if (orphelins.length && resendKey) {
-      const userIds = [...new Set(orphelins.map((j) => j.user_id as string))];
+    // (29/10, point 5 — Nico, Johan) La présence du compte tranche : poste ÉTEINT = pas d'alerte (la remise en ligne
+    // se fait au retour du poste) ; poste qui bat sur ce job, revenu depuis moins de 30 min ou occupé ailleurs
+    // (< 2 h) = pas encore. Rien n'est marqué : le job est ré-examiné au passage suivant (_shared/alerte-orpheline.js).
+    // deno-lint-ignore no-explicit-any
+    let profParId = new Map<string, any>();
+    if (candidats.length) {
+      const userIds = [...new Set(candidats.map((j) => j.user_id as string))];
       const { data: profs } = await supabase
         .from("profiles")
-        .select("id, username, email, extension_last_seen_at")
+        .select("id, username, email, extension_last_seen_at, extension_postes")
         .in("id", userIds);
       // deno-lint-ignore no-explicit-any
-      const profParId = new Map(((profs ?? []) as any[]).map((p) => [p.id, p]));
+      profParId = new Map(((profs ?? []) as any[]).map((p) => [p.id, p]));
+    }
+    // deno-lint-ignore no-explicit-any
+    const orphelins = candidats.filter((j: any) => {
+      const p = profParId.get(j.user_id) ?? {};
+      const presence = { ...presenceDuCompte({ postes: p.extension_postes ?? null, compteVuLe: p.extension_last_seen_at ?? null, maintenant: now }), jobId: String(j.id) };
+      return alerteOrphelineDue(j.platform_fields, now, presence).due;
+    });
+    if (orphelins.length && resendKey) {
       const minutes = (iso: string | null) => {
         const t = Date.parse(iso ?? "");
         return Number.isFinite(t) ? Math.round((now - t) / 60_000) : null;
@@ -742,17 +759,29 @@ serve(async (req) => {
   // sont pas des refus, elles ne doivent pas consommer le plafond de reprises.
   const REPRISE_DELETED_MIN = 30;
   const PRISE_EN_COURS_MIN = 12;
+  // (29/10, point 5) Les postes de chaque compte, relus dans la même requête : un poste qui BAT sur le job
+  // (battement_extension) le travaille encore — on ne le lui reprend pas (posteTravailleSurLeJob).
+  const postesDesComptes = new Map<string, unknown>();
   const derniersSignesDeVie = async (ids: string[]): Promise<Map<string, string | null>> => {
     const m = new Map<string, string | null>();
     const uniques = [...new Set(ids.filter(Boolean))];
     for (let i = 0; i < uniques.length; i += 200) {
       try {
-        const { data } = await supabase.from("profiles").select("id, extension_last_seen_at").in("id", uniques.slice(i, i + 200));
-        for (const p of (data ?? []) as Array<{ id: string; extension_last_seen_at: string | null }>) m.set(String(p.id), p.extension_last_seen_at ?? null);
+        const { data } = await supabase.from("profiles").select("id, extension_last_seen_at, extension_postes").in("id", uniques.slice(i, i + 200));
+        for (const p of (data ?? []) as Array<{ id: string; extension_last_seen_at: string | null; extension_postes: unknown }>) {
+          m.set(String(p.id), p.extension_last_seen_at ?? null);
+          postesDesComptes.set(String(p.id), p.extension_postes ?? null);
+        }
       } catch (_e) { /* inconnu = muet : on ne promet jamais une reprise immédiate sans preuve */ }
     }
     return m;
   };
+  // Borne : un poste qui bat sur le même job depuis 2 h est repris quand même (REPRISE_PLAFOND_MS, reprise-processing.js).
+  const TRAVAIL_EN_COURS_MAX_MS = 2 * 3600_000;
+  // deno-lint-ignore no-explicit-any
+  const travailleEncore = (j: any, prise: number): boolean =>
+    Number.isFinite(prise) && now - prise < TRAVAIL_EN_COURS_MAX_MS
+    && posteTravailleSurLeJob({ postes: postesDesComptes.get(String(j.user_id)) as Record<string, unknown> | null, jobId: String(j.id), maintenant: now });
   let deletedRearmes = 0;
   try {
     const { data: coupes } = await supabase
@@ -794,6 +823,8 @@ serve(async (req) => {
       // Nyxlaire reste couvert — ses reprises avaient toutes plus de 15 min.
       const prise = Date.parse(String(pf0.processing_since ?? ""));
       if (Number.isFinite(prise) && now - prise < PRISE_EN_COURS_MIN * 60_000) continue;
+      // (29/10, point 5 — Johan, 098cab75) Prise depuis plus de 12 min, mais le poste BAT sur ce job : il le termine.
+      if (travailleEncore(j, prise)) continue;
       // Hors Vinted (2026-09-17) : la « capture » est le job lui-même
       // (republish_snapshot v2 = copie du dépôt d'origine, posée par la RPC) —
       // présente, elle vaut une capture 'valide' ; absente, même garde-fou.
@@ -892,6 +923,8 @@ serve(async (req) => {
       const pf0 = j.platform_fields ?? {};
       const since = Date.parse(pf0.processing_since ?? j.created_at ?? "");
       if (!Number.isFinite(since) || now - since < REPRISE_CAPTURED_MIN * 60_000) continue;
+      // (29/10, point 5) Le poste BAT sur ce job (une-passe lente, photos, attentes) : il le termine.
+      if (travailleEncore(j, since)) continue;
       // Hors Vinted (2026-09-17) : la « capture » est le job lui-même
       // (republish_snapshot v2 = copie du dépôt d'origine, posée par la RPC) —
       // présente, elle vaut une capture 'valide' ; absente, même garde-fou.
@@ -1895,7 +1928,8 @@ serve(async (req) => {
         .gte("created_at", new Date(Date.now() - SORTIE_VERIFICATION_FENETRE_MS).toISOString())
         .lte("published_at", new Date(Date.now() - 30 * 60_000).toISOString())
         .not("platform_fields->preuve_identifiant_beebs", "is", null)
-        .is("platform_fields->refus_verification_beebs", null)
+        // (29/10) Le refus déjà posé sur CE numéro écarte le job dans jugerSortieVerificationBeebs (un marqueur d'un
+        // ancien numéro ne protège plus un nouveau dépôt) : plus de filtre ici.
         .or(`platform_fields->pas_encore_visible->>sortie_constatee_le.is.null,platform_fields->pas_encore_visible->>sortie_constatee_le.lt."${il7j}"`)
         .order("published_at", { ascending: true }).limit(120);
       const parCompteSV = new Map<string, Array<Record<string, unknown>>>();
@@ -2972,7 +3006,7 @@ serve(async (req) => {
           .eq("user_id", uid).eq("kind", "annonces").eq("platform", plateforme)
           .order("started_at", { ascending: false, nullsFirst: false }).limit(15),
         supabase.from("annonces_plateforme")
-          .select("user_id, listing_id, url, statut_plateforme, photo_url, capture, job_id, inventaire_id, created_at, vu_le, disparu_le, retiree_le")
+          .select("user_id, listing_id, url, statut_plateforme, photo_url, capture, job_id, inventaire_id, created_at, vu_le, disparu_le, retiree_le, publiee_le")
           .eq("user_id", uid).eq("platform", plateforme).gte("created_at", depuisLignes)
           .order("created_at", { ascending: true }).limit(1000),
       ]);
@@ -3063,7 +3097,10 @@ serve(async (req) => {
     const { data: bloquees } = await supabase.from("cross_post_jobs")
       .select("id, user_id, platform, action, status, title, description, error, created_at, platform_fields")
       .eq("action", "republish").eq("status", "needs_user")
-      .eq("platform_fields->>needs_user_source", SOURCE_RECREATION_BLOQUEE)
+      // (29/10) Aussi la QUESTION posée sur une remise en ligne déjà retirée (cause vinted_attributs_origine) :
+      // seules les causes qui la visent (`sources`) la relancent, une fois, au build qui corrige.
+      .in("platform_fields->>needs_user_source", [SOURCE_RECREATION_BLOQUEE, "champ_a_choisir"])
+      .eq("platform_fields->>republish_step", "deleted")
       .order("created_at", { ascending: true }).limit(50);
     // (28/10) Une cause corrigée par l'EXTENSION (buildMin) n'est levée que pour un poste qui a ce build.
     // deno-lint-ignore no-explicit-any
@@ -5809,7 +5846,46 @@ serve(async (req) => {
     for (const j of candidats) {
       const pf = { ...(j.platform_fields ?? {}) };
       const balayages = Number(pf.photo_rehost_sweeps ?? 0);
-      if (!Number.isFinite(balayages) || balayages >= 2) continue;
+      if (!Number.isFinite(balayages)) continue;
+      // ── (29/10, ornellaracano « Fausse plante tropicale », 64da7249) LA PHOTO MORTE CHEZ LA PLATEFORME ──
+      // Deux balayages faits, la photo 2 toujours sur images1.vinted.net : elle n'existe plus chez Vinted (refus
+      // permanent, relu au navigateur le 29/10). Le message promettait « FillSell la rapatrie et relance » — faux
+      // pour toujours, et la publication tournait en échec. UNE vérification de plus, par job : une photo qui
+      // répond 404 / 410 (le serveur a lu 404 deux fois, 29/10 07:54 et 07:57) est retirée de la COPIE du job (la fiche n'est pas touchée), s'il en
+      // reste au moins une à nous ; la publication repart et le message le dit. Rien d'autre n'est inventé.
+      if (balayages >= 2) {
+        if (pf.photos_mortes_tranchees || !(j.status === "failed" || j.status === "needs_user")) continue;
+        const externesM = [...new Set((j.photos as unknown[]).map(urlDePhoto).filter(estCdnPlateforme))] as string[];
+        const vivantes = new Map<string, string>();
+        const mortes = new Map<string, number>();
+        for (let i = 0; i < externesM.length; i++) {
+          const etat: { http?: number } = {};
+          const nv = await rapatriePhoto(supabase, externesM[i], `${j.user_id}/rehosted/${j.inventaire_id ?? "job"}/${now}_morte_${i}`, etat);
+          if (nv) vivantes.set(externesM[i], nv);
+          // 404 / 410 seulement : un 403 peut être un refus du CDN au serveur, jamais une preuve que la photo est morte.
+          else if (etat.http === 404 || etat.http === 410) mortes.set(externesM[i], etat.http);
+        }
+        const tr = trancherPhotosMortes({ photos: j.photos as unknown[], vivantes, mortes, estExterne: (u: string | null) => estCdnPlateforme(u) });
+        pf.photos_mortes_tranchees = {
+          le: new Date(now).toISOString(), mortes: [...mortes].map(([url, http]) => ({ url: url.slice(0, 200), http })),
+          rapatriees: vivantes.size, gardees: tr.photos.length, verdict: tr.verdict,
+        };
+        // deno-lint-ignore no-explicit-any
+        const patchM: any = { platform_fields: pf };
+        if (tr.verdict === "relancee") {
+          for (const k of ["needs_user_source", "needsUserField", "needsUserFields", "needsUserAttempts",
+            "next_action_after", "error_technique", "processing_since"]) delete pf[k];
+          patchM.photos = tr.photos;
+          patchM.status = "pending";
+          patchM.error = tr.message;
+        }
+        const { data: majM } = await supabase.from("cross_post_jobs").update(patchM).eq("id", j.id).eq("status", j.status).select("id");
+        if (majM?.length && patchM.status === "pending") {
+          photosJobsRearmes++;
+          console.log(`[handler-watch] job ${j.id}: ${mortes.size} photo(s) morte(s) chez la plateforme retirée(s) de la copie, ${vivantes.size} rapatriée(s), ${tr.photos.length} gardée(s) → pending`);
+        }
+        continue;
+      }
       pf.photo_rehost_sweeps = balayages + 1;
       const externes = [...new Set((j.photos as unknown[]).map(urlDePhoto).filter(estCdnPlateforme))] as string[];
       const remplacements = new Map<string, string>();

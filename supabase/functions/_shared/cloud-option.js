@@ -141,6 +141,13 @@ export function estAbonnementCloud(sub, prix = {}) {
 export function litAbonnementStripe(sub, prix = {}) {
   const status = sub?.status ?? null;
   const vivant = status === "active" || status === "past_due" || status === "trialing";
+  // ⛔ (29/10, Romain Colson) UN IMPAYÉ NE PORTE PLUS DE PALIER. Le palier ne tient que sur une période
+  // PAYÉE (ou un essai) : `past_due` (renouvellement refusé, Stripe relance ~2 semaines puis supprime
+  // l'abonnement) n'ouvre plus rien ; le palier revient tout seul quand la facture est réglée
+  // (customer.subscription.updated past_due → active, stripe-webhook). Même règle qu'Apple
+  // (DID_FAIL_TO_RENEW → off) et Google (ON_HOLD / IN_GRACE_PERIOD → off). `vivant` reste celui de
+  // l'option Cloud (inchangée : décision à part).
+  const paye = status === "active" || status === "trialing";
   const cloud = estAbonnementCloud(sub, prix);
   let palier = null;
   if (!cloud) {
@@ -156,6 +163,7 @@ export function litAbonnementStripe(sub, prix = {}) {
     id: sub?.id ?? null,
     status,
     vivant,
+    paye,
     cloud,
     palier,
     rang: cloud ? -1 : (palier ? RANG[palier] : 0),
@@ -172,16 +180,16 @@ export function litAbonnementStripe(sub, prix = {}) {
 
 /**
  * Les drapeaux d'un client Stripe depuis TOUS ses abonnements.
- *  · paliers : exactement la règle d'avant (tout abonnement vivant NON Cloud
- *    vaut premium — Founder legacy compris ; pro/business par métadonnée ou
- *    prix) ;
+ *  · paliers : tout abonnement PAYÉ (active | trialing) NON Cloud vaut premium
+ *    — Founder legacy compris ; pro/business par métadonnée ou prix. (29/10)
+ *    Un abonnement past_due (impayé en relance) ne vaut plus rien ;
  *  · Cloud : is_cloud = un abonnement Cloud active/past_due ; l'essai (trialing)
  *    date cloud_essai_debut/fin et fait tourner Cloud sans is_cloud.
  */
 export function drapeauxDepuisStripe(subs, prix = {}) {
   const lus = (subs ?? []).map((s) => litAbonnementStripe(s, prix));
   const vivants = lus.filter((l) => l.vivant);
-  const paliers = vivants.filter((l) => !l.cloud);
+  const paliers = lus.filter((l) => l.paye && !l.cloud);
   const clouds = vivants.filter((l) => l.cloud);
   const cloudPaye = clouds.find((l) => !l.essai) ?? null;
   const cloudEssai = clouds.find((l) => l.essai) ?? null;

@@ -88,6 +88,12 @@
   filtre « à expédier » (une commande expédiée ne reste jamais « à expédier »). Commandes Beebs et Depop : formes
   écrites d'après le code des sites (aucune vente le 16/10) — une forme inconnue n'écrit rien (Beebs) ou reste
   « inconnu », affichée « État à vérifier » (Depop). Purge : closes 30 jours, toute commande figée 60 jours.
+- **(29/10, point 7) Chaque commande en cours se relit, jamais seulement les 20 dernières changées.** `maj_le` = dernier
+  CHANGEMENT (jamais une ligne inchangée réécrite), pas dernière lecture : le poste suit toutes les commandes en cours
+  (`order=maj_le.asc&limit=100`) et le tour de détail reste le sien (5 par passage, la tentative la plus ancienne
+  d'abord). Une liste de conversations illisible hors mur (onglet, injection, réseau) ne saute plus les commandes ;
+  seul un signe de blocage arrête le passage. Avant : 20 « changées le plus récemment » + la 1re page Vinted (20 en
+  cours) — une commande inchangée sortait des deux et restait « à expédier » à vie. `selftest:commandes-toutes-suivies`.
 - **Écrans** : aucun temps estimé (garde `selftest:aucune-estimation`) — seules les dates données par une
   plateforme (date limite de dépôt, 48 h Beebs) s'affichent, marquées `estimation-ok:`. Arobase seulement là où
   la plateforme a des pseudos (Vinted, eBay, Depop) ; transporteurs en clair (`libelleTransporteur`).
@@ -307,3 +313,17 @@
   → une demande « recuperer » chacune, comme le clic. Jocabroc : 4 bordereaux prêts de 18:07 à 18:13 (PDF de 52 à 57 Ko).
   Le plafond de 20 demandes par jour compte la relance jusqu'à minuit (recrutementgroupezk704 seul l'atteint).
 - Un poste dont l'onglet Vinted ne répond pas rend `onglet_fige` (45 s sans réponse) : ce n'est pas la règle de stockage.
+
+## 29/10 — « Bordereau automatique » : un réglage par compte (point 6, thecloset72000)
+- **Ce que fait l'automatique** (code relu le 29/10) : à chaque commande Vinted vue « à expédier » (déclencheur
+  `plateforme_commandes_bordereau_auto` → `bordereau_auto_pour_commande`), UNE demande — « générer » si l'étiquette
+  reste à commander (l'extension fait `PUT transactions/<id>/shipment/order` chez Vinted : c'est FillSell qui COMMANDE
+  l'étiquette), « récupérer » si elle est prête (`GET …/shipment/pdf_label`, lecture). Leboncoin, Beebs, Depop, eBay :
+  rien d'automatique. Cause du point 6 : une étiquette commandée par FillSell, Vinted Go ne montre plus au vendeur que le
+  QR et le suivi — le nom de l'acheteur ne se voit qu'en la générant soi-même.
+- **Réglage** `platform_settings.bordereaux.auto` (écrit par `platform_settings_fusionner` seulement ; absent = activé) :
+  `false` = AUCUNE demande automatique, sur AUCUNE plateforme (`bordereau_auto_actif`, garde AVANT le test de
+  plateforme, migration 20261029151000) ; les demandes automatiques encore en attente sont closes (« expiree /
+  auto_desactive », l'app n'en dit rien) ; la suite d'une génération déjà faite (fichier seulement) finit. Les clics du
+  vendeur passent comme avant ; aucun bordereau, aucune copie effacés ; aucune donnée d'acheteur en plus.
+  Réglages › Bordereau automatique : interrupteur + une phrase par position. `selftest:bordereau-auto-par-compte`.

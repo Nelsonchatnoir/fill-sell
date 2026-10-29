@@ -761,6 +761,8 @@ export async function resoudrePublication({
   // Candidates ratissées à l'étape 3, gardées pour la VÉRIFICATION du chemin
   // tiré de l'icône (bloc après la construction des jobs).
   const candidatsRatisses = {};
+  // (29/10, point 3) Les plateformes dont l'IA a refusé TOUTES les candidates ratissées (cf. plus bas).
+  const candidatsRejetesParIa = {};
   // ══ ÉTAPE 3 : LA MACHINE PROPOSE, L'IA TRANCHE ════════════════════════
   // Le mot n'est pas tombé EXACT sur cette plateforme. Plutôt que de
   // retomber tout de suite sur l'emoji, on RATISSE des candidates dans
@@ -873,6 +875,12 @@ export async function resoudrePublication({
           categorieParMotParPf[platform] = { chemin: choix.chemin, id: choix.id ?? null, choisiParIa: true };
         }
         const retenus = Object.keys(choixIa?.choix ?? {});
+        // (29/10, point 3 — Ianis Martin) L'IA a VU ces candidates et n'en a retenu aucune (« aucune parmi 8 » pour
+        // « Top case » sur Vinted : les « Tops … ») : elles restent pour la vérification de l'icône, jamais comme
+        // puces d'une question (aucun_rayon_trouve, rayonApresRefus).
+        if (choixIa && typeof choixIa === "object") {
+          for (const p of Object.keys(candidats)) if (!retenus.includes(p)) candidatsRejetesParIa[p] = true;
+        }
         console.log(
           `[publish] mot « ${motCategorie} » — l'IA a choisi dans nos candidats sur ` +
           `${retenus.length ? retenus.join(", ") : "aucune plateforme"}` +
@@ -2002,6 +2010,7 @@ export async function resoudrePublication({
           pf,
           appelerResolve,
           candidatsConnus: candidatsRatisses[r.platform] ?? [],
+          connusRejetes: Boolean(candidatsRejetesParIa[r.platform]),
         });
       } catch (e) {
         console.warn(`[publish] ${r.platform} — rayon après refus interrompu :`, e?.message ?? e);
@@ -2078,6 +2087,9 @@ export async function resoudrePublication({
     if (!pf || pf.rayon_a_choisir || pf.rayon_a_reessayer) continue;
     if (platform === "ebay" && ebayVoieApi === true) continue;
     if (!sansRayon(platform, pf)) continue;
+    // (29/10, point 3) Candidates toutes refusées par l'IA : la question n'en montre aucune (ni puce ni tête de
+    // liste — suggestionsParPf lit candidatsRatisses) ; Beebs et Depop sont alors écartés d'office (C9).
+    if (candidatsRejetesParIa[platform]) candidatsRatisses[platform] = [];
     pf.rayon_a_choisir = {
       objet: motCategorie ?? null,
       chemins_refuses: [],

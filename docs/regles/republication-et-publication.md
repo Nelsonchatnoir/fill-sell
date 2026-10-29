@@ -886,3 +886,32 @@
   « Vinted exige des champs encore vides … État … »). Jamais une annonce retirée. Ces arrêts repartent seuls, une fois, dès
   que le poste a la 0.6.150 (`_shared/relance-apres-maj.js` : `vinted_menus_bloom_marque`, `vinted_menus_bloom_grille`).
 - Prouvé le 28/10 à 21:31 sur le compte de Nico (menus bloom) : annonce 10576137564, Kiabi / M / Très bon état / Bleu.
+
+## 29/10 — lot A stabilité (rapport `docs/enquetes/lot-a-stabilite-2910/RAPPORT.md`)
+- **Un dépôt Leboncoin INACHEVÉ n'est pas une annonce en ligne** (louis 68e39f7c) : Leboncoin crée l'annonce à
+  l'adsubmit mais ne la met en ligne qu'après le choix de l'écran `/deposer-une-annonce/options`. Une candidate jamais vue
+  en ligne (statut relevé ≠ en_ligne/en_verification ; Leboncoin « inactive »), sans date de mise en ligne
+  (`publiee_le` vide), apparue pendant un essai de CE job arrêté sur /options sans confirmation ensuite, ne retient pas le
+  redépôt : `depotInacheveLbc` (`_shared/recreation-deja-partie.js`), lu par get-pending-jobs (avant la question) et par
+  `depot-coupe-tranche.js` (après chaque relevé). Une annonce en vérification (option choisie) n'est jamais visée.
+  Prouvé le 29/10 : 3297429776 (410 « désactivée ») laissée, recréée en 3297610395 à 14:13, une seule copie.
+- **Une photo morte chez la plateforme ne bloque plus une publication** (Ornella, plante 64da7249) : après les deux
+  balayages de rapatriement, UNE vérification par job ; une photo qui répond 404/410 (jamais 403) est retirée de la COPIE
+  du job s'il reste ≥ 1 photo, toutes chez nous ; le message dit laquelle et pourquoi (`_shared/photos-mortes.js`,
+  handler-watch ; `selftest:photos-mortes`). La fiche n'est pas touchée.
+- **Une recréation Vinted remet le modèle et les attributs de l'annonce d'origine par leurs IDENTIFIANTS** (Thibault
+  dca41766) : la capture (`natif.model.metadata.collection_id`, `natif.item_attributes`) voyage
+  (`modeleCapture`, `itemAttributesCaptures`) ; la sonde du POST pose `model: { metadata: { collection_id } }` et les
+  `item_attributes { code, ids }` que la page a laissés vides, dans le rayon de la capture seulement, jamais par-dessus un
+  choix du formulaire (0.6.153). Forme prouvée en réel le 29/10 (annonce de test 10582889236, compte de Nico : relue
+  `model {type: other, collection_id 2}`, stockage 1292 = « 256 Mo », simlock 1313 = « Oui »). Plus de simlock « Non »
+  d'office en recréation. La question « Vinted exige « Modèle » … » d'une recréation déjà retirée repart une fois au build
+  qui corrige (`_shared/recreation-bloquee.js`, cause `vinted_attributs_origine`, champ `sources`). Vinted exige
+  désormais la Couleur sur « Téléphones portables » (400 relevé le 29/10).
+- **Catégories** : une question de rayon n'offre jamais les rayons que l'IA a refusés (ni leurs voisins) ; « aucune » de
+  l'IA = question sans puces (C9 : plateforme écartable) ; bouton « Pas sur <plateforme> » sur la question ; « Top case »
+  = 🏍️ (jamais 👕) ; le rayon choisi ne devient l'objet de l'article que si le titre ne nomme rien
+  (`rayonApresRefus.js`, `resolutionPublication.js`, `ListingPreviewScreen.jsx`). Leboncoin : seul un refus PROUVÉ
+  (« racine|feuille "X" introuvable … Options affichées ») entre dans le moteur de rayon ; une page de catégorie illisible
+  se réessaie, la catégorie d'origine reste (`_shared/rayon-refuse-moteur.js`). Vinted : libellé de rayon périmé → au
+  niveau qui échoue, l'option `#catalog-<id>` (relevée sur les menus bloom le 29/10) donne le libellé affiché.

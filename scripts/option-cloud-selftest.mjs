@@ -63,6 +63,29 @@ ok(litAbonnementStripe(cloud('c1', 'active'), PRIX).rang === -1, 'un abonnement 
   const d = drapeauxDepuisStripe([sub('legacy', 'active', ['price_inconnu_founder'])], PRIX);
   ok(d.is_premium && !d.is_cloud, 'un abonnement legacy (prix inconnu) reste premium comme avant');
 }
+// (29/10, Romain Colson) Un impayé ne porte plus de palier ; le paiement le rend.
+for (const st of ['past_due', 'unpaid', 'incomplete', 'incomplete_expired', 'canceled']) {
+  const d = drapeauxDepuisStripe([sub('p1', st, ['price_pro'])], PRIX);
+  ok(!d.is_premium && !d.is_pro && !d.is_business, `palier Pro ${st} → Free (impayé = gratuit)`);
+}
+{
+  const d = drapeauxDepuisStripe([sub('p1', 'past_due', ['price_biz'], { metadata: { plan_type: 'business' } })], PRIX);
+  ok(!d.is_premium && !d.is_pro && !d.is_business, 'Business past_due → Free, les trois drapeaux tombent ensemble');
+  const r = drapeauxDepuisStripe([sub('p1', 'active', ['price_biz'], { metadata: { plan_type: 'business' } })], PRIX);
+  ok(r.is_premium && r.is_pro && r.is_business, 'la même facture réglée (past_due → active) → Business revient');
+}
+{
+  const d = drapeauxDepuisStripe([sub('p1', 'trialing', ['price_pro'])], PRIX);
+  ok(d.is_premium && d.is_pro, 'un essai de palier (trialing) reste ouvert');
+}
+{
+  const d = drapeauxDepuisStripe([sub('std', 'past_due', ['price_std']), sub('pro', 'active', ['price_pro'])], PRIX);
+  ok(d.is_premium && d.is_pro, 'double abonnement historique : seul le Premium impayé tombe, le Pro payé reste');
+}
+{
+  const d = drapeauxDepuisStripe([sub('p1', 'past_due', ['price_pro']), cloud('c1', 'past_due')], PRIX);
+  ok(!d.is_premium && !d.is_pro && d.is_cloud, 'option Cloud past_due : règle Cloud inchangée (is_cloud), le palier impayé tombe');
+}
 {
   const d = drapeauxDepuisStripe([sub('p1', 'active', ['price_std'], { cancel_at_period_end: false }), cloud('c1', 'active', { cancel_at_period_end: true })], PRIX);
   ok(d.subscription_cancel_at_period_end === false && d.cloud_arret_fin_periode === true, 'résilier Cloud ne marque pas le palier comme résilié');

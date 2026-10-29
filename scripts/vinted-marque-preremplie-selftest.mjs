@@ -320,7 +320,8 @@ console.log("\n7. LE BUDGET DE L'ÉTAPE ET LE RELEVÉ DE prefill_brand");
   ok(p.decrirePrefillMarque() === "prefill_brand « Hermès » (id 2803609)", "objet coupé par l'extrait : identifiant et titre lus quand même", p.decrirePrefillMarque());
   p.noterPrefillMarqueVinted({ url: "/api/v2/photos", reponse: '{"prefill_brand":null}' });
   ok(/Hermès/.test(p.decrirePrefillMarque()), "une autre requête ne touche à rien");
-  ok(/armerMarquePourPost\(null\);\s*\/\/[^\n]*\n\s*prefillMarqueVinted = undefined;/.test(vt), "remis à zéro à chaque remplissage");
+  // (29/10) Le désarmement des attributs d'origine (armerAttributsOriginePourPost(null)) s'intercale : même geste, même place.
+  ok(/armerMarquePourPost\(null\);(?:\s*\/\/[^\n]*\n)*\s*(?:armerAttributsOriginePourPost\(null\);\s*(?:\/\/[^\n]*\n\s*)*)?prefillMarqueVinted = undefined;/.test(vt), "remis à zéro à chaque remplissage");
   ok(/try \{ if \(e\.data\.capture\) noterPrefillMarqueVinted\(e\.data\.capture\); \} catch/.test(vt), "relevé au passage des captures de la sonde, jamais un point de panne");
 }
 

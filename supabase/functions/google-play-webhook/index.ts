@@ -1,7 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
-import { notifierPaiement, alerterPaiementNonCredite, signalerNotificationStoreInconnue, journaliserNotificationStore, completerJournalStore } from "../_shared/payment-notify.ts";
-import { decisionGoogle, ligneJournal, lireEnveloppePubSub, empreinteJeton, isoOuNull, issueDeLaReponse, uuidOuNull } from "../_shared/notifications-stores.js";
+import { notifierPaiement, alerterPaiementNonCredite, signalerNotificationStoreInconnue, journaliserNotificationStore, completerJournalStore, signalerRemboursementStore } from "../_shared/payment-notify.ts";
+import { decisionGoogle, decisionGoogleRemboursement, ligneJournal, lireEnveloppePubSub, empreinteJeton, isoOuNull, issueDeLaReponse, uuidOuNull } from "../_shared/notifications-stores.js";
+import { palierDuProfil } from "../_shared/palier.js";
 import { lectureCloudGoogle, ecritureCloudStore, PRODUIT_CLOUD_GOOGLE } from "../_shared/cloud-option.js";
 import { profilCloudPourStore } from "../_shared/cloud-essai-store.ts";
 import { verifierJetonPubSub } from "../_shared/pubsub-oidc.ts";
@@ -94,6 +95,33 @@ async function getGoogleAccessToken(): Promise<string> {
   return tok.access_token;
 }
 
+// (29/10) Le compte d'un jeton d'achat : le jeton COURANT du profil d'abord (abonnement), sinon le dernier appel
+// journalisé portant la même empreinte et un compte (pack, ou abonnement remplacé). Jamais deviné : 0 ou 2 profils
+// pour un même jeton → la voie du journal, puis rien.
+// deno-lint-ignore no-explicit-any
+async function compteDuJetonGoogle(jeton: string | null, empreinte: string | null): Promise<any | null> {
+  const colonnes = "id, email, google_product_id, is_premium, is_pro, is_business, is_comped";
+  try {
+    if (jeton) {
+      const { data } = await supabaseAdmin.from("profiles").select(colonnes).eq("google_purchase_token", jeton).limit(2);
+      if (Array.isArray(data) && data.length === 1) return data[0];
+    }
+    if (empreinte) {
+      const { data: j } = await supabaseAdmin.from("stores_notifications_journal").select("user_id")
+        .eq("canal", "google").eq("jeton_empreinte", empreinte).not("user_id", "is", null)
+        .order("recu_le", { ascending: false }).limit(1);
+      const uid = Array.isArray(j) ? j[0]?.user_id ?? null : null;
+      if (uid) {
+        const { data } = await supabaseAdmin.from("profiles").select(colonnes).eq("id", uid).maybeSingle();
+        return data ?? null;
+      }
+    }
+  } catch (e) {
+    console.error("[google-play-webhook] compte du jeton illisible :", (e as Error)?.message ?? e);
+  }
+  return null;
+}
+
 serve(async (req) => {
   if (req.method !== "POST") return new Response("Method Not Allowed", { status: 405 });
   // ── (25/10, Revenus) UN APPEL = UNE LIGNE AU JOURNAL, QUOI QU'IL ARRIVE ──────
@@ -153,8 +181,8 @@ async function traiter(req: Request, ctx: Contexte): Promise<Response> {
     // ── (12/10, A8) CHAQUE NOTIFICATION EST ENREGISTRÉE ; UNE INCONNUE EST SIGNALÉE ──
     // (_shared/notifications-stores.js) Abonnement : la décision de la table ;
     // achat ponctuel (pack) : 1 = achat, 2 = annulation ; test : sans effet ;
-    // tout le reste (dont voidedPurchaseNotification, jamais traitée ici) :
-    // inconnu → alerte à support@, rien d'appliqué. Le traitement qui suit est
+    // remboursement (voidedPurchaseNotification, 29/10) : alerte « Remboursement » ;
+    // tout le reste : inconnu → alerte à support@, rien d'appliqué. Le traitement qui suit est
     // celui d'avant (plus la mise en pause, ci-dessous).
     {
       const otpJ = notification.oneTimeProductNotification;
@@ -164,7 +192,8 @@ async function traiter(req: Request, ctx: Contexte): Promise<Response> {
       if (subJ) { const d = decisionGoogle(subJ.notificationType); typeJ = "abonnement"; sousTypeJ = d.nom; decisionJ = d; }
       else if (otpJ) { typeJ = "achat_ponctuel"; sousTypeJ = String(otpJ.notificationType); decisionJ = otpJ.notificationType === 1 ? { effet: "pack", connu: true } : otpJ.notificationType === 2 ? { effet: "aucun_effet", connu: true } : { effet: null, connu: false }; }
       else if (notification.testNotification) { typeJ = "test"; decisionJ = { effet: "aucun_effet", connu: true }; }
-      else if (notification.voidedPurchaseNotification) { typeJ = "achat_annule"; sousTypeJ = `produit_${notification.voidedPurchaseNotification.productType ?? "?"}_remboursement_${notification.voidedPurchaseNotification.refundType ?? "?"}`; decisionJ = { effet: null, connu: false }; }
+      // (29/10) Un remboursement est CONNU : signalé comme tel plus bas, jamais « inconnu » ni « paiement non enregistré ».
+      else if (notification.voidedPurchaseNotification) { typeJ = "achat_annule"; sousTypeJ = `produit_${notification.voidedPurchaseNotification.productType ?? "?"}_remboursement_${notification.voidedPurchaseNotification.refundType ?? "?"}`; decisionJ = decisionGoogleRemboursement(notification.voidedPurchaseNotification); }
       else { decisionJ = { effet: null, connu: false }; }
       const produitJ = (subJ?.subscriptionId ?? otpJ?.sku ?? null) as string | null;
       await journaliserNotificationStore(supabaseAdmin, ligneJournal({
@@ -179,6 +208,31 @@ async function traiter(req: Request, ctx: Contexte): Promise<Response> {
       if (!decisionJ.connu) {
         await signalerNotificationStoreInconnue({ canal: "google", type: typeJ, sous_type: sousTypeJ, produit: produitJ, ref: (notification.voidedPurchaseNotification?.orderId ?? null) as string | null });
       }
+    }
+
+    // ── (29/10, boncoin59300) REMBOURSEMENT GOOGLE : SIGNALÉ COMME TEL, COMPTE RETROUVÉ PAR LE JETON ──
+    // Rien n'est appliqué ici : le droit d'un abonnement tombe par SUBSCRIPTION_REVOKED / EXPIRED (envoyées à
+    // part, parfois dans la même seconde) ; les Pépites d'un pack remboursé restent créditées (décision humaine).
+    const annule = notification.voidedPurchaseNotification;
+    if (annule) {
+      const d = decisionGoogleRemboursement(annule);
+      const compte = await compteDuJetonGoogle(typeof annule.purchaseToken === "string" ? annule.purchaseToken : null,
+        (complements.jeton_empreinte as string | null) ?? null);
+      ctx.maj.user_id = uuidOuNull(compte?.id);
+      ctx.maj.transaction_id = (annule.orderId as string | undefined) ?? null;
+      ctx.maj.effet_applique = "remboursement_signale";
+      const palier = compte ? palierDuProfil(compte) : null;
+      await signalerRemboursementStore({
+        canal: "google", nature: "remboursement", type: d.type as "pack" | "abonnement", partiel: d.partiel,
+        user_id: compte?.id ?? null, email: compte?.email ?? null,
+        produit: d.type === "abonnement" ? (compte?.google_product_id ?? null) : null,
+        ref: (annule.orderId as string | undefined) ?? null, palier,
+        droit: d.type === "pack"
+          ? "Pépites du pack NON reprises (à décider)"
+          : palier && palier !== "gratuit" ? "encore ouvert à l'instant de l'alerte : SUBSCRIPTION_REVOKED le retire (à vérifier)" : "retiré",
+      });
+      console.log(`[google-play-webhook] remboursement ${d.nom} commande=${annule.orderId ?? "?"} → compte=${compte?.id ?? "INTROUVABLE"} palier=${palier ?? "?"}`);
+      return json(200, { ok: true, remboursement: d.nom });
     }
 
     // ── Consumables : packs de Pépites (2026-07-28) ───────────────────────
@@ -307,18 +361,21 @@ async function traiter(req: Request, ctx: Contexte): Promise<Response> {
 
     // Types Google Play :
     // 1=RECOVERED 2=RENEWED 4=PURCHASED 7=RESTARTED → premium ON
-    // 5=ON_HOLD 12=EXPIRED 13=REVOKED → premium OFF
+    // 5=ON_HOLD 12=REVOKED 13=EXPIRED → premium OFF (29/10 : numéros remis dans l'ordre de Google — le journal
+    // du 29/10 10:04 dit type 12 = SUBSCRIPTION_REVOKED, 13 = SUBSCRIPTION_EXPIRED ; les deux coupaient déjà)
     // 3=CANCELED → traitement DÉDIÉ plus bas (2026-08-08) : chez Google,
     // CANCELED signifie seulement « renouvellement auto désactivé » — l'abonné
     // GARDE son accès jusqu'à expiryTime. La perte réelle arrive en 12 ou 13.
     // Le rangement historique de 3 dans PREMIUM_OFF_TYPES coupait le droit à
     // la seconde de l'annulation, sur un mois pourtant payé.
-    // 6=IN_GRACE_PERIOD reste volontairement non traité (accès conservé).
+    // (29/10, Nico : « un impayé repasse en gratuit », tous canaux) 6=IN_GRACE_PERIOD coupe aussi : le paiement a
+    // échoué, Google réessaie — comme past_due chez Stripe et DID_FAIL_TO_RENEW chez Apple. Le droit revient seul
+    // au paiement (1 = RECOVERED, 2 = RENEWED).
     const PREMIUM_ON_TYPES  = [1, 2, 4, 7];
     // (12/10, A8) + 10 = SUBSCRIPTION_PAUSED : l'abonnement mis en pause par la
     // personne n'est plus payé — le droit s'arrête, comme ON_HOLD ; la reprise
     // arrive en 1 = RECOVERED (déjà « on »). Table : _shared/notifications-stores.js.
-    const PREMIUM_OFF_TYPES = [5, 10, 12, 13];
+    const PREMIUM_OFF_TYPES = [5, 6, 10, 12, 13];
     const CANCELED_TYPE = 3;
 
     let isPremium: boolean | null = null;

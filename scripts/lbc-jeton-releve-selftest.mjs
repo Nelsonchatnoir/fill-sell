@@ -210,6 +210,23 @@ const blocLbc = BG.slice(BG.indexOf('  let motifsAdresseListe = [];'), BG.indexO
 ok(/const api = await lireAdresseLbc\(motifsApi\);/.test(blocLbc), 'le relevé lit l’adresse avec renouvellement du jeton');
 const apresPage = BG.slice(BG.indexOf('// ── LEBONCOIN : LA PAGE A CHARGÉ, L\'ADRESSE EST RELUE'), BG.indexOf('// ── UN SEUL JUGE DE COUVERTURE'));
 ok(/lireAdresseLbc\(motifsBis, 2\)/.test(apresPage) && /api\.annonces\.length >= vuesPage/.test(apresPage), 'après le repli sur la page, l’adresse est relue avant de conclure');
+// (29/10) Session fermée vue au renouvellement, liste non rendue : le mur de connexion, jamais « n'a pas rendu sa liste ».
+const boucleLbc = BG.slice(BG.indexOf('  let dernierTabId = null;'), BG.indexOf('// ── LEBONCOIN : LA PAGE A CHARGÉ, L\'ADRESSE EST RELUE'));
+ok(/motifsAdresseListe\.some\(\(m\) => \/non renouvelé \\\(session_fermee\\\)\/\.test/.test(boucleLbc)
+  && /r\.surLaListe === false && annonces\.size === 0/.test(boucleLbc)
+  && /absente: true,\s*erreur: "session leboncoin : page de connexion \("/.test(boucleLbc),
+  'renouvellement renvoyé vers la connexion + liste non rendue → « session leboncoin : page de connexion », « absente »');
+ok(/const ongletApres = await chrome\.tabs\.get\(tabId\)/.test(boucleLbc) && /r\?\.page\?\.connexion === true/.test(boucleLbc),
+  'l’adresse de l’onglet est relue APRÈS la lecture (renvoi tardif), et le formulaire rendu sur place compte');
+{
+  const F = await import(pathToFileURL(join(ROOT, 'src/annonces/finReleve.js')).href);
+  const e = '[incomplet] session leboncoin : page de connexion (« Mes annonces » renvoie vers la connexion de Leboncoin au renouvellement du jeton) · [défilement] [adresse muette : essai 1 : jeton_absent ; jeton non renouvelé (session_fermee)] repli sur la page';
+  ok(F.situationFinReleve({ erreur: e }) === 'pas_connecte', 'l’app dit « Connecte-toi à Leboncoin », plus « échec »');
+  const ancien = '[incomplet] « Mes annonces » n\'a pas rendu sa liste (redirection du compte, challenge ou page non peinte) — couverture inconnue, rien n\'est conclu disparu · [défilement] [adresse muette : essai 1 : jeton_absent ; jeton non renouvelé (session_fermee) ; essai 1 : jeton_absent ; jeton non renouvelé (session_fermee)] repli sur la page';
+  ok(F.situationFinReleve({ erreur: ancien }) === 'pas_connecte', 'runs des extensions ≤ 0.6.152 (annehelene.reve, 29/10 10:22) : « Connecte-toi à Leboncoin » aussi');
+  ok(F.situationFinReleve({ erreur: '[incomplet] « Mes annonces » n\'a pas rendu sa liste … [adresse muette : essai 1 : onglet_fige] repli sur la page' }) === 'echec', 'une liste non rendue SANS renvoi vers la connexion reste « échec »');
+  ok(!/n'a pas rendu sa liste/.test(e), 'le libellé « hors liste » (releve_hors_liste) n’est pas porté : aucun import, aucune disparition — comme avant');
+}
 ok(/async function lireVentesLeboncoin\(connues\) \{[\s\S]{0,400}await assurerJetonLeboncoin\(\)/.test(BG), 'relevé des ventes Leboncoin : jeton contrôlé/renouvelé d’abord');
 ok(/await assurerJetonLeboncoin\(\)\.catch\(\(\) => null\);\n  return executerDansOngletPlateforme\("leboncoin", async \(perPage, typeConnu\)/.test(BG), 'veille des commandes Leboncoin : jeton contrôlé/renouvelé d’abord');
 ok(/LBC_RENOUVELLEMENT_PAUSE_MS = 30 \* 60_000/.test(BG) && /renouvellement_en_pause/.test(BG), 'lectures de fond : pause de 30 min après un renouvellement raté (jamais une page rechargée à chaque cycle)');
