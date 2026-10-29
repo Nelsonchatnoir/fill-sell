@@ -100,12 +100,21 @@ export async function lireServicesMetadata(env: EbayEnv, siteId = SITE_FR, d: De
     throw new Error(`getShippingServices refusé : ${String(e?.longMessage ?? e?.message ?? `HTTP ${r.status}`).slice(0, 200)}`);
   }
   const liste = Array.isArray(json?.shippingServices) ? json!.shippingServices as Array<Record<string, unknown>> : [];
+  // ── (29/10 soir) LUE COMME GeteBayDetails LA LISAIT — comparaison réelle du compte de Nico, 15:19 UTC ──────────
+  // Les deux listes ont les MÊMES codes proposables, à trois écarts de forme près, que FillSell lit ici pour que
+  // l'écran « Modes d'envoi » reste le même :
+  //   · transporteur écrit avec des « _ » (LA_POSTE, MONDIAL_RELAY, COLIPOSTE_DOMESTIC) là où GeteBayDetails écrivait
+  //     LAPOSTE, MONDIALRELAY, COLIPOSTEDOMESTIC : les « _ » sont retirés (familleService lit « LAPOSTE » : sans ça,
+  //     Lettre Suivie, Lettre recommandée et Ecopli quittaient « courrier ») ;
+  //   · Chrono13 rangé EXPEDITED (EXPRESS avant) : EXPEDITED et ONE_DAY sont « à domicile » (familleService) ;
+  //   · FR_ColissimoReturnsDomestic dit valide pour la vente, alors que GeteBayDetails le disait NON valide : c'est
+  //     une étiquette de RETOUR — un service dont le code nomme « Returns » n'est jamais proposé pour expédier.
   const services: ServiceLivraison[] = liste.map((s) => ({
     code: String(s.shippingService ?? ""),
     libelle: String(s.description ?? ""),
-    transporteur: String(s.shippingCarrier ?? ""),
+    transporteur: String(s.shippingCarrier ?? "").replace(/_/g, ""),
     categorie: String(s.shippingCategory ?? ""),
-    valide: vrai(s.validForSellingFlow),
+    valide: vrai(s.validForSellingFlow) && !estServiceDeRetour(String(s.shippingService ?? "")),
     international: vrai(s.internationalService),
     delaiMin: entierOuNull(s.minShippingTime),
     delaiMax: entierOuNull(s.maxShippingTime),
@@ -116,29 +125,36 @@ export async function lireServicesMetadata(env: EbayEnv, siteId = SITE_FR, d: De
   return services;
 }
 
-// Les services PROPOSABLES (valides, domestiques, non dépréciés), réduits à ce que l'écran et la politique lisent.
-function proposables(services: ServiceLivraison[]) {
-  return new Map(services.filter((s) => s.valide && !s.international && !s.deprecie)
-    .map((s) => [s.code, { libelle: s.libelle, transporteur: s.transporteur.trim().toUpperCase(), categorie: s.categorie, delaiMin: s.delaiMin, delaiMax: s.delaiMax }]));
+/** Une étiquette de RETOUR (FR_ColissimoReturnsDomestic…) : jamais un mode d'envoi proposé au vendeur. */
+export function estServiceDeRetour(code: string): boolean {
+  return /Returns/i.test(String(code ?? ""));
 }
 
-// Comparaison des deux sources sur ce que FillSell lit : codes proposables et, pour chacun, libellé, transporteur,
-// catégorie et délais. Sert la bascule (journal) et sa preuve sur des cas réels.
+// Ce que l'écran « Modes d'envoi » MONTRE (services valides, domestiques, non dépréciés, rangés dans une famille) :
+// code → famille, libellé, délais. C'est la base de la comparaison : deux sources qui rendent ceci à l'identique
+// donnent le même écran et les mêmes codes posés dans la politique.
+function affiches(services: ServiceLivraison[]) {
+  return new Map(services.filter((s) => s.valide && !s.international && !s.deprecie && familleService(s))
+    .map((s) => [s.code, { famille: familleService(s), libelle: s.libelle, delaiMin: s.delaiMin, delaiMax: s.delaiMax }]));
+}
+
+// Comparaison des deux sources sur ce que FillSell MONTRE et POSE : codes affichés et, pour chacun, famille, libellé et
+// délais. Sert la bascule (journal) et sa preuve sur des cas réels.
 export function comparerSourcesServices(metadata: ServiceLivraison[], trading: ServiceLivraison[]) {
-  const a = proposables(metadata), b = proposables(trading);
+  const a = affiches(metadata), b = affiches(trading);
   const seulementMetadata = [...a.keys()].filter((c) => !b.has(c)).sort();
   const seulementTrading = [...b.keys()].filter((c) => !a.has(c)).sort();
   const differents: Array<{ code: string; champ: string; metadata: unknown; trading: unknown }> = [];
   for (const [code, x] of a) {
     const y = b.get(code);
     if (!y) continue;
-    for (const k of ["libelle", "transporteur", "categorie", "delaiMin", "delaiMax"] as const) {
+    for (const k of ["famille", "libelle", "delaiMin", "delaiMax"] as const) {
       if (x[k] !== y[k]) differents.push({ code, champ: k, metadata: x[k], trading: y[k] });
     }
   }
   return {
     identiques: seulementMetadata.length === 0 && seulementTrading.length === 0 && differents.length === 0,
-    proposables_metadata: a.size, proposables_trading: b.size,
+    affiches_metadata: a.size, affiches_trading: b.size,
     seulementMetadata, seulementTrading, differents,
   };
 }
@@ -289,7 +305,8 @@ export function familleService(s: ServiceLivraison): FamilleLivraison | null {
   if (s.categorie === "PICKUP") return "main_propre";
   if (s.categorie === "POINT_TO_POINT") return "point_relais";
   if (s.transporteur.trim().toUpperCase() === "LAPOSTE") return "courrier";
-  if (s.categorie === "STANDARD" || s.categorie === "EXPRESS") return "domicile";
+  // (29/10 soir) EXPEDITED et ONE_DAY : les noms de l'API Metadata pour l'express à domicile (Chrono13 y est EXPEDITED).
+  if (["STANDARD", "EXPRESS", "EXPEDITED", "ONE_DAY"].includes(s.categorie)) return "domicile";
   return null;
 }
 

@@ -9,7 +9,8 @@
 //      une erreur qui dit les deux motifs ; après le 15/03/2027, plus de repli ;
 //   3. la comparaison des deux sources (journal de bascule) : identiques, puis un code manquant et un libellé changé ;
 //   4. le reste du module inchangé sur la nouvelle source (résolution d'un mode, familles) ; le cache d'une heure ;
-//   5. le câblage : ebay-account sert la source à l'écran « Modes d'envoi ».
+//   5. les listes RÉELLES du 29/10 (fixtures/ebay-modes-envoi-fr-2910.json) : même écran, mêmes codes ;
+//   6. le câblage : ebay-account sert la source à l'écran « Modes d'envoi ».
 import {
   _viderCacheServices, comparerSourcesServices, grouperServicesDomestiques, listerServicesLivraisonAvecSource,
   resoudreServiceLivraison, RETRAIT_GETEBAYDETAILS, type ServiceLivraison,
@@ -135,7 +136,45 @@ console.log("4. Le reste du module sur la nouvelle source");
     `familles de l'écran : point relais, domicile, main propre — ni locker, ni international (${familles.join(" ")})`);
 }
 
-console.log("5. Le câblage");
+console.log("5. Les listes RÉELLES d'eBay FR du 29/10 (compte de Nico) : même écran, mêmes codes");
+{
+  // scripts/fixtures/ebay-modes-envoi-fr-2910.json : les deux listes journalisées en production le 29/10 à 16:19.
+  const fx = JSON.parse(Deno.readTextFileSync(new URL("./fixtures/ebay-modes-envoi-fr-2910.json", import.meta.url)));
+  const lire = (l: string) => {
+    const [code, cat, transp, valide, intl, delais] = l.split("|");
+    const [min, max] = delais.split("-");
+    return { code, cat, transp, valide: valide === "1", intl: intl === "1", min: min === "" ? null : Number(min), max: max === "" ? null : Number(max) };
+  };
+  const meta = { shippingServices: fx.metadata.map(lire).map((s: ReturnType<typeof lire>) => ({
+    shippingService: s.code, description: s.code, shippingCarrier: s.transp, shippingCategory: s.cat,
+    validForSellingFlow: s.valide, internationalService: s.intl, ...(s.min != null ? { minShippingTime: s.min } : {}), ...(s.max != null ? { maxShippingTime: s.max } : {}),
+  })) };
+  const xml = `<?xml version="1.0"?><GeteBayDetailsResponse><Ack>Success</Ack>${fx.trading.map(lire).map((s: ReturnType<typeof lire>) =>
+    `<ShippingServiceDetails><Description>${s.code}</Description>${s.intl ? "<InternationalService>true</InternationalService>" : ""}`
+    + `<ShippingService>${s.code}</ShippingService>${s.min != null ? `<ShippingTimeMax>${s.max}</ShippingTimeMax><ShippingTimeMin>${s.min}</ShippingTimeMin>` : ""}`
+    + `<ValidForSellingFlow>${s.valide}</ValidForSellingFlow><ShippingCategory>${s.cat}</ShippingCategory>${s.transp ? `<ShippingCarrier>${s.transp}</ShippingCarrier>` : ""}`
+    + `</ShippingServiceDetails>`).join("")}</GeteBayDetailsResponse>`;
+  const b = banc({ meta: { status: 200, corps: JSON.stringify(meta) }, trading: { status: 200, corps: xml } });
+  const { services, source } = await listerServicesLivraisonAvecSource("production", "JETON_VENDEUR", "71", b.d);
+  const ligne = b.journal.find((l) => /comparaison Metadata\/GeteBayDetails/.test(l)) ?? "";
+  ok(source === "metadata" && /IDENTIQUES/.test(ligne), "comparaison des listes réelles : IDENTIQUES (codes affichés, famille, délais)", ligne.slice(0, 600));
+  const { lireServicesTrading } = await import("../supabase/functions/_shared/ebay-shipping.ts");
+  const ancienne = await lireServicesTrading("production", "JETON_VENDEUR", "71", b.d);
+  const ecran = (l: ServiceLivraison[]) => grouperServicesDomestiques(l).map((f) => `${f.cle}: ${f.services.map((s) => s.code).join(", ")}`).join(" | ");
+  ok(ecran(services) === ecran(ancienne), `l'écran « Modes d'envoi » est le même, famille par famille, dans le même ordre (${ecran(services)})`,
+    { metadata: ecran(services), trading: ecran(ancienne) });
+  const courrier = grouperServicesDomestiques(services).find((f) => f.cle === "courrier")?.services.map((s) => s.code) ?? [];
+  ok(["FR_PostOfficeLetterFollowed", "FR_PostOfficeLetterRecommended", "FR_Ecopli"].every((c) => courrier.includes(c)),
+    "« LA_POSTE » de Metadata lu « LAPOSTE » : Lettre Suivie, Lettre recommandée et Ecopli restent dans « courrier »");
+  const domicile = grouperServicesDomestiques(services).find((f) => f.cle === "domicile")?.services.map((s) => s.code) ?? [];
+  ok(domicile.includes("FR_Chrono13"), "Chrono13 (EXPEDITED chez Metadata, EXPRESS avant) reste « à domicile »");
+  ok(!grouperServicesDomestiques(services).some((f) => f.services.some((s) => s.code === "FR_ColissimoReturnsDomestic")),
+    "FR_ColissimoReturnsDomestic (étiquette de retour, « valide » chez Metadata, non valide avant) n'est jamais proposé");
+  ok(resoudreServiceLivraison("colissimo", services)?.code === "FR_ColiposteColissimo" && resoudreServiceLivraison("main_propre", services)?.code === "FR_RemiseEnMainPropre",
+    "les deux modes de l'app (Colissimo, remise en main propre) se résolvent sur la liste réelle");
+}
+
+console.log("6. Le câblage");
 {
   const src = Deno.readTextFileSync(new URL("../supabase/functions/ebay-account/index.ts", import.meta.url)).replace(/\r\n/g, "\n");
   ok(/const \{ services, source \} = await listerServicesLivraisonAvecSource\(env, token\);[\s\S]{0,200}source,/.test(src), "« Modes d'envoi » : la liste et sa source rendues à l'écran");
