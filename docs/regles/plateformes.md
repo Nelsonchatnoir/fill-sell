@@ -488,6 +488,13 @@ Rapport : `docs/enquetes/dix-points-1710/RAPPORT.md` (points 1, 4, 5, 7, 9).
   sinon, si le pré-rempli n'est pas cité dans l'article, « Autre » (la marque reste dans la description) ; le pré-rempli
   n'est gardé qu'en dernier ; « hors liste » ne s'écrit qu'après une recherche RELUE (sinon « recherche muette »).
   ⚠ Mesuré : 594 recherches par frappe depuis le 07/09, 0 trouvée — un diagnostic du menu est désormais noté.
+  **Corrigé le 29/10 nuit (0.6.157), essai réel 3297848873 sur le compte de Nico** : la frappe VIDE le champ et la
+  recherche est restée muette (menu « 1 enfant, texte vide ») → « Nike » effacé, annonce partie SANS marque (la 0.6.155
+  gardait « Nike »). Règle : un pré-rempli que l'article NOMME n'est jamais tapé par-dessus (gardé, aucune frappe) ; un
+  pré-rempli que l'article ne nomme pas (marque devinée, règle P8 du 15/10) n'est gardé que si une recherche qui a
+  répondu ne trouve ni notre marque ni « Autre » — recherche muette → champ vide, jamais la marque devinée. Le
+  diagnostic dit aussi l'état de l'onglet (`visibilityState`). RESTE : faire répondre la recherche (piste non prouvée :
+  liste virtualisée non dessinée dans un onglet en arrière-plan).
 - **Compte pro au mur « Valider et payer »** (partie 3) : l'extension lit TOUJOURS le type de la session qui dépose
   (`account/v2/members/me/account`) ; une lecture `individual` l'emporte sur la preuve du serveur et sur le formulaire pro
   (`decisionMurProLbc`) ; `lbc_depot.type_compte`, `type_compte_lu_le`, `type_compte_source` sur les deux parcours.

@@ -4699,8 +4699,9 @@ async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, {
         : findOptionCascade(scope, optionSelector, rawValue, { sizeField, composants });
     let valeurPosee = rawValue;
     // (29/10, point 4.4 — ⟦marque-recherche⟧) Marque pré-remplie par Leboncoin ≠ la nôtre, absente du menu ouvert
-    // (vide tant qu'on ne tape pas, ou partiel) : notre marque est TAPÉE, puis « Autre » si l'article ne nomme pas le
-    // pré-rempli ; le pré-rempli ne reste que si rien n'est trouvé. Jamais de « hors liste » sans recherche relue.
+    // (vide tant qu'on ne tape pas, ou partiel) : un pré-rempli que l'article nomme reste, sans frappe ; sinon notre
+    // marque est TAPÉE, puis « Autre » ; recherche muette → champ vide (jamais une marque devinée). Jamais de « hors
+    // liste » sans recherche relue.
     if (!match && rechercheParFrappe && fieldName === "marque" && !estMarqueConsole && prefilled && menu) {
       return await poserMarqueParRechercheLbc({ fieldName, input, optionSelector, notre: String(rawValue), prefilled, warnings });
     }
@@ -4830,7 +4831,7 @@ function diagMenuRechercheLbc(input) {
     const m = id ? document.getElementById(id) : null;
     const listes = document.querySelectorAll('[role="listbox"]').length;
     return `menu ${id ? `« ${id} »` : "sans id"} ${m ? `trouvé (${m.childElementCount} enfant(s), texte « ${m.textContent.trim().slice(0, 60)} »)` : "introuvable"}`
-      + ` · listbox dans la page : ${listes} · champ « ${String(input.value ?? "").slice(0, 40)} »`;
+      + ` · listbox dans la page : ${listes} · champ « ${String(input.value ?? "").slice(0, 40)} » · onglet ${document.visibilityState ?? "?"}`;
   } catch { return "menu illisible"; }
 }
 /** Tape `valeur` (typeInto vide le champ d'abord) et relit les propositions du menu propre du champ : attente
@@ -4865,14 +4866,17 @@ async function poserMarqueParRechercheLbc({ fieldName, input, optionSelector, no
   const prefilledCite = marqueCiteeDansLArticle(prefilled);
   const base = { notre, prefilled, prefilledCite };
   let d = decisionMarqueRechercheLbc(base);
-  let vues = await taperEtLireRechercheLbc(input, d.valeur, optionSelector);
-  const vuesNotre = vues.map((o) => o.label);
-  d = decisionMarqueRechercheLbc({ ...base, vuesNotre });
-  let vuesAutre = null;
+  let vues = [], vuesNotre = [], vuesAutre = null;
+  // Un pré-rempli que l'article nomme n'est jamais tapé par-dessus (règle 0) : aucune frappe.
   if (d.geste === "taper") {
     vues = await taperEtLireRechercheLbc(input, d.valeur, optionSelector);
-    vuesAutre = vues.map((o) => o.label);
-    d = decisionMarqueRechercheLbc({ ...base, vuesNotre, vuesAutre });
+    vuesNotre = vues.map((o) => o.label);
+    d = decisionMarqueRechercheLbc({ ...base, vuesNotre });
+    if (d.geste === "taper") {
+      vues = await taperEtLireRechercheLbc(input, d.valeur, optionSelector);
+      vuesAutre = vues.map((o) => o.label);
+      d = decisionMarqueRechercheLbc({ ...base, vuesNotre, vuesAutre });
+    }
   }
   const vuesDites = JSON.stringify([...new Set([...vuesNotre, ...(vuesAutre ?? [])])].slice(0, 12));
   if (d.geste === "poser") {
@@ -4894,10 +4898,21 @@ async function poserMarqueParRechercheLbc({ fieldName, input, optionSelector, no
   // retapé et choisi à l'identique. Introuvable → champ vidé (jamais un texte tapé laissé dans le champ).
   const constat = d.geste === "poser"
     ? "option non retenue"
-    : d.muette ? `recherche muette — ${d.motif} (${diagMenuRechercheLbc(input)})`
-      : `« ${notre} » hors liste (propositions vues: ${vuesDites}) — ${d.motif}`;
+    : d.avantRecherche ? `${d.motif} (la frappe vide le champ ; « ${notre} » n'est pas cherchée)`
+      : d.muette ? `recherche muette — ${d.motif} (${diagMenuRechercheLbc(input)})`
+        : `« ${notre} » hors liste (propositions vues: ${vuesDites}) — ${d.motif}`;
   document.body.click();
   await humanPause();
+  if (d.retirerPrerempli) {
+    await typeInto(input, "");
+    document.body.click();
+    await humanPause();
+    const note = `${fieldName}: pré-rempli LBC "${prefilled}" retiré — ${constat} — champ laissé vide`;
+    console.warn(`[leboncoin] ⚠️ ${note}`);
+    warnings.push(note);
+    VALEURS_NON_RECONNUES[fieldName] = String(notre);
+    return false;
+  }
   const remis = async () => {
     if (marquesEgales(input.value, prefilled)) return true;
     const opts = await taperEtLireRechercheLbc(input, prefilled, optionSelector);
@@ -6444,10 +6459,15 @@ const estValeurGenerique = (v) => VALEUR_GENERIQUE_RE.test(normalizeFuzzy(v));
 // pré-rempli différent, « Autre » était cherché dans le menu vide, le pré-rempli GARDÉ et notre marque dite « hors
 // liste » sans aucune recherche (« Options: [] » dans les deux jobs) — « Vintage Dressing » posé sur le manteau
 // « Fourrures D.S Paris », « Nike » gardé alors que « Jordan » est dans la liste de Leboncoin. Règle, pour tout compte :
+//   0. (29/10 nuit, essai réel 3297848873 sur le compte de Nico) un pré-rempli que l'article NOMME (titre, description)
+//      n'est jamais effacé par une recherche : la frappe vide le champ, et la recherche par frappe n'a jamais répondu
+//      en production (0 sur 595, essai compris : menu « 1 enfant, texte vide ») — « Nike » effacé puis introuvable,
+//      l'annonce partait SANS marque alors que la 0.6.155 gardait « Nike » ;
 //   1. notre marque est TAPÉE dans la recherche ; l'égalité exacte (marquesEgales) la pose ;
-//   2. sinon, si l'article (titre, description) ne nomme pas le pré-rempli : « Autre » est tapé et choisi, la vraie
-//      marque part dans la description (MARQUE_HORS_LISTE) ;
-//   3. sinon le pré-rempli reste (remis s'il a été effacé par la frappe).
+//   2. sinon « Autre » est tapé et choisi, la vraie marque part dans la description (MARQUE_HORS_LISTE) ;
+//   3. recherche MUETTE : un pré-rempli que l'article ne nomme pas est une marque devinée (règle P8 du 15/10 : fausse,
+//      deux refus de modération), jamais gardée sans confirmation → champ vide ; une recherche qui a RÉPONDU sans
+//      notre marque ni « Autre » : le pré-rempli reste (remis s'il a été effacé), comme sur un menu sans recherche.
 // « hors liste » ne se dit qu'après une recherche qui a RÉPONDU (au moins une proposition relue) ; une recherche
 // muette se dit muette et ne conclut rien sur la marque. Sans pré-rempli : « Autre » pour une vraie marque seulement
 // (inchangé). Décision PURE (jouée par scripts/champs-lbc-etat-marque-selftest.mjs) ; les gestes sont dans
@@ -6474,7 +6494,10 @@ function decisionMarqueRechercheLbc({ notre, prefilled = null, prefilledCite = f
   const reelle = !estValeurGenerique(valeur);
   const pre = String(prefilled ?? "").trim();
   const cite = !!pre && !!prefilledCite && !estValeurGenerique(pre);
-  if (!Array.isArray(vuesNotre)) return { geste: "taper", valeur };
+  if (!Array.isArray(vuesNotre)) {
+    if (cite) return { geste: "garder", horsListe: false, muette: false, avantRecherche: true, marqueDansDescription: false, motif: `l'article nomme « ${pre} » : il n'est jamais effacé par une recherche` };
+    return { geste: "taper", valeur };
+  }
   const exacte = vuesNotre.find((l) => optionEgaleMarqueLbc(l, valeur));
   if (exacte) return { geste: "poser", option: exacte, autre: false, marqueDansDescription: false, motif: "trouvée par la recherche" };
   // « Autre » : jamais à la place d'un pré-rempli que l'article nomme ; sans pré-rempli, pour une vraie marque seulement.
@@ -6494,6 +6517,11 @@ function decisionMarqueRechercheLbc({ notre, prefilled = null, prefilledCite = f
     ? "la recherche n'a rendu aucune proposition : rien n'est conclu sur la marque"
     : cite ? `l'article nomme « ${pre} »`
       : tenterAutre ? "ni notre marque ni « Autre » dans la recherche" : "notre valeur est absente de la recherche";
+  // Recherche muette et pré-rempli que l'article ne nomme pas (marque devinée) : jamais gardé sans confirmation.
+  if (!repondu && pre && !cite && !estValeurGenerique(pre)) {
+    return { geste: "vider", horsListe: false, muette: true, retirerPrerempli: true, marqueDansDescription: false,
+      motif: `l'article ne nomme pas « ${pre} » et la recherche n'a rien confirmé : jamais une marque devinée` };
+  }
   // Un « Autre » pré-rempli qui reste : la vraie marque part quand même dans la description.
   return { geste: pre ? "garder" : "vider", horsListe: repondu, muette: !repondu, marqueDansDescription: reelle && !!pre && estOptionAutreLbc(pre), motif };
 }

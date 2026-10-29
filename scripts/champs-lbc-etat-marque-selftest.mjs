@@ -128,6 +128,8 @@ ok(/\(marqueDevineeFausse \|\| marqueReelle\) \? fallbackValues\.filter\(\(v\) =
   const chercheLbc = (t) => LISTE.filter((b) => T.normalizeFuzzy(b).includes(T.normalizeFuzzy(t))).slice(0, 10);
   const MANTEAU = { titre: 'manteau fourrures ds paris femme 38/40 long  col volumineux vintage', description: 'Fourrures D.S Paris manteau long fourrure marron vintage M/L poches boutons\n\nManteau long en véritable fourrure de renard teinté brun, signé Fourrures DS Paris.' };
   const JORDAN = { titre: 'Basket femme Nike air jordan MA2 taille 38', description: 'Basket femme blanche noir et rouge\nNike air Jordan Ma2\ntaille 38\ntres bon etat' };
+  // Le même article sans « Nike » : le pré-rempli « Nike » y est alors une marque devinée par Leboncoin.
+  const JORDAN_SANS_NIKE = { titre: 'Basket femme air jordan MA2 taille 38', description: 'Basket femme blanche noir et rouge\nAir Jordan Ma2\ntaille 38\ntres bon etat' };
   const jouer = async ({ article, prefilled, notre, recherche = chercheLbc, blurRemet = true }) => {
     T.poserTexte(`${article.titre} ${article.description}`); T.razHorsListe();
     banc.recherche = recherche; banc.blurRemet = blurRemet;
@@ -139,10 +141,17 @@ ok(/\(marqueDevineeFausse \|\| marqueReelle\) \? fallbackValues\.filter\(\(v\) =
   };
 
   console.log('\n4. (29/10) LA DÉCISION — LE PRÉ-REMPLI ≠ NOTRE MARQUE : ON TAPE LA NÔTRE');
-  ok(D({ notre: 'Jordan', prefilled: 'Nike', prefilledCite: true }).geste === 'taper' && D({ notre: 'Jordan', prefilled: 'Nike', prefilledCite: true }).valeur === 'Jordan',
-    '4a. d\'abord, notre marque est TAPÉE (même si l\'article nomme le pré-rempli)');
+  // (29/10 nuit, essai réel 3297848873) La frappe vide le champ et la recherche n'a jamais répondu en production :
+  // un pré-rempli que l'article nomme n'est plus jamais tapé par-dessus.
   {
-    const d = D({ notre: 'Jordan', prefilled: 'Nike', prefilledCite: true, vuesNotre: ['Air Jordan', 'Jordan'] });
+    const c = D({ notre: 'Jordan', prefilled: 'Nike', prefilledCite: true });
+    ok(c.geste === 'garder' && c.avantRecherche && !c.horsListe && !c.muette && /l'article nomme « Nike »/.test(c.motif),
+      '4a. l\'article nomme le pré-rempli « Nike » : il reste, AUCUNE frappe (jamais effacé par une recherche)', JSON.stringify(c));
+    const t = D({ notre: 'Jordan', prefilled: 'Nike', prefilledCite: false });
+    ok(t.geste === 'taper' && t.valeur === 'Jordan', '4a2. l\'article ne nomme pas le pré-rempli : notre marque est TAPÉE', JSON.stringify(t));
+  }
+  {
+    const d = D({ notre: 'Jordan', prefilled: 'Nike', prefilledCite: false, vuesNotre: ['Air Jordan', 'Jordan'] });
     ok(d.geste === 'poser' && d.option === 'Jordan' && !d.autre, '4b. Air Jordan MA2 : « Jordan » est dans la recherche → « Jordan » (jamais « Air Jordan », la voisine)', JSON.stringify(d));
   }
   {
@@ -157,7 +166,7 @@ ok(/\(marqueDevineeFausse \|\| marqueReelle\) \? fallbackValues\.filter\(\(v\) =
   }
   {
     const d = D({ notre: 'Fourrures D.S Paris', prefilled: 'Vintage Dressing', prefilledCite: false, vuesNotre: [], vuesAutre: [] });
-    ok(d.geste === 'garder' && d.muette && !d.horsListe, '4e. recherche MUETTE (rien relu, ni pour la marque ni pour « Autre ») : jamais « hors liste », le pré-rempli reste', JSON.stringify(d));
+    ok(d.geste === 'vider' && d.retirerPrerempli && d.muette && !d.horsListe, '4e. recherche MUETTE, pré-rempli que l\'article ne nomme pas (marque devinée, règle P8) : retiré, jamais « hors liste »', JSON.stringify(d));
     const c = D({ notre: 'Jordan', prefilled: 'Nike', prefilledCite: true, vuesNotre: [] });
     ok(c.geste === 'garder' && c.muette && !c.horsListe, '4f. muette, pré-rempli nommé : « Autre » n\'est jamais tenté, rien n\'est conclu');
   }
@@ -176,9 +185,14 @@ ok(/\(marqueDevineeFausse \|\| marqueReelle\) \? fallbackValues\.filter\(\(v\) =
 
   console.log('\n5. (29/10) LES GESTES, JOUÉS SUR UN CHAMP À RECHERCHE (menu vide tant qu\'on ne tape pas)');
   {
-    const j = await jouer({ article: JORDAN, prefilled: 'Nike', notre: 'Jordan' });
+    const j = await jouer({ article: JORDAN_SANS_NIKE, prefilled: 'Nike', notre: 'Jordan' });
     ok(j.r === true && j.valeur === 'Jordan' && j.clics.join() === 'Jordan' && j.horsListe === null && /remplacé par « Jordan », trouvé par recherche/.test(j.note),
-      '5a. 3295940657 Air Jordan MA2 : « Nike » pré-rempli → « Jordan » tapé et posé', JSON.stringify(j));
+      '5a. Air Jordan MA2 dont l\'article ne nomme pas « Nike » : « Nike » pré-rempli → « Jordan » tapé et posé', JSON.stringify(j));
+  }
+  {
+    const j = await jouer({ article: JORDAN, prefilled: 'Nike', notre: 'Jordan', blurRemet: false });
+    ok(j.r === true && j.valeur === 'Nike' && j.champ === 'Nike' && j.clics.length === 0 && /CONSERVÉ — l'article nomme « Nike » : il n'est jamais effacé par une recherche/.test(j.note),
+      '5a2. 3295940657 (l\'article dit « Nike air Jordan ») : « Nike » reste, aucune frappe', JSON.stringify(j));
   }
   {
     const j = await jouer({ article: MANTEAU, prefilled: 'Vintage Dressing', notre: 'Fourrures D.S Paris' });
@@ -186,23 +200,29 @@ ok(/\(marqueDevineeFausse \|\| marqueReelle\) \? fallbackValues\.filter\(\(v\) =
       '5b. 3295898405 manteau : « Vintage Dressing » pré-rempli → « Autre », « Fourrures D.S Paris » dans la description', JSON.stringify(j));
   }
   {
-    const j = await jouer({ article: JORDAN, prefilled: 'Nike', notre: 'Jordan', recherche: (t) => chercheLbc(t).filter((b) => b !== 'Jordan') });
+    const j = await jouer({ article: JORDAN_SANS_NIKE, prefilled: 'Nike', notre: 'Jordan', recherche: (t) => chercheLbc(t).filter((b) => b !== 'Jordan' && b !== 'Autre') });
     ok(j.r === true && j.valeur === 'Nike' && j.champ === 'Nike' && /CONSERVÉ — « Jordan » hors liste \(propositions vues: \["Air Jordan"\]\)/.test(j.note),
-      '5c. « Jordan » absente de la recherche, l\'article nomme « Nike » : « Nike » reste (« hors liste » après une recherche qui a répondu)', JSON.stringify(j));
+      '5c. la recherche a RÉPONDU sans « Jordan » ni « Autre » : le pré-rempli reste (« hors liste » après une recherche relue)', JSON.stringify(j));
   }
   {
-    const j = await jouer({ article: MANTEAU, prefilled: 'Vintage Dressing', notre: 'Fourrures D.S Paris', recherche: () => [] });
-    ok(j.r === true && j.valeur === 'Vintage Dressing' && j.champ === 'Vintage Dressing' && /CONSERVÉ — recherche muette/.test(j.note) && !/hors liste/.test(j.note),
-      '5d. recherche muette : le pré-rempli reste, « hors liste » n\'est jamais écrit, l\'état du menu est dit', JSON.stringify(j));
+    const j = await jouer({ article: MANTEAU, prefilled: 'Vintage Dressing', notre: 'Fourrures D.S Paris', recherche: () => [], blurRemet: false });
+    ok(j.r === false && j.champ === '' && j.nonReconnue === 'Fourrures D.S Paris' && /retiré — recherche muette — l'article ne nomme pas « Vintage Dressing »/.test(j.note) && /onglet /.test(j.note) && !/hors liste/.test(j.note),
+      '5d. recherche muette, « Vintage Dressing » que l\'article ne nomme pas : retiré (champ vide), jamais « hors liste », l\'état du menu et de l\'onglet est dit', JSON.stringify(j));
   }
   {
-    const j = await jouer({ article: JORDAN, prefilled: 'Nike', notre: 'Jordan', recherche: (t) => chercheLbc(t).filter((b) => b !== 'Jordan'), blurRemet: false });
+    const j = await jouer({ article: JORDAN_SANS_NIKE, prefilled: 'Nike', notre: 'Jordan', recherche: (t) => chercheLbc(t).filter((b) => b !== 'Jordan' && b !== 'Autre'), blurRemet: false });
     ok(j.r === true && j.valeur === 'Nike' && j.clics.join() === 'Nike', '5e. la frappe a effacé le pré-rempli (le champ ne le remet pas) : il est retapé et choisi à l\'identique', JSON.stringify(j));
   }
   {
-    const j = await jouer({ article: JORDAN, prefilled: 'Nike', notre: 'Jordan', recherche: () => [], blurRemet: false });
-    ok(j.r === false && j.champ === '' && j.nonReconnue === 'Jordan' && /champ laissé vide/.test(j.note),
+    const j = await jouer({ article: JORDAN_SANS_NIKE, prefilled: 'Nike', notre: 'Jordan', recherche: () => ['Air Jordan'], blurRemet: false });
+    ok(j.r === false && j.champ === '' && j.nonReconnue === 'Jordan' && /effacé par la recherche et introuvable à la relecture — champ laissé vide/.test(j.note),
       '5f. pré-rempli effacé et introuvable : champ vidé et dit (jamais un texte tapé laissé dans le champ)', JSON.stringify(j));
+  }
+  {
+    // L'essai réel du 29/10 20:26 (3297848873, compte de Nico, 0.6.156) : recherche muette, le champ ne remet rien.
+    const j = await jouer({ article: { titre: 'TEST FillSell 999 ne pas acheter - sweat Nike Jordan taille M', description: 'Annonce de test FillSell.' }, prefilled: 'Nike', notre: 'Jordan', recherche: () => [], blurRemet: false });
+    ok(j.r === true && j.valeur === 'Nike' && j.champ === 'Nike' && j.clics.length === 0 && j.nonReconnue === undefined,
+      '5g. essai du 29/10 (titre « sweat Nike Jordan ») : « Nike » reste — jamais l\'annonce sans marque', JSON.stringify(j));
   }
 
   console.log('\n6. (29/10) LE BRANCHEMENT DANS fillCriterionSafe');

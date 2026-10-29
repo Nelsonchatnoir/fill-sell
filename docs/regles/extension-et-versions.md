@@ -126,7 +126,7 @@
   poll suivant, donc toujours « attendu ». Règle (`decisionPollImmediat`, background.js) : un poll immédiat seulement pour
   une raison NEUVE, jamais deux fois de suite la même, plancher 20 s ; un geste (Synchroniser) reste servi en 1,5 s ; la
   maintenance ne cède jamais deux cycles de suite. Selftest `repoll-borne` (182 → 7 polls en 10 min). Les postes 0.6.146
-  → 0.6.155 gardent la boucle jusqu'à la 0.6.156 (Chrome Web Store) ou un redémarrage de Chrome.
+  → 0.6.155 gardent la boucle jusqu'à la 0.6.157 (Chrome Web Store ; la 0.6.156, jamais téléversée, est remplacée) ou un redémarrage de Chrome.
 - **Mise à jour refusée sans fin** (4.11, cas 2189c4d8) : une republication à l'étape 'deleted' RETENUE par le serveur
   (dressing relu attendu) ne compte plus comme « recréation en jeu » : get-pending-jobs rend `retenues_deleted`, valable
   10 min. Un report de mise à jour se trace (usage_logs `maj_extension_reportee`, une par heure et par poste).
