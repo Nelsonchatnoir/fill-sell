@@ -24,3 +24,22 @@
   compte d'Ornella (715 ventes, 894 fiches, 920 jobs). Selftest : `npm run selftest:tableau-stats`.
 - **Affichage desktop** (`src/ecrans/bureau/`, `hooks/useBureau`) : web à partir de 1 024 px seulement ; app native et
   petits écrans gardent l'écran mobile. Écran de démarrage (compte vide) et bandeaux du haut du Tableau inchangés.
+
+## 29/10 — Téléphone : mêmes chiffres, pensés pour le pouce (rapport `docs/enquetes/refonte-tableau-telephone-2910/RAPPORT.md`)
+- **Site mobile ET app iOS / Android** (tout ce qui n'est pas « ordinateur » au sens de `hooks/useBureau`) :
+  `src/ecrans/telephone/` (TableauTelephone, StatsTelephone, FeuilleDetail). Maquette « écran 1 » validée par Nico le
+  29/10 : la carte « Profit net · depuis le début » du 16/10, « Ce mois », Bénéfices / Marge par mois (7j-1M-6M-1A-YTD)
+  et « Activité récente » sont REMPLACÉS par la période nommée en haut (Octobre · 30 jours · 12 mois · Depuis le début),
+  le bloc profit de la période, 8 tuiles, la courbe cumulée et les blocs de l'ordinateur. Les Stats du téléphone
+  passent aux 4 périodes de l'ordinateur (1M/3M/6M/1A disparaissent) ; « Meilleures ventes » est gardé
+  (`tableauStats.meilleuresVentes`).
+- **Le détail est UN contenu** (`ecrans/bureau/detail.jsx` → `contenuDetail`) : panneau latéral sur ordinateur, feuille
+  qui monte du bas sur téléphone. La feuille suit la règle des couches (`utils/modale.js`) : portail sur body,
+  `useFondFige`, `useEchap`, `useRetourAndroid` (retour = détail d'avant, puis fermeture), et ne se monte QUE ouverte
+  (sinon le retour Android serait intercepté sur tout le Tableau). Fermeture : glisser vers le bas (poignée, en-tête,
+  contenu déjà en haut), ✕ de 44 px, toucher dehors.
+- **Graphes au doigt** : `bandeau` (Graphes.jsx) — la valeur touchée s'écrit AU-DESSUS du tracé, `touch-action: pan-y`
+  garde le défilement vertical. Tuiles ≥ 104 px, lignes ≥ 60 px, pastilles ≥ 50 px, retour haptique léger à
+  l'ouverture (natif seulement, `toucherLeger`).
+- Inchangés : l'écran de démarrage d'un compte vide, les bandeaux du haut, les encarts de quota, l'ordinateur
+  (même rendu, le contenu du panneau n'a été que déplacé), le découpage des paliers (Stats ouvertes à tous).

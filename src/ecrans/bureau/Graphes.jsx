@@ -3,6 +3,9 @@
 // libellés d'axe à 11,5 px quelle que soit la largeur (le défaut de l'ancien
 // écran : « ept. Oct. » énormes et tronqués). Survol : crosshair + infobulle sur
 // les courbes, infobulle par colonne sur les barres ; même détail au clavier.
+// (29/10) Téléphone : `bandeau` — on lit au doigt (toucher ou glisser) et la valeur
+// s'affiche dans un bandeau AU-DESSUS du graphe, que le pouce ne cache pas ;
+// le défilement vertical de la page reste libre (touch-action: pan-y).
 import { useState } from 'react';
 import { useTaille } from './outils';
 
@@ -38,18 +41,34 @@ function Bulle({ contenu, x, largeurBoite }) {
   );
 }
 
+/** Bandeau de lecture (téléphone) : la valeur touchée, au-dessus du graphe. */
+function Lecture({ contenu, indication }) {
+  return (
+    <div className="fsb-lecture" aria-live="polite">
+      {contenu ? (
+        <>
+          {contenu.titre && <span className="fsb-lt">{contenu.titre}</span>}
+          <span className="fsb-lsep" />
+          {contenu.lignes.map((l, i) => <span key={i} className="fsb-lv">{l.couleur && <i className={l.boite ? 'fsb-box' : ''} style={{ background: l.couleur }} />}<b>{l.valeur}</b></span>)}
+          {contenu.note && <span className="fsb-ln">{contenu.note}</span>}
+        </>
+      ) : <span className="fsb-ln">{indication}</span>}
+    </div>
+  );
+}
+
 /**
  * Courbes (cumuls jour par jour). n points sur l'axe ; séries : { vals (null =
  * pas encore passé), couleur, voile, epaisseur, fin (étiquette du dernier point) }.
  */
-export function Courbes({ n, series, fy, xTicks, bulle, aria, hauteurMin = 290, vide = null }) {
+export function Courbes({ n, series, fy, xTicks, bulle, aria, hauteurMin = 290, vide = null, bandeau = false, indication = '', padGauche = 56, padDroite = 86 }) {
   const [ref, { w, h: hBoite }] = useTaille();
   const [survol, setSurvol] = useState(null);
   const H = Math.max(hauteurMin, hBoite || 0);
-  const padL = 56, padR = 86, padT = 10, padB = 26;
+  const padL = padGauche, padR = padDroite, padT = 10, padB = 26;
   const iw = Math.max(10, w - padL - padR), ih = H - padT - padB;
   const tous = series.flatMap((s) => s.vals.filter((v) => v != null));
-  const max = maxRond(Math.max(...tous, 0) * 1.04, 4);
+  const max = maxRond(Math.max(...tous, 0) * 1.04, bandeau ? 3 : 4);
   const X = (i) => padL + (n <= 1 ? 0 : (i * iw) / (n - 1));
   const Y = (v) => padT + ih - (v / max) * ih;
   const pointer = (e) => {
@@ -57,15 +76,18 @@ export function Courbes({ n, series, fy, xTicks, bulle, aria, hauteurMin = 290, 
     const i = Math.max(0, Math.min(n - 1, Math.round(((e.clientX - r.left) - (padL - 6)) / (iw / Math.max(1, n - 1)))));
     setSurvol(i);
   };
+  // Téléphone : sans toucher, le bandeau montre le dernier jour connu (aujourd'hui).
+  const dernier = (() => { const v = series[series.length - 1]?.vals ?? []; for (let i = v.length - 1; i >= 0; i -= 1) if (v[i] != null) return i; return null; })();
+  const lu = survol ?? (bandeau ? dernier : null);
   const clavier = (e) => {
     if (e.key === 'ArrowRight') { e.preventDefault(); setSurvol((i) => Math.min(n - 1, (i ?? -1) + 1)); }
     else if (e.key === 'ArrowLeft') { e.preventDefault(); setSurvol((i) => Math.max(0, (i ?? n) - 1)); }
   };
-  return (
-    <div ref={ref} className="fsb-chart" style={{ minHeight: hauteurMin }}>
+  const graphe = (
+    <div ref={ref} className={`fsb-chart${bandeau ? ' fsb-tactile' : ''}`} style={{ minHeight: hauteurMin }}>
       {w > 0 && (
         <svg width={w} height={H} role="img" aria-label={aria}>
-          {libellees(max, 4, fy, !(Math.max(...tous, 0) > 0)).map(({ t, l }) => (
+          {libellees(max, bandeau ? 3 : 4, fy, !(Math.max(...tous, 0) > 0)).map(({ t, l }) => (
             <g key={t}><line x1={padL} x2={w - padR + 8} y1={Y(t)} y2={Y(t)} stroke="var(--fsb-line)" /><text x={padL - 10} y={Y(t) + 4} textAnchor="end">{l}</text></g>
           ))}
           {xTicks.map((k) => <text key={k.i} x={X(k.i)} y={H - 6} textAnchor="middle" className={k.fort ? 'fsb-fort' : undefined}>{k.l}</text>)}
@@ -82,27 +104,32 @@ export function Courbes({ n, series, fy, xTicks, bulle, aria, hauteurMin = 290, 
               </g>
             );
           })}
-          {survol != null && (
+          {lu != null && (
             <g aria-hidden="true">
-              <line x1={X(survol)} x2={X(survol)} y1={padT} y2={padT + ih} stroke="var(--fsb-ink)" strokeOpacity=".35" />
-              {series.map((s, si) => (s.vals[survol] == null ? null : <circle key={si} cx={X(survol)} cy={Y(s.vals[survol])} r="4.5" fill={s.couleur} stroke="var(--fsb-paper)" strokeWidth="2" />))}
+              <line x1={X(lu)} x2={X(lu)} y1={padT} y2={padT + ih} stroke="var(--fsb-ink)" strokeOpacity=".35" />
+              {series.map((s, si) => (s.vals[lu] == null ? null : <circle key={si} cx={X(lu)} cy={Y(s.vals[lu])} r="4.5" fill={s.couleur} stroke="var(--fsb-paper)" strokeWidth="2" />))}
             </g>
           )}
-          <rect x={padL - 6} y="0" width={iw + 12} height={H} fill="transparent" tabIndex={0}
-            aria-label={aria} onPointerMove={pointer} onPointerLeave={() => setSurvol(null)} onFocus={() => setSurvol((i) => i ?? n - 1)} onBlur={() => setSurvol(null)} onKeyDown={clavier} />
+          {bandeau
+            ? <rect x={padL - 6} y="0" width={iw + 12} height={H} fill="transparent" tabIndex={0} aria-label={aria}
+                onPointerDown={pointer} onPointerMove={(e) => { if (e.pointerType === 'mouse' || e.buttons) pointer(e); }} onFocus={() => setSurvol((i) => i ?? dernier)} onKeyDown={clavier} />
+            : <rect x={padL - 6} y="0" width={iw + 12} height={H} fill="transparent" tabIndex={0}
+                aria-label={aria} onPointerMove={pointer} onPointerLeave={() => setSurvol(null)} onFocus={() => setSurvol((i) => i ?? n - 1)} onBlur={() => setSurvol(null)} onKeyDown={clavier} />}
         </svg>
       )}
       {vide && <div className="fsb-chart-vide">{vide}</div>}
-      {survol != null && w > 0 && <Bulle contenu={bulle(survol)} x={X(survol)} largeurBoite={w} />}
+      {!bandeau && survol != null && w > 0 && <Bulle contenu={bulle(survol)} x={X(survol)} largeurBoite={w} />}
     </div>
   );
+  if (!bandeau) return graphe;
+  return <div className="fsb-tactile-bloc"><Lecture contenu={lu != null ? bulle(lu) : null} indication={indication} />{graphe}</div>;
 }
 
 /**
  * Colonnes, une ou deux séries côte à côte. couleur : chaîne ou (i) => chaîne.
  * labels '' = graduation masquée (la colonne reste). fy null = pas d'axe Y.
  */
-export function Colonnes({ labels, series, fy = null, vlab = null, bulle, aria, hauteur = 150, hauteurMin = null, epaisseurMax = 24, fort = null, graduationsY = 3, padL: padLProp = null }) {
+export function Colonnes({ labels, series, fy = null, vlab = null, bulle, aria, hauteur = 150, hauteurMin = null, epaisseurMax = 24, fort = null, graduationsY = 3, padL: padLProp = null, bandeau = false, indication = '' }) {
   const [ref, { w, h: hBoite }] = useTaille();
   const [survol, setSurvol] = useState(null);
   const H = hauteurMin ? Math.max(hauteurMin, hBoite || 0) : hauteur;
@@ -113,8 +140,10 @@ export function Colonnes({ labels, series, fy = null, vlab = null, bulle, aria, 
   const Y = (v) => padT + ih - (v / max) * ih;
   const k = series.length;
   const bw = Math.max(2, Math.min(epaisseurMax, (bande * 0.72 - (k - 1) * 2) / k));
-  return (
-    <div ref={ref} className="fsb-chart" style={{ height: hauteurMin ? undefined : hauteur, minHeight: hauteurMin ?? undefined }}>
+  // Téléphone : une seule zone tactile sur tout le tracé (glisser d'une barre à l'autre).
+  const toucher = (e) => { const r = e.currentTarget.getBoundingClientRect(); setSurvol(Math.max(0, Math.min(n - 1, Math.floor((e.clientX - r.left) / bande)))); };
+  const graphe = (
+    <div ref={ref} className={`fsb-chart${bandeau ? ' fsb-tactile' : ''}`} style={{ height: hauteurMin ? undefined : hauteur, minHeight: hauteurMin ?? undefined }}>
       {w > 0 && (
         <svg width={w} height={H} role="img" aria-label={aria}>
           {fy ? libellees(max, graduationsY, fy, !(Math.max(...tous, 0) > 0)).map(({ t, l }) => (
@@ -138,16 +167,20 @@ export function Colonnes({ labels, series, fy = null, vlab = null, bulle, aria, 
                   );
                 })}
                 {lab && <text x={cx} y={H - 6} textAnchor="middle" className={fort && fort(i) ? 'fsb-fort' : undefined}>{lab}</text>}
-                <rect x={padL + bande * i} y={padT} width={bande} height={ih} fill="transparent" tabIndex={-1}
-                  onPointerEnter={() => setSurvol(i)} onPointerLeave={() => setSurvol(null)} />
+                {!bandeau && <rect x={padL + bande * i} y={padT} width={bande} height={ih} fill="transparent" tabIndex={-1}
+                  onPointerEnter={() => setSurvol(i)} onPointerLeave={() => setSurvol(null)} />}
               </g>
             );
           })}
+          {bandeau && <rect x={padL} y={0} width={iw} height={H} fill="transparent" aria-hidden="true"
+            onPointerDown={toucher} onPointerMove={(e) => { if (e.pointerType === 'mouse' || e.buttons) toucher(e); }} />}
         </svg>
       )}
-      {survol != null && w > 0 && <Bulle contenu={bulle(survol)} x={padL + bande * survol + bande / 2} largeurBoite={w} />}
+      {!bandeau && survol != null && w > 0 && <Bulle contenu={bulle(survol)} x={padL + bande * survol + bande / 2} largeurBoite={w} />}
     </div>
   );
+  if (!bandeau) return graphe;
+  return <div className="fsb-tactile-bloc"><Lecture contenu={survol != null ? bulle(survol) : null} indication={indication} />{graphe}</div>;
 }
 
 /** Mini-courbe du bloc profit (fond encre) : cumul de la période, et celle d'avant en filigrane. */

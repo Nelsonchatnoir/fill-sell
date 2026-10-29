@@ -356,3 +356,14 @@ export function ecart(cur, prev, kind = 'pct') {
   const r = ((cur - prev) / prev) * 100;
   return { valeur: r, sens: Math.abs(r) < 0.5 ? 0 : Math.sign(r), kind: 'pct' };
 }
+
+/**
+ * Les meilleures ventes d'une période (bloc « Meilleures ventes » du téléphone, gardé le 29/10) :
+ * bénéfice en euros, sur les ventes au prix d'achat CONNU (0 € compris : un vrai bénéfice) ;
+ * le % seulement au prix d'achat > 0 (ventesStats.margePctVente).
+ */
+export function meilleuresVentes(ctx, cle, n = 3) {
+  const vs = ventesDe(ctx.ventes, periode(cle, ctx.auj)).filter((s) => prixAchatConnu(s) && Number.isFinite(Number(s.margin ?? s.benefice)));
+  return vs.sort((a, b) => Number(b.margin ?? b.benefice) - Number(a.margin ?? a.benefice) || comparerVentesRecentesDabord(a, b)).slice(0, n)
+    .map((s) => ({ ...venteCourte(ctx, s), marque: marqueDe(s).libelle, achat: prixAchatNum(s) }));
+}

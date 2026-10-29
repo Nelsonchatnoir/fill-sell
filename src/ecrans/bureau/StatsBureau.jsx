@@ -11,8 +11,8 @@ import { useMemo, useState } from 'react';
 import './bureau.css';
 import { blocPeriode, comparable, etatStock, evolutionMensuelle, nbHeuresReelles, nbSansDate, PERIODES_BUREAU, periode } from '../../utils/tableauStats';
 import { Colonnes } from './Graphes';
-import PanneauDetail, { BarresAges, Repartition } from './PanneauDetail';
-import { Logo, Puce, Tuile, ChoixPeriode, Barres, IcoInfo, IcoEtincelle } from './pieces';
+import PanneauDetail from './PanneauDetail';
+import { Logo, Puce, Tuile, ChoixPeriode, Barres, IcoInfo, IcoEtincelle, BarresAges, Repartition } from './pieces';
 import { formats, libellesPeriode, jourCourt, moisAnnee, nomMois, nomPlateforme } from './outils';
 
 const JOURS = { fr: ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'], en: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] };

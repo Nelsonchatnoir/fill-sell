@@ -10,8 +10,8 @@ import { useMemo, useState } from 'react';
 import './bureau.css';
 import { blocPeriode, comparable, etatStock, PERIODES_BUREAU, periode } from '../../utils/tableauStats';
 import { Courbes, Colonnes, TraceHeros } from './Graphes';
-import PanneauDetail, { LigneVente, LigneArticle, BarresAges } from './PanneauDetail';
-import { Logo, Puce, PuceEtat, Tuile, ChoixPeriode, IcoOuvrir, IcoChevron } from './pieces';
+import PanneauDetail from './PanneauDetail';
+import { Logo, Puce, PuceEtat, Tuile, ChoixPeriode, IcoOuvrir, IcoChevron, LigneVente, LigneArticle, BarresAges } from './pieces';
 import { formats, libellesPeriode, jourLong, jourMoyen, jourCourt, nomPlateforme } from './outils';
 
 const CLE_PERIODE = 'fs_tableau_periode';

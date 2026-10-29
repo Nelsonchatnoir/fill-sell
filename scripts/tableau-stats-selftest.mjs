@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import {
   periode, ventesDe, ajouteMois, ajouteJours, ecartJours, jourParis, creerContexte, delaiVente, prixAffiche,
   indicateurs, blocPeriode, etatStock, evolutionMensuelle, comparable, ecart, marqueDe, categorieDe, nbSansDate,
-  nbHeuresReelles, SEUIL_COMPARAISON,
+  nbHeuresReelles, SEUIL_COMPARAISON, meilleuresVentes,
 } from '../src/utils/tableauStats.js';
 
 let n = 0;
@@ -148,5 +148,11 @@ eq(etatStock(creerContexte({ items, aujourdhui: AUJ })).lu, false, 'jobs pas enc
 eq(evolutionMensuelle(ctx).map((m) => [m.mois, m.nb]), [['2026-09', 7], ['2026-10', 4]], 'mois par mois depuis le premier mois daté');
 eq(nbHeuresReelles([{ vendu_le: '2026-10-02T10:00:00Z' }, { vendu_le: '2026-10-02T11:00:00Z', source: 'manuel' }, { vendu_le: '2026-10-02T09:00:00Z', source: 'releve' }]), 1,
   'heure réelle : ni midi de remplissage, ni heure de relevé');
+
+// ── meilleures ventes (téléphone) ──────────────────────────────────────────
+const mv = meilleuresVentes(ctx, 'mois', 3);
+eq(mv.map((v) => v.id), [2, 4, 1], 'meilleures ventes : bénéfice en euros (gratuit compris), prix d’achat connu seulement');
+eq([mv[0].gratuit, mv[0].pct], [true, null], 'gratuit : bénéfice, jamais de %');
+eq(mv[2].achat, 2, 'prix d’achat rendu');
 
 console.log(`tableau-stats : ${n} assertions OK`);

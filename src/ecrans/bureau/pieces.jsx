@@ -1,7 +1,8 @@
-// Pièces communes du Tableau et des Statistiques sur ordinateur (28/10) :
-// formats, libellés de période, tuiles, puces d'écart, logos, icônes.
+// Pièces communes du Tableau et des Statistiques (ordinateur 28/10, téléphone 29/10) :
+// tuiles, puces d'écart, logos, icônes, lignes de vente et d'article.
 import PlatformLogo from '../../components/platform-logos/PlatformLogo';
 import { ecart } from '../../utils/tableauStats';
+import { nomPlateforme, jourCourt } from './outils';
 
 // ── Icônes (traits) ─────────────────────────────────────────────────────────
 function Trait({ t = 14, w = 2.2, children }) {
@@ -77,4 +78,65 @@ export function Barres({ lignes }) {
       ))}
     </div>
   );
+}
+
+// ── Lignes et blocs partagés par le panneau (ordinateur) et la feuille (téléphone) ──
+/** Petite tuile non cliquable du détail. */
+export function MiniTuile({ lab, val, puce, cmp, sub }) {
+  return (
+    <div className="fsb-tile fsb-fixe">
+      <span className="fsb-lab">{lab}</span>
+      <span className="fsb-val">{val}</span>
+      {(puce || cmp) && <span className="fsb-row">{puce}{cmp && <span className="fsb-cmpt">{cmp}</span>}</span>}
+      {sub && <span className="fsb-sub">{sub}</span>}
+    </div>
+  );
+}
+
+/** Une ligne d'article (stock) : âge, titre, plateformes, prix. */
+export function LigneArticle({ a, f, neutre = false, montant = null }) {
+  return (
+    <div className="fsb-li">
+      <span className={`fsb-age${neutre ? ' fsb-neutre' : ''}`}>{montant ?? (a.age != null ? f.jours(a.age) : '—')}</span>
+      <span style={{ minWidth: 0 }}>
+        <span className="fsb-t" title={a.titre}>{a.titre}</span>
+        <span className="fsb-m">{a.plateformes.length ? a.plateformes.map((p) => nomPlateforme(p, f)).join(' · ') : f.L('en ligne nulle part', 'not online anywhere')}{a.importe ? f.L(' · importé', ' · imported') : ''}</span>
+      </span>
+      <span className="fsb-v">{a.prixAffiche ? f.eur(a.prixAffiche) : '—'}<small className="fsb-z">{a.prixAchat == null ? f.L('achat ?', 'cost ?') : a.prixAchat === 0 ? f.L('acheté 0 €', 'free') : `${f.L('acheté', 'cost')} ${f.eur(a.prixAchat)}`}</small></span>
+    </div>
+  );
+}
+
+/** Une ligne de vente : plateforme, titre, date, délai, prix, profit. */
+export function LigneVente({ v, f, lang }) {
+  return (
+    <div className="fsb-li">
+      <Logo code={v.plateforme ?? 'sans'} taille={28} />
+      <span style={{ minWidth: 0 }}>
+        <span className="fsb-t" title={v.titre}>{v.titre}</span>
+        <span className="fsb-m">{v.jour ? jourCourt(v.jour, lang) : f.L('date inconnue', 'unknown date')}{v.delai != null ? f.L(` · vendu en ${f.jours(v.delai)}`, ` · sold in ${f.jours(v.delai)}`) : ''}</span>
+      </span>
+      <span className="fsb-v">{f.eur(v.prix)}{v.benefice != null
+        ? <small className={v.gratuit ? 'fsb-z' : ''}>{v.gratuit ? f.L('acheté 0 €', 'free item') : `${v.benefice >= 0 ? '+' : ''}${f.eur(v.benefice)}`}</small>
+        : <small className="fsb-z">{f.L('prix d’achat ?', 'cost ?')}</small>}</span>
+    </div>
+  );
+}
+
+const COUL_DIST = ['var(--fsb-teal-deep)', 'var(--fsb-teal)', 'var(--fsb-teal-soft)', 'var(--fsb-amber-soft)', 'var(--fsb-amber)'];
+/** Répartition des délais : barre empilée + légende chiffrée (jamais la couleur seule). */
+export function Repartition({ d, f }) {
+  const lib = [f.L('le jour même', 'same day'), f.L('1 à 2 j', '1–2 d'), f.L('3 à 7 j', '3–7 d'), f.L('8 à 30 j', '8–30 d'), f.L('plus de 30 j', '30+ d')];
+  return (
+    <>
+      <div className="fsb-dist" aria-hidden="true">{d.map((x, i) => <i key={i} style={{ flex: x.n || 0.0001, background: COUL_DIST[i] }} />)}</div>
+      <div className="fsb-lg">{d.map((x, i) => <div key={i}><i style={{ background: COUL_DIST[i] }} />{lib[i]}<b>{x.n}</b></div>)}</div>
+    </>
+  );
+}
+
+/** Ancienneté du stock (barres) — tranches 0–29, 30–59, 60–89, 90+ jours. */
+export function BarresAges({ stock, f }) {
+  const lib = (a) => (a.a === Infinity || a.a == null ? f.L(`${a.de} j et plus`, `${a.de}+ d`) : a.de === 0 ? f.L('moins de 30 j', 'under 30 d') : f.L(`${a.de} à ${a.a} j`, `${a.de}–${a.a} d`));
+  return <Barres lignes={stock.ages.map((a, i) => ({ cle: a.de, libelle: lib(a), valeur: a.nb, texte: f.num(a.nb), detail: a.investi ? f.eur0(a.investi) : '—', discret: i === 0, couleur: i >= 2 ? 'var(--fsb-amber)' : i === 1 ? 'var(--fsb-teal)' : null }))} />;
 }

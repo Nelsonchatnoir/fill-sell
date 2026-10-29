@@ -253,3 +253,14 @@
    l'app garde .wrap à 1 280 px. Attribut posé par App.jsx sur le web seulement (la classe
    de la page, elle, reste celle qu'épingle selftest:messagerie-app). */
 @media (min-width:1024px){ .wrap[data-bureau-large]{max-width:1680px} }
+
+/* (29/10) Graphes lus au doigt (téléphone) : bandeau de lecture au-dessus du tracé. */
+.fsb-tactile{touch-action:pan-y;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+.fsb-lecture{min-height:44px;display:flex;align-items:center;gap:6px 10px;flex-wrap:wrap;background:var(--fsb-sheet);border:1px solid var(--fsb-line);border-radius:10px;padding:6px 10px;margin-bottom:8px;font-size:12px;color:var(--fsb-ink2)}
+.fsb-lecture .fsb-lt{font-weight:600;color:var(--fsb-ink);white-space:nowrap}
+.fsb-lecture .fsb-lsep{flex:1}
+.fsb-lecture .fsb-lv{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.fsb-lecture .fsb-lv i{width:12px;height:2px;border-radius:2px;display:inline-block}
+.fsb-lecture .fsb-lv i.fsb-box{width:10px;height:10px}
+.fsb-lecture b{font-size:14px;color:var(--fsb-ink);font-variant-numeric:tabular-nums}
+.fsb-lecture .fsb-ln{color:var(--fsb-mute);white-space:nowrap}
