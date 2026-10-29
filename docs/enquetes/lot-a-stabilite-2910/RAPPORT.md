@@ -77,8 +77,8 @@ intégrés, testés et livrés depuis le terminal principal. Livraison : voir la
   7 jours, 45 recréées sans intervention ; PC éteint : alerte quand même).
 - **Racine** : battement `rpc/battement_extension` (extension 0.6.153, toutes les 5 min pendant un flux, borné) ;
   handler-watch ne reprend jamais un job sur lequel un poste bat ; l'alerte ne part pas pour un poste éteint, revenu
-  depuis < 30 min ou occupé ailleurs. **Migration `20261029150000_battement_extension` : feu vert de Nico requis** (sans
-  elle, le serveur est déjà juste : un poste muet = éteint, plus de fausse alerte).
+  depuis < 30 min ou occupé ailleurs. Migration `20261029150000_battement_extension` APPLIQUÉE (feu vert de Nico) ; les
+  battements arrivent avec la 0.6.153. **À vérifier au prochain check** : plus d'alerte orpheline pour un poste éteint.
 
 ## 6. Bordereaux : couper la récupération automatique
 - **a)** Vinted seulement, Pro/Business : étiquette « à obtenir » → FillSell la COMMANDE chez Vinted
@@ -87,8 +87,9 @@ intégrés, testés et livrés depuis le terminal principal. Livraison : voir la
   12:39), 2 générations (28/10 21:35, 29/10 09:41) — celles où il n'a plus vu le nom de l'acheteur.
 - **b)** Réglage « Bordereau automatique » (Réglages › Bordereaux), `platform_settings.bordereaux.auto` (absent = activé),
   toutes plateformes ; désactivé : rien n'est généré ni récupéré, le bouton « Bordereau » reste. Aucun bordereau effacé,
-  aucune donnée d'acheteur en plus. **Migration `20261029151000_bordereau_auto_par_compte` : feu vert de Nico requis.**
-- **c)** Désactivation chez thecloset72000 : script prêt (`platform_settings_fusionner`), joué après la migration.
+  aucune donnée d'acheteur en plus. Migration `20261029151000_bordereau_auto_par_compte` APPLIQUÉE (feu vert de Nico).
+- **c)** Coupé chez thecloset72000 à 14:55 (`platform_settings_fusionner`, effectif depuis la migration de 15:00 : relu
+  `bordereau_auto_actif` = false). **À vérifier au prochain check** : sa prochaine vente ne crée aucune demande automatique.
 
 ## 7. « À expédier » : commandes plus relues
 - **Cause** : le poste ne suivait que les 20 commandes en base changées le plus récemment (`maj_le` ne bouge que si la
@@ -177,7 +178,8 @@ intégrés, testés et livrés depuis le terminal principal. Livraison : voir la
   google-play-webhook v31, apple-iap-webhook v40, email-tunnel v74, envoi-ponctuel v5 (true) — verify_jwt inchangés.
 - **Réparations** (14:55, ce terminal) : `20261029_camille_calendrier_categorie_origine.sql`,
   `20261029_xewer_refus_beebs_revenu.sql`, `20261029_impaye_stripe_palier.sql`, `20261029_thecloset_bordereau_auto_coupe.sql`.
-- **En attente du feu vert nommé de Nico** : migrations `20261029150000_battement_extension` et
-  `20261029151000_bordereau_auto_par_compte` (essais annulés verts).
+- **Migrations APPLIQUÉES** (feu vert nommé de Nico « Feu vert les deux », ~14:59) : `20261029150000_battement_extension`
+  (14:59:59) et `20261029151000_bordereau_auto_par_compte` (15:00:03), `migration repair` fait, corps et droits relus ;
+  thecloset72000 : Bordereau automatique coupé (relu false), ses 6 bordereaux déjà récupérés gardés.
 - **Décisions de Nico** : traduction du navigateur dans l'app (point 10) ; bascule eBay (point 14 b) ; libellé du mail
   « paiement échoué » sans « reste actif » (point 11).
