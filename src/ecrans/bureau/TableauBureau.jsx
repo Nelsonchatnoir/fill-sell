@@ -13,12 +13,13 @@ import { Courbes, Colonnes, TraceHeros } from './Graphes';
 import { axeJours, axeMois } from './axe';
 import PanneauDetail from './PanneauDetail';
 import { Logo, Puce, PuceEtat, Tuile, ChoixPeriode, IcoOuvrir, IcoChevron, LigneVente, LigneArticle, BarresAges } from './pieces';
-import { formats, libellesPeriode, jourLong, jourMoyen, jourCourt, nomPlateforme } from './outils';
+import { formats, libellesPeriode, jourLong, jourMoyen, jourCourt, nomPlateforme, useSuiviSaisie } from './outils';
 
 const CLE_PERIODE = 'fs_tableau_periode';
 const lirePeriode = () => { try { const v = localStorage.getItem(CLE_PERIODE); return PERIODES_BUREAU.includes(v) ? v : 'mois'; } catch { return 'mois'; } };
 
 export default function TableauBureau({ ctx, lang, currency, username, setTab }) {
+  useSuiviSaisie();
   const f = useMemo(() => formats(lang, currency), [lang, currency]);
   const [cle, setCle] = useState(lirePeriode);
   const [mesure, setMesure] = useState('ca');
@@ -220,9 +221,11 @@ function ColonnesMois({ bloc, mesure, f, lang }) {
   const fy = mesure === 'nb' ? (v) => f.num(v) : f.eur0;
   const fv = mesure === 'nb' ? (v) => f.num(v) : f.eur;
   const lib = { ca: f.L('encaissé', 'collected'), profit: f.L('profit', 'profit'), nb: f.L('ventes', 'sales') }[mesure];
+  const nomP = libellesPeriode(bloc.periode, lang).nom;
+  const vide = <span><b>{bloc.ind.nb === 0 ? f.L(`Aucune vente · ${nomP}`, `No sale · ${nomP}`) : mesure === 'profit' && !bloc.ind.profitRetenues ? f.L('Profit non calculé : prix d’achat manquants', 'No profit: purchase prices missing') : f.L(`Rien à afficher · ${nomP}`, `Nothing to show · ${nomP}`)}</b></span>;
   const nomM = (k, court) => new Intl.DateTimeFormat(lang === 'en' ? 'en-GB' : 'fr-FR', { timeZone: 'UTC', month: court ? 'short' : 'long', ...(court ? {} : { year: 'numeric' }) }).format(new Date(`${k}-15T12:00:00Z`));
   return (
-    <ColonnesPleine axe={axeMois(pts.map((m) => m.mois), lang, { gras: (i) => i === pts.length - 1 })} fy={fy} aria={`${lib}, ${f.L('mois par mois', 'month by month')}`}
+    <ColonnesPleine axe={axeMois(pts.map((m) => m.mois), lang, { gras: (i) => i === pts.length - 1 })} fy={fy} vide={vide} aria={`${lib}, ${f.L('mois par mois', 'month by month')}`}
       series={[{ vals: pts.map((m) => (mesure === 'profit' && !m.profitRetenues ? null : m[key])), couleur: (i) => (i === pts.length - 1 ? 'var(--fsb-teal-soft)' : 'var(--fsb-teal)') }]}
       bulle={(i) => ({ titre: `${nomM(pts[i].mois, false)}${i === pts.length - 1 ? f.L(' (en cours)', ' (so far)') : ''}`, lignes: [{ couleur: 'var(--fsb-teal)', boite: true, libelle: lib, valeur: mesure === 'profit' && !pts[i].profitRetenues ? '—' : fv(pts[i][key]) }], note: f.L(`${pts[i].nb} ventes${pts[i].marge != null ? ` · marge ${f.pct(pts[i].marge)}` : ''}`, `${pts[i].nb} sales${pts[i].marge != null ? ` · margin ${f.pct(pts[i].marge)}` : ''}`) })} />
   );

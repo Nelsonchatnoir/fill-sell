@@ -59,3 +59,20 @@
 - Jamais de `labels` à trous calculés à la main (`i % 2 ? '' : …`) : c'est ce qui cassait à une autre largeur. Un
   nouveau graphe passe un `axe`. Selftest `npm run selftest:axe-graphes` (toutes largeurs 220 → 1 920 px × séries
   1 → 130 mois et 1 → 31 jours).
+
+## 29/10 — Toucher : jamais de cadre ; graphe vide : rien ne bouge (rapport `docs/enquetes/focus-graphes-vides-2910/RAPPORT.md`)
+- Capture iPhone de Nico (Tableau, « Encaissé cumulé · octobre », aucune vente) : un cadre bleu autour du graphe touché
+  (focus de la zone tactile SVG, dessiné par iOS), un curseur qui traverse « Aucune vente pour l'instant », un bandeau
+  « sam. 10 oct. · 0,00 € », le message qui déborde à gauche et « 1 oct. » collé à « 0 € ».
+- **Focus** (`bureau.css` + `utils/modaliteSaisie.js`) : dans tout `.fsb` (Tableau, Stats, feuille, panneau ; web et
+  app), AUCUN contour au toucher ni à la souris (`:focus{outline:none}`), même celui que le navigateur dessine seul.
+  Le repère n'existe qu'au clavier (`html[data-saisie="clavier"]`, posé par la dernière saisie) : contour
+  `--fsb-teal-deep` sur les boutons, trait sarcelle autour de la zone d'une courbe (les flèches déplacent le curseur).
+  Un nouvel écran racine appelle `useSuiviSaisie()` ; un nouveau style de focus passe par
+  `:where(:root:not([data-saisie="pointeur"]))`.
+- **Graphe vide** (`grapheVide` : que des zéros, ou `vide` fourni) : aucune zone tactile, aucun curseur, aucun bandeau
+  ni infobulle ; le message est posé sur la zone du tracé (entre les marges, jamais sur l'axe vertical) et s'y replie.
+  Les colonnes vides reçoivent un message (`vide`) : « Aucune vente · <période> », ou « Profit non calculé : prix
+  d'achat manquants » quand il y a des ventes sans prix d'achat.
+- **Coin bas-gauche** : aucun libellé de l'axe horizontal ne commence avant le tracé (`placerAxe({ gauche })`) —
+  jamais sous le « 0 € » de l'axe vertical.

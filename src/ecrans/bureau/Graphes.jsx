@@ -7,9 +7,14 @@
 // s'affiche dans un bandeau AU-DESSUS du graphe, que le pouce ne cache pas ;
 // le défilement vertical de la page reste libre (touch-action: pan-y).
 // (29/10) Axe horizontal : l'appelant décrit des jeux de libellés (axe.js), le graphe garde
-// le premier qui tient à sa largeur mesurée — jamais deux libellés qui se touchent.
+// le premier qui tient à sa largeur mesurée — jamais deux libellés qui se touchent, ni
+// sous le libellé « 0 » de l'axe vertical (rien à gauche du tracé).
+// (29/10) Graphe vide (rien que des zéros) : aucun curseur, aucun bandeau ni infobulle, le
+// message centré sur la zone du tracé, sans rien qui le traverse. Focus : jamais de cadre au
+// toucher (bureau.css, utils/modaliteSaisie.js) ; au clavier, la zone des courbes s'entoure d'un
+// trait à nos couleurs.
 import { useState } from 'react';
-import { useMesureTexte, useTaille } from './outils';
+import { grapheVide, useMesureTexte, useTaille } from './outils';
 import { placerAxe } from './axe';
 
 /** Haut d'axe tel que CHAQUE graduation tombe sur un nombre rond (250, 500… jamais 333 ou 667). */
@@ -74,17 +79,20 @@ export function Courbes({ n, series, fy, axe, bulle, aria, hauteurMin = 290, vid
   const padL = padGauche, padR = padDroite, padT = 10, padB = 26;
   const iw = Math.max(10, w - padL - padR), ih = H - padT - padB;
   const tous = series.flatMap((s) => s.vals.filter((v) => v != null));
+  const estVide = Boolean(vide) || grapheVide(series);
   const max = maxRond(Math.max(...tous, 0) * 1.04, bandeau ? 3 : 4);
   const X = (i) => padL + (n <= 1 ? 0 : (i * iw) / (n - 1));
   const Y = (v) => padT + ih - (v / max) * ih;
+  // Le jour lu est celui SOUS le doigt / la souris (29/10 : la marge gauche était retirée deux fois,
+  // le curseur tombait ~40 px à gauche du doigt).
   const pointer = (e) => {
-    const r = e.currentTarget.getBoundingClientRect();
-    const i = Math.max(0, Math.min(n - 1, Math.round(((e.clientX - r.left) - (padL - 6)) / (iw / Math.max(1, n - 1)))));
+    const r = e.currentTarget.ownerSVGElement.getBoundingClientRect();
+    const i = Math.max(0, Math.min(n - 1, Math.round((e.clientX - r.left - padL) / (iw / Math.max(1, n - 1)))));
     setSurvol(i);
   };
   // Téléphone : sans toucher, le bandeau montre le dernier jour connu (aujourd'hui).
   const dernier = (() => { const v = series[series.length - 1]?.vals ?? []; for (let i = v.length - 1; i >= 0; i -= 1) if (v[i] != null) return i; return null; })();
-  const lu = survol ?? (bandeau ? dernier : null);
+  const lu = estVide ? null : survol ?? (bandeau ? dernier : null);
   const clavier = (e) => {
     if (e.key === 'ArrowRight') { e.preventDefault(); setSurvol((i) => Math.min(n - 1, (i ?? -1) + 1)); }
     else if (e.key === 'ArrowLeft') { e.preventDefault(); setSurvol((i) => Math.max(0, (i ?? n) - 1)); }
@@ -96,7 +104,7 @@ export function Courbes({ n, series, fy, axe, bulle, aria, hauteurMin = 290, vid
           {libellees(max, bandeau ? 3 : 4, fy, !(Math.max(...tous, 0) > 0)).map(({ t, l }) => (
             <g key={t}><line x1={padL} x2={w - padR + 8} y1={Y(t)} y2={Y(t)} stroke="var(--fsb-line)" /><text x={padL - 10} y={Y(t) + 4} textAnchor="end">{l}</text></g>
           ))}
-          {placerAxe(axe, { x: X, largeur: w, mesurer }).map((k) => <text key={k.i} x={k.x} y={H - 6} textAnchor="middle" className={classeAxe(k)}>{k.l}</text>)}
+          {placerAxe(axe, { x: X, gauche: padL - 2, largeur: w, mesurer }).map((k) => <text key={k.i} x={k.x} y={H - 6} textAnchor="middle" className={classeAxe(k)}>{k.l}</text>)}
           {series.map((s, si) => {
             const pts = s.vals.map((v, i) => (v == null ? null : [X(i), Y(v)])).filter(Boolean);
             if (!pts.length) return null;
@@ -116,18 +124,19 @@ export function Courbes({ n, series, fy, axe, bulle, aria, hauteurMin = 290, vid
               {series.map((s, si) => (s.vals[lu] == null ? null : <circle key={si} cx={X(lu)} cy={Y(s.vals[lu])} r="4.5" fill={s.couleur} stroke="var(--fsb-paper)" strokeWidth="2" />))}
             </g>
           )}
-          {bandeau
-            ? <rect x={padL - 6} y="0" width={iw + 12} height={H} fill="transparent" tabIndex={0} aria-label={aria}
+          {estVide ? null : bandeau
+            ? <rect className="fsb-zone" x={padL - 4} y={padT - 4} rx="8" width={iw + 8} height={ih + 8} fill="transparent" tabIndex={0} aria-label={aria}
                 onPointerDown={pointer} onPointerMove={(e) => { if (e.pointerType === 'mouse' || e.buttons) pointer(e); }} onFocus={() => setSurvol((i) => i ?? dernier)} onKeyDown={clavier} />
-            : <rect x={padL - 6} y="0" width={iw + 12} height={H} fill="transparent" tabIndex={0}
-                aria-label={aria} onPointerMove={pointer} onPointerLeave={() => setSurvol(null)} onFocus={() => setSurvol((i) => i ?? n - 1)} onBlur={() => setSurvol(null)} onKeyDown={clavier} />}
+            : <rect className="fsb-zone" x={padL - 4} y={padT - 4} rx="8" width={iw + 8} height={ih + 8} fill="transparent" tabIndex={0}
+                aria-label={aria} onPointerMove={pointer} onPointerLeave={() => setSurvol(null)} onFocus={() => setSurvol((i) => i ?? dernier ?? n - 1)} onBlur={() => setSurvol(null)} onKeyDown={clavier} />}
         </svg>
       )}
-      {vide && <div className="fsb-chart-vide">{vide}</div>}
-      {!bandeau && survol != null && w > 0 && <Bulle contenu={bulle(survol)} x={X(survol)} largeurBoite={w} />}
+      {vide && w > 0 && <div className="fsb-chart-vide" style={{ left: padL, right: padR, top: padT, bottom: padB }}>{vide}</div>}
+      {!bandeau && !estVide && survol != null && w > 0 && <Bulle contenu={bulle(survol)} x={X(survol)} largeurBoite={w} />}
     </div>
   );
   if (!bandeau) return graphe;
+  if (estVide) return <div className="fsb-tactile-bloc">{graphe}</div>;
   return <div className="fsb-tactile-bloc"><Lecture contenu={lu != null ? bulle(lu) : null} indication={indication} />{graphe}</div>;
 }
 
@@ -135,7 +144,7 @@ export function Courbes({ n, series, fy, axe, bulle, aria, hauteurMin = 290, vid
  * Colonnes, une ou deux séries côte à côte. couleur : chaîne ou (i) => chaîne.
  * axe : jeux de libellés (axe.js : axeMois, axeJours, axeSimple). fy null = pas d'axe Y.
  */
-export function Colonnes({ axe, series, fy = null, vlab = null, bulle, aria, hauteur = 150, hauteurMin = null, epaisseurMax = 24, graduationsY = 3, padL: padLProp = null, bandeau = false, indication = '' }) {
+export function Colonnes({ axe, series, fy = null, vlab = null, bulle, aria, hauteur = 150, hauteurMin = null, epaisseurMax = 24, graduationsY = 3, padL: padLProp = null, bandeau = false, indication = '', vide = null }) {
   const [ref, { w, h: hBoite }] = useTaille();
   const mesurer = useMesureTexte(ref);
   const [survol, setSurvol] = useState(null);
@@ -143,6 +152,7 @@ export function Colonnes({ axe, series, fy = null, vlab = null, bulle, aria, hau
   const padL = padLProp ?? (fy ? 48 : 6), padR = 8, padT = vlab ? 20 : 12, padB = 26;
   const n = series[0]?.vals.length ?? 0, iw = Math.max(10, w - padL - padR), ih = H - padT - padB, bande = iw / Math.max(1, n);
   const tous = series.flatMap((s) => s.vals.filter((v) => v != null));
+  const estVide = grapheVide(series);
   const max = maxRond(Math.max(...tous, 0) * 1.02, fy ? graduationsY : 4);
   const Y = (v) => padT + ih - (v / max) * ih;
   const k = series.length;
@@ -173,22 +183,24 @@ export function Colonnes({ axe, series, fy = null, vlab = null, bulle, aria, hau
                     </g>
                   );
                 })}
-                {!bandeau && <rect x={padL + bande * i} y={padT} width={bande} height={ih} fill="transparent" tabIndex={-1}
+                {!bandeau && !estVide && <rect x={padL + bande * i} y={padT} width={bande} height={ih} fill="transparent"
                   onPointerEnter={() => setSurvol(i)} onPointerLeave={() => setSurvol(null)} />}
               </g>
             );
           })}
-          {placerAxe(axe, { x: (i) => padL + bande * i + bande / 2, largeur: w, mesurer }).map((k) => (
+          {placerAxe(axe, { x: (i) => padL + bande * i + bande / 2, gauche: fy ? padL - 2 : 0, largeur: w, mesurer }).map((k) => (
             <text key={k.i} x={k.x} y={H - 6} textAnchor="middle" className={classeAxe(k)} opacity={survol != null && survol !== k.i ? 0.55 : 1}>{k.l}</text>
           ))}
-          {bandeau && <rect x={padL} y={0} width={iw} height={H} fill="transparent" aria-hidden="true"
+          {bandeau && !estVide && <rect x={padL} y={0} width={iw} height={H} fill="transparent" aria-hidden="true"
             onPointerDown={toucher} onPointerMove={(e) => { if (e.pointerType === 'mouse' || e.buttons) toucher(e); }} />}
         </svg>
       )}
-      {!bandeau && survol != null && w > 0 && <Bulle contenu={bulle(survol)} x={padL + bande * survol + bande / 2} largeurBoite={w} />}
+      {estVide && vide && w > 0 && <div className="fsb-chart-vide" style={{ left: padL, right: padR, top: padT, bottom: padB }}>{vide}</div>}
+      {!bandeau && !estVide && survol != null && w > 0 && <Bulle contenu={bulle(survol)} x={padL + bande * survol + bande / 2} largeurBoite={w} />}
     </div>
   );
   if (!bandeau) return graphe;
+  if (estVide) return <div className="fsb-tactile-bloc">{graphe}</div>;
   return <div className="fsb-tactile-bloc"><Lecture contenu={survol != null ? bulle(survol) : null} indication={indication} />{graphe}</div>;
 }
 

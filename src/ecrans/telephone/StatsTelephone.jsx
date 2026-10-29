@@ -15,7 +15,7 @@ import { toucherLeger } from '../../utils/retourHaptique';
 import { Colonnes } from '../bureau/Graphes';
 import { axeMois, axeSimple } from '../bureau/axe';
 import { Logo, Puce, Tuile, Barres, IcoInfo, IcoEtincelle, IcoChevron, BarresAges, Repartition } from '../bureau/pieces';
-import { formats, libellesPeriode, jourCourt, moisAnnee, nomPlateforme } from '../bureau/outils';
+import { formats, libellesPeriode, jourCourt, moisAnnee, nomPlateforme, useSuiviSaisie } from '../bureau/outils';
 import FeuilleDetail from './FeuilleDetail';
 import { PastillesPeriode } from './TableauTelephone';
 
@@ -26,6 +26,7 @@ const MEDAILLES = [['#F2D38A', '#C9A24A', '#4A3A10'], ['#E6E8EA', '#AEB4B8', '#2
 const capital = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
 export default function StatsTelephone({ ctx, lang, currency, cle, setCle, ia, setTab }) {
+  useSuiviSaisie();
   const f = useMemo(() => formats(lang, currency), [lang, currency]);
   const [onglet, setOnglet] = useState('plateforme');
   const [pile, setPile] = useState([]);

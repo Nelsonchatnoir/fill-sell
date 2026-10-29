@@ -14,11 +14,12 @@ export function contenuDetail({ ouvert, bloc, stock, f, lang, onOuvrir, onAller,
   const I = bloc.ind, V = bloc.prev;
   let icone = null, titre = '', sous = ok ? f.L(`${lp.nom} · comparé au ${lp.avant}`, `${lp.nom} · vs ${lp.avant}`) : lp.nom, corps = null, pied = null;
   const vsTxt = (x) => (ok ? `${x} · ${lp.avant}` : null);
+  const aucune = <span><b>{f.L(`Aucune vente · ${lp.nom}`, `No sale · ${lp.nom}`)}</b></span>;
   const parJourOuMois = (serie) => {
     const jour = Boolean(serie[0]?.jour);
     return (
       <Colonnes hauteur={tactile ? 130 : 150} bandeau={tactile} axe={jour ? axeJours({ n: serie.length, lib: (i) => String(Number(serie[i].jour.slice(8, 10))), grilles: grillesSemaines(serie.length), fin: true }) : axeMois(serie.map((x) => x.mois), lang)}
-        series={[{ vals: serie.map((x) => x.nb), couleur: 'var(--fsb-teal)' }]} fy={(v) => f.num(v)} epaisseurMax={14}
+        series={[{ vals: serie.map((x) => x.nb), couleur: 'var(--fsb-teal)' }]} fy={(v) => f.num(v)} epaisseurMax={14} vide={aucune}
         aria={jour ? f.L('Ventes par jour', 'Sales per day') : f.L('Ventes par mois', 'Sales per month')} indication={jour ? f.L('Touche un jour', 'Tap a day') : f.L('Touche un mois', 'Tap a month')}
         bulle={(i) => ({ titre: jour ? jourMoyen(serie[i].jour, lang) : moisAnnee(serie[i].mois, lang), lignes: [{ couleur: 'var(--fsb-teal)', boite: true, libelle: f.L('ventes', 'sales'), valeur: f.num(serie[i].nb) }], note: `${f.eur(serie[i].ca)} ${f.L('encaissés', 'collected')}` })} />
     );
@@ -150,6 +151,7 @@ export function contenuDetail({ ouvert, bloc, stock, f, lang, onOuvrir, onAller,
           <div className="fsb-sec"><h4>{f.L('Jour par jour', 'Day by day')}<span>{lp.nom}</span></h4>
             <Colonnes hauteur={tactile ? 130 : 150} bandeau={tactile} indication={f.L('Touche un jour', 'Tap a day')} axe={axeJours({ n: serie.points.length, lib: (i) => String(Number(serie.points[i].jour.slice(8, 10))), grilles: grillesSemaines(serie.points.length), fin: true })}
               series={[{ vals: serie.points.map((x) => x[DEF[5]]), couleur: 'var(--fsb-teal)' }]} fy={DEF[5] === 'nb' ? (v) => f.num(v) : f.eur0} epaisseurMax={14} aria={DEF[0]}
+              vide={I.nb === 0 ? aucune : <span><b>{DEF[5] === 'profit' && !I.profitRetenues ? f.L('Profit non calculé : prix d’achat manquants', 'No profit: purchase prices missing') : f.L(`Rien à afficher · ${lp.nom}`, `Nothing to show · ${lp.nom}`)}</b></span>}
               bulle={(i) => ({ titre: jourMoyen(serie.points[i].jour, lang), lignes: [{ couleur: 'var(--fsb-teal)', boite: true, libelle: DEF[0], valeur: DEF[5] === 'nb' ? f.num(serie.points[i].nb) : f.eur(serie.points[i][DEF[5]]) }], note: DEF[5] !== 'nb' ? f.L(`${serie.points[i].nb} ventes`, `${serie.points[i].nb} sales`) : null })} /></div>
         )}
         {ouvert.k === 'delai' && bloc.delais.n > 0 && (

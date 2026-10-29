@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { formatCurrency, typeLabel } from '../../utils/shared';
 import { largeurApprochee } from './axe';
+import { suivreSaisie } from '../../utils/modaliteSaisie';
 
 // ── Formats ─────────────────────────────────────────────────────────────────
 export function formats(lang, currency = 'EUR') {
@@ -71,6 +72,14 @@ export function useTaille() {
   }, []);
   return [ref, taille];
 }
+
+/** Repère de focus au clavier seulement, jamais au toucher (utils/modaliteSaisie.js) : dans chaque écran racine. */
+export function useSuiviSaisie() {
+  useEffect(() => { suivreSaisie(); }, []);
+}
+
+/** Graphe vide : aucune valeur autre que zéro (29/10 : ni curseur, ni bandeau, ni infobulle au toucher). */
+export const grapheVide = (series) => !series.some((s) => s.vals.some((v) => v != null && Number(v) !== 0));
 
 /**
  * Largeur réelle d'un libellé d'axe (11,5 px, police calculée du graphe), mesurée au canvas ;

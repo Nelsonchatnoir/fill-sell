@@ -14,7 +14,7 @@ import { Colonnes } from './Graphes';
 import { axeMois, axeSimple } from './axe';
 import PanneauDetail from './PanneauDetail';
 import { Logo, Puce, Tuile, ChoixPeriode, Barres, IcoInfo, IcoEtincelle, BarresAges, Repartition } from './pieces';
-import { formats, libellesPeriode, jourCourt, moisAnnee, nomPlateforme } from './outils';
+import { formats, libellesPeriode, jourCourt, moisAnnee, nomPlateforme, useSuiviSaisie } from './outils';
 
 const JOURS = { fr: ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'], en: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] };
 const JOURS_C = { fr: ['lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.'], en: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] };
@@ -22,6 +22,7 @@ const TRANCHES = [['auDessus', 'var(--fsb-teal-deep)'], ['auPrix', 'var(--fsb-te
 const capital = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
 export default function StatsBureau({ ctx, lang, currency, cle, setCle, ia, setTab }) {
+  useSuiviSaisie();
   const f = useMemo(() => formats(lang, currency), [lang, currency]);
   const [onglet, setOnglet] = useState('plateforme');
   const [ouvert, setOuvert] = useState(null);

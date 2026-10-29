@@ -87,14 +87,16 @@ export function axeSimple(libelles) {
  * côte à côte (ECART_LIBELLES entre deux), les « fort » d'abord, puis les facultatifs qui
  * ont la place. Si aucun jeu ne tient, le plus clairsemé, libellé par libellé. Le centre
  * d'un libellé trop près d'un bord est rentré pour qu'il ne soit jamais coupé.
- * x(i) : centre du point i ; mesurer(texte, gras) : largeur en pixels.
+ * x(i) : centre du point i ; mesurer(texte, gras) : largeur en pixels ; gauche : aucun
+ * libellé ne commence avant (29/10 : début du tracé, jamais sous le « 0 € » de l'axe vertical).
  */
-export function placerAxe(jeux, { x, largeur, mesurer, ecart = ECART_LIBELLES }) {
+export function placerAxe(jeux, { x, largeur, mesurer, ecart = ECART_LIBELLES, gauche = 0 }) {
   if (!(largeur > 0) || !jeux?.length) return [];
+  const g0 = Math.max(0, gauche);
   const boite = (c) => {
     const w = mesurer(c.l, Boolean(c.gras || c.annee));
-    const cx = Math.min(Math.max(x(c.i), w / 2), largeur - w / 2);
-    return { ...c, x: cx, g: cx - w / 2, d: cx + w / 2, trop: w > largeur };
+    const cx = Math.min(Math.max(x(c.i), g0 + w / 2), largeur - w / 2);
+    return { ...c, x: cx, g: cx - w / 2, d: cx + w / 2, trop: w > largeur - g0 };
   };
   const libre = (pris, b) => !b.trop && pris.every((p) => b.d + ecart <= p.g || b.g >= p.d + ecart);
   const placer = (jeu, strict) => {

@@ -15,7 +15,7 @@ import { toucherLeger } from '../../utils/retourHaptique';
 import { Courbes, Colonnes, TraceHeros } from '../bureau/Graphes';
 import { axeJours, axeMois } from '../bureau/axe';
 import { Logo, Puce, PuceEtat, Tuile, IcoOuvrir, IcoChevron, LigneVente, LigneArticle, BarresAges } from '../bureau/pieces';
-import { formats, libellesPeriode, jourLong, jourMoyen, jourCourt, moisAnnee, nomPlateforme } from '../bureau/outils';
+import { formats, libellesPeriode, jourLong, jourMoyen, jourCourt, moisAnnee, nomPlateforme, useSuiviSaisie } from '../bureau/outils';
 import FeuilleDetail from './FeuilleDetail';
 
 const CLE_PERIODE = 'fs_tableau_periode';
@@ -35,6 +35,7 @@ export function PastillesPeriode({ valeur, onChange, auj, lang, f }) {
 }
 
 export default function TableauTelephone({ ctx, lang, currency, username, setTab }) {
+  useSuiviSaisie();
   const f = useMemo(() => formats(lang, currency), [lang, currency]);
   const [cle, setCle] = useState(lirePeriode);
   const [mesure, setMesure] = useState('ca');
@@ -84,6 +85,7 @@ export default function TableauTelephone({ ctx, lang, currency, username, setTab
     const pts = serie.points;
     graphe = (
       <Colonnes bandeau hauteur={200} indication={f.L('Touche un mois', 'Tap a month')} axe={axeMois(pts.map((m) => m.mois), lang, { gras: (i) => i === pts.length - 1 })} fy={M[3]} epaisseurMax={22}
+        vide={<span><b>{I.nb === 0 ? f.L(`Aucune vente · ${lp.nom}`, `No sale · ${lp.nom}`) : mesure === 'profit' && !I.profitRetenues ? f.L('Profit non calculé : prix d’achat manquants', 'No profit: purchase prices missing') : f.L(`Rien à afficher · ${lp.nom}`, `Nothing to show · ${lp.nom}`)}</b></span>}
         aria={`${M[4]}, ${f.L('mois par mois', 'month by month')}`}
         series={[{ vals: pts.map((m) => (mesure === 'profit' && !m.profitRetenues ? null : m[M[5]])), couleur: (i) => (i === pts.length - 1 ? 'var(--fsb-teal-soft)' : 'var(--fsb-teal)') }]}
         bulle={(i) => ({ titre: `${moisAnnee(pts[i].mois, lang)}${i === pts.length - 1 ? f.L(' (en cours)', ' (so far)') : ''}`, lignes: [{ couleur: 'var(--fsb-teal)', boite: true, valeur: mesure === 'profit' && !pts[i].profitRetenues ? '—' : M[2](pts[i][M[5]]) }], note: f.L(`${pts[i].nb} ventes`, `${pts[i].nb} sales`) })} />

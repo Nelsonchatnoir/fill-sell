@@ -1,8 +1,10 @@
 // `npm run selftest:axe-graphes` — la RÈGLE des libellés de l'axe horizontal (29/10, bug
 // « janvfévmarsavr… » vu sur iPhone dans la feuille Vinted · depuis le début) : pour tous
 // les graphes, à toutes les largeurs et toutes les périodes, jamais deux libellés qui se
-// touchent, jamais un libellé coupé au bord. Géométrie des vrais graphes (Graphes.jsx) :
-// colonnes centrées dans leur bande, courbes de bord à bord ; texte mesuré large.
+// touchent, jamais un libellé coupé au bord, jamais un libellé sous le « 0 € » de l'axe vertical
+// (29/10 : « 1 oct. » collé à « 0 € » sur iPhone ; aucun libellé ne commence avant le tracé).
+// Géométrie des vrais graphes (Graphes.jsx) : colonnes centrées dans leur bande, courbes de
+// bord à bord ; texte mesuré large.
 import assert from 'node:assert/strict';
 import { axeMois, axeJours, axeSimple, grillesSemaines, placerAxe, largeurApprochee, ECART_LIBELLES } from '../src/ecrans/bureau/axe.js';
 
@@ -16,11 +18,11 @@ const mesurer = mesures[0];
 const colonnes = (n, w, padL = 48) => { const bande = Math.max(10, w - padL - 8) / Math.max(1, n); return (i) => padL + bande * i + bande / 2; };
 const courbes = (n, w, padL = 56, padR = 86) => { const iw = Math.max(10, w - padL - padR); return (i) => padL + (n <= 1 ? 0 : (i * iw) / (n - 1)); };
 
-/** Vérifie la règle sur un résultat de placerAxe. */
-function verifie(res, largeur, mes, quoi) {
+/** Vérifie la règle sur un résultat de placerAxe (gauche : début du tracé quand il y a un axe vertical). */
+function verifie(res, largeur, mes, quoi, gauche = 0) {
   for (const k of res) {
     const w = mes(k.l, Boolean(k.gras || k.annee));
-    ok(k.x - w / 2 >= -1e-9 && k.x + w / 2 <= largeur + 1e-9, `${quoi} : « ${k.l} » sort du graphe`);
+    ok(k.x - w / 2 >= gauche - 1e-9 && k.x + w / 2 <= largeur + 1e-9, `${quoi} : « ${k.l} » sort du graphe ou passe sous l’axe vertical`);
   }
   for (let j = 1; j < res.length; j += 1) {
     const a = res[j - 1], b = res[j];
@@ -70,9 +72,9 @@ const cles = (debut, nb) => Array.from({ length: nb }, (_, k) => {
       for (let nb = 1; nb <= 130; nb += (nb < 30 ? 1 : 7)) {
         for (const debut of ['2025-01', '2024-07', '2019-11']) {
           const c = cles(debut, nb);
-          for (const [nom, x] of [['colonnes', colonnes(nb, w)], ['colonnes sans axe Y', colonnes(nb, w, 6)]]) {
-            const res = placerAxe(axeMois(c, 'fr', { gras: (i) => i === nb - 1 }), { x, largeur: w, mesurer: mes });
-            verifie(res, w, mes, `${nom} ${nb} mois depuis ${debut}, ${w} px`);
+          for (const [nom, x, gauche] of [['colonnes', colonnes(nb, w), 46], ['colonnes sans axe Y', colonnes(nb, w, 6), 0]]) {
+            const res = placerAxe(axeMois(c, 'fr', { gras: (i) => i === nb - 1 }), { x, gauche, largeur: w, mesurer: mes });
+            verifie(res, w, mes, `${nom} ${nb} mois depuis ${debut}, ${w} px`, gauche);
             ok(res.length >= 1, `${nom} ${nb} mois, ${w} px : au moins un repère`);
             cas += 1;
           }
@@ -83,13 +85,15 @@ const cles = (debut, nb) => Array.from({ length: nb }, (_, k) => {
         for (const auj of [0, Math.floor(nj / 2), nj - 3, nj - 2, nj - 1].filter((a) => a >= 0)) {
           const lib = (i) => `${i + 1} oct.`;
           const bureau = axeJours({ n: nj, lib, grilles: [[0, 7, 14, 21], [0, 14], [0]], aujourdhui: auj, libAuj: 'auj.', fin: true });
-          const r1 = placerAxe(bureau, { x: courbes(nj, w), largeur: w, mesurer: mes });
-          verifie(r1, w, mes, `courbe ordinateur ${nj} j (auj. ${auj}), ${w} px`);
+          const r1 = placerAxe(bureau, { x: courbes(nj, w), gauche: 54, largeur: w, mesurer: mes });
+          verifie(r1, w, mes, `courbe ordinateur ${nj} j (auj. ${auj}), ${w} px`, 54);
           ok(r1.some((k) => k.l === 'auj.'), `courbe ${nj} j, ${w} px : « auj. » toujours là`);
           const tel = axeJours({ n: nj, lib, grilles: [[0, Math.round((nj - 1) / 2)], [0]], aujourdhui: auj, libAuj: 'auj.', fin: true });
-          verifie(placerAxe(tel, { x: courbes(nj, w, 46, 14), largeur: w, mesurer: mes }), w, mes, `courbe téléphone ${nj} j, ${w} px`);
+          const r2 = placerAxe(tel, { x: courbes(nj, w, 46, 14), gauche: 44, largeur: w, mesurer: mes });
+          verifie(r2, w, mes, `courbe téléphone ${nj} j, ${w} px`, 44);
+          if (w >= 300 && nj > 1) ok(r2.some((k) => k.l === 'auj.'), `courbe téléphone ${nj} j, ${w} px : « auj. » toujours là`);
           const det = axeJours({ n: nj, lib: (i) => String(i + 1), grilles: grillesSemaines(nj), fin: true });
-          verifie(placerAxe(det, { x: colonnes(nj, w), largeur: w, mesurer: mes }), w, mes, `jour par jour ${nj} j, ${w} px`);
+          verifie(placerAxe(det, { x: colonnes(nj, w), gauche: 46, largeur: w, mesurer: mes }), w, mes, `jour par jour ${nj} j, ${w} px`, 46);
           cas += 3;
         }
       }
@@ -112,6 +116,19 @@ const cles = (debut, nb) => Array.from({ length: nb }, (_, k) => {
   ok(etroit.includes('auj.') && !etroit.includes('31 oct.'), 'étroit : « 31 oct. » trop près de « auj. » s’efface');
   const j21 = placerAxe(axeJours({ n: 31, lib, grilles: [[0, 7, 14, 21]], aujourdhui: 22, libAuj: 'auj.' }), { x: courbes(31, 700), largeur: 700, mesurer }).map((k) => k.l);
   ok(j21.includes('auj.') && !j21.includes('22 oct.'), 'un repère qui touche « auj. » s’efface, la grille reste');
+}
+
+// ── 5. Le coin en bas à gauche (capture iPhone du 29/10 : « 1 oct. » contre « 0 € ») ────────
+{
+  const lib = (i) => (i ? String(i + 1) : '1 oct.');
+  const jeux = axeJours({ n: 31, lib, grilles: [[0, 15], [0]], aujourdhui: 28, libAuj: 'auj.', fin: true });
+  for (const w of [360, 390, 412, 430]) {
+    const largeur = w - 2 * 14 - 2 * 14; // page 14 px + carte 14 px de chaque côté
+    const res = placerAxe(jeux, { x: courbes(31, largeur, 46, 14), gauche: 44, largeur, mesurer });
+    const premier = res[0];
+    ok(premier.l === '1 oct.' && premier.x - mesurer(premier.l) / 2 >= 44 - 1e-9, `${w} px : « 1 oct. » commence au début du tracé, à droite du « 0 € » (fin à 36 px)`);
+  }
+  eq(placerAxe([[{ i: 0, l: 'x' }]], { x: () => 0, gauche: -5, largeur: 100, mesurer })[0].x - mesurer('x') / 2, 0, 'gauche négatif : ramené au bord');
 }
 
 console.log(`axe-graphes : ${n} vérifications, toutes vertes`);
