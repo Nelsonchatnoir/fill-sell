@@ -173,7 +173,17 @@ export async function listerServicesLivraisonAvecSource(env: EbayEnv, token: str
     try {
       const ancienne = await lireServicesTrading(env, token, siteId, d);
       const c = comparerSourcesServices(services, ancienne);
-      journal(`[ebay-shipping] comparaison Metadata/GeteBayDetails ${c.identiques ? "IDENTIQUES" : "DIFFÉRENTES"} : ${JSON.stringify(c).slice(0, 1500)}`);
+      // Écrit EN ENTIER, par morceaux (une ligne de journal coupe vers 2 000 caractères) ; une divergence écrit aussi
+      // les deux listes, une ligne compacte par service (code|catégorie|transporteur|valide|international|délais).
+      const morceaux = (etiquette: string, texte: string) => {
+        for (let i = 0, n = 1; i < texte.length; i += 1500, n++) journal(`[ebay-shipping] ${etiquette} [${n}/${Math.ceil(texte.length / 1500)}] ${texte.slice(i, i + 1500)}`);
+      };
+      morceaux(`comparaison Metadata/GeteBayDetails ${c.identiques ? "IDENTIQUES" : "DIFFÉRENTES"}`, JSON.stringify(c));
+      if (!c.identiques) {
+        const compact = (l: ServiceLivraison[]) => l.map((s) => `${s.code}|${s.categorie}|${s.transporteur}|${s.valide ? 1 : 0}|${s.international ? 1 : 0}|${s.delaiMin ?? ""}-${s.delaiMax ?? ""}`).join(" ");
+        morceaux("liste Metadata", compact(services));
+        morceaux("liste GeteBayDetails", compact(ancienne));
+      }
     } catch (e) {
       journal(`[ebay-shipping] comparaison impossible (GeteBayDetails) : ${String((e as Error)?.message ?? e).slice(0, 200)}`);
     }
