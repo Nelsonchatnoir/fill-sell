@@ -152,3 +152,32 @@ intégrés, testés et livrés depuis le terminal principal. Livraison : voir la
   date. Bascule proposée, non appliquée : (a) Metadata avant fin 2026 ; (b) décision de Nico sur une nouvelle connexion
   eBay pour tous (commerce.message, identity) avant de migrer messagerie et identité ; (c/d) Message API et Listing API
   ensuite.
+
+## Contrôle final (29/10 ~15:00) — comptes à extension vue en 7 jours, dernier état par article × plateforme depuis le 18/09
+- Aucun job « processing » de plus de 20 min ; aucun job à 5 tentatives ou plus ; le retrait Beebs « Hitman » qui tournait
+  (26 598 observations) est clos.
+- Rouges restants = gestes de la personne (vendeur Depop 12, eBay vendeur inactif 12 / à finir 5, connexions Leboncoin 4 /
+  Vinted 2, plateforme écartée, article vendu, accès Depop) ; refus de plateforme (Beebs : 29 refusés à la vérification ou
+  jamais en ligne — 20 numéros relus en 404 au navigateur ; Leboncoin : 9 refusés à la modération ; eBay : compte bloqué ;
+  Leboncoin sans option gratuite ×2) ; questions vraies (Âge / Alimentation Beebs, frais de port Depop, ISBN, taille de
+  bague, Levi's de Dayane, Sweatshirt GAP).
+- De notre fait, avec issue automatique : Vinted « menus bloom » ×9 + 1 (abenjemaa, labouquinerie85, chaowx1305, postes
+  encore en 0.6.149 : repartent seuls à la 0.6.150+, la 0.6.152 étant servie ; rien d'autre ne les bloque) ; Samsung de
+  Thibault (0.6.153) ; page italienne de mele.marta (0.6.152).
+- Suite complète : 485 selftests verts (dernière passe sur l'arbre final) ; `npm run build:essai` vert ; lint : aucune erreur
+  nouvelle sur les fichiers touchés.
+
+## Livraison (29/10 ~14:50 → 15:00)
+- Commits : `f3d158b` (correctifs), `332cb1f` (EXTENSION_LAST_COMMIT), `1c4a578` (version 2.9.132), puis les docs ; un push.
+- **Extension 0.6.153** : `build\CWS-0.6.153-A-TELEVERSER\fillsell-extension-0.6.153-1c4a578-cws.zip` (seul dans son
+  dossier ; manifest 0.6.153, BUILD_ID `2026-10-29T13:49:28Z+1c4a578`, 37 entrées + dossiers, 605 027 octets, sha256
+  `5d45d60a41704c3ddb71aa1049647bcc321c91d7c67f4b1d20e43563a3c0b173`). 0.6.152 → ALREADY_PUBLISHED. Poste de Nico : copie posée.
+- **OTA 2.9.132** (canal production relu 2.9.131 → 2.9.132), build `2026-10-29T13:50:19Z+1c4a578`.
+- **Fonctions** : handler-watch v145, get-pending-jobs v300 (true), update-job-status v155, stripe-webhook v60,
+  google-play-webhook v31, apple-iap-webhook v40, email-tunnel v74, envoi-ponctuel v5 (true) — verify_jwt inchangés.
+- **Réparations** (14:55, ce terminal) : `20261029_camille_calendrier_categorie_origine.sql`,
+  `20261029_xewer_refus_beebs_revenu.sql`, `20261029_impaye_stripe_palier.sql`, `20261029_thecloset_bordereau_auto_coupe.sql`.
+- **En attente du feu vert nommé de Nico** : migrations `20261029150000_battement_extension` et
+  `20261029151000_bordereau_auto_par_compte` (essais annulés verts).
+- **Décisions de Nico** : traduction du navigateur dans l'app (point 10) ; bascule eBay (point 14 b) ; libellé du mail
+  « paiement échoué » sans « reste actif » (point 11).
