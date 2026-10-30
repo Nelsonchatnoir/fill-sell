@@ -1,5 +1,7 @@
 {
-  "ExtensionInstallForcelist": ["dnankhhfellobiobloopcjgkdioblpjd;http://127.0.0.1:3129/update.xml"],
+  "ExtensionInstallForcelist": [
+    "dnankhhfellobiobloopcjgkdioblpjd;http://127.0.0.1:3129/update.xml"
+  ],
   "PasswordManagerEnabled": false,
   "AutofillAddressEnabled": false,
   "AutofillCreditCardEnabled": false,
@@ -10,5 +12,6 @@
   "TranslateEnabled": false,
   "DefaultBrowserSettingEnabled": false,
   "PromotionalTabsEnabled": false,
-  "RestoreOnStartup": 5
+  "RestoreOnStartup": 5,
+  "DeveloperToolsAvailability": 1
 }

@@ -4,6 +4,8 @@
 # refusé par Beebs dès la première page, alors qu'un vrai Chrome sorti par la MÊME IP passe.
 # Aucune extension anti-détection, aucun résolveur de captcha : Chrome tel que Google le livre. L'extension FillSell
 # Cloud s'installe par stratégie d'entreprise (politique.json), servie en local par relais.mjs.
+# DeveloperToolsAvailability = 1 : sans elle, Chrome refuse tout pilotage d'une extension installée par stratégie
+# (« Target.attachToTarget : Not allowed ») — l'orchestrateur y pose la session FillSell du navigateur.
 FROM debian:bookworm-slim
 ENV LANG=fr_FR.UTF-8 LANGUAGE=fr_FR:fr LC_ALL=fr_FR.UTF-8 TZ=Europe/Paris DISPLAY=:10 DEBIAN_FRONTEND=noninteractive
 RUN apt-get update -qq \
