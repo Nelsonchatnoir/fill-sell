@@ -17,6 +17,7 @@ import { creerConnexions } from './connexion.js';
 import { creerServeur } from './serveur.js';
 import { creerAlertes } from './alertes.js';
 import { creerIproyal } from './iproyal.js';
+import { creerFournisseurIp } from './fournisseurIp.js';
 import { creerControles } from './controle.js';
 import { creerEntretien } from './entretien.js';
 import { chargerRegles } from './regles.js';
@@ -31,13 +32,15 @@ const sessions = creerSessionsFillsell({ config, base, journal });
 const alertes = creerAlertes({ config, base, journal });
 const iproyal = creerIproyal({ jeton: config.iproyalJeton, achatsAutorises: config.iproyalAchatsAutorises, journal });
 const controles = creerControles({ config, docker, journal });
+// (30/10, lot D) LE module fournisseur d'IP : seul point de contact pour la sortie des navigateurs et le solde.
+const fournisseurIp = creerFournisseurIp({ config, base, iproyal, journal, alertes });
 const regles = await chargerRegles();
 
 let connexions = null;
-const postes = creerPostes({ config, base, navigateurs, coffre, sessions, journal, alertes,
+const postes = creerPostes({ config, base, navigateurs, coffre, sessions, journal, alertes, fournisseurIp,
   connexionsOuvertes: () => connexions?.connexionsOuvertes() ?? new Set() });
 connexions = creerConnexions({ config, base, postes, navigateurs, coffre, journal });
-const entretien = creerEntretien({ config, base, navigateurs, coffre, sessions, iproyal, controles, alertes, regles, journal });
+const entretien = creerEntretien({ config, base, navigateurs, coffre, sessions, iproyal, controles, alertes, regles, journal, fournisseurIp });
 const serveur = creerServeur({ config, connexions, navigateurs, journal, dossierPublic: fileURLToPath(new URL('../public', import.meta.url)) });
 
 // Le réseau des navigateurs (le pare-feu de l'hôte filtre br-fillsell).

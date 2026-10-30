@@ -47,6 +47,7 @@ export const ROUTES_APP = [
   { source: '/ebay/(.*)', noindex: true, pourquoi: 'retour du consentement eBay (/ebay/retour?etat=, _shared/ebay-oauth.ts)' },
   { source: '/desinscription', noindex: true, pourquoi: 'lien de désinscription des mails (obligation légale)' },
   { source: '/legal', pourquoi: 'mentions légales et confidentialité (pied de chaque mail, /legal#confidentialite exigé par Google OAuth)', sitemap: true },
+  { source: '/conditions-cloud', noindex: true, nofollow: true, pourquoi: "conditions d'utilisation de FillSell Cloud (30/10) : connecté + compte témoin seulement tant que Nico n'a pas validé le texte" },
   { source: '/demo/(.*)', noindex: true, nofollow: true, pourquoi: 'démonstrations non listées (/demo/barre-progression)' },
   { source: '/blog', partagee: true, pourquoi: 'liste du blog (route React BlogList ; le site écrit /blog en statique)' },
   { source: '/blog/(.*)', partagee: true, pourquoi: 'articles (route React BlogPost ; le site écrit chaque article connu en statique)' },

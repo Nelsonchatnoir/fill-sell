@@ -1,3 +1,4 @@
+import { drapeauxStripeAvecStores } from "../_shared/droits-canaux.js";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@12.18.0?target=deno&no-check";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
@@ -128,8 +129,20 @@ async function recomputeStripeFlags(supabase: any, customerId: string) {
   // colonnes Cloud ne bougent que si Stripe porte l'option (ou personne).
   const d = drapeauxDepuisStripe(subs ?? [], prixConnus());
   const { data: prof } = await supabase
-    .from("profiles").select("cloud_canal").eq("stripe_customer_id", customerId).maybeSingle();
+    .from("profiles").select("cloud_canal, google_purchase_token, google_product_id, apple_original_transaction_id, is_premium, is_pro, is_business, subscription_period_end")
+    .eq("stripe_customer_id", customerId).maybeSingle();
   const update = miseAJourProfilDepuisStripe(d, prof?.cloud_canal ?? null);
+  // (30/10, lot D point 2) Un canal qui s'arrête ne retire que SON droit : la fin d'un abonnement Stripe ne fait
+  // jamais tomber un abonnement Google ou Apple VIVANT (jeton + fin à venir) — avant, ce recalcul écrasait tout.
+  {
+    const avecStores = drapeauxStripeAvecStores(d, prof ?? null);
+    if (avecStores.rangStore > avecStores.rangStripe) {
+      update.is_premium = avecStores.is_premium;
+      update.is_pro = avecStores.is_pro;
+      update.is_business = avecStores.is_business;
+      console.log("[webhook] drapeaux gardés au rang du store vivant", avecStores.rangStore, "(Stripe :", avecStores.rangStripe, ") pour", customerId);
+    }
+  }
   await supabase.from("profiles").update(update).eq("stripe_customer_id", customerId);
   console.log(
     "[webhook] recomputed flags for", customerId,

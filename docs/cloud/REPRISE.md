@@ -423,3 +423,34 @@ Fusion : `origin/main` b38d842 n'a touché AUCUN de ces fichiers (ni `serveur-cl
   lit avec la clé de SA version (`COFFRE_CLES_ANCIENNES` « version:base64,… »), l'écriture prend la courante : une
   rotation ne rend plus rien illisible. Test : `serveur-cloud/tests/orchestrateur.test.mjs` (rotation).
 - Restent à Nico : le sel `cloud_empreinte_sel` (vault), la sauvegarde de `COFFRE_CLE`.
+## 30/10 (lot D partie 2) — FillSell Cloud posé : rotation d'IP, conditions, exécutant, Depop (rapport `docs/enquetes/lot-d-3010/RAPPORT.md`)
+- **Cadre de Nico (30/10, non rediscuté)** : produit séparé 20 €/mois par canal, 7 jours offerts avec carte une fois
+  par personne, Free possible, quotas du palier ; mur de conversion (jamais le Cloud reproposé, le palier supérieur) ;
+  exécutant H24 sur Hetzner ; un bouton « Me connecter » par plateforme (page de connexion seule) ; **IP françaises EN
+  ROTATION au départ** (remplace « IP dédiée par compte » du 05/10) ; fournisseur isolé dans UN module ; alerte de solde
+  bas ; jamais d'achat sans accord ; jamais plus vite que l'extension ; visible UNIQUEMENT sur le compte de Nico.
+- **Fait (code)** :
+  - `serveur-cloud/src/fournisseurIp.js` : LE module fournisseur (proxyPour, solde, verifierSolde). Rotation :
+    résidentiel IPRoyal si `IPROYAL_RESI_UTILISATEUR`/`IPROYAL_RESI_MOT_DE_PASSE` (session collante par compte et par
+    tranche `ROTATION_HEURES`, pays FR, passerelle geo.iproyal.com:12321 — ⚠ port à ouvrir dans
+    `pare-feu-navigateurs.sh` le jour où il sert) ; sinon les IP françaises du pool (rendez-vous par compte et tranche).
+    ⚠ L'API résidentielle n'est PAS activée sur le compte IPRoyal (« residential_api_not_enabled ») : trafic à acheter
+    (6,25 $/Go, plan 15) = accord de Nico. Aujourd'hui : 1 IP, 94.194.94.233 (commande 84458881, fin 04/11 13:57).
+    Solde lu 10,60 $ ; alerte sous `IPROYAL_SOLDE_ALERTE` (5 $), une fois par jour, sans achat.
+  - Migration `20261030130000_cloud_conditions_executant_rotation` (feu vert NOMMÉ de Nico requis) : `cloud_ip_rotation`,
+    comptes servis sans IP attribuée, plus de « pool_vide » en rotation ; `cloud_cgu_version` / `cloud_cgu_acceptee_le`
+    + `cloud_cgu_accepter_moi` ; `cloud_executant_moi`. Essai à blanc vert (6 groupes). Inverse dans `supabase/rollbacks/`.
+  - Depop au Cloud (plateformes.js, copie Cloud de l'extension avec l'accès d'hôte, get-pending-jobs). Fournisseurs de
+    connexion limités à leurs pages de CONNEXION (plus google.com / facebook.com / apple.com en entier).
+  - Coffre : une connexion faite qui lâche passe `connecte = false` (« À reconnecter » à l'écran).
+  - Prise de job : un poste Cloud prend par `prendre_job` (update-job-status) ; une écriture « processing » suivante
+    n'est permise qu'à l'exécution qui a pris le job (processing_since).
+  - Jamais plus vite : une plateforme connectée au Cloud n'est servie qu'au poste Cloud tant qu'il est vivant (< 5 min),
+    les autres restent à l'ordinateur (get-pending-jobs).
+  - App : drapeau PAR COMPTE (`profiles.beta_flags.cloud`, listes écrites en dur VIDES), écran « Me connecter » avec
+    l'état de l'exécutant et « À reconnecter », conditions d'utilisation (`src/cloud/conditionsCloud.js`, version dans
+    `config/cloudOffer.js`) en case obligatoire AVANT toute carte (`ConditionsCloudModale.jsx`), page
+    `/conditions-cloud` (connecté + témoin seulement, noindex). Paiement Cloud : 403 `offre_fermee` hors témoins
+    (`coin_config.cloud_offre_ouverte` ouvre à tous), 409 `conditions_a_accepter`.
+- **Sel** `cloud_empreinte_sel` posé au vault le 30/10 à 10:37 (valeur tirée en base, jamais affichée) ; HMAC prouvé.
+- **Reste / à Nico** : voir le rapport du lot D (Stripe en mode test : clés de test à créer ; prix ce soir).

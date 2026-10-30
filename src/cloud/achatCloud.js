@@ -48,7 +48,9 @@ export function lirePreparation(r, lang = 'fr') {
   return { continuer: true, essai: true, raison: null };
 }
 
-export function creerAchatCloud({ supabase, supabaseUrl, supabaseAnonKey, user, lang, platform, purchasePremium, ouvrirLien, confirmer, notifier, paiementsAndroidCoupes }) {
+// (30/10, lot D) `demanderConditions` : la case OBLIGATOIRE des conditions d'utilisation du Cloud (App, modale) — rend
+// vrai une fois l'acceptation ENREGISTRÉE en base (version + date). Sans elle, rien ne s'ouvre, aucune carte.
+export function creerAchatCloud({ supabase, supabaseUrl, supabaseAnonKey, user, lang, platform, purchasePremium, ouvrirLien, confirmer, notifier, paiementsAndroidCoupes, demanderConditions }) {
   const T = textesConnexion(lang);
 
   async function jeton() {
@@ -90,6 +92,7 @@ export function creerAchatCloud({ supabase, supabaseUrl, supabaseAnonKey, user, 
       d = await appel();
     }
     if (d?.already_cloud) return { etat: 'deja', message: T.dejaClient };
+    if (d?.error === 'conditions_a_accepter') return { etat: 'refuse', message: T.achatEchec };
     if (!d?.url) return { etat: 'erreur', message: T.achatEchec };
     try { localStorage.setItem('fs_checkout_ctx', JSON.stringify({ canal: 'stripe', tier: 'cloud', origine, at: Date.now() })); } catch { /* mode privé */ }
     window.location.href = d.url;
@@ -114,6 +117,8 @@ export function creerAchatCloud({ supabase, supabaseUrl, supabaseAnonKey, user, 
 
   /** Prendre l'option (seule sur Free, ou en plus d'une formule). */
   async function acheter(origine = 'non_precisee') {
+    // 0. Les conditions d'utilisation : acceptées (case cochée, enregistrée) AVANT la place, avant toute carte.
+    if (typeof demanderConditions !== 'function' || !(await demanderConditions())) return { etat: 'annule' };
     notifier?.(T.preparation);
     const p = lirePreparation(await preparer(), lang);
     if (!p.continuer) return { etat: 'refuse', raison: p.raison, message: p.message };

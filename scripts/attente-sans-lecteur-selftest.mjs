@@ -147,7 +147,7 @@ console.log("\n3. La règle partagée (app et get-pending-jobs) : le choix de la
   ok(CF.texteDuVendeurSurFiche(redigee) === true && !("description_source" in redigee.attributs),
     "« redigee » ne se fait jamais passer pour le texte du vendeur (aucun description_source posé)");
   const gpj = lire("supabase/functions/get-pending-jobs/index.ts");
-  ok(/import \{ lectureOrigineEnAttente, contenuAImposer, messageLectureOrigine \} from "\.\.\/_shared\/contenu-fiche\.js"/.test(gpj)
+  ok(/import \{ lectureOrigineEnAttente, contenuAImposer, messageLectureOrigine(, demandeLectureVivante)? \} from "\.\.\/_shared\/contenu-fiche\.js"/.test(gpj)
     && /lectureOrigineEnAttente\(f, \(f\.annonces as unknown\[\]\) \?\? \[\]/.test(gpj),
     "get-pending-jobs applique LA règle à la fiche lue par fiches_contenu_vendeur (attributs compris) — effet au prochain déploiement");
 }

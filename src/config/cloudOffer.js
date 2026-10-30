@@ -43,28 +43,55 @@ export const CLOUD_TEXTES_LEGAUX = CLOUD_OFFER_ENABLED;
 // (05/10, décision de Nico : écran B du test, DANS l'app) Nico SEUL — aucun
 // autre compte ne voit rien, ni à l'écran ni dans le comportement
 // (scripts/cloud/preuve-identite-compte-ordinaire.mjs le prouve avant l'OTA).
+// (30/10, lot D, décision de Nico : « visible UNIQUEMENT sur mon compte, drapeau PAR COMPTE ») Les listes écrites
+// en dur sont VIDES : un témoin est un compte qui porte profiles.beta_flags.cloud = true (posé par le serveur seul,
+// beta_flags n'est pas inscriptible par les clients), lu une fois à la connexion par chargerTemoinCloud (App).
+// Ouvrir à un autre compte = une ligne en base, jamais une OTA.
+// L'identifiant de Nico reste exporté pour la page de maquettes (MaquettesLot.jsx) — il n'ouvre plus le Cloud.
 export const NICO_USER_ID = 'f44b5917-bccc-4431-ba41-f40571a2ed18';
-export const CLOUD_OFFRE_TEMOINS = Object.freeze([NICO_USER_ID]);
+export const CLOUD_OFFRE_TEMOINS = Object.freeze([]);
+// Les comptes dont le drapeau a été LU vrai (cette session de l'app seulement).
+const TEMOINS_PAR_DRAPEAU = new Set();
+/** Lit le drapeau du compte (profiles.beta_flags.cloud) ; rend vrai si c'est un témoin. Jamais d'exception. */
+export async function chargerTemoinCloud(supabase, userId) {
+  if (!supabase || !userId) return false;
+  try {
+    const { data, error } = await supabase.from('profiles').select('beta_flags').eq('id', userId).maybeSingle();
+    const oui = !error && data?.beta_flags?.cloud === true;
+    if (oui) TEMOINS_PAR_DRAPEAU.add(userId); else TEMOINS_PAR_DRAPEAU.delete(userId);
+    return oui;
+  } catch {
+    return false;
+  }
+}
+const estTemoin = (userId) => userId != null && (CLOUD_OFFRE_TEMOINS.includes(userId) || TEMOINS_PAR_DRAPEAU.has(userId));
 
 // LE point de décision. Le paramètre `userId` est gardé (même signature que
 // businessOfferVisible) : c'est lui qui ouvre l'option aux comptes témoins
 // sans retoucher les appelants.
-export const cloudOfferVisible = (userId) => CLOUD_OFFER_ENABLED || (userId != null && CLOUD_OFFRE_TEMOINS.includes(userId));
+export const cloudOfferVisible = (userId) => CLOUD_OFFER_ENABLED || estTemoin(userId);
 
 // ── L'écran « Me connecter » (05/10) ──────────────────────────────────────
 // Le serveur qui ouvre la page de connexion dans le navigateur Cloud du compte
 // (orchestrateur, serveur-cloud/, derrière Caddy).
 export const CLOUD_DOMAINE = 'cloud.fillsell.app';
+// (30/10, lot D) La version en vigueur des conditions d'utilisation du Cloud (src/cloud/conditionsCloud.js) — même
+// valeur que supabase/functions/_shared/cloud-conditions.js. Changer le texte = changer cette version.
+export const CGU_CLOUD_VERSION = '2026-10-30';
 // Les plateformes proposées : SEULEMENT celles prouvées en réel depuis le Cloud.
 // (Une plateforme qui bloque le Cloud n'est jamais promise : elle s'ajoute ici
 // après son test réel, sur décision de Nico.) eBay a sa propre ligne (API).
+// (30/10, lot D, Nico : « un bouton Me connecter par plateforme ») Beebs et Depop ajoutés pour le test du compte
+// témoin (Beebs : DataDome le 26/09 sur une autre IP et un autre navigateur — retesté le 30/10).
 export const CLOUD_PLATEFORMES_CONNEXION = Object.freeze([
   Object.freeze({ id: 'vinted', nom: 'Vinted' }),
   Object.freeze({ id: 'leboncoin', nom: 'Leboncoin' }),
+  Object.freeze({ id: 'beebs', nom: 'Beebs' }),
+  Object.freeze({ id: 'depop', nom: 'Depop' }),
 ]);
 // Comptes TÉMOINS du test réel : l'écran « Me connecter » et la lecture de
 // l'état Cloud leur sont ouverts même drapeau baissé — l'OFFRE (paiement)
 // reste fermée. VIDE = personne : rien ne change pour aucun compte.
 // (05/10) Nico SEUL, pour le test réel (écran B).
-export const CLOUD_TEMOINS = Object.freeze([NICO_USER_ID]);
-export const cloudConnexionVisible = (userId) => cloudOfferVisible(userId) || (userId != null && CLOUD_TEMOINS.includes(userId));
+export const CLOUD_TEMOINS = Object.freeze([]);
+export const cloudConnexionVisible = (userId) => cloudOfferVisible(userId) || (userId != null && (CLOUD_TEMOINS.includes(userId) || estTemoin(userId)));

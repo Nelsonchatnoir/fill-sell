@@ -28,6 +28,8 @@ capterOffre();
 
 const App = lazy(() => import("../App"));
 const Legal = lazy(() => import("../pages/Legal"));
+// (30/10, lot D) Les conditions du Cloud : comptes témoins seulement tant que Nico n'a pas validé le texte.
+const ConditionsCloud = lazy(() => import("../pages/ConditionsCloud"));
 const BlogList = lazy(() => import("../pages/BlogList"));
 const BlogPost = lazy(() => import("../pages/BlogPost"));
 const ExtensionPage = lazy(() => import("../pages/ExtensionPage"));
@@ -189,6 +191,7 @@ export default function AppRouter() {
         <Route path="/success" element={<Success />} />
         <Route path="/cancel" element={<Cancel />} />
         <Route path="/legal" element={<Legal />} />
+        <Route path="/conditions-cloud" element={<RequireAuth><ConditionsCloud /></RequireAuth>} />
         {/* Désinscription : PUBLIQUE, hors RequireAuth. Se retirer de nos
             emails ne doit jamais exiger de se connecter. */}
         <Route path="/desinscription" element={<Desinscription />} />

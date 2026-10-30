@@ -3,7 +3,7 @@ import { estFileEnPause, jobRetenuParPause, syncDemandeeParLaPersonne, SYNC_DEVA
 import { reglageProgrammation, estProgrammee, servieAujourdhui, decisionProgrammee, ordreProgrammeesPretesDabord } from "../_shared/publication-programmee.js";
 import { estApresRestrictionVinted } from "../_shared/reprise-apres-restriction.js";
 import { premiereSynchroAPoser, PREMIERE_SYNCHRO_JOURS_DEFAUT } from "../_shared/premiere-synchro.js";
-import { lectureOrigineEnAttente, contenuAImposer, messageLectureOrigine } from "../_shared/contenu-fiche.js";
+import { lectureOrigineEnAttente, contenuAImposer, messageLectureOrigine, demandeLectureVivante } from "../_shared/contenu-fiche.js";
 import { conformerTexte } from "../../../src/utils/texteConforme.js";
 import { correctionCaptureVinted, photosDeLaFicheALaRecreation } from "../_shared/capture-corrigee.js";
 import { EXTENSION_MIN_BUILD, posteExtensionCompatible } from "../_shared/version-min-extension.js";
@@ -11,6 +11,8 @@ import { EXTENSION_MIN_BUILD, posteExtensionCompatible } from "../_shared/versio
 import { ANTIROBOT_LECTURES_MSG, refusSurSaBoutique, retenuParPauseLectures, signalPauseLectures } from "../_shared/pause-antirobot-vinted.js";
 // (02/10) Le message d'un poste sous le seuil : simple, et vrai — la file
 // attend, rien n'est perdu, elle repart seule après la mise à jour.
+// (30/10, lot D point 1) Plafond dur des lectures d'origine par relevé (hors Vinted) : 3 relevés terminés en 24 h.
+const LECTURE_ORIGINE_RELEVES_MAX = 3;
 const MESSAGE_MISE_A_JOUR_EXTENSION =
   // (03/10, point 24) Le geste le plus simple d'abord : fermer Chrome et le rouvrir.
   "Mets l’extension FillSell à jour : ferme Chrome complètement puis rouvre-le — ta file reprendra toute seule après la mise à jour. Tes annonces restent en ligne.";
@@ -102,6 +104,7 @@ import { PLATEFORMES_RELEVE, RETRAIT_SANS_NUMERO_GESTE_MS, RETRAIT_SANS_NUMERO_R
 import { champsRetraitDejaAbsent } from "../_shared/retrait-deja-absent.js";
 import { requalificationCompteVintedBloque } from "../_shared/vinted-compte-bloque.js";
 import { boutiqueConnecteeVinted, loginsDesBoutiques } from "../_shared/boutique-connectee.js";
+import { cleAttenteBoutique, messageJobRetenuAutreBoutique } from "../_shared/attente-boutique-serveur.js";
 import { leverPauseIntrouvable, champsApresLevee } from "../_shared/introuvable-boutique.js";
 import { cleCategorieLbc, requisParCategorie, requisManquantsAvantRetrait, questionAvantRetraitLbc } from "../_shared/requis-recreation-lbc.js";
 import { BUILD_EBAY_FIN_PAR_NUMERO, BUILD_BEEBS_ADRESSE_STRICTE, BUILD_BEEBS_FORMAT_EXPLICITE, BUILD_VINTED_MODELE_REPLI } from "../_shared/correctifs-extension.js";
@@ -912,7 +915,8 @@ serve(async (req) => {
     //     de l'extension de l'ORDINATEUR (le seuil de version et le mail de
     //     mise à jour parlent de celle-là).
     const posteCloud = capacites.includes("poste_cloud");
-    const PLATEFORMES_POSTE_CLOUD = ["vinted", "leboncoin", "beebs"];
+    // (30/10, lot D) + Depop : la copie Cloud a son accès d'hôte (scripts/cloud/build-extension-cloud.mjs).
+    const PLATEFORMES_POSTE_CLOUD = ["vinted", "leboncoin", "beebs", "depop"];
     // (25/09) Les postes vivants du compte, relus par la garde des relevés Opla.
     let postesDuCompte: Record<string, Poste> = {};
     // (18/10, lot 6) CE poste tel qu'il est APRÈS ce poll (ce qu'il vient de dire compris).
@@ -2700,6 +2704,7 @@ serve(async (req) => {
           }
           const contenuLe = new Map(((originesC ?? []) as Array<Record<string, unknown>>).map((o) => [String(o.job_id), String(o.contenu_le ?? "")]));
           const retenus = new Set<string>();
+          const retenusPlateforme = new Map<string, string>();
           const relevesADemander = new Set<string>();
           const aRapatrier = new Set<number>();
           for (const j of candidats) {
@@ -2710,6 +2715,7 @@ serve(async (req) => {
               { descriptionLueLe: f.description_lue_le, origineLueLe: f.origine_lue_le });
             if (attente) {
               retenus.add(String(j.id));
+              retenusPlateforme.set(String(j.id), String(attente.plateforme));
               if (attente.plateforme !== "vinted") relevesADemander.add(String(attente.plateforme));
               const deja = pfJ.attente_lecture_origine as Record<string, unknown> | undefined;
               if (!deja || String(deja.plateforme ?? "") !== String(attente.plateforme)) {
@@ -2763,6 +2769,35 @@ serve(async (req) => {
             majJ.platform_fields = pfAPersister(pfI);
             await adminC.from("cross_post_jobs").update(majJ).eq("id", String(j.id)).eq("status", "pending");
             console.log(`[get-pending-jobs] job ${String(j.id).slice(0, 8)} (${j.platform} ${j.action}) : contenu du vendeur imposé — ${imp.raisons.join(", ")} (lu après la copie)`);
+          }
+          // ── (30/10, lot D point 1) PLAFOND DUR DES LECTURES D'ORIGINE PAR RELEVÉ (Leboncoin, Beebs, Depop, eBay) ──
+          // Une lecture d'origine hors Vinted passe par un relevé de la plateforme, redemandé toutes les 15 min tant que
+          // l'annonce n'est pas lue : sans plafond, une annonce que le relevé ne sait pas lire en déclenchait un toutes
+          // les 15 min pendant 7 jours. Règle : 3 relevés « lecture d'origine » TERMINÉS en 24 h sans la lire = lecture
+          // impossible — plus aucun relevé demandé pour elle, et la file ne l'attend plus (la copie part telle quelle).
+          // Un relevé en file ou en cours (ordinateur éteint) ne compte pas : il n'a encore rien prouvé.
+          const plateformesEpuisees = new Set<string>();
+          for (const p of relevesADemander) {
+            const { count: nFinis } = await adminC.from("vinted_sync_runs").select("id", { count: "exact", head: true })
+              .eq("user_id", user.id).eq("kind", "annonces").eq("platform", p).eq("declencheur", "serveur:lecture_origine")
+              .not("status", "in", "(queued,running)")
+              .gte("queued_at", new Date(Date.now() - 24 * 3600_000).toISOString());
+            if ((nFinis ?? 0) >= LECTURE_ORIGINE_RELEVES_MAX) plateformesEpuisees.add(p);
+          }
+          if (plateformesEpuisees.size) {
+            for (const j of candidats) {
+              const pfR = retenusPlateforme.get(String(j.id));
+              if (!pfR || !plateformesEpuisees.has(pfR)) continue;
+              retenus.delete(String(j.id));
+              const pfE = { ...((j.platform_fields as Record<string, unknown> | null) ?? {}) };
+              delete pfE.attente_lecture_origine;
+              pfE.lecture_origine_epuisee = { le: new Date().toISOString(), plateforme: pfR, releves: LECTURE_ORIGINE_RELEVES_MAX, pose_par: "get-pending-jobs (30/10, lot D)" };
+              j.platform_fields = pfE;
+              await adminC.from("cross_post_jobs").update({ platform_fields: pfAPersister(pfE), error: null })
+                .eq("id", String(j.id)).eq("status", "pending");
+            }
+            for (const p of plateformesEpuisees) relevesADemander.delete(p);
+            console.log(`[get-pending-jobs] userId=${user.id} : lecture d'origine ${[...plateformesEpuisees].join(", ")} ÉPUISÉE (${LECTURE_ORIGINE_RELEVES_MAX} relevés en 24 h sans la lire) — plus de relevé demandé, la file ne l'attend plus`);
           }
           if (retenus.size) {
             out = out.filter((j) => !retenus.has(String(j.id)));
@@ -7094,10 +7129,19 @@ serve(async (req) => {
     let heldLecturesOrigine = 0;
     if (!includeProcessing && !includeNeedsUser && out.length && !compteEnPauseAr && versionAuMoins(version, LECTURE_FOND_VERSION_MIN)) {
       try {
-        const { data: lecturesDemandees } = await userClient.from("lectures_origine_demandees").select("inventaire_id")
+        const { data: lecturesDemandeesBrutes } = await userClient.from("lectures_origine_demandees").select("inventaire_id, demandee_le, faite_le")
           .eq("user_id", user.id).eq("plateforme", "vinted").is("faite_le", null).lt("essais", 3)
-          .gte("demandee_le", new Date(Date.now() - 15 * 60_000).toISOString()).limit(1);
-        if ((lecturesDemandees ?? []).length) {
+          .gte("demandee_le", new Date(Date.now() - 15 * 60_000).toISOString()).limit(5);
+        // (30/10, lot D point 1) Seulement une demande VIVANTE : un choix (Écrire / Faire rédiger) posé après elle, ou
+        // un texte sur la fiche, la rend sans objet — la file ne l'attend plus (demandeLectureVivante, = la base).
+        let lecturesDemandees = (lecturesDemandeesBrutes ?? []) as Array<{ inventaire_id: unknown; demandee_le: unknown; faite_le: unknown }>;
+        if (lecturesDemandees.length) {
+          const { data: fichesL } = await userClient.from("inventaire").select("id, description, attributs")
+            .in("id", lecturesDemandees.map((d) => d.inventaire_id)).eq("user_id", user.id);
+          const ficheL = new Map(((fichesL ?? []) as Array<Record<string, unknown>>).map((f) => [String(f.id), f]));
+          lecturesDemandees = lecturesDemandees.filter((d) => demandeLectureVivante(d, ficheL.get(String(d.inventaire_id)) ?? null));
+        }
+        if (lecturesDemandees.length) {
           const avantLecture = out.length;
           out = out.filter((j) => passeAvantLaSynchro(j));
           heldLecturesOrigine = avantLecture - out.length;
@@ -7640,12 +7684,15 @@ serve(async (req) => {
               out = out.filter((j) => !aRetenir.has(String(j.id)));
               // (12/10, A6) La bonne boutique est ouverte : le motif « ouvre ta
               // boutique » posé plus tôt part avec le service du retrait.
+              // (30/10, lot D) Même chose pour une republication retenue.
               for (const j of out) {
-                if (j.action !== "delete" || j.platform !== "vinted") continue;
+                if (j.platform !== "vinted") continue;
+                const cleL = cleAttenteBoutique(j.action);
+                if (!cleL) continue;
                 const pfL = (j.platform_fields as Record<string, unknown> | null) ?? {};
-                if (!pfL["attente_boutique_retrait"]) continue;
+                if (!pfL[cleL]) continue;
                 const pfSans = { ...pfL };
-                delete pfSans["attente_boutique_retrait"];
+                delete pfSans[cleL];
                 const { data: majL } = await userClient.from("cross_post_jobs").update({ platform_fields: pfAPersister(pfSans), error: null })
                   .eq("id", String(j.id)).eq("status", "pending").select("id");
                 if ((majL ?? []).length) (j as { platform_fields: unknown }).platform_fields = pfSans;
@@ -7680,22 +7727,29 @@ serve(async (req) => {
               // ouvrir (attente_boutique_retrait) et le message ; écrit UNE fois
               // par boutique (compare-and-swap sur pending), levé dès qu'il part
               // (l'extension réécrit platform_fields et l'erreur au service).
+              // (30/10, lot D) Les republications aussi : 4 republications
+              // d'Ornella (@ornella-vend) retenues depuis le 20-24/10 sans un
+              // mot sur le job (error NULL) — tout ce qui lit l'erreur restait
+              // muet. Même règle, même écriture unique, sa propre clé.
               if (!includeProcessing && !includeNeedsUser) {
                 for (const j of candidats) {
-                  if (j.action !== "delete" || !aRetenir.has(String(j.id))) continue;
+                  const cleA = cleAttenteBoutique(j.action);
+                  if (!cleA || !aRetenir.has(String(j.id))) continue;
                   const o = origine.get(String(j.inventaire_id)) ?? "";
                   const pfD = { ...((j.platform_fields as Record<string, unknown> | null) ?? {}) };
-                  const prec = pfD["attente_boutique_retrait"] as Record<string, unknown> | undefined;
+                  const prec = pfD[cleA] as Record<string, unknown> | undefined;
                   if (prec && String(prec["boutique"] ?? "") === o && String(prec["connectee"] ?? "") === identId) continue;
                   const login = logins[o] ?? null;
-                  pfD["attente_boutique_retrait"] = {
+                  pfD[cleA] = {
                     boutique: o, login, connectee: identId, login_connectee: vu.login ?? null,
-                    depuis: new Date().toISOString(), pose_par: "get-pending-jobs (boutique ouverte ≠ boutique de l'annonce)",
+                    // « depuis » = la première attente vue (au plus tôt, la création du job).
+                    depuis: typeof prec?.["depuis"] === "string"
+                      ? prec["depuis"]
+                      : String((j as { created_at?: unknown }).created_at ?? new Date().toISOString()),
+                    pose_par: "get-pending-jobs (boutique ouverte ≠ boutique de l'annonce)",
                   };
-                  const message = `Retrait Vinted en attente : cette annonce est sur ta boutique ${login ? `@${login}` : "Vinted"}, `
-                    + `et Chrome est ouvert sur ${vu.login ? `@${vu.login}` : "une autre boutique"}. Ouvre ta boutique ${login ? `@${login}` : "qui porte l'annonce"} sur vinted.fr dans Chrome, `
-                    + "sur ton ordinateur : FillSell retirera l'annonce aussitôt. Rien n'a été touché.";
-                  if (j.error && String(j.error) !== message) pfD["erreurs_archivees"] = archiverErreur(pfD["erreurs_archivees"], j.error, "pending", "get-pending-jobs (retrait retenu : autre boutique)");
+                  const message = messageJobRetenuAutreBoutique(j.action, login, vu.login ?? null);
+                  if (j.error && String(j.error) !== message) pfD["erreurs_archivees"] = archiverErreur(pfD["erreurs_archivees"], j.error, "pending", `get-pending-jobs (${j.action === "delete" ? "retrait" : "republication"} retenu(e) : autre boutique)`);
                   await userClient.from("cross_post_jobs").update({ error: message, platform_fields: pfAPersister(pfD) })
                     .eq("id", String(j.id)).eq("status", "pending");
                 }
@@ -13093,6 +13147,29 @@ serve(async (req) => {
     // la tâche reste libre pour l'ordinateur ou l'API.
     if (posteCloud && out.some((j) => !PLATEFORMES_POSTE_CLOUD.includes(String(j.platform)))) {
       out = out.filter((j) => PLATEFORMES_POSTE_CLOUD.includes(String(j.platform)));
+    }
+    // ══ (30/10, lot D) LE CLOUD NE VA JAMAIS PLUS VITE QUE L'EXTENSION : UNE PLATEFORME, UN EXÉCUTANT ═══════════
+    // Un compte qui a le Cloud ET un ordinateur allumé aurait deux exécutants servis en même temps sur la même
+    // plateforme — deux fois le débit de l'extension. Règle : une plateforme CONNECTÉE au Cloud (coffre) est servie
+    // au seul poste Cloud tant qu'il est vivant (vu il y a moins de 5 min) ; une plateforme qui ne l'est pas reste à
+    // l'ordinateur (le poste Cloud ne la reçoit jamais). Mêmes plafonds, mêmes cadences, mêmes gardes : ce sont ceux
+    // de cette fonction, pour tous les postes. Un compte sans Cloud ne lit rien ici (aucun poste « -cloud »).
+    if (!includeProcessing && !includeNeedsUser && out.length) {
+      const cloudVivant = Object.entries(postesDuCompte).some(([sid, p]) => sid !== sessionId
+        && /-cloud$/.test(String(p?.build ?? "")) && Date.now() - Date.parse(String(p?.le ?? "")) < 5 * 60_000);
+      if (posteCloud || cloudVivant) {
+        try {
+          // cloud_coffre est fermé aux clients (RLS, aucun droit) : lu par le service, la colonne `plateforme` seule.
+          const adminCoffre = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+          const { data: coffreL } = await adminCoffre.from("cloud_coffre").select("plateforme").eq("user_id", user.id).eq("connecte", true);
+          const auCloud = new Set(((coffreL ?? []) as Array<{ plateforme: string }>).map((c) => String(c.plateforme)));
+          const avantRoutage = out.length;
+          out = out.filter((j) => (posteCloud ? auCloud.has(String(j.platform)) : !auCloud.has(String(j.platform))));
+          if (out.length !== avantRoutage) {
+            console.log(`[get-pending-jobs] userId=${user.id} : ${avantRoutage - out.length} job(s) laissé(s) à ${posteCloud ? "l'ordinateur (plateforme non connectée au Cloud)" : "l'exécutant Cloud (plateforme connectée au Cloud)"}`);
+          }
+        } catch (_e) { /* routage best-effort : illisible = chaque poste reçoit comme avant */ }
+      }
     }
 
     // ══ (11/10, A3) UNE TÂCHE SERVIE EST DÉMARRABLE — OU RETENUE ET DITE ══════

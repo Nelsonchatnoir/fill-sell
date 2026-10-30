@@ -55,6 +55,12 @@ export function lireConfig(env = process.env) {
     // ── Achats IPRoyal : ⛔ coupés tant que Nico n'a pas dit GO ──────────────
     iproyalJeton: env.IPROYAL_API_TOKEN?.trim() || '',
     iproyalAchatsAutorises: lireBool(env.IPROYAL_ACHATS_AUTORISES, false),
+    // (30/10, lot D) Le fournisseur d'IP (fournisseurIp.js) : rotation résidentielle si ses identifiants existent
+    // (sinon, rotation sur les IP françaises du pool), tranche de rotation, seuil d'alerte du solde (dollars).
+    iproyalResiUtilisateur: env.IPROYAL_RESI_UTILISATEUR?.trim() || '',
+    iproyalResiMotDePasse: env.IPROYAL_RESI_MOT_DE_PASSE?.trim() || '',
+    rotationHeures: lireEntier(env.ROTATION_HEURES, 24),
+    iproyalSoldeAlerte: lireEntier(env.IPROYAL_SOLDE_ALERTE, 5),
     // ── Alertes par mail à support@ (jamais à un utilisateur) ───────────────
     alertesMail: lireBool(env.ALERTES_MAIL, false),
     alertesDestinataire: env.ALERTES_DESTINATAIRE?.trim() || 'support@fillsell.app',

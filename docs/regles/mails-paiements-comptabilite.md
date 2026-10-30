@@ -224,3 +224,25 @@ marge de 100 % sur du vent, indétectable ensuite.
   (Premium compris). Réponse 409 `deja_abonne` + la phrase (« Tu as déjà cet abonnement par Google Play
   (renouvellement le 26/11) : rien n'a été débité. ») ; rien n'est créé chez Stripe. Une montée au-dessus d'un
   abonnement des stores n'est pas fermée ici (journalisée) : décision de Nico. Selftest `paiement-stripe`.
+## ⛔ 30/10 (lot D point 2) — un canal qui s'arrête ne retire que SON droit (rapport `docs/enquetes/lot-d-3010/RAPPORT.md`)
+- **Fait rectifié** : BONCOIN (3f91c02e) ne payait PAS deux fois (lot C faux) — Google REVOKED + EXPIRED + remboursé le
+  29/10 à 10:04 (`stores_notifications_journal`), Premium Stripe pris à 18:14 = un réabonnement. Le profil gardait
+  pourtant jeton, produit et fin Google (26/11).
+- **Règle** (`_shared/droits-canaux.js`, `selftest:droits-canaux`) : à l'arrêt d'un canal, les drapeaux = le plus haut
+  des AUTRES canaux vivants (Stripe relu en LECTURE par `_shared/stripe-rang-vivant.ts`, Apple = drapeaux + fin à venir) ;
+  un arrêt Google TERMINAL (12 REVOKED, 13 EXPIRED, remboursement d'abonnement sur le jeton courant) EFFACE le canal
+  (jeton, produit, fin) ; un arrêt passager (5, 6, 10) coupe le droit Google mais garde le jeton (la reprise arrive
+  dessus). OFF et CANCELED sur un jeton ABSENT ou remplacé : ignorés. La fin d'un abonnement Stripe ne descend jamais
+  sous un store vivant (`drapeauxStripeAvecStores`). Fonctions : google-play-webhook v32, validate-google-purchase v12,
+  stripe-webhook v61.
+- **La garde « jamais deux abonnements »** (create-checkout-session v61) relit l'abonnement chez Google
+  (subscriptionsv2, lecture seule) : actif → refus ; tout autre état → libre ; Google injoignable → preuve locale
+  (jeton + produit + fin À VENIR + drapeaux). Apple : fin à venir exigée (13/13 abonnés Apple en ont une). Jamais sur
+  la seule présence d'un jeton.
+- **MRR** : `abonnements-stores-audit` v2 (x-cron-secret, lecture seule) rend `mrr` par canal, actifs SEULEMENT
+  (Stripe « active » ; Apple transaction en cours hors essai gratuit ; Google ACTIVE ou résilié encore payé, jamais la
+  période de grâce) — `_shared/mrr.js`. Relevé du 30/10 ~10:35 : Stripe 33 · 837,67 € ; Apple 13 · 236,87 € ;
+  Google 1 · 12,99 € ; total 47 · 1 087,53 € TTC/mois. Appel : `select net.http_post(url := '…/abonnements-stores-audit',
+  headers := jsonb_build_object('x-cron-secret', public.cron_secret()))` puis `net._http_response`.
+- Jetons Google morts restants (drapeaux à 0, API « EXPIRED » ou 410) : 6 profils — non nettoyés (pas demandé) ;
+  la garde ne les croit plus. BONCOIN nettoyé : `scripts/reparations/20261030_boncoin_canal_google_mort{,_INVERSE}.sql`.

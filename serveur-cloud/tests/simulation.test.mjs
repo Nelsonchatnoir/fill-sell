@@ -17,6 +17,7 @@ import { randomBytes } from 'node:crypto';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { creerFournisseurIp } from '../src/fournisseurIp.js';
 import { creerPostes } from '../src/postes.js';
 import { creerCoffre } from '../src/coffre.js';
 import { creerConnexions } from '../src/connexion.js';
@@ -154,7 +155,9 @@ function monter({ comptes, jobs = [] }) {
     async rafraichirHorsNavigateur(own) { return own; },
   };
   let connexions = null;
-  const postes = creerPostes({ config, base, navigateurs, coffre, sessions, journal, connexionsOuvertes: () => connexions?.connexionsOuvertes() ?? new Set(), alertes: { signaler: async () => {} } });
+  // (30/10, lot D) La sortie passe par LE module fournisseur (compte à IP dédiée ici : cloud_proxy_identifiants).
+  const fournisseurIp = creerFournisseurIp({ config, base, iproyal: null, journal, alertes: { signaler: async () => {} } });
+  const postes = creerPostes({ config, base, navigateurs, coffre, sessions, journal, fournisseurIp, connexionsOuvertes: () => connexions?.connexionsOuvertes() ?? new Set(), alertes: { signaler: async () => {} } });
   connexions = creerConnexions({ config, base, postes, navigateurs, coffre, journal });
   return { base, nav, navigateurs, coffre, postes, connexions, fabriquees };
 }

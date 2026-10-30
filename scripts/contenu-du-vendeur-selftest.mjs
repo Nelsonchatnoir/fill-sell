@@ -207,7 +207,7 @@ console.log("C. JAMAIS AU-DESSUS D'UN CHOIX DE LA PERSONNE, NI D'UNE ADAPTATION"
 console.log("D. LES CHEMINS PORTENT LA RÈGLE (lecture du code)");
 {
   const gpj = lire("supabase/functions/get-pending-jobs/index.ts");
-  ok(/import \{ lectureOrigineEnAttente, contenuAImposer, messageLectureOrigine \} from "\.\.\/_shared\/contenu-fiche\.js"/.test(gpj), "get-pending-jobs importe LA règle (pas une copie)");
+  ok(/import \{ lectureOrigineEnAttente, contenuAImposer, messageLectureOrigine(, demandeLectureVivante)? \} from "\.\.\/_shared\/contenu-fiche\.js"/.test(gpj), "get-pending-jobs importe LA règle (pas une copie)");
   const bloc = gpj.slice(gpj.indexOf("LE CONTENU DU VENDEUR PART TEL QUEL"), gpj.indexOf("UNE REPUBLICATION RECRÉÉE EST FINIE"));
   ok(bloc.length > 1000, "get-pending-jobs : le bloc du contenu du vendeur est là");
   ok(/\["publish", "republish"\]\.includes/.test(bloc), "get-pending-jobs : publication ET republication (le lot crée des publications)");

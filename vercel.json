@@ -73,6 +73,12 @@
       ]
     },
     {
+      "source": "/conditions-cloud",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
       "source": "/auth",
       "headers": [
         { "key": "X-Robots-Tag", "value": "noindex, follow" }
@@ -126,6 +132,7 @@
     { "source": "/ebay/(.*)", "destination": "/app-shell.html" },
     { "source": "/desinscription", "destination": "/app-shell.html" },
     { "source": "/legal", "destination": "/app-shell.html" },
+    { "source": "/conditions-cloud", "destination": "/app-shell.html" },
     { "source": "/demo/(.*)", "destination": "/app-shell.html" },
     { "source": "/blog", "destination": "/app-shell.html" },
     { "source": "/blog/(.*)", "destination": "/app-shell.html" }

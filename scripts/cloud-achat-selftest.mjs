@@ -49,15 +49,21 @@ try {
 
   console.log('\n3. Les drapeaux');
   ok(C.CLOUD_OFFER_ENABLED === false && C.cloudOfferVisible('x') === false, 'drapeau baissé : offre fermée à tous (hors témoins)');
-  // (05/10, écran B du test) Nico SEUL témoin, des deux listes ; personne d'autre.
+  // (30/10, lot D, Nico : « drapeau PAR COMPTE ») Aucun identifiant écrit en dur : un témoin porte
+  // profiles.beta_flags.cloud = true, lu par chargerTemoinCloud. Personne d'autre.
   const NICO = 'f44b5917-bccc-4431-ba41-f40571a2ed18';
-  ok(Array.isArray(C.CLOUD_TEMOINS) && C.CLOUD_TEMOINS.length === 1 && C.CLOUD_TEMOINS[0] === NICO, 'témoins de « Me connecter » : Nico SEUL');
-  ok(Array.isArray(C.CLOUD_OFFRE_TEMOINS) && C.CLOUD_OFFRE_TEMOINS.length === 1 && C.CLOUD_OFFRE_TEMOINS[0] === NICO, 'témoins de l\'offre : Nico SEUL (achat d\'essai réel)');
+  ok(Array.isArray(C.CLOUD_TEMOINS) && C.CLOUD_TEMOINS.length === 0 && Array.isArray(C.CLOUD_OFFRE_TEMOINS) && C.CLOUD_OFFRE_TEMOINS.length === 0, 'listes écrites en dur : VIDES');
   ok(Object.isFrozen(C.CLOUD_TEMOINS) && Object.isFrozen(C.CLOUD_OFFRE_TEMOINS), 'listes figées (aucun ajout à l\'exécution)');
-  ok(C.cloudConnexionVisible(NICO) === true && C.cloudOfferVisible(NICO) === true, 'Nico voit « Me connecter » et l\'offre');
+  ok(C.cloudConnexionVisible(NICO) === false && C.cloudOfferVisible(NICO) === false, 'avant la lecture du drapeau : même Nico ne voit rien');
+  const baseFausse = (flags) => ({ from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { beta_flags: flags }, error: null }) }) }) }) });
+  ok(await C.chargerTemoinCloud(baseFausse({ cloud: true }), NICO) === true && C.cloudConnexionVisible(NICO) === true && C.cloudOfferVisible(NICO) === true, 'drapeau vrai en base → CE compte voit « Me connecter » et l\'offre');
   const autres = ['x', '', undefined, null, 0, NICO.toUpperCase(), `${NICO} `, 'f44b5917-bccc-4431-ba41-f40571a2ed19', '00000000-0000-0000-0000-000000000000'];
   ok(autres.every((u) => C.cloudConnexionVisible(u) === false && C.cloudOfferVisible(u) === false), 'tout autre compte (casse, espace, voisin, vide, null) : NON, partout');
-  ok(C.CLOUD_PLATEFORMES_CONNEXION.map((p) => p.id).join(',') === 'vinted,leboncoin', 'plateformes proposées : Vinted, Leboncoin (seulement celles prouvées)');
+  ok(await C.chargerTemoinCloud(baseFausse({ cloud: 'true' }), 'u2') === false && C.cloudOfferVisible('u2') === false, 'drapeau non booléen → non');
+  ok(await C.chargerTemoinCloud(baseFausse({}), NICO) === false && C.cloudOfferVisible(NICO) === false, 'drapeau retiré → l\'écran se referme pour ce compte');
+  ok(await C.chargerTemoinCloud({ from: () => { throw new Error('réseau'); } }, NICO) === false, 'lecture impossible → non (jamais une exception)');
+  // (30/10, lot D, Nico : « un bouton Me connecter par plateforme ») — pour le compte témoin, en test.
+  ok(C.CLOUD_PLATEFORMES_CONNEXION.map((p) => p.id).join(',') === 'vinted,leboncoin,beebs,depop', 'plateformes proposées au témoin : Vinted, Leboncoin, Beebs, Depop (une ligne chacune, eBay à part)');
   ok(C.CLOUD_DOMAINE === 'cloud.fillsell.app', 'domaine de l\'écran : cloud.fillsell.app');
 
   console.log('\n4. Les mots');

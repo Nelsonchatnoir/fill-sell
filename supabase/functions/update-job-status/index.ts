@@ -580,6 +580,33 @@ serve(async (req) => {
     if (erreurReservation) return json({ error: "La réservation du job est indisponible. Aucun geste ne doit partir." }, 503);
     if (!reservation?.ok) return json({ error: reservation?.reason || "Ce job n'est plus réservé à ce poste." }, 409);
 
+    // ══ (30/10, lot D) L'EXÉCUTANT CLOUD PREND SES JOBS PAR LA PRISE ATOMIQUE (prendre_job, lot C) ══════════
+    // Un poste Cloud (BUILD_ID « …-cloud », scripts/cloud/build-extension-cloud.mjs) : la PRISE (un job encore
+    // « pending » qui passe à « processing ») se fait en UNE transaction, seulement depuis pending (prendre_job) ;
+    // une écriture « processing » SUIVANTE (étape de republication, capture) n'est permise qu'à l'exécution qui a
+    // pris le job (même processing_since) — deux exécutants d'un même poste ne travaillent jamais le même job.
+    // Rien ne change pour l'extension des ordinateurs (chemin d'avant, inchangé).
+    if (status === "processing" && /-cloud$/.test(String(body.handler_build ?? ""))) {
+      if (reservation.statut === "pending") {
+        const { data: pris, error: erreurPrise } = await adminReservation.rpc("prendre_job", {
+          p_user: user.id, p_poste: posteReservation, p_job: jobId, p_build: String(body.handler_build ?? "").slice(0, 120),
+        });
+        if (erreurPrise) return json({ error: "La prise du job est indisponible. Aucun geste ne doit partir." }, 503);
+        if (!pris?.pris) return json({ error: pris?.reason || "Ce job est déjà pris : il n'est jamais repris." }, 409);
+        reservation.statut = "processing";
+        console.log(`[update-job-status] userId=${user.id} job=${jobId} : pris par l'exécutant Cloud (prendre_job, atomique)`);
+      } else if (reservation.statut === "processing") {
+        const pfPris = (body.platform_fields && typeof body.platform_fields === "object" ? body.platform_fields : {}) as Record<string, unknown>;
+        const { data: jPris } = await adminReservation.from("cross_post_jobs").select("platform_fields").eq("id", jobId).maybeSingle();
+        const enBase = String(((jPris?.platform_fields ?? {}) as Record<string, unknown>)["processing_since"] ?? "");
+        const chezLui = String(pfPris["processing_since"] ?? "");
+        if (enBase && chezLui && enBase !== chezLui) {
+          console.warn(`[update-job-status] userId=${user.id} job=${jobId} : écriture Cloud REFUSÉE — le job est travaillé par une autre exécution (processing_since ${enBase} ≠ ${chezLui})`);
+          return json({ error: "Ce job est déjà travaillé par une autre exécution : il n'est jamais repris." }, 409);
+        }
+      }
+    }
+
     // ── 'deleted' : réservé aux jobs action='delete' (suppression LIVE) ──────
     if (status === "deleted") {
       const { data: cur } = await userClient

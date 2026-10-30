@@ -154,23 +154,30 @@ export function rangProduitStore(produit) {
  * @param p { google_purchase_token, google_product_id, apple_original_transaction_id, is_premium, is_pro, is_business,
  *            subscription_period_end }
  */
-export function abonnementStoreVivant(p, maintenant = Date.now()) {
+// (30/10, lot D point 2 — BONCOIN) Jamais sur la seule présence d'un jeton : remboursé par Google le 29/10 10:04, son
+// jeton et la fin Google (26/11) restaient sur le profil, et les drapeaux étaient ceux de son Premium STRIPE — la garde
+// lisait « Premium Google vivant jusqu'au 26/11 ». Désormais : Google vivant = jeton + produit de palier + fin À VENIR,
+// et l'état RELU chez Google (opts.googleActif, create-checkout-session) tranche : faux → pas vivant, vrai → vivant.
+// Sans relecture (null) : la preuve locale, drapeaux compris. Apple : fin À VENIR exigée (13/13 abonnés Apple l'ont).
+export function abonnementStoreVivant(p, maintenant = Date.now(), { googleActif = null } = {}) {
   if (!p) return null;
-  const canal = p.google_purchase_token ? "google" : (p.apple_original_transaction_id ? "apple" : null);
-  if (!canal) return null;
   const rangDrapeaux = p.is_business ? 3 : (p.is_pro ? 2 : (p.is_premium ? 1 : 0));
-  if (!rangDrapeaux) return null;   // les drapeaux sont retombés : l'abonnement du store est fini
   const fin = Date.parse(String(p.subscription_period_end ?? ""));
-  if (Number.isFinite(fin) && fin <= maintenant) return null;
-  const rang = (canal === "google" ? rangProduitStore(p.google_product_id) : 0) || rangDrapeaux;
-  return { canal, rang, fin: Number.isFinite(fin) ? new Date(fin).toISOString() : null };
+  const finIso = Number.isFinite(fin) ? new Date(fin).toISOString() : null;
+  const finAVenir = Number.isFinite(fin) && fin > maintenant;
+  if (p.google_purchase_token && googleActif !== false) {
+    const rangProduit = rangProduitStore(p.google_product_id);
+    if (rangProduit && finAVenir && (googleActif === true || rangDrapeaux > 0)) return { canal: "google", rang: rangProduit, fin: finIso };
+  }
+  if (p.apple_original_transaction_id && rangDrapeaux && finAVenir) return { canal: "apple", rang: rangDrapeaux, fin: finIso };
+  return null;
 }
 /**
  * Faut-il refuser ce paiement d'abonnement web ? (pur) — { refus: true, motif, canal, fin } ou { refus: false }.
  * `rangStripeVivant` : le rang le plus haut des abonnements Stripe actifs du client (0 si aucun).
  */
-export function refusDoubleAbonnement(profil, rangDemande, rangStripeVivant = 0, maintenant = Date.now()) {
-  const store = abonnementStoreVivant(profil, maintenant);
+export function refusDoubleAbonnement(profil, rangDemande, rangStripeVivant = 0, maintenant = Date.now(), opts = {}) {
+  const store = abonnementStoreVivant(profil, maintenant, opts);
   if (store && store.rang >= rangDemande) return { refus: true, motif: "abonnement_store_actif", canal: store.canal, fin: store.fin };
   if (rangStripeVivant >= rangDemande && rangDemande === 1) return { refus: true, motif: "abonnement_stripe_actif", canal: "stripe", fin: null };
   return { refus: false, store };

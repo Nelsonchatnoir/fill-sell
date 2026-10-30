@@ -3,6 +3,11 @@ import Stripe from "https://esm.sh/stripe@12.18.0?target=deno&no-check";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { choisirClientExistant, trierSessionsOuvertes, abonnementRemplacable, causeEchec, refusDoubleAbonnement, messageDoubleAbonnement } from "../_shared/paiement-stripe.js";
 import { estAbonnementCloud, essaiCloudPermis, parametresCheckoutCloud, sessionEstCloud, ESSAI_CLOUD_JOURS } from "../_shared/cloud-option.js";
+// (30/10, lot D point 2) L'abonnement Google relu chez Google (lecture seule) avant de refuser un paiement web.
+import { jetonGooglePlay } from "../_shared/google-play-token.ts";
+import { abonnementGoogleActif } from "../_shared/droits-canaux.js";
+// (30/10, lot D) La version en vigueur des conditions d'utilisation du Cloud.
+import { CGU_CLOUD_VERSION, conditionsCloudAcceptees } from "../_shared/cloud-conditions.js";
 
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
   apiVersion: "2023-10-16",
@@ -376,6 +381,24 @@ serve(async (req) => {
           status: 503, headers: { "Content-Type": "application/json", ...CORS },
         });
       }
+      // (30/10, lot D) Deux gardes AVANT toute session Stripe : l'offre n'est ouverte qu'aux comptes témoins
+      // (profiles.beta_flags.cloud) tant que coin_config.cloud_offre_ouverte n'est pas à 1 — jamais un paiement Cloud
+      // pour un compte qui ne voit pas l'offre ; et les conditions d'utilisation acceptées dans leur version en
+      // vigueur (case obligatoire, version + date en base).
+      const { data: profilGarde } = await supabase.from("profiles").select("beta_flags, cloud_cgu_version").eq("id", authUser.id).maybeSingle();
+      const { data: ouvertureCloud } = await supabase.from("coin_config").select("value").eq("key", "cloud_offre_ouverte").maybeSingle();
+      const temoinCloud = (profilGarde?.beta_flags as Record<string, unknown> | null)?.cloud === true;
+      if (!temoinCloud && Number(ouvertureCloud?.value) !== 1) {
+        console.log(`[checkout] ${authUser.id} : option Cloud demandée hors témoins, offre fermée — rien créé chez Stripe`);
+        return new Response(JSON.stringify({ error: "offre_fermee", option: "cloud" }), {
+          status: 403, headers: { "Content-Type": "application/json", ...CORS },
+        });
+      }
+      if (!conditionsCloudAcceptees(profilGarde)) {
+        return new Response(JSON.stringify({ error: "conditions_a_accepter", option: "cloud", version: CGU_CLOUD_VERSION }), {
+          status: 409, headers: { "Content-Type": "application/json", ...CORS },
+        });
+      }
       const { data: profilCloud } = await supabase
         .from("profiles").select("stripe_customer_id, is_cloud, cloud_canal, cloud_essai_debut").eq("id", authUser.id).single();
       if (profilCloud?.is_cloud === true && profilCloud?.cloud_canal && profilCloud.cloud_canal !== "stripe") {
@@ -481,7 +504,23 @@ serve(async (req) => {
         .select("google_purchase_token, google_product_id, apple_original_transaction_id, is_premium, is_pro, is_business, subscription_period_end")
         .eq("id", authUser.id)
         .maybeSingle();
-      const r = refusDoubleAbonnement(profilStore, plan.rang, 0);
+      // (30/10, lot D point 2 — BONCOIN) Un jeton Google sur le profil ne prouve RIEN : on relit l'abonnement chez
+      // Google (subscriptionsv2, lecture seule). Actif → vivant ; tout autre état → pas vivant ; Google injoignable →
+      // la preuve locale (jeton + fin à venir + drapeaux), comme avant.
+      let googleActif: boolean | null = null;
+      if (profilStore?.google_purchase_token) {
+        try {
+          const acces = await jetonGooglePlay();
+          const rg = await fetch(`https://androidpublisher.googleapis.com/androidpublisher/v3/applications/app.fillsell.app/purchases/subscriptionsv2/tokens/${encodeURIComponent(String(profilStore.google_purchase_token))}`,
+            { headers: { Authorization: `Bearer ${acces}` }, signal: AbortSignal.timeout(10_000) });
+          if (rg.ok) googleActif = abonnementGoogleActif(await rg.json());
+          else if (rg.status === 404 || rg.status === 410) googleActif = false;
+          console.log(`[checkout] ${authUser.id} : abonnement Google relu → ${googleActif === null ? `illisible (HTTP ${rg.status})` : googleActif ? "ACTIF" : "pas actif"}`);
+        } catch (e) {
+          console.warn(`[checkout] ${authUser.id} : abonnement Google illisible (${(e as Error)?.message ?? e}) — preuve locale`);
+        }
+      }
+      const r = refusDoubleAbonnement(profilStore, plan.rang, 0, Date.now(), { googleActif });
       if (r.refus) return refuserDouble(r as { motif: string; canal: string; fin: string | null });
       if (r.store) console.log(`[checkout] ${authUser.id} : abonnement ${r.store.canal} de rang ${r.store.rang} vivant, montée web vers ${planType} (rang ${plan.rang}) laissée passer`);
     }

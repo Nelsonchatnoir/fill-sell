@@ -72,7 +72,7 @@ export async function attenteLectureOrigine(supabase, userId, inventaireId) {
   const pf = plateformeOrigine(f);
   if (!texteSuffisant(f?.description)) {
     const motif = String(demande?.motif ?? "");
-    if (demande?.faite_le && (motif === "introuvable" || motif === "sans_texte")) return { plateforme: pf, manque: ["description"], demande, conclusion: motif };
+    if (demande?.faite_le && (motif === "introuvable" || motif === "sans_texte" || motif === "masquee" || motif === "illisible")) return { plateforme: pf, manque: ["description"], demande, conclusion: motif };
     if (pf === "vinted" && f?.disparu_le) return { plateforme: pf, manque: ["description"], demande, conclusion: "introuvable" };
   }
   return null;

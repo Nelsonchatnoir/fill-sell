@@ -1,7 +1,7 @@
 {
   "name": "fillsell",
   "private": true,
-  "version": "2.9.136",
+  "version": "2.9.137",
   "type": "module",
   "scripts": {
     "postinstall": "node -e \"if(process.env.VERCEL){console.log('Vercel: patch-package saute (patches natifs seulement, et le cache de build casse leur application)')}else{require('child_process').execSync('patch-package',{stdio:'inherit'})}\"",
@@ -363,6 +363,8 @@
     "selftest:rayon-refuse-moteur": "node scripts/rayon-refuse-moteur-selftest.mjs",
     "selftest:disjoncteur-compte": "node scripts/disjoncteur-compte-selftest.mjs",
     "selftest:retrait-vendu-jamais-silencieux": "node scripts/retrait-vendu-jamais-silencieux-selftest.mjs",
+    "selftest:droits-canaux": "node scripts/droits-canaux-selftest.mjs",
+    "selftest:cloud-executant": "node scripts/cloud-executant-selftest.mjs",
     "selftest:a-regler-sans-bandeau": "node scripts/a-regler-sans-bandeau-selftest.mjs",
     "selftest:signal-vente-jamais-en-boucle": "node scripts/signal-vente-jamais-en-boucle-selftest.mjs",
     "selftest:gpj-file-longue-et-pause": "node scripts/gpj-file-longue-et-pause-selftest.mjs",

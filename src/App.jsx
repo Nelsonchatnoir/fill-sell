@@ -134,7 +134,8 @@ import HoteCloud from './cloud/HoteCloud';
 import MeConnecterCloud from './cloud/MeConnecterCloud';
 import { creerAchatCloud } from './cloud/achatCloud';
 import { garderDemande, reprendreDemande, ouvrirOffreCloud } from './cloud/offreCloud';
-import { cloudOfferVisible, cloudConnexionVisible } from './config/cloudOffer';
+import { cloudOfferVisible, cloudConnexionVisible, chargerTemoinCloud } from './config/cloudOffer';
+import ConditionsCloudModale from './cloud/ConditionsCloudModale';
 import StatsPage from './pages/StatsPage';
 import { useTranslation } from './i18n/useTranslation';
 import * as XLSX from 'xlsx';
@@ -2635,6 +2636,15 @@ export default function App({ loginOnly = false }){
   const [conversionModal,setConversionModal]=useState({open:false,trigger:'generic'});
   // (05/10) L'écran « Me connecter » de l'option Sans ordinateur.
   const [meConnecterOuvert,setMeConnecterOuvert]=useState(false);
+  // (30/10, lot D) Le drapeau PAR COMPTE du Cloud (profiles.beta_flags.cloud), lu une fois par compte : quand il
+  // est vrai, l'app se redessine et cloudOfferVisible / cloudConnexionVisible répondent oui pour CE compte seul.
+  // Faux ou illisible : rien ne change (aucun écran Cloud, aucune requête Cloud).
+  const [temoinCloud,setTemoinCloud]=useState(false);
+  useEffect(()=>{let mort=false;setTemoinCloud(false);if(!user?.id)return undefined;
+    chargerTemoinCloud(supabase,user.id).then((oui)=>{if(!mort)setTemoinCloud(oui);});
+    return ()=>{mort=true;};},[user?.id]);
+  // (30/10, lot D) La case des conditions d'utilisation du Cloud, avant toute carte (promesse résolue par la modale).
+  const [conditionsCloudOuvertes,setConditionsCloudOuvertes]=useState(null);
   // Adresse de remise Leboncoin (profiles.platform_settings.leboncoin) :
   // requise par le wizard LBC à chaque dépôt (champ "À quelle adresse se trouve
   // le bien ?", non pré-rempli depuis le compte LBC — vérifié), saisie une fois
@@ -3309,6 +3319,8 @@ export default function App({ loginOnly = false }){
     supabase,supabaseUrl,supabaseAnonKey,user,lang,platform,purchasePremium,
     ouvrirLien:(url)=>(isNative?Browser.open({url}):Promise.resolve(window.open(url,'_blank','noopener'))),
     confirmer:(message)=>Promise.resolve(window.confirm(message)),
+    // (30/10, lot D) La case obligatoire des conditions : la modale s'ouvre, l'acceptation est enregistrée en base.
+    demanderConditions:()=>new Promise((resolve)=>setConditionsCloudOuvertes({resolve})),
     notifier:toastCloud,
     paiementsAndroidCoupes:()=>paiementsAndroidCoupes(supabase),
   }):null;
@@ -9744,6 +9756,10 @@ export default function App({ loginOnly = false }){
           au format du téléphone (05/10). Témoin ou drapeau levé seulement. */}
       {meConnecterOuvert&&user&&cloudConnexionVisible(user.id)&&(
         <MeConnecterCloud userId={user.id} lang={lang} onFermer={()=>setMeConnecterOuvert(false)} plateformesFermees={plateformesFermees}/>
+      )}
+      {/* (30/10, lot D) Les conditions d'utilisation du Cloud : case obligatoire, AVANT toute carte — témoins seuls. */}
+      {conditionsCloudOuvertes&&user&&(temoinCloud||cloudOfferVisible(user.id))&&(
+        <ConditionsCloudModale onFini={(ok)=>{const r=conditionsCloudOuvertes.resolve;setConditionsCloudOuvertes(null);r?.(ok===true);}}/>
       )}
 
       {/* ── PREMIUM WELCOME MODAL (post-IAP purchase) ── */}

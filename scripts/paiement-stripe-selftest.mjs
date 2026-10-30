@@ -71,17 +71,30 @@ console.log('(15/10, DeadRoz) Le palier PAYÉ se lit sur ce que Stripe facture, 
 console.log('(29/10, lot C 5 — boncoin59300) Jamais deux abonnements au même palier');
 {
   const t = Date.parse('2026-10-29T17:13:50Z');
-  // Profil réel de boncoin59300 au moment du clic (champs utiles seulement).
-  const boncoin = { google_purchase_token: 'tok', google_product_id: 'app.fillsell.premium.standard', apple_original_transaction_id: null, is_premium: true, is_pro: false, is_business: false, subscription_period_end: '2026-11-26T08:53:37.935Z' };
+  // (30/10, lot D point 2) RECTIFIÉ : le « profil réel au moment du clic » du lot C était lu APRÈS le paiement Stripe.
+  // Au clic du 29/10 18:13 (journal des stores) : Google REVOKED + EXPIRED + remboursé à 10:04, drapeaux à 0, mais le
+  // jeton et la fin Google (26/11) restés sur le profil. Son Premium Stripe est un RÉABONNEMENT, pas un doublon.
+  const boncoinAuClic = { google_purchase_token: 'tok', google_product_id: 'app.fillsell.premium.standard', apple_original_transaction_id: null, is_premium: false, is_pro: false, is_business: false, subscription_period_end: '2026-11-26T08:53:37.935Z' };
+  ok(refusDoubleAbonnement(boncoinAuClic, 1, 0, t).refus === false, 'BONCOIN au clic (Google remboursé, drapeaux à 0) → Premium web LIBRE (jamais refusé à tort)');
+  ok(refusDoubleAbonnement(boncoinAuClic, 1, 0, t, { googleActif: false }).refus === false, 'même cas, Google relu « pas actif » → libre');
+  // Le profil tel qu'il était le 30/10 au matin : jeton mort ET drapeaux Premium posés par Stripe.
+  const boncoin = { ...boncoinAuClic, is_premium: true };
+  const vrai = { ...boncoin };
   ok(rangProduitStore('app.fillsell.premium.standard') === 1 && rangProduitStore('app.fillsell.pro.sub') === 2 && rangProduitStore('app.fillsell.cloud.sub') === 0, 'palier lu sur le produit du store (Cloud jamais un palier)');
-  ok(abonnementStoreVivant(boncoin, t)?.canal === 'google', "Google Premium vivant jusqu'au 26/11 → abonnement du store vivant");
-  const r = refusDoubleAbonnement(boncoin, 1, 0, t);
-  ok(r.refus && r.motif === 'abonnement_store_actif' && r.canal === 'google', "Premium web au-dessus d'un Premium Google → REFUSÉ (le paiement du 29/10 18:15 n'aurait pas été créé)");
+  ok(abonnementStoreVivant(boncoin, t, { googleActif: false }) === null, 'jeton Google présent mais abonnement relu « pas actif » → AUCUN abonnement du store vivant');
+  const rS = refusDoubleAbonnement(boncoin, 1, 1, t, { googleActif: false });
+  ok(rS.refus && rS.motif === 'abonnement_stripe_actif' && rS.canal === 'stripe', 'BONCOIN aujourd’hui : un 2e Premium web refusé pour la BONNE raison (son Premium Stripe), plus « Google Play »');
+  ok(refusDoubleAbonnement({ ...boncoin, google_product_id: 'app.fillsell.pro.sub' }, 2, 1, t, { googleActif: false }).refus === false, 'jeton Pro PÉRIMÉ + Premium Stripe → montée Pro LIBRE (Sainem : plus de refus à tort)');
+  ok(refusDoubleAbonnement({ ...boncoin, subscription_period_end: null }, 1, 0, t).refus === false, 'fin Google NULL → jamais « vivant » sur le seul jeton');
+  ok(abonnementStoreVivant(vrai, t, { googleActif: true })?.canal === 'google', 'Google relu ACTIF → vivant');
+  const r = refusDoubleAbonnement(vrai, 1, 0, t, { googleActif: true });
+  ok(r.refus && r.motif === 'abonnement_store_actif' && r.canal === 'google', "Premium web au-dessus d'un Premium Google RÉELLEMENT actif → REFUSÉ");
   ok(/Google Play/.test(messageDoubleAbonnement(r, 'fr')) && /rien n'a été débité/.test(messageDoubleAbonnement(r, 'fr')) && /26\/11/.test(messageDoubleAbonnement(r, 'fr')), "la phrase dit Google Play, la date de renouvellement et « rien n'a été débité »");
   ok(refusDoubleAbonnement(boncoin, 2, 0, t).refus === false, "montée Pro au-dessus d'un Premium Google : pas fermée ici (journalisée)");
   ok(refusDoubleAbonnement({ ...boncoin, subscription_period_end: '2026-10-20T00:00:00Z' }, 1, 0, t).refus === false, 'abonnement du store fini → le paiement web est libre');
   ok(refusDoubleAbonnement({ ...boncoin, is_premium: false }, 1, 0, t).refus === false, 'drapeaux retombés (store résilié) → libre');
-  ok(refusDoubleAbonnement({ apple_original_transaction_id: 'x', is_pro: true, subscription_period_end: null }, 1, 0, t).canal === 'apple', 'Pro Apple vivant → Premium web refusé (rang inférieur)');
+  ok(refusDoubleAbonnement({ apple_original_transaction_id: 'x', is_pro: true, subscription_period_end: '2026-11-20T00:00:00Z' }, 1, 0, t).canal === 'apple', 'Pro Apple vivant → Premium web refusé (rang inférieur)');
+  ok(refusDoubleAbonnement({ apple_original_transaction_id: 'x', is_pro: true, subscription_period_end: null }, 1, 0, t).refus === false, 'Apple sans fin de période → jamais « vivant » (13/13 abonnés Apple en ont une)');
   ok(refusDoubleAbonnement(null, 1, 1, t).motif === 'abonnement_stripe_actif', 'Premium Stripe vivant + Premium web → refusé');
   ok(refusDoubleAbonnement(null, 1, 0, t).refus === false && refusDoubleAbonnement({}, 1, 0, t).refus === false, 'aucun abonnement → libre (rien ne change pour les autres)');
   ok(refusDoubleAbonnement(null, 2, 1, t).refus === false, 'montée Stripe Premium → Pro : la garde de montée existante la traite (inchangée)');

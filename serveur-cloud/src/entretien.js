@@ -14,7 +14,7 @@ import { mkdir } from 'node:fs/promises';
 import { nouveauProfilId } from './navigateur.js';
 import { claims } from './sessionFillsell.js';
 
-export function creerEntretien({ config, base, navigateurs, coffre, sessions, iproyal, controles, alertes, regles, journal }) {
+export function creerEntretien({ config, base, navigateurs, coffre, sessions, iproyal, controles, alertes, regles, journal, fournisseurIp }) {
   async function purger(ip) {
     const user = ip.dernier_user_id;
     const { data: poste } = await base.from('cloud_postes').select('session_fillsell_id, details').eq('user_id', user).maybeSingle();
@@ -106,6 +106,14 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
           }
         } catch (e) { journal.alerte('echeance_illisible', { ip_id: i.id, erreur: e.message }); }
       }
+    }
+    // (30/10, lot D) Le solde du fournisseur (lecture seule) : alerte s'il passe sous le seuil, aucun achat.
+    bilan.solde = await fournisseurIp?.verifierSolde().catch((e2) => { journal.alerte('solde_echec', { erreur: e2.message }); return null; }) ?? null;
+    // En ROTATION, un compte n'attend jamais une IP dédiée : pas de plan d'achat ni d'alerte « pool vide ».
+    if (await fournisseurIp?.rotationActive().catch(() => false)) {
+      bilan.rotation = true;
+      journal.info('entretien', bilan);
+      return bilan;
     }
     const { data: etat } = await base.rpc('cloud_pool_etat');
     const plan = regles.planDuJour({ ips: toutes, lambda: regles.lambdaMesure(etat?.essais_7j ?? 0),

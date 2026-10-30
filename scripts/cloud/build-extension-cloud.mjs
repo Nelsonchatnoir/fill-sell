@@ -10,7 +10,7 @@
 //   → build/extension-cloud/ (copiée sur le serveur par serveur-cloud/outils/deployer.sh)
 //
 // Ce qui change dans la copie Cloud (et rien d'autre) :
-//   · Vinted, Leboncoin, Beebs seulement : eBay passe par l'API (jamais par ce
+//   · Vinted, Leboncoin, Beebs, Depop (30/10) seulement : eBay passe par l'API (jamais par ce
 //     navigateur), Opla sort le 10/10 (aucune permission Opla → « sans_opla ») ;
 //   · le poste se déclare « poste_cloud » à get-pending-jobs (qui ne lui sert que
 //     ces plateformes et n'écrase pas profiles.extension_build de l'ordinateur) ;
@@ -31,7 +31,11 @@ const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // Clé PUBLIQUE de la copie Cloud (fixe l'identifiant ; rien de secret).
 const CLE_PUBLIQUE = 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnz+xal/tm6qqr81BGvwBZtEVu295j+t0LAHLM4nAiJwbRL6E+uSRMBEBQ9n4cM8wg9YJuV0QyCuotpO6JkfZcCKmZzlN3RCRNdzWsyRqvf+jjw/7J3FpIPcHSDeqxJbMpLfN1smMBNIPPmZT1/laTAeHjmw9htncYuysvTeMOHpViDuJgUTSfG1+8NX5Fw6v6cF/FnvEMaYAWqguWpKFqt4HgWDTDAZL5/bMOOtx6a7wu7+rqnqXnMnrNtORR1B8SYhjuzsaDD3bUMXOg7s8o+pT65HJ/KXBDm96WDKThA9Bh4xZ/q+rlF5esJIVdutY0IAxy7hz8BdZOb1k8x+pYwIDAQAB';
 export const ID_EXTENSION_CLOUD = 'dnankhhfellobiobloopcjgkdioblpjd';
-export const PLATEFORMES = ['vinted', 'leboncoin', 'beebs'];
+// (30/10, lot D) + Depop (Nico : « un bouton Me connecter par plateforme ») : son accès d'hôte est DONNÉ dans la
+// copie Cloud (host_permissions), ses scripts s'enregistrent au démarrage (assurerScriptsDepop, inchangé).
+export const PLATEFORMES = ['vinted', 'leboncoin', 'beebs', 'depop'];
+// Les plateformes dont les scripts sont DÉCLARÉS dans le manifeste (Depop s'enregistre à l'exécution).
+const PLATEFORMES_SCRIPTS_MANIFESTE = PLATEFORMES.filter((p) => p !== 'depop');
 const PF = PLATEFORMES.join(',');
 const L = (a) => '[' + a.map((x) => JSON.stringify(x)).join(', ') + ']';
 
@@ -84,7 +88,7 @@ export function patcherBackground(bg) {
 
 /** Le manifeste de la copie Cloud (pur : testé). */
 export function patcherManifeste(man) {
-  const MATCHES = { vinted: ['https://*.vinted.fr/*', 'https://*.vinted.com/*'], leboncoin: ['https://*.leboncoin.fr/*'], beebs: ['https://*.beebs.app/*'] };
+  const MATCHES = { vinted: ['https://*.vinted.fr/*', 'https://*.vinted.com/*'], leboncoin: ['https://*.leboncoin.fr/*'], beebs: ['https://*.beebs.app/*'], depop: ['https://www.depop.com/*'] };
   const permis = new Set([...PLATEFORMES.flatMap((p) => MATCHES[p]), 'https://fillsell.app/*']);
   const supabase = (man.host_permissions ?? []).filter((h) => /supabase\.co/.test(h));
   if (supabase.length !== 1) throw new Error('manifeste : hôte Supabase introuvable');
@@ -92,7 +96,7 @@ export function patcherManifeste(man) {
   m.host_permissions = [...permis, ...supabase];
   delete m.optional_host_permissions;
   m.content_scripts = (man.content_scripts ?? []).filter((cs) => (cs.matches ?? []).every((x) => permis.has(x)));
-  if (m.content_scripts.length !== 1 + PLATEFORMES.length) throw new Error(`manifeste : ${m.content_scripts.length} content_scripts gardés (attendu ${1 + PLATEFORMES.length})`);
+  if (m.content_scripts.length !== 1 + PLATEFORMES_SCRIPTS_MANIFESTE.length) throw new Error(`manifeste : ${m.content_scripts.length} content_scripts gardés (attendu ${1 + PLATEFORMES_SCRIPTS_MANIFESTE.length})`);
   m.web_accessible_resources = (man.web_accessible_resources ?? []).map((w) => ({ ...w, matches: (w.matches ?? []).filter((x) => permis.has(x)) }));
   m.version_name = `${man.version}-cloud`;
   m.key = CLE_PUBLIQUE;

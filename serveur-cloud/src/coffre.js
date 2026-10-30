@@ -80,9 +80,20 @@ export function creerCoffre({ base, cle, cleVersion = 1, anciennes = {} }) {
    *  plateforme non connectée ne touche pas sa sauvegarde (bilan : noms et nombres). */
   async function sauvegarderCookies(user, cookies) {
     const bilan = {};
+    let avant = null;
     for (const p of PLATEFORMES_CLOUD) {
       const de = cookiesDe(cookies, p);
-      if (!estConnectee(cookies, p)) { bilan[p] = 'absente'; continue; }
+      if (!estConnectee(cookies, p)) {
+        // (30/10, lot D) Une connexion FAITE qui a lâché (la plateforme a fermé la session) se dit « à reconnecter » :
+        // le drapeau `connecte` passe à faux, une fois — avant, il restait vrai pour toujours. Une plateforme jamais
+        // connectée (aucune ligne au coffre) ne crée rien.
+        avant ??= await lire(user).catch(() => ({}));
+        if (avant[p]?.connecte === true) {
+          await ecrire(user, p, { le: new Date().toISOString(), cookies: [], session_fermee: true }, false);
+          bilan[p] = 'a_reconnecter';
+        } else bilan[p] = 'absente';
+        continue;
+      }
       await ecrire(user, p, { le: new Date().toISOString(), cookies: de }, true);
       bilan[p] = `sauvegardee(${de.length})`;
     }

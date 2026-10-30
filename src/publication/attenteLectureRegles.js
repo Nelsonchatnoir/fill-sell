@@ -297,6 +297,9 @@ export const ISSUES_EN_ATTENTE_APRES_MS = 45_000;
 /** La version qui lit en 30 s au plus (signal) et dit son état (prise, échec, conclusion). */
 export const LECTEUR_SUIVI_VERSION_MIN = "0.6.159";
 const MOTIFS_ECHEC = new Set(["antirobot", "antirobot_pause", "onglet_indisponible", "page_sans_annonce", "session_a_rafraichir", "exception", "id_illisible", "inconnu", "reponse_vide"]);
+// (30/10, lot D) Conclusions posées par la base (migration 20261030120000) : annonce masquée chez la plateforme
+// (page sans annonce + statut masqué), ou illisible (page sans annonce, ou 3 échecs). Plus jamais relue en boucle.
+export const MOTIFS_CONCLUS_REESSAYABLES = new Set(["masquee", "illisible"]);
 const estMotifEchec = (m) => MOTIFS_ECHEC.has(String(m ?? "")) || /^http_/.test(String(m ?? ""));
 const NOMS_PLATEFORMES = { vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", depop: "Depop", ebay: "eBay" };
 
@@ -317,6 +320,8 @@ export function etatDeLaDemande(demande, ici = null) {
   const dm = String(d?.motif ?? "");
   if (d?.faite_le) {
     if (dm === "introuvable" || dm === "sans_texte") return { etat: "conclue", motif: dm, reessayable: false };
+    // (30/10, lot D) Conclue par la base sur un échec définitif ou au 3e échec : « Réessayer » reste offert.
+    if (MOTIFS_CONCLUS_REESSAYABLES.has(dm)) return { etat: "conclue", motif: dm, reessayable: true };
     return { etat: "lue", motif: null, reessayable: false };
   }
   const essai = t(d?.essai_le);
@@ -376,6 +381,14 @@ export function phraseEtatDemande(e, { lang = "fr", lecteur = null, travail = nu
     case "echec":
       return messageEchecLecture(e.motif, { lang, plateforme });
     case "conclue":
+      if (e.motif === "masquee") {
+        return en ? `Your ${nom} listing is hidden on ${nom}: its description can't be read. Write it or have it written.`
+          : `Ton annonce ${nom} est masquée sur ${nom} : sa description ne peut pas être lue. Écris-la ou fais-la rédiger.`;
+      }
+      if (e.motif === "illisible") {
+        return en ? `${nom} didn't let your computer read this listing: write your description or have it written.`
+          : `${nom} n'a pas laissé ton ordinateur lire cette annonce : écris ta description ou fais-la rédiger.`;
+      }
       return e.motif === "introuvable"
         ? (en ? `Your ${nom} listing no longer exists (sold or deleted): its description can't be read anymore.` : `Ton annonce ${nom} n'existe plus (vendue ou supprimée) : sa description ne peut plus être lue.`)
         : (en ? `Your ${nom} listing has no description.` : `Ton annonce ${nom} n'a pas de description.`);
@@ -405,7 +418,10 @@ export function issuesDeLEtat(e, attenduMs = 0) {
       ? [{ cle: "reessayer", principal: true }, { cle: "ecrire", principal: false }, { cle: "rediger", principal: false }]
       : [{ cle: "ecrire", principal: true }, { cle: "rediger", principal: false }];
   }
-  if (e?.etat === "conclue") return [{ cle: "ecrire", principal: true }, { cle: "rediger", principal: false }];
+  // (30/10, lot D) Masquée / illisible : écrire d'abord, « Réessayer » en dernier (l'annonce redevenue visible).
+  if (e?.etat === "conclue") return e.reessayable
+    ? [{ cle: "ecrire", principal: true }, { cle: "rediger", principal: false }, { cle: "reessayer", principal: false }]
+    : [{ cle: "ecrire", principal: true }, { cle: "rediger", principal: false }];
   if (e?.etat === "lue") return [];
   return Number(attenduMs) >= ISSUES_EN_ATTENTE_APRES_MS ? [{ cle: "ecrire", principal: false, discret: true }, { cle: "rediger", principal: false, discret: true }] : [];
 }

@@ -20,6 +20,9 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { genererJWTApple } from "../_shared/apple-jwt.ts";
 import { jetonGooglePlay } from "../_shared/google-play-token.ts";
+// (30/10, lot D point 2) Le MRR par canal, sur les seuls abonnements ACTIFS (Stripe relu en lecture seule).
+import { ligneMrrStripe, mrrParCanal, palierProduitStore, PRIX_MENSUELS_TTC } from "../_shared/mrr.js";
+import { prixStripeConnus } from "../_shared/stripe-rang-vivant.ts";
 
 const BUNDLE_ID = "app.fillsell.app";
 const APPLE_PROD_URL = "https://api.storekit.itunes.apple.com";
@@ -56,6 +59,7 @@ serve(async (req) => {
 
   const maintenant = Date.now();
   const lignes: Array<Record<string, unknown>> = [];
+  const lignesMrr: Array<Record<string, unknown>> = [];
   const jwtApple = await genererJWTApple(BUNDLE_ID).catch(() => null);
   const jetonGoogle = await jetonGooglePlay().catch(() => null);
 
@@ -80,6 +84,17 @@ serve(async (req) => {
         .filter((t) => !t.revocationDate && typeof t.expiresDate === "number" && (t.expiresDate as number) > maintenant)
         .sort((a, b) => Number(b.purchaseDate) - Number(a.purchaseDate))[0] ?? null;
       const paye = enCours ? palierDuProduit(enCours.productId as string) ?? "aucun" : "aucun";
+      // MRR : la transaction en cours, hors essai gratuit ; son prix si Apple le donne en euros.
+      {
+        const cours = transactions
+          .filter((t) => palierProduitStore(t.productId as string) && !t.revocationDate && typeof t.expiresDate === "number" && (t.expiresDate as number) > maintenant)
+          .sort((a, b) => Number(b.purchaseDate) - Number(a.purchaseDate))[0] ?? null;
+        if (cours && cours.offerDiscountType !== "FREE_TRIAL") {
+          const palierM = palierProduitStore(cours.productId as string) as keyof typeof PRIX_MENSUELS_TTC;
+          const eur = cours.currency === "EUR" && typeof cours.price === "number" ? (cours.price as number) / 1000 : PRIX_MENSUELS_TTC[palierM];
+          lignesMrr.push({ canal: "apple", palier: palierM, eur, ref: p.id });
+        }
+      }
       lignes.push({
         canal: "apple", user_id: p.id, original_transaction_id: p.apple_original_transaction_id, erreur,
         palier_paye: paye, palier_chez_nous: chezNous,
@@ -105,6 +120,17 @@ serve(async (req) => {
         || (s.subscriptionState === "SUBSCRIPTION_STATE_CANCELED" && items.some((i) => Date.parse(String(i.expiryTime ?? "")) > maintenant));
       const meilleur = items.map((i) => palierDuProduit(i.productId as string) ?? "aucun").sort((a, b) => RANG[b] - RANG[a])[0] ?? "aucun";
       const paye = actif ? meilleur : "aucun";
+      // MRR : ACTIVE ou résilié encore payé — jamais la période de grâce (impayé) ni un essai gratuit.
+      {
+        const payeM = s.subscriptionState === "SUBSCRIPTION_STATE_ACTIVE"
+          || (s.subscriptionState === "SUBSCRIPTION_STATE_CANCELED" && items.some((i) => Date.parse(String(i.expiryTime ?? "")) > maintenant));
+        const enEssai = items.some((i) => i.offerPhase && typeof i.offerPhase === "object" && "freeTrial" in (i.offerPhase as Record<string, unknown>));
+        const item = items.find((i) => palierProduitStore(i.productId as string));
+        if (payeM && !enEssai && item) {
+          const palierM = palierProduitStore(item.productId as string) as keyof typeof PRIX_MENSUELS_TTC;
+          lignesMrr.push({ canal: "google", palier: palierM, eur: PRIX_MENSUELS_TTC[palierM], ref: p.id });
+        }
+      }
       lignes.push({
         canal: "google", user_id: p.id, palier_paye: paye, palier_chez_nous: chezNous,
         paye_sans_effet: RANG[paye] > RANG[chezNous], droit_sans_paiement_store: RANG[chezNous] > RANG[paye],
@@ -115,9 +141,29 @@ serve(async (req) => {
     }
   }
   const payeSansEffet = lignes.filter((l) => l.paye_sans_effet);
+  // ── Stripe : les abonnements « active » (jamais trialing ni past_due), relus en lecture seule ──
+  let stripeLisible = false;
+  try {
+    const cle = Deno.env.get("STRIPE_SECRET_KEY");
+    if (cle) {
+      let apres: string | null = null;
+      for (let tour = 0; tour < 20; tour++) {
+        const u = new URL("https://api.stripe.com/v1/subscriptions");
+        u.searchParams.set("status", "active"); u.searchParams.set("limit", "100");
+        if (apres) u.searchParams.set("starting_after", apres);
+        const r = await fetch(u, { headers: { Authorization: `Bearer ${cle}` }, signal: AbortSignal.timeout(20_000) });
+        if (!r.ok) throw new Error(`stripe_${r.status}`);
+        const page = await r.json();
+        for (const sub of page.data ?? []) { const l = ligneMrrStripe(sub, prixStripeConnus()); if (l) lignesMrr.push(l); }
+        if (!page.has_more || !(page.data ?? []).length) { stripeLisible = true; break; }
+        apres = page.data[page.data.length - 1].id;
+      }
+    }
+  } catch (e) { console.error("[abonnements-stores-audit] Stripe illisible :", (e as Error)?.message ?? e); }
   return new Response(JSON.stringify({
     le: new Date().toISOString(), abonnes_lus: lignes.length,
-    apple_lisible: !!jwtApple, google_lisible: !!jetonGoogle,
+    apple_lisible: !!jwtApple, google_lisible: !!jetonGoogle, stripe_lisible: stripeLisible,
+    mrr: mrrParCanal(lignesMrr),
     paye_sans_effet: payeSansEffet, lignes,
   }), { headers: { "Content-Type": "application/json" } });
 });

@@ -20,7 +20,22 @@ const jwt = (o) => `eyJhbGciOiJIUzI1NiJ9.${Buffer.from(JSON.stringify(o)).toStri
 const U = '0f0e0d0c-0b0a-4908-8706-050403020100';
 
 test('plateformes : le Cloud ne sert que Vinted, Leboncoin, Beebs (eBay par l\'API, Opla sort le 10/10)', () => {
-  assert.deepEqual([...PLATEFORMES_CLOUD], ['vinted', 'leboncoin', 'beebs']);
+  // (30/10, lot D) + Depop.
+  assert.deepEqual([...PLATEFORMES_CLOUD], ['vinted', 'leboncoin', 'beebs', 'depop']);
+});
+
+test('(30/10) les fournisseurs de connexion : leurs pages de CONNEXION seulement, jamais une recherche ni un fil', () => {
+  assert.equal(navigationPermise('vinted', 'https://accounts.google.com/o/oauth2/v2/auth?x=1'), true);
+  assert.equal(navigationPermise('vinted', 'https://www.google.com/accounts/SetSID'), true);
+  assert.equal(navigationPermise('vinted', 'https://www.google.com/search?q=x'), false);
+  assert.equal(navigationPermise('vinted', 'https://www.facebook.com/login.php'), true);
+  assert.equal(navigationPermise('vinted', 'https://www.facebook.com/'), false);
+  assert.equal(navigationPermise('vinted', 'https://www.apple.com/fr/'), false);
+  assert.equal(navigationPermise('vinted', 'https://appleid.apple.com/auth/authorize'), true);
+  assert.equal(navigationPermise('depop', 'https://www.depop.com/login/'), true);
+  assert.equal(navigationPermise('depop', 'https://www.depop.com/search/?q=robe'), false);
+  assert.equal(estConnectee([{ domain: '.depop.com', name: 'access_token', value: 'abc' }], 'depop'), true);
+  assert.equal(estConnectee([{ domain: '.depop.com', name: 'access_token', value: '' }], 'depop'), false);
 });
 
 test('navigation : seule la connexion (et les fournisseurs Apple / Google / Facebook) est permise', () => {
@@ -273,4 +288,23 @@ test('page « Me connecter » autonome : son module est servi par le serveur (05
     assert.equal(chemin, '/connexion/client.js', `import « ${spec} » → ${chemin}`);
     assert.ok(serveur.includes(`u.pathname === '${chemin}'`), `le serveur sert ${chemin}`);
   }
+});
+
+test('(30/10) coffre : une connexion faite qui lâche passe « à reconnecter », une plateforme jamais connectée ne crée rien', async () => {
+  const lignes = new Map();
+  const base = {
+    async rpc(nom, a) {
+      if (nom === 'cloud_coffre_ecrire') { lignes.set(a.p_plateforme, { plateforme: a.p_plateforme, chiffre: a.p_chiffre, iv: a.p_iv, cle_version: a.p_cle_version, connecte: a.p_connecte, maj_le: 'x' }); return { data: true, error: null }; }
+      if (nom === 'cloud_coffre_lire') return { data: [...lignes.values()], error: null };
+      return { data: null, error: null };
+    },
+  };
+  const coffre = creerCoffre({ base, cle: randomBytes(32).toString('base64') });
+  const lbc = [{ domain: '.leboncoin.fr', name: '__Secure-Login', value: 'jeton' }];
+  let b = await coffre.sauvegarderCookies('u', lbc);
+  assert.match(b.leboncoin, /sauvegardee/); assert.equal(b.vinted, 'absente'); assert.equal(lignes.has('vinted'), false);
+  b = await coffre.sauvegarderCookies('u', []);
+  assert.equal(b.leboncoin, 'a_reconnecter'); assert.equal(lignes.get('leboncoin').connecte, false);
+  b = await coffre.sauvegarderCookies('u', []);
+  assert.equal(b.leboncoin, 'absente', 'une seule écriture : la ligne dit déjà « à reconnecter »');
 });

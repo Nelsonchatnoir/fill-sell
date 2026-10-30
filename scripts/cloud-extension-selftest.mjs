@@ -37,14 +37,14 @@ try {
 ok(bg2.includes('caps.push("poste_cloud");'), 'le poste se déclare « poste_cloud »');
 ok(bg2.includes('rep.connexion_commands = [];'), 'les demandes « Me connecter » de l\'extension sont ignorées (l\'écran Cloud s\'en charge)');
 ok(bg2.includes('const RELEVE_PLATEFORMES = ["leboncoin", "beebs"];') && bg2.includes('const VENTES_PLATEFORMES = ["vinted", "leboncoin"];'), 'relevés : ni eBay ni Opla');
-ok((bg2.match(/&platform=in\.\(vinted,leboncoin,beebs\)/g) ?? []).length === 3, 'détection de vente, URL manquantes, reprise des orphelins : bornées aux plateformes du Cloud');
+ok((bg2.match(/&platform=in\.\(vinted,leboncoin,beebs,depop\)/g) ?? []).length === 3, 'détection de vente, URL manquantes, reprise des orphelins : bornées aux plateformes du Cloud');
 ok(!/FILLSELL_CLOUD/.test(bg), 'chrome-extension/background.js du dépôt : INTACT (aucune trace du Cloud)');
 
 console.log('\n2. Le manifeste Cloud');
 const m2 = patcherManifeste(man);
 const hotes = m2.host_permissions.join(' ');
 ok(!/ebay|opla/.test(hotes), 'ni eBay ni Opla dans les permissions d\'hôte');
-ok(PLATEFORMES.every((p) => hotes.includes(p === 'beebs' ? 'beebs.app' : `${p}.fr`)) && hotes.includes('fillsell.app') && /supabase\.co/.test(hotes), 'Vinted, Leboncoin, Beebs, fillsell.app, Supabase');
+ok(PLATEFORMES.every((p) => hotes.includes(p === 'beebs' ? 'beebs.app' : p === 'depop' ? 'www.depop.com' : `${p}.fr`)) && hotes.includes('fillsell.app') && /supabase\.co/.test(hotes), 'Vinted, Leboncoin, Beebs, Depop (30/10), fillsell.app, Supabase');
 ok(!('optional_host_permissions' in m2), 'aucune permission optionnelle (Opla) : le poste dit « sans_opla »');
 ok(m2.content_scripts.length === 4 && !JSON.stringify(m2.content_scripts).includes('ebay'), 'content scripts : fillsell.app + les 3 plateformes');
 const der = Buffer.from(m2.key, 'base64');
@@ -61,7 +61,7 @@ ok(/if \(majAttente !== null && !posteCloud\)/.test(gpj), 'ni la mise à jour en
 const iFiltre = gpj.indexOf('if (posteCloud && out.some(');
 const iReserve = gpj.indexOf('admin.rpc("reserver_jobs_extension"');
 ok(iFiltre > 0 && iFiltre < iReserve, 'le filtre des plateformes passe AVANT la réservation (jamais réservé ce qu\'il ne fera pas)');
-ok(/const PLATEFORMES_POSTE_CLOUD = \["vinted", "leboncoin", "beebs"\];/.test(gpj), 'Vinted, Leboncoin, Beebs — même liste que la copie Cloud');
+ok(/const PLATEFORMES_POSTE_CLOUD = \["vinted", "leboncoin", "beebs", "depop"\];/.test(gpj), 'Vinted, Leboncoin, Beebs, Depop — même liste que la copie Cloud');
 
 console.log(`\n${ko === 0 ? 'Tout est vert' : `${ko} ÉCHEC(S)`} — ${n} contrôles.`);
 process.exit(ko === 0 ? 0 : 1);

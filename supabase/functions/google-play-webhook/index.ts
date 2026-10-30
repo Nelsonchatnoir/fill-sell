@@ -6,6 +6,23 @@ import { palierDuProfil } from "../_shared/palier.js";
 import { lectureCloudGoogle, ecritureCloudStore, PRODUIT_CLOUD_GOOGLE } from "../_shared/cloud-option.js";
 import { profilCloudPourStore } from "../_shared/cloud-essai-store.ts";
 import { verifierJetonPubSub } from "../_shared/pubsub-oidc.ts";
+// (30/10, lot D point 2) Un canal qui s'arrête ne retire que SON droit ; Stripe relu en lecture seule.
+import { patchArretGoogle } from "../_shared/droits-canaux.js";
+import { rangStripeDuClient } from "../_shared/stripe-rang-vivant.ts";
+
+// Les colonnes du profil dont l'arrêt du canal Google a besoin (canal, autres canaux, drapeaux).
+const COLONNES_ARRET_GOOGLE = "id, google_purchase_token, google_product_id, apple_original_transaction_id, stripe_customer_id, is_premium, is_pro, is_business, subscription_period_end";
+
+/** Arrête le canal Google d'un profil (pur + écriture) : les drapeaux = le plus haut des AUTRES canaux vivants. */
+// deno-lint-ignore no-explicit-any
+async function arreterCanalGoogle(prof: any, { terminal, produit, raison }: { terminal: boolean; produit: string | null; raison: string }) {
+  const rangStripe = await rangStripeDuClient(prof?.stripe_customer_id ?? null);   // lance si Stripe ne répond pas
+  const { patch, rangAutres } = patchArretGoogle(prof, { terminal, rangStripe, produit });
+  const { error } = await supabaseAdmin.from("profiles").update(patch).eq("id", prof.id).eq("google_purchase_token", prof.google_purchase_token);
+  if (error) throw new Error(error.message);
+  console.log(`[google-play-webhook] canal Google ARRÊTÉ (${raison}${terminal ? ", effacé" : ", jeton gardé pour la reprise"}) → userId=${prof.id} ; autres canaux : rang ${rangAutres} (Stripe ${rangStripe})`, JSON.stringify(patch)); // le patch ne porte jamais un jeton : null ou absent
+  return patch;
+}
 
 const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -232,6 +249,20 @@ async function traiter(req: Request, ctx: Contexte): Promise<Response> {
           : palier && palier !== "gratuit" ? "encore ouvert à l'instant de l'alerte : SUBSCRIPTION_REVOKED le retire (à vérifier)" : "retiré",
       });
       console.log(`[google-play-webhook] remboursement ${d.nom} commande=${annule.orderId ?? "?"} → compte=${compte?.id ?? "INTROUVABLE"} palier=${palier ?? "?"}`);
+      // (30/10, lot D point 2 — BONCOIN) Un ABONNEMENT remboursé sur le jeton COURANT du profil : le canal Google
+      // s'arrête et s'efface, comme sur REVOKED (idempotent si REVOKED est déjà passé : le jeton n'y est plus).
+      if (d.type === "abonnement" && compte?.id && typeof annule.purchaseToken === "string") {
+        const { data: profR } = await supabaseAdmin.from("profiles").select(COLONNES_ARRET_GOOGLE).eq("id", compte.id).maybeSingle();
+        if (profR?.google_purchase_token && profR.google_purchase_token === annule.purchaseToken) {
+          try {
+            await arreterCanalGoogle(profR, { terminal: true, produit: profR.google_product_id ?? null, raison: "remboursement" });
+            ctx.maj.effet_applique = "remboursement_canal_efface";
+          } catch (e) {
+            console.error("[google-play-webhook] remboursement : arrêt du canal impossible —", (e as Error)?.message ?? e);
+            return json(500, { error: "arret_canal_impossible" });
+          }
+        }
+      }
       return json(200, { ok: true, remboursement: d.nom });
     }
 
@@ -501,8 +532,10 @@ async function traiter(req: Request, ctx: Contexte): Promise<Response> {
     if (notificationType === CANCELED_TYPE) {
       const { data: prof } = await supabaseAdmin
         .from("profiles").select("google_purchase_token").eq("id", userId).single();
-      if (prof?.google_purchase_token && prof.google_purchase_token !== purchaseToken) {
-        console.log(`[google-play-webhook] CANCELED ignoré : token remplacé (product=${subscriptionId} userId=${userId})`);
+      // (30/10, lot D) Jeton ABSENT aussi : le canal Google a déjà été arrêté et effacé — un CANCELED tardif ne
+      // doit pas poser de fin de période sur un profil qui ne paie plus par Google.
+      if (prof?.google_purchase_token !== purchaseToken) {
+        console.log(`[google-play-webhook] CANCELED ignoré : jeton ${prof?.google_purchase_token ? "remplacé" : "déjà retiré"} (product=${subscriptionId} userId=${userId})`);
         return new Response(JSON.stringify({ ok: true, skipped: "stale_token_replaced" }), {
           status: 200, headers: { "Content-Type": "application/json" },
         });
@@ -536,13 +569,32 @@ async function traiter(req: Request, ctx: Contexte): Promise<Response> {
     // avant).
     if (!isPremium) {
       const { data: prof } = await supabaseAdmin
-        .from("profiles").select("google_purchase_token").eq("id", userId).single();
-      if (prof?.google_purchase_token && prof.google_purchase_token !== purchaseToken) {
-        console.log(`[google-play-webhook] OFF ignoré : token remplacé (type=${notificationType} product=${subscriptionId} userId=${userId})`);
-        return new Response(JSON.stringify({ ok: true, skipped: "stale_token_replaced" }), {
+        .from("profiles").select(COLONNES_ARRET_GOOGLE).eq("id", userId).single();
+      // (30/10, lot D) Jeton ABSENT aussi : canal déjà arrêté et effacé (un OFF tardif ne touche plus à rien).
+      if (prof?.google_purchase_token !== purchaseToken) {
+        console.log(`[google-play-webhook] OFF ignoré : jeton ${prof?.google_purchase_token ? "remplacé" : "déjà retiré"} (type=${notificationType} product=${subscriptionId} userId=${userId})`);
+        return new Response(JSON.stringify({ ok: true, skipped: prof?.google_purchase_token ? "stale_token_replaced" : "jeton_deja_retire" }), {
           status: 200, headers: { "Content-Type": "application/json" },
         });
       }
+      // ── (30/10, lot D point 2 — BONCOIN) L'ARRÊT NE RETIRE QUE LE DROIT GOOGLE ──────────────────────────
+      // Avant : is_premium (et pro / business) à false, quel que soit l'autre canal, et le jeton GARDÉ — un profil
+      // remboursé par Google semblait payer encore par Google (le paiement web le croyait abonné). Désormais :
+      // les drapeaux = le plus haut des AUTRES canaux vivants (Stripe relu, Apple) ; sur un arrêt TERMINAL
+      // (12 REVOKED, 13 EXPIRED) le canal Google s'efface (jeton, produit, fin). Passager (5, 6, 10) : jeton gardé,
+      // la reprise (1 RECOVERED) arrive dessus.
+      try {
+        await arreterCanalGoogle(prof, { terminal: notificationType === 12 || notificationType === 13, produit: subscriptionId, raison: `type ${notificationType}` });
+      } catch (e) {
+        console.error("[google-play-webhook] arrêt du canal impossible :", (e as Error)?.message ?? e);
+        return new Response(JSON.stringify({ error: "arret_canal_impossible" }), {
+          status: 500, headers: { "Content-Type": "application/json" },
+        });
+      }
+      ctx.maj.effet_applique = "off";
+      return new Response(JSON.stringify({ ok: true, premium: false }), {
+        status: 200, headers: { "Content-Type": "application/json" },
+      });
     }
 
     const update: Record<string, unknown> = { is_premium: isPremium };

@@ -1,7 +1,7 @@
 // Les plateformes servies par le Cloud — ce que l'orchestrateur sait d'elles.
 // Pur (aucun réseau) : testé par tests/plateformes.test.mjs.
 //
-//   · Vinted, Leboncoin, Beebs passent par le NAVIGATEUR Cloud (notre extension) ;
+//   · Vinted, Leboncoin, Beebs, Depop (30/10) passent par le NAVIGATEUR Cloud (notre extension) ;
 //   · eBay passe par l'API existante (connexion officielle eBay, ebay-oauth) :
 //     jamais dans le navigateur Cloud ;
 //   · Opla sort le 10/10 : jamais dans le Cloud.
@@ -9,15 +9,24 @@
 // L'écran « Me connecter » ne mène QU'À la page de connexion de la plateforme :
 // toute navigation vers un hôte (ou un chemin) hors de sa liste est REFUSÉE,
 // et la personne revient à la page de connexion. Les fournisseurs de connexion
-// (Apple, Google, Facebook) sont permis en entier : c'est leur page à eux.
+// (Apple, Google, Facebook) : (30/10, lot D) seulement leurs pages de CONNEXION — plus « google.com » ni
+// « apple.com » ni « facebook.com » en entier (une recherche ou un fil d'actualité y étaient joignables).
 
-export const PLATEFORMES_CLOUD = Object.freeze(['vinted', 'leboncoin', 'beebs']);
+export const PLATEFORMES_CLOUD = Object.freeze(['vinted', 'leboncoin', 'beebs', 'depop']);
 
+// [hôte, chemins permis] — null = l'hôte entier (un hôte qui ne sert QUE l'authentification).
 const SSO = Object.freeze([
-  /^appleid\.apple\.com$/, /^idmsa\.apple\.com$/, /^(www\.)?apple\.com$/,
-  /^accounts\.google\.com$/, /^accounts\.youtube\.com$/, /^(www\.)?google\.(com|fr)$/,
-  /^(www|m|web)\.facebook\.com$/,
+  [/^appleid\.apple\.com$/, null], [/^idmsa\.apple\.com$/, null],
+  [/^accounts\.google\.com$/, null], [/^accounts\.youtube\.com$/, [/^\/accounts\//]],
+  [/^(www\.)?google\.(com|fr)$/, [/^\/accounts\//, /^\/recaptcha\//]],
+  [/^(www|m|web)\.facebook\.com$/, [/^\/login/, /^\/dialog\/oauth/, /^\/v\d+\.\d+\/dialog\/oauth/, /^\/checkpoint/, /^\/two_step_verification/, /^\/cookie\/consent/, /^\/privacy\/consent/, /^\/auth/]],
 ]);
+/** Une page d'un fournisseur de connexion, et SEULEMENT ses pages de connexion. */
+export function pageSsoPermise(hote, chemin) {
+  const r = SSO.find(([h]) => h.test(hote));
+  if (!r) return false;
+  return r[1] == null || r[1].some((c) => c.test(chemin));
+}
 
 export const DEFINITIONS = Object.freeze({
   vinted: {
@@ -48,6 +57,15 @@ export const DEFINITIONS = Object.freeze({
     hotesPermis: [/^(www\.)?beebs\.app$/, /^auth\.beebs\.app$/],
     cookiesDomaine: /(^|\.)beebs\.app$/,
   },
+  // (30/10, lot D) Depop : la page de connexion (et ses étapes : code, mot de passe oublié), rien d'autre.
+  depop: {
+    nom: 'Depop',
+    pageConnexion: 'https://www.depop.com/login/',
+    domaine: /(^|\.)depop\.com$/,
+    cheminsPermis: [/^\/$/, /^\/login/, /^\/signup/, /^\/password/, /^\/verify/, /^\/oauth/, /^\/auth/],
+    hotesPermis: [/^(www\.)?depop\.com$/, /^auth\.depop\.com$/, /^api\.depop\.com$/],
+    cookiesDomaine: /(^|\.)depop\.com$/,
+  },
 });
 
 /** Une navigation (document principal ou fenêtre ouverte par la page de connexion) est-elle permise ? */
@@ -59,7 +77,7 @@ export function navigationPermise(plateforme, url) {
   if (u.protocol === 'about:' || u.href === 'about:blank') return true;
   if (u.protocol !== 'https:') return false;
   const hote = u.hostname.toLowerCase();
-  if (SSO.some((r) => r.test(hote))) return true;
+  if (SSO.some(([h]) => h.test(hote))) return pageSsoPermise(hote, u.pathname);
   if (!def.hotesPermis.some((r) => r.test(hote))) return false;
   // Les hôtes d'authentification de la plateforme : en entier.
   if (/^(auth|accounts|api)\./.test(hote)) return true;
@@ -105,6 +123,8 @@ export function estConnectee(cookies, plateforme) {
     const role = String(cl.role ?? cl.type ?? cl.user_type ?? '').toLowerCase();
     return Boolean(cl.sub ?? cl.user_id ?? cl.id) && !/guest|anon|invite/.test(role) && cl.is_guest !== true;
   }
+  // (30/10) Depop : le cookie access_token (même règle que l'extension, sonderSessionDepop : absent = session fermée).
+  if (plateforme === 'depop') return de.some((c) => c.name === 'access_token' && String(c.value ?? '').trim().length > 0);
   return false;
 }
 
@@ -129,6 +149,10 @@ export function identifiantCompte(cookies, plateforme) {
     const at = de.find((c) => c.name === 'access_token')?.value;
     const cl = at ? claimsJwt(at) : null;
     const id = cl?.sub ?? cl?.user_id ?? cl?.id;
+    return id ? String(id) : null;
+  }
+  if (plateforme === 'depop') {
+    const id = de.find((c) => c.name === 'user_id' || c.name === 'depop_user_id')?.value;
     return id ? String(id) : null;
   }
   return null;

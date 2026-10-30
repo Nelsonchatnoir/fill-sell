@@ -322,9 +322,14 @@ const code = (t) => t.split('\n').filter((l) => { const s = l.trim(); return s &
   const listes = [...cfg.matchAll(/export const (CLOUD_(?:OFFRE_)?TEMOINS) = Object\.freeze\(\[([^\]]*)\]\);/g)].map((m) => [m[1], m[2].trim()]);
   verifier(listes.length === 2 && listes.every(([, v]) => v === '' || v === 'NICO_USER_ID'), 'témoins : personne, ou Nico SEUL (NICO_USER_ID)', JSON.stringify(listes));
   verifier(/export const NICO_USER_ID = 'f44b5917-bccc-4431-ba41-f40571a2ed18';/.test(cfg) || !/NICO_USER_ID/.test(cfg), 'NICO_USER_ID est bien le compte de Nico');
-  verifier(/cloudOfferVisible = \(userId\) => CLOUD_OFFER_ENABLED \|\| \(userId != null && CLOUD_OFFRE_TEMOINS\.includes\(userId\)\)/.test(cfg)
-    && /cloudConnexionVisible = \(userId\) => cloudOfferVisible\(userId\) \|\| \(userId != null && CLOUD_TEMOINS\.includes\(userId\)\)/.test(cfg),
-  'les deux portes : drapeau OU identifiant exact dans une liste figée');
+  // (30/10, lot D) Les portes : le drapeau global, OU un témoin — liste figée (vide) ou drapeau PAR COMPTE lu en base
+  // (profiles.beta_flags.cloud === true, chargerTemoinCloud). Un compte ordinaire n'a pas ce drapeau.
+  verifier((/cloudOfferVisible = \(userId\) => CLOUD_OFFER_ENABLED \|\| \(userId != null && CLOUD_OFFRE_TEMOINS\.includes\(userId\)\)/.test(cfg)
+      || /cloudOfferVisible = \(userId\) => CLOUD_OFFER_ENABLED \|\| estTemoin\(userId\)/.test(cfg))
+    && (/cloudConnexionVisible = \(userId\) => cloudOfferVisible\(userId\) \|\| \(userId != null && CLOUD_TEMOINS\.includes\(userId\)\)/.test(cfg)
+      || /cloudConnexionVisible = \(userId\) => cloudOfferVisible\(userId\) \|\| \(userId != null && \(CLOUD_TEMOINS\.includes\(userId\) \|\| estTemoin\(userId\)\)\)/.test(cfg))
+    && (!/estTemoin/.test(cfg) || /data\?\.beta_flags\?\.cloud === true/.test(cfg)),
+  'les deux portes : drapeau OU témoin (liste figée, ou drapeau par compte === true en base)');
 }
 {
   // Chaque appel réseau de src/cloud/ vit dans un fichier dont l'entrée est gardée.

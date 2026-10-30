@@ -1,3 +1,5 @@
+import { patchArretGoogle } from "../_shared/droits-canaux.js";
+import { rangStripeDuClient } from "../_shared/stripe-rang-vivant.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { notifierPaiement, alerterPaiementNonCredite } from "../_shared/payment-notify.ts";
@@ -276,12 +278,23 @@ serve(async (req) => {
       // google-play-webhook (« stale_token_replaced »). Les rétrogradations
       // de plein droit restent le métier du webhook, qui reçoit EXPIRED et
       // REVOKED avec le contexte complet.
+      // (30/10, lot D point 2) Et même alors, seul le droit GOOGLE tombe : les drapeaux = le plus haut des autres
+      // canaux vivants (Stripe relu en lecture, Apple) ; un état terminal (expiré) efface le canal Google.
       const { data: prof } = await supabaseAdmin
-        .from("profiles").select("google_purchase_token").eq("id", userId).maybeSingle();
-      if (prof?.google_purchase_token === purchaseToken) {
-        const { error: dErr } = await supabaseAdmin
-          .from("profiles").update({ is_premium: false, is_pro: false, is_business: false }).eq("id", userId);
-        if (dErr) console.error("[validate-google-purchase] rétrogradation:", dErr.message);
+        .from("profiles").select("id, google_purchase_token, google_product_id, apple_original_transaction_id, stripe_customer_id, is_premium, is_pro, is_business, subscription_period_end")
+        .eq("id", userId).maybeSingle();
+      if (prof && prof.google_purchase_token === purchaseToken) {
+        try {
+          const terminal = /EXPIRED|PENDING_PURCHASE_CANCELED/.test(String(etat ?? ""));
+          const rangStripe = await rangStripeDuClient(prof.stripe_customer_id ?? null);
+          const { patch } = patchArretGoogle(prof, { terminal, rangStripe, produit: productId });
+          const { error: dErr } = await supabaseAdmin
+            .from("profiles").update(patch).eq("id", userId).eq("google_purchase_token", purchaseToken);
+          if (dErr) console.error("[validate-google-purchase] arrêt du canal Google :", dErr.message);
+          else console.log(`[validate-google-purchase] user=${userId} canal Google arrêté (${terminal ? "effacé" : "jeton gardé"}), Stripe rang ${rangStripe}`);
+        } catch (e) {
+          console.error("[validate-google-purchase] arrêt du canal Google impossible (rien écrit) :", (e as Error)?.message ?? e);
+        }
       }
       console.log(`[validate-google-purchase] user=${userId} product=${productId} état=${etat} → non actif`);
       return json({ ok: true, type: "abonnement", is_premium: false, state: etat ?? "unknown" });

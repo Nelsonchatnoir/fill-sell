@@ -118,6 +118,25 @@ export function choixSansLecture(fiche) {
 }
 
 /**
+ * (30/10, lot D point 1) Une demande de lecture d'origine est-elle encore VIVANTE ? Même règle que la base
+ * (lectures_origine_en_attente, migration 20261030120000) : pas faite ni conclue, et ni un texte sur la fiche, ni un
+ * choix (Écrire / Faire rédiger) posé APRÈS la demande. Cas lauran (30/10) : « Faire rédiger » à 09:26:13, ses trois
+ * publications créées à 09:27:36 retenues jusqu'à 09:45 pour une lecture qui ne pouvait plus servir.
+ * @param demande { demandee_le, faite_le }   @param fiche { description, attributs } (null = inconnue : vivante)
+ */
+export function demandeLectureVivante(demande, fiche) {
+  if (!demande || demande.faite_le) return false;
+  if (!fiche) return true;
+  if (texteSuffisant(fiche.description)) return false;
+  const c = choixSansLecture(fiche);
+  if (!c) return true;
+  const d = Date.parse(String(demande.demandee_le ?? ""));
+  const a = Date.parse(String(c.at ?? ""));
+  if (!Number.isFinite(a)) return false;                  // choix sans date : il vaut pour cette demande
+  return Number.isFinite(d) && a < Math.floor(d);          // choix ANTÉRIEUR à la demande : la question se repose
+}
+
+/**
  * Faut-il attendre la lecture de l'annonce d'origine avant toute publication ?
  *
  * @param fiche     {id, origine, description, photos, attributs}

@@ -96,6 +96,7 @@ const TEXTE = {
     programmee: "Programmée : elle partira dans ton créneau, une à la fois",
     essai: "En pause : nouvel essai automatique, rien à faire",
     plateforme: (p) => `En pause : ${p} est en pause de notre côté — reprise automatique`,
+    boutique_depuis: (d) => ` (en attente depuis ${d})`,
     boutique: (login) => (login
       ? `En pause : ouvre ta boutique @${login} sur vinted.fr dans Chrome, ça repartira tout seul`
       : "En pause : ouvre ton autre boutique Vinted sur vinted.fr dans Chrome, ça repartira tout seul"),
@@ -133,6 +134,7 @@ const TEXTE = {
     programmee: "Scheduled: it goes out in your time slot, one at a time",
     essai: "Paused: automatic retry, nothing to do",
     plateforme: (p) => `Paused: ${p} is paused on our side — resumes automatically`,
+    boutique_depuis: (d) => ` (waiting since ${d})`,
     boutique: (login) => (login
       ? `Paused: open your @${login} shop on vinted.fr in Chrome, it resumes on its own`
       : "Paused: open your other Vinted shop on vinted.fr in Chrome, it resumes on its own"),
@@ -178,7 +180,16 @@ export function situationJob(j, ctx = {}) {
   const groupe = GROUPE_DE[v.etat] ?? "en_pause";
   let raison;
   switch (v.motif) {
-    case "boutique": raison = T.boutique(v.detail?.login ?? null); break;
+    case "boutique": {
+      // (30/10, lot D) Une attente de boutique qui dure dit DEPUIS QUAND (Ornella :
+      // 4 republications retenues depuis le 20/10, sa boutique jamais rouverte).
+      const pf = pfDe(j);
+      const depuis = Date.parse(pf.attente_boutique_republication?.depuis ?? pf.attente_boutique_retrait?.depuis
+        ?? pf.attente_boutique?.depuis ?? j.created_at ?? "");
+      const longtemps = Number.isFinite(depuis) && maintenant - depuis > 24 * 3600_000;
+      raison = T.boutique(v.detail?.login ?? null) + (longtemps ? T.boutique_depuis(depuisQuand(depuis, maintenant, lang)) : "");
+      break;
+    }
     case "boutiques_a_ouvrir": raison = T.boutiques_a_ouvrir(v.detail?.boutiques ?? []); break;
     case "plateforme": raison = T.plateforme(nom); break;
     case "connexion": raison = T.connexion(nom); break;

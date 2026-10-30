@@ -18,17 +18,19 @@ import { ouvrirConnexion } from './connexion/clientConnexion';
 import { lireEtatEbay, ebayVoieApiDuCompte, demarrerConnexionEbay, ouvrirConsentementEbay } from '../utils/ebayCompte';
 import { textesConnexion } from './textesConnexion';
 import { C, BLANC, MENTHE, DEGRADE_TEAL, POLICE } from './theme';
+// (30/10, lot D) L'état de chaque connexion (connecté / à reconnecter) et de l'exécutant (en marche, dernière action).
+import { etatConnexion, phraseExecutant } from './executant';
 
 const ETAPES_FINALES = ['connecte', 'refuse', 'inactif', 'non_autorise', 'expire', 'erreur', 'ferme'];
 
-function Ligne({ nom, connecte, libelle, onClick, T, texte = null }) {
+function Ligne({ nom, connecte, libelle, onClick, T, texte = null, aReconnecter = false }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', background: BLANC, border: `1px solid ${C.border}`, borderRadius: 14 }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontWeight: 700, color: C.ink, fontSize: 15.5 }}>{nom}</div>
         <div style={{ fontSize: 13, color: connecte ? C.tealDeep : C.mute2, marginTop: 2 }}>
-          <span aria-hidden="true" style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 4, marginRight: 6, background: connecte ? C.teal : C.faint }} />
-          {connecte ? (libelle?.connecte ?? T.connecte) : (libelle?.aConnecter ?? T.aConnecter)}
+          <span aria-hidden="true" style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 4, marginRight: 6, background: connecte ? C.teal : aReconnecter ? C.amber : C.faint }} />
+          {connecte ? (libelle?.connecte ?? T.connecte) : aReconnecter ? T.aReconnecter : (libelle?.aConnecter ?? T.aConnecter)}
         </div>
         {texte && <div style={{ fontSize: 12.5, color: C.mute, marginTop: 4, lineHeight: 1.4 }}>{texte}</div>}
       </div>
@@ -90,6 +92,34 @@ function Vue({ plateforme, nom, lang, onFermer }) {
   );
 }
 
+/** (30/10, lot D) L'exécutant : en marche / en pause / erreur, sa dernière action, son dernier relevé. */
+function EtatExecutant({ T, lang }) {
+  const [e, setE] = useState(null);   // null = lecture ; 'echec' (migration absente, réseau) = rien d'affiché
+  useEffect(() => {
+    let mort = false;
+    supabase.rpc('cloud_executant_moi').then(({ data, error }) => { if (!mort) setE(error ? 'echec' : (data ?? {})); }, () => { if (!mort) setE('echec'); });
+    return () => { mort = true; };
+  }, []);
+  if (e === 'echec') return null;
+  const p = e ? phraseExecutant(e, { lang }) : null;
+  const couleur = p?.etat === 'en_marche' ? C.teal : p?.etat === 'erreur' ? C.amberInk : C.faint;
+  return (
+    <section aria-live="polite" style={{ margin: '0 0 14px', padding: '12px 14px', borderRadius: 14, background: BLANC, border: `1px solid ${C.border}` }}>
+      <div style={{ fontWeight: 700, color: C.ink, fontSize: 15 }}>{T.executantTitre}</div>
+      {!p && <div style={{ fontSize: 13, color: C.mute2, marginTop: 4 }}>{T.executantLecture}</div>}
+      {p && (
+        <>
+          <div style={{ fontSize: 13.5, color: C.ink, marginTop: 4 }}>
+            <span aria-hidden="true" style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 4, marginRight: 6, background: couleur }} />
+            {p.titre}
+          </div>
+          {p.detail.map((d) => <div key={d} style={{ fontSize: 12.5, color: C.mute2, marginTop: 4, lineHeight: 1.4 }}>{d}</div>)}
+        </>
+      )}
+    </section>
+  );
+}
+
 /**
  * @param {{ userId: string, lang?: string, onFermer: () => void }} p
  */
@@ -126,12 +156,14 @@ export default function MeConnecterCloud({ userId, lang = 'fr', onFermer, platef
           <button type="button" onClick={onFermer} style={{ minHeight: 40, padding: '8px 14px', borderRadius: 10, border: `1px solid ${C.border}`, background: BLANC, color: C.ink, fontWeight: 600 }}>{T.fermer}</button>
         </div>
         <p style={{ margin: '0 0 14px', padding: '10px 12px', borderRadius: 12, background: MENTHE, color: C.tealDeep, fontSize: 13.5, lineHeight: 1.5 }}>{T.intro}</p>
+        <EtatExecutant T={T} lang={lang} />
         {etats === null && <p style={{ color: C.mute2, fontSize: 14 }}>{T.lecture}</p>}
         {etats === 'echec' && <p style={{ color: C.amberInk, fontSize: 14 }}>{T.lectureEchec}</p>}
         {etats && etats !== 'echec' && (
           <div style={{ display: 'grid', gap: 10 }}>
             {CLOUD_PLATEFORMES_CONNEXION.filter((p) => !plateformesFermees.includes(p.id)).map((p) => (
-              <Ligne key={p.id} nom={p.nom} connecte={etats?.[p.id]?.connecte === true} T={T} onClick={() => setOuverte(p)} />
+              <Ligne key={p.id} nom={p.nom} connecte={etatConnexion(etats?.[p.id]) === 'connecte'}
+                aReconnecter={etatConnexion(etats?.[p.id]) === 'a_reconnecter'} T={T} onClick={() => setOuverte(p)} />
             ))}
             {ebay && (
               <Ligne nom={T.ebayTitre} connecte={ebay.relie} T={T} texte={T.ebayTexte}

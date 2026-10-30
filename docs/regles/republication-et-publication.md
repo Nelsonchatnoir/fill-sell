@@ -1006,3 +1006,27 @@
 - Rayon : une fiche Lens « mode » ou « chaussures » écarte, sur Leboncoin, Vinted et Beebs, les candidates du mot hors
   de la famille « mode » (familleFiltreDesCandidates) — plus jamais « Loisirs > Sport & Plein air » pour une veste.
   eBay et Depop inchangés. Quotas Lens inchangés. Selftest lens-visible.
+## ⛔ 30/10 (lot D point 1) — la lecture d'origine ne boucle plus jamais (rapport `docs/enquetes/lot-d-3010/RAPPORT.md`)
+- **Cas** : lauran, extension 0.6.157, annonce Vinted MASQUÉE (vinted_status hidden) : une relecture ratée toutes les
+  2 min de 09:06 à 10:25 (47 en une heure), malgré « Faire rédiger » à 09:16 et 09:26.
+- **Règle, côté BASE (vaut pour toutes les versions de l'extension)** — migration `20261030120000_lecture_origine_plafond`
+  (feu vert de Nico, 30/10 10:27) : la base compte elle-même les échecs à la trace `usage_logs` « lecture_fond » (origine
+  demandée ou page, déclencheur `usage_logs_lecture_origine_echec`) ; « page_sans_annonce » ou « introuvable » =
+  échec DÉFINITIF dès le premier (demande conclue : « masquee » si l'annonce est masquée/brouillon, « illisible »
+  sinon, « introuvable ») ; tout autre échec : plafond dur de 3 puis « illisible » ; une demande n'est plus servie ni
+  signalée dès qu'un choix (Écrire / Faire rédiger) est posé APRÈS elle ou que la fiche a un texte ; conclue sans texte
+  = 24 h sans réarmement par un simple « Publier » (« Réessayer » réarme toujours, compteur à 0).
+- get-pending-jobs ne retient plus la file pour une demande qui n'est plus vivante (`demandeLectureVivante`, = la base) ;
+  hors Vinted, 3 relevés « lecture d'origine » TERMINÉS en 24 h sans la lire = lecture épuisée (plus aucun relevé, la
+  copie part, `lecture_origine_epuisee` sur le job).
+- L'app dit « Ton annonce Vinted est masquée sur Vinted : sa description ne peut pas être lue » / « … n'a pas laissé ton
+  ordinateur lire cette annonce » avec Écrire, Faire rédiger, Réessayer.
+- Preuve : 0 relecture ratée chez lauran (et dans tout le parc) de 10:27 à 10:58.
+
+## 30/10 (lot D point 3) — une republication retenue pour une autre boutique le DIT
+- Ornella : 4 republications Vinted (@ornella-vend, 472079) retenues depuis le 20-24/10 par la garde de boutique
+  (Chrome ouvert sur @luciatrendyshop ; @ornella-vend pas ouverte depuis le 13/10) — garde LÉGITIME, mais `error` NULL.
+- Règle : get-pending-jobs pose sur une republication retenue le même marqueur qu'un retrait (`attente_boutique_republication`,
+  `_shared/attente-boutique-serveur.js`) et le message « Republication Vinted en attente : … Ouvre ta boutique @x … »,
+  écrit une fois par couple de boutiques, levé dès que la bonne boutique est ouverte. La file dit « (en attente depuis
+  le 24 oct.) » au-delà de 24 h. Rien n'est forcé : elles partent quand @ornella-vend est ouverte dans Chrome.

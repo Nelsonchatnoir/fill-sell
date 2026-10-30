@@ -51,10 +51,18 @@ export function creerIproyal({ jeton, achatsAutorises = false, journal }) {
     return appel('POST', `/orders/${encodeURIComponent(commandeId)}/extend`, { product_plan_id: planId });
   }
 
+  /** (30/10, lot D) Le solde du compte, en dollars (GET /balance — lecture seule). */
+  async function solde() {
+    const d = await appel('GET', '/balance');
+    const montant = Number(typeof d === 'object' && d != null ? (d.balance ?? d.amount) : d);
+    if (!Number.isFinite(montant)) throw new Error('IPRoyal : solde illisible');
+    return { montant, devise: 'USD' };
+  }
+
   async function disponibilite() {
     const d = await appel('GET', '/access/availability/static-residential');
     return (Array.isArray(d) ? d : d?.data ?? []).find((x) => x.country_code === 'FR') ?? null;
   }
 
-  return { disponible, lireCommande, urlProxy, changerIdentifiants, prolonger, disponibilite };
+  return { disponible, lireCommande, urlProxy, changerIdentifiants, prolonger, disponibilite, solde };
 }

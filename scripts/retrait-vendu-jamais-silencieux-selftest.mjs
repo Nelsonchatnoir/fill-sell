@@ -90,8 +90,13 @@ verifier(/onOuvrir: \(\) => \{ setGesteOuvert\(null\); setMenuArticleId\(a\.inve
 
 console.log('\n4. Le serveur');
 const gpj = lire('supabase/functions/get-pending-jobs/index.ts');
-verifier(/pfD\["attente_boutique_retrait"\] = \{/.test(gpj) && /Ouvre ta boutique \$\{login \? `@\$\{login\}` : "qui porte l'annonce"\}/.test(gpj), 'get-pending-jobs : le retrait retenu porte la boutique à ouvrir et le message');
-verifier(/delete pfSans\["attente_boutique_retrait"\]/.test(gpj), 'get-pending-jobs : levé quand la bonne boutique est ouverte');
+// (30/10, lot D) La règle vit dans _shared/attente-boutique-serveur.js : retrait ET republication.
+const { cleAttenteBoutique, messageJobRetenuAutreBoutique: messageAttenteBoutique } = await import('../supabase/functions/_shared/attente-boutique-serveur.js');
+verifier(/pfD\[cleA\] = \{/.test(gpj) && /cleAttenteBoutique\(j\.action\)/.test(gpj) && /messageJobRetenuAutreBoutique\(j\.action, login, vu\.login \?\? null\)/.test(gpj), 'get-pending-jobs : le job retenu porte la boutique à ouvrir et le message');
+verifier(/delete pfSans\[cleL\]/.test(gpj), 'get-pending-jobs : levé quand la bonne boutique est ouverte');
+verifier(cleAttenteBoutique('delete') === 'attente_boutique_retrait' && cleAttenteBoutique('republish') === 'attente_boutique_republication' && cleAttenteBoutique('publish') === null, 'une clé par action (retrait inchangée, republication neuve, publication jamais)');
+verifier(messageAttenteBoutique('delete', 'ornella-vend', 'luciatrendyshop') === "Retrait Vinted en attente : cette annonce est sur ta boutique @ornella-vend, et Chrome est ouvert sur @luciatrendyshop. Ouvre ta boutique @ornella-vend sur vinted.fr dans Chrome, sur ton ordinateur : FillSell retirera l'annonce aussitôt. Rien n'a été touché.", 'le message du retrait est celui du 12/10, mot pour mot');
+verifier(/^Republication Vinted en attente : cette annonce est sur ta boutique @ornella-vend, et Chrome est ouvert sur @luciatrendyshop\. Ouvre ta boutique @ornella-vend/.test(messageAttenteBoutique('republish', 'ornella-vend', 'luciatrendyshop')), 'une republication retenue le dit aussi (cas d’Ornella)');
 const hw = lire('supabase/functions/handler-watch/index.ts');
 verifier(/needs_user_source === "boutique_etrangere"\s*\n?\s*\|\| \/armer_retrait_job\//.test(hw), 'handler-watch : un retrait après vente n’est jamais soldé par le ménage des 72 h');
 verifier(A.attenteBoutiqueLevable({ motif: 'boutique_etrangere', article: '472079', pose_par: A.POSE_PAR_IDENTITE_PROUVEE }), 'la garde « identité prouvée » se lève quand la boutique de l’annonce est vue connectée');

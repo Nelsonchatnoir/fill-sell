@@ -57,7 +57,7 @@ import BoutonDictee from "../components/BoutonDictee";
 import {
   depuisEnMots, RELECTURE_ATTENTE_MS, RELECTURE_ATTENTE_MAX_MS, RELECTURE_SANS_LECTEUR_MS, ATTENTE_SANS_LECTEUR_MAX_MS,
   issuesSansLecteur, phraseSansLecteur, libellesSansLecteur, texteAttenteSansLecteur, urlAnnonceVinted, descriptionEcriteSuffisante,
-  lecteurEnRetard, etatDeLaDemande, phraseEtatDemande, issuesDeLEtat,
+  lecteurEnRetard, etatDeLaDemande, phraseEtatDemande, issuesDeLEtat, MOTIFS_CONCLUS_REESSAYABLES,
 } from "./attenteLectureRegles";
 
 export default function AttenteLectureOrigine({
@@ -172,7 +172,7 @@ export default function AttenteLectureOrigine({
   const sansLecteur = lecteurVu?.disponible === false;
   // (29/10, lot C 1) L'étape vraie : la conclusion de la règle (sans texte, introuvable) d'abord, puis la demande et
   // ce que la lecture d'ici a dit.
-  const etat = attente?.conclusion ? { etat: "conclue", motif: attente.conclusion, reessayable: false } : etatDeLaDemande(attente?.demande ?? null, ici);
+  const etat = attente?.conclusion ? { etat: "conclue", motif: attente.conclusion, reessayable: MOTIFS_CONCLUS_REESSAYABLES.has(attente.conclusion) } : etatDeLaDemande(attente?.demande ?? null, ici);
   const plateforme = attente?.plateforme ?? "vinted";
   if (etat.etat === "echec") mesure.current.motif = etat.motif;
   if (etat.etat === "conclue") mesure.current.motif = etat.motif;

@@ -7,7 +7,7 @@ import { planifierPostes, resumerJobs } from './planificateur.js';
 import { nouveauProfilId } from './navigateur.js';
 import { idExtensionDepuisCle, poserDansExtension, lireDansExtension, claims } from './sessionFillsell.js';
 
-export function creerPostes({ config, base, navigateurs, coffre, sessions, journal, connexionsOuvertes, alertes }) {
+export function creerPostes({ config, base, navigateurs, coffre, sessions, journal, connexionsOuvertes, alertes, fournisseurIp }) {
   const dernieresFins = new Map();
   const dernieresSauvegardes = new Map();
   let idExtension = null;
@@ -85,10 +85,11 @@ export function creerPostes({ config, base, navigateurs, coffre, sessions, journ
     if (!profilId) profilId = nouveauProfilId(user);
     await noter(user, 'demarrage', { serveur: config.serveurNom, profil: profilId, motif });
     try {
-      const { data: proxyUrl, error } = await base.rpc('cloud_proxy_identifiants', { p_ip: compte.ip_id });
-      if (error || !proxyUrl) throw new Error(`proxy du compte illisible : ${error?.message ?? 'absent'}`);
-      const h = await navigateurs.ouvrir(user, { proxyUrl, profilId });
-      h.ipId = compte.ip_id;
+      // (30/10, lot D) La sortie vient du SEUL module fournisseur (IP dédiée, ou rotation).
+      const sortie = await fournisseurIp.proxyPour(user, compte);
+      const h = await navigateurs.ouvrir(user, { proxyUrl: sortie.proxyUrl, profilId });
+      h.ipId = sortie.ipId;
+      h.sortie = { mode: sortie.mode, sortie: sortie.sortie };
       // 1. Le coffre : les plateformes absentes du profil reviennent.
       const { cookies } = await h.cdp.send('Storage.getCookies');
       const { aPoser, bilan: bilanCoffre } = await coffre.cookiesARestaurer(user, cookies);
@@ -96,7 +97,7 @@ export function creerPostes({ config, base, navigateurs, coffre, sessions, journ
       // 2. La session FillSell.
       const s = await assurerSessionFillsell(user, h, poste);
       await noter(user, 'actif', { serveur: config.serveurNom, conteneur: h.conteneur, profil: profilId,
-        session_fillsell_id: s.sessionId ?? '', motif });
+        session_fillsell_id: s.sessionId ?? '', motif, ip_mode: sortie.mode });
       journal.info('poste_ouvert', { user, motif, coffre: bilanCoffre, session: s.source });
       return h;
     } catch (e) {

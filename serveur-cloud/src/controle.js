@@ -43,10 +43,10 @@ export async function listesNoires(ip) {
 }
 
 export function creerControles({ config, docker, journal }) {
-  async function controler({ ipId, ip, proxyUrl }) {
+  /** Un navigateur NEUF (sans profil, sans compte, sans extension) par le proxy, le temps de `travail(lire, cdp, sessionId)`. */
+  async function avecNavigateurNeuf({ ipId, proxyUrl }, travail) {
     const nom = `fs-ctl-${ipId}-${randomBytes(3).toString('hex')}`;
     const profil = `ctl-${ipId}-${randomBytes(4).toString('hex')}`;
-    const resultat = { fait_le: null, ip_sortie: null, pays: null, listes_noires: [], plateformes: {} };
     let cdp = null;
     try {
       await docker.creer(nom, {
@@ -73,12 +73,23 @@ export function creerControles({ config, docker, journal }) {
       const { targetId } = await cdp.send('Target.createTarget', { url: 'about:blank' });
       const { sessionId } = await cdp.send('Target.attachToTarget', { targetId, flatten: true });
       await cdp.send('Page.enable', {}, sessionId);
-      const lire = async (url) => {
+      const lire = async (url, attenteMs = 6000) => {
         await cdp.send('Page.navigate', { url }, sessionId);
-        await new Promise((res) => setTimeout(res, 6000));
+        await new Promise((res) => setTimeout(res, attenteMs));
         const v = await cdp.send('Runtime.evaluate', { expression: 'document.documentElement ? document.documentElement.outerHTML.slice(0, 200000) : ""', returnByValue: true }, sessionId);
         return String(v?.result?.value ?? '');
       };
+      return await travail(lire, cdp, sessionId);
+    } finally {
+      try { cdp?.fermer(); } catch { /* rien */ }
+      await docker.supprimer(nom).catch(() => {});
+      await rm(`${config.dossierProfils}/${profil}`, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
+  async function controler({ ipId, ip, proxyUrl }) {
+    const resultat = { fait_le: null, ip_sortie: null, pays: null, listes_noires: [], plateformes: {} };
+    return avecNavigateurNeuf({ ipId, proxyUrl }, async (lire) => {
       const info = await lire('https://ipinfo.io/json');
       const json = info.match(/\{[\s\S]*"ip"[\s\S]*\}/)?.[0]?.replace(/<[^>]+>/g, '');
       try { const p = JSON.parse(json); resultat.ip_sortie = p.ip ?? null; resultat.pays = p.country ?? null; } catch { /* illisible : manque nommé */ }
@@ -90,11 +101,27 @@ export function creerControles({ config, docker, journal }) {
       resultat.fait_le = new Date().toISOString();
       journal.info('controle_ip', { ip_id: ipId, pays: resultat.pays, sortie_conforme: resultat.ip_sortie === ip, plateformes: resultat.plateformes, listes: resultat.listes_noires.length });
       return resultat;
-    } finally {
-      try { cdp?.fermer(); } catch { /* rien */ }
-      await docker.supprimer(nom).catch(() => {});
-      await rm(`${config.dossierProfils}/${profil}`, { recursive: true, force: true }).catch(() => {});
-    }
+    });
   }
-  return { controler };
+
+  /**
+   * (30/10, lot D) L'ESSAI D'UNE PAGE DE CONNEXION en accès DIRECT (première et seule navigation : aucune recherche,
+   * aucun détour) — Beebs, bloqué par DataDome le 26/09 (autre IP, navigateur Steel). Rend le titre, le verdict
+   * (mur ou non), si un formulaire de connexion est là, et une capture PNG (base64). Rien n'est saisi, aucun compte.
+   */
+  async function essaiPageConnexion({ ipId, proxyUrl, url, attenteMs = 12_000 }) {
+    return avecNavigateurNeuf({ ipId, proxyUrl }, async (lire, cdp, sessionId) => {
+      const html = await lire(url, attenteMs);
+      const ev = async (expression) => (await cdp.send('Runtime.evaluate', { expression, returnByValue: true }, sessionId))?.result?.value;
+      const titre = String(await ev('document.title') ?? '');
+      const urlFinale = String(await ev('location.href') ?? '');
+      const formulaire = Boolean(await ev("!!document.querySelector('input[type=email], input[type=password], input[name*=mail i], button[data-testid*=login i], a[href*=google], a[href*=apple]')"));
+      const { data: capture } = await cdp.send('Page.captureScreenshot', { format: 'png' }, sessionId);
+      const extrait = String(await ev("document.body ? document.body.innerText.slice(0, 600) : ''") ?? '');
+      const r = { fait_le: new Date().toISOString(), url, url_finale: urlFinale, titre, verdict: verdictPage(html), formulaire, extrait, capture };
+      journal.info('essai_page_connexion', { ip_id: ipId, url, verdict: r.verdict, formulaire, titre: titre.slice(0, 80) });
+      return r;
+    });
+  }
+  return { controler, essaiPageConnexion };
 }
