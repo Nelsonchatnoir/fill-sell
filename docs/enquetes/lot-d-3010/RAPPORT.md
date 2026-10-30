@@ -55,3 +55,32 @@ verts nommés pour les migrations, déploiements relus avant / après.
 | Écrans (présentation, activation, Me connecter, mur, résiliation) | **existent** (Nico témoin écrit en dur) ; manquaient : conditions, état de l'exécutant, « à reconnecter », Depop |
 | Paiement | Stripe : `STRIPE_PRICE_CLOUD` **absent** (paiement indisponible) ; Apple `app.fillsell.cloud.sub`, Google `cloud-monthly` / `cloud-trial-3d` (7 j) prêts côté code ; **aucun mode test Stripe** |
 | Textes légaux | sections de /legal (CGV art. 7, confidentialité 4.8) cachées ; « Vinted et Leboncoin » seulement, « IP toujours la même » |
+
+### 2.1 Ce qui est fait et prouvé (30/10)
+| Point | Fait | Preuve |
+|---|---|---|
+| Sel `cloud_empreinte_sel` | posé au vault à 10:37 (tiré en base, jamais affiché) | HMAC 64 car., normalisation identique |
+| Migration Cloud `20261030130000` | appliquée 11:09:56 (feu vert de Nico), repair | rotation = 1, colonnes des conditions, 2 fonctions, Depop au coffre ; essai à blanc 7 groupes |
+| Module fournisseur d'IP | `serveur-cloud/src/fournisseurIp.js` (seul point de sortie) | tests serveur 33/33 ; entretien de 11:19 : solde 10,60 $ lu, seuil 5 $, aucune alerte, aucun achat |
+| Serveur | redéployé sur c09148e à 11:16, extension **0.6.159-cloud** | `/sante` ok ; orchestrateur c09148ed96c9 |
+| Rotation de `COFFRE_CLE` | **faite en vrai** : ligne écrite clé 1 → rotation → relue par le trousseau → rechiffrée clé 2 → ancienne clé retirée → relue clé 2 seule → ligne d'essai effacée | `outils/coffre-etat.mjs` ; `.env` sans `COFFRE_CLES_ANCIENNES` |
+| Compte de Nico | drapeau `beta_flags.cloud` + option offerte (11:19, script + inverse) | servi en rotation, aucune IP attribuée |
+| Exécutant | navigateur ouvert 11:19:46 (mode rotation_pool), session FillSell a958154e, poste Cloud vu 11:20:47 (build c09148e-cloud) | `cloud_executant_moi` : « actif » ; le poste de l'ordinateur et `extension_build` inchangés |
+| Beebs, IP neuve, accès direct | **BLOQUÉ** : « Accès temporairement restreint — quelque chose dans le comportement du navigateur nous a intrigué », IP 94.194.94.233, ID b2b50871-8c20-a5ab-7cd8-0d73adda5a4b (10:19:36 UTC) | capture `/srv/fillsell-cloud/essais/` ; même mur que le 26/09 (autre IP, autre navigateur) |
+| Fonctions | get-pending-jobs v304, update-job-status v157, create-checkout-session v62 (relues avant / après) | verify_jwt inchangés |
+
+### 2.2 Refusés par le garde-fou (non contournés)
+- **Afficher la clé du coffre** (« Credential Materialization ») : la clé neuve n'existe que dans `/srv/fillsell-cloud/.env`.
+- **Envoyer l'OTA 2.9.137** (« Production Deploy ») : `dist/` construit (`2026-10-30T10:20:28Z+c09148e`), non envoyé.
+
+### 2.3 Ce qui reste (raison exacte)
+- **Connexions réelles** (Vinted, Leboncoin, Depop) depuis « Me connecter », puis publication / republication /
+  retrait / relevé / vente par l'exécutant : il faut les identifiants de Nico (À Nico). Tout est prêt jusque-là.
+- **Beebs** : bloqué par la plateforme depuis le serveur (deux IP, deux navigateurs) — à trancher (questions).
+- **Stripe en mode test** : le connecteur Stripe ne voit que le mode RÉEL (un seul compte, livemode true) ; les trois
+  fonctions de paiement lisent une seule clé. Il faut des clés de test (tableau de bord) et un aiguillage par témoin —
+  pas fait (risque sur le paiement réel de tous). Le parcours réel est prêt : il ne manque que `STRIPE_PRICE_CLOUD`.
+- **IP en rotation résidentielle** : API résidentielle IPRoyal non activée (trafic à acheter, 6,25 $/Go) ; en attendant,
+  rotation sur les IP françaises du pool = UNE seule (94.194.94.233, fin le 04/11 à 13:57).
+- **Prévenir avant de lancer une publication Cloud** (Ornella, point c de l'audit : une republication lancée seule sur
+  une fiche d'une autre boutique) — non fait (le message existe désormais sur le job).
