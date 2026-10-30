@@ -564,29 +564,121 @@ Le récit détaillé : dépôt `docs/enquetes/lot-d-3010/RAPPORT.md` ; l'état d
 ---
 
 
-## ⛔ 30/10/2026 14:10 — CLOUD À L'ARRÊT, CHOIX DE LA MACHINE (à lire AVANT le bloc 13:38)
-- Orchestrateur arrêté à **13:53:11** (ordre de Nico) : plus aucune visite de plateforme depuis le serveur ni par les
-  IP du pool. Ne PAS lancer `deployer.sh` (il le relancerait, et il rouvrirait le Chrome Linux de Nico).
-- Nico ne se connecte à AUCUNE plateforme sur le serveur actuel ; il se connectera une seule fois, sur la machine
-  retenue, après un essai propre en conditions de production.
-- Étude, options, clauses, plan d'essai, souscription : `docs/enquetes/machine-cloud-3010/RAPPORT.md`.
-- Prochaine étape : réponse écrite de Shadow Pro (autorisation + prix Always On) ou, en repli, de Hetzner (Windows
-  sur GEX45) ; puis souscription par Nico, script d'installation, poste Windows, essai unique.
-- **30/10 14:55** : essai machine neuve + IP neuve (Hetzner cx23 supprimé à 14:58, IP 188.126.31.118 hors pool) →
-  Leboncoin et Beebs **BLOQUÉS** d'emblée : un serveur Linux sans carte graphique est refusé par nature. Suite :
-  Shadow (Nico fait la demande). Avant tout essai : neutraliser la sonde horaire des plateformes non connectées et
-  le contrôle d'entrée des IP (pages d'accueil des plateformes) — rapport § 7.
-- **30/10 15:45** : essai sur le PC Windows de Nico (vrai matériel, piloté comme en production) → Leboncoin
-  GLISSIÈRE, Beebs FORMULAIRE : le vrai matériel règle le blocage. Correctifs `7e49884` (aucune visite automatique
-  d'une plateforme non connectée) et `c932ce3` (« Me connecter » : onglets existants, Beebs anonyme), NON déployés
-  (Cloud arrêté). Comparatif des machines louables : rapport § 9. Avant toute machine : contrôle hors réseau de la
-  carte graphique (`essai-me-connecter-pc.mjs --verifier`).
-- **30/10 16:48** : serveur dédié **3100515** `fillsell-cloud-win-1` (94.130.142.25, i7-8700 + UHD 630 activée,
-  Robot) commandé, en système de secours. Prochaines étapes : option Windows commandée par Nico dans Robot le 01/11
-  ou après → installation par l'API (`POST /boot/3100515/windows`) → Nico colle UNE fois
-  `serveur-cloud/deploiement/windows/acces-ssh.ps1` (Bureau à distance) → contrôle hors réseau du rendu Chrome sur la
-  UHD 630 (sinon résiliation, aucune visite) → moteur Windows natif de l'orchestrateur → « machine prête ».
-  Verrou des plateformes dans le relais : poussé.
-- **30/10 17:48** : serveur Linux à vraie puce Intel (UHD 630, WebGL vérifié) → Leboncoin et Beebs **BLOQUÉS** ;
-  **résilié**. Ce qui passe : Windows sur vrai matériel. AX42 + Windows Server ≈ 176 € HT le 1er mois (option Windows
-  seulement dans l'interface Robot). Aucun serveur dédié en cours. Rapport § 10.
+## ⛔ 30/10/2026 19:05 — L'APRÈS-MIDI DU 30/10 ET LA DÉCISION SHADOW (à lire EN PREMIER, avant le bloc 13:38)
+
+Aucun secret ici : les identifiants (Robot Hetzner `ROBOT_USER` / `ROBOT_PASSWORD` compris) vivent dans `secrets.env`
+du dossier prototype, nulle part ailleurs. Récit détaillé : dépôt `docs/enquetes/machine-cloud-3010/RAPPORT.md`
+(§ 0 à 10) ; état de prod : `docs/agents/etat-2026-10-01.md` (fin de la section Cloud du 30/10).
+
+### 1. Décision de Nico : essai sur Shadow Neo Pro, souscrit le 30/10
+- Machine : **Shadow Neo Pro** (Shadow Pro) — 8 vCores, 16 Go, NVIDIA RTX 2000 Ada 16 Go, Windows 11, en France.
+  Prix lu le 30/10 : 39,99 € HT/mois + Always On (prix non publié) ; ≈ 9 utilisateurs estimés (à mesurer).
+- Souscrite par Nico le 30/10 (c'est lui qui paie ; Claude ne saisit aucune carte).
+- À verser au dossier dès qu'ils existent : l'accord écrit de Shadow pour notre usage (les CGV soumettent à
+  autorisation préalable un usage « dans le cadre de prestations commerciales ») et le prix d'Always On.
+
+### 2. Règle de Nico (30/10) : avant toute commande, tout vérifier sur le modèle précis
+- Avant de commander quoi que ce soit (serveur, option, IP, abonnement) : vérifier que TOUT ce dont on a besoin est
+  disponible sur CE modèle précis (système, options, pilote, prix, facturation, mode de commande), le dire à Nico,
+  et seulement ensuite commander. Origine : le serveur 3100515 commandé sans que Windows y soit proposé (§ 3).
+
+### 3. Ce qui s'est passé depuis 13:38 (heure de Paris)
+| Heure | Machine | Sortie | Leboncoin | Beebs |
+|---|---|---|---|---|
+| 14:55 | Hetzner Cloud **neuf** cx23 (Linux, sans carte graphique : SwiftShader) | **IP neuve** 188.126.31.118 | **BLOQUÉ** (ID c3cab590-0498-2687-d793-11d590fb0528) | **BLOQUÉ** (ID 9c5aa7bd-d47f-0dc0-9deb-8042be941ecc) |
+| 15:37 / 15:44 | **PC Windows de Nico** (AMD Radeon, Chrome 156 officiel), piloté comme en production | IP fixe 2 | **GLISSIÈRE**, passable par l'utilisateur (ID 4cfef139-485c-1f90-bcf8-8397cd7f72d2) | **FORMULAIRE** : passe |
+| 17:45 | Serveur dédié **Linux à vraie puce Intel** (Hetzner 3100515, i7-8700, UHD 630, bureau XFCE) | IP fixe 2 | **BLOQUÉ** (ID ebf12780-b17b-ba28-1b82-2280a120d092) | **BLOQUÉ** (ID 0e7e1178-e551-e993-55c2-4be09b648f1c) |
+- **13:53:11** : orchestrateur de l'ancien serveur arrêté (ordre de Nico). Plus aucune visite de plateforme depuis
+  cette machine ni par les IP du pool.
+- **Hetzner Cloud neuf** `fillsell-cloud-2` : créé à 14:48 à Helsinki (cx43 indisponible partout), supprimé à 14:58.
+  Coût ≈ 0,01 €.
+- **IP 3** : IPRoyal commande 86978813, 188.126.31.118, 4 $, fin le 29/11, sans renouvellement. Elle reste HORS du
+  pool et n'y entre jamais : DataDome la cite. Solde IPRoyal : 15,35 $ avant l'achat, **11,35 $** après.
+- **PC de Nico** : outil `serveur-cloud/outils/essai-me-connecter-pc.mjs`, « Me connecter » de production par CDP
+  (format téléphone, tactile émulé), extension Cloud chargée par `Extensions.loadUnpacked`, relais vers l'IP fixe 2.
+- **Serveur dédié 3100515** (94.130.142.25, place de marché ; l'EX44 n'était plus commandable) : commandé à 16:48.
+  Robot a ensuite refusé Windows : « For this server type Windows cannot be used ». **Erreur de Claude** : le détail
+  du produit, lu avant la commande, n'offrait que « Rescue system ». Essai fait sous Linux sur ordre de Nico : Ubuntu
+  24.04, bureau XFCE, français, heure de Paris, Chrome officiel avec son lecteur PDF, extension 0.6.160 par
+  stratégie, relais vers l'IP fixe 2. Vérification hors réseau réussie à 17:44 (WebGL « ANGLE (Intel, Mesa Intel(R)
+  UHD Graphics 630 (CFL GT2), OpenGL 4.6) », 1920×1080, Europe/Paris, fr-FR, 5 plugins PDF). Essai bloqué.
+  **Résilié à 17:48**, après effacement du disque de la configuration, de la clé de signature de l'extension et des
+  profils. Coût ≈ 0,15 € HT.
+
+### 4. Ce que ça prouve, et le doute sur l'IP fixe 2
+- Ce n'est pas l'usure de l'ancien serveur : machine neuve, IP neuve, profil neuf, aucune visite avant → bloqué.
+- Ce n'est pas le pilotage : le même « Me connecter » de production passe sur le PC Windows.
+- Une vraie puce ne suffit pas sous Linux en centre de données.
+- **Ce qui passe : Windows sur du vrai matériel.**
+- **Doute sur l'IP fixe 2** (185.134.194.88) : bloquée le matin depuis l'ancien serveur, glissière à 15:37 depuis le
+  PC, puis bloquée à 17:45 depuis le serveur Linux. Sa réputation a pu baisser entre-temps : le blocage de 17:45
+  n'est pas entièrement imputable à la machine. L'essai Shadow sortira donc par une **IP NEUVE** (4 $, achat sur
+  accord écrit de Nico), jamais par l'IP fixe 2 ni par 188.126.31.118.
+
+### 5. AX42 + Windows Server : étudiée SANS commande (repli)
+- Machine : AMD Ryzen 7 PRO 8700GE, puce Radeon 780M (même famille que le PC de Nico), 64 Go, Falkenstein ou Helsinki.
+- Prix Robot : 97,30 € HT/mois (0,1559 €/h), + 49 € de mise en service (la page publique annonce 99 €), + IPv4 1,70 €.
+- Windows : listé sur la page AX42 (options « Windows Server 2025 Standard » ou « Datacenter »). Standard 8 cœurs :
+  **27,90 € HT/mois, facturé au mois civil complet**. L'option se commande **uniquement dans l'interface Robot, par
+  Nico** (absente de l'API). Licences RDS par utilisateur en sus si besoin (SPLA).
+- Premier mois ≈ 176 € HT (≈ 211 € TTC), au-dessus du plafond de 150 € fixé par Nico. Échec le premier jour : ≈ 78 € HT
+  perdus (mise en service + Windows du mois + quelques heures).
+- Risques : **le pilote AMD ne vise pas officiellement Windows Server** (sans pilote : rendu logiciel, donc bloqué) ;
+  **aucun écran branché** (écran virtuel à prévoir). Contrôle hors réseau de la puce obligatoire avant toute visite.
+- Résiliation d'un serveur dédié : Robot `POST /server/<n>/cancellation` avec `cancellation_date=now` (fin
+  immédiate ; la mise en service n'est pas remboursée).
+
+### 6. Code poussé sur `main` depuis 13:38 — RIEN déployé (Cloud arrêté)
+- **Plus aucune visite automatique d'une plateforme non connectée** (`7e49884`) : la sonde de la copie Cloud ne part
+  que si le cookie de connexion existe ; le contrôle d'entrée des IP ne passe plus que par ipinfo.io
+  (`plateformes: { visite: 'aucune' }`).
+- **Les deux correctifs « Me connecter »** (`c932ce3`) : (1) « Me connecter » n'adopte plus et ne ferme plus les
+  onglets déjà ouverts (`ouverteParLaConnexion`, `openerId` exigé) ; (2) Beebs n'est plus dite « connectée » pour un
+  simple visiteur (jeton Firebase anonyme), dans l'orchestrateur et dans la copie Cloud.
+- **Le verrou du relais** (`4c9f968`) : une plateforme n'est joignable par le navigateur que si elle est connectée
+  (coffre `plateformes_connectees`) ou pendant son « Me connecter » ; sinon 403, sans aucune connexion vers la
+  plateforme. Port de contrôle 3130, jeton tiré à chaque ouverture. Couvre aussi relevés, ventes et messagerie.
+- **Le moteur Chrome sur vraie machine** (`88f0713`, `9376300`) : `NAVIGATEUR_GPU=1` (coupé par défaut) — le conteneur
+  Chrome de production dessine sur l'écran du bureau de l'hôte par la vraie puce (`/dev/dri`, socket X, ANGLE sur
+  OpenGL, plus de SwiftShader) ; `deploiement/gpu/preparer-poste-gpu.sh` ; `outils/essai-me-connecter.mjs --verifier`
+  (contrôle hors réseau : profil jetable, proxy mort, WebGL d'une page about:blank). C'est le moteur Linux : sous
+  Windows, il faudra un moteur natif.
+- **Outils Windows** : `outils/essai-me-connecter-pc.mjs` (`--verifier`, `--a-blanc`, `--seulement=`, `--reprendre`) ;
+  Chrome 156 ignore `--load-extension` → `Extensions.loadUnpacked` par `--remote-debugging-pipe` +
+  `--enable-unsafe-extension-debugging` (sur une machine dédiée, la stratégie d'entreprise reste possible) ;
+  `deploiement/windows/acces-ssh.ps1` (OpenSSH par clé publique seule, collé UNE fois en PowerShell administrateur).
+- Autres commits : `decebaa`, `0feb4a9`, `1396d19`, `e4a7f87`, `a99676b` (docs). Suite complète 499 selftests,
+  0 rouge ; serveur 45/45.
+
+### 7. Prochaines étapes (Shadow Neo Pro)
+1. Nico installe l'application Shadow sur son PC, ouvre la machine UNE fois et colle le script d'accès fourni par
+   Claude. Il ne se connecte à aucune plateforme. À vérifier d'abord : Shadow ne donne probablement aucun accès
+   entrant ; prévoir alors un tunnel sortant vers notre serveur (plan, rapport § 4) au lieu de `acces-ssh.ps1` seul.
+2. **Vérification HORS RÉSEAU** (proxy mort, profil jetable) : WebGL doit nommer la NVIDIA RTX 2000 Ada (ni
+   SwiftShader ni « Microsoft Basic Render »), y compris flux Shadow fermé (Always On) ; écran, fr-FR, Europe/Paris,
+   lecteur PDF. Sinon : arrêt sans aucune visite.
+3. **IP neuve** (accord écrit de Nico, 4 $).
+4. **Essai UNIQUE** en conditions de production, personne sur le flux : « Me connecter » Leboncoin
+   (`/compte/part/mes-annonces`) puis Beebs (`/fr/auth`), une ouverture chacune. Verdicts : formulaire = PASSE ;
+   glissière = PASSE AVEC VÉRIFICATION (Nico la passe) ; « Accès temporairement restreint » = BLOQUÉ. Preuves :
+   capture, heure lue en base, renderer WebGL, ID DataDome.
+5. Si ça passe : moteur Windows natif de l'orchestrateur (poste distant ; plus jamais le Chrome Linux), déployé avec
+   le verrou du relais et les deux correctifs « Me connecter », testés → « machine prête » → Nico se connecte une
+   seule fois (Vinted, Depop, Leboncoin avec la glissière, Beebs) → tests à 999 € (publication, republication,
+   retrait, relevé, vente) → quelques jours à cadence normale → capacité mesurée (`NAVIGATEURS_MAX`).
+6. Si c'est bloqué : aucun nouvel essai depuis cette machine ; résiliation ; replis à présenter à Nico (AX42 +
+   Windows avec plafond relevé ; mini-PC, mais la licence Windows 11 interdit l'hébergement commercial).
+
+### 8. État à cet instant
+- Ancien serveur `fillsell-cloud-1` (178.105.24.16) : orchestrateur **arrêté** depuis 13:53:11 ; ne PAS lancer
+  `deployer.sh`. Le § 7 du bloc 13:38 (« navigateur Cloud actif ») est donc dépassé.
+- Aucun serveur dédié, aucun serveur d'essai en cours.
+- IP : fixe 1 94.194.94.233 (fin 04/11 13:57) ; fixe 2 185.134.194.88 (fin 29/11, usée par les essais du 30/10) ;
+  IP 3 188.126.31.118 (hors pool, fin 29/11). Aucun renouvellement. Solde 11,35 $.
+- Robot Hetzner : accès webservice dans `secrets.env` ; conseillé à Nico de changer ce mot de passe (il a été collé
+  dans le terminal).
+- Stripe : test des 7 jours toujours en attente du mot « Stripe » de Nico (deux contrôles dépendent de
+  l'orchestrateur, arrêté).
+- Garde-fous inchangés (bloc 13:38 § 8), plus : aucun résolveur de captcha, aucun service de déblocage, aucun outil
+  de maquillage d'empreinte ; de vraies machines, un vrai Chrome ; c'est l'utilisateur qui passe une vérification
+  dans « Me connecter ». Nico ne se connecte qu'une fois, sur la machine retenue, après un essai propre.

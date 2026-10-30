@@ -346,3 +346,10 @@ quelques jours à cadence normale de production diront si les publications en ar
   pas par l'API.
 - Premier mois : ≈ 176 € HT, au-dessus du plafond de 150 €.
 - Risques : le pilote AMD ne vise pas officiellement Windows Server, et il n'y a pas d'écran branché.
+
+## 11. Décision de Nico (30/10, 19:05) : essai sur Shadow Neo Pro
+- Shadow Neo Pro (8 vCores, 16 Go, NVIDIA RTX 2000 Ada, Windows 11, France), souscrit par Nico le 30/10.
+- Avant l'essai : contrôle hors réseau de la carte (WebGL doit nommer la RTX 2000 Ada, flux fermé compris), puis une
+  IP neuve, l'IP fixe 2 étant usée par les essais du 30/10. Puis un essai unique, comme au § 4.
+- À verser au dossier : l'accord écrit de Shadow pour l'usage commercial et le prix d'Always On.
+- Règle de Nico : avant toute commande, vérifier que tout ce dont on a besoin est disponible sur ce modèle précis.
