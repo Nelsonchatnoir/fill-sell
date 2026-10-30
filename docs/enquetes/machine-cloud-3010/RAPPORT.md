@@ -519,8 +519,12 @@ une page about:blank.
 > Cordialement,
 > [Nom], FillSell
 
-**État à 21:34.**
-- Shadow reste allumé tant que l'application de Nico est ouverte.
-- L'accès (tunnel, SSH local) reste en place jusqu'à la décision de Nico.
-- IP 81.181.239.136 : disponible jusqu'au 29/11 (une ouverture par plateforme déjà faite).
-- Ancien serveur : orchestrateur toujours arrêté ; compte `shadowtun` à retirer avec l'accès.
+**État à 22:05 : Shadow écarté par Nico, accès retiré.**
+- Sur la machine : `retirer.ps1` lancé à 22:02:25 en tâche SYSTEM détachée. Il retire la tâche du tunnel, le serveur
+  SSH, les clés, `C:\ProgramData\FillSellAcces` et `C:\Users\shadow\FillSell`, profils d'essai compris.
+- Tunnel coupé à 22:02:29. Le reste du retrait n'a pas pu être relu : il n'y a plus d'accès.
+- Sur le relais : compte `shadowtun` supprimé avec sa clé (`userdel -r`), port 2222 fermé, sshd revenu en `LogLevel
+  INFO` (le fichier temporaire « verbose » avait été retiré dès 20:39).
+- Google Chrome reste installé sur la machine. Résiliation de Shadow : Nico (renouvellement le 30/11).
+- IP 81.181.239.136 : disponible jusqu'au 29/11 21:00, sans renouvellement (une ouverture par plateforme déjà faite).
+- Ancien serveur : orchestrateur toujours arrêté.

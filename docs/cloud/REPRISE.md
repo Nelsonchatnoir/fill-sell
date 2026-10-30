@@ -691,11 +691,11 @@ Détail : `docs/enquetes/machine-cloud-3010/RAPPORT.md` § 12.
 - **Always On : 208,99 €/mois**, lu dans le Manager et non activé. Sans Always On, la machine s'éteint dès que
   l'application se ferme. Recommandation : pas de Shadow en production ; cible AX42 + Windows Server (non essayée,
   décision de Nico).
-- **Accès à la machine** (utilisateur Windows `shadow`, tunnel sortant `-R 127.0.0.1:2222` vers l'ancien serveur,
-  compte `shadowtun`) : `ssh -i ~/.ssh/fillsell_cloud_ed25519 -o ProxyCommand="ssh -i ~/.ssh/fillsell_cloud_ed25519 -W
-  %h:%p root@178.105.24.16" -p 2222 shadow@127.0.0.1`. Ne marche que si l'application de Nico est ouverte. Chrome se
-  lance dans la session ouverte par une tâche planifiée interactive (`FillSell-Session`), jamais depuis la session SSH. Retrait :
-  `C:\ProgramData\FillSellAcces\retirer.ps1` sur la machine, puis `userdel -r shadowtun` sur le relais.
+- **Accès à la machine : RETIRÉ le 30/10 à 22:02** (Shadow écarté par Nico).
+  - Sur la machine : `retirer.ps1` exécuté en tâche SYSTEM détachée.
+  - Sur le relais : compte `shadowtun` supprimé, sshd en `LogLevel INFO`.
+  - Pour mémoire, la méthode : SSH local + tunnel sortant `-R 127.0.0.1:2222`. Chrome se lance dans la session ouverte
+    par une tâche planifiée interactive, jamais depuis la session SSH (session 0).
 - **Exigences de Nico (21:16)** : glissière et connexion faites par l'utilisateur depuis l'app, en direct. Voir ce qui
   existe et ce qui manque (§ 12) ; rien à coder sans sa validation.
 - IP : 81.181.239.136 ajoutée (fin 29/11, hors pool) ; solde IPRoyal 7,35 $.
