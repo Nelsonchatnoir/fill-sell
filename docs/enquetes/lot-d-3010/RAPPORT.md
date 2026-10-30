@@ -133,3 +133,45 @@ verts nommés pour les migrations, déploiements relus avant / après.
   `navigateur.js`. **Coût par utilisateur** : même serveur (≈ 0,8 € / mois de serveur et d'IP partagés aujourd'hui),
   + 0 € de licence ; avec résidentiel pour Beebs seul : ≈ 7,35 $ / Go (estimé 0,2 à 0,5 Go / mois / vendeur actif →
   1,5 à 3,7 $). Demande de partenariat Beebs rédigée, non envoyée : `docs/cloud/beebs-demande-partenariat.md`.
+
+## Suite 2 du lot D (30/10 après-midi — « tout est payé, on finit le Cloud »)
+
+### Ordres
+- **STRIPE_PRICE_CLOUD posé** (12:29) = `price_1UMuLDQZRA77vrWJZfZh2IS4` ; empreinte du secret (secrets list)
+  6803167d… = sha256 du prix → c'est bien cette valeur que les fonctions lisent.
+- **IPRoyal** : 1 Go de résidentiel acheté (commande 86970189, 6,25 $ débités, sans renouvellement), confié à un
+  sous-utilisateur de test (identifiants dans secrets.env et le .env du serveur, jamais affichés). ⚠ La recharge de
+  15 $ n'apparaît PAS sur le solde revendeur que lit l'API (6,60 → 0,35 $ après l'achat) : l'alerte « solde bas » est
+  partie (journal du serveur, aucun mail). Résidentiel consommé par les essais : 0,041 Go (≈ 10 Mo par page Beebs
+  avec un profil neuf). Les deux IP fixes restent (contrôle d'entrée de la 2e passé : 1 et 2 « disponible »).
+
+### Navigateur Cloud sur Google Chrome officiel — FAIT
+- Image `navigateur-chrome/` (Chrome 156 officiel, écran, fr, Paris), extension Cloud installée par **stratégie
+  d'entreprise** (CRX3 signé de la clé de la copie Cloud, servi en local par le relais, version 0.6.159.4355x),
+  `DeveloperToolsAvailability = 1` (sans elle Chrome refuse de piloter l'extension). Relais de proxy dans le conteneur
+  (les identifiants ne vont jamais à Chrome), trafic Beebs seul vers le résidentiel si `BEEBS_RESIDENTIEL=1` (laissé à 0 :
+  mesuré inutile, voir plus bas). Serveur sur 3d00e71.
+- Prouvé : navigateur de Nico ouvert sous Chrome, extension présente (service worker), session FillSell posée, poste
+  Cloud qui interroge la file (13:04:10, build …-cloud) ; « Me connecter » de bout en bout (ticket, WebSocket comme
+  l'app, image au format téléphone) : **Vinted OK, Depop OK** ; Leboncoin et Beebs : mur DataDome.
+- Corrigés en passant : la page de connexion **Leboncoin** du Cloud était `/se-connecter` (404 même dans un vrai Chrome)
+  → `/compte/part/mes-annonces` (renvoie vers auth.leboncoin.fr/login) ; Beebs `/fr/auth` (fait plus tôt).
+
+### Beebs (et Leboncoin) — mesures en accès direct
+| Navigateur | Sortie | Beebs /fr/auth | Leboncoin |
+|---|---|---|---|
+| vrai Chrome Windows (PC de Nico, profil vierge) | IP fixe 1 | passe | — |
+| vrai Chrome Windows | IP fixe 2 | passe (11:5x et 12:5x) | passe (page servie) |
+| Chrome officiel du serveur | IP fixe 1 | glissière à 11:48 ; **bloqué** à 12:37 | **bloqué** |
+| Chrome officiel du serveur | IP fixe 2 | **bloqué** | **bloqué** |
+| Chrome officiel du serveur | résidentielle FR (neuve à chaque essai) | **bloqué** ×4 (SwiftShader, rendu GL Mesa, sans WebGL, écran 1536×864) | — |
+| Chromium steel (ancien navigateur) | IP 1 et 2 | bloqué | **bloqué** (12:56 ; il passait le 05/10) |
+- **Pourquoi** : ni l'IP (un vrai Chrome passe par les mêmes IP), ni le type d'IP (le résidentiel est bloqué aussi), ni
+  la langue, le fuseau, le navigateur Chrome / Chromium : c'est **l'environnement du serveur** — Linux sans carte
+  graphique (rendu logiciel SwiftShader / Mesa, ou pas de WebGL). Beebs et Leboncoin sont protégés par le même
+  service anti-robot (DataDome) : depuis nos essais répétés de la journée, il ne donne plus la glissière à cet
+  environnement, il le bloque d'emblée (sur IP fixe comme résidentielle).
+- **Solution retenue (à décider)** : exécuter Beebs et Leboncoin depuis une machine à **vraie carte graphique** (GPU),
+  à mesurer avant tout engagement ; le reste du Cloud (Vinted, Depop, eBay par l'API) tourne déjà. Le résidentiel n'est
+  PAS nécessaire (il ne change rien) : `BEEBS_RESIDENTIEL` reste à 0, coût 0. Demande de partenariat Beebs gardée en
+  brouillon, non envoyée.
