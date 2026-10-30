@@ -132,3 +132,8 @@
   10 min. Un report de mise à jour se trace (usage_logs `maj_extension_reportee`, une par heure et par poste).
 - Constat 29/10 : abenjemaa, labouquinerie85, bigfoutte09 éteints depuis le 28/10 au soir (avant la 0.6.152 au CWS) ;
   chaowx1305 mis à jour 3 min après son retour.
+
+- **0.6.161 (30/10 soir, lot E finition + urgence Louis)** : la 0.6.160 (jamais téléversée) + étape « recreated »
+  comprise, adsubmit sans confirmation = dépôt inachevé, navigateur réel et rendu graphique envoyés au serveur
+  (`navigateur`, `rendu_graphique`), lectures Leboncoin coupées pendant un blocage, « Pour qui ? » avant la taille des
+  accessoires Vinted, matière Depop. EXTENSION_LAST_COMMIT recalé sur le dernier commit qui touche `chrome-extension/`.

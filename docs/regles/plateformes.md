@@ -556,3 +556,32 @@ Rapport : `docs/enquetes/dix-points-1710/RAPPORT.md` (points 1, 4, 5, 7, 9).
   vêtement que si une étiquette de composition est LUE (jamais « Denim » pour un jean) ; la rédaction ne la déduit
   jamais du type d'article ; une composition part en matières dans l'ordre de l'étiquette : Vinted les coche (3 au plus,
   `fields.matieres`, 0.6.160), Leboncoin / Beebs / Opla / eBay prennent la première (la plus forte part).
+
+## 30/10 soir — lot E finition et urgence Louis (`docs/enquetes/lot-e-3010/RAPPORT.md` § Finition, `docs/enquetes/louis-lbc-restreint-3010/RAPPORT.md`)
+
+- **Leboncoin restreint l'accès d'un compte** (`_shared/blocage-leboncoin.js`) : au premier signe (« accès temporairement
+  restreint », « robot sur le même réseau », HTTP 403, DataDome) lu au dépôt, aux relevés ou à la veille des commandes,
+  `platform_settings.leboncoin.blocage_acces` est posé : plus AUCUNE action ni lecture Leboncoin du compte (serveur et
+  extension 0.6.161), un message qui nomme le navigateur, un seul essai par jour (24 h, ou « Leboncoin remarche »), un
+  essai refusé re-pose la pause (jamais de boucle), un essai réussi = reprise prudente (6 h, 10 min entre deux tâches).
+- **Une machine virtuelle ne fait jamais Leboncoin** (`_shared/poste-virtuel.js`) : l'extension 0.6.161 envoie le moteur
+  de rendu du poste ; un pilote graphique de machine virtuelle (VMware, VirtualBox, QXL, virgl, Hyper-V, « Microsoft
+  Basic Render Driver »…) → les tâches Leboncoin du compte attendent un vrai poste du compte. Rendu logiciel seul
+  (SwiftShader, llvmpipe) : noté, jamais bloquant. ⛔ Le poste Cloud a ses propres règles.
+- **Leboncoin refuse automatiquement une annonce « similaire à une annonce déjà en ligne »** (essai du 30/10 à 20:21 :
+  12 photos de deux t-shirts déjà en vente → mail « refusée » à la seconde du dépôt) : la page de confirmation s'affiche
+  quand même, le tableau de bord de Leboncoin ne liste pas les annonces refusées, la page « Corriger l'annonce » ne dit
+  rien. FillSell ne voit qu'une absence aux relevés ; le motif est dans le mail de Leboncoin à la personne. ⛔ Un essai
+  Leboncoin se fait avec des photos jamais publiées sur le compte.
+- **adsubmit 2xx puis canal coupé** (0.6.161) : publié seulement si l'onglet est sur la page de confirmation ou sur
+  l'annonce ; sinon la tâche reste en attente « dépôt non finalisé » (jamais « publié » sur une réponse seule) ; adresse
+  illisible = question « incertain ».
+- **Depop, matière** : la matière de la fiche (ou la composition de l'étiquette) part dans `attributes.material` (format
+  relevé sur le formulaire de Depop le 30/10), 4 au plus, identifiants actifs seulement, sur les 84 types qui l'acceptent
+  (jamais une robe, un bijou, une montre) ; source : copie Depop, valeur commune des autres copies, fiche
+  (`champsDepop` → `depopMatieres`, `depopMatieresDuJob`). Selftest `depop-matiere`.
+- **Vinted, accessoires** : sous « Accessoires de mode » (arbre servi à CERTAINS comptes, `_shared/vinted-catalogue-comptes.js`),
+  la Taille n'apparaît qu'après « Pour qui ? » (Femmes 576, Hommes 575) : l'extension pose « Pour qui ? » avant la
+  taille ; « Taille unique » (1435) s'y trouve.
+- **Messages qui nomment le navigateur** (`_shared/navigateur-poste.js`, `nommerLeNavigateur`) : « dans Brave », « dans
+  Edge »… selon le navigateur déclaré par le poste (Brave reconnu par `navigator.brave`), jamais « Chrome » d'office.

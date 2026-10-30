@@ -1044,3 +1044,14 @@
   (ni état, ni genre, ni hashtags), sur toutes les plateformes ; le texte du vendeur aussi. La règle 5 du 26/10 (pas de
   hashtags hors Vinted et Depop) ne vise plus que les hashtags de FillSell. Cas : la référence
   « #the_closet72jeanFR44 #jean » partait sur Vinted et Depop, retirée sur Leboncoin, Beebs et eBay.
+
+- **30/10 soir — étape « recreated » sans numéro** (`_shared/etape-recreated-sans-numero.js`, handler-watch et
+  get-pending-jobs) : une republication restée « recreated » sans numéro d'annonce n'est plus jamais « étape inconnue ».
+  Les relevés tranchent : l'annonce recréée est vue → clôture propre ; l'ancienne a disparu et rien n'est vu → reprise
+  de la recréation (Leboncoin, Beebs seulement, `deleted_at` requis), sans doublon. ⛔ Seulement les tâches `pending` /
+  `needs_user` — jamais une republication échouée ni un refus de vérification Beebs (le 30/10, la première version a
+  redéposé une republication Beebs échouée de XEWER : corrigé dans l'heure).
+- **30/10 soir — « Republier avec toutes tes photos »** (`_shared/photos-lbc-amputees.js`, fonction
+  `republier-photos-lbc`) : sur une annonce Leboncoin partie amputée (repli silencieux sur 3 photos, 20→30/10), une
+  ligne dans l'app ; UN geste, une annonce à la fois par compte, sans pièce ni quota (`hors_quota`), cadence de la file,
+  visible seulement avec une extension qui lit la nouvelle page de dépôt, jamais pendant un blocage Leboncoin.

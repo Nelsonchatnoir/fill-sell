@@ -42,7 +42,7 @@ ok(/const correctionTientIci = correctionTient\(pf, "taille", tCap\);/.test(gpj)
 
 console.log("\nPoint 10 — « Pour » d'un article enfant Depop : branché dans la copie complétée");
 const dep = lire("supabase/functions/_shared/copie-republication-depop.js");
-ok(/pf\.depopCategoryPath\[0\] === "kidswear" && !GENRES_DEPOP\.has/.test(dep) && /"depopGenre",\n\]\);/.test(dep), "le genre enfant manque compte, et le dépôt FillSell le donne (CLES_DU_DEPOT)");
+ok(/pf\.depopCategoryPath\[0\] === "kidswear" && !GENRES_DEPOP\.has/.test(dep) && /CLES_DU_DEPOT = Object\.freeze\(\[[^\]]*"depopGenre",[^\]]*\]\);/.test(dep), "le genre enfant manque compte, et le dépôt FillSell le donne (CLES_DU_DEPOT)");
 
 console.log(`\n${verts} vert(s), ${rouges} rouge(s)`);
 process.exit(rouges ? 1 : 0);
