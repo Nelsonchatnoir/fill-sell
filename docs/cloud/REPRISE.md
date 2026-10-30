@@ -581,3 +581,9 @@ Le récit détaillé : dépôt `docs/enquetes/lot-d-3010/RAPPORT.md` ; l'état d
   d'une plateforme non connectée) et `c932ce3` (« Me connecter » : onglets existants, Beebs anonyme), NON déployés
   (Cloud arrêté). Comparatif des machines louables : rapport § 9. Avant toute machine : contrôle hors réseau de la
   carte graphique (`essai-me-connecter-pc.mjs --verifier`).
+- **30/10 16:48** : serveur dédié **3100515** `fillsell-cloud-win-1` (94.130.142.25, i7-8700 + UHD 630 activée,
+  Robot) commandé, en système de secours. Prochaines étapes : option Windows commandée par Nico dans Robot le 01/11
+  ou après → installation par l'API (`POST /boot/3100515/windows`) → Nico colle UNE fois
+  `serveur-cloud/deploiement/windows/acces-ssh.ps1` (Bureau à distance) → contrôle hors réseau du rendu Chrome sur la
+  UHD 630 (sinon résiliation, aucune visite) → moteur Windows natif de l'orchestrateur → « machine prête ».
+  Verrou des plateformes dans le relais : poussé.
