@@ -151,7 +151,7 @@ séparée `fill-and-sell-lot-e`, branche `lot-e/thecloset` ; rien du Cloud touch
   dépôt, une annonce « similaire à une annonce déjà en ligne » (mail « refusée » à 20:21:14, page de confirmation
   pourtant affichée) ; un refus n'apparaît ni dans le tableau de bord de Leboncoin ni sur la page « Corriger ». Pour
   PAUGUES et Jocabroc, aucun doublon dans FillSell ni dans leurs relevés : le motif exact est dans le mail de Leboncoin
-  reçu par chacun. **Proposition (migration, feu vert de Nico)** : le message « Leboncoin n'a donné aucun motif »
+  reçu par chacun. **Migration 20261030230000, appliquée le 31/10 vers 00:05 sur feu vert de Nico** : le message « Leboncoin n'a donné aucun motif »
   devient « Leboncoin a sans doute refusé l'annonce juste après le dépôt ; son motif est dans le mail « Votre annonce
   a été refusée » qu'il t'a envoyé ».
 - **A5, Amiral (Brave)** : tous les messages « dans Chrome » nomment le navigateur réel du poste (`nommerLeNavigateur`).
