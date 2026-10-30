@@ -454,3 +454,112 @@ Fusion : `origin/main` b38d842 n'a touché AUCUN de ces fichiers (ni `serveur-cl
     (`coin_config.cloud_offre_ouverte` ouvre à tous), 409 `conditions_a_accepter`.
 - **Sel** `cloud_empreinte_sel` posé au vault le 30/10 à 10:37 (valeur tirée en base, jamais affichée) ; HMAC prouvé.
 - **Reste / à Nico** : voir le rapport du lot D (Stripe en mode test : clés de test à créer ; prix ce soir).
+
+## ⛔ 30/10/2026 13:38 — ÉTAT COMPLET APRÈS LE LOT D (à lire EN PREMIER)
+
+Aucun secret ici : les identifiants vivent dans `secrets.env` (ce dossier) et dans `/srv/fillsell-cloud/.env` (serveur).
+Le récit détaillé : dépôt `docs/enquetes/lot-d-3010/RAPPORT.md` ; l'état de prod : `docs/agents/etat-2026-10-01.md`
+(section « 30/10 — lot D ») ; la même reprise est dans le dépôt, `docs/cloud/REPRISE.md` (fin du fichier).
+
+### 1. Où est tout
+- Code : dépôt `C:\Users\nicol\fill-and-sell`, branche `main` (lot D : c09148e → 76093c0 → eda2c2e → 683aa23 → 3d00e71 →
+  b482d76, tout poussé). Plus aucun travail dans ce dossier prototype.
+- Serveur : Hetzner `fillsell-cloud-1` (cx43, Falkenstein), IP 178.105.24.16, `cloud.fillsell.app` ;
+  `ssh -i ~/.ssh/fillsell_cloud_ed25519 root@178.105.24.16`, dossier `/srv/fillsell-cloud`, déployé sur **3d00e71**
+  (`bash serveur-cloud/outils/deployer.sh 178.105.24.16 cloud.fillsell.app` depuis un arbre propre).
+- Base : Supabase `tojihnuawsoohlolangc`. Migrations du lot D appliquées (feux verts de Nico) : `20261030120000`
+  (lecture d'origine plafonnée) et `20261030130000` (conditions, exécutant, rotation, Depop au coffre) ; inverses
+  dans `supabase/rollbacks/`.
+
+### 2. Fait et prouvé (30/10)
+- Partie 1 : boucle de la lecture d'origine arrêtée (0 relecture ratée depuis 10:27) ; canal Google effacé à l'arrêt
+  (BONCOIN + 6 jetons morts nettoyés, sauvegarde `_backup_3010_canal_google_mort`) ; MRR par canal ; republications
+  retenues pour une autre boutique dites ; OTA **2.9.137** envoyée.
+- Cloud : sel `cloud_empreinte_sel` au vault ; `COFFRE_CLE` tournée en **version 2** (rotation prouvée en vrai :
+  écrite clé 1 → relue par le trousseau → rechiffrée clé 2 → ancienne clé retirée ; la clé a été donnée UNE fois à
+  Nico, elle n'est écrite nulle part ailleurs) ; module fournisseur d'IP unique (`serveur-cloud/src/fournisseurIp.js`,
+  rotation, alerte de solde bas, aucun achat) ; purge par compte à l'arrêt (≤ grâce 2 j + 1 h) ; historique des IP par
+  session ; conditions d'utilisation (case obligatoire, version + date, page `/conditions-cloud` témoins seuls, texte
+  à valider) ; écrans (exécutant, « à reconnecter », 4 plateformes) ; drapeau PAR COMPTE `beta_flags.cloud` ;
+  paiement Cloud fermé hors témoins (`coin_config.cloud_offre_ouverte`) et sans conditions acceptées ; prise de job
+  atomique pour le poste Cloud ; une plateforme connectée au Cloud n'est servie qu'à lui (jamais deux exécutants).
+- Selftests : suite complète 498 en 5 morceaux, 0 rouge (30/10 12:46 → 13:04) ; serveur 38/38.
+
+### 3. Les IP
+| | IP | Commande IPRoyal | Fin | Renouvellement |
+|---|---|---|---|---|
+| IP fixe 1 (pool id 1) | 94.194.94.233 | 84458881 (ISP dédiée FR) | **04/11/2026 13:57** | aucun |
+| IP fixe 2 (pool id 2) | 185.134.194.88 | 86965910 (ISP dédiée FR, 4 $) | **29/11/2026 11:37** | aucun |
+| Résidentiel FR | passerelle geo.iproyal.com:12321 | 86970189 (1 Go, 6,25 $) — sous-utilisateur dédié | — | aucun |
+- Rotation : `coin_config.cloud_ip_rotation = 1` ; un compte garde la même IP du pool pendant 24 h, puis change.
+- Résidentiel : **coupé** (`BEEBS_RESIDENTIEL` absent = 0) ; 0,041 Go utilisés par les mesures (≈ 10 Mo par page Beebs
+  avec un profil neuf). S'il sert un jour : trafic Beebs SEUL (relais du navigateur).
+- Solde revendeur IPRoyal lu par l'API : **0,35 $** — la recharge de 15 $ faite par Nico n'y apparaît pas (question
+  ouverte). L'alerte « solde bas » part dans le journal du serveur (mails d'alerte coupés).
+
+### 4. Le navigateur Cloud = Google Chrome officiel (depuis 30/10 12:45)
+- Image `serveur-cloud/navigateur-chrome/` (Chrome 156, écran Xvfb, fr-FR, Europe/Paris), conteneur recréé à chaque
+  ouverture, profil gardé dans `profils/<id>/chrome`.
+- Extension Cloud installée par **stratégie d'entreprise** (`politique.json`, `ExtensionInstallForcelist`) : CRX3
+  signé de la clé de la copie Cloud (sur le serveur seul : `/srv/fillsell-cloud/cle-extension-cloud.pem`, 600),
+  servi en local par `relais.mjs` (127.0.0.1:3129) ; `DeveloperToolsAvailability = 1` obligatoire (sinon « Not
+  allowed » au pilotage). Proxy : relais local 127.0.0.1:3128, les identifiants ne vont jamais à Chrome.
+- Repli possible : `NAVIGATEUR_MOTEUR=steel` dans `.env` (ancien Chromium steel-browser).
+- Pare-feu : sortie des navigateurs limitée aux ports 12321, 12323, 12324 ; aucun DNS.
+
+### 5. Mesures Leboncoin et Beebs (accès direct, 30/10)
+| Navigateur | Sortie | Beebs `/fr/auth` | Leboncoin |
+|---|---|---|---|
+| Vrai Chrome Windows (PC de Nico, profil vierge) | IP fixe 1 | **passe** | — |
+| Vrai Chrome Windows | IP fixe 2 | **passe** (deux fois) | **passe** |
+| Chrome officiel du serveur | IP fixe 1 | glissière (11:48) puis **bloqué** (12:37) | **bloqué** |
+| Chrome officiel du serveur | IP fixe 2 | **bloqué** | **bloqué** |
+| Chrome officiel du serveur | résidentielle FR, neuve à chaque essai | **bloqué** ×4 (SwiftShader, GL Mesa, sans WebGL, écran 1536×864) | — |
+| Chromium steel (ancien) | IP fixes 1 et 2 | **bloqué** | **bloqué** (passait le 05/10) |
+| « Me connecter » (Chrome, format téléphone) | IP du pool | **bloqué** | **bloqué** |
+- Vinted et Depop : pages de connexion servies normalement (« Me connecter » prouvé, 13:07).
+- **Causes établies** : ni l'IP (un vrai Chrome passe par les mêmes IP), ni le type d'IP (résidentiel bloqué aussi),
+  ni langue, fuseau, en-têtes ou Chrome/Chromium : l'**environnement du serveur** (Linux sans carte graphique : rendu
+  SwiftShader / Mesa, ou pas de WebGL). Beebs et Leboncoin ont le même anti-robot (DataDome), durci au fil des essais
+  de la journée : plus de glissière, blocage d'emblée.
+- Corrigé : pages de connexion Cloud de Leboncoin (`/compte/part/mes-annonces` → auth.leboncoin.fr/login) et de Beebs
+  (`/fr/auth`) — les anciennes rendaient des 404.
+- Piste restante (décision de Nico) : une machine à **vraie carte graphique**, à mesurer avant tout engagement.
+  Demande de partenariat Beebs en brouillon, NON envoyée : `docs/cloud/beebs-demande-partenariat.md`.
+- Outils de mesure (dans le conteneur orchestrateur) : `node outils/essai-chrome.mjs <id IP|residentiel> <url>`,
+  `node outils/essai-page-connexion.mjs <id IP> <url>` (Chromium), `node outils/diagnostic-navigateur.mjs <id IP>`.
+  ⚠ Chaque essai sur Beebs / Leboncoin abîme la réputation de l'environnement : n'en faire qu'avec un but précis.
+
+### 6. Stripe
+- `STRIPE_PRICE_CLOUD` posé (30/10 12:29) = `price_1UMuLDQZRA77vrWJZfZh2IS4` (actif, 20 €/mois, essai 7 jours, relu
+  chez Stripe ; empreinte du secret vérifiée).
+- **Test réel À FAIRE avec Nico** (son compte, essai de 7 jours, puis arrêt) :
+  1. au moment du test seulement : `npx supabase db query --linked -f scripts/reparations/20261030_cloud_nico_offert_vers_essai_stripe.sql`
+     (Nico quitte l'option offerte ; le drapeau témoin reste) ;
+  2. Nico, dans l'app : FillSell Cloud › « Essayer 7 jours » › case des conditions › carte (page Stripe) ;
+  3. vérifier : abonnement Stripe `trialing`, `cloud_essai_debut` posé, empreinte de carte notée, navigateur rouvert ;
+  4. Nico : « Arrêter l'option » ; vérifier : abonnement annulé, aucune facture payée, données Cloud effacées à
+     l'entretien suivant (purge par compte) ;
+  5. si besoin de revenir à l'option offerte : `…_offert_vers_essai_stripe_INVERSE.sql`.
+
+### 7. Compte de Nico
+- `beta_flags.cloud = true` (seul témoin), option **offerte** (`cloud_canal = offert`), navigateur Cloud **actif**
+  sous Chrome, extension qui interroge sa file. Inverse complet : `scripts/reparations/20261030_cloud_nico_temoin_offert_INVERSE.sql`.
+- **À faire par Nico** : « Me connecter » Vinted puis Depop (Réglages › Abonnement › FillSell Cloud), puis écrire
+  « connecté ». Ensuite (Claude) : sur chaque plateforme connectée, publication, republication, retrait, relevé et
+  vente à 999 € avec preuve ; puis le test Stripe (§ 6).
+
+### 8. Garde-fous (inchangés)
+- Compte de Nico SEUL (`COMPTES_AUTORISES`, drapeau par compte) ; aucun autre compte sans GO explicite.
+- Aucun mail à un utilisateur ; alertes du serveur coupées (`ALERTES_MAIL=0`).
+- Achats IPRoyal : `IPROYAL_ACHATS_AUTORISES=0` ; aucun achat ni renouvellement sans accord écrit de Nico.
+- Aucun résolveur de captcha, aucun service tiers de contournement (ni Web Unblocker ni Web Scraper API) : une
+  vérification se passe par l'utilisateur dans « Me connecter ».
+- Le Cloud ne va jamais plus vite que l'extension (mêmes plafonds, cadences, gardes).
+- Annonces de test à 999 € ou plus, retirées à la fin.
+- Migration = feu vert nommé de Nico + inverse ; jamais `db push`.
+- Jamais un secret dans un fichier du dépôt, un commit, un journal ou un rapport (la clé du coffre comprise).
+- Heure de Paris lue en base (`now() at time zone 'Europe/Paris'`), jamais estimée.
+
+---
+
