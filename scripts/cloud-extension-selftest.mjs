@@ -17,7 +17,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { patcherBackground, patcherManifeste, ID_EXTENSION_CLOUD, PLATEFORMES } from './cloud/build-extension-cloud.mjs';
+import { patcherBackground, patcherManifeste, ID_EXTENSION_CLOUD, PLATEFORMES, SOURCE_CONNEXION_CLOUD } from './cloud/build-extension-cloud.mjs';
 
 let ko = 0, n = 0;
 const ok = (c, m) => { n++; if (c) console.log(`  ✓ ${m}`); else { ko++; console.log(`  ✗ ${m}`); } };
@@ -27,7 +27,7 @@ const man = JSON.parse(readFileSync(path.join(racine, 'chrome-extension', 'manif
 
 console.log('\n1. Les patchs du background');
 const { bg: bg2, appliques } = patcherBackground(bg);
-ok(appliques.length === 11, `11 patchs appliqués, chacun sur une ancre UNIQUE (${appliques.length})`);
+ok(appliques.length === 12, `12 patchs appliqués, chacun sur une ancre UNIQUE (${appliques.length})`);
 const tmp = mkdtempSync(path.join(tmpdir(), 'fs-cloud-'));
 try {
   writeFileSync(path.join(tmp, 'bg.js'), bg2);
@@ -39,6 +39,30 @@ ok(bg2.includes('rep.connexion_commands = [];'), 'les demandes « Me connecter �
 ok(bg2.includes('const RELEVE_PLATEFORMES = ["leboncoin", "beebs"];') && bg2.includes('const VENTES_PLATEFORMES = ["vinted", "leboncoin"];'), 'relevés : ni eBay ni Opla');
 ok((bg2.match(/&platform=in\.\(vinted,leboncoin,beebs,depop\)/g) ?? []).length === 3, 'détection de vente, URL manquantes, reprise des orphelins : bornées aux plateformes du Cloud');
 ok(!/FILLSELL_CLOUD/.test(bg), 'chrome-extension/background.js du dépôt : INTACT (aucune trace du Cloud)');
+
+// (30/10, règle de Nico) Aucune visite automatique d'une plateforme non connectée : la sonde passe d'abord par
+// connexionCloudPresente (cookies seulement) ; exécutée ici sur des cookies fabriqués.
+ok(bg2.includes('connexionCloudPresente(pf).then((oui) => (oui ? probe(fn) : { etat: null, http: null })'),
+  'sonde de session : la requête ne part que si le cookie de connexion est là (sinon « non mesurée », aucune requête)');
+ok(!bg.includes('connexionCloudPresente'), 'la sonde de l’extension du parc (bureau) : INCHANGÉE');
+{
+  const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  const jwt = (o) => `e30.${b64(o)}.sig`;
+  const verifier = async (pf, cookies) => {
+    const chrome = { cookies: { getAll: async ({ domain }) => cookies.filter((c) => c.domain === domain) } };
+    const f = new Function('chrome', 'atob', `${SOURCE_CONNEXION_CLOUD}; return connexionCloudPresente;`)(chrome, (s) => Buffer.from(s, 'base64').toString('binary'));
+    return f(pf);
+  };
+  ok(await verifier('leboncoin', []) === false, 'profil neuf, Leboncoin : non connectée → aucune visite');
+  ok(await verifier('leboncoin', [{ domain: 'leboncoin.fr', name: 'datadome', value: 'x' }]) === false, 'Leboncoin avec le seul cookie DataDome (page déjà vue) : toujours non connectée');
+  ok(await verifier('leboncoin', [{ domain: 'leboncoin.fr', name: '__Secure-Login', value: 'abc' }]) === true, 'Leboncoin avec __Secure-Login : connectée → la sonde part');
+  ok(await verifier('beebs', [{ domain: 'beebs.app', name: 'access_token', value: jwt({ sub: 'g', role: 'guest' }) }]) === false, 'Beebs, jeton d’invité : non connectée');
+  ok(await verifier('beebs', [{ domain: 'beebs.app', name: 'access_token', value: jwt({ sub: '42', role: 'user' }) }]) === true, 'Beebs, jeton d’utilisateur : connectée');
+  ok(await verifier('vinted', [{ domain: 'vinted.fr', name: 'access_token_web', value: jwt({ sub: 7 }) }]) === false, 'Vinted sans refresh_token_web : non connectée');
+  ok(await verifier('vinted', [{ domain: 'vinted.fr', name: 'access_token_web', value: jwt({ sub: 7 }) }, { domain: 'vinted.fr', name: 'refresh_token_web', value: 'r' }]) === true, 'Vinted jeton + refresh : connectée');
+  ok(await verifier('depop', [{ domain: 'depop.com', name: 'access_token', value: 't' }]) === true && await verifier('depop', []) === false, 'Depop : access_token présent / absent');
+  ok(await verifier('ebay', []) === false, 'plateforme hors Cloud : jamais « connectée »');
+}
 
 console.log('\n2. Le manifeste Cloud');
 const m2 = patcherManifeste(man);

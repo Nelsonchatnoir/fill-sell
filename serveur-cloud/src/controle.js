@@ -1,9 +1,12 @@
 // LE CONTRÔLE D'UNE IP (entrée dans le pool, sortie du repos) — depuis un
 // navigateur NEUF, sans profil, sans compte, sans extension, par le proxy de
-// l'IP : l'IP de sortie et le pays (ipinfo), les listes noires publiques (DNS),
-// et les pages d'accueil de Vinted, Leboncoin et eBay (ouvertes ou bloquées).
+// l'IP : l'IP de sortie et le pays (ipinfo), les listes noires publiques (DNS).
+// ⛔ (30/10, règle de Nico) AUCUNE plateforme n'est visitée : les pages d'accueil de Vinted, Leboncoin et eBay,
+// ouvertes ici par un navigateur Linux neuf à chaque entrée d'IP, étaient des visites de robot (DataDome) sur l'IP
+// même qu'on donnait ensuite à un compte. Le verdict d'une plateforme vient de la personne, dans « Me connecter ».
 // Rend la forme lue par cloud_controle_manques :
-//   { fait_le, ip_sortie, pays, listes_noires: [], plateformes: { vinted, leboncoin, ebay } }
+//   { fait_le, ip_sortie, pays, listes_noires: [], plateformes: { visite: 'aucune' } }
+// (cloud_controle_manques veut un objet non vide sans « bloque » : on y dit ce qui est vrai, rien n'a été visité.)
 import { resolve4 } from 'node:dns/promises';
 import { rm } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
@@ -14,7 +17,8 @@ const LISTES = [
   { zone: 'zen.spamhaus.org', liste: (a) => /^127\.0\.0\.(2|3|4|9|10|11)$/.test(a) },
   { zone: 'bl.spamcop.net', liste: (a) => a === '127.0.0.2' },
 ];
-const PAGES = { vinted: 'https://www.vinted.fr/', leboncoin: 'https://www.leboncoin.fr/', ebay: 'https://www.ebay.fr/' };
+// Les SEULES adresses qu'un contrôle d'IP lit (30/10) : jamais une plateforme.
+export const ADRESSES_CONTROLE = Object.freeze(['https://ipinfo.io/json']);
 // Un MUR, c'est la page de blocage elle-même : le cadre captcha de DataDome
 // (geo.captcha-delivery.com), « Access is temporarily restricted » (Beebs, 26/09),
 // Imperva, Akamai. ⛔ JAMAIS le seul mot « datadome » : Vinted (static-assets
@@ -41,6 +45,17 @@ export async function listesNoires(ip) {
     } catch { /* NXDOMAIN = pas listée */ }
   }
   return out;
+}
+
+/** (30/10) Le relevé d'un contrôle d'IP, par la fonction de lecture du navigateur (testé : aucune plateforme lue). */
+export async function releverControle(lire, ip, { listes = listesNoires, maintenant = () => new Date() } = {}) {
+  const resultat = { fait_le: null, ip_sortie: null, pays: null, listes_noires: [], plateformes: { visite: 'aucune' } };
+  const info = await lire(ADRESSES_CONTROLE[0]);
+  const json = info.match(/\{[\s\S]*"ip"[\s\S]*\}/)?.[0]?.replace(/<[^>]+>/g, '');
+  try { const p = JSON.parse(json); resultat.ip_sortie = p.ip ?? null; resultat.pays = p.country ?? null; } catch { /* illisible : manque nommé */ }
+  resultat.listes_noires = await listes(ip);
+  resultat.fait_le = maintenant().toISOString();
+  return resultat;
 }
 
 export function creerControles({ config, docker, journal }) {
@@ -89,17 +104,8 @@ export function creerControles({ config, docker, journal }) {
   }
 
   async function controler({ ipId, ip, proxyUrl }) {
-    const resultat = { fait_le: null, ip_sortie: null, pays: null, listes_noires: [], plateformes: {} };
     return avecNavigateurNeuf({ ipId, proxyUrl }, async (lire) => {
-      const info = await lire('https://ipinfo.io/json');
-      const json = info.match(/\{[\s\S]*"ip"[\s\S]*\}/)?.[0]?.replace(/<[^>]+>/g, '');
-      try { const p = JSON.parse(json); resultat.ip_sortie = p.ip ?? null; resultat.pays = p.country ?? null; } catch { /* illisible : manque nommé */ }
-      for (const [pf, url] of Object.entries(PAGES)) {
-        const html = await lire(url).catch(() => '');
-        resultat.plateformes[pf] = verdictPage(html);
-      }
-      resultat.listes_noires = await listesNoires(ip);
-      resultat.fait_le = new Date().toISOString();
+      const resultat = await releverControle(lire, ip);
       journal.info('controle_ip', { ip_id: ipId, pays: resultat.pays, sortie_conforme: resultat.ip_sortie === ip, plateformes: resultat.plateformes, listes: resultat.listes_noires.length });
       return resultat;
     });

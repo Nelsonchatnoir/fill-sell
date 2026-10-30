@@ -17,7 +17,10 @@
 //   · les demandes « Me connecter » de l'extension sont ignorées : dans le Cloud,
 //     c'est l'écran de l'app (orchestrateur) qui ouvre la page de connexion ;
 //   · identifiant fixe (clé de manifeste) : dnankhhfellobiobloopcjgkdioblpjd ;
-//   · BUILD_ID « …-cloud » : handler_build dit qui a traité quoi.
+//   · BUILD_ID « …-cloud » : handler_build dit qui a traité quoi ;
+//   · (30/10, règle de Nico) la sonde de session ne visite JAMAIS une plateforme dont le cookie de connexion est
+//     absent de ce navigateur (même règle que estConnectee, serveur-cloud/src/plateformes.js) : sur un profil neuf,
+//     chaque sonde était un 403 DataDome sur l'IP du compte, toutes les heures.
 import { execFileSync } from 'node:child_process';
 import { readFile, writeFile, mkdir, rm, readdir } from 'node:fs/promises';
 import { createRequire } from 'node:module';
@@ -39,6 +42,28 @@ const PLATEFORMES_SCRIPTS_MANIFESTE = PLATEFORMES.filter((p) => p !== 'depop');
 const PF = PLATEFORMES.join(',');
 const L = (a) => '[' + a.map((x) => JSON.stringify(x)).join(', ') + ']';
 
+// (30/10) La connexion d'une plateforme lue dans les SEULS cookies du navigateur (aucune requête) — portage de
+// estConnectee (serveur-cloud/src/plateformes.js) : Vinted = jeton d'accès portant un utilisateur + refresh token ;
+// Leboncoin = __Secure-Login ; Beebs = jeton d'accès d'un utilisateur non invité ; Depop = access_token.
+// Exporté pour l'autotest, qui l'exécute sur des cookies fabriqués.
+export const SOURCE_CONNEXION_CLOUD = `async function connexionCloudPresente(pf) {
+  const domaine = { vinted: "vinted.fr", leboncoin: "leboncoin.fr", beebs: "beebs.app", depop: "depop.com" }[pf];
+  if (!domaine) return false;
+  const cookies = await chrome.cookies.getAll({ domain: domaine }).catch(() => []);
+  const val = (nom) => String((cookies ?? []).find((c) => c.name === nom)?.value ?? "").trim();
+  const jwt = (v) => { try { return JSON.parse(atob(String(v).split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))); } catch { return null; } };
+  if (pf === "vinted") return Boolean(jwt(val("access_token_web"))?.sub) && val("refresh_token_web").length > 0;
+  if (pf === "leboncoin") return val("__Secure-Login").length > 0;
+  if (pf === "beebs") {
+    const cl = jwt(val("access_token"));
+    if (!cl) return false;
+    const role = String(cl.role ?? cl.type ?? cl.user_type ?? "").toLowerCase();
+    return Boolean(cl.sub ?? cl.user_id ?? cl.id) && !/guest|anon|invite/.test(role) && cl.is_guest !== true;
+  }
+  if (pf === "depop") return val("access_token").length > 0;
+  return false;
+}`;
+
 /** Les patchs de background.js (pur : testé par scripts/cloud-extension-selftest.mjs). */
 export function patcherBackground(bg) {
   const appliques = [];
@@ -52,7 +77,8 @@ export function patcherBackground(bg) {
     'const FILLSELL_BUILD_ID = "__FILLSELL_BUILD_ID__";',
     'const FILLSELL_BUILD_ID = "__FILLSELL_BUILD_ID__";\n'
     + `const FILLSELL_CLOUD = true; // copie Cloud (scripts/cloud/build-extension-cloud.mjs)\n`
-    + `const CLOUD_PLATEFORMES = ${L(PLATEFORMES)};`);
+    + `const CLOUD_PLATEFORMES = ${L(PLATEFORMES)};\n`
+    + `${SOURCE_CONNEXION_CLOUD}`);
   patch('jobs : plateformes du Cloud seulement (le serveur filtre aussi)',
     '    jobs = rep.jobs;',
     '    jobs = (Array.isArray(rep.jobs) ? rep.jobs : []).filter((j) => CLOUD_PLATEFORMES.includes(j.platform));');
@@ -68,6 +94,12 @@ export function patcherBackground(bg) {
   patch('sondes de session (lecture)',
     'async function probePlatformSessions(plateformes = ["vinted", "leboncoin", "ebay", "beebs", "opla"])',
     `async function probePlatformSessions(plateformes = ${L(PLATEFORMES)})`);
+  patch('sondes de session : aucune visite d\'une plateforme non connectée (30/10)',
+    '  const sonde = (pf, fn) => (plateformes.includes(pf) ? probe(fn) : Promise.resolve({ etat: null, http: null }));',
+    '  // Cloud (30/10, règle de Nico) : sans cookie de connexion dans CE navigateur, AUCUNE requête vers la plateforme ;\n'
+    + '  // la sonde rend « non mesurée » (null/null : rien n\'est réécrit, rien n\'est accusé).\n'
+    + '  const sonde = (pf, fn) => (!plateformes.includes(pf) ? Promise.resolve({ etat: null, http: null })\n'
+    + '    : connexionCloudPresente(pf).then((oui) => (oui ? probe(fn) : { etat: null, http: null }), () => ({ etat: null, http: null })));');
   patch('détection de vente : plateformes du Cloud',
     '"&status=eq.published&action=in.(publish,republish)&listing_url=not.is.null" +',
     `"&status=eq.published&action=in.(publish,republish)&listing_url=not.is.null&platform=in.(${PF})" +`);

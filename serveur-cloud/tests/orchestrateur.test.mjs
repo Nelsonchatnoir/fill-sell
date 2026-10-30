@@ -14,7 +14,7 @@ import { idExtensionDepuisCle, sessionPourExtension } from '../src/sessionFillse
 import { MESSAGES } from '../src/connexion.js';
 import { chargerRegles } from '../src/regles.js';
 import { socleAbsent, creerGardeSocle } from '../src/socle.js';
-import { verdictPage } from '../src/controle.js';
+import { verdictPage, releverControle, ADRESSES_CONTROLE } from '../src/controle.js';
 
 const jwt = (o) => `eyJhbGciOiJIUzI1NiJ9.${Buffer.from(JSON.stringify(o)).toString('base64url')}.c2lnbmF0dXJlLWZhdXNzZQ`;
 const U = '0f0e0d0c-0b0a-4908-8706-050403020100';
@@ -275,6 +275,22 @@ test('contrôle d’une IP : le script DataDome d’une page OUVERTE n’est pas
   assert.equal(verdictPage('<html><body>Access is temporarily restricted</body></html>'), 'bloque', 'Beebs (26/09) reste un mur');
   assert.equal(verdictPage('<title>Pardon Our Interruption</title>'), 'bloque');
   assert.equal(verdictPage(''), 'indetermine', 'rien lu : indéterminé, jamais « ok »');
+});
+
+test('contrôle d’une IP (30/10, règle de Nico) : AUCUNE plateforme visitée, la forme reste acceptée par cloud_controle_manques', async () => {
+  const lues = [];
+  const lire = async (url) => { lues.push(url); return '<pre>{"ip": "188.126.31.118", "country": "FR"}</pre>'; };
+  const r = await releverControle(lire, '188.126.31.118', { listes: async () => [], maintenant: () => new Date('2026-10-30T15:00:00Z') });
+  assert.deepEqual(lues, ['https://ipinfo.io/json'], 'une seule lecture : ipinfo');
+  assert.ok(lues.every((u) => !/vinted|leboncoin|beebs|depop|ebay|opla/i.test(u)), 'jamais une plateforme');
+  assert.ok(ADRESSES_CONTROLE.every((u) => !/vinted|leboncoin|beebs|depop|ebay|opla/i.test(u)));
+  assert.equal(r.ip_sortie, '188.126.31.118');
+  assert.equal(r.pays, 'FR');
+  assert.deepEqual(r.listes_noires, []);
+  // cloud_controle_manques (relu en prod le 30/10) : objet non vide, aucune valeur « bloque » → 0 manque.
+  assert.deepEqual(r.plateformes, { visite: 'aucune' });
+  assert.ok(!Object.values(r.plateformes).includes('bloque'));
+  assert.equal(r.fait_le, '2026-10-30T15:00:00.000Z');
 });
 
 test('page « Me connecter » autonome : son module est servi par le serveur (05/10 : ./client.js visait /client.js, 503)', async () => {
