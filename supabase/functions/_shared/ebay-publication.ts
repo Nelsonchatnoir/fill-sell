@@ -21,6 +21,8 @@ import { resoudreAspectsIA, estAspectDeTaille, tailleRetenueDansLaListe, tailleS
 export { tailleSansPrefixeEuFr };
 import { estSansMarque } from "./marque-absente.js";
 import { tailleDeService, brancheDeTaille } from "./taille-de-service.js";
+// (30/10, lot E) La matière d'un vêtement = la composition de son étiquette, jamais une matière devinée.
+import { matieresDeLaComposition } from "./composition-matieres.js";
 
 export const MARKETPLACE = "EBAY_FR";
 export const ARBRE_FR = "71";
@@ -661,6 +663,72 @@ function tailleAssemblee(
   if (fiche && !ferme) return { valeur: fiche, deQui: "fiche", brut: fiche };
   return null;
 }
+// ── (30/10, lot E) LES CARACTÉRISTIQUES QUE LA FICHE CONNAÎT PARTENT, MÊME QUAND eBAY NE LES EXIGE PAS ──
+// thecloset72000 : « caractéristiques essentielles » vides sur ses annonces eBay. La voie API ne remplissait que les
+// aspects OBLIGATOIRES (`if (!a.required …) continue`) : Matière, Saison, Coupe, Département… restaient vides même
+// quand la fiche ou l'analyse les avaient LUS. Désormais un aspect facultatif part quand sa valeur est CONNUE (la
+// fiche, l'analyse — ce qu'elle a lu sur l'article —, le rayon), jamais par un défaut ni par l'IA ; une liste fermée
+// n'accepte qu'une de ses entrées ; sinon il reste vide, sans question.
+// Les clés de l'analyse (attributs_visibles, lens-analysis : valeurs LUES seulement) → les aspects eBay.
+const ASPECTS_DEPUIS_ANALYSE: Record<string, string> = {
+  "Saison": "saison", "Coupe": "coupe", "Pointure": "pointure", "Matériau": "materiau", "Matériaux": "materiau",
+  "Numéro de pièce fabricant": "reference_fabricant",
+};
+function valeurDeLAnalyse(pf: PlatformFields, cle: string): string {
+  const av = (pf.attributs_visibles && typeof pf.attributs_visibles === "object") ? pf.attributs_visibles as Record<string, unknown> : {};
+  const v = av[cle];
+  const s = typeof v === "string" ? v.trim() : (typeof v === "number" ? String(v) : "");
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : "";
+}
+// La matière : la fiche, sinon la composition lue sur l'étiquette — la première matière (la plus forte part).
+function matiereConnue(pf: PlatformFields): string {
+  const brute = String(pf.matiere ?? "").trim() || valeurDeLAnalyse(pf, "composition");
+  const liste = matieresDeLaComposition(brute);
+  return liste[0] ?? brute;
+}
+// Un aspect FACULTATIF : sa valeur connue, recalée sur la liste eBay ; liste fermée sans correspondance = rien.
+// Jamais de défaut (« Ne s'applique pas », marque générique), jamais l'IA, jamais une question.
+function aspectFacultatifConnu(
+  a: AspectCatalogue, pf: PlatformFields, ebayAspects: Record<string, unknown>, standard: Record<string, string>, depRayon: string,
+): { brut: string; recale: string; source: SourceAspect } | null {
+  const attributsSources = (pf.attributsSources && typeof pf.attributsSources === "object") ? pf.attributsSources as Record<string, string> : {};
+  const origine = attributsSources[CHAMP_PAR_ASPECT[a.name] ?? ""];
+  let source: SourceAspect = origine === "lens" ? "lens" : origine === "attributs" ? "attributs" : "standard";
+  let brut = "";
+  if (estAspectDeTaille(a.name)) {
+    const fiche = String(standard[a.name] ?? "").trim();
+    if (!fiche) return null;
+    const t = tailleAssemblee(a, pf, ebayAspects, fiche, []);
+    return t && t.deQui === "fiche" ? { brut: t.brut, recale: t.valeur, source } : null;
+  }
+  if (a.name === "Département") {
+    const g = String(pf.genre ?? "");
+    const cands = depRayon ? [depRayon] : (["Femme", "Homme", "Fille", "Garçon", "Bébé"].includes(g) ? (DEPARTEMENT_PAR_GENRE[g] ?? []) : []);
+    brut = cands.find((c) => valeurDeListeCorrespondante(c, a.allowedValues)) ?? cands[0] ?? "";
+    source = "genre";
+  } else if (a.name === "Numéro de pièce fabricant") {
+    brut = valeurDeLAnalyse(pf, "reference_fabricant");
+    source = "lens";
+  } else if (a.name === "Marque") {
+    brut = String(pf.marque ?? "").trim();
+    if (estSansMarque(brut)) return null;
+  } else {
+    brut = String(standard[a.name] ?? "").trim();
+    if (a.name in ASPECTS_DEPUIS_ANALYSE && !CHAMP_PAR_ASPECT[a.name]) source = "lens";
+  }
+  if (!brut || brut === VALEUR_NE_S_APPLIQUE_PAS) return null;
+  const recale = a.allowedValues.length ? valeurDeListeCorrespondante(brut, a.allowedValues) : null;
+  if (recale) return { brut, recale, source };
+  if (a.mode === "SELECTION_ONLY") return null;
+  return { brut, recale: brut, source };
+}
+// Le Département que le RAYON eBay nomme (« Femme : vêtements… », « Homme : … ») : il prime sur un genre deviné.
+function departementDuRayon(pf: PlatformFields): string {
+  const chemin = Array.isArray(pf.ebayCategoryPath) ? pf.ebayCategoryPath.map((s) => String(s ?? "")) : [];
+  if (chemin.some((s) => /^femme\b/i.test(s))) return "Femme";
+  if (chemin.some((s) => /^homme\b/i.test(s))) return "Homme";
+  return "";
+}
 export function assemblerAspects(pf: PlatformFields, catalogue: AspectCatalogue[], textes: unknown[] = []): { aspects: Record<string, string[]>; manquants: string[]; recalages: string[]; sources: Record<string, SourceAspect> } {
   const aspects: Record<string, string[]> = {};
   const manquants: string[] = [];
@@ -668,7 +736,14 @@ export function assemblerAspects(pf: PlatformFields, catalogue: AspectCatalogue[
   const sources: Record<string, SourceAspect> = {};
   const sourcesIA = (pf.ebayAspectsSources && typeof pf.ebayAspectsSources === "object") ? pf.ebayAspectsSources as Record<string, string> : {};
   const attributsSources = (pf.attributsSources && typeof pf.attributsSources === "object") ? pf.attributsSources as Record<string, string> : {};
-  const ebayAspects = (pf.ebayAspects && typeof pf.ebayAspects === "object") ? pf.ebayAspects : {};
+  const ebayAspects: Record<string, unknown> = { ...((pf.ebayAspects && typeof pf.ebayAspects === "object") ? pf.ebayAspects : {}) };
+  // (30/10, lot E) Un Département contraire au rayon (« Homme » sur « Femme : vêtements ») ne part jamais.
+  const depRayon = departementDuRayon(pf);
+  if (depRayon && /^(femme|homme)$/i.test(String(ebayAspects["Département"] ?? "").trim())
+    && String(ebayAspects["Département"]).trim().toLowerCase() !== depRayon.toLowerCase()) {
+    recalages.push(`Département: « ${ebayAspects["Département"]} » → « ${depRayon} » (le rayon le nomme)`);
+    delete ebayAspects["Département"];
+  }
   const couleur = (Array.isArray(pf.colors) && pf.colors[0]) ? String(pf.colors[0]) : (pf.couleur ? String(pf.couleur) : "");
   const marqueBrute = String(pf.marque ?? "").trim();
   // Une vraie marque, d'où qu'elle vienne (aspect tranché, sinon la fiche).
@@ -679,16 +754,33 @@ export function assemblerAspects(pf: PlatformFields, catalogue: AspectCatalogue[
     "Marque": marqueBrute,
     "Taille": String(pf.taille ?? ""),
     "Couleur": couleur,
-    "Matière": String(pf.matiere ?? ""),
+    // (30/10, lot E) La matière : la fiche ou la composition de l'étiquette, première matière (cf. matiereConnue).
+    "Matière": matiereConnue(pf),
     "Modèle": String(pf.modele ?? ""),
     "Capacité de stockage": String(pf.stockage ?? ""),
     "ISBN": String(pf.isbn ?? ""),
-    "Numéro de pièce fabricant": "Ne s'applique pas",
+    // (30/10, lot E) La référence LUE sur l'article d'abord ; sinon le défaut d'avant (aspect obligatoire seulement).
+    "Numéro de pièce fabricant": valeurDeLAnalyse(pf, "reference_fabricant") || "Ne s'applique pas",
     // Famille Matière (cf. ALIAS_MATIERE) — même valeur que regles.js.
-    ...Object.fromEntries(ALIAS_MATIERE.map((n) => [n, String(pf.matiere ?? "")])),
+    ...Object.fromEntries(ALIAS_MATIERE.map((n) => [n, matiereConnue(pf)])),
+    // (30/10, lot E) Ce que l'analyse a LU sur l'article (saison, coupe, pointure, matériau…).
+    ...Object.fromEntries(Object.entries(ASPECTS_DEPUIS_ANALYSE)
+      .filter(([nom]) => nom !== "Numéro de pièce fabricant" && !ALIAS_MATIERE.includes(nom))
+      .map(([nom, cle]) => [nom, valeurDeLAnalyse(pf, cle)])),
   };
+  // Les matériaux d'un meuble ou d'un objet : lus par l'analyse quand la fiche n'a pas de matière.
+  for (const nom of ["Matériau", "Matériaux"]) if (!standard[nom]) standard[nom] = valeurDeLAnalyse(pf, "materiau");
   for (const a of catalogue) {
-    if (!a.required && !(a.name in ebayAspects)) continue; // 2a : requis + ce que le job porte déjà
+    // (30/10, lot E) Un aspect facultatif part quand sa valeur est CONNUE (cf. plus haut) ; il n'est jamais demandé.
+    if (!a.required && !(a.name in ebayAspects)) {
+      const facultatif = aspectFacultatifConnu(a, pf, ebayAspects, standard, depRayon);
+      if (facultatif) {
+        if (facultatif.recale !== facultatif.brut) recalages.push(`${a.name}: « ${facultatif.brut} » → « ${facultatif.recale} »`);
+        aspects[a.name] = [facultatif.recale];
+        sources[a.name] = facultatif.source;
+      }
+      continue;
+    }
     // Bretelle 07/09/2026 : un DVD / CD / jeu n'a pas d'ISBN — même si une
     // catégorie Livres a été posée par erreur, l'aspect n'est ni envoyé ni
     // compté manquant (jamais de « mur ISBN » sur un média).
@@ -708,7 +800,8 @@ export function assemblerAspects(pf: PlatformFields, catalogue: AspectCatalogue[
     let brut = String(ebayAspects[a.name] ?? "").trim();
     let source: SourceAspect = sourcesIA[a.name] === "ia" ? "ia" : "job";
     if (!brut && a.name === "Département") {
-      const cands = DEPARTEMENT_PAR_GENRE[String(pf.genre ?? "")] ?? [];
+      // (30/10, lot E) Le rayon genré d'abord (« Femme : vêtements »), puis le genre de la fiche.
+      const cands = depRayon ? [depRayon] : (DEPARTEMENT_PAR_GENRE[String(pf.genre ?? "")] ?? []);
       brut = cands.find((c) => valeurDeListeCorrespondante(c, a.allowedValues)) ?? cands[0] ?? "";
       source = "genre";
     }

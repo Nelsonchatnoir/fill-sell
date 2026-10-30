@@ -54,7 +54,7 @@ ok(/preparerPhotos\(photoUrls, supabaseUrl\)/.test(serveur), "serveur : l'analys
 
 console.log("4. LE PLAFOND LEBONCOIN RESTE AU JOB");
 const regles = readFileSync(new URL("../src/publication/moteur/regles.js", import.meta.url), "utf8");
-ok(/rowPhotos = photosJob\.slice\(0, quotaPhotosLbc\)/.test(regles), "regles.js plafonne toujours le job Leboncoin");
+ok(/rowPhotos = rowPhotos\.slice\(0, quotaPhotosLbc\)/.test(regles), "regles.js plafonne toujours le job Leboncoin");
 
 if (echecs) { console.error(`\n${echecs} échec(s)`); process.exit(1); }
 console.log("\nTout est vert.");

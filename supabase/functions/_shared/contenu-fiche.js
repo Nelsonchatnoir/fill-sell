@@ -295,7 +295,9 @@ export function contenuAImposer(job, fiche, temps = {}) {
   // en pleine taille) : la copie portait une vignette ou une version réduite, elle part avec celles de la fiche.
   const fp = photosEnUrls(fiche.photos);
   const jp = photosEnUrls(job.photos);
-  const originale = String(job.photo_option ?? "original") === "original";
+  // (30/10, lot E) Des photos CHOISIES pour cette plateforme (carte de publication) sont un choix de la personne :
+  // jamais complétées par celles de la fiche.
+  const originale = String(job.photo_option ?? "original") === "original" && job?.platform_fields?.photos_choisies !== true;
   const remplacees = apres(temps.photosRemplaceesLe) && fp.length >= jp.length && fp.join("\n") !== jp.join("\n");
   if (originale && (fp.length > jp.length || remplacees) && apres(temps.photosLuesLe)) {
     if (fp.every(photoChezNous)) {

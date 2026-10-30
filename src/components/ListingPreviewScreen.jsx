@@ -93,6 +93,10 @@ import { resoudrePublication, signatureResolution, resolutionARetenter, cheminFo
 // par-dessus tout recalcul (garde-fou nº1 du lot B).
 import { champsAvecRayonsChoisis, rayonDuChamp, libelleRayonCourt, objetDuRayonChoisi, plateformesAvecRayonChoisi, questionsRayonOuvertes } from "../utils/rayonPublication";
 import CarteRayon from "./CarteRayon";
+// (30/10, lot E) Sur la carte de chaque plateforme : ses photos (choix, ordre, limite) et, pour Leboncoin, la ville.
+import PhotosPlateforme from "../publication/PhotosPlateforme";
+import VilleAnnonceLbc from "../publication/VilleAnnonceLbc";
+import { villesDesReglages } from "../publication/villeLbc";
 import CarteLivraisonLeboncoin from "./CarteLivraisonLeboncoin";
 import CarteColisVinted from "./CarteColisVinted";
 import { colisVintedPourJob, chargerGrilleColisRelevee, chargerColisRetenus } from "../utils/vintedColis";
@@ -2944,6 +2948,29 @@ export function StepGeneration({ generating, generateError, platformListings, pr
                       );
                     })()}
                   </div>
+
+                  {/* ── (30/10, lot E) LES PHOTOS DE CETTE PLATEFORME, ET LA VILLE LEBONCOIN ──
+                      Comme le titre, le prix et la description : choisir les
+                      photos qui partent ici (limite de la plateforme, ordre,
+                      couverture) — absent, la règle d'avant. Leboncoin : la
+                      ville de l'annonce (réglage par défaut, changeable ici). */}
+                  <PhotosPlateforme
+                    platform={p}
+                    toutes={entreesPhotos(processedPhotos).map(x => x.url)}
+                    choix={e.photos}
+                    onChange={(urls) => setEdited(prev => ({ ...prev, [p]: { ...prev[p], photos: urls ?? undefined } }))}
+                    T={T}
+                    lang={lang}
+                  />
+                  {p === "leboncoin" && (
+                    <VilleAnnonceLbc
+                      userId={userId}
+                      valeur={e.platform_fields?.ville_publication_lbc ?? null}
+                      onChange={(v) => setEdited(prev => ({ ...prev, leboncoin: { ...prev.leboncoin, platform_fields: { ...(prev.leboncoin?.platform_fields ?? {}), ville_publication_lbc: v } } }))}
+                      T={T}
+                      lang={lang}
+                    />
+                  )}
 
                   {/* ── L'ÉTAT DE CETTE PLATEFORME (2026-09-21) ────────────
                       Il n'était éditable QUE si le rayon le réclamait (bloc
@@ -7429,6 +7456,8 @@ export default function ListingPreviewScreen({
       lue: true,
       valeur: prof?.platform_settings?.leboncoin?.adresse || null,
       horsFrance: adresseLbcHorsFrance(prof?.platform_settings?.leboncoin).horsFrance,
+      // (30/10, lot E) La ville Leboncoin par défaut (Réglages › Expédition), lue avec l'adresse.
+      villePublication: villesDesReglages(prof?.platform_settings).reglage,
     };
   }
 
@@ -10578,6 +10607,7 @@ export default function ListingPreviewScreen({
       // d'avant (job envoyé, handler juge) : un faux positif coûterait plus cher
       // à tout le monde que l'échec qu'on corrige ici.
       let lbcAddress = null;
+      let lbcVilleReglage = null;
       let plateformesSansAdresse = [];
       const besoinAdresse = [...selected].filter(p => PLATEFORMES_ADRESSE_LBC.includes(p));
       // (25/10, décision de Nico) Leboncoin d'une adresse de remise HORS DE FRANCE ne part jamais : fermée par l'hôte
@@ -10588,6 +10618,7 @@ export default function ListingPreviewScreen({
         if (lu.lue) {
           setAdresseLbc({ chargee: true, valeur: lu.valeur });
           lbcAddress = lu.valeur;
+          lbcVilleReglage = lu.villePublication ?? null;
           if (!lbcAddress) plateformesSansAdresse = besoinAdresse;
           if (lu.horsFrance && selected.has("leboncoin")) plateformesHorsFrance = ["leboncoin"];
         } else if (adresseLbc.chargee) {
@@ -10877,6 +10908,10 @@ export default function ListingPreviewScreen({
         // (26/10, règles 4 et 5 de Nico) Ce que la fiche dit : l'état, le genre, et les mots qui fondent un hashtag.
         ficheTexte: ficheDuTexte(),
         texteDuVendeur: texteVendeurEnvoi,
+        // (30/10, lot E) Ce que FillSell a rédigé, par plateforme : une ligne absente de ces copies a été écrite par la
+        // personne et part telle quelle partout (sa référence « #… » retirée hors Vinted/Depop jusqu'ici).
+        villePublicationLbc: lbcVilleReglage,
+        descriptionsGenerees: Object.fromEntries(Object.entries(platformListings?.platforms ?? {}).map(([p, c]) => [p, c?.description ?? ""])),
         programmee: Boolean(programmation.reglage) && !envoyerMaintenantRef.current,
       });
       if (construction.erreur === "ebay_sans_photo") {

@@ -517,3 +517,42 @@ Rapport : `docs/enquetes/dix-points-1710/RAPPORT.md` (points 1, 4, 5, 7, 9).
   un pré-rempli que l'article nomme reste (règle du 29/10) ; liste illisible ou pose non relue → la voie d'avant (frappe).
 - Essai réel : dépôt 3297910134 (999 €, titre sans marque) → « Zara posée par son identifiant (zara, liste de 1 503
   marques, formulaire zara) », page publique « Marque : Zara », retiré. Selftest `champs-lbc-etat-marque` § 7.
+## 30/10 (lot E, thecloset72000) — Leboncoin : nouvelle page de dépôt et ville ; eBay : caractéristiques et modification ; genre
+- **Photos gratuites Leboncoin, nouvelle page** (« Dites-nous en plus sur votre article », composant
+  `dynamic-deposit-input-photo-v2`, relevée le 30/10 sur le compte de Nico) : plus de tuile « Ajouter N photos » ni de
+  case d'emplacement avant envoi, une zone « Cliquez et déposez jusqu'à N photos » (N = le gratuit ; avec un pack payant :
+  « Cliquez et ajoutez des photos », sans chiffre — code de la page : `maxPhotos = max(basicPhotoLimit,
+  maxPackPhotoLimit)`, `hasExtraPhotosOffer`). L'ancienne lecture rendait « illisible » et la lecture « stable » acceptait
+  deux « illisible » de suite → repli silencieux à 3 photos : 203 dépôts amputés du 20/10 16:42 au 30/10, 19 comptes
+  (192 encore en ligne le 30/10, 524 photos manquantes). Règle (`leboncoin.js`, 0.6.160) : le nombre se lit d'abord dans
+  la page (`packPhotoConfig.basicPhotoLimit`, propriété React du composant photos, monde MAIN —
+  `LBC_MAIN_FONCTIONS.lireQuotaPhotos`), puis sur les libellés des deux pages ; seule une lecture CHIFFRÉE est stable
+  (12 essais, ~8 s) ; vraiment illisible et plus de 3 photos sur la fiche → RIEN ne part, le dépôt est quitté sans
+  enregistrer, attente `lbc_photos_quota_illisible` (relancer), phrase dans l'app. Jamais d'annonce amputée en silence.
+  Selftest `selftest:lbc-photos-gratuites` (§ 1, 3, 7). Remise à niveau des annonces déjà en ligne : PROPOSÉE, non
+  exécutée (`scripts/reparations/20261030_lbc_photos_amputees_PROPOSITION.sql`).
+- **Ville de l'annonce Leboncoin** : réglage par défaut `platform_settings.leboncoin.ville_publication` = { code_postal,
+  ville } (Réglages › Expédition ; absent = la ville de l'adresse, comme avant), changeable sur la carte Leboncoin à la
+  publication (`platform_fields.ville_publication_lbc`, ou « adresse »). Règle `src/publication/villeLbc.js` ;
+  l'extension localise alors l'annonce à la COMMUNE (« ville code_postal », repli commune du barreau 3) ; une
+  republication garde la localisation d'origine. `pf.adresse` reste réécrite par get-pending-jobs / le background
+  (adresse des Réglages) : la ville choisie vit dans une autre clé.
+- **eBay, caractéristiques** (`_shared/ebay-publication.ts`, `assemblerAspects`) : un aspect FACULTATIF part quand sa
+  valeur est CONNUE (fiche, analyse photo — `attributs_visibles` lus : saison, coupe, pointure, matériau, référence —,
+  rayon), recalé sur la liste eBay ; liste fermée sans correspondance = rien ; jamais un défaut, jamais l'IA, jamais une
+  question (avant : seuls les aspects obligatoires partaient). Le Département vient du rayon genré (« Femme : vêtements »)
+  avant le genre ; un Département contraire au rayon est recalé.
+- **eBay, modification d'une annonce en ligne** : une annonce publiée par l'Inventory API ne se modifie PAS dans Seller
+  Hub (règle d'eBay) — elle se modifie depuis FillSell (Stock › menu de l'article › « Modifier sur eBay », titre,
+  description, prix). `ebay-account` action `modifier_annonce` → `_shared/ebay-modifier-annonce.ts` : offre et article
+  relus en entier, seuls les champs demandés réécrits (PUT inventory_item puis PUT offer : eBay révise EN PLACE, même
+  numéro), un champ inconnu = rien n'est écrit ; la tâche suit (title, description, price, `modifications_ebay`).
+- **Genre écrit dans l'article** (`_shared/genre-du-texte.js`) : un seul genre adulte nommé dans le titre (puis titre +
+  description) remplace un Homme/Femme DEVINÉ contraire sur toutes les copies avant la résolution des rayons (app,
+  `resoudrePublication`) ; le moteur Depop n'en compte plus le genre deviné contre le texte (`indicesAgeGenre`).
+  Cas : « Lee … Femme Jean » sorti en « Homme » partout (rédaction « tranche toujours »), Hommes > Jeans proposé sur
+  Vinted, eBay, Beebs, Depop.
+- **Matière d'un vêtement = l'étiquette** (`_shared/composition-matieres.js`) : l'analyse photo ne donne la matière d'un
+  vêtement que si une étiquette de composition est LUE (jamais « Denim » pour un jean) ; la rédaction ne la déduit
+  jamais du type d'article ; une composition part en matières dans l'ordre de l'étiquette : Vinted les coche (3 au plus,
+  `fields.matieres`, 0.6.160), Leboncoin / Beebs / Opla / eBay prennent la première (la plus forte part).

@@ -10,7 +10,7 @@
 // début pour couvrir même une exécution qui échouerait en cours de route.
 globalThis.__fillsellVintedCharge = true;
 
-const VINTED_BUILD = "2026-10-28-rayon-par-identifiant (0.6.152 : un libellé du chemin introuvable — « Jewellery » sous « Accessoires de mode » — et l'identifiant du rayon connu : le rayon posé par identifiants avant la question, jamais par-dessus un choix de la personne) · 2026-10-28-langue-page-ouverte (0.6.151 : page Vinted non française dont le pays du compte n'est pas lu — sonde muette, jeton expiré — catégorie, état et couleurs posés par identifiants quand la langue de la page est ouverte par le serveur, vinted_ids_langues_ouvertes) · 2026-10-28-menus-bloom (0.6.150 : Vinted a remplacé ses menus — Catégorie, Marque, Taille, État, Couleur, Matériau — par des boutons « bloom » dont la valeur ne vit que dans le span « --value » ; toute relecture passe par valeurChampVinted, la grille de tailles à puces est trouvée) · 2026-10-26-modele-repli (modèle : une ligne de repli demandée telle quelle — « Mon modèle ne figure pas dans la liste », « Je ne connais pas le nom du modèle » — se choisit, à l'exact, et la valeur posée est relue ; le modèle d'une capture compte au contrôle avant retrait même sans valeur reposable) · 2026-10-26-marque-creee (marque : un #brand déjà pré-rempli par Vinted avec LA marque suffit ; sinon la marque est choisie ou créée — 30 s pour sa ligne, liste figée relancée, relecture jusqu'à LA marque, second essai — puis la chaîne du 24/10 même sur un champ pré-rempli, remplacé, jamais gardé ; la question seulement au bout, avec le texte vrai) · 2026-10-25-isbn-titre-colis (0.6.143 : ISBN de 10 caractères remis tel quel et armé pour le POST, erreur avant tout retrait sinon ; titre relu dans le champ et rendu ; format de colis retiré par Vinted du même rayon → le plus petit qui suffit, sinon le plus grand ; id 8 nommé selon sa famille) · 2026-10-24-zero-blocage (0.6.134 : une marque introuvable ne bloque jamais — attente du champ après le clic, garde qui compare la marque posée, ligne « Utiliser X comme marque » dans toutes les langues, même marque autrement écrite, puis « Sans marque » ; « Espace de stockage » et « Simlockage » repris de la capture) · 2026-10-09-vinted-etranger (0.6.106 : la page nomme SON domaine — vinted.fr inchangé, vinted.it… chez un vendeur étranger qui l'a autorisé — et le navigateur réel ; référentiel colis du domaine de la page) · 2026-10-08-onglet-muet-relance (0.6.103 : FILLSELL_PING accepté ; un onglet chargé mais muet est rechargé puis remplacé par le background avant tout envoi, jamais constaté) · 2026-10-05-colis-choix-cadenceur (0.6.97 : format de colis = le choix de la personne, relu après le clic et juste avant le dépôt, sinon le pré-coché de Vinted, sinon une question — plus jamais « Petit » d'office ; absence de marque selon la liste fermée du serveur et suggestions triées comme l'app ; pauses humaines à échéances qui rattrapent le retard des réveils sur Mac, attentes et battement sur le Worker, remplissage_mesures dans le résultat) · 2026-10-02-colis-demande (0.6.85 : format de colis inconnu ou non offert → demandé avant tout retrait, jamais choisi à la place de la personne) · 2026-10-02-colis-feu-vert-vendeur (0.6.84 : format de colis posé dans l'envoi quand le formulaire l'oublie, retrait refusé tant qu'il n'est pas en main ; feu vert de l'arrière-plan avant tout retrait une-passe ; vendeur lu en écartant le compte connecté ; compte bloqué nommé) · 2026-09-29-preuve-boutique-delete (0.6.80 : vendeur de la page exacte et session relus avant chaque DELETE ; inconnue et boutique différente restent deux verdicts distincts ; boutique du dépôt estampillée après succès) · 2026-09-28-rayon-deplace-page-annonce (0.6.79 : un rayon du formulaire d édition absent de l arbre du compte — Vinted remanie ses catégories compte par compte, Casio 5570 — est relu sur la page de l annonce, vérifié feuille de l arbre et fil d Ariane ; sinon capture incomplète comme avant) · 2026-09-25-zone-euro (0.6.69 : sur une page Vinted NON française — compte italien, espagnol… servi sur vinted.fr dans sa langue — catégorie, état et couleurs posés par IDENTIFIANT Vinted, jamais par libellé ; page française inchangée) · 2026-09-24-rayon-neuf-seulement (0.6.66 : un rayon Vinted qui n accepte que du neuf face a un article porte demande le RAYON, jamais clos ni ecarte ; releve d options sans avertissement) · 2026-09-17-taille-candidats-onglets (0.6.42 : « W32 L34 » → W32, toutes les formes dans TOUS les onglets, diagnostic dans last_diagnostic) · 2026-09-14-ping-et-ecouteur-unique (0.6.34 : VINTED_PING répond « je suis là » — c'est le seul verdict fiable de « l'onglet est prêt », l'événement de chargement se manque ; drapeau __fillsellVintedCharge posé en première instruction et écouteur enregistré UNE SEULE FOIS, pour qu'une réinjection ne double jamais les handlers ni ne redéclare les const) — précédent : 2026-09-09-envoi-journalise-et-taille-lettree (l'ENVOI de la création est journalisé avant la réponse ; 42 → XL sur une grille purement lettrée)";
+const VINTED_BUILD = "2026-10-30-matieres-etiquette (0.6.160 : la composition de l'étiquette — fields.matieres, « Coton, Polyester, Élasthanne » — cochée matière par matière, 3 au plus, jamais la plus longue de la liste ni une matière à la place d'une autre) · 2026-10-28-rayon-par-identifiant (0.6.152 : un libellé du chemin introuvable — « Jewellery » sous « Accessoires de mode » — et l'identifiant du rayon connu : le rayon posé par identifiants avant la question, jamais par-dessus un choix de la personne) · 2026-10-28-langue-page-ouverte (0.6.151 : page Vinted non française dont le pays du compte n'est pas lu — sonde muette, jeton expiré — catégorie, état et couleurs posés par identifiants quand la langue de la page est ouverte par le serveur, vinted_ids_langues_ouvertes) · 2026-10-28-menus-bloom (0.6.150 : Vinted a remplacé ses menus — Catégorie, Marque, Taille, État, Couleur, Matériau — par des boutons « bloom » dont la valeur ne vit que dans le span « --value » ; toute relecture passe par valeurChampVinted, la grille de tailles à puces est trouvée) · 2026-10-26-modele-repli (modèle : une ligne de repli demandée telle quelle — « Mon modèle ne figure pas dans la liste », « Je ne connais pas le nom du modèle » — se choisit, à l'exact, et la valeur posée est relue ; le modèle d'une capture compte au contrôle avant retrait même sans valeur reposable) · 2026-10-26-marque-creee (marque : un #brand déjà pré-rempli par Vinted avec LA marque suffit ; sinon la marque est choisie ou créée — 30 s pour sa ligne, liste figée relancée, relecture jusqu'à LA marque, second essai — puis la chaîne du 24/10 même sur un champ pré-rempli, remplacé, jamais gardé ; la question seulement au bout, avec le texte vrai) · 2026-10-25-isbn-titre-colis (0.6.143 : ISBN de 10 caractères remis tel quel et armé pour le POST, erreur avant tout retrait sinon ; titre relu dans le champ et rendu ; format de colis retiré par Vinted du même rayon → le plus petit qui suffit, sinon le plus grand ; id 8 nommé selon sa famille) · 2026-10-24-zero-blocage (0.6.134 : une marque introuvable ne bloque jamais — attente du champ après le clic, garde qui compare la marque posée, ligne « Utiliser X comme marque » dans toutes les langues, même marque autrement écrite, puis « Sans marque » ; « Espace de stockage » et « Simlockage » repris de la capture) · 2026-10-09-vinted-etranger (0.6.106 : la page nomme SON domaine — vinted.fr inchangé, vinted.it… chez un vendeur étranger qui l'a autorisé — et le navigateur réel ; référentiel colis du domaine de la page) · 2026-10-08-onglet-muet-relance (0.6.103 : FILLSELL_PING accepté ; un onglet chargé mais muet est rechargé puis remplacé par le background avant tout envoi, jamais constaté) · 2026-10-05-colis-choix-cadenceur (0.6.97 : format de colis = le choix de la personne, relu après le clic et juste avant le dépôt, sinon le pré-coché de Vinted, sinon une question — plus jamais « Petit » d'office ; absence de marque selon la liste fermée du serveur et suggestions triées comme l'app ; pauses humaines à échéances qui rattrapent le retard des réveils sur Mac, attentes et battement sur le Worker, remplissage_mesures dans le résultat) · 2026-10-02-colis-demande (0.6.85 : format de colis inconnu ou non offert → demandé avant tout retrait, jamais choisi à la place de la personne) · 2026-10-02-colis-feu-vert-vendeur (0.6.84 : format de colis posé dans l'envoi quand le formulaire l'oublie, retrait refusé tant qu'il n'est pas en main ; feu vert de l'arrière-plan avant tout retrait une-passe ; vendeur lu en écartant le compte connecté ; compte bloqué nommé) · 2026-09-29-preuve-boutique-delete (0.6.80 : vendeur de la page exacte et session relus avant chaque DELETE ; inconnue et boutique différente restent deux verdicts distincts ; boutique du dépôt estampillée après succès) · 2026-09-28-rayon-deplace-page-annonce (0.6.79 : un rayon du formulaire d édition absent de l arbre du compte — Vinted remanie ses catégories compte par compte, Casio 5570 — est relu sur la page de l annonce, vérifié feuille de l arbre et fil d Ariane ; sinon capture incomplète comme avant) · 2026-09-25-zone-euro (0.6.69 : sur une page Vinted NON française — compte italien, espagnol… servi sur vinted.fr dans sa langue — catégorie, état et couleurs posés par IDENTIFIANT Vinted, jamais par libellé ; page française inchangée) · 2026-09-24-rayon-neuf-seulement (0.6.66 : un rayon Vinted qui n accepte que du neuf face a un article porte demande le RAYON, jamais clos ni ecarte ; releve d options sans avertissement) · 2026-09-17-taille-candidats-onglets (0.6.42 : « W32 L34 » → W32, toutes les formes dans TOUS les onglets, diagnostic dans last_diagnostic) · 2026-09-14-ping-et-ecouteur-unique (0.6.34 : VINTED_PING répond « je suis là » — c'est le seul verdict fiable de « l'onglet est prêt », l'événement de chargement se manque ; drapeau __fillsellVintedCharge posé en première instruction et écouteur enregistré UNE SEULE FOIS, pour qu'une réinjection ne double jamais les handlers ni ne redéclare les const) — précédent : 2026-09-09-envoi-journalise-et-taille-lettree (l'ENVOI de la création est journalisé avant la réponse ; 42 → XL sur une grille purement lettrée)";
 console.log(`[vinted.js] build ${VINTED_BUILD}`);
 
 // Content script Vinted — remplit le formulaire de dépôt d'annonce.
@@ -4329,7 +4329,12 @@ async function remplirFormulaireVinted(job) {
     }
   }
 
-  if (fields.matiere) {
+  // (30/10, lot E) La composition de l'étiquette (« Coton, Polyester, Élasthanne ») : chaque matière cochée, 3 au
+  // plus, dans l'ordre — jamais une seule devinée (« Denim ») ni la plus longue de la liste (« Élasthanne »).
+  if (Array.isArray(fields.matieres) && fields.matieres.length > 1
+      && await selectMaterialsByLabels(fields.matieres, warnings)) {
+    // posées par libellés : rien d'autre à faire
+  } else if (fields.matiere) {
     // Liste Vinted GLOBALE (55 options identiques toutes catégories,
     // vérifié sur Montres/T-shirts/Sacs) mais l'IA peut générer un composé
     // ("Résine et acier inoxydable") — c'est le cas d'origine de la cascade.
@@ -8076,6 +8081,52 @@ async function selectClosedOptionSafe(fieldName, triggerSelector, optionSelector
 // s'ouvre pas, testids sans id numérique, id inconnu — se solde par un
 // warning et on continue SANS matière, exactement comme avant ce commit.
 // Jamais de throw, jamais champs_manquants, jamais un blocage du pré-vol.
+// ── (30/10, lot E) LA COMPOSITION DE L'ÉTIQUETTE, MATIÈRE PAR MATIÈRE ──────────
+// Un jean « coton, polyester, élasthanne » partait en « Denim » (deviné) ; et une
+// composition passée telle quelle à la cascade cochait l'option la PLUS LONGUE
+// contenue dans le texte (« Élasthanne »). Chaque libellé (déjà dans l'ordre de
+// l'étiquette, construireJobs) est cherché à l'identique dans le menu, puis comme
+// mot entier ; 3 au plus (la limite du formulaire). Une matière absente du menu
+// (« Lyocell ») est dite, jamais remplacée par une autre. Rend true si au moins
+// une matière est cochée — sinon l'appelant reprend la voie d'avant.
+const SYNONYMES_MATIERE_VINTED = { polyamide: "nylon" };
+async function selectMaterialsByLabels(libelles, warnings) {
+  const TRIGGER = '#material, [data-testid="category-material-multi-list-input"]';
+  try {
+    if (!document.querySelector(TRIGGER)) return false;
+    await openDropdown(TRIGGER);
+    await sleep(400);
+    const options = [];
+    const vus = new Set();
+    for (const el of document.querySelectorAll('[data-testid^="material-"]')) {
+      const libelle = (el.textContent ?? "").trim();
+      const norm = normalizeFuzzy(libelle);
+      if (!libelle || vus.has(norm)) continue; // variante -label du même choix : un re-clic DÉCOCHERAIT
+      vus.add(norm);
+      options.push({ el, libelle, norm });
+    }
+    if (!options.length) { await closeAnyOpenDropdown(); return false; }
+    let posees = 0;
+    for (const brut of libelles.slice(0, 3)) {
+      const cible = normalizeFuzzy(brut);
+      const voulu = SYNONYMES_MATIERE_VINTED[cible] ?? cible;
+      const opt = options.find((o) => o.norm === voulu) ?? options.find((o) => containsAsWords(o.norm, voulu));
+      if (!opt) { warnings.push(`matière: « ${brut} » (étiquette) absente du menu Vinted — non cochée, aucune autre à sa place`); continue; }
+      await humanPause();
+      const etat = cocherOptionSansBasculer(opt.el);
+      console.log(`[vinted] matière de l'étiquette : « ${brut} » → « ${opt.libelle} »${etat === "deja" ? " (déjà cochée)" : ""}`);
+      posees++;
+    }
+    await humanPause();
+    await confirmDropdownIfNeeded();
+    return posees > 0;
+  } catch (e) {
+    warnings.push(`matière: composition non posée (${String(e?.message ?? e)}) — voie d'avant`);
+    try { await closeAnyOpenDropdown(); } catch { /* optionnel */ }
+    return false;
+  }
+}
+
 async function selectMaterialByIds(ids, warnings) {
   const TRIGGER = '#material, [data-testid="category-material-multi-list-input"]';
   try {

@@ -87,6 +87,9 @@ export function natureAttente(job) {
   // (18/10) Le dépôt est PRÊT sur « Valider et payer » : la personne paie elle-même dans
   // l'onglet laissé ouvert (jamais FillSell) — une attente de paiement, nommée.
   if (job?.platform === "leboncoin" && pf.last_diagnostic?.quoi === "lbc_valider_et_payer") return { kind: "attente", motif: "a_payer_lbc" };
+  // (30/10, lot E) Leboncoin n'a pas dit combien de photos sont gratuites : rien n'est parti (jamais 3 photos en
+  // silence) — l'extension a arrêté le dépôt avant tout envoi ; Relancer le refait.
+  if (job?.platform === "leboncoin" && pf.last_diagnostic?.quoi === "lbc_photos_quota_illisible") return { kind: "attente", motif: "photos_lbc" };
   return { kind: "attente" };
 }
 
@@ -134,6 +137,7 @@ export function phraseEtat(platform, etat, lang = "fr") {
       return en ? "waiting for your Depop seller setup" : "en attente de ta configuration de vendeur Depop";
     case "attente":
       if (etat?.motif === "paiement_lbc") return en ? `waiting: ${nom} asks for a payment for this listing` : `en attente : ${nom} demande un paiement pour ce dépôt`;
+      if (etat?.motif === "photos_lbc") return en ? `waiting: ${nom} did not show how many photos are free — nothing was sent, tap Relancer` : `en attente : ${nom} n'a pas affiché le nombre de photos gratuites — rien n'est parti, appuie sur Relancer`;
       if (etat?.motif === "a_payer_lbc") return en ? `ready on ${nom}: click “Valider et payer” in the ${nom} tab on your computer` : `prête sur ${nom} : clique « Valider et payer » dans l'onglet ${nom} ouvert sur ton ordinateur`;
       return en ? "a publication is waiting" : "une publication est en attente";
     case "refusee":

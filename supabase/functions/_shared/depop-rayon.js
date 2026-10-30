@@ -41,6 +41,7 @@
 // (« Rayon Depop »), jamais un rayon faux.
 // ═══════════════════════════════════════════════════════════════════════════
 import { FEUILLES_DEPOP } from "./depop-feuilles.js";
+import { RE_HOMME, RE_FEMME } from "./genre-du-texte.js";
 
 // 3 (11/10 soir) : un article qui se dit À LA FOIS enfant et adulte (« Taille S
 // (Enfant XL / S Homme) ») devient une question — la v2 laissait l'IA trancher.
@@ -121,8 +122,7 @@ const RE_ENFANT_MOT = /\b(enfants?|bebes?|fillettes?|garcons?|kids?|baby|babies|
 const RE_ENFANT_AGE = /\b\d{1,2}\s*(?:-|a|\/)?\s*\d{0,2}\s*(?:ans|mois|years?|months?|yrs?)\b/;
 const RE_ENFANT_CM = /\b(?:5\d|6\d|7\d|8\d|9\d|1[0-7]\d)\s*(?:-|a|\/)\s*(?:5\d|6\d|7\d|8\d|9\d|1[0-7]\d)\s*cm\b|\b(?:taille|size)\s*(?:5\d|6\d|7\d|8\d|9\d|1[0-7]\d)\s*cm\b/;
 const RE_DUREE_AVANT = /(portee?s?|achetee?s?|utilisee?s?|depuis|il y a|pendant|garantie?|worn|used|for)\s*$/;
-const RE_HOMME = /\b(hommes?|masculin|men|mens|men's|man|male)\b/;
-const RE_FEMME = /\b(femmes?|feminin|women|womens|women's|woman|womans|ladies|lady|female)\b/;
+// RE_HOMME / RE_FEMME : _shared/genre-du-texte.js (une seule liste, 30/10).
 
 /**
  * Les indices d'âge et de genre de la fiche — EXPLICITES seulement.
@@ -131,9 +131,14 @@ const RE_FEMME = /\b(femmes?|feminin|women|womens|women's|woman|womans|ladies|la
 export function indicesAgeGenre({ titre = "", description = "", genre = "", origine = null, taille = "" } = {}) {
   const ind = { enfant: [], homme: [], femme: [] };
   const g = sansAccents(genre).trim();
+  // (30/10, lot E) Le genre de la fiche est souvent DEVINÉ par la rédaction (« tranche toujours ») : quand le
+  // texte de l'article nomme l'autre genre, et lui seul, le genre deviné ne compte pas (« Lee … Femme Jean »
+  // portait genre « Homme » : les deux signaux réunis proposaient Homme et désarmaient la garde).
+  const texteSeul = sansAccents(`${titre} ${description}`);
+  const texteHomme = RE_HOMME.test(texteSeul), texteFemme = RE_FEMME.test(texteSeul);
   if (GENRES_ENFANT.has(g)) ind.enfant.push(`genre « ${genre} »`);
-  if (g === "homme") ind.homme.push("genre « Homme »");
-  if (g === "femme") ind.femme.push("genre « Femme »");
+  if (g === "homme" && !(texteFemme && !texteHomme)) ind.homme.push("genre « Homme »");
+  if (g === "femme" && !(texteHomme && !texteFemme)) ind.femme.push("genre « Femme »");
   const o = sansAccents(Array.isArray(origine) ? origine.join(" > ") : origine);
   if (/^(enfants?|bebes?|kids?)\b/.test(o)) ind.enfant.push("catégorie d'origine Enfants");
   if (/^hommes?\b/.test(o)) ind.homme.push("catégorie d'origine Hommes");

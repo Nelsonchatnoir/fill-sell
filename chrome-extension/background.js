@@ -7181,7 +7181,9 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 // question d'avant tombent, le motif est posé explicitement (« relancer »).
 // Périmètre : les murs de MURS_SANS_QUESTION seulement ; toute autre attente
 // garde l'écriture d'avant, inchangée.
-const MURS_SANS_QUESTION = Object.freeze(["lbc_options_payant_seulement", "lbc_valider_et_payer"]);
+// (30/10, lot E) « lbc_photos_quota_illisible » : le dépôt arrêté avant tout envoi parce que Leboncoin n'a pas dit
+// combien de photos sont gratuites (jamais une annonce amputée) — une attente à relancer, pas une question de champ.
+const MURS_SANS_QUESTION = Object.freeze(["lbc_options_payant_seulement", "lbc_valider_et_payer", "lbc_photos_quota_illisible"]);
 const MARQUEURS_QUESTION_PASSEE = Object.freeze([
   "needsUserField", "needsUserFields", "champs_a_completer", "server_required_fields", "serverRequired", "needsUserBoucle",
 ]);
@@ -10780,6 +10782,42 @@ const LBC_MAIN_FONCTIONS = {
       const cleForm = String(q?.questionAnswerModelization?.questionAnswerFinalRepresentation?.associatedKeyInFinalRepresentation ?? "");
       const valeurs = control?._formValues || {};
       return { ok: true, valeurInput: String(champ.value ?? ""), valeurForm: cleForm ? (valeurs[cleForm] ?? valeurs[`${cleForm}_id`] ?? null) : null, cleForm };
+    } catch (e) {
+      return { ok: false, reason: "exception MAIN: " + (e && e.message) };
+    }
+  },
+  // (30/10, lot E) Le quota de photos GRATUITES tel que la page de dépôt le calcule : la configuration du pack photos
+  // (packPhotoConfig { basicPhotoLimit, maxPackPhotoLimit, hasFreePackPhoto }) est une propriété React du composant
+  // photos, ancêtre du champ fichier (relevé le 30/10 sur le compte de Nico, nouvelle page « Dites-nous en plus sur
+  // votre article » : niveau 7 depuis le champ, 20 / 20 / gratuit en Mode > Vêtements). basicPhotoLimit = ce que
+  // Leboncoin offre sans payer ; au-delà, le pack payant. Lecture seule.
+  lireQuotaPhotos: () => {
+    try {
+      const champs = [
+        document.querySelector('[data-qa-id$="dynamic-deposit-input-photo-v2"] input[type="file"]'),
+        document.querySelector('[data-rhf-name="images"] input[type="file"]'),
+        document.querySelector('input[type="file"]'),
+      ].filter(Boolean);
+      if (!champs.length) return { ok: false, reason: "champ fichier absent" };
+      for (const champ of champs) {
+        const cle = Object.keys(champ).find((k) => k.startsWith("__reactFiber"));
+        if (!cle) continue;
+        let f = champ[cle];
+        for (let i = 0; i < 80 && f; i++, f = f.return) {
+          const c = (f.memoizedProps || {}).packPhotoConfig;
+          if (c && typeof c === "object" && "basicPhotoLimit" in c) {
+            const n = (v) => (Number.isInteger(v) ? v : null);
+            const p = f.memoizedProps || {};
+            return {
+              ok: true, niveau: i,
+              basicPhotoLimit: n(c.basicPhotoLimit), maxPackPhotoLimit: n(c.maxPackPhotoLimit),
+              hasFreePackPhoto: c.hasFreePackPhoto === true,
+              photosDeja: Array.isArray(p.photosDetails) ? p.photosDetails.length : null,
+            };
+          }
+        }
+      }
+      return { ok: false, reason: "packPhotoConfig introuvable dans les composants du champ fichier" };
     } catch (e) {
       return { ok: false, reason: "exception MAIN: " + (e && e.message) };
     }

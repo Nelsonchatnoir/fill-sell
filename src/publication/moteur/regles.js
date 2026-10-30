@@ -22,7 +22,10 @@ import { titreVide, couperTitre, titrePourJob } from "../../../supabase/function
 import { casseTitre, depasseSeuilMajuscules } from "../../../supabase/functions/_shared/casse-titre.js";
 import { tailleDansGrille, diagnosticTaille, candidatsTaille } from "../../../supabase/functions/_shared/tailles.js";
 import { departementEbayPour } from "./departementEbay.js";
-import { descriptionFidele } from "./descriptionFidele.js";
+import { descriptionFidele, lignesEcritesParLaPersonne } from "./descriptionFidele.js";
+import { matieresDeLaComposition } from "../../../supabase/functions/_shared/composition-matieres.js";
+import { photosDuJob } from "../photosParPlateforme.js";
+import { villePourLeJob } from "../villeLbc.js";
 import { ISBN_ABSENT } from "../../../supabase/functions/_shared/vinted-exigences.js";
 
 // ── Un aspect BLOQUE-t-il la publication ? ───────────────────────────────────
@@ -173,6 +176,11 @@ export function construireJobs({
   // (26/10, règles 4 et 5 de Nico) La fiche (état, mots) et « le texte est-il celui du vendeur ? » : la description
   // qui part ne contredit jamais la fiche, et ses hashtags ne partent que là où ils servent (moteur/descriptionFidele).
   ficheTexte = null, texteDuVendeur = false,
+  // (30/10, lot E) Les descriptions rédigées par FillSell, par plateforme : ce qui n'y figure pas a été écrit par la
+  // personne et part tel quel (descriptionFidele, lignesDuVendeur). Absentes : règle d'avant.
+  descriptionsGenerees = null,
+  // (30/10, lot E) La ville Leboncoin par défaut (Réglages › Expédition) : { code_postal, ville } ou null.
+  villePublicationLbc = null,
   // (26/10, D4) Publication PROGRAMMÉE (réglage de la personne) : la tâche naît marquée ; get-pending-jobs la sert
   // dans le créneau, une à la fois (_shared/publication-programmee.js). eBay par l'API part de nos serveurs : non retenu.
   programmee = false,
@@ -187,23 +195,52 @@ export function construireJobs({
     if (platform === "ebay" && ebayVoieApiReelle && !photosJob.length) {
       return { rows: null, erreur: "ebay_sans_photo", journal };
     }
+    // (30/10, lot E) Les photos CHOISIES pour cette plateforme (carte : choix, ordre, limite) — absentes, la règle
+    // d'avant. Un extrait ne réécrit jamais la fiche (lbcPhotosCapped, spend_coins_and_publish) et n'est jamais
+    // « complété » par les photos de la fiche (photos_choisies : contenuAImposer, photosApresRayonRetrouve).
+    {
+      const choix = photosDuJob(platform, photosJob, edited[platform]?.photos);
+      if (choix.choisies && pf) {
+        rowPhotos = choix.photos;
+        pf.photos_choisies = true;
+        pf.lbcPhotosCapped = true;
+        journal.push(`[publish] ${platform} : ${rowPhotos.length} photo(s) choisie(s) sur ${photosJob.length}`);
+      }
+    }
+    // (30/10, lot E) Leboncoin : la ville de l'annonce (choix de la carte, sinon le réglage) ; rien = l'adresse.
+    if (platform === "leboncoin" && pf) {
+      const ville = villePourLeJob(pf.ville_publication_lbc, villePublicationLbc);
+      if (ville) pf.ville_publication_lbc = ville;
+      else delete pf.ville_publication_lbc;
+    }
     // L'adresse de remise reste au clic (déplacement du 20/09) : mêmes deux
     // affectations qu'avant, au même moment qu'avant.
     if (lbcAddress && (platform === "leboncoin" || platform === "beebs")) pf.adresse = lbcAddress;
+    // (30/10, lot E) Une COMPOSITION (« Coton, Polyester, Élasthanne », lue sur l'étiquette) : la première matière
+    // (la plus forte part) dans `matiere` — une seule case chez Leboncoin, Beebs, Opla, et ce que lisent les
+    // extensions d'avant — et, pour Vinted, la liste entière (3 au plus) dans `matieres`, cochée une à une.
+    {
+      const liste = matieresDeLaComposition(pf?.matiere);
+      if (pf && liste.length > 1) {
+        pf.matiere = liste[0];
+        if (platform === "vinted") pf.matieres = liste.slice(0, 3);
+      }
+    }
     if (platform === "leboncoin") {
       // Quota de photos GRATUITES (2026-08-10) : en Divers > Autres, Leboncoin
       // n'offre que 3 photos ; dès la 4e, le dépôt devient payant et son écran
       // /options perd le chemin gratuit. On envoie les N premières, pour CETTE
       // feuille seulement.
+      // (30/10, lot E) Sur les photos CHOISIES quand il y en a (rowPhotos), dans leur ordre.
       const quotaPhotosLbc = getLbcFreePhotoQuota(pf.lbcCategoryPath);
-      if (quotaPhotosLbc != null && photosJob.length > quotaPhotosLbc) {
-        pf.lbcPhotosOriginales = photosJob.length;
+      if (quotaPhotosLbc != null && rowPhotos.length > quotaPhotosLbc) {
+        pf.lbcPhotosOriginales = rowPhotos.length;
         pf.lbcPhotosCapped = true;
-        rowPhotos = photosJob.slice(0, quotaPhotosLbc);
         journal.push(
           `[publish] Leboncoin ${pf.lbcCategoryPath.join(" > ")} : ` +
-          `${photosJob.length} photos → ${quotaPhotosLbc} (quota gratuit de la catégorie)`
+          `${rowPhotos.length} photos → ${quotaPhotosLbc} (quota gratuit de la catégorie)`
         );
+        rowPhotos = rowPhotos.slice(0, quotaPhotosLbc);
       }
     }
     let titre = edited[platform]?.title ?? "";
@@ -229,8 +266,13 @@ export function construireJobs({
       title:           platform === "vinted"
         ? titreVintedSousLaLimite(normalizeVintedTitle(titre), pf, edited[platform]?.description)
         : titre,
+      // (30/10, lot E) Les lignes que la personne a écrites dans la carte (absentes de toute copie de FillSell)
+      // partent telles quelles, partout — sa référence « #… » comprise.
       description:     ficheTexte
-        ? descriptionFidele(edited[platform]?.description ?? "", platform, { fiche: ficheTexte, texteDuVendeur })
+        ? descriptionFidele(edited[platform]?.description ?? "", platform, {
+          fiche: ficheTexte, texteDuVendeur,
+          lignesDuVendeur: lignesEcritesParLaPersonne(edited[platform]?.description ?? "", Object.values(descriptionsGenerees ?? {})),
+        })
         : (edited[platform]?.description ?? ""),
       price:           edited[platform]?.price ?? price,
       photos:          rowPhotos,

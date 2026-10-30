@@ -27,6 +27,7 @@ import { fusionnerReglages } from '../utils/reglagesPlateformes';
 import { adresseLbcHorsFrance, rueAbsente } from '../../supabase/functions/_shared/lbc-adresse-france.js';
 import { R } from './theme';
 import { Groupe, Carte, Champ, Bouton, Note } from './ReglagesUI';
+import VilleLeboncoinParDefaut from './VilleLeboncoinParDefaut';
 
 const normBan = (s) => String(s ?? '').toLowerCase().normalize('NFD')
   .replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
@@ -97,6 +98,7 @@ export default function SousPageExpedition({ c, T }) {
   };
 
   return (
+    <>
     <Groupe intitule={T.sLeboncoin}>
       <Carte pad style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <Champ
@@ -175,5 +177,8 @@ export default function SousPageExpedition({ c, T }) {
       {!ban && c.lbcHorsFrance && <Note>{T.lbcHorsFrance}</Note>}
       <Note>{T.adresseNote}</Note>
     </Groupe>
+    {/* (30/10, lot E) La ville des annonces Leboncoin, par défaut (changeable à chaque publication). */}
+    <VilleLeboncoinParDefaut c={c} />
+    </>
   );
 }

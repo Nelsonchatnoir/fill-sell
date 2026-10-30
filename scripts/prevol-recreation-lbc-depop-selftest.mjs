@@ -217,7 +217,8 @@ ok("leboncoin.js : titre → catégorie → photos → critères → « Continue
 const lr = extraireFonctionJs(lbc, "lbcRemplirJusquAApercu");
 // (16/10) Le pré-vol envoie les photos GRATUITES, comme le futur redépôt : le nombre est lu sur le
 // formulaire (selftest:lbc-photos-gratuites) — jamais une photo du pack payant.
-assert.match(lr, /if \(job\.photos\?\.length\) \{[\s\S]{0,400}const choixPhotos = photosAEnvoyerLbc\(job\.photos, await lireQuotaPhotosLbcStable\(\)\);[\s\S]{0,300}const photoNote = await uploadPhotos\(photoInput, choixPhotos\.photos\);/, "le pré-vol envoie les photos gratuites (pré-remplissage Leboncoin)");
+// (30/10, lot E) Entre la lecture et l'envoi : l'arrêt « quota illisible » (rien ne part, jamais 3 photos en silence).
+assert.match(lr, /if \(job\.photos\?\.length\) \{[\s\S]{0,400}const choixPhotos = photosAEnvoyerLbc\(job\.photos, await lireQuotaPhotosLbcStable\(\)\);[\s\S]{0,600}if \(choixPhotos\.bloque\) \{[\s\S]{0,700}\}\s*const photoNote = await uploadPhotos\(photoInput, choixPhotos\.photos\);/, "le pré-vol envoie les photos gratuites (pré-remplissage Leboncoin)");
 assert.match(lr, /const continueBtn = findButtonByExactText\("Continuer"\);/);
 assert.match(lr, /const repliProduit = \/_product\$\|\^decoration_type\$\/\.test\(forKey\) \? \["Autre", "Autres"\] : \[\];/);
 assert.match(lr, /if \(!crit\.required \|\| crit\.filled \|\| !\/_product\$\|\^decoration_type\$\/\.test\(crit\.key\)\) continue;/);

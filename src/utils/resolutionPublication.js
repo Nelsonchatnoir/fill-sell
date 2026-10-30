@@ -67,6 +67,8 @@ import { champsDepop, tailleDepop } from "./depopPublication.js";
 import { depopGenreRequired, horsModeDepop } from "./depopCategories.js";
 // (11/10) Le rayon Depop par le moteur commun — même module que le serveur.
 import { resoudreRayonDepop, traceRayonDepop, SOURCE_RAYON_DEPOP } from "../../supabase/functions/_shared/depop-rayon.js";
+// (30/10, lot E) Le genre écrit dans l'article prime sur le genre deviné.
+import { genreDuTexte, genreAccordeAuTexte } from "../../supabase/functions/_shared/genre-du-texte.js";
 // (18/10 nuit, point 5) Une question de catégorie identique, en vol ou de moins de 10 min, n'est payée qu'une fois.
 import { invoquerResolveCategorie } from "./questionCategorie.js";
 import { oeuvreDArt, rayonVintedOeuvre } from "./oeuvreDArt.js";
@@ -321,6 +323,31 @@ export async function resoudrePublication({
   // relie ici plutôt que de renommer quarante occurrences — un renommage est
   // un changement, et ce lot n'en fait aucun.
   const plateformesAPublier = plateformes;
+
+  // ── (30/10, lot E) LE GENRE ÉCRIT DANS L'ARTICLE PRIME SUR LE GENRE DEVINÉ ──
+  // « Lee … Femme Jean » sortait de la rédaction en « Homme » (consigne « tranche toujours ») : Hommes > Jeans
+  // proposé sur Vinted, eBay, Beebs, Depop, quatre corrections à la main. Un seul genre adulte NOMMÉ dans le titre
+  // (puis titre + description) remplace un Homme/Femme contraire sur toutes les copies (genre, et l'univers
+  // Leboncoin) AVANT toute résolution de rayon. Règle : _shared/genre-du-texte.js.
+  {
+    const { description: descFr } = textesFrDeLaPublication({ initialListing, edited });
+    const titres = [initialListing?.titre, ...["vinted", "leboncoin", "beebs", "depop", "opla"].map((p) => edited?.[p]?.title)]
+      .filter(Boolean).join(" · ");
+    const dit = genreDuTexte({ titre: titres, description: descFr });
+    if (dit && edited) {
+      const corrige = { ...edited };
+      for (const p of Object.keys(edited)) {
+        const pf = edited[p]?.platform_fields;
+        if (!pf || typeof pf !== "object") continue;
+        const g = genreAccordeAuTexte(pf.genre, dit);
+        const u = p === "leboncoin" ? genreAccordeAuTexte(pf.univers, dit) : { corrige: false };
+        if (!g.corrige && !u.corrige) continue;
+        corrige[p] = { ...edited[p], platform_fields: { ...pf, ...(g.corrige ? { genre: g.genre } : {}), ...(u.corrige ? { univers: u.genre } : {}), genre_du_texte: dit } };
+        console.log(`[publish] genre ${p} : « ${pf.genre ?? pf.univers} » deviné, « ${dit} » écrit dans l'article — l'article fait foi`);
+      }
+      edited = corrige;
+    }
+  }
 
   const iconFor = (platform) => {
     const pf = edited[platform]?.platform_fields ?? {};

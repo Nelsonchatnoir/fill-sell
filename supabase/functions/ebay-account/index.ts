@@ -84,6 +84,8 @@ import {
 import { compteEbayApiUsableDepuisLigne, rearmerJobsEbayConnexionSiUtilisable } from "../_shared/ebay-voie.ts";
 import { plafondEbay } from "../_shared/ebay-etat-compte.js";
 import { domaineSiteEbay, messageSiteEtranger, siteDuCompteEbay, siteEbayEtranger } from "../_shared/ebay-site.ts";
+// (30/10, lot E) Modifier une annonce eBay en ligne (voie API) depuis FillSell.
+import { demandePropre, modifierAnnonceEbay } from "../_shared/ebay-modifier-annonce.ts";
 
 // localhost:5177 : le serveur de développement des essais réels (session déjà
 // ouverte) — même statut que 5173 ; le JWT reste exigé, CORS n'est pas la garde.
@@ -507,6 +509,42 @@ Deno.serve(async (req) => {
         .eq("id", invId).eq("user_id", user.id).or("description.is.null,description.eq.")
         .select("id");
       return json({ description: texte, listing_id: listingId, motif, fiche_completee: Boolean(maj?.length) });
+    }
+
+    // ── (30/10, lot E) MODIFIER UNE ANNONCE eBAY EN LIGNE (voie API) ────────
+    // eBay interdit de modifier dans Seller Hub une annonce publiée par l'Inventory
+    // API : elle ne se modifie que par l'API (_shared/ebay-modifier-annonce.ts).
+    // Titre, description, prix — révisés EN PLACE (même numéro, vues gardées).
+    // La personne seulement, sur SES publications ; la tâche suit ce qui est en ligne.
+    if (action === "modifier_annonce") {
+      const jobId = String(body.job_id ?? "");
+      if (!/^[0-9a-f-]{36}$/i.test(jobId)) return json({ ok: false, motif: "parametres", message: "Publication inconnue." }, 400);
+      const demande = demandePropre(body);
+      if (!demande.ok) return json(demande, 400);
+      const { data: j } = await admin.from("cross_post_jobs")
+        .select("id, user_id, platform, status, voie, title, description, price, platform_fields")
+        .eq("id", jobId).eq("user_id", user.id).maybeSingle();
+      const pf = { ...(((j as { platform_fields?: Record<string, unknown> } | null)?.platform_fields) ?? {}) } as Record<string, unknown>;
+      const api = (pf.ebay_api ?? {}) as Record<string, unknown>;
+      const ids = { sku: String(api.sku ?? ""), offerId: String(api.offer_id ?? ""), listingId: String(api.listing_id ?? "") };
+      if (!j || j.platform !== "ebay" || j.voie !== "api" || j.status !== "published" || !ids.sku || !ids.offerId) {
+        return json({ ok: false, motif: "pas_une_annonce_api_publiee", message: "Seules les annonces eBay en ligne publiées par FillSell (voie API) se modifient ici." });
+      }
+      const jeton = await obtenirAccessToken(admin, user.id);
+      if (!jeton.ok) return json({ ok: false, motif: `jeton_${jeton.motif}`, message: "Ton compte eBay doit être reconnecté (Réglages › Plateformes › eBay) avant de modifier une annonce." });
+      const r = await modifierAnnonceEbay(env, jeton.token as string, ids, demande.d);
+      console.log(`[ebay-account] modifier_annonce job=${jobId.slice(0, 8)} annonce=${ids.listingId} → ${r.ok ? `ok (${r.changements.join(", ")})` : r.motif}`);
+      if (!r.ok) return json(r);
+      // La tâche suit ce qui est en ligne (titre, description, prix) ; trace des modifications (10 dernières).
+      const maj: Record<string, unknown> = {};
+      if (demande.d.titre != null) maj.title = demande.d.titre;
+      if (demande.d.description != null) maj.description = demande.d.description;
+      if (demande.d.prix != null) maj.price = demande.d.prix;
+      const trace = Array.isArray(pf.modifications_ebay) ? (pf.modifications_ebay as unknown[]).slice(-9) : [];
+      maj.platform_fields = { ...pf, modifications_ebay: [...trace, { le: new Date().toISOString(), champs: r.changements, par: "personne (FillSell)" }] };
+      const { error: errMaj } = await admin.from("cross_post_jobs").update(maj).eq("id", jobId).eq("user_id", user.id);
+      if (errMaj) console.warn(`[ebay-account] modifier_annonce : annonce modifiée chez eBay, tâche non mise à jour — ${errMaj.message}`);
+      return json({ ok: true, changements: r.changements, listing_id: r.listing_id });
     }
 
     if (action === "deconnecter") {

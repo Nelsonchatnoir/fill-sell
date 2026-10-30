@@ -236,7 +236,8 @@ ok(/const compteProDuServeur = \(j\) => j\?\.platform_fields\?\.compte_pro === t
 const mExt = lbcJs.match(/const MSG_LBC_A_PAYER =\s*((?:"[^"\n]*"\s*\+?\s*)+);/);
 ok(mExt && eval(`(${mExt[1]})`) === MSG_LBC_A_PAYER, "le texte du dépôt prêt est le même dans l'extension et la règle partagée");
 ok(!/trouverBoutonPayant\(\)\.click|boutonPayant\.click|valider et payer[^\n]*\.click\(/i.test(lbcJs), "FillSell ne clique JAMAIS « Valider et payer »");
-ok(/^const MURS_SANS_QUESTION = Object\.freeze\(\["lbc_options_payant_seulement", "lbc_valider_et_payer"\]\);/m.test(bg)
+// (30/10, lot E) + « lbc_photos_quota_illisible » (dépôt arrêté avant tout envoi : une attente à relancer).
+ok(/^const MURS_SANS_QUESTION = Object\.freeze\(\["lbc_options_payant_seulement", "lbc_valider_et_payer"(?:, "lbc_photos_quota_illisible")?\]\);/m.test(bg)
   && /if \(result\?\.garderOnglet === true\) pf\.attente_paiement = \{ depuis: new Date\(\)\.toISOString\(\) \};/.test(bg)
   && /if \(result\.garderOnglet === true\) await rendreOngletALaPersonne\(job, motif\)/.test(bg), "background : le mur n'hérite d'aucune question, l'attente est datée, l'onglet est rendu");
 ok(/async function rendreOngletALaPersonne\(job, motif\)/.test(bg) && /await chrome\.storage\.session\.remove\(key\)\.catch/.test(bg) && /chrome\.windows\.getLastFocused\(\{ windowTypes: \["normal"\] \}\)/.test(bg)

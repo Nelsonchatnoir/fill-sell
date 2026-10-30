@@ -130,6 +130,8 @@ import { demarrerRelecture } from '../utils/relectureBornee';
 import { BarreRecherche, FiltresRapides, FiltresActifs, EnTeteListe, FeuilleTri, PanneauFiltres, VideAvecSortie } from '../stock/Liste';
 import { CarteArticle, LigneArticle } from '../stock/Carte';
 import MenuArticle from '../stock/MenuArticle';
+// (30/10, lot E) Une annonce eBay publiée par l'API se modifie depuis FillSell (eBay l'interdit dans Seller Hub).
+import ModifierAnnonceEbay from '../stock/ModifierAnnonceEbay';
 import EcranSelection from '../stock/EcranSelection';
 import EcranARegler from '../stock/EcranARegler';
 import EcranRetraitsBloques from '../stock/EcranRetraitsBloques';
@@ -7526,6 +7528,8 @@ const StockTab = memo(function StockTab({
   // d'un geste du haut (publier · remonter · a_regler), la feuille « Ajouter »,
   // la feuille de tri, et l'écran d'arrivée après une synchronisation.
   const [menuArticleId, setMenuArticleId] = useState(null);
+  // (30/10, lot E) La publication eBay (voie API) ouverte dans « Modifier sur eBay ».
+  const [modifEbayJob, setModifEbayJob] = useState(null);
   // Le panneau : « En ligne sur » / « Pas encore sur » choisit le sens des
   // logos de plateforme (deux questions distinctes, cf. FiltresStock 18/09).
   const [modePlateformesPanneau, setModePlateformesPanneau] = useState('en_ligne');
@@ -10033,6 +10037,14 @@ const StockTab = memo(function StockTab({
     if (d.repubLatest && (repubVivante || d.repubEtape)) menu.push({ cle: 'suivi-remontee', icone: Activity, libelle: fr ? 'Où en est la remontée' : 'Bump progress', onTap: () => setRepubProgress(d.repubLatest) });
     menu.push({ cle: 'vendu', icone: BadgeEuro, libelle: libelleAction('vendu', lang), onTap: () => markSold(item) });
     menu.push({ cle: 'modifier', icone: Pencil, libelle: fr ? "Modifier l'article" : 'Edit item', onTap: d.openEdit });
+    // (30/10, lot E) L'annonce eBay en ligne, publiée par l'API (offre eBay connue) : modifiable ICI seulement — eBay
+    // refuse la modification dans Seller Hub d'une annonce créée par son API. Titre, description, prix, en place.
+    {
+      const ebayApi = (d.jobs ?? [])
+        .filter((j) => j.platform === 'ebay' && j.status === 'published' && (j.voie === 'api' || j.platform_fields?.ebay_api?.offer_id))
+        .sort((a, b) => String(b.created_at ?? '').localeCompare(String(a.created_at ?? '')))[0];
+      if (ebayApi) menu.push({ cle: 'modifier-ebay', icone: Pencil, libelle: fr ? 'Modifier sur eBay' : 'Edit on eBay', detail: fr ? "Titre, description, prix — l'annonce reste en ligne" : 'Title, description, price — the listing stays online', onTap: () => setModifEbayJob(ebayApi) });
+    }
     if (onDupliquer) menu.push({ cle: 'dupliquer', icone: Copy, libelle: fr ? 'Dupliquer' : 'Duplicate', detail: fr ? 'Une nouvelle fiche en stock, sans annonce' : 'A new stock item, with no listing', onTap: () => onDupliquer(item) });
     if (d.logosEnLigne.length > 0 || d.jobsAll.some((j) => j.action !== 'delete')) {
       menu.push({ cle: 'plateformes', icone: Layers, libelle: fr ? 'Gérer les plateformes' : 'Manage platforms', detail: fr ? 'Retirer, compléter ou relancer, plateforme par plateforme' : 'Remove, complete or relaunch, platform by platform', onTap: () => setRemoveModalItem(item) });
@@ -11861,6 +11873,9 @@ const StockTab = memo(function StockTab({
           que rouvrir une porte qui existait : la publication en lot, la feuille
           de republication, la feuille d'attente, l'écran des doublons, les
           modes prix d'achat et brouillons, la zone d'ajout. */}
+      {modifEbayJob&&(
+        <ModifierAnnonceEbay lang={lang} job={modifEbayJob} supabase={supabase} onFermer={()=>setModifEbayJob(null)}/>
+      )}
       {menuArticleId!=null&&(()=>{
         const item=(items||[]).find(i=>String(i.id)===String(menuArticleId));
         if(!item)return null;

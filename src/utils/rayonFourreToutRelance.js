@@ -96,6 +96,8 @@ export function messageRayonNonTrouve(platform, fr = true) {
 // une liste.
 export async function photosApresRayonRetrouve({ platform, pf, photosJob, inventaireId }) {
   if (platform !== 'leboncoin' || !pf?.lbcPhotosCapped || inventaireId == null) return null;
+  // (30/10, lot E) Des photos CHOISIES pour Leboncoin (carte de publication) : un choix, jamais un plafond à lever.
+  if (pf.photos_choisies === true) return null;
   const quota = getLbcFreePhotoQuota(pf.lbcCategoryPath);
   const avant = entreesPhotos(photosJob);
   if (quota != null && quota <= avant.length) return null;

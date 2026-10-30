@@ -1030,3 +1030,17 @@
   `_shared/attente-boutique-serveur.js`) et le message « Republication Vinted en attente : … Ouvre ta boutique @x … »,
   écrit une fois par couple de boutiques, levé dès que la bonne boutique est ouverte. La file dit « (en attente depuis
   le 24 oct.) » au-delà de 24 h. Rien n'est forcé : elles partent quand @ornella-vend est ouverte dans Chrome.
+
+## 30/10 (lot E, thecloset72000) — photos par plateforme, texte écrit par la personne
+- **Photos par plateforme** : sur la carte de chaque plateforme (comme titre, prix, description), la personne voit toutes
+  les photos de la fiche, choisit celles qui partent, en retire, les réordonne (la 1re = couverture), dans la limite de
+  la plateforme (`src/publication/photosParPlateforme.js` : Vinted 20, Depop 8, Beebs 10, eBay 24, Leboncoin 20 dont
+  seules les gratuites partent, Opla 20). Le choix vit dans `edited[plateforme].photos` ; absent = la règle d'avant à
+  l'identique. Un job aux photos choisies porte `photos_choisies` (jamais complété par la fiche : `contenuAImposer`,
+  `photosApresRayonRetrouve`) et `lbcPhotosCapped` (spend_coins_and_publish ne réécrit jamais la fiche avec un
+  extrait — même drapeau, aucune migration).
+- **Description : ce que la personne a écrit part partout, tel quel** (`descriptionFidele`, `lignesEcritesParLaPersonne`) :
+  une ligne absente de toutes les copies rédigées par FillSell a été écrite par la personne et n'est jamais retouchée
+  (ni état, ni genre, ni hashtags), sur toutes les plateformes ; le texte du vendeur aussi. La règle 5 du 26/10 (pas de
+  hashtags hors Vinted et Depop) ne vise plus que les hashtags de FillSell. Cas : la référence
+  « #the_closet72jeanFR44 #jean » partait sur Vinted et Depop, retirée sur Leboncoin, Beebs et eBay.

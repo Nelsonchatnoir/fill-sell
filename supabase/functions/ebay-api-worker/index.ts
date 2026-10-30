@@ -60,6 +60,7 @@ import {
   eanAEnvoyer, refusEanRequis, SOURCE_QUESTION_EAN, EAN_SANS_IDENTIFIANT_EBAY_FR, eanDejaEssayeOfficiel,
   type AspectCatalogue, type AttributsInventaire, type ErreurEbay, type PlatformFields,
 } from "../_shared/ebay-publication.ts";
+import { CLES_ARTICLE_ECRITES, CLES_ARTICLE_LUES, CLES_OFFRE_ECRITES, CLES_OFFRE_LUES, sousObjet } from "../_shared/ebay-modifier-annonce.ts";
 import { completerAspectsIA, estAspectDeTaille, valeurLueDansLeContexte } from "../_shared/ebay-aspects-ia.ts";
 import { valeurDeListeCorrespondante } from "../_shared/texte-comparable.ts";
 import { appelTrading } from "../_shared/ebay-trading-releve.ts";
@@ -2967,12 +2968,8 @@ async function veillerVentesEbay(admin: SupabaseClient, env: EbayEnv): Promise<R
 // ⛔ L'écriture exige la sauvegarde en base (table désignée) et l'empreinte de
 //    la lecture à blanc : une annonce qui a bougé depuis n'est pas touchée.
 //    Refus d'eBay : un essai, l'article retrouve son contenu d'avant, rien d'autre.
-const CLES_OFFRE_ECRITES = ["availableQuantity", "categoryId", "charity", "extendedProducerResponsibility", "format", "hideBuyerDetails",
-  "includeCatalogProductDetails", "listingDescription", "listingDuration", "listingPolicies", "listingStartDate", "lotSize",
-  "merchantLocationKey", "pricingSummary", "quantityLimitPerBuyer", "regulatory", "secondaryCategoryId", "storeCategoryNames", "tax"];
-const CLES_OFFRE_LUES = ["offerId", "sku", "marketplaceId", "listing", "status"];
-const CLES_ARTICLE_ECRITES = ["availability", "condition", "conditionDescription", "conditionDescriptors", "packageWeightAndSize", "product"];
-const CLES_ARTICLE_LUES = ["sku", "locale", "groupIds", "inventoryItemGroupKeys"];
+// (30/10, lot E) Les listes des champs réécrivables vivent dans _shared/ebay-modifier-annonce.ts (la modification
+// d'une annonce par la personne les partage) — importées plus haut, inchangées.
 // Les champs de rayon du job, remplacés en bloc par ceux de la règle.
 const CLES_RAYON_JOB = ["ebayCategoryId", "ebayCategoryPath", "categorie_source", "categorie_incertaine", "categorie_par_mot",
   "categorie_verification", "categorie_plausibilite", "categorie_branche_specialisee", "rayon_a_choisir", "rayon_a_reessayer",
@@ -2990,11 +2987,6 @@ function stable(v: unknown): string {
 async function empreinteDe(v: unknown): Promise<string> {
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(stable(v)));
   return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-function sousObjet(o: Record<string, unknown>, cles: string[]): Record<string, unknown> {
-  const r: Record<string, unknown> = {};
-  for (const k of cles) if (o[k] !== undefined) r[k] = o[k];
-  return r;
 }
 
 type LectureAnnonce = { ok: true; offre: Record<string, any>; article: Record<string, any>; browse: Record<string, unknown>; etat: Record<string, unknown> } | { ok: false; motif: string; detail?: unknown };

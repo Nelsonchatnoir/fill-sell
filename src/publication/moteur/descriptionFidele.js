@@ -9,8 +9,9 @@
 //      matière, de sa taille, de son texte) — jamais un genre, un style ou une marque inventés ;
 //   5. des hashtags seulement là où ils servent : Vinted, et Depop dans sa limite de 5 ; jamais sur Leboncoin,
 //      eBay, Beebs ni Opla (une ligne de hashtags tombe, un « #mot » dans une phrase redevient « mot »).
-// ⛔ LE TEXTE DU VENDEUR FAIT FOI : son état et ses hashtags restent les siens sur Vinted et Depop ; ailleurs seule la
-//    forme « #mot » change (le mot reste). Rien n'est jamais AJOUTÉ à un texte.
+// ⛔ LE TEXTE DU VENDEUR FAIT FOI : (30/10, lot E) il part tel qu'il l'a écrit sur TOUTES les plateformes, hashtags
+//    compris, comme toute ligne qu'il a ajoutée ou retouchée dans un texte de FillSell (lignesEcritesParLaPersonne).
+//    Les règles 4 et 5 ne touchent que ce que FillSell a rédigé. Rien n'est jamais AJOUTÉ à un texte.
 // Pur (Node + navigateur) : scripts/description-fidele-selftest.mjs.
 
 const PLATEFORMES_A_HASHTAGS = { vinted: Infinity, depop: 5 };
@@ -117,18 +118,29 @@ export function motsDeLaFiche(fiche = {}) {
  * Le texte qui part sur UNE plateforme.
  * @param {string} texte
  * @param {string} platform
- * @param {{ fiche?: object, texteDuVendeur?: boolean }} [opts]  fiche : { titre, marque, couleur, matiere, taille,
- *   genre, etat, texteVendeur, objet } ; texteDuVendeur : le texte est celui du vendeur (rien d'autre que la forme
- *   des hashtags ne change, et seulement là où ils ne servent pas).
+ * @param {{ fiche?: object, texteDuVendeur?: boolean, lignesDuVendeur?: Set<string>|null }} [opts]  fiche : { titre,
+ *   marque, couleur, matiere, taille, genre, etat, texteVendeur, objet } ; texteDuVendeur : le texte est celui du
+ *   vendeur (il part tel quel, partout) ; lignesDuVendeur : les lignes que la personne a écrites ou retouchées dans
+ *   le texte de FillSell (lignesEcritesParLaPersonne) — parties telles quelles, partout.
  */
-export function descriptionFidele(texte, platform, { fiche = {}, texteDuVendeur = false } = {}) {
+export function descriptionFidele(texte, platform, { fiche = {}, texteDuVendeur = false, lignesDuVendeur = null } = {}) {
   let t = String(texte ?? "");
   if (!t.trim()) return t;
+  // ── (30/10, lot E) CE QUE LA PERSONNE A ÉCRIT PART TEL QUEL, SUR TOUTES LES PLATEFORMES ──
+  // thecloset72000 ajoutait sa référence « #the_closet72jeanFR44 #jean » sous le texte : partie sur Vinted et Depop,
+  // retirée sur Leboncoin, Beebs et eBay (une ligne de hashtags tombait là où ils « ne servent pas », même écrite par
+  // elle). La règle 5 du 26/10 (pas de hashtags hors Vinted et Depop) ne vise que les hashtags de FillSell.
+  if (texteDuVendeur) return t;
   const limite = PLATEFORMES_A_HASHTAGS[platform] ?? 0;
-  if (!texteDuVendeur) t = genreFidele(etatFidele(t, fiche.etat), fiche);
-  if (texteDuVendeur && limite > 0) return t;
+  const protegees = [];
+  if (lignesDuVendeur && lignesDuVendeur.size) {
+    t = t.split("\n").map((l) => (l.trim() && lignesDuVendeur.has(cleDeLigne(l)) ? `${protegees.push(l) - 1}` : l)).join("\n");
+  }
+  const rendre = (s) => (protegees.length ? s.replace(/(\d+)/g, (_, i) => protegees[Number(i)]) : s);
+  t = genreFidele(etatFidele(t, fiche.etat), fiche);
   const fondes = motsDeLaFiche(fiche);
-  let gardes = 0;
+  // Sur Depop (5 au plus), les hashtags de la personne passent d'abord.
+  let gardes = protegees.reduce((n, l) => n + (l.match(RE_HASHTAG) ?? []).length, 0);
   // Là où un hashtag ne sert pas, une QUEUE de hashtags en fin de ligne (« … bon état. #vintage #femme ») tombe
   // entière : ce n'est pas une phrase. Un « #mot » isolé dans une phrase redevient « mot », plus bas.
   if (limite === 0) {
@@ -147,7 +159,26 @@ export function descriptionFidele(texte, platform, { fiche = {}, texteDuVendeur 
     if ((/\uE000|\uE001/.test(l)) && !sansMarques) return null;
     return l.replace(/\uE001/g, "").replace(/\uE000/g, "").replace(/[ \t]{2,}/g, " ").replace(/[ \t]+$/g, "");
   }).filter((l) => l !== null);
-  return lignes.join("\n").replace(/\n{3,}/g, "\n\n").replace(/\s+$/, "");
+  return rendre(lignes.join("\n").replace(/\n{3,}/g, "\n\n").replace(/\s+$/, ""));
+}
+
+/** La clé d'une ligne pour la comparer (espaces, casse et accents ignorés). */
+function cleDeLigne(l) {
+  return comparable(l).replace(/\s+/g, " ").trim();
+}
+
+/**
+ * (30/10, lot E) Les lignes du texte qui n'existent dans AUCUNE copie rédigée par FillSell : ce sont celles que la
+ * personne a écrites (ou retouchées). Copies inconnues → aucune ligne (la règle d'avant s'applique).
+ * @param {string} texte  le texte de la carte
+ * @param {Array<string|null|undefined>} copiesFillSell  les descriptions rédigées par FillSell (toutes plateformes)
+ * @returns {Set<string>}
+ */
+export function lignesEcritesParLaPersonne(texte, copiesFillSell) {
+  const copies = (copiesFillSell ?? []).filter((c) => typeof c === "string" && c.trim());
+  if (!copies.length) return new Set();
+  const deFillSell = new Set(copies.flatMap((c) => c.split("\n")).map(cleDeLigne).filter(Boolean));
+  return new Set(String(texte ?? "").split("\n").map(cleDeLigne).filter((k) => k && !deFillSell.has(k)));
 }
 
 /** Les plateformes où un hashtag sert (pour le dire à l'écran). */

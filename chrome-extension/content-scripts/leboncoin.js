@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const LEBONCOIN_BUILD = "2026-10-18-pro-poids-du-colis (formulaire PRO : la sonde des critères attend 15 s, « Poids du colis » et le repli par libellé compris, et le dit quand rien n'est vu ; seconde passe jouée même sonde muette ; au verdict, une valeur connue du job posée si la liste la porte, jamais hors liste, un seul recliquage) · 2026-10-18-pro-valider-et-payer (compte PRO hors forfait : le dépôt est préparé jusqu'à l'écran « Valider et payer », l'onglet est laissé à la personne qui paie elle-même — motif lbc_valider_et_payer, jamais un clic sur le paiement ; particulier inchangé) · 2026-10-16-pro-et-photos-gratuites (catégorie : le panneau des racines est reconnu à ses racines — un compte PRO ne voit pas « Divers » ; photos : le nombre gratuit est lu sur le formulaire au dépôt, seules les premières partent, jamais une photo payante) · 2026-10-08-ping (0.6.103 : FILLSELL_PING, réponse synchrone « je suis là ») · 2026-10-05-transporteurs-exacts (transporteurs Leboncoin : fenêtre attendue au calme après le poids, chaque case relue à neuf et vérifiée, ensemble exact avant « Valider », relu après validation et juste avant le dépôt ; un écart qui persiste = rien ne part, needsUser nommé) · 2026-10-02-mur-connexion-depot (0.6.84 : mur de connexion de la page de dépôt reconnu — jeton luat absent, phrase « Connectez-vous ou créez un compte », boutons « Me connecter » lus sans layout ; compte connecté signalé au background) · 2026-09-24-retrait-pro-tiroir-gerer (0.6.66 : annonce PRO en fenetre etroite — panneau de gestion absent sous 971 px, le controle Supprimer est cherche dans le tiroir « Gerer ») · 2026-09-14-retrait-challenge-et-releve (0.6.36, chemin de SUPPRESSION seul : le détecteur d'interstitiel anti-robot est hissé au module et interrogé AVANT de conclure « contrôle Supprimer introuvable » — sur les deux chemins, page d'annonce ET « Mes annonces » ; le relevé des actions réellement rendues part en `diagnostic` (donc en platform_fields.last_diagnostic) au lieu de mourir dans `trace` ; « Mes annonces » dit en plus combien de cartes ont été rendues ; le mur de cookies est refusé par fsConsentRefuser, la détection de la 0.6.35, et non plus par dismissDidomi qui ne voyait rien) — précédent : 2026-09-14-consentement-vu-enfin (0.6.35 : le mur de cookies Leboncoin est DÉTECTÉ — la détection part du contrôle de refus « Continuer sans accepter » et non plus du conteneur #didomi-host, qui existe à 0×0 et n'a jamais rien rendu ; refus cliqué, disparition ATTENDUE, trois points de sortie qui ne disent plus « brouillon » ; aucune tentative consommée) — précédent : 2026-09-09-adsubmit-est-la-preuve (0.6.24 : plus aucun re-clic du Continuer final dès qu'un adsubmit est parti ; 2xx = dépôt accepté, id lu ; 403 details[] = texte exact de Leboncoin)";
+const LEBONCOIN_BUILD = "2026-10-30-photos-nouvelle-page (0.6.160 : le nombre de photos gratuites lu dans la page — packPhotoConfig du composant photos, monde MAIN — puis sur les libellés de la NOUVELLE page « Cliquez et déposez jusqu'à N photos » ; seule une lecture chiffrée est stable ; quota vraiment illisible et plus de 3 photos : rien ne part, attente « lbc_photos_quota_illisible », jamais 3 photos en silence) · 2026-10-18-pro-poids-du-colis (formulaire PRO : la sonde des critères attend 15 s, « Poids du colis » et le repli par libellé compris, et le dit quand rien n'est vu ; seconde passe jouée même sonde muette ; au verdict, une valeur connue du job posée si la liste la porte, jamais hors liste, un seul recliquage) · 2026-10-18-pro-valider-et-payer (compte PRO hors forfait : le dépôt est préparé jusqu'à l'écran « Valider et payer », l'onglet est laissé à la personne qui paie elle-même — motif lbc_valider_et_payer, jamais un clic sur le paiement ; particulier inchangé) · 2026-10-16-pro-et-photos-gratuites (catégorie : le panneau des racines est reconnu à ses racines — un compte PRO ne voit pas « Divers » ; photos : le nombre gratuit est lu sur le formulaire au dépôt, seules les premières partent, jamais une photo payante) · 2026-10-08-ping (0.6.103 : FILLSELL_PING, réponse synchrone « je suis là ») · 2026-10-05-transporteurs-exacts (transporteurs Leboncoin : fenêtre attendue au calme après le poids, chaque case relue à neuf et vérifiée, ensemble exact avant « Valider », relu après validation et juste avant le dépôt ; un écart qui persiste = rien ne part, needsUser nommé) · 2026-10-02-mur-connexion-depot (0.6.84 : mur de connexion de la page de dépôt reconnu — jeton luat absent, phrase « Connectez-vous ou créez un compte », boutons « Me connecter » lus sans layout ; compte connecté signalé au background) · 2026-09-24-retrait-pro-tiroir-gerer (0.6.66 : annonce PRO en fenetre etroite — panneau de gestion absent sous 971 px, le controle Supprimer est cherche dans le tiroir « Gerer ») · 2026-09-14-retrait-challenge-et-releve (0.6.36, chemin de SUPPRESSION seul : le détecteur d'interstitiel anti-robot est hissé au module et interrogé AVANT de conclure « contrôle Supprimer introuvable » — sur les deux chemins, page d'annonce ET « Mes annonces » ; le relevé des actions réellement rendues part en `diagnostic` (donc en platform_fields.last_diagnostic) au lieu de mourir dans `trace` ; « Mes annonces » dit en plus combien de cartes ont été rendues ; le mur de cookies est refusé par fsConsentRefuser, la détection de la 0.6.35, et non plus par dismissDidomi qui ne voyait rien) — précédent : 2026-09-14-consentement-vu-enfin (0.6.35 : le mur de cookies Leboncoin est DÉTECTÉ — la détection part du contrôle de refus « Continuer sans accepter » et non plus du conteneur #didomi-host, qui existe à 0×0 et n'a jamais rien rendu ; refus cliqué, disparition ATTENDUE, trois points de sortie qui ne disent plus « brouillon » ; aucune tentative consommée) — précédent : 2026-09-09-adsubmit-est-la-preuve (0.6.24 : plus aucun re-clic du Continuer final dès qu'un adsubmit est parti ; 2xx = dépôt accepté, id lu ; 403 details[] = texte exact de Leboncoin)";
 console.log(`[leboncoin.js] build ${LEBONCOIN_BUILD}`);
 
 // Content script Leboncoin — pilote le WIZARD de dépôt d'annonce.
@@ -1641,7 +1641,11 @@ async function fillListingForm(job) {
     // (11/10, point 4) Pré-vol de recréation : la preuve (ou le champ bloquant)
     // part ICI, avant l'étape 4 — aucune description, aucun prix, aucun dépôt.
     if (prevolRecreation) return await lbcFinPrevolRecreation(avance, { warnings, unfilledRequired, t, trace });
-    if (avance.blocked) return avance.blocked;
+    if (avance.blocked) {
+      // (30/10) Arrêt avant tout envoi de photo : le dépôt entamé est jeté (« Quitter sans enregistrer »).
+      if (avance.quitterSansEnregistrer) await lbcQuitterDepotSansEnregistrer(t).catch(() => null);
+      return avance.blocked;
+    }
     ({ bodyArea, enumerated } = avance);
   }
 
@@ -1738,7 +1742,20 @@ async function fillListingForm(job) {
           ? `${communeOrigine.ville} ${communeOrigine.cp}`
           : (locOrigine.libelle || `${locOrigine.code_postal ?? ""} ${locOrigine.ville ?? ""}`))).replace(/\s+/g, " ").trim()
     : "";
-  const adresseAPoser = (estRepublication && adresseOrigine) ? adresseOrigine : fields.adresse;
+  // (30/10, lot E) LA VILLE CHOISIE POUR L'ANNONCE (réglage par défaut, changeable à la publication — app,
+  // publication/villeLbc.js) : l'annonce est localisée à cette COMMUNE (« ville code_postal », même saisie que la
+  // localisation d'origine) au lieu de l'adresse de remise. Une republication garde l'origine (c'est déjà elle).
+  const vChoisie = fields.ville_publication_lbc && typeof fields.ville_publication_lbc === "object" ? fields.ville_publication_lbc : null;
+  const villeChoisie = vChoisie && /^\d{5}$/.test(String(vChoisie.code_postal ?? "").trim()) && String(vChoisie.ville ?? "").trim()
+    ? { cp: String(vChoisie.code_postal).trim(), ville: String(vChoisie.ville).replace(/\s+/g, " ").trim() } : null;
+  const parVilleChoisie = Boolean(villeChoisie) && !(estRepublication && adresseOrigine);
+  const adresseAPoser = (estRepublication && adresseOrigine) ? adresseOrigine
+    : (parVilleChoisie ? `${villeChoisie.ville} ${villeChoisie.cp}` : fields.adresse);
+  if (parVilleChoisie) {
+    const note = `adresse: ville choisie pour l'annonce (« ${villeChoisie.ville} ${villeChoisie.cp} ») — elle prime sur l'adresse des Réglages`;
+    console.log(`[leboncoin] ${note}`);
+    warnings.push(note);
+  }
   if (estRepublication && adresseOrigine) {
     const note = `adresse: localisation de l'annonce d'origine (« ${adresseOrigine} ») — elle prime sur les Réglages sur une republication`;
     console.log(`[leboncoin] ${note}`);
@@ -1747,7 +1764,7 @@ async function fillListingForm(job) {
     console.log("[leboncoin] adresse: la capture n'a pas de localisation — repli sur l'adresse des Réglages");
   }
   const addressResult = await fillAddress(adresseAPoser, warnings, {
-    commune: (estRepublication && adresseOrigine) ? communeOrigine : null,
+    commune: (estRepublication && adresseOrigine) ? communeOrigine : (parVilleChoisie ? villeChoisie : null),
   });
   // Livraison : format du colis et transporteurs, sur la MÊME page que
   // l'adresse (« Remise du bien »). Jamais bloquant — cf. poserLivraisonLbc —
@@ -2900,6 +2917,18 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
     const choixPhotos = photosAEnvoyerLbc(job.photos, await lireQuotaPhotosLbcStable());
     bilanPhotosLbc = choixPhotos.bilan;
     if (choixPhotos.note) { console.warn(`[leboncoin] ${choixPhotos.note}`); warnings.push(choixPhotos.note); }
+    // (30/10, lot E) Quota vraiment illisible : rien ne part, la personne est prévenue (jamais 3 photos en silence).
+    // Le dépôt est quitté sans enregistrer par l'appelant (aucun brouillon laissé chez Leboncoin).
+    if (choixPhotos.bloque) {
+      return {
+        blocked: {
+          success: false, needsUser: true, attenteUtilisateur: true, attenteMotif: "lbc_photos_quota_illisible",
+          error: messageQuotaPhotosIllisibleLbc(choixPhotos.bilan.fiche),
+          warnings, unfilledRequired, photosLbc: choixPhotos.bilan,
+        },
+        quitterSansEnregistrer: true,
+      };
+    }
     const photoNote = await uploadPhotos(photoInput, choixPhotos.photos);
     if (photoNote) warnings.push(photoNote);
   }
@@ -6882,8 +6911,24 @@ async function urlToFile(url, index) {
 //     « Ajouter plus de 3 photos » une fois le gratuit rempli ;
 //   · une tuile par emplacement gratuit (10 affichées au plus), puis une tuile
 //     « Ajouter des photos supplémentaires » quand il en reste au-delà.
-// Illisible : le minimum que Leboncoin accorde (3, sa valeur par défaut pour
-// un particulier) — un dépôt à 3 photos part, un dépôt payant ne part jamais.
+// ── (30/10, lot E) LA NOUVELLE PAGE DE DÉPÔT, ET PLUS JAMAIS LE REPLI À 3 ──
+// CE QUI S'EST PASSÉ : depuis le 01/10, 347 lectures « illisible » (26
+// comptes), dont 200 dépôts partis avec 3 photos seulement (thecloset72000 :
+// 3 sur 15, trois fois). Leboncoin sert une NOUVELLE page de dépôt (« Dites-
+// nous en plus sur votre article », composant dynamic-deposit-input-photo-v2,
+// relevée le 30/10 sur le compte de Nico) : ni tuile « Ajouter N photos », ni
+// case d'emplacement avant envoi — une zone « Cliquez et déposez jusqu'à N
+// photos » (N = le gratuit ; avec un pack payant : « Cliquez et ajoutez des
+// photos », sans chiffre). Et la lecture « stable » acceptait deux
+// « illisible » de suite : 0,7 s après l'apparition du champ, c'était fini.
+// RÈGLE : (1) le nombre se lit d'abord dans la page elle-même (packPhotoConfig
+// du composant photos, monde MAIN — background LBC_MAIN_FONCTIONS.lireQuotaPhotos),
+// puis sur les libellés des deux pages ; (2) seule une lecture CHIFFRÉE est
+// stable ; (3) vraiment illisible et plus de photos que le minimum : RIEN ne
+// part, la personne est prévenue (attente « lbc_photos_quota_illisible »,
+// Relancer) — jamais une annonce amputée en silence.
+// Le minimum de Leboncoin (3, particulier) reste le seul nombre sûr sans
+// lecture : une fiche de 3 photos ou moins part toujours.
 const LBC_PHOTOS_GRATUITES_MINIMUM = 3;
 const LBC_TUILE_EN_PLUS = '[aria-label="Ajouter des photos supplémentaires"]';
 let bilanPhotosLbc = null;
@@ -6896,6 +6941,11 @@ function quotaPhotosDepuisLibelle(texte) {
   m = t.match(/^Ajouter (?:jusqu[\u0027\u2019]à )?(\d{1,3}) photos?$/i);
   if (m) return { n: Number(m[1]), source: "libelle_sans_pack" };
   if (/^Ajouter des photos$/i.test(t)) return { n: null, source: "libelle_pack_payant" };
+  // (30/10) Nouvelle page de dépôt : la zone vide dit le gratuit (« jusqu'à {max} »,
+  // max = le gratuit quand aucun pack n'est proposé), ou rien de chiffré avec un pack.
+  m = t.match(/^Cliquez et déposez jusqu['’]à (\d{1,3}) photos?$/i);
+  if (m) return { n: Number(m[1]), source: "libelle_v2" };
+  if (/^Cliquez et ajoutez des photos$/i.test(t)) return { n: null, source: "libelle_v2_pack_payant" };
   return null;
 }
 
@@ -6906,7 +6956,10 @@ function lireEmplacementsPhotosLbc(doc = document) {
   // Le libellé exact : son <span id="refDrop">, sinon l'aria-label de la zone
   // de dépôt (le même texte), sinon la tuile entière (dont l'icône peut porter
   // un titre). Le premier qui se lit l'emporte.
-  const candidats = [doc.querySelector('[id="refDrop"]')?.textContent, zone?.getAttribute?.("aria-label"), tuile?.textContent]
+  // (30/10) Nouvelle page : les paragraphes de la zone de dépôt du composant photo v2.
+  const blocV2 = doc.querySelector('[data-qa-id$="dynamic-deposit-input-photo-v2"]');
+  const zoneV2 = blocV2 ? [...blocV2.querySelectorAll("p")].map((p) => p.textContent) : [];
+  const candidats = [doc.querySelector('[id="refDrop"]')?.textContent, zone?.getAttribute?.("aria-label"), tuile?.textContent, ...zoneV2]
     .map((t) => String(t ?? "").replace(/\s+/g, " ").trim()).filter(Boolean);
   const libelle = candidats.find((t) => quotaPhotosDepuisLibelle(t)) ?? candidats[0] ?? "";
   let emplacements = null;
@@ -6943,19 +6996,33 @@ function quotaPhotosGratuitesLbc(lecture) {
   return { gratuites: null, source: l?.source ?? "illisible" };
 }
 
-/** Les photos à envoyer : les N premières, dans l'ordre de la fiche, et le bilan. */
+/** Les photos à envoyer : les N premières, dans l'ordre de la fiche, et le bilan.
+ *  (30/10) Quota illisible et plus de photos que le minimum : bloque = true, AUCUNE photo
+ *  retenue — l'appelant arrête le dépôt et prévient la personne (jamais d'annonce amputée). */
 function photosAEnvoyerLbc(photos, quota) {
   const liste = Array.isArray(photos) ? photos : [];
   const gratuites = Number.isInteger(quota?.gratuites) && quota.gratuites > 0 ? quota.gratuites : null;
-  const envoyees = liste.slice(0, gratuites ?? LBC_PHOTOS_GRATUITES_MINIMUM);
-  const bilan = { gratuites, source: quota?.source ?? "illisible", fiche: liste.length, envoyees: envoyees.length, at: new Date().toISOString() };
+  const bloque = gratuites == null && liste.length > LBC_PHOTOS_GRATUITES_MINIMUM;
+  const envoyees = bloque ? [] : liste.slice(0, gratuites ?? LBC_PHOTOS_GRATUITES_MINIMUM);
+  const bilan = {
+    gratuites, source: quota?.source ?? "illisible", fiche: liste.length, envoyees: envoyees.length, at: new Date().toISOString(),
+    ...(quota?.page ? { page: quota.page } : {}),
+    ...(bloque ? { arrete: true } : {}),
+  };
   let note = null;
-  if (envoyees.length < liste.length) {
-    note = gratuites != null
-      ? `photos: Leboncoin offre ${gratuites} photo(s) gratuite(s) ici (lu sur le formulaire : ${bilan.source}) — les ${envoyees.length} premières envoyées sur ${liste.length}, aucune photo payante`
-      : `photos: nombre de photos gratuites illisible sur le formulaire — les ${envoyees.length} premières envoyées sur ${liste.length} (minimum gratuit de Leboncoin), aucune photo payante`;
+  if (bloque) {
+    note = `photos: Leboncoin n'a pas affiché combien de photos sont gratuites ici — dépôt arrêté avant tout envoi (${liste.length} photos sur la fiche, aucune annonce amputée)`;
+  } else if (envoyees.length < liste.length) {
+    note = `photos: Leboncoin offre ${gratuites} photo(s) gratuite(s) ici (lu sur le formulaire : ${bilan.source}) — les ${envoyees.length} premières envoyées sur ${liste.length}, aucune photo payante`;
   }
-  return { photos: envoyees, bilan, note };
+  return { photos: envoyees, bilan, note, bloque };
+}
+
+/** (30/10) Le message de l'attente quand le quota est vraiment illisible. */
+function messageQuotaPhotosIllisibleLbc(fiche) {
+  return `Leboncoin n'a pas affiché combien de photos sont gratuites : rien n'est parti (plutôt qu'une annonce à `
+    + `${LBC_PHOTOS_GRATUITES_MINIMUM} photos sur ${fiche}). Relance ; si cela revient, choisis au plus `
+    + `${LBC_PHOTOS_GRATUITES_MINIMUM} photos pour Leboncoin dans la personnalisation.`;
 }
 
 /** Mur « Valider et payer » : quand les photos parties tiennent dans le gratuit LU sur
@@ -6972,16 +7039,28 @@ function joindreBilanPhotosLbc(resultat) {
   return resultat;
 }
 
-/** Le quota lu deux fois de suite à l'identique (le pack de la catégorie arrive après elle). */
-async function lireQuotaPhotosLbcStable() {
+/** (30/10) Le quota tel que la page le calcule (packPhotoConfig, monde MAIN) : { gratuites, source } ou null. */
+async function quotaPhotosDepuisPageLbc(demander = demanderMainLbc) {
+  const r = await demander("lireQuotaPhotos", []);
+  if (!r?.ok || !Number.isInteger(r.basicPhotoLimit) || r.basicPhotoLimit <= 0) return null;
+  // Des photos déjà dans la galerie (brouillon restauré) : le gratuit reste le même nombre.
+  return { gratuites: r.basicPhotoLimit, source: "page_lbc", page: { max: r.maxPackPhotoLimit ?? null, pack_gratuit: r.hasFreePackPhoto === true } };
+}
+
+/** Le quota lu deux fois de suite à l'identique (le pack de la catégorie arrive après elle).
+ *  (30/10) Seule une lecture CHIFFRÉE compte : deux « illisible » de suite ne sont plus une réponse
+ *  (la galerie n'était simplement pas encore dessinée) ; la page (monde MAIN) passe avant les libellés. */
+async function lireQuotaPhotosLbcStable(demander = demanderMainLbc) {
   let avant = null;
-  for (let i = 0; i < 6; i++) {
-    const q = quotaPhotosGratuitesLbc(lireEmplacementsPhotosLbc(document));
-    if (avant && q.gratuites === avant.gratuites && q.source === avant.source) return q;
-    avant = q;
+  let dernier = null;
+  for (let i = 0; i < 12; i++) {
+    const q = (await quotaPhotosDepuisPageLbc(demander)) ?? quotaPhotosGratuitesLbc(lireEmplacementsPhotosLbc(document));
+    if (q.gratuites != null && avant && q.gratuites === avant.gratuites && q.source === avant.source) return q;
+    avant = q.gratuites != null ? q : null;
+    dernier = q;
     await sleep(700);
   }
-  return avant;
+  return dernier;
 }
 
 async function uploadPhotos(input, photos) {

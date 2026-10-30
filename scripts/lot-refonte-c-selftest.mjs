@@ -97,7 +97,22 @@ ok(D.descriptionFidele("Robe homme taille M.", "vinted", { fiche: { titre: "Robe
 ok(D.descriptionFidele("Veste pour femme.", "vinted", { fiche: { titre: "Veste femme" } }) === "Veste pour femme.", "« pour femme » fondé par le titre : il reste");
 const vendeur = "Mon pull, bon état. #vintage #femme";
 ok(D.descriptionFidele(vendeur, "vinted", { fiche, texteDuVendeur: true }) === vendeur, "le texte du vendeur fait foi sur Vinted (état et hashtags gardés)");
-ok(D.descriptionFidele(vendeur, "leboncoin", { fiche, texteDuVendeur: true }) === "Mon pull, bon état.", "… sur Leboncoin, seule la ligne de hashtags tombe (son état reste le sien)", D.descriptionFidele(vendeur, "leboncoin", { fiche, texteDuVendeur: true }));
+// (30/10, lot E) Le texte du vendeur part TEL QUEL partout (avant : sa ligne de hashtags tombait hors Vinted/Depop).
+for (const p of ["leboncoin", "beebs", "ebay", "opla"]) ok(D.descriptionFidele(vendeur, p, { fiche, texteDuVendeur: true }) === vendeur, `… et sur ${p} aussi (lot E : hashtags du vendeur gardés)`, D.descriptionFidele(vendeur, p, { fiche, texteDuVendeur: true }));
+// thecloset72000, 30/10 : sa référence ajoutée sous le texte de FillSell, absente de toute copie rédigée.
+const copies = { vinted: ["Jean Lee bleu.", "", "Envoi rapide ! 🚀", "", "#lee #jean #relaxedfit"].join("\n"), leboncoin: "Jean Lee bleu. Remise en main propre." };
+const carte = ["Jean Lee bleu.", "", "#the_closet72jeanFR44 #jean"].join("\n");
+const siennes = D.lignesEcritesParLaPersonne(carte, Object.values(copies));
+ok(siennes.size === 1 && [...siennes][0].includes("the_closet72jeanfr44"), "lignes écrites par la personne : sa référence seulement (le texte de FillSell n'en fait pas partie)", JSON.stringify([...siennes]));
+for (const p of ["vinted", "depop", "leboncoin", "beebs", "ebay"]) {
+  const out = D.descriptionFidele(carte, p, { fiche: { titre: "Jean Lee", etat: "Bon état" }, lignesDuVendeur: siennes });
+  ok(out.endsWith("#the_closet72jeanFR44 #jean"), `${p} : « #the_closet72jeanFR44 #jean » part tel quel (lot E)`, out);
+}
+const ia2 = ["Jean Lee bleu.", "", "#lee #jean #relaxedfit"].join("\n");
+ok(!D.descriptionFidele(ia2, "leboncoin", { fiche: { titre: "Jean Lee bleu" }, lignesDuVendeur: D.lignesEcritesParLaPersonne(ia2, Object.values(copies)) }).includes("#"), "les hashtags de FillSell, eux, tombent toujours sur Leboncoin (règle 5)");
+ok(D.lignesEcritesParLaPersonne(carte, []).size === 0, "copies inconnues : aucune ligne protégée (règle d'avant)");
+const dep2 = D.descriptionFidele(["Pull.", "#pull #laine #bleu #vintage", "#ma_ref #stock2"].join("\n"), "depop", { fiche: { titre: "Pull laine bleu vintage" }, lignesDuVendeur: new Set(["#ma_ref #stock2"]) });
+ok((dep2.match(/#/g) ?? []).length === 5 && dep2.includes("#ma_ref #stock2"), "Depop : les hashtags de la personne passent d'abord, 5 au plus en tout", dep2);
 ok(D.hashtagsServent("vinted") && D.hashtagsServent("depop") && !D.hashtagsServent("leboncoin") && !D.hashtagsServent("ebay") && !D.hashtagsServent("beebs"), "hashtags utiles : Vinted et Depop seulement");
 ok(D.descriptionFidele("", "vinted", { fiche }) === "", "un texte vide reste vide (rien n'est ajouté)");
 
@@ -126,7 +141,7 @@ ok(!/text-overflow:\s*ellipsis/.test(blocC) && !/-webkit-line-clamp/.test(blocC)
 ok(/className="fsf-retirer-pf"/.test(fa) && /Ne pas publier sur/.test(fa), "le retrait d'une plateforme est un bouton « ✕ Ne pas publier sur X » (règle 3)");
 ok(/statutPlateforme\(/.test(fa) && /"Prêt"|Prêt/.test(fa) && /À régler/.test(fa), "chaque section de plateforme affiche son statut Prêt / À régler (règle 3)");
 ok(/<FicheArticle m=\{m\}/.test(ver), "« Vérifier » d'un seul article monte la même pop-up (C11)");
-ok(/descriptionFidele\(edited\[platform\]\?\.description \?\? "", platform, \{ fiche: ficheTexte, texteDuVendeur \}\)/.test(mr), "le texte qui PART passe par descriptionFidele (construireJobs)");
+ok(/descriptionFidele\(edited\[platform\]\?\.description \?\? "", platform, \{\s*fiche: ficheTexte, texteDuVendeur,\s*lignesDuVendeur: lignesEcritesParLaPersonne\(edited\[platform\]\?\.description \?\? "", Object\.values\(descriptionsGenerees \?\? \{\}\)\),\s*\}\)/.test(mr), "le texte qui PART passe par descriptionFidele (construireJobs), lignes de la personne comprises (lot E)");
 ok(/descriptionFidele\(/.test(fa) && /hashtagsServent\(/.test(fa), "le texte MONTRÉ aussi (même fonction)");
 ok(/seulementLeRayon rechercheOuverte=\{ouvert === "rayon"\}/.test(fa), "« Changer » ouvre la recherche de rayon d'office, la carte ne redit ni la limite ni les champs");
 ok(/phase === "rien" && etats\[id\]\?\.ecartement/.test(lp) && /prev\[id\]\?\.phase === "rien" && prev\[id\]\?\.ecartement/.test(lp), "un article qui ne part nulle part (sa seule plateforme écartée d'office) a son « Annuler »");
