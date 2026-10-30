@@ -369,3 +369,10 @@ test('(30/10) relais Chrome : Beebs seul par le résidentiel, tout le reste par 
   assert.deepEqual(pol.ExtensionInstallForcelist, ['dnankhhfellobiobloopcjgkdioblpjd;http://127.0.0.1:3129/update.xml']);
   assert.equal(pol.DownloadRestrictions, 3); assert.equal(pol.PasswordManagerEnabled, false);
 });
+
+test('(30/10) Leboncoin : la page de connexion part de « Mes annonces » (la /se-connecter rend une 404) vers auth.leboncoin.fr', async () => {
+  const { DEFINITIONS } = await import('../src/plateformes.js');
+  assert.equal(DEFINITIONS.leboncoin.pageConnexion, 'https://www.leboncoin.fr/compte/part/mes-annonces');
+  assert.equal(navigationPermise('leboncoin', DEFINITIONS.leboncoin.pageConnexion), true);
+  assert.equal(navigationPermise('leboncoin', 'https://auth.leboncoin.fr/login/?client_id=lbc-front-web'), true);
+});

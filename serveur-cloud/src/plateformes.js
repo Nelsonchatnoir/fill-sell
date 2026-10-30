@@ -45,7 +45,9 @@ export const DEFINITIONS = Object.freeze({
   },
   leboncoin: {
     nom: 'Leboncoin',
-    pageConnexion: 'https://www.leboncoin.fr/se-connecter',
+    // (30/10, lot D) /se-connecter rend une 404, même dans un vrai Chrome : « Mes annonces » renvoie un visiteur non
+    // connecté vers la vraie page de connexion (auth.leboncoin.fr/login), relu le 30/10.
+    pageConnexion: 'https://www.leboncoin.fr/compte/part/mes-annonces',
     domaine: /(^|\.)leboncoin\.fr$/,
     cheminsPermis: [/^\/$/, /^\/se-connecter/, /^\/connexion/, /^\/login/, /^\/oauth/, /^\/compte\/part\/mes-annonces/],
     hotesPermis: [/^(www\.)?leboncoin\.fr$/, /^auth\.leboncoin\.fr$/, /^api\.leboncoin\.fr$/],
