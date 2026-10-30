@@ -235,3 +235,79 @@ production) que DataDome refuse. Suite décidée par Nico : Shadow.
 Règle à inscrire dans le code avant l'essai Shadow :
 - aucune visite automatique d'une plateforme non connectée ;
 - aucun contrôle d'IP qui passe par une plateforme.
+
+## 8. Essai sur le PC Windows de Nico, piloté comme en production (30/10) : ÇA PASSE
+Ordre de Nico : un essai unique sur une vraie machine, Chrome piloté comme en production. Avant l'essai, les deux
+mécanismes qui visitaient seuls les plateformes ont été neutralisés et poussés (`7e49884`) :
+- la sonde de la copie Cloud ne part plus sans cookie de connexion ;
+- le contrôle des IP n'ouvre plus aucune page de plateforme.
+
+Suite complète : 498 selftests, 0 rouge.
+
+**Conditions** (`serveur-cloud/outils/essai-me-connecter-pc.mjs`) :
+- **Navigateur** : Google Chrome 156.0.8078.48 officiel (Windows 11), profil neuf.
+- **Carte graphique réelle** : « ANGLE (AMD, AMD Radeon(TM) Graphics … Direct3D11) », WebGL actif.
+- **Extension** : copie Cloud `…+0feb4a9-cloud`, installée au démarrage par `Extensions.loadUnpacked`. Chrome 156
+  ignore `--load-extension`, et la stratégie d'entreprise toucherait le Chrome de tous les jours.
+- **Sortie** : relais du conteneur, puis IP fixe 2 (185.134.194.88).
+- **Pilotage** : « Me connecter » de `connexion.js` par CDP (format téléphone 390×844, tactile émulé, images et
+  accusés comme l'app). Mêmes écarts que l'essai serveur : session FillSell non posée, base simulée.
+
+| Plateforme | Verdict | Détail (heure de Paris) |
+|---|---|---|
+| Leboncoin | **GLISSIÈRE**, passable par l'utilisateur | 15:37:12. « Mes annonces » s'affiche, puis sur auth.leboncoin.fr : « On s'assure qu'on s'adresse bien à vous… Faites glisser vers la droite ». Motif « comportement du navigateur », IP 185.134.194.88. ID 4cfef139-485c-1f90-bcf8-8397cd7f72d2. |
+| Beebs | **FORMULAIRE** : passe | 15:44:55. « Inscription / Connexion » (Kiabi, Google, Facebook, e-mail). |
+
+**Comparaison.** Sur le serveur, au même pilotage, c'était « Accès temporairement restreint » des deux côtés, avec
+cette même IP 2 le matin et une IP neuve à 14:55. Le vrai matériel change le verdict : le pilotage n'est pas ce qui
+bloque. La glissière de Leboncoin reste à la main de l'utilisateur, dans « Me connecter », sans aucun résolveur.
+
+**Défauts de production trouvés par l'essai et corrigés.** Rien n'est déployé : le Cloud est arrêté.
+1. **« Me connecter » adoptait les onglets déjà ouverts et les fermait à la fin** (`connexion.js`).
+   - Cause : `setDiscoverTargets` annonce les onglets existants sans `openerId`, alors que la cible n'existe pas
+     encore, et `[undefined].includes(undefined)` répond vrai.
+   - Effets : sous Windows, Chrome s'est fermé avec son dernier onglet. Le premier passage de Beebs (15:37:37) est
+     mort avant toute page, donc aucune visite. En production, un onglet de travail de l'extension aurait été fermé
+     en pleine publication.
+   - Corrigé : `ouverteParLaConnexion`, avec un test.
+2. **Beebs était dite « connectée » pour tout visiteur.**
+   - Cause : Beebs pose un jeton Firebase anonyme (`provider_id` et `firebase.sign_in_provider` « anonymous », relus
+     hors réseau dans le profil de l'essai).
+   - Effet : « Me connecter » se fermait sur « connecté » 2 s après l'ouverture, et la nouvelle règle de la sonde
+     l'aurait prise pour une connexion.
+   - Corrigé dans `estConnectee` (orchestrateur) et dans la copie Cloud, avec des tests.
+
+**Reste à couvrir avant la mise en production.** D'autres tâches automatiques de la copie Cloud visitent encore les
+plateformes même sans connexion : relevés quotidiens Leboncoin et Beebs, relevés de ventes, détection de vente,
+messagerie. La règle qui les couvre toutes : un verrou dans le relais du navigateur. Une plateforme n'y est joignable
+que si elle est connectée, ou pendant son « Me connecter ».
+
+## 9. Machines louables à vrai matériel : comparatif (30/10, prix HT lus ce jour)
+Coût par utilisateur = machine ÷ utilisateurs + IP fixe (4,64 €). Recette d'un utilisateur : 20 € TTC, soit
+≈ 16 € net. Capacité = min(2 × fils d'exécution ; (RAM − 5 Go) ÷ 1,2 Go), estimée, à mesurer.
+
+| Machine | € / mois | Utilisateurs | € / utilisateur | Carte graphique et pilote | Conditions et licence |
+|---|---|---|---|---|---|
+| **Shadow Power Pro + Always On** (8 vCores, 28 Go, RTX A4500 ; France) | 54,99 + Always On (prix non publié) | ≈ 16 | **≈ 8,1 € + Always On ÷ 16** | NVIDIA avec pilotes, Windows 11 | **accord écrit de Shadow requis** (CGV : « prestations commerciales », mise à disposition de tiers) |
+| **Mini-PC acheté + hébergé** (Beelink SER8, Ryzen 7 8745HS, Radeon 780M, 32 Go, Windows 11 Pro) | 1 050 € TTC une fois (24,31 € / mois sur 36 mois) + hébergement Paris 34,40 € (YorkHost, + 30 € de mise en service) | ≈ 16 | **≈ 8,3 €** | même famille que le PC de Nico qui passe (AMD Radeon intégrée, Windows 11) | **licence Windows 11 OEM §2.c(v)** : interdit « commercial hosting services » et un appareil « for use only by remote users » |
+| **Hetzner EX44 + Windows Server 2025** (i5-13500, UHD 770, 64 Go ; Allemagne / Finlande) | 59 + 49 = 108 ; sans mise en service ni durée minimale | ≈ 40 | **≈ 7,3 €** (11,4 € à 16 utilisateurs) | iGPU vue active sur l'EX44 (rapport 2023) ; **pilote Intel non prévu pour Windows Server** (Windows 10/11 seulement) : risque de rendu logiciel, la configuration bloquée | CGV §7.1 : tiers permis ; licence RDS par utilisateur possible (Microsoft, « host a graphical user interface ») |
+| OVH KS-GAME + Windows Server (i7-7700K, HD 630, 32 Go ; Gravelines / Strasbourg) | 28,99 + 28 = 57 (+ 28,99 de mise en service) | ≈ 16 | ≈ 8,2 € | iGPU **désactivée** sur les cartes OVH d'après plusieurs rapports ; pilote non prévu sur Windows Server | CGS §10.6 : tiers permis |
+| Mac mini loué (OakHost M4 32 Go 135 € ; Mac Mini Vault M4 32 Go ≈ 157 €) | 135 à 157 | ≈ 20 | ≈ 11,4 à 12,5 € | Apple, réelle | **exclu** : licence macOS §3A (location seulement pour des « Permitted Developer Services ») et §2I (« service bureau, time-sharing ») ; MacStadium interdit aussi « service bureau » et proxys |
+| Rappel : grands clouds à GPU (Azure, AWS, Google) | 315 à 542 | 9 à 12 | 40 à 63 € | GPU de centre de données | permis, mais trop cher |
+
+**Lecture.**
+- Toutes les options à vrai matériel tiennent sous 20 € par utilisateur, entre 7 et 12 €, IP comprise.
+- La différence se joue sur deux points : la carte graphique doit vraiment servir (pilote présent), et la licence
+  doit permettre l'usage.
+- **Shadow** coche les deux : Windows 11, pilotes NVIDIA, licence portée par Shadow s'il donne son accord écrit.
+- **Hetzner EX44** est le moins cher à grande échelle, avec des conditions nettes. Mais le pilote Intel n'existe pas
+  pour Windows Server, et sans pilote on retombe sur le rendu logiciel bloqué.
+- **Mini-PC** : techniquement le plus proche de ce qui passe, mais la licence Windows 11 interdit l'hébergement
+  commercial.
+
+**Règle pour toute machine retenue.** Avant toute plateforme, contrôle hors réseau (proxy mort) de la carte
+graphique vue par Chrome, comme le 30/10 (`essai-me-connecter-pc.mjs --verifier`) : le rendu ANGLE doit nommer la
+vraie carte. Sinon, résiliation sans aucune visite.
+
+**À observer ensuite.** Sur le vrai PC, Leboncoin a tout de même présenté une glissière. Après la connexion de Nico,
+quelques jours à cadence normale de production diront si les publications en arrière-plan restent sans vérification.

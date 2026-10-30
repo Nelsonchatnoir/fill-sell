@@ -576,3 +576,8 @@ Le récit détaillé : dépôt `docs/enquetes/lot-d-3010/RAPPORT.md` ; l'état d
   Leboncoin et Beebs **BLOQUÉS** d'emblée : un serveur Linux sans carte graphique est refusé par nature. Suite :
   Shadow (Nico fait la demande). Avant tout essai : neutraliser la sonde horaire des plateformes non connectées et
   le contrôle d'entrée des IP (pages d'accueil des plateformes) — rapport § 7.
+- **30/10 15:45** : essai sur le PC Windows de Nico (vrai matériel, piloté comme en production) → Leboncoin
+  GLISSIÈRE, Beebs FORMULAIRE : le vrai matériel règle le blocage. Correctifs `7e49884` (aucune visite automatique
+  d'une plateforme non connectée) et `c932ce3` (« Me connecter » : onglets existants, Beebs anonyme), NON déployés
+  (Cloud arrêté). Comparatif des machines louables : rapport § 9. Avant toute machine : contrôle hors réseau de la
+  carte graphique (`essai-me-connecter-pc.mjs --verifier`).
