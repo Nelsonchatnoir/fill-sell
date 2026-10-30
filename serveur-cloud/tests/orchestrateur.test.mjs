@@ -308,3 +308,42 @@ test('(30/10) coffre : une connexion faite qui lâche passe « à reconnecter »
   b = await coffre.sauvegarderCookies('u', []);
   assert.equal(b.leboncoin, 'absente', 'une seule écriture : la ligne dit déjà « à reconnecter »');
 });
+
+test('(30/10) rotation : un compte dont le Cloud est fini est PURGÉ (navigateur, profil, coffre, session) — au plus tard grâce + 1 h', async () => {
+  const { creerEntretien } = await import('../src/entretien.js');
+  const notes = []; const detruits = []; const vides = []; const revoquees = [];
+  const etats = { u_fini: { actif: false, etat: 'aucun' }, u_actif: { actif: true, etat: 'paye' }, u_grace: { actif: false, etat: 'essai_termine', essaiFin: new Date(Date.now() - 86_400_000).toISOString() } };
+  const base = {
+    from(table) {
+      const lignes = table === 'cloud_postes'
+        ? [{ user_id: 'u_fini', session_fillsell_id: 's1', details: { profil: 'p1' } }, { user_id: 'u_actif', session_fillsell_id: 's2', details: { profil: 'p2' } }, { user_id: 'u_grace', session_fillsell_id: 's3', details: { profil: 'p3' } }]
+        : [{ user_id: 'u_fini' }];
+      return { select: async () => ({ data: lignes, error: null }) };
+    },
+    async rpc(nom, a) {
+      if (nom === 'cloud_etat') return { data: etats[a.p_user], error: null };
+      if (nom === 'cloud_param') return { data: 2, error: null };
+      if (nom === 'cloud_poste_noter') { notes.push(a); return { data: true, error: null }; }
+      return { data: null, error: null };
+    },
+  };
+  const e = creerEntretien({
+    config: {}, base, regles: {}, controles: {}, iproyal: {}, fournisseurIp: null,
+    navigateurs: { async detruire(u, p) { detruits.push([u, p]); return { profilsRestants: 0 }; } },
+    coffre: { async lire() { return {}; }, async vider(u) { vides.push(u); return 1; } },
+    sessions: { async revoquer(u, s) { revoquees.push([u, s]); } },
+    alertes: { async signaler() {} }, journal: { info() {}, erreur() {}, alerte() {} },
+  });
+  const n = await e.purgerComptesInactifs();
+  assert.equal(n, 1, 'seul le compte fini hors grâce');
+  assert.deepEqual(detruits, [['u_fini', 'p1']]); assert.deepEqual(vides, ['u_fini']); assert.deepEqual(revoquees, [['u_fini', 's1']]);
+  assert.equal(notes[0].p_user, 'u_fini'); assert.ok(notes[0].p_details.purge, 'la date de purge est notée');
+});
+
+test('(30/10) Beebs : la page de connexion est /fr/auth (la /fr/login rend une 404), Kiabi limité à son authentification', async () => {
+  const { DEFINITIONS } = await import('../src/plateformes.js');
+  assert.equal(DEFINITIONS.beebs.pageConnexion, 'https://www.beebs.app/fr/auth');
+  assert.equal(navigationPermise('beebs', 'https://www.beebs.app/fr/auth'), true);
+  assert.equal(navigationPermise('beebs', 'https://www.kiabi.com/'), false);
+  assert.equal(navigationPermise('beebs', 'https://www.beebs.app/fr/recherche?q=robe'), false);
+});

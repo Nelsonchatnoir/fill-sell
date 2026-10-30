@@ -59,6 +59,50 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
     return r;
   }
 
+  /**
+   * (30/10, lot D) LA PURGE EN ROTATION — la promesse « effacé au plus tard 3 jours après la fin » (conditions,
+   * art. 8 ; confidentialité 4.8). Sans IP attribuée, la purge du 05/10 (déclenchée par l'IP qui part au repos) ne
+   * s'éveille jamais : on purge donc PAR COMPTE. Un compte dont le Cloud n'est plus actif (essai fini hors grâce de
+   * `grace_jours`, arrêt, fin d'abonnement, compte supprimé) et qui garde des données Cloud (coffre, session FillSell
+   * du navigateur, profil non purgé) : navigateur et profil détruits, coffre vidé, session révoquée — à chaque entretien
+   * horaire, donc au plus tard grâce (2 j) + 1 h après la fin.
+   */
+  async function purgerComptesInactifs(maintenant = Date.now()) {
+    const [{ data: postes }, { data: coffres }] = await Promise.all([
+      base.from('cloud_postes').select('user_id, session_fillsell_id, details'),
+      base.from('cloud_coffre').select('user_id'),
+    ]);
+    const parUser = new Map();
+    for (const po of postes ?? []) parUser.set(po.user_id, { poste: po, coffre: false });
+    for (const c of coffres ?? []) parUser.set(c.user_id, { ...(parUser.get(c.user_id) ?? { poste: null }), coffre: true });
+    const purges = [];
+    for (const [user, { poste, coffre: aCoffre }] of parUser) {
+      const restes = aCoffre || Boolean(poste?.session_fillsell_id) || (poste?.details?.profil && !poste?.details?.purge);
+      if (!restes) continue;
+      const { data: e } = await base.rpc('cloud_etat', { p_user: user });
+      if (e?.actif === true) continue;
+      const fin = Date.parse(String(e?.essaiFin ?? ''));
+      const graceJ = Number((await base.rpc('cloud_param', { p_cle: 'grace_jours', p_defaut: 2 })).data ?? 2);
+      if (e?.etat === 'essai_termine' && e?.essaiArrete !== true && Number.isFinite(fin) && fin + graceJ * 86_400_000 > maintenant) continue;
+      try {
+        const c = await coffre.lire(user).catch(() => ({}));
+        const sessionCoffre = c.fillsell?.own ? claims(c.fillsell.own.access_token)?.session_id : null;
+        const { profilsRestants } = await navigateurs.detruire(user, poste?.details?.profil ?? null);
+        await coffre.vider(user);
+        let revoquee = true;
+        for (const s of new Set([poste?.session_fillsell_id, sessionCoffre].filter(Boolean))) {
+          try { await sessions.revoquer(user, s); } catch (err) { revoquee = false; journal.erreur('purge_revocation_echec', { user, erreur: err.message }); }
+        }
+        const le = new Date().toISOString();
+        await base.rpc('cloud_poste_noter', { p_user: user, p_etat: 'eteint', p_details: { purge: le, session_fillsell_id: '', profil_detruit: profilsRestants === 0 } });
+        journal.info('purge_compte', { user: String(user).slice(0, 8), etat: e?.etat ?? 'inconnu', profil_detruit: profilsRestants === 0, session_revoquee: revoquee });
+        purges.push(user);
+        if (profilsRestants !== 0 || !revoquee) await alertes.signaler('serveur', `Purge incomplète du compte ${String(user).slice(0, 8)} (rotation).`);
+      } catch (err) { journal.erreur('purge_compte_echec', { user: String(user).slice(0, 8), erreur: err.message }); }
+    }
+    return purges.length;
+  }
+
   async function tour() {
     const bilan = {};
     const { data: e1, error } = await base.rpc('cloud_pool_entretien');
@@ -112,6 +156,7 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
     // En ROTATION, un compte n'attend jamais une IP dédiée : pas de plan d'achat ni d'alerte « pool vide ».
     if (await fournisseurIp?.rotationActive().catch(() => false)) {
       bilan.rotation = true;
+      bilan.purges_comptes = await purgerComptesInactifs().catch((e2) => { journal.erreur('purge_comptes_echec', { erreur: e2.message }); return null; });
       journal.info('entretien', bilan);
       return bilan;
     }
@@ -137,5 +182,5 @@ export function creerEntretien({ config, base, navigateurs, coffre, sessions, ip
     return bilan;
   }
 
-  return { tour, purger };
+  return { tour, purger, purgerComptesInactifs };
 }

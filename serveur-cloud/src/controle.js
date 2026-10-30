@@ -8,6 +8,7 @@ import { resolve4 } from 'node:dns/promises';
 import { rm } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { connecterCdp } from './cdp.js';
+import { EXPRESSION_EMPREINTE } from './empreinte.js';
 
 const LISTES = [
   { zone: 'zen.spamhaus.org', liste: (a) => /^127\.0\.0\.(2|3|4|9|10|11)$/.test(a) },
@@ -123,5 +124,14 @@ export function creerControles({ config, docker, journal }) {
       return r;
     });
   }
-  return { controler, essaiPageConnexion };
+  /** (30/10, lot D) Ce que voit un site : en-têtes renvoyés par un écho public, puis l'empreinte JavaScript. */
+  async function empreinte({ ipId, proxyUrl, options = {} }) {
+    return avecNavigateurNeuf({ ipId, proxyUrl, options }, async (lire, cdp, sessionId) => {
+      const entetes = await lire('https://httpbin.org/headers', 5000);
+      const ev = await cdp.send('Runtime.evaluate', { expression: EXPRESSION_EMPREINTE, awaitPromise: true, returnByValue: true }, sessionId);
+      let e = null; try { e = JSON.parse(ev?.result?.value ?? 'null'); } catch { e = null; }
+      return { entetes: (entetes.match(/\{[\s\S]*\}/)?.[0] ?? '').replace(/<[^>]+>/g, '').slice(0, 2000), empreinte: e };
+    });
+  }
+  return { controler, essaiPageConnexion, empreinte };
 }

@@ -19,6 +19,8 @@ const SSO = Object.freeze([
   [/^appleid\.apple\.com$/, null], [/^idmsa\.apple\.com$/, null],
   [/^accounts\.google\.com$/, null], [/^accounts\.youtube\.com$/, [/^\/accounts\//]],
   [/^(www\.)?google\.(com|fr)$/, [/^\/accounts\//, /^\/recaptcha\//]],
+  // (30/10) Kiabi : « Connexion avec Kiabi » sur la page de connexion de Beebs — ses hôtes d'authentification seulement.
+  [/^(auth|secure|connect|accounts|login|id)\.kiabi\.com$/, null], [/^www\.kiabi\.com$/, [/^\/(login|connexion|auth|oauth|account\/login)/i]],
   [/^(www|m|web)\.facebook\.com$/, [/^\/login/, /^\/dialog\/oauth/, /^\/v\d+\.\d+\/dialog\/oauth/, /^\/checkpoint/, /^\/two_step_verification/, /^\/cookie\/consent/, /^\/privacy\/consent/, /^\/auth/]],
 ]);
 /** Une page d'un fournisseur de connexion, et SEULEMENT ses pages de connexion. */
@@ -51,7 +53,9 @@ export const DEFINITIONS = Object.freeze({
   },
   beebs: {
     nom: 'Beebs',
-    pageConnexion: 'https://www.beebs.app/fr/login',
+    // (30/10, lot D) /fr/login rend une page 404, même dans un vrai Chrome : la connexion vit sur /fr/auth (Kiabi,
+    // Google, Facebook, e-mail) — relu dans le Chrome de Nico et dans l'extension (ADRESSES_CONNEXION).
+    pageConnexion: 'https://www.beebs.app/fr/auth',
     domaine: /(^|\.)beebs\.app$/,
     cheminsPermis: [/^\/$/, /^\/fr\/?$/, /^\/fr\/(login|signin|connexion|auth|register|inscription)/, /^\/(login|auth)/],
     hotesPermis: [/^(www\.)?beebs\.app$/, /^auth\.beebs\.app$/],

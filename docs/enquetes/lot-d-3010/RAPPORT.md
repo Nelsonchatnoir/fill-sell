@@ -84,3 +84,52 @@ verts nommés pour les migrations, déploiements relus avant / après.
   rotation sur les IP françaises du pool = UNE seule (94.194.94.233, fin le 04/11 à 13:57).
 - **Prévenir avant de lancer une publication Cloud** (Ornella, point c de l'audit : une republication lancée seule sur
   une fiche d'une autre boutique) — non fait (le message existe désormais sur le job).
+
+## Suite du lot D (30/10, ordres et décisions de Nico vers 11:30)
+
+### Ordres
+- **OTA 2.9.137 ENVOYÉE** (canal production relu 2.9.136 → 2.9.137) — bundle `2026-10-30T10:20:28Z+c09148e`.
+- **Clé du coffre** : donnée UNE fois dans la réponse à Nico (elle n'est écrite dans aucun fichier, commit ni rapport).
+
+### Décisions appliquées
+- **2e IP fixe** : commande IPRoyal **86965910**, ISP dédiée France 30 j, **4 $**, sans renouvellement, IP
+  **185.134.194.88** (fin 29/11 11:37) ; entrée au pool (id 2), contrôle d'entrée à l'entretien horaire, puis rotation
+  sur les deux (rendez-vous par compte et par tranche de 24 h). Solde IPRoyal : 10,60 → **6,60 $**.
+- **6 jetons Google morts** nettoyés (relus EXPIRED ou 410 chez Google à 12:05 ; `scripts/reparations/20261030_jetons_google_morts{,_INVERSE}.sql`,
+  sauvegarde `_backup_3010_canal_google_mort`). Reste un seul jeton : Patrick Giry, ACTIF.
+- **Stripe réel ce soir** : prix Cloud relu chez Stripe (lecture) — `price_1UMuLDQZRA77vrWJZfZh2IS4`, actif, 20,00 €/mois,
+  essai 7 jours. ⚠ La pose du secret `STRIPE_PRICE_CLOUD` a été REFUSÉE par le garde-fou (« Secret-Store Writes ») :
+  à Nico. Script de bascule « offert → essai Stripe » prêt (`20261030_cloud_nico_offert_vers_essai_stripe{,_INVERSE}.sql`).
+
+### Promesses des conditions d'utilisation, relues dans le code
+| Promesse | Avant | Après |
+|---|---|---|
+| Rappel la veille, app + mail | **tenue** : mail unique `cloud_essai_veille` (catégorie support, index une-fois) dans email-tunnel, cron `email-tunnel-daily` 09:00 UTC, fenêtre J-2 → J-1 (`_shared/cloud-rappel-veille.js`) ; bandeau dans l'app (`rappelVeilleDu`) | inchangée |
+| Effacement ≤ 3 jours après l'arrêt | **NON tenue en rotation** (la purge du 05/10 ne partait qu'avec l'IP mise au repos) | **tenue** : `entretien.purgerComptesInactifs` — à chaque entretien horaire, tout compte dont le Cloud n'est plus actif (hors grâce de 2 j) : navigateur + profil détruits, coffre vidé, session révoquée (test serveur) |
+| Historique des IP utilisées par le compte | non tenu en rotation | **tenu** : chaque session journalisée sur son IP (`cloud_journal`, nature attribution, identifiant effacé à 12 mois) |
+| Confidentialité 4.8, CGV art. 7 (non publiées) | « IP réservée, toujours la même », repos 7 j, Vinted et Leboncoin | **alignées** : adresses IP françaises qui peuvent changer, plus de repos promis, Vinted / Leboncoin / Beebs / Depop |
+| CGV art. 6 (rétractation, publiée) | existe : 14 jours, prorata si exécution immédiate | inchangée — le renvoi des conditions est juste |
+
+### Beebs — diagnostic, pistes, solution
+**Ce qui déclenche « Accès temporairement restreint » : le NAVIGATEUR du serveur, pas l'IP.**
+| Essai (30/10) | Navigateur | IP | Résultat |
+|---|---|---|---|
+| A | Chromium de steel-browser (Linux, aucun WebGL, 0 plugin PDF, « Chromium » seul dans Sec-Ch-Ua) | 94.194.94.233 (ISP) | **bloqué** (10:19 UTC, ID b2b50871…) |
+| B | **vrai Chrome Windows** (PC de Nico, profil vierge) | 94.194.94.233 | **passe** : formulaire de connexion |
+| C | vrai Chrome Windows | 185.134.194.88 (neuve) | **passe** |
+| D | Google Chrome officiel Linux (conteneur, écran, Paris, SwiftShader) | 94.194.94.233 | **vérification** « Faites glisser vers la droite » (passable par l'utilisateur) |
+| E | idem D + `--accept-lang=fr-FR,fr` | 185.134.194.88 (jamais vue de Beebs) | **bloqué** (ID b392e242…) |
+- Signaux comparés (vrai Chrome / Cloud) : Windows / Linux ; Chrome 156 « Google Chrome » / Chromium 154 seul ; WebGL AMD
+  réel / aucun (Chromium) ou SwiftShader (Chrome) ; 5 plugins PDF / 0 ; fuseau Paris et `webdriver` faux des deux côtés.
+- **Piste 3 (IP résidentielle) : non mesurée** — 1 Go = 7,35 $ > solde 6,60 $ (recharge = carte dans le tableau de
+  bord IPRoyal : à Nico). **Piste 4 (IP neuve, accès direct)** : essais C et E.
+- Erreur trouvée en passant : la page de connexion Beebs du Cloud était `/fr/login` (une 404) → **`/fr/auth`** corrigé.
+- **Solution retenue (à construire)** : le navigateur Cloud passe à **Google Chrome officiel** (image
+  `serveur-cloud/navigateur-chrome/`, prête et mesurée) ; Beebs y présente au pire une vérification que
+  l'utilisateur passe LUI-MÊME dans « Me connecter » (aucun résolveur, aucun service tiers) ; la sortie de Beebs
+  privilégie l'IP où Beebs vérifie au lieu de bloquer ; la mesure résidentielle se fait après recharge. Il reste à
+  y charger l'extension (Chrome officiel ignore `--load-extension` : installation par stratégie d'entreprise
+  `ExtensionInstallForcelist` et un CRX signé de la clé de la copie Cloud) et à remplacer steel-browser dans
+  `navigateur.js`. **Coût par utilisateur** : même serveur (≈ 0,8 € / mois de serveur et d'IP partagés aujourd'hui),
+  + 0 € de licence ; avec résidentiel pour Beebs seul : ≈ 7,35 $ / Go (estimé 0,2 à 0,5 Go / mois / vendeur actif →
+  1,5 à 3,7 $). Demande de partenariat Beebs rédigée, non envoyée : `docs/cloud/beebs-demande-partenariat.md`.

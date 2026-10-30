@@ -39,7 +39,8 @@ const grace = Number(socle.match(/cloud_param\('grace_jours', (\d+)\)/)?.[1]);
 const mois = Number(socle.match(/cloud_param\('empreintes_conservation_mois', (\d+)\)/)?.[1]);
 const connexions = Number(socle.match(/DELETE FROM public\.cloud_connexions WHERE ouverte_le < now\(\) - interval '(\d+) days'/)?.[1]);
 ok(repos === 7 && /reposJours: 7,/.test(pool), `repos de l'IP : ${repos} jours (migration et règles pures)`);
-ok(new RegExp(`reste ensuite au repos ${repos} jours`).test(fr) && new RegExp(`rests for ${repos} days`).test(en), 'le repos dit est celui du code');
+// (30/10, lot D) IP en ROTATION : le texte ne promet plus ni IP réservée ni repos (le code ne les garantit plus).
+ok(!/\bau repos\b|IP[^.]{0,30}réservée|toujours la même|rests for|IP address reserved|always the same/i.test(fr + en) && /peut changer au fil du temps/.test(fr) && /may change over time/.test(en), 'rotation : ni IP réservée ni repos promis, l’adresse peut changer (comme le code)');
 ok(grace === 2 && /au plus tard 3 jours après la fin/.test(fr) && /no later than 3 days after the end/.test(en), `effacement « au plus tard 3 jours » = grâce de ${grace} j + entretien horaire (alerte au-delà d'une heure)`);
 ok(/purge\(s\) en retard de plus d'une heure/.test(lire('serveur-cloud/src/entretien.js')), 'l’entretien alerte sur une purge en retard d’une heure');
 ok(mois === 12 && /conservées 12 mois après la fin de l'essai, y compris si le compte est supprimé/.test(fr), `empreintes : ${mois} mois, même compte supprimé (ON DELETE SET NULL)`);
@@ -72,7 +73,8 @@ ok(FR.cgvArticle7.t.startsWith('Article 7 — ') && EN.cgvArticle7.t.startsWith(
 const conf = [FR.confidentialite.intro, ...FR.confidentialite.liste.flat(), FR.confidentialite.ou, FR.confidentialite.duree, FR.confidentialite.essai].join(' ');
 ok(!/\b(tu|ton|ta|tes|toi)\b/i.test(conf) && /\bvous\b/.test(conf), 'confidentialité : vouvoiement (ton de la page), jamais « tu »');
 ok(!/\b(tu|ton|tes)\b/i.test([...FR.cgvArticle7.ps, FR.cgvArticle2, FR.cgu39].join(' ')), 'CGV : « l’utilisateur », jamais « tu »');
-ok(!/Beebs|Opla/i.test(fr + en), 'aucune plateforme non prouvée (ni Beebs ni Opla)');
+// (30/10, lot D, Nico : « le Cloud n'est pas complet sans Beebs ») Vinted, Leboncoin, Beebs, Depop ; jamais Opla (sortie le 10/10).
+ok(!/Opla/i.test(fr + en) && /Vinted, Leboncoin, Beebs et Depop/.test(fr) && /Vinted, Leboncoin, Beebs and Depop/.test(en), 'les quatre plateformes du Cloud, jamais Opla');
 ok(!/\bproxy\b/i.test(fr), 'pas de jargon « proxy » en français');
 
 console.log('\n3. et 4. /legal, interrupteur baissé puis levé');

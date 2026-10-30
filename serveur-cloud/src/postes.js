@@ -90,6 +90,12 @@ export function creerPostes({ config, base, navigateurs, coffre, sessions, journ
       const h = await navigateurs.ouvrir(user, { proxyUrl: sortie.proxyUrl, profilId });
       h.ipId = sortie.ipId;
       h.sortie = { mode: sortie.mode, sortie: sortie.sortie };
+      // (30/10, lot D) L'historique des IP utilisées par le compte (conditions art. 8, confidentialité 4.8) : en rotation
+      // sur le pool, chaque session est journalisée sur son IP (nature « attribution », identifiant effacé à 12 mois).
+      if (sortie.ipPool != null) {
+        await base.rpc('cloud_journal', { p_ip: sortie.ipPool, p_nature: 'attribution', p_user: user, p_details: { rotation: true, serveur: config.serveurNom } })
+          .then(({ error }) => { if (error) journal.alerte('journal_ip_echec', { user, erreur: error.message }); });
+      }
       // 1. Le coffre : les plateformes absentes du profil reviennent.
       const { cookies } = await h.cdp.send('Storage.getCookies');
       const { aPoser, bilan: bilanCoffre } = await coffre.cookiesARestaurer(user, cookies);
