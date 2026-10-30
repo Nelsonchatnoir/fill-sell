@@ -311,3 +311,38 @@ vraie carte. Sinon, résiliation sans aucune visite.
 
 **À observer ensuite.** Sur le vrai PC, Leboncoin a tout de même présenté une glissière. Après la connexion de Nico,
 quelques jours à cadence normale de production diront si les publications en arrière-plan restent sans vérification.
+
+## 10. Serveur dédié Linux à vraie puce Intel (30/10 soir) : BLOQUÉ, résilié
+- **Commande** (16:48:40) : Hetzner place de marché n° 3100515 (i7-8700, UHD 630, 64 Go). L'EX44 n'était plus
+  commandable. **Erreur de ma part** : le détail du produit, lu avant la commande, n'offrait que « Rescue system ». Robot
+  a ensuite refusé Windows (« For this server type Windows cannot be used »). Règle de Nico depuis : avant toute
+  commande, vérifier que tout est disponible sur ce modèle précis.
+- **Puce** (16:51, système de secours) : UHD 630 présente et active (lspci 00:02.0, i915, /dev/dri/renderD128).
+- **Poste** (`deploiement/gpu/preparer-poste-gpu.sh`, commit 88f0713) :
+  - Ubuntu 24.04 avec bureau XFCE ouvert automatiquement, en français, à l'heure de Paris ;
+  - sortie HDMI forcée par le noyau, écran 1920×1080 sans écran branché ;
+  - conteneur Chrome de production qui dessine sur ce bureau par la puce (`NAVIGATEUR_GPU=1`).
+- **Vérification hors réseau** (17:44, profil jetable, proxy mort) : WebGL « ANGLE (Intel, Mesa Intel(R) UHD Graphics 630
+  (CFL GT2), OpenGL 4.6) », composition par la puce, écran 1920×1080, Europe/Paris, fr-FR, lecteur PDF (5 plugins),
+  extension Cloud 0.6.160 installée par stratégie, `webdriver` faux.
+- **Essai unique** (17:45:49 → 17:46:40, profil neuf, IP fixe 2, « Me connecter » de production) :
+  - Leboncoin : **BLOQUÉ**, « Accès temporairement restreint » après un contrôle « interstitial ». ID
+    ebf12780-b17b-ba28-1b82-2280a120d092.
+  - Beebs : **BLOQUÉ**, ID 0e7e1178-e551-e993-55c2-4be09b648f1c.
+- **Résiliation** : immédiate, à 17:48. Avant, j'ai effacé du disque la configuration, la clé de signature de
+  l'extension et les profils. Coût : environ 1 h, soit ≈ 0,15 € HT.
+
+**Lecture.**
+- Une vraie puce ne suffit pas sous Linux en centre de données.
+- Ce qui passe reste Windows sur du vrai matériel (le PC de Nico, 15:37 et 15:44).
+- Doute résiduel : la même IP 2 venait de servir pour l'essai du PC, où Leboncoin montrait déjà une glissière. Un essai
+  Windows propre demandera une IP neuve.
+
+**AX42 vérifiée sans commande** (Robot et pages Hetzner, 30/10) :
+- Machine : AMD Ryzen 7 PRO 8700GE, avec puce Radeon 780M de la même famille que le PC de Nico ; 64 Go.
+- Prix Robot : 97,30 € HT/mois (0,1559 €/h), plus 49 € de mise en service.
+- Windows est listé sur la page AX42, avec les options « Windows Server 2025 Standard / Datacenter ».
+- Standard, 8 cœurs : 27,90 € HT/mois, facturé au mois civil complet. Il se commande seulement dans l'interface Robot,
+  pas par l'API.
+- Premier mois : ≈ 176 € HT, au-dessus du plafond de 150 €.
+- Risques : le pilote AMD ne vise pas officiellement Windows Server, et il n'y a pas d'écran branché.

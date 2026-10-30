@@ -587,3 +587,6 @@ Le récit détaillé : dépôt `docs/enquetes/lot-d-3010/RAPPORT.md` ; l'état d
   `serveur-cloud/deploiement/windows/acces-ssh.ps1` (Bureau à distance) → contrôle hors réseau du rendu Chrome sur la
   UHD 630 (sinon résiliation, aucune visite) → moteur Windows natif de l'orchestrateur → « machine prête ».
   Verrou des plateformes dans le relais : poussé.
+- **30/10 17:48** : serveur Linux à vraie puce Intel (UHD 630, WebGL vérifié) → Leboncoin et Beebs **BLOQUÉS** ;
+  **résilié**. Ce qui passe : Windows sur vrai matériel. AX42 + Windows Server ≈ 176 € HT le 1er mois (option Windows
+  seulement dans l'interface Robot). Aucun serveur dédié en cours. Rapport § 10.
