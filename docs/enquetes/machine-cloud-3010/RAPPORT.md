@@ -528,3 +528,263 @@ une page about:blank.
 - Google Chrome reste installé sur la machine. Résiliation de Shadow : Nico (renouvellement le 30/11).
 - IP 81.181.239.136 : disponible jusqu'au 29/11 21:00, sans renouvellement (une ouverture par plateforme déjà faite).
 - Ancien serveur : orchestrateur toujours arrêté.
+
+## 13. Recherche élargie : Windows + vraie carte NVIDIA, en Europe, essai à l'heure (30/10 soir, aucun achat)
+Demande de Nico (30/10, ≈ 22:10) : la façon la moins chère d'avoir nos Chrome sur Windows avec une vraie carte NVIDIA,
+en centre de données européen, 24 h/24, avec un essai à l'heure avant tout engagement. Rien n'est commandé.
+- Méthode : cinq recherches en parallèle, en lecture seule (grands clouds ; places de marché GPU ; clouds européens ;
+  hébergeurs GPU, cloud gaming et occasion ; licences Microsoft et pilotes NVIDIA). Hetzner relu par l'API Robot
+  (`/order/server_market/product`, `/order/server/product`). Change BCE du 30/10 : 1 € = 1,1172 $.
+- Calcul, le même pour toutes les offres :
+  - utilisateurs = min(RAM × 10/16 (base Shadow : 16 Go ≈ 10), 2 × fils, mémoire de carte ÷ 0,3 Go) ;
+  - coût par utilisateur = machine ÷ utilisateurs + IP 4,64 € ;
+  - TTC = HT × 1,20 ;
+  - à comparer aux 16 € net (HT) de l'option Cloud à 20 € TTC.
+
+### 13.1 Ce qui trie tout : licences et pilotes
+1. **Windows 10/11 sur une machine louée : interdit.**
+   - Licence OEM ou retail de Windows 11 (avril 2024), §2.b : « "device" does not include any hardware system … on
+     which the software is installed or accessed solely for remote use over a network ».
+   - §2.c(v) : « use the software to offer commercial hosting services … install the software on a device for use only
+     by remote users ».
+   - Windows 11 Enterprise (VDA, E3) : « Internal purposes only » (Microsoft Learn, licences Azure Virtual Desktop).
+   - Écartés pour cette raison : TensorDock, Cudo Compute, les PC de jeu en ligne.
+2. **Carte GeForce en centre de données : interdit par la licence du pilote NVIDIA.**
+   - §2.8 : « is not licensed for datacenter deployment ».
+   - NVIDIA ne publie aucun pilote GeForce pour Windows Server.
+   - Écartés pour cette raison : LeaderGPU (RTX 3090), les GeForce de Hostkey, Exoscale 3080 Ti, Ikoula 4070.
+3. **Seul chemin propre** : Windows Server sous licence SPLA de l'hébergeur, sur l'une de ces deux cartes :
+   - une carte de **station de travail**. Le pilote RTX Enterprise 597.30 (21/10/2026) est « tested with … Windows
+     Server 2022/2025 » et cite les RTX 4000 SFF Ada, RTX A4000, RTX 2000 Ada et RTX PRO 4000 Blackwell ;
+   - un vGPU de grand cloud dont la licence graphique est fournie (Azure NV : « comes with a GRID license » ; AWS :
+     pilote GRID gratuit).
+   Les cartes de centre de données hors grands clouds (L4, A2, T4, V100) sont écartées tant que le rendu n'est pas
+   prouvé :
+   - leur pilote public tourne en mode calcul (TCC), sans DirectX ;
+   - le rendu demande une licence NVIDIA vWS : « a physical GPU requires a vWS license », 250 $ par an et par
+     utilisateur simultané au prix conseillé.
+4. **Licence RDS pour « Me connecter »** (SPUR Windows Server) :
+   - le texte : « Also required for use of Windows Server to host a graphical user interface (using the Windows Server
+     Remote Desktop Services functionality or other technology) » ;
+   - le multiplexage ne réduit rien ;
+   - prix relevés : 7 à 9,10 € HT par client et par mois (Hetzner : « Additional RDP license » 9,10 €, par utilisateur,
+     sur demande au support).
+   Trois lectures :
+   - prudente : tous les clients, tous les mois. **Aucune option Windows ne passe alors sous 16 €** ;
+   - intermédiaire, défendable : seulement les clients à qui « Me connecter » a été ouvert dans le mois, journaux
+     gardés ;
+   - favorable, aucune licence RDS : fragile en cas d'audit.
+   C'est le premier point à faire trancher par écrit par l'hébergeur retenu.
+5. **Empreinte.**
+   - Windows Server 2025 (build 26100) donnerait le même `Sec-CH-UA-Platform-Version` que Windows 11 24H2 (19.0.0). C'est
+     une déduction du code de Chromium, non mesurée.
+   - Windows Server 2022 donnerait 12.0.0, une valeur repérable. Viser 2025, et mesurer
+     `HKLM\SOFTWARE\Microsoft\WindowsRuntime\WellKnownContracts` sur la machine.
+
+### 13.2 Tableau classé, du moins cher au plus cher par utilisateur (HT, sans licence RDS)
+| # | Offre | Carte | Ville | Stock lu | €/mois HT (TTC) | Util. | €/util. HT (TTC) | + RDS (prudent) | Essai 3 h HT | Statut |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | Hostkey A4000 nu (Ryzen 5950X, 128 Go) | RTX A4000 16 Go | Amsterdam | douteux | 275 (330), Windows ≈ 56 non vérifié | 53 | 9,83 (10,87) | 18,93 | 1 mois | écarté : un mois minimum avec Windows |
+| 2 | Colocation (Dell R7920 + A4000 d'occasion, Paris) | RTX A4000 | Paris | — | ≈ 233 lissé 36 mois | 40 | ≈ 10,46 | ≈ 19,56 | — | écarté : achat ≈ 2 200 €, SPLA propre, aucun essai |
+| 3 | Ikoula GPU PRO 4000 | RTX PRO 4000 Blackwell | France | non lu | 234 promo + Windows non lu | 40 | ≈ 10,49 + Windows | — | — | écarté : au mois |
+| 4 | Hetzner GEX45 neuf | RTX PRO 4000 Blackwell 24 Go | Helsinki | commandable | 263 + 209 de mise en service | 40 | 11,65 (lissé 12 mois) | 20,75 | 210 € | écarté pour l'essai ; Windows non annoncé |
+| 5 | **Hetzner enchère n° 3093130** (i5-13500 14 c / 20 f, 64 Go) | **RTX 4000 SFF Ada 20 Go** | Falkenstein FSN1-DC7 | **1 exemplaire**, prix fixe | **283,70 (340,44)** | 40 | **11,73 (13,15)** | 20,83 | **1,13** (Windows d'évaluation) | **retenu n° 1** |
+| 6 | Infomaniak nva2 32 vCPU / 64 Go | A2 16 Go | Suisse | sur demande | 342,23 (410,68) | 40 | 13,20 (14,91) | 22,30 | 1,41 | sous réserve : clause « bots » interdite (art. 5.3), A2 en mode calcul |
+| 7 | **Azure NV12ads_A10_v5 SPOT** | 1/3 d'A10, 8 Go, GRID compris | Paris | non public | **211,73 (254,08)** | 24 | **13,46 (15,23)** | 22,56 | **0,87** | **retenu n° 3** (spot : préavis 30 s) |
+| 8 | Azure NV6ads_A10_v5 SPOT | 1/6 d'A10, 4 Go | Paris | non public | 109,80 (131,76) | 12 | 13,79 (15,62) | 22,89 | 0,45 | variante du n° 3 |
+| 9 | **centron Cloud GPU** 26 vCPU / 84 Go | **RTX A4000 16 Go** | Hallstadt (DE) | non lu (compte) | **476,36 (571,63)** | 52 | **13,80 (15,63)** | 22,90 | **0,79** + Windows (prorata non lu) | **retenu n° 2** |
+| 10 | Azure NV36ads_A10_v5 SPOT | A10 entière | Dublin | non public | 671,24 | 72 | 13,96 (15,83) | 23,06 | 2,73 | spot |
+| 11 | Infomaniak nva2 64 vCPU / 128 Go | A2 | Suisse | sur demande | 585,31 | 53 | 15,68 | 24,78 | 2,41 | mêmes réserves que le n° 6 |
+| 12 | Azure NC16as_T4_v3 SPOT | T4 entière | Suède | non public | 380,40 | 32 | 16,53 | 25,63 | 1,53 | au-dessus de 16 € |
+| 13 | AWS g4dn.4xlarge SPOT | T4 | Paris | quota à demander | 581,17 | 32 | 22,80 | 31,90 | 2,35 | trop cher |
+| 14 | Shadow Neo Pro + Always On | RTX 2000 Ada | France | — | 207,48 (248,98) | 10 | 25,39 (29,54) | — | — | écarté par Nico (§ 12) |
+| 15 | AWS g4dn.xlarge SPOT | T4 | Paris | quota | 168,67 | 8 | 25,72 | 34,82 | 0,66 | trop cher |
+| 16 | UpCloud GPU 20 vCPU / 256 Go | L4 | Helsinki | selon l'historique du compte | 946,96 | 40 | 28,31 | 37,41 | 3,89 | trop cher, plus licence vWS |
+| 17 | OVH win-l4-90 | L4 | Gravelines | non public | 1 102,30 | 44 | 29,69 | 38,79 | 4,53 | trop cher |
+| 18 | Vultr A16 16 Go, 6 vCPU (+ Windows, prix d'un tiers) | 1/4 d'A16 | Francfort, Londres | disponible | ≈ 393,69 | 12 | ≈ 37,45 | — | ≈ 1,62 | trop cher ; Windows sur GPU non écrit |
+| 19 | OVH rtx5000-28 Windows | Quadro RTX 5000 | Gravelines | « coming_soon » | 364,12 | 8 | 50,16 | — | 1,50 | trop cher |
+| 20 | Azure à la demande (NV12ads, Paris) / AWS à la demande | — | — | — | ≈ 1 110 | 24 | ≈ 51 et plus | — | — | trop cher |
+
+Hors catégorie (Linux, sans carte, aux États-Unis) : **Steel à la demande ≈ 7,2 € HT par utilisateur** (§ 14), 58 à 70 €
+en 24 h/24.
+
+**Écartés en une ligne** :
+- Vast.ai : VM Linux seulement.
+- RunPod : « Windows is not supported ».
+- Hyperstack, Verda (ex-DataCrunch), Lambda, Nebius, Fluidstack, Crusoe, Nscale, Hivenet, Sesterce, evroc, Lyceum,
+  Shadeform : Linux seulement.
+- Paperspace : Windows fermé aux nouveaux comptes.
+- Salad, Clore.ai : conteneurs.
+- CoreWeave : Windows retiré.
+- Genesis Cloud : site hors service.
+- Massed Compute : États-Unis seulement.
+- STACKIT : « Windows Server compatible ✗ » sur ses GPU.
+- IONOS Cloud GPU : Linux.
+- Scaleway GPU : Ubuntu ; Elastic Metal : licence au mois.
+- Contabo : Ubuntu CUDA seulement.
+- Akamai/Linode, DigitalOcean : pas de Windows.
+- Seeweb : aucun GPU sous Windows publié.
+- Cherry Servers : stock 0 et licence due au mois entier.
+- Open Telekom Cloud, Outscale : cartes de centre de données à pilote de calcul, et trop chers.
+- CloudFerro : licence au mois.
+- Gcore, Leaseweb : prix Windows non lus.
+- Exoscale : 3080 Ti GeForce, A5000 à ≈ 17,8 €/Go.
+- airgpu : « non-commercial », sessions coupées à 24 h.
+- Vagon, WorkSpaces, Windows 365 : par utilisateur humain, ou plus cher que la machine nue.
+- GeForce NOW, Boosteroid, Blacknut : jeux seulement.
+
+### 13.3 Les 3 meilleures options
+1. **Hetzner, enchère n° 3093130** (Falkenstein) : 11,73 € HT par utilisateur (13,15 € TTC), essai 1,13 € HT.
+   - Pour :
+     - carte de station de travail Ada, de la même famille que la RTX 2000 Ada qui a passé chez Shadow ;
+     - pilote RTX Enterprise prévu pour Windows Server 2025 ;
+     - à l'heure (0,3734 € + IPv4 0,0027 €), sans mise en service, résiliation immédiate ;
+     - tiers permis (CGV §7.1) ;
+     - nous y sommes déjà clients.
+   - Contre :
+     - un seul exemplaire ;
+     - Robot ne propose que « Rescue system » sur ce produit, et le serveur d'enchère 3100515 a reçu « For this server
+       type Windows cannot be used » : la licence SPLA de Hetzner sur CE serveur n'est pas acquise ;
+     - la licence Windows de Hetzner est facturée au mois civil complet (49 € pour 14 cœurs) ;
+     - pour monter en charge, il faudra des GEX45 (209 € de mise en service, Windows non annoncé).
+   - D'où : l'essai se fait avec **Windows Server 2025 Évaluation** (gratuit, usage d'évaluation), et la question
+     écrite à Hetzner part AVANT la commande.
+2. **centron Cloud GPU RTX A4000** (Hallstadt, Allemagne) : 13,80 € HT par utilisateur à 26 vCPU / 84 Go, essai 0,79 € HT.
+   - Pour :
+     - le SaaS est permis noir sur blanc (conditions, art. 13.2) ;
+     - Windows Server SPLA à 9,24 € par tranche de 2 cœurs et par mois ;
+     - à l'heure, sans mise en service ni engagement ;
+     - plusieurs machines possibles à la demande ;
+     - 200 € de crédit offert aux nouveaux comptes d'entreprise (selon le site, non vérifié).
+   - Non lu :
+     - le prorata de la licence Windows (« you pay for the Windows licence monthly ») : l'essai coûte 0,10 € avec
+       prorata, 18,48 € sinon ;
+     - le prix de l'IPv4, le stock d'A4000, le prix de la licence RDS.
+3. **Azure NV12ads_A10_v5 en spot** (Paris) : 13,46 € HT par utilisateur, essai 0,87 € HT.
+   - Pour : à Paris, licence GRID fournie, facturation à la minute.
+   - Contre :
+     - en spot, Azure peut reprendre la machine avec 30 s de préavis, et le taux d'éviction n'est pas lu ;
+     - à la demande, ≈ 51 € par utilisateur ;
+     - fraction de carte de centre de données : le nom vu en WebGL n'est pas encore relevé ;
+     - Azure ne vend pas de licence RDS ;
+     - quota GPU à demander.
+
+### 13.4 Plan de l'essai n° 1 (Hetzner 3093130) — à faire seulement sur le feu vert de Nico
+Avant la commande (règle de Nico : tout vérifier sur le modèle précis) :
+- envoyer la question à Hetzner (§ 13.5) ;
+- relire le produit 3093130 dans Robot : prix, IPv4, stock.
+
+L'essai :
+1. **Commande** par l'API Robot : produit 3093130 + IPv4 primaire, notre clé SSH.
+2. **Windows Server 2025 Évaluation** (expérience bureau), ISO du centre d'évaluation de Microsoft :
+   - installé depuis le système de secours (QEMU sur le disque NVMe), ou par la console KVM (gratuite, sur demande) ;
+   - fr-FR, Europe/Paris, ouverture de session automatique ;
+   - OpenSSH en local et tunnel SORTANT, comme sur Shadow (§ 12).
+3. **Pilote** NVIDIA RTX Enterprise 597.30, signature vérifiée. Relever `UniversalApiContract` (attendu : 19.0.0).
+4. **Pare-feu Windows** : sortie limitée au proxy et au relais ; UDP bloqué, pour qu'aucune fuite WebRTC ne trahisse
+   l'IP Hetzner.
+5. **Installation** de Chrome officiel, Node, `serveur-cloud` et `build/extension-cloud` 0.6.160, les mêmes que pour
+   Shadow.
+6. **Contrôle hors réseau** : `essai-me-connecter-pc.mjs --verifier`.
+   - Chrome est lancé dans la session ouverte, par une tâche interactive.
+   - Le WebGL doit nommer « NVIDIA RTX 4000 SFF Ada Generation », pas « Microsoft Basic Render » ni SwiftShader.
+   - Sinon : résiliation, sans aucune visite.
+7. **Poste de Nico muet**, relu en base.
+8. **Essai** : une ouverture Leboncoin, une ouverture Beebs. Sortie par l'IP 3 si l'essai Steel ne l'a pas fait
+   bloquer ; sinon, une IP neuve.
+9. **Fin** : résiliation immédiate, secrets effacés avant.
+
+Coût :
+- machine : 3 h × 0,3761 € = **1,13 € HT, soit 1,35 € TTC** (5 h si l'installation traîne : 2,26 € TTC) ;
+- Windows d'évaluation : 0 € ;
+- IP 3 : 0 € (déjà payée). Une IP neuve coûterait 4 $ ≈ 3,58 €, pris sur le solde IPRoyal de 7,35 $.
+**Moins de 5 € dans tous les cas, sauf IP neuve ET plus de 3 h** (5 h + IP neuve ≈ 5,84 €).
+
+### 13.5 Questions écrites, à envoyer par Nico (brouillons, NON envoyés)
+**Hetzner** (ticket Robot) :
+> Hello, we are considering Server Auction product #3093130 (i5-13500, RTX 4000 SFF Ada) and the GEX45. (1) Can the
+> Windows Server 2025 Standard add-on (SPLA) be ordered for #3093130 and for the GEX45? (2) Our SaaS runs Google Chrome
+> instances for our own customers; customers never log into Windows, but they may see one Chrome tab through our web
+> app to log into their own accounts. Do we need your per-user RDP licences (9.10 €/month) for them, and are they
+> counted per month of actual use? (3) Is the add-on billed for the full calendar month even for a few hours?
+
+**centron** (formulaire de contact) :
+> Hallo, wir planen Cloud-GPU-Instanzen (RTX A4000) mit Windows Server für unser SaaS (Google Chrome für unsere Kunden,
+> die sich nie bei Windows anmelden, aber einen Chrome-Tab über unsere App sehen können, um sich bei ihren eigenen
+> Konten anzumelden). (1) Wird die Windows-Lizenz stündlich anteilig berechnet? (2) Preis der IPv4? (3) Brauchen wir
+> RDS-SALs, und zu welchem Preis? (4) Sind RTX A4000 derzeit verfügbar?
+
+## 14. Steel (steel.dev), 30/10 soir : pourquoi Leboncoin passait le 26/09, prix en production, essai préparé
+**Faits relus** (`fillsell-cloud-proto` : JOURNAL.md et REPRISE.md ; API Steel ; base) :
+- **26/09, Steel hébergé**.
+  - Environnement : Linux, Chromium 150, SwiftShader, en-US.
+  - Machine à Washington : région `iad`, relue ce soir par l'API Steel ; Steel n'a aucune région en Europe (`lax`,
+    `ord`, `iad`).
+  - IP : 194.152.141.98 (Deutsche Telekom, Lyon).
+  - Leboncoin : page de connexion servie, connexion faite à la main par Nico, publication sans défi.
+- **Beebs, 26/09 : jamais mesuré proprement.**
+  - Selon Nico, le blocage de midi a suivi un passage par DuckDuckGo, pour retrouver l'onglet fermé par erreur.
+  - L'essai de 17:58 gardait le cookie DataDome marqué à midi et la même IP.
+- **05/10** : « Leboncoin passait » sur le Steel auto-hébergé chez Hetzner. C'était seulement la page d'ACCUEIL
+  (mesure de mémoire), pas auth.leboncoin.fr.
+- **30/10** : tout Linux chez Hetzner est bloqué ; Windows passe, avec glissière (§ 7 à 12).
+
+**Lecture.**
+- Ce n'est pas l'adresse Hetzner. Leboncoin ne voit que l'IP IPRoyal, et le pare-feu ne laisse sortir que les ports
+  du proxy, sans DNS.
+- Deux causes possibles, peut-être additionnées :
+  - (a) DataDome a durci entre le 26/09 et le 30/10 ;
+  - (b) notre image Linux est grillée. Du 05/10 au 30/10, les brûleurs (§ 7) ont visité Leboncoin et Beebs sans
+    connexion, avec un 403 à chaque fois, sous la même empreinte. Cela expliquerait le blocage du serveur neuf avec
+    une IP neuve.
+- L'essai Steel tranche, car l'environnement de Steel n'a jamais servi aux brûleurs :
+  - Steel passe → c'est notre environnement qui est en cause ;
+  - Steel est bloqué → seule la voie Windows + vraie carte reste.
+
+**Prix** (steel.dev/pricing, lu le 30/10) :
+- Launch : 0 $ par mois, 0,10 $ par heure de navigateur, 10 sessions simultanées, 15 min au plus par session.
+- Scale : 250 $ par mois dont 100 $ de crédit, 0,08 $/h, 100 sessions simultanées, 1 h au plus.
+- « Stealth browser » : seulement dans l'offre Enterprise.
+
+| Mode | € HT par utilisateur, IP comprise |
+|---|---|
+| Navigateur allumé 24 h/24 | 58 (Scale, 100 utilisateurs) à 70 (Launch) : exclu |
+| Ouvert seulement pour travailler | 7,2 (moyenne) ; 9,2 (90e centile) ; 22,5 (maximum) |
+
+- Plusieurs comptes par navigateur : impossible. Une extension sert un seul compte, il y a une seule connexion par
+  plateforme et une seule IP par session.
+- Base du mode « à la demande » : jobs Vinted, Leboncoin, Beebs et Depop sur 30 jours, 231 utilisateurs ; par
+  utilisateur et par jour : médiane 2,4, moyenne 8,7, 90e centile 24,1, maximum 121,7. Hypothèse non mesurée :
+  3 min par job, plus 30 min par jour de relevés.
+- Ce mode suppose trois choses :
+  - refaire le Cloud en sessions ouvertes à la demande, avec les cookies remis par notre coffre ;
+  - des données de clients traitées aux États-Unis : accord de traitement et clauses types ; Steel enregistre aussi
+    les sessions ;
+  - que DataDome laisse passer Steel.
+
+**Essai unique préparé, NON lancé (feu vert de Nico).**
+- **Outils** :
+  - `serveur-cloud/outils/essai-me-connecter-steel.mjs` : modes `--envoyer-extension`, `--verifier` (proxy mort),
+    `--a-blanc` (proxy mort), essai réel (proxy sur l'entrée standard) ;
+  - lanceur hors dépôt : `fillsell-cloud-proto/essai-steel-3010.mjs`. La clé Steel passe par l'environnement, le proxy
+    est relu à l'API IPRoyal, rien n'est affiché.
+- **Conditions** :
+  - « Me connecter » de production, copie Cloud 0.6.160 ;
+  - profil neuf (aucun profil Steel chargé ni gardé) ;
+  - `skipFingerprintInjection` (déguisement coupé), `solveCaptcha: false` ;
+  - une ouverture par plateforme ;
+  - session toujours rendue, compteur relu.
+- **IP 3 relue le 30/10 à 22:34** :
+  - commande 87004978 « confirmed », fin le 29/11 à 21:00:42 (Paris), sans renouvellement ;
+  - sortie 81.181.239.136, Noisiel, AS2914 NTT ;
+  - hors pool (pool = IP 1 et IP 2) ;
+  - solde IPRoyal : 7,35 $.
+- **Ordre** :
+  1. extension, puis vérification, puis essai à blanc (aucune plateforme) ;
+  2. Nico coupe son extension, base relue ;
+  3. sortie de l'IP relue ;
+  4. essai ;
+  5. Nico remet son extension, base relue.
+- **Coût** : ≈ 5 min de navigateur ≈ 0,01 $, pris sur le crédit offert. **Moins de 0,01 €.**
+- **Écart voulu** : format téléphone (« Me connecter » de production), comme les essais du 30/10. Le 26/09 s'était fait au
+  format bureau.
