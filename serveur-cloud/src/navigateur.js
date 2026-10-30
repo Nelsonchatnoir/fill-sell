@@ -83,12 +83,26 @@ export function corpsSession({ proxyUrl }) {
 // Mêmes verrous : le profil du compte n'est monté que dans un conteneur créé AVEC son proxy (PROXY_AMONT est
 // obligatoire, le conteneur refuse de démarrer sans) ; le pare-feu de l'hôte reste le troisième verrou. Le conteneur
 // est RECRÉÉ à chaque ouverture (la sortie peut changer : rotation), le profil reste sur le disque.
+// (30/10, règle de Nico) LE VERROU DES PLATEFORMES vit dans le relais du conteneur (navigateur-chrome/relais.mjs) :
+// une plateforme n'y est joignable que si le compte y est connecté (PLATEFORMES_PERMISES, depuis le coffre) ou pendant
+// son « Me connecter » (permettre(), par le contrôle du relais, jeton propre à CETTE ouverture). Le moteur steel n'a
+// pas de relais : pas de verrou (permettre le dit, sans erreur) — il n'est plus que le repli.
+export const PORT_CONTROLE_RELAIS = 3130;
+// Les plateformes que le Cloud peut permettre (les autres — eBay par l'API, Opla sortie — restent toujours fermées).
+const PERMISSIBLES = new Set(['vinted', 'leboncoin', 'beebs', 'depop']);
+/** Une liste de plateformes nettoyée pour le verrou (pure : testée) : connues du Cloud seulement, sans doublon, triée. */
+export function plateformesVerrou(liste) {
+  return [...new Set((Array.isArray(liste) ? liste : []).map((p) => String(p).toLowerCase()).filter((p) => PERMISSIBLES.has(p)))].sort();
+}
+
 /** La spécification Docker du conteneur Chrome d'un compte (pure : testée). */
-export function specConteneurChrome({ config, user, profilId, proxyUrl, proxyBeebs = null }) {
+export function specConteneurChrome({ config, user, profilId, proxyUrl, proxyBeebs = null, permises = [], jetonControle }) {
   if (!proxyUrl || !/^https?:\/\/[^@\s]+@[^:\s]+:\d+$/.test(proxyUrl)) throw new Error('conteneur refusé : proxy du compte absent ou mal formé');
+  if (!/^[0-9a-f]{32,}$/.test(String(jetonControle ?? ''))) throw new Error('conteneur refusé : jeton du contrôle du verrou absent');
   return {
     Image: config.imageChrome,
-    Env: [`PROXY_AMONT=${proxyUrl}`, ...(proxyBeebs ? [`PROXY_BEEBS=${proxyBeebs}`] : []), 'PROFIL=/profil'],
+    Env: [`PROXY_AMONT=${proxyUrl}`, ...(proxyBeebs ? [`PROXY_BEEBS=${proxyBeebs}`] : []), 'PROFIL=/profil',
+      `PLATEFORMES_PERMISES=${(permises ?? []).join(',')}`, `JETON_CONTROLE=${jetonControle}`, `PORT_CONTROLE=${PORT_CONTROLE_RELAIS}`],
     Labels: { 'fillsell.cloud': '1', 'fillsell.user': String(user), 'fillsell.profil': profilId, 'fillsell.moteur': 'chrome' },
     HostConfig: {
       // Le profil Chrome vit dans un sous-dossier du profil du compte (neuf, à l'utilisateur du conteneur) : la purge
@@ -148,13 +162,13 @@ export function creerNavigateurs({ config, docker, journal }) {
   }
 
   /** (30/10) Chrome : conteneur neuf sur le proxy de CETTE ouverture, profil gardé ; CDP par le relais 9223. */
-  async function ouvrirChrome(user, { proxyUrl, proxyBeebs, profilId }) {
+  async function ouvrirChrome(user, { proxyUrl, proxyBeebs, profilId, permises, jetonControle }) {
     const nom = nomConteneur(user);
     await docker.supprimer(nom).catch(() => {});
     const dossier = `${config.dossierProfils}/${profilId}/chrome`;
     await mkdir(dossier, { recursive: true });
     await chown(dossier, 1000, 1000).catch(() => {});   // l'utilisateur « navigateur » du conteneur
-    await docker.creer(nom, specConteneurChrome({ config, user, profilId, proxyUrl, proxyBeebs }));
+    await docker.creer(nom, specConteneurChrome({ config, user, profilId, proxyUrl, proxyBeebs, permises, jetonControle }));
     await docker.demarrer(nom);
     const ip = ipDe(await docker.inspecter(nom));
     if (!ip) throw new Error(`conteneur ${nom} sans adresse sur ${config.reseauDocker}`);
@@ -170,11 +184,15 @@ export function creerNavigateurs({ config, docker, journal }) {
   }
 
   /** Démarre le navigateur du compte, sur SON proxy et SON profil. Rend { cdp, ip, … }. */
-  async function ouvrir(user, { proxyUrl, proxyBeebs = null, profilId }) {
+  async function ouvrir(user, { proxyUrl, proxyBeebs = null, profilId, permises = [] }) {
     if (ouverts.has(user)) return ouverts.get(user);
     if (chrome) {
-      const { cdp, ip, nom, navigateur } = await ouvrirChrome(user, { proxyUrl, proxyBeebs, profilId });
-      const h = { cdp, ip, conteneur: nom, profilId, ouvertLe: Date.now(), moteur: 'chrome', navigateur };
+      // Le jeton du contrôle du verrou : neuf à chaque ouverture, gardé dans le handle, JAMAIS journalisé.
+      const jetonControle = randomBytes(24).toString('hex');
+      const permisesVerrou = plateformesVerrou(permises);
+      const { cdp, ip, nom, navigateur } = await ouvrirChrome(user, { proxyUrl, proxyBeebs, profilId, permises: permisesVerrou, jetonControle });
+      const h = { cdp, ip, conteneur: nom, profilId, ouvertLe: Date.now(), moteur: 'chrome', navigateur, permises: permisesVerrou };
+      Object.defineProperty(h, 'jetonControle', { value: jetonControle, enumerable: false });
       cdp.on((m) => { if (m.method === '__ferme__' && ouverts.get(user) === h) ouverts.delete(user); });
       await cdp.send('Browser.setDownloadBehavior', { behavior: 'deny' }).catch(() => {});
       ouverts.set(user, h);
@@ -221,6 +239,32 @@ export function creerNavigateurs({ config, docker, journal }) {
     journal.info('navigateur_ferme', { user, raison });
   }
 
+  /**
+   * (30/10, règle de Nico) Les plateformes joignables par le navigateur du compte : REMPLACE l'ensemble (connectées,
+   * plus celle d'un « Me connecter » en cours). Rend { ok, permises } ; { ok: false, raison } si rien n'est ouvert ou
+   * si le moteur n'a pas de verrou (steel). Lève si le relais refuse ou ne répond pas : la page ne s'ouvrirait pas.
+   */
+  async function permettre(user, plateformes) {
+    const h = ouverts.get(user);
+    if (!h) return { ok: false, raison: 'ferme' };
+    if (h.moteur !== 'chrome' || !h.jetonControle) return { ok: false, raison: 'moteur_sans_verrou' };
+    const liste = plateformesVerrou(plateformes);
+    let derniere = '';
+    for (let essai = 0; essai < 4; essai++) {
+      try {
+        const r = await fetch(`http://${h.ip}:${PORT_CONTROLE_RELAIS}/permis`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Jeton': h.jetonControle },
+          body: JSON.stringify({ plateformes: liste }), signal: AbortSignal.timeout(4000),
+        });
+        if (r.ok) { h.permises = liste; return { ok: true, permises: liste }; }
+        derniere = `HTTP ${r.status}`;
+        if (r.status === 400 || r.status === 401) break;
+      } catch (e) { derniere = e.message; }
+      await new Promise((ok) => setTimeout(ok, 500));
+    }
+    throw new Error(`verrou du relais injoignable (${derniere})`);
+  }
+
   /** Détruit le conteneur ET le profil du compte (purge). Rend ce qui reste du profil (0 attendu). */
   async function detruire(user, profilId) {
     await fermer(user, 'purge').catch(() => {});
@@ -230,5 +274,5 @@ export function creerNavigateurs({ config, docker, journal }) {
     return { profilsRestants: restants };
   }
 
-  return { ouvrir, fermer, detruire, ouvert: (user) => ouverts.get(user) ?? null, ouverts: () => [...ouverts.keys()] };
+  return { ouvrir, fermer, detruire, permettre, ouvert: (user) => ouverts.get(user) ?? null, ouverts: () => [...ouverts.keys()] };
 }

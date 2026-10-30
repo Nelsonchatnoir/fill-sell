@@ -68,7 +68,9 @@ async function portOuvert(port) {
 try {
   // 1. Le relais (le même fichier que dans le conteneur) — pas en vérification : le proxy y est un port mort.
   if (!verifier && !aBlanc) {
-    enfants.push(spawn(process.execPath, [RELAIS], { env: { ...process.env, PROXY_AMONT: proxyUrl }, stdio: 'ignore' }));
+    // (30/10) Le verrou du relais : seules les plateformes de l'essai (leur « Me connecter ») sont joignables ; le
+    // contrôle du verrou écoute en local seulement.
+    enfants.push(spawn(process.execPath, [RELAIS], { env: { ...process.env, PROXY_AMONT: proxyUrl, PLATEFORMES_PERMISES: seulement.join(','), HOTE_CONTROLE: '127.0.0.1' }, stdio: 'ignore' }));
     for (let i = 0; i < 50 && !(await portOuvert(3128)); i++) await pause(100);
     if (!(await portOuvert(3128))) throw new Error('relais muet sur 127.0.0.1:3128');
   }

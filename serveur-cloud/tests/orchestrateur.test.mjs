@@ -384,12 +384,16 @@ test('(30/10) moteur Chrome : conteneur créé AVEC son proxy (sinon refus), pro
   const { specConteneurChrome } = await import('../src/navigateur.js');
   const config = { imageChrome: 'fillsell-chrome:abcdef123456', dossierProfils: '/p', dossierExtensionCrx: '/crx', memoireNavigateur: '1400m', reseauDocker: 'fillsell-cloud' };
   assert.throws(() => specConteneurChrome({ config, user: 'u', profilId: 'p1', proxyUrl: '' }), /proxy/);
-  const s = specConteneurChrome({ config, user: 'u', profilId: 'p1', proxyUrl: 'http://a:b@1.2.3.4:12323', proxyBeebs: 'http://c:d@5.6.7.8:12321' });
+  const jetonControle = 'ab'.repeat(24);
+  assert.throws(() => specConteneurChrome({ config, user: 'u', profilId: 'p1', proxyUrl: 'http://a:b@1.2.3.4:12323' }), /jeton/, '(30/10) jamais un relais sans jeton de contrôle du verrou');
+  const s = specConteneurChrome({ config, user: 'u', profilId: 'p1', proxyUrl: 'http://a:b@1.2.3.4:12323', proxyBeebs: 'http://c:d@5.6.7.8:12321', permises: ['vinted', 'depop'], jetonControle });
   assert.equal(s.Image, 'fillsell-chrome:abcdef123456');
   assert.ok(s.Env.includes('PROXY_AMONT=http://a:b@1.2.3.4:12323') && s.Env.includes('PROXY_BEEBS=http://c:d@5.6.7.8:12321'));
   assert.deepEqual(s.HostConfig.Binds, ['/p/p1/chrome:/profil', '/crx:/extension-crx:ro']);
   assert.equal(s.Labels['fillsell.moteur'], 'chrome');
-  const sansBeebs = specConteneurChrome({ config, user: 'u', profilId: 'p1', proxyUrl: 'http://a:b@1.2.3.4:12323' });
+  assert.ok(s.Env.includes('PLATEFORMES_PERMISES=vinted,depop') && s.Env.includes(`JETON_CONTROLE=${jetonControle}`) && s.Env.includes('PORT_CONTROLE=3130'), '(30/10) verrou : plateformes connectées et jeton du contrôle');
+  const sansBeebs = specConteneurChrome({ config, user: 'u', profilId: 'p1', proxyUrl: 'http://a:b@1.2.3.4:12323', jetonControle });
+  assert.ok(sansBeebs.Env.includes('PLATEFORMES_PERMISES='), 'aucune plateforme connectée : toutes fermées');
   assert.ok(!sansBeebs.Env.some((e) => e.startsWith('PROXY_BEEBS=')));
 });
 

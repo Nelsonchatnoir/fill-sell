@@ -163,6 +163,7 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
     const debut = Date.now();
     let sonde = null, arreterEcoute = null;
     let ligneJournal = null;
+    let permisesAvant = null;  // (30/10) les plateformes joignables avant CE « Me connecter » (verrou du relais)
 
     const refusNavigation = []; // instants des derniers refus de navigation (garde anti-boucle)
     const sessionDe = (sid) => [cible, ...fenetres].find((c) => c?.sessionId === sid) ?? null;
@@ -315,6 +316,10 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       ligneJournal = ligne?.id ?? null;
       let h = navigateurs.ouvert(user);
       if (!h) h = await postes.ouvrir(user, compte, 'connexion');
+      // (30/10, règle de Nico) Le verrou du relais : la plateforme de CE « Me connecter » devient joignable, en plus des
+      // connectées, AVANT toute navigation ; une fermeture sans connexion la referme (fermer).
+      permisesAvant = [...(h.permises ?? compte?.plateformes_connectees ?? [])];
+      await navigateurs.permettre?.(user, [...permisesAvant, plateforme]);
       cdp = h.cdp;
       arreterEcoute = cdp.on((m) => { surEvenement(m).catch(() => {}); });
       await cdp.send('Target.setDiscoverTargets', { discover: true });
@@ -381,6 +386,11 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
       const cibles = [...fenetres, cible].filter(Boolean);
       for (const c of cibles) cdp?.send('Target.closeTarget', { targetId: c.targetId }).catch(() => {});
       if (!connectee) journaliser(raison === 'expiree' ? 'abandonnee' : raison === 'erreur' ? 'erreur' : 'abandonnee', raison).catch(() => {});
+      // (30/10) Sans connexion, la plateforme redevient fermée ; connectée, elle reste joignable (son coffre fait foi).
+      if (!connectee && permisesAvant) {
+        Promise.resolve().then(() => navigateurs.permettre?.(user, permisesAvant))
+          .catch((e) => journal.alerte('verrou_retour_echec', { user, plateforme, erreur: e.message }));
+      }
       journal.info('connexion_fermee', { user, plateforme, raison, duree_s: Math.round((Date.now() - debut) / 1000) });
       try { if (ws.readyState === 1) ws.close(1000); } catch { /* déjà fermé */ }
     }
