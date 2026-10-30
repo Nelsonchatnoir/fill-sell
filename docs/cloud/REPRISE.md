@@ -563,3 +563,12 @@ Le récit détaillé : dépôt `docs/enquetes/lot-d-3010/RAPPORT.md` ; l'état d
 
 ---
 
+
+## ⛔ 30/10/2026 14:10 — CLOUD À L'ARRÊT, CHOIX DE LA MACHINE (à lire AVANT le bloc 13:38)
+- Orchestrateur arrêté à **13:53:11** (ordre de Nico) : plus aucune visite de plateforme depuis le serveur ni par les
+  IP du pool. Ne PAS lancer `deployer.sh` (il le relancerait, et il rouvrirait le Chrome Linux de Nico).
+- Nico ne se connecte à AUCUNE plateforme sur le serveur actuel ; il se connectera une seule fois, sur la machine
+  retenue, après un essai propre en conditions de production.
+- Étude, options, clauses, plan d'essai, souscription : `docs/enquetes/machine-cloud-3010/RAPPORT.md`.
+- Prochaine étape : réponse écrite de Shadow Pro (autorisation + prix Always On) ou, en repli, de Hetzner (Windows
+  sur GEX45) ; puis souscription par Nico, script d'installation, poste Windows, essai unique.
