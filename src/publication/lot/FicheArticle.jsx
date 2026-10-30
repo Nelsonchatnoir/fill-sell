@@ -380,7 +380,9 @@ export default function FicheArticle({ m, item = null, decision = {}, ecartees =
         {/* (29/10, lot B 1.3) La dictée sur la description : elle s'ajoute à la ligne, jamais à la place. */}
         <BoutonDictee lang={lang} separateur={"\n"} onChange={(v) => m.poserValeurGenerale?.("description", v)} />
         {lecture?.note ? <p className="fsq-note">{phraseLecture(lecture.note, en)}</p> : null}
-        {avecHashtags && sansHashtags.length > 0
+        {/* (30/10, lot E, essai B5) Le texte de la personne part tel quel PARTOUT, hashtags compris (construireJobs,
+            texteDuVendeur) : la note ne vaut que pour un texte écrit par FillSell. */}
+        {ecritParFillSell && avecHashtags && sansHashtags.length > 0
           ? <p className="fsq-note">{en ? `Hashtags only go out on Vinted and Depop (5 at most there): ${sansHashtags.map(NOM).join(", ")} get the text without them.` : `Les hashtags ne partent que sur Vinted et Depop (5 au plus) : ${sansHashtags.map(NOM).join(", ")} reçoi${sansHashtags.length > 1 ? "vent" : "t"} le texte sans eux.`}</p>
           : null}
         {ecritParFillSell && !decision?.texteValide && actions.validerTexte ? (
