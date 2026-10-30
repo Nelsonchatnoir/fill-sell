@@ -88,7 +88,8 @@ const PAR_TEXTE = Object.freeze([
   // ── la plateforme refuse sans motif ──
   // (27/10) Le motif ne dit plus « refusée par sa modération » (une déduction) mais l'absence constatée : « absente de
   // tes annonces … aux relevés complets du … et du …, et Leboncoin n'a donné aucun motif ». Même classe.
-  [/n.a jamais mis cette annonce en ligne|refus[ée]e par sa mod[ée]ration|n.a pas mis cette annonce en ligne|refus[ée]e [àa] la v[ée]rification|n.a donn[ée] aucun motif/i, ORIGINE.PLATEFORME, "moderation"],
+  // (30/10, lot E, migration 20261030230000) Leboncoin : « … n'a rien affiché à FillSell … son motif est dans le mail ». Même classe.
+  [/n.a jamais mis cette annonce en ligne|refus[ée]e par sa mod[ée]ration|n.a pas mis cette annonce en ligne|refus[ée]e [àa] la v[ée]rification|n.a donn[ée] aucun motif|n.a rien affich[ée] [àa] FillSell/i, ORIGINE.PLATEFORME, "moderation"],
   // ── nous ──
   [/description, le rayon Depop et l.[ée]tat manquent|manquent dans la copie de ton annonce/i, ORIGINE.NOUS, "capture_depop_incomplete"],
   [/frais de port/i, ORIGINE.NOUS, "capture_depop_frais_de_port"],

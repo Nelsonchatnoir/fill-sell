@@ -116,8 +116,61 @@ voir la fin de `docs/agents/etat-2026-10-01.md`.
 
 ## Ce qui reste
 
-1. **Téléverser l'extension 0.6.160** au Chrome Web Store : sans elle, les dépôts Leboncoin de plus de 3 photos
-   continuent de partir à 3.
-2. **Décider la remise à niveau** des 192 annonces Leboncoin amputées (proposition ci-dessus).
-3. Pas d'essai réel dans ce lot sur une vraie annonce (Leboncoin 0.6.160, « Modifier sur eBay ») : à faire sur le
-   compte de Nico (annonce à 999 € ou plus) dès la 0.6.160 posée.
+1. ~~Téléverser l'extension 0.6.160~~ — remplacée par la **0.6.161** (§ Finition) : sans elle, les dépôts Leboncoin
+   de plus de 3 photos continuent de partir à 3.
+2. ~~Décider la remise à niveau des 192 annonces~~ — décision de Nico : la ligne « Republier avec toutes tes photos »
+   (§ Finition, A1).
+3. ~~Essai réel~~ — fait le 30/10 soir (§ Finition, partie B).
+
+## Finition (30/10 soir) — tout prouvé en réel, extension 0.6.161
+
+La 0.6.160 n'a jamais été téléversée ; la 0.6.161 la remplace (zip seul dans son dossier, voir l'état de prod). Copie
+séparée `fill-and-sell-lot-e`, branche `lot-e/thecloset` ; rien du Cloud touché. Urgence Louis : rapport à part
+`docs/enquetes/louis-lbc-restreint-3010/RAPPORT.md`.
+
+### Partie A — causes et règles
+
+- **A1, annonces Leboncoin parties avec moins de photos** : ligne « Cette annonce est partie avec moins de photos que
+  prévu. Republier avec toutes tes photos ? » dans la fenêtre de retrait du Stock (`RemovePlatformsModal`), fonction
+  `republier-photos-lbc` (v1, verify_jwt vrai) : un geste, une à la fois par compte, sans pièce ni quota, visible avec
+  une extension qui lit la nouvelle page (build ≥ 16:30:40Z), jamais pendant un blocage Leboncoin.
+- **A2, « Étape de republication inconnue : recreated »** (Johan, 3 Leboncoin) : l'extension ne connaissait pas l'étape
+  « recreated » sans numéro. Règle : l'extension la remet en attente, le serveur tranche par les relevés (annonce
+  recréée vue → clôture ; ancienne disparue et rien vu → reprise sans doublon, Leboncoin et Beebs). Parc traité au
+  déploiement : fanion Johan clos (annonce 3298266722 vue ailleurs), casquette et jean repris, Vinted de linda clos
+  (10542669657). ⚠️ La première version a aussi repris une republication Beebs ÉCHOUÉE de XEWER (refus de vérification
+  34140079) → redéposée (34267671) à 19:48 sans geste ; corrigé et redéployé dans l'heure (seules `pending` /
+  `needs_user`, jamais un refus de vérification Beebs).
+- **A3, Sébastien, montre « Taille unique » refusée** : nouvel arbre Vinted « Accessoires de mode › Montres » — la Taille
+  n'apparaît qu'après « Pour qui ? ». L'extension pose « Pour qui ? » avant la taille ; relance après mise à jour
+  (`vinted_accessoires_pour_qui_taille`). Parc : seule la tâche de Sébastien.
+- **A4, PAUGUES, Juliette, Jocabroc « absente des relevés »** : trois PUBLICATIONS (27 et 28/10), pages publiques
+  « désactivée ». Juliette : `adsubmit` 2xx puis canal coupé, dépôt jamais finalisé → règle 0.6.161 (publié seulement
+  sur la page de confirmation ou l'annonce). PAUGUES et Jocabroc : confirmation vue, puis l'annonce n'est jamais en
+  ligne. **Mécanisme prouvé le 30/10 sur le compte de Nico** : Leboncoin refuse automatiquement, à la seconde du
+  dépôt, une annonce « similaire à une annonce déjà en ligne » (mail « refusée » à 20:21:14, page de confirmation
+  pourtant affichée) ; un refus n'apparaît ni dans le tableau de bord de Leboncoin ni sur la page « Corriger ». Pour
+  PAUGUES et Jocabroc, aucun doublon dans FillSell ni dans leurs relevés : le motif exact est dans le mail de Leboncoin
+  reçu par chacun. **Proposition (migration, feu vert de Nico)** : le message « Leboncoin n'a donné aucun motif »
+  devient « Leboncoin a sans doute refusé l'annonce juste après le dépôt ; son motif est dans le mail « Votre annonce
+  a été refusée » qu'il t'a envoyé ».
+- **A5, Amiral (Brave)** : tous les messages « dans Chrome » nomment le navigateur réel du poste (`nommerLeNavigateur`).
+- **A6, DBZ70, sous-rayons « Accessoires de mode »** : arbre Vinted servi à certains comptes (5496, 14 sous-rayons)
+  ajouté au moteur de rayon du serveur ; les 6 tâches partent seules.
+
+### Partie B — essais réels (compte de Nico, annonces à 999 €)
+
+| Essai | Annonce | Preuve |
+|---|---|---|
+| B1 Leboncoin ≥ 12 photos | 3298675759 (veste, 30/10 22:22) | « active », 12 photos sur la page (`nb_images` 12), 20 gratuites lues sur la page, mail « est en ligne » |
+| B2 ville choisie | 3298675759 | Lyon 69001 sur la page (réglage : autre adresse) |
+| B3 « illisible → rien ne part » ne bloque pas | 3298675759 | lecture `page_lbc`, dépôt passé |
+| B4 photos choisies / réordonnées | Depop nelsolchatnoir-…-7a44 ; Beebs 34268419 | Depop : ordre en ligne exact (couverture comprise), comparaison image par image (écart ≤ 3,6 contre ≥ 33) ; Beebs : couverture = image 2 (écart 0,0) ; job envoyé dans l'ordre choisi [2,3,4,5,6,7,8,10,1] ; ordre complet en ligne lisible à la validation par l'équipe Beebs (en vérification à 22:43) |
+| B5 description de la personne avec hashtags | Leboncoin 3298675759, eBay 820297268148, Beebs 34268419 | texte en ligne identique, hashtags compris ; la note de l'app « les hashtags ne partent que sur Vinted et Depop » ne s'affiche plus sur le texte de la personne |
+| B6 eBay matière + saison | 820297546667 | « Matière : Coton biologique », « Saison : Été » en ligne (saison posée dans les lectures de la fiche pour l'essai : aucune étiquette ne la portait) ; « Modifier sur eBay » : 820297268148, même numéro, titre, prix, description changés |
+| B7 « Femme » + étiquette lisible | Vinted 10599861522 ; Depop nelsonchatnpir-…-b3f7 | Vinted : Femmes › T-shirts, Matière Coton ; Depop : genre « female », matière ABSENTE → corrigé (extension + app, format relevé sur le formulaire de Depop), essai refait après déploiement (§ Après le déploiement) |
+| B8 publier / republier | publier : Vinted, Leboncoin, Beebs, Depop, eBay ci-dessus ; republier : Vinted 10599796049 → **10601153940**, Depop …-7a44 → **…-d82a** | Vinted : ancienne « Page not found », nouvelle en ligne à 999 € (22:31) ; Depop : ancienne 404, nouvelle « on sale », 7 photos (22:38) ; Leboncoin 3298675759 en file (cadence 15 min, planifiée — intouchable) ; Beebs à la validation ; eBay : pas de republication dans FillSell (choix d'origine) |
+
+**Essais ratés puis refaits.** Premier B1 (3298588291) refusé par Leboncoin (doublon de deux annonces en ligne, voir
+A4) ; premier Beebs (34267794) retiré de la vérification (mêmes photos) ; Depop sans matière (`attributes: {}`) →
+corrigé (extension + app), essai refait.

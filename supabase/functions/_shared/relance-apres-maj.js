@@ -35,7 +35,7 @@ const BUILD_0_6_150 = "2026-10-28T20:15:00Z";
 const BUILD_0_6_153 = "2026-10-29T13:49:28Z";
 // (30/10, lot E) Le premier build qui pose « Pour qui ? » avant la taille des accessoires Vinted (0.6.161) : l'horodatage
 // du commit de l'extension (EXTENSION_LAST_COMMIT) — tout build construit depuis le porte.
-export const BUILD_0_6_161 = "2026-10-30T18:52:54Z"; // a785efc : le commit qui porte « Pour qui ? » avant la taille (tout build 0.6.161 l'a)
+export const BUILD_0_6_161 = "2026-10-30T18:52:54Z"; // 8038d66 : le commit qui porte « Pour qui ? » avant la taille (tout build 0.6.161 l'a)
 // (30/10, lot E — Sébastien) Le rayon de l'annonce d'origine est sur le nouvel arbre Vinted « Accessoires de mode ».
 const rayonAccessoiresDeMode = (job) => {
   const snap = job?.platform_fields?.republish_snapshot;
