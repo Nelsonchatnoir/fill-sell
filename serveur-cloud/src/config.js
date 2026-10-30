@@ -47,6 +47,10 @@ export function lireConfig(env = process.env) {
     socketDocker: env.SOCKET_DOCKER?.trim() || '/var/run/docker.sock',
     // Capacité MESURÉE du serveur (navigateurs simultanés). Défaut prudent.
     navigateursMax: lireEntier(env.NAVIGATEURS_MAX, 8),
+    // (30/10) Poste à vraie puce graphique (deploiement/gpu/) : Chrome sur l'écran du bureau, par la puce de l'hôte ;
+    // GPU_GROUPES = les gid video et render de l'hôte (getent group video render).
+    navigateurGpu: lireBool(env.NAVIGATEUR_GPU, false),
+    gpuGroupes: String(env.GPU_GROUPES ?? '').split(',').map((s) => s.trim()).filter((s) => /^\d+$/.test(s)),
     memoireNavigateur: env.MEMOIRE_NAVIGATEUR?.trim() || '1400m',
     // ── Garde CPU de la base (règle du 04/10) : au-dessus, aucun démarrage
     //    nouveau sauf une connexion demandée par quelqu'un ───────────────────

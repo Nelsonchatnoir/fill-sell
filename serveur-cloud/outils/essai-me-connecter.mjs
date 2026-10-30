@@ -11,7 +11,8 @@
 // donc AUCUNE visite de plateforme avant (ni après) les deux pages de connexion — la consigne de Nico.
 // Une seule ouverture par plateforme, Leboncoin puis Beebs ; le navigateur est fermé tout de suite après (le profil
 // reste sur le disque). Rien n'est écrit au coffre.
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile, rm } from 'node:fs/promises';
+import { randomBytes } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import { lireConfig } from '../src/config.js';
 import * as journal from '../src/journal.js';
@@ -21,12 +22,15 @@ import { creerConnexions } from '../src/connexion.js';
 import { signerTicket } from '../src/tickets.js';
 
 const [user, sortie] = process.argv.slice(2);
+// (30/10) --verifier : AVANT toute plateforme, Chrome ouvert sur un profil JETABLE, proxy MORT (rien ne sort) : la puce
+// graphique vue par Chrome (SystemInfo) et par une page about:blank (WebGL, écran, fuseau, langues, lecteur PDF).
+const verifier = process.argv.includes('--verifier');
 if (!/^[0-9a-f-]{36}$/i.test(String(user)) || !sortie) {
   console.error('usage : node outils/essai-me-connecter.mjs <user_id> <dossier_de_sortie> < proxy');
   process.exit(1);
 }
 const lireEntree = () => new Promise((ok) => { let s = ''; process.stdin.on('data', (d) => { s += d; }).on('end', () => ok(s.trim())); });
-const proxyUrl = await lireEntree();
+const proxyUrl = verifier ? 'http://verification:morte@127.0.0.1:9' : await lireEntree();
 if (!/^http:\/\/[^@\s]+@\d+\.\d+\.\d+\.\d+:\d+$/.test(proxyUrl)) { console.error('proxy illisible sur l\'entrée standard'); process.exit(1); }
 
 const OBSERVATION_MS = 25_000;
@@ -37,7 +41,7 @@ const base = createClient(config.supabaseUrl, config.cleService, { auth: { persi
 const docker = creerDocker({ socket: config.socketDocker });
 const navigateurs = creerNavigateurs({ config, docker, journal });
 const { data: poste } = await base.from('cloud_postes').select('details').eq('user_id', user).maybeSingle();
-const profilId = poste?.details?.profil;
+const profilId = verifier ? `verif-${randomBytes(4).toString('hex')}` : poste?.details?.profil;
 if (!profilId) { console.error('aucun profil noté pour ce compte (cloud_postes)'); process.exit(1); }
 
 // Le poste SANS session FillSell (l'écart voulu, ci-dessus) ; le coffre n'est jamais écrit.
@@ -83,15 +87,45 @@ async function essayer(plateforme) {
   bilan.plateformes[plateforme] = { ouverture_s: Math.round((t1 - t0) / 100) / 10, observation_s: OBSERVATION_MS / 1000, etats, releves };
 }
 
+const EXPRESSION_VERIFICATION = `(() => {
+  const c = document.createElement('canvas'); const gl = c.getContext('webgl');
+  const ext = gl && gl.getExtension('WEBGL_debug_renderer_info');
+  return JSON.stringify({ webgl: gl ? gl.getParameter(ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER) : null,
+    vendeur: gl && ext ? gl.getParameter(ext.UNMASKED_VENDOR_WEBGL) : null, ecran: [screen.width, screen.height],
+    fuseau: Intl.DateTimeFormat().resolvedOptions().timeZone, langues: navigator.languages, pdf: navigator.pdfViewerEnabled,
+    plugins: navigator.plugins.length, coeurs: navigator.hardwareConcurrency, memoire: navigator.deviceMemory, webdriver: navigator.webdriver });
+})()`;
+
+async function verifierPuce() {
+  const h = await postes.ouvrir(user);
+  let ext = null;
+  for (let i = 0; i < 30 && !ext; i++) {
+    ext = (await h.cdp.send('Target.getTargets')).targetInfos.find((c) => c.type === 'service_worker' && c.url.startsWith('chrome-extension://'));
+    if (!ext) await pause(1000);
+  }
+  const info = await h.cdp.send('SystemInfo.getInfo').catch(() => null);
+  const { targetId } = await h.cdp.send('Target.createTarget', { url: 'about:blank' });
+  const { sessionId } = await h.cdp.send('Target.attachToTarget', { targetId, flatten: true });
+  const v = await h.cdp.send('Runtime.evaluate', { expression: EXPRESSION_VERIFICATION, returnByValue: true }, sessionId);
+  bilan.verification = { navigateur: h.navigateur, extension: ext?.url ?? null,
+    puce: { appareils: (info?.gpu?.devices ?? []).map((d) => `${d.vendorString} ${d.deviceString}`.trim()), rendu: info?.gpu?.auxAttributes?.glRenderer ?? null,
+      webgl: info?.gpu?.featureStatus?.webgl ?? null, gpu_compositing: info?.gpu?.featureStatus?.gpu_compositing ?? null },
+    page: JSON.parse(v?.result?.value ?? 'null') };
+}
+
 try {
-  await essayer('leboncoin');
-  await essayer('beebs');
+  if (verifier) await verifierPuce();
+  else {
+    await essayer('leboncoin');
+    await essayer('beebs');
+  }
 } catch (e) {
   bilan.erreur = String(e?.message ?? e).slice(0, 300);
 } finally {
   await navigateurs.fermer(user, 'essai_fini').catch(() => {});
+  if (verifier) await rm(`${config.dossierProfils}/${profilId}`, { recursive: true, force: true }).catch(() => {});
   bilan.fin = new Date().toISOString();
-  await writeFile(`${sortie}/bilan.json`, `${JSON.stringify(bilan, null, 2)}\n`);
+  await writeFile(`${sortie}/${verifier ? 'verification' : 'bilan'}.json`, `${JSON.stringify(bilan, null, 2)}\n`);
   console.log(JSON.stringify(bilan, null, 2));
   process.exit(0);
 }

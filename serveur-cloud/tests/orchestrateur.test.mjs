@@ -395,6 +395,15 @@ test('(30/10) moteur Chrome : conteneur créé AVEC son proxy (sinon refus), pro
   const sansBeebs = specConteneurChrome({ config, user: 'u', profilId: 'p1', proxyUrl: 'http://a:b@1.2.3.4:12323', jetonControle });
   assert.ok(sansBeebs.Env.includes('PLATEFORMES_PERMISES='), 'aucune plateforme connectée : toutes fermées');
   assert.ok(!sansBeebs.Env.some((e) => e.startsWith('PROXY_BEEBS=')));
+  assert.equal(s.HostConfig.Devices, undefined, 'sans NAVIGATEUR_GPU : aucune puce, écran virtuel du conteneur');
+  assert.ok(!s.Env.some((e) => e.startsWith('ECRAN_EXTERNE=')));
+  // (30/10) Poste à vraie puce graphique : la puce de l'hôte et l'écran du bureau, plus de SwiftShader.
+  const g = specConteneurChrome({ config: { ...config, navigateurGpu: true, gpuGroupes: ['44', '993'] }, user: 'u', profilId: 'p1', proxyUrl: 'http://a:b@1.2.3.4:12323', jetonControle });
+  assert.deepEqual(g.HostConfig.Devices.map((d) => d.PathOnHost), ['/dev/dri/card0', '/dev/dri/renderD128']);
+  assert.deepEqual(g.HostConfig.GroupAdd, ['44', '993']);
+  assert.ok(g.HostConfig.Binds.includes('/tmp/.X11-unix:/tmp/.X11-unix:ro'));
+  assert.ok(g.Env.includes('DISPLAY=:0') && g.Env.includes('ECRAN_EXTERNE=1'));
+  assert.ok(g.Env.includes('CHROME_ARGS_GL=--use-gl=angle --use-angle=gl') && !g.Env.join(' ').includes('swiftshader'));
 });
 
 test('(30/10) relais Chrome : Beebs seul par le résidentiel, tout le reste par l’IP du compte', async () => {

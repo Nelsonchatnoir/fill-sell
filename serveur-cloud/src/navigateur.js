@@ -95,19 +95,37 @@ export function plateformesVerrou(liste) {
   return [...new Set((Array.isArray(liste) ? liste : []).map((p) => String(p).toLowerCase()).filter((p) => PERMISSIBLES.has(p)))].sort();
 }
 
+/**
+ * (30/10) LE POSTE À VRAIE PUCE GRAPHIQUE (NAVIGATEUR_GPU=1, deploiement/gpu/) : sur un serveur Linux sans puce,
+ * Leboncoin et Beebs bloquent (rendu SwiftShader) ; un vrai matériel passe (essai du PC de Nico, 30/10). Le conteneur
+ * dessine alors sur l'écran du bureau de l'hôte (session « bureau », uid 1000 = « navigateur » du conteneur) par la puce
+ * Intel : /dev/dri, socket X monté en lecture, groupes video/render de l'hôte (GPU_GROUPES), ANGLE sur OpenGL.
+ */
+function specGpu(config) {
+  if (!config.navigateurGpu) return { env: [], devices: [], binds: [], groupes: [] };
+  return {
+    env: ['DISPLAY=:0', 'ECRAN_EXTERNE=1', 'CHROME_ARGS_GL=--use-gl=angle --use-angle=gl'],
+    devices: ['/dev/dri/card0', '/dev/dri/renderD128'].map((d) => ({ PathOnHost: d, PathInContainer: d, CgroupPermissions: 'rwm' })),
+    binds: ['/tmp/.X11-unix:/tmp/.X11-unix:ro'],
+    groupes: config.gpuGroupes ?? [],
+  };
+}
+
 /** La spécification Docker du conteneur Chrome d'un compte (pure : testée). */
 export function specConteneurChrome({ config, user, profilId, proxyUrl, proxyBeebs = null, permises = [], jetonControle }) {
   if (!proxyUrl || !/^https?:\/\/[^@\s]+@[^:\s]+:\d+$/.test(proxyUrl)) throw new Error('conteneur refusé : proxy du compte absent ou mal formé');
   if (!/^[0-9a-f]{32,}$/.test(String(jetonControle ?? ''))) throw new Error('conteneur refusé : jeton du contrôle du verrou absent');
+  const gpu = specGpu(config);
   return {
     Image: config.imageChrome,
     Env: [`PROXY_AMONT=${proxyUrl}`, ...(proxyBeebs ? [`PROXY_BEEBS=${proxyBeebs}`] : []), 'PROFIL=/profil',
-      `PLATEFORMES_PERMISES=${(permises ?? []).join(',')}`, `JETON_CONTROLE=${jetonControle}`, `PORT_CONTROLE=${PORT_CONTROLE_RELAIS}`],
+      `PLATEFORMES_PERMISES=${(permises ?? []).join(',')}`, `JETON_CONTROLE=${jetonControle}`, `PORT_CONTROLE=${PORT_CONTROLE_RELAIS}`, ...gpu.env],
     Labels: { 'fillsell.cloud': '1', 'fillsell.user': String(user), 'fillsell.profil': profilId, 'fillsell.moteur': 'chrome' },
     HostConfig: {
       // Le profil Chrome vit dans un sous-dossier du profil du compte (neuf, à l'utilisateur du conteneur) : la purge
       // efface le profil entier, sous-dossier compris.
-      Binds: [`${config.dossierProfils}/${profilId}/chrome:/profil`, `${config.dossierExtensionCrx}:/extension-crx:ro`],
+      Binds: [`${config.dossierProfils}/${profilId}/chrome:/profil`, `${config.dossierExtensionCrx}:/extension-crx:ro`, ...gpu.binds],
+      ...(gpu.devices.length ? { Devices: gpu.devices, GroupAdd: gpu.groupes } : {}),
       Memory: octets(config.memoireNavigateur),
       NanoCpus: 1_500_000_000,
       ShmSize: 512 * 1024 * 1024,
