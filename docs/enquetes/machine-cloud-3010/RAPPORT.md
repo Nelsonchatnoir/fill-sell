@@ -188,3 +188,50 @@ Si ça passe :
 - Prix relevés : Shadow (shadow.tech/fr/pro/offers/, aide Zendesk), Azure (API prices.azure.com, EUR), AWS (fichiers
   de prix publiés le 29/10 17:56 UTC), Google (pages de prix, europe-west1), OVH (API catalogue `eco`, FR), Hetzner
   (page GEX45), Vultr (`/v2/plans`).
+
+## 7. Essai du 30/10 — machine neuve + IP neuve (ordre de Nico) : BLOQUÉ, hypothèse tranchée
+Question posée : les essais répétés du 30/10 ont-ils grillé l'ancien serveur, ou un serveur Linux sans carte
+graphique est-il bloqué par nature ?
+- **Serveur neuf** `fillsell-cloud-2` :
+  - créé à 14:48:00 ; IP 2.29.112.220 ; cx23 (2 cœurs, 4 Go) à Helsinki ;
+  - le cx43 demandé était **indisponible** partout (fsn1, nbg1, hel1, ainsi que cx33 et cx53, « error during
+    placement ») ; le cx23 est de la même gamme ;
+  - **supprimé à 14:58**.
+- **IP neuve** : IPRoyal commande **86978813**, **188.126.31.118** (ISP dédiée France). 4 $ ; fin le 29/11 ; sans
+  renouvellement ; jamais utilisée par nous. Solde 15,35 → 11,35 $. Elle n'est **pas** entrée au pool, et ne doit
+  pas y entrer : DataDome la cite désormais.
+- **Configuration** : copie de celle de l'ancien serveur (même coffre, même clé de signature de l'extension) ;
+  déployée en **decebaa** avec un compte autorisé factice. L'orchestrateur a tourné 10 s sans servir personne, puis
+  il a été arrêté. Aucun navigateur ni profil n'existait avant l'essai.
+- **Essai** (14:55:30 → 14:56:26) : `serveur-cloud/outils/essai-me-connecter.mjs`. Il reprend le code de production :
+  - Google Chrome 156.0.8078.79 officiel, extension 0.6.159-cloud installée par stratégie, relais de proxy ;
+  - parcours `connexion.js` (format téléphone, images, accusés comme l'app) ; profil neuf ;
+  - une seule ouverture par plateforme.
+  Écart voulu : la session FillSell n'était pas posée, pour que l'extension ne sonde aucune plateforme avant l'essai.
+- **Langue et fuseau** (vérifiés après coup, hors réseau, sur la même image) : `Europe/Paris`, `fr-FR` (`fr-FR,fr`),
+  GMT+0100. Le serveur à Helsinki ne transparaissait pas.
+
+| Plateforme | Verdict | Ce qui s'est passé |
+|---|---|---|
+| Leboncoin | **BLOQUÉ** | « Mes annonces » s'est affichée, puis la redirection vers auth.leboncoin.fr/login a reçu « Accès temporairement restreint ». Motif : « Quelque chose dans le comportement du navigateur nous a intrigué », IP 188.126.31.118. ID c3cab590-0498-2687-d793-11d590fb0528. |
+| Beebs | **BLOQUÉ** | « Accès temporairement restreint » d'emblée sur /fr/auth, mêmes motifs. ID 9c5aa7bd-d47f-0dc0-9deb-8042be941ecc. |
+
+**Conclusion.** Machine neuve, IP neuve, profil neuf, aucune visite avant : bloqué tout de suite. Ce n'est donc pas
+l'usure de l'ancien serveur. C'est la **nature de la machine** (serveur Linux sans carte graphique, piloté comme en
+production) que DataDome refuse. Suite décidée par Nico : Shadow.
+
+**Coût de l'essai** :
+- serveur : 1 heure entamée × 0,0088 € HT, plus l'IPv4, soit ≈ 0,01 € ;
+- IP : 4 $ ;
+- total ≈ 4 $ + 0,01 €.
+
+### Deux « brûleurs » trouvés dans notre propre code (à neutraliser avant tout essai sur une autre machine)
+1. **La sonde de session de l'extension** : toutes les heures, `fetch` vers leboncoin.fr/deposer-une-annonce et
+   beebs.app/fr/listing, même pour une plateforme jamais connectée. Sur un profil neuf, chaque visite est un 403
+   DataDome.
+2. **Le contrôle d'entrée d'une IP** (`src/controle.js`) : à chaque entretien horaire, un navigateur Linux neuf,
+   sans profil, ouvre les pages d'accueil de Vinted, Leboncoin et eBay par toute IP qui entre au pool.
+
+Règle à inscrire dans le code avant l'essai Shadow :
+- aucune visite automatique d'une plateforme non connectée ;
+- aucun contrôle d'IP qui passe par une plateforme.

@@ -572,3 +572,7 @@ Le récit détaillé : dépôt `docs/enquetes/lot-d-3010/RAPPORT.md` ; l'état d
 - Étude, options, clauses, plan d'essai, souscription : `docs/enquetes/machine-cloud-3010/RAPPORT.md`.
 - Prochaine étape : réponse écrite de Shadow Pro (autorisation + prix Always On) ou, en repli, de Hetzner (Windows
   sur GEX45) ; puis souscription par Nico, script d'installation, poste Windows, essai unique.
+- **30/10 14:55** : essai machine neuve + IP neuve (Hetzner cx23 supprimé à 14:58, IP 188.126.31.118 hors pool) →
+  Leboncoin et Beebs **BLOQUÉS** d'emblée : un serveur Linux sans carte graphique est refusé par nature. Suite :
+  Shadow (Nico fait la demande). Avant tout essai : neutraliser la sonde horaire des plateformes non connectées et
+  le contrôle d'entrée des IP (pages d'accueil des plateformes) — rapport § 7.
