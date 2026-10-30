@@ -10,20 +10,34 @@ import { creerDocker } from '../src/docker.js';
 import { connecterCdp, attacher } from '../src/cdp.js';
 import { EXPRESSION_EMPREINTE } from '../src/empreinte.js';
 
-const [ipId, url, image = 'fillsell-chrome:essai'] = process.argv.slice(2);
-if (!ipId || !/^https:\/\//.test(url ?? '')) { console.error('usage : essai-chrome.mjs <ip_id> <url https> [image]'); process.exit(2); }
-const config = lireConfig();
-const base = createClient(config.supabaseUrl, config.cleService, { auth: { persistSession: false } });
-const { data: proxyUrl } = await base.rpc('cloud_proxy_identifiants', { p_ip: Number(ipId) });
+// <source> : l'id d'une IP du pool, ou « residentiel » (identifiants IPROYAL_RESI_* du .env, session collante neuve).
+const [source, url, image = 'fillsell-chrome:essai', ...envEssai] = process.argv.slice(2);
+if (!source || !/^https:\/\//.test(url ?? '')) { console.error('usage : essai-chrome.mjs <ip_id|residentiel> <url https> [image]'); process.exit(2); }
+const config = { ...lireConfig() };
+let proxyUrl = null;
+if (source === 'residentiel' && !config.iproyalResiUtilisateur) {
+  // Conteneur lancé avant la pose des identifiants : relus dans le .env monté (jamais affichés).
+  const { readFileSync } = await import('node:fs');
+  const env = Object.fromEntries(readFileSync('/srv/fillsell-cloud/.env', 'utf8').split(/\r?\n/).filter((l) => /^[A-Z_]+=/.test(l)).map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1).trim()]));
+  config.iproyalResiUtilisateur = env.IPROYAL_RESI_UTILISATEUR; config.iproyalResiMotDePasse = env.IPROYAL_RESI_MOT_DE_PASSE;
+}
+if (source === 'residentiel') {
+  const { lookup } = await import('node:dns/promises');
+  const { address } = await lookup('geo.iproyal.com', { family: 4 });
+  const session = randomBytes(4).toString('hex');
+  proxyUrl = `http://${encodeURIComponent(config.iproyalResiUtilisateur)}:${encodeURIComponent(`${config.iproyalResiMotDePasse}_country-fr_session-${session}_lifetime-1h`)}@${address}:12321`;
+} else {
+  const base = createClient(config.supabaseUrl, config.cleService, { auth: { persistSession: false } });
+  ({ data: proxyUrl } = await base.rpc('cloud_proxy_identifiants', { p_ip: Number(source) }));
+}
 if (!proxyUrl) { console.error('proxy illisible'); process.exit(1); }
-const pu = new URL(proxyUrl);
 const docker = creerDocker({ socket: config.socketDocker });
 const nom = `fs-chrome-essai-${randomBytes(3).toString('hex')}`;
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 let cdp = null;
 try {
   await docker.creer(nom, {
-    Image: image, Env: [`PROXY_SERVEUR=http://${pu.hostname}:${pu.port || 12323}`],
+    Image: image, Env: [`PROXY_AMONT=${proxyUrl}`, ...envEssai.filter((e) => /^(CHROME_ARGS_GL|ECRAN)=/.test(e))],
     Labels: { 'fillsell.cloud': '1', 'fillsell.essai': 'chrome' },
     HostConfig: { Memory: 1536 * 1024 ** 2, ShmSize: 512 * 1024 ** 2, NetworkMode: config.reseauDocker, AutoRemove: false },
   });
@@ -38,17 +52,6 @@ try {
   cdp = await connecterCdp(String(version.webSocketDebuggerUrl).replace(/^ws:\/\/[^/]+/, `ws://${adr}:9223`));
   const page = cibles.find((t) => t.type === 'page');
   const sessionId = await attacher(cdp, page.id);
-  // Le proxy demande ses identifiants : rendus par le protocole de pilotage (jamais journalisés).
-  cdp.on((m) => {
-    if (m.sessionId !== sessionId) return;
-    if (m.method === 'Fetch.authRequired') {
-      cdp.send('Fetch.continueWithAuth', { requestId: m.params.requestId, authChallengeResponse: { response: 'ProvideCredentials',
-        username: decodeURIComponent(pu.username), password: decodeURIComponent(pu.password) } }, sessionId).catch(() => {});
-    } else if (m.method === 'Fetch.requestPaused') {
-      cdp.send('Fetch.continueRequest', { requestId: m.params.requestId }, sessionId).catch(() => {});
-    }
-  });
-  await cdp.send('Fetch.enable', { handleAuthRequests: true, patterns: [{ urlPattern: '*' }] }, sessionId);
   await cdp.send('Page.enable', {}, sessionId);
   await cdp.send('Page.navigate', { url }, sessionId);
   await pause(15_000);
@@ -62,7 +65,7 @@ try {
   const fichier = `${dossier}/chrome-${new URL(url).hostname}-${new Date().toISOString().replace(/[:.]/g, '-')}.png`;
   writeFileSync(fichier, Buffer.from(capture, 'base64'));
   let empreinte = null; try { empreinte = JSON.parse(await ev(EXPRESSION_EMPREINTE, true)); } catch { /* illisible */ }
-  console.log(JSON.stringify({ ip_id: Number(ipId), sortie: pu.hostname, navigateur: version.Browser, ...lu, capture: fichier, empreinte }, null, 2));
+  console.log(JSON.stringify({ source, sortie: source === 'residentiel' ? 'résidentielle FR' : new URL(proxyUrl).hostname, navigateur: version.Browser, ...lu, capture: fichier, empreinte }, null, 2));
 } finally {
   try { cdp?.fermer(); } catch { /* rien */ }
   await docker.supprimer(nom).catch(() => {});

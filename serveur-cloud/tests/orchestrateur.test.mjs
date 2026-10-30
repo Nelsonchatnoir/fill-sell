@@ -347,3 +347,25 @@ test('(30/10) Beebs : la page de connexion est /fr/auth (la /fr/login rend une 4
   assert.equal(navigationPermise('beebs', 'https://www.kiabi.com/'), false);
   assert.equal(navigationPermise('beebs', 'https://www.beebs.app/fr/recherche?q=robe'), false);
 });
+
+test('(30/10) moteur Chrome : conteneur créé AVEC son proxy (sinon refus), profil et extension signée montés, Beebs à part', async () => {
+  const { specConteneurChrome } = await import('../src/navigateur.js');
+  const config = { imageChrome: 'fillsell-chrome:abcdef123456', dossierProfils: '/p', dossierExtensionCrx: '/crx', memoireNavigateur: '1400m', reseauDocker: 'fillsell-cloud' };
+  assert.throws(() => specConteneurChrome({ config, user: 'u', profilId: 'p1', proxyUrl: '' }), /proxy/);
+  const s = specConteneurChrome({ config, user: 'u', profilId: 'p1', proxyUrl: 'http://a:b@1.2.3.4:12323', proxyBeebs: 'http://c:d@5.6.7.8:12321' });
+  assert.equal(s.Image, 'fillsell-chrome:abcdef123456');
+  assert.ok(s.Env.includes('PROXY_AMONT=http://a:b@1.2.3.4:12323') && s.Env.includes('PROXY_BEEBS=http://c:d@5.6.7.8:12321'));
+  assert.deepEqual(s.HostConfig.Binds, ['/p/p1/chrome:/profil', '/crx:/extension-crx:ro']);
+  assert.equal(s.Labels['fillsell.moteur'], 'chrome');
+  const sansBeebs = specConteneurChrome({ config, user: 'u', profilId: 'p1', proxyUrl: 'http://a:b@1.2.3.4:12323' });
+  assert.ok(!sansBeebs.Env.some((e) => e.startsWith('PROXY_BEEBS=')));
+});
+
+test('(30/10) relais Chrome : Beebs seul par le résidentiel, tout le reste par l’IP du compte', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../navigateur-chrome/relais.mjs', import.meta.url), 'utf8');
+  assert.match(src, /BEEBS && \/\(\^\|\\.\)beebs\\.app\$\/i\.test/);
+  const pol = JSON.parse(readFileSync(new URL('../navigateur-chrome/politique.json', import.meta.url), 'utf8'));
+  assert.deepEqual(pol.ExtensionInstallForcelist, ['dnankhhfellobiobloopcjgkdioblpjd;http://127.0.0.1:3129/update.xml']);
+  assert.equal(pol.DownloadRestrictions, 3); assert.equal(pol.PasswordManagerEnabled, false);
+});

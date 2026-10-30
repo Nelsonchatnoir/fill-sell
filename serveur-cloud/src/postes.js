@@ -34,7 +34,8 @@ export function creerPostes({ config, base, navigateurs, coffre, sessions, journ
     // L'extension démarre avec le navigateur : son service worker peut mettre
     // quelques secondes à apparaître.
     let lu = null;
-    for (let i = 0; i < 6 && !lu; i++) {
+    // (30/10) Chrome officiel : l'extension arrive par la stratégie d'entreprise (quelques secondes de plus).
+    for (let i = 0; i < 16 && !lu; i++) {
       try { lu = await lireDansExtension(h.cdp, id); } catch { await new Promise((r) => setTimeout(r, 2500)); }
     }
     const ownExt = lu?.own;
@@ -87,7 +88,7 @@ export function creerPostes({ config, base, navigateurs, coffre, sessions, journ
     try {
       // (30/10, lot D) La sortie vient du SEUL module fournisseur (IP dédiée, ou rotation).
       const sortie = await fournisseurIp.proxyPour(user, compte);
-      const h = await navigateurs.ouvrir(user, { proxyUrl: sortie.proxyUrl, profilId });
+      const h = await navigateurs.ouvrir(user, { proxyUrl: sortie.proxyUrl, proxyBeebs: sortie.proxyBeebs ?? null, profilId });
       h.ipId = sortie.ipId;
       h.sortie = { mode: sortie.mode, sortie: sortie.sortie };
       // (30/10, lot D) L'historique des IP utilisées par le compte (conditions art. 8, confidentialité 4.8) : en rotation

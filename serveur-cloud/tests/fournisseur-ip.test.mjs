@@ -60,8 +60,14 @@ test('proxyPour : dédié → l’IP du compte ; rotation → le pool ; rotation
   assert.equal(d.mode, 'dedie'); assert.equal(d.ipId, 7); assert.match(d.proxyUrl, /ip7:/);
   const r = await f.proxyPour('u1', { ip_id: null }, t0);
   assert.equal(r.mode, 'rotation_pool'); assert.equal(r.ipId, null); assert.equal(r.sortie, '94.194.94.233'); assert.match(r.proxyUrl, /ip1:/);
+  // (30/10, décision de Nico) Le résidentiel n'est JAMAIS la sortie générale : seulement celle de Beebs, si demandé.
   const fr = creerFournisseurIp({ config: { iproyalResiUtilisateur: 'usr', iproyalResiMotDePasse: 'mdp' }, base: baseFausse({ rotation: 1 }), iproyal: null, journal });
-  assert.equal((await fr.proxyPour('u1', { ip_id: null }, t0)).mode, 'residentiel');
+  const sansBeebs = await fr.proxyPour('u1', { ip_id: null }, t0);
+  assert.equal(sansBeebs.mode, 'rotation_pool'); assert.equal(sansBeebs.proxyBeebs, null, 'BEEBS_RESIDENTIEL absent : Beebs sort par l’IP du compte');
+  const fb = creerFournisseurIp({ config: { iproyalResiUtilisateur: 'usr', iproyalResiMotDePasse: 'mdp', beebsResidentiel: true }, base: baseFausse({ rotation: 1 }), iproyal: null, journal });
+  const avecBeebs = await fb.proxyPour('u1', { ip_id: null }, t0);
+  assert.equal(avecBeebs.mode, 'rotation_pool'); assert.match(avecBeebs.proxyUrl, /ip1:/, 'la sortie générale reste l’IP du pool');
+  assert.match(avecBeebs.proxyBeebs, /^http:\/\/usr:mdp_country-fr_session-[0-9a-f]{8}_lifetime-24h@\d+\.\d+\.\d+\.\d+:12321$/, 'Beebs : résidentiel FR collant, passerelle donnée par son adresse');
   const off = creerFournisseurIp({ config: {}, base: baseFausse({ rotation: 0 }), iproyal: null, journal });
   await assert.rejects(() => off.proxyPour('u1', { ip_id: null }, t0), /rotation coupée/);
 });

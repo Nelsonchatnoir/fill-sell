@@ -36,6 +36,11 @@ export function lireConfig(env = process.env) {
     port: lireEntier(env.PORT, 8080),
     // Image steel-browser DÉRIVÉE (Xvfb + français), ÉPINGLÉE par empreinte.
     imageNavigateur: exiger('IMAGE_NAVIGATEUR'),
+    // (30/10, lot D — Beebs) Le navigateur Google Chrome OFFICIEL (serveur-cloud/navigateur-chrome), épinglé lui
+    // aussi ; s'il est posé, c'est LUI qui sert les comptes (NAVIGATEUR_MOTEUR=steel pour revenir en arrière).
+    imageChrome: env.IMAGE_CHROME?.trim() || '',
+    moteurNavigateur: (env.NAVIGATEUR_MOTEUR?.trim() || (env.IMAGE_CHROME?.trim() ? 'chrome' : 'steel')),
+    dossierExtensionCrx: env.DOSSIER_EXTENSION_CRX?.trim() || '/srv/fillsell-cloud/extension-crx',
     reseauDocker: env.RESEAU_DOCKER?.trim() || 'fillsell-cloud',
     dossierProfils: env.DOSSIER_PROFILS?.trim() || '/srv/fillsell-cloud/profils',
     dossierExtension: env.DOSSIER_EXTENSION?.trim() || '/srv/fillsell-cloud/extension',
@@ -60,6 +65,8 @@ export function lireConfig(env = process.env) {
     iproyalResiUtilisateur: env.IPROYAL_RESI_UTILISATEUR?.trim() || '',
     iproyalResiMotDePasse: env.IPROYAL_RESI_MOT_DE_PASSE?.trim() || '',
     rotationHeures: lireEntier(env.ROTATION_HEURES, 24),
+    // (30/10, lot D) Le trafic de Beebs SEUL par le résidentiel (relais du navigateur Chrome) : 1 = oui.
+    beebsResidentiel: lireBool(env.BEEBS_RESIDENTIEL, false),
     iproyalSoldeAlerte: lireEntier(env.IPROYAL_SOLDE_ALERTE, 5),
     // ── Alertes par mail à support@ (jamais à un utilisateur) ───────────────
     alertesMail: lireBool(env.ALERTES_MAIL, false),
@@ -79,6 +86,9 @@ export function lireConfig(env = process.env) {
   const brute = Buffer.from(c.cleCoffre, 'base64');
   if (brute.length !== 32) throw new Error('COFFRE_CLE doit faire 32 octets (base64)');
   if (Buffer.from(c.cleTickets, 'base64').length < 32) throw new Error('TICKETS_CLE doit faire au moins 32 octets (base64)');
+  if (c.moteurNavigateur === 'chrome' && !/^fillsell-chrome:[0-9a-f]{12,}$/.test(c.imageChrome)) {
+    throw new Error('IMAGE_CHROME doit être épinglée (fillsell-chrome:<empreinte>) quand le moteur est « chrome »');
+  }
   if (!/@sha256:[0-9a-f]{64}$/.test(c.imageNavigateur) && !/^fillsell-navigateur:[0-9a-f]{12,}$/.test(c.imageNavigateur)) {
     throw new Error('IMAGE_NAVIGATEUR doit être épinglée (empreinte sha256 ou étiquette fillsell-navigateur:<empreinte>)');
   }

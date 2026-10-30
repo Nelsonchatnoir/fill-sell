@@ -25,7 +25,7 @@ fi
 SHA="$(git rev-parse --short=12 HEAD)"
 PAQUET="$RACINE/build/cloud-paquet-$SHA"
 rm -rf "$PAQUET" && mkdir -p "$PAQUET/lib" "$PAQUET/public"
-cp -r serveur-cloud/{package.json,package-lock.json,Dockerfile,src,outils,navigateur,deploiement} "$PAQUET/"
+cp -r serveur-cloud/{package.json,package-lock.json,Dockerfile,src,outils,navigateur,navigateur-chrome,deploiement} "$PAQUET/"
 cp serveur-cloud/public/* "$PAQUET/public/"
 cp supabase/functions/_shared/cloud-pool.js "$PAQUET/lib/cloud-pool.js"
 cp src/cloud/connexion/clientConnexion.js "$PAQUET/public/clientConnexion.js"
@@ -42,6 +42,16 @@ set -euo pipefail
 SHA="$1"; DOMAINE="$2"; P="/srv/fillsell-cloud/paquets/$SHA"
 docker build -q -t "fillsell-navigateur:$SHA" "$P/navigateur" >/dev/null
 docker build -q -t "fillsell-orchestrateur:$SHA" "$P" >/dev/null
+# (30/10, lot D) Le navigateur Google Chrome officiel et l'extension Cloud SIGNÉE (installation par stratégie
+# d'entreprise). La clé de signature de la copie Cloud vit sur le serveur seul (cle-extension-cloud.pem, 600).
+docker build -q -t "fillsell-chrome:$SHA" "$P/navigateur-chrome" >/dev/null
+if [ -f /srv/fillsell-cloud/cle-extension-cloud.pem ]; then
+  mkdir -p /srv/fillsell-cloud/extension-crx
+  VERSION_CRX=$(( ($(date +%s) - 1767225600) / 600 % 65535 ))
+  docker run --rm -u 0 --network none --entrypoint /empaqueter-extension.sh -e VERSION_CRX="$VERSION_CRX" \
+    -v "$P/extension:/ext-src:ro" -v /srv/fillsell-cloud/cle-extension-cloud.pem:/cle.pem:ro \
+    -v /srv/fillsell-cloud/extension-crx:/out "fillsell-chrome:$SHA"
+fi
 rm -rf /srv/fillsell-cloud/extension.nouvelle && cp -r "$P/extension" /srv/fillsell-cloud/extension.nouvelle
 rm -rf /srv/fillsell-cloud/extension.ancienne && mv /srv/fillsell-cloud/extension /srv/fillsell-cloud/extension.ancienne 2>/dev/null || true
 mv /srv/fillsell-cloud/extension.nouvelle /srv/fillsell-cloud/extension
@@ -59,6 +69,9 @@ if [ ! -f "$ENV" ]; then
   sed -i "s#^COFFRE_CLE=.*#COFFRE_CLE=$(openssl rand -base64 32)#; s#^TICKETS_CLE=.*#TICKETS_CLE=$(openssl rand -base64 32)#" "$ENV"
 fi
 sed -i "s#^IMAGE_NAVIGATEUR=.*#IMAGE_NAVIGATEUR=fillsell-navigateur:$SHA#; s#^DOMAINE=.*#DOMAINE=$DOMAINE#" "$ENV"
+# (30/10) Le moteur Chrome : l'image du jour (le moteur reste steel tant que l'extension signée n'existe pas).
+grep -q '^IMAGE_CHROME=' "$ENV" || echo 'IMAGE_CHROME=' >> "$ENV"
+if [ -s /srv/fillsell-cloud/extension-crx/fillsell-cloud.crx ]; then sed -i "s#^IMAGE_CHROME=.*#IMAGE_CHROME=fillsell-chrome:$SHA#" "$ENV"; fi
 docker network inspect fillsell-cloud >/dev/null 2>&1 || docker network create --driver bridge --subnet 172.31.0.0/24 -o com.docker.network.bridge.name=br-fillsell fillsell-cloud >/dev/null
 sh /srv/fillsell-cloud/deploiement/pare-feu-navigateurs.sh
 cd /srv/fillsell-cloud/deploiement

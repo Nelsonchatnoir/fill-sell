@@ -15,6 +15,7 @@
 //         tranche. Aujourd'hui une seule : 94.194.94.233 (commande 84458881, jusqu'au 04/11 13:57).
 // ⛔ JAMAIS d'achat ici : lire seulement (solde, commandes). Les achats restent refusés par iproyal.js.
 import { createHash } from 'node:crypto';
+import { lookup } from 'node:dns/promises';
 
 const PASSERELLE_RESIDENTIELLE = { hote: 'geo.iproyal.com', port: 12321 };
 
@@ -30,9 +31,9 @@ export function sessionCollante(user, tranche) {
 }
 
 /** L'URL résidentielle (pur) — pays FR, session collante, durée de vie = la tranche. */
-export function urlResidentielle({ utilisateur, motDePasse, session, heures = 24 }) {
+export function urlResidentielle({ utilisateur, motDePasse, session, heures = 24, hote = PASSERELLE_RESIDENTIELLE.hote }) {
   const mdp = `${motDePasse}_country-fr_session-${session}_lifetime-${Math.max(1, Math.min(168, Number(heures) || 24))}h`;
-  return `http://${encodeURIComponent(utilisateur)}:${encodeURIComponent(mdp)}@${PASSERELLE_RESIDENTIELLE.hote}:${PASSERELLE_RESIDENTIELLE.port}`;
+  return `http://${encodeURIComponent(utilisateur)}:${encodeURIComponent(mdp)}@${hote}:${PASSERELLE_RESIDENTIELLE.port}`;
 }
 
 /**
@@ -79,25 +80,31 @@ export function creerFournisseurIp({ config, base, iproyal, journal, alertes }) 
   async function proxyPour(user, compte, maintenant = Date.now()) {
     // Mode dédié : le compte a son IP.
     if (compte?.ip_id != null) {
-      return { proxyUrl: await proxyDuPool(compte.ip_id), ipId: Number(compte.ip_id), mode: 'dedie', sortie: compte.ip ?? null };
+      return { proxyUrl: await proxyDuPool(compte.ip_id), ipId: Number(compte.ip_id), mode: 'dedie', sortie: compte.ip ?? null,
+        proxyBeebs: await proxyBeebsPour(user, trancheRotation(maintenant, heures)) };
     }
     if (!(await rotationActive())) throw new Error('compte sans IP et rotation coupée (coin_config.cloud_ip_rotation)');
     const tranche = trancheRotation(maintenant, heures);
-    // Rotation résidentielle, si ses identifiants existent.
-    if (config.iproyalResiUtilisateur && config.iproyalResiMotDePasse) {
-      const session = sessionCollante(user, tranche);
-      return {
-        proxyUrl: urlResidentielle({ utilisateur: config.iproyalResiUtilisateur, motDePasse: config.iproyalResiMotDePasse, session, heures }),
-        ipId: null, mode: 'residentiel', sortie: `résidentielle FR (session ${session})`,
-      };
-    }
-    // Rotation sur les IP françaises du pool.
+    // Rotation sur les IP françaises du pool (le résidentiel n'est JAMAIS la sortie générale : Beebs seulement).
     const { data: ips, error } = await base.from('cloud_ips').select('id, ip, pays, etat, expire_le');
     if (error) throw new Error(`pool illisible : ${error.message}`);
     const choisie = ipDuPool(ips ?? [], user, tranche, maintenant);
     if (!choisie) throw new Error('aucune IP française vivante dans le pool');
     return { proxyUrl: await proxyDuPool(choisie.id), ipId: null, ipPool: Number(choisie.id), mode: 'rotation_pool',
-      sortie: String(choisie.ip).replace(/\/32$/, '') };
+      sortie: String(choisie.ip).replace(/\/32$/, ''), proxyBeebs: await proxyBeebsPour(user, tranche) };
+  }
+
+  /**
+   * (30/10, lot D — décision de Nico : « le résidentiel réservé à Beebs seulement ») La sortie RÉSIDENTIELLE française
+   * du seul trafic Beebs (relais du navigateur Chrome), si ses identifiants existent et que BEEBS_RESIDENTIEL=1 ; sinon
+   * null (Beebs sort par l'IP du compte). La passerelle est donnée par son ADRESSE (le pare-feu des navigateurs ne
+   * laisse passer aucun DNS).
+   */
+  async function proxyBeebsPour(user, tranche) {
+    if (!config.beebsResidentiel || !config.iproyalResiUtilisateur || !config.iproyalResiMotDePasse) return null;
+    const { address } = await lookup(PASSERELLE_RESIDENTIELLE.hote, { family: 4 });
+    return urlResidentielle({ utilisateur: config.iproyalResiUtilisateur, motDePasse: config.iproyalResiMotDePasse,
+      session: sessionCollante(user, tranche), heures, hote: address });
   }
 
   /** Le solde du compte IPRoyal (lecture seule), ou null. */

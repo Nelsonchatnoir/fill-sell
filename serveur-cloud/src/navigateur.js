@@ -11,7 +11,7 @@
 //   3. le pare-feu de l'hôte (deploiement/pare-feu-navigateurs.sh) n'autorise
 //      aux conteneurs du réseau br-fillsell QUE le port des proxys IPRoyal :
 //      même un navigateur sans proxy ne joint aucune plateforme.
-import { mkdir, rm, readdir } from 'node:fs/promises';
+import { mkdir, rm, readdir, chown } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { connecterCdp } from './cdp.js';
 
@@ -79,7 +79,34 @@ export function corpsSession({ proxyUrl }) {
   };
 }
 
+// ── (30/10, lot D — Beebs) LE MOTEUR « CHROME » : Google Chrome officiel (serveur-cloud/navigateur-chrome) ──────
+// Mêmes verrous : le profil du compte n'est monté que dans un conteneur créé AVEC son proxy (PROXY_AMONT est
+// obligatoire, le conteneur refuse de démarrer sans) ; le pare-feu de l'hôte reste le troisième verrou. Le conteneur
+// est RECRÉÉ à chaque ouverture (la sortie peut changer : rotation), le profil reste sur le disque.
+/** La spécification Docker du conteneur Chrome d'un compte (pure : testée). */
+export function specConteneurChrome({ config, user, profilId, proxyUrl, proxyBeebs = null }) {
+  if (!proxyUrl || !/^https?:\/\/[^@\s]+@[^:\s]+:\d+$/.test(proxyUrl)) throw new Error('conteneur refusé : proxy du compte absent ou mal formé');
+  return {
+    Image: config.imageChrome,
+    Env: [`PROXY_AMONT=${proxyUrl}`, ...(proxyBeebs ? [`PROXY_BEEBS=${proxyBeebs}`] : []), 'PROFIL=/profil'],
+    Labels: { 'fillsell.cloud': '1', 'fillsell.user': String(user), 'fillsell.profil': profilId, 'fillsell.moteur': 'chrome' },
+    HostConfig: {
+      // Le profil Chrome vit dans un sous-dossier du profil du compte (neuf, à l'utilisateur du conteneur) : la purge
+      // efface le profil entier, sous-dossier compris.
+      Binds: [`${config.dossierProfils}/${profilId}/chrome:/profil`, `${config.dossierExtensionCrx}:/extension-crx:ro`],
+      Memory: octets(config.memoireNavigateur),
+      NanoCpus: 1_500_000_000,
+      ShmSize: 512 * 1024 * 1024,
+      PidsLimit: 768,
+      NetworkMode: config.reseauDocker,
+      RestartPolicy: { Name: 'no' },
+      LogConfig: { Type: 'json-file', Config: { 'max-size': '5m', 'max-file': '2' } },
+    },
+  };
+}
+
 export function creerNavigateurs({ config, docker, journal }) {
+  const chrome = config.moteurNavigateur === 'chrome';
   const ouverts = new Map(); // user → { cdp, ip, conteneur, profilId, ouvertLe }
 
   const ipDe = (inspect) => inspect?.NetworkSettings?.Networks?.[config.reseauDocker]?.IPAddress || null;
@@ -120,9 +147,40 @@ export function creerNavigateurs({ config, docker, journal }) {
     return { nom, ip };
   }
 
+  /** (30/10) Chrome : conteneur neuf sur le proxy de CETTE ouverture, profil gardé ; CDP par le relais 9223. */
+  async function ouvrirChrome(user, { proxyUrl, proxyBeebs, profilId }) {
+    const nom = nomConteneur(user);
+    await docker.supprimer(nom).catch(() => {});
+    const dossier = `${config.dossierProfils}/${profilId}/chrome`;
+    await mkdir(dossier, { recursive: true });
+    await chown(dossier, 1000, 1000).catch(() => {});   // l'utilisateur « navigateur » du conteneur
+    await docker.creer(nom, specConteneurChrome({ config, user, profilId, proxyUrl, proxyBeebs }));
+    await docker.demarrer(nom);
+    const ip = ipDe(await docker.inspecter(nom));
+    if (!ip) throw new Error(`conteneur ${nom} sans adresse sur ${config.reseauDocker}`);
+    let version = null;
+    const fin = Date.now() + 60_000;
+    while (!version && Date.now() < fin) {
+      try { version = await (await fetch(`http://${ip}:9223/json/version`, { signal: AbortSignal.timeout(3000) })).json(); }
+      catch { await new Promise((r) => setTimeout(r, 1000)); }
+    }
+    if (!version?.webSocketDebuggerUrl) throw new Error('Chrome muet (port de pilotage)');
+    const cdp = await connecterCdp(String(version.webSocketDebuggerUrl).replace(/^ws:\/\/[^/]+/, `ws://${ip}:9223`), { delaiAppelMs: 90_000 });
+    return { cdp, ip, nom, navigateur: version.Browser };
+  }
+
   /** Démarre le navigateur du compte, sur SON proxy et SON profil. Rend { cdp, ip, … }. */
-  async function ouvrir(user, { proxyUrl, profilId }) {
+  async function ouvrir(user, { proxyUrl, proxyBeebs = null, profilId }) {
     if (ouverts.has(user)) return ouverts.get(user);
+    if (chrome) {
+      const { cdp, ip, nom, navigateur } = await ouvrirChrome(user, { proxyUrl, proxyBeebs, profilId });
+      const h = { cdp, ip, conteneur: nom, profilId, ouvertLe: Date.now(), moteur: 'chrome', navigateur };
+      cdp.on((m) => { if (m.method === '__ferme__' && ouverts.get(user) === h) ouverts.delete(user); });
+      await cdp.send('Browser.setDownloadBehavior', { behavior: 'deny' }).catch(() => {});
+      ouverts.set(user, h);
+      journal.info('navigateur_ouvert', { user, conteneur: nom, moteur: 'chrome', navigateur });
+      return h;
+    }
     const { nom, ip } = await assurerConteneur(user, profilId);
     await attendreApi(ip);
     const corps = corpsSession({ proxyUrl });
@@ -149,6 +207,13 @@ export function creerNavigateurs({ config, docker, journal }) {
     try { h?.cdp?.fermer(); } catch { /* déjà parti */ }
     const ins = await docker.inspecter(nom);
     const ip = ipDe(ins);
+    if (ins?.Config?.Labels?.['fillsell.moteur'] === 'chrome') {
+      // Chrome : le conteneur porte le proxy de SA session — il ne sert plus jamais (le profil reste).
+      await docker.arreter(nom).catch(() => {});
+      await docker.supprimer(nom).catch(() => {});
+      journal.info('navigateur_ferme', { user, raison, moteur: 'chrome' });
+      return;
+    }
     if (ip && ins?.State?.Running) {
       try { await fetch(`http://${ip}:3000/v1/sessions/release`, { method: 'POST', signal: AbortSignal.timeout(20_000) }); } catch { /* best-effort */ }
     }
