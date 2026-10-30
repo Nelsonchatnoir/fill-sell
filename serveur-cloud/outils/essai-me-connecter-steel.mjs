@@ -79,7 +79,11 @@ if (envoyerExtension) {
   const donnees = await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
   const formulaire = new FormData();
   formulaire.append('file', new Blob([donnees], { type: 'application/zip' }), `fillsell-cloud-${version}.zip`);
-  const r = await steel('POST', '/extensions', formulaire);
+  // Steel garde une extension par identifiant (clé de manifeste fixe) : celle du prototype du 26/09 est remplacée.
+  const { extensions = [] } = await steel('GET', '/extensions');
+  const r = extensions.some((x) => x.id === ID_EXTENSION)
+    ? await steel('PUT', `/extensions/${ID_EXTENSION}`, formulaire)
+    : await steel('POST', '/extensions', formulaire);
   const id = r.id ?? r.extension?.id ?? null;
   await writeFile(path.join(sortie, 'extension-steel.json'), `${JSON.stringify({ id, version, envoyee_le: new Date().toISOString() }, null, 2)}\n`);
   console.log(JSON.stringify({ extension_steel: id, version }));

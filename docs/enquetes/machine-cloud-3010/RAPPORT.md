@@ -788,3 +788,53 @@ Coût :
 - **Coût** : ≈ 5 min de navigateur ≈ 0,01 $, pris sur le crédit offert. **Moins de 0,01 €.**
 - **Écart voulu** : format téléphone (« Me connecter » de production), comme les essais du 30/10. Le 26/09 s'était fait au
   format bureau.
+
+### 14.1 Feu vert de Nico (31/10, 00:10) ; étapes sans plateforme faites ; essai réel REPORTÉ au lendemain
+Ordre de Nico : essai Steel, puis tickets Hetzner et centron, et aucun essai Hetzner sans leur réponse écrite sur la
+licence. Nico n'a pas pu couper son extension ce soir. Ses consignes : « Garde l'essai Steel tel quel pour demain : je
+t'écrirai « muet » quand j'aurai coupé l'extension. D'ici là, rien sur Leboncoin ni Beebs. »
+
+**Fait le 31/10 entre 00:16 et 00:21 (aucune plateforme jointe) :**
+- **Poste de Nico** (`f44b5917`) : vu en base à 00:19:48, 0 job en attente.
+  - Couper le poste côté serveur : impossible proprement. Aucun interrupteur serveur ne coupe tout : l'extension lance
+    aussi d'elle-même ses alarmes (synchros du jour, lecture signalée toutes les 30 s).
+  - Seul Nico peut couper : `chrome://extensions`, carte FillSell sur ARRÊT. Il ferme aussi ses onglets Leboncoin et
+    Beebs.
+- **Extension chez Steel** : Steel gardait celle du 26/09 sous le même identifiant (`POST /v1/extensions` → 400
+  « already exists »).
+  - Correctif de l'outil : il relit `GET /v1/extensions`, puis remplace par `PUT /v1/extensions/{id}`. Méthode relue
+    dans le SDK officiel `steel-sdk` 0.18.0.
+  - Copie Cloud 0.6.160 envoyée à 00:18:10. `build/extension-cloud` date de 17:40 ; le dernier commit de l'extension,
+    de 17:30.
+- **Vérification** (`--verifier`, proxy mort ; session `72959a70`, `iad`, 2 s, 0 crédit) :
+  - Chrome 156.0.8078.73, service worker de l'extension présent ;
+  - WebGL SwiftShader, Linux x86_64, écran 1920×1080 ;
+  - America/New_York, en-US, 6 cœurs, `webdriver` false, `pdfViewerEnabled` false, 0 plugin.
+  - Ce sont les conditions du 26/09, déguisement coupé : l'essai lit « machine Linux de Steel aux États-Unis + IP
+    française ».
+- **Essai à blanc** (`--a-blanc`, proxy mort ; session `d9834b58`, 62 s, 0 crédit) :
+  - parcours complet ;
+  - « Proxy Connection Failed » (ERR_TUNNEL_CONNECTION_FAILED) sur la page Leboncoin et sur la page Beebs ;
+  - session rendue.
+- **IP 3 relue à 00:20** : commande « confirmed », fin le 29/11 à 21:00:42 (Paris) ; sortie 81.181.239.136, Noisiel,
+  AS2914 ; solde IPRoyal 7,35 $.
+
+**Reste à faire, quand Nico écrit « muet » (et seulement alors) :**
+0. **Avant** (ne touche aucune plateforme) : l'extension est passée en 0.6.161 sur main (lot E, poussé par un autre
+   terminal pendant la nuit), alors que Steel a la copie 0.6.160.
+   - Refaire la copie Cloud depuis le dernier commit : `node scripts/cloud/build-extension-cloud.mjs`.
+   - La renvoyer : `node essai-steel-3010.mjs extension` (remplacement par `PUT`).
+   - Relancer `node essai-steel-3010.mjs verifier`.
+1. Relire en base que le poste se tait : `profiles.extension_last_seen_at` figé pendant au moins 2 min, 0 job, 0 relevé
+   dans la fenêtre.
+2. `cd C:\Users\nicol\fillsell-cloud-proto && node essai-steel-3010.mjs essai`.
+   - Le lanceur relit l'IP 3 à l'API IPRoyal. Les deux bilans à blanc ne bloquent pas : seul `bilan.json` interdit un
+     second essai.
+3. Juger sur les images (5, 12 et 25 s), comme au § 12 : formulaire = PASSE ; glissière = PASSE AVEC VÉRIFICATION ;
+   « Accès temporairement restreint » = BLOQUÉ.
+4. Nico remet son extension, puis base relue.
+5. Compte rendu ici, puis tickets Hetzner et centron (§ 13.5).
+
+**Piste Mac mini (demande de Nico, 31/10, 00:25)** : `docs/enquetes/mac-mini-3110/RAPPORT.md`. La licence macOS ferme
+la voie (location réservée à l'intégration continue ; « service bureau » interdit). Recommandation : pas d'essai avant
+une réponse écrite d'Apple ; décision à Nico.
