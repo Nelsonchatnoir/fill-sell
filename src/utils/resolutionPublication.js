@@ -1467,7 +1467,10 @@ export async function resoudrePublication({
       } catch (e) {
         console.warn("[publish] depop — moteur de rayon indisponible (question au vendeur) :", e?.message ?? e);
       }
-      const { champs } = champsDepop({ icon: iconeArticle, genre: genreDepop, pf, rayonParMoteur: true, categorieId: rayonDepop?.id ?? null });
+      // (30/10, lot E, B7) La matière : celle de la copie Depop, sinon la valeur commune des autres copies (lue sur
+      // l'étiquette), sinon la fiche. La copie Depop n'en porte pas (la matière ne se propage pas à Depop).
+      const matiereDepop = String(pf.matiere || sharedFields.matiere || initialListing?.matiere || "").trim();
+      const { champs } = champsDepop({ icon: iconeArticle, genre: genreDepop, pf: matiereDepop ? { ...pf, matiere: matiereDepop } : pf, rayonParMoteur: true, categorieId: rayonDepop?.id ?? null });
       delete champs.depopTaille; // posée après la garde des tailles inventées
       delete pf.depopCategoryPath; delete pf.depopCategoryId; delete pf.depopCategoryLibelles;
       Object.assign(pf, champs);

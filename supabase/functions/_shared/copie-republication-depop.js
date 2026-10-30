@@ -155,6 +155,8 @@ const CLES_DU_DEPOT = Object.freeze([
   "depopMarque", "depopTaille", "depopCouleurs", "marque", "taille", "genre", "couleur",
   // (26/10 nuit, point 10) « Pour » d'un article enfant, tel que le dépôt FillSell l'a envoyé à Depop.
   "depopGenre",
+  // (30/10, lot E) La matière envoyée au dépôt.
+  "depopMatieres",
 ]);
 
 /**

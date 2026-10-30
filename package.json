@@ -481,6 +481,7 @@
     "selftest:depop-slug-souligne": "node scripts/depop-slug-souligne-selftest.mjs",
     "selftest:tables-droits-explicites": "node scripts/tables-droits-explicites-selftest.mjs",
     "selftest:depop-photos-reprise": "node scripts/depop-photos-reprise-selftest.mjs",
+    "selftest:depop-matiere": "node --import ./scripts/loader-ext.mjs scripts/depop-matiere-selftest.mjs",
     "selftest:lot-2410-tailles": "node scripts/lot-2410-tailles-selftest.mjs",
     "selftest:vetement-traditionnel-ebay": "node scripts/vetement-traditionnel-ebay-selftest.mjs",
     "selftest:beebs-commandes-flux-rsc": "node scripts/beebs-commandes-flux-rsc-selftest.mjs",

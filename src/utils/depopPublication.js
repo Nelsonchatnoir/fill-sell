@@ -16,7 +16,10 @@
 //   depopGenre         male | female | unisex — en Enfants seulement ;
 //   depopEtat          brand_new… (utils/depopAttributs.js, jamais embelli) ;
 //   depopCouleurs      2 au plus ; depopTaille ; depopMarque (« Sans marque »
-//                      → « Other » chez Depop) ; depopPort (la personne).
+//                      → « Other » chez Depop) ; depopPort (la personne) ;
+//   depopMatieres      (30/10, lot E) 4 au plus, depuis la matière de la fiche
+//                      ou la composition de l'étiquette (depopMatieres) ;
+//                      l'inconnu est écarté, jamais envoyé tel quel.
 // Ce que la fiche ne permet pas de poser n'est PAS inventé : le champ reste
 // vide et le connecteur pose la question (needs_user), ou le rayon se choisit
 // (« rayon à choisir », CarteRayon).
@@ -24,7 +27,7 @@
 
 import { getDepopCategory, DEPOP_GENRE_ENFANT } from "./depopCategories.js";
 import {
-  depopEtat, depopCouleurs, DEPOP_TAILLE_ENFANT, depopPointureEnfant, depopMarqueAbsente, DEPOP_ETAT_PAR_PALIER,
+  depopEtat, depopCouleurs, depopMatieres, DEPOP_TAILLE_ENFANT, depopPointureEnfant, depopMarqueAbsente, DEPOP_ETAT_PAR_PALIER,
 } from "./depopAttributs.js";
 import { couperAuMot } from "./texteConforme.js";
 import { lireTourDeTaille } from "../../supabase/functions/_shared/taille-de-service.js";
@@ -162,6 +165,10 @@ export function champsDepop({ icon, genre, pf = {}, rayonParMoteur = false, cate
   else manques.push("etat");
   const couleurs = depopCouleurs(pf.couleur);
   if (couleurs.ids.length) champs.depopCouleurs = couleurs.ids;
+  // (30/10, lot E, B7) La matière (« Coton biologique », ou la composition « 80% coton, 20% élasthanne ») : le
+  // connecteur ne l'envoie que sur un type Depop qui l'accepte.
+  const matieres = depopMatieres(pf.matiere);
+  if (matieres.ids.length) champs.depopMatieres = matieres.ids;
   const t = tailleDepop(pf.taille, chemin);
   if (t) champs.depopTaille = t;
   champs.depopMarque = depopMarqueAbsente(pf.marque) ? "Sans marque" : String(pf.marque).trim();

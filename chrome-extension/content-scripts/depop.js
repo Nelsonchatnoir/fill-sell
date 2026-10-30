@@ -84,6 +84,36 @@ const DEPOP_COULEUR_LIBELLE = Object.freeze({
   khaki: "Kaki", brown: "Marron", yellow: "Jaune", silver: "Argenté", gold: "Doré", multi: "Multicolore",
 });
 const DEPOP_GENRE_PAR_LIBELLE = Object.freeze({ Fille: "female", "Garçon": "male", Mixte: "unisex" });
+// (30/10, lot E, B7) LA MATIÈRE : attribut `material`, 4 au plus, facultatif. Le formulaire de Depop l'envoie dans
+// `attributes: { material: [...] }` (requête du formulaire d'édition relevée le 30/10, interceptée, rien envoyé).
+// Identifiants actifs et types qui l'acceptent : docs/plateformes/depop/attributs.json (relevé du 08/10) — les robes,
+// bijoux, montres, la beauté… ne l'ont pas : rien n'y part. Les deux listes sont tenues par
+// scripts/depop-matiere-selftest.mjs contre le relevé.
+const DEPOP_MATIERES_IDS = new Set(["acrylic", "canvas", "cashmere", "corduroy", "cotton", "cotton-organic", "cotton-recycled", "crochet", "denim", "elastane-lycra-spandex", "sequins-gems", "faux-fur", "faux-leather", "fleece", "hemp", "jersey", "knitted", "lace", "leather", "linen", "lyocell", "modal", "nylon", "polyester", "polyester-recycled", "rayon", "rubber", "silk", "suede", "tweed", "velvet", "viscose", "wool"]);
+const DEPOP_MATIERES_MAX = 4;
+const DEPOP_TYPES_AVEC_MATIERE = new Set([
+  "tops/tshirts", "tops/jerseys", "tops/hoodies", "tops/sweatshirts", "tops/jumpers", "tops/cardigans",
+  "tops/shirts", "tops/polo-shirts", "tops/blouses", "tops/crop-top", "tops/vests-tanks-camis", "tops/corsets",
+  "tops/bodysuits", "tops/other-tops", "bottoms/jeans", "bottoms/joggers-tracksuits", "bottoms/trousers", "bottoms/shorts",
+  "bottoms/leggings", "bottoms/skirts", "bottoms/other-bottoms", "dresses/dresses", "coats-jackets/coats", "coats-jackets/jackets",
+  "coats-jackets/gilets", "coats-jackets/other-coats-jackets", "jumpsuit-and-playsuit/jumpsuit", "jumpsuit-and-playsuit/playsuit-romper", "jumpsuit-and-playsuit/dungarees-overalls", "jumpsuit-and-playsuit/other-jumpsuit-and-playsuit",
+  "suits/suits", "suits/tailored-jackets", "suits/tailored-trousers", "suits/waistcoats-vests", "suits/tuxedos", "suits/other-suits",
+  "footwear/trainers", "footwear/slides", "footwear/sandals", "footwear/flipflops", "footwear/slippers", "footwear/brogues",
+  "footwear/oxfords", "footwear/loafers", "footwear/boots", "footwear/boat-shoes", "footwear/espadrilles", "footwear/ballet-shoes",
+  "footwear/clogs", "footwear/courts", "footwear/mules", "footwear/first-shoes-baby-shoes", "footwear/other-footwear", "accessories/bag",
+  "accessories/belt", "accessories/hat", "accessories/gloves", "accessories/scarf-wraps", "accessories/sunglasses", "accessories/wallet-purses",
+  "accessories/other-accessories", "nightwear/pajamas", "nightwear/robes", "nightwear/other-nightwear", "underwear/bandeaus", "underwear/bras",
+  "underwear/panties", "underwear/shapewear", "underwear/boxers-and-briefs", "underwear/vest-undershirts", "underwear/socks", "underwear/hosiery-tights",
+  "underwear/other-underwear", "swim-beach-wear/bikinis-and-tankini-sets", "swim-beach-wear/bikini-and-tankini-tops", "swim-beach-wear/bikini-and-tankini-bottoms", "swim-beach-wear/swimsuit-one-piece", "swim-beach-wear/swim-briefs-shorts",
+  "swim-beach-wear/cover-ups", "swim-beach-wear/other-swim-beach-wear", "fancy-dress/fancy-dress", "sleepsuits-and-bodysuits/sleepsuits-babygrows", "face-masks/face-masks", "tech-accessories/laptop-cases-bag",
+]);
+/** Les matières qui partent (identifiants Depop connus, 4 au plus), ou [] quand le type n'en a pas. */
+function depopMatieresDuJob(pf, chemin) {
+  const [, groupe, type] = Array.isArray(chemin) ? chemin : [];
+  if (!DEPOP_TYPES_AVEC_MATIERE.has(`${groupe}/${type}`)) return [];
+  const liste = Array.isArray(pf?.depopMatieres) ? pf.depopMatieres.map(String) : [];
+  return [...new Set(liste.filter((id) => DEPOP_MATIERES_IDS.has(id)))].slice(0, DEPOP_MATIERES_MAX);
+}
 
 // Session morte : la FORME compte autant que le fond. background.js
 // (motifSessionMorte, traiterMurDeConnexion) reconnaît « Connexion <X>
@@ -407,7 +437,8 @@ function depopPrevol(job) {
   const quantite = Math.max(1, Math.round(Number(pf.depopQuantite ?? pf.quantite ?? 1)) || 1);
   return { ok: true, description, photos: photos.slice(0, DEPOP_PHOTOS_MAX), photosEcartees: Math.max(0, photos.length - DEPOP_PHOTOS_MAX),
     prix: Math.round(prix * 100) / 100, chemin, etat, genre, port: Math.round(port * 100) / 100, quantite,
-    couleurs: (Array.isArray(pf.depopCouleurs) ? pf.depopCouleurs : []).map(String).filter((c) => Object.prototype.hasOwnProperty.call(DEPOP_COULEUR_LIBELLE, c)).slice(0, 2) };
+    couleurs: (Array.isArray(pf.depopCouleurs) ? pf.depopCouleurs : []).map(String).filter((c) => Object.prototype.hasOwnProperty.call(DEPOP_COULEUR_LIBELLE, c)).slice(0, 2),
+    matieres: depopMatieresDuJob(pf, chemin) };
 }
 
 // La marque (règle du 17/10, plus haut) : la valeur choisie pour Depop, sinon
@@ -797,7 +828,8 @@ async function fillListingForm(job) {
     const [, , type] = v.chemin;
     const corps = {
       address: lieu.address,
-      attributes: {},
+      // (30/10, lot E) La matière lue sur l'étiquette, comme le formulaire de Depop l'envoie.
+      attributes: v.matieres?.length ? { material: v.matieres } : {},
       brand: marque.id,
       colour: v.couleurs,
       condition: v.etat,
