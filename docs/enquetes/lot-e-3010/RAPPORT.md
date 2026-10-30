@@ -174,3 +174,16 @@ séparée `fill-and-sell-lot-e`, branche `lot-e/thecloset` ; rien du Cloud touch
 **Essais ratés puis refaits.** Premier B1 (3298588291) refusé par Leboncoin (doublon de deux annonces en ligne, voir
 A4) ; premier Beebs (34267794) retiré de la vérification (mêmes photos) ; Depop sans matière (`attributes: {}`) →
 corrigé (extension + app), essai refait.
+
+### Après le déploiement (30/10, 23:20)
+
+- Fonctions : get-pending-jobs v310, handler-watch v153, update-job-status v160, ops-digest v45, republier-photos-lbc
+  v1 — verify_jwt inchangé. OTA 2.9.139. Zip 0.6.161 seul dans
+  `C:\Users\nicol\fill-and-sell\build\CWS-0.6.161-A-TELEVERSER\`.
+- **Push refusé par le classifieur de Claude Code** (4 essais, dont trois sur ordre de Nico) : le web n'a pas les
+  changements de l'app ; **B7 Depop (matière) ne peut être refait qu'après le push** (la matière est calculée par
+  l'app). L'extension et l'OTA ont le code final.
+- Nettoyage par l'app : 7 retraits faits (Vinted, eBay, Depop des fiches 1 et 2, Leboncoin 3298697519) ; ligne
+  Leboncoin refusée « oubliée » ; Beebs 34268419 en vérification chez Beebs (à retirer après validation).
+- Republication Leboncoin : la tâche s'est figée 15 min après le retrait de l'ancienne annonce (onglet de travail
+  en chargement), puis la règle d'interruption l'a reprise à la bonne étape (« retirée ») : recréée sans doublon.
