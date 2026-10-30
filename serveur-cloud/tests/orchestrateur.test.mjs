@@ -11,7 +11,7 @@ import { specConteneur, corpsSession, nomConteneur } from '../src/navigateur.js'
 import { masquer } from '../src/journal.js';
 import { lireConfig } from '../src/config.js';
 import { idExtensionDepuisCle, sessionPourExtension } from '../src/sessionFillsell.js';
-import { MESSAGES } from '../src/connexion.js';
+import { MESSAGES, ouverteParLaConnexion } from '../src/connexion.js';
 import { chargerRegles } from '../src/regles.js';
 import { socleAbsent, creerGardeSocle } from '../src/socle.js';
 import { verdictPage, releverControle, ADRESSES_CONTROLE } from '../src/controle.js';
@@ -66,6 +66,11 @@ test('connectée pour de vrai : un visiteur invité ne compte jamais', () => {
   assert.equal(estConnectee([{ name: '__Secure-Login', value: 'x', domain: '.leboncoin.fr' }], 'leboncoin'), true);
   assert.equal(estConnectee([{ name: 'access_token', value: jwt({ sub: 'b1', role: 'guest' }), domain: '.beebs.app' }], 'beebs'), false, 'Beebs invité');
   assert.equal(estConnectee([{ name: 'access_token', value: jwt({ sub: 'b1', role: 'user' }), domain: '.beebs.app' }], 'beebs'), true);
+  // (30/10, essai du PC de Nico) Le jeton Firebase ANONYME que Beebs donne à tout visiteur (forme relue dans le profil
+  // de l'essai : provider_id « anonymous », firebase.sign_in_provider « anonymous ») n'est PAS une connexion.
+  const anonymeBeebs = { provider_id: 'anonymous', iss: 'https://securetoken.google.com/babytouch-782e4', aud: 'babytouch-782e4', user_id: 'u1', sub: 'u1', firebase: { identities: {}, sign_in_provider: 'anonymous' } };
+  assert.equal(estConnectee([{ name: 'access_token', value: jwt(anonymeBeebs), domain: 'www.beebs.app' }], 'beebs'), false, 'Beebs : visiteur anonyme');
+  assert.equal(estConnectee([{ name: 'access_token', value: jwt({ ...anonymeBeebs, provider_id: undefined, firebase: { sign_in_provider: 'google.com' } }), domain: 'www.beebs.app' }], 'beebs'), true, 'Beebs : connecté par Google');
   assert.equal(identifiantCompte(vinted(250623918), 'vinted'), '250623918');
 });
 
@@ -275,6 +280,17 @@ test('contrôle d’une IP : le script DataDome d’une page OUVERTE n’est pas
   assert.equal(verdictPage('<html><body>Access is temporarily restricted</body></html>'), 'bloque', 'Beebs (26/09) reste un mur');
   assert.equal(verdictPage('<title>Pardon Our Interruption</title>'), 'bloque');
   assert.equal(verdictPage(''), 'indetermine', 'rien lu : indéterminé, jamais « ok »');
+});
+
+test('« Me connecter » (30/10) : n’adopte QUE les fenêtres ouvertes par la page de connexion, jamais les onglets déjà là', () => {
+  // Annonce de setDiscoverTargets AVANT que la cible existe : onglet de travail de l'extension, about:blank du démarrage.
+  assert.equal(ouverteParLaConnexion({ targetId: 'A', type: 'page', url: 'about:blank' }, [undefined]), false, 'onglet déjà ouvert, sans ouvreur');
+  assert.equal(ouverteParLaConnexion({ targetId: 'B', type: 'page', url: 'https://www.vinted.fr/items/new', openerId: undefined }, [null]), false);
+  // Fenêtre Apple / Google ouverte par la page de connexion, ou par une de ses fenêtres : adoptée.
+  assert.equal(ouverteParLaConnexion({ targetId: 'C', openerId: 'CIBLE' }, ['CIBLE']), true);
+  assert.equal(ouverteParLaConnexion({ targetId: 'D', openerId: 'C' }, ['CIBLE', 'C']), true);
+  // Ouverte par un autre onglet (l'extension) : jamais adoptée.
+  assert.equal(ouverteParLaConnexion({ targetId: 'E', openerId: 'TRAVAIL' }, ['CIBLE']), false);
 });
 
 test('contrôle d’une IP (30/10, règle de Nico) : AUCUNE plateforme visitée, la forme reste acceptée par cloud_controle_manques', async () => {

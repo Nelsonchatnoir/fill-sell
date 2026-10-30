@@ -127,7 +127,10 @@ export function estConnectee(cookies, plateforme) {
     const cl = at ? claimsJwt(at.value) : null;
     if (!cl) return false;
     const role = String(cl.role ?? cl.type ?? cl.user_type ?? '').toLowerCase();
-    return Boolean(cl.sub ?? cl.user_id ?? cl.id) && !/guest|anon|invite/.test(role) && cl.is_guest !== true;
+    // (30/10, essai du PC de Nico) Beebs donne à TOUT visiteur un jeton Firebase anonyme (provider_id « anonymous »,
+    // firebase.sign_in_provider « anonymous ») : « Me connecter » se fermait sur « connecté » 2 s après l'ouverture.
+    const anonyme = [cl.provider_id, cl.firebase?.sign_in_provider].some((p) => String(p ?? '').toLowerCase() === 'anonymous');
+    return Boolean(cl.sub ?? cl.user_id ?? cl.id) && !anonyme && !/guest|anon|invite/.test(role) && cl.is_guest !== true;
   }
   // (30/10) Depop : le cookie access_token (même règle que l'extension, sonderSessionDepop : absent = session fermée).
   if (plateforme === 'depop') return de.some((c) => c.name === 'access_token' && String(c.value ?? '').trim().length > 0);

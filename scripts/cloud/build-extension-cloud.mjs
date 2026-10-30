@@ -58,7 +58,8 @@ export const SOURCE_CONNEXION_CLOUD = `async function connexionCloudPresente(pf)
     const cl = jwt(val("access_token"));
     if (!cl) return false;
     const role = String(cl.role ?? cl.type ?? cl.user_type ?? "").toLowerCase();
-    return Boolean(cl.sub ?? cl.user_id ?? cl.id) && !/guest|anon|invite/.test(role) && cl.is_guest !== true;
+    const anonyme = [cl.provider_id, cl.firebase?.sign_in_provider].some((p) => String(p ?? "").toLowerCase() === "anonymous");
+    return Boolean(cl.sub ?? cl.user_id ?? cl.id) && !anonyme && !/guest|anon|invite/.test(role) && cl.is_guest !== true;
   }
   if (pf === "depop") return val("access_token").length > 0;
   return false;

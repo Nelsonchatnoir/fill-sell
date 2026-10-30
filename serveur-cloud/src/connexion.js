@@ -27,6 +27,18 @@ const DUREE_MAX_MS = 15 * 60_000;
 const INACTIVITE_MS = 5 * 60_000;
 const SONDE_MS = 2000;
 // Garde anti-boucle des refus de navigation (05/10) : 5 refus en 20 s = arrêt.
+/**
+ * (30/10) Une page appartient à « Me connecter » seulement si elle a été OUVERTE par la page de connexion (ou par une
+ * de ses fenêtres). Target.setDiscoverTargets annonce aussi les onglets DÉJÀ ouverts, sans openerId, alors que la
+ * cible n'existe pas encore : `[undefined].includes(undefined)` les adoptait tous, puis la fermeture de l'écran les
+ * fermait (essai du PC de Nico : Chrome sous Windows s'est fermé avec son dernier onglet ; en production, un onglet de
+ * travail de l'extension aurait été fermé en pleine publication).
+ */
+export function ouverteParLaConnexion(targetInfo, idsConnexion) {
+  const ouvreur = targetInfo?.openerId;
+  return Boolean(ouvreur) && (idsConnexion ?? []).filter(Boolean).includes(ouvreur);
+}
+
 export const REFUS_MAX = 5;
 export const REFUS_FENETRE_MS = 20_000;
 const TOUCHES = {
@@ -223,7 +235,7 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
         return cdp.send('Page.handleJavaScriptDialog', { accept: true }, m.sessionId).catch(() => {});
       }
       if (m.method === 'Target.targetCreated' && p.targetInfo?.type === 'page'
-          && [cible?.targetId, ...fenetres.map((f) => f.targetId)].includes(p.targetInfo.openerId)) {
+          && ouverteParLaConnexion(p.targetInfo, [cible?.targetId, ...fenetres.map((f) => f.targetId)])) {
         const sessionId = await cdp.send('Target.attachToTarget', { targetId: p.targetInfo.targetId, flatten: true }).then((r) => r.sessionId).catch(() => null);
         if (!sessionId) return;
         const f = { targetId: p.targetInfo.targetId, sessionId };
