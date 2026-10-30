@@ -100,7 +100,8 @@ async function verifierPuce() {
   const h = await postes.ouvrir(user);
   let ext = null;
   for (let i = 0; i < 30 && !ext; i++) {
-    ext = (await h.cdp.send('Target.getTargets')).targetInfos.find((c) => c.type === 'service_worker' && c.url.startsWith('chrome-extension://'));
+    // La copie Cloud (identifiant fixe), installée par la stratégie d'entreprise : jamais une extension intégrée de Chrome.
+    ext = (await h.cdp.send('Target.getTargets')).targetInfos.find((c) => c.type === 'service_worker' && c.url.startsWith('chrome-extension://dnankhhfellobiobloopcjgkdioblpjd/'));
     if (!ext) await pause(1000);
   }
   const info = await h.cdp.send('SystemInfo.getInfo').catch(() => null);
