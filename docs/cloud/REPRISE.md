@@ -682,3 +682,20 @@ du dossier prototype, nulle part ailleurs. Récit détaillé : dépôt `docs/enq
 - Garde-fous inchangés (bloc 13:38 § 8), plus : aucun résolveur de captcha, aucun service de déblocage, aucun outil
   de maquillage d'empreinte ; de vraies machines, un vrai Chrome ; c'est l'utilisateur qui passe une vérification
   dans « Me connecter ». Nico ne se connecte qu'une fois, sur la machine retenue, après un essai propre.
+
+### 9. 30/10 21:34 — Shadow essayé : passe avec glissière, trop cher avec Always On
+Détail : `docs/enquetes/machine-cloud-3010/RAPPORT.md` § 12.
+- **Essai unique** (21:02, application de Nico ouverte et réduite, option A) : Leboncoin GLISSIÈRE (ID
+  f4a0ed58-c78a-1a71-7414-32cb20dcf9b3), Beebs GLISSIÈRE (ID 3241bdd1-8417-22f5-24a5-0be98b935c6c), IP neuve
+  81.181.239.136.
+- **Always On : 208,99 €/mois**, lu dans le Manager et non activé. Sans Always On, la machine s'éteint dès que
+  l'application se ferme. Recommandation : pas de Shadow en production ; cible AX42 + Windows Server (non essayée,
+  décision de Nico).
+- **Accès à la machine** (utilisateur Windows `shadow`, tunnel sortant `-R 127.0.0.1:2222` vers l'ancien serveur,
+  compte `shadowtun`) : `ssh -i ~/.ssh/fillsell_cloud_ed25519 -o ProxyCommand="ssh -i ~/.ssh/fillsell_cloud_ed25519 -W
+  %h:%p root@178.105.24.16" -p 2222 shadow@127.0.0.1`. Ne marche que si l'application de Nico est ouverte. Chrome se
+  lance dans la session ouverte par une tâche planifiée interactive (`FillSell-Session`), jamais depuis la session SSH. Retrait :
+  `C:\ProgramData\FillSellAcces\retirer.ps1` sur la machine, puis `userdel -r shadowtun` sur le relais.
+- **Exigences de Nico (21:16)** : glissière et connexion faites par l'utilisateur depuis l'app, en direct. Voir ce qui
+  existe et ce qui manque (§ 12) ; rien à coder sans sa validation.
+- IP : 81.181.239.136 ajoutée (fin 29/11, hors pool) ; solde IPRoyal 7,35 $.

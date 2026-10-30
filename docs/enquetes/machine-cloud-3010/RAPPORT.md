@@ -353,3 +353,174 @@ quelques jours à cadence normale de production diront si les publications en ar
   IP neuve, l'IP fixe 2 étant usée par les essais du 30/10. Puis un essai unique, comme au § 4.
 - À verser au dossier : l'accord écrit de Shadow pour l'usage commercial et le prix d'Always On.
 - Règle de Nico : avant toute commande, vérifier que tout ce dont on a besoin est disponible sur ce modèle précis.
+
+## 12. Essai sur Shadow Neo Pro (30/10 soir) : PASSE AVEC VÉRIFICATION, mais Always On coûte 208,99 € par mois
+**Accès** (19:30 → 20:39, heure de Paris).
+- L'accès web de Shadow (pc.shadow.tech, « early access ») n'a jamais établi le flux : erreur L-104, « Client
+  Initialization timeout ». Même résultat après « Éteindre Shadow » et un redémarrage. Nico a donc collé le script
+  d'accès lui-même, depuis l'application Shadow PC.
+- Fonctionnement de l'accès :
+  - le serveur SSH de Windows écoute en local seulement et n'accepte que la clé publique `fillsell-cloud` ;
+  - un tunnel SORTANT (tâche SYSTEM `FillSell-Tunnel`) relie la machine à l'ancien serveur, compte `shadowtun` sans
+    shell, mot de passe verrouillé, `restrict,port-forwarding,permitlisten="127.0.0.1:2222"` ;
+  - seul le sshd de l'ancien serveur a servi : l'orchestrateur est resté arrêté ;
+  - retrait : `C:\ProgramData\FillSellAcces\retirer.ps1`, puis `userdel -r shadowtun` sur le relais.
+- Piège rencontré : ssh.exe lancé en SYSTEM refuse une clé privée dont le propriétaire est l'utilisateur (« Postponed
+  publickey » puis coupure). Correctif : `icacls /reset`, puis propriétaire Administrateurs.
+- Machine relue :
+  - Windows 11 **Famille** 26300, alors que Shadow annonce Enterprise pour les offres Pro ;
+  - EPYC 9354, 4 cœurs / 8 fils, 16 Go ;
+  - RTX 2000 Ada (pilote 32.0.15.6590), plus un contrôleur QXL ;
+  - écran 1920×1200, système en fr-FR ;
+  - fuseau « Central European » à l'arrivée, passé en « Romance Standard Time » (Chrome lit alors Europe/Paris).
+- Installé et vérifié :
+  - Chrome officiel 156.0.8078.80 (MSI entreprise, signature Google LLC valide) ;
+  - Node 25.9.0 (SHA-256 conforme à SHASUMS256) ;
+  - `serveur-cloud` et `build/extension-cloud` 0.6.160.
+- Chrome est lancé dans la session ouverte par une tâche planifiée interactive, car la session SSH est la session 0,
+  sans écran.
+
+**Contrôles hors réseau** : proxy mort, `essai-me-connecter-pc.mjs --verifier`, qui relit désormais aussi WebGL depuis
+une page about:blank.
+- 20:42 et 20:59, application ouverte :
+  - WebGL « ANGLE (NVIDIA, NVIDIA RTX 2000 Ada Generation Direct3D11) », composition par la carte ;
+  - écran 1536×960, Europe/Paris, fr-FR, lecteur PDF, 8 cœurs ;
+  - `webdriver` vrai, à cause du canal `--remote-debugging-pipe` qui installe l'extension. C'est le même sur le PC de
+    Nico (relu à 20:46), où l'essai était passé.
+- 20:45, essai à blanc : le parcours Leboncoin puis Beebs se déroule en entier, sur « ERR_PROXY_CONNECTION_FAILED ».
+  Rien n'est sorti de la machine.
+- **Flux fermé : impossible à vérifier sans Always On.**
+  - Nico a fermé l'application à 20:49:46. Le tunnel s'est coupé dans la seconde et ne s'est jamais reconnecté.
+  - À la réouverture, la machine a redémarré (démarrage relu à 20:58:37).
+  - Le Manager annonce pourtant « Arrêt en cas d'inactivité : 120 min », 8 h par session et 210 h par mois.
+  - Conclusion : la production exige Always On.
+
+**IP neuve.**
+- IPRoyal ISP Dedicated, France, 30 jours, commande 87004978 (21:00:42) : **81.181.239.136:12323**.
+- 4 $, fin le 29/11 à 21:00, sans renouvellement. Absente de nos 4 commandes précédentes. Sortie relue sur api.ipify.org.
+- Solde restant : 7,35 $.
+- Les identifiants n'ont jamais été affichés ; les fichiers qui les portaient ont été effacés après l'essai.
+
+**Poste de Nico muet** (sa demande).
+- Nico a désactivé son extension lui-même : Chrome interdit aux outils d'ouvrir chrome://extensions.
+- Relu en base : `extension_last_seen_at` vaut 20:59:48 avant comme après l'essai (relu à 21:02:13 et 21:03:21).
+- Entre 20:59:48 et 21:03:21 : 0 job, 0 relevé d'index, 0 messagerie, 0 `usage_logs`.
+- Extension réactivée par Nico, revue en base à 21:15:48.
+
+**Essai unique** (21:02:19 → 21:03:14).
+- Application ouverte et réduite : écart accepté par Nico (option A).
+- Profil neuf, relais de production verrouillé sur les deux plateformes, « Me connecter » de production.
+
+| Plateforme | Verdict | Détail |
+|---|---|---|
+| Leboncoin | **GLISSIÈRE** (passe avec vérification) | 21:02:19, auth.leboncoin.fr : « Faites glisser vers la droite », motif « comportement du navigateur », IP 81.181.239.136. ID f4a0ed58-c78a-1a71-7414-32cb20dcf9b3. Même page à 5, 12 et 25 s. |
+| Beebs | **GLISSIÈRE** (passe avec vérification) | 21:02:49, `/fr/auth` : même page DataDome. ID 3241bdd1-8417-22f5-24a5-0be98b935c6c. |
+
+**Lecture.**
+- Windows sur vraie carte, en centre de données, passe comme le PC de Nico : aucun « Accès temporairement restreint ».
+- Beebs est un cran plus prudent qu'avec le PC : glissière au lieu du formulaire.
+
+**Capacité mesurée** (21:17 → 21:25, hors réseau).
+- Chaque utilisateur = un relais de production + un Chrome officiel avec l'extension Cloud ; proxy amont mort.
+- Page de synthèse locale : 120 annonces dessinées, plus WebGL.
+
+| Utilisateurs | RAM privée Chrome + Node | RAM libre (sur 16 Go) | CPU moyen / max | Mémoire de la carte |
+|---|---|---|---|---|
+| 1, au repos | 0,33 Go | 12,46 Go | 5 / 16 % | 530 Mo |
+| 1, page | 0,48 Go | 12,42 Go | 4,8 / 11 % | 652 Mo |
+| 4, page | 1,76 Go | 11,72 Go | 3,5 / 9 % | 1 153 Mo |
+| 8, page | 3,45 Go | 10,73 Go | 10,8 / 23 % | 1 805 Mo |
+| 12, page | 5,13 Go | 9,88 Go | 11,8 / 25 % | 2 466 Mo |
+
+- Par utilisateur : ≈ 0,43 Go de RAM privée et ≈ 0,2 Go de mémoire de carte.
+- Les vraies pages et les jobs actifs pèsent plus (lot D : 650 Mo au repos, 970 Mo en pic).
+- Retenu : **≈ 10 utilisateurs par Shadow Neo**, à confirmer en production.
+
+**Coûts TTC, sans récupération de TVA.** Recette : 20 € TTC ≈ 16 € net. IP : 4,64 € par utilisateur.
+- **Shadow Neo Pro + Always On**
+  - Prix lus dans le Manager :
+    - Neo Pro : 35,99 € payés le 30/10 (facture) ;
+    - Always On : « Activer la fonction « Always On » coûtera 208,99 € par mois », dans la fenêtre de souscription,
+      vers 21:30. Annulée : rien n'a été activé, interrupteur relu éteint ensuite.
+  - Il faut ajouter un frontal pour la vue en direct, car Shadow n'a aucune entrée publique : cx23 à 6,59 € + IPv4 à
+    0,60 € = 7,19 €.
+  - Total : 252,17 € par mois.
+    - 10 utilisateurs : 25,22 + 4,64 = **29,86 € par utilisateur** ;
+    - 12 utilisateurs : 25,65 €.
+  - Au-dessus de la recette nette : **perte**.
+- **Hetzner AX42 + Windows Server 2025 Standard**
+  - (97,30 + 27,90 + 1,70) € HT = **152,28 € TTC par mois**, plus 58,80 € TTC de mise en service.
+  - 16 fils, 64 Go : ≈ 30 utilisateurs, soit 5,08 + 4,64 = **9,72 € par utilisateur**.
+  - Rentable à partir de ≈ 14 utilisateurs (152,28 ÷ (16 − 4,64)).
+  - Vue en direct sans surcoût : IP publique et trafic inclus.
+  - **Non essayée** :
+    - pilote AMD non prévu pour Windows Server ;
+    - aucun écran branché ;
+    - licence d'accès des utilisateurs distants à vérifier avec Hetzner ;
+    - premier mois ≈ 176 € HT, au-dessus du plafond de 150 €.
+- Bande passante de la vue en direct : images JPEG d'environ 43 Ko (relu sur l'essai), envoyées seulement quand la page
+  change. Quelques Mo par connexion : négligeable sur toutes les machines.
+
+**Recommandation.**
+- Pas de Shadow en production :
+  - Always On à 208,99 € par mois revient à ≈ 25 à 30 € par utilisateur ;
+  - l'accord écrit de Shadow est requis ;
+  - sans Always On, la machine est limitée à 210 h par mois.
+- Shadow a prouvé ce qu'on cherchait : Windows sur vraie carte, en centre de données, passe.
+- Machine à viser : AX42 + Windows Server, après le même contrôle hors réseau et un essai unique. Sa commande est la
+  décision de Nico.
+
+**Exigences de Nico (30/10, 21:16) : glissière et connexion faites par l'utilisateur depuis l'app, en direct.**
+- Déjà dans le code : « Me connecter », poussé mais non déployé, visible des seuls comptes `beta_flags.cloud`.
+  - Écran : l'image de la page seule (screencast CDP JPEG, format téléphone), sans barre d'adresse ni onglet.
+  - Gestes transmis : appui, glissé continu, relâché (`Input.dispatchTouchEvent`), texte (`Input.insertText`).
+  - Navigation : le cadre principal est limité aux pages de connexion de la plateforme et aux connexions Google /
+    Facebook / Kiabi ; tout autre lien ramène à la connexion. Une fenêtre ouverte vers une page non permise est fermée.
+  - Fermeture automatique dès que les cookies de connexion apparaissent.
+  - Mots de passe : ni écrits ni journalisés. Ils traversent seulement la mémoire de l'orchestrateur jusqu'au Chrome.
+    Seuls les cookies de la plateforme sont gardés, chiffrés (AES-256-GCM, `cloud_coffre`).
+- Ce qui manque :
+  1. Écran : une phrase et la page, rien d'autre. Aujourd'hui il y a un en-tête (nom, « Fermer ») et les boutons
+     « Écrire » et « J'ai fini ». Il faut aussi :
+     - ouvrir le clavier tout seul quand un champ prend le focus ;
+     - revenir à l'écran d'où l'utilisateur venait (aujourd'hui : la liste « Me connecter »).
+  2. Les cadres : aujourd'hui seuls les documents principaux sont filtrés, les cadres passent. Il faut une liste
+     blanche : DataDome, reCAPTCHA, connexions Google, Apple, Facebook et Kiabi.
+  3. Glissière pendant la connexion : une phrase dédiée quand le cadre captcha-delivery apparaît, et un test de glissé
+     réel. Aucun test ne couvre `touchMove`.
+  4. Glissière pendant le travail de fond : rien n'existe pour le Cloud. Côté serveur, le mur
+     `verification_antirobot` existe, mais avec un message pour ordinateur (« ouvre … dans Chrome »). À faire :
+     - détecter la glissière dans la copie Cloud ;
+     - prévenir l'utilisateur par une notification ;
+     - ouvrir la vue en direct sur la page bloquée (pas sur la page de connexion), avec seule cette plateforme permise
+       par le relais ;
+     - fermer la vue dès la page rendue et reprendre le job.
+  5. Les tests, puis le déploiement avec le moteur Windows.
+- Coût : le développement est le même quelle que soit la machine. Infrastructure : 0 € sur AX42 ; frontal à 7,19 € par
+  mois sur Shadow (compté ci-dessus).
+
+**Demande à Shadow : brouillon, NON envoyé.**
+> Objet : Shadow PC Pro — autorisation d'usage commercial et tarif pour plusieurs machines Always On
+>
+> Bonjour,
+> J'édite FillSell (fillsell.app), une application d'aide à la revente sur les plateformes de seconde main. Nous
+> testons depuis le 30/10/2026 un Shadow PC Neo Pro (VM #BTU1wyVZYbCP36BJt, Strasbourg).
+> Nous souhaitons faire tourner sur des Shadow PC Pro, 24 h/24, un navigateur Google Chrome par utilisateur de notre
+> service (une dizaine d'utilisateurs par machine). Chaque utilisateur se connecte lui-même à ses propres comptes depuis
+> notre application.
+> Vos CGV soumettent l'usage « dans le cadre de prestations commerciales » à une autorisation préalable. Pourriez-vous
+> nous indiquer :
+> 1. si cet usage peut être autorisé, et à quelles conditions (accord écrit) ;
+> 2. votre tarif professionnel pour l'option Always On (208,99 €/mois affichés aujourd'hui dans le Manager) et pour 2 à
+>    10 machines Neo Pro ou Power Pro, avec ou sans engagement ;
+> 3. si la facturation peut être établie au nom de notre société ;
+> 4. si une sortie Internet par un proxy distinct pour chaque utilisateur est compatible avec vos conditions.
+>
+> Cordialement,
+> [Nom], FillSell
+
+**État à 21:34.**
+- Shadow reste allumé tant que l'application de Nico est ouverte.
+- L'accès (tunnel, SSH local) reste en place jusqu'à la décision de Nico.
+- IP 81.181.239.136 : disponible jusqu'au 29/11 (une ouverture par plateforme déjà faite).
+- Ancien serveur : orchestrateur toujours arrêté ; compte `shadowtun` à retirer avec l'accès.

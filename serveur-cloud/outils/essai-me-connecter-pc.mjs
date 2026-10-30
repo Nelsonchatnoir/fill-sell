@@ -61,6 +61,15 @@ const bilan = { mode: verifier ? 'verification' : aBlanc ? 'a_blanc' : 'essai', 
 const enfants = [];
 let cdp = null;
 
+const EXPRESSION_VERIFICATION = `(() => {
+  const c = document.createElement('canvas'); const gl = c.getContext('webgl');
+  const ext = gl && gl.getExtension('WEBGL_debug_renderer_info');
+  return JSON.stringify({ webgl: gl ? gl.getParameter(ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER) : null,
+    vendeur: gl && ext ? gl.getParameter(ext.UNMASKED_VENDOR_WEBGL) : null, ecran: [screen.width, screen.height],
+    fuseau: Intl.DateTimeFormat().resolvedOptions().timeZone, langues: navigator.languages, pdf: navigator.pdfViewerEnabled,
+    plugins: navigator.plugins.length, coeurs: navigator.hardwareConcurrency, memoire: navigator.deviceMemory, webdriver: navigator.webdriver });
+})()`;
+
 async function portOuvert(port) {
   return new Promise((ok) => { const s = net.connect(port, '127.0.0.1', () => { s.destroy(); ok(true); }); s.on('error', () => ok(false)); });
 }
@@ -121,7 +130,16 @@ try {
   const g = info?.gpu;
   bilan.carte_graphique = g ? { appareils: (g.devices ?? []).map((d) => `${d.vendorString} ${d.deviceString} ${d.driverVersion}`.trim()),
     rendu: g.auxAttributes?.glRenderer ?? null, webgl: g.featureStatus?.webgl ?? null, gpu_compositing: g.featureStatus?.gpu_compositing ?? null } : null;
-  console.log(JSON.stringify({ navigateur: bilan.navigateur, extension: bilan.extension, carte_graphique: bilan.carte_graphique }));
+  // (30/10, Shadow) En vérification, la carte vue d'une PAGE (about:blank, proxy mort) : WebGL, écran, fuseau, langues,
+  // lecteur PDF — la même expression que essai-me-connecter.mjs --verifier (serveur Linux).
+  if (verifier) {
+    const { targetId } = await cdp.send('Target.createTarget', { url: 'about:blank' });
+    const { sessionId } = await cdp.send('Target.attachToTarget', { targetId, flatten: true });
+    const v = await cdp.send('Runtime.evaluate', { expression: EXPRESSION_VERIFICATION, returnByValue: true }, sessionId);
+    bilan.page = JSON.parse(v?.result?.value ?? 'null');
+    await cdp.send('Target.closeTarget', { targetId }).catch(() => {});
+  }
+  console.log(JSON.stringify({ navigateur: bilan.navigateur, extension: bilan.extension, carte_graphique: bilan.carte_graphique, page: bilan.page ?? null }));
   if (!verifier) {
     const h = { cdp, ip: '127.0.0.1', conteneur: 'pc', profilId: 'pc', ouvertLe: Date.now(), moteur: 'chrome', navigateur: version.Browser };
     const navigateurs = { ouvrir: async () => h, ouvert: () => h, ouverts: () => [NICO], fermer: async () => {} };
