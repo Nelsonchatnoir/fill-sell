@@ -5065,6 +5065,42 @@ serve(async (req) => {
       }
     }
 
+    // ── (30/10, lot E — Amiral, sous Brave) LE NAVIGATEUR RÉEL DANS LE MESSAGE ──────────────────────────────────────
+    // (_shared/navigateur-poste.js) « … dans Chrome » écrit en dur, par l'extension ou ici : le navigateur déclaré par
+    // l'extension (0.6.161, champ `navigateur`), sinon un indice sûr de la requête, sinon le dernier connu du job, sinon
+    // « ton navigateur ». Le nom sûr est gardé sur le job (navigateur_poste) pour les messages posés plus tard.
+    try {
+      const navCourt = nomCourtSur(navigateurDeLaRequete(body, req.headers));
+      const pfNav = (patch.platform_fields && typeof patch.platform_fields === "object") ? patch.platform_fields as Record<string, unknown> : null;
+      if (navCourt && pfNav && pfNav["navigateur_poste"] !== navCourt) pfNav["navigateur_poste"] = navCourt;
+      if (typeof patch.error === "string" && patch.error.includes("Chrome")) {
+        patch.error = nommerLeNavigateur(patch.error, navCourt ?? (pfNav?.["navigateur_poste"] as string | undefined) ?? null);
+      }
+    } catch (e) {
+      console.warn("[update-job-status] navigateur du message :", (e as Error)?.message ?? e);
+    }
+
+    // ── (30/10, urgence Louis) LEBONCOIN RESTREINT L'ACCÈS : LE BLOCAGE DU COMPTE AU PREMIER SIGNE ──────────────────
+    // (_shared/blocage-leboncoin.js) « Accès temporairement restreint », HTTP 403, page anti-robot sur une tâche
+    // Leboncoin : le blocage est posé sur le COMPTE (platform_settings.leboncoin.blocage_acces) — get-pending-jobs ne
+    // sert plus rien de Leboncoin jusqu'à l'essai. Lecture de la tâche seulement quand le texte porte un signe.
+    try {
+      const texteB = [typeof body.error === "string" ? body.error : "", typeof patch.error === "string" ? patch.error : ""].join(" | ");
+      const signeB = signeBlocageLbc(texteB);
+      if (signeB) {
+        const { data: jB } = await userClient.from("cross_post_jobs").select("platform").eq("id", jobId).maybeSingle();
+        if ((jB as { platform?: string } | null)?.platform === "leboncoin") {
+          const { data: profB } = await userClient.from("profiles").select("platform_settings").eq("id", user.id).maybeSingle();
+          const psB = ((profB as { platform_settings?: Record<string, unknown> } | null)?.platform_settings ?? {}) as Record<string, unknown>;
+          const nouveau = blocagePose(psB, { signe: signeB, source: `update-job-status (job ${String(jobId).slice(0, 8)})`, detail: texteB.slice(0, 240) });
+          const { error: eB } = await userClient.rpc("platform_settings_fusionner", { p_chemin: CHEMIN_BLOCAGE_LBC, p_patch: nouveau });
+          console.log(`[update-job-status] userId=${user.id} job=${jobId} — Leboncoin restreint l'accès (${signeB}) : blocage du compte posé${eB ? ` — ÉCHEC : ${eB.message}` : ""}`);
+        }
+      }
+    } catch (e) {
+      console.warn("[update-job-status] blocage Leboncoin :", (e as Error)?.message ?? e);
+    }
+
     // ── (28/10, point 11 — gatignol.pro, 6584f843) LE MOTIF BRUT EST TOUJOURS GARDÉ ──────────────────────────────
     // Le brut d'un essai n'atteignait error_technique que par deux chemins (G1/G4, pas-de-rouge) : toute autre
     // réécriture de l'affichage (défaut FillSell, canal coupé, attente de session, vendeur Depop…) le perdait, et
@@ -5384,3 +5420,5 @@ import { questionOplaFinale } from "../_shared/opla-questions.js";
 import { vueVisiteurLbc, messageVueVisiteurLbc, delaiVueVisiteurMin } from "../_shared/lbc-vue-visiteur.js";
 import { defautFillsell, messageDefautFillsell } from "../_shared/defaut-fillsell.js";
 import { pauseRayonMoteur } from "../_shared/rayon-moteur-attendu.js";
+import { navigateurDeLaRequete, nomCourtSur, nommerLeNavigateur } from "../_shared/navigateur-poste.js";
+import { CHEMIN_BLOCAGE_LBC, signeBlocageLbc, blocagePose } from "../_shared/blocage-leboncoin.js";

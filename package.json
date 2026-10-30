@@ -89,6 +89,7 @@
     "selftest:lbc-etapes-avant-photos": "node scripts/lbc-etapes-avant-photos-selftest.mjs",
     "selftest:lbc-photos-gratuites": "node scripts/lbc-photos-gratuites-selftest.mjs",
     "selftest:lot-e-3010": "deno run --allow-read --allow-env scripts/lot-e-3010-selftest.ts",
+    "selftest:urgence-louis-3010": "node --import ./scripts/loader-ext.mjs scripts/urgence-louis-3010-selftest.mjs",
     "selftest:lbc-prerempli-ia": "node scripts/lbc-prerempli-ia-selftest.mjs",
     "selftest:couleur-du-texte": "node scripts/couleur-du-texte-selftest.mjs",
     "selftest:vitesse-publication": "node scripts/vitesse-publication-selftest.mjs",

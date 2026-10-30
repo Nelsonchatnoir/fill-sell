@@ -32,6 +32,7 @@
 // d'une réponse « chemin complet » avant de servir le job).
 
 import { CATALOGUE_VINTED_FR } from "./vinted-catalogue-fr.js";
+import { CATALOGUE_VINTED_COMPTES } from "./vinted-catalogue-comptes.js";
 import { langueEtrangereDesRacines } from "./vinted-pays.ts";
 import { FEUILLES as FEUILLES_BEEBS } from "../../../src/utils/arbres/beebsFeuilles.js";
 import { FEUILLES as FEUILLES_LBC } from "../../../src/utils/arbres/leboncoinFeuilles.js";
@@ -48,7 +49,10 @@ function arbreVinted() {
   if (arbre) return arbre;
   const parId = new Map();
   const enfants = new Map();
-  for (const [id, parent, libelle] of CATALOGUE_VINTED_FR) {
+  // (30/10, lot E) + l'arbre servi à certains comptes (racine « Accessoires de mode ») : identifiants globaux, un
+  // identifiant déjà connu de l'arbre anonyme n'est jamais réécrit.
+  for (const [id, parent, libelle] of [...CATALOGUE_VINTED_FR, ...CATALOGUE_VINTED_COMPTES]) {
+    if (parId.has(id)) continue;
     parId.set(id, { id, parent, libelle });
     if (!enfants.has(parent)) enfants.set(parent, []);
     enfants.get(parent).push(id);

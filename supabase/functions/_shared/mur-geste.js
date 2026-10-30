@@ -29,6 +29,7 @@
 // Pur (Deno + Node).
 
 import { ATTENTE_SESSION_RE } from "./attente-session.js";
+import { dansLeNavigateur } from "./navigateur-poste.js";
 
 const NOM = { vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla", depop: "Depop" };
 const SITE = { vinted: "vinted.fr", leboncoin: "leboncoin.fr", ebay: "ebay.fr", beebs: "beebs.app", opla: "opla.co", depop: "depop.com" };
@@ -76,13 +77,14 @@ export function observationChallenge(pf) {
 const RECREATION_BLOQUEE_RE = /identit[ée] Vinted illisible/i;
 
 /** Le message de la recréation bloquée : la date du retrait, le geste, la suite. */
-export function messageRecreationBloquee(platform, deletedAt) {
+/** @param {string} platform @param {unknown} deletedAt @param {string | null} [navigateur] */
+export function messageRecreationBloquee(platform, deletedAt, navigateur = null) {
   const nom = NOM[platform] ?? platform;
   const t = ms(deletedAt);
   const le = Number.isFinite(t)
     ? new Date(t).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long" })
     : null;
-  return `${nom} ne répond plus à FillSell sur ton ordinateur : ouvre ${SITE[platform] ?? nom} dans Chrome, connecte-toi si ${nom} te le demande ` +
+  return `${nom} ne répond plus à FillSell sur ton ordinateur : ouvre ${SITE[platform] ?? nom} ${dansLeNavigateur(navigateur)}, connecte-toi si ${nom} te le demande ` +
     `et passe la vérification si elle s'affiche. Ton annonce${le ? `, retirée le ${le},` : ""} sera remise en ligne toute seule ensuite.`;
 }
 
@@ -112,13 +114,14 @@ export function messageConnexionRequise(platform, opts = {}) {
   // ni navigateur ni onglet. Le début « Connexion Depop requise » reste : c'est
   // lui que reconnaissent le serveur et l'app (bouton « Me connecter »).
   if (platform === "depop") return `Connexion ${nom} requise : connecte-toi à ${nom} sur ton ordinateur. ` + suiteDuMessage(platform, opts);
-  return `Connexion ${nom} requise : reconnecte-toi à ${nom} dans Chrome, sur ton ordinateur. ` + suiteDuMessage(platform, opts);
+  // (30/10, lot E — Amiral) Le navigateur RÉEL (opts.navigateur, nom court sûr), sinon « ton navigateur » — jamais Chrome au hasard.
+  return `Connexion ${nom} requise : reconnecte-toi à ${nom} ${dansLeNavigateur(opts.navigateur)}, sur ton ordinateur. ` + suiteDuMessage(platform, opts);
 }
 
 /** Le message « vérification à résoudre ». */
 export function messageVerificationAntirobot(platform, opts = {}) {
   const nom = NOM[platform] ?? platform;
-  return `${nom} te demande une vérification anti-robot : ouvre ${SITE[platform] ?? nom} dans Chrome et fais la vérification. ` +
+  return `${nom} te demande une vérification anti-robot : ouvre ${SITE[platform] ?? nom} ${dansLeNavigateur(opts.navigateur)} et fais la vérification. ` +
     suiteDuMessage(platform, opts);
 }
 
@@ -141,11 +144,15 @@ export function retraitBloqueParConnexion(job) {
 /**
  * Le verdict pour un job en file.
  * @param {{ platform?: string, action?: string, error?: string|null, platform_fields?: Record<string, any>|null }} job
+ * @param {{ navigateur?: string | null }} [o]
  * @returns {{ geste: null|'connexion'|'verification_antirobot', message?: string, pf: Record<string, any>, change: boolean }}
  */
-export function jugerMurGeste(job) {
+export function jugerMurGeste(job, { navigateur = null } = {}) {
   const pf0 = (job?.platform_fields && typeof job.platform_fields === "object") ? job.platform_fields : {};
   const pf = { ...pf0 };
+  // (30/10, lot E) Le navigateur du poste qui sert ce job (requête), sinon le dernier connu du job.
+  const nav = navigateur ?? pf.navigateur_poste ?? null;
+  if (navigateur && pf.navigateur_poste !== navigateur) pf.navigateur_poste = navigateur;
   const plat = String(job?.platform ?? "");
   const etapeRetiree = job?.action === "republish" && pf.republish_step === "deleted";
   const retrait = job?.action === "delete";
@@ -156,7 +163,7 @@ export function jugerMurGeste(job) {
       && (Number(att.observations) || 0) >= CONNEXION_OBSERVATIONS_MIN) {
     pf.mur_geste = { type: "connexion", le: new Date().toISOString(), depuis: att.depuis ?? null, observations: Number(att.observations) || 0 };
     pf.needs_user_source = "connexion";
-    return { geste: "connexion", message: messageConnexionRequise(plat, { etapeRetiree, retrait, publication }), pf, change: true };
+    return { geste: "connexion", message: messageConnexionRequise(plat, { etapeRetiree, retrait, publication, navigateur: nav }), pf, change: true };
   }
   // 2. Challenge à résoudre : compté par observation distincte.
   const obs = observationChallenge(pf);
@@ -180,8 +187,8 @@ export function jugerMurGeste(job) {
     pf.mur_geste = { type: "verification_antirobot", le: new Date().toISOString(), depuis: m.depuis, observations: m.observations, texte: obs.texte };
     pf.needs_user_source = "verification_antirobot";
     const message = obs.source === "prevol_recreation"
-      ? messageRecreationBloquee(plat, pf.deleted_at ?? pf.deleted_at_serveur ?? null)
-      : messageVerificationAntirobot(plat, { etapeRetiree, retrait, publication });
+      ? messageRecreationBloquee(plat, pf.deleted_at ?? pf.deleted_at_serveur ?? null, nav)
+      : messageVerificationAntirobot(plat, { etapeRetiree, retrait, publication, navigateur: nav });
     return { geste: "verification_antirobot", message, pf, change: true };
   }
   return { geste: null, pf, change };
@@ -204,7 +211,7 @@ export function messagePauseVintedGeste(opts = {}) {
   const quand = Number.isFinite(t)
     ? ` depuis le ${new Date(t).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "2-digit", month: "2-digit" })} à ${new Date(t).toLocaleTimeString("fr-FR", { timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit" })}`
     : "";
-  return `Vinted refuse l'accès à tes annonces${quand} : ouvre vinted.fr dans Chrome, connecte-toi si Vinted te le demande ` +
+  return `Vinted refuse l'accès à tes annonces${quand} : ouvre vinted.fr ${dansLeNavigateur(opts?.navigateur)}, connecte-toi si Vinted te le demande ` +
     "et passe la vérification si elle s'affiche. " + suiteDuMessage("vinted", opts);
 }
 
@@ -260,6 +267,7 @@ export function murConnexionVintedProuve(job, pf0, preuveLe, posePar) {
     etapeRetiree: job?.action === "republish" && pf.republish_step === "deleted",
     retrait: job?.action === "delete",
     publication: job?.action === "publish",
+    navigateur: pf.navigateur_poste ?? null,
   });
   return { pf, message };
 }

@@ -21,8 +21,9 @@ const P = await imp('src/utils/publicationState.js');
 
 console.log('1. App et serveur : rien ne change');
 ok(L.lienAnnonceVinted('10416597607') === 'https://www.vinted.fr/items/10416597607' && L.domaineVinted() === 'vinted.fr', 'lien et domaine : vinted.fr');
-ok(A.messageAttenteBoutique('louis', 'delete') === "En attente de ta boutique Vinted @louis : ouvre-la sur vinted.fr dans Chrome, le retrait repartira tout seul. Ton annonce est toujours en ligne, rien n'a été retiré.", 'attente de boutique (retrait) : texte au caractère près');
-ok(A.messageAttenteBoutique(null, 'publish').includes('Ouvre-la sur vinted.fr dans Chrome, la publication repartira toute seule.'), 'attente de boutique (publication) : texte au caractère près');
+ok(A.messageAttenteBoutique('louis', 'delete', 'Chrome') === "En attente de ta boutique Vinted @louis : ouvre-la sur vinted.fr dans Chrome, le retrait repartira tout seul. Ton annonce est toujours en ligne, rien n'a été retiré.", 'attente de boutique (retrait) : texte au caractère près');
+ok(A.messageAttenteBoutique(null, 'publish', 'Chrome').includes('Ouvre-la sur vinted.fr dans Chrome, la publication repartira toute seule.'), 'attente de boutique (publication) : texte au caractère près');
+ok(A.messageAttenteBoutique('louis', 'delete').includes('ouvre-la sur vinted.fr dans ton navigateur,') && A.messageAttenteBoutique('louis', 'delete', 'Brave').includes('dans Brave,'), '(30/10, lot E) attente de boutique : le navigateur réel, sinon « ton navigateur »');
 const motif = R.RETENUE_BOUTIQUE_INCONNUE;
 if (motif) {
   ok(R.phraseRetenueServeur(true, { motif, boutiques: ['@a'] }).detail.includes('Ouvre @a sur vinted.fr dans Chrome'), 'retenue serveur (boutique inconnue, nommée) : « Ouvre @a sur vinted.fr dans Chrome »');

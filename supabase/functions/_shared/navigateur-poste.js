@@ -23,8 +23,64 @@ export function navigateurDeUA(ua) {
 }
 
 export const NOM_NAVIGATEUR = Object.freeze({
-  edge: "Microsoft Edge", chrome: "Google Chrome", opera: "Opera", firefox: "Firefox", safari: "Safari",
+  edge: "Microsoft Edge", chrome: "Google Chrome", opera: "Opera", firefox: "Firefox", safari: "Safari", brave: "Brave",
 });
+
+// ── BRAVE, ET LE NOM DANS LES MESSAGES (30/10, lot E — Amiral) ──────────────
+// Brave envoie l'User-Agent de Chrome : lu sur l'en-tête, il passait pour « chrome », et le message anti-robot disait
+// « ouvre leboncoin.fr dans Chrome ». L'extension (0.6.161) déclare désormais son navigateur, lu DANS le navigateur
+// (navigator.brave, marques UA-CH), dans le corps de get-pending-jobs et d'update-job-status (`navigateur`). Ordre :
+// la déclaration de l'extension, l'en-tête d'indices client sec-ch-ua s'il arrive, l'User-Agent (Edge, Opera) ;
+// « chrome » lu sur le seul User-Agent n'est PAS une preuve (Brave s'y cache) : il ne nomme rien dans un message.
+const DECLARES = Object.freeze({ chrome: "chrome", "google chrome": "chrome", brave: "brave", edge: "edge", "microsoft edge": "edge", opera: "opera" });
+/** Le code du navigateur déclaré par l'extension ("brave", "edge"…), ou null (valeur hors liste ignorée). */
+export function navigateurDeclare(v) {
+  return DECLARES[String(v ?? "").trim().toLowerCase()] ?? null;
+}
+const entete = (headers, nom) => {
+  try { return String((typeof headers?.get === "function" ? headers.get(nom) : headers?.[nom]) ?? ""); } catch { return ""; }
+};
+/**
+ * Le navigateur d'une requête d'extension : { code, sur } — `sur` = vrai quand le nom peut être écrit dans un message
+ * (déclaré, sec-ch-ua, ou Edge/Opera sur l'User-Agent ; « chrome » du seul User-Agent ne l'est pas).
+ */
+export function navigateurDeLaRequete(body, headers) {
+  const declare = navigateurDeclare(body?.navigateur);
+  if (declare) return { code: declare, sur: true };
+  const ch = entete(headers, "sec-ch-ua");
+  if (/"Brave"/i.test(ch)) return { code: "brave", sur: true };
+  if (/Microsoft Edge/i.test(ch)) return { code: "edge", sur: true };
+  if (/"Opera"/i.test(ch)) return { code: "opera", sur: true };
+  if (/Google Chrome/i.test(ch)) return { code: "chrome", sur: true };
+  const ua = navigateurDeUA(entete(headers, "user-agent"));
+  if (ua === "edge" || ua === "opera") return { code: ua, sur: true };
+  return { code: ua, sur: false };
+}
+const COURT = Object.freeze({ chrome: "Chrome", brave: "Brave", edge: "Edge", opera: "Opera", firefox: "Firefox", safari: "Safari" });
+/** Le nom court à écrire (« Brave », « Chrome »…) quand il est sûr, sinon null. */
+export function nomCourtSur(nav) {
+  return nav && nav.sur && COURT[nav.code] ? COURT[nav.code] : null;
+}
+/** « dans Brave » / « dans Chrome » / « dans ton navigateur » — jamais « Chrome » au hasard. */
+export function dansLeNavigateur(nomCourt) {
+  const n = Object.values(COURT).includes(String(nomCourt ?? "")) ? String(nomCourt) : null;
+  return n ? `dans ${n}` : "dans ton navigateur";
+}
+
+/**
+ * Un message déjà écrit qui nomme « Chrome » en dur (« … dans Chrome », « Ouvre Chrome », « et Chrome est ouvert ») :
+ * le navigateur RÉEL (nom court sûr), sinon « ton navigateur ». Chrome connu : le texte ne change pas. Ce n'est
+ * jamais une marque produit (« Chrome Web Store ») qui est remplacée.
+ */
+export function nommerLeNavigateur(texte, nomCourt) {
+  if (typeof texte !== "string" || !texte.includes("Chrome")) return texte;
+  const n = Object.values(COURT).includes(String(nomCourt ?? "")) ? String(nomCourt) : null;
+  if (n === "Chrome") return texte;
+  return texte
+    .replace(/\bdans Chrome\b(?! Web Store)/g, n ? `dans ${n}` : "dans ton navigateur")
+    .replace(/\b(O|o)uvre Chrome\b(?! Web Store)/g, (_m, o) => `${o}uvre ${n ?? "ton navigateur"}`)
+    .replace(/\bet Chrome est ouvert\b/g, `et ${n ?? "ton navigateur"} est ouvert`);
+}
 
 /** Code pays ISO à deux lettres de l'en-tête cf-ipcountry, sinon null (XX, T1 = inconnu / Tor). */
 export function paysDeEntete(v) {

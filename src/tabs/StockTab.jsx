@@ -170,6 +170,8 @@ import VoiceResultCard from '../components/voice/VoiceResultCard';
 import { Btn } from '../components/voice/VoiceKit';
 import { VOICE_KIT_CSS } from '../components/voice/tokens';
 import { supabase } from '../lib/supabase';
+import { annonceLbcAmputee, extensionLitLesPhotosLbc } from '../../supabase/functions/_shared/photos-lbc-amputees.js';
+import { etatBlocageLbc } from '../../supabase/functions/_shared/blocage-leboncoin.js';
 import { fusionnerReglages } from '../utils/reglagesPlateformes';
 // ── Refonte du stepper (24/09/2026) ─────────────────────────────────────────
 // L'interrupteur choisit la peau du stepper (ancienne par défaut) ; les tables
@@ -2485,6 +2487,44 @@ export function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClos
   const aCompleterPar = new Map(etatPlat.aCompleter.map(x => [x.platform, x]));
   const enEchecPar = new Map(etatPlat.enEchec.map(x => [x.platform, x]));
   const fr = lang !== "en";
+  // ── (30/10, lot E — décision de Nico) L'ANNONCE LEBONCOIN PARTIE AVEC MOINS DE PHOTOS ──────────────────────────────
+  // (_shared/photos-lbc-amputees.js) Une ligne et UN geste : « Republier avec toutes tes photos » — sans pièce ni quota,
+  // une à la fois, à la cadence de la file (fonction republier-photos-lbc). Montrée seulement si l'extension du compte
+  // lit les photos de la nouvelle page ; désactivée, avec la raison, quand Leboncoin restreint l'accès du compte.
+  const jobLbcAmpute = (() => {
+    const j = latestPubByPlatform?.leboncoin;
+    return j && annonceLbcAmputee(j) && !j.platform_fields?.republication_photos_lbc ? j : null;
+  })();
+  const [etatPhotosLbc, setEtatPhotosLbc] = useState(null);
+  const [photosLbcBusy, setPhotosLbcBusy] = useState(false);
+  const [photosLbcMsg, setPhotosLbcMsg] = useState(null);
+  useEffect(() => {
+    if (!jobLbcAmpute?.user_id) return;
+    let stale = false;
+    supabase.from('profiles').select('extension_build, platform_settings').eq('id', jobLbcAmpute.user_id).maybeSingle()
+      .then(({ data }) => {
+        if (stale) return;
+        setEtatPhotosLbc({
+          extensionOk: extensionLitLesPhotosLbc(data?.extension_build ?? null),
+          bloque: etatBlocageLbc(data?.platform_settings ?? {}).etat !== 'libre',
+        });
+      });
+    return () => { stale = true; };
+  }, [jobLbcAmpute?.id, jobLbcAmpute?.user_id]);
+  async function republierPhotosLbc() {
+    if (!jobLbcAmpute || photosLbcBusy || etatPhotosLbc?.bloque) return;
+    setPhotosLbcBusy(true); setPhotosLbcMsg(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('republier-photos-lbc', { body: { job_id: jobLbcAmpute.id } });
+      if (error || !data?.ok) {
+        setPhotosLbcMsg({ ok: false, texte: data?.message ?? (fr ? "Republication impossible pour l'instant : rien n'est parti." : "Republishing isn't possible right now: nothing was sent.") });
+      } else {
+        setPhotosLbcMsg({ ok: true, texte: fr ? "C'est demandé : ton annonce Leboncoin repartira avec toutes ses photos, à son tour dans la file." : "Done: your Leboncoin listing will go out again with all its photos, in its turn in the queue." });
+      }
+    } finally {
+      setPhotosLbcBusy(false);
+    }
+  }
   return (
     <div
       onClick={onClose}
@@ -2628,6 +2668,37 @@ export function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClos
                           : `“Republish” sends the listing again (it may duplicate if ${label} did put it online) ; “Forget” closes this line. Nothing is removed on ${label}.`)}
                     </div>
                   )}
+                  {p === 'leboncoin' && jobLbcAmpute && etatPhotosLbc?.extensionOk && (() => {
+                    const am = annonceLbcAmputee(jobLbcAmpute);
+                    return (
+                      <div style={{ marginTop:6, padding:"8px 10px", borderRadius:10, background:"#FFF8EC", border:"1px solid #EED9A6" }}>
+                        <div style={{ fontSize:12, lineHeight:1.4, color:"#6B4B00" }}>
+                          {fr
+                            ? `Cette annonce est partie avec moins de photos que prévu (${am.envoyees} sur ${am.fiche}). Republier avec toutes tes photos ?`
+                            : `This listing went out with fewer photos than planned (${am.envoyees} of ${am.fiche}). Republish it with all your photos?`}
+                        </div>
+                        {etatPhotosLbc.bloque && (
+                          <div style={{ fontSize:11, lineHeight:1.35, color:"#B91C1C", marginTop:4 }}>
+                            {fr ? "Indisponible : Leboncoin restreint en ce moment l'accès depuis ta connexion." : "Unavailable: Leboncoin is currently restricting access from your connection."}
+                          </div>
+                        )}
+                        {!photosLbcMsg?.ok && (
+                          <button
+                            onClick={republierPhotosLbc}
+                            disabled={photosLbcBusy || etatPhotosLbc.bloque}
+                            style={{ marginTop:6, padding:"7px 12px", borderRadius:10, border:"none",
+                              background: (photosLbcBusy || etatPhotosLbc.bloque) ? "#D9CFB8" : "#8A6100", color:"#fff",
+                              fontSize:12, fontWeight:700, cursor: (photosLbcBusy || etatPhotosLbc.bloque) ? "default" : "pointer", fontFamily:"inherit" }}
+                          >
+                            {photosLbcBusy ? (fr ? "Envoi…" : "Sending…") : (fr ? "Republier avec toutes tes photos" : "Republish with all your photos")}
+                          </button>
+                        )}
+                        {photosLbcMsg && (
+                          <div style={{ fontSize:11, lineHeight:1.35, color: photosLbcMsg.ok ? "#1F6B47" : "#B91C1C", marginTop:4 }}>{photosLbcMsg.texte}</div>
+                        )}
+                      </div>
+                    );
+                  })()}
                   {enEchecPar.has(p) && !(enEchecPar.get(p)?.job && relanceManuelleInfo(enEchecPar.get(p).job, jobsAll)) && (
                     <div style={{ fontSize:11, lineHeight:1.35, color:"#B91C1C", marginTop:3 }}>
                       {fr

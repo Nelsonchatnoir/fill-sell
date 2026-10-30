@@ -2,6 +2,30 @@
 // à l'injection — permet de vérifier, à chaque test, quelle version du code
 // tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à chaque modification de
 // ce fichier.
+
+// ── LE NAVIGATEUR RÉEL DANS LES MESSAGES (30/10, lot E — Amiral, sous Brave) ─────────────────────────────────────
+// « Ouvrir ebay.fr dans Chrome » était écrit en dur : la personne sous Brave (Edge, Opera…) cherchait Chrome.
+// Même règle que vinted.js (navigateurCourtPage) et vinted-origine.js : « Chrome » chez Google Chrome (texte inchangé),
+// « Brave », « Edge », « Opera », sinon « ton navigateur ».
+function navigateurCourtPage() {
+  try {
+    const nav = globalThis.navigator ?? {};
+    if (nav.brave && typeof nav.brave.isBrave === "function") return "Brave";
+    const marques = Array.isArray(nav.userAgentData?.brands) ? nav.userAgentData.brands.map((b) => String(b?.brand ?? "")) : [];
+    if (marques.length) {
+      if (marques.some((b) => /\bOpera\b/i.test(b))) return "Opera";
+      if (marques.some((b) => /\bBrave\b/i.test(b))) return "Brave";
+      if (marques.some((b) => /Google Chrome/i.test(b))) return "Chrome";
+      return "ton navigateur";
+    }
+    const ua = String(nav.userAgent ?? "");
+    if (/\bEdg\//.test(ua)) return "Edge";
+    if (/\bOPR\//.test(ua)) return "Opera";
+    if (/\bChrome\//.test(ua)) return "Chrome";
+  } catch { /* navigateur illisible */ }
+  return "ton navigateur";
+}
+
 const EBAY_BUILD = "2026-10-25-photos-recues (0.6.143 : le champ photo d eBay choisi sans ambiguïté, photos reçues comptées au compteur N/25 et aux vignettes i.ebayimg.com, mode observer) · 2026-10-08-ping (0.6.103 : FILLSELL_PING, réponse synchrone « je suis là ») · 2026-10-02-fin-annonce-par-numero (0.6.84 : le dialogue de fin d'annonce n'exige plus le titre — identité par le numéro de la ligne, refus s'il nomme une autre annonce ; plus de repli par titre) — précédent : 2026-09-09-taille-chiffree-voisines (0.6.24 : une taille chiffrée absente de la liste eBay, « 25 », n'est plus renvoyée vers 3XS…6XL — le message nomme les tailles chiffrées acceptées et ses voisines) — précédent : 2026-09-04-taille-vocabulaire-ebay (la taille est traduite contre la liste RELEVEE sur le formulaire";
 console.log(`[ebay.js] build ${EBAY_BUILD}`);
 
@@ -689,7 +713,7 @@ async function fillListingForm(job) {
       needsUser: true,
       error:
         "CHALLENGE CAPTCHA : eBay affiche une vérification anti-robot (page captcha) à la " +
-        "place du formulaire de mise en vente. Ouvrir ebay.fr dans Chrome et résoudre la " +
+        "place du formulaire de mise en vente. Ouvrir ebay.fr dans " + navigateurCourtPage() + " et résoudre la " +
         "vérification (l'onglet de travail est resté ouvert), le job repartira au prochain passage.",
     };
   }
@@ -805,7 +829,7 @@ async function fillListingForm(job) {
         error:
           `eBay exige une mise à niveau ou une vérification de ton compte vendeur avant d'autoriser ` +
           `la mise en vente (page ${location.pathname} affichée à la place du formulaire). ` +
-          "Connecte-toi sur ebay.fr dans Chrome, clique « Vendre » et suis les étapes demandées par " +
+          "Connecte-toi sur ebay.fr dans " + navigateurCourtPage() + ", clique « Vendre » et suis les étapes demandées par " +
           "eBay sur ton compte, puis relance la publication depuis la fiche de l'article. Rien n'a été publié.",
       };
     }

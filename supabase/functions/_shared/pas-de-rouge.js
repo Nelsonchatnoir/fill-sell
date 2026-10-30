@@ -1050,7 +1050,7 @@ function classerEchecSansRegleRetrait(arg) {
       verdict: "a_toi", statut: "needs_user", motif: "depop_session_illisible", source: "relancer",
       message:
         `${Acte} n'a pas pu commencer : depuis plusieurs essais, Depop ne répond pas à la lecture de ta session sur ton ` +
-        `ordinateur (${dit}). ${rienTouche(action, pf)} Ouvre depop.com dans Chrome et vérifie que tu y es connecté, ` +
+        `ordinateur (${dit}). ${rienTouche(action, pf)} Ouvre depop.com ${["Chrome", "Brave", "Edge", "Opera"].includes(String(pf?.navigateur_poste ?? "")) ? `dans ${pf.navigateur_poste}` : "dans ton navigateur"} et vérifie que tu y es connecté, ` +
         "puis relance-la d'un clic ci-dessous.",
     };
   }

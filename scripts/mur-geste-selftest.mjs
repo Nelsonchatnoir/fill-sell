@@ -16,7 +16,7 @@ ok(jugerMurGeste({ ...j1, platform_fields: v1.pf }).change === false, "même pr�
 const j2 = { ...j1, platform_fields: { ...v1.pf, republish_prevol_formulaire: { at: "2026-10-02T16:32:30.000Z", verdict: "illisible", detail: CHALLENGE } } };
 const v2 = jugerMurGeste(j2);
 ok(v2.geste === "verification_antirobot" && v2.pf.needs_user_source === "verification_antirobot", "2e essai 30 min plus tard, même challenge → geste demandé", JSON.stringify(v2));
-ok(/^Beebs te demande une vérification anti-robot : ouvre beebs\.app dans Chrome/.test(v2.message) && /intacte/.test(v2.message), "message court, le geste, annonce intacte", v2.message);
+ok(/^Beebs te demande une vérification anti-robot : ouvre beebs\.app dans (Chrome|ton navigateur)/.test(v2.message) && /intacte/.test(v2.message), "message court, le geste, annonce intacte", v2.message);
 const j2b = { ...j1, platform_fields: { ...v1.pf, republish_prevol_formulaire: { at: "2026-10-02T16:12:00.000Z", verdict: "illisible", detail: CHALLENGE } } };
 ok(jugerMurGeste(j2b).geste === null, `2e essai à 10 min (< ${ANTIROBOT_ECART_MIN_MS / 60000} min) : encore une attente`);
 const j3 = { ...j1, platform_fields: { ...v1.pf, republish_prevol_formulaire: { at: "2026-10-02T16:32:30.000Z", verdict: "ok" } } };
@@ -53,7 +53,7 @@ const r1 = jugerMurGeste(recr("2026-10-03T08:49:15.818Z"));
 ok(r1.geste === null && r1.pf.mur_antirobot?.observations === 1 && r1.pf.mur_antirobot.source === "prevol_recreation", "1re observation : comptée, pas encore montrée");
 const r2 = jugerMurGeste({ ...recr("2026-10-03T09:20:00.000Z"), platform_fields: { ...r1.pf, gardes: recr("2026-10-03T09:20:00.000Z").platform_fields.gardes } });
 ok(r2.geste === "verification_antirobot" && r2.pf.needs_user_source === "verification_antirobot", "2e observation 30 min plus tard : à toi (relancée seule quand Vinted répond)");
-ok(/^Vinted ne répond plus à FillSell sur ton ordinateur : ouvre vinted\.fr dans Chrome/.test(r2.message) && /retirée le 29 septembre/.test(r2.message) && /remise en ligne toute seule/.test(r2.message),
+ok(/^Vinted ne répond plus à FillSell sur ton ordinateur : ouvre vinted\.fr dans (Chrome|ton navigateur)/.test(r2.message) && /retirée le 29 septembre/.test(r2.message) && /remise en ligne toute seule/.test(r2.message),
   "le geste, et la date du retrait — jamais « quelques minutes »", r2.message);
 ok(jugerMurGeste({ ...recr("2026-10-03T09:20:00.000Z"), platform_fields: { ...recr("2026-10-03T09:20:00.000Z").platform_fields, gardes: { prevol_recreation: { at: "2026-10-03T09:20:00.000Z", verdict: "report", detail: "fenêtre de recréation non ouverte" } } } }).geste === null,
   "un autre report (pas l'identité) reste une attente");

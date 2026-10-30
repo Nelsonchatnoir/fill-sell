@@ -28,9 +28,10 @@ console.log("A. Leboncoin : l'adsubmit tranche");
 ok(i > 0 && iRearm > i, "le bloc est dans la branche transitoire, avant le ré-armement ordinaire");
 ok(/if \(CANAL_COUPE_RE\.test\(msg\) && job\.action === "publish"\) \{/.test(bloc), "canal coupé d'une PUBLICATION seulement (retraits inchangés)");
 ok(/const vu = await lbcDepotRequestSeen\(tabId, depuis\)/.test(bloc), "la sonde adsubmit est lue depuis la prise en charge du job");
-ok(/if \(st >= 200 && st < 300 && \/\^\\d\{6,\}\$\/\.test\(idAd\)\) \{/.test(bloc) && /updateJobStatus\(accessToken, job\.id, "published"/.test(bloc), "2xx + numéro : publié");
+ok(/if \(st >= 200 && st < 300 && \/\^\\d\{6,\}\$\/\.test\(idAd\) && confirmeAds\) \{/.test(bloc) && /updateJobStatus\(accessToken, job\.id, "published"/.test(bloc), "2xx + numéro + onglet à la confirmation : publié");
+ok(/if \(st >= 200 && st < 300 && \/\^\\d\{6,\}\$\/\.test\(idAd\) && !confirmeAds && urlOngletAds\) \{/.test(bloc) && /updateJobStatus\(accessToken, job\.id, "pending", \{ error: msgInacheve/.test(bloc) && /lbc_depot_non_finalise/.test(bloc), "(30/10, Juliette) 2xx sans confirmation : dépôt inachevé, nouvel essai — jamais « publié »");
 ok(!/listing_url:/.test(bloc.slice(0, bloc.indexOf("depotParti = Boolean"))), "aucun lien fabriqué au dépôt (l'annonce est en vérification : doctrine du 10/09)");
-ok(/depotParti = Boolean\(vu\?\.adsubmit\?\.envoye\);/.test(bloc) && /updateJobStatus\(accessToken, job\.id, "needs_user", \{ error: msgIncertainLbc/.test(bloc), "parti sans réponse lisible : needs_user, jamais un second dépôt");
+ok(/depotParti = Boolean\(vu\?\.adsubmit\?\.envoye\)( \|\| [^;]+)?;/.test(bloc) && /updateJobStatus\(accessToken, job\.id, "needs_user", \{ error: msgIncertainLbc/.test(bloc), "parti sans réponse lisible : needs_user, jamais un second dépôt");
 
 console.log("B. Rien n'est parti : reprise rapide");
 ok(/if \(!depotParti && reprisesCanal < 2\) \{/.test(bloc), "deux reprises rapides au plus");

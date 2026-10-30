@@ -90,6 +90,8 @@
   function navigateurExtension() {
     try {
       const nav = g.navigator ?? {};
+      // (30/10, lot E — Amiral) Brave peut masquer sa marque dans userAgentData : navigator.brave le dit toujours.
+      if (nav.brave && typeof nav.brave.isBrave === "function") return "Brave";
       const marques = Array.isArray(nav.userAgentData?.brands) ? nav.userAgentData.brands.map((b) => String(b?.brand ?? "")) : [];
       if (marques.length) {
         if (marques.some((b) => /Microsoft Edge/i.test(b))) return "Microsoft Edge";

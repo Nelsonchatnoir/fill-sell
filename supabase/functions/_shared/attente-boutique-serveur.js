@@ -21,15 +21,20 @@ export const CLES_ATTENTE_BOUTIQUE = Object.freeze({
 export const cleAttenteBoutique = (action) => CLES_ATTENTE_BOUTIQUE[action] ?? null;
 
 /** Le message du job retenu (le texte du retrait est celui du 12/10, inchangé). */
-export function messageJobRetenuAutreBoutique(action, login, loginConnectee) {
+// (30/10, lot E) `navigateur` : le nom court sûr du navigateur du poste (« Brave »…), sinon « ton navigateur ».
+/** @param {string} action @param {string | null | undefined} login @param {string | null | undefined} loginConnectee @param {string | null} [navigateur] */
+export function messageJobRetenuAutreBoutique(action, login, loginConnectee, navigateur = null) {
+  const nav = ["Chrome", "Brave", "Edge", "Opera"].includes(String(navigateur ?? "")) ? String(navigateur) : null;
+  const leNav = nav ?? "ton navigateur";
+  const dansNav = nav ? `dans ${nav}` : "dans ton navigateur";
   const a = login ? `@${login}` : null;
   const ouverte = loginConnectee ? `@${loginConnectee}` : "une autre boutique";
   if (action === "delete") {
     return `Retrait Vinted en attente : cette annonce est sur ta boutique ${a ?? "Vinted"}, `
-      + `et Chrome est ouvert sur ${ouverte}. Ouvre ta boutique ${a ?? "qui porte l'annonce"} sur vinted.fr dans Chrome, `
+      + `et ${leNav} est ouvert sur ${ouverte}. Ouvre ta boutique ${a ?? "qui porte l'annonce"} sur vinted.fr ${dansNav}, `
       + "sur ton ordinateur : FillSell retirera l'annonce aussitôt. Rien n'a été touché.";
   }
   return `Republication Vinted en attente : cette annonce est sur ta boutique ${a ?? "Vinted"}, `
-    + `et Chrome est ouvert sur ${ouverte}. Ouvre ta boutique ${a ?? "qui porte l'annonce"} sur vinted.fr dans Chrome, `
+    + `et ${leNav} est ouvert sur ${ouverte}. Ouvre ta boutique ${a ?? "qui porte l'annonce"} sur vinted.fr ${dansNav}, `
     + "sur ton ordinateur : FillSell la republiera à son tour. Rien n'a été touché.";
 }

@@ -33,6 +33,15 @@ const BUILD_0_6_150 = "2026-10-28T20:15:00Z";
 // (29/10, lot B 4.1) BUILD_ID de la 0.6.153 : rayon posé par identifiants quand un niveau est introuvable (repli
 // 0.6.152 « libellé périmé », niveau par son identifiant dans le panneau ouvert), page non française comprise.
 const BUILD_0_6_153 = "2026-10-29T13:49:28Z";
+// (30/10, lot E) Le premier build qui pose « Pour qui ? » avant la taille des accessoires Vinted (0.6.161) : l'horodatage
+// du commit de l'extension (EXTENSION_LAST_COMMIT) — tout build construit depuis le porte.
+export const BUILD_0_6_161 = "2026-10-30T23:59:59Z";
+// (30/10, lot E — Sébastien) Le rayon de l'annonce d'origine est sur le nouvel arbre Vinted « Accessoires de mode ».
+const rayonAccessoiresDeMode = (job) => {
+  const snap = job?.platform_fields?.republish_snapshot;
+  const chemin = Array.isArray(snap?.categoryPath) ? snap.categoryPath : (Array.isArray(job?.platform_fields?.categoryPath) ? job.platform_fields.categoryPath : []);
+  return String(chemin[0] ?? "").trim().toLowerCase() === "accessoires de mode";
+};
 
 // (29/10, lot B 4.1) La question « categoryLevelChoice » que porte une tâche (posée, mise de côté pour le moteur, ou
 // retirée par la pause d'attente de la mise à jour — attente_maj_extension.question).
@@ -97,6 +106,23 @@ export const RELANCES_APRES_MAJ = [
     buildMin: BUILD_0_6_104,
     version: "0.6.104",
   }))),
+  // (30/10, lot E — Sébastien, « Montre vintage Tintin & Milou », ec5b7f25) Nouvel arbre Vinted « Accessoires de mode ›
+  // Montres » : la Taille n'apparaît qu'après « Pour qui ? », que la 0.6.160 et avant posaient APRÈS elle — pré-vol
+  // négatif cinq fois, « le formulaire n'a pas accepté Taille « Taille unique » » (grille_incoherente), AVANT tout
+  // retrait. La 0.6.161 pose « Pour qui ? » d'abord et reconnaît le déclencheur de taille des accessoires. Placée AVANT
+  // la règle « menus bloom » (même source) : sur ce rayon, c'est elle qui corrige. Une relance, une fois — même après la
+  // relance d'un AUTRE défaut (`apresUneAutre` : Sébastien avait déjà été relancé pour la 0.6.150).
+  {
+    cle: "vinted_accessoires_pour_qui_taille",
+    platform: "vinted",
+    action: "republish",
+    source: "grille_incoherente",
+    predicat: rayonAccessoiresDeMode,
+    buildMin: BUILD_0_6_161,
+    version: "0.6.161",
+    messageAttente: true,
+    apresUneAutre: true,
+  },
   // (28/10/2026) Vinted a remplacé ses menus (Catégorie, Marque, Taille, État, Couleur, Matériau) par des boutons
   // « bloom » dont la valeur ne vit que dans le span « --value » : la 0.6.149 et avant relisaient `.value` et
   // s'arrêtaient AVANT le dépôt — « Le champ Marque n'a pas pu être posé … » en publication (Ornella, chaowx1305,
@@ -188,12 +214,15 @@ export function msDuBuild(build) {
 export function regleDeRelance(job, regles = RELANCES_APRES_MAJ) {
   const pf = job?.platform_fields ?? {};
   if (job?.status !== "needs_user") return null;
-  if (pf.relance_apres_maj) return null; // déjà relancée une fois
+  // Déjà relancée une fois : plus rien — sauf une règle `apresUneAutre` d'un AUTRE défaut (30/10), une fois elle aussi.
+  const dejaRelancee = pf.relance_apres_maj && typeof pf.relance_apres_maj === "object" ? String(pf.relance_apres_maj.cle ?? "") : (pf.relance_apres_maj ? "?" : null);
   if (pf.deleted_at) return null;
   if (job.action === "republish" && String(pf.republish_step ?? "") === "deleted") return null;
   const brut = String(pf.error_technique?.brut ?? "");
   // (28/10) `predicat` : une condition de plus sur la tâche (le texte de l'arrêt, la fiche) — jamais à sa place.
-  return regles.find((r) => r.platform === job.platform && r.action === job.action && (r.source
+  return regles.find((r) => (dejaRelancee == null || (r.apresUneAutre === true && dejaRelancee !== r.cle
+      && !(Array.isArray(pf.relances_apres_maj_cles) && pf.relances_apres_maj_cles.includes(r.cle))))
+    && r.platform === job.platform && r.action === job.action && (r.source
     ? pf.needs_user_source === r.source
     : pf.needs_user_source === "relancer" && !!brut && brut.startsWith(r.brut))
     && (typeof r.predicat !== "function" || r.predicat(job) === true)) ?? null;
@@ -270,6 +299,11 @@ export function champsRelance(job, regle, { maintenant, extensionBuild }) {
   const qLevee = qSrc ? { field_key: "categoryLevelChoice", allowed_values: qSrc.allowed_values.slice(0, 40).map(String) } : null;
   for (const k of CHAMPS_LEVES) delete pf[k];
   pf.needsUserAttempts = 0;
+  // (30/10) Les règles déjà jouées sur cette tâche : une règle `apresUneAutre` ne rejoue jamais deux fois.
+  const cles = new Set(Array.isArray(pf.relances_apres_maj_cles) ? pf.relances_apres_maj_cles.map(String) : []);
+  if (pf.relance_apres_maj?.cle) cles.add(String(pf.relance_apres_maj.cle));
+  cles.add(String(regle.cle));
+  pf.relances_apres_maj_cles = [...cles];
   pf.relance_apres_maj = {
     le: maintenant,
     cle: regle.cle,

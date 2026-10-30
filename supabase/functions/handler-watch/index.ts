@@ -77,6 +77,8 @@ import { EAN_SANS_IDENTIFIANT_EBAY_FR, eanDejaEssayeOfficiel } from "../_shared/
 import { nettoyerDescriptionLeboncoin, nettoyerTitreLeboncoin } from "../_shared/description-leboncoin.ts";
 import { loginsDesBoutiques } from "../_shared/boutique-connectee.js";
 import { republicationFinie, champsRepublicationFinie } from "../_shared/republication-finie.js";
+import { etapeRecreatedSansNumero, numerosDeLaRecreation, decisionRecreatedSansNumero, patchRecreatedSansNumero } from "../_shared/etape-recreated-sans-numero.js";
+import { CHEMIN_BLOCAGE_LBC, blocageLbc, blocagePose, signeBlocageLbc } from "../_shared/blocage-leboncoin.js";
 import { trancherQuestions } from "../_shared/questions-tranchees.ts";
 import { jobDeLaPauseRayon, pfQuestionApresPause, entreeMoteurDuJob } from "../_shared/rayon-moteur-attendu.js";
 import { depotMuetDepuis } from "../_shared/depot-muet.js";
@@ -1424,7 +1426,7 @@ serve(async (req) => {
       delete pf.next_action_after; delete pf.processing_since;
       pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error ?? null, "pending", "handler-watch (pause anti-robot Vinted > 6 h)");
       const { data: maj } = await supabase.from("cross_post_jobs")
-        .update({ status: "needs_user", error: messagePauseVintedGeste({ depuis: new Date(depuisMs).toISOString(), publication: j.action === "publish", retrait: j.action === "delete" }), platform_fields: pf })
+        .update({ status: "needs_user", error: messagePauseVintedGeste({ depuis: new Date(depuisMs).toISOString(), publication: j.action === "publish", retrait: j.action === "delete", navigateur: pf.navigateur_poste ?? null }), platform_fields: pf })
         .eq("id", j.id).eq("status", "pending").select("id");
       nAr += (maj ?? []).length;
     }
@@ -3248,6 +3250,109 @@ serve(async (req) => {
     console.error("[handler-watch] republications déjà recréées :", (e as Error)?.message ?? e);
   }
 
+  // ══ (30/10, lot E — Johan) « RECREATED » SANS NUMÉRO : LES RELEVÉS TRANCHENT ══
+  // (_shared/etape-recreated-sans-numero.js) Même règle que get-pending-jobs pour une tâche déjà passée à la personne
+  // (« Étape de republication inconnue : recreated ») : vue en ligne au dernier relevé → published ; article en ligne
+  // sous une autre annonce de sa fiche, ou fiche finie → close sans rouge ; sinon (Leboncoin, Beebs) reprise sans
+  // doublon par la garde « annonce déjà partie » (relevé relu avant tout redépôt). Bornée (50), écrite si elle change.
+  let recreatedSansNumero = 0;
+  try {
+    const { data: candidatsRsn } = await supabase
+      .from("cross_post_jobs")
+      .select("id, user_id, inventaire_id, platform, action, status, error, published_at, platform_listing_id, listing_url, platform_fields")
+      .in("status", ["pending", "needs_user"]).eq("action", "republish")
+      .eq("platform_fields->>republish_step", "recreated")
+      .gte("created_at", new Date(Date.now() - 30 * 24 * 60 * 60_000).toISOString())
+      .limit(50);
+    // deno-lint-ignore no-explicit-any
+    for (const j of ((candidatsRsn ?? []) as any[]).filter((x) => etapeRecreatedSansNumero(x))) {
+      const plateforme = String(j.platform);
+      const { numeros } = numerosDeLaRecreation(j);
+      const ors = [`job_id.eq.${j.id}`];
+      if (numeros.length) ors.push(`listing_id.in.(${numeros.map((n: string) => `"${n}"`).join(",")})`);
+      if (j.inventaire_id != null) ors.push(`inventaire_id.eq.${Number(j.inventaire_id)}`);
+      const [{ data: lignes }, { data: runs }, { data: fiche }] = await Promise.all([
+        supabase.from("annonces_plateforme")
+          .select("listing_id, url, statut_plateforme, job_id, inventaire_id, created_at, vu_le, disparu_le")
+          .eq("user_id", j.user_id).eq("platform", plateforme).or(ors.join(",")).limit(50),
+        plateforme === "vinted" ? Promise.resolve({ data: [] }) : supabase.from("vinted_sync_runs")
+          .select("status, erreur, items_vus, started_at")
+          .eq("user_id", j.user_id).eq("kind", "annonces").eq("platform", plateforme).eq("status", "done")
+          .order("started_at", { ascending: false, nullsFirst: false }).limit(10),
+        j.inventaire_id != null
+          ? supabase.from("inventaire").select("statut, vinted_item_id").eq("id", j.inventaire_id).eq("user_id", j.user_id).maybeSingle()
+          : Promise.resolve({ data: null }),
+      ]);
+      // deno-lint-ignore no-explicit-any
+      const complet = ((runs ?? []) as any[]).find((r) => {
+        const err = String(r.erreur ?? "");
+        if (err.startsWith("[incomplet]") || err.includes("n'a pas rendu sa liste")) return false;
+        return Number(r.items_vus ?? 0) > 0 || err.startsWith("[vide]");
+      });
+      // deno-lint-ignore no-explicit-any
+      const f = (fiche ?? null) as any;
+      const d = decisionRecreatedSansNumero(j, { lignes: lignes ?? [], releveDebut: complet?.started_at ?? null,
+        ficheStatut: f?.statut ?? null, ficheVintedId: f?.vinted_item_id ?? null });
+      const patch = patchRecreatedSansNumero(j, d, { par: "handler-watch (étape recreated sans numéro)" });
+      if (!patch) continue;
+      const { data: maj } = await supabase.from("cross_post_jobs").update(patch)
+        .eq("id", j.id).eq("status", j.status).select("id");
+      if (maj?.length) {
+        recreatedSansNumero++;
+        console.log(`[handler-watch] republication ${String(j.id).slice(0, 8)} (${plateforme}) : étape recreated sans numéro → ${d.verdict} (${d.motif})`);
+      }
+    }
+  } catch (e) {
+    console.error("[handler-watch] étape recreated sans numéro :", (e as Error)?.message ?? e);
+  }
+
+  // ══ (30/10, urgence Louis) LEBONCOIN RESTREINT L'ACCÈS : LES LECTURES AUSSI POSENT LE BLOCAGE DU COMPTE ══
+  // (_shared/blocage-leboncoin.js) La veille des commandes et le relevé des ventes de l'extension tracent leurs refus
+  // dans usage_logs (http_403) ; les relevés Leboncoin finissent avec leur motif (vinted_sync_runs.erreur). Un refus
+  // de moins de 10 min, plus récent que la dernière preuve du compte, pose (ou prolonge) le blocage. Borné (50).
+  try {
+    const depuisB = new Date(Date.now() - 10 * 60_000).toISOString();
+    const [{ data: logsB }, { data: runsB }] = await Promise.all([
+      supabase.from("usage_logs").select("user_id, created_at, feature, metadata")
+        .in("feature", ["veille_commandes", "releve_ventes"]).gte("created_at", depuisB).limit(200),
+      supabase.from("vinted_sync_runs").select("user_id, finished_at, erreur")
+        .eq("platform", "leboncoin").gte("finished_at", depuisB).not("erreur", "is", null).limit(100),
+    ]);
+    const preuves = new Map<string, { le: string; signe: string; source: string; detail: string }>();
+    // deno-lint-ignore no-explicit-any
+    for (const l of (logsB ?? []) as any[]) {
+      const m = l.metadata ?? {};
+      if (String(m.platform ?? m.plateforme ?? "") !== "leboncoin") continue;
+      const signe = Number(m.http) === 403 || String(m.motif ?? "") === "http_403" ? "http_403" : signeBlocageLbc(`${m.motif ?? ""} ${m.detail ?? ""}`);
+      if (!signe) continue;
+      const p = preuves.get(l.user_id);
+      if (!p || l.created_at > p.le) preuves.set(l.user_id, { le: l.created_at, signe, source: `extension (${l.feature})`, detail: JSON.stringify(m).slice(0, 200) });
+    }
+    // deno-lint-ignore no-explicit-any
+    for (const r of (runsB ?? []) as any[]) {
+      const signe = signeBlocageLbc(r.erreur);
+      if (!signe) continue;
+      const p = preuves.get(r.user_id);
+      if (!p || r.finished_at > p.le) preuves.set(r.user_id, { le: r.finished_at, signe, source: "relevé Leboncoin", detail: String(r.erreur).slice(0, 200) });
+    }
+    let poses = 0;
+    for (const [uid, p] of [...preuves].slice(0, 50)) {
+      const { data: profB } = await supabase.from("profiles").select("platform_settings").eq("id", uid).maybeSingle();
+      // deno-lint-ignore no-explicit-any
+      const psB = ((profB as any)?.platform_settings ?? {}) as Record<string, unknown>;
+      // deno-lint-ignore no-explicit-any
+      const avant = blocageLbc(psB) as any;
+      if (avant && !avant.leve_le && String(avant.derniere_preuve ?? "") >= p.le) continue; // déjà compté
+      if (avant?.leve_le && String(avant.leve_le) >= p.le) continue; // refus d'AVANT la levée
+      const nouveau = blocagePose(psB, { signe: p.signe, source: p.source, detail: p.detail, maintenant: p.le });
+      const { error: eB } = await supabase.rpc("platform_settings_fusionner", { p_chemin: CHEMIN_BLOCAGE_LBC, p_patch: nouveau, p_user: uid });
+      if (!eB) { poses++; console.log(`[handler-watch] Leboncoin restreint l'accès du compte ${String(uid).slice(0, 8)} (${p.signe}, ${p.source}) : blocage posé`); }
+    }
+    if (poses) console.log(`[handler-watch] blocage Leboncoin : ${poses} compte(s)`);
+  } catch (e) {
+    console.error("[handler-watch] blocage Leboncoin :", (e as Error)?.message ?? e);
+  }
+
   // ══ REPRISE DES DÉPÔTS « MIS DE CÔTÉ » À TORT, PAR PAQUETS (15/10, phase 3) ══
   // Avant la migration 20261015020000 (15/10 ~02:45 Paris), la réservation
   // comptait un « service sans démarrage » pour CHAQUE tâche d'une file servie
@@ -3514,7 +3619,7 @@ serve(async (req) => {
               };
               pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error, "needs_user", "handler-watch (introuvable : annonce d'une autre boutique, attente)");
               const { data: maj } = await supabase.from("cross_post_jobs")
-                .update({ error: messageAttenteBoutique(login, "republish"), platform_fields: pf })
+                .update({ error: messageAttenteBoutique(login, "republish", typeof pf.navigateur_poste === "string" ? pf.navigateur_poste : null), platform_fields: pf })
                 .eq("id", j.id).eq("status", "needs_user").select("id");
               if (maj?.length) {
                 introuvablesBoutique++;

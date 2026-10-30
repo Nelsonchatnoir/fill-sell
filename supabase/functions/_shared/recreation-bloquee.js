@@ -97,7 +97,7 @@ export function messageRecreationRetenueCompte(job) {
   const pourquoi = cause === "restriction"
     ? `et ne peut pas revenir en ligne : ${nom} limite en ce moment les mises en vente de ton compte. Ouvre ${nom} sur ton ordinateur pour lire son message (ou écris à son support)`
     : cause === "session"
-      ? `et attend ta connexion : connecte-toi à ${nom} dans Chrome, sur ton ordinateur`
+      ? `et attend ta connexion : connecte-toi à ${nom} ${["Chrome", "Brave", "Edge", "Opera"].includes(String(pf.navigateur_poste ?? "")) ? `dans ${pf.navigateur_poste}` : "dans ton navigateur"}, sur ton ordinateur`
       : cause === "compte_bloque"
         ? `et ne peut pas revenir en ligne : ${nom} affiche « compte bloqué » sur ton ordinateur. Ouvre ${nom} pour lire son message`
         : `et ne peut pas revenir en ligne : ${nom} vérifie ton compte (contrôle anti-robot). Ouvre ${nom} sur ton ordinateur et passe sa vérification`;

@@ -1,6 +1,30 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
+
+// ── LE NAVIGATEUR RÉEL DANS LES MESSAGES (30/10, lot E — Amiral, sous Brave) ─────────────────────────────────────
+// « Ouvrir beebs.app dans Chrome » était écrit en dur : la personne sous Brave (Edge, Opera…) cherchait Chrome.
+// Même règle que vinted.js (navigateurCourtPage) et vinted-origine.js : « Chrome » chez Google Chrome (texte inchangé),
+// « Brave », « Edge », « Opera », sinon « ton navigateur ».
+function navigateurCourtPage() {
+  try {
+    const nav = globalThis.navigator ?? {};
+    if (nav.brave && typeof nav.brave.isBrave === "function") return "Brave";
+    const marques = Array.isArray(nav.userAgentData?.brands) ? nav.userAgentData.brands.map((b) => String(b?.brand ?? "")) : [];
+    if (marques.length) {
+      if (marques.some((b) => /\bOpera\b/i.test(b))) return "Opera";
+      if (marques.some((b) => /\bBrave\b/i.test(b))) return "Brave";
+      if (marques.some((b) => /Google Chrome/i.test(b))) return "Chrome";
+      return "ton navigateur";
+    }
+    const ua = String(nav.userAgent ?? "");
+    if (/\bEdg\//.test(ua)) return "Edge";
+    if (/\bOPR\//.test(ua)) return "Opera";
+    if (/\bChrome\//.test(ua)) return "Chrome";
+  } catch { /* navigateur illisible */ }
+  return "ton navigateur";
+}
+
 const BEEBS_BUILD = "2026-10-26-adresse-sans-rue (une suggestion d'adresse sans rue — la commune seule, « Thionville57100, France » — n'est jamais cliquée ni soumise : arrêt avant « Mettre en vente », attente nommée beebs_adresse_sans_rue, la personne complète Réglages › Expédition › Adresse de remise ; une rue ou un lieu-dit restent acceptés) · 2026-10-26-correction-tracee (une correction TRACÉE de la copie — platform_fields.correction_tracee — passe devant la taille que l'annonce affiche encore, jamais l'ancienne valeur en repli ; miroir de _shared/correction-tracee.js) · 2026-10-25-404-deux-constats (retrait : une page 404 sans fiche, absente de « en vérification » lue en entier, constatée deux fois à 6 h d’écart au moins, prouve le retrait même si l’index public la porte encore — constats rendus au background, gardés sur le job) · 2026-10-24-vendue-sur-beebs (0.6.133 : un retrait est prouvé aussi quand la fiche produit du numéro exact dit SoldOut — Beebs passe « Vendu » une annonce supprimée avec le motif « Vendu via une autre plateforme » et la garde dans « Mes annonces » ; une annonce déjà vendue n’est jamais re-supprimée) · 2026-10-18-marque-exacte (la marque de la fiche part telle quelle : égalité tolérante sur casse, espaces, ponctuation, accents ; jamais une marque voisine ni un choix de l'IA ; hors liste → « Autre » et la marque écrite une fois dans la description) · 2026-10-17-mur-nomme (relevé : « Mes annonces » lue par fetch — la vérification anti-robot de Beebs, servie sous la même adresse, et le renvoi vers la connexion se nomment : motif + mur) · 2026-10-08-preuve-relue (0.6.104 : BEEBS_PREUVE_RETRAIT, la preuve d'une suppression envoyée relue sans geste ; l'heure d'envoi remonte au background) · 2026-10-08-ping (0.6.103 : FILLSELL_PING, réponse synchrone « je suis là ») ·2026-10-04-format-colis-explicite (0.6.95 : un format de colis EXPLICITE — réponse de la personne, format relu sur l annonce par son identifiant, poids de la fiche — passe devant le pré-remplissage de Beebs ; les formats du formulaire sont appris par le serveur) · 2026-09-29-prevol-republication-complet (0.6.80 : le vrai formulaire, catégorie et champs dynamiques compris, doit être entièrement remplissable avant tout retrait ; aucun upload ni clic pendant ce pré-vol ; identifiant durable obligatoire) · 2026-09-24-compte-vu-sur-la-page (0.6.66 : un compte Beebs connecte vu sur n importe quelle page beebs.app leve l attente de session, desormais espacee 1 h/3 h/6 h) · 2026-09-22-page-de-depot-refaite (0.6.55 : Beebs a refait sa page de depot entre 13h26 et 15h24 le 22/09 — plus aucune classe ne nomme un role. Photos: input[type=file] ANONYME (#input-pictures mort, cause du blocage total). Champs: label.group/field-label + bouton frere a aria-haspopup. Panneaux: popovers RADIX portalises sur body, designes par aria-controls — plus aucune heuristique de panneau unique. Options: button.group/popover-item. Anciennes classes gardees en dernier maillon. Depot verifie de bout en bout sur la page du jour.)";
 console.log(`[beebs.js] build ${BEEBS_BUILD}`);
 
@@ -1538,7 +1562,7 @@ async function fillListingForm(job) {
         ? fsConsentMessage("Beebs", "beebs.app")
         : "Beebs affiche sa fenêtre « cookies » par-dessus la page de vente, et FillSell n'a pas reconnu " +
           "son bouton de refus : il n'a rien cliqué, pour ne pas accepter à ta place. Rien n'a été publié. " +
-          "Ouvre beebs.app dans Chrome, réponds à cette fenêtre en choisissant « Tout refuser », " +
+          "Ouvre beebs.app dans " + navigateurCourtPage() + ", réponds à cette fenêtre en choisissant « Tout refuser », " +
           "puis relance la publication depuis la fiche de l'article.",
       diagnostic:
         `écran de consentement non levé — ${consentB.motif ?? "toujours affiché après le refus"}` +
@@ -1562,7 +1586,7 @@ async function fillListingForm(job) {
       needsUser: true,
       error:
         "CHALLENGE DATADOME : Beebs affiche une vérification anti-robot à la place du " +
-        "formulaire de vente. Ouvrir beebs.app dans Chrome et résoudre la vérification " +
+        "formulaire de vente. Ouvrir beebs.app dans " + navigateurCourtPage() + " et résoudre la vérification " +
         "(l'onglet de travail est resté ouvert), le job repartira au prochain passage.",
     };
   }
@@ -1593,7 +1617,7 @@ async function fillListingForm(job) {
       success: false,
       needsUser: true,
       error:
-        "Connexion Beebs requise : se connecter sur beebs.app dans Chrome " +
+        "Connexion Beebs requise : se connecter sur beebs.app dans " + navigateurCourtPage() + " " +
         `(page observée : ${location.href}) — l'onglet de travail est resté ouvert, ` +
         "le job repartira au prochain passage.",
     };
@@ -1625,7 +1649,7 @@ async function fillListingForm(job) {
       needsUser: true,
       error:
         "Connexion Beebs requise : la session Beebs de Chrome est celle d'un visiteur anonyme " +
-        "(aucun compte connecté) — se connecter à ton compte sur beebs.app dans Chrome, " +
+        "(aucun compte connecté) — se connecter à ton compte sur beebs.app dans " + navigateurCourtPage() + ", " +
         "le job repartira au prochain passage.",
     };
   }

@@ -1,7 +1,31 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const LEBONCOIN_BUILD = "2026-10-30-photos-nouvelle-page (0.6.160 : le nombre de photos gratuites lu dans la page — packPhotoConfig du composant photos, monde MAIN — puis sur les libellés de la NOUVELLE page « Cliquez et déposez jusqu'à N photos » ; seule une lecture chiffrée est stable ; quota vraiment illisible et plus de 3 photos : rien ne part, attente « lbc_photos_quota_illisible », jamais 3 photos en silence) · 2026-10-18-pro-poids-du-colis (formulaire PRO : la sonde des critères attend 15 s, « Poids du colis » et le repli par libellé compris, et le dit quand rien n'est vu ; seconde passe jouée même sonde muette ; au verdict, une valeur connue du job posée si la liste la porte, jamais hors liste, un seul recliquage) · 2026-10-18-pro-valider-et-payer (compte PRO hors forfait : le dépôt est préparé jusqu'à l'écran « Valider et payer », l'onglet est laissé à la personne qui paie elle-même — motif lbc_valider_et_payer, jamais un clic sur le paiement ; particulier inchangé) · 2026-10-16-pro-et-photos-gratuites (catégorie : le panneau des racines est reconnu à ses racines — un compte PRO ne voit pas « Divers » ; photos : le nombre gratuit est lu sur le formulaire au dépôt, seules les premières partent, jamais une photo payante) · 2026-10-08-ping (0.6.103 : FILLSELL_PING, réponse synchrone « je suis là ») · 2026-10-05-transporteurs-exacts (transporteurs Leboncoin : fenêtre attendue au calme après le poids, chaque case relue à neuf et vérifiée, ensemble exact avant « Valider », relu après validation et juste avant le dépôt ; un écart qui persiste = rien ne part, needsUser nommé) · 2026-10-02-mur-connexion-depot (0.6.84 : mur de connexion de la page de dépôt reconnu — jeton luat absent, phrase « Connectez-vous ou créez un compte », boutons « Me connecter » lus sans layout ; compte connecté signalé au background) · 2026-09-24-retrait-pro-tiroir-gerer (0.6.66 : annonce PRO en fenetre etroite — panneau de gestion absent sous 971 px, le controle Supprimer est cherche dans le tiroir « Gerer ») · 2026-09-14-retrait-challenge-et-releve (0.6.36, chemin de SUPPRESSION seul : le détecteur d'interstitiel anti-robot est hissé au module et interrogé AVANT de conclure « contrôle Supprimer introuvable » — sur les deux chemins, page d'annonce ET « Mes annonces » ; le relevé des actions réellement rendues part en `diagnostic` (donc en platform_fields.last_diagnostic) au lieu de mourir dans `trace` ; « Mes annonces » dit en plus combien de cartes ont été rendues ; le mur de cookies est refusé par fsConsentRefuser, la détection de la 0.6.35, et non plus par dismissDidomi qui ne voyait rien) — précédent : 2026-09-14-consentement-vu-enfin (0.6.35 : le mur de cookies Leboncoin est DÉTECTÉ — la détection part du contrôle de refus « Continuer sans accepter » et non plus du conteneur #didomi-host, qui existe à 0×0 et n'a jamais rien rendu ; refus cliqué, disparition ATTENDUE, trois points de sortie qui ne disent plus « brouillon » ; aucune tentative consommée) — précédent : 2026-09-09-adsubmit-est-la-preuve (0.6.24 : plus aucun re-clic du Continuer final dès qu'un adsubmit est parti ; 2xx = dépôt accepté, id lu ; 403 details[] = texte exact de Leboncoin)";
+
+// ── LE NAVIGATEUR RÉEL DANS LES MESSAGES (30/10, lot E — Amiral, sous Brave) ─────────────────────────────────────
+// « Ouvrir leboncoin.fr dans Chrome » était écrit en dur : la personne sous Brave (Edge, Opera…) cherchait Chrome.
+// Même règle que vinted.js (navigateurCourtPage) et vinted-origine.js : « Chrome » chez Google Chrome (texte inchangé),
+// « Brave », « Edge », « Opera », sinon « ton navigateur ».
+function navigateurCourtPage() {
+  try {
+    const nav = globalThis.navigator ?? {};
+    if (nav.brave && typeof nav.brave.isBrave === "function") return "Brave";
+    const marques = Array.isArray(nav.userAgentData?.brands) ? nav.userAgentData.brands.map((b) => String(b?.brand ?? "")) : [];
+    if (marques.length) {
+      if (marques.some((b) => /\bOpera\b/i.test(b))) return "Opera";
+      if (marques.some((b) => /\bBrave\b/i.test(b))) return "Brave";
+      if (marques.some((b) => /Google Chrome/i.test(b))) return "Chrome";
+      return "ton navigateur";
+    }
+    const ua = String(nav.userAgent ?? "");
+    if (/\bEdg\//.test(ua)) return "Edge";
+    if (/\bOPR\//.test(ua)) return "Opera";
+    if (/\bChrome\//.test(ua)) return "Chrome";
+  } catch { /* navigateur illisible */ }
+  return "ton navigateur";
+}
+
+const LEBONCOIN_BUILD = "2026-10-30-navigateur-reel (0.6.161 : les messages nomment le navigateur réel — Brave, Edge, Opera, sinon « ton navigateur » — jamais « Chrome » écrit en dur) · 2026-10-30-photos-nouvelle-page (0.6.160 : le nombre de photos gratuites lu dans la page — packPhotoConfig du composant photos, monde MAIN — puis sur les libellés de la NOUVELLE page « Cliquez et déposez jusqu'à N photos » ; seule une lecture chiffrée est stable ; quota vraiment illisible et plus de 3 photos : rien ne part, attente « lbc_photos_quota_illisible », jamais 3 photos en silence) · 2026-10-18-pro-poids-du-colis (formulaire PRO : la sonde des critères attend 15 s, « Poids du colis » et le repli par libellé compris, et le dit quand rien n'est vu ; seconde passe jouée même sonde muette ; au verdict, une valeur connue du job posée si la liste la porte, jamais hors liste, un seul recliquage) · 2026-10-18-pro-valider-et-payer (compte PRO hors forfait : le dépôt est préparé jusqu'à l'écran « Valider et payer », l'onglet est laissé à la personne qui paie elle-même — motif lbc_valider_et_payer, jamais un clic sur le paiement ; particulier inchangé) · 2026-10-16-pro-et-photos-gratuites (catégorie : le panneau des racines est reconnu à ses racines — un compte PRO ne voit pas « Divers » ; photos : le nombre gratuit est lu sur le formulaire au dépôt, seules les premières partent, jamais une photo payante) · 2026-10-08-ping (0.6.103 : FILLSELL_PING, réponse synchrone « je suis là ») · 2026-10-05-transporteurs-exacts (transporteurs Leboncoin : fenêtre attendue au calme après le poids, chaque case relue à neuf et vérifiée, ensemble exact avant « Valider », relu après validation et juste avant le dépôt ; un écart qui persiste = rien ne part, needsUser nommé) · 2026-10-02-mur-connexion-depot (0.6.84 : mur de connexion de la page de dépôt reconnu — jeton luat absent, phrase « Connectez-vous ou créez un compte », boutons « Me connecter » lus sans layout ; compte connecté signalé au background) · 2026-09-24-retrait-pro-tiroir-gerer (0.6.66 : annonce PRO en fenetre etroite — panneau de gestion absent sous 971 px, le controle Supprimer est cherche dans le tiroir « Gerer ») · 2026-09-14-retrait-challenge-et-releve (0.6.36, chemin de SUPPRESSION seul : le détecteur d'interstitiel anti-robot est hissé au module et interrogé AVANT de conclure « contrôle Supprimer introuvable » — sur les deux chemins, page d'annonce ET « Mes annonces » ; le relevé des actions réellement rendues part en `diagnostic` (donc en platform_fields.last_diagnostic) au lieu de mourir dans `trace` ; « Mes annonces » dit en plus combien de cartes ont été rendues ; le mur de cookies est refusé par fsConsentRefuser, la détection de la 0.6.35, et non plus par dismissDidomi qui ne voyait rien) — précédent : 2026-09-14-consentement-vu-enfin (0.6.35 : le mur de cookies Leboncoin est DÉTECTÉ — la détection part du contrôle de refus « Continuer sans accepter » et non plus du conteneur #didomi-host, qui existe à 0×0 et n'a jamais rien rendu ; refus cliqué, disparition ATTENDUE, trois points de sortie qui ne disent plus « brouillon » ; aucune tentative consommée) — précédent : 2026-09-09-adsubmit-est-la-preuve (0.6.24 : plus aucun re-clic du Continuer final dès qu'un adsubmit est parti ; 2xx = dépôt accepté, id lu ; 403 details[] = texte exact de Leboncoin)";
 console.log(`[leboncoin.js] build ${LEBONCOIN_BUILD}`);
 
 // Content script Leboncoin — pilote le WIZARD de dépôt d'annonce.
@@ -1291,7 +1315,7 @@ async function fillListingForm(job) {
       needsUser: true,
       error:
         "CHALLENGE DATADOME : Leboncoin affiche une vérification anti-robot à la place du " +
-        "formulaire de dépôt. Ouvrir leboncoin.fr dans Chrome et résoudre la vérification " +
+        "formulaire de dépôt. Ouvrir leboncoin.fr dans " + navigateurCourtPage() + " et résoudre la vérification " +
         "(l'onglet de travail est resté ouvert), le job repartira au prochain passage.",
     };
   }
@@ -1310,7 +1334,7 @@ async function fillListingForm(job) {
       success: false,
       needsUser: true,
       error:
-        "Connexion Leboncoin requise : se connecter sur leboncoin.fr dans Chrome " +
+        "Connexion Leboncoin requise : se connecter sur leboncoin.fr dans " + navigateurCourtPage() + " " +
         "(l'onglet de travail est resté ouvert), le job repartira au prochain passage.",
     };
   }
@@ -1365,7 +1389,7 @@ async function fillListingForm(job) {
       success: false,
       needsUser: true,
       error:
-        "Connexion Leboncoin requise : se connecter sur leboncoin.fr dans Chrome " +
+        "Connexion Leboncoin requise : se connecter sur leboncoin.fr dans " + navigateurCourtPage() + " " +
         "(l'onglet de travail est resté ouvert), le job repartira au prochain passage.",
       diagnostic: `mur de connexion sur /deposer-une-annonce (${contexte}) — ${detail}`,
       // Lu par arbitrerMurDeConnexion (background) : jeton absent ET mur
@@ -1444,7 +1468,7 @@ async function fillListingForm(job) {
       needsUser: true,
       error:
         "La page de dépôt Leboncoin ne s'est pas affichée comme attendu (ni formulaire vierge, " +
-        "ni dépôt en cours). Ouvre leboncoin.fr/deposer-une-annonce dans Chrome pour voir ce " +
+        "ni dépôt en cours). Ouvre leboncoin.fr/deposer-une-annonce dans " + navigateurCourtPage() + " pour voir ce " +
         "qu'elle montre, puis relance la publication.",
       diagnostic: `page de dépôt non reconnue — boutons visibles: ${JSON.stringify(boutons)}`,
       trace,
@@ -2172,7 +2196,7 @@ async function fillListingForm(job) {
         success: false, needsUser: true, warnings, unfilledRequired, discoveredRequired: enumerated,
         error: (datadome
           ? "CHALLENGE DATADOME : Leboncoin a refusé la requête de dépôt (403, vérification anti-robot sur l'API). " +
-            "Ouvrir leboncoin.fr dans Chrome — sur CET ordinateur — et résoudre la vérification ; le job repartira au prochain passage."
+            "Ouvrir leboncoin.fr dans " + navigateurCourtPage() + " — sur CET ordinateur — et résoudre la vérification ; le job repartira au prochain passage."
           : "Leboncoin n'a pas accepté le dépôt pour le moment, sans message à l'écran — nouvel essai automatique un peu plus tard.") +
           ` — Observabilité: ${detail} ; ${dumpEcranVisible()}`,
       };
@@ -2189,7 +2213,7 @@ async function fillListingForm(job) {
         success: false, needsUser: true, warnings, unfilledRequired, discoveredRequired: enumerated,
         error:
           "CHALLENGE DATADOME : Leboncoin a affiché une vérification anti-robot au moment du dépôt (aucune " +
-          "requête de dépôt n'est partie). Ouvrir leboncoin.fr dans Chrome et résoudre la vérification " +
+          "requête de dépôt n'est partie). Ouvrir leboncoin.fr dans " + navigateurCourtPage() + " et résoudre la vérification " +
           "(l'onglet de travail est resté ouvert), le job repartira au prochain passage.",
       };
     }
@@ -2310,7 +2334,7 @@ async function fillListingForm(job) {
         success: false, needsUser: true, warnings, unfilledRequired, discoveredRequired: enumerated,
         error:
           "CHALLENGE DATADOME : Leboncoin a refusé la requête de dépôt (403, vérification anti-robot sur l'API). " +
-          "Ouvrir leboncoin.fr dans Chrome — sur CET ordinateur — et résoudre la vérification ; le job repartira au prochain passage." +
+          "Ouvrir leboncoin.fr dans " + navigateurCourtPage() + " — sur CET ordinateur — et résoudre la vérification ; le job repartira au prochain passage." +
           ` — Observabilité: adsubmit HTTP 403 sans details ; ${dumpEcranVisible()}`,
       };
     }

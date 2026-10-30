@@ -22,7 +22,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
 import { ETATS_VINTED, langueVintedDuJob, languesOuvertesSansPays, paysDeLaLangue, PAYS_VINTED_EURO, type LangueVinted } from "../_shared/vinted-pays.ts";
-import { navigateurDeUA, paysDeEntete, vintedEtranger, paysAppareilDesReglages } from "../_shared/navigateur-poste.js";
+import { navigateurDeUA, paysDeEntete, vintedEtranger, paysAppareilDesReglages, navigateurDeLaRequete, nomCourtSur, dansLeNavigateur, nommerLeNavigateur } from "../_shared/navigateur-poste.js";
 import { vintedIdsPourPublication } from "../_shared/vinted-ids-publication.ts";
 import { sessionIdDuJwt, identifiantPosteExtension, postesVivants, posteCourt, posteAvecAccesOpla, posteAvecAccesDepop, POSTE_TTL_MS, type Poste } from "../_shared/poste-extension.ts";
 // (18/10, lot 6) Deux postes, deux boutiques Vinted : chaque poste reçoit les jobs de SA boutique.
@@ -200,6 +200,9 @@ import { verdictBeebsInterdit, messageBeebsInterdit } from "../_shared/beebs-int
 import { lireParLots } from "../_shared/par-lots.ts";
 import { teteDeFile } from "../_shared/tete-de-file.js";
 import { republicationFinie, champsRepublicationFinie } from "../_shared/republication-finie.js";
+import { etapeRecreatedSansNumero, numerosDeLaRecreation, decisionRecreatedSansNumero, patchRecreatedSansNumero } from "../_shared/etape-recreated-sans-numero.js";
+import { CHEMIN_BLOCAGE_LBC, etatBlocageLbc, blocageAvecEssai, messageBlocageLbc, blocageLbc, signeBlocageLbc, blocageLeve, blocageEssaiRefuse } from "../_shared/blocage-leboncoin.js";
+import { renduDuPoll, posteVirtuel, messagePosteVirtuelLbc } from "../_shared/poste-virtuel.js";
 // ISBN : même table de vérité que le content script (normalisation, filtre du
 // remplissage « 13 zéros », lecture dans le texte libre). Module JS sans import.
 import { normalizeIsbn, resoudreIsbn } from "../_shared/isbn.js";
@@ -603,6 +606,8 @@ serve(async (req) => {
     // ⚠️ Le BACKGROUND ne passe PAS ce flag et continue de ne voir que 'pending' :
     // lui renvoyer des jobs 'processing' le ferait re-traiter des jobs en cours.
     const body = await req.json().catch(() => ({}));
+    // (30/10, lot E — Amiral) Le navigateur du poste, nommé dans les messages quand il est sûr (navigateur-poste.js).
+    const navCourtRequete: string | null = nomCourtSur(navigateurDeLaRequete(body, req.headers));
     const includeProcessing = body?.include_processing === true;
     // include_needs_user (2026-08-04) : demandé UNIQUEMENT par le popup, qui
     // doit montrer en TÊTE ce qui attend un geste de l'utilisateur. ⚠️ Le
@@ -972,8 +977,12 @@ serve(async (req) => {
           // (09/10, Marta) Le navigateur et le pays du poste : l'extension de
           // Marta tournait dans Edge, son app dans Chrome — personne ne le
           // voyait. Lus sur les en-têtes de CETTE requête (celle du poste).
-          const navPoste = navigateurDeUA(req.headers.get("user-agent"));
+          // (30/10, lot E — Amiral) La déclaration de l'extension prime (Brave se cache sous l'User-Agent de Chrome).
+          const navPoste = navigateurDeLaRequete(body, req.headers).code ?? navigateurDeUA(req.headers.get("user-agent"));
           if (navPoste) patchPoste.navigateur = navPoste;
+          // (30/10, urgence Louis) Le rendu graphique du poste (≥ 0.6.161) : machine virtuelle nommée ou rendu logiciel.
+          const renduPoste = renduDuPoll(body);
+          if (renduPoste) (patchPoste as Record<string, unknown>).rendu = renduPoste;
           const paysPoste = paysDeEntete(req.headers.get("cf-ipcountry"));
           if (paysPoste) patchPoste.pays = paysPoste;
           // (18/10, lot 6) Ce que le poste dit de lui (≥ 0.6.126) : sa boutique Vinted
@@ -2954,6 +2963,73 @@ serve(async (req) => {
         const ids = new Set(finies.map((j) => String(j.id)));
         out = out.filter((j) => !ids.has(String(j.id)));
       }
+
+      // ══ (30/10, lot E — Johan) « RECREATED » SANS NUMÉRO : LES RELEVÉS TRANCHENT AVANT DE SERVIR ══
+      // (_shared/etape-recreated-sans-numero.js) Une republication à l'étape « recreated » qui ne porte pas le numéro
+      // de sa nouvelle annonce n'est plus jamais servie telle quelle (« Étape de republication inconnue ») : vue en
+      // ligne au dernier relevé → published ; l'article en ligne sous une autre annonce de la fiche, ou la fiche
+      // finie → close sans rouge ; sinon (Leboncoin, Beebs) retour à l'étape « deleted » avec le marqueur de la garde
+      // « annonce déjà partie », juste en dessous, qui relit les annonces avant tout redépôt. Lecture seulement quand
+      // un tel job est en file (rare). ⛔ Sert tous les builds.
+      const sansNumero = out.filter((j) => j.status === "pending" && etapeRecreatedSansNumero(j));
+      if (sansNumero.length) {
+        const sortis = new Set<string>();
+        for (const j of sansNumero) {
+          const idJ = String(j.id);
+          try {
+            const plateforme = String(j.platform);
+            const { numeros } = numerosDeLaRecreation(j);
+            const ors = [`job_id.eq.${idJ}`];
+            if (numeros.length) ors.push(`listing_id.in.(${numeros.map((n: string) => `"${n}"`).join(",")})`);
+            if (j.inventaire_id != null) ors.push(`inventaire_id.eq.${Number(j.inventaire_id)}`);
+            const [{ data: lignes }, { data: runs }, { data: fiche }] = await Promise.all([
+              userClient.from("annonces_plateforme")
+                .select("listing_id, url, statut_plateforme, job_id, inventaire_id, created_at, vu_le, disparu_le")
+                .eq("platform", plateforme).or(ors.join(",")).limit(50),
+              plateforme === "vinted" ? Promise.resolve({ data: [] }) : userClient.from("vinted_sync_runs")
+                .select("status, erreur, items_vus, started_at")
+                .eq("user_id", user.id).eq("kind", "annonces").eq("platform", plateforme).eq("status", "done")
+                .order("started_at", { ascending: false, nullsFirst: false }).limit(10),
+              j.inventaire_id != null
+                ? userClient.from("inventaire").select("statut, vinted_item_id").eq("id", j.inventaire_id).maybeSingle()
+                : Promise.resolve({ data: null }),
+            ]);
+            const complet = ((runs ?? []) as Array<Record<string, unknown>>).find((r) => {
+              const err = String(r.erreur ?? "");
+              if (err.startsWith("[incomplet]") || err.includes("n'a pas rendu sa liste")) return false;
+              return Number(r.items_vus ?? 0) > 0 || err.startsWith("[vide]");
+            });
+            const d = decisionRecreatedSansNumero(j, {
+              lignes: (lignes ?? []) as Array<Record<string, unknown>>,
+              releveDebut: (complet?.started_at as string | undefined) ?? null,
+              ficheStatut: ((fiche as Record<string, unknown> | null)?.statut as string | undefined) ?? null,
+              ficheVintedId: ((fiche as Record<string, unknown> | null)?.vinted_item_id as string | undefined) ?? null,
+            }) as { verdict: string; listing_id?: string; url?: string | null; motif: string };
+            const patch = patchRecreatedSansNumero(j, d, { par: "get-pending-jobs (étape recreated sans numéro)" }) as Record<string, unknown> | null;
+            if (!patch) {
+              // Rien de conclu (Vinted : le dressing tranche ; ailleurs : aucune garde) — jamais servi « recreated ».
+              sortis.add(idJ);
+              continue;
+            }
+            const { data: maj } = await userClient.from("cross_post_jobs").update(patch).eq("id", idJ).eq("status", "pending").select("id");
+            console.log(`[get-pending-jobs] republication ${idJ.slice(0, 8)} (${plateforme}) : étape recreated sans numéro → ${d.verdict} (${d.motif})${(maj ?? []).length ? "" : " (déjà sortie de pending)"}`);
+            if (d.verdict === "reprendre" && (maj ?? []).length) {
+              // Le job continue ce cycle à l'étape « deleted » : la garde ci-dessous le retient jusqu'au relevé.
+              const jr = j as unknown as Record<string, unknown>;
+              jr.platform_fields = patch.platform_fields;
+              jr.platform_listing_id = null;
+              jr.listing_url = null;
+              jr.error = null;
+            } else {
+              sortis.add(idJ);
+            }
+          } catch (e) {
+            sortis.add(idJ); // fermé en cas de doute : jamais servi « recreated »
+            console.warn(`[get-pending-jobs] republication ${idJ.slice(0, 8)} : étape recreated sans numéro illisible (${String((e as Error)?.message ?? e)}) — retenue ce cycle`);
+          }
+        }
+        if (sortis.size) out = out.filter((j) => !sortis.has(String(j.id)));
+      }
     }
 
     // ══ LA RECRÉATION VINTED REPREND LES CARACTÉRISTIQUES CAPTURÉES (02/10 soir, point 10) ══
@@ -4348,7 +4424,7 @@ serve(async (req) => {
         let ecritures = 0;
         for (const j of out) {
           if (ecritures >= 40) break;
-          const v = jugerMurGeste(j as Record<string, unknown>);
+          const v = jugerMurGeste(j as Record<string, unknown>, { navigateur: navCourtRequete });
           if (!v.change) continue;
           ecritures++;
           if (v.geste) {
@@ -7748,7 +7824,7 @@ serve(async (req) => {
                       : String((j as { created_at?: unknown }).created_at ?? new Date().toISOString()),
                     pose_par: "get-pending-jobs (boutique ouverte ≠ boutique de l'annonce)",
                   };
-                  const message = messageJobRetenuAutreBoutique(j.action, login, vu.login ?? null);
+                  const message = messageJobRetenuAutreBoutique(j.action, login, vu.login ?? null, navCourtRequete);
                   if (j.error && String(j.error) !== message) pfD["erreurs_archivees"] = archiverErreur(pfD["erreurs_archivees"], j.error, "pending", `get-pending-jobs (${j.action === "delete" ? "retrait" : "republication"} retenu(e) : autre boutique)`);
                   await userClient.from("cross_post_jobs").update({ error: message, platform_fields: pfAPersister(pfD) })
                     .eq("id", String(j.id)).eq("status", "pending");
@@ -8538,14 +8614,14 @@ serve(async (req) => {
           const publicationAilleurs = j.action === "publish" && j.platform === "vinted" && motif === "boutique_etrangere";
           const loginOrigine = publicationAilleurs ? (loginsDesBoutiques(profil?.vinted_sync_pin).get(String(origine)) ?? null) : null;
           const message = publicationAilleurs
-            ? messageAttenteBoutique(loginOrigine, "publish")
+            ? messageAttenteBoutique(loginOrigine, "publish", navCourtRequete)
             : motif === "boutique_etrangere"
-            ? "Cette annonce appartient à une autre boutique Vinted que celle ouverte dans Chrome. Connecte-toi à la boutique qui porte cette annonce, puis relance."
+            ? `Cette annonce appartient à une autre boutique Vinted que celle ouverte ${dansLeNavigateur(navCourtRequete)}. Connecte-toi à la boutique qui porte cette annonce, puis relance.`
             : motif === "boutique_non_confirmee"
             ? "La boutique d'origine de cet article n'est pas confirmée sur ton compte FillSell. Si c'est bien ta boutique, connecte-toi à celle-ci sur Vinted et confirme-la dans « Actualiser mon dressing ». Sinon, ne relance pas cette opération."
             : motif === "origine_contradictoire"
             ? "La fiche et l'opération désignent deux boutiques Vinted différentes. FillSell garde l'annonce en ligne : son origine doit être confirmée avant toute opération."
-            : "FillSell attend de pouvoir vérifier la boutique ouverte dans Chrome. L'annonce reste en ligne ; l'opération reprendra lorsque la bonne boutique sera reconnue.";
+            : `FillSell attend de pouvoir vérifier la boutique ouverte ${dansLeNavigateur(navCourtRequete)}. L'annonce reste en ligne ; l'opération reprendra lorsque la bonne boutique sera reconnue.`;
           await userClient.from("cross_post_jobs").update({ status: "needs_user", error: message,
             platform_fields: { ...pf, needs_user_source: "boutique_etrangere",
               boutique_etrangere: { motif, article: origine || null, session: identite?.user_id ?? null,
@@ -12695,15 +12771,16 @@ serve(async (req) => {
     // « connexion NON vérifiée »). Le message dit les DEUX gestes possibles —
     // pas seulement « passe la vérification », qui ne s'affiche pas à
     // quelqu'un de déconnecté.
-    const ANTIROBOT_COMPTE_MSG =
+    // (30/10, lot E) Le navigateur réel du poste (nommerLeNavigateur), sinon « ton navigateur ».
+    const ANTIROBOT_COMPTE_MSG = nommerLeNavigateur(
       "Vinted demande une vérification anti-robot sur ton compte : tes actions Vinted sont en pause, rien n'a été touché. " +
       "Ouvre vinted.fr dans Chrome : connecte-toi à ton compte si Vinted te le demande, et passe la vérification si elle s'affiche — " +
-      "tout repartira seul. Tes autres plateformes continuent normalement.";
+      "tout repartira seul. Tes autres plateformes continuent normalement.", navCourtRequete);
     // (15/10, lot C — carhoa) Même pause, vraie cause : le dernier relevé a lu
     // les cookies du navigateur et n'y a trouvé AUCUNE session Vinted.
-    const PAUSE_CONNEXION_MSG =
+    const PAUSE_CONNEXION_MSG = nommerLeNavigateur(
       "Connexion Vinted requise : reconnecte-toi à Vinted dans Chrome, sur ton ordinateur — Vinted refuse l'accès à tes annonces " +
-      "tant que tu n'es pas connecté. Tes actions Vinted attendent, rien n'a été touché ; tout repartira seul. Tes autres plateformes continuent normalement.";
+      "tant que tu n'es pas connecté. Tes actions Vinted attendent, rien n'a été touché ; tout repartira seul. Tes autres plateformes continuent normalement.", navCourtRequete);
     const idsAntirobot = new Set<string>();
     let antirobotPause: Record<string, unknown> | null = null;
     if (!includeProcessing && !includeNeedsUser) {
@@ -12849,7 +12926,7 @@ serve(async (req) => {
                     mur_geste: { type: "verification_antirobot", le: new Date().toISOString(), depuis: depuisAr, pause_compte: true } };
                   delete pfG.next_action_after; delete pfG.processing_since;
                   const { data: maj } = await userClient.from("cross_post_jobs")
-                    .update({ status: "needs_user", error: messagePauseVintedGeste({ depuis: depuisAr, publication: j.action === "publish", retrait: j.action === "delete" }), platform_fields: pfAPersister(pfG) })
+                    .update({ status: "needs_user", error: messagePauseVintedGeste({ depuis: depuisAr, publication: j.action === "publish", retrait: j.action === "delete", navigateur: navCourtRequete }), platform_fields: pfAPersister(pfG) })
                     .eq("id", j.id as string).eq("status", "pending").select("id");
                   n += (maj ?? []).length;
                 }
@@ -13327,6 +13404,129 @@ serve(async (req) => {
       }
     }
 
+    // ══ (30/10, urgence Louis) LEBONCOIN RESTREINT L'ACCÈS : RIEN NE PART, PUIS UN ESSAI, PUIS LA REPRISE PRUDENTE ══
+    // (_shared/blocage-leboncoin.js) Le blocage du COMPTE (platform_settings.leboncoin.blocage_acces) : aucun job
+    // Leboncoin servi (publication, republication, retrait), aucun relevé Leboncoin, aucune lecture de fond Leboncoin ;
+    // les tâches retenues portent le message (navigateur réel). Un essai (une seule action, la plus ancienne) au bout de
+    // 24 h ou à la demande ; reprise prudente ensuite (une action toutes les 10 min, 6 h). Placé AVANT la réservation :
+    // une tâche retenue n'est jamais réservée. Lecture du réglage impossible → rien n'est retenu (comme avant).
+    let blocageLbcReponse: Record<string, unknown> | null = null;
+    if (!includeProcessing && !includeNeedsUser) {
+      try {
+        const { data: profB } = await userClient.from("profiles").select("platform_settings").eq("id", user.id).maybeSingle();
+        let psB = ((profB as { platform_settings?: Record<string, unknown> } | null)?.platform_settings ?? {}) as Record<string, unknown>;
+        const adminB = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        // L'essai servi a-t-il rendu son verdict ? (job : publié / refusé ; relevé : fini sans refus / refusé)
+        const bEnCours = blocageLbc(psB) as Record<string, unknown> | null;
+        const essaiEnCours = (bEnCours?.essai && typeof bEnCours.essai === "object" && !(bEnCours.essai as Record<string, unknown>).issue)
+          ? bEnCours.essai as Record<string, unknown> : null;
+        if (bEnCours && !bEnCours.leve_le && essaiEnCours) {
+          let verdict: "passe" | "refuse" | null = null;
+          if (essaiEnCours.job_id) {
+            const { data: jE } = await adminB.from("cross_post_jobs").select("status, error").eq("id", String(essaiEnCours.job_id)).maybeSingle();
+            const st = String((jE as Record<string, unknown> | null)?.status ?? "");
+            if (signeBlocageLbc((jE as Record<string, unknown> | null)?.error)) verdict = "refuse";
+            else if (["published", "sold", "deleted", "cancelled"].includes(st)) verdict = "passe";
+            else if (["needs_user", "failed"].includes(st)) verdict = "passe"; // un autre motif que l'accès : Leboncoin a répondu
+          } else if (essaiEnCours.releve_id) {
+            const { data: rE } = await adminB.from("vinted_sync_runs").select("status, erreur").eq("id", String(essaiEnCours.releve_id)).maybeSingle();
+            const st = String((rE as Record<string, unknown> | null)?.status ?? "");
+            if (signeBlocageLbc((rE as Record<string, unknown> | null)?.erreur)) verdict = "refuse";
+            else if (st === "done") verdict = "passe";
+          }
+          if (verdict) {
+            const nb = verdict === "passe" ? blocageLeve(bEnCours, { par: "get-pending-jobs (essai passé)" }) : blocageEssaiRefuse(bEnCours, { signe: null });
+            await adminB.rpc("platform_settings_fusionner", { p_chemin: CHEMIN_BLOCAGE_LBC, p_patch: nb, p_user: user.id });
+            psB = { ...psB, leboncoin: { ...((psB.leboncoin ?? {}) as Record<string, unknown>), blocage_acces: nb } };
+            console.log(`[get-pending-jobs] userId=${user.id} : Leboncoin — essai ${verdict === "passe" ? "PASSÉ : blocage levé, reprise prudente 6 h" : "REFUSÉ : blocage prolongé de 24 h"}`);
+          }
+        }
+        const eb = etatBlocageLbc(psB) as { etat: string; blocage: Record<string, unknown> | null; prete?: boolean };
+        if (eb.etat !== "libre" && eb.blocage) {
+          const lbc = out.filter((j) => j.platform === "leboncoin")
+            .sort((a, b) => String(a.created_at ?? "").localeCompare(String(b.created_at ?? "")));
+          let garde: string | null = null;
+          if (eb.etat === "essai" && lbc.length) {
+            garde = String(lbc[0].id);
+            await adminB.rpc("platform_settings_fusionner", { p_chemin: CHEMIN_BLOCAGE_LBC,
+              p_patch: blocageAvecEssai(eb.blocage, { jobId: garde }), p_user: user.id });
+            console.log(`[get-pending-jobs] userId=${user.id} : Leboncoin bloqué — ESSAI : une seule action servie (${garde.slice(0, 8)})`);
+          } else if (eb.etat === "reprise" && eb.prete && lbc.length) {
+            garde = String(lbc[0].id);
+            await adminB.rpc("platform_settings_fusionner", { p_chemin: CHEMIN_BLOCAGE_LBC,
+              p_patch: { ...eb.blocage, derniere_action_reprise: new Date().toISOString() }, p_user: user.id });
+          }
+          const retenus = lbc.filter((j) => String(j.id) !== garde);
+          if (retenus.length) {
+            const ids = new Set(retenus.map((j) => String(j.id)));
+            out = out.filter((j) => !ids.has(String(j.id)));
+            if (eb.etat !== "reprise") {
+              const msgB = messageBlocageLbc(navCourtRequete, String(eb.blocage.depuis ?? ""));
+              let ecrits = 0;
+              for (const j of retenus) {
+                if (ecrits >= 40 || j.error === msgB) continue;
+                const pfJ = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
+                if (j.error) pfJ.erreurs_archivees = archiverErreur(pfJ.erreurs_archivees, j.error, "pending", "get-pending-jobs (Leboncoin restreint l'accès : pause du compte)");
+                pfJ.attente_blocage_lbc = { depuis: eb.blocage.depuis ?? null, pose_le: new Date().toISOString() };
+                await adminB.from("cross_post_jobs").update({ error: msgB, platform_fields: pfAPersister(pfJ) }).eq("id", String(j.id)).eq("status", "pending");
+                ecrits++;
+              }
+            }
+            console.log(`[get-pending-jobs] userId=${user.id} : Leboncoin ${eb.etat} (depuis ${String(eb.blocage.depuis ?? "?")}) — ${retenus.length} tâche(s) Leboncoin retenue(s)${garde ? `, 1 servie (${garde.slice(0, 8)})` : ""}`);
+          }
+          // Relevés Leboncoin : jamais pendant le blocage ; à l'essai, le relevé en file EST l'essai quand aucune tâche ne
+          // l'est ; en reprise, seulement quand aucune action n'est partie.
+          const releveLbc = syncCommandsAnnonces.find((c) => c.platform === "leboncoin") ?? null;
+          if (releveLbc && eb.etat === "essai" && !garde) {
+            await adminB.rpc("platform_settings_fusionner", { p_chemin: CHEMIN_BLOCAGE_LBC,
+              p_patch: { ...blocageAvecEssai(eb.blocage, { jobId: "" }), essai: { releve_id: releveLbc.id, le: new Date().toISOString() } }, p_user: user.id });
+            syncCommandsAnnonces = syncCommandsAnnonces.filter((c) => c.platform !== "leboncoin" || c.id === releveLbc.id);
+            console.log(`[get-pending-jobs] userId=${user.id} : Leboncoin bloqué — ESSAI par le relevé ${releveLbc.id.slice(0, 8)}`);
+          } else if (releveLbc && !(eb.etat === "reprise" && eb.prete && !garde)) {
+            syncCommandsAnnonces = syncCommandsAnnonces.filter((c) => c.platform !== "leboncoin");
+          }
+          blocageLbcReponse = { etat: eb.etat, depuis: eb.blocage.depuis ?? null, essai_apres: eb.blocage.essai_apres ?? null,
+            message: eb.etat === "reprise" ? null : messageBlocageLbc(navCourtRequete, String(eb.blocage.depuis ?? "")) };
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] blocage Leboncoin illisible (${String((e as Error)?.message ?? e)}) — file servie telle quelle`);
+      }
+    }
+
+    // ══ (30/10, urgence Louis) UNE MACHINE VIRTUELLE NE FAIT JAMAIS LEBONCOIN (_shared/poste-virtuel.js) ══
+    // Le poste déclare un pilote graphique de machine virtuelle (≥ 0.6.161) : aucune tâche ni relevé Leboncoin pour lui ;
+    // les tâches attendent un poste RÉEL du compte (elles ne portent le message que si aucun autre poste vivant du compte
+    // n'a réussi sur Leboncoin depuis 7 jours) ; l'extension coupe ses propres lectures Leboncoin. Jamais le poste Cloud.
+    if (!includeProcessing && !includeNeedsUser && !posteCloud && posteVirtuel(renduDuPoll(body))) {
+      try {
+        const lbcV = out.filter((j) => j.platform === "leboncoin");
+        if (lbcV.length) {
+          const idsV = new Set(lbcV.map((j) => String(j.id)));
+          out = out.filter((j) => !idsV.has(String(j.id)));
+          const autreReel = Object.entries(postesDuCompte).some(([sid, q]) => sid !== sessionId
+            && Date.now() - Date.parse(String((q as Record<string, unknown>).le ?? "")) < 2 * 3600_000
+            && !posteVirtuel((q as Record<string, unknown>).rendu as Record<string, unknown> | null)
+            && Number.isFinite(Date.parse(String((q as Record<string, unknown>).ok_leboncoin ?? "")))
+            && Date.now() - Date.parse(String((q as Record<string, unknown>).ok_leboncoin)) < 7 * 86_400_000);
+          if (!autreReel) {
+            const adminV = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+            const msgV = messagePosteVirtuelLbc();
+            for (const j of lbcV.slice(0, 40)) {
+              if (j.error === msgV) continue;
+              const pfV = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
+              if (j.error) pfV.erreurs_archivees = archiverErreur(pfV.erreurs_archivees, j.error, "pending", "get-pending-jobs (poste en machine virtuelle : jamais Leboncoin)");
+              await adminV.from("cross_post_jobs").update({ error: msgV, platform_fields: pfAPersister(pfV) }).eq("id", String(j.id)).eq("status", "pending");
+            }
+          }
+          console.log(`[get-pending-jobs] userId=${user.id} poste ${posteCourt(sessionId)} en MACHINE VIRTUELLE : ${lbcV.length} tâche(s) Leboncoin laissée(s) à un poste réel${autreReel ? "" : " (aucun poste réel vivant : message posé)"}`);
+        }
+        if (syncCommandsAnnonces.some((c) => c.platform === "leboncoin")) syncCommandsAnnonces = syncCommandsAnnonces.filter((c) => c.platform !== "leboncoin");
+        if (!blocageLbcReponse) blocageLbcReponse = { etat: "poste_virtuel", depuis: null, message: messagePosteVirtuelLbc() };
+      } catch (e) {
+        console.warn(`[get-pending-jobs] poste virtuel : ${String((e as Error)?.message ?? e)} — file servie telle quelle`);
+      }
+    }
+
     // Point C : seule la file d'exécution réserve. Le popup reste une lecture.
     // Même forme de réponse pour 0.6.69, 0.6.75 et les versions antérieures.
     if (!includeProcessing && !includeNeedsUser && out.length) {
@@ -13736,6 +13936,9 @@ serve(async (req) => {
 
     return json({
       jobs: out,
+      // (30/10, urgence Louis) Leboncoin restreint l'accès du compte : l'extension (≥ 0.6.161) coupe AUSSI ses lectures
+      // Leboncoin (veille des commandes, relevé des ventes, liens) tant que ce n'est pas « libre ». Absent = libre.
+      ...(blocageLbcReponse ? { blocages: { leboncoin: blocageLbcReponse } } : {}),
       // (25/10) Le rattrapage des textes en arrière-plan (null : rien de servi à ce poll).
       lecture_fond: lectureFond,
       // (25/10 soir, 0.6.145) Beebs en arrière-plan : les photos lues sur la page de l'annonce (null : rien de servi).

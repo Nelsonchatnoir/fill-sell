@@ -26,7 +26,7 @@ importScripts("messagerie.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-10-16-messagerie-beta-5 (0.6.120 : bêta messagerie — Vinted : un 401 (jeton d'accès d'une heure expiré) fait renouveler le jeton comme la page puis refaire UNE fois la lecture, le chemin du bordereau ou l'envoi d'une réponse (jamais après une autre erreur)) — précédent : " +
+  "2026-10-30-lot-e-finition (0.6.161 : étape « recreated » comprise — jamais « inconnue », le serveur tranche par les relevés ; adsubmit Leboncoin 2xx sans confirmation = dépôt inachevé, nouvel essai — jamais « publié » ; navigateur réel et rendu graphique du poste envoyés au serveur ; lectures Leboncoin coupées quand le serveur dit l'accès restreint) · 2026-10-16-messagerie-beta-5 (0.6.120 : bêta messagerie — Vinted : un 401 (jeton d'accès d'une heure expiré) fait renouveler le jeton comme la page puis refaire UNE fois la lecture, le chemin du bordereau ou l'envoi d'une réponse (jamais après une autre erreur)) — précédent : " +
   "2026-10-16-messagerie-beta-4 (0.6.119 : bêta messagerie — Beebs relevé (messages, réponse verrouillée par la liste blanche, commandes), mur « téléphone non vérifié » dit au lieu d'une messagerie vide ; commandes Depop ; bordereau Vinted / Leboncoin au CLIC dans l'app (demande → dernière marche une fois → copie 5 jours, nom unique)) — précédent : " +
   "2026-10-16-messagerie-beta-3 (0.6.118 : bêta messagerie — l'annonce d'une conversation Vinted est lue aussi dans item_ids quand item_id est vide (ventes passées), et la mémoire des fils déjà lus est oubliée une fois pour les relire, 5 par passage) — précédent : " +
   "2026-10-16-messagerie-beta-2 (0.6.117 : un passage de la bêta messagerie qui n'a rien pu lire note son motif en base ; lectures Depop reprises 2 fois sur erreur réseau) — précédent : " +
@@ -2466,7 +2466,39 @@ async function jetonFraisApres401(ancien) {
 
 // ── Edge functions ─────────────────────────────────────────────────────────────
 
+// (30/10, lot E — Amiral, sous Brave) Le serveur écrivait « ouvre leboncoin.fr dans Chrome » : il ne connaît pas le
+// navigateur. Le poll et les comptes rendus de jobs le portent désormais (champ `navigateur` du corps, jamais un
+// en-tête : aucune règle CORS touchée) ; le serveur l'utilise dans ses messages (_shared/navigateur-poste.js).
+const FONCTIONS_QUI_NOMMENT_LE_NAVIGATEUR = new Set(["get-pending-jobs", "update-job-status"]);
+// (30/10, urgence Louis) LE RENDU GRAPHIQUE DU POSTE : Leboncoin restreint l'accès d'une connexion où tourne un navigateur
+// à rendu virtuel (constaté par l'équipe Cloud le 30/10 sur un serveur sans puce graphique). Louis a un poste dans une
+// machine virtuelle de son NAS : le moteur de rendu WebGL le dit (« VMware SVGA », « VirtualBox », « QXL », « llvmpipe »,
+// « SwiftShader »…). Lu une fois par service worker, envoyé au poll (rendu_graphique) — le serveur le note sur le poste
+// et ne sert jamais Leboncoin à une machine virtuelle (_shared/poste-virtuel.js). Illisible : rien d'envoyé.
+let renduGraphiqueCache;
+function renduGraphiquePoste() {
+  if (renduGraphiqueCache !== undefined) return renduGraphiqueCache;
+  renduGraphiqueCache = null;
+  try {
+    if (typeof OffscreenCanvas !== "function") return renduGraphiqueCache;
+    const gl = new OffscreenCanvas(1, 1).getContext("webgl");
+    if (!gl) { renduGraphiqueCache = { webgl: false }; return renduGraphiqueCache; }
+    const ext = gl.getExtension("WEBGL_debug_renderer_info");
+    renduGraphiqueCache = {
+      webgl: true,
+      renderer: String(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER) ?? "").slice(0, 160),
+      vendor: String(ext ? gl.getParameter(ext.UNMASKED_VENDOR_WEBGL) : gl.getParameter(gl.VENDOR) ?? "").slice(0, 80),
+    };
+  } catch { renduGraphiqueCache = null; }
+  return renduGraphiqueCache;
+}
 async function callEdgeFunction(name, accessToken, body, rejeu = false) {
+  const nommer = FONCTIONS_QUI_NOMMENT_LE_NAVIGATEUR.has(name) && body && typeof body === "object" && !Array.isArray(body);
+  const corps = nommer
+    ? { ...body,
+      ...(body.navigateur == null ? { navigateur: VO.navigateurCourt() } : {}),
+      ...(name === "get-pending-jobs" && body.rendu_graphique == null && renduGraphiquePoste() ? { rendu_graphique: renduGraphiquePoste() } : {}) }
+    : body;
   const res = await fetch(`${FILLSELL_CONFIG.SUPABASE_URL}/functions/v1/${name}`, {
     method: "POST",
     headers: {
@@ -2474,7 +2506,7 @@ async function callEdgeFunction(name, accessToken, body, rejeu = false) {
       Authorization: `Bearer ${accessToken}`,
       apikey: FILLSELL_CONFIG.SUPABASE_ANON_KEY,
     },
-    body: JSON.stringify(body ?? {}),
+    body: JSON.stringify(corps ?? {}),
   });
   if (res.status === 401 && !rejeu) {
     const neuf = await jetonFraisApres401(accessToken);
@@ -4230,6 +4262,7 @@ async function pollAndProcessJobsUnlocked() {
     fileEnPauseServeur = rep.file_en_pause === true ? { le: Date.now(), retenus: Number(rep.jobs_retenus_pause) || 0 } : null;
     chrome.storage.local.set({ fillsell_file_pause: fileEnPauseServeur }).catch(() => {});
     vintedPauseAntirobotServeur = rep.vinted_pause_antirobot === true;
+    noterBlocageLbcServeur(rep.blocages?.leboncoin ?? null);   // (30/10, urgence Louis) absent = Leboncoin libre
     noterRetenuesDeletedServeur(rep.retenues_deleted);   // (29/10, lot B 4.11) absent (serveur plus ancien) : liste vide
     // (25/10, 0.6.144) Le rattrapage des textes en arrière-plan : ce que le serveur ouvre à CE compte (liste, rythme,
     // plafonds). Absent (serveur plus ancien, compte pas encore ouvert) : aucune lecture de fond.
@@ -6309,8 +6342,34 @@ async function processJob(rawJob, accessToken) {
           const vu = await lbcDepotRequestSeen(tabId, depuis).catch(() => null);
           const st = Number(vu?.adsubmit?.status);
           const idAd = String(vu?.adsubmit?.detail?.id ?? vu?.horsAdsubmit?.id ?? "");
-          if (st >= 200 && st < 300 && /^\d{6,}$/.test(idAd)) {
-            console.log(`[background] Job ${job.id} : canal coupé, mais l'adsubmit a répondu ${st} avec l'annonce ${idAd} — publié, aucun second dépôt`);
+          // (30/10, lot E — Juliette ce64ebe4, « Robe burberry ») L'adsubmit 2xx CRÉE l'annonce ; Leboncoin ne la met en
+          // ligne qu'une fois l'option choisie sur /options (prouvé le 13/09, puis le 29/10 — louis 68e39f7c). Juliette,
+          // 28/10 11:23 : canal coupé juste après l'adsubmit, job « publié » sur ce seul 201 ; l'annonce 3296886293 n'a
+          // jamais paru dans un relevé, page publique en 410 « désactivée » le 30/10. Désormais : publié seulement si
+          // l'onglet est arrivé à la confirmation (ou sur la page de l'annonce). Arrêté avant (/options, ailleurs) = dépôt
+          // inachevé, jamais mis en ligne (12/12 désactivées, relevé du 13/09) : nouvel essai, sans doublon possible.
+          const urlOngletAds = (st >= 200 && st < 300 && /^\d{6,}$/.test(idAd))
+            ? await chrome.tabs.get(tabId).then((t) => String(t?.url ?? "")).catch(() => "") : "";
+          const confirmeAds = /\/deposer-une-annonce\/confirmation(?:[/?#]|$)|leboncoin\.fr\/(?:ad|vi)\/[^?#]*\d{6,}/.test(urlOngletAds);
+          // Onglet illisible : ni publié ni redéposé — le doute passe par « vérifie tes annonces » (plus bas).
+          if (st >= 200 && st < 300 && /^\d{6,}$/.test(idAd) && !confirmeAds && urlOngletAds) {
+            const msgInacheve = "Leboncoin a reçu l'annonce, mais la page s'est interrompue avant sa validation : sans l'option " +
+              "gratuite choisie, Leboncoin ne la met jamais en ligne. Nouvel essai automatique, sans " +
+              "doublon (l'annonce inachevée s'efface d'elle-même). Rien à faire.";
+            const pfInacheve = {
+              ...(job.platform_fields ?? {}),
+              lbc_depot_non_finalise: { adsubmit_id: idAd, status: st, url: urlOngletAds.slice(0, 200) || null, at: new Date().toISOString(),
+                pose_par: "extension (canal coupé après l'adsubmit, sans page de confirmation)" },
+              next_action_after: new Date(Date.now() + 3 * 60_000).toISOString(),
+            };
+            delete pfInacheve.lbc_depot;
+            console.warn(`[background] Job ${job.id} : canal coupé après l'adsubmit ${st} (annonce ${idAd}) SANS confirmation (${urlOngletAds.slice(0, 80) || "onglet illisible"}) — dépôt inachevé, nouvel essai`);
+            await updateJobStatus(accessToken, job.id, "pending", { error: msgInacheve, platform_fields: pfInacheve })
+              .catch((err) => console.error("[background] update-job-status failed:", err));
+            return { status: "retry", error: msgInacheve };
+          }
+          if (st >= 200 && st < 300 && /^\d{6,}$/.test(idAd) && confirmeAds) {
+            console.log(`[background] Job ${job.id} : canal coupé, mais l'adsubmit a répondu ${st} avec l'annonce ${idAd} et l'onglet est à la confirmation — publié, aucun second dépôt`);
             await restRequest(`cross_post_jobs?id=eq.${job.id}`, accessToken, {
               method: "PATCH", body: JSON.stringify({ platform_listing_id: idAd }),
             }).catch((err) => console.warn(`[background] PATCH platform_listing_id leboncoin :`, String(err?.message ?? err)));
@@ -6324,7 +6383,7 @@ async function processJob(rawJob, accessToken) {
             await recordRecentResult(job, "published");
             return { status: "published", listingUrl: null };
           }
-          depotParti = Boolean(vu?.adsubmit?.envoye);
+          depotParti = Boolean(vu?.adsubmit?.envoye) || (st >= 200 && st < 300 && /^\d{6,}$/.test(idAd));
           if (depotParti) {
             // Parti sans réponse lisible : jamais un second dépôt sur un doute (même règle qu'eBay, plus haut).
             const msgIncertainLbc =
@@ -19954,6 +20013,7 @@ async function lancerReleveVentes({ platform, declencheur = "cron" } = {}) {
   if (!VENTES_PLATEFORMES.includes(platform)) return { ok: false, reason: "plateforme" };
   if (platform === "depop" && !(await depopAccesAccorde())) return { ok: false, reason: "depop_acces" };
   if (platform === "opla" && await oplaSortieActive()) return { ok: false, reason: "opla_sortie" }; // (11/10) plus aucun relevé Opla
+  if (platform === "leboncoin" && await leboncoinEnPause()) return { ok: false, reason: "blocage_leboncoin" }; // (30/10) accès restreint
   if (releveVentesEnCours) return { ok: false, reason: "deja_en_cours" };
   const session = await getValidSession();
   if (!session?.access_token) return { ok: false, reason: "session" };
@@ -22525,6 +22585,26 @@ async function envoyerMesuresVeille(etat, token, userId) {
  * Un passage de la veille (appelé à chaque poll, cadencé ici : 10 min ± 90 s
  * par plateforme). Ne lève jamais.
  */
+// ── LEBONCOIN RESTREINT L'ACCÈS : LES LECTURES DE L'EXTENSION S'ARRÊTENT AUSSI (30/10, urgence Louis) ──────────────
+// Le serveur (get-pending-jobs, _shared/blocage-leboncoin.js) ne sert plus rien de Leboncoin à un compte dont l'accès
+// est restreint (« Accès temporairement restreint », 403) et le dit dans blocages.leboncoin. Les lectures que
+// l'extension lance d'elle-même — veille des commandes, relevé des ventes, liens d'annonces manquants — s'arrêtent
+// tant que ce n'est pas « libre » (essai et reprise prudente compris : seules les actions servies partent).
+// Gardé en mémoire ET dans le stockage (un réveil du service worker ne relance pas une lecture interdite).
+let blocageLbcServeur = null;
+function noterBlocageLbcServeur(b) {
+  blocageLbcServeur = b && typeof b === "object" && b.etat && b.etat !== "libre" ? { ...b, vu_le: Date.now() } : null;
+  chrome.storage.local.set({ fillsell_blocage_lbc: blocageLbcServeur }).catch(() => {});
+}
+async function leboncoinEnPause() {
+  if (blocageLbcServeur) return true;
+  try {
+    const b = (await chrome.storage.local.get("fillsell_blocage_lbc"))?.fillsell_blocage_lbc ?? null;
+    // Un état lu il y a plus de 6 h sans poll depuis (poste éteint) reste prudent : pause.
+    return Boolean(b && b.etat && b.etat !== "libre");
+  } catch { return false; }
+}
+
 async function veillerCommandes(session) {
   await VO.rafraichirOrigineVinted().catch(() => {});
   const token = session?.access_token;
@@ -22534,7 +22614,9 @@ async function veillerCommandes(session) {
   if (etat.user && etat.user !== userId) { for (const k of Object.keys(etat)) delete etat[k]; } // autre compte : on repart à zéro
   etat.user = userId;
   const maintenant = Date.now();
+  const lbcEnPause = await leboncoinEnPause();
   const dues = VEILLE_COMMANDES_PLATEFORMES.filter((pf) => {
+    if (pf === "leboncoin" && lbcEnPause) return false; // (30/10) accès Leboncoin restreint : aucune lecture
     const e = etat[pf] ?? {};
     if (e.coupee && maintenant < Number(e.coupee.jusqu)) return false;
     return !Number.isFinite(Number(e.prochain)) || maintenant >= Number(e.prochain);
@@ -24219,7 +24301,9 @@ async function recoverMissingListingUrls(session) {
   // (needs_user entre les deux, cas Ritthik) perdait 31 h de fenêtre sur
   // created_at.
   const repereDe = (j) => Date.parse(j.published_at ?? j.created_at ?? "");
+  const lbcEnPauseLiens = await leboncoinEnPause(); // (30/10) accès Leboncoin restreint : aucune page Leboncoin ouverte
   const eligible = (jobs ?? []).filter((j) => {
+    if (j.platform === "leboncoin" && lbcEnPauseLiens) return false;
     const identiteDisponible = j.platform === "beebs"
       ? /^\d+$/.test(String(j.platform_listing_id ?? "").trim())
       : Boolean(j.title);
@@ -27875,6 +27959,7 @@ async function processRepublishJobPlateforme(job, accessToken) {
     return resultat ?? { status: "retry", error: "redépôt sans résultat" };
   }
 
+  if (step === "recreated") return republicationDejaRecreee(accessToken, job, pf, label);
   const msg = `Étape de republication inconnue : ${step}`;
   await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg }).catch(() => {});
   return { status: "needsUser", error: msg };
@@ -29454,9 +29539,24 @@ async function processRepublishJob(job, accessToken) {
     }
   }
 
+  if (step === "recreated") return republicationDejaRecreee(accessToken, job, pf, "Vinted");
   const msg = `Étape de republication inconnue : ${step}`;
   await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg }).catch(() => {});
   return { status: "needsUser", error: msg };
+}
+
+// ── « RECREATED » : LA REMISE EN LIGNE EST DÉJÀ FAITE (30/10, lot E — Johan) ────────────────────────────────────────
+// Toutes les versions écrivent les étapes 'a_capturer' → 'captured' → 'deleted' → 'recreated' (relevé en base le 30/10 :
+// aucune autre). 'recreated' revenait en file sans numéro (« Republier » de l'app sur un dépôt jamais confirmé) et
+// tombait ici en « Étape de republication inconnue ». Jamais un second dépôt sur cette étape : le job repart en file, le
+// serveur tranche par les relevés (_shared/etape-recreated-sans-numero.js) — published si la nouvelle annonce est vue,
+// sinon reprise sans doublon par la garde « annonce déjà partie ».
+async function republicationDejaRecreee(accessToken, job, pf, label) {
+  const pfS = { ...pf, next_action_after: new Date(Date.now() + 10 * 60_000).toISOString() };
+  const msg = `Ta nouvelle annonce ${label} a déjà été déposée : FillSell vérifie dans tes annonces qu'elle est en ligne avant toute autre action. Rien à faire.`;
+  await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pfS, error: msg }).catch(() => {});
+  console.log(`[republish] job ${job.id} (${label}) : étape 'recreated' — remise en ligne déjà faite, le serveur tranche par les relevés`);
+  return { status: "skipped", error: msg };
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

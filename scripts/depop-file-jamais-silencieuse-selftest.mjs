@@ -135,7 +135,7 @@ console.log("\nG. CONNEXION DEPOP : SUR TON ORDINATEUR, POINT");
   dit("« connecte-toi à Depop sur ton ordinateur »", m.includes("connecte-toi à Depop sur ton ordinateur"), m);
   dit("ni Chrome ni onglet", !/chrome|onglet/i.test(m), m);
   dit("le début « Connexion Depop requise » reste (reconnu par l'app et le serveur)", /^Connexion Depop requise/.test(m));
-  dit("les autres plateformes ne changent pas", messageConnexionRequise("vinted").startsWith("Connexion Vinted requise : reconnecte-toi à Vinted dans Chrome, sur ton ordinateur."));
+  dit("les autres plateformes ne changent pas", messageConnexionRequise("vinted", { navigateur: "Chrome" }).startsWith("Connexion Vinted requise : reconnecte-toi à Vinted dans Chrome, sur ton ordinateur."));
   const ujs = lire("supabase/functions/update-job-status/index.ts");
   dit("update-job-status : l'attente Depop sans « dans Chrome »", ujs.includes('const ouSeConnecter = jrow.platform === "depop" ? "" : " dans Chrome";'));
 }

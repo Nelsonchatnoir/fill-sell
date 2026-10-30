@@ -43,13 +43,20 @@ export function attenteBoutiqueLevable(garde) {
     || garde.pose_par === POSE_PAR_IDENTITE_PROUVEE;
 }
 
-/** Le texte de la carte : quelle boutique ouvrir, et que rien n'est touché. */
-export function messageAttenteBoutique(login, action = "republish") {
+// (30/10, lot E — Amiral) Le navigateur RÉEL du poste (nom court sûr, platform_fields.navigateur_poste), sinon « ton
+// navigateur » — jamais « Chrome » au hasard (Brave, Edge, Opera…). Même règle que _shared/navigateur-poste.js.
+const dansNavigateurBoutique = (n) => (["Chrome", "Brave", "Edge", "Opera", "Firefox", "Safari"].includes(String(n ?? "")) ? `dans ${n}` : "dans ton navigateur");
+
+/** Le texte de la carte : quelle boutique ouvrir, et que rien n'est touché.
+ * @param {string | null | undefined} login
+ * @param {string} [action]
+ * @param {string | null} [navigateur] */
+export function messageAttenteBoutique(login, action = "republish", navigateur = null) {
   const qui = login ? `ta boutique Vinted @${login}` : "ton autre boutique Vinted";
   // (11/10) Une publication : rien n'est encore en ligne, rien ne part ailleurs.
-  if (action === "publish") return `En attente de ${qui} : cet article appartient à cette boutique, il ne se publie que sur elle. Ouvre-la sur ${domaineVinted()} dans Chrome, la publication repartira toute seule. Rien n'a été publié ailleurs.`;
+  if (action === "publish") return `En attente de ${qui} : cet article appartient à cette boutique, il ne se publie que sur elle. Ouvre-la sur ${domaineVinted()} ${dansNavigateurBoutique(navigateur)}, la publication repartira toute seule. Rien n'a été publié ailleurs.`;
   const suite = action === "delete" ? "le retrait repartira tout seul" : "la republication repartira toute seule";
-  return `En attente de ${qui} : ouvre-la sur ${domaineVinted()} dans Chrome, ${suite}. Ton annonce est toujours en ligne, rien n'a été retiré.`;
+  return `En attente de ${qui} : ouvre-la sur ${domaineVinted()} ${dansNavigateurBoutique(navigateur)}, ${suite}. Ton annonce est toujours en ligne, rien n'a été retiré.`;
 }
 
 /**
@@ -77,5 +84,5 @@ export function reclasserAutreBoutique(job, logins, maintenant) {
     motif: "boutique_etrangere", article, login_article: login,
     session: session || null, le: maintenant, pose_par: POSE_PAR_ORIGINE_PROUVEE,
   };
-  return { platform_fields: p, error: messageAttenteBoutique(login, job.action) };
+  return { platform_fields: p, error: messageAttenteBoutique(login, job.action, p.navigateur_poste ?? null) };
 }

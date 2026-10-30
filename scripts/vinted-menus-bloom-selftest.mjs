@@ -53,9 +53,9 @@ assert.ok(extraireFonctionJs(src, "caracteristiquesCaptureNonReposees").includes
   "le contrôle avant retrait relit les menus bloom");
 
 // 4. Le déclencheur de la Taille « à puces ».
-assert.match(src, /const TAILLE_TRIGGER_SEL = '[^']*\[data-testid="category-size-single-grid_chips-input"\]'/,
+assert.match(src, /const TAILLE_TRIGGER_SEL = '[^']*\[data-testid="category-size-single-grid_chips-input"\][^']*'/,
   "la grille de tailles à puces (category-size-single-grid_chips-input) est trouvée");
-assert.match(src, /size: '[^']*\[data-testid="category-size-single-grid_chips-input"\]'/, "vintedFieldSelector(size) aussi");
+assert.match(src, /size: '[^']*\[data-testid="category-size-single-grid_chips-input"\][^']*'/, "vintedFieldSelector(size) aussi");
 
 console.log("vinted-menus-bloom : OK");
 

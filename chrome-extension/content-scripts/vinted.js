@@ -10,7 +10,7 @@
 // début pour couvrir même une exécution qui échouerait en cours de route.
 globalThis.__fillsellVintedCharge = true;
 
-const VINTED_BUILD = "2026-10-30-matieres-etiquette (0.6.160 : la composition de l'étiquette — fields.matieres, « Coton, Polyester, Élasthanne » — cochée matière par matière, 3 au plus, jamais la plus longue de la liste ni une matière à la place d'une autre) · 2026-10-28-rayon-par-identifiant (0.6.152 : un libellé du chemin introuvable — « Jewellery » sous « Accessoires de mode » — et l'identifiant du rayon connu : le rayon posé par identifiants avant la question, jamais par-dessus un choix de la personne) · 2026-10-28-langue-page-ouverte (0.6.151 : page Vinted non française dont le pays du compte n'est pas lu — sonde muette, jeton expiré — catégorie, état et couleurs posés par identifiants quand la langue de la page est ouverte par le serveur, vinted_ids_langues_ouvertes) · 2026-10-28-menus-bloom (0.6.150 : Vinted a remplacé ses menus — Catégorie, Marque, Taille, État, Couleur, Matériau — par des boutons « bloom » dont la valeur ne vit que dans le span « --value » ; toute relecture passe par valeurChampVinted, la grille de tailles à puces est trouvée) · 2026-10-26-modele-repli (modèle : une ligne de repli demandée telle quelle — « Mon modèle ne figure pas dans la liste », « Je ne connais pas le nom du modèle » — se choisit, à l'exact, et la valeur posée est relue ; le modèle d'une capture compte au contrôle avant retrait même sans valeur reposable) · 2026-10-26-marque-creee (marque : un #brand déjà pré-rempli par Vinted avec LA marque suffit ; sinon la marque est choisie ou créée — 30 s pour sa ligne, liste figée relancée, relecture jusqu'à LA marque, second essai — puis la chaîne du 24/10 même sur un champ pré-rempli, remplacé, jamais gardé ; la question seulement au bout, avec le texte vrai) · 2026-10-25-isbn-titre-colis (0.6.143 : ISBN de 10 caractères remis tel quel et armé pour le POST, erreur avant tout retrait sinon ; titre relu dans le champ et rendu ; format de colis retiré par Vinted du même rayon → le plus petit qui suffit, sinon le plus grand ; id 8 nommé selon sa famille) · 2026-10-24-zero-blocage (0.6.134 : une marque introuvable ne bloque jamais — attente du champ après le clic, garde qui compare la marque posée, ligne « Utiliser X comme marque » dans toutes les langues, même marque autrement écrite, puis « Sans marque » ; « Espace de stockage » et « Simlockage » repris de la capture) · 2026-10-09-vinted-etranger (0.6.106 : la page nomme SON domaine — vinted.fr inchangé, vinted.it… chez un vendeur étranger qui l'a autorisé — et le navigateur réel ; référentiel colis du domaine de la page) · 2026-10-08-onglet-muet-relance (0.6.103 : FILLSELL_PING accepté ; un onglet chargé mais muet est rechargé puis remplacé par le background avant tout envoi, jamais constaté) · 2026-10-05-colis-choix-cadenceur (0.6.97 : format de colis = le choix de la personne, relu après le clic et juste avant le dépôt, sinon le pré-coché de Vinted, sinon une question — plus jamais « Petit » d'office ; absence de marque selon la liste fermée du serveur et suggestions triées comme l'app ; pauses humaines à échéances qui rattrapent le retard des réveils sur Mac, attentes et battement sur le Worker, remplissage_mesures dans le résultat) · 2026-10-02-colis-demande (0.6.85 : format de colis inconnu ou non offert → demandé avant tout retrait, jamais choisi à la place de la personne) · 2026-10-02-colis-feu-vert-vendeur (0.6.84 : format de colis posé dans l'envoi quand le formulaire l'oublie, retrait refusé tant qu'il n'est pas en main ; feu vert de l'arrière-plan avant tout retrait une-passe ; vendeur lu en écartant le compte connecté ; compte bloqué nommé) · 2026-09-29-preuve-boutique-delete (0.6.80 : vendeur de la page exacte et session relus avant chaque DELETE ; inconnue et boutique différente restent deux verdicts distincts ; boutique du dépôt estampillée après succès) · 2026-09-28-rayon-deplace-page-annonce (0.6.79 : un rayon du formulaire d édition absent de l arbre du compte — Vinted remanie ses catégories compte par compte, Casio 5570 — est relu sur la page de l annonce, vérifié feuille de l arbre et fil d Ariane ; sinon capture incomplète comme avant) · 2026-09-25-zone-euro (0.6.69 : sur une page Vinted NON française — compte italien, espagnol… servi sur vinted.fr dans sa langue — catégorie, état et couleurs posés par IDENTIFIANT Vinted, jamais par libellé ; page française inchangée) · 2026-09-24-rayon-neuf-seulement (0.6.66 : un rayon Vinted qui n accepte que du neuf face a un article porte demande le RAYON, jamais clos ni ecarte ; releve d options sans avertissement) · 2026-09-17-taille-candidats-onglets (0.6.42 : « W32 L34 » → W32, toutes les formes dans TOUS les onglets, diagnostic dans last_diagnostic) · 2026-09-14-ping-et-ecouteur-unique (0.6.34 : VINTED_PING répond « je suis là » — c'est le seul verdict fiable de « l'onglet est prêt », l'événement de chargement se manque ; drapeau __fillsellVintedCharge posé en première instruction et écouteur enregistré UNE SEULE FOIS, pour qu'une réinjection ne double jamais les handlers ni ne redéclare les const) — précédent : 2026-09-09-envoi-journalise-et-taille-lettree (l'ENVOI de la création est journalisé avant la réponse ; 42 → XL sur une grille purement lettrée)";
+const VINTED_BUILD = "2026-10-30-pour-qui-avant-taille (0.6.161 : « Accessoires de mode › Montres » — « Pour qui ? » posé AVANT la taille, qui en dépend ; déclencheur accessory_department-size-single-grid-input reconnu ; Brave nommé) · 2026-10-30-matieres-etiquette (0.6.160 : la composition de l'étiquette — fields.matieres, « Coton, Polyester, Élasthanne » — cochée matière par matière, 3 au plus, jamais la plus longue de la liste ni une matière à la place d'une autre) · 2026-10-28-rayon-par-identifiant (0.6.152 : un libellé du chemin introuvable — « Jewellery » sous « Accessoires de mode » — et l'identifiant du rayon connu : le rayon posé par identifiants avant la question, jamais par-dessus un choix de la personne) · 2026-10-28-langue-page-ouverte (0.6.151 : page Vinted non française dont le pays du compte n'est pas lu — sonde muette, jeton expiré — catégorie, état et couleurs posés par identifiants quand la langue de la page est ouverte par le serveur, vinted_ids_langues_ouvertes) · 2026-10-28-menus-bloom (0.6.150 : Vinted a remplacé ses menus — Catégorie, Marque, Taille, État, Couleur, Matériau — par des boutons « bloom » dont la valeur ne vit que dans le span « --value » ; toute relecture passe par valeurChampVinted, la grille de tailles à puces est trouvée) · 2026-10-26-modele-repli (modèle : une ligne de repli demandée telle quelle — « Mon modèle ne figure pas dans la liste », « Je ne connais pas le nom du modèle » — se choisit, à l'exact, et la valeur posée est relue ; le modèle d'une capture compte au contrôle avant retrait même sans valeur reposable) · 2026-10-26-marque-creee (marque : un #brand déjà pré-rempli par Vinted avec LA marque suffit ; sinon la marque est choisie ou créée — 30 s pour sa ligne, liste figée relancée, relecture jusqu'à LA marque, second essai — puis la chaîne du 24/10 même sur un champ pré-rempli, remplacé, jamais gardé ; la question seulement au bout, avec le texte vrai) · 2026-10-25-isbn-titre-colis (0.6.143 : ISBN de 10 caractères remis tel quel et armé pour le POST, erreur avant tout retrait sinon ; titre relu dans le champ et rendu ; format de colis retiré par Vinted du même rayon → le plus petit qui suffit, sinon le plus grand ; id 8 nommé selon sa famille) · 2026-10-24-zero-blocage (0.6.134 : une marque introuvable ne bloque jamais — attente du champ après le clic, garde qui compare la marque posée, ligne « Utiliser X comme marque » dans toutes les langues, même marque autrement écrite, puis « Sans marque » ; « Espace de stockage » et « Simlockage » repris de la capture) · 2026-10-09-vinted-etranger (0.6.106 : la page nomme SON domaine — vinted.fr inchangé, vinted.it… chez un vendeur étranger qui l'a autorisé — et le navigateur réel ; référentiel colis du domaine de la page) · 2026-10-08-onglet-muet-relance (0.6.103 : FILLSELL_PING accepté ; un onglet chargé mais muet est rechargé puis remplacé par le background avant tout envoi, jamais constaté) · 2026-10-05-colis-choix-cadenceur (0.6.97 : format de colis = le choix de la personne, relu après le clic et juste avant le dépôt, sinon le pré-coché de Vinted, sinon une question — plus jamais « Petit » d'office ; absence de marque selon la liste fermée du serveur et suggestions triées comme l'app ; pauses humaines à échéances qui rattrapent le retard des réveils sur Mac, attentes et battement sur le Worker, remplissage_mesures dans le résultat) · 2026-10-02-colis-demande (0.6.85 : format de colis inconnu ou non offert → demandé avant tout retrait, jamais choisi à la place de la personne) · 2026-10-02-colis-feu-vert-vendeur (0.6.84 : format de colis posé dans l'envoi quand le formulaire l'oublie, retrait refusé tant qu'il n'est pas en main ; feu vert de l'arrière-plan avant tout retrait une-passe ; vendeur lu en écartant le compte connecté ; compte bloqué nommé) · 2026-09-29-preuve-boutique-delete (0.6.80 : vendeur de la page exacte et session relus avant chaque DELETE ; inconnue et boutique différente restent deux verdicts distincts ; boutique du dépôt estampillée après succès) · 2026-09-28-rayon-deplace-page-annonce (0.6.79 : un rayon du formulaire d édition absent de l arbre du compte — Vinted remanie ses catégories compte par compte, Casio 5570 — est relu sur la page de l annonce, vérifié feuille de l arbre et fil d Ariane ; sinon capture incomplète comme avant) · 2026-09-25-zone-euro (0.6.69 : sur une page Vinted NON française — compte italien, espagnol… servi sur vinted.fr dans sa langue — catégorie, état et couleurs posés par IDENTIFIANT Vinted, jamais par libellé ; page française inchangée) · 2026-09-24-rayon-neuf-seulement (0.6.66 : un rayon Vinted qui n accepte que du neuf face a un article porte demande le RAYON, jamais clos ni ecarte ; releve d options sans avertissement) · 2026-09-17-taille-candidats-onglets (0.6.42 : « W32 L34 » → W32, toutes les formes dans TOUS les onglets, diagnostic dans last_diagnostic) · 2026-09-14-ping-et-ecouteur-unique (0.6.34 : VINTED_PING répond « je suis là » — c'est le seul verdict fiable de « l'onglet est prêt », l'événement de chargement se manque ; drapeau __fillsellVintedCharge posé en première instruction et écouteur enregistré UNE SEULE FOIS, pour qu'une réinjection ne double jamais les handlers ni ne redéclare les const) — précédent : 2026-09-09-envoi-journalise-et-taille-lettree (l'ENVOI de la création est journalisé avant la réponse ; 42 → XL sur une grille purement lettrée)";
 console.log(`[vinted.js] build ${VINTED_BUILD}`);
 
 // Content script Vinted — remplit le formulaire de dépôt d'annonce.
@@ -37,6 +37,7 @@ const VINTED_DOMAINE_PAGE = VINTED_ORIGINE_PAGE.replace(/^https:\/\/(www\.)?/, "
 function navigateurCourtPage() {
   try {
     const nav = globalThis.navigator ?? {};
+    if (nav.brave && typeof nav.brave.isBrave === "function") return "Brave"; // (30/10) marque masquée possible
     const marques = Array.isArray(nav.userAgentData?.brands) ? nav.userAgentData.brands.map((b) => String(b?.brand ?? "")) : [];
     if (marques.length) {
       if (marques.some((b) => /Microsoft Edge/i.test(b))) return "Edge";
@@ -203,7 +204,7 @@ function vintedFieldSelector(code) {
     model: '#model, [data-testid="model-select-input"]',
     color: '#color, [data-testid="color-select-dropdown-input"]',
     condition: '#condition, [data-testid="category-condition-single-list-input"]',
-    size: '#size, [data-testid="category-size-single-grid-input"], [data-testid="category-size-single-grid_chips-input"]',
+    size: '#size, [data-testid="category-size-single-grid-input"], [data-testid="category-size-single-grid_chips-input"], [data-testid="accessory_department-size-single-grid-input"]',
     material: '#material, [data-testid="category-material-multi-list-input"]',
   };
   if (special[code]) return special[code];
@@ -4098,6 +4099,9 @@ async function remplirFormulaireVinted(job) {
     );
   }
 
+  // (30/10, lot E) « Pour qui ? » des accessoires AVANT la taille, qui en dépend (poserPourQuiAvantTaille).
+  const pourQuiPose = await poserPourQuiAvantTaille(job, fields, warnings).catch(() => false);
+
   if (fields.taille || (Array.isArray(fields.taille_ids) && fields.taille_ids.length)) {
     // ── TAILLE : PAR ID D'ABORD, PAR ONGLET ENSUITE (relevé réel du 10/09) ──
     // Relevé sur /items/new (Femmes > Vêtements > Jeans > Jeans droits) : le
@@ -4377,6 +4381,8 @@ async function remplirFormulaireVinted(job) {
     // couperait le seul chemin qui marche sur les extensions DÉJÀ INSTALLÉES,
     // et publierait en français le livre de qui aurait répondu « Anglais ».
   ]);
+  // (30/10, lot E) « Pour qui ? » déjà posé avant la taille : jamais une seconde pose par le canal générique.
+  if (pourQuiPose) handledCodes.add("accessory_department");
   // ── Attributs de l'annonce d'origine versés DANS ce canal (2026-09-04) ─────
   // On ALIMENTE la boucle générique ci-dessous, on ne la modifie pas : c'est
   // elle qui fait passer les publications aujourd'hui.
@@ -7749,7 +7755,54 @@ function libellesOptionsLisibles(textes) {
 // message needs_user en aval ne change pas de forme.
 // (28/10/2026) Le déclencheur de la grille « à puces » (onglets S/M/L, EU, FR…) porte désormais
 // data-testid="category-size-single-grid_chips-input" (relevé sur /items/new, Femmes > Cardigans) : les deux sont pris.
-const TAILLE_TRIGGER_SEL = '#size, [data-testid="category-size-single-grid-input"], [data-testid="category-size-single-grid_chips-input"]';
+// (30/10, lot E — montre de Sébastien) Sur le nouvel arbre « Accessoires de mode » (Montres…), la Taille dépend de
+// « Pour qui ? » et son déclencheur est data-testid="accessory_department-size-single-grid-input" (grille
+// size-group-62 : Jusqu'à 30 mm … Taille unique, relevée le 30/10) : pris aussi.
+const TAILLE_TRIGGER_SEL = '#size, [data-testid="category-size-single-grid-input"], [data-testid="category-size-single-grid_chips-input"], [data-testid="accessory_department-size-single-grid-input"]';
+// « Pour qui ? » des accessoires (Femmes 576, Hommes 575, Filles, Garçons — relevé le 30/10).
+const POUR_QUI_TRIGGER_SEL = '#accessory_department, [data-testid="category-accessory_department-single-list-input"]';
+const POUR_QUI_OPTIONS_SEL = '[data-testid^="accessory_department-"][role="radio"]';
+const POUR_QUI_PAR_GENRE = { femme: "Femmes", femmes: "Femmes", homme: "Hommes", hommes: "Hommes", fille: "Filles", filles: "Filles", garcon: "Garçons", garcons: "Garçons" };
+
+// ── « POUR QUI ? » AVANT LA TAILLE (30/10, lot E — Sébastien, « Montre vintage Tintin & Milou ») ─────────────────────
+// Le canal générique (vintedAspects) posait « Pour qui ? » APRÈS la taille : sur « Accessoires de mode › Montres » la
+// Taille n'existe pas tant que « Pour qui ? » est vide — taille jamais posée, pré-vol négatif cinq fois (« le formulaire
+// n'a pas accepté Taille « Taille unique » »). Ordre : la valeur de la personne (vintedAspects), l'identifiant de
+// l'annonce d'origine (capture), le genre de la fiche. Rien de connu → laissé vide (le pré-vol tranche, jamais deviné).
+// Rend true quand « Pour qui ? » porte une valeur à la sortie.
+async function poserPourQuiAvantTaille(job, fields, warnings) {
+  const champ = document.querySelector(POUR_QUI_TRIGGER_SEL);
+  if (!champ) return false;
+  if (valeurChampVinted(champ).trim()) return true;
+  const voulu = String(fields?.vintedAspects?.accessory_department ?? "").trim();
+  const ids = (Array.isArray(job?.platform_fields?.itemAttributesCaptures) ? job.platform_fields.itemAttributesCaptures : [])
+    .filter((a) => String(a?.code ?? "") === "accessory_department")
+    .flatMap((a) => (Array.isArray(a?.ids) ? a.ids : [])).map(Number).filter(Number.isFinite);
+  if (!voulu && ids.length) {
+    try {
+      await openDropdown(POUR_QUI_TRIGGER_SEL);
+      const opt = ids.map((id) => document.querySelector(`[data-testid="accessory_department-${id}"]`)).find(Boolean);
+      if (opt) {
+        await humanPause();
+        opt.click();
+        await humanPause();
+        await confirmDropdownIfNeeded();
+        const note = `Pour qui ? : posé par l'identifiant de l'annonce d'origine (${ids.join(", ")}) → « ${opt.textContent.trim()} », avant la taille`;
+        console.log(`[vinted] ${note}`);
+        warnings.push(note);
+        return true;
+      }
+      await closeAnyOpenDropdown();
+    } catch (e) {
+      await closeAnyOpenDropdown().catch(() => {});
+      warnings.push(`Pour qui ? : identifiant de l'annonce d'origine non posé — ${String(e?.message ?? e).slice(0, 120)}`);
+    }
+  }
+  const genre = String(fields?.genre ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLowerCase();
+  const texte = voulu || POUR_QUI_PAR_GENRE[genre] || "";
+  if (!texte) return false;
+  return selectClosedOptionSafe("Pour qui ?", POUR_QUI_TRIGGER_SEL, POUR_QUI_OPTIONS_SEL, texte, warnings);
+}
 const TAILLE_OPTIONS_SEL = '[data-testid^="size-group-"]';
 const TAILLE_PREFIXE_ONGLET_RE = /^(EU|UK|FR|IT|US)\s+\S/i;
 

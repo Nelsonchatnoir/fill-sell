@@ -30,7 +30,7 @@ ok(/if \(s\.vinted === true && Number\.isFinite\(vuVinted\) && vuVinted > depuis
 // (15/10, lot C) Le message porte la date du premier refus et suit l'action.
 ok(/\.update\(\{ status: "needs_user", error: messagePauseVintedGeste\(\{ depuis: new Date\(depuisMs\)\.toISOString\(\)/.test(bloc)
    && /pf\.needs_user_source = "verification_antirobot";/.test(bloc), "needs_user « vérification » — relancé seul quand la sonde revoit Vinted répondre");
-ok(PAUSE_VINTED_GESTE_MS === 6 * 3600_000 && /ouvre vinted\.fr dans Chrome/.test(messagePauseVintedGeste()), "6 h, et le geste");
+ok(PAUSE_VINTED_GESTE_MS === 6 * 3600_000 && /ouvre vinted\.fr dans Chrome/.test(messagePauseVintedGeste({ navigateur: "Chrome" })) && /ouvre vinted\.fr dans ton navigateur/.test(messagePauseVintedGeste()), "6 h, et le geste");
 
 console.log("\n2. « METS À JOUR » DIT LE GESTE LE PLUS SIMPLE");
 const app = lire("src/App.jsx");

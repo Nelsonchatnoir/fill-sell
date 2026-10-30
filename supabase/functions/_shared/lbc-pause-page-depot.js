@@ -26,9 +26,14 @@
 import { delaiAttenteSessionMin } from "./attente-session.js";
 
 export const PAUSE_PAGE_LBC_RE = /sur la page de vente Leboncoin, .*(n'est|ne sont) plus au rendez-vous/;
-export const MESSAGE_ATTENTE_CONNEXION_LBC =
-  "En attente de ta connexion à Leboncoin dans Chrome : reconnecte-toi à Leboncoin sur ton ordinateur, " +
-  "la republication repartira toute seule. Ton annonce est toujours en ligne, rien n'a été touché.";
+// (30/10, lot E — Amiral) Le navigateur RÉEL du poste (platform_fields.navigateur_poste), sinon « ton navigateur ».
+/** @param {string | null} [navigateur] */
+export function messageAttenteConnexionLbc(navigateur = null) {
+  const nav = ["Chrome", "Brave", "Edge", "Opera"].includes(String(navigateur ?? "")) ? `dans ${navigateur}` : "dans ton navigateur";
+  return `En attente de ta connexion à Leboncoin ${nav} : reconnecte-toi à Leboncoin sur ton ordinateur, ` +
+    "la republication repartira toute seule. Ton annonce est toujours en ligne, rien n'a été touché.";
+}
+export const MESSAGE_ATTENTE_CONNEXION_LBC = messageAttenteConnexionLbc(null);
 
 // Les clés d'un needs_user qui n'ont plus d'objet quand le job repart.
 export const CLES_NEEDS_USER = [
@@ -133,7 +138,7 @@ export function decisionPausePageDepotLbc(job, { releves = [], sessions = null, 
     };
     pf.next_action_after = iso(pause.at + delaiAttenteSessionMin(observations) * 60_000);
     delete pf.pause_page_depot;
-    return { action: "attente_session", status: "pending", error: MESSAGE_ATTENTE_CONNEXION_LBC, platform_fields: pf, motif: session.preuve };
+    return { action: "attente_session", status: "pending", error: messageAttenteConnexionLbc(pf?.navigateur_poste ?? null), platform_fields: pf, motif: session.preuve };
   }
 
   const prec = objet(pf0.pause_page_depot);
