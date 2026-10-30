@@ -168,7 +168,7 @@ séparée `fill-and-sell-lot-e`, branche `lot-e/thecloset` ; rien du Cloud touch
 | B4 photos choisies / réordonnées | Depop nelsolchatnoir-…-7a44 ; Beebs 34268419 | Depop : ordre en ligne exact (couverture comprise), comparaison image par image (écart ≤ 3,6 contre ≥ 33) ; Beebs : couverture = image 2 (écart 0,0) ; job envoyé dans l'ordre choisi [2,3,4,5,6,7,8,10,1] ; ordre complet en ligne lisible à la validation par l'équipe Beebs (en vérification à 22:43) |
 | B5 description de la personne avec hashtags | Leboncoin 3298675759, eBay 820297268148, Beebs 34268419 | texte en ligne identique, hashtags compris ; la note de l'app « les hashtags ne partent que sur Vinted et Depop » ne s'affiche plus sur le texte de la personne |
 | B6 eBay matière + saison | 820297546667 | « Matière : Coton biologique », « Saison : Été » en ligne (saison posée dans les lectures de la fiche pour l'essai : aucune étiquette ne la portait) ; « Modifier sur eBay » : 820297268148, même numéro, titre, prix, description changés |
-| B7 « Femme » + étiquette lisible | Vinted 10599861522 ; Depop nelsonchatnpir-…-b3f7 | Vinted : Femmes › T-shirts, Matière Coton ; Depop : genre « female », matière ABSENTE → corrigé (extension + app, format relevé sur le formulaire de Depop), essai refait après déploiement (§ Après le déploiement) |
+| B7 « Femme » + étiquette lisible | Vinted 10599861522 ; Depop nelsonchatnpir-…-b3f7 | Vinted : Femmes › T-shirts, Matière Coton ; Depop : genre « female », matière ABSENTE → corrigé (extension + app, format relevé sur le formulaire de Depop) ; **refait après le push (web 95aba62)** : Depop nelsonchat7oir-…-427d (23:34), en ligne `gender: female`, `material: ["cotton-organic"]` (fiche publique de l'API Depop), puis retirée |
 | B8 publier / republier | publier : Vinted, Leboncoin, Beebs, Depop, eBay ci-dessus ; republier : Vinted 10599796049 → **10601153940**, Depop …-7a44 → **…-d82a** | Vinted : ancienne « Page not found », nouvelle en ligne à 999 € (22:31) ; Depop : ancienne 404, nouvelle « on sale », 7 photos (22:38) ; Leboncoin 3298675759 en file (cadence 15 min, planifiée — intouchable) ; Beebs à la validation ; eBay : pas de republication dans FillSell (choix d'origine) |
 
 **Essais ratés puis refaits.** Premier B1 (3298588291) refusé par Leboncoin (doublon de deux annonces en ligne, voir
@@ -187,3 +187,5 @@ corrigé (extension + app), essai refait.
   Leboncoin refusée « oubliée » ; Beebs 34268419 en vérification chez Beebs (à retirer après validation).
 - Republication Leboncoin : la tâche s'est figée 15 min après le retrait de l'ancienne annonce (onglet de travail
   en chargement), puis la règle d'interruption l'a reprise à la bonne étape (« retirée ») : recréée sans doublon.
+- **30/10 vers 23:30 — push fait hors de cette session** (69f30fd..95aba62) ; web 95aba62 servi ; **B7 Depop prouvé** (matière
+  « Coton - Biologique » et genre femme en ligne). Réglages du compte de Nico coupés le temps de l'essai puis remis.
