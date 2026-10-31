@@ -4223,6 +4223,8 @@ export function VintedDressingSync({ lang, user, isNative, extensionStatus, sour
     || run.status === 'done' || run.status === 'queued' || run.status === 'running')
     ? null
     : { status: run.status, situation: situationFinReleve(run), items_vus: run.items_vus ?? null, total_entries: run.total_entries ?? null,
+      // (01/11, lot J 2 bis) Quand : un relevé réussi plus récent (veille comprise) fait Vinted « à jour » (BlocSynchro).
+      le: run.finished_at ?? run.started_at ?? null,
       // (18/10, Louis) Boutique déjà suivie par un autre compte FillSell : le
       // bloc dit SA phrase (pas « connecte-toi au bon compte »), sans bouton.
       boutiqueAutreCompte: estBoutiqueAutreCompte(run.erreur) ? { login: loginDuRun(run) } : null };

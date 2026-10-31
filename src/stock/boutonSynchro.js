@@ -37,6 +37,31 @@ export function depuisCourt(t, maintenant, fr = true) {
   return fr ? `il y a ${j} j` : `${j} d ago`;
 }
 
+// ── (01/11, lot J 2 bis — compte de Nico, 2.9.144) LE DERNIER RELEVÉ RÉUSSI, QUEL QUE SOIT SON DÉCLENCHEUR ──
+// Vinted et eBay disaient « synchronisé le 29/10 » (dernier appui sur le bouton) alors que le relevé quotidien de
+// l'extension (Vinted, 30/10 20:05) et celui du serveur par l'API (eBay, 31/10 10:10) avaient réussi depuis : on
+// croyait que rien n'était automatique. « Synchronisé il y a… », le détail et le grisage comptent le dernier relevé
+// RÉUSSI (cron, veilleur, serveur, API, bouton, app) ; plus récent que la dernière synchro demandée (réussie ou non),
+// il fait la plateforme « à jour ». Les pastilles gardent leur état (règle du 05/10).
+/**
+ * @param {{ phase: string, fini?: unknown, tentative?: unknown }} demandee  la dernière synchro demandée (pastille)
+ * @param {unknown} reussi  le dernier relevé réussi, tous déclencheurs (ISO ou ms)
+ * @returns {{ phase: string, fini: number | null }}
+ */
+export function avecDernierReussi({ phase, fini = null, tentative = null } = {}, reussi = null) {
+  const r = ms(reussi);
+  const f = ms(fini);
+  if (!Number.isFinite(r) || phase === 'en_cours') return { phase, fini: Number.isFinite(f) ? f : null };
+  const t = ms(tentative);
+  const plusRecent = !Number.isFinite(t) || r >= t;
+  return { phase: plusRecent && phase !== 'hors_compte' ? 'fait' : phase, fini: Number.isFinite(f) ? Math.max(f, r) : r };
+}
+
+/** La phrase courte de la carte, à la place du détail (replié). */
+export function texteAutomatique(fr = true) {
+  return fr ? 'La synchro et la surveillance des ventes sont automatiques.' : 'Syncing and sales tracking are automatic.';
+}
+
 /**
  * L'état du bouton. `plateformes` : [{ p, nom, phase, fini, session, api }] — `phase` celle de la pastille
  * (etatTuile : fait, en_cours, absente, jamais, echec, expire, incomplet, hors_compte), `fini` la fin du dernier relevé

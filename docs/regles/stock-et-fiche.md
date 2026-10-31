@@ -54,3 +54,15 @@ Heure de Paris. Le récit : `docs/enquetes/cloture-fh-3110/RAPPORT.md` (31/10), 
   automatique `cron` connu, 24 h) — sans relevé automatique connu, le plancher de 20 h. La plus proche est dite.
 - Lectures : sessions à l'ouverture puis chaque minute SEULEMENT pendant le grisé (relectureBornee) ; relevés des 3
   derniers jours (`lireRelevesRecents`) une fois par grisé. Rien ne change à la cadence ni aux relevés automatiques.
+
+## 01/11 (lot J, point 2 bis — compte de Nico, 2.9.144) — la carte de synchro, plus sobre
+- Le détail par plateforme est REPLIÉ : il s'ouvre en touchant l'en-tête de la carte (« Synchronisé il y a… », chevron) ;
+  à la place, UNE phrase : « La synchro et la surveillance des ventes sont automatiques. » (extension vue), ou, bouton
+  grisé, « Tout est à jour, prochaine synchro automatique vers XX h ».
+- « Synchronisé il y a… », le détail et le grisage comptent le dernier relevé RÉUSSI quel que soit son déclencheur (cron,
+  veilleur, serveur, API, bouton, app) : `lireDerniersReussis` (statut done, 30 jours, index (user_id, started_at) :
+  1 ms sur le compte le plus chargé), lu dans la relecture bornée du bloc ; `avecDernierReussi` : plus récent que la
+  dernière synchro demandée (réussie ou non) → la plateforme est « à jour ». Les pastilles et les points à régler gardent
+  la règle du 05/10 (synchros de la personne seulement). Cas : Vinted « 29/10 » (bouton) alors que le cron avait réussi le
+  30/10 à 20:05, eBay « 29/10 » alors que l'API avait relevé le 31/10 à 10:10.
+- Même composant sur le site et l'app mobile (BlocSynchro).

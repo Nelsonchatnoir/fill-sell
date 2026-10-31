@@ -7,6 +7,7 @@ import {
 } from "../supabase/functions/_shared/blocage-leboncoin.js";
 import {
   etatBoutonSynchro, prochaineSynchroAuto, texteToutAJour, texteVersHeure, SYNCHRO_A_JOUR_MS, PLANCHER_AUTO_MS, ALARME_AUTO_MS,
+  avecDernierReussi, texteAutomatique,
 } from "../src/stock/boutonSynchro.js";
 import { clotureEbayHorsFrance, ebaySiteHorsFrance } from "../supabase/functions/_shared/ebay-hors-france.js";
 import { archiverErreur } from "../supabase/functions/_shared/erreurs-archivees.js";
@@ -104,6 +105,33 @@ t(texteToutAJour(null, N) === "Tout est à jour", "sans heure connue : la phrase
 const bloc = readFileSync("src/stock/BlocSynchro.jsx", "utf8");
 t(/const ctaInactif = enCours \|\| occupe \|\| !extVue \|\| grise;/.test(bloc), "BlocSynchro : le bouton grisé ne relance rien");
 t(/demarrerRelecture\(lire, \{ intervalleMs: 60_000/.test(bloc) && !/setInterval/.test(bloc), "BlocSynchro : relecture bornée, jamais de setInterval");
+
+// ── 2 bis. (01/11) Le dernier relevé RÉUSSI, quel que soit son déclencheur ; la carte sobre ──
+// Compte de Nico, 01/11 00:08 : Vinted « 29/10 » (bouton) alors que le cron a réussi le 30/10 à 20:05 ; eBay « 29/10 »
+// alors que l'API a relevé le 31/10 à 10:10.
+const vinted = avecDernierReussi({ phase: "fait", fini: "2026-10-29T18:00:00Z", tentative: "2026-10-29T18:00:00Z" }, "2026-10-30T19:05:00Z");
+t(vinted.phase === "fait" && vinted.fini === Date.parse("2026-10-30T19:05:00Z"), "Vinted : le relevé automatique du 30/10 compte");
+const ebay = avecDernierReussi({ phase: "fait", fini: "2026-10-29T18:00:00Z", tentative: "2026-10-29T18:00:00Z" }, "2026-10-31T09:10:00Z");
+t(ebay.fini === Date.parse("2026-10-31T09:10:00Z"), "eBay : le relevé par l'API du 31/10 compte");
+t(avecDernierReussi({ phase: "echec", fini: null, tentative: "2026-10-31T10:00:00Z" }, "2026-10-31T11:00:00Z").phase === "fait", "un relevé réussi APRÈS un échec demandé : à jour");
+const echecRecent = avecDernierReussi({ phase: "echec", fini: null, tentative: "2026-10-31T12:00:00Z" }, "2026-10-31T11:00:00Z");
+t(echecRecent.phase === "echec" && echecRecent.fini === Date.parse("2026-10-31T11:00:00Z"), "un échec demandé plus récent reste un échec, avec la date du dernier réussi");
+t(avecDernierReussi({ phase: "absente", tentative: "2026-10-31T10:00:00Z" }, "2026-10-31T10:30:00Z").phase === "fait", "pas connecté puis relevé réussi : connecté, à jour");
+t(avecDernierReussi({ phase: "en_cours", fini: null }, "2026-10-31T10:30:00Z").phase === "en_cours", "en cours : inchangé");
+t(avecDernierReussi({ phase: "jamais" }, null).phase === "jamais", "aucun relevé réussi : inchangé");
+const cron = etatBoutonSynchro({ plateformes: [
+  { p: "vinted", nom: "Vinted", ...avecDernierReussi({ phase: "fait", fini: iso(N - 3 * 86_400_000), tentative: iso(N - 3 * 86_400_000) }, iso(N - 5 * 60_000)) },
+  { p: "ebay", nom: "eBay", api: true, ...avecDernierReussi({ phase: "fait", fini: iso(N - 3 * 86_400_000), tentative: iso(N - 3 * 86_400_000) }, iso(N - 6 * 60_000)) },
+], maintenant: N });
+t(cron.grise === true && cron.lignes[0].texte === "Vinted à jour il y a 5 min", "grisage et détail comptent le relevé automatique");
+t(texteAutomatique() === "La synchro et la surveillance des ventes sont automatiques.", "la phrase courte");
+const bloc2 = readFileSync("src/stock/BlocSynchro.jsx", "utf8");
+t(bloc2.includes("{detailOuvert && etatBouton.lignes.length > 0 && (") && bloc2.includes("aria-expanded={detailOuvert}"), "le détail par plateforme est replié, il s'ouvre en touchant la carte");
+t(bloc2.includes("grise ? texteToutAJour(prochaineAuto, Date.now(), fr) : texteAutomatique(fr)"), "une seule phrase sous le bouton");
+t(bloc2.includes("avecDernierReussi({ phase: t.e.phase, fini, tentative }, r.reussis?.[t.p])") && bloc2.includes("r.reussis?.[p]"), "« Synchronisé il y a… », détail et grisage : le dernier relevé réussi");
+const sp = readFileSync("src/utils/syncPlateformes.js", "utf8");
+const corpsReussis = sp.slice(sp.indexOf("export async function lireDerniersReussis"), sp.indexOf("export async function lireDerniersReussis") + 900);
+t(corpsReussis.includes(".eq('status', 'done')") && !corpsReussis.includes("FILTRE_SANS_VEILLE"), "tous déclencheurs, relevés réussis seulement");
 
 // ── 3. eBay hors d'eBay France ──
 const jobRosa = {

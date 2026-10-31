@@ -20,7 +20,7 @@
 // ⛔ La ligne Vinted (VintedDressingSync) reste MONTÉE, cachée : c'est elle qui
 //    porte l'état du relevé Vinted et son `lancer` (cf. la carte d'origine).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { RefreshCw, ChevronRight, X, Check, CircleAlert, CircleCheck, Info, Laptop, RotateCcw, Camera } from 'lucide-react';
+import { RefreshCw, ChevronRight, ChevronDown, X, Check, CircleAlert, CircleCheck, Info, Laptop, RotateCcw, Camera } from 'lucide-react';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import OplaAutorisationModal from '../components/OplaAutorisationModal';
 import InstallExtensionCta from '../components/InstallExtensionCta';
@@ -42,7 +42,7 @@ import { paysVintedDeLAppareil, noteVintedEtranger, retenirPaysAppareil, paysVin
 import { noterGeste } from '../utils/dernierGeste';
 import { ABSENCES_AVANT_PAUSE } from '../annonces/absencesDeSuite.js';
 import { synchroSansRien } from './synchroSansRien.js';
-import { etatBoutonSynchro, prochaineSynchroAuto, texteToutAJour } from './boutonSynchro.js';
+import { etatBoutonSynchro, prochaineSynchroAuto, texteToutAJour, avecDernierReussi, texteAutomatique } from './boutonSynchro.js';
 import { lireRelevesRecents, lireChoixEtSessions } from '../utils/syncPlateformes';
 import { etatSession } from '../utils/sessionsPlateformes.js';
 import { demarrerRelecture } from '../utils/relectureBornee';
@@ -284,18 +284,24 @@ export default function BlocSynchro({
   // (relectureBornee) ; les relevés récents (l'heure de la prochaine synchro automatique) : une fois par grisé.
   const [sessionsBrutes, setSessionsBrutes] = useState(null);
   const [rendus, forcerRendu] = useState(0);
+  // (01/11, lot J 2 bis) Le détail par plateforme est replié : il s'ouvre en touchant la carte.
+  const [detailOuvert, setDetailOuvert] = useState(false);
   const etatBouton = useMemo(() => etatBoutonSynchro({
     plateformes: tuiles.map((t) => {
       const run = t.p === 'vinted' ? r.runVinted : (r.runs[t.p] ?? null);
       const fini = t.p === 'vinted' ? run?.finished_at : ((run?.status === 'done' || run?.status === 'incomplete') ? run.finished_at : null);
-      return { p: t.p, nom: t.nom, phase: t.e.phase, fini, session: etatSession(sessionsBrutes, t.p), api: t.p === 'ebay' && ebayApi };
+      // La dernière synchro DEMANDÉE (réussie ou non) : Vinted, sa fin ratée remontée par la ligne Vinted, sinon son
+      // dernier relevé réussi ; les autres, leur dernier relevé demandé.
+      const tentative = t.p === 'vinted' ? (etatVinted?.fin?.le ?? run?.finished_at) : (run?.finished_at ?? run?.started_at ?? run?.queued_at);
+      const vu = avecDernierReussi({ phase: t.e.phase, fini, tentative }, r.reussis?.[t.p]);
+      return { p: t.p, nom: t.nom, phase: vu.phase, fini: vu.fini, session: etatSession(sessionsBrutes, t.p), api: t.p === 'ebay' && ebayApi };
     }),
     maintenant: Date.now(),
     enCours: actifGlobal || !!r.busy || r.toutBusy,
     stockVideAvecAnnonces: (items?.length ?? 0) === 0 && (bilan.total ?? 0) > 0,
     fr,
   // eslint-disable-next-line react-hooks/exhaustive-deps -- `rendus` : le recalcul à la fin des 15 min
-  }), [tuiles, r.runVinted, r.runs, sessionsBrutes, ebayApi, actifGlobal, r.busy, r.toutBusy, items?.length, bilan.total, fr, rendus]);
+  }), [tuiles, r.runVinted, r.runs, r.reussis, etatVinted?.fin?.le, sessionsBrutes, ebayApi, actifGlobal, r.busy, r.toutBusy, items?.length, bilan.total, fr, rendus]);
   const grise = etatBouton.grise;
   useEffect(() => {
     if (!ouvert || !r.userId) return undefined;
@@ -479,7 +485,10 @@ export default function BlocSynchro({
     : null;
 
   const plateformesOk = tuiles.filter((t) => t.e.phase === 'fait' && !t.vide).length;
-  const quand = bilan.dernierFini != null ? ilYA(new Date(bilan.dernierFini).toISOString(), fr) : null;
+  // (01/11, lot J 2 bis) « Synchronisé il y a… » : le dernier relevé RÉUSSI, quel que soit son déclencheur.
+  const finTete = Math.max(bilan.dernierFini ?? -Infinity,
+    ...r.plateformes.map((p) => Date.parse(r.reussis?.[p] ?? '')).filter(Number.isFinite));
+  const quand = Number.isFinite(finTete) ? ilYA(new Date(finTete).toISOString(), fr) : null;
   const ctaTexte = enCours ? T.ctaEnCours : r.toutBusy ? T.ctaEnvoi : extVue ? T.ctaTout : T.ctaExtension;
   const ctaInactif = enCours || occupe || !extVue || grise;
   const premiereAnnonce = synchroSansRien({ enCours, quand, total: bilan.total, nbArticles: items?.length });
@@ -562,14 +571,20 @@ export default function BlocSynchro({
       ) : (
         <section aria-label={fr ? 'Synchronisation des annonces' : 'Listings sync'} style={{ padding: enCours ? 16 : '16px 16px 0', boxSizing: 'border-box', borderRadius: 20, background: '#FFFFFF', boxShadow: `${OMBRE.synchro}, inset 0 0 0 1px ${S.border}` }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 40 }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
+            {/* (01/11, lot J 2 bis) Toucher la carte ouvre (ou referme) le détail par plateforme. */}
+            <button type="button" className="sk-btn" disabled={enCours || !etatBouton.lignes.length}
+              onClick={() => setDetailOuvert((o) => !o)} aria-expanded={detailOuvert}
+              style={{ flex: 1, minWidth: 0, padding: 0, border: 'none', background: 'transparent', textAlign: 'left', fontFamily: 'inherit' }}>
               <div className="sk-une-ligne" style={{ fontSize: 14, lineHeight: '20px', fontWeight: 700, color: S.ink }}>
                 {enCours ? T.titreEnCours : (etatVinted?.cadenceTexte && !quand ? etatVinted.cadenceTexte : (quand ? T.synchronise(quand) : T.sousJamais))}
               </div>
-              <div className="sk-une-ligne sk-chiffres" style={{ fontSize: 12, lineHeight: '20px', fontWeight: 500, color: S.ink2 }}>
+              <div className="sk-une-ligne sk-chiffres" style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, lineHeight: '20px', fontWeight: 500, color: S.ink2 }}>
                 {enCours ? (vague.active ? T.sousEnCours(vague.faites.length, vague.total) : T.rapprochementEnCours) : (quand ? T.nAnnonces(bilan.total ?? 0) : (etatVinted?.cadenceTexte ?? ''))}
+                {!enCours && etatBouton.lignes.length > 0 && (
+                  <ChevronDown size={14} strokeWidth={2.2} aria-hidden="true" style={{ flexShrink: 0, transform: detailOuvert ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }} />
+                )}
               </div>
-            </div>
+            </button>
             <button type="button" className="sk-btn sk-presse" onClick={() => { if (!ctaInactif) r.toutRelever(); }} disabled={ctaInactif}
               style={{
                 flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 8, height: 40, padding: '0 16px', border: 'none', borderRadius: 999,
@@ -581,18 +596,23 @@ export default function BlocSynchro({
             </button>
           </div>
 
-          {!enCours && (grise || etatBouton.lignes.length > 0) && (
+          {/* (01/11, lot J 2 bis) UNE phrase courte : « tout est à jour » quand le bouton est grisé, sinon « c'est
+              automatique » ; le détail par plateforme seulement carte ouverte. */}
+          {!enCours && (grise || extVue) && (
             <div role="status" style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
-              {grise && (
-                <span style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 13, lineHeight: '18px', fontWeight: 700, color: S.tealDeep }}>
-                  <CircleCheck size={16} strokeWidth={2.2} aria-hidden="true" style={{ flexShrink: 0, marginTop: 1 }} />
-                  {texteToutAJour(prochaineAuto, Date.now(), fr)}
-                </span>
-              )}
-              {etatBouton.lignes.length > 0 && (
-                <span className="sk-chiffres" style={{ fontSize: 12, lineHeight: '16px', fontWeight: 500, color: S.ink2 }}>
-                  {etatBouton.lignes.map((l) => l.texte).join(' · ')}
-                </span>
+              <span style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 12, lineHeight: '16px', fontWeight: grise ? 700 : 600, color: grise ? S.tealDeep : S.ink2 }}>
+                {grise && <CircleCheck size={14} strokeWidth={2.2} aria-hidden="true" style={{ flexShrink: 0, marginTop: 1 }} />}
+                {grise ? texteToutAJour(prochaineAuto, Date.now(), fr) : texteAutomatique(fr)}
+              </span>
+              {detailOuvert && etatBouton.lignes.length > 0 && (
+                <ul aria-label={fr ? 'Dernière synchro par plateforme' : 'Last sync by platform'} style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {etatBouton.lignes.map((l) => (
+                    <li key={l.p} className="sk-chiffres" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, lineHeight: '18px', fontWeight: 500, color: l.aJour ? S.tealDeep : S.ink2 }}>
+                      <PlatformLogo platform={l.p} size={14} />
+                      <span style={{ minWidth: 0 }}>{l.texte}</span>
+                    </li>
+                  ))}
+                </ul>
               )}
             </div>
           )}

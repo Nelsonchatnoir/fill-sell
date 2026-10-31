@@ -101,6 +101,29 @@ export async function lireRelevesRecents(userId) {
   return error ? [] : (data ?? []);
 }
 
+// (01/11, lot J 2 bis) Le dernier relevé RÉUSSI par plateforme, QUEL QUE SOIT son déclencheur (cron, veilleur,
+// serveur, API, bouton, app) : { vinted: ISO, leboncoin: ISO, … }. Sert « Synchronisé il y a… », le détail de la carte
+// et le grisage du bouton (stock/boutonSynchro.js) — jamais l'état d'une pastille (la règle du 05/10 tient). Index
+// (user_id, started_at) : 1 ms sur le compte le plus chargé (395 relevés en 30 jours). null = lecture ratée.
+export async function lireDerniersReussis(userId) {
+  if (!userId) return {};
+  const { data, error } = await supabase
+    .from('vinted_sync_runs')
+    .select('platform,kind,finished_at')
+    .eq('user_id', userId).eq('status', 'done').in('kind', ['dressing', 'annonces'])
+    .gte('started_at', new Date(Date.now() - 30 * 86_400_000).toISOString())
+    .order('started_at', { ascending: false })
+    .limit(200);
+  if (error) return null;
+  const out = {};
+  for (const r of data ?? []) {
+    const p = r.kind === 'dressing' ? 'vinted' : r.platform;
+    if (!p || !r.finished_at) continue;
+    if (!out[p] || Date.parse(r.finished_at) > Date.parse(out[p])) out[p] = r.finished_at;
+  }
+  return out;
+}
+
 // ── LES RELEVÉS VIDES D'AFFILÉE (2026-09-24) ─────────────────────────────────
 // Plateformes dont les derniers relevés terminés n'ont trouvé AUCUNE annonce,
 // sur un compte qui en avait : le serveur (releve_vide_etat) ne laisse plus le
