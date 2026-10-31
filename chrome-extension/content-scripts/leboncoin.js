@@ -25,7 +25,7 @@ function navigateurCourtPage() {
   return "ton navigateur";
 }
 
-const LEBONCOIN_BUILD = "2026-10-30-navigateur-reel (0.6.161 : les messages nomment le navigateur réel — Brave, Edge, Opera, sinon « ton navigateur » — jamais « Chrome » écrit en dur) · 2026-10-30-photos-nouvelle-page (0.6.160 : le nombre de photos gratuites lu dans la page — packPhotoConfig du composant photos, monde MAIN — puis sur les libellés de la NOUVELLE page « Cliquez et déposez jusqu'à N photos » ; seule une lecture chiffrée est stable ; quota vraiment illisible et plus de 3 photos : rien ne part, attente « lbc_photos_quota_illisible », jamais 3 photos en silence) · 2026-10-18-pro-poids-du-colis (formulaire PRO : la sonde des critères attend 15 s, « Poids du colis » et le repli par libellé compris, et le dit quand rien n'est vu ; seconde passe jouée même sonde muette ; au verdict, une valeur connue du job posée si la liste la porte, jamais hors liste, un seul recliquage) · 2026-10-18-pro-valider-et-payer (compte PRO hors forfait : le dépôt est préparé jusqu'à l'écran « Valider et payer », l'onglet est laissé à la personne qui paie elle-même — motif lbc_valider_et_payer, jamais un clic sur le paiement ; particulier inchangé) · 2026-10-16-pro-et-photos-gratuites (catégorie : le panneau des racines est reconnu à ses racines — un compte PRO ne voit pas « Divers » ; photos : le nombre gratuit est lu sur le formulaire au dépôt, seules les premières partent, jamais une photo payante) · 2026-10-08-ping (0.6.103 : FILLSELL_PING, réponse synchrone « je suis là ») · 2026-10-05-transporteurs-exacts (transporteurs Leboncoin : fenêtre attendue au calme après le poids, chaque case relue à neuf et vérifiée, ensemble exact avant « Valider », relu après validation et juste avant le dépôt ; un écart qui persiste = rien ne part, needsUser nommé) · 2026-10-02-mur-connexion-depot (0.6.84 : mur de connexion de la page de dépôt reconnu — jeton luat absent, phrase « Connectez-vous ou créez un compte », boutons « Me connecter » lus sans layout ; compte connecté signalé au background) · 2026-09-24-retrait-pro-tiroir-gerer (0.6.66 : annonce PRO en fenetre etroite — panneau de gestion absent sous 971 px, le controle Supprimer est cherche dans le tiroir « Gerer ») · 2026-09-14-retrait-challenge-et-releve (0.6.36, chemin de SUPPRESSION seul : le détecteur d'interstitiel anti-robot est hissé au module et interrogé AVANT de conclure « contrôle Supprimer introuvable » — sur les deux chemins, page d'annonce ET « Mes annonces » ; le relevé des actions réellement rendues part en `diagnostic` (donc en platform_fields.last_diagnostic) au lieu de mourir dans `trace` ; « Mes annonces » dit en plus combien de cartes ont été rendues ; le mur de cookies est refusé par fsConsentRefuser, la détection de la 0.6.35, et non plus par dismissDidomi qui ne voyait rien) — précédent : 2026-09-14-consentement-vu-enfin (0.6.35 : le mur de cookies Leboncoin est DÉTECTÉ — la détection part du contrôle de refus « Continuer sans accepter » et non plus du conteneur #didomi-host, qui existe à 0×0 et n'a jamais rien rendu ; refus cliqué, disparition ATTENDUE, trois points de sortie qui ne disent plus « brouillon » ; aucune tentative consommée) — précédent : 2026-09-09-adsubmit-est-la-preuve (0.6.24 : plus aucun re-clic du Continuer final dès qu'un adsubmit est parti ; 2xx = dépôt accepté, id lu ; 403 details[] = texte exact de Leboncoin)";
+const LEBONCOIN_BUILD = "2026-10-31-criteres-tardifs (0.6.163 : page « Dites-nous en plus » sans AUCUN champ alors que l'annonce porte des critères — attente prolongée de 30 s au plus, le bas du formulaire ramené à l'écran, l'état de la page noté ; jamais un Continuer sur un formulaire vide) · 2026-10-30-navigateur-reel (0.6.161 : les messages nomment le navigateur réel — Brave, Edge, Opera, sinon « ton navigateur » — jamais « Chrome » écrit en dur) · 2026-10-30-photos-nouvelle-page (0.6.160 : le nombre de photos gratuites lu dans la page — packPhotoConfig du composant photos, monde MAIN — puis sur les libellés de la NOUVELLE page « Cliquez et déposez jusqu'à N photos » ; seule une lecture chiffrée est stable ; quota vraiment illisible et plus de 3 photos : rien ne part, attente « lbc_photos_quota_illisible », jamais 3 photos en silence) · 2026-10-18-pro-poids-du-colis (formulaire PRO : la sonde des critères attend 15 s, « Poids du colis » et le repli par libellé compris, et le dit quand rien n'est vu ; seconde passe jouée même sonde muette ; au verdict, une valeur connue du job posée si la liste la porte, jamais hors liste, un seul recliquage) · 2026-10-18-pro-valider-et-payer (compte PRO hors forfait : le dépôt est préparé jusqu'à l'écran « Valider et payer », l'onglet est laissé à la personne qui paie elle-même — motif lbc_valider_et_payer, jamais un clic sur le paiement ; particulier inchangé) · 2026-10-16-pro-et-photos-gratuites (catégorie : le panneau des racines est reconnu à ses racines — un compte PRO ne voit pas « Divers » ; photos : le nombre gratuit est lu sur le formulaire au dépôt, seules les premières partent, jamais une photo payante) · 2026-10-08-ping (0.6.103 : FILLSELL_PING, réponse synchrone « je suis là ») · 2026-10-05-transporteurs-exacts (transporteurs Leboncoin : fenêtre attendue au calme après le poids, chaque case relue à neuf et vérifiée, ensemble exact avant « Valider », relu après validation et juste avant le dépôt ; un écart qui persiste = rien ne part, needsUser nommé) · 2026-10-02-mur-connexion-depot (0.6.84 : mur de connexion de la page de dépôt reconnu — jeton luat absent, phrase « Connectez-vous ou créez un compte », boutons « Me connecter » lus sans layout ; compte connecté signalé au background) · 2026-09-24-retrait-pro-tiroir-gerer (0.6.66 : annonce PRO en fenetre etroite — panneau de gestion absent sous 971 px, le controle Supprimer est cherche dans le tiroir « Gerer ») · 2026-09-14-retrait-challenge-et-releve (0.6.36, chemin de SUPPRESSION seul : le détecteur d'interstitiel anti-robot est hissé au module et interrogé AVANT de conclure « contrôle Supprimer introuvable » — sur les deux chemins, page d'annonce ET « Mes annonces » ; le relevé des actions réellement rendues part en `diagnostic` (donc en platform_fields.last_diagnostic) au lieu de mourir dans `trace` ; « Mes annonces » dit en plus combien de cartes ont été rendues ; le mur de cookies est refusé par fsConsentRefuser, la détection de la 0.6.35, et non plus par dismissDidomi qui ne voyait rien) — précédent : 2026-09-14-consentement-vu-enfin (0.6.35 : le mur de cookies Leboncoin est DÉTECTÉ — la détection part du contrôle de refus « Continuer sans accepter » et non plus du conteneur #didomi-host, qui existe à 0×0 et n'a jamais rien rendu ; refus cliqué, disparition ATTENDUE, trois points de sortie qui ne disent plus « brouillon » ; aucune tentative consommée) — précédent : 2026-09-09-adsubmit-est-la-preuve (0.6.24 : plus aucun re-clic du Continuer final dès qu'un adsubmit est parti ; 2xx = dépôt accepté, id lu ; 403 details[] = texte exact de Leboncoin)";
 console.log(`[leboncoin.js] build ${LEBONCOIN_BUILD}`);
 
 // Content script Leboncoin — pilote le WIZARD de dépôt d'annonce.
@@ -4137,6 +4137,49 @@ function pageWizardLbc() {
     return `titres ${JSON.stringify(titres)} · critères ${JSON.stringify(criteres)} · boutons ${JSON.stringify(boutons)}`.slice(0, 600);
   } catch { return "illisible"; }
 }
+// (31/10, lot I — Ornella « Jouet VTech Trompette » 5 essais, Srideals passé au 2e, Jocabroc au 5e) Page « Dites-nous en
+// plus sur votre article » juste après « La photo n° N a bien été ajoutée » : AUCUN champ (critères [] — pas un seul
+// label[for]), puis « Le wizard n'est pas passé à l'aperçu ». Les mêmes rayons passent ailleurs (13 dépôts « Jeux &
+// Jouets » sur 3 comptes depuis le 29/10) : les critères arrivent tard, après le traitement des photos. Quand le job
+// PORTE des critères et que la page n'en montre aucun, l'attente se prolonge (30 s au plus, le bas du formulaire
+// ramené à l'écran pour un rendu paresseux) au lieu de cliquer « Continuer » sur un formulaire incomplet ; ce que la
+// page montrait est noté (visibilité, chargements en cours) pour trancher au cas suivant.
+const LBC_SONDE_TARDIVE_MS = 30_000;
+function pageSansAucunCritereLbc() {
+  return document.querySelectorAll("label[for]").length === 0;
+}
+function indicesChargementLbc() {
+  try {
+    const n = (sel) => document.querySelectorAll(sel).length;
+    return `visibilité ${document.visibilityState} · occupés ${n('[aria-busy="true"]')} · barres ${n('[role="progressbar"]')}` +
+      ` · squelettes ${n('[class*="skeleton" i], [class*="Skeleton"], [class*="placeholder" i]')} · photos ${n('img[src^="blob:"], img[src*="img.leboncoin"]')}`;
+  } catch { return "illisibles"; }
+}
+async function attendreCriteresTardifsLbc(job, warnings) {
+  const t0 = Date.now();
+  const avant = indicesChargementLbc();
+  for (;;) {
+    try {
+      const fin = document.querySelector('button[type="submit"], [data-qa-id*="continue" i]') ?? document.body.lastElementChild;
+      fin?.scrollIntoView?.({ block: "end" });
+    } catch { /* défilement best-effort */ }
+    const vu = document.querySelector(LBC_SONDE_CRITERES_SELECTOR) ?? findCriterionInputByLabelText(LBC_ETAT_LIBELLE_RE);
+    if (vu) {
+      const note = `critères : rendus tard, ${Math.round((Date.now() - t0) / 1000)} s après la sonde (avant : ${avant})`;
+      console.log(`[leboncoin] ${note}`);
+      warnings.push(note);
+      try { window.scrollTo(0, 0); } catch { /* idem */ }
+      return vu;
+    }
+    if (Date.now() - t0 >= LBC_SONDE_TARDIVE_MS) {
+      const note = `critères : toujours aucun champ après ${LBC_SONDE_TARDIVE_MS / 1000} s de plus (avant : ${avant} ; après : ${indicesChargementLbc()})`;
+      console.warn(`[leboncoin] ${note}`);
+      warnings.push(note);
+      return null;
+    }
+    await sleep(400);
+  }
+}
 async function sonderCriteresLbc(job, warnings) {
   const t0 = Date.now();
   for (;;) {
@@ -4146,6 +4189,10 @@ async function sonderCriteresLbc(job, warnings) {
     if (vu) return { hasCriteria: vu, formulairePro: pro };
     const budget = pro || jobPorteCriteresLbc(job) ? LBC_SONDE_PRO_MS : LBC_SONDE_MS;
     if (Date.now() - t0 >= budget) {
+      if (!pro && jobPorteCriteresLbc(job) && pageSansAucunCritereLbc()) {
+        const tardif = await attendreCriteresTardifsLbc(job, warnings);
+        if (tardif) return { hasCriteria: tardif, formulairePro: formulaireProLbc(job) };
+      }
       const note = pro
         ? `critères : aucun critère vu en ${budget / 1000} s sur le formulaire PRO (État, Poids du colis…) — remplissage par la seconde passe avant le Continuer`
         : `critères : aucun critère combobox vu en ${budget / 1000} s (flux paginé ou catégorie sans critères) — remplissages de critères sautés`;

@@ -16324,6 +16324,9 @@ function tracerPageDemandee({ token, userId, runId, page, itemsVus, totalPages }
         total_pages: Number.isFinite(totalPages) ? totalPages : null,
         at,
         build: FILLSELL_BUILD_ID,
+        // (31/10, lot I — Rosa Metra) Le SITE Vinted lu, à chaque relevé (« vinted.fr », « vinted.it »…) : une boutique
+        // lue vide se juge sur le domaine où elle a été lue, jamais à l'aveugle.
+        domaine: VO.domaineVintedAffiche(),
       },
     }]),
   }).catch((e) =>
@@ -21640,7 +21643,7 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
   // wardrobe exposé (32 remontés vs 236 annoncés sur le compte de test), on
   // ne fabrique pas un échec sur cette seule foi.
   if (items_vus === 0 && !mock) {
-    notes.push(`${NOTE}dressing lu vide — le profil Vinted (${ident.login ?? "?"}) annonce item_count=${ident.itemCount ?? "?"}, total_items_count=${ident.totalItemsCount ?? "?"}`);
+    notes.push(`${NOTE}dressing lu vide — le profil Vinted (${ident.login ?? "?"}) lu sur ${VO.domaineVintedAffiche()} annonce item_count=${ident.itemCount ?? "?"}, total_items_count=${ident.totalItemsCount ?? "?"}`);
   }
   // ── 0 LU ALORS QUE LE PROFIL ANNONCE DES ARTICLES EN VENTE (2026-09-22) ───
   // ⛔ LE CHIFFRE QUI TRANCHE EST `item_count`, PAS `total_items_count`.

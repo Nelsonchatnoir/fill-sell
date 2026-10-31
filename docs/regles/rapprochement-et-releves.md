@@ -482,3 +482,12 @@ trois relevés et deux reprises lancés tout seuls, aucun Vinted abouti, un faux
   (« Ta synchro attend une remise en ligne ») : deuxième ceinture, inchangée.
 - Ouvert, à décider par Nico : une republication `published` à l'étape `recreated` dont la recréation n'est pas encore
   confirmée est hors garde (Johan, 29/10 : « Vendue ? » posé sur les NOUVELLES annonces, levé par handler-watch).
+
+## 31/10 soir (lot I) — le site Vinted lu, et la remise en ligne « recréée » pas encore revue
+- Chaque page d'un relevé Vinted trace son site (`usage_logs` `sync_page`, `metadata.domaine` : « vinted.fr »…) ; la
+  note « dressing lu vide » le nomme (« lu sur vinted.fr »). vinted.co.uk n'est ni dans le manifeste ni dans
+  `vinted-origine.js` : une boutique britannique n'est pas lisible (Rosa Metra, 31/10 : sa boutique vinted.fr était neuve).
+- Migration **20261031210000 PRÉPARÉE, NON APPLIQUÉE** (feu vert de Nico attendu) : `republication_recreee_non_confirmee`
+  (republish, published, étape recreated, ni veille ni relevé ne l'a revue, 72 h au plus) ajoutée aux trois gardes
+  (`constater_absences_releve`, `cross_post_jobs_alerte_tenue` y compris sur le job lui-même,
+  `inventaire_disparu_garde_republication`). Comble l'« ouvert » ci-dessus (Johan, 29/10).

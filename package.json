@@ -225,6 +225,7 @@
     "selftest:creneaux-va-au-bout": "node scripts/creneaux-va-au-bout-selftest.mjs",
     "selftest:creneaux-famine": "node scripts/creneaux-famine-selftest.mjs",
     "selftest:publication-moteur": "node scripts/publication-moteur-selftest.mjs",
+    "selftest:lot-i-3110": "node scripts/lot-i-3110-selftest.mjs",
     "selftest:publication-lot": "node --import ./scripts/loader-ext.mjs scripts/publication-lot-selftest.mjs",
     "selftest:acces-opla": "node scripts/acces-opla-selftest.mjs",
     "selftest:option-du-texte": "node --import ./scripts/loader-ext.mjs scripts/option-du-texte-selftest.mjs",

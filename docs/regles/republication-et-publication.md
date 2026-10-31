@@ -1089,3 +1089,14 @@
   republiée / importée (`releve-annonces`, `… · sync-dressing`), et l'historique (republications remplacées comprises,
   jamais une annulation sans `published_at`). Le tri « Mise en ligne récente » et les tranches d'ancienneté lisent la date
   de la carte ; « Anciennes » et « Remonter » gardent l'annonce la plus ANCIENNE (ce qui perd en visibilité).
+
+## 31/10 soir (lot I, PAUGUES) — la couleur Vinted vient de SA palette, ou elle est demandée (rapport `docs/enquetes/lot-i-3110/RAPPORT.md`)
+- « Appareils photo » et « Téléphones portables » ne sont plus exemptés de couleur (`_shared/vinted-exigences.js`) :
+  formulaire relevé « Couleur » obligatoire (31/10, 25 et 29/10) et refus 400 sur le Polaroid. Une couleur posée sur un
+  formulaire sans champ ne bloque rien (`selectColors`).
+- La question « Couleur » Vinted de l'app (fenêtre « Compléter ») est une LISTE FERMÉE : palette de la page, sinon le
+  catalogue, sinon `VINTED_COLORS` ; aucune valeur hors palette n'est écrite (`StockTab`, `questionCouleurVinted`).
+- « COULEUR INTROUVABLE : Vinted ne propose pas la couleur [...] » (`_shared/pas-de-rouge.js`,
+  `couleurVintedHorsPalette`) : la réponse fautive est retirée de `vintedAspects.color` ET de `needsUserResolved`
+  (elle primait sur tout) ; 1re fois reprise, 2e fois la question avec la palette de la PAGE. « existe bien … n'a pas pu
+  être posée » (défaut chez nous) : rien de retiré.

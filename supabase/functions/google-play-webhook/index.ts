@@ -6,6 +6,8 @@ import { palierDuProfil } from "../_shared/palier.js";
 import { lectureCloudGoogle, ecritureCloudStore, PRODUIT_CLOUD_GOOGLE } from "../_shared/cloud-option.js";
 import { profilCloudPourStore } from "../_shared/cloud-essai-store.ts";
 import { verifierJetonPubSub } from "../_shared/pubsub-oidc.ts";
+// (31/10, lot I point 7) Filet : un abonnement « on » encore non confirmé l'est par le serveur (remboursement à 72 h sinon).
+import { accuserAbonnementGoogle } from "../_shared/google-accuse-abonnement.js";
 // (30/10, lot D point 2) Un canal qui s'arrête ne retire que SON droit ; Stripe relu en lecture seule.
 import { patchArretGoogle } from "../_shared/droits-canaux.js";
 import { rangStripeDuClient } from "../_shared/stripe-rang-vivant.ts";
@@ -518,6 +520,7 @@ async function traiter(req: Request, ctx: Contexte): Promise<Response> {
       }
       console.log(`[google-play-webhook] Cloud type=${notificationType} ${sens}${lectureCloud.essai ? " (essai)" : ""} → userId=${userId}`, JSON.stringify(update));
       ctx.maj.effet_applique = `cloud_${sens}`;
+      if (sens === "on") await accuserAbonnementGoogle({ packageName, productId: subscriptionId, purchaseToken, purchase, accessToken });
       return new Response(JSON.stringify({ ok: true, cloud: true, sens }), {
         status: 200, headers: { "Content-Type": "application/json" },
       });
@@ -626,6 +629,8 @@ async function traiter(req: Request, ctx: Contexte): Promise<Response> {
       });
     }
     ctx.maj.effet_applique = isPremium ? "on" : "off";
+    // (31/10, lot I point 7) Le droit est écrit : l'abonnement est confirmé à Google s'il ne l'est pas encore.
+    if (isPremium) await accuserAbonnementGoogle({ packageName, productId: subscriptionId, purchaseToken, purchase, accessToken });
 
     // Pièces incluses au 1er achat et à chaque renouvellement.
     // Cycle par utilisateur (2026-07-28) : expiryTime — déjà présent dans la

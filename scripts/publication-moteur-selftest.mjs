@@ -421,12 +421,15 @@ console.log("\n[18] horsListeBloque — la règle classique ne bouge pas, la nou
     && !L.vintedExigeUneCouleur(["Maison", "Arts de la table", "Verres", "Verres à pied"]));
   ok("valeurUneLettre : « S », « p », « ? » ne sont pas des réponses ; « Sans marque », « 9 » oui",
     L.valeurUneLettre("S") && L.valeurUneLettre(" p ") && L.valeurUneLettre("?") && !L.valeurUneLettre("Sans marque") && !L.valeurUneLettre("9") && !L.valeurUneLettre(""));
-  ok("vintedExigeUneCouleur : Livres, Beauté, Soins, Jeux vidéo, Téléphones, Timbres, Cartes → jamais",
+  ok("vintedExigeUneCouleur : Livres, Beauté, Soins, Jeux vidéo, Timbres, Cartes → jamais",
     !L.vintedExigeUneCouleur(["Livres et médias", "Livres", "Fiction"]) && !L.vintedExigeUneCouleur(["Femmes", "Beauté", "Parfums"])
     && !L.vintedExigeUneCouleur(["Hommes", "Soins", "Parfums"]) && !L.vintedExigeUneCouleur(["Électronique", "Jeux vidéo et consoles", "Consoles"])
-    && !L.vintedExigeUneCouleur(["Électronique", "Téléphones portables et équipements de communication", "Téléphones portables"])
     && !L.vintedExigeUneCouleur(["Loisirs et collections", "Timbres", "Timbres à l'unité"])
     && !L.vintedExigeUneCouleur(["Loisirs et collections", "Cartes à collectionner", "Coffrets de boosters"]));
+  // (31/10, lot I — PAUGUES) Formulaire relevé « Couleur » obligatoire et refus 400 : ces rayons ne sont plus exemptés.
+  ok("vintedExigeUneCouleur : Appareils photo et Téléphones portables → demandée (formulaire et refus du 31/10)",
+    L.vintedExigeUneCouleur(["Électronique", "Appareils photo et accessoires", "Appareils photo", "Autres appareils photo"])
+    && L.vintedExigeUneCouleur(["Électronique", "Téléphones portables et équipements de communication", "Téléphones portables"]));
   ok("vintedExigeUneCouleur : les ACCESSOIRES de téléphone gardent la couleur ; sans rayon → rien",
     L.vintedExigeUneCouleur(["Électronique", "Téléphones portables et équipements de communication", "Coques et protections"])
     && !L.vintedExigeUneCouleur([]) && !L.vintedExigeUneCouleur(null));

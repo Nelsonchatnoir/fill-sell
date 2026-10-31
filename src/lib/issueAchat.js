@@ -15,10 +15,16 @@
 // classerIssueAchat rend l'issue d'un rejet du store :
 //   'annule'      : la personne a fermé la feuille (iOS, lisible) ;
 //   'en_attente'  : achat en attente d'approbation (contrôle parental, SCA) ;
+//   'abandon_ou_refus' : (31/10, lot I point 7) Android « Purchase is not
+//                   purchased » : la feuille Google Play est revenue SANS achat
+//                   (le plugin jette le code de Google — annulation par la
+//                   personne le plus souvent, ou moyen de paiement refusé dans
+//                   la feuille). Mesuré du 16/10 au 31/10 : 6 sur 6, aucun jeton,
+//                   aucune notification Google, durées des abandons Apple
+//                   (5 à 17 s), chaouidz payant par Stripe feuille ouverte.
+//                   Jamais une « erreur » ; le code GOOGLE_NON_ACHETE reste ;
 //   'erreur'      : tout le reste, AVEC son code (celui du plugin, sinon le
-//                   message normalisé) — Android : « Purchase is not
-//                   purchased » ne distingue pas l'annulation du refus, le
-//                   code le dit (GOOGLE_NON_ACHETE), sans inventer.
+//                   message normalisé).
 // Pur (Node + Vite) : scripts/achats-store-issue-selftest.mjs.
 
 const ANNULE_RE = /user ?cancel+ed|cancel+ed by user|SKErrorPaymentCancelled|paymentCancelled|USER_CANCELED/i;
@@ -42,5 +48,7 @@ export function classerIssueAchat(e) {
   const brut = `${e?.code ?? ''} ${message}`;
   if (e?.code === 'USER_CANCELLED' || ANNULE_RE.test(brut)) return { issue: 'annule', code: 'USER_CANCELLED', message };
   if (EN_ATTENTE_RE.test(brut)) return { issue: 'en_attente', code: 'PENDING', message };
-  return { issue: 'erreur', code: codeErreurAchat(e), message };
+  const code = codeErreurAchat(e);
+  if (code === 'GOOGLE_NON_ACHETE') return { issue: 'abandon_ou_refus', code, message };
+  return { issue: 'erreur', code, message };
 }

@@ -24,6 +24,7 @@ import GaleriePhotos from '../components/GaleriePhotos';
 import BoutonMeConnecter from '../components/BoutonMeConnecter';
 import { MOTIFS } from '../utils/connexionPlateformes';
 import { MIN_PHOTOS, MAX_PHOTOS } from '../utils/photos';
+import { VINTED_COLORS } from '../utils/vintedColors';
 import SwipeRow from '../components/SwipeRow';
 import ListingPreviewScreen, { PLATFORM_LABELS, AspectValueInput, clearStepperPersistence, readStepperHost, writeStepperHost } from '../components/ListingPreviewScreen';
 import { repartirParVoie, agirEbay } from '../utils/ebayCompte';
@@ -1486,8 +1487,13 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
   // Chaque source est filtrée par listeDeChoixExploitable : une liste
   // d'identifiants opaques compte comme ABSENTE, et on passe à la source
   // suivante (catalogue, warnings…) au lieu d'afficher l'illisible.
+  // (31/10, lot I — PAUGUES, « Polaroid Land Camera ») LA COULEUR VINTED VIENT DE SA PALETTE, JAMAIS D'UNE SAISIE
+  // LIBRE : la question « Couleur » posée sans liste avait laissé taper « appareil photo », qui primait ensuite sur
+  // tout. La palette de la page (liste du handler) d'abord, sinon le catalogue, sinon la palette Vinted (29 libellés,
+  // src/utils/vintedColors.js) — et le menu est FERMÉ (pas d'« Autre valeur… »).
+  const questionCouleurVinted = job.platform === "vinted" && String(f?.field_key ?? "").toLowerCase() === "color";
   const listeRelevee = f
-    ? ([f.allowed_values, ebayAllowed, warningsAllowed, catalogueAllowed].find(listeDeChoixExploitable) ?? null)
+    ? ([f.allowed_values, ebayAllowed, warningsAllowed, catalogueAllowed, questionCouleurVinted ? [...VINTED_COLORS] : null].find(listeDeChoixExploitable) ?? null)
     : null;
   // La liste affichée est-elle CELLE du handler ? (lu AVANT dédoublonnage :
   // l'identité ne survivrait pas à une copie).
@@ -1590,6 +1596,14 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
       setErrMsg(lang === 'fr'
         ? "Ce titre ne décrit pas l'article (un nom de plateforme, « Titre »…) : écris ce qu'est l'objet, par exemple « Manga Gundam EXA tomes 1 à 5 »."
         : "This title doesn't describe the item (a platform name, “Title”…): write what the item is.");
+      return;
+    }
+    // (31/10, lot I) Une couleur Vinted hors de la palette n'est jamais écrite.
+    if (f && !sansValeur && questionCouleurVinted && Array.isArray(allowed) && allowed.length
+        && !allowed.some((c) => String(c).trim().toLowerCase() === v.toLowerCase())) {
+      setErrMsg(lang === 'fr'
+        ? "Choisis une couleur de la liste : Vinted n'accepte que les couleurs de sa palette."
+        : "Pick a colour from the list: Vinted only accepts the colours of its palette.");
       return;
     }
     if (descriptionManquante) return;
@@ -1962,7 +1976,7 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
           <AspectValueInput
             value={value || valeurProposee || ""}
             allowedValues={allowed ?? []}
-            strict={listeCertifieeComplete}
+            strict={listeCertifieeComplete || questionCouleurVinted}
             onChange={setValue}
             T={NU_T}
             idBase={`nu-${job.id}`}

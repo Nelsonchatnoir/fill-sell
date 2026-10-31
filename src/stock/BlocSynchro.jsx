@@ -20,7 +20,7 @@
 // ⛔ La ligne Vinted (VintedDressingSync) reste MONTÉE, cachée : c'est elle qui
 //    porte l'état du relevé Vinted et son `lancer` (cf. la carte d'origine).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { RefreshCw, ChevronRight, X, Check, CircleAlert, CircleCheck, Info, Laptop, RotateCcw } from 'lucide-react';
+import { RefreshCw, ChevronRight, X, Check, CircleAlert, CircleCheck, Info, Laptop, RotateCcw, Camera } from 'lucide-react';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import OplaAutorisationModal from '../components/OplaAutorisationModal';
 import InstallExtensionCta from '../components/InstallExtensionCta';
@@ -41,6 +41,7 @@ import { lireNavigateurExtension, navigateurDeLApp, noteNavigateur } from '../ut
 import { paysVintedDeLAppareil, noteVintedEtranger, retenirPaysAppareil, paysVintedOuvert } from '../utils/vintedEtrangerApp';
 import { noterGeste } from '../utils/dernierGeste';
 import { ABSENCES_AVANT_PAUSE } from '../annonces/absencesDeSuite.js';
+import { synchroSansRien } from './synchroSansRien.js';
 
 // Le point d'une pastille de plateforme : teal = à jour ; ambre = à reprendre
 // ou un geste attend ; gris = jamais synchronisée / pas de compte.
@@ -120,6 +121,28 @@ export function CartePoint({ icone = null, platform = null, titre, texte = null,
         </button>
       )}
     </article>
+  );
+}
+
+// ── (31/10, lot I — Rosa Metra) STOCK VIDE APRÈS UNE SYNCHRO À ZÉRO ─────────────────────────────────────────────
+// Boutique Vinted neuve (0 article), Leboncoin sans annonce : six « Synchroniser » de suite, rien ne pouvait remonter.
+// Quand la synchro est finie, qu'elle n'a rien trouvé et que le stock est vide, la carte propose AUSSI de créer la
+// première annonce (photo → Lens) — « Synchroniser » reste là, rien n'est retiré. Lens s'ouvre par l'événement
+// `fillsell:ouvrir-lens` (App.jsx) : aucune prop neuve au Stock. La règle : synchroSansRien (./synchroSansRien.js).
+function PremiereAnnonce({ fr }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12, padding: 12, borderRadius: 14, background: '#FFFFFF', boxShadow: `inset 0 0 0 1px ${S.border}` }}>
+      <span style={{ fontSize: 13, lineHeight: '18px', fontWeight: 600, color: S.ink }}>
+        {fr ? "Rien trouvé sur tes boutiques ? Crée ta première annonce : prends ton article en photo, FillSell écrit l'annonce."
+          : 'Nothing found on your shops? Create your first listing: take a photo of your item, FillSell writes the listing.'}
+      </span>
+      <button type="button" className="sk-btn sk-presse"
+        onClick={() => { try { window.dispatchEvent(new CustomEvent('fillsell:ouvrir-lens', { detail: { source: 'synchro_vide' } })); } catch { /* navigateur sans CustomEvent */ } }}
+        style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 8, height: 40, padding: '0 16px', border: 'none', borderRadius: 999, background: DEGRADE, color: '#FFFFFF', fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap', boxShadow: OMBRE.primaire }}>
+        <Camera size={16} strokeWidth={2.2} aria-hidden="true" />
+        {fr ? 'Crée ta première annonce' : 'Create your first listing'}
+      </button>
+    </div>
   );
 }
 
@@ -405,6 +428,7 @@ export default function BlocSynchro({
   const quand = bilan.dernierFini != null ? ilYA(new Date(bilan.dernierFini).toISOString(), fr) : null;
   const ctaTexte = enCours ? T.ctaEnCours : r.toutBusy ? T.ctaEnvoi : extVue ? T.ctaTout : T.ctaExtension;
   const ctaInactif = enCours || occupe || !extVue;
+  const premiereAnnonce = synchroSansRien({ enCours, quand, total: bilan.total, nbArticles: items?.length });
 
   const pastilles = (tonResume) => (
     <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.max(1, tuiles.length)},minmax(0,1fr))`, gap: 8, marginTop: 16 }}>
@@ -442,6 +466,7 @@ export default function BlocSynchro({
               </button>
             </div>
             {pastilles(true)}
+            {premiereAnnonce && <PremiereAnnonce fr={fr} />}
             {/* (08/10) Une plateforme pas connectée se dit TOUT DE SUITE, avec son
                 geste — plus jamais une pastille « à connecter » sans rien derrière
                 (vtvente48, 07/10 : Leboncoin et Beebs « absente », aucun geste). */}
@@ -508,6 +533,7 @@ export default function BlocSynchro({
               <PlatformLogo platform="vinted" size={12} /> {msgVintedInfo.texte}
             </p>
           )}
+          {premiereAnnonce && <PremiereAnnonce fr={fr} />}
 
           {enCours && (
             <div className="rv-up" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>

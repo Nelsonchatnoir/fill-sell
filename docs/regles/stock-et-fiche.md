@@ -34,3 +34,8 @@ Heure de Paris. Le récit : `docs/enquetes/cloture-fh-3110/RAPPORT.md` (31/10), 
 - Gardes : `selftest:fiche-rapide` (pas de prop neuve, parcours mémorisés, même verdict que le calcul direct).
 - Re-mesurer : `node scripts/banc-fiche/construire.mjs <racine> <sortie> <export.json>` puis
   `node scripts/banc-fiche/mesurer.mjs <sortie> chromium 4 2900` (Event Timing : toucher → image suivante).
+
+## 31/10 soir (lot I, Rosa Metra) — stock vide après une synchro à zéro
+- La carte de synchro (résumé et carte) propose AUSSI « Crée ta première annonce » (photo → Lens) quand la synchro est
+  finie, n'a rien trouvé et que le stock est vide (`src/stock/synchroSansRien.js`) ; « Synchroniser » reste. Lens s'ouvre
+  par l'événement `fillsell:ouvrir-lens` écouté par App : aucune prop neuve au Stock.

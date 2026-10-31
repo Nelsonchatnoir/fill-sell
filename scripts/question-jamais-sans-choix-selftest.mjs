@@ -36,7 +36,8 @@ verifier(/\{!strict && <option value=\{OTHER_SENTINEL\}>Autre valeur…<\/option
 
 console.log('\n2. Une liste qui fait foi : sélecteur fermé');
 verifier(/strict=\{faitFoi\}/.test(lire('src/publication/BlocQuestions.jsx')), 'BlocQuestions : strict quand la liste fait foi');
-verifier(/strict=\{listeCertifieeComplete\}/.test(lire('src/tabs/StockTab.jsx')), '« Compléter » : strict quand le handler certifie la liste complète');
+// (31/10, lot I) + la couleur Vinted : toujours la palette, en liste fermée.
+verifier(/strict=\{listeCertifieeComplete \|\| questionCouleurVinted\}/.test(lire('src/tabs/StockTab.jsx')), '« Compléter » : strict quand le handler certifie la liste complète (et pour la couleur Vinted)');
 
 console.log('\n3. Maison & Jardin : le Produit attend son Univers');
 verifier(/if \(feuilleRow && key === feuilleRow\.produitKey && rows\.some\(\(x\) => x\.field_key === feuilleRow\.typeKey\)/.test(lps) && /blocking: false, attendUnivers: feuilleRow\.typeKey/.test(lps), 'Univers vide : pas de question Produit (jamais la liste d’un autre Univers)');

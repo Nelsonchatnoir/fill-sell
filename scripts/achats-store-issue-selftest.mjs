@@ -40,7 +40,7 @@ verifier(I.classerIssueAchat({ code: 'USER_CANCELLED', message: '' }).issue === 
 verifier(I.classerIssueAchat(new Error('Transaction pending')).issue === 'en_attente', 'iOS « Transaction pending » → en attente');
 verifier(I.classerIssueAchat(new Error('Purchase is pending')).issue === 'en_attente', 'Android « Purchase is pending » → en attente');
 const g = I.classerIssueAchat(new Error('Purchase is not purchased'));
-verifier(g.issue === 'erreur' && g.code === 'GOOGLE_NON_ACHETE', 'Android « Purchase is not purchased » → erreur GOOGLE_NON_ACHETE (annulation et refus indiscernables sans binaire neuf : jamais inventé)');
+verifier(g.issue === 'abandon_ou_refus' && g.code === 'GOOGLE_NON_ACHETE', 'Android « Purchase is not purchased » → abandon_ou_refus GOOGLE_NON_ACHETE (feuille revenue sans achat ; annulation et refus indiscernables sans binaire neuf : jamais « annulé » inventé)');
 verifier(I.classerIssueAchat({ message: 'BILLING_SETUP_FAILED', code: 'Billing service unavailable' }).code === 'BILLING_SETUP_FAILED', 'Android BILLING_SETUP_* (message et code inversés par le plugin) → le vrai code');
 verifier(I.classerIssueAchat(new Error('Cannot find product for id app.fillsell.pro2.sub')).code === 'PRODUIT_INTROUVABLE', 'produit introuvable → code lisible');
 verifier(I.classerIssueAchat(new Error('Premium not confirmed by server')).code === 'PREMIUM_NOT_CONFIRMED_BY_SERVER', 'confirmation serveur manquée → erreur avec son code');

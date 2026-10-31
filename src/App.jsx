@@ -1938,6 +1938,13 @@ export default function App({ loginOnly = false }){
   }, []);
   const [authMode, setAuthMode] = useState(() => searchParams.get('mode') === 'signup' ? 'signup' : 'login');
   const [tab,setTab]=useState(()=>{const s=parseInt(localStorage.getItem('tab')||'0');return s===4?0:s;});
+  // (31/10, lot I — Rosa Metra) « Crée ta première annonce » (BlocSynchro, stock vide après une synchro à 0) ouvre
+  // Lens par un événement : aucune prop neuve au Stock (docs/regles/stock-et-fiche.md).
+  useEffect(()=>{
+    const ouvrirLens=()=>{setTab(2);try{localStorage.setItem('tab','2');}catch{/* stockage indisponible */}};
+    window.addEventListener('fillsell:ouvrir-lens',ouvrirLens);
+    return()=>window.removeEventListener('fillsell:ouvrir-lens',ouvrirLens);
+  },[]);
   const [items,setItems]=useState([]);
   // (07/10, rattachement avant stock) Les articles « à vérifier » : relevés sur
   // une autre plateforme, ils ressemblent à un article déjà là. Ce sont de
@@ -3158,6 +3165,14 @@ export default function App({ loginOnly = false }){
       {
         const cl=e?.issueAchat??classerIssueAchat(e);
         issueTunnel(cl.issue==='erreur'?'erreur':cl.issue,{code:cl.code,message:cl.message});
+        // (31/10, lot I point 7) La feuille Google Play revenue sans achat (abandon, ou paiement refusé dans la
+        // feuille) : rien n'est débité. Un abandon se trace comme tel, et ne s'affiche jamais « ❌ Purchase is not purchased ».
+        if(cl.issue==='abandon_ou_refus'){
+          logTunnel('checkout_abandon',{canal,tier:tierLog,origine,motif:'google_non_achete'});
+          setToast({visible:true,message:lang==='fr'?"Achat non finalisé : rien n'a été débité.":'Purchase not completed: nothing was charged.'});
+          setTimeout(()=>setToast({visible:false,message:''}),6000);
+          return;
+        }
       }
       const errMsg=e?.message||e?.code||String(e);
       setToast({visible:true,message:`❌ ${errMsg}`});

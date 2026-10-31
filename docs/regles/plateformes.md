@@ -585,3 +585,10 @@ Rapport : `docs/enquetes/dix-points-1710/RAPPORT.md` (points 1, 4, 5, 7, 9).
   taille ; « Taille unique » (1435) s'y trouve.
 - **Messages qui nomment le navigateur** (`_shared/navigateur-poste.js`, `nommerLeNavigateur`) : « dans Brave », « dans
   Edge »… selon le navigateur déclaré par le poste (Brave reconnu par `navigator.brave`), jamais « Chrome » d'office.
+
+## 31/10 soir (lot I) — Leboncoin : critères rendus tard sur « Dites-nous en plus sur votre article »
+- Signature : juste après « La photo n° N a bien été ajoutée », la page n'a AUCUN `label[for]` (critères []), État
+  introuvable, « Le wizard n'est pas passé à l'aperçu » (Ornella 5/5, Srideals passé au 2e essai, Jocabroc au 5e ; les
+  mêmes rayons passent ailleurs). Extension 0.6.163 : si le job porte des critères et que la page n'en montre aucun,
+  attente prolongée de 30 s au plus (bas du formulaire ramené à l'écran), puis l'état de la page est noté
+  (`indicesChargementLbc` : visibilité, éléments occupés, barres, squelettes, photos). Jamais pour un rayon sans critère.

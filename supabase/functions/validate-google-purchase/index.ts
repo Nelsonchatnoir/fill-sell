@@ -5,6 +5,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { notifierPaiement, alerterPaiementNonCredite } from "../_shared/payment-notify.ts";
 import { lectureCloudGoogle, ecritureCloudStore, PRODUIT_CLOUD_GOOGLE } from "../_shared/cloud-option.js";
 import { profilCloudPourStore } from "../_shared/cloud-essai-store.ts";
+// (31/10, lot I point 7) L'abonnement confirmé par le serveur : sans confirmation, Google rembourse au bout de 72 h.
+import { accuserAbonnementGoogle } from "../_shared/google-accuse-abonnement.js";
 
 // Validation serveur d'un achat Google Play — équivalent strict de
 // validate-apple-receipt, côté Android (2026-08-05).
@@ -259,7 +261,10 @@ serve(async (req) => {
       const { update: majCloud, motif } = ecritureCloudStore({
         canal: "google", lecture, sens, ref: purchaseToken, profil: profilCloud ?? {},
       });
-      if (!majCloud) return json({ ok: true, type: "option_cloud", skipped: motif, state: etat ?? "unknown" });
+      if (!majCloud) {
+        if (actif) await accuserAbonnementGoogle({ packageName: PACKAGE_NAME, productId, purchaseToken, purchase, accessToken });
+        return json({ ok: true, type: "option_cloud", skipped: motif, state: etat ?? "unknown" });
+      }
       if (sens === "on" && etat === "SUBSCRIPTION_STATE_CANCELED") majCloud.cloud_arret_fin_periode = true;
       const { error: cloudErr } = await supabaseAdmin.from("profiles").update(majCloud).eq("id", userId);
       if (cloudErr) {
@@ -267,6 +272,7 @@ serve(async (req) => {
         return json({ error: "profile_update_failed" }, 500);
       }
       console.log(`[validate-google-purchase] option Cloud user=${userId} état=${etat} ${sens}${lecture.essai ? " (essai)" : ""}`);
+      if (actif) await accuserAbonnementGoogle({ packageName: PACKAGE_NAME, productId, purchaseToken, purchase, accessToken });
       return json({ ok: true, type: "option_cloud", is_cloud: majCloud.is_cloud === true, essai: lecture.essai === true, state: etat ?? "unknown" });
     }
 
@@ -330,6 +336,9 @@ serve(async (req) => {
       });
       return json({ error: "profile_update_failed" }, 500);
     }
+    // (31/10, lot I point 7) Le droit est écrit : l'abonnement est confirmé à Google (jamais avant — un droit non écrit
+    // laisse Google rembourser). Best-effort, journalisé.
+    await accuserAbonnementGoogle({ packageName: PACKAGE_NAME, productId, purchaseToken, purchase, accessToken });
 
     // Pépites incluses. Idempotent par cycle (next_grant_at + ref unique dans
     // coin_ledger) : le webhook peut rejouer le même événement, ou l'inverse,

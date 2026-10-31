@@ -46,17 +46,20 @@ const norme = (s) => String(s ?? "")
 const commencePar = (chemin, prefixe) => prefixe.every((etage, i) => chemin[i] === etage);
 
 /** Les rayons Vinted SANS champ Couleur, par préfixe de chemin (formes normées). */
+// (31/10, lot I — PAUGUES, « Polaroid Land Camera ») Vinted exige maintenant la couleur sur « Appareils photo » et sur
+// « Téléphones portables » : formulaire relevé « Couleur » obligatoire (platform_category_aspects, source dom :
+// « Autres appareils photo » le 31/10, « Téléphones portables » les 25 et 29/10) et refus 400 « Le champ Couleur doit
+// être renseigné » sur le Polaroid (31/10 15:18). Ces deux rayons ne sont plus exemptés : la couleur part (fiche,
+// sinon « Multicolore »), et un formulaire qui n'aurait pas le champ ne bloque rien (selectColors : champ absent → rien).
 export const VINTED_SANS_COULEUR = [
   ["livres et medias"],
   ["femmes", "beaute"],
   ["hommes", "soins"],
   ["electronique", "jeux video et consoles"],
-  ["electronique", "telephones portables et equipements de communication", "telephones portables"],
   ["electronique", "tablettes, liseuses et accessoires", "tablettes"],
   ["electronique", "tablettes, liseuses et accessoires", "liseuses"],
   ["electronique", "objets connectes", "montres connectees"],
   ["electronique", "ordinateurs et accessoires", "ordinateurs portables"],
-  ["electronique", "appareils photo et accessoires", "appareils photo"],
   ["loisirs et collections", "timbres"],
   ["loisirs et collections", "cartes a collectionner"],
   ["loisirs et collections", "jeux de societe"],

@@ -125,6 +125,41 @@ export function refusChampVinted(texte) {
   return p && cle ? { champ: cle, texte: p[1].trim() } : null;
 }
 
+// ── (31/10, lot I — PAUGUES) UNE COULEUR QUE LA PAGE VINTED NE PROPOSE PAS ─────────────────────────────────
+// Lu sur la phrase de l'extension (vinted.js, « COULEUR INTROUVABLE : Vinted ne propose pas la couleur [...] … Palette
+// affichée par Vinted: [...] ») : les couleurs refusées, la palette de la PAGE (sa langue, son domaine), et le retrait
+// de la réponse « tranchée » (vintedAspects.color + needsUserResolved) quand c'est elle qui n'est pas dans la palette
+// — sans ce retrait, la réponse prime sur tout et repart à l'identique. « existe bien … n'a pas pu être posée » (le
+// défaut est chez nous) n'est jamais « absente » : rien n'est retiré.
+const normeCouleur = (s) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLowerCase();
+function listeJsonApres(texte, re) {
+  const m = re.exec(texte);
+  if (!m) return [];
+  try {
+    const l = JSON.parse(m[1]);
+    return Array.isArray(l) ? [...new Set(l.map((v) => String(v ?? "").trim()).filter(Boolean))] : [];
+  } catch { return []; }
+}
+export function couleurVintedHorsPalette(texte, pf = {}) {
+  const t = String(texte ?? "");
+  const absente = /ne propose pas la couleur/i.test(t);
+  const refusees = listeJsonApres(t, /ne propose pas la couleur\s*(\[[^\]]*\])/i);
+  const palette = listeJsonApres(t, /Palette affichée par Vinted\s*:\s*(\[[^\]]*\])/i);
+  const aspects = pf?.vintedAspects && typeof pf.vintedAspects === "object" ? pf.vintedAspects : null;
+  const reponse = String(aspects?.color ?? "").trim();
+  const dansPalette = (v) => palette.some((p) => normeCouleur(p) === normeCouleur(v));
+  const fautive = absente && reponse
+    && (refusees.some((r) => normeCouleur(r) === normeCouleur(reponse)) || (palette.length > 0 && !dansPalette(reponse)));
+  if (!fautive) return { absente, refusees, palette, retrait: {}, reponseRetiree: null };
+  const { color: _c, ...autresAspects } = aspects;
+  const resolus = pf?.needsUserResolved && typeof pf.needsUserResolved === "object" ? { ...pf.needsUserResolved } : null;
+  if (resolus) delete resolus["vintedAspects.color"];
+  return {
+    absente, refusees, palette, reponseRetiree: reponse,
+    retrait: { vintedAspects: autresAspects, ...(resolus ? { needsUserResolved: resolus } : {}) },
+  };
+}
+
 /** (05/10) Un retrait bloqué : l'article est vendu, l'annonce encore en ligne. */
 // ── (18/10, lot 3) LEBONCOIN REFUSE LE CONTENU DE L'ANNONCE ────────────────
 // Le refus de modération au dépôt (adsubmit 403, champ body/subject) est
@@ -792,20 +827,49 @@ function classerEchecSansRegleRetrait(arg) {
   // dans la palette de la page (mele.marta, page italienne : la fiche disait « Rosa », la copie était tombée
   // sur « Multicolore » faute de traduction, la page ne propose que « Multi »). Jamais « on ne sait pas » :
   // une reprise, UNE fois, avec la couleur recalculée depuis la copie et la fiche (traduite dans la palette).
-  if (platform === "vinted" && /COULEUR INTROUVABLE/i.test(t) && !pf?.couleur_retraduite) {
-    const repli = String(pf?.couleur_sans_question?.source ?? "") === "repli";
-    return {
-      verdict: "reprise", statut: "pending", motif: "vinted_couleur_retraduite", dansMinutes: 1,
-      pf: {
-        colors: [],
-        couleur_sans_question: null,
-        ...(repli && String(pf?.couleur ?? "").trim() === "Multicolore" ? { couleur: "" } : {}),
-        couleur_retraduite: { le: new Date().toISOString(), avant: Array.isArray(pf?.colors) ? pf.colors.slice(0, 2) : null },
-      },
-      message: `La couleur de cette annonce n'existait pas sous ce nom dans la palette ${nom} de ta boutique : ` +
-        `FillSell la reprend depuis ta fiche, traduite dans la palette. ${rienTouche(action, pf)} ` +
-        `${acte(action).replace(/^la /, "La ")} repart toute seule, rien à faire de ton côté.`,
-    };
+  // (31/10, lot I — PAUGUES, « Polaroid Land Camera ») LA COULEUR ENVOYÉE VIENT DE LA PALETTE, OU ELLE EST DEMANDÉE —
+  // JAMAIS UN NOM D'OBJET. La réponse « appareil photo », tapée dans la question « Couleur » (vintedAspects.color),
+  // primait sur tout (vinted.js : _color → fields.colors) : la reprise ci-dessous vidait `colors` mais laissait cette
+  // réponse, qui repartait à l'identique, puis « on ne sait pas pourquoi ». Désormais une couleur que la page ne
+  // propose pas (« Vinted ne propose pas la couleur […] ») est retirée de la copie ET de « tranché par toi » ; à la
+  // seconde fois, la question part avec la palette de la page, en liste fermée.
+  if (platform === "vinted" && /COULEUR INTROUVABLE/i.test(t)) {
+    const horsPalette = couleurVintedHorsPalette(t, pf);
+    if (!pf?.couleur_retraduite) {
+      const repli = String(pf?.couleur_sans_question?.source ?? "") === "repli";
+      return {
+        verdict: "reprise", statut: "pending", motif: "vinted_couleur_retraduite", dansMinutes: 1,
+        pf: {
+          colors: [],
+          couleur_sans_question: null,
+          ...(repli && String(pf?.couleur ?? "").trim() === "Multicolore" ? { couleur: "" } : {}),
+          ...horsPalette.retrait,
+          couleur_retraduite: { le: new Date().toISOString(), avant: Array.isArray(pf?.colors) ? pf.colors.slice(0, 2) : null,
+            ...(horsPalette.reponseRetiree ? { reponse_retiree: horsPalette.reponseRetiree } : {}) },
+        },
+        message: `La couleur de cette annonce n'existait pas sous ce nom dans la palette ${nom} de ta boutique : ` +
+          `FillSell la reprend depuis ta fiche, traduite dans la palette. ${rienTouche(action, pf)} ` +
+          `${acte(action).replace(/^la /, "La ")} repart toute seule, rien à faire de ton côté.`,
+      };
+    }
+    if (horsPalette.absente && horsPalette.palette.length >= 2) {
+      const refusee = horsPalette.refusees[0] ?? "";
+      return {
+        verdict: "a_toi", statut: "needs_user", motif: "vinted_couleur_hors_palette", source: "champ_a_choisir",
+        pf: horsPalette.retrait,
+        champ: {
+          field_key: "color",
+          field_label: "Couleur",
+          allowed_values: horsPalette.palette,
+          input_type: "selection_only",
+          options_completes: true,
+          target: { root: "vintedAspects", key: "color" },
+        },
+        message: `${nom} n'accepte que les couleurs de sa palette` +
+          (refusee ? ` (« ${refusee} » n'en fait pas partie)` : "") +
+          ` : choisis celle de ton article ci-dessous, un seul geste, et ${acte(action)} repart. ${rienTouche(action, pf)}`,
+      };
+    }
   }
   // ── 4. UN CHOIX DANS UNE LISTE ────────────────────────────────────────────
   // La plateforme refuse une valeur et nous connaissons celles qu'elle accepte.

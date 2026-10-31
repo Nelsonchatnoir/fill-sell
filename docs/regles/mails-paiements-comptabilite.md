@@ -246,3 +246,13 @@ marge de 100 % sur du vent, indétectable ensuite.
   headers := jsonb_build_object('x-cron-secret', public.cron_secret()))` puis `net._http_response`.
 - Jetons Google morts restants (drapeaux à 0, API « EXPIRED » ou 410) : 6 profils — non nettoyés (pas demandé) ;
   la garde ne les croit plus. BONCOIN nettoyé : `scripts/reparations/20261030_boncoin_canal_google_mort{,_INVERSE}.sql`.
+
+## 31/10 soir (lot I point 7) — Google Play : l'abandon nommé, l'abonnement confirmé par le serveur
+- « Purchase is not purchased » (Android) = feuille Google revenue sans achat : `issue: 'abandon_ou_refus'`, code
+  `GOOGLE_NON_ACHETE`, `checkout_abandon` motif `google_non_achete`, toast « Achat non finalisé : rien n'a été débité ».
+  Les 6 lignes du 16 au 31/10 : aucun jeton, aucune notification Google, durées d'abandon (5 à 17 s ; chaouidz a payé par
+  Stripe feuille ouverte).
+- Un abonnement Google « ACKNOWLEDGEMENT_STATE_PENDING » est confirmé par le serveur après l'écriture du droit
+  (`_shared/google-accuse-abonnement.js` : validate-google-purchase, filet google-play-webhook sur chaque « on »). Sans
+  confirmation Google rembourse à 72 h (BONCOIN 26/10 → remboursée le 29/10 10:04 ; Malena 28/09) : le module Android
+  confirmait seul, en asynchrone, puis fermait sa connexion aussitôt.
