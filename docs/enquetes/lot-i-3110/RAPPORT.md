@@ -233,3 +233,32 @@ L'annonce 34270410 n'est pas sortie de vérification vers « en ligne ».
 - La règle « pas encore visible » la protège d'un « Vendue ? ».
 - Rien forcé.
 - Des sorties de ce type sont déjà apparues 48 à 126 h plus tard : à revoir à partir du 02/11.
+
+## Livraison (31/10 soir)
+- Commits : f8430f8 (lot), 22b4230 (EXTENSION_LAST_COMMIT), f6c6bd3 (OTA 2.9.143), puis docs ; suite complète
+  **507 / 0 rouge** (seconde passe sur l'état final, 20:25), lint sans erreur nouvelle sur les fichiers touchés,
+  `build:essai` vert.
+- **Déployées par Claude** (versions lues avant et après) :
+  - get-pending-jobs v313 → **v314** (20:27:27, verify_jwt vrai, inchangé) : couleur des rayons Appareils photo et
+    Téléphones portables ;
+  - update-job-status v160 → **v161** (20:27:50, verify_jwt faux, inchangé) : règle « couleur hors palette ».
+    Elle emporte aussi les règles du lot F déjà servies par get-pending-jobs (`etat-job.js`, `file-pause.js`).
+  - Journaux après déploiement : get-pending-jobs 25 appels, tous 200 ; update-job-status 1 appel, 200.
+- **REFUSÉS par le classifieur (« Production Deploy »), à lancer par Nico** (dépôt = code prêt, identique au déployé
+  avant modification, relu fichier par fichier) :
+  - `npx supabase functions deploy validate-google-purchase` (v13, verify_jwt vrai) ;
+  - `npx supabase functions deploy google-play-webhook --no-verify-jwt` (v33, verify_jwt faux) ;
+  - OTA : `npx @capgo/cli bundle upload --channel production --bundle 2.9.143 --path dist`. Le canal a été lu en
+    2.9.142. Le `dist/` est déjà construit (`2026-10-31T19:26:37Z+f6c6bd3`) : ne pas le reconstruire.
+- **Extension 0.6.163 PRÊTE** :
+  `C:Users
+icolill-and-selluildCWS-0.6.163-A-TELEVERSERillsell-extension-0.6.163-cws.zip`
+  - BUILD_ID `2026-10-31T19:28:46Z+f6c6bd3`, 602 485 octets, sha256 `4ffcdcf3…df8d`.
+  - Elle remplace la 0.6.162, jamais servie (seul le poste de Nico l'avait). Le dossier 0.6.162 est rangé dans
+    `build/anciens-zips/CWS-0.6.162-3876dc8-REMPLACE-PAR-0.6.163`.
+- **Migration 20261031210000 : NON appliquée**, feu vert de Nico attendu (point 6).
+- Essais réels : aucun.
+  - Couleur et Google : règles serveur jouées par selftest. Aucun dépôt d'essai Vinted en « Appareils photo » ; aucun
+    achat réel.
+  - Leboncoin : cas non reproductible chez nous ; la vérification se fait sur le Mac d'Ornella.
+  - Carte « première annonce » : le stock de Nico n'est pas vide, et jamais de connexion automatisée à fillsell.app.
