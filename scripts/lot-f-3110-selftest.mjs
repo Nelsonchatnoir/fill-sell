@@ -276,6 +276,9 @@ const jobJ = { id: "ee32823f", platform: "leboncoin", action: "republish", statu
   ok(/déjà remise en ligne \(annonce n° 3298253160\)/.test(RC.messageRepublicationSansObjet("leboncoin", "3298253160")) && /Rien n'a été retiré ni recréé/.test(RC.messageRepublicationSansObjet("leboncoin", "x")), "le texte de la clôture le dit en clair");
 }
 {
+  const v2 = RC.jugerCibleRepublication({ job: jobJ, releve, cible: { listing_id: "3293222567", vu_le: "2026-10-26T18:40:11Z" },
+    fiche: [{ listing_id: "3298253160", vu_le: "2026-10-31T06:59:15Z" }, { listing_id: "3298299999", vu_le: "2026-10-31T06:59:15Z" }] });
+  ok(v2.verdict === "cible_absente" && v2.motif === "plusieurs_annonces_en_ligne", "deux annonces de la fiche en ligne (deux exemplaires) : jamais « sans objet » sur un doute, la republication attend");
   const v = RC.jugerCibleRepublication({ job: jobJ, releve, cible: { listing_id: "3293222567", vu_le: "2026-10-26T18:40:11Z" }, fiche: [] });
   ok(v.verdict === "cible_absente", "absente sans annonce plus récente sur la fiche : RETENUE avant tout retrait (jamais recréée à l'aveugle)");
   ok(EJ.etatJob({ ...jobJ, platform_fields: { republish_step: "captured", cible_absente_releve: { cible: "3293222567" } } }, {}).motif === "releve", "l'écran : « En pause, rien n'a été retiré : FillSell attend le relevé »");

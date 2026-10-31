@@ -64,8 +64,14 @@ export function jugerCibleRepublication({ job, releve = null, cible = null, fich
   const vues = (Array.isArray(fiche) ? fiche : [])
     .filter((a) => String(a?.listing_id ?? "").trim() && String(a.listing_id).trim() !== cibleId && Number.isFinite(ts(a.vu_le)) && ts(a.vu_le) >= seuil)
     .sort((a, b) => (ts(b.publiee_le) || ts(b.created_at) || 0) - (ts(a.publiee_le) || ts(a.created_at) || 0));
-  if (vues.length) {
-    return { verdict: "sans_objet", motif: "deja_remise_en_ligne", successeur: String(vues[0].listing_id), successeurs: vues.map((a) => String(a.listing_id)).slice(0, 5) };
+  // UNE annonce plus récente en ligne : c'est la remise en ligne. Deux ou plus (deux exemplaires en ligne) : on ne sait
+  // pas laquelle remplace la cible — jamais une clôture sur un doute, la republication attend (rien n'est retiré).
+  if (vues.length === 1) {
+    return { verdict: "sans_objet", motif: "deja_remise_en_ligne", successeur: String(vues[0].listing_id), successeurs: [String(vues[0].listing_id)] };
+  }
+  if (vues.length > 1) {
+    if (SANS_RETENUE.has(String(job.platform))) return { verdict: "servir", motif: "beebs_jamais_retenue" };
+    return { verdict: "cible_absente", motif: "plusieurs_annonces_en_ligne", successeurs: vues.map((a) => String(a.listing_id)).slice(0, 5) };
   }
   if (SANS_RETENUE.has(String(job.platform))) return { verdict: "servir", motif: "beebs_jamais_retenue" };
   return { verdict: "cible_absente", motif: "cible_absente_du_releve" };
