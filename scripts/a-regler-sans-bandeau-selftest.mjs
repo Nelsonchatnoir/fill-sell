@@ -122,8 +122,12 @@ const app = lire('src/App.jsx');
   verifier(/const rendrePlusEnLigne=\(\{fermer\}\)=>\(\s*<QuestionsPlusEnLigne /.test(app)
     && /onOuvrirRevue=\{\(\)=>\{fermer\(\);setDisparusModal\(true\);\}\}/.test(app)
     && /<FileAnnoncesADepiler lang=\{lang\} nb=\{nbADepiler\} onOuvrir=\{onOuvrirRevue\} \/>/.test(qpl), 'les questions et la file sont rendues pour l’écran de « À régler » (la revue s’ouvre après l’avoir fermé)');
-  verifier(/pendingRemovals=\{pendingRemovals\} onRetirerVendus=\{armRemovals\} onPlusTardVendus=\{reporterRetraits\}/.test(app), 'les annonces à retirer d’un article vendu passent au Stock, avec les MÊMES gestes');
-  verifier(/plusEnLigne=\{\{n:nbPlusEnLigne,nMasquees:nbMasqueesPlusEnLigne,rendre:rendrePlusEnLigne,/.test(app), 'le compte et l’écran des questions passent au Stock');
+  // (31/10, fiche rapide) Mêmes gestes et même contenu, à identité stable (relais useFonctionsStables, objet mémorisé,
+  // l'écran des questions dessiné par App par le contexte RenduPlusEnLigne).
+  verifier(/pendingRemovals=\{pendingRemovals\} onRetirerVendus=\{gestesStock\.onRetirerVendus\} onPlusTardVendus=\{gestesStock\.onPlusTardVendus\}/.test(app)
+    && /onRetirerVendus:armRemovals, onPlusTardVendus:reporterRetraits/.test(app), 'les annonces à retirer d’un article vendu passent au Stock, avec les MÊMES gestes');
+  verifier(/const plusEnLigneStock=useMemo\(\(\)=>\(\{n:nbPlusEnLigne,nMasquees:nbMasqueesPlusEnLigne,rendre:gestesStock\.rendrePlusEnLigne,/.test(app)
+    && /plusEnLigne=\{plusEnLigneStock\}/.test(app) && /<RenduPlusEnLigne\.Provider value=\{rendrePlusEnLigne\}>/.test(app), 'le compte et l’écran des questions passent au Stock');
   verifier(/questionsPlusEnLigne\.filter\(x=>!x\.q\.masquee\)\.length\s*\n\s*\+disparusATrancher\.filter\(i=>!idsVintedQuestions\.has\(String\(i\.id\)\)\)\.length/.test(app), 'compte des questions : masquées à part, un article Vinted une seule fois');
   // Chaque réponse : le bouton de la carte → la prop → le MÊME geste d'App qu'avant.
   for (const [nom, bouton, cablage] of [
@@ -151,7 +155,8 @@ console.log('\n4. Le Stock : « À régler »');
   verifier(/onOuvrir: \(\) => \{ setGesteOuvert\(null\); setMenuArticleId\(a\.inventaireId\); \}/.test(st), 'le tap ouvre la fiche de l’article');
   verifier(/const nbRetraitsBloques = nbVendusEnLigne \+ nbRetraitsAutres;/.test(st) && /const nbARegler = nbRetraitsBloques \+ nbIdentiteLbc \+ nbAttenteAction \+ (?:nbForfaitLbc \+ )?(?:nbVendeurDepop \+ )?questionsDejaVendu\.length \+ nbAVerifier \+ nbSansPrix \+ brouillons\.length \+ nbPlusEnLigne(?: \+ nbAlertesCompte)?(?: \+ nbVentesAnnulees)?;/.test(st), 'la tuile compte les articles vendus encore en ligne et les annonces plus en ligne (et les cartes de compte : forfait Leboncoin, vendeur Depop, connexion ou compte restreint — 18/10 ; les ventes annulées à remettre en vente — 24/10)');
   verifier(/\{ cle: 'plus_en_ligne', n: nbPlusEnLigne,/.test(st) && /onOuvrir: \(\) => setGesteOuvert\('plus_en_ligne'\) \}/.test(st), 'la ligne « Annonces plus en ligne »');
-  verifier(/\{gesteOuvert==='plus_en_ligne'&&plusEnLigne\?\.rendre&&\(\s*<EcranPlein [^>]*onFermer=\{\(\)=>setGesteOuvert\('a_regler'\)\}>\s*\{plusEnLigne\.rendre\(\{fermer:\(\)=>setGesteOuvert\(null\)\}\)\}/.test(st), 'son écran (gabarit EcranPlein), retour vers « À régler »');
+  // (31/10) Le contenu passe par le contexte d'App (src/stock/renduVivant.js), repli : plusEnLigne.rendre.
+  verifier(/\{gesteOuvert==='plus_en_ligne'&&plusEnLigne\?\.rendre&&\(\s*<EcranPlein [^>]*onFermer=\{\(\)=>setGesteOuvert\('a_regler'\)\}>[\s\S]{0,200}<ContenuPlusEnLigne fermer=\{\(\)=>setGesteOuvert\(null\)\} repli=\{plusEnLigne\.rendre\}\/>/.test(st), 'son écran (gabarit EcranPlein), retour vers « À régler »');
   verifier(/cle: 'retirer-vendu'[\s\S]{0,400}onTap: \(\) => onRetirerVendus\(aRetirer\)/.test(st) && /cle: 'retirer-plus-tard'[\s\S]{0,400}onTap: \(\) => onPlusTardVendus\(aRetirer\)/.test(st), 'la fiche porte « Retirer » et « Plus tard »');
   verifier(/aRetirer=\{aRetirerSansFiche\} onRetirer=\{onRetirerVendus\} onPlusTard=\{onPlusTardVendus\}/.test(st), 'fiche supprimée : l’écran des retraits garde « Retirer » / « Plus tard »');
   verifier(/plusEnLigne\?\.nMasquees>0\?\(/.test(st), 'les alertes masquées sont dites au pied de « À régler », jamais perdues');

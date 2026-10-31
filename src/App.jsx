@@ -181,6 +181,9 @@ import { prixPrerempli } from './utils/venteModale.js';
 import AvertissementLotEncoreEnLigne from './components/AvertissementLotEncoreEnLigne';
 import { createPortal } from 'react-dom';
 import { useFondFige } from './utils/modale';
+import { useFonctionsStables } from './utils/fonctionsStables';
+import { RenduPlusEnLigne } from './stock/renduVivant';
+import DatesEnLigne, { ResumeDatesEnLigne } from './stock/DatesEnLigne';
 import ReglagesPage from './reglages/ReglagesPage';
 import FusionArticleModal from './components/FusionArticleModal';
 import QuestionsPlusEnLigne from './components/QuestionsPlusEnLigne';
@@ -2446,6 +2449,10 @@ export default function App({ loginOnly = false }){
     const min=Date.parse(EXT_MIN_BUILD??'');
     return ext!=null&&Number.isFinite(min)&&ext<min;
   })();
+  // (31/10, fiche lente sur téléphone) UN objet par état réel de l'extension : un objet neuf à chaque rendu faisait
+  // recalculer au Stock les retraits bloqués et les vendus encore en ligne (tous les jobs) à chaque rendu d'App —
+  // donc à l'ouverture de la fiche et à chaque lettre tapée dedans.
+  const extensionStatusStock=useMemo(()=>({lastSeenAt:extensionLastSeenAt,build:extensionBuild,outdated:extensionOutdated}),[extensionLastSeenAt,extensionBuild,extensionOutdated]);
   // ── OPLA EST OUVERTE À TOUT LE MONDE (2026-09-18, décision Nico) ─────────
   // Ici vivaient DEUX verrous qui décidaient si Opla se voyait : l'interrupteur
   // coin_config.opla_ouvert et la borne de build opla_extension_min, comparée
@@ -2690,6 +2697,8 @@ export default function App({ loginOnly = false }){
   const espaceMessagerie=ecranMessagerie.ecran;
   const setEspaceMessagerie=ecranMessagerie.aller;
   const [editItem,setEditItem]=useState(null);
+  // (31/10) La feuille « En ligne depuis » ouverte depuis la fiche (id de l'article) — src/stock/DatesEnLigne.jsx.
+  const [datesFicheId,setDatesFicheId]=useState(null);
   // ── NOTIFICATIONS DE VENTES (06/10) ────────────────────────────────────────
   // La proposition (« Sois prévenu dès qu'un article se vend ») : jamais au
   // premier lancement — après une synchro réussie ou une vente, l'app au repos.
@@ -7261,6 +7270,36 @@ export default function App({ loginOnly = false }){
     {label:t('enStockLabel'),value:`${stockQty} ${lang==='fr'?'art.':'items'} · ${fmt(stockVal)}`},
   ];
 
+  // ── (31/10, fiche lente sur téléphone) LE STOCK NE SE REDESSINE PLUS À CHAQUE RENDU D'APP ──────────────────────
+  // Ses gestes recevaient une fonction neuve à chaque rendu : ouvrir la fiche d'un article (ou y taper une lettre)
+  // redessinait tout le Stock — 0,7 s sur PC et 3,9 s au CPU d'un téléphone pour 2 900 articles (banc du 31/10).
+  // Les mêmes gestes, à identité stable (src/utils/fonctionsStables.js) ; la feuille « Plus en ligne », dessinée
+  // ici, passe par un contexte (src/stock/renduVivant.js) pour rester à jour. ⛔ Hooks : AVANT les retours anticipés.
+  const gestesStock=useFonctionsStables({
+    ouvrirModalePlafond, ouvrirReglagesRepublication:()=>{setReglagesEcran('republication');setShowSettings(true);},
+    onRemettreVenteAnnulee:remettreApresAnnulation, ajouterPhotosAjout, retirerPhotoAjout, reordonnerPhotosAjout,
+    addItemsFromVoice, resetVoiceFlow, callVoiceParse, addItem, handleLotDistribute, addLotToInventory, delItem, markSold,
+    handleImportFile, handleExport, handleIAPPurchase, handleIAPRestore, triggerCheckout, openUpgradeModal,
+    onRetirerVendus:armRemovals, onPlusTardVendus:reporterRetraits, onDupliquer:(item)=>dupliquerFiche(item,'carte'),
+    afficherMasqueesPlusEnLigne:()=>setMontrerMasquees(true), ouvrirQuestionPlusEnLigne:(id)=>setQuestionForcee(id),
+    ouvrirMessagerieArticle:(id)=>setEspaceMessagerie({onglet:'messages',article:id}),
+    // Repli seulement : le contenu de la feuille se dessine par le contexte RenduPlusEnLigne, jamais par ce relais.
+    rendrePlusEnLigne,
+  });
+  // vaActions est déclaré plus bas (après les retours anticipés) : des relais nommés, appelés seulement sur un geste.
+  const vaActionsStock=useFonctionsStables({
+    addItem:(...a)=>vaActions.addItem(...a), markSold:(...a)=>vaActions.markSold(...a),
+    confirmSellDirect:(...a)=>vaActions.confirmSellDirect(...a), deleteItem:(...a)=>vaActions.deleteItem(...a),
+    deleteItemForce:(...a)=>vaActions.deleteItemForce(...a), fetchAll:(...a)=>vaActions.fetchAll(...a),
+    updateItem:(...a)=>vaActions.updateItem(...a), moveToLocation:(...a)=>vaActions.moveToLocation(...a),
+    addDirectSale:(...a)=>vaActions.addDirectSale(...a),
+  });
+  const plusEnLigneStock=useMemo(()=>({n:nbPlusEnLigne,nMasquees:nbMasqueesPlusEnLigne,rendre:gestesStock.rendrePlusEnLigne,
+    onAfficherMasquees:gestesStock.afficherMasqueesPlusEnLigne,ouvrirQuestion:gestesStock.ouvrirQuestionPlusEnLigne}),
+  [nbPlusEnLigne,nbMasqueesPlusEnLigne,gestesStock]);
+  const messagerieStock=useMemo(()=>(messagerie.beta?{parArticle:messagerie.parArticle,ouvrir:gestesStock.ouvrirMessagerieArticle}:null),
+  [messagerie.beta,messagerie.parArticle,gestesStock]);
+
   if(authLoading||appLoading)return(
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:UI.canvas,flexDirection:"column",gap:20}}>
       <img src="/icon_1024x1024.png" alt="FillSell" style={{width:64,height:64,borderRadius:16,objectFit:"cover",boxShadow:"0 8px 24px rgba(16,32,27,0.12)"}}/>
@@ -8868,15 +8907,16 @@ export default function App({ loginOnly = false }){
         )}
 
         {tab===1&&(
+          <RenduPlusEnLigne.Provider value={rendrePlusEnLigne}>
           <StockTab
             lang={lang} currency={currency} isPremium={isPremium} isNative={isNative} isPro={isPro} isBusiness={isBusiness}
-            ouvrirModalePlafond={ouvrirModalePlafond}
-            ouvrirReglagesRepublication={()=>{setReglagesEcran('republication');setShowSettings(true);}}
+            ouvrirModalePlafond={gestesStock.ouvrirModalePlafond}
+            ouvrirReglagesRepublication={gestesStock.ouvrirReglagesRepublication}
             quotas={quotas}
             items={items} itemsAVerifier={itemsAVerifier} user={user} voiceUsedToday={voiceUsedToday}
-            ventesAnnulees={ventesAnnulees} venteAnnuleeEnCours={venteAnnuleeEnCours} onRemettreVenteAnnulee={remettreApresAnnulation}
+            ventesAnnulees={ventesAnnulees} venteAnnuleeEnCours={venteAnnuleeEnCours} onRemettreVenteAnnulee={gestesStock.onRemettreVenteAnnulee}
             gesteDemande={gesteStockDemande} onGesteDemandeVu={gesteStockDemandeVu}
-            extensionStatus={{ lastSeenAt: extensionLastSeenAt, build: extensionBuild, outdated: extensionOutdated }}
+            extensionStatus={extensionStatusStock}
             extensionNeverSeen={extensionNeverSeen}
             ebayCompte={ebayCompte}
             plateformesVisibles={plateformesVisiblesEffectives}
@@ -8894,7 +8934,7 @@ export default function App({ loginOnly = false }){
             voiceParsed={voiceParsed} setVoiceParsed={setVoiceParsed}
             voiceZoneResults={voiceZoneResults} setVoiceZoneResults={setVoiceZoneResults}
             voiceZoneOpen={voiceZoneOpen} setVoiceZoneOpen={setVoiceZoneOpen}
-            vaActions={vaActions} vaStep={vaStep}
+            vaActions={vaActionsStock} vaStep={vaStep}
             voiceText={voiceText} setVoiceText={setVoiceText}
             voiceLoading={voiceLoading} voicePlaceholderIdx={voicePlaceholderIdx}
             voiceError={voiceError}
@@ -8915,7 +8955,7 @@ export default function App({ loginOnly = false }){
             iEmplacement={iEmplacement} setIEmplacement={setIEmplacement}
             iPoids={iPoids} setIPoids={setIPoids}
             iPhotos={iPhotos} iPhotosBusy={iPhotosBusy} iPhotosErreur={iPhotosErreur}
-            ajouterPhotosAjout={ajouterPhotosAjout} retirerPhotoAjout={retirerPhotoAjout} reordonnerPhotosAjout={reordonnerPhotosAjout}
+            ajouterPhotosAjout={gestesStock.ajouterPhotosAjout} retirerPhotoAjout={gestesStock.retirerPhotoAjout} reordonnerPhotosAjout={gestesStock.reordonnerPhotosAjout}
             iPlateforme={iPlateforme} setIPlateforme={setIPlateforme}
             iSaved={iSaved} firstItemAdded={firstItemAdded}
             lotManualTotal={lotManualTotal} setLotManualTotal={setLotManualTotal}
@@ -8934,33 +8974,34 @@ export default function App({ loginOnly = false }){
             pillsExpandedSold={pillsExpandedSold} setPillsExpandedSold={setPillsExpandedSold}
             pillsExpandedStock={pillsExpandedStock} setPillsExpandedStock={setPillsExpandedStock}
             importMsg={importMsg}
-            addItemsFromVoice={addItemsFromVoice}
-            resetVoiceFlow={resetVoiceFlow}
-            callVoiceParse={callVoiceParse}
-            addItem={addItem}
-            handleLotDistribute={handleLotDistribute}
-            addLotToInventory={addLotToInventory}
-            delItem={delItem}
-            markSold={markSold}
+            addItemsFromVoice={gestesStock.addItemsFromVoice}
+            resetVoiceFlow={gestesStock.resetVoiceFlow}
+            callVoiceParse={gestesStock.callVoiceParse}
+            addItem={gestesStock.addItem}
+            handleLotDistribute={gestesStock.handleLotDistribute}
+            addLotToInventory={gestesStock.addLotToInventory}
+            delItem={gestesStock.delItem}
+            markSold={gestesStock.markSold}
             setEditItem={setEditItem}
-            handleImportFile={handleImportFile}
-            handleExport={handleExport}
-            handleIAPPurchase={handleIAPPurchase}
-            handleIAPRestore={handleIAPRestore}
-            triggerCheckout={triggerCheckout}
+            handleImportFile={gestesStock.handleImportFile}
+            handleExport={gestesStock.handleExport}
+            handleIAPPurchase={gestesStock.handleIAPPurchase}
+            handleIAPRestore={gestesStock.handleIAPRestore}
+            triggerCheckout={gestesStock.triggerCheckout}
             importRef={importRef}
             listRef={listRef}
             scrollRef={scrollRef}
             fabTriggerRef={fabTriggerRef}
             PremiumBanner={BoundPremiumBanner}
             IAPUpgradeBlock={IAPUpgradeBlock}
-            openUpgradeModal={openUpgradeModal}
+            openUpgradeModal={gestesStock.openUpgradeModal}
             onStepperOpenChange={setListingStepperOpen}
-            pendingRemovals={pendingRemovals} onRetirerVendus={armRemovals} onPlusTardVendus={reporterRetraits}
-            plusEnLigne={{n:nbPlusEnLigne,nMasquees:nbMasqueesPlusEnLigne,rendre:rendrePlusEnLigne,onAfficherMasquees:()=>setMontrerMasquees(true),ouvrirQuestion:(id)=>setQuestionForcee(id)}}
-            onDupliquer={(item)=>dupliquerFiche(item,'carte')}
-            messagerie={messagerie.beta?{parArticle:messagerie.parArticle,ouvrir:(id)=>setEspaceMessagerie({onglet:'messages',article:id})}:null}
+            pendingRemovals={pendingRemovals} onRetirerVendus={gestesStock.onRetirerVendus} onPlusTardVendus={gestesStock.onPlusTardVendus}
+            plusEnLigne={plusEnLigneStock}
+            onDupliquer={gestesStock.onDupliquer}
+            messagerie={messagerieStock}
           />
+          </RenduPlusEnLigne.Provider>
         )}
 
         {tab===2&&(
@@ -9094,6 +9135,21 @@ export default function App({ loginOnly = false }){
               </div>
             )}
             <div style={{display:"flex",flexDirection:"column",gap:12}}>
+
+              {/* ── EN LIGNE, PLATEFORME PAR PLATEFORME (31/10, retour de Nico) ──
+                  Depuis quand l'article est en ligne sur chaque plateforme, publiée / republiée / importée ; un appui
+                  ouvre le détail et l'historique. Mêmes lignes que la pastille et le menu « … » (datesParPlateforme,
+                  la règle de la republication automatique), lues à l'ouverture de la fiche. Lecture seule : rien
+                  de ce bloc n'entre dans l'enregistrement. */}
+              {!editItem._isNew&&editItem._table==='inventaire'&&editItem._datesEnLigne?.lignes?.length>0&&(
+                <div style={S.group}>
+                  <div style={S.eyebrow}>
+                    <span style={S.tile}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>
+                    {lang==='fr'?"En ligne depuis":"Live since"}
+                  </div>
+                  <ResumeDatesEnLigne lang={lang} lignes={editItem._datesEnLigne.lignes} onDetail={()=>setDatesFicheId(editItem.id)}/>
+                </div>
+              )}
 
               {/* ── Identité : nom, marque, catégorie ── */}
               <div style={S.group}>
@@ -9437,6 +9493,12 @@ export default function App({ loginOnly = false }){
         </>
         );
       })()}
+      {/* (31/10) La feuille « En ligne depuis » de l'article de la fiche (portail, par-dessus la fiche). */}
+      {editItem&&datesFicheId!=null&&String(datesFicheId)===String(editItem.id)&&editItem._datesEnLigne&&(
+        <DatesEnLigne lang={lang} titre={editItem.title} lignes={editItem._datesEnLigne.lignes}
+          plateformeFiltree={editItem._datesEnLigne.plateformeFiltree??null}
+          onFermer={()=>setDatesFicheId(null)}/>
+      )}
 
       {/* ── SELL MODAL ── */}
       {sellModal&&(

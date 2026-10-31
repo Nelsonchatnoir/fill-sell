@@ -285,7 +285,7 @@ try {
   const app = lignesDeCode(lire('src/App.jsx')).join('\n');
   const dup = app.slice(app.indexOf('async function dupliquerFiche'), app.indexOf('async function dupliquerFiche') + 1200);
   verifier(dup && !/isPro|isBusiness|palier/.test(dup), '« Dupliquer » n’est gardé par aucun palier');
-  verifier(/onDupliquer=\{\(item\)=>dupliquerFiche\(item,'carte'\)\}/.test(app), '« Dupliquer » est câblé sur le menu des cartes pour tous');
+  verifier(/onDupliquer:\(item\)=>dupliquerFiche\(item,'carte'\)/.test(app) && /onDupliquer=\{gestesStock\.onDupliquer\}/.test(app), '« Dupliquer » est câblé sur le menu des cartes pour tous (geste à identité stable, 31/10)');
 } finally {
   await vite.close();
 }

@@ -136,7 +136,9 @@ ok(/DROP TRIGGER IF EXISTS cross_post_jobs_signal_vente_vu_en_ligne/.test(INV)
     '7h. stepper : la phrase et le geste dans les deux variantes');
   ok(/m\.onRepondreDisparue\(m\.douteEnLigne\[p\]\.job\)/.test(OUP) && /m\.onRepondreDisparue\(m\.douteEnLigne\[p\]\.job\)/.test(CONF),
     '7i. nouveau stepper : « Répondre » sur « Où publier » et « Confirmer »');
-  ok(/onRepondreDisparue=\{plusEnLigne\?\.ouvrirQuestion\?/.test(ST) && /ouvrirQuestion:\(id\)=>setQuestionForcee\(id\)/.test(APP)
+  // (31/10, fiche rapide) Le même geste, par un relais à identité stable (useFonctionsStables) et l'objet mémorisé.
+  ok(/onRepondreDisparue=\{plusEnLigne\?\.ouvrirQuestion\?/.test(ST) && /ouvrirQuestionPlusEnLigne:\(id\)=>setQuestionForcee\(id\)/.test(APP)
+    && /ouvrirQuestion:gestesStock\.ouvrirQuestionPlusEnLigne/.test(APP)
     && /if\(!forcee&&\(estAVerifier\(job\)\|\|estReporte\(job\)\)\)return null;/.test(APP),
     '7j. « Répondre » ouvre la question de CETTE annonce, même reportée');
 }

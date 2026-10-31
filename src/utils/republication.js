@@ -49,8 +49,23 @@ export function dernierRepublish(jobsAll, platform) {
 export function depopRefuseLArticle(item, jobsAll) {
   if ((jobsAll ?? []).some((j) => j?.platform === 'depop' && j?.platform_fields?.depop_interdit)) return true;
   if (!item) return false;
-  const icone = detectObjectIcon(String(item.titre ?? ''), String(item.description ?? ''), item.type ?? null);
+  const icone = iconeObjetMemorisee(String(item.titre ?? ''), String(item.description ?? ''), item.type ?? null);
   return Boolean(depopInterdit(icone, item));
+}
+
+// (31/10, fiche lente sur téléphone) L'icône d'objet (detectObjectIcon : deux passes de règles de mots-clés sur le
+// titre et la description) est une fonction PURE du texte. Le Stock la recalculait pour CHAQUE article à CHAQUE
+// rendu — ouvrir la fiche d'un article re-rend le Stock : 93 % du temps d'ouverture mesuré (banc, 2 900 articles :
+// 0,69 s sur PC, 3,9 s au CPU d'un téléphone). Mémoire bornée, même résultat (même texte → même icône).
+const ICONES_MEMO = new Map();
+const ICONES_MEMO_MAX = 8000;
+function iconeObjetMemorisee(titre, description, type) {
+  const cle = `${titre}\u0001${description}\u0001${type ?? '\u0002'}`;
+  if (ICONES_MEMO.has(cle)) return ICONES_MEMO.get(cle);
+  const icone = detectObjectIcon(titre, description, type);
+  if (ICONES_MEMO.size >= ICONES_MEMO_MAX) ICONES_MEMO.clear();
+  ICONES_MEMO.set(cle, icone);
+  return icone;
 }
 
 // État de republication d'un article sur UNE plateforme :

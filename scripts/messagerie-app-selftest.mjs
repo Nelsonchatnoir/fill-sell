@@ -58,7 +58,10 @@ await cas("App : la barre et l'espace ne se rendent que pour un compte bêta ou 
   assert.ok(/\{\(messagerie\.beta\|\|messagerie\.bordereaux\)&&tab===1&&!espaceMessagerie&&\(\s*<BarreMessagerie[^>]*messages=\{messagerie\.beta\}/.test(APP), "barre sous bêta ou bordereaux, sur le Stock seul (17/10) ; « Messages » pour la bêta seule");
   assert.ok(/className=\{\(messagerie\.beta\|\|messagerie\.bordereaux\)&&espaceMessagerie\?"wrap page-pad fs-espace-beta-ouvert":"wrap page-pad"\}/.test(APP), "la classe de page n'est posée que pour un compte qui a ouvert l'écran");
   assert.ok(/\{\(messagerie\.beta\|\|messagerie\.bordereaux\)&&espaceMessagerie&&\(/.test(APP) && /<EspaceMessagerie [^>]*messages=\{messagerie\.beta\}/.test(APP), "espace : « À expédier » seul hors bêta");
-  assert.ok(/messagerie=\{messagerie\.beta\?\{parArticle:messagerie\.parArticle,ouvrir:\(id\)=>setEspaceMessagerie\(\{onglet:'messages',article:id\}\)\}:null\}/.test(APP), "Stock : null hors bêta");
+  // (31/10, fiche rapide) Le même objet, mémorisé : le Stock ne reçoit plus un objet neuf à chaque rendu d'App.
+  assert.ok(/const messagerieStock=useMemo\(\(\)=>\(messagerie\.beta\?\{parArticle:messagerie\.parArticle,ouvrir:gestesStock\.ouvrirMessagerieArticle\}:null\)/.test(APP)
+    && /ouvrirMessagerieArticle:\(id\)=>setEspaceMessagerie\(\{onglet:'messages',article:id\}\)/.test(APP)
+    && /messagerie=\{messagerieStock\}/.test(APP), "Stock : null hors bêta");
   assert.ok(/messagerieBeta=\{messagerie\.beta\|\|messagerie\.bordereaux\}/.test(APP), "Ventes : « À expédier » pour la bêta et les bordereaux Vinted ouverts");
   assert.ok(/lazyMessagerie\(\(\) => import\('\.\/messagerie\/EspaceMessagerie'\)\)/.test(APP), "espace chargé à la demande");
 });

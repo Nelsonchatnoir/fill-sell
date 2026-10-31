@@ -266,7 +266,7 @@ const D = await charger('src/stock/dupliquer.js');
   const app = lire('src/App.jsx');
   verifier(/dupliquerArticle\(supabase,/.test(app) && /_copie:true/.test(app), 'App crée la copie puis ouvre SA fiche en modification');
   verifier(/Dupliquer cet article/.test(app), 'la fiche article porte « Dupliquer »');
-  verifier(/onDupliquer=\{\(item\)=>dupliquerFiche\(item,'carte'\)\}/.test(app), 'le menu « … » des cartes est câblé');
+  verifier(/onDupliquer:\(item\)=>dupliquerFiche\(item,'carte'\)/.test(app) && /onDupliquer=\{gestesStock\.onDupliquer\}/.test(app), 'le menu « … » des cartes est câblé (geste à identité stable, 31/10)');
   verifier((lire('src/tabs/StockTab.jsx').match(/cle: 'dupliquer'/g) ?? []).length >= 2, '« Dupliquer » est dans le menu « … » (en stock comme vendu)');
 }
 

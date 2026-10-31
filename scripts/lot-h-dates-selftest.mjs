@@ -110,7 +110,16 @@ ok(/joursAncienne = ancienneteJours\(/.test(blocPastille) && /const jours = past
 ok(/trancheAnciennete\(infoFiltre\(i\)\.joursAffiches\)/.test(ST), "tranches d'ancienneté : la date que dit la carte");
 ok(/miseEnLigne: \(i\) => \{ const m = miseEnLigneArticle\(i, indexEtat\.get\(String\(i\.id\)\)\?\.enLigne \?\? \[\]\); return m \? Date\.parse\(m\.date\) : null; \}/.test(ST), "tri « Mise en ligne récente » : la même date");
 ok(/const SELECT_JOBS = "[^"]*platform_listing_id, handler_build"/.test(ST), "les jobs du Stock portent le numéro et la marque d'import");
-ok(/<DatesEnLigne lang=\{lang\}/.test(ST) && /datesParPlateforme\(\{item:datesItem/.test(ST), "la feuille « En ligne depuis » est rendue avec datesParPlateforme");
+ok(/<DatesEnLigne lang=\{lang\}/.test(ST) && /const dates=datesEnLigneDe\(datesItem\)/.test(ST)
+  && /const datesEnLigneDe = \(item\) => \{[\s\S]{0,300}datesParPlateforme\(\{ item, jobs: jobsByInventaire\[item\.id\] \?\? \[\], enLigne: enLigneD, plateformes: plateformesCompte, datesRelevees \}\)/.test(ST),
+  "la feuille « En ligne depuis » est rendue avec datesParPlateforme (datesEnLigneDe, une seule source)");
+// (31/10, retour de Nico) Le détail par plateforme partout : menu « … » (une ligne par plateforme), fiche de l'article.
+ok(/const enLigneDates = menuOuvertIci \? datesEnLigneDe\(item\)\.lignes\.filter\(\(l\) => l\.enLigne\) : \[\]/.test(ST) &&/cle: `age-\$\{l\.platform\}`, ton: 'neutre', onTap: \(\) => setDatesItem\(item\)/.test(ST),
+  "menu « … » : une ligne « En ligne sur X depuis … » PAR plateforme, chacune ouvre le détail");
+ok((ST.match(/_datesEnLigne:datesEnLigneDe\(item\)/g) ?? []).length === 2, "fiche de l'article : ouverte avec les dates par plateforme (carte et ligne)");
+const APP = lire("src/App.jsx");
+ok(/<ResumeDatesEnLigne lang=\{lang\} lignes=\{editItem\._datesEnLigne\.lignes\} onDetail=\{\(\)=>setDatesFicheId\(editItem\.id\)\}\/>/.test(APP)
+  && /<DatesEnLigne lang=\{lang\} titre=\{editItem\.title\} lignes=\{editItem\._datesEnLigne\.lignes\}/.test(APP), "fiche : bloc « En ligne depuis » et sa feuille détaillée");
 ok(/infos\.push\(\{ cle: 'age', ton: 'neutre', onTap: \(\) => setDatesItem\(item\)/.test(ST), "menu « … » (vue Liste) : « En ligne sur … depuis … » ouvre le même détail");
 const SP = lire("src/utils/syncPlateformes.js");
 ok(/export async function lireDatesRelevees/.test(SP) && /lireToutesPages\(\(\) => supabase\s*\n?\s*\.from\('annonces_plateforme'\)\s*\n?\s*\.select\('id,platform,listing_id,publiee_le'\)/.test(SP), "dates relevées : lues par pages, une seule fois");
@@ -141,6 +150,12 @@ try {
   const te = texte(renderToStaticMarkup(React.createElement(D.default, { lang: "en", titre: "x", lignes, onFermer: () => {} })));
   ok(/Live since/.test(te) && /Reposted by FillSell/.test(te) && /Imported/.test(te), "anglais");
   ok(!/[\u{1F300}-\u{1FAFF}]/u.test(lire("src/stock/DatesEnLigne.jsx")), "aucun émoji dans la feuille");
+  // (31/10) Le bloc de la fiche : une ligne par plateforme en ligne, la date, la nature ; le lien vers le détail.
+  const tr = texte(renderToStaticMarkup(React.createElement(D.ResumeDatesEnLigne, { lang: "fr", lignes, onDetail: () => {} })));
+  ok(/Leboncoin · en ligne depuis 9 j 21 oct\. 2026 à 16:52 · Republiée par FillSell/.test(tr), "fiche : Leboncoin en ligne depuis 9 j, 21 oct. 2026 à 16:52, republiée", tr.slice(0, 300));
+  ok(/Vinted · en ligne depuis 11 j/.test(tr) && /eBay · en ligne depuis 42 j .*Importée \(déjà sur la plateforme\)/.test(tr), "fiche : Vinted 11 j ; eBay 42 j, importée", tr.slice(0, 400));
+  ok(/Détail par plateforme et historique/.test(tr), "fiche : le lien vers le détail et l'historique");
+  ok(renderToStaticMarkup(React.createElement(D.ResumeDatesEnLigne, { lang: "fr", lignes: [], onDetail: () => {} })) === "", "fiche : rien quand aucune plateforme n'a de date");
 } finally {
   await vite.close();
 }

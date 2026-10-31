@@ -1,14 +1,15 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // STOCK — DEPUIS QUAND L'ANNONCE EST EN LIGNE, PLATEFORME PAR PLATEFORME (31/10, lot H — XEWER)
 // ═══════════════════════════════════════════════════════════════════════════
-// Ouverte par un appui sur la pastille « En ligne » d'une carte (ou la ligne « En ligne sur … » du menu « … ») :
+// Ouverte par un appui sur la pastille « En ligne » d'une carte, une des lignes « En ligne sur … » du menu « … »
+// (une par plateforme) ou le bloc « En ligne » de la fiche de l'article (ResumeDatesEnLigne, 31/10) :
 // pour chaque plateforme, l'état, depuis quand l'annonce actuelle est en ligne et ce que FillSell en a fait (publiée,
 // republiée, importée), puis l'historique de ses mises en ligne. Composant de PRÉSENTATION : les lignes viennent de
 // datesParPlateforme (_shared/mise-en-ligne.js, la règle de l'éligibilité à la republication automatique) ; il ne
 // lit rien et n'écrit rien.
 // ⛔ Aucun émoji, icônes Lucide ; les jetons de src/stock/jetons.js, la coque Feuille (portail, Échap, retour Android).
 import { useState } from 'react';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, ChevronRight } from 'lucide-react';
 import Feuille, { IntituleSection } from './Feuille';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import { PastilleEtat } from './Carte';
@@ -115,6 +116,54 @@ function BlocPlateforme({ lang, ligne }) {
         </>
       )}
     </section>
+  );
+}
+
+/**
+ * (31/10, retour de Nico) Le même détail, en bref, dans la FICHE de l'article (« Modifier l'article ») : une ligne par
+ * plateforme en ligne — depuis quand, et ce que FillSell en a fait — ; un appui ouvre la feuille complète (historique).
+ * Mêmes lignes que la feuille (datesParPlateforme), lues à l'ouverture de la fiche. Rien si l'article n'est en ligne
+ * nulle part et n'a aucun historique.
+ * @param {object} p   p.lignes — datesParPlateforme(...)   p.onDetail — ouvre la feuille « En ligne depuis »
+ */
+export function ResumeDatesEnLigne({ lang = 'fr', lignes = [], onDetail }) {
+  const fr = lang !== 'en';
+  const enLigne = lignes.filter((l) => l.enLigne);
+  const horsLigne = lignes.length - enLigne.length;
+  if (!lignes.length) return null;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {enLigne.map((l) => {
+        const depuis = texteDepuis(l.jours, lang);
+        return (
+          <button key={l.platform} type="button" onClick={onDetail}
+            title={fr ? 'Voir le détail et l’historique' : 'See details and history'}
+            style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', minHeight: 44, padding: '6px 10px', boxSizing: 'border-box', borderRadius: 10, border: `1px solid ${S.border}`, background: '#FFFFFF', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit' }}>
+            <PlatformLogo platform={l.platform} size={22} />
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ display: 'block', fontSize: 13, lineHeight: '18px', fontWeight: 700, color: S.ink }}>
+                {nom(l.platform)}{' '}
+                <span style={{ fontWeight: 600 }}>{depuis ? (fr ? `· en ligne ${depuis}` : `· live ${depuis}`) : (fr ? '· en ligne, date inconnue' : '· live, unknown date')}</span>
+              </span>
+              <span className="sk-chiffres" style={{ display: 'block', fontSize: 12, lineHeight: '16px', fontWeight: 500, color: S.ink2, overflowWrap: 'anywhere' }}>
+                {[dateLongue(l.date, lang), libelleNature(l.nature, lang)].filter(Boolean).join(' · ')}
+              </span>
+            </span>
+            <ChevronRight size={16} strokeWidth={2.2} aria-hidden="true" style={{ flexShrink: 0, color: S.ink2 }} />
+          </button>
+        );
+      })}
+      {!enLigne.length && (
+        <div style={{ fontSize: 12.5, lineHeight: '18px', color: S.ink2 }}>{fr ? 'En ligne nulle part aujourd’hui.' : 'Not live anywhere today.'}</div>
+      )}
+      <button type="button" onClick={onDetail}
+        style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 4, minHeight: 32, padding: '0 2px', border: 'none', background: 'transparent', color: S.tealDeep, fontSize: 12.5, fontWeight: 700, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit' }}>
+        {horsLigne > 0
+          ? (fr ? `Détail par plateforme et historique (dont ${horsLigne} plus en ligne)` : `Details per platform and history (${horsLigne} no longer live)`)
+          : (fr ? 'Détail par plateforme et historique' : 'Details per platform and history')}
+        <ChevronRight size={14} strokeWidth={2.2} aria-hidden="true" />
+      </button>
+    </div>
   );
 }
 

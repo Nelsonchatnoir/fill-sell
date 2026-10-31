@@ -463,6 +463,22 @@ trois relevés et deux reprises lancés tout seuls, aucun Vinted abouti, un faux
   trois et plus) ; la republication v23 (tout identique, prix compris) reste rattachée automatiquement.
 - La couverture : pour deux annonces successives, la première photo de l'une est aussi comparée à la deuxième de l'autre
   (photo ajoutée en couverture à la remise en ligne).
-- Le rattachement AUTOMATIQUE d'une succession prouvée (prix changé) attend une décision de Nico (garde de la base
-  `rapprochement_republication_prouvee` à élargir) ; `republication_engagee` qui compte l'étape « captured » empêche de
-  dater disparues les anciennes annonces d'un article dont une republication attend (migration à décider).
+- ⛔ (31/10, décision 7b de Nico : REFUSÉ) Une succession prouvée avec un PRIX CHANGÉ n'est JAMAIS rattachée
+  automatiquement : la question posée au vendeur reste (`rapprochement_republication_prouvee` inchangée).
+
+## ⛔ 31/10 (décision 7a de Nico) — pendant une republication engagée, l'ancienne annonce n'est jamais datée disparue
+- « Tant qu'une republication est engagée, à TOUTES ses étapes (« captured » comprise), l'ancienne annonce ne doit jamais
+  être datée disparue ni marquée hors ligne par un relevé. » Engagée = `republication_engagee` : étape `captured` ou
+  `deleted`, ou retrait engagé (`deleted_at`, suppression envoyée), statut pending/processing/needs_user. `a_capturer`
+  n'est pas engagée (rien ne peut être retiré à cette étape) — c'est voulu.
+- Existait depuis le 22/10 (migration 20261022200000) : la garde dans `constater_absences_releve` (date disparue +
+  « Vendue ? »), le déclencheur `cross_post_jobs_alerte_tenue` (efface tout signal neuf : veilleur, relevé, dépôt sans
+  lien) et `inventaire_disparu_garde_republication` (sync dressing Vinted, doublée côté extension) — cherchée par FICHE.
+- Comblé le 31/10 (migration **20261031150000**, inverse dans `supabase/rollbacks/`) : la même garde cherchée aussi par le
+  NUMÉRO de l'annonce visée (`republication_engagee_numero` : colonne, `old_platform_listing_id`, instantané,
+  `vinted_item_id`, lien) — une annonce visée rattachée à une autre fiche (doublon, défusion) est protégée aussi.
+  582 / 582 republications engagées retrouvées par leur numéro à l'application.
+- Une synchro demandée pendant qu'une annonce est entre retrait et recréation attend la fin de la republication
+  (« Ta synchro attend une remise en ligne ») : deuxième ceinture, inchangée.
+- Ouvert, à décider par Nico : une republication `published` à l'étape `recreated` dont la recréation n'est pas encore
+  confirmée est hors garde (Johan, 29/10 : « Vendue ? » posé sur les NOUVELLES annonces, levé par handler-watch).

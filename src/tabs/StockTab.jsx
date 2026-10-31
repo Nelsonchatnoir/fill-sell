@@ -1,4 +1,4 @@
-import { memo, useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { memo, useState, useEffect, useMemo, useRef, useCallback, startTransition } from 'react';
 import { questionOplaFinale } from '../../supabase/functions/_shared/opla-questions.js';
 // (02/10) Sortie d'Opla : une publication/republication Opla ne se relance plus.
 import { estPublicationOpla, MESSAGE_OPLA_INDISPONIBLE, sortieOplaActive } from '../../supabase/functions/_shared/opla-sortie.js';
@@ -109,6 +109,7 @@ import { lireSyncMultiOuverte, lireStatsAnnoncesParArticle, lireDatesRelevees } 
 // l'éligibilité à la republication automatique.
 import { miseEnLigneAffichee, indexerDatesRelevees, datesParPlateforme } from '../../supabase/functions/_shared/mise-en-ligne.js';
 import DatesEnLigne from '../stock/DatesEnLigne';
+import { ContenuPlusEnLigne } from '../stock/renduVivant';
 import { useFondFige } from '../utils/modale';
 import {
   plateformesDuCompte, plateformesDeLArticle, plateformesDeReleve,
@@ -6975,7 +6976,22 @@ const StockTab = memo(function StockTab({
   // Lit la liste COMPLÈTE (déclarée avant la lecture des brouillons) : sans
   // conséquence, un brouillon n'a par définition aucun job et repubEtat le rend
   // donc toujours 'ineligible' — il ne peut pas entrer dans un lot.
-  const repubActionnables = republishActif ? stockFiltreComplet.filter(repubSelectionnable) : [];
+  // (31/10, fiche lente sur téléphone) Les parcours de TOUT le stock ne se refont que si une de leurs entrées change
+  // — jamais parce que la fiche d'un article s'ouvre ou qu'on y tape. Mesuré sur le banc (2 900 articles) : ces
+  // parcours refaits à chaque rendu = l'essentiel du délai d'ouverture. Leurs règles lisent l'heure (cadence 24 h,
+  // ancienneté ≥ 7 j, horloge du poste) : une HORLOGE LOCALE les fait avancer toutes les minutes, en tâche de fond
+  // (transition : un toucher passe toujours devant) — aucune lecture de la base, jamais au moment d'un geste.
+  const [minuteCourante, setMinuteCourante] = useState(() => Math.floor(Date.now() / 60000));
+  useEffect(() => {
+    const t = setInterval(() => {
+      const m = Math.floor(Date.now() / 60000);
+      startTransition(() => setMinuteCourante(m));
+    }, 60000);
+    return () => clearInterval(t);
+  }, []);
+  const repubActionnables = useMemo(() => (republishActif ? stockFiltreComplet.filter(repubSelectionnable) : []),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+    [republishActif, stockFiltreComplet, jobsByInventaire, multiOuverte, plateformesOuvertes, plateformesFermees, minuteCourante]);
 
   // ── Bandeau de lot + signalement hors-ligne (2026-08-07, validé Nico) ─────
   // ⚠️ TOUT ce bloc lit jobsByInventaire : il vit APRÈS sa déclaration (règle
@@ -7310,7 +7326,9 @@ const StockTab = memo(function StockTab({
   );
   const retraitsBloques = useMemo(
     () => retraitsBloquesParConnexion({ jobs: tousLesJobs, fiches: fichesToutes, extensionVueLe: extensionStatus ? (extensionStatus.lastSeenAt ?? null) : undefined, loginsBoutiques: loginsBoutiquesRetrait }),
-    [tousLesJobs, fichesToutes, extensionStatus, loginsBoutiquesRetrait],
+    // (31/10) La minute : la règle lit l'heure (maintenant) ; extensionStatus est désormais un objet stable (App).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tousLesJobs, fichesToutes, extensionStatus, loginsBoutiquesRetrait, minuteCourante],
   );
   // ── (12/10 soir, Nico) UN ARTICLE VENDU ENCORE EN LIGNE = UNE LIGNE DE
   // « À RÉGLER » (plus aucun bandeau). Ses retraits qui attendent la personne
@@ -7865,9 +7883,11 @@ const StockTab = memo(function StockTab({
   // (02/10, nuit) Ce n'est plus le seul lot du produit : la PUBLICATION en lot
   // existe (src/publication/lot/). Elle ne court-circuite pas le stepper :
   // chaque article est préparé par le MÊME moteur, un moteur par article.
-  const repubActionnablesVue = stockRetenu
+  const repubActionnablesVue = useMemo(() => (stockRetenu
     ? stockRetenu.filter(repubSelectionnable)
-    : repubActionnables;
+    : repubActionnables),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+    [stockRetenu, repubActionnables, jobsByInventaire, multiOuverte, plateformesOuvertes, plateformesFermees, minuteCourante]);
 
   // ── PUBLICATION EN LOT : qui peut être choisi ─────────────────────────────
   // En stock, avec une photo, pas encore partout — la règle unique
@@ -9191,12 +9211,27 @@ const StockTab = memo(function StockTab({
   const indexEtatTout = useMemo(() => indexEtatStock(stockSansBrouillons, jobsByInventaire, lang),
   // eslint-disable-next-line react-hooks/exhaustive-deps
     [stock, idsBrouillons, jobsByInventaire, lang]);
-  const aPublierTout = stockSansBrouillons.filter((i) => articleSelectionnable(i, jobsByInventaire[i.id] || [], plateformesLotCompte, lang).ok);
-  const aRemonterTout = republishActif ? stockSansBrouillons.filter((i) => {
+  // (31/10, retour de Nico) Depuis quand l'article est en ligne, PLATEFORME PAR PLATEFORME — la même source pour la
+  // pastille (feuille « En ligne depuis »), le menu « … » et la fiche de l'article : datesParPlateforme
+  // (_shared/mise-en-ligne.js, la règle de la republication automatique). Calculé au geste, pour UN article.
+  const datesEnLigneDe = (item) => {
+    const enLigneD = indexEtat.get(String(item.id))?.enLigne ?? indexEtatTout.get(String(item.id))?.enLigne ?? [];
+    return {
+      lignes: datesParPlateforme({ item, jobs: jobsByInventaire[item.id] ?? [], enLigne: enLigneD, plateformes: plateformesCompte, datesRelevees }),
+      plateformeFiltree: plateformeDatee && enLigneD.includes(plateformeDatee) ? plateformeDatee : null,
+    };
+  };
+  // (31/10) Mémorisés sur leurs entrées, minute comprise (voir repubActionnables).
+  const aPublierTout = useMemo(() => stockSansBrouillons.filter((i) => articleSelectionnable(i, jobsByInventaire[i.id] || [], plateformesLotCompte, lang).ok),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+    [stock, idsBrouillons, jobsByInventaire, plateformesLotCompte, lang, minuteCourante]);
+  const aRemonterTout = useMemo(() => (republishActif ? stockSansBrouillons.filter((i) => {
     if (!repubSelectionnable(i)) return false;
     const e = indexEtatTout.get(String(i.id));
     return estAncienne(ancienneteJours(i, jobsByInventaire[i.id], e?.enLigne ?? [], Date.now(), datesRelevees));
-  }) : [];
+  }) : []),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+    [republishActif, stock, idsBrouillons, jobsByInventaire, indexEtatTout, datesRelevees, multiOuverte, plateformesOuvertes, plateformesFermees, minuteCourante]);
   const nbAttenteAction = attenteAction?.total ?? 0;
   // (05/10) Les retraits bloqués par une connexion COMPTENT : une annonce
   // vendue encore en ligne attend un geste (se reconnecter), comme le reste.
@@ -9358,6 +9393,10 @@ const StockTab = memo(function StockTab({
   // mobile seulement, stock non vide, comme avant), republication en
   // maintenance, plateforme en pause, horloge en retard. `compte:false` = une
   // information (rien à faire de ton côté) : dite, mais pas comptée « à régler ».
+  // (31/10) L'horloge du poste se juge sur TOUS les jobs : une fois par changement des jobs (ou de minute), pas à
+  // chaque rendu (banc, 11 670 jobs : 4,5 ms par rendu au CPU d'un PC).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const retardHorloge = useMemo(() => detecterRetardHorloge(tousLesJobs), [tousLesJobs, minuteCourante]);
   const alertesCompte = (() => {
     const fr = lang === 'fr';
     const out = [];
@@ -9433,7 +9472,7 @@ const StockTab = memo(function StockTab({
     // non comptée de la feuille « points à régler » (BlocSynchro, sync_multi_ouverte = 1 : tout le parc) — invisible
     // tant qu'on n'ouvrait pas la feuille. Elle a retrouvé son bandeau en tête du Stock (bandeauxPause, plus bas) :
     // l'état du service, pas un geste à faire — une seule place, jamais deux.
-    const retard = detecterRetardHorloge(Object.values(jobsByInventaire).flat());
+    const retard = retardHorloge;
     if (retard.enRetard) {
       out.push({ cle: 'horloge', icone: Clock, ton: 'regler',
         titre: fr ? `L'horloge de ton ordinateur retarde d'environ ${retard.jours} jour${retard.jours > 1 ? 's' : ''}` : `Your computer's clock is about ${retard.jours} day${retard.jours > 1 ? 's' : ''} behind`,
@@ -9784,7 +9823,7 @@ const StockTab = memo(function StockTab({
     const aPublier=plateformesCompte.filter(p=>!logosEnLigne.includes(p)&&!logosJumelles.includes(p));
     // _table:'inventaire' — cible d'écriture explicite de la modale
     // d'édition (les ids ventes/inventaire se chevauchent).
-    const openEdit=()=>setEditItem({...item,_table:'inventaire',frais:(item.statut==='vendu'?item.sellingFees:item.purchaseCosts)??0,sell:item.sell??""});
+    const openEdit=()=>setEditItem({...item,_table:'inventaire',frais:(item.statut==='vendu'?item.sellingFees:item.purchaseCosts)??0,sell:item.sell??"",_datesEnLigne:datesEnLigneDe(item)});
     const photoUrl=premierePhoto(item.photos);
     // Compteurs FUSIONNÉS (18/09) : Vinted + ce que les relevés
     // ont vu sur les autres plateformes pour cet article. Le tap
@@ -10116,16 +10155,26 @@ const StockTab = memo(function StockTab({
         texte: fr ? `Plus en ligne sur Vinted${le ? ` · ${le}` : ''} : l'annonce n'a pas été retrouvée à la dernière synchronisation.` : `Gone from Vinted${le ? ` · ${le}` : ''}: the listing was not found at the last sync.`,
         titre: fr ? "L'annonce Vinted n'a pas été retrouvée lors de la dernière synchronisation de ton dressing." : 'This Vinted listing was not found during the last wardrobe sync.' });
     }
-    // (31/10, lot H) La dernière mise en ligne (celle que dit la pastille) ; un appui ouvre le détail par plateforme.
+    // (31/10, lot H) Depuis quand l'article est en ligne, UNE LIGNE PAR PLATEFORME (retour de Nico : « En ligne depuis
+    // 5 jours » ne disait pas depuis quand sur eBay, sur Leboncoin…) ; un appui ouvre le détail et l'historique.
     if (d.enLigne) {
-      const mel = pastille.miseEnLigne ?? null;
-      const jm = mel?.jours ?? null;
-      const nomM = mel ? (PLATFORM_LABELS[mel.platform] || mel.platform) : null;
-      infos.push({ cle: 'age', ton: 'neutre', onTap: () => setDatesItem(item),
-        texte: jm == null ? (fr ? 'Dates de mise en ligne, par plateforme' : 'Listing dates, per platform')
-          : jm === 0 ? (fr ? `En ligne sur ${nomM} depuis aujourd'hui` : `Live on ${nomM} since today`)
-            : (fr ? `En ligne sur ${nomM} depuis ${jm} j` : `Live on ${nomM} for ${jm} d`),
-        titre: fr ? 'Voir depuis quand l’annonce est en ligne sur chaque plateforme' : 'See how long the listing has been live on each platform' });
+      // Calculé pour le menu OUVERT seulement (un article) — jamais pour chaque carte à chaque rendu (fiche rapide, 31/10).
+      const menuOuvertIci = menuArticleId != null && String(menuArticleId) === String(item.id);
+      const enLigneDates = menuOuvertIci ? datesEnLigneDe(item).lignes.filter((l) => l.enLigne) : [];
+      const titreAge = fr ? 'Voir depuis quand l’annonce est en ligne sur chaque plateforme, et son historique' : 'See how long the listing has been live on each platform, and its history';
+      if (!enLigneDates.length) {
+        infos.push({ cle: 'age', ton: 'neutre', onTap: () => setDatesItem(item), titre: titreAge,
+          texte: fr ? 'Dates de mise en ligne, par plateforme' : 'Listing dates, per platform' });
+      }
+      for (const l of enLigneDates) {
+        const nomL = PLATFORM_LABELS[l.platform] || l.platform;
+        const depuis = l.jours == null ? (fr ? 'date inconnue' : 'unknown date')
+          : l.jours === 0 ? (fr ? "depuis aujourd'hui" : 'since today') : (fr ? `depuis ${l.jours} j` : `for ${l.jours} d`);
+        const nature = l.nature === 'republiee' ? (fr ? ' · republiée' : ' · reposted') : l.nature === 'importee' ? (fr ? ' · importée' : ' · imported') : '';
+        infos.push({ cle: `age-${l.platform}`, ton: 'neutre', onTap: () => setDatesItem(item), titre: titreAge,
+          texte: l.jours == null ? (fr ? `En ligne sur ${nomL}, ${depuis}` : `Live on ${nomL}, ${depuis}`) + nature
+            : (fr ? `En ligne sur ${nomL} ${depuis}` : `Live on ${nomL} ${depuis}`) + nature });
+      }
     }
     for (const p of d.logosEnLigne) {
       // (20/10) Pas encore vue en ligne (marqueur pas_encore_visible, migration 20261020220000) : même phrase
@@ -11336,7 +11385,7 @@ const StockTab = memo(function StockTab({
                   // tiret s'affichait en « mauvaise marge ». Gris = pas d'avis.
                   const mc=margeConnue?getMargeColor(item.marginPct):"#A3A9A6";
                   return(
-                    <SwipeRow key={item.id} onDelete={()=>delItem(item.id)} onEdit={()=>setEditItem({...item,_table:'inventaire',frais:(item.statut==='vendu'?item.sellingFees:item.purchaseCosts)??0,sell:item.sell??""})} style={{borderLeft:`3px solid ${getCatBorder(item.type)}`}}>
+                    <SwipeRow key={item.id} onDelete={()=>delItem(item.id)} onEdit={()=>setEditItem({...item,_table:'inventaire',frais:(item.statut==='vendu'?item.sellingFees:item.purchaseCosts)??0,sell:item.sell??"",_datesEnLigne:datesEnLigneDe(item)})} style={{borderLeft:`3px solid ${getCatBorder(item.type)}`}}>
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                           <div style={{fontWeight:700,fontSize:14,color:"#10201B",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
@@ -12164,7 +12213,8 @@ const StockTab = memo(function StockTab({
           par App — ses gestes, ses saisies — dans un écran ouvert d'ici. */}
       {gesteOuvert==='plus_en_ligne'&&plusEnLigne?.rendre&&(
         <EcranPlein lang={lang} titre={lang==='fr'?'Annonces plus en ligne':'Listings no longer online'} onFermer={()=>setGesteOuvert('a_regler')}>
-          {plusEnLigne.rendre({fermer:()=>setGesteOuvert(null)})}
+          {/* (31/10) Par le contexte d'App : la feuille suit chaque saisie même quand le Stock saute son rendu. */}
+          <ContenuPlusEnLigne fermer={()=>setGesteOuvert(null)} repli={plusEnLigne.rendre}/>
         </EcranPlein>
       )}
       {gesteOuvert==='lbc_identite'&&(
@@ -12621,11 +12671,11 @@ const StockTab = memo(function StockTab({
           « En ligne » ou sur « En ligne sur … » du menu). Les plateformes en ligne : celles de la carte (index, même
           source que les logos) ; les autres plateformes du compte n'apparaissent qu'avec un historique. */}
       {datesItem&&(()=>{
-        const enLigneD=indexEtat.get(String(datesItem.id))?.enLigne??indexEtatTout.get(String(datesItem.id))?.enLigne??[];
+        const dates=datesEnLigneDe(datesItem);
         return(
           <DatesEnLigne lang={lang} titre={datesItem.title}
-            plateformeFiltree={plateformeDatee&&enLigneD.includes(plateformeDatee)?plateformeDatee:null}
-            lignes={datesParPlateforme({item:datesItem,jobs:jobsByInventaire[datesItem.id]??[],enLigne:enLigneD,plateformes:plateformesCompte,datesRelevees})}
+            plateformeFiltree={dates.plateformeFiltree}
+            lignes={dates.lignes}
             onFermer={()=>setDatesItem(null)}/>
         );
       })()}
