@@ -4,6 +4,8 @@
 //   src/utils/publicationState.js
 //   src/utils/retenueServeur.js
 //   supabase/functions/_shared/attente-autre-boutique.js
+//   supabase/functions/_shared/retenue-creneau.js
+//   supabase/functions/_shared/file-pause.js
 //   supabase/functions/_shared/etat-job.js
 // Le popup lit globalThis.FILLSELL_ETAT_JOB — un seul calcul d'état, le même que l'app.
 (() => {
@@ -654,6 +656,156 @@ function reclasserAutreBoutique(job, logins, maintenant) {
 return { POSE_PAR_ORIGINE_PROUVEE, POSE_PAR_PAGE_EXACTE, POSE_PAR_PUBLICATION_BOUTIQUE, POSE_PAR_IDENTITE_PROUVEE, attenteBoutiqueLevable, messageAttenteBoutique, reclasserAutreBoutique };
 })();
 
+// ── supabase/functions/_shared/retenue-creneau.js ──────────────────────────────────────────────────
+__M.retenueCreneau = (() => {
+// ═══════════════════════════════════════════════════════════════════════════
+// UNE REPUBLICATION AUTO RETENUE PAR SON CRÉNEAU LE DIT (02/10 soir, point 2)
+// ═══════════════════════════════════════════════════════════════════════════
+// Règle inchangée (Nico, 12/09) : aucune republication AUTOMATIQUE ne part hors
+// du créneau choisi ; un créneau manqué n'est pas rattrapé, le job attend le
+// suivant. Ce qui manquait : le job gardait le message de son dernier essai.
+// jocabroc8 520ece42 (« Lot 2 plats creux… ») affichait depuis le 01/10 19:01
+// « On réessaie tout seuls dans trois quarts d'heure », alors qu'il était
+// retenu à chaque poll du lendemain (poste allumé seulement HORS de son créneau
+// 19:00–22:00) et que rien ne pouvait partir avant le créneau suivant.
+// Le message dit l'heure de reprise (celle que rend le serveur SQL,
+// republish_planifiee_fenetres_courantes) et la condition : Chrome ouvert à ce
+// moment-là. Pur (Deno + Node).
+
+const NOM = { vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla", depop: "Depop" };
+
+function quand(reprise) {
+  const t = Date.parse(String(reprise ?? ""));
+  if (!Number.isFinite(t)) return null;
+  try {
+    const jour = new Date(t).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", weekday: "long", day: "2-digit", month: "2-digit" });
+    const heure = new Date(t).toLocaleTimeString("fr-FR", { timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit" });
+    return `${jour} à ${heure}`;
+  } catch { return null; }
+}
+
+/**
+ * (15/10, P2 — Louis) Le message d'une republication auto retenue parce que la
+ * republication automatique de sa plateforme est EN PAUSE (« Tout mettre en
+ * pause », arrêt, palier perdu). Avant, une file déjà créée partait quand même :
+ * Louis a mis en pause à 20:13 le 14/10, trois republications Leboncoin sont
+ * parties entre 20:15 et 20:42.
+ */
+function messageRetenuePause(platform) {
+  const nom = NOM[platform] ?? platform ?? "";
+  return `Republication automatique ${nom ? `${nom} ` : ""}en pause : elle repartira quand tu relanceras la ` +
+    "republication automatique (Réglages). Ton annonce est intacte, rien n'a été retiré.";
+}
+
+/** Le message d'une republication auto retenue hors de son créneau. */
+function messageRetenueCreneau(platform, reprise) {
+  const nom = NOM[platform] ?? platform ?? "";
+  // (16/10, Nico) Jamais la date ni l'heure du créneau : « au prochain créneau », c'est tout.
+  void reprise;
+  return `Republication automatique ${nom ? `${nom} ` : ""}en attente de ton créneau : elle repartira ` +
+    "à l'ouverture de ton prochain créneau " +
+    "(heure de Paris), si Chrome est ouvert sur ton ordinateur à ce moment-là. Ton annonce est intacte, rien n'a été retiré.";
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// UNE REPUBLICATION DONT LA SUPPRESSION EST PARTIE VA AU BOUT (08/10, Louis)
+// ═══════════════════════════════════════════════════════════════════════════
+// Le 06/10, la suppression de « Insert / Rangement Bleu » (Beebs 32745154) est
+// partie à 21:58, dans le créneau 19:00–22:00. Beebs montrait encore l'annonce
+// deux minutes après (page et index en retard sur la suppression) : le job
+// s'est reprogrammé à 22:05, créneau fermé → retenu jusqu'au samedi 19:00 avec
+// « Ton annonce est intacte, rien n'a été retiré ». L'annonce n'était plus sur
+// Beebs (absente des relevés complets du 07/10 et du 08/10).
+// Règle : une retenue de gouvernance (créneau, plafond du jour, pause de
+// respiration) ne s'applique qu'à une annonce que personne n'a touchée. Dès que
+// la suppression est partie, le job va au bout, créneau fermé ou non : l'
+// extension relit d'abord « Mes annonces » et ne remet en ligne que sur PREUVE
+// de la suppression (jamais deux annonces). Marqueur posé depuis la 0.6.97
+// (republish_suppression_envoyee) ; avant, sa trace écrite (même lecture que
+// suppressionDejaEnvoyee dans l'extension).
+const SUPPRESSION_ENVOYEE_RE = /Suppression envoyée à (Beebs|Leboncoin|Opla|Vinted|Depop)/;
+
+/** Le retrait de l'annonce est-il engagé (supprimée, ou suppression envoyée) ? */
+function retraitEngage(job) {
+  const pf = (job && typeof job.platform_fields === "object" && job.platform_fields) || {};
+  if (pf.republish_step === "deleted" || pf.deleted_at) return true;
+  if (pf.republish_suppression_envoyee && typeof pf.republish_suppression_envoyee === "object") return true;
+  const textes = [
+    String(job?.error ?? ""),
+    String(pf.error_technique?.brut ?? ""),
+    ...(Array.isArray(pf.erreurs_archivees) ? pf.erreurs_archivees.map((e) => String(e?.erreur ?? "")) : []),
+  ];
+  return textes.some((t) => SUPPRESSION_ENVOYEE_RE.test(t));
+}
+
+return { messageRetenuePause, messageRetenueCreneau, retraitEngage };
+})();
+
+// ── supabase/functions/_shared/file-pause.js ──────────────────────────────────────────────────
+__M.filePause = (() => {
+// ═══════════════════════════════════════════════════════════════════════════
+// LA FILE EN PAUSE, LA SYNCHRO QUI PASSE DEVANT (22/10 soir, points 5 et 6 — Louis, validés par Nico)
+// ═══════════════════════════════════════════════════════════════════════════
+// Lu par get-pending-jobs (Deno), l'app (Vite) et les selftests (Node) : une seule définition.
+//
+// LA PAUSE (point 6) — profiles.platform_settings.file_pause.active, posé par la RPC file_pause_basculer.
+//   · Rien de ce qui n'a pas commencé ne part : publications et republications restent en file, dans leur ordre.
+//   · ⛔ JAMAIS EN PAUSE : un retrait (celui d'une vente — risque de double vente — comme celui que la personne a
+//     demandé), et une republication dont le retrait de l'ancienne annonce est engagé : elle va jusqu'à la remise
+//     en ligne, puis la file s'arrête.
+// LA SYNCHRO DEMANDÉE (point 5) — un geste de la personne (« Synchroniser », bouton, app) passe devant la file de
+//   publications : le serveur ne sert, sur le poll qui l'emporte, que ce qui ne peut pas attendre (retraits,
+//   republications dont l'annonce est déjà retirée). Une demande de plus de 10 min ne retient plus rien (jamais une
+//   file gelée par une demande que personne ne prend — leçon du 11/10, hu.anastasia).
+const { retraitEngage } = __M.retenueCreneau;
+/** La file est-elle en pause ? (platform_settings brut du profil) */
+function estFileEnPause(platformSettings) {
+  const v = platformSettings && typeof platformSettings === "object" ? platformSettings.file_pause : null;
+  return Boolean(v && typeof v === "object" && (v.active === true || String(v.active).toLowerCase() === "true"));
+}
+
+/** Une republication dont le retrait est engagé (annonce retirée ou retrait envoyé) : elle ne s'arrête jamais. */
+function republicationEngagee(job) {
+  return String(job?.action ?? "") === "republish" && retraitEngage(job);
+}
+
+/** Ce job attend-il la reprise ? (publication ou republication pas encore commencée) */
+function jobRetenuParPause(job) {
+  const action = String(job?.action ?? "publish");
+  if (action !== "publish" && action !== "republish") return false;   // un retrait n'est JAMAIS en pause
+  if (String(job?.status ?? "pending") === "processing") return false; // une tâche commencée va au bout
+  return !republicationEngagee(job);
+}
+
+/** Le déclencheur d'un relevé demandé PAR LA PERSONNE (pas la veille, pas le serveur). */
+function syncDemandeeParLaPersonne(declencheur) {
+  return /^(bouton|bouton_distant|app)(:redemande)?$/.test(String(declencheur ?? ""));
+}
+
+/** Une demande de synchro de la personne passe devant la file pendant 10 min au plus. */
+const SYNC_DEVANT_FILE_MS = 10 * 60_000;
+
+/** Ce job peut-il partir AVANT une synchro demandée ? (retraits, republications déjà retirées) */
+function passeAvantLaSynchro(job) {
+  const action = String(job?.action ?? "publish");
+  if (action !== "publish" && action !== "republish") return true;
+  return republicationEngagee(job);
+}
+
+/** La phrase de la pause, pour l'app et le popup. */
+// (31/10, lot F — Johan) UNE seule vérité : « En pause à ta demande », partout (ligne du job, compteurs, écrans, popup).
+function messageFileEnPause(n, lang = "fr") {
+  if (lang === "en") return n > 0 ? `Paused at your request: ${n} listing${n > 1 ? "s" : ""} waiting for you to resume. Removals after a sale keep going.` : "Paused at your request. Removals after a sale keep going.";
+  return n > 0 ? `En pause à ta demande : ${n} publication${n > 1 ? "s" : ""} attend${n > 1 ? "ent" : ""} ta reprise. Les retraits après une vente continuent.` : "En pause à ta demande. Les retraits après une vente continuent.";
+}
+
+/** (31/10, lot F) Le texte que le SERVEUR écrit sur une republication retenue par la pause (jamais « En file »). */
+const MESSAGE_REPUBLICATION_EN_PAUSE =
+  "En pause à ta demande : ta republication repartira quand tu reprendras ta file. Ton annonce est toujours en ligne.";
+
+return { estFileEnPause, republicationEngagee, jobRetenuParPause, syncDemandeeParLaPersonne, SYNC_DEVANT_FILE_MS, passeAvantLaSynchro, messageFileEnPause, MESSAGE_REPUBLICATION_EN_PAUSE };
+})();
+
 // ── supabase/functions/_shared/etat-job.js ──────────────────────────────────────────────────
 __M.etatJob = (() => {
 // ═══════════════════════════════════════════════════════════════════════════
@@ -690,6 +842,7 @@ __M.etatJob = (() => {
 const { attenteBoutiqueLevable } = __M.attenteAutreBoutique;
 const { retenueServeurDuJob, RETENUE_BOUTIQUE_INCONNUE } = __M.retenueServeur;
 const { estArretUtilisateur, estGeleLivres } = __M.publicationState;
+const { jobRetenuParPause } = __M.filePause;
 const ETATS = Object.freeze({
   EN_FILE: "en_file",
   EN_COURS: "en_cours",
@@ -838,6 +991,11 @@ function etatJob(j, ctx = {}) {
   const st = j.status;
 
   // ── Finis ──
+  // (31/10, lot F — Johan) Une republication close parce que l'annonce était DÉJÀ remise en ligne (nouveau numéro,
+  // vu au dernier relevé) : rien retiré ni recréé, l'annonce est en ligne — c'est fait, pas « arrêtée ».
+  if (st === "cancelled" && j.action === "republish" && pf.republication_sans_objet && typeof pf.republication_sans_objet === "object") {
+    return { etat: ETATS.FAIT, motif: "deja_en_ligne" };
+  }
   if (st === "cancelled" || estArretUtilisateur(j)) return { etat: ETATS.ARRETEE, motif: "arretee" };
   if (st === "failed") return { etat: ETATS.A_TOI, motif: "pas_partie" };
   if (j.action === "delete" && st === "deleted") return { etat: ETATS.FAIT, motif: "retiree" };
@@ -880,8 +1038,14 @@ function etatJob(j, ctx = {}) {
   if (st === "pending") {
     // (22/10 soir, point 6) La file mise en pause par la personne : publications et republications pas encore
     // commencées attendent la reprise (un retrait n'est jamais en pause ; une republication retirée est plus haut).
-    if (ctx.filePause && (j.action === "publish" || j.action === "republish")
-        && !(pf.deleted_at || pf.republish_suppression_envoyee)) return { etat: ETATS.EN_PAUSE, motif: "file_en_pause" };
+    // (31/10, lot F — Johan) La MÊME règle que le serveur (jobRetenuParPause, _shared/file-pause.js) : ce que
+    // get-pending-jobs garde en file, l'écran le dit « en pause à ta demande » — jamais un autre texte.
+    if (ctx.filePause && jobRetenuParPause(j)) return { etat: ETATS.EN_PAUSE, motif: "file_en_pause" };
+    // (31/10, lot F) Une republication dont l'annonce visée n'est plus dans le dernier relevé (get-pending-jobs,
+    // _shared/republication-cible.js) : rien n'est retiré, rien n'est recréé, FillSell attend le relevé.
+    if (j.action === "republish" && pf.cible_absente_releve && typeof pf.cible_absente_releve === "object") {
+      return { etat: ETATS.EN_PAUSE, motif: "releve" };
+    }
     // (26/10, D4) Une publication PROGRAMMÉE pas encore servie attend son créneau (réglage de la personne, « une à la
     // fois », plafond du jour) — jamais une heure. Réglage éteint (ctx.programmation faux) : elle part à son tour.
     if (j.action === "publish" && pf.programmee === true && !pf.programmee_servie_le && ctx.programmation) {

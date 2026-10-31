@@ -26,6 +26,7 @@ importScripts("messagerie.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
+  "2026-10-31-lot-f (0.6.162 : alarmes reposées à chaque démarrage du worker, mise à jour constatée sans onInstalled (journal maj_extension tout de suite, poll en 5 s), veille du poll qui relance un poll muet et recharge proprement un verrou figé — 2 fois par 6 h au plus, jamais pendant un job ; la page apprend si l’extension travaille pour son compte) · " +
   "2026-10-30-lot-e-finition (0.6.161 : étape « recreated » comprise — jamais « inconnue », le serveur tranche par les relevés ; adsubmit Leboncoin 2xx sans confirmation = dépôt inachevé, nouvel essai — jamais « publié » ; navigateur réel et rendu graphique du poste envoyés au serveur ; lectures Leboncoin coupées quand le serveur dit l'accès restreint) · 2026-10-16-messagerie-beta-5 (0.6.120 : bêta messagerie — Vinted : un 401 (jeton d'accès d'une heure expiré) fait renouveler le jeton comme la page puis refaire UNE fois la lecture, le chemin du bordereau ou l'envoi d'une réponse (jamais après une autre erreur)) — précédent : " +
   "2026-10-16-messagerie-beta-4 (0.6.119 : bêta messagerie — Beebs relevé (messages, réponse verrouillée par la liste blanche, commandes), mur « téléphone non vérifié » dit au lieu d'une messagerie vide ; commandes Depop ; bordereau Vinted / Leboncoin au CLIC dans l'app (demande → dernière marche une fois → copie 5 jours, nom unique)) — précédent : " +
   "2026-10-16-messagerie-beta-3 (0.6.118 : bêta messagerie — l'annonce d'une conversation Vinted est lue aussi dans item_ids quand item_id est vide (ventes passées), et la mémoire des fils déjà lus est oubliée une fois pour les relire, 5 par passage) — précédent : " +
@@ -835,6 +836,151 @@ chrome.runtime.onInstalled.addListener((details) => {
   }
 });
 
+// ══ (31/10, lot F — Sébastien) L'EXTENSION SE RÉTABLIT SEULE APRÈS UNE MISE À JOUR ══════════════════════════
+// sebastien64310, 31/10 : la 0.6.161 est installée par Chrome pendant que l'ancien worker est arrêté (après le poll de
+// 06:27:20 qui lui servait 19 jobs). Le nouveau worker démarre quatre fois (06:31:12 sur « Synchroniser », 06:34:07,
+// 06:39:19, 06:41:29 : la page FillSell ouverte) et ne lance JAMAIS de poll : Chrome efface les alarmes d'une
+// extension à sa mise à jour, et elles n'étaient reposées que dans runtime.onInstalled / onStartup — événement que ce
+// worker n'a pas reçu (aucune trace « installée », aucune alarme de 30 s pour le tenir éveillé). Sans alarme : plus de
+// poll, donc ni présence, ni version dans profiles, ni journal « maj_extension » (envoyé en fin de poll), ni job
+// démarré — Chrome ouvert (la page FillSell a appelé le serveur jusqu'à 08:20).
+// Désormais, À CHAQUE DÉMARRAGE du service worker, quel que soit l'événement qui le réveille :
+//   1. les alarmes sont reposées (creerAlarmeSiBesoin : rien si elles existent, aucune cadence relancée) ;
+//   2. un changement de version se constate sans onInstalled (version vue, storage.local) : trace « maj_extension »
+//      complétée et envoyée tout de suite, pont de la page réinjecté, poll dans les 5 s (la version arrive dans
+//      profiles au premier ping) ;
+//   3. la veille du poll (veillerPoll, au démarrage, à chaque alarme, à chaque appel de la page) relance un poll qui ne
+//      part plus et, quand le verrou des onglets reste tenu sans job commencé ni progrès, recharge l'extension —
+//      2 fois par 6 h au plus, jamais pendant un job, une republication retirée ou un relevé (raisonsDeNePasRecharger,
+//      la base fait foi). Un PC fermé n'exécute rien de tout ça : la règle « extension muette = PC fermé » est intacte.
+const VERSION_VUE_KEY = "fillsell_version_vue";
+const POLL_OK_KEY = "fillsell_dernier_poll_ok";
+const REDEMARRAGES_KEY = "fillsell_redemarrages_auto";
+const POLL_MUET_MS = 8 * 60_000;            // 4 alarmes de poll manquées
+const VERROU_FIGE_MS = 40 * 60_000;         // verrou tenu sans job commencé ni progrès
+const REDEMARRAGES_MAX = 2;
+const REDEMARRAGES_FENETRE_MS = 6 * 3600_000;
+let dernierProgresFlux = Date.now();        // prise du verrou, début/fin d'un job, poll réussi (mémoire seule)
+let veillePollEnCours = false;
+let tracePlafondRedemarrageLe = 0;
+
+/** La version qui tourne a-t-elle changé depuis le dernier démarrage ? Complète la trace de mise à jour sans
+ *  attendre runtime.onInstalled (perdu chez Sébastien le 31/10). Rend true quand une mise à jour est constatée. */
+async function constaterVersionAuDemarrage() {
+  const version = chrome.runtime.getManifest().version;
+  const s = await chrome.storage.local.get([VERSION_VUE_KEY, MAJ_TRACE_KEY]).catch(() => ({}));
+  const vue = s?.[VERSION_VUE_KEY];
+  const t = s?.[MAJ_TRACE_KEY];
+  if (vue?.version === version && vue?.build === FILLSELL_BUILD_ID) return false;
+  await chrome.storage.local.set({ [VERSION_VUE_KEY]: { version, build: FILLSELL_BUILD_ID, le: new Date().toISOString() } }).catch(() => {});
+  // Première version qui tient ce registre : une trace de rechargement laissée par l'ancienne version (sans
+  // « installee_le ») dit que c'est une mise à jour ; sinon rien ne prouve qu'on ne vient pas d'être installé.
+  const changement = Boolean(vue) || Boolean(t && !t.installee_le && (t.version_visee || t.ancienne_version) && t.ancienne_version !== version);
+  if (!changement) return false;
+  if (!t?.installee_le) {
+    await chrome.storage.local.set({ [MAJ_TRACE_KEY]: {
+      declencheur: "chrome", ...(t ?? {}),
+      ancienne_version: t?.ancienne_version ?? String(vue?.version ?? ""),
+      ...(t?.ancien_build || vue?.build ? { ancien_build: t?.ancien_build ?? String(vue?.build ?? "") } : {}),
+      installee_le: new Date().toISOString(),
+      constatee_au_demarrage: true,
+    } }).catch(() => {});
+  }
+  console.warn(`[background] mise à jour constatée au démarrage : ${vue?.version ?? t?.ancienne_version ?? "?"} → ${version} (${FILLSELL_BUILD_ID})`);
+  return true;
+}
+
+/** Un poll réussi depuis combien de temps (Infinity si jamais) — storage.local, survit aux redémarrages du worker. */
+async function msDepuisDernierPollOk() {
+  const s = await chrome.storage.local.get(POLL_OK_KEY).catch(() => ({}));
+  const t = Date.parse(String(s?.[POLL_OK_KEY] ?? ""));
+  return Number.isFinite(t) ? Date.now() - t : Infinity;
+}
+
+/** Recharge l'extension quand le verrou est figé — jamais sur un doute, jamais plus de 2 fois en 6 h. */
+async function redemarrerProprement(motif, detail) {
+  const maintenant = Date.now();
+  const s = await chrome.storage.local.get(REDEMARRAGES_KEY).catch(() => ({}));
+  const recents = (Array.isArray(s?.[REDEMARRAGES_KEY]) ? s[REDEMARRAGES_KEY] : [])
+    .filter((x) => Number.isFinite(Date.parse(x)) && maintenant - Date.parse(x) < REDEMARRAGES_FENETRE_MS);
+  if (recents.length >= REDEMARRAGES_MAX) {
+    if (maintenant - tracePlafondRedemarrageLe > 3600_000) {
+      tracePlafondRedemarrageLe = maintenant;
+      tracerRedemarrage("plafond_atteint", { ...detail, motif_vise: motif, redemarrages_recents: recents.length }).catch(() => {});
+    }
+    console.warn(`[background] veille du poll : verrou figé (${motif}) mais ${recents.length} redémarrages en 6 h — plus aucun avant la fenêtre suivante`);
+    return false;
+  }
+  if (travailEnCours || republishSupprimes.size) return false;   // un job commencé va au bout, jamais coupé
+  const raisons = await raisonsDeNePasRecharger();
+  if (raisons.length) {
+    console.log(`[background] veille du poll : verrou figé (${motif}), redémarrage REFUSÉ — ${raisons.join(" ; ")}`);
+    return false;
+  }
+  await chrome.storage.local.set({ [REDEMARRAGES_KEY]: [...recents, new Date().toISOString()] }).catch(() => {});
+  await tracerRedemarrage(motif, detail).catch(() => {});
+  console.warn(`[background] veille du poll : verrou figé (${motif}) — aucun job en vol, rechargement propre de l'extension`);
+  await fermerFenetresAvantMaj();
+  chrome.runtime.reload();
+  return true;
+}
+
+async function tracerRedemarrage(motif, detail) {
+  const session = await getValidSession();
+  const userId = session?.access_token ? decodeJwtSub(session.access_token) : null;
+  if (!userId) return;
+  await restRequest("usage_logs", session.access_token, {
+    method: "POST",
+    body: JSON.stringify({ user_id: userId, feature: "extension_redemarrage_auto", metadata: {
+      motif: String(motif).slice(0, 40), ...(detail ?? {}),
+      build: FILLSELL_BUILD_ID, version: chrome.runtime.getManifest().version, at: new Date().toISOString(),
+    } }),
+  });
+}
+
+/** La veille du poll : relance un poll qui ne part plus ; recharge proprement quand le verrou est figé. */
+async function veillerPoll(raison) {
+  if (veillePollEnCours) return;
+  veillePollEnCours = true;
+  try {
+    const session = await getValidSession();
+    if (!session?.access_token) return;                    // sans session, un poll ne servirait à rien
+    const depuis = await msDepuisDernierPollOk();
+    if (depuis < POLL_MUET_MS) return;
+    // (1) Personne ne tient le verrou et aucun poll n'attend : l'alarme ne le lance plus — on le lance.
+    if (!jobFlowBusyLabel && !pollEnAttenteDuVerrou) {
+      console.warn(`[background] veille du poll (${raison}) : aucun poll réussi depuis ${Number.isFinite(depuis) ? Math.round(depuis / 60000) + " min" : "toujours"} — poll relancé, alarmes reposées`);
+      await planifierAlarmes();
+      pollAndProcessJobs()?.catch?.(() => {});
+      return;
+    }
+    // (2) Le verrou est tenu sans job commencé et sans progrès : un flux figé (promesse jamais tenue) bloque tous
+    //     les polls suivants (un seul poll attend le verrou, 0.6.148). Rien ne le débloquerait avant un redémarrage
+    //     de Chrome.
+    const sansProgres = Date.now() - dernierProgresFlux;
+    if (jobFlowBusyLabel && !travailEnCours && sansProgres >= VERROU_FIGE_MS && depuis >= VERROU_FIGE_MS) {
+      await redemarrerProprement("verrou_fige", { flux: String(jobFlowBusyLabel).slice(0, 40), raison: String(raison).slice(0, 20),
+        sans_progres_min: Math.round(sansProgres / 60000), sans_poll_min: Number.isFinite(depuis) ? Math.round(depuis / 60000) : null });
+    }
+  } catch (e) {
+    console.log("[background] veille du poll (sans conséquence) :", String(e?.message ?? e));
+  } finally {
+    veillePollEnCours = false;
+  }
+}
+
+// Au démarrage du worker — après l'évaluation complète du script (les constantes d'alarmes sont déclarées plus bas).
+Promise.resolve().then(async () => {
+  await planifierAlarmes();
+  const majConstatee = await constaterVersionAuDemarrage().catch(() => false);
+  if (majConstatee) {
+    reinjecterPontFillsell("version_constatee").catch(() => {});
+    envoyerTraceMajSiBesoin().catch(() => {});
+    setTimeout(() => { pollAndProcessJobs()?.catch?.(() => {}); }, 5_000);
+  }
+  setTimeout(() => { veillerPoll("demarrage").catch(() => {}); }, 30_000);
+}).catch(() => {});
+
 // ═════════════════════════════════════════════════════════════════════════════
 // MISE À JOUR DE L'EXTENSION — ON LA PREND QUAND C'EST SÛR, PAS AU HASARD
 // (2026-09-10)
@@ -1084,7 +1230,13 @@ async function verifierCopieDevSurDisque() {
 }
 
 /** Envoie la trace du dernier passage de version, une seule fois. */
-async function envoyerTraceMajSiBesoin() {
+// (31/10, lot F) Appelée aussi au démarrage du worker (mise à jour constatée) : un envoi à la fois, jamais deux lignes.
+let envoiTraceMaj = null;
+function envoyerTraceMajSiBesoin() {
+  if (!envoiTraceMaj) envoiTraceMaj = envoyerTraceMajUnique().finally(() => { envoiTraceMaj = null; });
+  return envoiTraceMaj;
+}
+async function envoyerTraceMajUnique() {
   try {
     const s = await chrome.storage.local.get(MAJ_TRACE_KEY);
     const t = s?.[MAJ_TRACE_KEY];
@@ -1242,6 +1394,8 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === ALARM_NAME) {
     verifierCopieNonEmpaquetee();
     pollAndProcessJobs();
+    // (31/10, lot F) Un poll qui ne part plus, un verrou figé : rattrapés ici (veillerPoll, borné et sans risque).
+    veillerPoll("alarme").catch(() => {});
     // Rattrapage des runs de sync tués pendant que Chrome dormait (le chien de
     // garde des 32 min vit côté serveur : aucune alarme locale n'a pu être
     // armée). Auto-borné à un balayage toutes les 10 min, et JAMAIS bloquant
@@ -1565,6 +1719,29 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   // La FRAÎCHEUR prime sur la possession : cf. acceptRelayedSession.
   if (msg?.type === "FILLSELL_SESSION" && msg.session?.access_token) {
     acceptRelayedSession(msg.session).then(sendResponse);
+    veillerPoll("page").catch(() => {});   // (31/10, lot F) la page FillSell ouverte réveille aussi la veille du poll
+    return true;
+  }
+  // ── (31/10, lot F) LE COMPTE DE CETTE EXTENSION, DIT À LA PAGE (fausse alerte « autre compte ») ─────────────────
+  // La page concluait « extension sur un autre compte » d'un simple silence (aucun passage noté depuis 6 min) : Johan
+  // (extension qui pinguait entre deux longs cycles), Sébastien (worker muet après sa mise à jour). Le pont demande ici
+  // si CETTE extension travaille pour le compte connecté sur la page : oui / non / inconnu — jamais l'identité de
+  // l'autre compte. La demande réveille aussi la veille du poll (le worker muet se rétablit pendant que la page attend).
+  if (msg?.type === "FILLSELL_ETAT_COMPTE") {
+    (async () => {
+      try {
+        const session = await getValidSession();
+        const dernier = await lireLastUser();
+        const sub = (session?.access_token ? decodeJwtSub(session.access_token) : null) ?? dernier?.sub ?? null;
+        const page = String(msg.sub ?? "").trim();
+        const s = await chrome.storage.local.get(POLL_OK_KEY).catch(() => ({}));
+        sendResponse({ ok: true, connecte: Boolean(sub), meme: sub && page ? sub === page : null,
+          poll_ok_le: s?.[POLL_OK_KEY] ?? null, version: chrome.runtime.getManifest().version, build: FILLSELL_BUILD_ID });
+      } catch {
+        sendResponse({ ok: false });
+      }
+      veillerPoll("page").catch(() => {});
+    })();
     return true;
   }
   if (msg?.type === "POLL_NOW") {
@@ -2785,6 +2962,7 @@ function withJobFlowLock(label, fn) {
     jobFlowWaiters = Math.max(0, jobFlowWaiters - 1);
     noterAttenteVerrou(label, -1);
     jobFlowBusyLabel = label;
+    dernierProgresFlux = Date.now();   // (31/10, lot F) la veille du poll mesure le progrès du flux qui tient le verrou
     const arreterBattement = demarrerBattementPresence(label);
     try {
       // (29/10, lot C 1 — 0.6.159) Une lecture qu'une personne attend passe devant le flux qui prend son tour.
@@ -2794,6 +2972,7 @@ function withJobFlowLock(label, fn) {
       arreterBattement();
       travailEnCours = null;
       jobFlowBusyLabel = null;
+      dernierProgresFlux = Date.now();
     }
   });
   jobFlowTail = run.catch(() => {});
@@ -4246,6 +4425,9 @@ async function pollAndProcessJobsUnlocked() {
       ...ceQueLePosteDitDeLui(),
     });
     dernierSigneDeVieEnvoye = Date.now();   // (29/10) ce poll a stampé la présence : pas de battement avant 5 min
+    // (31/10, lot F) Le dernier poll RÉUSSI, survivant aux redémarrages du worker : la veille du poll s'y règle.
+    dernierProgresFlux = Date.now();
+    chrome.storage.local.set({ [POLL_OK_KEY]: new Date().toISOString() }).catch(() => {});
     jobs = rep.jobs;
     tachesDuCycle = Array.isArray(jobs) ? jobs.length : 0;
     // (03/10, point 24) Poste sous le seuil de version : le serveur ne sert
@@ -4889,6 +5071,7 @@ async function processJob(rawJob, accessToken) {
   // sur CE job (jamais « ordinateur arrêté », jamais remis en file sous ses pieds). Effacé après la tâche par la boucle
   // du cycle et, au plus tard, à la sortie du verrou.
   travailEnCours = { job: String(rawJob?.id ?? ""), plateforme: String(rawJob?.platform ?? ""), depuis: new Date().toISOString() };
+  dernierProgresFlux = Date.now();   // (31/10, lot F) un job qui commence est un progrès du flux
   const job = sanitizeJob(rawJob);
   // (0.6.106) Un job Vinted travaille sur le domaine où la personne est
   // connectée (vinted.fr sauf vendeur étranger qui a autorisé le sien).

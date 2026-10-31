@@ -32,6 +32,7 @@
 import { attenteBoutiqueLevable } from "./attente-autre-boutique.js";
 import { retenueServeurDuJob, RETENUE_BOUTIQUE_INCONNUE } from "../../../src/utils/retenueServeur.js";
 import { estArretUtilisateur, estGeleLivres } from "../../../src/utils/publicationState.js";
+import { jobRetenuParPause } from "./file-pause.js";
 
 export const ETATS = Object.freeze({
   EN_FILE: "en_file",
@@ -181,6 +182,11 @@ export function etatJob(j, ctx = {}) {
   const st = j.status;
 
   // ── Finis ──
+  // (31/10, lot F — Johan) Une republication close parce que l'annonce était DÉJÀ remise en ligne (nouveau numéro,
+  // vu au dernier relevé) : rien retiré ni recréé, l'annonce est en ligne — c'est fait, pas « arrêtée ».
+  if (st === "cancelled" && j.action === "republish" && pf.republication_sans_objet && typeof pf.republication_sans_objet === "object") {
+    return { etat: ETATS.FAIT, motif: "deja_en_ligne" };
+  }
   if (st === "cancelled" || estArretUtilisateur(j)) return { etat: ETATS.ARRETEE, motif: "arretee" };
   if (st === "failed") return { etat: ETATS.A_TOI, motif: "pas_partie" };
   if (j.action === "delete" && st === "deleted") return { etat: ETATS.FAIT, motif: "retiree" };
@@ -223,8 +229,14 @@ export function etatJob(j, ctx = {}) {
   if (st === "pending") {
     // (22/10 soir, point 6) La file mise en pause par la personne : publications et republications pas encore
     // commencées attendent la reprise (un retrait n'est jamais en pause ; une republication retirée est plus haut).
-    if (ctx.filePause && (j.action === "publish" || j.action === "republish")
-        && !(pf.deleted_at || pf.republish_suppression_envoyee)) return { etat: ETATS.EN_PAUSE, motif: "file_en_pause" };
+    // (31/10, lot F — Johan) La MÊME règle que le serveur (jobRetenuParPause, _shared/file-pause.js) : ce que
+    // get-pending-jobs garde en file, l'écran le dit « en pause à ta demande » — jamais un autre texte.
+    if (ctx.filePause && jobRetenuParPause(j)) return { etat: ETATS.EN_PAUSE, motif: "file_en_pause" };
+    // (31/10, lot F) Une republication dont l'annonce visée n'est plus dans le dernier relevé (get-pending-jobs,
+    // _shared/republication-cible.js) : rien n'est retiré, rien n'est recréé, FillSell attend le relevé.
+    if (j.action === "republish" && pf.cible_absente_releve && typeof pf.cible_absente_releve === "object") {
+      return { etat: ETATS.EN_PAUSE, motif: "releve" };
+    }
     // (26/10, D4) Une publication PROGRAMMÉE pas encore servie attend son créneau (réglage de la personne, « une à la
     // fois », plafond du jour) — jamais une heure. Réglage éteint (ctx.programmation faux) : elle part à son tour.
     if (j.action === "publish" && pf.programmee === true && !pf.programmee_servie_le && ctx.programmation) {

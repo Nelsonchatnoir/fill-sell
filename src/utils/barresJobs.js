@@ -62,6 +62,7 @@ const TEXTES = {
     remiseCourt: "Remise en ligne…",
     finPublie: (p) => `En ligne sur ${p}.`,
     finRepublie: (p) => `De retour en tête sur ${p}.`,
+    dejaEnLigne: (p) => `Déjà remise en ligne sur ${p} : rien retiré ni recréé.`,
     finRetire: (p) => `Retirée de ${p}.`,
     geste: "À toi de jouer.",
     pasPartie: "Elle n'est pas partie : à relancer.",
@@ -91,6 +92,7 @@ const TEXTES = {
     remiseCourt: "Going back online…",
     finPublie: (p) => `Online on ${p}.`,
     finRepublie: (p) => `Back at the top on ${p}.`,
+    dejaEnLigne: (p) => `Already back online on ${p}: nothing removed or recreated.`,
     finRetire: (p) => `Removed from ${p}.`,
     geste: "Your move.",
     pasPartie: "It didn't go out: to relaunch.",
@@ -170,6 +172,10 @@ export function pisteJob(job, ctx = {}) {
   const horsLigne = step === "deleted";
 
   // ── Fini ──
+  // (31/10, lot F) Une republication close parce que l’annonce était déjà remise en ligne : faite, jamais « arrêtée ».
+  if (job?.action === "republish" && job?.status === "cancelled" && pf.republication_sans_objet && typeof pf.republication_sans_objet === "object") {
+    return { ...base, etape: etapes.at(-1).cle, etat: "termine", phraseFin: T.dejaEnLigne(nom) };
+  }
   const reussi = job?.action === "delete"
     ? job?.status === "deleted"
     : job?.action === "republish"

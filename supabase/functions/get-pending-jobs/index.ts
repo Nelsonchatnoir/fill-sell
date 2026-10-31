@@ -1,5 +1,6 @@
 import { recreationRetientFile } from "../_shared/file-republication.js";
-import { estFileEnPause, jobRetenuParPause, syncDemandeeParLaPersonne, SYNC_DEVANT_FILE_MS, passeAvantLaSynchro } from "../_shared/file-pause.js";
+import { estFileEnPause, jobRetenuParPause, syncDemandeeParLaPersonne, SYNC_DEVANT_FILE_MS, passeAvantLaSynchro, MESSAGE_REPUBLICATION_EN_PAUSE } from "../_shared/file-pause.js";
+import { republicationAJuger, jugerCibleRepublication, messageRepublicationSansObjet, messageCibleAbsente } from "../_shared/republication-cible.js";
 import { reglageProgrammation, estProgrammee, servieAujourdhui, decisionProgrammee, ordreProgrammeesPretesDabord } from "../_shared/publication-programmee.js";
 import { estApresRestrictionVinted } from "../_shared/reprise-apres-restriction.js";
 import { premiereSynchroAPoser, PREMIERE_SYNCHRO_JOURS_DEFAUT } from "../_shared/premiere-synchro.js";
@@ -2585,6 +2586,18 @@ serve(async (req) => {
         psProfil = (profPause as { platform_settings?: unknown } | null)?.platform_settings ?? null;
         filePause = estFileEnPause(psProfil);
       } catch (_e) { /* jamais un point de panne : file servie comme avant */ }
+      // (31/10, lot F) La file reprise : une ligne qui disait « En pause à ta demande » repasse « En file » (seulement
+      // dans les 24 h qui suivent la reprise — une écriture des seules lignes concernées, rien sinon).
+      if (!filePause) {
+        try {
+          const fpR = (psProfil as Record<string, unknown> | null)?.["file_pause"] as Record<string, unknown> | undefined;
+          const reprisLe = Date.parse(String(fpR?.["repris_le"] ?? ""));
+          if (Number.isFinite(reprisLe) && Date.now() - reprisLe < 24 * 3600_000) {
+            await userClient.from("cross_post_jobs").update({ error: MESSAGE_EN_FILE })
+              .eq("user_id", user.id).eq("status", "pending").eq("error", MESSAGE_REPUBLICATION_EN_PAUSE);
+          }
+        } catch (_e) { /* un texte : jamais un point de panne */ }
+      }
       if (filePause && out.length) {
         for (const j of out) if (jobRetenuParPause(j)) idsEnPause.add(String(j.id));
         if (idsEnPause.size) {
@@ -3111,6 +3124,95 @@ serve(async (req) => {
       }
     }
 
+    // ══ (31/10, lot F — Johan) UNE REPUBLICATION VISE L'ANNONCE EN LIGNE ACTUELLE, JAMAIS UN NUMÉRO PÉRIMÉ ══
+    // (_shared/republication-cible.js) Avant de servir une republication pas encore engagée (rien retiré) sur
+    // Leboncoin, Depop ou Beebs : le numéro visé est-il vu au DERNIER relevé probant de la plateforme ? Absent alors
+    // que la fiche a une annonce plus récente vue dans ce relevé → close « déjà remise en ligne » (rien retiré ni
+    // recréé, jamais de doublon). Absent sans successeur → retenue avant tout retrait (jamais sur Beebs). Bornée :
+    // une lecture des relevés par plateforme visée, une lecture des annonces des fiches servies. Illisible → servi.
+    // Placée APRÈS la pause : une file en pause ne sert rien, donc ne touche à rien.
+    if (!includeProcessing && !includeNeedsUser) {
+      try {
+        const aJuger = out.filter((j) => republicationAJuger(j));
+        if (aJuger.length) {
+          const adminC = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+          const plateformes = [...new Set(aJuger.map((j) => String(j.platform)))];
+          const releveDe = new Map<string, { id: string; started_at: string } | null>();
+          for (const pfC of plateformes) {
+            const { data: runs } = await adminC.from("vinted_sync_runs").select("id, started_at")
+              .eq("user_id", user.id).eq("platform", pfC).eq("kind", "annonces").eq("status", "done")
+              .order("started_at", { ascending: false }).limit(5);
+            let probant: { id: string; started_at: string } | null = null;
+            for (const r of (runs ?? []) as Array<{ id: string; started_at: string }>) {
+              const { data: ok } = await adminC.rpc("releve_preuve_absence", { p_run: r.id });
+              if (ok === true) { probant = r; break; }
+            }
+            releveDe.set(pfC, probant);
+          }
+          const fiches = [...new Set(aJuger.map((j) => String(j.inventaire_id)))].slice(0, 200);
+          const { data: lignes } = await adminC.from("annonces_plateforme")
+            .select("listing_id, platform, inventaire_id, vu_le, publiee_le, created_at")
+            .eq("user_id", user.id).in("platform", plateformes).in("inventaire_id", fiches).is("disparu_le", null).limit(1000);
+          const cibles = [...new Set(aJuger.map((j) => String(j.platform_listing_id)))].slice(0, 200);
+          const { data: lignesCibles } = await adminC.from("annonces_plateforme")
+            .select("listing_id, platform, vu_le").eq("user_id", user.id).in("platform", plateformes).in("listing_id", cibles).limit(1000);
+          const { data: depots } = await adminC.from("cross_post_jobs")
+            .select("platform, platform_listing_id, published_at")
+            .eq("user_id", user.id).in("platform", plateformes).in("platform_listing_id", cibles)
+            .in("action", ["publish", "republish"]).not("published_at", "is", null).limit(1000);
+          const retires = new Set<string>();
+          for (const j of aJuger) {
+            const pfJ = String(j.platform), cibleId = String(j.platform_listing_id);
+            const cible = ((lignesCibles ?? []) as Array<Record<string, unknown>>).find((a) => a.platform === pfJ && String(a.listing_id) === cibleId) ?? null;
+            const fiche = ((lignes ?? []) as Array<Record<string, unknown>>).filter((a) => a.platform === pfJ && String(a.inventaire_id) === String(j.inventaire_id));
+            const publieeLe = ((depots ?? []) as Array<Record<string, unknown>>)
+              .filter((d) => d.platform === pfJ && String(d.platform_listing_id) === cibleId)
+              .map((d) => String(d.published_at)).sort()[0] ?? null;
+            const v = jugerCibleRepublication({ job: j, releve: releveDe.get(pfJ) ?? null, cible, fiche, publieeLe });
+            if (v.verdict === "servir") continue;
+            const pfV = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
+            const releveV = releveDe.get(pfJ);
+            if (v.verdict === "sans_objet") {
+              pfV["republication_sans_objet"] = { successeur: v.successeur, successeurs: v.successeurs, cible: cibleId, releve: releveV?.id ?? null, le: new Date().toISOString(), par: "get-pending-jobs" };
+              delete pfV["cible_absente_releve"];
+              if (j.error) pfV["erreurs_archivees"] = archiverErreur(pfV["erreurs_archivees"], j.error, "pending", "get-pending-jobs (republication sans objet : annonce déjà remise en ligne)");
+              const { data: majC } = await adminC.from("cross_post_jobs")
+                .update({ status: "cancelled", error: messageRepublicationSansObjet(pfJ, String(v.successeur)), platform_fields: pfV })
+                .eq("id", String(j.id)).eq("status", "pending").select("id");
+              if ((majC ?? []).length) {
+                retires.add(String(j.id));
+                console.log(`[get-pending-jobs] userId=${user.id} : republication ${pfJ} ${String(j.id).slice(0, 8)} SANS OBJET — ${cibleId} absente du relevé ${String(releveV?.id ?? "").slice(0, 8)}, déjà remise en ligne sous ${v.successeur} ; rien retiré ni recréé`);
+              }
+              continue;
+            }
+            // cible_absente : retenue avant tout retrait — écrite une fois (aucune ligne inchangée réécrite).
+            retires.add(String(j.id));
+            const marque = pfV["cible_absente_releve"] as Record<string, unknown> | undefined;
+            const msgA = messageCibleAbsente(pfJ, cibleId);
+            if (marque && typeof marque === "object" && marque["releve"] === (releveV?.id ?? null) && String(j.error ?? "") === msgA) continue;
+            pfV["cible_absente_releve"] = { cible: cibleId, releve: releveV?.id ?? null, releve_le: releveV?.started_at ?? null, le: new Date().toISOString() };
+            if (j.error && String(j.error) !== msgA) pfV["erreurs_archivees"] = archiverErreur(pfV["erreurs_archivees"], j.error, "pending", "get-pending-jobs (cible absente du relevé)");
+            await adminC.from("cross_post_jobs").update({ error: msgA, platform_fields: pfV }).eq("id", String(j.id)).eq("status", "pending");
+            console.log(`[get-pending-jobs] userId=${user.id} : republication ${pfJ} ${String(j.id).slice(0, 8)} RETENUE — ${cibleId} absente du relevé ${String(releveV?.id ?? "").slice(0, 8)}, aucune annonce plus récente sur la fiche ; rien retiré`);
+          }
+          if (retires.size) out = out.filter((j) => !retires.has(String(j.id)));
+          // Une republication marquée « cible absente » que le dernier relevé revoit repart : la marque s'efface.
+          for (const j of aJuger) {
+            if (retires.has(String(j.id))) continue;
+            const pfR = (j.platform_fields ?? {}) as Record<string, unknown>;
+            if (!pfR["cible_absente_releve"]) continue;
+            const pfW = { ...pfR }; delete pfW["cible_absente_releve"];
+            const msgAvant = String(j.error ?? "");
+            const { data: majR } = await adminC.from("cross_post_jobs")
+              .update({ error: msgAvant.startsWith("En pause, rien n'a été retiré : l'annonce ") ? null : j.error, platform_fields: pfW })
+              .eq("id", String(j.id)).eq("status", "pending").select("id");
+            if ((majR ?? []).length) { j.platform_fields = pfW; if (msgAvant.startsWith("En pause, rien n'a été retiré : l'annonce ")) j.error = null; }
+          }
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] garde « cible de republication » : ${String((e as Error)?.message ?? e)} — distribution normale`);
+      }
+    }
     // ══ PAS DE RETRAIT SANS RECRÉATION GARANTIE (02/10 soir, point 10 B) ══════
     // Le pré-vol de l'extension ne juge « requis » que ce que la config Vinted
     // marque requis ; or Vinted EXIGE au dépôt des champs que sa config dit
@@ -13324,12 +13426,15 @@ serve(async (req) => {
             const pfW: Record<string, unknown> = { ...pfM, ...levee.champs };
             for (const k of levee.retirer) delete pfW[k];
             if (m["error"]) pfW["erreurs_archivees"] = archiverErreur(pfW["erreurs_archivees"], m["error"], "pending", "get-pending-jobs (retenue levée : l'annonce retirée est revenue)");
+            // (31/10, lot F — Johan) La file en pause : la republication attend la REPRISE, pas « son tour » — le texte
+            // de la ligne dit la même chose que l'app (jamais « En file » pendant une pause demandée).
+            const msgL = filePause && jobRetenuParPause({ ...m, action: "republish", status: "pending", platform_fields: pfW } as never) ? MESSAGE_REPUBLICATION_EN_PAUSE : MESSAGE_EN_FILE;
             const { data: majL } = await adminR.from("cross_post_jobs")
-              .update({ error: MESSAGE_EN_FILE, platform_fields: pfW })
+              .update({ error: msgL, platform_fields: pfW })
               .eq("id", String(m["id"])).eq("status", "pending").select("id");
             if ((majL ?? []).length) {
               const ji = out.find((j) => String(j.id) === String(m["id"]));
-              if (ji) { ji.platform_fields = pfW; ji.error = MESSAGE_EN_FILE; }
+              if (ji) { ji.platform_fields = pfW; ji.error = msgL; }
               console.log(`[get-pending-jobs] userId=${user.id} : retenue levée sur ${String(m["id"]).slice(0, 8)} (l'annonce du job ${String((pfM["retenue_hors_ligne"] as Record<string, unknown> | null)?.["job"] ?? "").slice(0, 8)} est revenue)`);
             }
           }

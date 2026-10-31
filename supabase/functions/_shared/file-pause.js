@@ -49,7 +49,12 @@ export function passeAvantLaSynchro(job) {
 }
 
 /** La phrase de la pause, pour l'app et le popup. */
+// (31/10, lot F — Johan) UNE seule vérité : « En pause à ta demande », partout (ligne du job, compteurs, écrans, popup).
 export function messageFileEnPause(n, lang = "fr") {
-  if (lang === "en") return n > 0 ? `Queue paused: ${n} listing${n > 1 ? "s" : ""} waiting. Removals after a sale keep going.` : "Queue paused. Removals after a sale keep going.";
-  return n > 0 ? `File en pause : ${n} publication${n > 1 ? "s" : ""} en attente. Les retraits après une vente continuent.` : "File en pause. Les retraits après une vente continuent.";
+  if (lang === "en") return n > 0 ? `Paused at your request: ${n} listing${n > 1 ? "s" : ""} waiting for you to resume. Removals after a sale keep going.` : "Paused at your request. Removals after a sale keep going.";
+  return n > 0 ? `En pause à ta demande : ${n} publication${n > 1 ? "s" : ""} attend${n > 1 ? "ent" : ""} ta reprise. Les retraits après une vente continuent.` : "En pause à ta demande. Les retraits après une vente continuent.";
 }
+
+/** (31/10, lot F) Le texte que le SERVEUR écrit sur une republication retenue par la pause (jamais « En file »). */
+export const MESSAGE_REPUBLICATION_EN_PAUSE =
+  "En pause à ta demande : ta republication repartira quand tu reprendras ta file. Ton annonce est toujours en ligne.";

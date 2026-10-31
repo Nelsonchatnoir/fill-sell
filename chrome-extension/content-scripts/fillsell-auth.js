@@ -178,8 +178,41 @@
     if (!pontVivant()) return;
     try { window.postMessage({ __fillsellExt: true, version: chrome.runtime?.getManifest?.().version ?? null }, window.location.origin); } catch { /* coupée */ }
   };
+  // (31/10, lot F) La présence ci-dessus ne dit PAS que l'extension travaille : ce script répond seul, même quand le
+  // service worker est muet. La page apprend ici si l'extension de ce navigateur travaille pour le compte connecté
+  // (meme : oui / non / inconnu), et si son service worker répond (vivant). Seul « meme: false » prouve un autre
+  // compte ; un silence n'est jamais « autre compte ». La demande réveille aussi le service worker (veille du poll).
+  const compteDeLaPage = () => {
+    try {
+      const jeton = readSupabaseSession()?.access_token;
+      if (!jeton) return null;
+      const b64 = String(jeton).split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+      return JSON.parse(atob(b64))?.sub ?? null;
+    } catch { return null; }
+  };
+  const annoncerCompte = () => {
+    if (!pontVivant()) return;
+    let fini = false;
+    const dire = (etat) => {
+      if (fini) return;
+      fini = true;
+      try { window.postMessage({ __fillsellCompte: etat }, window.location.origin); } catch { /* coupée */ }
+    };
+    const garde = setTimeout(() => dire({ vivant: false }), 4000);
+    try {
+      chrome.runtime.sendMessage({ type: "FILLSELL_ETAT_COMPTE", sub: compteDeLaPage() }, (rep) => {
+        void chrome.runtime.lastError;
+        clearTimeout(garde);
+        dire(rep?.ok
+          ? { vivant: true, meme: typeof rep.meme === "boolean" ? rep.meme : null, connecte: rep.connecte === true,
+              poll_ok_le: rep.poll_ok_le ?? null, version: rep.version ?? null }
+          : { vivant: false });
+      });
+    } catch { clearTimeout(garde); dire({ vivant: false }); }
+  };
   annoncer();
+  annoncerCompte();
   window.addEventListener("message", (e) => {
-    if (e.source === window && e.data?.__fillsellPing) annoncer();
+    if (e.source === window && e.data?.__fillsellPing) { annoncer(); annoncerCompte(); }
   });
 })();

@@ -92,7 +92,7 @@ const TEXTE = {
     limite_jour: "En pause (rythme de republication) : elle repart toute seule",
     creneau: "En pause (créneau de republication) : elle repart toute seule au prochain créneau",
     auto_en_pause: "Republication automatique en pause : elle repartira quand tu la relanceras. Ton annonce est intacte",
-    file_en_pause: "Ta file est en pause : elle partira quand tu la reprendras",
+    file_en_pause: "En pause à ta demande : elle partira quand tu reprendras ta file",
     programmee: "Programmée : elle partira dans ton créneau, une à la fois",
     essai: "En pause : nouvel essai automatique, rien à faire",
     plateforme: (p) => `En pause : ${p} est en pause de notre côté — reprise automatique`,
@@ -130,7 +130,7 @@ const TEXTE = {
     limite_jour: "Paused (repost pacing): it resumes on its own",
     creneau: "Paused (repost time slot): it resumes on its own at the next slot",
     auto_en_pause: "Automatic reposting is paused: it resumes when you restart it. Your listing is untouched",
-    file_en_pause: "Your queue is paused: it goes out when you resume it",
+    file_en_pause: "Paused at your request: it goes out when you resume your queue",
     programmee: "Scheduled: it goes out in your time slot, one at a time",
     essai: "Paused: automatic retry, nothing to do",
     plateforme: (p) => `Paused: ${p} is paused on our side — resumes automatically`,
@@ -243,6 +243,8 @@ export function lireFile(jobs, ctx = {}) {
   const compteurs = {
     enCoursOuEnFile: groupes.en_cours.length + groupes.en_file.length,
     enPause: groupes.en_pause.length,
+    // (31/10, lot F — Johan) La part des « en pause » que la personne a demandée : sa pause de file.
+    enPauseDemande: groupes.en_pause.filter((l) => l.situation.motif === "file_en_pause").length,
     aToi: groupes.a_toi.length,
   };
   return { ...groupes, compteurs, total: compteurs.enCoursOuEnFile + compteurs.enPause + compteurs.aToi };
@@ -253,7 +255,10 @@ export function phraseCompteurs(c, lang = "fr") {
   const fr = lang !== "en";
   const parts = [];
   if (c.enCoursOuEnFile) parts.push(fr ? `${c.enCoursOuEnFile} en cours ou en file` : `${c.enCoursOuEnFile} in progress or queued`);
-  if (c.enPause) parts.push(fr ? `${c.enPause} en pause` : `${c.enPause} paused`);
+  // (31/10, lot F) La pause demandée se dit par son nom ; les autres pauses (relevé, créneau…) restent « en pause ».
+  const demande = c.enPauseDemande ?? 0;
+  if (demande) parts.push(fr ? `${demande} en pause à ta demande` : `${demande} paused at your request`);
+  if (c.enPause - demande > 0) parts.push(fr ? `${c.enPause - demande} en pause` : `${c.enPause - demande} paused`);
   if (c.aToi) parts.push(fr ? `${c.aToi} à toi de jouer` : `${c.aToi} your move`);
   if (!parts.length) return fr ? "Rien en cours ni en file" : "Nothing in progress or queued";
   return parts.join(" · ");

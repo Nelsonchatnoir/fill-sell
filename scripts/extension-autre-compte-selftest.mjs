@@ -17,7 +17,7 @@ const ok = (cond, msg) => { assert.ok(cond, msg); n++; console.log(`  ✓ ${msg}
 
 // Le module importe React et vintedSync (supabase) : on lit ses fonctions pures sans les charger.
 const src = lire('src/utils/extensionAutreCompte.js');
-const pures = src.slice(src.indexOf('export const SILENCE_AUTRE_COMPTE_MS'), src.indexOf('/**\n * true quand'));
+const pures = src.slice(src.indexOf('export const SILENCE_AUTRE_COMPTE_MS'), src.indexOf('/**\n * { autreCompte, muette }'));
 const tmp = join(ROOT, 'build', `.selftest-autre-compte-${process.pid}.mjs`);
 fs.mkdirSync(join(ROOT, 'build'), { recursive: true });
 fs.writeFileSync(tmp, pures);
@@ -55,6 +55,12 @@ ok((s.match(/extensionAutreCompte=\{extensionAutreCompte\}/g) || []).length === 
 const iAlertes = s.indexOf('const alertesCompte = (() => {');
 const iAlerte = s.indexOf("cle: 'ext-autre-compte'");
 ok(iAlertes > 0 && iAlerte > iAlertes && iAlerte < s.indexOf('if (isMobile && !stockVide) {', iAlertes), 'alerte dans les points du compte, stock VIDE compris (jamais un bandeau)');
-ok(/feature: 'extension_autre_compte'/.test(s), 'constat journalisé (usage_logs extension_autre_compte)');
+// (31/10, lot F) « Autre compte » seulement sur PREUVE : le constat se journalise sous son nom, un silence à part.
+ok(/feature: etat === 'autre_compte' \? 'extension_autre_compte' : 'extension_muette'/.test(s)
+  && /preuve: etat === 'autre_compte' \? 'compte_extension' : 'silence'/.test(s),
+  'constat journalisé (usage_logs extension_autre_compte sur preuve, extension_muette sur silence)');
+ok(m.etatExtensionDuNavigateur({ compte: null, silenceConfirme: true }) === 'muette'
+  && m.etatExtensionDuNavigateur({ compte: { vivant: true, meme: false } }) === 'autre_compte',
+  'un silence n\'est jamais « autre compte » ; la preuve donnée par l\'extension, si (lot F, 31/10)');
 
 console.log(`\n✓ extension-autre-compte : ${n} contrôles verts`);

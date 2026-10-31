@@ -11,7 +11,7 @@ import { createPortal } from 'react-dom';
 // varsIgnorePattern '^[A-Z_]' exempte tout identifiant capitalisé, donc un
 // import de composant orphelin passe sous le radar — vérifié à la main.
 import { Check, ChevronRight, AlertTriangle, Pause } from 'lucide-react';
-import { useExtensionAutreCompte, texteExtensionAutreCompte } from '../utils/extensionAutreCompte';
+import { useExtensionAutreCompte, texteExtensionAutreCompte, texteExtensionMuette } from '../utils/extensionAutreCompte';
 import { noterGeste } from '../utils/dernierGeste';
 import SectionAVerifier from '../stock/SectionAVerifier';
 import { useTranslation } from '../i18n/useTranslation';
@@ -7941,6 +7941,8 @@ const StockTab = memo(function StockTab({
       return stockFiltre.filter(i => {
         const last = repubDernier[i.id];
         if (!last) return false;
+        // (31/10, lot F) Close parce que l'annonce était déjà remise en ligne : faite, rien à relancer.
+        if (last.status === 'cancelled' && last.platform_fields?.republication_sans_objet) return false;
         return last.status === 'failed' || last.status === 'cancelled';
       });
     }
@@ -7994,13 +7996,18 @@ const StockTab = memo(function StockTab({
   const extFraicheur = fraicheurExtension(extLastSeenBest, extSessionRejetee);
   // (15/10, P18) L'extension qui répond dans CE navigateur ne travaille pas
   // pour ce compte (cas Stéphanie) : constaté une fois par page, journalisé.
-  const extensionAutreCompte = useExtensionAutreCompte({
+  // (31/10, lot F) « Autre compte » seulement quand l'extension le DIT (preuve) ;
+  // un silence devient « Ton ordinateur ne répond pas » (À régler, sans durée).
+  const { autreCompte: extensionAutreCompte, muette: extensionMuette } = useExtensionAutreCompte({
     isNative, userId: user?.id ?? null,
-    onConstat: (c) => {
+    onConstat: ({ etat, capacite, compte }) => {
       if (!user?.id) return;
       supabase.from('usage_logs').insert({
-        user_id: user.id, feature: 'extension_autre_compte',
-        metadata: { jamais_vue: c?.jamaisVue === true, vue_il_y_a_min: c?.vueIlYaMs != null ? Math.round(c.vueIlYaMs / 60000) : null },
+        user_id: user.id, feature: etat === 'autre_compte' ? 'extension_autre_compte' : 'extension_muette',
+        metadata: { preuve: etat === 'autre_compte' ? 'compte_extension' : 'silence',
+          service_worker_repond: compte ? compte.vivant === true : null, meme_compte: compte?.meme ?? null,
+          version_extension: compte?.version ?? null,
+          jamais_vue: capacite?.jamaisVue === true, vue_il_y_a_min: capacite?.vueIlYaMs != null ? Math.round(capacite.vueIlYaMs / 60000) : null },
       }).then(({ error }) => { if (error) console.warn('[extension_autre_compte] non journalisé:', error.message); });
     },
   });
@@ -9327,6 +9334,10 @@ const StockTab = memo(function StockTab({
     if (extensionAutreCompte) {
       const t = texteExtensionAutreCompte(lang, user?.email ?? null);
       out.push({ cle: 'ext-autre-compte', icone: KeyRound, ton: 'regler', titre: t.titre, texte: t.texte });
+    } else if (extensionMuette) {
+      // (31/10, lot F) L'extension de ce navigateur ne donne plus de nouvelles : un état clair, sans durée, ici seulement.
+      const t = texteExtensionMuette(lang);
+      out.push({ cle: 'ext-muette', icone: Laptop, ton: 'regler', titre: t.titre, texte: t.texte });
     }
     // (18/10, Louis) Une boutique = un compte : des annonces du dernier relevé
     // (Leboncoin, Beebs, Depop, eBay) sont déjà suivies par un AUTRE compte
@@ -9359,7 +9370,7 @@ const StockTab = memo(function StockTab({
     // (22/10 soir, point 6) LA FILE EN PAUSE SE VOIT : une ligne, et « Reprendre ». Les retraits continuent.
     if (etatFileDuCompte.pause) {
       out.push({ cle: 'file-pause', icone: PauseCircle, ton: 'info', compte: false,
-        titre: fr ? 'Ta file est en pause' : 'Your queue is paused',
+        titre: fr ? 'Ta file est en pause à ta demande' : 'Your queue is paused at your request',
         texte: messageFileEnPause(etatFileDuCompte.en_pause, lang),
         bouton: { libelle: fr ? 'Reprendre' : 'Resume', icone: RotateCcw, desactive: etatFileDuCompte.envoi,
           onTap: () => { etatFileDuCompte.basculer(false); } } });

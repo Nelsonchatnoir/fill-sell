@@ -240,6 +240,24 @@ export function republication(x, y, ph) {
   return (ph?.liste ?? []).filter((d) => d <= 2).length === n;
 }
 
+// ── (31/10, lot F — Johan) LA SUCCESSION : UNE ANNONCE REMISE EN LIGNE SUR LA MÊME PLATEFORME ──
+// Deux annonces d'une même plateforme de relevé, mêmes photos (au moins deux quasi identiques, une seule si l'une
+// n'en a qu'une), titre proche sans conflit (la paire « memes » l'exige déjà), ni lot ni quantité > 1, et JAMAIS vues
+// par le même relevé (run_id différents) : l'une a remplacé l'autre. Le prix, une photo ajoutée, la description
+// peuvent avoir changé. Ce n'est JAMAIS une fusion automatique (la base n'admet deux annonces d'une plateforme sur une
+// fiche que pour la republication prouvée) : l'annonce ouverte devient la question « Est-ce le même article ? » vers
+// la fiche de l'autre, HORS du stock (étape 5). Deux annonces vues par le même relevé restent deux exemplaires.
+export function succession(x, y, ph) {
+  if (x.pf !== y.pf || !PLATEFORMES_RELEVE.includes(x.pf)) return false;
+  const rx = String(x.ref?.run_id ?? ''), ry = String(y.ref?.run_id ?? '');
+  if (!rx || !ry || rx === ry) return false;
+  if (x.lot || y.lot) return false;
+  if ((Number(x.ref?.quantite ?? 1) || 1) > 1 || (Number(y.ref?.quantite ?? 1) || 1) > 1) return false;
+  const n4 = (ph?.liste ?? []).filter((d) => d <= SEUILS.quasi).length;
+  const peu = Math.min(x.emps?.length ?? 0, y.emps?.length ?? 0) <= 1;
+  return n4 >= 2 || (peu && n4 >= 1);
+}
+
 // ── LES PAIRES CANDIDATES : index des photos (tiroirs) et des mots ──────────
 // Mesuré sur Corinne (951 nœuds, 16 236 lectures) : 420 paires de nœuds ont
 // une photo commune (≤ 7). Un index sur le dHash seul ne discrimine rien (fonds
@@ -473,7 +491,15 @@ export function paireAretes(N, cand, k0, k1, S = SEUILS, indices = null) {
     // Une annonce publiée deux fois porte la même couverture : la couverture
     // d'abord (36 lectures), le reste seulement si elle est proche — coronado,
     // 643 articles Vinted de catalogue : 60 000 paires × 1 296 lectures sinon.
-    if (dPhoto(x.emps[0], y.emps[0]) > S.proche) continue;
+    // (31/10, lot F — Johan) Une annonce REMISE EN LIGNE peut avoir reçu une photo de plus en couverture (Pull & Bear :
+    // d061f0c9… devant les cinq d'avant) : pour deux annonces vues par des relevés DIFFÉRENTS (une succession
+    // possible), la couverture de l'une est aussi comparée à la deuxième photo de l'autre — trois lectures au plus.
+    if (dPhoto(x.emps[0], y.emps[0]) > S.proche) {
+      const successives = String(x.ref?.run_id ?? '') !== String(y.ref?.run_id ?? '');
+      if (!successives) continue;
+      const decalee = (y.emps[1] && dPhoto(x.emps[0], y.emps[1]) <= S.proche) || (x.emps[1] && dPhoto(x.emps[1], y.emps[0]) <= S.proche);
+      if (!decalee) continue;
+    }
     const ph = comparerPhotos(x.emps, y.emps); if (ph.best > S.plausible) continue;
     const t = texte(x, y);
     if (!t.conflits.length && (t.sim.cont >= 0.5 || t.wj >= 0.4)) { memes.push({ x, y, ph, t, rep: republication(x, y, ph) }); if (indices) indices.memes.push(k); }
@@ -525,12 +551,25 @@ export function rapprocher(N, { S = SEUILS, forces = [], actifs = null, poidsDe 
   const repParent = new Map();
   const rfind = (a) => { while (repParent.has(a) && repParent.get(a) !== a) a = repParent.get(a); return a; };
   const republicationsPaires = [];
+  // (31/10, lot F — Johan) LA REMISE EN LIGNE SUR UNE MÊME PLATEFORME : deux annonces aux mêmes photos qui n'ont PAS
+  // été vues par le même relevé (run_id différents : la plus ancienne a quitté la liste quand l'autre y est apparue)
+  // sont une succession, pas deux exemplaires en ligne ensemble. Johan recrée ses annonces Leboncoin hors de FillSell
+  // en changeant le prix (Michael Kors 25 → 20 €) ou en ajoutant une photo (Pull & Bear) : la republication v23
+  // (tout identique) ne les reconnaissait pas, « trois annonces sur la même photo » (ancienne + deux recréations)
+  // passait pour un vendeur de lots (« rien »), et la nouvelle annonce CRÉAIT une fiche dans le stock — contre la règle
+  // du 07/10 (un doute n'entre jamais au stock). successionsDe : annonce → [{ autre, e }], servies à l'étape 5.
+  const successionsDe = new Map();
   for (const { x, y, ph, t, rep } of memes) {
     if (rep) {
       for (const n of [x, y]) if (!repParent.has(n.id)) repParent.set(n.id, n.id);
       const ra = rfind(x.id), rb = rfind(y.id); if (ra !== rb) repParent.set(rb, ra);
       republicationsPaires.push({ x, y, ph, t });
       continue;
+    }
+    if (succession(x, y, ph)) {
+      const e = { ...t, ph, photo: (ph.liste ?? []).filter((d) => d <= S.quasi).length >= 2 ? 'multi' : 'quasi', motif: 'remise_en_ligne_meme_plateforme' };
+      for (const [a, b] of [[x, y], [y, x]]) successionsDe.set(a.id, (successionsDe.get(a.id) || []).concat({ autre: b, e }));
+      continue;   // jamais « deux exemplaires » ni « vendeur de lots » : une seule annonce en ligne à la fois
     }
     for (const [a, b] of [[x, y], [y, x]]) partagee.set(a.id, (partagee.get(a.id) || []).concat(b.id));
     pairesMemePlateforme.push({ x, y, ph, t });
@@ -604,6 +643,10 @@ export function rapprocher(N, { S = SEUILS, forces = [], actifs = null, poidsDe 
     parent.set(rb, ra); membres.set(ra, ma.concat(membres.get(rb))); membres.delete(rb);
   }
   // 5. décision par GROUPE (un article)
+  // (31/10, lot F) Pour la succession : la fiche d'origine (un nœud F : ni import de relevé) passe devant un import ;
+  // les identifiants de fiche croissent avec le temps (le plus petit = la plus ancienne).
+  const origineReleve = (n) => (parId.has('F' + String(n.ref?.inventaire_id ?? '')) ? 0 : 1);
+  const ageFiche = (n) => { const v = Number(n.ref?.inventaire_id); return Number.isFinite(v) ? v : Number.MAX_SAFE_INTEGER; };
   const doutesDe = new Map();
   for (const e of aretes) if (e.niveau === 'doute') for (const [a, b] of [[e.x, e.y], [e.y, e.x]]) {
     if (!doutesDe.has(a.id)) doutesDe.set(a.id, []); doutesDe.get(a.id).push({ e, autre: b });
@@ -621,7 +664,15 @@ export function rapprocher(N, { S = SEUILS, forces = [], actifs = null, poidsDe 
       const h = membres.get(find(autre.id)); if (find(autre.id) === racine) return false;
       return !h.some((x) => pfsG.has(x.pf));
     }).sort((a, b) => a.e.ph.best - b.e.ph.best);
-    for (const m of g) dec.set(m.id, utiles.length ? { decision: 'a_verifier', doutes: utiles, groupe: ids } : { decision: g.length > 1 ? 'fusion_autre' : 'nouveau', groupe: ids });
+    // (31/10, lot F) Sans doute utile, une annonce SEULE qui succède sur sa plateforme à une annonce déjà rangée sur
+    // une fiche (successionsDe) n'est jamais « nouvelle » : la question vers cette fiche, hors du stock. La fiche
+    // d'origine d'abord (pas un import de relevé), puis la plus ancienne ; la meilleure photo départage.
+    const succ = !utiles.length && g.length === 1 ? (successionsDe.get(g[0].id) || [])
+      .filter(({ autre }) => find(autre.id) !== racine && autre.ref?.inventaire_id)
+      .sort((a, b) => origineReleve(a.autre) - origineReleve(b.autre) || ageFiche(a.autre) - ageFiche(b.autre) || a.e.ph.best - b.e.ph.best) : [];
+    for (const m of g) dec.set(m.id, utiles.length ? { decision: 'a_verifier', doutes: utiles, groupe: ids }
+      : succ.length ? { decision: 'a_verifier', doutes: succ, groupe: ids, succession: true }
+        : { decision: g.length > 1 ? 'fusion_autre' : 'nouveau', groupe: ids });
   }
   // 6. « Annonce en double ? » (Nico, 08/10, point 1) : deux annonces d'une
   //    MÊME plateforme, même photo, titre proche — jamais fusionnées, une

@@ -310,7 +310,7 @@ function fausseePage({ vivant = true } = {}) {
     getManifest: () => { if (!vivant) throw new Error("Extension context invalidated."); return { version: "0.6.144" }; },
     lastError: null,
   };
-  const ctx = { window: fenetre, localStorage: { length: 0, key: () => null, getItem: () => null }, chrome: { runtime }, console: { log() {} }, setTimeout: () => 0 };
+  const ctx = { window: fenetre, localStorage: { length: 0, key: () => null, getItem: () => null }, chrome: { runtime }, console: { log() {} }, setTimeout: () => 0, clearTimeout: () => {} };
   ctx.globalThis = ctx;
   vm.createContext(ctx);
   return { ctx, fenetre, recus, envoyes, ecouteurs, jouer: () => vm.runInContext(SCRIPT, ctx), basculer: (v) => { vivant = v; } };

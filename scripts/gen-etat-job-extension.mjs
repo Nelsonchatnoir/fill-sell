@@ -16,6 +16,9 @@ const SOURCES = [
   ['publicationState', 'src/utils/publicationState.js'],
   ['retenueServeur', 'src/utils/retenueServeur.js'],
   ['attenteAutreBoutique', 'supabase/functions/_shared/attente-autre-boutique.js'],
+  // (31/10, lot F) La pause : la même règle que le serveur (jobRetenuParPause), recopiée, jamais réécrite.
+  ['retenueCreneau', 'supabase/functions/_shared/retenue-creneau.js'],
+  ['filePause', 'supabase/functions/_shared/file-pause.js'],
   ['etatJob', 'supabase/functions/_shared/etat-job.js'],
 ];
 export const CIBLE = 'chrome-extension/etat-job.js';
@@ -25,6 +28,8 @@ const FICHIER_VERS_NOM = {
   'publicationState.js': 'publicationState',
   'retenueServeur.js': 'retenueServeur',
   'attente-autre-boutique.js': 'attenteAutreBoutique',
+  'retenue-creneau.js': 'retenueCreneau',
+  'file-pause.js': 'filePause',
 };
 
 // (18/10 nuit, point 4) _shared/lien-vinted.js n'est PAS recopié : dans

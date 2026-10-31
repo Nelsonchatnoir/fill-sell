@@ -1449,8 +1449,9 @@ function renderFooter() {
   );
   // (22/10 soir, 0.6.130) La pause demandée dans l'app : dite en clair (les retraits, eux, continuent).
   const pauseDemandee = Boolean(state.filePause);
+  // (31/10, lot F — Johan) Une seule vérité : la pause demandée se dit « En pause à ta demande », comme l'app.
   els.queueLabel.textContent = pauseDemandee
-    ? `${n} en file · en pause (reprends-la dans l'app ; les retraits continuent)`
+    ? `En pause à ta demande · ${n} en attente (reprends ta file dans l'app ; les retraits continuent)`
     : `${n} en file${enPause ? " · en pause" : ""}`;
   els.queue.classList.toggle("zero", n === 0);
   els.queue.classList.toggle("pause", n > 0 && (enPause || pauseDemandee));
