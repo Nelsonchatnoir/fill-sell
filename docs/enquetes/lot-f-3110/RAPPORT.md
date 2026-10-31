@@ -1,8 +1,9 @@
 # Lot F — 31/10/2026 : Sébastien, Johan, pause, fausse alerte, republication sur un ancien numéro
 
 Heure de Paris partout. Commits : `7553d9b` (code), `4f9899b` (extension, marqueurs de progrès), `f6c27f2` / `39270cc`
-(recalages d'`EXTENSION_LAST_COMMIT`). Extension **0.6.162**. Selftest neuf : `selftest:lot-f-3110` (75 vérifications,
-code livré exécuté).
+(recalages d'`EXTENSION_LAST_COMMIT`), `d5bd65b` (garde de la cible : deux exemplaires en ligne = attente), `3876dc8`
+(OTA 2.9.140). Extension **0.6.162** (zip : `build\CWS-0.6.162-A-TELEVERSER\fillsell-extension-0.6.162-cws.zip`).
+Selftest neuf : `selftest:lot-f-3110` (76 vérifications, code livré exécuté). Suite complète **502 / 0 rouge** (11:20, sur d5bd65b).
 
 ## 1. Sébastien (sebastien64310, Business) — mise à jour 0.6.161 à moitié faite
 
@@ -46,7 +47,33 @@ code livré exécuté).
   **10:23:52** le nouveau worker constate la mise à jour et envoie `maj_extension` (`constatee_au_demarrage: true`,
   `jobs_en_attente: 4`, 0.6.161 → 0.6.162) ; **10:23:55** premier poll ; `profiles.extension_version` = 0.6.162 ;
   **10:24:53** poll de l'alarme RECRÉÉE (une minute après le démarrage : le délai de création) ; puis toutes les 2 min.
-- Reprise de la file à 10:25:37 → (résultat ci-dessous, § Non-régression).
+- Reprise de la file à 10:25:37 → les 4 publications parties seules avec la 0.6.162 : Depop 10:27:07
+  (`nels2nchatnoir-annonce-de-test-fillsell-lot-8c9d`), Beebs 10:28:11 (34269931), Leboncoin 10:29:31 (3298926422),
+  Vinted 10:30:37 (10604289204).
+
+## Non-régression sur le poste de Nico (compte de Nico, annonces de test à 999 €)
+- **Mise à jour avec file en attente** : ci-dessus (harnais, cas Sébastien).
+- **Pause puis reprise** : pause (bouton de l'app) à 10:33:30 au milieu des 4 republications ; polls de 10:33:57 et
+  10:34:53 : « file EN PAUSE → 4 gardées, 0 distribué » ; la capture Leboncoin déjà commencée est allée au bout ; aucune
+  annonce retirée pendant la pause (aucun `deleted_at`) ; reprise à 10:35:11.
+- **Republication** (`20261031_lot_f_test_republications_nico.sql`) : Vinted 10604289204 → **10604418731** (10:42:17),
+  Depop `…-8c9d` → **`…-ec19`** (10:45:07), Leboncoin 3298926422 → **3298959829** (10:55:57). Beebs : la recréation
+  n'a pas eu lieu — l'annonce déposée à 10:28 n'était pas encore rendue par Beebs (vérification de Beebs), la garde
+  existante « pas de retrait sans recréation garantie » a mis la republication en attente, **rien n'a été retiré**.
+  Le parcours Beebs complet n'est donc pas prouvé ce jour (la garde, elle, l'est).
+- **Vente + retrait des copies** (`…_test_vente_nico.sql`, vente déclarée par `enregistrer_vente_atomique`, pas réelle) :
+  fiche 1793438600000 vendue sur Vinted à 10:46:41 → job Vinted `sold`, retrait Depop armé sur `…-ec19` à la même
+  seconde → `deleted` ; la republication Depop close « retrait ciblé, pas une vente ».
+- **Relevé + rattachement** (`…_test_releve_nico.sql`, geste « Synchroniser » Leboncoin et Depop) : relevés de 10:59 à
+  11:00, 17/17 annonces lues ; Leboncoin 3298959829 rattachée PAR SON NUMÉRO (source `job`) à sa fiche 1793438600001,
+  aucune fiche neuve.
+- **Mise à jour sans file** : build livré (2026-10-31T09:31:55Z+3876dc8, sans harnais) copié à 11:01:07 ; à 11:04:57
+  rechargement sûr « fin de cycle », 11:04:58 `maj_extension` (`jobs_en_attente: 0`, 39270cc → 3876dc8),
+  `profiles.extension_build` à jour, poll suivant à 11:05:04.
+- **Fin** (`…_test_FIN_nico.sql`) : retraits des annonces de test restantes (Vinted 10604418731 retirée à 11:08 par
+  3876dc8, Leboncoin et Beebs à 11:09) et file de Nico remise EN PAUSE comme il l'avait laissée. La republication Beebs
+  en attente est restée ouverte après le retrait de son annonce (le retrait ne clôt que les jobs « en ligne ») :
+  fermée par le geste « Annuler » de « Ta file » (`…_test_FIN2_nico.sql`). Aucun job de test ouvert.
 
 ## 2. Fausse alerte « extension sur un autre compte »
 
@@ -96,7 +123,8 @@ code livré exécuté).
 ### 4a. La règle : jamais un retrait sur un numéro périmé
 - `_shared/republication-cible.js` + get-pending-jobs (après la pause, avant l'étape qui retire) : republication pas encore
   engagée sur Leboncoin, Depop, Beebs → numéro visé absent du **dernier relevé probant** (`releve_preuve_absence`) alors
-  qu'il existait avant, et fiche portant une annonce vue dans ce relevé → **close « déjà remise en ligne »**
+  qu'il existait avant, et fiche portant UNE annonce vue dans ce relevé (deux ou plus = deux exemplaires : attente, jamais
+  une clôture sur un doute) → **close « déjà remise en ligne »**
   (`cancelled` + `republication_sans_objet`, « rien n'a été retiré ni recréé ») ; sans successeur → **retenue avant tout
   retrait** (`cible_absente_releve`, jamais sur Beebs) ; elle repart si un relevé revoit la cible. L'app la dit « Fait »
   (jamais « arrêtée ») et ne la propose pas « à relancer ».
@@ -145,5 +173,9 @@ code livré exécuté).
   (`rapprochement_republication_prouvee`) : migration à décider ; aujourd'hui, une question hors stock.
 - Johan : demander qui a recréé ses annonces Leboncoin (29/10 et 30/10) ; battement de présence muet pendant ses longs
   cycles (à regarder).
+- Vu pendant les essais (hors lot F, non corrigé) : un retrait ciblé depuis l'app ne clôt que les publications « en
+  ligne » de la plateforme (`cancelPublishAfterDelete`) ; une republication EN ATTENTE de la même annonce reste ouverte
+  (elle échouera « plus en ligne », sans rien retirer). À décider.
+- Parcours Beebs complet de republication non prouvé ce jour (annonce neuve encore en vérification chez Beebs).
 - ritthik2003 : poste déclaré « Microsoft Basic Render Driver » → traité comme machine virtuelle (jamais Leboncoin)
   depuis la 0.6.161 : à vérifier (un PC réel sans pilote graphique le montre aussi).

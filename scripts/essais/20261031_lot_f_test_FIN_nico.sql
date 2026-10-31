@@ -1,12 +1,13 @@
 -- LOT F (31/10) — fin des essais sur le compte de Nico : retrait des annonces de test encore en ligne (geste « Retirer de
 -- X » de l'app : job « delete » sur l'annonce actuelle de chaque plateforme, sous ses claims), puis sa file remise EN PAUSE
--- comme il l'avait laissée (bouton de l'app). Les fiches de test restent dans son stock (comme les essais précédents).
+-- comme il l'avait laissée (bouton de l'app). L'annonce Vinted de la fiche « vendue » pour l'essai (vente déclarée, pas réelle)
+-- reçoit aussi son retrait. Les fiches de test restent dans son stock (comme les essais précédents).
 begin;
 create temp table _actuelles on commit drop as
   select distinct on (j.inventaire_id, j.platform) j.user_id, j.inventaire_id, j.platform, j.title, j.platform_listing_id, j.listing_url
     from cross_post_jobs j
    where j.user_id = 'f44b5917-bccc-4431-ba41-f40571a2ed18' and j.inventaire_id in (1793438600000, 1793438600001)
-     and j.action in ('publish', 'republish') and j.status = 'published' and j.platform_listing_id is not null
+     and j.action in ('publish', 'republish') and j.status in ('published', 'sold') and j.platform_listing_id is not null
    order by j.inventaire_id, j.platform, coalesce(j.published_at, j.created_at) desc;
 grant select on _actuelles to authenticated;
 select set_config('request.jwt.claims', '{"sub":"f44b5917-bccc-4431-ba41-f40571a2ed18","role":"authenticated"}', true);
