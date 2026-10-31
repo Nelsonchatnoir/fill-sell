@@ -104,8 +104,11 @@ function json(body: unknown, status = 200): Response {
 //    extension) : un job en cours chez l'extension n'est jamais touché, et
 //    get-pending-jobs v140 ne les sert plus à Chrome. Bornée, idempotente.
 async function rerouterPublicationsVersApi(admin: SupabaseClient): Promise<Record<string, unknown>> {
-  const { data: comptes } = await admin.from("ebay_accounts").select("user_id").is("revoked_at", null).limit(1000);
+  const { data: comptes } = await admin.from("ebay_accounts").select("user_id, ebay_site, ebay_user_id").is("revoked_at", null).limit(1000);
   const relies = ((comptes ?? []) as Array<{ user_id: string }>).map((c) => c.user_id);
+  // (31/10, lot J 3 — Rosa Metra) Le site du compte relié : un compte hors d'eBay France n'est jamais « à finir ».
+  const siteDe = new Map(((comptes ?? []) as Array<{ user_id: string; ebay_site?: string | null; ebay_user_id?: string | null }>)
+    .map((c) => [c.user_id, { site: c.ebay_site ?? null, pseudo: c.ebay_user_id ?? null }]));
   if (!relies.length) return { vues: 0 };
   const { data: drapeaux } = await admin.from("profiles").select("id").eq("ebay_voie_api", true).in("id", relies);
   const ids = ((drapeaux ?? []) as Array<{ id: string }>).map((p) => p.id);
@@ -114,10 +117,21 @@ async function rerouterPublicationsVersApi(admin: SupabaseClient): Promise<Recor
     .select("id, user_id, error, platform_fields")
     .eq("platform", "ebay").eq("action", "publish").eq("voie", "extension").eq("status", "pending")
     .in("user_id", ids).limit(50);
-  let versApi = 0, parquees = 0;
+  let versApi = 0, parquees = 0, closesHorsFrance = 0;
   const pretParCompte = new Map<string, boolean>();
   const aFinirParCompte = new Map<string, EtapeEbayAFinir | null>();
   for (const j of (jobs ?? []) as Array<{ id: string; user_id: string; error: string | null; platform_fields: Record<string, unknown> | null }>) {
+    // (31/10, lot J 3 — Rosa Metra, compte « reginat8117 » sur eBay États-Unis) Ses 4 publications d'avant la liaison
+    // (19:16-19:54) passaient ici « compte à finir » (needs_user, lien ebay.fr) — un compte étranger ne se finit pas
+    // sur ebay.fr. Site connu hors d'eBay France → la clôture de la règle (_shared/ebay-hors-france.js), sa vraie raison.
+    const s = siteDe.get(j.user_id);
+    if (s?.site && siteEbayEtranger(s.site)) {
+      const cl = clotureEbayHorsFrance({ ...j, status: "pending" }, { par: "ebay-api-worker (voie extension → api)", site: s.site, compte: s.pseudo, archiver: archiverErreur });
+      const { data: majC } = await admin.from("cross_post_jobs").update({ voie: "api", status: cl.status, error: cl.error, platform_fields: cl.platform_fields })
+        .eq("id", j.id).eq("status", "pending").eq("voie", "extension").select("id");
+      if (majC?.length) closesHorsFrance++;
+      continue;
+    }
     if (!pretParCompte.has(j.user_id)) {
       const etat = await etatCompteEbayApi(admin, j.user_id);
       pretParCompte.set(j.user_id, etat.usable);
@@ -137,8 +151,36 @@ async function rerouterPublicationsVersApi(admin: SupabaseClient): Promise<Recor
       .eq("id", j.id).eq("status", "pending").eq("voie", "extension").select("id");
     if (maj?.length) { if (pret) versApi++; else parquees++; }
   }
-  if (versApi || parquees) console.log(`[ebay-api-worker] voie extension → api : ${versApi} publication(s) reprise(s) par l'API, ${parquees} parquée(s) « compte à finir »`);
-  return { vues: (jobs ?? []).length, vers_api: versApi, parquees };
+  if (versApi || parquees || closesHorsFrance) console.log(`[ebay-api-worker] voie extension → api : ${versApi} publication(s) reprise(s) par l'API, ${parquees} parquée(s) « compte à finir », ${closesHorsFrance} close(s) « eBay France seulement »`);
+  return { vues: (jobs ?? []).length, vers_api: versApi, parquees, closes_hors_france: closesHorsFrance };
+}
+
+// ══ (31/10, lot J 3 — Rosa Metra) UNE ATTENTE eBAY D'UN COMPTE HORS D'eBAY FRANCE SE RANGE SOUS SA VRAIE RAISON ══
+// Publications et republications eBay EN ATTENTE (needs_user, ou pending) d'un compte relié dont le site lu n'est pas
+// eBay France : jamais « compte à finir » ni un message technique — la clôture de la règle (_shared/ebay-hors-france.js,
+// « FillSell publie seulement sur eBay France… », hors quota, brut technique archivé). Ce qui est en cours (processing)
+// n'est jamais touché, ni un retrait. Bornée (50), écriture conditionnée au statut lu. 31/10 : 4 tâches sur tout le parc.
+async function fermerAttentesEbayHorsFrance(admin: SupabaseClient): Promise<Record<string, unknown>> {
+  const { data: comptes } = await admin.from("ebay_accounts").select("user_id, ebay_site, ebay_user_id")
+    .is("revoked_at", null).not("ebay_site", "is", null).neq("ebay_site", "France").limit(1000);
+  const etrangers = ((comptes ?? []) as Array<{ user_id: string; ebay_site: string; ebay_user_id: string | null }>)
+    .filter((c) => siteEbayEtranger(c.ebay_site));
+  if (!etrangers.length) return { vues: 0 };
+  const parUser = new Map(etrangers.map((c) => [c.user_id, c]));
+  const { data: jobs } = await admin.from("cross_post_jobs")
+    .select("id, user_id, status, error, platform_fields")
+    .eq("platform", "ebay").in("action", ["publish", "republish"]).in("status", ["needs_user", "pending"])
+    .in("user_id", [...parUser.keys()]).limit(50);
+  let closes = 0;
+  for (const j of (jobs ?? []) as Array<{ id: string; user_id: string; status: string; error: string | null; platform_fields: Record<string, unknown> | null }>) {
+    const c = parUser.get(j.user_id);
+    if (!c) continue;
+    const cl = clotureEbayHorsFrance(j, { par: "ebay-api-worker (attente d'un compte hors d'eBay France)", site: c.ebay_site, compte: c.ebay_user_id, archiver: archiverErreur });
+    const { data: maj } = await admin.from("cross_post_jobs").update({ status: cl.status, error: cl.error, platform_fields: cl.platform_fields })
+      .eq("id", j.id).eq("status", j.status).select("id");
+    if (maj?.length) { closes++; console.log(`[ebay-api-worker] ${String(j.id).slice(0, 8)} (${j.status}) close : compte eBay « ${c.ebay_user_id ?? "?"} » sur eBay ${c.ebay_site}`); }
+  }
+  return { vues: (jobs ?? []).length, closes };
 }
 
 async function marquer(admin: SupabaseClient, job: Job, patch: Record<string, unknown>, diagnostic: Record<string, unknown>, ebayApi?: Record<string, unknown>) {
@@ -3732,6 +3774,10 @@ Deno.serve(async (req) => {
   let reroutees: Record<string, unknown> = {};
   try { reroutees = await rerouterPublicationsVersApi(admin); }
   catch (e) { reroutees = { erreur: String((e as Error)?.message ?? e).slice(0, 200) }; }
+  // (31/10, lot J 3) Les attentes d'un compte hors d'eBay France : closes sous leur vraie raison, avant la sortie anticipée.
+  let horsFrance: Record<string, unknown> = {};
+  try { horsFrance = await fermerAttentesEbayHorsFrance(admin); }
+  catch (e) { horsFrance = { erreur: String((e as Error)?.message ?? e).slice(0, 200) }; }
 
   // ── Retraits d'un compte relié bloqués faute de session eBay (15/10 soir) ──
   // Voie API (Trading) au lieu d'attendre Chrome : avant la sortie anticipée.
@@ -3746,7 +3792,7 @@ Deno.serve(async (req) => {
   if (body.job_id) cible = cible.eq("id", body.job_id);
   const { data: jobs, error } = await cible;
   if (error) return json({ error: error.message }, 500);
-  if (!jobs?.length) return json({ traites: 0, reprises, veille, quantites, vendeurs, aveugles, reroutees, retraitsApi });
+  if (!jobs?.length) return json({ traites: 0, reprises, veille, quantites, vendeurs, aveugles, reroutees, horsFrance, retraitsApi });
 
   const resultats: Record<string, unknown>[] = [];
   // Budget de la passe (lot 2) : au-delà de SCANS_MAX_PAR_PASSE scans Lens ou

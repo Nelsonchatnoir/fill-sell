@@ -592,3 +592,37 @@ Rapport : `docs/enquetes/dix-points-1710/RAPPORT.md` (points 1, 4, 5, 7, 9).
   mêmes rayons passent ailleurs). Extension 0.6.163 : si le job porte des critères et que la page n'en montre aucun,
   attente prolongée de 30 s au plus (bas du formulaire ramené à l'écran), puis l'état de la page est noté
   (`indicesChargementLbc` : visibilité, éléments occupés, barres, squelettes, photos). Jamais pour un rayon sans critère.
+
+## 31/10 soir (lot J) — Leboncoin : pause levée, pause remise ; adresse de republication ; eBay hors de France
+- **Essai prudent réussi = les ventes Leboncoin de nouveau surveillées** (`_shared/blocage-leboncoin.js`,
+  `lecturesExtensionEnPause`) : en reprise prudente (6 h après la levée), get-pending-jobs ne dit plus rien à l'extension
+  (`blocages.leboncoin` absent = libre pour toutes les versions) : veille des commandes, relevé des ventes et liens
+  repartent ; seules les ACTIONS restent espacées (une toutes les 10 min). Pause et essai : lectures coupées, comme avant.
+- **Un refus après la levée remet la pause, même délai** : `platform_settings_fusionner` FUSIONNE l'objet visé ; le blocage
+  neuf de `blocagePose` gardait `leve_le` / `essai` de l'ancien → état « reprise », jamais de pause (Louis, levé le 31/10
+  à 19:40). Les clés de l'ancien blocage absentes du neuf partent en `p_supprimer` (`clesARetirerAuBlocage`) dans
+  handler-watch et update-job-status.
+- **Reprise finie → blocage rangé** : `leboncoin.blocage_acces` présent = pause, essai ou reprise EN COURS ; 6 h après la
+  levée, get-pending-jobs le range dans `leboncoin.blocage_acces_dernier` (`blocageArchive`).
+- **Un poste en machine virtuelle ne fait jamais l'essai** (`essaiPossible`) : l'essai désigné chez lui ne partait pas
+  et comptait pour un refus muet. Le compte d'une machine virtuelle garde sa pause tant que SON essai n'a pas réussi
+  sur un vrai poste (louis-seller@ttfamily.fr).
+- **La rue des Réglages que Leboncoin ne connaît pas n'est jamais servie à une republication**
+  (`_shared/lbc-voie-des-reglages.js`, `repliCommuneDesReglages`, `decisionRueInconnueLbc`) : une publication Leboncoin
+  PASSÉE du compte (14 jours) qui a dû se replier sur la commune avec l'adresse des Réglages (warning
+  `adresse_barreau3_repli_commune`) prouve que Leboncoin ne connaît pas cette rue ET que son formulaire accepte la
+  commune → la republication tape la commune (comme la publication, comme l'annonce d'origine) ; une rue déjà servie et
+  gardée par le job (`voie_des_reglages`) est retirée (`voie_des_reglages_retiree`, jamais remise). Une rue lue sur
+  l'annonce d'origine n'est jamais touchée. Cas : doriane-henri (Viviez 12110), 22 publications passées, republication
+  en pause à 21:48 (contrôle avant retrait de l'extension, mode précis, aucune proposition).
+- **Jamais « Vérifie tes Réglages » quand la même adresse vient de passer en publication** (update-job-status,
+  `publicationAvecLaMemeAdresse`, `messageAdresseChezNous`) : c'est chez nous → reprise espacée (10 min, 1 h, 3 h), puis
+  « Relancer » ; l'adresse tapée ou la commune où le repli l'a posée comptent.
+- **eBay : un compte relié hors d'eBay France n'est jamais « compte à finir »** (ebay-api-worker) : le passage « voie
+  extension → api » d'une publication créée AVANT la liaison (Rosa, « reginat8117 » sur eBay États-Unis, 4 publications
+  du 31/10 19:16-19:54) la parquait « compte à finir » (lien ebay.fr) sans lire le site. Désormais : site connu hors
+  d'eBay France → `clotureEbayHorsFrance` (cancelled, « FillSell publie seulement sur eBay France… », hors quota) ; filet
+  `fermerAttentesEbayHorsFrance` à chaque passage pour toute attente (needs_user, pending ; jamais processing ni un
+  retrait). La clôture archive le brut technique (`error_technique`) et retire `ebay_a_finir`. eBay France inchangé.
+- App : l'état eBay (drapeau `ebay_voie_api` + compte) est relu au retour dans l'app (onglet visible, au plus une fois
+  par minute) : un compte relié dans un autre onglet grise eBay au choix des plateformes avec sa phrase.

@@ -19,7 +19,9 @@
 //      jamais muette : le message dit qu'elle est en pause et ce que ça implique ;
 //   4. UN essai au bout de 24 h (ou plus tôt, à la demande de la personne : « Leboncoin remarche ») : une seule action
 //      Leboncoin, la plus ancienne. Refusée → blocage prolongé de 24 h. Passée → levée, puis REPRISE PRUDENTE 6 h :
-//      une action Leboncoin toutes les 10 min au plus, jamais de rafale ;
+//      une action Leboncoin toutes les 10 min au plus, jamais de rafale ; les lectures de l'extension (ventes)
+//      reprennent dès la levée ; la reprise finie, le blocage est rangé (blocage_acces_dernier). Un refus après la
+//      levée remet la pause, même délai (31/10, lot J 1). Un poste en machine virtuelle ne fait jamais l'essai ;
 //   5. une machine virtuelle (rendu graphique logiciel) ne fait jamais Leboncoin (_shared/poste-virtuel.js).
 // Pur (Deno + Node).
 
@@ -115,6 +117,36 @@ export function blocagePose(ps, { signe, source, detail = null, maintenant = new
 /** Le blocage après un essai réussi : levé, reprise prudente. */
 export function blocageLeve(b, { par, maintenant = new Date().toISOString() }) {
   return { ...(objet(b) ?? {}), leve_le: maintenant, leve_par: par, essai: { ...(objet(b?.essai) ?? {}), issue: "passe", fin_le: maintenant } };
+}
+
+// ── (31/10, lot J 1) UN REFUS APRÈS LA LEVÉE REMET VRAIMENT LA PAUSE ──
+// platform_settings_fusionner FUSIONNE l'objet visé (avant || patch) : le blocage neuf de blocagePose, posé sur un
+// blocage levé, gardait leve_le / essai « passe » de l'ancien → l'état restait « reprise » puis « libre », la pause ne
+// se remettait jamais (Louis, levé le 31/10 à 19:40). Les clés de l'ancien blocage absentes du neuf sont retirées
+// (p_supprimer) ; un blocage encore actif garde les siennes (son essai en cours attend son verdict).
+/** Les clés à retirer en posant `nouveau` (blocagePose) sur le blocage du compte.
+ * @param {any} ps
+ * @param {Record<string, unknown>} nouveau
+ * @returns {string[]} */
+export function clesARetirerAuBlocage(ps, nouveau) {
+  const avant = blocageLbc(ps);
+  if (!avant || !avant.leve_le) return [];
+  return Object.keys(avant).filter((k) => !(k in (objet(nouveau) ?? {})));
+}
+
+/** Les lectures que l'extension lance d'elle-même (veille des commandes, relevé des ventes, liens manquants)
+ * s'arrêtent-elles ? Pendant la pause et l'essai, oui ; dès l'essai réussi (reprise prudente), non : les ventes
+ * Leboncoin sont de nouveau surveillées, et seules les ACTIONS restent espacées par le serveur (31/10, lot J 1). */
+export function lecturesExtensionEnPause(etat) {
+  return etat === "bloque" || etat === "essai";
+}
+
+/** La reprise prudente finie, le blocage quitte `blocage_acces` (clé présente = pause ou reprise, jamais une pause
+ * finie) et reste lisible dans `blocage_acces_dernier`. Le patch de platform_settings_fusionner sur ["leboncoin"].
+ * @param {any} b
+ * @param {{ maintenant?: string }} [o] */
+export function blocageArchive(b, { maintenant = new Date().toISOString() } = {}) {
+  return { patch: { blocage_acces_dernier: { ...(objet(b) ?? {}), clos_le: maintenant } }, supprimer: ["blocage_acces"] };
 }
 
 /** Le texte que voit la personne (job retenu, bandeau). `nav` : nom court sûr du navigateur, sinon null.

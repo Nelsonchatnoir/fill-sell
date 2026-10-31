@@ -42,6 +42,10 @@ import { paysVintedDeLAppareil, noteVintedEtranger, retenirPaysAppareil, paysVin
 import { noterGeste } from '../utils/dernierGeste';
 import { ABSENCES_AVANT_PAUSE } from '../annonces/absencesDeSuite.js';
 import { synchroSansRien } from './synchroSansRien.js';
+import { etatBoutonSynchro, prochaineSynchroAuto, texteToutAJour } from './boutonSynchro.js';
+import { lireRelevesRecents, lireChoixEtSessions } from '../utils/syncPlateformes';
+import { etatSession } from '../utils/sessionsPlateformes.js';
+import { demarrerRelecture } from '../utils/relectureBornee';
 
 // Le point d'une pastille de plateforme : teal = à jour ; ambre = à reprendre
 // ou un geste attend ; gris = jamais synchronisée / pas de compte.
@@ -157,7 +161,7 @@ function PremiereAnnonce({ fr }) {
 export default function BlocSynchro({
   lang, user, isNative = false, items = [], ouvert = false, extensionStatus = null, plateformes = null,
   onRattache = null, lancerVinted = null, etatVinted = null, ligneVinted = null,
-  alertes = [], aFaire = null, onResume = null, onARattacher = null, itemsAVerifier = [],
+  alertes = [], aFaire = null, onResume = null, onARattacher = null, itemsAVerifier = [], ebayApi = false,
 }) {
   const T = useMemo(() => textesAnnonces(lang), [lang]);
   const r = useReleveAnnonces({ lang, user, ouvert, plateformes, lancerVinted, etatVinted });
@@ -272,6 +276,56 @@ export default function BlocSynchro({
     return () => { vivant = false; };
   }, [ouvert, paysApp, vintedAbsent]);
   const noteVinted = (p) => (p === 'vinted' && paysApp ? noteVintedEtranger({ pays: paysApp, navigateur: navExt, ouvert: paysOuvert, lang }) : null);
+
+  // ── (31/10, lot J 2 — Rosa Metra) LE BOUTON DIT CE QUI EST À JOUR (./boutonSynchro.js) ──────────────────────────
+  // Sous le bouton, la dernière synchro de chaque plateforme connectée ; tout lu il y a moins de 15 min → grisé,
+  // « Tout est à jour, prochaine synchro automatique vers XX h ». Les sessions (une plateforme qui vient d'être
+  // connectée rouvre le bouton) : lues à l'ouverture, puis chaque minute SEULEMENT pendant que le bouton est grisé
+  // (relectureBornee) ; les relevés récents (l'heure de la prochaine synchro automatique) : une fois par grisé.
+  const [sessionsBrutes, setSessionsBrutes] = useState(null);
+  const [rendus, forcerRendu] = useState(0);
+  const etatBouton = useMemo(() => etatBoutonSynchro({
+    plateformes: tuiles.map((t) => {
+      const run = t.p === 'vinted' ? r.runVinted : (r.runs[t.p] ?? null);
+      const fini = t.p === 'vinted' ? run?.finished_at : ((run?.status === 'done' || run?.status === 'incomplete') ? run.finished_at : null);
+      return { p: t.p, nom: t.nom, phase: t.e.phase, fini, session: etatSession(sessionsBrutes, t.p), api: t.p === 'ebay' && ebayApi };
+    }),
+    maintenant: Date.now(),
+    enCours: actifGlobal || !!r.busy || r.toutBusy,
+    stockVideAvecAnnonces: (items?.length ?? 0) === 0 && (bilan.total ?? 0) > 0,
+    fr,
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `rendus` : le recalcul à la fin des 15 min
+  }), [tuiles, r.runVinted, r.runs, sessionsBrutes, ebayApi, actifGlobal, r.busy, r.toutBusy, items?.length, bilan.total, fr, rendus]);
+  const grise = etatBouton.grise;
+  useEffect(() => {
+    if (!ouvert || !r.userId) return undefined;
+    let vivant = true;
+    const lire = async () => {
+      const c = await lireChoixEtSessions(r.userId);
+      if (!vivant) return true;
+      if (c) setSessionsBrutes(c.sessions ?? null);
+      return Boolean(c);
+    };
+    if (!grise) { lire().catch(() => {}); return () => { vivant = false; }; }
+    const relecture = demarrerRelecture(lire, { intervalleMs: 60_000, immediat: false });
+    return () => { vivant = false; relecture.arreter(); };
+  }, [ouvert, r.userId, grise]);
+  // Le bouton se rouvre de lui-même à la fin des 15 min (aucune lecture : un rendu).
+  useEffect(() => {
+    if (!grise || !etatBouton.finGriseA) return undefined;
+    const id = setTimeout(() => forcerRendu((n) => n + 1), Math.max(1000, etatBouton.finGriseA - Date.now() + 1000));
+    return () => clearTimeout(id);
+  }, [grise, etatBouton.finGriseA]);
+  const [prochaineAuto, setProchaineAuto] = useState(null);
+  const cleConnectees = etatBouton.connectees.join(',');
+  useEffect(() => {
+    if (!grise || !r.userId) { setProchaineAuto(null); return undefined; }
+    let vivant = true;
+    lireRelevesRecents(r.userId).then((runs) => {
+      if (vivant) setProchaineAuto(prochaineSynchroAuto(runs, { connectees: cleConnectees ? cleConnectees.split(',') : [], ebayApi }));
+    }).catch(() => {});
+    return () => { vivant = false; };
+  }, [grise, r.userId, cleConnectees, ebayApi]);
 
   if (!ouvert || !r.userId) return ligneVinted ? <div aria-hidden="true" style={{ display: 'none' }}>{ligneVinted}</div> : null;
 
@@ -427,7 +481,7 @@ export default function BlocSynchro({
   const plateformesOk = tuiles.filter((t) => t.e.phase === 'fait' && !t.vide).length;
   const quand = bilan.dernierFini != null ? ilYA(new Date(bilan.dernierFini).toISOString(), fr) : null;
   const ctaTexte = enCours ? T.ctaEnCours : r.toutBusy ? T.ctaEnvoi : extVue ? T.ctaTout : T.ctaExtension;
-  const ctaInactif = enCours || occupe || !extVue;
+  const ctaInactif = enCours || occupe || !extVue || grise;
   const premiereAnnonce = synchroSansRien({ enCours, quand, total: bilan.total, nbArticles: items?.length });
 
   const pastilles = (tonResume) => (
@@ -527,6 +581,21 @@ export default function BlocSynchro({
             </button>
           </div>
 
+          {!enCours && (grise || etatBouton.lignes.length > 0) && (
+            <div role="status" style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
+              {grise && (
+                <span style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 13, lineHeight: '18px', fontWeight: 700, color: S.tealDeep }}>
+                  <CircleCheck size={16} strokeWidth={2.2} aria-hidden="true" style={{ flexShrink: 0, marginTop: 1 }} />
+                  {texteToutAJour(prochaineAuto, Date.now(), fr)}
+                </span>
+              )}
+              {etatBouton.lignes.length > 0 && (
+                <span className="sk-chiffres" style={{ fontSize: 12, lineHeight: '16px', fontWeight: 500, color: S.ink2 }}>
+                  {etatBouton.lignes.map((l) => l.texte).join(' · ')}
+                </span>
+              )}
+            </div>
+          )}
           {!enCours && pastilles(false)}
           {!enCours && msgVintedInfo && (
             <p role="status" style={{ margin: '8px 0 0', fontSize: 12, lineHeight: '16px', fontWeight: 600, color: S.ink2 }}>

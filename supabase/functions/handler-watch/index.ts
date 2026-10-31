@@ -78,7 +78,7 @@ import { nettoyerDescriptionLeboncoin, nettoyerTitreLeboncoin } from "../_shared
 import { loginsDesBoutiques } from "../_shared/boutique-connectee.js";
 import { republicationFinie, champsRepublicationFinie } from "../_shared/republication-finie.js";
 import { etapeRecreatedSansNumero, numerosDeLaRecreation, decisionRecreatedSansNumero, patchRecreatedSansNumero } from "../_shared/etape-recreated-sans-numero.js";
-import { CHEMIN_BLOCAGE_LBC, blocageLbc, blocagePose, signeBlocageLbc } from "../_shared/blocage-leboncoin.js";
+import { CHEMIN_BLOCAGE_LBC, blocageLbc, blocagePose, signeBlocageLbc, clesARetirerAuBlocage } from "../_shared/blocage-leboncoin.js";
 import { trancherQuestions } from "../_shared/questions-tranchees.ts";
 import { jobDeLaPauseRayon, pfQuestionApresPause, entreeMoteurDuJob } from "../_shared/rayon-moteur-attendu.js";
 import { depotMuetDepuis } from "../_shared/depot-muet.js";
@@ -3345,7 +3345,9 @@ serve(async (req) => {
       if (avant && !avant.leve_le && String(avant.derniere_preuve ?? "") >= p.le) continue; // déjà compté
       if (avant?.leve_le && String(avant.leve_le) >= p.le) continue; // refus d'AVANT la levée
       const nouveau = blocagePose(psB, { signe: p.signe, source: p.source, detail: p.detail, maintenant: p.le });
-      const { error: eB } = await supabase.rpc("platform_settings_fusionner", { p_chemin: CHEMIN_BLOCAGE_LBC, p_patch: nouveau, p_user: uid });
+      // (31/10, lot J 1) Sur un blocage levé, les clés de la levée partent : sinon la fusion les gardait, pas de pause.
+      const { error: eB } = await supabase.rpc("platform_settings_fusionner", { p_chemin: CHEMIN_BLOCAGE_LBC, p_patch: nouveau,
+        p_supprimer: clesARetirerAuBlocage(psB, nouveau), p_user: uid });
       if (!eB) { poses++; console.log(`[handler-watch] Leboncoin restreint l'accès du compte ${String(uid).slice(0, 8)} (${p.signe}, ${p.source}) : blocage posé`); }
     }
     if (poses) console.log(`[handler-watch] blocage Leboncoin : ${poses} compte(s)`);

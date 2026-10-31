@@ -87,6 +87,20 @@ export async function lireDerniersRunsReleve(userId) {
   return par;
 }
 
+// (31/10, lot J 2) Les relevés des 3 derniers jours, TOUS déclencheurs (automatiques compris) : de quoi dire l'heure
+// de la prochaine synchro automatique (stock/boutonSynchro.js). Lu une fois quand le bouton se grise, jamais en boucle.
+export async function lireRelevesRecents(userId) {
+  if (!userId) return [];
+  const { data, error } = await supabase
+    .from('vinted_sync_runs')
+    .select('platform,kind,declencheur,status,started_at,finished_at')
+    .eq('user_id', userId)
+    .gte('started_at', new Date(Date.now() - 3 * 86_400_000).toISOString())
+    .order('started_at', { ascending: false })
+    .limit(300);
+  return error ? [] : (data ?? []);
+}
+
 // ── LES RELEVÉS VIDES D'AFFILÉE (2026-09-24) ─────────────────────────────────
 // Plateformes dont les derniers relevés terminés n'ont trouvé AUCUNE annonce,
 // sur un compte qui en avait : le serveur (releve_vide_etat) ne laisse plus le

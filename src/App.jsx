@@ -2332,6 +2332,27 @@ export default function App({ loginOnly = false }){
   const [ebayCompteEtatLu,setEbayCompteEtatLu]=useState(false);
   const [ebayCompteTick,setEbayCompteTick]=useState(0);
   const rafraichirEtatEbay=useCallback(()=>setEbayCompteTick(n=>n+1),[]);
+  // ── (31/10, lot J 3 — Rosa Metra) UN ÉTAT eBAY LU UNE FOIS NE SUFFIT PAS ──
+  // Rosa a relié un compte eBay des États-Unis à 20:05 ; l'app, ouverte avant,
+  // gardait « pas de compte relié » (drapeau lu au chargement) : eBay restait
+  // proposé, 14 publications closes ensuite « eBay France seulement ». Au
+  // retour dans l'app (onglet de nouveau visible, au plus une fois par minute),
+  // le drapeau ET l'état du compte sont relus : un compte hors d'eBay France
+  // grise eBay au choix des plateformes, avec sa phrase.
+  const ebayRelueA=useRef(0);
+  useEffect(()=>{
+    if(!user?.id||typeof document==='undefined')return undefined;
+    const auRetour=async()=>{
+      if(document.visibilityState!=='visible'||Date.now()-ebayRelueA.current<60_000)return;
+      ebayRelueA.current=Date.now();
+      try{
+        const {data}=await supabase.from('profiles').select('ebay_voie_api').eq('id',user.id).maybeSingle();
+        if(data){ setEbayVoieApi(data.ebay_voie_api===true); setEbayCompteTick(n=>n+1); }
+      }catch{ /* relu au prochain retour */ }
+    };
+    document.addEventListener('visibilitychange',auRetour);
+    return()=>document.removeEventListener('visibilitychange',auRetour);
+  },[user?.id]);
   useEffect(()=>{
     if(!ebayVoieApi||!user){ setEbayCompteEtat(null); setEbayCompteEtatLu(false); return; }
     let vivant=true;

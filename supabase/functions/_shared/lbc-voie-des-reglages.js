@@ -96,12 +96,15 @@ export function rueDesReglagesMemeCommune(locOrigine, reglagesLbc) {
 // donc servie TOUJOURS (plus seulement après un refus) : 0 échec d'adresse sur
 // 841 publications des 7 comptes concernés, qui tapent déjà cette chaîne.
 // Le refus connu ne sert plus qu'à RETENIR une republication sans rue de repli.
-export function decisionAdresseRepublicationLbc(job, reglagesLbc, refusConnu) {
+export function decisionAdresseRepublicationLbc(job, reglagesLbc, refusConnu, { rueInconnue = false } = {}) {
   if (job?.platform !== "leboncoin" || String(job?.action ?? "") !== "republish") return { action: "tel_quel" };
   const pf = (job.platform_fields && typeof job.platform_fields === "object") ? job.platform_fields : {};
   const lo = (pf.localisation_origine && typeof pf.localisation_origine === "object") ? pf.localisation_origine : null;
   if (!lo || propre(lo.voie) || !propre(lo.ville)) return { action: "tel_quel" };
   const rue = rueDesReglagesMemeCommune(lo, reglagesLbc);
+  // (31/10, lot J 4, plus bas) Leboncoin ne connaît pas cette rue (une publication du compte est passée par la
+  // commune) ou elle a déjà été retirée de ce job : la commune, comme la publication — la commune y est prouvée.
+  if (lo.voie_des_reglages_retiree || (rueInconnue && rue)) return { action: "tel_quel" };
   if (!rue && !refusConnu) return { action: "tel_quel" };
   if (rue) {
     return {
@@ -127,4 +130,101 @@ export function decisionAdresseRepublicationLbc(job, reglagesLbc, refusConnu) {
   // remettrait rien en ligne).
   const dejaRetiree = Boolean(pf.deleted_at || pf.deleted_at_serveur || pf.deleted_at_client);
   return dejaRetiree ? { action: "tel_quel" } : { action: "retenir" };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// (31/10, lot J 4) UNE RUE DES RÉGLAGES QUE LEBONCOIN NE CONNAÎT PAS N'EST JAMAIS SERVIE
+// ═══════════════════════════════════════════════════════════════════════════
+// doriane-henri (Viviez 12110) : ses 22 publications Leboncoin du 31/10 sont TOUTES passées par le repli commune
+// de fillAddress (warning « adresse_barreau3_repli_commune » : « Leboncoin ne connaît pas « 2 rue arsene soulages
+// 12110 viviez » — annonce localisée à la commune »). Sa republication de 21:48 recevait cette rue (règle du 01/10
+// ci-dessus) ; le contrôle avant retrait de l'extension (verifierAdresseLbcAvantRetrait) la cherche en mode précis
+// → aucune proposition → pause « Vérifie tes Réglages », alors que la même adresse venait de passer (21:49).
+// Une publication PASSÉE par la commune avec l'adresse des Réglages prouve deux choses : Leboncoin ne connaît pas
+// cette rue, et le formulaire de ce compte accepte la commune. Alors la rue n'est pas servie, et une rue déjà servie
+// que le job a gardée (voie_des_reglages) est retirée : la republication tape la commune, comme la publication et
+// comme l'annonce d'origine. Une rue lue sur l'annonce d'origine (sans voie_des_reglages) n'est jamais touchée.
+
+export const CODE_REPLI_COMMUNE = "adresse_barreau3_repli_commune";
+const RE_REPLI_COMMUNE = /Leboncoin ne conna[iî]t pas « ([^»]+) » — annonce localisée à la commune \(« ([^»]+) »/;
+// Le message du contrôle avant retrait de l'extension (0.6.82 et suivantes), l'adresse tapée en tête.
+const RE_PREVOL_ADRESSE = /Republication Leboncoin mise en pause AVANT tout retrait : Leboncoin ne propose aucune adresse pour « ([^»]+) »/;
+export const PUBLICATION_PREUVE_JOURS = 14;
+
+// Une adresse comparable : ses mots (lettres et chiffres), sans accents ni casse, dans l'ordre alphabétique —
+// « 12110 viviez » = « Viviez 12110 », « 3bis » = « 3 bis ».
+export function adresseComparableLbc(v) {
+  const mots = propre(v).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase()
+    .replace(/(\d)(bis|ter|quater)\b/g, "$1 $2").split(/[^a-z0-9]+/).filter(Boolean);
+  return mots.sort().join(" ");
+}
+
+/** Les warnings d'une publication PASSÉE prouvent-ils que Leboncoin ne connaît pas l'adresse des Réglages ?
+ * @returns {{ adresse: string, commune: string } | null} */
+export function repliCommuneDesReglages(warnings, reglagesLbc) {
+  const cible = adresseComparableLbc(reglagesLbc?.adresse);
+  if (!cible) return null;
+  for (const w of Array.isArray(warnings) ? warnings : []) {
+    if (!w || typeof w !== "object" || w.code !== CODE_REPLI_COMMUNE) continue;
+    const m = String(w.message ?? "").match(RE_REPLI_COMMUNE);
+    if (m && adresseComparableLbc(m[1]) === cible) return { adresse: m[1], commune: m[2] };
+  }
+  return null;
+}
+
+/** L'adresse que le contrôle avant retrait n'a pas trouvée chez Leboncoin (message de l'extension), ou null. */
+export function adresseRefuseeAvantRetrait(texte) {
+  return String(texte ?? "").match(RE_PREVOL_ADRESSE)?.[1] ?? null;
+}
+
+/** La même adresse vient-elle de passer en publication ? `publications` : [{ id, adresse, warnings }] des publications
+ * Leboncoin PASSÉES du compte (14 jours). Compte l'adresse tapée, et la commune où le repli l'a posée. */
+export function publicationAvecLaMemeAdresse(adresse, publications) {
+  const cible = adresseComparableLbc(adresse);
+  if (!cible) return null;
+  for (const p of Array.isArray(publications) ? publications : []) {
+    if (adresseComparableLbc(p?.adresse) === cible) return p;
+    for (const w of Array.isArray(p?.warnings) ? p.warnings : []) {
+      const m = w && typeof w === "object" && w.code === CODE_REPLI_COMMUNE ? String(w.message ?? "").match(RE_REPLI_COMMUNE) : null;
+      if (m && (adresseComparableLbc(m[1]) === cible || adresseComparableLbc(m[2]) === cible)) return p;
+    }
+  }
+  return null;
+}
+
+/** Le message quand la même adresse vient de passer en publication : c'est chez nous, jamais « tes Réglages ». */
+export function messageAdresseChezNous(reprisesEpuisees = false) {
+  return "Republication Leboncoin en pause AVANT tout retrait : Leboncoin a accepté cette même adresse pour tes "
+    + "publications, le blocage vient donc de chez nous. Ton annonce est TOUJOURS en ligne, rien n'a été touché. "
+    + (reprisesEpuisees ? "Appuie sur « Relancer » pour un nouvel essai." : "Rien à faire : nouvel essai automatique.");
+}
+
+/** Décision pour une republication Leboncoin dont la commune est prouvée par une publication (rueInconnue) :
+ *   { action: "tel_quel" } | { action: "commune", job } (la rue des Réglages servie avant est retirée). */
+export function decisionRueInconnueLbc(job, reglagesLbc, rueInconnue) {
+  if (job?.platform !== "leboncoin" || String(job?.action ?? "") !== "republish") return { action: "tel_quel" };
+  const pf = (job.platform_fields && typeof job.platform_fields === "object") ? job.platform_fields : {};
+  const lo = (pf.localisation_origine && typeof pf.localisation_origine === "object") ? pf.localisation_origine : null;
+  if (!lo || !lo.voie_des_reglages || !propre(lo.voie)) return { action: "tel_quel" };
+  const rue = rueDesReglagesMemeCommune(lo, reglagesLbc);
+  const retiree = Boolean(lo.voie_des_reglages_retiree);
+  // La rue servie est celle des Réglages (même commune) et Leboncoin ne la connaît pas — ou elle a déjà été retirée.
+  if (!retiree && !(rueInconnue && rue && communeComparable(rue) === communeComparable(lo.voie))) return { action: "tel_quel" };
+  const { voie: _v, voie_des_reglages: _d, ...reste } = lo;
+  return {
+    action: "commune",
+    job: {
+      ...job,
+      platform_fields: {
+        ...pf,
+        localisation_origine: {
+          ...reste,
+          voie_des_reglages_retiree: lo.voie_des_reglages_retiree ?? {
+            motif: "rue des Réglages inconnue de Leboncoin : une publication du compte est passée par la commune",
+            rue: propre(lo.voie), pose_par: "get-pending-jobs (lbc-voie-des-reglages, 31/10 lot J)",
+          },
+        },
+      },
+    },
+  };
 }

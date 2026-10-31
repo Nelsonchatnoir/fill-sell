@@ -82,6 +82,16 @@ export function clotureEbayHorsFrance(job, { par, site = null, compte = null, ma
     compte: compte == null || String(compte).trim() === "" ? null : String(compte).trim(),
   };
   pf.hors_quota = true;
+  // (31/10, lot J 3 — Rosa Metra) Le brut technique d'un essai d'avant (« The page keeping the extension port is moved
+  // into back/forward cache… ») et l'étape « compte à finir » ne disent pas la vraie raison : archivés, retirés.
+  const et = pf.error_technique;
+  const brut = String((et && typeof et === "object" ? et.brut : et) ?? "").trim();
+  if (brut && typeof archiver === "function") {
+    pf.erreurs_archivees = archiver(pf.erreurs_archivees, brut, String(job?.status ?? ""), `${par ?? CLE_EBAY_HORS_FRANCE} (brut technique, eBay hors de France)`);
+    delete pf.error_technique;
+  }
+  delete pf.ebay_a_finir;
+  delete pf.needs_user_sans_motif;
   delete pf.needs_user_source;
   delete pf.next_action_after;
   delete pf.processing_since;

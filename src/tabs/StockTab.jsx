@@ -10503,6 +10503,7 @@ const StockTab = memo(function StockTab({
               lang={lang} user={user} isNative={isNative} items={items} itemsAVerifier={itemsAVerifier} ouvert={syncMultiOuverte}
               plateformes={plateformesDeReleve(plateformesOuvertes,oplaRelie).filter(p=>!plateformesFermees.includes(p))}
               extensionStatus={extensionStatus}
+              ebayApi={ebayApiCompte==='relie'}
               onRattache={()=>{rafraichirApresSync();relireDoublons();}}
               lancerVinted={()=>{ try { lancerVintedRef.current?.(); } catch { /* la ligne Vinted dit le refus */ } }}
               etatVinted={etatVinted}

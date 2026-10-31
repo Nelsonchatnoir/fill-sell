@@ -4320,6 +4320,54 @@ serve(async (req) => {
       }
     }
 
+    // ══ (31/10, lot J 4) ADRESSE LEBONCOIN REFUSÉE AVANT RETRAIT ALORS QU'ELLE VIENT DE PASSER EN PUBLICATION ══
+    // (_shared/lbc-voie-des-reglages.js) doriane-henri, 21:48 : « Leboncoin ne propose aucune adresse pour « 2 rue
+    // arsene soulages 12110 Viviez » … Vérifie l'« Adresse de remise Leboncoin » dans tes Réglages », alors que 22
+    // publications du jour étaient passées avec cette adresse (repli sur la commune). Même adresse passée en publication
+    // (14 jours) = le défaut est chez nous : jamais « tes Réglages » ; reprise espacée (10 min, 1 h, 3 h — get-pending-jobs
+    // sert alors la commune), puis « Relancer ». Illisible → le message de l'extension part, comme avant.
+    let pfAdresseChezNous: Record<string, unknown> | null = null;
+    const adresseRefusee = statutEffectif === "needs_user" && !pfPasDeRouge && !pfDefautFillsell && !pfRayonMoteurAttendu
+      && !pfGrilleReprise && !pfGrilleRefus && !pfRepareEtat
+      ? adresseRefuseeAvantRetrait(body.error) : null;
+    if (adresseRefusee) {
+      try {
+        const { data: jAd } = await userClient.from("cross_post_jobs").select("platform, action, platform_fields").eq("id", jobId).maybeSingle();
+        if (String(jAd?.platform ?? "") === "leboncoin" && String(jAd?.action ?? "") === "republish") {
+          const { data: pubs } = await userClient.from("cross_post_jobs")
+            .select("id, adresse:platform_fields->>adresse, warnings:platform_fields->warnings")
+            .eq("platform", "leboncoin").eq("action", "publish").eq("status", "published")
+            .gte("published_at", new Date(Date.now() - PUBLICATION_PREUVE_JOURS * 86_400_000).toISOString())
+            .order("published_at", { ascending: false }).limit(50);
+          const preuve = publicationAvecLaMemeAdresse(adresseRefusee, pubs ?? []) as { id?: string } | null;
+          if (preuve) {
+            const pfBaseAd = { ...((pfIn ?? (jAd?.platform_fields ?? {})) as Record<string, unknown>) };
+            const prec = (pfBaseAd["adresse_chez_nous"] ?? {}) as Record<string, unknown>;
+            const n = (Number(prec["reprises"]) || 0) + 1;
+            const epuise = n > 3;
+            pfBaseAd["adresse_chez_nous"] = { le: new Date().toISOString(), adresse: adresseRefusee, publication: preuve.id ?? null, reprises: n };
+            delete pfBaseAd["processing_since"];
+            for (const k of ["needsUserAttempts", "needs_user_tick_le", "needs_user_actif_ms", "needs_user_vu_le", "needs_user_vu_erreur"]) delete pfBaseAd[k];
+            if (epuise) {
+              pfBaseAd["needs_user_source"] = "relancer";
+              delete pfBaseAd["next_action_after"];
+            } else {
+              delete pfBaseAd["needs_user_source"];
+              pfBaseAd["next_action_after"] = new Date(Date.now() + (n === 1 ? 10 : n === 2 ? 60 : 180) * 60_000).toISOString();
+              statutEffectif = "pending";
+            }
+            messageEffectif = messageAdresseChezNous(epuise);
+            raisonRequalif = `adresse Leboncoin passée en publication (${String(preuve.id ?? "?").slice(0, 8)}) : chez nous, reprise ${n}`;
+            pfAdresseChezNous = pfBaseAd;
+            console.log(`[update-job-status] userId=${user.id} job=${jobId} — ${raisonRequalif} → ${statutEffectif}`);
+          }
+        }
+      } catch (e) {
+        console.error("[update-job-status] adresse Leboncoin passée en publication :", (e as Error)?.message ?? e);
+        pfAdresseChezNous = null;
+      }
+    }
+
     const patch: Record<string, unknown> = { status: statutEffectif };
     let inventaireVintedAEstampiller: number | string | null = null;
     // (03/10, point 26) L'article dont la fiche doit porter l'id de l'annonce
@@ -4440,6 +4488,8 @@ serve(async (req) => {
     if (pfGrilleRefus) patch.platform_fields = pfGrilleRefus;
     // (25/10, audit N9) Question « sous-catégorie » mise de côté pour le moteur (pending, +6 min), ou pause close.
     if (pfRayonMoteurAttendu) patch.platform_fields = pfRayonMoteurAttendu;
+    // (31/10, lot J 4) Adresse Leboncoin passée en publication : reprise « chez nous », ou « Relancer ».
+    if (pfAdresseChezNous) patch.platform_fields = pfAdresseChezNous;
     // Dépôt Leboncoin accepté (écran /options) : platform_fields SANS la
     // reprise programmée, AVEC la trace du relevé.
     if (pfDepotOptions) patch.platform_fields = pfDepotOptions;
@@ -5093,7 +5143,9 @@ serve(async (req) => {
           const { data: profB } = await userClient.from("profiles").select("platform_settings").eq("id", user.id).maybeSingle();
           const psB = ((profB as { platform_settings?: Record<string, unknown> } | null)?.platform_settings ?? {}) as Record<string, unknown>;
           const nouveau = blocagePose(psB, { signe: signeB, source: `update-job-status (job ${String(jobId).slice(0, 8)})`, detail: texteB.slice(0, 240) });
-          const { error: eB } = await userClient.rpc("platform_settings_fusionner", { p_chemin: CHEMIN_BLOCAGE_LBC, p_patch: nouveau });
+          // (31/10, lot J 1) Sur un blocage levé, les clés de la levée partent : sinon la fusion les gardait, pas de pause.
+          const { error: eB } = await userClient.rpc("platform_settings_fusionner", { p_chemin: CHEMIN_BLOCAGE_LBC, p_patch: nouveau,
+            p_supprimer: clesARetirerAuBlocage(psB, nouveau) });
           console.log(`[update-job-status] userId=${user.id} job=${jobId} — Leboncoin restreint l'accès (${signeB}) : blocage du compte posé${eB ? ` — ÉCHEC : ${eB.message}` : ""}`);
         }
       }
@@ -5421,4 +5473,5 @@ import { vueVisiteurLbc, messageVueVisiteurLbc, delaiVueVisiteurMin } from "../_
 import { defautFillsell, messageDefautFillsell } from "../_shared/defaut-fillsell.js";
 import { pauseRayonMoteur } from "../_shared/rayon-moteur-attendu.js";
 import { navigateurDeLaRequete, nomCourtSur, nommerLeNavigateur } from "../_shared/navigateur-poste.js";
-import { CHEMIN_BLOCAGE_LBC, signeBlocageLbc, blocagePose } from "../_shared/blocage-leboncoin.js";
+import { CHEMIN_BLOCAGE_LBC, signeBlocageLbc, blocagePose, clesARetirerAuBlocage } from "../_shared/blocage-leboncoin.js";
+import { adresseRefuseeAvantRetrait, publicationAvecLaMemeAdresse, messageAdresseChezNous, PUBLICATION_PREUVE_JOURS } from "../_shared/lbc-voie-des-reglages.js";

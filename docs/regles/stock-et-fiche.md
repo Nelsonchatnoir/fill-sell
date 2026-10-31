@@ -39,3 +39,18 @@ Heure de Paris. Le récit : `docs/enquetes/cloture-fh-3110/RAPPORT.md` (31/10), 
 - La carte de synchro (résumé et carte) propose AUSSI « Crée ta première annonce » (photo → Lens) quand la synchro est
   finie, n'a rien trouvé et que le stock est vide (`src/stock/synchroSansRien.js`) ; « Synchroniser » reste. Lens s'ouvre
   par l'événement `fillsell:ouvrir-lens` écouté par App : aucune prop neuve au Stock.
+
+## 31/10 soir (lot J, Rosa Metra) — le bouton « Synchroniser » dit ce qui est à jour
+- Règle pure : `src/stock/boutonSynchro.js` (selftest `lot-j-3110`), branchée dans `src/stock/BlocSynchro.jsx`.
+- Sous le bouton : la dernière synchro de chaque plateforme CONNECTÉE (« Vinted à jour il y a 3 min · Leboncoin à jour
+  il y a 4 min ») ; une plateforme jamais lue ou « pas connectée » ne compte que si la sonde voit sa session (ou eBay
+  relié par l'API) : « vient d'être connecté, pas encore synchronisé ».
+- Toutes les plateformes connectées lues il y a moins de 15 min (même seuil que `demander_sync_plateforme` « recent » et
+  la cadence Vinted de l'app) → bouton grisé, « Tout est à jour, prochaine synchro automatique vers XX h » (heure de
+  Paris, arrondie) ; il se rouvre seul à la fin des 15 min (un rendu, aucune lecture), ou dès qu'une plateforme n'est
+  plus à jour / vient d'être connectée. Stock vide mais annonces trouvées (remis à zéro) : jamais grisé (règle du 26/10).
+- « Prochaine synchro automatique » : eBay API = 20 h après le dernier relevé fini (+ le tour de 10 min d'ebay-releve-api) ;
+  extension = jamais avant 20 h après le dernier relevé fini, à l'heure de l'alarme quotidienne (dernier relevé
+  automatique `cron` connu, 24 h) — sans relevé automatique connu, le plancher de 20 h. La plus proche est dite.
+- Lectures : sessions à l'ouverture puis chaque minute SEULEMENT pendant le grisé (relectureBornee) ; relevés des 3
+  derniers jours (`lireRelevesRecents`) une fois par grisé. Rien ne change à la cadence ni aux relevés automatiques.

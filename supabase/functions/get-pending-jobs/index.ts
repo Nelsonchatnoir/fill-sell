@@ -67,7 +67,7 @@ import { detectObjectIcon } from "../../../src/utils/shared.js";
 import { oplaACloreJob, clotureOpla, oplaRelie, MESSAGE_OPLA_INDISPONIBLE, OPLA_SORTIE, sortieOplaActive } from "../_shared/opla-sortie.js";
 import { titrePourJob, titreVide, titreRecevable, couperTitre, CLE_TITRE_SAISI } from "../_shared/titre-du-job.js";
 import { servirRetraitsEbayParNumero } from "../_shared/retrait-ebay-par-numero.js";
-import { decisionAdresseRepublicationLbc, rueDesReglagesMemeCommune, texteRefuseCommune, textesErreurJob } from "../_shared/lbc-voie-des-reglages.js";
+import { decisionAdresseRepublicationLbc, rueDesReglagesMemeCommune, texteRefuseCommune, textesErreurJob, decisionRueInconnueLbc, repliCommuneDesReglages, CODE_REPLI_COMMUNE, PUBLICATION_PREUVE_JOURS } from "../_shared/lbc-voie-des-reglages.js";
 // (25/10, décision de Nico — Marta, Rapallo) Leboncoin réservé aux adresses en France ; (audit N10) rien d'une
 // plateforme écartée par la personne n'est servi.
 import { adresseLbcHorsFrance, lbcACloreHorsFrance, lbcServiMalgreHorsFrance, clotureLbcHorsFrance } from "../_shared/lbc-adresse-france.js";
@@ -203,7 +203,7 @@ import { lireParLots } from "../_shared/par-lots.ts";
 import { teteDeFile } from "../_shared/tete-de-file.js";
 import { republicationFinie, champsRepublicationFinie } from "../_shared/republication-finie.js";
 import { etapeRecreatedSansNumero, numerosDeLaRecreation, decisionRecreatedSansNumero, patchRecreatedSansNumero } from "../_shared/etape-recreated-sans-numero.js";
-import { CHEMIN_BLOCAGE_LBC, etatBlocageLbc, blocageAvecEssai, messageBlocageLbc, blocageLbc, signeBlocageLbc, blocageLeve, blocageEssaiRefuse } from "../_shared/blocage-leboncoin.js";
+import { CHEMIN_BLOCAGE_LBC, etatBlocageLbc, blocageAvecEssai, messageBlocageLbc, blocageLbc, signeBlocageLbc, blocageLeve, blocageEssaiRefuse, lecturesExtensionEnPause, blocageArchive } from "../_shared/blocage-leboncoin.js";
 import { renduDuPoll, posteVirtuel, messagePosteVirtuelLbc } from "../_shared/poste-virtuel.js";
 // ISBN : même table de vérité que le content script (normalisation, filtre du
 // remplissage « 13 zéros », lecture dans le texte libre). Module JS sans import.
@@ -10432,11 +10432,43 @@ serve(async (req) => {
         // commune, sinon une republication pas encore commencée n'est pas
         // servie. Cf. _shared/lbc-voie-des-reglages.js.
         const reglagesLbc = ((prof?.platform_settings as Record<string, Record<string, unknown>> | null)?.leboncoin ?? null);
+        // ── (31/10, lot J 4) LA RUE DES RÉGLAGES QUE LEBONCOIN NE CONNAÎT PAS N'EST JAMAIS SERVIE ──
+        // (_shared/lbc-voie-des-reglages.js, repliCommuneDesReglages) Une publication Leboncoin PASSÉE du compte
+        // (14 jours) qui a dû se replier sur la commune avec l'adresse des Réglages : Leboncoin ne connaît pas cette
+        // rue et accepte la commune. La republication tape alors la commune (doriane-henri, Viviez, 31/10 21:48 :
+        // rue servie → contrôle avant retrait sans proposition → « Vérifie tes Réglages », 22 publications passées).
+        const loDe = (j: Record<string, unknown>) =>
+          ((j.platform_fields as Record<string, unknown> | null) ?? {})["localisation_origine"] as Record<string, unknown> | undefined;
+        const avecRueServie = besoinAdresse.filter((j) => {
+          if (j.platform !== "leboncoin" || String(j.action ?? "") !== "republish") return false;
+          const lo = loDe(j);
+          return Boolean(lo && typeof lo === "object" && lo["voie_des_reglages"] && String(lo["voie"] ?? "").trim());
+        });
         const candidats = besoinAdresse.filter((j) => {
           if (j.platform !== "leboncoin" || String(j.action ?? "") !== "republish") return false;
-          const lo = ((j.platform_fields as Record<string, unknown> | null) ?? {})["localisation_origine"] as Record<string, unknown> | undefined;
+          const lo = loDe(j);
           return Boolean(lo && typeof lo === "object" && !String(lo["voie"] ?? "").trim() && String(lo["ville"] ?? "").trim());
         });
+        let rueInconnue = false;
+        if ((candidats.length || avecRueServie.length) && String(reglagesLbc?.["rue"] ?? "").trim()) {
+          const { data: pubs } = await userClient.from("cross_post_jobs").select("platform_fields->warnings")
+            .eq("platform", "leboncoin").eq("action", "publish").eq("status", "published")
+            .gte("published_at", new Date(Date.now() - PUBLICATION_PREUVE_JOURS * 86_400_000).toISOString())
+            .contains("platform_fields", { warnings: [{ code: CODE_REPLI_COMMUNE }] })
+            .order("published_at", { ascending: false }).limit(5);
+          rueInconnue = ((pubs ?? []) as Array<{ warnings?: unknown }>).some((p) => repliCommuneDesReglages(p.warnings, reglagesLbc));
+        }
+        if (avecRueServie.length) {
+          let communes = 0;
+          for (const j of avecRueServie) {
+            const d = decisionRueInconnueLbc(j, reglagesLbc, rueInconnue);
+            if (d.action === "commune") {
+              j.platform_fields = (d.job as Record<string, unknown>)["platform_fields"] as typeof j.platform_fields;
+              communes++;
+            }
+          }
+          if (communes) console.log(`[get-pending-jobs] userId=${user.id} : ${communes} republication(s) Leboncoin servie(s) avec la commune — rue des Réglages inconnue de Leboncoin (une publication du compte est passée par la commune)`);
+        }
         if (candidats.length) {
           const villeDe = (j: Record<string, unknown>) =>
             String((((j.platform_fields as Record<string, unknown> | null) ?? {})["localisation_origine"] as Record<string, unknown>)["ville"] ?? "");
@@ -10461,7 +10493,7 @@ serve(async (req) => {
             const ville = villeDe(j);
             const refusConnu = textesErreurJob(j).some((t) => texteRefuseCommune(t, ville))
               || refusCompte.some((t) => texteRefuseCommune(t, ville));
-            const d = decisionAdresseRepublicationLbc(j, reglagesLbc, refusConnu);
+            const d = decisionAdresseRepublicationLbc(j, reglagesLbc, refusConnu, { rueInconnue });
             if (d.action === "rue") {
               j.platform_fields = (d.job as Record<string, unknown>)["platform_fields"] as typeof j.platform_fields;
               rues++;
@@ -13598,11 +13630,19 @@ serve(async (req) => {
           }
         }
         const eb = etatBlocageLbc(psB) as { etat: string; blocage: Record<string, unknown> | null; prete?: boolean };
-        if (eb.etat !== "libre" && eb.blocage) {
+        // (31/10, lot J 1) Un poste en machine virtuelle ne fait jamais Leboncoin (bloc suivant) : il ne fait donc
+        // jamais l'essai — désigné chez lui, l'essai ne partait pas et comptait pour un refus muet.
+        const essaiPossible = posteCloud || !posteVirtuel(renduDuPoll(body));
+        if (eb.etat === "libre" && eb.blocage) {
+          // (31/10, lot J 1) Reprise prudente finie : le blocage est rangé (clé présente = pause ou reprise en cours).
+          const arch = blocageArchive(eb.blocage);
+          const { error: eA } = await adminB.rpc("platform_settings_fusionner", { p_chemin: ["leboncoin"], p_patch: arch.patch, p_supprimer: arch.supprimer, p_user: user.id });
+          console.log(`[get-pending-jobs] userId=${user.id} : Leboncoin — reprise prudente finie (levé le ${String(eb.blocage.leve_le ?? "?")}) : blocage rangé${eA ? ` — ÉCHEC : ${eA.message}` : ""}`);
+        } else if (eb.etat !== "libre" && eb.blocage) {
           const lbc = out.filter((j) => j.platform === "leboncoin")
             .sort((a, b) => String(a.created_at ?? "").localeCompare(String(b.created_at ?? "")));
           let garde: string | null = null;
-          if (eb.etat === "essai" && lbc.length) {
+          if (eb.etat === "essai" && lbc.length && essaiPossible) {
             garde = String(lbc[0].id);
             await adminB.rpc("platform_settings_fusionner", { p_chemin: CHEMIN_BLOCAGE_LBC,
               p_patch: blocageAvecEssai(eb.blocage, { jobId: garde }), p_user: user.id });
@@ -13633,7 +13673,7 @@ serve(async (req) => {
           // Relevés Leboncoin : jamais pendant le blocage ; à l'essai, le relevé en file EST l'essai quand aucune tâche ne
           // l'est ; en reprise, seulement quand aucune action n'est partie.
           const releveLbc = syncCommandsAnnonces.find((c) => c.platform === "leboncoin") ?? null;
-          if (releveLbc && eb.etat === "essai" && !garde) {
+          if (releveLbc && eb.etat === "essai" && !garde && essaiPossible) {
             await adminB.rpc("platform_settings_fusionner", { p_chemin: CHEMIN_BLOCAGE_LBC,
               p_patch: { ...blocageAvecEssai(eb.blocage, { jobId: "" }), essai: { releve_id: releveLbc.id, le: new Date().toISOString() } }, p_user: user.id });
             syncCommandsAnnonces = syncCommandsAnnonces.filter((c) => c.platform !== "leboncoin" || c.id === releveLbc.id);
@@ -13641,8 +13681,14 @@ serve(async (req) => {
           } else if (releveLbc && !(eb.etat === "reprise" && eb.prete && !garde)) {
             syncCommandsAnnonces = syncCommandsAnnonces.filter((c) => c.platform !== "leboncoin");
           }
-          blocageLbcReponse = { etat: eb.etat, depuis: eb.blocage.depuis ?? null, essai_apres: eb.blocage.essai_apres ?? null,
-            message: eb.etat === "reprise" ? null : messageBlocageLbc(navCourtRequete, String(eb.blocage.depuis ?? "")) };
+          // (31/10, lot J 1) Essai réussi → reprise : l'extension n'est plus en pause (veille des commandes, relevé des
+          // ventes, liens manquants) ; seules les actions restent espacées, ici. Absent = libre pour toute extension.
+          if (lecturesExtensionEnPause(eb.etat)) {
+            blocageLbcReponse = { etat: eb.etat, depuis: eb.blocage.depuis ?? null, essai_apres: eb.blocage.essai_apres ?? null,
+              message: messageBlocageLbc(navCourtRequete, String(eb.blocage.depuis ?? "")) };
+          } else {
+            console.log(`[get-pending-jobs] userId=${user.id} : Leboncoin en reprise prudente (levé le ${String(eb.blocage.leve_le ?? "?")}) — lectures de l'extension rouvertes, actions espacées`);
+          }
         }
       } catch (e) {
         console.warn(`[get-pending-jobs] blocage Leboncoin illisible (${String((e as Error)?.message ?? e)}) — file servie telle quelle`);
