@@ -487,7 +487,10 @@ trois relevés et deux reprises lancés tout seuls, aucun Vinted abouti, un faux
 - Chaque page d'un relevé Vinted trace son site (`usage_logs` `sync_page`, `metadata.domaine` : « vinted.fr »…) ; la
   note « dressing lu vide » le nomme (« lu sur vinted.fr »). vinted.co.uk n'est ni dans le manifeste ni dans
   `vinted-origine.js` : une boutique britannique n'est pas lisible (Rosa Metra, 31/10 : sa boutique vinted.fr était neuve).
-- Migration **20261031210000 PRÉPARÉE, NON APPLIQUÉE** (feu vert de Nico attendu) : `republication_recreee_non_confirmee`
+- Migration **20261031210000 APPLIQUÉE le 31/10 à 22:01** (feu vert de Nico) : `republication_recreee_non_confirmee`
   (republish, published, étape recreated, ni veille ni relevé ne l'a revue, 72 h au plus) ajoutée aux trois gardes
   (`constater_absences_releve`, `cross_post_jobs_alerte_tenue` y compris sur le job lui-même,
-  `inventaire_disparu_garde_republication`). Comble l'« ouvert » ci-dessus (Johan, 29/10).
+  `inventaire_disparu_garde_republication`). Comble l'« ouvert » ci-dessus (Johan, 29/10). Les trois appelants sont
+  SECURITY DEFINER (propriétaire postgres) : la garde reste fermée à `authenticated` sans rien casser. Le jour de la pose,
+  502 remises en ligne recréées et pas encore revues étaient protégées (Vinted 353, Leboncoin 109, Beebs 22, Depop 18) ;
+  environ 2 ms par appel.

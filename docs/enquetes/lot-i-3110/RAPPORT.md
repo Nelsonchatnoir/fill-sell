@@ -251,8 +251,7 @@ L'annonce 34270410 n'est pas sortie de vérification vers « en ligne ».
   - OTA : `npx @capgo/cli bundle upload --channel production --bundle 2.9.143 --path dist`. Le canal a été lu en
     2.9.142. Le `dist/` est déjà construit (`2026-10-31T19:26:37Z+f6c6bd3`) : ne pas le reconstruire.
 - **Extension 0.6.163 PRÊTE** :
-  `C:Users
-icolill-and-selluildCWS-0.6.163-A-TELEVERSERillsell-extension-0.6.163-cws.zip`
+  `C:\Users\nicol\fill-and-sell\build\CWS-0.6.163-A-TELEVERSER\fillsell-extension-0.6.163-cws.zip`
   - BUILD_ID `2026-10-31T19:28:46Z+f6c6bd3`, 602 485 octets, sha256 `4ffcdcf3…df8d`.
   - Elle remplace la 0.6.162, jamais servie (seul le poste de Nico l'avait). Le dossier 0.6.162 est rangé dans
     `build/anciens-zips/CWS-0.6.162-3876dc8-REMPLACE-PAR-0.6.163`.
@@ -262,3 +261,15 @@ icolill-and-selluildCWS-0.6.163-A-TELEVERSERillsell-extension-0.6.163-cws.zip
     achat réel.
   - Leboncoin : cas non reproductible chez nous ; la vérification se fait sur le Mac d'Ornella.
   - Carte « première annonce » : le stock de Nico n'est pas vide, et jamais de connexion automatisée à fillsell.app.
+
+## Suite (31/10, 21:56 → 22:05) — autorisations de Nico
+- Nico a autorisé les trois mises en production, puis donné « Feu vert pour migration 6 ».
+- validate-google-purchase v13 → **v14** (21:56:42, verify_jwt vrai) et google-play-webhook v33 → **v34** (21:56:50,
+  verify_jwt faux) : versions et accès lus avant et après. Sondes sans effet : OPTIONS → 200 « ok », GET → 405.
+- **OTA 2.9.143** : canal production 2.9.142 → **2.9.143** (21:57:34), avec le dist existant, sans le reconstruire.
+- **Migration 20261031210000 appliquée** à 22:01:12, puis marquée « applied ».
+  - Avant la pose, les empreintes des trois fonctions étaient celles d'où la migration a été écrite.
+  - Après : chacune appelle la garde. Elles sont SECURITY DEFINER sous postgres. Les déclencheurs sont branchés.
+  - 502 remises en ligne recréées, pas encore revues, sont protégées. Aucune erreur Postgres ; les fonctions répondent
+    en 200.
+- Reste à Nico : téléverser l'extension 0.6.163 (chemin ci-dessus, réparé : des échappements l'avaient abîmé).
