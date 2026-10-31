@@ -116,3 +116,18 @@ exception, vert ; `lot-j-3110` 63/0, `urgence-louis-3010` 82/0. Lint : aucun pro
   `assets/App-DNOu7HHd.js` 200, contient « Tout est à jour, prochaine synchro automatique » et la relecture de
   `ebay_voie_api` au retour dans l'app.
 - 3ec94b0b relancée (voir « Reste »).
+
+## Point 2 bis (01/11, 00:15 → 00:35) — la carte de synchro, plus sobre (constat de Nico, 2.9.144, 00:08)
+**Trouvé.** La ligne par plateforme faisait un pavé, et elle ne lisait que les synchros demandées (règle du 05/10) :
+sur le compte de Nico, Vinted et eBay disaient « 29/10 » alors que le relevé quotidien de l'extension (Vinted, 30/10
+20:05, `cron`) et celui du serveur par l'API (eBay, 31/10 10:10, `serveur:quotidien_api`) avaient réussi depuis.
+**Changé** (`src/stock/BlocSynchro.jsx`, `src/stock/boutonSynchro.js`, `lireDerniersReussis`) :
+- détail par plateforme replié, ouvert en touchant l'en-tête de la carte (chevron) ;
+- une phrase : « La synchro et la surveillance des ventes sont automatiques. » (bouton grisé : « Tout est à jour… ») ;
+- « Synchronisé il y a… », détail et grisage : le dernier relevé RÉUSSI, tous déclencheurs ; les pastilles et les points
+  à régler ne changent pas.
+**Preuves.** Sur les données du compte de Nico, le lecteur rend Vinted 30/10 20:05 (cron), eBay 31/10 10:10 (API),
+Leboncoin 31/10 14:54, Beebs 31/10 15:50 (veilleur), Depop 31/10 10:59. Requête : 1 ms sur le compte le plus chargé
+(index). Selftest `lot-j-3110` 76/0 ; suite complète 508 / 0 rouge ; lint sans problème neuf ; build. OTA **2.9.145**
+(canal lu 2.9.144 → relu 2.9.145 à 00:33:15, dist `2026-10-31T23:32:49Z+04827ab`). Pas vu dans l'app : jamais de
+connexion à fillsell.app en automatisation.
