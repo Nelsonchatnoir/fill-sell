@@ -1055,3 +1055,14 @@
   `republier-photos-lbc`) : sur une annonce Leboncoin partie amputée (repli silencieux sur 3 photos, 20→30/10), une
   ligne dans l'app ; UN geste, une annonce à la fois par compte, sans pièce ni quota (`hors_quota`), cadence de la file,
   visible seulement avec une extension qui lit la nouvelle page de dépôt, jamais pendant un blocage Leboncoin.
+
+## ⛔ 31/10 (lot F, Johan) — une republication vise l'annonce EN LIGNE actuelle ; la pause se dit « En pause à ta demande »
+- `_shared/republication-cible.js` (get-pending-jobs, APRÈS la pause, AVANT l'étape qui retire) : republication pas encore
+  engagée sur Leboncoin, Depop, Beebs → numéro visé absent du dernier relevé probant (`releve_preuve_absence`) alors qu'il
+  existait avant, et fiche portant une annonce vue dans ce relevé → close « déjà remise en ligne » (`cancelled` +
+  `republication_sans_objet`), rien retiré ni recréé ; sans successeur → retenue avant tout retrait (`cible_absente_releve`,
+  jamais sur Beebs), repart si un relevé revoit la cible. Écran : « Fait » (`deja_en_ligne`), jamais « à relancer ».
+- Pause : UNE règle (`jobRetenuParPause`) pour le serveur, `etat-job` (app et popup) ; pendant une pause le serveur écrit
+  `MESSAGE_REPUBLICATION_EN_PAUSE` (jamais « En file ») ; « En pause à ta demande » partout (ligne, compteurs, barres,
+  À régler, popup) ; à la reprise les lignes repassent « En file ». Exception unique : une republication dont l'annonce est
+  déjà retirée va au bout.

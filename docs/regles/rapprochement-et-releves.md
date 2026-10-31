@@ -451,3 +451,18 @@ trois relevés et deux reprises lancés tout seuls, aucun Vinted abouti, un faux
 - La règle « vue avant le retrait » ne vaut que pour une remise en ligne (repère `deleted_at` serveur), jamais pour un
   dépôt coupé `depot_deja_parti` (repère = fin de l'essai, heure du poste).
 - Selftests : `recreation-deja-partie` (§ 6-7), `depot-coupe-tranche` (§ 10-11).
+
+## ⛔ 31/10 (lot F, Johan) — une annonce remise en ligne sur la MÊME plateforme est une question, jamais une fiche neuve
+- Deux annonces d'une même plateforme de relevé aux mêmes photos (≥ 2 quasi identiques), titre proche sans conflit, ni lot
+  ni quantité > 1, **jamais vues par le même relevé** (`run_id` différents) = une succession (l'une a remplacé l'autre ;
+  prix, description ou photos ajoutées peuvent changer). `moteur.js` (`succession`, étape 5) : l'annonce ouverte part en
+  `a_verifier` (motif `remise_en_ligne_meme_plateforme`) vers la fiche d'origine (un nœud F d'abord, puis la plus
+  ancienne), HORS du stock. Avant : « trois annonces sur la même photo » = « vendeur de lots » → `creer` → fiche en double
+  au stock (12 chez Johan le 30/10).
+- Inchangé : deux annonces vues par le même relevé = deux exemplaires (« Annonce en double ? » pour une paire, rien pour
+  trois et plus) ; la republication v23 (tout identique, prix compris) reste rattachée automatiquement.
+- La couverture : pour deux annonces successives, la première photo de l'une est aussi comparée à la deuxième de l'autre
+  (photo ajoutée en couverture à la remise en ligne).
+- Le rattachement AUTOMATIQUE d'une succession prouvée (prix changé) attend une décision de Nico (garde de la base
+  `rapprochement_republication_prouvee` à élargir) ; `republication_engagee` qui compte l'étape « captured » empêche de
+  dater disparues les anciennes annonces d'un article dont une republication attend (migration à décider).

@@ -1766,6 +1766,9 @@ export const PUBLISHED_BUILD_IDS = {
   // 0.6.125 (9d11d42) : ACCEPTÉE au CWS et servie — 15 comptes relevés le 18/10 à 12:45 (build
   // '2026-10-17T23:03:01Z+9d11d42'), mise à jour tirée par le minimum relevé à 11:40 (requestUpdateCheck).
   '2026-10-17T23:03:01Z': '0.6.125',
+  // 0.6.161 (162998e) : ACCEPTÉE au CWS et servie (28 postes en 2026-10-30T22:19:48Z+162998e relevés le 31/10 à 09:20).
+  // Registre seulement : EXTENSION_MIN_BUILD ne bouge pas (décision de Nico du 25/10, aucun bandeau).
+  '2026-10-30T22:19:48Z': '0.6.161',
 };
 
 // ── Numéro de version MINIMAL attendu (2026-09-19) ──────────────────────────

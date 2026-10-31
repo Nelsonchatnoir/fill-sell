@@ -137,3 +137,21 @@
   comprise, adsubmit sans confirmation = dépôt inachevé, navigateur réel et rendu graphique envoyés au serveur
   (`navigateur`, `rendu_graphique`), lectures Leboncoin coupées pendant un blocage, « Pour qui ? » avant la taille des
   accessoires Vinted, matière Depop. EXTENSION_LAST_COMMIT recalé sur le dernier commit qui touche `chrome-extension/`.
+
+## ⛔ 31/10 (lot F, Sébastien) — l'extension se rétablit seule après une mise à jour (0.6.162 ; rapport `docs/enquetes/lot-f-3110/RAPPORT.md`)
+- Chrome EFFACE les alarmes d'une extension à sa mise à jour ; `runtime.onInstalled` peut ne pas arriver (mise à jour posée
+  par Chrome pendant que l'ancien worker était arrêté) : la 0.6.161 de Sébastien a démarré quatre fois sans jamais poller
+  (plus d'alarme), sans ping ni journal `maj_extension`. Règle : **tout ce qui doit exister à chaque démarrage se pose à
+  chaque démarrage** (bloc `Promise.resolve().then(...)` en fin d'évaluation : `planifierAlarmes`, puis
+  `constaterVersionAuDemarrage`), jamais seulement dans `onInstalled` / `onStartup`.
+- Une mise à jour se constate sans `onInstalled` (version vue `fillsell_version_vue`, ou trace de rechargement de
+  l'ancienne version) : journal `maj_extension` (`constatee_au_demarrage`) envoyé tout de suite, poll en 5 s.
+- `veillerPoll` (démarrage, chaque alarme, chaque appel de la page) : poll muet depuis 8 min sans verrou tenu → relancé ;
+  verrou tenu 40 min sans job commencé ni progrès → `chrome.runtime.reload()` **2 fois par 6 h au plus**, jamais pendant un
+  job (`travailEnCours`), une republication supprimée en mémoire, ni quand `raisonsDeNePasRecharger` dit non (base) ;
+  trace `extension_redemarrage_auto`. Le progrès se note dans `demarrerBattementPresence` (prise/sortie du verrou), au début
+  d'un job et au poll réussi (`fillsell_dernier_poll_ok`).
+- La présence annoncée par le pont de la page (`__fillsellExt`) ne prouve PAS que le service worker travaille : la page
+  demande `FILLSELL_ETAT_COMPTE` (réponse `__fillsellCompte` : vivant, meme) ; seul `meme: false` prouve un autre compte.
+- Essai sur le poste de Nico avec un harnais (copie non livrée : `onInstalled` neutralisé, alarmes effacées) : la méthode
+  pour reprouver ce cas — voir le rapport.
