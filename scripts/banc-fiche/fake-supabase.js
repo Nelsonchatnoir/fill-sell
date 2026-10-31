@@ -55,7 +55,13 @@ const egal = (a, b) => String(a) === String(b);
 function requete(table) {
   const etat = { filtres: [], ordres: [], select: '*', limite: null, unique: null, tete: false, compte: false, ecriture: null, ou: false, plage: null };
   const lignes = () => {
-    if (etat.ecriture) return [];
+    // Une écriture n'atteint rien : elle est NOTÉE (window.__ecritures) et, pour un update, rend les lignes visées
+    // (l'app vérifie qu'une ligne a bien été écrite) — de quoi vérifier ce que l'enregistrement de la fiche envoie.
+    if (etat.ecriture) {
+      (window.__ecritures ||= []).push({ table, op: etat.ecriture, valeur: etat.valeur ?? null });
+      if (etat.ecriture !== 'update') return [];
+      return (D[table] ?? []).filter((r) => etat.filtres.every((f) => f(r))).map((r) => projeter(r, etat.select));
+    }
     let r = (D[table] ?? []).slice();
     for (const f of etat.filtres) r = r.filter(f);
     for (const o of etat.ordres.slice().reverse()) {
@@ -80,7 +86,7 @@ function requete(table) {
       return (...a) => {
         switch (nom) {
           case 'select': etat.select = a[0] ?? '*'; if (a[1]?.head) etat.tete = true; if (a[1]?.count) etat.compte = true; break;
-          case 'insert': case 'update': case 'upsert': case 'delete': etat.ecriture = nom; break;
+          case 'insert': case 'update': case 'upsert': case 'delete': etat.ecriture = nom; etat.valeur = a[0]; break;
           case 'eq': etat.filtres.push((r) => egal(lire(r, a[0]), a[1])); break;
           case 'neq': etat.filtres.push((r) => !egal(lire(r, a[0]), a[1])); break;
           case 'in': etat.filtres.push((r) => (a[1] ?? []).some((v) => egal(lire(r, a[0]), v))); break;

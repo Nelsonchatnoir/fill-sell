@@ -48,10 +48,29 @@ Rapport précédent : `docs/enquetes/lot-h-3110/RAPPORT.md`. Règles durables : 
 - Vu au banc (téléphone, données de Nico) : fiche de la Veste de test → « Beebs · en ligne depuis aujourd'hui · 31 oct.
   2026 à 11:46 · Publiée par FillSell » et « Détail par plateforme et historique (dont 1 plus en ligne) » → feuille
   (Beebs en ligne ; Leboncoin plus en ligne, historique 3 mises en ligne dont 1 republication).
-- **Production** : À COMPLÉTER (web après le déploiement Vercel ; téléphone après l'OTA).
+- **Article en ligne sur 5 plateformes, code de l'OTA 2.9.142 (commit 1efadd9), viewport de téléphone (banc, données
+  du compte de Nico)** — « Sweat Tommy Jeans bleu marine – Taille M » :
+  - menu « … » : « En ligne sur Depop depuis 5 j » · « En ligne sur Beebs depuis 5 j · importée » · « En ligne sur eBay
+    depuis 5 j · importée » · « En ligne sur Vinted depuis 32 j · importée » · « En ligne sur Leboncoin depuis 51 j ·
+    importée », chacune ouvre la feuille ;
+  - fiche : bloc « En ligne depuis » — Depop 26 oct. 2026 à 11:58 publiée par FillSell ; Beebs et eBay 26 oct. à 11:13,
+    Vinted 28 sept. à 21:57, Leboncoin 10 sept. à 10:52, importées — et « Détail par plateforme et historique » → la
+    feuille (5 plateformes en ligne, historique de chacune).
+- **Production web** : EN ATTENTE — le push sur main (16ffa59, 1efadd9) a été refusé deux fois par le classifieur de
+  Claude Code ; tant que Nico ne l'a pas fait, fillsell.app sert dbbc512 (lot H sans ces deux ajouts).
+- **Téléphone** : le bundle 2.9.142 est servi et actif (§ 3) ; aucun téléphone n'est accessible depuis ce poste — rien
+  n'a été vu sur un appareil réel.
 
 ## 3. OTA
-À COMPLÉTER.
+- Les points 2 et 4 changent le code : le `dist/` de dbbc512 (2.9.141, jamais envoyé) n'a PAS été envoyé ; nouvelle version.
+- Canal production lu **2.9.140** → version **2.9.142** (commit 1efadd9, `npm run build` sur arbre propre : build
+  `2026-10-31T14:07:21Z+1efadd9`) → `npx @capgo/cli@8.99.0 bundle upload --channel production --bundle 2.9.142 --path dist`
+  (5,7 s) → canal relu : **production = 2.9.142** (bundle du 31/10 15:07:49). Le bundle contient le lot H (pastille,
+  feuille « En ligne depuis », filtre « En ligne sur X », tri « Mise en ligne récente ») et les points 2 et 4.
+- **Actif** : à 15:41, 3 comptes tournent déjà le bundle (`profiles.app_build` = `2026-10-31T14:07:21Z+1efadd9`, posé
+  par l'app au lancement) ; le téléphone de Nico ne l'avait pas encore pris (il le prend à la prochaine ouverture de
+  l'app, puis au redémarrage suivant). Je n'ai pas accès à un téléphone : ce que montre l'app est vu au banc, en
+  viewport de téléphone, sur le même code (commit 1efadd9) — voir § 2.
 
 ## 4. La fiche d'un article met une seconde à s'ouvrir
 ### a. Mesurer d'abord
@@ -94,8 +113,31 @@ Rapport précédent : `docs/enquetes/lot-h-3110/RAPPORT.md`. Règles durables : 
   Un premier essai avait placé les hooks après un retour anticipé d'App : erreur React 310 vue AU BANC, corrigée avant
   tout commit (règle écrite dans `docs/regles/stock-et-fiche.md`, vérifiée par le selftest).
 
-### d. Avant / après (même banc, même mesure, médiane de 6 touchers)
-À COMPLÉTER.
+### d. Avant / après (même banc, même mesure : toucher → image suivante, médiane de 6 touchers)
+Première série (≈ 14:00–14:20, machine calme ; « avant » = bef6d1a, « après » = code final avant les derniers ajouts) :
+
+| Banc | Avant | Après mémoire des icônes | Après (final) |
+|---|---|---|---|
+| PC (Chromium ×1), 2 900 articles | 704 ms | 88 ms | 40 ms |
+| Android milieu de gamme (×4), 2 900 articles | 3 928 ms | 320 ms | 104 ms |
+| Android entrée de gamme (×6), 2 900 articles | 6 608 ms | 576 ms | 152 ms |
+| Android ×4, stock de Nico (44 articles) | 184 ms | — | 104 ms |
+| iPhone (WebKit, CPU du PC), 2 900 articles | ne se pose jamais (> 4 min sans qu'une carte soit stable) | — | 40 ms (Event Timing), 50 ms à l'image |
+
+Série finale (≈ 15:10–15:25, même banc, « après » = commit 1efadd9 = l'OTA 2.9.142, avant et après mesurés à la suite ;
+la machine était plus chargée — Chrome de Nico, extension — d'où un « avant » plus lent que dans la première série) :
+
+| Banc | Avant (bef6d1a) | Après (1efadd9) |
+|---|---|---|
+| PC (Chromium ×1), 2 900 articles | 1 400 ms | **56 ms** |
+| Android milieu de gamme (×4), 2 900 articles | 8 896 ms | **208 ms** |
+| Android entrée de gamme (×6), 2 900 articles | 14 880 ms | **344 ms** |
+| Android ×4, stock de Nico (44 articles) | 400 ms | **216 ms** |
+| iPhone (WebKit, CPU du PC), 2 900 articles | ne répond pas en 15 min (aucune carte « stable ») | **64 ms** |
+| iPhone (WebKit, CPU du PC), 500 articles | 3 696 ms | **64 ms** |
+
+Ce qui reste dans l'« après » : le rendu d'App lui-même et la création de la fiche (≈ 30 ms de JS au CPU ×4, puis la
+peinture du voile flouté). Le Stock n'est plus redessiné ; taper une lettre dans la fiche ne le redessine plus non plus.
 
 ## 5. Beebs — preuve de la republication complète : PAS FAITE (l'annonce n'est jamais sortie de vérification)
 - Relevé Beebs du compte de Nico demandé à 13:20 (geste « Synchroniser », `…_lot_f_releve_beebs_nico.sql`) : 13 annonces
@@ -105,18 +147,40 @@ Rapport précédent : `docs/enquetes/lot-h-3110/RAPPORT.md`. Règles durables : 
 - Rien n'a été forcé : 34270410 et sa fiche (1793438700001) restent en place, sa publication 18d07d9c inchangée. La
   republication Beebs n'a pas été lancée (elle ne pourrait que viser une annonce que Beebs ne montre pas). À reprendre
   quand Beebs la met en ligne : `…_lot_f_releve_beebs_nico.sql` pour le voir, puis le parcours du lot F.
-- Relevé suivant : À COMPLÉTER (fin de travail).
+- Relevé suivant, 15:26:28 : identique (13 en ligne, 1 en vérification — 33640171) ; 34270410 toujours invisible.
+  **Le parcours complet de republication Beebs reste à prouver** quand Beebs mettra une annonce de test en ligne.
 
 ## 6. Fin de dossier et non-régression
 - update-job-status : non modifié, non déployé (v160, verify_jwt faux, relu).
 - **Republication Vinted et Leboncoin** (compte de Nico, annonces de test à 999 €, file ACTIVE, v313 ;
   `…_cloture_fh_4_publications_nico.sql`, `…_5_republications_nico.sql`) : publication 5842ee5e → Vinted 10607666666
-  (14:39), ee17adb2 → Leboncoin 3299212696 (14:38) ; republications manuelles 14:39:51 : Vinted 7667d391, Leboncoin
-  fc8c5e64 → À COMPLÉTER.
+  (14:39), ee17adb2 → Leboncoin 3299212696 (14:38) ; republications manuelles 14:39:51 : **Vinted 7667d391 →
+  10607800394 (14:48:21)**, **Leboncoin fc8c5e64 → 3299231853 (14:53:44)** — captured → deleted → recreated, une à la
+  fois, aucune annonce en double.
+- **Relevé et rattachement** : relevé Leboncoin demandé à 14:42:06 pendant que fc8c5e64 attendait (captured) → la
+  synchro ATTEND la remise en ligne (garde existante « ta synchro attend une remise en ligne ») et part à 14:54:16, juste
+  après la recréation : « 16 en ligne lues sur 16 annoncées … disparues 0 » ; la nouvelle annonce 3299231853 est
+  rattachée à SA fiche (1793438700001) par son numéro (source `job`), aucune fiche neuve, rien daté disparu.
+- **« Republier en lot » puis « Tout annuler »** (file en pause, `…_7_lot_annule_nico.sql`, mêmes écritures que l'app) :
+  la republication Vinted d9349c7a créée dans un lot puis annulée (« Annulée à ta demande — ton annonce est restée en
+  ligne. », `arret_utilisateur`, `hors_quota`), rien n'est parti ; Leboncoin refusé à la création par le serveur
+  (`cadence_24h` : republiée à 14:53 — garde normale, vérifiée dans une transaction annulée, rien écrit).
+- **Fin des essais** (`…_6_fin_nico.sql`) : retraits 45362eb6 (Vinted 10607800394) et 9491204e (Leboncoin 3299231853)
+  servis malgré la pause, faits ; file EN PAUSE (relu : `file_pause.active = true`), comme Nico l'avait laissée ; aucun
+  job ouvert sur son compte.
 - **Pause et reprise de file** (bouton de l'app, `file_pause_basculer`) : reprise 14:27:24 → la publication part ;
   pause 14:30:08 → la republication bd133ac9 reste en attente au poll de 14:31:58 (« file EN PAUSE → 1 … gardée ») ;
-  reprise 14:35 (…_4) → publications et republications servies ; pause finale : À COMPLÉTER.
-- À COMPLÉTER : « Tout annuler » sur un lot, relevé et rattachement, filtres et tris, enregistrement de la fiche.
+  reprise 14:35 (…_4) → publications et republications servies ; pause 15:04 (…_7) — relu à 15:06 : `file_pause.active = true`.
+- **Enregistrement de la fiche** : `handleEditSave` n'est pas touché (aucune ligne du diff dans la fonction). De bout en
+  bout au banc sur le code de l'OTA (`scripts/banc-fiche/enregistrer.mjs`, le faux client NOTE les écritures, rien
+  n'atteint la base) : toucher la Veste de test → fiche ouverte avec son bloc « En ligne depuis » → nom et emplacement
+  modifiés → « Enregistrer » → l'app envoie l'`update` d'`inventaire` avec les 13 champs habituels (nom « … (banc) »,
+  emplacement « Banc A1 »), la fiche se ferme, la carte montre le nouveau nom ; les dates par plateforme ne sont JAMAIS
+  envoyées. Sur fillsell.app : en attente du push (voir § 2).
+- **Filtres et tris du Stock** : `selftest:stock-refonte` (102) et `selftest:lot-h-dates` (55) verts ; les parcours
+  mémorisés (à publier, à remonter) gardent leurs entrées (`selftest:fiche-rapide`).
+- **Suite complète** : 506 selftests, 0 rouge (14:48 → 15:01, sur le commit 16ffa59), `build:essai` vert, lint : aucun
+  problème nouveau (App 51 = 51, StockTab 15 = 15 ; fichiers neufs propres).
 
 ## 7. Décisions de Nico sur les deux « à décider » du lot F
 ### a. « captured » compte comme une republication engagée — APPROUVÉ
@@ -140,7 +204,10 @@ Rapport précédent : `docs/enquetes/lot-h-3110/RAPPORT.md`. Règles durables : 
   **582 / 582 republications engagées retrouvées par leur numéro** ; coût mesuré (EXPLAIN ANALYZE, Johan) : 3,9 ms, index
   `cross_post_jobs_user_status`. Selftest : `selftest:republication-engagee-numero` (17).
 - **Preuve sur le compte de Nico** : republication Leboncoin de test fc8c5e64 à l'étape « captured » (14:40:42) ; relevé
-  Leboncoin demandé à 14:42:06 (`…_cloture_fh_8_releve_lbc_nico.sql`) → À COMPLÉTER.
+  Leboncoin demandé à 14:42:06 (`…_cloture_fh_8_releve_lbc_nico.sql`) → il attend la remise en ligne (deuxième
+  ceinture, existante), part à 14:54:16 : 16/16 lues, **disparues 0**, aucune annonce datée disparue ; la republication
+  a abouti normalement (3299212696 → 3299231853 à 14:53:44), la nouvelle annonce rattachée par son numéro. La migration
+  du 31/10 n'a pas eu à jouer ici (même fiche) ; elle est prouvée par sa lecture en production (582 / 582) et son selftest.
 - **Comptes réels** (30 derniers jours) : depuis le 22/10 21:14, **0 annonce datée disparue ni « Vendue ? » posée par un
   relevé pendant une republication engagée**, Sébastien et Johan compris. Avant la garde (à regarder, NON réparé) :
   7 annonces Leboncoin datées disparues pendant une republication engagée — jocabroc8 3279968973 (08/10), voirememe
