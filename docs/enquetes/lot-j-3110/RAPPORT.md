@@ -98,8 +98,9 @@ actif et rien ne le disait.
 **Reste.**
 - Doriane : sa republication est AUTOMATIQUE, donc tenue par son créneau (19:00-23:00, intouchable) — elle partira le
   01/11 à partir de 19:00. La preuve finale (annonce republiée) est à relire à ce moment-là.
-- Doriane a une 2e republication dans le même cas (3ec94b0b, 31/10 20:22, needs_user, même message) : non relancée (le
-  feu vert visait « sa tâche ») ; elle passera si elle appuie sur « Relancer », ou sur ton feu vert.
+- Doriane, 2e republication dans le même cas (3ec94b0b, 31/10 20:22) : relancée le 01/11 à 00:12 sur feu vert de Nico
+  (script `scripts/reparations/20261031_doriane_relance_republication_lbc_2.sql`, sauvegarde `_backup_3110_doriane_relance_lbc_2`,
+  inverse fourni) : pending, étape a_capturer ; part aussi dans son créneau du 01/11.
 - Point 2 : la règle « aucune heure prévue devant la personne » (16/10) est levée pour cette seule phrase, à ta demande
   (marqueur `estimation-ok:`). L'heure est exacte pour eBay relié par l'API ; pour les autres, c'est l'heure de l'alarme
   quotidienne de l'extension (Chrome ouvert), au plus tôt 20 h après le dernier relevé.
@@ -107,3 +108,11 @@ actif et rien ne le disait.
 
 Suite complète : 508 selftests, 1 rouge à la première passe (`aucune-estimation`, la phrase du point 2) → marqué
 exception, vert ; `lot-j-3110` 63/0, `urgence-louis-3010` 82/0. Lint : aucun problème neuf. Aucun mail, rien chez Stripe.
+
+## Suite (01/11, 00:10 → 00:13)
+- Push sur main refusé par le classifieur à 00:05 (« Out-of-Place Publication »), puis FAIT à 00:11:07 sur feu vert
+  explicite de Nico : bcf3cb9..cc30b3a (6dcaaff, 92c2cbb, cc30b3a).
+- fillsell.app sert `2026-10-31T23:11:24Z+cc30b3a` (lu à 00:11:48) ; entrée `assets/index-DjaFSDuX.js` 200 AVEC `Origin` ;
+  `assets/App-DNOu7HHd.js` 200, contient « Tout est à jour, prochaine synchro automatique » et la relecture de
+  `ebay_voie_api` au retour dans l'app.
+- 3ec94b0b relancée (voir « Reste »).
