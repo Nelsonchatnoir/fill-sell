@@ -66,14 +66,19 @@ const D = await charger('src/stock/dupliquer.js');
   verifier(!R.estAncienne(null), 'âge inconnu ≠ ancienne');
   const maintenant = Date.parse('2026-10-03T12:00:00Z');
   const il = (j) => new Date(maintenant - j * 86400000).toISOString();
-  const item = { listed_at_guess: il(10) };
+  // (31/10, lot H) Vinted se date sur listed_at_guess d'une fiche qui porte son annonce (vinted_item_id), comme
+  // l'éligibilité à la republication automatique.
+  const item = { listed_at_guess: il(10), vinted_item_id: '10000000001' };
+  // (31/10, lot H) La règle de date est celle de l'éligibilité à la republication automatique
+  // (_shared/mise-en-ligne.js) : le dernier job publié QUI PORTE UN LIEN, daté par published_at — une
+  // republication est publiée à sa recréation (published_at = recreated_at dans les données réelles).
   const jobs = [
-    { platform: 'leboncoin', action: 'publish', status: 'published', published_at: il(3) },
-    { platform: 'leboncoin', action: 'republish', status: 'published', published_at: il(20), platform_fields: { recreated_at: il(2) } },
+    { platform: 'leboncoin', action: 'publish', status: 'cancelled', published_at: il(20), listing_url: 'https://www.leboncoin.fr/ad/x/1' },
+    { platform: 'leboncoin', action: 'republish', status: 'published', published_at: il(2), listing_url: 'https://www.leboncoin.fr/ad/x/2', platform_fields: { recreated_at: il(2) } },
     { platform: 'beebs', action: 'publish', status: 'failed', published_at: il(40) },
   ];
   verifier(R.ancienneteJours(item, jobs, ['vinted', 'leboncoin'], maintenant) === 10, 'l’âge rendu est celui de l’annonce la PLUS ancienne en ligne');
-  verifier(R.ancienneteJours(item, jobs, ['leboncoin'], maintenant) === 2, 'une republication RAJEUNIT l’annonce : sa date de recréation compte (2 j, pas 3 ni 20)');
+  verifier(R.ancienneteJours(item, jobs, ['leboncoin'], maintenant) === 2, 'une republication RAJEUNIT l’annonce : sa date de recréation compte (2 j, pas 20)');
   verifier(R.ancienneteJours(item, jobs, ['beebs'], maintenant) === null, 'un job non publié ne date rien');
   verifier(R.ancienneteJours(item, jobs, [], maintenant) === null, 'hors ligne partout → âge inconnu');
 }
@@ -166,7 +171,7 @@ const D = await charger('src/stock/dupliquer.js');
 // ── 7. Les tris de la planche ────────────────────────────────────────────────
 {
   verifier(R.TRI_PAR_DEFAUT === 'ajout_desc', '« Plus récents » par défaut');
-  verifier(egal(R.TRIS_PLANCHE.map((c) => R.libelleTriPlanche(c, 'fr')), ['Plus récents', 'Plus anciens', 'Plus vus', 'Prix croissant', 'Prix décroissant']), 'les cinq tris de la planche');
+  verifier(egal(R.TRIS_PLANCHE.map((c) => R.libelleTriPlanche(c, 'fr')), ['Plus récents', 'Plus anciens', 'Mise en ligne récente', 'Plus vus', 'Prix croissant', 'Prix décroissant']), 'les cinq tris de la planche, et « Mise en ligne récente » (31/10, lot H)');
   const items = [{ id: 1, v: 5 }, { id: 2, v: null }, { id: 3, v: 40 }, { id: 4, v: 5 }];
   const tri = trierStock(items, 'vues_desc', { vues: (it) => it.v }).map((it) => it.id);
   verifier(egal(tri, [3, 1, 4, 2]), '« Plus vus » : décroissant, stable, vues inconnues en dernier', tri.join(','));

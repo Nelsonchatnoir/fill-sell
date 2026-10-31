@@ -104,7 +104,11 @@ import { attendVendeurDepop, attentesVendeurDepop, champsEclaireur as champsEcla
 //    dressing, carte « Mes annonces en ligne », parcours d'entrée) : celle
 //    d'annonces/etatReleve. Une seconde signature ici aurait fini par mentir.
 import { murConnexionReleve, situationFinReleve } from '../annonces/etatReleve';
-import { lireSyncMultiOuverte, lireStatsAnnoncesParArticle } from '../utils/syncPlateformes';
+import { lireSyncMultiOuverte, lireStatsAnnoncesParArticle, lireDatesRelevees } from '../utils/syncPlateformes';
+// (31/10, lot H — XEWER) Depuis quand l'annonce est en ligne, plateforme par plateforme : UNE règle de date, celle de
+// l'éligibilité à la republication automatique.
+import { miseEnLigneAffichee, indexerDatesRelevees, datesParPlateforme } from '../../supabase/functions/_shared/mise-en-ligne.js';
+import DatesEnLigne from '../stock/DatesEnLigne';
 import { useFondFige } from '../utils/modale';
 import {
   plateformesDuCompte, plateformesDeLArticle, plateformesDeReleve,
@@ -7782,6 +7786,25 @@ const StockTab = memo(function StockTab({
   // Une seule lecture par article, sur les MÊMES sources que la carte : l'index
   // (computeRemovalInfo + vintedPresenceArticle), les jobs, le prix de
   // l'annonce Vinted relevé, les vues fusionnées. Rien d'inventé.
+  // ── (31/10, lot H — XEWER) DEPUIS QUAND, PLATEFORME PAR PLATEFORME ────────
+  // Une seule règle de date, celle de l'éligibilité à la republication
+  // automatique (_shared/mise-en-ligne.js) : la carte dit la mise en ligne la
+  // PLUS RÉCENTE, ou celle de la plateforme filtrée (« En ligne sur X ») ; le tri
+  // « Mise en ligne récente » et les tranches d'ancienneté lisent la même date.
+  // Les dates RÉELLES des annonces importées (annonces_plateforme.publiee_le) se
+  // lisent une fois à l'ouverture (lecture par pages, bornée au compte).
+  const [datesRelevees, setDatesRelevees] = useState(() => new Map());
+  useEffect(() => {
+    if (!user?.id) return undefined;
+    let annule = false;
+    lireDatesRelevees(user.id).then((l) => { if (!annule) setDatesRelevees(indexerDatesRelevees(l)); }).catch(() => {});
+    return () => { annule = true; };
+  }, [user?.id]);
+  const [datesItem, setDatesItem] = useState(null);
+  const plateformeDatee = filtreDiffusion?.mode === 'en_ligne' ? filtreDiffusion.platform : null;
+  const miseEnLigneArticle = (item, enLigne) => miseEnLigneAffichee({
+    item, jobs: jobsByInventaire[item.id] ?? [], enLigne: enLigne ?? [], plateforme: plateformeDatee, datesRelevees,
+  });
   const vuesArticle = (i) => {
     const pf = statsPlateformes[String(i.id)] ?? [];
     const vPf = pf.some((x) => x.vues != null) ? pf.reduce((t, x) => t + (x.vues ?? 0), 0) : null;
@@ -7798,12 +7821,14 @@ const StockTab = memo(function StockTab({
     const enLigne = !!e?.enLigne?.length;
     const occupees = Array.isArray(e?.occupees) ? e.occupees : (e?.enLigne ?? []);
     const aPublier = plateformesCompte.filter((p) => !occupees.includes(p)).length;
-    const jours = ancienneteJours(i, jobsByInventaire[i.id], e?.enLigne ?? []);
+    const jours = ancienneteJours(i, jobsByInventaire[i.id], e?.enLigne ?? [], Date.now(), datesRelevees);
+    // (31/10, lot H) L'âge que dit la carte (plus récente, ou plateforme filtrée) : celui des tranches d'ancienneté.
+    const joursAffiches = miseEnLigneArticle(i, e?.enLigne ?? [])?.jours ?? null;
     const jobsEnAttente = (jobsByInventaire[i.id] ?? []).filter((j) => j.action !== 'delete' && (j.status === 'pending' || j.status === 'processing'));
     const surConnexion = jobsEnAttente.length > 0 && jobsEnAttente.every(attenteDeConnexion);
     // (25/10) aCompleter / enEchec suivent déjà la règle de « À régler » (indexEtat, plus haut).
     const aRegler = !!(e?.aCompleter?.length || e?.enEchec?.length) || surConnexion;
-    return { enLigne, aPublier, jours, ancienne: estAncienne(jours), aRegler, vendu: i.statut === 'vendu' };
+    return { enLigne, aPublier, jours, joursAffiches, ancienne: estAncienne(jours), aRegler, vendu: i.statut === 'vendu' };
   };
   const passeVue = (i, vue) => {
     if (vue === 'tous') return true;
@@ -7824,11 +7849,15 @@ const StockTab = memo(function StockTab({
       ? (soldFiltre ?? [])
       : filtrerStock(stockFiltre, indexEtat, { diffusion: filtreDiffusion, probleme: filtreProbleme });
     if (vueStock !== 'tous' && vueStock !== 'vendus') l = l.filter((i) => passeVue(i, vueStock));
-    if (tranchesAge.length) l = l.filter((i) => tranchesAge.includes(trancheAnciennete(infoFiltre(i).jours)));
+    if (tranchesAge.length) l = l.filter((i) => tranchesAge.includes(trancheAnciennete(infoFiltre(i).joursAffiches)));
     if (prixMinN != null || prixMaxN != null) l = l.filter((i) => dansFourchettePrix(prixArticle(i), prixMinN, prixMaxN));
-    return trierStock(l, triStock, { vues: vuesArticle });
+    return trierStock(l, triStock, {
+      vues: vuesArticle,
+      // (31/10, lot H) « Mise en ligne récente » : la date que dit la carte (plateforme filtrée, sinon la plus récente).
+      miseEnLigne: (i) => { const m = miseEnLigneArticle(i, indexEtat.get(String(i.id))?.enLigne ?? []); return m ? Date.parse(m.date) : null; },
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtreOuTriActif, stockFiltre, soldFiltre, indexEtat, filtreDiffusion, filtreProbleme, triStock, vueStock, tranchesAge, prixMinN, prixMaxN, jobsByInventaire, statsPlateformes, prixAnnonces, plateformesCompte]);
+  }, [filtreOuTriActif, stockFiltre, soldFiltre, indexEtat, filtreDiffusion, filtreProbleme, triStock, vueStock, tranchesAge, prixMinN, prixMaxN, jobsByInventaire, statsPlateformes, prixAnnonces, plateformesCompte, datesRelevees]);
 
   // « Republier en lot » RESTE visible sous filtre, et porte sur les articles
   // FILTRÉS (décision Nico 08/09) : un bandeau qui compterait tout le stock
@@ -8526,7 +8555,9 @@ const StockTab = memo(function StockTab({
     let completeLe = 0;         // horodatage de la dernière lecture complète
     const COMPLETE_MS = 5 * 60_000;
     const COMPLETE_RETOUR_MS = 2 * 60_000;
-    const SELECT_JOBS = "id, inventaire_id, platform, status, error, created_at, published_at, platform_fields, action, listing_url, title, bulk_batch_id, voie";
+    // platform_listing_id, handler_build : VÉRIFIÉES dans le schéma prod le 31/10 (information_schema.columns) — le
+    // numéro de l'annonce et la marque « releve-annonces » d'un import (dates par plateforme, lot H).
+    const SELECT_JOBS = "id, inventaire_id, platform, status, error, created_at, published_at, platform_fields, action, listing_url, title, bulk_batch_id, voie, platform_listing_id, handler_build";
     const poser = (m) => {
       parId = m;
       setJobsByInventaire(regrouperParArticle(m));
@@ -9164,7 +9195,7 @@ const StockTab = memo(function StockTab({
   const aRemonterTout = republishActif ? stockSansBrouillons.filter((i) => {
     if (!repubSelectionnable(i)) return false;
     const e = indexEtatTout.get(String(i.id));
-    return estAncienne(ancienneteJours(i, jobsByInventaire[i.id], e?.enLigne ?? []));
+    return estAncienne(ancienneteJours(i, jobsByInventaire[i.id], e?.enLigne ?? [], Date.now(), datesRelevees));
   }) : [];
   const nbAttenteAction = attenteAction?.total ?? 0;
   // (05/10) Les retraits bloqués par une connexion COMPTENT : une annonce
@@ -9869,8 +9900,21 @@ const StockTab = memo(function StockTab({
       return { ...pastilleCourte({ genre: item.vinted_status === 'draft' ? 'brouillon' : 'masquee', date: dateCourte(item.last_synced_at, lang) }, lang), titre: fr ? "Statut relevé sur Vinted lors de la dernière synchronisation du dressing — resynchronise si ce n'est plus le cas." : "Status read from Vinted at the last wardrobe sync — sync again if this has changed.", onTap: null, horsLigne: false };
     }
     if (d.enLigne) {
-      const jours = ancienneteJours(item, d.jobsAll, d.logosEnLigne.filter((p) => !(p === 'vinted' && d.vintedMasquee)));
-      return { ...pastilleCourte({ genre: 'en_ligne', jours }, lang), titre: jours != null ? (fr ? `En ligne depuis ${jours} j` : `Live for ${jours} d`) : null, onTap: null, horsLigne: false, jours };
+      // (31/10, lot H — XEWER) La pastille dit la mise en ligne la PLUS RÉCENTE (ou celle de la plateforme filtrée,
+      // « En ligne sur X ») ; un appui ouvre le détail plateforme par plateforme. L'âge de la plus ANCIENNE garde
+      // son rôle (« Anciennes », « Remonter ») : joursAncienne. Une seule règle de date (_shared/mise-en-ligne.js).
+      const enLigneDatables = d.logosEnLigne.filter((p) => !(p === 'vinted' && d.vintedMasquee));
+      const affichee = miseEnLigneArticle(item, enLigneDatables);
+      const jours = affichee?.jours ?? null;
+      const joursAncienne = ancienneteJours(item, d.jobsAll, enLigneDatables, Date.now(), datesRelevees);
+      const nomPf = affichee ? (PLATFORM_LABELS[affichee.platform] || affichee.platform) : null;
+      return {
+        ...pastilleCourte({ genre: 'en_ligne', jours }, lang),
+        titre: jours != null
+          ? (fr ? `En ligne sur ${nomPf} depuis ${jours === 0 ? "aujourd'hui" : `${jours} j`} — touche pour le détail par plateforme` : `Live on ${nomPf} for ${jours} d — tap for details per platform`)
+          : (fr ? 'Touche pour le détail par plateforme' : 'Tap for details per platform'),
+        onTap: () => setDatesItem(item), horsLigne: false, jours, joursAncienne, miseEnLigne: affichee,
+      };
     }
     return { ...pastilleCourte({ genre: d.disparuDeVinted ? 'hors_ligne' : 'pas_en_ligne', date: d.disparuDeVinted ? dateCourte(item.disparu_le, lang) : null }, lang), titre: null, onTap: null, horsLigne: !!d.disparuDeVinted };
   };
@@ -10013,7 +10057,8 @@ const StockTab = memo(function StockTab({
     // route (un dépôt en file ou en attente d'une réponse n'est pas « à publier »).
     const enRoute = new Set(d.jobs.filter((j) => j.status === 'pending' || j.status === 'processing' || j.status === 'needs_user').map((j) => j.platform));
     const aPublierUtile = d.toutEnLigne ? [] : d.aPublier.filter((p) => !enRoute.has(p));
-    const jours = pastille.jours ?? ancienneteJours(item, d.jobsAll, d.logosEnLigne);
+    // (31/10, lot H) « Ancienne » (Remonter) lit l'annonce la plus ANCIENNE ; la pastille dit la plus récente.
+    const jours = pastille.joursAncienne ?? ancienneteJours(item, d.jobsAll, d.logosEnLigne, Date.now(), datesRelevees);
     const aRegler = !!d.murDirect || repubAReprendre || pastille.aRegler === true
       || (pastille.ton === 'regler' && !d.repubOccupeSlot && !d.vintedMasquee)
       || (pastille.ton === 'echec' && !d.repubOccupeSlot);
@@ -10071,7 +10116,17 @@ const StockTab = memo(function StockTab({
         texte: fr ? `Plus en ligne sur Vinted${le ? ` · ${le}` : ''} : l'annonce n'a pas été retrouvée à la dernière synchronisation.` : `Gone from Vinted${le ? ` · ${le}` : ''}: the listing was not found at the last sync.`,
         titre: fr ? "L'annonce Vinted n'a pas été retrouvée lors de la dernière synchronisation de ton dressing." : 'This Vinted listing was not found during the last wardrobe sync.' });
     }
-    if (d.enLigne && jours != null) infos.push({ cle: 'age', ton: 'neutre', texte: jours === 0 ? (fr ? "En ligne depuis aujourd'hui" : 'Live since today') : (fr ? `En ligne depuis ${jours} j` : `Live for ${jours} d`) });
+    // (31/10, lot H) La dernière mise en ligne (celle que dit la pastille) ; un appui ouvre le détail par plateforme.
+    if (d.enLigne) {
+      const mel = pastille.miseEnLigne ?? null;
+      const jm = mel?.jours ?? null;
+      const nomM = mel ? (PLATFORM_LABELS[mel.platform] || mel.platform) : null;
+      infos.push({ cle: 'age', ton: 'neutre', onTap: () => setDatesItem(item),
+        texte: jm == null ? (fr ? 'Dates de mise en ligne, par plateforme' : 'Listing dates, per platform')
+          : jm === 0 ? (fr ? `En ligne sur ${nomM} depuis aujourd'hui` : `Live on ${nomM} since today`)
+            : (fr ? `En ligne sur ${nomM} depuis ${jm} j` : `Live on ${nomM} for ${jm} d`),
+        titre: fr ? 'Voir depuis quand l’annonce est en ligne sur chaque plateforme' : 'See how long the listing has been live on each platform' });
+    }
     for (const p of d.logosEnLigne) {
       // (20/10) Pas encore vue en ligne (marqueur pas_encore_visible, migration 20261020220000) : même phrase
       // que le dépôt sans lien — jamais « plus en ligne », jamais « vendue ? ».
@@ -12028,7 +12083,7 @@ const StockTab = memo(function StockTab({
       {gesteOuvert==='remonter'&&(()=>{
         const articles=aRemonterTout.map(i=>{
           const e=indexEtatTout.get(String(i.id));
-          const jours=ancienneteJours(i,jobsByInventaire[i.id],e?.enLigne??[]);
+          const jours=ancienneteJours(i,jobsByInventaire[i.id],e?.enLigne??[],Date.now(),datesRelevees);
           return {id:i.id,titre:i.title,photo:premierePhoto(i.photos),logos:e?.enLigne??[],jours,
             ligne2:jours!=null?(lang==='fr'?`en ligne depuis ${jours} j`:`live for ${jours} d`):null};
         }).sort((a,b)=>(b.jours??0)-(a.jours??0));
@@ -12562,6 +12617,18 @@ const StockTab = memo(function StockTab({
           onOuvrirFile={()=>{setRemoveModalItem(null);setFileOuverte(true);}}
         />
       )}
+      {/* (31/10, lot H — XEWER) Depuis quand l'annonce est en ligne, plateforme par plateforme (appui sur la pastille
+          « En ligne » ou sur « En ligne sur … » du menu). Les plateformes en ligne : celles de la carte (index, même
+          source que les logos) ; les autres plateformes du compte n'apparaissent qu'avec un historique. */}
+      {datesItem&&(()=>{
+        const enLigneD=indexEtat.get(String(datesItem.id))?.enLigne??indexEtatTout.get(String(datesItem.id))?.enLigne??[];
+        return(
+          <DatesEnLigne lang={lang} titre={datesItem.title}
+            plateformeFiltree={plateformeDatee&&enLigneD.includes(plateformeDatee)?plateformeDatee:null}
+            lignes={datesParPlateforme({item:datesItem,jobs:jobsByInventaire[datesItem.id]??[],enLigne:enLigneD,plateformes:plateformesCompte,datesRelevees})}
+            onFermer={()=>setDatesItem(null)}/>
+        );
+      })()}
       {jobStatusItem&&(
         <JobStatusModal
           item={jobStatusItem}

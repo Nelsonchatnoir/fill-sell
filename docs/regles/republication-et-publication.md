@@ -1066,3 +1066,26 @@
   `MESSAGE_REPUBLICATION_EN_PAUSE` (jamais « En file ») ; « En pause à ta demande » partout (ligne, compteurs, barres,
   À régler, popup) ; à la reprise les lignes repassent « En file ». Exception unique : une republication dont l'annonce est
   déjà retirée va au bout.
+
+## ⛔ 31/10 (finition du lot F) — un retrait ferme les republications en attente de la même annonce
+- `_shared/republication-retrait.js` : un retrait (`delete`) en attente, en cours ou fait sur l'annonce X (même compte,
+  même plateforme, même numéro — `numeroAnnonceDuJob`, jamais un titre) clôt toute republication NON ENGAGÉE de X
+  (`pending` / `needs_user`, étape absente, `a_capturer` ou `captured`, aucun retrait engagé) : `cancelled` +
+  `arret_utilisateur` + `hors_quota` + `republication_retrait_demande`, « Annonce retirée à ta demande : cette
+  republication n'a plus d'objet », rien n'est recréé. Une republication ENGAGÉE n'est jamais touchée.
+- La porte (serveur, toutes versions d'extension, tous les chemins de retrait) : get-pending-jobs, à chaque poll normal,
+  AVANT la pause (une file en pause, une republication en attente d'un geste se clôt aussi) ; lectures bornées (retraits
+  des 30 derniers jours, clés utiles de `platform_fields` seulement). update-job-status n'est pas modifié (déploiement
+  refusé le 31/10). L'extension (`cancelPublishAfterDelete`) ne clôt toujours que les jobs `published`.
+
+## 31/10 (lot H, XEWER) — les dates de mise en ligne du Stock suivent l'éligibilité à la republication automatique
+- UNE règle (`_shared/mise-en-ligne.js`), celle de `republish_planifiee_candidats` (SQL inchangé) : Vinted =
+  `inventaire.listed_at_guess` ; autres plateformes = dernier job publish/republish `published` qui porte un lien, daté
+  `coalesce(published_at, created_at)`, un import (`releve-annonces`) daté par `annonces_plateforme.publiee_le` quand elle
+  est antérieure au job. Équivalence prouvée sur les données réelles de XEWER (928 dates, 0 écart :
+  `scripts/lot-h-equivalence.mjs`). Toute évolution de la règle SQL se reporte dans le module, et inversement.
+- La pastille « En ligne · N j » dit la mise en ligne la PLUS RÉCENTE (ou celle de la plateforme filtrée « En ligne sur
+  X ») ; un appui (ou « En ligne sur … » du menu « … ») ouvre « En ligne depuis » : par plateforme l'état, la date, publiée /
+  republiée / importée (`releve-annonces`, `… · sync-dressing`), et l'historique (republications remplacées comprises,
+  jamais une annulation sans `published_at`). Le tri « Mise en ligne récente » et les tranches d'ancienneté lisent la date
+  de la carte ; « Anciennes » et « Remonter » gardent l'annonce la plus ANCIENNE (ce qui perd en visibilité).

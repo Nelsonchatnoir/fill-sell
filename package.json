@@ -421,6 +421,8 @@
     "selftest:remise-en-ligne-boutique-et-defusion": "node scripts/remise-en-ligne-boutique-et-defusion-selftest.mjs",
     "selftest:lbc-feuille-corrigee": "node scripts/lbc-feuille-corrigee-selftest.mjs",
     "selftest:lot-f-3110": "node --import ./scripts/loader-ext.mjs scripts/lot-f-3110-selftest.mjs",
+    "selftest:republication-retrait": "node --import ./scripts/loader-ext.mjs scripts/republication-retrait-selftest.mjs",
+    "selftest:lot-h-dates": "node --import ./scripts/loader-ext.mjs scripts/lot-h-dates-selftest.mjs",
     "selftest:etat-job": "node --import ./scripts/loader-ext.mjs scripts/etat-job-selftest.mjs",
     "selftest:contenu-du-vendeur": "node --import ./scripts/loader-ext.mjs scripts/contenu-du-vendeur-selftest.mjs",
     "selftest:genre-a-choisir": "node --import ./scripts/loader-ext.mjs scripts/genre-a-choisir-selftest.mjs",

@@ -1,6 +1,7 @@
 import { recreationRetientFile } from "../_shared/file-republication.js";
 import { estFileEnPause, jobRetenuParPause, syncDemandeeParLaPersonne, SYNC_DEVANT_FILE_MS, passeAvantLaSynchro, MESSAGE_REPUBLICATION_EN_PAUSE } from "../_shared/file-pause.js";
 import { republicationAJuger, jugerCibleRepublication, messageRepublicationSansObjet, messageCibleAbsente } from "../_shared/republication-cible.js";
+import { retraitDeLaRepublication, clotureRepublicationParRetrait, STATUTS_RETRAIT_VIVANT } from "../_shared/republication-retrait.js";
 import { reglageProgrammation, estProgrammee, servieAujourdhui, decisionProgrammee, ordreProgrammeesPretesDabord } from "../_shared/publication-programmee.js";
 import { estApresRestrictionVinted } from "../_shared/reprise-apres-restriction.js";
 import { premiereSynchroAPoser, PREMIERE_SYNCHRO_JOURS_DEFAUT } from "../_shared/premiere-synchro.js";
@@ -2470,6 +2471,56 @@ serve(async (req) => {
 
     let out = (jobs ?? []).filter((j) => !paused.has(j.platform));
     const heldBack = (jobs?.length ?? 0) - out.length;
+
+    // ══ (31/10, finition du lot F) UN RETRAIT DE LA MÊME ANNONCE CLÔT LA REPUBLICATION EN ATTENTE ══════════
+    // (_shared/republication-retrait.js) Vu chez Nico le 31/10 : retrait ciblé de l'annonce Beebs 34269931 ; sa
+    // republication, en attente d'un geste (rien retiré par elle), restait ouverte — l'extension ne clôt que les jobs
+    // « published ». La règle, à chaque poll normal, AVANT la pause (une file en pause, une republication en attente d'un
+    // geste se clôt aussi) : une republication NON ENGAGÉE (pending / needs_user) dont l'annonce a un retrait en attente,
+    // en cours ou fait (même plateforme, même numéro, jamais un titre) se clôt — cancelled + arret_utilisateur +
+    // hors_quota, rien recréé — et n'est jamais servie. Bornée : les retraits des 30 derniers jours du compte (index
+    // user_id + status, aucune colonne lourde), puis, s'il y en a, les republications en attente de ces fiches avec les
+    // seules clés utiles de platform_fields ; la ligne entière n'est relue que pour une clôture. Illisible → comme avant.
+    if (!includeProcessing && !includeNeedsUser) {
+      try {
+        const adminR = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        const { data: retraitsR } = await adminR.from("cross_post_jobs")
+          .select("id, user_id, inventaire_id, platform, action, status, platform_listing_id, listing_url, created_at")
+          .eq("user_id", user.id).eq("action", "delete").in("status", [...STATUTS_RETRAIT_VIVANT])
+          .gte("created_at", new Date(Date.now() - 30 * 86400_000).toISOString()).limit(500);
+        const fichesR = [...new Set(((retraitsR ?? []) as Array<Record<string, unknown>>).map((d) => String(d.inventaire_id ?? "")).filter((x) => x && x !== "null"))].slice(0, 300);
+        if (fichesR.length) {
+          const { data: repubsR } = await adminR.from("cross_post_jobs")
+            .select("id, user_id, inventaire_id, platform, action, status, platform_listing_id, listing_url, error, " +
+              "republish_step:platform_fields->>republish_step, deleted_at:platform_fields->>deleted_at, " +
+              "suppression:platform_fields->republish_suppression_envoyee, brut:platform_fields->error_technique->>brut, " +
+              "archivees:platform_fields->erreurs_archivees")
+            .eq("user_id", user.id).eq("action", "republish").in("status", ["pending", "needs_user"]).in("inventaire_id", fichesR).limit(500);
+          const closes = new Set<string>();
+          for (const r of (repubsR ?? []) as unknown as Array<Record<string, unknown>>) {
+            // Les seules clés que lit la règle (retraitEngage), recomposées : jamais la ligne entière à chaque poll.
+            const pfLeger: Record<string, unknown> = { republish_step: r.republish_step ?? undefined, deleted_at: r.deleted_at ?? undefined,
+              republish_suppression_envoyee: r.suppression ?? undefined, error_technique: r.brut ? { brut: r.brut } : undefined,
+              erreurs_archivees: Array.isArray(r.archivees) ? r.archivees : undefined };
+            const jR = { ...r, platform_fields: pfLeger };
+            const retraitJ = retraitDeLaRepublication(jR, (retraitsR ?? []) as Record<string, unknown>[]);
+            if (!retraitJ) continue;
+            const { data: ligne } = await adminR.from("cross_post_jobs").select("platform_fields").eq("id", String(r.id)).eq("user_id", user.id).maybeSingle();
+            const patchJ = clotureRepublicationParRetrait((ligne as { platform_fields?: unknown } | null)?.platform_fields,
+              { le: new Date().toISOString(), retraitId: String(retraitJ.id), numero: String(retraitJ.platform_listing_id ?? r.platform_listing_id ?? ""), par: "get-pending-jobs (retrait de la même annonce)" });
+            const { data: majJ } = await adminR.from("cross_post_jobs").update(patchJ)
+              .eq("id", String(r.id)).eq("user_id", user.id).eq("status", String(r.status)).eq("action", "republish").select("id");
+            if ((majJ ?? []).length) {
+              closes.add(String(r.id));
+              console.log(`[get-pending-jobs] userId=${user.id} : republication ${String(r.platform)} ${String(r.id).slice(0, 8)} (${String(r.status)}) CLOSE — retrait ${String(retraitJ.id).slice(0, 8)} (${String(retraitJ.status)}) de la même annonce ; rien recréé`);
+            }
+          }
+          if (closes.size) out = out.filter((j) => !closes.has(String(j.id)));
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] retrait de la même annonce : ${String((e as Error)?.message ?? e)} — distribution normale`);
+      }
+    }
 
     // ══ LEBONCOIN, RÉSERVÉ AUX ADRESSES EN FRANCE — ET RIEN D'UNE PLATEFORME ÉCARTÉE (25/10) ══
     // (Décision de Nico, cas Marta : « Via CANALE 24 C 16035 RAPALLO ».) Leboncoin n'accepte que les adresses en

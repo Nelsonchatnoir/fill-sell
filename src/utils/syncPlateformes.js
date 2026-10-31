@@ -270,6 +270,17 @@ export function texteRefusReleve(res, lang = 'fr', platform = null) {
 // par la migration 20260918001000). Base sans ces colonnes → {} : rien ne
 // casse, la carte garde ses compteurs Vinted. NULL = la plateforme ne le
 // montre pas — jamais compté comme 0.
+// (31/10, lot H) Les dates de mise en ligne RÉELLES lues sur les plateformes au relevé (annonces_plateforme.publiee_le) :
+// la date d'une annonce IMPORTÉE, comme pour l'éligibilité à la republication automatique (_shared/mise-en-ligne.js).
+// Lue par pages (PostgREST coupe à 1 000), une fois à l'ouverture du Stock : ces dates ne bougent pas.
+export async function lireDatesRelevees(userId) {
+  if (!userId) return [];
+  return lireToutesPages(() => supabase
+    .from('annonces_plateforme')
+    .select('id,platform,listing_id,publiee_le')
+    .eq('user_id', userId).not('publiee_le', 'is', null));
+}
+
 export async function lireStatsAnnoncesParArticle(userId) {
   if (!userId) return {};
   const data = await lireToutesPages(() => supabase

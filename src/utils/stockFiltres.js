@@ -369,7 +369,7 @@ export function filtrerStock(items, index, { diffusion = null, probleme = null }
 // l'ordre déjà construit par App.jsx (jamais-en-ligne d'abord, puis annonces de
 // la plus ancienne à la plus récente). C'est le tri « ancienneté de l'annonce »
 // demandé — il existait déjà, on ne le réécrit pas.
-export const TRIS_STOCK = ['defaut', 'prix_desc', 'prix_asc', 'ajout_desc', 'ajout_asc'];
+export const TRIS_STOCK = ['defaut', 'prix_desc', 'prix_asc', 'ajout_desc', 'ajout_asc', 'en_ligne_recent'];
 
 const nombreOuNull = (v) => {
   // ⚠️ Number(null) et Number("") valent 0 : un prix ABSENT se classerait
@@ -416,6 +416,12 @@ export function trierStock(items, tri, opts = {}) {
   if (tri === 'prix_asc') return parCle((it) => nombreOuNull(lirePrix(it)), true);
   if (tri === 'ajout_desc') return parCle((it) => Date.parse(lireAjout(it) ?? '') || null, false);
   if (tri === 'ajout_asc') return parCle((it) => Date.parse(lireAjout(it) ?? '') || null, true);
+  // (31/10, lot H) La dernière mise en ligne (celle de la plateforme filtrée, sinon la plus récente) : opts.miseEnLigne
+  // rend un horodatage (ms) ou null — une date inconnue toujours en fin de liste.
+  if (tri === 'en_ligne_recent') {
+    const lireDate = typeof opts.miseEnLigne === 'function' ? opts.miseEnLigne : () => null;
+    return parCle((it) => { const v = lireDate(it); return Number.isFinite(v) ? v : null; }, false);
+  }
   if (tri === 'vues_desc') {
     const vues = typeof opts.vues === 'function' ? opts.vues : (it) => it?.vinted_view_count ?? null;
     return parCle((it) => nombreOuNull(vues(it)), false);
@@ -431,6 +437,7 @@ export function libelleTri(tri, lang = 'fr') {
     prix_asc: fr ? 'Prix croissant' : 'Price low to high',
     ajout_desc: fr ? 'Ajouté récemment' : 'Recently added',
     ajout_asc: fr ? "Ajouté il y a longtemps" : 'Added long ago',
+    en_ligne_recent: fr ? 'Mise en ligne récente' : 'Recently listed',
     vues_desc: fr ? 'Plus vus' : 'Most viewed',
   }[tri] ?? (fr ? "Annonce la plus ancienne" : 'Oldest listing');
 }
@@ -454,6 +461,7 @@ export function libelleTriCourt(tri, lang = 'fr') {
     prix_asc: fr ? 'Prix ↑' : 'Price ↑',
     ajout_desc: fr ? 'Ajout récent' : 'Newest added',
     ajout_asc: fr ? 'Ajout ancien' : 'Oldest added',
+    en_ligne_recent: fr ? 'En ligne récent' : 'Recently listed',
     vues_desc: fr ? 'Plus vus' : 'Most viewed',
   }[tri] ?? (fr ? 'Annonce ancienne' : 'Oldest listing');
 }

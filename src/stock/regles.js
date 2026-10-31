@@ -21,6 +21,7 @@
 
 import { LABEL_COURT } from '../utils/republication';
 import { LIBELLES } from '../../supabase/functions/_shared/etat-job.js';
+import { joursPlusAncienne } from '../../supabase/functions/_shared/mise-en-ligne.js';
 
 // ── « Ancienne » : le plancher de republication DÉJÀ en place ──────────────
 // AGE_MIN de components/RepublicationPlanifiee.jsx (« plancher anti-ban »,
@@ -40,29 +41,15 @@ export function joursDepuis(iso, maintenant = Date.now()) {
 }
 
 // ── L'ÂGE DES ANNONCES D'UN ARTICLE ────────────────────────────────────────
-// Une annonce par plateforme EN LIGNE. Vinted se lit sur l'article
-// (listed_at_guess : relevé du dressing, réécrit par une recréation) ; les
-// autres sur leur dernier job publié (date de recréation d'une republication,
-// sinon date de publication). On rend la PLUS ANCIENNE : c'est elle qui perd
-// en visibilité, et c'est elle que « Remonter » vient chercher.
-export function ancienneteJours(item, jobsAll, enLigne = [], maintenant = Date.now()) {
-  let max = null;
-  const prendre = (j) => { if (j != null && (max == null || j > max)) max = j; };
-  for (const p of enLigne ?? []) {
-    if (p === 'vinted') {
-      prendre(joursDepuis(item?.listed_at_guess, maintenant));
-      continue;
-    }
-    let date = null;
-    for (const j of jobsAll ?? []) {
-      if (j?.platform !== p || j.status !== 'published') continue;
-      if (j.action !== 'publish' && j.action !== 'republish') continue;
-      const d = j.platform_fields?.recreated_at ?? j.published_at ?? j.created_at ?? null;
-      if (d && (!date || Date.parse(d) > Date.parse(date))) date = d;
-    }
-    prendre(joursDepuis(date, maintenant));
-  }
-  return max;
+// Une annonce par plateforme EN LIGNE, datée par LA règle de l'éligibilité à
+// la republication automatique (_shared/mise-en-ligne.js, 31/10 lot H) :
+// Vinted sur l'article (listed_at_guess), les autres sur leur dernier job
+// publié qui porte un lien (un import : sa date relevée sur la plateforme).
+// On rend la PLUS ANCIENNE : c'est elle qui perd en visibilité, et c'est elle
+// que « Anciennes » et « Remonter » viennent chercher. La pastille, elle, dit
+// la plus RÉCENTE (miseEnLigneAffichee).
+export function ancienneteJours(item, jobsAll, enLigne = [], maintenant = Date.now(), datesRelevees = null) {
+  return joursPlusAncienne({ item, jobs: jobsAll, enLigne, datesRelevees, maintenant });
 }
 
 export const estAncienne = (jours) => jours != null && jours >= SEUIL_ANCIENNE_JOURS;
@@ -194,7 +181,9 @@ export function ecrireAffichage(stockage, valeur) {
 // ligne d'abord, puis l'annonce la plus ancienne) — la fonction « trier par
 // ancienneté » reste, sous le mot de la planche. « Plus récents » (ajouté
 // récemment) devient l'ordre par défaut, comme sur la planche.
-export const TRIS_PLANCHE = ['ajout_desc', 'defaut', 'vues_desc', 'prix_asc', 'prix_desc'];
+// (31/10, lot H — XEWER) « Mise en ligne récente » : la dernière publication ou republication — celle de la
+// plateforme filtrée (« En ligne sur X »), sinon la plus récente toutes plateformes (_shared/mise-en-ligne.js).
+export const TRIS_PLANCHE = ['ajout_desc', 'defaut', 'en_ligne_recent', 'vues_desc', 'prix_asc', 'prix_desc'];
 export const TRI_PAR_DEFAUT = 'ajout_desc';
 
 export function libelleTriPlanche(cle, lang = 'fr') {
@@ -202,6 +191,7 @@ export function libelleTriPlanche(cle, lang = 'fr') {
   return {
     ajout_desc: fr ? 'Plus récents' : 'Newest',
     defaut: fr ? 'Plus anciens' : 'Oldest',
+    en_ligne_recent: fr ? 'Mise en ligne récente' : 'Recently listed',
     vues_desc: fr ? 'Plus vus' : 'Most viewed',
     prix_asc: fr ? 'Prix croissant' : 'Price low to high',
     prix_desc: fr ? 'Prix décroissant' : 'Price high to low',
