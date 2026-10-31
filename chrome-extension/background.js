@@ -2950,7 +2950,9 @@ function demarrerBattementPresence(label) {
     if (!arrete && ++n < BATTEMENT_PRESENCE_MAX) minuteur = setTimeout(tic, BATTEMENT_PRESENCE_MS);
   };
   minuteur = setTimeout(tic, BATTEMENT_PRESENCE_MS);
-  return () => { arrete = true; if (minuteur) clearTimeout(minuteur); };
+  // (31/10, lot F) Prise et sortie du verrou = progrès du flux (veillerPoll) : appelé exactement là, par withJobFlowLock.
+  dernierProgresFlux = Date.now();
+  return () => { arrete = true; if (minuteur) clearTimeout(minuteur); dernierProgresFlux = Date.now(); };
 }
 function withJobFlowLock(label, fn) {
   if (jobFlowBusyLabel) {
@@ -2962,7 +2964,6 @@ function withJobFlowLock(label, fn) {
     jobFlowWaiters = Math.max(0, jobFlowWaiters - 1);
     noterAttenteVerrou(label, -1);
     jobFlowBusyLabel = label;
-    dernierProgresFlux = Date.now();   // (31/10, lot F) la veille du poll mesure le progrès du flux qui tient le verrou
     const arreterBattement = demarrerBattementPresence(label);
     try {
       // (29/10, lot C 1 — 0.6.159) Une lecture qu'une personne attend passe devant le flux qui prend son tour.
@@ -2972,7 +2973,6 @@ function withJobFlowLock(label, fn) {
       arreterBattement();
       travailEnCours = null;
       jobFlowBusyLabel = null;
-      dernierProgresFlux = Date.now();
     }
   });
   jobFlowTail = run.catch(() => {});
