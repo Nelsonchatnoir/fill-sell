@@ -69,4 +69,41 @@ actif et rien ne le disait.
 - même adresse passée en publication → jamais « tes Réglages » : « c'est chez nous », reprise automatique espacée.
 
 ## Livraison
-(à compléter)
+**Déployés par Claude** (versions et `verify_jwt` lus avant / après, 31/10 23:57) :
+- get-pending-jobs v314 → **v315** (verify_jwt vrai) ; update-job-status v161 → **v162**, handler-watch v153 → **v154**,
+  ebay-api-worker v102 → **v103** (tous `--no-verify-jwt`, verify_jwt faux, inchangé). De 23:57 à 00:01 : 70 + 11 + 1 + 1
+  appels, tous 200.
+- **OTA 2.9.144** : canal production lu 2.9.143 → relu **2.9.144** (00:01:13) ; dist `2026-10-31T23:00:35Z+92c2cbb`
+  (contient « Tout est à jour, prochaine synchro automatique »).
+- Extension : **inchangée** (aucun fichier de `chrome-extension/` touché) — pas de zip ; la 0.6.163 reste celle à téléverser.
+- Migrations : aucune.
+
+**Preuves.**
+- Point 1 (Louis) : au premier poll après le déploiement (23:58:28), journal « Leboncoin en reprise prudente (levé le
+  2026-10-31T18:40:28Z) — lectures de l'extension rouvertes » ; le résumé de la veille des commandes du 31/10 (écrit à
+  00:00:47) compte **1 passage Leboncoin, 2 requêtes, 0 coupure** (aucun refus), là où il n'y en avait aucun depuis la
+  pause. Reprise prudente jusqu'au 01/11 01:40, puis la clé est rangée par le serveur. louis-seller : pause intacte.
+  Selftest : refus après la levée → pause remise, essai 24 h plus tard (le témoin montre l'ancien défaut).
+- Point 2 : selftest (grisé, réouverture, plateforme connectée, stock remis à zéro, heure de Paris) ; build et OTA. Pas vu
+  dans l'app en production (pas de connexion à fillsell.app en automatisation).
+- Point 3 (Rosa) : 4fb536fb, 2162d4f3, 4c44d14a, 5dfed533 closes par la règle au premier passage du worker (23:58:03) :
+  « FillSell publie seulement sur eBay France : ton compte eBay « reginat8117 » est sur eBay États-Unis. Rien n'a été
+  publié. », sans `ebay_a_finir` ni `error_technique` (archivés). Plus aucune tâche dans ce cas sur le parc.
+- Point 4 (Doriane) : sur leboncoin.fr (navigateur de Nico, lecture seule), le service d'adresses rend **[]** pour
+  « 2 rue arsene soulages 12110 Viviez » (précis et simple) et **« Viviez (12110) »** pour « Viviez 12110 » en mode
+  simple — exactement ce que le contrôle avant retrait accepte. La règle appliquée à ses vraies données rend « commune »
+  (`voie_des_reglages_retiree`). Tâche 2734ec09 relancée à 23:59 (script `scripts/reparations/20261031_doriane_relance_republication_lbc.sql`,
+  sauvegarde `_backup_3110_doriane_relance_lbc`, inverse fourni) : pending, étape a_capturer, annonce toujours en ligne.
+
+**Reste.**
+- Doriane : sa republication est AUTOMATIQUE, donc tenue par son créneau (19:00-23:00, intouchable) — elle partira le
+  01/11 à partir de 19:00. La preuve finale (annonce republiée) est à relire à ce moment-là.
+- Doriane a une 2e republication dans le même cas (3ec94b0b, 31/10 20:22, needs_user, même message) : non relancée (le
+  feu vert visait « sa tâche ») ; elle passera si elle appuie sur « Relancer », ou sur ton feu vert.
+- Point 2 : la règle « aucune heure prévue devant la personne » (16/10) est levée pour cette seule phrase, à ta demande
+  (marqueur `estimation-ok:`). L'heure est exacte pour eBay relié par l'API ; pour les autres, c'est l'heure de l'alarme
+  quotidienne de l'extension (Chrome ouvert), au plus tôt 20 h après le dernier relevé.
+- Rosa : les 14 publications closes plus tôt l'avaient été par l'ancienne garde (bon message) : rien à faire.
+
+Suite complète : 508 selftests, 1 rouge à la première passe (`aucune-estimation`, la phrase du point 2) → marqué
+exception, vert ; `lot-j-3110` 63/0, `urgence-louis-3010` 82/0. Lint : aucun problème neuf. Aucun mail, rien chez Stripe.
