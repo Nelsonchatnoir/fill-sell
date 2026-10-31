@@ -56,8 +56,16 @@ Rapport précédent : `docs/enquetes/lot-h-3110/RAPPORT.md`. Règles durables : 
   - fiche : bloc « En ligne depuis » — Depop 26 oct. 2026 à 11:58 publiée par FillSell ; Beebs et eBay 26 oct. à 11:13,
     Vinted 28 sept. à 21:57, Leboncoin 10 sept. à 10:52, importées — et « Détail par plateforme et historique » → la
     feuille (5 plateformes en ligne, historique de chacune).
-- **Production web** : EN ATTENTE — le push sur main (16ffa59, 1efadd9) a été refusé deux fois par le classifieur de
-  Claude Code ; tant que Nico ne l'a pas fait, fillsell.app sert dbbc512 (lot H sans ces deux ajouts).
+- **Production web, VU sur fillsell.app** : push sur main fait à 17:59:38 (feu vert de Nico ; bef6d1a..93e1a2b, après
+  deux refus du classifieur) → `build.json` relu à 18:00:49 : `2026-10-31T17:00:05Z+93e1a2b` ; l'onglet de Nico (session
+  existante, aucune connexion) rechargé charge l'entrée servie (`index-B8AxNBI0.js`). Même article « Sweat Tommy Jeans » :
+  - menu « … » : les 5 lignes du banc, mot pour mot (Depop 5 j · Beebs 5 j importée · eBay 5 j importée · Vinted 32 j
+    importée · Leboncoin 51 j importée) ; la ligne Vinted ouvre la feuille « En ligne depuis » (Depop 26 oct. 2026 à
+    11:58 publiée par FillSell ; Beebs et eBay 26 oct. à 11:13 importées ; Vinted…) ;
+  - fiche : bloc « En ligne depuis » en tête, 5 lignes (logo, « en ligne depuis N j », date et heure, nature), puis
+    « Détail par plateforme et historique » → la feuille par-dessus la fiche ; la fermer rend la fiche intacte ;
+  - fiche de test (Veste, 1793438700001) : « Beebs · en ligne depuis aujourd'hui · 31 oct. 2026 à 11:46 · Publiée par
+    FillSell » et « Détail par plateforme et historique (dont 1 plus en ligne) ».
 - **Téléphone** : le bundle 2.9.142 est servi et actif (§ 3) ; aucun téléphone n'est accessible depuis ce poste — rien
   n'a été vu sur un appareil réel.
 
@@ -176,7 +184,11 @@ peinture du voile flouté). Le Stock n'est plus redessiné ; taper une lettre da
   n'atteint la base) : toucher la Veste de test → fiche ouverte avec son bloc « En ligne depuis » → nom et emplacement
   modifiés → « Enregistrer » → l'app envoie l'`update` d'`inventaire` avec les 13 champs habituels (nom « … (banc) »,
   emplacement « Banc A1 »), la fiche se ferme, la carte montre le nouveau nom ; les dates par plateforme ne sont JAMAIS
-  envoyées. Sur fillsell.app : en attente du push (voir § 2).
+  envoyées. **Sur fillsell.app (93e1a2b, 18:03–18:05)**, fiche de test 1793438700001 : ligne lue avant (emplacement
+  vide, empreinte de la ligne entière `ea898c05…`) → emplacement « Essai fiche 31/10 » → « Enregistrer » : la fiche se
+  ferme, la base porte le nouvel emplacement, tout le reste identique (titre, prix, description, photos, attributs) ; la
+  fiche rouverte montre la valeur enregistrée → emplacement vidé → « Enregistrer » → empreinte de la ligne entière
+  **`ea898c05…` à nouveau** (rien d'autre n'a bougé), aucun job créé pour la fiche.
 - **Filtres et tris du Stock** : `selftest:stock-refonte` (102) et `selftest:lot-h-dates` (55) verts ; les parcours
   mémorisés (à publier, à remonter) gardent leurs entrées (`selftest:fiche-rapide`).
 - **Suite complète** : 506 selftests, 0 rouge (14:48 → 15:01, sur le commit 16ffa59), `build:essai` vert, lint : aucun
