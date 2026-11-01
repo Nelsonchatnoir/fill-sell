@@ -607,6 +607,14 @@ Rapport : `docs/enquetes/dix-points-1710/RAPPORT.md` (points 1, 4, 5, 7, 9).
 - **Un poste en machine virtuelle ne fait jamais l'essai** (`essaiPossible`) : l'essai désigné chez lui ne partait pas
   et comptait pour un refus muet. Le compte d'une machine virtuelle garde sa pause tant que SON essai n'a pas réussi
   sur un vrai poste (louis-seller@ttfamily.fr).
+- **(01/11, décision de Nico) Exception PAR COMPTE « Leboncoin autorisé sur machine virtuelle »** :
+  `profiles.beta_flags.lbc_machine_virtuelle_autorisee = true` (booléen strict, jamais écrit par l'app), posée sur
+  louis-seller@ttfamily.fr SEUL (`scripts/reparations/20261101_louis_seller_lbc_machine_virtuelle.sql`, inverse). Lue par
+  get-pending-jobs (v316, `gardeVirtuelleLbc` de `_shared/poste-virtuel.js`) aux deux points de la garde : tâches,
+  retraits, relevés et réponse `blocages` (qui coupe la veille de l'extension), et l'essai de levée de pause. Avec
+  elle, le message « machine virtuelle » s'efface de ses tâches en attente (archivé). Sans elle — tous les autres
+  comptes —, la garde à l'identique. La pause sur refus (`blocage_acces`) n'est pas touchée. Aucune extension à changer.
+  Selftest `selftest:lbc-machine-virtuelle-exception [-- --prod]`.
 - **La rue des Réglages que Leboncoin ne connaît pas n'est jamais servie à une republication**
   (`_shared/lbc-voie-des-reglages.js`, `repliCommuneDesReglages`, `decisionRueInconnueLbc`) : une publication Leboncoin
   PASSÉE du compte (14 jours) qui a dû se replier sur la commune avec l'adresse des Réglages (warning

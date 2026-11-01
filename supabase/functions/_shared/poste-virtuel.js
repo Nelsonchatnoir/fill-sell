@@ -42,3 +42,22 @@ export function messagePosteVirtuelLbc() {
     "Cette tâche Leboncoin attend un navigateur de ton ordinateur où l'extension FillSell est ouverte sur CE compte " +
     "et connectée à Leboncoin. Rien n'a été touché.";
 }
+
+// ── (01/11, décision de Nico — Louis) EXCEPTION PAR COMPTE : « Leboncoin autorisé sur machine virtuelle » ─────────
+// louis-seller@ttfamily.fr pilote Leboncoin depuis une machine virtuelle de son NAS et en assume le risque. La clé vit
+// côté serveur dans profiles.beta_flags (jamais écrite par l'app : la colonne n'est pas ouverte en écriture au client) :
+//   beta_flags.lbc_machine_virtuelle_autorisee = true   (booléen strict ; toute autre valeur = pas d'exception)
+// Avec elle, CE compte passe la garde machine virtuelle partout où elle s'applique (get-pending-jobs : tâches, retraits,
+// relevés, essai de levée de pause, réponse « blocages » qui coupe la veille de l'extension). Sans elle — tous les autres
+// comptes —, la garde reste la règle, à l'identique. La pause sur refus de Leboncoin (blocage_acces) n'est pas touchée.
+export const CLE_LBC_VIRTUEL_AUTORISE = "lbc_machine_virtuelle_autorisee";
+
+/** Le compte a-t-il l'exception « Leboncoin autorisé sur machine virtuelle » ? (beta_flags du profil) */
+export function lbcVirtuelAutorise(betaFlags) {
+  return Boolean(betaFlags && typeof betaFlags === "object" && betaFlags[CLE_LBC_VIRTUEL_AUTORISE] === true);
+}
+
+/** La garde s'applique-t-elle ? Poste en machine virtuelle ET compte sans l'exception. */
+export function gardeVirtuelleLbc(rendu, betaFlags) {
+  return posteVirtuel(rendu) && !lbcVirtuelAutorise(betaFlags);
+}

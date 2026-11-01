@@ -204,7 +204,7 @@ import { teteDeFile } from "../_shared/tete-de-file.js";
 import { republicationFinie, champsRepublicationFinie } from "../_shared/republication-finie.js";
 import { etapeRecreatedSansNumero, numerosDeLaRecreation, decisionRecreatedSansNumero, patchRecreatedSansNumero } from "../_shared/etape-recreated-sans-numero.js";
 import { CHEMIN_BLOCAGE_LBC, etatBlocageLbc, blocageAvecEssai, messageBlocageLbc, blocageLbc, signeBlocageLbc, blocageLeve, blocageEssaiRefuse, lecturesExtensionEnPause, blocageArchive } from "../_shared/blocage-leboncoin.js";
-import { renduDuPoll, posteVirtuel, messagePosteVirtuelLbc } from "../_shared/poste-virtuel.js";
+import { renduDuPoll, posteVirtuel, messagePosteVirtuelLbc, gardeVirtuelleLbc, lbcVirtuelAutorise } from "../_shared/poste-virtuel.js";
 // ISBN : même table de vérité que le content script (normalisation, filtre du
 // remplissage « 13 zéros », lecture dans le texte libre). Module JS sans import.
 import { normalizeIsbn, resoudreIsbn } from "../_shared/isbn.js";
@@ -254,6 +254,7 @@ import { LECTURE_FOND_VERSION_MIN, LECTURE_FOND_RYTHME, modeLectureFond, regleLe
   FEATURES_PUBLICATION, PAUSE_PUBLICATION_MIN, LECTURE_FOND_BEEBS_VERSION_MIN, LECTURE_FOND_BEEBS_MODE_DEFAUT, LECTURE_FOND_BEEBS_RYTHME, listeLectureFondBeebs, aLireEnFondBeebs } from "../_shared/lecture-fond.js";
 import { palierDuProfil, aAuMoins } from "../_shared/palier.js";
 import { couleurEcriteDansLeTexte, optionCouleurDansListe } from "../_shared/couleur-du-texte.js";
+import { PHOTOS_MAX_VINTED, jobDansLaLimitePhotos } from "../_shared/photos-limite-plateforme.js";
 
 // ── Format de colis Vinted : deux lectures du PARC, gardées 10 min par instance
 // (02/10, _shared/vinted-colis.js). Un rayon où un refus « faute de format »
@@ -2983,7 +2984,8 @@ serve(async (req) => {
             if (!corr && !photosFiche) continue;
             const majCap: Record<string, unknown> = {};
             if (corr) { majCap.libelles = corr.libelles; majCap.payload = { ...payloadC, natif: corr.natif }; }
-            if (photosFiche) majCap.photos_urls = photosFiche;
+            // (01/11, Jocabroc) Vinted garde 20 photos au plus : les 20 premières de la fiche (_shared/photos-limite-plateforme.js).
+            if (photosFiche) majCap.photos_urls = photosFiche.slice(0, PHOTOS_MAX_VINTED);
             const { error: errCap } = await adminK.from("vinted_republish_captures").update(majCap).eq("id", Number(pfC.capture_id));
             if (errCap) { console.warn(`[get-pending-jobs] job ${String(j.id).slice(0, 8)} : capture non corrigée — ${errCap.message}`); continue; }
             const raisons = [...(corr?.raisons ?? []), ...(photosFiche ? ["photos_de_la_fiche"] : [])];
@@ -13599,9 +13601,13 @@ serve(async (req) => {
     // 24 h ou à la demande ; reprise prudente ensuite (une action toutes les 10 min, 6 h). Placé AVANT la réservation :
     // une tâche retenue n'est jamais réservée. Lecture du réglage impossible → rien n'est retenu (comme avant).
     let blocageLbcReponse: Record<string, unknown> | null = null;
+    // (01/11, Louis) L'exception par compte « Leboncoin autorisé sur machine virtuelle » (beta_flags, _shared/poste-virtuel.js) :
+    // lue avec le réglage ; lecture impossible → null → la garde machine virtuelle s'applique comme avant.
+    let betaFlagsLbc: Record<string, unknown> | null = null;
     if (!includeProcessing && !includeNeedsUser) {
       try {
-        const { data: profB } = await userClient.from("profiles").select("platform_settings").eq("id", user.id).maybeSingle();
+        const { data: profB } = await userClient.from("profiles").select("platform_settings, beta_flags").eq("id", user.id).maybeSingle();
+        betaFlagsLbc = ((profB as { beta_flags?: Record<string, unknown> } | null)?.beta_flags ?? null) as Record<string, unknown> | null;
         let psB = ((profB as { platform_settings?: Record<string, unknown> } | null)?.platform_settings ?? {}) as Record<string, unknown>;
         const adminB = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
         // L'essai servi a-t-il rendu son verdict ? (job : publié / refusé ; relevé : fini sans refus / refusé)
@@ -13632,7 +13638,7 @@ serve(async (req) => {
         const eb = etatBlocageLbc(psB) as { etat: string; blocage: Record<string, unknown> | null; prete?: boolean };
         // (31/10, lot J 1) Un poste en machine virtuelle ne fait jamais Leboncoin (bloc suivant) : il ne fait donc
         // jamais l'essai — désigné chez lui, l'essai ne partait pas et comptait pour un refus muet.
-        const essaiPossible = posteCloud || !posteVirtuel(renduDuPoll(body));
+        const essaiPossible = posteCloud || !gardeVirtuelleLbc(renduDuPoll(body), betaFlagsLbc);
         if (eb.etat === "libre" && eb.blocage) {
           // (31/10, lot J 1) Reprise prudente finie : le blocage est rangé (clé présente = pause ou reprise en cours).
           const arch = blocageArchive(eb.blocage);
@@ -13699,7 +13705,7 @@ serve(async (req) => {
     // Le poste déclare un pilote graphique de machine virtuelle (≥ 0.6.161) : aucune tâche ni relevé Leboncoin pour lui ;
     // les tâches attendent un poste RÉEL du compte (elles ne portent le message que si aucun autre poste vivant du compte
     // n'a réussi sur Leboncoin depuis 7 jours) ; l'extension coupe ses propres lectures Leboncoin. Jamais le poste Cloud.
-    if (!includeProcessing && !includeNeedsUser && !posteCloud && posteVirtuel(renduDuPoll(body))) {
+    if (!includeProcessing && !includeNeedsUser && !posteCloud && gardeVirtuelleLbc(renduDuPoll(body), betaFlagsLbc)) {
       try {
         const lbcV = out.filter((j) => j.platform === "leboncoin");
         if (lbcV.length) {
@@ -13726,6 +13732,28 @@ serve(async (req) => {
         if (!blocageLbcReponse) blocageLbcReponse = { etat: "poste_virtuel", depuis: null, message: messagePosteVirtuelLbc() };
       } catch (e) {
         console.warn(`[get-pending-jobs] poste virtuel : ${String((e as Error)?.message ?? e)} — file servie telle quelle`);
+      }
+    }
+
+    // (01/11, Louis) Compte AVEC l'exception, sur sa machine virtuelle : ses tâches Leboncoin partent comme sur un poste
+    // réel ; le message « machine virtuelle » posé avant l'exception s'efface de ses tâches en attente (archivé), une fois.
+    if (!includeProcessing && !includeNeedsUser && !posteCloud && posteVirtuel(renduDuPoll(body)) && lbcVirtuelAutorise(betaFlagsLbc)) {
+      try {
+        const adminX = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        const msgX = messagePosteVirtuelLbc();
+        const { data: marques } = await adminX.from("cross_post_jobs").select("id, platform_fields")
+          .eq("user_id", user.id).eq("platform", "leboncoin").eq("status", "pending").eq("error", msgX).limit(40);
+        for (const m of (marques ?? []) as Array<{ id: string; platform_fields: Record<string, unknown> | null }>) {
+          const pfX = { ...(m.platform_fields ?? {}) };
+          pfX.erreurs_archivees = archiverErreur(pfX.erreurs_archivees, msgX, "pending", "get-pending-jobs (exception du compte : Leboncoin autorisé sur machine virtuelle)");
+          await adminX.from("cross_post_jobs").update({ error: null, platform_fields: pfAPersister(pfX) })
+            .eq("id", String(m.id)).eq("status", "pending").eq("error", msgX);
+          const enFile = out.find((j) => String(j.id) === String(m.id));
+          if (enFile) { enFile.error = null; enFile.platform_fields = pfX as typeof enFile.platform_fields; }
+        }
+        console.log(`[get-pending-jobs] userId=${user.id} poste ${posteCourt(sessionId)} en machine virtuelle AVEC l'exception du compte : Leboncoin servi${(marques ?? []).length ? ` (${(marques ?? []).length} message(s) « machine virtuelle » effacé(s))` : ""}`);
+      } catch (e) {
+        console.warn(`[get-pending-jobs] exception machine virtuelle : ${String((e as Error)?.message ?? e)} — file servie telle quelle`);
       }
     }
 
@@ -14136,6 +14164,9 @@ serve(async (req) => {
       } catch (_e) { lectureFondBeebs = null; /* jamais un point de panne */ }
     }
 
+    // (01/11, Jocabroc) Vinted reçoit les 20 premières photos du job, jamais plus : au-delà, l'extension attendait des
+    // photos que Vinted refuse et annulait la publication. Les autres plateformes gardent toutes leurs photos.
+    out = out.map((j) => jobDansLaLimitePhotos(j) as typeof j);
     return json({
       jobs: out,
       // (30/10, urgence Louis) Leboncoin restreint l'accès du compte : l'extension (≥ 0.6.161) coupe AUSSI ses lectures

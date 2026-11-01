@@ -1039,6 +1039,13 @@
   l'identique. Un job aux photos choisies porte `photos_choisies` (jamais complété par la fiche : `contenuAImposer`,
   `photosApresRayonRetrouve`) et `lbcPhotosCapped` (spend_coins_and_publish ne réécrit jamais la fiche avec un
   extrait — même drapeau, aucune migration).
+- **(01/11, Jocabroc) Vinted reçoit les 20 premières photos du job, jamais plus** : sans choix de la personne, le job
+  porte toutes les photos de la fiche (24 importées) ; l'extension les envoyait toutes, Vinted en gardait 20, la garde
+  `ensurePhotosLanded` attendait 24 et annulait AVANT le dépôt (« 20/24 confirmée(s) après 97 s »). get-pending-jobs
+  (v316, `_shared/photos-limite-plateforme.js`) coupe à 20 dans l'ordre du job (celui choisi pour Vinted) chaque job
+  Vinted servi, et la capture d'une recréation ; le job en base garde toutes ses photos. Marche avec l'extension
+  0.6.163. Autres plateformes : toutes leurs photos (Depop coupe à 8 dans l'extension, Leboncoin suit son quota gratuit,
+  Beebs et eBay ne bloquent jamais sur un manque). Selftest `selftest:photos-limite-vinted`.
 - **Description : ce que la personne a écrit part partout, tel quel** (`descriptionFidele`, `lignesEcritesParLaPersonne`) :
   une ligne absente de toutes les copies rédigées par FillSell a été écrite par la personne et n'est jamais retouchée
   (ni état, ni genre, ni hashtags), sur toutes les plateformes ; le texte du vendeur aussi. La règle 5 du 26/10 (pas de

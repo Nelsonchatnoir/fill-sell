@@ -174,7 +174,8 @@ Cas : 128 notes de vente sans prix depuis le 06/10 (republications Vinted : `pri
 - UN mail par commande de moins de 24 h, qui liste TOUS ses articles (`push_ventes.articles`, push-ventes v12) ; plus
   ancienne : aucun mail.
 - Prix : le montant par article de Vinted s'il existe ; sinon le total au prorata des prix d'annonce, centimes au plus
-  grand reste, somme = total ; base manquante = NULL, jamais 0 ; un prix saisi par la personne garde son prix.
+  grand reste, somme = total ; base manquante → parts égales (règle du 01/11, plus bas) ; total inconnu = NULL, jamais
+  0 ; un prix saisi par la personne garde son prix.
 - Une ligne « lot » d'avant la règle est relue une fois (`lots_v1`, 30 jours, extension 0.6.123), puis réparée par
   `scripts/reparations/20261017_ventes_vinted_en_lot.sql` (sauvegardes, inverse, 0 mail). Interrupteur `coin_config`
   `ventes_vinted_lot_depuis` (0 = règle coupée). Migration 20261017120000 ; selftests `vente-vinted-en-lot`,
@@ -461,9 +462,17 @@ Rapport : `docs/enquetes/session-sans-nico-1810/lot4-ventes-lot-multi-exemplaire
   question. Jamais un retrait ; le mail par commande < 24 h est inchangé. Migration `20261101073000`.
 - Aucun écran ne lit cette question (ni « À régler », ni badge, ni alerte) : c'est une trace serveur. Une vente sans
   fiche se voit dans la liste des ventes à sa date, et dans « Complète tes prix d'achat » (prix d'achat NULL).
-- ⚠️ Éclater un vieux lot dont aucun article n'a de prix de base (ni Vinted, ni annonce, ni fiche) remplace la ligne
-  « Lot N articles » chiffrée par N ventes à prix NULL : le total du lot sort du chiffre d'affaires (01/11 : 397,90 €
-  chez the_closet72, 91,30 € chez PILOU). Règle de prix inchangée (« base manquante = NULL ») — décision de Nico attendue.
+- **Un lot découpé : chaque article reçoit sa part du prix du lot** (décision de Nico, 01/11 ; mig `20261101100000`,
+  appliquée à 11:04). Quand le prorata est impossible (un article sans prix de base : ni montant Vinted, ni annonce, ni
+  fiche), `vinted_lot_parts` répartit le reste du lot à PARTS ÉGALES entre ces articles, en centimes, un centime de plus
+  aux premiers dans l'ordre de la commande (source `parts_egales`) : la somme est toujours le total du lot. Inchangé :
+  montant Vinted, prorata, prix saisi gardé ; total inconnu (ou reste inconnu) = NULL. Essai à blanc sur le parc :
+  1 537 prix déjà calculés identiques, 4 064 articles sans base auraient leur part.
+- Les 34 lots de la nuit (the_closet72 27, PILOU 7) : `scripts/reparations/20261101_lots_vinted_parts_egales.sql`
+  (09:54 ; 123 ventes, prix de la ligne « Lot » d'avant à parts égales ; sauvegardes `_backup_0111_lots_parts_egales_*`,
+  inverse). CA revenu exactement : the_closet72 5 426,79 → 5 824,69 €, PILOU 16 627,97 → 16 719,27 €, nombre de ventes
+  inchangé, aucune ligne « Lot » revenue. Les 470 autres lots déjà découpés à prix NULL du parc ne sont pas touchés.
+  Selftest `selftest:lot-vinted-parts-egales [-- --prod]`.
 - Réparation de la nuit du 01/11 : `scripts/reparations/20261101_questions_article_inconnu_anciennes.sql` (123
   questions → feature `vente_vinted_article_inconnu_ancienne`, texte retiré ; sauvegarde
   `_backup_0111_questions_article_inconnu`, inverse `…_INVERSE.sql`, 0 vente touchée, 0 mail). Selftest
