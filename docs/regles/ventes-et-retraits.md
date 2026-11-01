@@ -166,7 +166,8 @@ Cas : 128 notes de vente sans prix depuis le 06/10 (republications Vinted : `pri
 - Une vente PAR ARTICLE (`commande_ref` '<ref>:<article>', comme eBay). Chaque article qui a une fiche passe vendu par le
   circuit normal (`enregistrer_vente_atomique`, ou fiche vendue → `inventaire_vendu_retire_ses_copies`) et ses copies
   PROUVÉES partent. Un article inconnu de FillSell = vente sans fiche + question (`usage_logs`
-  `vente_vinted_article_inconnu`), jamais un retrait. Tout ou rien par commande (doute = rien, décision `en_doute`). Une
+  `vente_vinted_article_inconnu`) si la vente a moins de 48 h (règle du 01/11, plus bas), jamais un retrait. Tout ou
+  rien par commande (doute = rien, décision `en_doute`). Une
   vente déjà enregistrée pour un article (preuve de sa page) est ADOPTÉE, jamais doublée.
 - Une commande PAYÉE (ni failed ni cancelled) prouve chaque article ; failed / cancelled jamais. La veille des comptes
   payants l'envoie tout de suite (`commandes_vinted_noter`) ; le relevé de nuit couvre tout le monde.
@@ -450,3 +451,20 @@ Rapport : `docs/enquetes/session-sans-nico-1810/lot4-ventes-lot-multi-exemplaire
   complets du … et du …, et <plateforme> n'a donné aucun motif. » Plus jamais « refusée par sa modération / sa
   vérification » sans motif lu ; un vrai motif (adsubmit 4xx, `pas-de-rouge.js`) garde son texte.
 - Selftest `selftest:jamais-en-ligne-referme` ; essai à blanc `scripts/essais/20261027100000_essai.sql` (26/26).
+
+## 01/11 — une vente ancienne d'un article inconnu entre dans l'historique sans question (rapport `docs/enquetes/ventes-anciennes-inconnues-0111/RAPPORT.md`)
+- La question « Article vendu sur Vinted que FillSell ne suit pas : s'il est en vente ailleurs hors FillSell, retire-le
+  là-bas » (`usage_logs` `vente_vinted_article_inconnu`, posée par `vente_vinted_lot_eclater`, bloc D6) n'est posée que
+  pour une vente RÉCENTE : date de vente connue et de moins de 48 h quand la commande est lue
+  (`question_article_inconnu_due(vendu_le, lu_le)`, même fenêtre que la garde « vente récente prouvée » des mails).
+  Plus ancienne ou sans date : la vente s'écrit comme avant (vente par article, décision `article_inconnu`), sans
+  question. Jamais un retrait ; le mail par commande < 24 h est inchangé. Migration `20261101073000`.
+- Aucun écran ne lit cette question (ni « À régler », ni badge, ni alerte) : c'est une trace serveur. Une vente sans
+  fiche se voit dans la liste des ventes à sa date, et dans « Complète tes prix d'achat » (prix d'achat NULL).
+- ⚠️ Éclater un vieux lot dont aucun article n'a de prix de base (ni Vinted, ni annonce, ni fiche) remplace la ligne
+  « Lot N articles » chiffrée par N ventes à prix NULL : le total du lot sort du chiffre d'affaires (01/11 : 397,90 €
+  chez the_closet72, 91,30 € chez PILOU). Règle de prix inchangée (« base manquante = NULL ») — décision de Nico attendue.
+- Réparation de la nuit du 01/11 : `scripts/reparations/20261101_questions_article_inconnu_anciennes.sql` (123
+  questions → feature `vente_vinted_article_inconnu_ancienne`, texte retiré ; sauvegarde
+  `_backup_0111_questions_article_inconnu`, inverse `…_INVERSE.sql`, 0 vente touchée, 0 mail). Selftest
+  `selftest:question-article-inconnu-recente [-- --prod]` ; essai à blanc `scripts/essais/20261101073000_essai.sql` (15/15).

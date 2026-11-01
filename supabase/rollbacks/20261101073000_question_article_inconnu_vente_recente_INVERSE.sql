@@ -1,0 +1,384 @@
+-- INVERSE de 20261101073000 : vente_vinted_lot_eclater telle que relue en production le 01/11 avant la migration
+-- (pg_get_functiondef, md5 003835978f4e9578e222bc87f5913560), puis la fonction neuve retirée. Aucune donnée à remettre.
+begin;
+
+CREATE OR REPLACE FUNCTION public.vente_vinted_lot_eclater(p_user uuid, p_ref text, p_source text DEFAULT 'releve'::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_n         integer;
+  v_total     numeric;
+  v_devise    text;
+  v_le        timestamptz;
+  v_statut    text;
+  v_hdr       ventes%ROWTYPE;
+  c           record;
+  p           record;
+  i           inventaire%ROWTYPE;
+  v_parts     jsonb := '{}'::jsonb;
+  v_ref_art   text;
+  v_part      numeric;
+  v_inv       bigint;
+  v_n_inv     integer;
+  v_job       uuid;
+  v_n_job     integer;
+  v_vente     bigint;
+  v_n_v       integer;
+  v_r         jsonb;
+  v_rets      jsonb;
+  v_dec       text;
+  v_pa        numeric;
+  v_benef     numeric;
+  v_pct       numeric;
+  v_prix_job  numeric;
+  v_prix_av   numeric;
+  v_titre     text;
+  v_cles_a    text[];
+  v_cles      text[] := ARRAY[]::text[];
+  v_articles  jsonb := '[]'::jsonb;
+  v_nouvelles integer := 0;
+  v_connus    integer := 0;
+  v_premiere  bigint;
+  v_note      bigint;
+  v_motif     text;
+  v_xact      bigint := pg_current_xact_id()::text::bigint;
+  v_decl      text := current_setting('fillsell.vente_declaree', true);
+  v_lie       uuid;
+  v_r_lie     jsonb;
+  v_jwt       text;
+  v_sub       text;
+BEGIN
+  IF p_user IS NULL OR coalesce(p_ref, '') !~ '^[0-9]{1,24}$' THEN
+    RETURN jsonb_build_object('ok', false, 'issue', 'parametres');
+  END IF;
+  PERFORM pg_advisory_xact_lock(hashtextextended(p_user::text || ':commande-vinted:' || p_ref, 0));
+  SELECT count(*), max(x.total), max(x.devise), max(x.commande_le), max(x.statut)
+    INTO v_n, v_total, v_devise, v_le, v_statut
+    FROM vinted_commandes_articles x WHERE x.user_id = p_user AND x.commande_ref = p_ref;
+  IF v_n = 0 THEN RETURN jsonb_build_object('ok', false, 'issue', 'sans_composition'); END IF;
+  IF vinted_commande_annulee(v_statut) THEN RETURN jsonb_build_object('ok', false, 'issue', 'commande_annulee'); END IF;
+  IF EXISTS (SELECT 1 FROM vinted_commandes_articles x
+              WHERE x.user_id = p_user AND x.commande_ref = p_ref AND x.eclatee_le IS NOT NULL) THEN
+    RETURN jsonb_build_object('ok', true, 'issue', 'deja_eclatee');
+  END IF;
+  -- La personne a supprimé la vente de cette commande : elle ne revient jamais (04/10).
+  IF EXISTS (SELECT 1 FROM ventes_supprimees s
+              WHERE s.user_id = p_user AND s.plateforme_code = 'vinted' AND s.commande_ref = p_ref) THEN
+    UPDATE vinted_commandes_articles SET decision = 'supprimee_par_la_personne', decide_le = now(), maj_le = now()
+     WHERE user_id = p_user AND commande_ref = p_ref AND decision IS DISTINCT FROM 'supprimee_par_la_personne';
+    RETURN jsonb_build_object('ok', false, 'issue', 'supprimee_par_la_personne');
+  END IF;
+  -- Un relevé en cours peut écrire l'inventaire : la vente attend sa fin (comme enregistrer_vente_prouvee).
+  IF EXISTS (SELECT 1 FROM vinted_sync_runs r WHERE r.user_id = p_user AND r.status = 'running') THEN
+    RETURN jsonb_build_object('ok', false, 'issue', 'releve_en_cours');
+  END IF;
+  -- (18/10 soir, Louis — UNE VENTE, UN COMPTE, entre comptes RELIÉS) Vu en réel : 2 commandes de @evat
+  -- (12 articles) enregistrées sur ses DEUX comptes — la veille de louis@ (sa VM, ouverte sur @evat) à 18:39
+  -- et 19:03, celle de louis-seller à 19:08. Désormais :
+  --   · une commande déjà enregistrée sur le compte relié ne l'est jamais une 2e fois (un seul mail) ;
+  --   · une commande dont AUCUN article n'est connu ici (ni fiche, ni dépôt, ni vente) mais dont un article
+  --     est connu du compte relié (sa fiche, son dépôt) est la sienne : elle s'enregistre CHEZ LUI, par son
+  --     circuit (sa vente, son mail, ses retraits) ; ici, rien.
+  IF EXISTS (SELECT 1 FROM comptes_lies cl WHERE cl.user_a = p_user OR cl.user_b = p_user) THEN
+    IF EXISTS (SELECT 1 FROM ventes w
+                WHERE w.plateforme_code = 'vinted' AND w.user_id <> p_user
+                  AND split_part(w.commande_ref, ':', 1) = p_ref
+                  AND public.comptes_sont_lies(p_user, w.user_id)) THEN
+      UPDATE vinted_commandes_articles x SET decision = 'compte_relie', motif = 'commande enregistrée sur le compte relié',
+             decide_le = now(), maj_le = now()
+       WHERE x.user_id = p_user AND x.commande_ref = p_ref AND x.vente_id IS NULL AND x.decision IS DISTINCT FROM 'compte_relie';
+      RETURN jsonb_build_object('ok', true, 'issue', 'compte_relie');
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM vinted_commandes_articles x
+                    WHERE x.user_id = p_user AND x.commande_ref = p_ref
+                      AND (EXISTS (SELECT 1 FROM inventaire f WHERE f.user_id = p_user AND f.vinted_item_id = x.item_id)
+                           OR public.annonce_publiee_par_compte(p_user, 'vinted', x.item_id)
+                           OR EXISTS (SELECT 1 FROM ventes v WHERE v.user_id = p_user AND v.plateforme_code = 'vinted'
+                                         AND v.annonce_id = x.item_id))) THEN
+      SELECT o.autre INTO v_lie
+        FROM (SELECT CASE WHEN cl.user_a = p_user THEN cl.user_b ELSE cl.user_a END AS autre
+                FROM comptes_lies cl WHERE cl.user_a = p_user OR cl.user_b = p_user) o
+       WHERE EXISTS (SELECT 1 FROM vinted_commandes_articles x
+                      WHERE x.user_id = p_user AND x.commande_ref = p_ref
+                        AND (EXISTS (SELECT 1 FROM inventaire f WHERE f.user_id = o.autre AND f.vinted_item_id = x.item_id
+                                        AND f.fusionne_dans IS NULL)
+                             OR public.annonce_publiee_par_compte(o.autre, 'vinted', x.item_id)))
+       ORDER BY o.autre LIMIT 1;
+      IF v_lie IS NOT NULL THEN
+        PERFORM public.vinted_lot_composer(v_lie, p_ref,
+          (SELECT jsonb_agg(x.item_id ORDER BY x.position, x.item_id) FROM vinted_commandes_articles x
+            WHERE x.user_id = p_user AND x.commande_ref = p_ref),
+          v_statut, (SELECT bool_or(x.paye) FROM vinted_commandes_articles x WHERE x.user_id = p_user AND x.commande_ref = p_ref),
+          v_total, v_devise, v_le,
+          (SELECT jsonb_agg(jsonb_build_object('item_id', x.item_id, 'prix', x.prix_vinted, 'titre', x.titre_vinted))
+             FROM vinted_commandes_articles x WHERE x.user_id = p_user AND x.commande_ref = p_ref),
+          p_source);
+        -- Le compte relié enregistre pour LUI-MÊME (même personne, comptes_lies) : son circuit vérifie auth.uid().
+        v_jwt := current_setting('request.jwt.claims', true);
+        v_sub := current_setting('request.jwt.claim.sub', true);
+        PERFORM set_config('request.jwt.claims', jsonb_build_object('sub', v_lie::text, 'role', 'authenticated')::text, true);
+        PERFORM set_config('request.jwt.claim.sub', v_lie::text, true);
+        BEGIN
+          v_r_lie := public.vente_vinted_lot_eclater(v_lie, p_ref, p_source);
+        EXCEPTION WHEN OTHERS THEN
+          v_r_lie := jsonb_build_object('ok', false, 'issue', 'erreur_compte_relie', 'raison', left(SQLERRM, 200));
+        END;
+        PERFORM set_config('request.jwt.claims', coalesce(v_jwt, ''), true);
+        PERFORM set_config('request.jwt.claim.sub', coalesce(v_sub, ''), true);
+        -- Enregistrée (ou déjà là) chez lui : close ici. Sinon (relevé en cours chez lui…) : rien ici non plus,
+        -- le prochain passage réessaie.
+        IF v_r_lie ->> 'issue' IN ('eclatee', 'deja_eclatee', 'deja_relevee', 'compte_relie') THEN
+          UPDATE vinted_commandes_articles x SET decision = 'compte_relie', motif = 'commande du compte relié : enregistrée chez lui',
+                 decide_le = now(), maj_le = now()
+           WHERE x.user_id = p_user AND x.commande_ref = p_ref AND x.vente_id IS NULL AND x.decision IS DISTINCT FROM 'compte_relie';
+        END IF;
+        RETURN jsonb_build_object('ok', true, 'issue', 'compte_relie', 'chez_le_compte_relie', v_r_lie);
+      END IF;
+    END IF;
+  END IF;
+  SELECT * INTO v_hdr FROM ventes v WHERE v.user_id = p_user AND v.plateforme_code = 'vinted' AND v.commande_ref = p_ref;
+  -- Une commande à UN article déjà relevée reste l'affaire du relevé (une commande, une vente).
+  IF v_n = 1 AND v_hdr.id IS NOT NULL THEN RETURN jsonb_build_object('ok', false, 'issue', 'deja_relevee'); END IF;
+  FOR p IN SELECT * FROM vinted_lot_parts(p_user, p_ref) LOOP
+    v_parts := v_parts || jsonb_build_object(p.item_id, p.prix);
+  END LOOP;
+
+  BEGIN
+    -- Les notes nées pendant l'éclatement sont « déclarées » (ni push ni mail) :
+    -- la commande a SA note, plus bas.
+    PERFORM set_config('fillsell.vente_declaree', '1', true);
+    FOR c IN SELECT * FROM vinted_commandes_articles x
+              WHERE x.user_id = p_user AND x.commande_ref = p_ref ORDER BY x.position, x.item_id LOOP
+      v_ref_art := CASE WHEN v_n > 1 THEN p_ref || ':' || c.item_id ELSE p_ref END;
+      v_part := nullif(v_parts ->> c.item_id, '')::numeric;
+      v_dec := NULL; v_vente := NULL; v_inv := NULL; v_job := NULL; v_titre := NULL;
+      v_cles_a := ARRAY['annonce:vinted:' || c.item_id];
+      IF EXISTS (SELECT 1 FROM ventes_supprimees s
+                  WHERE s.user_id = p_user AND s.plateforme_code = 'vinted'
+                    AND (s.commande_ref = v_ref_art OR (s.commande_ref IS NULL AND s.annonce_id = c.item_id))) THEN
+        v_dec := 'supprimee_par_la_personne';
+      ELSE
+        IF EXISTS (SELECT 1 FROM ventes v
+                    WHERE v.user_id = p_user AND v.plateforme_code = 'vinted' AND v.annonce_id = c.item_id
+                      AND v.commande_ref IS NOT NULL AND v.commande_ref <> v_ref_art AND v.commande_ref <> p_ref) THEN
+          RAISE EXCEPTION 'doute:article_d_une_autre_commande:%', c.item_id;
+        END IF;
+        SELECT count(*), min(v.id) INTO v_n_v, v_vente FROM ventes v
+         WHERE v.user_id = p_user AND v.plateforme_code = 'vinted' AND v.annonce_id = c.item_id
+           AND (v.commande_ref IS NULL OR v.commande_ref = v_ref_art);
+        IF v_n_v > 1 THEN RAISE EXCEPTION 'doute:ventes_multiples:%', c.item_id; END IF;
+        IF v_vente IS NOT NULL THEN
+          -- (D1) adoptée : la commande se pose dessus ; son prix suit la règle (saisie gardée).
+          SELECT v.prix_vente, v.inventaire_id, v.titre INTO v_prix_av, v_inv, v_titre FROM ventes v WHERE v.id = v_vente;
+          IF v_part IS NOT NULL AND v_part IS DISTINCT FROM v_prix_av AND EXISTS (
+               SELECT 1 FROM ventes_operations o
+                WHERE o.user_id = p_user AND o.cle = 'annonce:vinted:' || c.item_id
+                  AND o.resultat -> 'ventes_ids' @> to_jsonb(ARRAY[v_vente])) THEN
+            UPDATE ventes v SET prix_vente = v_part,
+                   benefice = CASE WHEN v.prix_achat IS NOT NULL
+                                   THEN v_part - v.prix_achat
+                                        - coalesce((SELECT x.purchase_costs FROM inventaire x WHERE x.id = v.inventaire_id), 0)
+                                        - coalesce(v.frais_plateforme, v.selling_fees, 0) END
+             WHERE v.id = v_vente;
+            UPDATE inventaire x SET prix_vente = v_part,
+                   margin = CASE WHEN x.prix_achat IS NOT NULL AND NOT x.prix_achat_inconnu
+                                 THEN v_part - x.prix_achat - coalesce(x.purchase_costs, 0) END,
+                   margin_pct = CASE WHEN x.prix_achat IS NOT NULL AND NOT x.prix_achat_inconnu AND v_part > 0
+                                     THEN (v_part - x.prix_achat - coalesce(x.purchase_costs, 0)) / v_part * 100 END
+             WHERE x.id = v_inv AND x.user_id = p_user AND x.statut = 'vendu' AND x.prix_vente IS NOT DISTINCT FROM v_prix_av;
+          END IF;
+          UPDATE ventes v SET commande_ref = v_ref_art, vendu_le = coalesce(v.vendu_le, v_le), releve_le = now()
+           WHERE v.id = v_vente;
+          v_dec := 'adoptee';
+        ELSE
+          -- La fiche, par le NUMÉRO exact (jamais le titre).
+          SELECT * INTO i FROM inventaire x
+           WHERE x.user_id = p_user AND x.vinted_item_id = c.item_id AND x.fusionne_dans IS NULL;
+          IF i.id IS NULL THEN
+            SELECT count(DISTINCT jj.inventaire_id), min(jj.inventaire_id) INTO v_n_inv, v_inv FROM cross_post_jobs jj
+             WHERE jj.user_id = p_user AND jj.platform = 'vinted' AND jj.action IN ('publish', 'republish')
+               AND btrim(coalesce(jj.platform_listing_id, '')) = c.item_id AND jj.inventaire_id IS NOT NULL
+               AND public.retrait_job_prouve(jj.id);
+            IF v_n_inv > 1 THEN RAISE EXCEPTION 'doute:plusieurs_fiches:%', c.item_id; END IF;
+            IF v_inv IS NOT NULL THEN
+              SELECT * INTO i FROM inventaire x WHERE x.id = v_inv AND x.user_id = p_user;
+              IF i.id IS NULL OR i.fusionne_dans IS NOT NULL THEN RAISE EXCEPTION 'doute:fiche_fusionnee:%', c.item_id; END IF;
+            END IF;
+          END IF;
+          v_inv := i.id;
+          IF v_inv IS NOT NULL THEN
+            SELECT count(*), (array_agg(jj.id ORDER BY jj.created_at DESC))[1] INTO v_n_job, v_job FROM cross_post_jobs jj
+             WHERE jj.user_id = p_user AND jj.inventaire_id = v_inv AND jj.platform = 'vinted' AND jj.status = 'published'
+               AND jj.action IN ('publish', 'republish') AND btrim(coalesce(jj.platform_listing_id, '')) = c.item_id;
+            IF v_n_job > 1 THEN RAISE EXCEPTION 'doute:plusieurs_annonces:%', c.item_id; END IF;
+            v_titre := i.titre;
+            v_cles_a := v_cles_a || ('fiche:' || v_inv::text);
+          END IF;
+          IF v_inv IS NOT NULL AND v_job IS NOT NULL THEN
+            -- (D2) la commande est la preuve de CETTE annonce ; le circuit normal écrit la vente.
+            IF i.statut IS DISTINCT FROM 'stock' THEN RAISE EXCEPTION 'doute:fiche_deja_vendue:%', c.item_id; END IF;
+            UPDATE cross_post_jobs SET platform_fields = coalesce(platform_fields, '{}'::jsonb)
+                   || jsonb_build_object(
+                        'sale_signal', 'sold',
+                        'unavailable_since', CASE
+                           WHEN _ts_ou_null(platform_fields ->> 'unavailable_since') IS NOT NULL
+                                AND _ts_ou_null(platform_fields ->> 'unavailable_since') <= coalesce(v_le, now())
+                           THEN platform_fields ->> 'unavailable_since'
+                           ELSE to_char(coalesce(v_le, now()) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') END,
+                        'sale_evidence', jsonb_build_object('source', 'commande_vinted', 'commande', p_ref,
+                           'listing_id', c.item_id, 'platform', 'vinted', 'state', 'sold', 'exact', true,
+                           'lu_le', now(), 'pose_par', 'vente_vinted_lot_eclater:' || coalesce(p_source, '')))
+                   || CASE WHEN v_part IS NOT NULL THEN jsonb_build_object('detected_price', v_part) ELSE '{}'::jsonb END
+             WHERE id = v_job AND status = 'published';
+            SELECT coalesce(CASE WHEN j.platform_fields ->> 'detected_price' ~ '^[0-9]+([.][0-9]+)?$'
+                                 THEN (j.platform_fields ->> 'detected_price')::numeric END,
+                            j.price,
+                            CASE WHEN j.platform_fields ->> 'prix_recreation' ~ '^[0-9]+([.][0-9]+)?$'
+                                 THEN (j.platform_fields ->> 'prix_recreation')::numeric END,
+                            CASE WHEN j.platform_fields #>> '{republish_snapshot,prix}' ~ '^[0-9]+([.][0-9]+)?$'
+                                 THEN (j.platform_fields #>> '{republish_snapshot,prix}')::numeric END)
+              INTO v_prix_job FROM cross_post_jobs j WHERE j.id = v_job;
+            v_r := enregistrer_vente_atomique(p_user, NULL, p_job := v_job, p_prix := coalesce(v_part, v_prix_job));
+            IF coalesce(v_r ->> 'ok', 'false') <> 'true' THEN
+              RAISE EXCEPTION 'doute:refus:%:%', c.item_id, left(coalesce(v_r ->> 'code', '') || ' ' || coalesce(v_r ->> 'reason', ''), 160);
+            END IF;
+            v_vente := nullif(v_r -> 'ventes_ids' ->> 0, '')::bigint;
+            IF v_vente IS NULL THEN RAISE EXCEPTION 'doute:vente_absente:%', c.item_id; END IF;
+            UPDATE ventes v SET commande_ref = v_ref_art, vendu_le = coalesce(v.vendu_le, v_le), releve_le = now()
+             WHERE v.id = v_vente;
+            v_cles_a := v_cles_a || ('job:' || v_job::text);
+            v_dec := CASE WHEN coalesce(v_r ->> 'rejouee', 'false') = 'true' THEN 'adoptee' ELSE 'vente_par_annonce' END;
+          ELSIF v_inv IS NOT NULL AND i.statut = 'vendu' THEN
+            -- (D3) fiche déjà « vendu » sans aucune vente : la vente s'y rattache.
+            IF EXISTS (SELECT 1 FROM ventes v WHERE v.user_id = p_user AND v.inventaire_id = v_inv) THEN
+              RAISE EXCEPTION 'doute:fiche_deja_vendue_ailleurs:%', c.item_id;
+            END IF;
+            v_pa := CASE WHEN i.prix_achat_inconnu THEN NULL ELSE i.prix_achat END;
+            v_benef := CASE WHEN v_pa IS NOT NULL AND v_part IS NOT NULL THEN v_part - v_pa - coalesce(i.purchase_costs, 0) END;
+            INSERT INTO ventes (user_id, inventaire_id, titre, prix_achat, prix_vente, benefice, marque, type, description,
+                                emplacement, date, vendu_le, plateforme, plateforme_code, commande_ref, annonce_id, source,
+                                releve_le, devise, quantite, statut, selling_fees)
+            VALUES (p_user, v_inv, i.titre, v_pa, v_part, v_benef, i.marque, i.type, i.description, i.emplacement,
+                    (coalesce(v_le, now()) AT TIME ZONE 'Europe/Paris')::date, v_le, 'Vinted', 'vinted', v_ref_art, c.item_id,
+                    'releve', now(), v_devise, 1, 'vendu', 0)
+            RETURNING id INTO v_vente;
+            INSERT INTO ventes_operations (user_id, cle, inventaire_id, job_id, resultat)
+            VALUES (p_user, 'annonce:vinted:' || c.item_id, v_inv, NULL, jsonb_build_object('ok', true, 'venteCreated', true,
+                    'ventes_ids', jsonb_build_array(v_vente), 'par', 'vente_vinted_lot_eclater', 'commande', p_ref))
+            ON CONFLICT (user_id, cle) DO NOTHING;
+            IF NOT FOUND THEN RAISE EXCEPTION 'doute:recu_existant:%', c.item_id; END IF;
+            v_rets := armer_retraits_copies(v_inv, 'vente_commande_vinted', NULL, 'vinted', interval '10 minutes');
+            v_dec := 'vente_fiche_deja_vendue';
+          ELSIF v_inv IS NOT NULL AND i.statut = 'stock' THEN
+            -- (D4) fiche importée, sans annonce FillSell vivante sur ce numéro.
+            IF coalesce(i.quantite, 1) > 1 THEN RAISE EXCEPTION 'doute:plusieurs_exemplaires_sans_annonce:%', c.item_id; END IF;
+            v_pa := CASE WHEN i.prix_achat_inconnu THEN NULL ELSE i.prix_achat END;
+            v_benef := CASE WHEN v_pa IS NOT NULL AND v_part IS NOT NULL THEN v_part - v_pa - coalesce(i.purchase_costs, 0) END;
+            v_pct := CASE WHEN v_benef IS NOT NULL AND v_part > 0 THEN v_benef / v_part * 100 END;
+            INSERT INTO ventes (user_id, inventaire_id, titre, prix_achat, prix_vente, benefice, marque, type, description,
+                                emplacement, date, vendu_le, plateforme, plateforme_code, commande_ref, annonce_id, source,
+                                releve_le, devise, quantite, statut, selling_fees)
+            VALUES (p_user, v_inv, i.titre, v_pa, v_part, v_benef, i.marque, i.type, i.description, i.emplacement,
+                    (coalesce(v_le, now()) AT TIME ZONE 'Europe/Paris')::date, v_le, 'Vinted', 'vinted', v_ref_art, c.item_id,
+                    'releve', now(), v_devise, 1, 'vendu', 0)
+            RETURNING id INTO v_vente;
+            INSERT INTO ventes_operations (user_id, cle, inventaire_id, job_id, resultat)
+            VALUES (p_user, 'annonce:vinted:' || c.item_id, v_inv, NULL, jsonb_build_object('ok', true, 'venteCreated', true,
+                    'ventes_ids', jsonb_build_array(v_vente), 'par', 'vente_vinted_lot_eclater', 'commande', p_ref))
+            ON CONFLICT (user_id, cle) DO NOTHING;
+            IF NOT FOUND THEN RAISE EXCEPTION 'doute:recu_existant:%', c.item_id; END IF;
+            UPDATE inventaire x SET statut = 'vendu', quantite = 0, prix_vente = coalesce(v_part, x.prix_vente),
+                   margin = CASE WHEN v_part IS NOT NULL THEN v_benef ELSE x.margin END,
+                   margin_pct = CASE WHEN v_part IS NOT NULL THEN v_pct ELSE x.margin_pct END,
+                   plateforme = 'Vinted', date = to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+             WHERE x.id = v_inv AND x.user_id = p_user AND x.statut = 'stock';
+            IF NOT FOUND THEN RAISE EXCEPTION 'doute:fiche_changee:%', c.item_id; END IF;
+            v_dec := 'vente_fiche_importee';
+          ELSIF v_inv IS NOT NULL THEN
+            RAISE EXCEPTION 'doute:statut_fiche:%:%', c.item_id, coalesce(i.statut, '?');
+          ELSE
+            -- (D6) inconnu de FillSell : vente sans fiche, la question, JAMAIS un retrait.
+            v_titre := coalesce(c.titre_vinted, 'Article Vinted ' || c.item_id || ' (pas suivi par FillSell)');
+            INSERT INTO ventes (user_id, inventaire_id, titre, prix_vente, date, vendu_le, plateforme, plateforme_code,
+                                commande_ref, annonce_id, source, releve_le, devise, quantite, statut, selling_fees)
+            VALUES (p_user, NULL, v_titre, v_part, (coalesce(v_le, now()) AT TIME ZONE 'Europe/Paris')::date, v_le,
+                    'Vinted', 'vinted', v_ref_art, c.item_id, 'releve', now(), v_devise, 1, 'vendu', 0)
+            RETURNING id INTO v_vente;
+            INSERT INTO ventes_operations (user_id, cle, inventaire_id, job_id, resultat)
+            VALUES (p_user, 'annonce:vinted:' || c.item_id, NULL, NULL, jsonb_build_object('ok', true, 'venteCreated', true,
+                    'ventes_ids', jsonb_build_array(v_vente), 'par', 'vente_vinted_lot_eclater', 'commande', p_ref))
+            ON CONFLICT (user_id, cle) DO NOTHING;
+            IF NOT EXISTS (SELECT 1 FROM usage_logs u
+                            WHERE u.user_id = p_user AND u.feature = 'vente_vinted_article_inconnu'
+                              AND u.metadata ->> 'commande' = p_ref AND u.metadata ->> 'annonce' = c.item_id) THEN
+              INSERT INTO usage_logs (user_id, feature, metadata) VALUES (p_user, 'vente_vinted_article_inconnu',
+                jsonb_build_object('commande', p_ref, 'annonce', c.item_id, 'vente', v_vente, 'prix', v_part,
+                  'question', 'Article vendu sur Vinted que FillSell ne suit pas : s''il est en vente ailleurs hors FillSell, retire-le là-bas.',
+                  'par', 'vente_vinted_lot_eclater', 'source', p_source));
+            END IF;
+            v_dec := 'article_inconnu';
+          END IF;
+          v_nouvelles := v_nouvelles + 1;
+        END IF;
+      END IF;
+      IF v_inv IS NOT NULL THEN v_connus := v_connus + 1; END IF;
+      UPDATE vinted_commandes_articles x
+         SET inventaire_id = v_inv, vente_id = v_vente, prix_part = v_part, decision = v_dec, motif = NULL,
+             decide_le = now(), maj_le = now()
+       WHERE x.user_id = p_user AND x.commande_ref = p_ref AND x.item_id = c.item_id;
+      IF v_vente IS NOT NULL THEN
+        v_premiere := coalesce(v_premiere, v_vente);
+        v_cles_a := v_cles_a || ('commande:vinted:' || v_ref_art);
+        v_cles := v_cles || v_cles_a;
+        v_articles := v_articles || jsonb_build_array(jsonb_build_object(
+          'item_id', c.item_id, 'vente_id', v_vente, 'inventaire_id', v_inv, 'decision', v_dec,
+          'titre', coalesce(v_titre, (SELECT v.titre FROM ventes v WHERE v.id = v_vente)),
+          'prix', (SELECT v.prix_vente FROM ventes v WHERE v.id = v_vente), 'cles', to_jsonb(v_cles_a)));
+      END IF;
+    END LOOP;
+    -- La ligne d'attente « Lot N articles » du relevé : remplacée par ses articles, trace complète.
+    IF v_hdr.id IS NOT NULL AND v_n > 1 THEN
+      INSERT INTO usage_logs (user_id, feature, metadata) VALUES (p_user, 'vente_lot_eclatee', jsonb_build_object(
+        'commande', p_ref, 'avant', to_jsonb(v_hdr), 'articles', v_articles, 'par', 'vente_vinted_lot_eclater', 'source', p_source));
+      DELETE FROM ventes WHERE id = v_hdr.id AND user_id = p_user;
+    END IF;
+    UPDATE vinted_commandes_articles x SET eclatee_le = now(), maj_le = now()
+     WHERE x.user_id = p_user AND x.commande_ref = p_ref;
+    PERFORM set_config('fillsell.vente_declaree', coalesce(v_decl, ''), true);
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM set_config('fillsell.vente_declaree', coalesce(v_decl, ''), true);
+    v_motif := left(SQLERRM, 300);
+    UPDATE vinted_commandes_articles x SET decision = 'en_doute', motif = v_motif, decide_le = now(), maj_le = now()
+     WHERE x.user_id = p_user AND x.commande_ref = p_ref
+       AND (x.decision IS DISTINCT FROM 'en_doute' OR x.motif IS DISTINCT FROM v_motif);
+    IF NOT EXISTS (SELECT 1 FROM usage_logs u
+                    WHERE u.user_id = p_user AND u.feature = 'vente_vinted_lot_doute'
+                      AND u.metadata ->> 'commande' = p_ref AND u.metadata ->> 'motif' = v_motif) THEN
+      INSERT INTO usage_logs (user_id, feature, metadata) VALUES (p_user, 'vente_vinted_lot_doute',
+        jsonb_build_object('commande', p_ref, 'motif', v_motif, 'source', p_source, 'par', 'vente_vinted_lot_eclater'));
+    END IF;
+    RETURN jsonb_build_object('ok', false, 'issue', 'en_doute', 'raison', v_motif);
+  END;
+
+  -- Aucune note d'article ne part seule : la commande a SA note (ou aucune).
+  IF cardinality(v_cles) > 0 THEN
+    UPDATE push_ventes SET statut = 'doublon', motif = 'dans_la_commande', traite_le = now()
+     WHERE user_id = p_user AND lot = v_xact AND articles IS NULL AND statut IN ('a_envoyer', 'declaree')
+       AND cles && v_cles;
+  END IF;
+  -- UN mail par commande de moins de 24 h, qui liste TOUS ses articles.
+  IF v_nouvelles > 0 AND v_connus > 0 AND v_le IS NOT NULL AND v_le >= now() - interval '24 hours'
+     AND coalesce(p_source, '') <> 'reparation' THEN
+    v_note := push_noter_commande_vinted(p_user, p_ref, v_premiere, v_articles, v_total, v_devise, v_le);
+  END IF;
+  RETURN jsonb_build_object('ok', true, 'issue', 'eclatee', 'articles', v_articles, 'note', v_note,
+                            'en_tete_retire', v_hdr.id, 'nouvelles', v_nouvelles);
+END;
+$function$;
+
+drop function if exists public.question_article_inconnu_due(timestamptz, timestamptz);
+
+commit;
