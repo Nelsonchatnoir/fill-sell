@@ -193,7 +193,8 @@ try {
     verifier(!/p[ée]pite/i.test(m.texte), `${nom} : jamais « pépites »`);
     verifier(!/plafond/i.test(m.texte), `${nom} : jamais « plafond »`);
     const zoneInterdite = cloudSeul ? m.texte : m.texteZones;
-    verifier(!/Beebs/i.test(zoneInterdite), `${nom} : aucune plateforme bloquée nommée${cloudSeul ? ' (écran entier)' : ' (zones Cloud)'}`);
+    // (01/11, décision de Nico) Beebs est une des quatre plateformes du Cloud : plus interdite ; jamais « Vinted et Leboncoin » seuls.
+    verifier(!/Vinted et Leboncoin/.test(zoneInterdite), `${nom} : jamais deux plateformes seulement (les quatre du Cloud)${cloudSeul ? ' (écran entier)' : ' (zones Cloud)'}`);
     verifier(!/Opla/i.test(zoneInterdite), `${nom} : Opla jamais citée${cloudSeul ? ' (écran entier)' : ' (zones Cloud)'}`);
     verifier(!/formule payante|fait tourner l.extension/i.test(m.texteZones), `${nom} : ni « formule payante » ni « fait tourner l’extension » (décisions du 04/10 soir)`, m.texteZones);
     return m;
@@ -210,7 +211,7 @@ try {
   verifier(a(m.texte, /7 jours d.essai gratuits/i), 'modale Free : « 7 jours d’essai gratuits »');
   verifier(a(m.texteZones, /Carte demandée, rien n.est prélevé pour l.option avant le 17 octobre\./), 'modale Free décochée : carte demandée, rien prélevé avant le 17 octobre', m.texteZones);
   verifier(a(m.texteZones, /ci-dessous, Free compris\./), 'modale Free : l’option s’ajoute à toutes les formules, Free compris');
-  verifier(a(m.texte, 'Vinted et Leboncoin') && a(m.texte, 'eBay part déjà sans ordinateur'), 'modale Free : ce que ça fait, Vinted et Leboncoin seulement, eBay déjà sans ordinateur');
+  verifier(a(m.texte, 'Vinted, Leboncoin, Beebs et Depop') && a(m.texte, 'eBay part déjà sans ordinateur'), 'modale Free : ce que ça fait, les quatre plateformes du Cloud, eBay déjà sans ordinateur');
   verifier(!a(m.texte, '+ 20 €') && !a(m.texte, 'Free + Sans ordinateur'), 'modale Free décochée : aucune carte ne change (ni « + 20 € », ni voie Free)');
   verifier(await page.getAttribute('[role="switch"]', 'aria-checked') === 'false', 'modale Free : l’interrupteur arrive décoché');
   const ordre = await page.evaluate(() => {
@@ -414,7 +415,7 @@ try {
   verifier(!a(m.texte, /formule payante/i), 'mur : plus jamais « en option d’une formule payante »', m.texte.slice(0, 400));
   const ordreGratuit = await page.evaluate(() => { const g = document.querySelector('[data-cloud="extension-gratuite"]'); const v = document.querySelector('[data-cloud="voie"]'); return Boolean(g && v && (g.compareDocumentPosition(v) & Node.DOCUMENT_POSITION_FOLLOWING)); });
   verifier(ordreGratuit, 'mur : « gratuite, sans carte » vient AVANT la voie payante');
-  verifier(a(m.texte, /pour Vinted et Leboncoin, par l.option Sans ordinateur/) && !a(m.texte, /Vinted, Leboncoin et Beebs demandent l.extension/), 'mur, drapeau levé : la section eBay ne dit plus « l’extension, forcément » pour Vinted et Leboncoin');
+  verifier(a(m.texte, /pour Vinted, Leboncoin, Beebs et Depop, par l.option Sans ordinateur/) && !a(m.texte, /Vinted, Leboncoin et Beebs demandent l.extension/), 'mur, drapeau levé : la section eBay ne dit plus « l’extension, forcément » pour les plateformes du Cloud');
   const ordreMur = await page.evaluate(() => {
     const els = [...document.querySelectorAll('button, [data-cloud="voie"]')];
     return { ext: els.findIndex((e) => /M.envoyer le lien/.test(e.innerText ?? '')), voie: els.findIndex((e) => e.getAttribute?.('data-cloud') === 'voie') };

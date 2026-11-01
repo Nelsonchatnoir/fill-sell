@@ -19,7 +19,9 @@
 //   · FillSell publie les annonces depuis ses serveurs (sortie par une adresse
 //     française dédiée) : elles partent, se republient et se retirent, et les
 //     ventes sont vues, même ordinateur éteint, depuis le téléphone ;
-//   · ÉPROUVÉ sur Vinted et Leboncoin — on ne nomme QUE ces deux-là ;
+//   · (01/11, décision de Nico ; 30/10 : « le Cloud n'est pas complet sans Beebs ») les QUATRE plateformes du Cloud,
+//     Vinted, Leboncoin, Beebs et Depop — la liste de config/cloudOffer.js (CLOUD_PLATEFORMES_CONNEXION), contrôlée par
+//     scripts/cloud-ecrans-selftest.mjs ; avant le 01/11, on ne nommait que Vinted et Leboncoin (05/10 : seuls éprouvés) ;
 //   · eBay part DÉJÀ sans ordinateur, pour tout le monde (connexion officielle
 //     par l'API) : on le dit, on ne le vend pas comme un avantage de l'option ;
 //   · ⛔ une plateforme bloquée par sa protection anti-robot n'est JAMAIS
@@ -61,7 +63,7 @@ const FR = {
   carteDemandee: (date) => `Carte demandée, rien n'est prélevé pour l'option avant le ${date}.`,
 
   // ── Ce que ça fait (une phrase, la même partout) ─────────────────────────
-  ceQueCaFait: 'Tes annonces Vinted et Leboncoin partent, se republient et se retirent même ordinateur éteint, et tes ventes sont vues : tout se pilote depuis ton téléphone.',
+  ceQueCaFait: 'Tes annonces Vinted, Leboncoin, Beebs et Depop partent, se republient et se retirent même ordinateur éteint, et tes ventes sont vues : tout se pilote depuis ton téléphone.',
   ebayDeja: 'eBay part déjà sans ordinateur, pour tout le monde.',
 
   // ── L'interrupteur de la feuille des formules ────────────────────────────
@@ -101,7 +103,7 @@ const FR = {
   voieTitreEssai: `Sans ordinateur, ${J7} d'essai`,
   voieTitre: `Sans ordinateur · +${PRIX}/mois`,
   // ⛔ PHRASE IMPOSÉE (04/10 soir) : « FillSell publie tes annonces depuis ses serveurs ».
-  voieTexte: "FillSell publie tes annonces depuis ses serveurs : tu te connectes une fois à Vinted et Leboncoin depuis ton téléphone, et elles partent même sans ordinateur.",
+  voieTexte: "FillSell publie tes annonces depuis ses serveurs : tu te connectes une fois à Vinted, Leboncoin, Beebs et Depop depuis ton téléphone, et elles partent même sans ordinateur.",
   voieCtaEssai: 'Essayer sans ordinateur',
   voieCta: "Voir l'option",
   voieNote: (date) => `Carte demandée, rien n'est prélevé avant le ${date}. Puis ${PRIX}/mois, tu l'arrêtes quand tu veux.`,
@@ -110,7 +112,7 @@ const FR = {
   voieCompact: `Pas d'ordinateur ? Option Sans ordinateur, ${PRIX}/mois`,
   // La page /extension, ouverte sur un téléphone (souvent sans session).
   pageTitre: "Pas d'ordinateur ?",
-  pageTexte: "Avec l'option Sans ordinateur, FillSell publie tes annonces depuis ses serveurs : sur Vinted et Leboncoin, tout se pilote depuis ton téléphone.",
+  pageTexte: "Avec l'option Sans ordinateur, FillSell publie tes annonces depuis ses serveurs : sur Vinted, Leboncoin, Beebs et Depop, tout se pilote depuis ton téléphone.",
   pageCta: "Voir l'option dans l'app",
   pageNote: `${J7} d'essai, carte demandée.`,
   // Le mur, près du bouton de l'extension : elle reste gratuite ET sans carte.
@@ -141,8 +143,8 @@ const FR = {
   mentionPremium: (n) => `Tu es en Free + Sans ordinateur : ${annoncesFree(n)} par mois. Pour en publier plus, Premium s'ajoute à l'option.`,
   voirPremium: 'Voir Premium',
   payeTexte: (nom) => (nom
-    ? `En plus de ta formule ${nom} : tes annonces Vinted et Leboncoin partent même ordinateur éteint.`
-    : 'Avec ton plan Free : tes annonces Vinted et Leboncoin partent même ordinateur éteint.'),
+    ? `En plus de ta formule ${nom} : tes annonces Vinted, Leboncoin, Beebs et Depop partent même ordinateur éteint.`
+    : 'Avec ton plan Free : tes annonces Vinted, Leboncoin, Beebs et Depop partent même ordinateur éteint.'),
   arretPrevuTexte: (date) => `L'option tourne jusqu'au ${date}, puis s'arrête : rien ne sera prélevé ensuite.`,
   garderOption: "Garder l'option",
   // Plus rendu depuis CLOUD_EXIGE_UN_PALIER = false (gardé pour l'interrupteur de palier.js).
@@ -155,10 +157,10 @@ const FR = {
   arreter: "Arrêter l'option",
   arreterTitre: "Arrêter l'option Sans ordinateur ?",
   // Pendant l'essai : effet IMMÉDIAT, rien facturé. Payée : jusqu'à la fin de période.
-  arreterEssai: (nom) => `Elle s'arrête tout de suite, et rien n'est facturé pour elle. Tes annonces Vinted et Leboncoin repassent par l'extension, sur ton ordinateur. ${nom ? `Ta formule ${nom}` : 'Ton plan Free'} ne change pas.`,
+  arreterEssai: (nom) => `Elle s'arrête tout de suite, et rien n'est facturé pour elle. Tes annonces Vinted, Leboncoin, Beebs et Depop repassent par l'extension, sur ton ordinateur. ${nom ? `Ta formule ${nom}` : 'Ton plan Free'} ne change pas.`,
   arreterPaye: (date) => (date
-    ? `Elle tourne jusqu'au ${date}, puis s'arrête : rien ne sera prélevé ensuite. Après cette date, tes annonces Vinted et Leboncoin repassent par l'extension, sur ton ordinateur.`
-    : "Elle tourne jusqu'à la fin de la période payée, puis s'arrête : rien ne sera prélevé ensuite. Tes annonces Vinted et Leboncoin repasseront alors par l'extension, sur ton ordinateur."),
+    ? `Elle tourne jusqu'au ${date}, puis s'arrête : rien ne sera prélevé ensuite. Après cette date, tes annonces Vinted, Leboncoin, Beebs et Depop repassent par l'extension, sur ton ordinateur.`
+    : "Elle tourne jusqu'à la fin de la période payée, puis s'arrête : rien ne sera prélevé ensuite. Tes annonces Vinted, Leboncoin, Beebs et Depop repasseront alors par l'extension, sur ton ordinateur."),
   arreterConfirmer: 'Arrêter',
   arreterAnnuler: 'Garder',
   // La confirmation « Se désabonner » de la formule, quand l'option est active.
@@ -177,7 +179,7 @@ const FR = {
   veilleArreter: "Arrêter l'option",
   veilleNote: (nom) => `Dans les deux cas, ${taFormule(nom)} ne change pas, et l'extension comme eBay restent possibles.`,
   veilleBascule: (date, heure) => `Le ${date} à ${heure} · +${PRIX}/mois`,
-  veilleArretee: "C'est arrêté. Rien ne sera facturé pour l'option, et tes annonces Vinted et Leboncoin repassent par l'extension.",
+  veilleArretee: "C'est arrêté. Rien ne sera facturé pour l'option, et tes annonces Vinted, Leboncoin, Beebs et Depop repassent par l'extension.",
   veilleArretEchec: "L'arrêt n'a pas pu se faire. Réessaie dans un instant.",
 
   // ── Après la fin de l'essai (non converti) ───────────────────────────────
@@ -186,7 +188,7 @@ const FR = {
   finTexte: "L'option n'est plus active. Rien n'a été facturé pour elle.",
   finArreteTitre: "Ce qui s'arrête",
   finArrete: [
-    "Tes annonces Vinted et Leboncoin ne partent plus ordinateur éteint : publication, republication, retrait et ventes repassent par l'extension, sur ton ordinateur.",
+    "Tes annonces Vinted, Leboncoin, Beebs et Depop ne partent plus ordinateur éteint : publication, republication, retrait et ventes repassent par l'extension, sur ton ordinateur.",
   ],
   finContinueTitre: 'Ce qui continue',
   finContinue: (nom) => [
@@ -205,7 +207,7 @@ const EN = {
   essaiPastille: `${JOURS}-day free trial`,
   carteDemandee: (date) => `Card required, nothing is charged for the add-on before ${date}.`,
 
-  ceQueCaFait: 'Your Vinted and Leboncoin listings go out, get reposted and removed even with your computer off, and your sales are seen: everything is driven from your phone.',
+  ceQueCaFait: 'Your Vinted, Leboncoin, Beebs and Depop listings go out, get reposted and removed even with your computer off, and your sales are seen: everything is driven from your phone.',
   ebayDeja: 'eBay already works without a computer, for everyone.',
 
   sAjoute: 'Adds to the plan you pick below.',
@@ -241,7 +243,7 @@ const EN = {
   voieKicker: "I don't have a computer",
   voieTitreEssai: `No computer, ${JOURS}-day trial`,
   voieTitre: `No computer · +${PRIX}/mo`,
-  voieTexte: 'FillSell posts your listings from its servers: you sign in to Vinted and Leboncoin once from your phone, and they go out even without a computer.',
+  voieTexte: 'FillSell posts your listings from its servers: you sign in to Vinted, Leboncoin, Beebs and Depop once from your phone, and they go out even without a computer.',
   voieCtaEssai: 'Try without a computer',
   voieCta: 'See the add-on',
   voieNote: (date) => `Card required, nothing is charged before ${date}. Then ${PRIX}/mo, stop it whenever you want.`,
@@ -249,7 +251,7 @@ const EN = {
   voieCompactEssai: `No computer? Try No computer, ${D7} free`,
   voieCompact: `No computer? No computer add-on, ${PRIX}/mo`,
   pageTitre: 'No computer?',
-  pageTexte: 'With the No computer add-on, FillSell posts your listings from its servers: on Vinted and Leboncoin, everything is driven from your phone.',
+  pageTexte: 'With the No computer add-on, FillSell posts your listings from its servers: on Vinted, Leboncoin, Beebs and Depop, everything is driven from your phone.',
   pageCta: 'See the add-on in the app',
   pageNote: `${JOURS}-day trial, card required.`,
   extensionGratuite: 'Free, no card needed.',
@@ -277,8 +279,8 @@ const EN = {
   mentionPremium: (n) => `You are on Free + No computer: ${listingsFree(n)} a month. To post more, Premium adds to the add-on.`,
   voirPremium: 'See Premium',
   payeTexte: (nom) => (nom
-    ? `On top of your ${nom} plan: your Vinted and Leboncoin listings go out even with your computer off.`
-    : 'With your Free plan: your Vinted and Leboncoin listings go out even with your computer off.'),
+    ? `On top of your ${nom} plan: your Vinted, Leboncoin, Beebs and Depop listings go out even with your computer off.`
+    : 'With your Free plan: your Vinted, Leboncoin, Beebs and Depop listings go out even with your computer off.'),
   arretPrevuTexte: (date) => `The add-on runs until ${date}, then stops: nothing will be charged after that.`,
   garderOption: 'Keep the add-on',
   suspenduTexte: 'The add-on is paused: it restarts as soon as you pick a plan again.',
@@ -289,10 +291,10 @@ const EN = {
   meConnecter: 'Connect my platforms',
   arreter: 'Stop the add-on',
   arreterTitre: 'Stop the No computer add-on?',
-  arreterEssai: (nom) => `It stops right away, and nothing is billed for it. Your Vinted and Leboncoin listings go back through the extension, on your computer. ${nom ? `Your ${nom} plan` : 'Your Free plan'} does not change.`,
+  arreterEssai: (nom) => `It stops right away, and nothing is billed for it. Your Vinted, Leboncoin, Beebs and Depop listings go back through the extension, on your computer. ${nom ? `Your ${nom} plan` : 'Your Free plan'} does not change.`,
   arreterPaye: (date) => (date
-    ? `It runs until ${date}, then stops: nothing will be charged after that. After that date, your Vinted and Leboncoin listings go back through the extension, on your computer.`
-    : 'It runs until the end of the paid period, then stops: nothing will be charged after that. Your Vinted and Leboncoin listings will then go back through the extension, on your computer.'),
+    ? `It runs until ${date}, then stops: nothing will be charged after that. After that date, your Vinted, Leboncoin, Beebs and Depop listings go back through the extension, on your computer.`
+    : 'It runs until the end of the paid period, then stops: nothing will be charged after that. Your Vinted, Leboncoin, Beebs and Depop listings will then go back through the extension, on your computer.'),
   arreterConfirmer: 'Stop',
   arreterAnnuler: 'Keep',
   resiliationCloud: 'The No computer add-on keeps running: your account goes back to Free + No computer, with the Free plan quotas.',
@@ -309,7 +311,7 @@ const EN = {
   veilleArreter: 'Stop the add-on',
   veilleNote: (nom) => `Either way, ${yourPlan(nom)} does not change, and the extension and eBay remain available.`,
   veilleBascule: (date, heure) => `${date} at ${heure} · +${PRIX}/mo`,
-  veilleArretee: 'It is stopped. Nothing will be billed for the add-on, and your Vinted and Leboncoin listings go back through the extension.',
+  veilleArretee: 'It is stopped. Nothing will be billed for the add-on, and your Vinted, Leboncoin, Beebs and Depop listings go back through the extension.',
   veilleArretEchec: 'The add-on could not be stopped. Try again in a moment.',
 
   finKicker: 'No computer',
@@ -317,7 +319,7 @@ const EN = {
   finTexte: 'The add-on is off. Nothing was billed for it.',
   finArreteTitre: 'What stops',
   finArrete: [
-    'Your Vinted and Leboncoin listings no longer go out with your computer off: posting, reposting, removal and sales go back through the extension, on your computer.',
+    'Your Vinted, Leboncoin, Beebs and Depop listings no longer go out with your computer off: posting, reposting, removal and sales go back through the extension, on your computer.',
   ],
   finContinueTitre: 'What continues',
   finContinue: (nom) => [

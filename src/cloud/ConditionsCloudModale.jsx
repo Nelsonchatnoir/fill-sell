@@ -6,6 +6,9 @@
 // seul) avant de rendre la main : un échec se dit, rien ne s'ouvre. Mobile d'abord, thème de l'app (cloud/theme.js).
 // Monté par App derrière cloudOfferVisible() / le drapeau par compte : invisible pour tout autre compte.
 import { useState } from 'react';
+// (01/11) Portail sur document.body, comme « Me connecter » : ouverte depuis Réglages (portail sur body, z-index 400),
+// rendue dans `.app-root` elle restait DERRIÈRE sur iPhone (WKWebView) — « Essayer » aurait eu l'air mort.
+import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 import { conditionsCloud, CGU_CLOUD_VERSION } from './conditionsCloud';
 import { C, BLANC, DEGRADE_TEAL, POLICE } from './theme';
@@ -25,7 +28,7 @@ export default function ConditionsCloudModale({ onFini }) {
       setEtat('echec');
     }
   }
-  return (
+  const couche = (
     <div role="dialog" aria-modal="true" aria-label={T.titre} style={{
       position: 'fixed', inset: 0, zIndex: 1250, background: 'rgba(15,23,42,0.45)', display: 'flex', alignItems: 'flex-end',
       justifyContent: 'center', fontFamily: POLICE,
@@ -66,4 +69,6 @@ export default function ConditionsCloudModale({ onFini }) {
       </div>
     </div>
   );
+  // Rendu serveur (autotests) : pas de document, la couche se rend telle quelle ; dans l'app, sur document.body.
+  return typeof document === 'undefined' ? couche : createPortal(couche, document.body);
 }

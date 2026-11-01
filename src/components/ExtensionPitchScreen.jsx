@@ -322,8 +322,8 @@ export default function ExtensionPitchScreen({
                     Leboncoin ont aussi l'option (sans nommer ce qu'elle ne fait
                     pas). Drapeau baissé : la phrase d'avant, mot pour mot. */}
                 {optionSansOrdi
-                  ? (fr ? "Les autres plateformes passent par l'extension sur un ordinateur, ou, pour Vinted et Leboncoin, par l'option Sans ordinateur."
-                        : 'The other platforms go through the extension on a computer, or, for Vinted and Leboncoin, through the No computer add-on.')
+                  ? (fr ? "Les autres plateformes passent par l'extension sur un ordinateur, ou, pour Vinted, Leboncoin, Beebs et Depop, par l'option Sans ordinateur."
+                        : 'The other platforms go through the extension on a computer, or, for Vinted, Leboncoin, Beebs and Depop, through the No computer add-on.')
                   : (fr ? "Vinted, Leboncoin et Beebs demandent l'extension sur un ordinateur."
                         : 'Vinted, Leboncoin and Beebs need the extension on a computer.')}
               </p>

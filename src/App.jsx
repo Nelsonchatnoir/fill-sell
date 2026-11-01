@@ -3376,7 +3376,15 @@ export default function App({ loginOnly = false }){
     logTunnel('cloud_cta_click',{origine,declencheur:'clic'});
     const r=await achatCloud.acheter(origine);
     if(r?.message)toastCloud(r.message);
-    if(r?.etat==='actif')setMeConnecterOuvert(true);
+    if(r?.etat==='actif')ouvrirMeConnecter('achat');
+  }
+  // (01/11) « Me connecter » s'ouvre par ICI, jamais par un setMeConnecterOuvert nu : le clic laisse sa trace
+  // (usage_logs « cloud_me_connecter_clic ») et, si l'écran n'est pas monté 1,5 s plus tard, « cloud_me_connecter_muet ».
+  // Le 01/11 à 19:38, le bouton des Réglages ne faisait rien sur l'iPhone de Nico, sans une ligne nulle part.
+  function ouvrirMeConnecter(origine){
+    logTunnel('cloud_me_connecter_clic',{origine});
+    setMeConnecterOuvert(true);
+    setTimeout(()=>{if(typeof document!=='undefined'&&!document.querySelector('[data-cloud-me-connecter]'))logTunnel('cloud_me_connecter_muet',{origine});},1500);
   }
   // « Formule + Sans ordinateur » : la formule d'abord (son parcours, inchangé),
   // puis la feuille propose l'option à ajouter — jamais deux paiements d'un geste.
@@ -3396,7 +3404,7 @@ export default function App({ loginOnly = false }){
       arreter:async()=>{const r=await achatCloud.arreter();if(r?.message)toastCloud(r.message);return{ok:r?.etat!=='erreur',...r};},
       reprendre:async()=>{const r=await achatCloud.reprendre();if(r?.message)toastCloud(r.message);return{ok:r?.etat!=='erreur',...r};},
     }:{}),
-    ...(cloudConnexionVisible(user.id)?{meConnecter:()=>setMeConnecterOuvert(true)}:{}),
+    ...(cloudConnexionVisible(user.id)?{meConnecter:()=>ouvrirMeConnecter('reglages')}:{}),
   }:{};
 
   // silencieux (2026-07-13) : les rafraîchissements d'ARRIÈRE-PLAN (retour de
@@ -9859,7 +9867,7 @@ export default function App({ loginOnly = false }){
       )}
       {/* (01/11) Une connexion Cloud tombée (drapeau cloud_voie) : l'app demande la reconnexion — témoin seulement. */}
       {user&&cloudConnexionVisible(user.id)&&(
-        <BandeauCloudReconnexion userId={user.id} lang={lang} ouvert={meConnecterOuvert} onReconnecter={()=>setMeConnecterOuvert(true)} plateformesFermees={plateformesFermees}/>
+        <BandeauCloudReconnexion userId={user.id} lang={lang} ouvert={meConnecterOuvert} onReconnecter={()=>ouvrirMeConnecter('bandeau')} plateformesFermees={plateformesFermees}/>
       )}
       {/* (30/10, lot D) Les conditions d'utilisation du Cloud : case obligatoire, AVANT toute carte — témoins seuls. */}
       {conditionsCloudOuvertes&&user&&(temoinCloud||cloudOfferVisible(user.id))&&(

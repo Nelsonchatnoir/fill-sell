@@ -41,7 +41,8 @@ const lignesDeCode = (texte) => texte.split('\n').filter((l) => {
   const t = l.trim();
   return t && !t.startsWith('//') && !t.startsWith('*') && !t.startsWith('/*') && !t.startsWith('{/*');
 }).join('\n');
-const INTERDITS = [/Beebs/i, /Opla/i, /p[ée]pite/i, /plafond/i, /\bproxy\b/i, /\bIP\b/, /serveur Cloud/i, /navigateur headless/i,
+// (01/11, décision de Nico) Beebs n'est plus interdit : le Cloud nomme ses QUATRE plateformes (contrôle plus bas).
+const INTERDITS = [/Opla/i, /p[ée]pite/i, /plafond/i, /\bproxy\b/i, /\bIP\b/, /serveur Cloud/i, /navigateur headless/i,
   /formule payante/i, /fait tourner l.extension/i];
 const NBSP = new RegExp(String.fromCharCode(0xa0), 'g');
 const net = (s) => String(s).replace(NBSP, ' ');
@@ -134,7 +135,15 @@ const toutes = (T) => Object.values(T).flatMap((v) => {
   }
   const fr = toutes(FR).join(' ');
   verifier(!/\bvous\b/i.test(fr), 'textes fr : tutoiement, jamais « vous »');
-  verifier(/Vinted et Leboncoin/.test(FR.ceQueCaFait) && /eBay part déjà sans ordinateur/.test(FR.ebayDeja), 'textes : Vinted et Leboncoin seulement ; eBay « déjà sans ordinateur »');
+  verifier(/Vinted, Leboncoin, Beebs et Depop/.test(FR.ceQueCaFait) && /Vinted, Leboncoin, Beebs and Depop/.test(EN.ceQueCaFait) && /eBay part déjà sans ordinateur/.test(FR.ebayDeja), 'textes : les quatre plateformes du Cloud ; eBay « déjà sans ordinateur »');
+  // (01/11) Les plateformes nommées = la liste officielle (config/cloudOffer.js), jamais deux d'entre elles seulement.
+  const nomsCloud = cfg.CLOUD_PLATEFORMES_CONNEXION.map((p) => p.nom);
+  verifier(nomsCloud.join(',') === 'Vinted,Leboncoin,Beebs,Depop', 'la liste officielle : Vinted, Leboncoin, Beebs, Depop', nomsCloud.join(','));
+  const deuxSeules = [...toutes(FR), ...toutes(EN)].filter((p) => /Vinted (et|and) Leboncoin/.test(p));
+  verifier(deuxSeules.length === 0, 'aucune phrase Cloud ne nomme Vinted et Leboncoin seuls (01/11 : les quatre)', deuxSeules.join(' | '));
+  verifier(net(FR.payeTexte('Pro')) === 'En plus de ta formule Pro : tes annonces Vinted, Leboncoin, Beebs et Depop partent même ordinateur éteint.'
+    && /Vinted, Leboncoin, Beebs and Depop listings go out even with your computer off/.test(EN.payeTexte('Pro')),
+    'la carte des Réglages : « tes annonces Vinted, Leboncoin, Beebs et Depop partent même ordinateur éteint »', net(FR.payeTexte('Pro')));
   verifier(FR.voieTexte.includes('FillSell publie tes annonces depuis ses serveurs') && FR.pageTexte.includes('FillSell publie tes annonces depuis ses serveurs'), 'la phrase imposée : « FillSell publie tes annonces depuis ses serveurs », partout');
   const frise = FR.frise('17 octobre').map((e) => ({ quand: net(e.quand), quoi: net(e.quoi) }));
   verifier(frise.length === 3 && /Carte demandée, rien n.est prélevé pour l.option/.test(frise[0].quoi) && frise[1].quand === '17 octobre' && /20 €\/mois/.test(frise[1].quoi)

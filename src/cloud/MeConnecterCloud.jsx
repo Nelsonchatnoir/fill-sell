@@ -12,7 +12,13 @@
 // Monté par App derrière cloudConnexionVisible() : drapeau baissé et aucun
 // témoin = jamais rendu, jamais une requête.
 import { useCallback, useEffect, useRef, useState } from 'react';
+// (01/11) UN PORTAIL SUR document.body : ouvert depuis Réglages (portail sur body, z-index 400), l'écran rendu dans
+// `.app-root` restait DERRIÈRE sur iPhone (WKWebView peint les couches fixes de `.app-root` dans sa couche, z-index ou
+// pas) — « Connecter mes plateformes » ne faisait rien, sans trace (19:38, iPhone de Nico). Même règle que
+// FinEssaiCloud et les réglages eux-mêmes : une couche qu'on ouvre depuis Réglages vit sur body.
+import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
+import { tracerCloud, auPremierPlan } from './traceCloud';
 import { CLOUD_DOMAINE, CLOUD_PLATEFORMES_CONNEXION } from '../config/cloudOffer';
 import { ouvrirConnexion } from './connexion/clientConnexion';
 import { lireEtatEbay, ebayVoieApiDuCompte, demarrerConnexionEbay, ouvrirConsentementEbay } from '../utils/ebayCompte';
@@ -42,7 +48,7 @@ function Ligne({ nom, connecte, libelle, onClick, T, texte = null, aReconnecter 
   );
 }
 
-function Vue({ plateforme, nom, lang, onFermer }) {
+function Vue({ userId, plateforme, nom, lang, onFermer }) {
   const T = textesConnexion(lang);
   const conteneur = useRef(null);
   const session = useRef(null);
@@ -52,6 +58,13 @@ function Vue({ plateforme, nom, lang, onFermer }) {
 
   useEffect(() => {
     let mort = false;
+    let tracee = false;   // (01/11) une seule ligne « fin » par connexion
+    const fin = (etape, m) => {
+      if (tracee) return;
+      tracee = true;
+      tracerCloud(userId, 'cloud_connexion_fin', { plateforme, etape, message: String(m ?? '').slice(0, 200) });
+    };
+    tracerCloud(userId, 'cloud_connexion_ouverte', { plateforme });
     (async () => {
       const { data: { session: s } } = await supabase.auth.getSession();
       if (mort || !conteneur.current) return;
@@ -60,13 +73,13 @@ function Vue({ plateforme, nom, lang, onFermer }) {
         surEtat: (etape, m) => {
           if (etape === 'clavier') { setClavier(m === true); return; }
           if (m) setMessage(m);
-          if (ETAPES_FINALES.includes(etape)) setFinie(true);
+          if (ETAPES_FINALES.includes(etape)) { setFinie(true); fin(etape, m); }
           if (etape === 'connecte') setTimeout(() => onFermer(true), 1800);
         },
       });
-    })();
+    })().catch((e) => fin('erreur_client', e?.message ?? e));
     return () => { mort = true; session.current?.fermer(); };
-  }, [plateforme, lang, onFermer]);
+  }, [userId, plateforme, lang, onFermer]);
 
   return (
     <div role="dialog" aria-modal="true" aria-label={`${T.titre} — ${nom}`} style={{
@@ -130,23 +143,45 @@ export default function MeConnecterCloud({ userId, lang = 'fr', onFermer, platef
   const [ouverte, setOuverte] = useState(null);
   const [ebayRelie, setEbayRelie] = useState(null);
 
+  const racine = useRef(null);
+
   const relire = useCallback(() => {
     setEtats(null);
-    supabase.rpc('cloud_coffre_etat_moi').then(({ data, error }) => setEtats(error ? 'echec' : (data ?? {})), () => setEtats('echec'));
+    supabase.rpc('cloud_coffre_etat_moi').then(({ data, error }) => {
+      if (error) tracerCloud(userId, 'cloud_me_connecter_erreur', { etape: 'lecture_connexions', message: String(error.message ?? error).slice(0, 200) });
+      setEtats(error ? 'echec' : (data ?? {}));
+    }, (e) => {
+      tracerCloud(userId, 'cloud_me_connecter_erreur', { etape: 'lecture_connexions', message: String(e?.message ?? e).slice(0, 200) });
+      setEtats('echec');
+    });
     // eBay : la connexion OFFICIELLE (API), jamais le navigateur Cloud.
     lireEtatEbay().then((e) => setEbayRelie(ebayVoieApiDuCompte(e) === true), () => setEbayRelie(null));
-  }, []);
+  }, [userId]);
   const relierEbay = useCallback(async () => {
     try { const { url } = await demarrerConnexionEbay(); if (url) await ouvrirConsentementEbay(url); }
     catch (e) { console.warn('[cloud] connexion eBay :', e?.message ?? e); }
   }, []);
   const ebay = ebayRelie === null ? null : { relie: ebayRelie, onRelier: relierEbay };
-  useEffect(() => { if (userId) relire(); }, [userId, relire]);
+  useEffect(() => {
+    if (!userId) return undefined;
+    const t = setTimeout(relire, 0);   // la lecture part hors du rendu de l'effet
+    return () => clearTimeout(t);
+  }, [userId, relire]);
+  // (01/11) L'écran est-il VRAIMENT devant ? Une ligne « ouvert » (visible ou non) ; si une autre couche le cache, ce
+  // qu'on voit à sa place est noté (« cloud_me_connecter_cache ») : le bouton muet du 01/11 ne passerait plus inaperçu.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const vu = auPremierPlan(racine.current, typeof document === 'undefined' ? null : document);
+      tracerCloud(userId, 'cloud_me_connecter_ouvert', { visible: vu.visible });
+      if (!vu.visible) tracerCloud(userId, 'cloud_me_connecter_cache', { devant: vu.devant });
+    }, 600);
+    return () => clearTimeout(t);
+  }, [userId]);
 
   const fermerVue = useCallback((connectee) => { setOuverte(null); if (connectee) relire(); }, [relire]);
 
-  return (
-    <div role="dialog" aria-modal="true" aria-label={T.titre} style={{
+  const couche = (
+    <div ref={racine} data-cloud-me-connecter="" role="dialog" aria-modal="true" aria-label={T.titre} style={{
       position: 'fixed', inset: 0, zIndex: 1100, background: C.canvas, overflowY: 'auto', fontFamily: POLICE,
       paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)',
     }}>
@@ -172,7 +207,9 @@ export default function MeConnecterCloud({ userId, lang = 'fr', onFermer, platef
           </div>
         )}
       </div>
-      {ouverte && <Vue plateforme={ouverte.id} nom={ouverte.nom} lang={lang} onFermer={fermerVue} />}
+      {ouverte && <Vue userId={userId} plateforme={ouverte.id} nom={ouverte.nom} lang={lang} onFermer={fermerVue} />}
     </div>
   );
+  // Rendu serveur (autotests) : pas de document, la couche se rend telle quelle ; dans l'app, sur document.body.
+  return typeof document === 'undefined' ? couche : createPortal(couche, document.body);
 }

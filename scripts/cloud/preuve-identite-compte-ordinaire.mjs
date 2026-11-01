@@ -341,6 +341,8 @@ const code = (t) => t.split('\n').filter((l) => { const s = l.trim(); return s &
     'src/cloud/MeConnecterCloud.jsx': () => true,   // monté seulement derrière cloudConnexionVisible (App, ci-dessous)
     'src/cloud/connexion/clientConnexion.js': () => true, // utilisé par MeConnecterCloud seulement (ci-dessous)
     // (01/11) Le bandeau « reconnecte-toi » : monté par App derrière cloudConnexionVisible seulement (vérifié ici).
+    // (01/11) La trace des gestes « Me connecter » (usage_logs) : importée par l'écran seulement (vérifié plus bas).
+    'src/cloud/traceCloud.js': () => true,
     'src/cloud/BandeauCloudReconnexion.jsx': () => /\{user&&cloudConnexionVisible\(user\.id\)&&\(\s*<BandeauCloudReconnexion /.test(lire('src/App.jsx')),
   };
   const fautifs = fichiers.filter((f) => reseau.test(code(lire(f))) && !(permis[f]?.(code(lire(f)))));
@@ -357,6 +359,8 @@ const code = (t) => t.split('\n').filter((l) => { const s = l.trim(); return s &
   verifier(importeurs.length === 1 && importeurs[0] === 'src/cloud/MeConnecterCloud.jsx', 'le client de connexion n’est importé que par « Me connecter »', importeurs.join(', '));
   const importMe = importeursDe('MeConnecterCloud(?:\\.jsx)?');
   verifier(importMe.length === 1 && importMe[0] === 'src/App.jsx', '« Me connecter » n’est importé que par App', importMe.join(', '));
+  const importTrace = importeursDe('traceCloud(?:\.js)?');
+  verifier(importTrace.length === 1 && importTrace[0] === 'src/cloud/MeConnecterCloud.jsx', 'la trace Cloud n’est importée que par « Me connecter » (01/11)', importTrace.join(', '));
   // Les lectures de l'état Cloud : chaque appel de useCloudProfil passe une porte.
   const appels = [];
   for (const f of git('grep', '-l', 'useCloudProfil(', candidat, '--', 'src').trim().split('\n').filter(Boolean).map((l) => l.replace(`${candidat}:`, ''))) {
